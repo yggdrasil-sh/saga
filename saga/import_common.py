@@ -98,6 +98,12 @@ def reason_text(code, p=None):
         "notes_limit": lambda: t("Zu viele Seiten für dieses Konto (höchstens {n}).", n=p.get("n", NOTE_MAX_COUNT)),
         "rows_account": lambda: t("Zu viele Datenbank-Einträge für dieses Konto (höchstens {n}).", n=p.get("n", NOTE_ROW_MAX_COUNT)),
         "formula": lambda: t("Formel als Text übernommen"),
+        "columns_max": lambda: t("Mehr als 6 Spalten – Rest in der letzten Spalte"),
+        "fx_text": lambda: t("Formel/Rollup als Text mit Ergebniswert übernommen – Spalte lässt sich in eine Formel umwandeln"),
+        "person_text": lambda: t("Personen als Text übernommen (Namen lassen sich keinem Konto zuordnen)"),
+        "rel_ambiguous": lambda: t("Verknüpfung „{title}“ mehrdeutig – erster Treffer gewählt", title=p.get("title", "")),
+        "orphan": lambda: t("Seite ohne passenden Eintrag – als Unterseite übernommen"),
+        "notion_unsupported": lambda: t("Notion-Element nicht unterstützt – als Text übernommen"),
     }
     f = m.get(code)
     return f() if f else code
@@ -239,17 +245,25 @@ def norm_path(name):
 
 
 class Entry:
-    __slots__ = ("path", "size", "info", "file")
+    __slots__ = ("path", "size", "info", "file", "zf")
 
-    def __init__(self, path, size, info=None, file=None):
-        self.path, self.size, self.info, self.file = path, size, info, file
+    def __init__(self, path, size, info=None, file=None, zf=None):
+        self.path, self.size, self.info, self.file, self.zf = path, size, info, file, zf
+
+
+NESTED_MAX = 50                   # Teil-ZIPs eines Notion-Exports (Export-...-Part-N.zip)
 
 
 class Source:
-    """Gepruefte Eintraege eines Uploads (ZIP oder Einzeldateien). read()/open() zaehlen beim Lesen mit."""
+    """Gepruefte Eintraege eines Uploads (ZIP oder Einzeldateien). read()/open() zaehlen beim Lesen mit.
+    Verschachtelte ZIPs: genau eine Ebene und nur, wenn das aeussere ZIP ausschliesslich ZIPs enthaelt (Notion verpackt
+    grosse Exporte als Export-....zip mit Export-...-Part-1.zip, -Part-2.zip ...). Die Teile werden geprueft in den
+    Upload-Ordner kopiert (zipfile braucht eine zurueckspulbare Datei) und mit denselben Grenzen wie ein ZIP gelesen;
+    ihre Eintraege bilden einen gemeinsamen Namensraum. Tiefer verschachtelte ZIPs: Bericht nested_zip."""
 
     def __init__(self, upload, report):
         self.report, self.entries, self.zip, self.read_total = report, {}, None, 0
+        self.inner, self._tmp, self._n, self._total, self._copied = [], [], 0, 0, 0
         files = upload["files"]
         if len(files) == 1 and zipfile.is_zipfile(files[0]["path"]):
             self._open_zip(files[0]["path"])
@@ -262,17 +276,73 @@ class Source:
                 self.entries[p] = Entry(p, f["size"], file=f["path"])
         self.root = self._common_root()
 
-    def _open_zip(self, path):
+    def _zipfile(self, path):
         if zip_too_big_cd(path):
             raise ImportFail("zip_entries")
         try:
-            self.zip = zipfile.ZipFile(path)
+            return zipfile.ZipFile(path)
         except (zipfile.BadZipFile, OSError):
             raise ImportFail("not_zip")
+
+    def _open_zip(self, path):
+        self.zip = self._zipfile(path)
         infos = self.zip.infolist()
         if len(infos) > ENTRIES_MAX:
             raise ImportFail("zip_entries")
-        total = 0
+        files = [i for i in infos if not i.is_dir()]
+        parts = [i for i in files if i.filename.lower().endswith(".zip")]
+        if files and len(parts) == len(files) and len(parts) <= NESTED_MAX:
+            for i in sorted(parts, key=lambda x: x.filename):
+                zf = self._inner(path, i)
+                if zf is not None:
+                    self._add(zf, zf.infolist())
+            return
+        self._add(self.zip, infos)
+
+    def _inner(self, path, i):
+        """Teil-ZIP pruefen und in den Upload-Ordner kopieren -> ZipFile oder None (Bericht)."""
+        p = norm_path(i.filename)
+        mode = (i.external_attr >> 16) & 0xFFFF
+        if p is None:
+            self.report.skip(i.filename, "bad_path")
+            return None
+        if stat.S_ISLNK(mode):
+            self.report.skip(p, "symlink")
+            return None
+        if i.file_size > MB and i.file_size > RATIO_MAX * max(i.compress_size, 1):
+            self.report.skip(p, "bomb")
+            return None
+        self._copied += i.file_size             # Kopien der Teile auf der Platte: zusammen hoechstens UNPACKED_MAX
+        if self._copied > UNPACKED_MAX:
+            raise ImportFail("zip_size")
+        dst = os.path.join(os.path.dirname(path), "part-" + secrets.token_hex(8) + ".zip")
+        self._tmp.append(dst)
+        n = 0
+        try:
+            with _Counted(self.zip.open(i), self, i.file_size) as f, open(dst, "wb") as out:
+                while True:
+                    b = f.read(MB)
+                    if not b:
+                        break
+                    n += len(b)
+                    out.write(b)
+        except ImportFail as ex:
+            self.read_total -= n
+            self.report.skip(p, ex.code, **ex.p)
+            return None
+        self.read_total -= n                  # die Kopie ist kein entpackter Inhalt (der zaehlt beim Lesen der Teile)
+        try:
+            zf = self._zipfile(dst)
+        except ImportFail:
+            self.report.skip(p, "not_zip")
+            return None
+        self.inner.append(zf)
+        return zf
+
+    def _add(self, zf, infos):
+        self._n += len(infos)
+        if self._n > ENTRIES_MAX:
+            raise ImportFail("zip_entries")
         for i in infos:
             if i.is_dir():
                 continue
@@ -290,12 +360,12 @@ class Source:
             if p.lower().endswith(".zip"):
                 self.report.skip(p, "nested_zip")
                 continue
-            total += i.file_size
-            if total > UNPACKED_MAX:
+            self._total += i.file_size
+            if self._total > UNPACKED_MAX:
                 raise ImportFail("zip_size")
             if p in self.entries:                 # doppelter Name (nach Normalisierung): erster gewinnt
                 continue
-            self.entries[p] = Entry(p, i.file_size, info=i)
+            self.entries[p] = Entry(p, i.file_size, info=i, zf=zf)
 
     def _common_root(self):
         """Gemeinsamer oberster Ordner aller Eintraege (ZIP eines Ordners) - wird beim Aufbau weggelassen."""
@@ -326,12 +396,17 @@ class Source:
 
     def open(self, path):
         e = self.entries[path]
-        f = self.zip.open(e.info) if e.info is not None else open(e.file, "rb")
+        f = (e.zf or self.zip).open(e.info) if e.info is not None else open(e.file, "rb")
         return _Counted(f, self, e.size)
 
     def close(self):
-        if self.zip is not None:
-            self.zip.close()
+        for z in self.inner + ([self.zip] if self.zip is not None else []):
+            z.close()
+        for p in self._tmp:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
 
 
 class _Counted:
@@ -618,10 +693,14 @@ def store_file(run, c, name, src, size):
 
 
 def apply_plan(run, plan, parent):
-    """Plan einspielen (unter parent oder oberste Ebene) -> ID des ersten Items (Wurzel)."""
+    """Plan einspielen (unter parent oder oberste Ebene) -> ID des ersten Items (Wurzel).
+    Ein Item darf als parent auch die ref einer Datenbank-Zeile haben (Unterseiten von Eintraegen, Notion): es entsteht
+    in einer weiteren Runde nach den Zeilen. Zeilen duerfen body haben; Relationen auf Zeilen, die erst spaeter
+    entstehen (andere Datenbank), werden am Ende nachgetragen. Fehlt das Ziel ganz: unter die Wurzel."""
     uid, rep = run.uid, run.report
     items = plan["items"]
     files = plan.get("files") or {}
+    by_ref = {it["ref"]: it for it in items}
     n_pages = sum(1 for it in items if it.get("parent") is None or not _is_db_ref(items, it.get("parent")))
     n_rows = sum(int(it.get("row_count") or 0) for it in items if it["kind"] == "database")
     check_limits(uid, n_pages, n_rows)
@@ -635,20 +714,28 @@ def apply_plan(run, plan, parent):
     total = len(items) + n_rows + len(files)
     done = 0
     run.step("pages", 0, total, force=True)
-    # 1) Seiten und Datenbanken leer anlegen (IDs vorab: Verweise zeigen sofort auf die neuen Seiten), Tiefenreihenfolge
-    by_ref = {it["ref"]: it for it in items}
 
     def depth(it, seen=()):
         p = it.get("parent")
         return 0 if p not in by_ref or p in seen else 1 + depth(by_ref[p], seen + (it["ref"],))
-    order = sorted(items, key=depth)
     ids = {}
-    for k in range(0, len(order), CHUNK):
-        part = order[k:k + CHUNK]
+    top = [None]
+
+    def anchored(it):
+        p, seen = it.get("parent"), set()
+        while p is not None and p not in ids and p in by_ref and p not in seen:
+            seen.add(p)
+            p = by_ref[p].get("parent")
+        return p is None or p in ids
+
+    def create(part):
+        nonlocal done
         with _db() as c, c:
             for it, nid in zip(part, new_ids(c, len(part))):
                 ids[it["ref"]] = nid
                 par = ids.get(it.get("parent")) if it.get("parent") else parent
+                if it.get("parent") and par is None:             # Ziel fehlt (z. B. Zeile gekuerzt): unter die Wurzel
+                    par = top[0] if top[0] is not None else parent
                 kind = "database" if it["kind"] == "database" else "page"
                 sc = {"props": [], "views": [{"id": "tabelle", "name": t("Tabelle"), "type": "table"}]} if kind == "database" else None
                 icon = it.get("icon") if isinstance(it.get("icon"), str) and 0 < len(it["icon"]) <= 8 else None
@@ -658,7 +745,8 @@ def apply_plan(run, plan, parent):
                 done += 1
             tree_changed(c, uid, [ids[it["ref"]] for it in part], "created")
         run.step("pages", done, total)
-    # 2) Dateien
+
+    # 1) Dateien (Zeilen und Inhalte verweisen darauf)
     fids = {}
     for key, f in files.items():
         try:
@@ -673,30 +761,68 @@ def apply_plan(run, plan, parent):
         done += 1
         run.step("files", done, total)
     plan["file_ids"] = fids
-    # 3) Schemas (Relationen ueber refs), dann Zeilen in Etappen
-    for it in items:
-        if it["kind"] != "database":
-            continue
-        nid = ids[it["ref"]]
-        raw = resolve(it.get("schema") or {"props": []}, ids)
-        raw["props"] = [p for p in raw.get("props") or [] if p.get("type") != "relation" or isinstance(p.get("target"), int)]
-        sc = _schema_stamp({"props": []}, _clean_schema(raw), uid)
+    # 2) Runden: Seiten/Datenbanken leer anlegen (IDs vorab, Tiefenreihenfolge), dann Schemas und Zeilen der neuen
+    #    Datenbanken; Items unter Zeilen folgen in der naechsten Runde
+    late_bodies, deferred = [], []
+    pending = sorted(items, key=depth)
+    while pending:
+        ready = [it for it in pending if anchored(it)] or pending        # nichts verankert: Rest unter die Wurzel
+        for k in range(0, len(ready), CHUNK):
+            create(ready[k:k + CHUNK])
+        if top[0] is None and items:
+            top[0] = ids.get(items[0]["ref"])
+        got = {it["ref"] for it in ready}
+        pending = [it for it in pending if it["ref"] not in got]
+        for it in ready:
+            if it["kind"] != "database":
+                continue
+            nid = ids[it["ref"]]
+            raw = resolve(it.get("schema") or {"props": []}, ids)
+            raw["props"] = [p for p in raw.get("props") or [] if p.get("type") != "relation" or isinstance(p.get("target"), int)]
+            sc = _schema_stamp({"props": []}, _clean_schema(raw), uid)
+            with _db() as c, c:
+                c.execute("UPDATE note SET schema=? WHERE id=? AND uid=?", (json.dumps(sc, ensure_ascii=False), nid, uid))
+            done = _insert_rows(run, nid, sc, it, ids, done, total, fids=fids, bodies=late_bodies, deferred=deferred)
+    if deferred:
+        _deferred_rel(run, ids, deferred)
+    # 3) Inhalte der Seiten und Zeilen (refs/Dateien aufloesen, Bericht bei fehlenden Zielen)
+    todo = [(it["ref"], it["body"], it.get("path") or it.get("title")) for it in items if it.get("body")] + late_bodies
+    for k in range(0, len(todo), CHUNK):
         with _db() as c, c:
-            c.execute("UPDATE note SET schema=? WHERE id=? AND uid=?", (json.dumps(sc, ensure_ascii=False), nid, uid))
-        done = _insert_rows(run, nid, sc, it, ids, done, total)
-    # 4) Inhalte der Seiten (refs/Dateien aufloesen, Bericht bei fehlenden Zielen)
-    for k in range(0, len(items), CHUNK):
-        part = [it for it in items[k:k + CHUNK] if it.get("body")]
-        if not part:
-            continue
-        with _db() as c, c:
-            for it in part:
-                blocks = it["body"]() if callable(it["body"]) else it["body"]
-                blocks = _fix_files(resolve(blocks or [], ids, fids), fids)
-                body = clean_body(c, uid, blocks, rep, it.get("path") or it.get("title"))
-                c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (body, ids[it["ref"]], uid))
+            for ref, fn, path in todo[k:k + CHUNK]:
+                if ids.get(ref) is None:
+                    continue
+                blocks = fn() if callable(fn) else fn
+                if not blocks:
+                    continue
+                blocks = _fix_files(resolve(blocks, ids, fids), fids)
+                body = clean_body(c, uid, blocks, rep, path)
+                c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (body, ids[ref], uid))
         run.step("content", done, total)
     return ids[items[0]["ref"]] if items else None
+
+
+def _deferred_rel(run, ids, deferred):
+    """Relationen, deren Ziele beim Anlegen der Zeile noch fehlten (andere Datenbank spaeter im Plan): nachtragen."""
+    from saga.notes import _rel_sync
+    uid, rep = run.uid, run.report
+    for k in range(0, len(deferred), CHUNK):
+        with _db() as c, c:
+            for rid, schema, pid, refs, path in deferred[k:k + CHUNK]:
+                got = [ids.get(r[5:]) if isinstance(r, str) and r.startswith("$ref:") else None for r in refs]
+                got = [x for x in got if x]
+                if not got:
+                    continue
+                row = c.execute("SELECT props FROM note WHERE id=? AND uid=?", (rid, uid)).fetchone()
+                old = _json_load(row[0], {}) if row and row[0] else {}
+                try:
+                    new = _clean_props(schema, {pid: got}, base=old)
+                except (ValueError, TypeError):
+                    rep.note(path, "bad_value", type="relation")
+                    continue
+                c.execute("UPDATE note SET props=? WHERE id=? AND uid=?", (json.dumps(new, ensure_ascii=False), rid, uid))
+                if any(p.get("id") == pid and p.get("pair") for p in schema["props"]):
+                    _rel_sync(c, uid, schema, rid, old, new)
 
 
 def _tags_ok(tags):
@@ -740,8 +866,10 @@ def _fix_files(blocks, fids):
     return blocks
 
 
-def _insert_rows(run, nid, schema, it, ids, done, total):
-    """Zeilen einer Datenbank in Etappen anlegen (Werte geprueft mit _clean_props, Relationen ueber refs)."""
+def _insert_rows(run, nid, schema, it, ids, done, total, fids=None, bodies=None, deferred=None):
+    """Zeilen einer Datenbank in Etappen anlegen (Werte geprueft mit _clean_props, Relationen ueber refs).
+    fids: Datei-Schluessel -> ID (Datei-Eigenschaft: [{url: "$file:k", name}]); bodies: Liste fuer Zeilen-Inhalte
+    (ref, body, pfad) - Zeilen mit body brauchen eine ref; deferred: Relationen auf noch fehlende Zeilen (spaeter)."""
     rows_fn = it.get("rows")
     if not rows_fn:
         return done
@@ -749,6 +877,7 @@ def _insert_rows(run, nid, schema, it, ids, done, total):
     by_id = {p["id"]: p for p in schema["props"]}
     now = _now()
     batch, i = [], 0
+    own_files = set((fids or {}).values())
 
     from saga.notes import _rel_sync
     paired = any(p.get("type") == "relation" and p.get("pair") for p in schema["props"])
@@ -761,12 +890,14 @@ def _insert_rows(run, nid, schema, it, ids, done, total):
             c.executemany("INSERT INTO note (id, uid, title, body, format, parent_id, sort, tags, kind, props, created, updated, updated_by, created_by) "
                           "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           [(rid, uid, title, json.dumps({"blocks": []}), "blocks", nid, s, "[]", "page", props, now, now, uid, uid)
-                           for rid, (title, props, s, ref) in zip(got, batch)])
-            for rid, (_, props, _, ref) in zip(got, batch):
+                           for rid, (title, props, s, ref, _) in zip(got, batch)])
+            for rid, (_, props, _, ref, later) in zip(got, batch):
                 if ref:
                     ids[ref] = rid
                 if paired and props:                        # zweiseitige Relationen: Gegenseite nachziehen
                     _rel_sync(c, uid, schema, rid, {}, json.loads(props))
+                for pid, refs, path in later:
+                    deferred.append((rid, schema, pid, refs, path))
             run.created.extend(got)
             tree_changed(c, uid, [nid], "updated")
         rep.counts["rows"] += len(batch)
@@ -774,18 +905,32 @@ def _insert_rows(run, nid, schema, it, ids, done, total):
 
     from saga.pages import _title_in
     rel = {p["id"] for p in schema["props"] if p["type"] == "relation"}
+    fprops = {p["id"] for p in schema["props"] if p["type"] == "files"}
     for row in rows_fn():
-        raw = {k: (resolve(v, ids) if k in rel else v) for k, v in (row.get("props") or {}).items()}   # nur Relationen haben refs
+        raw, later = {}, []
+        for k, v in (row.get("props") or {}).items():
+            if k in rel:                                    # nur Relationen haben refs
+                rv = resolve(v, ids)
+                if deferred is not None and isinstance(rv, list) and None in rv:
+                    later.append((k, v, row.get("path") or row.get("title")))
+                    rv = [x for x in rv if x is not None]
+                v = rv
+            elif k in fprops and isinstance(v, list):       # Datei-Eigenschaft: nur Dateien, die wirklich angelegt wurden
+                v = [dict(x, url="/files/" + fids[x["url"][6:]]) for x in v
+                     if isinstance(x, dict) and str(x.get("url", "")).startswith("$file:") and x["url"][6:] in (fids or {})]
+            raw[k] = v
         clean = {}
         for k, v in raw.items():
             if k not in by_id:
                 continue
             try:
-                clean.update(_clean_props(schema, {k: v}))
+                clean.update(_clean_props(schema, {k: v}, files=lambda xs: xs & own_files))
             except (ValueError, TypeError):
                 rep.note(row.get("path") or row.get("title"), "bad_value", type=by_id[k]["type"])
+        if row.get("body") and row.get("ref") and bodies is not None:
+            bodies.append((row["ref"], row["body"], row.get("path") or row.get("title")))
         batch.append((_title_in(str(row.get("title") or ""))[:200], json.dumps(clean, ensure_ascii=False) if clean else None,
-                      now + i * 1e-3, row.get("ref")))
+                      now + i * 1e-3, row.get("ref"), later))
         i += 1
         done += 1
         if len(batch) >= CHUNK:
