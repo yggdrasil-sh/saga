@@ -17,20 +17,25 @@
     if (pm && typeof pm === 'object') Object.keys(pm).forEach(function (r) { if (pm[r] && typeof pm[r] === 'object') PEOPLE[r] = pm[r]; });
     decorate();
   }
+  // Nur schreiben, was sich aendert: Editor.js wertet jede Attribut-Aenderung im Editor als Bearbeitung (onChange ->
+  // Speicher-Timer neu) - ein bedingungsloses Setzen ergaebe mit der Statuszeile eine Schleife, die nie speichert.
+  function attr(s, k, v) { if (v == null) { if (s.hasAttribute(k)) s.removeAttribute(k); } else if (s.getAttribute(k) !== v) s.setAttribute(k, v); }
   function decorate(root) {
     [].forEach.call((root || document).querySelectorAll('span.hk-mention[data-u]'), function (s) {
       var p = PEOPLE[s.getAttribute('data-u')];
-      s.contentEditable = 'false';
-      s.classList.toggle('me', !!(p && p.me));
-      s.classList.toggle('gone', !!(p && p.gone));
-      if (p && p.name) {                                    // Schriftgroesse des Umfelds (Ueberschrift, Absatz) fuer ::before
-        s.dataset.name = '@' + p.name; s.title = p.name;
-        if (s.parentElement) s.style.setProperty('--hk-fs', getComputedStyle(s.parentElement).fontSize);
-      } else { delete s.dataset.name; }
+      attr(s, 'contenteditable', 'false');
+      if (s.classList.contains('me') !== !!(p && p.me)) s.classList.toggle('me', !!(p && p.me));
+      if (s.classList.contains('gone') !== !!(p && p.gone)) s.classList.toggle('gone', !!(p && p.gone));
+      attr(s, 'data-name', p && p.name ? '@' + p.name : null);
+      attr(s, 'title', p && p.name ? p.name : null);
     });
   }
-  new MutationObserver(function () { clearTimeout(decorate.t); decorate.t = setTimeout(function () { decorate(); }, 120); })
-    .observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver(function (recs) {
+    var hit = recs.some(function (r) {
+      return [].some.call(r.addedNodes, function (n) { return n.nodeType === 1 && (n.matches('span.hk-mention') || n.querySelector('span.hk-mention')); });
+    });
+    if (hit) { clearTimeout(decorate.t); decorate.t = setTimeout(function () { decorate(); }, 60); }
+  }).observe(document.documentElement, { childList: true, subtree: true });
 
   // --- @-Menue: Personen ---------------------------------------------------------------------------------------------
   // static/keys.js fragt hier nach (HKMention.options(q, cb)) und ruft pick(item, range) fuer Personen auf.
@@ -70,6 +75,7 @@
     var s = document.createElement('span');
     s.className = 'hk-mention'; s.setAttribute('data-u', p.ref); s.textContent = p.name; s.contentEditable = 'false';
     PEOPLE[p.ref] = Object.assign({}, PEOPLE[p.ref] || {}, { name: p.name, me: !!p.me });
+    decorate(s.parentNode || undefined); attr(s, 'data-name', '@' + p.name); attr(s, 'title', p.name);
     return s;
   }
   // Person ohne Zugriff: erst fragen und teilen (Lesen/Kommentieren), dann erwaehnen
@@ -79,7 +85,9 @@
     [['view', T('Lesen##Rolle')], ['comment', T('Kommentieren##Rolle')]].forEach(function (o) { var x = el('option', null, o[1]); x.value = o[0]; sel.appendChild(x); });
     box.appendChild(el('p', null, T('{name} hat keinen Zugriff auf diese Seite. Seite teilen und erwähnen?', { name: p.name })));
     box.appendChild(sel);
-    HK.openMenu(document.activeElement || document.body, function (m) {
+    // erst nach dem ausloesenden mousedown oeffnen - sonst schliesst common.js das Menue im selben Ereignis wieder
+    var anchor = (document.activeElement && document.activeElement.closest && document.activeElement.closest('.ce-block')) || document.activeElement || document.body;
+    setTimeout(function () { HK.openMenu(anchor, function (m) {
       m.appendChild(box);
       m.appendChild(HK.menuItem(T('Teilen und erwähnen'), function () {
         HK.api('PUT', '/api/notes/' + c.id + '/shares', { type: 'user', target: p.ref, role: sel.value }).then(function () {
@@ -88,7 +96,7 @@
         }).catch(function (err) { HK.toast(T('Nicht geteilt: {err}', { err: err.message })); });
       }, { icon: '@' }));
       m.appendChild(HK.menuItem(T('Abbrechen'), function () {}, { icon: '✕' }));
-    });
+    }); }, 0);
   }
   function pick(it, range, insert) {
     var p = it.person;

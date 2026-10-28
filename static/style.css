@@ -2510,8 +2510,11 @@ button.up-it{cursor:pointer}button.up-it:hover{background:var(--hover,color-mix(
 @media (max-width:560px){.tl-label{font-size:.76rem}}
 /* 2.5 (P6-5): Erwaehnung - angezeigt wird der aktuelle Name (data-name aus dem Woerterbuch people), der Text ist Rueckfall */
 .hk-mention{display:inline-block;padding:0 .3em;border-radius:5px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);font-weight:500;white-space:nowrap;cursor:default}
+/* Schriftgroesse des Umfelds fuer ::before: registrierte Laenge wird je Element in px berechnet und vererbt (kein Inline-Stil, CSP) */
+@property --hk-fs{syntax:"<length>";inherits:true;initial-value:16px}
+:not(.hk-mention){--hk-fs:1em}
 .hk-mention[data-name]{font-size:0}
-.hk-mention[data-name]::before{content:attr(data-name);font-size:var(--hk-fs,1rem)}
+.hk-mention[data-name]::before{content:attr(data-name);font-size:var(--hk-fs)}
 .hk-mention.me{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--fg)}
 .hk-mention.gone{background:none;color:var(--muted);text-decoration:line-through}
 .hk-share-mention{padding:.4rem .6rem;max-width:300px;font-size:.88rem}

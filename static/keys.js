@@ -442,7 +442,7 @@
     });
   });
   function atShow(opts) {
-    if (!opts.length) { atClose(); return; }
+    if (!opts.length) { if (at.box) at.box.hidden = true; at.items = []; return; }     // Personen koennen noch kommen (at.seq bleibt)
     at.items = opts; at.idx = 0;
     if (!at.box) { at.box = el('div', 'hk-emo hk-at'); at.box.setAttribute('role', 'listbox'); document.body.appendChild(at.box); }
     atDraw(); at.box.hidden = false;
