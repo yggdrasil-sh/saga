@@ -184,6 +184,7 @@ def create_hook(uid, b, tok=None):
         hid = c.execute("INSERT INTO webhook (uid, url, secret_enc, events, roots, token_id, created, name) VALUES (?,?,?,?,?,?,?,?)",
                         (uid, url, auth._enc(secret), json.dumps(events), json.dumps(tok.roots) if tok and tok.roots else None,
                          tok.id if tok else None, time.time(), name)).lastrowid
+    _any.update(t=time.time(), v=True)
     print(f"webhooks: Hook {hid} angelegt ({', '.join(events)})", flush=True)
     return {"id": hid, "name": name, "url": url, "events": events, "secret": secret}, None
 
@@ -215,6 +216,7 @@ def update_hook(uid, hid, b):
         if not sets:
             return 400, {"error": t("nichts zu ändern")}
         c.execute(f"UPDATE webhook SET {', '.join(sets)} WHERE id=? AND uid=?", (*args, hid, uid))
+    _any["t"] = 0.0
     return 200, {"ok": True}
 
 
@@ -242,9 +244,20 @@ def _token_ok(c, tid):
 _wake = threading.Event()
 
 
+_any = {"t": 0.0, "v": True}
+
+
+def _any_hooks(c):
+    """Gibt es ueberhaupt aktive Hooks? (Speichern ist heiss: hoechstens alle 10 s nachsehen; Anlegen setzt sofort.)"""
+    now = time.time()
+    if now - _any["t"] > 10:
+        _any.update(t=now, v=bool(c.execute("SELECT 1 FROM webhook WHERE active=1 LIMIT 1").fetchone()))
+    return _any["v"]
+
+
 def _hooks_for(c, kind):
     """Aktive Hooks, die diese Art abonniert haben: [(id, uid, roots)]."""
-    if not conf().get("webhooks"):
+    if not conf().get("webhooks") or not _any_hooks(c):
         return []
     return [(r[0], r[1], apitok.roots_load(r[2])) for r in c.execute(
         "SELECT id, uid, roots FROM webhook WHERE active=1 AND events LIKE ?", (f'%"{kind}"%',)).fetchall()]
