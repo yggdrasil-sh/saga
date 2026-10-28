@@ -1208,6 +1208,8 @@ Bisherige Felder `open`/`done` bleiben; dazu (`sources=1` ist gleichwertig):
 Datenbank, Status = `open_value`; bei Abo `assigned` bzw. fremder DB bin ich zugewiesen) → `{id, kind: "row", src}`.
 Ohne `src`: Inbox wie bisher. Zielauswahl: Inbox + `sources` mit `map`, ohne `inactive` und Rolle `owner`/`edit`.
 Schaltfläche `action: "task"` darf `target: <db>` tragen (Meeting-Vorlage); ältere Clients ignorieren es → Inbox.
+App-Schlüssel (Teilen-Erweiterung, Siri/Kurzbefehle): `POST /api/app/capture` `{kind: "task", title|text, url?, src: <db>,
+due?, prio?}` – gleiche Regeln und Antwort (siehe „Teilen und Kurzbefehle“ unten).
 
 ### Offline-Warteschlange (Apps)
 
@@ -1265,6 +1267,20 @@ internen Endpunkten der Apps – und umgekehrt. Vertrag für Dritte: [API.md](AP
 
 Neue Mitteilungsart `webhook.disabled` (System-Mitteilung, `system: true`, `url: "/notes?settings=api"`): ein Webhook
 wurde nach 20 Fehlschlägen abgeschaltet. Apps zeigen sie wie andere System-Mitteilungen (Titel/Text vom Server).
+
+## Teilen und Kurzbefehle: `POST /api/app/capture`
+
+Nur mit App-Schlüssel `hk_…` (`Authorization: Bearer hk_…`).
+
+- `{kind: "page", title?, text?, url?}` → neue Seite im „📥 Eingang“ → `{ok, kind: "page", id, url}`.
+- `{kind: "task", title?, text?, url?, due?}` → Inbox-Aufgabe (Text = Titel bzw. erste Zeile, Link angehängt) →
+  `{ok, kind: "task", id}`.
+- **2.5, Neue Aufgabe mit Ziel:** zusätzlich `src: <db>` (und optional `prio` 1/2/3) → neue **Zeile** in dieser
+  Aufgabenquelle, gleiche Regeln wie `POST /api/tasks {text, src}` (Rechte ab Bearbeiten, Standardvorlage, `open_value`,
+  bei Abo `assigned` bzw. fremder DB bin ich zugewiesen) → `{id, kind: "row", src}`. `src` ohne `kind` gilt als Aufgabe,
+  mit `kind: "page"` → `400`. Fehler wie dort (`400` keine Quelle/ungültig, `403` nur Lesen, `404` unbekannt). Ältere
+  Apps ohne `src`: unverändert. Ob der Server das kann: `/api/version` → `features` enthält `capsrc1` (ältere Server
+  ignorieren `src` und legen eine Inbox-Aufgabe an).
 
 ## Lesezeichen aus der Teilen-Erweiterung (2.5)
 

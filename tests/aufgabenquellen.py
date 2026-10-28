@@ -12,7 +12,8 @@ Konten mit Markern als Anmeldenamen ('aq-<16 hex>', Anzeigenamen ohne Marker). G
 4. Abhaken: PATCH /api/tasks/src/{row} ueber Status-Gruppe (Erledigt), Haekchen und Auswahl (done_values) - Wieder-Oeffnen
    setzt open_value; Rechte: 'view' -> 403, ohne Zugriff 404; due/prio/text; row_done (Board-Aenderung per Props-PATCH
    zaehlt ebenso), Widget src:"tasks" (include_sources Standard an, aus = nur Inbox), /api/app/today?sources=1, App-Schluessel.
-5. Neue Aufgabe in einer Quelle (POST /api/tasks {src}): Standardvorlage, Datum/Prioritaet gemappt, 'assigned' -> mir
+5. Neue Aufgabe in einer Quelle (POST /api/tasks {src}, App-Schluessel: POST /api/app/capture {src}): Standardvorlage,
+   Datum/Prioritaet gemappt, 'assigned' -> mir
    zugewiesen; ohne Bearbeiten-Recht 403.
 6. Galerie "Aufgaben & Projekte": Zuordnung gesetzt und abonniert, Hinweis fuer alte Instanzen (hint).
 7. Leck-Scan: keine Anmeldenamen anderer Konten in allen Antworten.
@@ -350,6 +351,33 @@ def run():
     ok(f"leerer Text: 400 ({s})", s == 400)
     s, _ = req("POST", "/api/tasks", A, {"text": "x", "src": True})
     ok(f"src kein Integer: 400 ({s})", s == 400)
+
+    # --- 5b. Dasselbe ueber den App-Schluessel: POST /api/app/capture {src} (Teilen-Erweiterung, Kurzbefehle) ----------
+    tok_a = req("POST", "/api/settings/tokens", A, {"name": "Capture A"})[1]["token"]
+    tok_b = req("POST", "/api/settings/tokens", B, {"name": "Capture B"})[1]["token"]
+    tok_c = req("POST", "/api/settings/tokens", C, {"name": "Capture C"})[1]["token"]
+    s, d = req("POST", "/api/app/capture", bearer=tok_a, body={"kind": "task", "title": "Geteilt mit Ziel", "url": "https://example.org/z",
+                                                                "src": db1, "due": D(3), "prio": 1})
+    n = req("GET", f"/api/notes/{d.get('id')}", A)[1] if s == 200 else {}
+    ok(f"capture {{src}}: Zeile mit Standardvorlage, Datum, Prio, Link im Titel ({s})",
+       s == 200 and d.get("kind") == "row" and d.get("src") == db1 and n.get("title") == "Geteilt mit Ziel https://example.org/z"
+       and n["props"].get("st") == "lauf" and n["props"].get("fl") == D(3) and n["props"].get("pr") == "h", (d, n.get("props")))
+    s, d = req("POST", "/api/app/capture", bearer=tok_b, body={"title": "Bert per Kurzbefehl", "src": db1})
+    n = req("GET", f"/api/notes/{d.get('id')}", A)[1] if s == 200 else {}
+    ok(f"capture ohne kind, Bert (assigned): Zeile ist ihm zugewiesen ({s})", s == 200 and d.get("kind") == "row" and n["props"].get("wer") == [handle(B)], (d, n.get("props")))
+    s, _ = req("POST", "/api/app/capture", bearer=tok_c, body={"title": "Cora", "src": db1})
+    ok(f"capture: Cora (Lesen) 403 ({s})", s == 403)
+    s, _ = req("POST", "/api/app/capture", bearer=tok_b, body={"title": "x", "src": db_cb})
+    ok(f"capture: ohne Zugriff 404 ({s})", s == 404)
+    s, _ = req("POST", "/api/app/capture", bearer=tok_a, body={"kind": "page", "title": "x", "src": db1})
+    ok(f"capture: kind page mit src 400 ({s})", s == 400)
+    s, _ = req("POST", "/api/app/capture", bearer=tok_a, body={"title": "x", "src": db1, "due": "morgen"})
+    ok(f"capture: ungueltiges Datum 400 ({s})", s == 400)
+    s, d = req("POST", "/api/app/capture", bearer=tok_a, body={"kind": "task", "title": "Ohne Ziel"})
+    ok(f"capture ohne src: Inbox wie bisher ({s})", s == 200 and d.get("kind") == "task" and any(x["text"] == "Ohne Ziel" for x in tasks(A, False)["open"]), d)
+    s, _ = req("POST", "/api/app/capture", A, {"title": "x", "src": db1})
+    ok(f"capture mit Sitzung: 401 ({s})", s == 401)
+    ok("/api/version meldet capsrc1", "capsrc1" in (req("GET", "/api/version", A)[1].get("features") or []))
 
     # Entzug der Freigabe: leer, Abo entfernt
     req("DELETE", f"/api/notes/{db1}/shares", A, {"type": "user", "target": handle(C)})

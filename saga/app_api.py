@@ -97,12 +97,17 @@ def _inbox(c, uid):
 
 @router.post("/api/app/capture")
 async def api_app_capture(request: Request):
-    """Aus der Teilen-Erweiterung: als Seite im Eingang oder als Aufgabe ablegen."""
+    """Aus der Teilen-Erweiterung: als Seite im Eingang oder als Aufgabe ablegen. 2.5: mit src (Datenbank-ID einer
+    Aufgabenquelle) wird die Aufgabe eine neue Zeile dort - gleiche Regeln wie POST /api/tasks {text, src} (tasksrc.add_row)."""
     uid = _app_uid(request)
     if not uid:
         return _bad("unauthorized", 401)
     b = await _body(request) or {}
     kind = b.get("kind") if b.get("kind") in ("page", "task") else "page"
+    if b.get("src") is not None:                  # Neue Aufgabe mit Ziel (docs/APP-API.md "Aufgabenquellen")
+        if b.get("kind") not in (None, "task"):
+            return _bad(t("ungültige Angabe"))
+        kind = "task"
     title = re.sub(r"\s+", " ", str(b.get("title") or "")).strip()[:200]
     text = str(b.get("text") or "").strip()[:APP_CAPTURE_MAX]
     url = str(b.get("url") or "").strip()[:2000]
@@ -114,6 +119,12 @@ async def api_app_capture(request: Request):
         txt = (title or text.split("\n")[0] or url)[:TASK_MAX_LEN - (len(url) + 1 if url and url not in (title or text) else 0)]
         if url and url not in txt:
             txt = (txt + " " + url).strip()
+        if b.get("src") is not None:
+            from starlette.concurrency import run_in_threadpool
+            from saga import tasksrc
+            from saga.core import origin_of
+            row = {"text": txt[:TASK_MAX_LEN], "due": b.get("due"), "prio": b.get("prio", 2)}
+            return await run_in_threadpool(tasksrc.add_row, uid, b["src"], row, origin_of(request))
         try:
             due = _due(b.get("due"))                  # Siri/Kurzbefehle: optional faellig am
         except (ValueError, TypeError):

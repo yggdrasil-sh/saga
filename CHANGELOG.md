@@ -26,6 +26,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   der ganze Inhalt.
 - **„Diagramm“ getrennt übersetzt:** Diagramm-Ansicht/-Widget (Chart, z. B. en „Chart“) und Mermaid-Diagramm
   (en „Diagram“) haben eigene Übersetzungen in allen Sprachen.
+- **Neue Aufgabe mit Ziel auch über den App-Schlüssel:** `POST /api/app/capture` nimmt optional `src` (Datenbank einer
+  Aufgabenquelle, dazu `due`, `prio`) und legt dann eine Zeile dort an – gleiche Regeln wie `POST /api/tasks {text, src}`.
+  Ältere Apps ohne `src` unverändert; neue Fähigkeit `capsrc1` in `/api/version`.
 
 ### Neu (2.5, P6-5/P6-6: Erwähnungen und synchronisierte Blöcke)
 - **@-Erwähnungen von Personen.** Im @-Menü des Editors stehen jetzt zuerst **Personen** mit Zugriff auf die Seite;
