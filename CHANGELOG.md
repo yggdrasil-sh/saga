@@ -16,6 +16,32 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Paket 1 Etappen 4–7: Zeitleiste, API, Webhooks, MCP)
+- **Ansicht Zeitleiste (Gantt)** für Datenbanken: Beginn und Ende aus zwei Datums-Eigenschaften (oder einem Zeitraum),
+  Skalen Tag/Woche/Monat/Quartal, Gruppen nach Auswahl, Abhängigkeiten („blockiert durch“) als Pfeile, Einträge ohne
+  Termin in einer Liste darunter (auf die Zeitleiste ziehen setzt den Termin). Balken ziehen verschiebt, Griffe links/rechts
+  ändern Beginn/Ende, Tastatur Alt+Pfeil. Nur-Lesen ohne Griffe; Handy scrollt die Zeitleiste in sich.
+- **API-Tokens und öffentliche API `/api/v1`.** Einstellungen → API: Tokens (`sga_…`) mit Bereichen (Seiten, Datenbanken,
+  Aufgaben, Dateien, Kommentare je lesen/schreiben, Webhooks, MCP), optional nur für bestimmte Seitenbäume, Ablauf
+  (Standard 90 Tage). Anlegen nur nach erneuter Bestätigung, Klartext einmal, gespeichert nur als SHA-256. Ein Token kann
+  nie mehr als das Konto. Endpunkte für Suche, Seiten (Blöcke oder **Markdown** lesen/schreiben/anfügen), Datenbanken
+  (Schema, Abfrage und Einträge **per Eigenschaftsname**), Aufgaben, Kommentare und Dateien; Personen nur als Handle.
+  Ratenbegrenzung je Token und Konto (429 + Retry-After). Doku: `docs/API.md`.
+- **Webhooks:** `page.*`, `row.*` (mit geänderten Eigenschaften), `row.assigned`, `comment.created`, `task.created/completed`;
+  dünne Nutzlast ohne Inhalte, signiert (`Saga-Signature`, HMAC-SHA256), Autosave zusammengefasst, Wiederholung mit
+  Backoff (1 min … 24 h), Protokoll der letzten 50 Zustellungen, nach 20 Fehlschlägen abgeschaltet + Mitteilung. Rechte
+  werden bei jeder Zustellung neu geprüft; SSRF-Schutz wie bei der Föderation (netguard bei jeder Zustellung, keine
+  Weiterleitungen, interne Ziele nur mit Freigabe, nur https auf Port 443, `http://` nur mit Admin-Freigabe).
+- **MCP-Server `/mcp`** (Streamable HTTP, Bearer-Token mit Bereich `mcp`): Werkzeuge zum Suchen, Lesen (Markdown),
+  Anlegen und Ändern von Seiten, Datenbanken abfragen, Einträge anlegen/ändern, Aufgaben und Kommentare. Werkzeuge nur
+  nach Bereichen des Tokens, Seiteninhalte in jeder Antwort als Daten markiert (Prompt-Injection), Ausgaben begrenzt.
+  Beispiel-Konfiguration in der Anleitung.
+- **Admin:** Allgemein → „API, Webhooks und MCP“ (an/aus, nur Gruppe, Höchstzahl, Laufzeit, ohne Ablauf, Ratenbegrenzung,
+  Webhooks, `http://`-Ziele, MCP); Konto-Seite zeigt Tokens/Webhooks und widerruft alle Tokens. „Überall abmelden“ und
+  Sperren widerrufen die Tokens ebenfalls.
+- `/api/version` → `features`: `timeline1`, `api1`, `webhook1`, `mcp1`. Datenbank-Migration 25 (Tabellen `api_token`,
+  `webhook`, `webhook_delivery`).
+
 ### Neu (2.5, Paket 4: Widgets Etappe 2 und Diagramme)
 - **Wetter-Widget.** Heute groß, darunter die nächsten Tage (bis 7) mit Symbol, Höchst-/Tiefstwert und Regenwahrscheinlichkeit;
   Ort über die Ortssuche des Servers oder Koordinaten (gespeichert auf ~1 km gerundet). Daten von Open-Meteo, abgerufen

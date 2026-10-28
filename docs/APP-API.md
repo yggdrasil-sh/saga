@@ -975,6 +975,37 @@ Neue Art `db.assigned` (`GET /api/notifications`, Einstellung je Konto unter `/a
 Push-Kategorie `assign`): Text „{name} hat dich eingetragen“ (gebündelt je Zeile, `count`), `note` = die Zeile. Nicht an
 sich selbst, nicht bei `notify: false`, nur mit Zugriff; Personen anderer Instanzen über deren Server.
 
+## Zeitleiste, API-Tokens, Webhooks, MCP (2.5, Paket 1 Etappen 4–7)
+
+`features`: `timeline1`, `api1`, `webhook1`, `mcp1`.
+
+### Ansicht Zeitleiste (`timeline1`)
+
+Neuer Ansichtstyp im Schema einer Datenbank:
+
+```json
+{"id": "tl", "name": "Gantt", "type": "timeline", "date_by": "<datum-pid>", "end_by": "<datum-pid | fehlt>",
+ "scale": "day | week | month | quarter", "group": "<auswahl-pid | fehlt>", "deps": "<relation-pid | fehlt>"}
+```
+
+- **Beginn** = `date_by` (Datum, auch Zeitraum `start/ende` im selben Wert oder „Erstellt“/„Bearbeitet“), **Ende** =
+  `end_by` (nur Typ `date`; fehlt → Ende aus dem Zeitraum in `date_by`, sonst eintägig). Einträge ohne Beginn stehen in der
+  Liste „ohne Termin“.
+- Ziehen ändert die Daten über den normalen Zeilen-PATCH (`props`), **beide** Daten in einem Aufruf; bei einem Zeitraum im
+  Beginn wird der Wert `start/ende` gemeinsam geschrieben. Keine neue Server-Logik.
+- `deps`: Selbst-Relation mit Rolle `blocked_by` – Pfeile von der blockierenden zur blockierten Zeile.
+- **Apps (Mindestumfang):** Zeitleiste nur lesen (Tablet/Mac/Linux waagrecht scrollbar, Telefon als Liste nach Beginn
+  gruppiert). Ältere Apps und Apps ohne Zeitleiste zeigen den unbekannten Typ wie bisher als Tabelle.
+
+### API-Tokens, Webhooks, MCP (`api1`, `webhook1`, `mcp1`)
+
+Nur im **Web** zu verwalten (Einstellungen → API); die Apps brauchen dafür nichts. API-Tokens (`sga_…`) sind getrennt von
+den App-Schlüsseln (`hk_…`) und Geräte-Schlüsseln (`hkd_…`): sie gelten **nur** an `/api/v1/…` und `/mcp`, nie an den
+internen Endpunkten der Apps – und umgekehrt. Vertrag für Dritte: [API.md](API.md).
+
+Neue Mitteilungsart `webhook.disabled` (System-Mitteilung, `system: true`, `url: "/notes?settings=api"`): ein Webhook
+wurde nach 20 Fehlschlägen abgeschaltet. Apps zeigen sie wie andere System-Mitteilungen (Titel/Text vom Server).
+
 ## Lesezeichen aus der Teilen-Erweiterung (2.5)
 
 Nur mit App-Schlüssel `hk_…` (`Authorization: Bearer hk_…`), nie mit Sitzung. Neue Endpunkte, `MIN_APP` ändert sich nicht.
