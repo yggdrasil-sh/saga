@@ -82,11 +82,15 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
     contents: [...document.querySelectorAll('.gal-contents li')].map((x) => x.textContent), ex: document.querySelector('.gal-act input[type=checkbox]').checked,
     region: document.querySelector('.gal-pv').getAttribute('aria-label') }));
   ok(`Vorschau: ${pv.title}, ${pv.n} Elemente, Enthaelt ${pv.contents.length}`, pv.title && pv.n > 1 && pv.contents.length === first.contents.length && pv.ex && pv.region);
+  // alle Hinweise mitschreiben: die Testvorlage "alles" hat eine Datenbank "Aufgaben" ohne Aufgaben-Zuordnung - deren
+  // einmaliger Hinweis ("sieht nach Aufgaben aus", pages.js taskHint) darf "Vorlage angelegt" danach ersetzen
+  await p.evaluate(() => { window.__toasts = []; const t = document.querySelector('.toast');
+    new MutationObserver(() => { if (!t.hidden && t.textContent) window.__toasts.push(t.textContent); }).observe(t, { childList: true, characterData: true, subtree: true, attributes: true }); });
   await p.click('#pg-modal .gal-use');
   const opened = await until(() => p.evaluate(() => document.getElementById('pg-modal').hidden && /^#\d+$/.test(location.hash) && document.getElementById('pg-title') &&
     document.getElementById('pg-title').value.trim()), 10000);
   ok(`Verwenden: Startseite offen (${opened})`, opened === first.title || (opened && opened.length > 0));
-  const toast = await until(() => p.evaluate(() => [...document.querySelectorAll('.toast')].map((x) => x.textContent).join(' ')));
+  const toast = await until(() => p.evaluate(() => (window.__toasts || []).find((x) => /Vorlage angelegt/.test(x))));
   ok(`Hinweis "Vorlage angelegt" (${toast})`, /Vorlage angelegt/.test(toast || ''));
   await sleep(1500);
 
