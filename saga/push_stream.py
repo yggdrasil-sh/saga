@@ -44,6 +44,7 @@ MAX_TOTAL = max(10, int(os.environ.get("PUSH_STREAM_MAX", "20000")))
 F_MSG, F_ACK, F_PING, F_PONG = 1, 2, 3, 4
 PONG = bytes([F_PONG])
 C_AUTH, C_NOSUB, C_REPLACED, C_RATE, C_RESTART = 4401, 4404, 4409, 4429, 1012
+FRAME_MAX = 16384                       # groesster Rahmen der App (Lebenszeichen, Bestaetigungen)
 
 _S = {"loop": None}
 _conns = {}                           # sub_id -> _Conn  (nur in der Event-Schleife veraendert)
@@ -330,6 +331,9 @@ async def _serve(scope, receive, send):
             b = m.get("bytes")
             if not b:
                 continue                      # Text: unbekannt, still uebergehen
+            if len(b) > FRAME_MAX:            # wie bisher die Grenze von uvicorn (run.py erlaubt seit 2.5 P3 mehr, fuer /api/collab)
+                await ws.close(1009)
+                return
             if b[0] == F_PING:
                 stats["pings"] += 1
                 if time.monotonic() - cl.checked >= CHECK:

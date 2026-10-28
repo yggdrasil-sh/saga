@@ -172,14 +172,14 @@ class _Resolver:
 
     def page(self, bid, pid, i):
         from html import escape
+        lst = self.texts.get(("p", bid, pid)) or self.texts.get(("p", None, pid))
+        if lst:                             # bisheriger Text an dieser Stelle (eigener Linktext bleibt, wie restore_links)
+            return lst[min(i, len(lst) - 1)]
         if pid not in self._titles:
             r = self.c.execute("SELECT title FROM note WHERE id=? AND uid=?", (pid, self.owner)).fetchone() \
                 if isinstance(pid, int) and 0 < pid < 2 ** 63 else None
             self._titles[pid] = escape(r[0] or t("Unbenannt"), quote=False) if r else None
-        if self._titles[pid] is not None:
-            return self._titles[pid]
-        lst = self.texts.get(("p", bid, pid)) or self.texts.get(("p", None, pid))
-        return lst[min(i, len(lst) - 1)] if lst else escape(t("Seite ohne Zugriff"), quote=False)
+        return self._titles[pid] if self._titles[pid] is not None else escape(t("Seite ohne Zugriff"), quote=False)
 
     def mention(self, bid, u, i):
         from html import escape
@@ -191,6 +191,28 @@ class _Resolver:
             cu = mentions.canon_of(self.c, u)
             self._names[u] = escape(names(self.c, [cu]).get(cu) or "", quote=False) if cu else ""
         return self._names[u]
+
+
+def _mask(body):
+    """Inhalt (JSON) -> Form im CRDT-Zustand: Autoren von Nextcloud-Bloecken als Handle (nie der Anmeldename - jede Person
+    mit Lesezugriff bekommt den ganzen Zustand). Verweis-/Erwaehnungstexte entfernt das Dokumentmodell selbst."""
+    from saga import nextcloud
+    return nextcloud.mask_local(body, "blocks", "")
+
+
+def _unmask(c, doc):
+    """Gegenstueck zu _mask (in place): Handle -> Anmeldename, damit Signaturpruefung und Speichern wie bisher laufen.
+    Ein Handle ohne gueltige Signatur fuer das Konto faellt bei pages.body_checks (nextcloud.check_body) durch."""
+    from saga.core import HANDLE_RE, resolve_ref
+    from saga.notes import _iter_blocks
+    for b in _iter_blocks(doc.get("blocks") or []):
+        if b.get("type") == "nextcloud" and isinstance(b.get("data"), dict):
+            a = b["data"].get("author")
+            if isinstance(a, str) and HANDLE_RE.fullmatch(a):
+                real = resolve_ref(c, a)
+                if real:
+                    b["data"]["author"] = real
+    return doc
 
 
 def _strings(v):
@@ -258,7 +280,7 @@ def _load_room(nid):
             # erstes Live-Oeffnen bzw. anderes Modell: deterministisch aus body (gleicher Inhalt = gleicher Anfangszustand)
             if st:
                 c.execute("DELETE FROM note_crdt_log WHERE note_id=?", (nid,))
-            upd = model.build(body, title or "")
+            upd = model.build(_mask(body), title or "")
             d = model.new_doc()
             d.apply_update(upd)
             room.doc = d
@@ -319,7 +341,8 @@ def _read_body(c, room, doc):
     if not model.roots_ok(doc):
         raise Rejected("type", "Wurzel")
     try:
-        blocks_doc, title = model.read(doc, _Resolver(c, room.owner, room.base), room.base)
+        blocks_doc, title = model.read(doc, _Resolver(c, room.owner, room.base), _mask_doc(room.base))
+        _unmask(c, blocks_doc)
     except model.ModelError as ex:
         raise Rejected("type", str(ex)) from None
     except (ValueError, TypeError, KeyError, AttributeError, RecursionError) as ex:
@@ -359,6 +382,12 @@ def _server_fields(doc):
                 if k in d:
                     out.append((b.get("id"), k, d.pop(k)))
     return out
+
+
+def _mask_doc(d):
+    if d is None or '"nextcloud"' not in json.dumps(d):
+        return d
+    return json.loads(_mask(json.dumps(d, ensure_ascii=False)))
 
 
 def _cur_body(c, room):
@@ -421,10 +450,9 @@ def _apply_update(room, sub, update):
         rest = get_update(update, tmp.get_state())
     except Exception:  # noqa: BLE001 - kaputtes Update
         raise Rejected("invalid") from None
-    pend = _sv(get_state(rest)) if rest else {}
+    if rest and _rvu(rest, 0)[0] > 0:
+        raise Rejected("pending")           # Eintraege, die an Unbekanntem haengen (Luecke): Client gleicht neu ab (sync1)
     sv1 = _sv(tmp.get_state())
-    if any(clk > sv1.get(cid, 0) for cid, clk in pend.items()):
-        raise Rejected("pending")           # haengt an Unbekanntem (Luecke): Client gleicht neu ab
     full = tmp.get_update()
     if full == full0:
         return False, None, None            # schon bekannt (Duplikat)
@@ -448,7 +476,7 @@ def _apply_update(room, sub, update):
             sv_t = tmp.get_state()
             srv = Doc(client_id=room.doc.client_id)
             srv.apply_update(tmp.get_update())
-            model.write(srv, fix)
+            model.write(srv, json.loads(_mask(json.dumps(fix, ensure_ascii=False))))
             corr = srv.get_update(sv_t)
             tmp.apply_update(corr)
             body, _title = _read_body(c, room, tmp)
@@ -538,18 +566,19 @@ def ingest(nid, rev=None):
         if not r or r[5] is not None or r[1] != "blocks":
             room.closed = True
             return "gone"
-        if r[2] == room.rev:
-            return None
-        from saga import merge
         from saga.notes import ensure_ids
         theirs = json.loads(ensure_ids(r[0], "blocks", nid) or '{"blocks": []}')
+        if r[2] == room.rev and (theirs == room.base or room.base is None) and (r[3] or "") == room.base_title:
+            return None
+        from saga import merge
         title = r[3] or ""
         sv0 = room.doc.get_state()
         if room.dirty_at and room.base is not None:
             # Live-Stand noch nicht in body: drei Wege (Basis = letzter abgeglichener Stand, meins = live, deren = body)
             try:
                 with _db() as c:
-                    live, live_title = model.read(room.doc, _Resolver(c, room.owner, room.base), room.base)
+                    live, live_title = model.read(room.doc, _Resolver(c, room.owner, room.base), _mask_doc(room.base))
+                    _unmask(c, live)
                 target, _ = merge.merge_doc(room.base, live, theirs, None, {"by": "", "name": ""}, time.time())
                 title = merge.merge_title(room.base_title, live_title, title)[0]
             except Exception as ex:  # noqa: BLE001
@@ -557,7 +586,7 @@ def ingest(nid, rev=None):
                 target = theirs
         else:
             target = theirs
-        model.write(room.doc, target, title)
+        model.write(room.doc, _mask_doc(target), title)
         upd = room.doc.get_update(sv0)
         room.rev, room.base, room.base_title = r[2], theirs, r[3] or ""
         if target is not theirs and json.dumps(target, sort_keys=True) != json.dumps(theirs, sort_keys=True):
@@ -697,6 +726,19 @@ async def _get_room(nid):
     return room
 
 
+async def _snap(room, sv=None, state=False):
+    """Zustand des Raums lesen (im Thread unter der Sperre: ein Schreiber koennte gerade daran arbeiten)."""
+    def run():
+        with room.lock:
+            if state:
+                return room.doc.get_state()
+            try:
+                return room.doc.get_update(sv) if sv is not None else room.doc.get_update()
+            except ValueError:
+                return room.doc.get_update()
+    return await asyncio.to_thread(run)
+
+
 def _fanout(room, data, skip):
     for s in list(room.subs):
         if s is not skip:
@@ -797,12 +839,9 @@ async def _handle(conn, kind, nid, parts):
                 "schema": {"model": model.MODEL, "ver": model.SCHEMA_VER, "hash": model.SCHEMA_HASH}, "me": id(s) & 0xFFFFFFFF,
                 "name": s.name, "color": s.color}
         conn.send(frame(T_HELLO, nid, info))
-        conn.send(frame(T_SYNC1, nid, room.doc.get_state()))
-        sv = parts[1] if len(parts) > 1 and opts.get("gen") == room.gen else b"\x00"
-        try:
-            conn.send(frame(T_SYNC2, nid, room.doc.get_update(sv)))
-        except ValueError:
-            conn.send(frame(T_SYNC2, nid, room.doc.get_update()))
+        conn.send(frame(T_SYNC1, nid, await _snap(room, state=True)))
+        sv = parts[1] if len(parts) > 1 and opts.get("gen") == room.gen else None
+        conn.send(frame(T_SYNC2, nid, await _snap(room, sv)))
         for o in list(room.subs):
             if o is not s and o.aw is not None:
                 conn.send(_aw_frame(o))
@@ -819,10 +858,7 @@ async def _handle(conn, kind, nid, parts):
         _drop_sub(sub)
         return
     if kind == T_SYNC1:
-        try:
-            conn.send(frame(T_SYNC2, nid, room.doc.get_update(parts[0] if parts else b"\x00")))
-        except ValueError:
-            conn.send(frame(T_SYNC2, nid, room.doc.get_update()))
+        conn.send(frame(T_SYNC2, nid, await _snap(room, parts[0] if parts else None)))
         return
     if kind in (T_SYNC2, T_UPDATE):
         upd = parts[0] if parts else b""
@@ -830,7 +866,7 @@ async def _handle(conn, kind, nid, parts):
         if not upd or len(upd) <= 2:
             return
         if sub.ro:
-            conn.send(frame(T_REJECT, nid, {"code": "readonly", "ref": ref.decode("ascii", "replace")[:40]}, room.doc.get_update()))
+            conn.send(frame(T_REJECT, nid, {"code": "readonly", "ref": ref.decode("ascii", "replace")[:40]}, await _snap(room)))
             return
         now = time.monotonic()
         if now - sub.n_at >= 1:
@@ -849,13 +885,13 @@ async def _handle(conn, kind, nid, parts):
                 conn.send(frame(T_BYE, nid, {"reason": "gone"}))
                 _drop_sub(sub)
                 return
-            conn.send(frame(T_REJECT, nid, {"code": ex.code, "ref": ref.decode("ascii", "replace")[:40]}, room.doc.get_update()))
+            conn.send(frame(T_REJECT, nid, {"code": ex.code, "ref": ref.decode("ascii", "replace")[:40]}, await _snap(room)))
             if ex.code == "readonly":
                 sub.ro = True
             return
         except Exception as ex:  # noqa: BLE001 - Datenbank weg o. ae.: nicht angenommen, Client wiederholt nach Neuaufbau
             print(f"collab: Update {nid}: {type(ex).__name__}: {ex}", flush=True)
-            conn.send(frame(T_REJECT, nid, {"code": "retry", "ref": ref.decode("ascii", "replace")[:40]}, room.doc.get_update()))
+            conn.send(frame(T_REJECT, nid, {"code": "retry", "ref": ref.decode("ascii", "replace")[:40]}, await _snap(room)))
             return
         if ref:
             conn.send(frame(T_ACK, nid, ref))
@@ -964,8 +1000,10 @@ async def _ingest_async(nid):
     await recheck(nid=nid)                 # Sperre/Papierkorb
 
 
-def _on_saved(c, note_id, origin=None, row=None, **_):
-    if row is not None or origin == "collab" or note_id not in _rooms:
+def _on_saved(c, note_id, row=None, **_):
+    """note.saved (jeder Speicherpfad, nach dem Commit) bzw. note.body (Inhalt ohne neue Revision geaendert): offenen Raum
+    abgleichen. Die eigene Materialisierung ist darin ein Leerlauf (gleicher Stand)."""
+    if row is not None or note_id not in _rooms:
         return
     after = getattr(c, "after_commit", None)
     if after is not None:
@@ -979,6 +1017,7 @@ def _on_share(c, owner=None, note_id=None, **_):
 
 
 bus.on("note.saved", _on_saved)
+bus.on("note.body", _on_saved)
 bus.on("share.set", _on_share)
 bus.on("share.removed", _on_share)
 
@@ -1044,7 +1083,11 @@ async def serve(scope, receive, send):
             m = await conn.q.get()
             if m is None:
                 return
-            await send({"type": "websocket.send", "bytes": m})
+            try:
+                await send({"type": "websocket.send", "bytes": m})
+            except Exception:  # noqa: BLE001 - Gegenstelle weg
+                conn.closed = True
+                return
 
     async def checker():
         while not conn.closed:

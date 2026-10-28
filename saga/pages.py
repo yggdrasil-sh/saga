@@ -1032,7 +1032,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
                         (nid, owner)).fetchone()
         if not old:
             return _bad("not found", 404)
-        if old[4] and b.get("locked") is not False and ("body" in b or "title" in b):     # gesperrt: Inhalt/Titel bleiben unveraendert
+        # gesperrt: Inhalt/Titel bleiben unveraendert (trusted: live angenommen, bevor die Sperre kam - saga.collab)
+        if old[4] and not trusted and b.get("locked") is not False and ("body" in b or "title" in b):
             return JSONResponse({"error": t("Seite ist gesperrt – erst entsperren")}, status_code=423)
         # Konflikterkennung: wer Titel/Inhalt speichert und die gekannte Revision mitschickt, ueberschreibt
         # keine zwischenzeitliche Aenderung (anderer Tab, Peek, andere Person). Ohne 'rev' wie bisher.
