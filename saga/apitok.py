@@ -272,6 +272,8 @@ def create_token(uid, b):
     cf = conf()
     if not allowed_for(user_info(uid), cf):
         return None, _bad(t("Die API ist auf diesem Server für dein Konto nicht freigegeben."), 403)
+    if mfa.setup_needed(uid):                       # Richtlinie verlangt einen zweiten Faktor (wie neue App-Anmeldungen)
+        return None, _bad(t("Dein Admin verlangt einen zweiten Faktor – bitte richte zuerst im Browser unter „Anmeldung & Sicherheit“ einen Passkey oder eine Authenticator-App ein."), 403)
     name = re.sub(r"\s+", " ", clean_line(str(b.get("name") or ""))).strip()[:NAME_MAX]
     if not name:
         return None, _bad(t("Bitte einen Namen angeben."))

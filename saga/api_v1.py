@@ -151,6 +151,12 @@ def page_read(tok, nid, fmt="blocks"):
         out["schema"] = schema_out(d["schema"])
     if d.get("props"):
         out["properties"] = d["props"]
+        par = _parent_db(nid) if tok.roots else None
+        if par is not None:
+            with _db() as c:
+                po = Access(c, tok.uid).owner(par)
+                hide = hidden_props(c, tok, po, _schema_of(c, po, par)) if po else set()
+            out["properties"] = {k: v for k, v in d["props"].items() if k not in hide}
         if d.get("people"):
             out["people"] = d["people"]
     blocks = []
@@ -173,6 +179,10 @@ def page_create(tok, b):
     if parent is not None:
         with _db() as c:
             _guard(c, tok, parent, "edit")
+            if not tok.has("write:db") and c.execute("SELECT 1 FROM note WHERE id=? AND kind='database'", (int(parent),)).fetchone():
+                raise Fail(403, t("Dem Token fehlt der Bereich „{s}“.", s="write:db"), "insufficient_scope")
+    if b.get("properties") is not None and not tok.has("write:db"):
+        raise Fail(403, t("Dem Token fehlt der Bereich „{s}“.", s="write:db"), "insufficient_scope")
     body = _body_in(b)                                  # vorher pruefen: kaputtes Markdown legt keine leere Seite an
     req = {k: b[k] for k in ("title", "icon", "tags") if k in b}
     req["parent_id"] = parent
@@ -209,6 +219,8 @@ def page_update(tok, nid, b):
     if body is not None:
         req.update(body=body, format="blocks")
     if b.get("properties") is not None:
+        if not tok.has("write:db"):                     # Eigenschaften sind Datenbank-Werte (write:pages reicht nicht)
+            raise Fail(403, t("Dem Token fehlt der Bereich „{s}“.", s="write:db"), "insufficient_scope")
         par = _parent_db(nid)
         req["props"] = props_in(tok, par, b["properties"])
     if not req or set(req) == {"rev"}:
@@ -218,7 +230,7 @@ def page_update(tok, nid, b):
     except _Reply as r:
         _relay(r.resp)
     out = {"ok": True, "rev": d.get("rev"), "updated": d.get("updated")}
-    if d.get("calc"):
+    if d.get("calc") and not tok.roots:                 # roots: berechnete Werte koennten fremde Seitenbaeume zeigen
         out["calc"] = d["calc"]
     return 200, out
 
@@ -321,18 +333,38 @@ def _value_out(p, v):
     return v
 
 
-def row_out(schema, r):
+def hidden_props(c, tok, owner, schema):
+    """Token mit roots: Relationen auf Datenbanken ausserhalb der roots, Rollups darueber und (vorsichtshalber) alle
+    Formeln liefern nichts - sonst kaemen Titel/Werte fremder Seitenbaeume ueber die Zeile heraus."""
+    if not tok.roots:
+        return set()
+    props = [p for p in (schema or {}).get("props") or [] if isinstance(p, dict)]
+    out = set()
+    for p in props:
+        if p.get("type") == "relation":
+            try:
+                tgt = int(p.get("target"))
+            except (TypeError, ValueError):
+                tgt = None
+            if tgt is None or not in_roots(c, tok, owner, tgt):
+                out.add(p.get("id"))
+    if out:
+        out |= {p.get("id") for p in props if p.get("type") == "formula" or (p.get("type") == "rollup" and p.get("rel") in out)}
+    return out
+
+
+def row_out(schema, r, hide=()):
     props = {}
     named = {}
     for p in schema.get("props") or []:
-        if not isinstance(p, dict) or p.get("id") not in (r.get("props") or {}):
+        if not isinstance(p, dict) or p.get("id") not in (r.get("props") or {}) or p.get("id") in hide:
             continue
         v = r["props"][p["id"]]
         props[p["id"]] = v
         named[p.get("name") or p["id"]] = _value_out(p, v)
     out = {"id": r["id"], "title": r.get("title") or "", "icon": r.get("icon") or "", "created": r.get("created"),
            "updated": r.get("updated"), "values": props, "properties": named}
-    if r.get("fx_err"):
+    if r.get("fx_err") and not hide:
         out["formula_errors"] = r["fx_err"]
     return out
 
@@ -375,6 +407,9 @@ def database_query(tok, dbid, b):
     with _db() as c:
         owner, _ = _guard(c, tok, dbid, "view")
         schema = _schema_of(c, owner, int(dbid))
+        hide = hidden_props(c, tok, owner, schema)
+    if hide and b.get("q"):
+        raise Fail(403, t("Dafür fehlt dir die Berechtigung."))
     try:
         limit = min(LIMIT_MAX, max(1, int(b.get("limit") or LIMIT_DEFAULT)))
         offset = max(0, int(b.get("offset") or 0))
@@ -393,7 +428,7 @@ def database_query(tok, dbid, b):
             key = f.pop("property", None) if "property" in f else f.get("pid")
             if key not in (None, "title"):
                 p = _prop_by(schema, key)
-                if not p:
+                if not p or p["id"] in hide:
                     raise Fail(400, t("Unbekannte Eigenschaft: {name}", name=str(key)[:60]))
                 f["pid"] = p["id"]
                 if kind == "filter" and p.get("type") in ("select", "multi_select") and isinstance(f.get("value"), str):
@@ -410,7 +445,7 @@ def database_query(tok, dbid, b):
         if isinstance(b.get(k), str) and b[k]:
             params[k] = b[k][:500]
     d = _relay(db_rows(tok.uid, int(dbid), params))
-    out = {"rows": [row_out(d.get("schema") or schema, r) for r in d.get("rows") or []], "total": d.get("total"),
+    out = {"rows": [row_out(d.get("schema") or schema, r, hide) for r in d.get("rows") or []], "total": d.get("total"),
            "matched": d.get("matched"), "offset": offset, "limit": limit}
     if d.get("people"):
         out["people"] = {k: {"name": v.get("name"), "remote": bool(v.get("remote"))} for k, v in d["people"].items()}

@@ -130,6 +130,13 @@ try:
     ok("Fremde Seite (Konto B) -> 404", call("GET", f"/api/v1/pages/{call('POST', '/api/notes', X, {'title': 'B privat'})[1]['id']}", bearer=T)[0] == 404)
     ok("Unsinnige ID -> 404/422 ohne Serverfehler", call("GET", "/api/v1/pages/99999999999999999999", bearer=T)[0] in (404, 422))
 
+    # --- Richtlinie zweiter Faktor (Pruefung integ-h): ohne Faktor kein neuer Token ---------------------------
+    setting("mfa", {"require": "all"})
+    time.sleep(5.5)
+    ok("MFA-Pflicht ohne Faktor: Token anlegen -> 403", mk(["read:pages"], "mfa")[0] == 403)
+    setting("mfa", None)
+    time.sleep(5.5)
+
     # --- Bereiche --------------------------------------------------------------------------------------------
     st, d, _, _ = mk(["read:pages"], "Nur lesen"); TR = d["token"]
     st, d, _, hd = call("POST", "/api/v1/pages", bearer=TR, b={"title": "x"})
@@ -185,6 +192,27 @@ try:
     ok("Personen nur als Handle (kein Anmeldename)", UB not in raw and (bref or "~") in raw and "people" in d, raw[:400])
     st, d, _, _ = call("PATCH", f"/api/v1/rows/{Z1}", bearer=T, b={"properties": {"Punkte": 7}})
     ok("Zeile aendern: Formel in calc", st == 200 and (d.get("calc") or {}).get("fx") == 14, d)
+    # Pruefung integ-h: write:pages allein schreibt keine Datenbank-Werte; roots: Relation/Rollup/Formel auf Ziele ausserhalb
+    TP = mk(["write:pages"], "Nur Seiten")[1]["token"]
+    ok("write:pages ohne write:db: Zeile anlegen -> 403", call("POST", "/api/v1/pages", bearer=TP, b={"title": "z", "parent_id": D})[0] == 403)
+    ok("write:pages ohne write:db: Eigenschaften aendern -> 403", call("PATCH", f"/api/v1/pages/{Z1}", bearer=TP, b={"properties": {"Punkte": 1}})[0] == 403)
+    DO = call("POST", "/api/notes", A, {"title": "DB aussen", "kind": "database", "parent_id": O})[1]["id"]
+    ZO = call("POST", "/api/notes", A, {"title": "Aussen-geheimtitel", "parent_id": DO})[1]["id"]
+    DI = call("POST", "/api/notes", A, {"title": "DB innen", "kind": "database", "parent_id": R})[1]["id"]
+    si = call("GET", f"/api/notes/{DI}", A)[1]["schema"]
+    si["props"] += [{"id": "rx", "name": "Rel", "type": "relation", "target": DO},
+                    {"id": "ru", "name": "Roll", "type": "rollup", "rel": "rx", "target": "title", "fn": "show", "rtype": "list"}]
+    call("PATCH", f"/api/notes/{DI}", A, {"schema": si})
+    ZI = call("POST", "/api/notes", A, {"title": "innen", "parent_id": DI})[1]["id"]
+    call("PATCH", f"/api/notes/{ZI}", A, {"props": {"rx": [ZO]}})
+    st, d, raw, _ = call("POST", f"/api/v1/databases/{DI}/query", bearer=TT, b={})
+    ok("roots: Rollup/Relation auf Ziel ausserhalb liefert keine Titel/IDs", st == 200 and d.get("rows") and "geheimtitel" not in raw
+       and "Rel" not in d["rows"][0]["properties"], raw[:300])
+    st, d, raw, _ = call("GET", f"/api/v1/pages/{ZI}", bearer=TT)
+    ok("roots: Zeile lesen ohne Rollup ausserhalb", st == 200 and "geheimtitel" not in raw, raw[:300])
+    ok("roots: Filter auf verborgene Eigenschaft -> 400", call("POST", f"/api/v1/databases/{DI}/query", bearer=TT,
+                                                               b={"filters": [{"property": "Roll", "op": "contains", "value": "g"}]})[0] == 400)
+    ok("ohne roots: Rollup sichtbar", "geheimtitel" in call("POST", f"/api/v1/databases/{DI}/query", bearer=T, b={})[2])
     # 2.5 Wechselwirkungen: Datum+Uhrzeit, Unteraufgaben, Diagramm-Ansicht, berechnete Werte nur lesend, Datei-Eigenschaft
     s = call("GET", f"/api/notes/{D}", A)[1]["schema"]
     s["props"] += [{"id": "wann", "name": "Wann", "type": "date", "time": True, "range": True},
@@ -361,6 +389,7 @@ finally:
         except sqlite3.OperationalError:
             pass
     cn.execute("DELETE FROM setting WHERE k='api'")
+    cn.execute("DELETE FROM setting WHERE k='mfa'")
     cn.execute("UPDATE users SET display_name=username WHERE username IN (?, ?)", (UA, UB))
     cn.commit()
 print(f"\nAPI V1 {sum(res)}/{len(res)}", "- ALLES GRUEN" if res and all(res) else "- FEHLER"); sys.exit(0 if res and all(res) else 1)
