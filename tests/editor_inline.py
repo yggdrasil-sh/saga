@@ -146,7 +146,9 @@ ok("Neuer Client (inline2, cols6): nichts uebernommen", legacy_keep(old, new, fr
 try:
     s, d = call("POST", "/api/notes", {"title": "P6-0 Inline"}); nid = d.get("id")
     ok("Seite angelegt", s == 200 and nid)
-    body = {"blocks": [P("a", 'Hallo <span class="hk-c-red">rote</span> Welt'), P("b", '<span class="hk-mention" data-u="~abcdefghijklmnop">Anna</span> schau'),
+    from saga.core import local_ref
+    ME = local_ref("hk-test-a")     # 2.5 (P6-5): Erwaehnung nur von Personen mit Zugriff - sonst wird sie zu Text
+    body = {"blocks": [P("a", 'Hallo <span class="hk-c-red">rote</span> Welt'), P("b", f'<span class="hk-mention" data-u="{ME}">Anna</span> schau'),
                        {"id": "m", "type": "math", "data": {"tex": "e^{i\\pi}+1=0"}},
                        {"id": "k", "type": "columns", "data": {"cols": [{"blocks": [P(f"c{i}", f"Spalte {i}")]} for i in range(6)]}}]}
     s, d = call("PATCH", f"/api/notes/{nid}", {"body": json.dumps(body), "format": "blocks"})
@@ -155,7 +157,7 @@ try:
     s, d = call("PATCH", f"/api/notes/{nid}", {"body": json.dumps(fremd), "format": "blocks"})
     ok(f"Vorschaubild mit fremder/unbekannter Datei -> {s}", s == 400)
     got = {b["id"]: b for b in json.loads(call("GET", f"/api/notes/{nid}")[1]["body"])["blocks"]}
-    ok("Farbe, Erwaehnung, Mathe, 6 Spalten gespeichert", "hk-c-red" in got["a"]["data"]["text"] and 'data-u="~abcdefghijklmnop"' in got["b"]["data"]["text"]
+    ok("Farbe, Erwaehnung, Mathe, 6 Spalten gespeichert", "hk-c-red" in got["a"]["data"]["text"] and f'data-u="{ME}"' in got["b"]["data"]["text"]
        and got["m"]["data"]["tex"] == "e^{i\\pi}+1=0" and len(got["k"]["data"]["cols"]) == 6)
     # aeltere App (Geraete-Kopf X-Saga-Caps ohne inline2/cols6): verliert span und Spalten 5-6
     old_app = {"blocks": [P("a", "Hallo rote Welt"), P("b", "Anna schau!"), {"id": "m", "type": "math", "data": {"tex": "e^{i\\pi}+1=0"}},
