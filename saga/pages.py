@@ -1283,7 +1283,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
     if srev is not None:
         out["srev"] = srev                   # neuer Schema-Stand (Client kann ihn fuer die naechste Aenderung uebernehmen)
     if sync_res:
-        out["synced"] = sync_res             # 2.5 (P6-6): Durchschreiben je sid (ok | merged | denied | locked | gone)
+        out["synced"] = sync_res             # 2.5 (P6-6): Durchschreiben je sid (ok | merged | denied | locked | gone | stale)
+        out["synced_rev"] = sync_plan.get("revs") or {}     # Stand der Originale danach (neues src.rev der Kopien)
     return JSONResponse(out)
 
 

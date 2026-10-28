@@ -207,6 +207,9 @@ def after_save(c, plan, uid, rev, now, origin=None):
     res = {}
     for sid, blocks, srev in plan["through"]:
         res[sid] = write_through(c, uid, sid, blocks, srev, now, origin, skip=nid)
+    revs = dict(c.execute(f"SELECT b.sid, n.rev FROM synced_block b JOIN note n ON n.id=b.note_id WHERE b.sid IN ({','.join('?' * len(res))})",
+                          tuple(res)).fetchall()) if res else {}
+    plan["revs"] = {k: v for k, v in revs.items() if res.get(k) in ("ok", "merged")}    # nie fuer Originale ohne Zugriff
     if changed:
         notify_refs(c, changed, uid, now, origin, skip=nid)
     return res
