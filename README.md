@@ -187,4 +187,5 @@ service for others, you must publish its source code as well. Bundled Editor.js 
 licenses (`static/vendor/editorjs/licenses`). Math rendering uses [KaTeX](https://katex.org) (MIT,
 `static/vendor/katex/LICENSE`), diagrams use [Mermaid](https://mermaid.js.org) (MIT, `static/vendor/mermaid/LICENSE`,
 bundled DOMPurify under Apache-2.0/MPL-2.0), and published pages render math via
-[latex2mathml](https://pypi.org/project/latex2mathml/) (MIT). Service icons from [selfh.st/icons](https://selfh.st/icons).
+[latex2mathml](https://pypi.org/project/latex2mathml/) (MIT). Simultaneous editing (live) uses
+[pycrdt](https://pypi.org/project/pycrdt/) (MIT, Yjs-compatible). Service icons from [selfh.st/icons](https://selfh.st/icons).

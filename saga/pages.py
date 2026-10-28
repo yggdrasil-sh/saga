@@ -995,8 +995,36 @@ def _merged_view(uid, nid):
     return {k: d[k] for k in ("body", "format", "title", "rev", "updated", "people") if k in d} if r.status_code == 200 else {}
 
 
-def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
-    """caps: Faehigkeiten des Clients bzw. der Gegenstelle (client_caps; Foederation: Faehigkeiten des Peers)."""
+def body_checks(c, owner, nid, uid, old_body, old_fmt, body, caps, acc, trusted=False):
+    """Pruefungen eines bereinigten Inhalts (clean_blocks) beim Speichern durch uid -> (inhalt, sync_plan). EINE Stelle
+    fuer das Speichern ueber JSON (_note_update) und das gleichzeitige Bearbeiten (saga.collab: jedes Update wird vor dem
+    Verteilen genauso geprueft). ValueError (z. B. fremde Datei), nextcloud.Rejected (gefaelschter Nextcloud-Block).
+    trusted (nur saga.collab beim Materialisieren): Inhalt ist schon je Update fuer die schreibende Person geprueft -
+    nur noch synchronisierte Bloecke registrieren und Dateien pruefen (keine neuen Signaturen im Namen des Eigentuemers)."""
+    ob = old_body if old_fmt == "blocks" else ""
+    if trusted:
+        body, sync_plan = synced.prepare(c, owner, nid, uid, ob, body, caps, acc)
+        _check_file_refs(owner, json.loads(body)["blocks"])
+        return body, sync_plan
+    body = mentions.normalize(c, body)         # 2.5 (P6-5): Prinzipale dieser Instanz -> Handle
+    body = mentions.strip_foreign(c, owner, nid, ob, body)
+    # 2.5 (P6-6): Kopien synchronisierter Bloecke ohne Inhalt speichern, Durchschreiben ins Original vormerken
+    body, sync_plan = synced.prepare(c, owner, nid, uid, ob, body, caps, acc)
+    _check_file_refs(owner, json.loads(body)["blocks"])
+    if '"buttons"' in body or '"sig"' in body:   # Schaltflaechen mit Vorlage: Signatur setzt nur der Server
+        from saga.databases import sign_buttons
+        body = sign_buttons(body, nid, owner, uid, ob or None)
+    if '"nextcloud"' in body:                  # Nextcloud-Bloecke: author/sig setzt nur der Server (saga/nextcloud.py)
+        body = nextcloud.check_body(uid, nid, old_body, old_fmt, body)
+    return body, sync_plan
+
+
+def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, trusted=False):
+    """caps: Faehigkeiten des Clients bzw. der Gegenstelle (client_caps; Foederation: Faehigkeiten des Peers).
+    editor/trusted (2.5, nur saga.collab): der Server materialisiert als Eigentuemer uid einen Inhalt, den editor (zuletzt)
+    live geschrieben hat - jedes Update wurde schon fuer seine Person geprueft (body_checks trusted); updated_by,
+    Versionen, Erwaehnungen und Ereignisse nennen editor."""
+    by_ = editor or uid
     sets, args, merged, row_changed, sync_plan, sync_res = [], [], None, None, None, None
     with _db() as c, c:
         acc = Access(c, uid)
@@ -1012,7 +1040,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
                         (nid, owner)).fetchone()
         if not old:
             return _bad("not found", 404)
-        if old[4] and b.get("locked") is not False and ("body" in b or "title" in b):     # gesperrt: Inhalt/Titel bleiben unveraendert
+        # gesperrt: Inhalt/Titel bleiben unveraendert (trusted: live angenommen, bevor die Sperre kam - saga.collab)
+        if old[4] and not trusted and b.get("locked") is not False and ("body" in b or "title" in b):
             return JSONResponse({"error": t("Seite ist gesperrt – erst entsperren")}, status_code=423)
         # Konflikterkennung: wer Titel/Inhalt speichert und die gekannte Revision mitschickt, ueberschreibt
         # keine zwischenzeitliche Aenderung (anderer Tab, Peek, andere Person). Ohne 'rev' wie bisher.
@@ -1235,21 +1264,12 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
                             raise TooLarge(t("Seite zu groß"))
                     else:
                         body, _ = clean_blocks(raw)
-                    if old[2] == "blocks":                 # 2.5 (P6-0): aeltere Clients verlieren keine neuen Formen/Spalten
+                    if old[2] == "blocks" and not trusted:     # 2.5 (P6-0): aeltere Clients verlieren keine neuen Formen/Spalten
                         body = legacy_keep(old[1], body, caps)
-                    body = mentions.normalize(c, body)     # 2.5 (P6-5): Prinzipale dieser Instanz -> Handle
-                    body = mentions.strip_foreign(c, owner, nid, old[1] if old[2] == "blocks" else "", body)
-                    # 2.5 (P6-6): Kopien synchronisierter Bloecke ohne Inhalt speichern, Durchschreiben ins Original vormerken
-                    body, sync_plan = synced.prepare(c, owner, nid, uid, old[1] if old[2] == "blocks" else "", body, caps, acc)
-                    _check_file_refs(owner, json.loads(body)["blocks"])
-                    if '"buttons"' in body or '"sig"' in body:   # Schaltflaechen mit Vorlage: Signatur setzt nur der Server
-                        from saga.databases import sign_buttons
-                        body = sign_buttons(body, nid, owner, uid, old[1] if old[2] == "blocks" else None)
-                    if '"nextcloud"' in body:          # Nextcloud-Bloecke: author/sig setzt nur der Server (saga/nextcloud.py)
-                        try:
-                            body = nextcloud.check_body(uid, nid, old[1], old[2], body)
-                        except nextcloud.Rejected as ex:
-                            raise _Reply(_bad(str(ex), ex.status))
+                    try:
+                        body, sync_plan = body_checks(c, owner, nid, uid, old[1], old[2], body, caps, acc, trusted)
+                    except nextcloud.Rejected as ex:
+                        raise _Reply(_bad(str(ex), ex.status))
                 elif fmt == "text":
                     body = str(b["body"])
                     if len(body) > NOTE_BODY_MAX:
@@ -1279,10 +1299,10 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
             # Speichern ohne rev ueber fremden Stand: die ueberschriebene Fassung bleibt als Version erhalten - mit Autor
             # (erzwungene Sicherungen von Nicht-Eigentuemern gedrosselt, s. _snapshot)
             _snapshot(c, owner, nid, old, now, force=shrink or bool(b.get("overwrite")) or foreign
-                      or bool(merged and (merged["conflicts"] or merged["lost"] or merged.get("title_lost"))), author=old[5], by=uid)
+                      or bool(merged and (merged["conflicts"] or merged["lost"] or merged.get("title_lost"))), author=old[5], by=by_)
         if content:
             sets.append("rev=rev+1")
-            sets.append("updated_by=?"); args.append(uid)            # fuer den Konflikt-Hinweis bei anderen
+            sets.append("updated_by=?"); args.append(by_)            # fuer den Konflikt-Hinweis bei anderen
         # Atomar: mit Revision nur schreiben, wenn sie seit dem Lesen niemand erhoeht hat (sonst 409, alles zurueck)
         n = c.execute(f"UPDATE note SET {', '.join(sets)}, updated=? WHERE id=? AND uid=?" + (" AND rev=?" if atomic else ""),
                       (*args, now, nid, owner, *((old[3],) if atomic else ()))).rowcount
@@ -1294,18 +1314,18 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
             keep_base(c, nid, old[3] + 1, cur[0], cur[1], cur[2], now, (old[3], old[0], old[1], old[2]),
                       (merged.get("sent_title", cur[0]), merged.get("sent", cur[1])) if merged else None)
         if "body" in b:                           # 2.5 (P6-5): Erwaehnungen (Index, Mitteilung beim ersten Mal)
-            mentions.sync(c, owner, nid, old[1], body, uid, old_fmt=old[2], new_fmt=fmt)
+            mentions.sync(c, owner, nid, old[1], body, by_, old_fmt=old[2], new_fmt=fmt)
         if sync_plan is not None:                 # 2.5 (P6-6): Originale/Kopien nachfuehren, Kopien ins Original schreiben
             try:
                 sync_res = synced.after_save(c, sync_plan, uid, old[3] + 1, now, origin)
             except ValueError as ex:
                 raise _Reply(_bad(user_error(ex, t("ungültige Angabe"))))
         # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
-        bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now, origin=origin)
+        bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=by_, updated=now, origin=origin)
         if "props" in b or "title" in b or "icon" in b:
             announce_row(c, owner, nid, uid, now, origin)     # Datenbank-Zeile: auch an Betrachter der Tabelle (BUG-049)
         if "body" in b:                     # 2.5: Webhooks page.updated / row.updated (Inhalt; Autosave fasst saga.webhooks zusammen)
-            bus.fire("page.content", c, owner=owner, note_id=nid, by=uid)
+            bus.fire("page.content", c, owner=owner, note_id=nid, by=by_)
         if row_changed or ("title" in b and _title_in(b["title"]) != old[0]):      # 2.5: Webhooks row.updated (geaenderte Eigenschaften)
             bus.fire("row.changed", c, owner=owner, note_id=nid, by=uid,
                      changed=(row_changed or []) + (["title"] if "title" in b and _title_in(b["title"]) != old[0] else []))

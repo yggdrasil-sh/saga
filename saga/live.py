@@ -83,6 +83,7 @@ _presence = {}           # note_id -> {uid: [zeit, bearbeitet]}
 FED_PRESENCE = None      # fn(uid, negative_id, editing, leave, name, block) -> Antwort fuer POST /api/presence (block: ... = keine Angabe)
 FED_WATCHERS = None      # fn(c, nid, me) -> [{username, name, editing, avatar, remote, block, color}] - fremde Personen auf der Seite (Abo)
 FED_FANOUT = None        # fn(kind, payload, anwesenheit) - im Thread nach jedem Seiten-Ereignis: an die Abos anderer Instanzen weitergeben
+COLLAB_HOOK = None       # fn(kind, payload) - 2.5 (P3 Stufe 2, saga.collab): Gruppen/Konto/Freigaben geaendert (in der Event-Schleife)
 # 2.4 (saga.chat_status): Online-Status. Online = mindestens eine Live-Verbindung; offline erst OFF_GRACE Sekunden nach der
 # letzten (Neuaufbau nach MAX_AGE, kurze Funkloecher flackern nicht). ONLINE(payload) im Thread -> [(uid, ereignis, daten)]
 ONLINE = None
@@ -233,6 +234,8 @@ async def _dispatch():
     while True:
         kind, payload = await q.get()
         try:
+            if kind in ("groups.changed", "account.deleted", "shared.changed") and COLLAB_HOOK is not None:
+                COLLAB_HOOK(kind, payload)                    # 2.5 (P3 Stufe 2): Live-Abos (saga.collab) Rechte neu pruefen
             if kind == "account.deleted":
                 _drop_user(payload.get("uid"))
                 continue

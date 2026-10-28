@@ -42,6 +42,9 @@ FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1", "move1", "ren
             "timeline1", "api1", "webhook1", "mcp1",                             # 2.5 Paket 1: Zeitleiste, /api/v1, Webhooks, MCP
             "import_notion1",                                                     # 2.5 Paket 2 E5: Notion-Import (docs/APP-API.md "Import")
             "mention1", "synced1")                                               # 2.5 P6-5/P6-6: Erwaehnungen, synchronisierte Bloecke
+# live1 (2.5, P3 Stufe 2) = WebSocket /api/collab (CRDT, docs/APP-API-COLLAB.md) - nur gemeldet, solange der Admin-Schalter
+# notes.live an ist (app.py /api/version haengt es an); aus: Stufe 1 wie bisher.
+LIVE_FEATURE = "live1"
 REPO = os.environ.get("SAGA_UPDATE_REPO", "yggdrasil-sh/saga")
 
 

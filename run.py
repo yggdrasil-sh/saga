@@ -39,9 +39,10 @@ def _config(app, host, port, lifespan, behind_media=False):
         extra["timeout_keep_alive"] = 75
     return uvicorn.Config(app, host=host, port=port, proxy_headers=True, lifespan=lifespan, forwarded_allow_ips=trusted,
                           server_header=False, log_level=os.environ.get("LOG_LEVEL", "info"), timeout_graceful_shutdown=5,
-                          # WebSocket nur fuer die eigene Push-Verbindung der Apps (2.5, saga.push_stream): der Server pingt
-                          # NIE selbst (jeder Ping weckt das Handy - die App waehlt den Abstand), kleine Rahmen
-                          ws_ping_interval=None, ws_ping_timeout=None, ws_max_size=16384, ws_max_queue=8, **extra)
+                          # WebSocket fuer die eigene Push-Verbindung der Apps (2.5, saga.push_stream): der Server pingt
+                          # NIE selbst (jeder Ping weckt das Handy - die App waehlt den Abstand). Rahmen bis 260 KB: gleichzeitig
+                          # bearbeiten (saga.collab, MSG_MAX 256 KB + Kopf) - die Push-Verbindung prueft ihre Rahmen selbst
+                          ws_ping_interval=None, ws_ping_timeout=None, ws_max_size=266240, ws_max_queue=8, **extra)
 
 
 async def main():

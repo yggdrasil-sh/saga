@@ -45,6 +45,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Aufgabenquelle, dazu `due`, `prio`) und legt dann eine Zeile dort an – gleiche Regeln wie `POST /api/tasks {text, src}`.
   Ältere Apps ohne `src` unverändert; neue Fähigkeit `capsrc1` in `/api/version`.
 
+### Neu (2.5, P3 Stufe 2: gleichzeitig bearbeiten live – Server)
+- **Live gemeinsam schreiben (Test, Admin-Schalter, Standard aus).** Neuer WebSocket `/api/collab`: Mehrere Personen
+  bearbeiten dieselbe Seite und sehen Eingaben und Cursor der anderen sofort (CRDT im Yjs-Format, Server mit `pycrdt`,
+  MIT). Der Server prüft jede Änderung **bevor** er sie verteilt mit denselben Regeln wie beim Speichern (Positivliste,
+  Signaturen, Dateien, Erwähnungen, Größen) und lehnt sonst ab; der Stand wird weiter als normale Seite gespeichert
+  (Versionen, Suche, Veröffentlichen, Apps bleiben unverändert). Änderungen über die bisherigen Wege (ältere Apps, KI,
+  Version wiederherstellen, Blöcke verschieben, Galerie, Datenbanken) erscheinen sofort bei allen Live-Teilnehmenden.
+  Verweise auf andere Seiten und Erwähnungen stehen ohne Titel/Namen im gemeinsamen Zustand (kein Titel-Leck).
+  Einschalten: Admin-Bereich → Einstellungen → Seiten. Ohne Schalter oder ohne WebSocket (Proxy) bleibt alles bei der
+  blockweisen Zusammenführung. Web- und Linux-Editor folgen; Protokoll und Dokumentmodell für Clients in
+  `docs/APP-API-COLLAB.md` (Fähigkeit `live1` in `/api/version`).
+- Datenbank-Migration 27: Tabellen `note_crdt`, `note_crdt_log` (leer, entstehen beim ersten Live-Öffnen).
+
 ### Neu (2.5, P6-5/P6-6: Erwähnungen und synchronisierte Blöcke)
 - **@-Erwähnungen von Personen.** Im @-Menü des Editors stehen jetzt zuerst **Personen** mit Zugriff auf die Seite;
   ab zwei Zeichen auch Personen ohne Zugriff – Auswahl fragt „Seite teilen (Lesen/Kommentieren) und erwähnen?“.

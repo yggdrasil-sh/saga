@@ -29,7 +29,7 @@ import threading
 import time
 
 from db import connect as _db
-from saga import notify, people
+from saga import bus, notify, people
 from saga.core import HANDLE_RE, local_ref, resolve_ref, t
 from saga.notes import _iter_blocks
 from saga.sharing import is_remote, names, remote_label
@@ -368,6 +368,7 @@ def rename_principal(c, old, new):
             nb = _rewrite(r[0], lambda m: f'<span class="hk-mention" data-u="{new}">{m.group(2)}</span>' if m.group(1) == old else m.group(0))
             if nb != r[0]:
                 c.execute("UPDATE note SET body=? WHERE id=?", (nb, nid))
+                bus.fire("note.body", c, note_id=nid)        # 2.5 (P3 Stufe 2): offene Live-Seite gleicht ab (saga.collab)
                 n += 1
         if c.execute("SELECT 1 FROM note_mention WHERE note_id=? AND person=?", (nid, new)).fetchone():
             c.execute("DELETE FROM note_mention WHERE note_id=? AND person=?", (nid, old))

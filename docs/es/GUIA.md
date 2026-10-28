@@ -1948,6 +1948,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `CACHE_TTL` | `60` | Segundos que se guardan en caché los datos de cuentas y servicios |
 | `LIVE_PING` | `25` | Segundos hasta la línea de latido del canal en directo (mantiene abiertos los proxies) |
 | `LIVE_MAX_PER_USER` / `LIVE_MAX_TOTAL` | `5` / `2000` | Conexiones en directo por cuenta (se cierra la más antigua) / en total |
+| `COLLAB_MAX_TOTAL` / `COLLAB_MAT_DELAY` / `COLLAB_CHECK` | `2000` / `2` / `25` | Edición simultánea en directo (2.5, interruptor de administración): conexiones WebSocket en total / segundos hasta guardar como página / segundos hasta volver a comprobar permisos |
 | `LIVE_MAX_AGE` | `3600` | Tras estos segundos el navegador vuelve a abrir la conexión en directo (se comprueba de nuevo la sesión) |
 | `FED_ALLOW_HTTP` | – | `1` = federación también por http (solo para pruebas; si no, solo https) |
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Solicitudes por minuto e instancia conectada / segundos hasta el tiempo de espera |
