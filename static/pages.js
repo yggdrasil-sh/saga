@@ -158,6 +158,7 @@
     }
     var m = /^\/([^\s\/]{1,40})$/.exec(slashText(p).trim()), pop = slashPopOpen();
     if (!m || (!pop && p !== slashSrc)) return;              // nur wenn das Menue offen ist bzw. "/" in einem leeren Absatz begann
+    if (pop && pop.classList.contains('pg-slash-inline') && pop.querySelector('.ce-popover-item--focused')) return;   // per Pfeil gewaehlt: slashEnter
     var it = pop ? slashMatch(pop, m[1]) : null;
     if (pop && !it) return;                                  // kein passender Block: normales Enter (Text bleibt Text)
     e.preventDefault(); e.stopPropagation();
@@ -191,9 +192,28 @@
   var slashP = null;
   function mobilePop() {
     var pop = document.querySelector('.ce-popover--opened');
+    if (pop && pop.classList.contains('pg-slash-inline')) return pop;          // Desktop: Filtern im Text (s. slashInline)
     if (!pop || pop.querySelector('.cdx-search-field') || !pop.querySelector('.ce-popover__overlay:not(.ce-popover__overlay--hidden)')) return null;
     return pop;
   }
+  // Notion-Gefuehl (Desktop): Menue per "/" in einem leeren Absatz geoeffnet -> kein eigenes Suchfeld, der Cursor bleibt
+  // im Text, Weitertippen filtert. Das (per CSS versteckte) Suchfeld von Editor.js bekommt den Text gespiegelt - so
+  // filtert Editor.js selbst (Treffer, "Nichts gefunden", Pfeiltasten nur ueber Treffer).
+  function slashInline(pop) {
+    if (!pop || pop.classList.contains('pg-slash-inline') || !pop.classList.contains('ce-popover--opened') || !pop.closest('.ce-toolbox')) return;
+    var p = slashSrc, si = pop.querySelector('.cdx-search-field__input');
+    if (!si || !p || !p.isConnected || slashText(p).trim() !== '/' || !$('pg-editor').contains(p)) return;
+    pop.classList.add('pg-slash-inline'); slashP = p;
+    p.focus();
+    try { var r = document.createRange(); r.selectNodeContents(p); r.collapse(false); var sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(r); } catch (err) { /* egal */ }
+  }
+  // Tasten im Absatz bei offenem Inline-Menue: Editor.js wuerde bei jeder Zeichentaste die Werkzeugleiste schliessen
+  // (beforeKeydownProcessing) bzw. bei "/" ein zweites Menue oeffnen - Zeichen gehen nur in den Text
+  document.addEventListener('keydown', function (e) {
+    if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    var pop = document.querySelector('.ce-popover--opened.pg-slash-inline');
+    if (pop && slashP && slashP.contains(e.target)) e.stopImmediatePropagation();
+  }, true);
   function slashText(p) { return p && p.isConnected ? p.textContent.replace(/\u00a0/g, ' ') : ''; }
   function slashReset() {
     [].forEach.call(document.querySelectorAll('.pg-slash-hidden'), function (x) { x.classList.remove('pg-slash-hidden'); });
@@ -205,7 +225,7 @@
     });
   }
   function slashPick(pop) {
-    var first = slashItems(pop)[0];
+    var first = slashItems(pop).filter(function (x) { return x.classList.contains('ce-popover-item--focused'); })[0] || slashItems(pop)[0];
     if (!first) return false;
     if (slashText(slashP).charAt(0) === '/') slashP.innerHTML = '';
     slashReset(); first.click();
@@ -215,6 +235,17 @@
     var pop = mobilePop(), t = e.target, p = t && t.closest ? t.closest('.ce-paragraph') : null;
     if (!pop || !p) return;
     var txt = slashText(p);
+    if (pop.classList.contains('pg-slash-inline')) {
+      if (p !== slashP) return;
+      if (txt.charAt(0) !== '/') {                     // "/" wieder geloescht: Menue zu, Text bleibt wie getippt
+        slashReset(); slashSrc = null;
+        try { blockEd(p).toolbar.close(); } catch (err) { /* schon zu */ }
+        return;
+      }
+      var si = pop.querySelector('.cdx-search-field__input');
+      if (si) { si.value = txt.slice(1).replace(/^\s+/, ''); si.dispatchEvent(new Event('input')); }
+      return;
+    }
     if (txt.charAt(0) !== '/') return;
     slashP = p;
     var q = txt.slice(1).trim().toLowerCase();
@@ -300,13 +331,27 @@
     var c = pop && pop.querySelector(':scope > .ce-popover__container');
     if (!c) return;
     c.style.marginLeft = '';
-    if (!pop.classList.contains('ce-popover--opened') || getComputedStyle(c).position === 'fixed') return;   // Handy: Bottom-Sheet
+    if (!pop.classList.contains('ce-popover--opened')) {               // Element wird wiederverwendet; nur bei Bedarf aendern
+      if (pop.classList.contains('pg-slash-inline')) pop.classList.remove('pg-slash-inline');   // (sonst Mutation -> Schleife)
+      return;
+    }
+    if (getComputedStyle(c).position === 'fixed') return;                                                   // Handy: Bottom-Sheet
+    slashInline(pop);
     var op = c.offsetParent; if (!op) return;
+    // Block-Menue unter der Zeile statt darueber (verdeckt sonst den Text): Editor.js misst den Platz nur bis zum Ende
+    // des Editors - am letzten Block ging es daher immer nach oben, obwohl im Fenster Platz war
+    if (pop.closest('.ce-toolbox') && pop.classList.contains('ce-popover--open-top')) {
+      var below = op.getBoundingClientRect().bottom + 8 + c.offsetHeight;
+      if (below <= window.innerHeight - 8) pop.classList.remove('ce-popover--open-top');
+    }
     // Lage ohne die Einblend-Animation (transform: scale) messen: Bezugsrahmen + offsetLeft
     var left = op.getBoundingClientRect().left + op.clientLeft + c.offsetLeft, right = left + c.offsetWidth;
     var vw = document.documentElement.clientWidth, pad = 8, dx = 0;
-    if (left < pad) dx = pad - left;
-    else if (right > vw - pad) dx = Math.max(pad - left, vw - pad - right);
+    if (pop.classList.contains('pg-slash-inline') && slashP && slashP.isConnected) {       // am Textanfang ausrichten
+      dx = Math.round(slashP.getBoundingClientRect().left - left); left += dx; right += dx;
+    }
+    if (left < pad) dx += pad - left;
+    else if (right > vw - pad) dx += Math.max(pad - left, vw - pad - right);
     if (dx) c.style.marginLeft = Math.round(dx) + 'px';
   }
   if (window.MutationObserver && $('pg-editor')) new MutationObserver(function (ms) {
@@ -667,12 +712,14 @@
   }
 
   function ensureEditor(data) {
-    if (S.editor) return S.editor.isReady.then(function () { return S.editor.render(data); }).then(function () { return S.editor; });
+    // Werkzeugleiste (+ / Griff) der vorigen Seite schliessen: sonst blieb sie mit deren Hoehe ("top") offen und
+    // schwebte auf einer leeren Seite weit unter der ersten Zeile (Notion-Gefuehl, Design-Studie)
+    if (S.editor) return S.editor.isReady.then(function () { try { S.editor.toolbar.close(); } catch (e) { /* schon zu */ } return S.editor.render(data); }).then(function () { return S.editor; });
     return loadVendor().then(function () {
       openInlineSan();
       S.editor = new window.EditorJS({
         holder: 'pg-editor', data: data, minHeight: 80, autofocus: false,
-        placeholder: T("Schreib los – '/' für Blöcke und Verweise, Rechtsklick für Verweise im Text"),
+        placeholder: T('Tippe „/“ für Befehle'),       // kurz und ruhig (Notion-Gefuehl); Rechtsklick-Hinweis steht in der Hilfe
         inlineToolbar: INLINE_TB,
         tools: S.tools = {
           header: { class: window.Header, inlineToolbar: true, config: { levels: [1, 2, 3, 4], defaultLevel: 2, placeholder: T('Überschrift') } },

@@ -484,6 +484,7 @@ Dieselben Aufgaben gibt es in den Apps und – als Block `/Aufgaben` – auch in
 Unter **Seiten** liegt dein Seitenbaum. Tippe `/` für neue Blöcke: Überschriften, Listen, Checklisten,
 Tabellen, Code, Bilder, Dateien, Spalten, Verweise auf andere Seiten, Termine und mehr. Weitertippen filtert
 das Menü, `Enter` übernimmt den ersten Treffer, `Esc` schließt es und nimmt das „/“ wieder weg.
+Ein Rechtsklick im Text fügt an dieser Stelle einen Verweis ein (`Shift`+Rechtsklick zeigt das Browser-Menü).
 `Strg`+`K` (Mac: `⌘`+`K`) sucht in Titeln und Inhalten. Seiten haben Versionen, einen Papierkorb (30 Tage) und
 lassen sich als Markdown exportieren.
 **Bilder kopieren:** Ein Klick aufs Bild markiert es; `Strg`+`C`/`X` (Mac: `⌘`) kopiert bzw. schneidet es aus, `Strg`+`V`
