@@ -155,6 +155,20 @@ try:
     m = c0.wait("HELLO", 0, timeout=5)
     ok("eigener Origin -> hello", m is not None and m[0] == "HELLO" and json.loads(m[2][0])["schema"]["hash"] == M.SCHEMA_HASH)
     c0.close()
+    # App mit Geraete-Schluessel (ohne Origin); Geraet abgemeldet -> bye auth bzw. Schliessen 4401
+    import secrets as _sec
+    from saga.core import _tok_hash
+    tok = "hkd_" + _sec.token_urlsafe(32)
+    with connect() as c, c:
+        did = c.execute("INSERT INTO device_login (uid, uname, name, hash, prefix, created) VALUES (?,?,?,?,?,?)",
+                        (A, A, "collab-test", _tok_hash(tok), tok[:8], time.time())).lastrowid
+    capp = Client(WS, {"Authorization": "Bearer " + tok})
+    m = capp.wait("HELLO", 0, timeout=5)
+    ok("Geraete-Schluessel: hello", m is not None and m[0] == "HELLO")
+    with connect() as c, c:
+        c.execute("DELETE FROM device_login WHERE id=?", (did,))
+    m = capp.wait("CLOSED", timeout=float(os.environ.get("COLLAB_CHECK", "25")) + 8)
+    ok(f"Geraet abgemeldet -> Verbindung zu (4401) ({m and m[2]})", m and m[0] == "CLOSED" and m[2][0] == 4401)
 
     # --- Grundablauf ---------------------------------------------------------------------------------------------------
     nid = page([P("a", "Hallo"), P("b", "Zweiter")], "Grund")
@@ -234,6 +248,14 @@ try:
     m = v.wait(("ACK", "REJECT"), nid)
     ok("Rolle edit: Update angenommen", m and m[0] == "ACK")
     ok("... bei a angekommen", wait_for(lambda: same(a.blocks(nid)[0]["blocks"], v.blocks(nid)[0]["blocks"])))
+    # Erwaehnung einer Person ohne Zugriff (P6-E3: nur mit Zugriff) -> forbidden
+    from saga.core import local_ref
+    auth.get_user("collab-c") or auth.create_user("collab-c", None, "collab-c")     # Konto ohne Zugriff auf die Seite
+    rejected(a, lambda d: _put(d, {"type": "paragraph", "attrs": {"id": "men"}, "content": [
+        {"type": "text", "text": "Hallo "}, {"type": "mention", "attrs": {"u": local_ref("collab-c")}}]}), "Erwaehnung ohne Zugriff", "forbidden")
+    # Datei eines anderen Kontos im Bild-Block -> forbidden
+    rejected(a, lambda d: _put(d, {"type": "image", "attrs": {"id": "img", "file": {"url": "/files/" + "ab" * 12}},
+                                   "content": [{"type": "icap"}]}), "fremde Datei im Bild", "forbidden")
     # fremde client_id: b (anderes Konto) schreibt unter der Kennung von a
     d2 = Doc(client_id=cid_a); d2.apply_update(v.docs[nid].get_update()); s0 = d2.get_state()
     text_of(d2, 1).insert(0, "Q"); v.send("UPDATE", nid, d2.get_update(s0), b"y")
@@ -459,6 +481,12 @@ finally:
             req("DELETE", f"/api/notes/{n}", u)
         except Exception:  # noqa: BLE001
             pass
+    try:
+        from saga import userdata
+        if auth.get_user("collab-c"):
+            userdata.delete_user_data("collab-c", drop_user=True)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 print(f"{sum(res)}/{len(res)}", "ALLES GRUEN" if all(res) else "FEHLER")
