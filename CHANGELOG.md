@@ -16,6 +16,21 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert (2.5, Web: „Notion-Gefühl“ – kleine Schritte)
+- **Leere Seite:** `+` und Griff sitzen auf der ersten Zeile (die Werkzeugleiste der vorigen Seite blieb mit deren Höhe
+  offen und schwebte bis zu ~270 px tiefer). Kurzer Platzhalter „Tippe „/“ für Befehle“; der Rechtsklick-Hinweis steht
+  jetzt in der Anleitung.
+- **Block-Menü „/“ ohne Suchfeld:** Weitertippen filtert direkt im Text, der Cursor bleibt in der Zeile, Pfeiltasten +
+  `Enter` wählen, `Esc` bzw. Löschen des „/“ schließt. Das Menü öffnet unter der Zeile (verdeckt den Text nicht), wenn
+  im Fenster Platz ist, und beginnt am Textanfang.
+- **Speicherstatus still:** „Ungespeichert …“, „Speichert …“ und „Gespeichert ✓“ sind unsichtbar (beim Überfahren der
+  Seitenzeile dezent lesbar). Sichtbar bleiben Fehler, Konflikt, fremde Änderungen und neu „Offline – …“; wieder online
+  wird Liegengebliebenes gespeichert.
+- **Kopfzeile über der Seite ruhiger:** flacher, Knöpfe ohne Rahmen, „Dashboard“ als Symbol (der Name links führt
+  ebenfalls dorthin).
+- **Schreibfläche:** Text 16 px (Zeilenhöhe 1,6), Titel 40 px, Überschriften 30/24/20 px (auch Toggle-Überschriften),
+  dichtere Absätze und mehr Luft über Überschriften; Titel-Platzhalter kontrastreicher. „Kleiner Text“ bleibt 14 px.
+
 ### Geändert (2.5, Server/Web-Reste)
 - **Markenerhalt für ältere Apps zeichengenau (P6-3).** Speichert eine App bzw. ein Server ohne `inline2`, überträgt
   der Server Farben, Hintergründe, Erwähnungen und Inline-Mathe aus dem gespeicherten Stand auf alle unveränderten
