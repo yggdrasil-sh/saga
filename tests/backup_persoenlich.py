@@ -165,7 +165,7 @@ def fetch_zip(key, uid=A, base=NCB, root=None):
     st, items = call("GET", "/api/account/backup/remote", uid=uid)
     item = next(x for x in items["items"] if x["complete"])
     st, raw = call("GET", "/api/account/backup/remote/" + item["name"], uid=uid)
-    p = os.path.join(TMP, item["name"])
+    p = os.path.join(TMP, secrets.token_hex(4) + "-" + item["name"])     # eindeutig: zwei Laeufe koennen gleich heissen
     with open(p, "wb") as f:
         f.write(raw)
     zp = age_dec(p, key)
