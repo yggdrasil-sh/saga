@@ -185,6 +185,33 @@ try:
     ok("Personen nur als Handle (kein Anmeldename)", UB not in raw and (bref or "~") in raw and "people" in d, raw[:400])
     st, d, _, _ = call("PATCH", f"/api/v1/rows/{Z1}", bearer=T, b={"properties": {"Punkte": 7}})
     ok("Zeile aendern: Formel in calc", st == 200 and (d.get("calc") or {}).get("fx") == 14, d)
+    # 2.5 Wechselwirkungen: Datum+Uhrzeit, Unteraufgaben, Diagramm-Ansicht, berechnete Werte nur lesend, Datei-Eigenschaft
+    s = call("GET", f"/api/notes/{D}", A)[1]["schema"]
+    s["props"] += [{"id": "wann", "name": "Wann", "type": "date", "time": True, "range": True},
+                   {"id": "par", "name": "Oberaufgabe", "type": "relation", "target": D, "two_way": True, "role": "parent"},
+                   {"id": "anh", "name": "Anhang", "type": "files", "max": 3}]
+    s["views"] = (s.get("views") or []) + [{"id": "dia", "name": "Diagramm", "type": "chart", "chart": {"type": "bar", "x": "status"}}]
+    sp = call("PATCH", f"/api/notes/{D}", A, {"schema": s})
+    ok("Schema mit Datum+Uhrzeit, Unteraufgaben, Datei, Diagramm-Ansicht", sp[0] == 200, sp[1])
+    st, d, _, _ = call("GET", f"/api/v1/databases/{D}", bearer=T)
+    ok("Schema-Ausgabe zeigt Diagramm-Ansicht als Typ chart", st == 200 and any(v["type"] == "chart" for v in d["schema"]["views"]), d.get("schema", {}).get("views"))
+    st, d, _, _ = call("POST", f"/api/v1/databases/{D}/rows", bearer=T, b={"title": "Unter", "properties": {"Wann": "2026-10-27T14:30:59Z", "Oberaufgabe": [Z1]}})
+    ZU = d.get("id")
+    ok("Zeile mit Datum+Uhrzeit und Oberaufgabe (Unteraufgabe)", st == 201, d)
+    st, d, _, _ = call("POST", f"/api/v1/databases/{D}/query", bearer=T, b={"filters": [{"property": "title", "op": "contains", "value": "Unter"}]})
+    ru = next((r for r in d.get("rows") or [] if r["id"] == ZU), {})
+    ok("Datum+Uhrzeit normalisiert, Unteraufgabe verweist auf Oberaufgabe", ru.get("properties", {}).get("Wann") == "2026-10-27T14:30+00:00"
+       and ru.get("properties", {}).get("Oberaufgabe") == [Z1], ru)
+    st, d, _, _ = call("POST", f"/api/v1/databases/{D}/query", bearer=T, b={"view": "dia"})
+    ok(f"Abfrage ueber die Diagramm-Ansicht liefert Zeilen ({st})", st == 200 and d.get("total", 0) >= 2, d)
+    st, d, _, _ = call("PATCH", f"/api/v1/rows/{Z1}", bearer=T, b={"properties": {"Doppelt": 99}})
+    rr = call("POST", f"/api/v1/databases/{D}/query", bearer=T, b={"filters": [{"property": "title", "op": "is", "value": "Zeile 1"}]})[1]
+    ok(f"Formel nur lesend: Schreiben wird ignoriert oder abgelehnt ({st})", st in (200, 400) and
+       (rr.get("rows") or [{}])[0].get("properties", {}).get("Doppelt") == 14, (st, d, rr.get("rows")))
+    st, d, _, _ = call("PATCH", f"/api/v1/rows/{Z1}", bearer=T, b={"properties": {"Anhang": ["deadbeefdeadbeefdeadbeef"]}})
+    rr = call("GET", f"/api/notes/{Z1}", A)[1]
+    ok(f"Datei-Eigenschaft: fremde/erfundene Datei-ID wird nicht uebernommen ({st})", st in (200, 400)
+       and "deadbeefdeadbeefdeadbeef" not in json.dumps(rr.get("props") or {}), (st, d, rr.get("props")))
     ok("PATCH /rows auf normaler Seite -> 400", call("PATCH", f"/api/v1/rows/{K}", bearer=T, b={"properties": {"x": 1}})[0] == 400)
     ok("Abfrage: limit > 100 wird begrenzt", call("POST", f"/api/v1/databases/{D}/query", bearer=T, b={"limit": 5000})[1].get("limit") == 100)
     ok("Abfrage: kaputter Filter -> 400", call("POST", f"/api/v1/databases/{D}/query", bearer=T, b={"filters": "x"})[0] == 400)
