@@ -62,6 +62,7 @@
     return api('GET', '/api/notes/' + id + '/comments' + (C.resolved ? '?resolved=1' : '')).then(function (d) {
       if (n !== C.load || !cur() || cur().id !== id) return;
       C.threads = d.threads || []; C.nres = d.resolved_count || 0; C.loaded = true;
+      if (window.HKMention) HKMention.setPeople(d.people);              // 2.5 (P6-5): Erwaehnungen "<@ref>" -> Namen
       var open = C.threads.filter(function (t) { return !t.resolved_at; });
       c.comments_open = open.length;
       c.comments_unread = open.filter(function (t) { return t.unread; }).length;
@@ -161,6 +162,13 @@
     }
     if (last < text.length) node.appendChild(document.createTextNode(text.slice(last)));
   }
+  // 2.5 (P6-5): Erwaehnungen im Klartext ("<@~handle>") als Chips, der Rest wie bisher (Links)
+  function withMentions(node, text) {
+    if (!window.HKMention || String(text).indexOf('<@') < 0) { linkify(node, text); return; }
+    [].slice.call(HKMention.commentNodes(text).childNodes).forEach(function (n) {
+      if (n.nodeType === 3) linkify(node, n.nodeValue); else node.appendChild(n);
+    });
+  }
   var fFull = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   function when(ts) { var s = el('time', 'cm-time', HK.relTime(ts - Date.now() / 1000)); s.dateTime = new Date(ts * 1000).toISOString(); s.title = fFull.format(new Date(ts * 1000)); return s; }
   // Text eines Blocks fuer den Auszug: ohne Bedienelemente (Tabellen-Werkzeugleiste, Menues, Knoepfe) und mit
@@ -190,6 +198,7 @@
     ta.value = key && C.drafts[key] != null ? C.drafts[key] : (value || ''); if (key) ta.dataset.key = key;
     var cancel = onCancel && function () { if (key) delete C.drafts[key]; onCancel(); };
     ta.setAttribute('aria-label', ph);
+    if (window.HKMention) HKMention.commentInput(ta);                  // 2.5 (P6-5): "@" -> Personen mit Zugriff
     var bar = el('div', 'cm-ebar'), cnt = el('span', 'cm-cnt');
     var ok = el('button', 'btn btn-primary cm-send', okText); ok.type = 'button';
     function upd() { var n = ta.value.length; cnt.textContent = n > MAX - 200 ? T('{n} von {max}', { n: n, max: MAX }) : ''; ok.disabled = !ta.value.trim(); grow(); }
@@ -264,7 +273,7 @@
       h.appendChild(mb);
     }
     if (cm.deleted) { c.appendChild(el('p', 'cm-text cm-deleted', T('Kommentar gelöscht'))); return c; }
-    var p = el('p', 'cm-text'); linkify(p, cm.body); c.appendChild(p);
+    var p = el('p', 'cm-text'); withMentions(p, cm.body); c.appendChild(p);
     return c;
   }
   function thread(t) {

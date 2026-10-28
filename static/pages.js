@@ -706,6 +706,8 @@
           hkmath: { class: window.HKMathInline },        // 2.5 (P6-1): Inline-Mathe <code class="hk-math">
           math: { class: window.HKMathTool },            // 2.5 (P6-1): Mathe-Block (KaTeX)
           hkmove: { class: window.HKMoveTune },          // 2.5 (P6-4): Verschieben nach ...
+          synced: { class: window.HKSyncedTool },        // 2.5 (P6-6): synchronisierter Block (static/mention.js)
+          hksync: { class: window.HKSyncTune },          // 2.5 (P6-6): Block-Menue "Als synchronisierten Block kopieren"
           hkcomment: { class: CommentTune },
           hkstyle: { class: StyleTune }, hkdup: { class: DupTune }, hklink: { class: LinkTune },
           hkconflict: { class: ConflictTune }          // 2.5 (P3): Konfliktblock aus dem Zusammenfuehren
@@ -791,6 +793,7 @@
       return req.then(function (d) {
         if (S.cur && S.cur.id === id && d.rev != null) S.cur.rev = d.rev;
         if (d.merged && S.cur && S.cur.id === id) mergedReply(id, d, sentStr, sentTitle);
+        if (window.HKMention) HKMention.saved(d);                       // 2.5 (P6-6): Durchschreiben, neue Kopien nachladen
         if (S.cur && S.cur.id === id && d.updated) S.cur.updated = d.updated;
         if (S.cur && S.cur.id === id && S.cur.updated_by && !S.cur.updated_by.me) { S.cur.updated_by = { me: true }; applyMeta(); }
         var p = byId(id); if (p) { p.updated = d.updated; if ('title' in body) p.title = body.title.trim(); }
@@ -999,6 +1002,7 @@
     }).then(function (n) {
       if (seq !== S.openSeq) return null;
       S.cur = n; S.loading = true; uploadNote();
+      if (window.HKMention) HKMention.setPeople(n.people);            // 2.5 (P6-5): Namen der Erwaehnungen
       var na = $('pg-noaccess'); if (na) na.hidden = true;
       document.dispatchEvent(new CustomEvent('hk-page-open', { detail: { id: n.id } }));
       $('page').hidden = false; $('pg-empty').hidden = true;
@@ -1629,12 +1633,13 @@
   // Editor.js selbst). Deshalb vorher: nur Block-Werkzeuge, die der Ziel-Editor kennt (Spalten in Spalten/Ausklappbar
   // werden aufgeloest wie beim Speichern), Inline-HTML nach derselben Positivliste wie der Server (saga/pages.py,
   // _Sanitizer), Adressen nur relativ/http(s)/mailto, verschachtelte Bloecke (Ausklappbar, Spalten) ebenso.
-  var CLIP_INLINE_ONLY = { inlineCode: 1, marker: 1, hkdate: 1, hkcomment: 1, hkstyle: 1, hkdup: 1, hklink: 1, hkcolor: 1, hkmath: 1, hkmove: 1 };
+  var CLIP_INLINE_ONLY = { inlineCode: 1, marker: 1, hkdate: 1, hkcomment: 1, hkstyle: 1, hkdup: 1, hklink: 1, hkcolor: 1, hkmath: 1, hkmove: 1, hksync: 1 };
   var CLIP_TAGS = { b: 1, strong: 1, i: 1, em: 1, u: 1, s: 1, mark: 1, code: 1, a: 1, br: 1, time: 1, span: 1 };
   // 2.5 (P6-1): Inline-Farben (span.hk-c-*, mark.hk-bg-*) und Inline-Mathe wie der Server; span ohne Farbe faellt weg
   var CLIP_PAL = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];      // wie COLORS (weiter unten)
   var CLIP_CLASSES = { mark: ['cdx-marker'].concat(CLIP_PAL.map(function (c) { return 'hk-bg-' + c; })), code: ['inline-code', 'hk-math'],
-                       time: ['hk-date', 'hk-remind'], span: CLIP_PAL.map(function (c) { return 'hk-c-' + c; }) };
+                       time: ['hk-date', 'hk-remind'], span: ['hk-mention'].concat(CLIP_PAL.map(function (c) { return 'hk-c-' + c; })) };
+  var CLIP_MENTION_U = /^(~[a-z2-7]{16}|@[a-z0-9~][a-z0-9_~-]{1,31}@[a-z0-9.:-]{1,260})$/;     // wie saga/pages.py _MENTION_U
   var CLIP_DROP = /^(script|style|template|iframe|frame|frameset|object|embed|noscript|svg|math|textarea|select|button|form|title|head|link|meta)$/;
   var CLIP_URL_KEYS = { url: 1, href: 1, link: 1, source: 1, embed: 1, src: 1 };
   function clipEsc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -1662,6 +1667,11 @@
         }
         var cls = (c.getAttribute('class') || '').split(/\s+/).filter(function (x) { return (CLIP_CLASSES[tg] || []).indexOf(x) >= 0; }).slice(0, 1);
         if (tg === 'span' && !cls.length) { walk(c, inA); return; }          // span nur mit Farbe (Erwaehnungen: P6-5)
+        if (tg === 'span' && cls[0] === 'hk-mention') {                      // Erwaehnung: nur mit gueltiger Kennung
+          var mu = (c.getAttribute('data-u') || '').trim();
+          if (!CLIP_MENTION_U.test(mu)) { walk(c, inA); return; }
+          keep = ' data-u="' + mu + '"';
+        }
         if (cls.length) keep += ' class="' + cls.join(' ') + '"';
         out.push('<' + tg + keep + '>'); walk(c, inA || tg === 'a'); out.push('</' + tg + '>');
       });
@@ -1704,6 +1714,11 @@
       }
       var data = clipVal(d, null, 0), inner = nestedTools();
       if (name === 'toggle') data.blocks = cleanClip(d.blocks, inner, depth + 1).map(function (x) { return { type: x.tool, data: x.data }; });
+      if (name === 'synced') {                                       // 2.5 (P6-6): Original {sid, blocks}, Kopie {sid}; src setzt der Server
+        delete data.src;
+        if (Array.isArray(d.blocks)) data.blocks = cleanClip(d.blocks, syncedInner(), depth + 1).map(function (x) { return { type: x.tool, data: x.data }; });
+        else delete data.blocks;
+      }
       if (name === 'columns') {
         data.cols = (Array.isArray(d.cols) ? d.cols : []).slice(0, 6).map(function (c) {
           return { blocks: cleanClip(c && c.blocks, inner, depth + 1).map(function (x) { return { type: x.tool, data: x.data }; }) };
@@ -2132,7 +2147,7 @@
   // --- Seite gestalten (2.5): Block-Menue ⋮⋮ (G5) mit Farbe (G3), Duplizieren, Link zum Block -----------------------------
   // Reihenfolge im Menue: Einstellungen des Blocks (Editor.js), "Umwandeln in", Farbe, Duplizieren, Link, Kommentieren, dann
   // Nach oben / Loeschen / Nach unten. Lesen/Kommentieren (bzw. gesperrt): nur Link und Kommentieren.
-  var BLOCK_TUNES = ['hkstyle', 'hkdup', 'hkmove', 'hklink', 'hkcomment', 'hkconflict'];
+  var BLOCK_TUNES = ['hkstyle', 'hkdup', 'hkmove', 'hksync', 'hklink', 'hkcomment', 'hkconflict'];
   var STYLE_TYPES = { paragraph: 1, header: 1, list: 1, quote: 1, toggle: 1, callout: 1, checklist: 1 };   // wie saga/notes.py
   var DUP_TYPES = { paragraph: 1, header: 1, list: 1, quote: 1, code: 1, toggle: 1, callout: 1, delimiter: 1, table: 1, image: 1 };
   var COLOR_NAMES = { gray: T('Grau'), brown: T('Braun'), orange: T('Orange'), yellow: T('Gelb'), green: T('Grün'), blue: T('Blau'),
@@ -7487,15 +7502,18 @@
 
   // --- Spalten: jede Spalte ist ein eigener Editor (Editor-in-Editor) ----------------
   function nestedTools() { var t = {}; Object.keys(S.tools || {}).forEach(function (k) { if (k !== 'columns') t[k] = S.tools[k]; }); return t; }
+  // 2.5 (P6-6): im synchronisierten Block keine weiteren synchronisierten Bloecke (der Server loest sie ohnehin auf)
+  function syncedInner() { var t = nestedTools(); delete t.synced; delete t.hksync; return t; }
   // Editor.js kennt destroy() erst, wenn der Editor fertig ist - sonst danach abbauen (schneller Seitenwechsel)
   function killEditor(ed) {
     var k = function () { try { if (typeof ed.destroy === 'function') ed.destroy(); } catch (x) { /* schon weg */ } };
     if (typeof ed.destroy === 'function') k(); else if (ed.isReady) ed.isReady.then(k, function () {});
   }
-  function nestedEditor(holder, blocks, placeholder) {
-    var tools = nestedTools();
+  function nestedEditor(holder, blocks, placeholder, noSynced) {
+    var tools = noSynced ? syncedInner() : nestedTools();
     var ed = new window.EditorJS({
-      holder: holder, data: { blocks: blocks || [] }, tools: tools, tunes: BLOCK_TUNES, i18n: I18N, minHeight: 24, placeholder: placeholder,
+      holder: holder, data: { blocks: blocks || [] }, tools: tools, i18n: I18N, minHeight: 24, placeholder: placeholder,
+      tunes: noSynced ? BLOCK_TUNES.filter(function (x) { return x !== 'hksync'; }) : BLOCK_TUNES,
       inlineToolbar: INLINE_TB,
       onChange: edChanged
     });
@@ -8560,6 +8578,7 @@
       if (!S.cur || S.cur.id !== id || n.format !== 'blocks' || S.loading) return;
       if (S.dirtyBody || S.dirtyTitle || S.inflight) { S.remoteAfter = n.rev; if (S.dirtyBody || S.dirtyTitle) save(); return; }
       S.cur.rev = n.rev; S.cur.updated = n.updated; S.cur.updated_by = n.updated_by;
+      if (window.HKMention) HKMention.setPeople(n.people);
       if (n.title !== S.cur.title && document.activeElement !== $('pg-title')) { S.cur.title = n.title; $('pg-title').value = n.title || ''; var p = byId(id); if (p) p.title = n.title; renderTree(); renderCrumbs(); setLocation(); }
       return applyBody(id, n.body).then(function () {
         if (by && by.name) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');
@@ -8666,6 +8685,8 @@
          // 2.5 (P6-1/P6-4, static/editor25.js): Mehrfachauswahl, Vorschaubilder, Verschieben
          uph: UPH, remoteId: remoteId, shared: function () { return S.shared || []; },
          dirty: function () { if (!S.loading) { S.dirtyBody = true; schedule(); } },
+         nested: function (holder, blocks, ph) { return nestedEditor(holder, blocks, ph, true); },   // 2.5 (P6-6): Inhalt synchronisierter Bloecke
+         kill: function (ed) { killEditor(ed); },
          save: function () { return save(); }, apply: function () { return liveApply(null); },
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum

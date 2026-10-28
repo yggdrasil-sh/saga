@@ -21,7 +21,9 @@
     'publish.withdrawn': T('Ein Admin zieht eine Veröffentlichung von mir zurück'),
     'chat.message': T('Neue Chat-Nachrichten (ohne Inhalt; stummgeschaltete Chats nie)'),
     'call.missed': T('Verpasste Anrufe'),
-    'db.assigned': T('Jemand trägt mich in einer Datenbank ein (Person)')
+    'db.assigned': T('Jemand trägt mich in einer Datenbank ein (Person)'),
+    'page.mention': T('Jemand erwähnt mich in einer Seite'),
+    'comment.mention': T('Jemand erwähnt mich in einem Kommentar')
   };   // task.due (Zusammenfassung) hat einen eigenen Abschnitt mit Uhrzeit (digestSection) und steht nicht in der Liste
   var narrow = window.matchMedia('(max-width: 760px)');
   var NS = 'http://www.w3.org/2000/svg';
@@ -86,7 +88,8 @@
     else if (it.kind === 'share.role') s = T('{name} hat deine Rolle geändert: {role}');
     else if (it.kind === 'comment.new') s = n > 1 ? T('{n} neue Kommentare auf deiner Seite') : T('{name} hat deine Seite kommentiert');
     else if (it.kind === 'comment.reply') s = n > 1 ? T('{n} neue Antworten in einer Unterhaltung') : T('{name} hat in einer Unterhaltung geantwortet');
-    else if (it.kind === 'comment.mention') s = T('{name} hat dich erwähnt');
+    else if (it.kind === 'comment.mention') s = T('{name} hat dich in einem Kommentar erwähnt');
+    else if (it.kind === 'page.mention') s = T('{name} hat dich erwähnt');
     else if (it.kind === 'publish.withdrawn') s = T('Ein Admin hat deine Veröffentlichung zurückgezogen');
     else if (it.kind === 'chat.message') s = n > 1 ? T('{n} neue Nachrichten') : T('Neue Nachricht von {name}');
     else if (it.kind === 'call.missed') s = T('Verpasster Anruf von {name}');
