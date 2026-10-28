@@ -312,6 +312,10 @@
     var p = slashSrc, txt = slashText(p);
     // Handy: Filter steht im Absatz ("/…"); Desktop: Filter im Suchfeld des Menues, im Absatz nur "/"
     var mine = p && p === slashP ? txt.charAt(0) === '/' : txt.trim() === '/';
+    // Inline-Menue (Desktop): der Filter steht sichtbar im Text - mit Leerzeichen ist das ein Satz ("/x y z"), kein Befehl:
+    // Esc schliesst dann nur und laesst den Text stehen
+    var ip = document.querySelector('.ce-popover--opened.pg-slash-inline');
+    if (ip && p === slashP && /\s/.test(txt.trim())) mine = false;
     slashReset(); slashSrc = null;
     if (!p || !p.isConnected || !mine) return;
     p.innerHTML = '';
@@ -520,9 +524,9 @@
     var s = $('pg-state'); s.textContent = t; s.title = t; s.className = 'note-state ' + (cls || '');
   }
   // offline: sagen, dass (noch) nicht gespeichert wird; wieder online -> liegengebliebenes speichern
-  window.addEventListener('offline', function () { if (S.cur && !readOnly()) state(T('Offline – Änderungen werden gespeichert, sobald die Verbindung wieder da ist'), 'warn'); });
+  window.addEventListener('offline', function () { if (S.cur && !readOnly() && !S.conflict && !S.lost) state(T('Offline – Änderungen werden gespeichert, sobald die Verbindung wieder da ist'), 'warn'); });
   window.addEventListener('online', function () {
-    if (!S.cur || readOnly()) return;
+    if (!S.cur || readOnly() || S.conflict || S.lost) return;        // Konflikt/Zugriff weg: deren Meldung bleibt stehen
     if (S.dirtyBody || S.dirtyTitle) schedule(); else if (/\bwarn\b/.test($('pg-state').className)) state('', 'quiet');
   });
 
@@ -867,6 +871,7 @@
       });
     }).catch(function (err) {
       S.dirtyBody = S.dirtyBody || !!body.body || (wantBody && !body.body); S.dirtyTitle = S.dirtyTitle || 'title' in body;
+      if (body.body) S.lastBlocks = null;      // nicht angekommen: der naechste Versuch darf nicht als "unveraendert" entfallen (offline -> online)
       if (err.message === 'conflict') { S.conflict = true; showConflict(err.data && err.data.by); state(T('Nicht gespeichert – Seite wurde zwischenzeitlich geändert'), 'err'); return; }
       // Freigabe entzogen, Teilen abgeschaltet (404) oder Rolle auf Lesen gefallen (403): verstaendlich melden, Text retten
       if ((err.status === 404 || err.status === 403) && S.cur && S.cur.id === id && foreign()) { lostAccess(err.status); return; }
@@ -1397,7 +1402,8 @@
     var busy = (S.inflight || 0) > 0;
     save();
     var txt = $('pg-editor').textContent, big = (window.TextEncoder ? new TextEncoder().encode(txt).length : txt.length * 3) > 40000;   // Bytes (CJK/Emoji)
-    if (busy || big) { e.preventDefault(); e.returnValue = ''; }
+    // offline geht das Speichern nicht durch - der (still gestellte) Status zeigt es nicht mehr dauerhaft: nachfragen
+    if (busy || big || navigator.onLine === false) { e.preventDefault(); e.returnValue = ''; }
   });
 
 

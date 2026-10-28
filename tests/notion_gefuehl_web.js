@@ -36,7 +36,11 @@ const P = (t) => ({ type: 'paragraph', data: { text: t } });
     // Offline-Hinweis sichtbar
     await ctx.setOffline(true); await sleep(200); st = await op();
     ok(`${tag}: offline sichtbar (${st.t})`, /Offline/.test(st.t) && st.o !== '0', st);
-    await ctx.setOffline(false); await sleep(300);
+    await p.keyboard.type(' off'); await sleep(1800);                 // offline getippt: Speichern scheitert
+    st = await op(); ok(`${tag}: offline getippt - Hinweis bleibt (${st.t})`, /Offline/.test(st.t) && st.o !== '0', st);
+    await ctx.setOffline(false); await sleep(2000);
+    const back = await api('GET', '/api/notes/' + full);
+    ok(`${tag}: wieder online - Offline-Text gespeichert`, /sechs x off/.test(back.body || ''), (back.body || '').slice(-120));
     // Block-Menue: kein Suchfeld, Filtern im Text, unter der Zeile
     await p.keyboard.press('Enter'); await p.keyboard.type('/'); await sleep(500);
     const m = await p.evaluate(() => { const pop = document.querySelector('.ce-popover--opened'), para = document.activeElement;
@@ -57,6 +61,9 @@ const P = (t) => ({ type: 'paragraph', data: { text: t } });
     ok(`${tag}: "/" geloescht -> Menue zu`, x1 && await p.evaluate(() => !document.querySelector('.ce-popover--opened')), x1);
     await p.keyboard.type('/'); await sleep(300); await p.keyboard.press('Escape'); await sleep(300);
     ok(`${tag}: Esc schliesst und nimmt "/" weg`, await p.evaluate(() => !document.querySelector('.ce-popover--opened') && document.activeElement.textContent === ''));
+    // Esc bei "/…" mit Leerzeichen (ein Satz, kein Befehl): Menue zu, Text bleibt stehen
+    await p.keyboard.type('/x y z'); await sleep(300); await p.keyboard.press('Escape'); await sleep(300);
+    ok(`${tag}: Esc bei "/x y z" laesst den Text stehen`, await p.evaluate(() => !document.querySelector('.ce-popover--opened') && document.activeElement.textContent === '/x y z'));
     await sleep(1500);
     // Leere Seite nach Wechsel aus einer laengeren Seite: Werkzeugleiste nicht unten
     await p.locator('#pg-editor .ce-paragraph', { hasText: 'sechs' }).click(); await sleep(200);
