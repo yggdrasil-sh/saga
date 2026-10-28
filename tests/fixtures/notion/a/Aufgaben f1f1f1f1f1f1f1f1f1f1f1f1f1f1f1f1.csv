@@ -1,0 +1,5 @@
+﻿Name,Projekt,Erledigt,Priorität
+Aufgabe Eins,Projekt Alpha,Yes,Hoch
+Aufgabe Zwei,"Projekt Alpha, Projekt Beta",No,Niedrig
+Doppelt,Projekt Gamma,No,Hoch
+Doppelt,,No,Niedrig

@@ -129,6 +129,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `docs/APP-API.md` („Datenbanken: Status, relative Filter, …“). Keine Migration, `MIN_APP` unverändert.
 - Tests: `tests/db_status_datum.py`, `tests/db_unteraufgaben.py`, `tests/tabellenoptionen.py`, `tests/browser_db_paket5.js`.
 
+### Neu (2.5, Paket 2 E5: Notion-Import)
+- **Notion-Export importieren.** Im Import-Dialog ein ZIP aus Notion („Exportieren“ → „Markdown & CSV“, Unterseiten
+  einschließen) ablegen: Seitenbaum mit Unterordnern, Datenbanken aus den CSV-Dateien (bei `…_all.csv` diese) mit den
+  Zeilen-Seiten als Inhalt der Einträge (Eigenschaftsblock oben entfällt, Werte kommen aus der CSV), Unterseiten von
+  Einträgen, interne Links (relativ und `notion.so/…<id>`) auf die neuen Seiten, Zeile nur mit Link auf eine Datenbank
+  → Datenbank-Block, Bilder und Dateien aus dem ZIP, externe Bilder bleiben Links. Notion-Callouts (`<aside>`,
+  `<callout>`), Toggles, Spalten (bis 6), Code, `$$…$$` → Mathe-Block, `$…$` → Inline-Mathe, Farben (`<span color>`,
+  `highlight-…`, `{color=…}`) → Inline-/Blockfarben. Große Exporte als `Export-….zip` mit Teil-ZIPs werden gelesen
+  (eine Ebene, gleiche Grenzen wie ein ZIP).
+- Eigenschaftstypen werden geraten und lassen sich im Dialog je Spalte ändern: Datum (mit Uhrzeit → Zeitpunkt, `A → B`
+  → Zeitraum), Auswahl, Mehrfachauswahl, **Status → Status-Eigenschaft mit Gruppen**, Häkchen, Zahl (%, €, $), URL,
+  E-Mail (`mailto:`), Telefon (Text), Relation (Links bzw. Titel; mehrdeutig → erster Treffer + Bericht), Person → Text
+  (Bericht), Dateien → Datei-Eigenschaft, Formel/Rollup → Text mit Ergebniswert und Spaltenmenü „In Formel umwandeln …“.
+  Mehr als 30 Spalten: Rest als Liste in der Eintragsseite. Seiten ohne CSV-Zeile werden Einträge ohne Werte (Bericht).
+- Server: `saga/import_notion.py`; Unterbau erweitert (Teil-ZIPs, Inhalte und Unterseiten von Einträgen, Relationen auf
+  später angelegte Datenbanken, Datei-Werte). Keine Migration. `features`: `import_notion1`. Test `tests/import_notion.py`
+  (Fixtures `tests/fixtures/notion/`), Browser-Test `tests/browser_import.js` mit `IMPORT_NOTION=1`.
+
 ### Neu (2.5, Paket 2: Import und CSV-Export)
 - **Datenbank als CSV exportieren.** ⚙ Ansicht → „Als CSV exportieren“: diese Ansicht (Filter, Sortierung, Suche,
   sichtbare Spalten) oder alles; UTF-8 mit BOM, Schalter „Excel (Deutsch)“ (Semikolon, Dezimalkomma), Schutz vor
@@ -143,7 +161,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Hintergrund-Lauf mit Fortschritt (Tabelle `import_run`, Migration 21; höchstens 2 gleichzeitig), Abbruch, Bericht
   „nicht übernommen“ im Dialog und als Seite. ZIP-Prüfung gegen Pfad-Traversal, Symlinks, ZIP-Bomben und zu große
   Archive; alles gestreamt (kleine Server). Neue Einstellungen `IMPORT_MAX_MB`, `IMPORT_UNPACKED_MAX_MB`,
-  `IMPORT_CSV_MAX_MB`, `IMPORT_CSV_ROWS_MAX`, `IMPORT_PARALLEL`. Notion-Import folgt. Markdown-Import übernimmt `$TeX$` als Inline-Mathe (`code.hk-math`, Inline-Vertrag); HTML im
+  `IMPORT_CSV_MAX_MB`, `IMPORT_CSV_ROWS_MAX`, `IMPORT_PARALLEL`. Markdown-Import übernimmt `$TeX$` als Inline-Mathe (`code.hk-math`, Inline-Vertrag); HTML im
   Markdown bleibt Text, importierte Blöcke bekommen eindeutige Block-IDs.
 
 ### Neu (2.5, Paket 1 Etappen 2/3: Personen und Dateien in Datenbanken)
@@ -197,6 +215,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „Neu laden“; wer gerade wo schreibt, ist am Block markiert (Anwesenheit mit `block`).
 - **Eindeutige Block-IDs** für alle Blöcke (auch in Spalten/Toggles); alte Seiten bekommen beim Lesen stabile IDs.
 - Datenbank: Migration 22 (`note_base`, Basisstände 24 h / 30 je Seite). Ältere Apps ohne `merge`: unverändert `409`.
+### Neu (2.5, Gleichzeitig bearbeiten – P3-E3 Föderation)
+- **Zusammenführen auch auf Seiten anderer Saga-Server.** Fähigkeit `merge1`: wer eine geteilte Seite eines anderen
+  Servers bearbeitet, wird beim Eigentümer-Server zusammengeführt (Konfliktblock, Rebase, `base`/`bases` wie lokal); der
+  Konfliktblock nennt nur öffentlichen Namen bzw. Handle, nie den Anmeldenamen. Ältere Gegenstellen: Konfliktdialog wie bisher.
+- **Block-Markierung über Servergrenzen** (Fähigkeit `presence2`): wer wo schreibt, ist auch auf föderierten Seiten am Block
+  markiert (Farbe aus der Kennung, nur für Personen mit Zugriff, Blockwechsel höchstens 1×/s).
+- `GET /api/notes/{id}?since=<rev>` liefert nur die geänderten Blöcke (`delta`), auch für Seiten anderer Server.
+- Behoben: Nach „Version wiederherstellen“ kam beim nächsten Speichern eines anderen Tabs/Geräts `409` statt Zusammenführen
+  (kein Basisstand für die neue Revision). Keine Migration.
 
 ### Neu (2.5, Editor-Rest P6-1 Web-Editor und P6-4 Verschieben)
 - **Inline-Farben.** Werkzeug „A“ in der Inline-Leiste: 9 Text- und 9 Hintergrundfarben aus der Block-Palette (hell/dunkel),

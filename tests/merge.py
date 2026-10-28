@@ -199,6 +199,37 @@ if os.environ.get("HK_TEST_BASE") and os.environ.get("SESSION_SECRET"):
         call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "neu")), "format": "blocks", "rev": cur})
         s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "alt")), "format": "blocks", "rev": cur - 1, "merge": 1})
         ok(f"API: Basis nicht mehr da -> 409 wie bisher ({s})", s == 409)
+        # Version wiederherstellen legt einen Basisstand an: wer noch auf der Revision davor steht, wird danach
+        # zusammengefuehrt statt 409 (Pruefer-Hinweis 2.5)
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("v", "Version eins"), Pb("w", "zwei")), "format": "blocks", "overwrite": True})
+        with connect() as c, c:                  # Version direkt sichern (Checkpoint ist gedrosselt)
+            from saga.notes import _insert_version
+            _insert_version(c, "hk-test-a", nid, c.execute("SELECT title, body, format FROM note WHERE id=?", (nid,)).fetchone(), time.time(), "hk-test-a")
+            vid = c.execute("SELECT max(id) FROM note_version WHERE note_id=?", (nid,)).fetchone()[0]
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("v", "Version zwei"), Pb("w", "zwei")), "format": "blocks", "rev": d["rev"]})
+        s, d = call(ckA, "POST", f"/api/notes/{nid}/versions/{vid}/restore", {})
+        rr = d.get("rev")
+        with connect() as c:
+            has = c.execute("SELECT 1 FROM note_base WHERE note_id=? AND rev=?", (nid, rr)).fetchone()
+        ok(f"Version wiederherstellen: Basisstand der neuen Revision angelegt ({s}, rev {rr})", s == 200 and bool(has))
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("v", "Version eins"), Pb("w", "zwei, danach geaendert")), "format": "blocks",
+                                                        "rev": rr, "merge": 1})
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("v", "Version eins!"), Pb("w", "zwei")), "format": "blocks", "rev": rr, "merge": 1})
+        got = [x["data"]["text"] for x in json.loads(d.get("body") or "{}").get("blocks") or []]
+        ok(f"Nach dem Wiederherstellen: veraltete rev wird zusammengefuehrt statt 409 ({s}, {got})",
+           s == 200 and got == ["Version eins!", "zwei, danach geaendert"] and d.get("merged", {}).get("from") == rr)
+        # GET ?since=<rev>: nur geaenderte Bloecke (unveraenderte als {"id"})
+        r_now = d["rev"]
+        call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("v", "Version eins!"), Pb("w", "zwei, danach geaendert"), Pb("n", "neu")),
+                                                 "format": "blocks", "rev": r_now})
+        s, d = call(ckA, "GET", f"/api/notes/{nid}?since={r_now}")
+        ok(f"GET ?since: delta statt body, unveraendert nur id ({d.get('delta')})", s == 200 and "body" not in d
+           and d.get("delta") == {"from": r_now, "blocks": [{"id": "v"}, {"id": "w"}, Pb("n", "neu")]} and d.get("rev") == r_now + 1)
+        s, d = call(ckA, "GET", f"/api/notes/{nid}?since=1")
+        ok(f"GET ?since mit nicht mehr vorhandener Basis: ganzer Inhalt ({s})", s == 200 and "body" in d and "delta" not in d)
+        s, d = call(ckA, "GET", f"/api/notes/{nid}?since=abc")
+        ok(f"GET ?since ungueltig: ganzer Inhalt ({s})", s == 200 and "body" in d)
+        cur = d["rev"]
         # Kommentare an reparierten IDs: alter Stand ohne IDs, GET liefert stabile IDs, Kommentar bleibt nach Speichern haengen
         with connect() as c, c:
             c.execute("UPDATE note SET body=? WHERE id=?", (json.dumps({"blocks": [{"type": "paragraph", "data": {"text": "ohne id"}},

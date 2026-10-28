@@ -15,7 +15,7 @@ from fastapi import APIRouter
 from saga import dbcalc, dbvals, nextcloud, page_widgets, proptext, synced
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
-from saga.notes import FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
+from saga.notes import FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, keep_base, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -208,6 +208,9 @@ def version_restore(uid, nid, vid, origin=None):
         c.execute("UPDATE note SET title=?, body=?, format=?, updated=?, rev=rev+1, updated_by=? WHERE id=? AND uid=?",
                   (v[0], body, v[2], now, uid, nid, owner))
         rev = c.execute("SELECT rev FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
+        # 2.5 (P3): wiederhergestellter Stand als Basis fuer das Zusammenfuehren (sonst 409 statt Merge bei Clients,
+        # die noch auf der vorherigen Revision stehen bzw. danach mit der neuen rev speichern)
+        keep_base(c, nid, rev, v[0], body, v[2], now, (rev - 1, cur[0], cur[1], cur[2]))
         announce_tree(c, owner, nid, [nid], uid, now, False, rev, origin=origin)       # Live: Version zurueck (BUG-033)
         if v[0] != cur[0]:
             tree_changed(c, owner, [nid], "updated", origin)                      # anderer Titel im Baum

@@ -220,7 +220,7 @@ Antwort `200`: `{"ok": true, "rev_a", "rev_b", "ids": [IDs im Ziel], "renamed": 
 
 ## Gleichzeitig bearbeiten: blockweises Zusammenführen (2.5, P3 Stufe 1)
 
-Statt `409` führt der Server (bei föderierten Seiten später der Eigentümer-Server, Etappe E3) zwei Fassungen einer Seite
+Statt `409` führt der Server (bei föderierten Seiten der Eigentümer-Server, Fähigkeit `merge1`, `APP-API-FED.md` Abschnitt 8) zwei Fassungen einer Seite
 **blockweise zusammen**. Die Merge-Logik gibt es nur im Server (`saga/merge.py`); Apps führen nur Buch. Testvektoren:
 `tests/vectors/merge.json` (Basis, meins, deren → erwartet). Alte Apps ohne `merge` bekommen weiterhin `409`.
 
@@ -281,7 +281,15 @@ Antwort `200` (zusammengeführt, d. h. `rev` war veraltet bzw. `base`/`bases` ge
 4. Feiner (optional): je lokal geänderten Block die `rev` merken, auf der die Änderung beruht, und als `bases` senden.
 5. Fremde Änderung ohne eigenes Speichern (`note.changed` mit höherer `rev`): `GET` und blockweise übernehmen, ungespeicherte
    eigene Blöcke behalten (bzw. einfach sofort mit `merge: 1` speichern). Kein „Neu laden“-Hinweis mehr nötig.
+   Sparsamer: `GET /api/notes/{id}?since=<bekannte rev>` → statt `body` ein `delta {from, blocks}`: `blocks` ist die
+   aktuelle Reihenfolge der obersten Ebene, unveränderte Blöcke nur als `{"id"}` (eigenen Stand von `from` nehmen),
+   geänderte/neue vollständig. Liegt die Basis nicht mehr vor (bzw. Text-Seite, ältere Server): ganz normal mit `body`.
+   Alle anderen Felder wie ohne `since`.
 6. Kopf `X-Saga-Caps: …,merge1` melden (siehe Inline-Vertrag).
+7. Seiten anderer Server (negative IDs): derselbe Weg, wenn `remote.caps` `merge1` enthält – sonst ohne `merge` speichern
+   und bei `409` den Konfliktdialog zeigen (`APP-API-FED.md` Abschnitt 8). Konfliktblöcke fremder Personen tragen in
+   `hkconflict.by` deren Prinzipal (`@name@host`) bzw. einen Handle, `name` ist der Anzeigename.
+8. Nach „Version wiederherstellen“ (neue `rev`) führt der Server wie nach jedem Speichern zusammen.
 
 ### Anwesenheit je Block
 
@@ -289,7 +297,8 @@ Antwort `200` (zusammengeführt, d. h. `rev` war veraltet bzw. `base`/`bases` ge
 wirksam). Senden bei Blockwechsel (höchstens etwa 1×/s; schnellere Meldungen ändern nur den Block), sonst wie bisher
 alle ~20 s; ohne `block` bleibt der zuletzt gemeldete. Antwort und Ereignis `presence` liefern je Person zusätzlich
 `block` und `color` (Palette, stabil je Person). Darstellung: farbiger Rand links am Block + „{name} bearbeitet“ –
-nur Hinweis, keine Sperre. Ältere Clients ignorieren die Felder. Föderiert: folgt mit E3 (`presence2`).
+nur Hinweis, keine Sperre. Ältere Clients ignorieren die Felder. Föderiert gleich (negative `note_id`), wenn der
+Server der Seite `presence2` kann (`remote.caps`); dann höchstens 1 Blockwechsel/s, schnellere → `{"skipped": true}`.
 
 ## Widgets in Seiten (2.5, Etappe 1)
 
@@ -751,11 +760,17 @@ Teilen-Ziel). Alle Endpunkte mit Sitzung oder Geräte-Schlüssel, nur eigene Upl
 | Endpunkt | Bedeutung |
 |---|---|
 | `POST /api/import/upload?name=<pfad>[&token=<t>][&replace=1]` | Rohdaten der Datei als Body (Datenstrom). Antwort `{token, kind, files, size}`; `kind` = `csv`, `md`, `notion` oder `null`. Weitere Dateien (Ordner ohne ZIP, `name` = relativer Pfad) mit demselben `token`. Grenzen: `IMPORT_MAX_MB` für alle Teile zusammen (`413`), höchstens 2000 Teile; Token gilt 30 Minuten. Höchstens **ein wartender Upload je Konto**: ein neuer Upload ohne `token` antwortet `409`, solange ein anderer wartet (noch nicht gestartet, nicht abgelaufen); mit `replace=1` wird der alte verworfen. |
-| `POST /api/import/{token}/analyze` | Body `{kind?, path?, encoding?, sep?, header?}`. CSV: `{encoding, sep, header, rows, columns: [{index, name, guess, values, distinct, options, decimal, date_order, fmt}], title_col, preview (20 Zeilen), warnings, limits}`. Markdown: `{md: {pages, folders, files, unresolved, title}, warnings}`. Immer `report` (geprüfte, verworfene Einträge). Nichts wird angelegt. |
-| `POST /api/import/{token}/run` | CSV neu: `{kind: "csv", columns: [{index, type: text\|number\|select\|multi_select\|date\|checkbox\|url\|skip, name?, decimal?, date_order?}], title_col, title?, parent_id?, encoding?, sep?, header?}`. CSV an bestehende Datenbank: `target_db` und `columns: [{index, target: "title"\|<eigenschafts-id>}]`. Markdown: `{kind: "md", title?, tags: bool, props: bool, parent_id?}`. → `202 {run_id}`; `409`, wenn schon ein Import des Kontos läuft; `400` bei mehr als 30 Spalten. |
+| `POST /api/import/{token}/analyze` | Body `{kind?, path?, encoding?, sep?, header?}`. CSV: `{encoding, sep, header, rows, columns: [{index, name, guess, values, distinct, options, decimal, date_order, fmt}], title_col, preview (20 Zeilen), warnings, limits}`. Markdown: `{md: {pages, folders, files, unresolved, title}, warnings}`. Notion: `{notion: {pages, databases, rows, files, dbs: [{path, title, rows, columns: [{index, name, guess}]}]}, warnings}` (`guess` siehe `run`; HTML-Export → `error`). Immer `report` (geprüfte, verworfene Einträge). Nichts wird angelegt. |
+| `POST /api/import/{token}/run` | CSV neu: `{kind: "csv", columns: [{index, type: text\|number\|select\|multi_select\|date\|checkbox\|url\|skip, name?, decimal?, date_order?}], title_col, title?, parent_id?, encoding?, sep?, header?}`. CSV an bestehende Datenbank: `target_db` und `columns: [{index, target: "title"\|<eigenschafts-id>}]`. Markdown: `{kind: "md", title?, tags: bool, props: bool, parent_id?}`. Notion (`features`: `import_notion1`): `{kind: "notion", title?, parent_id?, types?: {<csv-pfad>: {<spaltenindex>: text\|number\|select\|multi_select\|status\|date\|checkbox\|url\|email\|phone\|relation\|person\|files\|fx\|skip}}}` – ohne `types` gelten die Vorschläge der Analyse. → `202 {run_id}`; `409`, wenn schon ein Import des Kontos läuft; `400` bei mehr als 30 Spalten. |
 | `GET /api/import/runs`, `GET /api/import/runs/{id}` | `{id, kind, name, state: queued\|running\|done\|failed\|cancelled, step: {phase, done, total}, report: {counts, groups: [{code, text, items: [{path, text}]}], more, page}, root, error}`. Abfragen alle 1–2 s. `root` = angelegte Datenbank bzw. Sammelseite, `report.page` = Seite „Importbericht“. |
 | `POST /api/import/runs/{id}/cancel` | Abbruch; bereits Angelegtes wandert in den Papierkorb. |
 | `DELETE /api/import/{token}` | Upload verwerfen. |
+
+Notion-Import (`import_notion1`): ZIP aus Notion „Exportieren“ → „Markdown & CSV“ (auch als `Export-….zip` mit
+Teil-ZIPs `…-Part-N.zip`; genau eine Ebene, nur wenn das äußere ZIP ausschließlich ZIPs enthält). Formel-/Rollup-
+Spalten kommen als Text mit Ergebniswert und tragen im Schema `fx_hint: true` – Clients bieten dafür „In Formel
+umwandeln“ an (Schema-PATCH mit `type: "formula"` und `expr`; der Server entfernt `fx_hint`). Personen werden Text,
+E-Mail eine URL `mailto:`, Telefon Text, Status eine Auswahl mit `status: true` und Gruppen.
 
 ## Formeln und Rollups in Datenbanken (2.5, Paket 1 Etappe 1)
 

@@ -1,6 +1,7 @@
 // Browser-Test 2.5 (Paket 2): Import-Dialog (CSV -> neue Datenbank: Vorschau, Typ aendern, Spalte weglassen, Fortschritt,
 // Bericht, Oeffnen), "Zeilen aus CSV hinzufuegen" an einer Datenbank, CSV-Export aus dem Ansicht-Menue,
-// optional Markdown-Ordner (IMPORT_MD=1).
+// optional Markdown-Ordner (IMPORT_MD=1) und Notion-Export (IMPORT_NOTION=1: ZIP aus tests/fixtures/notion/a, Typ einer
+// Spalte im Dialog aendern, Formel-Spalte "In Formel umwandeln" im Spaltenmenue).
 //   SAGA_BASE=... SAGA_USER=... SAGA_PASS=... [PLAYWRIGHT=...] node tests/browser_import.js
 'use strict';
 const fs = require('fs');
@@ -123,6 +124,68 @@ async function until(p, fn, arg, ms = 20000) {
       await p.waitForTimeout(800);
       const root = await p.evaluate(() => parseInt(location.hash.slice(1), 10)); made.push(root);
       ok('Sammelseite geoeffnet', root > 0);
+    }
+    // --- Notion-Export (optional) ---------------------------------------------------------------------------------------
+    if (process.env.IMPORT_NOTION === '1') {
+      const zip = path.join(tmp, 'Export-test.zip');
+      require('child_process').execFileSync('zip', ['-qr', zip, '.'], { cwd: path.join(__dirname, 'fixtures', 'notion', 'a') });
+      await p.click('#pg-new');
+      await p.click('.menu:not([hidden]) .menu-item:has-text("Importieren")');
+      await p.waitForSelector('#pg-modal:not([hidden]) .imp-drop');
+      ok('Hinweis nennt Notion', (await p.$eval('.imp-hint', (x) => x.textContent)).includes('Notion'));
+      await p.setInputFiles('.imp-file', zip);
+      await p.waitForSelector('.imp-ndb', { timeout: 20000 });
+      const ns = await p.$eval('.imp-sum', (x) => x.textContent);
+      ok('Notion-Analyse: 2 Datenbanken, 7 Eintraege', /2 Datenbanken/.test(ns) && /7 Einträge/.test(ns), ns);
+      const dbs = await p.$$('.imp-ndb');
+      await dbs[1].evaluate((d) => { d.open = true; });
+      const nsel = await dbs[1].$$('select.imp-ntype');
+      const nv = await Promise.all(nsel.map((x) => x.evaluate((e) => e.value)));
+      ok('Typen vorgeschlagen (Status, Formel)', nv[0] === 'status' && nv.includes('fx') && nv.includes('relation'), nv);
+      await nsel[nv.indexOf('select')].selectOption('skip');           // Kategorie weglassen
+      await p.fill('.imp-title', 'Aus Notion');
+      await p.click('.imp-run');
+      ok('Notion-Import fertig', await until(p, () => !!document.querySelector('.imp-done.ok'), null, 60000),
+        await p.$eval('#pg-modal-body', (x) => x.textContent.slice(0, 300)));
+      ok('Bericht im Dialog (Personen/Formel)', (await p.$$eval('.imp-grp summary', (xs) => xs.map((x) => x.textContent).join('|'))).includes('Formel'));
+      await p.click('.imp-open');
+      await p.waitForTimeout(800);
+      const nroot = await p.evaluate(() => parseInt(location.hash.slice(1), 10)); made.push(nroot);
+      ok('Sammelseite "Aus Notion" geoeffnet', (await p.$eval('#pg-title', (x) => x.value || x.textContent)).includes('Aus Notion'));
+      const all = await api('GET', '/api/notes');
+      const list = all.notes || all.pages || all;
+      const pj = (Array.isArray(list) ? list : []).find((x) => x.title === 'Projekte' && x.kind === 'database');
+      ok('Datenbank Projekte angelegt', !!pj, Array.isArray(list) ? list.length : list);
+      if (pj) {
+        const dr = await api('GET', '/api/notes/' + pj.id + '/rows');
+        ok('Kategorie weggelassen, Status-Eigenschaft', !dr.schema.props.some((x) => x.name === 'Kategorie')
+           && dr.schema.props.some((x) => x.name === 'Status' && x.status), dr.schema.props.map((x) => x.name));
+        await p.goto(BASE + '/notes?t=' + Date.now() + '#' + pj.id);
+        await p.waitForSelector('.db-bar');
+        await p.waitForTimeout(600);
+        const th = await p.$$('th.db-th');
+        let hit = null;
+        for (const h of th) if ((await h.textContent()).includes('Summe (Formel)')) { hit = h; break; }
+        ok('Spaltenkopf der Formel-Spalte', !!hit);
+        if (hit) {
+          await hit.scrollIntoViewIfNeeded();
+          await hit.evaluate((e) => e.click());                         // breite Tabelle: Mitte des Kopfs evtl. unter dem Rand
+          await p.waitForSelector('.menu:not([hidden]) .menu-item');
+          const mi = await p.$$eval('.menu:not([hidden]) .menu-item', (xs) => xs.map((x) => x.textContent));
+          ok('Spaltenmenue: "In Formel umwandeln …"', mi.some((x) => x.includes('In Formel umwandeln')), mi);
+          await p.$$eval('.menu:not([hidden]) .menu-item', (xs) => xs.find((x) => x.textContent.includes('In Formel umwandeln')).click());
+          await p.waitForSelector('.fx-in');
+          await p.fill('.fx-in', 'prop("Budget") * 2');
+          await p.waitForSelector('.fx-status.ok', { timeout: 10000 });
+          p.once('dialog', (d) => d.accept());
+          await p.click('.fx-save');
+          await p.waitForTimeout(1200);
+          const dr2 = await api('GET', '/api/notes/' + pj.id + '/rows');
+          const fx = dr2.schema.props.find((x) => x.name === 'Summe (Formel)');
+          const al = dr2.rows.find((r) => r.title === 'Projekt Alpha');
+          ok('Umgewandelt: Formel, Wert gerechnet', fx && fx.type === 'formula' && !fx.fx_hint && al && al.props[fx.id] === 2469, fx);
+        }
+      }
     }
   } catch (e) {
     console.log('FEHLER', e.message); res.push(false);

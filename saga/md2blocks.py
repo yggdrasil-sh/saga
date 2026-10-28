@@ -7,8 +7,15 @@ Zeile, <details><summary> -> Toggle, <aside> -> Callout, Frontmatter (wird vorhe
 Inline: **fett**, *kursiv*/_kursiv_, ~~durch~~, `code`, ==markiert==, $Mathe$, [Text](url), <url>, [[Wikilink|Alias]],
 %%Kommentar%% (entfernt). HTML im Text wird als Text behandelt (Klartext, escaped).
 
-Verweise loest der Aufrufer auf: resolve_link(ziel, ist_wikilink) -> ("page", "$ref:x") | ("file", "$file:k", name,
-is_image) | ("url", url) | None (Text bleibt, Bericht). Dateien/Bilder werden "$file:k"-Bloecke (siehe import_common)."""
+Verweise loest der Aufrufer auf: resolve_link(ziel, ist_wikilink) -> ("page", "$ref:x") | ("db", "$ref:x") |
+("file", "$file:k", name, is_image) | ("url", url) | None (Text bleibt, Bericht). Dateien/Bilder werden
+"$file:k"-Bloecke (siehe import_common). Eine Zeile, die nur aus einem Link auf eine Datenbank besteht, wird ein
+Datenbank-Block, nur ein Link auf eine Datei ein Datei-/Bild-Block (Notion-Export).
+
+Notion (2.5, P2-E5): $$ ... $$ (eigene Zeilen) -> Mathe-Block, <columns><column> -> Spalten (bis 6, Rest in die letzte),
+<callout icon=".." color=".."> -> Callout, Farben <span color="red">, <span class="highlight-red_background">,
+<mark class="highlight-..."> -> Inline-Vertrag (span.hk-c-*, mark.hk-bg-*), {color="red"} am Zeilenende -> Blockfarbe
+(tunes.hkstyle). Unbekannte Farben fallen weg (Text bleibt)."""
 import re
 from html import escape
 
@@ -17,6 +24,11 @@ CALLOUT_EMOJI = {"note": "ℹ️", "info": "ℹ️", "abstract": "📌", "summar
                  "faq": "💡", "warning": "⚠️", "caution": "⚠️", "attention": "⚠️", "failure": "❗", "fail": "❗",
                  "missing": "❗", "danger": "❗", "error": "❗", "bug": "❗", "example": "💡"}
 EMOJI_OK = ["💡", "⚠️", "✅", "❗", "ℹ️", "🔥", "📌"]
+# Notion-Emoji -> eines der 7 erlaubten (Rest: 💡)
+EMOJI_MAP = {"⚠": "⚠️", "🚨": "❗", "❌": "❗", "⛔": "❗", "🛑": "❗", "✔️": "✅", "✔": "✅", "☑️": "✅", "👍": "✅",
+             "📝": "📌", "📍": "📌", "📎": "📌", "🗒️": "📌", "ℹ": "ℹ️", "🔎": "ℹ️", "❓": "💡", "💭": "💡", "⭐": "🔥", "🚀": "🔥"}
+PALETTE = ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red")
+COLS_MAX = 6
 MAX_DEPTH = 6
 
 _FENCE = re.compile(r"^( {0,3})(`{3,}|~{3,})\s*([^`\s]*)[^`]*$")
@@ -29,14 +41,28 @@ _CALLOUT = re.compile(r"^\[!([A-Za-z-]+)\]([-+]?)[ \t]*(.*)$")
 _TABLE_SEP = re.compile(r"^ *\|? *:?-{1,}:? *(\| *:?-{1,}:? *)*\|? *$")
 _IMG_LINE = re.compile(r"^\s*(!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]*\))\s*$")
 _SETEXT = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
+_BCOLOR = re.compile(r"\s*\{\s*color\s*=\s*\"?([a-z_]+)\"?\s*\}\s*$")
+_LINK_LINE = re.compile(r"^\s*\[([^\]]*)\]\(<?([^)>\s]+)>?\)\s*$")
+
+
+def color_of(raw):
+    """Notion-Farbe ('red', 'red_background', 'highlight-red_bg', 'default') -> (palette, ist_hintergrund) | None."""
+    x = str(raw or "").strip().lower().replace("highlight-", "").replace("-", "_")
+    bg = x.endswith(("_background", "_bg"))
+    x = x.rsplit("_b", 1)[0] if bg else x
+    x = "gray" if x == "grey" else x
+    return (x, bg) if x in PALETTE else None
 
 
 class Ctx:
     """resolve(target, wiki) -> siehe Moduldoc; report(code, **p): Hinweis fuer den Bericht."""
 
-    def __init__(self, resolve=None, report=None):
+    def __init__(self, resolve=None, report=None, notion=False):
         self.resolve = resolve or (lambda target, wiki: None)
         self.report = report or (lambda code, **p: None)
+        # Notion-Export: Zeile nur mit Link auf Datenbank/Datei -> eigener Block, Farben (<span color>, highlight-*,
+        # {color=..}), <columns>, <callout>. Sonst (Markdown/Obsidian) bleibt HTML Text.
+        self.notion = notion
         self.n = 0
 
     def bid(self):
@@ -118,6 +144,8 @@ _INLINE = re.compile(
     r"|(?P<auto><(?P<autou>(?:https?://|mailto:)[^>\s]+)>)"
     r"|(?P<bare>(?<![\w/\"'=])(?P<bareu>https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?\"']))"
     r"|(?P<esc>\\[\\`*_{}\[\]()#+\-.!|~=<>$])"
+    # 2.5 (Notion): Farben <span color="red">..</span>, <span class="highlight-red">, <mark class="highlight-.._background">
+    r"|(?P<span><(?P<stag>span|mark)\s(?P<sattr>[^<>]{0,200})>(?P<stxt>(?:(?!</?(?:span|mark)\b).){0,2000}?)</(?P=stag)>)"
     # 2.5: Inline-Mathe wie Obsidian - $TeX$ ohne Leerzeichen innen am Rand, nicht vor einer Ziffer ($5 und $10 bleibt Text)
     r"|(?P<math>(?<![\\$\w])\$(?P<mtxt>[^\s$][^$\n]{0,1998}?(?<=[^\s$\\]))\$(?![\w$]))"
 )
@@ -150,8 +178,23 @@ def inline(s, ctx):
             out.append('<code class="hk-math">' + _prot(escape(m.group("mtxt"), quote=False)) + "</code>")
         elif m.group("esc"):
             out.append(escape(m.group("esc")[1], quote=False))
+        elif m.group("span"):
+            out.append(_color_span(m.group("sattr"), m.group("stxt"), ctx) if ctx.notion else _emph(m.group("span")))
     out.append(_emph(s[pos:]))
     return "".join(out).replace("\n", "<br>")
+
+
+def _color_span(attr, txt, ctx):
+    inner = inline(txt, ctx)
+    m = re.search(r"""(?:color|class)\s*=\s*["']([^"']{1,80})["']""", attr or "")
+    c = None
+    for x in (m.group(1).split() if m else []):
+        c = color_of(x)
+        if c:
+            break
+    if not c:
+        return inner
+    return f'<mark class="hk-bg-{c[0]}">{inner}</mark>' if c[1] else f'<span class="hk-c-{c[0]}">{inner}</span>'
 
 
 def _prot(s):
@@ -173,7 +216,7 @@ def _link_html(ctx, target, wiki, label, embed=False, inner=False):
     text = label if label not in (None, "") else (target.rsplit("/", 1)[-1] if wiki else target)
     lbl = inline(text, ctx) if inner else _prot(escape(text, quote=False))
     r = ctx.resolve(unquote(target) if not wiki else target, wiki)
-    if r and r[0] == "page":
+    if r and r[0] in ("page", "db"):
         if embed:
             ctx.report("embed_note", target=target)
             return f'↪ <a href="/notes#{r[1]}">{lbl}</a>'
@@ -207,8 +250,16 @@ def parse(text, ctx=None, depth=0):
     def flush():
         if para:
             txt = "\n".join(x.strip() for x in para).strip()
-            if txt:
-                out.append(_p(ctx, inline(txt, ctx)))
+            col = None
+            mc = _BCOLOR.search(txt) if ctx.notion else None
+            if mc:
+                col, txt = color_of(mc.group(1)), txt[:mc.start()]
+            lm = _LINK_LINE.match(txt) if ctx.notion and "\n" not in txt else None
+            blk = _link_block(lm, ctx) if lm else None
+            if blk is None and txt:
+                blk = _p(ctx, inline(txt, ctx))
+            if blk is not None:
+                out.append(_tint(blk, col))
             para.clear()
 
     while i < len(lines):
@@ -229,11 +280,21 @@ def parse(text, ctx=None, depth=0):
             out.append({"id": ctx.bid(), "type": "code", "data": {"code": "\n".join(code)[:100000],
                                                                   "language": re.sub(r"[^a-z0-9+-]", "", lang.lower())[:20]}})
             continue
+        if ln.strip().startswith("$$"):
+            blk, j = _math(lines, i, ctx)
+            if blk is not None:                 # ohne schliessendes $$: Zeile bleibt Text (sonst ginge der Rest verloren)
+                flush()
+                out.append(blk)
+                i = j
+                continue
         m = _ATX.match(ln)
         if m:
             flush()
-            out.append({"id": ctx.bid(), "type": "header", "data": {"text": inline((m.group(2) or "").strip(), ctx),
-                                                                    "level": min(len(m.group(1)), 6)}})
+            txt, col = (m.group(2) or "").strip(), None
+            mc = _BCOLOR.search(txt) if ctx.notion else None
+            if mc:
+                col, txt = color_of(mc.group(1)), txt[:mc.start()].strip()
+            out.append(_tint({"id": ctx.bid(), "type": "header", "data": {"text": inline(txt, ctx), "level": min(len(m.group(1)), 6)}}, col))
             i += 1
             continue
         if para and _SETEXT.match(ln) and not _HR.match(ln) or (para and re.match(r"^ {0,3}=+[ \t]*$", ln)):
@@ -282,6 +343,16 @@ def parse(text, ctx=None, depth=0):
             flush()
             blk, i = _aside(lines, i, ctx, depth)
             out.append(blk)
+            continue
+        if ctx.notion and low.startswith("<callout"):
+            flush()
+            blk, i = _callout(lines, i, ctx, depth)
+            out.append(blk)
+            continue
+        if ctx.notion and low.startswith("<columns"):
+            flush()
+            got, i = _columns(lines, i, ctx, depth)
+            out.extend(got)
             continue
         if _IMG_LINE.match(ln):
             flush()
@@ -401,7 +472,8 @@ def _kind(marker, task):
 
 
 def _block_start(ln):
-    return bool(_ATX.match(ln) or _HR.match(ln) or _QUOTE.match(ln) or _FENCE.match(ln) or ln.strip().lower().startswith(("<details", "<aside")))
+    return bool(_ATX.match(ln) or _HR.match(ln) or _QUOTE.match(ln) or _FENCE.match(ln)
+                or ln.strip().lower().startswith(("<details", "<aside", "<callout", "<columns", "$$")))
 
 
 def _html_block(lines, i, tag):
@@ -442,8 +514,90 @@ def _aside(lines, i, ctx, depth):
     else:
         m = re.match(r"^([^\w\s<>\[\]#*_`~]{1,4})\s+", txt)
         if m:
-            txt = txt[m.end():]
+            emoji, txt = _emoji(m.group(1)), txt[m.end():]
     return {"id": ctx.bid(), "type": "callout", "data": {"emoji": emoji, "text": _flat(txt, ctx)}}, i
+
+
+def _emoji(e):
+    e = (e or "").strip()
+    if e in EMOJI_OK:
+        return e
+    return EMOJI_MAP.get(e) or EMOJI_MAP.get(e.replace("\ufe0f", "")) or "💡"
+
+
+def _callout(lines, i, ctx, depth):
+    """Notion-Markdown (neuere Form): <callout icon="💡" color="gray_bg"> Text </callout>."""
+    first = lines[i]
+    txt, i = _html_block(lines, i, "callout")
+    m = re.search(r"""icon\s*=\s*["']([^"']{1,16})["']""", first)
+    mc = re.search(r"""color\s*=\s*["']([^"']{1,40})["']""", first)
+    blk = {"id": ctx.bid(), "type": "callout", "data": {"emoji": _emoji(m.group(1)) if m else "💡", "text": _flat(txt.strip(), ctx)}}
+    return _tint(blk, color_of(mc.group(1)) if mc else None), i
+
+
+def _columns(lines, i, ctx, depth):
+    """<columns><column>..</column>..</columns> -> Spalten-Block (2..6; mehr: Rest in die letzte Spalte, eine: flach)."""
+    txt, i = _html_block(lines, i, "columns")
+    cols = [m.group(1) for m in re.finditer(r"<column\b[^>]*>(.*?)</column\s*>", txt, re.I | re.S)]
+    if not cols:
+        return (parse(txt, ctx, depth + 1) if depth < MAX_DEPTH else []), i
+    parsed = [parse(c, ctx, depth + 1) if depth < MAX_DEPTH else [] for c in cols]
+    if len(parsed) == 1:
+        return parsed[0], i
+    if len(parsed) > COLS_MAX:
+        ctx.report("columns_max")
+        parsed = parsed[:COLS_MAX - 1] + [[b for c in parsed[COLS_MAX - 1:] for b in c]]
+    return [{"id": ctx.bid(), "type": "columns", "data": {"cols": [{"blocks": c} for c in parsed]}}], i
+
+
+def _math(lines, i, ctx):
+    """$$ TeX $$ in einer Zeile oder ueber mehrere Zeilen -> Mathe-Block."""
+    first = lines[i].strip()[2:]
+    if first.rstrip().endswith("$$") and first.strip() != "":
+        return {"id": ctx.bid(), "type": "math", "data": {"tex": first.rstrip()[:-2].strip()[:4000]}}, i + 1
+    buf, i = ([first] if first.strip() else []), i + 1
+    while i < len(lines):
+        ln = lines[i]
+        if ln.strip().endswith("$$"):
+            rest = ln.strip()[:-2]
+            if rest.strip():
+                buf.append(rest)
+            i += 1
+            break
+        buf.append(ln)
+        i += 1
+    else:
+        return None, i
+    return {"id": ctx.bid(), "type": "math", "data": {"tex": "\n".join(buf).strip()[:4000]}}, i
+
+
+def _tint(blk, col):
+    """Blockfarbe (Notion {color=..}) -> tunes.hkstyle."""
+    if col and blk.get("type") in ("paragraph", "header", "list", "quote", "toggle", "callout"):
+        st = {"c": col[0]}
+        if col[1]:
+            st["bg"] = True
+        blk["tunes"] = {"hkstyle": st}
+    return blk
+
+
+def _link_block(m, ctx):
+    """Absatz, der nur aus einem Link besteht: Datenbank -> Datenbank-Block, Datei -> Bild/Anhang; sonst None."""
+    from urllib.parse import unquote
+    label, target = m.group(1), m.group(2)
+    if re.match(r"^[a-z][a-z0-9+.-]*:", target, re.I) and not target.lower().startswith(("http://", "https://")):
+        return None
+    r = ctx.resolve(unquote(target), False)
+    if r and r[0] == "db":
+        return {"id": ctx.bid(), "type": "database", "data": {"db": r[1]}}
+    if r and r[0] == "file":
+        _, ref, name, is_img = r
+        f = {"url": ref, "name": name, "is_image": is_img}
+        if is_img:
+            return {"id": ctx.bid(), "type": "image", "data": {"file": f, "caption": escape(label if label != name else "", quote=False),
+                                                               "withBorder": False, "stretched": False, "withBackground": False}}
+        return {"id": ctx.bid(), "type": "attaches", "data": {"file": f, "title": escape(label or name, quote=False)}}
+    return None
 
 
 def _media(ln, ctx):
@@ -463,7 +617,7 @@ def _media(ln, ctx):
             return {"id": ctx.bid(), "type": "image", "data": {"file": f, "caption": escape(alt, quote=False),
                                                                "withBorder": False, "stretched": False, "withBackground": False}}
         return {"id": ctx.bid(), "type": "attaches", "data": {"file": f, "title": escape(name, quote=False)}}
-    if r and r[0] == "page":
+    if r and r[0] in ("page", "db"):
         ctx.report("embed_note", target=target)
         return _p(ctx, f'↪ <a href="/notes#{r[1]}">{escape(alt or target.rsplit("/", 1)[-1], quote=False)}</a>')
     if target.lower().startswith(("http://", "https://")):

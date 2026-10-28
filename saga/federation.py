@@ -36,7 +36,7 @@ from db import clean_line, connect as _db
 from saga import avatars, bus, comments, fed_dbx, fedsig, i18n, netguard, notify, pages, people, sharing
 from saga.core import BASE_URL, E, HANDLE_RE, RESTORE_TEST, SECRET, STATE_DIR, _api_guard, _bad, _body, _session_user, local_ref, parse_json, resolve_ref, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
-from saga.notes import FILE_MAX, FILES_DIR, _disposition, _iter_blocks
+from saga.notes import BLOCK_ID_RE, FILE_MAX, FILES_DIR, _disposition, _iter_blocks
 from saga.publish import NAME_RE, get_name
 from saga.sharing import ROLES, is_remote, remote_label
 from version import VERSION
@@ -81,7 +81,14 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
-         "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "dbx1", "widgets2", "ment1", "sync1"]
+         "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1"]
+# merge1 (2.5, P3 Stufe 1, saga.merge) = blockweises Zusammenfuehren beim Bearbeiten einer fremden Seite: das Heim reicht
+# merge/base/bases des Clients im PATCH an den Eigentuemer weiter, der fuehrt zusammen (wie lokal) und antwortet mit
+# merged + Inhalt/Titel (maskiert wie GET fuer den Prinzipal). Konfliktbloecke tragen nur Prinzipal/Handle und Anzeigename.
+# Ohne merge1: das Heim laesst die Felder weg -> 409 wie bisher.
+# presence2 (2.5, P3) = Anwesenheit je Block: POST /fed/v2/notes/{id}/presence nimmt block, Personen in Antwort und
+# Live-Eintrag presence tragen block und color (Farbe bestimmt der Eigentuemer, aus dem Hash der Kennung). Ohne presence2:
+# Anwesenheit wie bisher (ohne Block).
 # ment1 (2.5, P6-5, saga.mentions) = @Erwaehnungen: der Eigentuemer liefert span.hk-mention mit Prinzipal ('@name@host',
 # lokale Konten mit oeffentlichem Namen/Handle) samt people-Woerterbuch; Mitteilungen page.mention/comment.mention als
 # Ereignis. Ohne ment1: Erwaehnungen als reiner Text (Speichern zurueck: pages.legacy_keep erhaelt sie), keine Mitteilung.
@@ -854,6 +861,9 @@ def _ext_content(c, d, peer):
     Kommentare: Token "<@~handle>" -> "<@@name@hier>" bzw. "@Name"."""
     from saga import mentions
     ment = feature(peer, "ment1")
+    dl = d.get("delta") if isinstance(d.get("delta"), dict) and isinstance(d["delta"].get("blocks"), list) else None
+    if dl is not None and "body" not in d:           # 2.5 (merge1 ?since): nur geaenderte Bloecke - gleich behandeln
+        d["body"], d["format"] = json.dumps({"blocks": dl["blocks"]}, ensure_ascii=False), "blocks"
     if isinstance(d.get("body"), str) and d.get("format") == "blocks":
         body = d["body"]
         refs = list(mentions.refs_in(body))
@@ -888,6 +898,11 @@ def _ext_content(c, d, peer):
             except (ValueError, RecursionError):
                 pass
         d["body"] = body
+    if dl is not None and isinstance(d.get("body"), str) and d.get("format") == "blocks" and "delta" in d:
+        try:
+            dl["blocks"] = json.loads(d.pop("body")).get("blocks") or []
+        except ValueError:
+            d.pop("body", None)
     if isinstance(d.get("threads"), list):           # Kommentare (GET .../comments)
         for th in d["threads"]:
             for cm in th.get("comments") or [] if isinstance(th, dict) else []:
@@ -1480,6 +1495,28 @@ async def fed_events2(request: Request):
 EDIT_KEYS = ("title", "body", "format", "rev", "overwrite")
 # 2.3 (Faehigkeit 'db'): zusaetzlich Werte von Datenbank-Zeilen, Schema, Symbol, Titelbild, Schlagworte, Breite
 EDIT2_KEYS = EDIT_KEYS + ("props", "schema", "icon", "cover", "cover_pos", "tags", "wide", "font", "small")   # font/small: 2.5 (G9)
+MERGE_KEYS = ("merge", "base", "bases")      # 2.5 (merge1): Zusammenfuehren beim Eigentuemer (pages._merge_req)
+
+
+def edit_keys(peer, v2=True):
+    """Felder, die eine Gegenstelle beim Speichern einer Seite hier mitschicken darf (mit merge1 auch merge/base/bases)."""
+    return (EDIT2_KEYS if v2 else EDIT_KEYS) + (MERGE_KEYS if feature(peer, "merge1") else ())
+
+
+def merge_fields(b):
+    """merge/base/bases (Client bzw. Gegenstelle) gepruefte Form: merge nur 1, base nur "sent", bases hoechstens 500
+    {Block-ID: rev}. Unbrauchbares faellt still weg (dann eben ohne Zusammenfuehren bzw. ohne feinere Basis)."""
+    out = {}
+    if b.get("merge") in (1, True):
+        out["merge"] = 1
+    if b.get("base") == "sent":
+        out["base"] = "sent"
+    if isinstance(b.get("bases"), dict):
+        bs = {k: v for k, v in list(b["bases"].items())[:500]
+              if isinstance(k, str) and BLOCK_ID_RE.fullmatch(k) and isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 2 ** 62}
+        if bs:
+            out["bases"] = bs
+    return out
 
 
 @router.get("/fed/v1/shared")
@@ -1500,7 +1537,12 @@ async def fed_note_get(nid: int, request: Request):
     inp, err = await _verify(request, need_actor=True)
     if err is not None:
         return err
-    return _relay(inp, await run_in_threadpool(_as, inp, pages.note_get, nid))
+    return _relay(inp, await run_in_threadpool(_as, inp, pages.note_get, nid, fed_since(inp, request)))
+
+
+def fed_since(inp, request):
+    """2.5 (merge1): ?since=<rev> einer Gegenstelle mit merge1 -> nur geaenderte Bloecke (pages.since_delta)."""
+    return pages.since_arg(request.query_params.get("since")) if feature(inp.peer, "merge1") else None
 
 
 @router.patch("/fed/v1/notes/{nid}")
@@ -1511,7 +1553,8 @@ async def fed_note_patch(nid: int, request: Request):
     b = inp.data if isinstance(inp.data, dict) else None
     if not b:
         return _signed(inp, 400, {"error": "bad request"})
-    b = {k: v for k, v in b.items() if k in EDIT_KEYS}           # ueber Instanzen: nur Titel und Inhalt
+    b = {k: v for k, v in b.items() if k in edit_keys(inp.peer, False)}      # ueber Instanzen: nur Titel und Inhalt
+    b = dict({k: v for k, v in b.items() if k not in MERGE_KEYS}, **merge_fields(b))
     if not b:
         return _signed(inp, 400, {"error": t("nichts zu ändern")})
     return _relay(inp, await run_in_threadpool(_as, inp, pages._note_update, nid, b, None, peer_caps(inp.peer)))
@@ -2595,6 +2638,24 @@ def _typed(d):
 SHARED_KEYS = ("id", "title", "icon", "parent_id", "updated", "tags", "pinned", "template", "kind", "role", "root", "shared", "owner", "unread")
 
 
+def _body_in(c, pid, pr, uid, body, fmt, pm_in):
+    """Inhalt einer fremden Seite fuer die Anzeige hier (GET, ?since-Delta, Antwort auf Zusammenfuehren): bereinigen,
+    Bilder/Verweise/Datenbanken umschreiben, Erwaehnungen auf Kennungen von hier (P6-5), Herkunft synchronisierter
+    Kopien auf negative IDs (P6-6). -> (body, people der Erwaehnungen oder None)."""
+    src_in = _synced_src(body) if fmt == "blocks" else {}      # 2.5 (P6-6): data.src entfernt die Bereinigung
+    body = _db_blocks(_rw_in(_clean_remote_body(body, fmt), pid, pr), pid, True)
+    pm = None
+    if fmt == "blocks" and "hk-mention" in (body or ""):        # 2.5 (P6-5): Erwaehnungen -> Kennungen von hier
+        from saga import mentions
+        body = mentions.in_body(c, body, SELF_HOST, lambda c_, n: _local_user_by_name(c_, n)[0])
+        refs = list(mentions.refs_in(body))
+        if refs:
+            pm = mentions.remote_people(c, refs, pm_in, uid)
+    if fmt == "blocks" and '"synced"' in (body or ""):          # 2.5 (P6-6): Herkunft der Kopien auf negative IDs
+        body = _synced_in(body, pid, src_in)
+    return body, pm
+
+
 def _note_in(c, peer, d, uid):
     pid = peer["id"]
     rid = d.get("id")
@@ -2607,17 +2668,10 @@ def _note_in(c, peer, d, uid):
     d["title"] = _clean_text(d.get("title"), 500)
     d["format"] = "blocks" if d.get("format") == "blocks" else "text"
     # Inhalt der anderen Instanz wie eigenen behandeln: erst bereinigen (IDs noch in deren Form), dann umschreiben
-    src_in = _synced_src(d.get("body")) if d["format"] == "blocks" else {}      # 2.5 (P6-6): data.src entfernt die Bereinigung
-    d["body"] = _db_blocks(_rw_in(_clean_remote_body(d.get("body"), d["format"]), pid, pr), pid, True)
     pm_in = d.pop("people", None)
-    if d["format"] == "blocks" and "hk-mention" in (d["body"] or ""):      # 2.5 (P6-5): Erwaehnungen -> Kennungen von hier
-        from saga import mentions
-        d["body"] = mentions.in_body(c, d["body"], SELF_HOST, lambda c_, n: _local_user_by_name(c_, n)[0])
-        refs = list(mentions.refs_in(d["body"]))
-        if refs:
-            d["people"] = mentions.remote_people(c, refs, pm_in, uid)
-    if d["format"] == "blocks" and '"synced"' in (d["body"] or ""):          # 2.5 (P6-6): Herkunft der Kopien auf negative IDs
-        d["body"] = _synced_in(d["body"], pid, src_in)
+    d["body"], pm = _body_in(c, pid, pr, uid, d.get("body"), d["format"], pm_in)
+    if pm is not None:
+        d["people"] = pm
     if pm_in is not None and "people" not in d:
         d["people"] = pm_in
     d["icon"] = _rw_in(_safe_pic(d.get("icon"), True), pid, pr)
@@ -2654,7 +2708,7 @@ def _note_in(c, peer, d, uid):
 
 
 PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl", "csv",
-             "formula1", "dbx1", "widgets2", "ment1", "sync1")
+             "formula1", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1")
 
 
 def remote_info(peer):
@@ -2804,15 +2858,57 @@ def _pass_err(peer, status, d):
     return _json(status if 400 <= status < 500 else 502, out)
 
 
-def _w_note_get(uid, nid):
+def _w_note_get(uid, nid, since=None):
     pid, rid = unref(nid)
     with _db() as c:
-        v2 = feature(_home_peer(c, pid), "db")
-    p, status, d = _proxy(uid, pid, "GET", f"/fed/v2/notes/{rid}" if v2 else f"/fed/v1/notes/{rid}")
+        hp = _home_peer(c, pid)
+        v2, m1 = feature(hp, "db"), feature(hp, "merge1")
+    p, status, d = _proxy(uid, pid, "GET", f"/fed/v2/notes/{rid}" if v2 else f"/fed/v1/notes/{rid}",
+                          f"since={since}" if since is not None and m1 else "")
     if status != 200 or not isinstance(d, dict):
         return _pass_err(p, status, d)
+    delta = d.pop("delta", None) if m1 and since is not None and "body" not in d else None
+    if delta is not None:
+        d["body"] = json.dumps({"blocks": []})
+    pm_in = d.get("people") if isinstance(d.get("people"), dict) else None
     with _db() as c:
-        return _json(200, _note_in(c, p, d, uid))
+        out = _note_in(c, p, d, uid)
+        if delta is not None:
+            dl = _delta_in(delta, p["id"], nid, since, c, uid, pm_in)
+    if delta is not None:
+        if dl is None:                          # unbrauchbar: ganzer Inhalt wie bisher
+            return _w_note_get(uid, nid)
+        out.pop("body", None)
+        out["delta"] = dl.pop("delta")
+        if dl.get("people"):                    # 2.5 (P6-5): Namen der Erwaehnungen in den geaenderten Bloecken
+            out["people"] = dict(out.get("people") or {}, **dl["people"])
+    return _json(200, out)
+
+
+def _delta_in(delta, pid, nid, since, c=None, uid=None, pm_in=None):
+    """?since-Antwort des Eigentuemers: vollstaendige Bloecke wie beim Lesen bereinigt und umgeschrieben (wie _body_in),
+    Platzhalter {"id"} unveraendert. -> {"delta": {"from", "blocks"}, "people"} oder None."""
+    if not isinstance(delta, dict) or delta.get("from") != since or not isinstance(delta.get("blocks"), list):
+        return None
+    full = [b for b in delta["blocks"] if isinstance(b, dict) and set(b) != {"id"}]
+    try:
+        body, pm = _body_in(c, pid, nid, uid, json.dumps({"blocks": full}), "blocks", pm_in)
+        doc = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    by = {b.get("id"): b for b in doc.get("blocks") or []}
+    out = []
+    for b in delta["blocks"][:5000]:
+        if not isinstance(b, dict):
+            continue
+        bid = b.get("id")
+        if not (isinstance(bid, str) and BLOCK_ID_RE.fullmatch(bid)):
+            return None
+        if set(b) == {"id"}:
+            out.append({"id": bid})
+        elif bid in by:
+            out.append(by[bid])
+    return {"delta": {"from": since, "blocks": out}, "people": pm}
 
 
 def _pic_out(v, pid):
@@ -2830,8 +2926,10 @@ def _w_note_patch(uid, nid, b):
     pid, rid = unref(nid)
     with _db() as c:
         v2 = feature(_home_peer(c, pid), "db")
-    keys = EDIT2_KEYS if v2 else EDIT_KEYS
-    b = {k: v for k, v in b.items() if k in keys}
+    with _db() as c:
+        keys = edit_keys(_home_peer(c, pid), v2)
+    mf = merge_fields(b) if "merge" in keys else {}        # 2.5 (merge1): ohne die Faehigkeit beim Eigentuemer -> 409 wie bisher
+    b = dict({k: v for k, v in b.items() if k in keys and k not in MERGE_KEYS}, **mf)
     if not b:
         return _bad(t("Bei Seiten anderer Saga-Instanzen lassen sich nur Titel und Inhalt ändern."), 403)
     if "body" in b:
@@ -2856,6 +2954,9 @@ def _w_note_patch(uid, nid, b):
         out["synced"] = {k: v for k, v in list(d["synced"].items())[:200] if isinstance(k, str) and isinstance(v, str) and len(v) <= 10}
         sr = d.get("synced_rev") if isinstance(d.get("synced_rev"), dict) else {}
         out["synced_rev"] = {k: v for k, v in list(sr.items())[:200] if k in out["synced"] and isinstance(v, int) and not isinstance(v, bool)}
+    if isinstance(d.get("merged"), dict) and "merge" in b:     # 2.5 (merge1): zusammengefuehrt - Stand wie GET (umgeschrieben)
+        with _db() as c:
+            out.update(_merged_in(c, p, d, uid, nid))
     if isinstance(d.get("calc"), dict):          # 2.5 (formula1): Formel-/Rollup-Werte der Zeile nach dem Speichern
         out["calc"] = props_in(pid, {k: v for k, v in list(d["calc"].items())[:40] if isinstance(k, str) and len(k) <= 40})
         out["fx_err"] = fx_err_in(d.get("fx_err"))
@@ -2865,6 +2966,29 @@ def _w_note_patch(uid, nid, b):
             out["values"] = vals
             out["people"] = fed_dbx.people_in(c, p, uid, d.get("people"), [vals])
     return _json(200, out)
+
+
+def _merged_in(c, p, d, uid, nid):
+    """Antwort des Eigentuemers auf ein zusammengefuehrtes Speichern -> wie lokal: merged (nur Block-IDs, Zahlen, Schalter)
+    und Inhalt/Titel/Format so, wie GET /api/notes/{-id} sie zeigt (bereinigt, Bilder/Verweise/Datenbanken umgeschrieben)."""
+    pid, m = p["id"], d["merged"]
+
+    def ids(v):
+        return [x for x in v[:500] if isinstance(x, str) and BLOCK_ID_RE.fullmatch(x)] if isinstance(v, list) else []
+    mg = {k: ids(m.get(k)) for k in ("conflicts", "restored", "lost")}
+    mg["from"] = m["from"] if isinstance(m.get("from"), int) and not isinstance(m.get("from"), bool) else None
+    if m.get("title_lost") is True:
+        mg["title_lost"] = True
+    out = {"merged": mg}
+    if isinstance(d.get("body"), str):
+        fmt = "blocks" if d.get("format") == "blocks" else "text"
+        out["format"] = fmt
+        out["body"], pm = _body_in(c, pid, nid, uid, d["body"], fmt, d.get("people") if isinstance(d.get("people"), dict) else None)
+        if pm:
+            out["people"] = pm
+    if "title" in d:
+        out["title"] = _clean_text(d.get("title"), 500)
+    return out
 
 
 def _w_comments(uid, nid, resolved):
@@ -2941,7 +3065,7 @@ def _uid_or_401(request):
 @router.get("/api/notes/{nid:fedid}")
 def home_note_get(nid: int, request: Request):
     uid, err = _uid_or_401(request)
-    return err or _run(_w_note_get, uid, nid)
+    return err or _run(_w_note_get, uid, nid, pages.since_arg(request.query_params.get("since")))
 
 
 @router.patch("/api/notes/{nid:fedid}")

@@ -800,6 +800,8 @@ def _clean_schema(raw):
                 prop["fmt"] = p["fmt"]
             if p.get("show") in NUM_SHOW:
                 prop["show"] = p["show"]
+        if typ == "text" and p.get("fx_hint") is True:   # 2.5 (Import, P2-E5): Formel/Rollup als Text -> "In Formel umwandeln"
+            prop["fx_hint"] = True
         if isinstance(p.get("width"), (int, float)):
             prop["width"] = max(60, min(int(p["width"]), 600))
         out.append(prop)
