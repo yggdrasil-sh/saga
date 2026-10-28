@@ -202,8 +202,11 @@
   function slashInline(pop) {
     if (!pop || pop.classList.contains('pg-slash-inline') || !pop.classList.contains('ce-popover--opened') || !pop.closest('.ce-toolbox')) return;
     var p = slashSrc, si = pop.querySelector('.cdx-search-field__input');
-    if (!si || !p || !p.isConnected || slashText(p).trim() !== '/' || !$('pg-editor').contains(p)) return;
+    // schnell getippt ("/x"): Editor.js oeffnet das Menue erst nach dem naechsten Zeichen - das steht dann schon im Absatz
+    var txt = slashText(p);
+    if (!si || !p || !p.isConnected || !/^\/[^\s\/]{0,40}$/.test(txt.trim()) || !$('pg-editor').contains(p)) return;
     pop.classList.add('pg-slash-inline'); slashP = p;
+    if (txt.trim().length > 1) { si.value = txt.trim().slice(1); si.dispatchEvent(new Event('input')); }
     p.focus();
     try { var r = document.createRange(); r.selectNodeContents(p); r.collapse(false); var sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(r); } catch (err) { /* egal */ }
   }
