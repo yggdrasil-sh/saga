@@ -755,7 +755,7 @@ def _blocks_fn(tree, n, body, src, rep, prefix=None):
     def blocks():
         ctx = md2blocks.Ctx(lambda target, wiki: tree.resolve(here, target),
                             lambda code, **p: rep.note(f"{rp}: {p.get('target', '')}" if p.get("target") else rp, code),
-                            link_blocks=True)
+                            notion=True)
         out = md2blocks.parse(body, ctx)
         return (prefix or []) + out
     return blocks

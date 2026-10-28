@@ -57,10 +57,12 @@ def color_of(raw):
 class Ctx:
     """resolve(target, wiki) -> siehe Moduldoc; report(code, **p): Hinweis fuer den Bericht."""
 
-    def __init__(self, resolve=None, report=None, link_blocks=False):
+    def __init__(self, resolve=None, report=None, notion=False):
         self.resolve = resolve or (lambda target, wiki: None)
         self.report = report or (lambda code, **p: None)
-        self.link_blocks = link_blocks              # Notion: Zeile nur mit Link auf Datenbank/Datei -> eigener Block
+        # Notion-Export: Zeile nur mit Link auf Datenbank/Datei -> eigener Block, Farben (<span color>, highlight-*,
+        # {color=..}), <columns>, <callout>. Sonst (Markdown/Obsidian) bleibt HTML Text.
+        self.notion = notion
         self.n = 0
 
     def bid(self):
@@ -177,7 +179,7 @@ def inline(s, ctx):
         elif m.group("esc"):
             out.append(escape(m.group("esc")[1], quote=False))
         elif m.group("span"):
-            out.append(_color_span(m.group("sattr"), m.group("stxt"), ctx))
+            out.append(_color_span(m.group("sattr"), m.group("stxt"), ctx) if ctx.notion else _emph(m.group("span")))
     out.append(_emph(s[pos:]))
     return "".join(out).replace("\n", "<br>")
 
@@ -249,10 +251,10 @@ def parse(text, ctx=None, depth=0):
         if para:
             txt = "\n".join(x.strip() for x in para).strip()
             col = None
-            mc = _BCOLOR.search(txt)
+            mc = _BCOLOR.search(txt) if ctx.notion else None
             if mc:
                 col, txt = color_of(mc.group(1)), txt[:mc.start()]
-            lm = _LINK_LINE.match(txt) if ctx.link_blocks and "\n" not in txt else None
+            lm = _LINK_LINE.match(txt) if ctx.notion and "\n" not in txt else None
             blk = _link_block(lm, ctx) if lm else None
             if blk is None and txt:
                 blk = _p(ctx, inline(txt, ctx))
@@ -287,7 +289,7 @@ def parse(text, ctx=None, depth=0):
         if m:
             flush()
             txt, col = (m.group(2) or "").strip(), None
-            mc = _BCOLOR.search(txt)
+            mc = _BCOLOR.search(txt) if ctx.notion else None
             if mc:
                 col, txt = color_of(mc.group(1)), txt[:mc.start()].strip()
             out.append(_tint({"id": ctx.bid(), "type": "header", "data": {"text": inline(txt, ctx), "level": min(len(m.group(1)), 6)}}, col))
@@ -340,12 +342,12 @@ def parse(text, ctx=None, depth=0):
             blk, i = _aside(lines, i, ctx, depth)
             out.append(blk)
             continue
-        if low.startswith("<callout"):
+        if ctx.notion and low.startswith("<callout"):
             flush()
             blk, i = _callout(lines, i, ctx, depth)
             out.append(blk)
             continue
-        if low.startswith("<columns"):
+        if ctx.notion and low.startswith("<columns"):
             flush()
             got, i = _columns(lines, i, ctx, depth)
             out.extend(got)
