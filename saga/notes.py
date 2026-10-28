@@ -315,6 +315,8 @@ def _purge_ids(c, uid, ids):
     c.executemany("DELETE FROM note_comment_seen WHERE thread_id IN (SELECT id FROM note_comment WHERE owner_uid=? AND note_id=?)",
                   [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_comment WHERE owner_uid=? AND note_id=?", [(uid, i) for i in ids])
+    # 2.5 (P6-6): Originale synchronisierter Bloecke auf diesen Seiten: Kopien zeigen den letzten Stand ("Original geloescht")
+    c.executemany("UPDATE synced_block SET gone_at=? WHERE note_id=? AND gone_at IS NULL", [(time.time(), i) for i in ids])
     c.executemany("DELETE FROM note WHERE uid=? AND id=?", [(uid, i) for i in ids])
 
 

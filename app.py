@@ -40,6 +40,7 @@ from saga import import_common, importer      # 2.5 (Paket 2): Importe (/api/imp
 from saga import people                        # 2.5 (Paket 1): Personen-Auswahl (/api/notes/{nid}/people)
 from saga import tasksrc                       # 2.5 (Paket 7): Aufgabenquellen (/api/tasks/src/..., /api/notes/{db}/tasksource)
 from saga import api_v1, apitok, mcp, webhooks  # 2.5 (Paket 1 E5-E7): API-Tokens, /api/v1, Webhooks, MCP-Server
+from saga import mentions                     # 2.5 (P6-5): @Erwaehnungen (entprellte Mitteilungen)
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -73,6 +74,7 @@ async def lifespan(_app):
     userbackup.start()                                       # persoenliche Backups je Konto (2.3, Zeitplan)
     tasksrc.start()                                          # 2.5 (Paket 7): taegliche Zusammenfassung task.due
     webhooks.start()                                         # 2.5: Webhook-Zustellung (Ausgangskorb webhook_delivery)
+    mentions.start()                                         # 2.5 (P6-5): Erwaehnungen entprellt mitteilen
     await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
 
     async def _gc_loop():
@@ -105,6 +107,7 @@ async def lifespan(_app):
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
     gc_task = asyncio.create_task(_gc_loop())
     yield
+    mentions.stop()
     webhooks.stop()
     backups.stop()
     tasksrc.stop()

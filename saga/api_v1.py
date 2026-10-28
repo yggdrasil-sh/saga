@@ -159,6 +159,8 @@ def page_read(tok, nid, fmt="blocks"):
             out["properties"] = {k: v for k, v in d["props"].items() if k not in hide}
         if d.get("people"):
             out["people"] = d["people"]
+    elif d.get("people"):                       # 2.5 (P6-5): Erwaehnungen im Inhalt (Handles) -> Anzeigenamen
+        out["people"] = d["people"]
     blocks = []
     if d.get("format") == "blocks":
         blocks = _json_load(d.get("body"), {}).get("blocks") or []

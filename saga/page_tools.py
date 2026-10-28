@@ -12,7 +12,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
-from saga import dbcalc, dbvals, nextcloud, page_widgets, proptext
+from saga import dbcalc, dbvals, nextcloud, page_widgets, proptext, synced
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
 from saga.notes import FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
@@ -448,6 +448,8 @@ def note_export(uid, nid, sub=0):
             for k in range(0, len(ids), 500):
                 part = ids[k:k + 500]
                 for i, body in c.execute(f"SELECT id, body FROM note WHERE uid=? AND id IN ({','.join('?' * len(part))})", (owner, *part)):
+                    if rows[i][5] == "blocks" and '"synced"' in (body or ""):     # 2.5 (P6-6): Kopien mit den Rechten des Exports
+                        body = synced.expand(c, body, i, uid)
                     # fremd: Verweise auf Seiten ohne Zugriff ohne ihren Titel
                     rows[i][4] = mask_links(body, rows[i][5], vis) if vis else body
 

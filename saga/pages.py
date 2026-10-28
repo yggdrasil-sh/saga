@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, dbcalc, dbvals, nextcloud, page_widgets, treesync
+from saga import bus, dbcalc, dbvals, mentions, nextcloud, page_widgets, synced, treesync
 from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, local_ref, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -442,7 +442,10 @@ def _clean_design(blocks):
                 d.pop("view")
             _clean_rendered(d, d.get("code") if isinstance(d.get("code"), str) else "")
         elif typ == "synced":                         # 2.5 (P6-0): synchronisierter Block - Original {sid, blocks}, Kopie {sid}
-            d.pop("src", None)                        # setzt der Server beim Lesen ein (P6-6), nie gespeichert
+            src = d.pop("src", None)                  # setzt der Server beim Lesen ein (P6-6), nie gespeichert
+            d.pop("srev", None)
+            if isinstance(src, dict) and isinstance(src.get("rev"), int) and not isinstance(src.get("rev"), bool) and src["rev"] >= 0:
+                d["srev"] = src["rev"]                # Stand des Originals beim Lesen: Basis fuers Durchschreiben (synced.prepare)
             if not (isinstance(d.get("sid"), str) and _SID.fullmatch(d["sid"])):
                 d.pop("sid", None)
             if isinstance(d.get("blocks"), list):
@@ -458,7 +461,8 @@ def _clean_design(blocks):
 # ueber saga.merge (P6-3): Textfelder eines Blocks (gleiche id und gleicher Typ), deren reiner Text sich nicht geaendert
 # hat, behalten ihr altes HTML vollstaendig, wenn es neue Formen enthielt, die jetzt fehlen. Ein Spalten-Block mit genau 4
 # Spalten, der vorher 5-6 hatte, bekommt die fehlenden Spalten aus dem alten Stand zurueck.
-CLIENT_CAPS = frozenset(("inline2", "cols6", "merge1"))         # was dieser Server-/Web-Stand versteht (X-Saga-Caps)
+CLIENT_CAPS = frozenset(("inline2", "cols6", "merge1", "sync1"))   # was dieser Server-/Web-Stand versteht (X-Saga-Caps);
+# sync1 (2.5, P6-6) = der Client schickt den Inhalt synchronisierter Kopien bearbeitet zurueck (Durchschreiben ins Original)
 
 
 def client_caps(request):
@@ -660,6 +664,10 @@ def note_get(uid, nid):
             parent_hidden = r[3] is not None and not acc.role(r[3])
         if not is_remote(uid):                     # 2.4 (N1): Autor fremder Nextcloud-Bloecke lokal als Handle
             body = nextcloud.mask_local(body, r[10], uid)
+        if r[10] == "blocks":                      # 2.5 (P6-6): Kopien synchronisierter Bloecke je Betrachter einsetzen
+            body = synced.expand(c, body, nid, uid, acc)
+        ment = mentions.refs_in(body, r[10])       # 2.5 (P6-5): Namen der Erwaehnungen (Woerterbuch people)
+        ment_pm = mentions.people_map(c, list(ment), uid) if ment else {}
         row_fx = _row_formulas(c, owner, uid, r)    # 2.5: Formeln/Rollups einer Datenbank-Zeile
         blocked = False
         if r[3] is not None:                       # 2.5: Zeile mit Abhaengigkeit - "blockiert" (nur gelesen)
@@ -684,6 +692,8 @@ def note_get(uid, nid):
         d["props"] = row_vals["props"]
         if row_vals.get("people"):
             d["people"] = row_vals["people"]
+    if ment_pm:                                    # 2.5 (P6-5): Erwaehnungen im Inhalt - dasselbe Woerterbuch
+        d["people"] = dict(ment_pm, **(d.get("people") or {}))
     if d["kind"] == "database":
         d["schema"] = _json_load(r[11], {"props": []})
     if blocked:
@@ -942,7 +952,7 @@ def _merged_view(uid, nid):
 
 def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
     """caps: Faehigkeiten des Clients bzw. der Gegenstelle (client_caps; Foederation: Faehigkeiten des Peers)."""
-    sets, args, merged, row_changed = [], [], None, None
+    sets, args, merged, row_changed, sync_plan, sync_res = [], [], None, None, None, None
     with _db() as c, c:
         acc = Access(c, uid)
         owner, role, err = access(c, uid, nid, "edit", acc)
@@ -1182,6 +1192,10 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
                         body, _ = clean_blocks(raw)
                     if old[2] == "blocks":                 # 2.5 (P6-0): aeltere Clients verlieren keine neuen Formen/Spalten
                         body = legacy_keep(old[1], body, caps)
+                    body = mentions.normalize(c, body)     # 2.5 (P6-5): Prinzipale dieser Instanz -> Handle
+                    body = mentions.strip_foreign(c, owner, nid, old[1] if old[2] == "blocks" else "", body)
+                    # 2.5 (P6-6): Kopien synchronisierter Bloecke ohne Inhalt speichern, Durchschreiben ins Original vormerken
+                    body, sync_plan = synced.prepare(c, owner, nid, uid, old[1] if old[2] == "blocks" else "", body, caps, acc)
                     _check_file_refs(owner, json.loads(body)["blocks"])
                     if '"buttons"' in body or '"sig"' in body:   # Schaltflaechen mit Vorlage: Signatur setzt nur der Server
                         from saga.databases import sign_buttons
@@ -1234,6 +1248,13 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
             cur = c.execute("SELECT title, body, format FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
             keep_base(c, nid, old[3] + 1, cur[0], cur[1], cur[2], now, (old[3], old[0], old[1], old[2]),
                       (merged.get("sent_title", cur[0]), merged.get("sent", cur[1])) if merged else None)
+        if "body" in b:                           # 2.5 (P6-5): Erwaehnungen (Index, Mitteilung beim ersten Mal)
+            mentions.sync(c, owner, nid, old[1], body, uid, old_fmt=old[2], new_fmt=fmt)
+        if sync_plan is not None:                 # 2.5 (P6-6): Originale/Kopien nachfuehren, Kopien ins Original schreiben
+            try:
+                sync_res = synced.after_save(c, sync_plan, uid, old[3] + 1, now, origin)
+            except ValueError as ex:
+                raise _Reply(_bad(user_error(ex, t("ungültige Angabe"))))
         # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now, origin=origin)
         if "props" in b or "title" in b or "icon" in b:
@@ -1261,6 +1282,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
         out.update(_merged_view(uid, nid))
     if srev is not None:
         out["srev"] = srev                   # neuer Schema-Stand (Client kann ihn fuer die naechste Aenderung uebernehmen)
+    if sync_res:
+        out["synced"] = sync_res             # 2.5 (P6-6): Durchschreiben je sid (ok | merged | denied | locked | gone)
     return JSONResponse(out)
 
 

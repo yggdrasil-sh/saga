@@ -4,7 +4,8 @@ POST /api/notes/{a}/blocks/move {ids: [...], to: b, after?: <block-id>|null, at?
 in EINER Transaktion: Rechte (Bearbeiten auf A und B), Bloecke samt Kindern aus A loesen und in B einfuegen (IDs bleiben,
 neue nur bei Kollision in B), Kommentare wandern mit (note_id/owner_uid/block_id), Dateien: gleicher Eigentuemer -> nichts,
 anderer Eigentuemer -> Kopie fuer den Eigentuemer von B (Kontingent von B), Signaturen (Schaltflaechen, Nextcloud) neu bzw.
-weg, vorher beide Seiten als Version sichern, danach beide rev+1 und die ueblichen Live-/Index-Ereignisse.
+weg, vorher beide Seiten als Version sichern, danach beide rev+1 und die ueblichen Live-/Index-Ereignisse. Synchronisierte
+Bloecke (P6-6): ein verschobenes Original nimmt synced_block.note_id mit, Kopien synced_ref; Erwaehnungen still (P6-5).
 Seiten anderer Saga-Instanzen (negative IDs): nicht verschiebbar - die Clients bieten dort "Kopieren nach ..." an."""
 import json
 import os
@@ -13,7 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from db import connect as _db
-from saga import bus, nextcloud
+from saga import bus, mentions, nextcloud, synced
 from saga.core import _api_guard, _bad, _body, origin_of, t
 from saga.databases import btn_sig, _tpl_buttons
 from saga.notes import (BLOCK_ID_RE, CONTAINERS, FILE_QUOTA, FILES_DIR, _FILE_URL, _iter_blocks, _new_block_id, _snapshot,
@@ -319,6 +320,10 @@ def _move(c, uid, a, b, ids, after, at, rev_a, rev_b, origin, made):
         _snapshot(c, owner, nid, r[:3], now, force=True, author=r[5], by=uid)
         c.execute("UPDATE note SET body=?, rev=rev+1, updated_by=?, updated=? WHERE id=? AND uid=?", (body, uid, now, nid, owner))
         keep_base(c, nid, r[3] + 1, r[0], body, "blocks", now, (r[3], r[0], r[1], r[2]))
+    # 2.5 (P6-5/P6-6): Erwaehnungen still nachfuehren (Verschieben benachrichtigt nicht), synchronisierte Originale/Kopien
+    for nid, owner, r, body in ((a, owner_a, ra, body_a), (b, owner_b, rb, body_b)):
+        mentions.sync(c, owner, nid, r[1], body, uid, silent=True)
+    synced.moved(c, a, b, owner_b, moved, rb[3] + 1, now)
     # Kommentare: Unterhaltungen an den verschobenen Bloecken (Antworten tragen dieselbe block_id) wandern mit
     moved_ids = [x for x in old_ids if isinstance(x, str)]
     n_comments = 0

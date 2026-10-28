@@ -43,6 +43,9 @@ def delete_user_data(uid, drop_user=False):
         c.execute("DELETE FROM note_base WHERE note_id IN (SELECT id FROM note WHERE uid=?)", (uid,))   # 2.5 (P3): Basisstaende
         from saga.people import drop_account     # 2.5: Personen-Werte anderer bleiben ("Geloeschte Person"), row_person nicht
         drop_account(c, uid)
+        from saga import mentions                 # 2.5 (P6-5): Erwaehnungen der Person (Index) weg, Text im Inhalt bleibt
+        mentions.drop_account(c, uid)
+        c.execute("UPDATE synced_block SET gone_at=? WHERE owner=? AND gone_at IS NULL", (time.time(), uid))   # P6-6
         counts = {t: c.execute(f"DELETE FROM {t} WHERE uid=?", (uid,)).rowcount for t in USER_TABLES}
         counts["note_share"] = shares
         counts["notification"] += notes_n

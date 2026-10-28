@@ -34,7 +34,7 @@ from starlette.convertors import Convertor, register_url_convertor
 import auth
 from db import clean_line, connect as _db
 from saga import avatars, bus, comments, fed_dbx, fedsig, i18n, netguard, notify, pages, people, sharing
-from saga.core import BASE_URL, E, RESTORE_TEST, SECRET, STATE_DIR, _api_guard, _bad, _body, _session_user, parse_json, t, title
+from saga.core import BASE_URL, E, HANDLE_RE, RESTORE_TEST, SECRET, STATE_DIR, _api_guard, _bad, _body, _session_user, local_ref, parse_json, resolve_ref, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILE_MAX, FILES_DIR, _disposition, _iter_blocks
 from saga.publish import NAME_RE, get_name
@@ -81,7 +81,13 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
-         "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "dbx1", "widgets2"]
+         "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "dbx1", "widgets2", "ment1", "sync1"]
+# ment1 (2.5, P6-5, saga.mentions) = @Erwaehnungen: der Eigentuemer liefert span.hk-mention mit Prinzipal ('@name@host',
+# lokale Konten mit oeffentlichem Namen/Handle) samt people-Woerterbuch; Mitteilungen page.mention/comment.mention als
+# Ereignis. Ohne ment1: Erwaehnungen als reiner Text (Speichern zurueck: pages.legacy_keep erhaelt sie), keine Mitteilung.
+# sync1 (2.5, P6-6, saga.synced) = synchronisierte Bloecke: Kopien kommen mit eingesetztem Inhalt und data.src (Rechte des
+# Prinzipals), bearbeiteter Inhalt einer Kopie wird beim Eigentuemer ins Original geschrieben. Ohne sync1: Block als
+# Rueckfall-Karte, eingereichte Inhalte werden ignoriert (Block bleibt unveraendert).
 # dbx1 (2.5, Paket 1, saga.fed_dbx) = Personen- und Datei-Eigenschaften: der Eigentuemer liefert Personen als Prinzipal
 # ('@name@host', lokale Konten mit oeffentlichem Namen/Handle) samt people-Woerterbuch, Dateien als /files/<id> (das Heim
 # holt sie ueber /fed/v1/files mit note=<zeile>); GET /fed/v2/notes/{db}/people = Auswahl; Mitteilung db.assigned als
@@ -523,6 +529,8 @@ def _rekey(c, peer, old, new, handle):
             c.execute(f"UPDATE {tb} SET {col}=? WHERE {col}=?", (new, old))
     from saga.people import rename_principal       # 2.5: Personen-Werte in Datenbank-Zeilen (row_person)
     rename_principal(c, old, new)
+    from saga import mentions                      # 2.5 (P6-5): Erwaehnungen in Seiten (Inhalt + note_mention)
+    mentions.rename_principal(c, old, new)
     if known:
         c.execute("UPDATE note_comment_seen SET uid=? WHERE uid=? AND NOT EXISTS (SELECT 1 FROM note_comment_seen s2 WHERE s2.uid=? "
                   "AND s2.thread_id=note_comment_seen.thread_id)", (new, old, new))
@@ -835,7 +843,90 @@ def _relay(inp, resp):
         data = None
     with _db() as c:
         data = _ext_persons(c, data, peer=inp.peer)
+        if isinstance(data, dict) and resp.status_code == 200:
+            data = _ext_content(c, data, inp.peer)
     return _signed(inp, resp.status_code, data)
+
+
+def _ext_content(c, d, peer):
+    """2.5 (P6-5/P6-6): Inhalt einer Seite fuer eine andere Instanz - Erwaehnungen als Prinzipal (ment1) bzw. Text, das
+    people-Woerterbuch der Erwaehnungen mit Prinzipalen; synchronisierte Bloecke ohne sync1 als Rueckfall (ohne Inhalt).
+    Kommentare: Token "<@~handle>" -> "<@@name@hier>" bzw. "@Name"."""
+    from saga import mentions
+    ment = feature(peer, "ment1")
+    if isinstance(d.get("body"), str) and d.get("format") == "blocks":
+        body = d["body"]
+        refs = list(mentions.refs_in(body))
+        if refs:
+            pm = d.get("people") if isinstance(d.get("people"), dict) else {}
+            body = mentions.out_body(c, body, peer, ment)
+            outref = {}
+            for r in refs:
+                if HANDLE_RE.fullmatch(r):
+                    u = resolve_ref(c, r)
+                    pub = fed_name(c, u, peer) if u else None
+                    outref[r] = f"@{pub}@{SELF_HOST}" if pub else None
+                else:
+                    outref[r] = r
+            if ment:
+                d["people"] = dict({k: v for k, v in pm.items() if k not in outref},
+                                   **{outref[r]: {"name": (pm.get(r) or {}).get("name") or "?", "gone": bool((pm.get(r) or {}).get("gone"))}
+                                      for r in refs if outref.get(r)})
+                for r in refs:               # lokale Handles nie nach aussen (auch nicht als Schluessel)
+                    if HANDLE_RE.fullmatch(r):
+                        d["people"].pop(r, None)
+            elif isinstance(d.get("people"), dict):
+                for r in refs:
+                    d["people"].pop(r, None)
+        if '"synced"' in body and not feature(peer, "sync1"):
+            try:
+                doc = json.loads(body)
+                for b in _iter_blocks(doc.get("blocks") or []):
+                    if b.get("type") == "synced" and isinstance(b.get("data"), dict):
+                        b["data"] = {"sid": b["data"].get("sid")}
+                body = json.dumps(doc, ensure_ascii=False)
+            except (ValueError, RecursionError):
+                pass
+        d["body"] = body
+    if isinstance(d.get("threads"), list):           # Kommentare (GET .../comments)
+        for th in d["threads"]:
+            for cm in th.get("comments") or [] if isinstance(th, dict) else []:
+                if isinstance(cm, dict) and isinstance(cm.get("body"), str) and "<@" in cm["body"]:
+                    cm["body"] = _ext_tokens(c, cm["body"], peer, ment)
+        pm = d.pop("people", None)
+        if ment and isinstance(pm, dict):
+            out = {}
+            for k, v in pm.items():
+                if not isinstance(v, dict):
+                    continue
+                if HANDLE_RE.fullmatch(k):
+                    u = resolve_ref(c, k)
+                    pub = fed_name(c, u, peer) if u else None
+                    if not pub:
+                        continue
+                    k = f"@{pub}@{SELF_HOST}"
+                out[k] = {"name": v.get("name"), "gone": bool(v.get("gone"))}
+            d["people"] = out
+    if isinstance(d.get("comment"), dict) and isinstance(d["comment"].get("body"), str) and "<@" in d["comment"]["body"]:
+        d["comment"]["body"] = _ext_tokens(c, d["comment"]["body"], peer, ment)
+    return d
+
+
+def _ext_tokens(c, body, peer, ment):
+    from saga import mentions
+
+    def rep(m):
+        r = m.group(1)
+        if HANDLE_RE.fullmatch(r):
+            u = resolve_ref(c, r)
+            pub = fed_name(c, u, peer) if u else None
+            if ment and pub:
+                return f"<@@{pub}@{SELF_HOST}>"
+            return "@" + (mentions.people_map(c, [r], None).get(r) or {}).get("name", "?")
+        if ment:
+            return m.group(0)
+        return "@" + (mentions.people_map(c, [r], None).get(r) or {}).get("name", "?")
+    return mentions._TOKEN.sub(rep, body)
 
 
 # =====================================================================================================
@@ -1139,7 +1230,19 @@ def _ev(c, peer, ev):
             fed["db"] = note["db"]
         notify.create(c, target, typ, _actor_of(c, peer, ev.get("actor")), None, data={"fed": fed}, bundle=f"fed:{peer['id']}:{rid}")
         return "ok"
-    if typ in ("comment.new", "comment.reply") and tt == "user":
+    if typ in ("page.mention", "comment.mention") and tt == "user":     # 2.5 (P6-5, ment1): erwaehnt auf einer Seite dort
+        gs = sorted(sharing.groups_of(c, target))
+        sql = "SELECT 1 FROM fed_inbound WHERE peer_id=? AND ((target_type='user' AND target=?)" + \
+              (f" OR (target_type='group' AND target IN ({','.join('?' * len(gs))}))" if gs else "") + ") LIMIT 1"
+        if not feature(peer, "ment1") or not c.execute(sql, (peer["id"], target, *gs)).fetchone():
+            return "ignored"
+        if typ == "page.mention":
+            block = ev.get("block") if isinstance(ev.get("block"), str) and re.fullmatch(r"[A-Za-z0-9_-]{0,40}", ev.get("block")) else ""
+            if block:
+                fed["block"] = block
+            notify.create(c, target, typ, _actor_of(c, peer, ev.get("actor")), None, data={"fed": fed})
+            return "ok"
+    if typ in ("comment.new", "comment.reply", "comment.mention") and tt == "user":
         cm = ev.get("comment") if isinstance(ev.get("comment"), dict) else {}
         cid, thread = cm.get("id"), cm.get("thread")
         if not _ok_rid(cid) or (thread is not None and not _ok_rid(thread)):
@@ -1819,10 +1922,17 @@ def _handle_for(c, uid, p=None):
 
 def _on_notify(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, **_):
     """Benachrichtigung fuer eine fremde Person (saga.notify) -> signiertes Ereignis an ihre Instanz."""
-    if kind not in ("comment.new", "comment.reply", "db.assigned") or not note_id or not enabled():
+    if kind not in ("comment.new", "comment.reply", "db.assigned", "page.mention", "comment.mention") or not note_id or not enabled():
         return
     p, name = _target_peer(c, uid)
     if not p or not sharing.Access(c, uid).role(note_id):
+        return
+    if kind in ("page.mention", "comment.mention") and not feature(p, "ment1"):
+        return                               # 2.5 (P6-5): aeltere Instanzen kennen keine Erwaehnungen
+    if kind == "page.mention":
+        _enqueue(c, p["id"], {"type": kind, "to": {"type": "user", "name": name}, "actor": _handle_for(c, actor, p),
+                              "note": {"id": note_id, "title": _note_title(c, note_id)},
+                              "block": str((data or {}).get("block") or "")[:40]})
         return
     if kind == "db.assigned":                # 2.5 (dbx1): in einer Datenbank-Zeile eingetragen - nur an Instanzen mit dbx1
         if feature(p, "dbx1"):
@@ -2368,6 +2478,32 @@ def _clean_remote_body(s, fmt):
     return json.dumps(doc, ensure_ascii=False)
 
 
+def _synced_in(body, pid):
+    """Synchronisierte Bloecke einer fremden Seite: src.note auf negative IDs, nur bekannte Felder."""
+    try:
+        doc = json.loads(body)
+        for b in _iter_blocks(doc.get("blocks") or []):
+            if b.get("type") != "synced" or not isinstance(b.get("data"), dict):
+                continue
+            src = b["data"].get("src") if isinstance(b["data"].get("src"), dict) else {}
+            out = {k: bool(src[k]) for k in ("original", "gone", "noaccess", "missing") if src.get(k)}
+            if _ok_rid(src.get("note")):
+                out["note"] = ref(pid, src["note"])
+            if isinstance(src.get("block"), str) and re.fullmatch(r"[A-Za-z0-9_-]{0,40}", src["block"]):
+                out["block"] = src["block"]
+            if src.get("role") in ROLES or src.get("role") == "owner":
+                out["role"] = "edit" if src["role"] == "owner" else src["role"]
+            for k in ("rev", "refs"):
+                if isinstance(src.get(k), int) and not isinstance(src.get(k), bool) and 0 <= src[k] < 2 ** 62:
+                    out[k] = src[k]
+            b["data"]["src"] = out
+            if out.get("noaccess"):
+                b["data"].pop("blocks", None)
+        return json.dumps(doc, ensure_ascii=False)
+    except (ValueError, RecursionError, TypeError):
+        return body
+
+
 def _db_blocks(body, pid, inbound):
     """Eingebettete Datenbanken (Block 'database', data.db) und Schaltflaechen (Block 'buttons': Ziel target, Vorlage tpl)
     einer fremden Seite: IDs der anderen Instanz <-> negative IDs. Beim Speichern: nur IDs derselben Instanz, alles
@@ -2456,6 +2592,17 @@ def _note_in(c, peer, d, uid):
     d["format"] = "blocks" if d.get("format") == "blocks" else "text"
     # Inhalt der anderen Instanz wie eigenen behandeln: erst bereinigen (IDs noch in deren Form), dann umschreiben
     d["body"] = _db_blocks(_rw_in(_clean_remote_body(d.get("body"), d["format"]), pid, pr), pid, True)
+    pm_in = d.pop("people", None)
+    if d["format"] == "blocks" and "hk-mention" in (d["body"] or ""):      # 2.5 (P6-5): Erwaehnungen -> Kennungen von hier
+        from saga import mentions
+        d["body"] = mentions.in_body(c, d["body"], SELF_HOST, lambda c_, n: _local_user_by_name(c_, n)[0])
+        refs = list(mentions.refs_in(d["body"]))
+        if refs:
+            d["people"] = mentions.remote_people(c, refs, pm_in)
+    if d["format"] == "blocks" and '"synced"' in (d["body"] or ""):          # 2.5 (P6-6): Herkunft der Kopien auf negative IDs
+        d["body"] = _synced_in(d["body"], pid)
+    if pm_in is not None and "people" not in d:
+        d["people"] = pm_in
     d["icon"] = _rw_in(_safe_pic(d.get("icon"), True), pid, pr)
     d["cover"] = _rw_in(_safe_pic(d.get("cover"), False), pid, pr)
     if d.get("role") not in ROLES:
@@ -2570,9 +2717,38 @@ def _cref(pid, v):
     return ref(pid, v) if _ok_rid(v) else None
 
 
+def _tokens_in(c, body):
+    """Kommentar einer anderen Instanz: Token "<@@name@host>" -> Kennung hier (eigene Personen als Handle)."""
+    from saga import mentions
+    if not isinstance(body, str) or "<@" not in body:
+        return body
+
+    def rep(m):
+        r = m.group(1)
+        if not r.startswith("@"):
+            return "@?"                              # fremde Handles gelten nur dort
+        name, host = _handle(r)
+        if host == SELF_HOST:
+            u = _local_user_by_name(c, name)[0] if name else None
+            return f"<@{local_ref(u)}>" if u else "@?"
+        return f"<@{people.canon_remote(c, r)}>"
+    return mentions._TOKEN.sub(rep, body)
+
+
 def _comments_in(c, peer, d, uid):
     pid = peer["id"]
+    pm_in = d.pop("people", None) if isinstance(d, dict) else None
     d = _in_persons(c, d, peer, uid)
+    refs = []
+    for th in d.get("threads") or []:
+        for cm in th.get("comments") or []:
+            if isinstance(cm.get("body"), str) and "<@" in cm["body"]:
+                cm["body"] = _tokens_in(c, cm["body"])
+                from saga import mentions
+                refs += mentions._TOKEN.findall(cm["body"])
+    if refs:
+        from saga import mentions
+        d["people"] = mentions.remote_people(c, list(dict.fromkeys(refs)), pm_in)
     for th in d.get("threads") or []:
         th["id"] = _cref(pid, th.get("id"))
         for cm in th.get("comments") or []:
@@ -2638,6 +2814,11 @@ def _w_note_patch(uid, nid, b):
         return _bad(t("Bei Seiten anderer Saga-Instanzen lassen sich nur Titel und Inhalt ändern."), 403)
     if "body" in b:
         b["body"] = _db_blocks(_rw_out(b["body"], pid), pid, False)
+        if isinstance(b["body"], str) and "hk-mention" in b["body"]:      # 2.5 (P6-5): lokale Handles -> '@name@hier'
+            from saga import mentions
+            with _db() as c:
+                hp = _home_peer(c, pid)
+                b["body"] = mentions.home_out(c, b["body"], lambda u: (lambda pub: f"@{pub}@{SELF_HOST}" if pub else None)(fed_name(c, u, hp)))
     for k in ("icon", "cover"):
         if k in b and b[k]:
             b[k] = _pic_out(b[k], pid)
@@ -2680,6 +2861,8 @@ def _w_comment_add(uid, nid, b):
         if tp != pid or int(b["thread_id"]) >= 0:
             return _bad("not found", 404)
         out["thread_id"] = trid
+    if isinstance(out["body"], str) and "<@" in out["body"]:             # 2.5 (P6-5): Erwaehnungen als Prinzipal
+        out["body"] = _tokens_out(out["body"], pid)
     p, status, d = _proxy(uid, pid, "POST", f"/fed/v1/notes/{rid}/comments", body=out)
     if status != 200 or not isinstance(d, dict):
         return _pass_err(p, status, d)
@@ -2690,8 +2873,28 @@ def _w_comment_add(uid, nid, b):
     return _json(200, {"comment": cm, "thread_id": _cref(pid, d.get("thread_id"))})
 
 
+def _tokens_out(body, pid):
+    """Kommentar an eine andere Instanz: lokale Handles -> "<@@name@hier>" (ohne oeffentlichen Namen: "@Name")."""
+    from saga import mentions
+    with _db() as c:
+        hp = _home_peer(c, pid)
+
+        def rep(m):
+            r = m.group(1)
+            if HANDLE_RE.fullmatch(r):
+                u = resolve_ref(c, r)
+                pub = fed_name(c, u, hp) if u else None
+                if pub and feature(hp, "ment1"):
+                    return f"<@@{pub}@{SELF_HOST}>"
+                return "@" + (mentions.people_map(c, [r], None).get(r) or {}).get("name", "?")
+            return m.group(0) if feature(hp, "ment1") else "@" + r.lstrip("@").split("@")[0]
+        return mentions._TOKEN.sub(rep, body)
+
+
 def _w_comment(uid, cid, method, suffix="", body=None, query=""):
     pid, rcid = unref(cid)
+    if isinstance(body, dict) and isinstance(body.get("body"), str) and "<@" in body["body"]:
+        body = dict(body, body=_tokens_out(body["body"], pid))
     p, status, d = _proxy(uid, pid, method, f"/fed/v1/comments/{rcid}{suffix}", query, body)
     if status != 200 or not isinstance(d, dict):
         return _pass_err(p, status, d)
@@ -3004,6 +3207,16 @@ def _fed_local(c, principal):
 
 people.FED_LOCAL = _fed_local
 fed_dbx.install(sys.modules[__name__])
+
+
+def _mention_ext(c, uid, p=None):
+    """saga.mentions.EXT_REF: lokales Konto -> '@name@hier' fuer Instanz p (oeffentlicher Name bzw. Handle) oder None."""
+    pub = fed_name(c, uid, p) if uid else None
+    return f"@{pub}@{SELF_HOST}" if pub else None
+
+
+from saga import mentions as _mentions  # noqa: E402 - saga.mentions kennt die Foederation nicht (keine Zyklen)
+_mentions.EXT_REF = _mention_ext
 sharing.REMOTE_TARGET = remote_target
 sharing.REMOTE_CANON = remote_canon
 sharing.REMOTE_SEARCH = remote_search

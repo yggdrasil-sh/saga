@@ -961,6 +961,29 @@ CREATE TABLE IF NOT EXISTS webhook_delivery (
     done DOUBLE PRECISION);
 CREATE INDEX IF NOT EXISTS webhook_delivery_due ON webhook_delivery (next_try) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS webhook_delivery_hook ON webhook_delivery (hook_id, id);
+-- Erwaehnungen (2.5, P6-5, saga/mentions.py): Index der Personen, die in einer Seite erwaehnt sind (span.hk-mention data-u im
+-- Inhalt). person = kanonische Kennung (lokaler Benutzername bzw. Prinzipal '@name@host'), verlaesst den Server nie roh.
+-- Gepflegt beim Speichern (gleiche Transaktion). first_* = erste Erwaehnung, gone_at = gerade nicht mehr im Inhalt,
+-- notified = Mitteilung page.mention verschickt (bzw. still uebernommen: Duplikat, Vorlage, Import, Version, Verschieben).
+-- Mitteilung nur einmal je (Seite, Person); entprellt (erst, wenn die Erwaehnung nach SAGA_MENTION_DELAY noch steht).
+CREATE TABLE IF NOT EXISTS note_mention (
+    note_id BIGINT NOT NULL REFERENCES note(id) ON DELETE CASCADE, person TEXT NOT NULL, block_id TEXT NOT NULL DEFAULT '',
+    first_by TEXT, first_at DOUBLE PRECISION NOT NULL, gone_at DOUBLE PRECISION, notified DOUBLE PRECISION,
+    PRIMARY KEY (note_id, person));
+CREATE INDEX IF NOT EXISTS note_mention_person ON note_mention (person);
+CREATE INDEX IF NOT EXISTS note_mention_due ON note_mention (first_at) WHERE notified IS NULL;
+-- Synchronisierte Bloecke (2.5, P6-6, saga/synced.py): das Original steht als Block {type: "synced", data: {sid, blocks}}
+-- in Seite note_id (block_id), Kopien in anderen Seiten nur als {sid} - den Inhalt setzt der Server beim Lesen je
+-- Betrachter ein. content = zuletzt gespeicherter Inhalt des Originals (Cache, Anzeige "Original geloescht"), rev =
+-- Revision der Seite des Originals dazu. Keine Fremdschluessel auf note: der letzte Inhalt bleibt fuer die Kopien.
+-- synced_ref = auf welchen Seiten eine Kopie steht (Anzeige "auf N Seiten verwendet").
+CREATE TABLE IF NOT EXISTS synced_block (
+    sid TEXT PRIMARY KEY, owner TEXT NOT NULL, note_id BIGINT NOT NULL, block_id TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '[]', rev BIGINT NOT NULL DEFAULT 0, updated DOUBLE PRECISION NOT NULL, gone_at DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS synced_block_note ON synced_block (note_id);
+CREATE TABLE IF NOT EXISTS synced_ref (
+    sid TEXT NOT NULL, note_id BIGINT NOT NULL REFERENCES note(id) ON DELETE CASCADE, PRIMARY KEY (sid, note_id));
+CREATE INDEX IF NOT EXISTS synced_ref_note ON synced_ref (note_id);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
@@ -1199,6 +1222,12 @@ SELECT 1 FROM row_done LIMIT 0;
     # oben an; es gibt keinen Bestand. Beliebig oft ausfuehrbar.
     25: """
 SELECT 1 FROM api_token, webhook, webhook_delivery LIMIT 0;
+""",
+    # 2.5.0 (P6-5/P6-6: Erwaehnungen, synchronisierte Bloecke): Tabellen note_mention, synced_block, synced_ref legt SCHEMA
+    # oben an. Bestand: Erwaehnungen in vorhandenen Seiten gelten als schon mitgeteilt (keine Mitteilungsflut) - das
+    # erledigt saga/mentions.py beim naechsten Speichern (Personen, die schon im alten Stand standen, still). Beliebig oft.
+    26: """
+SELECT 1 FROM note_mention, synced_block, synced_ref LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

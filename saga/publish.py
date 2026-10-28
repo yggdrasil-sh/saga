@@ -569,8 +569,12 @@ def _block(ctx, typ, d, depth):
         if ml:
             return f'<div class="pub-mathblock">{ml}</div>'
         return f'<div class="pub-code pub-math"><pre><code>{escape(tex, quote=False)}</code></pre></div>' if tex else ""
-    if typ == "synced":                            # 2.5 (P6-0): Original mit Inhalt; Kopien setzt erst P6-6 ein
-        return _blocks(ctx, d["blocks"], depth + 1) if isinstance(d.get("blocks"), list) else ""
+    if typ == "synced":                            # 2.5 (P6-6): Original mit Inhalt; Kopie nur, wenn das Original demselben
+        if isinstance(d.get("blocks"), list):      # Konto gehoert oder selbst veroeffentlicht ist (synced.publish_blocks)
+            return _blocks(ctx, d["blocks"], depth + 1)
+        from saga import synced
+        inner = synced.publish_blocks(ctx.c, ctx.uid, d.get("sid"))
+        return _blocks(ctx, inner, depth + 1) if inner else ""
     if typ == "delimiter":
         return "<hr>"
     if typ == "image":

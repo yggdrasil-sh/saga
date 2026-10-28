@@ -5,8 +5,9 @@
   wenn der Empfaenger die Seite JETZT sehen darf (sharing.Access). Nach Entzug: "Kein Zugriff mehr" statt Titel.
 - Arten (KINDS): share.added, share.role, comment.new (neuer Kommentar auf eigener Seite), comment.reply (Antwort in
   einer Unterhaltung, an der man beteiligt ist), publish.withdrawn (Admin hat eine Veroeffentlichung zurueckgezogen),
-  db.assigned (2.5: in einer Personen-Eigenschaft einer Datenbank-Zeile eingetragen, gebuendelt je Zeile).
-  comment.mention ist vorgesehen (@-Erwaehnungen kommen spaeter).
+  db.assigned (2.5: in einer Personen-Eigenschaft einer Datenbank-Zeile eingetragen, gebuendelt je Zeile),
+  page.mention (2.5, P6-5: in einer Seite erwaehnt - einmal je Seite und Person, saga.mentions) und comment.mention
+  (in einem Kommentar erwaehnt, Token "<@ref>" - statt comment.new/comment.reply fuer diesen Kommentar).
 - Nie an sich selbst; je Art abschaltbar (user_kv 'notify_off'); mehrere Kommentare derselben Unterhaltung innerhalb von
   10 Minuten werden zu EINER (ungelesenen) Benachrichtigung gebuendelt (Zaehler n, zuletzt Schreibende vorn).
 - Ausgeloest ueber saga.bus (sharing/comments/publish melden, hier wird angelegt - in derselben Transaktion);
@@ -26,8 +27,8 @@ from saga.sharing import unread_count as pages_unread
 router = APIRouter()
 
 KINDS = ("share.added", "share.role", "comment.new", "comment.reply", "publish.withdrawn", "chat.message", "call.missed",
-         "db.assigned")              # abschaltbar, in dieser Reihenfolge (2.5: db.assigned = in einer Datenbank-Zeile eingetragen)
-FUTURE = ("comment.mention",)
+         "db.assigned", "page.mention", "comment.mention")   # abschaltbar, in dieser Reihenfolge (2.5: Datenbank-Zeile, Erwaehnungen)
+FUTURE = ()
 RETENTION_DAYS = 90
 BUNDLE_SEC = 600                    # Kommentare derselben Unterhaltung innerhalb 10 Minuten -> eine Benachrichtigung
 EXCERPT = 120
@@ -38,6 +39,9 @@ RENDER = {}                         # Art -> fn(c, uid, eintrag, daten): Titel/L
 # anderer Instanzen (data.fed = {peer, note, title, comment, thread, block}); ohne Foederation: kein Zugriff
 FED_RENDER = None
 ROLE_KEYS = {"view": "Lesen##Rolle", "comment": "Kommentieren##Rolle", "edit": "Bearbeiten##Rolle"}
+# Von saga.mentions gesetzt: fn(c, owner, note_id, comment_id, author) -> Personen, die im Kommentar erwaehnt sind (mit Zugriff)
+COMMENT_MENTIONED = None
+COMMENT_TEXT = None                 # fn(c, body) -> Text mit '@Name' statt Token (saga.mentions)
 
 
 # --- Einstellungen je Art ----------------------------------------------------------------------------
@@ -109,10 +113,14 @@ def _on_comment(c, note_id, owner, comment_id, thread_id, author, **_):
     comment.new. Nur, wer die Seite gerade sehen darf."""
     parts = {r[0] for r in c.execute("SELECT DISTINCT uid FROM note_comment WHERE (id=? OR thread_id=?) AND uid IS NOT NULL",
                                      (thread_id, thread_id))} - {author}
+    ment = COMMENT_MENTIONED(c, owner, note_id, comment_id, author) if COMMENT_MENTIONED else []
+    for u in ment:                     # 2.5 (P6-5): erwaehnt -> comment.mention statt comment.new/comment.reply
+        create(c, u, "comment.mention", author, note_id, comment_id)
+    parts -= set(ment)
     for u in sorted(parts):
         if u == owner or Access(c, u).role(note_id):
             create(c, u, "comment.reply", author, note_id, comment_id, bundle=thread_id)
-    if owner and owner != author and owner not in parts:
+    if owner and owner != author and owner not in parts and owner not in ment:
         create(c, owner, "comment.new", author, note_id, comment_id, bundle=thread_id)
 
 
@@ -183,6 +191,8 @@ def _text(kind, actor, n, role, access):
     if kind == "comment.reply":
         return t("{n} neue Antworten in einer Unterhaltung", n=n) if n > 1 else t("{name} hat in einer Unterhaltung geantwortet", name=who)
     if kind == "comment.mention":
+        return t("{name} hat dich in einem Kommentar erwähnt", name=who)
+    if kind == "page.mention":
         return t("{name} hat dich erwähnt", name=who)
     if kind == "publish.withdrawn":
         return t("Ein Admin hat deine Veröffentlichung zurückgezogen")
@@ -239,11 +249,16 @@ def _render(c, uid, rows, acc=None):
             cm = cms.get(cid)
             if cm and cm[0] == nid:
                 body = cm[1] or ""
+                if body and "<@" in body and COMMENT_TEXT:
+                    body = COMMENT_TEXT(c, body)
                 if body:
                     item["excerpt"] = body[:EXCERPT] + ("…" if len(body) > EXCERPT else "")
                 item.update(comment_id=cid, thread_id=cm[3] or cid, block_id=cm[2] or "")
                 if cm[2]:
                     item["url"] = f"/notes#{nid}:{cm[2]}"
+            elif kind == "page.mention" and isinstance(d.get("block"), str) and d["block"]:
+                item["block_id"] = d["block"]          # 2.5 (P6-5): Sprung zum Block mit der Erwaehnung
+                item["url"] = f"/notes#{nid}:{d['block']}"
         item["text"] = _text(kind, a_name, item["count"], d.get("role"), access)
         item["title"] = (n[0] or t("Unbenannt")) if access else t("Kein Zugriff mehr")
         if kind in RENDER:

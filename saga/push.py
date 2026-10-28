@@ -54,7 +54,7 @@ router = APIRouter()
 
 E = os.environ
 TYPES = ("webpush", "ntfy", "unifiedpush", "apns", "apns-voip", "stream")
-CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comment.reply", "comment.mention"),
+CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comment.reply", "comment.mention", "page.mention"),
         "assign": ("db.assigned",),                 # 2.5: in einer Datenbank-Zeile eingetragen
         "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed", "call.group"),
         "tasks": ("task.due",),                     # 2.5 (Paket 7): taegliche Zusammenfassung "heute faellig / ueberfaellig"
@@ -456,7 +456,7 @@ def _anon(kind):
         return t("Neuer Kommentar auf deiner Seite")
     if kind == "comment.reply":
         return t("Neue Antwort in einer Unterhaltung")
-    if kind == "comment.mention":
+    if kind in ("comment.mention", "page.mention"):
         return t("Du wurdest erwähnt")
     if kind == "publish.withdrawn":
         return t("Ein Admin hat deine Veröffentlichung zurückgezogen")

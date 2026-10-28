@@ -31,12 +31,15 @@ MIN_APP = "1.0.0"
 # person1 = Personen-Eigenschaft (Werte als Handle/Prinzipal + people in /rows, GET .../people, Filter "me", db.assigned),
 # file1 = Datei-Eigenschaft (Werte [{url, name, size, mime, image}], Hochladen ueber POST /api/files?note=<zeile>).
 # move1 = POST /api/notes/{id}/blocks/move (Bloecke auf eine andere Seite), render1 = Vorschaubilder von Mathe/Mermaid
-# (data.render mit stale) - beide 2.5 P6, docs/APP-API.md.
+# (data.render mit stale) - beide 2.5 P6, docs/APP-API.md. mention1 = @Erwaehnungen (people-Woerterbuch in GET Seite und
+# Kommentaren, Mitteilungen page.mention/comment.mention), synced1 = synchronisierte Bloecke (Kopien mit data.src, Durchschreiben
+# mit X-Saga-Caps: sync1).
 FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1", "move1", "render1",
             "relfilter1", "datetime1", "status1", "subtasks1", "tableopts1",      # 2.5 Paket 5 (docs/APP-API.md)
             "weather1", "habit1", "upcoming1", "chart1",                          # 2.5 Paket 4: Widgets Etappe 2, Diagramme
             "tasksrc1", "taskdue1",                                               # 2.5 Paket 7: Aufgabenquellen, Zusammenfassung
-            "timeline1", "api1", "webhook1", "mcp1")                             # 2.5 Paket 1: Zeitleiste, /api/v1, Webhooks, MCP
+            "timeline1", "api1", "webhook1", "mcp1",                             # 2.5 Paket 1: Zeitleiste, /api/v1, Webhooks, MCP
+            "mention1", "synced1")                                               # 2.5 P6-5/P6-6: Erwaehnungen, synchronisierte Bloecke
 REPO = os.environ.get("SAGA_UPDATE_REPO", "yggdrasil-sh/saga")
 
 

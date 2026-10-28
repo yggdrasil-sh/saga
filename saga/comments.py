@@ -101,6 +101,8 @@ def comments_list(uid, nid, resolved=0):
         else:
             seen = {}
         nm = names(c, [r[3] for r in roots] + [r[8] for r in roots] + [x[3] for v in reps.values() for x in v])
+        from saga import mentions           # 2.5 (P6-5): Erwaehnungen "<@ref>" in Kommentaren -> Woerterbuch people
+        pm = mentions.comment_people(c, [r[4] for r in roots] + [x[4] for v in reps.values() for x in v], uid)
     blocks = block_ids(n[0], n[1], nid)
     threads = []
     for r in roots:
@@ -109,8 +111,11 @@ def comments_list(uid, nid, resolved=0):
         threads.append({"id": r[0], "block_id": r[2], "block_exists": (not r[2]) or r[2] in blocks,
                         "resolved_at": r[7], "resolved_by": person(None, r[8], uid, nm) if r[8] else None,
                         "unread": last_other > seen.get(r[0], 0), "comments": cm})
-    return JSONResponse({"role": role, "can_comment": RANK[role] >= RANK["comment"], "is_owner": role == "owner",
-                         "threads": threads, "resolved_count": n_res, "max": COMMENT_MAX}, headers={"Cache-Control": "no-store"})
+    out = {"role": role, "can_comment": RANK[role] >= RANK["comment"], "is_owner": role == "owner",
+           "threads": threads, "resolved_count": n_res, "max": COMMENT_MAX}
+    if pm:
+        out["people"] = pm
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/notes/{nid}/comments")
