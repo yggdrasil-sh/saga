@@ -2478,14 +2478,30 @@ def _clean_remote_body(s, fmt):
     return json.dumps(doc, ensure_ascii=False)
 
 
-def _synced_in(body, pid):
-    """Synchronisierte Bloecke einer fremden Seite: src.note auf negative IDs, nur bekannte Felder."""
+def _synced_src(body):
+    """Roher Inhalt einer fremden Seite: {block_id: data.src} der synchronisierten Bloecke (vor der Bereinigung)."""
+    if not isinstance(body, str) or '"synced"' not in body:
+        return {}
+    try:
+        return {b.get("id"): b["data"]["src"] for b in _iter_blocks(json.loads(body).get("blocks") or [])
+                if b.get("type") == "synced" and isinstance(b.get("data"), dict) and isinstance(b["data"].get("src"), dict)
+                and isinstance(b.get("id"), str)}
+    except (ValueError, AttributeError, TypeError, RecursionError):
+        return {}
+
+
+def _synced_in(body, pid, src_in=None):
+    """Synchronisierte Bloecke einer fremden Seite: src (aus src_in je Block-ID) mit note auf negativen IDs, nur bekannte
+    Felder; ohne src (Gegenstelle ohne sync1) bleibt nur die sid."""
     try:
         doc = json.loads(body)
         for b in _iter_blocks(doc.get("blocks") or []):
             if b.get("type") != "synced" or not isinstance(b.get("data"), dict):
                 continue
-            src = b["data"].get("src") if isinstance(b["data"].get("src"), dict) else {}
+            b["data"].pop("srev", None)               # Basis des Durchschreibens: hier wieder als src.rev
+            src = (src_in or {}).get(b.get("id")) or {}
+            if not isinstance(src, dict):
+                src = {}
             out = {k: bool(src[k]) for k in ("original", "gone", "noaccess", "missing") if src.get(k)}
             if _ok_rid(src.get("note")):
                 out["note"] = ref(pid, src["note"])
@@ -2497,7 +2513,7 @@ def _synced_in(body, pid):
                 if isinstance(src.get(k), int) and not isinstance(src.get(k), bool) and 0 <= src[k] < 2 ** 62:
                     out[k] = src[k]
             b["data"]["src"] = out
-            if out.get("noaccess"):
+            if out.get("noaccess") or not out:
                 b["data"].pop("blocks", None)
         return json.dumps(doc, ensure_ascii=False)
     except (ValueError, RecursionError, TypeError):
@@ -2591,6 +2607,7 @@ def _note_in(c, peer, d, uid):
     d["title"] = _clean_text(d.get("title"), 500)
     d["format"] = "blocks" if d.get("format") == "blocks" else "text"
     # Inhalt der anderen Instanz wie eigenen behandeln: erst bereinigen (IDs noch in deren Form), dann umschreiben
+    src_in = _synced_src(d.get("body")) if d["format"] == "blocks" else {}      # 2.5 (P6-6): data.src entfernt die Bereinigung
     d["body"] = _db_blocks(_rw_in(_clean_remote_body(d.get("body"), d["format"]), pid, pr), pid, True)
     pm_in = d.pop("people", None)
     if d["format"] == "blocks" and "hk-mention" in (d["body"] or ""):      # 2.5 (P6-5): Erwaehnungen -> Kennungen von hier
@@ -2598,9 +2615,9 @@ def _note_in(c, peer, d, uid):
         d["body"] = mentions.in_body(c, d["body"], SELF_HOST, lambda c_, n: _local_user_by_name(c_, n)[0])
         refs = list(mentions.refs_in(d["body"]))
         if refs:
-            d["people"] = mentions.remote_people(c, refs, pm_in)
+            d["people"] = mentions.remote_people(c, refs, pm_in, uid)
     if d["format"] == "blocks" and '"synced"' in (d["body"] or ""):          # 2.5 (P6-6): Herkunft der Kopien auf negative IDs
-        d["body"] = _synced_in(d["body"], pid)
+        d["body"] = _synced_in(d["body"], pid, src_in)
     if pm_in is not None and "people" not in d:
         d["people"] = pm_in
     d["icon"] = _rw_in(_safe_pic(d.get("icon"), True), pid, pr)
@@ -2611,10 +2628,15 @@ def _note_in(c, peer, d, uid):
              remote=remote_info(peer))
     if isinstance(d.get("props"), dict):     # Relationen (Listen von Seiten-IDs) auf negative IDs
         d["props"] = fed_dbx.props_in(c, props_in(pid, d["props"]), pr)      # 2.5 (dbx1): Personen/Dateien
+        ment_pm = d.get("people") if d.get("format") == "blocks" and "hk-mention" in (d.get("body") or "") else None
         if isinstance(d.get("people"), dict) or any(isinstance(v, list) and v and isinstance(v[0], str) and v[0][:1] in "~@"
                                                     for v in d["props"].values()):
             d["people"] = fed_dbx.people_in(c, peer, uid, d.get("people"), [d["props"]])
-    else:
+        if isinstance(ment_pm, dict):         # 2.5 (P6-5): Woerterbuch der Erwaehnungen (oben) behalten
+            d["people"] = dict(ment_pm, **(d.get("people") or {}))
+            if not d["people"]:
+                d.pop("people")
+    elif not (d.get("format") == "blocks" and "hk-mention" in (d.get("body") or "")):
         d.pop("people", None)
     if "fx_err" in d:                        # 2.5 (formula1): Fehler der Formeln dieser Zeile, nur {pid: code}
         d["fx_err"] = fx_err_in(d.get("fx_err"))
@@ -2632,7 +2654,7 @@ def _note_in(c, peer, d, uid):
 
 
 PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl", "csv",
-             "formula1", "dbx1", "widgets2")
+             "formula1", "dbx1", "widgets2", "ment1", "sync1")
 
 
 def remote_info(peer):
@@ -2748,7 +2770,7 @@ def _comments_in(c, peer, d, uid):
                 refs += mentions._TOKEN.findall(cm["body"])
     if refs:
         from saga import mentions
-        d["people"] = mentions.remote_people(c, list(dict.fromkeys(refs)), pm_in)
+        d["people"] = mentions.remote_people(c, list(dict.fromkeys(refs)), pm_in, uid)
     for th in d.get("threads") or []:
         th["id"] = _cref(pid, th.get("id"))
         for cm in th.get("comments") or []:
@@ -2830,6 +2852,10 @@ def _w_note_patch(uid, nid, b):
     if status != 200 or not isinstance(d, dict):
         return _pass_err(p, status, d)
     out = {k: d.get(k) for k in ("ok", "updated", "rev", "srev") if k in d or k != "srev"}
+    if isinstance(d.get("synced"), dict):        # 2.5 (P6-6): Durchschreiben je sid und neuer Stand der Originale
+        out["synced"] = {k: v for k, v in list(d["synced"].items())[:200] if isinstance(k, str) and isinstance(v, str) and len(v) <= 10}
+        sr = d.get("synced_rev") if isinstance(d.get("synced_rev"), dict) else {}
+        out["synced_rev"] = {k: v for k, v in list(sr.items())[:200] if k in out["synced"] and isinstance(v, int) and not isinstance(v, bool)}
     if isinstance(d.get("calc"), dict):          # 2.5 (formula1): Formel-/Rollup-Werte der Zeile nach dem Speichern
         out["calc"] = props_in(pid, {k: v for k, v in list(d["calc"].items())[:40] if isinstance(k, str) and len(k) <= 40})
         out["fx_err"] = fx_err_in(d.get("fx_err"))

@@ -163,6 +163,9 @@ def comment_add(uid, nid, b):
             if not _BID.fullmatch(block):
                 return _bad(t("ungültiger Block"))
         owner = c.execute("SELECT uid FROM note WHERE id=?", (nid,)).fetchone()[0]
+        if "<@@" in body:                     # 2.5 (P6-5): Prinzipale dieser Instanz -> Handle (Kommentar von einer anderen Instanz)
+            from saga import mentions
+            body = mentions.normalize_tokens(c, body)
         cid = c.execute("INSERT INTO note_comment (note_id, owner_uid, block_id, thread_id, uid, body, created) VALUES (?,?,?,?,?,?,?)",
                         (nid, owner, block, thread, uid, body, now)).lastrowid
         _seen(c, uid, thread or cid, now)
@@ -208,6 +211,9 @@ def comment_edit(uid, cid, b):
         if len(body) > COMMENT_MAX:
             return _bad(t("Höchstens {n} Zeichen.", n=COMMENT_MAX))
         now = time.time()
+        if "<@@" in body:                     # 2.5 (P6-5): wie comment_add
+            from saga import mentions
+            body = mentions.normalize_tokens(c, body)
         c.execute("UPDATE note_comment SET body=?, edited=? WHERE id=?", (body, now, cid))
         bus.fire("comments.changed", c, note_id=r[1])
         row = c.execute(f"SELECT {C_COLS} FROM note_comment WHERE id=?", (cid,)).fetchone()

@@ -236,6 +236,22 @@ def _comment_mentioned(c, owner, note_id, comment_id, author):
     return comment_targets(c, owner, note_id, r[0], author) if r and r[0] and "<@" in r[0] else []
 
 
+def normalize_tokens(c, body):
+    """Kommentar beim Speichern: Token mit Prinzipal einer Person DIESER Instanz -> lokaler Handle, fremde in ihre gefuehrte
+    Form (wie normalize fuer Seiten). Kommt z. B. von einer anderen Instanz ("<@@anna@hier>")."""
+    if not body or "<@@" not in body or people.FED_LOCAL is None:
+        return body
+
+    def rep(m):
+        ref = m.group(1)
+        if not ref.startswith("@"):
+            return m.group(0)
+        mine, u = people.FED_LOCAL(c, ref)
+        new = (local_ref(u) if u else None) if mine else people.canon_remote(c, ref)
+        return f"<@{new}>" if new else m.group(0)
+    return _TOKEN.sub(rep, body)
+
+
 def comment_people(c, bodies, viewer):
     """Woerterbuch {ref: {...}} fuer die Token in Kommentaren (Anzeige als Chip)."""
     refs = [r for b in bodies for r in _TOKEN.findall(b or "")]
@@ -315,9 +331,9 @@ def home_out(c, body, ext_of):
     return _rewrite(body, rep)
 
 
-def remote_people(c, refs, pm_in):
-    """Heim: Woerterbuch fuer Erwaehnungen auf einer fremden Seite (lokale Namen von hier, fremde mit Herkunft)."""
-    out = people_map(c, refs, None)
+def remote_people(c, refs, pm_in, viewer=None):
+    """Heim: Woerterbuch fuer Erwaehnungen auf einer fremden Seite (lokale Namen von hier, fremde mit Herkunft; me fuer viewer)."""
+    out = people_map(c, refs, viewer)
     for r in refs:
         if is_remote(r):
             e = (pm_in or {}).get(r) if isinstance(pm_in, dict) else None
