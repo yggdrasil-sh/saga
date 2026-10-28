@@ -197,7 +197,45 @@ def _mask(body):
     """Inhalt (JSON) -> Form im CRDT-Zustand: Autoren von Nextcloud-Bloecken als Handle (nie der Anmeldename - jede Person
     mit Lesezugriff bekommt den ganzen Zustand). Verweis-/Erwaehnungstexte entfernt das Dokumentmodell selbst."""
     from saga import nextcloud
-    return nextcloud.mask_local(body, "blocks", "")
+    return _mask_links(nextcloud.mask_local(body, "blocks", ""))
+
+
+def _mask_links(body):
+    """Texte von Seitenverweisen in Feldern, die das Modell als JSON-Wert fuehrt (undurchsichtige/unbekannte Bloecke,
+    extra-Felder), leeren - sonst stuende der Titel fremder Seiten im Zustand (Rich-Text entfernt sie das Modell selbst).
+    Beim Zurueckfuehren setzt _restore_links die bisherigen Texte wieder ein."""
+    if "/notes#" not in (body or ""):
+        return body
+    from saga.sharing import _NOTE_LINK, _walk_strings
+    d = json.loads(body)
+
+    def fn(s, _blk=None):
+        return _NOTE_LINK.sub(lambda m: f'<a href="/notes#{m.group(1)}"></a>', s) if "/notes#" in s else s
+    return json.dumps(_walk_strings(d, fn), ensure_ascii=False)
+
+
+def _restore_links(c, room, body):
+    """Gegenstueck zu _mask_links: Verweistexte aus dem zuletzt abgeglichenen Stand (Eigentuemer-Sicht), neue Verweise
+    wie beim Speichern durch Nicht-Eigentuemer (sharing.restore_links)."""
+    if "/notes#" not in json.dumps(body, ensure_ascii=False):
+        return body
+    from saga.sharing import _NOTE_LINK, _walk_strings
+    res = _Resolver(c, room.owner, room.base)
+    seen = {}
+
+    def fn(s, blk=None):
+        def rep(m):
+            if m.group(2):
+                return m.group(0)
+            pid = int(m.group(1))
+            k = seen.get((blk, pid), 0)
+            seen[(blk, pid)] = k + 1
+            return f'<a href="/notes#{pid}">{res.page(blk, pid, k)}</a>'
+        return _NOTE_LINK.sub(rep, s) if "/notes#" in s else s
+    out = _walk_strings(body, fn)
+    body.clear()
+    body.update(out)
+    return body
 
 
 def _unmask(c, doc):
@@ -343,6 +381,7 @@ def _read_body(c, room, doc):
     try:
         blocks_doc, title = model.read(doc, _Resolver(c, room.owner, room.base), _mask_doc(room.base))
         _unmask(c, blocks_doc)
+        _restore_links(c, room, blocks_doc)
     except model.ModelError as ex:
         raise Rejected("type", str(ex)) from None
     except (ValueError, TypeError, KeyError, AttributeError, RecursionError) as ex:
@@ -385,7 +424,7 @@ def _server_fields(doc):
 
 
 def _mask_doc(d):
-    if d is None or '"nextcloud"' not in json.dumps(d):
+    if d is None or ('"nextcloud"' not in json.dumps(d) and "/notes#" not in json.dumps(d)):
         return d
     return json.loads(_mask(json.dumps(d, ensure_ascii=False)))
 
@@ -579,6 +618,7 @@ def ingest(nid, rev=None):
                 with _db() as c:
                     live, live_title = model.read(room.doc, _Resolver(c, room.owner, room.base), _mask_doc(room.base))
                     _unmask(c, live)
+                    _restore_links(c, room, live)
                 target, _ = merge.merge_doc(room.base, live, theirs, None, {"by": "", "name": ""}, time.time())
                 title = merge.merge_title(room.base_title, live_title, title)[0]
             except Exception as ex:  # noqa: BLE001
@@ -756,7 +796,9 @@ def _schedule_mat(room):
                 await asyncio.sleep(wait)
                 continue
             try:
-                await asyncio.to_thread(_materialize, room)
+                done = await asyncio.to_thread(_materialize, room)
+                if not done and room.dirty_at and time.time() - room.dirty_at >= MAT_DELAY:
+                    await asyncio.sleep(5)       # abgelehnt (z. B. Datei weg): nicht im 0,2-s-Takt wiederholen
             except Exception as ex:  # noqa: BLE001 - Datenbank kurz weg: spaeter erneut
                 print(f"collab: Materialisieren {room.nid}: {type(ex).__name__}: {ex}", flush=True)
                 await asyncio.sleep(5)

@@ -222,7 +222,8 @@ Andere Wurzeln → `reject type`.
 6. Seitenverweise und Erwähnungen tragen **keinen Text** (Titel-Leck: jede Person mit Lesezugriff bekommt den ganzen
    Zustand). Den Titel zeigt der Client aus seiner Seitenliste (fremde Seite ohne Zugriff: „Seite ohne Zugriff“), den
    Namen aus `people` (`GET /api/notes/{id}`); beim Materialisieren setzt der Server die Texte aus Sicht des
-   Eigentümers ein (bisheriger Linktext bleibt, wie heute `restore_links`). Ebenso: Nextcloud-Autoren stehen als Handle
+   Eigentümers ein (bisheriger Linktext bleibt, wie heute `restore_links`). In JSON-Werten (undurchsichtige Blöcke,
+   `extra`) steht ein Verweis als `<a href="/notes#ID"></a>` ohne Text. Ebenso: Nextcloud-Autoren stehen als Handle
    im Zustand, nie als Anmeldename.
 7. Verboten (→ `reject type`): `columns` in `column`, `toggle` oder `synced`; `synced`/`synced_ref` in `synced`;
    Text direkt im Fragment; Kinder in undurchsichtigen Blöcken.

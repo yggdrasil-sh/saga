@@ -320,6 +320,23 @@ try:
     blb, _ = body_of(leak, BB)
     ok("... und GET fuer b maskiert weiter", blb and "Zebra" not in blb[0]["data"]["text"])
     lb.close()
+    # Verweis in einem undurchsichtigen Block (Beschriftung einer Einbettung = JSON-Wert im Zustand)
+    emb = {"id": "e", "type": "embed", "data": {"service": "youtube", "source": "https://www.youtube.com/watch?v=abc",
+                                                "embed": "https://www.youtube.com/embed/abc",
+                                                "caption": f'c <a href="/notes#{secret}">Geheimprojekt Zebra</a>'}}
+    leak2 = page([emb, P("q", "x")], "Leck2")
+    req("PUT", f"/api/notes/{leak2}/shares", A, {"type": "user", "target": BB, "role": "edit"})
+    lb = client(BB)
+    _, s2 = subscribe(lb, leak2)
+    raw = s2[2][0] if s2 else b""
+    ok("Titel-Leck: undurchsichtiger Block ohne Verweistext im Zustand", raw and b"Zebra" not in raw)
+    lb.edit(leak2, lambda d: text_of(d, 1).insert(0, "B "), "l2")
+    m = lb.wait(("ACK", "REJECT"), leak2)
+    time.sleep(1.5)
+    bl, _ = body_of(leak2)
+    ok("... angenommen, Materialisierung behaelt den Verweistext", m and m[0] == "ACK" and bl
+       and bl[0]["data"]["caption"].endswith("Geheimprojekt Zebra</a>") and bl[1]["data"]["text"] == "B x")
+    lb.close()
 
     # --- JSON-Schreiber waehrend Live -----------------------------------------------------------------------------------
     jn = page([P("a", "Eins"), P("b", "Zwei"), P("c", "Drei")], "JSON")
