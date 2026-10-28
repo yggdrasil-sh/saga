@@ -187,6 +187,11 @@ border:1px dashed var(--border);border-radius:12px;font:inherit;cursor:pointer;t
 .page-bar .note-state{flex:0 1 auto;min-width:0;max-width:22rem;overflow:hidden;text-overflow:ellipsis}
 .note-state.ok{color:var(--ok)}
 .note-state.err{color:var(--down)}
+.note-state.warn{color:var(--warn)}
+/* Notion-Gefuehl (U4): Routine-Status still - Platz bleibt (kein Springen der Knoepfe), lesbar beim Ueberfahren der Kopfzeile */
+.note-state.quiet{opacity:0;transition:opacity .2s ease-out}
+.page-bar:hover .note-state.quiet,.page-bar:focus-within .note-state.quiet{opacity:.75}
+.note-state.ok.quiet{color:var(--muted)}
 
 .pages{display:grid;grid-template-columns:minmax(190px,240px) minmax(0,1fr);gap:1.8rem;align-items:start;min-height:440px}
 .pages-side{display:flex;flex-direction:column;gap:.55rem;min-width:0}
@@ -240,7 +245,7 @@ border:1px dashed var(--border);border-radius:12px;font:inherit;cursor:pointer;t
 .page-head:hover .page-icon.empty,.page-icon.empty:focus-visible{opacity:1}
 .page-title{display:block;width:100%;background:transparent;border:0;outline:none;color:var(--fg);font:inherit;font-size:2.05rem;
   font-weight:700;line-height:1.2;letter-spacing:-.015em;padding:.1rem 0;margin:0 0 .7rem}
-.page-title::placeholder{color:color-mix(in srgb,var(--muted) 55%,transparent)}
+.page-title::placeholder{color:color-mix(in srgb,var(--muted) 70%,transparent)}
 
 /* Editor.js auf das Saga-Design umstellen (Variablen statt Regel-Ueberschreiben, Hell + Dunkel) */
 .page-body .codex-editor{color:var(--fg);--color-dark:var(--fg);--grayText:var(--muted);--bg-light:var(--card-h);
@@ -255,13 +260,13 @@ border:1px dashed var(--border);border-radius:12px;font:inherit;cursor:pointer;t
   --color-background-item-focus:var(--card-h);--color-shadow-item-focus:transparent;--color-background-icon-active:color-mix(in srgb,var(--accent) 18%,transparent);
   --color-text-icon-active:var(--accent);--color-active-icon:var(--accent);--color-border-icon:var(--border);--color-border-icon-disabled:var(--border)}
 .page-body .ce-block__content,.page-body .ce-toolbar__content{max-width:none}
-.page-body .ce-paragraph{line-height:1.7}
+.page-body .ce-paragraph{line-height:1.6}
 .page-body .ce-paragraph a,.page-body .cdx-list a,.page-body .cdx-quote a{color:var(--accent);text-underline-offset:2px}
 .page-body .ce-header{font-weight:700;letter-spacing:-.01em;line-height:1.3;padding:.7em 0 .25em;margin:0;
   color:var(--fg);text-transform:none}
-.page-body h1.ce-header{font-size:1.7rem}
-.page-body h2.ce-header{font-size:1.35rem}
-.page-body h3.ce-header{font-size:1.12rem}
+.page-body h1.ce-header{font-size:1.875rem}
+.page-body h2.ce-header{font-size:1.5rem}
+.page-body h3.ce-header{font-size:1.25rem}
 .page-body .ce-toolbar__plus,.page-body .ce-toolbar__settings-btn{color:var(--muted)}
 .page-body .ce-toolbar__plus:hover,.page-body .ce-toolbar__settings-btn:hover{background:var(--card-h);color:var(--fg)}
 .page-body .cdx-input{border-color:var(--border);box-shadow:none;background:transparent;color:var(--fg)}
@@ -405,7 +410,12 @@ body.notes-page .pages{grid-template-columns:minmax(220px,270px) minmax(0,1fr);g
 body.notes-page .pages-side{position:sticky;top:4.8rem;max-height:calc(100vh - 6.5rem)}
 body.notes-page .pg-tree,body.notes-page .pg-results{max-height:none;overflow:auto;flex:0 1 auto}
 body.notes-page .page-head,body.notes-page .page-body{max-width:760px}
-body.notes-page .page-title{font-size:2.35rem}
+body.notes-page .page-title{font-size:2.5rem;letter-spacing:-.02em}
+/* Schreibflaeche wie ein Dokument (Design-Studie T1/E6): 16 px Text, Titel 40 px, H1/H2/H3 30/24/20 px, Absaetze dichter,
+   Luft ueber Ueberschriften. "Kleiner Text" (p-small) bleibt 14 px. */
+body.notes-page .page-body{font-size:1rem}
+body.notes-page .page-body .ce-paragraph.cdx-block{padding:.25em 0}
+body.notes-page .page-body .ce-header{padding:1em 0 .2em}
 @media (max-width:760px){body.notes-page .page-title{font-size:1.6rem}}   /* Handy: langer Titel passt eher (BUG-015) */
 body.notes-page #pg-full{display:none}
 @media (max-width:760px){
@@ -1479,6 +1489,15 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 }
 /* Handy mit allen Knoepfen (Chats, Glocke, KI, Konto, Dashboard): "Chats" nur als Symbol, damit nichts ueberlaeuft */
 @media (max-width:420px){.np-head .btn-chats .btn-t{display:none}.np-head{gap:.3rem}.np-head .btn{padding:.4rem .5rem}}
+/* Notion-Gefuehl (Design-Studie U6, kleine Stufe): die Kopfzeile ueber der Seite tritt zurueck - flacher, Knoepfe ohne
+   Rahmen (beim Ueberfahren getoent), "Dashboard" nur als Symbol (der Name links fuehrt ebenfalls dorthin), duenne Linie */
+body.notes-page .np-head{padding-top:.45rem;padding-bottom:.45rem;border-bottom-color:color-mix(in srgb,var(--border) 60%,transparent)}
+body.notes-page .np-head .btn{border-color:transparent;color:var(--muted);padding:.35rem .55rem}
+body.notes-page .np-head .btn:hover,body.notes-page .np-head .btn:focus-visible,body.notes-page .np-head .btn[aria-expanded="true"]{background:var(--card-h);color:var(--fg);border-color:transparent}
+body.notes-page .np-head .np-dash-t{display:none}
+body.notes-page .np-head .np-dash-ic{display:inline}
+body.notes-page .np-brand{font-size:.9rem}
+body.notes-page .np-name{font-size:.9rem;font-weight:500;color:var(--muted)}
 /* Handy: Seitenleiste als Schublade (Knopf oben links), Inhalt sofort sichtbar */
 @media (max-width:760px){
   body.notes-page:not(.embed) .pages-side{position:fixed;top:0;left:0;bottom:0;z-index:66;width:min(86vw,330px);max-height:none;
@@ -2147,7 +2166,7 @@ body.hk-resizing{cursor:ew-resize;user-select:none}body.hk-resizing iframe{point
 /* Toggle-Ueberschriften (toggle.data.level 1-3): Titel in Ueberschriftengroesse */
 .page-body .tgl-h .tgl-title{font-weight:700;letter-spacing:-.01em;line-height:1.3}
 .page-body .tgl-h{padding-top:.5em}
-.page-body .tgl-h1 .tgl-title{font-size:1.7rem}.page-body .tgl-h2 .tgl-title{font-size:1.35rem}.page-body .tgl-h3 .tgl-title{font-size:1.12rem}
+.page-body .tgl-h1 .tgl-title{font-size:1.875rem}.page-body .tgl-h2 .tgl-title{font-size:1.5rem}.page-body .tgl-h3 .tgl-title{font-size:1.25rem}
 .page-body .tgl-h .tgl-btn{line-height:1.3;padding-top:.15em}
 .page-body .tgl-h1 .tgl-btn{font-size:1.05rem}.page-body .tgl-h2 .tgl-btn{font-size:.95rem}
 /* Schrift je Seite (note.font) und kleiner Text (note.small): Titel, Inhalt, Eigenschaften; Code bleibt Mono */
@@ -2155,7 +2174,8 @@ body.hk-resizing{cursor:ew-resize;user-select:none}body.hk-resizing iframe{point
 .page.pf-mono .page-title,.page.pf-mono .page-body,.page.pf-mono .props{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
 .page:is(.pf-serif,.pf-mono) .page-body :is(.ce-popover,.ce-toolbar,.cols-ctl,.col-add,.hk-code-head,.hk-embed-bar){font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .page.p-small .page-body,.page.p-small .props{font-size:.875em}
-body.notes-page .page.p-small .page-title{font-size:calc(2.35rem * .875)}
+body.notes-page .page.p-small .page-title{font-size:calc(2.5rem * .875)}
+body.notes-page .page.p-small .page-body{font-size:.875rem}
 @media (max-width:760px){body.notes-page .page.p-small .page-title{font-size:calc(1.6rem * .875)}}
 .pf-item-serif .mi-t{font-family:ui-serif,Georgia,"Times New Roman",serif}.pf-item-mono .mi-t{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
 .hk-toc-i.tgl .hk-toc-t::before{content:"▸ ";color:var(--muted)}

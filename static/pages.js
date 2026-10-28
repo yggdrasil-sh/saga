@@ -509,7 +509,19 @@
   function label(p) { return p && p.title ? p.title : T('Unbenannt'); }
   function nSub(n) { return n === 1 ? T('1 Unterseite') : T('{n} Unterseiten', { n: n }); }
 
-  function state(t, cls) { var s = $('pg-state'); s.textContent = t; s.title = t; s.className = 'note-state ' + (cls || ''); }
+  // Speicherstatus. Notion-Gefuehl (Design-Studie U4): Routine ("Ungespeichert …", "Speichert …", "Gespeichert ✓") bleibt
+  // still (cls 'quiet': unsichtbar, beim Ueberfahren der Kopfzeile dezent lesbar); sichtbar nur Fehler, Konflikt, offline
+  // und fremde Aenderungen
+  function state(t, cls) {
+    if (t && / quiet/.test(' ' + (cls || '')) && navigator.onLine === false) { t = T('Offline – Änderungen werden gespeichert, sobald die Verbindung wieder da ist'); cls = 'warn'; }
+    var s = $('pg-state'); s.textContent = t; s.title = t; s.className = 'note-state ' + (cls || '');
+  }
+  // offline: sagen, dass (noch) nicht gespeichert wird; wieder online -> liegengebliebenes speichern
+  window.addEventListener('offline', function () { if (S.cur && !readOnly()) state(T('Offline – Änderungen werden gespeichert, sobald die Verbindung wieder da ist'), 'warn'); });
+  window.addEventListener('online', function () {
+    if (!S.cur || readOnly()) return;
+    if (S.dirtyBody || S.dirtyTitle) schedule(); else if (/\bwarn\b/.test($('pg-state').className)) state('', 'quiet');
+  });
 
   // --- Seitenbaum -----------------------------------------------------------
   function renderTree() {
@@ -803,7 +815,7 @@
   function schedule() {
     if (S.lost) return;                                                               // Zugriff verloren: Dialog zeigt den Text
     if (readOnly()) { S.dirtyBody = S.dirtyTitle = false; return; }                    // gesperrt / nur Lesen: nichts speichern
-    state(T('Ungespeichert …')); clearTimeout(S.timer); S.timer = setTimeout(save, 900);
+    state(T('Ungespeichert …'), 'quiet'); clearTimeout(S.timer); S.timer = setTimeout(save, 900);
   }
 
   // Speichern nacheinander (Warteschlange): ein zweites Speichern waehrend das erste noch laeuft, wuerde sonst
@@ -819,7 +831,7 @@
     if (S.dirtyTitle) { body.title = $('pg-title').value; S.dirtyTitle = false; }
     var wantBody = !!(S.dirtyBody && S.editor), getBody = wantBody ? S.editor.save() : Promise.resolve(null);
     S.dirtyBody = false;
-    state(T('Speichert …'));
+    state(T('Speichert …'), 'quiet');
     return getBody.then(function (out) {
       // W01: Editor.js liefert bei einem Fehler im Block nichts - nicht still als "nichts zu speichern" werten
       if (wantBody && !(out && Array.isArray(out.blocks))) { S.dirtyBody = true; throw new Error(T('Inhalt konnte nicht gelesen werden')); }
@@ -845,7 +857,7 @@
         if (S.cur && S.cur.id === id && S.cur.updated_by && !S.cur.updated_by.me) { S.cur.updated_by = { me: true }; applyMeta(); }
         var p = byId(id); if (p) { p.updated = d.updated; if ('title' in body) p.title = body.title.trim(); }
         if (out && /"widget"/.test(body.body || '')) setTimeout(loadWidgets, 0);      // Widgets: Werte zum gespeicherten Stand
-        if (!S.dirtyBody && !S.dirtyTitle) state(T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(d.updated * 1000)) }), 'ok');
+        if (!S.dirtyBody && !S.dirtyTitle) state(T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(d.updated * 1000)) }), 'ok quiet');
         if (!remoteId(id)) { S.ckId = id; clearTimeout(S.ckTimer); S.ckTimer = setTimeout(function () { checkpoint('pause'); }, CK_PAUSE); }
         if ('title' in body) { if (S.cur && S.cur.id === id) S.cur.title = d.merged && typeof d.title === 'string' ? d.title : body.title.trim(); renderTree(); renderCrumbs(); setLocation(); }
         if (S.remoteAfter && S.cur && S.cur.id === id && S.remoteAfter > (d.rev || 0)) setTimeout(function () { liveApply(null); }, 0);   // fremde Aenderung nach diesem Stand
@@ -855,6 +867,7 @@
       if (err.message === 'conflict') { S.conflict = true; showConflict(err.data && err.data.by); state(T('Nicht gespeichert – Seite wurde zwischenzeitlich geändert'), 'err'); return; }
       // Freigabe entzogen, Teilen abgeschaltet (404) oder Rolle auf Lesen gefallen (403): verstaendlich melden, Text retten
       if ((err.status === 404 || err.status === 403) && S.cur && S.cur.id === id && foreign()) { lostAccess(err.status); return; }
+      if (navigator.onLine === false) { state(T('Gespeichert ✓'), 'quiet'); return; }      // zeigt den Offline-Hinweis (s. state)
       state(T('Nicht gespeichert: {err}', { err: err.message }), 'err');
     });
   }
@@ -1066,7 +1079,7 @@
       setLocation();
       renderTree(); renderCrumbs();
       // nur Lesen/Kommentieren: kein "Gespeichert" (man speichert ja nichts) - die Kopfzeile nennt die Rolle
-      state(n.updated && (!n.role || n.role === 'owner' || n.role === 'edit') ? T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(n.updated * 1000)) }) : '', 'ok');
+      state(n.updated && (!n.role || n.role === 'owner' || n.role === 'edit') ? T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(n.updated * 1000)) }) : '', 'ok quiet');
       applyKind();      // Ansicht (Datenbank / Zeile / Seite) sofort umschalten, nicht erst nach dem Rendern
       var q = S.renderQ = (S.renderQ || Promise.resolve()).catch(function () {}).then(function () {
         return seq === S.openSeq ? ensureEditor(data) : null;      // inzwischen andere Seite angefordert: nicht zeichnen
@@ -1123,7 +1136,7 @@
   save = function () {
     if (S.dirtyBody && S.editor && !S.dirtyTitle) {
       return S.editor.save().then(function (o) {
-        if (JSON.stringify(o.blocks) === S.lastBlocks) { S.dirtyBody = false; clearTimeout(S.timer); state(T('Gespeichert ✓'), 'ok'); return; }
+        if (JSON.stringify(o.blocks) === S.lastBlocks) { S.dirtyBody = false; clearTimeout(S.timer); state(T('Gespeichert ✓'), 'ok quiet'); return; }
         S.lastBlocks = JSON.stringify(o.blocks);
         return _origSave();
       });
