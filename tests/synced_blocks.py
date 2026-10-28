@@ -352,6 +352,14 @@ def run():
     sid2 = o["data"]["sid"]
     nd = page(A, "Doppelt", [{"id": "d1", "type": "synced", "data": {"sid": sid2}}, {"id": "d2", "type": "synced", "data": {"sid": sid2}}])
     ok("Gleiche sid zweimal: nur eine Kopie", len([x for x in stored(nd) if x["type"] == "synced"]) == 1, stored(nd))
+    # Kopie VOR dem Original auf derselben Seite (Original in eigener Seite eingefuegt): das Original bleibt
+    do = get(nn)
+    s, _ = save(nn, [{"id": "k0", "type": "synced", "data": {"sid": sid2}}] + blocks(do), A, rev=do["rev"], hdr=SYNC)
+    st = stored(nn)
+    with connect() as c:
+        r = c.execute("SELECT gone_at FROM synced_block WHERE sid=?", (sid2,)).fetchone()
+    ok(f"Kopie vor dem Original auf derselben Seite: Original bleibt ({s})", "aussen" in json.dumps(st)
+       and len([x for x in st if x["type"] == "synced"]) == 1 and r and r[0] is None, (st, r))
 
 
 def scan():

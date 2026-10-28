@@ -120,7 +120,8 @@ def prepare(c, owner, nid, uid, old_body, body, caps, acc=None):
         rows = {r[0]: r[1:] for r in c.execute(f"SELECT sid, owner, note_id, block_id, rev, gone_at FROM synced_block WHERE sid IN "
                                                f"({','.join('?' * len(sids))}) FOR UPDATE", tuple(sids)).fetchall()}
     drop, seen_orig, seen_any = set(), set(), set()
-    for b in blocks:
+    # Bloecke mit Inhalt zuerst: steht eine Kopie derselben sid VOR dem Original, faellt die Kopie weg, nicht das Original
+    for b in sorted(blocks, key=lambda x: not isinstance(x["data"].get("blocks"), list)):
         d = b["data"]
         srev = d.pop("srev", None)
         sid = d.get("sid")
