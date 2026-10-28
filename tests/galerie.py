@@ -102,7 +102,7 @@ try:
             "wert-falsch.json": "unbekannte Option 'b'"}
     miss = [f for f, s in want.items() if f"FEHLER {f}" not in r.stdout or s not in r.stdout]
     ok(f"Pruefskript: kaputte Bundles erkannt, rc 1 (fehlt: {miss})", r.returncode == 1 and not miss)
-    ok("Pruefskript: Typen und Blockverbote gemeldet", "'timeline'" in r.stdout and "'image' nicht erlaubt" in r.stdout
+    ok("Pruefskript: Typen und Blockverbote gemeldet", "'zeitmaschine'" in r.stdout and "'image' nicht erlaubt" in r.stdout
        and "Datum JJJJ-MM-TT" in r.stdout and "auch_nix" in r.stdout)
     import tempfile
     import shutil
