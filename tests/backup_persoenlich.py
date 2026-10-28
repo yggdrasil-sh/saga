@@ -275,6 +275,13 @@ try:
        and {p1, priv}.issubset({p["id"] for p in s["pages"]}) and pb not in {p["id"] for p in s["pages"]}
        and r1 not in {p["id"] for p in s["pages"]})
 
+    # 2.5 (Paket 1): API-Tokens und Webhooks sind Geheimnisse - nie im persoenlichen Backup
+    tok_mark, hook_mark = "APITOK-" + MARK, "HOOK-" + MARK
+    q("INSERT INTO api_token (uid, name, hash, prefix, scopes, created) VALUES (?,?,?,?,?,?)",
+      (A, tok_mark, hashlib.sha256(tok_mark.encode()).hexdigest(), "sga_xx", '["read:pages"]', time.time()))
+    q("INSERT INTO webhook (uid, url, secret_enc, events, created, name) VALUES (?,?,?,?,?,?)",
+      (A, "https://example.invalid/" + hook_mark, "x", '["page.updated"]', time.time(), hook_mark))
+
     # --- Ausschluss + Lauf ---
     st, r = call("PUT", "/api/account/backup/settings", {"exclude": [priv, pb, 999999999]})
     ok(f"Ausschluss gespeichert, fremde/unbekannte IDs verworfen ({r.get('exclude') if isinstance(r, dict) else r})", st == 200 and r["exclude"] == [priv])
@@ -293,6 +300,9 @@ try:
     good = all(hashlib.sha256(z.read(n)).hexdigest() == v["sha256"] and len(z.read(n)) == v["size"] for n, v in man["files"].items())
     ok(f"Manifest: Pruefsummen aller Dateien stimmen ({len(man['files'])})", good and set(man["files"]) | {"manifest.json"} == names)
     data = json.loads(z.read("daten.json"))
+    blob = b"".join(z.read(n) for n in names if not n.startswith("dateien/"))
+    ok("API-Tokens und Webhooks nicht im Backup", tok_mark.encode() not in blob and hook_mark.encode() not in blob
+       and "api_token" not in data and "webhooks" not in data)
     titles = {n["title"] for n in data["notes"]}
     ids = {n["id"] for n in data["notes"]}
     ok("Eigene Seiten, Unterseiten, Datenbanken + Zeilen enthalten", {p1, p1a, p2, db1, db2, r1, k1, emb}.issubset(ids))
@@ -591,6 +601,8 @@ finally:
     q("DELETE FROM user_kv WHERE uid=? AND k='task_due'", (A,))
     if KEEP_DUE:
         q("INSERT INTO user_kv (uid, k, v) VALUES (?,?,?)", (A, "task_due", KEEP_DUE[0][0]))
+    q("DELETE FROM api_token WHERE uid=? AND name LIKE ?", (A, f"%{MARK}%"))
+    q("DELETE FROM webhook WHERE uid=? AND name LIKE ?", (A, f"%{MARK}%"))
     q("DELETE FROM bookmark WHERE url LIKE ?", (f"%{MARK}%",))
     q("DELETE FROM notification WHERE kind='userbackup.failed'")
     for fid in [r[0] for r in (q("SELECT id FROM file WHERE uid IN (?,?) AND name IN ('bild.png','nur-privat.bin','fremd.png','gross.bin')", (A, BB)) or [])]:

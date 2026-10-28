@@ -176,6 +176,28 @@ try:
     call("PATCH", f"/api/tasks/{tk}", A, {"done": True})
     ok("task.created/task.completed", bool(wait(of("task.created", tk))) and bool(wait(of("task.completed", tk))))
 
+    # 2.5 Wechselwirkungen: Bloecke verschieben (beide Seiten), Aufgabenquelle (Zeile abhaken/anlegen -> row.*, kein task.*)
+    PM = call("POST", "/api/notes", A, {"title": "Hook-Ziel"})[1]["id"]
+    time.sleep(1.5); GOT.clear()
+    cur = call("GET", f"/api/notes/{P}", A)[1]
+    st, d, _ = call("POST", f"/api/notes/{P}/blocks/move", A, {"ids": ["a1"], "to": PM, "rev_a": cur["rev"]})
+    ok(f"blocks/move -> page.updated auf beiden Seiten ({st})", st == 200 and bool(wait(of("page.updated", P))) and bool(wait(of("page.updated", PM))),
+       [ev(x) for x in GOT])
+    s = call("GET", f"/api/notes/{D}", A)[1]["schema"]
+    s["props"].append({"id": "erl", "name": "Erledigt", "type": "checkbox"}); call("PATCH", f"/api/notes/{D}", A, {"schema": s})
+    st, d, _ = call("PUT", f"/api/notes/{D}/tasksource", A, {"map": {"done": "erl"}, "subscribe": True})
+    ok(f"Aufgabenquelle eingerichtet ({st})", st == 200, d)
+    time.sleep(1.5); GOT.clear()
+    st, d, _ = call("PATCH", f"/api/tasks/src/{Z}", A, {"done": True})
+    gu = wait(of("row.updated", Z))
+    ok(f"Quellen-Zeile abhaken -> row.updated (erl), kein task.completed ({st})", st == 200 and bool(gu) and "erl" in ev(gu[0])["data"]["changed"]
+       and not [x for x in GOT if ev(x)["type"].startswith("task.")], [ev(x) for x in GOT])
+    st, d, _ = call("POST", "/api/tasks", A, {"text": "Hook-Quellaufgabe", "src": D})
+    ok(f"Neue Aufgabe mit Ziel Quelle -> row.created ({st})", st == 200 and d.get("kind") == "row" and bool(wait(of("row.created", d.get("id")))), d)
+    time.sleep(0.5)
+    ok("... und kein task.created", not [x for x in GOT if ev(x)["type"] == "task.created"], [ev(x) for x in GOT])
+    call("DELETE", f"/api/notes/{D}/tasksource", A)
+
     # Papierkorb und zurueck
     call("DELETE", f"/api/notes/{P}", A)
     ok("page.trashed", bool(wait(of("page.trashed", P))))
@@ -277,7 +299,7 @@ finally:
     cn = db()
     for q in ("DELETE FROM note_share WHERE owner_uid LIKE ?", "DELETE FROM note_comment WHERE uid LIKE ?", "DELETE FROM note WHERE uid LIKE ?",
               "DELETE FROM task WHERE uid LIKE ?", "DELETE FROM api_token WHERE uid LIKE ?", "DELETE FROM webhook WHERE uid LIKE ?",
-              "DELETE FROM notification WHERE uid LIKE ?"):
+              "DELETE FROM notification WHERE uid LIKE ?", "DELETE FROM task_source WHERE uid LIKE ?"):
         try:
             cn.execute(q, ("hk-test-%",))
         except sqlite3.OperationalError:
