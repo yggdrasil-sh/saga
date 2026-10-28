@@ -577,7 +577,19 @@ Unterseiten darunter): Datei oder Ordner in das Feld ziehen oder auswählen.
   Uploads), Bilder aus dem Internet bleiben Links. Frontmatter: `title` wird der Seitentitel, `tags` werden Saga-Tags,
   alle übrigen Felder ein ausklappbarer Block „Eigenschaften“ oben in der Seite (beides abschaltbar). Callouts
   (`> [!note]`, faltbar → Toggle), `==markiert==`, Aufgaben, Tabellen und Code werden zu den passenden Blöcken.
-  Notion-Exporte kommen in einer späteren Version.
+- **Notion:** in Notion im Seitenmenü **⋯ → „Exportieren“** (bzw. für alles: Einstellungen → Arbeitsbereich →
+  „Gesamten Arbeitsbereich exportieren“) das Format **„Markdown & CSV“** wählen, **„Unterseiten einschließen“** und
+  „Für Unterseiten Ordner erstellen“ einschalten. Die heruntergeladene ZIP-Datei unverändert in den Import-Dialog ziehen
+  – auch wenn sie weitere ZIPs enthält (`…-Part-1.zip`, `…-Part-2.zip` bei großen Exporten). Der Dialog zeigt Seiten,
+  Datenbanken, Einträge und Dateien und je Datenbank die erkannten Spaltentypen; jeden Typ kann man vor dem Import
+  ändern oder die Spalte weglassen. Übernommen werden der Seitenbaum, Datenbanken mit ihren Einträgen (Inhalt der
+  Eintragsseiten inklusive), Links zwischen den Seiten, Bilder und Dateien aus dem Export, Callouts, Toggles, Spalten,
+  Code, Formeln (`$$…$$` als Mathe-Block) und Farben. Spaltentypen: Datum (auch mit Uhrzeit und als Zeitraum), Auswahl,
+  Mehrfachauswahl, Status (mit den Gruppen Offen/In Arbeit/Erledigt), Häkchen, Zahl, URL, E-Mail, Telefon, Relation,
+  Dateien. Was Notion nicht als Daten mitliefert, kommt als Text: **Personen** (Namen lassen sich keinem Konto zuordnen)
+  und **Formeln/Rollups** (Notion exportiert nur das Ergebnis) – solche Spalten lassen sich danach im Spaltenmenü über
+  **„In Formel umwandeln …“** durch eine echte Formel ersetzen. Bilder aus dem Internet bleiben Links, Seiten-Emojis
+  und Ansichten (Filter, Board …) enthält der Export nicht. Der HTML-Export von Notion wird nicht unterstützt.
 
 Der Import läuft im Hintergrund mit Fortschritt und lässt sich abbrechen (bereits Angelegtes wandert dann in den
 Papierkorb). Am Ende zeigt der Dialog, was angelegt wurde und was **nicht übernommen** wurde (mit Grund); diese Liste

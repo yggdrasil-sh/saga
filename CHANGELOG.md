@@ -112,6 +112,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `docs/APP-API.md` („Datenbanken: Status, relative Filter, …“). Keine Migration, `MIN_APP` unverändert.
 - Tests: `tests/db_status_datum.py`, `tests/db_unteraufgaben.py`, `tests/tabellenoptionen.py`, `tests/browser_db_paket5.js`.
 
+### Neu (2.5, Paket 2 E5: Notion-Import)
+- **Notion-Export importieren.** Im Import-Dialog ein ZIP aus Notion („Exportieren“ → „Markdown & CSV“, Unterseiten
+  einschließen) ablegen: Seitenbaum mit Unterordnern, Datenbanken aus den CSV-Dateien (bei `…_all.csv` diese) mit den
+  Zeilen-Seiten als Inhalt der Einträge (Eigenschaftsblock oben entfällt, Werte kommen aus der CSV), Unterseiten von
+  Einträgen, interne Links (relativ und `notion.so/…<id>`) auf die neuen Seiten, Zeile nur mit Link auf eine Datenbank
+  → Datenbank-Block, Bilder und Dateien aus dem ZIP, externe Bilder bleiben Links. Notion-Callouts (`<aside>`,
+  `<callout>`), Toggles, Spalten (bis 6), Code, `$$…$$` → Mathe-Block, `$…$` → Inline-Mathe, Farben (`<span color>`,
+  `highlight-…`, `{color=…}`) → Inline-/Blockfarben. Große Exporte als `Export-….zip` mit Teil-ZIPs werden gelesen
+  (eine Ebene, gleiche Grenzen wie ein ZIP).
+- Eigenschaftstypen werden geraten und lassen sich im Dialog je Spalte ändern: Datum (mit Uhrzeit → Zeitpunkt, `A → B`
+  → Zeitraum), Auswahl, Mehrfachauswahl, **Status → Status-Eigenschaft mit Gruppen**, Häkchen, Zahl (%, €, $), URL,
+  E-Mail (`mailto:`), Telefon (Text), Relation (Links bzw. Titel; mehrdeutig → erster Treffer + Bericht), Person → Text
+  (Bericht), Dateien → Datei-Eigenschaft, Formel/Rollup → Text mit Ergebniswert und Spaltenmenü „In Formel umwandeln …“.
+  Mehr als 30 Spalten: Rest als Liste in der Eintragsseite. Seiten ohne CSV-Zeile werden Einträge ohne Werte (Bericht).
+- Server: `saga/import_notion.py`; Unterbau erweitert (Teil-ZIPs, Inhalte und Unterseiten von Einträgen, Relationen auf
+  später angelegte Datenbanken, Datei-Werte). Keine Migration. `features`: `import_notion1`. Test `tests/import_notion.py`
+  (Fixtures `tests/fixtures/notion/`), Browser-Test `tests/browser_import.js` mit `IMPORT_NOTION=1`.
+
 ### Neu (2.5, Paket 2: Import und CSV-Export)
 - **Datenbank als CSV exportieren.** ⚙ Ansicht → „Als CSV exportieren“: diese Ansicht (Filter, Sortierung, Suche,
   sichtbare Spalten) oder alles; UTF-8 mit BOM, Schalter „Excel (Deutsch)“ (Semikolon, Dezimalkomma), Schutz vor
@@ -126,7 +144,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Hintergrund-Lauf mit Fortschritt (Tabelle `import_run`, Migration 21; höchstens 2 gleichzeitig), Abbruch, Bericht
   „nicht übernommen“ im Dialog und als Seite. ZIP-Prüfung gegen Pfad-Traversal, Symlinks, ZIP-Bomben und zu große
   Archive; alles gestreamt (kleine Server). Neue Einstellungen `IMPORT_MAX_MB`, `IMPORT_UNPACKED_MAX_MB`,
-  `IMPORT_CSV_MAX_MB`, `IMPORT_CSV_ROWS_MAX`, `IMPORT_PARALLEL`. Notion-Import folgt. Markdown-Import übernimmt `$TeX$` als Inline-Mathe (`code.hk-math`, Inline-Vertrag); HTML im
+  `IMPORT_CSV_MAX_MB`, `IMPORT_CSV_ROWS_MAX`, `IMPORT_PARALLEL`. Markdown-Import übernimmt `$TeX$` als Inline-Mathe (`code.hk-math`, Inline-Vertrag); HTML im
   Markdown bleibt Text, importierte Blöcke bekommen eindeutige Block-IDs.
 
 ### Neu (2.5, Paket 1 Etappen 2/3: Personen und Dateien in Datenbanken)

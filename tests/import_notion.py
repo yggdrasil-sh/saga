@@ -292,6 +292,17 @@ def variant_a():
     ok("Zaehler", st["report"]["counts"].get("databases") == 2 and st["report"]["counts"].get("rows") == 8
        and st["report"]["counts"].get("files") == 4, st["report"]["counts"])
     ok("Importbericht-Seite angelegt", st["report"].get("page"))
+    # "In Formel umwandeln": Schema-PATCH type formula -> fx_hint weg, Wert gerechnet
+    s, cur = req("GET", f"/api/notes/{pj['id']}")
+    sc2 = cur["schema"]
+    fx = prop_by_name(sc2, "Summe (Formel)")
+    fx.update(type="formula", expr=f'prop("{pid["Budget"]}") * 2')
+    s, r = req("PATCH", f"/api/notes/{pj['id']}", {"schema": sc2})
+    s2, rows2 = req("GET", f"/api/notes/{pj['id']}/rows")
+    nfx = prop_by_name(rows2.get("schema", {}), "Summe (Formel)") or {}
+    alv = next((x["props"] for x in rows2.get("rows", []) if x["title"] == "Projekt Alpha"), {})
+    ok("In Formel umwandeln: Typ formula ohne fx_hint, Wert gerechnet", s == 200 and nfx.get("type") == "formula" and "fx_hint" not in nfx
+       and alv.get(nfx.get("id")) == 2469, (s, r, nfx, alv.get(nfx.get("id"))))
     time.sleep(2.5)
     s, bk = req("GET", f"/api/notes/{ue['id']}/backlinks")
     lst = bk if isinstance(bk, list) else (bk.get("backlinks") or bk.get("items") or []) if isinstance(bk, dict) else []
