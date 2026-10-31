@@ -3256,14 +3256,28 @@
       var res = el('ul', 'ct-people ct-people-list'); box.appendChild(inp); box.appendChild(res);
       // 2.5: Kontakte - ohne Eingabe als Liste (wer noch nicht Mitglied ist; fremde nur in Gruppen ueber Servergrenzen)
       var isMem = function (ref) { return c.members.some(function (m) { return m.ref === ref || m.handle === ref || m.username === ref; }); };
+      // 2.5 (pagechatmembers1): Seiten-Chat - Hinzufuegen teilt die Seite (Rolle waehlbar, Standard Lesen)
+      var page = c.kind === 'page', roleSel = null;
+      if (page) {
+        var pr = el('div', 'ct-gi-prole');
+        pr.appendChild(el('p', 'hk-hint ct-gi-phint', T('Die Seite wird mit dieser Person geteilt.')));
+        roleSel = el('select', 'hk-in ct-gi-role'); roleSel.setAttribute('aria-label', T('Rolle auf der Seite'));
+        [['view', T('Lesen')], ['comment', T('Kommentieren')], ['edit', T('Bearbeiten')]].forEach(function (o) {
+          var op = el('option', null, o[1]); op.value = o[0]; roleSel.appendChild(op);
+        });
+        pr.appendChild(roleSel); box.appendChild(pr);
+      }
+      var fedOk = function () { return isFed(c) || page; };
       var addOne = function (u) {
-        api('POST', '/api/chats/' + c.id + '/members', u.remote ? { handle: u.handle } : { user: u.username }).then(function () {
+        var body = u.remote ? { handle: u.handle } : { user: u.username };
+        if (roleSel) body.role = roleSel.value;
+        api('POST', '/api/chats/' + c.id + '/members', body).then(function () {
           added(c);
           if (c._title) sendBody(c.id, { v: 1, type: 'title', title: c._title }, 'title').catch(function () {});   // Name fuer Neue lesbar
         }).catch(function (e) { HK.toast(e.message); });
       };
       var showContacts = function () {
-        drawContacts(res, addOne, function (k) { return !isMem(k.ref) && (!k.remote || isFed(c)); }).catch(function () { res.textContent = ''; });
+        drawContacts(res, addOne, function (k) { return !isMem(k.ref) && (!k.remote || fedOk()); }).catch(function () { res.textContent = ''; });
       };
       showContacts();
       var tmr = null;
@@ -3275,11 +3289,11 @@
             if (inp.value.trim() !== v) return;
             res.textContent = '';
             if (!r.users.length && !(r.remote || []).length && fedAddr(v)) res.appendChild(fedHint());
-            if (!isFed(c) && (r.remote || []).length) res.appendChild(el('li', 'hk-hint', T('Personen anderer Saga-Server lassen sich nur zu neuen Gruppen hinzufügen – bitte eine neue Gruppe anlegen.')));
+            if (!fedOk() && (r.remote || []).length) res.appendChild(el('li', 'hk-hint', T('Personen anderer Saga-Server lassen sich nur zu neuen Gruppen hinzufügen – bitte eine neue Gruppe anlegen.')));
             r.users.filter(function (u) { return !isMem(u.username); }).forEach(function (u) {        // Kontakte zuerst (contact: true)
               res.appendChild(personRow({ key: u.username, ref: u.username, name: u.name, sub: u.sub, avatar: u.avatar, contact: !!u.contact, username: u.username }, addOne));
             });
-            if (isFed(c)) (r.remote || []).filter(function (u) { return !isMem(u.handle); }).forEach(function (u) {
+            if (fedOk()) (r.remote || []).filter(function (u) { return !isMem(u.handle); }).forEach(function (u) {
               res.appendChild(personRow({ key: u.handle, ref: u.handle, name: u.label || u.name, sub: T('Person auf {host}', { host: u.host }), avatar: u.avatar,
                                           remote: true, contact: !!u.contact, handle: u.handle }, addOne));
             });
@@ -3310,6 +3324,14 @@
   }
   function giRemove(c, m) {
     HK.ask({ title: T('{name} aus der Gruppe entfernen?', { name: m.name }), text: T('{name} bekommt keine neuen Nachrichten dieser Gruppe mehr.', { name: m.name }),
+      ok: T('Entfernen'), danger: true }).then(function (y) {
+      if (!y) return;
+      api('DELETE', '/api/chats/' + c.id + '/members/' + q(m.username)).then(function (r) { giAfter(c, r, T('{name} wurde entfernt.', { name: m.name })); })
+        .catch(function (e) { HK.toast(e.message); });
+    });
+  }
+  function giRemovePage(c, m) {
+    HK.ask({ title: T('{name} aus dem Seiten-Chat entfernen?', { name: m.name }), text: T('Die Freigabe der Seite für {name} wird entzogen.', { name: m.name }),
       ok: T('Entfernen'), danger: true }).then(function (y) {
       if (!y) return;
       api('DELETE', '/api/chats/' + c.id + '/members/' + q(m.username)).then(function (r) { giAfter(c, r, T('{name} wurde entfernt.', { name: m.name })); })
@@ -3354,13 +3376,16 @@
       }
       wrap.appendChild(hd);
       if (c.kind === 'free' && c.can_rename) wrap.appendChild(el('p', 'hk-hint ct-gi-note', T('Der Name wird wie eine Nachricht verschlüsselt.')));
-      if (c.kind === 'group' || c.kind === 'page') wrap.appendChild(el('p', 'hk-hint ct-gi-ro', T('Mitglieder ergeben sich hier aus der Gruppe bzw. den Freigaben der Seite.')));
+      if (c.kind === 'group') wrap.appendChild(el('p', 'hk-hint ct-gi-ro', T('Mitglieder ergeben sich aus der Benutzergruppe – dort verwalten.')));
+      if (c.kind === 'page') wrap.appendChild(el('p', 'hk-hint ct-gi-ro', c.can_manage
+        ? T('Personen hinzufügen teilt diese Seite mit ihnen. Entfernen entzieht die Freigabe.')
+        : T('Mitglieder sind alle, die die Seite sehen dürfen – das legt fest, wem die Seite gehört.')));
       if (isRemote(c)) wrap.appendChild(el('p', 'hk-hint', c.home_self ? T('Dieser Chat liegt auf diesem Server; Personen anderer Saga-Server sind über ihren Server dabei.')
         : T('Dieser Chat liegt auf {host}. Mitglieder ändert man dort (über diesen Server).', { host: c.home || '?' })));
       if (c.readonly) wrap.appendChild(el('p', 'hk-hint', '🔒 ' + (c.readonly_reason || T('schreibgeschützt'))));
       // Mitglieder
       var h4 = el('h3', 'ct-gi-h', T('{n} {n:Mitglied|Mitglieder}', { n: c.member_count })); wrap.appendChild(h4);
-      if (c.kind === 'free' && c.can_manage) {
+      if ((c.kind === 'free' || c.kind === 'page') && c.can_manage) {
         var add = btn('+ ' + T('Mitglied hinzufügen'), 'small ct-gi-add'); add.dataset.gi = 'add';
         // Suchbereich bleibt beim Neuzeichnen (Live-Aenderung) samt Eingabe erhalten
         var slot = GI && GI.slot && GI.slot.cid === c.id ? GI.slot.el : null;
@@ -3394,13 +3419,24 @@
           else acts.push([T('Admin entziehen'), function () { giAdmin(c, m, false); }, '☆']);
         }
         if (c.kind === 'free' && c.can_manage && !m.me) acts.push([T('Aus Gruppe entfernen'), function () { giRemove(c, m); }, '✕', true]);
+        var why = null;                                // 2.5: Seiten-Chat - nur direkte Freigaben lassen sich entziehen
+        if (c.kind === 'page' && c.can_manage && !m.me) {
+          if (m.removable) acts.push([T('Aus Chat entfernen'), function () { giRemovePage(c, m); }, '✕', true]);
+          else why = m.via === 'group' ? T('Zugriff über eine Gruppe – dort entfernen.') : m.via === 'parent' ? T('Zugriff über eine übergeordnete Seite – dort die Freigabe entziehen.')
+            : m.via === 'owner' ? T('Ihr gehört die Seite.') : T('Zugriff nicht nur über diese Seite – im Teilen-Dialog prüfen.');
+          if (why) acts.push([T('Aus Chat entfernen'), null, '✕', true, why]);
+        }
         if (acts.length) {
           var mb = el('button', 'icon-btn ct-gi-more', '⋯'); mb.type = 'button'; mb.dataset.gi = 'm:' + giHandle(m);
           mb.setAttribute('aria-label', T('Aktionen für {name}', { name: m.name })); mb.setAttribute('aria-haspopup', 'menu');
           mb.addEventListener('click', function () {
             HK.openMenu(mb, function (menu) {
               menu.textContent = '';
-              acts.forEach(function (a) { menu.appendChild(HK.menuItem(a[0], a[1], { icon: a[2], danger: !!a[3] })); });
+              acts.forEach(function (a) {
+                var it = HK.menuItem(a[0], a[1], { icon: a[2], danger: !!a[3] && !a[4], hint: a[4], hintBelow: !!a[4] });
+                if (a[4]) { it.disabled = true; it.setAttribute('aria-disabled', 'true'); it.classList.add('ct-gi-off'); }
+                menu.appendChild(it);
+              });
             });
           });
           li.appendChild(mb);

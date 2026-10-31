@@ -353,6 +353,8 @@ button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
 .ct-gi-note,.ct-gi-ro{margin:.1rem 0 .5rem}
 .ct-dlg h3.ct-gi-h{font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:.9rem 0 .4rem}
 .ct-gi-add{margin-bottom:.4rem}
+.ct-gi-prole{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;margin:.2rem 0 .4rem}.ct-gi-prole .hk-hint{margin:0;flex:1 1 12rem}.ct-gi-role{width:auto}
+.menu-item.ct-gi-off{opacity:.55;cursor:not-allowed}
 .ct-gi-search{margin:.2rem 0 .5rem}
 .ct-gi-search .hk-in{width:100%}
 .ct-gi-nl{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem}
