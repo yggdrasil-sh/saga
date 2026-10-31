@@ -2387,7 +2387,8 @@ einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
   `chat.typing` (`user.username`), `chat.receipt` (`from`), `chat.removed`/`chat.cleared` (`by.username`) – das eigene
   Konto bekommt in Ereignissen weiter den eigenen Benutzernamen. `devices`/`idents` in `GET …/messages` gibt es nur
   noch für Nachrichten im alten Format (ohne `sender_handle`).
-- **Endpunkte nehmen den Handle:** `DELETE /api/chats/{id}/members/{handle}`, `POST /api/chats/{id}/members`
+- **Endpunkte nehmen den Handle:** `DELETE /api/chats/{id}/members/{handle}`, `PATCH /api/chats/{id}/members/{handle}`
+  (`{admin}`, 2.5 `chatadm1`, `docs/APP-API-CHAT.md` Abschnitt 6), `POST /api/chats/{id}/members`
   (`user` = Such-Handle oder Handle `~x@host`), `POST /api/chat/presence` (`users`; Antwort und `chat.presence` unter
   der angefragten Kennung).
 - **Schlüssel:** `GET /api/chat/v2/keys` liefert Schlüssel von Konten dieses Servers nur für sich selbst und Personen

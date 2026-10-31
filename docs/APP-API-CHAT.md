@@ -83,3 +83,38 @@ Ohne Recht (siehe `delete_for_all`) → 403.
 Der Stand je Person liegt in `chat_pref` (archiviert seit, `cleared_seq`, ausgeblendet) – eigene Tabelle, keine
 Schema-Migration. Wird der Chat gelöscht, verschwindet sie mit (`ON DELETE CASCADE`); die Kontolöschung entfernt die
 Einträge des Kontos. Aufbewahrungsfristen (`retention_s`, Admin-Höchstwert) gelten unverändert.
+
+## 6. Gruppeninfo und Admins freier Gruppen (2.5, `chatadm1`)
+
+Server meldet `chatadm1` in `GET /api/version` → `features` (und in den Föderations-Fähigkeiten). Ohne die Meldung:
+bisheriges Verhalten (nur `role`, keine Admin-Vergabe). Ältere Apps ignorieren die neuen Felder.
+
+**Felder** (`GET /api/chats`, `GET/POST/PATCH /api/chats/{cid}`, `POST/PATCH …/members`):
+
+| Feld | Bedeutung |
+|---|---|
+| `members[].admin` | `true` = Admin der freien Gruppe; Gruppen-, Seiten- und Direkt-Chats immer `false` |
+| `me_admin` | ich bin Admin (`role == "admin"` in einer freien Gruppe) |
+| `can_manage` | Mitglieder hinzufügen/entfernen erlaubt (= freie Gruppe und `me_admin`; schreibgeschützte Gruppe über Servergrenzen: `false`) |
+| `can_admin` | Admin vergeben/entziehen erlaubt (= `can_manage`, zusätzlich `false`, wenn das Heim einer Gruppe über Servergrenzen `chatadm1` nicht kann) |
+| `can_rename` | Name setzen (Nachricht `kind: 'title'`) erlaubt – jedes Mitglied einer freien Gruppe (schreibgeschützt: `false`) |
+
+Anzeigen: Name (bearbeitbar bei `can_rename`), Mitglieder mit Avatar, `name`, Handle (`handle` bzw. bei Chats v1 `ref`) –
+**nie** den Anmeldenamen anderer; Kennzeichen „Admin“ (`admin`) und „Du“ (`me`). `group`/`page`: nur lesend mit Hinweis
+„Mitglieder ergeben sich aus der Gruppe bzw. den Freigaben der Seite“.
+
+**Admin vergeben/entziehen:** `PATCH /api/chats/{cid}/members/{who}` mit `{"admin": true|false}`.
+
+- `who` wie bei `DELETE …/members/{who}`: `members[].username` (Chats v1: Benutzername; Format v2/Stufe 3: Handle
+  `~x@host` bzw. bei Personen anderer Server deren Handle), der Such-Handle `~x` oder der eigene Benutzername.
+- Antwort `200 {"chat": …}` (vollständiges Chat-Objekt wie `GET`, mit neuer Liste). Ist die Rolle schon so: ebenfalls `200`.
+- Fehler: `400` keine freie Gruppe (`group`/`page`/`dm`) bzw. `admin` kein Boolean; `403` ich bin kein Admin; `404` Chat
+  bzw. Mitglied unbekannt; `409` letzter Admin („Das ist der letzte Admin der Gruppe – erst jemand anderen zum Admin
+  machen.“) – sich selbst entziehen geht, solange ein anderer Admin bleibt; über Servergrenzen zusätzlich `409` „Der
+  Server der Gruppe ({host}) ist zu alt, um Admins zu ändern.“, `502` Heim nicht erreichbar, `403` schreibgeschützt.
+- Danach `chat.changed {chat_id}` an alle Mitglieder (wie Hinzufügen/Entfernen); Push gibt es dafür nicht.
+- **Systemzeile** (nur Format v2/Stufe 3 und über Servergrenzen, `kind: 'sys'`, wie `members`):
+  `{"type":"admin","target":{name,host,handle},"on":true|false,"by":{name,host,handle}|null}`. Texte: „{by} hat {target}
+  zum Admin gemacht.“ / „{by} hat {target} die Admin-Rolle entzogen.“; `by == target`: „… ist jetzt Admin.“ / „… ist kein
+  Admin mehr.“ Chats v1 bekommen (wie beim Hinzufügen/Entfernen) keine Systemzeile.
+- Geht der letzte Admin (verlassen/entfernt), wird wie bisher automatisch ein anderes Mitglied Admin.

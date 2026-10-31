@@ -532,6 +532,8 @@ der Person, die sie anlegt; Heim eines Seiten-Chats ist der Server der Seite (`h
   – Herkunft (`host`) immer anzeigen (der eigene Server nimmt sie aus dem Handle, nicht aus der Angabe des Heims – ein
   „Geist“ eines Servers, den das Heim gar nicht kennen kann, ist so als fremd erkennbar); `by` = `removed[0]` heißt
   „hat die Gruppe verlassen“.
+  `{"type":"admin","target":{name,host,handle},"on":true|false,"by":{name,host,handle}|null}` (2.5, `chatadm1`) – Admin
+  vergeben/entzogen.
   `{"type":"fed","on":true,"ai_off":true?}` – ein Seiten-Chat ist ab hier ein Chat über Servergrenzen.
 - **Seiten-Chat einer fremden Seite:** `POST /api/chats {kind:'page', note_id:<negativ>, device}` → derselbe Chat wie
   beim Server der Seite (`note_id` negativ, `name` = Titel). Mitglieder ergeben sich aus den Freigaben (Personen und
@@ -544,9 +546,17 @@ der Person, die sie anlegt; Heim eines Seiten-Chats ist der Server der Seite (`h
   immer selbst; Anhänge solcher Personen holt der eigene Server über das Heim (`GET /api/chat/files/{fid}` wie gewohnt).
 - **Trennen:** Personen des getrennten Servers fallen aus Gruppen mit Heim hier (Systemzeile `reason: 'disconnected'`);
   auf dem getrennten Server ist der Chat `readonly`.
-- Zwischen den Servern (zur Einordnung): Ereignis `chat.members` vom Heim (Kette `chat:<id>`), Aufträge an das Heim
-  `members`, `leave`, `pagechat`, an Teilnehmer `resolve` (Handles/Gruppen nur für Ziele eigener Freigaben),
-  `GET /fed/v2/chat/keys?ref=&handles=` (nur Mitglieder, nur für Teilnehmer-Server).
+- **Admins (2.5, Fähigkeit `chatadm1`):** `PATCH /api/chats/{id}/members/{who} {admin: true|false}` (Felder
+  `members[].admin`, `me_admin`, `can_manage`, `can_admin`, `can_rename`; `docs/APP-API-CHAT.md` Abschnitt 6). Beim Heim
+  direkt, sonst Auftrag `admin` an das Heim – nur wenn es `chatadm1` meldet (sonst `can_admin: false`, `409` „Der Server
+  der Gruppe ({host}) ist zu alt, um Admins zu ändern.“). Admins anderer Server dürfen verwalten, wenn das Heim sie als
+  Admin führt; der letzte Admin lässt sich nicht entziehen (`409`).
+- Zwischen den Servern (zur Einordnung): Ereignis `chat.members` vom Heim (Kette `chat:<id>`, `members[].role`), Aufträge
+  an das Heim `members`, `leave`, `pagechat`, `admin` (2.5, `chatadm1`: `{op:'admin', ref, actor, target:'~x@host',
+  admin: bool}` → `200 {ok}` | `403 not admin` | `404 unknown member` | `409 last admin`/`readonly`; das Heim verteilt
+  danach `chat.members` mit `sys.type: 'admin'` – an Server ohne `chatadm1` ohne Systemzeile), an Teilnehmer `resolve`
+  (Handles/Gruppen nur für Ziele eigener Freigaben), `GET /fed/v2/chat/keys?ref=&handles=` (nur Mitglieder, nur für
+  Teilnehmer-Server).
 
 ## 10. Schutz vor protokollwidrigen Servern (E8)
 

@@ -16,6 +16,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Chats: Gruppeninfo und Admins)
+- **Gruppeninfo:** Klick auf den Chat-Kopf (oder ⋯ → „Gruppeninfo …“) öffnet ein Blatt mit Name (Stift zum Umbenennen),
+  Mitgliedern (Avatar, Anzeigename, Handle, „Admin“, „Du“), „Mitglied hinzufügen“, je Mitglied „Zum Admin machen“ /
+  „Admin entziehen“ / „Aus Gruppe entfernen“ (mit Rückfrage) sowie Stummschalten, Archivieren und „Gruppe verlassen“.
+  Gruppen- und Seiten-Chats zeigen dasselbe Blatt nur lesend mit Hinweis. Auf dem Handy als Blatt von unten.
+- **Admins freier Gruppen:** `PATCH /api/chats/{cid}/members/{who} {admin}` (Feature `chatadm1`); Chat-Objekt mit
+  `members[].admin`, `me_admin`, `can_manage`, `can_admin`, `can_rename`. Der letzte Admin lässt sich nicht entziehen
+  (409). Systemzeile „… hat … zum Admin gemacht“ (Format v2/Stufe 3). Über Servergrenzen als Auftrag `admin` an das Heim
+  (Fähigkeit `chatadm1`; Heim ohne: 409 „zu alt“). Keine Migration (Rolle steht schon in `chat_member.role`).
+  Doku: `docs/APP-API-CHAT.md` Abschnitt 6, `docs/APP-API-FED.md` Abschnitt 9. Tests: `tests/chat_admins.py`,
+  `tests/foederation_gruppen.py`, `tests/browser_gruppeninfo.js`.
+
 ### Geändert (2.5, Web: „Notion-Gefühl“ – kleine Schritte)
 - **Leere Seite:** `+` und Griff sitzen auf der ersten Zeile (die Werkzeugleiste der vorigen Seite blieb mit deren Höhe
   offen und schwebte bis zu ~270 px tiefer). Kurzer Platzhalter „Tippe „/“ für Befehle“; der Rechtsklick-Hinweis steht

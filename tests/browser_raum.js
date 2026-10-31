@@ -191,7 +191,7 @@ async function api(p, m, url, body) { return p.evaluate(([m, url, body]) => wind
     ok('Kopf der Gruppe: Knopf "Gruppen-Videoanruf"', !hd.hidden && hd.title === 'Gruppen-Videoanruf', hd);
     // Web-Runde 2, H2: Mitglieder-Dialog zeigt keine Anmeldenamen anderer
     await a.click('#ct-more'); await a.waitForTimeout(300);
-    await a.evaluate(() => { const it = [...document.querySelectorAll('[role=menuitem], .hk-menu button')].find(x => /Mitglieder/.test(x.textContent)); if (it) it.click(); });
+    await a.evaluate(() => { const it = [...document.querySelectorAll('[role=menuitem], .hk-menu button')].find(x => /Gruppeninfo|Mitglieder/.test(x.textContent)); if (it) it.click(); });
     const memTxt = await until(() => a.evaluate(() => { const d = document.querySelector('.ct-ov .ct-devs'); return d && d.textContent; }), 5000);
     ok('H2: Mitglieder-Dialog ohne Anmeldenamen der anderen', memTxt && memTxt.indexOf(U2) < 0 && memTxt.indexOf(U3) < 0, memTxt);
     await a.keyboard.press('Escape');
