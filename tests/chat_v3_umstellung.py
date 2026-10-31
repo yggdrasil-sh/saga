@@ -322,6 +322,18 @@ def run_default():
     ok("Gruppe: x3_ok nach der Umstellung", A.chat(gc["id"]).get("x3_ok") is True)
     gj = J.api("GET", f"/api/chats/{gc['id']}")
     ok("Jule (ohne Identitaet) bleibt Mitglied und sieht den Chat in Stufe 3", gj[0] == 200 and (gj[1].get("chat") or {}).get("v") == 3, gj)
+    # Jule richtet den Chat NACH der Umstellung ein (aktueller Client: Identitaet + Handle-Zertifikat) -> liest neue Nachrichten
+    s, _ = req("PUT", "/api/chat/identity", J.k, C.setup_body("cu-jule", J.ident, J.dev, J.rk, **CT.KDF))
+    J.certs()
+    J.seen(lv=3)
+    s2, r2, m2 = A.send_v2(A.chat(gc["id"]), "Gruppe neu fuer Jule")
+    jm = next((x for x in J.msgs(gc["id"]).get("messages", []) if x["id"] == m2["id"]), None)
+    jt = None
+    if jm and jm.get("key"):
+        pk, sk = (J.dev["enc_pk"], J.dev["enc_sk"]) if jm["key_for"] == "device" else (J.ident["backup_pk"], J.ident["backup_sk"])
+        jt = json.loads(C.decrypt_v2(A.chat(gc["id"])["ref"], jm, jm["key"], pk, sk)).get("text")
+    ok("Jule richtet den Chat nach der Umstellung ein und liest neue Nachrichten (v2)", s == 200 and s2 == 200 and jt == "Gruppe neu fuer Jule",
+       (s, s2, r2, jm and jm.get("key_for")))
     K.certs()
     K.seen(lv=3)
     CH.convert_v3(limit=100000)
