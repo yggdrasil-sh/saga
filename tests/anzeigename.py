@@ -23,7 +23,8 @@ def ck(u):
 
 
 def call(u, m, p, b=None, lang="de"):
-    h = {"Host": HOST, "Cookie": "saga=" + ck(u), "X-Saga": "1", "Content-Type": "application/json", "Accept-Language": lang}
+    h = {"Host": HOST, "Cookie": "saga=" + ck(u), "X-Saga": "1", "Content-Type": "application/json", "Accept-Language": lang,
+         "X-Saga-Chat": "3"}                                # wie aktuelle Clients (2.5: Chats standardmaessig in Stufe 3)
     try:
         with urllib.request.urlopen(urllib.request.Request(B + p, data=json.dumps(b).encode() if b is not None else None,
                                                            method=m, headers=h), timeout=20) as r:
