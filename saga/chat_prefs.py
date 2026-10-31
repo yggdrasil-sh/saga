@@ -246,6 +246,10 @@ def decide(p, mentioned, reply_mine, now=None):
     return "chat.message"
 
 
+# 2.5 (saga.chat_grp setzt es ein, block2): (c, uid, sender) -> True, wenn uid den Absender gesperrt hat (lokal oder fremd)
+BLOCKED = None
+
+
 def on_message(c, cid, sender, seq, members, mentioned=(), reply_to=None, states=None):
     """Neue Nachricht: je lokalem Mitglied (ausser Absender, nur angenommene) Benachrichtigung + Push nach decide();
     Erwaehnte bekommen mention_seq und einen ausgeblendeten Chat zurueck. states: {uid: state} (Nachrichtenanfragen still).
@@ -260,6 +264,8 @@ def on_message(c, cid, sender, seq, members, mentioned=(), reply_to=None, states
     for u in members:
         if u == sender or sharing.is_remote(u) or (states and states.get(u, "ok") != "ok"):
             continue
+        if BLOCKED is not None and BLOCKED(c, u, sender):
+            continue                                     # gesperrt: keine Mitteilung, auch keine Erwaehnung (Chat bleibt, wie er ist)
         men = u in mentioned
         if men:
             c.execute("INSERT INTO chat_pref (chat_id, uid, mention_seq) VALUES (?,?,?) ON CONFLICT (chat_id, uid) DO UPDATE SET "

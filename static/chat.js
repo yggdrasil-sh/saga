@@ -3213,6 +3213,11 @@
   }
   function hasDraft(cid) { try { return !!localStorage.getItem(draftKey(cid)); } catch (e) { return false; } }
   window.addEventListener('pagehide', draftSave);
+  try {                                    // 2.5: Kontowechsel ohne Abmelden ueber das Menue - Entwuerfe fremder Konten weg
+    for (var di = localStorage.length - 1; di >= 0; di--) {
+      var dk = localStorage.key(di); if (dk && dk.indexOf('saga-chat-draft:') === 0 && dk.indexOf(DRAFT) !== 0) localStorage.removeItem(dk);
+    }
+  } catch (e) { /* ohne Speicher: nichts zu loeschen */ }
 
   // Emoji im Eingabefeld: dieselbe Auswahl wie bei Reaktionen (static/chat-emoji.js)
   $('ct-emoji').addEventListener('click', function () {

@@ -11,4 +11,9 @@
       sel.addEventListener('change', function () { f.submit(); });
     })(forms[i]);
   }
+  // 2.5: nach dem Abmelden (/logout leitet immer auf /login?bye=1, auch ueber direkte Links in security.html, login2fa
+  // und nach OIDC): Chat-Entwuerfe (localStorage saga-chat-draft:<konto>:<chat>, static/chat.js) hier mit loeschen
+  if (/[?&]bye=1(&|$)/.test(location.search)) try {
+    for (var j = localStorage.length - 1; j >= 0; j--) { var k = localStorage.key(j); if (k && k.indexOf('saga-chat-draft:') === 0) localStorage.removeItem(k); }
+  } catch (e) { /* ohne Speicher: nichts zu loeschen */ }
 })();

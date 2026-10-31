@@ -593,6 +593,14 @@ def blocked_by(c, uid, other):
     return bool(c.execute("SELECT 1 FROM fed_chat_block WHERE uid=? AND target=?", (uid, FC.FK.full_handle(r[0]))).fetchone())
 
 
+def blocks_sender(c, uid, sender):
+    """Hat uid den Absender sender gesperrt? (lokales Konto oder '@~x@host' bzw. dessen Server; fuer chat_prefs.on_message)"""
+    if sharing.is_remote(sender):
+        h = FC.handle_of(sender)
+        return bool(h) and FC.blocked(c, uid, h)
+    return blocked_by(c, uid, sender)
+
+
 def blocked_pair(c, a, b):
     """Gesperrt in eine der beiden Richtungen? (Direkt-Chat beginnen, hinzufuegen, anrufen: chat.may_contact)"""
     return blocked_by(c, a, b) or blocked_by(c, b, a)
@@ -763,6 +771,7 @@ def account_gone(c, uid):
 
 # --- Einhaengen ---------------------------------------------------------------------------------------------------
 chat.GRP = __import__("sys").modules[__name__]
+chat.CP.BLOCKED = blocks_sender                    # 2.5: gesperrt -> keine Chat-Mitteilungen (saga.chat_prefs)
 FC.OPS.update({"perm": op_perm, "pin": op_pin})
 F.EV2_HANDLERS["chat.perm"] = _ev_perm
 F.EV2_HANDLERS["chat.pins"] = _ev_pins
