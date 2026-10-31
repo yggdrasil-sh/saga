@@ -551,6 +551,17 @@ der Person, die sie anlegt; Heim eines Seiten-Chats ist der Server der Seite (`h
   direkt, sonst Auftrag `admin` an das Heim – nur wenn es `chatadm1` meldet (sonst `can_admin: false`, `409` „Der Server
   der Gruppe ({host}) ist zu alt, um Admins zu ändern.“). Admins anderer Server dürfen verwalten, wenn das Heim sie als
   Admin führt; der letzte Admin lässt sich nicht entziehen (`409`).
+- **Chat-Standard B (2.5, Fähigkeiten `groupinfo2`, `moddel1`, `msgpin1`, `block2`, `report1`;
+  `docs/APP-API-CHAT.md` Abschnitt 8):** Beschreibung/Bild (`kind: 'desc'|'avatar'`) laufen wie `title` über das Heim
+  (Fan-out und Nachholen nur an Server mit `groupinfo2`). Gruppenrechte: Auftrag an das Heim `{op:'perm', ref, actor,
+  perm_info?, perm_send?}` → `200 {ok, perm_info, perm_send}` | `403 not admin` | `409 readonly`; das Heim verteilt
+  `chat.perm` `{ref, perm_info, perm_send, by}` und setzt die Rechte bei `send` durch (`403 not allowed`). Anheften:
+  `{op:'pin', ref, actor, mid, on}` → `200 {ok, pins}` | `403 not allowed`/`not a member` | `404` | `409 full`;
+  Ereignis `chat.pins` `{ref, pins}` (Teilnehmer übernehmen nur Kennungen eigener Nachrichten des Chats). Admin-Löschen:
+  Auftrag `del` mit `mod: true` (Heim prüft Admin bzw. Seiten-Eigentümer, sonst `403`) → `chat.msg.del` mit
+  `by_admin: true` (Grabstein). `chat.members` trägt für Server mit der Fähigkeit zusätzlich `perm_info`, `perm_send`,
+  `pins`. Heim ohne Fähigkeit: Client bekommt `409` „Der Server der Gruppe ({host}) ist zu alt …“. `block2`/`report1`
+  wirken nur lokal (Sperren und Meldungen verlassen den Server nicht).
 - Zwischen den Servern (zur Einordnung): Ereignis `chat.members` vom Heim (Kette `chat:<id>`, `members[].role`), Aufträge
   an das Heim `members`, `leave`, `pagechat`, `admin` (2.5, `chatadm1`: `{op:'admin', ref, actor, target:'~x@host',
   admin: bool}` → `200 {ok}` | `403 not admin` | `404 unknown member` | `409 last admin`/`readonly`; das Heim verteilt

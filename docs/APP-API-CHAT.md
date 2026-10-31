@@ -210,3 +210,89 @@ Servergrenzen); mit Eingabe die Suche (Kontakte zuerst). Je Kontakt Menü/Wische
 wird (`person.gone`) oder der Admin die getrennte Instanz ganz entfernt. Persönliches Backup: `daten.json` →
 `chat_contacts` `[{ref, name, remote, first_at, last_at, hidden}]`; Einspielen mit `{contacts: true}` (lokale nur, mit
 denen ein Chat erlaubt ist).
+
+## 8. Gruppen: Bild, Beschreibung, Rechte, Admin-Löschen, Anheften, Sperren, Melden (2.5)
+
+Server meldet in `GET /api/version` → `features`: `groupinfo2` (8a, 8b), `moddel1` (8c), `msgpin1` (8d), `block2` (8e),
+`report1` (8f) – dieselben Namen auch als Föderations-Fähigkeiten. Grundsatz: Ende-zu-Ende bleibt Ende-zu-Ende; der
+Server sieht keinen neuen Klartext. Ohne die Meldung: Felder fehlen, Endpunkte antworten `404`, Apps zeigen nichts davon.
+
+**Felder im Chat-Objekt** (`GET /api/chats`, `GET/POST/PATCH /api/chats/{cid}` und alle Antworten mit `chat`):
+
+| Feld | Bedeutung |
+|---|---|
+| `perm_info` | `'all'` \| `'admins'` – wer Name, Bild, Beschreibung ändert und anheftet (freie Gruppe; sonst immer `'all'`) |
+| `perm_send` | `'all'` \| `'admins'` – wer Nachrichten senden darf (freie Gruppe; sonst `'all'`) |
+| `can_send` | ich darf jetzt schreiben (`false`: Eingabefeld ausblenden, Hinweis „In dieser Gruppe dürfen nur Admins schreiben.“; Direkt-Chat mit einer von mir gesperrten Person ebenfalls `false`, dazu `blocked: true`) |
+| `can_edit_info` | Name/Bild/Beschreibung ändern erlaubt; `can_rename` folgt diesem Wert |
+| `can_info2` | Bild und Beschreibung möglich (wie `can_edit_info`, zusätzlich muss das Heim einer Gruppe über Servergrenzen `groupinfo2` können) |
+| `can_perms` | Rechte-Schalter ändern erlaubt (Admin einer freien Gruppe, Heim mit `groupinfo2`) |
+| `can_pin` | anheften/lösen erlaubt |
+| `can_moderate` | fremde Nachrichten für alle löschen erlaubt (8c) |
+| `pins` | `[msg_id, …]` angeheftete Nachrichten (älteste zuerst, höchstens 3) |
+| `desc_msg`, `avatar_msg` | aktuelle Steuer-Nachricht mit Beschreibung bzw. Bild (wie `title_msg`: verschlüsselt, mit `key`/`key_for`) – fehlt, wenn es keine gibt |
+| `members[].blocked` | `true` = ich habe diese Person gesperrt |
+
+### 8a. Gruppenbild und Beschreibung (`groupinfo2`)
+
+Wie der Name einer freien Gruppe (`kind: 'title'`) als **verschlüsselte Steuer-Nachricht** über
+`POST /api/chats/{cid}/messages` (v1 und Format v2, Signatur wie jede Nachricht):
+
+- `kind: 'desc'`, Inhalt `{"v":1,"type":"desc","desc":"…"}` (höchstens 500 Zeichen, Client kürzt).
+- `kind: 'avatar'`, Inhalt `{"v":1,"type":"avatar","file":{id,k,m,n,s,w,h}}` – das Bild ist ein verschlüsselter Anhang
+  wie bei Bild-Nachrichten (vorher `POST /api/chats/{cid}/files`, Kennung in `files:[id]` mitsenden). Empfehlung:
+  quadratisch zugeschnitten, 256 px, JPEG. `"file": null` = Bild entfernt.
+
+Der Server merkt sich nur die Folgenummer (`desc_seq`, `avatar_seq`) und löscht die vorige Steuer-Nachricht samt Anhang.
+Steuer-Nachrichten erscheinen nicht in `GET …/messages`, laufen nicht ab und bleiben nach „für mich löschen“ lesbar.
+Clients zeigen das zuletzt gültige (Signatur geprüft) und laden bei `chat.changed` neu. Nur in freien Gruppen (sonst
+`400`); ohne Recht (`perm_info: 'admins'`, kein Admin) `403`. Seiten-Chats behalten Seitensymbol/-titel.
+
+### 8b. Gruppenrechte (`groupinfo2`)
+
+`PATCH /api/chats/{cid}` `{"perm_info": "all"|"admins", "perm_send": "all"|"admins"}` (einzeln oder zusammen; die Felder
+lassen sich mit anderen PATCH-Feldern kombinieren). Nur Admins freier Gruppen (`403`), andere Chat-Arten `400`,
+ungültiger Wert `400`. Antwort `{chat}`; Live `chat.changed` an alle Mitglieder. Durchgesetzt beim Senden:
+`title`/`desc`/`avatar` bei `perm_info: 'admins'` nur von Admins, normale Nachrichten bei `perm_send: 'admins'` nur von
+Admins – sonst `403` mit Meldung. Im Format v2/Stufe 3 Systemzeile
+`{"type":"perm","perm_info"?:…, "perm_send"?:…, "by":{name,host,handle}|null}` (nur die geänderten Felder).
+
+### 8c. Admins löschen fremde Nachrichten (`moddel1`)
+
+`DELETE /api/chats/{cid}/messages/{mid}` für eine **fremde** Nachricht ist erlaubt für: Admins der freien Gruppe,
+Eigentümer der Seite im Seiten-Chat, Saga-Admins im Benutzergruppen-Chat (`can_moderate`). Antwort
+`{"ok":true,"by_admin":true}`. Statt die Zeile zu entfernen bleibt ein **Grabstein**: `kind: 'tomb'`, kein Ciphertext,
+keine Schlüssel, Anhänge/Reaktionen/Bearbeitungen/Anheftung weg. Live `chat.deleted` mit `by_admin: true` (ältere
+Clients entfernen die Nachricht wie bisher). Grabsteine liefert `GET …/messages` nur mit `?tombs=1`
+(`{id, seq, kind:'tomb', by_admin:true, sender, created, …}`, ohne `key`); Anzeige „Von einem Admin gelöscht“.
+Mehrfach-Löschen (`POST …/messages/delete`) bleibt auf eigene Nachrichten beschränkt.
+
+### 8d. Nachrichten anheften (`msgpin1`)
+
+`POST /api/chats/{cid}/pins/{mid}` bzw. `DELETE …` → `{"ok":true,"pins":[…]}`. Höchstens 3 (`409` „Höchstens 3
+angeheftete Nachrichten – erst eine lösen.“), nur normale Nachrichten des Chats (`404`), freie Gruppe mit
+`perm_info: 'admins'` nur Admins (`403`), sonst alle Mitglieder (Direkt-Chat: beide). Idempotent. Live `chat.changed`.
+Der Inhalt bleibt verschlüsselt: Clients zeigen oben eine Leiste mit der (geladenen, entschlüsselten) Nachricht.
+Gelöschte bzw. abgelaufene Nachrichten fallen heraus.
+
+### 8e. Sperren lokaler Konten (`block2`)
+
+`POST /api/chat/blocks` `{"target": …}` – Such-Handle `~x` (aus der Personensuche / `members[].ref`), Handle `~x@host`
+(auch dieses Servers, `members[].handle`) oder ganzer Server `host`. Antwort `{ok, target}` (gespeichert wird immer der
+stabile Handle `~x@host`); unbekannt `404`, ungültig `400`. `GET /api/chat/blocks` liefert Konten dieses Servers mit
+`local: true` und Anzeigenamen (nie den Anmeldenamen); `DELETE /api/chat/blocks?target=` nimmt `target` aus der Liste
+(oder den Such-Handle). Live `chat.blocks` `{target, blocked}` an die eigenen Geräte.
+Wirkung (beide Richtungen): kein neuer Direkt-Chat (`404` wie „kein Chat möglich“), kein Hinzufügen zu Gruppen, keine
+Anrufe; im bestehenden Direkt-Chat Senden `403` („Du hast diese Person gesperrt …“ bzw. „… kann nicht zugestellt
+werden.“). Gesperrte erfahren es nicht. In Gruppen klappt der Client ihre Nachrichten ein (`members[].blocked`).
+
+### 8f. Melden (`report1`)
+
+`POST /api/chat/report` `{"chat": cid, "msgs": [mid, …], "reason": "spam"|"abuse"|"illegal"|"other", "text"?: "…"}`.
+`msgs` höchstens 20 fremde Nachrichten des Chats (eigene `400`, unbekannt `404`; in Gruppen mindestens eine, im
+Direkt-Chat auch leer). `text` (höchstens 2000 Zeichen) ist der **Klartext, den die meldende Person freiwillig mitschickt**
+– der Server kann die Nachrichten nicht lesen; Clients füllen ihn mit den gemeldeten Nachrichten vor und lassen ihn
+ändern/abwählen. Gespeichert werden außerdem Kennung, Zeit und Absender (Handle, Name) der Nachrichten. Ratenbegrenzung:
+5 je Stunde, 20 je Tag (`429`). Antwort `{ok, id}`. Alle Saga-Admins bekommen die Benachrichtigung `chat.report`
+(Glocke + Push-Bereich „Admin“, ohne Inhalt); Admin-Bereich → „Meldungen“ (offen/erledigt, löschen). Kontolöschung der
+meldenden Person: Meldung bleibt anonym.

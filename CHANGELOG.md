@@ -16,6 +16,21 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Chats: Gruppen – Chat-Standard B)
+- **Gruppenbild und Beschreibung** für freie Gruppen – wie der Name verschlüsselt (Steuer-Nachrichten `desc`/`avatar`),
+  Bild quadratisch zugeschnitten; der Server merkt sich nur, welche Nachricht aktuell ist.
+- **Gruppenrechte:** Admins legen fest, ob nur Admins schreiben bzw. Name, Bild, Beschreibung ändern und anheften dürfen
+  – der Server setzt es durch (auch über Servergrenzen am Heim).
+- **Admins löschen fremde Nachrichten** (freie Gruppe: Admins, Seiten-Chat: Eigentümer der Seite, Gruppen-Chat:
+  Saga-Admins) – im Chat bleibt „Von einem Admin gelöscht“.
+- **Nachrichten anheften** (höchstens 3, Leiste oben im Chat).
+- **Sperren von Personen dieses Servers** (bisher nur andere Server): kein Direkt-Chat, keine Anrufe, in Gruppen
+  eingeklappt. **Melden** von Nachrichten an die Saga-Admins mit freiwillig mitgeschicktem Text; neuer Admin-Bereich
+  „Meldungen“ und Benachrichtigung für Admins.
+- Features `groupinfo2`, `moddel1`, `msgpin1`, `block2`, `report1` (auch als Föderations-Fähigkeiten); API:
+  `docs/APP-API-CHAT.md` Abschnitt 8, `docs/APP-API-FED.md`. Datenbank-Migration 29 (Spalten `desc_seq`, `avatar_seq`,
+  `perm_info`, `perm_send`; Tabellen `chat_pin`, `chat_report`).
+
 ### Geändert (2.5, Chats: Stufe 3 ist Standard)
 - **Moderne Chats (Stufe 3) sind jetzt Standard an** – Reaktionen, Bearbeiten, Sprachnachrichten und Systemzeilen in
   allen Chats, Handles statt Anmeldenamen, lokale Gruppen nehmen Personen anderer Server auf. Die Einstellung `chat_v3`
