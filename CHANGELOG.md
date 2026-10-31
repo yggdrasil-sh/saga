@@ -50,6 +50,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „Medien, Dateien, Links“ (Feature `chatmedia1`: `GET /api/chats/{cid}/messages?has=file`).
 - Schnittstelle: docs/APP-API-CHAT.md Abschnitt 9, docs/APP-API-FED.md „Erwähnungen“. Migration 30 (`chat_pref`: neue
   Spalten; stummgeschaltete Chats gelten als „für immer“).
+- Zusammenspiel mit Chat-Standard B: Wer den Absender gesperrt hat, bekommt aus Gruppen keine Mitteilung (auch keine
+  Erwähnung); Entwürfe werden auch beim Abmelden über direkte Links bzw. nach einem Kontowechsel gelöscht.
 
 ### Geändert (2.5, Chats: Stufe 3 ist Standard)
 - **Moderne Chats (Stufe 3) sind jetzt Standard an** – Reaktionen, Bearbeiten, Sprachnachrichten und Systemzeilen in
