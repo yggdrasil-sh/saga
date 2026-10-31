@@ -259,7 +259,7 @@ erwähnt“. Ein ausgeblendeter Chat kommt auch zurück, wenn ich ihn bewusst ö
 ### 8.3 Erwähnungen (`chatmention1`)
 
 Im (verschlüsselten) Text steht je Person das Token `<@kennung>` – Kennung = `members[].handle` (Stufe 3, über
-Servergrenzen) bzw. `members[].ref` (Chat v1). Clients zeigen es als „@Anzeigename“ (unbekannte Kennung: „@Unbekannt“) und
+Servergrenzen) bzw. `members[].ref` (Chat v1). Clients zeigen es als `@Anzeigename` (unbekannte Kennung: `@Unbekannt`) und
 heben Nachrichten hervor, die `me_ref` enthalten. Beim Senden (`POST /api/chats/{cid}/messages`, v1 und v2) zusätzlich
 unverschlüsselt `"mentions": ["kennung", …]` (höchstens 50). Der Server nimmt nur **aktuelle Mitglieder** (Rest still
 ignoriert, nie der Absender); kein Array → 400. Live `chat.message` an die Mitglieder trägt dann `mentions` (Kennungen,
