@@ -118,3 +118,56 @@ Anzeigen: Name (bearbeitbar bei `can_rename`), Mitglieder mit Avatar, `name`, Ha
   zum Admin gemacht.“ / „{by} hat {target} die Admin-Rolle entzogen.“; `by == target`: „… ist jetzt Admin.“ / „… ist kein
   Admin mehr.“ Chats v1 bekommen (wie beim Hinzufügen/Entfernen) keine Systemzeile.
 - Geht der letzte Admin (verlassen/entfernt), wird wie bisher automatisch ein anderes Mitglied Admin.
+
+## 7. Kontakte (2.5, `contacts1`)
+
+Server meldet `contacts1` in `GET /api/version` → `features`. Kontakte sind die Personen, mit denen ich in einem
+**Direkt-Chat oder einer freien Gruppe** war – lokal und auf anderen Saga-Servern. Sie **bleiben**, wenn der Chat
+gelöscht oder verlassen wird. Benutzergruppen- und Seiten-Chats ergeben keine Kontakte. Nie ein Anmeldename: lokale
+Personen erscheinen mit dem Such-Handle `~…` (wie `GET /api/chat/people` → `users[].username`), Personen anderer Server
+mit ihrem Handle `~x@host` (wie `members[].handle`). Kein Orakel: es gibt nur Einträge aus eigenen Chats.
+
+**Wann eingetragen** (gegenseitig, ein ausgeblendeter Kontakt wird dabei wieder sichtbar): Chat anlegen (`dm`, `free`,
+auch mit `handles`), Mitglied hinzufügen (neues Mitglied ↔ alle anderen), Direkt-Chat bzw. Gruppe eines anderen Servers
+annehmen (eine offene **Nachrichtenanfrage** macht noch niemanden zum Kontakt), Mitgliederliste vom Heim einer Gruppe.
+Bestehende Chats wurden beim Update einmalig übernommen (Migration 28). Neue Nachrichten sortieren den Kontakt nach oben.
+
+**Liste:** `GET /api/chat/contacts?q=&limit=50` (höchstens 200; 60 Anfragen je Minute wie die Personensuche, sonst 429)
+
+```json
+{"contacts": [{"ref": "~k3…", "name": "Anna Berg", "sub": "", "avatar": "/api/avatar/…", "remote": false,
+               "ready": true, "gone": false, "last_at": 1793460000.5},
+              {"ref": "~bslp…@b.example", "name": "Bert Gast", "sub": "b.example", "host": "b.example", "avatar": null,
+               "remote": true, "ready": true, "gone": false, "last_at": 1793450000.0}]}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `ref` | Kennung. Lokal: `POST /api/chats {kind:'dm', user: ref}` bzw. `members: [ref]`, `POST …/members {user: ref}`. Fremd: `{kind:'dm', handle: ref}` bzw. `handles: [ref]`, `POST …/members {handle: ref}` |
+| `name` | Anzeigename (lokal: Anzeige-/öffentlicher Name, nie Anmeldename; fremd: zuletzt bekannter Name) |
+| `sub` | Unterzeile: lokal wie `/api/chat/people` (unterscheidet Gleichnamige), fremd der Server |
+| `host` | nur bei `remote: true` – Server der Person |
+| `avatar` | Profilbild oder `null` (Initialen) |
+| `ready` | Chat möglich (lokal: hat Chats eingerichtet; fremd: Server verbunden, Chats erlaubt) |
+| `gone` | nicht anschreibbar: lokales Konto deaktiviert bzw. Verbindung zum Server getrennt – ausgegraut zeigen |
+| `last_at` | Unix-Sekunden, Sortierung „zuletzt zuerst“ |
+
+`q` filtert als Teilwort in `name`/`sub`, **jede Länge** (die Liste ist ohnehin die eigene).
+
+**Aus Kontakten entfernen:** `DELETE /api/chat/contacts/{ref}` (URL-kodiert; `~x@host` darf `@` enthalten) → `200
+{"ok": true}`; unbekannt oder schon entfernt → `404`. Der Kontakt ist ausgeblendet, bis ein neuer gemeinsamer Chat
+entsteht. Live-Ereignis an meine anderen Geräte: `chat.contacts {ref, hidden: true}` – Liste neu laden.
+
+**Personensuche:** `GET /api/chat/people?q=` stellt passende, anschreibbare Kontakte **vorne** in `users` (lokal) bzw.
+`remote` (fremd) – mit `contact: true`, auch bei 1–2 Zeichen als Teilwort und auch außerhalb von „nur gemeinsame Gruppen“
+(man hat schon miteinander geschrieben; ein Direkt-Chat bzw. Hinzufügen ist dann erlaubt). Keine Dubletten mit den
+übrigen Treffern. Ein Kontakt gilt nur in **eine** Richtung (wer mich ausgeblendet hat, umgeht für mich nichts).
+
+**Oberfläche:** Dialog „Neue Unterhaltung“ und „Mitglied hinzufügen“ ohne Eingabe: Überschrift „Kontakte“ und die Liste
+(zuletzt zuerst, ~30, scrollbar; in „Mitglied hinzufügen“ ohne die schon dabei sind und fremde nur in Gruppen über
+Servergrenzen); mit Eingabe die Suche (Kontakte zuerst). Je Kontakt Menü/Wischen „Aus Kontakten entfernen“.
+
+**Weg ist ein Kontakt,** wenn das Konto (meins oder das der Person) gelöscht wird, die Person auf ihrem Server gelöscht
+wird (`person.gone`) oder der Admin die getrennte Instanz ganz entfernt. Persönliches Backup: `daten.json` →
+`chat_contacts` `[{ref, name, remote, first_at, last_at, hidden}]`; Einspielen mit `{contacts: true}` (lokale nur, mit
+denen ein Chat erlaubt ist).

@@ -2343,6 +2343,8 @@ PUT /api/chat/privacy
 - **Unterzeile `sub` (Linux-Runde 2):** `GET /api/share/targets` und `GET /api/chat/people` liefern je Person `sub`
   (öffentlicher Name, sonst Handle `~…`, leer, wenn `name` schon der Handle ist), `members[]` in Gruppen-, freien und
   Seiten-Chats ebenso. Nie der Anmeldename. Apps zeigen `sub` unter dem Namen, damit sich Gleichnamige unterscheiden.
+- **Kontakte (2.5, `contacts1`):** `GET /api/chat/contacts`, `DELETE /api/chat/contacts/{ref}`; `GET /api/chat/people`
+  stellt passende Kontakte vorne in `users`/`remote` (`contact: true`). Vertrag: `docs/APP-API-CHAT.md` Abschnitt 7.
 - **Öffentlicher Name:** `PUT /api/account/public-name` lehnt den eigenen Anmeldenamen ab (400 bzw. `ok: false` bei
   `check`); `GET` meldet `is_login: true`, wenn ein früher gewählter Name dem Anmeldenamen entspricht (Hinweis zeigen).
 - **Zweiter Faktor entfernen:** `DELETE /api/account/totp` und `DELETE /api/account/passkeys/{id}` verlangen eine

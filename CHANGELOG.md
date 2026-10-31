@@ -16,6 +16,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Chats: Kontakte)
+- **Kontakte:** Wer schon mit jemandem in einem Direkt-Chat oder einer freien Gruppe war, findet die Person wieder – auch
+  nach Löschen/Verlassen des Chats und über Servergrenzen. „Neue Unterhaltung“ und „Mitglied hinzufügen“ zeigen ohne
+  Eingabe die Liste „Kontakte“ (zuletzt zuerst), mit Eingabe stehen Kontakte vorne (auch bei 1–2 Zeichen); Menü „Aus
+  Kontakten entfernen“. Kontakte gelten auch bei „nur gemeinsame Gruppen“. Nie Anmeldenamen (Handles).
+- **Server:** Tabelle `chat_contact` (**Migration 28**; bestehende Direkt-Chats und freie Gruppen werden beim ersten Start
+  einmalig übernommen), `GET /api/chat/contacts`, `DELETE /api/chat/contacts/{ref}`, `GET /api/chat/people` mischt Kontakte
+  ein (`contact: true`), Feature `contacts1`. Getrennte Instanz → Kontakte dort `gone`, entfernte Instanz → gelöscht;
+  deaktiviertes Konto → `gone`, gelöschtes → weg. Persönliches Backup enthält die Kontakte (`chat_contacts`).
+  Doku: `docs/APP-API-CHAT.md` Abschnitt 7. Tests: `tests/kontakte.py`, `tests/foederation_kontakte.py`,
+  `tests/browser_kontakte.js`.
+
 ### Neu (2.5, Chats: Gruppeninfo und Admins)
 - **Gruppeninfo:** Klick auf den Chat-Kopf (oder ⋯ → „Gruppeninfo …“) öffnet ein Blatt mit Name (Stift zum Umbenennen),
   Mitgliedern (Avatar, Anzeigename, Handle, „Admin“, „Du“), „Mitglied hinzufügen“, je Mitglied „Zum Admin machen“ /
