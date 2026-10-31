@@ -43,7 +43,8 @@ FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1", "move1", "ren
             "import_notion1",                                                     # 2.5 Paket 2 E5: Notion-Import (docs/APP-API.md "Import")
             "mention1", "synced1",                                               # 2.5 P6-5/P6-6: Erwaehnungen, synchronisierte Bloecke
             "chatadm1",                                                          # 2.5 Gruppeninfo: PATCH /api/chats/{cid}/members/{who}
-            "contacts1")                                                         # 2.5 Kontakte: GET/DELETE /api/chat/contacts (docs/APP-API-CHAT.md)
+            "contacts1",                                                         # 2.5 Kontakte: GET/DELETE /api/chat/contacts (docs/APP-API-CHAT.md)
+            "pagechatmembers1")                                                  # 2.5 Seiten-Chat: Mitglieder hinzufuegen/entfernen = Seite teilen
 # live1 (2.5, P3 Stufe 2) = WebSocket /api/collab (CRDT, docs/APP-API-COLLAB.md) - nur gemeldet, solange der Admin-Schalter
 # notes.live an ist (app.py /api/version haengt es an); aus: Stufe 1 wie bisher.
 LIVE_FEATURE = "live1"

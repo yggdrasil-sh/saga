@@ -682,58 +682,83 @@ async def api_shares_put(nid: int, request: Request):
             tg = resolve_input(c0, uid, tg)          # 2.4: Handle ('~…'); Benutzername nur, wenn bekannt bzw. erlaubt
     role = b.get("role")
     if typ in REMOTE_TYPES:
-        # andere Instanz: erst Eigentum pruefen, dann Verbindung und Person/Gruppe dort nachfragen (Netzwerk -
-        # ausserhalb der Transaktion), danach wie gewohnt speichern
-        with _db() as c:
-            err = _own(c, uid, nid)
+        tg, err = await remote_prep(uid, nid, typ, tg, role)
         if err is not None:
             return err
-        if not enabled():
-            return _bad(t("Teilen ist auf diesem Server abgeschaltet."), 403)
-        if role not in ROLES or not tg:
-            return _bad(t("ungültige Angabe"))
-        if REMOTE_TARGET is None or not fed_enabled() or not fed_share_ok(tg):
-            return _bad(t("Teilen mit anderen Saga-Instanzen ist auf diesem Server nicht eingeschaltet."), 403)
-        tg, msg, code = await run_in_threadpool(REMOTE_TARGET, uid, typ, tg, nid)
-        if msg:
-            return _bad(msg, code)
     with _db() as c, c:
-        err = _own(c, uid, nid)
+        err = set_share(c, uid, nid, typ, tg, role)
         if err is not None:
             return err
-        if not enabled():
-            return _bad(t("Teilen ist auf diesem Server abgeschaltet."), 403)
-        if not typ or not tg or role not in ROLES:
-            return _bad(t("ungültige Angabe"))
-        if not note_chain(c, uid, nid):
-            return _bad(t("Archivierte Seiten und Vorlagen lassen sich nicht teilen."))
-        mine = groups_of(c, uid)
-        if typ in REMOTE_TYPES:
-            pass                                    # oben geprueft (Verbindung aktiv, Person/Gruppe dort vorhanden)
-        elif typ == "user":
-            u = c.execute("SELECT disabled FROM users WHERE username=?", (tg,)).fetchone()
-            if tg == uid:
-                return _bad(t("Mit dir selbst musst du nicht teilen."))
-            if not u or u[0]:
-                return _bad(t("Dieses Konto gibt es nicht."))
-            if group_scope() and not (mine & groups_of(c, tg)):
-                return _bad(t("Teilen ist nur mit Personen aus deinen Gruppen erlaubt."), 403)
-        else:
-            tg = auth.norm_group(tg) or ""
-            if tg not in mine:
-                return _bad(t("Teilen geht nur mit Gruppen, in denen du selbst bist."))
-        exists = c.execute("SELECT role FROM note_share WHERE note_id=? AND target_type=? AND target=?", (nid, typ, tg)).fetchone()
-        if not exists and c.execute("SELECT COUNT(*) FROM note_share WHERE note_id=?", (nid,)).fetchone()[0] >= SHARE_MAX:
-            return _bad(t("Höchstens {n} Freigaben je Seite.", n=SHARE_MAX), 409)
-        if exists:
-            c.execute("UPDATE note_share SET role=? WHERE note_id=? AND target_type=? AND target=?", (role, nid, typ, tg))
-        else:
-            c.execute("INSERT INTO note_share (note_id, owner_uid, target_type, target, role, created, created_by) VALUES (?,?,?,?,?,?,?)",
-                      (nid, uid, typ, tg, role, time.time(), uid))
-        # Benachrichtigung (saga.notify) + "Mit mir geteilt" live neu laden (saga.live) - nach dem Commit zugestellt
-        bus.fire("share.set", c, owner=uid, note_id=nid, target_type=typ, target=tg, role=role,
-                 old_role=exists[0] if exists else None, actor=uid)
         return JSONResponse(_state(c, uid, nid), headers={"Cache-Control": "no-store"})
+
+
+async def remote_prep(uid, nid, typ, tg, role):
+    """Freigabe an eine Person/Gruppe einer anderen Instanz vorbereiten: erst Eigentum pruefen, dann Verbindung und
+    Person/Gruppe dort nachfragen (Netzwerk - ausserhalb der Transaktion). -> (ziel, fehlerantwort|None). Auch fuer
+    das Hinzufuegen in Seiten-Chats (2.5, saga.chat)."""
+    with _db() as c:
+        err = _own(c, uid, nid)
+    if err is not None:
+        return None, err
+    if not enabled():
+        return None, _bad(t("Teilen ist auf diesem Server abgeschaltet."), 403)
+    if role not in ROLES or not tg:
+        return None, _bad(t("ungültige Angabe"))
+    if REMOTE_TARGET is None or not fed_enabled() or not fed_share_ok(tg):
+        return None, _bad(t("Teilen mit anderen Saga-Instanzen ist auf diesem Server nicht eingeschaltet."), 403)
+    tg, msg, code = await run_in_threadpool(REMOTE_TARGET, uid, typ, tg, nid)
+    if msg:
+        return None, _bad(msg, code)
+    return tg, None
+
+
+def set_share(c, uid, nid, typ, tg, role):
+    """Freigabe anlegen oder Rolle aendern (in der Transaktion c; fremde Ziele vorher mit remote_prep) -> fehlerantwort
+    oder None. Prueft Eigentum, Schalter und Ziel wie PUT /api/notes/{nid}/shares (auch saga.chat, Seiten-Chats)."""
+    err = _own(c, uid, nid)
+    if err is not None:
+        return err
+    if not enabled():
+        return _bad(t("Teilen ist auf diesem Server abgeschaltet."), 403)
+    if not typ or not tg or role not in ROLES:
+        return _bad(t("ungültige Angabe"))
+    if not note_chain(c, uid, nid):
+        return _bad(t("Archivierte Seiten und Vorlagen lassen sich nicht teilen."))
+    mine = groups_of(c, uid)
+    if typ in REMOTE_TYPES:
+        pass                                    # remote_prep hat geprueft (Verbindung aktiv, Person/Gruppe dort vorhanden)
+    elif typ == "user":
+        u = c.execute("SELECT disabled FROM users WHERE username=?", (tg,)).fetchone()
+        if tg == uid:
+            return _bad(t("Mit dir selbst musst du nicht teilen."))
+        if not u or u[0]:
+            return _bad(t("Dieses Konto gibt es nicht."))
+        if group_scope() and not (mine & groups_of(c, tg)):
+            return _bad(t("Teilen ist nur mit Personen aus deinen Gruppen erlaubt."), 403)
+    else:
+        tg = auth.norm_group(tg) or ""
+        if tg not in mine:
+            return _bad(t("Teilen geht nur mit Gruppen, in denen du selbst bist."))
+    exists = c.execute("SELECT role FROM note_share WHERE note_id=? AND target_type=? AND target=?", (nid, typ, tg)).fetchone()
+    if not exists and c.execute("SELECT COUNT(*) FROM note_share WHERE note_id=?", (nid,)).fetchone()[0] >= SHARE_MAX:
+        return _bad(t("Höchstens {n} Freigaben je Seite.", n=SHARE_MAX), 409)
+    if exists:
+        c.execute("UPDATE note_share SET role=? WHERE note_id=? AND target_type=? AND target=?", (role, nid, typ, tg))
+    else:
+        c.execute("INSERT INTO note_share (note_id, owner_uid, target_type, target, role, created, created_by) VALUES (?,?,?,?,?,?,?)",
+                  (nid, uid, typ, tg, role, time.time(), uid))
+    # Benachrichtigung (saga.notify) + "Mit mir geteilt" live neu laden (saga.live) - nach dem Commit zugestellt
+    bus.fire("share.set", c, owner=uid, note_id=nid, target_type=typ, target=tg, role=role,
+             old_role=exists[0] if exists else None, actor=uid)
+    return None
+
+
+def remove_share(c, uid, nid, typ, tg):
+    """Freigabe entfernen (Eigentum vorher pruefen) -> entfernt ja/nein; meldet share.removed (Foederation, live)."""
+    n = c.execute("DELETE FROM note_share WHERE note_id=? AND owner_uid=? AND target_type=? AND target=?", (nid, uid, typ, tg)).rowcount
+    if n:
+        bus.fire("share.removed", c, owner=uid, note_id=nid, target_type=typ, target=tg)
+    return bool(n)
 
 
 @router.delete("/api/notes/{nid}/shares")
@@ -756,10 +781,8 @@ async def api_shares_delete(nid: int, request: Request):
             return err
         if not typ or not tg:
             return _bad(t("ungültige Angabe"))
-        n = c.execute("DELETE FROM note_share WHERE note_id=? AND owner_uid=? AND target_type=? AND target=?", (nid, uid, typ, tg)).rowcount
-        if n:
-            bus.fire("share.removed", c, owner=uid, note_id=nid, target_type=typ, target=tg)
-        return JSONResponse(dict(_state(c, uid, nid), removed=bool(n)), headers={"Cache-Control": "no-store"})
+        n = remove_share(c, uid, nid, typ, tg)
+        return JSONResponse(dict(_state(c, uid, nid), removed=n), headers={"Cache-Control": "no-store"})
 
 
 _tgt_hits = {}       # uid -> [zeitstempel] (Personensuche: hoechstens 60 Anfragen je Minute)

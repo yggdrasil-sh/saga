@@ -1275,6 +1275,8 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
     # schraenkt saga.fed_chat ein (schreibgeschuetzt; Heim ohne chatadm1 -> can_admin false).
     me_admin = free and m["role"] == "admin"
     d.update(me_admin=me_admin, can_manage=me_admin, can_admin=me_admin, can_rename=free)
+    if ch["kind"] == "page":                          # 2.5 (pagechatmembers1): Mitglieder = Freigaben der Seite
+        page_fields(c, uid, ch, d)
     if ch["kind"] == "dm":
         a, _, b = (ch["dm_key"] or "").partition("|")   # (2.3: alter foederierter Chat ohne Paar)
         d["peer"] = {"username": b if a == uid else a, "name": d["name"], "avatar": nm.avatar(b if a == uid else a)}
@@ -1531,11 +1533,16 @@ async def api_chat_patch(cid: int, request: Request):
 
 @router.post("/api/chats/{cid}/members")
 async def api_member_add(cid: int, request: Request):
-    """Freie Gruppe: Person hinzufuegen {user} (nur Ersteller/Admin). Sieht nur Nachrichten ab jetzt."""
+    """Freie Gruppe: Person hinzufuegen {user} (nur Ersteller/Admin). Sieht nur Nachrichten ab jetzt. Seiten-Chat (2.5):
+    teilt die Seite mit der Person (page_add)."""
     uid, err = _me(request)
     if err:
         return err
     b = await _body(request) or {}
+    with _db() as c:
+        pch = _load(c, cid)
+    if pch and pch["kind"] == "page" and pch.get("home_peer") is None:
+        return await page_add(uid, cid, b)                # 2.5 (pagechatmembers1): Hinzufuegen = Seite teilen
     who = str(b.get("user") or "").strip().lower()[:100]
     if who and not b.get("handle"):                       # 2.4: Handle aus der Personensuche; Benutzername nur bekannt/erlaubt
         with _db() as c:
@@ -1573,6 +1580,192 @@ async def api_member_add(cid: int, request: Request):
         _changed(c, ch["id"], set(mem) | {who})
         mem = members(c, ch["id"])
         return _no_store({"chat": _chat_dict(c, uid, ch, mem, m, None, full=True)})
+
+
+# --- Seiten-Chats (2.5, pagechatmembers1): Hinzufuegen/Entfernen = Seite teilen/Freigabe entziehen ------------------
+PAGE_ADD_ROLES = ("view", "comment", "edit")
+
+
+def page_manager(c, uid, ch):
+    """Darf uid in diesem Seiten-Chat Mitglieder hinzufuegen/entfernen? = darf die Seite teilen (nur der Eigentuemer,
+    wie PUT /api/notes/{nid}/shares; Teilen eingeschaltet; Seite nicht archiviert/Vorlage/geloescht). Kopien von
+    Seiten-Chats anderer Server (home_peer): nie - dort teilt der Server der Seite."""
+    if ch.get("kind") != "page" or ch.get("home_peer") is not None or not share_enabled():
+        return False
+    r = c.execute("SELECT uid FROM note WHERE id=? AND deleted_at IS NULL", (ch["note_id"],)).fetchone()
+    return bool(r and r[0] == uid and note_chain(c, uid, ch["note_id"]))
+
+
+def _remote_is(c, target, u):
+    """Freigabe-Ziel '@name@host' (oder '@~x@host') meint das Chat-Mitglied u ('@~x@host')?"""
+    if target == u:
+        return True
+    name, _, host = target.lstrip("@").rpartition("@")
+    h = u.lstrip("@").rpartition("@")[0]
+    if not name or not h or not u.endswith("@" + host):
+        return False
+    r = c.execute("SELECT handle FROM fed_name_handle WHERE principal=?", (target,)).fetchone()
+    if r and r[0] == h:
+        return True
+    return bool(c.execute("SELECT 1 FROM fed_alias a JOIN fed_peer p ON p.id=a.peer_id WHERE p.host=? AND a.handle=? AND a.principal=?",
+                          (host, h, target)).fetchone())
+
+
+def _remote_in_group(c, grp, u):
+    """Gehoert u ('@~x@host') laut Zwischenspeicher zur Gruppe 'g@host' einer anderen Instanz?"""
+    g, _, host = grp.rpartition("@")
+    h, _, uh = u.lstrip("@").rpartition("@")
+    if not g or uh != host:
+        return False
+    r = c.execute("SELECT m.members FROM fed_group_members m JOIN fed_peer p ON p.id=m.peer_id WHERE p.host=? AND m.grp=?", (host, g)).fetchone()
+    try:
+        lst = json.loads(r[0]) if r else []
+    except ValueError:
+        lst = []
+    return any(isinstance(x, dict) and x.get("handle") == h for x in (lst if isinstance(lst, list) else []))
+
+
+def page_paths(c, nid, u, rows=None):
+    """Wege, auf denen u die Seite nid sieht -> [{via: 'owner'|'share'|'group'|'parent', type, target, name, note_id}]
+    (direkte Freigabe zuerst). Nur fuer den Eigentuemer gedacht (enthaelt Gruppen und Seiten darueber)."""
+    r = c.execute("SELECT uid FROM note WHERE id=?", (nid,)).fetchone()
+    if not r:
+        return []
+    owner = r[0]
+    if u == owner:
+        return [{"via": "owner"}]
+    if rows is None:
+        rows = page_share_rows(c, owner, nid)
+    remote = sharing.is_remote(u)
+    gs = None if remote else groups_of(c, u)
+    out = []
+    for src, typ, tg in rows:
+        if typ == "user" and not remote and tg == u or typ == "remote" and remote and _remote_is(c, tg, u):
+            out.append({"via": "share" if src == nid else "parent", "type": typ, "target": tg, "note_id": src})
+        elif typ == "group" and not remote and tg in gs or typ == "remote_group" and remote and _remote_in_group(c, tg, u):
+            out.append({"via": "group", "type": typ, "target": tg, "note_id": src})
+    out.sort(key=lambda x: ("share", "group", "parent").index(x["via"]))
+    return out
+
+
+def page_share_rows(c, owner, nid):
+    chain = note_chain(c, owner, nid)
+    if not chain:
+        return []
+    return c.execute(f"SELECT note_id, target_type, target FROM note_share WHERE owner_uid=? AND note_id IN ({','.join('?' * len(chain))})",
+                     (owner, *chain)).fetchall()
+
+
+def page_fields(c, uid, ch, d):
+    """Chat-Objekt eines Seiten-Chats: can_manage = ich darf die Seite teilen (Hinzufuegen teilt sie, Entfernen entzieht
+    die direkte Freigabe); can_rename/can_admin false (Name = Seitentitel). Nur dann je Mitglied via und removable
+    (direkte Freigabe dieser Seite und kein anderer Weg) - der Eigentuemer kennt Gruppen und Seiten darueber ohnehin."""
+    can = page_manager(c, uid, ch)
+    d.update(can_manage=can, can_rename=False, can_admin=False)
+    if not can:
+        return
+    rows = page_share_rows(c, uid, ch["note_id"])
+    for x in d["members"]:
+        ps = page_paths(c, ch["note_id"], x["username"], rows)
+        x["via"] = ps[0]["via"] if ps else None
+        x["removable"] = bool(ps) and ps[0]["via"] == "share" and len(ps) == 1
+
+
+def _page_target(c, uid, b):
+    """Person fuer POST .../members im Seiten-Chat -> (typ, ziel, fehler). {user}: Konto hier (Handle bzw. Benutzername
+    wie bei freien Gruppen); {handle}: '~x@host' - dieser Server wie {user}, sonst Freigabe an die Person dort."""
+    h = str(b.get("handle") or "").strip().lower()[:300]
+    if h:
+        m_ = _FULL_H.fullmatch(h)
+        if not m_:
+            return None, None, _bad(t("ungültige Angabe"))
+        if FED is None or FED.fedsig.authority(m_.group(2)) == FED.F.SELF_HOST:
+            u = who_in(c, uid, h) if FED is not None else ""
+            return ("user", u, None) if u else (None, None, _bad(t("Mit diesem Konto ist kein Chat möglich."), 404))
+        return "remote", m_.group(1) + "@" + FED.fedsig.authority(m_.group(2)), None
+    u = who_in(c, uid, str(b.get("user") or "").strip().lower()[:100])
+    return ("user", u, None) if u else (None, None, _bad(t("Mit diesem Konto ist kein Chat möglich."), 404))
+
+
+async def page_add(uid, cid, b):
+    """POST /api/chats/{cid}/members im Seiten-Chat (2.5, pagechatmembers1): die Seite mit der Person teilen ({role}
+    view|comment|edit, Standard view; eine schon hoehere direkte Freigabe bleibt) - mit Mitteilung und Foederation wie
+    im Teilen-Dialog. Danach ist sie Mitglied (Abgleich Seite -> Chat, live chat.changed). Personen anderer Server
+    kommen dazu, sobald ihr Server den Handle bestaetigt (im Hintergrund)."""
+    role = b.get("role") or "view"
+    if role not in PAGE_ADD_ROLES:
+        return _bad(t("ungültige Angabe"))
+    with _db() as c:
+        ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
+        if err:
+            return err
+        if not page_manager(c, uid, ch):
+            return _bad(t("Personen hinzufügen kann nur, wem die Seite gehört (Hinzufügen teilt die Seite)."), 403)
+        typ, tg, err = _page_target(c, uid, b)
+        if err:
+            return err
+        nid = ch["note_id"]
+    if typ == "remote":
+        tg, err = await sharing.remote_prep(uid, nid, typ, tg, role)
+        if err is not None:
+            return err
+    with _db() as c, c:
+        ch, m, mem, err = _chat_for(c, uid, cid)
+        if err:
+            return err
+        if tg in mem or typ == "remote" and any(sharing.is_remote(u) and _remote_is(c, tg, u) for u in mem):
+            return _bad(t("Ist schon Mitglied."), 409)
+        if len(mem) >= MEMBERS_MAX:
+            return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
+        old = c.execute("SELECT role FROM note_share WHERE note_id=? AND target_type=? AND target=?", (nid, typ, tg)).fetchone()
+        if old and sharing.RANK.get(old[0], 0) > sharing.RANK[role]:
+            role = old[0]                                 # schon hoehere direkte Freigabe: nicht herabsetzen
+        err = sharing.set_share(c, uid, nid, typ, tg, role)
+        if err is not None:
+            return err
+        ch = _load(c, ch["id"])
+        mem = sync(c, ch)
+        ch = _load(c, ch["id"])
+        return _no_store({"chat": _chat_dict(c, uid, ch, mem, _member(c, ch["id"], uid), None, full=True)})
+
+
+def page_via_msg(c, ch, u, ps):
+    """409-Text: woher u (ausser einer direkten Freigabe) Zugriff hat - nur an den Eigentuemer (kennt Gruppen/Seiten)."""
+    nm = (FED.label_of(c, u)["name"] if FED is not None and sharing.is_remote(u) else names(c, [u]).get(u)) or t("Diese Person")
+    x = next((p for p in ps if p["via"] != "share"), ps[0])
+    if x["via"] == "owner":
+        return t("Wem die Seite gehört, bleibt immer im Seiten-Chat.")
+    if x["via"] == "group":
+        return t("{name} hat Zugriff über die Gruppe „{g}“ – dort entfernen bzw. die Freigabe an die Gruppe entziehen.", name=nm, g=x["target"])
+    r = c.execute("SELECT title FROM note WHERE id=?", (x["note_id"],)).fetchone()
+    return t("{name} hat Zugriff über die übergeordnete Seite „{title}“ – dort die Freigabe entziehen.", name=nm,
+             title=(r[0] if r else "") or t("Unbenannt"))
+
+
+def page_remove(uid, cid, who):
+    """DELETE /api/chats/{cid}/members/{who} im Seiten-Chat (2.5): direkte Freigabe dieser Seite entziehen (wie im
+    Teilen-Dialog) - die Person ist danach nicht mehr im Chat. Zugriff auch anders (Gruppe, Seite darueber) -> 409 mit
+    Hinweis, woher; Eigentuemer -> 409; ich selbst -> 400 (nicht verlassbar, nur stummschalten)."""
+    with _db() as c, c:
+        ch, m, mem, err = _chat_for(c, uid, cid)
+        if err:
+            return err
+        tgt = member_target(c, uid, mem, who)
+        if tgt == uid or who.strip().lower() == uid:
+            return _bad(t("Diesen Chat kann man nicht verlassen – nur stummschalten."), 400)
+        if not page_manager(c, uid, ch):
+            return _bad(t("Personen entfernen kann nur, wem die Seite gehört (Entfernen entzieht die Freigabe)."), 403)
+        if not tgt:
+            return _bad("not found", 404)
+        ps = page_paths(c, ch["note_id"], tgt)
+        if not ps:
+            mem = sync(c, ch)                             # Zugriff schon weg: nur angleichen
+            return _no_store({"ok": True})
+        if ps[0]["via"] != "share" or len(ps) > 1:
+            return _bad(page_via_msg(c, ch, tgt, ps), 409)
+        sharing.remove_share(c, uid, ch["note_id"], ps[0]["type"], ps[0]["target"])
+        sync(c, ch)
+        return _no_store({"ok": True})
 
 
 def member_target(c, uid, mem, who):
@@ -1696,6 +1889,10 @@ def api_member_remove(cid: int, who: str, request: Request):
     uid, err = _me(request)
     if err:
         return err
+    with _db() as c:
+        pch = _load(c, cid)
+    if pch and pch["kind"] == "page" and pch.get("home_peer") is None:
+        return page_remove(uid, cid, who)                # 2.5 (pagechatmembers1): Entfernen = Freigabe entziehen
     who = who.strip().lower()
     if FED is not None:
         with _db() as c:
