@@ -3276,8 +3276,8 @@
       var hd = el('div', 'ct-gi-head');
       hd.appendChild(avatar(kindIc(c) || '👥', 'c' + c.id, 'ct-gi-av'));
       var nm = el('div', 'ct-gi-name'), h3 = el('h3', 'ct-gi-title', chatName(c)); h3.id = 'ct-gi-title'; nm.appendChild(h3);
-      nm.appendChild(el('span', 'hk-hint', c.kind === 'free' ? T('Freie Gruppe · {n} Mitglieder', { n: c.member_count })
-        : c.kind === 'group' ? T('Gruppen-Chat „{g}“ · {n} Mitglieder', { g: c.group || '', n: c.member_count }) : T('Seiten-Chat · {n} Mitglieder', { n: c.member_count })));
+      nm.appendChild(el('span', 'hk-hint', c.kind === 'free' ? T('Freie Gruppe · {n} {n:Mitglied|Mitglieder}', { n: c.member_count })
+        : c.kind === 'group' ? T('Gruppen-Chat „{g}“ · {n} {n:Mitglied|Mitglieder}', { g: c.group || '', n: c.member_count }) : T('Seiten-Chat · {n} {n:Mitglied|Mitglieder}', { n: c.member_count })));
       hd.appendChild(nm);
       if (c.kind === 'free' && c.can_rename) {
         var pen = el('button', 'icon-btn ct-gi-edit', '✎'); pen.type = 'button'; pen.dataset.gi = 'edit';
@@ -3306,7 +3306,7 @@
         : T('Dieser Chat liegt auf {host}. Mitglieder ändert man dort (über diesen Server).', { host: c.home || '?' })));
       if (c.readonly) wrap.appendChild(el('p', 'hk-hint', '🔒 ' + (c.readonly_reason || T('schreibgeschützt'))));
       // Mitglieder
-      var h4 = el('h3', 'ct-gi-h', T('{n} Mitglieder', { n: c.member_count })); wrap.appendChild(h4);
+      var h4 = el('h3', 'ct-gi-h', T('{n} {n:Mitglied|Mitglieder}', { n: c.member_count })); wrap.appendChild(h4);
       if (c.kind === 'free' && c.can_manage) {
         var add = btn('+ ' + T('Mitglied hinzufügen'), 'small ct-gi-add'); add.dataset.gi = 'add';
         var slot = el('div', 'ct-gi-search'); slot.hidden = true;
