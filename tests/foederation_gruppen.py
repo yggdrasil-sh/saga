@@ -370,7 +370,8 @@ def part_compat(adm, pab, pba, pac, pca):
     api("a", "fa-anna", "PUT", f"/api/notes/{pg}/shares", {"type": "remote", "target": f"@bert@{HB}", "role": "view"})
     api("a", "fa-anna", "PUT", f"/api/notes/{pg}/shares", {"type": "user", "target": "fa-carl", "role": "view"})
     s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "page", "note_id": pg, "device": anna.dev["id"]})
-    ok(f"A: Seiten-Chat bleibt lokal (v1), ohne Personen der alten Instanz ({s})", s == 200 and d["chat"].get("v") is None
+    ok(f"A: Seiten-Chat bleibt lokal (v1 bzw. seit 2.5 lokale Stufe 3), ohne Personen der alten Instanz ({s}, v={d['chat'].get('v')})",
+       s == 200 and (d["chat"].get("v") is None or sql("a", "SELECT v, home_peer FROM chat WHERE id=?", (d["chat"]["id"],))[0] == [3, None])
        and all(not m.get("remote") for m in d["chat"]["members"]))
     # Drei Server gemischt (E8): A und C sprechen 2.3, B ist alt - Gruppe A + C geht, B bleibt bei Protokoll 1 (Teilen/Lesen)
     dora = User("c", "fc-dora")
