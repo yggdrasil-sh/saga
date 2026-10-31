@@ -2098,6 +2098,11 @@ def chat_extra(c, uid, ch, d, mem, m):
         out.append(x)
     d["members"] = out
     _title_v2(d, uid)
+    if ch["kind"] == "free" and not v3:                # 2.5 (Gruppeninfo): schreibgeschuetzt bzw. Heim ohne chatadm1
+        if ro:
+            d.update(can_manage=False, can_admin=False, can_rename=False)
+        elif ch["home_peer"] is not None and not F.feature(F.peer_by(c, "id", ch["home_peer"]), "chatadm1"):
+            d["can_admin"] = False
     if v3:
         _extra_v3(c, uid, ch, d, out)
         for fn in EXTRA_HOOKS:
@@ -2201,17 +2206,19 @@ def _hosts_of(us):
 
 
 def push_members(c, ch, sysd=None, extra_hosts=()):
-    """Heim: aktuelle Mitgliederliste an alle Teilnehmer-Server (auch an die von eben entfernten Mitgliedern)."""
+    """Heim: aktuelle Mitgliederliste an alle Teilnehmer-Server (auch an die von eben entfernten Mitgliedern). Systemzeilen
+    der Art 'admin' (2.5) nur an Server mit chatadm1 - aeltere bekommen die neue Liste (Rollen) ohne Systemzeile."""
     ev = {"type": "chat.members", "ref": ch["ref"], "kind": ch["kind"], "members": member_list(c, ch)}
     if ch["kind"] == "page":
         ev.update(note=ch["note_id"], title=_page_title(c, ch["note_id"]))
-    if sysd:
-        ev["sys"] = sysd
     hosts = _hosts_of([u for u, _ in members(c, ch["id"])]) | set(extra_hosts)
     for host in sorted(h for h in hosts if h):
         p = F.peer_by(c, "host", host)
         if p and p["status"] == "active" and F.feature(p, "chatgroups"):
-            F._enqueue(c, p["id"], dict(ev), chain=chain_down(ch["ref"]))
+            e = dict(ev)
+            if sysd and (sysd.get("type") != "admin" or F.feature(p, "chatadm1")):
+                e["sys"] = sysd
+            F._enqueue(c, p["id"], e, chain=chain_down(ch["ref"]))
 
 
 def members_changed(c, ch, added, removed, by=None, reason=None):
@@ -2473,7 +2480,12 @@ def apply_members(c, peer, ev, create=True):
         if u not in want:
             c.execute("UPDATE chat_member SET left_at=? WHERE chat_id=? AND uid=?", (now, ch["id"], u))
             chat.unhide(c, ch["id"], u)
-    if isinstance(ev.get("sys"), dict):
+    if isinstance(ev.get("sys"), dict) and ev["sys"].get("type") == "admin":     # 2.5 (chatadm1): Admin vergeben/entzogen
+        sd = ev["sys"]
+        tg = (_sys_people([sd.get("target")]) or [None])[0]
+        if tg:
+            sysline(c, ch, None, {"type": "admin", "target": tg, "on": sd.get("on") is True, "by": (_sys_people([sd.get("by")]) or [None])[0]})
+    elif isinstance(ev.get("sys"), dict):
         sd = ev["sys"]
         clean = {"type": "members", "added": _sys_people(sd.get("added")), "removed": _sys_people(sd.get("removed")),
                  "by": (_sys_people([sd.get("by")]) or [None])[0]}
@@ -2588,6 +2600,40 @@ def op_members(c, peer, d):
     return 200, {"ok": True}
 
 
+def admin_changed(c, ch, target, on, by):
+    """Heim: Rolle geaendert (2.5) - Systemzeile hier und neue Liste (mit Rollen) an die Teilnehmer-Server."""
+    sysd = {"type": "admin", "target": who(c, target), "on": bool(on), "by": who(c, by)}
+    sysline(c, ch, None, sysd)
+    push_members(c, ch, sysd)
+    chat._changed(c, ch["id"], local_members(c, ch["id"]))
+
+
+def op_admin(c, peer, d):
+    """Teilnehmer -> Heim (2.5, chatadm1): {op:'admin', ref, actor, target:'~x@host', admin: bool} - nur Admins der Gruppe
+    (auch Personen anderer Server, wenn das Heim sie als Admin fuehrt)."""
+    ch = _home_chat(c, d, lock=True)
+    h, p_ = _actor(c, peer, d)
+    if not ch or not h or ch["kind"] != "free":
+        return 404, {"error": "gone"}
+    if ch["fstate"]:
+        return 409, {"error": "readonly"}
+    if not isinstance(d.get("admin"), bool):
+        return 400, {"error": "bad request"}
+    if _role(c, ch["id"], p_) != "admin":
+        return 403, {"error": "not admin"}
+    u = _member_of(c, d.get("target")) if isinstance(d.get("target"), str) else None
+    if not u or u not in dict(members(c, ch["id"])):
+        return 404, {"error": "unknown member"}
+    r = chat.set_admin(c, ch, u, d["admin"])
+    if r == "last":
+        return 409, {"error": "last admin"}
+    if r == "gone":
+        return 404, {"error": "unknown member"}
+    if r == "ok":
+        admin_changed(c, ch, u, d["admin"], p_)
+    return 200, {"ok": True}
+
+
 def op_leave(c, peer, d):
     """Teilnehmer -> Heim: Person verlaesst die Gruppe."""
     ch = _home_chat(c, d, lock=True)
@@ -2679,7 +2725,7 @@ def op_pagechat(c, peer, d):
     return 200, {"ref": ch["ref"], "kind": "page", "note": rid, "title": _page_title(c, rid), "members": member_list(c, ch)}
 
 
-OPS.update({"members": op_members, "leave": op_leave, "resolve": op_resolve, "pagechat": op_pagechat})
+OPS.update({"members": op_members, "admin": op_admin, "leave": op_leave, "resolve": op_resolve, "pagechat": op_pagechat})
 
 
 def keys_of_members(c, ch, peer, handles):
@@ -2856,7 +2902,7 @@ def group_add(uid, cid, who_, handle):
         if not chat.is_fed(ch):
             return _bad(t("Personen anderer Saga-Server lassen sich nur zu neuen Gruppen hinzufügen – bitte eine neue Gruppe anlegen."), 409)
         if ch["kind"] != "free":
-            return _bad(t("Mitglieder ergeben sich hier aus der Gruppe bzw. den Freigaben der Seite."), 400)
+            return _bad(chat.not_free_msg(), 400)
         ro = _ro_group(c, ch)
         if ro:
             return _bad(ro, 403)
@@ -2961,6 +3007,51 @@ def group_remove(uid, cid, who_):
     status, d = sync_call(p, {"op": "members", "ref": ch["ref"], "actor": mh, "remove": [th]})
     if status == 200:
         return chat._no_store({"ok": True})
+    return _home_result(uid, ch, status, d)
+
+
+def group_admin(uid, cid, who_, on):
+    """PATCH /api/chats/{cid}/members/{who} {admin} bei Gruppen ueber Servergrenzen (2.5): beim Heim direkt, sonst Auftrag
+    'admin' an das Heim - nur, wenn es chatadm1 kann (sonst 409 "zu alt")."""
+    with _db() as c:
+        ch, m, mem, err = chat._chat_for(c, uid, cid, do_sync=False)
+        if err:
+            return err
+        if ch["kind"] != "free":
+            return _bad(chat.not_free_msg(), 400)
+        ro = _ro_group(c, ch)
+        if ro:
+            return _bad(ro, 403)
+        target = chat.member_target(c, uid, mem, who_)
+        if not target:
+            return _bad("not found", 404)
+        mh, th = my_handle(c, uid), member_handle(c, target)
+        home = ch["home_peer"] is None
+        p = None if home else F.peer_by(c, "id", ch["home_peer"])
+        if not home and not F.feature(p, "chatadm1"):
+            return _bad(t("Der Server der Gruppe ({host}) ist zu alt, um Admins zu ändern.", host=home_host(c, ch) or "?"), 409)
+    if home:
+        with _db() as c, c:
+            ch = by_ref(c, ch["ref"], lock=True)
+            if _role(c, ch["id"], uid) != "admin":
+                return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
+            r = chat.set_admin(c, ch, target, on)
+            if r == "last":
+                return _bad(chat.last_admin_msg(), 409)
+            if r == "gone":
+                return _bad("not found", 404)
+            if r == "ok":
+                admin_changed(c, ch, target, on, uid)
+            return chat._no_store({"chat": chat._chat_dict(c, uid, ch, chat.members(c, ch["id"]), chat._member(c, ch["id"], uid), None, full=True)})
+    status, d = sync_call(p, {"op": "admin", "ref": ch["ref"], "actor": mh, "target": th, "admin": bool(on)})
+    if status == 409 and isinstance(d, dict) and d.get("error") == "last admin":
+        return _bad(chat.last_admin_msg(), 409)
+    if status == 404:
+        return _bad("not found", 404)
+    if status == 200:                                    # Kopie gleich angleichen (die neue Liste vom Heim folgt)
+        with _db() as c, c:
+            c.execute("UPDATE chat_member SET role=? WHERE chat_id=? AND uid=? AND left_at IS NULL", ("admin" if on else "member", ch["id"], target))
+            chat._changed(c, ch["id"], local_members(c, ch["id"]))
     return _home_result(uid, ch, status, d)
 
 

@@ -1210,6 +1210,8 @@ def _unread(c, uid, cid, last_read):
 
 
 def _chat_dict(c, uid, ch, mem, m, device, full=False):
+    free = ch["kind"] == "free"
+    adm = {r[0] for r in c.execute("SELECT uid FROM chat_member WHERE chat_id=? AND left_at IS NULL AND role='admin'", (ch["id"],))} if free else set()
     nm = names(c, list(mem) + ([ch["dm_key"].split("|")[0], ch["dm_key"].split("|")[-1]] if ch["dm_key"] else []))
     sb = subtitles(c, [u for u in mem if u != uid]) if ch["kind"] != "dm" else {}    # 2.4 (N2): Unterzeile fuer Gleichnamige
     d = {"id": ch["id"], "kind": ch["kind"], "name": _name(c, uid, ch, mem, nm), "group": ch["group_name"], "note_id": ch["note_id"],
@@ -1217,14 +1219,20 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
          "muted": bool(m["muted"]), "role": m["role"], "last_read": m["last_read"], "unread": _unread(c, uid, ch["id"], m["last_read"]),
          # username: Chats v1 binden Schluessel an den Anmeldenamen (nur Mitglieder sehen ihn, die Oberflaeche zeigt ihn nicht);
          # ref (2.4): dieselbe Kennung wie in der Personensuche (pseudonymer Handle)
+         # admin (2.5): Admin der freien Gruppe (group/page: immer false)
          "members": [{"username": u, "ref": u if (u == uid or u.startswith("@")) else local_ref(u), "name": nm.get(u, u), "me": u == uid,
-                      "avatar": nm.avatar(u), "sub": sb.get(u, "")} for u in mem], "member_count": len(mem),
+                      "avatar": nm.avatar(u), "sub": sb.get(u, ""), "admin": u in adm} for u in mem], "member_count": len(mem),
          # KI im Chat (2.1, saga/ai_chat.py): in diesem Chat erlaubt? (ob der Server sie anbietet: /api/ai/status "chat")
          "ai": bool(c.execute("SELECT 1 FROM chat_ai WHERE chat_id=?", (ch["id"],)).fetchone())}
     # Archiv und Loeschen (2.1): nur fuer mich; delete_for_all = 'chat' | 'history' | None (was "Fuer alle loeschen" darf)
     p = _pref(c, ch["id"], uid)
     d.update(archived=p["archived"] is not None, archived_at=p["archived"], cleared_seq=p["cleared_seq"],
              delete_for_all=may_delete_all(c, uid, ch, m))
+    # Gruppeninfo (2.5, chatadm1): me_admin = ich bin Admin der freien Gruppe; can_manage = Mitglieder hinzufuegen/entfernen,
+    # can_admin = Admin vergeben/entziehen (PATCH .../members/{who}), can_rename = Namen setzen (kind 'title'). Foederiert
+    # schraenkt saga.fed_chat ein (schreibgeschuetzt; Heim ohne chatadm1 -> can_admin false).
+    me_admin = free and m["role"] == "admin"
+    d.update(me_admin=me_admin, can_manage=me_admin, can_admin=me_admin, can_rename=free)
     if ch["kind"] == "dm":
         a, _, b = (ch["dm_key"] or "").partition("|")   # (2.3: alter foederierter Chat ohne Paar)
         d["peer"] = {"username": b if a == uid else a, "name": d["name"], "avatar": nm.avatar(b if a == uid else a)}
@@ -1506,7 +1514,7 @@ async def api_member_add(cid: int, request: Request):
         if err:
             return err
         if ch["kind"] != "free":
-            return _bad(t("Mitglieder ergeben sich hier aus der Gruppe bzw. den Freigaben der Seite."), 400)
+            return _bad(not_free_msg(), 400)
         if m["role"] != "admin":
             return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
         if who in mem:
@@ -1520,6 +1528,89 @@ async def api_member_add(cid: int, request: Request):
         _changed(c, ch["id"], set(mem) | {who})
         mem = members(c, ch["id"])
         return _no_store({"chat": _chat_dict(c, uid, ch, mem, m, None, full=True)})
+
+
+def member_target(c, uid, mem, who):
+    """Person an den Mitglieder-Endpunkten (2.5) -> Mitglied (Benutzername bzw. Prinzipal '@~x@host') oder None. Nimmt den
+    Wert aus members[].username (v1: Benutzername; Format v2: Handle bzw. Prinzipal) sowie Handles '~x' / '~x@host'."""
+    who = str(who or "").strip()[:300]
+    if who in mem:
+        return who
+    w = who.lower()
+    if w in mem:
+        return w
+    m_ = _FULL_H.fullmatch(w)
+    if m_ and FED is not None and FED.fedsig.authority(m_.group(2)) != FED.F.SELF_HOST:
+        u = "@" + m_.group(1) + "@" + FED.fedsig.authority(m_.group(2))
+        return u if u in mem else None
+    u = who_in(c, uid, w)
+    return u if u and u in mem else None
+
+
+def set_admin(c, ch, u, on):
+    """Rolle eines Mitglieds der freien Gruppe setzen (2.5). Sperrt die Chat-Zeile (zwei gleichzeitige Entzuege lassen
+    nicht null Admins zurueck). -> 'ok' (geaendert) | 'same' (war schon so) | 'last' (letzter Admin) | 'gone'."""
+    c.execute("SELECT id FROM chat WHERE id=? FOR UPDATE", (ch["id"],))
+    r = c.execute("SELECT role FROM chat_member WHERE chat_id=? AND uid=? AND left_at IS NULL", (ch["id"], u)).fetchone()
+    if not r:
+        return "gone"
+    if (r[0] == "admin") == bool(on):
+        return "same"
+    if not on and c.execute("SELECT COUNT(*) FROM chat_member WHERE chat_id=? AND left_at IS NULL AND role='admin'",
+                            (ch["id"],)).fetchone()[0] <= 1:
+        return "last"
+    c.execute("UPDATE chat_member SET role=? WHERE chat_id=? AND uid=?", ("admin" if on else "member", ch["id"], u))
+    return "ok"
+
+
+def last_admin_msg():
+    return t("Das ist der letzte Admin der Gruppe – erst jemand anderen zum Admin machen.")
+
+
+def not_free_msg():
+    return t("Mitglieder ergeben sich hier aus der Gruppe bzw. den Freigaben der Seite.")
+
+
+@router.patch("/api/chats/{cid}/members/{who}")
+async def api_member_role(cid: int, who: str, request: Request):
+    """Freie Gruppe (2.5, chatadm1): Admin vergeben/entziehen {admin: true|false} - nur Admins. Den letzten Admin entziehen
+    -> 409; sich selbst entziehen geht, wenn ein anderer Admin bleibt. Antwort {chat} wie POST .../members."""
+    uid, err = _me(request)
+    if err:
+        return err
+    b = await _body(request)
+    if b is None or not isinstance(b.get("admin"), bool):
+        return _bad(t("ungültige Angabe"))
+    on = b["admin"]
+    if FED is not None:
+        with _db() as c:
+            fch = _load(c, cid)
+        if is_fed(fch):                                   # Gruppe ueber Servergrenzen: Aenderung ueber das Heim
+            from starlette.concurrency import run_in_threadpool
+            return await run_in_threadpool(FED.group_admin, uid, cid, who, on)
+    with _db() as c, c:
+        ch, m, mem, err = _chat_for(c, uid, cid)
+        if err:
+            return err
+        if ch["kind"] != "free":
+            return _bad(not_free_msg(), 400)
+        if m["role"] != "admin":
+            return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
+        tgt = member_target(c, uid, mem, who)
+        if not tgt:
+            return _bad("not found", 404)
+        r = set_admin(c, ch, tgt, on)
+        if r == "last":
+            return _bad(last_admin_msg(), 409)
+        if r == "gone":
+            return _bad("not found", 404)
+        if r == "ok":
+            _changed(c, ch["id"], mem)
+            if hfmt(ch):                                  # Systemzeile (kind 'sys', nur Handles/Namen) im Format v2/Stufe 3 -
+                # Chats v1 kennen keine Systemzeilen (wie beim Hinzufuegen/Entfernen); dort reicht chat.changed
+                FED.sysline(c, ch, None, {"type": "admin", "target": FED.who(c, tgt), "on": on, "by": FED.who(c, uid)})
+        mem = members(c, ch["id"])
+        return _no_store({"chat": _chat_dict(c, uid, ch, mem, _member(c, ch["id"], uid), None, full=True)})
 
 
 def _drop_chat(c, cid):
