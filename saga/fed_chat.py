@@ -636,7 +636,8 @@ def op_send(c, peer, d):
     fseq = c.execute("UPDATE chat SET fseq=fseq+1 WHERE id=? RETURNING fseq", (ch["id"],)).fetchone()[0]
     seq = store(c, ch, m, p_, local_keys(c, ch, keys), files, origin=peer, fseq=fseq, all_keys=keys)
     deliver(c, ch, seq, m["id"], p_, m.get("kind") or "msg")
-    fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": se}, keys=keys, declined=False)
+    fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": se}, keys=keys, declined=False,
+           cap="groupinfo2" if m.get("kind") in ("desc", "avatar") else None)     # 2.5: aeltere Server ueberspringen (Luecke schliesst fill_gap)
     _prefetch_after(c, files, peer)
     return 200, {"ok": True, "fseq": fseq}
 
@@ -1891,7 +1892,8 @@ def send(uid, cid, b):
             c.execute("UPDATE chat_ai_reply SET msg_id=? WHERE id=?", (m["id"], ai_ref))
         deliver(c, ch, seq, m["id"], uid, m.get("kind") or "msg")
         if home:
-            fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": mine}, keys=keys, declined=False)
+            fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": mine}, keys=keys, declined=False,
+                   cap="groupinfo2" if m.get("kind") in ("desc", "avatar") else None)
     out = {"ok": True, "seq": seq, "fseq": fseq, "created": time.time()}
     if home:
         print(f"chat: Nachricht in Chat {ch['id']} (foederiert, Heim, {len(keys)} Empfaenger)", flush=True)

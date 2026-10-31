@@ -10,6 +10,8 @@ Seiten-Chat einer geteilten Seite mit fremder Gruppe (deren Server meldet die Mi
 fremder Person, Oeffnen von der fremden Seite aus, Entzug der Freigabe, 2.5 (pagechatmembers1) Person eines anderen Servers
 im Seiten-Chat hinzufuegen/entfernen (= Freigabe), Mitglied ueber fremde Gruppe 409, Umstellung eines bestehenden Seiten-Chats auf v2
 (alte Nachrichten bleiben v1 lesbar); Trennen (Mitglieder der getrennten Instanz raus, dort schreibgeschuetzt).
+2.5 (Chat-Standard B, part_grp2): Gruppenrechte ueber das Heim (Auftrag 'perm', chat.perm), Beschreibung (kind desc), Anheften
+(Auftrag 'pin', chat.pins), Admin-Loeschen von einem anderen Server (Grabstein ueberall).
 2.5 (chatadm1): Admin vergeben/entziehen beim Heim und als Auftrag 'admin' vom Teilnehmer-Server (fremder Admin), Liste und
 Systemzeile 'admin' kommen auf allen Servern an, letzter Admin 409, Heim ohne chatadm1 -> 409 "zu alt" (can_admin false).
 Kompatibilitaet: FED_B_APP=<Saga 2.1/2.2> -> B kann keine Gruppen ueber Servergrenzen: verstaendliche Meldung, Seiten-Chat
@@ -228,6 +230,74 @@ def part_admin(anna, cleo, dora, ch):
     ok("A: Anna wieder Admin", wait(lambda: api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("me_admin") is True, 10))
 
 
+def part_grp2(anna, cleo, dora, ch):
+    """2.5 (Chat-Standard B): Rechte, Beschreibung, Anheften, Admin-Loeschen in einer Gruppe ueber drei Server (Heim A).
+    Anna (A) und Dora (C) sind Admins, Cleo (B) Mitglied."""
+    ok("Faehigkeiten groupinfo2/msgpin1/moddel1 ausgehandelt", wait(lambda: all(caps_ok(k, h, cap) for k, h in (("a", HB), ("a", HC), ("b", HA), ("c", HA))
+                                                                            for cap in ("groupinfo2", "msgpin1", "moddel1")), 25))
+    cc = cleo.chat(ch["ref"])
+    if cc and cc.get("request"):
+        api("b", "fb-cleo", "POST", f"/api/chats/{cc['id']}/request", {"action": "accept"})
+    cc, dc = cleo.chat(ch["ref"]), dora.chat(ch["ref"])
+    ok("B/C: Rechte all/all, Cleo can_send, Dora can_perms (fremde Admin)", cc.get("perm_send") == "all" and cc.get("can_send") is True
+       and cc.get("can_perms") is False and dc.get("can_perms") is True)
+    # Rechte: Dora (C) setzt perm_send admins ueber das Heim
+    s, d = api("c", "fc-dora", "PATCH", f"/api/chats/{dc['id']}", {"perm_send": "admins"})
+    ok(f"C: Dora setzt perm_send admins (Auftrag 'perm' ans Heim) ({s})", s == 200 and (d.get("chat") or {}).get("perm_send") == "admins", d)
+    ok("A: Heim hat perm_send admins", api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("perm_send") == "admins")
+    ok("B: Cleos Kopie: perm_send admins, can_send false (Ereignis chat.perm)",
+       bool(wait(lambda: (cleo.chat(ch["ref"]) or {}).get("can_send") is False, 15)))
+    s, d = api("b", "fb-cleo", "PATCH", f"/api/chats/{cc['id']}", {"perm_send": "all"})
+    ok(f"B: Cleo (kein Admin) aendert Rechte -> 403 ({s})", s == 403)
+    cc = cleo.chat(ch["ref"])
+    s, d, _ = cleo.send(cc, "darf nicht")
+    ok(f"B: Cleo schreibt bei perm_send admins -> 403 ({s})", s == 403)
+    ok("C: Systemzeile 'perm'", wait(lambda: any(x.get("type") == "perm" and x.get("perm_send") == "admins" for x in sys_lines(dora, dc["id"])), 10))
+    s, d = api("a", "fa-anna", "PATCH", f"/api/chats/{ch['id']}", {"perm_send": "all"})
+    ok(f"A: Anna (Heim) setzt perm_send wieder all ({s})", s == 200 and wait(lambda: (cleo.chat(ch["ref"]) or {}).get("can_send") is True, 15))
+    # Beschreibung von B (verschluesselt, kind desc) - kommt auf A und C an
+    cc = cleo.chat(ch["ref"])
+    m = cleo.msg(cc, "", body={"v": 1, "type": "desc", "desc": "Gruppe ueber drei Server"})
+    m["kind"] = "desc"
+    s, d = api("b", "fb-cleo", "POST", f"/api/chats/{cc['id']}/messages", m)
+    ok(f"B: Cleo setzt die Beschreibung ({s})", s == 200, d)
+    dm_ = wait(lambda: (dora.chat(ch["ref"]) or {}).get("desc_msg"), 15)
+    ok("C: desc_msg kommt an und ist lesbar", bool(dm_) and dora.read(dora.chat(ch["ref"]), dm_).get("desc") == "Gruppe ueber drei Server")
+    ok("A: desc_msg beim Heim", (api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("desc_msg") or {}).get("id") == m["id"])
+    # Anheften von B aus (ueber das Heim), sichtbar auf A und C
+    s, d, mc = cleo.send(cleo.chat(ch["ref"]), "anheften bitte")
+    ok("C: Nachricht von Cleo angekommen", wait(lambda: "anheften bitte" in dora.texts(dora.chat(ch["ref"])), 15))
+    s, d = api("b", "fb-cleo", "POST", f"/api/chats/{cc['id']}/pins/{mc['id']}")
+    ok(f"B: Cleo heftet an (Auftrag 'pin') ({s}, {d.get('pins')})", s == 200 and d.get("pins") == [mc["id"]], d)
+    ok("C: pins kommt an (chat.pins)", bool(wait(lambda: (dora.chat(ch["ref"]) or {}).get("pins") == [mc["id"]], 15)))
+    ok("A: pins beim Heim", api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("pins") == [mc["id"]])
+    s, d = api("a", "fa-anna", "PATCH", f"/api/chats/{ch['id']}", {"perm_info": "admins"})
+    s, d = api("b", "fb-cleo", "DELETE", f"/api/chats/{cc['id']}/pins/{mc['id']}")
+    ok(f"B: perm_info admins -> Cleo kann nicht loesen ({s})", s == 403)
+    api("a", "fa-anna", "PATCH", f"/api/chats/{ch['id']}", {"perm_info": "all"})
+    # Admin-Loeschen: Dora (C, Admin) loescht Cleos Nachricht -> Grabstein ueberall
+    s, d = api("b", "fb-cleo", "DELETE", f"/api/chats/{cc['id']}/messages/{m5_of(anna, ch)}")
+    ok(f"B: Cleo (kein Admin) loescht fremde Nachricht -> 403 ({s})", s == 403)
+    s, d = api("c", "fc-dora", "DELETE", f"/api/chats/{dc['id']}/messages/{mc['id']}")
+    ok(f"C: Dora (Admin) loescht Cleos Nachricht ({s}, by_admin)", s == 200 and d.get("by_admin") is True, d)
+    tomb = lambda k, u, cid: sql(k, "SELECT kind FROM chat_msg WHERE id=?", (mc["id"],))   # noqa: E731
+    ok("A, B: Grabstein (kind tomb)", wait(lambda: tomb("a", None, None) == [("tomb",)] and tomb("b", None, None) == [("tomb",)], 15),
+       (tomb("a", None, None), tomb("b", None, None)))
+    ok("Angeheftete Nachricht faellt ueberall raus", wait(lambda: (cleo.chat(ch["ref"]) or {}).get("pins") == [] and
+                                                           api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("pins") == [], 15))
+    s, d, mc2 = cleo.send(cleo.chat(ch["ref"]), "noch eine")
+    wait(lambda: sql("a", "SELECT 1 FROM chat_msg WHERE id=?", (mc2["id"],)), 15)
+    s, d = api("a", "fa-anna", "DELETE", f"/api/chats/{ch['id']}/messages/{mc2['id']}")
+    ok(f"A: Anna (Heim-Admin) loescht fremde Nachricht ({s})", s == 200 and d.get("by_admin") is True)
+    ok("B, C: Grabstein", wait(lambda: sql("b", "SELECT kind FROM chat_msg WHERE id=?", (mc2["id"],)) == [("tomb",)]
+                                  and sql("c", "SELECT kind FROM chat_msg WHERE id=?", (mc2["id"],)) == [("tomb",)], 15))
+
+
+def m5_of(anna, ch):
+    """Kennung einer Nachricht von Anna im Chat (fuer "fremde Nachricht loeschen")."""
+    return next((m["id"] for m in anna.msgs(ch["id"]) if m["kind"] == "msg" and m.get("sender", {}).get("username") == "fa-anna"), "0" * 32)
+
+
 def part_v3open(anna, carl, bert):
     """2.5: freie Gruppe der Stufe 3 (lokal) nimmt eine Person eines anderen Servers auf - wird foederiert, gleiche Krypto."""
     F2.py("a", "import auth\nauth.save_setting('chat_v3', True)\nprint(1)")
@@ -396,6 +466,7 @@ def run():
         else:
             anna, carl, bert, cleo, dora, gch = part_group(adm, pab, pba, pac, pca)
             part_admin(anna, cleo, dora, gch)
+            part_grp2(anna, cleo, dora, gch)
             part_v3open(anna, carl, bert)
             pch = part_page(adm, pab, pba, pac, pca, anna, carl, bert, cleo, dora)
             part_disconnect(adm, pab, pba, pac, pca, anna, bert, cleo, dora, gch, pch)

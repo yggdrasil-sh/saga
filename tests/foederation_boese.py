@@ -14,6 +14,9 @@ Geprueft (Erwartung: abgewiesen bzw. sichtbar gemacht, keine Serverfehler, keine
   geht nicht verloren), Adressbuch-Spoofing (fremde Namen/Hosts, Trennpunkte), Opt-out und Trennen entfernen Namen;
 - nachgebauter Server: zu grosse und falsch signierte Antworten, ID-Tricks in "Mit mir geteilt", gefaelschtes Adressbuch,
   langsame Antworten (Slowloris gegen den Express-Pool und den Arbeiter) - B wird trotzdem sofort beliefert;
+- 2.5 (Chat-Standard B): Gruppenrechte am Heim durchgesetzt (C schickt Nachricht/Name/Beschreibung eines Nicht-Admins), gefaelschtes
+  Admin-Loeschen, Anheften und Rechte (Nicht-Admin, im Namen eines Kontos von A), Ereignisse chat.msg.del/pins/perm von einem
+  Nicht-Heim; chat.pins des Heims nur mit Nachrichten des Chats;
 - Sperren in Gruppen trifft die einladende Person (nicht irgendein anderes Mitglied); Zwischenkopien fremder Anhaenge sind
   je Instanz begrenzt (zuletzt benutzte bleiben, Rest wird bei Bedarf neu geholt).
 Kompatibilitaet: FED_B_APP=<Saga 2.1/2.2> -> B spricht Protokoll 1; geprueft wird dann Teilen/Lesen statt Chat mit B.
@@ -335,6 +338,62 @@ def part_admin(x):
     r = roles()
     ok(f"Heim A: Rollen unveraendert ({sorted(r.items())})", [u for u, v in r.items() if v == "admin"] == ["fa-anna"]
        and not any(z.get("type") == "admin" for z in FG.sys_lines(anna, g.get("id"))))
+
+
+def part_grp2(x):
+    """2.5 (Chat-Standard B): C umgeht Gruppenrechte, faelscht Admin-Loeschen, Anheften und Rechte - das Heim A setzt durch."""
+    anna, dora = x.anna, x.dora
+    s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "free", "members": ["fa-carl"], "handles": [dora.handle], "device": anna.dev["id"]})
+    g = d.get("chat") or {}
+    dc = wait(lambda: dora.chat(g.get("ref")), 15)
+    if dc:
+        api("c", "fc-dora", "POST", f"/api/chats/{dc['id']}/request", {"action": "accept"})
+    s, d, ma = anna.send(g, "von Anna")
+    ok(f"Heim A: Gruppe mit Dora (C), Nachricht von Anna ({s})", s == 200 and wait(lambda: "von Anna" in dora.texts(dora.chat(g["ref"])), 15))
+    s, d = api("a", "fa-anna", "PATCH", f"/api/chats/{g['id']}", {"perm_send": "admins", "perm_info": "admins"})
+    ok(f"Heim A: perm_send/perm_info admins ({s})", s == 200)
+    ok("C: Kopie zeigt die Rechte (chat.perm)", bool(wait(lambda: (dora.chat(g["ref"]) or {}).get("perm_send") == "admins", 15)))
+    ents = anna.keys([dora.handle])
+    # C schickt (an der eigenen Pruefung vorbei) eine Nachricht von Dora direkt ans Heim
+    for kind in ("msg", "title", "desc"):
+        fm = dora.msg(g, "an den Rechten vorbei", body={"v": 1, "type": "text" if kind == "msg" else kind, "text": "x"})
+        mf = dict(msg_fields(fm), **({"kind": kind} if kind != "msg" else {}))
+        s, h, dd, _ = as_c("POST", "/fed/v2/chat", body={"op": "send", "ref": g["ref"], "msg": mf, "keys": fm["keys"], "files": [],
+                                                         "sender_keys": ents[dora.handle]})
+        ok(f"Heim A: '{kind}' von Dora (kein Admin) trotz Rechten -> 403 ({s}, {dd})", s == 403 and (dd or {}).get("error") == "not allowed")
+    ok("Heim A: Pruefprotokoll chat.perm", bool(log_of("a", "chat.perm")))
+    ok("A: nichts davon im Verlauf", anna.texts(g)[-1:] == ["von Anna"] and not sql("a", "SELECT 1 FROM chat_msg WHERE chat_id=? AND kind='desc'", (g["id"],)))
+    # Admin-Loeschen faelschen: Dora ist kein Admin
+    s, h, dd, _ = as_c("POST", "/fed/v2/chat", body={"op": "del", "ref": g["ref"], "id": ma["id"], "actor": dora.handle, "mod": True})
+    ok(f"Heim A: 'del' mit mod fuer Annas Nachricht (Dora kein Admin) -> 403 ({s})", s == 403)
+    s, h, dd, _ = as_c("POST", "/fed/v2/chat", body={"op": "del", "ref": g["ref"], "id": ma["id"], "actor": anna.handle, "mod": True})
+    ok(f"Heim A: 'del' im Namen von Anna (Konto von A) -> abgewiesen ({s})", s in (403, 404))
+    ok("A: Annas Nachricht unversehrt", sql("a", "SELECT kind FROM chat_msg WHERE id=?", (ma["id"],)) == [("msg",)])
+    # Anheften / Rechte faelschen
+    s1 = as_c("POST", "/fed/v2/chat", body={"op": "pin", "ref": g["ref"], "actor": dora.handle, "mid": ma["id"], "on": True})[0]
+    s2 = as_c("POST", "/fed/v2/chat", body={"op": "pin", "ref": g["ref"], "actor": anna.handle, "mid": ma["id"], "on": True})[0]
+    s3 = as_c("POST", "/fed/v2/chat", body={"op": "perm", "ref": g["ref"], "actor": dora.handle, "perm_send": "all"})[0]
+    s4 = as_c("POST", "/fed/v2/chat", body={"op": "perm", "ref": g["ref"], "actor": anna.handle, "perm_send": "all"})[0]
+    ok(f"Heim A: 'pin' (perm_info admins) / im Namen von Anna, 'perm' als Nicht-Admin / im Namen von Anna -> abgewiesen ({s1}, {s2}, {s3}, {s4})",
+       s1 == 403 and s2 == 404 and s3 == 403 and s4 == 404)
+    ok("A: keine Anheftung, Rechte unveraendert", sql("a", "SELECT COUNT(*) FROM chat_pin WHERE chat_id=?", (g["id"],)) == [(0,)]
+       and sql("a", "SELECT perm_send FROM chat WHERE id=?", (g["id"],)) == [("admins",)])
+    # Ereignisse fuer einen Chat mit Heim A (C ist nicht das Heim)
+    s, dd = events_c([ev("chat.msg.del", ref=g["ref"], mid=ma["id"], by_admin=True), ev("chat.pins", ref=g["ref"], pins=[ma["id"]]),
+                      ev("chat.perm", ref=g["ref"], perm_send="all", perm_info="all")])
+    ok(f"Ereignisse chat.msg.del/chat.pins/chat.perm fuer Gruppe mit Heim A -> ignoriert ({dd.get('results')})",
+       s == 200 and dd.get("results") == ["ignored"] * 3)
+    ok("A: weiterhin unveraendert", sql("a", "SELECT kind FROM chat_msg WHERE id=?", (ma["id"],)) == [("msg",)]
+       and sql("a", "SELECT COUNT(*) FROM chat_pin WHERE chat_id=?", (g["id"],)) == [(0,)]
+       and sql("a", "SELECT perm_send FROM chat WHERE id=?", (g["id"],)) == [("admins",)])
+    # Heim C: Anheftungen mit fremden Kennungen werden auf die vorhandenen Nachrichten beschraenkt
+    s, d, mreal = dora.send(x.gc, "echt fuer Pins")
+    wait(lambda: sql("a", "SELECT 1 FROM chat_msg WHERE id=?", (mreal["id"],)), 15)
+    s, dd = events_c([ev("chat.pins", ref=x.gc["ref"], pins=[ma["id"], "f" * 32, mreal["id"], "x"])])
+    ok(f"Heim C: chat.pins mit fremden/unbekannten Kennungen -> nur die eigene Nachricht ({dd.get('results')})",
+       sql("a", "SELECT msg_id FROM chat_pin WHERE chat_id=?", (x.ga["id"],)) == [(mreal["id"],)])
+    sync_home(x)
+    api("a", "fa-anna", "PATCH", f"/api/chats/{g['id']}", {"perm_send": "all", "perm_info": "all"})
 
 
 def part_ids(x):
@@ -740,6 +799,7 @@ def run():
         part_rename(x)
         part_forge(x)
         part_admin(x)
+        part_grp2(x)
         part_block(x)
         part_dir(x)
         if not COMPAT:
