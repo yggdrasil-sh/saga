@@ -138,8 +138,9 @@ def series(label, A, B, Cc, D, v3):
     mk = B.ev.mark()
     s, _, mm = X.send(A, dm, "@Bert schau", mentions=[ref_of(dm, B)])
     ok(pre + f"notify mentions: Erwaehnung -> chat.mention ({s})", s == 200 and notifs(B.uid, cid) == ["chat.mention"], notifs(B.uid, cid))
+    # Text haengt an account_lang() (Konto > Server-Standard default_lang > zuletzt gesehen > en) - nicht am Wortlaut pruefen
     pm_ = push_msg(B.uid, cid, "chat.mention") or {}
-    ok(pre + "Push-Entscheidung chat.mention ja (Text 'erwaehnt')", any(w in str(pm_.get("body")) for w in ("erwähnt", "mentioned")), pm_)
+    ok(pre + "Push-Entscheidung chat.mention ja", pm_.get("kind") == "chat.mention" and pm_.get("url") == f"/chats#c{cid}" and pm_.get("body"), pm_)
     e = B.ev.wait("chat.message", lambda x: x.get("id") == mm["id"], since=mk)
     ok(pre + "Live chat.message mit mentions (Kennung, kein Anmeldename)", bool(e) and e.get("mentions") and B.uid not in json.dumps(e.get("mentions")), e)
     ok(pre + "mention_seq im Chat", B.chat(cid).get("mention_seq", 0) > 0)
