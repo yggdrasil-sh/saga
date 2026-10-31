@@ -66,7 +66,7 @@ class U:
     def chat(self, cid):
         return self.api("GET", f"/api/chats/{cid}?device={self.dev['id']}")[1].get("chat") or {}
 
-    def send(self, ch, body, kind="msg", files=None):
+    def send(self, ch, body, kind="msg", files=None, extra=None):
         """Nachricht (v1 bzw. Format v2) verschluesseln und senden -> (status, antwort, gesendet)."""
         if ch.get("v") in (2, 3):
             s, d = self.api("GET", "/api/chat/v2/keys?handles=" + ",".join(m["handle"] for m in ch["members"]))
@@ -78,6 +78,7 @@ class U:
             m = C.encrypt(str(ch["id"]), self.uid, self.dev, body, C.recipients_of(d["recipients"]))
             m.pop("_key")
         m["kind"] = kind
+        m.update(extra or {})
         if files:
             m["files"] = files
         s, d = self.api("POST", f"/api/chats/{ch['id']}/messages", m)
@@ -184,6 +185,8 @@ def series(pre, A, B, Cc, D, v3):
     # --- B2 Rechte ---------------------------------------------------------------------------------------------------
     s, _ = B.api("PATCH", f"/api/chats/{cid}", {"perm_send": "admins"})
     ok(pre + f"B (kein Admin) aendert Rechte -> 403 ({s})", s == 403)
+    if v3:                                       # Pruefer: Bearbeiten darf perm_send nicht umgehen
+        s, _, me_ = B.text(B.chat(cid), "spaeter bearbeiten")
     s, _ = A.api("PATCH", f"/api/chats/{cid}", {"perm_send": "nur-ich"})
     ok(pre + f"ungueltiger Wert -> 400 ({s})", s == 400)
     mark = B.ev.mark()
@@ -200,6 +203,9 @@ def series(pre, A, B, Cc, D, v3):
                        ("avatar", {"v": 1, "type": "avatar", "file": None})):
         s, d, _ = B.send(cb, body, kind=kind)
         ok(pre + f"B: {kind} bei perm_info admins -> 403 ({s})", s == 403)
+    if v3:
+        s, d, _ = B.send(cb, {"edit": me_["id"], "t": "bearbeitet trotz admins"}, kind="edit", extra={"edit_of": me_["id"]})
+        ok(pre + f"B bearbeitet bei perm_send admins -> 403 ({s})", s == 403, d)
     s, d, ma = A.text(ch, "Admins sprechen")
     ok(pre + f"A (Admin) schreibt weiter ({s})", s == 200)
     if v3:

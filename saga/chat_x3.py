@@ -434,6 +434,10 @@ def send_edit(uid, cid, b):
         ro = FC._ro_error(c, ch)
         if ro:
             return _bad(ro, 403)
+        if chat.GRP is not None:                       # 2.5 (Chat-Standard B): perm_send 'admins', Sperre im Direkt-Chat
+            e = chat.GRP.send_check(c, ch, uid, mm["role"], "msg", mem)
+            if e is not None:
+                return e
         mh = FC.my_handle(c, uid)
         m["sender_handle"] = mh
         why = _edit_why(c, ch, _orig(c, ch, m["edit_of"]), uid, mh, now)
@@ -488,6 +492,8 @@ def _edit_fed(c, peer, ch, d, home):
         return 403, {"error": "forged sender"}
     if c.execute("SELECT 1 FROM chat_msg WHERE id=?", (m["id"],)).fetchone():
         return 200, {"ok": True, "dup": True}
+    if home and chat.GRP is not None and chat.GRP.home_send_check(c, ch, sender, "msg"):    # 2.5: perm_send am Heim
+        return 403, {"error": "not allowed"}
     o = _orig(c, ch, m["edit_of"], lock=True)
     why = _edit_why(c, ch, o, sender, h, time.time()) if home else (None if o and o["sender_handle"] == h and o["kind"] == "msg" else "not found")
     if why:
