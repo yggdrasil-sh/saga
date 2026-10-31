@@ -3265,7 +3265,7 @@
         [['view', T('Lesen')], ['comment', T('Kommentieren')], ['edit', T('Bearbeiten')]].forEach(function (o) {
           var op = el('option', null, o[1]); op.value = o[0]; roleSel.appendChild(op);
         });
-        pr.appendChild(roleSel); box.appendChild(pr);
+        pr.appendChild(roleSel); box.insertBefore(pr, inp);
       }
       var fedOk = function () { return isFed(c) || page; };
       var addOne = function (u) {

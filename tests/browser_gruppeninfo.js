@@ -7,7 +7,9 @@
 // Geprueft: Klick auf den Chat-Kopf oeffnet "Gruppeninfo" (auch per Tastatur), Menue "Gruppeninfo …", Name umbenennen im
 // Blatt, Kennzeichen "Admin"/"Du", keine Anmeldenamen anderer im Blatt, B (kein Admin) sieht keine Verwaltung, Admin
 // vergeben (B sieht danach live "Mitglied hinzufügen"), Admin entziehen, Mitglied entfernen mit Rueckfrage, letzter Admin
-// (Hinweis vom Server), Gruppen-Chat nur lesend mit Hinweis; Handy-Breite als Blatt von unten (hell/dunkel); keine
+// (Hinweis vom Server), Gruppen-Chat nur lesend mit Hinweis; 2.5 (pagechatmembers1) Seiten-Chat einer ungeteilten eigenen
+// Seite: Hinweis "Personen hinzufuegen teilt diese Seite", Hinzufuegen mit Rollenwahl teilt die Seite, B sieht kein
+// Hinzufuegen, "Aus Chat entfernen" entzieht die Freigabe, ueber die Elternseite: Menuepunkt ausgegraut mit Erklaerung; Handy-Breite als Blatt von unten (hell/dunkel); keine
 // Seitenfehler. Kein waitForFunction (CSP ohne eval).
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
@@ -69,6 +71,9 @@ async function memberAction(p, name, label) {
   return items;
 }
 async function openInfoByHead(p) { await p.click('#ct-chat .ct-head-t'); return until(() => gi(p), 5000); }
+async function openC(p, id) {                       // Chat sicher oeffnen (gleiche Seite, anderer Hash: neu laden)
+  await p.goto(BASE + '/chats#c' + id); await p.reload(); await p.waitForSelector('#ct-chat:not([hidden])'); await p.waitForTimeout(1200);
+}
 async function closeInfo(p) { await p.keyboard.press('Escape'); await until(async () => !(await gi(p)), 3000); }
 
 (async () => {
@@ -157,16 +162,63 @@ async function closeInfo(p) { await p.keyboard.press('Escape'); await until(asyn
     // --- Gruppen-Chat: nur lesend ----------------------------------------------------------------------------------------
     if (E.SAGA_GROUP) {
       const gr = await api(a, 'POST', '/api/chats', { kind: 'group', group: E.SAGA_GROUP });
-      await a.goto(BASE + '/chats#c' + gr.d.chat.id); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1200);
+      await openC(a, gr.d.chat.id);
       const gg = await openInfoByHead(a);
-      ok('Gruppen-Chat: Blatt nur lesend mit Hinweis', gg && gg.ro && !gg.add && !gg.edit && !gg.leave && /Freigaben der Seite/.test(gg.text)
+      ok('Gruppen-Chat: Blatt nur lesend mit Hinweis', gg && gg.ro && !gg.add && !gg.edit && !gg.leave && /Benutzergruppe/.test(gg.text)
          && gg.members.every(m => !m.admin), gg);
       await shot(a, 'gruppe-hell');
       await closeInfo(a);
     } else console.log('(SAGA_GROUP nicht gesetzt - Gruppen-Chat uebersprungen)');
 
+    // --- Seiten-Chat (pagechatmembers1): ungeteilte eigene Seite, Hinzufuegen teilt sie --------------------------------
+    ok('Server meldet pagechatmembers1', (ver.d.features || []).includes('pagechatmembers1'), ver.d.features);
+    const par = (await api(a, 'POST', '/api/notes', { title: 'gi-Eltern' })).d.id;
+    const pg = (await api(a, 'POST', '/api/notes', { title: 'gi-Dashboard', parent_id: par })).d.id;
+    const pc0 = await api(a, 'POST', '/api/chats', { kind: 'page', note_id: pg });
+    const pcid = pc0.d.chat.id;
+    ok('Seiten-Chat einer ungeteilten Seite: 1 Mitglied, can_manage', pc0.s === 200 && pc0.d.chat.member_count === 1 && pc0.d.chat.can_manage === true, pc0.d.chat);
+    await openC(a, pcid);
+    let gp = await openInfoByHead(a);
+    ok('Seiten-Chat: Hinweis "Personen hinzufügen teilt diese Seite", Mitglied hinzufügen, kein Stift/Verlassen',
+       gp && /teilt diese Seite/.test(gp.text) && gp.add && !gp.edit && !gp.leave, gp);
+    await a.click('.ct-gi-add');
+    ok('Suche mit Hinweis und Rollenwahl (Lesen vorgewählt)', await a.$eval('.ct-gi-search', d => /geteilt/.test(d.textContent)
+       && !!d.querySelector('select.ct-gi-role') && d.querySelector('select.ct-gi-role').value === 'view'));
+    await a.selectOption('.ct-gi-search select.ct-gi-role', 'comment');
+    await a.fill('.ct-gi-search input', U2);
+    const rowB = '.ct-gi-search .ct-person:has(.ct-item-n:text-is("' + nB + '"))';
+    await a.waitForSelector(rowB, { timeout: 8000 });
+    await a.click(rowB);
+    gp = await until(async () => { const x = await gi(a); return x && x.members.length === 2 ? x : null; }, 10000);
+    const sh = await api(a, 'GET', '/api/notes/' + pg + '/shares');
+    ok('B hinzugefügt: 2 Mitglieder, Seite mit B geteilt (Kommentieren)', !!gp && sh.d.shares.length === 1 && sh.d.shares[0].role === 'comment'
+       && sh.d.shares[0].name === nB && gp.members.some(m => m.n === nB), sh.d);
+    await shot(a, 'seite-hell');
+    await openC(b, pcid);
+    const gpb = await openInfoByHead(b);
+    ok('B (nicht Eigentümer): kein Hinzufügen, Hinweis ohne Teilen-Satz', gpb && !gpb.add && !/teilt diese Seite/.test(gpb.text), gpb);
+    await closeInfo(b);
+    // C ueber die Elternseite: Entfernen ausgegraut mit Erklaerung
+    await api(a, 'PUT', '/api/notes/' + par + '/shares', { type: 'user', target: pc.username, role: 'view' });
+    await until(async () => ((await api(a, 'GET', '/api/chats/' + pcid)).d.chat || {}).member_count === 3, 10000);
+    gp = await until(async () => { const x = await gi(a); return x && x.members.length === 3 ? x : null; }, 10000);
+    ok('C über die Elternseite Mitglied (Blatt live aktualisiert)', !!gp, await gi(a));
+    await a.click(memberLi(nC) + ' .ct-gi-more'); await a.waitForSelector('.menu .menu-item');
+    const cItem = await a.$eval('.menu .menu-item:has-text("Aus Chat entfernen")', x => ({ dis: x.disabled, t: x.textContent }));
+    ok('C: "Aus Chat entfernen" ausgegraut mit Erklärung (übergeordnete Seite)', cItem.dis && /übergeordnete Seite/.test(cItem.t), cItem);
+    await a.keyboard.press('Escape');
+    // B entfernen = Freigabe entziehen
+    await memberAction(a, nB, 'Aus Chat entfernen');
+    const askP = await a.textContent('.hk-ask');
+    ok('Entfernen im Seiten-Chat fragt nach (Freigabe wird entzogen)', /Freigabe/.test(askP), askP);
+    await confirmAsk(a);
+    gp = await until(async () => { const x = await gi(a); return x && x.members.length === 2 && !x.members.some(m => m.n === nB) ? x : null; }, 10000);
+    const sh2 = await api(a, 'GET', '/api/notes/' + pg + '/shares');
+    ok('B entfernt, Freigabe entzogen', !!gp && sh2.d.shares.length === 0, sh2.d);
+    await closeInfo(a);
+
     // --- Dunkel, Handy-Breite ------------------------------------------------------------------------------------------
-    await a.goto(BASE + '/chats#c' + gid); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1000);
+    await openC(a, gid);
     await a.emulateMedia({ colorScheme: 'dark' });
     await openInfoByHead(a); await shot(a, 'desktop-dunkel'); await closeInfo(a);
     const h = await session(browser, U1, E.SAGA_PASS, { viewport: { width: 390, height: 844 }, mobile: true, scheme: 'light' });
