@@ -58,7 +58,7 @@ CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comm
         "assign": ("db.assigned",),                 # 2.5: in einer Datenbank-Zeile eingetragen
         "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed", "call.group"),
         "tasks": ("task.due",),                     # 2.5 (Paket 7): taegliche Zusammenfassung "heute faellig / ueberfaellig"
-        "admin": ("backup.failed",)}                 # nur Admin-Konten (Backups, saga/backups.py)
+        "admin": ("backup.failed", "chat.report")}   # nur Admin-Konten (Backups, saga/backups.py; 2.5 Meldungen, saga/chat_grp.py)
 CALL_TTL = 60                        # klingelnder Anruf: Mitteilung nach einer Minute verwerfen (statt 4 h vorhalten)
 
 
@@ -470,6 +470,8 @@ def _anon(kind):
         return t("Backup fehlgeschlagen")
     if kind == "login.locked":
         return t("Anmeldung gesperrt")
+    if kind == "chat.report":
+        return t("Neue Meldung im Chat")
     return t("Neue Benachrichtigung")
 
 

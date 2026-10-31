@@ -110,6 +110,10 @@ STATUS_ME = None
 TOKEN_USER = None
 # 2.5: Reaktionen und Bearbeiten (saga.chat_x3 setzt sich hier ein): messages_extra, send_edit
 X3 = None
+# 2.5 (Chat-Standard B): Gruppenbild/Beschreibung, Gruppenrechte, Admin-Loeschen, Anheften, Blockieren lokal, Melden
+# (saga.chat_grp setzt sich hier ein): chat_fields, send_check, set_info, mod_delete, patch_fields, blocked_pair, ...
+GRP = None
+INFO_KINDS = ("title", "desc", "avatar")   # verschluesselte Steuer-Nachrichten freier Gruppen (Name, Beschreibung, Bild)
 
 
 # --- Hilfen -------------------------------------------------------------------------------------------------
@@ -621,6 +625,8 @@ def may_contact(c, uid, other):
     wenn other ein Kontakt von uid ist (man hat schon miteinander geschrieben, saga.contacts)."""
     r = c.execute("SELECT disabled FROM users WHERE username=?", (other,)).fetchone()
     if not r or r[0] or other == uid:
+        return False
+    if GRP is not None and GRP.blocked_pair(c, uid, other):     # 2.5 (block2): gesperrt (eine der beiden Richtungen)
         return False
     return not group_scope() or bool(groups_of(c, uid) & groups_of(c, other)) or contacts.has(c, uid, other)
 
@@ -1176,8 +1182,8 @@ def _msgs(c, uid, cid, device, where="", args=(), limit=PAGE, desc=True):
     rows = c.execute(
         f"SELECT {M_COLS}, (SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?), "
         "(SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?), m.fseq, m.sender_handle, m.ai, m.fstate FROM chat_msg m "
-        "WHERE m.chat_id=? AND (m.expires_at IS NULL OR m.expires_at>?) AND (m.kind IN ('call','sys') OR EXISTS (SELECT 1 FROM chat_msg_key k "
-        "WHERE k.msg_seq=m.seq AND k.recipient IN (?,?))) AND (m.kind='title' OR m.seq > COALESCE((SELECT p.cleared_seq FROM chat_pref p "
+        "WHERE m.chat_id=? AND (m.expires_at IS NULL OR m.expires_at>?) AND (m.kind IN ('call','sys','tomb') OR EXISTS (SELECT 1 FROM chat_msg_key k "
+        "WHERE k.msg_seq=m.seq AND k.recipient IN (?,?))) AND (m.kind IN ('title','desc','avatar') OR m.seq > COALESCE((SELECT p.cleared_seq FROM chat_pref p "
         f"WHERE p.chat_id=m.chat_id AND p.uid=?), 0)) AND NOT EXISTS (SELECT 1 FROM chat_hidden h WHERE h.uid=? AND h.msg_seq=m.seq) "
         f"{where} ORDER BY m.seq {'DESC' if desc else 'ASC'} LIMIT ?",
         (dv, bk, cid, time.time(), dv, bk, uid, uid, *args, limit)).fetchall()
@@ -1190,7 +1196,8 @@ def _msg_dict(r, nm):
                                                          "avatar": nm.avatar(r[3]) if hasattr(nm, "avatar") else None} if r[3] else None,
             "sender_device": r[4], "ts": r[5], "created": r[6], "expires_at": r[7], "body_ct": r[8], "sig": r[9],
             "reply_to": r[10], "key": key, "key_for": via,
-            **({"fseq": r[13], "sender_handle": r[14], "ai": r[15], "fstate": r[16]} if len(r) > 16 and (r[14] or r[2] == "sys") else {})}
+            **({"fseq": r[13], "sender_handle": r[14], "ai": r[15], "fstate": r[16]} if len(r) > 16 and (r[14] or r[2] == "sys") else {}),
+            **({"by_admin": True} if r[2] == "tomb" else {})}
 
 
 def ai_marks(c, cid, msgs):
@@ -1305,6 +1312,8 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
         if not V2_CLIENT.get():                       # aeltere App: Hinweis statt kaputter Nachrichten
             d["name"] = (d.get("name") or "") + " · " + t("bitte App aktualisieren")
             d["fed_hint"] = v3_hint() if is_v3(ch) else fed_hint()
+    if GRP is not None:                               # 2.5 (groupinfo2, msgpin1, moddel1, block2): Rechte, Pins, Bild/Beschreibung
+        GRP.chat_fields(c, uid, ch, m, d, device)
     return d
 
 
@@ -1494,6 +1503,11 @@ async def api_chat_patch(cid: int, request: Request):
         return _bad(t("ungültige Anfrage"))
     if "archived" in b and not isinstance(b["archived"], bool):
         return _bad(t("ungültige Angabe"))
+    grp, fed_grp = {}, False                         # 2.5 (groupinfo2): Feldgruppe Rechte {perm_info, perm_send}
+    if GRP is not None:
+        grp, err = GRP.patch_fields(b)
+        if err:
+            return err
     fed_retention, wait = None, False
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid)
@@ -1518,6 +1532,19 @@ async def api_chat_patch(cid: int, request: Request):
             else:
                 c.execute("UPDATE chat SET retention_s=? WHERE id=?", (v, ch["id"]))
                 _changed(c, ch["id"], mem)
+        if grp:                                      # 2.5: Gruppenrechte (nur Admins freier Gruppen; foederiert beim Heim)
+            if is_fed(ch) and ch["home_peer"] is not None:
+                fed_grp = True
+            else:
+                e = GRP.patch_local(c, uid, ch, m, grp)
+                if e is not None:
+                    c.rollback()
+                    return e
+    if fed_grp:
+        from starlette.concurrency import run_in_threadpool
+        e = await run_in_threadpool(GRP.patch_fed, uid, ch, grp)
+        if e is not None:
+            return e
     if fed_retention is not None:
         from starlette.concurrency import run_in_threadpool
         e, wait = await run_in_threadpool(FED.set_meta, uid, ch, {"retention_s": fed_retention})
@@ -1525,7 +1552,7 @@ async def api_chat_patch(cid: int, request: Request):
             return e
     with _db() as c, c:
         ch = _load(c, ch["id"])
-        out = _chat_dict(c, uid, ch, mem if fed_retention is None else members(c, ch["id"]), _member(c, ch["id"], uid), None, full=True)
+        out = _chat_dict(c, uid, ch, mem if fed_retention is None and not fed_grp else members(c, ch["id"]), _member(c, ch["id"], uid), None, full=True)
         if fed_retention is not None and wait:
             out["pending"] = True
         return _no_store({"chat": out})
@@ -2061,9 +2088,11 @@ def api_recipients(cid: int, request: Request):
 
 
 @router.get("/api/chats/{cid}/messages")
-def api_messages(cid: int, request: Request, device: str = "", before: int = 0, after: int = 0, limit: int = PAGE, calls: int = 0):
+def api_messages(cid: int, request: Request, device: str = "", before: int = 0, after: int = 0, limit: int = PAGE, calls: int = 0,
+                 tombs: int = 0):
     """Nachrichten (aelteste zuerst) mit dem fuer mich versiegelten Schluessel. ?before=<seq> aeltere, ?after=<seq> neuere.
-    ?calls=1: auch Anruf-Eintraege (kind='call', body_ct = JSON-Metadaten im Klartext, ohne Schluessel/Signatur; 2.1)."""
+    ?calls=1: auch Anruf-Eintraege (kind='call', body_ct = JSON-Metadaten im Klartext, ohne Schluessel/Signatur; 2.1).
+    ?tombs=1 (2.5, moddel1): auch Grabsteine von Admins geloeschter Nachrichten (kind='tomb', by_admin, ohne Inhalt)."""
     uid, err = _me(request)
     if err:
         return err
@@ -2078,6 +2107,8 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
                               "last_seq": ch["last_seq"], "fed_hint": v3_hint() if is_v3(ch) else fed_hint()})
         where, args, desc = ("AND m.kind IN ('msg','call','sys')" if calls and hfmt(ch) else "AND m.kind IN ('msg','call')" if calls
                              else "AND m.kind='msg'"), (), True
+        if tombs:
+            where = where.replace("m.kind IN ('msg'", "m.kind IN ('msg','tomb'").replace("m.kind='msg'", "m.kind IN ('msg','tomb')")
         if after > 0:
             where, args, desc = where + " AND m.seq>?", (min(after, 2 ** 63 - 1),), False
         elif before > 0:
@@ -2141,7 +2172,7 @@ async def api_send(cid: int, request: Request):
     if not 0 < ts < 2 ** 53:              # sonst OverflowError bei ts / 1000 (500) bzw. BIGINT-Ueberlauf
         ts = 0
     now = time.time()
-    if not _HEX32.fullmatch(mid) or kind not in ("msg", "title") or not isinstance(keys, dict) or not isinstance(files, list):
+    if not _HEX32.fullmatch(mid) or kind not in ("msg",) + INFO_KINDS or not isinstance(keys, dict) or not isinstance(files, list):
         return _bad(t("ungültige Angabe"))
     if not isinstance(body_ct, str) or len(body_ct) > MSG_MAX:
         return _bad(t("Nachricht zu groß."), 413)
@@ -2162,8 +2193,12 @@ async def api_send(cid: int, request: Request):
                               "chat_changed": True}, 409)
         if len(mem) > MEMBERS_MAX:
             return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
-        if kind == "title" and ch["kind"] != "free":
+        if kind in INFO_KINDS and ch["kind"] != "free":
             return _bad(t("ungültige Angabe"))
+        if GRP is not None:                                # 2.5: Gruppenrechte (perm_info/perm_send), Sperren im Direkt-Chat
+            e = GRP.send_check(c, ch, uid, m["role"], kind, mem)
+            if e is not None:
+                return e
         d = c.execute("SELECT sign_pub FROM chat_device WHERE id=? AND uid=? AND revoked_at IS NULL", (dev, uid)).fetchone()
         if not d:
             return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
@@ -2191,13 +2226,17 @@ async def api_send(cid: int, request: Request):
         eff = min(eff, mx) if eff and mx else (eff or mx)
         seq = c.execute("INSERT INTO chat_msg (id, chat_id, kind, sender_uid, sender_device, ts, created, expires_at, body_ct, sig, reply_to, size) "
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING seq",
-                        (mid, ch["id"], kind, uid, dev, ts, now, now + eff if eff else None, body_ct, sig, reply_to, len(body_ct))).fetchone()[0]
+                        (mid, ch["id"], kind, uid, dev, ts, now, now + eff if eff and kind not in INFO_KINDS[1:] else None, body_ct, sig, reply_to,
+                         len(body_ct))).fetchone()[0]
         c.executemany("INSERT INTO chat_msg_key (msg_seq, recipient, sealed) VALUES (?,?,?)", [(seq, k, v) for k, v in sorted(keys.items())])
         if ai_ref:
             c.execute("UPDATE chat_ai_reply SET msg_id=? WHERE id=?", (mid, ai_ref))
         if files:
             c.execute(f"UPDATE chat_file SET msg_seq=? WHERE id IN ({','.join('?' * len(files))})", (seq, *files))
-        if kind == "title":
+        if kind in INFO_KINDS and GRP is not None and kind != "title":
+            GRP.set_info(c, ch, kind, seq)                 # 2.5: Beschreibung / Gruppenbild (vorige samt Anhang weg)
+            _changed(c, ch["id"], mem)
+        elif kind == "title":
             old = ch["title_seq"]
             c.execute("UPDATE chat SET title_seq=? WHERE id=?", (seq, ch["id"]))
             if old:                                        # alter Titel samt Anhaengen weg (sonst zaehlen sie weiter)
@@ -2240,6 +2279,8 @@ def api_msg_delete(cid: int, mid: str, request: Request):
         if not r:
             return _bad("not found", 404)
         if r[1] != uid:
+            if GRP is not None:                  # 2.5 (moddel1): Admin/Seiten-Eigentuemer/Saga-Admin -> Grabstein
+                return GRP.mod_delete(c, uid, ch, m, mid)
             return _bad(t("Nur eigene Nachrichten lassen sich löschen."), 403)
         fids = [x[0] for x in c.execute("SELECT id FROM chat_file WHERE msg_seq=?", (r[0],))]
         c.execute("DELETE FROM chat_file WHERE msg_seq=?", (r[0],))
@@ -2484,7 +2525,7 @@ def _file_access(fid, request, part=None):
         cache = "private, no-store"                   # noch keiner Nachricht zugeordnet (eigener Upload): nicht zwischenspeichern
         if r[2] is not None:
             x = c.execute("SELECT expires_at, kind FROM chat_msg WHERE seq=? AND (expires_at IS NULL OR expires_at>?)", (r[2], time.time())).fetchone()
-            if not x or (x[1] != "title" and r[2] <= _pref(c, r[0], uid)["cleared_seq"]):    # (2.1) "fuer mich geloescht"
+            if not x or (x[1] not in INFO_KINDS and r[2] <= _pref(c, r[0], uid)["cleared_seq"]):    # (2.1) "fuer mich geloescht"
                 return _bad("not found", 404), None, 0
             # Ciphertext unter dieser Kennung aendert sich nie (Schluessel nur in der verschluesselten Nachricht):
             # privat und unveraenderlich zwischenspeichern, hoechstens bis zum Ablauf der Nachricht (2.1, Chat-Bilder)
@@ -2602,6 +2643,8 @@ def purge(c=None):
         fids = [r[0] for r in c.execute(f"SELECT id FROM chat_file WHERE msg_seq IN ({ph})", tuple(seqs))]
         c.execute(f"DELETE FROM chat_file WHERE msg_seq IN ({ph})", tuple(seqs))
         c.execute(f"UPDATE chat SET title_seq=NULL WHERE title_seq IN ({ph})", tuple(seqs))
+        if GRP is not None:
+            GRP.forget_seqs(c, f"IN ({ph})", tuple(seqs))
         c.execute(f"DELETE FROM chat_ai_reply WHERE msg_id IN (SELECT id FROM chat_msg WHERE seq IN ({ph}))", tuple(seqs))
         c.execute(f"DELETE FROM chat_msg WHERE seq IN ({ph})", tuple(seqs))
     # KI-Belege (2.1): nie gesendete nach Ablauf, und solche, deren Nachricht es nicht mehr gibt (Nachrichten ohne Beleg-
@@ -2651,6 +2694,9 @@ def delete_account(c, uid):
     if fids:
         c.execute(f"DELETE FROM chat_file WHERE id IN ({','.join('?' * len(fids))})", tuple(fids))
     c.execute("UPDATE chat SET title_seq=NULL WHERE title_seq IN (SELECT seq FROM chat_msg WHERE sender_uid=?)", (uid,))
+    if GRP is not None:                               # 2.5: Beschreibung/Bild des Kontos, Meldungen und Anheftungen anonymisieren
+        GRP.forget_seqs(c, "IN (SELECT seq FROM chat_msg WHERE sender_uid=?)", (uid,))
+        GRP.account_gone(c, uid)
     c.execute("DELETE FROM chat_ai_reply WHERE msg_id IN (SELECT id FROM chat_msg WHERE sender_uid=?)", (uid,))
     # 2.5 (Stufe 3): Reaktionen des Kontos (je Handle) weg; Verweise anderer Nachrichten auf seine Bearbeitungen loesen
     h = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()

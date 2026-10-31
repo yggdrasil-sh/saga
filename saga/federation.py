@@ -82,7 +82,12 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
          "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1",
-         "chatadm1"]
+         "chatadm1", "groupinfo2", "moddel1", "msgpin1", "block2", "report1"]
+# 2.5 (Chat-Standard B, saga.chat_grp): groupinfo2 = Beschreibung/Bild freier Gruppen (kind desc/avatar wie title) und
+# Gruppenrechte (Auftrag 'perm' an das Heim, Ereignis 'chat.perm', perm_info/perm_send in chat.members; das Heim setzt
+# sie beim Senden durch); moddel1 = Admins loeschen fremde Nachrichten (Auftrag 'del' mit mod, Ereignis chat.msg.del mit
+# by_admin -> Grabstein); msgpin1 = angeheftete Nachrichten (Auftrag 'pin', Ereignis 'chat.pins', pins in chat.members);
+# block2/report1 = Sperren lokaler Konten / Melden (nur lokal, als Hinweis gemeldet). Ohne die Faehigkeit: 409 "zu alt".
 # chatadm1 (2.5, Gruppeninfo) = Admins freier Gruppen vergeben/entziehen: Teilnehmer schicken den Auftrag 'admin'
 # {ref, actor, target, admin} an das Heim; das Heim verteilt die Liste (role je Mitglied) samt Systemzeile type 'admin'
 # (target, on, by). Ohne chatadm1: Heim-Auftrag nicht moeglich (409 "zu alt"), Rollen kommen weiter mit chat.members.
@@ -150,7 +155,8 @@ def caps2():
 OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}
 # Faehigkeit -> Admin-Schalter, der sie zusaetzlich braucht
 CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls", "chatgroups": "chat", "calls3": "calls",
-           "chatfile2": "chat", "receipts": "chat", "online": "chat", "chat3": "chat", "chatadm1": "chat", "horn": "calls", "horn_dm": "calls"}
+           "chatfile2": "chat", "receipts": "chat", "online": "chat", "chat3": "chat", "chatadm1": "chat", "groupinfo2": "chat", "moddel1": "chat",
+           "msgpin1": "chat", "block2": "chat", "report1": "chat", "horn": "calls", "horn_dm": "calls"}
 EXPRESS_TIMEOUT = float(E.get("FED_EXPRESS_TIMEOUT", "5"))      # synchrone Zustellung: harte Frist in Sekunden
 HELLO_EVERY = 6 * 3600                       # Faehigkeiten der Gegenstelle so oft neu abfragen
 SEEN_KEEP = 7 * 86400                        # Ereignis-Kennungen so lange merken (idempotent)

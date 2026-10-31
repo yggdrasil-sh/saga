@@ -326,7 +326,7 @@ def msg_in(d):
     except (TypeError, ValueError, OverflowError):
         return None
     kind = d.get("kind") or "msg"
-    if not (isinstance(mid, str) and _HEX32.fullmatch(mid) and isinstance(dev, str) and _HEX32.fullmatch(dev)) or kind not in ("msg", "title"):
+    if not (isinstance(mid, str) and _HEX32.fullmatch(mid) and isinstance(dev, str) and _HEX32.fullmatch(dev)) or kind not in ("msg",) + chat.INFO_KINDS:
         return None
     if not isinstance(body_ct, str) or len(body_ct) > chat.MSG_MAX:
         return None
@@ -340,8 +340,8 @@ def msg_in(d):
     h = d.get("sender_handle")
     out = {"id": mid, "ts": ts, "sender_handle": h if isinstance(h, str) else None, "sender_device": dev, "body_ct": body_ct, "sig": sig,
            "reply_to": reply, "ai": ai}
-    if kind == "title":                  # Name einer freien Gruppe (E5) - wie in v1 eine verschluesselte Nachricht
-        out["kind"] = "title"
+    if kind in chat.INFO_KINDS:          # Name (E5), 2.5 Beschreibung/Bild einer freien Gruppe - verschluesselte Nachricht
+        out["kind"] = kind
     return out
 
 
@@ -401,7 +401,7 @@ def store(c, ch, m, sender, lkeys, files=(), origin=None, fseq=None, fstate=None
     kind = m.get("kind") or "msg"
     seq = c.execute("INSERT INTO chat_msg (id, chat_id, kind, sender_uid, sender_device, ts, created, expires_at, body_ct, sig, reply_to, size, "
                     "fseq, sender_handle, ai, fstate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING seq",
-                    (m["id"], ch["id"], kind, sender, m["sender_device"], m["ts"], now, None if kind == "title" else (now + eff if eff else None),
+                    (m["id"], ch["id"], kind, sender, m["sender_device"], m["ts"], now, None if kind in chat.INFO_KINDS else (now + eff if eff else None),
                      m["body_ct"], m["sig"], m["reply_to"], len(m["body_ct"]), fseq, m["sender_handle"], m["ai"], fstate)).fetchone()[0]
     rows = dict(lkeys)
     if all_keys:
@@ -416,6 +416,9 @@ def store(c, ch, m, sender, lkeys, files=(), origin=None, fseq=None, fstate=None
             if c.execute("INSERT INTO chat_file (id, chat_id, uid, size, created, msg_seq) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING",
                          (f["id"], ch["id"], sender, f["size"], now, seq)).rowcount:
                 c.execute("INSERT INTO chat_file_fed (id, peer_id, cached) VALUES (?,?,0) ON CONFLICT DO NOTHING", (f["id"], origin["id"]))
+    if kind in chat.INFO_KINDS and kind != "title" and chat.GRP is not None:     # 2.5: Beschreibung/Bild (vorige weg)
+        chat.GRP.set_info(c, ch, kind, seq)
+        return seq
     if kind == "title":                  # neuer Name der Gruppe: alter Titel samt Anhaengen weg (wie v1)
         old = c.execute("SELECT title_seq FROM chat WHERE id=?", (ch["id"],)).fetchone()[0]
         c.execute("UPDATE chat SET title_seq=? WHERE id=?", (seq, ch["id"]))
@@ -432,7 +435,7 @@ def store(c, ch, m, sender, lkeys, files=(), origin=None, fseq=None, fstate=None
 def deliver(c, ch, seq, mid, sender, kind="msg"):
     """Neue Nachricht fuer die Konten DIESES Servers: Archiv, Benachrichtigung und Push nur in angenommenen Chats (Anfragen
     melden sich still), Live-Ereignis an alle lokalen Mitglieder."""
-    if kind == "title":                  # Gruppenname geaendert: nur neu laden
+    if kind in chat.INFO_KINDS:          # Gruppenname (2.5: Beschreibung, Bild) geaendert: nur neu laden
         chat._changed(c, ch["id"], local_members(c, ch["id"]))
         return
     chat.revive(c, ch["id"], sender)
@@ -465,12 +468,13 @@ def participants(c, ch, declined=False):
     return out
 
 
-def fanout(c, ch, ev, keys=None, declined=True, skip=None):
-    """Heim: Ereignis an die Teilnehmer-Server (Kette je Chat, Express). keys: je Server nur die eigenen Empfaenger."""
+def fanout(c, ch, ev, keys=None, declined=True, skip=None, cap=None):
+    """Heim: Ereignis an die Teilnehmer-Server (Kette je Chat, Express). keys: je Server nur die eigenen Empfaenger.
+    cap (2.5): nur an Server mit dieser Faehigkeit."""
     for p in participants(c, ch, declined):
         if skip is not None and p["id"] == skip:
             continue
-        if not F.feature(p, "chat2"):
+        if not F.feature(p, "chat2") or (cap and not F.feature(p, cap)):
             continue
         e = dict(ev, ref=ch["ref"])
         if keys is not None:
@@ -581,7 +585,7 @@ def op_send(c, peer, d):
     m = msg_in(d.get("msg"))
     files = files_in(d.get("files"), peer)
     keys = d.get("keys")
-    if not m or files is None or not _keys_ok(keys) or (m.get("kind") == "title" and ch["kind"] != "free"):
+    if not m or files is None or not _keys_ok(keys) or (m.get("kind") in chat.INFO_KINDS and ch["kind"] != "free"):
         return 400, {"error": "bad message"}
     h = m["sender_handle"]
     n, host = split_handle(h)
@@ -597,6 +601,9 @@ def op_send(c, peer, d):
     if refused(c, mem, p_, h):                   # abgelehnt/gesperrt: verwerfen, der Absender-Server markiert "nicht zugestellt"
         F.log(c, "chat.declined", peer, m["id"][:8], throttle=(peer["id"], "cdecl", ch["ref"]))
         return 403, {"error": "declined"}
+    if chat.GRP is not None and chat.GRP.home_send_check(c, ch, p_, m.get("kind")):    # 2.5: Gruppenrechte am Heim
+        F.log(c, "chat.perm", peer, m["id"][:8], throttle=(peer["id"], "cperm", ch["ref"]))
+        return 403, {"error": "not allowed"}
     old = c.execute("SELECT chat_id, sig, fseq FROM chat_msg WHERE id=?", (m["id"],)).fetchone()
     if old:
         if old[0] == ch["id"] and old[1] == m["sig"]:
@@ -658,6 +665,10 @@ def op_del(c, peer, d):
     if not ch or not h or not isinstance(mid, str) or not _HEX32.fullmatch(mid):
         return 404, {"error": "gone"}
     r = c.execute("SELECT sender_handle FROM chat_msg WHERE id=? AND chat_id=?", (mid, ch["id"])).fetchone()
+    if r and r[0] != h and d.get("mod") is True and chat.GRP is not None:     # 2.5 (moddel1): Admin loescht fremde Nachricht
+        if p_ not in dict(members(c, ch["id"])):
+            return 403, {"error": "not a member"}
+        return chat.GRP.op_del_mod(c, peer, ch, h, p_, mid)
     if r and r[0] != h:
         F.log(c, "chat.forged", peer, "delete", throttle=(peer["id"], "fdel"))
         return 403, {"error": "not yours"}
@@ -968,6 +979,9 @@ def _ev_del(c, peer, ev):
     mid = ev.get("mid")
     if not ch or not isinstance(mid, str) or not _HEX32.fullmatch(mid):
         return "ignored"
+    if ev.get("by_admin") is True and chat.GRP is not None and F.feature(peer, "moddel1"):
+        chat.GRP.tomb(c, ch, mid)                # 2.5: von einem Admin geloescht - Grabstein (das Heim hat es geprueft)
+        return "ok"
     drop_msg(c, ch, mid)
     return "ok"
 
@@ -1058,15 +1072,16 @@ def _submit(fn, *args):
 def gap_items(c, ch, peer, after, limit=GAP_PAGE):
     """Heim: Nachrichten mit fseq > after fuer die Instanz peer (nur ihre Empfaenger-Schluessel)."""
     out = []
+    kinds = "'msg','title','desc','avatar'" if F.feature(peer, "groupinfo2") else "'msg','title'"     # 2.5: Bild/Beschreibung
     rows = c.execute("SELECT seq, id, sender_handle, sender_device, ts, body_ct, sig, reply_to, ai, fseq, kind FROM chat_msg WHERE chat_id=? AND fseq>? "
-                     "AND kind IN ('msg','title') AND (expires_at IS NULL OR expires_at>?) ORDER BY fseq LIMIT ?",
+                     f"AND kind IN ({kinds}) AND (expires_at IS NULL OR expires_at>?) ORDER BY fseq LIMIT ?",
                      (ch["id"], after, time.time(), limit)).fetchall()
     for seq, mid, sh, dev, ts, body, sig, reply, ai, fseq, kind in rows:
         keys = {r: v for r, v in c.execute("SELECT recipient, sealed FROM chat_msg_key WHERE msg_seq=?", (seq,)).fetchall()
                 if r.rpartition("@")[2] == peer["host"]}
         files = files_for(peer, [{"id": f, "size": s} for f, s in c.execute("SELECT id, size FROM chat_file WHERE msg_seq=?", (seq,)).fetchall()])
         it = {"fseq": fseq, "msg": {"id": mid, "ts": ts, "sender_handle": sh, "sender_device": dev, "body_ct": body, "sig": sig,
-                                    "reply_to": reply, "ai": ai, **({"kind": "title"} if kind == "title" else {})}, "keys": keys, "files": files}
+                                    "reply_to": reply, "ai": ai, **({"kind": kind} if kind in chat.INFO_KINDS else {})}, "keys": keys, "files": files}
         if split_handle(sh)[1] == F.SELF_HOST:
             it["sender_keys"] = local_entry(c, sh)
         elif split_handle(sh)[1] != peer["host"]:            # Person eines dritten Servers: Schluessel ueber das Heim (E5)
@@ -1820,8 +1835,12 @@ def send(uid, cid, b):
         ro = _ro_error(c, ch)
         if ro:
             return _bad(ro, 403)
-        if m.get("kind") == "title" and ch["kind"] != "free":
+        if m.get("kind") in chat.INFO_KINDS and ch["kind"] != "free":
             return _bad(t("ungültige Angabe"))
+        if chat.GRP is not None:                     # 2.5: Gruppenrechte, Sperren im Direkt-Chat (Kopie: Heim prueft erneut)
+            e = chat.GRP.send_check(c, ch, uid, mm["role"], m.get("kind"), mem)
+            if e is not None:
+                return e
         mh = my_handle(c, uid)
         m["sender_handle"] = mh
         mine = local_entry(c, mh)
@@ -1917,6 +1936,11 @@ def delete_msg(uid, ch, mid):
         if not r:
             return _bad("not found", 404)
         if r[0] != uid:
+            m = chat._member(c, ch["id"], uid) if chat.GRP is not None else None
+            if m and ch["home_peer"] is None:            # 2.5 (moddel1): Admin loescht fremde Nachricht (Heim hier)
+                return chat.GRP.mod_delete(c, uid, ch, m, mid)
+            if m:
+                return chat.GRP.mod_delete_fed(c, uid, ch, m, mid)
             return _bad(t("Nur eigene Nachrichten lassen sich löschen."), 403)
         drop_msg(c, ch, mid)
         mh = my_handle(c, uid)
@@ -2042,7 +2066,10 @@ def api_blocks(request: Request):
     with _db() as c:
         out = []
         for tg, at in c.execute("SELECT target, created FROM fed_chat_block WHERE uid=? ORDER BY created DESC", (uid,)).fetchall():
-            if tg.startswith("~"):
+            loc = chat.GRP.block_label(c, tg) if chat.GRP is not None else None
+            if loc:                                  # 2.5 (block2): Konto dieses Servers
+                out.append(dict(loc, created=at))
+            elif tg.startswith("~"):
                 lab = label_of(c, principal(tg))
                 out.append({"target": tg, "kind": "person", "name": lab["name"], "host": lab["host"], "label": lab["label"], "created": at})
             else:
@@ -2134,6 +2161,8 @@ def chat_extra(c, uid, ch, d, mem, m):
 
 
 EXTRA_HOOKS = []
+MEMBERS_HOOKS = []                 # 2.5: (c, ch, peer, ev) Heim - Zusatzfelder in chat.members je Gegenstelle (saga.chat_grp)
+APPLY_MEMBERS_HOOKS = []           # 2.5: (c, peer, ch, ev) Teilnehmer - Zusatzfelder aus chat.members uebernehmen
 DROP_HOOKS = []                    # 2.5: (c, ch, msg_id) nach dem Loeschen einer Nachricht (saga.chat_x3)
 
 
@@ -2223,6 +2252,8 @@ def push_members(c, ch, sysd=None, extra_hosts=()):
             e = dict(ev)
             if sysd and (sysd.get("type") != "admin" or F.feature(p, "chatadm1")):
                 e["sys"] = sysd
+            for fn in MEMBERS_HOOKS:                      # 2.5 (saga.chat_grp): Rechte und Anheftungen
+                fn(c, ch, p, e)
             F._enqueue(c, p["id"], e, chain=chain_down(ch["ref"]))
 
 
@@ -2532,7 +2563,9 @@ def _ev_members(c, peer, ev):
     if not _rate_ok("cmemin", peer["host"], MEMBERS_RATE):
         _log_retry(c, peer, "chat.rate", "members in", (peer["id"], "cmemin"))
         return "retry"
-    apply_members(c, peer, ev)
+    ch = apply_members(c, peer, ev)
+    for fn in APPLY_MEMBERS_HOOKS:
+        fn(c, peer, ch, ev)
     return "ok"
 
 

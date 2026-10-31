@@ -936,6 +936,19 @@ CREATE TABLE IF NOT EXISTS chat_contact (
     PRIMARY KEY (uid, ref));
 CREATE INDEX IF NOT EXISTS chat_contact_last ON chat_contact (uid, last_at DESC);
 CREATE INDEX IF NOT EXISTS chat_contact_ref ON chat_contact (ref);
+-- Gruppen (2.5, Chat-Standard B, saga/chat_grp.py, Migration 29): angeheftete Nachrichten je Chat (hoechstens 3; Inhalt
+-- bleibt verschluesselt, der Server kennt nur die Kennung) und Meldungen an die Saga-Admins. chat_report.text ist nur der
+-- Klartext, den die meldende Person freiwillig mitschickt; items = JSON [{id, ts, sender:{handle, name, uid?}}] (uid nur
+-- fuer Konten dieses Servers, nur im Admin-Bereich). reporter geht mit dem Konto (NULL).
+CREATE TABLE IF NOT EXISTS chat_pin (
+    chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE, msg_seq BIGINT NOT NULL REFERENCES chat_msg(seq) ON DELETE CASCADE,
+    msg_id TEXT NOT NULL, by_uid TEXT, at DOUBLE PRECISION NOT NULL, PRIMARY KEY (chat_id, msg_seq));
+CREATE TABLE IF NOT EXISTS chat_report (
+    id BIGSERIAL PRIMARY KEY, reporter TEXT, chat_id BIGINT, chat_kind TEXT NOT NULL DEFAULT '', chat_ref TEXT,
+    reason TEXT NOT NULL, text TEXT NOT NULL DEFAULT '', items TEXT NOT NULL DEFAULT '[]', created DOUBLE PRECISION NOT NULL,
+    state TEXT NOT NULL DEFAULT 'open', done_by TEXT, done_at DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS chat_report_reporter ON chat_report (reporter, created);
+CREATE INDEX IF NOT EXISTS chat_report_state ON chat_report (state, created);
 -- Gjallarhorn (2.5, saga/horn.py, Konzept v2 §2.10, Migration 16): Knotenregister (eingebauter Knoten + gekoppelte) und
 -- Kopplungs-Token (nur als SHA-256, einmalig, 30 min). pub = Ed25519-Knotenschluessel (Base64), load = letzte Lastmeldung,
 -- dns_ids = Cloudflare-Eintraege (P7), removed = entfernt (pub gesperrt). Wahrheitswerte als SMALLINT wie ueberall (db._arg).
@@ -1264,6 +1277,17 @@ SELECT 1 FROM note_crdt, note_crdt_log LIMIT 0;
     28: """
 SELECT 1 FROM chat_contact LIMIT 0;
 DELETE FROM setting WHERE k='chat_contact_fill';
+""",
+    # 2.5.0 (Chat-Standard B, saga/chat_grp.py): Gruppenbild und Beschreibung freier Gruppen als verschluesselte Nachricht
+    # (kind 'desc'/'avatar', wie der Name) - der Server merkt sich nur die Folgenummer; Gruppenrechte (perm_info: wer Name/
+    # Bild/Beschreibung aendert, perm_send: wer schreibt; 'all' | 'admins'). Tabellen chat_pin, chat_report legt SCHEMA oben
+    # an. Bestand: alle Gruppen wie bisher ('all'). Beliebig oft ausfuehrbar.
+    29: """
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS desc_seq BIGINT;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS avatar_seq BIGINT;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS perm_info TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS perm_send TEXT NOT NULL DEFAULT 'all';
+SELECT 1 FROM chat_pin, chat_report LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
