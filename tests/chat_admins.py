@@ -113,6 +113,8 @@ def series(label, A, B, Cc, D, v3):
     ok(pre + f"admin kein bool -> 400 ({s})", s == 400)
     s, _ = A.api("PATCH", f"/api/chats/{cid}/members/{urllib.parse.quote(A.ref(D))}", {"admin": True})
     ok(pre + f"D ist kein Mitglied -> 404 ({s})", s == 404)
+    s, d = D.api("PATCH", f"/api/chats/{cid}/members/{urllib.parse.quote(who_b)}", {"admin": True})
+    ok(pre + f"D (Nicht-Mitglied) ruft PATCH auf -> 404 wie unbekannter Chat ({s})", s == 404 and B.uid not in json.dumps(d))
     # letzter Admin
     s, d = A.api("PATCH", f"/api/chats/{cid}/members/{urllib.parse.quote(A.uid)}", {"admin": False})
     ok(pre + f"A entzieht sich selbst als letzter Admin -> 409 mit Meldung ({s})", s == 409 and "letzte Admin" in str(d.get("error")), d)

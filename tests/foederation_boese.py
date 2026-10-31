@@ -310,6 +310,33 @@ def part_forge(x):
     x.dora = nd
 
 
+def part_admin(x):
+    """2.5 (chatadm1): C faelscht den Auftrag 'admin' an das Heim A bzw. schleust Rollen per chat.members ein."""
+    anna, dora, carl = x.anna, x.dora, x.carl
+    s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "free", "members": ["fa-carl"], "handles": [dora.handle], "device": anna.dev["id"]})
+    g = d.get("chat") or {}
+    dc = wait(lambda: dora.chat(g.get("ref")), 15)
+    if dc:
+        api("c", "fc-dora", "POST", f"/api/chats/{dc['id']}/request", {"action": "accept"})
+    roles = lambda: dict(sql("a", "SELECT m.uid, m.role FROM chat_member m WHERE m.chat_id=? AND m.left_at IS NULL", (g.get("id"),)))  # noqa: E731
+    ok(f"Heim A: Gruppe mit Dora (C), nur Anna Admin ({s})", s == 200 and [u for u, r in roles().items() if r == "admin"] == ["fa-anna"])
+    base = {"op": "admin", "ref": g.get("ref"), "admin": True}
+    s1 = as_c("POST", "/fed/v2/chat", body=dict(base, actor=anna.handle, target=dora.handle))[0]
+    s2 = as_c("POST", "/fed/v2/chat", body=dict(base, actor=dora.handle, target=dora.handle))[0]
+    s3 = as_c("POST", "/fed/v2/chat", body=dict(base, actor=dora.handle, target=carl.handle))[0]
+    s4 = as_c("POST", "/fed/v2/chat", body=dict(base, actor=dora.handle, target=anna.handle, admin=False))[0]
+    ok(f"Auftrag 'admin': Actor von A (404), Nicht-Admin macht sich/andere zum Admin bzw. entzieht (403) ({s1}, {s2}, {s3}, {s4})",
+       s1 == 404 and (s2, s3, s4) == (403, 403, 403))
+    mem = [{"handle": anna.handle, "role": "member"}, {"handle": carl.handle}, {"handle": dora.handle, "role": "admin"}]
+    s, dd = events_c([ev("chat.members", ref=g.get("ref"), kind="free", members=mem,
+                         sys={"type": "admin", "target": {"handle": dora.handle}, "on": True, "by": {"handle": dora.handle}})])
+    ok(f"chat.members mit Rollen fuer Gruppe mit Heim A -> nicht uebernommen ({dd.get('results')})",
+       s == 200 and any("not home" in z for z in log_of("a", "chat.forged")))
+    r = roles()
+    ok(f"Heim A: Rollen unveraendert ({sorted(r.items())})", [u for u, v in r.items() if v == "admin"] == ["fa-anna"]
+       and not any(z.get("type") == "admin" for z in FG.sys_lines(anna, g.get("id"))))
+
+
 def part_ids(x):
     act = {"name": "dora", "display": "Dora", "groups": []}
     s, h, d, _ = as_c("GET", f"/fed/v1/notes/{x.geheim}", actor=act)
@@ -712,6 +739,7 @@ def run():
         part_ids(x)
         part_rename(x)
         part_forge(x)
+        part_admin(x)
         part_block(x)
         part_dir(x)
         if not COMPAT:
