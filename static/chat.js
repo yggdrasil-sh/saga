@@ -1039,6 +1039,7 @@
       S.cur = c;
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
+      if (GI && GI.id === c.id && ov) GI.draw();         // 2.5: offene Gruppeninfo aktualisieren (live)
       c.members.forEach(function (m) { if (!m.me && !trust[m.username]) trustP[m.username] = kvGet(trustKey(m.username)).then(function (t) { if (t) trust[m.username] = t; drawWarn(); return t; }).catch(function () { return null; }); });
       checkIdents(c);
       presenceSoon();
@@ -1523,6 +1524,16 @@
     if (k.type === 'crypto') return T('Dieser Chat ist jetzt an die stabilen Saga-Adressen gebunden (neue Verschlüsselungsstufe).') +
       (k.verify ? ' ' + T('Bitte die Sicherheitsnummern neu vergleichen – sie werden jetzt anders angezeigt.') : '');     // 2.5
     if (k.type === 'fed') return T('Ab jetzt mit Personen anderer Saga-Server (Ende-zu-Ende verschlüsselt).') + (k.ai_off ? ' ' + T('Die KI ist hier jetzt aus.') : '');
+    if (k.type === 'admin') {                            // 2.5 (Gruppeninfo): Admin vergeben/entzogen
+      var meA = !!(k.by && k.by.handle && k.by.handle === (S.cur || {}).my_handle), self = !!(k.by && k.target && k.by.handle === k.target.handle);
+      var tg = sysWho(k.target, true), byA = k.by && !meA ? sysWho(k.by, false) : '';
+      if (self) return k.on ? (meA ? T('Du bist jetzt Admin.') : T('{name} ist jetzt Admin.', { name: byA }))
+        : (meA ? T('Du bist kein Admin mehr.') : T('{name} ist kein Admin mehr.', { name: byA }));
+      if (k.on) return meA ? T('Du hast {name} zum Admin gemacht.', { name: tg }) : byA ? T('{by} hat {name} zum Admin gemacht.', { by: byA, name: tg })
+        : T('{name} ist jetzt Admin.', { name: sysWho(k.target, false) });
+      return meA ? T('Du hast {name} die Admin-Rolle entzogen.', { name: tg }) : byA ? T('{by} hat {name} die Admin-Rolle entzogen.', { by: byA, name: tg })
+        : T('{name} ist kein Admin mehr.', { name: sysWho(k.target, false) });
+    }
     if (k.type === 'members') {
       var acc = function (x) { return sysWho(x, true); }, nom = function (x) { return sysWho(x, false); };
       var meBy = !!(k.by && k.by.handle && k.by.handle === (S.cur || {}).my_handle), by = k.by && !meBy ? nom(k.by) : '';
@@ -3020,7 +3031,8 @@
       menu.textContent = '';
       var others = c.members.filter(function (m) { return !m.me; });
       if (c.kind === 'dm' && others[0]) menu.appendChild(HK.menuItem(T('Sicherheitsnummer'), function () { HK.closeMenu(); safety(others[0]); }, { icon: '🔐' }));
-      menu.appendChild(HK.menuItem(T('Mitglieder'), function () { HK.closeMenu(); members(); }, { icon: '👥', hint: String(c.member_count) }));
+      if (c.kind === 'dm') menu.appendChild(HK.menuItem(T('Mitglieder'), function () { HK.closeMenu(); members(); }, { icon: '👥', hint: String(c.member_count) }));
+      else menu.appendChild(HK.menuItem(T('Gruppeninfo …'), function () { HK.closeMenu(); groupInfo(); }, { icon: '👥', hint: String(c.member_count) }));
       if (S.ai && S.ai.chat) menu.appendChild(HK.menuItem(c.ai ? T('{name} hier nicht mehr erlauben', { name: aiP().name }) : T('{name} in diesem Chat erlauben', { name: aiP().name }),
         function () { HK.closeMenu(); aiToggle(c); }, { icon: '✦' }));
       menu.appendChild(HK.menuItem(c.muted ? T('Benachrichtigungen an') : T('Stummschalten'), function () {
@@ -3039,13 +3051,8 @@
         });
       } }));
       if (c.kind === 'free') {
-        menu.appendChild(HK.menuItem(T('Umbenennen …'), function () { HK.closeMenu(); rename(); }, { icon: '✎' }));
-        menu.appendChild(HK.menuItem(T('Gruppe verlassen'), function () {
-          HK.closeMenu();
-          HK.ask({ title: T('Gruppe verlassen?'), text: T('Du bekommst keine neuen Nachrichten mehr.'), ok: T('Verlassen'), danger: true }).then(function (y) {
-            if (y) api('DELETE', '/api/chats/' + c.id + '/members/' + q(ME)).then(function () { closeChat(); loadList(); }).catch(function (e) { HK.toast(e.message); });
-          });
-        }, { icon: '⎋', danger: true }));
+        if (c.can_rename !== false) menu.appendChild(HK.menuItem(T('Umbenennen …'), function () { HK.closeMenu(); rename(); }, { icon: '✎' }));
+        menu.appendChild(HK.menuItem(T('Gruppe verlassen'), function () { HK.closeMenu(); leaveGroup(c); }, { icon: '⎋', danger: true }));
       }
       manageItems(menu, c);
     });
@@ -3181,7 +3188,17 @@
       }));
       ul.appendChild(li);
     });
-    if (c.kind === 'free' && c.role === 'admin') {
+    if (c.kind === 'free' && c.role === 'admin') addSearch(box, c);
+  }
+  function leaveGroup(c) {
+    HK.ask({ title: T('Gruppe verlassen?'), text: T('Du bekommst keine neuen Nachrichten mehr.'), ok: T('Verlassen'), danger: true }).then(function (y) {
+      if (y) api('DELETE', '/api/chats/' + c.id + '/members/' + q(ME)).then(function () { closeOverlay(); closeChat(); loadList(); }).catch(function (e) { HK.toast(e.message); });
+    });
+  }
+  // Personensuche "Person hinzufuegen" (freie Gruppe, Admin) - im Dialog Gruppeninfo (und frueher "Mitglieder")
+  function addSearch(box, c) {
+    function added(c) { if (!GI) closeOverlay(); openChat(c.id); loadList(); }     // Gruppeninfo bleibt offen (zeichnet neu)
+    {
       var inp = el('input', 'hk-in'); inp.type = 'search'; inp.placeholder = T('Person hinzufügen'); inp.setAttribute('aria-label', T('Person hinzufügen'));
       var res = el('ul', 'ct-people'); box.appendChild(inp); box.appendChild(res);
       var tmr = null;
@@ -3197,7 +3214,7 @@
               var li = el('li'), b = el('button', 'ct-person ct-remote', (u.label || u.name)); b.type = 'button';
               b.addEventListener('click', function () {
                 api('POST', '/api/chats/' + c.id + '/members', { handle: u.handle }).then(function () {
-                  closeOverlay(); openChat(c.id); loadList();
+                  added(c);
                   if (c._title) sendBody(c.id, { v: 1, type: 'title', title: c._title }, 'title').catch(function () {});
                 }).catch(function (e) { HK.toast(e.message); });
               });
@@ -3207,7 +3224,7 @@
               var li = el('li'), b = el('button', 'ct-person', u.name + (u.sub ? ' · ' + u.sub : '')); b.type = 'button';
               b.addEventListener('click', function () {
                 api('POST', '/api/chats/' + c.id + '/members', { user: u.username }).then(function () {
-                  closeOverlay(); openChat(c.id); loadList();
+                  added(c);
                   if (c._title) sendBody(c.id, { v: 1, type: 'title', title: c._title }, 'title').catch(function () {});   // Name fuer Neue lesbar
                 }).catch(function (e) { HK.toast(e.message); });
               });
@@ -3216,8 +3233,149 @@
           }).catch(function () {});
         }, 250);
       });
+      return inp;
     }
   }
+
+  // --- Gruppeninfo (2.5): Klick auf den Chat-Kopf -----------------------------------------------------------------
+  // Name (bearbeitbar bei can_rename), Mitglieder mit Avatar, Anzeigename, Handle (nie Anmeldename), "Admin"/"Du";
+  // bei can_manage Hinzufuegen und je Mitglied Admin vergeben/entziehen (can_admin) bzw. entfernen; unten Verlassen,
+  // Stummschalten, Archivieren. group/page: nur lesend mit Hinweis. Live-Aenderungen (chat.changed) zeichnen neu.
+  var GI = null;                                      // {id, draw} solange der Dialog offen ist
+  function giHandle(m) {                              // Handle '~x@host' bzw. '~x' (ref, Chats v1) - nie der Anmeldename
+    var h = m.handle || (/^~/.test(m.ref || '') ? m.ref : '');
+    return h ? (h.charAt(0) === '@' ? h.slice(1) : h) : '';
+  }
+  function giAfter(c, r, msg) {
+    if (msg) HK.toast(msg);
+    return openChat(c.id).then(function () { loadList(); });
+  }
+  function giAdmin(c, m, on) {
+    return api('PATCH', '/api/chats/' + c.id + '/members/' + q(m.username), { admin: on })
+      .then(function (r) { return giAfter(c, r, on ? T('{name} ist jetzt Admin.', { name: m.me ? T('Du') : m.name }) : T('Admin-Rolle entzogen.')); })
+      .catch(function (e) { HK.toast(e.message); });
+  }
+  function giRemove(c, m) {
+    HK.ask({ title: T('{name} aus der Gruppe entfernen?', { name: m.name }), text: T('{name} bekommt keine neuen Nachrichten dieser Gruppe mehr.', { name: m.name }),
+      ok: T('Entfernen'), danger: true }).then(function (y) {
+      if (!y) return;
+      api('DELETE', '/api/chats/' + c.id + '/members/' + q(m.username)).then(function (r) { giAfter(c, r, T('{name} wurde entfernt.', { name: m.name })); })
+        .catch(function (e) { HK.toast(e.message); });
+    });
+  }
+  function groupInfo() {
+    var c0 = S.cur; if (!c0 || c0.kind === 'dm') { if (c0) members(); return; }
+    var box = overlay(T('Gruppeninfo'));
+    if (ov) { ov.classList.add('ct-gi-ov'); ov.querySelector('.ct-dlg').classList.add('ct-gi'); }
+    var wrap = el('div', 'ct-gi-body'); box.appendChild(wrap);
+    function draw() {
+      var c = S.cur; if (!c || c.id !== c0.id) { closeOverlay(); return; }
+      var foc = document.activeElement && wrap.contains(document.activeElement) ? document.activeElement.dataset.gi : null;
+      wrap.textContent = '';
+      // Kopf: Name (Stift) und Art
+      var hd = el('div', 'ct-gi-head');
+      hd.appendChild(avatar(kindIc(c) || '👥', 'c' + c.id, 'ct-gi-av'));
+      var nm = el('div', 'ct-gi-name'), h3 = el('h3', 'ct-gi-title', chatName(c)); h3.id = 'ct-gi-title'; nm.appendChild(h3);
+      nm.appendChild(el('span', 'hk-hint', c.kind === 'free' ? T('Freie Gruppe · {n} Mitglieder', { n: c.member_count })
+        : c.kind === 'group' ? T('Gruppen-Chat „{g}“ · {n} Mitglieder', { g: c.group || '', n: c.member_count }) : T('Seiten-Chat · {n} Mitglieder', { n: c.member_count })));
+      hd.appendChild(nm);
+      if (c.kind === 'free' && c.can_rename) {
+        var pen = el('button', 'icon-btn ct-gi-edit', '✎'); pen.type = 'button'; pen.dataset.gi = 'edit';
+        pen.title = T('Umbenennen'); pen.setAttribute('aria-label', T('Gruppe umbenennen'));
+        pen.addEventListener('click', function () {
+          var inp = el('input', 'hk-in ct-gi-in'); inp.maxLength = 80; inp.value = c._title || ''; inp.placeholder = T('Name der Gruppe');
+          inp.setAttribute('aria-label', T('Name der Gruppe'));
+          var save = btn(T('Speichern'), 'btn-primary small ct-gi-save'), stop = btn(T('Abbrechen'), 'small');
+          var row = el('div', 'ct-gi-rename'); row.appendChild(inp); row.appendChild(save); row.appendChild(stop);
+          nm.replaceChild(row, h3); pen.hidden = true; inp.focus(); inp.select();
+          function go() {
+            var tt = inp.value.trim(); if (!tt || tt === c._title) { draw(); return; }
+            busy(save, true);
+            sendBody(c.id, { v: 1, type: 'title', title: tt }, 'title').then(function () { c._title = tt; drawHead(); loadList(); draw(); })
+              .catch(function (e) { busy(save, false); HK.toast(e.message); });
+          }
+          save.addEventListener('click', go); stop.addEventListener('click', draw);
+          inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } else if (e.key === 'Escape') { e.stopPropagation(); draw(); } });
+        });
+        hd.appendChild(pen);
+      }
+      wrap.appendChild(hd);
+      if (c.kind === 'free' && c.can_rename) wrap.appendChild(el('p', 'hk-hint ct-gi-note', T('Der Name wird wie eine Nachricht verschlüsselt.')));
+      if (c.kind === 'group' || c.kind === 'page') wrap.appendChild(el('p', 'hk-hint ct-gi-ro', T('Mitglieder ergeben sich hier aus der Gruppe bzw. den Freigaben der Seite.')));
+      if (isRemote(c)) wrap.appendChild(el('p', 'hk-hint', c.home_self ? T('Dieser Chat liegt auf diesem Server; Personen anderer Saga-Server sind über ihren Server dabei.')
+        : T('Dieser Chat liegt auf {host}. Mitglieder ändert man dort (über diesen Server).', { host: c.home || '?' })));
+      if (c.readonly) wrap.appendChild(el('p', 'hk-hint', '🔒 ' + (c.readonly_reason || T('schreibgeschützt'))));
+      // Mitglieder
+      var h4 = el('h3', 'ct-gi-h', T('{n} Mitglieder', { n: c.member_count })); wrap.appendChild(h4);
+      if (c.kind === 'free' && c.can_manage) {
+        var add = btn('+ ' + T('Mitglied hinzufügen'), 'small ct-gi-add'); add.dataset.gi = 'add';
+        var slot = el('div', 'ct-gi-search'); slot.hidden = true;
+        add.addEventListener('click', function () {
+          slot.hidden = !slot.hidden;
+          if (!slot.hidden && !slot.firstChild) addSearch(slot, c);
+          var i = slot.querySelector('input'); if (i && !slot.hidden) i.focus();
+        });
+        wrap.appendChild(add); wrap.appendChild(slot);
+      }
+      var ul = el('ul', 'ct-devs ct-gi-list'); wrap.appendChild(ul);
+      var mine = String(c.my_handle || '').split('@').slice(1).join('@');
+      c.members.slice().sort(function (a, b) { return (b.me - a.me) || ((b.admin ? 1 : 0) - (a.admin ? 1 : 0)) || String(a.name).localeCompare(String(b.name)); }).forEach(function (m) {
+        var li = el('li', 'ct-dev ct-gi-m'); li.dataset.handle = giHandle(m);
+        li.appendChild(avatar((m.name || '?').charAt(0).toUpperCase(), m.username, '', m.avatar));
+        var t = el('div', 'ct-dev-t'), nl = el('div', 'ct-gi-nl');
+        nl.appendChild(el('b', 'ct-gi-n', m.name || '?'));
+        if (m.me) nl.appendChild(el('span', 'ct-chip ct-gi-me', T('Du')));
+        if (m.admin) nl.appendChild(el('span', 'ct-chip ct-gi-adm', T('Admin')));
+        t.appendChild(nl);
+        // 2.4/2.5: nie den Anmeldenamen anderer - Handle (bei Personen anderer Server mit Server), sonst Unterzeile
+        var hh = giHandle(m), sub = hh ? (hh.indexOf('@') > 0 && hh.split('@').slice(1).join('@') === mine ? hh.split('@')[0] : hh) : (m.sub || '');
+        if (m.handle && m.host && m.host !== mine && isRemote(c)) sub = T('auf {host}', { host: m.host }) + (hh ? ' · ' + hh.split('@')[0] : '');
+        if (sub) t.appendChild(el('span', 'hk-hint ct-gi-h2', sub));
+        li.appendChild(t);
+        var acts = [];
+        if (!m.me) acts.push([T('Sicherheitsnummer'), function () { safety(m); }, '🔐']);
+        if (c.kind === 'free' && c.can_admin && (!m.me || m.admin)) {
+          if (!m.admin) acts.push([T('Zum Admin machen'), function () { giAdmin(c, m, true); }, '★']);
+          else acts.push([T('Admin entziehen'), function () { giAdmin(c, m, false); }, '☆']);
+        }
+        if (c.kind === 'free' && c.can_manage && !m.me) acts.push([T('Aus Gruppe entfernen'), function () { giRemove(c, m); }, '✕', true]);
+        if (acts.length) {
+          var mb = el('button', 'icon-btn ct-gi-more', '⋯'); mb.type = 'button'; mb.dataset.gi = 'm:' + giHandle(m);
+          mb.setAttribute('aria-label', T('Aktionen für {name}', { name: m.name })); mb.setAttribute('aria-haspopup', 'menu');
+          mb.addEventListener('click', function () {
+            HK.openMenu(mb, function (menu) {
+              menu.textContent = '';
+              acts.forEach(function (a) { menu.appendChild(HK.menuItem(a[0], a[1], { icon: a[2], danger: !!a[3] })); });
+            });
+          });
+          li.appendChild(mb);
+        }
+        ul.appendChild(li);
+      });
+      // unten: Verlassen, Stummschalten, Archivieren
+      var bar = el('div', 'ct-gi-foot');
+      bar.appendChild(btn(c.muted ? '🔔 ' + T('Benachrichtigungen an') : '🔕 ' + T('Stummschalten'), 'small', function () {
+        api('PATCH', '/api/chats/' + c.id, { muted: !c.muted }).then(function () { return giAfter(c); }).catch(function (e) { HK.toast(e.message); });
+      }));
+      bar.appendChild(btn(c.archived ? '⤴ ' + T('Aus Archiv holen') : '🗄 ' + T('Archivieren'), 'small', function () { archive(c, !c.archived).then(function () { if (GI) draw(); }); }));
+      if (c.kind === 'free') bar.appendChild(btn('⎋ ' + T('Gruppe verlassen'), 'small btn-danger ct-gi-leave', function () { leaveGroup(c); }));
+      wrap.appendChild(bar);
+      if (foc) { var f = wrap.querySelector('[data-gi="' + foc.replace(/"/g, '') + '"]'); if (f) f.focus(); }
+    }
+    GI = { id: c0.id, draw: draw };
+    var prevClean = ovClean;
+    ovClean = function () { GI = null; if (prevClean) prevClean(); };
+    draw();
+  }
+  // Chat-Kopf anklicken (bzw. Enter/Leertaste) -> Gruppeninfo; Direkt-Chat: Mitglieder/Sicherheitsnummer wie bisher
+  (function () {
+    var ht = document.querySelector('#ct-chat .ct-head-t'); if (!ht) return;
+    ht.setAttribute('role', 'button'); ht.tabIndex = 0; ht.classList.add('ct-head-click');
+    ht.setAttribute('aria-label', T('Infos zum Chat'));
+    function go(e) { if (e.target.closest('a, button')) return; if (S.cur) groupInfo(); }
+    ht.addEventListener('click', go);
+    ht.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } });
+  })();
 
   // --- KI im Chat (2.1, saga/ai_chat.py): nur auf Zuruf -----------------------------------------------------------
   // Die KI liest nur Nachrichten mit @Name: dieses Geraet schickt die Nachricht und hoechstens AI_CTX Nachrichten davor

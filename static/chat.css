@@ -339,3 +339,32 @@ button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
 .ct-x3i{font-size:.9rem;line-height:1;padding:.05rem .3rem;color:var(--muted);vertical-align:middle}
 .ct-x3-pop{max-width:320px;padding:.5rem .75rem;font-size:.85rem;line-height:1.45;white-space:normal}
 .ct-x3-pop p{margin:.35rem 0 0}
+/* Gruppeninfo (2.5): Klick auf den Chat-Kopf; auf dem Handy als Blatt von unten */
+.ct-head-click{cursor:pointer;border-radius:8px;padding:.1rem .3rem;margin:-.1rem -.3rem}
+.ct-head-click:hover{background:var(--card-h)}
+.ct-head-click:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ct-gi-head{display:flex;align-items:center;gap:.8rem;margin:.2rem 0 .4rem}
+.ct-gi-av{width:48px;height:48px;font-size:1.3rem;flex:none}
+.ct-gi-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:.15rem}
+.ct-gi-name .hk-hint{margin:0}
+.ct-dlg h3.ct-gi-title{margin:0;font-size:1.15rem;overflow-wrap:anywhere}
+.ct-gi-rename{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.ct-gi-in{flex:1 1 12rem;min-width:0}
+.ct-gi-note,.ct-gi-ro{margin:.1rem 0 .5rem}
+.ct-dlg h3.ct-gi-h{font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:.9rem 0 .4rem}
+.ct-gi-add{margin-bottom:.4rem}
+.ct-gi-search{margin:.2rem 0 .5rem}
+.ct-gi-search .hk-in{width:100%}
+.ct-gi-nl{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem}
+.ct-gi-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.ct-gi-h2{overflow-wrap:anywhere}
+.ct-gi-adm{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+.ct-gi-more{flex:none;font-size:1.1rem}
+.ct-gi-foot{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border)}
+.ct-gi-leave{margin-left:auto}
+@media (max-width:560px){
+  .ct-gi-ov{place-items:end center;padding:0}
+  .ct-gi-ov .ct-gi{width:100%;max-height:92vh;border-radius:16px 16px 0 0;border-bottom:0}
+  .ct-gi-leave{margin-left:0}
+  .ct-gi-foot .btn{flex:1 1 auto}
+}
