@@ -632,8 +632,7 @@ def op_ring(c, peer, d):
     av = sharing.names(c, [p_]).avatar(p_)
     calls._emit(c, [callee], "call.ring", {"call_id": cid, "chat_id": ch["id"], "media": media, "from_device": dev, "ring_s": calls.ring_s(),
                                            "from": {"username": p_, "handle": h, "name": lab["name"], "avatar": av}})
-    muted = c.execute("SELECT muted FROM chat_member WHERE chat_id=? AND uid=?", (ch["id"], callee)).fetchone()
-    if not (muted and muted[0]):
+    if not chat.CP.muted_now(c, ch["id"], callee):
         bus.fire("push.send", c, uid=callee, kind="call", actor=p_, data={"chat": ch["id"], "call": cid})
     print(f"call: {cid[:8]} klingelt (von {peer['host']}, {media})", flush=True)
     return 200, {"ok": True}

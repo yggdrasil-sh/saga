@@ -45,7 +45,10 @@ FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1", "move1", "ren
             "chatadm1",                                                          # 2.5 Gruppeninfo: PATCH /api/chats/{cid}/members/{who}
             "contacts1",                                                         # 2.5 Kontakte: GET/DELETE /api/chat/contacts (docs/APP-API-CHAT.md)
             "pagechatmembers1",                                                  # 2.5 Seiten-Chat: Mitglieder hinzufuegen/entfernen = Seite teilen
-            "groupinfo2", "moddel1", "msgpin1", "block2", "report1")            # 2.5 Chat-Standard B (docs/APP-API-CHAT.md 6b-6f)
+            "groupinfo2", "moddel1", "msgpin1", "block2", "report1",            # 2.5 Chat-Standard B (docs/APP-API-CHAT.md 8a-8f)
+            "mute2", "chatpin1", "markunread1", "chathide1",                     # 2.5 Chat-Alltag A (PATCH /api/chats/{cid}, docs/APP-API-CHAT.md 9)
+            "chatmention1", "chatfmt1", "chatmedia1")                            # 2.5 Chat-Alltag C: @Erwaehnung, Formatierung, ?has=file
+# unfurl1 (2.5, Chat-Alltag C3) = GET /api/chat/unfurl - nur gemeldet, solange der Admin-Schalter chat_unfurl an ist (app.py).
 # live1 (2.5, P3 Stufe 2) = WebSocket /api/collab (CRDT, docs/APP-API-COLLAB.md) - nur gemeldet, solange der Admin-Schalter
 # notes.live an ist (app.py /api/version haengt es an); aus: Stufe 1 wie bisher.
 LIVE_FEATURE = "live1"

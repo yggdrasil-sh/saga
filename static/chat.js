@@ -14,7 +14,7 @@
   var X = null;                                        // SagaChatCrypto, nach sodium.ready
   var K = null;                                        // lokale Schluessel {device:{...}, ident_sk, ident_pk, backup_sk, backup_pk}
   var S = { me: null, chats: [], cur: null, msgs: [], byId: {}, more: false, reply: null, files: [], rc: null, notes: {},
-            typing: {}, mentions: {}, ai: null, aiPending: null, searchQ: '', loading: false, linkWait: null, ready: false,
+            typing: {}, mentions: {}, people: {}, ai: null, aiPending: null, searchQ: '', loading: false, linkWait: null, ready: false,
             rcpts: {}, rcSent: {}, rcAt: {}, rcT: null, pres: {} };            // (2.4) Gelesen-Bestaetigungen, Online-Status
   var RET = [[0, T('Aus')], [3600, T('1 Stunde')], [86400, T('1 Tag')], [604800, T('7 Tage')], [2592000, T('30 Tage')],
              [7776000, T('90 Tage')], [31536000, T('1 Jahr')]];
@@ -700,14 +700,15 @@
   function kindIc(c) { return c.kind === 'group' ? '#' : c.kind === 'page' ? '📄' : c.kind === 'free' ? '👥' : ''; }
   function loadList() {
     return api('GET', '/api/chats?device=' + q(dev())).then(function (r) {
-      S.chats = r.chats || [];
+      S.chats = r.chats || []; S.hiddenN = r.hidden_count || 0;
+      if (S.hidOpen || ($('ct-filter').value || '').trim()) hiddenLoad();
       S.chats.forEach(freeTitle);
       h2uNote(S.chats);
       drawList();
       presenceSoon();
       if (S.cur) {
         var c = S.chats.filter(function (x) { return x.id === S.cur.id; })[0];
-        if (!c) closeChat(); else { S.cur = Object.assign(S.cur, c); drawHead(); }
+        if (!c && !(S.hid || []).some(function (x) { return x.id === S.cur.id; })) closeChat(); else if (c) { S.cur = Object.assign(S.cur, c); drawHead(); }
       }
     }).catch(function (e) { if (e.status === 403) fatal(e.message); });
   }
@@ -715,7 +716,7 @@
     var ul = $('ct-list'), f = ($('ct-filter').value || '').trim().toLowerCase();
     ul.textContent = '';
     var shown = S.chats.filter(function (c) { return !f || chatName(c).toLowerCase().indexOf(f) >= 0; });
-    $('ct-list-empty').hidden = S.chats.length > 0;
+    $('ct-list-empty').hidden = S.chats.length > 0 || !!S.hiddenN;
     // Nachrichtenanfragen (2.3, Personen anderer Saga-Server) oben, eigener Bereich - bis zur Annahme ohne Benachrichtigung
     var reqs = shown.filter(function (c) { return c.request; });
     if (reqs.length) {
@@ -727,6 +728,7 @@
     // Archiv (2.1): archivierte Chats unten in einem aufklappbaren Bereich (beim Filtern gleich mit angezeigt)
     var act = shown.filter(function (c) { return !c.archived; }), arch = shown.filter(function (c) { return c.archived; });
     act.forEach(function (c) { ul.appendChild(listItem(c)); });
+    hiddenSection(ul, f);                                     // 2.5 (chathide1): ausgeblendete Gruppen-/Seiten-Chats
     if (!arch.length) return;
     var open = S.archOpen || !!f, nUn = arch.reduce(function (s, c) { return s + (c.muted ? 0 : c.unread || 0); }, 0);
     var hli = el('li', 'ct-arch-h'), tg = el('button', 'ct-arch-t'); tg.type = 'button'; tg.id = 'ct-arch-toggle';
@@ -747,7 +749,8 @@
       if (lp && lp.online) { lav.classList.add('ct-on'); b.title = T('online'); }       // (2.4) Online-Status im Direkt-Chat
       b.appendChild(lav);
       var t = el('span', 'ct-item-t');
-      t.appendChild(el('span', 'ct-item-n', nm));
+      var tn = el('span', 'ct-item-n', nm); t.appendChild(tn);
+      if (c.pinned) { var pi = el('span', 'ct-pin', '📌'); pi.title = T('Angeheftet'); pi.setAttribute('aria-label', T('Angeheftet')); tn.prepend(pi); }
       t.appendChild(el('span', 'ct-item-s', isRemote(c) && c.kind === 'dm'
         ? (c.request ? T('Anfrage') : T('Direkt')) + ' · ' + ((c.peer || {}).host || '') + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
         : isRemote(c)                                      // Gruppe/Seiten-Chat ueber Servergrenzen (2.3)
@@ -755,6 +758,7 @@
           + (c.home_self ? '' : ' · ' + (c.home || '')) + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
         : (c.kind === 'dm' ? T('Direkt') : c.kind === 'group' ? T('Gruppe') : c.kind === 'page' ? T('Seite') : T('Gruppe')) +
           ' · ' + T('{n} Personen', { n: c.member_count }) + (c.muted ? ' · 🔕' : '')));
+      if (c.id !== (S.cur || {}).id && (c._draft || hasDraft(c.id))) t.appendChild(el('span', 'ct-item-s ct-draft', T('Entwurf')));    // 2.5
       b.appendChild(t);
       var side = el('span', 'ct-item-r');
       var tm = el('span', 'ct-item-time', HK.relTime((c.last_at || c.created) - Date.now() / 1000)); tm.dataset.ts = String(c.last_at || c.created);
@@ -1077,6 +1081,7 @@
 
   // --- Unterhaltung -----------------------------------------------------------------------------------------------
   function closeChat() {
+    draftSave(); unfReset();
     vplDrop(); recCancel();
     S.cur = null; S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.rcpts = {};
     selEnd(true);
@@ -1088,11 +1093,12 @@
     var same = S.cur && S.cur.id === cid;
     return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r) {
       var c = r.chat; freeTitle(c); h2uNote([c]);
-      if (!same) { selEnd(true); vplDrop(); recCancel(); S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; S.rcpts = {}; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
+      if (!same) { draftSave(); selEnd(true); vplDrop(); recCancel(); S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; S.rcpts = {}; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; S.people = {}; unfReset(); }
       if (same && S.cur && S.cur._title && !c._title) c._title = S.cur._title;   // bis der (neue) Name entschluesselt ist: kein Flackern
       S.cur = c;
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
+      if (!same) draftLoad(c.id);                        // 2.5: Entwurf dieses Chats (nur dieser Browser)
       if (GI && GI.id === c.id && ov) GI.draw();         // 2.5: offene Gruppeninfo aktualisieren (live)
       c.members.forEach(function (m) { if (!m.me && !trust[m.username]) trustP[m.username] = kvGet(trustKey(m.username)).then(function (t) { if (t) trust[m.username] = t; drawWarn(); return t; }).catch(function () { return null; }); });
       checkIdents(c);
@@ -1244,17 +1250,17 @@
     if (want && wait > 0) {                              // (2.4) hoechstens eine Bestaetigung je Chat und 2 s
       clearTimeout(S.rcT); S.rcT = setTimeout(markRead, wait + 50); want = null;
     }
-    if ((!seq || seq <= (c.last_read || 0)) && !want) return;
+    if ((!seq || seq <= (c.last_read || 0)) && !want && !c.unread_mark) return;
     var body = { seq: Math.max(seq, c.last_read || 0) };
     if (want) {
       try { body.receipt = { keys: receiptKeys(c, want) }; } catch (e) { body.receipt = null; }
       if (!body.receipt || !Object.keys(body.receipt.keys).length) delete body.receipt;
       else S.rcAt[c.id] = Date.now();
     }
-    if (!body.receipt && seq <= (c.last_read || 0)) return;
-    c.last_read = body.seq;
+    if (!body.receipt && seq <= (c.last_read || 0) && !c.unread_mark) return;
+    c.last_read = body.seq; c.unread_mark = false;                 // 2.5: "als ungelesen markiert" endet mit dem Lesen
     api('POST', '/api/chats/' + c.id + '/read', body).then(function (r) {
-      var x = S.chats.filter(function (y) { return y.id === c.id; })[0]; if (x) { x.unread = 0; x.last_read = body.seq; drawList(); }
+      var x = S.chats.filter(function (y) { return y.id === c.id; })[0]; if (x) { x.unread = 0; x.last_read = body.seq; x.unread_mark = false; drawList(); }
       if (body.receipt) {
         if (r.receipt === 'ok' || r.receipt === 'none') S.rcSent[c.id] = want.n;
         else if (r.receipt === 'off') { if (S.me) S.me.privacy = Object.assign({}, S.me.privacy, { receipts: false }); }
@@ -1423,13 +1429,18 @@
   document.addEventListener('visibilitychange', function () { if (!document.hidden) markRead(); });
 
   // --- Nachrichten zeichnen (nur textContent; Links nur http/https, Seitenverweise nur mit Zugriff) ------------------
-  var TOKEN = /\[\[note:([1-9][0-9]{0,17})\]\]|(https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]])/g;
+  var TOKEN = /\[\[note:([1-9][0-9]{0,17})\]\]|(https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]])|<@(~[a-z2-7]{16}(?:@[a-z0-9.:\-]{1,260})?)>/g;
+  // 2.5 (chatfmt1): Markdown-light ueber static/chat-fmt.js (nur Elemente/textContent); Textstuecke zeichnet textLeaf
   function renderText(box, text) {
+    if (window.SagaChatFmt) window.SagaChatFmt.render(box, text, textLeaf); else textLeaf(box, text);
+  }
+  function textLeaf(box, text) {
     var s = String(text || ''), last = 0, m;
     TOKEN.lastIndex = 0;
     while ((m = TOKEN.exec(s))) {
       if (m.index > last) box.appendChild(document.createTextNode(s.slice(last, m.index)));
-      if (m[1]) {
+      if (m[3]) box.appendChild(mentionEl(m[3]));             // 2.5 (chatmention1): <@kennung>
+      else if (m[1]) {
         var n = S.notes[m[1]], a = el('a', 'ct-note' + (n === null ? ' na' : ''));
         a.dataset.note = m[1];
         if (n) { a.href = '/notes#' + m[1]; a.target = 'hk-notes'; a.textContent = (n.icon ? n.icon + ' ' : '📄 ') + n.title; }
@@ -1472,7 +1483,8 @@
     if (!m) return T('Nachricht nicht mehr da');
     if (m.kind === 'call') return '📞 ' + callText(m);
     if (m.error || !m.body) return T('Nicht entschlüsselbar');
-    var t = String(m.body.text || '').replace(/\[\[note:\d+\]\]/g, '📄').replace(/\s+/g, ' ').trim();
+    var t = plainMentions(fmtStrip(String(m.body.text || ''))).replace(/\[\[note:\d+\]\]/g, '📄').replace(/\s+/g, ' ').trim();
+    if (!t && m.body.preview && m.body.preview.url) t = '🔗 ' + String(m.body.preview.title || m.body.preview.url);
     var vf = (m.body.files || []).filter(function (f) { return f && f.voice; })[0];
     if (!t && vf) t = '🎤 ' + (VOICE ? VOICE.fmt(vf.dur) : '');           // 2.5: Sprachnachricht
     if (!t && (m.body.files || []).length) t = '📎 ' + m.body.files.map(function (f) { return f.n; }).join(', ');
@@ -1530,6 +1542,8 @@
       if (m.error || !m.body) b.appendChild(el('div', 'ct-text ct-err', '🔒 ' + T('Diese Nachricht lässt sich auf diesem Gerät nicht entschlüsseln.')));
       else {
         if (m.body.text) { var tx = el('div', 'ct-text'); renderText(tx, m.body.text); b.appendChild(tx); }
+        if (m.body.preview) { var pv = unfCard(c, m); if (pv) b.appendChild(pv); }        // 2.5 (unfurl1): Linkvorschau
+        if (mentionsMe(c, m)) row.classList.add('ct-ment');
         (Array.isArray(m.body.files) ? m.body.files : []).slice(0, 10).forEach(function (f) { b.appendChild(fileEl(fileCid(c, m), f)); });
       }
       if (m._rx && m._rx.length) b.appendChild(rxChips(c, m));
@@ -1763,7 +1777,7 @@
     return T('[Datei: {name}]', { name: String((f && f.n) || T('Datei')).slice(0, 200) });
   }
   function plainText(m) {
-    var t = String((m.body && m.body.text) || '').replace(/\[\[note:([1-9][0-9]{0,17})\]\]/g, function (_, i) {
+    var t = plainMentions(String((m.body && m.body.text) || '')).replace(/\[\[note:([1-9][0-9]{0,17})\]\]/g, function (_, i) {
       var n = S.notes[i]; return '📄 ' + (n ? n.title : T('Seite'));
     });
     var att = (Array.isArray(m.body && m.body.files) ? m.body.files : []).map(attText);
@@ -2862,7 +2876,8 @@
         if (kind === 'title' || kind === 'desc' || kind === 'avatar') m.kind = kind;     // 2.5: Beschreibung/Bild wie der Name
         if (kind === 'edit') { m.kind = 'edit'; m.edit_of = body.edit; m.files = []; }     // 2.5: Bearbeitung (saga/chat_x3.py)
         if (extra && extra.ai_reply) m.ai_reply = extra.ai_reply;
-        if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
+        if (extra && extra.mentions && extra.mentions.length) m.mentions = extra.mentions;        // 2.5 (chatmention1)
+        if (body.files || body.preview) m.files = fileIds(body);
         return api('POST', '/api/chats/' + c.id + '/messages', m).then(function (r) {
           if (r.pending) HK.toast(T('Der andere Server ist gerade nicht erreichbar – die Nachricht wird zugestellt, sobald er wieder da ist.'), null, null, 6000);
           else delivered(m.id, r.fseq);
@@ -2892,7 +2907,8 @@
       var m = X.encryptMessage({ chat_id: cid, sender: ME, device: K.device.id, sign_sk: K.device.sign_sk, body: body, reply_to: reply || null, recipients: rc.list });
       m.kind = kind || 'msg';
       if (extra) Object.keys(extra).forEach(function (k) { m[k] = extra[k]; });   // z. B. ai_reply (nicht signiert, nur Verweis)
-      if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
+      if (body.files || body.preview) m.files = fileIds(body);
+      if (m.mentions && !m.mentions.length) delete m.mentions;
       return api('POST', '/api/chats/' + cid + '/messages', m).then(function (r) { return { m: m, r: r }; }, function (e) {
         if (e.status === 409 && e.data && e.data.chat_changed && !again) {        // 2.5: gerade auf Stufe 3 umgestellt
           return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r2) {
@@ -3005,15 +3021,18 @@
     Object.keys(S.mentions).forEach(function (label) {
       if (text.indexOf(label) >= 0) { text = text.split(label).join('[[note:' + S.mentions[label] + ']]'); notes.push(S.mentions[label]); }
     });
+    var pm = applyPeople(text); text = pm.text;              // 2.5: @Person -> <@kennung>, mentions neben dem Chiffrat
+    var unf = unfFor(text);
     sending = true; $('ct-send').disabled = true;
     var reply = S.reply ? S.reply.id : null, askAi = aiOn(c) && aiMention(text);
     (S.files.length ? uploadFiles(c.id) : Promise.resolve([])).then(function (files) {
       var body = { v: 1, type: 'text', text: text };
       if (files.length) body.files = files;
       if (notes.length) body.notes = notes;
-      return sendBody(c.id, body, 'msg', reply);
+      return unfAttach(c, body, unf).then(function () { return sendBody(c.id, body, 'msg', reply, pm.refs.length ? { mentions: pm.refs } : null); });
     }).then(function (x) {
-      inp.value = ''; autosize(); S.reply = null; S.files = []; S.mentions = {}; drawReply(); drawFiles(); micDraw();
+      inp.value = ''; autosize(); S.reply = null; S.files = []; S.mentions = {}; S.people = {}; drawReply(); drawFiles(); micDraw();
+      draftDrop(c.id); unfReset();
       if (S.rc && S.rc.missing.length) HK.toast(T('{names} hat Chats noch nicht eingerichtet und kann diese Nachricht nicht lesen.', { names: S.rc.missing.join(', ') }), null, null, 6000);
       aiHint();
       return loadMsgs(false).then(function () { if (askAi && x && x.m) askAI(c, text, x.m.id); return x; });
@@ -3032,7 +3051,7 @@
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('ct-compose').requestSubmit(); }
   });
   $('ct-input').addEventListener('input', function () {
-    autosize(); picker(); aiHint(); micDraw();
+    autosize(); picker(); aiHint(); micDraw(); draftSoon(); unfSoon();
     if (S.cur && Date.now() - typT > 3000 && this.value) { typT = Date.now(); api('POST', '/api/chats/' + S.cur.id + '/typing').catch(function () {}); }
   });
 
@@ -3046,12 +3065,15 @@
     pk.start = v.length - m[2].length - 1;
     clearTimeout(pk.t);
     var aiItem = aiOn(S.cur) && aiP().name.toLowerCase().indexOf(m[2].toLowerCase()) === 0 ? [{ ai: true, title: aiP().name }] : [];
+    var ppl = peopleFor(S.cur, m[2]);                     // 2.5 (chatmention1): Mitglieder des Chats zuerst
     pk.t = setTimeout(function () {
       api('GET', '/api/chat/pages?q=' + q(m[2])).catch(function () { return { pages: [] }; }).then(function (r) {
-        pk.items = aiItem.concat(r.pages || []); pk.i = 0; box.textContent = '';
+        pk.items = aiItem.concat(ppl, r.pages || []); pk.i = 0; box.textContent = '';
         if (!pk.items.length) { box.hidden = true; return; }
         pk.items.forEach(function (p, i) {
           var b = el('button', 'picker-item' + (i === 0 ? ' on' : ''), p.ai ? '' : (p.icon || '📄') + ' ' + p.title); b.type = 'button'; b.setAttribute('role', 'option');
+          if (p.person) { b.textContent = ''; b.classList.add('ct-pick-p'); b.appendChild(avatar((p.title || '?').charAt(0).toUpperCase(), p.key, 'ct-av-s', p.avatar));
+                          b.appendChild(el('span', 'ct-pick-n', p.title)); b.appendChild(el('span', 'ct-pick-h', T('erwähnen'))); }
           if (p.ai) {                                    // KI (2.1): "@Marin" fragt die KI (nur auf Zuruf)
             b.classList.add('ct-pick-ai'); b.appendChild(HKAIAvatar(aiP(), 20)); b.appendChild(el('span', 'ct-pick-n', p.title));
             b.appendChild(el('span', 'ct-pick-h', T('KI fragen')));
@@ -3061,7 +3083,7 @@
         });
         box.hidden = false;
       });
-    }, aiItem.length ? 0 : 150);
+    }, aiItem.length || ppl.length ? 0 : 150);
   }
   function pickKey(e) {
     var box = $('ct-picker');
@@ -3076,10 +3098,304 @@
   function pickApply(i) {
     var p = pk.items[i], t = $('ct-input'); if (!p) return;
     var label = '@' + p.title.replace(/\s+/g, ' ').slice(0, 60);
-    if (!p.ai) S.mentions[label] = p.id;
+    if (p.person) S.people[label] = p.ref;                 // 2.5: Person erwaehnen
+    else if (!p.ai) S.mentions[label] = p.id;
     t.value = t.value.slice(0, pk.start) + label + ' ' + t.value.slice(t.selectionStart);
     var pos = pk.start + label.length + 1; t.setSelectionRange(pos, pos);
     $('ct-picker').hidden = true; t.focus(); aiHint();
+  }
+
+  // --- Chat-Alltag (2.5, Spezifikation A + C; saga/chat_prefs.py, saga/chat_unfurl.py) ---------------------------------------
+  // Stummschalten mit Dauer + Modus (mute2), Anheften (chatpin1), als ungelesen markieren (markunread1), Gruppen-/Seiten-Chats
+  // ausblenden (chathide1), Entwuerfe je Chat (nur dieser Browser), Emoji im Eingabefeld, @-Erwaehnung von Personen
+  // (chatmention1: Token <@kennung> im verschluesselten Text, mentions neben dem Chiffrat), Linkvorschau (unfurl1: vom
+  // Absender geholt, verschluesselt in der Nachricht, Bild als verschluesselter Anhang), Medienuebersicht.
+  function fmtStrip(t) { return window.SagaChatFmt ? window.SagaChatFmt.strip(t) : t; }
+  function fileIds(body) {
+    var a = [];
+    (body.files || []).forEach(function (f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); });
+    if (body.preview && body.preview.img && body.preview.img.id) a.push(body.preview.img.id);
+    return a;
+  }
+  function patchChat(c, b) {
+    return api('PATCH', '/api/chats/' + c.id, b).then(function (r) {
+      var nc = r.chat || {};
+      ['muted', 'muted_until', 'notify', 'pinned', 'pinned_at', 'unread_mark', 'hidden', 'unread'].forEach(function (k) { if (k in nc) c[k] = nc[k]; });
+      if (S.cur && S.cur.id === c.id) Object.assign(S.cur, nc);
+      return loadList().then(function () { return nc; });
+    }).catch(function (e) { HK.toast(e.message); throw e; });
+  }
+  // Stummschalten
+  var fUntil = new Intl.DateTimeFormat(HK.locale, { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  function muteLabel(c) {
+    if (!c.muted) return c.notify === 'mentions' ? T('Nur Erwähnungen') : c.notify === 'none' ? T('Mitteilungen aus') : T('Stummschalten');
+    if (c.muted_until > 0) return T('Stumm bis {time}', { time: fUntil.format(new Date(c.muted_until * 1000)) });
+    return T('Stummgeschaltet');
+  }
+  function muteSub(sm, c, after) {
+    function go(b) { HK.closeMenu(); patchChat(c, b).then(function () { if (after) after(); }).catch(function () {}); }
+    var now = Date.now() / 1000, eve = new Date(); eve.setHours(24, 0, 0, 0);
+    if (c.muted) sm.appendChild(HK.menuItem(T('Stummschaltung aufheben'), function () { go({ muted_until: 0 }); }, { icon: '🔔' }));
+    [[T('1 Stunde'), now + 3600], [T('8 Stunden'), now + 8 * 3600], [T('Bis morgen'), eve.getTime() / 1000 + 8 * 3600],
+     [T('1 Woche'), now + 7 * 86400], [T('Für immer'), -1]].forEach(function (x) {
+      sm.appendChild(HK.menuItem(x[0], function () { go({ muted_until: x[1] }); }, { on: x[1] === -1 && c.muted_until === -1 }));
+    });
+    sm.appendChild(el('div', 'menu-sep'));
+    sm.appendChild(el('div', 'menu-label', T('Mitteilungen')));
+    [['all', T('Alle Nachrichten')], ['mentions', T('Nur Erwähnungen und Antworten')], ['none', T('Keine')]].forEach(function (x) {
+      sm.appendChild(HK.menuItem(x[1], function () { go({ notify: x[0] }); }, { on: (c.notify || 'all') === x[0] }));
+    });
+  }
+  function muteMenu(anchor, c, after) { HK.openMenu(anchor, function (menu) { menu.textContent = ''; muteSub(menu, c, after); }); }
+  function alltagItems(menu, anchor, c) {
+    menu.appendChild(HK.menuItem(muteLabel(c), null, { icon: c.muted ? '🔕' : '🔔', sub: function (sm) { muteSub(sm, c); } }));
+    menu.appendChild(HK.menuItem(c.pinned ? T('Loslösen') : T('Anheften'), function () {
+      HK.closeMenu(); patchChat(c, { pinned: !c.pinned }).catch(function () {});
+    }, { icon: '📌' }));
+    if (!c.unread && !c.unread_mark) menu.appendChild(HK.menuItem(T('Als ungelesen markieren'), function () {
+      HK.closeMenu(); patchChat(c, { unread_mark: true }).then(function () { if (S.cur && S.cur.id === c.id) { closeChat(); history.replaceState(null, '', location.pathname); } }).catch(function () {});
+    }, { icon: '●' }));
+    if (c.can_hide) menu.appendChild(HK.menuItem(c.hidden ? T('Wieder anzeigen') : T('Für mich ausblenden'), function () {
+      HK.closeMenu();
+      patchChat(c, { hidden: !c.hidden }).then(function () {
+        if (!c.hidden) return;
+        HK.toast(T('Ausgeblendet – der Chat kommt zurück, wenn dich jemand erwähnt.'));
+        if (S.cur && S.cur.id === c.id) { closeChat(); history.replaceState(null, '', location.pathname); }
+      }).catch(function () {});
+    }, { icon: c.hidden ? '👁' : '🙈' }));
+  }
+  // Ausgeblendete Chats: Bereich unten in der Liste (beim Filtern durchsucht)
+  function hiddenLoad() {
+    if (S.hidT) return S.hidT;
+    S.hidT = api('GET', '/api/chats?hidden=1&device=' + q(dev())).then(function (r) {
+      S.hid = r.chats || []; S.hid.forEach(freeTitle); S.hidT = null; drawList();
+    }).catch(function () { S.hidT = null; });
+    return S.hidT;
+  }
+  function hiddenSection(ul, f) {
+    if (!S.hiddenN) return;
+    var open = S.hidOpen || !!f, list = (S.hid || []).filter(function (c) { return !f || chatName(c).toLowerCase().indexOf(f) >= 0; });
+    if (f && !list.length) return;
+    var hli = el('li', 'ct-arch-h'), tg = el('button', 'ct-arch-t'); tg.type = 'button'; tg.id = 'ct-hid-toggle';
+    tg.setAttribute('aria-expanded', open ? 'true' : 'false');
+    tg.appendChild(el('span', 'ct-arch-ic', open ? '▾' : '▸')); tg.appendChild(el('span', null, T('Ausgeblendet ({n})', { n: S.hiddenN })));
+    tg.addEventListener('click', function () { S.hidOpen = !S.hidOpen; if (S.hidOpen) hiddenLoad(); drawList(); var x = $('ct-hid-toggle'); if (x) x.focus(); });
+    hli.appendChild(tg); ul.appendChild(hli);
+    if (open) list.forEach(function (c) { var li = listItem(c); li.classList.add('ct-hidden-c'); ul.appendChild(li); });
+  }
+  $('ct-filter').addEventListener('input', function () { if (this.value.trim() && S.hiddenN && !S.hid) hiddenLoad(); });
+
+  // Entwuerfe: je Konto und Chat in localStorage (beim Abmelden geloescht, static/settings.js), nie an den Server
+  var DRAFT = 'saga-chat-draft:' + ME + ':', draftT = null;
+  function draftKey(cid) { return DRAFT + cid; }
+  function draftSave() {
+    clearTimeout(draftT); draftT = null;
+    var c = S.cur; if (!c || S.edit) return;
+    var v = $('ct-input').value;
+    try {
+      if (v.trim()) localStorage.setItem(draftKey(c.id), JSON.stringify({ t: v.slice(0, 20000), p: S.people || {}, n: S.mentions || {}, at: Date.now() }));
+      else localStorage.removeItem(draftKey(c.id));
+    } catch (e) { /* ohne Speicher: kein Entwurf */ }
+    var x = S.chats.filter(function (y) { return y.id === c.id; })[0];
+    if (x && !!x._draft !== !!v.trim()) { x._draft = !!v.trim(); drawList(); }
+  }
+  function draftSoon() { clearTimeout(draftT); draftT = setTimeout(draftSave, 400); }
+  function draftLoad(cid) {
+    var d = null;
+    try { d = JSON.parse(localStorage.getItem(draftKey(cid)) || 'null'); } catch (e) { d = null; }
+    if (!d || typeof d.t !== 'string') return;
+    $('ct-input').value = d.t; S.people = d.p && typeof d.p === 'object' ? d.p : {}; S.mentions = d.n && typeof d.n === 'object' ? d.n : {};
+    autosize(); micDraw(); unfSoon();
+  }
+  function draftDrop(cid) {
+    try { localStorage.removeItem(draftKey(cid)); } catch (e) { /* egal */ }
+    var x = S.chats.filter(function (y) { return y.id === cid; })[0]; if (x && x._draft) { x._draft = false; drawList(); }
+  }
+  function hasDraft(cid) { try { return !!localStorage.getItem(draftKey(cid)); } catch (e) { return false; } }
+  window.addEventListener('pagehide', draftSave);
+
+  // Emoji im Eingabefeld: dieselbe Auswahl wie bei Reaktionen (static/chat-emoji.js)
+  $('ct-emoji').addEventListener('click', function () {
+    var b = this, inp = $('ct-input');
+    if (!window.SagaEmoji || !S.cur) return;
+    var a = inp.selectionStart, z = inp.selectionEnd;
+    HK.openMenu(b, function (menu) {
+      menu.textContent = '';
+      window.SagaEmoji.picker(menu, function (e) {
+        HK.closeMenu();
+        inp.value = inp.value.slice(0, a) + e + inp.value.slice(z);
+        var pos = a + e.length; inp.focus(); inp.setSelectionRange(pos, pos); a = z = pos;
+        autosize(); micDraw(); draftSoon();
+      });
+    });
+  });
+
+  // @-Erwaehnung von Personen: Kennung = Handle (Stufe 3/foederiert) bzw. ref (v1), nie der Anmeldename anderer
+  function memRef(c, m) { return m.handle || m.ref || ''; }
+  function peopleFor(c, qy) {
+    if (!c) return [];
+    var ql = String(qy || '').toLowerCase();
+    return (c.members || []).filter(function (m) { return !m.me && memRef(c, m) && String(m.name || '').toLowerCase().indexOf(ql) >= 0; })
+      .slice(0, 6).map(function (m) { return { person: true, title: m.name || '?', ref: memRef(c, m), key: m.username, avatar: m.avatar }; });
+  }
+  function applyPeople(text) {
+    var refs = [];
+    Object.keys(S.people || {}).sort(function (a, b) { return b.length - a.length; }).forEach(function (label) {
+      if (text.indexOf(label) < 0) return;
+      var r = S.people[label]; text = text.split(label).join('<@' + r + '>'); if (refs.indexOf(r) < 0) refs.push(r);
+    });
+    return { text: text, refs: refs };
+  }
+  function mentionName(c, r) {
+    if (!c) return null;
+    if (r === c.me_ref || r === c.my_handle) return MYNAME;
+    var m = (c.members || []).filter(function (x) { return x.handle === r || x.ref === r || (x.handle && x.handle.split('@')[0] === r); })[0];
+    return m ? m.name : null;
+  }
+  function mentionEl(r) {
+    var c = S.cur, nm = mentionName(c, r), me = c && (r === c.me_ref || r === c.my_handle);
+    var sp = el('span', 'ct-mention' + (me ? ' ct-mention-me' : ''), '@' + (nm || T('Unbekannt')));
+    sp.dataset.ref = r;
+    return sp;
+  }
+  function plainMentions(t) {
+    return String(t || '').replace(/<@(~[a-z2-7]{16}(?:@[a-z0-9.:\-]{1,260})?)>/g, function (_, r) { return '@' + (mentionName(S.cur, r) || T('Unbekannt')); });
+  }
+  function mentionsMe(c, m) {
+    var t = m.body && m.body.text; if (!t || !c) return false;
+    return (c.me_ref && t.indexOf('<@' + c.me_ref + '>') >= 0) || (c.my_handle && t.indexOf('<@' + c.my_handle + '>') >= 0);
+  }
+
+  // Linkvorschau: erste Adresse im Text; der Server holt (netguard), dieses Geraet verschluesselt sie in die Nachricht
+  var U = { url: null, data: null, off: {}, t: null, req: 0 };
+  function unfOn() { return hasFeat2('unfurl1'); }
+  function hasFeat2(f) { return !!(S.ver && (S.ver.features || []).indexOf(f) >= 0); }
+  api('GET', '/api/version').then(function (v) { S.ver = v; }).catch(function () {});
+  function firstUrl(t) { var m = /(https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]])/.exec(String(t || '')); return m ? m[1] : null; }
+  function unfReset() { clearTimeout(U.t); U.url = null; U.data = null; U.off = {}; U.req++; unfDraw(); }
+  function unfSoon() {
+    clearTimeout(U.t);
+    U.t = setTimeout(function () {
+      var u = unfOn() && S.cur ? firstUrl($('ct-input').value) : null;
+      if (u === U.url) return;
+      U.url = u; U.data = null; unfDraw();
+      if (!u || U.off[u]) return;
+      var my = ++U.req;
+      api('GET', '/api/chat/unfurl?url=' + q(u)).then(function (d) {
+        if (my !== U.req || U.url !== u) return;
+        U.data = d && (d.title || d.desc) ? d : null; unfDraw();
+      }).catch(function () {});
+    }, 600);
+  }
+  function unfFor(text) { var u = firstUrl(text); return u && U.data && U.url === u && !U.off[u] ? U.data : null; }
+  function unfDraw() {
+    var box = $('ct-unf'); box.textContent = '';
+    var d = U.data; box.hidden = !d;
+    if (!d) return;
+    var card = unfBox(d, d.image ? 'data:' + d.image.mime + ';base64,' + d.image.b64 : null);
+    var x = el('button', 'icon-btn ct-unf-x', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Vorschau entfernen')); x.title = T('Vorschau entfernen');
+    x.addEventListener('click', function () { U.off[U.url] = true; U.data = null; unfDraw(); $('ct-input').focus(); });
+    card.appendChild(x); box.appendChild(card);
+  }
+  function unfBox(d, imgUrl) {
+    var card = el('div', 'ct-unf-card');
+    if (imgUrl) { var im = el('img', 'ct-unf-img'); im.alt = ''; im.src = imgUrl; card.appendChild(im); }
+    var t = el('div', 'ct-unf-t');
+    if (d.site) t.appendChild(el('span', 'ct-unf-site', String(d.site).slice(0, 80)));
+    if (d.title) t.appendChild(el('b', 'ct-unf-title', String(d.title).slice(0, 200)));
+    if (d.desc) t.appendChild(el('span', 'ct-unf-desc', String(d.desc).slice(0, 300)));
+    card.appendChild(t);
+    return card;
+  }
+  // Vorschau in die Nachricht: {url, title, desc, site, img?: {id, k, m, w, h, s}} - Bild wie ein Vorschaubild verschluesselt
+  function unfAttach(c, body, d) {
+    if (!d) return Promise.resolve();
+    body.preview = { url: String(d.url).slice(0, 2000), title: String(d.title || '').slice(0, 200), desc: String(d.desc || '').slice(0, 300), site: String(d.site || '').slice(0, 80) };
+    if (!d.image) return Promise.resolve();
+    var raw = Uint8Array.from(atob(d.image.b64), function (ch) { return ch.charCodeAt(0); }).buffer, n = raw.byteLength;
+    return run('enc', { cid: fileCid(c), bytes: raw }, [raw]).then(function (eo) {
+      return upload(c.id, new Blob([eo.blob])).then(function (id) {
+        body.preview.img = { id: id, k: eo.key, m: 'image/jpeg', w: d.image.w, h: d.image.h, s: n };
+      });
+    }).catch(function () { /* ohne Bild */ });
+  }
+  function unfCard(c, m) {
+    var p = m.body.preview || {}, u = String(p.url || '');
+    if (!/^https?:\/\//.test(u)) return null;
+    var a = el('a', 'ct-unf-msg'); a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    var card = unfBox(p, null); a.appendChild(card);
+    var f = p.img;
+    if (f && f.id && f.k) {
+      var im = el('img', 'ct-unf-img'); im.alt = ''; card.insertBefore(im, card.firstChild);
+      var cid = fileCid(c, m), key = 't:' + f.id, have = memGet(key);
+      if (have) im.src = have;
+      else lazy(im, function (signal) {
+        return getBlob(f, signal).then(function (buf) { return run('dec', { cid: cid, blob: buf, key: f.k }, [buf]); }).then(function (r) {
+          var url = URL.createObjectURL(new Blob([r.plain], { type: 'image/jpeg' })); memPut(key, url); im.src = url;
+        });
+      }, function () { im.remove(); });
+    }
+    return a;
+  }
+
+  // Kachel der Medienuebersicht: Vorschaubild direkt (das Nachladen nach Sichtbarkeit gilt nur im Nachrichtenbereich)
+  function mediaTile(cid, f) {
+    var name = String(f.n || T('Datei')).slice(0, 200), b = el('button', 'ct-md-tile'); b.type = 'button'; b.setAttribute('aria-label', name);
+    var im = el('img'); im.alt = name; b.appendChild(im);
+    if (VID && VID.isVideo(f)) b.appendChild(el('span', 'ct-md-play', '▶'));
+    thumbUrl(cid, f).then(function (u) { im.src = u; }, function () { b.textContent = '🖼'; });
+    b.addEventListener('click', function () { if (VID && VID.isVideo(f)) viewVideo(cid, f, name); else viewImage(cid, f, name); });
+    return b;
+  }
+  // Medienuebersicht: Bilder/Videos, Dateien, Links aus den Nachrichten des Chats (Server hilft mit ?has=file)
+  function mediaView(c) {
+    var box = overlay(T('Medien, Dateien, Links'), { wide: true });
+    var tabs = el('div', 'ct-md-tabs'), list = el('div', 'ct-md-list'), more = btn(T('Ältere laden'), 'small ct-md-more');
+    tabs.setAttribute('role', 'tablist');
+    var st = { tab: 'media', files: [], links: [], before: 0, done: false, linkBefore: 0, linkDone: false };
+    [['media', T('Medien')], ['files', T('Dateien')], ['links', T('Links')]].forEach(function (x) {
+      var b = el('button', 'ct-md-tab', x[1]); b.type = 'button'; b.setAttribute('role', 'tab'); b.dataset.tab = x[0];
+      b.addEventListener('click', function () { st.tab = x[0]; draw(); });
+      tabs.appendChild(b);
+    });
+    box.appendChild(tabs); box.appendChild(list); box.appendChild(more);
+    function decrypt1(m, devs, ids) {
+      try { return isFed(c) && m.sender_handle ? decryptV2(c, m) : decrypt(c.id, m, devs || {}, ids || {}); } catch (e) { return null; }
+    }
+    function load(kind) {
+      var linkMode = kind === 'links', b4 = linkMode ? st.linkBefore : st.before;
+      var url = '/api/chats/' + c.id + '/messages?device=' + q(dev()) + (linkMode ? '' : '&has=file') + '&limit=100' + (b4 ? '&before=' + b4 : '');
+      return api('GET', url).then(function (r) {
+        var ms = r.messages || [];
+        ms.forEach(function (m) {
+          var d = decrypt1(m, r.devices, r.idents); if (!d || !d.body) return;
+          m.body = d.body;
+          if (linkMode) {
+            var t = String(d.body.text || ''), re = /(https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]])/g, x;
+            while ((x = re.exec(t))) st.links.push({ url: x[1], m: m });
+          } else (d.body.files || []).forEach(function (f) { st.files.push({ f: f, m: m }); });
+        });
+        if (ms.length) { if (linkMode) st.linkBefore = ms[0].seq; else st.before = ms[0].seq; }
+        if (!r.more) { if (linkMode) st.linkDone = true; else st.done = true; }
+      });
+    }
+    function draw() {
+      Array.prototype.forEach.call(tabs.children, function (b) { var on = b.dataset.tab === st.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+      list.textContent = ''; list.className = 'ct-md-list ct-md-' + st.tab;
+      var items = st.tab === 'links' ? st.links : st.files.filter(function (x) {
+        var med = IMG.test(x.f.m) || (VID && VID.isVideo(x.f)); return st.tab === 'media' ? med : !med && !x.f.voice;
+      });
+      if (!items.length) list.appendChild(el('p', 'hk-hint', T('Nichts gefunden (in den geladenen Nachrichten).')));
+      items.forEach(function (x) {
+        if (st.tab === 'links') {
+          var a = el('a', 'ct-md-link', x.url); a.href = x.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; list.appendChild(a);
+        } else list.appendChild(st.tab === 'media' ? mediaTile(fileCid(c, x.m), x.f) : fileEl(fileCid(c, x.m), x.f));
+      });
+      var done = st.tab === 'links' ? st.linkDone : st.done;
+      more.hidden = done;
+    }
+    more.addEventListener('click', function () { busy(more, true); load(st.tab).then(function () { busy(more, false); draw(); }, function (e) { busy(more, false); HK.toast(e.message); }); });
+    Promise.all([load('media'), load('links')]).then(draw, function (e) { HK.toast(e.message); draw(); });
   }
 
   // --- Kopf: Suche, Menue ---------------------------------------------------------------------------------------
@@ -3107,9 +3423,8 @@
       else menu.appendChild(HK.menuItem(T('Gruppeninfo …'), function () { HK.closeMenu(); groupInfo(); }, { icon: '👥', hint: String(c.member_count) }));
       if (S.ai && S.ai.chat) menu.appendChild(HK.menuItem(c.ai ? T('{name} hier nicht mehr erlauben', { name: aiP().name }) : T('{name} in diesem Chat erlauben', { name: aiP().name }),
         function () { HK.closeMenu(); aiToggle(c); }, { icon: '✦' }));
-      menu.appendChild(HK.menuItem(c.muted ? T('Benachrichtigungen an') : T('Stummschalten'), function () {
-        HK.closeMenu(); api('PATCH', '/api/chats/' + c.id, { muted: !c.muted }).then(function () { loadList(); }).catch(function (e) { HK.toast(e.message); });
-      }, { icon: c.muted ? '🔔' : '🔕' }));
+      menu.appendChild(HK.menuItem(T('Medien, Dateien, Links'), function () { HK.closeMenu(); mediaView(c); }, { icon: '🖼' }));     // 2.5
+      alltagItems(menu, anchor, c);                       // 2.5: Stummschalten (Dauer/Modus), Anheften, ungelesen, ausblenden
       // Bughunt V12: die Laufzeiten als Untermenue (wie "Verschieben nach ›"), die aktuelle Wahl als Hinweis
       var mx = (S.me && S.me.limits && S.me.limits.retention_max) || 0;
       var rets = RET.filter(function (r) { return !(mx && (r[0] === 0 || r[0] > mx)); });
@@ -3136,9 +3451,7 @@
     HK.openMenu(anchor, function (menu) {
       menu.textContent = '';
       menu.appendChild(HK.menuItem(T('Öffnen'), function () { HK.closeMenu(); location.hash = 'c' + c.id; if (S.cur && S.cur.id === c.id) openChat(c.id); }, { icon: '↗' }));
-      menu.appendChild(HK.menuItem(c.muted ? T('Benachrichtigungen an') : T('Stummschalten'), function () {
-        HK.closeMenu(); api('PATCH', '/api/chats/' + c.id, { muted: !c.muted }).then(function () { loadList(); }).catch(function (e) { HK.toast(e.message); });
-      }, { icon: c.muted ? '🔔' : '🔕' }));
+      alltagItems(menu, anchor, c);                       // 2.5: Stummschalten (Dauer/Modus), Anheften, ungelesen, ausblenden
       manageItems(menu, c);
     });
   }
@@ -3736,9 +4049,11 @@
       });
       // unten: Verlassen, Stummschalten, Archivieren
       var bar = el('div', 'ct-gi-foot');
-      bar.appendChild(btn(c.muted ? '🔔 ' + T('Benachrichtigungen an') : '🔕 ' + T('Stummschalten'), 'small', function () {
-        api('PATCH', '/api/chats/' + c.id, { muted: !c.muted }).then(function () { return giAfter(c); }).catch(function (e) { HK.toast(e.message); });
-      }));
+      var mbt = btn((c.muted ? '🔕 ' : '🔔 ') + muteLabel(c), 'small ct-gi-mute', function () {        // 2.5: Dauer und Modus
+        HK.openMenu(mbt, function (menu) { menu.textContent = ''; muteSub(menu, c, function () { return giAfter(c); }); });
+      });
+      bar.appendChild(mbt);
+      bar.appendChild(btn('🖼 ' + T('Medien, Dateien, Links'), 'small ct-gi-media', function () { mediaView(c); }));                      // 2.5
       bar.appendChild(btn(c.archived ? '⤴ ' + T('Aus Archiv holen') : '🗄 ' + T('Archivieren'), 'small', function () { archive(c, !c.archived).then(function () { if (GI) draw(); }); }));
       if (c.kind === 'free') bar.appendChild(btn('⎋ ' + T('Gruppe verlassen'), 'small btn-danger ct-gi-leave', function () { leaveGroup(c); }));
       wrap.appendChild(bar);

@@ -22,6 +22,9 @@
         try {                                          // Videos (2.4): Schluessel laufender Wiedergaben im Service Worker vergessen
           if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ op: 'clear' });
         } catch (e) { /* egal */ }
+        try {                                          // 2.5: Chat-Entwuerfe (nur in diesem Browser, static/chat.js) mit abmelden
+          for (var i = localStorage.length - 1; i >= 0; i--) { var k = localStorage.key(i); if (k && k.indexOf('saga-chat-draft:') === 0) localStorage.removeItem(k); }
+        } catch (e) { /* ohne Speicher: nichts zu loeschen */ }
         try {
           if (document.body.dataset.uid) indexedDB.deleteDatabase('saga-chat-blobs-' + document.body.dataset.uid);
           if (!indexedDB.databases) return go();

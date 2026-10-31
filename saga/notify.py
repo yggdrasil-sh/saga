@@ -27,7 +27,7 @@ from saga.sharing import unread_count as pages_unread
 router = APIRouter()
 
 KINDS = ("share.added", "share.role", "comment.new", "comment.reply", "publish.withdrawn", "chat.message", "call.missed",
-         "db.assigned", "page.mention", "comment.mention")   # abschaltbar, in dieser Reihenfolge (2.5: Datenbank-Zeile, Erwaehnungen)
+         "db.assigned", "page.mention", "comment.mention", "chat.mention")   # abschaltbar, in dieser Reihenfolge (2.5: Datenbank-Zeile, Erwaehnungen)
 FUTURE = ()
 RETENTION_DAYS = 90
 BUNDLE_SEC = 600                    # Kommentare derselben Unterhaltung innerhalb 10 Minuten -> eine Benachrichtigung
@@ -200,6 +200,8 @@ def _text(kind, actor, n, role, access):
         return t("{n} neue Nachrichten", n=n) if n > 1 else t("Neue Nachricht von {name}", name=who)
     if kind == "call.missed":
         return t("Verpasster Anruf von {name}", name=who)
+    if kind == "chat.mention":
+        return t("{name} hat dich in einem Chat erwähnt", name=who)
     if kind == "db.assigned":
         return t("{name} hat dich eingetragen", name=who) if n <= 1 else t("{name} hat dich {n}-mal eingetragen", name=who, n=n)
     return kind

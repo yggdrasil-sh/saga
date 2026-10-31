@@ -56,6 +56,7 @@ DEFAULTS = {
     "chat_v3": True,                       # 2.5: Chat-Stufe 3 (Handles, Reaktionen, Bearbeiten, Sprachnachrichten; saga.chat.make_v3).
                                            # Standard an - auch fuer bestehende Installationen ohne gespeicherten Wert; ein
                                            # ausdruecklich gespeichertes false bleibt aus (Admin -> Allgemein -> Chats)
+    "chat_unfurl": True,                   # 2.5 (Chat-Alltag): Linkvorschau ueber GET /api/chat/unfurl (saga.chat_unfurl)
     "chat_v3_days": 90,                    # 2.5: bestehende Chats spaetestens so viele Tage danach umstellen (saga.chat.convert_v3)
     "chat_quota_mb": 0,                    # 2.4: Speicher fuer Chat-Anhaenge je Konto in MB (0 = CHAT_QUOTA_MB, Standard 4096)
     "chat_video_max_mb": 0,                # 2.4: groesstes Video im Chat in MB (0 = VIDEO_MAX_MB, Standard 500)

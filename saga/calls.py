@@ -887,8 +887,7 @@ async def api_call(request: Request):
         _emit(c, [peer], "call.ring", {"call_id": cid, "chat_id": ch["id"], "media": media, "from_device": dev, "ring_s": ring_s(),
                                        "from": frm, **({"v": 2} if _v3(c, call) else {})})
         # Handy/Desktop: Art "call" (hohe Prioritaet, kurze Lebensdauer) - nie Inhalt; ohne Namen, wenn so eingestellt
-        muted = c.execute("SELECT muted FROM chat_member WHERE chat_id=? AND uid=?", (ch["id"], peer)).fetchone()
-        if not (muted and muted[0]):
+        if not chat.CP.muted_now(c, ch["id"], peer):     # 2.5: Stummschalten mit Dauer (saga.chat_prefs)
             bus.fire("push.send", c, uid=peer, kind="call", actor=uid, data={"chat": ch["id"], "call": cid})
         print(f"call: {cid[:8]} klingelt ({media}, Chat {ch['id']}, {len(sig)} Geraet(e))", flush=True)
         return chat._no_store({"ok": True, "call": _dict(c, call, uid)})
@@ -1032,8 +1031,7 @@ def ring_group(c, call, uids):
                                       **_dmf(call)})
         if silent:
             continue
-        muted = c.execute("SELECT muted FROM chat_member WHERE chat_id=? AND uid=?", (call["chat_id"], u)).fetchone()
-        if not (muted and muted[0]):
+        if not chat.CP.muted_now(c, call["chat_id"], u):
             # actor auch bei fremden Anrufenden (wie 1:1 in fed_calls): die Mitteilung nennt den Namen (caller fuer CallKit)
             bus.fire("push.send", c, uid=u, kind="call.group", actor=st, data={"chat": call["chat_id"], "call": call["id"]})
 
