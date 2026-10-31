@@ -2371,13 +2371,16 @@ PUT /api/chat/privacy
 - **Anmeldung:** Fehlversuche bremsen statt sperren; die Meldung (429/401 mit `error`) nennt die Wartezeit. Eine harte
   Sperre gibt es nur nach sehr vielen Versuchen von vielen Adressen (Benachrichtigung `login.locked`, `system: true`).
 
-## Chat-Stufe 3: Krypto über Handles (2.5, in Arbeit)
+## Chat-Stufe 3: Krypto über Handles (2.5)
 
 Stand der ersten Stufe; Konzept „Krypto v3 über Handles“. **Kein neues Krypto-Format:** Chats der Stufe 3 sind
 `saga-chat/v2` (`docs/APP-API-FED.md`, Abschnitt 6) – gebunden an den stabilen Handle `~x@host` und `chat_ref` –, auch
 wenn alle Mitglieder auf diesem Server sind. Der Server legt neue lokale Chats nur dann in Stufe 3 an, wenn die
-Einstellung `chat_v3` an ist (vorerst Standard aus) und alle Mitglieder ein Handle-Zertifikat haben (jedes Konto mit
-einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
+Einstellung `chat_v3` an ist (Standard **an**; nur ein ausdrücklich gespeichertes „aus“ schaltet ab) und alle
+Mitglieder mit eingerichtetem Chat ein Handle-Zertifikat haben (jedes Konto mit einem Gerät ab App 2.3; Konten ohne
+Chat-Identität halten nicht auf). Bestehende Chats v1 stellt der Server nach und nach um (unten „Umstellung“). Clients
+müssen deshalb mit Chats v1 **und** Stufe 3 nebeneinander rechnen, auch nach der Frist (eingerichtete Konten ohne
+Handle-Zertifikat, Einstellung aus).
 
 - **Kopfzeile `X-Saga-Chat`:** höchste Chat-Stufe des Clients. `3` (Apps/Web 2.5): Chat mit `v: 3`, `fed: false`.
   `2` (Apps/Web 2.3/2.4): **Kompat-Sicht** – derselbe Chat als `v: 2` mit `ref`, `home_self: true`, `my_handle`; die
@@ -2402,14 +2405,16 @@ einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
   mit `from` als Handle, `call.state.by` als Handle, Anruf-Eintrag im Chat (`kind: call`) mit `from`/`to` als Handles.
   `POST /api/calls/{id}/invite` nimmt Handles.
 - **Umstellung bestehender Chats:** Der Server stellt Chats v1 auf Stufe 3 um, sobald alle aktiven Geräte `chat3` melden
-  (Clients der Stufe 3 tun das automatisch bei jeder Anfrage mit `device`), spätestens nach `chat_v3_days`. Danach:
+  (Clients der Stufe 3 tun das automatisch bei jeder Anfrage mit `device`; Browser-Geräte zählen nicht), spätestens nach
+  `chat_v3_days` (Standard 90, ab dem ersten Lauf mit eingeschalteter Stufe 3). Stündlicher Auftrag, je Chat eine
+  Transaktion, höchstens 20 s je Lauf (der nächste macht weiter). Danach:
   Chat-Objekt mit `v3: {seq, at, forced}`; Nachrichten mit `seq ≤ v3.seq` bzw. ohne `sender_handle` mit v1 prüfen
   (Absender-Benutzername und `devices`/`idents` gibt es dafür weiter), alles danach im Format v2; Systemzeile
   `{"type": "crypto", "level": 3, "verify"?: true}`. In Chats v1 liefert der Server Clients der Stufe 3
   `members[].handle`: daraus übernimmt die App ihr Vertrauen `trust:<benutzer>` → `trust2:<handle>`, aber nur bei gleichem
   Identitätsschlüssel (`tests/vectors/chat_v3.json`, `tofu_migrate`). Senden v1 in einen gerade umgestellten Chat: 409
   mit `chat_changed: true` – Chat neu laden.
-- **Reaktionen, Bearbeiten, Sprachnachrichten (`x3_ok`):** nur mit der Einstellung `chat_v3` (wie Stufe 3, Standard aus;
+- **Reaktionen, Bearbeiten, Sprachnachrichten (`x3_ok`):** nur mit der Einstellung `chat_v3` (wie Stufe 3, Standard an;
   aus: keine Fähigkeit `chat3` in der Föderation, `x3_ok: false`, Endpunkte 409, keine `react`/`edit`/`voice` in
   `features`) und nur, wenn das Chat-Objekt `x3_ok: true` meldet (Format v2,
   angenommen, nicht schreibgeschützt, alle Server mit `chat3`); `GET /api/chat/me` meldet `features` mit `react`, `edit`,

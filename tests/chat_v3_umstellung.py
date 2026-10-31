@@ -340,7 +340,8 @@ def run_default():
     CH.convert_v3(limit=100000)
     ok("Stichtag: Chat mit alter App umgestellt (forced)", v_of(dl["id"])["v"] == 3 and v_of(dl["id"])["forced"] == 1)
     s, lo = req("GET", f"/api/chats/{dl['id']}", L.k)                 # App ohne X-Saga-Chat (2.1/2.2)
-    ok("App ohne v2: fed_hint 'App aktualisieren'", s == 200 and "aktualisieren" in ((lo.get("chat") or {}).get("fed_hint") or ""), lo)
+    lc = lo.get("chat") or {}
+    ok("App ohne v2: Hinweis 'App aktualisieren' (Name/fed_hint)", s == 200 and "aktualisieren" in (lc.get("fed_hint") or "") + (lc.get("name") or ""), lc.get("name"))
     lm = L.msgs(dl["id"], lv=3)
     ok("Nach dem Update: Verlauf v1 lesbar", any(L.open(dl["id"], x).get("text") == "fuer Lena" for x in lm["messages"]
                                                   if x.get("kind") != "sys" and not x.get("sender_handle")), len(lm["messages"]))
@@ -407,9 +408,8 @@ def run_default():
     CH._conv["after"] = 0
     with connect() as c:
         blocked = c.execute("SELECT COUNT(*) FROM chat WHERE v=1 AND ref IS NULL AND home_peer IS NULL AND id<?", (min(more),)).fetchone()[0]
-    n1 = CH.convert_v3(limit=blocked + 3, budget=0)
-    n2 = CH.convert_v3(limit=blocked + 3, budget=0)
-    ok(f"Zeitbudget: erster Lauf ein Stapel ({n1}), zweiter macht weiter ({n2})", n1 == 3 and n2 == 4 and all(v_of(i)["v"] == 3 for i in more), (n1, n2, blocked))
+    ns = [CH.convert_v3(limit=blocked + 3, budget=0) for _ in range(3)]
+    ok(f"Zeitbudget: je Lauf ein Stapel, der naechste macht weiter ({ns})", ns == [3, 3, 1] and all(v_of(i)["v"] == 3 for i in more), (ns, blocked))
 
 
 if __name__ == "__main__":
