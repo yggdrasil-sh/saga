@@ -243,7 +243,7 @@ def part_grp2(anna, cleo, dora, ch):
        and cc.get("can_perms") is False and dc.get("can_perms") is True)
     # Rechte: Dora (C) setzt perm_send admins ueber das Heim
     s, d = api("c", "fc-dora", "PATCH", f"/api/chats/{dc['id']}", {"perm_send": "admins"})
-    ok(f"C: Dora setzt perm_send admins (Auftrag 'perm' ans Heim) ({s})", s == 200 and (d.get("chat") or {}).get("perm_send") == "admins", d)
+    ok(f"C: Dora setzt perm_send admins (Auftrag 'perm' ans Heim) ({s}, {str(d)[:80] if s != 200 else ''})", s == 200 and (d.get("chat") or {}).get("perm_send") == "admins")
     ok("A: Heim hat perm_send admins", api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("perm_send") == "admins")
     ok("B: Cleos Kopie: perm_send admins, can_send false (Ereignis chat.perm)",
        bool(wait(lambda: (cleo.chat(ch["ref"]) or {}).get("can_send") is False, 15)))
@@ -260,7 +260,7 @@ def part_grp2(anna, cleo, dora, ch):
     m = cleo.msg(cc, "", body={"v": 1, "type": "desc", "desc": "Gruppe ueber drei Server"})
     m["kind"] = "desc"
     s, d = api("b", "fb-cleo", "POST", f"/api/chats/{cc['id']}/messages", m)
-    ok(f"B: Cleo setzt die Beschreibung ({s})", s == 200, d)
+    ok(f"B: Cleo setzt die Beschreibung ({s}, {str(d)[:80] if s != 200 else ''})", s == 200)
     dm_ = wait(lambda: (dora.chat(ch["ref"]) or {}).get("desc_msg"), 15)
     ok("C: desc_msg kommt an und ist lesbar", bool(dm_) and dora.read(dora.chat(ch["ref"]), dm_).get("desc") == "Gruppe ueber drei Server")
     ok("A: desc_msg beim Heim", (api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("desc_msg") or {}).get("id") == m["id"])
@@ -268,7 +268,7 @@ def part_grp2(anna, cleo, dora, ch):
     s, d, mc = cleo.send(cleo.chat(ch["ref"]), "anheften bitte")
     ok("C: Nachricht von Cleo angekommen", wait(lambda: "anheften bitte" in dora.texts(dora.chat(ch["ref"])), 15))
     s, d = api("b", "fb-cleo", "POST", f"/api/chats/{cc['id']}/pins/{mc['id']}")
-    ok(f"B: Cleo heftet an (Auftrag 'pin') ({s}, {d.get('pins')})", s == 200 and d.get("pins") == [mc["id"]], d)
+    ok(f"B: Cleo heftet an (Auftrag 'pin') ({s}, {str(d)[:80]})", s == 200 and d.get("pins") == [mc["id"]])
     ok("C: pins kommt an (chat.pins)", bool(wait(lambda: (dora.chat(ch["ref"]) or {}).get("pins") == [mc["id"]], 15)))
     ok("A: pins beim Heim", api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("pins") == [mc["id"]])
     s, d = api("a", "fa-anna", "PATCH", f"/api/chats/{ch['id']}", {"perm_info": "admins"})
@@ -279,18 +279,16 @@ def part_grp2(anna, cleo, dora, ch):
     s, d = api("b", "fb-cleo", "DELETE", f"/api/chats/{cc['id']}/messages/{m5_of(anna, ch)}")
     ok(f"B: Cleo (kein Admin) loescht fremde Nachricht -> 403 ({s})", s == 403)
     s, d = api("c", "fc-dora", "DELETE", f"/api/chats/{dc['id']}/messages/{mc['id']}")
-    ok(f"C: Dora (Admin) loescht Cleos Nachricht ({s}, by_admin)", s == 200 and d.get("by_admin") is True, d)
-    tomb = lambda k, u, cid: sql(k, "SELECT kind FROM chat_msg WHERE id=?", (mc["id"],))   # noqa: E731
-    ok("A, B: Grabstein (kind tomb)", wait(lambda: tomb("a", None, None) == [("tomb",)] and tomb("b", None, None) == [("tomb",)], 15),
-       (tomb("a", None, None), tomb("b", None, None)))
+    ok(f"C: Dora (Admin) loescht Cleos Nachricht ({s}, {str(d)[:80]})", s == 200 and d.get("by_admin") is True)
+    kind_of = lambda k, mid: [list(r) for r in sql(k, "SELECT kind FROM chat_msg WHERE id=?", (mid,))]   # noqa: E731
+    ok("A, B: Grabstein (kind tomb)", wait(lambda: kind_of("a", mc["id"]) == [["tomb"]] and kind_of("b", mc["id"]) == [["tomb"]], 15))
     ok("Angeheftete Nachricht faellt ueberall raus", wait(lambda: (cleo.chat(ch["ref"]) or {}).get("pins") == [] and
                                                            api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("pins") == [], 15))
     s, d, mc2 = cleo.send(cleo.chat(ch["ref"]), "noch eine")
     wait(lambda: sql("a", "SELECT 1 FROM chat_msg WHERE id=?", (mc2["id"],)), 15)
     s, d = api("a", "fa-anna", "DELETE", f"/api/chats/{ch['id']}/messages/{mc2['id']}")
     ok(f"A: Anna (Heim-Admin) loescht fremde Nachricht ({s})", s == 200 and d.get("by_admin") is True)
-    ok("B, C: Grabstein", wait(lambda: sql("b", "SELECT kind FROM chat_msg WHERE id=?", (mc2["id"],)) == [("tomb",)]
-                                  and sql("c", "SELECT kind FROM chat_msg WHERE id=?", (mc2["id"],)) == [("tomb",)], 15))
+    ok("B, C: Grabstein", wait(lambda: kind_of("b", mc2["id"]) == [["tomb"]] and kind_of("c", mc2["id"]) == [["tomb"]], 15))
 
 
 def m5_of(anna, ch):
