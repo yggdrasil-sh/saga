@@ -811,11 +811,66 @@
     a.target = '_blank'; a.rel = 'noopener';
     li.appendChild(a); return li;
   }
+  // --- Kontakte (2.5, contacts1): Personen aus Direkt-Chats und freien Gruppen, auch nach Loeschen des Chats ---------------
+  // GET /api/chat/contacts -> {contacts: [{ref, name, sub, avatar, remote, host, ready, gone}]}; ref ist lokal der
+  // Such-Handle ('~…', wie users[].username), fremd '~x@host' (wie remote[].handle). Nie ein Anmeldename.
+  var CONTACTS_MAX = 30;
+  function loadContacts() {
+    return api('GET', '/api/chat/contacts?limit=' + CONTACTS_MAX).then(function (r) { return r.contacts || []; }, function () { return []; });
+  }
+  // Knopf "⋯" neben einem Kontakt: Menue "Aus Kontakten entfernen" (ausgeblendet, bis zu einem neuen gemeinsamen Chat)
+  function contactMore(li, ref, name, done) {
+    var m = el('button', 'icon-btn ct-contact-more', '⋯'); m.type = 'button';
+    m.setAttribute('aria-label', T('Optionen für {name}', { name: name })); m.setAttribute('aria-haspopup', 'menu');
+    m.addEventListener('click', function (e) {
+      e.stopPropagation();
+      HK.openMenu(m, function (menu) {
+        menu.appendChild(HK.menuItem(T('Aus Kontakten entfernen'), function () {
+          api('DELETE', '/api/chat/contacts/' + q(ref)).then(function () {
+            li.remove(); HK.toast(T('{name} aus den Kontakten entfernt.', { name: name })); if (done) done();
+          }).catch(function (e2) { HK.toast(e2.message); });
+        }, { icon: '✕', danger: true }));
+      });
+    });
+    li.classList.add('ct-contact'); li.appendChild(m);
+    return m;
+  }
+  // Eintrag der Personensuche/Kontaktliste: u = {key, name, sub, avatar, remote, gone, contact, ref}; pick(u) beim Klick
+  function personRow(u, pick) {
+    var li = el('li'), b = el('button', 'ct-person' + (u.remote ? ' ct-remote' : '') + (u.gone ? ' ct-gone' : '')); b.type = 'button';
+    b.appendChild(avatar((u.name || '?').charAt(0).toUpperCase(), u.key, '', u.avatar));
+    var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.name));          // 2.4 (W4): nie den Anmeldenamen zeigen
+    if (u.sub) t.appendChild(el('span', 'ct-item-s', u.sub));
+    b.appendChild(t);
+    if (u.gone) { b.disabled = true; b.title = T('Gerade nicht erreichbar'); }
+    else b.addEventListener('click', function () { pick(u); });
+    li.appendChild(b);
+    if (u.contact && u.ref) contactMore(li, u.ref, u.name);
+    return li;
+  }
+  // Kontakt (GET /api/chat/contacts) -> Eintrag fuer personRow
+  function contactItem(k) {
+    var sub = k.remote ? T('Person auf {host}', { host: k.host || k.sub }) : [k.sub || '', k.ready ? '' : T('hat Chats noch nicht eingerichtet')].filter(Boolean).join(' · ');
+    if (k.gone) sub = (k.remote ? T('Server {host} nicht verbunden', { host: k.host || k.sub }) : T('Konto nicht mehr aktiv'));
+    return { key: k.ref, ref: k.ref, name: k.name, sub: sub, avatar: k.avatar, remote: !!k.remote, gone: !!k.gone, contact: true,
+             username: k.ref, handle: k.remote ? k.ref : null };
+  }
+  // Ueberschrift + Kontakte (ohne Eingabe): zuletzt zuerst, hoechstens CONTACTS_MAX; keep(k) filtert (z. B. schon Mitglied)
+  function drawContacts(res, pick, keep) {
+    return loadContacts().then(function (ks) {
+      ks = ks.filter(function (k) { return !keep || keep(k); });
+      res.textContent = '';
+      if (!ks.length) return 0;
+      res.appendChild(el('li', 'ct-people-h', T('Kontakte')));
+      ks.forEach(function (k) { res.appendChild(personRow(contactItem(k), pick)); });
+      return ks.length;
+    });
+  }
   function newChat() {
     var box = overlay(T('Neue Unterhaltung'));
     var inp = el('input', 'hk-in ct-people-q'); inp.type = 'search'; inp.placeholder = T('Person oder Gruppe suchen'); inp.setAttribute('aria-label', T('Person oder Gruppe suchen'));
     box.appendChild(inp);
-    var res = el('ul', 'ct-people'); box.appendChild(res);
+    var res = el('ul', 'ct-people ct-people-list'); box.appendChild(res);
     var pick = [], chips = el('div', 'ct-chips'), name = el('input', 'hk-in'), mk = btn(T('Gruppe anlegen'), 'btn-primary ct-free-go');
     var grp = el('div', 'ct-free'); grp.hidden = true;
     grp.appendChild(el('p', 'hk-hint', T('Freie Gruppe: ausgewählte Personen, der Name wird verschlüsselt.'))); grp.appendChild(chips);
@@ -833,26 +888,30 @@
       mk.disabled = !pick.length;
     }
     drawChips();
+    // Auswahl einer Person (Suche oder Kontakt): Gruppe -> Chip, sonst Direkt-Chat (lokal per user, fremd per handle)
+    function choose(u) {
+      if (!grp.hidden) {
+        var key = u.remote ? u.handle : u.username;
+        if (!pick.some(function (p) { return (p.remote ? p.handle : p.username) === key; }))
+          pick.push(u.remote ? { username: u.handle, handle: u.handle, name: u.label || u.name, remote: true } : { username: u.username, name: u.name });
+        drawChips(); inp.value = ''; showContacts(); inp.focus(); return;
+      }
+      create(u.remote ? { kind: 'dm', handle: u.handle } : { kind: 'dm', user: u.username });
+    }
+    function showContacts() { drawContacts(res, choose).catch(function () { res.textContent = ''; }); }
+    showContacts();                                     // 2.5: ohne Eingabe die Kontakte (zuletzt zuerst)
     var tmr = null;
     inp.addEventListener('input', function () {
       clearTimeout(tmr);
       tmr = setTimeout(function () {
         var v = inp.value.trim();
-        if (!v) { res.textContent = ''; return; }          // 1-2 Zeichen: nur genaue Treffer (Server), z. B. "hd"
+        if (!v) { showContacts(); return; }                // 1-2 Zeichen: nur genaue Treffer (Server), z. B. "hd" - Kontakte als Teilwort
         api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
+          if (inp.value.trim() !== v) return;              // inzwischen weitergetippt
           res.textContent = '';
-          r.users.forEach(function (u) {
-            var li = el('li'), b = el('button', 'ct-person'); b.type = 'button';
-            b.appendChild(avatar((u.name || '?').charAt(0).toUpperCase(), u.username, '', u.avatar));
-            var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.name));          // 2.4 (W4): nie den Anmeldenamen zeigen
+          r.users.forEach(function (u) {                   // Kontakte stehen vorne (contact: true)
             var sub = [u.sub || '', u.ready ? '' : T('hat Chats noch nicht eingerichtet')].filter(Boolean).join(' · ');   // sub: fuer Gleichnamige
-            if (sub) t.appendChild(el('span', 'ct-item-s', sub));
-            b.appendChild(t);
-            b.addEventListener('click', function () {
-              if (!grp.hidden) { if (!pick.some(function (p) { return p.username === u.username; })) pick.push(u); drawChips(); inp.value = ''; res.textContent = ''; inp.focus(); }
-              else create({ kind: 'dm', user: u.username });
-            });
-            li.appendChild(b); res.appendChild(li);
+            res.appendChild(personRow({ key: u.username, ref: u.username, name: u.name, sub: sub, avatar: u.avatar, contact: !!u.contact, username: u.username }, choose));
           });
           r.groups.forEach(function (g) {
             var li = el('li'), b = el('button', 'ct-person'); b.type = 'button';
@@ -862,18 +921,10 @@
             li.appendChild(b); res.appendChild(li);
           });
           (r.remote || []).forEach(function (u) {                // 2.3: Adressbuch verbundener Server -> Direkt-Chat ueber Servergrenzen
-            var li = el('li'), b = el('button', 'ct-person ct-remote'); b.type = 'button';
-            b.appendChild(avatar((u.name || '?').charAt(0).toUpperCase(), u.handle, '', u.avatar));
-            var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.label || u.name));
-            t.appendChild(el('span', 'ct-item-s', T('Person auf {host} · erste Nachricht als Anfrage', { host: u.host }))); b.appendChild(t);
-            b.addEventListener('click', function () {
-              if (!grp.hidden) {                                  // 2.3: Gruppe mit Personen anderer Server (Heim = dieser Server)
-                if (!pick.some(function (p) { return p.handle === u.handle; })) pick.push({ username: u.handle, handle: u.handle, name: u.label || u.name, remote: true });
-                drawChips(); inp.value = ''; res.textContent = ''; inp.focus(); return;
-              }
-              create({ kind: 'dm', handle: u.handle });
-            });
-            li.appendChild(b); res.appendChild(li);
+            // 2.3: in der Gruppe mit Personen anderer Server ist dieser Server das Heim
+            res.appendChild(personRow({ key: u.handle, ref: u.handle, name: u.label || u.name, avatar: u.avatar, remote: true, contact: !!u.contact,
+                                        handle: u.handle, label: u.label,
+                                        sub: u.contact ? T('Person auf {host}', { host: u.host }) : T('Person auf {host} · erste Nachricht als Anfrage', { host: u.host }) }, choose));
           });
           if (!r.users.length && !r.groups.length && !(r.remote || []).length) res.appendChild(fedAddr(v) ? fedHint() : el('li', 'hk-hint', T('Keine Treffer.')));
         }).catch(function (e) { res.textContent = ''; res.appendChild(el('li', 'hk-status err', e.message)); });
@@ -3202,35 +3253,35 @@
     function added(c) { if (!GI) closeOverlay(); openChat(c.id); loadList(); }     // Gruppeninfo bleibt offen (zeichnet neu)
     {
       var inp = el('input', 'hk-in'); inp.type = 'search'; inp.placeholder = T('Person hinzufügen'); inp.setAttribute('aria-label', T('Person hinzufügen'));
-      var res = el('ul', 'ct-people'); box.appendChild(inp); box.appendChild(res);
+      var res = el('ul', 'ct-people ct-people-list'); box.appendChild(inp); box.appendChild(res);
+      // 2.5: Kontakte - ohne Eingabe als Liste (wer noch nicht Mitglied ist; fremde nur in Gruppen ueber Servergrenzen)
+      var isMem = function (ref) { return c.members.some(function (m) { return m.ref === ref || m.handle === ref || m.username === ref; }); };
+      var addOne = function (u) {
+        api('POST', '/api/chats/' + c.id + '/members', u.remote ? { handle: u.handle } : { user: u.username }).then(function () {
+          added(c);
+          if (c._title) sendBody(c.id, { v: 1, type: 'title', title: c._title }, 'title').catch(function () {});   // Name fuer Neue lesbar
+        }).catch(function (e) { HK.toast(e.message); });
+      };
+      var showContacts = function () {
+        drawContacts(res, addOne, function (k) { return !isMem(k.ref) && (!k.remote || isFed(c)); }).catch(function () { res.textContent = ''; });
+      };
+      showContacts();
       var tmr = null;
       inp.addEventListener('input', function () {
         clearTimeout(tmr); tmr = setTimeout(function () {
-          if (!inp.value.trim()) { res.textContent = ''; return; }
+          if (!inp.value.trim()) { showContacts(); return; }
           var v = inp.value.trim();
           api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
+            if (inp.value.trim() !== v) return;
             res.textContent = '';
             if (!r.users.length && !(r.remote || []).length && fedAddr(v)) res.appendChild(fedHint());
             if (!isFed(c) && (r.remote || []).length) res.appendChild(el('li', 'hk-hint', T('Personen anderer Saga-Server lassen sich nur zu neuen Gruppen hinzufügen – bitte eine neue Gruppe anlegen.')));
-            if (isFed(c)) (r.remote || []).filter(function (u) { return !c.members.some(function (m) { return m.handle === u.handle; }); }).forEach(function (u) {
-              var li = el('li'), b = el('button', 'ct-person ct-remote', (u.label || u.name)); b.type = 'button';
-              b.addEventListener('click', function () {
-                api('POST', '/api/chats/' + c.id + '/members', { handle: u.handle }).then(function () {
-                  added(c);
-                  if (c._title) sendBody(c.id, { v: 1, type: 'title', title: c._title }, 'title').catch(function () {});
-                }).catch(function (e) { HK.toast(e.message); });
-              });
-              li.appendChild(b); res.appendChild(li);
+            r.users.filter(function (u) { return !isMem(u.username); }).forEach(function (u) {        // Kontakte zuerst (contact: true)
+              res.appendChild(personRow({ key: u.username, ref: u.username, name: u.name, sub: u.sub, avatar: u.avatar, contact: !!u.contact, username: u.username }, addOne));
             });
-            r.users.filter(function (u) { return !c.members.some(function (m) { return (m.ref || m.username) === u.username || m.username === u.username; }); }).forEach(function (u) {
-              var li = el('li'), b = el('button', 'ct-person', u.name + (u.sub ? ' · ' + u.sub : '')); b.type = 'button';
-              b.addEventListener('click', function () {
-                api('POST', '/api/chats/' + c.id + '/members', { user: u.username }).then(function () {
-                  added(c);
-                  if (c._title) sendBody(c.id, { v: 1, type: 'title', title: c._title }, 'title').catch(function () {});   // Name fuer Neue lesbar
-                }).catch(function (e) { HK.toast(e.message); });
-              });
-              li.appendChild(b); res.appendChild(li);
+            if (isFed(c)) (r.remote || []).filter(function (u) { return !isMem(u.handle); }).forEach(function (u) {
+              res.appendChild(personRow({ key: u.handle, ref: u.handle, name: u.label || u.name, sub: T('Person auf {host}', { host: u.host }), avatar: u.avatar,
+                                          remote: true, contact: !!u.contact, handle: u.handle }, addOne));
             });
           }).catch(function () {});
         }, 250);

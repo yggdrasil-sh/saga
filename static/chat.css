@@ -368,3 +368,11 @@ button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
   .ct-gi-leave{margin-left:0}
   .ct-gi-foot .btn{flex:1 1 auto}
 }
+/* 2.5: Kontakte in "Neue Unterhaltung" / "Mitglied hinzufuegen" - scrollbare Liste, Menue je Kontakt */
+.ct-people-list{max-height:min(52vh,26rem);overflow-y:auto;overscroll-behavior:contain}
+.ct-people-h{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:.2rem .1rem 0}
+.ct-people li.ct-contact{display:flex;align-items:center;gap:.3rem}
+.ct-people li.ct-contact>.ct-person{flex:1;min-width:0}
+.ct-contact-more{flex:none;width:2.1rem;height:2.1rem}
+.ct-person.ct-gone{opacity:.55;cursor:default}
+.ct-person.ct-gone:hover{border-color:var(--border);background:none}
