@@ -213,7 +213,7 @@ def entries(c, uid, q="", limit=50, with_gone=True):
 
 
 def hide(c, uid, ref):
-    return c.execute("UPDATE chat_contact SET hidden=1 WHERE uid=? AND ref=?", (uid, ref)).rowcount
+    return c.execute("UPDATE chat_contact SET hidden=1 WHERE uid=? AND ref=? AND hidden=0", (uid, ref)).rowcount
 
 
 def drop_account(c, uid):

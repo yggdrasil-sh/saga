@@ -473,7 +473,7 @@ def _readme(uid, name, data):
              "  daten.json     – " + t("alles vollständig (zum Einspielen in Saga: Einstellungen → Mein Backup → Backup einspielen)"),
              "  seiten/ vorlagen/ archiv/ papierkorb/  – " + t("Seiten als Markdown"),
              "  dateien/       – " + t("eigene hochgeladene Dateien und Bilder"),
-             "  profil/        – " + t("Profilbild"),,
+             "  profil/        – " + t("Profilbild"),
              "  daten.json → chat_contacts – " + t("Chat-Kontakte (Name und Kennung, ohne Nachrichten)"), "",
              t("Nicht enthalten: Seiten und Dateien anderer Personen (auch nicht, was mit dir geteilt ist) und Chats (Ende-zu-Ende-verschlüsselt)."),
              ""]
