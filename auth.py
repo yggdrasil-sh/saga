@@ -53,7 +53,9 @@ DEFAULTS = {
     "search_username": True,               # 2.4: Personensuche/Eingaben auch per genauem Anmeldenamen (nie Praefix)
     "chat_enabled": True,                  # Chats mit Ende-zu-Ende-Verschluesselung (1.5)
     "chat_retention_max_days": 0,          # Chat-Nachrichten spaetestens nach so vielen Tagen loeschen (0 = unbegrenzt)
-    "chat_v3": False,                      # 2.5 (in Arbeit): neue lokale Chats in Stufe 3 (Handles statt Anmeldenamen, saga.chat.make_v3)
+    "chat_v3": True,                       # 2.5: Chat-Stufe 3 (Handles, Reaktionen, Bearbeiten, Sprachnachrichten; saga.chat.make_v3).
+                                           # Standard an - auch fuer bestehende Installationen ohne gespeicherten Wert; ein
+                                           # ausdruecklich gespeichertes false bleibt aus (Admin -> Allgemein -> Chats)
     "chat_v3_days": 90,                    # 2.5: bestehende Chats spaetestens so viele Tage danach umstellen (saga.chat.convert_v3)
     "chat_quota_mb": 0,                    # 2.4: Speicher fuer Chat-Anhaenge je Konto in MB (0 = CHAT_QUOTA_MB, Standard 4096)
     "chat_video_max_mb": 0,                # 2.4: groesstes Video im Chat in MB (0 = VIDEO_MAX_MB, Standard 500)

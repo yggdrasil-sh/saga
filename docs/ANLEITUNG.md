@@ -1030,6 +1030,20 @@ Direkt-Chats mit dem Konto verschwinden ganz. Grenzen: 64 KB je Nachricht, 60 Na
 50 Mitglieder je Chat, **Speicher für Chat-Anhänge je Konto** (Standard 4096 MB, `CHAT_QUOTA_MB`) und **Größtes Video
 im Chat** (Standard 500 MB, `VIDEO_MAX_MB`) – beides im Admin unter „Chats“ änderbar. Kein zusätzlicher Port.
 
+**Moderne Chats (Stufe 3, ab 2.5 Standard an):** Admin → Allgemein → „Chats“ → **Moderne Chats (Stufe 3) – Standard an**.
+Damit gibt es in allen Chats Reaktionen, Bearbeiten, Sprachnachrichten und Systemzeilen; Chats laufen über Handles
+statt Anmeldenamen, und lokale Gruppen nehmen Personen anderer Saga-Server auf. Beim Update auf 2.5 passiert:
+- Installationen, die die Einstellung nie gespeichert haben (also auch alle frischen), haben sie **an**. Wer sie
+  ausdrücklich ausgeschaltet und gespeichert hat, behält „aus“.
+- **Neue Chats** entstehen gleich in Stufe 3. **Bestehende Chats** stellt der Server stündlich um (je Chat einzeln,
+  nichts wird neu verschlüsselt, der Verlauf bleibt lesbar), sobald alle aktiven App-Geräte (letzte 30 Tage) der
+  Mitglieder Saga 2.5 haben. Browser halten nie auf, Konten ohne eingerichteten Chat auch nicht.
+- Spätestens nach **„Bestehende Chats spätestens umstellen nach (Tagen)“** (Standard 90, gezählt ab dem ersten Lauf mit
+  eingeschalteter Stufe 3) stellt der Server trotzdem um: Apps 2.3/2.4 lesen weiter und zeigen „Sicherheitsnummer bitte
+  neu prüfen“, noch ältere Apps zeigen „Bitte die App aktualisieren“ – nach dem Update ist alles da. Nur Konten, deren
+  Geräte alle älter als 2.3 sind (kein Handle-Zertifikat), halten einen Chat weiter auf.
+- Wo es hängt, zeigt Admin → Benutzer → Chats („Chat-Stufe 3“). Ausschalten stellt umgestellte Chats nicht zurück.
+
 **Videos (2.4):** Videos zeigen im Verlauf ein Poster mit Dauer und spielen per Streaming (Spulen ohne Komplett-Download).
 Poster, Dauer und Abmessungen erzeugt das sendende Gerät; der Server sieht davon nichts und wandelt nie um (bei
 Ende-zu-Ende-Verschlüsselung ginge das ohnehin nicht). Vom Handy gehen Videos standardmäßig „optimiert 720p“, „Original“

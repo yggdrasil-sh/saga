@@ -16,6 +16,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert (2.5, Chats: Stufe 3 ist Standard)
+- **Moderne Chats (Stufe 3) sind jetzt Standard an** – Reaktionen, Bearbeiten, Sprachnachrichten und Systemzeilen in
+  allen Chats, Handles statt Anmeldenamen, lokale Gruppen nehmen Personen anderer Server auf. Die Einstellung `chat_v3`
+  hat den Standardwert `true`; ein ausdrücklich gespeichertes „aus“ bleibt aus. Admin → Allgemein → „Chats“ heißt der
+  Schalter „Moderne Chats (Stufe 3) – Standard an“.
+- **Upgrade-Hinweis für Betreiber:** Wer den Schalter nie gespeichert hat (auch frische Installationen), hat Stufe 3
+  nach dem Update **an**: neue Chats entstehen gleich so, bestehende stellt der stündliche Auftrag um, sobald alle aktiven
+  App-Geräte der Mitglieder Saga 2.5 haben, spätestens nach `chat_v3_days` (Standard 90 Tage ab dem ersten Lauf). Nichts
+  wird neu verschlüsselt, der Verlauf bleibt lesbar; nach der Frist zeigen Apps 2.3/2.4 „Sicherheitsnummer bitte neu
+  prüfen“, ältere „Bitte die App aktualisieren“. Wer noch warten will: Schalter aus und speichern (stellt nichts zurück,
+  was schon umgestellt ist). Hat der Admin-Bereich unter Allgemein schon einmal gespeichert, steht `chat_v3` dort
+  ausdrücklich auf dem damaligen Wert (bis 2.5-rc meist „aus“) – dann bitte bewusst einschalten. Keine Migration.
+- **Umstellauftrag robuster:** höchstens 20 s je Lauf über mehrere Stapel (statt 200 Chats je Stunde), der nächste Lauf
+  macht weiter; je Chat eine Transaktion, ein Abbruch lässt nichts halb umgestellt. Mitglieder von Gruppen- und
+  Seiten-Chats, die den Chat nie eingerichtet haben (keine Chat-Identität), halten die Umstellung nicht mehr auf.
+  Testreihe `chat_v3_umstellung` erweitert (Standardwert, ausdrücklich aus, Gruppen/Seiten, alte App, Abbruch/Neustart,
+  300 Chats, Zeitbudget). Doku: `docs/ANLEITUNG.md` (Chats, Admin), `docs/APP-API.md` (Chat-Stufe 3).
+
 ### Neu (2.5, Chats: Mitglieder in Seiten-Chats)
 - **Seiten-Chat:** In der Gruppeninfo lassen sich jetzt Personen hinzufügen und entfernen – auch im Chat einer noch nicht
   geteilten eigenen Seite. Hinzufügen teilt die Seite mit der Person (Lesen, wählbar Kommentieren/Bearbeiten, mit
