@@ -133,7 +133,7 @@ CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "li
 # versiegelt wie alle Anruf-Signale (Auftrag signal). Nur gemeldet, solange das Feature-Flag calls.horn an ist (caps2()).
 # horn_dm (2.5) = 1:1 aus foederierten Direkt-Chats ueber Knoten (Auftrag dmhorn, saga/fed_calls.py) - gemeldet, solange
 # horn an ist; ob ein Anruf so laeuft, entscheidet der Server der anrufenden Person (calls.horn_all).
-# chat3 (2.5, saga/chat_x3.py) = Reaktionen/Bearbeiten ueber Servergrenzen - nur mit der Einstellung chat_v3 (Standard aus);
+# chat3 (2.5, saga/chat_x3.py) = Reaktionen/Bearbeiten ueber Servergrenzen - nur mit der Einstellung chat_v3 (Standard an);
 # aus: nicht gemeldet, eingehende x3-Auftraege 403 bzw. Ereignisse "ignored" (F.feature ist dann fuer alle Instanzen falsch).
 CAPS2_FLAG = {"horn": lambda: bool((auth.settings().get("calls") or {}).get("horn")),   # wie saga.calls.horn_on()
               "horn_dm": lambda: bool((auth.settings().get("calls") or {}).get("horn")),

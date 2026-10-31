@@ -319,7 +319,7 @@ def hfmt(ch):
 
 
 def v3_new():
-    """Neue lokale Chats in Stufe 3 anlegen? (2.5, in Arbeit: Einstellung chat_v3, Standard aus)"""
+    """Neue lokale Chats in Stufe 3 anlegen? (2.5: Einstellung chat_v3, Standard an - ausdruecklich gespeichertes false = aus)"""
     return FED is not None and bool(auth.settings().get("chat_v3"))
 
 
@@ -344,14 +344,25 @@ def who_in(c, uid, x):
     return resolve_input(c, uid, x)
 
 
-def handle_ready(c, uids):
-    """Haben alle diese Konten ein Handle-Zertifikat zur aktuellen Identitaet (jedes Konto mit einem Geraet ab 2.3)?"""
+def no_cert(c, uids):
+    """Konten mit Chat-Identitaet, aber ohne Handle-Zertifikat dazu (nur Geraete vor 2.3) -> set. Konten ganz ohne
+    Identitaet (Chat nie eingerichtet, z. B. Gruppenmitglieder) zaehlen nicht: sie haben nichts zu lesen, und ihr erster
+    Client (Web oder aktuelle App) legt das Zertifikat gleich mit an."""
     uids = sorted({u for u in uids if u and not sharing.is_remote(u)})
     if not uids:
+        return set()
+    ph = ",".join("?" * len(uids))
+    rows = c.execute(f"SELECT i.uid, f.uid FROM chat_identity i LEFT JOIN chat_fed_cert f ON f.uid=i.uid AND f.ident_pub=i.ident_pub "
+                     f"WHERE i.uid IN ({ph})", tuple(uids)).fetchall()
+    return {u for u, f in rows if f is None}
+
+
+def handle_ready(c, uids):
+    """Haben alle diese Konten mit Chat-Identitaet ein Handle-Zertifikat dazu (jedes Konto mit einem Geraet ab 2.3)?
+    (2.5: Konten ohne Identitaet halten nicht auf, siehe no_cert; ohne lokales Konto: nein)"""
+    if not any(u and not sharing.is_remote(u) for u in uids):
         return False
-    n = c.execute(f"SELECT COUNT(*) FROM chat_fed_cert f JOIN chat_identity i ON i.uid=f.uid AND i.ident_pub=f.ident_pub "
-                  f"WHERE f.uid IN ({','.join('?' * len(uids))})", tuple(uids)).fetchone()[0]
-    return n == len(uids)
+    return not no_cert(c, uids)
 
 
 def make_v3(c, ch, uids):
@@ -365,7 +376,8 @@ def make_v3(c, ch, uids):
 
 
 # --- Umstellauftrag v1 -> Stufe 3 (2.5, Konzept A4.3) ------------------------------------------------------------
-CONVERT_BATCH = 200                    # hoechstens so viele Chats je Lauf (je Chat eine Transaktion)
+CONVERT_BATCH = 200                    # so viele Chats je Abfrage (je Chat eine eigene Transaktion)
+CONVERT_BUDGET_S = 20.0                # je stuendlichem Lauf hoechstens so lange; der naechste Lauf macht dort weiter
 ACTIVE_S = 30 * 86400                  # Geraete, die so lange nicht da waren, halten die Umstellung nicht auf
 V3_DAYS_DEFAULT = 90                   # Stichtag: spaetestens so viele Tage nach dem Einschalten (Admin aenderbar)
 VERIFY_HINT_S = 30 * 86400             # so lange zeigen aeltere Apps nach einer Stichtag-Umstellung den Hinweis im Namen
@@ -402,8 +414,11 @@ def blocking_devices(c, uids, now):
 
 
 def convert_check(c, uids, now, deadline):
-    """Darf ein Chat mit diesen Mitgliedern umgestellt werden? -> (ja, per_stichtag). Alle brauchen ein Handle-Zertifikat;
-    ohne Stichtag muessen ALLE aktiven Geraete chat3 melden (aeltere Apps uebernehmen "ueberprueft" nicht)."""
+    """Darf ein Chat mit diesen Mitgliedern umgestellt werden? -> (ja, per_stichtag). Alle Konten mit Chat-Identitaet
+    brauchen ein Handle-Zertifikat (auch nach dem Stichtag: sonst haetten sie keine Schluessel im Format v2 und koennten
+    neue Nachrichten nie lesen); Konten ohne Identitaet halten nicht auf (no_cert). Vor dem Stichtag muessen ALLE aktiven
+    App-Geraete chat3 melden (aeltere Apps uebernehmen "ueberprueft" nicht); danach lesen Apps 2.3/2.4 den Chat in der
+    Kompat-Sicht v2 (Hinweis "Sicherheitsnummer neu pruefen"), noch aeltere zeigen "App aktualisieren"."""
     if not handle_ready(c, uids):
         return False, False
     if not blocking_devices(c, uids, now):
@@ -411,19 +426,34 @@ def convert_check(c, uids, now, deadline):
     return (True, True) if now >= deadline else (False, False)
 
 
-def convert_v3(limit=CONVERT_BATCH, now=None):
+def convert_v3(limit=CONVERT_BATCH, now=None, budget=CONVERT_BUDGET_S):
     """Bestehende lokale Chats v1 auf Stufe 3 umstellen (stuendlich; beliebig oft ausfuehrbar). Nichts wird neu
     verschluesselt: v3_seq = letzte Nachricht v1, danach gilt das Format v2. Systemzeile {"type":"crypto","level":3} ohne Namen
     (v ist dort die Version der Systemzeile; verify: true nach Stichtag),
-    chat.changed. -> Anzahl umgestellter Chats."""
+    chat.changed. Je Chat eine Transaktion (Abbruch mittendrin: der Chat bleibt ganz v1, der naechste Lauf nimmt ihn
+    wieder). Stapel zu je `limit` Chats, bis alle einmal geprueft sind oder `budget` Sekunden um sind (dann macht der
+    naechste Lauf an der Stelle weiter; nach einem Neustart von vorn). Gruppen-/Seiten-Chats: gespeicherte
+    Mitglieder (wer spaeter dazukommt, wird Mitglied im Chat der Stufe 3). -> Anzahl umgestellter Chats."""
     if not v3_new():
         return 0
     now = now or time.time()
     _, deadline = v3_deadline()
-    with _db() as c:
-        ids = [r[0] for r in c.execute("SELECT id FROM chat WHERE v=1 AND ref IS NULL AND home_peer IS NULL AND id>? ORDER BY id LIMIT ?",
-                                       (_conv["after"], limit)).fetchall()]
-    _conv["after"] = ids[-1] if len(ids) == limit else 0      # naechster Lauf macht weiter (bzw. von vorn)
+    t0 = time.monotonic()
+    n = 0
+    while True:
+        with _db() as c:
+            ids = [r[0] for r in c.execute("SELECT id FROM chat WHERE v=1 AND ref IS NULL AND home_peer IS NULL AND id>? ORDER BY id LIMIT ?",
+                                           (_conv["after"], limit)).fetchall()]
+        _conv["after"] = ids[-1] if len(ids) == limit else 0      # naechster Stapel/Lauf macht weiter (bzw. von vorn)
+        n += _convert_ids(ids, now, deadline)
+        if not _conv["after"] or time.monotonic() - t0 >= budget:
+            break
+    if n:
+        print(f"chat: {n} Chat(s) auf Stufe 3 umgestellt", flush=True)
+    return n
+
+
+def _convert_ids(ids, now, deadline):
     n = 0
     for cid in ids:
         with _db() as c, c:
@@ -442,8 +472,6 @@ def convert_v3(limit=CONVERT_BATCH, now=None):
             FED.sysline(c, ch, None, {"type": "crypto", "level": 3, **({"verify": True} if forced else {})})
             _changed(c, cid, mem)
             n += 1
-    if n:
-        print(f"chat: {n} Chat(s) auf Stufe 3 umgestellt", flush=True)
     return n
 
 
@@ -2719,9 +2747,7 @@ def v3_state(c, uid, now=None):
     now = now or time.time()
     mem = sorted({r[0] for r in c.execute(f"SELECT uid FROM chat_member WHERE chat_id IN ({','.join('?' * len(ids))}) AND left_at IS NULL",
                                           tuple(ids)).fetchall() if not sharing.is_remote(r[0])} | {uid})
-    cert = {r[0] for r in c.execute(f"SELECT f.uid FROM chat_fed_cert f JOIN chat_identity i ON i.uid=f.uid AND i.ident_pub=f.ident_pub "
-                                    f"WHERE f.uid IN ({','.join('?' * len(mem))})", tuple(mem)).fetchall()}
-    nocert = set(mem) - cert
+    nocert = no_cert(c, mem)
     old = blocking_devices(c, mem, now) if now < until else []
     mine = [(n or "").strip()[:80] or t("Gerät ohne Namen") for u, n in old if u == uid][:20]
     others = len(({u for u, _ in old} | nocert) - {uid})
