@@ -7,7 +7,8 @@ alle Richtungen (B -> Heim A -> C), Schluessel dritter Server ueber das Heim (ge
 Person eines dritten Servers ueber das Heim, Systemzeilen mit Herkunft (hinzugefuegt/entfernt/verlassen), Rechte (nur Admins
 aendern Mitglieder - auch von einem anderen Server aus), Gruppenname (verschluesselt, kind title), Verlassen, Tippen;
 Seiten-Chat einer geteilten Seite mit fremder Gruppe (deren Server meldet die Mitglieder nur als Ziel einer Freigabe) und
-fremder Person, Oeffnen von der fremden Seite aus, Entzug der Freigabe, Umstellung eines bestehenden Seiten-Chats auf v2
+fremder Person, Oeffnen von der fremden Seite aus, Entzug der Freigabe, 2.5 (pagechatmembers1) Person eines anderen Servers
+im Seiten-Chat hinzufuegen/entfernen (= Freigabe), Mitglied ueber fremde Gruppe 409, Umstellung eines bestehenden Seiten-Chats auf v2
 (alte Nachrichten bleiben v1 lesbar); Trennen (Mitglieder der getrennten Instanz raus, dort schreibgeschuetzt).
 2.5 (chatadm1): Admin vergeben/entziehen beim Heim und als Auftrag 'admin' vom Teilnehmer-Server (fremder Admin), Liste und
 Systemzeile 'admin' kommen auf allen Servern an, letzter Admin 409, Heim ohne chatadm1 -> 409 "zu alt" (can_admin false).
@@ -283,6 +284,23 @@ def part_page(adm, pab, pba, pac, pca, anna, carl, bert, cleo, dora):
     api("a", "fa-anna", "GET", "/api/chats")
     ok("A: Freigabe entzogen -> Dora aus dem Seiten-Chat", wait(lambda: not any(m.get("host") == HC for m in api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"]["members"]), 15))
     ok("C: Kopie weg (keine eigenen Mitglieder mehr)", wait(lambda: dora.chat(ch["ref"]) is None, 15))
+    # 2.5 (pagechatmembers1): im Seiten-Chat hinzufuegen = Seite teilen (Person eines anderen Servers per Handle), entfernen
+    # = Freigabe entziehen; Mitglied ueber die fremde Gruppe -> 409 (nur ueber die Gruppe)
+    s, d = api("a", "fa-anna", "POST", f"/api/chats/{ch['id']}/members", {"handle": dora.handle})
+    ok(f"A: Dora (C) im Seiten-Chat hinzugefuegt -> Seite mit ihr geteilt (view) ({s})", s == 200 and
+       any(r[0] == "view" for r in sql("a", "SELECT role FROM note_share WHERE note_id=? AND target_type='remote'", (pg,))), d)
+    ok("A: Dora wieder Mitglied, C: Kopie wieder da", wait(lambda: any(m.get("host") == HC for m in api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"]["members"]), 15)
+       and bool(wait(lambda: dora.chat(ch["ref"]), 15)))
+    ac = api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"]
+    dm_ = next((m for m in ac["members"] if m.get("host") == HC), {})
+    bm_ = next((m for m in ac["members"] if m.get("host") == HB), {})
+    ok("A: Dora removable (direkte Freigabe), fbteam-Mitglied via group", dm_.get("removable") is True and bm_.get("via") == "group"
+       and bm_.get("removable") is False, (dm_, bm_))
+    s, d = api("a", "fa-anna", "DELETE", f"/api/chats/{ch['id']}/members/{bm_.get('handle')}")
+    ok(f"A: fbteam-Mitglied entfernen -> 409 mit Hinweis auf die Gruppe ({s})", s == 409 and "fbteam" in str(d.get("error")), d)
+    s, d = api("a", "fa-anna", "DELETE", f"/api/chats/{ch['id']}/members/{dm_.get('handle')}")
+    ok(f"A: Dora entfernen -> Freigabe entzogen ({s})", s == 200 and not sql("a", "SELECT 1 FROM note_share WHERE note_id=? AND target_type='remote'", (pg,)), d)
+    ok("C: Kopie wieder weg", wait(lambda: dora.chat(ch["ref"]) is None, 15))
     # Umstellung eines bestehenden (lokalen) Seiten-Chats auf v2
     s, d = api("a", "fa-anna", "POST", "/api/notes", {"title": "Erst lokal"})
     p2 = d["id"]

@@ -16,6 +16,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Chats: Mitglieder in Seiten-Chats)
+- **Seiten-Chat:** In der Gruppeninfo lassen sich jetzt Personen hinzufügen und entfernen – auch im Chat einer noch nicht
+  geteilten eigenen Seite. Hinzufügen teilt die Seite mit der Person (Lesen, wählbar Kommentieren/Bearbeiten, mit
+  Mitteilung „Seite geteilt“, auch für Personen anderer Saga-Server); „Aus Chat entfernen“ entzieht die direkte Freigabe.
+  Kommt der Zugriff über eine Gruppe oder eine übergeordnete Seite, ist der Menüpunkt ausgegraut mit Erklärung. Nur wem
+  die Seite gehört.
+- **Server:** `POST/DELETE /api/chats/{cid}/members` bei `kind: 'page'` auf Seitenfreigaben abgebildet (optional `role`),
+  Chat-Objekt `can_manage` (= darf die Seite teilen), `members[].removable`/`via` (nur für den Eigentümer); 409 mit Hinweis,
+  woher der Zugriff kommt. Feature `pagechatmembers1`, keine Migration. Doku: `docs/APP-API-CHAT.md` Abschnitt 6a.
+  Tests: `tests/seitenchat_mitglieder.py`, `tests/foederation_gruppen.py`, `tests/browser_gruppeninfo.js`.
+
 ### Neu (2.5, Chats: Kontakte)
 - **Kontakte:** Wer schon mit jemandem in einem Direkt-Chat oder einer freien Gruppe war, findet die Person wieder – auch
   nach Löschen/Verlassen des Chats und über Servergrenzen. „Neue Unterhaltung“ und „Mitglied hinzufügen“ zeigen ohne

@@ -100,8 +100,47 @@ bisheriges Verhalten (nur `role`, keine Admin-Vergabe). Ältere Apps ignorieren 
 | `can_rename` | Name setzen (Nachricht `kind: 'title'`) erlaubt – jedes Mitglied einer freien Gruppe (schreibgeschützt: `false`) |
 
 Anzeigen: Name (bearbeitbar bei `can_rename`), Mitglieder mit Avatar, `name`, Handle (`handle` bzw. bei Chats v1 `ref`) –
-**nie** den Anmeldenamen anderer; Kennzeichen „Admin“ (`admin`) und „Du“ (`me`). `group`/`page`: nur lesend mit Hinweis
-„Mitglieder ergeben sich aus der Gruppe bzw. den Freigaben der Seite“.
+**nie** den Anmeldenamen anderer; Kennzeichen „Admin“ (`admin`) und „Du“ (`me`). `group`: nur lesend mit Hinweis
+„Mitglieder ergeben sich aus der Benutzergruppe – dort verwalten.“ `page`: siehe 6a.
+
+### 6a. Seiten-Chats: Mitglieder = Freigaben der Seite (2.5, `pagechatmembers1`)
+
+Server meldet `pagechatmembers1` in `features`. Ohne die Meldung: Hinzufügen/Entfernen im Seiten-Chat → `400` (wie
+bisher). Hinzufügen und Entfernen laufen über dieselben Endpunkte wie bei freien Gruppen und werden auf die Freigaben der
+Seite abgebildet – vorhandene UI funktioniert ohne neue Aufrufe.
+
+**Felder** (Seiten-Chat, `kind: 'page'`):
+
+| Feld | Bedeutung |
+|---|---|
+| `can_manage` | ich darf die Seite teilen (= Eigentümer, Teilen eingeschaltet, Seite nicht archiviert/Vorlage) – **auch bei einer noch nicht geteilten Seite** (Chat mit nur mir). Kopie eines Seiten-Chats eines anderen Servers: `false` |
+| `can_rename`, `can_admin` | immer `false` (Name = Seitentitel) |
+| `members[].via` | nur bei `can_manage`: `'owner'` (gehört die Seite) \| `'share'` (direkte Freigabe dieser Seite) \| `'group'` (über eine Gruppe) \| `'parent'` (über eine Seite darüber) \| `null`. Bei mehreren Wegen der erste in dieser Reihenfolge (share, group, parent) |
+| `members[].removable` | nur bei `can_manage`: `true` = Entfernen geht (direkte Freigabe dieser Seite und kein anderer Weg) |
+
+Ohne `can_manage` fehlen `via`/`removable` (andere sollen nicht erfahren, über welche Gruppe/Seite jemand Zugriff hat).
+
+**Hinzufügen:** `POST /api/chats/{cid}/members` mit `{"user": …}` (Konto hier: Handle `~x` bzw. `members[].username`
+wie bei freien Gruppen) oder `{"handle": "~x@host"}` (eigener Server wie `user`; anderer Server: Freigabe an diese
+Person dort, wie Teilen im Web), optional `"role": "view"|"comment"|"edit"` (Standard `view`).
+
+- Legt die Freigabe der Seite an (gleiche Prüfungen wie `PUT /api/notes/{nid}/shares`, Mitteilung „Seite geteilt“,
+  Föderation). Hat die Person schon eine höhere direkte Freigabe, bleibt diese.
+- Antwort `200 {"chat": …}` mit neuer Liste; `chat.changed` an alle Mitglieder. Personen anderer Server erscheinen, sobald
+  ihr Server den Handle bestätigt (im Hintergrund, wenige Sekunden).
+- Fehler: `403` nicht Eigentümer („Personen hinzufügen kann nur, wem die Seite gehört …“) bzw. Teilen-Regeln (z. B. nur
+  gemeinsame Gruppen); `400` `role` ungültig bzw. Ziel ungültig; `404` Konto unbekannt; `409` schon Mitglied (auch über
+  eine Gruppe), höchstens 50 Mitglieder bzw. 200 Freigaben; anderer Server: `400`/`403`/`502` wie beim Teilen.
+
+**Entfernen:** `DELETE /api/chats/{cid}/members/{who}` (`who` wie oben).
+
+- Direkte Freigabe dieser Seite und kein anderer Weg → Freigabe wird entzogen (wie im Teilen-Dialog), die Person ist
+  nicht mehr im Chat. Antwort `200 {"ok": true}`, `chat.changed` an alle bisherigen Mitglieder.
+- `409` mit Text, woher der Zugriff kommt: „{name} hat Zugriff über die Gruppe „{g}“ – …“ bzw. „… über die übergeordnete
+  Seite „{title}“ – …“; Eigentümer: „Wem die Seite gehört, bleibt immer im Seiten-Chat.“ (Die Texte bekommt nur der
+  Eigentümer – er kennt Gruppen und Seiten darüber.)
+- `who` = ich → `400` (nicht verlassbar, nur stummschalten); nicht Eigentümer → `403`; unbekannt → `404`.
+- `group`-Chats bleiben unverändert (`400`).
 
 **Admin vergeben/entziehen:** `PATCH /api/chats/{cid}/members/{who}` mit `{"admin": true|false}`.
 
