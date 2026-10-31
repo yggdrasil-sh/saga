@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, chat, cloudflare, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup, weather
+from saga import ai, avatars, backups, calls, chat, chat_grp, cloudflare, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup, weather
 from saga.core import HSTS, RESTORE_TEST, TZ, BodyLimit, LangMiddleware, SecHeaders, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -1100,6 +1100,36 @@ async def published_post(request: Request):
         print(f"admin: {me['username']} zieht Veroeffentlichung {nid} zurueck", flush=True)
         _flash(request, t("Veröffentlichung zurückgezogen."))
     return _go("/published")
+
+
+# --- Meldungen aus Chats (2.5, report1, saga/chat_grp.py) ---------------------------------------------------
+@admin.get("/reports")
+def reports_page(request: Request, state: str = "open"):
+    """Meldungen: Grund, freiwillig mitgeschickter Text, gemeldete Nachrichten (Kennung, Zeit, Absender). Den Inhalt der
+    Nachrichten sieht auch hier niemand - nur, was die meldende Person selbst mitgeschickt hat."""
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    state = state if state in ("open", "done", "all") else "open"
+    rows = chat_grp.admin_list(None if state == "all" else state)
+    for r in rows:
+        r["reason_label"] = chat_grp.reason_label(r["reason"])
+    return _page(request, "reports.html", me, rows=rows, state=state, counts=chat_grp.admin_counts())
+
+
+@admin.post("/reports")
+async def reports_post(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    act = (f or {}).get("action")
+    if f is None or act not in ("done", "open", "delete") or not str(f.get("id") or "").isdigit():
+        return _go("/reports")
+    if chat_grp.admin_done(int(f["id"]), me["username"], act):
+        print(f"admin: {me['username']} Meldung {f['id']} -> {act}", flush=True)
+        _flash(request, t("Meldung gelöscht.") if act == "delete" else t("Meldung erledigt.") if act == "done" else t("Meldung wieder offen."))
+    return _go("/reports" + ("?state=" + f["back"] if f.get("back") in ("done", "all") else ""))
 
 
 # --- Foederation: andere Saga-Instanzen verbinden -----------------------------------------------------------

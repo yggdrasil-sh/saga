@@ -2273,7 +2273,7 @@ def api_msg_delete(cid: int, mid: str, request: Request):
             return err
         if hfmt(ch):
             c.rollback()
-            return FED.delete_msg(uid, ch, mid)
+            return FED.delete_msg(uid, ch, mid, mod=True)     # 2.5 (moddel1): Admins auch fremde
         mem = _fresh(c, ch, mem)                 # Seiten-/Gruppen-Chat: gerade Entzogene bekommen nichts mehr (BUG-088)
         r = c.execute("SELECT seq, sender_uid FROM chat_msg WHERE id=? AND chat_id=? AND kind='msg'", (mid, ch["id"])).fetchone()
         if not r:

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ts, csrf_field with context %}
+{% block pagetitle %}{{ _('Meldungen') }}{% endblock %}
+{% block content %}
+<h2>{{ _("Meldungen aus Chats") }}</h2>
+<p class="hk-hint">{{ _("Personen können Nachrichten in Chats melden. Chats sind Ende-zu-Ende-verschlüsselt: hier steht nur, was die meldende Person selbst mitgeschickt hat, dazu Zeitpunkt und Absender der gemeldeten Nachrichten.") }}</p>
+<p class="adm-tabs">
+  {% for k, label in [('open', _('Offen')), ('done', _('Erledigt')), ('all', _('Alle'))] %}
+  <a class="btn small{% if state == k %} btn-primary{% endif %}" href="/reports{% if k != 'open' %}?state={{ k }}{% endif %}">{{ label }}{% if k != 'all' %} ({{ counts.get(k, 0) }}){% endif %}</a>
+  {% endfor %}
+</p>
+<table class="adm-table adm-reports">
+  <tr><th>{{ _("Zeit") }}</th><th>{{ _("Grund") }}</th><th>{{ _("Gemeldet von") }}</th><th>{{ _("Chat") }}</th><th>{{ _("Nachrichten") }}</th><th>{{ _("Mitgeschickter Text") }}</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td data-l="{{ _('Zeit') }}">{{ ts(r.created) }}</td>
+    <td data-l="{{ _('Grund') }}"><b>{{ r.reason_label }}</b>{% if r.state == 'done' %}<br><small class="hk-hint">{{ _("erledigt") }}{% if r.done_by %} · {{ r.done_by }}{% endif %}</small>{% endif %}</td>
+    <td data-l="{{ _('Gemeldet von') }}">{% if r.reporter %}{{ r.reporter_name or r.reporter }} <small class="hk-hint">({{ r.reporter }})</small>{% else %}<span class="hk-hint">{{ _("Gelöschtes Konto") }}</span>{% endif %}</td>
+    <td data-l="{{ _('Chat') }}">#{{ r.chat_id }} <small class="hk-hint">{{ r.chat_kind }}{% if r.chat_ref %} · {{ r.chat_ref.split('@')[-1] }}{% endif %}</small></td>
+    <td data-l="{{ _('Nachrichten') }}">{% for it in r["items"] %}<div><small>{{ ts(it.ts / 1000) }}</small> · {{ it.sender.name }}{% if it.sender.uid %} <small class="hk-hint">({{ it.sender.uid }})</small>{% elif it.sender.host %} <small class="hk-hint">({{ it.sender.host }})</small>{% endif %}</div>{% else %}<span class="hk-hint">–</span>{% endfor %}</td>
+    <td data-l="{{ _('Mitgeschickter Text') }}">{% if r.text %}<span class="adm-report-text">{{ r.text }}</span>{% else %}<span class="hk-hint">{{ _("(kein Text mitgeschickt)") }}</span>{% endif %}</td>
+    <td><form method="post">{{ csrf_field() }}<input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="back" value="{{ state }}">
+      {% if r.state == 'open' %}<button class="btn small" name="action" value="done" type="submit">{{ _("Erledigt") }}</button>
+      {% else %}<button class="btn small" name="action" value="open" type="submit">{{ _("Wieder öffnen") }}</button>{% endif %}
+      <button class="btn small btn-danger" name="action" value="delete" type="submit" data-confirm="{{ _('Meldung endgültig löschen?') }}">{{ _("Löschen") }}</button></form></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="hk-hint">{{ _("Keine Meldungen.") }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

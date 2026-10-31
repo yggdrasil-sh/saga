@@ -1929,14 +1929,15 @@ def send(uid, cid, b):
     return chat._no_store(out)
 
 
-def delete_msg(uid, ch, mid):
-    """Eigene Nachricht fuer alle loeschen: hier sofort, beim Heim (das es allen meldet) synchron bzw. ueber die Warteschlange."""
+def delete_msg(uid, ch, mid, mod=False):
+    """Eigene Nachricht fuer alle loeschen: hier sofort, beim Heim (das es allen meldet) synchron bzw. ueber die Warteschlange.
+    mod (2.5, moddel1): auch fremde Nachrichten, wenn uid hier moderieren darf (Grabstein, saga.chat_grp)."""
     with _db() as c, c:
         r = c.execute("SELECT sender_uid FROM chat_msg WHERE id=? AND chat_id=? AND kind='msg'", (mid, ch["id"])).fetchone()
         if not r:
             return _bad("not found", 404)
         if r[0] != uid:
-            m = chat._member(c, ch["id"], uid) if chat.GRP is not None else None
+            m = chat._member(c, ch["id"], uid) if chat.GRP is not None and mod else None
             if m and ch["home_peer"] is None:            # 2.5 (moddel1): Admin loescht fremde Nachricht (Heim hier)
                 return chat.GRP.mod_delete(c, uid, ch, m, mid)
             if m:

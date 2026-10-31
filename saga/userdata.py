@@ -31,6 +31,7 @@ def delete_user_data(uid, drop_user=False):
         pub = c.execute("SELECT name FROM public_name WHERE uid=?", (uid,)).fetchone()
         # Foederation (saga.federation): andere Instanzen erfahren es, Freigaben dorthin/von dort enden, Name gesperrt
         importlib.import_module("saga.federation")          # Zuhoerer sicher angemeldet (auch ausserhalb der App)
+        importlib.import_module("saga.chat_grp")            # 2.5: Meldungen/Anheftungen anonymisieren (haengt sich in chat ein)
         bus.fire("public_name.released", c, uid=uid, pub=pub[0] if pub else None, deleted=True)
         c.execute("DELETE FROM file WHERE uid=?", (uid,))
         shares = delete_account(c, uid)          # Freigaben (eigene + an das Konto), Kommentare anonymisieren/loeschen
