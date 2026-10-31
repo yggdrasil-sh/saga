@@ -46,7 +46,7 @@ _last = {}                         # chat_id -> letzte Sendung (monotonic)
 # Wann gibt es die Funktionen?
 # =====================================================================================================
 def x3_ok(c, ch, state="ok"):
-    """Reaktionen/Bearbeiten/Sprachnachrichten moeglich? Einstellung chat_v3 an (Standard aus), Format v2, angenommen,
+    """Reaktionen/Bearbeiten/Sprachnachrichten moeglich? Einstellung chat_v3 an (Standard an), Format v2, angenommen,
     nicht schreibgeschuetzt, alle Server chat3."""
     if not x3_on():
         return False
@@ -96,11 +96,8 @@ def v1_flags(c, uid, ch, mem, d):
     if not loc:
         d.update(x3_why="devices", x3_wait={"mine": [], "others": 0, "until": int(until)})
         return
-    ph = ",".join("?" * len(loc))
     old = chat.blocking_devices(c, loc, now)
-    cert = {r[0] for r in c.execute(f"SELECT f.uid FROM chat_fed_cert f JOIN chat_identity i ON i.uid=f.uid AND i.ident_pub=f.ident_pub "
-                                    f"WHERE f.uid IN ({ph})", tuple(loc))}
-    nocert = set(loc) - cert
+    nocert = chat.no_cert(c, loc)                         # (Konten ohne Chat-Identitaet halten nicht auf)
     if not nocert and (not old or now >= until):         # Umstellung beim naechsten Lauf
         old = []
     mine = [(n or "").strip()[:80] or t("Gerät ohne Namen") for u, n in old if u == uid][:20]
@@ -110,7 +107,7 @@ def v1_flags(c, uid, ch, mem, d):
 
 
 def x3_on():
-    """Reaktionen/Bearbeiten/Sprachnachrichten haengen an der Einstellung chat_v3 (2.5, Standard aus)."""
+    """Reaktionen/Bearbeiten/Sprachnachrichten haengen an der Einstellung chat_v3 (2.5, Standard an)."""
     return bool(auth.settings().get("chat_v3"))
 
 

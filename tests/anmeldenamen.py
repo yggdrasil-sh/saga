@@ -4,6 +4,8 @@ der Anmeldename noch (ohne Anzeigenamen) ein Ersatz daraus, sondern Anzeigename,
 Handle ('~' + 16 Zeichen). Anfragen nehmen den Handle (und wie bisher den Benutzernamen) an.
 Ausnahme (dokumentiert): Mitglieder eines GEMEINSAMEN Chats bzw. Anrufs - Chats v1/saga-call v1 binden Schluessel und
 Signaturen an den Anmeldenamen; die Oberflaeche zeigt ihn dort trotzdem nicht.
+Prueft Chats v1 (2.4): setzt chat_v3 waehrend des Tests ausdruecklich aus (seit 2.5 Standard an; Stufe 3 deckt
+tests/anmeldenamen_v3.py ab) und stellt den gespeicherten Zustand wieder her.
 Wegwerf-Konten an-*, raeumt auf. Umgebung: HK_TEST_BASE, BASE_URL, SESSION_SECRET, Postgres ueber db.py."""
 import base64, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 from itsdangerous import TimestampSigner
@@ -64,6 +66,22 @@ def leaks(viewer, other):
 
 
 def main():
+    with connect() as c:
+        r = c.execute("SELECT v FROM setting WHERE k='chat_v3'").fetchone()
+    auth.save_setting("chat_v3", False)                   # Chats v1 (siehe oben)
+    time.sleep(5.6)
+    try:
+        run()
+    finally:
+        with connect() as c, c:
+            if r is None:
+                c.execute("DELETE FROM setting WHERE k='chat_v3'")
+            else:
+                c.execute("INSERT OR REPLACE INTO setting (k, v) VALUES (?, ?)", ("chat_v3", r[0]))
+        auth._settings_cache["v"] = None
+
+
+def run():
     cleanup()
     auth.save_setting("share_enabled", True)
     auth.save_setting("chat_enabled", True)

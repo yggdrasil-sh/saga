@@ -197,6 +197,9 @@ async function confirmAsk(p) { await p.waitForSelector('.hk-ask .btn-primary, .h
     // --- Hinweis (i) nach x3_why -----------------------------------------------------------------------------------
     const ch = await api(a, 'GET', '/api/chats/' + (await a.evaluate(() => { const r = [...document.querySelectorAll('#ct-list .ct-item-b')].find(x => !/Weiterleit-Ziel/.test(x.textContent)); return r ? r.dataset.id : 0; })));
     const why = ch.d.chat && ch.d.chat.x3_why;
+    if (ch.d.chat && ch.d.chat.x3_ok === true) {        // 2.5: Stufe 3 Standard an - Chat gleich mit Reaktionen, kein Hinweis
+      ok('Chat-Objekt: x3_ok true (Stufe 3 Standard), kein (i) im Kopf', !why && !(await a.isVisible('#ct-sub .ct-x3i')), { why });
+    } else {
     ok('Chat-Objekt: x3_ok false mit x3_why', ch.d.chat && ch.d.chat.x3_ok === false && !!why, ch.d.chat && { ok: ch.d.chat.x3_ok, why });
     ok('Kopf: (i) sichtbar', await a.isVisible('#ct-sub .ct-x3i'));
     await a.click('#ct-sub .ct-x3i'); await a.waitForSelector('.menu .ct-x3-pop');
@@ -205,6 +208,7 @@ async function confirmAsk(p) { await p.waitForSelector('.hk-ask .btn-primary, .h
     ok('Hinweis passt zu x3_why (' + why + ')', want.test(pop), pop);
     await shot(a, 'hinweis-dunkel');
     await a.keyboard.press('Escape');
+    }
 
     // --- Handy-Breite, hell, langer Druck ----------------------------------------------------------------------------
     const h = await session(browser, U1, E.SAGA_PASS, { viewport: { width: 390, height: 844 }, mobile: true, scheme: 'light' });
@@ -230,8 +234,10 @@ async function confirmAsk(p) { await p.waitForSelector('.hk-ask .btn-primary, .h
     await h.click('.ct-dlg .hk-dlg-head .icon-btn');
     await h.click('#ct-selbar .ct-sel-x');
     ok('Handy: x beendet die Auswahl', !(await h.$('#ct-selbar')));
-    await h.click('#ct-sub .ct-x3i'); await h.waitForSelector('.menu .ct-x3-pop');
-    await shot(h, 'hinweis-hell-handy');
+    if (await h.isVisible('#ct-sub .ct-x3i')) {          // (nur ohne Stufe 3; seit 2.5 Standard an meist ohne Hinweis)
+      await h.click('#ct-sub .ct-x3i'); await h.waitForSelector('.menu .ct-x3-pop');
+      await shot(h, 'hinweis-hell-handy'); await h.keyboard.press('Escape');
+    }
     // Desktop hell (Auswahl) fuer den Vergleich
     await a.emulateMedia({ colorScheme: 'light' });
     await menuOf(a, e1.id); await a.click('.menu .menu-item:has-text("Auswählen")'); await a.click(rowSel(e4.id) + ' .ct-bubble');
