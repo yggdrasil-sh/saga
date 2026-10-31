@@ -210,3 +210,87 @@ Servergrenzen); mit Eingabe die Suche (Kontakte zuerst). Je Kontakt Menü/Wische
 wird (`person.gone`) oder der Admin die getrennte Instanz ganz entfernt. Persönliches Backup: `daten.json` →
 `chat_contacts` `[{ref, name, remote, first_at, last_at, hidden}]`; Einspielen mit `{contacts: true}` (lokale nur, mit
 denen ein Chat erlaubt ist).
+
+## 8. Chat-Alltag (2.5): Stummschalten, Anheften, Ungelesen, Ausblenden, Erwähnungen, Formatierung, Linkvorschau, Medien
+
+Features in `/api/version` → `features`: `mute2`, `chatpin1`, `markunread1`, `chathide1`, `chatmention1`, `chatfmt1`,
+`chatmedia1`, dazu `unfurl1` nur, solange der Admin-Schalter „Linkvorschau in Chats“ (`chat_unfurl`, Standard an) an ist.
+Ohne das Feature verhalten sich Apps wie bisher. Alles ist **nur für mich** (je Person und Chat, Tabelle `chat_pref`) und
+wirkt auf allen meinen Geräten (Live `chat.changed`). Ende-zu-Ende bleibt: der Server sieht keinen neuen Klartext (einzige
+Ausnahme: die Kennungen der Erwähnten, `mentions`, neben dem Chiffrat – er kennt die Mitglieder ohnehin).
+
+### 8.1 Felder im Chat-Objekt (`GET /api/chats`, `GET/PATCH/POST /api/chats…`)
+
+| Feld | Bedeutung |
+|---|---|
+| `muted` | abgeleitet: **jetzt** stumm (für ältere Apps wie bisher) |
+| `muted_until` | `0` = nicht stumm, `-1` = für immer, sonst Unix-Sekunden (Ende). Abgelaufene setzt der Server selbst zurück. |
+| `notify` | `"all"` \| `"mentions"` (nur Erwähnungen und Antworten auf eigene Nachrichten) \| `"none"` |
+| `pinned`, `pinned_at` | angeheftet (seit, Unix-Sekunden) |
+| `unread_mark` | als ungelesen markiert; `unread` ist dann mindestens `1` |
+| `hidden`, `can_hide` | für mich ausgeblendet; ausblendbar sind nur Gruppen- und Seiten-Chats (nicht verlassbar) |
+| `mention_seq` | `seq` der neuesten Nachricht, in der ich erwähnt wurde (`0` = nie) |
+| `me_ref` | meine Kennung in Erwähnungs-Token (Stufe 3/über Servergrenzen = `my_handle`, sonst lokale Kennung `~x`) |
+
+`GET /api/chats` sortiert **angeheftete oben** (nach `pinned_at`), dann neueste zuerst; ausgeblendete fehlen, `hidden_count`
+nennt ihre Zahl, `GET /api/chats?hidden=1` liefert **nur** sie (für einen Bereich „Ausgeblendet“ bzw. die Suche).
+`GET /api/chats/unread` zählt markierte Chats je 1 und ausgeblendete nicht.
+
+### 8.2 `PATCH /api/chats/{cid}` (Felder frei kombinierbar, weitere Bereiche fügen eigene Felder hinzu)
+
+| Body | Wirkung | Fehler |
+|---|---|---|
+| `{"muted_until": unix \| 0 \| -1}` | stumm bis / aus / für immer (Zeitpunkt in der Vergangenheit = aus) | 400 sonst |
+| `{"muted": bool}` | alt: `true` = für immer, `false` = aus | |
+| `{"notify": "all" \| "mentions" \| "none"}` | Art der Mitteilungen | 400 |
+| `{"pinned": bool}` | anheften / lösen, höchstens **5** | 409 „Höchstens 5 Chats anheften.“ |
+| `{"unread_mark": bool}` | als ungelesen markieren; `POST …/read` löscht es | |
+| `{"hidden": bool}` | ausblenden / wieder anzeigen | 400 bei Direkt-Chat und freier Gruppe |
+
+Antwort wie bisher `{"chat": …}`.
+
+**Mitteilungen (Benachrichtigung + Push) – eine Regel für alles:** stumm (`muted_until` aktiv) oder `notify: "none"` →
+nichts (auch keine Erwähnung); erwähnt → `chat.mention` (auch bei `notify: "mentions"` und in ausgeblendeten Chats; der
+Chat kommt dabei zurück); ausgeblendet → nichts; `notify: "mentions"` → nur Antworten auf eigene Nachrichten
+(`chat.message`); sonst `chat.message`. Anrufe klingeln nicht in stummgeschalteten Chats (wie bisher). Neue Art
+`chat.mention` in `/api/notifications` (abschaltbar, Bereich „chat“ beim Push), Push-Text „{name} hat dich in einem Chat
+erwähnt“. Ein ausgeblendeter Chat kommt auch zurück, wenn ich ihn bewusst öffne (`POST /api/chats {kind:'group'|'page', …}`).
+
+### 8.3 Erwähnungen (`chatmention1`)
+
+Im (verschlüsselten) Text steht je Person das Token `<@kennung>` – Kennung = `members[].handle` (Stufe 3, über
+Servergrenzen) bzw. `members[].ref` (Chat v1). Clients zeigen es als „@Anzeigename“ (unbekannte Kennung: „@Unbekannt“) und
+heben Nachrichten hervor, die `me_ref` enthalten. Beim Senden (`POST /api/chats/{cid}/messages`, v1 und v2) zusätzlich
+unverschlüsselt `"mentions": ["kennung", …]` (höchstens 50). Der Server nimmt nur **aktuelle Mitglieder** (Rest still
+ignoriert, nie der Absender); kein Array → 400. Live `chat.message` an die Mitglieder trägt dann `mentions` (Kennungen,
+nie Anmeldenamen). Auswahl in der App: bei `@` die Mitglieder des Chats (Anzeigename), daneben wie bisher Seiten.
+
+### 8.4 Formatierung (`chatfmt1`, nur Darstellung)
+
+Markdown-light im Text: `*fett*`, `_kursiv_`, `~durch~`, `` `code` ``, ```` ```block``` ````, Zeilen `- ` = Liste,
+`> ` = Zitat. Marken nur am Wortrand (`a_b_c`, `2*3*4` bleiben). **Sicher rendern:** nur Text-Elemente, nie HTML aus dem
+Text, keine Links aus Markdown (Adressen erkennt der Client wie bisher, nur http/https). Ältere Clients zeigen die Zeichen.
+
+### 8.5 Linkvorschau (`unfurl1`)
+
+`GET /api/chat/unfurl?url=<adresse>` (Sitzung/Geräte-Schlüssel) → `{url, title, desc, site, image?: {mime:'image/jpeg', w, h,
+b64}}` oder `{}` (nichts Brauchbares, nicht erreichbar, Bot-Schutz). 400 ungültige Adresse (nur http/https, Standardport,
+ohne Zugangsdaten, ≤ 2000 Zeichen), 403 Admin-Schalter aus, 429 mehr als 30 je Minute. Der Server ruft nur öffentliche
+Adressen ab (auch nach Weiterleitungen, höchstens 3), nur `text/html`, ≤ 512 KB, ≤ 8 s; das Bild (PNG/JPEG/GIF/WebP, ≤ 2 MB)
+kommt neu kodiert als JPEG ≤ 400 px. Er speichert nichts.
+
+Der **Absender** holt die Vorschau (z. B. 0,6 s nach der letzten Eingabe, erste Adresse im Text), zeigt sie mit „✕“ zum
+Entfernen und legt sie **in den verschlüsselten Inhalt**: `body.preview = {url, title, desc, site, img?: {id, k, m, w, h, s}}`
+– `img` ist ein normaler verschlüsselter Anhang (wie ein Vorschaubild; seine `id` gehört in `files` der Sende-Anfrage).
+Empfänger laden **nichts** nach (nur das verschlüsselte Bild vom eigenen Server).
+
+### 8.6 Medienübersicht (`chatmedia1`)
+
+`GET /api/chats/{cid}/messages?has=file&before=<seq>&limit=` liefert nur Nachrichten mit Anhängen (sonst wie gewohnt).
+Links kennt der Server nicht (`has=link` → 400): Clients suchen sie in geladenen und nachgeladenen Seiten. Web: Kopfmenü
+bzw. Gruppeninfo → „Medien, Dateien, Links“ (Reiter Medien/Dateien/Links, „Ältere laden“).
+
+### 8.7 Nur im Client
+
+Entwürfe je Chat bleiben auf dem Gerät (Web: `localStorage` `saga-chat-draft:<konto>:<chat>`, beim Abmelden gelöscht), nie
+auf dem Server. Emoji-Auswahl im Eingabefeld = dieselbe Auswahl wie bei Reaktionen.

@@ -608,3 +608,13 @@ Die frühere Regel „Gelesen bleibt lokal“ gilt nur noch für den Lese-Zeiger
   Chat `ref` haben und den Status zeigen. Wechsel meldet der Server der Person verwerfbar mit
   `{"op": "online.ev", "items": [{"h", "online", "last"} | {"h", "hidden": true}]}`; angenommen werden nur Handles des
   meldenden Servers. „Zuletzt online“ geht nur gerundet (5 Minuten) über die Leitung.
+
+## Erwähnungen in Chats über Servergrenzen (2.5, `chatmention1`)
+
+Fähigkeit `chatmention1` (Admin-Schalter „Chat“). Der Auftrag `send` (Teilnehmer → Heim) und das Ereignis `chat.msg` (Heim →
+Teilnehmer) tragen neben `msg` optional `mentions: ['~x@host', …]` (höchstens 50, Klartext wie die Mitgliederliste). Das
+Heim übernimmt nur Handles **aktueller Mitglieder** des Chats und gibt nur diese weiter; jeder Server prüft beim Empfang
+erneut und meldet nur **eigenen** Konten (`chat.mention`, Regeln wie lokal: auch bei `notify: "mentions"` und in
+ausgeblendeten Chats, nicht bei stumm/`none`). Erwähnungen von Nicht-Mitgliedern, des Absenders oder unbekannter Handles
+werden still verworfen. An Gegenstellen ohne `chatmention1` fehlt das Feld (dort kommt nur die normale Mitteilung).
+

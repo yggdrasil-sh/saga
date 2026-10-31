@@ -16,6 +16,26 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Chat-Alltag)
+- **Stummschalten mit Dauer** (1 Stunde, 8 Stunden, bis morgen, 1 Woche, für immer) und **Mitteilungen je Chat**: alle,
+  nur Erwähnungen und Antworten, keine. Der Server beendet abgelaufene Stummschaltungen selbst. Feature `mute2`.
+- **Chats anheften** (höchstens 5, oben in der Liste), **als ungelesen markieren**, **Gruppen- und Seiten-Chats für mich
+  ausblenden** (Bereich „Ausgeblendet“; der Chat kommt bei einer Erwähnung zurück). Features `chatpin1`, `markunread1`,
+  `chathide1`.
+- **@-Erwähnung von Personen** im Chat: Auswahl der Mitglieder, Hervorhebung, eigene Mitteilung „… hat dich in einem Chat
+  erwähnt“ (auch über Servergrenzen, Fähigkeit `chatmention1`; nur Mitglieder, andere werden ignoriert). Feature
+  `chatmention1`.
+- **Formatierung** in Nachrichten: `*fett*`, `_kursiv_`, `~durch~`, `` `code` ``, Codeblöcke, Listen, Zitate – nur
+  Darstellung, sicher ohne HTML. Feature `chatfmt1`.
+- **Linkvorschau**: beim Schreiben holt der Server Titel, Beschreibung und ein kleines Bild (nur öffentliche Adressen,
+  Weiterleitungen geprüft, Zeit-/Größenlimit); die Vorschau geht verschlüsselt mit der Nachricht, Empfänger laden nichts
+  nach; vor dem Senden entfernbar. Admin-Schalter „Linkvorschau in Chats“ (Standard an). Feature `unfurl1`,
+  `GET /api/chat/unfurl`.
+- **Web:** Entwürfe je Chat (nur in diesem Browser, beim Abmelden gelöscht), Emoji-Auswahl im Eingabefeld,
+  „Medien, Dateien, Links“ (Feature `chatmedia1`: `GET /api/chats/{cid}/messages?has=file`).
+- Schnittstelle: docs/APP-API-CHAT.md Abschnitt 8, docs/APP-API-FED.md „Erwähnungen“. Migration 30 (`chat_pref`: neue
+  Spalten; stummgeschaltete Chats gelten als „für immer“).
+
 ### Geändert (2.5, Chats: Stufe 3 ist Standard)
 - **Moderne Chats (Stufe 3) sind jetzt Standard an** – Reaktionen, Bearbeiten, Sprachnachrichten und Systemzeilen in
   allen Chats, Handles statt Anmeldenamen, lokale Gruppen nehmen Personen anderer Server auf. Die Einstellung `chat_v3`
