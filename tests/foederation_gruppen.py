@@ -9,6 +9,8 @@ aendern Mitglieder - auch von einem anderen Server aus), Gruppenname (verschlues
 Seiten-Chat einer geteilten Seite mit fremder Gruppe (deren Server meldet die Mitglieder nur als Ziel einer Freigabe) und
 fremder Person, Oeffnen von der fremden Seite aus, Entzug der Freigabe, Umstellung eines bestehenden Seiten-Chats auf v2
 (alte Nachrichten bleiben v1 lesbar); Trennen (Mitglieder der getrennten Instanz raus, dort schreibgeschuetzt).
+2.5 (chatadm1): Admin vergeben/entziehen beim Heim und als Auftrag 'admin' vom Teilnehmer-Server (fremder Admin), Liste und
+Systemzeile 'admin' kommen auf allen Servern an, letzter Admin 409, Heim ohne chatadm1 -> 409 "zu alt" (can_admin false).
 Kompatibilitaet: FED_B_APP=<Saga 2.1/2.2> -> B kann keine Gruppen ueber Servergrenzen: verstaendliche Meldung, Seiten-Chat
 bleibt lokal (v1), keine Serverfehler. Raeumt auf (Datenbanken geloescht)."""
 import json, os, re, sys, time
@@ -180,6 +182,51 @@ def part_group(adm, pab, pba, pac, pca):
     return anna, carl, bert, cleo, dora, ch
 
 
+def part_admin(anna, cleo, dora, ch):
+    """2.5 (chatadm1): Admins einer Gruppe ueber Servergrenzen - beim Heim und als Auftrag 'admin' vom Teilnehmer-Server."""
+    ok("Faehigkeit chatadm1 ausgehandelt (A-B, A-C)", wait(lambda: caps_ok("a", HB, "chatadm1") and caps_ok("c", HA, "chatadm1"), 25))
+    q = lambda h: h.replace("@", "%40")                                                 # noqa: E731
+    dc = dora.chat(ch["ref"])
+    ok("C: Dora kein Admin (me_admin/can_manage/can_admin false)", dc.get("me_admin") is False and dc.get("can_manage") is False
+       and dc.get("can_admin") is False and dc.get("can_rename") is True)
+    s, d = api("c", "fc-dora", "PATCH", f"/api/chats/{dc['id']}/members/{q(cleo.handle)}", {"admin": True})
+    ok(f"C: Dora (kein Admin) -> Heim weist ab ({s})", s == 403)
+    s, d = api("a", "fa-anna", "PATCH", f"/api/chats/{ch['id']}/members/{q(dora.handle)}", {"admin": True})
+    dm = next((m for m in (d.get("chat") or {}).get("members", []) if m.get("handle") == dora.handle), {})
+    ok(f"A (Heim): Anna macht Dora (C) zum Admin ({s}, {str(d)[:80] if s != 200 else ''})", s == 200 and dm.get("admin") is True)
+    dc = wait(lambda: (lambda x: x if x.get("me_admin") else None)(dora.chat(ch["ref"]) or {}), 15) or {}
+    ok("C: Dora ist jetzt Admin (Liste vom Heim), can_admin", dc.get("me_admin") is True and dc.get("can_manage") is True and dc.get("can_admin") is True)
+    ok("C: Systemzeile 'admin' mit Herkunft", wait(lambda: any(x.get("type") == "admin" and x.get("on") is True and (x.get("target") or {}).get("handle") == dora.handle
+                                                           and (x.get("by") or {}).get("host") == HA for x in sys_lines(dora, dc["id"])), 15))
+    s, d = api("c", "fc-dora", "PATCH", f"/api/chats/{dc['id']}/members/{q(cleo.handle)}", {"admin": True})
+    ok(f"C: Dora (fremder Admin) macht Cleo (B) zum Admin - Auftrag 'admin' ans Heim ({s})", s == 200)
+    ok("A: Cleo ist beim Heim Admin", wait(lambda: any(m.get("handle") == cleo.handle and m.get("admin")
+                                                       for m in api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"]["members"]), 10))
+    ok("B: Cleos Kopie zeigt sie als Admin", wait(lambda: (cleo.chat(ch["ref"]) or {}).get("me_admin") is True, 15))
+    s, d = api("c", "fc-dora", "PATCH", f"/api/chats/{dc['id']}/members/{q(anna.handle)}", {"admin": False})
+    ok(f"C: Dora entzieht Anna (Heim) die Admin-Rolle ({s})", s == 200)
+    ok("A: Anna ist kein Admin mehr", wait(lambda: api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("me_admin") is False, 10))
+    s, d = api("a", "fa-anna", "PATCH", f"/api/chats/{ch['id']}/members/{q(dora.handle)}", {"admin": False})
+    ok(f"A: Anna (kein Admin) -> 403 ({s})", s == 403)
+    s, d = api("c", "fc-dora", "PATCH", f"/api/chats/{dc['id']}/members/{q(cleo.handle)}", {"admin": False})
+    ok(f"C: Dora entzieht Cleo ({s})", s == 200)
+    s, d = api("c", "fc-dora", "PATCH", f"/api/chats/{dc['id']}/members/{q(dora.handle)}", {"admin": False})
+    ok(f"C: Dora als letzte Admin -> 409 vom Heim, verstaendlich ({s}, {str(d.get('error'))[:40]})", s == 409 and "letzte Admin" in str(d.get("error")))
+    # Gegenstelle ohne chatadm1 (wie ein Heim mit Saga vor 2.5): C kennt die Faehigkeit von A nicht
+    row = sql("c", "SELECT caps FROM fed_peer WHERE host=?", (HA,))[0][0]
+    sql("c", "UPDATE fed_peer SET caps=? WHERE host=?", (json.dumps([x for x in json.loads(row) if x != "chatadm1"]), HA))
+    try:
+        dc = dora.chat(ch["ref"])
+        ok("C: Heim ohne chatadm1 -> can_admin false (can_manage bleibt)", dc.get("can_admin") is False and dc.get("can_manage") is True)
+        s, d = api("c", "fc-dora", "PATCH", f"/api/chats/{dc['id']}/members/{q(anna.handle)}", {"admin": True})
+        ok(f"C: Heim ohne chatadm1 -> 409 'zu alt' ({s}, {str(d.get('error'))[:50]})", s == 409 and "zu alt" in str(d.get("error")) and HA in str(d.get("error")))
+    finally:
+        sql("c", "UPDATE fed_peer SET caps=? WHERE host=?", (row, HA))
+    s, d = api("c", "fc-dora", "PATCH", f"/api/chats/{dc['id']}/members/{q(anna.handle)}", {"admin": True})
+    ok(f"C: Dora macht Anna wieder zum Admin ({s})", s == 200)
+    ok("A: Anna wieder Admin", wait(lambda: api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("me_admin") is True, 10))
+
+
 def part_v3open(anna, carl, bert):
     """2.5: freie Gruppe der Stufe 3 (lokal) nimmt eine Person eines anderen Servers auf - wird foederiert, gleiche Krypto."""
     F2.py("a", "import auth\nauth.save_setting('chat_v3', True)\nprint(1)")
@@ -330,6 +377,7 @@ def run():
             part_compat(adm, pab, pba, pac, pca)
         else:
             anna, carl, bert, cleo, dora, gch = part_group(adm, pab, pba, pac, pca)
+            part_admin(anna, cleo, dora, gch)
             part_v3open(anna, carl, bert)
             pch = part_page(adm, pab, pba, pac, pca, anna, carl, bert, cleo, dora)
             part_disconnect(adm, pab, pba, pac, pca, anna, bert, cleo, dora, gch, pch)
