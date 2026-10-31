@@ -38,7 +38,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 import auth
 from db import connect as _db
-from saga import avatars, bus, file_v2, mfa, notify, sharing
+from saga import avatars, bus, contacts, file_v2, mfa, notify, sharing
 from saga.core import (HANDLE_RE, labels, legacy_sql, local_ref, resolve_input, resolve_ref, subtitles, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, icon_csp, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
@@ -617,11 +617,12 @@ def _changed(c, cid, uids=None):
 
 
 def may_contact(c, uid, other):
-    """Darf uid mit other einen Chat beginnen? Aktives Konto; mit "nur gemeinsame Gruppen" (Teilen) nur dann."""
+    """Darf uid mit other einen Chat beginnen? Aktives Konto; mit "nur gemeinsame Gruppen" (Teilen) nur dann - oder (2.5)
+    wenn other ein Kontakt von uid ist (man hat schon miteinander geschrieben, saga.contacts)."""
     r = c.execute("SELECT disabled FROM users WHERE username=?", (other,)).fetchone()
     if not r or r[0] or other == uid:
         return False
-    return not group_scope() or bool(groups_of(c, uid) & groups_of(c, other))
+    return not group_scope() or bool(groups_of(c, uid) & groups_of(c, other)) or contacts.has(c, uid, other)
 
 
 # --- Erneute Anmeldung fuer "Neu beginnen" ---------------------------------------------------------------------
@@ -1053,13 +1054,54 @@ def api_people(request: Request, q: str = ""):
         av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
         lb = labels(c, [r[0] for r in rows]) if rows else {}
         sb = subtitles(c, [r[0] for r in rows], lb) if rows else {}
+        # 2.5: passende Kontakte vorne (auch 1-2 Zeichen als Teilwort und ausserhalb "nur gemeinsame Gruppen" - man hat
+        # schon miteinander geschrieben); nicht anschreibbare (gone) fehlen hier
+        kn = contacts.entries(c, uid, q, limit=10, with_gone=False)
     # 2.3: Personen anderer Instanzen aus dem Adressbuch (saga.fed_dir) - Chats ueber Servergrenzen folgen mit Protokoll 2
     remote = sharing.DIR_SEARCH(uid, q, "chat") if sharing.DIR_SEARCH is not None else []
     # 2.4 (W4): Kennung = pseudonymer Handle (POST /api/chats nimmt ihn an), Name ohne Anmeldename
-    return _no_store({"users": [{"username": local_ref(r[0]), "name": lb.get(r[0]) or local_ref(r[0]), "sub": sb.get(r[0], ""), "ready": bool(r[2]),
-                                 "avatar": av.get(r[0])} for r in rows],
+    users = [{"username": local_ref(r[0]), "name": lb.get(r[0]) or local_ref(r[0]), "sub": sb.get(r[0], ""), "ready": bool(r[2]),
+              "avatar": av.get(r[0])} for r in rows]
+    have = {x["ref"] for x in kn}
+    users = [dict(username=k["ref"], name=k["name"], sub=k["sub"], ready=k["ready"], avatar=k["avatar"], contact=True)
+             for k in kn if not k["remote"]] + [u for u in users if u["username"] not in have]
+    remote = [{"type": "remote", "target": "@" + k["ref"], "handle": k["ref"], "name": k["name"], "host": k["host"], "pub": None,
+               "label": f"{k['name']} · {k['host']}", "avatar": k["avatar"], "contact": True} for k in kn if k["remote"]] + \
+             [x for x in remote if x.get("handle") not in have]
+    return _no_store({"users": users,
                       "groups": [{"name": g} for g in mine if (q in g if len(q) >= sharing.SHORT_Q else q == g)][:10],
                       "remote": remote})
+
+
+@router.get("/api/chat/contacts")
+def api_contacts(request: Request, q: str = "", limit: int = 50):
+    """2.5 (contacts1): eigene Kontakte - Personen aus Direkt-Chats und freien Gruppen, auch nach Loeschen/Verlassen des
+    Chats. Zuletzt zuerst; q filtert (Teilwort, jede Laenge). Felder: ref (Kennung fuer POST /api/chats: lokal 'user', fremd
+    'handle'), name, sub, avatar, remote, host (nur fremd), ready, gone, last_at. Nie Anmeldenamen."""
+    uid, err = _me(request)
+    if err:
+        return err
+    if not _rate("contacts", uid, 60):
+        return _bad(t("zu schnell"), 429)
+    with _db() as c:
+        out = contacts.entries(c, uid, q, limit=max(1, min(int(limit or 50), contacts.LIST_MAX)))
+    return _no_store({"contacts": out})
+
+
+@router.delete("/api/chat/contacts/{ref:path}")
+def api_contact_hide(ref: str, request: Request):
+    """2.5: "Aus Kontakten entfernen" (ausgeblendet; ein neuer gemeinsamer Chat macht wieder sichtbar). Unbekannt -> 404."""
+    uid, err = _me(request)
+    if err:
+        return err
+    if not _rate("contacts", uid, 60):
+        return _bad(t("zu schnell"), 429)
+    ref = str(ref or "").strip().lower()[:300]
+    with _db() as c, c:
+        if not contacts.hide(c, uid, ref):
+            return _bad("not found", 404)
+        _direct(c, [uid], "chat.contacts", {"ref": ref, "hidden": True})    # andere eigene Geraete: Liste neu laden
+    return _no_store({"ok": True})
 
 
 def _note_info(c, uid, ids):
@@ -1415,6 +1457,8 @@ async def api_chat_new(request: Request):
             _changed(c, cid)
         else:
             return _bad(t("ungültige Angabe"))
+        if kind in ("dm", "free"):
+            contacts.link(c, ch["id"])                   # 2.5: Kontakte gegenseitig (auch wieder sichtbar)
         mem = sync(c, ch)
         m = _member(c, ch["id"], uid)
         if not m:
@@ -1525,6 +1569,7 @@ async def api_member_add(cid: int, request: Request):
             return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
         c.execute("INSERT INTO chat_member (chat_id, uid, joined, last_read) VALUES (?,?,?,?) ON CONFLICT (chat_id, uid) DO UPDATE "
                   "SET left_at=NULL, role='member', joined=EXCLUDED.joined, last_read=EXCLUDED.last_read", (ch["id"], who, time.time(), ch["last_seq"]))
+        contacts.link(c, ch["id"], who=[who])             # 2.5: neues Mitglied <-> alle anderen
         _changed(c, ch["id"], set(mem) | {who})
         mem = members(c, ch["id"])
         return _no_store({"chat": _chat_dict(c, uid, ch, mem, m, None, full=True)})
@@ -1968,6 +2013,7 @@ async def api_send(cid: int, request: Request):
             c.execute("UPDATE chat SET last_seq=?, last_at=? WHERE id=?", (seq, now, ch["id"]))
             c.execute("UPDATE chat_member SET last_read=? WHERE chat_id=? AND uid=?", (seq, ch["id"], uid))
             revive(c, ch["id"], uid)                       # (2.1) aus dem Archiv holen, ausgeblendeten Direkt-Chat zeigen
+            contacts.touch(c, ch["id"], uid, now)          # 2.5: Kontakte "zuletzt zuerst"
             muted = {r[0] for r in c.execute("SELECT uid FROM chat_member WHERE chat_id=? AND left_at IS NULL AND muted<>0", (ch["id"],))}
             for u in mem:
                 if u != uid and u not in muted:
@@ -2430,6 +2476,7 @@ def delete_account(c, uid):
     c.execute("DELETE FROM chat_member WHERE uid=?", (uid,))
     c.execute("DELETE FROM chat_pref WHERE uid=?", (uid,))                         # Archiv / "fuer mich geloescht" (2.1)
     c.execute("DELETE FROM chat_hidden WHERE uid=?", (uid,))                       # "fuer mich ausgeblendet" (2.5)
+    contacts.drop_account(c, uid)                                                  # 2.5: Kontakte (eigene + das Konto bei anderen)
     for cid in chats:
         ch = _load(c, cid)
         if not ch:

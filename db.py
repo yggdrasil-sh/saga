@@ -926,6 +926,16 @@ CREATE TABLE IF NOT EXISTS import_run (
     report TEXT NOT NULL DEFAULT '{}', root BIGINT, error TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS import_run_uid ON import_run (uid, id);
 CREATE INDEX IF NOT EXISTS chat_hidden_seq ON chat_hidden (msg_seq);
+-- Kontakte (2.5, saga/contacts.py, Migration 28): je Konto die Personen aus Direkt-Chats und freien Gruppen - bleiben,
+-- wenn der Chat geloescht/verlassen wird. ref = pseudonymer Such-Handle '~…' (lokal) bzw. '~x@host' (anderer Server), nie
+-- ein Anmeldename; name/avatar nur Zwischenspeicher fuer die Anzeige; hidden = "Aus Kontakten entfernt". Geht mit dem Konto
+-- (beide Richtungen) und mit der entfernten Instanz.
+CREATE TABLE IF NOT EXISTS chat_contact (
+    uid TEXT NOT NULL, ref TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', avatar TEXT,
+    first_at DOUBLE PRECISION NOT NULL, last_at DOUBLE PRECISION NOT NULL, hidden SMALLINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, ref));
+CREATE INDEX IF NOT EXISTS chat_contact_last ON chat_contact (uid, last_at DESC);
+CREATE INDEX IF NOT EXISTS chat_contact_ref ON chat_contact (ref);
 -- Gjallarhorn (2.5, saga/horn.py, Konzept v2 §2.10, Migration 16): Knotenregister (eingebauter Knoten + gekoppelte) und
 -- Kopplungs-Token (nur als SHA-256, einmalig, 30 min). pub = Ed25519-Knotenschluessel (Base64), load = letzte Lastmeldung,
 -- dns_ids = Cloudflare-Eintraege (P7), removed = entfernt (pub gesperrt). Wahrheitswerte als SMALLINT wie ueberall (db._arg).
@@ -1246,6 +1256,14 @@ SELECT 1 FROM note_mention, synced_block, synced_ref LIMIT 0;
     # Bestand: der Zustand entsteht beim ersten Live-Oeffnen deterministisch aus note.body. Beliebig oft ausfuehrbar.
     27: """
 SELECT 1 FROM note_crdt, note_crdt_log LIMIT 0;
+""",
+    # 2.5.0 (Kontakte, saga/contacts.py): Tabelle chat_contact legt SCHEMA oben an. Bestand: rueckwirkend aus vorhandenen
+    # Direkt-Chats und freien Gruppen - die Kennungen (HMAC-Handles) entstehen in Python, daher fuellt
+    # contacts.backfill_once() beim naechsten Start einmalig (Merker setting chat_contact_fill; hier zurueckgesetzt,
+    # falls ein Backup mit Merker eingespielt wurde). Beliebig oft ausfuehrbar.
+    28: """
+SELECT 1 FROM chat_contact LIMIT 0;
+DELETE FROM setting WHERE k='chat_contact_fill';
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

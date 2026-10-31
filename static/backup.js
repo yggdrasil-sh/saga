@@ -324,13 +324,13 @@
       w.appendChild(field(T('Privater Schlüssel'), key));
       w.appendChild(el('p', 'hk-hint', T('Der private Schlüssel geht nur für diesen Vorgang an den Server und wird nicht gespeichert. Für ein schon entschlüsseltes .zip nicht nötig.')));
       var fo = sw(T('In eine neue Seite „Wiederhergestellt <Datum>“'), true), tr = sw(T('Papierkorb mit einspielen'), false),
-          ta = sw(T('Aufgaben übernehmen'), false), bm = sw(T('Lesezeichen übernehmen'), false);
-      [fo, tr, ta, bm].forEach(function (x) { w.appendChild(x); });
+          ta = sw(T('Aufgaben übernehmen'), false), bm = sw(T('Lesezeichen übernehmen'), false), ko = sw(T('Chat-Kontakte übernehmen'), false);
+      [fo, tr, ta, bm, ko].forEach(function (x) { w.appendChild(x); });
       var m = msgBox(), go = button(T('Einspielen'), true);
       go.addEventListener('click', function () {
         var f = file.files && file.files[0];
         if (!f && !remote.value) { say(m, T('Bitte eine Backup-Datei wählen.')); return; }
-        var opts = { key: key.value, folder: fo.input.checked, trash: tr.input.checked, tasks: ta.input.checked, bookmarks: bm.input.checked };
+        var opts = { key: key.value, folder: fo.input.checked, trash: tr.input.checked, tasks: ta.input.checked, bookmarks: bm.input.checked, contacts: ko.input.checked };
         go.disabled = true; say(m, f ? T('Lade hoch …') : T('Hole aus dem Ziel …'), true);
         var first = f ? fetch('/api/account/backup/restore/upload', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/octet-stream' }, body: f })
           .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); })

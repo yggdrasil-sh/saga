@@ -37,7 +37,7 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 from db import connect as _db
-from saga import bus, chat, chat_v2 as V, fed_keys as FK, federation as F, fedsig, netguard, notify, sharing
+from saga import avatars, bus, chat, chat_v2 as V, contacts, fed_keys as FK, federation as F, fedsig, netguard, notify, sharing
 from saga.core import MEDIA_FRONT, MEDIA_KEY, _bad, _body, is_raw_ref, resolve_input, t, unnamed
 from saga.notes import FILE_MAX
 
@@ -436,6 +436,7 @@ def deliver(c, ch, seq, mid, sender, kind="msg"):
         chat._changed(c, ch["id"], local_members(c, ch["id"]))
         return
     chat.revive(c, ch["id"], sender)
+    contacts.touch(c, ch["id"], sender)            # 2.5: Kontakte "zuletzt zuerst"
     rows = c.execute("SELECT uid, muted, state FROM chat_member WHERE chat_id=? AND left_at IS NULL", (ch["id"],)).fetchall()
     loc = [r for r in rows if not sharing.is_remote(r[0])]
     if not sharing.is_remote(sender):
@@ -543,6 +544,7 @@ def op_request(c, peer, d):
     if ex and ex["home_peer"] is None and not ex["fstate"] and ex["v"] == 2:
         # Es gibt den Chat schon (bei uns zu Hause, z. B. hat unser Konto ihn begonnen): die anfragende Seite nimmt ihn
         c.execute("UPDATE chat_member SET state='ok', left_at=NULL WHERE chat_id=? AND uid=?", (ex["id"], p_))
+        contacts.link(c, ex["id"])                   # 2.5: Kontakte (das Konto hier hat den Chat begonnen)
         return 200, {"existing": ex["ref"]}
     if ex:                                       # alter Chat (dort verloren bzw. schreibgeschuetzt): bleibt lesbar, aber ohne Paar
         c.execute("UPDATE chat SET dm_key=NULL, fstate=CASE WHEN fstate='' THEN 'old' ELSE fstate END WHERE id=?", (ex["id"],))
@@ -1764,6 +1766,7 @@ def create_dm(uid, h, device=""):
                         (key, uid, now, use, home)).lastrowid
         c.execute("INSERT INTO chat_member (chat_id, uid, joined, state) VALUES (?,?,?,'ok')", (cid, uid, now))
         c.execute("INSERT INTO chat_member (chat_id, uid, joined, state) VALUES (?,?,?,'ok')", (cid, p_, now))
+        contacts.link(c, cid)                    # 2.5: Kontakt (Person eines anderen Servers)
         F.log(c, "chat.started", p, f"chat={cid}" + (" (existing)" if home else ""))
         ch = chat._load(c, cid)
         chat._changed(c, cid, [uid])
@@ -1786,6 +1789,7 @@ def _reopen(c, uid, ch, device=""):
             hp, ref = ch["home_peer"], ch["ref"]
             c.after_commit(lambda: F.peer_submit(hp, fill_gap, hp, ref, None))
     c.execute("UPDATE chat_pref SET hidden=0 WHERE chat_id=? AND uid=? AND hidden<>0", (ch["id"], uid))
+    contacts.link(c, ch["id"], who=[uid])         # 2.5: angenommen bzw. wieder geoeffnet -> Kontakte
     mem = chat.members(c, ch["id"])
     return chat._no_store({"chat": chat._chat_dict(c, uid, ch, mem, chat._member(c, ch["id"], uid), chat._my_device(c, uid, str(device or "")), full=True)})
 
@@ -2480,6 +2484,8 @@ def apply_members(c, peer, ev, create=True):
         if u not in want:
             c.execute("UPDATE chat_member SET left_at=? WHERE chat_id=? AND uid=?", (now, ch["id"], u))
             chat.unhide(c, ch["id"], u)
+    if kind == "free":
+        contacts.link(c, ch["id"], who=[u for u in want if u not in cur])    # 2.5: Neue <-> Konten hier (nur angenommene)
     if isinstance(ev.get("sys"), dict) and ev["sys"].get("type") == "admin":     # 2.5 (chatadm1): Admin vergeben/entzogen
         sd = ev["sys"]
         tg = (_sys_people([sd.get("target")]) or [None])[0]
@@ -2595,6 +2601,7 @@ def op_members(c, peer, d):
             chat._direct(c, [u], "chat.request", {"chat_id": ch["id"]})
     for u in removed:
         _remove_member(c, ch, u)
+    contacts.link(c, ch["id"], who=added)             # 2.5: neue Mitglieder <-> Konten hier
     members_changed(c, ch, added, removed, by=p_)
     chat._changed(c, ch["id"], local_members(c, ch["id"]))
     return 200, {"ok": True}
@@ -2862,6 +2869,7 @@ def create_group(uid, b):
             _add_member(c, ch, principal(h))
             added.append(principal(h))
         members_changed(c, ch, added, [], by=uid)
+        contacts.link(c, cid)                         # 2.5: Kontakte gegenseitig (eingeladene Personen anderer Server erst beim Annehmen)
         chat._changed(c, cid, [uid] + loc)
         F.log(c, "chat.group", None, f"chat={cid} remote={len(rem)}", host=F.SELF_HOST)
         mem = chat.members(c, cid)
@@ -2936,6 +2944,7 @@ def group_add(uid, cid, who_, handle):
             if sharing.is_remote(target):
                 _person(c, F.peer_by(c, "host", split_handle(th)[1]), th)
             _add_member(c, ch, target)
+            contacts.link(c, ch["id"], who=[target])     # 2.5
             members_changed(c, ch, [target], [], by=uid)
             chat._changed(c, ch["id"], local_members(c, ch["id"]))
             return chat._no_store({"chat": chat._chat_dict(c, uid, ch, chat.members(c, ch["id"]), chat._member(c, ch["id"], uid), None, full=True)})
@@ -3148,6 +3157,7 @@ def _person_gone(c, peer, name, deleted=False):
     if not deleted or not F.PSEUDO_RE.fullmatch(name or ""):
         return
     p_ = principal(f"{name}@{peer['host']}")
+    contacts.drop_remote(c, f"{name}@{peer['host']}")     # 2.5: Kontakt weg (Person geloescht)
     for (cid,) in c.execute("SELECT ch.id FROM chat ch JOIN chat_member m ON m.chat_id=ch.id WHERE ch.v=2 AND ch.kind='dm' AND m.uid=? "
                             "AND ch.fstate=''", (p_,)).fetchall():
         c.execute("UPDATE chat SET fstate='gone' WHERE id=?", (cid,))
@@ -3218,5 +3228,23 @@ _st = {"t": 0.0}
 F.PERIODIC.append(periodic)
 F.PEER_GONE_HOOKS.append(_peer_gone)
 F.PERSON_GONE_HOOKS.append(_person_gone)
+def contact_info(c, refs):
+    """2.5 (saga.contacts.REMOTE): Kontakte auf anderen Servern -> {ref: {name, host, avatar, ready, gone}}. gone = Verbindung
+    getrennt bzw. Chats mit der Instanz nicht (mehr) erlaubt - nicht anschreibbar."""
+    out, peers = {}, {}
+    prs = ["@" + r for r in refs]
+    av = avatars.urls(c, prs) if prs else {}
+    for r in refs:
+        n, host = split_handle(r)
+        if not n:
+            continue
+        if host not in peers:
+            peers[host] = F.peer_by(c, "host", host)
+        ok_ = peer_ok(peers[host])
+        out[r] = {"name": label_of(c, "@" + r)["name"], "host": host, "avatar": av.get("@" + r), "ready": ok_, "gone": not ok_}
+    return out
+
+
+contacts.REMOTE = contact_info
 chat.FED = sys.modules[__name__]
 FK.VIA_HOME = keys_via_home

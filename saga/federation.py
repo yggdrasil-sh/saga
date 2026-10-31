@@ -1733,6 +1733,7 @@ PERIODIC = []                # fn() - im Arbeiter-Thread nach jedem Durchlauf (e
 HELLO_HOOKS = []             # fn(peer_id) - Faehigkeiten oder Admin-Schalter einer Instanz haben sich geaendert (im Thread)
 PEER_GONE_HOOKS = []         # fn(c, peer) - Verbindung getrennt (in der Transaktion von cleanup_peer)
 PERSON_GONE_HOOKS = []       # fn(c, peer, name, deleted) - Person einer anderen Instanz weg (Ereignis person.gone)
+PEER_REMOVED_HOOKS = []      # fn(c, peer) - getrennte Instanz ganz entfernt (in der Transaktion von remove)
 
 
 def _enqueue(c, peer_id, ev, chain=None, express=True):
@@ -3571,6 +3572,8 @@ def remove(pid):
         if not p or p["status"] != "disconnected":
             return False
         cleanup_peer(c, p)
+        for fn in list(PEER_REMOVED_HOOKS):      # 2.5: z. B. Kontakte dieser Instanz (saga.fed_dir)
+            fn(c, p)
         c.execute("DELETE FROM fed_peer WHERE id=?", (pid,))
         log(c, "peer.removed", None, "", host=p["host"])
     return True

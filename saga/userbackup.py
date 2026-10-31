@@ -46,7 +46,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import auth
 import db
 from db import connect as _db
-from saga import backups, i18n, netguard, nextcloud, notify
+from saga import backups, chat, contacts, i18n, netguard, nextcloud, notify
 from saga.backups import BackupError
 from saga.core import BASE_URL, E, RESTORE_TEST, SECRET, TZ, _api_guard, _bad, _body, _json_load, account_lang, t
 from saga.notes import FILES_DIR, FILE_QUOTA, NOTE_BODY_MAX, NOTE_TOTAL_MAX, VERSION_MAX, _FILE_URL, _clean_props, _clean_schema, tree_changed
@@ -404,6 +404,8 @@ def collect(c, uid, cfg):
             account["public_name"] = pn[0]
         for k, v in c.execute(f"SELECT k, v FROM user_kv WHERE uid=? AND k IN ({','.join('?' * len(KV_KEYS))})", (uid, *KV_KEYS)):
             settings[k] = v
+    # 2.5: Kontakte im Chat (Kennung als Handle, nie Anmeldename; Chats selbst nicht - Ende-zu-Ende-verschluesselt)
+    chat_contacts = contacts.export(c, uid) if cats.get("settings", True) else []
     out_notes = []
     for i in ids:
         n = dict(notes[i])
@@ -419,7 +421,7 @@ def collect(c, uid, cfg):
     data = {"format": FORMAT, "saga": VERSION, "created": time.time(), "account": account, "settings": settings,
             "options": {k: bool(cats.get(k, CAT_DEFAULT[k])) for k in CATS}, "excluded": len([x for x in exclude]),
             "notes": out_notes, "versions": versions, "comments": comments, "files": list(files.values()),
-            "tasks": tasks, "task_sources": task_sources, "bookmarks": bookmarks}
+            "tasks": tasks, "task_sources": task_sources, "bookmarks": bookmarks, "chat_contacts": chat_contacts}
     return data, files, notes
 
 
@@ -471,7 +473,8 @@ def _readme(uid, name, data):
              "  daten.json     – " + t("alles vollständig (zum Einspielen in Saga: Einstellungen → Mein Backup → Backup einspielen)"),
              "  seiten/ vorlagen/ archiv/ papierkorb/  – " + t("Seiten als Markdown"),
              "  dateien/       – " + t("eigene hochgeladene Dateien und Bilder"),
-             "  profil/        – " + t("Profilbild"), "",
+             "  profil/        – " + t("Profilbild"),,
+             "  daten.json → chat_contacts – " + t("Chat-Kontakte (Name und Kennung, ohne Nachrichten)"), "",
              t("Nicht enthalten: Seiten und Dateien anderer Personen (auch nicht, was mit dir geteilt ist) und Chats (Ende-zu-Ende-verschlüsselt)."),
              ""]
     return "\n".join(lines)
@@ -530,7 +533,8 @@ def build_zip(uid, cfg, path, limit, name):
         z.put("daten.json", json.dumps(data, ensure_ascii=False, indent=1))
         z.put("LIESMICH.txt", _readme(uid, name, data))
         counts = {"pages": len(notes), "files": sum(1 for f in files.values() if f.get("path")), "versions": len(data["versions"]),
-                  "comments": len(data["comments"]), "tasks": len(data["tasks"]), "bookmarks": len(data["bookmarks"])}
+                  "comments": len(data["comments"]), "tasks": len(data["tasks"]), "bookmarks": len(data["bookmarks"]),
+                  "chat_contacts": len(data.get("chat_contacts") or [])}
         man = {"format": FORMAT, "saga": VERSION, "schema": db.SCHEMA_VERSION, "account": uid, "created": int(data["created"]),
                "created_utc": datetime.fromtimestamp(data["created"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                "counts": counts, "options": data["options"], "files": z.sums}
@@ -1113,10 +1117,14 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
                               (uid, str(x.get("name") or u)[:200], u, "", str(x.get("category") or "Lesezeichen")[:60],
                                float(x["sort"]) if isinstance(x.get("sort"), (int, float)) else now, now))
                     bms += 1
+        ncon = 0
+        if opts.get("contacts"):                       # 2.5: Kontakte (lokale nur, mit denen ein Chat erlaubt ist)
+            ncon = contacts.restore(c, uid, data.get("chat_contacts"),
+                                    may_local=lambda ref: chat.may_contact(c, uid, contacts.local_uid(c, ref) or "~"))
         if folder or made:
             tree_changed(c, uid, ([folder] if folder else []) + made, "created")
     return {"pages": len(made), "files": len(fmap), "versions": versions, "tasks": tasks, "task_sources": srcs, "bookmarks": bms,
-            "skipped": skipped, "folder": folder}
+            "contacts": ncon, "skipped": skipped, "folder": folder}
 
 
 def _import_task_sources(c, uid, data, nmap, made):
@@ -1704,7 +1712,7 @@ async def api_restore(request: Request):
     b = await _body(request) or {}
     tok, remote = str(b.get("token") or ""), str(b.get("remote") or "")
     opts = {"folder": b.get("folder", True) is not False, "trash": b.get("trash") is True, "versions": b.get("versions", True) is not False,
-            "tasks": b.get("tasks") is True, "bookmarks": b.get("bookmarks") is True}
+            "tasks": b.get("tasks") is True, "bookmarks": b.get("bookmarks") is True, "contacts": b.get("contacts") is True}
     key = str(b.get("key") or "")[:4000]
     with _mem_lock:
         up = _uploads.get(tok) if tok else None

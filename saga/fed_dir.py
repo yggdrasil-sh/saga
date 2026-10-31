@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import avatars, federation as F, fedsig, sharing
+from saga import avatars, contacts, federation as F, fedsig, sharing
 from saga.core import _api_guard, _bad, _body, t
 
 router = APIRouter()
@@ -374,6 +374,13 @@ def _on_opts(pid, old, new):
         pull_bg(pid, True)
 
 
+def _on_removed(c, p):
+    """Instanz entfernt (Admin): wie ihr Adressbuch verschwinden auch die Kontakte dort (2.5, saga.contacts). Beim
+    Trennen bleiben sie und gelten als gone (nicht anschreibbar)."""
+    contacts.drop_host(c, p["host"])
+
+
+F.PEER_REMOVED_HOOKS.append(_on_removed)
 F.HELLO_HOOKS.append(_on_hello)
 F.OPTS_HOOKS.append(_on_opts)
 

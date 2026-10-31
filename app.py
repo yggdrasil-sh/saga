@@ -30,6 +30,7 @@ from saga import collab                     # 2.5 (P3 Stufe 2): WebSocket /api/c
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
 from saga import chat_x3                         # 2.5: Reaktionen, Bearbeiten, Sprachnachrichten (haengt sich in chat, fed_chat ein)
+from saga import contacts                        # 2.5: Kontakte im Chat (Tabelle chat_contact, Endpunkte in saga.chat)
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, SecHeaders, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -78,6 +79,7 @@ async def lifespan(_app):
     webhooks.start()                                         # 2.5: Webhook-Zustellung (Ausgangskorb webhook_delivery)
     mentions.start()                                         # 2.5 (P6-5): Erwaehnungen entprellt mitteilen
     await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
+    await asyncio.to_thread(contacts.backfill_once)          # 2.5: Kontakte rueckwirkend aus vorhandenen Chats (einmalig)
 
     async def _gc_loop():
         purged = 0.0
