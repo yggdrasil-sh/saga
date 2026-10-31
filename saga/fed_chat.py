@@ -38,7 +38,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import avatars, bus, chat, chat_v2 as V, contacts, fed_keys as FK, federation as F, fedsig, netguard, notify, sharing
-from saga.core import MEDIA_FRONT, MEDIA_KEY, _bad, _body, is_raw_ref, resolve_input, t, unnamed
+from saga.core import HANDLE_RE, MEDIA_FRONT, MEDIA_KEY, _bad, _body, is_raw_ref, resolve_input, t, unnamed
 from saga.notes import FILE_MAX
 
 router = APIRouter()
@@ -2086,7 +2086,12 @@ def api_unblock(request: Request, target: str = ""):
     if err:
         return err
     with _db() as c, c:
-        n = c.execute("DELETE FROM fed_chat_block WHERE uid=? AND target=?", (uid, target.strip().lower())).rowcount
+        tg = target.strip().lower()
+        if chat.GRP is not None and HANDLE_RE.fullmatch(tg):          # 2.5 (block2): Such-Handle eines Kontos dieses Servers
+            tg = chat.GRP.block_target(c, uid, tg)[0] or tg
+        n = c.execute("DELETE FROM fed_chat_block WHERE uid=? AND target=?", (uid, tg)).rowcount
+        if n and chat.GRP is not None:
+            chat._direct(c, [uid], "chat.blocks", {"target": tg, "blocked": False})
     return chat._no_store({"ok": True, "deleted": n})
 
 

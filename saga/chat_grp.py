@@ -201,6 +201,8 @@ def chat_fields(c, uid, ch, m, d, device=None):
         for x in d.get("members", []):
             if not x.get("me") and _member_handle(c, x) in mine:
                 x["blocked"] = True
+                if ch["kind"] == "dm":               # Direkt-Chat mit einer gesperrten Person: ich schreibe dort nicht
+                    d.update(blocked=True, can_send=False)
 
 
 def _member_handle(c, x):

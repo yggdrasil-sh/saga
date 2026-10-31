@@ -671,6 +671,7 @@
     return c.name || '';
   }
   function freeTitle(c) {
+    grpInfo(c);                                         // 2.5 (groupinfo2): Beschreibung und Bild
     if (c.kind !== 'free' || !c.title_msg) return;
     if (isFed(c)) { freeTitleV2(c); return; }
     try {
@@ -740,7 +741,7 @@
       var li = el('li', 'ct-item' + (S.cur && S.cur.id === c.id ? ' on' : '') + (c.unread ? ' unread' : '') + (c.archived ? ' ct-archived' : ''));
       var b = el('button', 'ct-item-b'); b.type = 'button'; b.dataset.id = c.id;
       var nm = chatName(c);
-      var lav = avatar(kindIc(c) || (nm.charAt(0) || '?').toUpperCase(), c.kind === 'dm' ? (c.peer || {}).username : 'c' + c.id, c.kind !== 'dm' ? 'ct-av-k' : '',
+      var lav = c._av ? grpAvatar(c, 'ct-av-k', kindIc(c)) : avatar(kindIc(c) || (nm.charAt(0) || '?').toUpperCase(), c.kind === 'dm' ? (c.peer || {}).username : 'c' + c.id, c.kind !== 'dm' ? 'ct-av-k' : '',
                        c.kind === 'dm' ? (c.peer || {}).avatar : null);
       var lp = c.kind === 'dm' ? S.pres[(c.peer || {}).username] : null;
       if (lp && lp.online) { lav.classList.add('ct-on'); b.title = T('online'); }       // (2.4) Online-Status im Direkt-Chat
@@ -1145,6 +1146,7 @@
       var a = el('a', 'ct-chip ct-pagelink', T('Seite öffnen')); a.href = '/notes#' + c.note_id; a.target = 'hk-notes'; sub.appendChild(a);
     }
     x3Info(sub, c);                                       // 2.5: warum (noch) keine Reaktionen
+    drawPins(c);                                          // 2.5 (msgpin1): Leiste angeheftete Nachrichten
     document.title = chatName(c) + ' · ' + T('Chats');
     if (window.HKCalls) window.HKCalls.head(c);           // Anruf-Knoepfe (static/calls.js); 2.4: auch Gruppenanruf
     micDraw();
@@ -1157,7 +1159,13 @@
     if (!box) { box = el('div', 'ct-state'); box.id = 'ct-state'; box.setAttribute('role', 'region'); $('ct-compose').parentNode.insertBefore(box, $('ct-compose')); }
     box.textContent = '';
     var req = isFed(c) && c.request, ro = isFed(c) && c.readonly && !req;
-    box.hidden = !req && !ro; $('ct-compose').hidden = req || ro;
+    var mute = !req && !ro && c.can_send === false;      // 2.5 (groupinfo2): nur Admins duerfen schreiben
+    box.hidden = !req && !ro && !mute; $('ct-compose').hidden = req || ro || mute;
+    if (mute) {
+      box.appendChild(el('p', 'hk-hint ct-perm-note', c.blocked ? '⛔ ' + T('Du hast diese Person gesperrt. Entsperren über das Chat-Menü (⋯).')
+        : '🔒 ' + T('In dieser Gruppe dürfen nur Admins schreiben.')));
+      return;
+    }
     if ($('ct-call-a') && (req || ro)) { $('ct-call-a').hidden = true; $('ct-call-v').hidden = true; }
     if (ro) { box.appendChild(el('p', 'hk-hint', '🔒 ' + (c.readonly_reason || T('Diese Unterhaltung ist schreibgeschützt.')))); return; }
     if (!req) return;
@@ -1191,7 +1199,7 @@
     if (S.loading) { if (!older) S.loadAgain = true; return Promise.resolve(); }   // 2.5: Ereignis waehrend des Ladens nicht verlieren
     S.loading = true;
     var first = S.msgs.length ? S.msgs[0].seq : 0, last = S.msgs.length ? S.msgs[S.msgs.length - 1].seq : 0;
-    var url = '/api/chats/' + c.id + '/messages?calls=1&device=' + q(dev()) + (older && first ? '&before=' + first : (!older && last ? '&after=' + last : ''));
+    var url = '/api/chats/' + c.id + '/messages?calls=1&tombs=1&device=' + q(dev()) + (older && first ? '&before=' + first : (!older && last ? '&after=' + last : ''));
     // v2: Schluessel der Absender (selbst geprueft) vor dem Entschluesseln - sonst stuende kurz "Echtheit nicht bestaetigt"
     return (isFed(c) && !S.fk ? fedLoad(c).catch(function () { return null; }) : Promise.resolve()).then(function () { return api('GET', url); }).then(function (r) {
       S.loading = false;
@@ -1205,6 +1213,7 @@
           if (isFed(c) && m.sender && m.sender.username === ME) m.call.from = ME;     // v2: Anrufer steht als Prinzipal/Konto drin
           m.body = null; m.verified = true; S.byId[m.id] = m; return m;
         }
+        if (m.kind === 'tomb') { m.body = null; m.verified = true; S.byId[m.id] = m; return m; }    // 2.5: von einem Admin geloescht
         if (m.kind === 'sys') {                           // Systemzeile (2.3, z. B. KI ein-/ausgeschaltet) - Metadaten vom Heim
           try { m.sys = JSON.parse(m.body_ct); } catch (e) { m.sys = {}; }
           m.body = null; m.verified = true; S.byId[m.id] = m; return m;
@@ -1490,6 +1499,8 @@
       var isAI = m._ai === 'ok', mine = !isAI && m.sender && m.sender.username === ME;
       if (m.kind === 'call') { var cr = callRow(m, d, mine); if (S.sel) cr.classList.add('ct-nosel'); box.appendChild(cr); lastWho = null; return; }
       if (m.kind === 'sys') { var sr = sysRow(m, d); if (S.sel) sr.classList.add('ct-nosel'); box.appendChild(sr); lastWho = null; return; }
+      if (m.kind === 'tomb') { var tr = tombRow(m, d); if (S.sel) tr.classList.add('ct-nosel'); box.appendChild(tr); lastWho = null; return; }
+      if (!mine && grpBlocked(c, m)) { var bk = blockedRow(m, d); if (bk) { box.appendChild(bk); lastWho = null; return; } }
       var row = el('div', 'ct-msg' + (mine ? ' mine' : '') + (isAI ? ' ct-ai' : '')); row.dataset.id = m.id;
       if (isAI) {                                         // KI-Antwort (2.1): Bild + Name der KI, wer gefragt hat
         if (lastWho !== '#ai:' + (m.sender || {}).username) box.appendChild(aiWho(m));
@@ -1587,6 +1598,13 @@
       return meA ? T('Du hast {name} die Admin-Rolle entzogen.', { name: tg }) : byA ? T('{by} hat {name} die Admin-Rolle entzogen.', { by: byA, name: tg })
         : T('{name} ist kein Admin mehr.', { name: sysWho(k.target, false) });
     }
+    if (k.type === 'perm') {                             // 2.5 (groupinfo2): Gruppenrechte geaendert
+      var meP = !!(k.by && k.by.handle && k.by.handle === (S.cur || {}).my_handle), byP = meP ? T('Du') : (k.by ? sysWho(k.by, false) : T('Ein Admin'));
+      var parts = [];
+      if (k.perm_send) parts.push(k.perm_send === 'admins' ? T('Nur Admins dürfen jetzt schreiben.') : T('Alle dürfen jetzt schreiben.'));
+      if (k.perm_info) parts.push(k.perm_info === 'admins' ? T('Nur Admins ändern jetzt Name, Bild und Beschreibung.') : T('Alle dürfen jetzt Name, Bild und Beschreibung ändern.'));
+      return T('{name} hat die Gruppenrechte geändert.', { name: byP }) + (parts.length ? ' ' + parts.join(' ') : '');
+    }
     if (k.type === 'members') {
       var acc = function (x) { return sysWho(x, true); }, nom = function (x) { return sysWho(x, false); };
       var meBy = !!(k.by && k.by.handle && k.by.handle === (S.cur || {}).my_handle), by = k.by && !meBy ? nom(k.by) : '';
@@ -1639,6 +1657,7 @@
           return api('DELETE', '/api/chats/' + S.cur.id + '/messages/' + m.id).catch(function () {});
         }).then(function () { dropMsg(m.id); return loadMsgs(false); }).catch(function (e) { HK.toast(T('Nicht gesendet: {err}', { err: e.message })); });
       }, { icon: '↻' }));
+      grpMenu(menu, m);                                                            // 2.5: Anheften, Admin-Loeschen, Melden, Sperren
       if (m.sender && m.sender.username === ME) menu.appendChild(HK.menuItem(T('Für alle löschen'), function () {
         HK.closeMenu();
         HK.ask({ title: T('Nachricht für alle löschen?'), text: T('Die Nachricht und ihre Anhänge werden vom Server gelöscht. Wer sie schon gelesen hat, kann eine Kopie haben.'), ok: T('Löschen'), danger: true })
@@ -2840,7 +2859,7 @@
         var m = X.encryptMessageV2({ chat_ref: c.ref, sender_handle: c.my_handle, device: K.device.id, sign_sk: K.device.sign_sk, body: body,
                                      reply_to: reply || null, ai: (extra && extra.ai) || null, recipients: X.recipientsV2(ents) });
         m.v = 2;
-        if (kind === 'title') m.kind = 'title';
+        if (kind === 'title' || kind === 'desc' || kind === 'avatar') m.kind = kind;     // 2.5: Beschreibung/Bild wie der Name
         if (kind === 'edit') { m.kind = 'edit'; m.edit_of = body.edit; m.files = []; }     // 2.5: Bearbeitung (saga/chat_x3.py)
         if (extra && extra.ai_reply) m.ai_reply = extra.ai_reply;
         if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
@@ -3124,6 +3143,7 @@
     });
   }
   function manageItems(menu, c) {
+    grpChatItems(menu, c);                              // 2.5: Sperren / Melden im Direkt-Chat
     menu.appendChild(HK.menuItem(c.archived ? T('Aus Archiv holen') : T('Archivieren'), function () { HK.closeMenu(); archive(c, !c.archived); },
       { icon: c.archived ? '⤴' : '🗄' }));
     menu.appendChild(HK.menuItem(T('Chat löschen …'), function () { HK.closeMenu(); deleteDialog(c); }, { icon: '🗑', danger: true }));
@@ -3304,6 +3324,276 @@
     }
   }
 
+  // --- Gruppen (2.5, Chat-Standard B; Server: saga/chat_grp.py) ---------------------------------------------------
+  // Bild und Beschreibung freier Gruppen sind verschluesselte Steuer-Nachrichten (kind 'desc'/'avatar', wie der Name);
+  // Rechte perm_info/perm_send setzt der Server durch (can_send, can_edit_info); Anheften (pins), Admin-Loeschen
+  // (Grabstein kind 'tomb'), Blockieren lokaler Konten (members[].blocked) und Melden an die Saga-Admins.
+  var GRP_AV = 256, DESC_MAX = 500;
+  function grpOpen(c, m) {                               // Steuer-Nachricht entschluesseln (v1 bzw. v2) -> Inhalt oder null
+    try {
+      if (isFed(c) && m.sender_handle) {
+        var f = (S.fk || {})[m.sender_handle];
+        var key = m.key_for === 'device' ? X.openKey(m.key, K.device.enc_pk, K.device.enc_sk) : X.openKey(m.key, K.backup_pk, K.backup_sk);
+        var d = f && f.keys && f.trust !== 'reject' && f.keys.devices.filter(function (x) { return x.id === m.sender_device; })[0];
+        if (!d || !X.verifyMessageV2(c.ref, m, ub(d.sign_pub, 32))) return null;
+        return X.decryptMessageV2(c.ref, m, key);
+      }
+      var b = decrypt(c.id, m, m.device ? { [m.sender_device]: m.device } : {}, m.ident_pub ? { [m.sender.username]: m.ident_pub } : {});
+      return b && b.verified ? b.body : null;
+    } catch (e) { return null; }
+  }
+  function grpInfo(c) {
+    if (!c || c.kind !== 'free' || (!c.desc_msg && !c.avatar_msg)) return;
+    var hs = [c.desc_msg, c.avatar_msg].filter(function (m) { return m && m.sender_handle; }).map(function (m) { return m.sender_handle; });
+    (isFed(c) && hs.length ? fedKeys(hs).then(function (fk) { S.fk = Object.assign({}, fk, S.fk || {}); }).catch(function () {}) : Promise.resolve()).then(function () {
+      var dsc = c.desc_msg ? grpOpen(c, c.desc_msg) : null, av = c.avatar_msg ? grpOpen(c, c.avatar_msg) : null;
+      var x = S.chats.filter(function (y) { return y.id === c.id; })[0], changed = false;
+      if (dsc && dsc.type === 'desc') { c._desc = String(dsc.desc || '').slice(0, DESC_MAX); if (x) x._desc = c._desc; changed = true; }
+      if (av && av.type === 'avatar') {
+        c._avf = av.file && av.file.id ? av.file : null; if (x) x._avf = c._avf; changed = true;
+        if (c._avf) thumbUrl(fileCid(c, c.avatar_msg), c._avf).then(function (u) {
+          c._av = u; if (x) x._av = u; drawList(); if (S.cur && S.cur.id === c.id) { S.cur._av = u; drawHead(); if (GI && GI.id === c.id && ov) GI.draw(); }
+        }).catch(function () {});
+      }
+      if (changed && S.cur && S.cur.id === c.id) { S.cur._desc = c._desc; if (GI && GI.id === c.id && ov) GI.draw(); }
+    });
+  }
+  function grpAvatar(c, cls, fallback) {                 // Gruppenbild (entschluesselt) oder Symbol
+    var a = avatar(fallback, 'c' + c.id, cls);
+    if (c._av) { var im = el('img', 'hk-av-img'); im.src = c._av; im.alt = ''; a.classList.add('hk-av-box', 'hk-av-on'); a.appendChild(im); }
+    return a;
+  }
+  // Bild quadratisch zuschneiden (Mitte) und verkleinern -> JPEG-Bytes
+  function grpSquare(file) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(file), im = new Image();
+      im.onload = function () {
+        var s = Math.min(im.naturalWidth, im.naturalHeight), cv = document.createElement('canvas'); cv.width = cv.height = GRP_AV;
+        cv.getContext('2d').drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, 0, 0, GRP_AV, GRP_AV);
+        URL.revokeObjectURL(url);
+        cv.toBlob(function (b) { if (!b) { rej(new Error(T('Bild nicht lesbar.'))); return; } b.arrayBuffer().then(res, rej); }, 'image/jpeg', 0.85);
+      };
+      im.onerror = function () { URL.revokeObjectURL(url); rej(new Error(T('Bild nicht lesbar.'))); };
+      im.src = url;
+    });
+  }
+  function grpSetAvatar(c, file) {
+    return grpSquare(file).then(function (buf) {
+      var bytes = buf.slice(0), fc = fileCid(c);
+      return run('enc', { cid: fc, bytes: buf }, [buf]).then(function (eo) {
+        return upload(c.id, new Blob([eo.blob])).then(function (id) {
+          memPut('t:' + id, URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' })));
+          var f = { id: id, k: eo.key, m: 'image/jpeg', n: 'gruppe.jpg', s: bytes.byteLength, w: GRP_AV, h: GRP_AV };
+          return sendBody(c.id, { v: 1, type: 'avatar', file: f, files: [f] }, 'avatar');
+        });
+      });
+    }).then(function () { HK.toast(T('Gruppenbild gespeichert.')); return giAfter(c); });
+  }
+  function grpClearAvatar(c) {
+    return sendBody(c.id, { v: 1, type: 'avatar', file: null }, 'avatar').then(function () { c._av = null; c._avf = null; HK.toast(T('Gruppenbild entfernt.')); return giAfter(c); });
+  }
+  function grpSetDesc(c, text) {
+    return sendBody(c.id, { v: 1, type: 'desc', desc: String(text || '').slice(0, DESC_MAX) }, 'desc').then(function () { c._desc = text; return giAfter(c); });
+  }
+  function grpPerm(c, key, val) {
+    var b = {}; b[key] = val;
+    return api('PATCH', '/api/chats/' + c.id, b).then(function () { return giAfter(c); }).catch(function (e) { HK.toast(e.message); if (GI) GI.draw(); });
+  }
+  // Gruppeninfo: Bild, Beschreibung, Rechte (aus groupInfo/draw aufgerufen)
+  function grpInfoSection(wrap, c, draw) {
+    if (c.kind !== 'free') return;
+    var info2 = c.can_info2 === true, edit = c.can_edit_info !== false && !c.readonly;
+    // Beschreibung
+    var ds = el('div', 'ct-gi-desc');
+    if (c._desc) ds.appendChild(el('p', 'ct-gi-desc-t', c._desc));
+    else if (info2) ds.appendChild(el('p', 'hk-hint ct-gi-desc-t', T('Keine Beschreibung.')));
+    if (info2) {
+      var eb = btn(c._desc ? T('Beschreibung bearbeiten') : T('Beschreibung hinzufügen'), 'small ct-gi-desc-b'); eb.dataset.gi = 'desc';
+      eb.addEventListener('click', function () {
+        ds.textContent = '';
+        var ta = el('textarea', 'hk-in ct-gi-desc-in'); ta.maxLength = DESC_MAX; ta.rows = 3; ta.value = c._desc || ''; ta.placeholder = T('Worum geht es in dieser Gruppe?');
+        ta.setAttribute('aria-label', T('Beschreibung der Gruppe'));
+        var cnt = el('span', 'hk-hint ct-gi-cnt', (ta.value.length) + ' / ' + DESC_MAX);
+        ta.addEventListener('input', function () { cnt.textContent = ta.value.length + ' / ' + DESC_MAX; });
+        var row = el('div', 'ct-gi-rename'), sv = btn(T('Speichern'), 'btn-primary small ct-gi-desc-save'), st = btn(T('Abbrechen'), 'small');
+        row.appendChild(sv); row.appendChild(st); row.appendChild(cnt);
+        ds.appendChild(ta); ds.appendChild(row); ta.focus();
+        sv.addEventListener('click', function () { busy(sv, true); grpSetDesc(c, ta.value.trim()).catch(function (e) { busy(sv, false); HK.toast(e.message); }); });
+        st.addEventListener('click', draw);
+      });
+      ds.appendChild(eb);
+    }
+    wrap.appendChild(ds);
+    // Rechte (nur Admins schalten)
+    if (c.can_perms || (c.perm_info === 'admins' || c.perm_send === 'admins')) {
+      wrap.appendChild(el('h3', 'ct-gi-h', T('Gruppenrechte')));
+      var pr = el('div', 'ct-gi-perms');
+      [['perm_send', T('Nur Admins dürfen Nachrichten senden')], ['perm_info', T('Nur Admins dürfen Name, Bild und Beschreibung ändern und Nachrichten anheften')]].forEach(function (p) {
+        var lab = el('label', 'hk-check ct-gi-perm'), cb = el('input'); cb.type = 'checkbox'; cb.checked = c[p[0]] === 'admins'; cb.dataset.gi = p[0];
+        cb.disabled = !c.can_perms;
+        cb.addEventListener('change', function () { cb.disabled = true; grpPerm(c, p[0], cb.checked ? 'admins' : 'all'); });
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(' ' + p[1])); pr.appendChild(lab);
+      });
+      if (!c.can_perms) pr.appendChild(el('p', 'hk-hint', T('Nur Admins ändern die Rechte.')));
+      wrap.appendChild(pr);
+    }
+    if (!edit && c.perm_info === 'admins') wrap.appendChild(el('p', 'hk-hint ct-gi-ro', T('Name, Bild und Beschreibung ändern nur Admins.')));
+  }
+  function grpHeadAvatar(hd, c) {                        // Gruppeninfo-Kopf: Bild mit "Bild ändern"
+    var av = grpAvatar(c, 'ct-gi-av', kindIc(c) || '👥');
+    if (c.kind !== 'free' || c.can_info2 !== true) { hd.appendChild(av); return; }
+    var b = el('button', 'ct-gi-avb'); b.type = 'button'; b.dataset.gi = 'avatar'; b.title = T('Gruppenbild ändern'); b.setAttribute('aria-label', T('Gruppenbild ändern'));
+    b.appendChild(av); b.appendChild(el('span', 'ct-gi-avcam', '📷'));
+    var inp = el('input'); inp.type = 'file'; inp.accept = 'image/png,image/jpeg,image/webp,image/gif'; inp.hidden = true; inp.className = 'ct-gi-avfile';
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0]; inp.value = ''; if (!f) return;
+      grpSetAvatar(c, f).catch(function (e) { HK.toast(e.message); });
+    });
+    b.addEventListener('click', function () {
+      if (!c._avf) { inp.click(); return; }
+      HK.openMenu(b, function (menu) {
+        menu.textContent = '';
+        menu.appendChild(HK.menuItem(T('Neues Bild wählen …'), function () { HK.closeMenu(); inp.click(); }, { icon: '📷' }));
+        menu.appendChild(HK.menuItem(T('Bild entfernen'), function () { HK.closeMenu(); grpClearAvatar(c).catch(function (e) { HK.toast(e.message); }); }, { icon: '✕', danger: true }));
+      });
+    });
+    hd.appendChild(b); hd.appendChild(inp);
+  }
+  // Angeheftete Nachrichten: Leiste oben im Chat (Inhalt aus den geladenen, entschluesselten Nachrichten)
+  function drawPins(c) {
+    var bar = $('ct-pins'); if (!bar) return;
+    var ids = (c && c.pins) || [];
+    bar.textContent = ''; bar.hidden = !ids.length; if (!ids.length) return;
+    var i = Math.min(S.pinI || 0, ids.length - 1), mid = ids[ids.length - 1 - i], m = S.byId[mid];
+    var go = el('button', 'ct-pin-go'); go.type = 'button';
+    go.appendChild(el('span', 'ct-pin-ic', '📌'));
+    var tx = el('span', 'ct-pin-t');
+    tx.appendChild(el('b', null, ids.length > 1 ? T('Angeheftet ({i}/{n})', { i: i + 1, n: ids.length }) : T('Angeheftet')));
+    tx.appendChild(el('span', 'ct-pin-p', m ? (m.sender ? m.sender.name + ': ' : '') + preview(m) : T('Ältere Nachricht')));
+    go.appendChild(tx);
+    go.addEventListener('click', function () {
+      var row = rowOf(mid);
+      if (row) { row.scrollIntoView({ block: 'center' }); row.classList.add('flash'); setTimeout(function () { row.classList.remove('flash'); }, 1200); }
+      else HK.toast(T('Die Nachricht ist noch nicht geladen – weiter nach oben blättern.'));
+      if (ids.length > 1) { S.pinI = (i + 1) % ids.length; drawPins(c); }
+    });
+    bar.appendChild(go);
+    if (c.can_pin) {
+      var x = el('button', 'icon-btn ct-pin-x', '✕'); x.type = 'button'; x.title = T('Lösen'); x.setAttribute('aria-label', T('Anheftung lösen'));
+      x.addEventListener('click', function () { pinMsg(c, mid, false); });
+      bar.appendChild(x);
+    }
+  }
+  function pinMsg(c, mid, on) {
+    return api(on ? 'POST' : 'DELETE', '/api/chats/' + c.id + '/pins/' + mid).then(function (r) {
+      c.pins = r.pins || []; if (S.cur && S.cur.id === c.id) S.cur.pins = c.pins; S.pinI = 0; drawPins(c);
+      HK.toast(on ? T('Angeheftet.') : T('Gelöst.'));
+    }).catch(function (e) { HK.toast(e.message); });
+  }
+  function tombRow(m, d) {
+    var row = el('div', 'ct-call ct-sys ct-tomb'); row.dataset.id = m.id;
+    var who = m.sender ? m.sender.name : '';
+    row.appendChild(el('span', null, '🗑 ' + (who ? T('Nachricht von {name} – von einem Admin gelöscht', { name: who }) : T('Von einem Admin gelöscht'))));
+    var tm = el('time', null, fTime.format(d)); tm.dateTime = d.toISOString(); row.appendChild(tm);
+    return row;
+  }
+  function tombLive(d) {
+    var m = S.byId[d.id]; if (!m) return;
+    m.kind = 'tomb'; m.body = null; m.verified = true;
+    if (S.cur && (S.cur.pins || []).indexOf(d.id) >= 0) S.cur.pins = S.cur.pins.filter(function (x) { return x !== d.id; });
+    if (S.reply && S.reply.id === d.id) { S.reply = null; drawReply(); }
+    if (S.sel) delete S.sel.ids[d.id];
+    drawMsgs(); drawPins(S.cur);
+  }
+  // Gesperrte Personen (block2): in Gruppen einklappbar ausgeblendet
+  function grpBlocked(c, m) {
+    if (!c || c.kind === 'dm' || !m.sender) return false;
+    var u = m.sender.username;
+    return c.members.some(function (x) { return x.blocked && (x.username === u || x.handle === u || x.handle === m.sender_handle); });
+  }
+  S.unblocked = S.unblocked || {};
+  function blockedRow(m, d) {
+    if (S.unblocked[m.id]) return null;
+    var row = el('div', 'ct-call ct-sys ct-blockedmsg'); row.dataset.id = m.id;
+    row.appendChild(el('span', null, '⛔ ' + T('Nachricht einer gesperrten Person')));
+    row.appendChild(btn(T('Anzeigen'), 'small', function () { S.unblocked[m.id] = true; drawMsgs('keep'); }));
+    var tm = el('time', null, fTime.format(d)); tm.dateTime = d.toISOString(); row.appendChild(tm);
+    return row;
+  }
+  function blockTarget(c, m) {                            // Handle der Person (nie der Anmeldename)
+    if (m.sender_handle) return m.sender_handle;
+    var x = c.members.filter(function (y) { return y.username === (m.sender || {}).username; })[0];
+    return x ? (x.handle || x.ref) : null;
+  }
+  function blockPerson(c, target, name) {
+    return HK.ask({ title: T('{name} sperren?', { name: name }), text: T('{name} kann dir keine Direktnachrichten mehr schicken und dich nicht anrufen. In Gruppen werden die Nachrichten eingeklappt. {name} erfährt davon nichts.', { name: name }),
+      ok: T('Sperren'), danger: true }).then(function (y) {
+      if (!y) return;
+      return api('POST', '/api/chat/blocks', { target: target }).then(function () { HK.toast(T('{name} ist gesperrt.', { name: name })); if (S.cur) openChat(S.cur.id); })
+        .catch(function (e) { HK.toast(e.message); });
+    });
+  }
+  function reportDialog(c, msgs) {
+    var box = overlay(T('Melden'));
+    box.appendChild(el('p', 'hk-hint', T('Die Meldung geht an die Admins dieses Saga-Servers. Chats sind Ende-zu-Ende-verschlüsselt – die Admins sehen nur, was du hier mitschickst.')));
+    var sel = el('select', 'hk-in ct-rep-reason'); sel.setAttribute('aria-label', T('Grund'));
+    [['spam', T('Spam')], ['abuse', T('Belästigung oder Beleidigung')], ['illegal', T('Rechtswidrige Inhalte')], ['other', T('Sonstiges')]].forEach(function (o) {
+      var op = el('option', null, o[1]); op.value = o[0]; sel.appendChild(op);
+    });
+    var lab = el('label', 'ct-rep-l', T('Grund')); box.appendChild(lab); box.appendChild(sel);
+    var inc = el('label', 'hk-check ct-rep-inc'), cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
+    inc.appendChild(cb); inc.appendChild(document.createTextNode(' ' + T('Text der gemeldeten Nachrichten mitschicken')));
+    var ta = el('textarea', 'hk-in ct-rep-text'); ta.rows = 4; ta.maxLength = 2000;
+    ta.value = msgs.map(function (m) { return (m.sender ? m.sender.name + ': ' : '') + plainText(m); }).join('\n').slice(0, 2000);
+    ta.setAttribute('aria-label', T('Mitgeschickter Text'));
+    cb.addEventListener('change', function () { ta.hidden = !cb.checked; });
+    box.appendChild(inc); box.appendChild(ta);
+    box.appendChild(el('p', 'hk-hint', T('Du kannst den Text vor dem Senden ändern oder kürzen.')));
+    var bar = el('div', 'hk-actions'); box.appendChild(bar);
+    bar.appendChild(btn(T('Abbrechen'), '', closeOverlay));
+    var go = btn(T('Melden'), 'btn-danger ct-rep-send', function () {
+      busy(go, true);
+      api('POST', '/api/chat/report', { chat: c.id, msgs: msgs.map(function (m) { return m.id; }), reason: sel.value, text: cb.checked ? ta.value.trim() : '' })
+        .then(function () { closeOverlay(); HK.toast(T('Danke – die Meldung ist bei den Admins.')); })
+        .catch(function (e) { busy(go, false); HK.toast(e.message); });
+    });
+    bar.appendChild(go);
+    sel.focus();
+  }
+  function grpMenu(menu, m) {
+    var c = S.cur; if (!c || !m || m.kind !== 'msg') return;
+    var mine = m.sender && m.sender.username === ME;
+    if (c.can_pin && !m.fstate) {
+      var pinned = (c.pins || []).indexOf(m.id) >= 0;
+      menu.appendChild(HK.menuItem(pinned ? T('Lösen') : T('Anheften'), function () { HK.closeMenu(); pinMsg(c, m.id, !pinned); }, { icon: '📌' }));
+    }
+    if (!mine && c.can_moderate) menu.appendChild(HK.menuItem(T('Löschen (Admin)'), function () {
+      HK.closeMenu();
+      HK.ask({ title: T('Nachricht für alle löschen?'), text: T('Als Admin löschst du die Nachricht von {name} für alle. Im Chat bleibt der Hinweis „Von einem Admin gelöscht“.', { name: (m.sender || {}).name || '?' }),
+        ok: T('Löschen'), danger: true }).then(function (y) {
+        if (y) api('DELETE', '/api/chats/' + c.id + '/messages/' + m.id).then(function () { tombLive({ id: m.id }); }).catch(function (e) { HK.toast(e.message); });
+      });
+    }, { icon: '🗑', danger: true }));
+    if (!mine && m.sender) {
+      var tg = blockTarget(c, m);
+      if (tg && !grpBlocked(c, m) && c.kind !== 'dm') menu.appendChild(HK.menuItem(T('{name} sperren', { name: m.sender.name }), function () { HK.closeMenu(); blockPerson(c, tg, m.sender.name); }, { icon: '⛔' }));
+      menu.appendChild(HK.menuItem(T('Melden …'), function () { HK.closeMenu(); reportDialog(c, [m]); }, { icon: '⚑' }));
+    }
+  }
+  // Direkt-Chat: Sperren/Melden im Chat-Menue
+  function grpChatItems(menu, c) {
+    if (c.kind !== 'dm') return;
+    var p = c.members.filter(function (m) { return !m.me; })[0] || {};
+    var tg = p.handle || (c.peer || {}).handle || p.ref;      // Handle '~x@host' (so steht er in der Sperrliste)
+    if (tg && !isRemote(c) && !p.blocked) menu.appendChild(HK.menuItem(T('{name} sperren', { name: p.name || '?' }), function () { HK.closeMenu(); blockPerson(c, tg, p.name || '?'); }, { icon: '⛔', danger: true }));
+    if (p.blocked) menu.appendChild(HK.menuItem(T('Entsperren'), function () {
+      HK.closeMenu();
+      api('DELETE', '/api/chat/blocks?target=' + q(tg)).then(function () { HK.toast(T('Entsperrt.')); openChat(c.id); }).catch(function (e) { HK.toast(e.message); });
+    }, { icon: '✓' }));
+    var last = S.msgs.filter(function (m) { return m.kind === 'msg' && m.sender && m.sender.username !== ME && m.body; }).slice(-5);
+    if (last.length) menu.appendChild(HK.menuItem(T('Melden …'), function () { HK.closeMenu(); reportDialog(c, last); }, { icon: '⚑' }));
+  }
+
   // --- Gruppeninfo (2.5): Klick auf den Chat-Kopf -----------------------------------------------------------------
   // Name (bearbeitbar bei can_rename), Mitglieder mit Avatar, Anzeigename, Handle (nie Anmeldename), "Admin"/"Du";
   // bei can_manage Hinzufuegen und je Mitglied Admin vergeben/entziehen (can_admin) bzw. entfernen; unten Verlassen,
@@ -3349,7 +3639,7 @@
       wrap.textContent = '';
       // Kopf: Name (Stift) und Art
       var hd = el('div', 'ct-gi-head');
-      hd.appendChild(avatar(kindIc(c) || '👥', 'c' + c.id, 'ct-gi-av'));
+      grpHeadAvatar(hd, c);                              // 2.5 (groupinfo2): Gruppenbild
       var nm = el('div', 'ct-gi-name'), h3 = el('h3', 'ct-gi-title', chatName(c)); h3.id = 'ct-gi-title'; nm.appendChild(h3);
       nm.appendChild(el('span', 'hk-hint', c.kind === 'free' ? T('Freie Gruppe · {n} {n:Mitglied|Mitglieder}', { n: c.member_count })
         : c.kind === 'group' ? T('Gruppen-Chat „{g}“ · {n} {n:Mitglied|Mitglieder}', { g: c.group || '', n: c.member_count }) : T('Seiten-Chat · {n} {n:Mitglied|Mitglieder}', { n: c.member_count })));
@@ -3376,6 +3666,7 @@
       }
       wrap.appendChild(hd);
       if (c.kind === 'free' && c.can_rename) wrap.appendChild(el('p', 'hk-hint ct-gi-note', T('Der Name wird wie eine Nachricht verschlüsselt.')));
+      grpInfoSection(wrap, c, draw);                     // 2.5: Beschreibung, Gruppenrechte
       if (c.kind === 'group') wrap.appendChild(el('p', 'hk-hint ct-gi-ro', T('Mitglieder ergeben sich aus der Benutzergruppe – dort verwalten.')));
       if (c.kind === 'page') wrap.appendChild(el('p', 'hk-hint ct-gi-ro', c.can_manage
         ? T('Personen hinzufügen teilt diese Seite mit ihnen. Entfernen entzieht die Freigabe.')
@@ -3631,7 +3922,8 @@
       if (d.own) fedCerts().catch(function () {});
       else if (S.cur && isFed(S.cur) && S.cur.members.some(function (m) { return m.handle === d.handle; })) fedLoad(S.cur, true).catch(function () {});
     }
-    else if (t === 'chat.deleted') { if (S.cur && S.cur.id === d.chat_id) dropMsg(d.id); listSoon(); }
+    else if (t === 'chat.deleted') { if (S.cur && S.cur.id === d.chat_id) { if (d.by_admin) tombLive(d); else dropMsg(d.id); } listSoon(); }
+    else if (t === 'chat.blocks') { S.blocks = null; listSoon(); if (S.cur) openChat(S.cur.id); }       // 2.5: gesperrt/entsperrt
     else if (t === 'chat.hidden') { if (S.cur && S.cur.id === d.chat_id && Array.isArray(d.ids)) dropMany(d.ids.filter(function (i) { return S.byId[i]; })); listSoon(); }   // 2.5
     else if (t === 'chat.removed') removedLive(d, true);           // (2.1) Chat fuer alle geloescht
     else if (t === 'chat.cleared') {                                // (2.1) Verlauf geleert: fuer mich (anderer Tab) oder fuer alle

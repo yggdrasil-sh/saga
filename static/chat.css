@@ -378,3 +378,32 @@ button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
 .ct-contact-more{flex:none;width:2.1rem;height:2.1rem}
 .ct-person.ct-gone{opacity:.55;cursor:default}
 .ct-person.ct-gone:hover{border-color:var(--border);background:none}
+/* Gruppen (2.5, Chat-Standard B): Leiste angeheftete Nachrichten, Grabstein, gesperrte Personen, Gruppenbild/Beschreibung/Rechte, Melden */
+.ct-pins{display:flex;align-items:center;gap:.3rem;padding:.3rem .6rem .3rem 1rem;border-bottom:1px solid var(--border);background:var(--card)}
+.ct-pins[hidden]{display:none}
+.ct-pin-go{flex:1;min-width:0;display:flex;align-items:center;gap:.55rem;background:none;border:0;padding:.2rem 0;color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+.ct-pin-go:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.ct-pin-ic{flex:none}
+.ct-pin-t{min-width:0;display:flex;flex-direction:column;font-size:.82rem;line-height:1.3}
+.ct-pin-t b{font-size:.75rem;color:var(--accent)}
+.ct-pin-p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.ct-pin-x{flex:none}
+.ct-tomb,.ct-blockedmsg{color:var(--muted)}
+.ct-blockedmsg .btn{margin-left:.2rem}
+.ct-gi-avb{position:relative;flex:none;padding:0;border:0;background:none;border-radius:50%;cursor:pointer}
+.ct-gi-avb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ct-gi-avcam{position:absolute;right:-4px;bottom:-4px;font-size:.75rem;background:var(--card);border:1px solid var(--border);border-radius:50%;width:22px;height:22px;display:grid;place-items:center}
+.ct-gi-av.hk-av-box img,.ct-av-k.hk-av-box img{border-radius:50%}
+.ct-gi-desc{margin:.1rem 0 .4rem}
+.ct-gi-desc-t{margin:.2rem 0 .4rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.ct-gi-desc-in{width:100%;resize:vertical;margin-bottom:.4rem}
+.ct-gi-cnt{margin-left:auto;font-size:.75rem}
+.ct-gi-perms{display:flex;flex-direction:column;gap:.35rem}
+.ct-gi-perm{display:flex;align-items:flex-start;gap:.4rem;line-height:1.35}
+.ct-gi-perm input{margin-top:.2rem;flex:none}
+.ct-perm-note{margin:.2rem 0}
+.ct-rep-l{display:block;font-size:.85rem;margin:.4rem 0 .2rem}
+.ct-rep-reason{width:100%}
+.ct-rep-inc{display:flex;align-items:center;gap:.4rem;margin:.6rem 0 .3rem}
+.ct-rep-text{width:100%;resize:vertical}
+.ct-rep-text[hidden]{display:none}

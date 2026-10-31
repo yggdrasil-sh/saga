@@ -2552,3 +2552,7 @@ button.up-it{cursor:pointer}button.up-it:hover{background:var(--hover,color-mix(
 .hk-sync-go{font-size:.76rem}
 .hk-sync-wait{color:var(--muted);font-style:italic;margin:.2rem 0}
 .hk-sync-body.ro{opacity:.92}
+/* Admin-Bereich: Meldungen (2.5) */
+.adm-tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0 .8rem}
+.adm-report-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}
+.adm-reports td form{display:flex;flex-wrap:wrap;gap:.3rem}
