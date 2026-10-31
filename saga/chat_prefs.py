@@ -212,10 +212,10 @@ def resolve(c, cid, refs, sender=None):
         if r in loc:                                     # Chat v1: Benutzername aus der Mitgliederliste
             u = r
         elif HANDLE_RE.fullmatch(r):
-            u = by_ref.get(r) or (F.uid_by_handle(c, r) if F.enabled() else None)
+            u = by_ref.get(r) or F.uid_by_handle(c, r)
         elif "@" in r and HANDLE_RE.fullmatch(r.split("@", 1)[0]):
-            n, _, host = r.partition("@")
-            if F.enabled() and F.fedsig.authority(host) == F.SELF_HOST:
+            n, _, host = r.partition("@")              # voller Handle (Stufe 3 auch ohne Foederation)
+            if F.fedsig.authority(host) == F.SELF_HOST:
                 u = F.uid_by_handle(c, n)
         if u and u in loc and u != sender and u not in out:
             out.append(u)

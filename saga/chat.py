@@ -1516,7 +1516,8 @@ def api_chat(cid: int, request: Request, device: str = ""):
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
             return err
-        return _no_store({"chat": _chat_dict(c, uid, ch, mem, m, _my_device(c, uid, device), full=True)})
+        CP.expire(c, uid)                                # 2.5: abgelaufene Stummschaltung beenden (Spiegel)
+        return _no_store({"chat": _chat_dict(c, uid, ch, mem, _member(c, ch["id"], uid), _my_device(c, uid, device), full=True)})
 
 
 @router.patch("/api/chats/{cid}")
