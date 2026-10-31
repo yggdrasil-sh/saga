@@ -86,8 +86,8 @@ def link(c, cid, who=None, now=None):
     if not r or r[0] not in KINDS:
         return 0
     rows = c.execute("SELECT uid, state FROM chat_member WHERE chat_id=? AND left_at IS NULL", (cid,)).fetchall()
-    mem = [u for u, _ in rows]
-    owners = [u for u, st in rows if not is_remote(u) and (st or "ok") == "ok"]
+    mem = [u for u, st in rows if (st or "ok") == "ok"]       # offene/abgelehnte Anfragen auf keiner Seite (sonst koennte ein
+    owners = [u for u in mem if not is_remote(u)]             # fremdes Heim lokale Konten als Kontakte einschleusen)
     focus = set(who) if who is not None else None
     now = now or time.time()
     pairs = [(o, x) for o in owners for x in mem if x != o and (focus is None or o in focus or x in focus) and ref_of(x)]
@@ -124,7 +124,7 @@ def backfill(c, now=None):
     waren. Ausgeblendete bleiben ausgeblendet. Idempotent. -> Anzahl Paare"""
     rows = c.execute(
         "SELECT o.uid, x.uid, COALESCE(MIN(LEAST(o.joined, x.joined)), 0), COALESCE(MAX(COALESCE(ch.last_at, ch.created)), 0) "
-        "FROM chat ch JOIN chat_member o ON o.chat_id=ch.id JOIN chat_member x ON x.chat_id=ch.id AND x.uid<>o.uid "
+        "FROM chat ch JOIN chat_member o ON o.chat_id=ch.id JOIN chat_member x ON x.chat_id=ch.id AND x.uid<>o.uid AND x.state='ok' "
         "WHERE ch.kind IN ('dm','free') AND o.uid NOT LIKE '@%' AND o.state='ok' "
         "AND x.joined <= COALESCE(o.left_at, x.joined) AND o.joined <= COALESCE(x.left_at, o.joined) "
         "GROUP BY o.uid, x.uid").fetchall()

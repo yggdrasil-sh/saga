@@ -211,6 +211,17 @@ def run():
     ok("Rueckwirkend: ausgeblendete bleiben ausgeblendet; Gruppen-/Seiten-Chats nicht", bool(hid) and hid[0] == 1
        and F.contacts() == [] and G.contacts() == [])
 
+    # --- offene Anfrage auf einer Seite (z. B. fremdes Heim laedt ein): niemand wird Kontakt ----------------------------------
+    with connect() as c, c:
+        cid = c.execute("INSERT INTO chat (kind, created_by, created) VALUES ('free', ?, ?)", (F.uid, time.time())).lastrowid
+        c.execute("INSERT INTO chat_member (chat_id, uid, joined, state) VALUES (?,?,?,'ok')", (cid, F.uid, time.time()))
+        c.execute("INSERT INTO chat_member (chat_id, uid, joined, state) VALUES (?,?,?,'request')", (cid, G.uid, time.time()))
+        contacts.link(c, cid)
+        contacts.backfill(c)
+        n = c.execute("SELECT COUNT(*) FROM chat_contact WHERE (uid=? AND ref=?) OR (uid=? AND ref=?)", (F.uid, G.ref, G.uid, F.ref)).fetchone()[0]
+        c.execute("DELETE FROM chat WHERE id=?", (cid,))
+    ok("Offene Anfrage: weder Eingeladene noch die anderen Mitglieder werden Kontakte (auch rueckwirkend)", n == 0, n)
+
     # --- Datenschutz ------------------------------------------------------------------------------------------------------
     s, _ = A.api("DELETE", "/api/chat/contacts/" + urllib.parse.quote(B.uid))
     ok(f"DELETE mit Anmeldenamen statt Handle -> 404 (kein Orakel) ({s})", s == 404)

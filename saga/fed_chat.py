@@ -1863,6 +1863,7 @@ def send(uid, cid, b):
             return _bad(t("Diese KI-Antwort gibt es nicht (mehr) oder sie wurde schon gesendet."), 409)
         if mm.get("state") != "ok":                 # wer schreibt, nimmt die Anfrage an
             c.execute("UPDATE chat_member SET state='ok' WHERE chat_id=? AND uid=?", (ch["id"], uid))
+            contacts.link(c, ch["id"], who=[uid])    # 2.5: angenommen -> Kontakte
             if not home:
                 F._enqueue(c, ch["home_peer"], {"type": "chat.op", "op_body": {"op": "accept", "ref": ch["ref"], "actor": mh}}, chain=chain_up(ch["ref"]))
         fseq = c.execute("UPDATE chat SET fseq=fseq+1 WHERE id=? RETURNING fseq", (ch["id"],)).fetchone()[0] if home else None
