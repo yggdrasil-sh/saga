@@ -95,7 +95,8 @@
     if (ov) { ov.remove(); ov = null; }
   }
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && ov && ov.querySelector('.icon-btn') && !HK.menuOpen()) closeOverlay();
+    // defaultPrevented: Esc hat schon ein Menue im Dialog geschlossen (z. B. Gruppeninfo -> Mitglied ⋯) - Dialog bleibt
+    if (e.key === 'Escape' && !e.defaultPrevented && ov && ov.querySelector('.icon-btn') && !HK.menuOpen()) closeOverlay();
   });
   function btn(label, cls, fn) { var b = el('button', 'btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; if (fn) b.addEventListener('click', fn); return b; }
   function status(box) { var s = el('p', 'hk-status'); s.setAttribute('role', 'status'); box.appendChild(s); return s; }
@@ -690,7 +691,7 @@
       if (b && b.type === 'title') {
         var t = String(b.title || '').slice(0, 100), x = S.chats.filter(function (y) { return y.id === c.id; })[0];
         c._title = t; if (x) x._title = t;
-        if (S.cur && S.cur.id === c.id) { S.cur._title = t; drawHead(); }
+        if (S.cur && S.cur.id === c.id) { S.cur._title = t; drawHead(); if (GI && GI.id === c.id && ov) GI.draw(); }
         drawList();
       }
     }).catch(function () { /* Name bleibt die Mitgliederliste */ });
@@ -1036,6 +1037,7 @@
     return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r) {
       var c = r.chat; freeTitle(c); h2uNote([c]);
       if (!same) { selEnd(true); vplDrop(); recCancel(); S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; S.rcpts = {}; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
+      if (same && S.cur && S.cur._title && !c._title) c._title = S.cur._title;   // bis der (neue) Name entschluesselt ist: kein Flackern
       S.cur = c;
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
@@ -3270,7 +3272,7 @@
     var wrap = el('div', 'ct-gi-body'); box.appendChild(wrap);
     function draw() {
       var c = S.cur; if (!c || c.id !== c0.id) { closeOverlay(); return; }
-      var foc = document.activeElement && wrap.contains(document.activeElement) ? document.activeElement.dataset.gi : null;
+      var ae = document.activeElement, foc = ae && wrap.contains(ae) ? (ae.dataset.gi || (ae.closest('.ct-gi-search') ? 'search' : null)) : null;
       wrap.textContent = '';
       // Kopf: Name (Stift) und Art
       var hd = el('div', 'ct-gi-head');
@@ -3309,14 +3311,16 @@
       var h4 = el('h3', 'ct-gi-h', T('{n} {n:Mitglied|Mitglieder}', { n: c.member_count })); wrap.appendChild(h4);
       if (c.kind === 'free' && c.can_manage) {
         var add = btn('+ ' + T('Mitglied hinzufügen'), 'small ct-gi-add'); add.dataset.gi = 'add';
-        var slot = el('div', 'ct-gi-search'); slot.hidden = true;
+        // Suchbereich bleibt beim Neuzeichnen (Live-Aenderung) samt Eingabe erhalten
+        var slot = GI && GI.slot && GI.slot.cid === c.id ? GI.slot.el : null;
+        if (!slot) { slot = el('div', 'ct-gi-search'); slot.hidden = true; if (GI) GI.slot = { cid: c.id, el: slot }; }
         add.addEventListener('click', function () {
           slot.hidden = !slot.hidden;
           if (!slot.hidden && !slot.firstChild) addSearch(slot, c);
           var i = slot.querySelector('input'); if (i && !slot.hidden) i.focus();
         });
         wrap.appendChild(add); wrap.appendChild(slot);
-      }
+      } else if (GI) GI.slot = null;
       var ul = el('ul', 'ct-devs ct-gi-list'); wrap.appendChild(ul);
       var mine = String(c.my_handle || '').split('@').slice(1).join('@');
       c.members.slice().sort(function (a, b) { return (b.me - a.me) || ((b.admin ? 1 : 0) - (a.admin ? 1 : 0)) || String(a.name).localeCompare(String(b.name)); }).forEach(function (m) {
@@ -3360,7 +3364,7 @@
       bar.appendChild(btn(c.archived ? '⤴ ' + T('Aus Archiv holen') : '🗄 ' + T('Archivieren'), 'small', function () { archive(c, !c.archived).then(function () { if (GI) draw(); }); }));
       if (c.kind === 'free') bar.appendChild(btn('⎋ ' + T('Gruppe verlassen'), 'small btn-danger ct-gi-leave', function () { leaveGroup(c); }));
       wrap.appendChild(bar);
-      if (foc) { var f = wrap.querySelector('[data-gi="' + foc.replace(/"/g, '') + '"]'); if (f) f.focus(); }
+      if (foc) { var f = foc === 'search' ? wrap.querySelector('.ct-gi-search input') : wrap.querySelector('[data-gi="' + foc.replace(/"/g, '') + '"]'); if (f) f.focus(); }
     }
     GI = { id: c0.id, draw: draw };
     var prevClean = ovClean;
