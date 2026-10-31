@@ -378,3 +378,38 @@ button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
 .ct-contact-more{flex:none;width:2.1rem;height:2.1rem}
 .ct-person.ct-gone{opacity:.55;cursor:default}
 .ct-person.ct-gone:hover{border-color:var(--border);background:none}
+/* 2.5 Chat-Alltag: Formatierung (chat-fmt.js), Erwaehnungen, Linkvorschau, Angeheftet, Entwurf, Medienuebersicht */
+.ct-text strong{font-weight:700}
+.ct-f-code{font-family:var(--mono,ui-monospace,monospace);font-size:.88em;background:color-mix(in srgb,var(--fg) 9%,transparent);padding:.05em .3em;border-radius:4px}
+.ct-f-pre{margin:.3rem 0;padding:.45rem .6rem;border-radius:8px;background:color-mix(in srgb,var(--fg) 8%,transparent);overflow-x:auto;white-space:pre;font-size:.85em;max-width:100%}
+.ct-f-pre code{font-family:var(--mono,ui-monospace,monospace)}
+.ct-f-quote{margin:.2rem 0;padding:.1rem 0 .1rem .6rem;border-left:3px solid color-mix(in srgb,var(--accent) 60%,var(--border));color:var(--muted)}
+.ct-f-list{margin:.2rem 0;padding-left:1.2rem;white-space:normal}
+.ct-mention{color:var(--accent);font-weight:600}
+.ct-mention-me{background:color-mix(in srgb,var(--accent) 18%,transparent);border-radius:4px;padding:0 .2em}
+.ct-msg.ct-ment .ct-bubble{box-shadow:inset 3px 0 0 var(--accent)}
+.ct-pick-p .ct-pick-n{flex:1}
+.ct-pin{margin-right:.25rem;font-size:.8em}
+.ct-draft{color:var(--accent)}
+.ct-hidden-c{opacity:.75}
+.ct-emoji{font-size:1.1rem}
+.ct-unf{padding:.3rem 1rem 0}
+.ct-unf-card{position:relative;display:flex;gap:.6rem;align-items:flex-start;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:.45rem .6rem;background:var(--card);max-width:32rem}
+.ct-unf-t{display:flex;flex-direction:column;gap:.1rem;min-width:0;flex:1}
+.ct-unf-site{font-size:.72rem;color:var(--muted)}
+.ct-unf-title{font-size:.86rem;overflow-wrap:anywhere}
+.ct-unf-desc{font-size:.78rem;color:var(--muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ct-unf-img{width:72px;height:72px;object-fit:cover;border-radius:6px;flex:none}
+.ct-unf-x{position:absolute;top:.15rem;right:.15rem}
+.ct-unf-msg{display:block;text-decoration:none;color:inherit;margin-top:.35rem}
+.ct-unf-msg .ct-unf-card{background:color-mix(in srgb,var(--fg) 4%,transparent)}
+.ct-md-tabs{display:flex;gap:.3rem;margin-bottom:.6rem}
+.ct-md-tab{font:inherit;border:1px solid var(--border);background:none;color:var(--fg);border-radius:999px;padding:.25rem .8rem;cursor:pointer}
+.ct-md-tab.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.ct-md-list{display:flex;flex-direction:column;gap:.4rem;max-height:60vh;overflow:auto}
+.ct-md-media{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:.35rem}
+.ct-md-tile{position:relative;aspect-ratio:1;border:0;padding:0;border-radius:6px;overflow:hidden;background:var(--card-h);cursor:pointer}
+.ct-md-tile img{width:100%;height:100%;object-fit:cover;display:block}
+.ct-md-play{position:absolute;inset:auto auto .3rem .3rem;color:#fff;text-shadow:0 0 4px #000}
+.ct-md-link{overflow-wrap:anywhere;font-size:.88rem}
+.ct-md-more{margin-top:.5rem}

@@ -87,12 +87,13 @@ def unmuted_sql(m="m"):
 # --- Chat-Objekt ---------------------------------------------------------------------------------------------------
 def fields(c, uid, ch, d):
     """Zusatzfelder fuer /api/chats und /api/chats/{cid} (d wird ergaenzt): muted (abgeleitet), muted_until, notify, pinned,
-    pinned_at, unread_mark, hidden, can_hide, mention_seq; unread mindestens 1 bei unread_mark."""
+    pinned_at, unread_mark, hidden, can_hide, mention_seq, me_ref; unread mindestens 1 bei unread_mark."""
     p = get(c, ch["id"], uid)
     on = active(p["muted_until"]) or (bool(d.get("muted")) and not p["muted_until"])     # alter Stand ohne chat_pref
     d.update(muted=on, muted_until=(p["muted_until"] or (-1 if on else 0)) if on else 0, notify=p["notify"],
              pinned=p["pinned_at"] is not None, pinned_at=p["pinned_at"], unread_mark=p["unread_mark"],
-             hidden=p["hide_at"] is not None, can_hide=ch["kind"] in HIDE_KINDS, mention_seq=p["mention_seq"])
+             hidden=p["hide_at"] is not None, can_hide=ch["kind"] in HIDE_KINDS, mention_seq=p["mention_seq"],
+             me_ref=d.get("my_handle") or local_ref(uid))     # eigene Kennung in Erwaehnungs-Token <@kennung> (nie Anmeldename)
     if p["unread_mark"] and not d.get("unread"):
         d["unread"] = 1
     return d
