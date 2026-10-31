@@ -785,6 +785,7 @@ async def settings_post(request: Request):
                  ("search_username", _on(f, "search_username")),
                  ("chat_enabled", _on(f, "chat_enabled")), ("chat_retention_max_days", _days(f.get("chat_retention_max_days"))),
                  ("chat_quota_mb", _mb(f.get("chat_quota_mb"), 1 << 20)), ("chat_video_max_mb", _mb(f.get("chat_video_max_mb"), 1 << 16)),
+                 ("chat_unfurl", _on(f, "chat_unfurl")),          # 2.5 (Chat-Alltag): Linkvorschau
                  ("chat_v3", _on(f, "chat_v3")),                  # 2.5 (Testrunde Web Nr. 007): Schalter fuer Stufe 3
                  ("chat_v3_days", _days(f.get("chat_v3_days") if f.get("chat_v3_days") not in (None, "") else 90)),
                  ("local_login", _on(f, "local_login")), ("group_prefix", prefix),

@@ -30,6 +30,7 @@ from saga import collab                     # 2.5 (P3 Stufe 2): WebSocket /api/c
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
 from saga import chat_x3                         # 2.5: Reaktionen, Bearbeiten, Sprachnachrichten (haengt sich in chat, fed_chat ein)
+from saga import chat_unfurl                     # 2.5 (Chat-Alltag): Linkvorschau fuer den Absender (netguard)
 from saga import contacts                        # 2.5: Kontakte im Chat (Tabelle chat_contact, Endpunkte in saga.chat)
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, SecHeaders, title
 from saga.dashboard import _status_loop
@@ -247,7 +248,8 @@ def api_version():
     channel = stable | rc | testing."""
     return JSONResponse({"name": "Saga", "version": VERSION, "build": BUILD, "channel": channel(), "api": API_LEVEL,
                          "min_app": MIN_APP, "schema": db.SCHEMA_VERSION,
-                         "features": list(FEATURES) + ([LIVE_FEATURE] if collab.enabled() else [])},
+                         "features": list(FEATURES) + ([LIVE_FEATURE] if collab.enabled() else [])
+                                     + (["unfurl1"] if chat_unfurl.enabled() else [])},
                         headers={"Cache-Control": "no-store"})
 
 
@@ -317,6 +319,7 @@ app.include_router(fed_keys.router)         # Schluesselverzeichnis + Krypto v2 
 app.include_router(fed_chat.router)         # Chats + Anrufe ueber Servergrenzen (2.3): /fed/v2/chat..., /fed/v2/call, /api/chat/blocks
 app.include_router(chat_status.router)      # Gelesen/Online (2.4): /api/chat/privacy, /api/chat/presence, /api/chats/{cid}/receipts
 app.include_router(chat_x3.router)          # 2.5: PUT /api/chats/{cid}/messages/{mid}/reaction, GET /api/chats/{cid}/reactions
+app.include_router(chat_unfurl.router)      # 2.5 (Chat-Alltag): GET /api/chat/unfurl
 assert fed_calls.router is fed_chat.router
 app.include_router(nextcloud.router)         # Nextcloud-Dateien in Seiten (2.3): /api/settings/nextcloud, /api/nextcloud/..., /api/notes/{nid}/nc
 app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/account/backup...

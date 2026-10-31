@@ -38,7 +38,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 import auth
 from db import connect as _db
-from saga import avatars, bus, contacts, file_v2, mfa, notify, sharing
+from saga import avatars, bus, chat_prefs as CP, contacts, file_v2, mfa, notify, sharing
 from saga.core import (HANDLE_RE, labels, legacy_sql, local_ref, resolve_input, resolve_ref, subtitles, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, icon_csp, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
@@ -1305,6 +1305,7 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
         if not V2_CLIENT.get():                       # aeltere App: Hinweis statt kaputter Nachrichten
             d["name"] = (d.get("name") or "") + " · " + t("bitte App aktualisieren")
             d["fed_hint"] = v3_hint() if is_v3(ch) else fed_hint()
+    CP.fields(c, uid, ch, d)                          # 2.5 Chat-Alltag: Stummschalten mit Dauer, Anheften, ungelesen, ausblenden
     return d
 
 
@@ -1323,14 +1324,16 @@ def _candidates(c, uid):
 
 
 @router.get("/api/chats")
-def api_chats(request: Request, device: str = ""):
+def api_chats(request: Request, device: str = "", hidden: int = 0):
     """Meine Chats (neueste zuerst) mit Ungelesen-Zahl; Gruppen-/Seiten-Chats werden dabei mit Gruppe/Freigaben abgeglichen.
     Archivierte Chats sind dabei (archived=true), zaehlen aber nicht zu unread; "fuer mich geloeschte" Direkt-Chats fehlen,
-    bis eine neue Nachricht kommt."""
+    bis eine neue Nachricht kommt. 2.5 (Chat-Alltag): angeheftete oben (pinned_at), fuer mich ausgeblendete Gruppen-/
+    Seiten-Chats fehlen (?hidden=1: nur diese, z. B. fuer die Suche bzw. "Ausgeblendete")."""
     uid, err = _me(request)
     if err:
         return err
     with _db() as c, c:
+        CP.expire(c, uid)
         dev = _my_device(c, uid, device)
         mine = [r[0] for r in c.execute("SELECT m.chat_id FROM chat_member m JOIN chat ch ON ch.id=m.chat_id WHERE m.uid=? "
                                         "AND m.left_at IS NULL AND ch.kind IN ('group','page')", (uid,))]
@@ -1344,9 +1347,14 @@ def api_chats(request: Request, device: str = ""):
                            "AND NOT (COALESCE(p.hidden, 0)<>0 AND ch.last_seq<=p.cleared_seq) "
                            "ORDER BY COALESCE(ch.last_at, ch.created) DESC LIMIT 500", (uid,)).fetchall():
             ch = _row(r)
-            out.append(_chat_dict(c, uid, ch, members(c, ch["id"]), _member(c, ch["id"], uid), dev))
-    return _no_store({"chats": out, "unread": sum(x["unread"] for x in out if not x["muted"] and not x["archived"] and not x.get("request")),
-                      "requests": sum(1 for x in out if x.get("request"))})
+            d = _chat_dict(c, uid, ch, members(c, ch["id"]), _member(c, ch["id"], uid), dev)
+            if bool(d.get("hidden")) == bool(hidden):
+                out.append(d)
+        n_hidden = len(out) if hidden else c.execute("SELECT COUNT(*) FROM chat_pref p JOIN chat_member m ON m.chat_id=p.chat_id AND m.uid=p.uid "
+                                                     "AND m.left_at IS NULL WHERE p.uid=? AND p.hide_at IS NOT NULL", (uid,)).fetchone()[0]
+    out.sort(key=CP.sort_key)
+    return _no_store({"chats": out, "unread": 0 if hidden else sum(x["unread"] for x in out if not x["muted"] and not x["archived"] and not x.get("request")),
+                      "requests": sum(1 for x in out if x.get("request")), "hidden_count": n_hidden})
 
 
 def unread_total(c, uid):
@@ -1354,10 +1362,10 @@ def unread_total(c, uid):
     if not enabled():
         return 0
     return c.execute(
-        "SELECT COUNT(*) FROM chat_msg x JOIN chat_member m ON m.chat_id=x.chat_id AND m.uid=? AND m.left_at IS NULL AND m.muted=0 AND m.state='ok' "
+        "SELECT COUNT(*) FROM chat_msg x JOIN chat_member m ON m.chat_id=x.chat_id AND m.uid=? AND m.left_at IS NULL AND " + CP.unmuted_sql() + " AND m.state='ok' "
         "WHERE x.kind='msg' AND x.seq>m.last_read AND (x.sender_uid IS NULL OR x.sender_uid<>?) AND (x.expires_at IS NULL OR x.expires_at>?) "
-        "AND NOT EXISTS (SELECT 1 FROM chat_pref p WHERE p.chat_id=x.chat_id AND p.uid=m.uid AND p.archived IS NOT NULL)",
-        (uid, uid, time.time())).fetchone()[0]
+        "AND NOT EXISTS (SELECT 1 FROM chat_pref p WHERE p.chat_id=x.chat_id AND p.uid=m.uid AND p.archived IS NOT NULL) " + CP.unread_extra_sql(),
+        (uid, uid, time.time())).fetchone()[0] + CP.marked_count(c, uid)        # 2.5: "als ungelesen markiert" zaehlt je 1
 
 
 @router.get("/api/chats/unread")
@@ -1467,6 +1475,7 @@ async def api_chat_new(request: Request):
             return _bad("not found", 404)
         # "fuer mich geloeschter" Direkt-Chat wird bewusst wieder geoeffnet: zurueck in die Liste (leer)
         c.execute("UPDATE chat_pref SET hidden=0 WHERE chat_id=? AND uid=? AND hidden<>0", (ch["id"], uid))
+        CP.on_open(c, ch["id"], uid)                     # 2.5: ausgeblendeter Gruppen-/Seiten-Chat bewusst geoeffnet
         return _no_store({"chat": _chat_dict(c, uid, ch, mem, m, _my_device(c, uid, str(b.get("device") or "")), full=True)})
 
 
@@ -1485,7 +1494,9 @@ def api_chat(cid: int, request: Request, device: str = ""):
 @router.patch("/api/chats/{cid}")
 async def api_chat_patch(cid: int, request: Request):
     """{muted: bool} / {archived: bool} (nur fuer mich) und/oder {retention_s: 0|3600|...} (fuer alle; gilt fuer neue
-    Nachrichten). Archivierte Chats kommen bei einer neuen Nachricht von selbst zurueck (ausser stummgeschaltete)."""
+    Nachrichten). Archivierte Chats kommen bei einer neuen Nachricht von selbst zurueck (ausser stummgeschaltete).
+    2.5 Chat-Alltag (nur fuer mich, saga.chat_prefs): {muted_until: unix|0|-1, notify: all|mentions|none, pinned: bool,
+    unread_mark: bool, hidden: bool}. Weitere Felder anderer Bereiche stehen jeweils in einem eigenen Block."""
     uid, err = _me(request)
     if err:
         return err
@@ -1499,9 +1510,16 @@ async def api_chat_patch(cid: int, request: Request):
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
             return err
-        if "muted" in b:
-            c.execute("UPDATE chat_member SET muted=? WHERE chat_id=? AND uid=?", (1 if b["muted"] else 0, ch["id"], uid))
+        # --- 2.5 Chat-Alltag (saga.chat_prefs): muted/muted_until/notify/pinned/unread_mark/hidden ---
+        e = CP.check(b, ch)
+        if e:
+            return _bad(e)
+        st, e, chg = CP.patch(c, uid, ch, b)
+        if e:
+            return _bad(e, st)
+        if chg:
             _direct(c, [uid], "chat.changed", {"chat_id": ch["id"]})
+        # --- Ende Chat-Alltag ---
         if "archived" in b:
             c.execute("INSERT INTO chat_pref (chat_id, uid, archived) VALUES (?,?,?) ON CONFLICT (chat_id, uid) DO UPDATE "
                       "SET archived=EXCLUDED.archived", (ch["id"], uid, time.time() if b["archived"] else None))
@@ -1927,7 +1945,7 @@ def _drop_notifs(c, uids, cid):
     """Benachrichtigungen dieses Chats (neue Nachricht, verpasster Anruf) fuer diese Konten entfernen."""
     pat = '{"chat": %d, %%' % cid
     for u in sorted(set(uids)):
-        ids = [r[0] for r in c.execute("SELECT id FROM notification WHERE uid=? AND kind IN ('chat.message','call.missed') AND data LIKE ?",
+        ids = [r[0] for r in c.execute("SELECT id FROM notification WHERE uid=? AND kind IN ('chat.message','chat.mention','call.missed') AND data LIKE ?",
                                        (u, pat))]
         if ids:
             c.execute(f"DELETE FROM notification WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))
@@ -2061,9 +2079,12 @@ def api_recipients(cid: int, request: Request):
 
 
 @router.get("/api/chats/{cid}/messages")
-def api_messages(cid: int, request: Request, device: str = "", before: int = 0, after: int = 0, limit: int = PAGE, calls: int = 0):
+def api_messages(cid: int, request: Request, device: str = "", before: int = 0, after: int = 0, limit: int = PAGE, calls: int = 0,
+                 has: str = ""):
     """Nachrichten (aelteste zuerst) mit dem fuer mich versiegelten Schluessel. ?before=<seq> aeltere, ?after=<seq> neuere.
-    ?calls=1: auch Anruf-Eintraege (kind='call', body_ct = JSON-Metadaten im Klartext, ohne Schluessel/Signatur; 2.1)."""
+    ?calls=1: auch Anruf-Eintraege (kind='call', body_ct = JSON-Metadaten im Klartext, ohne Schluessel/Signatur; 2.1).
+    ?has=file (2.5, Medienuebersicht, chatmedia1): nur Nachrichten mit Anhaengen (dem Server bekannt, chat_file); Links
+    kennt der Server nicht (verschluesselt) - ?has=link -> 400, Clients filtern selbst."""
     uid, err = _me(request)
     if err:
         return err
@@ -2078,6 +2099,10 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
                               "last_seq": ch["last_seq"], "fed_hint": v3_hint() if is_v3(ch) else fed_hint()})
         where, args, desc = ("AND m.kind IN ('msg','call','sys')" if calls and hfmt(ch) else "AND m.kind IN ('msg','call')" if calls
                              else "AND m.kind='msg'"), (), True
+        if has == "file":                               # 2.5: Medienuebersicht
+            where = "AND m.kind='msg' AND EXISTS (SELECT 1 FROM chat_file f WHERE f.msg_seq=m.seq)"
+        elif has:
+            return _bad(t("ungültige Angabe"))
         if after > 0:
             where, args, desc = where + " AND m.seq>?", (min(after, 2 ** 63 - 1),), False
         elif before > 0:
@@ -2131,6 +2156,9 @@ async def api_send(cid: int, request: Request):
     kind = b.get("kind") or "msg"
     reply_to = b.get("reply_to") or None
     keys, files = b.get("keys"), b.get("files") or []
+    ments, merr = CP.mentions_in(b.get("mentions"))       # 2.5 (chatmention1): Kennungen neben dem Chiffrat
+    if merr:
+        return _bad(merr)
     ai_ref = b.get("ai_reply")                             # (2.1) Beleg einer KI-Antwort (POST /api/chats/{cid}/ai)
     if ai_ref is not None and not (isinstance(ai_ref, str) and _HEX32.fullmatch(ai_ref)):
         return _bad(t("ungültige Angabe"))
@@ -2211,13 +2239,10 @@ async def api_send(cid: int, request: Request):
             c.execute("UPDATE chat_member SET last_read=? WHERE chat_id=? AND uid=?", (seq, ch["id"], uid))
             revive(c, ch["id"], uid)                       # (2.1) aus dem Archiv holen, ausgeblendeten Direkt-Chat zeigen
             contacts.touch(c, ch["id"], uid, now)          # 2.5: Kontakte "zuletzt zuerst"
-            muted = {r[0] for r in c.execute("SELECT uid FROM chat_member WHERE chat_id=? AND left_at IS NULL AND muted<>0", (ch["id"],))}
-            for u in mem:
-                if u != uid and u not in muted:
-                    notify.create(c, u, "chat.message", uid, data={"chat": ch["id"]}, bundle=ch["id"])
-                    # Handy/Desktop (saga.push): nur die Chat-Kennung, nie Inhalt; stummgeschaltete Chats nie
-                    bus.fire("push.send", c, uid=u, kind="chat.message", actor=uid, data={"chat": ch["id"]})
-            _direct(c, mem, "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": uid})
+            # Mitteilungen (Benachrichtigung + Push, nie Inhalt): Stummschalten/notify/ausgeblendet/Erwaehnung an EINER Stelle
+            hit = CP.resolve(c, ch["id"], ments, uid) if kind == "msg" else []
+            CP.on_message(c, ch["id"], uid, seq, mem, hit, reply_to)
+            _direct(c, mem, "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": uid, **({"mentions": [local_ref(u) for u in hit]} if hit else {})})
         print(f"chat: Nachricht in Chat {ch['id']} ({len(body_ct)} Zeichen Ciphertext, {len(keys)} Empfaenger)", flush=True)
     return _no_store({"ok": True, "seq": seq, "created": now, "expires_at": now + eff if eff else None})
 
@@ -2389,7 +2414,8 @@ async def api_read(cid: int, request: Request):
             return err
         seq = max(m["last_read"], min(seq, ch["last_seq"]))
         c.execute("UPDATE chat_member SET last_read=? WHERE chat_id=? AND uid=?", (seq, ch["id"], uid))
-        ids = [r[0] for r in c.execute("SELECT id FROM notification WHERE uid=? AND kind='chat.message' AND read_at IS NULL AND data LIKE ?",
+        CP.on_read(c, ch["id"], uid)                   # 2.5: "als ungelesen markiert" endet mit dem Lesen
+        ids = [r[0] for r in c.execute("SELECT id FROM notification WHERE uid=? AND kind IN ('chat.message','chat.mention') AND read_at IS NULL AND data LIKE ?",
                                        (uid, '{"chat": %d, %%' % ch["id"]))]
         if ids:
             c.execute(f"UPDATE notification SET read_at=? WHERE id IN ({','.join('?' * len(ids))})", (time.time(), *ids))
@@ -2590,6 +2616,7 @@ def purge(c=None):
         with _db() as c2, c2:
             return purge(c2)
     now = time.time()
+    CP.expire(c, now=now)                              # 2.5: abgelaufene Stummschaltungen beenden
     mx = retention_max()
     cond, args = "(expires_at IS NOT NULL AND expires_at<?)", [now]
     if mx:
@@ -2744,6 +2771,7 @@ def _notif(c, uid, item, d):
 
 
 notify.RENDER["chat.message"] = _notif
+notify.RENDER["chat.mention"] = _notif                 # 2.5 (chatmention1): erwaehnt im Chat
 
 
 # --- Seite /chats -------------------------------------------------------------------------------------------------

@@ -121,7 +121,7 @@ def mfa_policy(value):
 
 
 _SETTABLE = {"calls.horn": bool, "calls.horn_all": bool, "calls.horn_builtin": bool, "calls.horn_from": int,
-             "chat_v3": bool}
+             "chat_v3": bool, "chat_unfurl": bool}
 
 
 def set_settings(args):

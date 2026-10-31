@@ -37,7 +37,7 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 from db import connect as _db
-from saga import avatars, bus, chat, chat_v2 as V, contacts, fed_keys as FK, federation as F, fedsig, netguard, notify, sharing
+from saga import avatars, bus, chat, chat_prefs as CP, chat_v2 as V, contacts, fed_keys as FK, federation as F, fedsig, netguard, notify, sharing
 from saga.core import MEDIA_FRONT, MEDIA_KEY, _bad, _body, is_raw_ref, resolve_input, t, unnamed
 from saga.notes import FILE_MAX
 
@@ -429,9 +429,20 @@ def store(c, ch, m, sender, lkeys, files=(), origin=None, fseq=None, fstate=None
     return seq
 
 
-def deliver(c, ch, seq, mid, sender, kind="msg"):
+def mention_handles(c, ch, v):
+    """2.5 (chatmention1): Feld mentions (Handles '~x@host') pruefen -> nur Handles aktueller Mitglieder dieses Chats (der Rest
+    wird still ignoriert - Erwaehnung von Nicht-Mitgliedern), hoechstens CP.MENTIONS_MAX."""
+    lst, err = CP.mentions_in(v if isinstance(v, list) else None)
+    if err or not lst:
+        return []
+    have = {member_handle(c, u) for u, _ in members(c, ch["id"])}
+    return [h for h in lst if h in have]
+
+
+def deliver(c, ch, seq, mid, sender, kind="msg", mentions=(), reply_to=None):
     """Neue Nachricht fuer die Konten DIESES Servers: Archiv, Benachrichtigung und Push nur in angenommenen Chats (Anfragen
-    melden sich still), Live-Ereignis an alle lokalen Mitglieder."""
+    melden sich still), Live-Ereignis an alle lokalen Mitglieder. mentions (2.5): Handles - nur eigene Konten, die Mitglied
+    sind, bekommen chat.mention (saga.chat_prefs.on_message entscheidet zentral)."""
     if kind == "title":                  # Gruppenname geaendert: nur neu laden
         chat._changed(c, ch["id"], local_members(c, ch["id"]))
         return
@@ -441,13 +452,12 @@ def deliver(c, ch, seq, mid, sender, kind="msg"):
     loc = [r for r in rows if not sharing.is_remote(r[0])]
     if not sharing.is_remote(sender):
         c.execute("UPDATE chat_member SET last_read=GREATEST(last_read, ?) WHERE chat_id=? AND uid=?", (seq, ch["id"], sender))
-    for u, muted, st in loc:
-        if u == sender or muted or st != "ok" or kind != "msg":
-            continue
-        notify.create(c, u, "chat.message", sender, data={"chat": ch["id"]}, bundle=ch["id"])
-        bus.fire("push.send", c, uid=u, kind="chat.message", actor=sender, data={"chat": ch["id"]})
+    hit = CP.resolve(c, ch["id"], list(mentions or ()), sender) if kind == "msg" else []
+    if kind == "msg":
+        CP.on_message(c, ch["id"], sender, seq, [r[0] for r in loc], hit, reply_to, states={r[0]: r[2] for r in loc})
     chat.direct_person(c, ch, [r[0] for r in loc], "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": sender,
-                                                                   **({"kind": kind} if kind != "msg" else {})}, sender, "sender")
+                                                                   **({"kind": kind} if kind != "msg" else {}),
+                                                                   **({"mentions": [my_handle(c, u) for u in hit]} if hit else {})}, sender, "sender")
 
 
 def local_members(c, cid):
@@ -473,6 +483,8 @@ def fanout(c, ch, ev, keys=None, declined=True, skip=None):
         if not F.feature(p, "chat2"):
             continue
         e = dict(ev, ref=ch["ref"])
+        if "mentions" in e and (not e["mentions"] or not F.feature(p, "chatmention1")):
+            e.pop("mentions")                       # 2.5: nur Gegenstellen mit chatmention1
         if keys is not None:
             e["keys"] = keys_for_host(keys, p["host"])
         if e.get("files"):
@@ -628,8 +640,9 @@ def op_send(c, peer, d):
         c.execute("UPDATE chat_member SET state='ok' WHERE chat_id=? AND uid=?", (ch["id"], p_))
     fseq = c.execute("UPDATE chat SET fseq=fseq+1 WHERE id=? RETURNING fseq", (ch["id"],)).fetchone()[0]
     seq = store(c, ch, m, p_, local_keys(c, ch, keys), files, origin=peer, fseq=fseq, all_keys=keys)
-    deliver(c, ch, seq, m["id"], p_, m.get("kind") or "msg")
-    fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": se}, keys=keys, declined=False)
+    mh = mention_handles(c, ch, d.get("mentions"))              # 2.5 (chatmention1): nur Mitglieder
+    deliver(c, ch, seq, m["id"], p_, m.get("kind") or "msg", mh, m["reply_to"])
+    fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": se, "mentions": mh}, keys=keys, declined=False)
     _prefetch_after(c, files, peer)
     return 200, {"ok": True, "fseq": fseq}
 
@@ -917,7 +930,7 @@ def apply_msg(c, peer, ch, ev, jump=False):
     if host != F.SELF_HOST and (origin is None or (origin["id"] != peer["id"] and not peer_ok(origin))):
         origin = peer                    # Anhang einer Person eines Servers, mit dem wir nicht verbunden sind: ueber das Heim
     seq = store(c, ch, m, sender, local_keys(c, ch, keys), files if origin else [], origin=origin, fseq=fseq)
-    deliver(c, ch, seq, m["id"], sender, m.get("kind") or "msg")
+    deliver(c, ch, seq, m["id"], sender, m.get("kind") or "msg", mention_handles(c, ch, ev.get("mentions")), m["reply_to"])
     if origin:
         _prefetch_after(c, files, origin)
     return "ok"
@@ -1799,6 +1812,9 @@ def send(uid, cid, b):
     keys: {'dev:<id>@host'|'backup:<handle>': sealed}, files: [ids]}. Signatur saga-chat/v2 (chat_ref, eigener Handle)."""
     m = msg_in(dict(b, kind=b.get("kind") or "msg"))
     keys, fids, ai_ref = b.get("keys"), b.get("files") or [], b.get("ai_reply")
+    raw_ment, merr = CP.mentions_in(b.get("mentions"))       # 2.5 (chatmention1): Handles neben dem Chiffrat
+    if merr:
+        return _bad(merr)
     if not m or not isinstance(fids, list) or len(fids) > chat.FILE_IDS_PER_MSG or any(not isinstance(f, str) or not chat._FID.fullmatch(f) for f in fids):
         if isinstance(b.get("body_ct"), str) and len(b["body_ct"]) > chat.MSG_MAX:
             return _bad(t("Nachricht zu groß."), 413)
@@ -1870,14 +1886,21 @@ def send(uid, cid, b):
         seq = store(c, ch, m, uid, local_keys(c, ch, keys), files, fseq=fseq, fstate=None if home else "pending", all_keys=keys if home else None)
         if ai_ref:
             c.execute("UPDATE chat_ai_reply SET msg_id=? WHERE id=?", (m["id"], ai_ref))
-        deliver(c, ch, seq, m["id"], uid, m.get("kind") or "msg")
+        mh = _mentions_v2(c, ch, raw_ment, uid) if (m.get("kind") or "msg") == "msg" else []
+        deliver(c, ch, seq, m["id"], uid, m.get("kind") or "msg", mh, m["reply_to"])
         if home:
-            fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": mine}, keys=keys, declined=False)
+            fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": mine, "mentions": mh}, keys=keys, declined=False)
     out = {"ok": True, "seq": seq, "fseq": fseq, "created": time.time()}
     if home:
         print(f"chat: Nachricht in Chat {ch['id']} (foederiert, Heim, {len(keys)} Empfaenger)", flush=True)
         return chat._no_store(out)
-    status, d = to_home(ch, {"op": "send", "ref": ch["ref"], "msg": m, "keys": keys, "files": files, "sender_keys": mine})
+    sb = {"op": "send", "ref": ch["ref"], "msg": m, "keys": keys, "files": files, "sender_keys": mine}
+    if mh:
+        with _db() as c:
+            hp = F.peer_by(c, "id", ch["home_peer"])
+        if hp and F.feature(hp, "chatmention1"):
+            sb["mentions"] = mh
+    status, d = to_home(ch, sb)
     with _db() as c, c:
         if status == 200:
             # Die Nachricht wurde oben schon als 'pending' gemeldet (deliver -> chat.message): Apps haben sie mit "wird
@@ -1908,6 +1931,21 @@ def send(uid, cid, b):
             return _bad(t("Nicht zugestellt: der andere Saga-Server hat die Nachricht abgewiesen ({err}).", err=str(d.get("error") or status)), 409)
     print(f"chat: Nachricht in Chat {ch['id']} (foederiert, an {('Warteschlange' if out.get('pending') else 'Heim')})", flush=True)
     return chat._no_store(out)
+
+
+def _mentions_v2(c, ch, refs, uid):
+    """Erwaehnungen vom eigenen Geraet -> Handles aktueller Mitglieder (lokale Kennung '~x' bzw. Benutzername werden zum
+    vollen Handle; Nicht-Mitglieder und der Absender fallen still weg)."""
+    have = {member_handle(c, u): u for u, _ in members(c, ch["id"])}
+    out = []
+    for r in refs or ():
+        h = r if r in have else None
+        if h is None:
+            loc = CP.resolve(c, ch["id"], [r], uid)
+            h = my_handle(c, loc[0]) if loc else None
+        if h and have.get(h) != uid and h not in out:
+            out.append(h)
+    return out
 
 
 def delete_msg(uid, ch, mid):

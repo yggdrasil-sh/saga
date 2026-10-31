@@ -20,6 +20,7 @@
     'comment.reply': T('Antworten in Unterhaltungen, an denen ich beteiligt bin'),
     'publish.withdrawn': T('Ein Admin zieht eine Veröffentlichung von mir zurück'),
     'chat.message': T('Neue Chat-Nachrichten (ohne Inhalt; stummgeschaltete Chats nie)'),
+    'chat.mention': T('Jemand erwähnt mich in einem Chat'),
     'call.missed': T('Verpasste Anrufe'),
     'db.assigned': T('Jemand trägt mich in einer Datenbank ein (Person)'),
     'page.mention': T('Jemand erwähnt mich in einer Seite'),
@@ -92,6 +93,7 @@
     else if (it.kind === 'page.mention') s = T('{name} hat dich erwähnt');
     else if (it.kind === 'publish.withdrawn') s = T('Ein Admin hat deine Veröffentlichung zurückgezogen');
     else if (it.kind === 'chat.message') s = n > 1 ? T('{n} neue Nachrichten') : T('Neue Nachricht von {name}');
+    else if (it.kind === 'chat.mention') s = T('{name} hat dich in einem Chat erwähnt');
     else if (it.kind === 'call.missed') s = T('Verpasster Anruf von {name}');
     else if (it.kind === 'db.assigned') s = n > 1 ? T('{name} hat dich {n}-mal eingetragen') : T('{name} hat dich eingetragen');
     else if (it.kind === 'backup.failed') return document.createTextNode(it.text || T('Backup fehlgeschlagen'));   // Text vom Server (Admins)
@@ -217,7 +219,7 @@
       if (it.url) { var aw = window.open(it.url, '_blank', 'noopener'); if (aw) aw.focus(); }
       return;
     }
-    if ((it.kind === 'chat.message' || it.kind === 'call.missed') && it.access && it.url) {           // Chat (1.5): im Chat-Tab oeffnen
+    if ((it.kind === 'chat.message' || it.kind === 'chat.mention' || it.kind === 'call.missed') && it.access && it.url) {           // Chat (1.5): im Chat-Tab oeffnen
       if (location.pathname === '/chats') { location.hash = it.url.split('#')[1] || ''; return; }
       var cw = window.open(it.url, 'hk-chats'); if (cw) cw.focus(); return;
     }

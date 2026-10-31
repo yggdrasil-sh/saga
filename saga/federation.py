@@ -82,7 +82,11 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
          "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1",
-         "chatadm1"]
+         "chatadm1", "chatmention1"]
+# chatmention1 (2.5, Chat-Alltag, saga.chat_prefs) = @Erwaehnungen in Chats: Auftrag 'send' und Ereignis 'chat.msg' tragen neben
+# msg das Feld mentions (Handles '~x@host', unverschluesselt wie die Mitgliederliste). Jede Seite nimmt nur Handles aktueller
+# Mitglieder und meldet nur eigenen Konten (chat.mention, auch bei notify "mentions" und in ausgeblendeten Chats). Ohne
+# chatmention1: das Feld wird nicht geschickt (dort nur die normale Mitteilung).
 # chatadm1 (2.5, Gruppeninfo) = Admins freier Gruppen vergeben/entziehen: Teilnehmer schicken den Auftrag 'admin'
 # {ref, actor, target, admin} an das Heim; das Heim verteilt die Liste (role je Mitglied) samt Systemzeile type 'admin'
 # (target, on, by). Ohne chatadm1: Heim-Auftrag nicht moeglich (409 "zu alt"), Rollen kommen weiter mit chat.members.
@@ -150,7 +154,7 @@ def caps2():
 OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}
 # Faehigkeit -> Admin-Schalter, der sie zusaetzlich braucht
 CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls", "chatgroups": "chat", "calls3": "calls",
-           "chatfile2": "chat", "receipts": "chat", "online": "chat", "chat3": "chat", "chatadm1": "chat", "horn": "calls", "horn_dm": "calls"}
+           "chatfile2": "chat", "receipts": "chat", "online": "chat", "chat3": "chat", "chatadm1": "chat", "chatmention1": "chat", "horn": "calls", "horn_dm": "calls"}
 EXPRESS_TIMEOUT = float(E.get("FED_EXPRESS_TIMEOUT", "5"))      # synchrone Zustellung: harte Frist in Sekunden
 HELLO_EVERY = 6 * 3600                       # Faehigkeiten der Gegenstelle so oft neu abfragen
 SEEN_KEEP = 7 * 86400                        # Ereignis-Kennungen so lange merken (idempotent)

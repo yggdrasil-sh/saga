@@ -1268,8 +1268,8 @@ DELETE FROM setting WHERE k='chat_contact_fill';
     # 2.5.0 (Chat-Alltag, saga/chat.py "Chat-Alltag"): Stand je Person und Chat in chat_pref - muted_until (Stummschalten
     # mit Dauer: Zeitpunkt, -1 = fuer immer, NULL = aus), notify (all|mentions|none, NULL = all), pinned_at (angeheftet seit),
     # unread_mark (als ungelesen markiert), hide_at (Gruppen-/Seiten-Chat fuer mich ausgeblendet seit), mention_seq (neueste
-    # Nachricht, in der ich erwaehnt wurde). Bestand: chat_member.muted bleibt der wirksame Schalter (= fuer immer stumm).
-    # Beliebig oft ausfuehrbar.
+    # Nachricht, in der ich erwaehnt wurde). Bestand: stummgeschaltete Mitgliedschaften (chat_member.muted) gelten als "fuer
+    # immer" (muted_until -1); chat_member.muted bleibt als abgeleiteter Spiegel fuer aeltere Versionen. Beliebig oft ausfuehrbar.
     30: """
 ALTER TABLE chat_pref ADD COLUMN IF NOT EXISTS muted_until DOUBLE PRECISION;
 ALTER TABLE chat_pref ADD COLUMN IF NOT EXISTS notify TEXT;
@@ -1278,6 +1278,8 @@ ALTER TABLE chat_pref ADD COLUMN IF NOT EXISTS unread_mark SMALLINT NOT NULL DEF
 ALTER TABLE chat_pref ADD COLUMN IF NOT EXISTS hide_at DOUBLE PRECISION;
 ALTER TABLE chat_pref ADD COLUMN IF NOT EXISTS mention_seq BIGINT NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS chat_pref_mute ON chat_pref (muted_until) WHERE muted_until > 0;
+INSERT INTO chat_pref (chat_id, uid, muted_until) SELECT chat_id, uid, -1 FROM chat_member WHERE muted<>0 AND left_at IS NULL
+    ON CONFLICT (chat_id, uid) DO UPDATE SET muted_until=-1 WHERE chat_pref.muted_until IS NULL OR chat_pref.muted_until=0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

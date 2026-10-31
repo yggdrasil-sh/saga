@@ -56,9 +56,15 @@ E = os.environ
 TYPES = ("webpush", "ntfy", "unifiedpush", "apns", "apns-voip", "stream")
 CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comment.reply", "comment.mention", "page.mention"),
         "assign": ("db.assigned",),                 # 2.5: in einer Datenbank-Zeile eingetragen
-        "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed", "call.group"),
+        "chat": ("chat.message", "chat.mention"), "publish": ("publish.withdrawn",), "call": ("call", "call.missed", "call.group"),
         "tasks": ("task.due",),                     # 2.5 (Paket 7): taegliche Zusammenfassung "heute faellig / ueberfaellig"
         "admin": ("backup.failed",)}                 # nur Admin-Konten (Backups, saga/backups.py)
+# 2.5 (saga.chat_prefs.push_ok, setzt sich beim Import ein): darf eine Chat-Mitteilung noch raus? Ohne Chat-Modul: alte Regel
+def _chat_push_ok(c, cid, uid, kind):
+    return bool(c.execute("SELECT 1 FROM chat_member WHERE chat_id=? AND uid=? AND left_at IS NULL AND muted=0", (cid, uid)).fetchone())
+
+
+CHAT_PUSH_OK = _chat_push_ok
 CALL_TTL = 60                        # klingelnder Anruf: Mitteilung nach einer Minute verwerfen (statt 4 h vorhalten)
 
 
@@ -420,7 +426,7 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
         return 0
     now = time.time()
     d = json.dumps({k: v for k, v in (data or {}).items() if k in ("chat", "call")})        # nur Kennungen, nie Inhalte
-    if kind == "chat.message" and c.execute("SELECT 1 FROM push_queue WHERE uid=? AND kind=? AND data=? AND tries=0 LIMIT 1",
+    if kind in ("chat.message", "chat.mention") and c.execute("SELECT 1 FROM push_queue WHERE uid=? AND kind=? AND data=? AND tries=0 LIMIT 1",
                                             (uid, kind, d)).fetchone():
         return 0                          # fuer diesen Chat wartet schon eine Mitteilung (wie das Buendeln der Glocke)
     for sid in subs:
@@ -431,7 +437,7 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
 
 
 def _on_notification(c, uid, id, kind, actor=None, replaces=None, **_):      # noqa: A002 - Name aus saga.notify
-    if kind == "chat.message":
+    if kind in ("chat.message", "chat.mention"):
         return                            # der Chat meldet selbst ueber "push.send" (mit Chat-Kennung, Stummschalten beachtet)
     enqueue(c, uid, kind, actor=actor, ref=id, replaces=replaces)
 
@@ -486,13 +492,15 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
     try:
         if kind == "test":
             body, url, tag = t("Testmitteilung – Mitteilungen kommen an."), "/", "test"
-        elif kind == "chat.message":
+        elif kind in ("chat.message", "chat.mention"):
             chat = re.sub(r"[^A-Za-z0-9_.-]", "", str((data or {}).get("chat") or ""))[:64]
-            if chat.isdigit() and not c.execute("SELECT 1 FROM chat_member WHERE chat_id=? AND uid=? AND left_at IS NULL AND muted=0",
-                                                (int(chat), uid)).fetchone():
-                return None               # inzwischen nicht mehr Mitglied oder stummgeschaltet
+            if chat.isdigit() and not CHAT_PUSH_OK(c, int(chat), uid, kind):
+                return None               # inzwischen nicht mehr Mitglied, stummgeschaltet oder ausgeblendet (saga.chat_prefs)
             nm = notify.names(c, [actor]).get(actor) if actor and names else None
-            body = t("Neue Nachricht von {name}", name=nm) if nm else t("Neue Nachricht")
+            if kind == "chat.mention":
+                body = t("{name} hat dich in einem Chat erwähnt", name=nm) if nm else t("Du wurdest in einem Chat erwähnt")
+            else:
+                body = t("Neue Nachricht von {name}", name=nm) if nm else t("Neue Nachricht")
             ref = ("c" + chat) if chat.isdigit() else chat          # wie die Glocke: /chats#c<id>
             url, tag = ("/chats#" + ref) if chat else "/chats", "chat-" + chat
         elif kind == "call":
@@ -584,7 +592,7 @@ def send(sub, msg):
     try:
         if kind == "webpush" or (kind == "unifiedpush" and p256dh and auth_s):
             h = {"TTL": str(msg.get("ttl") or TTL), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
-                 "Urgency": "high" if msg["kind"] in ("chat.message", "call", "call.group") else "normal", "Authorization": vapid_header(endpoint)}
+                 "Urgency": "high" if msg["kind"] in ("chat.message", "chat.mention", "call", "call.group") else "normal", "Authorization": vapid_header(endpoint)}
             topic = re.sub(r"[^A-Za-z0-9_-]", "", msg.get("tag") or "")[:32]
             if topic:
                 h["Topic"] = topic                                   # neuere ersetzt eine noch nicht abgeholte gleiche
