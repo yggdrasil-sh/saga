@@ -8843,6 +8843,9 @@
          calcNum: calcNum,                                      // Widgets/Fusszeile (tests/seiten_widgets.js: gemeinsame Testvektoren)
          chartTicks: chartTicks,                                // 2.5 Paket 4: Achsen (tests/browser_widgets2.js, tests/chart_ticks.json)
          onDocChange: onDocChange,                              // Editor-Fassade (static/editor-doc.js)
+         // 2.5 (Tiptap T4b, static/pm-tools-daten.js): Werkzeugklassen fuer die Node-View-Bruecke - unveraendert wie in Editor.js
+         tools: { DatabaseTool: DatabaseTool, TasksTool: TasksTool, CalendarTool: CalendarTool, WidgetTool: WidgetTool,
+                  ButtonsTool: ButtonsTool, wgKinds: WG_KINDS, wgDefaults: wgDefaults, wgLoad: function () { return loadWidgets(); } },
          dup: function (ed, blk) { return dupBlock(ed, blk); }, styleAt: styleAt, styleBlock: styleBlock, colors: COLORS, colorNames: COLOR_NAMES,
          toggleOf: function (node) { var w = node && node.closest ? node.closest('.tgl') : null; return w ? TGL_OF.get(w) || null : null; },
          embed: EMBED, isMac: isMac, cleanClip: function (list, nested) { return cleanClip(list, nested ? nestedTools() : (S.tools || {})); }, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
