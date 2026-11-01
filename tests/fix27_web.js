@@ -2,6 +2,7 @@
 // weitere Funde siehe Abschnitte. Server mit echter Galerie (gallery/).
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Cookie hk-test-a> CK2=<Cookie hk-test-b> node tests/fix27_web.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK, CK2 = process.env.CK2;
 const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
 const shot = (p, n) => process.env.SHOTS ? p.screenshot({ path: process.env.SHOTS + '/' + n + '.png' }) : null;
@@ -93,7 +94,7 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await p.locator('.cm-foot .cm-ta').fill('Entwurf zwei');
     // zweiter Tab desselben Kontos aendert die Seite
     const p2 = await page(CK); await p2.open(C.id);
-    await p2.locator('.ce-paragraph').first().click(); await p2.keyboard.press('End'); await p2.keyboard.type(' geaendert');
+    await p2.locator(D.textOf('paragraph')).first().click(); await p2.keyboard.press('End'); await p2.keyboard.type(' geaendert');
     let seen = false;
     for (let i = 0; i < 30 && !seen; i++) { await sleep(300); seen = await p.evaluate(() => /geaendert/.test(document.querySelector('#pg-editor').textContent)); }
     await sleep(2500);
@@ -262,7 +263,7 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     const RZ = await p.api('POST', '/api/gallery/rezepte/use', { examples: true });
     for (const [name, id] of [['Aufgaben & Projekte', AP.root], ['Mein Tag', MT.root], ['Rezepte', RZ.root]]) {
       await p.open(id); await sleep(800);
-      const bl = p.locator('#pg-editor > .codex-editor > .codex-editor__redactor > .ce-block'), n = await bl.count();
+      const bl = p.locator(D.top()), n = await bl.count();
       let worst = 0;
       for (let i = 0; i < n; i++) {
         await bl.nth(i).hover({ position: { x: 10, y: 5 } }).catch(() => {});

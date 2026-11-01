@@ -2,6 +2,7 @@
 // Schrift umschalten (G9), Toggle-Ueberschrift im Inhaltsverzeichnis und Umwandeln (G10). Alte Seiten bleiben unveraendert.
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Sitzungs-Cookie hk-test-a> [CK2=<Cookie hk-test-b>] node tests/gestalten.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK;
 const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -40,7 +41,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // --- G10: Toggle-Ueberschrift ist eine Ueberschrift (Groesse, Inhaltsverzeichnis) ---------------------------
   const tglSize = await p.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.tgl-h2 .tgl-title')).fontSize));
-  const pSize = await p.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.ce-paragraph')).fontSize));
+  const pSize = await p.evaluate((s) => parseFloat(getComputedStyle(document.querySelector(s)).fontSize), D.textOf('paragraph'));
   ok(`G10: Titel in Ueberschriftengroesse (${tglSize} > ${pSize})`, tglSize > pSize * 1.15);
   await sleep(500);
   const toc = await p.evaluate(() => [...document.querySelectorAll('.hk-toc .hk-toc-t')].map((x) => x.textContent));
@@ -68,7 +69,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await im.scrollIntoViewIfNeeded(); await im.hover(); await sleep(200);
   const rs = await p.locator('.image-tool__image .hk-rs-r').first().boundingBox();
   const ib = await im.boundingBox();
-  const ed = await p.locator('#pg-editor .codex-editor').first().boundingBox();
+  const ed = await p.locator(D.UI.editorBox).first().boundingBox();
   await p.mouse.move(rs.x + rs.width / 2, rs.y + rs.height / 2); await p.mouse.down();
   await p.mouse.move(ed.x + ed.width * 0.75, rs.y + rs.height / 2, { steps: 8 }); await p.mouse.up();
   await sleep(300);
@@ -79,23 +80,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(`G2: Breite gespeichert (${bl[3].data.width} %), unbekanntes Feld bleibt`, bl[3].data.width >= 35 && bl[3].data.width <= 65 && bl[3].data.zukunft && bl[3].data.zukunft.a === 1, bl[3].data);
 
   // --- G3/G5: Farbe ueber das Block-Menue ⋮⋮ ---------------------------------------------------------------------
-  const para = p.locator('.ce-paragraph', { hasText: 'Farbiger Absatz' }).first();
+  const para = p.locator(D.textOf('paragraph'), { hasText: 'Farbiger Absatz' }).first();
   await para.click(); await para.hover(); await sleep(250);
-  await p.locator('.ce-toolbar__settings-btn:visible').first().click(); await sleep(300);
-  const items = await p.evaluate(() => [...document.querySelectorAll('.ce-settings .ce-popover--opened > .ce-popover__container > .ce-popover__items > .ce-popover-item .ce-popover-item__title, .ce-popover--opened .ce-popover__items > .ce-popover-item .ce-popover-item__title')].map((x) => x.textContent.trim()));
+  await p.locator(D.UI.blockMenuBtn + ':visible').first().click(); await sleep(300);
+  const items = await p.evaluate((U) => [...document.querySelectorAll(`${U.blockMenu} ${U.popover} > ${U.popoverContainer} > ${U.popoverItems} > ${U.item} ${U.itemTitle}, ${U.popover} ${U.popoverItems} > ${U.item} ${U.itemTitle}`)].map((x) => x.textContent.trim()), D.UI);
   const iConv = items.indexOf('Umwandeln in'), iCol = items.indexOf('Farbe'), iDup = items.indexOf('Duplizieren'), iLink = items.indexOf('Link zum Block kopieren'), iCom = items.indexOf('Kommentieren');
   ok(`G5: Reihenfolge Umwandeln, Farbe, Duplizieren, Link, Kommentieren (${items.slice(0, 9).join(', ')})`,
     iConv >= 0 && iConv < iCol && iCol < iDup && iDup < iLink && iLink < iCom, items);
-  await p.locator('.ce-popover--opened .ce-popover-item:has(.ce-popover-item__title:text-is("Farbe"))').first().click(); await sleep(250);
-  await p.locator('.ce-popover--opened .ce-popover-item:has(.ce-popover-item__title:text-is("Blau (Hintergrund)"))').first().click(); await sleep(300);
-  const cls = await para.evaluate((n) => n.closest('.ce-block__content').className);
+  await p.locator(D.menuItem('Farbe')).first().click(); await sleep(250);
+  await p.locator(D.menuItem('Blau (Hintergrund)')).first().click(); await sleep(300);
+  const cls = await para.evaluate((n) => { const b = n.closest('[data-block-id]'); return [b.className].concat([...b.querySelectorAll('*')].filter((x) => x.contains(n)).map((x) => x.className)).join(' '); });
   ok(`G3: Hintergrund sofort sichtbar (${cls})`, /hk-bg-blue/.test(cls));
   await sleep(3500);
   bl = await body(id);
   ok('G3: Farbe als tunes.hkstyle gespeichert', JSON.stringify(bl[1].tunes) === JSON.stringify({ hkstyle: { c: 'blue', bg: true } }), bl[1]);
 
   // Slash-Kuerzel "/rot" in einem neuen Absatz
-  const end = p.locator('.ce-paragraph', { hasText: 'Ende' }).first();
+  const end = p.locator(D.textOf('paragraph'), { hasText: 'Ende' }).first();
   await end.click(); await p.keyboard.press('End'); await p.keyboard.press('Enter'); await sleep(200);
   await p.keyboard.type('/rot', { delay: 40 }); await sleep(500); await p.keyboard.press('Enter'); await sleep(300);
   await p.keyboard.type('rote Zeile'); await sleep(3800);
@@ -109,7 +110,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('G5: Cmd/Strg+D dupliziert samt Farbe', bl.filter((b) => b.data && b.data.text === 'Farbiger Absatz' && b.tunes && b.tunes.hkstyle && b.tunes.hkstyle.c === 'blue').length === 2);
 
   // --- G10: Umwandeln Ueberschrift -> Toggle-Ueberschrift behaelt den Text ----------------------------------------
-  const hC = p.locator('.ce-header', { hasText: 'Kapitel C' }).first();
+  const hC = p.locator(D.textOf('header'), { hasText: 'Kapitel C' }).first();
   await hC.click(); await p.keyboard.press(process.platform === 'darwin' ? 'Meta+/' : 'Control+/'); await sleep(300);
   await p.keyboard.type('Toggle-Überschrift 1'); await sleep(150); await p.keyboard.press('Enter'); await sleep(3800);
   bl = await body(id);
@@ -120,7 +121,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await p.click('#pg-more'); await sleep(200);
   await p.locator('.menu-item:has(.mi-t:text-is("Schrift"))').first().click(); await sleep(200);
   await p.locator('.menu-sub .menu-item:has(.mi-t:text-is("Serif")), .menu .menu-item:has(.mi-t:text-is("Serif"))').last().click(); await sleep(800);
-  const ff = await p.evaluate(() => getComputedStyle(document.querySelector('.page-body .ce-paragraph')).fontFamily);
+  const ff = await p.evaluate((s) => getComputedStyle(document.querySelector(s)).fontFamily, D.textOf('paragraph'));
   const tf = await p.evaluate(() => getComputedStyle(document.getElementById('pg-title')).fontFamily);
   ok(`G9: Serif auf Inhalt und Titel (${ff.slice(0, 30)})`, /serif/i.test(ff) && /Georgia|serif/.test(tf) && !/sans-serif/.test(ff));
   const cf = await p.evaluate(() => { const c = document.querySelector('.page-body .inline-code, .page-body .hk-code-ta'); return c ? getComputedStyle(c).fontFamily : 'monospace'; });
@@ -129,9 +130,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await p.locator('.menu-item:has(.mi-t:text-is("Kleiner Text"))').first().click(); await sleep(800);
   let n = await api('GET', '/api/notes/' + id);
   ok(`G9: gespeichert font=${n.font}, small=${n.small}`, n.font === 'serif' && n.small === true);
-  const fs = await p.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.page-body .ce-paragraph')).fontSize));
+  const fs = await p.evaluate((s) => parseFloat(getComputedStyle(document.querySelector(s)).fontSize), D.textOf('paragraph'));
   ok(`G9: kleiner Text (${fs} < ${pSize})`, fs < pSize * 0.95);
-  await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id); await p.waitForSelector('.page-body .ce-paragraph'); await sleep(800);
+  await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id); await p.waitForSelector(D.ofType('paragraph')); await sleep(800);
   ok('G9: nach Neuladen weiter Serif + klein', await p.evaluate(() => { const g = document.getElementById('page'); return g.classList.contains('pf-serif') && g.classList.contains('p-small'); }));
 
   // --- Alte Seite ohne neue Felder: Speichern aendert nichts an der Struktur -----------------------------------
@@ -140,7 +141,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { type: 'toggle', data: { title: 'T', open: true, blocks: [P('x')] } }, P('Text')];
   await api('PATCH', '/api/notes/' + old, { body: JSON.stringify({ blocks: oldBlocks }), format: 'blocks' });
   await p.goto(BASE + '/notes?t=' + Date.now() + '#' + old); await p.waitForSelector('.cols'); await sleep(1000);
-  await p.locator('.ce-paragraph', { hasText: 'Text' }).last().click(); await p.keyboard.press('End'); await p.keyboard.type('!'); await sleep(3800);
+  await p.locator(D.textOf('paragraph'), { hasText: 'Text' }).last().click(); await p.keyboard.press('End'); await p.keyboard.type('!'); await sleep(3800);
   bl = await body(old);
   const sorted = (v) => (Array.isArray(v) ? v.map(sorted) : v && typeof v === 'object' ? Object.keys(v).sort().reduce((o, k) => { o[k] = sorted(v[k]); return o; }, {}) : v);
   const strip = (l) => JSON.stringify(sorted(l.map((b) => ({ type: b.type, tunes: b.tunes, data: b.type === 'paragraph' ? undefined : b.data }))), (k, v) => (k === 'id' ? undefined : v));
@@ -155,9 +156,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await api('PATCH', '/api/notes/' + tv, { body: JSON.stringify({ blocks: fullBlocks }), format: 'blocks' });
   await p.goto(BASE + '/notes?t=' + Date.now() + '#' + tv); await p.waitForSelector('.tgl-title'); await sleep(1200);
   await p.hover('.tgl-title'); await sleep(250);
-  await p.locator('.ce-toolbar__settings-btn:visible').first().click(); await sleep(300);
-  await p.locator('.ce-popover--opened .ce-popover-item:has(.ce-popover-item__title:text-is("Umwandeln in"))').first().click(); await sleep(300);
-  await p.locator('.ce-popover--opened .ce-popover-item:has(.ce-popover-item__title:text-is("Überschrift"))').last().click(); await sleep(400);
+  await p.locator(D.UI.blockMenuBtn + ':visible').first().click(); await sleep(300);
+  await p.locator(D.menuItem('Umwandeln in')).first().click(); await sleep(300);
+  await p.locator(D.menuItem('Überschrift')).last().click(); await sleep(400);
   await p.keyboard.press('Escape');
   if (await p.locator('.tgl-title').count()) { await p.click('.tgl-title'); await p.keyboard.press('Home'); await p.keyboard.press('Backspace'); }
   await sleep(3500);
@@ -174,14 +175,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const ctx2 = await br.newContext({ viewport: { width: 1280, height: 900 }, locale: 'de-DE' });
     await ctx2.addCookies([{ name: 'saga', value: process.env.CK2, domain: new URL(BASE).hostname, path: '/' }]);
     const q = await ctx2.newPage(); q.on('pageerror', (e) => errs.push(e.message));
-    await q.goto(BASE + '/notes#' + sh); await q.waitForSelector('.ce-paragraph'); await sleep(1000);
-    const pr = q.locator('.ce-paragraph', { hasText: 'Lesbar' }).first();
+    await q.goto(BASE + '/notes#' + sh); await q.waitForSelector(D.ofType('paragraph')); await sleep(1000);
+    const pr = q.locator(D.textOf('paragraph'), { hasText: 'Lesbar' }).first();
     await pr.click(); await pr.hover(); await sleep(250);
-    const btn = q.locator('.ce-toolbar__settings-btn:visible').first();
+    const btn = q.locator(D.UI.blockMenuBtn + ':visible').first();
     let ro = [];
     if (await btn.count()) {
       await btn.click(); await sleep(300);
-      ro = await q.evaluate(() => [...document.querySelectorAll('.ce-popover--opened .ce-popover__items > .ce-popover-item:not(.ce-popover-item--hidden) .ce-popover-item__title')].map((x) => x.textContent.trim()));
+      ro = await q.evaluate((U) => [...document.querySelectorAll(`${U.popover} ${U.popoverItems} > ${U.item}:not(${U.itemHidden}) ${U.itemTitle}`)].map((x) => x.textContent.trim()), D.UI);
     }
     await pr.click(); await q.keyboard.press(process.platform === 'darwin' ? 'Meta+/' : 'Control+/'); await sleep(300);
     const am = await q.evaluate(() => [...document.querySelectorAll('.menu:not([hidden]) .menu-item .mi-t')].map((x) => x.textContent.trim()));

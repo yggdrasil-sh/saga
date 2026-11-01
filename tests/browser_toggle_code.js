@@ -1,6 +1,7 @@
 // Bughunt W01: Seite mit Code-Block im Ausklappbar-Block speichert (zu- und aufgeklappt), Inhalt und Formatierung bleiben.
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<signiertes Sitzungs-Cookie> node tests/browser_toggle_code.js
 const PW = require('playwright');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK;
 const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
 (async () => {
@@ -21,7 +22,7 @@ const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 
   await api('PATCH', '/api/notes/' + id, { body: JSON.stringify(blocks), format: 'blocks' });
   await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id);
   await p.waitForSelector('.tgl'); await p.waitForTimeout(800);
-  const last = p.locator('.ce-paragraph', { hasText: 'Ende' }).last();
+  const last = p.locator(D.textOf('paragraph'), { hasText: 'Ende' }).last();
   await last.click(); await p.keyboard.press('End'); await p.keyboard.type(' getippt');
   await p.waitForTimeout(3500);
   const st = await p.evaluate(() => (document.getElementById('pg-state') || document.querySelector('.pg-state') || {}).textContent || '');

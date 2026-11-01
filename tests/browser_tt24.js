@@ -3,6 +3,7 @@
 //   SAGA_BASE=... SAGA_USER=a SAGA_PASS=... SAGA_USER2=b SAGA_PASS2=... [PLAYWRIGHT=...] node tests/browser_tt24.js
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const fs = require('fs'), path = require('path');
 const E = process.env, BASE = E.SAGA_BASE;
 if (!BASE || !E.SAGA_USER || !E.SAGA_USER2) { console.error('SAGA_BASE, SAGA_USER/PASS, SAGA_USER2/PASS2 setzen'); process.exit(2); }
@@ -25,7 +26,7 @@ async function session(browser, user, pass) {
     return r.json().catch(() => ({}));
   }, [m, u, b]);
   p.blocks = async id => { const n = await p.api('GET', '/api/notes/' + id); return (JSON.parse(n.body || '{}').blocks || []).map(b => b.type + ':' + (b.data.text || '').replace(/<[^>]+>/g, '')); };
-  p.open = async id => { await p.goto(BASE + '/notes#' + id); await p.waitForSelector('#pg-editor .ce-block'); await p.waitForTimeout(800); };
+  p.open = async id => { await p.goto(BASE + '/notes#' + id); await p.waitForSelector(D.any); await p.waitForTimeout(800); };
   return p;
 }
 
@@ -38,7 +39,7 @@ async function session(browser, user, pass) {
     for (const [cmd, typ] of [['/Hinweis', 'callout'], ['/Tabelle', 'table'], ['/Zitat', 'quote']]) {
       const id = (await a.api('POST', '/api/notes', { title: 'Schnell ' + cmd })).id;
       await a.open(id);
-      await a.click('#pg-editor .ce-paragraph');
+      await a.click(D.textOf('paragraph'));
       if (cmd === '/Zitat') await a.keyboard.type(cmd, { delay: 15 });        // durchgehend schnell
       else { await a.keyboard.type('/'); await a.waitForTimeout(300); await a.keyboard.type(cmd.slice(1)); }   // wie die Testrunde: Filter ohne Pause
       await a.keyboard.press('Enter');
@@ -53,12 +54,12 @@ async function session(browser, user, pass) {
     let id = (await a.api('POST', '/api/notes', { title: 'Zitat verlassen' })).id;
     await a.api('PATCH', '/api/notes/' + id, { body: JSON.stringify({ blocks: [{ type: 'quote', data: { text: 'Sein oder nicht sein', caption: '', alignment: 'left' } }] }), format: 'blocks' });
     await a.open(id);
-    await a.click('#pg-editor .cdx-quote__text'); await a.keyboard.press('End');
+    await a.click(D.textOf('quote')); await a.keyboard.press('End');
     await a.keyboard.press('Enter'); await a.keyboard.press('Enter');
     await a.keyboard.type('Danach', { delay: 10 }); await a.waitForTimeout(2200);
     let b = await a.blocks(id);
     ok('W7: Enter in leerer letzter Zeile verlaesst das Zitat (neuer Absatz darunter)', b.length === 2 && b[0] === 'quote:Sein oder nicht sein' && b[1] === 'paragraph:Danach', b);
-    await a.click('#pg-editor .cdx-quote__text'); await a.keyboard.press('End');
+    await a.click(D.textOf('quote')); await a.keyboard.press('End');
     await a.keyboard.press('Shift+Enter'); await a.keyboard.type('Zeile 2', { delay: 10 });
     await a.waitForTimeout(1500);
     b = await a.blocks(id);
@@ -66,7 +67,7 @@ async function session(browser, user, pass) {
     id = (await a.api('POST', '/api/notes', { title: 'Zitat Pfeil' })).id;
     await a.api('PATCH', '/api/notes/' + id, { body: JSON.stringify({ blocks: [{ type: 'quote', data: { text: 'Am Ende', caption: '', alignment: 'left' } }] }), format: 'blocks' });
     await a.open(id);
-    await a.click('#pg-editor .cdx-quote__text'); await a.keyboard.press('End');
+    await a.click(D.textOf('quote')); await a.keyboard.press('End');
     await a.keyboard.press('ArrowDown'); await a.keyboard.type('Unten', { delay: 10 }); await a.waitForTimeout(2200);
     b = await a.blocks(id);
     ok('W7: Pfeil nach unten am Ende des letzten Zitats -> Absatz darunter', b.length === 2 && b[1] === 'paragraph:Unten', b);
@@ -78,7 +79,7 @@ async function session(browser, user, pass) {
       await a.api('PATCH', '/api/notes/' + id, { body: JSON.stringify({ blocks }), format: 'blocks' });
       await a.open(id);
       await a.evaluate(() => document.activeElement && document.activeElement.blur());
-      const r = await a.evaluate(() => { const bl = [...document.querySelectorAll('#pg-editor .ce-block')]; const x = bl[bl.length - 1].getBoundingClientRect(); return { x: x.left + 40, y: Math.min(x.bottom + 60, innerHeight - 10) }; });
+      const r = await a.evaluate((s) => { const bl = [...document.querySelectorAll(s)]; const x = bl[bl.length - 1].getBoundingClientRect(); return { x: x.left + 40, y: Math.min(x.bottom + 60, innerHeight - 10) }; }, D.any);
       await a.mouse.click(r.x, r.y); await a.waitForTimeout(200);
       await a.keyboard.type('Unten getippt', { delay: 10 }); await a.waitForTimeout(2200);
       b = await a.blocks(id);

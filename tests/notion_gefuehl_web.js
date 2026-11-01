@@ -2,6 +2,7 @@
 // ohne Suchfeld (Filtern im Text, unter der Zeile), stiller Speicherstatus, Schreibflaeche 16 px / Titel 40 px.
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Sitzungs-Cookie hk-test-a> node tests/notion_gefuehl_web.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK;
 const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21,14 +22,14 @@ const P = (t) => ({ type: 'paragraph', data: { text: t } });
     const full = (await api('POST', '/api/notes', { title: 'NG voll' })).id;
     await api('PATCH', '/api/notes/' + full, { body: JSON.stringify({ blocks: [P('eins'), P('zwei'), P('drei'), P('vier'), P('fünf'), P('sechs')] }), format: 'blocks' });
     const empty = (await api('POST', '/api/notes', { title: '' })).id;
-    await p.goto(BASE + '/notes?t=' + Date.now() + '#' + full); await p.waitForSelector('#pg-editor .ce-paragraph'); await sleep(800);
+    await p.goto(BASE + '/notes?t=' + Date.now() + '#' + full); await p.waitForSelector(D.ofType('paragraph')); await sleep(800);
     const tag = scheme;
     // Schreibflaeche
-    const ty = await p.evaluate(() => ({ body: parseFloat(getComputedStyle(document.querySelector('#pg-editor .ce-paragraph')).fontSize),
-      title: parseFloat(getComputedStyle(document.getElementById('pg-title')).fontSize) }));
+    const ty = await p.evaluate((PS) => ({ body: parseFloat(getComputedStyle(document.querySelector(PS)).fontSize),
+      title: parseFloat(getComputedStyle(document.getElementById('pg-title')).fontSize) }), D.textOf('paragraph'));
     ok(`${tag}: Text 16 px, Titel 40 px (${ty.body}/${ty.title})`, ty.body === 16 && ty.title === 40, ty);
     // Speicherstatus still beim Tippen und nach dem Speichern
-    await p.locator('#pg-editor .ce-paragraph').last().click(); await p.keyboard.press('End'); await p.keyboard.type(' x');
+    await p.locator(D.textOf('paragraph')).last().click(); await p.keyboard.press('End'); await p.keyboard.type(' x');
     await sleep(200);
     const op = () => p.evaluate(() => { const s = document.getElementById('pg-state'); return { t: s.textContent, o: getComputedStyle(s).opacity }; });
     let st = await op(); ok(`${tag}: "Ungespeichert" unsichtbar (${st.t})`, st.o === '0', st);
@@ -43,39 +44,40 @@ const P = (t) => ({ type: 'paragraph', data: { text: t } });
     ok(`${tag}: wieder online - Offline-Text gespeichert`, /sechs x off/.test(back.body || ''), (back.body || '').slice(-120));
     // Block-Menue: kein Suchfeld, Filtern im Text, unter der Zeile
     await p.keyboard.press('Enter'); await p.keyboard.type('/'); await sleep(500);
-    const m = await p.evaluate(() => { const pop = document.querySelector('.ce-popover--opened'), para = document.activeElement;
-      const c = pop && pop.querySelector(':scope > .ce-popover__container'), s = pop && pop.querySelector('.ce-popover__search');
-      return pop && { inl: pop.classList.contains('pg-slash-inline'), search: s ? s.getClientRects().length : 0, inPara: para.classList.contains('ce-paragraph'),
+    const m = await p.evaluate((U) => { const pop = document.querySelector(U.popover), para = document.activeElement;
+      const c = pop && pop.querySelector(':scope > ' + U.popoverContainer), s = pop && pop.querySelector(U.search);
+      const blk = para.closest('[data-block-id]');
+      return pop && { inl: pop.classList.contains('pg-slash-inline'), search: s ? s.getClientRects().length : 0, inPara: !!blk && blk.getAttribute('data-block-type') === 'paragraph',
         top: Math.round(c.getBoundingClientRect().top), line: Math.round(para.getBoundingClientRect().bottom) }; });
     ok(`${tag}: Menue ohne Suchfeld, Cursor im Text`, m && m.inl && !m.search && m.inPara, m);
     ok(`${tag}: Menue unter der Zeile (${m && m.top} >= ${m && m.line})`, m && m.top >= m.line, m);
     await p.keyboard.type('zit'); await sleep(300);
-    const vis = await p.evaluate(() => [...document.querySelectorAll('.ce-popover--opened .ce-popover-item')].filter((x) => x.getClientRects().length).map((x) => x.textContent.trim()));
+    const vis = await p.evaluate((s) => [...document.querySelectorAll(s)].filter((x) => x.getClientRects().length).map((x) => x.textContent.trim()), `${D.UI.popover} ${D.UI.item}`);
     ok(`${tag}: Weitertippen filtert (${vis.join(', ')})`, vis.length >= 1 && vis.every((v) => /zit/i.test(v)), vis);
     await p.keyboard.press('Enter'); await sleep(400);
-    ok(`${tag}: Enter macht ein Zitat`, await p.evaluate(() => !!document.activeElement.closest('.cdx-quote') && !document.querySelector('.ce-popover--opened')));
-    await p.locator('#pg-editor .ce-paragraph', { hasText: 'sechs' }).click(); await p.keyboard.press('End'); await p.keyboard.press('Enter');
+    ok(`${tag}: Enter macht ein Zitat`, await p.evaluate((U) => !!document.activeElement.closest('[data-block-type="quote"]') && !document.querySelector(U.popover), D.UI));
+    await p.locator(D.textOf('paragraph'), { hasText: 'sechs' }).click(); await p.keyboard.press('End'); await p.keyboard.press('Enter');
     await p.keyboard.type('/x'); await sleep(300);
-    const x1 = await p.evaluate(() => !!document.querySelector('.ce-popover--opened.pg-slash-inline'));
+    const x1 = await p.evaluate((U) => !!document.querySelector(U.popover + '.pg-slash-inline'), D.UI);
     await p.keyboard.press('Backspace'); await p.keyboard.press('Backspace'); await sleep(300);
-    ok(`${tag}: "/" geloescht -> Menue zu`, x1 && await p.evaluate(() => !document.querySelector('.ce-popover--opened')), x1);
+    ok(`${tag}: "/" geloescht -> Menue zu`, x1 && await p.evaluate((U) => !document.querySelector(U.popover), D.UI), x1);
     await p.keyboard.type('/'); await sleep(300); await p.keyboard.press('Escape'); await sleep(300);
-    ok(`${tag}: Esc schliesst und nimmt "/" weg`, await p.evaluate(() => !document.querySelector('.ce-popover--opened') && document.activeElement.textContent === ''));
+    ok(`${tag}: Esc schliesst und nimmt "/" weg`, await p.evaluate((U) => !document.querySelector(U.popover) && document.activeElement.textContent === '', D.UI));
     // Esc bei "/…" mit Leerzeichen (ein Satz, kein Befehl): Menue zu, Text bleibt stehen
     await p.keyboard.type('/x y z'); await sleep(300); await p.keyboard.press('Escape'); await sleep(300);
-    ok(`${tag}: Esc bei "/x y z" laesst den Text stehen`, await p.evaluate(() => !document.querySelector('.ce-popover--opened') && document.activeElement.textContent === '/x y z'));
+    ok(`${tag}: Esc bei "/x y z" laesst den Text stehen`, await p.evaluate((U) => !document.querySelector(U.popover) && document.activeElement.textContent === '/x y z', D.UI));
     await sleep(1500);
     // Leere Seite nach Wechsel aus einer laengeren Seite: Werkzeugleiste nicht unten
-    await p.locator('#pg-editor .ce-paragraph', { hasText: 'sechs' }).click(); await sleep(200);
+    await p.locator(D.textOf('paragraph'), { hasText: 'sechs' }).click(); await sleep(200);
     await p.locator('#pg-tree .pg-row, #pg-tree li', { hasText: 'Unbenannt' }).last().click(); await sleep(1500);
-    const lp = await p.evaluate(() => { const t = document.querySelector('#pg-editor .ce-toolbar'), b = document.querySelector('#pg-editor .ce-paragraph');
-      return { open: t.classList.contains('ce-toolbar--opened'), top: t.style.top, ph: b.dataset.placeholderActive || b.dataset.placeholder || '' }; });
+    const lp = await p.evaluate(([U, PS]) => { const t = document.querySelector(U.toolbar), b = document.querySelector(PS);
+      return { open: t.classList.contains(U.toolbarOpenClass), top: t.style.top, ph: b.dataset.placeholderActive || b.dataset.placeholder || '' }; }, [D.UI, D.textOf('paragraph')]);
     ok(`${tag}: leere Seite - Werkzeugleiste der vorigen Seite zu (${lp.top})`, !lp.open || lp.top === '0px', lp);
     ok(`${tag}: kurzer Platzhalter (${lp.ph})`, lp.ph === 'Tippe „/“ für Befehle', lp);
-    const eb = await p.locator('#pg-editor .ce-paragraph').first().boundingBox();
+    const eb = await p.locator(D.textOf('paragraph')).first().boundingBox();
     await p.mouse.move(eb.x + 30, eb.y + eb.height / 2); await sleep(300);
-    const g = await p.evaluate(() => { const pl = document.querySelector('#pg-editor .ce-toolbar--opened .ce-toolbar__plus'), b = document.querySelector('#pg-editor .ce-paragraph');
-      if (!pl) return null; const a = pl.getBoundingClientRect(), c = b.getBoundingClientRect(); return { plus: Math.round(a.top + a.height / 2), line: Math.round(c.top + c.height / 2) }; });
+    const g = await p.evaluate(([U, PS]) => { const pl = document.querySelector(U.plusBtn), b = document.querySelector(PS);
+      if (!pl) return null; const a = pl.getBoundingClientRect(), c = b.getBoundingClientRect(); return { plus: Math.round(a.top + a.height / 2), line: Math.round(c.top + c.height / 2) }; }, [D.UI, D.textOf('paragraph')]);
     ok(`${tag}: "+" auf Hoehe der ersten Zeile`, g && Math.abs(g.plus - g.line) <= 12, g);
     await api('DELETE', '/api/notes/' + full); await api('DELETE', '/api/notes/' + empty);
     await ctx.close();
