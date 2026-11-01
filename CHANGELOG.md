@@ -93,6 +93,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Noch nirgends eingeschaltet – der neue Editor (T2) bindet sie ein; Editor.js unverändert. Test
   `tests/browser_tiptap_daten.js`.
 
+### Neu/Intern (2.5, Tiptap-Umbau T4c: Tabelle, Code, Mathe)
+- Im neuen Editor sind **Tabelle, Code-Block und Mathe-Block** keine Karten mehr (`static/pm-tools-text.js`).
+  Tabelle: Zellen mit Formatierung, Tab/⇧Tab/Pfeile/Enter wie bisher, Leiste „Zeile/Spalte/Zelle“ zum Einfügen,
+  Löschen, Verschieben und Einfärben (Farben und Breiten wandern mit), Spaltenbreiten ziehen, Kopfzeile/Kopfspalte/volle
+  Breite im Block-Menü, höchstens 20 Spalten. Code: Hervorhebung beim Tippen, Sprache, Tab rückt ein, dreimal Enter bzw.
+  ⌘Enter verlässt, Mermaid-Vorschau neben dem Text (abgeschotteter Rahmen, Vorschaubild für die Apps wie bisher),
+  Kürzel ```` ``` ```` (+ Sprache). Mathe-Block mit KaTeX, Esc verlässt. Kein neues Schema (Version 2), unveränderte
+  Blöcke bleiben byte-gleich. Test: `tests/browser_tiptap_text.js`.
+
 ### Neu (2.5, Chats: Gruppen – Chat-Standard B)
 - **Gruppenbild und Beschreibung** für freie Gruppen – wie der Name verschlüsselt (Steuer-Nachrichten `desc`/`avatar`),
   Bild quadratisch zugeschnitten; der Server merkt sich nur, welche Nachricht aktuell ist.
