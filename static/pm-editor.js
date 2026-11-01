@@ -35,7 +35,8 @@
   var TOOL_SCRIPTS = ['pm-tools.js', 'pm-tools-daten.js', 'pm-tools-medien.js'];
   // Erweiterungen des Kern-Editors (T3: pm-struktur.js), melden sich mit HKPmEditor.use(fn) an (siehe "Erweiterungen")
   // T4c: pm-tools-text.js = Tabelle, Code, Mathe-Block; T5: pm-live.js = gleichzeitig bearbeiten live (Stufe 2)
-  var EXT_SCRIPTS = ['pm-struktur.js', 'pm-tools-text.js', 'pm-live.js'];
+  // T4d: pm-clip.js = Zwischenablage (Kopierformate, fremdes HTML, Dateiverweise beim Einfuegen)
+  var EXT_SCRIPTS = ['pm-clip.js', 'pm-struktur.js', 'pm-tools-text.js', 'pm-live.js'];
   var LOCK = false;                                   // pm-live.js: nur lesen erzwingen (anderes Schema, R1)
   var LIVE = null;                                    // pm-live.js: {exts: [Erweiterungen], editable: bool}, solange live gebunden
   var EXTS = [], MODS = [];

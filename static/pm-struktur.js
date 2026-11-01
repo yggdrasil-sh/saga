@@ -697,10 +697,12 @@
       var frag = selFragment(rs), ser = P.pm.model.DOMSerializer.fromSchema(schema()), box = document.createElement('div');
       box.appendChild(ser.serializeFragment(frag));
       var txt = rs.map(function (x) { return x.node.textBetween(0, x.node.content.size, '\n', ' '); }).filter(Boolean).join('\n\n');
-      var json = JSON.stringify(rs.map(function (x) { var j = X.blockJson(x.node); var o = { tool: j.type, data: j.data }; if (j.tunes && j.tunes.hkstyle) o.tunes = { hkstyle: j.tunes.hkstyle }; return o; }));
+      var list = rs.map(function (x) { var j = X.blockJson(x.node); var o = { type: j.type, data: j.data }; if (j.tunes && j.tunes.hkstyle) o.tunes = { hkstyle: j.tunes.hkstyle }; return o; });
+      var json = JSON.stringify(list.map(function (b) { var o = { tool: b.type, data: b.data }; if (b.tunes) o.tunes = b.tunes; return o; }));
       e.clipboardData.setData('text/html', box.innerHTML);
       e.clipboardData.setData('text/plain', txt);
-      e.clipboardData.setData('application/x-editor-js', json);
+      e.clipboardData.setData('application/x-editor-js', json);                 // klassischer Editor (Editor.js liest es selbst)
+      e.clipboardData.setData('application/x-saga-blocks', JSON.stringify({ v: 1, blocks: list }));   // Saga-Format (T4d, pm-clip.js)
       e.preventDefault();
       if (cut) deleteSel();
       return true;

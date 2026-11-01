@@ -170,3 +170,14 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
 .page-body .pm-att-none{color:var(--muted)}
 .pg-locked .page-body .pm-img-up{display:none}
 .page-body .pm-img-empty .pm-img-cap{display:none}
+
+/* T4d: Kommentare am Block (static/comments.js haengt .cm-bubble/.cm-add an das Blockelement [data-block-id]) */
+.page-body .hk-tool[data-block-id]{position:relative}
+.page-body .pm-blk:hover>.cm-add,.page-body .hk-tool[data-block-id]:hover>.cm-add{opacity:1}
+.page-body .pm-blk.cm-has>.cm-add,.page-body .hk-tool.cm-has>.cm-add{display:none}
+.page-body .pm-blk .pm-blk>.cm-bubble,.page-body .pm-blk .pm-blk>.cm-add,.page-body .pm-blk .hk-tool>.cm-bubble,.page-body .pm-blk .hk-tool>.cm-add{right:-.4rem;top:-.35rem}
+.page-body .pm-blk.cm-focus,.page-body .hk-tool.cm-focus{background:color-mix(in srgb,var(--accent) 9%,transparent);
+  box-shadow:inset 3px 0 0 color-mix(in srgb,var(--accent) 60%,transparent)}
+@media (max-width:760px){ .page-body .pm-blk.cm-has{padding-right:2.6rem} }
+/* T4d: Ansage fuer Bildschirmleser (Block verschoben), unsichtbar */
+.pm-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}

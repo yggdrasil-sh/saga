@@ -168,15 +168,17 @@
     if (K.embed) return;
     if (!toc) { toc = el('nav', 'hk-toc'); toc.setAttribute('aria-label', T('Inhaltsverzeichnis')); document.body.appendChild(toc); }
     // Ueberschriften und Toggle-Ueberschriften (2.5, G10) in Dokument-Reihenfolge
-    var hs = [].slice.call(document.querySelectorAll('#pg-editor [data-block-type="header"], #pg-editor .tgl-h > .tgl-head > .tgl-title')).map(function (h) {
+    // Tiptap (T4d): Toggle-Ueberschrift = .pm-tgl-h1..3 mit dem Titel [data-pm-part="ttitle"] (static/pm-struktur.js)
+    var hs = [].slice.call(document.querySelectorAll('#pg-editor [data-block-type="header"], #pg-editor .tgl-h > .tgl-head > .tgl-title, ' +
+                                                     '#pg-editor .pm-tgl-h > .pm-tgl-c > [data-pm-part="ttitle"]')).map(function (h) {
       return h.hasAttribute('data-block-type') ? h.querySelector('h1, h2, h3, h4, h5, h6') || h : h;
     }).filter(function (h) { return h.textContent.trim(); });
     toc.textContent = '';
     toc.hidden = !tocOn || hs.length < 3 || $('page').hidden;
     if (toc.hidden) return;
     hs.forEach(function (h) {
-      var tg = h.classList.contains('tgl-title') ? h.closest('.tgl-h') : null;
-      var lv = tg ? (tg.classList.contains('tgl-h1') ? 1 : tg.classList.contains('tgl-h2') ? 2 : 3) : (+h.tagName.slice(1) || 2);
+      var tg = h.classList.contains('tgl-title') ? h.closest('.tgl-h') : h.getAttribute('data-pm-part') === 'ttitle' ? h.closest('.pm-tgl-h') : null;
+      var lv = tg ? (tg.classList.contains('tgl-h1') || tg.classList.contains('pm-tgl-h1') ? 1 : tg.classList.contains('tgl-h2') || tg.classList.contains('pm-tgl-h2') ? 2 : 3) : (+h.tagName.slice(1) || 2);
       var a = el('button', 'hk-toc-i l' + lv + (tg ? ' tgl' : '')); a.type = 'button';
       a.appendChild(el('span', 'hk-toc-d')); a.appendChild(el('span', 'hk-toc-t', h.textContent.trim()));
       a.addEventListener('click', function () { h.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
