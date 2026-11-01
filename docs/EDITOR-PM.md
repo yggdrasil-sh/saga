@@ -128,6 +128,36 @@ HKTools.register('widget', {
   „Nur für den Eigentümer“ entscheiden die Klassen wie im Editor.js-Editor.
 - Test: `tests/browser_tiptap_daten.js` (Mini-Editor nur mit Schema + Node-Views auf `/notes`).
 
+## Medien (T4a)
+
+`static/pm-tools-medien.js` (mitgeladen über `TOOL_SCRIPTS`) hat zwei Teile:
+
+- **HKTools:** `attaches` als eigene Node-View (Hochladen über `/api/files` Feld `file`, Titel, Größe, Herunterladen;
+  unbekannte Felder bleiben), `nextcloud` und `embed` über `fromEditorJs` mit den Klassen aus `HKPages.k.tools`. Beim
+  Nextcloud-Block bleibt `sig` stehen, solange niemand die Schalter ändert (die Klasse löscht sie dann selbst, der
+  Server setzt sie neu); „Als Kopie übernehmen“ ersetzt den Block per `ctx.replaceWith` (gleiche ID).
+- **Kern-Erweiterung** (`HKPmEditor.use`): `image` wird bearbeitbar (`edit`), Node-View `div.pm-b-image` mit
+  `.pm-img` (Klassen wie Editor.js: `image-tool--withBorder|withBackground|stretched`, `hk-sz hk-iw hk-al-*`, Breite
+  `--iw` per CSSOM) und der Unterschrift `icap` als Inhalt. Griffe `.hk-rs` (ein Zug = eine Transaktion,
+  Doppelklick = Standardbreite), Klick aufs Bild = Knotenauswahl. Block-Menü über `settings(m, x)` (neu in
+  `pm-struktur.js`, Namen über `names`): Ausrichtung, Rahmen, Hintergrund, volle Breite, Breite zurücksetzen; bei
+  YouTube-Einbettungen Ausrichtung/Breite in `data`.
+- **Zwischenablage** (Plugin `hkMedien`, `early: true` = vor `pm-struktur.js`): Saga-Blöcke
+  (`application/x-editor-js` oder HTML mit `data-saga-block`) mit Dateiverweisen oder Nextcloud-Blöcken →
+  `HKPages.k.media.fixRefs` (`/api/files/copy`) + `K.cleanClip` + Filter fremder Nextcloud-Blöcke (`media.ncOk`);
+  Dateien (Einfügen/Ziehen) → Hochladen als Bild bzw. Datei; Link allein in leerem Absatz → `embed` (YouTube mit
+  `kind: 'youtube'`, eigener Nextcloud-Link → `nextcloud` über `/api/nextcloud/resolve`); ⌘C/⌘X auf gewähltem Bild →
+  `media.clipImage` (Saga-Block, HTML, Text, `image/png` über die Async-Clipboard-API). Die Editor.js-Handler in
+  `pages.js` (Bildauswahl, copy/cut/paste) sind im Tiptap-Zweig aus.
+- **Slash** Gruppe „Medien“: Bild, Datei, Bild aus Immich (`when`: nur Eigentümer, `HK.immichPick` → Bild-Block),
+  Nextcloud-Datei (nicht auf Seiten anderer Server), Einbetten. Registry-Einträge dürfen `when()` haben.
+- **Speichern:** Erweiterungen dürfen `validate(block) → false` liefern; `save()` lässt dann **neue/geänderte**
+  Blöcke weg (Bild/Datei ohne Datei, Einbetten ohne Link, Nextcloud ohne Datei oder von einer anderen Person) – wie
+  `validate()` der Editor.js-Werkzeuge. Geladene/vom Server übernommene Blöcke (`render`, `applyBlocks`) gelten als
+  unverändert und bleiben immer.
+- Kein Schema-Wechsel: `image(icap)` mit `file, withBorder, withBackground, stretched, width, align` steht seit T1 im
+  Schema, Adapter und in den Vektoren. Test: `tests/browser_tiptap_medien.js`.
+
 ## Kern-Editor (T2)
 
 `static/pm-editor.js` (+ `static/pm-editor.css`) ist der Tiptap-Editor für Seiten. Er ist nur aktiv mit

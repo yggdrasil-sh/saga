@@ -83,6 +83,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Intern: Erweiterungs-Schnittstelle `HKPmEditor.use`, Kern-Cache für Block-IDs und Schutzbereiche, Marken über
   Karten werden nur außerhalb angewandt. Test `tests/browser_tiptap_struktur.js`, Doku `docs/EDITOR-PM.md` (Struktur T3).
 
+### Neu/Intern (2.5, Tiptap-Umbau T4a: Medien)
+- Im neuen Editor sind **Bild, Datei, Bild aus Immich, Nextcloud-Datei und Einbetten** keine Karten mehr
+  (`static/pm-tools-medien.js`). Bild: Unterschrift mit Formatierung, Hochladen, Breite über die Griffe, Ausrichtung,
+  Rahmen, Hintergrund und volle Breite im Block-Menü (je ein Undo-Schritt). Datei: Hochladen, Titel, Größe,
+  Herunterladen. Nextcloud und Einbetten laufen über die Brücke (Signatur und fremde Felder bleiben unverändert).
+- Einfügen: Bild-Dateien werden hochgeladen; kopierte Saga-Blöcke mit Dateiverweisen von einer anderen Seite bekommen
+  wie bisher eine eigene Kopie (`/api/files/copy`); fremde Nextcloud-Blöcke werden abgewiesen; ein Link in einem
+  leeren Absatz wird eingebettet (eigener Nextcloud-Link → Nextcloud-Datei). ⌘C auf einem gewählten Bild legt es
+  auch als PNG in die Zwischenablage. „/“-Gruppe „Medien“ (Immich nur für den Eigentümer).
+- Leere neue Medienblöcke (ohne Datei/Link) werden wie bisher nicht gespeichert (Kern: `validate` je Erweiterung).
+  Kein Schema-Wechsel (`image(icap)` stand seit T1 im Schema). Test `tests/browser_tiptap_medien.js`.
+
 ### Intern (2.5, Tiptap-Umbau T4b: Daten-Werkzeuge)
 - Werkzeug-Schnittstelle `HKTools` (`static/pm-tools.js`): Werkzeuge als eigenständige Node-Views (`mount` mit
   `update`/`destroy`/`stopEvent`), jede Bedienung wird genau eine Transaktion auf das Attribut `data`; Brücke
