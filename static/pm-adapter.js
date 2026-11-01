@@ -533,7 +533,7 @@
       absent.forEach(function (k) { if (emptyish(d[k])) delete d[k]; });
       var xd = isDict(ex.data) ? ex.data : {};
       d = ordered(typ, d);
-      for (var k in xd) if (has(xd, k) && !has(d, k)) d[k] = xd[k];
+      for (var k in xd) if (has(xd, k) && (!has(d, k) || d[k] === '' || (isList(d[k]) && !d[k].length))) d[k] = xd[k];   // wie collab_model: falsche Form bleibt
     }
     out.data = d;
     var tn = {}, nt = 0;
