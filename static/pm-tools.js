@@ -209,6 +209,7 @@
   // opts: {known: [Felder, die save() liefert] | null (save() liefert alles, Regel 0 im Werkzeug selbst),
   //        hook(inst, notify)        Schreibstellen umbiegen (z. B. inst.mark = notify statt S.dirtyBody/schedule)
   //        carry(base, out) -> out   nach save(): Felder aus dem bisherigen Stand uebernehmen (z. B. Signaturen)
+  //        meta(base, out) -> {history:false}?   Optionen fuer ctx.change (z. B. Nachtrag ohne Undo-Schritt)
   //        live(inst, data, h) -> bool   neue Daten von aussen ohne Neuaufbau einspielen (true = erledigt);
   //                                  h = {busy()}; sonst Neuaufbau (verschoben, solange ein Feld/Menue offen ist)
   //        destroy(inst)             zusaetzliches Aufraeumen
@@ -250,7 +251,7 @@
           if (dead || !inst) return false;
           var out = merged();
           if (stable(out) === stable(base)) return false;
-          if (ctx.change(out) === false) return false;
+          if (ctx.change(out, opts.meta ? opts.meta(base, out) : undefined) === false) return false;
           base = clone(out);
           return true;
         }

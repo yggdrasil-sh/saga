@@ -27,7 +27,14 @@
 
     H.register('database', H.fromEditorJs(W.DatabaseTool, {
       known: ['db', 'view', 'views', 'hide_title', 'hide_tabs'],
-      hook: function (inst, notify) { inst.mark = function () { notify(); }; }
+      hook: function (inst, notify) { inst.mark = function () { notify(); }; },
+      // Alte Einbettung ohne eigene Ansichten: makeDbView legt sie nach dem Laden einmal im Block ab (wie in Editor.js) -
+      // das ist kein Bedienschritt, also kein Undo-Schritt
+      meta: function (base, out) {
+        if (base.views && base.views.length) return undefined;
+        var same = ['db', 'view', 'hide_title', 'hide_tabs'].every(function (k) { return JSON.stringify(base[k] || null) === JSON.stringify(out[k] || null); });
+        return same ? { history: false } : undefined;
+      }
     }));
 
     H.register('tasks', H.fromEditorJs(W.TasksTool, {

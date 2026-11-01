@@ -301,6 +301,14 @@ function installHelpers() {
   ok('destroy: Uhr-Intervall laeuft waehrend, danach keines mehr', leak.during.every((x) => x >= 1) && leak.after === 0, leak);
   ok('destroy: Listener an document/window ausgeglichen, keine Node-Views uebrig', leak.listeners <= 0 && leak.hk === 0, leak);
 
+  // --- Alte Einbettung ohne Ansichten: einmaliger Nachtrag nach dem Laden, ohne Undo-Schritt (wie Editor.js) ----------------
+  await p.evaluate((db) => window.__T4.mk([{ id: 'dbm', type: 'database', data: { db, view: null, views: null } }]), db);
+  await until(() => p.evaluate(() => window.__E.log.length > 0), 6000); await sleep(400);
+  const mig = await p.evaluate(() => ({ log: window.__E.log, d: window.__T4.data('dbm') }));
+  ok('DB ohne views: eine Transaktion ohne Undo-Schritt, Ansicht im Block abgelegt', mig.log.length === 1 && mig.log[0].tool === 'database' && !mig.log[0].hist
+    && Array.isArray(mig.d.views) && mig.d.views.length === 1, mig);
+  await p.evaluate(() => window.__T4.kill());
+
   // --- Fremde Seite mit Rolle Lesen ---------------------------------------------------------------------------------------
   const dbB = (await apiB('POST', '/api/notes', { title: 'T4b fremde DB', kind: 'database' })).id;
   const pageB = (await apiB('POST', '/api/notes', { title: 'T4b fremd' })).id;
