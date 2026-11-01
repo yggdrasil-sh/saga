@@ -60,7 +60,7 @@
   }
   function eligible(c, data) {
     return !!(c && c.format === 'blocks' && typeof c.id === 'number' && c.id > 0 && c.kind !== 'database' && !W.off &&
-              !(window.HKPmLive && HKPmLive.disabled) && !legacy(data && data.blocks, 0));
+              !(window.HKPmLive && HKPmLive.disabled) && !window.__hkNoLive && !legacy(data && data.blocks, 0));
   }
   // Seiten, die live (noch) anders aussaehen als mit Stufe 1, bleiben bei Stufe 1:
   // - Toggle im Altformat {text} (Editor.js vor 2.5): der Editor zeigt ihn umgewandelt (Titel + erster Absatz), der
@@ -215,7 +215,7 @@
     if (pg.live && pg.held.length) { PG = pg; flushHeld(pg); PG = null; }
     if (pg.subbed) send(KIND.UNSUB, pg.nid);
     destroyProv(pg);
-    clearTimeout(pg.awT); clearTimeout(pg.retryT); clearTimeout(pg.goT); clearTimeout(pg.leaveT);
+    clearTimeout(pg.awT); clearTimeout(pg.retryT); clearTimeout(pg.goT); clearTimeout(pg.leaveT); clearTimeout(pg.fixT);
     if (BOX) BOX.classList.remove('pm-live');
     hint(false);
   }
@@ -372,9 +372,40 @@
       } })];
     } });
   }
+  // Widget frisch per "/" eingefuegt: data {kind} - Stufe 1 ergaenzt v/cfg der Server beim Speichern, live waere das
+  // reject sanitize. Wie WidgetTool (pages.js) bzw. pm-tools-daten.js (live) ergaenzen, als eigene Transaktion nach dem
+  // Einfuegen (die Node-View ist dann schon da und oeffnet ihr Einrichten-Panel wie gewohnt).
+  function rawWidgets(doc) {
+    var W_ = K() && K().tools, out = [];
+    if (!W_ || !W_.wgKinds) return out;
+    doc.descendants(function (n, pos) {
+      if (n.type.name !== 'widget') return true;
+      var d = n.attrs.data || {}, kind = d.kind || 'metric';
+      if (W_.wgKinds.indexOf(kind) >= 0 && (d.v !== 1 || !d.cfg || typeof d.cfg !== 'object' || !d.kind)) out.push({ pos: pos, node: n, kind: kind });
+      return false;
+    });
+    return out;
+  }
+  function fixWidgets() {
+    var ed = X.ed(), W_ = K() && K().tools, list = ed ? rawWidgets(ed.state.doc) : [];
+    if (!list.length) return false;
+    var tr = ed.state.tr;
+    list.forEach(function (x) {
+      var d = JSON.parse(JSON.stringify(x.node.attrs.data || {}));
+      d.kind = x.kind; d.v = 1; d.cfg = Object.assign(W_.wgDefaults(x.kind), d.cfg && typeof d.cfg === 'object' ? d.cfg : {});
+      tr.setNodeMarkup(x.pos, null, Object.assign({}, x.node.attrs, { data: d }));
+    });
+    tr.setMeta('addToHistory', false);
+    ed.view.dispatch(tr);
+    return true;
+  }
   // nur Bloecke, die es beim Binden noch nicht gab (vorhandene fremde Nextcloud-Bloecke u. ae. sind kein "unfertig")
   function unfinished() {
     var ed = X.ed(), pg = PG, hit = false; if (!ed || !pg || !pg.known) return false;
+    if (rawWidgets(ed.state.doc).length) {
+      if (!pg.fixT) pg.fixT = setTimeout(function () { pg.fixT = null; if (PG === pg && pg.live) fixWidgets(); }, 0);
+      return true;
+    }
     ed.state.doc.descendants(function (n) {
       if (hit) return false;
       if (VAL[n.type.name] && !pg.known[n.attrs.id] && !X.validate(X.blockJson(n))) hit = true;
@@ -387,6 +418,7 @@
     if (!pg.held.length) return;
     var ed = X.ed();
     try {
+      fixWidgets();
       if (ed && unfinished()) {
         var tr = ed.state.tr, del = [];
         ed.state.doc.descendants(function (n, pos) { if (VAL[n.type.name] && !pg.known[n.attrs.id] && !X.validate(X.blockJson(n))) { del.push([pos, n.nodeSize]); return false; } return true; });
