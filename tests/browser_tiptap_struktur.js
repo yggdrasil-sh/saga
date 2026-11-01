@@ -478,6 +478,15 @@ const J = (x) => JSON.stringify(x);
     ok('Klick ' + lab + ': ' + want, got === want, { got, x, y });
   }
   ok('Klicks neben Karten aendern das Dokument nicht', J(ids(await saved(P8b, 600))) === J(['g0', 'gc', 'gw3', 'g1', 'g2']), klick);
+  // Tippen bei ausgewaehlter Karte ersetzt sie nicht (versehentlicher Tastendruck nach Klick ins Widget)
+  await open(P8b);
+  const vorTippen = J(await saved(P8b, 0));
+  { const w = await rect('gw3'); await p.mouse.click(w.l + 30, w.t + w.h / 2); await sleep(200); }
+  await p.keyboard.type('xy', { delay: 30 }); await sleep(300);
+  const nachTippen = await caretIn();
+  ok('Tippen bei gewaehlter Karte: Karte bleibt gewaehlt', nachTippen === 'karte:gw3', nachTippen);
+  const nachJ = J(await saved(P8b, 600));
+  ok('Tippen bei gewaehlter Karte aendert das Dokument nicht', nachJ === vorTippen && nachJ.indexOf('"gw3"') > 0, nachJ.slice(0, 300));
 
   // =================================================================================================================
   // 9) Telefon: Spalten untereinander

@@ -384,6 +384,15 @@
     var S0 = P.pm.state;
     return new S0.Plugin({
       key: new S0.PluginKey('hkGuard'),
+      props: {
+        // Ausgewaehlte Karte (Widget, DB, Medien ...): Tippen ersetzt sie nicht. Ein Klick ins Werkzeug waehlt die
+        // Karte; ein versehentlicher Tastendruck danach darf sie nicht still durch Text ersetzen. Loeschen per
+        // Backspace/Entf bleibt (bewusste Aktion, Notion-Verhalten).
+        handleTextInput: function (view) {
+          var sel = view.state.selection, n = sel && sel.node;
+          return !!(n && n.isAtom && BLOCKSET[n.type.name]);
+        }
+      },
       filterTransaction: function (tr, state) {
         if (!tr.docChanged || tr.getMeta('hkAllow')) return true;
         var prot = protectedRanges(state.doc); if (!prot.length) return true;
