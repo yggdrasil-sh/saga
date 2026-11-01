@@ -193,6 +193,10 @@ Attribute, Marken) – Clients übernehmen den Wert für ihre Version aus `hello
 aus den gemeinsamen Testvektoren. **Jede Änderung an Knoten, Attributen oder Marken ist eine neue Version**; der Server
 verwirft dann alte Zustände und baut sie neu aus dem Seiteninhalt auf (neue `gen`).
 
+Web-Editor (Tiptap): Schema `static/pm-schema.js`, Adapter `static/pm-adapter.js`, gemeinsame Testvektoren
+`tests/vectors/pm_schema.json` (Block-JSON, ProseMirror-JSON, Y-Struktur) – siehe `docs/EDITOR-PM.md`. Clients anderer
+Plattformen können dieselben Vektoren nutzen.
+
 ### 5.1 Wurzeln
 
 | Name | Yjs-Typ | Inhalt |
