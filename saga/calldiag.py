@@ -126,15 +126,6 @@ def clean(b):
     return out
 
 
-def _participant(c, uid, call):
-    """Teilnehmende: am Anruf beteiligt (wie die uebrigen Anruf-APIs) und - sobald es Endpunkte gibt - mit einem eigenen
-    Endpunkt (auch einem schon verlassenen: die letzte Meldung kommt beim Auflegen)."""
-    if not calls._part(c, uid, call):
-        return False
-    whos = {r[0] for r in c.execute("SELECT who FROM chat_call_leg WHERE call_id=?", (call["id"],)).fetchall()}
-    return not whos or uid in whos
-
-
 def _rate_ok(uid, cid, now):
     k = (uid, cid)
     if now - _last.get(k, 0) < RATE_S:
@@ -177,9 +168,9 @@ async def api_diag(request: Request):
     except Exception:  # noqa: BLE001 - kein JSON
         return _bad(t("ungültige Angabe"))
     with _db() as c:
-        call = calls._load(c, d["call"])
-        if not call or not _participant(c, uid, call):
-            return _bad("not found", 404)
+        _call, err = calls._mine(c, uid, d["call"])     # Teilnehmende wie bei den uebrigen Anruf-APIs, sonst 404
+        if err:
+            return err
     if not _rate_ok(uid, d["call"], time.time()):
         return chat._no_store({"error": t("Zu viele Anfragen – bitte kurz warten."), "retry_s": int(RATE_S)}, 429)
     print(log_line(uid, d), flush=True)
