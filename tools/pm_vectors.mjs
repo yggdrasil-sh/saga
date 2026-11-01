@@ -132,6 +132,16 @@ function dropNull(v) {
     uid.options.filterTransaction({ getMeta: () => undefined }) === true);
 }
 
+// Live-Schluesselreihenfolge (ctx.like, collab_model._like): nur Reihenfolge, nie Werte - auch Schluessel "__proto__"
+{
+  const base = JSON.parse('{"blocks":[{"id":"U1","type":"foreign","data":{"z":1,"__proto__":{"q":1},"a":2}},' +
+    '{"id":"L1","type":"list","data":{"style":"ordered","meta":{"start":2,"counterType":"upper-alpha","__proto__":{"x":1}},"items":[]}}]}');
+  const ch = JSON.parse(JSON.stringify(base).replace('"a":2', '"a":3'));
+  const got = A.blocksFromDoc(A.docFromBlocks(ch), { time: 1, version: 'v', like: () => A.blockIds(base.blocks) }).blocks;
+  ok('Live like: Werte unveraendert (auch __proto__), Reihenfolge wie Vorlage', st(got) === st(ch.blocks) &&
+    JSON.stringify(got) === JSON.stringify(ch.blocks), JSON.stringify(got));
+}
+
 // Verschachtelungsverbote im Schema
 for (const [what, json] of [
   ['columns in column', { type: 'doc', content: [{ type: 'columns', content: [{ type: 'column', content: [{ type: 'columns', content: [] }] }] }] }],

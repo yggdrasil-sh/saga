@@ -77,8 +77,13 @@
     if (isList(v)) return v.map(sortVals);
     if (!isDict(v)) return v;
     var o = {};
-    Object.keys(v).sort(keyCmp).forEach(function (k) { o[k] = sortVals(v[k]); });
+    Object.keys(v).sort(keyCmp).forEach(function (k) { put(o, k, sortVals(v[k])); });
     return o;
+  }
+  // Schluessel "__proto__" (JSON.parse legt ihn als eigenen an) nicht ueber den Setter verlieren
+  function put(o, k, x) {
+    if (k === '__proto__') Object.defineProperty(o, k, { value: x, enumerable: true, writable: true, configurable: true });
+    else o[k] = x;
   }
   function isBlock(v) { return isDict(v) && typeof v.id === 'string' && typeof v.type === 'string'; }
   function blockIds(blocks) {
@@ -87,7 +92,7 @@
       if (dp > MAX_DEPTH + 8) return;
       if (isList(v)) v.forEach(function (x) { walk(x, dp + 1); });
       else if (isDict(v)) {
-        if (isBlock(v) && !has(out, v.id)) out[v.id] = v;
+        if (isBlock(v) && !has(out, v.id)) put(out, v.id, v);
         for (var k in v) if (has(v, k)) walk(v[k], dp + 1);
       }
     })(blocks, 0);
@@ -100,8 +105,8 @@
     var r, k;
     if (isDict(v)) {
       r = {};
-      if (isDict(o)) for (k in o) if (has(o, k) && has(v, k)) r[k] = like(v[k], o[k], ids, dp + 1);
-      for (k in v) if (has(v, k) && !has(r, k)) r[k] = like(v[k], undefined, ids, dp + 1);
+      if (isDict(o)) for (k in o) if (has(o, k) && has(v, k)) put(r, k, like(v[k], o[k], ids, dp + 1));
+      for (k in v) if (has(v, k) && !has(r, k)) put(r, k, like(v[k], undefined, ids, dp + 1));
       return r;
     }
     if (isList(v)) { var ol = isList(o) ? o : []; return v.map(function (x, i) { return like(x, ol[i], ids, dp + 1); }); }
