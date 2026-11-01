@@ -763,6 +763,7 @@ async def api_presence(request: Request):
     if "block" not in b and old is not None and len(old) > 2:  # ohne Angabe bleibt der zuletzt gemeldete Block
         blk = old[2] if editing else None
     v[uid] = [now, editing, blk if editing else None]
+    my_blk = v[uid][2]                    # vor dem await unten merken: ein gleichzeitiges leave kann v[uid] entfernen
     mine = [n for n, e in _presence.items() if uid in e]
     if len(mine) > PRESENCE_MAX:                             # zu viele Seiten gleichzeitig: aelteste vergessen
         oldest = min(mine, key=lambda n: _presence[n][uid][0])
@@ -776,7 +777,7 @@ async def api_presence(request: Request):
     for u in users:
         u["me"] = u["username"] == uid
         if u["me"]:
-            u["editing"], u["block"] = editing, v[uid][2]
+            u["editing"], u["block"] = editing, my_blk
         u.setdefault("color", pcolor(u["username"]))
     return JSONResponse(dict(state, users=users, ttl=PRESENCE_TTL, live=_S["loop"] is not None), headers={"Cache-Control": "no-store"})
 
