@@ -56,6 +56,8 @@
 
   // --- Editor.js nachladen ---------------------------------------------------
   var V = document.body.dataset.v || '';
+  // 2.5 (Tiptap-Umbau T2): Seiten-Editor dieser Sitzung (Admin editor.engine / Konto-Wahl, saga.core.editor_engine)
+  var TIPTAP = document.body.dataset.editor === 'tiptap';
   // 2.5 (P6-1): Inline-Leiste mit Farbe und Formel (static/editor25.js)
   var INLINE_TB = ['bold', 'italic', 'link', 'hkcolor', 'marker', 'inlineCode', 'hkmath', 'hkdate'];
   var VENDOR = ['editorjs.umd.js', 'header.umd.js', 'editorjs-list.umd.js', 'quote.umd.js',
@@ -731,6 +733,14 @@
   }
 
   function ensureEditor(data) {
+    if (TIPTAP) {                                     // static/pm-editor.js: Tiptap hinter derselben Schnittstelle
+      if (S.editor) return S.editor.render(data).then(function () { return S.editor; });
+      return window.HKPmEditor.load().then(function () {
+        if (!S.editor) S.editor = HKPmEditor.create({ changed: ttChanged, readOnly: readOnly, role: role, foreign: foreign,
+          cur: function () { return S.cur; } });
+        return S.editor.render(data);
+      }).then(function () { return S.editor; });
+    }
     // Werkzeugleiste (+ / Griff) der vorigen Seite schliessen: sonst blieb sie mit deren Hoehe ("top") offen und
     // schwebte auf einer leeren Seite weit unter der ersten Zeile (Notion-Gefuehl, Design-Studie)
     if (S.editor) return S.editor.isReady.then(function () { try { S.editor.toolbar.close(); } catch (e) { /* schon zu */ } return S.editor.render(data); }).then(function () { return S.editor; });
@@ -819,6 +829,14 @@
       else if (S.recheck) { S.recheck = false; edChanged(); }
     }, function () { S.checking = false; S.dirtyBody = true; schedule(); });
   }
+  // Tiptap (T2): jede Aenderung ist eine Transaktion - keine Scheinaenderungen, kein Vergleich noetig (save() vergleicht
+  // trotzdem mit dem gespeicherten Stand). Waehrend die Seite laedt: nur merken (Vergleichsstand kommt gleich)
+  function ttChanged(ids) {
+    if (!S.cur) return;
+    if (S.loading || S.baseId !== S.cur.id) return;
+    if (DOC_CB.length) DOC_CB.slice().forEach(function (cb) { try { cb({ ids: ids || [] }); } catch (e) { /* Abonnent kaputt */ } });
+    S.dirtyBody = true; schedule();
+  }
   // Echte Eingabe (Tippen, Einfuegen, Ziehen) im Editor, auch in Spalten/Ausklappbar (isolate() stoppt das Ereignis
   // dort - daher Capture am document). Editor.js meldet Aenderungen erst ~400 ms spaeter (gebuendelt); eine Eingabe
   // ist aber sicher eine: sofort "ungespeichert", damit ein schneller Seitenwechsel sie mitspeichert. Waehrend die
@@ -827,12 +845,14 @@
     var box = $('pg-editor'), tg = e.target;
     if (!box || !tg || !tg.isContentEditable || !box.contains(tg) || !S.cur) return;
     if (S.loading || S.baseId !== S.cur.id) { S.typed = true; return; }
+    if (TIPTAP) return;                              // Tiptap meldet Aenderungen als Transaktion (ttChanged)
     S.dirtyBody = true; schedule();
   }, true);
   function schedule() {
     if (S.lost) return;                                                               // Zugriff verloren: Dialog zeigt den Text
     if (readOnly()) { S.dirtyBody = S.dirtyTitle = false; return; }                    // gesperrt / nur Lesen: nichts speichern
-    state(T('Ungespeichert …'), 'quiet'); clearTimeout(S.timer); S.timer = setTimeout(save, 900);
+    if (!TIPTAP) state(T('Ungespeichert …'), 'quiet');          // Tiptap (E9): beim Tippen kein Status, nur Fehler/Konflikt/offline
+    clearTimeout(S.timer); S.timer = setTimeout(save, 900);
   }
 
   // Speichern nacheinander (Warteschlange): ein zweites Speichern waehrend das erste noch laeuft, wuerde sonst
@@ -848,7 +868,7 @@
     if (S.dirtyTitle) { body.title = $('pg-title').value; S.dirtyTitle = false; }
     var wantBody = !!(S.dirtyBody && S.editor), getBody = wantBody ? S.editor.save() : Promise.resolve(null);
     S.dirtyBody = false;
-    state(T('Speichert …'), 'quiet');
+    if (!TIPTAP) state(T('Speichert …'), 'quiet');
     return getBody.then(function (out) {
       // W01: Editor.js liefert bei einem Fehler im Block nichts - nicht still als "nichts zu speichern" werten
       if (wantBody && !(out && Array.isArray(out.blocks))) { S.dirtyBody = true; throw new Error(T('Inhalt konnte nicht gelesen werden')); }
@@ -931,6 +951,7 @@
   }
   // Eigener Text der offenen Seite als Klartext (Titel + Bloecke, so wie sie gerade im Editor stehen)
   function draftText() {
+    if (TIPTAP && S.editor && S.editor.text) { var tt = $('pg-title').value.trim(), bd = S.editor.text(); return ((tt ? tt + '\n\n' : '') + bd).trim(); }
     var red = $('pg-editor').querySelector('.codex-editor__redactor'), out = [];
     if (red) [].forEach.call(red.children, function (b) {
       var c = b.querySelector('.ce-block__content'); var t = c ? (c.innerText || '').trim() : '';
@@ -1592,7 +1613,7 @@
   }
   var ctxAnchor = el('div', 'ctx-anchor'); document.body.appendChild(ctxAnchor);
   $('pg-editor').addEventListener('contextmenu', function (e) {
-    if (e.shiftKey || S.loading) return;
+    if (TIPTAP || e.shiftKey || S.loading) return;          // Tiptap: eigenes Kontextmenue (pm-editor.js, K.picker)
     var editable = e.target.closest && e.target.closest('[contenteditable="true"]');
     if (!editable || !$('pg-editor').contains(editable)) return;            // nur im Fliesstext, nicht im Code-Block o. Ae.
     e.preventDefault();
@@ -1889,6 +1910,7 @@
   function highlight() { pick.items.forEach(function (it, i) { it.b.classList.toggle('on', i === pick.idx); if (i === pick.idx) it.b.scrollIntoView({ block: 'nearest' }); }); }
   function insertLink(href, text, cls) {
     closePicker(false);
+    if (pick.insert) { var f = pick.insert; pick.insert = null; f(href, text, cls); return; }      // Tiptap (K.picker)
     var r = pick.range; if (!r) return;
     if (!r.collapsed) r.deleteContents();     // markierten Text durch den Verweis ersetzen
     var a = document.createElement('a'); a.href = href; a.className = cls; a.textContent = text;
@@ -2269,6 +2291,7 @@
   };
   // Block an einem Element (Absatz, Titel ...) einfaerben - fuer "/rot", "/blau hintergrund" und Cmd+/
   function styleAt(node, st) {
+    if (TIPTAP) return !!(S.editor && S.editor.styleAt && S.editor.styleAt(node, st));
     // Blockelement (data-block-id, Editor-Fassade) oder ein Element darin
     var box = node && node.hasAttribute && node.hasAttribute('data-block-id') ? node.querySelector(':scope > .ce-block__content')
       : node && node.closest ? node.closest('.ce-block__content') : null, tune = box && STYLE_OF.get(box);
@@ -8299,6 +8322,7 @@
     // Seite einer anderen Saga-Instanz: nur Titel und Inhalt aenderbar (kein Symbol, Titelbild, keine Tags)
     document.body.classList.toggle('pg-remote', !!S.cur && remoteId(S.cur.id) && !remCap(S.cur, 'db'));   // aeltere Gegenstelle: nur Titel/Inhalt
     $('pg-title').readOnly = ro;
+    if (S.editor && S.editor.setEditable) S.editor.setEditable(!ro);      // Tiptap: editable an/aus
     var b = $('pg-lock');
     if (!b) {
       b = el('button', 'pg-lock-b'); b.id = 'pg-lock'; b.type = 'button';
@@ -8568,7 +8592,7 @@
     document.addEventListener(ev, function (e) { if (lockBlocked(e)) { e.preventDefault(); e.stopPropagation(); lockHint(); } }, true);
   });
   document.addEventListener('click', function (e) {               // Haekchen in Checklisten nicht umschalten
-    if (lockBlocked(e) && e.target.closest('.cdx-list__checkbox, .cdx-list__checkbox-check')) { e.preventDefault(); e.stopPropagation(); lockHint(); }
+    if (lockBlocked(e) && e.target.closest('.cdx-list__checkbox, .cdx-list__checkbox-check, .pm-check, .pm-emo, .pm-qal')) { e.preventDefault(); e.stopPropagation(); lockHint(); }
   }, true);
 
   function showArchive() {
@@ -8754,6 +8778,16 @@
   // (Editor.js blocks.update); sonst neu zeichnen und die Schreibmarke im selben Block wiederherstellen
   function applyDoc(id, doc) {
     var ed = S.editor; if (!ed || !S.cur || S.cur.id !== id) return Promise.resolve();
+    if (TIPTAP) {                                     // blockweise in einer Transaktion (ohne Undo-Schritt, Schreibmarke bleibt)
+      S.applying = true; S.loading = true;
+      return Promise.resolve().then(function () { ed.applyBlocks(doc.blocks); return ed.save(); }).then(function (o) {
+        S.lastBlocks = JSON.stringify(o.blocks);
+        document.dispatchEvent(new CustomEvent('hk-page-ready', { detail: { id: id } }));
+      }).catch(function () { /* naechstes Speichern gleicht ab */ }).then(function () {
+        S.loading = false; S.applying = false;
+        if (S.typed) { S.typed = false; S.dirtyBody = true; schedule(); }
+      });
+    }
     S.applying = true;
     return ed.save().then(function (cur) {
       if (!S.cur || S.cur.id !== id) return;
@@ -8843,6 +8877,9 @@
          calcNum: calcNum,                                      // Widgets/Fusszeile (tests/seiten_widgets.js: gemeinsame Testvektoren)
          chartTicks: chartTicks,                                // 2.5 Paket 4: Achsen (tests/browser_widgets2.js, tests/chart_ticks.json)
          onDocChange: onDocChange,                              // Editor-Fassade (static/editor-doc.js)
+         // 2.5 (Tiptap T2, static/pm-editor.js): Farb-Slash, Verweis-Auswahl mit eigenem Einfuegen, Dienste
+         slashColor: slashColor, services: function () { return S.services || []; },
+         picker: function (rect, insert) { pick.range = null; pick.insert = insert; openPicker(rect); },
          // 2.5 (Tiptap T4b, static/pm-tools-daten.js): Werkzeugklassen fuer die Node-View-Bruecke - unveraendert wie in Editor.js
          tools: { DatabaseTool: DatabaseTool, TasksTool: TasksTool, CalendarTool: CalendarTool, WidgetTool: WidgetTool,
                   ButtonsTool: ButtonsTool, wgKinds: WG_KINDS, wgDefaults: wgDefaults, wgLoad: function () { return loadWidgets(); } },
@@ -8860,6 +8897,7 @@
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
          reloadList: function () { return loadList(); }, remote: remoteChange,
          focusBlock: function () {                              // 2.5 (P3): Block mit der Schreibmarke (fuer die Anwesenheit)
+           if (TIPTAP) return S.editor && S.editor.focusBlock ? S.editor.focusBlock() : null;
            var a = document.activeElement, box = $('pg-editor'); if (!a || !box || !box.contains(a)) return null;
            var blk = a.closest('[data-block-id]'); return blk ? blk.getAttribute('data-block-id') : null;
          },
@@ -8878,7 +8916,8 @@
     init: function (onCount) {
       S.onCount = onCount || S.onCount;
       // Editor.js schon jetzt laden (parallel zu Baum, Diensten und Seite) - geoeffnet wird fast immer eine Seite (P04)
-      loadVendor().catch(function () { /* openPage meldet den Fehler */ });
+      if (TIPTAP) setTimeout(function () { if (window.HKPmEditor) HKPmEditor.load().catch(function () { /* openPage meldet den Fehler */ }); }, 0);   // pm-editor.js steht nach pages.js
+      else loadVendor().catch(function () { /* openPage meldet den Fehler */ });
       var svc = api('GET', '/api/services').then(function (s) { S.services = s; }).catch(function () {});
       if (!EMBED && S.gal == null) galLoad().catch(function () {});       // 2.5: Galerie da? (aus/aelterer Server: Eintraege weg)
       return Promise.all([loadList(), svc]).then(function () {

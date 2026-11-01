@@ -7,6 +7,7 @@
   var isMac = K.isMac, MK = isMac ? '⌘' : T('Strg') + '+', ALT = isMac ? '⌥' : 'Alt+';
   function mod(e) { return isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey; }
   function inEditor() { var a = document.activeElement; return !!(a && $('pg-editor').contains(a) && (a.isContentEditable || a.closest('[contenteditable="true"]'))); }
+  function tt() { return !!(K.doc && K.doc.kind === 'tiptap'); }     // Tiptap (T2): eigene Menues ueber Transaktionen (pm-editor.js)
   function typing() { var a = document.activeElement; return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable); }
 
   // Block mit der Schreibmarke (auch in Toggle/Spalte) - ueber die Editor-Fassade (static/editor-doc.js):
@@ -233,19 +234,23 @@
       em.box.appendChild(b);
     });
   }
+  function emHits(q0) {
+    var q = String(q0).toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+    function rank(x) { var w = x.k.split(' '); return w.indexOf(q) === 0 ? 0 : w.indexOf(q) > 0 ? 1 : (' ' + x.k).indexOf(' ' + q) >= 0 ? 2 : x.k.indexOf(q) >= 0 ? 3 : 9; }
+    return EMO.map(function (x, i) { return { x: x, r: rank(x), i: i }; }).filter(function (h) { return h.r < 9; })
+      .sort(function (a, b) { return a.r - b.r || a.i - b.i; }).map(function (h) { return h.x; }).slice(0, 8);
+  }
   $('pg-editor').addEventListener('input', function () {
+    if (tt()) return;
     var sel = window.getSelection();
     if (!sel || !sel.isCollapsed || !sel.rangeCount || !inEditor()) { emClose(); return; }
     var node = sel.anchorNode, off = sel.anchorOffset;
     if (!node || node.nodeType !== 3) { emClose(); return; }
     var before = node.textContent.slice(0, off), m = before.match(/(^|[\s(])(:([a-zäöüß0-9_+-]{2,20}))$/i);
     if (!m) { emClose(); return; }
-    var q = m[3].toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
-    function rank(x) { var w = x.k.split(' '); return w.indexOf(q) === 0 ? 0 : w.indexOf(q) > 0 ? 1 : (' ' + x.k).indexOf(' ' + q) >= 0 ? 2 : x.k.indexOf(q) >= 0 ? 3 : 9; }
-    var hits = EMO.map(function (x, i) { return { x: x, r: rank(x), i: i }; }).filter(function (h) { return h.r < 9; })
-      .sort(function (a, b) { return a.r - b.r || a.i - b.i; }).map(function (h) { return h.x; });
+    var hits = emHits(m[3]);
     if (!hits.length) { emClose(); return; }
-    em.items = hits.slice(0, 8); em.idx = 0;
+    em.items = hits; em.idx = 0;
     em.range = document.createRange(); em.range.setStart(node, off - m[2].length); em.range.setEnd(node, off);
     if (!em.box) { em.box = el('div', 'hk-emo'); em.box.setAttribute('role', 'listbox'); document.body.appendChild(em.box); }
     emDraw(); em.box.hidden = false;
@@ -420,6 +425,7 @@
     return out;
   }
   $('pg-editor').addEventListener('input', function () {
+    if (tt()) return;
     var sel = window.getSelection();
     if (!sel || !sel.isCollapsed || !sel.rangeCount || !inEditor()) { atClose(); return; }
     var node = sel.anchorNode, off = sel.anchorOffset;
@@ -454,6 +460,7 @@
 
   // Klick auf einen Datums-Chip: Datum aendern oder entfernen
   $('pg-editor').addEventListener('click', function (e) {
+    if (tt()) return;
     var tEl = e.target.closest && e.target.closest('time.hk-date, time.hk-remind'); if (!tEl || !$('pg-editor').contains(tEl)) return;
     e.preventDefault();
     HK.openMenu(tEl, function (m) {
@@ -476,6 +483,7 @@
   window.HKKeys = {
     toggleToc: function () { tocOn = !tocOn; HK.store('hk-toc', tocOn ? '1' : '0'); drawToc(); HK.toast(tocOn ? T('Inhaltsverzeichnis an') : T('Inhaltsverzeichnis aus')); },
     convert: function (key) { var c = current(); if (c) convert(c, key); }, actionMenu: function () { var c = current(); if (c) actionMenu(c); },
-    emojiCount: EMO.length, parseDate: parseDate, dateChip: dateChip, dateText: dateText
+    emojiCount: EMO.length, parseDate: parseDate, dateChip: dateChip, dateText: dateText,
+    atOptions: atOptions, emoji: emHits                    // 2.5 (Tiptap T2): Daten fuer die Vorschlagsmenues in pm-editor.js
   };
 })();

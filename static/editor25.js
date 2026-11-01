@@ -279,6 +279,7 @@
   }
   document.addEventListener('click', function (e) {
     var t = e.target, c = t && t.closest ? t.closest('#pg-editor code.hk-math') : null;
+    if (c && document.body.dataset.editor === 'tiptap') c = null;        // Tiptap (T2): Formel-Popover in pm-editor.js
     if (c) { openMathPop(c); return; }
     if (pop && !pop.contains(t)) closeMathPop();
   });
