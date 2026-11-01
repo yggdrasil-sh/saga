@@ -296,7 +296,8 @@ function installHelpers() {
       T.kill(); await new Promise((r) => setTimeout(r, 100));
     }
     await new Promise((r) => setTimeout(r, 1200));
-    return { during: out, after: [...T.live].filter((x) => !before.has(x)).length, listeners: T.L.n - l0, hk: document.querySelectorAll('.hk-tool').length };
+    // nur Node-Views dieses Test-Editors zaehlen (der echte Seiten-Editor in #pg-editor hat eigene)
+    return { during: out, after: [...T.live].filter((x) => !before.has(x)).length, listeners: T.L.n - l0, hk: [...document.querySelectorAll('.hk-tool')].filter((x) => !x.closest('#pg-editor')).length };
   }, blocks);
   ok('destroy: Uhr-Intervall laeuft waehrend, danach keines mehr', leak.during.every((x) => x >= 1) && leak.after === 0, leak);
   ok('destroy: Listener an document/window ausgeglichen, keine Node-Views uebrig', leak.listeners <= 0 && leak.hk === 0, leak);

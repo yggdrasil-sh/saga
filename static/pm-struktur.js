@@ -1095,7 +1095,21 @@
       tr.insert(at, nodes);
       if (inside && !selIds().length) { try { tr.setSelection(S0.TextSelection.near(tr.doc.resolve(at + off))); } catch (e) { /* bleibt */ } }
       dispatch(tr.scrollIntoView());
+      announceMove(nodes[0].attrs.id, dir, nodes.length);
       return true;
+    }
+    // T4d (Bedienhilfen): Ansage fuer Bildschirmleser nach dem Verschieben (aria-live, unsichtbar)
+    function announceMove(id, dir, n) {
+      var x = X.findId(id); if (!x) return;
+      var $x = state().doc.resolve(x.pos), lo = $x.parent.type.name === 'toggle' ? 1 : 0;
+      var msg = (n > 1 ? T('{n} Blöcke verschoben', { n: n }) : dir < 0 ? T('Block nach oben verschoben') : T('Block nach unten verschoben')) + ' – ' +
+        T('Position {i} von {n}', { i: $x.index() - lo + 1, n: $x.parent.childCount - lo });
+      announce(msg);
+    }
+    function announce(msg) {
+      var r = document.getElementById('pm-sr');
+      if (!r) { r = el('div', 'pm-sr'); r.id = 'pm-sr'; r.setAttribute('role', 'status'); r.setAttribute('aria-live', 'polite'); document.body.appendChild(r); }
+      r.textContent = ''; setTimeout(function () { r.textContent = msg; }, 30);
     }
 
     // =================================================================================================================
@@ -1153,6 +1167,28 @@
           m.appendChild(HK.menuItem(T('Löschen'), function () { setBlockSel([id]); deleteSel(); }, { icon: '🗑', danger: true }));
         }
       }, { search: T('Aktion suchen …') });
+      menuFocusBack(id);
+    }
+    // T4d (Bedienhilfen): Menue zu (Esc, Eintrag, Klick daneben) und der Fokus liegt nirgends -> zurueck in den Editor,
+    // Schreibmarke im Block (falls es ihn noch gibt und sie nicht schon darin steht)
+    var FB = { id: null, mo: null };
+    function menuFocusBack(id) {
+      var mel = [].filter.call(document.querySelectorAll('body > .menu'), function (m) { return !m.classList.contains('menu-sub'); })[0];
+      if (!mel || !window.MutationObserver) return;
+      FB.id = id;
+      if (FB.mo) return;                    // ein Beobachter fuer alle Block-Menues
+      FB.mo = new MutationObserver(function () {
+        if (!mel.hidden || FB.id == null) return;
+        var bid = FB.id; FB.id = null;
+        setTimeout(function () {
+          var a = document.activeElement, e = ed();
+          if (!e || FB.id != null || (a && a !== document.body && a.isConnected && !mel.contains(a))) return;
+          var x = X.findId(bid), s = state().selection;
+          if (x && !ro() && !(s.from >= x.pos && s.to <= x.pos + x.node.nodeSize) && !selIds().length) X.focus(bid, 'end');
+          else e.view.focus();
+        }, 0);
+      });
+      FB.mo.observe(mel, { attributes: true, attributeFilter: ['hidden'] });
     }
     function settingsItems(m, x) {          // Werkzeug-Einstellungen je Typ
       var n = x.node, t = n.type.name, id = n.attrs.id;

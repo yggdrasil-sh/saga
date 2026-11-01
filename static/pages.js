@@ -8052,6 +8052,8 @@
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       if (!$('pg-modal').hidden || !$('pg-picker').hidden || !$('pg-qs').hidden || document.querySelector('.ce-popover--opened')) return;
+      // Tiptap (T4d): offenes Vorschlags- bzw. Block-Menue schliesst zuerst Esc, nicht den Peek (Blockauswahl: pm-struktur.js)
+      if (TIPTAP && (document.querySelector('.pm-pop:not([hidden]) > *') || HK.menuOpen())) return;
       window.parent.postMessage({ hk: 'peek-close' }, location.origin);
     });
     document.addEventListener('keydown', function (e) {        // Ctrl+Shift+J/K im Rahmen -> im Peek blaettern

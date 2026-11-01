@@ -833,13 +833,23 @@
     box.style.top = (below + h > window.innerHeight - 8 && rect.top - 6 - h > 8 ? rect.top - 6 - h : below) + 'px';
   }
   // Grundgeruest: items(q) -> [{group, ic, t, sub, kbd, ...}] (oder Promise), pick(item, range)
+  // T4d (Bedienhilfen): Liste als listbox mit aria-selected; das Textfeld zeigt per aria-activedescendant auf den
+  // aktiven Eintrag (Fokus bleibt im Text, wie bei einer Kombobox)
+  var MENU_LABEL = { hkSlash: T('Blöcke'), hkAt: T('Personen, Daten und Seiten'), hkRef: T('Seiten'), hkEmoji: T('Emoji') };
   function menuPlugin(editor, o) {
     var box = null, items = [], idx = 0, cmd = null, rect = null;
+    function aria(on) {
+      var d = editor.view && editor.view.dom; if (!d || !box) return;
+      if (on && !box.hidden && items.length) { d.setAttribute('aria-controls', box.id); d.setAttribute('aria-activedescendant', box.id + '-' + idx); }
+      else if (d.getAttribute('aria-controls') === box.id) { d.removeAttribute('aria-controls'); d.removeAttribute('aria-activedescendant'); }
+    }
     function draw() {
       box.textContent = ''; var last = null;
+      if (!box.id) { box.id = 'pm-pop-' + o.key; box.setAttribute('aria-label', MENU_LABEL[o.key] || T('Vorschläge')); }
       items.forEach(function (it, i) {
-        if (it.group && it.group !== last) { box.appendChild(el('div', 'hk-at-g', it.group)); last = it.group; }
+        if (it.group && it.group !== last) { var g = el('div', 'hk-at-g', it.group); g.setAttribute('role', 'presentation'); box.appendChild(g); last = it.group; }
         var b = el('button', 'hk-emo-i' + (i === idx ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'option');
+        b.id = box.id + '-' + i; b.tabIndex = -1; b.setAttribute('aria-selected', i === idx ? 'true' : 'false');
         var ic = el('span', 'hk-emo-e');
         if (/^<svg[\s>]/.test(it.ic || '')) ic.innerHTML = it.ic;           // Werkzeug-Symbol (eigener Code, toolbox.icon)
         else ic.textContent = it.ic || '';
@@ -855,6 +865,7 @@
       });
       box.hidden = !items.length;
       place(box, rect);
+      aria(true);
     }
     return P.Suggestion({
       editor: editor, pluginKey: new P.pm.state.PluginKey(o.key), char: o.char, allowSpaces: !!o.spaces,
@@ -874,10 +885,10 @@
             var e = pr.event; if (!box || box.hidden || !items.length) return false;
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { idx = (idx + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; draw(); return true; }
             if (e.key === 'Enter' || e.key === 'Tab') { if (cmd) cmd(items[idx]); return true; }
-            if (e.key === 'Escape') { box.hidden = true; items = []; return true; }       // Esc laesst den Text stehen
+            if (e.key === 'Escape') { box.hidden = true; items = []; aria(false); return true; }       // Esc laesst den Text stehen
             return false;
           },
-          onExit: function () { if (box) { box.hidden = true; } items = []; }
+          onExit: function () { if (box) { box.hidden = true; } items = []; aria(false); }
         };
       }
     });
