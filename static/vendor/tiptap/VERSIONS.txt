@@ -1,0 +1,58 @@
+Tiptap 3.32.2 + ProseMirror + Yjs - gebaut mit tools/vendor-tiptap/build.sh (esbuild 0.28.2) aus
+tools/vendor-tiptap/package-lock.json. Nicht von Hand aendern; Pruefung: tools/check-vendor-licenses.sh. Exportvertrag: README.
+Paket@Version (Lizenz) -> enthalten in
+@floating-ui/core@1.8.0 (MIT) -> saga-pm.js
+@floating-ui/dom@1.8.0 (MIT) -> saga-pm.js
+@floating-ui/utils@0.2.12 (MIT) -> saga-pm.js
+@tiptap/core@3.32.2 (MIT) -> saga-pm.css, saga-pm.js
+@tiptap/extension-blockquote@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-bold@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-bubble-menu@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-code@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-code-block@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-collaboration@3.32.2 (MIT) -> saga-y.js
+@tiptap/extension-collaboration-caret@3.32.2 (MIT) -> saga-y.js
+@tiptap/extension-document@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-drag-handle@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-hard-break@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-heading@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-horizontal-rule@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-italic@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-link@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-list@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-node-range@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-paragraph@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-strike@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-text@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-underline@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extension-unique-id@3.32.2 (MIT) -> saga-pm.js
+@tiptap/extensions@3.32.2 (MIT) -> saga-pm.js
+@tiptap/pm@3.32.2 (MIT) -> saga-pm.js
+@tiptap/starter-kit@3.32.2 (MIT) -> saga-pm.js
+@tiptap/suggestion@3.32.2 (MIT) -> saga-pm.js
+@tiptap/y-tiptap@3.0.12 (MIT) -> saga-y.js
+lib0@0.2.119 (MIT) -> saga-y.js
+linkifyjs@4.4.0 (MIT) -> saga-pm.js
+orderedmap@2.1.1 (MIT) -> saga-pm.js
+prosemirror-commands@1.7.2 (MIT) -> saga-pm.js
+prosemirror-dropcursor@1.8.4 (MIT) -> saga-pm.js
+prosemirror-gapcursor@1.4.1 (MIT) -> saga-pm.js
+prosemirror-history@1.5.1 (MIT) -> saga-pm.js
+prosemirror-inputrules@1.5.1 (MIT) -> saga-pm.js
+prosemirror-keymap@1.2.3 (MIT) -> saga-pm.js
+prosemirror-model@1.25.12 (MIT) -> saga-pm.js
+prosemirror-schema-list@1.6.0 (MIT) -> saga-pm.js
+prosemirror-state@1.4.4 (MIT) -> saga-pm.js
+prosemirror-tables@1.8.5 (MIT) -> saga-pm.js
+prosemirror-transform@1.12.4 (MIT) -> saga-pm.js
+prosemirror-view@1.42.9 (MIT) -> saga-pm.js
+rope-sequence@1.3.4 (MIT) -> saga-pm.js
+uuid@14.0.3 (MIT) -> saga-pm.js
+w3c-keyname@2.2.8 (MIT) -> saga-pm.js
+y-protocols@1.0.7 (MIT) -> saga-y.js
+yjs@13.6.33 (MIT) -> saga-y.js
+
+Groessen:
+saga-pm.js: 509476 Bytes roh, 164167 Bytes gzip -9
+saga-y.js: 151079 Bytes roh, 48888 Bytes gzip -9
+saga-pm.css: 1477 Bytes roh, 594 Bytes gzip -9

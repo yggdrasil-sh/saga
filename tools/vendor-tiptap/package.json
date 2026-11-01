@@ -1,0 +1,28 @@
+{
+  "name": "saga-vendor-tiptap",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Bauquelle fuer static/vendor/tiptap (Tiptap 3 + ProseMirror als IIFE-Bundle). Nur Build-Werkzeug, nicht Teil der Laufzeit.",
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@floating-ui/dom": "1.8.0",
+    "@tiptap/core": "3.32.2",
+    "@tiptap/extension-bubble-menu": "3.32.2",
+    "@tiptap/extension-collaboration": "3.32.2",
+    "@tiptap/extension-collaboration-caret": "3.32.2",
+    "@tiptap/extension-drag-handle": "3.32.2",
+    "@tiptap/extension-node-range": "3.32.2",
+    "@tiptap/extension-unique-id": "3.32.2",
+    "@tiptap/extensions": "3.32.2",
+    "@tiptap/pm": "3.32.2",
+    "@tiptap/starter-kit": "3.32.2",
+    "@tiptap/suggestion": "3.32.2",
+    "@tiptap/y-tiptap": "3.0.12",
+    "y-protocols": "1.0.7",
+    "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "license-checker-rseidelsohn": "5.0.1"
+  }
+}
