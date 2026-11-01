@@ -35,8 +35,12 @@ const any = `${ROOT} [data-block-id]`;
 // erstes Textfeld (Locator .first()) aller Bloecke - "irgendein Absatz" fuer waitForSelector
 const anyText = textOf('paragraph');
 
-// Editor-eigene Bedienelemente (Editor.js 2.31). editorjs-only (T7): in T2 fuer Tiptap ergaenzen
-const UI = {
+// Welcher Editor? SAGA_EDITOR=editorjs (Standard) | tiptap. Der Server entscheidet beim Laden von /notes (Admin
+// editor.engine bzw. Konto-Wahl); setEditor() stellt die Konto-Wahl um (Admin muss "choice" erlauben), tests/run-Skripte
+// koennen sie auch vorab setzen. EDITOR ist nur die Erwartung - isEditor(page) prueft, was die Seite wirklich hat.
+const EDITOR = process.env.SAGA_EDITOR === 'tiptap' ? 'tiptap' : 'editorjs';
+// Editor-eigene Bedienelemente (Editor.js 2.31). editorjs-only (T7)
+const UI_EDITORJS = {
   blockMenuBtn: '.ce-toolbar__settings-btn',                  // Griff ⋮⋮ (Block-Menue)
   plusBtn: `${ROOT} .ce-toolbar--opened .ce-toolbar__plus`,   // "+" links am Block
   toolbar: `${ROOT} .ce-toolbar`,
@@ -54,6 +58,27 @@ const UI = {
   editorBox: `${ROOT} .codex-editor`,                         // Flaeche des Editors (Breite/Lage)
   nativeBlock: `${ROOT} .ce-block`,                           // Blockelement des Editors selbst (Kontrolle: alle markiert?)
 };
+// Tiptap (static/pm-editor.js): Block-Menue/Griffe kommen in T3 - bis dahin fehlen sie (Selektor trifft nichts)
+const UI_TIPTAP = {
+  blockMenuBtn: '.pm-handle-menu',                            // T3
+  plusBtn: `${ROOT} .pm-handle-plus`,                         // T3
+  toolbar: `${ROOT} .pm-handles`,                             // T3
+  toolbarOpenClass: 'pm-handles-on',
+  blockMenu: '.pm-blockmenu',                                 // T3
+  popover: '.pm-pop:not([hidden])',                           // offenes Vorschlagsmenue ("/", "@", "[[", ":")
+  popoverContainer: '.pm-pop:not([hidden])',
+  popoverItems: '.pm-pop:not([hidden])',
+  item: '.hk-emo-i',
+  itemHidden: '.pm-never',
+  itemTitle: '.hk-at-t',
+  search: '.pm-never',                                        // Slash-Menue ohne Suchfeld (E1)
+  nothingFound: '.pm-never',
+  inlineTool: '.pm-bubble .pm-bb',                            // Knopf der Formatierungsleiste (E8)
+  bubble: '.pm-bubble',
+  editorBox: `${ROOT} .pm-doc`,
+  nativeBlock: `${ROOT} .pm-blk, ${ROOT} .hk-tool`,
+};
+const UI = EDITOR === 'tiptap' ? UI_TIPTAP : UI_EDITORJS;
 // sichtbare Eintraege (Titel) des offenen Menues
 const UI_ITEMS = `${UI.popover} ${UI.item}:not(${UI.itemHidden}) ${UI.itemTitle}`;
 // Menue-Eintrag mit genau diesem Titel (Playwright-Selektor)
@@ -116,5 +141,12 @@ async function current(page) { return page.evaluate(() => { const c = HKPages.k.
 // warten, bis der Block da ist (Seite geladen)
 async function waitBlock(page, id, timeout) { return page.waitForSelector(block(id), timeout ? { timeout } : undefined); }
 
-module.exports = { ROOT, block, ofType, top, text, textOf, topText, editIn, any, anyText, UI, UI_ITEMS, menuItem,
+// Editor der geladenen Seite ('editorjs' | 'tiptap' | null)
+async function isEditor(page) { return page.evaluate(() => (window.HKPages && HKPages.k.doc ? HKPages.k.doc.kind : null)); }
+// Konto-Wahl setzen (Admin editor.engine = choice), danach /notes neu laden
+async function setEditor(page, kind = EDITOR) {
+  return page.evaluate((on) => HK.api('PUT', '/api/account/editor', { tiptap: on }).then(() => true, () => false), kind === 'tiptap');
+}
+
+module.exports = { ROOT, EDITOR, UI_EDITORJS, UI_TIPTAP, isEditor, setEditor, block, ofType, top, text, textOf, topText, editIn, any, anyText, UI, UI_ITEMS, menuItem,
   blocks, count, find, textOfBlock, htmlOf, focus, clickEnd, typeEnd, select, selected, current, waitBlock };

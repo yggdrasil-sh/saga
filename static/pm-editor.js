@@ -653,6 +653,7 @@
         function run(fn) { return function () { return fn(self.editor.state, self.editor.view.dispatch); }; }
         return {
           'Enter': function () {
+            if (menuActive()) return false;                               // Vorschlagsmenue offen: dort waehlen
             if (run(listEnter)()) return true;
             var st = self.editor.state, $f = st.selection.$from, t = $f.parent.type.name;
             if (t === 'qtext' && st.selection.empty && $f.parentOffset === $f.parent.content.size) {   // Zitat: weiter zur Quelle
@@ -670,7 +671,7 @@
             return false;
           },
           'Shift-Enter': function () { return self.editor.chain().focus().insertContent({ type: 'hardBreak' }).run(); },
-          'Tab': function () { if (run(listIndent)()) return true; return false; },
+          'Tab': function () { if (menuActive()) return false; if (run(listIndent)()) return true; return false; },
           'Shift-Tab': function () { if (run(listOutdent)()) return true; return false; },
           'Backspace': function () {
             if (run(listBackspace)()) return true;
@@ -727,6 +728,7 @@
   // =================================================================================================================
   // Vorschlagsmenues (Suggestion): "/" Slash (E1), "@" Personen/Datum/Seiten, "[[" Seitenverweis, ":" Emoji
   // =================================================================================================================
+  function menuActive() { return !![].some.call(document.querySelectorAll('.pm-pop'), function (b) { return !b.hidden && b.firstChild; }); }
   function popBox(cls) { var b = el('div', 'hk-emo pm-pop ' + (cls || '')); b.setAttribute('role', 'listbox'); b.hidden = true; document.body.appendChild(b); return b; }
   function place(box, rect) {
     if (!rect) return;
@@ -858,6 +860,11 @@
     }
     if (it.run) { editor.view.dispatch(tr); it.run(editor, range.from); return; }
     var nb = it.block ? nodeOf({ type: it.block.type, data: JSON.parse(JSON.stringify(it.block.data || {})), id: newId() }) : null;
+    if (b && b.node.type.name === 'list' && /^(un)?ordered$|^checklist$/.test(it.key)) {   // in einer Liste: nur den Stil wechseln
+      var keepSel = range.from;
+      convertAt(tr, b.pos, it.key); setSel(tr, tr.mapping.map(keepSel));
+      editor.view.dispatch(tr); return;
+    }
     if (onlySlash && top && !it.block) {             // leerer Absatz: umwandeln (ID bleibt)
       if (it.key === 'delimiter') {
         var pn = tr.doc.nodeAt(b.pos), dl = schema().nodes.delimiter.create({ id: pn.attrs.id });
@@ -1312,7 +1319,8 @@
   }
   function focusIn(tr, pos, n, where) {
     var S0 = P.pm.state, inner = null, innerEnd = null;
-    n.descendants(function (c, p) { if (c.isTextblock) { if (inner == null) inner = pos + 1 + p + 1; innerEnd = pos + 1 + p + 1 + c.content.size; } return !c.isTextblock; });
+    if (n.isTextblock) { inner = pos + 1; innerEnd = pos + 1 + n.content.size; }
+    else n.descendants(function (c, p) { if (c.isTextblock) { if (inner == null) inner = pos + 1 + p + 1; innerEnd = pos + 1 + p + 1 + c.content.size; } return !c.isTextblock; });
     if (inner == null) { tr.setSelection(S0.NodeSelection.create(tr.doc, pos)); return; }
     var at = where === 'start' ? inner : innerEnd;
     tr.setSelection(S0.TextSelection.create(tr.doc, at));
