@@ -76,7 +76,8 @@
     });
   }
   function move(c, d) {
-    if (K.doc.move(c.id, d)) K.doc.focus(c.id, 'end');
+    var group = tt() && K.doc.selected().length > 0;     // Tiptap (T3): gewaehlte Gruppe wandert und bleibt gewaehlt
+    if (K.doc.move(c.id, d) && !group) K.doc.focus(c.id, 'end');
   }
   function blockLink(c) {
     if (c.parent != null) { HK.toast(T('Link zu Blöcken in Toggles/Spalten: bitte den äußeren Block verlinken')); }
