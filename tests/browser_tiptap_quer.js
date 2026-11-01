@@ -284,6 +284,165 @@ x++;</code></pre><hr><p>Bild: <img src="https://bilder.example/a.png" alt="Fremd
   ok('Abschnitt 1: keine Seitenfehler', !p.errs.length && !(pb && pb.errs.length), [p.errs, pb && pb.errs]);
 
   // =================================================================================================================
+  // 2) Kommentare am Block
+  const CM = await mk('TQ Kommentare ' + RUN, [
+    { id: 'c1', type: 'paragraph', data: { text: 'Kommentar-Absatz' } },
+    { id: 'c2', type: 'header', data: { text: 'Kopf ohne', level: 2 } },
+    { id: 'ci', type: 'image', data: { file: { url: up1.file.url }, caption: 'Bild', withBorder: false, withBackground: false, stretched: false } },
+    { id: 'ct', type: 'toggle', data: { title: 'Auf', open: true, blocks: [{ id: 'ctp', type: 'paragraph', data: { text: 'Innen' } }] } },
+    { id: 'ce', type: 'embed', data: { url: 'https://example.org/seite' } },
+    { id: 'c3', type: 'paragraph', data: { text: 'Ende' } }]);
+  for (const b of ['c1', 'ci', 'ctp', 'ce']) await p.api('POST', '/api/notes/' + CM + '/comments', { block_id: b, body: 'Frage zu ' + b });
+  const cm0 = J(await get(CM));
+  await open(CM); await sleep(800);
+  const bub = await p.evaluate(() => ['c1', 'ci', 'ctp', 'ce', 'c2'].map((id) => {
+    const b = document.querySelector('#pg-editor [data-block-id="' + id + '"]'), u = b && [...b.children].find((x) => x.classList.contains('cm-bubble'));
+    const r = b && b.getBoundingClientRect(), q = u && u.getBoundingClientRect();
+    return { id, n: u ? u.textContent : null, inside: !!(u && q.top >= r.top - 8 && q.top <= r.bottom && q.left > r.left), label: u && u.getAttribute('aria-label') };
+  }));
+  ok('Zahl am Block: Absatz, Bild, verschachtelt (Toggle), Werkzeug (Einbetten); nicht an Block ohne Kommentar', bub.slice(0, 4).every((x) => x.n === '1' && x.inside && x.label) && bub[4].n === null, bub);
+  await p.click('#pg-editor [data-block-id="c1"] > .cm-bubble'); await sleep(600);
+  const cmo = await p.evaluate(() => { const b = document.querySelector('#pg-editor [data-block-id="c1"]'); return { open: document.body.classList.contains('cm-open'), focus: b.classList.contains('cm-focus'), bg: getComputedStyle(b).backgroundColor }; });
+  ok('Klick auf die Zahl: Seitenleiste offen, Block hervorgehoben', cmo.open && cmo.focus && cmo.bg !== 'rgba(0, 0, 0, 0)', cmo);
+  await p.keyboard.press('Escape'); await p.evaluate(() => { const x = document.querySelector('.cm-close'); if (x) x.click(); }); await sleep(300);
+  await p.hover('#pg-editor [data-block-id="c2"] h2'); await sleep(400);
+  const add = await p.evaluate(() => { const b = document.querySelector('#pg-editor [data-block-id="c2"] > .cm-add'); return b ? +getComputedStyle(b).opacity : -1; });
+  ok('"+" beim Ueberfahren eines Blocks ohne Kommentar (sichtbar)', add === 1, add);
+  await p.click('#pg-editor [data-block-id="c2"] > .cm-add'); await sleep(500);
+  ok('... Klick oeffnet die Unterhaltung zum Block', await p.evaluate(() => document.body.classList.contains('cm-open') && document.querySelector('#pg-editor [data-block-id="c2"]').classList.contains('cm-focus')));
+  await p.evaluate(() => { const x = document.querySelector('.cm-close'); if (x) x.click(); }); await sleep(200);
+  ok('Laden mit Kommentaren: kein PATCH, Inhalt unveraendert', p.patches === 0 && J(await get(CM)) === cm0, p.patches);
+  await D.typeEnd(p, 'c1', ' plus'); await sleep(200);
+  const cm1 = await saved(CM);
+  ok('Tippen im kommentierten Block: gespeichert ohne Fremdknoten (Zahl/Knopf nicht im Inhalt), Zahl bleibt', cm1[0].data.text === 'Kommentar-Absatz plus' && J(cm1.slice(1)) === J(JSON.parse(cm0).slice(1))
+    && (await p.evaluate(() => !!document.querySelector('#pg-editor [data-block-id="c1"] > .cm-bubble'))), cm1[0]);
+
+  // =================================================================================================================
+  // 3) Inhaltsverzeichnis
+  const TC = await mk('TQ Inhalt ' + RUN, [
+    { id: 't1', type: 'header', data: { text: 'Eins', level: 2 } }, { id: 'tp', type: 'paragraph', data: { text: 'Text' } },
+    { id: 't2', type: 'header', data: { text: 'Zwei', level: 3 } },
+    { id: 't3', type: 'toggle', data: { title: 'Drei', level: 1, open: false, blocks: [{ id: 't3p', type: 'paragraph', data: { text: 'zu' } }] } },
+    { id: 't4', type: 'toggle', data: { title: 'Kein Kopf', open: true, blocks: [] } }]);
+  await p.evaluate(() => { try { localStorage.removeItem('hk-toc'); } catch (e) { /* egal */ } });
+  await open(TC); await sleep(600);
+  const toc = () => p.evaluate(() => { const t = document.querySelector('.hk-toc'); return t && !t.hidden ? [...t.querySelectorAll('.hk-toc-i')].map((x) => x.className.replace('hk-toc-i ', '') + ':' + x.textContent) : null; });
+  const tc0 = await toc();
+  ok('Inhaltsverzeichnis: Ueberschriften und Toggle-Ueberschrift (Ebene), kein normaler Toggle', J(tc0) === J(['l2:Eins', 'l3:Zwei', 'l1 tgl:Drei']), tc0);
+  await D.typeEnd(p, 't2', 'undzwanzig'); await sleep(700);
+  const tc1 = await toc();
+  ok('... live aktualisiert beim Tippen', tc1 && tc1[1] === 'l3:Zweiundzwanzig', tc1);
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await p.click('.hk-toc .hk-toc-i.tgl'); await sleep(700);
+  ok('... Klick springt zur Toggle-Ueberschrift', await p.evaluate(() => { const r = document.querySelector('#pg-editor [data-block-id="t3"]').getBoundingClientRect(); return r.top >= -5 && r.top < innerHeight; }));
+
+  // =================================================================================================================
+  // 4) KI (Server-KI per page.route gespielt): markierte Bloecke lesen, Ersetzen / Darunter einfuegen ueber die Fassade
+  const aiReq = [];
+  await p.route('**/api/ai/status', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: J({ enabled: true, host: 'ki.test', model: 'fake', provider: 'openai', persona: { name: 'Testi' }, notice: 'Test', quota: 0, used: 0, blocks_max: 50, targets: ['en', 'de'] }) }));
+  await p.route('**/api/ai/page/*', (r) => {
+    const b = JSON.parse(r.request().postData() || '{}'); aiReq.push(b);
+    const blocks = (b.blocks || []).map((id) => ({ id, type: 'paragraph', replaceable: true }));
+    const text = (b.blocks || []).map((id, i) => 'Besser ' + (i + 1)).join('\n---\n');
+    const sse = 'event: delta\ndata: ' + J({ t: text }) + '\n\nevent: done\ndata: ' + J({ quota_left: null, text, segments: (b.blocks || []).map((id, i) => 'Besser ' + (i + 1)), blocks }) + '\n\n';
+    r.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: sse });
+  });
+  const KI = await mk('TQ KI ' + RUN, [{ id: 'a1', type: 'paragraph', data: { text: 'Schlechter Satz eins' } }, { id: 'a2', type: 'paragraph', data: { text: 'Schlechter Satz zwei' } }, { id: 'a3', type: 'paragraph', data: { text: 'Bleibt' } }]);
+  await open(KI);
+  ok('KI: Assistent verfuegbar (Status gespielt)', await p.evaluate(() => !!(window.HKAI && HKAI.state())));
+  await selText('a1', 0, 'a2', 5); await sleep(400);
+  const kSel = await p.evaluate(() => HKPages.k.doc.selected().map((b) => b.id));
+  await p.evaluate(() => HKAI.open('page')); await sleep(400);
+  const selLine = await p.evaluate(() => (document.querySelector('.ai-sel') || {}).textContent);
+  ok('KI: markierte Bloecke erkannt (Blockauswahl im neuen Editor)', J(kSel) === J(['a1', 'a2']) && /2/.test(selLine || ''), [kSel, selLine]);
+  await p.click('.ai-act:has-text("Markierten Text verbessern")'); await sleep(1200);
+  ok('KI: Anfrage mit den markierten Bloecken', aiReq.length === 1 && aiReq[0].action === 'improve' && J(aiReq[0].blocks) === J(['a1', 'a2']), aiReq);
+  await p.click('.ai-res button:has-text("2 Blöcke ersetzen")'); await sleep(300);
+  await p.click('.hk-ask .btn-primary'); await sleep(600);
+  let kb = await saved(KI);
+  ok('KI: Ersetzen ueber die Fassade (eine Transaktion je Block), gespeichert, IDs bleiben', J(kb.map((b) => b.id + ':' + b.data.text)) === J(['a1:Besser 1', 'a2:Besser 2', 'a3:Bleibt']), kb);
+  await p.click('.ai-res button:has-text("Darunter einfügen")'); await sleep(400);
+  kb = await saved(KI);
+  ok('KI: Darunter einfuegen hinter dem letzten markierten Block', kb.length === 4 && kb[2].type === 'paragraph' && /Besser 1/.test(kb[2].data.text) && kb[3].id === 'a3', kb);
+  await p.evaluate(() => { const e = HKPages.k.editor().editor(); e.view.focus(); });
+  await p.keyboard.press((process.platform === 'darwin' ? 'Meta' : 'Control') + '+z'); await sleep(300);
+  kb = await saved(KI);
+  ok('KI: Rueckgaengig nimmt das Einfuegen zurueck (normale Transaktion)', kb.length === 3, kb.map((b) => b.id));
+  await p.unroute('**/api/ai/status'); await p.unroute('**/api/ai/page/*');
+
+  // =================================================================================================================
+  // 5) Peek: Datenbank-Eintrag im Rahmen (/notes?embed=1)
+  const DB = (await p.api('POST', '/api/notes', { kind: 'database', title: 'TQ DB ' + RUN })).id; made.push([p, DB]);
+  const rows = [];
+  for (let i = 0; i < 3; i++) {
+    const r = (await p.api('POST', '/api/notes', { parent_id: DB, title: 'Zeile ' + i })).id;
+    await p.api('PATCH', '/api/notes/' + r, { body: J({ blocks: [{ id: 'r' + i, type: 'paragraph', data: { text: 'Eintrag ' + i } }, ...Array.from({ length: 40 }, (_, k) => ({ id: 'x' + i + k, type: 'paragraph', data: { text: 'Fuell ' + k } }))] }), format: 'blocks' });
+    rows.push(r);
+  }
+  await open(DB, p, '.db-open');
+  await p.locator('.db-open').first().click({ force: true }); await sleep(2500);
+  const fr = p.frame({ url: /embed=1/ });
+  const pk = fr && await fr.evaluate(() => ({ kind: HKPages.k.doc && HKPages.k.doc.kind, ce: (document.querySelector('#pg-editor .pm-doc') || {}).contentEditable, embed: document.body.classList.contains('embed'),
+    sh: document.documentElement.scrollHeight, ih: innerHeight }));
+  ok('Peek: Rahmen mit dem neuen Editor (embed, bearbeitbar), Seite scrollt im Rahmen', pk && pk.kind === 'tiptap' && pk.ce === 'true' && pk.embed && pk.sh > pk.ih, pk);
+  const rid = fr && await fr.evaluate(() => HKPages.k.cur().id);
+  if (fr) {
+    await fr.evaluate(() => { const b = HKPages.k.doc.blocks()[0]; HKPages.k.doc.focus(b.id, 'end'); });
+    await p.keyboard.type(' im Peek', { delay: 15 });
+    ok('Peek: Tastatur im Rahmen (Fokus im Editor des Rahmens)', await fr.evaluate(() => document.activeElement && document.activeElement.classList.contains('pm-doc') && /im Peek/.test(document.querySelector('#pg-editor').textContent)));
+    await p.keyboard.type(' /');  await sleep(400);
+    await p.keyboard.press('Escape'); await sleep(300);
+    ok('Peek: Esc bei offenem "/"-Menue schliesst das Menue, nicht den Peek', !(await p.evaluate(() => document.getElementById('pg-peek').hidden)), null);
+    await p.keyboard.press('Backspace'); await p.keyboard.press('Backspace');
+    await p.keyboard.press('Escape'); await sleep(1500);
+    ok('Peek: Esc schliesst, Eingabe gespeichert', (await p.evaluate(() => document.getElementById('pg-peek').hidden)) && /im Peek$/.test((await get(rid))[0].data.text), (await get(rid))[0]);
+    // Oeffnen/Schliessen ohne Speicherleck (Muster browser_editor_leak.js: Knoten/Listener nach GC)
+    const cdp = await A.ctx.newCDPSession(p);
+    await cdp.send('Performance.enable'); await cdp.send('HeapProfiler.enable');
+    const metrics = async () => { await cdp.send('HeapProfiler.collectGarbage'); await sleep(150); await cdp.send('HeapProfiler.collectGarbage'); await sleep(150);
+      const m = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value])); return { nodes: m.Nodes, ls: m.JSEventListeners }; };
+    const cyc = async (n) => { for (let i = 0; i < n; i++) { await p.locator('.db-open').nth(i % 3).click({ force: true }); await sleep(1300); await p.keyboard.press('Escape'); await p.evaluate(() => document.getElementById('pg-peek').hidden || document.getElementById('peek-close').click()); await sleep(700); } };
+    await cyc(2); const m0 = await metrics();
+    await cyc(6); const m1 = await metrics();
+    ok('Peek oeffnen/schliessen (6x): Knoten und Listener wachsen nicht', m1.nodes - m0.nodes < 600 && m1.ls - m0.ls < 150, [m0, m1]);
+    const fr2 = p.frame({ url: /embed=1/ });
+    ok('... danach arbeitet der Editor im Rahmen normal (keine Fehler im Rahmen)', fr2 && !(await fr2.evaluate(() => window.__peekErr || 0)), null);
+  }
+
+  // =================================================================================================================
+  // 6) Bedienhilfen
+  const AR = await mk('TQ ARIA ' + RUN, [{ id: 'g1', type: 'paragraph', data: { text: 'Erster' } }, { id: 'g2', type: 'paragraph', data: { text: 'Zweiter' } }, { id: 'g3', type: 'paragraph', data: { text: '' } }]);
+  await open(AR);
+  await D.focus(p, 'g3', 'end'); await p.keyboard.type('/', { delay: 20 }); await sleep(400);
+  const sl = await p.evaluate(() => {
+    const box = document.querySelector('.pm-pop:not([hidden])'), dom = HKPages.k.editor().editor().view.dom, ad = dom.getAttribute('aria-activedescendant');
+    return box && { role: box.getAttribute('role'), label: box.getAttribute('aria-label'), opts: box.querySelectorAll('[role=option]').length,
+      sel: box.querySelectorAll('[aria-selected=true]').length, ctl: dom.getAttribute('aria-controls') === box.id, ad: !!ad && !!document.getElementById(ad) && document.getElementById(ad).getAttribute('aria-selected') === 'true' };
+  });
+  ok('"/"-Menue: listbox mit Namen, Eintraege option, genau einer aria-selected, Editor zeigt per aria-activedescendant darauf', sl && sl.role === 'listbox' && sl.label && sl.opts > 5 && sl.sel === 1 && sl.ctl && sl.ad, sl);
+  await p.keyboard.press('ArrowDown'); await sleep(150);
+  const ad2 = await p.evaluate(() => HKPages.k.editor().editor().view.dom.getAttribute('aria-activedescendant'));
+  ok('... Pfeil runter: aktiver Eintrag wechselt', /-1$/.test(ad2 || ''), ad2);
+  await p.keyboard.press('Escape'); await sleep(150);
+  ok('... Esc: Verweise am Editor entfernt', await p.evaluate(() => !HKPages.k.editor().editor().view.dom.hasAttribute('aria-activedescendant')));
+  await p.keyboard.press('Backspace');
+  await D.focus(p, 'g2', 'end');
+  await p.keyboard.press((process.platform === 'darwin' ? 'Meta' : 'Control') + '+Shift+ArrowUp'); await sleep(400);
+  const mv = await p.evaluate(() => ({ order: HKPages.k.doc.blocks().map((b) => b.id), sr: (document.getElementById('pm-sr') || {}).textContent, live: (document.getElementById('pm-sr') || { getAttribute() {} }).getAttribute('aria-live') }));
+  ok('Verschieben per Tastatur: Ansage ueber aria-live ("nach oben", Position 1 von 3)', J(mv.order.slice(0, 2)) === J(['g2', 'g1']) && mv.live === 'polite' && /oben/.test(mv.sr) && /1/.test(mv.sr) && /3/.test(mv.sr), mv);
+  await p.keyboard.press((process.platform === 'darwin' ? 'Meta' : 'Control') + '+/'); await sleep(400);
+  const bm = await p.evaluate(() => { const m = [...document.querySelectorAll('body > .menu')].find((x) => !x.hidden && !x.classList.contains('menu-sub')); return m && { role: m.getAttribute('role'), items: m.querySelectorAll('[role=menuitem]').length, focus: m.contains(document.activeElement) }; });
+  ok('Block-Menue (Strg+/): role=menu, Eintraege menuitem, Fokus im Menue', bm && bm.role === 'menu' && bm.items > 3 && bm.focus, bm);
+  await p.keyboard.press('Escape'); await sleep(300);
+  const fb = await p.evaluate(() => { const e = HKPages.k.editor().editor(), c = HKPages.k.doc.current(); return { focus: e.view.hasFocus(), cur: c && c.id }; });
+  ok('... Esc: Fokus zurueck im Editor, im selben Block', fb.focus && fb.cur === 'g2', fb);
+  await p.keyboard.type('!'); await sleep(100);
+  ok('... und Tippen geht weiter', await p.evaluate(() => /Zweiter!/.test(document.querySelector('#pg-editor [data-block-id="g2"]').textContent)));
+  const hd = await p.evaluate(() => { const b = [...document.querySelectorAll('.pm-handles button')]; return b.length && b.every((x) => x.getAttribute('aria-label')); });
+  ok('Griffe: Knoepfe mit aria-label', hd, hd);
+  ok('Abschnitte 2-6: keine Seitenfehler', !p.errs.length, p.errs);
+
+  // =================================================================================================================
   // Ende
   ok('CSP: keine Verletzungen', (await p.evaluate(() => window.__csp.length)) === 0, await p.evaluate(() => window.__csp));
   for (const [pg, id] of made.reverse()) await pg.api('DELETE', '/api/notes/' + id).catch(() => {});

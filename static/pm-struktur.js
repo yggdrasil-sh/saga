@@ -1321,6 +1321,10 @@
         'Escape': function () {
           if (X.menuActive() || HK.menuOpen() || document.querySelector('.pm-pop:not([hidden])')) return false;
           if (selIds().length) { clearBlockSel(); return true; }
+          // Peek-Rahmen (/notes?embed=1, T4d): Esc im Text schliesst den Peek (wie im klassischen Editor) statt den Block zu
+          // waehlen. ProseMirror verhindert bei Esc immer die Standardaktion - pages.js sieht das Ereignis dann als erledigt,
+          // deshalb melden wir es hier selbst an das Peek-Fenster.
+          if (document.body.classList.contains('embed') && window.parent !== window) { window.parent.postMessage({ hk: 'peek-close' }, location.origin); return true; }
           return selectCurrent();
         },
         'ArrowUp': function () { return selIds().length ? step(-1) : false; },
