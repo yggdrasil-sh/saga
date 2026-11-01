@@ -253,10 +253,9 @@
     var editable = !pg.ro && !(cb && cb.readOnly && cb.readOnly());
     destroyProv(pg);
     pg.prov = makeProv(pg);
-    X.live({ editable: editable, exts: [
-      YB.Collaboration.configure({ document: pg.doc, field: 'prosemirror' }),
-      YB.CollaborationCaret.configure({ provider: pg.prov, user: { name: '', color: '#000000' }, render: renderCaret, selectionRender: renderSel })
-    ] });
+    var exts = [YB.Collaboration.configure({ document: pg.doc, field: 'prosemirror' }), caretFix(), noMigration()];
+    if (!window.HKPmLive || !HKPmLive.noCaret) exts.push(YB.CollaborationCaret.configure({ provider: pg.prov, user: { name: '', color: '#000000' }, render: renderCaret, selectionRender: renderSel }));
+    X.live({ editable: editable, exts: exts });
     pg.loading = true; var drops = ST.loadDrops;
     try {
       X.build({ blocks: (X.ctx() && X.saveNow().blocks) || [] });
@@ -269,6 +268,45 @@
     restore(c);
     aw();
     log('live', pg.nid, editable);
+  }
+  // y-tiptap 3.0.12 haelt die eigene Schreibmarke nach einer fremden Aenderung im SELBEN Absatz an ihrer absoluten Stelle
+  // (Heuristik "nach Strukturaenderung falsch aufgeloest" greift, sobald sich der Absatztext aendert) - fremder Text vor der
+  // Marke schob sie so mitten in die eigene Eingabe. Korrektur: Auswahl aus den relativen Positionen von vor der fremden
+  // Aenderung (binding.beforeTransactionSelection), wenn sie sauber aufloesen. Undo/Redo und Knoten-Auswahl unveraendert.
+  function caretFix() {
+    var S0 = X.P.pm.state, YT = YB.ytiptap;
+    return X.P.core.Extension.create({ name: 'hkLiveCaret', addProseMirrorPlugins: function () {
+      return [new S0.Plugin({ key: new S0.PluginKey('hkLiveCaret'), appendTransaction: function (trs, o, n) {
+        var tr = trs[trs.length - 1], m = tr.getMeta('y-sync$');
+        if (!m || !m.isChangeOrigin || m.isUndoRedoOperation || !tr.docChanged) return null;
+        var ys = YT.ySyncPluginKey.getState(n), bd = ys && ys.binding, rel = bd && bd.beforeTransactionSelection;
+        if (!rel || rel.type !== 'text' || !rel.anchor || !rel.head || !(n.selection instanceof S0.TextSelection)) return null;
+        try {
+          var an = YT.relativePositionToAbsolutePosition(ys.doc, ys.type, rel.anchor, bd.mapping);
+          var hd = YT.relativePositionToAbsolutePosition(ys.doc, ys.type, rel.head, bd.mapping);
+          if (an == null || hd == null || YT.isMisresolvedTextPosition(ys.doc, rel.anchor, an) || YT.isMisresolvedTextPosition(ys.doc, rel.head, hd)) return null;
+          if (an === n.selection.anchor && hd === n.selection.head) return null;
+          var ra = n.doc.resolve(an), rh = n.doc.resolve(hd);
+          if (!ra.parent.isTextblock || !rh.parent.isTextblock) return null;
+          return n.tr.setSelection(S0.TextSelection.between(ra, rh)).setMeta('addToHistory', false).setMeta('hkRemote', true);
+        } catch (e) { return null; }
+      } })];
+    } });
+  }
+  // y-tiptap 3.0.12 schreibt bei Strukturaenderungen (Block verschieben, Spalten) Positions-Migrationen in eine eigene Wurzel
+  // "__tiptap_position_migrations:..." - der Server erlaubt nur prosemirror/title/meta (APP-API-COLLAB 5.1, reject type)
+  // und der Zustand wuerde mit jeder Verschiebung wachsen. Die Migration wird vor dem Abgleich PM -> Yjs verworfen
+  // (Meta mit snapshot null: ySync setzt positionMigration dann auf null). Folge: relative Positionen ANDERER (Cursor) in
+  // einem verschobenen Block loesen nach der Verschiebung neu auf - die eigene Schreibmarke haelt ProseMirror selbst.
+  function noMigration() {
+    var S0 = X.P.pm.state, YT = YB.ytiptap;
+    return X.P.core.Extension.create({ name: 'hkLiveNoMigration', addProseMirrorPlugins: function () {
+      return [new S0.Plugin({ key: new S0.PluginKey('hkLiveNoMig'), appendTransaction: function (trs, o, n) {
+        var ys = YT.ySyncPluginKey.getState(n);
+        if (!ys || !ys.positionMigration) return null;
+        return n.tr.setMeta(YT.ySyncPluginKey, { snapshot: null, prevSnapshot: null }).setMeta('addToHistory', false);
+      } })];
+    } });
   }
   function rebind(full, keep) {                       // Zustand des Servers uebernehmen (reject, Rolle), Editor neu
     var pg = PG, c = caret();
