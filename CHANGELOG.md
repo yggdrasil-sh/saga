@@ -31,6 +31,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Dokumentmodell: Marke für Inline-Code heißt `icode` (ProseMirror erlaubt Knoten und Marke nicht mit gleichem Namen;
   ältere Zustände mit `code` werden weiter gelesen, neue Schema-Prüfsumme). Bekannte Felder mit falscher Form (z. B.
   `text: 5`) gehen beim Live-Lesen nicht mehr verloren.
+- Dokumentmodell **Schema-Version 2** (Live-Zustände der Version 1 werden beim nächsten Öffnen aus dem Seiteninhalt neu
+  gebaut); eine alte Inline-Code-Marke wird beim Schreiben jetzt auch entfernt. Web-Schema: `extra` wandert beim
+  Teilen eines Absatzes nicht mehr in den neuen Absatz.
 
 ### Intern (2.5, Tiptap-Umbau T1: Editor-Fassade)
 - Neue schmale Editor-Schnittstelle `HKPages.k.doc` (`static/editor-doc.js`: Blöcke lesen, einfügen, ersetzen,

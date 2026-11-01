@@ -1,5 +1,5 @@
 #!/bin/bash
-# Prueft die mitgelieferten Fremdbibliotheken unter static/vendor/ (laeuft in der CI, .github/workflows/vendor-check.yml).
+# Prueft die mitgelieferten Fremdbibliotheken unter static/vendor/ (laeuft in der CI, .github/workflows/testing.yml, Job image).
 #   1. npm ci --ignore-scripts in tools/vendor-tiptap (exakt nach package-lock, nur registry.npmjs.org)
 #   2. license-checker-rseidelsohn: Produktionsabhaengigkeiten nur unter MIT/ISC/BSD-2/BSD-3/Apache-2.0
 #   3. Sperrliste: @tiptap-pro/, @blocknote/, @hocuspocus/, UNLICENSED, "SEE LICENSE IN" -> Abbruch

@@ -24,7 +24,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var MODEL = 'saga-pm', VERSION = 1;
+  var MODEL = 'saga-pm', VERSION = 2;
   var PALETTE = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
   // Rangfolge aussen -> innen (= Reihenfolge der Marken im Schema, ProseMirror sortiert Marken danach)
   var MARKS = ['link', 'color', 'bg', 'mark', 'b', 'i', 'u', 's', 'icode'];
@@ -156,7 +156,7 @@
     var spec = {};
     names.forEach(function (k) {
       spec[k] = {
-        default: null, rendered: false, keepOnSplit: !(isBlock && (k === 'id' || k === 'conflict')),
+        default: null, rendered: false, keepOnSplit: !(isBlock && (k === 'id' || k === 'conflict' || k === 'extra')),
         parseHTML: k === 'id' && isBlock
           ? function (el) { return el.getAttribute('data-block-id') || null; }
           : function (el) { var v = readPm(el)[k]; return v === undefined ? null : v; }

@@ -102,7 +102,7 @@ C                                   S
 
 | Feld | Bedeutung |
 |---|---|
-| `schema` | **Pflicht** `{model: "saga-pm", ver: 1, hash: "<16 hex>"}` – das Dokumentmodell, das der Client kennt (Abschnitt 5). Weicht es vom Server ab (`hello.schema`), bekommt der Client das Abo **nur lesend** (`ro: true`, `why: "schema"`): Er darf nichts senden, zeigt „Seite neu laden“ und bleibt bei Stufe 1 für eigene Änderungen. So kann ein Client mit anderem Schema keine ihm unbekannten Knoten löschen. |
+| `schema` | **Pflicht** `{model: "saga-pm", ver: 2, hash: "<16 hex>"}` – das Dokumentmodell, das der Client kennt (Abschnitt 5). Weicht es vom Server ab (`hello.schema`), bekommt der Client das Abo **nur lesend** (`ro: true`, `why: "schema"`): Er darf nichts senden, zeigt „Seite neu laden“ und bleibt bei Stufe 1 für eigene Änderungen. So kann ein Client mit anderem Schema keine ihm unbekannten Knoten löschen. |
 | `caps` | optional, wie `X-Saga-Caps` (`inline2,cols6,merge1,sync1`) – wirkt auf synchronisierte Blöcke (`sync1`) |
 | `gen` | optional: Generation aus einem früheren `hello` dieser Seite. Nur wenn sie gleich ist, wertet der Server den Zustandsvektor (Teil 2) aus und schickt in `sync2` nur die Differenz. Sonst (neue Generation = Zustand wurde neu aus dem Seiteninhalt aufgebaut) **eigenes Doc verwerfen** und den Vollzustand übernehmen. |
 
@@ -185,13 +185,15 @@ ruhende Verbindungen); bleibt das `pong` 10 s aus: Verbindung als tot behandeln.
   wie gewohnt über `note.changed` (die Revision steigt mit jeder Materialisierung).
 - `PATCH` von Feldern außerhalb des Inhalts (Symbol, Titelbild, Sperre, Eigenschaften …) bleibt wie bisher.
 
-## 5. Dokumentmodell, Schema-Version 1 (`model: "saga-pm"`, `ver: 1`)
+## 5. Dokumentmodell, Schema-Version 2 (`model: "saga-pm"`, `ver: 2`)
 
 Abgestimmt mit dem ProseMirror/Tiptap-Editor (y-prosemirror bzw. `@tiptap/y-tiptap`). Der Server implementiert es in
 `saga/collab_model.py`; Prüfsumme `hash` = erste 16 Hex-Zeichen von SHA-256 über die Schema-Beschreibung (Knoten,
 Attribute, Marken) – Clients übernehmen den Wert für ihre Version aus `hello` eines Servers mit derselben Version bzw.
 aus den gemeinsamen Testvektoren. **Jede Änderung an Knoten, Attributen oder Marken ist eine neue Version**; der Server
 verwirft dann alte Zustände und baut sie neu aus dem Seiteninhalt auf (neue `gen`).
+
+Versionen: **1** (2.5, CRDT-Server) – **2** (2.5, Tiptap T1): Marke für Inline-Code heißt `icode` statt `code` (ProseMirror erlaubt Knoten und Marke mit gleichem Namen nicht); Zustände der Version 1 werden beim nächsten Öffnen neu gebaut.
 
 Web-Editor (Tiptap): Schema `static/pm-schema.js`, Adapter `static/pm-adapter.js`, gemeinsame Testvektoren
 `tests/vectors/pm_schema.json` (Block-JSON, ProseMirror-JSON, Y-Struktur) – siehe `docs/EDITOR-PM.md`. Clients anderer
@@ -203,7 +205,7 @@ Plattformen können dieselben Vektoren nutzen.
 |---|---|---|
 | `prosemirror` | `Y.XmlFragment` | die Blöcke (Tiptap: `Collaboration.configure({ field: 'prosemirror' })`) |
 | `title` | `Y.Text` | Seitentitel (Klartext, ohne Marken) |
-| `meta` | `Y.Map` | `{model: "saga-pm", schema_ver: 1}` – schreibt nur der Anfangszustand; Clients ändern `meta` nie |
+| `meta` | `Y.Map` | `{model: "saga-pm", schema_ver: 2}` – schreibt nur der Anfangszustand; Clients ändern `meta` nie |
 
 Andere Wurzeln → `reject type`.
 

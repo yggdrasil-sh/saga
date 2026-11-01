@@ -184,7 +184,7 @@ ok("S3: Marken als {name: attrs}", list(p.children)[0].diff() == [("x ", None), 
 q = list(fr.children)[1]
 ok("S4: Textfelder als Kind-Elemente (qtext/qcap)", [x.tag for x in q.children] == ["qtext", "qcap"])
 ok("S5: Attribute als JSON-Werte, id am Block", dict(q.attributes) == {"id": "q", "alignment": "left"})
-ok("meta: model + schema_ver", dict(d.get("meta", type=__import__("pycrdt").Map)) in ({"model": "saga-pm", "schema_ver": 1.0},))
+ok("meta: model + schema_ver", dict(d.get("meta", type=__import__("pycrdt").Map)) in ({"model": "saga-pm", "schema_ver": float(__import__("saga.collab_model", fromlist=["x"]).SCHEMA_VER)},))
 ok("roots_ok fuer den Anfangszustand", M.roots_ok(d))
 bad = Doc(); bad.apply_update(M.build({"blocks": []})); bad.get("boese", type=__import__("pycrdt").Map)["x"] = 1
 ok("roots_ok: fremde Wurzel abgelehnt", not M.roots_ok(bad))
@@ -254,6 +254,23 @@ for k in range(120):
     else:
         print("     write-Fehler", json.dumps(strip_texts(b, R), ensure_ascii=False)[:300], "\n     ->", json.dumps(gg["blocks"], ensure_ascii=False)[:300])
 ok(f"write: 120 zufaellige Zielstaende exakt erreicht ({okc})", okc == 120)
+
+# Schema 2: alte Inline-Code-Marke "code" (Schema 1) wird gelesen und beim Schreiben auch wieder entfernt
+_d = M.new_doc()
+with _d.transaction():
+    _e = _d.get(M.FRAGMENT, type=XmlFragment).children.append(XmlElement("paragraph"))
+    _e.attributes["id"] = "b1"
+    _t = _e.children.append(XmlText())
+    _t.insert(0, "ab", None)
+    _t.insert(2, "cd", {"code": {}})
+_r0 = M.read(_d)[0]["blocks"][0]["data"]["text"]
+M.write(_d, {"blocks": [{"id": "b1", "type": "paragraph", "data": {"text": "abcd"}}]})
+_r1 = M.read(_d)[0]["blocks"][0]["data"]["text"]
+M.write(_d, {"blocks": [{"id": "b1", "type": "paragraph", "data": {"text": "ab<b>cd</b>"}}]})
+_r2 = M.read(_d)[0]["blocks"][0]["data"]["text"]
+ok(f"Altmarke code: gelesen, entfernt, nicht wieder aufgetaucht ({_r0!r} {_r1!r} {_r2!r})",
+   _r0 == 'ab<code class="inline-code">cd</code>' and _r1 == "abcd" and _r2 == "ab<b>cd</b>")
+ok("Schema-Version 2 (icode)", M.SCHEMA_VER == 2 and "icode" in M.MARKS and "code" not in M.MARKS)
 
 print(f"{sum(res)}/{len(res)}", "ALLES GRUEN" if all(res) else "FEHLER")
 sys.exit(0 if all(res) else 1)

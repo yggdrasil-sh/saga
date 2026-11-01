@@ -25,7 +25,7 @@ from html.parser import HTMLParser
 from pycrdt import Doc, Map, Text, XmlElement, XmlFragment, XmlText
 
 MODEL = "saga-pm"
-SCHEMA_VER = 1
+SCHEMA_VER = 2                      # 2: Inline-Code-Marke icode statt code (T1); alte Zustaende werden neu gebaut
 FRAGMENT = "prosemirror"
 ROOTS = ("prosemirror", "title", "meta")
 BASE_CLIENT = 1                     # client_id des deterministischen Anfangszustands (Clients/Server schreiben mit Zufalls-ID)
@@ -971,6 +971,8 @@ def _sync_inline(el, cur, tgt):
         want, have = json.loads(b[k][1]), json.loads(now[k][1])
         attrs = {kk: None for kk in have if kk not in want}
         attrs.update(want)
+        if "icode" in attrs and attrs["icode"] is None:
+            attrs["code"] = None                # Marke aus Zustaenden vor der Umbenennung (Schema 1) mit entfernen
         t.format(off, off + ln, attrs)
         off += ln
         k = e
