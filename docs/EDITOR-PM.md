@@ -143,9 +143,10 @@ gleicher Anfang/gleiches Ende bleiben dieselben Knoten, eine Transaktion mit `ad
 `pages.js` behält Speichern, Warteschlange, `merge:1`/`base:"sent"`, `mergedReply`, `?since`-Delta, Offline und
 Konfliktleiste unverändert; Änderungen meldet der Editor als Transaktion (`cb.changed(ids)`, beim Laden ignoriert).
 
-**Fassade** `HKPages.k.doc` mit `kind: 'tiptap'` – Semantik wie `static/editor-doc.js`. Abweichungen: Blöcke in
-Werkzeugen, die T2 als Karte zeigt (Toggle, Spalten, synchronisiert), haben kein Element und fehlen in
-`blocks()`/`byId()`; Mutationen sind synchron. `select(ids)` ist eine Dekoration (`.pm-sel`).
+**Fassade** `HKPages.k.doc` mit `kind: 'tiptap'` – Semantik wie `static/editor-doc.js`. Blöcke in Spalten, Toggles
+und synchronisierten Blöcken stehen mit `parent`/`slot` in `blocks()`/`byId()` (ab T3), Blöcke in Karten fehlen;
+Mutationen sind synchron. `select(ids)` ist eine Dekoration (`.pm-sel`). Zusätzlich `menu(id)` (Block-Menü) und
+`undo()`. `findId` und die Schutzbereiche sind je Dokumentstand gecacht (WeakMap).
 
 **Node-Views:** Jedes Blockelement ist ein äußeres `div.pm-blk[data-block-id][data-block-type]` mit innerem
 Inhaltselement. Mutationen außerhalb des Inhalts (Kommentarzahl, Anwesenheit `data-hk-by`, Klassen) ignoriert
@@ -166,3 +167,45 @@ Klickfläche unter dem letzten Block und ein leerer Absatz auf leeren Seiten.
 
 **Tests:** `SAGA_EDITOR=tiptap|editorjs` (`tests/lib/editor_dom.js`: `EDITOR`, `UI` je Editor, `setEditor`, `isEditor`;
 der Server braucht `editor.engine = choice`). Abnahme: `tests/browser_tiptap_kern.js`.
+
+## Struktur (T3)
+
+`static/pm-struktur.js` meldet sich beim Kern mit `HKPmEditor.use(fn)` an. `fn(X)` bekommt die internen Bausteine
+(`X.walk`, `findId`, `blockAt`, `convertAt`, `setSel`, `select` …, siehe Ende von `pm-editor.js`) und liefert
+`{edit, nodeViews, plugins(editor), keys(editor), protect(node), api}`: `edit` macht Typen bearbeitbar (keine Karte),
+`keys` laufen vor den Kern-Tasten, `protect` schützt Knoten wie eine Karte (synchronisierte Kopie nur lesend), `api`
+ist über `HKPmEditor.api(name)` erreichbar (`savedReply` für `mention.js`, `selectBlocks`/`deleteSel`/`dupSel` für
+die Auswahl-Leiste in `editor25.js`, `openBlockMenu`, `moveBlock` …).
+
+- **Spalten** `columns > column{2,6} > Blöcke` (Schema erlaubt `column*`, die Grenzen setzt der Editor). Darstellung
+  mit den Klassen von Editor.js (`.cols`, `--cols`, `--cols-t` per CSSOM), Breitengriffe `.pm-col-rs` und Leiste
+  `.cols-ctl` liegen außerhalb des Inhalts. Ein Zug = eine Transaktion mit allen `w` (gleich breit = kein `w`).
+  Aufräumen als `appendTransaction` (gleicher Undo-Schritt): Spalten, die **in dieser Änderung** leer wurden, entfallen;
+  eine übrige Spalte löst den Block auf. Geladene Seiten (auch mit 1 Spalte oder leeren Spalten) bleiben unberührt.
+- **Toggle** `toggle(ttitle, Blöcke)`, `open` im Dokument (T-E6 A): geschrieben nur beim eigenen Klick, ohne
+  Undo-Schritt; Lesen/gesperrt klappt nur lokal. Zugeklappt verbirgt CSS den Inhalt; die Schreibmarke springt über ihn.
+  Enter im Titel → erster Inhalt (öffnet), Enter auf leerem letzten Absatz → hinter den Toggle, Rückschritt am
+  Titelanfang → Absatz (ID bleibt) + Inhalt dahinter. Umwandeln mit Inhalt wird verweigert. Altformat `{text}`:
+  `docFromBlocks(…, {upgrade:true})` zeigt den Text als ersten Absatz, `bind` ohne upgrade hält den Toggle am
+  Original → unbearbeitet byte-gleich, bearbeitet im neuen Format.
+- **Synchronisiert:** Original `{sid, blocks}` und Kopie mit vom Server eingesetztem Inhalt sind beide der Knoten
+  `synced` (Unterscheidung über `data.src`, im Modell `extra.data.src`); die Kopie wird wie bisher beim Speichern
+  über `sync1` ins Original geschrieben, `savedReply` übernimmt `synced_rev` als neue Basis (`src.rev`, ohne
+  Änderungsmeldung). Nur lesend (Lesen/Kommentieren auf dem Original, kein Zugriff) = geschützt wie eine Karte. Kopie
+  ohne Inhalt (frisch eingefügt, nicht gefunden, kein Zugriff) = `synced_ref` mit Hinweis; nach dem Speichern lädt
+  die Seite neu. Einfügen einer Kopie über `application/x-editor-js` `[{tool:'synced', data:{sid}}]`.
+- **Konfliktblock:** Attribut `conflict` → Widget-Dekoration `.pm-cf-bar` über dem Block. Übernehmen = Original
+  (`conflict.of`) löschen + Attribut leeren, Verwerfen = Block löschen, je eine Transaktion.
+- **Griffe/Ziehen:** eigene Zeigerlogik statt `SagaPM.DragHandle` (Rand-Drop, Ziellinien, Geisterbild und langer Druck
+  am Telefon brauchen eigene Ziele): `.pm-handles` mit `.pm-handle-plus`/`.pm-handle-menu` in `.pm-holder`. Ziele:
+  zwischen Blöcken (waagrechte Linie), untere Titelhälfte eines offenen Toggles (erster Inhalt), leere Spalte, Rand
+  (40 px) eines Blocks der obersten Ebene → neue Spalten, Rand eines Spalten-Blocks → neue Spalte (bis 6, Breiten
+  gleich). Unzulässige Ziele (Spalten in Spalten …) prüft `canReplace` am Schema. Ein Drop = eine Transaktion.
+- **Mehrfachauswahl** (T-E5 A): Zustand = Fassaden-Auswahl (`hkBlockSel`). Esc, ⇧↑/↓ (Anker/Kopf in
+  Dokumentreihenfolge, zugeklappte Inhalte zählen nicht), Ziehen im Rand (Rahmen `.pm-band`), Text-Auswahl über
+  Blockgrenzen → Blockauswahl (nach dem Loslassen), ⌘A zweimal, Rückschritt/Entf, ⌘D, ⌘C/⌘X (HTML nach Schema +
+  `application/x-editor-js`), Enter = bearbeiten. ⌘⇧↑/↓ (`keys.js` → `move`) verschiebt Block oder Auswahl auch in die
+  Nachbarspalte bzw. aus Toggle/Spalten heraus. Die Leiste (`editor25.js`) nimmt alle gewählten Wurzeln und wandelt je
+  zusammenhängender Gruppe um.
+
+Test: `tests/browser_tiptap_struktur.js`.

@@ -62,6 +62,27 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Fassade `HKPages.k.doc` mit `kind: 'tiptap'`; `keys.js`/`editor25.js` überlassen ihre DOM-Menüs (@, :, Datum, Formel)
   im Tiptap-Editor `pm-editor.js`. Tests: `tests/browser_tiptap_kern.js`, `tests/lib/editor_dom.js` mit `SAGA_EDITOR`.
 
+### Neu/Intern (2.5, Tiptap-Umbau T3: Struktur)
+- Im neuen Editor (Schalter `editor.engine`, Standard bleibt Editor.js) sind **Spalten, Toggles und synchronisierte
+  Blöcke echte Knoten** statt Karten (`static/pm-struktur.js`): ein Dokument, ein Undo, ein Slash-Menü – auch in
+  Spalten; Daten-Werkzeuge und alle Kern-Blöcke funktionieren darin, noch nicht portierte Typen bleiben Karten.
+- **Spalten:** Breiten ziehen (5-%-Raster, Doppelklick = gleich, ein Zug = ein Undo-Schritt), Anzahl 2–6, „Block
+  darunter → Spalte n“, „Zusammenführen“, „+ Block“ je Spalte, „/2 Spalten“; leer gewordene Spalten entfallen, bleibt
+  eine übrig, löst sich der Spalten-Block auf (IDs bleiben). Telefon: untereinander.
+- **Toggle** inkl. Toggle-Überschrift 1–3: auf/zu wird nur beim eigenen Klick gespeichert (Lesen/gesperrt nur lokal),
+  zugeklappter Inhalt bleibt im Dokument. Markdown `> ` ergibt jetzt einen Toggle, `" ` ein Zitat (Notion-Belegung).
+  Altformat `{text}` erscheint als erster Absatz und bleibt unbearbeitet byte-gleich.
+- **Block-Griffe** `+`/`⋮⋮` (mittig zur ersten Zeile), **Ziehen** zwischen Blöcken, in/aus Spalten und Toggles mit
+  Geisterbild und Ziellinie, **Rand-Drop** links/rechts an einem Block legt Spalten an (am Spalten-Block: neue Spalte
+  bis 6). **Block-Menü** (⋮⋮ und ⌘/): Umwandeln, Farbe, Duplizieren, Verschieben nach …, als synchronisierten Block
+  kopieren, Link, Kommentieren, Löschen und Einstellungen (Spalten, Toggle-Ebene, Listen-Zählart/-Start, Zitat).
+- **Mehrfachauswahl über Ebenen und Spalten** (Esc, ⇧↑/↓, Ziehen im Rand, Text-Auswahl über Blockgrenzen, ⌘A zweimal,
+  Rückschritt löscht, ⌘⇧↑/↓ verschiebt die Gruppe auch über Spaltengrenzen); die Leiste wandelt je zusammenhängender
+  Gruppe um. Synchronisierte Kopien werden wie bisher über `sync1` ins Original geschrieben; Konfliktblöcke zeigen
+  Übernehmen/Verwerfen (je eine Transaktion).
+- Intern: Erweiterungs-Schnittstelle `HKPmEditor.use`, Kern-Cache für Block-IDs und Schutzbereiche, Marken über
+  Karten werden nur außerhalb angewandt. Test `tests/browser_tiptap_struktur.js`, Doku `docs/EDITOR-PM.md` (Struktur T3).
+
 ### Intern (2.5, Tiptap-Umbau T4b: Daten-Werkzeuge)
 - Werkzeug-Schnittstelle `HKTools` (`static/pm-tools.js`): Werkzeuge als eigenständige Node-Views (`mount` mit
   `update`/`destroy`/`stopEvent`), jede Bedienung wird genau eine Transaktion auf das Attribut `data`; Brücke

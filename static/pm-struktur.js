@@ -1007,7 +1007,7 @@
     // =================================================================================================================
     function moveBlock(id, dir) {
       if (ro()) return false;
-      var ids = selIds().indexOf(id) >= 0 ? selIds() : [id];
+      var ids = selIds().length ? selIds() : [id];          // mit Blockauswahl: die Auswahl
       var rs = roots(ids); if (!rs.length) return false;
       var doc = state().doc, first = rs[0], last = rs[rs.length - 1];
       var $a = doc.resolve(first.pos), parent = $a.parent;
