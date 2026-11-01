@@ -28,7 +28,6 @@
   var ST = { sent: 0, recv: 0, acked: 0, rejects: 0, loadDrops: 0, dropped: 0, binds: 0, fallbacks: 0, aw: 0 };
   var BOX = document.getElementById('pg-editor');
 
-  function T_(s, o) { return window.T ? T(s, o) : s; }
   function K() { return window.HKPages && HKPages.k; }
   function CB() { return X && X.cb(); }
   function curPage() { var c = CB(); return c && c.cur ? c.cur() : null; }
@@ -370,8 +369,8 @@
     if (!on) { if (bar) bar.remove(); return; }
     var page = document.getElementById('page'); if (bar || !page) return;
     bar = HK.el('div', 'pg-conflict pm-live-hint'); bar.id = 'pm-live-hint'; bar.setAttribute('role', 'alert');
-    bar.appendChild(HK.el('span', 'pgc-t', T_('Diese Seite nutzt eine andere Editor-Version – bitte neu laden. Bis dahin nur lesen.')));
-    var b = HK.el('button', 'btn btn-primary', T_('Neu laden')); b.type = 'button';
+    bar.appendChild(HK.el('span', 'pgc-t', T('Diese Seite nutzt eine andere Editor-Version – bitte neu laden. Bis dahin nur lesen.')));
+    var b = HK.el('button', 'btn btn-primary', T('Neu laden')); b.type = 'button';
     b.addEventListener('click', function () { location.reload(); });
     bar.appendChild(b); page.insertBefore(bar, page.firstChild);
   }
@@ -420,7 +419,7 @@
     if (code === 'readonly') {
       pg.ro = true;
       if (pg.live) rebind(full, false);
-      HK.toast(T_('Änderung nicht übernommen – du kannst diese Seite gerade nicht bearbeiten.'));
+      HK.toast(T('Änderung nicht übernommen – du kannst diese Seite gerade nicht bearbeiten.'));
       return;
     }
     // Inhalt abgelehnt (type/sanitize/signature/forbidden/size/title/invalid/client): Server-Stand, eigene unabhaengige
@@ -432,11 +431,11 @@
       if (pg.live) rebind(full, false);
       toStufe1('rejects', true);
       if (PG === pg) { send(KIND.UNSUB, pg.nid); }
-      HK.toast(T_('Änderung nicht übernommen.'));
+      HK.toast(T('Änderung nicht übernommen.'));
       return;
     }
     var kept = pg.live ? rebind(full, code !== 'client') : true;
-    HK.toast(kept ? T_('Änderung nicht übernommen.') : T_('Änderung nicht übernommen – deine letzten Eingaben ließen sich nicht behalten.'));
+    HK.toast(kept ? T('Änderung nicht übernommen.') : T('Änderung nicht übernommen – deine letzten Eingaben ließen sich nicht behalten.'));
   }
   function onBye(reason) {
     var pg = PG;

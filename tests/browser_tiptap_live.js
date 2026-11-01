@@ -159,9 +159,9 @@ const J = (x) => JSON.stringify(x);
   const g8 = await get(P8);
   await b.goto(BASE + '/notes#' + P8);
   await b.evaluate(() => { const h = HKPmSchema.hash; HKPmSchema.hash = () => 'ffffffffffffffff'; window.__h = h; });
-  await b.evaluate(() => HKPages.k.open(HKPages.k.cur() ? HKPages.k.cur().id : +location.hash.slice(1)));
+  await b.evaluate((id) => HKPages.k.open(id), P8);
   b.wsFrames = []; b.patches = [];
-  await until(async () => (await st(b)) && (await st(b)).mode === 'lock', 8000);
+  await until(async () => { const s = await st(b); return s && s.nid === P8 && s.mode === 'lock'; }, 8000);
   sb = await st(b);
   ok('Schema abweichend: nur lesen (lock), Hinweis "Neu laden"', sb.mode === 'lock' && !!(await b.$('#pm-live-hint')) && !(await b.evaluate(() => HKPages.k.editor().editor().isEditable)), sb);
   await b.click('#pg-editor [data-block-id="s1"]').catch(() => {}); await b.keyboard.type('NEIN', { delay: 20 }); await sleep(1200);
@@ -191,8 +191,44 @@ const J = (x) => JSON.stringify(x);
   ok('IME: Komposition bei Bert -> "Start日本" bei beiden', await until(async () => (await txt(a, 'i1')) === 'Start日本' && (await txt(b, 'i1')) === 'Start日本'),
     [await txt(a, 'i1'), await txt(b, 'i1')]);
 
-  // 11) Schalter aus -> Stufe 1 (kein WS-Aufbau), Speichern per PATCH
-  ok('Seitenwechsel: ein Editor, eine Verbindung', (await a.evaluate(() => document.querySelectorAll('#pg-editor .ProseMirror').length)) === 1);
+  // 11) reject vom Server (unerlaubtes Attribut) -> Neuaufbau aus dem Server-Stand, eigene unabhaengige Eingabe bleibt;
+  //     dreimal -> Rueckfall Stufe 1
+  const bad = (p) => p.evaluate(() => { const d = HKPmLive.doc(); d.transact(() => { d.getXmlFragment('prosemirror').get(0).setAttribute('onclick', 'x'); }); });
+  await D.focus(b, 'i1', 'end'); await b.keyboard.type(' gut', { delay: 20 }); await sleep(200);
+  await bad(b); await sleep(1200);
+  let sr = await st(b);
+  const attrs = await b.evaluate(() => JSON.stringify(HKPmLive.doc().getXmlFragment('prosemirror').get(0).getAttributes()));
+  ok('reject: Server-Stand uebernommen (Attribut weg), weiter live, eigene Eingabe da', sr.stats.rejects === 1 && sr.mode === 'live' && !/onclick/.test(attrs) && /gut$/.test(await txt(a, 'i1')), [sr, attrs, await txt(a, 'i1')]);
+  await D.focus(b, 'i1', 'end'); await b.keyboard.type(' weiter', { delay: 20 }); await sleep(800);
+  ok('... danach geht Tippen live weiter', /gut weiter$/.test(await txt(a, 'i1')), await txt(a, 'i1'));
+  await bad(b); await sleep(800); await bad(b); await sleep(1500);
+  sr = await st(b);
+  ok('Dreimal abgelehnt -> Rueckfall Stufe 1 (schreibbar)', sr.mode === 'stufe1' && sr.stats.rejects === 3 && (await b.evaluate(() => HKPages.k.editor().editor().isEditable)), sr);
+  b.patches = [];
+  await D.focus(b, 'i1', 'end'); await b.keyboard.type(' s1', { delay: 20 }); await sleep(2200);
+  ok('... Stufe 1 speichert per PATCH, Anna sieht es live', b.patches.some((x) => /"merge":1/.test(x)) && await until(async () => /s1$/.test(await txt(a, 'i1'))), [b.patches.length, await txt(a, 'i1')]);
+
+  ok('Seitenwechsel: ein Editor (genau ein .ProseMirror)', (await a.evaluate(() => document.querySelectorAll('#pg-editor .ProseMirror').length)) === 1);
+
+  // 12) Schalter aus waehrend der Sitzung -> bye off/4403 -> Stufe 1 ohne Verlust; wieder an -> Seite oeffnet live.
+  //     Braucht LIVE_CMD (Shell-Befehl, "<LIVE_CMD> on|off" setzt notes.live; Einstellungen sind 5 s zwischengespeichert)
+  if (process.env.LIVE_CMD) {
+    const sh = (x) => require('child_process').execSync(process.env.LIVE_CMD + ' ' + x, { stdio: 'inherit' });
+    await open(a, P10);
+    await D.focus(a, 'i1', 'end'); await a.keyboard.type(' vorher', { delay: 20 }); await sleep(600);
+    sh('off');
+    ok('Schalter aus: Anna faellt auf Stufe 1 (bye off bzw. 4403)', await until(async () => (await st(a)).mode !== 'live', 20000), await st(a));
+    a.patches = [];
+    await D.focus(a, 'i1', 'end'); await a.keyboard.type(' danach', { delay: 20 }); await sleep(2000);
+    ok('... speichert per PATCH, nichts verloren', a.patches.some((x) => /"body"/.test(x)) && /vorher danach$/.test((await get(P10))[0].data.text), [a.patches.length, (await get(P10))[0]]);
+    await open(a, P10, null);
+    sa = await st(a);
+    ok('... neu geoeffnet: kein Live (aus), Editor schreibbar', sa.mode !== 'live' && !sa.ws && (await a.evaluate(() => HKPages.k.editor().editor().isEditable)), sa);
+    sh('on');
+    await sleep(500);
+    await open(a, P10);
+    ok('Schalter wieder an: Seite oeffnet live', (await st(a)).mode === 'live', await st(a));
+  } else console.log('     Hinweis: LIVE_CMD fehlt - Schalter aus/an waehrend der Sitzung nicht geprueft');
 
   // ---------------------------------------------------------------------------------------------------------------
   for (const [n, p] of [['Anna', a], ['Bert', b]]) {
