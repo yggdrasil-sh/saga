@@ -188,4 +188,6 @@ licenses (`static/vendor/editorjs/licenses`). Math rendering uses [KaTeX](https:
 `static/vendor/katex/LICENSE`), diagrams use [Mermaid](https://mermaid.js.org) (MIT, `static/vendor/mermaid/LICENSE`,
 bundled DOMPurify under Apache-2.0/MPL-2.0), and published pages render math via
 [latex2mathml](https://pypi.org/project/latex2mathml/) (MIT). Simultaneous editing (live) uses
-[pycrdt](https://pypi.org/project/pycrdt/) (MIT, Yjs-compatible). Service icons from [selfh.st/icons](https://selfh.st/icons).
+[pycrdt](https://pypi.org/project/pycrdt/) (MIT, Yjs-compatible). The upcoming editor bundles
+[Tiptap](https://tiptap.dev), [ProseMirror](https://prosemirror.net) and [Yjs](https://yjs.dev) (all MIT,
+`static/vendor/tiptap/licenses`, built reproducibly from `tools/vendor-tiptap`). Service icons from [selfh.st/icons](https://selfh.st/icons).
