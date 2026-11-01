@@ -1,0 +1,65 @@
+Tiptap 3 / ProseMirror / Yjs fuer Saga - vorgebaute IIFE-Bundles (Entscheidung T-E1 A)
+=======================================================================================
+Quelle und Bau: tools/vendor-tiptap/ (package.json, package-lock.json, entry.js, entry-y.js, y-shim.js, build.mjs).
+Neu bauen:   bash tools/vendor-tiptap/build.sh            (schreibt diesen Ordner komplett neu)
+Pruefen:     bash tools/check-vendor-licenses.sh          (Lizenzen, Sperrliste, Neubau + SHA-256-Vergleich; laeuft in der CI)
+Versionen, Lizenzen, Groessen: VERSIONS.txt. Lizenztexte: licenses/. Diese Datei wird von build.sh mitkopiert.
+
+Dateien
+-------
+saga-pm.js   Kern (window.SagaPM): Tiptap Core, Erweiterungen, ProseMirror. Einzige Kopie von Core/ProseMirror im Browser.
+saga-y.js    Live (window.SagaY): yjs, y-protocols, y-tiptap, Collaboration, CollaborationCaret. NACH saga-pm.js laden.
+saga-pm.css  Basis-Styles von ProseMirror/Tiptap. Editor immer mit injectCSS:false erzeugen und diese Datei als <link>
+             laden (CSP style-src 'self' - Tiptap wuerde sonst ein <style> einhaengen).
+
+Exportvertrag (Stand fuer pm-schema.js / pm-adapter.js / spaetere Editor-Fassade)
+---------------------------------------------------------------------------------
+SagaPM.version            Tiptap-Version (String, z. B. "3.32.2")
+SagaPM.core               alle Exporte von @tiptap/core: Editor, Node, Mark, Extension, mergeAttributes, getSchema,
+                          generateJSON, generateHTML, InputRule, PasteRule, NodeView, findChildren, ...
+SagaPM.pm.model           prosemirror-model     (Schema, Node, Fragment, Slice, DOMParser, DOMSerializer, ...)
+SagaPM.pm.state           prosemirror-state     (EditorState, Plugin, PluginKey, TextSelection, NodeSelection, ...)
+SagaPM.pm.view            prosemirror-view      (EditorView, Decoration, DecorationSet)
+SagaPM.pm.transform       prosemirror-transform (Transform, ReplaceStep, ...)
+SagaPM.pm.commands        prosemirror-commands
+SagaPM.pm.keymap          prosemirror-keymap
+SagaPM.pm.history         prosemirror-history
+SagaPM.pm.inputrules      prosemirror-inputrules
+SagaPM.pm.schemaList      prosemirror-schema-list
+SagaPM.pm.dropcursor      prosemirror-dropcursor
+SagaPM.pm.gapcursor       prosemirror-gapcursor
+SagaPM.StarterKit         @tiptap/starter-kit
+SagaPM.Placeholder, .TrailingNode, .Dropcursor, .Gapcursor, .UndoRedo, .Focus, .Selection, .CharacterCount
+                          aus @tiptap/extensions (in v3 dort statt in Einzelpaketen)
+SagaPM.Suggestion (+ SuggestionPluginKey, exitSuggestion, findSuggestionMatch)       @tiptap/suggestion
+SagaPM.DragHandle (+ DragHandlePlugin, dragHandlePluginDefaultKey, defaultComputePositionConfig, defaultRules,
+                  normalizeNestedOptions)                                              @tiptap/extension-drag-handle
+SagaPM.NodeRange (+ NodeRangeSelection, getNodeRangeDecorations, getSelectionRanges, isNodeRangeSelection)
+SagaPM.UniqueID (+ generateUniqueIds)                                                  @tiptap/extension-unique-id
+SagaPM.BubbleMenu, .BubbleMenuPlugin, .BubbleMenuView                                  @tiptap/extension-bubble-menu
+SagaPM.floating           alle Exporte von @floating-ui/dom (computePosition, autoUpdate, flip, shift, offset, ...)
+
+SagaY.version             wie SagaPM.version
+SagaY.Y                   yjs (Doc, XmlFragment, XmlElement, XmlText, applyUpdate, encodeStateAsUpdate, ...)
+SagaY.awareness           y-protocols/awareness (Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, ...)
+SagaY.sync                y-protocols/sync (writeSyncStep1, readSyncMessage, ...)
+SagaY.ytiptap             alle Exporte von @tiptap/y-tiptap (ySyncPlugin, ySyncPluginKey, yUndoPlugin,
+                          prosemirrorJSONToYXmlFragment, yXmlFragmentToProsemirrorJSON, ...)
+SagaY.Collaboration (+ isChangeOrigin, getUpdatedPosition, createMappablePosition, CollaborationMappablePosition)
+SagaY.CollaborationCaret
+
+Keine doppelten Instanzen
+-------------------------
+ProseMirror/Tiptap Core: saga-y.js enthaelt keine eigene Kopie. Beim Bau werden @tiptap/core, @tiptap/pm/* und
+prosemirror-* im Live-Bundle auf window.SagaPM.core bzw. window.SagaPM.pm.* abgebildet (esbuild-Plugin
+"sagapm-global"); ein nicht abgebildetes ProseMirror-Modul bricht den Bau ab. Damit stimmen instanceof-Pruefungen
+und PluginKeys zwischen Editor (Kern) und ySyncPlugin (Live).
+yjs: nur in saga-y.js. @tiptap/extension-drag-handle importiert y-tiptap/Collaboration (relative Positionen beim
+Live-Bearbeiten); im Kern ersetzt y-shim.js diese Importe durch eine Weiterleitung auf window.SagaY zur Laufzeit.
+Ein yjs-/lib0-Import im Kern bricht den Bau ab. Saga-Code nimmt Y ausschliesslich aus SagaY.Y.
+
+CSP
+---
+Kein eval/new Function (geprueft in check-vendor-licenses.sh). Mit injectCSS:false kein <style>. Bekannt fuer spaeter:
+CollaborationCaret/y-tiptap setzen im Standard-render ein style-Attribut (eigene render-Funktion, T5); DragHandle,
+Dropcursor und prosemirror-view setzen Styles per element.style (CSSOM, von style-src nicht betroffen).

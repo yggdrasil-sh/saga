@@ -182,4 +182,7 @@ Screenshots für diese Seite: `SAGA_SSH=… SAGA_SCRIPT=screens-remote.sh tools/
 
 [GNU AGPL-3.0](LICENSE) – du darfst Saga frei nutzen, verändern und weitergeben; wer eine veränderte
 Fassung als Dienst für andere betreibt, muss deren Quelltext ebenfalls offenlegen. Mitgelieferte Editor.js-Bausteine unter ihren eigenen Lizenzen
-(`static/vendor/editorjs/licenses`). Dienst-Symbole von [selfh.st/icons](https://selfh.st/icons).
+(`static/vendor/editorjs/licenses`). Formeln mit [KaTeX](https://katex.org) (MIT, `static/vendor/katex/LICENSE`),
+Diagramme mit [Mermaid](https://mermaid.js.org) (MIT, `static/vendor/mermaid/LICENSE`). Der kommende Editor bringt
+[Tiptap](https://tiptap.dev), [ProseMirror](https://prosemirror.net) und [Yjs](https://yjs.dev) mit (alle MIT,
+`static/vendor/tiptap/licenses`, reproduzierbar gebaut aus `tools/vendor-tiptap`). Dienst-Symbole von [selfh.st/icons](https://selfh.st/icons).

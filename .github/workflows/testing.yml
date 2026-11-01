@@ -52,6 +52,18 @@ jobs:
           fi
           exit $rc
 
+      # Mitgelieferte Fremdbibliotheken (static/vendor/): Lizenzen, Sperrliste, Neubau + SHA-256-Vergleich der
+      # Tiptap-Bundles. Ohne Secrets, npm nur gegen registry.npmjs.org (package-lock), keine Install-Skripte.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Vendor-Lizenzen und Bundles pruefen
+        env:
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+        run: |
+          bash tools/check-vendor-licenses.sh
+          rm -rf tools/vendor-tiptap/node_modules     # nicht in den Docker-Build-Kontext
+
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 

@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Intern (2.5, Tiptap-Umbau Etappe T1: Bibliothek mitgeliefert)
+- Tiptap 3.32.2, ProseMirror und Yjs liegen als vorgebaute Bundles unter `static/vendor/tiptap/` (`saga-pm.js`
+  Kern, `saga-y.js` Live, `saga-pm.css`; alle MIT, Lizenztexte in `licenses/`). Noch nirgends geladen – der neue
+  Editor folgt in T2. Bau aus `tools/vendor-tiptap/` (exakt gepinnter Lock), deterministisch.
+- Neue CI-Prüfung `tools/check-vendor-licenses.sh`: erlaubte Lizenzen, Sperrliste (Pro-/kommerzielle Pakete),
+  Neubau mit SHA-256-Vergleich, Lizenzdatei je Paket; Grundprüfung der übrigen Vendor-Ordner.
+
 ### Neu (2.5, Chats: Gruppen – Chat-Standard B)
 - **Gruppenbild und Beschreibung** für freie Gruppen – wie der Name verschlüsselt (Steuer-Nachrichten `desc`/`avatar`),
   Bild quadratisch zugeschnitten; der Server merkt sich nur, welche Nachricht aktuell ist.
