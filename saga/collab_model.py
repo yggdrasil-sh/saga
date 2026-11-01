@@ -581,7 +581,9 @@ def pm_to_block(n, resolve=None, depth=0, allow=None):
             if d.get(k) in ("", [], None):
                 d.pop(k, None)
         xd = ex.get("data") if isinstance(ex.get("data"), dict) else {}
-        d = {**_ordered(typ, d), **{k: v for k, v in xd.items() if k not in d}}
+        # Felder mit unpassender Form (block_to_pm: "bad") stehen in extra und gewinnen, solange das Feld im Knoten leer
+        # geblieben ist (sonst ginge z. B. text: 5 als "" verloren, Regel 0); wer dort schreibt, ersetzt sie
+        d = {**_ordered(typ, d), **{k: v for k, v in xd.items() if k not in d or d[k] in ("", [])}}
     out["data"] = d
     tn = {}
     if a.get("style") is not None:
