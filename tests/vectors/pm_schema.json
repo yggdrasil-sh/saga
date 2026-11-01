@@ -15094,6 +15094,145 @@
    "blocks": [
     {
      "data": {
+      "cols": [
+       {
+        "blocks": [
+         {
+          "data": {
+           "blocks": [
+            {
+             "data": {
+              "text": "tief"
+             },
+             "id": "k3",
+             "type": "paragraph"
+            }
+           ],
+           "level": 2,
+           "open": false,
+           "title": "T"
+          },
+          "id": "k2",
+          "type": "toggle"
+         }
+        ],
+        "w": 0.3
+       },
+       {
+        "blocks": [
+         {
+          "data": {
+           "blocks": [
+            {
+             "data": {
+              "text": "s"
+             },
+             "id": "k5",
+             "type": "paragraph"
+            }
+           ],
+           "sid": "AbCdEfGh12345678"
+          },
+          "id": "k4",
+          "type": "synced"
+         }
+        ],
+        "w": 0.7
+       }
+      ]
+     },
+     "id": "k1",
+     "type": "columns"
+    }
+   ],
+   "name": "Knoten columns mit Toggle und Kopie in Spalten",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "k1"
+      },
+      "content": [
+       {
+        "attrs": {
+         "w": 0.3
+        },
+        "content": [
+         {
+          "attrs": {
+           "id": "k2",
+           "level": 2,
+           "open": false
+          },
+          "content": [
+           {
+            "content": [
+             {
+              "text": "T",
+              "type": "text"
+             }
+            ],
+            "type": "ttitle"
+           },
+           {
+            "attrs": {
+             "id": "k3"
+            },
+            "content": [
+             {
+              "text": "tief",
+              "type": "text"
+             }
+            ],
+            "type": "paragraph"
+           }
+          ],
+          "type": "toggle"
+         }
+        ],
+        "type": "column"
+       },
+       {
+        "attrs": {
+         "w": 0.7
+        },
+        "content": [
+         {
+          "attrs": {
+           "id": "k4",
+           "sid": "AbCdEfGh12345678"
+          },
+          "content": [
+           {
+            "attrs": {
+             "id": "k5"
+            },
+            "content": [
+             {
+              "text": "s",
+              "type": "text"
+             }
+            ],
+            "type": "paragraph"
+           }
+          ],
+          "type": "synced"
+         }
+        ],
+        "type": "column"
+       }
+      ],
+      "type": "columns"
+     }
+    ],
+    "type": "doc"
+   },
+   "y": "<columns id=\"k1\"><column w=0.3><toggle id=\"k2\" level=2 open=false><ttitle>[[\"T\", {}]]</ttitle><paragraph id=\"k3\">[[\"tief\", {}]]</paragraph></toggle></column><column w=0.7><synced id=\"k4\" sid=\"AbCdEfGh12345678\"><paragraph id=\"k5\">[[\"s\", {}]]</paragraph></synced></column></columns>"
+  },
+  {
+   "blocks": [
+    {
+     "data": {
       "items": [
        {
         "content": "eins",

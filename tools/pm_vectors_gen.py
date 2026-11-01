@@ -130,6 +130,11 @@ def own_cases():
         {"id": "s1", "type": "synced", "data": {"sid": "AbCdEfGh12345678", "blocks": [P("s2", "geteilt"), {"id": "s3", "type": "toggle", "data": {
             "title": "x", "open": True, "blocks": []}}]}},
         {"id": "s4", "type": "synced", "data": {"sid": "ZyXwVuTs98765432"}}])
+    # T3: Spalten mit Toggle und synchronisiertem Block darin (Kopie mit src ist nicht server-kanonisch: clean_blocks
+    # macht daraus srev - der Browser-Test deckt sie ab)
+    add("Knoten columns mit Toggle und Kopie in Spalten", [{"id": "k1", "type": "columns", "data": {"cols": [
+        {"w": 0.3, "blocks": [{"id": "k2", "type": "toggle", "data": {"title": "T", "open": False, "level": 2, "blocks": [P("k3", "tief")]}}]},
+        {"w": 0.7, "blocks": [{"id": "k4", "type": "synced", "data": {"sid": "AbCdEfGh12345678", "blocks": [P("k5", "s")]}}]}]}}])
     add("Knoten list ungeordnet verschachtelt", [{"id": "l1", "type": "list", "data": {"style": "unordered", "meta": {}, "items": [
         {"content": "eins", "meta": {}, "items": [{"content": "eins.a", "meta": {}, "items": [{"content": "tief", "meta": {}, "items": []}]}]},
         {"content": "<b>zwei</b>", "meta": {}, "items": []}]}}])
