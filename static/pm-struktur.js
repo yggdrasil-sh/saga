@@ -709,7 +709,7 @@
       var rs = roots(selIds()); if (!rs.length || ro()) return false;
       var last = rs[rs.length - 1], st = state(), tr = st.tr, ids = [];
       var used = {}; X.walk(st.doc, function (x) { if (x.node.attrs.id) used[x.node.attrs.id] = 1; });
-      var copies = rs.map(function (x) { var c = X.freshIds(x.node, used); ids.push(c.attrs.id); return c; });
+      var copies = rs.map(function (x) { var c = X.freshIds(x.node, used, sidNew); ids.push(c.attrs.id); return c; });
       var at = last.pos + last.node.nodeSize;
       if (!canPlace(tr.doc, at, copies)) { var t = topOf(tr.doc, last.pos); at = t.pos + t.node.nodeSize; }
       tr.insert(at, copies);

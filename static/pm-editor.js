@@ -1619,13 +1619,15 @@
   // X sind die internen Bausteine dieses Editors (nur fuer Erweiterungen im Repo, keine oeffentliche Schnittstelle).
   // =================================================================================================================
   function usedIds() { var u = {}; walk(ed.state.doc, function (x) { if (x.node.attrs.id) u[x.node.attrs.id] = 1; }); return u; }
-  function freshIds(node, used) {                    // tiefe Kopie mit neuen Block-IDs (Duplizieren, Uebernehmen)
-    used = used || usedIds();
+  function freshIds(node, used, sidFn) {             // tiefe Kopie mit neuen Block-IDs (Duplizieren, Uebernehmen)
+    used = used || usedIds();                         // Kopie ist nie selbst Konfliktblock; sidFn: Originale bekommen neue sid
     return (function rec(n) {
       if (n.isText) return n;
       var kids = []; n.forEach(function (c) { kids.push(rec(c)); });
       var a = n.attrs;
       if (BLOCKSET[n.type.name]) { var id; do { id = newId(); } while (used[id]); used[id] = 1; a = Object.assign({}, a, { id: id }); }
+      if (BLOCKSET[n.type.name] && a.conflict) a = Object.assign({}, a, { conflict: null });
+      if (sidFn && n.type.name === 'synced' && !(a.extra && a.extra.data && a.extra.data.src)) a = Object.assign({}, a, { sid: sidFn() });
       return n.type.create(a, kids.length ? kids : null, n.marks);
     })(node);
   }
