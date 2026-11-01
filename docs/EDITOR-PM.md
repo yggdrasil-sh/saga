@@ -117,7 +117,8 @@ HKTools.register('widget', {
 - **Brücke** `HKTools.fromEditorJs(Klasse, opts)` für die bisherigen Editor.js-Klassen (`HKPages.k.tools`):
   `o = {data, api, block, readOnly, config}`, `block.dispatchChange` und die per `opts.hook` umgebogenen Schreibstellen
   (`S.dirtyBody = true; schedule()`) → `ctx.change(save())`. `opts.known`: Felder, die `save()` kennt – alle anderen
-  bleiben erhalten (Regel 0). `opts.carry(base, out)`: Felder nach `save()` übernehmen. `opts.live(inst, data)`: neue
+  bleiben erhalten (Regel 0). `opts.carry(base, out)`: Felder nach `save()` übernehmen. `opts.meta(base, out)`: Optionen für `ctx.change` (z. B.
+  `{history: false}` für den einmaligen Ansichten-Nachtrag alter DB-Einbettungen). `opts.live(inst, data)`: neue
   Daten ohne Neuaufbau; sonst Neuaufbau, verschoben solange ein Eingabefeld im Werkzeug, ein Menü oder der Dialog offen
   ist. Die Brücke ist Übergang bis T7.
 - **Daten-Werkzeuge** (`static/pm-tools-daten.js`): `database` (Ansicht, Ansichten, Kopf; neue Zeilen gehen wie bisher
