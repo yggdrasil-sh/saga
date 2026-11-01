@@ -13,7 +13,7 @@
 {% if chat_enabled %}<link rel="stylesheet" href="/static/calls.css?v={{ v }}">{% endif %}
 <link rel="stylesheet" href="/static/ai.css?v={{ v }}">
 </head>
-<body class="notes-page{% if embed %} embed{% endif %}" data-v="{{ v }}">
+<body class="notes-page{% if embed %} embed{% endif %}" data-v="{{ v }}" data-editor="{{ editor or 'editorjs' }}">
 <a class="skip-link" href="#page" data-skip="pg-h1 pg-trash pg-empty pg-main">{{ _("Zum Inhalt") }}</a>
 <header class="np-head">
   <button type="button" class="icon-btn np-side-btn" id="pg-side-btn" title="{{ _("Seitenleiste ausblenden") }} ({{ _("Strg") }}+\)" aria-label="{{ _("Seitenleiste ein- oder ausblenden") }}" aria-pressed="true" aria-controls="pg-side">
@@ -151,6 +151,7 @@
 <script src="/static/mention.js?v={{ v }}"></script>
 <script src="/static/pages.js?v={{ v }}"></script>
 <script src="/static/editor-doc.js?v={{ v }}"></script>
+<script src="/static/pm-editor.js?v={{ v }}"></script>
 <script src="/static/comments.js?v={{ v }}"></script>
 <script src="/static/keys.js?v={{ v }}"></script>
 <script src="/static/settings.js?v={{ v }}"></script>

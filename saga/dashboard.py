@@ -14,7 +14,7 @@ from db import connect as _db
 from fastapi import APIRouter
 from saga import avatars, chat, i18n, mfa, publish
 from saga.sharing import Access, unread_count
-from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, FAVICONS_ENV, ICON_CDN, direct_icons_on, icon_csp, icon_direct, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
+from saga.core import (ADMIN_URL, ASSET_V, editor_engine, CACHE_TTL, CA_FILE, FAVICONS_ENV, ICON_CDN, direct_icons_on, icon_csp, icon_direct, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
                        remember_ui_lang, std_name, t, title, tmpl, user_info)
 
 router = APIRouter()
@@ -235,7 +235,8 @@ def notes_page(request: Request):
         n_chat = chat.unread_total(c, uid)
     html = tmpl.get_template("notes.html").render(title=title(), name=request.session.get("name", uid), v=ASSET_V, embed=embed,
                                                   chat_enabled=chat.enabled(), chat_unread=n_chat, me_avatar=avatars.my_url(uid),
-                                                  admin_url=ADMIN_URL if user_info(uid)["is_admin"] else "")
+                                                  admin_url=ADMIN_URL if user_info(uid)["is_admin"] else "",
+                                                  editor=editor_engine(uid))      # 2.5 (T2): editorjs | tiptap
     headers = icon_csp(SEC_HEADERS, uid)             # Einstellungen -> Lesezeichen: Symbole direkt von der Seite
     if embed:
         headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("frame-ancestors 'none'", "frame-ancestors 'self'")

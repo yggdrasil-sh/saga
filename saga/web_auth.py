@@ -11,7 +11,8 @@ from db import clean_line, connect as _db
 from fastapi import APIRouter
 from saga import avatars, i18n, mfa
 from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, HANDLE_RE, MEDIA_FRONT, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, lang_switch_response,
-                       set_user_lang, t, title, tmpl, user_info, user_lang)
+                       set_user_lang, t, title, tmpl, user_info, user_lang,
+                       editor_admin, editor_engine, set_user_editor_tiptap, user_editor_tiptap)
 from saga.dashboard import set_start_page, source_label, start_page
 
 router = APIRouter()
@@ -476,6 +477,32 @@ async def api_account_password(request: Request):
 def lang_switch(request: Request):
     """Sprachumschalter unten auf der Anmeldeseite (auch 2FA, Registrierung, App-Anmeldung, oeffentliche Fehlerseiten)."""
     return lang_switch_response(request, _session_user(request), BASE_URL.startswith("https://"))
+
+
+@router.get("/api/account/editor")
+def api_account_editor(request: Request):
+    """Seiten-Editor (2.5, Tiptap-Umbau T2): admin = editorjs|tiptap|choice, choice = Konto darf waehlen,
+    tiptap = eigene Wahl (nur bei choice wirksam), engine = gilt fuer dieses Konto."""
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    adm = editor_admin()
+    return JSONResponse({"admin": adm, "choice": adm == "choice", "tiptap": user_editor_tiptap(uid), "engine": editor_engine(uid)})
+
+
+@router.put("/api/account/editor")
+async def api_account_editor_put(request: Request):
+    """Eigene Wahl {tiptap: true|false} - nur, wenn der Admin die Wahl freigegeben hat (editor.engine = choice)."""
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    b = await _body(request) or {}
+    if not isinstance(b.get("tiptap"), bool):
+        return _bad(t("Ungültige Eingabe."))
+    if editor_admin() != "choice":
+        return _bad(t("Der Editor wird vom Admin festgelegt."), 403)
+    set_user_editor_tiptap(uid, b["tiptap"])
+    return JSONResponse({"ok": True, "tiptap": b["tiptap"], "engine": editor_engine(uid)})
 
 
 @router.put("/api/account/lang")

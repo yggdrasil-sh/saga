@@ -126,6 +126,41 @@ def server_lang():
     return i18n.norm(auth.settings().get("default_lang"))
 
 
+# --- Seiten-Editor (2.5, Tiptap-Umbau T2, Entscheidung T-E2): Admin editor.engine = editorjs | tiptap | choice;
+#     bei choice waehlt jedes Konto selbst (user_kv 'editor_tiptap' = '1'). Standard editorjs - ohne Schalter aendert
+#     sich nichts. Die Wahl gilt beim Laden der Seite (Wechsel = neu laden).
+EDITOR_ENGINES = ("editorjs", "tiptap", "choice")
+
+
+def editor_admin():
+    v = (auth.settings().get("editor") or {}).get("engine")
+    return v if v in EDITOR_ENGINES else "editorjs"
+
+
+def user_editor_tiptap(uid):
+    from db import connect
+    with connect() as c:
+        r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k='editor_tiptap'", (uid,)).fetchone()
+    return bool(r and r[0] == "1")
+
+
+def set_user_editor_tiptap(uid, on):
+    from db import connect
+    with connect() as c, c:
+        if on:
+            c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'editor_tiptap', '1')", (uid,))
+        else:
+            c.execute("DELETE FROM user_kv WHERE uid=? AND k='editor_tiptap'", (uid,))
+
+
+def editor_engine(uid):
+    """Editor fuer dieses Konto: 'editorjs' oder 'tiptap'."""
+    a = editor_admin()
+    if a == "choice":
+        return "tiptap" if uid and user_editor_tiptap(uid) else "editorjs"
+    return a
+
+
 # --- Standardnamen -------------------------------------------------------------------------------------
 # Entscheidung (Review, Mehrsprachigkeit):
 #  - Namen, die der Server beim ANLEGEN vergibt und die danach normale, umbenennbare Benutzerdaten sind (Seite

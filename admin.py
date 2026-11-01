@@ -807,6 +807,8 @@ async def settings_post(request: Request):
             return max(lo, min(hi, int(f.get(k) or dflt)))
         except (TypeError, ValueError):
             return dflt
+    eng = f.get("editor_engine") if f.get("editor_engine") in ("editorjs", "tiptap", "choice") else "editorjs"
+    auth.save_setting("editor", {**(auth.settings().get("editor") or {}), "engine": eng})          # 2.5 (Tiptap-Umbau T2)
     live_was = bool((auth.settings().get("notes") or {}).get("live"))
     auth.save_setting("notes", {**(auth.settings().get("notes") or {}), "live": _on(f, "notes_live")})   # 2.5 (P3 Stufe 2)
     if live_was != _on(f, "notes_live"):

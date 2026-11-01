@@ -66,11 +66,12 @@
     calendarSection(body);
     immichSection(body);
     tokenSection(body);
+    pagesSection(body);                                      // 2.5 (Tiptap T2): Seiten-Editor
     if (window.HKPush) HKPush.section(body);                 // Mitteilungen aufs Handy/Desktop (static/push.js)
     if (window.HKBackup) HKBackup.section(body);             // Mein Backup (static/backup.js, 2.3)
     if (window.HKNextcloud) HKNextcloud.section(body);       // Nextcloud-Dateien in Seiten (static/nextcloud.js, 2.3)
     if (window.HKApi) HKApi.section(body);                   // 2.5: API-Tokens, Webhooks, MCP (static/apitokens.js)
-    var TABS = [['account', T('Konto')], ['push', T('Mitteilungen')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['nextcloud', 'Nextcloud'], ['backup', T('Mein Backup')], ['apps', T('Apps & Geräte')], ['api', 'API']];
+    var TABS = [['account', T('Konto')], ['push', T('Mitteilungen')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['nextcloud', 'Nextcloud'], ['backup', T('Mein Backup')], ['apps', T('Apps & Geräte')], ['pages', T('Seiten')], ['api', 'API']];
     if (!window.HKApi) TABS.pop();
     if (!window.HKBackup) TABS.splice(6, 1);
     if (!window.HKNextcloud) TABS.splice(5, 1);
@@ -102,6 +103,29 @@
     if (focus === 'lang') focusLang = true;                   // Benutzermenue -> Sprache: Konto, Auswahl fokussiert
     var start = typeof focus === 'string' && $tab(focus) ? focus : 'account';
     show(start);
+  }
+
+  // --- Abschnitt "Seiten" (2.5, Tiptap-Umbau T2): neuer Seiten-Editor an/aus, nur wenn der Admin die Wahl freigibt
+  //     (editor.engine = choice). Gilt ab dem naechsten Laden der Seiten.
+  function pagesSection(body) {
+    var sec = el('section', 'hk-set hk-set-pages'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, T('Seiten')));
+    var box = el('div'); sec.appendChild(box);
+    api('GET', '/api/account/editor').then(function (d) {
+      var NAMES = { editorjs: T('Klassisch (Editor.js)'), tiptap: T('Neu (Tiptap, Test)') };
+      if (!d.choice) { box.appendChild(el('p', 'hk-hint', T('Seiten-Editor: {name} – festgelegt vom Admin.', { name: NAMES[d.engine] || d.engine }))); return; }
+      var l = el('label', 'hk-avset-row'), i = el('input', 'hk-switch'); i.type = 'checkbox'; i.setAttribute('role', 'switch'); i.checked = !!d.tiptap;
+      i.id = 'hk-editor-tiptap';
+      l.appendChild(el('span', null, T('Neuen Seiten-Editor verwenden (Test)'))); l.appendChild(i); box.appendChild(l);
+      var st = el('div', 'hk-status'); st.setAttribute('role', 'status'); box.appendChild(st);
+      box.appendChild(el('p', 'hk-hint', T('Der neue Editor ist noch im Aufbau. Blöcke, die er noch nicht kann, zeigt er als Karte und lässt sie unverändert – bearbeiten kannst du sie im klassischen Editor. Gespeichert wird in beiden Fällen dasselbe. Gilt ab dem nächsten Laden der Seite.')));
+      i.addEventListener('change', function () {
+        i.disabled = true;
+        api('PUT', '/api/account/editor', { tiptap: i.checked }).then(function (r) {
+          i.checked = !!r.tiptap; status(st, T('✓ Gespeichert – Seite neu laden, um zu wechseln'), 'ok');
+        }).catch(function (err) { i.checked = !i.checked; status(st, err.message, 'err'); }).then(function () { i.disabled = false; });
+      });
+    }).catch(function () { sec.remove(); });
   }
 
   // --- Abschnitt "Immich" (eigener API-Schluessel; der Schluessel verlaesst den Server nie wieder) ------------------

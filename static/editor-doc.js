@@ -49,10 +49,11 @@
 //   focus(id, 'start'|'end')    -> true|false: Schreibmarke an Anfang/Ende des Blocks
 //   onChange(cb)                -> Abmeldefunktion. cb({ids}) bei jeder Inhaltsaenderung in irgendeinem Behaelter
 //                                  (nicht waehrend die Seite laedt); ids = betroffene Bloecke, soweit bekannt.
-//   kind                        -> 'editorjs' (T2: 'tiptap')
+//   kind                        -> 'editorjs' (static/pm-editor.js: 'tiptap', gleiche Semantik)
 (function () {
   'use strict';
   if (!window.HKPages || !HKPages.k) return;
+  if (document.body.dataset.editor === 'tiptap') return;     // T2: Fassade kommt aus static/pm-editor.js (kind 'tiptap')
   var K = HKPages.k, BOX = document.getElementById('pg-editor');
   if (!BOX) return;
   var AID = 'data-block-id', ATY = 'data-block-type', SEL = 'ce-block--selected';
