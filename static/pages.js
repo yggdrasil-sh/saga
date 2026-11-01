@@ -1656,6 +1656,7 @@
     return { file: { url: u }, caption: cap ? cap.innerHTML : '', withBorder: has('withBorder'), withBackground: has('withBackground'), stretched: has('stretched') };
   }
   document.addEventListener('mousedown', function (e) {
+    if (TIPTAP) return;                                  // Tiptap: Bildauswahl/Kopieren in static/pm-tools-medien.js
     var t = e.target, box = $('pg-editor');
     var im = t && t.closest && t.closest('.image-tool__image');
     if (!im || !box || !box.contains(im)) { if (picked && !(t && t.closest && t.closest('.menu, .ce-popover'))) unpick(); return; }
@@ -1688,17 +1689,12 @@
         });
       });
   }
-  function onClip(e) {
-    var p = pickedBlock(); if (!p) return;
-    var a = document.activeElement;
-    if (a && a !== document.body && (a.isContentEditable || /^(INPUT|TEXTAREA)$/.test(a.tagName)) && !p.blk.contains(a)) return;   // Text woanders markiert
-    var data = p.data || imgData(p.blk);
-    if (!data.file || !data.file.url) return;
-    var c = clipHtml(data), dt = e.clipboardData;
-    e.preventDefault(); e.stopImmediatePropagation();
+  // Bild fuer die Zwischenablage (auch Tiptap, static/pm-tools-medien.js): Text, HTML mit data-saga-block, Saga-Block und
+  // - wo der Browser es erlaubt - zusaetzlich image/png fuer andere Programme
+  function clipImage(dt, data) {
+    var c = clipHtml(data);
     dt.setData('text/plain', c.text); dt.setData('text/html', c.html);
     dt.setData('application/x-editor-js', JSON.stringify([{ tool: 'image', data: data }]));
-    // Zusaetzlich als Bild fuer andere Programme (ersetzt den Inhalt oben; HTML mit data-saga-block bleibt dabei)
     if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
       try {
         var item = new ClipboardItem({ 'image/png': pngOf(data.file.url), 'text/html': new Blob([c.html], { type: 'text/html' }),
@@ -1706,6 +1702,16 @@
         navigator.clipboard.write([item]).catch(function () { /* nicht erlaubt: Text/HTML/Block von oben bleiben */ });
       } catch (err) { /* aeltere Browser */ }
     }
+  }
+  function onClip(e) {
+    if (TIPTAP) return;
+    var p = pickedBlock(); if (!p) return;
+    var a = document.activeElement;
+    if (a && a !== document.body && (a.isContentEditable || /^(INPUT|TEXTAREA)$/.test(a.tagName)) && !p.blk.contains(a)) return;   // Text woanders markiert
+    var data = p.data || imgData(p.blk);
+    if (!data.file || !data.file.url) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    clipImage(e.clipboardData, data);
     if (e.type === 'cut' && !readOnly()) {
       var i = p.ed.blocks.getBlockIndex ? p.ed.blocks.getBlockIndex(p.blk.dataset.id) : -1;
       unpick();
@@ -1836,6 +1842,7 @@
     })).then(function () { return JSON.parse(s.replace(FILE_REF, function (r) { return refs[r]; })); });
   }
   document.addEventListener('paste', function (e) {
+    if (TIPTAP) return;                                  // Tiptap: handlePaste in static/pm-tools-medien.js (gleiche Bausteine)
     var box = $('pg-editor'), t = e.target, p = pickedBlock();
     var inEd = box && t && t.nodeType === 1 && box.contains(t);
     if ((!inEd && !p) || !S.cur || readOnly() || !e.clipboardData) return;
@@ -7645,7 +7652,12 @@
   }
 
   // --- Spalten: jede Spalte ist ein eigener Editor (Editor-in-Editor) ----------------
-  function nestedTools() { var t = {}; Object.keys(S.tools || {}).forEach(function (k) { if (k !== 'columns') t[k] = S.tools[k]; }); return t; }
+  function nestedTools() { var t = {}, src = S.tools || ttTools(); Object.keys(src).forEach(function (k) { if (k !== 'columns') t[k] = src[k]; }); return t; }
+  // Tiptap (kein S.tools): Blocktypen des Saga-Schemas als Werkzeugliste fuer cleanClip
+  function ttTools() {
+    var t = {}; ((window.HKPmSchema && HKPmSchema.BLOCKS) || []).forEach(function (k) { if (k !== 'synced_ref' && k !== 'unknown') t[k] = 1; });
+    return t;
+  }
   // 2.5 (P6-6): im synchronisierten Block keine weiteren synchronisierten Bloecke (der Server loest sie ohnehin auf)
   function syncedInner() { var t = nestedTools(); delete t.synced; delete t.hksync; return t; }
   // Editor.js kennt destroy() erst, wenn der Editor fertig ist - sonst danach abbauen (schneller Seitenwechsel)
@@ -8882,10 +8894,16 @@
          picker: function (rect, insert) { pick.range = null; pick.insert = insert; openPicker(rect); },
          // 2.5 (Tiptap T4b, static/pm-tools-daten.js): Werkzeugklassen fuer die Node-View-Bruecke - unveraendert wie in Editor.js
          tools: { DatabaseTool: DatabaseTool, TasksTool: TasksTool, CalendarTool: CalendarTool, WidgetTool: WidgetTool,
-                  ButtonsTool: ButtonsTool, wgKinds: WG_KINDS, wgDefaults: wgDefaults, wgLoad: function () { return loadWidgets(); } },
+                  ButtonsTool: ButtonsTool, wgKinds: WG_KINDS, wgDefaults: wgDefaults, wgLoad: function () { return loadWidgets(); },
+                  // 2.5 (Tiptap T4a, static/pm-tools-medien.js): Nextcloud/Einbetten ueber die Bruecke, Zwischenablage, Dateiverweise
+                  NextcloudTool: NextcloudTool, EmbedTool: EmbedTool },
+         media: { fixRefs: fixRefs, clipImage: clipImage, fileRef: FILE_REF, ytId: ytId, ncKey: ncKey,
+                  // Nextcloud-Block einer anderen Person, der nicht schon in dieser Seite stand: nicht einfuegen/speichern (wie validate)
+                  ncOk: function (d) { return !!(d && d.fileid) && !(d.author && S.ncMe && d.author !== S.ncMe && !(S.ncKeys || {})[ncKey(d)]); },
+                  ncAdd: function (d) { S.ncKeys = S.ncKeys || {}; S.ncKeys[ncKey(d)] = true; S.ncStat = null; } },
          dup: function (ed, blk) { return dupBlock(ed, blk); }, styleAt: styleAt, styleBlock: styleBlock, colors: COLORS, colorNames: COLOR_NAMES,
          toggleOf: function (node) { var w = node && node.closest ? node.closest('.tgl') : null; return w ? TGL_OF.get(w) || null : null; },
-         embed: EMBED, isMac: isMac, cleanClip: function (list, nested) { return cleanClip(list, nested ? nestedTools() : (S.tools || {})); }, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
+         embed: EMBED, isMac: isMac, cleanClip: function (list, nested) { return cleanClip(list, nested ? nestedTools() : (S.tools || ttTools())); }, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
          recents: recents, decorate: function () { decorateLinks(); }, ancestors: ancestors,
          // 2.5 (P6-1/P6-4, static/editor25.js): Mehrfachauswahl, Vorschaubilder, Verschieben
          uph: UPH, remoteId: remoteId, shared: function () { return S.shared || []; },

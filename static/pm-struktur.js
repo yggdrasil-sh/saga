@@ -1087,7 +1087,7 @@
       anchor = anchor || anchorFor(id);
       var n = x.node, t = n.type.name, readonly = ro();
       HK.openMenu(anchor, function (m) {
-        m.appendChild(el('div', 'menu-label pm-blockmenu', TYPE_NAME[t] || X.sagaType(n)));
+        m.appendChild(el('div', 'menu-label pm-blockmenu', TYPE_NAME[t] || (X.typeName && X.typeName(t)) || X.sagaType(n)));
         if (!readonly) {
           if (X.convertible(n)) {
             m.appendChild(HK.menuItem(T('Umwandeln in'), null, { icon: '⇄', sub: function (sm) {
@@ -1161,6 +1161,7 @@
       } else if (t === 'quote') {
         m.appendChild(HK.menuItem(n.attrs.alignment === 'center' ? T('Linksbündig') : T('Zentriert'), function () { setA({ alignment: n.attrs.alignment === 'center' ? 'left' : 'center' }); }, { icon: '⇔' }));
       }
+      if (X.settings) X.settings(m, x);   // weitere Typen (pm-tools-medien.js: Bild, Einbetten)
     }
     function convertBlock(id, key) {
       var x = X.findId(id); if (!x || ro()) return;

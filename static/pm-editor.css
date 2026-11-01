@@ -142,3 +142,30 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
   background:color-mix(in srgb,var(--accent) 10%,transparent);border-radius:2px}
 .page-body .pm-doc.pm-blocksel{caret-color:transparent}
 .page-body .pm-sel{border-radius:4px}
+
+/* Medien (T4a, static/pm-tools-medien.js): Bild mit Unterschrift, Datei, Einbetten/Nextcloud ueber die Bruecke */
+.page-body .pm-b-image{margin:.4rem 0}
+.page-body .pm-img .image-tool__image{margin-bottom:.25rem;overflow:visible}
+.page-body .pm-img .image-tool__image-picture{display:block;max-width:100%;margin:0 auto;border-radius:8px;cursor:pointer;user-select:none}
+.page-body .pm-img.image-tool--stretched .image-tool__image-picture{width:100%;max-height:none}
+.page-body .pm-img.image-tool--withBackground .image-tool__image{padding:15px}
+.page-body .pm-img.image-tool--withBackground .image-tool__image-picture{max-width:60%}
+.page-body .pm-img.hk-iw.image-tool--withBackground .image-tool__image-picture{max-width:100%}
+.page-body .pm-img-cap{color:var(--muted);font-size:.85rem;text-align:center;min-height:1.2em;outline:none}
+.page-body .pm-img-cap>[data-pm-part]{display:block;outline:none}
+.page-body .pm-img-cap .is-empty[data-ph]::before{left:50%;transform:translateX(-50%);white-space:nowrap}
+.page-body .pm-img-empty .pm-img-cap{display:none}
+.page-body .pm-img-up{padding:.9rem 1rem;border:1px dashed var(--border);border-radius:8px;text-align:center}
+.page-body .pm-b-image.ProseMirror-selectednode{outline:none}
+.page-body .pm-b-image.ProseMirror-selectednode .image-tool__image{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
+.page-body .hk-tool-attaches{margin:.35rem 0}
+.page-body .pm-att{display:flex;align-items:center;gap:.7rem;padding:.55rem .75rem;border:1px solid var(--border);border-radius:8px;background:var(--card-h)}
+.page-body .pm-att-ic{min-width:2.2rem;height:2.2rem;display:flex;align-items:center;justify-content:center;border-radius:7px;background:var(--fg);color:var(--card);font:700 .62rem ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.02em}
+.page-body .pm-att-tx{display:flex;flex-direction:column;min-width:0;flex:1;gap:2px}
+.page-body .pm-att-t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+.page-body .pm-att-in{border:0;background:transparent;padding:0;font:inherit;font-weight:600;width:100%;outline:none}
+.page-body .pm-att-sz{font-size:.78rem;color:var(--muted)}
+.page-body .pm-att-dl{padding:.3rem .5rem;border-radius:6px;color:var(--fg);text-decoration:none;background:var(--card)}
+.page-body .pm-att-dl:hover{background:var(--card-h)}
+.page-body .pm-att-none{color:var(--muted)}
+.pg-locked .page-body .pm-img-up{display:none}
