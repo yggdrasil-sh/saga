@@ -48,19 +48,26 @@
   };
   R.typescript = R.javascript;
   function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-  function highlight(code, lang) {
-    var rules = R[lang]; if (!rules) return esc(code);
-    var out = '', i = 0, plain = '', n = code.length;
+  // Tokens [[von, bis, Klasse]] (Klasse ohne "tk-") - auch fuer den Tiptap-Editor (Dekorationen, static/pm-tools-text.js)
+  function tokens(code, lang) {
+    var rules = R[lang], out = []; if (!rules) return out;
+    var i = 0, n = code.length;
     while (i < n) {
       var hit = null;
       for (var r = 0; r < rules.length; r++) { var re = rules[r][1]; re.lastIndex = i; var m = re.exec(code); if (m && m[0].length) { hit = [rules[r][0], m[0]]; break; } }
-      if (hit) { out += esc(plain) + '<span class="tk-' + hit[0] + '">' + esc(hit[1]) + '</span>'; plain = ''; i += hit[1].length; }
+      if (hit) { out.push([i, i + hit[1].length, hit[0]]); i += hit[1].length; }
       else {                                   // bis zum naechsten Wortanfang ungefaerbt (Woerter nicht mitten drin treffen)
-        var ch = code[i]; plain += ch; i++;
-        if (/\w/.test(ch)) while (i < n && /\w/.test(code[i])) { plain += code[i]; i++; }
+        var ch = code[i]; i++;
+        if (/\w/.test(ch)) while (i < n && /\w/.test(code[i])) i++;
       }
     }
-    return out + esc(plain);
+    return out;
+  }
+  function highlight(code, lang) {
+    if (!R[lang]) return esc(code);
+    var out = '', at = 0;
+    tokens(code, lang).forEach(function (t) { out += esc(code.slice(at, t[0])) + '<span class="tk-' + t[2] + '">' + esc(code.slice(t[0], t[1])) + '</span>'; at = t[1]; });
+    return out + esc(code.slice(at));
   }
 
   // --- Editor.js-Werkzeug ---------------------------------------------------------------------
@@ -147,5 +154,5 @@
   HKCode.prototype.destroy = function () { if (this.mUrl) URL.revokeObjectURL(this.mUrl); clearTimeout(this.mT); clearTimeout(this.rT); };
 
   window.HKCode = HKCode;
-  window.HKCodeHL = { highlight: highlight, norm: norm, langs: LANGS };
+  window.HKCodeHL = { highlight: highlight, tokens: tokens, norm: norm, langs: LANGS };
 })();
