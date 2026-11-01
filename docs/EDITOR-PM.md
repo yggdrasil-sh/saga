@@ -80,9 +80,46 @@ Gemessen mit `@tiptap/y-tiptap` 3.0.12 (`tools/pm_ytest.mjs`, Teil 4):
 - **Unbekanntes Attribut** (Block oder Inline-Knoten): bleibt beim Laden, wird beim nächsten Schreiben **dieses**
   Blocks entfernt; andere Blöcke behalten es.
 
-Schutz heute: der Server gibt Clients mit anderer Schema-Prüfsumme nur Lesezugriff (`ro: "schema"`). Der Web-Client
-darf dann **nichts** senden – auch nicht die Löschungen, die y-tiptap beim Laden erzeugt. Weitere Gegenmaßnahmen
-(Knoten `unknown` statt Löschen, Handshake vor dem Binden) folgen in T5.
+Schutz: der Server gibt Clients mit anderer Schema-Prüfsumme nur Lesezugriff (`ro: "schema"`). Der Web-Client
+(`static/pm-live.js`, T5) prüft die Prüfsumme schon vor dem `sub` gegen `hello` und bindet bei Abweichung gar nicht
+(nur lesen, Hinweis „Neu laden“). Zusätzlich: alles, was y-tiptap **während** des Bindens nach Yjs schreibt (Löschen
+unbekannter Knoten/Marken), wird nie gesendet; kommt dabei etwas zustande, gilt die Seite ebenfalls als
+„anderes Schema“ (nur lesen). Unbekannte Saga-Typen sind im Schema ohnehin der Knoten `unknown`.
+
+## Live (T5, `static/pm-live.js`)
+
+Gleichzeitig bearbeiten Stufe 2 im Tiptap-Editor über `WS /api/collab` (Protokoll `docs/APP-API-COLLAB.md`). Nur mit
+Admin-Schalter `notes.live` (Feature `live1`); sonst und bei jedem Fehler Stufe 1 wie bisher.
+
+- **Ablauf:** `editor.render(data)` zeigt die Seite zuerst wie bisher aus Block-JSON (Stufe 1, sofort bedienbar). Parallel:
+  `saga-y.js` laden, eine Verbindung je Tab, `sub` mit Schema und `caps`. Nach `sync2` speichert `pages.js` noch offene
+  Eingaben per PATCH, dann baut `pm-live.js` **dieselbe** Tiptap-Instanz mit `Collaboration` (Fragment `prosemirror`)
+  und `CollaborationCaret` neu auf; Schreibmarke über Block-ID + Abstand. Seitenwechsel = `unsub`.
+- **Speichern:** live gibt es keinen Speichern-Moment (Status still). `pages.js` fragt `editor.live()` und schickt den
+  Inhalt dann nicht per PATCH (der Server materialisiert, kein Doppelschreiben); der Titel bleibt PATCH.
+- **Undo:** `UndoRedo` entfällt live, es gilt y-undo (`Mod-z`/`Mod-y`) – nur eigene Änderungen.
+- **Cursor:** eigene `render`-Funktion (CSP `style-src 'self'`): `span.hk-caret.hk-c-<palette>` mit Namensschild,
+  Auswahl `hk-csel hk-bg-<palette>`; Name/Farbe kommen vom Server (Anzeigename). Die Blockmarkierung der Anwesenheit
+  Stufe 1 (`live.js` `markBlocks`) ruht, solange live gebunden ist; die Avatare im Kopf bleiben.
+- **Rollen:** `view`/`comment`/gesperrt → nicht bearbeitbar, sendet keine Updates (Awareness ja). `hello` mit
+  `update: true` (Rolle/Sperre geändert) baut den Editor um.
+- **reject:** Server-Stand übernehmen, eigene unbestätigte Eingaben wieder anwenden, sofern sie nicht am Abgelehnten
+  hängen; `pending` → alles Unbestätigte zusammen neu senden; `retry` → nach 1–5 s; drei Ablehnungen in einer Minute →
+  Stufe 1 für diese Seite.
+- **Rückfall Stufe 1:** Schließcodes 4403/4400/4426 (bis zum nächsten `features`-Abruf kein neuer Versuch), Verbindung weg
+  (Neuverbindung 1, 2, 4 … 30 s; 4429 5–30 s; 1012 1–5 s), `bye`, `error` beim `sub`. Der aktuelle Stand bleibt im Editor,
+  Unbestätigtes speichert `pages.js` per PATCH `merge: 1`; nach der Neuverbindung wird wieder live gebunden.
+- **y-tiptap 3.0.12, zwei Korrekturen:** (1) nach fremdem Text im selben Absatz bleibt die eigene Schreibmarke nicht
+  mehr an der absoluten Stelle stehen (Plugin `hkLiveCaret`, Auswahl aus den relativen Positionen); (2) bei
+  Strukturänderungen (Block verschieben) schreibt y-tiptap sonst eine Wurzel `__tiptap_position_migrations:…`, die der
+  Server ablehnt (`reject type`) – Plugin `hkLiveNoMigration` verwirft sie vor dem Abgleich.
+- **Zusammenspiel:** `UniqueID` vergibt keine IDs für `y-sync`-Transaktionen; der Provider meldet kein `synced`
+  (sonst vergäbe UniqueID beim Laden IDs im ganzen Dokument). `hkGuard` lässt `y-sync`-Transaktionen durch; Karten
+  (Node-Views aus `pm-tools*.js`) bekommen fremde Änderungen über `update(data)`. Toggle auf/zu schreibt nur der eigene
+  Klick (Lesen: nur lokal). `applyBlocks` (Stufe-1-Rebase) ist live ohne Wirkung.
+- **Diagnose:** `HKPmLive.state()` (Modus `aus`/`stufe1`/`live`/`lock`, Zähler), `HKPmLive.kill(ms)` (Tests).
+- **Tests:** `tests/browser_tiptap_live.js` (zwei Konten, nur `SAGA_EDITOR=tiptap`, `notes.live` an; optional
+  `LIVE_CMD` für Schalter aus/an während der Sitzung).
 
 ## Werkzeuge als Node-Views (T4b)
 

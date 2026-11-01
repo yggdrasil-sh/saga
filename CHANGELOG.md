@@ -83,6 +83,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Intern: Erweiterungs-Schnittstelle `HKPmEditor.use`, Kern-Cache für Block-IDs und Schutzbereiche, Marken über
   Karten werden nur außerhalb angewandt. Test `tests/browser_tiptap_struktur.js`, Doku `docs/EDITOR-PM.md` (Struktur T3).
 
+### Neu (2.5, Tiptap-Umbau T5: live gleichzeitig bearbeiten im neuen Editor)
+- Im Tiptap-Editor schreiben mehrere Personen live in derselben Seite und sehen Eingaben und Cursor (Anzeigename,
+  Palettenfarbe) der anderen sofort – wenn der Admin-Schalter „Gleichzeitig bearbeiten live“ an ist. Sonst, ohne
+  WebSocket oder bei Fehlern arbeitet derselbe Editor wie bisher mit Speichern und blockweisem Zusammenführen weiter.
+  Undo nimmt live nur eigene Änderungen zurück. Seiten mit anderer Editor-Version: nur lesen mit Hinweis „Neu laden“.
+  `static/pm-live.js`, `static/pm-live.css`; Beschreibung `docs/EDITOR-PM.md` „Live“. Test `tests/browser_tiptap_live.js`.
+- Server: ein gespeicherter Live-Zustand mit anderer Schema-Version, der noch nicht übernommene Änderungen enthält,
+  wird beim Öffnen zuerst in den Seiteninhalt übernommen statt verworfen (`saga/collab.py`, Test in `tests/collab.py`).
+
 ### Neu/Intern (2.5, Tiptap-Umbau T4a: Medien)
 - Im neuen Editor sind **Bild, Datei, Bild aus Immich, Nextcloud-Datei und Einbetten** keine Karten mehr
   (`static/pm-tools-medien.js`). Bild: Unterschrift mit Formatierung, Hochladen, Breite über die Griffe, Ausrichtung,

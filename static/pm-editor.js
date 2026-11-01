@@ -34,7 +34,10 @@
   // Werkzeug-Skripte der Rolle t4b (static/pm-tools.js, static/pm-tools-daten.js) - werden mitgeladen, sobald sie da sind
   var TOOL_SCRIPTS = ['pm-tools.js', 'pm-tools-daten.js', 'pm-tools-medien.js'];
   // Erweiterungen des Kern-Editors (T3: pm-struktur.js), melden sich mit HKPmEditor.use(fn) an (siehe "Erweiterungen")
-  var EXT_SCRIPTS = ['pm-struktur.js', 'pm-tools-text.js'];          // T4c: Tabelle, Code, Mathe-Block
+  // T4c: pm-tools-text.js = Tabelle, Code, Mathe-Block; T5: pm-live.js = gleichzeitig bearbeiten live (Stufe 2)
+  var EXT_SCRIPTS = ['pm-struktur.js', 'pm-tools-text.js', 'pm-live.js'];
+  var LOCK = false;                                   // pm-live.js: nur lesen erzwingen (anderes Schema, R1)
+  var LIVE = null;                                    // pm-live.js: {exts: [Erweiterungen], editable: bool}, solange live gebunden
   var EXTS = [], MODS = [];
 
   // =================================================================================================================
@@ -394,7 +397,7 @@
         }
       },
       filterTransaction: function (tr, state) {
-        if (!tr.docChanged || tr.getMeta('hkAllow')) return true;
+        if (!tr.docChanged || tr.getMeta('hkAllow') || tr.getMeta('y-sync$')) return true;     // y-sync: Stand aus Yjs (T5)
         var prot = protectedRanges(state.doc); if (!prot.length) return true;
         var onlyMarks = true, badMarks = false;
         for (var i = 0; i < tr.steps.length; i++) {
@@ -1304,6 +1307,7 @@
   function onTr(a) {
     var tr = a.transaction;
     if (!tr.docChanged || tr.getMeta('hkRemote') || !CB) return;
+    var ys = tr.getMeta('y-sync$'); if (ys && ys.isChangeOrigin) return;     // live: Stand aus Yjs (fremd/Undo), nicht als Eingabe melden
     CB.changed(changedIds(tr));
   }
   function onSel() {                                   // Anwesenheit Stufe 1: anderer Block -> focusin wie bei Editor.js
@@ -1327,7 +1331,8 @@
       if (!nv || (tv && tv[x.name])) return x;
       return x.extend({ addNodeView: function () { return nv; } });
     });
-    return base.concat([P.UndoRedo.configure({ depth: 200, newGroupDelay: 500 }), P.Dropcursor.configure({ 'class': 'pm-dropcursor', color: false }),
+    // live (T5): Collaboration bringt das eigene Undo (y-undo, nur eigene Aenderungen) statt UndoRedo
+    return base.concat(LIVE ? LIVE.exts : [P.UndoRedo.configure({ depth: 200, newGroupDelay: 500 })]).concat([P.Dropcursor.configure({ 'class': 'pm-dropcursor', color: false }),
       P.Gapcursor, SagaKern(), bubbleExt()]);
   }
   function destroy() {
@@ -1352,10 +1357,11 @@
     broken = false;
     try { schemaX.nodeFromJSON(json).check(); } catch (e) { broken = true; }
     if (!json.content.length) json.content = [{ type: 'paragraph', attrs: { id: newId() } }];
+    if (LIVE) broken = false;                         // live: Inhalt kommt aus Yjs (pm-live.js), nicht aus data
     holder = el('div', 'pm-holder'); BOX.appendChild(holder);
     ed = new P.core.Editor({
-      element: holder, injectCSS: false, content: broken ? { type: 'doc', content: [{ type: 'paragraph' }] } : json, extensions: exts,
-      editable: !broken && !(CB && CB.readOnly()), enableContentCheck: false, autofocus: false,
+      element: holder, injectCSS: false, content: LIVE ? undefined : broken ? { type: 'doc', content: [{ type: 'paragraph' }] } : json, extensions: exts,
+      editable: !LOCK && (LIVE ? !!LIVE.editable : !broken && !(CB && CB.readOnly())), enableContentCheck: false, autofocus: false,
       editorProps: {
         attributes: { 'class': 'pm-doc', 'aria-label': T('Seiteninhalt'), role: 'textbox', 'aria-multiline': 'true' },
         handleDOMEvents: { contextmenu: contextMenu,
@@ -1378,7 +1384,7 @@
     });
     if (broken) {
       HK.toast(T('Diese Seite kann der neue Editor nicht anzeigen – bitte im klassischen Editor öffnen. Es wird nichts gespeichert.'));
-    } else AD.bind(ed.state.doc, data0, ctx);
+    } else if (!LIVE) AD.bind(ed.state.doc, data0, ctx);
   }
 
   // =================================================================================================================
@@ -1565,7 +1571,7 @@
   // Fremde Bloecke blockweise uebernehmen (Rebase/Live, Stufe 1): unveraenderte Bloecke bleiben dieselben Knoten,
   // ersetzt wird nur der Bereich zwischen gleichem Anfang und gleichem Ende (Schreibmarke bleibt meist, kein Undo-Schritt)
   function applyBlocks(list) {
-    if (!ed || broken) return;
+    if (!ed || broken || LIVE) return;               // live: fremde Aenderungen kommen ueber Yjs
     markOrig(list);                                   // Stand vom Server: gilt als unveraendert (prune)
     var doc = ed.state.doc, cur = [], byIdTop = {};
     doc.forEach(function (n) { cur.push(n); if (n.attrs.id) byIdTop[n.attrs.id] = n; });
@@ -1654,16 +1660,17 @@
     CB = cb;
     return {
       kind: 'tiptap', isReady: Promise.resolve(),
-      render: function (data) { build(data); return Promise.resolve(); },
+      render: function (data) { var lr = modApi('liveRender'); if (lr) return lr(data); build(data); return Promise.resolve(); },
       save: function () { try { return Promise.resolve(saveNow()); } catch (e) { return Promise.reject(e); } },
       applyBlocks: applyBlocks,
-      setEditable: function (on) { if (ed && !broken && ed.isEditable !== !!on) ed.setEditable(!!on); },
+      setEditable: function (on) { on = !!on && !LOCK && !(LIVE && !LIVE.editable); if (ed && !broken && ed.isEditable !== on) ed.setEditable(on); },
+      live: function () { return !!LIVE; },              // T5: Inhalt live gebunden (kein Speichern per PATCH)
       caret: {
         setToFirstBlock: function (pos) { var f = ed && ed.state.doc.firstChild; if (f && f.attrs.id) focus(f.attrs.id, pos === 'end' ? 'end' : 'start'); },
         setToBlock: function (idx, pos) { var n = ed && ed.state.doc.maybeChild(idx); if (n && n.attrs.id) focus(n.attrs.id, pos === 'start' ? 'start' : 'end'); }
       },
       toolbar: { close: function () {} },
-      text: draft, focusBlock: focusBlock, styleAt: styleAt, destroy: destroy,
+      text: draft, focusBlock: focusBlock, styleAt: styleAt, destroy: function () { var ld = modApi('liveDestroy'); if (ld) ld(); destroy(); },
       editor: function () { return ed; }                 // Tests/Diagnose
     };
   }
@@ -1700,7 +1707,24 @@
     // Block-Menue (pm-struktur.js): Einstellungen und Namen weiterer Typen aus anderen Erweiterungen (T4a: Medien)
     settings: function (m, x) { MODS.forEach(function (md) { if (md.settings) md.settings(m, x); }); },
     typeName: function (t) { for (var i = 0; i < MODS.length; i++) if (MODS[i].names && MODS[i].names[t]) return MODS[i].names[t]; return null; },
-    inNested: function (pos) { return !!ed && ed.state.doc.resolve(Math.min(pos, ed.state.doc.content.size)).depth > 1; }
+    inNested: function (pos) { return !!ed && ed.state.doc.resolve(Math.min(pos, ed.state.doc.content.size)).depth > 1; },
+    // T5 (static/pm-live.js): Editor mit/ohne Live-Bindung neu aufbauen, Stand als Block-JSON, Rueckrufe von pages.js
+    build: build, saveNow: saveNow, cb: function () { return CB; }, ctx: function () { return ctx; }, markOrig: markOrig,
+    live: function (v) { if (v !== undefined) LIVE = v; return LIVE; },
+    lock: function (v) { if (v !== undefined) LOCK = !!v; return LOCK; },
+    validate: function (b) { return !MODS.some(function (m) { try { return !!m.validate && m.validate(b) === false; } catch (e) { return false; } }); },
+    // Stand ohne prune (Neuaufbau beim Umschalten: unfertige neue Bloecke bleiben sichtbar) und danach diese Bloecke
+    // wieder als "neu" fuehren (build markiert alles Geladene als unveraendert)
+    raw: function () { return ed && !broken ? AD.blocksFromDoc(ed.state.doc, ctx) : saveNow(); },
+    unmarkInvalid: function (list) {
+      (function rec(l) { (l || []).forEach(function (b) {
+        if (!b || typeof b !== 'object') return;
+        if (!X.validate(b)) ORIG.delete(b);
+        var d = b.data || {}; if (Array.isArray(d.blocks)) rec(d.blocks);
+        if (Array.isArray(d.cols)) d.cols.forEach(function (c) { if (c) rec(c.blocks); });
+      }); })(list);
+    },
+    pending: function (doc) { if (!ed || broken) return false; var o = AD.blocksFromDoc(doc || ed.state.doc, ctx); return prune(o) !== o; }
   };
   function initExt(fn) {
     var m = null; try { m = fn(X); } catch (e) { if (window.console) console.error('pm-editor Erweiterung', e); }

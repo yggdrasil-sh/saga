@@ -447,6 +447,7 @@
     [].forEach.call(document.querySelectorAll('#pg-editor [data-block-id][data-hk-by]'), function (b) {
       b.removeAttribute('data-hk-by'); b.className = b.className.replace(/\s*hk-by-[a-z]+/g, '');
     });
+    if (window.HKPmLive && HKPmLive.state().live) return;     // T5: live zeigen die Cursor der anderen (static/pm-live.js)
     users.forEach(function (u) {
       if (u.me || !u.editing || !u.block) return;
       var k = K(), x = k && k.doc ? k.doc.byId(u.block) : null, b = x && x.el;     // Editor-Fassade

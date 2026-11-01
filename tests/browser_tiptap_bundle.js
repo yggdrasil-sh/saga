@@ -14,6 +14,7 @@ const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 
   p.on('pageerror', (e) => errs.push(e.message));
   p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') cons.push(m.text()); });
   await p.addInitScript(() => {
+    window.__hkNoLive = true;          // T5: dieser Test haengt die Bundles selbst ein - die Seite soll nicht live gehen
     window.__csp = [];
     document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI));
   });
