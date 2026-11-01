@@ -115,7 +115,8 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   ok('focus(z1, start) im Toggle', await p.evaluate(() => HKPages.k.doc.focus('z1', 'start')) && (await D.current(p)) === 'z1');
   await D.typeEnd(p, 'k1', ' !', 15);
   ok('Helfer typeEnd im Callout -> current() = k1', (await D.current(p)) === 'k1' && /Hinweis hier !$/.test(await D.textOfBlock(p, 'k1')), await D.textOfBlock(p, 'k1'));
-  ok('Helfer count/find', (await D.count(p, { parent: 'c1' })) === 4 && (await D.find(p, { text: 'Zitat in Spalte' })) === 'x2' && (await D.count(p, { top: true, type: 'paragraph' })) >= 3);
+  const cf = [await D.count(p, { parent: 'c1' }), await D.find(p, { text: 'Zitat in Spalte' }), await D.count(p, { top: true, type: 'paragraph' })];
+  ok('Helfer count/find', cf[0] === 4 && cf[1] === 'x2' && cf[2] >= 3, cf);
 
   // --- onChange abmelden -----------------------------------------------------------------------------------------
   const before = await p.evaluate(() => { window.__off(); return window.__chg.length; });

@@ -7627,6 +7627,8 @@
   function syncedInner() { var t = nestedTools(); delete t.synced; delete t.hksync; return t; }
   // Editor.js kennt destroy() erst, wenn der Editor fertig ist - sonst danach abbauen (schneller Seitenwechsel)
   function killEditor(ed) {
+    (S.eds || []).forEach(function (x) { if (x.ed === ed) x.dead = true; });
+    S.eds = (S.eds || []).filter(function (x) { return !x.dead; });
     var k = function () { try { if (typeof ed.destroy === 'function') ed.destroy(); } catch (x) { /* schon weg */ } };
     if (typeof ed.destroy === 'function') k(); else if (ed.isReady) ed.isReady.then(k, function () {});
   }
@@ -7639,10 +7641,14 @@
       onChange: edChanged
     });
     holder.addEventListener('input', function () { if (!S.loading) tryShortcut(ed); });   // Markdown-Kuerzel im eigenen Editor
-    // fuer Tastenkuerzel und die Editor-Fassade. Abgehaengte Eintraege erst nach 10 s verwerfen: Spalten bauen ihre
-    // Editoren, bevor der Block im DOM haengt - sonst blieb beim Laden nur die letzte Spalte uebrig (T1)
+    // fuer Tastenkuerzel und die Editor-Fassade. Spalten bauen ihre Editoren, bevor der Block im DOM haengt: einen
+    // Eintrag, der noch nie im DOM hing, nicht gleich verwerfen (sonst blieb beim Laden nur die letzte Spalte, T1) -
+    // abgehaengte (Seitenwechsel, Block weg) und abgebaute (killEditor) schon
     var now = Date.now();
-    S.eds = (S.eds || []).filter(function (x) { return x.holder.isConnected || now - x.at < 10000; });
+    S.eds = (S.eds || []).filter(function (x) {
+      if (x.holder.isConnected) { x.seen = true; return true; }
+      return !x.seen && !x.dead && now - x.at < 10000;
+    });
     S.eds.push({ ed: ed, holder: holder, tools: tools, at: now });
     ed.isReady.then(function () { decorateLinks(); });                                       // Verweise als Marken
     return ed;

@@ -70,12 +70,14 @@ async function count(page, o = {}) {
   return (await blocks(page)).filter((b) => (!o.top || b.parent == null) && (!o.type || b.type === o.type)
     && (o.parent === undefined || b.parent === o.parent)).length;
 }
-// ID des ersten Blocks, auf den alles passt: {type, text (Teiltext oder RegExp), parent, top}; sonst null
+// ID des ersten Blocks, auf den alles passt: {type, text (Teiltext oder RegExp), parent, top}; sonst null. Bei Text
+// gewinnt der innerste Block (Spalten/Toggles enthalten den Text ihrer Kinder mit)
 async function find(page, o = {}) {
   const l = await blocks(page);
-  const hit = l.find((b) => (!o.type || b.type === o.type) && (!o.top || b.parent == null)
+  const ok = (b) => (!o.type || b.type === o.type) && (!o.top || b.parent == null)
     && (o.parent === undefined || b.parent === o.parent)
-    && (o.text === undefined || (o.text instanceof RegExp ? o.text.test(b.text) : b.text.includes(o.text))));
+    && (o.text === undefined || (o.text instanceof RegExp ? o.text.test(b.text) : b.text.includes(o.text)));
+  const hits = l.filter(ok), hit = hits.find((b) => !hits.some((c) => c.parent === b.id));
   return hit ? hit.id : null;
 }
 // sichtbarer Text eines Blocks (Textfeld) oder null
