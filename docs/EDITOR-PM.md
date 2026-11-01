@@ -83,3 +83,47 @@ Gemessen mit `@tiptap/y-tiptap` 3.0.12 (`tools/pm_ytest.mjs`, Teil 4):
 Schutz heute: der Server gibt Clients mit anderer Schema-Prüfsumme nur Lesezugriff (`ro: "schema"`). Der Web-Client
 darf dann **nichts** senden – auch nicht die Löschungen, die y-tiptap beim Laden erzeugt. Weitere Gegenmaßnahmen
 (Knoten `unknown` statt Löschen, Handshake vor dem Binden) folgen in T5.
+
+## Werkzeuge als Node-Views (T4b)
+
+Undurchsichtige Blöcke (atom-Knoten mit Attribut `data`) zeichnet im Tiptap-Editor ein Saga-Werkzeug. Schnittstelle in
+`static/pm-tools.js` (`window.HKTools`), unabhängig von Editor.js und Tiptap:
+
+```js
+HKTools.register('widget', {
+  title, icon, slash: [{title, icon, data}],     // Einträge fürs "/"-Menü (HKTools.slash())
+  atom: true,
+  mount(el, data, ctx) {                         // el: Hülle der Node-View, data: Kopie von attrs.data
+    return { update(data) { return true; },      // neue Daten von außen (Live, Undo, Rebase); false = neu aufbauen
+             destroy() {}, stopEvent(e) { return true; } };
+  }
+});
+```
+
+- **Einbinden (Kern-Editor):** `HKPmSchema.extensions(T, {…, nodeViews: HKTools.nodeViews(base)})`. `base` ist
+  optional (Werte oder Funktionen): `readOnly`, `role`, `foreign`, `page`, `replaceWith(ctx, blocks)`,
+  `blockToPm(block)`. Ohne Angabe gilt der Zustand der offenen Seite (`HKPages.k.readOnly/cur/foreign`) und
+  `editor.isEditable`. Laden: `pm-schema.js`, `pm-adapter.js`, `pm-tools.js`, danach die Gruppen (`pm-tools-daten.js`;
+  vor `pages.js` geladen, holt `HKTools.setup` die Registrierung beim ersten `nodeViews()` nach).
+- **ctx je Block** (Getter, immer aktuell): `type`, `id`, `readOnly`, `role`, `foreign`, `page`, `editor`, `view`,
+  `getPos()`, `node()`, `change(newData[, {history: false}])`, `remove()`, `replaceWith(blocks)`, `insertAfter(blocks)`,
+  `select()`, `focusNext()`. `change` schreibt genau **eine** Transaktion (`setNodeMarkup`, Meta `hkTool` = Typ), nichts
+  bei gleichem `data` (Vergleich mit sortierten Schlüsseln) oder `readOnly`. Die eigene Änderung kommt nicht als
+  `update()` zurück.
+- **Hülle:** `div.hk-tool.hk-tool-<typ>[data-block-id][data-block-type][contenteditable=false]`, Blockfarbe als
+  `hk-st-*`, `ignoreMutation: true`, `selectNode` → `ProseMirror-selectednode`. `stopEvent`: alles im Werkzeug bleibt
+  im Werkzeug (Tasten, Ziehen, Einfügen, Maus); ein Ereignis direkt auf der Hülle gehört ProseMirror (Block wählen).
+  `dom.hkTool` ist das Ergebnis von `mount` (Tests/Diagnose).
+- **Brücke** `HKTools.fromEditorJs(Klasse, opts)` für die bisherigen Editor.js-Klassen (`HKPages.k.tools`):
+  `o = {data, api, block, readOnly, config}`, `block.dispatchChange` und die per `opts.hook` umgebogenen Schreibstellen
+  (`S.dirtyBody = true; schedule()`) → `ctx.change(save())`. `opts.known`: Felder, die `save()` kennt – alle anderen
+  bleiben erhalten (Regel 0). `opts.carry(base, out)`: Felder nach `save()` übernehmen. `opts.meta(base, out)`: Optionen für `ctx.change` (z. B.
+  `{history: false}` für den einmaligen Ansichten-Nachtrag alter DB-Einbettungen). `opts.live(inst, data)`: neue
+  Daten ohne Neuaufbau; sonst Neuaufbau, verschoben solange ein Eingabefeld im Werkzeug, ein Menü oder der Dialog offen
+  ist. Die Brücke ist Übergang bis T7.
+- **Daten-Werkzeuge** (`static/pm-tools-daten.js`): `database` (Ansicht, Ansichten, Kopf; neue Zeilen gehen wie bisher
+  per API an die Datenbank und ändern das Dokument nicht), `tasks`, `calendar` (Monat/Liste), `widget` (Panel bleibt bei
+  `update` offen, Werte vom Server wie bisher), `buttons` (`sig` und unbekannte Felder je Schaltfläche bleiben, solange
+  Aktion/Ziel/Vorlage gleich sind; der Server prüft wie bisher in `databases.sign_buttons`). Rollen, fremde Seiten und
+  „Nur für den Eigentümer“ entscheiden die Klassen wie im Editor.js-Editor.
+- Test: `tests/browser_tiptap_daten.js` (Mini-Editor nur mit Schema + Node-Views auf `/notes`).

@@ -14,7 +14,8 @@
  *     T: {Node, Mark, Extension, mergeAttributes, UniqueID?} (Browser: window.SagaPM.core + window.SagaPM.UniqueID,
  *        Node: require('@tiptap/core') + {UniqueID: require('@tiptap/extension-unique-id').UniqueID})
  *     opts: {uniqueId: true|false (Vorgabe: true, wenn T.UniqueID da), generateID: fn, filterTransaction: fn,
- *            pageTitle: fn(id) -> Text, mentionName: fn(u) -> Text}
+ *            pageTitle: fn(id) -> Text, mentionName: fn(u) -> Text,
+ *            nodeViews: {Saga-Typ: Renderer(props) -> NodeView} fuer atom-Knoten (HKTools.nodeViews(ctx), T4b)}
  *   HKPmSchema.VERSION, MODEL, BLOCKS, MARKS, INLINE_NODES, ATTRS, BLOCK_COMMON, hashInput(), hash()
  */
 (function (root, factory) {
@@ -189,7 +190,12 @@
         addAttributes: function () { return attrSpec(BLOCK_COMMON.concat(ATTRS[name]), true); }
       };
       if (CONTENT[name]) { cfg.content = CONTENT[name]; cfg.defining = true; }
-      else { cfg.atom = true; cfg.selectable = true; }
+      else {
+        cfg.atom = true; cfg.selectable = true;
+        // T4b: Node-Views der Werkzeuge (static/pm-tools.js, HKTools.nodeViews) - Renderer im Tiptap-addNodeView-Format
+        var nv = opts.nodeViews && Object.prototype.hasOwnProperty.call(opts.nodeViews, name) ? opts.nodeViews[name] : null;
+        if (typeof nv === 'function') cfg.addNodeView = function () { return nv; };
+      }
       if (name === 'code') { cfg.marks = ''; cfg.code = true; }
       if (name === 'toggle' || name === 'columns' || name === 'synced' || name === 'list' || name === 'table' ||
           name === 'quote' || name === 'image') cfg.isolating = true;
