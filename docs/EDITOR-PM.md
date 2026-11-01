@@ -239,3 +239,38 @@ die Auswahl-Leiste in `editor25.js`, `openBlockMenu`, `moveBlock` …).
   zusammenhängender Gruppe um.
 
 Test: `tests/browser_tiptap_struktur.js`.
+
+## Tabelle, Code, Mathe (T4c)
+
+`static/pm-tools-text.js` (+ `static/pm-tools-text.css`, mitgeladen über `EXT_SCRIPTS`) meldet sich mit
+`HKPmEditor.use` an und macht `table` und `code` bearbeitbar; `math` bekommt eine Node-View. **Keine Schemaänderung**
+(SCHEMA_VER bleibt 2): Knoten, Attribute und Inhalte (`table(trow*)`, `trow(tcell*)`, `tcell(inline*)`, `code(text*)`
+mit `code: true`, `math` atom) standen schon in T1.
+
+- **Tabelle:** `<table>` mit `<tbody>` als Inhalt, Zeilen/Zellen sind die Knoten `trow`/`tcell` (Inline-Text wie ein
+  Absatz, Formatierungsleiste gilt). Kopfzeile `withHeadings` / Kopfspalte `headCol` / `stretched` als Klassen,
+  `colWidths` (%) als `<col>.style.width` (CSSOM), `colors {r, c, x}` als Knoten-Dekoration `tbl-bg-*` (kein
+  MutationObserver). Tasten: Tab/⇧Tab nächste/vorige Zelle (Tab in der letzten Zelle = neue Zeile), ↑/↓ an der
+  Zeilengrenze in die Nachbarzeile (↓ in der letzten Zeile hinter die Tabelle), Enter = gleiche Spalte der nächsten
+  Zeile (am Ende neue Zeile, wie die Editor.js-Tabelle), ⇧Enter = Zeilenumbruch in der Zelle; Rückschritt/Entf am
+  Zellrand verbinden keine Zellen. Leiste über der Tabelle (Zeile n ▾ / Spalte n ▾ / Zelle ▾): einfügen, löschen,
+  verschieben, einfärben – je eine Transaktion, die Farben und Breiten mitnimmt (`api('table')`). Breiten ziehen an
+  `.pm-tbl-rh` (ein Zug = eine Transaktion, Doppelklick = gleich breit), Werte wie `_clean_table` normiert
+  (5–90 %, Summe 100, eine Nachkommastelle). Höchstens 20 Spalten. Block-Menü (`settings`): Kopfzeile, erste
+  Spalte als Kopf, volle Breite, Spalten gleich breit. Der Server (`_clean_table`) bleibt Wächter.
+- **Code:** ProseMirror verwaltet den Klartext. Hervorhebung als Inline-Dekoration aus `HKCodeHL.tokens`
+  (`static/code.js`, dieselben Regeln wie `highlight()`), Kopf mit Sprache, Mermaid-Ansicht (Vorschau/Geteilt/Code)
+  und Kopieren. Enter = Zeile, Tab/⇧Tab rückt (auch mehrzeilig) um 2 Leerzeichen ein/aus, dreimal Enter am Ende oder
+  ⌘/Strg+Enter verlässt den Block, Rückschritt in leerem Code = Absatz, ⌘A wählt den Code. Keine Marken (Leiste aus).
+  Mermaid zeichnet `HKEd25.mermaidPaint` im abgeschotteten Rahmen; das PNG für die Apps (`render`, `h` = SHA-256)
+  entsteht wie bisher über `HKEd25.scheduleRender` und wird ohne Undo-Schritt geschrieben. Sprache ≠ Mermaid:
+  `view`/`render` entfallen (wie `HKCode.save`). Kürzel ```` ``` ```` bzw. ```` ```python ```` + Leerzeichen/Enter
+  im Absatz → Code-Block (ID bleibt).
+- **Mathe-Block:** Node-View mit Darstellung (KaTeX über `HKMathTool.prototype.paint`) und Textfeld; jede Eingabe
+  setzt `tex` (eine Transaktion), Esc/⌘Enter verlässt nach hinten, Enter auf dem gewählten Block öffnet das Feld.
+  Vorschaubild wie `MathTool`.
+- **Lesen/Kommentieren/gesperrt:** Editor nicht bearbeitbar, Sprache/Formel gesperrt, Tabellen-Leiste und Griffe
+  aus, Code-Kopf ausgeblendet (wie im klassischen Editor).
+- „/“-Einträge: Tabelle, Code (Grundblöcke), Formel (Mathe) (Saga). Kern-Haken für das Block-Menü:
+  `X.settings(m, x)` und `X.typeName(t)` (gleich wie T4a).
+- Test: `tests/browser_tiptap_text.js`.

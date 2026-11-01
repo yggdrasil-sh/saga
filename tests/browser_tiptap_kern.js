@@ -67,14 +67,14 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
     { id: 'l1', type: 'list', data: { style: 'ordered', meta: { start: 3, counterType: 'lower-roman' }, items: [{ content: 'eins', meta: {}, items: [] }] } }
   ];
   const P1 = await mk('TT Kern ' + RUN, KERN.concat(FOREIGN));
-  const orig = await get(P1);
+  let orig = await get(P1);
   await open(P1);
   ok('Editor ist Tiptap (Fassade kind tiptap)', await D.isEditor(p) === 'tiptap', await D.isEditor(p));
   const tops = await p.evaluate(() => HKPages.k.doc.blocks().filter((b) => b.parent == null).map((b) => b.id + ':' + b.type));
   ok('Alle Bloecke tragen data-block-id/-type (Fassade blocks)', tops.join(',') === orig.map((b) => b.id + ':' + b.type).join(','), tops);
   const cards = await p.evaluate(() => [...document.querySelectorAll('#pg-editor .pm-card')].map((c) => c.getAttribute('data-block-type')));
-  // T3: Toggle und Spalten sind echte Knoten (tests/browser_tiptap_struktur.js), keine Karten mehr
-  ok('Nicht unterstuetzte Typen als Karte (code, table, checklist, math), Toggle/Spalten nicht', ['code', 'table', 'checklist', 'math'].every((t) => cards.includes(t)) && !cards.includes('toggle') && !cards.includes('columns'), cards);
+  // T3: Toggle und Spalten, T4c: Code, Tabelle, Mathe sind echte Knoten (browser_tiptap_struktur.js, browser_tiptap_text.js)
+  ok('Nicht unterstuetzte Typen als Karte (checklist), Toggle/Spalten/Code/Tabelle/Mathe nicht', cards.includes('checklist') && !['toggle', 'columns', 'code', 'table', 'math'].some((t) => cards.includes(t)), cards);
   ok('Karte nennt "im klassischen Editor bearbeiten"', /klassischen Editor/.test(await p.textContent('#pg-editor .pm-card')));
   const widgetView = await p.evaluate(() => !!document.querySelector('#pg-editor .hk-tool-widget'));
   ok('Widget mit Werkzeug-Ansicht (pm-tools-daten) statt Karte', widgetView);
@@ -86,6 +86,9 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
   await sleep(1500);
   ok('Keine Scheinaenderung: Laden schickt kein PATCH', p.patches === 0, p.patches);
   ok('Stiller Speicherstatus (E9): kein "Ungespeichert"', !/Ungespeichert/.test(await p.textContent('#pg-state')));
+  // T4c: der Mathe-Block holt das fehlende Vorschaubild fuer die Apps nach (wie Editor.js, nur data.render) - abwarten
+  for (let i = 0; i < 60 && !((await get(P1)).find((x) => x.id === 'm1').data.render); i++) await sleep(250);
+  await sleep(1200); orig = await get(P1);
 
   // 2) Tippen -> speichern -> GET; Fremdbloecke byte-gleich
   await caretEnd('p1'); await p.keyboard.type(' plus', { delay: 15 });
@@ -98,9 +101,9 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
   const viaEd = await p.evaluate(() => HKPages.k.editor().save().then((o) => JSON.stringify(o.blocks)));
   ok('Speichern -> GET identisch mit Editorstand', viaEd === JSON.stringify(b), [viaEd.slice(0, 150)]);
   // Karten sind geschuetzt: Tippen auf eine Karte aendert nichts
-  await p.click('[data-block-id="c1"]'); await p.keyboard.type('zz'); await sleep(300);
-  const c1 = await p.evaluate(() => HKPages.k.doc.byId('c1').json());
-  ok('Karte: Tippen aendert den Inhalt nicht', c1 && c1.data.code === 'print(1)\nx', c1);
+  await p.click('[data-block-id="u1"]'); await p.keyboard.type('zz'); await sleep(300);
+  const u1 = await p.evaluate(() => HKPages.k.doc.byId('u1').json());
+  ok('Karte: Tippen aendert den Inhalt nicht', u1 && JSON.stringify(u1.data) === JSON.stringify({ items: [{ text: 'alt', checked: true }] }), u1);
   // Callout-Symbol und Zitat-Ausrichtung
   await p.click('[data-block-id="k1"] .pm-emo');
   await p.click('[data-block-id="q1"] .pm-qal', { force: true });

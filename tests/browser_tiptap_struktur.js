@@ -90,7 +90,7 @@ const J = (x) => JSON.stringify(x);
   const look = await p.evaluate(() => { const c = document.querySelector('[data-block-id="cl"] .pm-cols'); return { t: c.style.getPropertyValue('--cols-t'), n: c.style.getPropertyValue('--cols'),
     styleAttr: [...document.querySelectorAll('#pg-editor [style]')].filter((e) => /--cols|grid/.test(e.getAttribute('style'))).length, cols: getComputedStyle(c).gridTemplateColumns.split(' ').length }; });
   ok('Spalten: Breiten ueber CSSOM (--cols-t 0,6/0,4), zwei Spalten nebeneinander', /0\.6fr.*0\.4fr/.test(look.t) && look.n === '2' && look.cols === 2, look);
-  ok('Daten-Werkzeug (Widget) in der Spalte als Werkzeug-Ansicht, Code bleibt Karte', !!(await p.$('[data-block-id="cl"] .hk-tool-widget')) && !!(await p.$('[data-block-id="cl"] [data-block-id="c1"].pm-card')));
+  ok('Daten-Werkzeug (Widget) in der Spalte als Werkzeug-Ansicht, Code als Code-Block (T4c)', !!(await p.$('[data-block-id="cl"] .hk-tool-widget')) && !!(await p.$('[data-block-id="cl"] [data-block-id="c1"].pm-b-code')));
   const same1 = await p.evaluate(() => HKPages.k.editor().save().then((o) => JSON.stringify(o.blocks)));
   ok('Spalten: save() ohne Bearbeitung byte-gleich mit GET', same1 === J(o1), [same1.slice(0, 200)]);
   await sleep(1200);

@@ -34,7 +34,7 @@
   // Werkzeug-Skripte der Rolle t4b (static/pm-tools.js, static/pm-tools-daten.js) - werden mitgeladen, sobald sie da sind
   var TOOL_SCRIPTS = ['pm-tools.js', 'pm-tools-daten.js', 'pm-tools-medien.js'];
   // Erweiterungen des Kern-Editors (T3: pm-struktur.js), melden sich mit HKPmEditor.use(fn) an (siehe "Erweiterungen")
-  var EXT_SCRIPTS = ['pm-struktur.js'];
+  var EXT_SCRIPTS = ['pm-struktur.js', 'pm-tools-text.js'];          // T4c: Tabelle, Code, Mathe-Block
   var EXTS = [], MODS = [];
 
   // =================================================================================================================
@@ -1183,6 +1183,7 @@
       shouldShow: function (a) {
         var st = a.state, sel = st.selection;
         if (!a.editor.isEditable || sel.empty || !(sel instanceof P.pm.state.TextSelection)) return false;
+        if (sel.$from.parent.type.spec.code) return false;              // Code-Block (T4c): keine Marken
         if (!st.doc.textBetween(sel.from, sel.to).length) return false;
         var b = blockAt(sel.from); return !!(b && EDIT[b.node.type.name]);
       }
@@ -1268,9 +1269,12 @@
     return true;
   }
   // Klick in die Flaeche unter dem letzten Block: leerer letzter Absatz -> dorthin, sonst neuer Absatz (wie bisher)
-  var art = BOX.closest('article');
+  var art = BOX.closest('article'), artDown = false;
+  // nur wenn auch das Druecken hier war (Klick in ein Vorschlagsmenue schliesst es beim Druecken, das Loslassen landet
+  // dann unter dem letzten Block - T4c: "/Code" als letzter Block bekam sonst einen leeren Absatz dahinter)
+  document.addEventListener('mousedown', function (e) { artDown = !!(art && art.contains(e.target)); }, true);
   if (art) art.addEventListener('mouseup', function (e) {
-    if (!ed || ro() || e.button !== 0 || BOX.hidden) return;
+    if (!ed || ro() || e.button !== 0 || BOX.hidden || !artDown) return;
     if (e.target.closest && e.target.closest('[data-block-id], input, textarea, button, a, select, .backlinks, .db, .props, .page-head, .pm-bubble')) return;
     var dom = ed.view.dom, last = dom.lastElementChild; if (!last || e.clientY < last.getBoundingClientRect().bottom) return;
     var sel = window.getSelection(); if (sel && sel.rangeCount && !sel.isCollapsed) return;
