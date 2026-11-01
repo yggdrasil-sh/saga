@@ -3628,7 +3628,7 @@
       if (conn === H.cur) {
         diagMeta(R, 'horn', conn.path === 'turn' ? 'tls' : conn.path === 'udp' ? 'udp' : conn.path === 'tcp' ? 'tcp' : '?', conn.node);
         if (q0 && q0 !== conn.q) diagEv(R, 'quality', q0 + '>' + conn.q + ' rtt=' + conn.net.rtt + ' loss=' + conn.net.loss + ' fz/min=' + conn.net.freezes + ' win=' + conn.net.win + 's');
-        all.forEach(function (st) { diagRep(R, st, 'v'); });
+        all.forEach(function (st, i) { diagRep(R, st, 'v' + legs[i].role[0]); });   // Bein a/v/b: Stats-IDs gelten je PeerConnection
       }
       if (conn === H.cur && !H.switching) {
         var udpOk = conn.path !== 'udp' && conn.cand.udp && (H.meas[conn.node] || {}).udp != null;

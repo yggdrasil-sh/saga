@@ -2001,7 +2001,7 @@ zu groß → `413`, mehr als **1 Meldung je 15 s je Konto und Anruf** → `429 {
 wiederholen). Erfolg: `200 {"ok": true}`.
 
 **Was das Web sendet** (Referenz `static/calls.js`, `diagRep`): je Quelle höchstens alle 5 s eine Probe aus den
-ohnehin laufenden `getStats` – Empfang (`inbound-rtp`, Bild) je Spur (`src` = `v<mid>` am Knoten, `p<Gerät>:<mid>`
+ohnehin laufenden `getStats` – Empfang (`inbound-rtp`, Bild) je Spur (`src` = `v<Bein a|v|b><mid>` am Knoten, `p<Gerät>:<mid>`
 direkt), Senden (`outbound-rtp`) je Simulcast-Schicht `rid` mit `qlr` und `enc`. Ereignisse: `layers` (Belegung der
 Plätze aus dem Knoten-Ereignis `layout`, z. B. `v est=1800 t0:m3@ab12 s1:p` = Bein, geschätzte kbit/s, Platz:Schicht+Tid
 bzw. pausiert, Kennungspräfix), `switch`/`path` (Knoten- bzw. Wegwechsel), `quality` (Wechsel der Anzeigefarbe mit
