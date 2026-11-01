@@ -272,5 +272,55 @@ ok(f"Altmarke code: gelesen, entfernt, nicht wieder aufgetaucht ({_r0!r} {_r1!r}
    _r0 == 'ab<code class="inline-code">cd</code>' and _r1 == "abcd" and _r2 == "ab<b>cd</b>")
 ok("Schema-Version 2 (icode)", M.SCHEMA_VER == 2 and "icode" in M.MARKS and "code" not in M.MARKS)
 
+# Schluesselreihenfolge von JSON-Attributen (meta, colors, style, extra, data ...): yrs fuehrt Objekte als HashMap, die
+# Reihenfolge beim Lesen wechselt je Prozess (PYTHONHASHSEED/Zufallszustand) - read() muss sie fest machen: mit base wie
+# dort (unveraendert UND geaendert, gleiche Bytes), ohne base feste Reihenfolge (KEY_ORDER). Je Seed ein eigener Prozess.
+_KEYS = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from pycrdt import Doc
+from saga import collab_model as M
+B = {"blocks": [
+  {"id": "L1", "type": "list", "data": {"style": "ordered", "meta": {"start": 3, "counterType": "lower-roman", "zeta": {"q": 1, "b": {"y": 1, "a": 2}, "a": 3}},
+   "items": [{"content": "x", "meta": {"z": 1, "checked": False, "a": 2}, "items": [], "zz": {"m": 1, "c": 2}, "ab": 1}]}},
+  {"id": "T1", "type": "table", "data": {"withHeadings": False, "colWidths": [60, 40], "colors": {"x": {"1,1": "blue", "0,0": "red"}, "r": {"2": "a", "1": "b"}},
+   "content": [["a", "b"]], "zz": {"fremd": 1, "aa": 2}, "yy": 1}, "tunes": {"hkstyle": {"c": "red", "bg": "blue", "al": "x"}, "zt": {"k": 1, "b": 2}, "at": 1}},
+  {"id": "U1", "type": "foreign", "data": {"z": 1, "y": {"n": 1, "m": [{"q": 1, "p": 2}]}, "a": 2}},
+  {"id": "G1", "type": "toggle", "data": {"title": "t", "open": True, "blocks": [
+    {"id": "L2", "type": "list", "data": {"style": "ordered", "meta": {"start": 2, "counterType": "upper-alpha"}, "items": []}}]}},
+  {"id": "C1", "type": "code", "data": {"code": "a", "language": "mermaid", "render": {"png": "/files/x", "w": 1, "h": "y", "hgt": 2}}}]}
+d = Doc(); d.apply_update(M.build(B))
+r0 = json.dumps(M.read(d, base=B)[0])
+B2 = json.loads(json.dumps(B))
+B2["blocks"][0]["data"]["items"][0]["content"] = "xy"; B2["blocks"][1]["data"]["content"] = [["a", "bc"]]
+B2["blocks"][1]["data"]["colors"]["x"]["0,1"] = "green"; B2["blocks"][2]["data"]["a"] = 5
+B2["blocks"][3]["data"]["title"] = "tt"; B2["blocks"][3]["data"]["blocks"][0]["data"]["style"] = "unordered"
+B2["blocks"][4]["data"]["code"] = "ab"
+M.write(d, B2)
+r1 = json.dumps(M.read(d, base=B)[0])
+print(json.dumps([r0 == json.dumps(B), r1, json.dumps(M.read(d)[0])]))
+"""
+import subprocess
+_runs = []
+for _seed in ("0", "1", "2", "3", "77", "random", "random"):
+    _p = subprocess.run([sys.executable, "-c", _KEYS, ROOT], capture_output=True, text=True, env=dict(os.environ, PYTHONHASHSEED=_seed))
+    _runs.append(json.loads(_p.stdout) if _p.returncode == 0 else [False, _p.stderr[-300:], ""])
+ok("Schluesselreihenfolge: unveraendert mit base byte-gleich (7 Prozesse, verschiedene Seeds)", all(r[0] is True for r in _runs))
+ok("Schluesselreihenfolge: geaendert mit base gleich in allen Prozessen", len({r[1] for r in _runs}) == 1)
+_g = json.loads(_runs[0][1])["blocks"]
+ok("... und wie base (meta start vor counterType, colors x vor r, neue Schluessel hinten, Fremdblock-Daten z,y,a)",
+   list(_g[0]["data"]["meta"]) == ["start", "counterType", "zeta"] and list(_g[0]["data"]["meta"]["zeta"]) == ["q", "b", "a"]
+   and list(_g[0]["data"]["items"][0]) == ["content", "meta", "items", "zz", "ab"] and list(_g[0]["data"]["items"][0]["meta"]) == ["z", "checked", "a"]
+   and list(_g[1]["data"]["colors"]) == ["x", "r"] and list(_g[1]["data"]["colors"]["x"]) == ["1,1", "0,0", "0,1"]
+   and list(_g[1]["data"]) == ["withHeadings", "colWidths", "colors", "content", "zz", "yy"] and list(_g[1]["tunes"]) == ["hkstyle", "zt", "at"]
+   and list(_g[1]["tunes"]["hkstyle"]) == ["c", "bg", "al"] and list(_g[2]["data"]) == ["z", "y", "a"] and list(_g[2]["data"]["y"]["m"][0]) == ["q", "p"]
+   and list(_g[3]["data"]["blocks"][0]["data"]["meta"]) == ["start", "counterType"] and list(_g[4]["data"]["render"]) == ["png", "w", "h", "hgt"])
+_n = json.loads(_runs[0][2])["blocks"]
+ok("Ohne base: feste Reihenfolge wie die Web-Erzeuger (start/counterType, c/bg, r/c/x, Zahlen aufsteigend, sonst sortiert)",
+   len({r[2] for r in _runs}) == 1 and list(_n[0]["data"]["meta"]) == ["start", "counterType", "zeta"]
+   and list(_n[0]["data"]["meta"]["zeta"]) == ["a", "b", "q"] and list(_n[1]["tunes"]["hkstyle"]) == ["c", "bg", "al"]
+   and list(_n[1]["data"]["colors"]) == ["r", "x"] and list(_n[1]["data"]["colors"]["r"]) == ["1", "2"]
+   and list(_n[4]["data"]["render"]) == ["png", "h", "w", "hgt"])
+
 print(f"{sum(res)}/{len(res)}", "ALLES GRUEN" if all(res) else "FEHLER")
 sys.exit(0 if all(res) else 1)

@@ -281,6 +281,78 @@ def _num(v):
     return v
 
 
+# Feste Schluesselreihenfolge fuer Objekte aus Y ohne Vorlage (neue Werte), wie die Web-Erzeuger sie schreiben:
+# Ganzzahl-Schluessel aufsteigend (so ordnet JS sie immer), dann tunes.hkstyle {c, bg}, table.colors {r, c, x},
+# list.meta {start, counterType}, Listenpunkt meta {checked}, render {png, h, w, hgt}; sonst nach Codepunkten.
+# Gegenstueck: keyRank() in static/pm-adapter.js.
+KEY_ORDER = ("r", "c", "bg", "x", "start", "counterType", "checked", "png", "h", "w", "hgt")
+_KEY_RANK = {k: i for i, k in enumerate(KEY_ORDER)}
+_INDEX = re.compile(r"0|[1-9][0-9]*")
+
+
+def _key_rank(k):
+    if _INDEX.fullmatch(k) and int(k) < 2 ** 32 - 1:
+        return (0, int(k), "")
+    if k in _KEY_RANK:
+        return (1, _KEY_RANK[k], "")
+    return (2, 0, k)
+
+
+def _ynum(v):
+    """Wert aus Y (Attribut, Marken-Attribute): wie _num, Objekt-Schluessel in fester Reihenfolge (_key_rank). yrs
+    fuehrt JSON-Objekte als HashMap - die Reihenfolge beim Lesen (und in den Update-Bytes von build/write) wechselt je
+    Prozess. Die Reihenfolge des gespeicherten Stands stellt danach _like() wieder her."""
+    if isinstance(v, dict):
+        return {k: _ynum(v[k]) for k in sorted(v, key=_key_rank)}
+    if isinstance(v, list):
+        return [_ynum(x) for x in v]
+    return _num(v)
+
+
+def _is_block(v):
+    return isinstance(v, dict) and isinstance(v.get("id"), str) and isinstance(v.get("type"), str)
+
+
+def _block_ids(blocks, out=None):
+    """id -> Block, auch verschachtelte (toggle/synced/columns): Vorlage fuer die Schluesselreihenfolge (_like)."""
+    out = {} if out is None else out
+
+    def walk(v, depth=0):
+        if depth > MAX_DEPTH + 8:
+            return
+        if isinstance(v, dict):
+            if _is_block(v):
+                out.setdefault(v["id"], v)
+            for x in v.values():
+                walk(x, depth + 1)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x, depth + 1)
+    walk(blocks)
+    return out
+
+
+def _like(v, o, ids, depth=0):
+    """Schluesselreihenfolge von v wie in der Vorlage o (gespeicherter Stand): gemeinsame Schluessel in der Reihenfolge
+    von o, neue danach in ihrer (festen) Reihenfolge aus v; rekursiv, Listen nach Position, Bloecke nach id (ids).
+    Aendert nur die Reihenfolge, nie Werte. Gegenstueck: like() in static/pm-adapter.js (Live-Modus)."""
+    if v is o or depth > MAX_DEPTH + 16:
+        return v
+    if _is_block(v):
+        o = ids.get(v["id"])
+        if v is o:
+            return v
+    if isinstance(v, dict):
+        if not isinstance(o, dict):
+            return {k: _like(x, None, ids, depth + 1) for k, x in v.items()}
+        keys = [k for k in o if k in v] + [k for k in v if k not in o]
+        return {k: _like(v[k], o.get(k), ids, depth + 1) for k in keys}
+    if isinstance(v, list):
+        ol = o if isinstance(o, list) else []
+        return [_like(x, ol[i] if i < len(ol) else None, ids, depth + 1) for i, x in enumerate(v)]
+    return v
+
+
 def _lid(bid, path):
     """Interne ID eines Listenpunkts (nicht im Block-JSON): deterministisch aus Block-ID und Position."""
     return "l" + hashlib.sha256(f"{bid}/{path}".encode()).hexdigest()[:9]
@@ -682,7 +754,7 @@ def _y_inline(t):
         for k, v in (attrs or {}).items():
             if v is None:
                 continue
-            m[_mark_name(k)] = _num(v) if isinstance(v, dict) else {}
+            m[_mark_name(k)] = _ynum(v) if isinstance(v, dict) else {}
         if out and out[-1]["type"] == "text" and _mk_dict(out[-1].get("marks")) == m:
             out[-1]["text"] += ins
         elif ins:
@@ -700,7 +772,7 @@ def y_to_pm(el, depth=0):
         raise ModelError("zu tief")
     tag = el.tag
     n = {"type": tag}
-    a = {k: _num(v) for k, v in el.attributes}
+    a = {k: _ynum(v) for k, v in sorted(el.attributes)}
     marks = a.pop("marks", None)
     if a:
         n["attrs"] = a
@@ -786,11 +858,14 @@ def read_pm(doc):
 
 def read(doc, resolve=None, base=None):
     """Y.Doc -> (Block-Dokument {"blocks": [...]}, Titel). base: zuletzt gespeichertes Block-Dokument - Bloecke, die
-    unveraendert sind (gleiche Normalform), kommen byte-gleich aus base (WeakMap-Durchreichung wie im Web-Adapter)."""
+    unveraendert sind (gleiche Normalform), kommen byte-gleich aus base (WeakMap-Durchreichung wie im Web-Adapter);
+    geaenderte behalten die Schluesselreihenfolge aus base (_like). Ohne base: feste Reihenfolge (_key_rank)."""
     pm = read_pm(doc)
     out = pm_to_doc(pm, resolve)
     if base:
         _passthrough(out["blocks"], base, resolve)
+        ids = _block_ids(base.get("blocks") or [])
+        out["blocks"] = [_like(b, None, ids) for b in out["blocks"]]
     return out, str(doc.get("title", type=Text))
 
 
