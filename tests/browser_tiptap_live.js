@@ -179,6 +179,31 @@ const J = (x) => JSON.stringify(x);
   const ydoc = await b.evaluate(() => { const d = HKPmLive.doc(); return d ? JSON.stringify(d.getXmlFragment('prosemirror').toJSON()) : ''; });
   ok('... und er steht nicht im Live-Zustand', ydoc && !ydoc.includes(SECRET), ydoc.slice(0, 200));
 
+  // 9b) Toggle auf/zu: nur der eigene Klick schreibt (beide sehen es), Laden/Fremdes schreibt nichts; neue Bloecke per
+  //     Enter bekommen genau eine ID (UniqueID nur fuer eigene Transaktionen)
+  const PT = await mk('Toggle ' + RUN, [{ id: 't1', type: 'toggle', data: { title: 'Auf', open: true, blocks: [P('t2', 'innen')] } }, P('t3', 'unten')], 'edit');
+  await open(a, PT); await open(b, PT);
+  await a.click('#pg-editor [data-block-id="t1"] .pm-tgl-btn'); await sleep(1200);
+  ok('Toggle zu (Anna klickt): bei Bert zu, materialisiert open:false', !(await b.evaluate(() => document.querySelector('#pg-editor [data-block-id="t1"]').classList.contains('open'))) && (await get(PT))[0].data.open === false,
+    [(await get(PT))[0].data.open]);
+  ok('... Bert hat dabei nichts gesendet', updFrames(b) === 0, updFrames(b));
+  await D.focus(b, 't3', 'end'); await b.keyboard.press('Enter'); await b.keyboard.type('neu', { delay: 20 }); await sleep(1500);
+  const gt = await get(PT), ids3 = gt.map((x) => x.id);
+  ok('Enter bei Bert: neuer Block mit eigener ID, bei Anna dieselbe ID, keine doppelten IDs', gt.length === 3 && gt[2].data.text === 'neu' && new Set(ids3).size === 3 &&
+    J(await a.evaluate(() => HKPages.k.doc.blocks().filter((x) => x.parent == null).map((x) => x.id))) === J(ids3), [ids3]);
+  ok('... Anna hat auf Berts Block hin nichts gesendet (keine ID-Vergabe fuer fremde Aenderungen)', updFrames(a) === 1, updFrames(a));
+
+  // 9c) Karte (Widget) aendert sich bei der anderen Person: Node-View bleibt (update(data)), kein Neuaufbau
+  const PW_ = await mk('Karte ' + RUN, [P('k0', 'vor'), { id: 'w1', type: 'widget', data: { kind: 'clock', title: 'Uhr A' } }], 'edit');
+  await open(a, PW_); await open(b, PW_);
+  await a.evaluate(() => { const e = document.querySelector('#pg-editor [data-block-id="w1"]'); if (e) e.__mark = 1; });
+  await b.evaluate(() => { const ed = HKPages.k.editor().editor(); let pos = null, node = null; ed.state.doc.descendants((n, q) => { if (n.attrs && n.attrs.id === 'w1') { pos = q; node = n; } });
+    ed.view.dispatch(ed.state.tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, { data: Object.assign({}, node.attrs.data, { title: 'Uhr B' }) }))); });
+  await sleep(1500);
+  const wv = await a.evaluate(() => { const e = document.querySelector('#pg-editor [data-block-id="w1"]'); let d = null; HKPages.k.editor().editor().state.doc.descendants((n) => { if (n.attrs && n.attrs.id === 'w1') d = n.attrs.data; }); return { same: !!(e && e.__mark), title: d && d.title }; });
+  ok('Fremde Aenderung an einer Karte: Anna hat den neuen Stand, Node-View bleibt (update statt Neuaufbau)', wv.title === 'Uhr B' && wv.same, wv);
+  ok('... materialisiert', (await get(PW_))[1].data.title === 'Uhr B', (await get(PW_))[1]);
+
   // 10) IME (CDP Input.imeSetComposition)
   const P10 = await mk('IME ' + RUN, [P('i1', 'Start')], 'edit');
   await open(a, P10); await open(b, P10);

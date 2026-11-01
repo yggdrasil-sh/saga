@@ -197,7 +197,7 @@
     if (!pg) return;
     if (pg.subbed) send(KIND.UNSUB, pg.nid);
     destroyProv(pg);
-    clearTimeout(pg.awT); clearTimeout(pg.retryT);
+    clearTimeout(pg.awT); clearTimeout(pg.retryT); clearTimeout(pg.goT);
     if (BOX) BOX.classList.remove('pm-live');
     hint(false);
   }
@@ -244,6 +244,9 @@
     (k && k.save ? k.save() : Promise.resolve()).catch(function () {}).then(function () {
       if (PG !== pg || !pg.synced || pg.lock) return;
       var c = curPage(); if (!c || c.id !== pg.nid) return;
+      // waehrenddessen weitergetippt (bzw. Speichern/Laden laeuft): erst wenn alles gespeichert ist - der Neuaufbau aus
+      // dem Live-Zustand wuerde Eingaben verwerfen, die der Server noch nicht hat. Danach kommt der Stand als update.
+      if (k && k.busy && k.busy()) { clearTimeout(pg.goT); pg.goT = setTimeout(goLive, 400); return; }
       bind();
     });
   }
@@ -253,7 +256,7 @@
     destroyProv(pg);
     pg.prov = makeProv(pg);
     var exts = [YB.Collaboration.configure({ document: pg.doc, field: 'prosemirror' }), caretFix(), noMigration()];
-    if (!window.HKPmLive || !HKPmLive.noCaret) exts.push(YB.CollaborationCaret.configure({ provider: pg.prov, user: { name: '', color: '#000000' }, render: renderCaret, selectionRender: renderSel }));
+    exts.push(YB.CollaborationCaret.configure({ provider: pg.prov, user: { name: '', color: '#000000' }, render: renderCaret, selectionRender: renderSel }));
     X.live({ editable: editable, exts: exts });
     pg.loading = true; var drops = ST.loadDrops;
     try {
