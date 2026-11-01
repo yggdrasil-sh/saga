@@ -34,7 +34,7 @@
   // Werkzeug-Skripte der Rolle t4b (static/pm-tools.js, static/pm-tools-daten.js) - werden mitgeladen, sobald sie da sind
   var TOOL_SCRIPTS = ['pm-tools.js', 'pm-tools-daten.js'];
   // Erweiterungen des Kern-Editors (T3: pm-struktur.js), melden sich mit HKPmEditor.use(fn) an (siehe "Erweiterungen")
-  var EXT_SCRIPTS = ['pm-struktur.js'];
+  var EXT_SCRIPTS = ['pm-struktur.js', 'pm-tools-text.js'];          // T4c: Tabelle, Code, Mathe-Block
   var EXTS = [], MODS = [];
 
   // =================================================================================================================
@@ -1181,6 +1181,7 @@
       shouldShow: function (a) {
         var st = a.state, sel = st.selection;
         if (!a.editor.isEditable || sel.empty || !(sel instanceof P.pm.state.TextSelection)) return false;
+        if (sel.$from.parent.type.spec.code) return false;              // Code-Block (T4c): keine Marken
         if (!st.doc.textBetween(sel.from, sel.to).length) return false;
         var b = blockAt(sel.from); return !!(b && EDIT[b.node.type.name]);
       }
@@ -1650,6 +1651,9 @@
     select: select, selIds: function () { return ed && SELKEY ? (SELKEY.getState(ed.state) || []).slice() : []; },
     convertible: function (n) { return !!CONV[n.type.name]; }, colorable: function (n) { return !!COLORABLE[n.type.name]; },
     nestOk: function (n) { return n.type.name !== 'columns'; },
+    // Block-Menue (pm-struktur.js): Einstellungen und Namen weiterer Typen aus anderen Erweiterungen (T4a: Medien)
+    settings: function (m, x) { MODS.forEach(function (md) { if (md.settings) md.settings(m, x); }); },
+    typeName: function (t) { for (var i = 0; i < MODS.length; i++) if (MODS[i].names && MODS[i].names[t]) return MODS[i].names[t]; return null; },
     inNested: function (pos) { return !!ed && ed.state.doc.resolve(Math.min(pos, ed.state.doc.content.size)).depth > 1; }
   };
   function initExt(fn) {

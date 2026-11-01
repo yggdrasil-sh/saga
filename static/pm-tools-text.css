@@ -1,0 +1,33 @@
+/* Tiptap-Editor (2.5, T4c): Tabelle, Code-Block, Mathe-Block (static/pm-tools-text.js). Farben/Hervorhebung nutzen die
+   Klassen von Editor.js (tbl-bg-*, tk-*, hk-code*, hk-mathblk) aus style.css. */
+/* Tabelle */
+.page-body .pm-b-table{margin:.35rem 0;padding-top:1.6rem}
+.page-body .pm-tbl-wrap{position:relative;overflow-x:auto}
+.page-body .pm-tbl{width:100%;border-collapse:collapse;font-size:14px;line-height:1.4;color:var(--fg)}
+.page-body .pm-tbl.pm-tbl-w{table-layout:fixed}
+.page-body .pm-tbl td{border:1px solid var(--border);padding:6px 10px;vertical-align:top;min-width:40px;overflow-wrap:anywhere}
+.page-body .pm-tbl.pm-tbl-head tr:first-child>td{font-weight:600;background:var(--card-h);border-bottom-width:2px}
+.page-body .pm-tbl.pm-tbl-hcol tr>td:first-child{font-weight:600;background:var(--card-h)}
+.page-body .pm-b-table.pm-tbl-stretched{margin-inline:calc(-1 * min(6vw, 4rem))}
+.page-body .pm-tbl-bar{position:absolute;top:0;left:2px;display:flex;gap:.25rem;opacity:0;pointer-events:none;transition:opacity .12s}
+.page-body .pm-b-table.pm-tbl-on .pm-tbl-bar{opacity:1;pointer-events:auto}
+.page-body .pm-tbl-b{border:1px solid var(--border);background:var(--card);color:var(--muted);font:inherit;font-size:.72rem;padding:.08rem .45rem;border-radius:5px;cursor:pointer}
+.page-body .pm-tbl-b:hover{color:var(--fg);background:var(--card-h)}
+.page-body .pm-tbl-add{position:absolute;border:1px dashed var(--border);background:none;color:var(--muted);font:inherit;cursor:pointer;opacity:0;transition:opacity .12s;border-radius:4px}
+.page-body .pm-b-table:hover .pm-tbl-add{opacity:.8}
+.page-body .pm-tbl-add:hover{opacity:1;color:var(--fg);background:var(--card-h)}
+.page-body .pm-tbl-add:disabled{display:none}
+.page-body .pm-tbl-addc{right:-1.5rem;top:1.6rem;bottom:1.2rem;width:1.2rem}
+.page-body .pm-tbl-addr{left:0;right:0;bottom:-1.1rem;height:1rem;line-height:.8}
+.page-body .pm-tbl-rs{position:absolute;inset:0;pointer-events:none}
+.page-body .pm-tbl-rh{position:absolute;top:0;bottom:0;width:8px;margin-left:-4px;cursor:col-resize;pointer-events:auto;z-index:1}
+.page-body .pm-tbl-rh:hover,body.hk-resizing .pm-tbl-rh{background:color-mix(in srgb,var(--accent) 40%,transparent)}
+.page-body .pm-doc[contenteditable="false"] :is(.pm-tbl-bar,.pm-tbl-add,.pm-tbl-rs){display:none}
+/* Code (Kopf/Mermaid-Ansichten wie .hk-code in style.css; Text verwaltet ProseMirror) */
+.page-body .pm-b-code{padding:0}
+.page-body .pm-code-pre{margin:0;padding:.65rem .8rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.84rem;line-height:1.5;
+  white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2;min-height:2.4rem;color:var(--fg);box-sizing:border-box}
+.page-body .pm-code-pre code{font:inherit;background:none;padding:0;color:inherit;display:block;outline:none;min-height:1.5em}
+.page-body .pm-doc[contenteditable="false"] .hk-code-views .hk-code-vb{cursor:pointer}
+/* Mathe-Block */
+.page-body .pm-b-math.ProseMirror-selectednode{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent)}
