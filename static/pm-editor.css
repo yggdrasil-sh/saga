@@ -154,7 +154,7 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
 .page-body .pm-img-cap{color:var(--muted);font-size:.85rem;text-align:center;min-height:1.2em;outline:none}
 .page-body .pm-img-cap>[data-pm-part]{display:block;outline:none}
 .page-body .pm-img-cap .is-empty[data-ph]::before{left:50%;transform:translateX(-50%);white-space:nowrap}
-.page-body .pm-img-empty .pm-img-cap{display:none}
+
 .page-body .pm-img-up{padding:.9rem 1rem;border:1px dashed var(--border);border-radius:8px;text-align:center}
 .page-body .pm-b-image.ProseMirror-selectednode{outline:none}
 .page-body .pm-b-image.ProseMirror-selectednode .image-tool__image{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
@@ -169,3 +169,4 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
 .page-body .pm-att-dl:hover{background:var(--card-h)}
 .page-body .pm-att-none{color:var(--muted)}
 .pg-locked .page-body .pm-img-up{display:none}
+.page-body .pm-img-empty .pm-img-cap{display:none}

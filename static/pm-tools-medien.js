@@ -54,8 +54,10 @@
     });
   }
   function pickFile(accept, cb) {
-    var inp = el('input'); inp.type = 'file'; if (accept) inp.accept = accept;
-    inp.addEventListener('change', function () { if (inp.files && inp.files[0]) cb(inp.files[0]); });
+    var inp = el('input', 'pm-file-in'); inp.type = 'file'; inp.hidden = true; if (accept) inp.accept = accept;
+    inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; inp.remove(); if (f) cb(f); });
+    inp.addEventListener('cancel', function () { inp.remove(); });
+    document.body.appendChild(inp);
     inp.click();
   }
 
@@ -309,9 +311,10 @@
         }
       }
       if (!Array.isArray(out) || !out.length || !out.every(function (b) { return isDict(b) && typeof (b.tool || b.type) === 'string' && isDict(b.data); })) return null;
-      var re = M().fileRef; if (!re) return null;
+      var re = M().fileRef, js = JSON.stringify(out); if (!re) return null;
       re.lastIndex = 0;
-      return re.test(JSON.stringify(out)) ? out : null;
+      // mit Dateiverweisen (Kopie fuer die Zielseite) oder mit Nextcloud-Bloecken (fremde abweisen) - sonst T3/ProseMirror
+      return re.test(js) || /"(tool|type)":"nextcloud"/.test(js) ? out : null;
     }
     function ncFilter(list) {                 // fremde Nextcloud-Bloecke (auch in Spalten/Toggles) entfernen
       var ok = M().ncOk, dropped = false;
@@ -350,7 +353,9 @@
       var st = view.state, sel = st.selection; if (!sel.empty) return false;
       var b = X.blockAt(sel.from); if (!b || b.node.type.name !== 'paragraph' || b.node.content.size) return false;
       e.preventDefault();
-      var id = X.newId(), node = X.mk([{ id: id, type: 'embed', data: { url: txt } }])[0];
+      var id = X.newId(), ed0 = { url: txt };
+      if (M().ytId && M().ytId(txt)) ed0.kind = 'youtube';                    // wie EmbedTool.save
+      var node = X.mk([{ id: id, type: 'embed', data: ed0 }])[0];
       var tr = st.tr.replaceWith(b.pos, b.pos + b.node.nodeSize, node);
       try { tr.setSelection(S0.NodeSelection.create(tr.doc, b.pos)); } catch (x) { /* egal */ }
       dispatch(tr);
