@@ -931,7 +931,7 @@
     var groups = [], by = {};
     hits.forEach(function (h) { var g = h.it.group || ''; if (!by[g]) { by[g] = []; groups.push(g); } by[g].push(h.it); });
     groups.forEach(function (g) { out = out.concat(by[g]); });
-    return out.slice(0, 40);
+    return out.slice(0, 80);            // T4c: mit Tabelle/Code/Formel fiel bei 40 die Gruppe Datenbank aus dem leeren "/"-Menue
   }
   function slashPick(it, range, editor) {
     var st = editor.state, tr = st.tr, $f = st.doc.resolve(range.from), tb = $f.parent;
