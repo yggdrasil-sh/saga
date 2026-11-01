@@ -455,7 +455,8 @@
   function currentSelection() {
     var d = doc(); if (!d) return null;
     var sel = d.selected();
-    if (sel.length < 2) return null;
+    if (sel.length < 2 && d.kind !== 'tiptap') return null;
+    if (d.kind === 'tiptap') return tipSelection(d, sel);
     var groups = new Map();
     sel.forEach(function (b) { var key = b.parent + '/' + b.slot; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(b); });
     var best = null;                    // die Gruppe mit den meisten Bloecken (oberste Ebene bei Gleichstand)
@@ -464,6 +465,25 @@
     return { ids: best.map(function (b) { return b.id; }), holders: best.map(function (b) { return b.el; }),
              types: best.map(function (b) { return b.type; }), parent: best[0].parent, slot: best[0].slot, top: best[0].parent == null };
   }
+  // Tiptap (T3, Entscheidung T-E5 A): Auswahl ueber Ebenen und Spalten in Dokumentreihenfolge - ohne Kinder gewaehlter
+  // Behaelter; groups = zusammenhaengende Geschwister (Umwandeln je Gruppe)
+  function tipSelection(d, sel) {
+    var want = {}; sel.forEach(function (b) { want[b.id] = b; });
+    var rootsL = sel.filter(function (b) {
+      for (var p = b.parent; p != null;) { if (want[p]) return false; var pb = d.byId(p); p = pb ? pb.parent : null; }
+      return true;
+    });
+    if (rootsL.length < 2) return null;
+    var groups = [], last = null;
+    rootsL.forEach(function (b) {
+      var k = b.parent + '/' + b.slot, i = b.index;
+      if (last && last.k === k && i === last.i + 1) last.g.push(b.id); else { last = { k: k, g: [b.id] }; groups.push(last.g); }
+      last.i = i;
+    });
+    return { ids: rootsL.map(function (b) { return b.id; }), holders: rootsL.map(function (b) { return b.el; }), types: rootsL.map(function (b) { return b.type; }),
+             parent: rootsL[0].parent, slot: rootsL[0].slot, top: rootsL.every(function (b) { return b.parent == null; }), groups: groups, tiptap: true };
+  }
+  function tipApi(name) { return window.HKPmEditor && HKPmEditor.api ? HKPmEditor.api(name) : null; }
   function clearSel() {
     var d = doc(); if (d) d.select([]);
     hideBar();
@@ -513,6 +533,15 @@
   function dirty() { var k = K(); if (k && k.dirty) k.dirty(); }
   function act(a, s, btn) {
     var k = K(); if (!k || ro()) return;
+    if (s.tiptap && (a === 'delete' || a === 'dup')) {           // Tiptap: eine Transaktion, Rueckgaengig = Editor-Undo
+      var sb = tipApi('selectBlocks'), f = tipApi(a === 'delete' ? 'deleteSel' : 'dupSel'), n = s.ids.length, d0 = doc();
+      if (sb && f) {
+        sb(s.ids); f(); hideBar();
+        if (a === 'delete') HK.toast(T('{n} Blöcke gelöscht', { n: n }), T('Rückgängig'), function () { d0.undo(); }, 10000);
+        else HK.toast(T('{n} Blöcke dupliziert', { n: n }));
+        return;
+      }
+    }
     if (a === 'delete') return delBlocks(s);
     if (a === 'dup') return dupBlocks(s);
     if (a === 'copy') return copyBlocks(s);
@@ -625,6 +654,10 @@
     });
   }
   function convert(s, target) {
+    if (s.groups && s.groups.length > 1) {           // Tiptap: ueber Ebenen hinweg je zusammenhaengender Gruppe
+      s.groups.forEach(function (g) { convert(Object.assign({}, s, { ids: g, groups: null, types: null }), target); });
+      return;
+    }
     saveBlocks(s).then(function (saved) {
       if (!saved.every(function (x) { return TEXT_TYPES[x.tool]; })) { HK.toast(T('Nur Textblöcke lassen sich umwandeln')); return; }
       var list = { unordered: 1, ordered: 1, checklist: 1 }[target], out = [];

@@ -242,7 +242,9 @@
   // Antwort auf das Speichern (PATCH): neuer Stand der Originale -> Basis der Kopien; abgelehnt/veraltet -> Hinweis + neu laden
   function saved(d) {
     var revs = d.synced_rev || {}, bad = false, k0 = K();
-    if (Object.keys(INST).some(function (s) { return INST[s].pending; }) && k0 && k0.apply) setTimeout(function () { k0.apply(); }, 0);
+    // Tiptap (T3, static/pm-struktur.js): Stand der Originale an die Kopien, frisch eingefuegte Kopien -> neu laden
+    var tip = window.HKPmEditor && HKPmEditor.api ? HKPmEditor.api('savedReply') : null, tipPending = tip ? tip(d) : false;
+    if ((tipPending || Object.keys(INST).some(function (s) { return INST[s].pending; })) && k0 && k0.apply) setTimeout(function () { k0.apply(); }, 0);
     Object.keys(d.synced || {}).forEach(function (sid) {
       var r = d.synced[sid], it = INST[sid];
       if (it && it.src && typeof revs[sid] === 'number') it.src.rev = revs[sid];

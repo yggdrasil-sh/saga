@@ -5,11 +5,12 @@
 // Editor-Objekt (create() unten: save/render/applyBlocks/caret ...) und spricht sonst nur ueber die Fassade.
 //
 // Fassade HKPages.k.doc (kind 'tiptap'): dieselbe Schnittstelle und Semantik wie static/editor-doc.js (dort beschrieben).
-// Abweichungen: Bloecke in Werkzeugen, die T2 noch nicht kann (Toggle, Spalten, synchronisierte Bloecke ...), haben kein
-// eigenes Element und fehlen in blocks()/byId(); Mutationen sind synchron (Promise loest sofort auf).
+// Bloecke in Spalten, Toggles und synchronisierten Bloecken stehen mit parent/slot in blocks()/byId() (T3); Bloecke in
+// Karten (noch nicht portierte Typen) fehlen. Mutationen sind synchron (Promise loest sofort auf).
 //
 // Bloecke: Absatz, Ueberschrift 1-4, Zitat (Text, Quelle, Ausrichtung), Hinweis, Trennlinie und Liste (3 Stile,
-// verschachtelt) sind bearbeitbar. Alle anderen Typen erscheinen als Karte "noch nicht unterstuetzt" und bleiben
+// verschachtelt) sind bearbeitbar; Toggle, Spalten und synchronisierte Bloecke kommen aus static/pm-struktur.js (T3,
+// Anmeldung ueber HKPmEditor.use). Alle anderen Typen erscheinen als Karte "noch nicht unterstuetzt" und bleiben
 // unveraendert (WeakMap-Durchreichung, Schutz-Plugin gegen Aenderungen im Inneren). Werkzeug-Ansichten aus
 // static/pm-tools*.js (window.HKTools.nodeViews(ctx), Rolle t4b) haben Vorrang vor der Karte.
 //
@@ -32,6 +33,9 @@
   var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   // Werkzeug-Skripte der Rolle t4b (static/pm-tools.js, static/pm-tools-daten.js) - werden mitgeladen, sobald sie da sind
   var TOOL_SCRIPTS = ['pm-tools.js', 'pm-tools-daten.js'];
+  // Erweiterungen des Kern-Editors (T3: pm-struktur.js), melden sich mit HKPmEditor.use(fn) an (siehe "Erweiterungen")
+  var EXT_SCRIPTS = ['pm-struktur.js'];
+  var EXTS = [], MODS = [];
 
   // =================================================================================================================
   // Laden (vorgebautes Bundle + Schema + Adapter, CSS als Datei)
@@ -49,10 +53,11 @@
     if (loading) return loading;
     css('/static/vendor/tiptap/saga-pm.css?v=' + V); css('/static/pm-editor.css?v=' + V);
     var list = ['/static/vendor/tiptap/saga-pm.js', '/static/pm-schema.js', '/static/pm-adapter.js']
-      .concat(TOOL_SCRIPTS.map(function (f) { return '/static/' + f; }));
+      .concat(TOOL_SCRIPTS.concat(EXT_SCRIPTS).map(function (f) { return '/static/' + f; }));
     loading = Promise.all(list.map(function (s) { return script(s + '?v=' + V); })).then(function () {
       P = window.SagaPM; SC = window.HKPmSchema; AD = window.HKPmAdapter;
       SC.BLOCKS.forEach(function (b) { BLOCKSET[b] = 1; });
+      EXTS.forEach(initExt); EXTS = [];
     });
     loading.catch(function () { loading = null; });
     return loading;
@@ -69,25 +74,35 @@
   function newId() { return SC.newId(); }
   function ro() { return !ed || !ed.isEditable; }
 
-  // alle Bloecke (auch verschachtelt) in Dokumentreihenfolge: fn({node, pos, parent, slot, inCard})
+  // geschuetzt wie eine Karte (Inhalt nicht bearbeitbar): nicht portierte Typen + Erweiterungen (z. B. synchronisierte
+  // Kopie nur lesend, pm-struktur.js)
+  function cardish(n) {
+    if (!EDIT[n.type.name]) return true;
+    for (var i = 0; i < MODS.length; i++) if (MODS[i].protect && MODS[i].protect(n)) return true;
+    return false;
+  }
+  // alle Bloecke (auch verschachtelt) in Dokumentreihenfolge: fn({node, pos, parent, slot, inCard, depth})
   function walk(doc, fn) {
-    function rec(node, start, pid, slot, inCard) {
+    function rec(node, start, pid, slot, inCard, dp) {
       node.forEach(function (c, off) {
         var p = start + off, t = c.type.name;
         if (!BLOCKSET[t]) return;
-        if (fn({ node: c, pos: p, parent: pid, slot: slot, inCard: inCard }) === false) throw walk.STOP;
-        var card = inCard || !EDIT[t];
-        if (t === 'toggle' || t === 'synced') rec(c, p + 1, c.attrs.id, 0, card);
-        else if (t === 'columns') c.forEach(function (col, o2, ci) { rec(col, p + 1 + o2 + 1, c.attrs.id, ci, card); });
+        if (fn({ node: c, pos: p, parent: pid, slot: slot, inCard: inCard, depth: dp }) === false) throw walk.STOP;
+        var card = inCard || cardish(c);
+        if (t === 'toggle' || t === 'synced') rec(c, p + 1, c.attrs.id, 0, card, dp + 1);
+        else if (t === 'columns') c.forEach(function (col, o2, ci) { rec(col, p + 1 + o2 + 1, c.attrs.id, ci, card, dp + 1); });
       });
     }
-    try { rec(doc, 0, null, 0, false); } catch (e) { if (e !== walk.STOP) throw e; }
+    try { rec(doc, 0, null, 0, false, 0); } catch (e) { if (e !== walk.STOP) throw e; }
   }
   walk.STOP = {};
+  // Block-ID -> Lage, je Dokumentstand einmal berechnet (Fassade: blocks() fragt je Getter, sonst quadratisch)
+  var ID_CACHE = new WeakMap();
   function findId(id, doc) {
-    var hit = null; id = String(id);
-    walk(doc || ed.state.doc, function (x) { if (x.node.attrs.id === id) { hit = x; return false; } });
-    return hit;
+    doc = doc || ed.state.doc; id = String(id);
+    var m = ID_CACHE.get(doc);
+    if (!m) { m = {}; walk(doc, function (x) { var i = x.node.attrs.id; if (i && !(i in m)) m[i] = x; }); ID_CACHE.set(doc, m); }
+    return Object.prototype.hasOwnProperty.call(m, id) ? m[id] : null;
   }
   // Block, in dem eine Position liegt (innerster), samt Lage
   function blockAt(pos, doc) {
@@ -331,6 +346,7 @@
   NV.math_inline = inlineView(function (n) { return el('code', 'hk-math', n.attrs.tex || ''); });
 
   function nodeViewFor(name) {
+    for (var i = 0; i < MODS.length; i++) if (MODS[i].nodeViews && MODS[i].nodeViews[name]) return MODS[i].nodeViews[name];
     if (NV[name]) return NV[name];
     if (BLOCKSET[name] && !EDIT[name]) return cardView;
     return null;
@@ -350,15 +366,20 @@
   // =================================================================================================================
   // Schutz: Inhalt nicht unterstuetzter Bloecke (Karten) wird nie veraendert; Schreibmarke darin -> Karte auswaehlen
   // =================================================================================================================
+  // je Dokumentstand einmal (WeakMap): filterTransaction und appendTransaction fragen beide
+  var PROT_CACHE = new WeakMap();
   function protectedRanges(doc) {
-    var out = [];
+    var out = PROT_CACHE.get(doc); if (out) return out;
+    out = [];
     doc.descendants(function (n, pos) {
       if (!BLOCKSET[n.type.name]) return true;
-      if (!EDIT[n.type.name]) { if (!n.isLeaf) out.push([pos, pos + n.nodeSize]); return false; }
+      if (cardish(n)) { if (!n.isLeaf) out.push([pos, pos + n.nodeSize]); return false; }
       return true;
     });
+    PROT_CACHE.set(doc, out);
     return out;
   }
+  function isMarkStep(step) { var t = step.toJSON().stepType; return /^(add|remove)Mark$/.test(t); }
   function guardPlugin() {
     var S0 = P.pm.state;
     return new S0.Plugin({
@@ -366,6 +387,7 @@
       filterTransaction: function (tr, state) {
         if (!tr.docChanged || tr.getMeta('hkAllow')) return true;
         var prot = protectedRanges(state.doc); if (!prot.length) return true;
+        var onlyMarks = true, badMarks = false;
         for (var i = 0; i < tr.steps.length; i++) {
           var m = tr.mapping.slice(0, i), step = tr.steps[i], bad = false;
           var cur = prot.map(function (r) { return [m.map(r[0], 1), m.map(r[1], -1)]; });
@@ -376,11 +398,27 @@
               if (!whole && a < e && b > s) bad = true;              // greift ins Innere oder schneidet an
             });
           };
-          if (step.from != null && step.to != null && /^(add|remove)Mark$/.test(step.toJSON().stepType)) hit(step.from, step.to);
+          var mk = step.from != null && step.to != null && isMarkStep(step);
+          if (!mk) onlyMarks = false;
+          if (mk) hit(step.from, step.to);
           step.getMap().forEach(function (a, b) { hit(a, b); });
-          if (bad) return false;
+          if (bad && mk) badMarks = true;
+          else if (bad) return false;
         }
-        return true;
+        // Marken ueber eine Auswahl mit Karten (Strg+A + Fett ...): nicht still verwerfen, sondern nur ausserhalb der
+        // Karten anwenden (eigene Transaktion mit denselben Marken-Schritten ohne die Karten-Bereiche)
+        if (badMarks && onlyMarks && ed) {
+          var steps = tr.steps.filter(function (s) {
+            return !prot.some(function (r) { return s.from < r[1] && s.to > r[0]; });
+          });
+          if (steps.length) setTimeout(function () {
+            if (!ed || ed.state.doc !== state.doc) return;
+            var t2 = ed.state.tr; steps.forEach(function (s) { t2.step(s); });
+            t2.setSelection(tr.selection.map(t2.doc, t2.mapping)); ed.view.dispatch(t2);
+          }, 0);
+          return false;
+        }
+        return !badMarks;
       },
       appendTransaction: function (trs, old, state) {
         var sel = state.selection;
@@ -415,7 +453,8 @@
   }
   function phText(n, parent, cur) {
     var t = n.type.name;
-    if (t === 'paragraph') return cur && (!parent || parent.type.name === 'doc') ? T('Schreib etwas oder tippe „/“ …') : null;
+    if (t === 'paragraph') return cur ? T('Schreib etwas oder tippe „/“ …') : null;
+    if (t === 'ttitle') return parent && parent.attrs.level ? T('Toggle-Überschrift') : T('Toggle');
     if (t === 'header') return T('Überschrift {n}', { n: n.attrs.level || 2 });
     if (t === 'callout') return cur ? T('Hinweis') : null;
     if (t === 'qtext') return T('Zitat');
@@ -432,7 +471,7 @@
         if (!ed || !ed.isEditable) return null;
         var decos = [], $h = state.selection.$head, curPos = $h.parent.isTextblock ? $h.before() : -1;
         state.doc.descendants(function (n, pos, parent) {
-          if (!n.isTextblock) return BLOCKSET[n.type.name] ? !!EDIT[n.type.name] : true;
+          if (!n.isTextblock) return BLOCKSET[n.type.name] ? !cardish(n) : true;
           if (n.content.size) return false;
           var t = phText(n, parent, pos === curPos);
           if (t) decos.push(VW.Decoration.node(pos, pos + n.nodeSize, { 'class': 'is-empty', 'data-ph': t }));
@@ -452,8 +491,13 @@
     if (TEXTB[t]) return n.content;
     if (t === 'quote') return n.firstChild ? n.firstChild.content : P.pm.model.Fragment.empty;
     if (t === 'list') { var it = n.firstChild; return it && it.firstChild ? it.firstChild.content : P.pm.model.Fragment.empty; }
+    if (t === 'toggle') return n.firstChild ? n.firstChild.content : P.pm.model.Fragment.empty;
     return P.pm.model.Fragment.empty;
   }
+  // Toggle-Schluessel: toggle = ausklappbar, t1..t3 = Toggle-Ueberschrift
+  function toggleLevel(key) { return key === 'toggle' ? 0 : /^t[1-3]$/.test(key) ? +key.slice(1) : -1; }
+  // Abstand der Schreibmarke vom Blockanfang nach dem Umwandeln
+  function caretOff(key) { return key === 'quote' || toggleLevel(key) >= 0 ? 2 : /^(un)?ordered$|^checklist$/.test(key) ? 3 : 1; }
   // Ziel -> neuer Knoten aus Inline-Inhalt; key: p | h1..h4 | unordered | ordered | checklist | quote | callout
   function makeBlock(key, attrs, content) {
     var s = schema(), a = { id: attrs.id || newId(), style: attrs.style || null };
@@ -467,9 +511,11 @@
       return s.nodes.list.create(Object.assign(a, { listStyle: key, meta: {} }), item);
     }
     if (key === 'delimiter') return s.nodes.delimiter.create(a);
+    var lv = toggleLevel(key);
+    if (lv >= 0 && s.nodes.toggle && EDIT.toggle) return s.nodes.toggle.create(Object.assign(a, { open: true, level: lv || null }), s.nodes.ttitle.create(null, content));
     return null;
   }
-  var CONV = { paragraph: 1, header: 1, callout: 1, quote: 1, list: 1 };
+  var CONV = { paragraph: 1, header: 1, callout: 1, quote: 1, list: 1, toggle: 1 };
   // Block an pos umwandeln; liefert die Position des Inhalts (fuer die Schreibmarke) oder null
   function convertAt(tr, pos, key) {
     var n = tr.doc.nodeAt(pos); if (!n || !CONV[n.type.name]) return null;
@@ -482,6 +528,10 @@
       return pos + 3;
     }
     if (t === 'header' && /^h[1-4]$/.test(key)) { tr.setNodeMarkup(pos, null, Object.assign({}, n.attrs, { level: +key.slice(1) })); return pos + 1; }
+    if (t === 'toggle') {                            // Toggle <-> Toggle-Ueberschrift: nur die Ebene; mit Inhalt kein Umwandeln
+      if (toggleLevel(key) >= 0) { tr.setNodeMarkup(pos, null, Object.assign({}, n.attrs, { level: toggleLevel(key) || null })); return pos + 2; }
+      if (n.childCount > 1) return null;
+    }
     var nodes = [];
     if (t === 'list') {                              // Liste -> je Punkt ein Block (erster behaelt die ID)
       var first = true;
@@ -495,7 +545,7 @@
     }
     nodes = nodes.filter(Boolean); if (!nodes.length) return null;
     tr.replaceWith(pos, pos + n.nodeSize, nodes);
-    return pos + (key === 'quote' ? 2 : key === 'unordered' || key === 'ordered' || key === 'checklist' ? 3 : 1);
+    return pos + caretOff(key);
   }
 
   // =================================================================================================================
@@ -638,9 +688,9 @@
         setSel(tr, c.pos + dl.nodeSize + 1);
         return;
       }
-      var nb = makeBlock(key, n.attrs, n.content);
+      var nb = makeBlock(key, n.attrs, n.content); if (!nb) return null;
       tr.replaceWith(c.pos, c.pos + n.nodeSize, nb);
-      setSel(tr, c.pos + (key === 'quote' ? 2 : /^(un)?ordered$|^checklist$/.test(key) ? 3 : 1));
+      setSel(tr, c.pos + caretOff(key));
     } });
   }
   function SagaKern() {
@@ -673,7 +723,7 @@
               var tr2 = st.tr, np = schema().nodes.paragraph.create({ id: newId() }), at = q.pos + q.node.nodeSize;
               tr2.insert(at, np); setSel(tr2, at + 1); self.editor.view.dispatch(tr2.scrollIntoView()); return true;
             }
-            if (t === 'callout' && st.selection.empty && $f.parentOffset === $f.parent.content.size && $f.depth === 1) {
+            if (t === 'callout' && st.selection.empty && $f.parentOffset === $f.parent.content.size) {
               var tr3 = st.tr, at3 = $f.after(), np3 = schema().nodes.paragraph.create({ id: newId() });
               tr3.insert(at3, np3); setSel(tr3, at3 + 1); self.editor.view.dispatch(tr3.scrollIntoView()); return true;
             }
@@ -699,6 +749,14 @@
           'Mod-b': toggleMark('b'), 'Mod-i': toggleMark('i'), 'Mod-u': toggleMark('u'),
           'Mod-Shift-s': toggleMark('s'), 'Mod-Shift-x': toggleMark('s'), 'Mod-e': toggleMark('icode'), 'Mod-Shift-h': toggleMark('mark')
         };
+        // Erweiterungen zuerst (pm-struktur.js: Toggle-Titel, Mehrfachauswahl ...), dann der Kern
+        MODS.forEach(function (m) {
+          var mk = m.keys ? m.keys(self.editor) : {};
+          Object.keys(mk).forEach(function (k) {
+            var base = keys[k], own = mk[k];
+            keys[k] = function () { return own.apply(this, arguments) || (base ? base.apply(this, arguments) : false); };
+          });
+        });
         Object.keys(keys).forEach(function (k) { keys[k] = sync(keys[k]); });
         return keys;
       },
@@ -707,7 +765,7 @@
         var rules = [
           blockRule(/^####\s$/, 'h4'), blockRule(/^###\s$/, 'h3'), blockRule(/^##\s$/, 'h2'), blockRule(/^#\s$/, 'h1'),
           blockRule(/^[-*]\s$/, 'unordered'), blockRule(/^1[.)]\s$/, 'ordered'), blockRule(/^\[\s?\]\s$/, 'checklist'),
-          blockRule(/^>\s$/, 'quote'),                // bis T3 (Toggle-Knoten) bleibt "> " Zitat; danach Notion-Belegung (E5)
+          blockRule(/^>\s$/, EDIT.toggle ? 'toggle' : 'quote'),   // Notion-Belegung (E5): "> " Toggle, '" ' Zitat
           blockRule(/^["„“]\s$/, 'quote'), blockRule(/^---$/, 'delimiter'),
           core2.markInputRule({ find: /(?:^|\s)(\*\*(?!\s+\*\*)((?:[^*]+))\*\*(?!\s+\*\*))$/, type: s.marks.b }),
           core2.markInputRule({ find: /(?:^|\s)(\*(?!\s+\*)((?:[^*]+))\*(?!\s+\*))$/, type: s.marks.i }),
@@ -722,8 +780,11 @@
         ];
         return rules;
       },
-      addProseMirrorPlugins: function () { return [guardPlugin(), selPlugin(), phPlugin(), slashPlugin(this.editor), atPlugin(this.editor),
-        refPlugin(this.editor), emojiPlugin(this.editor), bubbleKeysPlugin()]; }
+      addProseMirrorPlugins: function () {
+        var ed2 = this.editor, extra = [];
+        MODS.forEach(function (m) { if (m.plugins) extra = extra.concat(m.plugins(ed2) || []); });
+        return [guardPlugin(), selPlugin(), phPlugin(), slashPlugin(ed2), atPlugin(ed2), refPlugin(ed2), emojiPlugin(ed2), bubbleKeysPlugin()].concat(extra);
+      }
     });
   }
   // Rueckschritt am Anfang / Entf am Ende eines Textblocks neben einer Karte oder Trennlinie: diese auswaehlen
@@ -905,7 +966,7 @@
     if (!neu) { editor.view.dispatch(tr); return; }
     tr.insert(at, neu);
     if (it.key === 'delimiter') { var p2 = schema().nodes.paragraph.create({ id: newId() }); tr.insert(at + neu.nodeSize, p2); setSel(tr, at + neu.nodeSize + 1); }
-    else setSel(tr, at + (it.key === 'quote' ? 2 : /^(un)?ordered$|^checklist$/.test(it.key) ? 3 : 1));
+    else setSel(tr, at + caretOff(it.key));
     editor.view.dispatch(tr.scrollIntoView());
   }
   function slashPlugin(editor) {
@@ -1266,7 +1327,11 @@
     data0 = data && Array.isArray(data.blocks) ? data : { blocks: [] };
     collectTitles(data0);
     ctx = { orig: new WeakMap(), resolve: RESOLVE, version: 'saga-pm/' + SC.VERSION };
-    var json = AD.docFromBlocks(data0, { orig: null }), exts = extensions(), schemaX = P.core.getSchema(exts);
+    // Altformat Toggle {text}: wie ToggleTool als erster Absatz anzeigen (upgrade); der Toggle bleibt an sein Original
+    // gebunden (bind ohne upgrade) und kommt unveraendert byte-gleich zurueck. Bloecke ohne ID (nur der neue Absatz)
+    // bekommen sie hier, nicht per UniqueID-Transaktion nach dem Laden (die waere eine Scheinaenderung).
+    var json = AD.docFromBlocks(data0, { orig: null, upgrade: !!EDIT.toggle }), exts = extensions(), schemaX = P.core.getSchema(exts);
+    (function ids(list) { (list || []).forEach(function (n) { if (BLOCKSET[n.type] && n.attrs && !n.attrs.id) n.attrs.id = newId(); else if (BLOCKSET[n.type] && !n.attrs) n.attrs = { id: newId() }; if (n.type === 'columns') (n.content || []).forEach(function (c) { ids(c.content); }); else ids(n.type === 'toggle' || n.type === 'synced' ? n.content : null); }); })(json.content);
     broken = false;
     try { schemaX.nodeFromJSON(json).check(); } catch (e) { broken = true; }
     if (!json.content.length) json.content = [{ type: 'paragraph', attrs: { id: newId() } }];
@@ -1308,7 +1373,10 @@
     var e = { id: id, type: sagaType(n), el: dom, parent: x.parent, slot: x.slot,
       json: function () { var y = findId(id); return Promise.resolve(y ? blockJson(y.node) : null); } };
     Object.defineProperty(e, 'data', { enumerable: true, get: function () { var y = findId(id); return Promise.resolve(y ? blockJson(y.node).data : null); } });
-    Object.defineProperty(e, 'index', { enumerable: true, get: function () { var y = findId(id); return y ? ed.state.doc.resolve(y.pos).index() : -1; } });
+    Object.defineProperty(e, 'index', { enumerable: true, get: function () {      // Stelle im Behaelter (Toggle: ohne Titel)
+      var y = findId(id); if (!y) return -1;
+      var $y = ed.state.doc.resolve(y.pos); return $y.index() - ($y.parent.type.name === 'toggle' ? 1 : 0);
+    } });
     return e;
   }
   function blocks() {
@@ -1434,6 +1502,7 @@
   function move(id, dir) {
     if (!ed || ro()) return false;
     var x = findId(id); if (!x || x.inCard) return false;
+    for (var mi = 0; mi < MODS.length; mi++) if (MODS[mi].api && MODS[mi].api.moveBlock) return MODS[mi].api.moveBlock(String(id), dir);
     var $p = ed.state.doc.resolve(x.pos), parent = $p.parent, i = $p.index(), first = parent.type.name === 'toggle' ? 1 : 0;
     var j = i + dir; if (j < first || j >= parent.childCount) return false;
     var other = parent.child(j), tr = ed.state.tr, S0 = P.pm.state;
@@ -1456,6 +1525,7 @@
     if (!ed) return;
     var want = (ids || []).map(String).filter(function (i) { var x = findId(i); return x && !x.inCard; });
     var tr = ed.state.tr.setMeta(SELKEY, want); ed.view.dispatch(tr);
+    ed.view.dom.classList.toggle('pm-blocksel', want.length > 0);
   }
   function selected() {
     if (!ed || !SELKEY) return [];
@@ -1463,8 +1533,13 @@
     return blocks().filter(function (b) { if (!want[b.id]) return false; delete want[b.id]; return true; });
   }
   function onChange(cb) { return K.onDocChange ? K.onDocChange(cb) : function () {}; }
+  function modApi(name) { for (var i = 0; i < MODS.length; i++) if (MODS[i].api && MODS[i].api[name]) return MODS[i].api[name]; return null; }
+  // Tiptap-Zusaetze (T3): Block-Menue (Cmd+/, static/keys.js), Undo (Rueckgaengig in Hinweisen), Auswahl ohne Nachkommen
+  function menu(id, anchor) { var f = modApi('openBlockMenu'); if (!f || !findId(id)) return false; f(String(id), anchor); return true; }
+  function undo() { return !!(ed && ed.commands.undo()); }
   K.doc = { kind: 'tiptap', blocks: blocks, current: current, byId: byId, insertAfter: insertAfter, replace: replace,
-            remove: remove, move: move, select: select, selected: selected, focus: focus, onChange: onChange };
+            remove: remove, move: move, select: select, selected: selected, focus: focus, onChange: onChange,
+            menu: menu, undo: undo };
 
   // =================================================================================================================
   // Editor-Objekt fuer pages.js (an Stelle der Editor.js-Instanz)
@@ -1502,10 +1577,11 @@
     if (broken) return { time: Date.now(), version: data0.version, blocks: data0.blocks };
     return AD.blocksFromDoc(ed.state.doc, ctx);
   }
+  var COLORABLE = { paragraph: 1, header: 1, list: 1, quote: 1, callout: 1, toggle: 1 };
   function styleAt(node, st) {                       // Blockfarbe (Cmd+/, "/rot"): Element im Block oder Blockelement
     if (!ed || ro()) return false;
     var b = node && node.closest ? node.closest('[' + AID + ']') : null; if (!b) return false;
-    var x = findId(b.getAttribute(AID)); if (!x || !{ paragraph: 1, header: 1, list: 1, quote: 1, callout: 1 }[x.node.type.name]) return false;
+    var x = findId(b.getAttribute(AID)); if (!x || !COLORABLE[x.node.type.name]) return false;
     var c = st && COLORS.indexOf(st.c) >= 0 ? (st.bg === true ? { c: st.c, bg: true } : { c: st.c }) : null;
     ed.view.dispatch(ed.state.tr.setNodeMarkup(x.pos, null, Object.assign({}, x.node.attrs, { style: c })));
     return true;
@@ -1534,6 +1610,44 @@
     };
   }
 
+  // =================================================================================================================
+  // Erweiterungen (T3: static/pm-struktur.js). HKPmEditor.use(fn): fn(X) laeuft nach dem Laden des Bundles und liefert
+  // {edit: [Typen, die bearbeitbar werden], nodeViews: {Knoten: Fabrik}, plugins(editor) -> [Plugin], keys(editor) ->
+  // {Taste: fn -> true wenn erledigt} (vor den Kern-Tasten), protect(node) -> true = wie Karte schuetzen, api: {...}}.
+  // X sind die internen Bausteine dieses Editors (nur fuer Erweiterungen im Repo, keine oeffentliche Schnittstelle).
+  // =================================================================================================================
+  function usedIds() { var u = {}; walk(ed.state.doc, function (x) { if (x.node.attrs.id) u[x.node.attrs.id] = 1; }); return u; }
+  function freshIds(node, used) {                    // tiefe Kopie mit neuen Block-IDs (Duplizieren, Uebernehmen)
+    used = used || usedIds();
+    return (function rec(n) {
+      if (n.isText) return n;
+      var kids = []; n.forEach(function (c) { kids.push(rec(c)); });
+      var a = n.attrs;
+      if (BLOCKSET[n.type.name]) { var id; do { id = newId(); } while (used[id]); used[id] = 1; a = Object.assign({}, a, { id: id }); }
+      return n.type.create(a, kids.length ? kids : null, n.marks);
+    })(node);
+  }
+  var X = {
+    get P() { return P; }, get SC() { return SC; }, get AD() { return AD; }, K: K, el: el, T: T, BOX: BOX, COLORS: COLORS, isMac: isMac,
+    ed: function () { return ed; }, holder: function () { return holder; }, schema: schema, ro: ro, newId: newId, walk: walk, findId: findId,
+    blockAt: blockAt, blockJson: blockJson, nodeOf: nodeOf, setSel: setSel, paint: paint, ignoreOutside: ignoreOutside, nodeBtn: nodeBtn,
+    posOf: posOf, setAttrs: setAttrs, sagaType: sagaType, isBlock: isBlock, menuActive: menuActive, slashReg: slashReg, makeBlock: makeBlock,
+    convertAt: convertAt, refill: refill, focus: focus, focusIn: focusIn, freshIds: freshIds,
+    mk: function (list, fresh) { var n = mk(list); if (!fresh) return n; var u = usedIds(); return n.map(function (x) { return freshIds(x, u); }); },
+    select: select, selIds: function () { return ed && SELKEY ? (SELKEY.getState(ed.state) || []).slice() : []; },
+    convertible: function (n) { return !!CONV[n.type.name]; }, colorable: function (n) { return !!COLORABLE[n.type.name]; },
+    nestOk: function (n) { return n.type.name !== 'columns'; },
+    inNested: function (pos) { return !!ed && ed.state.doc.resolve(Math.min(pos, ed.state.doc.content.size)).depth > 1; }
+  };
+  function initExt(fn) {
+    var m = null; try { m = fn(X); } catch (e) { if (window.console) console.error('pm-editor Erweiterung', e); }
+    if (!m) return;
+    MODS.push(m);
+    (m.edit || []).forEach(function (t) { EDIT[t] = 1; });
+  }
+  function use(fn) { if (P) initExt(fn); else EXTS.push(fn); }
+  function mod(name) { return modApi(name); }
+
   window.HKPmEditor = { load: load, create: create, slash: { register: slashReg, list: function () { return SLASH.slice(); } },
-                        TOOL_SCRIPTS: TOOL_SCRIPTS };
+                        TOOL_SCRIPTS: TOOL_SCRIPTS, use: use, api: mod };
 })();

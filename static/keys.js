@@ -85,6 +85,7 @@
 
   // Cmd+/ : alle Aktionen fuer den aktuellen Block, mit Suche
   function actionMenu(c) {
+    if (tt() && K.doc.menu && K.doc.menu(c.id)) return;      // Tiptap (T3): eigenes Block-Menue (static/pm-struktur.js)
     if (K.readOnly && K.readOnly()) {               // Lesen/Kommentieren bzw. gesperrt (2.5, G5): nur Link und Kommentieren
       HK.openMenu(c.el, function (m) {
         m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { icon: '🔗' }));
