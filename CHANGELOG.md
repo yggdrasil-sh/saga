@@ -42,6 +42,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Kommentare, Anwesenheit und Erwähnungen nutzen nur noch diese Schnittstelle; Browser-Tests über `tests/lib/editor_dom.js`.
   Für Nutzer ändert sich nichts.
 
+### Intern (2.5, Tiptap-Umbau T4b: Daten-Werkzeuge)
+- Werkzeug-Schnittstelle `HKTools` (`static/pm-tools.js`): Werkzeuge als eigenständige Node-Views (`mount` mit
+  `update`/`destroy`/`stopEvent`), jede Bedienung wird genau eine Transaktion auf das Attribut `data`; Brücke
+  `fromEditorJs` für die bestehenden Werkzeugklassen. `pm-schema.js` nimmt die Node-Views über `opts.nodeViews` an.
+- `static/pm-tools-daten.js`: Datenbank-Ansicht, Aufgaben, Kalender, Widget und Schaltflächen laufen über die Brücke
+  wie im heutigen Editor (Rollen, fremde Seiten, „Nur für den Eigentümer“); unbekannte Felder und Signaturen der
+  Schaltflächen bleiben erhalten, neue Daten von außen zeichnen neu (ein offenes Widget-Panel bleibt offen).
+  Noch nirgends eingeschaltet – der neue Editor (T2) bindet sie ein; Editor.js unverändert. Test
+  `tests/browser_tiptap_daten.js`.
+
 ### Neu (2.5, Chats: Gruppen – Chat-Standard B)
 - **Gruppenbild und Beschreibung** für freie Gruppen – wie der Name verschlüsselt (Steuer-Nachrichten `desc`/`avatar`),
   Bild quadratisch zugeschnitten; der Server merkt sich nur, welche Nachricht aktuell ist.
