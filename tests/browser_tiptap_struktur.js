@@ -29,6 +29,9 @@ const J = (x) => JSON.stringify(x);
     });
     p.patches = 0;
     p.on('request', (r) => { if (r.method() === 'PATCH' && /\/api\/notes\/\d+$/.test(r.url())) p.patches++; });
+    // T5: mit notes.live speichert der Editor nicht per PATCH, sondern sendet Updates ueber WS /api/collab - "ein PATCH"
+    // heisst dann "ein Update" (Rahmenart 6)
+    p.on('websocket', (ws) => { if (/\/api\/collab/.test(ws.url())) ws.on('framesent', (f) => { if (Buffer.isBuffer(f.payload) && f.payload[0] === 6) p.patches++; }); });
     await p.goto(BASE + '/notes'); await sleep(600);
     p.api = (m, u, b) => p.evaluate(([m, u, b]) => HK.api(m, u, b), [m, u, b]);
     return { ctx, p };

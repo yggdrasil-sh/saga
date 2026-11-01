@@ -58,9 +58,24 @@
       return FEAT.live;
     }, function () { return false; });
   }
-  function eligible(c) {
+  function eligible(c, data) {
     return !!(c && c.format === 'blocks' && typeof c.id === 'number' && c.id > 0 && c.kind !== 'database' && !W.off &&
-              !(window.HKPmLive && HKPmLive.disabled));
+              !(window.HKPmLive && HKPmLive.disabled) && !legacy(data && data.blocks, 0));
+  }
+  // Seiten, die live (noch) anders aussaehen als mit Stufe 1, bleiben bei Stufe 1:
+  // - Toggle im Altformat {text} (Editor.js vor 2.5): der Editor zeigt ihn umgewandelt (Titel + erster Absatz), der
+  //   Live-Zustand fuehrt ihn unveraendert - bis die Seite einmal gespeichert ist;
+  // - Kopie eines synchronisierten Blocks (data.src): ihren Inhalt setzt der Server nur beim GET ein, im Live-Zustand
+  //   steht sie als synced_ref ohne Inhalt (APP-API-COLLAB 5.3) - Anzeige und Durchschreiben (sync1) gingen verloren.
+  function legacy(list, dp) {
+    if (!Array.isArray(list) || dp > 12) return false;
+    return list.some(function (b) {
+      var d = b && b.data; if (!d || typeof d !== 'object') return false;
+      if (b.type === 'toggle' && typeof d.text === 'string' && !Array.isArray(d.blocks)) return true;
+      if (b.type === 'synced' && (d.src || !Array.isArray(d.blocks))) return true;
+      if (legacy(d.blocks, dp + 1)) return true;
+      return Array.isArray(d.cols) && d.cols.some(function (c) { return c && legacy(c.blocks, dp + 1); });
+    });
   }
   function schemaInfo() { var SC = X.SC; return { model: SC.MODEL, ver: SC.VERSION, hash: SC.hash() }; }
 
@@ -257,7 +272,7 @@
     var editable = !pg.ro && !(cb && cb.readOnly && cb.readOnly());
     destroyProv(pg);
     pg.prov = makeProv(pg);
-    var exts = [YB.Collaboration.configure({ document: pg.doc, field: 'prosemirror' }), caretFix(), noMigration()];
+    var exts = [YB.Collaboration.configure({ document: pg.doc, field: 'prosemirror' }), caretFix(), noMigration(), syncedGuard()];
     exts.push(YB.CollaborationCaret.configure({ provider: pg.prov, user: { name: '', color: '#000000' }, render: renderCaret, selectionRender: renderSel }));
     X.live({ editable: editable, exts: exts });
     pg.loading = true; var drops = ST.loadDrops;
@@ -267,6 +282,7 @@
       var ed = X.ed(); if (ed) ed.view.dispatch(ed.state.tr.setMeta('hkLiveProbe', true));
     } finally { pg.loading = false; }
     if (ST.loadDrops !== drops) { schemaLock(); return; }
+    passthrough();
     pg.live = true; ST.binds++;
     if (BOX) BOX.classList.add('pm-live');
     restore(c);
@@ -312,6 +328,39 @@
       } })];
     } });
   }
+  // Durchreichung (T-E4) auch live: Bloecke, deren Inhalt dem zuletzt geladenen Stand (GET bzw. Stufe-1-Stand) gleicht,
+  // an ihr Original binden - save() liefert sie dann byte-gleich (Rueckfall Stufe 1, Fassade). Nur bei gleicher Normalform.
+  function passthrough() {
+    var ed = X.ed(), cb = CB(), c = cb && cb.cur ? cb.cur() : null, src = null;
+    try { src = c && typeof c.body === 'string' ? JSON.parse(c.body || '{"blocks":[]}') : null; } catch (e) { src = null; }
+    if (!ed || !src || !Array.isArray(src.blocks)) return;
+    var byId = {}; src.blocks.forEach(function (b) { if (b && b.id != null) byId[b.id] = b; });
+    var AD = X.AD, sch = ed.schema, ctx = X.ctx();
+    ed.state.doc.forEach(function (n) {
+      var b = n.attrs && n.attrs.id != null ? byId[n.attrs.id] : null; if (!b) return;
+      try {
+        var want = AD.pmToBlock(sch.nodeFromJSON(AD.blockToPm(b, { orig: null })), {}), have = AD.pmToBlock(n, {});
+        if (AD.stable(want) !== AD.stable(have)) return;
+        AD.bind(sch.topNodeType.create(null, [n]), { blocks: [b] }, ctx);
+        X.markOrig([b]);
+      } catch (e) { /* nicht vergleichbar: ohne Durchreichung */ }
+    });
+  }
+  // Neue Kopie eines synchronisierten Blocks (synced_ref): ihren Inhalt und die Kopie-Leiste liefert nur die Antwort auf
+  // ein PATCH (HKMention.saved) - diese eigene Aenderung geht deshalb nicht live hinaus, sondern die Seite wechselt vorher
+  // auf Stufe 1 (pages.js speichert sie wie bisher).
+  function refs(doc) { var n = 0; doc.descendants(function (x) { if (x.type.name === 'synced_ref') n++; return true; }); return n; }
+  function syncedGuard() {
+    var S0 = X.P.pm.state;
+    return X.P.core.Extension.create({ name: 'hkLiveSynced', addProseMirrorPlugins: function () {
+      return [new S0.Plugin({ key: new S0.PluginKey('hkLiveSynced'), appendTransaction: function (trs, o, n) {
+        var pg = PG; if (!pg || !pg.live || pg.leave) return null;
+        if (!trs.some(function (t) { var m = t.getMeta('y-sync$'); return t.docChanged && !(m && m.isChangeOrigin); })) return null;
+        if (refs(n.doc) > refs(o.doc)) pg.leave = 'synced';
+        return null;
+      } })];
+    } });
+  }
   function rebind(full, keep) {                       // Zustand des Servers uebernehmen (reject, Rolle), Editor neu
     var pg = PG, c = caret();
     var rest = keep ? pg.unacked.slice() : [];
@@ -334,9 +383,10 @@
     return !lost;
   }
   // Rueckfall auf Stufe 1: derselbe Stand ohne Collaboration; nicht bestaetigte Aenderungen speichert pages.js (PATCH merge)
-  function toStufe1(why, final) {
+  function toStufe1(why, final, dirty) {
     var pg = PG; if (!pg) return;
-    var wasLive = pg.live, pend = pg.unacked.length > 0;
+    var wasLive = pg.live, pend = pg.unacked.length > 0 || !!dirty;
+    if (final && pg.subbed) send(KIND.UNSUB, pg.nid);
     pg.live = false; pg.subbed = false; pg.synced = false;
     if (final) pg.want = false;
     destroyProv(pg);
@@ -388,6 +438,11 @@
     var pg = PG;
     if (!pg || pg.doc !== d) return;
     if (pg.loading) { ST.loadDrops++; return; }       // beim Laden geschrieben (R1): nie hinaus
+    if (pg.leave) {                                    // s. syncedGuard: nicht senden, auf Stufe 1 wechseln
+      ST.dropped++;
+      if (!pg.leaveT) pg.leaveT = setTimeout(function () { if (PG === pg) toStufe1(pg.leave, true, true); }, 0);
+      return;
+    }
     if (!pg.live || pg.ro || pg.lock || !W.open) { ST.dropped++; return; }
     sendUpdate(pg, u);
   }
@@ -435,7 +490,6 @@
     if (pg.rej.length >= 3) {
       if (pg.live) rebind(full, false);
       toStufe1('rejects', true);
-      if (PG === pg) { send(KIND.UNSUB, pg.nid); }
       HK.toast(T('Änderung nicht übernommen.'));
       return;
     }
@@ -529,7 +583,7 @@
     var t = document.getElementById('pg-title'); if (t && t.readOnly && !(CB() && CB().readOnly && CB().readOnly())) t.readOnly = false;
     X.build(data);
     var c = curPage();
-    if (eligible(c)) startPage(c.id);
+    if (eligible(c, data)) startPage(c.id);
     return Promise.resolve();
   }
   function liveDestroy() { stopPage(); if (X) { X.live(null); X.lock(false); } }
