@@ -32,7 +32,7 @@
   var CALLOUT_EMOJI = ['💡', '⚠️', '✅', '❗', 'ℹ️', '🔥', '📌'];        // wie CalloutTool (pages.js)
   var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   // Werkzeug-Skripte der Rolle t4b (static/pm-tools.js, static/pm-tools-daten.js) - werden mitgeladen, sobald sie da sind
-  var TOOL_SCRIPTS = ['pm-tools.js', 'pm-tools-daten.js'];
+  var TOOL_SCRIPTS = ['pm-tools.js', 'pm-tools-daten.js', 'pm-tools-medien.js'];
   // Erweiterungen des Kern-Editors (T3: pm-struktur.js), melden sich mit HKPmEditor.use(fn) an (siehe "Erweiterungen")
   var EXT_SCRIPTS = ['pm-struktur.js'];
   var EXTS = [], MODS = [];
@@ -468,6 +468,7 @@
     if (t === 'callout') return cur ? T('Hinweis') : null;
     if (t === 'qtext') return T('Zitat');
     if (t === 'qcap') return T('Quelle');
+    if (t === 'icap') return T('Bildunterschrift');
     if (t === 'ltext') return cur ? T('Liste') : null;
     return null;
   }
@@ -790,9 +791,10 @@
         return rules;
       },
       addProseMirrorPlugins: function () {
-        var ed2 = this.editor, extra = [];
-        MODS.forEach(function (m) { if (m.plugins) extra = extra.concat(m.plugins(ed2) || []); });
-        return [guardPlugin(), selPlugin(), phPlugin(), slashPlugin(ed2), atPlugin(ed2), refPlugin(ed2), emojiPlugin(ed2), bubbleKeysPlugin()].concat(extra);
+        var ed2 = this.editor, extra = [], early = [];
+        // early: vor den Plugins der anderen Erweiterungen (T4a: Einfuegen mit Dateiverweisen vor dem Block-Einfuegen von T3)
+        MODS.forEach(function (m) { if (m.plugins) (m.early ? early : extra).push.apply(m.early ? early : extra, m.plugins(ed2) || []); });
+        return [guardPlugin(), selPlugin(), phPlugin(), slashPlugin(ed2), atPlugin(ed2), refPlugin(ed2), emojiPlugin(ed2), bubbleKeysPlugin()].concat(early, extra);
       }
     });
   }
@@ -920,7 +922,7 @@
     if (col) out.push({ key: 'color', group: T('Farbe'), ic: 'A', t: (K.colorNames[col.c] || col.c) + (col.bg ? ' (' + T('Hintergrund') + ')' : ''), desc: T('Block einfärben'), st: col });
     var spaced = /\s/.test(q.trim());             // mit Leerzeichen ("2 Spalten", "Toggle-Überschrift 3"): nur Titel-Treffer
     if (spaced && col) return out;
-    var hits = SLASH.concat(toolSlash()).map(function (it) {
+    var hits = SLASH.concat(toolSlash()).filter(function (it) { try { return !it.when || it.when(); } catch (e) { return false; } }).map(function (it) {
       var t = norm(it.t), r = !nq ? 1 : t.indexOf(nq) === 0 ? 0 : t.indexOf(nq) > 0 ? 1 : norm(it.kw || '').indexOf(nq) >= 0 ? 2 : 9;
       return { it: it, r: r };
     }).filter(function (h) { return h.r < (spaced ? 2 : 9); });
@@ -1335,6 +1337,7 @@
   function build(data) {
     destroy();
     data0 = data && Array.isArray(data.blocks) ? data : { blocks: [] };
+    ORIG = new WeakSet(); markOrig(data0.blocks);
     collectTitles(data0);
     ctx = { orig: new WeakMap(), resolve: RESOLVE, version: 'saga-pm/' + SC.VERSION };
     // Altformat Toggle {text}: wie ToggleTool als erster Absatz anzeigen (upgrade); der Toggle bleibt an sein Original
@@ -1559,6 +1562,7 @@
   // ersetzt wird nur der Bereich zwischen gleichem Anfang und gleichem Ende (Schreibmarke bleibt meist, kein Undo-Schritt)
   function applyBlocks(list) {
     if (!ed || broken) return;
+    markOrig(list);                                   // Stand vom Server: gilt als unveraendert (prune)
     var doc = ed.state.doc, cur = [], byIdTop = {};
     doc.forEach(function (n) { cur.push(n); if (n.attrs.id) byIdTop[n.attrs.id] = n; });
     var neu = (list || []).filter(function (b) { return b && typeof b === 'object'; }).map(function (b) {
@@ -1586,7 +1590,46 @@
   function saveNow() {
     if (!ed) return { blocks: [] };
     if (broken) return { time: Date.now(), version: data0.version, blocks: data0.blocks };
-    return AD.blocksFromDoc(ed.state.doc, ctx);
+    return prune(AD.blocksFromDoc(ed.state.doc, ctx));
+  }
+  // Wie validate() der Editor.js-Werkzeuge: neue/geaenderte Bloecke, die eine Erweiterung ablehnt (validate(block) ===
+  // false: Bild ohne Datei, fremder Nextcloud-Block ...), nicht mitspeichern. Unveraenderte Bloecke (Original-Objekte aus
+  // dem geladenen Stand) bleiben immer - auch in Spalten/Toggles; ohne Ablehnung kommt das Ergebnis unveraendert zurueck.
+  var ORIG = new WeakSet();
+  function markOrig(list) {
+    (list || []).forEach(function (b) {
+      if (!b || typeof b !== 'object') return;
+      ORIG.add(b); var d = b.data || {};
+      if (Array.isArray(d.blocks)) markOrig(d.blocks);
+      if (Array.isArray(d.cols)) d.cols.forEach(function (c) { if (c && Array.isArray(c.blocks)) markOrig(c.blocks); });
+    });
+  }
+  function prune(out) {
+    var vs = MODS.map(function (m) { return m.validate; }).filter(Boolean);
+    if (!vs.length || !out || !Array.isArray(out.blocks)) return out;
+    function list(bl) {
+      var res = [], ch = false;
+      bl.forEach(function (b) {
+        if (!b || typeof b !== 'object' || ORIG.has(b)) { res.push(b); return; }
+        if (vs.some(function (v) { try { return v(b) === false; } catch (e) { return false; } })) { ch = true; return; }
+        var nb = inner(b); if (nb !== b) ch = true; res.push(nb);
+      });
+      return ch ? res : bl;
+    }
+    function inner(b) {
+      var d = b.data; if (!d || typeof d !== 'object') return b;
+      if (Array.isArray(d.blocks)) { var l = list(d.blocks); if (l !== d.blocks) return Object.assign({}, b, { data: Object.assign({}, d, { blocks: l }) }); }
+      if (b.type === 'columns' && Array.isArray(d.cols)) {
+        var ch = false, cols = d.cols.map(function (c) {
+          if (!c || !Array.isArray(c.blocks)) return c;
+          var l2 = list(c.blocks); if (l2 === c.blocks) return c; ch = true; return Object.assign({}, c, { blocks: l2 });
+        });
+        if (ch) return Object.assign({}, b, { data: Object.assign({}, d, { cols: cols }) });
+      }
+      return b;
+    }
+    var l0 = list(out.blocks);
+    return l0 === out.blocks ? out : Object.assign({}, out, { blocks: l0 });
   }
   var COLORABLE = { paragraph: 1, header: 1, list: 1, quote: 1, callout: 1, toggle: 1 };
   function styleAt(node, st) {                       // Blockfarbe (Cmd+/, "/rot"): Element im Block oder Blockelement
@@ -1650,6 +1693,9 @@
     select: select, selIds: function () { return ed && SELKEY ? (SELKEY.getState(ed.state) || []).slice() : []; },
     convertible: function (n) { return !!CONV[n.type.name]; }, colorable: function (n) { return !!COLORABLE[n.type.name]; },
     nestOk: function (n) { return n.type.name !== 'columns'; },
+    // Block-Menue (pm-struktur.js): Einstellungen und Namen weiterer Typen aus anderen Erweiterungen (T4a: Medien)
+    settings: function (m, x) { MODS.forEach(function (md) { if (md.settings) md.settings(m, x); }); },
+    typeName: function (t) { for (var i = 0; i < MODS.length; i++) if (MODS[i].names && MODS[i].names[t]) return MODS[i].names[t]; return null; },
     inNested: function (pos) { return !!ed && ed.state.doc.resolve(Math.min(pos, ed.state.doc.content.size)).depth > 1; }
   };
   function initExt(fn) {
