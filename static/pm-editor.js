@@ -909,11 +909,12 @@
     var nq = norm(q.trim()), out = [];
     var col = K.slashColor ? K.slashColor(q) : null;
     if (col) out.push({ key: 'color', group: T('Farbe'), ic: 'A', t: (K.colorNames[col.c] || col.c) + (col.bg ? ' (' + T('Hintergrund') + ')' : ''), desc: T('Block einfärben'), st: col });
-    if (/\s/.test(q.trim()) && !col) return out;
+    var spaced = /\s/.test(q.trim());             // mit Leerzeichen ("2 Spalten", "Toggle-Überschrift 3"): nur Titel-Treffer
+    if (spaced && col) return out;
     var hits = SLASH.concat(toolSlash()).map(function (it) {
       var t = norm(it.t), r = !nq ? 1 : t.indexOf(nq) === 0 ? 0 : t.indexOf(nq) > 0 ? 1 : norm(it.kw || '').indexOf(nq) >= 0 ? 2 : 9;
       return { it: it, r: r };
-    }).filter(function (h) { return h.r < 9; });
+    }).filter(function (h) { return h.r < (spaced ? 2 : 9); });
     if (nq) hits.sort(function (a, b) { return a.r - b.r || (a.it.order || 50) - (b.it.order || 50); });
     // Gruppen zusammenhalten (Reihenfolge der besten Treffer je Gruppe)
     var groups = [], by = {};
@@ -1458,7 +1459,7 @@
     var xs = ids.map(function (id) { return findId(id); }).filter(function (x) { return x && !x.inCard; });
     if (!xs.length) return Promise.resolve([]);
     var tr = ed.state.tr, conts = {};
-    xs.sort(function (a, b) { return b.pos - a.pos; }).forEach(function (x) {
+    xs.slice().sort(function (a, b) { return b.pos - a.pos; }).forEach(function (x) {
       tr.delete(tr.mapping.map(x.pos), tr.mapping.map(x.pos + x.node.nodeSize));
       conts[x.parent + '/' + x.slot] = x;
     });
@@ -1516,6 +1517,7 @@
   }
   function focus(id, pos) {
     if (!ed) return false;
+    if (SELKEY && (SELKEY.getState(ed.state) || []).length) select([]);     // Schreibmarke statt Blockauswahl
     var x = findId(id); if (!x || x.inCard) return false;
     var tr = ed.state.tr; focusIn(tr, x.pos, x.node, pos === 'start' ? 'start' : 'end');
     ed.view.dispatch(tr.scrollIntoView()); ed.view.focus();

@@ -94,7 +94,7 @@
 .page-body .pm-b-columns > .pm-cols{margin:0}
 .page-body .pm-b-columns > .cols-ctl{top:-1.4rem}
 .page-body .pm-b-columns:hover > .cols-ctl,.page-body .pm-b-columns > .cols-ctl:focus-within{opacity:1}
-@media (hover:none){.page-body .pm-b-columns:focus-within > .cols-ctl{opacity:.85;pointer-events:auto}}
+@media (hover:none){.page-body .pm-b-columns:is(:focus-within,.col-tap) > .cols-ctl{opacity:.85;pointer-events:auto}}
 .page-body .pm-cols-rs{position:absolute;inset:0;pointer-events:none}
 .page-body .pm-cols-rs > .col-rs{pointer-events:auto}
 .page-body .pm-col-c{min-height:1.6em}

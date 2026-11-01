@@ -201,6 +201,11 @@
       dom.appendChild(inner); dom.appendChild(add);
       function sync() { dom.classList.toggle('pm-col-empty', !node.childCount); }
       add.addEventListener('click', function (e) { e.preventDefault(); var p = X.posOf(getPos); if (p != null) addToColumn(p); });
+      dom.addEventListener('pointerdown', function (e) {           // Touch: Leisten nur an der angetippten Spalte (wie Fix27 #17)
+        if (e.pointerType === 'mouse') return;
+        [].forEach.call(document.querySelectorAll('.col-tap'), function (x) { if (x !== dom && !x.contains(dom)) x.classList.remove('col-tap'); });
+        dom.classList.add('col-tap'); var w = dom.closest('.pm-b-columns'); if (w) w.classList.add('col-tap');
+      });
       dom.addEventListener('mousedown', function (e) {             // Klick in eine leere Spalte: Absatz anlegen
         if (node.childCount || ro() || e.target === add) return;
         var p = X.posOf(getPos); if (p == null) return;
@@ -348,7 +353,8 @@
     // =================================================================================================================
     NV.toggle = function (props) {
       var node = props.node, getPos = props.getPos;
-      var dom = el('div', 'pm-blk pm-b-toggle pm-tgl'), btn = X.nodeBtn('pm-nb pm-tgl-btn', '▸', T('Auf- oder zuklappen'));
+      // tgl/tgl-btn wie das Editor.js-Werkzeug (Stil des Pfeils, bestehende Tests)
+      var dom = el('div', 'pm-blk pm-b-toggle pm-tgl tgl'), btn = X.nodeBtn('pm-nb pm-tgl-btn tgl-btn', '▸', T('Auf- oder zuklappen'));
       var inner = el('div', 'pm-in pm-tgl-c'), empty = X.nodeBtn('pm-tgl-empty', T('Leerer Toggle – klicken, um etwas hinzuzufügen'));
       dom.appendChild(btn); dom.appendChild(inner); dom.appendChild(empty);
       function sync() {
@@ -544,6 +550,30 @@
       view.dispatch(tr.scrollIntoView()); e.preventDefault();
       return true;
     }
+    // Einfuegen kopierter Saga-Bloecke (Blockauswahl, HTML nach Schema mit data-block-type): als Bloecke unter dem
+    // aktuellen (leerer Absatz wird ersetzt), neue IDs - nicht in den Text des aktuellen Absatzes verschmelzen
+    function pasteBlocks(view, e) {
+      var cd = e.clipboardData; if (!cd || ro()) return false;
+      var html = cd.getData('text/html'); if (!html || html.indexOf('data-block-type') < 0) return false;
+      var tpl = document.createElement('template'); tpl.innerHTML = html;
+      var tops = [].filter.call(tpl.content.childNodes, function (n) { return n.nodeType === 1 && n.tagName !== 'META'; });
+      if (!tops.length || !tops.every(function (n) { return n.hasAttribute('data-block-type'); })) return false;
+      var slice = M0.DOMParser.fromSchema(schema()).parseSlice(tpl.content), nodes = [];
+      slice.content.forEach(function (n) { if (X.isBlock(n)) nodes.push(X.freshIds(n)); });
+      if (!nodes.length) return false;
+      var st = view.state, b = blockOfSel(st); if (!b) return false;
+      var tr = st.tr, empty = b.node.type.name === 'paragraph' && !b.node.content.size, at;
+      if (empty && canPlace(st.doc, b.pos, nodes)) { tr.replaceWith(b.pos, b.pos + b.node.nodeSize, nodes); at = b.pos; }
+      else {
+        at = b.pos + b.node.nodeSize;
+        if (!canPlace(st.doc, at, nodes)) { var t = topOf(st.doc, b.pos); at = t.pos + t.node.nodeSize; }
+        tr.insert(at, nodes);
+      }
+      var endN = 0; nodes.forEach(function (n) { endN += n.nodeSize; });
+      try { tr.setSelection(S0.Selection.near(tr.doc.resolve(at + endN), -1)); } catch (x) { /* bleibt */ }
+      view.dispatch(tr.scrollIntoView()); e.preventDefault();
+      return true;
+    }
     // Antwort auf das Speichern (static/mention.js HKMention.saved): Kopien ohne Inhalt -> neu laden; Stand des Originals
     // (synced_rev) als Basis der naechsten Durchschreibung in data.src.rev uebernehmen (ohne Aenderungsmeldung)
     function savedReply(d) {
@@ -590,11 +620,11 @@
       if (ro()) return;
       var x = X.findId(id); if (!x) return;
       var st = state(), tr = st.tr, c = x.node.attrs.conflict || {};
-      if (!keep) { tr.delete(x.pos, x.pos + x.node.nodeSize); X.refill(tr, x.parent, x.slot); dispatch(tr); return; }
+      if (!keep) { tr.delete(x.pos, x.pos + x.node.nodeSize); X.refill(tr, x.parent, x.slot); dispatch(tr); ed().view.focus(); return; }
       tr.setNodeMarkup(x.pos, null, Object.assign({}, x.node.attrs, { conflict: null }));
       var o = c.of != null ? X.findId(String(c.of)) : null;
       if (o && o.node.attrs.id !== id) tr.delete(tr.mapping.map(o.pos), tr.mapping.map(o.pos + o.node.nodeSize));
-      dispatch(tr);
+      dispatch(tr); ed().view.focus();
     }
 
     // =================================================================================================================
@@ -997,7 +1027,7 @@
       }
       if (ids.length > 1) setBlockSel(rs.map(function (x) { return x.node.attrs.id; }));
       else { clearBlockSel(); var nx = X.findId(rs[0].node.attrs.id, tr.doc); if (nx) X.focusIn(tr, nx.pos, nx.node, 'end'); }
-      dispatch(tr.scrollIntoView());
+      dispatch(tr.scrollIntoView()); ed().view.focus();
       return true;
     }
 
@@ -1261,7 +1291,7 @@
               return false;
             }
           },
-          handlePaste: function (v, e) { return pasteSynced(v, e); }
+          handlePaste: function (v, e) { return pasteSynced(v, e) || pasteBlocks(v, e); }
         },
         view: function (view) {
           var down = false;

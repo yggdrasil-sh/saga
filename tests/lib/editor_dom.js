@@ -60,19 +60,20 @@ const UI_EDITORJS = {
   editorBox: `${ROOT} .codex-editor`,                         // Flaeche des Editors (Breite/Lage)
   nativeBlock: `${ROOT} .ce-block`,                           // Blockelement des Editors selbst (Kontrolle: alle markiert?)
 };
-// Tiptap (static/pm-editor.js): Block-Menue/Griffe kommen in T3 - bis dahin fehlen sie (Selektor trifft nichts)
+// Tiptap (static/pm-editor.js, Griffe/Block-Menue static/pm-struktur.js T3). Eintraege: Vorschlagsmenue (.hk-emo-i) und
+// Block-Menue (HK.openMenu, .menu-item) mit denselben Selektoren
 const UI_TIPTAP = {
-  blockMenuBtn: '.pm-handle-menu',                            // T3
-  plusBtn: `${ROOT} .pm-handle-plus`,                         // T3
-  toolbar: `${ROOT} .pm-handles`,                             // T3
+  blockMenuBtn: '.pm-handle-menu',                            // Griff ⋮⋮ (T3)
+  plusBtn: `${ROOT} .pm-handle-plus`,                         // "+" (T3)
+  toolbar: `${ROOT} .pm-handles`,
   toolbarOpenClass: 'pm-handles-on',
-  blockMenu: '.pm-blockmenu',                                 // T3
+  blockMenu: '.menu:not([hidden]):has(.pm-blockmenu)',        // geoeffnetes Block-Menue (T3)
   popover: '.pm-pop:not([hidden])',                           // offenes Vorschlagsmenue ("/", "@", "[[", ":")
   popoverContainer: '.pm-pop:not([hidden])',
   popoverItems: '.pm-pop:not([hidden])',
-  item: '.hk-emo-i',
+  item: ':is(.hk-emo-i, .menu-item)',
   itemHidden: '.pm-never',
-  itemTitle: '.hk-at-t',
+  itemTitle: ':is(.hk-at-t, .mi-t)',
   search: '.pm-never',                                        // Slash-Menue ohne Suchfeld (E1)
   nothingFound: '.pm-never',
   inlineTool: '.pm-bubble .pm-bb',                            // Knopf der Formatierungsleiste (E8)
