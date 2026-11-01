@@ -542,7 +542,15 @@
           init: function (c, state) { return VW.DecorationSet.create(state.doc, codeDecos(state.doc).concat(tableColors(state.doc))); },
           apply: function (tr, set, old, state) { return tr.docChanged ? VW.DecorationSet.create(state.doc, codeDecos(state.doc).concat(tableColors(state.doc))) : set; }
         },
-        props: { decorations: function (state) { return HLKEY.getState(state); } },
+        props: {
+          decorations: function (state) { return HLKEY.getState(state); },
+          // Ausgewaehlte Tabelle/Code (Knotenauswahl, z. B. Klick auf den Rand): Tippen ersetzt sie nicht (wie hkGuard bei
+          // Karten und das Bild in pm-tools-medien.js - beide sind keine atom). Backspace/Entf loeschen weiter bewusst.
+          handleTextInput: function (v) {
+            var s = v.state.selection;
+            return !!(s instanceof S0.NodeSelection && (s.node.type.name === 'table' || s.node.type.name === 'code'));
+          }
+        },
         view: function () {
           return { update: function (v) {
             LIVE.forEach(function (x) { x.ro(); });

@@ -238,6 +238,20 @@ if (process.env.SAGA_EDITOR !== 'tiptap') { console.log('nur mit SAGA_EDITOR=tip
   await D.focus(p, b[b.length - 1].id, 'end'); for (let i = 0; i < 4; i++) { await p.keyboard.press(MOD + '+z'); await sleep(120); }
   b = await saved(P2); ok('Undo: Formel-Text zurueck (tex atomar als Attribut)', find(b, m.id) ? find(b, m.id).data.tex !== 'x^2+1' : true, find(b, m.id));
   ok('Mathe/Code: keine Seitenfehler', !p.errs.length, p.errs);
+  // Knotenauswahl auf Tabelle/Code (Klick auf den Rand) + Tippen: Block bleibt (Pruefer T4c, wie das Bild in 8dd6a80)
+  {
+    const PS = await mk('TX Auswahl ' + RUN, [{ id: 'st', type: 'table', data: { content: [['a', 'b']] } },
+      { id: 'sc', type: 'code', data: { code: 'x = 1', language: 'python' } }, { id: 'sp', type: 'paragraph', data: { text: 'Ende' } }]);
+    const o = await get(PS);
+    await open(PS);
+    for (const id of ['st', 'sc']) {
+      await p.evaluate((id) => { const ed = HKPages.k.editor().editor(); let q = null; ed.state.doc.descendants((n, x) => { if (q == null && n.attrs && n.attrs.id === id) q = x; });
+        ed.view.dispatch(ed.state.tr.setSelection(SagaPM.pm.state.NodeSelection.create(ed.state.doc, q))); ed.view.focus(); }, id);
+      await p.keyboard.type('q');
+    }
+    await sleep(1300);
+    ok('Ausgewaehlte Tabelle/Code: Tippen ersetzt sie nicht', J(await get(PS)) === J(o), (await get(PS)).map((x) => x.type));
+  }
 
   // =================================================================================================================
   // 5) Rolle Lesen: anzeigen ohne Bearbeiten
