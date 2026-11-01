@@ -7,6 +7,7 @@
 'use strict';
 // PW_BROWSER=webkit: dieselben Pruefungen in WebKit (Safari); Chrome-eigene Teile (CDP-Passkeys, Zwischenablage) entfallen dort
 const PW = require(process.env.PLAYWRIGHT || 'playwright-core'), ENGINE = process.env.PW_BROWSER || 'chromium';
+const ED = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const BASE = process.env.SAGA_BASE, USER = process.env.SAGA_USER, PASS = process.env.SAGA_PASS;
 if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
 const res = [];
@@ -26,7 +27,7 @@ async function session(browser, opts = {}) {
     return r.json().catch(() => ({}));
   }, [m, u, b]);
   p.blocks = async id => { const n = await p.api('GET', '/api/notes/' + id); return (JSON.parse(n.body || '{}').blocks || []).map(b => b.type + ':' + (b.data.text || '')); };
-  p.open = async id => { await p.goto(BASE + '/notes#' + id); await p.waitForSelector('#pg-editor .ce-paragraph, .db-row, .cal-grid'); await p.waitForTimeout(800); };
+  p.open = async id => { await p.goto(BASE + '/notes#' + id); await p.waitForSelector(ED.ofType('paragraph') + ', .db-row, .cal-grid'); await p.waitForTimeout(800); };
   return p;
 }
 
@@ -35,7 +36,7 @@ async function session(browser, opts = {}) {
 async function enterFallback(p) {
   const id = (await p.api('POST', '/api/notes', { title: 'Enter-Test' })).id;
   await p.open(id);
-  await p.click('#pg-editor .ce-paragraph');
+  await p.locator(ED.textOf('paragraph')).first().click();
   await p.keyboard.type('/Überschrift', { delay: 40 }); await p.keyboard.press('Enter');
   await p.keyboard.type('Kuchen', { delay: 30 });
   await p.evaluate(() => { window.__blk = e => { if (e.key === 'Enter') e.stopPropagation(); }; window.addEventListener('keydown', window.__blk, true); });
@@ -51,7 +52,7 @@ async function enterFallback(p) {
 async function reloadKeeps(p) {
   const id = (await p.api('POST', '/api/notes', { title: 'Reload-Test' })).id;
   await p.open(id);
-  await p.click('#pg-editor .ce-paragraph'); await p.keyboard.type('Samstag: Markt', { delay: 15 });
+  await p.locator(ED.textOf('paragraph')).first().click(); await p.keyboard.type('Samstag: Markt', { delay: 15 });
   await p.reload(); await p.waitForTimeout(1500);
   ok('BUG-012 Seite: Text nach sofortigem Neuladen gespeichert', (await p.blocks(id)).some(x => x.includes('Samstag: Markt')));
   const D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Reload-DB' })).id;
@@ -86,10 +87,14 @@ async function conflictVisible(p) {
   const id = (await p.api('POST', '/api/notes', { title: 'Konflikt-Test' })).id;
   await p.api('PATCH', '/api/notes/' + id, { body: JSON.stringify({ blocks }), format: 'blocks' });
   await p.open(id);
-  await p.locator('#pg-editor .ce-paragraph').nth(4).click(); await p.mouse.wheel(0, 300); await p.waitForTimeout(300);
-  const g = await p.api('GET', '/api/notes/' + id);
-  await p.api('PATCH', '/api/notes/' + id, { title: 'Konflikt-Test 2', rev: g.rev });
+  await p.locator(ED.textOf('paragraph')).nth(4).click(); await p.mouse.wheel(0, 300); await p.waitForTimeout(300);
+  // Seit 2.5 (P3) fuehrt der Server gleichzeitige Aenderungen zusammen - ein echter Konflikt (409) kommt nur noch von
+  // Servern/Seiten ohne Zusammenfuehren. Hier zaehlt nur die Anzeige: die naechste Speicher-Antwort wird ein 409.
+  const route = (r) => (r.request().method() === 'PATCH'
+    ? r.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'conflict', rev: 999, by: 'Bert' }) }) : r.continue());
+  await p.route('**/api/notes/' + id, route);
   await p.keyboard.type(' neu'); await p.waitForTimeout(2500);
+  await p.unroute('**/api/notes/' + id, route);
   const m = await p.evaluate(() => { const c = document.getElementById('pg-conflict'), h = document.querySelector('.np-head');
     return c && { top: c.getBoundingClientRect().top, head: h ? h.getBoundingClientRect().bottom : 0 }; });
   ok('BUG-014 Konflikt-Kasten sichtbar (nicht unter der Kopfleiste)', m && m.top >= m.head - 1, m);
@@ -206,7 +211,7 @@ async function perfTree(p) {
   const bl = []; const onReq = r => { if (/\/backlinks$/.test(r.url())) bl.push(r.url()); }; p.on('request', onReq);
   await p.open(T2); await p.waitForTimeout(800);
   const early = bl.filter(u => u.indexOf('/' + T2 + '/') >= 0).length;
-  await p.evaluate(() => document.querySelector('#pg-editor .ce-block:last-child').scrollIntoView()); await p.waitForTimeout(1500);   // ans Seitenende scrollen
+  await p.evaluate((s) => [...document.querySelectorAll(s)].pop().scrollIntoView(), ED.top()); await p.waitForTimeout(1500);   // ans Seitenende scrollen
   p.off('request', onReq);
   ok('Schneller: lange Seite laedt Rueckverweise erst beim Hinscrollen', early === 0 && await p.evaluate(() => !document.getElementById('pg-backlinks').hidden
     && /Quelle lang/.test(document.getElementById('pg-backlinks').textContent)), { early });
@@ -246,7 +251,7 @@ async function liveTree(browser, p) {
   // Ausschluss je Tab: zweiter Tab DERSELBEN Browser-Sitzung sieht eine Aenderung aus dem ersten (X-Saga-Tab)
   await p.open(L);
   const p2 = await p.context().newPage();
-  await p2.goto(BASE + '/notes#' + L); await p2.waitForSelector('#pg-editor .ce-paragraph'); await p2.waitForTimeout(3000);   // Live-Kanal steht
+  await p2.goto(BASE + '/notes#' + L); await p2.waitForSelector(ED.ofType('paragraph')); await p2.waitForTimeout(3000);   // Live-Kanal steht
   const has2 = t => p2.evaluate(t => [...document.querySelectorAll('#pg-tree .pg-name')].some(x => x.textContent === t), t);
   const tid = await p.evaluate(() => HK.api('POST', '/api/notes', { title: 'Baum-Tab-Neu' }).then(r => r.id));
   await p2.waitForTimeout(3000);
@@ -365,7 +370,7 @@ async function commentSnippet(p) {
   for (const b of ['tb1', 'cl1']) await p.api('POST', `/api/notes/${id}/comments`, { block_id: b, body: 'Kommentar zu ' + b });
   // nur Tabelle/Checkliste (kein Absatz): auf die eigenen Bloecke warten - p.open wartete sonst auf eine evtl. noch
   // versteckte .db-row einer vorher offenen Datenbank (reihenfolgeabhaengig)
-  await p.goto(BASE + '/notes#' + id); await p.waitForSelector('#pg-editor .ce-block[data-id="tb1"]'); await p.waitForTimeout(800);
+  await p.goto(BASE + '/notes#' + id); await p.waitForSelector(ED.block('tb1')); await p.waitForTimeout(800);
   await p.evaluate(() => HKComments.openAll()); await p.waitForTimeout(800);
   const s = await p.evaluate(() => [...document.querySelectorAll('.cm-where-t')].map(x => x.textContent));
   ok('2.1 Kommentar-Auszug Tabelle: Zellen getrennt, ohne Werkzeugleiste', s.some(x => x === 'Name · Menge · Milch · 2'), s);
@@ -592,7 +597,7 @@ async function presence(browser) {
   await b.waitForTimeout(45000);                                           // zwei Meldungen (alle 20 s)
   const fl = await b.evaluate(() => ({ rm: window.__rm, same: window.__img === document.querySelector('#pg-presence img.hk-av-img') }));
   ok('2.1 Anwesenheit: unveraendert -> kein Neuzeichnen (kein Flackern)', fl.rm === 0 && fl.same, fl);
-  await a.click('#pg-editor .ce-paragraph').catch(() => {}); await a.keyboard.type('Hallo', { delay: 50 });
+  await a.locator(ED.textOf('paragraph')).first().click().catch(() => {}); await a.keyboard.type('Hallo', { delay: 50 });
   ok('2.1 Anwesenheit: Aenderung (bearbeitet) wird gezeichnet', await until(b, () => !!document.querySelector('#pg-presence .lv-av.editing'), 25000));
   await a.api('DELETE', '/api/account/avatar'); await a.api('DELETE', '/api/notes/' + nid);
   await a.context().close(); await b.context().close();
@@ -720,8 +725,8 @@ async function imageClipboard(browser) {
   });
   ok('2.1 Bild kopieren: Zwischenablage hat image/png (andere Programme) + HTML mit Saga-Block', clip.types && clip.types.includes('image/png') && clip.saga, clip);
   const p2 = await p.context().newPage();
-  await p2.goto(BASE + '/notes#' + s.z); await p2.waitForSelector('#pg-editor .ce-paragraph'); await p2.waitForTimeout(900);
-  await p2.locator('#pg-editor .ce-paragraph').nth(1).click(); await p2.keyboard.press(mod + '+v'); await p2.waitForTimeout(2500);
+  await p2.goto(BASE + '/notes#' + s.z); await p2.waitForSelector(ED.ofType('paragraph')); await p2.waitForTimeout(900);
+  await p2.locator(ED.textOf('paragraph')).nth(1).click(); await p2.keyboard.press(mod + '+v'); await p2.waitForTimeout(2500);
   const zb = await blocks(s.z);
   ok('2.1 Bild einfuegen: andere Seite im anderen Tab – gleiche Datei, Unterschrift/Rahmen bleiben, leerer Absatz ersetzt',
     zb.length === 2 && zb[1].type === 'image' && zb[1].data.file.url === s.url && zb[1].data.caption === 'Grün' && zb[1].data.withBorder, zb.map(b => b.type));
@@ -730,7 +735,7 @@ async function imageClipboard(browser) {
   await p.keyboard.press(mod + '+x'); await p.waitForTimeout(2500);
   let ab = await blocks(s.a);
   ok('2.1 Bild ausschneiden: Block aus der Seite entfernt (gespeichert)', ab.length === 2 && !ab.some(b => b.type === 'image'), ab.map(b => b.type));
-  await p.locator('#pg-editor .ce-paragraph').first().click(); await p.keyboard.press('End');
+  await p.locator(ED.textOf('paragraph')).first().click(); await p.keyboard.press('End');
   await p.keyboard.press(mod + '+v'); await p.waitForTimeout(2500);
   ab = await blocks(s.a);
   ok('2.1 Bild einfuegen: in derselben Seite wieder an der Schreibmarke', ab.length === 3 && ab[1].type === 'image' && ab[1].data.file.url === s.url, ab.map(b => b.type));
@@ -742,7 +747,7 @@ async function imageClipboard(browser) {
     await p.click('#pg-editor .image-tool__image-picture'); await p.waitForTimeout(300);
     await p.keyboard.press(mod + '+c'); await p.waitForTimeout(800);
     await p.open(f);
-    await p.locator('#pg-editor .ce-paragraph').first().click(); await p.keyboard.press('End');
+    await p.locator(ED.textOf('paragraph')).first().click(); await p.keyboard.press('End');
     await p.keyboard.press(mod + '+v'); await p.waitForTimeout(2500);
     const fb = JSON.parse((await q.api('GET', '/api/notes/' + f)).body || '{}').blocks || [], img = fb.find(b => b.type === 'image');
     const st = img ? await q.evaluate(async u => (await fetch(u)).status, img.data.file.url) : 0;
@@ -775,8 +780,8 @@ async function pasteSanitize(browser) {
   ok('Einfuegen: Bereinigung (unbekannte/Inline-Werkzeuge weg, onerror/javascript: weg, https-Verweis bleibt)',
     unit.length === 2 && unit[0].data.text === 'ab j <a href="https://example.org/" target="_blank" rel="noopener noreferrer">h</a>'
     && unit[1].tool === 'embed' && unit[1].data.url === '', unit);
-  await p.locator('#pg-editor .ce-paragraph').nth(1).click();
-  await p.evaluate(({ url }) => {
+  await p.locator(ED.textOf('paragraph')).nth(1).click();
+  await p.evaluate(({ url, sel }) => {
     window.__xss = 0;
     const blocks = [
       { tool: 'image', data: { file: { url }, caption: 'Bild <img src=x onerror="window.__xss=1"><b>fett</b>', withBorder: false, withBackground: false, stretched: false } },
@@ -786,9 +791,9 @@ async function pasteSanitize(browser) {
         { type: 'paragraph', data: { text: 'innen <iframe src="about:blank"></iframe>ok' } },
         { type: 'columns', data: { cols: [{ blocks: [{ type: 'paragraph', data: { text: 'aus <img src=x onerror="window.__xss=5">Spalte' } }] }] } }] } }];
     const dt = new DataTransfer(); dt.setData('application/x-editor-js', JSON.stringify(blocks));
-    const t = document.querySelectorAll('#pg-editor .ce-paragraph')[1];
+    const t = document.querySelectorAll(sel)[1];
     t.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-  }, s);
+  }, Object.assign({ sel: ED.textOf('paragraph') }, s));
   await p.waitForTimeout(3000);
   const dom = await p.evaluate(() => ({ xss: window.__xss, bad: document.querySelectorAll('#pg-editor [onerror], #pg-editor script, #pg-editor iframe, #pg-editor [onclick], #pg-editor a[href^="javascript"]').length }));
   ok('Einfuegen: kein Skript laeuft, nichts Gefaehrliches im Editor (auch im Ausklappbaren)', dom.xss === 0 && dom.bad === 0, dom);

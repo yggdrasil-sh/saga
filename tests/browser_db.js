@@ -210,7 +210,7 @@ async function embedded(p, D) {
   await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(600);
   ok('Eingebettete Ansicht: Absatz danach erreichbar, letzte Zeile da', await p.evaluate(() => {
     const r = document.querySelectorAll('.embed-db tr.db-row'), last = r[r.length - 1].querySelector('.db-title-in').value;
-    return /Zeile 0\d{3}/.test(last) && [...document.querySelectorAll('.ce-paragraph')].some((x) => x.textContent === 'Danach');
+    return /Zeile 0\d{3}/.test(last) && [...document.querySelectorAll('#pg-editor [data-block-type="paragraph"]')].some((x) => x.textContent === 'Danach');
   }));
 }
 

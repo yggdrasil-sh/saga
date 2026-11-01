@@ -3,6 +3,7 @@
 // Seite wie im Bericht: Schaltflaechen, leerer Absatz, Kalender-Block (Liste, ohne CalDAV) - einmal neben-, einmal untereinander.
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Sitzungs-Cookie hk-test-a> node tests/browser_slash_menu.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK;
 const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
 const BTN = { type: 'buttons', data: { buttons: [{ label: 'Neu', icon: '✅' }, { label: 'Journal' }, { label: 'Notiz' }] } };
@@ -15,10 +16,10 @@ const LAYOUTS = {
   einfach: [BTN, P, CAL],
 };
 // Menue-Rechteck (ohne Einblend-Animation) und was an Rasterpunkten darin zuoberst liegt
-const MEASURE = () => {
-  const pop = [...document.querySelectorAll('#pg-editor .ce-popover--opened')].filter((x) => !x.closest('.ce-settings')).pop();
+const MEASURE = (U) => {
+  const pop = [...document.querySelectorAll('#pg-editor ' + U.popover)].filter((x) => !x.closest(U.blockMenu)).pop();
   if (!pop) return null;
-  const c = pop.querySelector(':scope > .ce-popover__container'); c.style.animation = 'none';
+  const c = pop.querySelector(':scope > ' + U.popoverContainer); c.style.animation = 'none';
   const r = c.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = innerHeight, fremd = {};
   let n = 0;
   for (let x = r.left + 3; x < r.right - 3; x += 10) for (let y = r.top + 3; y < r.bottom - 3; y += 10) {
@@ -28,7 +29,7 @@ const MEASURE = () => {
   }
   return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom), vw, vh, n, fremd,
     bg: getComputedStyle(c).backgroundColor, fixed: getComputedStyle(c).position === 'fixed',
-    nf: !!pop.querySelector('.ce-popover__nothing-found-message--displayed') };
+    nf: !!pop.querySelector(U.nothingFound) };
 };
 (async () => {
   const br = await PW.chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {});
@@ -53,19 +54,19 @@ const MEASURE = () => {
     await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id);
     await p.waitForSelector('.embed-cal .ag-head'); await p.waitForTimeout(700);
     const tag = `${lay} ${w}px ${scheme}${wide ? ' breit' : ''}`;
-    const para = p.locator('#pg-editor .ce-paragraph').first();
+    const para = p.locator(D.textOf('paragraph')).first();
     await para.click(); await p.keyboard.type('/'); await p.waitForTimeout(600);
     // Maus ueber den Kalender: dessen Umschalter (Monat/Liste) erscheint und darf nicht ueber dem Menue liegen
     const hb = await p.locator('.embed-cal .ag-head').first().boundingBox();
     if (hb && w > 650) { await p.mouse.move(hb.x + 20, hb.y + 6); await p.waitForTimeout(200); }
-    let m = await p.evaluate(MEASURE);
+    let m = await p.evaluate(MEASURE, D.UI);
     ok(`${tag}: Menue offen`, !!m, m);
     if (!m) { await api('DELETE', '/api/notes/' + id); await ctx.close(); continue; }
     ok(`${tag}: Menue ganz im Fenster (links ${m.l}, rechts ${m.r} von ${m.vw})`, m.l >= 0 && m.r <= m.vw && m.t >= 0 && m.b <= m.vh, m);
     ok(`${tag}: Menue deckend und zuoberst`, Object.keys(m.fremd).length === 0 && m.n > 20 && !/rgba\(.*, 0\)|transparent/.test(m.bg), m);
     if (w > 650) {                                   // "Nichts gefunden" vollstaendig lesbar
       await p.keyboard.type('/'); await p.waitForTimeout(400);
-      m = await p.evaluate(MEASURE);
+      m = await p.evaluate(MEASURE, D.UI);
       ok(`${tag}: "Nichts gefunden" sichtbar und im Fenster`, m && m.nf && m.l >= 0 && Object.keys(m.fremd).length === 0, m);
     } else ok(`${tag}: Handy - Menue als Leiste unten ueber die volle Breite`, m.fixed && m.r - m.l > w * 0.9, m);
     await p.keyboard.press('Escape'); await p.waitForTimeout(250);

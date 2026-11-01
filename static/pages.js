@@ -794,8 +794,18 @@
   // beschriftet, eingebettete Datenbanken/Kalender laden nach, verschachtelte Editoren werden fertig ...). Deshalb:
   // die ERSTE Meldung nach einem gespeicherten Stand wird mit dem gespeicherten Inhalt (S.lastBlocks) verglichen -
   // nur bei echtem Unterschied "Ungespeichert" + Speichern. Weitere Meldungen (schon ungespeichert) ohne Vergleich.
-  function edChanged() {
+  // Editor-Fassade (static/editor-doc.js): Abonnenten von HKPages.k.doc.onChange - je Meldung die betroffenen Block-IDs
+  var DOC_CB = [];
+  function onDocChange(cb) { DOC_CB.push(cb); return function () { var i = DOC_CB.indexOf(cb); if (i >= 0) DOC_CB.splice(i, 1); }; }
+  function docChanged(ev) {
+    if (!DOC_CB.length) return;
+    var ids = [];
+    (Array.isArray(ev) ? ev : ev ? [ev] : []).forEach(function (x) { var t = x && x.detail && x.detail.target; if (t && t.id && ids.indexOf(t.id) < 0) ids.push(t.id); });
+    DOC_CB.slice().forEach(function (cb) { try { cb({ ids: ids }); } catch (e) { /* Abonnent kaputt: die anderen trotzdem */ } });
+  }
+  function edChanged(eapi, ev) {
     if (S.loading) return;
+    if (ev) docChanged(ev);
     if (S.dirtyBody || !S.editor || !S.cur) { S.dirtyBody = true; schedule(); return; }
     var id = S.cur.id;
     if (S.baseId !== id) return;                     // Seite laedt noch - Vergleichsstand kommt gleich (openPage)
@@ -2259,7 +2269,9 @@
   };
   // Block an einem Element (Absatz, Titel ...) einfaerben - fuer "/rot", "/blau hintergrund" und Cmd+/
   function styleAt(node, st) {
-    var box = node && node.closest ? node.closest('.ce-block__content') : null, tune = box && STYLE_OF.get(box);
+    // Blockelement (data-block-id, Editor-Fassade) oder ein Element darin
+    var box = node && node.hasAttribute && node.hasAttribute('data-block-id') ? node.querySelector(':scope > .ce-block__content')
+      : node && node.closest ? node.closest('.ce-block__content') : null, tune = box && STYLE_OF.get(box);
     if (!tune || !STYLE_TYPES[tune.block && tune.block.name]) return false;
     tune.set(st); return true;
   }
@@ -7615,6 +7627,8 @@
   function syncedInner() { var t = nestedTools(); delete t.synced; delete t.hksync; return t; }
   // Editor.js kennt destroy() erst, wenn der Editor fertig ist - sonst danach abbauen (schneller Seitenwechsel)
   function killEditor(ed) {
+    (S.eds || []).forEach(function (x) { if (x.ed === ed) x.dead = true; });
+    S.eds = (S.eds || []).filter(function (x) { return !x.dead; });
     var k = function () { try { if (typeof ed.destroy === 'function') ed.destroy(); } catch (x) { /* schon weg */ } };
     if (typeof ed.destroy === 'function') k(); else if (ed.isReady) ed.isReady.then(k, function () {});
   }
@@ -7627,7 +7641,15 @@
       onChange: edChanged
     });
     holder.addEventListener('input', function () { if (!S.loading) tryShortcut(ed); });   // Markdown-Kuerzel im eigenen Editor
-    S.eds = (S.eds || []).filter(function (x) { return x.holder.isConnected; }); S.eds.push({ ed: ed, holder: holder, tools: tools });   // fuer Tastenkuerzel
+    // fuer Tastenkuerzel und die Editor-Fassade. Spalten bauen ihre Editoren, bevor der Block im DOM haengt: einen
+    // Eintrag, der noch nie im DOM hing, nicht gleich verwerfen (sonst blieb beim Laden nur die letzte Spalte, T1) -
+    // abgehaengte (Seitenwechsel, Block weg) und abgebaute (killEditor) schon
+    var now = Date.now();
+    S.eds = (S.eds || []).filter(function (x) {
+      if (x.holder.isConnected) { x.seen = true; return true; }
+      return !x.seen && !x.dead && now - x.at < 10000;
+    });
+    S.eds.push({ ed: ed, holder: holder, tools: tools, at: now });
     ed.isReady.then(function () { decorateLinks(); });                                       // Verweise als Marken
     return ed;
   }
@@ -8820,6 +8842,7 @@
          readOnly: function () { return readOnly(); }, deltaUsed: function () { return S.deltaUsed || 0; },
          calcNum: calcNum,                                      // Widgets/Fusszeile (tests/seiten_widgets.js: gemeinsame Testvektoren)
          chartTicks: chartTicks,                                // 2.5 Paket 4: Achsen (tests/browser_widgets2.js, tests/chart_ticks.json)
+         onDocChange: onDocChange,                              // Editor-Fassade (static/editor-doc.js)
          dup: function (ed, blk) { return dupBlock(ed, blk); }, styleAt: styleAt, styleBlock: styleBlock, colors: COLORS, colorNames: COLOR_NAMES,
          toggleOf: function (node) { var w = node && node.closest ? node.closest('.tgl') : null; return w ? TGL_OF.get(w) || null : null; },
          embed: EMBED, isMac: isMac, cleanClip: function (list, nested) { return cleanClip(list, nested ? nestedTools() : (S.tools || {})); }, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
@@ -8835,7 +8858,7 @@
          reloadList: function () { return loadList(); }, remote: remoteChange,
          focusBlock: function () {                              // 2.5 (P3): Block mit der Schreibmarke (fuer die Anwesenheit)
            var a = document.activeElement, box = $('pg-editor'); if (!a || !box || !box.contains(a)) return null;
-           var blk = a.closest('.ce-block'); return blk && blk.dataset.id ? blk.dataset.id : null;
+           var blk = a.closest('[data-block-id]'); return blk ? blk.getAttribute('data-block-id') : null;
          },
          // Live notes.tree (2.2): Baum anderswo geaendert -> nachladen. Das erste Ereignis nach einer Pause sofort (Bughunt
          // P13; der Server buendelt Folgeereignisse ohnehin je 2 s), nur Serien kurz sammeln. loadList legt gleichzeitige

@@ -5,6 +5,7 @@
 //  3. Ueberschneidung -> Konfliktblock bei Bert sichtbar, "Uebernehmen" ersetzt das Original beim Eigentuemer
 // Umgebung: BASE_A, BASE_B, CK_A, CK_B (Cookie-Werte), NID (ID auf A), RID (negative ID auf B)
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const BASE_A = process.env.BASE_A, BASE_B = process.env.BASE_B, NID = +process.env.NID, RID = +process.env.RID;
 const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -26,14 +27,14 @@ async function until(fn, ms = 9000) { const t = Date.now(); let v; while (Date.n
     return r.json().catch(() => ({}));
   }, [m, url, b]);
   const blocks = async () => JSON.parse((await api(A, 'GET', '/api/notes/' + NID)).body).blocks;
-  const open = async (p, id) => { await p.goto(p.base + '/notes?t=' + Date.now() + '#' + id); await p.waitForSelector('.ce-block[data-id="c3"]'); await sleep(1500); };
+  const open = async (p, id) => { await p.goto(p.base + '/notes?t=' + Date.now() + '#' + id); await p.waitForSelector(D.block('c3')); await sleep(1500); };
   await open(A, NID); await open(B, RID);
   const typeEnd = async (p, bid, txt) => {
-    await p.click(`.ce-block[data-id="${bid}"] .ce-paragraph`);
+    await p.click(D.text(bid));
     await p.keyboard.press('End'); await p.keyboard.type(txt, { delay: 15 });
   };
-  const textOf = (p, bid) => p.evaluate((bid) => { const e = document.querySelector(`.ce-block[data-id="${bid}"] .ce-paragraph`); return e ? e.textContent : null; }, bid);
-  const markOf = (p, bid) => p.evaluate((bid) => { const b = document.querySelector(`.ce-block[data-id="${bid}"]`); return b && b.getAttribute('data-hk-by'); }, bid);
+  const textOf = (p, bid) => D.textOfBlock(p, bid);
+  const markOf = (p, bid) => p.evaluate((s) => { const b = document.querySelector(s); return b && b.getAttribute('data-hk-by'); }, D.block(bid));
 
   // --- 1. verschiedene Bloecke ------------------------------------------------------------------------------------
   await Promise.all([typeEnd(A, 'a1', ' von Anna'), typeEnd(B, 'b2', ' von Bert')]);
@@ -45,12 +46,12 @@ async function until(fn, ms = 9000) { const t = Date.now(); let v; while (Date.n
   ok('1: jede Seite zeigt die Aenderung der anderen Person (ohne Neu laden)', seen, [await textOf(A, 'b2'), await textOf(B, 'a1')]);
 
   // --- 2. Block-Markierung ueber Servergrenzen ---------------------------------------------------------------------
-  await B.click('.ce-block[data-id="c3"] .ce-paragraph'); await B.keyboard.press('End'); await B.keyboard.type('!', { delay: 20 });
+  await B.click(D.text('c3')); await B.keyboard.press('End'); await B.keyboard.type('!', { delay: 20 });
   let mark = await until(() => markOf(A, 'c3'), 12000);
   ok(`2: Anna sieht, dass Bert (anderer Server) in c3 schreibt (${mark})`, mark && /Bert/.test(mark) && / bearbeitet$/.test(mark));
-  ok('2: Markierung mit Farbklasse', await A.evaluate(() => /hk-by-[a-z]+/.test((document.querySelector('.ce-block[data-id="c3"]') || {}).className || '')));
+  ok('2: Markierung mit Farbklasse', await A.evaluate((s) => /hk-by-[a-z]+/.test((document.querySelector(s) || {}).className || ''), D.block('c3')));
   await sleep(2500);
-  await A.click('.ce-block[data-id="b2"] .ce-paragraph'); await A.keyboard.press('End'); await A.keyboard.type('.', { delay: 20 });
+  await A.click(D.text('b2')); await A.keyboard.press('End'); await A.keyboard.type('.', { delay: 20 });
   mark = await until(() => markOf(B, 'b2'), 12000);
   ok(`2: Bert sieht, dass Anna in b2 schreibt (${mark})`, mark && /Anna/.test(mark));
   await sleep(3000);
@@ -59,7 +60,7 @@ async function until(fn, ms = 9000) { const t = Date.now(); let v; while (Date.n
   await until(async () => (await textOf(B, 'b2')) === 'Zweiter Absatz von Bert.');
   const cur = await api(A, 'GET', '/api/notes/' + NID);
   const b1 = JSON.parse(cur.body); b1.blocks[0].data.text = 'Erster Satz (Anna)';
-  await B.click('.ce-block[data-id="a1"] .ce-paragraph');
+  await B.click(D.text('a1'));
   await B.keyboard.press('End'); for (let i = 0; i < 'Absatz von Anna'.length; i++) await B.keyboard.press('Backspace');
   await B.keyboard.type('Satz (Bert)', { delay: 10 });
   await api(A, 'PATCH', '/api/notes/' + NID, { body: JSON.stringify(b1), format: 'blocks', rev: cur.rev, merge: 1 });
@@ -67,7 +68,7 @@ async function until(fn, ms = 9000) { const t = Date.now(); let v; while (Date.n
   bl = await blocks();
   ok(`3: Original = Fassung von Anna, darunter Fassung von Bert (${bl.map((b) => b.id + ':' + b.data.text).join(' | ')})`,
      bl[0].data.text === 'Erster Satz (Anna)' && bl[1].data.text === 'Erster Satz (Bert)' && bl[1].tunes && bl[1].tunes.hkconflict && bl[1].tunes.hkconflict.of === bl[0].id, bl);
-  const cfVis = await until(() => B.evaluate(() => !!document.querySelector('.ce-block__content.hk-conflict .hk-cf-take')));
+  const cfVis = await until(() => B.evaluate(() => !!document.querySelector('#pg-editor [data-block-id] .hk-conflict .hk-cf-take')));
   ok('3: Konfliktblock bei Bert (fremde Seite) sichtbar', cfVis);
   const cfA = await until(() => A.evaluate(() => { const e = document.querySelector('.hk-conflict .hk-cf-t'); return e && e.textContent; }));
   ok(`3: Anna sieht die Fassung von Bert mit Anzeigenamen (${cfA})`, cfA && /Bert/.test(cfA) && !/fb-bert/.test(cfA));

@@ -4,6 +4,7 @@
 // Braucht zwei Konten: CK (Anna) und CK2 (Bert, Anzeigename beliebig) als signierte saga-Cookies, NAME2 = Anzeigename von Bert,
 // HANDLE2 = Handle von Bert (~...). Lokal: HK_TEST_BASE=http://127.0.0.1:8360 CK=… CK2=… NAME2=… HANDLE2=… node tests/browser_erwaehnungen.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK, CK2 = process.env.CK2, NAME2 = process.env.NAME2, HANDLE2 = process.env.HANDLE2;
 const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -33,19 +34,16 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
     return id;
   };
   const blocksOf = async (id) => JSON.parse((await api('GET', '/api/notes/' + id)).body).blocks;
-  const open = async (pg, id, sel) => { await pg.goto(BASE + '/notes?t=' + Date.now() + '#' + id); await pg.waitForSelector(sel || '.ce-block'); await sleep(1500); };
+  const open = async (pg, id, sel) => { await pg.goto(BASE + '/notes?t=' + Date.now() + '#' + id); await pg.waitForSelector(sel || D.any); await sleep(1500); };
   const saved = async (id, fn) => until(async () => fn(await blocksOf(id)), 12000);
   const made = [];
   const typeAt = async (pg, bid, text) => {
-    await pg.click(`.ce-block[data-id="${bid}"] .ce-paragraph`);
-    await pg.evaluate((bid) => { const e = document.querySelector(`.ce-block[data-id="${bid}"] .ce-paragraph`), r = document.createRange();
-      r.selectNodeContents(e); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }, bid);
-    await pg.keyboard.type(text, { delay: 30 });
+    await D.typeEnd(pg, bid, text, 30);
   };
 
   // --- 1. @-Menue: Person ohne Zugriff -> teilen und erwaehnen, dann Chip -----------------------------------------------
   const n = await mk('Erwähnungen', [P('m1', 'Hallo ')]); made.push(n);
-  await open(p, n, '.ce-block[data-id="m1"]');
+  await open(p, n, D.block('m1'));
   const q2 = NAME2.slice(0, 4);
   await typeAt(p, 'm1', ' @' + q2);
   const grp = await until(() => p.evaluate(() => { const b = document.querySelector('.hk-at:not([hidden])'); return b && [...b.querySelectorAll('.hk-at-g')].map((x) => x.textContent); }), 8000);
@@ -76,7 +74,7 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   // --- 2. Kommentar mit Erwaehnung ----------------------------------------------------------------------------------
   const cm = await api('POST', '/api/notes/' + n + '/comments', { block_id: 'm1', body: `Frage an <@${HANDLE2}> bitte` });
   ok('Kommentar mit Token angelegt', cm && cm.comment, cm);
-  await open(p, n, '.ce-block');
+  await open(p, n, D.any);
   await p.evaluate(() => window.HKComments && HKComments.openBlock('m1'));
   const cchip = await until(() => p.evaluate(() => { const s = document.querySelector('.cm-text .hk-mention'); return s && s.textContent; }), 6000);
   ok(`Kommentar zeigt Chip (${cchip})`, cchip === '@' + NAME2, cchip);
@@ -84,24 +82,24 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   // --- 3. Synchronisierter Block --------------------------------------------------------------------------------------
   const a = await mk('Sync Original', [P('s0', 'Oben'), P('s1', 'Geteilter Inhalt')]); made.push(a);
   const b = await mk('Sync Ziel', [P('t0', 'Ziel')]); made.push(b);
-  await open(p, a, '.ce-block[data-id="s1"]');
-  await p.hover('.ce-block[data-id="s1"]'); await p.click('.ce-block[data-id="s1"] .ce-paragraph');
-  await p.click('.ce-toolbar__settings-btn');
-  const item = await until(() => p.evaluate(() => [...document.querySelectorAll('.ce-settings .ce-popover-item, .ce-popover--opened .ce-popover-item')].some((x) => /Als synchronisierten Block kopieren/.test(x.textContent))), 5000);
+  await open(p, a, D.block('s1'));
+  await p.hover(D.block('s1')); await p.click(D.text('s1'));
+  await p.click(D.UI.blockMenuBtn);
+  const item = await until(() => p.evaluate((s) => [...document.querySelectorAll(s)].some((x) => /Als synchronisierten Block kopieren/.test(x.textContent)), `${D.UI.blockMenu} ${D.UI.item}, ${D.UI.popover} ${D.UI.item}`), 5000);
   ok('Block-Menue: „Als synchronisierten Block kopieren“', item);
-  if (item) await p.evaluate(() => [...document.querySelectorAll('.ce-popover-item')].find((x) => /Als synchronisierten Block kopieren/.test(x.textContent)).click());
+  if (item) await p.evaluate((s) => [...document.querySelectorAll(s)].find((x) => /Als synchronisierten Block kopieren/.test(x.textContent)).click(), D.UI.item);
   bl = await saved(a, (bb) => bb.find((x) => x.type === 'synced') && bb);
   const orig = bl && bl.find((x) => x.type === 'synced');
   ok('Original gespeichert (sid + Inhalt)', orig && orig.data.sid && orig.data.sid.length === 16 && orig.data.blocks[0].data.text === 'Geteilter Inhalt', orig);
   ok('Rahmen „Original“ im Editor', await p.$('.hk-sync.orig'));
   const sid = orig && orig.data.sid;
   // Kopie einfuegen (wie Einfuegen aus der Zwischenablage: Editor.js-JSON)
-  await open(p, b, '.ce-block[data-id="t0"]');
-  await p.click('.ce-block[data-id="t0"] .ce-paragraph');
-  await p.evaluate((sid) => {
+  await open(p, b, D.block('t0'));
+  await p.click(D.text('t0'));
+  await p.evaluate(([sid, sel]) => {
     const dt = new DataTransfer(); dt.setData('application/x-editor-js', JSON.stringify([{ tool: 'synced', data: { sid } }])); dt.setData('text/plain', 'x');
-    document.querySelector('.ce-block[data-id="t0"] .ce-paragraph').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-  }, sid);
+    document.querySelector(sel).dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, [sid, D.text('t0')]);
   bl = await saved(b, (bb) => bb.find((x) => x.type === 'synced') && bb);
   const kopie = bl && bl.find((x) => x.type === 'synced');
   ok('Kopie gespeichert und gelesen mit Inhalt', kopie && kopie.data.sid === sid && kopie.data.src && kopie.data.src.note === a, kopie);
@@ -109,8 +107,9 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   const bar = await p.evaluate(() => { const w = document.querySelector('.hk-sync.copy'); return w && { lab: w.querySelector('.hk-sync-lab').textContent, go: !!w.querySelector('.hk-sync-go'), txt: w.querySelector('.hk-sync-body').textContent, border: getComputedStyle(w).borderTopWidth }; });
   ok(`Kopie: Rahmen, „Synchronisiert“, Inhalt, „Original öffnen“ (${bar && bar.lab})`, bar && bar.lab === 'Synchronisiert' && bar.go && bar.txt.includes('Geteilter Inhalt') && bar.border !== '0px', bar);
   // In der Kopie bearbeiten -> Original
-  await p.click('.hk-sync-body .ce-paragraph');
-  await p.evaluate(() => { const e = document.querySelector('.hk-sync-body .ce-paragraph'), r = document.createRange(); r.selectNodeContents(e); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+  const inSync = D.textOf('paragraph', D.ofType('synced'));
+  await p.click(inSync);
+  await p.evaluate((sel) => { const e = document.querySelector(sel), r = document.createRange(); r.selectNodeContents(e); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }, inSync);
   await p.keyboard.type(' plus Kopie', { delay: 25 });
   const ob = await saved(a, (bb) => { const o = bb.find((x) => x.type === 'synced'); return o && /plus Kopie/.test(o.data.blocks[0].data.text) && o; });
   ok('Bearbeiten in der Kopie schreibt ins Original', ob, ob);
@@ -130,10 +129,10 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   const noacc = await q.evaluate(() => { const w = document.querySelector('.hk-sync'); return w && { lab: w.querySelector('.hk-sync-lab').textContent, txt: w.textContent }; });
   ok(`Bert ohne Zugriff auf das Original: Platzhalter (${noacc && noacc.lab})`, noacc && /kein Zugriff/.test(noacc.lab) && !noacc.txt.includes('Geteilter Inhalt') && !noacc.txt.includes('Sync Original'), noacc);
   await api('PUT', '/api/notes/' + a + '/shares', { type: 'user', target: HANDLE2, role: 'view' });
-  await open(q, b, '.hk-sync-body .ce-paragraph');
+  await open(q, b, inSync);
   const ro = await q.evaluate(() => { const w = document.querySelector('.hk-sync'); return w && { lab: w.querySelector('.hk-sync-lab').textContent, ro: w.classList.contains('locked') }; });
   ok(`Bert nur Lesen auf dem Original: nur lesend (${ro && ro.lab})`, ro && ro.ro && /nur lesend/.test(ro.lab), ro);
-  await q.click('.hk-sync-body .ce-paragraph');
+  await q.click(inSync);
   await q.keyboard.type('XYZ', { delay: 25 });
   await sleep(2500);
   const ob2 = (await blocksOf(a)).find((x) => x.type === 'synced');

@@ -4,6 +4,7 @@
 // (= Fusszeile der Datenbank-Tabelle). Nicht verwechseln mit tests/widgets.py (Home-Bildschirm-Widgets der Apps).
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Cookie hk-test-a> CK2=<Cookie hk-test-b> node tests/seiten_widgets.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const path = require('path'), fs = require('fs');
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK;
 const VEC = JSON.parse(fs.readFileSync(path.join(__dirname, 'widget_vectors.json'), 'utf8'));
@@ -49,11 +50,11 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   const id = (await api('POST', '/api/notes', { title: 'WG Web' })).id;
   await api('PATCH', '/api/notes/' + id, { body: JSON.stringify({ blocks: [P('Start'), P('')] }), format: 'blocks' });
   await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id);
-  await p.waitForSelector('.ce-paragraph'); await sleep(1200);
-  const empty = p.locator('.ce-paragraph').nth(1);
+  await p.waitForSelector(D.ofType('paragraph')); await sleep(1200);
+  const empty = p.locator(D.textOf('paragraph')).nth(1);
   await empty.click(); await p.keyboard.type('/'); await sleep(400);
   await p.keyboard.type('Kennzahl', { delay: 30 }); await sleep(400);
-  const menu = await p.evaluate(() => [...document.querySelectorAll('.ce-popover--opened .ce-popover-item:not(.ce-popover-item--hidden) .ce-popover-item__title')].map((x) => x.textContent.trim()));
+  const menu = await p.evaluate((s) => [...document.querySelectorAll(s)].map((x) => x.textContent.trim()), D.UI_ITEMS);
   ok(`Slash-Menue zeigt "Widget: Kennzahl" (${menu.slice(0, 4).join(', ')})`, menu.indexOf('Widget: Kennzahl') >= 0, menu);
   await p.keyboard.press('Enter');
   const panel = await until(() => p.locator('.wg-panel').count());
@@ -102,7 +103,7 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   const unk = await p.locator('.wg[data-kind="zukunft"]').textContent();
   ok(`unbekannte Art: Hinweis (${unk})`, /neuere Version/.test(unk));
   // Speichern einer anderen Stelle laesst die unbekannte Art unveraendert
-  const ende = p.locator('.ce-paragraph', { hasText: 'Ende' }).first();
+  const ende = p.locator(D.textOf('paragraph'), { hasText: 'Ende' }).first();
   await ende.click(); await p.keyboard.press('End'); await p.keyboard.type(' plus'); await sleep(3500);
   bl = await body(id2);
   const z = bl.find((b) => b.type === 'widget' && b.data.kind === 'zukunft');

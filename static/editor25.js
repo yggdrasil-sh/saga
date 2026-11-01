@@ -235,6 +235,7 @@
 
   // --- Inline-Mathe <code class="hk-math">TeX</code> -------------------------------------------------------------------
   // Der Text bleibt TeX (so speichern es alle Clients); dargestellt als Chip, gerendert im Popover (Klick bzw. Fokus).
+  // editorjs-only (T7): Editor.js-Inline-Werkzeug (Knopf der Inline-Leiste); die Logik dahinter ist editorneutral
   function MathInline(o) { this.api = o.api; }
   MathInline.isInline = true;
   MathInline.title = T('Formel');
@@ -346,6 +347,7 @@
     if (st.c) setLast({ c: st.c, bg: bg });
     return true;
   }
+  // editorjs-only (T7): Editor.js-Inline-Werkzeug (Knopf der Inline-Leiste); die Logik dahinter ist editorneutral
   function HKColor(o) { this.api = o.api; this.btn = null; }
   HKColor.isInline = true;
   HKColor.title = T('Farbe');
@@ -446,29 +448,23 @@
   // --- Mehrfachauswahl-Leiste (G7) ----------------------------------------------------------------------------------------
   var TEXT_TYPES = { paragraph: 1, header: 1, list: 1, quote: 1 };
   var bar = null, barSel = null;
-  function edFor(redactor) {          // .codex-editor__redactor -> {ed, top}
-    var k = K(); if (!k || !redactor) return null;
-    var holder = redactor.closest('.codex-editor'); holder = holder && holder.parentElement;
-    if (!holder) return null;
-    if (holder.id === 'pg-editor') return { ed: k.editor(), top: true };
-    var x = k.eds().filter(function (e) { return e.holder === holder; })[0];
-    return x ? { ed: x.ed, top: false } : null;
-  }
+  // Auswahl ueber die Editor-Fassade (static/editor-doc.js): {ids, holders (Blockelemente), parent, slot, top} - alle
+  // Bloecke im selben Behaelter (oberste Ebene, Spalte, Toggle ...)
+  function doc() { var k = K(); return k && k.doc; }
   function currentSelection() {
-    var box = document.getElementById('pg-editor'); if (!box) return null;
-    var sel = [].slice.call(box.querySelectorAll('.ce-block--selected'));
+    var d = doc(); if (!d) return null;
+    var sel = d.selected();
     if (sel.length < 2) return null;
     var groups = new Map();
-    sel.forEach(function (b) { var r = b.parentElement; if (!groups.has(r)) groups.set(r, []); groups.get(r).push(b); });
+    sel.forEach(function (b) { var key = b.parent + '/' + b.slot; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(b); });
     var best = null;                    // die Gruppe mit den meisten Bloecken (oberste Ebene bei Gleichstand)
-    groups.forEach(function (list, r) { if (!best || list.length > best.list.length || (list.length === best.list.length && r.closest('#pg-editor > .codex-editor') === r.parentElement)) best = { r: r, list: list }; });
-    if (!best || best.list.length < 2) return null;
-    var e = edFor(best.r); if (!e || !e.ed) return null;
-    var ids = best.list.map(function (b) { return b.dataset.id; }).filter(Boolean);
-    return ids.length >= 2 ? { ed: e.ed, top: e.top, ids: ids, holders: best.list } : null;
+    groups.forEach(function (list) { if (!best || list.length > best.length || (list.length === best.length && list[0].parent == null)) best = list; });
+    if (!best || best.length < 2) return null;
+    return { ids: best.map(function (b) { return b.id; }), holders: best.map(function (b) { return b.el; }),
+             types: best.map(function (b) { return b.type; }), parent: best[0].parent, slot: best[0].slot, top: best[0].parent == null };
   }
   function clearSel() {
-    [].forEach.call(document.querySelectorAll('#pg-editor .ce-block--selected'), function (b) { b.classList.remove('ce-block--selected'); });
+    var d = doc(); if (d) d.select([]);
     hideBar();
   }
   function hideBar() { if (bar) bar.hidden = true; barSel = null; }
@@ -482,7 +478,7 @@
     bar.querySelector('[data-a="convert"]').disabled = !types.every(function (t) { return TEXT_TYPES[t]; });
     bar.hidden = false;
   }
-  function blockTypes(s) { return s.ids.map(function (id) { var b = s.ed.blocks.getById(id); return b ? b.name : ''; }); }
+  function blockTypes(s) { return s.types || s.ids.map(function (id) { var b = doc().byId(id); return b ? b.type : ''; }); }
   function buildBar() {
     bar = el('div', 'hk-sel-bar'); bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', T('Ausgewählte Blöcke')); bar.hidden = true;
     bar.appendChild(el('span', 'hk-sel-n'));
@@ -500,9 +496,18 @@
     bar.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); });
     document.body.appendChild(bar);
   }
-  function saveBlocks(s) {
-    return Promise.all(s.ids.map(function (id) { var b = s.ed.blocks.getById(id); return b ? b.save().then(function (x) { return x && { id: id, tool: x.tool, data: x.data, tunes: x.tunes }; }) : null; }))
-      .then(function (l) { return l.filter(Boolean); });
+  function saveBlocks(s) {           // -> [{id, tool, data, tunes, index}] in Auswahl-Reihenfolge
+    var d = doc();
+    return Promise.all(s.ids.map(function (id) {
+      var b = d.byId(id); if (!b) return null;
+      var at = b.index;
+      return b.json().then(function (x) { return x && { id: id, tool: x.type, data: x.data, tunes: x.tunes, index: at }; });
+    })).then(function (l) { return l.filter(Boolean); });
+  }
+  function styled(x, data, id) {     // Block fuer die Fassade (nur die Farbe wandert mit, wie bisher)
+    var o = { type: x.tool, data: data || x.data }; if (id) o.id = id;
+    if (x.tunes && x.tunes.hkstyle) o.tunes = { hkstyle: x.tunes.hkstyle };
+    return o;
   }
   function dirty() { var k = K(); if (k && k.dirty) k.dirty(); }
   function act(a, s, btn) {
@@ -516,28 +521,23 @@
     if (a === 'move') return moveDialog(s, btn);
   }
   function delBlocks(s) {
-    var ed = s.ed;
+    var d = doc();
     saveBlocks(s).then(function (saved) {
-      var idx = saved.map(function (x) { return ed.blocks.getBlockIndex(x.id); });
-      idx.slice().sort(function (a, b) { return b - a; }).forEach(function (i) { if (i >= 0) ed.blocks.delete(i); });
+      d.remove(saved.map(function (x) { return x.id; }));
       clearSel(); dirty();
       HK.toast(T('{n} Blöcke gelöscht', { n: saved.length }), T('Rückgängig'), function () {
-        saved.forEach(function (x, j) {
-          var nb = ed.blocks.insert(x.tool, x.data, undefined, Math.min(idx[j], ed.blocks.getBlocksCount()), false, false, x.id);
-          if (x.tunes && x.tunes.hkstyle) K().styleBlock(nb, x.tunes.hkstyle);
+        saved.slice().sort(function (a, b) { return a.index - b.index; }).forEach(function (x) {
+          d.insertAfter({ parent: s.parent, slot: s.slot, at: x.index }, [styled(x, null, x.id)]).catch(function () {});
         });
         dirty();
       }, 10000);
     });
   }
   function dupBlocks(s) {
-    var ed = s.ed;
+    var d = doc();
     saveBlocks(s).then(function (saved) {
-      var at = Math.max.apply(null, saved.map(function (x) { return ed.blocks.getBlockIndex(x.id); })) + 1;
-      saved.forEach(function (x, j) {
-        var nb = ed.blocks.insert(x.tool, JSON.parse(JSON.stringify(x.data)), undefined, at + j, false);
-        if (x.tunes && x.tunes.hkstyle) K().styleBlock(nb, x.tunes.hkstyle);
-      });
+      var last = saved.reduce(function (a, x) { return !a || x.index > a.index ? x : a; }, null);
+      d.insertAfter(last.id, saved.map(function (x) { return styled(x, JSON.parse(JSON.stringify(x.data))); }));
       clearSel(); dirty();
       HK.toast(T('{n} Blöcke dupliziert', { n: saved.length }));
     });
@@ -593,7 +593,7 @@
     HK.openMenu(btn, function (m) {
       var set = function (st) {
         var n = 0;
-        s.holders.forEach(function (h) { var c = h.querySelector('.ce-block__content'); if (c && k.styleAt(c, st)) n++; });
+        s.holders.forEach(function (h) { if (k.styleAt(h, st)) n++; });
         if (n < s.ids.length) HK.toast(T('{n} Blöcke ohne Farbe (nicht färbbar)', { n: s.ids.length - n }));
         clearSel();
       };
@@ -624,10 +624,8 @@
     });
   }
   function convert(s, target) {
-    var ed = s.ed;
     saveBlocks(s).then(function (saved) {
       if (!saved.every(function (x) { return TEXT_TYPES[x.tool]; })) { HK.toast(T('Nur Textblöcke lassen sich umwandeln')); return; }
-      var at = Math.min.apply(null, saved.map(function (x) { return ed.blocks.getBlockIndex(x.id); }));
       var list = { unordered: 1, ordered: 1, checklist: 1 }[target], out = [];
       if (list) {
         var items = []; saved.forEach(function (x) { textsOf(x).forEach(function (t) { items.push({ content: t, meta: target === 'checklist' ? { checked: false } : {}, items: [] }); }); });
@@ -643,11 +641,10 @@
           });
         });
       }
-      saved.map(function (x) { return ed.blocks.getBlockIndex(x.id); }).sort(function (a, b) { return b - a; }).forEach(function (i) { if (i >= 0) ed.blocks.delete(i); });
-      out.forEach(function (x, j) {
-        var nb = ed.blocks.insert(x.tool, x.data, undefined, at + j, false, false, x.id);
-        if (x.st) K().styleBlock(nb, x.st);
-      });
+      saved.sort(function (a, b) { return a.index - b.index; });
+      doc().replace(saved.map(function (x) { return x.id; }), out.map(function (x) {
+        var o = { type: x.tool, data: x.data }; if (x.id) o.id = x.id; if (x.st) o.tunes = { hkstyle: x.st }; return o;
+      }));
       clearSel(); dirty();
     });
   }
@@ -679,9 +676,14 @@
       });
     }, { search: T('Seite suchen …') });
   }
-  function prevSibling(ed, id) { var i = ed.blocks.getBlockIndex(id); var b = i > 0 ? ed.blocks.getBlockByIndex(i - 1) : null; return b ? b.id : null; }
+  function prevSibling(id) {          // ID des Blocks davor im selben Behaelter oder null
+    var d = doc(), me = d.byId(id); if (!me) return null;
+    var sib = d.blocks().filter(function (b) { return b.parent === me.parent && b.slot === me.slot; });
+    var i = sib.map(function (b) { return b.id; }).indexOf(id);
+    return i > 0 ? sib[i - 1].id : null;
+  }
   function moveTo(s, page, atStart) {
-    var k = K(), cur = k.cur(), src = cur.id, ids = s.ids.slice(), before = prevSibling(s.ed, ids[0]);
+    var k = K(), cur = k.cur(), src = cur.id, ids = s.ids.slice(), before = prevSibling(ids[0]);
     var call = function (retry) {
       return k.save().then(function () {
         return HK.api('POST', '/api/notes/' + src + '/blocks/move', { ids: ids, to: page.id, rev_a: k.cur().rev, at: atStart ? 'start' : 'end' });
@@ -733,7 +735,7 @@
       }).then(function () { clearSel(); HK.toast(T('Kopiert nach „{name}“', { name: k.label(page) })); });
     }).catch(function (err) { HK.toast(T('Nicht kopiert: {err}', { err: err.message })); });
   }
-  // Block-Menue (⋮⋮): "Verschieben nach ..." fuer EINEN Block
+  // Block-Menue (⋮⋮): "Verschieben nach ..." fuer EINEN Block. editorjs-only (T7): Editor.js-Tune
   function HKMoveTune(o) { this.api = o.api; this.block = o.block; }
   HKMoveTune.isTune = true;
   HKMoveTune.prototype.render = function () {
@@ -743,19 +745,19 @@
     return { icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h12M12 6l6 6-6 6M20 4v16"/></svg>',
              title: copy ? T('Kopieren nach …') : T('Verschieben nach …'), closeOnActivate: true,
              onActivate: function () {
-               var h = self.block && self.block.holder; if (!h) return;
-               var redactor = h.parentElement, e = edFor(redactor); if (!e) return;
-               var c = h.querySelector('.ce-block__content') || h;
-               setTimeout(function () { moveDialog({ ed: e.ed, top: e.top, ids: [self.block.id], holders: [h] }, c); }, 0);
+               var b = self.block && doc() && doc().byId(self.block.id); if (!b) return;
+               var c = b.el.querySelector('.ce-block__content') || b.el;              // editorjs-only (T7): Anker im Block
+               setTimeout(function () { moveDialog({ ids: [b.id], holders: [b.el], types: [b.type], parent: b.parent, slot: b.slot, top: b.parent == null }, c); }, 0);
              } };
   };
 
-  // Auswahl beobachten: Editor.js markiert Bloecke mit .ce-block--selected (Ziehen, Umschalt+Pfeile, Strg+A)
+  // Auswahl beobachten: Editor.js markiert Bloecke per Klasse (Ziehen, Umschalt+Pfeile, Strg+A) - jede Klassenaenderung
+  // an einem Blockelement (data-block-id) kann die Auswahl sein. editorjs-only (T7): Tiptap meldet die Auswahl selbst
   var upd = null;
   function later() { clearTimeout(upd); upd = setTimeout(updateBar, 60); }
   ['mouseup', 'keyup'].forEach(function (ev) { document.addEventListener(ev, later); });
   var mo = new MutationObserver(function (list) {
-    for (var i = 0; i < list.length; i++) if (list[i].target.classList && list[i].target.classList.contains('ce-block')) { later(); return; }
+    for (var i = 0; i < list.length; i++) if (list[i].target.hasAttribute && list[i].target.hasAttribute('data-block-id')) { later(); return; }
   });
   document.addEventListener('hk-page-ready', function () {
     var box = document.getElementById('pg-editor');
@@ -765,15 +767,18 @@
   document.addEventListener('hk-page-open', hideBar);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && bar && !bar.hidden) clearSel(); });
   // Umschalt+Klick auf ⋮⋮: Block zur Auswahl hinzufuegen/entfernen (statt Menue)
+  // editorjs-only (T7): Griff ⋮⋮ (.ce-toolbar__settings-btn) und Zuordnung Werkzeugleiste -> Instanz sind Editor.js-UI
   var hovered = null;
-  document.addEventListener('mouseover', function (e) { var b = e.target && e.target.closest ? e.target.closest('#pg-editor .ce-block') : null; if (b) hovered = b; }, true);
+  document.addEventListener('mouseover', function (e) { var b = e.target && e.target.closest ? e.target.closest('#pg-editor [data-block-id]') : null; if (b) hovered = b; }, true);
   window.addEventListener('mousedown', function (e) {
     if (!e.shiftKey || ro()) return;
     var t = e.target && e.target.closest ? e.target.closest('.ce-toolbar__settings-btn') : null;
-    if (!t || !hovered) return;
+    if (!t || !hovered || !doc()) return;
     var ui = t.closest('.codex-editor'); if (!ui || hovered.parentElement.closest('.codex-editor') !== ui) return;
     e.preventDefault(); e.stopPropagation();
-    hovered.classList.toggle('ce-block--selected');
+    var id = hovered.getAttribute('data-block-id'), ids = doc().selected().map(function (b) { return b.id; }), i = ids.indexOf(id);
+    if (i >= 0) ids.splice(i, 1); else ids.push(id);
+    doc().select(ids);
     later();
   }, true);
   window.addEventListener('click', function (e) {

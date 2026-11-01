@@ -361,22 +361,23 @@
   // --- Markierung im Editor merken (Klick in die Seitenleiste hebt sie sonst auf) -----------------------------------
   function blockIds() {
     var box = $('pg-editor'); if (!box) return [];
-    var picked = [].slice.call(box.querySelectorAll('.ce-block--selected[data-id]'));
+    var D = K && K.doc;
+    var picked = D ? D.selected().map(function (b) { return b.el; }) : [];
     if (!picked.length) {
       var sel = window.getSelection();
       if (!sel || !sel.rangeCount) return [];
       var r = sel.getRangeAt(0), n = r.commonAncestorContainer;
       if (!box.contains(n.nodeType === 1 ? n : n.parentNode)) return [];
       if (r.collapsed) {
-        var one = (n.nodeType === 1 ? n : n.parentNode).closest('.ce-block[data-id]');
+        var one = (n.nodeType === 1 ? n : n.parentNode).closest('[data-block-id]');
         picked = one ? [one] : [];
       } else {
-        picked = [].filter.call(box.querySelectorAll('.ce-block[data-id]'), function (b) { return r.intersectsNode(b); });
+        picked = [].filter.call(box.querySelectorAll('[data-block-id]'), function (b) { return r.intersectsNode(b); });
       }
     }
     // Nur innerste Bloecke (Spalten/Toggle enthalten weitere Bloecke)
     picked = picked.filter(function (b) { return !picked.some(function (o) { return o !== b && b.contains(o); }); });
-    return picked.map(function (b) { return b.getAttribute('data-id'); }).slice(0, (A.st && A.st.blocks_max) || 50);
+    return picked.map(function (b) { return b.getAttribute('data-block-id'); }).slice(0, (A.st && A.st.blocks_max) || 50);
   }
   function remember() {
     var c = cur(); if (!c) return;
@@ -617,21 +618,16 @@
   }
 
   function esc(s) { return HK.escapeHtml(String(s || '')); }
-  function editors() { return K ? [K.editor()].concat(K.eds ? K.eds() : []).filter(Boolean) : []; }
-  function findBlock(id) {
-    var eds = editors();
-    for (var i = 0; i < eds.length; i++) {
-      try { var b = eds[i].blocks.getById(id); if (b) return { ed: eds[i], blk: b }; } catch (e) { /* anderer Editor */ }
-    }
-    return null;
-  }
+  // Bloecke lesen/aendern ueber die Editor-Fassade (static/editor-doc.js), auch in Spalten/Toggles
   function replaceBlocks(blocks, segs) {
+    var D = K && K.doc;
     var jobs = blocks.map(function (b, i) {
-      var f = findBlock(b.id); if (!f) return Promise.resolve(false);
-      return f.blk.save().then(function (s) {
-        var d = Object.assign({}, s && s.data, { text: esc(segs[i]).replace(/\n/g, '<br>') });
-        return f.ed.blocks.update(b.id, d);
-      }).then(function () { return true; });
+      var f = D && D.byId(b.id); if (!f) return Promise.resolve(false);
+      return f.json().then(function (s) {
+        if (!s) return false;
+        var d = Object.assign({}, s.data, { text: esc(segs[i]).replace(/\n/g, '<br>') });
+        return D.replace([b.id], [{ id: b.id, type: s.type, data: d }]).then(function () { return true; });
+      });
     });
     Promise.all(jobs).then(function (r) {
       var n = r.filter(Boolean).length;
@@ -639,10 +635,9 @@
     }).catch(function () { HK.toast(T('Nicht ersetzt.')); });
   }
   function insertBlock(type, data, afterId) {
-    var f = afterId ? findBlock(afterId) : null, ed = f ? f.ed : (K && K.editor());
-    if (!ed) return;
-    var idx = f ? ed.blocks.getBlockIndex(afterId) + 1 : ed.blocks.getBlocksCount();
-    try { ed.blocks.insert(type, data, undefined, idx, true); HK.toast(T('Eingefügt.')); } catch (e) { HK.toast(T('Nicht eingefügt.')); }
+    var D = K && K.doc; if (!D) return;
+    var ref = afterId && D.byId(afterId) ? afterId : null;
+    D.insertAfter(ref, [{ type: type, data: data }]).then(function () { HK.toast(T('Eingefügt.')); }, function () { HK.toast(T('Nicht eingefügt.')); });
   }
 
   // --- Knopf im Kopf + Eintraege im Seitenmenue -----------------------------------------------------------------------

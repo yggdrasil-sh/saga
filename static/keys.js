@@ -9,18 +9,9 @@
   function inEditor() { var a = document.activeElement; return !!(a && $('pg-editor').contains(a) && (a.isContentEditable || a.closest('[contenteditable="true"]'))); }
   function typing() { var a = document.activeElement; return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable); }
 
-  // Editor, in dem der Cursor steht (auch in Toggle/Spalte), und der aktuelle Block darin
-  function owner() {
-    var a = document.activeElement; if (!a || !$('pg-editor').contains(a)) return null;
-    var best = null;
-    K.eds().forEach(function (x) { if (x.holder.contains(a) && (!best || best.holder.contains(x.holder))) best = x; });
-    return best ? best.ed : K.editor();
-  }
-  function current() {
-    var ed = owner(); if (!ed) return null;
-    var i = ed.blocks.getCurrentBlockIndex(), b = i >= 0 ? ed.blocks.getBlockByIndex(i) : null;
-    return b ? { ed: ed, i: i, b: b } : null;
-  }
+  // Block mit der Schreibmarke (auch in Toggle/Spalte) - ueber die Editor-Fassade (static/editor-doc.js):
+  // {id, type, el, parent, slot, json()}
+  function current() { return K.doc ? K.doc.current() : null; }
 
   // --- Block umwandeln -------------------------------------------------------------------
   var TYPES = [   // [Bezeichnung, Schluessel, Symbol, Suchwoerter, Ziffer fuer Cmd+Alt+Ziffer]
@@ -62,52 +53,53 @@
   }
   var TOGGLE_LV = { toggle: 0, t1: 1, t2: 2, t3: 3 };
   function convert(c, key) {
-    if (!CONVERTIBLE[c.b.name]) { HK.toast(T('Dieser Block lässt sich nicht umwandeln')); return; }
+    if (!CONVERTIBLE[c.type]) { HK.toast(T('Dieser Block lässt sich nicht umwandeln')); return; }
     // Toggle <-> Toggle-Ueberschrift (2.5, G10): nur die Ebene aendern - Inhalt, Farbe und Zustand bleiben
-    if (c.b.name === 'toggle' && key in TOGGLE_LV) {
-      var tg = K.toggleOf(c.b.holder); if (tg) { tg.setLevel(TOGGLE_LV[key]); return; }
+    if (c.type === 'toggle' && key in TOGGLE_LV) {
+      var tg = K.toggleOf(c.el); if (tg) { tg.setLevel(TOGGLE_LV[key]); return; }
     }
-    c.b.save().then(function (s) {
-      if (s.tool === 'toggle' && s.data.blocks && s.data.blocks.length) { HK.toast(T('Der Toggle hat Inhalt – erst ausräumen, dann umwandeln')); return; }
-      var r = build(key, textOf(s.tool, s.data)); if (!r) return;
+    c.json().then(function (s) {
+      if (!s) return;
+      if (s.type === 'toggle' && s.data.blocks && s.data.blocks.length) { HK.toast(T('Der Toggle hat Inhalt – erst ausräumen, dann umwandeln')); return; }
+      var r = build(key, textOf(s.type, s.data)); if (!r) return;
       var st = s.tunes && s.tunes.hkstyle;          // Farbe bleibt beim Umwandeln (wenn der neue Typ sie kennt)
-      var nb = c.ed.blocks.insert(r[0], r[1], undefined, c.i, true, true);
-      if (st) K.styleBlock(nb, st);
-      try { c.ed.caret.setToBlock(c.i, 'end'); } catch (e) { /* Block ohne Textfeld */ }
+      K.doc.replace([c.id], [{ type: r[0], data: r[1], tunes: st ? { hkstyle: st } : undefined }], { focus: 'end' });
     });
   }
   function duplicate(c) {
-    if (!COPYABLE[c.b.name]) { HK.toast(T('Diesen Block bitte über das Block-Menü kopieren')); return; }
-    K.dup(c.ed, c.b);                              // samt Farbe (tunes)
+    if (!COPYABLE[c.type]) { HK.toast(T('Diesen Block bitte über das Block-Menü kopieren')); return; }
+    c.json().then(function (s) {                   // samt Farbe (tunes)
+      if (!s) return;
+      var st = s.tunes && s.tunes.hkstyle;
+      K.doc.insertAfter(c.id, [{ type: s.type, data: s.data, tunes: st ? { hkstyle: st } : undefined }], { focus: 'end' });
+    });
   }
   function move(c, d) {
-    var to = c.i + d; if (to < 0 || to >= c.ed.blocks.getBlocksCount()) return;
-    c.ed.blocks.move(to, c.i);
-    try { c.ed.caret.setToBlock(to, 'end'); } catch (e) { /* ohne Textfeld */ }
+    if (K.doc.move(c.id, d)) K.doc.focus(c.id, 'end');
   }
   function blockLink(c) {
-    if (c.ed !== K.editor()) { HK.toast(T('Link zu Blöcken in Toggles/Spalten: bitte den äußeren Block verlinken')); }
-    K.copyLink(c.b.id);
+    if (c.parent != null) { HK.toast(T('Link zu Blöcken in Toggles/Spalten: bitte den äußeren Block verlinken')); }
+    K.copyLink(c.id);
   }
 
   // Cmd+/ : alle Aktionen fuer den aktuellen Block, mit Suche
   function actionMenu(c) {
     if (K.readOnly && K.readOnly()) {               // Lesen/Kommentieren bzw. gesperrt (2.5, G5): nur Link und Kommentieren
-      HK.openMenu(c.b.holder, function (m) {
+      HK.openMenu(c.el, function (m) {
         m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { icon: '🔗' }));
-        if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.b.id); }, { icon: '💬' }));
+        if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.id); }, { icon: '💬' }));
       });
       return;
     }
-    HK.openMenu(c.b.holder, function (m) {
+    HK.openMenu(c.el, function (m) {
       m.appendChild(HK.menuLabel(T('Umwandeln in')));
       TYPES.forEach(function (t) {
         m.appendChild(HK.menuItem(t[0], function () { convert(c, t[1]); }, { icon: t[2], hint: t[4] != null ? MK + ALT + t[4] : '' }));
       });
       m.appendChild(el('div', 'menu-sep'));
-      if (K.styleAt && c.b.holder.querySelector('.ce-block__content')) {          // 2.5 (G3): Farbe
+      if (K.styleAt && c.el) {                                                   // 2.5 (G3): Farbe
         m.appendChild(HK.menuItem(T('Farbe'), null, { icon: 'A', sub: function (sm) {
-          var box = c.b.holder.querySelector('.ce-block__content');
+          var box = c.el;
           sm.appendChild(HK.menuItem(T('Standard'), function () { K.styleAt(box, null); }, { icon: 'A' }));
           K.colors.forEach(function (col) {
             var it = HK.menuItem(K.colorNames[col], function () { K.styleAt(box, { c: col }); }, { icon: 'A' });
@@ -123,9 +115,9 @@
       m.appendChild(HK.menuItem(T('Nach oben'), function () { move(c, -1); }, { icon: '↑', hint: MK + '⇧↑' }));
       m.appendChild(HK.menuItem(T('Nach unten'), function () { move(c, 1); }, { icon: '↓', hint: MK + '⇧↓' }));
       m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { icon: '🔗' }));
-      if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.b.id); }, { icon: '💬' }));
+      if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.id); }, { icon: '💬' }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem(T('Löschen'), function () { c.ed.blocks.delete(c.i); }, { icon: '🗑', danger: true }));
+      m.appendChild(HK.menuItem(T('Löschen'), function () { K.doc.remove([c.id]); }, { icon: '🗑', danger: true }));
     }, { search: T('Aktion suchen …') });
   }
 
@@ -173,7 +165,9 @@
     if (K.embed) return;
     if (!toc) { toc = el('nav', 'hk-toc'); toc.setAttribute('aria-label', T('Inhaltsverzeichnis')); document.body.appendChild(toc); }
     // Ueberschriften und Toggle-Ueberschriften (2.5, G10) in Dokument-Reihenfolge
-    var hs = [].slice.call(document.querySelectorAll('#pg-editor .ce-header, #pg-editor .tgl-h > .tgl-head > .tgl-title')).filter(function (h) { return h.textContent.trim(); });
+    var hs = [].slice.call(document.querySelectorAll('#pg-editor [data-block-type="header"], #pg-editor .tgl-h > .tgl-head > .tgl-title')).map(function (h) {
+      return h.hasAttribute('data-block-type') ? h.querySelector('h1, h2, h3, h4, h5, h6') || h : h;
+    }).filter(function (h) { return h.textContent.trim(); });
     toc.textContent = '';
     toc.hidden = !tocOn || hs.length < 3 || $('page').hidden;
     if (toc.hidden) return;
@@ -361,7 +355,7 @@
   var at = { box: null, items: [], idx: 0, range: null, seq: 0 };
   function atClose() { at.seq++; if (at.box) at.box.hidden = true; at.items = []; }
   function blockText(node) {
-    var b = node.parentElement && node.parentElement.closest('.ce-block'); if (!b) return '';
+    var b = node.parentElement && node.parentElement.closest('[data-block-id]'); if (!b) return '';
     var c = b.cloneNode(true); [].forEach.call(c.querySelectorAll('time'), function (x) { x.remove(); });
     return c.textContent.replace(/\s+/g, ' ').trim();
   }

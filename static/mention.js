@@ -86,7 +86,7 @@
     box.appendChild(el('p', null, T('{name} hat keinen Zugriff auf diese Seite. Seite teilen und erwähnen?', { name: p.name })));
     box.appendChild(sel);
     // erst nach dem ausloesenden mousedown oeffnen - sonst schliesst common.js das Menue im selben Ereignis wieder
-    var anchor = (document.activeElement && document.activeElement.closest && document.activeElement.closest('.ce-block')) || document.activeElement || document.body;
+    var anchor = (document.activeElement && document.activeElement.closest && document.activeElement.closest('[data-block-id]')) || document.activeElement || document.body;
     setTimeout(function () { HK.openMenu(anchor, function (m) {
       m.appendChild(box);
       m.appendChild(HK.menuItem(T('Teilen und erwähnen'), function () {
@@ -169,6 +169,7 @@
   SyncedTool.toolbox = { title: T('Synchronisierter Block'), icon: SYNC_IC };
   SyncedTool.isReadOnlySupported = true;
   SyncedTool.sanitize = { blocks: true };
+  // editorjs-only (T7): Editor.js-Werkzeug (render/save/destroy); in T2 eigener Tiptap-Knoten
   SyncedTool.prototype.render = function () {
     var self = this, k = K(), w = el('div', 'hk-sync' + (this.copy ? ' copy' : ' orig') + (this.locked ? ' locked' : ''));
     var bar = el('div', 'hk-sync-bar'); bar.contentEditable = 'false';
@@ -208,10 +209,9 @@
   };
   SyncedTool.prototype.unwrap = function () {
     var k = K(), self = this; if (!this.api && !this.block) return;
-    var ed = k.editor(), i = ed.blocks.getBlockIndex(this.blockId);
-    (this.blocks || []).forEach(function (b, n) { ed.blocks.insert(b.type, b.data, undefined, i + 1 + n, false); });
-    ed.blocks.delete(i);
-    k.dirty();
+    // Editor-Fassade: an derselben Stelle (auch in Spalte/Toggle) durch den Inhalt ersetzen - neue IDs, ohne Farbe (wie bisher)
+    var list = (this.blocks || []).map(function (b) { return { type: b.type, data: b.data }; });
+    k.doc.replace([this.blockId], list).then(function () { k.dirty(); }, function () {});
     HK.toast(T('Inhalt übernommen – der Block ist nicht mehr synchronisiert'));
     void self;
   };
@@ -223,7 +223,7 @@
       if (!this.copy) out.blocks = this.blocks;
       return out;
     }
-    return this.ed.isReady.then(function () { return self.ed.save(); }).then(function (o) { self.blocks = o.blocks; out.blocks = o.blocks; return out; });
+    return this.ed.isReady.then(function () { return self.ed.save(); }).then(function (o) { self.blocks = o.blocks; out.blocks = o.blocks; return out; });   // editorjs-only (T7)
   };
   SyncedTool.prototype.destroy = function () {
     var k = K(); if (this.ed && k && k.kill) k.kill(this.ed); this.ed = null;
@@ -261,6 +261,7 @@
   SyncedToolCtor.toolbox = SyncedTool.toolbox; SyncedToolCtor.isReadOnlySupported = true; SyncedToolCtor.sanitize = SyncedTool.sanitize;
 
   // Block-Menue (⋮⋮): "In synchronisierten Block umwandeln" (Original) bzw. "Synchronisierte Kopie kopieren"
+  // editorjs-only (T7): Editor.js-Tune (Block-Menue); Tiptap bekommt in T2 ein eigenes Block-Menue
   function SyncTune(o) { this.api = o.api; this.block = o.block; }
   SyncTune.isTune = true;
   SyncTune.prototype.render = function () {
@@ -278,17 +279,18 @@
     crypto.getRandomValues(b); for (var i = 0; i < 16; i++) s += a[b[i] % 62]; return s;
   }
   function wrap(eapi, blk) {
-    var i = eapi.blocks.getBlockIndex(blk.id);
-    blk.save().then(function (s) {
+    var k = K(), b = k && k.doc ? k.doc.byId(blk.id) : null; if (!b) return;
+    b.json().then(function (s) {
       if (!s) return;
-      var sid = sidNew();
-      eapi.blocks.insert('synced', { sid: sid, blocks: [{ type: s.tool, data: s.data, tunes: s.tunes }] }, undefined, i, true, true);
-      var k = K(); if (k) { k.dirty(); k.save(); }         // Original sofort speichern - die Kopie anderswo braucht es
+      var sid = sidNew(), inner = { type: s.type, data: s.data }; if (Object.keys(s.tunes).length) inner.tunes = s.tunes;
+      k.doc.replace([blk.id], [{ type: 'synced', data: { sid: sid, blocks: [inner] } }]);
+      k.dirty(); k.save();                                 // Original sofort speichern - die Kopie anderswo braucht es
       clip(sid, T('Synchronisierter Block angelegt und kopiert – auf einer anderen Seite einfügen'));
     });
   }
   function copyRef(blk) {
-    blk.save().then(function (s) {
+    var k = K(), b = k && k.doc ? k.doc.byId(blk.id) : null; if (!b) return;
+    b.json().then(function (s) {
       var sid = s && s.data && s.data.sid;
       if (!sid) { HK.toast(T('Erst speichern, dann kopieren')); return; }
       clip(sid, T('Synchronisierte Kopie in der Zwischenablage – auf einer anderen Seite einfügen'));

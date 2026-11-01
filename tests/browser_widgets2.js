@@ -4,6 +4,7 @@
 // Achsen-Vektoren (tests/chart_ticks.json) gegen chartTicks, keine Seiten-/CSP-Fehler.
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8230 CK=<Cookie hk-test-a> node tests/browser_widgets2.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const path = require('path'), fs = require('fs');
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK;
 const TICKS = JSON.parse(fs.readFileSync(path.join(__dirname, 'chart_ticks.json'), 'utf8'));
@@ -103,9 +104,9 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   ok(`Wetter aus: freundlicher Hinweis (${wx})`, !!wx);
 
   // --- Diagramm-Widget per Slash mit Vorschau ---------------------------------------------------------------------
-  await p.locator('.ce-paragraph').last().click(); await p.keyboard.type('/'); await sleep(400);
+  await p.locator(D.textOf('paragraph')).last().click(); await p.keyboard.type('/'); await sleep(400);
   await p.keyboard.type('Diagramm', { delay: 30 }); await sleep(400);
-  const menu = await p.evaluate(() => [...document.querySelectorAll('.ce-popover--opened .ce-popover-item:not(.ce-popover-item--hidden) .ce-popover-item__title')].map((x) => x.textContent.trim()));
+  const menu = await p.evaluate((s) => [...document.querySelectorAll(s)].map((x) => x.textContent.trim()), D.UI_ITEMS);
   ok(`Slash-Menue: "Widget: Diagramm" (${menu.slice(0, 3).join(', ')})`, menu.indexOf('Widget: Diagramm') >= 0, menu);
   await p.keyboard.press('Enter');
   await until(() => p.locator('.wg-panel').count());

@@ -7,6 +7,7 @@
 //   SAGA_BASE=http://host:8175 SAGA_USER=konto SAGA_PASS=... [PLAYWRIGHT=/pfad/zu/playwright-core] [N=12] node tests/browser_editor_leak.js
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright-core');
+const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
 const BASE = process.env.SAGA_BASE, USER = process.env.SAGA_USER, PASS = process.env.SAGA_PASS, N = +(process.env.N || 12);
 if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
 const res = [];
@@ -60,13 +61,13 @@ function many(n, tag) {
       await p.evaluate((id) => { location.hash = '#' + id; }, id);
       const t0 = Date.now();
       while (Date.now() - t0 < 15000) {
-        if (await p.evaluate(([id, min, t]) => location.hash === '#' + id && document.getElementById('pg-title').value === t &&
-          document.querySelectorAll('#pg-editor .ce-block').length >= min, [id, min, titles[id]])) break;
+        if (await p.evaluate(([id, min, t, s]) => location.hash === '#' + id && document.getElementById('pg-title').value === t &&
+          document.querySelectorAll(s).length >= min, [id, min, titles[id], D.any])) break;
         await sleep(25);
       }
       await sleep(250);
     }
-    await p.goto(BASE + '/notes#' + SMALL); await p.waitForSelector('#pg-editor .ce-paragraph'); await sleep(1000);
+    await p.goto(BASE + '/notes#' + SMALL); await p.waitForSelector(D.ofType('paragraph')); await sleep(1000);
 
     // 1) Speicher: Wechsel grosse/verschachtelte Seite <-> kleine Seite
     for (const [name, X, min] of [['300 Bloecke', BIG, 300], ['Ausklappbar + Spalten', NEST, 40]]) {
@@ -81,7 +82,7 @@ function many(n, tag) {
 
     // 2) Editor arbeitet nach vielen Wechseln normal: Enter teilt den Block (Block-Listener neu gebunden)
     await go(BIG, 300); await sleep(600);
-    const last = p.locator('#pg-editor > .codex-editor > .codex-editor__redactor > .ce-block .ce-paragraph').last();
+    const last = p.locator(D.topText('paragraph')).last();
     await last.click(); await p.keyboard.press('End'); await p.keyboard.press('Enter'); await p.keyboard.type('Neu nach Wechseln', { delay: 15 });
     await sleep(2200);
     let bl = await blocksOf(BIG);
@@ -92,16 +93,16 @@ function many(n, tag) {
     ok('Markdown-Kuerzel "## " nach Wechseln -> Ueberschrift', bl.some((b) => b.type === 'header' && /Kuerzel/.test(b.data.text)), bl.slice(-2));
     // Backspace am Blockanfang fuehrt den Block zusammen (Block-Tastatur nach Ersetzen)
     await go(SMALL, 1); await go(BIG, 300); await sleep(600);
-    const n0 = await p.evaluate(() => document.querySelectorAll('#pg-editor > .codex-editor > .codex-editor__redactor > .ce-block').length);
-    const lastP = p.locator('#pg-editor > .codex-editor > .codex-editor__redactor > .ce-block .ce-paragraph', { hasText: 'Neu nach Wechseln' });
+    const n0 = await D.count(p, { top: true });
+    const lastP = p.locator(D.topText('paragraph'), { hasText: 'Neu nach Wechseln' });
     await lastP.click(); await p.keyboard.press('End'); await p.keyboard.press('Enter'); await sleep(300); await p.keyboard.type('x'); await p.keyboard.press('Backspace'); await p.keyboard.press('Backspace');
     await sleep(400);
-    const n1 = await p.evaluate(() => document.querySelectorAll('#pg-editor > .codex-editor > .codex-editor__redactor > .ce-block').length);
+    const n1 = await D.count(p, { top: true });
     ok(`Leerer Block per Backspace wieder entfernt (${n0} -> ${n1})`, n1 === n0);
 
     // 3) Ausklappbar nach Wechseln: Tippen im inneren Editor wird gespeichert
     await go(NEST, 40); await sleep(800);
-    const inner = p.locator('.tgl-body .ce-paragraph', { hasText: 'T Absatz 1 ' }).first();
+    const inner = p.locator(D.textOf('paragraph'), { hasText: 'T Absatz 1 ' }).first();
     await inner.click(); await p.keyboard.press('End'); await p.keyboard.type(' innen getippt', { delay: 15 });
     await sleep(2600);
     bl = await blocksOf(NEST);
@@ -113,10 +114,10 @@ function many(n, tag) {
     // 4) schnelles Wechseln ohne Warten: am Ende steht die zuletzt gewaehlte Seite vollstaendig da und speichert
     for (const id of [BIG, SMALL, NEST, BIG, SMALL, NEST]) await p.evaluate((id) => { location.hash = '#' + id; }, id);
     await go(NEST, 40); await sleep(1500);
-    const shown = await p.evaluate(() => ({ t: document.getElementById('pg-title').value, tg: document.querySelectorAll('#pg-editor .tgl').length,
-      top: document.querySelectorAll('#pg-editor > .codex-editor > .codex-editor__redactor > .ce-block').length }));
+    const shown = await p.evaluate((s) => ({ t: document.getElementById('pg-title').value, tg: document.querySelectorAll('#pg-editor [data-block-type="toggle"]').length,
+      top: document.querySelectorAll(s).length }), D.top());
     ok('Schnelles Wechseln: letzte Seite steht vollstaendig da', shown.t === 'Leck verschachtelt' && shown.tg === 1 && shown.top === 4, shown);
-    const unten = p.locator('#pg-editor > .codex-editor > .codex-editor__redactor > .ce-block .ce-paragraph', { hasText: 'unten' });
+    const unten = p.locator(D.topText('paragraph'), { hasText: 'unten' });
     await unten.click(); await p.keyboard.press('End'); await p.keyboard.type(' schnell', { delay: 15 }); await sleep(2400);
     bl = await blocksOf(NEST);
     ok('Schnelles Wechseln: Tippen danach wird gespeichert', bl.length === 4 && bl[3].data.text === 'unten schnell', bl.map((b) => b.type));
