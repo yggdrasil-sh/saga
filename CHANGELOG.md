@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Anrufe (2.5): Empfangsqualität beruhigt, Anruf-Diagnose
+- Die Farbe am Weg (UDP/TCP/TLS) im Knoten-Anruf heißt jetzt „Empfangsqualität“ und wird über 30 s statt 3 s bewertet,
+  mit Hysterese (zwei Messungen in Folge) – ein einzelnes Standbild macht die Anzeige nicht mehr sofort rot, Gelb ist
+  wieder erreichbar. Schwellen unverändert.
+- Neu: `POST /api/calls/diag` (Feature `calldiag1`, Admin-Schalter „Anruf-Diagnose“, Standard an). Web und Apps melden
+  alle 30 s und beim Auflegen Messwerte (Bildrate, Bitrate, Verlust, PLI, Simulcast-Schicht, Grund der
+  Qualitätsbegrenzung, Schicht-/Wegwechsel). Gespeichert wird nichts: eine Zeile `calldiag` je Meldung im Server-Log,
+  Konto nur als Hash, ohne Namen und IP-Adressen. Vertrag: `docs/APP-API.md` „Anruf-Diagnose“.
+
 ### Intern (2.5, Tiptap-Umbau Etappe T1: Bibliothek mitgeliefert)
 - Tiptap 3.32.2, ProseMirror und Yjs liegen als vorgebaute Bundles unter `static/vendor/tiptap/` (`saga-pm.js`
   Kern, `saga-y.js` Live, `saga-pm.css`; alle MIT, Lizenztexte in `licenses/`). Noch nirgends geladen – der neue

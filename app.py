@@ -32,6 +32,7 @@ from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen u
 from saga import chat_x3                         # 2.5: Reaktionen, Bearbeiten, Sprachnachrichten (haengt sich in chat, fed_chat ein)
 from saga import chat_grp                        # 2.5: Gruppenbild/-rechte, Admin-Loeschen, Anheften, Blockieren, Melden (Chat-Standard B)
 from saga import chat_unfurl                     # 2.5 (Chat-Alltag): Linkvorschau fuer den Absender (netguard)
+from saga import calldiag                      # 2.5: Anruf-Diagnose POST /api/calls/diag (nur Server-Log)
 from saga import contacts                        # 2.5: Kontakte im Chat (Tabelle chat_contact, Endpunkte in saga.chat)
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, SecHeaders, title
 from saga.dashboard import _status_loop
@@ -250,7 +251,7 @@ def api_version():
     return JSONResponse({"name": "Saga", "version": VERSION, "build": BUILD, "channel": channel(), "api": API_LEVEL,
                          "min_app": MIN_APP, "schema": db.SCHEMA_VERSION,
                          "features": list(FEATURES) + ([LIVE_FEATURE] if collab.enabled() else [])
-                                     + (["unfurl1"] if chat_unfurl.enabled() else [])},
+                                     + (["unfurl1"] if chat_unfurl.enabled() else []) + calldiag.features()},
                         headers={"Cache-Control": "no-store"})
 
 
@@ -312,6 +313,7 @@ app.include_router(push.router)             # Mitteilungen: /api/push..., /sw.js
 app.include_router(ai.router)               # KI-Assistent: /api/ai/status, /api/ai/ask, /api/ai/page/{nid}, /api/ai/history
 app.include_router(ai_chat.router)          # KI im Chat (nur auf Zuruf): /api/chats/{cid}/ai
 app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schluessel}, /api/account/avatar
+app.include_router(calldiag.router)         # vor calls.router: /api/calls/diag ist kein Anruf {cid}
 app.include_router(calls.router)            # Anrufe (WebRTC, Signalisierung ueber den Live-Kanal): /api/calls...
 app.include_router(horn.router)             # Gjallarhorn (2.5): Steuerkanal /api/horn/ctl, /internal/horn/conf (saga-media)
 app.include_router(horn_ops.router)         # Gjallarhorn (2.5 P6): Kopplung /api/horn/whoami, /api/horn/pair

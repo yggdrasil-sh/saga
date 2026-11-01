@@ -93,8 +93,9 @@ DEFAULTS = {
     # stun: Leerzeichen-/Komma-getrennte stun:-Adressen (leer = nur Direktverbindung im selben Netz); turn_urls: turn:/turns:-
     # Adressen eines eigenen TURN-Servers (z. B. coturn hinter dem Reverse Proxy auf 443); turn_mode rest = zeitlich begrenzte
     # Zugangsdaten aus turn_secret (coturn use-auth-secret), static = turn_user/turn_password; relay_only = nur ueber TURN
-    # (IP-Adressen bleiben vor dem Gegenueber verborgen); ring_s = Klingeldauer in Sekunden
-    "calls": {"enabled": True, "stun": "stun:stun.nextcloud.com:443", "turn_urls": "", "turn_mode": "rest", "turn_secret": "",
+    # (IP-Adressen bleiben vor dem Gegenueber verborgen); ring_s = Klingeldauer in Sekunden; diag = Anruf-Diagnose (2.5,
+    # saga/calldiag.py: POST /api/calls/diag, nur Server-Log, Feature calldiag1)
+    "calls": {"enabled": True, "diag": True, "stun": "stun:stun.nextcloud.com:443", "turn_urls": "", "turn_mode": "rest", "turn_secret": "",
               "turn_user": "", "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45},
     # Verschluesselte Backups auf ein WebDAV-Ziel (2.3, saga/backups.py): mode nextcloud|webdav, server (Nextcloud) bzw.
     # url (WebDAV-Ordner), user/password (Nextcloud: Anmeldename + App-Passwort aus dem Login Flow v2, flow=True ->

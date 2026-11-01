@@ -858,7 +858,8 @@ def _calls_save(f):
     v = {**cur, "enabled": _on(f, "calls_enabled"), "stun": " ".join(stun), "turn_urls": " ".join(turn),
          "turn_mode": "static" if f.get("calls_turn_mode") == "static" else "rest", "turn_user": "" if clear else _s(f, "calls_turn_user", 200),
          "turn_secret": _s(f, "calls_turn_secret", 300), "turn_password": _s(f, "calls_turn_password", 300),
-         "turn_ttl": cur.get("turn_ttl") or 43200, "relay_only": _on(f, "calls_relay_only"), "ring_s": ring, **lim}
+         "turn_ttl": cur.get("turn_ttl") or 43200, "relay_only": _on(f, "calls_relay_only"), "ring_s": ring,
+         "diag": _on(f, "calls_diag"), **lim}
     auth.save_setting("calls", v)
     if clear:                                              # leere Geheimnisse wuerden sonst die alten behalten
         with _db() as c, c:

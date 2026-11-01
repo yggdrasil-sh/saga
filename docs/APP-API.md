@@ -1962,6 +1962,63 @@ Admin-Einstellung `calls.horn_all` (Standard aus, Anrufe → Gjallarhorn). Ist s
   scheitert mit `join_block: "old"` („braucht Saga 2.5“). Klingeln wird nur, wenn das Gegenüber mindestens ein Gerät
   mit `horn` hat.
 
+## Anruf-Diagnose (2.5, `calldiag1`)
+
+Clients melden während eines Anrufs Messwerte, damit sich Ruckeln über einen Knoten (z. B. Android → Knoten → iPhone)
+nachvollziehen lässt. Der Server **speichert nichts**: je angenommener Meldung schreibt er genau eine Zeile ins
+Server-Log (`calldiag {…}`, per `docker logs` zu sehen) – Konto nur als kurzer Hash, Anruf-ID gekürzt, keine Namen, keine
+IP-Adressen. Admin-Schalter `calls.diag` (Anrufe → 1:1-Anrufe, Standard **an**); aus → `404` und kein Feature.
+
+**Erkennen:** `GET /api/version` → `features` enthält `calldiag1`. Ohne das Feature nichts senden.
+
+**Senden:** `POST /api/calls/diag` (angemeldet wie die übrigen Anruf-APIs: Sitzung bzw. App-Schlüssel/Gerätetoken,
+Kopf `X-Saga: 1`), Body JSON ≤ 32 KB, **alle 30 s** während des Anrufs und **einmal beim Auflegen** (Web: `fetch` mit
+`keepalive`). Gesendet wird nur, was seit der letzten Meldung neu ist.
+
+```json
+{"v": 1, "call": "<Anruf-ID wie in den Anruf-APIs>", "plat": "web|ios|mac|android|linux", "app": "<Version>",
+ "path": "horn|p2p", "transport": "udp|tcp|tls|?", "node": "<Knoten-Host oder ''>",
+ "samples": [{"t": 33000, "dir": "in|out", "src": "<kurze Kennung der Quelle, nie Name>", "rid": "l|m|h|''",
+              "fps": 24, "h": 540, "kbps": 812, "lost": 3, "nack": 4, "pli": 1, "freeze": 1, "kf": 1, "rtt": 38,
+              "qlr": "none|cpu|bandwidth|other|''", "enc": "<encoderImplementation|''>"}],
+ "events": [{"t": 31000, "k": "layers|thermal|switch|quality|path", "d": "<kurzer Text ≤ 120 Zeichen>"}]}
+```
+
+| Feld | Regel |
+| --- | --- |
+| `v` | `1` |
+| `call` | 32 Hex-Zeichen; das Konto muss am Anruf beteiligt sein (wie `GET /api/calls/{id}`), sonst `404` – auch nach dem Auflegen (solange der Server den Anruf noch kennt) |
+| `plat`, `path`, `transport` | genau einer der Werte oben |
+| `app` | ≤ 40 Zeichen `[A-Za-z0-9._+-]` |
+| `node` | ≤ 253 Zeichen Hostname/Adresse ohne Leerzeichen, `""` bei P2P |
+| `samples` | ≤ 200; `t` ms seit Anrufbeginn (ganzzahlig ≥ 0), `dir` Pflicht; `src` ≤ 16 Zeichen `[A-Za-z0-9_-:.]`, `rid` `l`/`m`/`h`/`""` (nur `out`) |
+| Zahlen | `fps h kbps lost nack pli freeze kf rtt` optional, Zahl ≥ 0 (kein Text, kein Bool); Zähler sind **Zuwächse seit der letzten Probe derselben Quelle**, `fps`/`h` aktuelle Werte, `kbps` Mittel seit der letzten Probe, `rtt` ms |
+| `qlr`, `enc` | `qualityLimitationReason` (nur `out`), `encoderImplementation` ≤ 60 Zeichen |
+| `events` | ≤ 100; `k` einer der Werte oben, `d` ≤ 120 Zeichen |
+
+Unbekannte Felder werden verworfen (nicht geloggt). Falscher Typ/Wert → `400 {error}` (Feldname in Klammern),
+zu groß → `413`, mehr als **1 Meldung je 15 s je Konto und Anruf** → `429 {retry_s: 15}` (Meldung verwerfen, nicht
+wiederholen). Erfolg: `200 {"ok": true}`.
+
+**Was das Web sendet** (Referenz `static/calls.js`, `diagRep`): je Quelle höchstens alle 5 s eine Probe aus den
+ohnehin laufenden `getStats` – Empfang (`inbound-rtp`, Bild) je Spur (`src` = `v<Bein a|v|b><mid>` am Knoten, `p<Gerät>:<mid>`
+direkt), Senden (`outbound-rtp`) je Simulcast-Schicht `rid` mit `qlr` und `enc`. Ereignisse: `layers` (Belegung der
+Plätze aus dem Knoten-Ereignis `layout`, z. B. `v est=1800 t0:m3@ab12 s1:p` = Bein, geschätzte kbit/s, Platz:Schicht+Tid
+bzw. pausiert, Kennungspräfix), `switch`/`path` (Knoten- bzw. Wegwechsel), `quality` (Wechsel der Anzeigefarbe mit
+RTT/Verlust/Freezes im Fenster). Apps zusätzlich `thermal` (z. B. `serious`). Der Verlauf steht im Web außerdem im
+Debug-Snapshot (`HKCalls.horn().diag`, `HKCalls.room().diag`).
+
+**Anzeige „Empfangsqualität“ (alle Plattformen gleich):** Farbe aus RTT, Verlust und Freezes, aber über ein **gleitendes
+Fenster von 30 s** (bzw. die bisherige Anrufdauer, wenn kürzer) – Verlust = Summe verloren / (verloren + empfangen),
+Freezes je Minute über das Fenster, RTT = Median der Messungen im Fenster. Schwellen unverändert: rot ab RTT > 400 ms,
+Verlust > 8 % oder > 3 Freezes/min, gelb ab > 200 ms, > 2 %, > 1/min. **Hysterese:** die Farbe wechselt erst, wenn zwei
+Messungen (je 3 s) in Folge auf derselben Seite liegen (`static/horn.js` `QualityWin`, Tests `tests/horn_logik.js`).
+Der Weg (UDP/TCP/TLS) bleibt die Beschriftung; der Tooltip nennt „Empfangsqualität“.
+
+**Log-Zeile (Beispiel):** `calldiag {"acct":"97a3db31b4","call":"dda85e8179d9","plat":"android","app":"2.5.0","path":"horn","transport":"udp","node":"horn-1.example.org","n":[2,2],"samples":[…],"events":[…]}` –
+`acct` ist stabil je Server und Konto (HMAC), sodass sich die Meldungen beider Seiten eines Anrufs über `call` zuordnen
+lassen.
+
 ## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
 
 Verbindlicher Vertrag für iOS/iPadOS/macOS, Android, Linux und Web (Referenz: `static/chat-video.js`, `static/sw.js`,

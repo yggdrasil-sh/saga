@@ -7,7 +7,7 @@
 //   >= 30 ms besser, 20 s am Stueck, Mindestverweildauer 60 s, hoechstens 3 Wechsel je 10 min; UDP-Verlust > 20 % fuer 3 s
 //   -> TCP am selben Knoten; UDP wieder ok fuer 30 s -> zurueck, hoechstens 1x je 5 min
 // - Kachelansicht bis 25: Spalten je Breite, Last-N (Desktop 9, Handy 4 bewegt, die uebrigen als Standbild mit Sprechring)
-// - Qualitaetspunkt aus RTT, Verlust und Einfrieren; Anzeige des Wegs UDP / TCP / TLS
+// - Qualitaetspunkt (Empfangsqualitaet) aus RTT, Verlust und Einfrieren ueber 30 s mit Hysterese; Anzeige des Wegs UDP / TCP / TLS
 (function (root) {
   'use strict';
   var K = {
@@ -167,10 +167,43 @@
     if (rtt > 200 || loss > 0.02 || fr > 1) return 'mid';
     return 'good';
   }
+  // Empfangsqualitaet ueber ein gleitendes Fenster (Analyse 1.11.: das 3-s-Fenster machte aus einem einzigen Freeze 20/min
+  // und damit sofort Rot). add(now, m) je Messung (alle ~3 s) mit den Zuwaechsen seit der letzten: m = {rtt ms|null,
+  // lost, recv (Pakete), fz (Freezes), dt (ms)}. Bewertet werden Verlust und Freezes je Minute ueber die letzten WIN ms
+  // (bzw. die bisherige Anrufdauer, wenn kuerzer) und der Median der RTT im Fenster - Schwellen wie quality().
+  // Hysterese: die Anzeige wechselt erst, wenn zwei Messungen in Folge auf derselben Seite liegen (schlechter: auf die
+  // bessere der beiden, besser: auf die schlechtere der beiden) - so ist Gelb auf dem Weg nach oben und unten erreichbar.
+  var SEV = { good: 0, mid: 1, bad: 2 }, LV = ['good', 'mid', 'bad'];
+  function hyst(shown, a, b) {
+    var s = SEV[shown] || 0, x = SEV[a], y = SEV[b];
+    if (x === undefined || y === undefined) return shown || 'good';
+    if (x > s && y > s) return LV[Math.min(x, y)];
+    if (x < s && y < s) return LV[Math.max(x, y)];
+    return shown || 'good';
+  }
+  function QualityWin(win) { this.win = win || 30000; this.e = []; this.raw = []; this.q = 'good'; this.net = null; }
+  QualityWin.prototype.add = function (now, m) {
+    m = m || {};
+    var dt = Math.max(0, +m.dt || 0);
+    if (dt > 0) this.e.push({ t: now, dt: dt, rtt: m.rtt == null ? null : +m.rtt, lost: Math.max(0, +m.lost || 0), recv: Math.max(0, +m.recv || 0), fz: Math.max(0, +m.fz || 0) });
+    var self = this;
+    // Messung zaehlt, solange sie (ganz) im Fenster liegt
+    this.e = this.e.filter(function (x) { return now - (x.t - x.dt) <= self.win + 500; });
+    var lost = 0, recv = 0, fz = 0, span = 0, rtts = [];
+    this.e.forEach(function (x) { lost += x.lost; recv += x.recv; fz += x.fz; span += x.dt; if (x.rtt != null && isFinite(x.rtt)) rtts.push(x.rtt); });
+    if (!this.e.length) return this.q;
+    var mins = Math.max(1000, Math.min(this.win, span)) / 60000;
+    this.net = { rtt: rtts.length ? Math.round(median(rtts)) : null, loss: lost + recv > 0 ? Math.round(lost / (lost + recv) * 1000) / 1000 : 0,
+                 freezes: Math.round(fz / mins * 10) / 10, win: Math.round(Math.min(this.win, span) / 1000) };
+    var r = quality(this.net);
+    this.raw.push(r); if (this.raw.length > 2) this.raw.shift();
+    if (this.raw.length === 2) this.q = hyst(this.q, this.raw[0], this.raw[1]);
+    return this.q;
+  };
   function pathName(p) { return p === 'udp' ? 'UDP' : p === 'turn' ? 'TLS' : p === 'tcp' ? 'TCP' : ''; }
 
   var api = { K: K, median: median, jitter: jitter, loadMs: loadMs, score: score, rank: rank, better: better, Switcher: Switcher,
-              closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, pathName: pathName };
+              closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SagaHorn = api;
 })(typeof self !== 'undefined' ? self : this);
