@@ -177,9 +177,11 @@
     PG = { nid: nid, want: true, doc: null, info: null, live: false, ro: true, lock: false, unacked: [], seq: 0, rej: [],
            synced: false, aw: new Map(), prov: null, loading: false };
     var mine = PG;
-    Promise.all([features(), loadY()]).then(function (r) {
-      if (PG !== mine) return;
-      if (!r[0]) { mine.want = false; return; }
+    features().then(function (on) {                 // Live-Bundle nur laden, wenn live ueberhaupt an ist
+      if (PG !== mine || !on) { if (PG === mine) mine.want = false; return null; }
+      return loadY().then(function () { return true; });
+    }).then(function (go) {
+      if (PG !== mine || !go) return;
       var sc = schemaInfo(), srv = W.hello && W.hello.schema;
       if (srv && srv.hash !== sc.hash) { schemaLock(); return; }
       if (W.ws && W.open && W.hello) subscribe(); else connect();
