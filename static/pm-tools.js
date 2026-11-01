@@ -84,6 +84,23 @@
       if (a.style && PALETTE.indexOf(a.style.c) >= 0) { dom.classList.add('hk-st-' + a.style.c); if (a.style.bg) dom.classList.add('hk-st-bg'); }
     }
     syncAttrs();
+    // Klick auf die Karte (nicht auf ein Bedienelement darin): Karte auswaehlen. stopEvent haelt ProseMirror aus dem
+    // Werkzeug heraus, ohne das bliebe die alte Auswahl stehen (z. B. Schreibmarke im Absatz darueber).
+    dom.addEventListener('mousedown', function (e) {
+      if (e.button !== 0 || e.shiftKey || !view || readOnly() || destroyed) return;
+      var t = e.target;
+      for (var x = t; x && x !== dom; x = x.parentNode) {          // Bedienelemente im Werkzeug behalten ihren Klick
+        if (x.nodeType === 1 && (/^(INPUT|TEXTAREA|SELECT|BUTTON|A|LABEL)$/.test(x.tagName) || x.isContentEditable || (x.classList && x.classList.contains('wg-panel')))) return;
+      }
+      var p = pos(); if (p === null) return;
+      var S = root.SagaPM.pm.state, sel = view.state.selection;
+      if (sel instanceof S.NodeSelection && sel.from === p) return;
+      view.dispatch(view.state.tr.setSelection(S.NodeSelection.create(view.state.doc, p)).setMeta('pointer', true));
+      setTimeout(function () {                                       // Fokus nur, wenn das Werkzeug ihn nicht selbst nimmt
+        var a = document.activeElement;
+        if (!destroyed && (!a || a === document.body || a === view.dom)) view.focus();
+      }, 0);
+    });
     function pos() { var p = typeof getPos === 'function' ? getPos() : null; return typeof p === 'number' ? p : null; }
     function readOnly() {
       var r = val(base.readOnly, undefined);

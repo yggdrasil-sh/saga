@@ -768,11 +768,36 @@
       var r = v.dom.getBoundingClientRect(), side = e.clientX < r.left + 2 || e.clientX > r.right - 2;
       if (inBlock && !side) return;
       if (!inBlock && v.dom.contains(t) && t !== v.dom) return;
+      // Luecke zwischen zwei Bloecken innerhalb der Textspalte (Ziel ist die Editor-Flaeche selbst, z. B. unter einer
+      // Karte/Spalten mit Widgets): kein Rahmen, Klick setzt die Schreibmarke in den naechsten Textblock (clickGap)
+      if (t === v.dom && !side) { clickGap(v, e); return; }
       e.preventDefault();
       band = { x: e.clientX, y: e.clientY, box: el('div', 'pm-band'), on: false, ids: [] };
       document.body.appendChild(band.box);
       document.addEventListener('mousemove', bandMove, true);
       document.addEventListener('mouseup', bandEnd, true);
+    }
+    // Klick in die Luecke zwischen Bloecken (Abstand/Margin, kein Block unter dem Zeiger): Schreibmarke in den
+    // senkrecht naechsten bearbeitbaren Textblock an der Zeigerspalte. Ohne das blieb die alte Auswahl stehen - nach
+    // dem Laden oft die Knotenauswahl der ersten Karte (z. B. Uhr-Widget in Spalten), weil mousedown abgefangen war.
+    function clickGap(v, e) {
+      var x = e.clientX, y = e.clientY, best = null;
+      v.state.doc.descendants(function (n, pos) {
+        if (!n.isTextblock) return true;
+        var d = v.nodeDOM(pos); if (!d || d.nodeType !== 1) return false;
+        if (d.closest('[contenteditable="false"]')) return false;                    // Text in Karten/Kopien: nicht
+        var r = d.getBoundingClientRect(); if (!r.height || x < r.left || x > r.right) return false;
+        var dist = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+        if (!best || dist < best.dist) best = { dist: dist, pos: pos, node: n, r: r };
+        return false;
+      });
+      if (!best || best.dist > 40) return;                                         // nichts in der Naehe: wie bisher
+      e.preventDefault();
+      var hit = v.posAtCoords({ left: x, top: Math.min(best.r.bottom - 2, Math.max(best.r.top + 2, y)) });
+      var lo = best.pos + 1, hi = best.pos + 1 + best.node.content.size;
+      var at = hit && hit.pos >= lo && hit.pos <= hi ? hit.pos : (y < best.r.top ? lo : hi);
+      var tr = v.state.tr.setSelection(S0.TextSelection.create(v.state.doc, at)).setMeta('pointer', true);
+      v.dispatch(tr); v.focus();
     }
     function bandMove(e) {
       if (!band) return;

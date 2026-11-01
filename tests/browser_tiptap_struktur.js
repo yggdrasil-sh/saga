@@ -456,6 +456,30 @@ const J = (x) => JSON.stringify(x);
   ok('Verwerfen: Konfliktfassung weg, Original bleibt', !find(b, 'x4') && find(b, 'x3').data.text === 'alt', ids(b));
 
   // =================================================================================================================
+  // 8b) Klick neben/zwischen Karten: Textblock unter/ueber Spalten mit Widgets bzw. einem Widget bekommt die
+  // Schreibmarke (auch beim Klick in den Abstand), Klick auf die Karte waehlt weiter die Karte
+  const WG = (id, kind, cfg) => ({ id, type: 'widget', data: { v: 1, kind, cfg: cfg || {} } });
+  const P8b = await mk('TS Klick ' + RUN, [{ id: 'g0', type: 'paragraph', data: { text: 'Davor' } },
+    { id: 'gc', type: 'columns', data: { cols: [{ blocks: [WG('gw1', 'clock', { tz: 'UTC', h24: true, sec: true })] }, { blocks: [WG('gw2', 'progress', { src: 'fixed', value: 1, max: 4 })] }] } },
+    WG('gw3', 'zukunft'), { id: 'g1', type: 'paragraph', data: { text: 'Danach' } }, { id: 'g2', type: 'paragraph', data: { text: 'Ende' } }]);
+  const caretIn = () => p.evaluate(() => { const ed = HKPages.k.editor().editor(), s = ed.state.selection;
+    if (s.node) return 'karte:' + s.node.attrs.id; const b = s.$head.node(1); return (s.empty && ed.view.hasFocus() ? 'text:' : 'anders:') + (b && b.attrs.id); });
+  const klick = [];
+  for (const [lab, where, want] of [
+    ['mitten in den Absatz unter der Karte', async () => { const r = await rect('g1'); return [r.l + 30, r.t + r.h / 2]; }, 'text:g1'],
+    ['in den Abstand zwischen Karte und Absatz', async () => { const r = await rect('g1'), w = await rect('gw3'); return [r.l + 30, (w.b + r.t) / 2]; }, 'text:g1'],
+    ['in den Abstand direkt unter der Karte', async () => { const w = await rect('gw3'); return [w.l + 30, w.b + 1]; }, 'text:g1'],
+    ['in den Abstand ueber den Spalten', async () => { const r = await rect('g0'), c = await rect('gc', '.pm-cols'); return [r.l + 30, (r.b + c.t) / 2]; }, 'text:g0'],
+    ['auf das Uhr-Widget in der Spalte', async () => { const w = await rect('gw1'); return [w.l + w.w / 2, w.t + w.h / 2]; }, 'karte:gw1'],
+    ['auf die Karte unter den Spalten', async () => { const w = await rect('gw3'); return [w.l + 30, w.t + w.h / 2]; }, 'karte:gw3']]) {
+    await open(P8b);
+    const [x, y] = await where(); await p.mouse.click(x, y); await sleep(200);
+    const got = await caretIn(); klick.push(lab + ' -> ' + got);
+    ok('Klick ' + lab + ': ' + want, got === want, { got, x, y });
+  }
+  ok('Klicks neben Karten aendern das Dokument nicht', J(ids(await saved(P8b, 600))) === J(['g0', 'gc', 'gw3', 'g1', 'g2']), klick);
+
+  // =================================================================================================================
   // 9) Telefon: Spalten untereinander
   const T9 = await session(CK, { width: 390, height: 800 });
   await open(P1, T9.p);
