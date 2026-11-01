@@ -8852,7 +8852,7 @@
          reloadList: function () { return loadList(); }, remote: remoteChange,
          focusBlock: function () {                              // 2.5 (P3): Block mit der Schreibmarke (fuer die Anwesenheit)
            var a = document.activeElement, box = $('pg-editor'); if (!a || !box || !box.contains(a)) return null;
-           var blk = a.closest('.ce-block'); return blk && blk.dataset.id ? blk.dataset.id : null;
+           var blk = a.closest('[data-block-id]'); return blk ? blk.getAttribute('data-block-id') : null;
          },
          // Live notes.tree (2.2): Baum anderswo geaendert -> nachladen. Das erste Ereignis nach einer Pause sofort (Bughunt
          // P13; der Server buendelt Folgeereignisse ohnehin je 2 s), nur Serien kurz sammeln. loadList legt gleichzeitige

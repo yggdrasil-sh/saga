@@ -415,6 +415,7 @@
     var r = c.role || 'owner'; if (r !== 'owner' && r !== 'edit') return false;
     return (k.busy() && Date.now() - P.lastInput < EDIT_MS * 2) || Date.now() - P.lastInput < EDIT_MS;
   }
+  function focusId(k) { var c = k && k.doc ? k.doc.current() : null; return c ? c.id : null; }   // Editor-Fassade
   function ping() {
     var id = P.id, k = K(); if (!id || !k) return;
     if (document.hidden && Date.now() - P.hiddenAt > 60000) return;          // lange im Hintergrund: Anwesenheit laeuft aus
@@ -425,7 +426,7 @@
     }
     P.at = Date.now(); P.atId = id;
     var ed = editingNow(); P.sent = ed;
-    var blk = ed && k.focusBlock ? k.focusBlock() : null; P.blk = blk;          // 2.5 (P3): fokussierter Block
+    var blk = ed ? focusId(k) : null; P.blk = blk;                             // 2.5 (P3): fokussierter Block
     api('POST', '/api/presence', { note_id: id, editing: ed, block: blk }).then(function (d) {
       if (P.id !== id || d.skipped) return;
       drawPresence(d.users || []);
@@ -443,13 +444,12 @@
   }
   // 2.5 (P3): Bloecke, die andere gerade bearbeiten, farbig markieren (nur Hinweis, keine Sperre)
   function markBlocks(users) {
-    [].forEach.call(document.querySelectorAll('#pg-editor .ce-block[data-hk-by]'), function (b) {
+    [].forEach.call(document.querySelectorAll('#pg-editor [data-block-id][data-hk-by]'), function (b) {
       b.removeAttribute('data-hk-by'); b.className = b.className.replace(/\s*hk-by-[a-z]+/g, '');
     });
     users.forEach(function (u) {
       if (u.me || !u.editing || !u.block) return;
-      var b = null;
-      try { b = document.querySelector('#pg-editor .ce-block[data-id="' + CSS.escape(u.block) + '"]'); } catch (e) { b = null; }
+      var k = K(), x = k && k.doc ? k.doc.byId(u.block) : null, b = x && x.el;     // Editor-Fassade
       if (!b) return;
       b.setAttribute('data-hk-by', T('{name} bearbeitet', { name: u.name || '?' }));
       if (/^[a-z]+$/.test(u.color || '')) b.classList.add('hk-by-' + u.color);
@@ -503,8 +503,8 @@
     }, true);
     // 2.5 (P3): anderer Block fokussiert -> bald melden (hoechstens etwa einmal je Sekunde, ping drosselt)
     function blockMoved() {
-      var k = K(); if (!k || !k.focusBlock || !P.id || !P.sent) return;
-      var b = k.focusBlock();
+      var k = K(); if (!k || !k.doc || !P.id || !P.sent) return;
+      var b = focusId(k);
       if (b && b !== P.blk && !P.soonB) P.soonB = setTimeout(function () { P.soonB = null; ping(); }, 400);
     }
     document.addEventListener('focusin', blockMoved, true);

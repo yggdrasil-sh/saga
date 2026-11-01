@@ -12,6 +12,7 @@
 //              el      das Blockelement (Traeger von data-block-*)
 //              parent  ID des umgebenden Blocks (columns/toggle/synced) oder null (oberste Ebene)
 //              slot    Nummer des Behaelters im Elternblock: Spalte 0..5 bei columns, sonst 0; oberste Ebene 0
+//              index   Position im Behaelter (0 = erster; erst beim Lesen berechnet)
 //              data    Promise -> data des Blocks (wie gespeichert; Editor.js liest die Daten asynchron)
 //              json()  Promise -> {id, type, data, tunes} (tunes: {} wenn keine) oder null (Block weg)
 //   Behaelter oberste Ebene, eine Spalte oder der Inhalt von Toggle/synchronisiertem Block. Geschwister = gleicher
@@ -26,11 +27,13 @@
 //   blocks()                    -> [Eintrag] aller Bloecke in Dokumentreihenfolge (Elternblock vor seinen Kindern,
 //                                  Spalten von links nach rechts). Zugeklappte Toggles: Editor.js baut den Inhalt erst
 //                                  beim ersten Aufklappen - bis dahin fehlen dessen Bloecke (Tiptap: immer da).
-//   current()                   -> Eintrag des Blocks mit Fokus/Schreibmarke (innerster) oder null
+//   current()                   -> Eintrag des innersten Blocks mit dem Fokus (document.activeElement) oder null;
+//                                  steht der Fokus im Editor, aber in keinem Block (z. B. Suchfeld des Block-Menues):
+//                                  der zuletzt aktive Block dieses Editors
 //   byId(id)                    -> Eintrag oder null
 //   insertAfter(ref, blocks, o) -> Promise [neue IDs]. ref: Block-ID (dahinter, gleicher Behaelter) | null (Ende der
-//                                  obersten Ebene) | {parent: id|null, slot: n, at: 'start'|'end'} (Anfang/Ende eines
-//                                  Behaelters). blocks: [{type, data, tunes?, id?}] - id wird uebernommen, sonst neu
+//                                  obersten Ebene) | {parent: id|null, slot: n, at: 'start'|'end'|Zahl} (Anfang/Ende
+//                                  bzw. Position eines Behaelters; Zahl wird auf 0..Anzahl begrenzt). blocks: [{type, data, tunes?, id?}] - id wird uebernommen, sonst neu
 //                                  vergeben; von tunes uebernimmt Editor.js nur hkstyle (Farbe).
 //                                  o.focus: 'start'|'end' setzt die Schreibmarke in den ersten neuen Block.
 //   replace(ids, blocks, o)     -> Promise [neue IDs]. Ersetzt die Bloecke (alle im selben Behaelter) durch blocks an
@@ -128,6 +131,7 @@
     var e = { id: id, type: el.getAttribute(ATY) || '', el: el, parent: pel ? pel.getAttribute(AID) : null, slot: slot,
               json: function () { return readJson(el, id); } };
     Object.defineProperty(e, 'data', { enumerable: true, get: function () { return readJson(el, id).then(function (x) { return x ? x.data : null; }); } });
+    Object.defineProperty(e, 'index', { enumerable: true, get: function () { var ed = edOfEl(el); return ready(ed) ? ed.blocks.getBlockIndex(id) : -1; } });
     return e;
   }
   function readJson(el, id) {
@@ -147,7 +151,8 @@
   function current() {
     var a = document.activeElement; if (!a || !BOX.contains(a)) return null;
     flush();
-    var m = edMap(), best = null, ed;
+    var m = edMap(), best = null, ed, own = a.closest('[' + AID + ']');
+    if (own && BOX.contains(own)) return entry(own, m, {});
     m.forEach(function (x, h) { if (h !== BOX && h.contains(a) && (!best || best.contains(h))) best = h; });
     ed = best ? m.get(best) : m.get(BOX);
     if (!ready(ed)) return null;
@@ -165,7 +170,8 @@
       if (ref.parent == null) ed = m.get(BOX);
       else { el = elById(ref.parent); if (!el) return null; ed = m.get(slotsOf(el, m)[ref.slot || 0]); }
       if (!ready(ed)) return null;
-      return { ed: ed, idx: ref.at === 'start' ? 0 : ed.blocks.getBlocksCount() };
+      var n = ed.blocks.getBlocksCount();
+      return { ed: ed, idx: ref.at === 'start' ? 0 : typeof ref.at === 'number' ? Math.max(0, Math.min(n, ref.at)) : n };
     }
     el = elById(ref); ed = el && edOfEl(el, m);
     if (!ready(ed)) return null;

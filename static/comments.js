@@ -87,15 +87,15 @@
 
   // --- Zahl am Block (nur offene Unterhaltungen) ------------------------------------------------------
   function blockEl(bid) {
-    try { return $('pg-editor').querySelector('.ce-block[data-id="' + CSS.escape(bid) + '"]'); } catch (e) { return null; }
+    var b = K.doc && K.doc.byId(bid); return b ? b.el : null;               // Editor-Fassade (static/editor-doc.js)
   }
   function placeBubbles() {
     var box = $('pg-editor'); if (!box) return;
     var per = {}, unread = {};
     openThreads().forEach(function (t) { if (!t.block_id) return; per[t.block_id] = (per[t.block_id] || 0) + 1; if (t.unread) unread[t.block_id] = 1; });
     var c = cur(); if (c && c.comment_counts && !C.loaded) per = c.comment_counts;        // vor dem ersten Laden: Zahlen vom Server
-    [].forEach.call(box.querySelectorAll('.ce-block[data-id]'), function (b) {
-      var bid = b.getAttribute('data-id'), n = per[bid] || 0, bub = null;
+    [].forEach.call(box.querySelectorAll('[data-block-id]'), function (b) {
+      var bid = b.getAttribute('data-block-id'), n = per[bid] || 0, bub = null;
       for (var i = 0; i < b.children.length; i++) if (b.children[i].classList.contains('cm-bubble')) bub = b.children[i];
       b.classList.toggle('cm-has', !!n);              // Handy: Platz fuer die Zahl am rechten Rand
       if (!n) { if (bub) bub.remove(); return; }
@@ -114,7 +114,7 @@
     markBlocks();
   }
   function markBlocks() {
-    [].forEach.call(document.querySelectorAll('#pg-editor .ce-block.cm-focus'), function (b) { b.classList.remove('cm-focus'); });
+    [].forEach.call(document.querySelectorAll('#pg-editor [data-block-id].cm-focus'), function (b) { b.classList.remove('cm-focus'); });
     if (C.open && C.block) { var b = blockEl(C.block); if (b) b.classList.add('cm-focus'); }
   }
   function svgBubble() {
@@ -135,10 +135,10 @@
   addBtn.appendChild(svgBubble()); addBtn.appendChild(el('span', 'cm-add-p', '+'));
   addBtn.setAttribute('aria-label', T('Kommentieren')); addBtn.title = T('Kommentieren');
   addBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
-  addBtn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); var b = addBtn.parentNode; if (b && b.dataset) openBlock(b.getAttribute('data-id')); });
+  addBtn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); var b = addBtn.parentNode; if (b && b.dataset) openBlock(b.getAttribute('data-block-id')); });
   function hoverBlock(e, tap) {
     if (!cur() || !can() || (tap && !ro())) { if (addBtn.parentNode && tap) addBtn.remove(); return; }
-    var b = e.target && e.target.closest ? e.target.closest('.ce-block[data-id]') : null;
+    var b = e.target && e.target.closest ? e.target.closest('[data-block-id]') : null;
     if (!b || !$('pg-editor').contains(b) || addBtn.parentNode === b) return;
     if (b.classList.contains('cm-has')) { if (addBtn.parentNode) addBtn.remove(); return; }   // Block mit Zahl: die Zahl oeffnet ihn
     b.appendChild(addBtn);
@@ -187,7 +187,7 @@
   function snippet(bid) {
     if (!bid) return T('Ganze Seite');
     var b = blockEl(bid); if (!b) return null;
-    var c = b.querySelector('.ce-block__content') || b, s = blockText(c);
+    var s = blockText(b);                            // Knoepfe (Zahl, +) entfernt blockText selbst (UI_SEL)
     if (!s) s = b.querySelector('img') ? T('Bild') : T('Block');
     return s.length > 70 ? s.slice(0, 69) + '…' : s;
   }
