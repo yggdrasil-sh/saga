@@ -332,13 +332,17 @@
   }
   // Durchreichung (T-E4) auch live: Bloecke, deren Inhalt dem zuletzt geladenen Stand (GET bzw. Stufe-1-Stand) gleicht,
   // an ihr Original binden - save() liefert sie dann byte-gleich (Rueckfall Stufe 1, Fassade). Nur bei gleicher Normalform.
+  function likeIds() { return PG && PG.like || null; }
   function passthrough() {
     var ed = X.ed(), cb = CB(), c = cb && cb.cur ? cb.cur() : null, src = null;
     try { src = c && typeof c.body === 'string' ? JSON.parse(c.body || '{"blocks":[]}') : null; } catch (e) { src = null; }
     if (!ed || !src || !Array.isArray(src.blocks)) return;
     var byId = {}; src.blocks.forEach(function (b) { if (b && b.id != null) byId[b.id] = b; });
     var AD = X.AD, sch = ed.schema, ctx = X.ctx();
-    ctx.like = AD.blockIds(src.blocks);                // Schluesselreihenfolge geaenderter Bloecke wie geladen (pm-adapter like)
+    // Schluesselreihenfolge geaenderter Bloecke wie geladen (pm-adapter like); Vorlage an der offenen Seite, ctx haelt
+    // nur die Funktion (ein alter Editor haelt so keinen alten Stand fest)
+    if (PG) PG.like = AD.blockIds(src.blocks);
+    ctx.like = likeIds;
     ed.state.doc.forEach(function (n) {
       var b = n.attrs && n.attrs.id != null ? byId[n.attrs.id] : null; if (!b) return;
       try {

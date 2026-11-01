@@ -56,9 +56,9 @@
     return JSON.stringify(v === undefined ? null : v);
   }
   // Live (Y-Zustand): JSON-Objekte in Attributen kommen in der Reihenfolge der Update-Bytes - schreibt sie der Server
-  // (yrs: HashMap), wechselt sie je Prozess. Wie collab_model._ynum/_like: Attributwerte in fester
-  // Reihenfolge (keyCmp), danach Reihenfolge des geladenen Stands (ctx.like = blockIds(...)): gemeinsame Schluessel wie
-  // dort, neue dahinter. Ganzzahl-Schluessel ordnet JS immer aufsteigend (Basis mit anderer Ordnung: nur Fremd-Clients).
+  // (yrs: HashMap), wechselt sie je Prozess. Wie collab_model._ynum/_like: Attributwerte in fester Reihenfolge
+  // (keyCmp), danach Reihenfolge des geladenen Stands (ctx.like = blockIds(...) oder Funktion dafuer): gemeinsame
+  // Schluessel wie dort, neue dahinter. Ganzzahl-Schluessel ordnet JS immer aufsteigend (Basis mit anderer Ordnung: nur Fremd-Clients).
   function pyCmp(a, b) {
     var x = Array.from(a), y = Array.from(b), n = Math.min(x.length, y.length);
     for (var i = 0; i < n; i++) { var d = x[i].codePointAt(0) - y[i].codePointAt(0); if (d) return d; }
@@ -618,7 +618,8 @@
     ctx = ctx || {};
     if (!doc || tname(doc) !== 'doc') throw new PmError('doc');
     var blocks = kidsOf(doc).map(function (x) { return pmToBlock(x, ctx, 0, BLOCKS); });
-    if (ctx.like) blocks = blocks.map(function (b) { return like(b, undefined, ctx.like); });
+    var ids = typeof ctx.like === 'function' ? ctx.like() : ctx.like;
+    if (ids) blocks = blocks.map(function (b) { return like(b, undefined, ids); });
     return { time: ctx.time !== undefined ? ctx.time : Date.now(), version: ctx.version !== undefined ? ctx.version : 'saga-pm/' + S.VERSION, blocks: blocks };
   }
 
