@@ -562,7 +562,8 @@
         }
       });
     }
-    // Markdown ``` (+ Sprache) + Leerzeichen in einem Absatz -> Code-Block (ID bleibt, Rest des Absatzes als Code)
+    // Markdown ``` (+ Sprache) + Leerzeichen (oder Enter am Absatzende) in einem Absatz -> Code-Block (ID bleibt, Rest des
+    // Absatzes als Code). Eigener Undo-Schritt: ein Strg+Z stellt den Absatz "```" wieder her (nicht auch das Tippen).
     var FENCE = /^```([A-Za-z0-9+#._-]{0,24})$/;
     function fence(state, textBefore, extra) {
       var $f = state.selection.$from, n = $f.parent; if (n.type.name !== 'paragraph' || !state.selection.empty) return false;
@@ -572,15 +573,46 @@
       var s = schema(), cn = s.nodes.code.create({ id: n.attrs.id, style: null, language: lang || null, view: lang === 'mermaid' ? 'split' : null }, rest ? s.text(rest) : null);
       var tr = state.tr.replaceWith(pos, pos + n.nodeSize, cn);
       X.setSel(tr, pos + 1);
+      if (P.pm.history && P.pm.history.closeHistory) P.pm.history.closeHistory(tr);
       if (extra) extra(tr);
       dispatch(tr.scrollIntoView()); return true;
     }
+    // Tottasten (deutsche/franzoesische Mac-Tastatur u. a.): der dritte Backtick entsteht erst mit der naechsten Taste
+    // als Komposition (compositionend '`'), das Leerzeichen dabei wird verbraucht und kommt nie als Texteingabe an.
+    // Daher: nach einer Komposition, die auf '`' endet und den Absatztext vor der Schreibmarke zu genau ``` macht,
+    // ebenso umwandeln. Endet sie mit einem Buchstaben ("`j" bzw. "à"), endet data nicht auf '`' - dann nicht.
+    // Ein gewohnheitsmaessig nachgeschobenes zweites Leerzeichen landet nicht im leeren Code-Block.
     function fencePlugin() {
-      return new S0.Plugin({ props: { handleTextInput: function (v, from, to, text) {
-        if (text !== ' ' || !v.editable) return false;
-        var $f = v.state.selection.$from; if ($f.parent.type.name !== 'paragraph') return false;
-        return fence(v.state, $f.parent.textBetween(0, $f.parentOffset, '\n', '￼'));
-      } } });
+      var swallow = null;
+      function before(v) {
+        var $f = v.state.selection.$from;
+        return $f.parent.type.name === 'paragraph' ? $f.parent.textBetween(0, $f.parentOffset, '\n', '\ufffc') : null;
+      }
+      return new S0.Plugin({ props: {
+        handleTextInput: function (v, from, to, text) {
+          var sw = swallow; swallow = null;
+          if (!v.editable) return false;
+          if (sw && text === ' ' && Date.now() < sw.until) {
+            var sl = v.state.selection, $s = sl.$from;
+            if (sl.empty && $s.parent.type.name === 'code' && !$s.parent.content.size && $s.before() === sw.pos) return true;
+          }
+          if (text !== ' ') return false;
+          var t = before(v); return t != null && fence(v.state, t);
+        },
+        handleDOMEvents: {
+          keydown: function (v, e) { if (e.key !== ' ' && e.key !== 'Process' && e.keyCode !== 229) swallow = null; return false; },
+          compositionend: function (v, e) {
+            var d = e.data || '';
+            if (!v.editable || d.charAt(d.length - 1) !== '`') return false;
+            setTimeout(function () {
+              if (v.isDestroyed || v.composing || !v.editable || before(v) !== '```') return;
+              var pos = v.state.selection.$from.before();
+              if (fence(v.state, '```')) swallow = { pos: pos, until: Date.now() + 1500 };
+            }, 0);
+            return false;
+          }
+        }
+      } });
     }
     function keys(editor) {
       function S() { return editor.state; }

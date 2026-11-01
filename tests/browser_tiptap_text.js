@@ -299,6 +299,65 @@ if (process.env.SAGA_EDITOR !== 'tiptap') { console.log('nur mit SAGA_EDITOR=tip
   ok('20 Spalten: Menue ohne "Spalte rechts einfügen"', !(await p.$('.menu:not([hidden]) .menu-item:has(.mi-t:text-is("Spalte rechts einfügen"))')));
   await p.keyboard.press('Escape');
 
+  // =================================================================================================================
+  // 7) ``` auf Tottasten-Tastaturen (deutsches/franzoesisches Mac-Layout): der dritte Backtick kommt als Komposition,
+  //    das Leerzeichen danach wird verbraucht. Nachgestellt per CDP wie Chrome/macOS (Dead -> Komposition '`').
+  //    Dazu: Enter-Weg, Leerzeichen-Weg unveraendert, Backticks im Satz bleiben Text, Undo.
+  const cdp = await A.ctx.newCDPSession(p);
+  async function deadTick() {
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Equal', windowsVirtualKeyCode: 229 });
+    await cdp.send('Input.imeSetComposition', { text: '`', selectionStart: 1, selectionEnd: 1 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Dead', code: 'Equal', windowsVirtualKeyCode: 229 });
+    await sleep(40);
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 229 });
+    await cdp.send('Input.insertText', { text: '`' });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+    await sleep(200);
+  }
+  const here = () => p.evaluate(() => { const ed = HKPages.k.editor().editor(), n = ed.state.selection.$from.parent;
+    return { type: n.type.name, text: n.textContent, lang: n.attrs.language || null, view: n.attrs.view || null }; });
+  const P5 = await mk('TX Fence ' + RUN, [{ id: 'f0', type: 'paragraph', data: { text: 'Start' } }]);
+  await open(P5);
+  await D.focus(p, 'f0', 'end'); await p.keyboard.press('Enter');
+  await p.keyboard.type('``', { delay: 20 }); await deadTick();
+  let h = await here();
+  ok('Tottaste: `` + komponierter Backtick (Leerzeichen verbraucht) -> Code-Block, leer', h.type === 'code' && h.text === '' && !h.lang, h);
+  await p.keyboard.press(' '); await sleep(100);
+  h = await here(); ok('Tottaste: gewohntes zweites Leerzeichen landet nicht im Code-Block', h.type === 'code' && h.text === '', h);
+  await sleep(600);                       // eigener Undo-Schritt fuers Tippen (newGroupDelay 500 ms)
+  await p.keyboard.type('x = 1', { delay: 10 });
+  b = await saved(P5);
+  ok('Tottaste: gespeichert als code ohne Sprache, Inhalt ohne fuehrendes Leerzeichen', b.length === 2 && b[1].type === 'code' && b[1].data.code === 'x = 1' && !b[1].data.language, b);
+  await p.keyboard.press(MOD + '+z'); await sleep(150); await p.keyboard.press(MOD + '+z'); await sleep(200);
+  h = await here(); ok('Undo nach Umwandlung (Tottaste): Strg+Z (Text, dann Umwandlung) stellt den Absatz "```" wieder her', h.type === 'paragraph' && h.text === '```', h);
+  // Backticks mitten im Satz per Tottaste: kein Code-Block
+  await p.keyboard.press('End'); for (let i = 0; i < 3; i++) await p.keyboard.press('Backspace');
+  await p.keyboard.type('Satz ``', { delay: 15 }); await deadTick();
+  h = await here(); ok('Tottaste mitten im Satz ("Satz ```"): bleibt Absatz', h.type === 'paragraph' && h.text === 'Satz ```', h);
+  // Leerzeichen-Weg unveraendert, ohne fuehrendes Leerzeichen; ein Strg+Z -> "```"
+  await p.keyboard.press('Enter'); await p.keyboard.type('``` ', { delay: 15 }); await sleep(100);
+  h = await here(); ok('Leerzeichen-Weg: ``` + Leerzeichen -> leerer Code-Block', h.type === 'code' && h.text === '', h);
+  await p.keyboard.press(MOD + '+z'); await sleep(200);
+  h = await here(); ok('Undo nach Umwandlung (Leerzeichen): ein Strg+Z -> Absatz "```"', h.type === 'paragraph' && h.text === '```', h);
+  // Enter-Weg (Notion/GitHub): ``` + Enter, ```mermaid + Enter
+  await p.keyboard.press('End'); await p.keyboard.press('Enter');
+  h = await here(); ok('Enter-Weg: ``` + Enter -> Code-Block statt neuer Absatz', h.type === 'code' && h.text === '', h);
+  await p.keyboard.press(MOD + '+Enter'); await p.keyboard.type('```mermaid', { delay: 15 }); await p.keyboard.press('Enter');
+  h = await here(); ok('Enter-Weg: ```mermaid + Enter -> Code mermaid, view split', h.type === 'code' && h.lang === 'mermaid' && h.view === 'split' && h.text === '', h);
+  await p.keyboard.type('graph TD; A-->B', { delay: 10 });
+  await p.keyboard.press(MOD + '+Enter');
+  // Inline-Code im Satz und Backticks im Satz bleiben Text
+  await p.keyboard.type('ein `x` hier und ``` dort ', { delay: 10 }); await sleep(100);
+  h = await here(); ok('Inline-Backticks im Satz: bleibt Absatz (kein Code-Block)', h.type === 'paragraph' && h.text === 'ein x hier und ``` dort ', h);
+  b = await saved(P5);
+  const mm = b.find((x) => x.type === 'code' && x.data.language === 'mermaid'), il = b[b.length - 1];
+  ok('Gespeichert: mermaid-Block {code, language mermaid, view split}', mm && mm.data.code === 'graph TD; A-->B' && mm.data.view === 'split', b);
+  ok('Gespeichert: Inline-Code `x` als <code>, Rest Text', il.type === 'paragraph' && /<code[^>]*>x<\/code>/.test(il.data.text) && /``` dort/.test(il.data.text), il);
+  // ```js per normalen Tasten + Leerzeichen geht weiter (Sprache)
+  await p.keyboard.press('Enter'); await p.keyboard.type('```js ', { delay: 15 }); await sleep(100);
+  h = await here(); ok('```js + Leerzeichen -> Code mit Sprache', h.type === 'code' && !!h.lang && /^j/.test(h.lang), h);
+  await cdp.detach();
+
   const csp = await p.evaluate(() => window.__csp);
   ok('CSP-Verletzungen = 0 (securitypolicyviolation)', !csp.length, csp);
   ok('Keine Seitenfehler (pageerror)', !p.errs.length, p.errs);
