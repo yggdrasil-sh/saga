@@ -48,7 +48,7 @@ const P = (t) => ({ type: 'paragraph', data: { text: t } });
       const c = pop && pop.querySelector(':scope > ' + U.popoverContainer), s = pop && pop.querySelector(U.search);
       const blk = para.closest('[data-block-id]');
       return pop && { inl: pop.classList.contains('pg-slash-inline'), search: s ? s.getClientRects().length : 0, inPara: !!blk && blk.getAttribute('data-block-type') === 'paragraph',
-        top: Math.round(c.getBoundingClientRect().top), line: Math.round(para.getBoundingClientRect().bottom) }; });
+        top: Math.round(c.getBoundingClientRect().top), line: Math.round(para.getBoundingClientRect().bottom) }; }, D.UI);
     ok(`${tag}: Menue ohne Suchfeld, Cursor im Text`, m && m.inl && !m.search && m.inPara, m);
     ok(`${tag}: Menue unter der Zeile (${m && m.top} >= ${m && m.line})`, m && m.top >= m.line, m);
     await p.keyboard.type('zit'); await sleep(300);
