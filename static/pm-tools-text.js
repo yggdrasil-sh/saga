@@ -574,6 +574,9 @@
       var tr = state.tr.replaceWith(pos, pos + n.nodeSize, cn);
       X.setSel(tr, pos + 1);
       if (P.pm.history && P.pm.history.closeHistory) P.pm.history.closeHistory(tr);
+      // live (T5, y-undo statt prosemirror-history): closeHistory wirkt dort nicht - Erfassung vorher abschliessen
+      var YU = window.SagaY && SagaY.ytiptap && SagaY.ytiptap.yUndoPluginKey, us = YU && YU.getState(state);
+      if (us && us.undoManager) us.undoManager.stopCapturing();
       if (extra) extra(tr);
       dispatch(tr.scrollIntoView()); return true;
     }
