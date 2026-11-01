@@ -127,3 +127,42 @@ HKTools.register('widget', {
   Aktion/Ziel/Vorlage gleich sind; der Server prüft wie bisher in `databases.sign_buttons`). Rollen, fremde Seiten und
   „Nur für den Eigentümer“ entscheiden die Klassen wie im Editor.js-Editor.
 - Test: `tests/browser_tiptap_daten.js` (Mini-Editor nur mit Schema + Node-Views auf `/notes`).
+
+## Kern-Editor (T2)
+
+`static/pm-editor.js` (+ `static/pm-editor.css`) ist der Tiptap-Editor für Seiten. Er ist nur aktiv mit
+`<body data-editor="tiptap">`; das setzt der Server aus der Admin-Einstellung `editor.engine` (`editorjs` Standard |
+`tiptap` | `choice`) und bei `choice` aus der Konto-Wahl (`user_kv` `editor_tiptap`, `GET/PUT /api/account/editor`,
+Einstellungen → Seiten) – `saga.core.editor_engine(uid)`. Wechsel gilt ab dem nächsten Laden. `/api/version` meldet `pm1`.
+
+**Aufbau:** `HKPmEditor.load()` lädt Bundle, `pm-schema.js`, `pm-adapter.js`, `pm-tools.js`, `pm-tools-daten.js` und
+die CSS-Dateien. `HKPmEditor.create(cb)` gibt `pages.js` ein Objekt an Stelle der Editor.js-Instanz: `render(data)`
+(Editor je Seite neu, Durchreichung per `bind`), `save()` (`blocksFromDoc`), `applyBlocks(blocks)` (Rebase/Live Stufe 1:
+gleicher Anfang/gleiches Ende bleiben dieselben Knoten, eine Transaktion mit `addToHistory:false`, Meta `hkRemote`),
+`setEditable`, `caret`, `text()` (Entwurf bei Konflikt), `focusBlock()` (Anwesenheit), `styleAt()` (Blockfarbe).
+`pages.js` behält Speichern, Warteschlange, `merge:1`/`base:"sent"`, `mergedReply`, `?since`-Delta, Offline und
+Konfliktleiste unverändert; Änderungen meldet der Editor als Transaktion (`cb.changed(ids)`, beim Laden ignoriert).
+
+**Fassade** `HKPages.k.doc` mit `kind: 'tiptap'` – Semantik wie `static/editor-doc.js`. Abweichungen: Blöcke in
+Werkzeugen, die T2 als Karte zeigt (Toggle, Spalten, synchronisiert), haben kein Element und fehlen in
+`blocks()`/`byId()`; Mutationen sind synchron. `select(ids)` ist eine Dekoration (`.pm-sel`).
+
+**Node-Views:** Jedes Blockelement ist ein äußeres `div.pm-blk[data-block-id][data-block-type]` mit innerem
+Inhaltselement. Mutationen außerhalb des Inhalts (Kommentarzahl, Anwesenheit `data-hk-by`, Klassen) ignoriert
+ProseMirror – deshalb dürfen `comments.js`/`live.js` weiter am Blockelement schreiben. Listen: `ul|ol.pm-list` >
+`li.pm-li` > `div.pm-li-c` (Zähler per CSS, Startwert per CSSOM `counter-reset`), Häkchen `button.pm-check`.
+
+**Karten:** Alle Blocktypen außer `paragraph, header, callout, quote, list, delimiter` und den Werkzeugen aus
+`HKTools.nodeViews` zeigen eine Karte („im klassischen Editor bearbeiten“). Das Plugin `hkGuard` lehnt jede Transaktion
+ab, die ins Innere einer Karte greift (auch Marken-Schritte); eine Schreibmarke darin wird zur Knotenauswahl. Ganze
+Karten lassen sich löschen/verschieben.
+
+**Bedienung:** Formatierungsleiste (BubbleMenu, E8), Vorschlagsmenüs über `Suggestion` (`/` mit Registry
+`HKPmEditor.slash.register({key, group, t, ic, desc, kw, kbd, block|run})` plus `HKTools.slash()`, `@` mit
+`HKKeys.atOptions` + `HKMention.options`, `[[`, `:` mit `HKKeys.emoji`), Markdown-Regeln (E5), eigener Platzhalter
+(Dekoration `data-ph`, E7), Listen-Tasten, `Shift+Enter` = Zeilenumbruch, Rückschritt/Entf neben Karten wählt die
+Karte. `TrailingNode` ist bewusst **nicht** aktiv (würde beim Laden einen Absatz anhängen = Scheinänderung); dafür
+Klickfläche unter dem letzten Block und ein leerer Absatz auf leeren Seiten.
+
+**Tests:** `SAGA_EDITOR=tiptap|editorjs` (`tests/lib/editor_dom.js`: `EDITOR`, `UI` je Editor, `setEditor`, `isEditor`;
+der Server braucht `editor.engine = choice`). Abnahme: `tests/browser_tiptap_kern.js`.

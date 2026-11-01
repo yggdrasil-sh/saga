@@ -42,6 +42,26 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Kommentare, Anwesenheit und Erwähnungen nutzen nur noch diese Schnittstelle; Browser-Tests über `tests/lib/editor_dom.js`.
   Für Nutzer ändert sich nichts.
 
+### Intern/Neu (2.5, Tiptap-Umbau T2: Kern-Editor)
+
+- **Schalter:** Admin → Allgemein → Seiten → „Seiten-Editor“ (`editor.engine` = `editorjs` Standard | `tiptap` | `choice`).
+  Bei `choice` wählt jede Person unter Einstellungen → Seiten (Konto-Einstellung, `GET/PUT /api/account/editor`). Gilt
+  beim Laden von `/notes` (`<body data-editor>`). `/api/version` meldet `pm1`. Ohne Schalter ändert sich nichts.
+- **Neuer Editor** `static/pm-editor.js` (+ `pm-editor.css`): Tiptap/ProseMirror über Saga-Schema und Adapter, Speichern
+  wie bisher (`PATCH merge:1`, Rebase/`mergedReply` blockweise, offline, Konflikt). Änderung = Transaktion, keine
+  Scheinänderungen; beim Tippen kein „Ungespeichert …“ (E9). Ein Editor je Seite.
+- **Bearbeitbar:** Absatz, Überschrift 1–4, Zitat (Text, Quelle, Ausrichtung), Hinweis (Symbol wechseln), Trennlinie,
+  Listen (3 Stile, Verschachtelung, Tab/⇧Tab, Enter/Rückschritt, Häkchen, Stilwechsel; `meta.start`/`counterType`
+  bleiben). Marken und Farben, Formatierungsleiste (E8), Slash-Menü inline mit Gruppen und Farb-Slash (E1),
+  Markdown-Kürzel (E5, `> ` bleibt bis zum Toggle-Knoten Zitat), „@“ (Personen, Datum, Erinnerung, Seiten), „[[“,
+  „:“-Emoji, Inline-Formel, Rechtsklick „Verweis einfügen …“, Platzhalter (E7), Typografie 16 px / 1,6 (E6),
+  Undo/Redo (500 ms), Rollen/gesperrt (`editable:false`), Anwesenheit Stufe 1, `keys.js`-Kürzel über die Fassade.
+- **Noch nicht bearbeitbar** (T3/T4): Code, Toggle, Spalten, synchronisierte Blöcke, Tabelle, Bild, Mathe-Block, Datei,
+  Einbetten, Nextcloud, unbekannte Typen – erscheinen als Karte und bleiben byte-gleich. Datenbank, Aufgaben, Kalender,
+  Widget und Schaltflächen laufen über die Werkzeug-Brücke (T4b).
+- Fassade `HKPages.k.doc` mit `kind: 'tiptap'`; `keys.js`/`editor25.js` überlassen ihre DOM-Menüs (@, :, Datum, Formel)
+  im Tiptap-Editor `pm-editor.js`. Tests: `tests/browser_tiptap_kern.js`, `tests/lib/editor_dom.js` mit `SAGA_EDITOR`.
+
 ### Intern (2.5, Tiptap-Umbau T4b: Daten-Werkzeuge)
 - Werkzeug-Schnittstelle `HKTools` (`static/pm-tools.js`): Werkzeuge als eigenständige Node-Views (`mount` mit
   `update`/`destroy`/`stopEvent`), jede Bedienung wird genau eine Transaktion auf das Attribut `data`; Brücke
