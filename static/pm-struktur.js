@@ -694,13 +694,16 @@
     function selFragment(rs) { return Fragment.fromArray(rs.map(function (x) { return x.node; })); }
     function copySel(e, cut) {
       var rs = roots(selIds()); if (!rs.length) return false;
-      var frag = selFragment(rs), ser = P.pm.model.DOMSerializer.fromSchema(schema()), box = document.createElement('div');
+      // Serialisierer der Zwischenablage (pm-clip.js: Bild zusaetzlich als <img>), sonst das Schema
+      var frag = selFragment(rs), v0 = ed() && ed().view, ser = (v0 && v0.someProp('clipboardSerializer')) || P.pm.model.DOMSerializer.fromSchema(schema()), box = document.createElement('div');
       box.appendChild(ser.serializeFragment(frag));
       var txt = rs.map(function (x) { return x.node.textBetween(0, x.node.content.size, '\n', ' '); }).filter(Boolean).join('\n\n');
-      var json = JSON.stringify(rs.map(function (x) { var j = X.blockJson(x.node); var o = { tool: j.type, data: j.data }; if (j.tunes && j.tunes.hkstyle) o.tunes = { hkstyle: j.tunes.hkstyle }; return o; }));
+      var list = rs.map(function (x) { var j = X.blockJson(x.node); var o = { type: j.type, data: j.data }; if (j.tunes && j.tunes.hkstyle) o.tunes = { hkstyle: j.tunes.hkstyle }; return o; });
+      var json = JSON.stringify(list.map(function (b) { var o = { tool: b.type, data: b.data }; if (b.tunes) o.tunes = b.tunes; return o; }));
       e.clipboardData.setData('text/html', box.innerHTML);
       e.clipboardData.setData('text/plain', txt);
-      e.clipboardData.setData('application/x-editor-js', json);
+      e.clipboardData.setData('application/x-editor-js', json);                 // klassischer Editor (Editor.js liest es selbst)
+      e.clipboardData.setData('application/x-saga-blocks', JSON.stringify({ v: 1, blocks: list }));   // Saga-Format (T4d, pm-clip.js)
       e.preventDefault();
       if (cut) deleteSel();
       return true;
@@ -1092,7 +1095,21 @@
       tr.insert(at, nodes);
       if (inside && !selIds().length) { try { tr.setSelection(S0.TextSelection.near(tr.doc.resolve(at + off))); } catch (e) { /* bleibt */ } }
       dispatch(tr.scrollIntoView());
+      announceMove(nodes[0].attrs.id, dir, nodes.length);
       return true;
+    }
+    // T4d (Bedienhilfen): Ansage fuer Bildschirmleser nach dem Verschieben (aria-live, unsichtbar)
+    function announceMove(id, dir, n) {
+      var x = X.findId(id); if (!x) return;
+      var $x = state().doc.resolve(x.pos), lo = $x.parent.type.name === 'toggle' ? 1 : 0;
+      var msg = (n > 1 ? T('{n} Blöcke verschoben', { n: n }) : dir < 0 ? T('Block nach oben verschoben') : T('Block nach unten verschoben')) + ' – ' +
+        T('Position {i} von {n}', { i: $x.index() - lo + 1, n: $x.parent.childCount - lo });
+      announce(msg);
+    }
+    function announce(msg) {
+      var r = document.getElementById('pm-sr');
+      if (!r) { r = el('div', 'pm-sr'); r.id = 'pm-sr'; r.setAttribute('role', 'status'); r.setAttribute('aria-live', 'polite'); document.body.appendChild(r); }
+      r.textContent = ''; setTimeout(function () { r.textContent = msg; }, 30);
     }
 
     // =================================================================================================================
@@ -1150,6 +1167,28 @@
           m.appendChild(HK.menuItem(T('Löschen'), function () { setBlockSel([id]); deleteSel(); }, { icon: '🗑', danger: true }));
         }
       }, { search: T('Aktion suchen …') });
+      menuFocusBack(id);
+    }
+    // T4d (Bedienhilfen): Menue zu (Esc, Eintrag, Klick daneben) und der Fokus liegt nirgends -> zurueck in den Editor,
+    // Schreibmarke im Block (falls es ihn noch gibt und sie nicht schon darin steht)
+    var FB = { id: null, mo: null };
+    function menuFocusBack(id) {
+      var mel = [].filter.call(document.querySelectorAll('body > .menu'), function (m) { return !m.classList.contains('menu-sub'); })[0];
+      if (!mel || !window.MutationObserver) return;
+      FB.id = id;
+      if (FB.mo) return;                    // ein Beobachter fuer alle Block-Menues
+      FB.mo = new MutationObserver(function () {
+        if (!mel.hidden || FB.id == null) return;
+        var bid = FB.id; FB.id = null;
+        setTimeout(function () {
+          var a = document.activeElement, e = ed();
+          if (!e || FB.id != null || (a && a !== document.body && a.isConnected && !mel.contains(a))) return;
+          var x = X.findId(bid), s = state().selection;
+          if (x && !ro() && !(s.from >= x.pos && s.to <= x.pos + x.node.nodeSize) && !selIds().length) X.focus(bid, 'end');
+          else e.view.focus();
+        }, 0);
+      });
+      FB.mo.observe(mel, { attributes: true, attributeFilter: ['hidden'] });
     }
     function settingsItems(m, x) {          // Werkzeug-Einstellungen je Typ
       var n = x.node, t = n.type.name, id = n.attrs.id;
@@ -1282,6 +1321,10 @@
         'Escape': function () {
           if (X.menuActive() || HK.menuOpen() || document.querySelector('.pm-pop:not([hidden])')) return false;
           if (selIds().length) { clearBlockSel(); return true; }
+          // Peek-Rahmen (/notes?embed=1, T4d): Esc im Text schliesst den Peek (wie im klassischen Editor) statt den Block zu
+          // waehlen. ProseMirror verhindert bei Esc immer die Standardaktion - pages.js sieht das Ereignis dann als erledigt,
+          // deshalb melden wir es hier selbst an das Peek-Fenster.
+          if (document.body.classList.contains('embed') && window.parent !== window) { window.parent.postMessage({ hk: 'peek-close' }, location.origin); return true; }
           return selectCurrent();
         },
         'ArrowUp': function () { return selIds().length ? step(-1) : false; },

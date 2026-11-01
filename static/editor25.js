@@ -493,6 +493,7 @@
     var s = currentSelection();
     if (!s || ro()) { hideBar(); return; }
     barSel = s;
+    primeClip(s);
     if (!bar) buildBar();
     bar.querySelector('.hk-sel-n').textContent = T('{n} Blöcke', { n: s.ids.length });
     var types = blockTypes(s);
@@ -800,6 +801,35 @@
   });
   document.addEventListener('hk-page-open', hideBar);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && bar && !bar.hidden) clearSel(); });
+  // T4d: Strg/⌘+C bzw. +X auf markierten Bloecken im klassischen Editor. Editor.js legt application/x-editor-js erst
+  // nach block.save() (asynchron) ab - dann ist das Ereignis vorbei und der Browser nimmt nur noch HTML/Text an.
+  // Deshalb die Bloecke beim Markieren vorab sichern und hier synchron dazulegen (Editor.js setzt HTML/Text wie immer).
+  var clipCache = null;
+  function primeClip(s) {
+    if (!s || s.tiptap) { clipCache = null; return; }       // Tiptap: pm-struktur.js copySel (synchron)
+    var key = s.ids.join(',');
+    if (clipCache && clipCache.key === key && clipCache.json) return;
+    clipCache = { key: key, json: null };
+    var mine = clipCache;
+    saveBlocks(s).then(function (saved) {
+      if (clipCache !== mine) return;
+      mine.json = JSON.stringify(saved.map(function (x) { var o = { tool: x.tool, data: x.data }; if (x.tunes && x.tunes.hkstyle) o.tunes = { hkstyle: x.tunes.hkstyle }; return o; }));
+    }).catch(function () { if (clipCache === mine) clipCache = null; });
+  }
+  function onClipCopy(e) {
+    var d = doc();
+    if (!e.clipboardData || !d || d.kind === 'tiptap' || !barSel || barSel.tiptap || !clipCache || !clipCache.json) return;
+    if (clipCache.key !== barSel.ids.join(',') || currentSelection() === null) return;
+    try { e.clipboardData.setData('application/x-editor-js', clipCache.json); } catch (err) { /* Browser ohne Schreibzugriff */ }
+  }
+  document.addEventListener('copy', onClipCopy, true);
+  document.addEventListener('cut', onClipCopy, true);
+  var clipSub = false;                                     // pages.js laedt nach dieser Datei: beim ersten Seitenaufbau anmelden
+  document.addEventListener('hk-page-ready', function () {
+    if (clipSub || !(window.HKPages && HKPages.k && HKPages.k.onDocChange)) return;
+    clipSub = true;
+    HKPages.k.onDocChange(function () { clipCache = null; if (barSel) primeClip(barSel); });
+  });
   // Umschalt+Klick auf ⋮⋮: Block zur Auswahl hinzufuegen/entfernen (statt Menue)
   // editorjs-only (T7): Griff ⋮⋮ (.ce-toolbar__settings-btn) und Zuordnung Werkzeugleiste -> Instanz sind Editor.js-UI
   var hovered = null;

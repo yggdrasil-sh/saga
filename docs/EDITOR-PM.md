@@ -311,3 +311,40 @@ mit `code: true`, `math` atom) standen schon in T1.
 - „/“-Einträge: Tabelle, Code (Grundblöcke), Formel (Mathe) (Saga). Kern-Haken für das Block-Menü:
   `X.settings(m, x)` und `X.typeName(t)` (gleich wie T4a).
 - Test: `tests/browser_tiptap_text.js`.
+
+## Querschnitte (T4d)
+
+- **Zwischenablage** (`static/pm-clip.js`, erstes Skript in `EXT_SCRIPTS`, Plugin `hkClip`, `early`):
+  - Kopieren/Ausschneiden schreibt bei Auswahlen über Blockgrenzen (Blockauswahl in `pm-struktur.js` `copySel`,
+    Textauswahl innerhalb eines Behälters wie zwei Listenpunkte, Knotenauswahl außer Bild) `text/html`, `text/plain`,
+    `application/x-editor-js` (`[{tool, data, tunes?}]`, liest der klassische Editor selbst) und
+    `application/x-saga-blocks` (`{v: 1, blocks: [{type, data, tunes?}]}`). Auswahl in einem Textblock: Standard.
+    `clipboardSerializer`: wie das Schema, `image` zusätzlich mit `<img src="absolut">` für andere Programme.
+  - Einfügen: Saga-/Editor.js-Blöcke über `pm-tools-medien.js` `clipList` → `fixRefs` (`/api/files/copy`) +
+    `cleanClip`, neue IDs. Blöcke aus dem klassischen Editor immer so (dessen HTML kennt das Schema nicht), Blöcke aus
+    diesem Editor nur mit Dateiverweisen/Nextcloud – sonst T3 `pasteBlocks`. Ein einzelner synchronisierter Block
+    bleibt bei `pasteSynced` (wird Kopie); in einer Auswahl mit anderen zählt sein Inhalt. HTML aus diesem Editor mit
+    fremden Dateiverweisen ohne Block-JSON (T3-Weg, Textbereich über ein Bild): Verweise umschreiben, dann dasselbe
+    Einfügen noch einmal (synthetisches `paste`, sonst `view.pasteHTML`). UniqueID entdoppelt beim Einfügen.
+  - Fremdes HTML (`clipboardParser`, nur ohne `data-block-type`/`data-pm-*`/`data-saga-block`): Absatz, h1–h6
+    (→ 1–4), Listen (ul/ol/li verschachtelt, Word `mso-list`, Google `aria-level`, Checkliste aus Checkbox/`role`),
+    Zitat, Code (`pre`), Tabelle, Trennlinie. Inline b/i/u/s/mark/code/a(http/https/mailto)/br, Google-/Word-Stile
+    (`font-weight`, `font-style`, `text-decoration`) → Marken; `<b style="font-weight:normal">` (Google-Hülle) nicht
+    fett. Danach `K.cleanClip` (Positivliste wie der Server). Bilder werden nie geladen: `<img>` mit http(s) → Link,
+    sonst weg; Bilddateien lädt `pasteFiles` hoch – aber nicht, wenn daneben HTML mit Text liegt (Word/Google legen ein
+    Bild der Auswahl dazu). In Textbereichen ohne Blöcke (Listenpunkt, Zelle, Toggle-Titel, Unterschrift) nur Inline,
+    Absätze mit `<br>`. Ein einzelner Absatz wird in den aktuellen Absatz eingefügt (offener Slice).
+  - Klassischer Editor: Editor.js legt `application/x-editor-js` erst nach `block.save()` ab (zu spät für den
+    Browser). `static/editor25.js` sichert markierte Blöcke deshalb vorab und legt sie bei `copy`/`cut` synchron dazu.
+- **Kommentare:** `comments.js` hängt Zahl/„+“ an das Blockelement `[data-block-id]` (außerhalb von `contentDOM`,
+  die Node-Views ignorieren das); CSS für `.pm-blk`/`.hk-tool` in `pm-editor.css` (Hover, Hervorhebung, verschachtelt).
+- **Inhaltsverzeichnis:** `keys.js` liest zusätzlich `.pm-tgl-h > .pm-tgl-c > [data-pm-part="ttitle"]`.
+- **KI:** `ai.js` liest die Blockauswahl über `K.doc.selected()` und ersetzt/fügt über die Fassade ein (Live: normale
+  Transaktion, Rückgängig über den Editor).
+- **Peek** (`?embed=1`): ProseMirror verhindert bei Esc immer die Standardaktion; im Rahmen meldet
+  `pm-struktur.js` `peek-close` selbst (ohne Blockauswahl/offenes Menü). Esc bei offenem Vorschlagsmenü schließt das Menü.
+- **Bedienhilfen:** Vorschlagsmenüs als Liste `listbox` (`aria-label`, Einträge `option` mit `aria-selected`), der
+  Editor zeigt per `aria-controls`/`aria-activedescendant` auf den aktiven Eintrag. Verschieben (⌘⇧↑/↓, Menü) sagt
+  „Position i von n“ über `#pm-sr` (`role=status`, `aria-live=polite`) an. Block-Menü zu und Fokus nirgends → zurück
+  in den Editor, Schreibmarke im Block.
+- Test: `tests/browser_tiptap_quer.js` (beide Stufen: `notes.live` aus/an).

@@ -299,22 +299,40 @@
       }).catch(function (e) { toast(T('Nicht hochgeladen: {err}', { err: e.message })); });
       return true;
     }
-    // Saga-Bloecke aus der Zwischenablage (Editor.js-JSON oder HTML mit data-saga-block), nur mit Dateiverweisen
+    // Saga-Bloecke aus der Zwischenablage: Saga-Format (application/x-saga-blocks, static/pm-clip.js), Editor.js-JSON
+    // (klassischer Editor bzw. Kopie aus diesem) oder HTML mit data-saga-block (Bild aus dem klassischen Editor).
+    // T4d: Bloecke aus dem klassischen Editor immer hier (dessen HTML kennt das Schema nicht); aus diesem Editor nur mit
+    // Dateiverweisen oder Nextcloud-Bloecken - sonst T3 pasteBlocks/ProseMirror (gleiches Ergebnis, ohne Server).
     function clipList(cd) {
-      var raw = cd.getData('application/x-editor-js'), out = null;
-      if (raw) { try { out = JSON.parse(raw); } catch (e) { out = null; } }
+      var raw = cd.getData('application/x-saga-blocks'), out = null, own = !!raw;
+      if (raw) { try { var sb = JSON.parse(raw); out = isDict(sb) && Array.isArray(sb.blocks) ? sb.blocks : null; } catch (e) { out = null; } }
+      if (!out) { raw = cd.getData('application/x-editor-js'); if (raw) { try { out = JSON.parse(raw); } catch (e) { out = null; } } }
+      var h = cd.getData('text/html') || '';
       if (!out) {
-        var h = cd.getData('text/html');
         if (h && h.indexOf('data-saga-block') >= 0) {
           var n = new DOMParser().parseFromString(h, 'text/html').querySelector('[data-saga-block]');
           try { out = n ? JSON.parse(n.getAttribute('data-saga-block')) : null; } catch (e) { out = null; }
         }
       }
       if (!Array.isArray(out) || !out.length || !out.every(function (b) { return isDict(b) && typeof (b.tool || b.type) === 'string' && isDict(b.data); })) return null;
+      // einheitlich {tool, data, tunes?} (fixRefs/cleanClip in pages.js lesen "tool")
+      out = out.map(function (b) { var o = { tool: b.tool || b.type, data: b.data }; if (isDict(b.tunes)) o.tunes = b.tunes; return o; });
       var re = M().fileRef, js = JSON.stringify(out); if (!re) return null;
       re.lastIndex = 0;
-      // mit Dateiverweisen (Kopie fuer die Zielseite) oder mit Nextcloud-Bloecken (fremde abweisen) - sonst T3/ProseMirror
-      return re.test(js) || /"(tool|type)":"nextcloud"/.test(js) ? out : null;
+      // mit Dateiverweisen (Kopie fuer die Zielseite) oder mit Nextcloud-Bloecken (fremde abweisen)
+      if (re.test(js) || /"(tool|type)":"nextcloud"/.test(js)) return out;
+      if (own || h.indexOf('data-block-type') >= 0) return null;          // aus diesem Editor: T3/ProseMirror
+      // klassischer Editor; ein synchronisierter Block allein nimmt pm-struktur.js pasteSynced (wird Kopie), in einer
+      // Auswahl mit anderen Bloecken zaehlt sein Inhalt (sonst gaebe es zwei Originale mit derselben sid)
+      if (out.length === 1 && out[0].tool === 'synced') return null;
+      var flat = [];
+      out.forEach(function (b) {
+        if (b.tool === 'synced' && Array.isArray(b.data.blocks)) {
+          b.data.blocks.forEach(function (x) { if (isDict(x) && typeof (x.tool || x.type) === 'string' && isDict(x.data)) flat.push({ tool: x.tool || x.type, data: x.data }); });
+        }
+        else flat.push(b);
+      });
+      return flat.length ? flat : null;
     }
     function ncFilter(list) {                 // fremde Nextcloud-Bloecke (auch in Spalten/Toggles) entfernen
       var ok = M().ncOk, dropped = false;
@@ -378,6 +396,9 @@
     function pasteFiles(view, e) {
       var cd = e.clipboardData; if (!cd || !cd.files || !cd.files.length) return false;
       if (cd.getData('application/x-editor-js')) return false;
+      // T4d: Text aus Word/Google Docs/Webseiten kommt oft zusaetzlich als Bild der Auswahl - dann zaehlt der Text
+      var h = cd.getData('text/html');
+      if (h && new DOMParser().parseFromString(h, 'text/html').body.textContent.trim()) return false;
       e.preventDefault();
       uploadFiles(cd.files, view.state.selection.from);
       return true;
