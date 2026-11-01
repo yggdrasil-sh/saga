@@ -8786,7 +8786,7 @@
     if (window.HKMention) HKMention.setPeople(n.people);
     if (n.title !== S.cur.title && document.activeElement !== $('pg-title')) { S.cur.title = n.title; $('pg-title').value = n.title || ''; var p = byId(id); if (p) p.title = n.title; renderTree(); renderCrumbs(); setLocation(); }
     return applyBody(id, n.body).then(function () {
-      if (by && by.name) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');
+      if (by && by.name && !liveBody()) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');   // live (E9): still
     });
   }
   function blkSig(b) { return JSON.stringify([b.type, b.data, b.tunes || null]); }

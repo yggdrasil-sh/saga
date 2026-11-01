@@ -189,7 +189,7 @@
     return d;
   }
   function startPage(nid) {
-    PG = { nid: nid, want: true, doc: null, info: null, live: false, ro: true, lock: false, unacked: [], seq: 0, rej: [],
+    PG = { nid: nid, want: true, doc: null, info: null, live: false, ro: true, lock: false, unacked: [], held: [], seq: 0, rej: [],
            synced: false, aw: new Map(), prov: null, loading: false };
     var mine = PG;
     features().then(function (on) {                 // Live-Bundle nur laden, wenn live ueberhaupt an ist
@@ -212,9 +212,10 @@
   function stopPage() {
     var pg = PG; PG = null;
     if (!pg) return;
+    if (pg.live && pg.held.length) { PG = pg; flushHeld(pg); PG = null; }
     if (pg.subbed) send(KIND.UNSUB, pg.nid);
     destroyProv(pg);
-    clearTimeout(pg.awT); clearTimeout(pg.retryT); clearTimeout(pg.goT);
+    clearTimeout(pg.awT); clearTimeout(pg.retryT); clearTimeout(pg.goT); clearTimeout(pg.leaveT);
     if (BOX) BOX.classList.remove('pm-live');
     hint(false);
   }
@@ -283,6 +284,7 @@
     } finally { pg.loading = false; }
     if (ST.loadDrops !== drops) { schemaLock(); return; }
     passthrough();
+    pg.known = {}; X.ed().state.doc.descendants(function (n) { if (VAL[n.type.name] && n.attrs.id) pg.known[n.attrs.id] = 1; return true; });
     pg.live = true; ST.binds++;
     if (BOX) BOX.classList.add('pm-live');
     restore(c);
@@ -340,6 +342,10 @@
       var b = n.attrs && n.attrs.id != null ? byId[n.attrs.id] : null; if (!b) return;
       try {
         var want = AD.pmToBlock(sch.nodeFromJSON(AD.blockToPm(b, { orig: null })), {}), have = AD.pmToBlock(n, {});
+        // Nextcloud-Autor steht im Live-Zustand als Handle (~..., Server-Maske), im GET fuer die eigene Person als Name
+        if (want.type === 'nextcloud' && have.data && want.data && /^~/.test(String(have.data.author || '')) && want.data.author) {
+          have = Object.assign({}, have, { data: Object.assign({}, have.data, { author: want.data.author }) });
+        }
         if (AD.stable(want) !== AD.stable(have)) return;
         AD.bind(sch.topNodeType.create(null, [n]), { blocks: [b] }, ctx);
         X.markOrig([b]);
@@ -349,7 +355,12 @@
   // Neue Kopie eines synchronisierten Blocks (synced_ref): ihren Inhalt und die Kopie-Leiste liefert nur die Antwort auf
   // ein PATCH (HKMention.saved) - diese eigene Aenderung geht deshalb nicht live hinaus, sondern die Seite wechselt vorher
   // auf Stufe 1 (pages.js speichert sie wie bisher).
+  // Neue Bloecke, die beim Speichern wegfielen (validate: Bild/Datei ohne Datei, Einbetten ohne Link ...), lehnte der
+  // Server ab (forbidden). Solange es so einen Block gibt, haelt onLocal die eigenen Updates zurueck und schickt sie
+  // gesammelt, sobald er fertig (Datei da) oder geloescht ist; beim Verlassen der Seite wird er vorher entfernt.
+  var VAL = { image: 1, attaches: 1, embed: 1, nextcloud: 1 };
   function refs(doc) { var n = 0; doc.descendants(function (x) { if (x.type.name === 'synced_ref') n++; return true; }); return n; }
+  function media(doc) { var n = 0; doc.descendants(function (x) { if (VAL[x.type.name]) n++; return true; }); return n; }
   function syncedGuard() {
     var S0 = X.P.pm.state;
     return X.P.core.Extension.create({ name: 'hkLiveSynced', addProseMirrorPlugins: function () {
@@ -361,9 +372,34 @@
       } })];
     } });
   }
+  // nur Bloecke, die es beim Binden noch nicht gab (vorhandene fremde Nextcloud-Bloecke u. ae. sind kein "unfertig")
+  function unfinished() {
+    var ed = X.ed(), pg = PG, hit = false; if (!ed || !pg || !pg.known) return false;
+    ed.state.doc.descendants(function (n) {
+      if (hit) return false;
+      if (VAL[n.type.name] && !pg.known[n.attrs.id] && !X.validate(X.blockJson(n))) hit = true;
+      return !VAL[n.type.name];
+    });
+    return hit;
+  }
+  // beim Verlassen: unfertige neue Bloecke entfernen (wie Stufe 1, die sie nie speichert), Zurueckgehaltenes senden
+  function flushHeld(pg) {
+    if (!pg.held.length) return;
+    var ed = X.ed();
+    try {
+      if (ed && unfinished()) {
+        var tr = ed.state.tr, del = [];
+        ed.state.doc.descendants(function (n, pos) { if (VAL[n.type.name] && !pg.known[n.attrs.id] && !X.validate(X.blockJson(n))) { del.push([pos, n.nodeSize]); return false; } return true; });
+        del.reverse().forEach(function (d) { tr.delete(d[0], d[0] + d[1]); });
+        if (del.length) { tr.setMeta('addToHistory', false); ed.view.dispatch(tr); }
+      }
+    } catch (e) { /* weg */ }
+    if (pg.held.length && !unfinished()) { var u = Y.mergeUpdates(pg.held); pg.held = []; sendUpdate(pg, u); }
+  }
   function rebind(full, keep) {                       // Zustand des Servers uebernehmen (reject, Rolle), Editor neu
     var pg = PG, c = caret();
-    var rest = keep ? pg.unacked.slice() : [];
+    var rest = keep ? pg.unacked.slice().concat(pg.held.map(function (u) { return { u: u }; })) : [];
+    pg.held = [];
     var nd = newDoc();
     if (full) Y.applyUpdate(nd, full, REMOTE); else Y.applyUpdate(nd, Y.encodeStateAsUpdate(pg.doc), REMOTE);
     var lost = false;
@@ -378,7 +414,7 @@
     bind(c);
     if (rest.length && !lost && PG === pg && !pg.ro && !pg.lock) {
       var u = Y.mergeUpdates(rest.map(function (x) { return x.u; }));
-      sendUpdate(pg, u);
+      if (unfinished()) pg.held = [u]; else sendUpdate(pg, u);
     }
     return !lost;
   }
@@ -393,11 +429,13 @@
     if (BOX) BOX.classList.remove('pm-live');
     if (!wasLive) return;
     ST.fallbacks++;
-    var c = caret(), json = X.saveNow();
+    var c = caret(), json = X.raw();
     X.live(null);
     X.build(json);
+    X.unmarkInvalid(json.blocks);
     restore(c);
-    pg.unacked = [];
+    if (pg.held.length) pend = true;
+    pg.unacked = []; pg.held = [];
     if (pend) { var k = K(); if (k && k.dirty) k.dirty(); }
     log('stufe1', why, pend);
   }
@@ -440,10 +478,18 @@
     if (pg.loading) { ST.loadDrops++; return; }       // beim Laden geschrieben (R1): nie hinaus
     if (pg.leave) {                                    // s. syncedGuard: nicht senden, auf Stufe 1 wechseln
       ST.dropped++;
-      if (!pg.leaveT) pg.leaveT = setTimeout(function () { if (PG === pg) toStufe1(pg.leave, true, true); }, 0);
+      if (!pg.leaveT) pg.leaveT = setTimeout(function () {
+        if (PG !== pg) return;
+        toStufe1(pg.leave, true, true);
+      }, 0);
       return;
     }
     if (!pg.live || pg.ro || pg.lock || !W.open) { ST.dropped++; return; }
+    if (pg.held.length || unfinished()) {
+      pg.held.push(u);
+      if (unfinished()) { ST.held = (ST.held || 0) + 1; return; }
+      u = Y.mergeUpdates(pg.held); pg.held = [];
+    }
     sendUpdate(pg, u);
   }
   function sendUpdate(pg, u) {
@@ -598,7 +644,7 @@
     debug: false, disabled: false,
     state: function () {
       return { mode: PG ? (PG.lock ? 'lock' : PG.live ? 'live' : 'stufe1') : 'aus', nid: PG && PG.nid, ro: !!(PG && PG.ro), live: !!(PG && PG.live),
-               lock: !!(PG && PG.lock), unacked: PG ? PG.unacked.length : 0, ws: !!(W.ws && W.open), off: W.off,
+               lock: !!(PG && PG.lock), unacked: PG ? PG.unacked.length : 0, held: PG ? PG.held.length : 0, ws: !!(W.ws && W.open), off: W.off,
                role: PG && PG.info ? PG.info.role : null, me: PG && PG.info ? PG.info.name : null, stats: Object.assign({}, ST) };
     },
     doc: function () { return PG && PG.doc; },

@@ -1706,7 +1706,20 @@
     // T5 (static/pm-live.js): Editor mit/ohne Live-Bindung neu aufbauen, Stand als Block-JSON, Rueckrufe von pages.js
     build: build, saveNow: saveNow, cb: function () { return CB; }, ctx: function () { return ctx; }, markOrig: markOrig,
     live: function (v) { if (v !== undefined) LIVE = v; return LIVE; },
-    lock: function (v) { if (v !== undefined) LOCK = !!v; return LOCK; }
+    lock: function (v) { if (v !== undefined) LOCK = !!v; return LOCK; },
+    validate: function (b) { return !MODS.some(function (m) { try { return !!m.validate && m.validate(b) === false; } catch (e) { return false; } }); },
+    // Stand ohne prune (Neuaufbau beim Umschalten: unfertige neue Bloecke bleiben sichtbar) und danach diese Bloecke
+    // wieder als "neu" fuehren (build markiert alles Geladene als unveraendert)
+    raw: function () { return ed && !broken ? AD.blocksFromDoc(ed.state.doc, ctx) : saveNow(); },
+    unmarkInvalid: function (list) {
+      (function rec(l) { (l || []).forEach(function (b) {
+        if (!b || typeof b !== 'object') return;
+        if (!X.validate(b)) ORIG.delete(b);
+        var d = b.data || {}; if (Array.isArray(d.blocks)) rec(d.blocks);
+        if (Array.isArray(d.cols)) d.cols.forEach(function (c) { if (c) rec(c.blocks); });
+      }); })(list);
+    },
+    pending: function (doc) { if (!ed || broken) return false; var o = AD.blocksFromDoc(doc || ed.state.doc, ctx); return prune(o) !== o; }
   };
   function initExt(fn) {
     var m = null; try { m = fn(X); } catch (e) { if (window.console) console.error('pm-editor Erweiterung', e); }
