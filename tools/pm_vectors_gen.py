@@ -286,7 +286,7 @@ def build():
 
 if __name__ == "__main__":
     data = build()
-    txt = json.dumps(data, ensure_ascii=False, indent=1) + "\n"
+    txt = json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True) + "\n"     # sortiert: clean_blocks ordnet nicht fest
     if "--check" in sys.argv:
         cur = open(OUT, encoding="utf-8").read() if os.path.exists(OUT) else ""
         print("pm_schema.json aktuell" if cur == txt else "pm_schema.json VERALTET (python3 tools/pm_vectors_gen.py)")
