@@ -235,6 +235,7 @@
 
   // --- Inline-Mathe <code class="hk-math">TeX</code> -------------------------------------------------------------------
   // Der Text bleibt TeX (so speichern es alle Clients); dargestellt als Chip, gerendert im Popover (Klick bzw. Fokus).
+  // editorjs-only (T7): Editor.js-Inline-Werkzeug (Knopf der Inline-Leiste); die Logik dahinter ist editorneutral
   function MathInline(o) { this.api = o.api; }
   MathInline.isInline = true;
   MathInline.title = T('Formel');
@@ -346,6 +347,7 @@
     if (st.c) setLast({ c: st.c, bg: bg });
     return true;
   }
+  // editorjs-only (T7): Editor.js-Inline-Werkzeug (Knopf der Inline-Leiste); die Logik dahinter ist editorneutral
   function HKColor(o) { this.api = o.api; this.btn = null; }
   HKColor.isInline = true;
   HKColor.title = T('Farbe');
