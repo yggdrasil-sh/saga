@@ -55,6 +55,48 @@
     if (isDict(v)) return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + stable(v[k]); }).join(',') + '}';
     return JSON.stringify(v === undefined ? null : v);
   }
+  // Live (Y-Zustand): JSON-Objekte in Attributen kommen in der Reihenfolge der Update-Bytes - schreibt sie der Server
+  // (yrs: HashMap), wechselt sie je Prozess. Wie collab_model._ynum/_like: Attributwerte sortiert (Python-Ordnung nach
+  // Codepunkten), danach Reihenfolge des geladenen Stands (ctx.like = blockIds(...)): gemeinsame Schluessel wie dort, neue dahinter.
+  function pyCmp(a, b) {
+    var x = Array.from(a), y = Array.from(b), n = Math.min(x.length, y.length);
+    for (var i = 0; i < n; i++) { var d = x[i].codePointAt(0) - y[i].codePointAt(0); if (d) return d; }
+    return x.length - y.length;
+  }
+  function sortVals(v) {
+    if (isList(v)) return v.map(sortVals);
+    if (!isDict(v)) return v;
+    var o = {};
+    Object.keys(v).sort(pyCmp).forEach(function (k) { o[k] = sortVals(v[k]); });
+    return o;
+  }
+  function isBlock(v) { return isDict(v) && typeof v.id === 'string' && typeof v.type === 'string'; }
+  function blockIds(blocks) {
+    var out = {};
+    (function walk(v, dp) {
+      if (dp > MAX_DEPTH + 8) return;
+      if (isList(v)) v.forEach(function (x) { walk(x, dp + 1); });
+      else if (isDict(v)) {
+        if (isBlock(v) && !has(out, v.id)) out[v.id] = v;
+        for (var k in v) if (has(v, k)) walk(v[k], dp + 1);
+      }
+    })(blocks, 0);
+    return out;
+  }
+  function like(v, o, ids, dp) {
+    dp = dp || 0;
+    if (v === o || dp > MAX_DEPTH + 16) return v;
+    if (isBlock(v)) { o = has(ids, v.id) ? ids[v.id] : undefined; if (v === o) return v; }
+    var r, k;
+    if (isDict(v)) {
+      r = {};
+      if (isDict(o)) for (k in o) if (has(o, k) && has(v, k)) r[k] = like(v[k], o[k], ids, dp + 1);
+      for (k in v) if (has(v, k) && !has(r, k)) r[k] = like(v[k], undefined, ids, dp + 1);
+      return r;
+    }
+    if (isList(v)) { var ol = isList(o) ? o : []; return v.map(function (x, i) { return like(x, ol[i], ids, dp + 1); }); }
+    return v;
+  }
   function pyStr(v) {                                 // str() von Python fuer f"{bid}/{path}"
     if (v === undefined || v === null) return 'None';
     if (v === true) return 'True';
@@ -465,6 +507,7 @@
     var typ = tname(n);
     if (!inArr(BLOCKS, typ) || (allow && !inArr(allow, typ))) throw new PmError('Block ' + typ);
     var a = checkAttrs(n, BLOCK_COMMON.concat(ATTRS[typ])), bid = a.id;
+    if (ctx && ctx.like) a = sortVals(a);
     var ex = isDict(a.extra) ? a.extra : {}, absent = isList(ex.absent) ? ex.absent : [];
     var out = {}, d = {}, c;
     if (bid !== undefined) out.id = bid;
@@ -513,7 +556,9 @@
       } else if (typ === 'synced_ref') { kidsTyped(n, []); pick(['sid']); }
       else if (typ === 'columns') {
         d.cols = kidsTyped(n, ['column']).map(function (col) {
-          var ca = checkAttrs(col, ATTRS.column), cx = isDict(ca.extra) ? assign({}, ca.extra) : {};
+          var ca = checkAttrs(col, ATTRS.column);
+          if (ctx && ctx.like) ca = sortVals(ca);
+          var cx = isDict(ca.extra) ? assign({}, ca.extra) : {};
           var nob = cx._noblocks; delete cx._noblocks;
           var cd = assign({}, cx);
           if (has(ca, 'w')) cd.w = ca.w;
@@ -547,6 +592,7 @@
     if (depth > MAX_DEPTH) throw new PmError('zu tief');
     return items.map(function (it) {
       var a = checkAttrs(it, ATTRS.litem), c = kidsTyped(it, ['ltext', 'litem']);
+      if (ctx && ctx.like) a = sortVals(a);
       if (!c.length || tname(c[0]) !== 'ltext' || c.slice(1).some(function (x) { return tname(x) !== 'litem'; })) throw new PmError('litem');
       var ex = isDict(a.extra) ? assign({}, a.extra) : {}, noitems = ex._noitems;
       delete ex._noitems;
@@ -562,6 +608,7 @@
     ctx = ctx || {};
     if (!doc || tname(doc) !== 'doc') throw new PmError('doc');
     var blocks = kidsOf(doc).map(function (x) { return pmToBlock(x, ctx, 0, BLOCKS); });
+    if (ctx.like) blocks = blocks.map(function (b) { return like(b, undefined, ctx.like); });
     return { time: ctx.time !== undefined ? ctx.time : Date.now(), version: ctx.version !== undefined ? ctx.version : 'saga-pm/' + S.VERSION, blocks: blocks };
   }
 
@@ -615,6 +662,6 @@
     docFromBlocks: docFromBlocks, blocksFromDoc: blocksFromDoc, bind: bind, blockToPm: blockToPm,
     pmToBlock: function (n, ctx) { return pmToBlock(n, ctx || {}, 0, null); },
     htmlToInline: htmlToInline, inlineToHtml: inlineToHtml, marksToAttrs: marksToAttrs, attrsToMarks: attrsToMarks,
-    stable: stable, config: config, PmError: PmError, FIELDS: FIELDS
+    stable: stable, config: config, PmError: PmError, FIELDS: FIELDS, blockIds: blockIds, like: like
   };
 });

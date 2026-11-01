@@ -338,6 +338,7 @@
     if (!ed || !src || !Array.isArray(src.blocks)) return;
     var byId = {}; src.blocks.forEach(function (b) { if (b && b.id != null) byId[b.id] = b; });
     var AD = X.AD, sch = ed.schema, ctx = X.ctx();
+    ctx.like = AD.blockIds(src.blocks);                // Schluesselreihenfolge geaenderter Bloecke wie geladen (pm-adapter like)
     ed.state.doc.forEach(function (n) {
       var b = n.attrs && n.attrs.id != null ? byId[n.attrs.id] : null; if (!b) return;
       try {
