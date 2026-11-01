@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Intern (2.5, Tiptap-Umbau T1: Editor-Fassade)
+- Neue schmale Editor-Schnittstelle `HKPages.k.doc` (`static/editor-doc.js`: Blöcke lesen, einfügen, ersetzen,
+  entfernen, auswählen, fokussieren, Änderungen abonnieren) über dem heutigen Editor.js; alle Blockelemente tragen
+  `data-block-id`/`data-block-type`, auch in Spalten, Toggles und synchronisierten Blöcken. Tastenkürzel, KI, Auswahl-Leiste,
+  Kommentare, Anwesenheit und Erwähnungen nutzen nur noch diese Schnittstelle; Browser-Tests über `tests/lib/editor_dom.js`.
+  Für Nutzer ändert sich nichts.
+
 ### Neu (2.5, Chats: Gruppen – Chat-Standard B)
 - **Gruppenbild und Beschreibung** für freie Gruppen – wie der Name verschlüsselt (Steuer-Nachrichten `desc`/`avatar`),
   Bild quadratisch zugeschnitten; der Server merkt sich nur, welche Nachricht aktuell ist.

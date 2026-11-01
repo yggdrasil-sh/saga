@@ -52,6 +52,7 @@ const UI = {
   nothingFound: '.ce-popover__nothing-found-message--displayed',
   inlineTool: '.ce-inline-tool',                              // Knopf der Inline-Leiste
   editorBox: `${ROOT} .codex-editor`,                         // Flaeche des Editors (Breite/Lage)
+  nativeBlock: `${ROOT} .ce-block`,                           // Blockelement des Editors selbst (Kontrolle: alle markiert?)
 };
 // sichtbare Eintraege (Titel) des offenen Menues
 const UI_ITEMS = `${UI.popover} ${UI.item}:not(${UI.itemHidden}) ${UI.itemTitle}`;
