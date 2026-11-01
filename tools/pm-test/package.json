@@ -1,0 +1,15 @@
+{
+  "name": "saga-pm-test",
+  "private": true,
+  "description": "Nur Testwerkzeuge: Prüfer für Saga-Schema v1 (tools/pm_vectors.mjs, tools/pm_ytest.mjs). Nicht Teil des Produkts.",
+  "license": "MIT",
+  "dependencies": {
+    "@tiptap/core": "3.32.2",
+    "@tiptap/pm": "3.32.2",
+    "@tiptap/extension-unique-id": "3.32.2",
+    "@tiptap/y-tiptap": "3.0.12",
+    "yjs": "13.6.33",
+    "y-protocols": "1.0.7",
+    "lib0": "0.2.119"
+  }
+}

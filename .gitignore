@@ -6,3 +6,6 @@ __pycache__/
 .DS_Store
 ios/dist/
 .env.shots
+
+# Testwerkzeuge Saga-Schema v1 (npm, nie committen)
+tools/pm-test/node_modules/
