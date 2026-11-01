@@ -315,6 +315,8 @@
         }
       }
       if (!Array.isArray(out) || !out.length || !out.every(function (b) { return isDict(b) && typeof (b.tool || b.type) === 'string' && isDict(b.data); })) return null;
+      // einheitlich {tool, data, tunes?} (fixRefs/cleanClip in pages.js lesen "tool")
+      out = out.map(function (b) { var o = { tool: b.tool || b.type, data: b.data }; if (isDict(b.tunes)) o.tunes = b.tunes; return o; });
       var re = M().fileRef, js = JSON.stringify(out); if (!re) return null;
       re.lastIndex = 0;
       // mit Dateiverweisen (Kopie fuer die Zielseite) oder mit Nextcloud-Bloecken (fremde abweisen)
@@ -322,10 +324,12 @@
       if (own || h.indexOf('data-block-type') >= 0) return null;          // aus diesem Editor: T3/ProseMirror
       // klassischer Editor; ein synchronisierter Block allein nimmt pm-struktur.js pasteSynced (wird Kopie), in einer
       // Auswahl mit anderen Bloecken zaehlt sein Inhalt (sonst gaebe es zwei Originale mit derselben sid)
-      if (out.length === 1 && (out[0].tool || out[0].type) === 'synced') return null;
+      if (out.length === 1 && out[0].tool === 'synced') return null;
       var flat = [];
       out.forEach(function (b) {
-        if ((b.tool || b.type) === 'synced' && Array.isArray(b.data.blocks)) flat.push.apply(flat, b.data.blocks.filter(isDict));
+        if (b.tool === 'synced' && Array.isArray(b.data.blocks)) {
+          b.data.blocks.forEach(function (x) { if (isDict(x) && typeof (x.tool || x.type) === 'string' && isDict(x.data)) flat.push({ tool: x.tool || x.type, data: x.data }); });
+        }
         else flat.push(b);
       });
       return flat.length ? flat : null;

@@ -694,7 +694,8 @@
     function selFragment(rs) { return Fragment.fromArray(rs.map(function (x) { return x.node; })); }
     function copySel(e, cut) {
       var rs = roots(selIds()); if (!rs.length) return false;
-      var frag = selFragment(rs), ser = P.pm.model.DOMSerializer.fromSchema(schema()), box = document.createElement('div');
+      // Serialisierer der Zwischenablage (pm-clip.js: Bild zusaetzlich als <img>), sonst das Schema
+      var frag = selFragment(rs), v0 = ed() && ed().view, ser = (v0 && v0.someProp('clipboardSerializer')) || P.pm.model.DOMSerializer.fromSchema(schema()), box = document.createElement('div');
       box.appendChild(ser.serializeFragment(frag));
       var txt = rs.map(function (x) { return x.node.textBetween(0, x.node.content.size, '\n', ' '); }).filter(Boolean).join('\n\n');
       var list = rs.map(function (x) { var j = X.blockJson(x.node); var o = { type: j.type, data: j.data }; if (j.tunes && j.tunes.hkstyle) o.tunes = { hkstyle: j.tunes.hkstyle }; return o; });
