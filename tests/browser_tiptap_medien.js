@@ -218,6 +218,10 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   await p.click('#pg-editor [data-block-id="im1"] img'); await sleep(150);
   const selOk = await p.evaluate(() => { const s = HKPages.k.editor().editor().state.selection; return !!s.node && s.node.type.name === 'image'; });
   ok('Klick aufs Bild waehlt den Bild-Block (Knotenauswahl)', selOk);
+  // Pruefer: Tippen bei ausgewaehltem Bild ersetzt es nicht (wie hkGuard bei Karten; Bild ist kein atom)
+  await p.keyboard.type('q'); await sleep(200);
+  const keep = await p.evaluate(() => { const s = HKPages.k.editor().editor().state.selection; return { img: !!document.querySelector('#pg-editor [data-block-id="im1"] img'), sel: !!s.node && s.node.type.name === 'image' }; });
+  ok('Ausgewaehltes Bild + Tippen: Bild bleibt, Auswahl bleibt', keep.img && keep.sel, keep);
   const clip = await p.evaluate(() => {
     const dt = new DataTransfer(), e = new ClipboardEvent('copy', { clipboardData: dt, bubbles: true, cancelable: true });
     HKPages.k.editor().editor().view.dom.dispatchEvent(e);

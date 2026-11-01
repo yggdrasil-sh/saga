@@ -400,6 +400,12 @@
             copy: function (v, e) { return copyImage(v, e, false); },
             cut: function (v, e) { return copyImage(v, e, true); }
           },
+          // Ausgewaehltes Bild (Klick aufs Bild = Knotenauswahl): Tippen ersetzt es nicht (wie hkGuard bei Karten - das Bild
+          // ist kein atom, weil es die Unterschrift icap enthaelt). Backspace/Entf loeschen es weiter bewusst.
+          handleTextInput: function (v) {
+            var s = v.state.selection;
+            return !!(s instanceof S0.NodeSelection && s.node.type.name === 'image');
+          },
           handlePaste: function (v, e) {
             if (ro()) return false;
             return pasteSaga(v, e) || pasteFiles(v, e) || pasteUrl(v, e);
