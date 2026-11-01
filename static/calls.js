@@ -1766,6 +1766,12 @@
     c.pc.getStats().then(function (rep) {
       if (!live(c)) return;
       checkPath(c, rep); quality(c, rep); applyRates(c);
+      var R = roomOf(c);
+      if (!R.horn) {
+        var pn = pathOf(c);
+        diagMeta(R, 'p2p', pn === 'relay-tcp' ? 'tcp' : c.net ? 'udp' : '?', '');
+        diagRep(R, rep, 'p' + String(c.peerDevice || '').slice(0, 6) + ':');
+      }
     }).catch(function () {});
   }
   function checkPath(c, rep) {
@@ -1788,7 +1794,7 @@
         // ICE-TCP ohne Relais hat dieselben Nachteile (Head-of-Line-Blocking) -> Grenzen von "Relais TCP"
         var net = l && l.candidateType === 'relay' ? (/^(tcp|tls)$/.test(String(l.relayProtocol || l.protocol || '').toLowerCase()) ? 'relay-tcp' : 'relay-udp')
           : l && String(l.protocol || '').toLowerCase() === 'tcp' ? 'relay-tcp' : c.path === 'relay' ? 'relay-udp' : 'direct';
-        if (net !== c.net) { c.net = net; if (c.connected) stateOut(c); }
+        if (net !== c.net) { if (c.net) diagEv(c, 'path', c.net + '>' + net); c.net = net; if (c.connected) stateOut(c); }
       }
       drawInfo(c);
     })();
@@ -2302,6 +2308,7 @@
     c = roomOf(c);
     if (c.done) return;
     c.done = true; c.ending = true;
+    diagFlush(c, true);
     clearInterval(c.alive); clearInterval(c.statsT); clearInterval(c.spkT); clearTimeout(c.hoT);
     if (c.horn) hornStop(c);
     links(c).concat([c]).forEach(function (L) {
@@ -3016,6 +3023,82 @@
     (extra || []).forEach(function (n) { if (a.indexOf(n) < 0) a.push(n); });
     return a;
   }
+  // --- Anruf-Diagnose (2.5, POST /api/calls/diag, Feature calldiag1; Vertrag docs/APP-API.md "Anruf-Diagnose") ---------
+  // Proben aus den vorhandenen getStats-Laeufen (Knoten: hornStats alle 3 s, direkt: poll alle 2 s - je Quelle hoechstens
+  // alle 5 s eine Probe): Empfang je Quelle (Bild), Senden je Simulcast-Schicht (rid) mit qualityLimitationReason und
+  // encoderImplementation; Ereignisse: Schichtbelegung des Knotens (layout mit est_kbit), Wechsel, Weg, Empfangsqualitaet.
+  // Alle 30 s und beim Auflegen (fetch keepalive) an den Server - nur wenn der Server calldiag1 meldet. Der Verlauf bleibt
+  // zusaetzlich im Debug-Snapshot (HKCalls.horn().diag / HKCalls.room().diag).
+  var DIAG = null, APPV = '';
+  var DIAG_EVERY = 30000, DIAG_GAP = 15500, DIAG_SAMPLE = 5000, DIAG_BYTES = 30000;
+  function diagOf(R) {
+    R = roomOf(R); if (!R) return null;
+    if (DIAG === null) {
+      DIAG = false;
+      api('GET', '/api/version').then(function (v) { DIAG = (v.features || []).indexOf('calldiag1') >= 0; APPV = String(v.version || '').replace(/[^A-Za-z0-9._+\-]/g, '').slice(0, 40); }).catch(function () {});
+    }
+    if (!R.dg) R.dg = { t0: Date.now(), s: [], e: [], hs: [], he: [], prev: {}, at: {}, last: Date.now(), sent: 0, st: 0, path: 'p2p', transport: '?', node: '' };
+    return R.dg;
+  }
+  function diagT(D) { return Math.max(0, Date.now() - D.t0); }
+  function diagEv(R, k, d) {
+    var D = diagOf(R); if (!D) return;
+    var x = { t: diagT(D), k: k, d: String(d || '').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 120) };
+    D.e.push(x); if (D.e.length > 100) D.e.shift();
+    D.he.push(x); if (D.he.length > 100) D.he.shift();
+  }
+  function diagMeta(R, path, transport, node) { var D = diagOf(R); if (D) { D.path = path; D.transport = transport || '?'; D.node = node || ''; } }
+  function diagN(v) { return typeof v === 'number' && isFinite(v) && v >= 0 ? Math.round(v) : undefined; }
+  // Ein Stats-Bericht -> Proben (nur Video, inbound und outbound); pre = Praefix der Quelle (Knoten 'v', direkt 'p' + Geraet)
+  function diagRep(R, rep, pre) {
+    var D = diagOf(R); if (!D || !rep) return;
+    var now = Date.now(), rtt;
+    rep.forEach(function (x) { if (x.type === 'candidate-pair' && (x.nominated || x.selected) && x.state === 'succeeded' && typeof x.currentRoundTripTime === 'number') rtt = x.currentRoundTripTime * 1000; });
+    rep.forEach(function (x) {
+      if ((x.type !== 'inbound-rtp' && x.type !== 'outbound-rtp') || (x.kind || x.mediaType) !== 'video') return;
+      var out = x.type === 'outbound-rtp', key = pre + x.id;
+      if (now - (D.at[key] || 0) < DIAG_SAMPLE - 300) return;
+      var cur = { ts: x.timestamp || now, b: (out ? x.bytesSent : x.bytesReceived) || 0, lost: x.packetsLost || 0, nack: x.nackCount || 0,
+                  pli: x.pliCount || 0, fz: x.freezeCount || 0, kf: (out ? x.keyFramesEncoded : x.keyFramesDecoded) || 0 };
+      var p = D.prev[key]; D.prev[key] = cur; D.at[key] = now;
+      if (!p) return;                                  // erste Messung: nur Ausgangswerte
+      var dt = Math.max(1, cur.ts - p.ts) / 1000, d = function (k) { return Math.max(0, cur[k] - p[k]); };
+      var sm = { t: diagT(D), dir: out ? 'out' : 'in', src: String(pre + (x.mid != null ? x.mid : '')).replace(/[^A-Za-z0-9_\-:.]/g, '').slice(0, 16),
+                 rid: out && /^(l|m|h)$/.test(x.rid || '') ? x.rid : '', fps: diagN(x.framesPerSecond), h: diagN(x.frameHeight),
+                 kbps: diagN(d('b') * 8 / 1000 / dt), nack: d('nack'), pli: d('pli'), kf: d('kf'), rtt: diagN(rtt) };
+      if (!out) { sm.lost = d('lost'); sm.freeze = d('fz'); }
+      if (out) {
+        sm.qlr = /^(none|cpu|bandwidth|other)$/.test(x.qualityLimitationReason || '') ? x.qualityLimitationReason : '';
+        sm.enc = String(x.encoderImplementation || '').replace(/[^A-Za-z0-9 _()\[\].,:+\/\-]/g, '').slice(0, 60);
+      }
+      Object.keys(sm).forEach(function (k) { if (sm[k] === undefined) delete sm[k]; });
+      D.s.push(sm); if (D.s.length > 200) D.s.shift();
+      D.hs.push(sm); if (D.hs.length > 300) D.hs.shift();
+    });
+    if (now - D.last >= DIAG_EVERY) diagFlush(R);
+  }
+  // Senden: alle 30 s bzw. beim Auflegen. Der Server nimmt hoechstens 1 Meldung je 15 s an - beim Auflegen kurz danach
+  // (Seite bleibt offen) wartet die letzte Meldung bis dahin; beim Schliessen der Seite geht sie sofort (keepalive).
+  function diagFlush(R, final, unloading) {
+    var D = R && R.dg; if (!D || !DIAG || !R.id || !/^[0-9a-f]{32}$/.test(R.id) || (!D.s.length && !D.e.length)) return;
+    var now = Date.now();
+    if (now - D.last < DIAG_GAP && D.sent) {
+      if (final && !unloading) { clearTimeout(D.fT); D.fT = setTimeout(function () { diagFlush(R, true); }, DIAG_GAP - (now - D.last)); }
+      return;
+    }
+    var b = { v: 1, call: R.id, plat: 'web', app: APPV, path: D.path, transport: D.transport, node: String(D.node || '').slice(0, 253), samples: D.s.slice(-200), events: D.e.slice(-100) };
+    var body = JSON.stringify(b);
+    while (body.length > DIAG_BYTES && b.samples.length) { b.samples = b.samples.slice(Math.ceil(b.samples.length / 4)); body = JSON.stringify(b); }
+    D.s = []; D.e = []; D.last = now; D.sent++;
+    try {
+      fetch('/api/calls/diag', { method: 'POST', keepalive: true, credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: body })
+        .then(function (r) { D.st = r.status; }).catch(function () { D.st = -1; });
+    } catch (e) { /* Seite wird geschlossen */ }
+  }
+  function diagSnap(R) {
+    var D = R && R.dg; if (!D) return null;
+    return { on: !!DIAG, sent: D.sent, status: D.st, path: D.path, transport: D.transport, node: D.node, samples: D.hs.slice(), events: D.he.slice(), pending: D.s.length + D.e.length };
+  }
   function hornLog(H, conn, what) {
     (H.log = H.log || []).push([Date.now() % 100000, conn ? conn.node : '', what]);
     if (H.log.length > 30) H.log.shift();
@@ -3213,7 +3296,15 @@
       var m; try { m = JSON.parse(e.data); } catch (x) { return; }
       if (!live(R) || conn.dead) return;
       if (m.t === 'hello' || m.t === 'peers') hornPeersIn(R, conn, m.peers || {});
-      if (m.t === 'hello' || m.t === 'layout') { if (m.slots) L.slots = m.slots; L.est = m.est_kbit || L.est; hornMap(R); hornDraw(R); }
+      if (m.t === 'hello' || m.t === 'layout') {
+        if (m.slots) L.slots = m.slots; L.est = m.est_kbit || L.est; hornMap(R); hornDraw(R);
+        if (conn === R.horn.cur) {                      // Diagnose: Schichtbelegung (nur Aenderungen)
+          var lay = L.role[0] + ' est=' + (m.est_kbit || 0) + ' ' + (L.slots || []).filter(function (x) { return x.class !== 'audio'; }).map(function (x) {
+            return x.class[0] + x.i + ':' + (x.paused ? 'p' : (x.layer || '-') + (x.tid != null ? x.tid : '')) + (x.peer ? '@' + String(x.peer).slice(0, 4) : '');
+          }).join(' ');
+          if (lay !== L.layLast) { L.layLast = lay; diagEv(R, 'layers', lay); }
+        }
+      }
       if (m.t !== 'pong' && m.t !== 'layout') hornLog(R.horn, conn, m.t + (m.state ? ':' + m.state : '') + (m.why ? ':' + m.why : ''));
       if ((m.t === 'hello' || m.t === 'state') && m.state) {
         conn.state = m.state;
@@ -3343,6 +3434,7 @@
     if (!H.sw) H.sw = new H.L.Switcher({ node: conn.node, path: conn.path, now: now });
     else H.sw.moved(now, conn.node, conn.path, why);
     if (prev) H.switches.push({ t: now, from: prev.node, to: conn.node, why: why, path: conn.path, fromPath: prev.path });
+    if (prev) diagEv(R, prev.node === conn.node ? 'path' : 'switch', prev.node + '/' + prev.path + '>' + conn.node + '/' + conn.path + ' ' + why);
     if (prev && !H.arT) H.arT = setInterval(function () {   // waehrend des Wechsels: Ton alle 100 ms umhaengen
       if (!live(R) || !R.horn || !H.olds.length) { clearInterval(H.arT); H.arT = null; if (live(R) && R.horn) hornAudioRoute(R); return; }
       hornAudioRoute(R);
@@ -3523,13 +3615,21 @@
           if (s.type === 'inbound-rtp') { lost += s.packetsLost || 0; recv += s.packetsReceived || 0; if (s.kind === 'video') fz += s.freezeCount || 0; }
         });
       });
-      var p = conn.q5 || { lost: lost, recv: recv, fz: fz, t: Date.now() };
-      var dl = lost - p.lost, dr = recv - p.recv, loss = dl + dr > 0 ? Math.max(0, dl) / (dl + dr) : 0;
-      var mins = Math.max(1 / 60, (Date.now() - p.t) / 60000), fzm = (fz - p.fz) / mins;
-      conn.q5 = { lost: lost, recv: recv, fz: fz, t: Date.now() };
+      var now = Date.now(), p = conn.q5 || { lost: lost, recv: recv, fz: fz, t: now };
+      var dl = lost - p.lost, dr = recv - p.recv, loss = dl + dr > 0 ? Math.max(0, dl) / (dl + dr) : 0;   // 3 s: UDP-Regel unten
+      conn.q5 = { lost: lost, recv: recv, fz: fz, t: now };
       if (rtt == null && conn.rtts.length) rtt = H.L.median(conn.rtts);
-      conn.net = { rtt: rtt == null ? null : Math.round(rtt), loss: Math.round(loss * 1000) / 1000, freezes: Math.round(fzm * 10) / 10 };
-      conn.q = H.L.quality(conn.net);
+      // Analyse 1.11.: Anzeige ueber 30 s (bzw. die bisherige Dauer) mit Hysterese - ein einzelner Freeze im 3-s-Fenster
+      // waren 20/min und damit sofort Rot; Schwellen unveraendert (SagaHorn.quality)
+      if (!conn.qw) conn.qw = new H.L.QualityWin(30000);
+      var q0 = conn.q;
+      conn.q = conn.qw.add(now, { rtt: rtt, lost: Math.max(0, dl), recv: Math.max(0, dr), fz: Math.max(0, fz - p.fz), dt: now - p.t });
+      conn.net = conn.qw.net || { rtt: rtt == null ? null : Math.round(rtt), loss: 0, freezes: 0 };
+      if (conn === H.cur) {
+        diagMeta(R, 'horn', conn.path === 'turn' ? 'tls' : conn.path === 'udp' ? 'udp' : conn.path === 'tcp' ? 'tcp' : '?', conn.node);
+        if (q0 && q0 !== conn.q) diagEv(R, 'quality', q0 + '>' + conn.q + ' rtt=' + conn.net.rtt + ' loss=' + conn.net.loss + ' fz/min=' + conn.net.freezes + ' win=' + conn.net.win + 's');
+        all.forEach(function (st) { diagRep(R, st, 'v'); });
+      }
       if (conn === H.cur && !H.switching) {
         var udpOk = conn.path !== 'udp' && conn.cand.udp && (H.meas[conn.node] || {}).udp != null;
         var x = H.sw.udp(Date.now(), loss, udpOk);
@@ -3847,7 +3947,9 @@
       var qt = q_ === 'good' ? T('gute Verbindung') : q_ === 'mid' ? T('mittlere Verbindung') : T('schwache Verbindung');
       var port = '443'; try { port = new URL(cur.url).port || '443'; } catch (e) { /* ohne Adresse: Standard */ }   // tatsaechlicher Port des Knotens
       pth.title = T('Weg zum Knoten {node}: {path}', { node: cur.node, path: cur.path === 'udp' ? T('UDP (schnellster Weg)') : cur.path === 'turn' ? T('TLS über Port {port} (Rückfall)', { port: port }) : T('TCP über Port {port}', { port: port }) })
-        + ' · ' + qt + (net.rtt != null ? ' · RTT ' + net.rtt + ' ms' : '') + (net.loss ? ' · ' + T('Verlust {p} %', { p: Math.round(net.loss * 1000) / 10 }) : '');
+        + ' · ' + T('Empfangsqualität') + ': ' + qt + (net.win ? ' (' + T('über {s} s', { s: net.win }) + ')' : '')
+        + (net.rtt != null ? ' · RTT ' + net.rtt + ' ms' : '') + (net.loss ? ' · ' + T('Verlust {p} %', { p: Math.round(net.loss * 1000) / 10 }) : '')
+        + (net.freezes ? ' · ' + T('Standbilder {n}/min', { n: net.freezes }) : '');
       pth.setAttribute('aria-label', pth.title);
       i.appendChild(pth);
       if (H.next || H.olds.length) i.appendChild(el('span', 'cl-path cl-hmove', T('wechselt den Knoten …')));
@@ -4096,6 +4198,7 @@
   }, 3000);
   window.addEventListener('beforeunload', function (e) { if (C && C.ready && !C.done) { e.preventDefault(); e.returnValue = ''; } });
   window.addEventListener('pagehide', function () {
+    if (C && !C.done) diagFlush(C, true, true);
     if (C && C.id && !C.done) api('POST', '/api/calls/' + C.id + '/end', { reason: 'hangup', connected: anyConn(C), device: bridge() ? myDev().id : undefined }).catch(function () {});
   });
 
@@ -4289,7 +4392,7 @@
              meet: R.meshOn && R.mt ? Object.assign({ pin: R.mt.pin, stageWho: R.mt.pick && R.mt.pick.cur, idle: R.ui ? R.ui.w.classList.contains('idle') : false,
                els: Object.keys(R.mt.els).map(function (k) { var E = R.mt.els[k]; return { id: k, kind: E.t.kind, me: !!E.t.me, video: E.box.classList.contains('has-video'), track: !!E.track, label: E.box.getAttribute('aria-label') }; }) }, R.mt.view) : null,
              idle: R.ui ? R.ui.w.classList.contains('idle') : false,
-             speaker: R.spk || null, since: R.since || 0, legs: (R.legs || []).map(function (x) { return x.device; }),
+             speaker: R.spk || null, since: R.since || 0, legs: (R.legs || []).map(function (x) { return x.device; }), diag: diagSnap(R),
              links: links(R).map(function (L) {
                var E = els(L);
                return { device: L.peerDevice, me: !!(L.peer && L.peer.me), name: (L.peer && L.peer.name) || '', connected: L.connected, established: L.established,
@@ -4311,7 +4414,7 @@
              csrc: cur ? cur.csrc : {}, mine: cur && cur.mine, key_n: H.key ? H.key.n : null, known: Object.keys(H.known), legs: legs, sent: H.sent || 0,
              hp: (R.legs || []).reduce(function (o, x) { var r = cur ? hornRef(x, cur) : x.hp; if (r) o[x.device] = r; return o; }, {}),
              conns: hornConns(R).map(function (c) { return { key: c.key, node: c.node, path: c.path, cur: c === cur, up: c.up, rx: c.rx, peers: Object.keys(c.peers).length, legs: legsOf(c) }; }),
-             switches: H.switches, switching: !!H.switching, meas: H.meas, ranked: H.ranked || null, note: H.note, view: H.view, net: cur && cur.net, q: cur && cur.q,
+             diag: diagSnap(R), switches: H.switches, switching: !!H.switching, meas: H.meas, ranked: H.ranked || null, note: H.note, view: H.view, net: cur && cur.net, q: cur && cur.q,
              runes: H.runes, host: hornHost(R), screen: !!R.screen, spk: H.spk || null, speaking: Object.keys(H.speaking), levels: H.levels || {}, lvSeen: !!H.lvSeen, errs: H.errs || [], bad: H.bad, log: H.log || [],
              tiles: Object.keys(H.tiles).map(function (d) { var x = H.tiles[d]; return { dev: d, video: !!x.track, live: !!(x.track && x.track.readyState === 'live'), still: x.box.classList.contains('still'),
                                                                                          big: x.box.classList.contains('big'), speaking: x.box.classList.contains('speaking'), muted: x.box.classList.contains('muted') }; }),

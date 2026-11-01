@@ -95,6 +95,44 @@ ok('Sprecheransicht ohne bekannten Sprecher: der erste', H.tiles(['x', 'y'], {},
 // --- Qualitaet, Weg ------------------------------------------------------------------------------------------------
 ok('Qualitaet: gut / mittel / schwach', H.quality({ rtt: 40, loss: 0 }) === 'good' && H.quality({ rtt: 250 }) === 'mid' && H.quality({ rtt: 40, loss: 0.03 }) === 'mid'
    && H.quality({ rtt: 40, freezes: 4 }) === 'bad' && H.quality({ rtt: 500 }) === 'bad' && H.quality(null) === '');
+// --- Empfangsqualitaet ueber 30 s mit Hysterese (Analyse 1.11.) ------------------------------------------------------
+{
+  const good = { rtt: 40, lost: 0, recv: 300, fz: 0, dt: 3000 };
+  let W = new H.QualityWin(30000), t = 0, q;
+  for (let i = 0; i < 12; i++) { t += 3000; q = W.add(t, good); }
+  ok('Fenster: 36 s gut -> good, Fenster 30 s', q === 'good' && W.net.win === 30, W.net);
+  t += 3000; q = W.add(t, Object.assign({}, good, { fz: 1 }));
+  ok(`ein Freeze in 30 s (2/min): Messung mid, aber erst eine -> bleibt good (${q}, ${W.net.freezes}/min)`, q === 'good' && W.net.freezes === 2, W.net);
+  t += 3000; q = W.add(t, good);
+  ok(`zweite Messung mit dem Freeze im Fenster: gelb (${q})`, q === 'mid', W.net);
+  t += 3000; q = W.add(t, Object.assign({}, good, { fz: 1 }));
+  ok(`zwei Freezes in 30 s (4/min): erste schlechte Messung -> noch gelb (${q})`, q === 'mid' && W.net.freezes === 4, W.net);
+  t += 3000; q = W.add(t, good);
+  ok(`zweite schlechte Messung in Folge -> rot (${q})`, q === 'bad', W.net);
+  for (let i = 0; i < 4; i++) { t += 3000; q = W.add(t, good); }
+  ok(`Freezes noch im Fenster (12 s spaeter): rot bleibt (${q}, ${W.net.freezes}/min)`, q === 'bad', W.net);
+  const seq = [];
+  for (let i = 0; i < 6; i++) { t += 3000; seq.push(W.add(t, good)); }
+  ok(`Freezes fallen aus dem Fenster: ueber Gelb zurueck zu Gruen (${seq.join(',')})`, seq.indexOf('mid') >= 0 && seq[seq.length - 1] === 'good'
+     && seq.indexOf('mid') < seq.lastIndexOf('good'), seq);
+  // altes Verhalten: ein Freeze im 3-s-Fenster = 20/min -> sofort rot; jetzt nicht
+  W = new H.QualityWin(30000); t = 0;
+  q = W.add(3000, Object.assign({}, good, { fz: 1 }));
+  ok(`Anrufbeginn: Freeze in den ersten 3 s -> keine Sofort-Roete (${q}; vorher quality() = ${H.quality({ rtt: 40, freezes: 20 })})`, q === 'good', W.net);
+  q = W.add(6000, good);
+  ok(`min(30 s, Dauer): 1 Freeze in 6 s = 10/min -> nach zwei Messungen rot (${q}, ${W.net.freezes})`, q === 'bad' && W.net.freezes === 10 && W.net.win === 6, W.net);
+  // Verlust und RTT ueber das Fenster
+  W = new H.QualityWin(30000); t = 0;
+  for (let i = 0; i < 10; i++) { t += 3000; q = W.add(t, good); }
+  t += 3000; W.add(t, { rtt: 900, lost: 60, recv: 240, fz: 0, dt: 3000 });
+  t += 3000; q = W.add(t, good);
+  ok(`ein kurzer Einbruch (20 % Verlust, RTT 900 ms in 3 s): ueber 30 s 2 % Verlust, RTT-Median 40 -> good (${q})`, q === 'good' && W.net.rtt === 40 && W.net.loss === 0.02, W.net);
+  W = new H.QualityWin(30000); t = 0;
+  for (let i = 0; i < 10; i++) { t += 3000; q = W.add(t, { rtt: 450, lost: 0, recv: 300, fz: 0, dt: 3000 }); }
+  ok(`dauerhaft RTT 450 ms -> rot (${q})`, q === 'bad', W.net);
+  ok('Hysterese: good + (mid, bad) -> mid; bad + (good, mid) -> mid; good + (bad, good) -> good',
+     H.hyst('good', 'mid', 'bad') === 'mid' && H.hyst('bad', 'good', 'mid') === 'mid' && H.hyst('good', 'bad', 'good') === 'good');
+}
 ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.pathName('tcp') === 'TCP' && H.pathName('turn') === 'TLS');
 
 console.log(`\nHORN-LOGIK ${res.filter(Boolean).length}/${res.length}` + (res.every(Boolean) ? ' - ALLES GRUEN' : ' - FEHLER'));
