@@ -28,6 +28,8 @@ if (process.env.SAGA_EDITOR !== 'tiptap') { console.log('nur mit SAGA_EDITOR=tip
     });
     p.patches = 0;
     p.on('request', (r) => { if (r.method() === 'PATCH' && /\/api\/notes\/\d+$/.test(r.url())) p.patches++; });
+    // T5: mit notes.live speichert der Editor per WS-Update (Rahmenart 6) statt PATCH - "ein PATCH" heisst dann "ein Update"
+    p.on('websocket', (ws) => { if (/\/api\/collab/.test(ws.url())) ws.on('framesent', (f) => { if (Buffer.isBuffer(f.payload) && f.payload[0] === 6) p.patches++; }); });
     await p.goto(BASE + '/notes'); await sleep(600);
     p.api = (m, u, b) => p.evaluate(([m, u, b]) => HK.api(m, u, b), [m, u, b]);
     return { ctx, p };
@@ -172,7 +174,7 @@ if (process.env.SAGA_EDITOR !== 'tiptap') { console.log('nur mit SAGA_EDITOR=tip
   await p.dblclick('[data-block-id="t2"] .pm-tbl-rh');
   b = await saved(P1);
   ok('Doppelklick auf den Griff: gleich breit (kein colWidths)', !('colWidths' in find(b, 't2').data), find(b, 't2').data);
-  ok('Speichern -> GET identisch mit Editorstand', (await edSave()) === J(b));
+  { const es = await edSave(); ok('Speichern -> GET identisch mit Editorstand', es === J(b), [es.slice(0, 600), J(b).slice(0, 600)]); }
 
   // =================================================================================================================
   // 3) Code bearbeiten: Tippen, Tab, Enter, dreimal Enter, Sprache, Mermaid-Ansicht
