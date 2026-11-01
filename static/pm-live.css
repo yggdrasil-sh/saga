@@ -1,0 +1,7 @@
+/* Gleichzeitig bearbeiten live (T5, static/pm-live.js): Cursor und Auswahl anderer Personen.
+   Farbe nur ueber Klassen der Palette (hk-c-<farbe> setzt color, hk-bg-<farbe> den Hintergrund) - CSP style-src 'self'. */
+.pm-doc .hk-caret{position:relative;margin-left:-1px;margin-right:-1px;border-left:2px solid currentColor;word-break:normal;pointer-events:none}
+.pm-doc .hk-caret-l{position:absolute;top:-1.35em;left:-2px;padding:0 .3rem;border-radius:4px 4px 4px 0;background:currentColor;white-space:nowrap;
+  font-size:.68rem;line-height:1.35;font-weight:600;user-select:none;opacity:.92}
+.pm-doc .hk-caret-n{color:var(--bg,#fff)}
+.pm-doc .hk-csel{border-radius:2px}

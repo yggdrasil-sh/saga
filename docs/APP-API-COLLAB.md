@@ -191,9 +191,16 @@ Abgestimmt mit dem ProseMirror/Tiptap-Editor (y-prosemirror bzw. `@tiptap/y-tipt
 `saga/collab_model.py`; Prüfsumme `hash` = erste 16 Hex-Zeichen von SHA-256 über die Schema-Beschreibung (Knoten,
 Attribute, Marken) – Clients übernehmen den Wert für ihre Version aus `hello` eines Servers mit derselben Version bzw.
 aus den gemeinsamen Testvektoren. **Jede Änderung an Knoten, Attributen oder Marken ist eine neue Version**; der Server
-verwirft dann alte Zustände und baut sie neu aus dem Seiteninhalt auf (neue `gen`).
+übernimmt dann alte Zustände – enthält ein alter Zustand noch nicht materialisierte Live-Änderungen, werden sie zuerst
+mit dem jetzigen Lesepfad in den Seiteninhalt geschrieben (normaler Speicherpfad, neue Revision) – und baut sie neu aus
+dem Seiteninhalt auf (neue `gen`). Ein alter Zustand, der sich nicht lesen lässt, wird nicht still verworfen, sondern
+unter `STATE_DIR/collab-rescue/` abgelegt (Betreiber).
 
-Versionen: **1** (2.5, CRDT-Server) – **2** (2.5, Tiptap T1): Marke für Inline-Code heißt `icode` statt `code` (ProseMirror erlaubt Knoten und Marke mit gleichem Namen nicht); Zustände der Version 1 werden beim nächsten Öffnen neu gebaut.
+Versionen: **1** (2.5, CRDT-Server) – **2** (2.5, Tiptap T1): Marke für Inline-Code heißt `icode` statt `code` (ProseMirror erlaubt Knoten und Marke mit gleichem Namen nicht); Zustände der Version 1 werden beim nächsten Öffnen neu gebaut (offene Live-Änderungen vorher übernommen, s. o.).
+
+Hinweis für Clients mit y-prosemirror/y-tiptap: neuere Fassungen schreiben bei Strukturänderungen eine zusätzliche
+Wurzel `__tiptap_position_migrations:…` – der Server lehnt sie ab (`reject type`, 5.1). Der Web-Client verhindert das
+(`docs/EDITOR-PM.md` „Live“).
 
 Web-Editor (Tiptap): Schema `static/pm-schema.js`, Adapter `static/pm-adapter.js`, gemeinsame Testvektoren
 `tests/vectors/pm_schema.json` (Block-JSON, ProseMirror-JSON, Y-Struktur) – siehe `docs/EDITOR-PM.md`. Clients anderer

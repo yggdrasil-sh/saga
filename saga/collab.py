@@ -284,8 +284,77 @@ class _Room:
         self.closed = False
 
 
+def _rescue_old(nid):
+    """Im Thread, vor _load_room: gespeicherter Zustand eines ANDEREN Modells bzw. einer anderen Schema-Version mit
+    Live-Aenderungen, die noch nicht in note.body stehen (updated > mat, z. B. Server-Update mitten in einer Sitzung).
+    Diese Aenderungen erst mit dem Lesepfad des jetzigen Modells (versteht die alten Formen, z. B. Marke code -> icode)
+    in Block-JSON zurueckfuehren und ueber den normalen Schreibpfad (pages._note_update, trusted) in note.body
+    uebernehmen - danach baut _load_room den Raum wie bisher aus note.body neu. Laesst sich der alte Zustand nicht lesen,
+    landet er unveraendert als Datei unter STATE_DIR/collab-rescue (nie still verworfen). -> True, wenn uebernommen."""
+    with _db() as c:
+        st = c.execute("SELECT model, schema_ver, gen, state, rev, base, base_title, updated, mat FROM note_crdt WHERE note_id=?",
+                       (nid,)).fetchone()
+        if not st or (st[0] == model.MODEL and st[1] == model.SCHEMA_VER) or not st[7] > st[8]:
+            return False
+        r = c.execute("SELECT uid, body, format, rev, title FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone()
+        if not r or r[2] != "blocks":
+            return False
+        logs = c.execute("SELECT upd, uid FROM note_crdt_log WHERE note_id=? ORDER BY seq", (nid,)).fetchall()
+    owner, body, _, rev, title = r
+    editor = next((x[1] for x in reversed(logs) if x[1]), None) or owner
+    try:
+        d = Doc()
+        d.apply_update(bytes(st[3]))
+        for u in logs:
+            d.apply_update(bytes(u[0]))
+        tmp = _Room(nid, owner)
+        tmp.base = _jl(st[5])
+        with _db() as c:
+            live, live_title = model.read(d, _Resolver(c, owner, tmp.base), _mask_doc(tmp.base))
+            _unmask(c, live)
+            _restore_links(c, tmp, live)
+        from saga import merge, pages
+        from saga.notes import ensure_ids
+        theirs = json.loads(ensure_ids(body, "blocks", nid) or '{"blocks": []}')
+        if rev != st[4] and tmp.base is not None:          # body seit dem letzten Abgleich anders: drei Wege
+            target, _ = merge.merge_doc(tmp.base, live, theirs, None, {"by": "", "name": ""}, time.time())
+            new_title = merge.merge_title(st[6] or "", live_title, title or "")[0]
+        else:
+            target, new_title = live, live_title
+        clean, _ = pages.clean_blocks(json.dumps(target, ensure_ascii=False))
+        b = {"body": clean, "format": "blocks", "rev": rev}
+        if new_title != (title or ""):
+            b["title"] = new_title
+        if json.loads(clean)["blocks"] != theirs["blocks"] or "title" in b:
+            try:
+                resp = pages._note_update(owner, nid, b, origin="collab", editor=editor, trusted=True)
+            except pages._Reply as rp:
+                resp = rp.resp
+            if getattr(resp, "status_code", 500) != 200:
+                raise ValueError(f"Speichern {getattr(resp, 'status_code', '?')}")
+        print(f"collab: Seite {nid}: Live-Aenderungen aus Zustand {st[0]}/{st[1]} uebernommen", flush=True)
+        return True
+    except Exception as ex:  # noqa: BLE001 - nicht lesbar: Zustand als Datei sichern statt verwerfen
+        import os
+        from saga.core import STATE_DIR
+        p = os.path.join(STATE_DIR, "collab-rescue")
+        try:
+            os.makedirs(p, mode=0o700, exist_ok=True)
+            fn = os.path.join(p, f"{nid}-{st[2]}-{int(time.time())}.bin")
+            with open(fn, "wb") as f:
+                f.write(_vb(bytes(st[3])))              # varuint-Laenge + Bytes: Zustand, dann je Log-Eintrag
+                for u in logs:
+                    f.write(_vb(bytes(u[0])))
+        except OSError:
+            fn = "-"
+        print(f"collab: Seite {nid}: alter Zustand {st[0]}/{st[1]} nicht uebernommen ({type(ex).__name__}: {ex}), "
+              f"gesichert: {fn}", flush=True)
+        return False
+
+
 def _load_room(nid):
     """Im Thread: Raum aus note_crdt laden bzw. aus note.body neu aufbauen. -> _Room oder None (keine Block-Seite)."""
+    _rescue_old(nid)
     with _db() as c, c:
         r = c.execute("SELECT uid, body, format, rev, title FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone()
         if not r or r[2] != "blocks":
@@ -398,9 +467,20 @@ def _read_body(c, room, doc):
         raise Rejected("size") from None
     except ValueError as ex:
         raise Rejected("invalid", str(ex)) from None
-    if json.loads(body)["blocks"] != json.loads(raw)["blocks"]:
+    if _no_stale(json.loads(body)["blocks"]) != _no_stale(json.loads(raw)["blocks"]):
         raise Rejected("sanitize")
     return body, title
+
+
+def _no_stale(x):
+    """render.stale (Mathe/Mermaid) setzt allein clean_blocks aus dem Quelltext-Hash - kein Unterschied fuer sanitize
+    (sonst lehnte der Server jedes Bearbeiten einer Formel mit vorhandenem Vorschaubild ab)."""
+    if isinstance(x, list):
+        return [_no_stale(v) for v in x]
+    if isinstance(x, dict):
+        return {k: ({a: b for a, b in v.items() if a != "stale"} if k == "render" and isinstance(v, dict) else _no_stale(v))
+                for k, v in x.items()}
+    return x
 
 
 def _server_fields(doc):

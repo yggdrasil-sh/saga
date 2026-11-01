@@ -12,7 +12,7 @@ Uebergroesse, unbekannter Knotentyp, fremde client_id, Luecke); nur lesen (Rolle
 Rechte-Entzug waehrend der Sitzung (bye); Titel-Leck (Verweis auf Seite ohne Zugriff: kein Titel im Zustand);
 JSON-Schreiber waehrend Live (App-PATCH ohne merge, PATCH mit merge, Version wiederherstellen, blocks/move) kommen als
 Update bei allen an; Verdichtung; Materialisierung (rev+1, note.saved). Wegwerf-Seiten; raeumt auf."""
-import base64, http.client, json, os, random, subprocess, sys, time, urllib.parse
+import base64, http.client, json, os, random, secrets, subprocess, sys, time, urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "tests"))
@@ -381,6 +381,68 @@ try:
        st == 200 and wait_for(lambda: all(same(c.blocks(jn)[0]["blocks"], body_of(jn)[0]) for c in (j1, j2)))
        and len(body_of(jn)[0]) == 2)
     j1.close(); j2.close()
+
+    # --- Alter Zustand (anderes Schema) mit nicht uebernommenen Live-Aenderungen (T5 Schritt 0) ----------------------------
+    import pycrdt
+    on = page([P("a", "Alt <code class=\"inline-code\">x</code>"), P("b", "Zwei")], "Altschema")
+    st0, d0 = body_of(on)
+    od = Doc(); od.apply_update(M.build({"blocks": st0}, "Altschema"))
+    with od.transaction():                            # so sah ein Schema-1-Zustand aus: meta 1, Marke "code"
+        od.get("meta", type=pycrdt.Map)["schema_ver"] = 1
+        text_of(od, 0).format(4, 5, {"icode": None, "code": {}})
+    text_of(od, 1).insert(4, " live")               # Live-Aenderung im Zustand selbst
+    sv2 = od.get_state()
+    text_of(od, 0).insert(0, "Neu: ")                 # ... und eine im Log
+    upd_log = od.get_update(sv2)                     # (steht auch im Zustand - doppelt anwenden ist ein Leerlauf)
+    now_ = time.time()
+    with connect() as c, c:
+        c.execute("INSERT INTO note_crdt (note_id, model, schema_ver, gen, state, sv, rev, base, base_title, updated, mat, used, owners) "
+                  "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (on, M.MODEL, 1, "altgen", od.get_update(), od.get_state(), d0["rev"], json.dumps({"blocks": st0}), "Altschema",
+                   now_, 0, now_, "{}"))
+        c.execute("INSERT INTO note_crdt_log (note_id, seq, upd, uid, at) VALUES (?,?,?,?,?)", (on, 1, upd_log, A, now_))
+    ro_ = client(A); ho, _ = subscribe(ro_, on)
+    want_ = ["Neu: Alt <code class=\"inline-code\">x</code>", "Zwei live"]
+    ok("Altschema mit Live-Aenderungen: neuer Raum enthaelt sie (statt Neubau aus altem body)",
+       ho and ho["gen"] != "altgen" and [x["data"]["text"] for x in ro_.blocks(on)[0]["blocks"]] == want_)
+    bo, do_ = body_of(on)
+    ok(f"... und note.body ueber den Schreibpfad (rev {d0['rev']} -> {do_['rev']})",
+       [x["data"]["text"] for x in bo] == want_ and do_["rev"] > d0["rev"])
+    with connect() as c:
+        stn = c.execute("SELECT schema_ver, gen FROM note_crdt WHERE note_id=?", (on,)).fetchone()
+    ok(f"... Zustand neu gebaut mit Schema {M.SCHEMA_VER} ({stn})", stn and stn[0] == M.SCHEMA_VER)
+    ro_.close()
+    # anderes Schema OHNE offene Aenderungen (updated <= mat): einfacher Neubau aus body, body bleibt
+    on2 = page([P("a", "Ruhig")], "Altschema2")
+    st2, d2 = body_of(on2)
+    o2 = Doc(); o2.apply_update(M.build({"blocks": st2}, "Altschema2"))
+    text_of(o2, 0).insert(0, "VERALTET ")
+    with connect() as c, c:
+        c.execute("INSERT INTO note_crdt (note_id, model, schema_ver, gen, state, sv, rev, base, base_title, updated, mat, used, owners) "
+                  "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (on2, M.MODEL, 1, "altgen2", o2.get_update(), o2.get_state(), d2["rev"], json.dumps({"blocks": st2}), "Altschema2",
+                   now_ - 10, now_, now_, "{}"))
+    r2 = client(A); h2_, _ = subscribe(r2, on2)
+    ok("Altschema ohne offene Aenderungen: Neubau aus note.body",
+       [x["data"]["text"] for x in r2.blocks(on2)[0]["blocks"]] == ["Ruhig"] and body_of(on2)[1]["rev"] == d2["rev"])
+    r2.close()
+
+    # --- Formel mit Vorschaubild live bearbeiten: render.stale setzt nur clean_blocks - kein reject sanitize ------------
+    fid = secrets.token_hex(12)
+    with connect() as c, c:
+        c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
+                  (fid, A, "formel.png", "image/png", 10, 1, time.time()))
+    from saga.pages import src_hash
+    mb = {"id": "m1", "type": "math", "data": {"tex": "x^2", "render": {"png": "/files/" + fid, "h": src_hash("x^2"), "w": 40, "hgt": 30}}}
+    nm_ = page([mb, P("b", "Text")], "Formel")
+    fm = client(A); subscribe(fm, nm_)
+    fm.edit(nm_, lambda d: list(frag(d).children)[0].attributes.__setitem__("tex", "x^2+1"), "fm1")
+    m = fm.wait(("ACK", "REJECT"), nm_)
+    ok(f"Formel mit Vorschaubild live geaendert: angenommen ({m and m[0]})", m and m[0] == "ACK")
+    wait_for(lambda: body_of(nm_)[0][0]["data"]["tex"] == "x^2+1")
+    r_ = body_of(nm_)[0][0]["data"]
+    ok("... materialisiert, Vorschaubild als veraltet markiert (stale)", r_["tex"] == "x^2+1" and r_.get("render", {}).get("stale") is True)
+    fm.close()
 
     # --- Konvergenz-Fuzzing ------------------------------------------------------------------------------------------------
     rnd = random.Random(int(os.environ.get("SEED", "11")))

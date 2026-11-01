@@ -835,8 +835,11 @@
     if (!S.cur) return;
     if (S.loading || S.baseId !== S.cur.id) return;
     if (DOC_CB.length) DOC_CB.slice().forEach(function (cb) { try { cb({ ids: ids || [] }); } catch (e) { /* Abonnent kaputt */ } });
+    if (liveBody()) return;                          // T5 live: der Server materialisiert selbst, kein PATCH (Doppelschreiben)
     S.dirtyBody = true; schedule();
   }
+  // T5 (static/pm-live.js): Inhalt ist live gebunden - Speichern des Inhalts per PATCH entfaellt (Titel bleibt PATCH)
+  function liveBody() { return !!(TIPTAP && S.editor && S.editor.live && S.editor.live()); }
   // Echte Eingabe (Tippen, Einfuegen, Ziehen) im Editor, auch in Spalten/Ausklappbar (isolate() stoppt das Ereignis
   // dort - daher Capture am document). Editor.js meldet Aenderungen erst ~400 ms spaeter (gebuendelt); eine Eingabe
   // ist aber sicher eine: sofort "ungespeichert", damit ein schneller Seitenwechsel sie mitspeichert. Waehrend die
@@ -866,6 +869,7 @@
     clearTimeout(S.timer);
     var id = S.cur.id, body = {};
     if (S.dirtyTitle) { body.title = $('pg-title').value; S.dirtyTitle = false; }
+    if (S.dirtyBody && liveBody()) S.dirtyBody = false;
     var wantBody = !!(S.dirtyBody && S.editor), getBody = wantBody ? S.editor.save() : Promise.resolve(null);
     S.dirtyBody = false;
     if (!TIPTAP) state(T('Speichert …'), 'quiet');
@@ -8782,7 +8786,7 @@
     if (window.HKMention) HKMention.setPeople(n.people);
     if (n.title !== S.cur.title && document.activeElement !== $('pg-title')) { S.cur.title = n.title; $('pg-title').value = n.title || ''; var p = byId(id); if (p) p.title = n.title; renderTree(); renderCrumbs(); setLocation(); }
     return applyBody(id, n.body).then(function () {
-      if (by && by.name) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');
+      if (by && by.name && !liveBody()) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');   // live (E9): still
     });
   }
   function blkSig(b) { return JSON.stringify([b.type, b.data, b.tunes || null]); }
