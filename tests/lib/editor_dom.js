@@ -24,7 +24,9 @@ const top = (type) => `${ofType(type)}:not([data-block-id] [data-block-id])`;
 // Blockelement selbst, wenn es keines enthaelt (Tiptap: ein contenteditable fuer das ganze Dokument).
 // Mehrere Felder (Zitat: Text + Quelle): das erste ist der Haupttext; Locator dann mit .first().
 const ED = '[contenteditable]:not(button):not([contenteditable] *)';
-const editIn = (b) => `${b} ${ED}, ${b}:not(:has(${ED}))`;
+// Tiptap: Textfeld = inneres Element des Blocks (.pm-in), sonst das Blockelement (Liste, Karte)
+const editIn = process.env.SAGA_EDITOR === 'tiptap' ? (b) => `${b} > .pm-in:not(:has(> [data-pm-part])), ${b} > .pm-in > [data-pm-part], ${b}:not(:has(> .pm-in))`
+  : (b) => `${b} ${ED}, ${b}:not(:has(${ED}))`;
 const text = (id) => editIn(block(id));
 // Textfelder aller Bloecke eines Typs (paragraph, header, quote ...) in Dokumentreihenfolge; scope: nur in diesem
 // Element (z. B. D.ofType('synced') oder D.block('c1'))

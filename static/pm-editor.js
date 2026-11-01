@@ -376,7 +376,7 @@
               if (!whole && a < e && b > s) bad = true;              // greift ins Innere oder schneidet an
             });
           };
-          if (step.from != null && step.to != null && (step.jsonID === 'addMark' || step.jsonID === 'removeMark' || step.toJSON().stepType === 'addMark' || step.toJSON().stepType === 'removeMark')) hit(step.from, step.to);
+          if (step.from != null && step.to != null && /^(add|remove)Mark$/.test(step.toJSON().stepType)) hit(step.from, step.to);
           step.getMap().forEach(function (a, b) { hit(a, b); });
           if (bad) return false;
         }
@@ -535,7 +535,6 @@
   function listEnter(state, dispatch) {
     var c = liCtx(state); if (!c) return false;
     if (!state.selection.empty) return false;
-    if (c.empty && !c.item.childCount <= 1 && c.nested) return listOutdent(state, dispatch);
     if (c.empty && c.nested) return listOutdent(state, dispatch);
     if (c.empty) return exitList(state, dispatch, c);
     var s = schema(), tr = state.tr, $f = c.$f;
@@ -651,13 +650,23 @@
       addKeyboardShortcuts: function () {
         var self = this;
         function run(fn) { return function () { return fn(self.editor.state, self.editor.view.dispatch); }; }
-        return {
+        // Auswahl aus dem DOM uebernehmen, bevor eine Taste ausgewertet wird (selectionchange kommt nach Klick/Pfeil erst spaeter)
+        function sync(fn) { return function () { var v = self.editor.view; if (v.domObserver && v.domObserver.flush) v.domObserver.flush(); return fn.apply(this, arguments); }; }
+        var keys = {
           'Enter': function () {
             if (menuActive()) return false;                               // Vorschlagsmenue offen: dort waehlen
             if (run(listEnter)()) return true;
             var st = self.editor.state, $f = st.selection.$from, t = $f.parent.type.name;
-            if (t === 'qtext' && st.selection.empty && $f.parentOffset === $f.parent.content.size) {   // Zitat: weiter zur Quelle
-              var tr = st.tr; setSel(tr, $f.after() + 1); self.editor.view.dispatch(tr); return true;
+            if (t === 'qtext') {                      // Zitat: Enter = neue Zeile; Enter in leerer letzter Zeile verlaesst das Zitat
+              var lc = $f.parent.lastChild;
+              if (st.selection.empty && $f.parentOffset === $f.parent.content.size && lc && lc.type.name === 'hardBreak') {
+                var qb = blockAt($f.pos), tr = st.tr; if (!qb) return false;
+                tr.delete($f.pos - 1, $f.pos);
+                var at0 = tr.mapping.map(qb.pos + qb.node.nodeSize);
+                tr.insert(at0, schema().nodes.paragraph.create({ id: newId() })); setSel(tr, at0 + 1);
+                self.editor.view.dispatch(tr.scrollIntoView()); return true;
+              }
+              return self.editor.chain().insertContent({ type: 'hardBreak' }).run();
             }
             if (t === 'qcap' && st.selection.empty) {                     // Quelle: neuer Absatz unter dem Zitat
               var q = blockAt($f.pos); if (!q) return false;
@@ -670,6 +679,15 @@
             }
             return false;
           },
+          'ArrowDown': function () {              // am Ende des letzten Blocks (Zitat, Hinweis, Ueberschrift ...): Absatz darunter
+            var st = self.editor.state, sel = st.selection, $f = sel.$from;
+            if (!sel.empty || !$f.parent.isTextblock || $f.parentOffset !== $f.parent.content.size) return false;
+            var b0 = blockAt($f.pos); if (!b0 || b0.depth !== 1 || b0.node.type.name === 'paragraph' || b0.node.type.name === 'list') return false;
+            if (b0.pos + b0.node.nodeSize !== st.doc.content.size) return false;
+            if (b0.node.type.name === 'quote' && $f.parent.type.name === 'qtext' && b0.node.child(1).content.size) return false;
+            var tr = st.tr, at = st.doc.content.size; tr.insert(at, schema().nodes.paragraph.create({ id: newId() })); setSel(tr, at + 1);
+            self.editor.view.dispatch(tr.scrollIntoView()); return true;
+          },
           'Shift-Enter': function () { return self.editor.chain().focus().insertContent({ type: 'hardBreak' }).run(); },
           'Tab': function () { if (menuActive()) return false; if (run(listIndent)()) return true; return false; },
           'Shift-Tab': function () { if (run(listOutdent)()) return true; return false; },
@@ -681,6 +699,8 @@
           'Mod-b': toggleMark('b'), 'Mod-i': toggleMark('i'), 'Mod-u': toggleMark('u'),
           'Mod-Shift-s': toggleMark('s'), 'Mod-Shift-x': toggleMark('s'), 'Mod-e': toggleMark('icode'), 'Mod-Shift-h': toggleMark('mark')
         };
+        Object.keys(keys).forEach(function (k) { keys[k] = sync(keys[k]); });
+        return keys;
       },
       addInputRules: function () {
         var core2 = P.core, s = this.editor.schema;
@@ -1256,7 +1276,15 @@
       editable: !broken && !(CB && CB.readOnly()), enableContentCheck: false, autofocus: false,
       editorProps: {
         attributes: { 'class': 'pm-doc', 'aria-label': T('Seiteninhalt'), role: 'textbox', 'aria-multiline': 'true' },
-        handleDOMEvents: { contextmenu: contextMenu },
+        handleDOMEvents: { contextmenu: contextMenu,
+          // Enter ohne keydown (Handy-Tastaturen, abgefangene Taste): wie die Taste behandeln statt den DOM teilen zu lassen
+          beforeinput: function (view, e) {
+            if (e.inputType !== 'insertParagraph' && e.inputType !== 'insertLineBreak') return false;
+            e.preventDefault();
+            if (view.domObserver && view.domObserver.flush) view.domObserver.flush();      // Auswahl aus dem DOM (Pfeiltasten) zuerst
+            ed.commands.keyboardShortcut(e.inputType === 'insertParagraph' ? 'Enter' : 'Shift-Enter');
+            return true;
+          } },
         handleClickOn: function (view, pos, node, nodePos, e, direct) {
           if (!direct) return false;
           if (node.type.name === 'date') { e.preventDefault(); dateMenu(nodePos, view.nodeDOM(nodePos)); return true; }
@@ -1458,9 +1486,16 @@
     if (i === cur.length && i === neu.length) return;
     var from = 0, k; for (k = 0; k < i; k++) from += cur[k].nodeSize;
     var to = from; for (k = i; k < cur.length - j2; k++) to += cur[k].nodeSize;
+    // Schreibmarke ueber Block-ID + Abstand halten (der ersetzte Bereich wuerde sie an seinen Rand schieben)
+    var sel = ed.state.selection, hb = blockAt(sel.head), keep = hb && hb.node.attrs.id ? { id: hb.node.attrs.id, off: sel.head - hb.pos } : null;
     var tr = ed.state.tr.replaceWith(from, to, neu.slice(i, neu.length - j2));
     tr.setMeta('addToHistory', false); tr.setMeta('hkRemote', true); tr.setMeta('hkAllow', true);
+    if (keep && sel.empty) {
+      var nx = findId(keep.id, tr.doc);
+      if (nx) { try { tr.setSelection(P.pm.state.TextSelection.near(tr.doc.resolve(Math.min(nx.pos + keep.off, nx.pos + nx.node.nodeSize - 1)))); } catch (e) { /* Auswahl bleibt gemappt */ } }
+    }
     ed.view.dispatch(tr);
+    if (window.HKPmEditor) HKPmEditor.applied = (HKPmEditor.applied || 0) + 1;      // Diagnose/Tests
   }
   function saveNow() {
     if (!ed) return { blocks: [] };

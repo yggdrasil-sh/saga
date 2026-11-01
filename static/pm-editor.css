@@ -2,6 +2,7 @@
    Typografie (E6): 16 px / 1,6, dichte Bloecke, Ueberschriften mit Abstand nach oben. */
 .page-body .pm-holder{min-height:80px}
 .page-body .pm-doc{outline:none;font-size:16px;line-height:1.6;color:var(--fg);padding-bottom:2rem;caret-color:var(--accent)}
+.page-body .pm-holder .pm-doc{padding-bottom:300px}   /* Klickflaeche unter dem letzten Block (wie Editor.js) */
 .page-body .pm-doc p,.page-body .pm-doc h1,.page-body .pm-doc h2,.page-body .pm-doc h3,.page-body .pm-doc h4{margin:0}
 .page-body .pm-blk{position:relative;padding:3px 2px;border-radius:4px}
 .page-body .pm-blk > .pm-in{min-height:1.6em}
