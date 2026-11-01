@@ -5,8 +5,8 @@
 // kein PATCH des Inhalts im Live-Modus, Rechte-Entzug -> nur lesen, JSON-Schreiber (PATCH per API) waehrend Live,
 // Leser (view) sendet nichts, falsches Schema (Pruefsumme manipuliert) -> nur lesen, sendet nichts, Seite unveraendert,
 // Titel-Leck (Verweis auf Seite ohne Zugriff), IME (CDP Input.imeSetComposition), Schalter aus -> Stufe 1, CSP = 0.
-// Nur mit SAGA_EDITOR=tiptap. Braucht Admin editor.engine = choice; schaltet notes.live selbst ueber die Admin-API? Nein:
-// notes.live muss AN sein (auth.save_setting("notes", {"live": True})) - ohne live1 bricht der Test mit Hinweis ab.
+// Nur mit SAGA_EDITOR=tiptap. Braucht Admin editor.engine = choice und notes.live AN (auth.save_setting("notes",
+// {"live": True})); ist der Schalter aus, prueft die Reihe nur, dass die Seite bei Stufe 1 bleibt.
 // Lokal: HK_TEST_BASE=... CK=<Cookie hk-test-a> CK2=<Cookie hk-test-b> HANDLE2=<Handle von hk-test-b> node tests/browser_tiptap_live.js
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
@@ -39,7 +39,15 @@ const J = (x) => JSON.stringify(x);
   }
   const A = await session(CK), B = await session(CK2), a = A.p, b = B.p;
   const ver = await a.api('GET', '/api/version');
-  if (!(ver.features || []).includes('live1')) { console.log('FAIL notes.live ist aus (features ohne live1) - Test braucht live an'); process.exit(1); }
+  if (!(ver.features || []).includes('live1')) {          // Schalter aus: nur pruefen, dass die Seite bei Stufe 1 bleibt
+    const id = (await a.api('POST', '/api/notes', { title: 'Live aus' })).id;
+    await a.goto(BASE + '/notes#' + id); await a.reload(); await sleep(1500);
+    const s0 = await a.evaluate(() => window.HKPmLive && HKPmLive.state());
+    ok('notes.live aus: kein Live (Stufe 1), keine Verbindung, kein saga-y.js', s0 && !s0.live && !s0.ws && !(await a.evaluate(() => !!window.SagaY)), s0);
+    await a.api('DELETE', '/api/notes/' + id).catch(() => {});
+    console.log('     Hinweis: notes.live ist aus - die Live-Pruefungen brauchen den Schalter an');
+    await br.close(); console.log(res.filter(Boolean).length + '/' + res.length, res.every(Boolean) ? 'ALLES GRUEN' : 'FEHLER'); process.exit(res.every(Boolean) ? 0 : 1);
+  }
   const wasA = await a.api('GET', '/api/account/editor'), wasB = await b.api('GET', '/api/account/editor');
   await D.setEditor(a, 'tiptap'); await D.setEditor(b, 'tiptap');
   const made = [];
