@@ -274,7 +274,7 @@ ok("Schema-Version 2 (icode)", M.SCHEMA_VER == 2 and "icode" in M.MARKS and "cod
 
 # Schluesselreihenfolge von JSON-Attributen (meta, colors, style, extra, data ...): yrs fuehrt Objekte als HashMap, die
 # Reihenfolge beim Lesen wechselt je Prozess (PYTHONHASHSEED/Zufallszustand) - read() muss sie fest machen: mit base wie
-# dort (unveraendert UND geaendert, gleiche Bytes), ohne base sortiert. Je Seed ein eigener Prozess.
+# dort (unveraendert UND geaendert, gleiche Bytes), ohne base feste Reihenfolge (KEY_ORDER). Je Seed ein eigener Prozess.
 _KEYS = r"""
 import json, sys
 sys.path.insert(0, sys.argv[1])
@@ -315,8 +315,12 @@ ok("... und wie base (meta start vor counterType, colors x vor r, neue Schluesse
    and list(_g[1]["data"]) == ["withHeadings", "colWidths", "colors", "content", "zz", "yy"] and list(_g[1]["tunes"]) == ["hkstyle", "zt", "at"]
    and list(_g[1]["tunes"]["hkstyle"]) == ["c", "bg", "al"] and list(_g[2]["data"]) == ["z", "y", "a"] and list(_g[2]["data"]["y"]["m"][0]) == ["q", "p"]
    and list(_g[3]["data"]["blocks"][0]["data"]["meta"]) == ["start", "counterType"] and list(_g[4]["data"]["render"]) == ["png", "w", "h", "hgt"])
-ok("Ohne base: Objekte aus Y sortiert, gleich in allen Prozessen", len({r[2] for r in _runs}) == 1
-   and list(json.loads(_runs[0][2])["blocks"][0]["data"]["meta"]) == ["counterType", "start", "zeta"])
+_n = json.loads(_runs[0][2])["blocks"]
+ok("Ohne base: feste Reihenfolge wie die Web-Erzeuger (start/counterType, c/bg, r/c/x, Zahlen aufsteigend, sonst sortiert)",
+   len({r[2] for r in _runs}) == 1 and list(_n[0]["data"]["meta"]) == ["start", "counterType", "zeta"]
+   and list(_n[0]["data"]["meta"]["zeta"]) == ["a", "b", "q"] and list(_n[1]["tunes"]["hkstyle"]) == ["c", "bg", "al"]
+   and list(_n[1]["data"]["colors"]) == ["r", "x"] and list(_n[1]["data"]["colors"]["r"]) == ["1", "2"]
+   and list(_n[4]["data"]["render"]) == ["png", "h", "w", "hgt"])
 
 print(f"{sum(res)}/{len(res)}", "ALLES GRUEN" if all(res) else "FEHLER")
 sys.exit(0 if all(res) else 1)

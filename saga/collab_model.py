@@ -281,12 +281,29 @@ def _num(v):
     return v
 
 
+# Feste Schluesselreihenfolge fuer Objekte aus Y ohne Vorlage (neue Werte), wie die Web-Erzeuger sie schreiben:
+# Ganzzahl-Schluessel aufsteigend (so ordnet JS sie immer), dann tunes.hkstyle {c, bg}, table.colors {r, c, x},
+# list.meta {start, counterType}, Listenpunkt meta {checked}, render {png, h, w, hgt}; sonst nach Codepunkten.
+# Gegenstueck: keyRank() in static/pm-adapter.js.
+KEY_ORDER = ("r", "c", "bg", "x", "start", "counterType", "checked", "png", "h", "w", "hgt")
+_KEY_RANK = {k: i for i, k in enumerate(KEY_ORDER)}
+_INDEX = re.compile(r"0|[1-9][0-9]*")
+
+
+def _key_rank(k):
+    if _INDEX.fullmatch(k) and int(k) < 2 ** 32 - 1:
+        return (0, int(k), "")
+    if k in _KEY_RANK:
+        return (1, _KEY_RANK[k], "")
+    return (2, 0, k)
+
+
 def _ynum(v):
-    """Wert aus Y (Attribut, Marken-Attribute): wie _num, Objekt-Schluessel sortiert. yrs fuehrt JSON-Objekte als
-    HashMap - die Reihenfolge beim Lesen (und in den Update-Bytes von build/write) wechselt je Prozess. Sortiert ist sie
-    fest; die Reihenfolge des gespeicherten Stands stellt danach _like() wieder her."""
+    """Wert aus Y (Attribut, Marken-Attribute): wie _num, Objekt-Schluessel in fester Reihenfolge (_key_rank). yrs
+    fuehrt JSON-Objekte als HashMap - die Reihenfolge beim Lesen (und in den Update-Bytes von build/write) wechselt je
+    Prozess. Die Reihenfolge des gespeicherten Stands stellt danach _like() wieder her."""
     if isinstance(v, dict):
-        return {k: _ynum(v[k]) for k in sorted(v)}
+        return {k: _ynum(v[k]) for k in sorted(v, key=_key_rank)}
     if isinstance(v, list):
         return [_ynum(x) for x in v]
     return _num(v)
@@ -842,7 +859,7 @@ def read_pm(doc):
 def read(doc, resolve=None, base=None):
     """Y.Doc -> (Block-Dokument {"blocks": [...]}, Titel). base: zuletzt gespeichertes Block-Dokument - Bloecke, die
     unveraendert sind (gleiche Normalform), kommen byte-gleich aus base (WeakMap-Durchreichung wie im Web-Adapter);
-    geaenderte behalten die Schluesselreihenfolge aus base (_like). Ohne base: Objekte aus Y-Attributen sortiert."""
+    geaenderte behalten die Schluesselreihenfolge aus base (_like). Ohne base: feste Reihenfolge (_key_rank)."""
     pm = read_pm(doc)
     out = pm_to_doc(pm, resolve)
     if base:

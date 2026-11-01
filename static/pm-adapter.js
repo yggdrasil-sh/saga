@@ -56,18 +56,28 @@
     return JSON.stringify(v === undefined ? null : v);
   }
   // Live (Y-Zustand): JSON-Objekte in Attributen kommen in der Reihenfolge der Update-Bytes - schreibt sie der Server
-  // (yrs: HashMap), wechselt sie je Prozess. Wie collab_model._ynum/_like: Attributwerte sortiert (Python-Ordnung nach
-  // Codepunkten), danach Reihenfolge des geladenen Stands (ctx.like = blockIds(...)): gemeinsame Schluessel wie dort, neue dahinter.
+  // (yrs: HashMap), wechselt sie je Prozess. Wie collab_model._ynum/_like: Attributwerte in fester
+  // Reihenfolge (keyCmp), danach Reihenfolge des geladenen Stands (ctx.like = blockIds(...)): gemeinsame Schluessel wie
+  // dort, neue dahinter. Ganzzahl-Schluessel ordnet JS immer aufsteigend (Basis mit anderer Ordnung: nur Fremd-Clients).
   function pyCmp(a, b) {
     var x = Array.from(a), y = Array.from(b), n = Math.min(x.length, y.length);
     for (var i = 0; i < n; i++) { var d = x[i].codePointAt(0) - y[i].codePointAt(0); if (d) return d; }
     return x.length - y.length;
   }
+  var KEY_ORDER = ['r', 'c', 'bg', 'x', 'start', 'counterType', 'checked', 'png', 'h', 'w', 'hgt'];   // = collab_model.KEY_ORDER
+  function keyCmp(a, b) {                             // = collab_model._key_rank: Ganzzahlen, KEY_ORDER, Codepunkte
+    function rank(k) { return /^(0|[1-9][0-9]*)$/.test(k) && +k < 4294967295 ? 0 : KEY_ORDER.indexOf(k) >= 0 ? 1 : 2; }
+    var ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    if (ra === 0) return +a - +b;
+    if (ra === 1) return KEY_ORDER.indexOf(a) - KEY_ORDER.indexOf(b);
+    return pyCmp(a, b);
+  }
   function sortVals(v) {
     if (isList(v)) return v.map(sortVals);
     if (!isDict(v)) return v;
     var o = {};
-    Object.keys(v).sort(pyCmp).forEach(function (k) { o[k] = sortVals(v[k]); });
+    Object.keys(v).sort(keyCmp).forEach(function (k) { o[k] = sortVals(v[k]); });
     return o;
   }
   function isBlock(v) { return isDict(v) && typeof v.id === 'string' && typeof v.type === 'string'; }
