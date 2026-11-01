@@ -193,6 +193,10 @@ Attribute, Marken) – Clients übernehmen den Wert für ihre Version aus `hello
 aus den gemeinsamen Testvektoren. **Jede Änderung an Knoten, Attributen oder Marken ist eine neue Version**; der Server
 verwirft dann alte Zustände und baut sie neu aus dem Seiteninhalt auf (neue `gen`).
 
+Web-Editor (Tiptap): Schema `static/pm-schema.js`, Adapter `static/pm-adapter.js`, gemeinsame Testvektoren
+`tests/vectors/pm_schema.json` (Block-JSON, ProseMirror-JSON, Y-Struktur) – siehe `docs/EDITOR-PM.md`. Clients anderer
+Plattformen können dieselben Vektoren nutzen.
+
 ### 5.1 Wurzeln
 
 | Name | Yjs-Typ | Inhalt |
@@ -266,7 +270,7 @@ Hinweis: Das Attribut `style` ist am Block immer die **Farbe** (`tunes.hkstyle`)
 | `bg` | `{c}` (Palette) | `<mark class="hk-bg-<c>">` (schließt `mark` aus) |
 | `mark` | `{}` | `<mark class="cdx-marker">` (Gelb) |
 | `b`, `i`, `u`, `s` | `{}` | `<b>`, `<i>`, `<u>`, `<s>` |
-| `code` | `{}` | `<code class="inline-code">` |
+| `icode` | `{}` | `<code class="inline-code">` (Inline-Code; nicht `code` – so heißt der Code-Block-Knoten, und ProseMirror/y-tiptap erlauben keinen Knoten und keine Marke mit gleichem Namen) |
 
 | Inline-Knoten (`Y.XmlElement`, keine Kinder) | Attribute | Inline-HTML |
 |---|---|---|
@@ -278,7 +282,7 @@ Hinweis: Das Attribut `style` ist am Block immer die **Farbe** (`tunes.hkstyle`)
 
 Inline-Knoten dürfen ein Attribut `marks` tragen (Liste `[{type, attrs?}]`, z. B. Farbe um eine Erwähnung).
 **Normalform beim Materialisieren:** Marken in fester Rangfolge von außen nach innen
-`link > color > bg > mark > b > i > u > s > code`; gleiche Marken benachbarter Stücke werden nicht neu geöffnet. Damit
+`link > color > bg > mark > b > i > u > s > icode`; gleiche Marken benachbarter Stücke werden nicht neu geöffnet. Damit
 ergibt derselbe Inhalt immer dasselbe HTML (wie im Web-Adapter, gemeinsame Testvektoren). `strong`/`em` werden zu
 `b`/`i`, `<mark>` ohne Klasse zu `cdx-marker`.
 

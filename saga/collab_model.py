@@ -33,8 +33,9 @@ MAX_DEPTH = 24
 
 PALETTE = ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red")
 # Rangfolge der Marken beim Schreiben (aussen -> innen), KONZEPT-tiptap 2.3.3: so entsteht fuer denselben Inhalt immer
-# dasselbe HTML (Normalform, gleich in Python und JS)
-MARK_RANK = ("link", "color", "bg", "mark", "b", "i", "u", "s", "code")
+# dasselbe HTML (Normalform, gleich in Python und JS). Inline-Code heisst "icode": ProseMirror erlaubt keinen Knoten und
+# keine Marke mit demselben Namen ("code" ist der Code-Block), y-tiptap schreibt beide Namen unveraendert nach Yjs.
+MARK_RANK = ("link", "color", "bg", "mark", "b", "i", "u", "s", "icode")
 MARKS = set(MARK_RANK)
 INLINE_NODES = ("hardBreak", "mention", "date", "math_inline", "page")
 
@@ -129,7 +130,7 @@ class _Inline(HTMLParser):
         elif tag in ("u", "s"):
             mk = (tag, {})
         elif tag == "code":
-            mk = ("code", {})
+            mk = ("icode", {})
         elif tag == "mark":
             c = next((x[6:] for x in cls if x.startswith("hk-bg-") and x[6:] in PALETTE), None)
             mk = ("bg", {"c": c}) if c else ("mark", {})
@@ -216,7 +217,7 @@ def _open(name, attrs):
         return f'<mark class="hk-bg-{_esc(str(attrs.get("c") or ""), quote=True)}">', "</mark>"
     if name == "mark":
         return '<mark class="cdx-marker">', "</mark>"
-    if name == "code":
+    if name == "icode":
         return '<code class="inline-code">', "</code>"
     return f"<{name}>", f"</{name}>"
 
@@ -580,7 +581,9 @@ def pm_to_block(n, resolve=None, depth=0, allow=None):
             if d.get(k) in ("", [], None):
                 d.pop(k, None)
         xd = ex.get("data") if isinstance(ex.get("data"), dict) else {}
-        d = {**_ordered(typ, d), **{k: v for k, v in xd.items() if k not in d}}
+        # Felder mit unpassender Form (block_to_pm: "bad") stehen in extra und gewinnen, solange das Feld im Knoten leer
+        # geblieben ist (sonst ginge z. B. text: 5 als "" verloren, Regel 0); wer dort schreibt, ersetzt sie
+        d = {**_ordered(typ, d), **{k: v for k, v in xd.items() if k not in d or d[k] in ("", [])}}
     out["data"] = d
     tn = {}
     if a.get("style") is not None:
@@ -666,7 +669,8 @@ def _put_node(parent, n, index):
 
 def _mark_name(k):
     m = _HASHED_MARK.fullmatch(k)
-    return m.group(1) if m else k
+    k = m.group(1) if m else k
+    return "icode" if k == "code" else k       # Zustaende vor der Umbenennung (Marke hiess wie der Code-Block)
 
 
 def _y_inline(t):
@@ -703,7 +707,7 @@ def y_to_pm(el, depth=0):
     if marks is not None:
         if not isinstance(marks, list):
             raise ModelError("marks")
-        n["marks"] = marks
+        n["marks"] = [dict(x, type="icode") if isinstance(x, dict) and x.get("type") == "code" else x for x in marks]
     content = []
     for ch in el.children:
         if isinstance(ch, XmlText):

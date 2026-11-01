@@ -23,6 +23,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Neue CI-Prüfung `tools/check-vendor-licenses.sh`: erlaubte Lizenzen, Sperrliste (Pro-/kommerzielle Pakete),
   Neubau mit SHA-256-Vergleich, Lizenzdatei je Paket; Grundprüfung der übrigen Vendor-Ordner.
 
+### Intern (2.5, Tiptap-Umbau T1: Saga-Schema v1 für den Web-Editor)
+- `static/pm-schema.js` (Tiptap-Erweiterungen) und `static/pm-adapter.js` (Block-JSON ⇄ ProseMirror, Browser und Node,
+  unveränderte Blöcke byte-gleich) nach dem Server-Modell; gemeinsame Vektoren `tests/vectors/pm_schema.json` mit den
+  Prüfern `tools/pm_vectors.mjs`, `tests/pm_vectors.py` und dem y-tiptap-Gegentest `tools/pm_ytest.mjs`
+  (`docs/EDITOR-PM.md`). Noch ohne Editor-Oberfläche.
+- Dokumentmodell: Marke für Inline-Code heißt `icode` (ProseMirror erlaubt Knoten und Marke nicht mit gleichem Namen;
+  ältere Zustände mit `code` werden weiter gelesen, neue Schema-Prüfsumme). Bekannte Felder mit falscher Form (z. B.
+  `text: 5`) gehen beim Live-Lesen nicht mehr verloren.
+
 ### Neu (2.5, Chats: Gruppen – Chat-Standard B)
 - **Gruppenbild und Beschreibung** für freie Gruppen – wie der Name verschlüsselt (Steuer-Nachrichten `desc`/`avatar`),
   Bild quadratisch zugeschnitten; der Server merkt sich nur, welche Nachricht aktuell ist.
