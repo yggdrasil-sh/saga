@@ -467,9 +467,20 @@ def _read_body(c, room, doc):
         raise Rejected("size") from None
     except ValueError as ex:
         raise Rejected("invalid", str(ex)) from None
-    if json.loads(body)["blocks"] != json.loads(raw)["blocks"]:
+    if _no_stale(json.loads(body)["blocks"]) != _no_stale(json.loads(raw)["blocks"]):
         raise Rejected("sanitize")
     return body, title
+
+
+def _no_stale(x):
+    """render.stale (Mathe/Mermaid) setzt allein clean_blocks aus dem Quelltext-Hash - kein Unterschied fuer sanitize
+    (sonst lehnte der Server jedes Bearbeiten einer Formel mit vorhandenem Vorschaubild ab)."""
+    if isinstance(x, list):
+        return [_no_stale(v) for v in x]
+    if isinstance(x, dict):
+        return {k: ({a: b for a, b in v.items() if a != "stale"} if k == "render" and isinstance(v, dict) else _no_stale(v))
+                for k, v in x.items()}
+    return x
 
 
 def _server_fields(doc):

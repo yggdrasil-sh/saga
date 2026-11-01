@@ -12,7 +12,7 @@ Uebergroesse, unbekannter Knotentyp, fremde client_id, Luecke); nur lesen (Rolle
 Rechte-Entzug waehrend der Sitzung (bye); Titel-Leck (Verweis auf Seite ohne Zugriff: kein Titel im Zustand);
 JSON-Schreiber waehrend Live (App-PATCH ohne merge, PATCH mit merge, Version wiederherstellen, blocks/move) kommen als
 Update bei allen an; Verdichtung; Materialisierung (rev+1, note.saved). Wegwerf-Seiten; raeumt auf."""
-import base64, http.client, json, os, random, subprocess, sys, time, urllib.parse
+import base64, http.client, json, os, random, secrets, subprocess, sys, time, urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "tests"))
@@ -426,6 +426,23 @@ try:
     ok("Altschema ohne offene Aenderungen: Neubau aus note.body",
        [x["data"]["text"] for x in r2.blocks(on2)[0]["blocks"]] == ["Ruhig"] and body_of(on2)[1]["rev"] == d2["rev"])
     r2.close()
+
+    # --- Formel mit Vorschaubild live bearbeiten: render.stale setzt nur clean_blocks - kein reject sanitize ------------
+    fid = secrets.token_hex(12)
+    with connect() as c, c:
+        c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
+                  (fid, A, "formel.png", "image/png", 10, 1, time.time()))
+    from saga.pages import src_hash
+    mb = {"id": "m1", "type": "math", "data": {"tex": "x^2", "render": {"png": "/files/" + fid, "h": src_hash("x^2"), "w": 40, "hgt": 30}}}
+    nm_ = page([mb, P("b", "Text")], "Formel")
+    fm = client(A); subscribe(fm, nm_)
+    fm.edit(nm_, lambda d: list(frag(d).children)[0].attributes.__setitem__("tex", "x^2+1"), "fm1")
+    m = fm.wait(("ACK", "REJECT"), nm_)
+    ok(f"Formel mit Vorschaubild live geaendert: angenommen ({m and m[0]})", m and m[0] == "ACK")
+    wait_for(lambda: body_of(nm_)[0][0]["data"]["tex"] == "x^2+1")
+    r_ = body_of(nm_)[0][0]["data"]
+    ok("... materialisiert, Vorschaubild als veraltet markiert (stale)", r_["tex"] == "x^2+1" and r_.get("render", {}).get("stale") is True)
+    fm.close()
 
     # --- Konvergenz-Fuzzing ------------------------------------------------------------------------------------------------
     rnd = random.Random(int(os.environ.get("SEED", "11")))
