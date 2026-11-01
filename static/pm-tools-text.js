@@ -514,6 +514,7 @@
       }
       var me = { ro: function () { ta.readOnly = ro(); if (ro()) dom.classList.remove('editing'); } };
       LIVE.push(me);
+      X.paint(dom, node);
       if (!ta.value) dom.classList.add('editing');
       paint(); if (tool.markRender) tool.markRender();
       if (window.HKEd25) HKEd25.scheduleRender(tool);     // fehlendes/veraltetes Vorschaubild nachholen (prueft Lesen selbst)

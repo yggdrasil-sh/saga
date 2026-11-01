@@ -92,15 +92,21 @@ if (process.env.SAGA_EDITOR !== 'tiptap') { console.log('nur mit SAGA_EDITOR=tip
     tk: [...document.querySelectorAll('[data-block-id="c1"] [class^="tk-"]')].map((e) => e.className + ':' + e.textContent),
     lang: document.querySelector('[data-block-id="c1"] select.hk-code-lang').value,
     mmd: document.querySelector('[data-block-id="c2"]').classList.contains('hk-v-preview') }));
+  ok('Ohne Bearbeitung: save() byte-gleich mit GET (fremde Felder, Tabelle ohne colWidths, Code ohne view)', (await edSave()) === J(o1), [(await edSave()).slice(0, 300)]);
+  await sleep(1200);
+  ok('Laden schickt kein PATCH (vor dem Vorschaubild-Nachtrag nach 3 s)', p.patches === 0, p.patches);
   ok('Tabelle, Code, Mathe: keine Karten mehr', !look.cards.length, look.cards);
   ok('Tabelle: Kopfzeile/Kopfspalte, Breiten per CSSOM (30 %/70 %), Farben Zeile/Zelle als Dekoration', look.tbl && look.red === 2 && look.blue && J(look.cols) === J(['30%', '70%']), look);
   ok('Code: Hervorhebung als Dekoration (tk-s/tk-c), Sprache Python', look.tk.includes('tk-s:"a"') && look.tk.includes('tk-c:# c') && look.lang === 'python', look.tk);
   ok('Mermaid ohne view: Vorschau-Ansicht', look.mmd);
   ok('Mathe-Block: KaTeX gerendert', await until(() => p.evaluate(() => !!document.querySelector('[data-block-id="m1"] .katex .mfrac'))));
   ok('Mermaid: Vorschaubild im Rahmen gerendert', await until(() => p.evaluate(() => !!document.querySelector('[data-block-id="c2"] .hk-mmd img.hk-mmd-img')), 15000));
-  ok('Ohne Bearbeitung: save() byte-gleich mit GET (fremde Felder, Tabelle ohne colWidths, Code ohne view)', (await edSave()) === J(o1), [(await edSave()).slice(0, 300)]);
-  await sleep(1200);
-  ok('Laden schickt kein PATCH', p.patches === 0, p.patches);
+  // Fehlendes Vorschaubild (Mermaid, Formel) holt das Web wie bisher nach: nur render kommt dazu, ohne Undo-Schritt
+  ok('Vorschaubild-Nachtrag: c2/m1 bekommen render, sonst alles byte-gleich', await until(async () => {
+    const x = await get(P1), strip = (l) => l.map((b) => (b.id === 'c2' || b.id === 'm1') && b.data.render ? Object.assign({}, b, { data: Object.assign({}, b.data, { render: undefined }) }) : b);
+    return find(x, 'c2').data.render && find(x, 'm1').data.render && J(strip(x)) === J(o1);
+  }, 20000), (await get(P1)).filter((b) => b.id === 'c2' || b.id === 'm1'));
+  const o1r = await get(P1);
 
   // =================================================================================================================
   // 2) Tabelle bearbeiten: Tippen, Tab/Shift-Tab/Pfeile, Enter, Menues, Farben, Breiten, Undo/Redo
@@ -110,10 +116,10 @@ if (process.env.SAGA_EDITOR !== 'tiptap') { console.log('nur mit SAGA_EDITOR=tip
   await p.keyboard.press('Shift+Tab'); ok('Shift+Tab -> vorige Zelle', J(await caretCell()) === J([0, 1]), await caretCell());
   await p.keyboard.press('ArrowDown'); ok('Pfeil runter -> Zelle darunter', J(await caretCell()) === J([1, 1]), await caretCell());
   await p.keyboard.press('ArrowUp'); ok('Pfeil hoch -> Zelle darueber', J(await caretCell()) === J([0, 1]), await caretCell());
-  await p.keyboard.press('Shift+Enter'); await p.keyboard.type('neu', { delay: 10 });
+  await p.keyboard.press('End'); await p.keyboard.press('Shift+Enter'); await p.keyboard.type('neu', { delay: 10 });
   let b = await saved(P1), t2 = find(b, 't2');
   ok('Tabelle: Tippen + Shift+Enter (Zeilenumbruch in der Zelle) gespeichert, nur content', J(t2.data) === J({ content: [['ohne eins', 'alles<br>neu'], ['x', 'y']] }), t2);
-  ok('Andere Bloecke byte-gleich', J(b.filter((x) => x.id !== 't2')) === J(o1.filter((x) => x.id !== 't2')));
+  ok('Andere Bloecke byte-gleich', J(b.filter((x) => x.id !== 't2')) === J(o1r.filter((x) => x.id !== 't2')));
   await cell('t2', 1, 1, true); await p.keyboard.press('Tab'); await p.keyboard.type('z', { delay: 10 });
   b = await saved(P1); t2 = find(b, 't2');
   ok('Tab in der letzten Zelle legt eine Zeile an', t2.data.content.length === 3 && t2.data.content[2][0] === 'z', t2.data.content);
@@ -152,7 +158,7 @@ if (process.env.SAGA_EDITOR !== 'tiptap') { console.log('nur mit SAGA_EDITOR=tip
   // Block-Menue: Kopfzeile/Kopfspalte/volle Breite
   await blockMenu('t2');
   ok('Block-Menue: Titel "Tabelle"', /Tabelle/.test(await p.textContent('.menu:not([hidden]) .pm-blockmenu')));
-  await menuClick('Ohne Kopfzeile'); await blockMenu('t2'); await menuClick('Erste Spalte als Kopf'); await blockMenu('t2'); await menuClick('Volle Breite ein');
+  await menuClick('Mit Kopfzeile'); await blockMenu('t2'); await menuClick('Ohne Kopfzeile'); await blockMenu('t2'); await menuClick('Erste Spalte als Kopf'); await blockMenu('t2'); await menuClick('Volle Breite ein');
   b = await saved(P1); t2 = find(b, 't2');
   ok('Block-Menue: withHeadings false, headCol true, stretched true', t2.data.withHeadings === false && t2.data.headCol === true && t2.data.stretched === true, t2.data);
   // Spaltenbreite ziehen: ein Zug = eine Transaktion, Doppelklick = gleich
@@ -240,21 +246,37 @@ if (process.env.SAGA_EDITOR !== 'tiptap') { console.log('nur mit SAGA_EDITOR=tip
     const B = await session(CK2), q = B.p;
     await D.setEditor(q, 'tiptap');
     await open(P1, q);
+    await until(() => q.evaluate(() => !!document.querySelector('[data-block-id="m1"] textarea')));
     const r0 = await q.evaluate(() => ({ ce: document.querySelector('#pg-editor .pm-doc').getAttribute('contenteditable'), cards: document.querySelectorAll('#pg-editor .pm-card').length,
-      sel: document.querySelector('[data-block-id="c1"] select.hk-code-lang').disabled, ta: document.querySelector('[data-block-id="m1"] textarea').readOnly,
+      sel: document.querySelector('[data-block-id="c1"] select.hk-code-lang').disabled, ta: !!(document.querySelector('[data-block-id="m1"] textarea') || {}).readOnly, ids: HKPages.k.doc.blocks().map((x) => x.id).join(), kind: HKPages.k.doc.kind,
       bar: getComputedStyle(document.querySelector('[data-block-id="t1"] .pm-tbl-bar')).display, katex: !!document.querySelector('[data-block-id="m1"] .katex') }));
     ok('Lesen: nicht bearbeitbar, keine Karten, Sprache gesperrt, Formel nur lesend, keine Tabellen-Leiste', r0.ce === 'false' && !r0.cards && r0.sel && r0.ta && r0.bar === 'none', r0);
     await q.click('[data-block-id="t2"] td'); await q.keyboard.type('xx');
     await q.click('[data-block-id="m1"] .hk-math-view'); await q.keyboard.type('yy');
-    await q.click('[data-block-id="c2"] .hk-code-vb[data-v="code"]', { force: true }); await sleep(1300);
-    ok('Lesen: Tippen/Klicks aendern nichts, kein PATCH', q.patches === 0 && J(find(await get(P1), 'm1')) === J(find(o1, 'm1')), q.patches);
-    ok('Lesen: Mermaid-Ansicht nur lokal umgeschaltet', await q.evaluate(() => document.querySelector('[data-block-id="c2"]').classList.contains('hk-v-code')));
+    ok('Lesen: Code-Kopf (Sprache/Ansicht) ausgeblendet wie im klassischen Editor', await q.evaluate(() => !document.querySelector('[data-block-id="c2"] .hk-code-head').offsetParent));
+    await q.click('[data-block-id="c1"] code'); await q.keyboard.type('zz'); await sleep(1300);
+    const m1b = find(await get(P1), 'm1');
+    await q.click('[data-block-id="t2"] td'); await q.keyboard.type('xx'); await sleep(1300);
+    ok('Lesen: Tippen/Klicks aendern nichts, kein PATCH', q.patches === 0 && J(find(await get(P1), 'm1')) === J(m1b), q.patches);
     ok('Lesen: keine Seitenfehler, CSP = 0', !q.errs.length && !(await q.evaluate(() => window.__csp.length)), [q.errs, await q.evaluate(() => window.__csp)]);
     await B.ctx.close();
   }
 
   // =================================================================================================================
   // 6) Kopieren/Einfuegen einer Tabelle (Block-JSON) und Grenze 20 Spalten
+  // Tabelle ueber "/": 2 x 3, Kopfzeile, Schreibmarke in der ersten Zelle
+  const P4 = await mk('TX Slash ' + RUN, [{ id: 'q0', type: 'paragraph', data: { text: '' } }]);
+  await open(P4);
+  await D.focus(p, 'q0', 'end'); await slash('tabelle', 'Tabelle');
+  ok('Slash "Tabelle": Schreibmarke in Zelle 1/1', J(await caretCell()) === J([0, 0]), await caretCell());
+  await p.keyboard.type('k1', { delay: 10 }); await p.keyboard.press('Tab'); await p.keyboard.type('k2', { delay: 10 });
+  b = await saved(P4);
+  ok('Slash "Tabelle": leerer Absatz ersetzt (ID bleibt), {withHeadings, stretched, content 2x3}', b.length === 1 && b[0].id === 'q0' && b[0].type === 'table' &&
+    J(b[0].data) === J({ withHeadings: true, stretched: false, content: [['k1', 'k2', ''], ['', '', '']] }), b);
+  for (let i = 0; i < 6; i++) { await p.keyboard.press(MOD + '+z'); await sleep(80); }
+  b = await saved(P4);
+  ok('Undo bis vor die Tabelle: wieder ein leerer Absatz', b.length === 1 && b[0].type === 'paragraph', b);
+
   const P3 = await mk('TX Grenze ' + RUN, [{ id: 'g1', type: 'table', data: { withHeadings: false, content: [Array.from({ length: 20 }, (_, i) => String(i))] } }]);
   await open(P3);
   await cell('g1', 0, 19);

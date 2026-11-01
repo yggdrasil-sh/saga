@@ -1267,9 +1267,12 @@
     return true;
   }
   // Klick in die Flaeche unter dem letzten Block: leerer letzter Absatz -> dorthin, sonst neuer Absatz (wie bisher)
-  var art = BOX.closest('article');
+  var art = BOX.closest('article'), artDown = false;
+  // nur wenn auch das Druecken hier war (Klick in ein Vorschlagsmenue schliesst es beim Druecken, das Loslassen landet
+  // dann unter dem letzten Block - T4c: "/Code" als letzter Block bekam sonst einen leeren Absatz dahinter)
+  document.addEventListener('mousedown', function (e) { artDown = !!(art && art.contains(e.target)); }, true);
   if (art) art.addEventListener('mouseup', function (e) {
-    if (!ed || ro() || e.button !== 0 || BOX.hidden) return;
+    if (!ed || ro() || e.button !== 0 || BOX.hidden || !artDown) return;
     if (e.target.closest && e.target.closest('[data-block-id], input, textarea, button, a, select, .backlinks, .db, .props, .page-head, .pm-bubble')) return;
     var dom = ed.view.dom, last = dom.lastElementChild; if (!last || e.clientY < last.getBoundingClientRect().bottom) return;
     var sel = window.getSelection(); if (sel && sel.rangeCount && !sel.isCollapsed) return;
