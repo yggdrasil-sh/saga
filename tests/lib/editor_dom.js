@@ -142,8 +142,13 @@ async function find(page, o = {}) {
   return hit ? hit.id : null;
 }
 // sichtbarer Text eines Blocks (Textfeld) oder null
+// (ohne eingehaengte Bedienknoepfe wie den Kommentar-Knopf .cm-add, contenteditable=false - die sind kein Text)
 async function textOfBlock(page, id) {
-  return page.evaluate((s) => { const e = document.querySelector(s); return e ? e.textContent : null; }, text(id));
+  return page.evaluate((s) => {
+    const e = document.querySelector(s); if (!e) return null;
+    if (!e.querySelector('button[contenteditable="false"]')) return e.textContent;
+    const c = e.cloneNode(true); c.querySelectorAll('button[contenteditable="false"]').forEach((b) => b.remove()); return c.textContent;
+  }, text(id));
 }
 // Blockelement-HTML (innerHTML des Textfelds) oder null
 async function htmlOf(page, id) {
