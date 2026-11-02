@@ -60,6 +60,7 @@ T_HELLO, T_SUB, T_UNSUB, T_SYNC1, T_SYNC2, T_UPDATE, T_AW, T_REJECT, T_BYE, T_ER
 # Schliesscodes der Verbindung
 C_OFF, C_AUTH, C_ORIGIN, C_LIMIT, C_PROTO, C_RESTART = 4403, 4401, 4400, 4429, 4426, 1012
 
+FED = None                              # 2.5 (P3-E7, saga.fed_collab): Seiten anderer Server (negative ID) live - handle/dropped
 _rooms = {}                             # note_id -> _Room
 _conns = {}                             # uid -> [_Conn]
 _S = {"loop": None, "tasks": [], "stats": {"rejected": 0, "accepted": 0, "materialized": 0, "ingested": 0}}
@@ -939,8 +940,10 @@ async def _handle(conn, kind, nid, parts):
         if len(conn.subs) >= SUBS_MAX:
             conn.send(frame(T_ERROR, nid, {"code": "limit"}))
             return
+        if nid < 0 and FED is not None:
+            return await FED.handle(conn, kind, nid, parts)              # Seite eines anderen Servers (collab1)
         if nid <= 0:
-            conn.send(frame(T_ERROR, nid, {"code": "federated"}))      # Seiten anderer Server: Stufe 1 (collab1 folgt)
+            conn.send(frame(T_ERROR, nid, {"code": "federated"}))      # ohne collab1: Stufe 1
             return
         opts = _js(parts[0]) if parts else {}
         chk = await asyncio.to_thread(_sub_check, conn.uid, nid, opts.get("schema"))
@@ -971,6 +974,8 @@ async def _handle(conn, kind, nid, parts):
     if sub is None:
         conn.send(frame(T_ERROR, nid, {"code": "nosub"}))
         return
+    if nid < 0 and FED is not None:
+        return await FED.handle(conn, kind, nid, parts)
     room = _rooms.get(nid)
     if room is None:
         conn.send(frame(T_BYE, nid, {"reason": "gone"}))
@@ -1041,6 +1046,9 @@ def _drop_sub(sub):
     conn = sub.conn
     if conn.subs.get(sub.nid) is sub:
         conn.subs.pop(sub.nid, None)
+    if sub.nid < 0 and FED is not None:
+        FED.dropped(sub)                    # Weiterleitung zum Eigentuemer schliessen
+        return
     room = _rooms.get(sub.nid)
     if room is not None and sub in room.subs:
         room.subs.pop(sub, None)
@@ -1053,12 +1061,19 @@ def _drop_sub(sub):
 
 def _recheck(uid_subs):
     """Im Thread: [(sub, uid, nid)] -> {sub: (rolle, gesperrt) | None}"""
+    from saga.sharing import REMOTE_GROUPS
     out = {}
     with _db() as c:
         accs = {}
         for s, uid, nid in uid_subs:
-            acc = accs.setdefault(uid, Access(c, uid))
-            role = acc.role(nid)
+            groups = getattr(s.conn, "groups", None)        # fremde Person (saga.fed_collab): signiert bestaetigte Gruppen
+            tok = REMOTE_GROUPS.set({uid: groups}) if groups is not None else None
+            try:
+                acc = Access(c, uid) if tok is not None else accs.setdefault(uid, Access(c, uid))
+                role = acc.role(nid)
+            finally:
+                if tok is not None:
+                    REMOTE_GROUPS.reset(tok)
             r = c.execute("SELECT locked FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone()
             out[s] = (role, bool(r[0])) if role and r else None
     return out

@@ -813,6 +813,8 @@ async def settings_post(request: Request):
     auth.save_setting("notes", {**(auth.settings().get("notes") or {}), "live": _on(f, "notes_live")})   # 2.5 (P3 Stufe 2)
     if live_was != _on(f, "notes_live"):
         print(f"admin: {me['username']} Gleichzeitig bearbeiten live {'an' if _on(f, 'notes_live') else 'aus'}", flush=True)
+        from saga import fed_collab                  # 2.5 (P3-E7): Faehigkeit collab1 haengt am Schalter - neu austauschen
+        fed_collab.rehello_all()
     auth.save_setting("api", {"enabled": _on(f, "api_enabled"), "group": _s(f, "api_group", 120).strip(),     # 2.5: oeffentliche API
                               "max_tokens": _n("api_max_tokens", 1, 100, 10), "max_days": _n("api_max_days", 0, 3650, 365),
                               "unlimited": _on(f, "api_unlimited"), "rate": _n("api_rate", 1, 10000, 120),
