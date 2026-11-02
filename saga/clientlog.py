@@ -32,11 +32,12 @@ ITEMS_MAX, EVENTS_MAX = 20, 200
 MSG_MAX, STACK_LINES, STACK_MAX, LINE_MAX = 300, 20, 2000, 200
 NOTE_MAX = 1000
 T_MAX = 7 * 24 * 3600 * 1000                        # ms seit Start der Seite/App
-# Ratenbegrenzung (gleitendes Fenster, nur im Speicher): (Fenster s, hoechstens) je Konto bzw. je IP
+# Ratenbegrenzung (gleitendes Fenster, nur im Speicher): (Fenster s, hoechstens) je Konto bzw. je IP. Die IP-Grenzen sind
+# grosszuegig: hinter einem nicht eingetragenen Reverse Proxy (TRUSTED_PROXIES) teilen sich alle Konten eine Adresse
 RATE_LOG = ((60, 10), (86400, 200))
-RATE_LOG_IP = ((60, 30),)
+RATE_LOG_IP = ((60, 120),)
 RATE_DIAG = ((3600, 5),)
-RATE_DIAG_IP = ((3600, 20),)
+RATE_DIAG_IP = ((3600, 60),)
 APPS = ("web", "ios", "mac", "android", "linux")
 DEVS = ("phone", "tablet", "desktop")
 KINDS = ("error", "unhandled", "crash", "anr", "warn")
@@ -94,8 +95,13 @@ _SPACES = re.compile(r"\s{2,}")
 
 def _route_words(app):
     """Feste Bestandteile aller registrierten Pfade (api, notes, files, ...) - nur diese bleiben in Endpunkt-Mustern stehen."""
-    words = set()
-    for r in getattr(app, "routes", []) or []:
+    words, todo, seen = set(), list(getattr(app, "routes", []) or []), 0
+    while todo and seen < 20000:
+        r = todo.pop()
+        seen += 1
+        sub = getattr(r, "original_router", None)         # eingebundene Router (neuere FastAPI: _IncludedRouter)
+        if sub is not None:
+            todo.extend(getattr(sub, "routes", []) or [])
         for seg in str(getattr(r, "path", "") or "").split("/"):
             if seg and "{" not in seg and re.fullmatch(r"[a-z][a-z0-9_.\-]{0,31}", seg):
                 words.add(seg)
