@@ -16,6 +16,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Galerie (2.5): Vorlage „Home-Dashboard“
+- Neue Startseite für alles: analoge Uhr, Zitat des Tages, Wetter (ohne Ort bzw. bei ausgeschaltetem Wetter mit Hinweis),
+  Schaltflächen für neue Aufgabe/Termin/Tageslog/Projekt/Buch aus Vorlagen, Schnellzugriff als Toggle-Listen in drei
+  Spalten, „Heute fällig“ (relativer Filter, Aufgaben-DB als Aufgabenquelle eingerichtet), „Anstehendes“, Termine mit
+  „noch X Tage“ (Formel), Wochenplaner (Kalender als Woche), Gewohnheiten-Raster und Tageslog-Board nach Wochentag mit
+  Erfolgsquote (Formeln), Projekte mit Fortschrittsbalken (Rollup über die Aufgaben), Leseliste mit Fortschritt,
+  Ressourcen-Galerie und Einkaufsliste. Übersetzt in en/es/ru/th.
+- `tests/galerie.js` schreibt Hinweise direkt an `HK.toast` mit (statt per MutationObserver) – „Vorlage angelegt“ wird
+  nicht mehr zeitabhängig vom Aufgaben-Hinweis überdeckt.
+
 ### Anrufe (2.5): Empfangsqualität beruhigt, Anruf-Diagnose
 - Die Farbe am Weg (UDP/TCP/TLS) im Knoten-Anruf heißt jetzt „Empfangsqualität“ und wird über 30 s statt 3 s bewertet,
   mit Hysterese (zwei Messungen in Folge) – ein einzelnes Standbild macht die Anzeige nicht mehr sofort rot, Gelb ist
