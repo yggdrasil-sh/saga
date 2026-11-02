@@ -919,7 +919,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   konnte eine geteilte Seite mit `</saga-data>` im Codeblock oder Titel Anweisungen an die KI eines anderen Kontos schleusen.
 - **Markdown-Umwandlung linear** (`/api/v1`, MCP, Markdown-/Notion-Import): Links/Wikilinks, Codespannen, Hervorhebungen,
   Überschriften, Codezäune, Tabellen, Listen-Folgezeilen, `<details>`/`<columns>` brauchten bei Eingaben wie `"[" * n`
-  quadratische Zeit (10 000 Zeichen 3,3 s, 40 000 Zeichen 56 s). Jetzt 400 000 Zeichen in höchstens ~0,7 s; das
+  quadratische Zeit (10 000 Zeichen 3,3 s, 40 000 Zeichen 56 s). Jetzt 400 000 Zeichen in unter 1 s; das
   Ergebnis für normales Markdown ist gleich (Vergleich alt/neu über Doku, Test-Fixtures und Zufallseingaben). Neu begrenzt:
   doppelt verschachtelte Klammern im Linktext und `[[` innerhalb eines Wikilinks bleiben Text. Zitate/Callouts verschachteln
   höchstens 24 Ebenen (vorher `RecursionError` bei `"> " * 10000`).
