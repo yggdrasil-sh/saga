@@ -196,6 +196,11 @@ def main():
     ok("E1: andere Adresse bzw. mit X-Forwarded-For -> keine Gateway-Warnung", W.GW_WARN["at"] == 0.0)
     W._ip(_Rq("172.30.0.1"))
     ok("E1: Anfrage vom Docker-Gateway ohne X-Forwarded-For -> Warnung", W.GW_WARN["at"] > 0 and W.GW_WARN["ip"] == "172.30.0.1")
+    W.GW_WARN["at"] = 0.0
+    adm = _Rq("172.30.0.1")
+    adm.scope = {"server": ("0.0.0.0", int(os.environ.get("ADMIN_PORT") or "8081"))}
+    W._ip(adm)
+    ok("E1: Admin-Port (SSH-Tunnel ueber Userland-Proxy) -> keine Gateway-Warnung", W.GW_WARN["at"] == 0.0)
     W._GW["ip"], W.GW_WARN["at"] = "", 0.0
     W._ip(_Rq("172.30.0.1"))
     ok("E1: ausserhalb von Docker (kein Gateway) -> keine Warnung", W.GW_WARN["at"] == 0.0)

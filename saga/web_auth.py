@@ -1,4 +1,5 @@
 """Anmeldung im Browser: Login, SSO, Registrierung, Abmelden und das eigene Konto."""
+import os
 import re
 import secrets
 import time
@@ -72,6 +73,11 @@ def _check_gateway(ip):
     GW_WARN.update(at=now, ip=ip)
 
 
+def _on_admin_port(request):
+    srv = (getattr(request, "scope", None) or {}).get("server") or ()
+    return len(srv) > 1 and str(srv[1]) == (os.environ.get("ADMIN_PORT") or "8081")
+
+
 def _ip(request):
     ip = (request.client.host if request.client else "") or "?"
     # hinter saga-media (2.4) kommt der vom nicht vertrauten Proxy mitgeschickte X-Forwarded-For in X-Saga-Orig-For
@@ -79,7 +85,7 @@ def _ip(request):
     xff = request.headers.get("x-saga-orig-for") if MEDIA_FRONT else request.headers.get("x-forwarded-for")
     if xff:
         _check_proxy(ip, xff)
-    else:
+    elif not _on_admin_port(request):              # Admin-Port per SSH-Tunnel laeuft ueber Dockers Userland-Proxy (Pruefer P1)
         _check_gateway(ip)
     return ip
 

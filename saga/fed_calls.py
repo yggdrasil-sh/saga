@@ -594,7 +594,7 @@ def _remote_ok(c, call, peer, h, who, mem):
     host = FC.split_handle(h)[1]
     if host == peer["host"]:
         return True
-    if mem.get(who) is not None:
+    if mem.get(who) == "ok":                          # nur bestaetigte Mitglieder (Pruefer P7: nicht eingeladen/ausstehend)
         q = F.peer_by(c, "host", host)
         if q is None or q["status"] == "active":
             return True
