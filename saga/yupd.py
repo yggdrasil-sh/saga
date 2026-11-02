@@ -306,16 +306,24 @@ def _resolve(items, keys):
         if len(left) == len(todo):
             break
         todo = left
+    nr = keys.get(("N",), 0)                       # Bereiche insgesamt (zaehlen wie Eintraege fuer KEYS_MAX)
     for k, v in local.items():
-        old = keys.get(k) if k[0] == "R" else None
-        if isinstance(old, list):
-            keys[k] = sorted(set(old + v))[-RANGES_MAX:]
+        if k[0] == "R":
+            old = keys.get(k) or []
+            new = sorted(set(old + v))[-RANGES_MAX:]
+            nr += len(new) - len(old)
+            keys[k] = new
         else:
             keys[k] = v
+    keys[("N",)] = nr
     keys.update(tags)
-    if len(keys) > KEYS_MAX:
+    if len(keys) + nr > KEYS_MAX:
         for k in list(keys)[:KEYS_MAX // 2]:
-            keys.pop(k, None)
+            if k[0] == "R":
+                nr -= len(keys[k])
+            if k != ("N",):
+                keys.pop(k, None)
+        keys[("N",)] = max(0, nr)
     return sum(1 for it in todo if it["ref"] in (2, 5, 8))
 
 

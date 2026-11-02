@@ -73,6 +73,15 @@ dt, dm = time.time() - t, (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - 
 ok(f"240 KB mit {N} langen geloeschten Eintraegen: schnell und klein ({dt:.2f} s, +{dm} MB)", dt < 5 and dm < 300 and len(k) <= yupd.KEYS_MAX + 2)
 
 
+# 3b. Gedaechtnis bleibt begrenzt, auch wenn die Bereiche auf viele Updates/Clients verteilt sind
+k = {}
+for j in range(40):
+    its = b"".join(bytes([0x21]) + _vu(1) + _vs("m") + _vs("k") + _vu(3) for _ in range(8000))
+    yupd.transform(_vu(1) + _vu(8000) + _vu(1000 + j) + _vu(0) + its + b"\x00", lambda v, kk: v, k)
+tot = sum(len(v) if isinstance(v, list) else 1 for v in k.values())
+ok(f"Gedaechtnis ueber 40 Updates begrenzt ({tot} <= KEYS_MAX)", tot <= yupd.KEYS_MAX + 2)
+
+
 # 4. Unlesbares JSON -> ValueError
 def mk(js, ref):
     if ref == 5:
