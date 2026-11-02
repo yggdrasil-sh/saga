@@ -52,6 +52,7 @@ services:
       # TLS-Durchreiche des Reverse Proxys - direkt freigeben, auf dem Host mit DERSELBEN Nummer wie HORN_PORT (der Knoten
       # nennt den Geraeten diesen Port als Kandidaten). Ohne UDP laufen Anrufe ueber TCP/TLS (Admin -> Anrufe zeigt das an).
       # - "${HORN_BIND:-0.0.0.0}:8443:8443/udp"
+      # Hinter einer TLS-Durchreiche auf dem Proxy-Host sysctl net.ipv4.tcp_notsent_lowat=16384 setzen (gjallarhorn/NODE.md)
     volumes:
       - saga-data:/data      # Dateien/Bilder der Seiten, Symbol-Cache
       - ./certs:/certs:ro          # optionale CA-Zertifikate (eigene LDAP-/SSO-/Kalender-Server)

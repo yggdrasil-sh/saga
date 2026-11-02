@@ -135,5 +135,83 @@ ok('Qualitaet: gut / mittel / schwach', H.quality({ rtt: 40, loss: 0 }) === 'goo
 }
 ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.pathName('tcp') === 'TCP' && H.pathName('turn') === 'TLS');
 
+// --- A1: Senderate auf TCP/TLS (Deckel je Weg, Stufe aus der RTT mit Hysterese) -----------------------------------------
+{
+  // Deckel je Weg
+  let P = H.txPlan('tcp', 0, { others: 1, h: 720, sh: 1080 });
+  ok('TCP zu zweit: l bleibt an (Ausweichschicht), m 600 kbit/s, Bildschirm 900 kbit/s 8 fps 1080p',
+     P.cam.l.active && P.cam.m.active && P.cam.m.maxBitrate === 600000 && P.cam.l.maxBitrate === 150000 && P.cam.m.scaleResolutionDownBy === 1
+     && P.screen.maxBitrate === 900000 && P.screen.maxFramerate === 8 && P.screen.scaleResolutionDownBy === 1, P);
+  P = H.txPlan('turn', 0, { others: 1, h: 1080, sh: 1440 });
+  ok('TLS niedriger: m 450 kbit/s bis 540p (1080/540 = 2), Bildschirm 600 kbit/s 5 fps bis 720p (1440/720 = 2)',
+     P.cam.m.maxBitrate === 450000 && P.cam.m.scaleResolutionDownBy === 2 && P.cam.l.maxBitrate === 120000
+     && P.screen.maxBitrate === 600000 && P.screen.maxFramerate === 5 && P.screen.scaleResolutionDownBy === 2, P);
+  P = H.txPlan('udp', 0, { others: 1, rids: ['l', 'm', 'h'] });
+  ok('UDP unveraendert (P03): zu zweit ohne l, keine Deckel, kein Bildschirm-Plan',
+     !P.cam.l.active && P.cam.m.active && P.cam.h.active && P.cam.m.maxBitrate === undefined && P.screen === null, P);
+  P = H.txPlan('udp', 0, { others: 3, rids: ['l', 'm', 'h'] });
+  ok('UDP in der Gruppe: alle Schichten an', P.cam.l.active && P.cam.m.active && P.cam.h.active, P);
+  P = H.txPlan('tcp', 0, { others: 0 });
+  ok('allein: keine Kamera-Schicht (auch TCP)', !P.cam.l.active && !P.cam.m.active, P);
+  P = H.txPlan('turn', 0, { others: 1, share: true });
+  ok('Bildschirm teilen auf TLS: Kamera nur l, m aus', P.cam.l.active && !P.cam.m.active, P);
+  P = H.txPlan('tcp', 2, { others: 4 });
+  ok('Stufe 2: m aus (nur l), Bildschirm 0,4 x 900 = 360 kbit/s bei 3 fps', !P.cam.m.active && P.cam.l.active && P.screen.maxBitrate === 360000 && P.screen.maxFramerate === 3, P);
+  P = H.txPlan('turn', 3, { others: 1, sh: 720 });
+  ok('Stufe 3 (TLS): l 84 kbit/s, Bildschirm 150 kbit/s, 2 fps, 1,5-fach kleiner',
+     P.cam.l.maxBitrate === 84000 && P.screen.maxBitrate === 150000 && P.screen.maxFramerate === 2 && P.screen.scaleResolutionDownBy === 1.5, P);
+  P = H.txPlan('tcp', 1, { others: 1 });
+  ok('Stufe 1: m 360 kbit/s, Bildschirm 5 fps', P.cam.m.active && P.cam.m.maxBitrate === 360000 && P.screen.maxFramerate === 5, P);
+
+  // Regler: Grundwert = kleinste RTT, Stau erst nach 2 Messungen
+  let G = new H.TxGov('turn'), t = 0, ch = null;
+  const feed = (rtt, n, step) => { let last = null; for (let i = 0; i < n; i++) { t += step || 3000; const x = G.add(t, rtt); if (x) last = x; } return last; };
+  feed(160, 5);
+  ok('ruhig bei 160 ms: Stufe 0, Grundwert 160', G.level === 0 && G.base === 160, G);
+  ch = feed(330, 1);
+  ok('eine Messung 330 ms (170 ueber): noch keine Stufe (eine Messung reicht nicht)', ch === null && G.level === 0, G);
+  ch = feed(330, 1);
+  ok('zweite Messung in Folge: Stufe 1 (Ereignis L0>L1 mit rtt/base)', ch && ch.from === 0 && ch.to === 1 && ch.rtt === 330 && ch.base === 160 && G.level === 1, ch);
+  ch = feed(330, 1);
+  ok('weiter Stau, aber < 6 s seit dem Schritt: bleibt Stufe 1', G.level === 1, G);
+  ch = feed(330, 1);
+  ok('nach 6 s weiter Stau: Stufe 2', G.level === 2, G);
+  feed(330, 10);
+  ok('hoechstens Stufe 3', G.level === 3, G);
+  // Jitter um den Grundwert ist kein Stau: 160 -> 260 (100 ms ueber, < 120)
+  let G2 = new H.TxGov('tcp'); t = 0; G = G2;
+  feed(160, 2); feed(260, 6);
+  ok('100 ms ueber dem Grundwert (unter 120 ms): kein Stau', G2.level === 0, G2);
+  // kleine Grundwerte: 20 -> 150 ist 130 ms ueber und > 50 % -> Stau
+  G = new H.TxGov('tcp'); t = 0; feed(20, 2); feed(150, 2);
+  ok('kleiner Grundwert 20 ms, RTT 150 ms: Stau (130 ms und > 50 %)', G.level === 1, G);
+  // Riesen-Stau (Bildschirm ueber TLS, RTT 5 s): sofort
+  G = new H.TxGov('turn'); t = 0; feed(200, 2);
+  ch = feed(5400, 1);
+  ok('RTT 5,4 s: sofort eine Stufe (ohne zweite Messung)', ch && ch.to === 1, ch);
+  // Erholung: erst nach 15 s frei, eine Stufe je 15 s
+  G = new H.TxGov('tcp'); t = 0; feed(100, 2); feed(400, 2);   // Stufe 1
+  ok('Erholung Ausgang: Stufe 1', G.level === 1, G);
+  feed(100, 4);   // 12 s frei
+  ok('12 s frei: noch Stufe 1', G.level === 1, G);
+  feed(100, 2);   // 18 s frei
+  ok('15 s frei: zurueck auf Stufe 0', G.level === 0, G);
+  // Fehlversuch: Stau kurz nach dem Schritt nach oben -> Wartezeit verdoppelt
+  feed(400, 2);
+  ok('Stau 6 s nach dem Schritt nach oben: wieder Stufe 1, Wartezeit 30 s', G.level === 1 && G.upWait === 30000, G);
+  feed(100, 6);   // 18 s
+  ok('nach 18 s frei noch Stufe 1 (Wartezeit 30 s)', G.level === 1, G);
+  feed(100, 5);   // 33 s
+  ok('nach 30 s frei: Stufe 0', G.level === 0, G);
+  // dazwischen (60..120 ms ueber): weder Stau noch frei -> Erholung beginnt neu
+  G = new H.TxGov('tcp'); t = 0; feed(100, 2); feed(400, 2); feed(100, 4); feed(190, 1); feed(100, 4);
+  ok('Zwischenwert setzt die Erholungszeit zurueck (12 s + Zwischenwert + 12 s: noch Stufe 1)', G.level === 1, G);
+  // UDP und fehlende Messungen
+  G = new H.TxGov('udp'); t = 0; feed(100, 2); feed(5000, 4);
+  ok('UDP: Regler aus (GCC regelt), Stufe bleibt 0', G.level === 0, G);
+  G = new H.TxGov('tcp'); t = 0;
+  ok('keine RTT (null, 0, NaN): nichts', G.add(1000, null) === null && G.add(2000, 0) === null && G.add(3000, NaN) === null && G.level === 0);
+}
+
 console.log(`\nHORN-LOGIK ${res.filter(Boolean).length}/${res.length}` + (res.every(Boolean) ? ' - ALLES GRUEN' : ' - FEHLER'));
 process.exit(res.every(Boolean) ? 0 : 1);

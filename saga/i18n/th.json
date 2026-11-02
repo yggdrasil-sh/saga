@@ -1798,6 +1798,7 @@
  "Hilfe": "ช่วยเหลือ",
  "Hilft dem Admin, ein Problem zu finden: Saga schickt die letzten Ereignisse dieses Fensters – Fehlermeldungen, Antwortcodes des Servers, Ansichtswechsel, Verbindungsstatus. Diese automatischen Angaben enthalten keine Inhalte, Titel, Namen oder Adressen. Gespeichert wird nur eine Zeile im Server-Log.": "ช่วยให้ผู้ดูแลระบบค้นหาปัญหา: Saga จะส่งเหตุการณ์ล่าสุดของหน้าต่างนี้ – ข้อความแสดงข้อผิดพลาด รหัสตอบกลับของเซิร์ฟเวอร์ การเปลี่ยนมุมมอง สถานะการเชื่อมต่อ ข้อมูลอัตโนมัติเหล่านี้ไม่มีเนื้อหา ชื่อเรื่อง ชื่อ หรือที่อยู่ บันทึกไว้เพียงหนึ่งบรรทัดในบันทึกของเซิร์ฟเวอร์",
  "Hilft Geräten hinter einem Router, ihre öffentliche Adresse zu finden (mehrere mit Leerzeichen trennen). Datenschutz: Der STUN-Server sieht die IP-Adresse der Anrufenden. Leer = nur Verbindungen im selben Netz bzw. über TURN.": "ช่วยให้อุปกรณ์ที่อยู่หลังเราเตอร์ค้นหาที่อยู่สาธารณะของตน (คั่นหลายรายการด้วยช่องว่าง) ความเป็นส่วนตัว: เซิร์ฟเวอร์ STUN จะเห็นที่อยู่ IP ของผู้โทร เว้นว่าง = เชื่อมต่อได้เฉพาะในเครือข่ายเดียวกันหรือผ่าน TURN",
+ "Hinter einer TLS-Durchreiche staut sich der Bildstrom sonst im Sendepuffer des Proxys: Auf dem Rechner mit dem Proxy net.ipv4.tcp_notsent_lowat=16384 setzen (sysctl).": "หากอยู่หลังการส่งต่อ TLS สตรีมภาพจะค้างในบัฟเฟอร์ส่งของพร็อกซี: ตั้งค่า net.ipv4.tcp_notsent_lowat=16384 (sysctl) บนเครื่องที่รันพร็อกซี",
  "Hintergrund": "พื้นหลัง",
  "Hinweis": "กล่องข้อความเน้น",
  "Hinweis (Callout)": "กล่องข้อความเน้น (Callout)",

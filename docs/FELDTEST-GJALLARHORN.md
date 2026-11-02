@@ -35,6 +35,9 @@ Der Server, in dessen Chat der Anruf beginnt (das **Heim** des Chats), führt ih
   Nummer (`8443:8443/udp`, der Knoten nennt den Geräten seinen lokalen Port), `HORN_UDP` nicht auf `0`. Admin → Anrufe
   zeigt in der Spalte „Weg“, wenn UDP aus oder nicht erreichbar ist; Anrufe laufen dann über TCP/TLS und stocken bei
   Paketverlust eher (TCP-Neuübertragungen kommen als Schübe).
+- **Knoten hinter einer TLS-Durchreiche (Traefik, NetBird, HAProxy):** Auf dem Rechner mit dem Proxy
+  `net.ipv4.tcp_notsent_lowat = 16384` (und `bbr`/`fq`) setzen. Sonst staut sich der Bildstrom im Sendepuffer des
+  Proxys, und der Knoten kann nicht gegensteuern (siehe `gjallarhorn/NODE.md`, „Hinter einer TLS-Durchreiche“).
 - Browser: Chrome/Edge oder Firefox aktuell; Safari geht über den TLS-Weg. Apps folgen mit ihrem 2.5-Release.
 
 ## 2. Einschalten (beide Server)

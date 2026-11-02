@@ -71,6 +71,31 @@ Platzhalter: `horn-1.example.org`.
   Kopferweiterung **playout-delay** (unten).
 - Ton und Bild auf getrennten PeerConnections über TCP (H1).
 
+### Hinter einer TLS-Durchreiche (SNI-Proxy: Traefik `HostSNI`, NetBird, HAProxy `mode tcp`) – A1
+
+H2, H3, der Nachläufer und die TCP-Schätzung wirken nur auf **Sockets, die der Knoten selbst annimmt**
+(`internal/netx/demux.go` `handle` → `Tune`). Hinter einer Durchreiche ist das die Verbindung *vom Proxy*. Die
+Verbindung *zum Gerät* gehört dem Proxy und hat dessen Standard: kein `TCP_NOTSENT_LOWAT`, Sendepuffer per Autotuning
+bis `tcp_wmem`-Maximum (oft 4 MB, bei 600 kbit/s fast eine Minute Stau), meist CUBIC. Folgen (Labor 2.11.): Der Stau
+liegt im Proxy statt im Knoten. Das Alter der Warteschlange bleibt klein, also verwirft der Knoten nichts (H3), und die
+Schätzung bleibt beim Startwert `est=1200`. Der Nachläufer sieht RTT ≈ 0 ohne Wiederholungen und bleibt aus. Beim
+Bildschirmteilen wächst die RTT auf mehrere Sekunden.
+
+Gegenmittel ohne Codeänderung: Auf dem **Proxy-Host** die Voreinstellung für alle Sockets setzen. Der Proxy blockiert
+dann beim Schreiben und liest langsamer vom Knoten. So kommt der Rückstau beim Knoten an, und H3 und die Schätzung
+greifen wieder:
+
+```
+# /etc/sysctl.d/90-saga-horn.conf auf dem Rechner mit dem SNI-Proxy (bzw. dem NetBird-Proxy/VPS)
+net.ipv4.tcp_notsent_lowat = 16384
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+```
+
+Läuft der Proxy auf demselben Host wie der Knoten, reicht dieselbe Datei dort. Die Wirkung (Freezes/min und RTT beim
+Bildschirmteilen über TLS, vorher und nachher) ist bisher nur im Labor messbar. Die Web-Clients deckeln auf TCP/TLS
+zusätzlich selbst (`static/horn.js` `K.TX`/`TxGov`).
+
 ## Einfrieren auf TCP (5G-Messung, G4)
 
 Eine Messung über TURN-TLS/5G mit dem Spiegel ergab 5,45 Einfrieren je Bildplatz und 5 min. Ursache ist

@@ -1798,6 +1798,7 @@
  "Hilfe": "Hilfe",
  "Hilft dem Admin, ein Problem zu finden: Saga schickt die letzten Ereignisse dieses Fensters – Fehlermeldungen, Antwortcodes des Servers, Ansichtswechsel, Verbindungsstatus. Diese automatischen Angaben enthalten keine Inhalte, Titel, Namen oder Adressen. Gespeichert wird nur eine Zeile im Server-Log.": "Hilft dem Admin, ein Problem zu finden: Saga schickt die letzten Ereignisse dieses Fensters – Fehlermeldungen, Antwortcodes des Servers, Ansichtswechsel, Verbindungsstatus. Diese automatischen Angaben enthalten keine Inhalte, Titel, Namen oder Adressen. Gespeichert wird nur eine Zeile im Server-Log.",
  "Hilft Geräten hinter einem Router, ihre öffentliche Adresse zu finden (mehrere mit Leerzeichen trennen). Datenschutz: Der STUN-Server sieht die IP-Adresse der Anrufenden. Leer = nur Verbindungen im selben Netz bzw. über TURN.": "Hilft Geräten hinter einem Router, ihre öffentliche Adresse zu finden (mehrere mit Leerzeichen trennen). Datenschutz: Der STUN-Server sieht die IP-Adresse der Anrufenden. Leer = nur Verbindungen im selben Netz bzw. über TURN.",
+ "Hinter einer TLS-Durchreiche staut sich der Bildstrom sonst im Sendepuffer des Proxys: Auf dem Rechner mit dem Proxy net.ipv4.tcp_notsent_lowat=16384 setzen (sysctl).": "Hinter einer TLS-Durchreiche staut sich der Bildstrom sonst im Sendepuffer des Proxys: Auf dem Rechner mit dem Proxy net.ipv4.tcp_notsent_lowat=16384 setzen (sysctl).",
  "Hintergrund": "Hintergrund",
  "Hinweis": "Hinweis",
  "Hinweis (Callout)": "Hinweis (Callout)",

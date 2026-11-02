@@ -88,7 +88,8 @@
     </table>
     {% if ck.at %}<p class="hk-hint">{{ _("Zuletzt geprüft:") }} <span class="pc-at">{{ ts(ck.at) }}</span></p>{% endif %}
     {% if n.builtin %}<p class="hk-hint">{{ _("Eingebauter Knoten: {name} zeigt per TLS-Durchreiche (SNI) am Reverse Proxy oder per Portfreigabe auf Port {port} des Saga-Containers. Ohne Durchreiche taugt er nur intern.", name=n.name, port=port) }}</p>
-    <p class="hk-hint">{{ _("UDP geht nicht durch die TLS-Durchreiche: Für UDP {uport}/udp am Saga-Container direkt freigeben, mit derselben Portnummer auf dem Host (der Knoten nennt den Geräten diesen Port), und HORN_UDP=1 lassen.", uport=uport) }}</p>{% endif %}
+    <p class="hk-hint">{{ _("UDP geht nicht durch die TLS-Durchreiche: Für UDP {uport}/udp am Saga-Container direkt freigeben, mit derselben Portnummer auf dem Host (der Knoten nennt den Geräten diesen Port), und HORN_UDP=1 lassen.", uport=uport) }}</p>
+    <p class="hk-hint">{{ _("Hinter einer TLS-Durchreiche staut sich der Bildstrom sonst im Sendepuffer des Proxys: Auf dem Rechner mit dem Proxy net.ipv4.tcp_notsent_lowat=16384 setzen (sysctl).") }}</p>{% endif %}
     <p class="hk-hint">{{ _("Beispiele für die Firewall des Knotens:") }}</p>
     <pre class="bk-pre horn-fw">ufw allow {{ port }}/tcp
 ufw allow {{ uport }}/udp

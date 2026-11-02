@@ -1798,6 +1798,7 @@
  "Hilfe": "Справка",
  "Hilft dem Admin, ein Problem zu finden: Saga schickt die letzten Ereignisse dieses Fensters – Fehlermeldungen, Antwortcodes des Servers, Ansichtswechsel, Verbindungsstatus. Diese automatischen Angaben enthalten keine Inhalte, Titel, Namen oder Adressen. Gespeichert wird nur eine Zeile im Server-Log.": "Помогает администратору найти проблему: Saga отправляет последние события этого окна – сообщения об ошибках, коды ответов сервера, смену экранов, состояние соединения. Эти автоматические данные не содержат содержимого, заголовков, имён и адресов. Сохраняется только одна строка в журнале сервера.",
  "Hilft Geräten hinter einem Router, ihre öffentliche Adresse zu finden (mehrere mit Leerzeichen trennen). Datenschutz: Der STUN-Server sieht die IP-Adresse der Anrufenden. Leer = nur Verbindungen im selben Netz bzw. über TURN.": "Помогает устройствам за роутером узнать свой публичный адрес (несколько – через пробел). Конфиденциальность: STUN-сервер видит IP-адреса участников звонка. Пусто = только соединения в одной сети или через TURN.",
+ "Hinter einer TLS-Durchreiche staut sich der Bildstrom sonst im Sendepuffer des Proxys: Auf dem Rechner mit dem Proxy net.ipv4.tcp_notsent_lowat=16384 setzen (sysctl).": "За TLS-пробросом видеопоток иначе копится в буфере отправки прокси: на машине с прокси задайте net.ipv4.tcp_notsent_lowat=16384 (sysctl).",
  "Hintergrund": "фон",
  "Hinweis": "Выноска",
  "Hinweis (Callout)": "Выноска (callout)",

@@ -16,6 +16,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Anrufe über Knoten: weniger Stocken auf TCP/TLS (2.5, Testlabor A1)
+- Web: Auf den Wegen TCP und TLS deckelt der Client die Senderate selbst (Kamera `m` 600 bzw. 450 kbit/s, Bildschirm
+  900 kbit/s/8 fps bzw. 600 kbit/s/5 fps bis 720p). Steigt die RTT der Bild-Leitung deutlich über ihren kleinsten Wert,
+  geht er in bis zu drei Stufen herunter (Hysterese, zurück erst nach 15 s ohne Stau). Die kleine Schicht `l` bleibt auf
+  TCP/TLS auch zu zweit an, damit Kodierer und Knoten bei knapper Rate auf sie ausweichen können; vorher sendete sie 0.
+  Beim Bildschirmteilen über TCP/TLS sendet die Kamera nur `l`. Die Anruf-Diagnose meldet Stufenwechsel als Ereignis `tx`.
+- Admin → Anrufe: Ist UDP am Knoten aus oder nicht erreichbar, steht das in der Spalte „Weg“ mit dem Port, den du
+  freigeben musst. Beim eingebauten Knoten ist das `HORN_PORT`/udp (Standard 8443), direkt und mit gleicher Nummer, nicht
+  über die TLS-Durchreiche. Vorher stand dort fälschlich der Port der Durchreiche.
+- Doku: Hinter einer TLS-Durchreiche (Traefik, NetBird) staut sich der Bildstrom im Sendepuffer des Proxys, und die
+  TCP-Maßnahmen des Knotens greifen nicht (Schätzung bleibt bei `est=1200`). Gegenmittel ist
+  `net.ipv4.tcp_notsent_lowat=16384` auf dem Proxy-Host (`gjallarhorn/NODE.md`, `docs/FELDTEST-GJALLARHORN.md`,
+  Vertragsnotiz für die Apps in `docs/APP-API.md`).
+
 ### Sicherheit (2.5, Web-Client und Live über Servergrenzen)
 - Live mitschreiben über Servergrenzen (`collab1`): Das Heim prüft den Zustand des Eigentümer-Servers jetzt genauso wie
   beim Lesen fremder Seiten (Stufe 1), bevor er an die eigenen Browser geht – Schema, Positivliste für Inline-HTML, Links
