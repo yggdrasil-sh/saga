@@ -98,6 +98,11 @@ _JS_TAIL = re.compile(r"\s+(?:is|are)\s+(?:undefined|null|not\s+(?:a\s+function|
                       r"|\s*(?:\?\.|\[|=[^=])")
 
 
+# Modulwurzeln der Apps (Linux: hlidskjalf.api, gi.repository ...), bleiben in Fehlertexten lesbar
+_APP_ROOTS = frozenset("hlidskjalf gi".split())
+_HTTP_BEFORE = re.compile(r"\bhttp\.(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) $")
+
+
 def _host(m, strict=False):
     h, tld = m.group(0), m.group(1).lower()
     if tld in _CODE_EXT or _HOST_EXT.fullmatch(tld):
@@ -105,7 +110,10 @@ def _host(m, strict=False):
     if not strict:
         first = h.split(".", 1)[0]
         if (h != h.lower() or (len(first) == 1 and first.isalpha()) or first.lower() in _JS_ROOTS
-                or _JS_TAIL.match(m.string, m.end())):
+                or first.lower() in _APP_ROOTS or _JS_TAIL.match(m.string, m.end())):
+            return h
+        # feste Fehlertexte der Apps: "http.GET api.app.today" (Endpunkt-Muster, kein Host)
+        if first.lower() in ("api", "fed") and _HTTP_BEFORE.search(m.string, 0, m.start()):
             return h
     return "<host>"
 
