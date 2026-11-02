@@ -16,10 +16,12 @@ transform(update, fn, keys) -> (neue Bytes, offen)
     Reject (aus fn) bricht ab. ValueError bei kaputtem Update.
 Unveraenderte Inhalte werden byte-gleich kopiert; geaenderte ContentAny-Werte mit lib0 writeAny kodiert (Zahlen als
 float64, wie Yjs/yrs sie lesen)."""
+import bisect
 import json
 import struct
 
 KEYS_MAX = 200000
+RANGES_MAX = 20000          # Bereiche je client im Gedaechtnis
 
 
 class Reject(Exception):
@@ -239,13 +241,36 @@ def _json_val(s):
 
 
 def _put(local, it):
-    """Schluessel fuer alle Uhren eines Eintrags merken (zusammengefasste geloeschte Eintraege sind laenger als 1) -
-    nur fuer Map-Eintraege (Attribute); Text braucht keinen."""
+    """Schluessel eines Eintrags merken - nur fuer Map-Eintraege (Attribute); Text braucht keinen. Zusammengefasste
+    (geloeschte) Eintraege sind laenger als 1: zusaetzlich als Bereich unter ("R", client) [(start, ende, schluessel)],
+    sortiert - ein Ursprung irgendwo darin wird gefunden, ohne je Uhr einen Eintrag anzulegen (Speicher)."""
     if it["key"][1] is None:
         return
     c, k = it["id"]
-    for i in range(min(it["ln"], 1024)):
-        local[(c, k + i)] = it["key"]
+    local[(c, k)] = it["key"]
+    if it["ln"] > 1:
+        lst = local.setdefault(("R", c), [])
+        if len(lst) < RANGES_MAX:
+            bisect.insort(lst, (k, k + it["ln"], it["key"]))
+
+
+def _in_range(lst, clock):
+    i = bisect.bisect_right(lst, (clock, float("inf"))) - 1
+    if i >= 0 and lst[i][0] <= clock < lst[i][1]:
+        return lst[i][2]
+    return None
+
+
+def _get(local, keys, o):
+    k = local.get(o) or keys.get(o)
+    if k is None:
+        for d in (local, keys):
+            lst = d.get(("R", o[0]))
+            if lst:
+                k = _in_range(lst, o[1])
+                if k is not None:
+                    break
+    return k
 
 
 def _resolve(items, keys):
@@ -271,12 +296,8 @@ def _resolve(items, keys):
     for _ in range(64):
         left = []
         for it in todo:
-            k = None
-            for o in (it["origin"], it["rorigin"]):
-                if o is not None:
-                    k = local.get(o) or keys.get(o)
-                    if k is not None:
-                        break
+            o = it["origin"] if it["origin"] is not None else it["rorigin"]      # wie Yjs: rightOrigin nur ohne origin
+            k = _get(local, keys, o) if o is not None else None
             if k is None:
                 left.append(it)
             else:
@@ -285,7 +306,12 @@ def _resolve(items, keys):
         if len(left) == len(todo):
             break
         todo = left
-    keys.update(local)
+    for k, v in local.items():
+        old = keys.get(k) if k[0] == "R" else None
+        if isinstance(old, list):
+            keys[k] = sorted(set(old + v))[-RANGES_MAX:]
+        else:
+            keys[k] = v
     keys.update(tags)
     if len(keys) > KEYS_MAX:
         for k in list(keys)[:KEYS_MAX // 2]:
@@ -295,6 +321,13 @@ def _resolve(items, keys):
 
 def transform(update, fn, keys=None):
     """Siehe Modul-Doku. -> (neue Bytes, Anzahl ohne Schluessel)."""
+    try:
+        return _transform(update, fn, keys)
+    except (RecursionError, OverflowError) as ex:            # tief verschachteltes/riesige Zahl in JSON: unlesbar
+        raise ValueError(type(ex).__name__) from None
+
+
+def _transform(update, fn, keys):
     b, groups, items, rest = _parse(update)
     keys = {} if keys is None else keys
     open_n = _resolve(items, keys)
