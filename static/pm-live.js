@@ -276,7 +276,7 @@
     var editable = !pg.ro && !(cb && cb.readOnly && cb.readOnly());
     destroyProv(pg);
     pg.prov = makeProv(pg);
-    var exts = [YB.Collaboration.configure({ document: pg.doc, field: 'prosemirror' }), caretFix(), noMigration(), syncedGuard()];
+    var exts = [initSel(true), YB.Collaboration.configure({ document: pg.doc, field: 'prosemirror' }), initSel(false), caretFix(), noMigration(), syncedGuard()];
     exts.push(YB.CollaborationCaret.configure({ provider: pg.prov, user: { name: '', color: '#000000' }, render: renderCaret, selectionRender: renderSel }));
     X.live({ editable: editable, exts: exts });
     pg.loading = true; var drops = ST.loadDrops;
@@ -293,6 +293,22 @@
     restore(c);
     aw();
     log('live', pg.nid, editable);
+  }
+  // y-tiptap 3.0.12 setzt beim ersten Zeichnen (_forceRerender) die alte Auswahl als TextSelection an dieselbe Zahl im neuen
+  // Dokument - zeigt sie dort nicht in Text (leere Seite, Spalten/Widget zuerst), warnt ProseMirror "TextSelection endpoint
+  // not pointing into a node with inline content" (Testlabor 2.11., Fund 7). Mit gesetzter beforeTransactionSelection
+  // laesst y-tiptap das und ProseMirror bildet die Auswahl selbst ab (TextSelection.map -> Selection.near). Gesetzt nur
+  // fuer den Aufbau der Ansicht: ein Plugin VOR ySync setzt die Marke, eines DANACH nimmt sie wieder weg.
+  var INIT_SEL = { hkInit: true };
+  function initSel(before) {
+    var S0 = X.P.pm.state, YT = YB.ytiptap;
+    return X.P.core.Extension.create({ name: before ? 'hkLiveInitA' : 'hkLiveInitB', priority: before ? 1001 : 999, addProseMirrorPlugins: function () {
+      return [new S0.Plugin({ view: function (v) {
+        var ys = YT.ySyncPluginKey.getState(v.state), bd = ys && ys.binding;
+        if (bd) { if (before) { if (bd.beforeTransactionSelection === null) bd.beforeTransactionSelection = INIT_SEL; } else if (bd.beforeTransactionSelection === INIT_SEL) bd.beforeTransactionSelection = null; }
+        return {};
+      } })];
+    } });
   }
   // y-tiptap 3.0.12 haelt die eigene Schreibmarke nach einer fremden Aenderung im SELBEN Absatz an ihrer absoluten Stelle
   // (Heuristik "nach Strukturaenderung falsch aufgeloest" greift, sobald sich der Absatztext aendert) - fremder Text vor der

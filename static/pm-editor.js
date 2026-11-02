@@ -1714,7 +1714,14 @@
       setEditable: function (on) { on = !!on && !LOCK && !(LIVE && !LIVE.editable); if (ed && !broken && ed.isEditable !== on) ed.setEditable(on); },
       live: function () { return !!LIVE; },              // T5: Inhalt live gebunden (kein Speichern per PATCH)
       caret: {
-        setToFirstBlock: function (pos) { var f = ed && ed.state.doc.firstChild; if (f && f.attrs.id) focus(f.attrs.id, pos === 'end' ? 'end' : 'start'); },
+        setToFirstBlock: function (pos) {
+          var f = ed && ed.state.doc.firstChild; if (!ed || broken) return;
+          if (f && f.attrs.id && focus(f.attrs.id, pos === 'end' ? 'end' : 'start')) return;
+          // leeres Dokument (live: der Yjs-Zustand einer neuen Seite hat keinen Block): nur die Schreibmarke an den Anfang -
+          // der Absatz entsteht mit dem ersten Zeichen, nicht schon beim Hineinspringen (keine Scheinaenderung, Testlabor 2.11.)
+          var tr = ed.state.tr.setSelection(P.pm.state.Selection.atStart(ed.state.doc)).setMeta('addToHistory', false);
+          ed.view.dispatch(tr); ed.view.focus();
+        },
         setToBlock: function (idx, pos) { var n = ed && ed.state.doc.maybeChild(idx); if (n && n.attrs.id) focus(n.attrs.id, pos === 'start' ? 'start' : 'end'); }
       },
       toolbar: { close: function () {} },

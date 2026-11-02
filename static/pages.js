@@ -1227,7 +1227,13 @@
   // --- Kopfbereich: Titel, Icon, Menue, Vollbild ------------------------------
   $('pg-title').addEventListener('input', function () { S.dirtyTitle = true; schedule(); });
   $('pg-title').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); save(); if (S.editor) S.editor.caret.setToFirstBlock('start'); }
+    // Enter (und Pfeil runter am Titelende): Schreibmarke an den Anfang des ersten Blocks - wie Editor.js, auch im neuen
+    // Editor (live: leere Seite ohne Block, Testlabor 2.11.). Text rechts der Marke bleibt im Titel.
+    var down = e.key === 'ArrowDown' && !e.shiftKey && this.selectionStart === this.value.length && this.selectionEnd === this.value.length;
+    if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey || !(e.key === 'Enter' || down)) return;
+    if (!S.editor || readOnly()) { if (e.key === 'Enter') { e.preventDefault(); save(); } return; }
+    e.preventDefault(); if (e.key === 'Enter') save();
+    try { S.editor.caret.setToFirstBlock('start'); } catch (x) { /* Editor noch nicht bereit */ }
   });
   $('pg-title').addEventListener('blur', function () { save(); });
 
