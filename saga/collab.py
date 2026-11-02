@@ -156,6 +156,7 @@ class _Resolver:
         self.c, self.owner = c, owner
         self.texts = {}
         import re
+        from saga.sharing import upto
         rx_a = re.compile(r'<a href="/notes#([1-9][0-9]{0,17})">(.*?)</a>', re.S)
         rx_m = re.compile(r'<span class="hk-mention" data-u="([^"]{1,300})">(.*?)</span>', re.S)
         from saga.notes import _iter_blocks
@@ -163,10 +164,10 @@ class _Resolver:
             s = json.dumps(b.get("data"), ensure_ascii=False)
             s = json.loads(s)
             for txt in _strings(s):
-                for m in rx_a.finditer(txt):
+                for m in rx_a.finditer(txt, 0, upto(txt, "</a>")):      # nur bis zum letzten Ende (linear, Security-Fix)
                     self.texts.setdefault(("p", b.get("id"), int(m.group(1))), []).append(m.group(2))
                     self.texts.setdefault(("p", None, int(m.group(1))), []).append(m.group(2))
-                for m in rx_m.finditer(txt):
+                for m in rx_m.finditer(txt, 0, upto(txt, "</span>")):
                     self.texts.setdefault(("m", b.get("id"), m.group(1)), []).append(m.group(2))
                     self.texts.setdefault(("m", None, m.group(1)), []).append(m.group(2))
         self._titles, self._names = {}, {}
@@ -207,11 +208,11 @@ def _mask_links(body):
     Beim Zurueckfuehren setzt _restore_links die bisherigen Texte wieder ein."""
     if "/notes#" not in (body or ""):
         return body
-    from saga.sharing import _NOTE_LINK, _walk_strings
+    from saga.sharing import _A_END, _NOTE_LINK, _walk_strings, sub_upto
     d = json.loads(body)
 
     def fn(s, _blk=None):
-        return _NOTE_LINK.sub(lambda m: f'<a href="/notes#{m.group(1)}"></a>', s) if "/notes#" in s else s
+        return sub_upto(_NOTE_LINK, lambda m: f'<a href="/notes#{m.group(1)}"></a>', s, _A_END) if "/notes#" in s else s
     return json.dumps(_walk_strings(d, fn), ensure_ascii=False)
 
 
@@ -220,7 +221,7 @@ def _restore_links(c, room, body):
     wie beim Speichern durch Nicht-Eigentuemer (sharing.restore_links)."""
     if "/notes#" not in json.dumps(body, ensure_ascii=False):
         return body
-    from saga.sharing import _NOTE_LINK, _walk_strings
+    from saga.sharing import _A_END, _NOTE_LINK, _walk_strings, sub_upto
     res = _Resolver(c, room.owner, room.base)
     seen = {}
 
@@ -232,7 +233,7 @@ def _restore_links(c, room, body):
             k = seen.get((blk, pid), 0)
             seen[(blk, pid)] = k + 1
             return f'<a href="/notes#{pid}">{res.page(blk, pid, k)}</a>'
-        return _NOTE_LINK.sub(rep, s) if "/notes#" in s else s
+        return sub_upto(_NOTE_LINK, rep, s, _A_END) if "/notes#" in s else s
     out = _walk_strings(body, fn)
     body.clear()
     body.update(out)
