@@ -202,8 +202,86 @@
   };
   function pathName(p) { return p === 'udp' ? 'UDP' : p === 'turn' ? 'TLS' : p === 'tcp' ? 'TCP' : ''; }
 
+  // --- Senderate auf TCP/TLS (A1, Labor 2.11.) ------------------------------------------------------------------------------
+  // Ueber TCP/TLS sieht WebRTC keinen Verlust: Neuuebertragungen kommen als Schuebe, und ein zu grosser Sendestrom staut sich
+  // in der TCP-Sendewarteschlange (RTT 5-12 s beim Bildschirmteilen). Darum hier harte Obergrenzen je Weg und eine Stufe
+  // 0..3, die aus der RTT (Abstand zur kleinsten bisher gemessenen) mit Hysterese folgt. UDP bleibt bei GCC (Stufe 0, alte
+  // Regeln). Werte in kbit/s; mH/screenH = hoechste Bildhoehe der Schicht m bzw. des Bildschirms.
+  K.TX = {
+    tcp: { l: 150, m: 600, mH: 720, screen: 900, screenFps: 8, screenH: 1080 },
+    turn: { l: 120, m: 450, mH: 540, screen: 600, screenFps: 5, screenH: 720 }
+  };
+  K.TX_F = [1, 0.6, 0.4, 0.25];       // Faktor je Stufe auf m und Bildschirm
+  K.TX_FPS = [0, 5, 3, 2];            // Bildschirm hoechstens so viele Bilder/s je Stufe (0 = Wert des Wegs)
+  K.RTT_ABS = 120;                    // Stau: RTT mindestens 120 ms ...
+  K.RTT_REL = 0.5;                    // ... und 50 % ueber der kleinsten RTT dieser Verbindung
+  K.RTT_HUGE = 1000;                  // ab 1 s ueber der kleinsten sofort (ohne zweite Messung)
+  K.RTT_OK = 60;                      // frei: hoechstens 60 ms ueber der kleinsten
+  K.TX_BAD_N = 2;                     // Stau in 2 Messungen in Folge (Messung alle ~3 s)
+  K.TX_HOLD = 6000;                   // zwischen zwei Stufen nach unten mindestens 6 s (die Warteschlange muss sich leeren)
+  K.TX_UP = 15000;                    // frei fuer 15 s -> eine Stufe zurueck ...
+  K.TX_UP_MAX = 120000;               // ... nach erneutem Stau kurz danach doppelt so lange, hoechstens 2 min
+  K.TX_RETRY = 30000;                 // Stau innerhalb von 30 s nach einem Schritt nach oben = Fehlversuch
+  function TxGov(path) {
+    this.path = path || ''; this.level = 0; this.base = Infinity; this.bad = 0; this.okSince = 0;
+    this.downAt = -Infinity; this.upAt = -Infinity; this.upWait = K.TX_UP; this.last = null;
+  }
+  // Eine Messung (rtt in ms, null = keine). -> {from, to, rtt, base} bei Wechsel der Stufe, sonst null
+  TxGov.prototype.add = function (now, rtt) {
+    if (this.path === 'udp' || rtt == null || !isFinite(rtt) || rtt <= 0) return null;
+    if (rtt < this.base) this.base = rtt;
+    var q = rtt - this.base, from = this.level;
+    this.last = { rtt: Math.round(rtt), base: Math.round(this.base) };
+    if (q >= K.RTT_HUGE || (q >= K.RTT_ABS && q >= this.base * K.RTT_REL)) {
+      this.bad++; this.okSince = 0;
+      if (this.level < 3 && now - this.downAt >= K.TX_HOLD && (this.bad >= K.TX_BAD_N || q >= K.RTT_HUGE)) {
+        if (now - this.upAt < K.TX_RETRY) this.upWait = Math.min(K.TX_UP_MAX, this.upWait * 2);
+        this.level++; this.downAt = now; this.bad = 0;
+      }
+    } else if (q <= K.RTT_OK) {
+      this.bad = 0;
+      if (!this.okSince) this.okSince = now;
+      if (now - this.upAt >= 4 * K.TX_UP_MAX && now - this.downAt >= 4 * K.TX_UP_MAX) this.upWait = K.TX_UP;   // lange ruhig
+      if (this.level > 0 && now - this.okSince >= this.upWait && now - this.downAt >= this.upWait) {
+        this.level--; this.upAt = now; this.okSince = now;
+      }
+    } else { this.bad = 0; this.okSince = 0; }
+    return this.level !== from ? { from: from, to: this.level, rtt: this.last.rtt, base: this.last.base } : null;
+  };
+  function r2(x) { return Math.round(x * 100) / 100; }
+  // Sende-Parameter fuer die Bild-Leitung eines Knotenbeins. o = {others (andere am Knoten), share (ich teile), h (Hoehe der
+  // Kamera), sh (Hoehe des Bildschirms), rids ([l, m(, h)])} -> {cam: {rid: {active, maxBitrate?, scaleResolutionDownBy?}},
+  // screen: {maxBitrate, maxFramerate, scaleResolutionDownBy} | null}. Werte in bit/s.
+  // UDP: wie bisher (Bughunt P03): allein nichts, zu zweit ohne l, Raten aus dem Angebot.
+  // TCP/TLS: l bleibt auch zu zweit an - nur so kann der Sender bei knapper Rate auf l ausweichen (der Browser pausiert dann
+  // m) und der Knoten l weiterreichen; m gedeckelt und ab Stufe 2 (bzw. beim Teilen) aus; Bildschirm gedeckelt.
+  function txPlan(path, level, o) {
+    o = o || {};
+    var others = +o.others || 0, rids = o.rids || ['l', 'm'], cam = {}, i;
+    level = Math.max(0, Math.min(3, +level || 0));
+    var c = K.TX[path];
+    if (!c) {
+      for (i = 0; i < rids.length; i++) cam[rids[i]] = { active: others > 0 && !(others === 1 && rids.length > 1 && rids[i] === 'l') };
+      return { cam: cam, screen: null };
+    }
+    var f = K.TX_F[level];
+    for (i = 0; i < rids.length; i++) {
+      var r = rids[i];
+      if (r === 'l') cam.l = { active: others > 0, maxBitrate: Math.round(c.l * (level >= 3 ? 0.7 : 1)) * 1000 };
+      else if (r === 'm') {
+        cam.m = { active: others > 0 && level < 2 && !o.share, maxBitrate: Math.round(c.m * f) * 1000,
+                  scaleResolutionDownBy: o.h && o.h > c.mH ? r2(o.h / c.mH) : 1 };
+      } else cam[r] = { active: false };              // h gibt es auf TCP nicht
+    }
+    var fps = K.TX_FPS[level] ? Math.min(c.screenFps, K.TX_FPS[level]) : c.screenFps;
+    var sc = o.sh && o.sh > c.screenH ? o.sh / c.screenH : 1;
+    if (level >= 3) sc *= 1.5;
+    return { cam: cam, screen: { maxBitrate: Math.round(c.screen * f) * 1000, maxFramerate: fps, scaleResolutionDownBy: r2(Math.max(1, sc)) } };
+  }
+
   var api = { K: K, median: median, jitter: jitter, loadMs: loadMs, score: score, rank: rank, better: better, Switcher: Switcher,
-              closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName };
+              closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName,
+              TxGov: TxGov, txPlan: txPlan };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SagaHorn = api;
 })(typeof self !== 'undefined' ? self : this);

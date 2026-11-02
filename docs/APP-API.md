@@ -1895,6 +1895,32 @@ bis geteilt wird), dann die Empfangsplätze Sprecher, Bildschirm, Kacheln. **Las
 Desktop 1 + 8 Kacheln = 9 bewegte Bilder, Handy 1 + 3 = 4; alle weiteren als Standbild (letztes Bild) mit Sprechring.
 TCP/TLS-Wege: `jitterBufferTarget = 150` ms an den Bildempfängern.
 
+**Senderate auf TCP/TLS (2.5, A1 „Video stockt über Knoten“):** Über TCP/TLS sieht WebRTC keinen Verlust – Neuübertragungen
+kommen als Schübe, ein zu großer Sendestrom staut sich in der TCP-Sendewarteschlange (Labor: RTT 5–12 s beim
+Bildschirmteilen über TLS, Freezes bei `lost=0`). GCC allein reicht dort nicht. Clients deckeln deshalb auf den Wegen
+`tcp` und `turn` (TLS) selbst (Referenz `static/horn.js` `K.TX`, `txPlan`, `TxGov`; Tests `tests/horn_logik.js`):
+
+| Weg | `l` | `m` (höchstens Höhe) | Bildschirm (höchstens Höhe) |
+|---|---|---|---|
+| ICE-TCP | 150 kbit/s, 1/4, 20 fps `L1T2` | 600 kbit/s (720p), 30 fps `L1T3` | 900 kbit/s, 8 fps (1080p) |
+| TURN-TLS | 120 kbit/s | 450 kbit/s (540p) | 600 kbit/s, 5 fps (720p) |
+
+- **`l` bleibt auf TCP/TLS auch zu zweit an** (UDP weiter wie Bughunt P03: zu zweit ohne `l`). Nur so kann der Kodierer bei
+  knapper Rate `m` pausieren und der Knoten `l` weiterreichen (er nimmt je Platz die höchste *lebende* Schicht im Budget).
+- **Bildschirm teilen** auf TCP/TLS: Kamera nur `l` (`m` aus), Bildschirm nach der Tabelle.
+- **Stufe aus der RTT** (Bild-Leitung, `candidate-pair.currentRoundTripTime`, Messung alle ~3 s), Grundwert = kleinste RTT
+  dieser Verbindung. Stau = RTT ≥ 120 ms **und** ≥ 50 % über dem Grundwert in 2 Messungen in Folge (≥ 1 s darüber: sofort)
+  → eine Stufe tiefer, frühestens 6 s nach der letzten. Frei = höchstens 60 ms über dem Grundwert für 15 s → eine Stufe
+  zurück; Stau innerhalb von 30 s nach dem Schritt zurück verdoppelt die Wartezeit (höchstens 2 min).
+  Stufen 0–3: `m` und Bildschirm × 1 / 0,6 / 0,4 / 0,25; ab Stufe 2 `m` aus (nur `l`), Stufe 3 `l` × 0,7;
+  Bildschirm höchstens 8|5 / 5 / 3 / 2 fps, Stufe 3 zusätzlich 1,5-fach kleiner.
+- Diagnose: Stufenwechsel als Ereignis `tx` (`L0>L1 rtt=… base=… tcp|turn`).
+- **Apps (offen):** dasselbe mit `RTCRtpSender.setParameters` (`active`, `maxBitrate`, `maxFramerate`,
+  `scaleResolutionDownBy` je `rid`), nur auf `tcp`/`turn`. Kein neuer Endpunkt, kein `MIN_APP`.
+- Hinweis zur Knoten-Schätzung `est_kbit` (Ereignis `layout`): Sie gilt für den **Downlink** des Beins, startet bei
+  1200 kbit/s und sinkt nur bei Stau in der Warteschlange des Knotens. Ohne Stau bleibt sie bei 1200 – das ist keine
+  Messung der Bandbreite. Ein Engpass im **Uplink** des Senders (`qualityLimitationReason=bandwidth`) zeigt sich dort nicht.
+
 **Zustand:** Body-Typ `state {mic, cam, screen, hp}` über den versiegelten Signalweg an alle Endpunkte (nach jeder Änderung,
 gebündelt, an jedes neue Gerät und – P9/P10 – nach jeder neuen Verbindung zu einem Knoten). `hp` = die eigenen Kennungen
 (`peer_ref`) an den Knoten, mit denen das Gerät gerade verbunden ist (höchstens 4). Ältere Clients ignorieren ihn.
@@ -2067,7 +2093,7 @@ Kopf `X-Saga: 1`), Body JSON ≤ 32 KB, **alle 30 s** während des Anrufs und **
  "samples": [{"t": 33000, "dir": "in|out", "src": "<kurze Kennung der Quelle, nie Name>", "rid": "l|m|h|''",
               "fps": 24, "h": 540, "kbps": 812, "lost": 3, "nack": 4, "pli": 1, "freeze": 1, "kf": 1, "rtt": 38,
               "qlr": "none|cpu|bandwidth|other|''", "enc": "<encoderImplementation|''>"}],
- "events": [{"t": 31000, "k": "layers|thermal|switch|quality|path", "d": "<kurzer Text ≤ 120 Zeichen>"}]}
+ "events": [{"t": 31000, "k": "layers|thermal|switch|quality|path|tx", "d": "<kurzer Text ≤ 120 Zeichen>"}]}
 ```
 
 | Feld | Regel |
@@ -2092,7 +2118,7 @@ ohnehin laufenden `getStats` – Empfang (`inbound-rtp`, Bild) je Spur (`src` = 
 direkt), Senden (`outbound-rtp`) je Simulcast-Schicht `rid` mit `qlr` und `enc`. Ereignisse: `layers` (Belegung der
 Plätze aus dem Knoten-Ereignis `layout`, z. B. `v est=1800 t0:m3@ab12 s1:p` = Bein, geschätzte kbit/s, Platz:Schicht+Tid
 bzw. pausiert, Kennungspräfix), `switch`/`path` (Knoten- bzw. Wegwechsel), `quality` (Wechsel der Anzeigefarbe mit
-RTT/Verlust/Freezes im Fenster). Apps zusätzlich `thermal` (z. B. `serious`). **Auswerten:** Stottern bei kleiner RTT
+RTT/Verlust/Freezes im Fenster), `tx` (Sendestufe auf TCP/TLS, siehe „Senderate auf TCP/TLS“). Apps zusätzlich `thermal` (z. B. `serious`). **Auswerten:** Stottern bei kleiner RTT
 und ohne Verlust, aber mit `qcpu` > 0, steigendem `encms`/`decms` oder `fdrop` > 0 = Geräte-CPU, nicht Netz oder Knoten. Der Verlauf steht im Web außerdem im
 Debug-Snapshot (`HKCalls.horn().diag`, `HKCalls.room().diag`).
 

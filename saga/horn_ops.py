@@ -903,7 +903,8 @@ def admin_state():
         ck = n2["checks"]
         out.append({"id": n["id"], "name": n["name"], "builtin": bool(n["builtin"]), "status": st, "since": since,
                     "tcp": bool(ck.get("v4") or ck.get("v6")) if ck else (n["id"] in horn._CONNS),
-                    "udp": bool(n["udp"]), "cpu": round(100 * float(ld.get("cpu") or 0)), "up": round(float(ld.get("up") or 0), 1),
+                    "udp": bool(n["udp"]), "udp_check": (horn._LIVE.get(n["id"]) or {}).get("udp_check") or "", "udp_port": horn.udp_port(n),
+                    "cpu": round(100 * float(ld.get("cpu") or 0)), "up": round(float(ld.get("up") or 0), 1),
                     "link": n.get("link_mbit"), "util": round(100 * horn.util(n)), "peers": int(ld.get("peers") or 0),
                     "legs": int(ld.get("legs") or 0), "version": n.get("version") or "", "share": bool(n["share"]),
                     "drain": bool(n.get("drain")), "checks": ck, "cert": n.get("cert") or {}, "upd": upd_view(n.get("upd"), n.get("version")),

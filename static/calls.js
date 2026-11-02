@@ -3303,17 +3303,19 @@
     }
     if (role !== 'audio') {
       // Simulcast (NODE.md): TCP-Wege l = 1/4, 20 fps L1T2 (Kacheln, der Knoten nimmt 10 fps), m = voll, 30 fps L1T3;
-      // UDP zusaetzlich h (m dann halbe Groesse)
+      // UDP zusaetzlich h (m dann halbe Groesse). A1: auf TCP/TLS Obergrenzen je Weg (TLS niedriger als ICE-TCP)
+      var tx = H.L.K.TX[path] || H.L.K.TX.tcp;
       var enc = path === 'udp' ? [
         { rid: 'l', scaleResolutionDownBy: 4, maxBitrate: 150000, maxFramerate: 20, scalabilityMode: 'L1T2' },
         { rid: 'm', scaleResolutionDownBy: 2, maxBitrate: 500000, maxFramerate: 30, scalabilityMode: 'L1T3' },
         { rid: 'h', scaleResolutionDownBy: 1, maxBitrate: 1500000, maxFramerate: 30, scalabilityMode: 'L1T3' }] : [
-        { rid: 'l', scaleResolutionDownBy: 4, maxBitrate: 150000, maxFramerate: 20, scalabilityMode: 'L1T2' },
-        { rid: 'm', scaleResolutionDownBy: 1, maxBitrate: 700000, maxFramerate: 30, scalabilityMode: 'L1T3' }];
+        { rid: 'l', scaleResolutionDownBy: 4, maxBitrate: tx.l * 1000, maxFramerate: 20, scalabilityMode: 'L1T2' },
+        { rid: 'm', scaleResolutionDownBy: 1, maxBitrate: tx.m * 1000, maxFramerate: 30, scalabilityMode: 'L1T3' }];
       L.cam = pc.addTransceiver(R.cam || 'video', { direction: 'sendonly', streams: [st], sendEncodings: enc });
       H.X.sender(L.cam.sender, 'video');
-      // Bildschirm: eigener Sender (mid an den Knoten: screen_mid), Raten wie 2.4 relay-tcp bzw. relay-udp
-      var sr = RATES[path === 'udp' ? 'relay-udp' : 'relay-tcp'];
+      // Bildschirm: eigener Sender (mid an den Knoten: screen_mid), UDP wie 2.4 relay-udp, TCP/TLS gedeckelt (A1, SagaHorn.K.TX);
+      // hornTuneCam setzt danach Stufe, Aufloesung und das Abschalten von m
+      var sr = path === 'udp' ? RATES['relay-udp'] : { screen: tx.screen, screenFps: tx.screenFps };
       L.scr = pc.addTransceiver(R.screen || 'video', { direction: 'sendonly', sendEncodings: [{ maxBitrate: sr.screen * 1000, maxFramerate: sr.screenFps }] });
       H.X.sender(L.scr.sender, 'video');
       recv('video');                                   // Sprecher
@@ -3462,21 +3464,32 @@
     }
   }
   // Bughunt P03 (wie die Apps seit 2.5, HornLogic.camActive): allein keine Kamera-Schicht senden, zu zweit ohne die kleine
-  // Kachel-Schicht l (nur der Sprecher wird gezeigt) - spart Uplink und Akku; nur bei Aenderung neu setzen
+  // Kachel-Schicht l (nur der Sprecher wird gezeigt) - spart Uplink und Akku; nur bei Aenderung neu setzen.
+  // A1 (Labor 2.11.): auf TCP/TLS bleibt l auch zu zweit an (Ausweichschicht, wenn m die Rate nicht bekommt), m und der
+  // Bildschirm folgen der Stufe aus der RTT (SagaHorn.txPlan/TxGov); beim Bildschirmteilen nur l als Kamera
   function hornTuneCam(R, conn) {
-    var mine = hornMyRefs(R).concat([hornMyRef(R, conn)]);
+    var mine = hornMyRefs(R).concat([hornMyRef(R, conn)]), H = R.horn;
     var others = Object.keys(conn.peers || {}).filter(function (r) { return mine.indexOf(r) < 0; }).length;
+    var lv = conn.gov ? conn.gov.level : 0, set = function (e, w) {
+      var d = false;
+      ['active', 'maxBitrate', 'maxFramerate', 'scaleResolutionDownBy'].forEach(function (k) { if (w[k] !== undefined && e[k] !== w[k]) { e[k] = w[k]; d = true; } });
+      return d;
+    };
+    var hOf = function (t) { try { return t && t.getSettings ? t.getSettings().height || 0 : 0; } catch (e) { return 0; } };
     Object.keys(conn.legs || {}).forEach(function (k) {
-      var s = conn.legs[k].cam && conn.legs[k].cam.sender;
+      var L = conn.legs[k], s = L.cam && L.cam.sender;
       if (!s || !s.getParameters) return;
       try {
         var p = s.getParameters(), diff = false, rids = (p.encodings || []).map(function (e) { return e.rid; });
         if (!rids.length) return;
-        p.encodings.forEach(function (e) {
-          var a = others > 0 && !(others === 1 && rids.length > 1 && e.rid === 'l');
-          if (e.active !== a) { e.active = a; diff = true; }
-        });
+        var plan = H.L.txPlan(conn.path, lv, { others: others, share: !!R.screen, h: hOf(R.cam), sh: hOf(R.screen), rids: rids });
+        p.encodings.forEach(function (e) { if (plan.cam[e.rid] && set(e, plan.cam[e.rid])) diff = true; });
         if (diff) s.setParameters(p).catch(function () { /* naechster Versuch beim naechsten peers */ });
+        var ss = L.scr && L.scr.sender;
+        if (plan.screen && ss && ss.getParameters) {
+          var q2 = ss.getParameters();
+          if (q2.encodings && q2.encodings.length && set(q2.encodings[0], plan.screen)) ss.setParameters(q2).catch(function () { /* naechstes Mal */ });
+        }
       } catch (e) { /* aelterer Browser */ }
     });
   }
@@ -3738,6 +3751,17 @@
         if (q0 && q0 !== conn.q) diagEv(R, 'quality', q0 + '>' + conn.q + ' rtt=' + conn.net.rtt + ' loss=' + conn.net.loss + ' fz/min=' + conn.net.freezes + ' win=' + conn.net.win + 's');
         all.forEach(function (st, i) { diagRep(R, st, 'v' + legs[i].role[0]); });   // Bein a/v/b: Stats-IDs gelten je PeerConnection
       }
+      // A1: Senderate auf TCP/TLS nach der RTT der Bild-Leitung (dort staut sich der Bildstrom; Ton laeuft getrennt)
+      if (conn.path !== 'udp') {
+        if (!conn.gov) conn.gov = new H.L.TxGov(conn.path);
+        var vi = legs.indexOf(conn.legs.video), vr = null;
+        if (vi >= 0 && all[vi]) all[vi].forEach(function (s) { if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded' && typeof s.currentRoundTripTime === 'number') vr = s.currentRoundTripTime * 1000; });
+        var tx = conn.gov.add(now, vr != null ? vr : rtt);
+        if (tx) {
+          if (conn === H.cur) diagEv(R, 'tx', 'L' + tx.from + '>L' + tx.to + ' rtt=' + tx.rtt + ' base=' + tx.base + ' ' + conn.path);
+          hornTuneCam(R, conn);
+        }
+      }
       if (conn === H.cur && !H.switching) {
         var udpOk = conn.path !== 'udp' && conn.cand.udp && (H.meas[conn.node] || {}).udp != null;
         var x = H.sw.udp(Date.now(), loss, udpOk);
@@ -3815,6 +3839,7 @@
         if (R.screen) { try { R.screen.contentHint = 'detail'; } catch (e) { /* aelterer Browser */ } }
         L.scr.sender.replaceTrack(R.screen || null).catch(function () {});
       });
+      hornTuneCam(R, c);                               // A1: beim Teilen auf TCP/TLS Kamera nur l, Bildschirm gedeckelt
     });
     hornMic(R);                                        // Systemton (gemischt) bzw. wieder nur das Mikrofon
     hornStateOut(R); hornDraw(R);

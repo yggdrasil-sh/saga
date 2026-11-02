@@ -131,6 +131,10 @@ n.Load()                                                    // Lastmeldung §2.6
   (`media/horn.go`). Umgebung: `HORN_MODE=node`, `HORN_LISTEN=:HORN_PORT` (Standard 8443), `HORN_DATA=STATE_DIR/horn`,
   `HORN_SAGA_CTL=ws://127.0.0.1:<intern>/api/horn/ctl` und das Geheimnis `HORN_CTL_KEY`. Weitere `HORN_*` (Name,
   `HORN_PUBLIC_URL`, `HORN_TLS_*`, `HORN_UDP` …) reicht saga-media durch. Saga selbst bekommt nie UDP.
+  - UDP-Kandidat = öffentliche Adresse (`HORN_PUBLIC_IP` bzw. Adressen von `HORN_NAME`) + **lokaler** UDP-Port
+    (`HORN_UDP_LISTEN`, sonst `HORN_PORT`). Hinter einer TLS-Durchreiche (Traefik `HostSNI`) kommt kein UDP an: den Port
+    direkt mit gleicher Nummer veröffentlichen. Der Selbsttest (`udp_check` im `hello`: `ok`/`aus`/`fehlt`) steht in
+    Admin → Anrufe in der Spalte „Weg“.
 - **Steuerkanal `horn-ctl/1`** (`ctl.go`, Gegenstück `saga/horn.py`): ausgehende WebSocket-Verbindung. `challenge` →
   `hello` (signiert mit dem Knotenschlüssel `HORN_DATA/node.key`) → `welcome {node_id, saga_pub, origin, rooms}`, danach
   Folgenummern je Richtung. Saga → Knoten: `open`, `close`, `kick`, `ping`. Knoten → Saga: `load` (alle 5 s: cpu, mem,

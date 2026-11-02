@@ -33,6 +33,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import threading
@@ -484,6 +485,25 @@ def https_origin(u):
     return u
 
 
+# Ergebnis des UDP-Selbsttests im hello (gjallarhorn server.go udpSelfTest): ok, aus (HORN_UDP=0 bzw. kein UDP-Socket),
+# fehlt (keine Antwort auf das STUN-Binding an die oeffentliche Adresse), unbekannt (Test laeuft noch)
+UDP_CHECKS = ("ok", "aus", "fehlt", "unbekannt")
+
+
+def udp_port(n):
+    """UDP-Port, den der Knoten als Kandidat anbietet: der lokale UDP-Port (pion, ohne Port-Umschreibung). Eingebauter
+    Knoten: HORN_UDP_LISTEN bzw. HORN_PORT (Standard 8443) - NICHT der Port der TLS-Durchreiche am Reverse Proxy; bei
+    Docker muss deshalb derselbe Port auf dem Host freigegeben sein (8443:8443/udp). Gekoppelte Knoten: ihr Port (443)."""
+    if not n.get("builtin"):
+        return int(n.get("port") or 443)
+    for k in ("HORN_UDP_LISTEN", "HORN_LISTEN"):
+        v = os.environ.get(k, "").rsplit(":", 1)[-1]
+        if v.isdigit() and 0 < int(v) < 65536:
+            return int(v)
+    v = os.environ.get("HORN_PORT", "")
+    return int(v) if v.isdigit() and 0 < int(v) < 65536 else 8443
+
+
 def _clean_hello(h):
     name = str(h.get("name") or "").strip().lower()[:253]
     url = str(h.get("url") or "").strip().rstrip("/")[:300]
@@ -491,7 +511,9 @@ def _clean_hello(h):
         return None
     cert = h.get("cert") if isinstance(h.get("cert"), dict) else {}
     upd = h.get("upd") if isinstance(h.get("upd"), dict) else {}
+    uc = str(h.get("udp_check") or "")
     return {"name": name, "url": url, "pub": str(h.get("pub")), "udp": bool(h.get("udp")), "version": str(h.get("version") or "")[:40],
+            "udp_check": uc if uc in UDP_CHECKS else "",
             "max_legs": int(h.get("max_legs") or 0) if str(h.get("max_legs") or "0").isdigit() else 0,
             "v4": _ip(h.get("v4"), 4), "v6": _ip(h.get("v6"), 6), "cert": _clean_cert(cert), "upd": _clean_upd(upd)}
 
@@ -697,7 +719,7 @@ async def ctl(ws: WebSocket):
         old.q.put_nowait(None)
     stats = {} if builtin else await asyncio.to_thread(_load_stats, nid)
     _LIVE[nid] = {"load": {"max_legs": hh["max_legs"], "legs": 0, "state": "ok"}, "at": time.time(), "db": time.time(), "stats": stats,
-                  "drain_ev": False}
+                  "drain_ev": False, "udp_check": hh["udp_check"]}
     welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
     if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)
         welcome["origins"] = await asyncio.to_thread(HOOKS["origins"])

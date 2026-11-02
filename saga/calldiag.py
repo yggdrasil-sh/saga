@@ -33,7 +33,7 @@ TRANSPORTS = ("udp", "tcp", "tls", "?")
 DIRS = ("in", "out")
 RIDS = ("l", "m", "h", "")
 QLRS = ("none", "cpu", "bandwidth", "other", "")
-KINDS = ("layers", "thermal", "switch", "quality", "path")
+KINDS = ("layers", "thermal", "switch", "quality", "path", "tx")   # tx: Sendestufe auf TCP/TLS (A1)
 NUMS = ("fps", "h", "kbps", "lost", "nack", "pli", "freeze", "kf", "rtt",
         # 2.5 (Labor 2.11., Stottern durch Geraete-CPU): out - qcpu/qbw = ms, die der Kodierer seit der letzten Probe durch
         # CPU bzw. Bandbreite begrenzt war (qualityLimitationDurations), encms = mittlere Kodierzeit je Rahmen, fdrop = Rahmen

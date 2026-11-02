@@ -30,6 +30,11 @@ Der Server, in dessen Chat der Anruf beginnt (das **Heim** des Chats), führt ih
   - oder ein weiterer Knoten über **Erweitern** (Admin → Anrufe), z. B. auf einem kleinen vServer.
 - **Ausgehend** muss jeder Knoten 443/TCP zu Saga **und zu den anderen Knoten** öffnen dürfen (die Kaskade wählt den
   Knoten des anderen Servers an). 443/UDP ist optional.
+- **UDP am eingebauten Knoten hinter einem Reverse Proxy** (Labor 2.11., A1): Die TLS-Durchreiche (SNI) reicht nur TCP
+  durch. Für UDP `HORN_PORT`/udp (Standard 8443) am Saga-Container **direkt** freigeben, auf dem Host mit derselben
+  Nummer (`8443:8443/udp`, der Knoten nennt den Geräten seinen lokalen Port), `HORN_UDP` nicht auf `0`. Admin → Anrufe
+  zeigt in der Spalte „Weg“, wenn UDP aus oder nicht erreichbar ist; Anrufe laufen dann über TCP/TLS und stocken bei
+  Paketverlust eher (TCP-Neuübertragungen kommen als Schübe).
 - Browser: Chrome/Edge oder Firefox aktuell; Safari geht über den TLS-Weg. Apps folgen mit ihrem 2.5-Release.
 
 ## 2. Einschalten (beide Server)
