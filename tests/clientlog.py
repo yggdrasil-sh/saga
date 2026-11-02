@@ -111,7 +111,7 @@ class FormParser(html.parser.HTMLParser):
 
     def handle_starttag(self, tag, a):
         a = dict(a)
-        if tag == "form" and (a.get("method") or "").lower() == "post" and not self.fields:
+        if tag == "form" and (a.get("method") or "").lower() == "post" and not self.fields and a.get("action") != "/logout":   # Kopf: Abmelden-Formular (2.5)
             self.inform = True
         if not self.inform:
             return
