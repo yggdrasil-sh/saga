@@ -202,7 +202,7 @@ try:
         a.send("AW", nid, {"cursor": bad, "sel": bad, "block": "<img>", "typing": "ja"})
         m = b.wait("AW", nid)
         st_ = json.loads(m[2][0])["state"] if m else None
-        ok(f"Awareness: ungueltig verworfen ({json.dumps(bad)[:60]} -> {st_})", isinstance(st_, dict) and not {"cursor", "sel", "block", "typing"} & set(st_))
+        ok(f"Awareness: ungueltig verworfen ({json.dumps(bad)[:60]} -> {st_})", m and (st_ is None or not {"cursor", "sel", "block", "typing"} & set(st_)))
     # Titel live
     a.edit(nid, lambda d: d.get("title", type=__import__("pycrdt").Text).insert(5, "!"))
     time.sleep(1.5)
