@@ -556,9 +556,9 @@ def run(A, Bk, vpub):
 
     # --- Abmelden im Browser, "ueberall abmelden" ---------------------------------------------------------------
     ok("Anmelde-Antwort setzt die Sitzung (Abo gehoert zu diesem Browser)", bool(web_cookie))
-    s, _, r = req("GET", "/logout", None, hdr={"Cookie": "saga=" + web_cookie}, raw_resp=True)
+    s, _, r = req("POST", "/logout", None, hdr={"Cookie": "saga=" + web_cookie, "X-Saga": "1"}, raw_resp=True)
     ok(f"Abmelden in diesem Browser -> Browser-Abo weg, ntfy bleibt ({s})",
-       s == 303 and sid not in [x[0] for x in sub_rows("ps-a")] and nid in [x[0] for x in sub_rows("ps-a")])
+       s == 200 and sid not in [x[0] for x in sub_rows("ps-a")] and nid in [x[0] for x in sub_rows("ps-a")])
     u2 = UA()
     s, d = req("POST", "/api/push/subscriptions", A, {"type": "webpush", "endpoint": f"{FAKE}/wp/a2", "keys": u2.keys()})
     w2 = d["id"]

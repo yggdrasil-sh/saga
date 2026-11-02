@@ -255,8 +255,15 @@ def main():
     ok("SSO-Knopf nur wenn eingerichtet", "/login/sso" not in html)
 
     # Abmelden
+    s, _, html = o.req("GET", "/logout")
+    ok("GET /logout meldet nicht ab, zeigt Rueckfrage mit Formular (2.5)", s == 200 and 'action="/logout"' in html
+       and o.api("GET", "/api/account")[0] == 200)
+    s, loc, _ = o.req("POST", "/logout", form={"csrf": "falsch"})
+    ok("POST /logout ohne gueltiges CSRF-Token meldet nicht ab", s == 303 and loc == "/logout" and o.api("GET", "/api/account")[0] == 200)
+    s, loc, _ = o.post("/logout", {}, src="/logout")
+    ok("Abmelden (Formular, POST + CSRF)", s == 303 and loc.startswith("/login") and o.api("GET", "/api/account")[0] == 401)
     s, loc, _ = o.req("GET", "/logout")
-    ok("Abmelden", s == 303 and loc.startswith("/login") and o.api("GET", "/api/account")[0] == 401)
+    ok("GET /logout ohne Sitzung -> Anmeldung", s == 303 and loc.startswith("/login?bye=1"))
 
 
 def snapshot_settings():

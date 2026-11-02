@@ -625,11 +625,28 @@
     return { awareness: awareness, on: function () {}, off: function () {}, doc: pg.doc };
   }
   function destroyProv(pg) { if (pg && pg.prov) { try { pg.prov.awareness.destroy(); } catch (e) { /* egal */ } pg.prov = null; } }
+  // 2.5 (Sicherheit): fremder Cursor nur, wenn er sich als relative Position aufloesen laesst - sonst wirft y-prosemirror
+  // beim Zeichnen ("Unexpected case") in jedem Browser der Seite. Ungueltiges wird verworfen (kein Fremd-Cursor).
+  function relOk(v) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+    var id = function (x) { return x == null || (x && typeof x === 'object' && Number.isSafeInteger(x.client) && x.client >= 0 && Number.isSafeInteger(x.clock) && x.clock >= 0); };
+    if (!id(v.type) || !id(v.item) || (v.tname != null && typeof v.tname !== 'string')) return false;
+    return v.type != null || v.item != null || typeof v.tname === 'string';
+  }
+  function cursorOk(pg, c) {
+    if (!c || typeof c !== 'object' || !relOk(c.anchor) || !relOk(c.head)) return false;
+    if (!Y || !pg || !pg.doc) return true;
+    try {
+      Y.createAbsolutePositionFromRelativePosition(Y.createRelativePositionFromJSON(c.anchor), pg.doc);
+      Y.createAbsolutePositionFromRelativePosition(Y.createRelativePositionFromJSON(c.head), pg.doc);
+      return true;
+    } catch (e) { return false; }
+  }
   function onAw(m) {
     var pg = PG, s = m.state, sid = m.sid;
     if (typeof sid !== 'number') return;
     var st = null;
-    if (s && s.cursor) {
+    if (s && s.cursor && cursorOk(pg, s.cursor)) {
       var pal = PALETTE.indexOf(s.color) >= 0 ? s.color : 'gray';
       st = { cursor: s.cursor, user: { name: String(s.name || '').slice(0, 80), color: '#000000', pal: pal } };
     }
@@ -651,6 +668,9 @@
   }
   function curFocus() { var ed = X.ed(), sel = ed.state.selection, b = X.blockAt(sel.head); return b && b.node.attrs.id ? String(b.node.attrs.id) : null; }
   function renderCaret(u) {
+    try { return caretEl(u); } catch (e) { return document.createElement('span'); }   // nie die Darstellung der Seite abbrechen
+  }
+  function caretEl(u) {
     var pal = PALETTE.indexOf(u.pal) >= 0 ? u.pal : 'gray';
     var c = document.createElement('span'); c.className = 'hk-caret hk-c-' + pal;
     var l = document.createElement('span'); l.className = 'hk-caret-l';

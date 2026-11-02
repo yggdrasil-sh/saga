@@ -337,12 +337,26 @@ def safe_next(v, default="/"):
     return v
 
 
+def _navigation(request):
+    """Anfrage ist eine Navigation des Browsers auf ein Dokument (Sec-Fetch-*). Ohne diese Koepfe (aeltere Browser, Tests,
+    Werkzeuge): nur, wenn sie nicht ausdruecklich etwas anderes sagen."""
+    mode = request.headers.get("sec-fetch-mode")
+    dest = request.headers.get("sec-fetch-dest")
+    if mode is None and dest is None:
+        return True
+    return mode == "navigate" and dest in (None, "document")
+
+
 def lang_switch_response(request, uid, secure):
     """GET /lang?l=de|en|es|''&next=/pfad (Hauptseite und Admin-Bereich): Sprach-Cookie setzen bzw. ('' = automatisch)
     loeschen, zurueck zur Seite. Angemeldet und im Konto eine feste Sprache eingestellt: die Konto-Sprache mit
     aendern - sonst haette der Umschalter keine sichtbare Wirkung (das Konto hat Vorrang)."""
     from starlette.responses import RedirectResponse
     lang = i18n.norm(request.query_params.get("l"))
+    if uid and not _navigation(request):
+        # 2.5 (Sicherheit): angemeldet wirkt der Umschalter nur bei echter Navigation (Formular/Link im Dokument) - ein
+        # <img src="/lang?l=..">, fetch o. ae. aendert weder die Konto-Sprache noch das Cookie
+        return RedirectResponse(safe_next(request.query_params.get("next")), status_code=303, headers={"Cache-Control": "no-store"})
     if uid:
         try:
             if user_lang(uid):
