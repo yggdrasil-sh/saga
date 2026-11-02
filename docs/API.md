@@ -91,7 +91,8 @@ gemacht hat – dann kommt `409`. `append_markdown` prüft das immer.
 **Markdown** (rein): Überschriften, Absätze, **fett**, *kursiv*, ~~durch~~, `Code`, Links, Listen (auch verschachtelt
 und Aufgaben `- [ ]`), Zitate, Callouts (`> [!note]`), Codeblöcke, Tabellen, Trennlinien. Seitenverweise:
 `[Text](/notes#123)` oder `[Text](page:123)`. Unsichere Links (`javascript:` …) werden zu Text. Markdown (raus):
-dieselbe Umwandlung wie beim Export.
+dieselbe Umwandlung wie beim Export. Markdown-Eingaben (`markdown`, `append_markdown`) haben höchstens
+100 000 Zeichen (sonst `413`).
 
 ### Datenbanken (`read:db` / `write:db`)
 

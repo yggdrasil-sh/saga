@@ -350,7 +350,33 @@ def visible_pages(c, uid, acc=None):
 # in jeder Antwort (Seite, Suche, Export). Speichert jemand mit 'Bearbeiten', setzt restore_links die Originaltexte
 # wieder ein (Zuordnung ueber Block-id, Ziel-ID und Reihenfolge); geloeschte Verweise bleiben geloescht.
 # gespeichert (sanitize_inline) immer genau <a href="/notes#ID">; weitere Attribute nur zur Sicherheit erlaubt
-_NOTE_LINK = re.compile(r'<a\s[^>]*?\bhref="/notes#([1-9][0-9]{0,17})"[^>]*>(.*?)</a>', re.S | re.I)
+# 2.5 Security-Fix: Attribute ohne "<" und begrenzt (frueher [^>]*? - bei "<a " * n ohne ">" quadratisch); gespeichert steht
+# ohnehin genau <a href="/notes#ID"> (sanitize_inline).
+_NOTE_LINK = re.compile(r'<a\s[^<>]{0,1000}?\bhref="/notes#([1-9][0-9]{0,17})"[^<>]{0,1000}>(.*?)</a>', re.S | re.I)
+_A_END = re.compile(r"</a>", re.I)
+
+
+def upto(s, close):
+    """Ende des letzten Schluss-Tags in s (0: keiner). Muster mit "(.*?)</tag>" (re.S) finden dahinter nie etwas - suchen
+    sie trotzdem, laeuft jeder vergebliche Versuch bis zum Textende (quadratisch bei vielen Anfaengen ohne Ende, z. B.
+    in einem Codeblock). Bis hierher gesucht ist das Ergebnis dasselbe (2.5 Security-Fix). close: Text oder Muster."""
+    if isinstance(close, str):
+        i = s.rfind(close)
+        return i + len(close) if i >= 0 else 0
+    last = None
+    for last in close.finditer(s):
+        pass
+    return last.end() if last else 0
+
+
+def sub_upto(rx, rep, s, close):
+    e = upto(s, close)
+    return rx.sub(rep, s[:e]) + s[e:] if e else s
+
+
+def note_links(s):
+    """Treffer von _NOTE_LINK in s, nur bis zum letzten </a> gesucht."""
+    return _NOTE_LINK.finditer(s, 0, upto(s, _A_END))
 
 
 def _walk_strings(v, fn, key=None, blk=None):
@@ -392,7 +418,7 @@ def mask_links(body, fmt, visible):
                 return m.group(0)
             hit[0] = True
             return f'<a href="/notes#{m.group(1)}">{na}</a>'
-        return _NOTE_LINK.sub(rep, s) if "/notes#" in s else s
+        return sub_upto(_NOTE_LINK, rep, s, _A_END) if "/notes#" in s else s
     out = _walk_strings(d, fn)
     return json.dumps(out, ensure_ascii=False) if hit[0] else body
 
@@ -417,7 +443,7 @@ def restore_links(old_body, new_body, visible, title_of=None):
     texts, in_blk = {}, {}
     if old is not None:
         def collect(s, blk):
-            for m in _NOTE_LINK.finditer(s):
+            for m in note_links(s):
                 texts.setdefault(int(m.group(1)), []).append(m.group(2))
                 if blk:
                     in_blk.setdefault((blk, int(m.group(1))), []).append(m.group(2))
@@ -446,7 +472,7 @@ def restore_links(old_body, new_body, visible, title_of=None):
                 return m.group(0)
             changed[0] = True
             return f'<a href="/notes#{i}">{txt}</a>'
-        return _NOTE_LINK.sub(rep, s) if "/notes#" in s else s
+        return sub_upto(_NOTE_LINK, rep, s, _A_END) if "/notes#" in s else s
     out = _walk_strings(new, fn)
     return json.dumps(out, ensure_ascii=False) if changed[0] else new_body
 

@@ -912,6 +912,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Hinweis „Knoten müssen neu gekoppelt werden“** (Admin, Anrufe), wenn Saga einen neuen Signaturschlüssel erzeugt hat,
   obwohl schon Knoten gekoppelt waren (SECRET_KEY gewechselt, Wiederherstellung ohne Gjallarhorn-Einstellungen).
 - **Rate-Limit beim Koppeln:** volle Speicher verdrängen die am längsten unbenutzten Einträge statt alles zu leeren.
+- **MCP: Datenrahmen nicht mehr zu durchbrechen.** Jede Werkzeug-Antwort mit Nutzerinhalt steht in
+  `<saga-data id="…">…</saga-data id="…">` mit einer Zufallskennung je Antwort; der Hinweis davor nennt sie. Jedes
+  `<saga-data`/`</saga-data` im Inhalt – auch in Titeln, Codeblöcken, Datenbank-Werten, Fehlertexten, in jeder
+  Schreibweise (groß/klein, Leerraum, Vollbreite `＜`, Entitäten, `\u003c`) – wird zu `[saga-data`/`[/saga-data`. Vorher
+  konnte eine geteilte Seite mit `</saga-data>` im Codeblock oder Titel Anweisungen an die KI eines anderen Kontos schleusen.
+- **Markdown-Umwandlung linear** (`/api/v1`, MCP, Markdown-/Notion-Import): Links/Wikilinks, Codespannen, Hervorhebungen,
+  Überschriften, Codezäune, Tabellen, Listen-Folgezeilen, `<details>`/`<columns>` brauchten bei Eingaben wie `"[" * n`
+  quadratische Zeit (10 000 Zeichen 3,3 s, 40 000 Zeichen 56 s). Jetzt 400 000 Zeichen in unter 1 s; das
+  Ergebnis für normales Markdown ist gleich (Vergleich alt/neu über Doku, Test-Fixtures und Zufallseingaben). Neu begrenzt:
+  doppelt verschachtelte Klammern im Linktext und `[[` innerhalb eines Wikilinks bleiben Text. Zitate/Callouts verschachteln
+  höchstens 24 Ebenen (vorher `RecursionError` bei `"> " * 10000`).
+- **API: Markdown-Eingabe höchstens 100 000 Zeichen** (vorher 400 000; Seiten haben ohnehin höchstens 200 000 Zeichen
+  Block-JSON). Größere Inhalte in Teilen mit `append_markdown`.
+- **`/mcp`: kein Serverfehler** bei tief verschachteltem JSON, `NaN`, `1e400` oder riesigen Zahlen (JSON-RPC `-32700` bzw.
+  `isError`).
+- **Verweis-/Erwähnungs-Muster linear** (`sharing`, `mentions`, `collab`): viele offene `<a href="/notes#…">`/Erwähnungs-
+  `<span>` ohne Ende (z. B. in einem Codeblock einer geteilten Seite) kosteten beim Lesen/Speichern Sekunden. Clientlog:
+  Erkennung langer Zufallsfolgen linear.
 
 ### Gjallarhorn über Servergrenzen (Web-Test 2.5)
 - **Kein HTTP 500 mehr beim föderierten Beitritt:** antwortet das Heim mit Text statt JSON (Zeitüberschreitung, Fehlerseite),

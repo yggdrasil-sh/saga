@@ -17,6 +17,7 @@ Notion (2.5, P2-E5): $$ ... $$ (eigene Zeilen) -> Mathe-Block, <columns><column>
 <mark class="highlight-..."> -> Inline-Vertrag (span.hk-c-*, mark.hk-bg-*), {color="red"} am Zeilenende -> Blockfarbe
 (tunes.hkstyle). Unbekannte Farben fallen weg (Text bleibt)."""
 import re
+from bisect import bisect_left
 from html import escape
 
 CALLOUT_EMOJI = {"note": "ℹ️", "info": "ℹ️", "abstract": "📌", "summary": "📌", "tldr": "📌", "todo": "📌", "tip": "✅",
@@ -30,19 +31,48 @@ EMOJI_MAP = {"⚠": "⚠️", "🚨": "❗", "❌": "❗", "⛔": "❗", "🛑":
 PALETTE = ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red")
 COLS_MAX = 6
 MAX_DEPTH = 6
+# 2.5 (Security-Fix): Zitate/Callouts/<aside> verschachteln ueber _flat ohne Tiefenzaehler - ab hier bleibt der Rest Text
+# (sonst RecursionError bei "> " * 10000). Normale Dokumente kommen nie in die Naehe.
+FLAT_MAX = 24
+# Laufzeit (Security-Fix 2.5): alle Muster sind so gebaut, dass ein fehlschlagender Versuch nicht ueber den naechsten
+# Anfang desselben Musters hinaus sucht (keine quadratische Laufzeit bei "[" * n, "**a " * n, "<summary>" * n ...).
 
-_FENCE = re.compile(r"^( {0,3})(`{3,}|~{3,})\s*([^`\s]*)[^`]*$")
-_ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$")
+# Vorausschau zuerst (Rest ohne Backtick), dann ohne Rueckverfolgung: gleiche Gruppen wie "\s*([^`\s]*)[^`]*$"
+_FENCE = re.compile(r"^( {0,3})(`{3,}|~{3,})(?=[^`]*$)\s*([^`\s]*)")
+# Text samt schliessender #-Folge; die Folge schneidet _atx_text ab (frueher "(.*?)(?:[ \t]+#+)?[ \t]*$" - quadratisch
+# bei langen Leerraeumen)
+_ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*))?$")
 _HR = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 _LIST = re.compile(r"^( *)([-+*]|\d{1,9}[.)])(?:[ \t]+(.*)|$)")
 _TASK = re.compile(r"^\[([ xX])\][ \t]+(.*)$")
 _QUOTE = re.compile(r"^ {0,3}> ?(.*)$")
 _CALLOUT = re.compile(r"^\[!([A-Za-z-]+)\]([-+]?)[ \t]*(.*)$")
-_TABLE_SEP = re.compile(r"^ *\|? *:?-{1,}:? *(\| *:?-{1,}:? *)*\|? *$")
+_SEP_CELL = re.compile(r":?-+:?")
 _IMG_LINE = re.compile(r"^\s*(!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]*\))\s*$")
 _SETEXT = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
-_BCOLOR = re.compile(r"\s*\{\s*color\s*=\s*\"?([a-z_]+)\"?\s*\}\s*$")
+_BCOLOR = re.compile(r"(?<!\s)\s*\{\s*color\s*=\s*\"?([a-z_]+)\"?\s*\}\s*$")
 _LINK_LINE = re.compile(r"^\s*\[([^\]]*)\]\(<?([^)>\s]+)>?\)\s*$")
+
+
+def _atx_text(m):
+    """Ueberschriftentext wie frueher "(.*?)(?:[ \\t]+#+)?[ \\t]*$" + strip(): schliessende #-Folge nur nach Leerraum."""
+    r = (m.group(2) or "").rstrip(" \t")
+    h = len(r) - len(r.rstrip("#"))
+    if h and h < len(r) and r[-h - 1] in " \t":
+        r = r[:-h].rstrip(" \t")
+    return r.strip()
+
+
+def _table_sep(ln):
+    """Trennzeile einer GFM-Tabelle (wie frueher ^ *\\|? *:?-+:? *(\\| *:?-+:? *)*\\|? *$, aber linear)."""
+    s = ln.strip(" ")
+    if not s or "-" not in s:
+        return False
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return all(_SEP_CELL.fullmatch(c.strip(" ")) for c in s.split("|"))
 
 
 def color_of(raw):
@@ -64,6 +94,7 @@ class Ctx:
         # {color=..}), <columns>, <callout>. Sonst (Markdown/Obsidian) bleibt HTML Text.
         self.notion = notion
         self.n = 0
+        self.flat = 0
 
     def bid(self):
         self.n += 1
@@ -135,13 +166,17 @@ def _yaml_scalar(v):
 # =====================================================================================================
 # Inline
 # =====================================================================================================
+# Codespannen (`..`, ``..``) sucht _Code (frueher erste Alternative "(?P<code>`+)(?P<codetxt>.+?)(?P=code)" - quadratisch
+# bei vielen Backtick-Folgen ohne passendes Ende); die uebrigen Inline-Formen dieses Muster. Keine andere Form beginnt mit
+# einem Backtick, also gilt wie frueher: der frueheste Treffer gewinnt, an derselben Stelle ginge Code vor.
 _INLINE = re.compile(
-    r"(?P<code>`+)(?P<codetxt>.+?)(?P=code)"
-    r"|(?P<wimg>!\[\[(?P<wimgt>[^\]|]+)(?:\|[^\]]*)?\]\])"
-    r"|(?P<wiki>\[\[(?P<wikit>[^\]|#^]*)(?:[#^][^\]|]*)?(?:\|(?P<wikia>[^\]]*))?\]\])"
-    r"|(?P<img>!\[(?P<imga>[^\]]*)\]\((?P<imgu>[^)\s]*)(?:\s+\"[^\"]*\")?\))"
-    r"|(?P<link>\[(?P<linkt>(?:[^\[\]]|\[[^\]]*\])*)\]\((?P<linku><[^>]*>|(?:[^()\s]|\([^()\s]*\))*)(?:\s+\"[^\"]*\")?\))"
-    r"|(?P<auto><(?P<autou>(?:https?://|mailto:)[^>\s]+)>)"
+    # Wikilinks/Bilder/Links: ein Versuch sucht hoechstens bis zum naechsten Anfang derselben Art ("[[" bzw. "![" bzw.
+    # "[" in Linktext-Klammern) - sonst sucht jeder Versuch bis zum Textende (quadratisch bei "[" * n, "[[a|" * n ...).
+    r"(?P<wimg>!\[\[(?P<wimgt>(?:[^\[\]|]|\[(?!\[))+)(?:\|(?:[^\[\]]|\[(?!\[))*)?\]\])"
+    r"|(?P<wiki>\[\[(?P<wikit>(?:[^\[\]|#^]|\[(?!\[))*)(?:[#^](?:[^\[\]|]|\[(?!\[))*)?(?:\|(?P<wikia>(?:[^\[\]]|\[(?!\[))*))?\]\])"
+    r"|(?P<img>!\[(?P<imga>(?:[^\]!]|!(?!\[))*)\]\((?P<imgu>(?:[^)\s!]|!(?!\[))*)(?:\s+\"[^\"]*\")?\))"
+    r"|(?P<link>\[(?P<linkt>(?:[^\[\]]|\[[^\[\]]*\])*)\]\((?P<linku><[^<>]*>|(?:[^()\s]|\([^()\s]*\))*)(?:\s+\"[^\"]*\")?\))"
+    r"|(?P<auto><(?P<autou>(?:https?://|mailto:)[^<>\s]+)>)"
     r"|(?P<bare>(?<![\w/\"'=])(?P<bareu>https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?\"']))"
     r"|(?P<esc>\\[\\`*_{}\[\]()#+\-.!|~=<>$])"
     # 2.5 (Notion): Farben <span color="red">..</span>, <span class="highlight-red">, <mark class="highlight-.._background">
@@ -151,15 +186,106 @@ _INLINE = re.compile(
 )
 
 
+class _Code:
+    """Codespannen wie das fruehere Muster "(`+)(.+?)\\1" (ohne re.S): ab Stelle p in einer Backtick-Folge (Ende b) die
+    groesste Laenge L <= b-p, fuer die in derselben Zeile an einer Stelle q >= p+L+1 L Backticks stehen (frueheste q). Linear statt quadratisch: Folgen mit "groesste Laenge bis Zeilenende" und "naechste laengere Folge"."""
+
+    def __init__(self, s):
+        self.s = s
+        self.ra, self.rb = [], []                 # Folgen [a, b)
+        for m in re.finditer(r"`+", s):
+            self.ra.append(m.start())
+            self.rb.append(m.end())
+        n = len(self.ra)
+        self.last = [0] * n                       # letzte Folge derselben Zeile
+        self.suf = [0] * n                        # groesste Laenge ab hier bis Zeilenende
+        self.nxt = [n] * n                        # naechste Folge mit groesserer Laenge
+        stack = []
+        for j in range(n - 1, -1, -1):
+            ln = self.rb[j] - self.ra[j]
+            same = j + 1 < n and "\n" not in s[self.rb[j]:self.ra[j + 1]]
+            self.last[j] = self.last[j + 1] if same else j
+            self.suf[j] = max(ln, self.suf[j + 1]) if same else ln
+            while stack and self.rb[stack[-1]] - self.ra[stack[-1]] <= ln:
+                stack.pop()
+            self.nxt[j] = stack[-1] if stack else n
+            stack.append(j)
+        self.cache = None
+
+    def _at(self, p, j):
+        """Treffer an Stelle p (in Folge j) -> (Ende, Text) oder None."""
+        s, ra, rb = self.s, self.ra, self.rb
+        nl = s.find("\n", p)
+        nl = len(s) if nl < 0 else nl
+        for L in range(rb[j] - p, 0, -1):
+            st = p + L + 1                        # frueheste Stelle des Endes (Text mindestens ein Zeichen)
+            if st >= nl:
+                continue
+            k = bisect_left(rb, st + 1)           # erste Folge, die hinter st endet
+            if k < len(ra) and ra[k] <= st:       # st liegt in Folge k
+                if rb[k] - st >= L:
+                    return st + L, s[p + L:st]
+                k += 1
+            if k >= len(ra) or ra[k] >= nl or self.suf[k] < L:
+                continue
+            last = self.last[k]
+            while k <= last and rb[k] - ra[k] < L:
+                k = self.nxt[k]
+            if k <= last:
+                return ra[k] + L, s[p + L:ra[k]]
+        return None
+
+    def find(self, pos):
+        """Fruehester Treffer mit Anfang >= pos -> (Anfang, Ende, Text) oder None (pos waechst von Aufruf zu Aufruf)."""
+        c = self.cache
+        if c is not None and c[0] >= pos:
+            return c[1]
+        ra, rb = self.ra, self.rb
+        j = bisect_left(rb, pos + 1)
+        hit = None
+        p = max(pos, ra[j]) if j < len(ra) else 0
+        while j < len(ra):
+            r = self._at(p, j)
+            if r:
+                hit = (p, r[0], r[1])
+                break
+            p += 1
+            if p >= rb[j]:
+                j += 1
+                if j < len(ra):
+                    p = ra[j]
+        self.cache = (hit[0] if hit else len(self.s) + 1, hit)
+        return hit
+
+
+def _matches(s):
+    """Wie frueher _INLINE.finditer(s) mit Code als erster Alternative -> (Anfang, Ende, Match oder Codetext)."""
+    code = _Code(s) if "`" in s else None
+    pos, m, rest = 0, None, True                  # rest: hinter pos kann _INLINE noch treffen
+    while True:
+        if rest and (m is None or m.start() < pos):
+            m = _INLINE.search(s, pos)
+            rest = m is not None                  # sonst jedes Mal bis zum Ende suchen (quadratisch)
+        c = code.find(pos) if code else None
+        if c and (m is None or c[0] <= m.start()):
+            yield c
+            pos = c[1]
+        elif m is not None:
+            yield m.start(), m.end(), m
+            pos, m = m.end(), None
+        else:
+            return
+
+
 def inline(s, ctx):
     """Markdown-Zeile(n) -> sicheres Inline-HTML (b, i, s, code, mark, a, br)."""
     s = re.sub(r"%%.*?%%", "", s, flags=re.S)
     out, pos = [], 0
-    for m in _INLINE.finditer(s):
-        out.append(_emph(s[pos:m.start()]))
-        pos = m.end()
-        if m.group("code"):
-            out.append('<code class="inline-code">' + _prot(escape(m.group("codetxt").strip(), quote=False)) + "</code>")
+    for a, b, m in _matches(s):
+        out.append(_emph(s[pos:a]))
+        pos = b
+        if isinstance(m, str):
+            out.append('<code class="inline-code">' + _prot(escape(m.strip(), quote=False)) + "</code>")
         elif m.group("wimg"):
             out.append(_link_html(ctx, m.group("wimgt").strip(), True, None, embed=True))
         elif m.group("wiki"):
@@ -201,13 +327,53 @@ def _prot(s):
     return s.replace("$ref:", "&#36;ref:").replace("$file:", "&#36;file:") if "$" in s else s
 
 
+# Hervorhebungen. Frueher je Art ein re.sub mit "(?=\S)(.+?)(?<=\S)" - bei vielen Anfaengen ohne Ende (z. B. "**a " * n)
+# quadratisch. _pairs liefert dasselbe Ergebnis linear: zu jedem Anfang (von links, nicht in einem Treffer) das erste
+# passende Ende mit mindestens einem Zeichen dazwischen und ohne Zeilenumbruch.
+_EMPH = (
+    ({"**": re.compile(r"(?=\*\*\S)"), "__": re.compile(r"(?=__\S)")},
+     {"**": re.compile(r"(?<=\S)(?=\*\*)"), "__": re.compile(r"(?<=\S)(?=__)")}, 2, "<b>", "</b>"),
+    ({"*": re.compile(r"(?<![\w*])\*(?=\S)")}, {"*": re.compile(r"(?<=\S)\*(?![\w*])")}, 1, "<i>", "</i>"),
+    ({"_": re.compile(r"(?<![\w_])_(?=\S)")}, {"_": re.compile(r"(?<=\S)_(?![\w_])")}, 1, "<i>", "</i>"),
+    ({"~~": re.compile(r"(?=~~\S)")}, {"~~": re.compile(r"(?<=\S)(?=~~)")}, 2, "<s>", "</s>"),
+    ({"==": re.compile(r"(?==\=\S)")}, {"==": re.compile(r"(?<=\S)(?===)")}, 2, '<mark class="cdx-marker">', "</mark>"),
+)
+
+
+def _pairs(s, opens, closes, k, a, b):
+    if not any(d[0] in s for d in opens):
+        return s
+    ops = sorted((m.start(), d) for d, rx in opens.items() for m in rx.finditer(s))
+    if not ops:
+        return s
+    cls = {d: [m.start() for m in rx.finditer(s)] for d, rx in closes.items()}
+    nls = [i for i, ch in enumerate(s) if ch == "\n"] if "\n" in s else []
+    out, pos = [], 0
+    for p, d in ops:
+        if p < pos:
+            continue
+        cl = cls[d]
+        j = bisect_left(cl, p + k + 1)
+        if j == len(cl):
+            continue
+        c = cl[j]
+        if nls:
+            x = bisect_left(nls, p + k)
+            if x < len(nls) and nls[x] < c:
+                continue
+        out.append(s[pos:p])
+        out.append(a + s[p + k:c] + b)
+        pos = c + k
+    if not out:
+        return s
+    out.append(s[pos:])
+    return "".join(out)
+
+
 def _emph(s):
     s = _prot(escape(s, quote=False))
-    s = re.sub(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", r"<b>\2</b>", s)
-    s = re.sub(r"(?<![\w*])\*(?=\S)(.+?)(?<=\S)\*(?![\w*])", r"<i>\1</i>", s)
-    s = re.sub(r"(?<![\w_])_(?=\S)(.+?)(?<=\S)_(?![\w_])", r"<i>\1</i>", s)
-    s = re.sub(r"~~(?=\S)(.+?)(?<=\S)~~", r"<s>\1</s>", s)
-    s = re.sub(r"==(?=\S)(.+?)(?<=\S)==", r'<mark class="cdx-marker">\1</mark>', s)
+    for opens, closes, k, a, b in _EMPH:
+        s = _pairs(s, opens, closes, k, a, b)
     return s
 
 
@@ -290,7 +456,7 @@ def parse(text, ctx=None, depth=0):
         m = _ATX.match(ln)
         if m:
             flush()
-            txt, col = (m.group(2) or "").strip(), None
+            txt, col = _atx_text(m), None
             mc = _BCOLOR.search(txt) if ctx.notion else None
             if mc:
                 col, txt = color_of(mc.group(1)), txt[:mc.start()].strip()
@@ -322,7 +488,7 @@ def parse(text, ctx=None, depth=0):
             block, i = _list(lines, i, ctx)
             out.append(block)
             continue
-        if "|" in ln and i + 1 < len(lines) and _TABLE_SEP.match(lines[i + 1]) and lines[i + 1].count("-") >= 1:
+        if "|" in ln and i + 1 < len(lines) and _table_sep(lines[i + 1]):
             flush()
             rows = [_cells(ln)]
             i += 2
@@ -400,8 +566,15 @@ def _quote(q, ctx, depth):
 
 def _flat(md, ctx):
     """Mehrere Markdown-Absaetze als ein Inline-Text (Zitat/Callout kennen keine Unterbloecke)."""
+    if ctx.flat >= FLAT_MAX:                   # zu tief verschachtelt: Rest als Text
+        return inline(md.strip(), ctx)
+    ctx.flat += 1
+    try:
+        blocks = parse(md, ctx, MAX_DEPTH)
+    finally:
+        ctx.flat -= 1
     parts = []
-    for blk in parse(md, ctx, MAX_DEPTH):
+    for blk in blocks:
         d = blk.get("data") or {}
         if blk["type"] == "list":
             parts.extend("• " + it.get("content", "") for it in d.get("items") or [])
@@ -446,22 +619,21 @@ def _list(lines, i, ctx):
                 break                                    # andere Listenart auf oberster Ebene: neue Liste
             if ind > stack[-1][0] + 1 and last is not None and len(stack) < MAX_DEPTH:
                 stack.append((ind - 1, last))
-            item = {"content": inline(content.strip(), ctx), "meta": meta, "items": [], "_raw": content.strip()}
+            item = {"content": None, "meta": meta, "items": [], "_raw": [content.strip()]}
             stack[-1][1]["items"].append(item)
             last = item
             i += 1
             continue
         if last is not None and (ln.startswith("  ") or not _block_start(ln)):
             if ln.startswith("  ") or not ln.strip().startswith(("#", ">", "```", "|")):
-                last["_raw"] += "\n" + ln.strip()
-                last["content"] = inline(last["_raw"], ctx)
+                last["_raw"].append(ln.strip())         # Inline erst am Ende (frueher je Zeile neu: quadratisch)
                 i += 1
                 continue
         break
 
     def strip(items):
         for it in items:
-            it.pop("_raw", None)
+            it["content"] = inline("\n".join(it.pop("_raw")), ctx)
             strip(it["items"])
     strip(root["items"])
     return {"id": ctx.bid(), "type": "list", "data": {"style": style, "meta": {}, "items": root["items"]}}, i
@@ -492,10 +664,24 @@ def _html_block(lines, i, tag):
     return txt, i
 
 
+def _last_end(close, txt):
+    """Ende des letzten Schluss-Tags (0: keiner). Suchen mit (.*?) nur bis dorthin - dahinter scheitert jeder Versuch,
+    und zwar erst am Textende (quadratisch bei vielen Anfaengen ohne Ende)."""
+    last = None
+    for last in re.finditer(close, txt, re.I):
+        pass
+    return last.end() if last else 0
+
+
+def _search_upto(rx, close, txt):
+    end = _last_end(close, txt)
+    return re.search(rx, txt[:end], re.I | re.S) if end else None
+
+
 def _details(lines, i, ctx, depth):
     txt, i = _html_block(lines, i, "details")
-    m = re.search(r"<summary[^>]*>(.*?)</summary>", txt, re.I | re.S)
-    title = re.sub(r"<[^>]+>", "", m.group(1)).strip() if m else ""
+    m = _search_upto(r"<summary[^>]{0,500}>(.*?)</summary>", r"</summary>", txt)
+    title = re.sub(r"<[^<>]+>", "", m.group(1)).strip() if m else ""     # [^<>]: linear bei "<<<<..."
     if m:
         txt = txt[:m.start()] + txt[m.end():]
     inner = parse(txt, ctx, depth + 1) if depth < MAX_DEPTH else []
@@ -538,7 +724,8 @@ def _callout(lines, i, ctx, depth):
 def _columns(lines, i, ctx, depth):
     """<columns><column>..</column>..</columns> -> Spalten-Block (2..6; mehr: Rest in die letzte Spalte, eine: flach)."""
     txt, i = _html_block(lines, i, "columns")
-    cols = [m.group(1) for m in re.finditer(r"<column\b[^>]*>(.*?)</column\s*>", txt, re.I | re.S)]
+    end = _last_end(r"</column\s*>", txt)
+    cols = [m.group(1) for m in re.finditer(r"<column\b[^>]{0,500}>(.*?)</column\s*>", txt[:end], re.I | re.S)] if end else []
     if not cols:
         return (parse(txt, ctx, depth + 1) if depth < MAX_DEPTH else []), i
     parsed = [parse(c, ctx, depth + 1) if depth < MAX_DEPTH else [] for c in cols]

@@ -26,7 +26,12 @@ from saga.sharing import Access
 
 router = APIRouter()
 
-MD_MAX = 400_000                 # Markdown-Eingabe (Zeichen)
+# Markdown-Eingabe (Zeichen; /api/v1 und MCP). 2.5 Security-Fix: 100 000 statt 400 000. Eine Seite darf als Block-JSON
+# hoechstens NOTE_BLOCKS_MAX = 200 000 Zeichen haben; aus Markdown wird JSON nie kuerzer (Block-Huellen, Escapes), alles
+# ueber 200 000 scheiterte also ohnehin mit 413 - erst nach dem Parsen. Groessere Seiten entstehen per append_markdown in
+# Teilen. Der Parser ist linear (md2blocks); die Grenze haelt die Rechenzeit je Schreibzugriff klein (schlechteste
+# gemessene Eingaben mit 100 000 Zeichen < 0,2 s, normale ~ 0,03 s).
+MD_MAX = 100_000
 LIMIT_DEFAULT, LIMIT_MAX = 50, 100
 OUT_MD_MAX = 100_000             # Markdown-Ausgabe fuer MCP (Kuerzung mit Hinweis), API liefert alles
 _PAGE_LINK = re.compile(r"^(?:(?:https?://[^/]+)?/notes#|page:|saga:)([1-9][0-9]{0,17})$")
@@ -86,7 +91,10 @@ def md_to_blocks(md):
     def resolve(target, wiki):
         m = _PAGE_LINK.match((target or "").strip())
         return ("page", m.group(1)) if m and not wiki else None
-    return md2blocks.parse(md, md2blocks.Ctx(resolve))
+    try:
+        return md2blocks.parse(md, md2blocks.Ctx(resolve))
+    except RecursionError:                       # Sicherheitsnetz (Tiefen sind in md2blocks begrenzt)
+        raise Fail(400, t("zu tief verschachtelt"))
 
 
 def blocks_to_markdown(blocks):

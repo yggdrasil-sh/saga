@@ -104,8 +104,9 @@ try:
     ok("create_page", not err and "ID" in txt, txt)
     R = int(txt.split("ID ")[1].split(")")[0])
     err, txt, _ = tool(T, "get_page", id=R)
-    ok("get_page: Markdown, als Daten markiert (Prompt-Injection)", not err and "<saga-data" in txt and "</saga-data>" in txt and "# Hallo" in txt
-       and txt.index("<saga-data") < txt.index("Ignoriere"), txt[:300])
+    rid = (txt.split('<saga-data id="', 1)[-1][:16]) if '<saga-data id="' in txt else ""
+    ok("get_page: Markdown, als Daten markiert (Prompt-Injection, Rahmen mit Kennung)", not err and len(rid) == 16
+       and txt.endswith(f'</saga-data id="{rid}">') and "# Hallo" in txt and txt.index(f'\n<saga-data id="{rid}"') < txt.index("Ignoriere"), txt[:300])
     ok("get_page: kein Anmeldename", UA not in txt)
     err, txt, _ = tool(T, "append_to_page", id=R, markdown="- Punkt **neu**")
     ok("append_to_page", not err and "**neu**" in tool(T, "get_page", id=R)[1], txt)
@@ -151,9 +152,11 @@ try:
     ok("add_comment", not err and "ID" in txt, txt)
 
     # Ausgabegrenze
-    big = "\n\n".join(f"Absatz {i} " + "x" * 900 for i in range(140))
+    # Ausgabegrenze: Markdown-Eingabe ist auf 100 000 Zeichen begrenzt (api_v1.MD_MAX) - erst anlegen, dann anfuegen
+    big = "\n\n".join(f"Absatz {i} " + "x" * 900 for i in range(70))
     err, txt, _ = tool(T, "create_page", title="Gross", markdown=big)
     G = int(txt.split("ID ")[1].split(")")[0])
+    tool(T, "append_to_page", id=G, markdown=big)
     err, txt, _ = tool(T, "get_page", id=G)
     ok("Grosse Seite gekuerzt (mit Hinweis)", not err and len(txt) < 102_000 and ("gekürzt" in txt or "truncated" in txt.lower()), len(txt))
 

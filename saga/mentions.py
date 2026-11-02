@@ -32,7 +32,7 @@ from db import connect as _db
 from saga import bus, notify, people
 from saga.core import HANDLE_RE, local_ref, resolve_ref, t
 from saga.notes import _iter_blocks
-from saga.sharing import is_remote, names, remote_label
+from saga.sharing import is_remote, names, remote_label, sub_upto, upto
 
 DELAY = float(os.environ.get("SAGA_MENTION_DELAY", "20"))       # Sekunden bis zur Mitteilung (Tests kuerzer)
 PER_PAGE = 200                                                  # Erwaehnungen je Seite (mehr werden nicht indiziert)
@@ -72,7 +72,7 @@ def refs_in(body, fmt="blocks"):
         _strings(b.get("data"), ss)
         for s in ss:
             if "hk-mention" in s:
-                for m in _SPAN.finditer(s):
+                for m in _SPAN.finditer(s, 0, upto(s, "</span>")):     # nur bis zum letzten Ende (linear)
                     if _REF.fullmatch(m.group(1)):
                         out.setdefault(m.group(1), b.get("id") if isinstance(b.get("id"), str) else "")
         if len(out) >= PER_PAGE:
@@ -135,7 +135,7 @@ def normalize(c, body):
     def walk(v):
         if isinstance(v, str):
             if "hk-mention" in v:
-                n = _SPAN.sub(rep, v)
+                n = sub_upto(_SPAN, rep, v, "</span>")
                 if n != v:
                     ch[0] = True
                 return n
@@ -350,7 +350,7 @@ def _rewrite(body, rep):
 
     def walk(v):
         if isinstance(v, str):
-            return _SPAN.sub(rep, v) if "hk-mention" in v else v
+            return sub_upto(_SPAN, rep, v, "</span>") if "hk-mention" in v else v
         if isinstance(v, list):
             return [walk(x) for x in v]
         if isinstance(v, dict):
