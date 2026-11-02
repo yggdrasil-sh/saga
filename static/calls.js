@@ -2095,6 +2095,7 @@
         if (!live(c)) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
         var t = s.getAudioTracks()[0]; c.local.addTrack(t);
         each(c, function (L) { var snd = L.pc && audioSender(L); if (snd && !c.mix) snd.replaceTrack(t).then(function () { delete L.rates.audio; applyRates(L); }); });
+        if (c.horn) hornMic(c);                       // 2.5 (L3): Begleitgeraet ueber Knoten hatte noch kein Mikrofon - Spur an die Ton-Beine
         setMic(c, true);
       }).catch(function (e) { HK.toast(mediaError(e, false)); });
       return;
