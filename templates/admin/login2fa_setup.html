@@ -23,7 +23,7 @@
     </form>
     <p class="hk-hint">{{ _("Lieber einen Passkey? Den kannst du auf der Hauptseite unter „Anmeldung & Sicherheit“ anlegen und dich danach hier neu anmelden:") }}
       <a href="{{ security_url }}" target="_blank" rel="noopener">{{ security_url }}</a></p>
-    <p class="auth-foot"><a href="/logout">{{ _("Abbrechen") }}</a></p>
+    <form method="post" action="/logout" class="auth-foot"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn auth-foot-btn" type="submit">{{ _("Abbrechen") }}</button></form>
   </div>
 </div>
 {% endblock %}

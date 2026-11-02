@@ -24,13 +24,14 @@ from pycrdt import Doc, XmlFragment, XmlText  # noqa: E402
 from saga import collab_model as M, fedsig  # noqa: E402
 
 pa_, aa_, pb_, ab_ = (int(x) for x in os.environ.get("FEDLIVE_PORTS", "8650,8651,8652,8653").split(","))
-T.I["a"].update(port=pa_, admin=aa_, db="saga_e7a", url=f"http://127.0.0.1:{pa_}", host=f"127.0.0.1:{pa_}", state="/tmp/st-e7a",
+_db = os.environ.get("FEDLIVE_DB", "saga_e7")                         # Datenbanken <praefix>a/b, Zustand /tmp/st-<praefix>a/b
+T.I["a"].update(port=pa_, admin=aa_, db=_db + "a", url=f"http://127.0.0.1:{pa_}", host=f"127.0.0.1:{pa_}", state=f"/tmp/st-{_db}a",
                 allow=f"localhost:{pb_}")
-T.I["b"].update(port=pb_, admin=ab_, db="saga_e7b", url=f"http://localhost:{pb_}", host=f"localhost:{pb_}", state="/tmp/st-e7b",
+T.I["b"].update(port=pb_, admin=ab_, db=_db + "b", url=f"http://localhost:{pb_}", host=f"localhost:{pb_}", state=f"/tmp/st-{_db}b",
                 allow=f"127.0.0.1:{pa_}")
 HA, HB = T.I["a"]["host"], T.I["b"]["host"]
 api, sql, wait = T.api, T.sql, T.wait
-DROP = "/tmp/st-e7a/drop-live"
+DROP = f"/tmp/st-{_db}a/drop-live"
 _env1 = T.env_of
 
 
@@ -43,6 +44,10 @@ def env_of(k):
 
 
 T.env_of = F2.env_of = env_of
+
+
+AWC = {"anchor": {"type": None, "tname": "prosemirror", "item": None, "assoc": 0},      # gueltige relative Positionen
+       "head": {"type": None, "tname": "prosemirror", "item": None, "assoc": 0}}
 
 
 def ok(n, c, info=None):
@@ -198,13 +203,13 @@ def run():
         ok("alle Eingaben erhalten", all(f"A{i}" in t[0] for i in range(6)) and all(f"B{i}" in t[1] for i in range(6))
            and all(f"C{i}" in t[2] for i in range(6)), t)
         # Awareness
-        cb.send("AW", r, {"cursor": {"b": "b2"}})
+        cb.send("AW", r, {"cursor": AWC, "block": "b2"})
         m = ca.wait("AW", nid, timeout=6)
         st = json.loads(m[2][0])["state"] if m else None
         ok(f"A: Awareness von Bert kommt an (Name vom Server) ({st})", isinstance(st, dict) and "Bert" in (st.get("name") or "") and st.get("cursor"))
         ok("A: kein Anmeldename in der Awareness", m and b"fb-bert" not in m[2][0])
         time.sleep(0.1)
-        ca.send("AW", nid, {"cursor": {"b": "b1"}})
+        ca.send("AW", nid, {"cursor": AWC, "block": "b1"})
         m = cb.wait("AW", r, timeout=6, pred=lambda x: b"Anna" in x[2][0])
         ok(f"B: Awareness von Anna kommt an ({m and m[2][0][:120]})", bool(m) and b"fa-anna" not in m[2][0])
         m = cc.wait("AW", r, timeout=6, pred=lambda x: b"Bert" in x[2][0])

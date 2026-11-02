@@ -1286,6 +1286,9 @@ time.hk-date::before{content:"@";opacity:.55}
 .auth-note{background:var(--card-h);border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;font-size:.9rem;margin:0 0 .9rem}
 .auth-foot{color:var(--muted);font-size:.88rem;text-align:center;margin:1.1rem 0 .2rem}
 .auth-foot a{color:var(--accent)}
+.auth-foot .auth-foot-btn{color:var(--accent);font-size:inherit;cursor:pointer}   /* Abmelden als Formular (POST /logout) */
+.auth-inline{margin:0}
+.adm-out-f{margin:0;display:inline-flex}
 /* Sprachumschalter (saga.core.lang_switch): unter der Anmeldekarte, im Admin-Bereich in der Kopfzeile */
 .lang-sw{display:flex;align-items:center;justify-content:center;gap:.5rem;font-size:.85rem;color:var(--muted)}
 .lang-sw-l{display:inline-flex;align-items:center;gap:.35rem;cursor:pointer}

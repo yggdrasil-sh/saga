@@ -388,6 +388,7 @@ def sc_security(b):
     p.wait_for_selector("#hk-security .hk-tok", timeout=15000)
     shot(p, "v21-sicherheit", wait=1200)
     p.goto(A + "/logout")
+    p.click("#logout-go")                    # 2.5: Abmelden per Formular (POST)
     w.login()
     p.wait_for_url("**/login/2fa**", timeout=15000)
     shot(p, "v21-login-2fa", wait=1200)

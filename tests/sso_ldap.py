@@ -118,7 +118,7 @@ def main():
     ok("SSO-Zugangsgruppe: ohne Gruppe abgewiesen", s == 403 and auth.get_user("st-sso2") is None)
     _, s, loc = sso_login("sso-sub-3", {"preferred_username": "st-sso2", "groups": ["/st-hk-users"]})
     ok("SSO-Zugangsgruppe: Mitglied (Keycloak-Pfad /gruppe) darf", s == 303)
-    s, loc, _ = c.req("GET", "/logout")
+    s, loc, _ = c.post("/logout", {}, src="/logout")
     ok(f"Abmelden leitet zum Anbieter ({loc[:50]})", s == 303 and loc.startswith("http://mockoidc:8080/") and "id_token_hint" in loc)
     ok("Sitzung beendet", c.api("GET", "/api/account")[0] == 401)
     # App-Anmeldung ueber SSO (Mac/iOS/Linux: /app/login -> Anmeldeseite -> SSO -> /app/handoff)

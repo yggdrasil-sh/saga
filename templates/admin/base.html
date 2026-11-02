@@ -24,7 +24,7 @@
   <a class="btn adm-dash" href="{{ base_url }}" target="_blank" rel="noopener">{{ _("Zum Dashboard") }} ↗</a>
   {{ lang_switch("adm-lang") }}
   <span class="greet">{{ me.username }}</span>
-  <a class="btn adm-out" href="/logout" title="{{ me.username }}">{{ _("Abmelden") }}</a>
+  <form method="post" action="/logout" class="adm-out-f"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn adm-out" type="submit" title="{{ me.username }}">{{ _("Abmelden") }}</button></form>
 </header>
 {% endif %}
 <main class="adm-main">

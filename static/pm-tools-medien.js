@@ -42,6 +42,8 @@
     file: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-8.5 8.5a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg>'
   };
 
+  var FILE_URL = /^\/files\/[0-9a-f]{24}$|^\/api\/fed\/files\/-[1-9][0-9]{0,18}\/[0-9a-f]{24}$/;
+  function safeFileUrl(u) { return typeof u === 'string' && FILE_URL.test(u); }
   // Hochladen wie die Editor.js-Werkzeuge: /api/files, Feld image|file, Kopfzeilen aus pages.js (X-Saga-Note fuer fremde Seiten)
   function upload(file, field) {
     var fd = new FormData(); fd.append(field, file, file.name || (field === 'image' ? 'bild.png' : 'datei'));
@@ -86,7 +88,7 @@
         }
         function draw() {
           box.textContent = '';
-          var f = isDict(d.file) ? d.file : null, url = f && typeof f.url === 'string' ? f.url : '';
+          var f = isDict(d.file) ? d.file : null, url = f && safeFileUrl(f.url) ? f.url : '';
           if (!url) {
             if (ctx.readOnly) { box.appendChild(el('div', 'pm-att-none', T('Datei'))); return; }
             var b = el('button', 'btn pm-att-pick', busy ? T('Wird hochgeladen …') : T('Datei auswählen …')); b.type = 'button'; b.disabled = busy;
@@ -149,7 +151,9 @@
     function ed() { return X.ed(); }
     function ro() { return X.ro(); }
     function dispatch(tr) { ed().view.dispatch(tr); }
-    function fileOf(n) { var f = n.attrs.file; return isDict(f) && typeof f.url === 'string' && f.url ? f : null; }
+    // 2.5 (Sicherheit): nur Dateien aus Saga (wie der Server: /files/<id>) bzw. ueber den Foederations-Proxy - jede
+    // andere Adresse (z. B. /logout, /lang?l=..) laedt der Browser sonst sofort als Bild mit der Sitzung
+    function fileOf(n) { var f = n.attrs.file; return isDict(f) && safeFileUrl(f.url) ? f : null; }
     function setAttrsAt(pos, patch) {
       if (ro()) return false;
       var n = ed().state.doc.nodeAt(pos); if (!n) return false;

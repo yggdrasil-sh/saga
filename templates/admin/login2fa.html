@@ -30,7 +30,7 @@
       {% if totp %}<small class="hk-hint">{{ _("Kein Zugriff auf die App? Gib stattdessen einen Wiederherstellungscode ein.") }}</small>{% endif %}
       <button class="btn {% if not passkey %}btn-primary {% endif %}auth-btn" type="submit">{{ _("Bestätigen") }}</button>
     </form>
-    <p class="auth-foot"><a href="/logout">{{ _("Abbrechen") }}</a></p>
+    <form method="post" action="/logout" class="auth-foot"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkbtn auth-foot-btn" type="submit">{{ _("Abbrechen") }}</button></form>
   </div>
 </div>
 {% endblock %}

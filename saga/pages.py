@@ -386,6 +386,21 @@ def _clean_table(d):
             d.pop("colors")
 
 
+def _web_url(v):
+    """Leer oder eine http(s)-Adresse (nach sanitize_inline: &amp; zurueck). Alles andere (javascript:, data:, //host,
+    relative Pfade) gilt als unsicher."""
+    if not isinstance(v, str):
+        return False
+    u = html_unescape(v).strip()
+    if not u:
+        return True
+    try:
+        p = urlparse(u)
+    except ValueError:
+        return False
+    return p.scheme in ("http", "https") and bool(p.netloc) and not any(ord(ch) < 33 for ch in u)
+
+
 def _clean_design(blocks):
     """Gestaltungsfelder bereinigen (auch in Spalten und Toggles): tunes nur hkstyle, Spaltengewichte, Bild-/Player-Breite
     und -Ausrichtung, Toggle-Ueberschrift. Unbekannte Felder in data bleiben unangetastet."""
@@ -413,6 +428,8 @@ def _clean_design(blocks):
                 if isinstance(c.get("blocks"), list):
                     _clean_design(c["blocks"])
         elif typ in ("image", "embed"):
+            if typ == "embed" and "url" in d and not _web_url(d["url"]):
+                d["url"] = ""                          # 2.5 (Sicherheit V3): nur http(s) - nie javascript:, data: o. ae.
             player = typ == "image" or d.get("kind") == "youtube"      # Link-Karten (Embed ohne Player): unveraendert
             if "width" in d:
                 if player and _num_ok(d["width"]):
@@ -423,6 +440,9 @@ def _clean_design(blocks):
                 d.pop("align")
         elif typ == "widget":                          # 2.5: Widgets in Seiten (saga.page_widgets)
             b["data"] = page_widgets.clean_data(d)
+        elif typ == "nextcloud":                       # 2.5 (Sicherheit V3): Adresse der Nextcloud nur http(s)
+            if "inst" in d and not _web_url(d["inst"]):
+                d["inst"] = ""
         elif typ == "table":                           # 2.5 (G12/G13): Kopfspalte, Spaltenbreiten, Farben
             _clean_table(d)
         elif typ == "toggle":

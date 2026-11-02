@@ -917,12 +917,76 @@ def _aw_clean(raw, sub):
         return {}
     if not isinstance(a, dict):
         return None
-    out = {}
-    for k in ("cursor", "sel", "block", "typing"):
-        if k in a:
-            out[k] = a[k]
+    out = aw_fields(a)
     s = json.dumps(out, separators=(",", ":"))
     return out if len(s) <= AW_MAX else None
+
+
+_AW_INT = 2 ** 53
+
+
+def _aw_id(v):
+    """Yjs-ID {client, clock} (JSON) -> bereinigt oder None."""
+    if not isinstance(v, dict) or set(v) != {"client", "clock"}:
+        return None
+    c, k = v["client"], v["clock"]
+    if any(isinstance(x, bool) or not isinstance(x, int) or not 0 <= x < _AW_INT for x in (c, k)):
+        return None
+    return {"client": c, "clock": k}
+
+
+def _aw_relpos(v):
+    """Relative Position (Y.relativePositionToJSON: type | tname | item, assoc) -> bereinigt oder None. Ohne type, tname
+    und item wirft y-prosemirror beim Aufloesen ('Unexpected case') - so etwas kommt gar nicht erst bei anderen an."""
+    if not isinstance(v, dict) or not v or set(v) - {"type", "tname", "item", "assoc"}:
+        return None
+    out = {}
+    for k in ("type", "item"):
+        if v.get(k) is not None:
+            i = _aw_id(v[k])
+            if i is None:
+                return None
+            out[k] = i
+    if v.get("tname") is not None:
+        if not isinstance(v["tname"], str) or not 0 < len(v["tname"]) <= 64:
+            return None
+        out["tname"] = v["tname"]
+    if not out:
+        return None
+    if v.get("assoc") is not None:
+        a = v["assoc"]
+        if isinstance(a, bool) or not isinstance(a, int) or abs(a) > 2 ** 31:
+            return None
+        out["assoc"] = a
+    return out
+
+
+def _aw_range(v):
+    """{anchor, head} aus relativen Positionen -> bereinigt oder None."""
+    if not isinstance(v, dict) or set(v) != {"anchor", "head"}:
+        return None
+    a, h = _aw_relpos(v["anchor"]), _aw_relpos(v["head"])
+    return {"anchor": a, "head": h} if a is not None and h is not None else None
+
+
+def aw_fields(a):
+    """2.5 (Sicherheit): Felder einer Awareness pruefen - cursor/sel nur als {anchor, head} relativer Positionen, block
+    als Block-ID, typing als Wahrheitswert; null bleibt null. Ungueltiges faellt weg (auch fuer collab1, saga.fed_collab)."""
+    from saga.notes import BLOCK_ID_RE
+    out = {}
+    for k in ("cursor", "sel"):
+        if k in a:
+            if a[k] is None:
+                out[k] = None
+            else:
+                r = _aw_range(a[k])
+                if r is not None:
+                    out[k] = r
+    if "block" in a and (a["block"] is None or (isinstance(a["block"], str) and BLOCK_ID_RE.fullmatch(a["block"]))):
+        out["block"] = a["block"]
+    if "typing" in a and isinstance(a["typing"], bool):
+        out["typing"] = a["typing"]
+    return out
 
 
 def _aw_frame(sub):

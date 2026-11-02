@@ -16,6 +16,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Sicherheit (2.5, Web-Client und Live über Servergrenzen)
+- Live mitschreiben über Servergrenzen (`collab1`): Das Heim prüft den Zustand des Eigentümer-Servers jetzt genauso wie
+  beim Lesen fremder Seiten (Stufe 1), bevor er an die eigenen Browser geht – Schema, Positivliste für Inline-HTML, Links
+  nur `http(s)`/`mailto`, Bilder, Dateien und Vorschaubilder nur aus dieser Seite (`/api/fed/files/…`), Nextcloud-Autor
+  nur als Platzhalter. Hält ein Zustand das nicht ein, endet die Live-Weiterleitung und die Seite läuft über Stufe 1.
+- Tiptap-Editor: Bild- und Datei-Adressen gelten nur noch, wenn sie aus Saga stammen (`/files/<id>`, Föderations-Proxy) –
+  sonst bleibt der Block leer. Eingefügtes Saga-HTML wird vor dem Einfügen entschärft (Bilder, Vorschaubilder, Links).
+  Bisher konnte präpariertes HTML beim Einfügen sofort `GET /logout` oder `/lang?l=…` auslösen.
+- Link-Marke im Tiptap-Editor: nur `http(s)` und `mailto` (wie der Server), andere Ziele bleiben reiner Text.
+- **Abmelden nur noch per POST mit CSRF-Schutz** (Web und Admin-Bereich). `GET /logout` zeigt nur eine Rückfrage
+  (ohne Sitzung: weiter zur Anmeldung). Die Apps sind nicht betroffen, sie rufen `/logout` nicht auf.
+- Sprachumschalter `/lang`: Mit Anmeldung wirkt er nur noch bei echter Navigation (Formular oder Link), nicht als Bild
+  oder `fetch`.
+- Live-Awareness: Der Server nimmt `cursor`/`sel` nur als relative Positionen an, `block` nur als Block-ID und `typing`
+  nur als Wahrheitswert – auch für Live über Servergrenzen. Ungültiges fällt weg. Das Web verwirft Cursor, die es nicht
+  auflösen kann (vorher Fehler „Unexpected case“ bei allen anderen Teilnehmenden).
+- Einbetten (`embed.url`) und Nextcloud (`inst`) speichert der Server nur noch mit `http(s)`-Adresse.
+
 ### Fehlerberichte und „Diagnose senden“ (2.5, `clientlog1`)
 - Neu: Das Web meldet Programmfehler (`window.onerror`, nicht behandelte Promises) automatisch an den Server – gleiche
   Fehler gezählt statt wiederholt, höchstens ein Bericht je 30 s, der Rest beim Verlassen der Seite. Fehlertexte

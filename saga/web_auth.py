@@ -360,7 +360,35 @@ _BYE = {"Clear-Site-Data": '"cache"'}
 
 
 @router.get("/logout")
+async def logout_page(request: Request):
+    """2.5 (Sicherheit): GET meldet nicht mehr ab (sonst reicht ein <img src="/logout"> in fremdem Inhalt) - mit Sitzung
+    eine Rueckfrage mit Formular (POST + CSRF), ohne Sitzung weiter zur Anmeldung."""
+    nxt = _next(request.query_params.get("next"))
+    if not request.session.get("uid") and not request.session.get("mfa_u"):
+        return RedirectResponse("/login?bye=1" + ("&next=" + nxt if nxt != "/" else ""), status_code=303)
+    return _auth_page(request, "logout.html", nxt=nxt)
+
+
+@router.post("/logout")
 async def logout(request: Request):
+    """Abmelden: Formular mit CSRF-Token (Vorlagen) oder fetch mit X-Saga (static/settings.js, Antwort JSON {next}).
+    Apps melden sich nicht ueber /logout ab (Geraete-Schluessel: DELETE /api/devices/..., App-Schluessel unveraendert)."""
+    js = request.headers.get("x-saga") == "1" or request.headers.get("x-hlidskjalf") == "1"
+    nxt0 = None
+    if not js:
+        form = await request.form()
+        if not _csrf_ok(request, form):
+            return RedirectResponse("/logout", status_code=303)          # abgelaufenes Formular: Rueckfrage erneut
+        nxt0 = form.get("next")
+    else:
+        nxt0 = request.query_params.get("next")
+    resp = await _logout(request, _next(nxt0))
+    if js:
+        return JSONResponse({"ok": True, "next": resp.headers.get("location") or "/login?bye=1"}, headers=_BYE)
+    return resp
+
+
+async def _logout(request, nxt):
     id_token = request.session.get("id_token")
     psub, puid = request.session.get("push_sub"), request.session.get("uid")
     if psub and puid:                     # Mitteilungen an diesen Browser enden mit dem Abmelden (saga.push)
@@ -379,8 +407,7 @@ async def logout(request: Request):
                 q = {"post_logout_redirect_uri": BASE_URL + "/login?bye=1", "client_id": auth.settings()["oidc"]["client_id"],
                      "id_token_hint": id_token}
                 return RedirectResponse(f"{end}?{urlencode(q)}", status_code=303, headers=_BYE)
-    nxt = _next(request.query_params.get("next"))           # z. B. /security: "als anderes Konto anmelden"
-    return RedirectResponse("/login?bye=1" + ("&next=" + nxt if nxt != "/" else ""), status_code=303, headers=_BYE)
+    return RedirectResponse("/login?bye=1" + ("&next=" + nxt if nxt != "/" else ""), status_code=303, headers=_BYE)   # z. B. /security
 
 
 # --- Eigenes Konto -----------------------------------------------------------------------------------

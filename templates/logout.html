@@ -1,0 +1,13 @@
+{% extends "_auth_base.html" %}
+{% block pagetitle %}{{ _("Abmelden") }}{% endblock %}
+{% block content %}
+{#- 2.5 (Sicherheit): GET /logout meldet nicht ab, erst dieses Formular (POST + CSRF) #}
+<h2 class="auth-h">{{ _("Abmelden") }}</h2>
+<p class="auth-note">{{ _("Möchtest du dich in diesem Browser abmelden?") }}</p>
+<form method="post" action="/logout" class="auth-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="next" value="{{ nxt }}">
+  <button class="btn btn-primary auth-btn" type="submit" id="logout-go">{{ _("Abmelden") }}</button>
+</form>
+<p class="auth-foot"><a href="/">{{ _("Abbrechen") }}</a></p>
+{% endblock %}

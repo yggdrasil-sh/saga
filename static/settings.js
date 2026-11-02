@@ -18,7 +18,13 @@
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Abmelden'), function () {
         // Chat-Bild-Cache dieses Kontos (nur Ciphertext, static/chat.js) beim Abmelden leeren; Chat-Schluessel bleiben
-        var go = function () { location.href = '/logout'; };
+        // 2.5 (Sicherheit): Abmelden nur per POST (GET /logout zeigt nur eine Rueckfrage)
+        var go = function () {
+          fetch('/logout', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { location.href = (d && typeof d.next === 'string' && /^(\/(?!\/)|https?:\/\/)/.test(d.next)) ? d.next : '/login?bye=1'; },
+                  function () { location.href = '/logout'; });
+        };
         try {                                          // Videos (2.4): Schluessel laufender Wiedergaben im Service Worker vergessen
           if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ op: 'clear' });
         } catch (e) { /* egal */ }

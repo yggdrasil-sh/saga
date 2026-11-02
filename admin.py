@@ -376,7 +376,15 @@ async def login_passkey(request: Request):
 
 
 @admin.get("/logout")
-def logout(request: Request):
+def logout_get(request: Request):
+    """2.5 (Sicherheit): GET meldet nicht ab (Abmelden nur per Formular, POST mit CSRF) - weiter zur Uebersicht/Anmeldung."""
+    return _go("/")
+
+
+@admin.post("/logout")
+async def logout(request: Request):
+    if await _form(request) is None:
+        return _go("/")
     request.session.clear()
     return _go("/login")
 

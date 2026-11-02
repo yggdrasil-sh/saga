@@ -1160,9 +1160,9 @@
   }
   function safeHref(h) {
     h = String(h || '').trim(); if (!h) return '';
-    if (/^(https?:\/\/|mailto:|\/|#)/i.test(h)) return h;
-    if (/^[a-z][a-z0-9+.-]*:/i.test(h)) return '';                   // andere Schemata (javascript: ...) nie
-    return 'https://' + h;
+    if (/^(https?:\/\/|mailto:)/i.test(h)) return SC.linkHref(h);
+    if (/^[a-z][a-z0-9+.-]*:|^[\/#\\]/i.test(h)) return '';         // andere Schemata (javascript: ...) und Pfade nie (wie der Server)
+    return SC.linkHref('https://' + h);
   }
   function setLink(v) {
     var h = safeHref(v), ch = ed.chain().focus().extendMarkRange('link');
@@ -1742,12 +1742,22 @@
       return n.type.create(a, kids.length ? kids : null, n.marks);
     })(node);
   }
+  // 2.5 (Sicherheit): Slice aus eingefuegtem HTML (data-pm) ohne unsichere Datei-/Vorschau-/Link-Adressen (HKPmSchema.cleanPm)
+  function safeSlice(slice) {
+    if (!slice || !slice.content || !slice.content.size) return slice;
+    try {
+      var j = slice.toJSON(); if (!j || !Array.isArray(j.content)) return slice;
+      var c = j.content.map(function (n) { return SC.cleanPm(n); });
+      if (JSON.stringify(c) === JSON.stringify(j.content)) return slice;
+      return P.pm.model.Slice.fromJSON(schema(), { content: c, openStart: j.openStart, openEnd: j.openEnd });
+    } catch (e) { return P.pm.model.Slice.empty; }    // nicht zu bereinigen: lieber nichts einfuegen
+  }
   var X = {
     get P() { return P; }, get SC() { return SC; }, get AD() { return AD; }, K: K, el: el, T: T, BOX: BOX, COLORS: COLORS, isMac: isMac,
     ed: function () { return ed; }, holder: function () { return holder; }, schema: schema, ro: ro, newId: newId, walk: walk, findId: findId,
     blockAt: blockAt, blockJson: blockJson, nodeOf: nodeOf, setSel: setSel, paint: paint, ignoreOutside: ignoreOutside, nodeBtn: nodeBtn,
     posOf: posOf, setAttrs: setAttrs, sagaType: sagaType, isBlock: isBlock, menuActive: menuActive, slashReg: slashReg, makeBlock: makeBlock,
-    convertAt: convertAt, refill: refill, focus: focus, focusIn: focusIn, freshIds: freshIds,
+    convertAt: convertAt, refill: refill, focus: focus, focusIn: focusIn, freshIds: freshIds, safeSlice: safeSlice,
     mk: function (list, fresh) { var n = mk(list); if (!fresh) return n; var u = usedIds(); return n.map(function (x) { return freshIds(x, u); }); },
     select: select, selIds: function () { return ed && SELKEY ? (SELKEY.getState(ed.state) || []).slice() : []; },
     convertible: function (n) { return !!CONV[n.type.name]; }, colorable: function (n) { return !!COLORABLE[n.type.name]; },

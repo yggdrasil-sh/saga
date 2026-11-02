@@ -286,7 +286,9 @@
         attrs: { href: { default: null } }, inclusive: false,
         parse: [{ tag: 'a[href]', getAttrs: function (el) {
           var h = el.getAttribute('href') || '';
-          return /^\/notes#/.test(h) ? false : { href: h };
+          if (/^\/notes#/.test(h)) return false;
+          h = linkHref(h);                                           // 2.5 (Sicherheit): nur Schemata, die der Server zulaesst
+          return h ? { href: h } : false;
         } }],
         render: function (a) { return ['a', { href: a.href || '', target: '_blank', rel: 'noopener noreferrer' }, 0]; }
       },
@@ -347,6 +349,56 @@
   }
 
   var ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  // Link-Marke: nur http(s) und mailto (wie saga/pages.py _Sanitizer; /notes#<id> ist der Knoten "page", nie eine Marke) -
+  // sonst '' (kein Link). Leerzeichen am Rand zaehlen nicht, Steuerzeichen machen die Adresse ungueltig.
+  function linkHref(h) {
+    h = String(h == null ? '' : h).replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '');
+    return /^(https?|mailto):/i.test(h) && !/[\u0000-\u001f\u007f]/.test(h) ? h : '';
+  }
+  // 2.5 (Sicherheit): PM-JSON aus fremder Hand (eingefuegtes Saga-HTML mit data-pm) vor dem Einfuegen entschaerfen - der
+  // Browser laedt Bild-/Vorschau-Adressen sofort mit der Sitzung (GET /logout o. ae.), bevor der Server etwas pruefen kann.
+  // Bilder/Dateien/Vorschaubilder nur /files/<id> bzw. /api/fed/files/<seite>/<id>, Link-Felder nur http(s)/mailto.
+  var FILE_URL = /^\/files\/[0-9a-f]{24}$|^\/api\/fed\/files\/-[1-9][0-9]{0,18}\/[0-9a-f]{24}$/;
+  var URL_KEYS = { url: 1, href: 1, link: 1, source: 1, embed: 1, src: 1, inst: 1 };
+  function fileUrl(u) { return typeof u === 'string' && FILE_URL.test(u); }
+  function cleanFile(f) { return f && typeof f === 'object' && !Array.isArray(f) && fileUrl(f.url) ? f : null; }
+  function cleanData(v, key, depth) {
+    if (depth > 40) return null;
+    if (typeof v === 'string') return URL_KEYS[key] && v && !linkHref(v) ? '' : v;
+    if (Array.isArray(v)) return v.map(function (x) { return cleanData(x, key, depth + 1); });
+    if (v && typeof v === 'object') {
+      var o = {};
+      Object.keys(v).forEach(function (k) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') return;
+        o[k] = k === 'file' ? cleanFile(v[k]) : cleanData(v[k], k, depth + 1);
+      });
+      return o;
+    }
+    return v;
+  }
+  function cleanRender(r) {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+    if ((r.png != null && !fileUrl(r.png)) || (r.svg != null && !fileUrl(r.svg))) return null;
+    return r;
+  }
+  function cleanPm(n, depth) {
+    depth = depth || 0;
+    if (!n || typeof n !== 'object' || depth > 60) return n;
+    var a = n.attrs;
+    if (a && typeof a === 'object') {
+      a = Object.assign({}, a);
+      if (n.type === 'image' && a.file != null) a.file = cleanFile(a.file);
+      if ((n.type === 'code' || n.type === 'math') && a.render != null) a.render = cleanRender(a.render);
+      if (OPAQUE.indexOf(n.type) >= 0 && a.data != null) a.data = cleanData(a.data, null, 0);
+      if (n.type === 'unknown' && a.data != null) a.data = cleanData(a.data, null, 0);
+      n = Object.assign({}, n, { attrs: a });
+    }
+    if (Array.isArray(n.marks)) {
+      n = Object.assign({}, n, { marks: n.marks.filter(function (m) { return !(m && m.type === 'link') || linkHref(m.attrs && m.attrs.href); }) });
+    }
+    if (Array.isArray(n.content)) n = Object.assign({}, n, { content: n.content.map(function (c) { return cleanPm(c, depth + 1); }) });
+    return n;
+  }
   function newId() {
     var s = '', c = typeof crypto !== 'undefined' && crypto.getRandomValues ? crypto.getRandomValues(new Uint8Array(10)) : null;
     for (var i = 0; i < 10; i++) s += ID_CHARS[(c ? c[i] : Math.floor(Math.random() * 256)) % 62];
@@ -357,6 +409,6 @@
     MODEL: MODEL, VERSION: VERSION, PALETTE: PALETTE, MARKS: MARKS, INLINE_NODES: INLINE_NODES, TEXTBLOCK: TEXTBLOCK,
     OPAQUE: OPAQUE, BLOCKS: BLOCKS, BLOCK_COMMON: BLOCK_COMMON, ATTRS: ATTRS, PARTS: Object.keys(PARTS),
     NESTED_OK: NO_COLS, SYNC_OK: NO_SYNC, extensions: extensions, hashInput: hashInput, hash: hash, sha256: sha256,
-    newId: newId
+    newId: newId, linkHref: linkHref, fileUrl: fileUrl, cleanPm: cleanPm
   };
 });

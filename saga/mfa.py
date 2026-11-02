@@ -477,8 +477,16 @@ def security_page(request: Request):
     other = want if want and want.lower() != uid.lower() else ""
     html = tmpl.get_template("security.html").render(title=title(), v=ASSET_V, name=info["name"], nxt=nxt if nxt in ("/", "/notes", "/app/handoff") else "/",
                                                      need=bool(request.session.get("mfa_setup")) and required(info) and not has_mfa(uid),
-                                                     me=uid, other=other)
+                                                     me=uid, other=other, csrf=_csrf_tok(request))
     return HTMLResponse(html, headers=SEC_HEADERS)
+
+
+def _csrf_tok(request):
+    """CSRF-Token der Sitzung (wie saga.web_auth._csrf) - fuer das Abmelden-Formular (POST /logout)."""
+    tok = request.session.get("csrf")
+    if not tok:
+        tok = request.session["csrf"] = secrets.token_urlsafe(24)
+    return tok
 
 
 # --- Bestaetigen vor Aenderungen (Passwort, Code oder Passkey) -----------------------------------------------

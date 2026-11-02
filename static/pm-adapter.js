@@ -242,7 +242,7 @@
         if (tag === 'a') {
           var href = a.href || '', mm = NOTE_HREF.exec(href);
           if (mm) { cap = ['page', { id: +mm[1] }, [], 0]; return; }
-          stack.push(['a', ['link', { href: href }]]);
+          stack.push(['a', S.linkHref(href) ? ['link', { href: S.linkHref(href) }] : null]);   // unsicheres Ziel: nur Text
           return;
         }
         if (tag === 'span' && inArr(cls, 'hk-mention')) { cap = ['mention', { u: a['data-u'] || '' }, [], 0]; return; }
@@ -288,7 +288,10 @@
   function escText(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
   function escAttr(s) { return escText(s).replace(/"/g, '&quot;').replace(/'/g, '&#x27;'); }
   function openTag(name, a) {
-    if (name === 'link') return ['<a href="' + escAttr(truthyStr(a.href)) + '" target="_blank" rel="noopener noreferrer">', '</a>'];
+    if (name === 'link') {                       // 2.5 (Sicherheit): unsicheres Ziel (javascript: ...) -> ohne Link (wie der Server)
+      var lh = S.linkHref(truthyStr(a.href));
+      return lh ? ['<a href="' + escAttr(lh) + '" target="_blank" rel="noopener noreferrer">', '</a>'] : ['', ''];
+    }
     if (name === 'color') return ['<span class="hk-c-' + escAttr(truthyStr(a.c)) + '">', '</span>'];
     if (name === 'bg') return ['<mark class="hk-bg-' + escAttr(truthyStr(a.c)) + '">', '</mark>'];
     if (name === 'mark') return ['<mark class="cdx-marker">', '</mark>'];
@@ -303,8 +306,8 @@
       MARK_RANK.forEach(function (k) { if (has(m, k)) want.push([k, stable(m[k])]); });
       var k = 0;
       while (k < open.length && k < want.length && open[k][0] === want[k][0] && open[k][1] === want[k][1]) k++;
-      while (open.length > k) out.push(openTag(open.pop()[0], {})[1]);
-      for (var j = k; j < want.length; j++) { out.push(openTag(want[j][0], JSON.parse(want[j][1]))[0]); open.push(want[j]); }
+      while (open.length > k) out.push(open.pop()[2]);
+      for (var j = k; j < want.length; j++) { var tg = openTag(want[j][0], JSON.parse(want[j][1])); out.push(tg[0]); open.push([want[j][0], want[j][1], tg[1]]); }
       var t = n.type, a = n.attrs || {}, key, i;
       if (t === 'text') out.push(escText(n.text || ''));
       else if (t === 'hardBreak') out.push('<br>');
@@ -323,7 +326,7 @@
         out.push('<a href="/notes#' + (typeof pid === 'number' ? Math.trunc(pid) : 0) + '">' + txt + '</a>');
       } else throw new PmError('inline ' + t);
     });
-    while (open.length) out.push(openTag(open.pop()[0], {})[1]);
+    while (open.length) out.push(open.pop()[2]);
     return out.join('');
   }
 

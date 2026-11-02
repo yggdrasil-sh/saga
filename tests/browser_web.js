@@ -13,6 +13,11 @@ if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS se
 const res = [];
 function ok(name, cond, info) { res.push(!!cond); console.log((cond ? 'OK  ' : 'FAIL') + ' ' + name + (cond || info === undefined ? '' : ' -> ' + JSON.stringify(info))); }
 
+// 2.5 (Sicherheit): GET /logout zeigt nur eine Rueckfrage - Abmelden ueber deren Formular (POST + CSRF)
+async function logoutUi(p) {
+  await p.goto(BASE + '/logout');
+  if (await p.$('#logout-go')) await Promise.all([p.waitForURL(u => /\/login/.test(String(u)), { timeout: 15000 }).catch(() => {}), p.click('#logout-go')]);
+}
 async function session(browser, opts = {}) {
   const ctx = await browser.newContext({ viewport: opts.viewport || { width: 1366, height: 860 }, locale: opts.locale || 'de-DE',
     isMobile: !!opts.mobile, hasTouch: !!opts.mobile });
@@ -479,7 +484,7 @@ async function passkeys(browser) {
     await p.textContent('#hk-security').catch(() => ''));
   await p.click('.mfa-codes-box button:has-text("Ich habe sie gespeichert")');
   ok('2.1 Passkey: in der Liste mit Namen', /Browser-Test/.test(await p.textContent('#hk-security')));
-  await p.goto(BASE + '/logout'); await p.goto(BASE + '/login');
+  await logoutUi(p); await p.goto(BASE + '/login');
   // Autofill (conditional mediation): der virtuelle Authenticator bestaetigt sofort -> Anmeldung ohne Klick.
   // Sonst (Browser ohne Autofill) ueber den Knopf "Mit Passkey anmelden".
   const auto = await p.waitForURL(u => !/\/login/.test(String(u)), { timeout: 6000 }).then(() => true, () => false);
@@ -487,11 +492,11 @@ async function passkeys(browser) {
   ok('2.1 Passkey: Anmeldung ohne Passwort (' + (auto ? 'Autofill' : 'Knopf') + ')', !/\/login/.test(p.url()) && !!(await acct()), p.url());
   // Ab hier ohne Autofill (wie ein Browser ohne conditional mediation): Knopf-Weg und Passwort-Anmeldung pruefen
   await p.addInitScript(() => { if (window.PublicKeyCredential) PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(false); });
-  await p.goto(BASE + '/logout'); await p.goto(BASE + '/login');
+  await logoutUi(p); await p.goto(BASE + '/login');
   await p.waitForSelector('#pk-box:not([hidden])');
   await Promise.all([p.waitForURL(u => !/\/login/.test(String(u)), { timeout: 15000 }).catch(() => {}), p.click('#pk-go')]);
   ok('2.1 Passkey: Knopf "Mit Passkey anmelden"', !/\/login/.test(p.url()) && !!(await acct()), p.url());
-  await p.goto(BASE + '/logout');
+  await logoutUi(p);
   await pwLogin();
   ok('2.1 Passkey: Passwort -> Zwischenschritt', /\/login\/2fa/.test(p.url()), p.url());
   await Promise.all([p.waitForURL(u => !/\/login/.test(String(u)), { timeout: 15000 }).catch(() => {}), p.click('#pk-go')]);
