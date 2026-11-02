@@ -66,7 +66,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `handover`-Bein wird nach dem Abgang zum Begleitgerät und bekommt `call.mod {action: "mute", why: "handover"}`.
 - Neu: Schneller Rückwechsel – „Hierher übernehmen“ eines Geräts, das noch im Anruf ist, ist ein Wiedereintritt (statt
   409 `already`); Übernahmen haben einen eigenen Topf (20/min statt 6 Beitritte/min).
-- Neu: `POST /api/calls/{id}/promote {device}` – ein Begleitgerät wird Hauptgerät (das bisherige Begleitgerät); die
+- Neu: `POST /api/calls/{id}/promote {device}` – ein Begleitgerät wird Hauptgerät (das bisherige Hauptgerät Begleitgerät); die
   Antwort und `POST …/horn` liefern danach Knoten-Token **mit** Ton-Recht. Das Web baut beim „Hierher übernehmen“ am
   Begleitgerät über einen Knoten das Ton-Bein damit neu auf, bevor es `state.ready` schickt (vorher hörte die
   Gegenseite nach so einer Übernahme nichts). Föderiert als Auftrag `promote` an den führenden Server.

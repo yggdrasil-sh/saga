@@ -256,6 +256,8 @@ def part_group(anna, bert, dora):
                                                                  "signals": offers(cid, dora, dora.dev, [(bert, bert.dev)])})
     PERF["beitritt_c_ueber_a_ms"] = round((time.time() - t0) * 1000)
     ok(f"C: Dora tritt bei ({s}, {PERF['beitritt_c_ueber_a_ms']} ms)", s == 200 and len(d["call"]["legs"]) == 2)
+    ok(f"C: join-Antwort mit gen = gen der Teilnehmerliste (2.5 L1, foederiert) ({d.get('gen')})", isinstance(d.get("gen"), int) and d["gen"] > 0
+       and any(x["device"] == dora.dev["id"] and x.get("gen") == d["gen"] for x in d["call"]["legs"]))
     ok("A: Anruf aktiv (zwei Personen)", wait(lambda: call_of(anna, cid)["state"] == "active", 5))
     ok("B: Angebot von Dora (C) ueber A angekommen", bool(wait(lambda: [b for b in got(bert, bert.dev, cid, dora, dora.dev) if b["t"] == "offer"], 5)))
     t0 = time.time()

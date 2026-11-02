@@ -411,11 +411,12 @@ def join(uid, call, dev, role, rep, caps, sig):
         cur = calls._load(c, cur["id"])
         calls.emit_roster(c, cur, fed=False)
         out = calls._dict(c, cur, uid)
+        gen = horn.leg_gen(c, cur["id"], dev)          # 2.5 L1: eigene Generation wie beim lokalen join (APP-API)
     if calls.is_horn(cur):                             # 2.5 P10: Kandidaten (geteilte Knoten des Heims und eigene)
         out["horn"], err = _horn_block(uid, cur, dev, role)
         if err:
             return err
-    return chat._no_store({"ok": True, "call": out})
+    return chat._no_store({"ok": True, "call": out, "gen": gen})
 
 
 def _horn_block(uid, call, dev, role):
