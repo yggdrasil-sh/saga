@@ -24,13 +24,14 @@ from pycrdt import Doc, XmlFragment, XmlText  # noqa: E402
 from saga import collab_model as M, fedsig  # noqa: E402
 
 pa_, aa_, pb_, ab_ = (int(x) for x in os.environ.get("FEDLIVE_PORTS", "8650,8651,8652,8653").split(","))
-T.I["a"].update(port=pa_, admin=aa_, db="saga_e7a", url=f"http://127.0.0.1:{pa_}", host=f"127.0.0.1:{pa_}", state="/tmp/st-e7a",
+_db = os.environ.get("FEDLIVE_DB", "saga_e7")                         # Datenbanken <praefix>a/b, Zustand /tmp/st-<praefix>a/b
+T.I["a"].update(port=pa_, admin=aa_, db=_db + "a", url=f"http://127.0.0.1:{pa_}", host=f"127.0.0.1:{pa_}", state=f"/tmp/st-{_db}a",
                 allow=f"localhost:{pb_}")
-T.I["b"].update(port=pb_, admin=ab_, db="saga_e7b", url=f"http://localhost:{pb_}", host=f"localhost:{pb_}", state="/tmp/st-e7b",
+T.I["b"].update(port=pb_, admin=ab_, db=_db + "b", url=f"http://localhost:{pb_}", host=f"localhost:{pb_}", state=f"/tmp/st-{_db}b",
                 allow=f"127.0.0.1:{pa_}")
 HA, HB = T.I["a"]["host"], T.I["b"]["host"]
 api, sql, wait = T.api, T.sql, T.wait
-DROP = "/tmp/st-e7a/drop-live"
+DROP = f"/tmp/st-{_db}a/drop-live"
 _env1 = T.env_of
 
 
