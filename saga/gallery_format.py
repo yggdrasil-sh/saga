@@ -31,6 +31,7 @@ FONTS = ("serif", "mono")
 LANGS = ("en", "es", "ru", "th")                 # Quelle ist Deutsch
 
 MAX_ITEMS, MAX_ROWS, MAX_CHARS = 30, 200, 200_000
+UP_DBS_MAX = 5                                    # wie saga.page_widgets.UP_DBS_MAX (Anstehendes: Datenbank-Quellen)
 MAX_DEPTH = 8
 ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 REF_RE = re.compile(r"[a-z0-9_-]{1,40}")
@@ -452,8 +453,19 @@ def _check_blocks(cx, where, blocks):
                     or d.get("kind") in ("habit", "chart"):
                 if not _ref_of(cfg.get("db")):
                     cx.err(w, "Widget braucht cfg.db \"$ref:<datenbank>\"")
-            if d.get("kind") == "upcoming" and cfg.get("dbs"):
-                cx.err(w, "Anstehendes: dbs in Vorlagen nicht vorgesehen (persoenliche Quellen)")
+            if d.get("kind") == "upcoming" and "dbs" in cfg:
+                # 2.5 (gal-fix): nur Datenbanken DIESER Vorlage ("$ref:<datenbank>"), nie fremde/bestehende/numerische IDs
+                dl = cfg["dbs"]
+                if not isinstance(dl, list) or len(dl) > UP_DBS_MAX:
+                    cx.err(w, f"Anstehendes: dbs = Liste (hoechstens {UP_DBS_MAX})")
+                else:
+                    for j, x in enumerate(dl):
+                        if not isinstance(x, dict) or not _ref_of(x.get("db")):
+                            cx.err(f"{w}.dbs[{j}]", "db muss \"$ref:<datenbank>\" dieser Vorlage sein (keine fremden IDs)")
+                        elif not isinstance(x.get("date"), str) or not PID.fullmatch(x["date"]):
+                            cx.err(f"{w}.dbs[{j}]", "date = ID einer Datums-Eigenschaft")
+                        elif "mine" in x and not isinstance(x["mine"], bool):
+                            cx.err(f"{w}.dbs[{j}]", "mine muss true/false sein")
         elif b["type"] == "database":
             if not _ref_of(d.get("db")):
                 cx.err(w, "Datenbank-Block braucht db \"$ref:<datenbank>\"")
@@ -628,6 +640,16 @@ def validate(bundle, name=None):
                     for h in cfg.get("habits") or [] if isinstance(cfg.get("habits"), list) else []:
                         if o and h not in pids:
                             cx.err(where, f"Gewohnheit {h!r} gibt es in {r!r} nicht")
+                for x in cfg.get("dbs") or [] if isinstance(cfg.get("dbs"), list) else []:     # Anstehendes (gal-fix)
+                    r2 = _ref_of(x.get("db")) if isinstance(x, dict) else None
+                    if not r2:
+                        continue
+                    o = need(where, r2, ("database",), ex)
+                    pids, vids = schemas.get(r2, ({}, set()))
+                    if o and x.get("view") and x["view"] not in vids:
+                        cx.err(where, f"Anstehendes: Ansicht {x['view']!r} gibt es in {r2!r} nicht")
+                    if o and x.get("date") and (pids.get(x["date"]) or {}).get("type") not in ("date", "created", "edited"):
+                        cx.err(where, f"Anstehendes: {x['date']!r} ist keine Datums-Eigenschaft von {r2!r}")
             elif t == "buttons":
                 for bt in d.get("buttons") or []:
                     if not isinstance(bt, dict):
