@@ -16,6 +16,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Testlabor 2.11., Web (web-fix1)
+- Behoben: Neuer Editor (Tiptap): Enter im Titel einer neuen Seite sprang nicht in den Text (live gebunden hat eine leere
+  Seite keinen Block) – jetzt Schreibmarke an den Anfang des ersten Blocks bzw. der leeren Seite, der Absatz entsteht
+  erst mit dem ersten Zeichen (keine Scheinänderung). Pfeil runter am Titelende tut dasselbe (beide Editoren).
+- Behoben: Peek über „Öffnen“ in einer Datenbank-Zeile schloss nicht mit Esc (Fokus blieb auf dem Knopf, der Datenbank-
+  Block schluckt Tasten). Esc im Hauptdokument schließt einen offenen Peek; der Fokus wandert beim Öffnen in den Peek
+  und danach zurück zum Auslöser.
+- Geändert: „Diagnose senden“ sagt ehrlich, dass nur die automatischen Angaben ohne Inhalte, Titel, Namen und Adressen
+  sind; am Freitextfeld steht, dass der Admin den Text so sieht, wie er geschrieben ist (nur Adressen, E-Mail und
+  Schlüssel unkenntlich). Anleitung Kap. 12 und APP-API (Wortlaut für die Apps) angepasst.
+- Behoben: Live-Cursor und Statuszeile zeigten bei Konten ohne Anzeigenamen englisch „Unknown person (…)“. Der Server
+  schickt im Live-Kanal jetzt sprachneutral die pseudonyme Kennung, der Browser zeigt „Unbekannte Person (…)“ in der
+  eigenen Sprache; „Aktualisiert – geändert von …“ kommt in der Sprache des Empfängers.
+- Behoben: Freigabe entzogen – der Gast sah den Text ohne Hinweis weiter. Jetzt sofort „Kein Zugriff mehr“ (mit dem
+  letzten Text zum Kopieren), Editor schreibgeschützt; auch ohne Live (Stufe 1) beim Tippen.
+- Behoben: KaTeX-Fehleranzeige (unvollständige Formel) verletzte die CSP (`style-src-attr`); Saga zeigt den Fehler selbst.
+- Behoben: Konsolenwarnung „TextSelection endpoint not pointing into a node with inline content“ bei jedem Öffnen einer
+  live gebundenen Seite.
+
 ### Fehlerberichte und „Diagnose senden“ (2.5, `clientlog1`)
 - Neu: Das Web meldet Programmfehler (`window.onerror`, nicht behandelte Promises) automatisch an den Server – gleiche
   Fehler gezählt statt wiederholt, höchstens ein Bericht je 30 s, der Rest beim Verlassen der Seite. Fehlertexte
