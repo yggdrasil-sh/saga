@@ -1,0 +1,332 @@
+{
+  "id": "home-dashboard", "v": 1, "order": 5, "category": "personal",
+  "icon": "🏠", "title": "Home-Dashboard",
+  "desc": "Startseite für alles: Uhr, Zitat, Wetter, heute Fälliges, Termine mit Countdown, Wochenplaner, Gewohnheiten, Projekte mit Fortschritt, Leseliste, Ressourcen und Einkaufsliste.",
+  "needs": ["calendar"],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Home", "icon": "🏠", "cover": null, "wide": true,
+     "body": [
+       {"type": "columns", "data": {"cols": [
+         {"w": 0.25, "blocks": [{"id": "whome01", "type": "widget", "data": {"v": 1, "kind": "clock", "size": "m", "style": "card", "accent": "blue", "title": "Jetzt",
+                      "cfg": {"tz": "", "h24": true, "sec": false, "analog": true}}}]},
+         {"w": 0.4, "blocks": [{"id": "whome02", "type": "widget", "data": {"v": 1, "kind": "quote", "size": "m", "style": "card", "accent": "purple", "title": "Gedanke für heute",
+                      "cfg": {"src": "fixed", "pick": "daily", "items": [
+                        "Kleine Schritte sind auch Schritte.",
+                        "Erst das Wichtige, dann das Dringende.",
+                        "Pausen gehören zur Arbeit.",
+                        "Heute reicht es, eine Sache gut zu machen.",
+                        "Wer aufschreibt, muss sich nicht alles merken.",
+                        "Ordnung ist das halbe Leben – die andere Hälfte ist schöner."]}}}]},
+         {"w": 0.35, "blocks": [{"id": "whome03", "type": "widget", "data": {"v": 1, "kind": "weather", "size": "m", "style": "card", "accent": "orange", "title": "Wetter",
+                      "cfg": {"place": "", "lat": null, "lon": null, "units": "metric", "days": 5}}}]}
+       ]}},
+       {"type": "buttons", "data": {"buttons": [
+         {"label": "Neue Aufgabe", "icon": "☑️", "action": "db", "target": "$ref:tasks", "tpl": "$ref:tpl_task", "title": "", "open": "center"},
+         {"label": "Neuer Termin", "icon": "📅", "action": "db", "target": "$ref:termine", "tpl": "$ref:tpl_termin", "title": "", "open": "center"},
+         {"label": "Tageslog für heute", "icon": "📓", "action": "db", "target": "$ref:log", "tpl": "$ref:tpl_log", "title": "{datum}", "open": "side"},
+         {"label": "Neues Projekt", "icon": "🎯", "action": "db", "target": "$ref:projects", "tpl": "$ref:tpl_project", "title": "", "open": ""},
+         {"label": "Buch hinzufügen", "icon": "📖", "action": "db", "target": "$ref:books", "tpl": "$ref:tpl_book", "title": "", "open": "center"}
+       ]}},
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [{"type": "toggle", "data": {"title": "📌 Alltag", "level": 3, "open": true, "blocks": [
+           {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+             {"content": "<a href=\"/notes#$ref:tasks\">Aufgaben</a>", "meta": {}, "items": []},
+             {"content": "<a href=\"/notes#$ref:termine\">Termine</a>", "meta": {}, "items": []},
+             {"content": "<a href=\"/notes#$ref:log\">Tageslog</a>", "meta": {}, "items": []}]}}]}}]},
+         {"blocks": [{"type": "toggle", "data": {"title": "🗂️ Projekte & Wissen", "level": 3, "open": true, "blocks": [
+           {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+             {"content": "<a href=\"/notes#$ref:projects\">Projekte</a>", "meta": {}, "items": []},
+             {"content": "<a href=\"/notes#$ref:ressourcen\">Ressourcen</a>", "meta": {}, "items": []},
+             {"content": "<a href=\"/notes#$ref:notizen\">Schnellnotizen</a>", "meta": {}, "items": []}]}}]}}]},
+         {"blocks": [{"type": "toggle", "data": {"title": "🌿 Freizeit", "level": 3, "open": true, "blocks": [
+           {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+             {"content": "<a href=\"/notes#$ref:books\">Leseliste</a>", "meta": {}, "items": []},
+             {"content": "<a href=\"/notes#$ref:ideen\">Ideensammlung</a>", "meta": {}, "items": []}]}}]}}]}
+       ]}},
+       {"type": "header", "data": {"text": "Heute", "level": 2}},
+       {"type": "columns", "data": {"cols": [
+         {"w": 0.58, "blocks": [
+           {"id": "whome04", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "red", "title": "Heute fällig",
+                        "cfg": {"src": "tasks", "agg": "due_today", "fmt": "num"}}},
+           {"type": "database", "data": {"db": "$ref:tasks", "view": "heute", "views": null, "hide_title": true}}
+         ]},
+         {"w": 0.42, "blocks": [
+           {"id": "whome05", "type": "widget", "data": {"v": 1, "kind": "upcoming", "size": "m", "style": "card", "accent": "blue", "title": "Anstehendes",
+                        "cfg": {"days": 7, "cal": true, "tasks": true, "overdue": true, "limit": 8}}}
+         ]}
+       ]}},
+       {"type": "header", "data": {"text": "Termine", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:termine", "view": "anstehend", "views": null, "hide_title": true}},
+       {"type": "header", "data": {"text": "Wochenplaner", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:tasks", "view": "woche", "views": null, "hide_title": true}},
+       {"type": "header", "data": {"text": "Gewohnheiten", "level": 2}},
+       {"id": "whome06", "type": "widget", "data": {"v": 1, "kind": "habit", "size": "m", "style": "card", "accent": "green", "title": "Letzte 14 Tage",
+                    "cfg": {"db": "$ref:log", "view": "alle", "date": "datum", "habits": ["sport", "lesen", "wasser"], "range": 14, "goal": 5}}},
+       {"type": "database", "data": {"db": "$ref:log", "view": "wochentag", "views": null, "hide_title": true}},
+       {"type": "header", "data": {"text": "Projekte", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:projects", "view": "laufend", "views": null, "hide_title": true}},
+       {"type": "columns", "data": {"cols": [
+         {"w": 0.6, "blocks": [
+           {"type": "header", "data": {"text": "Leseliste", "level": 2}},
+           {"type": "database", "data": {"db": "$ref:books", "view": "regal", "views": null, "hide_title": true}}
+         ]},
+         {"w": 0.4, "blocks": [
+           {"type": "header", "data": {"text": "Einkaufsliste", "level": 2}},
+           {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+             {"content": "Brot", "meta": {"checked": false}, "items": []},
+             {"content": "Äpfel", "meta": {"checked": true}, "items": []},
+             {"content": "Kaffee", "meta": {"checked": false}, "items": []},
+             {"content": "Spülmittel", "meta": {"checked": false}, "items": []}]}}
+         ]}
+       ]}},
+       {"type": "header", "data": {"text": "Ressourcen", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:ressourcen", "view": "galerie", "views": null, "hide_title": true}},
+       {"type": "toggle", "data": {"title": "So richtest du die Startseite ein", "level": 3, "open": false, "blocks": [
+         {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+           {"content": "Titelbild: oben auf der Seite „Titelbild hinzufügen“ wählen und ein eigenes Bild hochladen.", "meta": {}, "items": []},
+           {"content": "Wetter: Widget anklicken und einen Ort suchen. Ist Wetter auf dem Server ausgeschaltet, zeigt das Widget einen Hinweis – dann einfach entfernen.", "meta": {}, "items": []},
+           {"content": "Video: mit /Einbetten einen YouTube-Link einfügen – Saga spielt ihn ohne Cookies ab.", "meta": {}, "items": []},
+           {"content": "„Heute fällig“ zählt deine Saga-Aufgaben samt der Datenbank „Aufgaben“ dieser Vorlage – sie ist als Aufgabenquelle eingerichtet. „Anstehendes“ zeigt die nächsten 7 Tage aus deinen Kalendern und Saga-Aufgaben.", "meta": {}, "items": []}]}}
+       ]}}
+     ]},
+
+    {"ref": "notizen", "kind": "page", "parent": "home", "title": "Schnellnotizen", "icon": "📝",
+     "body": [
+       {"type": "callout", "data": {"emoji": "📝", "text": "Alles, was gerade durch den Kopf geht – später aufräumen."}},
+       {"type": "list", "example": true, "data": {"style": "unordered", "meta": {}, "items": [
+         {"content": "Rückruf wegen Termin nächste Woche", "meta": {}, "items": []},
+         {"content": "Ladekabel fürs Büro besorgen", "meta": {}, "items": []}]}}
+     ]},
+
+    {"ref": "ideen", "kind": "page", "parent": "home", "title": "Ideensammlung", "icon": "💡",
+     "body": [
+       {"type": "paragraph", "data": {"text": "Ausflüge, Geschenke, Rezepte, Projekte für später – hier landet alles, was irgendwann dran ist."}},
+       {"type": "list", "example": true, "data": {"style": "checklist", "meta": {}, "items": [
+         {"content": "Picknick im Park", "meta": {"checked": false}, "items": []},
+         {"content": "Kräuter auf dem Balkon ziehen", "meta": {"checked": false}, "items": []}]}}
+     ]},
+
+    {"ref": "tasks", "kind": "database", "parent": "home", "title": "Aufgaben", "icon": "☑️",
+     "schema": {
+       "title_name": "Aufgabe",
+       "props": [
+         {"id": "erledigt", "name": "Erledigt", "type": "checkbox"},
+         {"id": "faellig", "name": "Fällig", "type": "date"},
+         {"id": "prio", "name": "Priorität", "type": "select", "options": [
+           {"id": "hoch", "name": "Hoch", "color": "red"},
+           {"id": "mittel", "name": "Mittel", "color": "orange"},
+           {"id": "niedrig", "name": "Niedrig", "color": "gray"}]},
+         {"id": "bereich", "name": "Bereich", "type": "select", "options": [
+           {"id": "zuhause", "name": "Zuhause", "color": "green"},
+           {"id": "arbeit", "name": "Arbeit", "color": "blue"},
+           {"id": "privat", "name": "Privat", "color": "pink"}]}
+       ],
+       "views": [
+         {"id": "heute", "name": "Heute fällig", "type": "list", "filters": [{"pid": "faellig", "op": "on_or_before", "value": "today"},
+          {"pid": "erledigt", "op": "unchecked", "value": ""}], "sorts": [{"pid": "prio", "dir": "asc"}]},
+         {"id": "woche", "name": "Wochenplaner", "type": "calendar", "date_by": "faellig", "range": "week",
+          "colors": [{"pid": "prio", "op": "is", "value": "hoch", "color": "red"}]},
+         {"id": "board", "name": "Nach Priorität", "type": "board", "group_by": "prio", "filters": [{"pid": "erledigt", "op": "unchecked", "value": ""}],
+          "colors": [{"pid": "faellig", "op": "overdue", "value": "", "color": "red"}, {"pid": "faellig", "op": "today", "value": "", "color": "orange"}]},
+         {"id": "naechste", "name": "Nächste 7 Tage", "type": "table", "filters": [{"pid": "faellig", "op": "next_days", "value": "7"}],
+          "sorts": [{"pid": "faellig", "dir": "asc"}]},
+         {"id": "alle", "name": "Alle", "type": "table", "sorts": [{"pid": "erledigt", "dir": "asc"}, {"pid": "faellig", "dir": "asc"}],
+          "calcs": {"erledigt": "pct_checked"}}
+       ],
+       "default_tpl": "$ref:tpl_task",
+       "tasks": {"done": "erledigt", "due": "faellig", "prio": "prio", "prio_map": {"hoch": 1, "mittel": 2, "niedrig": 3}}
+     },
+     "templates": [
+       {"ref": "tpl_task", "title": "Neue Aufgabe", "icon": "☑️", "props": {"prio": "mittel"}, "default": true,
+        "body": [
+          {"type": "paragraph", "data": {"text": "Worum geht es? Was ist das gewünschte Ergebnis?"}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+            {"content": "Erster Schritt", "meta": {"checked": false}, "items": []}]}}
+        ]}
+     ],
+     "rows": [
+       {"ref": "t_fenster", "title": "Fenster putzen", "example": true, "props": {"faellig": "2026-11-02", "prio": "niedrig", "bereich": "zuhause"}},
+       {"ref": "t_angebot", "title": "Angebot vergleichen", "example": true, "props": {"faellig": "2026-11-02", "prio": "hoch", "bereich": "arbeit"}},
+       {"ref": "t_texte", "title": "Texte sammeln", "example": true, "props": {"faellig": "2026-10-29", "prio": "mittel", "bereich": "arbeit", "erledigt": true}},
+       {"ref": "t_entwurf", "title": "Entwurf für den Flyer", "example": true, "props": {"faellig": "2026-11-04", "prio": "mittel", "bereich": "arbeit"}},
+       {"ref": "t_druck", "title": "Druckerei anfragen", "example": true, "props": {"faellig": "2026-11-06", "prio": "mittel", "bereich": "arbeit"}},
+       {"ref": "t_regal", "title": "Regal aufbauen", "example": true, "props": {"faellig": "2026-10-30", "prio": "mittel", "bereich": "zuhause", "erledigt": true}},
+       {"ref": "t_farbe", "title": "Farbe aussuchen", "example": true, "props": {"faellig": "2026-11-05", "prio": "niedrig", "bereich": "zuhause"}},
+       {"title": "Geburtstagskarte schreiben", "example": true, "props": {"faellig": "2026-11-03", "prio": "hoch", "bereich": "privat"}}
+     ]},
+
+    {"ref": "projects", "kind": "database", "parent": "home", "title": "Projekte", "icon": "🎯",
+     "schema": {
+       "title_name": "Projekt",
+       "props": [
+         {"id": "status", "name": "Status", "type": "select", "status": true, "options": [
+           {"id": "geplant", "name": "Geplant", "color": "gray", "group": "todo"},
+           {"id": "aktiv", "name": "Aktiv", "color": "blue", "group": "doing"},
+           {"id": "pause", "name": "Pausiert", "color": "yellow", "group": "doing"},
+           {"id": "fertig", "name": "Abgeschlossen", "color": "green", "group": "done"}]},
+         {"id": "ziel", "name": "Zieltermin", "type": "date"},
+         {"id": "aufgaben", "name": "Aufgaben", "type": "relation", "target": "$ref:tasks", "two_way": true},
+         {"id": "fortschritt", "name": "Fortschritt", "type": "rollup", "rel": "aufgaben", "target": "erledigt", "fn": "pct_checked",
+          "fmt": "percent", "show": "bar"},
+         {"id": "anzahl", "name": "Aufgaben gesamt", "type": "rollup", "rel": "aufgaben", "target": "title", "fn": "count"}
+       ],
+       "views": [
+         {"id": "laufend", "name": "Laufend", "type": "table", "filters": [{"pid": "status", "op": "status_group", "value": "open"}],
+          "sorts": [{"pid": "ziel", "dir": "asc"}], "hidden": ["aufgaben"]},
+         {"id": "board", "name": "Nach Status", "type": "board", "group_by": "status"},
+         {"id": "alle", "name": "Alle", "type": "table"}
+       ],
+       "default_tpl": "$ref:tpl_project"
+     },
+     "templates": [
+       {"ref": "tpl_project", "title": "Neues Projekt", "icon": "🎯", "props": {"status": "geplant"}, "default": true,
+        "body": [
+          {"type": "header", "data": {"text": "Ziel", "level": 2}},
+          {"type": "paragraph", "data": {"text": "Was soll am Ende erreicht sein – in ein, zwei Sätzen?"}},
+          {"type": "header", "data": {"text": "Notizen", "level": 2}},
+          {"type": "paragraph", "data": {"text": ""}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Flyer für das Hoffest", "icon": "📣", "example": true,
+        "props": {"status": "aktiv", "ziel": "2026-11-20", "aufgaben": ["$ref:t_texte", "$ref:t_angebot", "$ref:t_entwurf", "$ref:t_druck"]}},
+       {"title": "Arbeitszimmer einrichten", "icon": "🪴", "example": true,
+        "props": {"status": "aktiv", "ziel": "2026-11-30", "aufgaben": ["$ref:t_regal", "$ref:t_farbe", "$ref:t_fenster"]}},
+       {"title": "Fotobuch vom Sommer", "icon": "📷", "example": true, "props": {"status": "geplant", "ziel": "2026-12-15"}}
+     ]},
+
+    {"ref": "termine", "kind": "database", "parent": "home", "title": "Termine", "icon": "📅",
+     "schema": {
+       "title_name": "Termin",
+       "props": [
+         {"id": "datum", "name": "Datum", "type": "date"},
+         {"id": "tage", "name": "Noch (Tage)", "type": "formula", "expr": "dateBetween(prop(\"datum\"), today(), \"days\")"},
+         {"id": "art", "name": "Art", "type": "select", "options": [
+           {"id": "privat", "name": "Privat", "color": "pink"},
+           {"id": "arbeit", "name": "Arbeit", "color": "blue"},
+           {"id": "feiertag", "name": "Feiertag", "color": "green"}]},
+         {"id": "ort", "name": "Ort", "type": "text"}
+       ],
+       "views": [
+         {"id": "anstehend", "name": "Anstehend", "type": "table", "filters": [{"pid": "datum", "op": "on_or_after", "value": "today"}],
+          "sorts": [{"pid": "datum", "dir": "asc"}]},
+         {"id": "kalender", "name": "Kalender", "type": "calendar", "date_by": "datum"},
+         {"id": "alle", "name": "Alle", "type": "table", "sorts": [{"pid": "datum", "dir": "asc"}]}
+       ],
+       "default_tpl": "$ref:tpl_termin"
+     },
+     "templates": [
+       {"ref": "tpl_termin", "title": "Neuer Termin", "icon": "📅", "props": {"art": "privat"}, "default": true,
+        "body": [
+          {"type": "paragraph", "data": {"text": "Was ist mitzubringen oder vorzubereiten?"}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Zahnarzt", "icon": "🦷", "example": true, "props": {"datum": "2026-11-06", "art": "privat", "ort": "Praxis"}},
+       {"title": "Teamtreffen", "icon": "👥", "example": true, "props": {"datum": "2026-11-12", "art": "arbeit", "ort": "Besprechungsraum"}},
+       {"title": "Hoffest", "icon": "🎪", "example": true, "props": {"datum": "2026-11-21", "art": "privat"}},
+       {"title": "Heiligabend", "icon": "🎄", "example": true, "props": {"datum": "2026-12-24", "art": "feiertag"}}
+     ]},
+
+    {"ref": "log", "kind": "database", "parent": "home", "title": "Tageslog", "icon": "📓",
+     "schema": {
+       "title_name": "Tag",
+       "props": [
+         {"id": "datum", "name": "Datum", "type": "date"},
+         {"id": "wochentag", "name": "Wochentag", "type": "formula", "expr": "formatDate(prop(\"datum\"), \"dddd\")"},
+         {"id": "sport", "name": "Sport", "type": "checkbox"},
+         {"id": "lesen", "name": "Lesen", "type": "checkbox"},
+         {"id": "wasser", "name": "2 Liter Wasser", "type": "checkbox"},
+         {"id": "quote", "name": "Erfolgsquote", "type": "formula",
+          "expr": "round((if(prop(\"sport\"), 1, 0) + if(prop(\"lesen\"), 1, 0) + if(prop(\"wasser\"), 1, 0)) / 3 * 100)",
+          "fmt": "percent", "show": "bar"},
+         {"id": "notiz", "name": "Notiz", "type": "text"}
+       ],
+       "views": [
+         {"id": "wochentag", "name": "Nach Wochentag", "type": "board", "group_by": "wochentag", "sorts": [{"pid": "datum", "dir": "asc"}],
+          "hidden": ["datum", "notiz", "wochentag"],
+          "colors": [{"pid": "sport", "op": "checked", "value": "", "color": "green"}]},
+         {"id": "alle", "name": "Alle Tage", "type": "table", "sorts": [{"pid": "datum", "dir": "desc"}], "calcs": {"quote": "avg"}},
+         {"id": "verlauf", "name": "Verlauf", "type": "chart",
+          "chart": {"type": "line", "x": "datum", "bucket": "week", "agg": "pct_checked", "y": "sport", "fmt": "pct"}}
+       ],
+       "default_tpl": "$ref:tpl_log"
+     },
+     "templates": [
+       {"ref": "tpl_log", "title": "Tageslog", "icon": "📓", "props": {}, "default": true,
+        "body": [
+          {"type": "header", "data": {"text": "Heute ist mir wichtig", "level": 3}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [{"content": "", "meta": {"checked": false}, "items": []}]}},
+          {"type": "header", "data": {"text": "Rückblick am Abend", "level": 3}},
+          {"type": "paragraph", "data": {"text": ""}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Guter Start in die Woche", "example": true, "props": {"datum": "2026-10-26", "sport": true, "lesen": true, "wasser": true}},
+       {"title": "Viel Regen", "example": true, "props": {"datum": "2026-10-27", "lesen": true}},
+       {"title": "Früh aufgestanden", "example": true, "props": {"datum": "2026-10-28", "sport": true, "wasser": true}},
+       {"title": "Lange gearbeitet", "example": true, "props": {"datum": "2026-10-29", "lesen": true, "wasser": true}},
+       {"title": "Besuch zum Essen", "example": true, "props": {"datum": "2026-10-30", "sport": true}},
+       {"title": "Ausflug", "example": true, "props": {"datum": "2026-10-31", "sport": true, "lesen": true, "notiz": "Langer Spaziergang"}},
+       {"title": "Ruhiger Sonntag", "example": true, "props": {"datum": "2026-11-01", "lesen": true, "wasser": true}}
+     ]},
+
+    {"ref": "books", "kind": "database", "parent": "home", "title": "Leseliste", "icon": "📚",
+     "schema": {
+       "title_name": "Titel",
+       "props": [
+         {"id": "autor", "name": "Autor·in", "type": "text"},
+         {"id": "status", "name": "Status", "type": "select", "options": [
+           {"id": "wunsch", "name": "Will ich lesen", "color": "gray"},
+           {"id": "gerade", "name": "Lese ich gerade", "color": "blue"},
+           {"id": "gelesen", "name": "Gelesen", "color": "green"}]},
+         {"id": "seiten", "name": "Seiten", "type": "number"},
+         {"id": "seite", "name": "Bin auf Seite", "type": "number"},
+         {"id": "fortschritt", "name": "Fortschritt", "type": "calc", "op": "pct", "a": "seite", "b": "seiten", "fmt": "percent", "show": "ring"}
+       ],
+       "views": [
+         {"id": "regal", "name": "Regal", "type": "gallery", "sorts": [{"pid": "status", "dir": "asc"}], "hidden": ["seiten", "seite"]},
+         {"id": "gerade", "name": "Lese ich gerade", "type": "list", "filters": [{"pid": "status", "op": "is", "value": "gerade"}]},
+         {"id": "alle", "name": "Alle Bücher", "type": "table", "calcs": {"title": "count", "seiten": "sum"}}
+       ],
+       "default_tpl": "$ref:tpl_book"
+     },
+     "templates": [
+       {"ref": "tpl_book", "title": "Buchnotizen", "icon": "📖", "props": {"status": "wunsch"}, "default": true,
+        "body": [
+          {"type": "header", "data": {"text": "Gedanken beim Lesen", "level": 2}},
+          {"type": "paragraph", "data": {"text": ""}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Der stille Garten", "icon": "📗", "example": true, "props": {"autor": "A. Beispiel", "status": "gerade", "seiten": 320, "seite": 210}},
+       {"title": "Reise ans Ende der Karte", "icon": "📘", "example": true, "props": {"autor": "B. Muster", "status": "gerade", "seiten": 480, "seite": 60}},
+       {"title": "Kleine Küchenkunde", "icon": "📙", "example": true, "props": {"autor": "C. Probe", "status": "gelesen", "seiten": 190, "seite": 190}},
+       {"title": "Sterne über dem Fluss", "icon": "📕", "example": true, "props": {"autor": "D. Vorlage", "status": "wunsch", "seiten": 260}}
+     ]},
+
+    {"ref": "ressourcen", "kind": "database", "parent": "home", "title": "Ressourcen", "icon": "🔖",
+     "schema": {
+       "title_name": "Name",
+       "props": [
+         {"id": "kategorie", "name": "Kategorie", "type": "select", "options": [
+           {"id": "anleitung", "name": "Anleitung", "color": "blue"},
+           {"id": "werkzeug", "name": "Werkzeug", "color": "purple"},
+           {"id": "inspiration", "name": "Inspiration", "color": "yellow"}]},
+         {"id": "link", "name": "Link", "type": "url"},
+         {"id": "notiz", "name": "Notiz", "type": "text"}
+       ],
+       "views": [
+         {"id": "galerie", "name": "Galerie", "type": "gallery", "sorts": [{"pid": "kategorie", "dir": "asc"}]},
+         {"id": "alle", "name": "Alle", "type": "table"}
+       ]
+     },
+     "rows": [
+       {"title": "Checkliste Wohnungsputz", "icon": "🧽", "example": true, "props": {"kategorie": "anleitung", "link": "https://example.org/putzplan", "notiz": "Wöchentlich und monatlich"}},
+       {"title": "Farbpaletten", "icon": "🎨", "example": true, "props": {"kategorie": "inspiration", "link": "https://example.org/farben"}},
+       {"title": "Einheitenrechner", "icon": "🧮", "example": true, "props": {"kategorie": "werkzeug", "link": "https://example.org/rechner"}},
+       {"title": "Ideen für Regentage", "icon": "🌧️", "example": true, "props": {"kategorie": "inspiration", "notiz": "Spiele, Basteln, Backen"}}
+     ]}
+  ]
+}
