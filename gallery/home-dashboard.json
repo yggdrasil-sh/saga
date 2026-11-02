@@ -84,7 +84,7 @@
        {"type": "database", "data": {"db": "$ref:ressourcen", "view": "galerie", "views": null, "hide_title": true}},
        {"type": "toggle", "data": {"title": "So richtest du die Startseite ein", "level": 3, "open": false, "blocks": [
          {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
-           {"content": "Titelbild: oben auf der Seite „Titelbild hinzufügen“ wählen und ein eigenes Bild hochladen.", "meta": {}, "items": []},
+           {"content": "Titelbild: im Seitenmenü „…“ auf „Titelbild“ gehen und ein eigenes Bild hochladen.", "meta": {}, "items": []},
            {"content": "Wetter: Widget anklicken und einen Ort suchen. Ist Wetter auf dem Server ausgeschaltet, zeigt das Widget einen Hinweis – dann einfach entfernen.", "meta": {}, "items": []},
            {"content": "Video: mit /Einbetten einen YouTube-Link einfügen – Saga spielt ihn ohne Cookies ab.", "meta": {}, "items": []},
            {"content": "„Heute fällig“ zählt deine Saga-Aufgaben samt der Datenbank „Aufgaben“ dieser Vorlage – sie ist als Aufgabenquelle eingerichtet. „Anstehendes“ zeigt die nächsten 7 Tage aus deinen Kalendern und Saga-Aufgaben.", "meta": {}, "items": []}]}}
