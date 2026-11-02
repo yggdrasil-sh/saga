@@ -59,9 +59,12 @@
     }, function () { return false; });
   }
   function eligible(c, data) {
-    return !!(c && c.format === 'blocks' && typeof c.id === 'number' && c.id > 0 && c.kind !== 'database' && !W.off &&
+    return !!(c && c.format === 'blocks' && typeof c.id === 'number' && (c.id > 0 || fedLive(c)) && c.kind !== 'database' && !W.off &&
               !(window.HKPmLive && HKPmLive.disabled) && !window.__hkNoLive && !legacy(data && data.blocks, 0));
   }
+  // 2.5 (P3-E7): Seite eines anderen Servers (negative ID) nur live, wenn beide Server collab1 koennen (remote.caps,
+  // gleiches Schema, notes.live auf beiden) - sonst Stufe 1 (merge1) wie bisher
+  function fedLive(c) { return c.id < 0 && ((c.remote || {}).caps || []).indexOf('collab1') >= 0; }
   // Seiten, die live (noch) anders aussaehen als mit Stufe 1, bleiben bei Stufe 1:
   // - Toggle im Altformat {text} (Editor.js vor 2.5): der Editor zeigt ihn umgewandelt (Titel + erster Absatz), der
   //   Live-Zustand fuehrt ihn unveraendert - bis die Seite einmal gespeichert ist;

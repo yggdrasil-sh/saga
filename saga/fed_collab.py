@@ -396,7 +396,7 @@ def _full(room, rs, sv=None):
         except ValueError:
             u = room.doc.get_update()
     with _db() as c, rs.lock:
-        out = _xform(u, rs.map.out(c), rs.keys)
+        out = _xform(u, rs.map.out(c), rs.keys, lambda: _room_state(room.nid))
     if out is None:                           # sollte nicht vorkommen (ganzer Zustand): ohne Werte-Umrechnung nicht senden
         raise ValueError("xform")
     return out
@@ -1041,10 +1041,12 @@ async def _pump(relay):
         if relay.closed:
             return
         items, size = [], 0
-        while relay.pend and len(items) < OPS_MAX - 2 and size < collab.MSG_MAX:
-            it = relay.pend.pop(0)
-            items.append(it)
-            size += len(it[0].get("u") or b"")
+        while relay.pend and len(items) < OPS_MAX - 2:
+            n = len(relay.pend[0][0].get("u") or b"")
+            if items and size + n > collab.MSG_MAX:          # Buendel hoechstens ~ eine WS-Nachricht (BUNDLE_MAX beim Eigentuemer)
+                break
+            items.append(relay.pend.pop(0))
+            size += n
         try:
             ok = await _bundle_out(relay, items, due)
             backoff = 0.0 if ok else min(10.0, max(1.0, backoff * 2))
@@ -1103,7 +1105,12 @@ async def _bundle_out(relay, items, due):
         if err is not None:
             _close(relay, "federated")
             return False
-        st, d = 0, None                                        # Updates dieses Buendels: Client wiederholt (retry)
+        try:                                                   # und dasselbe Buendel einmal erneut
+            st, d = await asyncio.to_thread(_post, relay, ops)
+        except (F.FedError, F._Fail):
+            st, d = 0, None
+        if isinstance(d, dict) and d.get("lost"):
+            st, d = 0, None
     if st != 200 or not isinstance(d, dict):
         relay.need_sync = True
         if st in (403, 404) and isinstance(d, dict):
