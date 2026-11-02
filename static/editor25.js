@@ -859,5 +859,6 @@
   window.HKMoveTune = HKMoveTune;
   window.HKEd25 = { mermaidPaint: mermaidPaint, mermaidPng: mermaidPng, renderStale: renderStale, scheduleRender: scheduleRender,
                     applyColor: applyColor, srcHash: srcHash, sha256js: function (s) { return sha256js(new TextEncoder().encode(s)); },
-                    renderMermaid: renderMermaid, selection: currentSelection, updateBar: updateBar, moveDialog: moveDialog };
+                    renderMermaid: renderMermaid, selection: currentSelection, updateBar: updateBar, moveDialog: moveDialog,
+                    renderTex: renderTex };
 })();

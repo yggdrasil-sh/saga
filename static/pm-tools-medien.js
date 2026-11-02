@@ -264,6 +264,13 @@
     // hinter den obersten Block
     // Anker = Block-ID (Hochladen/Kopieren laufen asynchron, Positionen waeren bis dahin veraltet)
     function anchorOf(pos) { var e = ed(); if (!e) return null; var b = X.blockAt(pos != null ? pos : e.state.selection.from); return b && b.node.attrs.id ? b.node.attrs.id : null; }
+    // T6: Stelle der Schreibmarke laut DOM. ProseMirror uebernimmt die DOM-Auswahl erst mit "selectionchange" (asynchron) -
+    // Klick + Ende + Strg+V schnell hintereinander faende sonst noch die alte Stelle (Editor.js liest das DOM direkt)
+    function domPos(v) {
+      var s = window.getSelection && window.getSelection();
+      if (!s || !s.rangeCount || !s.focusNode || !v.dom.contains(s.focusNode) || v.state.selection instanceof S0.NodeSelection) return null;
+      try { return v.posAtDOM(s.focusNode, s.focusOffset); } catch (e) { return null; }
+    }
     function insertNodes(nodes, aid) {
       var e = ed(); if (!e || !nodes.length || ro()) return false;
       var st = e.state, b = (aid && X.findId(aid)) || X.blockAt(st.selection.from), tr = st.tr, frag = M0.Fragment.fromArray(nodes);
@@ -353,7 +360,7 @@
     function pasteSaga(view, e) {
       var cd = e.clipboardData, list = cd && clipList(cd); if (!list) return false;
       e.preventDefault();
-      var fix = M().fixRefs, cid = Kk.cur() && Kk.cur().id, aid = anchorOf();
+      var fix = M().fixRefs, cid = Kk.cur() && Kk.cur().id, aid = anchorOf(domPos(view));
       if (!fix || !Kk.cleanClip) return true;
       fix(list).then(function (bl) {
         if (!Kk.cur() || Kk.cur().id !== cid || ro()) return;
@@ -400,7 +407,8 @@
       var h = cd.getData('text/html');
       if (h && new DOMParser().parseFromString(h, 'text/html').body.textContent.trim()) return false;
       e.preventDefault();
-      uploadFiles(cd.files, view.state.selection.from);
+      var dp = domPos(view);
+      uploadFiles(cd.files, dp != null ? dp : view.state.selection.from);
       return true;
     }
     function copyImage(view, e, cut) {

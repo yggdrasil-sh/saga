@@ -82,11 +82,11 @@ async function until(fn, ms = 8000) { const t = Date.now(); let v; while (Date.n
   bl = await blocks();
   ok(`3: Original = Fassung von B, darunter Konfliktblock mit Fassung von A (${bl.map((b) => b.id + ':' + b.data.text).join(' | ')})`,
      bl[0].data.text === 'Erster Satz (B)' && bl[1].data.text === 'Erster Satz (A)' && bl[1].tunes && bl[1].tunes.hkconflict && bl[1].tunes.hkconflict.of === bl[0].id, bl);
-  const cfVis = await until(() => A.evaluate(() => !!document.querySelector('#pg-editor [data-block-id] .hk-conflict .hk-cf-take')));
+  const cfVis = await until(() => A.evaluate((s) => !!document.querySelector(s + ' .hk-cf-take'), D.UI.conflict));
   ok('3: Konfliktblock im Web sichtbar (gelb, Uebernehmen/Verwerfen)', cfVis);
   const vers = await api(A, 'GET', '/api/notes/' + id + '/versions');
   ok('3: vorher Version gesichert', Array.isArray(vers.versions || vers) && (vers.versions || vers).length >= 1, vers);
-  await A.click('.hk-conflict .hk-cf-take');
+  await A.click(D.UI.conflict + ' .hk-cf-take');
   await sleep(3500);
   bl = await blocks();
   ok(`3: Uebernehmen -> nur noch die Fassung von A, ohne Marke (${bl.map((b) => b.data.text).join(' | ')})`,

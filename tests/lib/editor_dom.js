@@ -58,11 +58,12 @@ const UI_EDITORJS = {
   nothingFound: '.ce-popover__nothing-found-message--displayed',
   inlineTool: '.ce-inline-tool',                              // Knopf der Inline-Leiste
   colorTool: '.ce-inline-tool.hk-color-tool',                 // Farbknopf der Inline-Leiste
-  colorPick: (c, name) => `.hk-cpal-b.hk-c-${c}`,             // Textfarbe in der geoeffneten Farbauswahl
   table: '.tc-table',                                         // einfache Tabelle (Block table)
-  tableCell: (r, c) => `.tc-row:nth-child(${r}) .tc-cell:nth-child(${c})`,   // Zelle (1-basiert)
-  tableRowCells: (r) => `.tc-row:nth-child(${r}) .tc-cell`,  // Zellen einer Zeile
   tableHeadCol: '.hk-tbl-hcol',                               // Tabelle mit Kopfspalte
+  picked: '.pg-picked',                                       // per Klick markierter Block (Bild: Kopieren/Ausschneiden)
+  colResize: '.cols > .col-rs',                               // Griff zwischen zwei Spalten (Breite ziehen)
+  toggleTitle: '.tgl-title',                                  // Titel eines Toggles
+  conflict: `${ROOT} [data-block-id] .hk-conflict`,           // Leiste/Rahmen eines Konfliktblocks (darin .hk-cf-take/-drop/-t)
   editorBox: `${ROOT} .codex-editor`,                         // Flaeche des Editors (Breite/Lage)
   nativeBlock: `${ROOT} .ce-block`,                           // Blockelement des Editors selbst (Kontrolle: alle markiert?)
 };
@@ -84,16 +85,32 @@ const UI_TIPTAP = {
   nothingFound: '.pm-never',
   inlineTool: '.pm-bubble .pm-bb',                            // Knopf der Formatierungsleiste (E8)
   colorTool: '.pm-bubble .pm-bb-col',
-  colorPick: (c, name) => `.menu:not([hidden]) .menu-item:has(.mi-ic.hk-c-${c})`,   // Farbmenue (HK.openMenu)
   table: '.pm-tbl',
-  tableCell: (r, c) => `.pm-tbl tr:nth-child(${r}) td:nth-child(${c})`,
-  tableRowCells: (r) => `.pm-tbl tr:nth-child(${r}) td`,
   tableHeadCol: '.pm-tbl-hcol',
+  picked: '.ProseMirror-selectednode',                        // Knotenauswahl
+  colResize: '.pm-cols-rs > .col-rs',
+  toggleTitle: '.pm-tgl-c > [data-pm-part="ttitle"]',
+  conflict: `${ROOT} .pm-cf-bar`,                             // Leiste ueber dem Konfliktblock (Dekoration)
   bubble: '.pm-bubble',
   editorBox: `${ROOT} .pm-doc`,
   nativeBlock: `${ROOT} .pm-blk, ${ROOT} .hk-tool`,
 };
 const UI = EDITOR === 'tiptap' ? UI_TIPTAP : UI_EDITORJS;
+// Bedienelemente mit Parameter (Funktionen -> Selektor). Getrennt von UI, weil UI per page.evaluate in den Browser geht
+// (nur Zeichenketten lassen sich uebergeben)
+const UIF_EDITORJS = {
+  colorPick: (c, name) => `.hk-cpal-b.hk-c-${c}`,             // Textfarbe in der geoeffneten Farbauswahl
+  tableCell: (r, c) => `.tc-row:nth-child(${r}) .tc-cell:nth-child(${c})`,   // Zelle (1-basiert)
+  tableRowCells: (r) => `.tc-row:nth-child(${r}) .tc-cell`,  // Zellen einer Zeile
+  toggleHead: (lv) => `.tgl-h${lv} .tgl-title`,               // Titel einer Toggle-Ueberschrift (Stufe 1-3)
+};
+const UIF_TIPTAP = {
+  colorPick: (c, name) => `.menu:not([hidden]) .menu-item:has(.mi-ic.hk-c-${c})`,   // Farbmenue (HK.openMenu)
+  tableCell: (r, c) => `.pm-tbl tr:nth-child(${r}) td:nth-child(${c})`,
+  tableRowCells: (r) => `.pm-tbl tr:nth-child(${r}) td`,
+  toggleHead: (lv) => `.pm-tgl-h${lv} > .pm-tgl-c > [data-pm-part="ttitle"]`,
+};
+const UIF = EDITOR === 'tiptap' ? UIF_TIPTAP : UIF_EDITORJS;
 // sichtbare Eintraege (Titel) des offenen Menues
 const UI_ITEMS = `${UI.popover} ${UI.item}:not(${UI.itemHidden}) ${UI.itemTitle}`;
 // Menue-Eintrag mit genau diesem Titel (Playwright-Selektor)
@@ -163,5 +180,5 @@ async function setEditor(page, kind = EDITOR) {
   return page.evaluate((on) => HK.api('PUT', '/api/account/editor', { tiptap: on }).then(() => true, () => false), kind === 'tiptap');
 }
 
-module.exports = { ROOT, EDITOR, UI_EDITORJS, UI_TIPTAP, isEditor, setEditor, block, ofType, top, text, textOf, topText, editIn, any, anyText, UI, UI_ITEMS, menuItem,
+module.exports = { ROOT, EDITOR, UI_EDITORJS, UI_TIPTAP, UIF, isEditor, setEditor, block, ofType, top, text, textOf, topText, editIn, any, anyText, UI, UI_ITEMS, menuItem,
   blocks, count, find, textOfBlock, htmlOf, focus, clickEnd, typeEnd, select, selected, current, waitBlock };

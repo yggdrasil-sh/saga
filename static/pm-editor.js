@@ -1247,14 +1247,18 @@
     var n = ed.state.doc.nodeAt(pos); if (!n || n.type.name !== 'math_inline') return;
     var dom = ed.view.nodeDOM(pos), r = dom && dom.getBoundingClientRect ? dom.getBoundingClientRect() : { left: 20, bottom: 20 };
     var p = el('div', 'hk-mpop'); p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', T('Formel'));
+    var view = el('div', 'hk-mpop-v');                 // Vorschau mit KaTeX wie im Editor.js-Popover (static/editor25.js)
+    var tex = function (v) { if (window.HKEd25 && HKEd25.renderTex) HKEd25.renderTex(v, view, false).catch(function () { view.textContent = v; }); else view.textContent = v; };
     var inp = el('input', 'hk-mpop-in'); inp.type = 'text'; inp.value = n.attrs.tex || ''; inp.spellcheck = false; inp.setAttribute('aria-label', T('Formel (TeX)'));
     inp.readOnly = ro();
-    p.appendChild(inp); document.body.appendChild(p); mathPop = p;
+    p.appendChild(view); p.appendChild(inp); document.body.appendChild(p); mathPop = p;
+    tex(inp.value);
     p.style.left = Math.max(8, Math.min(r.left, window.innerWidth - p.offsetWidth - 8)) + 'px';
     p.style.top = Math.min(r.bottom + 6, window.innerHeight - p.offsetHeight - 8) + 'px';
     inp.addEventListener('input', function () {
       var cur = ed.state.doc.nodeAt(pos); if (!cur || cur.type.name !== 'math_inline') return;
       ed.view.dispatch(ed.state.tr.setNodeMarkup(pos, null, Object.assign({}, cur.attrs, { tex: inp.value })));
+      tex(inp.value);
     });
     inp.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === 'Escape') {
@@ -1330,7 +1334,7 @@
   }
   function onTr(a) {
     var tr = a.transaction;
-    if (!tr.docChanged || tr.getMeta('hkRemote') || !CB) return;
+    if (!tr.docChanged || tr.getMeta('hkRemote') || tr.getMeta('hkQuiet') || !CB) return;   // hkQuiet: pm-tools.js ctx.change quiet
     var ys = tr.getMeta('y-sync$'); if (ys && ys.isChangeOrigin) return;     // live: Stand aus Yjs (fremd/Undo), nicht als Eingabe melden
     CB.changed(changedIds(tr));
   }

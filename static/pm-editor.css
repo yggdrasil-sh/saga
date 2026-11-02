@@ -87,6 +87,8 @@
 .pm-blink[hidden]{display:none}
 .pm-blink .hk-in{width:100%}
 @media (max-width:760px){.page-body .pm-doc{font-size:16px}.pm-slash{width:min(300px,calc(100vw - 16px))}}
+/* T6: Handy wie Editor.js (mobiles Popover): Slash-Menue als Leiste unten ueber die volle Breite (place() setzt nur left/top) */
+@media (max-width:650px){.pm-slash.pm-pop{left:8px!important;right:8px;width:auto;top:auto!important;bottom:8px;max-height:45vh}}
 /* --- Struktur (T3, static/pm-struktur.js) ------------------------------------------------------------------------ */
 .page-body .pm-holder{position:relative}
 /* Spalten: Raster wie Editor.js (.cols/--cols/--cols-t aus style.css), Griffe/Leiste ausserhalb des Inhalts */

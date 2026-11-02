@@ -48,8 +48,8 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   ok('Inline-Leiste hat das Farbwerkzeug', !!hasTool);
   if (hasTool) {
     await p.click(D.UI.colorTool);
-    await p.waitForSelector(D.UI.colorPick('red'));
-    await p.click(D.UI.colorPick('red'));
+    await p.waitForSelector(D.UIF.colorPick('red'));
+    await p.click(D.UIF.colorPick('red'));
   }
   let bl = await saved(f, (b) => /hk-c-red/.test(b[0].data.text) && b);
   ok(`Textfarbe gespeichert (${bl && bl[0].data.text})`, bl && bl[0].data.text === 'Hallo <span class="hk-c-red">schoene</span> Welt');
@@ -210,7 +210,7 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   const g0 = await saved(mm, (b) => b[0].data.render && b[0].data.render.png && b[0].data.render, 15000);
   ok('Mermaid: Vorschaubild hochgeladen', !!g0 && !g0.stale);
   // Ansicht umschalten wird gespeichert
-  await p.hover(D.block('g0') + ' .hk-code'); await p.click(D.block('g0') + ' .hk-code-vb[data-v="split"]');
+  await p.hover(`${D.block('g0')} .hk-code, ${D.block('g0')}.hk-code`); await p.click(D.block('g0') + ' .hk-code-vb[data-v="split"]');
   ok('Ansicht "Geteilt" gespeichert', !!(await saved(mm, (b) => b[0].data.view === 'split')));
 
   ok(`Keine Fehler/CSP-Verstoesse (${errs.join(' / ')})`, errs.length === 0, errs);

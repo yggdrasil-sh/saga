@@ -200,21 +200,21 @@ function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDat
     const P = (await p.api('POST', '/api/notes', { title: 'Tabellen-Block' })).id; made.push(P);
     await p.api('PATCH', '/api/notes/' + P, { format: 'blocks', body: JSON.stringify({ blocks: [{ type: 'table', data: { withHeadings: true, content: [['A', 'B'], ['1', '2']], zukunft: 7 } }] }) });
     await p.goto(BASE + '/notes?t=' + Date.now() + '#' + P); await p.waitForSelector(ED.UI.table); await p.waitForTimeout(800);
-    await p.click(ED.UI.tableCell(2, 2));
+    await p.click(ED.UIF.tableCell(2, 2));
     await p.waitForTimeout(200);
-    await p.hover(ED.UI.tableCell(2, 2)); await p.click(ED.UI.blockMenuBtn);
+    await p.hover(ED.UIF.tableCell(2, 2)); await p.click(ED.UI.blockMenuBtn);
     const hasItems = await until(p, (s) => [...document.querySelectorAll(s)].some((x) => /Erste Spalte als Kopf/.test(x.textContent)), MENU_IT, 5000);
     ok('Block-Menue: „Erste Spalte als Kopf“, „Zeile einfärben“', hasItems && await p.evaluate((s) => [...document.querySelectorAll(s)].some((x) => /Zeile einfärben/.test(x.textContent)), MENU_IT));
     if (hasItems) {
       await p.evaluate((s) => [...document.querySelectorAll(s)].find((x) => /Erste Spalte als Kopf/.test(x.textContent)).click(), MENU_IT);
       ok('Kopfspalte sichtbar', await until(p, (s) => !!document.querySelector(s), ED.UI.tableHeadCol));
-      await p.click(ED.UI.tableCell(2, 2)); await p.waitForTimeout(150);
-      await p.hover(ED.UI.tableCell(2, 2)); await p.click(ED.UI.blockMenuBtn);
+      await p.click(ED.UIF.tableCell(2, 2)); await p.waitForTimeout(150);
+      await p.hover(ED.UIF.tableCell(2, 2)); await p.click(ED.UI.blockMenuBtn);
       await until(p, (s) => [...document.querySelectorAll(s)].some((x) => /Zeile einfärben/.test(x.textContent)), MENU_IT, 5000);
       await p.evaluate((s) => [...document.querySelectorAll(s)].find((x) => /Zeile einfärben/.test(x.textContent)).click(), MENU_IT);
       await p.waitForTimeout(300);
       await p.evaluate((s) => { const it = [...document.querySelectorAll(s)].find((x) => /^\s*Blau\s*$/.test(x.textContent)); if (it) it.click(); }, MENU_IT);
-      ok('Zeile 2 blau eingefaerbt', await until(p, (s) => document.querySelectorAll(s).length === 2, ED.UI.tableRowCells(2) + '.tbl-bg-blue'));
+      ok('Zeile 2 blau eingefaerbt', await until(p, (s) => document.querySelectorAll(s).length === 2, ED.UIF.tableRowCells(2) + '.tbl-bg-blue'));
       let saved = null;
       for (let i = 0; i < 40; i++) { const g = await p.api('GET', '/api/notes/' + P); saved = JSON.parse(g.body).blocks[0].data; if (saved.headCol && saved.colors) break; await p.waitForTimeout(250); }
       ok('gespeichert: headCol, colors.r[1]=blue, fremdes Feld bleibt', saved && saved.headCol === true && saved.colors && saved.colors.r && saved.colors.r['1'] === 'blue' && saved.zukunft === 7, saved);
