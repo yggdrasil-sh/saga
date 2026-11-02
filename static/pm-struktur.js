@@ -558,7 +558,7 @@
       var tpl = document.createElement('template'); tpl.innerHTML = html;
       var tops = [].filter.call(tpl.content.childNodes, function (n) { return n.nodeType === 1 && n.tagName !== 'META'; });
       if (!tops.length || !tops.every(function (n) { return n.hasAttribute('data-block-type'); })) return false;
-      var slice = M0.DOMParser.fromSchema(schema()).parseSlice(tpl.content), nodes = [];
+      var slice = X.safeSlice(M0.DOMParser.fromSchema(schema()).parseSlice(tpl.content)), nodes = [];   // data-pm entschaerfen
       slice.content.forEach(function (n) { if (X.isBlock(n)) nodes.push(X.freshIds(n)); });
       if (!nodes.length) return false;
       var st = view.state, b = blockOfSel(st); if (!b) return false;

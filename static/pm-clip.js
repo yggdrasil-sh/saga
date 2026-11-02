@@ -273,8 +273,8 @@
       parseSlice: function (dom, opts) {
         var bp = baseParser();
         try {
-          if (ownHtml(dom) || !Kk || !Kk.cleanClip) return bp.parseSlice(dom, opts);
-          var raw = foreignBlocks(dom); if (!raw.length) return bp.parseSlice(dom, opts);
+          if (ownHtml(dom) || !Kk || !Kk.cleanClip) return X.safeSlice(bp.parseSlice(dom, opts));   // Saga-HTML: data-pm entschaerfen
+          var raw = foreignBlocks(dom); if (!raw.length) return X.safeSlice(bp.parseSlice(dom, opts));
           var $c = opts && opts.context, par = $c ? $c.parent : null;
           var blockMode = !par || !!TEXT_PARENTS[par.type.name];
           if (blockMode && $c && $c.depth > 1) {
@@ -295,7 +295,7 @@
           return new M0.Slice(M0.Fragment.fromArray(nodes), os, oe);
         } catch (e) {
           if (root.console) console.error('pm-clip', e);
-          return bp.parseSlice(dom, opts);
+          return X.safeSlice(bp.parseSlice(dom, opts));
         }
       }
     };

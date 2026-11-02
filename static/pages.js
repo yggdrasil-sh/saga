@@ -1758,6 +1758,7 @@
   var CLIP_MENTION_U = /^(~[a-z2-7]{16}|@[a-z0-9~][a-z0-9_~-]{1,31}@[a-z0-9.:-]{1,260})$/;     // wie saga/pages.py _MENTION_U
   var CLIP_DROP = /^(script|style|template|iframe|frame|frameset|object|embed|noscript|svg|math|textarea|select|button|form|title|head|link|meta)$/;
   var CLIP_URL_KEYS = { url: 1, href: 1, link: 1, source: 1, embed: 1, src: 1 };
+  var CLIP_FILE = /^\/files\/[0-9a-f]{24}$|^\/api\/fed\/files\/-[1-9][0-9]{0,18}\/[0-9a-f]{24}$/;
   function clipEsc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function clipInline(s) {
     if (s.indexOf('<') < 0 && s.indexOf('&') < 0) return s;
@@ -1805,6 +1806,9 @@
     if (v && typeof v === 'object') {
       var o = {};
       Object.keys(v).forEach(function (k) { if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') o[k] = clipVal(v[k], k, depth + 1); });
+      // 2.5 (Sicherheit): Datei/Vorschaubild nur aus Saga (/files/<id>, Proxy) - der Browser laedt sie sofort mit der Sitzung
+      if (key === 'file' && o.url != null && !CLIP_FILE.test(String(o.url))) o.url = '';
+      if (key === 'render' && ((o.png != null && !CLIP_FILE.test(String(o.png))) || (o.svg != null && !CLIP_FILE.test(String(o.svg))))) return null;
       return o;
     }
     return (typeof v === 'number' && isFinite(v)) || typeof v === 'boolean' || v === null ? v : null;
