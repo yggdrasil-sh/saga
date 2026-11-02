@@ -3821,7 +3821,10 @@
   function hornSpk(R) { if (R.horn) hornAudioRoute(R); }
   function hornCam(R) {
     if (!R.horn) return;
-    hornConns(R).forEach(function (c) { Object.keys(c.legs).forEach(function (k) { var L = c.legs[k]; if (L.cam) L.cam.sender.replaceTrack(R.cam || null).catch(function () {}); }); });
+    hornConns(R).forEach(function (c) {
+      Object.keys(c.legs).forEach(function (k) { var L = c.legs[k]; if (L.cam) L.cam.sender.replaceTrack(R.cam || null).catch(function () {}); });
+      hornTuneCam(R, c);                               // A1: Deckel fuer m (Hoehe) erst mit der Kamera bekannt (Kamera spaeter an)
+    });
     hornStateOut(R); hornDraw(R);
   }
   function hornMic(R) {
