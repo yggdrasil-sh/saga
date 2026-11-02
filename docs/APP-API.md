@@ -2019,6 +2019,41 @@ Der Weg (UDP/TCP/TLS) bleibt die Beschriftung; der Tooltip nennt „Empfangsqual
 `acct` ist stabil je Server und Konto (HMAC), sodass sich die Meldungen beider Seiten eines Anrufs über `call` zuordnen
 lassen.
 
+## Editor-Diagnose (2.5, `pmdiag1`, Tiptap-Umbau T6)
+
+Während des Feldtests meldet der neue Web-Editor (Tiptap, `static/pm-diag.js`) **Round-Trip-Abweichungen**: Blöcke, die
+niemand bearbeitet hat, deren gespeicherte Form aber von der geladenen abweichen würde – ein Hinweis auf eine Lücke im
+Adapter (`docs/EDITOR-PM.md` „Diagnose“). Der Server **speichert nichts**: je angenommener Meldung eine Zeile
+`pmdiag {…}` im Server-Log. Gemeldet werden nur Blocktyp, Feldpfad und Art – **nie** Inhalt, Text, Block-IDs,
+Dateinamen oder Adressen. Admin-Schalter `editor.diag` (Einstellungen → Seiten → „Editor-Diagnose“, Standard **an**);
+aus → `404` und kein Feature. Apps senden nichts (sie haben keinen Tiptap-Editor).
+
+**Erkennen:** `GET /api/version` → `features` enthält `pmdiag1`. Ohne das Feature nichts senden.
+
+**Senden:** `POST /api/diag` (Sitzung, Kopf `X-Saga: 1`; nur Konten, für die `editor_engine` = `tiptap` gilt, sonst
+`403`), Body JSON ≤ 8 KB. Der Web-Client prüft beim Speichern (live: etwa 4 s nach einer Änderung), dedupliziert je
+Sitzung und sendet **höchstens alle 60 s** bis zu 20 Einträge.
+
+```json
+{"v": 1, "mode": "save|live", "sv": 2, "av": "<Asset-Stand, optional>",
+ "items": [{"t": "table", "p": "data.content[2][1]", "k": "pass|norm|fresh|err"}]}
+```
+
+| Feld | Regel |
+| --- | --- |
+| `v` | `1` |
+| `mode` | `save` (Speichern per PATCH) oder `live` (gleichzeitig bearbeiten) |
+| `sv` | Schema-Version des Editors (`HKPmSchema.VERSION`), 1–999 |
+| `av` | optional, ≤ 40 Zeichen `[A-Za-z0-9._-]` (Asset-Stand `?v=`, ordnet Meldungen einem Stand zu) |
+| `items` | 1–20; `t` Knotentyp (`[a-z][a-z0-9_]{0,23}` oder `?`), `p` Pfad ≤ 160 Zeichen aus Feldnamen (Bezeichner, sonst `*`) und Indizes `[n]` – keine Werte, `""` = ganzer Block |
+| `k` | `pass` gespeicherte Form ≠ geladene (Durchreichung verloren), `norm` Normalform weicht über die erlaubten Abweichungen hinaus vom Original ab, `fresh` frisch aus dem Editor serialisiert ≠ Normalform, `err` Serialisieren schlug fehl |
+
+Unbekannte Felder werden verworfen, doppelte Einträge zusammengefasst. Falscher Typ/Wert → `400 {error}`, zu groß →
+`413`, mehr als **1 Meldung je 55 s je Konto** → `429 {retry_s: 55}`. Erfolg: `200 {"ok": true}`.
+
+**Log-Zeile (Beispiel):** `pmdiag {"acct":"1bccea4132","mode":"save","sv":2,"av":"5c0827be4a","n":1,"items":[{"t":"table","p":"data.content[2][1]","k":"fresh"}]}` –
+`acct` ist ein HMAC des Kontos (stabil je Server). Auswerten: `docker logs saga 2>&1 | grep '^pmdiag '`.
+
 ## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
 
 Verbindlicher Vertrag für iOS/iPadOS/macOS, Android, Linux und Web (Referenz: `static/chat-video.js`, `static/sw.js`,

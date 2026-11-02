@@ -1,19 +1,75 @@
 # Web-Editor: Saga-Schema v1 für Tiptap/ProseMirror
 
-Stand 2.5, Tiptap-Umbau Etappe T1. Das Saga-Format bleibt Block-JSON; ProseMirror sieht nur der Web-Editor. Das
+Stand 2.5, Tiptap-Umbau Etappen T1–T6. Das Saga-Format bleibt Block-JSON; ProseMirror sieht nur der Web-Editor. Das
 Dokumentmodell für das gleichzeitige Bearbeiten (Yjs) steht in `docs/APP-API-COLLAB.md` Abschnitt 5 und ist in
 `saga/collab_model.py` umgesetzt – **das ist die Vorgabe**, der Web-Code folgt ihr.
+
+## Architektur und Dateien
+
+```
+pages.js ──(HKPages.k.editor)──► pm-editor.js create(cb) ──► Tiptap-Editor (saga-pm.js)
+   │  Speichern/PATCH/Konflikte         │ render/save/applyBlocks       │ Schema: pm-schema.js
+   │                                    │ Fassade HKPages.k.doc         │ Block-JSON ⇄ PM: pm-adapter.js
+   └─ Editor.js (klassisch) ◄── editor.engine / Konto-Wahl            HKPmEditor.use(fn): Erweiterungen
+```
+
+| Datei | Rolle |
+|---|---|
+| `static/vendor/tiptap/saga-pm.js`, `saga-y.js`, `saga-pm.css` | vorgebaute Bundles (Tiptap, ProseMirror, Yjs); Bau und Prüfung: `tools/vendor-tiptap/build.sh`, `tools/check-vendor-licenses.sh` |
+| `static/pm-schema.js` | Knoten, Marken, Inline-Knoten, `VERSION`, `hash()` (= `collab_model.SCHEMA_HASH`) – Browser und Node |
+| `static/pm-adapter.js` | reine Funktionen Block-JSON ⇄ PM-JSON, Normalform, Durchreichung (`ctx.orig`), Diagnose-Vergleich (`diag`) |
+| `static/pm-editor.js` (+ `.css`) | Kern (T2): Laden, Editor je Seite, Speichern, Fassade `HKPages.k.doc` (`kind: 'tiptap'`), Slash/@/Leiste, Karten, Erweiterungs-Haken `HKPmEditor.use` |
+| `static/pm-tools.js` | Brücke `HKTools` für undurchsichtige Blöcke als Node-Views (`register`, `fromEditorJs`) – T4b |
+| `static/pm-tools-daten.js`, `pm-tools-medien.js`, `pm-tools-text.js` (+ `.css`) | Werkzeuge: Datenbank/Aufgaben/Kalender/Widget/Schaltflächen (T4b), Bild/Datei/Einbetten/Nextcloud (T4a), Tabelle/Code/Mathe (T4c) |
+| `static/pm-struktur.js` | Spalten, Toggle, Synchronisiert, Konfliktblock, Griffe/Ziehen, Mehrfachauswahl, Block-Menü (T3) |
+| `static/pm-clip.js` | Zwischenablage: Kopierformate, fremdes HTML, Dateiverweise (T4d) |
+| `static/pm-live.js` (+ `.css`) | gleichzeitig bearbeiten live über `WS /api/collab` (T5) |
+| `static/pm-diag.js` | Editor-Diagnose: Round-Trip-Abweichungen an `POST /api/diag` (T6, siehe „Diagnose“) |
+| `static/editor-doc.js` | Fassade `HKPages.k.doc` für Editor.js (gleiche Semantik, `kind: 'editorjs'`) |
+
+- **Laden:** `HKPmEditor.load()` lädt Bundle, `pm-schema.js`, `pm-adapter.js`, dann `TOOL_SCRIPTS` (`pm-tools*.js`)
+  und `EXT_SCRIPTS` (`pm-clip.js`, `pm-struktur.js`, `pm-tools-text.js`, `pm-live.js`, `pm-diag.js`). Neue Module
+  gehören in eine der beiden Listen; Erweiterungen melden sich mit `HKPmEditor.use(fn)` (Abschnitt „Struktur“), Werkzeuge
+  mit `HKTools.register`.
+- **Fassade:** `pages.js`, `comments.js`, `keys.js`, `ai.js`, `editor25.js` und die Tests sprechen nur über
+  `HKPages.k.doc` bzw. `[data-block-id]`/`[data-block-type]` mit dem Editor – nie mit ProseMirror direkt.
+- **Brücke:** Blöcke, die noch kein eigenes Tiptap-Werkzeug haben, laufen über `HKTools.fromEditorJs` mit den
+  Editor.js-Klassen aus `pages.js` (Übergang bis T7); unbekannte Typen zeigt der Kern als Karte (unverändert gespeichert).
+- **Server:** `saga.core.editor_engine(uid)` setzt `<body data-editor>`; `saga/collab_model.py` ist das Referenzmodell
+  (Normalform, Schema-Prüfsumme), `saga/collab.py` der Live-Kanal, `saga/pmdiag.py` die Diagnose.
+
+**Vektoren** (`tests/vectors/pm_schema.json`, Abschnitt „Vektoren und Prüfer“): erzeugt mit
+`python3 tools/pm_vectors_gen.py` aus `collab_model.py` (nach jeder Modelländerung, nie von Hand); geprüft mit
+`node tools/pm_vectors.mjs` (Adapter + echtes Schema, braucht `cd tools/pm-test && npm ci --ignore-scripts`),
+`python3 tests/pm_vectors.py` (Server-Modell + `clean_blocks`-Fixpunkt) und `node tools/pm_ytest.mjs` (y-tiptap gegen
+pycrdt). Änderungen an Knoten/Attributen/Marken = neue `SCHEMA_VER`.
+
+**Tests:**
+
+| Test | Modus | prüft |
+|---|---|---|
+| `tests/pm_vectors.py`, `tools/pm_vectors.mjs`, `tools/pm_ytest.mjs` | ohne Server | Schema, Adapter, Normalform, Durchreichung, R1 |
+| `tests/editor_schalter.py`, `tests/editor_inline.py`, `tests/pm_diag.py` | Server | Schalter/Konto-Wahl, Inline-Vertrag, `POST /api/diag` |
+| `tests/browser_editor_fassade.js`, `browser_editor25.js`, `browser_editor_leak.js`, `browser_slash_menu.js` … | `SAGA_EDITOR=editorjs` und `tiptap` | Fassade und Bedienung in beiden Editoren (Selektoren `tests/lib/editor_dom.js`) |
+| `tests/browser_tiptap_{bundle,kern,struktur,medien,daten,text,quer}.js` | nur `tiptap` | Abnahme je Etappe (T1–T4d) |
+| `tests/browser_tiptap_live.js`, `browser_tiptap_quer.js` | `tiptap`, `notes.live` an (quer: aus und an) | live (T5) |
+| `tests/browser_pm_diag.js` | nur `tiptap`, mit `notes.live` zusätzlich Live-Teil | Diagnose: keine Meldung ohne Abweichung, künstliche Abweichung genau eine Meldung ohne Inhalt |
+
+Tiptap-Tests brauchen `editor.engine = choice` (der Test stellt die Konto-Wahl selbst um); `browser_tiptap_kern.js`
+zusätzlich Anzeigenamen „Anna“/„Bert Test“ für hk-test-a/-b und `HANDLE2` = `saga.core.local_ref('hk-test-b')`.
+
+### Schema und Adapter (T1)
 
 | Datei | Inhalt |
 |---|---|
 | `static/pm-schema.js` | `HKPmSchema.extensions(T, opts)` – Knoten, Marken, Inline-Knoten als Tiptap-Erweiterungen, UniqueID-Konfiguration; `VERSION`, `BLOCKS`, `MARKS`, `ATTRS`, `hash()` (= `collab_model.SCHEMA_HASH`) |
-| `static/pm-adapter.js` | `HKPmAdapter.docFromBlocks(save, ctx)`, `blocksFromDoc(doc, ctx)`, `bind(pmDoc, save, ctx)`, `htmlToInline`, `inlineToHtml`, `marksToAttrs`/`attrsToMarks` |
+| `static/pm-adapter.js` | `HKPmAdapter.docFromBlocks(save, ctx)`, `blocksFromDoc(doc, ctx)`, `bind(pmDoc, save, ctx)`, `htmlToInline`, `inlineToHtml`, `marksToAttrs`/`attrsToMarks`, `diag` |
 | `tests/vectors/pm_schema.json` | gemeinsame Vektoren (erzeugt von `tools/pm_vectors_gen.py`) |
 | `tools/pm_vectors.mjs` | Prüfer Web-Adapter + echtes Tiptap-Schema |
 | `tests/pm_vectors.py` | Prüfer Server-Modell (pycrdt) + Fixpunkt der Adapter-Ausgabe |
 | `tools/pm_ytest.mjs` (+ `tools/pm_ytest.py`) | Gegentest echtes `@tiptap/y-tiptap` gegen pycrdt, Risiko R1 |
 
-Beide Dateien sind ES5-nah ohne Build-Schritt (Browser: `window.HKPmSchema`/`window.HKPmAdapter`, `pm-schema.js` zuerst
+Schema und Adapter sind ES5-nah ohne Build-Schritt (Browser: `window.HKPmSchema`/`window.HKPmAdapter`, `pm-schema.js` zuerst
 laden; Node: `require`). `T` sind die Tiptap-Bausteine: im Browser `window.SagaPM.core` plus `UniqueID:
 window.SagaPM.UniqueID`, in Node `require('@tiptap/core')` plus `UniqueID` aus `@tiptap/extension-unique-id`.
 
@@ -348,3 +404,27 @@ mit `code: true`, `math` atom) standen schon in T1.
   „Position i von n“ über `#pm-sr` (`role=status`, `aria-live=polite`) an. Block-Menü zu und Fokus nirgends → zurück
   in den Editor, Schreibmarke im Block.
 - Test: `tests/browser_tiptap_quer.js` (beide Stufen: `notes.live` aus/an).
+
+## Diagnose (T6)
+
+`static/pm-diag.js` meldet während des Feldtests (Stufen M1–M3) **Round-Trip-Abweichungen unveränderter Blöcke** an
+`POST /api/diag` (Vertrag `docs/APP-API.md` „Editor-Diagnose“, Admin-Schalter `editor.diag`, Feature `pmdiag1`; ohne
+Feature prüft und sendet der Client nichts).
+
+- **Unverändert** = kein Schritt einer eigenen Transaktion hat den Block berührt (Plugin `hkDiag` vergleicht die
+  Knoten-Objekte alter/neuer Stand; Stände aus Yjs zählen live nicht als Eingabe).
+- **Prüfung** beim Speichern (Haken `diagSaved` in `save()`, läuft danach im nächsten Takt) bzw. live etwa 4 s nach
+  einer Änderung, je Knoten-Objekt einmal (Kosten: einmal `pmToBlock` + `blockToPm` je Block und Sitzung):
+  `pass` gespeicherte Form ≠ geladene (Durchreichung verloren, nur Stufe 1), `norm` Normalform
+  (`blocksFromDoc(docFromBlocks(original))`) weicht vom Original ab, `fresh` frisch aus dem Editor-Knoten ≠ Normalform
+  (live ohne Original: ≠ Fixpunkt), `err` Serialisieren wirft.
+- **Erlaubte Abweichungen** zählen nicht: `strong`/`em` → `b`/`i`, Markenrangfolge, Klassen/`target`/`rel`, getrennte
+  gleiche Läufe, Titel von Seitenverweisen/Erwähnungen (Vergleich über Textläufe + Marken, `HKPmAdapter.diag.htmlSame`),
+  Listenpunkte als Text → Objekte, Toggle-Altformat (übersprungen), Schlüsselreihenfolge.
+- **Kein Inhalt:** gemeldet werden Knotentyp und Pfad aus Feldnamen und Indizes (`data.content[2][1]`; Schlüssel, die
+  kein Bezeichner sind, als `*`). Je Sitzung dedupliziert, ≤ 1 POST je 60 s mit ≤ 20 Einträgen; `403`/`404` schaltet
+  für die Sitzung ab.
+- **Auswerten:** `docker logs saga 2>&1 | grep '^pmdiag '`. Bedingung für Stufe M2: keine Meldungen im Feldtest.
+- **Tests/Diagnose:** `HKPmDiag.state()`, `.flush()`, `.reset()`, Haken `window.__hkDiagTamper = (typ, block) => block`
+  (verfälscht die frische Serialisierung); `tests/browser_pm_diag.js`, `tests/pm_diag.py`. Gegen alle Vektoren meldet
+  `HKPmAdapter.diag.block` nichts.

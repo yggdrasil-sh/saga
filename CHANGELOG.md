@@ -25,6 +25,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Qualitätsbegrenzung, Schicht-/Wegwechsel). Gespeichert wird nichts: eine Zeile `calldiag` je Meldung im Server-Log,
   Konto nur als Hash, ohne Namen und IP-Adressen. Vertrag: `docs/APP-API.md` „Anruf-Diagnose“.
 
+### Intern (2.5, Tiptap-Umbau T6: Editor-Diagnose)
+- Neu: `POST /api/diag` (Feature `pmdiag1`, Admin-Schalter „Editor-Diagnose“ unter Einstellungen → Seiten, Standard
+  an). Der neue Editor meldet beim Speichern (live kurz nach Änderungen) Blöcke, die niemand bearbeitet hat, deren
+  gespeicherte Form sich aber ändern würde – nur Blocktyp und Feldpfad, nie Inhalt, Namen, Dateinamen oder Adressen;
+  höchstens eine Meldung je Minute. Gespeichert wird nichts: eine Zeile `pmdiag` je Meldung im Server-Log, Konto nur als
+  Hash. Vertrag: `docs/APP-API.md` „Editor-Diagnose“; Architektur und Tests: `docs/EDITOR-PM.md`.
+
 ### Intern (2.5, Tiptap-Umbau Etappe T1: Bibliothek mitgeliefert)
 - Tiptap 3.32.2, ProseMirror und Yjs liegen als vorgebaute Bundles unter `static/vendor/tiptap/` (`saga-pm.js`
   Kern, `saga-y.js` Live, `saga-pm.css`; alle MIT, Lizenztexte in `licenses/`). Noch nirgends geladen – der neue
