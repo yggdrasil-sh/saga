@@ -528,9 +528,9 @@ def block(uid, call, dev, role, dev_class="desktop", avoid=(), node=None):
 
 def left(c, call, dev):
     """Eigenes Geraet hat einen Anruf verlassen, den ein anderer Server fuehrt: Beine an unserem Knoten beenden."""
-    r = c.execute("SELECT node FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], dev)).fetchone()
+    r = c.execute("SELECT node, joined FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], dev)).fetchone()
     if r and r[0] and not r[0].startswith("f:"):
-        horn.kick(c, call["id"], dev, r[0])
+        horn.kick(c, call["id"], dev, r[0], horn.gen_of(r[1]))
 
 
 def _ended(cid):

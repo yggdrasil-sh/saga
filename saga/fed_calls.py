@@ -26,7 +26,7 @@ from fastapi import Request
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import bus, calls, chat, fed_chat as FC, federation as F, sharing
+from saga import bus, calls, chat, fed_chat as FC, federation as F, horn, sharing
 from saga.core import _bad, t
 
 router = FC.router                      # gleiche Router-Einbindung wie die Chats (app.py)
@@ -195,7 +195,7 @@ def ended(c, call, reason):
 # =====================================================================================================
 # 2.4 (calls3): Raum ueber Servergrenzen - eigene Konten
 # =====================================================================================================
-OPS3 = ("join", "leave", "roster", "invite")
+OPS3 = ("join", "leave", "roster", "invite", "promote")
 
 
 def _name(d):
@@ -219,8 +219,15 @@ def _who(c, h):
 
 
 def _leg_out(c, x):
+    # 2.5 Uebergabe (L1): gen = Beitrittsgeneration beim fuehrenden Server - Kopien uebernehmen sie (gleiche Kennung fuer
+    # /leave {gen} und die Knoten-Kennungen auf beiden Seiten)
     return {"device": x["device"], "who": _h(c, x["who"]), "role": x["role"], "state": x["state"], "caps": calls.caps_out(x["caps"]),
-            "name": x["name"] or "", **({"replaces": x["replaces"]} if x.get("replaces") else {})}
+            "name": x["name"] or "", "gen": horn.gen_of(x.get("joined")), **({"replaces": x["replaces"]} if x.get("replaces") else {})}
+
+
+def _gen_in(x):
+    g = x.get("gen") if isinstance(x, dict) else None
+    return int(g) if isinstance(g, int) and not isinstance(g, bool) and 0 < g < 2 ** 53 else None
 
 
 def _peers_of(c, call):
@@ -396,6 +403,8 @@ def join(uid, call, dev, role, rep, caps, sig):
         if not cur or cur["state"] == "ended":
             return chat._no_store({"error": t("Der Anruf ist schon beendet."), "join_block": "ended"}, 409)
         role = (d or {}).get("role") if (d or {}).get("role") in calls.ROLES else role
+        if calls.is_horn(cur):                         # 2.5 L5: Wiedereintritt - alte Generation am eigenen Knoten beenden
+            FH.left(c, cur, dev)
         calls._leg_put(c, cur["id"], dev, uid, role, None, caps, rep, name=name, now=now)
         c.execute("UPDATE chat_call_invite SET state='joined' WHERE call_id=? AND who=? AND state='ringing'", (cur["id"], uid))
         _apply_legs(c, cur, p, (d or {}).get("legs"), keep=dev)
@@ -423,24 +432,54 @@ def _horn_block(uid, call, dev, role):
         return None, _bad(t("Beitreten ging nicht – bitte noch einmal versuchen."), 502)
 
 
-def leave(uid, call, dev):
-    """Eigenes Geraet verlaesst einen Anruf, den ein anderer Server fuehrt: dort melden, hier sofort austragen."""
+def leave(uid, call, dev, reason="hangup", by=None, gen=None):
+    """Eigenes Geraet verlaesst einen Anruf, den ein anderer Server fuehrt: dort melden, hier sofort austragen. 2.5 (L2):
+    reason/by/gen gehen mit; meldet der fuehrende Server stale (anderes Bein, by nicht mehr aktiv), bleibt alles."""
     with _db() as c:
         p = F.peer_by(c, "id", call["lead"])
         mh = FC.my_handle(c, uid)
-    st, d = FC.sync_call(p, {"op": "leave", "id": call["id"], "actor": mh, "device": dev}, path="/fed/v2/call") if peer3(p) else (None, "")
+    body = {"op": "leave", "id": call["id"], "actor": mh, "device": dev, "reason": reason if reason in ("handover", "hangup") else "hangup"}
+    if by:
+        body["by"] = by
+    if gen is not None:
+        body["gen"] = gen
+    st, d = FC.sync_call(p, body, path="/fed/v2/call") if peer3(p) else (None, "")
+    if st == 200 and isinstance(d, dict) and d.get("stale"):
+        return chat._no_store({"ok": True, "stale": True})
     now = time.time()
     with _db() as c, c:
         cur = calls._load(c, call["id"], lock=True)
         if cur and cur["state"] != "ended":
             if calls.is_horn(cur):
                 FH.left(c, cur, dev)                   # 2.5 P10: Beine an unserem Knoten beenden
-            c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason='hangup' WHERE call_id=? AND device=?", (now, cur["id"], dev))
+            c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason=? WHERE call_id=? AND device=?",
+                      (now, body["reason"], cur["id"], dev))
             if st is None and not any(x["who"] == uid for x in calls._legs(c, cur["id"])) and cur["kind"] == "dm":
                 calls._finish(c, cur, "hangup", now, by=uid, remote=True)      # fuehrender Server weg: hier beenden
             else:
                 calls.emit_roster(c, cur, fed=False)
     return chat._no_store({"ok": True})
+
+
+def promote(uid, call, dev):
+    """2.5 Uebergabe (L3): Begleitgeraet befoerdern in einem Anruf, den ein anderer Server fuehrt -> None oder Fehlerantwort."""
+    with _db() as c:
+        p = F.peer_by(c, "id", call["lead"])
+        mh = FC.my_handle(c, uid)
+    if not peer3(p):
+        return chat._no_store({"error": t("Der Server {host} kann das noch nicht (braucht Saga 2.5).", host=(p or {}).get("host") or "?"),
+                               "join_block": "old"}, 409)
+    st, d = FC.sync_call(p, {"op": "promote", "id": call["id"], "actor": mh, "device": dev}, path="/fed/v2/call")
+    if st != 200:
+        if st == 400 and isinstance(d, dict) and d.get("error") == "bad op":
+            return chat._no_store({"error": t("Der Server {host} kann das noch nicht (braucht Saga 2.5).", host=p["host"]), "join_block": "old"}, 409)
+        return _err(st, d, p["host"])
+    with _db() as c, c:
+        cur = calls._load(c, call["id"], lock=True)
+        if cur and cur["state"] != "ended":
+            _apply_legs(c, cur, p, (d or {}).get("legs"), keep=dev)
+            calls.emit_roster(c, cur, fed=False)
+    return None
 
 
 def invite(uid, call, whos):
@@ -496,6 +535,8 @@ def roster_out(c, call, legs, ring=None):
     base = {"op": "roster", "id": call["id"], "ref": (ch or {}).get("ref"), "kind": call["kind"], "media": call["media"], "state": call["state"],
             "rv": time.time(),
             "created": call["created"], "from": _h(c, call["caller"]), "from_device": call["caller_device"], "legs": [_leg_out(c, x) for x in legs],
+            # 2.5 (L11): Hauptgeraete eines 1:1 - die Kopie zieht sie nach (nach einer Uebernahme)
+            **({"caller_device": call["caller_device"], "callee_device": call["callee_device"]} if call["kind"] == "dm" else {}),
             "topo": call.get("topo") or "mesh", **({"horn_mesh": HORN_MESH[call["id"]]} if HORN_MESH.get(call["id"]) else {})}
     g = calls.gone(c, call["id"])
     if g:
@@ -565,11 +606,14 @@ def _apply_legs(c, call, peer, legs, keep=None, gone=None):
         cur = c.execute("SELECT who, state, role FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], dev)).fetchone()
         role = x.get("role") if x.get("role") in calls.ROLES else "member"
         rep = x.get("replaces") if isinstance(x.get("replaces"), str) and FC._HEX32.fullmatch(x["replaces"]) else None
+        g = _gen_in(x)
         if cur and cur[0] == who and cur[1] == "active":
             c.execute("UPDATE chat_call_leg SET role=?, replaces=?, caps=? WHERE call_id=? AND device=?",
                       (role, rep, calls.caps_in(x.get("caps")), call["id"], dev))
-            continue
-        calls._leg_put(c, call["id"], dev, who, role, None if local else peer["id"], calls.caps_in(x.get("caps")), rep, name=_name(x), now=now)
+        else:
+            calls._leg_put(c, call["id"], dev, who, role, None if local else peer["id"], calls.caps_in(x.get("caps")), rep, name=_name(x), now=now)
+        if g:                                          # Generation des fuehrenden Servers (Beitrittszeit in ms)
+            c.execute("UPDATE chat_call_leg SET joined=? WHERE call_id=? AND device=? AND state='active'", (g / 1000.0, call["id"], dev))
     for x in calls._legs(c, call["id"]):
         if x["device"] not in seen and x["device"] != keep:
             why = (gone or {}).get(x["device"]) if isinstance(gone, dict) else None
@@ -850,12 +894,30 @@ def op_leave(c, peer, d):
     call = calls._load(c, d.get("id"), lock=True) if isinstance(d.get("id"), str) else None
     if not h or not call or call["lead"] is not None:
         return 404, {"error": "not found"}
-    leg = c.execute("SELECT who, peer_id, state FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], d.get("device"))).fetchone()
+    leg = c.execute("SELECT who, peer_id, state, joined FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], d.get("device"))).fetchone()
     if not leg or leg[0] != p_ or leg[1] != peer["id"]:
         return 404, {"error": "not found"}
     if leg[2] == "active" and call["state"] != "ended":
-        calls._leave(c, call, d["device"], time.time(), "hangup", by=p_)
+        by, gen = calls.leave_cond(d)                  # 2.5 L2: bedingtes Verlassen (Rueckfall nach einer Uebernahme)
+        if calls.leave_stale(c, call["id"], p_, d["device"], leg[3], by, gen):
+            return 200, {"ok": True, "stale": True}
+        calls._leave(c, call, d["device"], time.time(), d.get("reason") if d.get("reason") in ("handover", "hangup") else "hangup", by=p_)
     return 200, {"ok": True}
+
+
+def op_promote(c, peer, d):
+    """2.5 Uebergabe (L3): Begleitgeraet einer Person der anfragenden Instanz wird Hauptgeraet (Anruf, den WIR fuehren)."""
+    h, p_ = _actor3(c, peer, d)
+    call = calls._load(c, d.get("id"), lock=True) if isinstance(d.get("id"), str) else None
+    if not h or not call or call["lead"] is not None or call["state"] == "ended":
+        return 404, {"error": "not found"}
+    leg = c.execute("SELECT who, peer_id, state FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], d.get("device"))).fetchone()
+    if not leg or leg[0] != p_ or leg[1] != peer["id"] or leg[2] != "active":
+        return 404, {"error": "not found"}
+    if not F._rate.allow("cpromote:" + h, calls.HO_RATE):
+        return 429, {"error": "too many"}
+    calls.promote_local(c, call, p_, d["device"])
+    return 200, {"ok": True, "legs": [_leg_out(c, x) for x in calls._legs(c, call["id"])]}
 
 
 def op_roster(c, peer, d):
@@ -897,6 +959,8 @@ def op_roster(c, peer, d):
         if len(_RV) > 5000:
             _RV.clear()
     _apply_legs(c, call, peer, d.get("legs"), gone=d.get("gone"))
+    if call["kind"] == "dm":
+        _dm_devices(c, call, d)
     if call["kind"] == "group":
         upd = {"seen_b": now}
         if d.get("state") == "active" and call["state"] == "ringing":
@@ -927,6 +991,18 @@ def op_roster(c, peer, d):
         calls.ring_group(c, call, go)
     calls.emit_roster(c, call, fed=False)
     return 200, {"ok": True, "old": [FC.my_handle(c, u) for u in old]}
+
+
+def _dm_devices(c, call, d):
+    """2.5 (L11): Kopie eines 1:1 - Hauptgeraete (caller_device/callee_device) aus der Liste des fuehrenden Servers nachziehen
+    (Uebernahme dort) und den eigenen Konten wie lokal call.state moved melden."""
+    act = {x["device"] for x in calls._legs(c, call["id"])}
+    for side in ("caller_device", "callee_device"):
+        v = d.get(side)
+        if isinstance(v, str) and FC._HEX32.fullmatch(v) and v in act and v != call[side]:
+            c.execute(f"UPDATE chat_call SET {side}=? WHERE id=?", (v, call["id"]))
+            calls._emit(c, calls._audience(c, call), "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active",
+                                                                   "device": v, "moved": side.split("_")[0]})
 
 
 def op_invite(c, peer, d):
@@ -1069,7 +1145,7 @@ def op_dmhorn(c, peer, d):
     return 200, {"ok": True}
 
 
-HANDLERS.update(join=op_join, leave=op_leave, roster=op_roster, invite=op_invite, dmhorn=op_dmhorn)
+HANDLERS.update(join=op_join, leave=op_leave, roster=op_roster, invite=op_invite, dmhorn=op_dmhorn, promote=op_promote)
 
 
 @router.post("/fed/v2/call")

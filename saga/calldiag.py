@@ -34,7 +34,12 @@ DIRS = ("in", "out")
 RIDS = ("l", "m", "h", "")
 QLRS = ("none", "cpu", "bandwidth", "other", "")
 KINDS = ("layers", "thermal", "switch", "quality", "path")
-NUMS = ("fps", "h", "kbps", "lost", "nack", "pli", "freeze", "kf", "rtt")
+NUMS = ("fps", "h", "kbps", "lost", "nack", "pli", "freeze", "kf", "rtt",
+        # 2.5 (Labor 2.11., Stottern durch Geraete-CPU): out - qcpu/qbw = ms, die der Kodierer seit der letzten Probe durch
+        # CPU bzw. Bandbreite begrenzt war (qualityLimitationDurations), encms = mittlere Kodierzeit je Rahmen, fdrop = Rahmen
+        # der Quelle, die der Kodierer nicht kodiert hat; in - fdrop = verworfene Rahmen (framesDropped), decms = mittlere
+        # Dekodierzeit je Rahmen, fzms = Dauer der Standbilder (totalFreezesDuration)
+        "qcpu", "qbw", "encms", "fdrop", "decms", "fzms")
 _HEX32 = re.compile(r"[0-9a-f]{32}")
 _APP = re.compile(r"[A-Za-z0-9._+\-]{0,40}")
 _NODE = re.compile(r"[A-Za-z0-9.\-:\[\]]{0,253}")

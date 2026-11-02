@@ -175,18 +175,36 @@ def call_ref(cid, node_id):
     return _ref("call", cid, node_id)
 
 
-def peer_ref(cid, node_id, dev):
-    return _ref("peer", cid, node_id, dev)
+def peer_ref(cid, node_id, dev, gen=0):
+    """Kennung eines Geraets am Knoten. 2.5 (Anruf-Uebergabe L1): gen = Beitrittsgeneration des Endpunkts (gen_of) - jeder
+    (Wieder-)Beitritt bekommt eine neue Kennung, damit die Sperre nach kick (Knoten: 3 min je Raum und Kennung) nur das
+    alte Bein trifft und ein Geraet sofort zurueckkehren kann (Hin- und Herwechseln). gen 0 = Kennung wie vor 2.5."""
+    return _ref("peer", cid, node_id, dev, str(int(gen))) if gen else _ref("peer", cid, node_id, dev)
+
+
+def gen_of(joined):
+    """Beitrittsgeneration aus dem Beitrittszeitpunkt eines Endpunkts (ms; 0 ohne Zeitpunkt). Geht ueber Servergrenzen
+    als legs[].gen mit (der Server, der den Anruf fuehrt, legt sie fest; Kopien uebernehmen sie)."""
+    try:
+        return int(round(float(joined) * 1000)) if joined else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def leg_gen(c, cid, dev):
+    r = c.execute("SELECT joined FROM chat_call_leg WHERE call_id=? AND device=?", (cid, dev)).fetchone()
+    return gen_of(r[0]) if r else 0
 
 
 def leg_ref(cid, node_id, dev, role):
     return _ref("leg", cid, node_id, dev, role)
 
 
-def token(node, cid, dev, role, udp_ok=False, dev_class="desktop", pub=None, max_kbit=MAX_KBIT, now=None, quota=None):
+def token(node, cid, dev, role, udp_ok=False, dev_class="desktop", pub=None, max_kbit=MAX_KBIT, now=None, quota=None, gen=0):
     """Medien-Token fuer ein Bein (role audio | video | both) dieses Geraets auf dem Knoten. quota (P10, geteilter Knoten):
-    {q, legs, kbit} des verbundenen Servers."""
-    body = {"v": 1, "node": node["name"], "call_ref": call_ref(cid, node["id"]), "peer_ref": peer_ref(cid, node["id"], dev),
+    {q, legs, kbit} des verbundenen Servers. gen: Beitrittsgeneration (peer_ref). leg_ref bleibt je (Anruf, Knoten, Geraet,
+    Rolle) gleich - ein neues Bein ersetzt das alte (Ton-Recht nach promote, Wiedereintritt)."""
+    body = {"v": 1, "node": node["name"], "call_ref": call_ref(cid, node["id"]), "peer_ref": peer_ref(cid, node["id"], dev, gen),
             "leg_ref": leg_ref(cid, node["id"], dev, role), "role": role, "pub": PUB[role] if pub is None else pub,
             "max_kbit": int(max_kbit), "udp_ok": bool(udp_ok), "dev_class": "mobile" if dev_class == "mobile" else "desktop",
             "exp": int(now or time.time()) + TOKEN_TTL, "jti": _b64u(secrets.token_bytes(12))}
@@ -262,6 +280,21 @@ def ready(n, now=None):
             and version_ok(n.get("version")) and cert_ok(n))
 
 
+def alive(n, now=None):
+    """Knoten laeuft und behaelt seine Anrufe: verbunden, Zustand ok bzw. voll, nicht im Leeren/Update/Fehler, passende
+    Version, Zertifikat da - anders als ready() auch ueber der Lastgrenze (Kaskade: bestehende Bruecken bleiben, nur neue
+    Beine meiden einen vollen Knoten)."""
+    now = now or time.time()
+    live = _LIVE.get(n["id"])
+    seen = max(n.get("seen") or 0, (live or {}).get("at") or 0)
+    if n.get("builtin") and not builtin_on():
+        return False
+    ld = (live or {}).get("load") or n.get("load") or {}
+    win = READY_S if n["state"] == "ok" else GRACE_S
+    return (n["state"] in ("ok", "getrennt") and now - seen < win and bool(n.get("url")) and not n.get("drain")
+            and ld.get("state") not in ("draining", "update", "fehler") and version_ok(n.get("version")) and cert_ok(n))
+
+
 def ready_nodes(c, now=None):
     """Bereite Knoten, beste zuerst (kleine Auslastung; ab PENALTY Abzug)."""
     ns = [n for n in nodes(c) if ready(n, now)]
@@ -322,6 +355,7 @@ def candidates(c, call, dev, role="member", dev_class="desktop", now=None):
     dazu 'both' fuer den UDP-Weg). Laeuft der Anruf schon auf einem Knoten, kommt dieser zuerst (ohne Kaskade: nur er).
     Begleitgeraet: ohne Ton senden."""
     now = now or time.time()
+    gen = leg_gen(c, call["id"], dev)
     ns = ready_nodes(c, now)
     cur = call_node_ready(c, call["id"], ns)              # Knoten im Leeren/entfernt: neuer Knoten (Umzug, P5 schaltet)
     if cur:
@@ -332,9 +366,9 @@ def candidates(c, call, dev, role="member", dev_class="desktop", now=None):
         toks = {}
         for r in ("audio", "video") + (("both",) if udp else ()):
             pub = [x for x in PUB[r] if not (role == "companion" and x == "a")]
-            toks[r] = token(n, call["id"], dev, r, udp, dev_class, pub, now=now)
+            toks[r] = token(n, call["id"], dev, r, udp, dev_class, pub, now=now, gen=gen)
         out.append({"node": n["name"], "url": n["url"], "udp": udp, "here": n["id"] == cur, "load": round(util(n), 3),
-                    "peer": peer_ref(call["id"], n["id"], dev), "tokens": toks, "exp": int(now) + TOKEN_TTL})
+                    "peer": peer_ref(call["id"], n["id"], dev, gen), "gen": gen, "tokens": toks, "exp": int(now) + TOKEN_TTL})
     return out
 
 
@@ -385,10 +419,11 @@ def room_close(c, cid):
         _later(c, lambda: HOOKS["ended"](cid))
 
 
-def kick(c, cid, dev, node_id):
-    """Endpunkt hat den Anruf verlassen bzw. wurde entfernt: Beine am Knoten sofort beenden (keine neuen mit alten Token)."""
+def kick(c, cid, dev, node_id, gen=0):
+    """Endpunkt hat den Anruf verlassen bzw. wurde entfernt: Beine am Knoten sofort beenden (keine neuen mit alten Token).
+    gen: Generation des verlassenen Beins - die Sperre am Knoten trifft nur diese Kennung (L1)."""
     if node_id and not node_id.startswith("f:"):
-        _later(c, lambda: send(node_id, {"t": "kick", "call_ref": call_ref(cid, node_id), "peer_ref": peer_ref(cid, node_id, dev)}))
+        _later(c, lambda: send(node_id, {"t": "kick", "call_ref": call_ref(cid, node_id), "peer_ref": peer_ref(cid, node_id, dev, gen)}))
 
 
 def _active_rooms(node_id):
