@@ -205,8 +205,8 @@
   // --- Senderate auf TCP/TLS (A1, Labor 2.11.) ------------------------------------------------------------------------------
   // Ueber TCP/TLS sieht WebRTC keinen Verlust: Neuuebertragungen kommen als Schuebe, und ein zu grosser Sendestrom staut sich
   // in der TCP-Sendewarteschlange (RTT 5-12 s beim Bildschirmteilen). Darum hier harte Obergrenzen je Weg und eine Stufe
-  // 0..3, die aus der RTT (Abstand zur kleinsten bisher gemessenen) mit Hysterese folgt. UDP bleibt bei GCC (Stufe 0, alte
-  // Regeln). Werte in kbit/s; mH/screenH = hoechste Bildhoehe der Schicht m bzw. des Bildschirms.
+  // 0..3, die aus der RTT (Abstand zum Grundwert = kleinste RTT der letzten 2 min) mit Hysterese folgt. UDP bleibt bei GCC
+  // (Stufe 0, alte Regeln). Werte in kbit/s; mH/screenH = hoechste Bildhoehe (kurze Seite) der Schicht m bzw. des Bildschirms.
   K.TX = {
     tcp: { l: 150, m: 600, mH: 720, screen: 900, screenFps: 8, screenH: 1080 },
     turn: { l: 120, m: 450, mH: 540, screen: 600, screenFps: 5, screenH: 720 }
@@ -214,7 +214,7 @@
   K.TX_F = [1, 0.6, 0.4, 0.25];       // Faktor je Stufe auf m und Bildschirm
   K.TX_FPS = [0, 5, 3, 2];            // Bildschirm hoechstens so viele Bilder/s je Stufe (0 = Wert des Wegs)
   K.RTT_ABS = 120;                    // Stau: RTT mindestens 120 ms ...
-  K.RTT_REL = 0.5;                    // ... und 50 % ueber der kleinsten RTT dieser Verbindung
+  K.RTT_REL = 0.5;                    // ... und 50 % ueber dem Grundwert
   K.RTT_HUGE = 1000;                  // ab 1 s ueber der kleinsten sofort (ohne zweite Messung)
   K.RTT_OK = 60;                      // frei: hoechstens 60 ms ueber der kleinsten
   K.TX_BAD_N = 2;                     // Stau in 2 Messungen in Folge (Messung alle ~3 s)
@@ -222,14 +222,29 @@
   K.TX_UP = 15000;                    // frei fuer 15 s -> eine Stufe zurueck ...
   K.TX_UP_MAX = 120000;               // ... nach erneutem Stau kurz danach doppelt so lange, hoechstens 2 min
   K.TX_RETRY = 30000;                 // Stau innerhalb von 30 s nach einem Schritt nach oben = Fehlversuch
+  K.TX_BASE_WIN = 120000;             // Grundwert = kleinste RTT der letzten 2 min ...
+  K.TX_BASE_BUCKET = 10000;           // ... gehalten in Eimern zu 10 s (wie die Apps, Pruefung A1)
+  // Der Grundwert ist nicht die kleinste RTT seit Beginn: nach einem dauerhaften Routenwechsel (z. B. 20 -> 180 ms ohne Stau)
+  // bliebe sonst Stufe 3 fuer immer bzw. im Band 60..120 ms ueber dem alten Grundwert jede Stufe haengen. Haelt ein echter
+  // Stau laenger als das Fenster an, steigt der Grundwert mit; der Regler probiert dann eine Stufe hoeher (Stau -> wieder
+  // runter, mit verdoppelter Wartezeit) - ein langsames Nachfassen, kein Pendeln im Messtakt.
   function TxGov(path) {
     this.path = path || ''; this.level = 0; this.base = Infinity; this.bad = 0; this.okSince = 0;
     this.downAt = -Infinity; this.upAt = -Infinity; this.upWait = K.TX_UP; this.last = null;
+    this.mins = [];                   // [Eimer-Beginn, kleinste RTT im Eimer], aelteste zuerst
   }
+  TxGov.prototype.baseAt = function (now, rtt) {
+    var b = now - (((now % K.TX_BASE_BUCKET) + K.TX_BASE_BUCKET) % K.TX_BASE_BUCKET), m = this.mins, last = m[m.length - 1], i, v;
+    if (last && last[0] === b) last[1] = Math.min(last[1], rtt); else m.push([b, rtt]);
+    // ein Eimer faellt weg, wenn er ganz aelter als das Fenster ist
+    while (m.length > 1 && m[0][0] + K.TX_BASE_BUCKET <= now - K.TX_BASE_WIN) m.shift();
+    for (v = Infinity, i = 0; i < m.length; i++) if (m[i][1] < v) v = m[i][1];
+    return v;
+  };
   // Eine Messung (rtt in ms, null = keine). -> {from, to, rtt, base} bei Wechsel der Stufe, sonst null
   TxGov.prototype.add = function (now, rtt) {
     if (this.path === 'udp' || rtt == null || !isFinite(rtt) || rtt <= 0) return null;
-    if (rtt < this.base) this.base = rtt;
+    this.base = this.baseAt(now, rtt);
     var q = rtt - this.base, from = this.level;
     this.last = { rtt: Math.round(rtt), base: Math.round(this.base) };
     if (q >= K.RTT_HUGE || (q >= K.RTT_ABS && q >= this.base * K.RTT_REL)) {
@@ -249,8 +264,11 @@
     return this.level !== from ? { from: from, to: this.level, rtt: this.last.rtt, base: this.last.base } : null;
   };
   function r2(x) { return Math.round(x * 100) / 100; }
-  // Sende-Parameter fuer die Bild-Leitung eines Knotenbeins. o = {others (andere am Knoten), share (ich teile), h (Hoehe der
-  // Kamera), sh (Hoehe des Bildschirms), rids ([l, m(, h)])} -> {cam: {rid: {active, maxBitrate?, scaleResolutionDownBy?}},
+  // kurze Seite aus Hoehe und Breite (0/fehlend = unbekannt; ohne Breite zaehlt die Hoehe)
+  function shortSide(h, w) { h = +h || 0; w = +w || 0; return h > 0 && w > 0 ? Math.min(h, w) : h; }
+  // Sende-Parameter fuer die Bild-Leitung eines Knotenbeins. o = {others (andere am Knoten), share (ich teile), h/w (Hoehe/Breite
+  // der Kamera), sh/sw (Hoehe/Breite des Bildschirms), rids ([l, m(, h)])}; die Deckel gelten fuer die kurze Seite (Hochkant
+  // zaehlt die Breite, wie die Apps) -> {cam: {rid: {active, maxBitrate?, scaleResolutionDownBy?}},
   // screen: {maxBitrate, maxFramerate, scaleResolutionDownBy} | null}. Werte in bit/s.
   // UDP: wie bisher (Bughunt P03): allein nichts, zu zweit ohne l, Raten aus dem Angebot.
   // TCP/TLS: l bleibt auch zu zweit an - nur so kann der Sender bei knapper Rate auf l ausweichen (der Browser pausiert dann
@@ -264,17 +282,17 @@
       for (i = 0; i < rids.length; i++) cam[rids[i]] = { active: others > 0 && !(others === 1 && rids.length > 1 && rids[i] === 'l') };
       return { cam: cam, screen: null };
     }
-    var f = K.TX_F[level];
+    var f = K.TX_F[level], ch = shortSide(o.h, o.w), sh = shortSide(o.sh, o.sw);
     for (i = 0; i < rids.length; i++) {
       var r = rids[i];
       if (r === 'l') cam.l = { active: others > 0, maxBitrate: Math.round(c.l * (level >= 3 ? 0.7 : 1)) * 1000 };
       else if (r === 'm') {
         cam.m = { active: others > 0 && level < 2 && !o.share, maxBitrate: Math.round(c.m * f) * 1000,
-                  scaleResolutionDownBy: o.h && o.h > c.mH ? r2(o.h / c.mH) : 1 };
+                  scaleResolutionDownBy: ch > c.mH ? r2(ch / c.mH) : 1 };
       } else cam[r] = { active: false };              // h gibt es auf TCP nicht
     }
     var fps = K.TX_FPS[level] ? Math.min(c.screenFps, K.TX_FPS[level]) : c.screenFps;
-    var sc = o.sh && o.sh > c.screenH ? o.sh / c.screenH : 1;
+    var sc = sh > c.screenH ? sh / c.screenH : 1;
     if (level >= 3) sc *= 1.5;
     return { cam: cam, screen: { maxBitrate: Math.round(c.screen * f) * 1000, maxFramerate: fps, scaleResolutionDownBy: r2(Math.max(1, sc)) } };
   }

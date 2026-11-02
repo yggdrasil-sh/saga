@@ -162,6 +162,15 @@ ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.
      P.cam.l.maxBitrate === 84000 && P.screen.maxBitrate === 150000 && P.screen.maxFramerate === 2 && P.screen.scaleResolutionDownBy === 1.5, P);
   P = H.txPlan('tcp', 1, { others: 1 });
   ok('Stufe 1: m 360 kbit/s, Bildschirm 5 fps', P.cam.m.active && P.cam.m.maxBitrate === 360000 && P.screen.maxFramerate === 5, P);
+  // Hochkant: die Deckel gelten fuer die kurze Seite (wie die Apps)
+  P = H.txPlan('tcp', 0, { others: 1, h: 1280, w: 720, sh: 2340, sw: 1080 });
+  ok('Hochkant TCP: Kamera 720x1280 nicht verkleinert, Bildschirm 1080x2340 nicht verkleinert (kurze Seite)',
+     P.cam.m.scaleResolutionDownBy === 1 && P.screen.scaleResolutionDownBy === 1, P);
+  P = H.txPlan('turn', 0, { others: 1, h: 1920, w: 1080, sh: 2560, sw: 1440 });
+  ok('Hochkant TLS: Kamera 1080x1920 -> 1080/540 = 2, Bildschirm 1440x2560 -> 1440/720 = 2',
+     P.cam.m.scaleResolutionDownBy === 2 && P.screen.scaleResolutionDownBy === 2, P);
+  P = H.txPlan('turn', 0, { others: 1, h: 1080, w: 1920 });
+  ok('Quer mit Breite: kurze Seite ist die Hoehe (1080/540 = 2)', P.cam.m.scaleResolutionDownBy === 2, P);
 
   // Regler: Grundwert = kleinste RTT, Stau erst nach 2 Messungen
   let G = new H.TxGov('turn'), t = 0, ch = null;
@@ -206,6 +215,30 @@ ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.
   // dazwischen (60..120 ms ueber): weder Stau noch frei -> Erholung beginnt neu
   G = new H.TxGov('tcp'); t = 0; feed(100, 2); feed(400, 2); feed(100, 4); feed(190, 1); feed(100, 4);
   ok('Zwischenwert setzt die Erholungszeit zurueck (12 s + Zwischenwert + 12 s: noch Stufe 1)', G.level === 1, G);
+  // Grundwert-Fenster (Pruefung A1, wie die Apps): kleinste RTT der letzten 2 min in Eimern zu 10 s
+  ok('Fenster 120 s, Eimer 10 s', H.K.TX_BASE_WIN === 120000 && H.K.TX_BASE_BUCKET === 10000);
+  G = new H.TxGov('tcp'); t = 0; feed(20, 4); feed(180, 3);
+  ok('Routenwechsel 20 -> 180 ms sieht zuerst wie Stau aus', G.level >= 1, G);
+  let back = null;
+  for (let i = 0; i < 100; i++) { t += 3000; G.add(t, 180); if (back === null && G.base === 180) back = t - 12000; }
+  ok(`Grundwert folgt der neuen Route nach ${back / 1000} s (<= 130 s)`, back !== null && back <= 130000, G);
+  ok('nach 5 min auf der neuen Route: Grundwert 180, Stufe 0 (bisher: bliebe auf 3)', G.base === 180 && G.level === 0, G);
+  G = new H.TxGov('tcp'); t = 0; feed(100, 2); feed(400, 2);
+  ok('Zwischenband Ausgang: Stufe 1', G.level === 1, G);
+  feed(190, 30);   // 90 s im Band 60..120 ueber dem alten Grundwert
+  ok('Zwischenband innerhalb des Fensters: Stufe bleibt 1', G.level === 1 && G.base === 100, G);
+  feed(190, 30);   // nach > 2 min: Grundwert 190, frei
+  ok('Zwischenband haengt nicht fuer immer: Grundwert 190, Stufe 0', G.level === 0 && G.base === 190, G);
+  G = new H.TxGov('turn'); t = 0; feed(150, 2); feed(200, 1); feed(150, 1); feed(170, 20);
+  ok('60 s spaeter: das Minimum 150 liegt noch im Fenster', G.base === 150, G);
+  feed(170, 30);
+  ok('nach > 2 min ohne 150: Grundwert 170', G.base === 170, G);
+  // Eimergrenze: ein Eimer zaehlt, solange ein Teil von ihm im Fenster liegt
+  G = new H.TxGov('tcp');
+  G.add(5000, 50); G.add(129000, 80);
+  ok('Eimer 0..10 s zaehlt bei t = 129 s noch (Teil im Fenster)', G.base === 50, G);
+  G.add(130000, 80);
+  ok('bei t = 130 s ganz aelter als 120 s: faellt weg', G.base === 80, G);
   // UDP und fehlende Messungen
   G = new H.TxGov('udp'); t = 0; feed(100, 2); feed(5000, 4);
   ok('UDP: Regler aus (GCC regelt), Stufe bleibt 0', G.level === 0, G);

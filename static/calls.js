@@ -3476,13 +3476,15 @@
       return d;
     };
     var hOf = function (t) { try { return t && t.getSettings ? t.getSettings().height || 0 : 0; } catch (e) { return 0; } };
+    var wOf = function (t) { try { return t && t.getSettings ? t.getSettings().width || 0 : 0; } catch (e) { return 0; } };
     Object.keys(conn.legs || {}).forEach(function (k) {
       var L = conn.legs[k], s = L.cam && L.cam.sender;
       if (!s || !s.getParameters) return;
       try {
         var p = s.getParameters(), diff = false, rids = (p.encodings || []).map(function (e) { return e.rid; });
         if (!rids.length) return;
-        var plan = H.L.txPlan(conn.path, lv, { others: others, share: !!R.screen, h: hOf(R.cam), sh: hOf(R.screen), rids: rids });
+        var plan = H.L.txPlan(conn.path, lv, { others: others, share: !!R.screen, h: hOf(R.cam), w: wOf(R.cam), sh: hOf(R.screen),
+                                                    sw: wOf(R.screen), rids: rids });
         p.encodings.forEach(function (e) { if (plan.cam[e.rid] && set(e, plan.cam[e.rid])) diff = true; });
         if (diff) s.setParameters(p).catch(function () { /* naechster Versuch beim naechsten peers */ });
         var ss = L.scr && L.scr.sender;

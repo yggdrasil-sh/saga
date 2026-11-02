@@ -1900,7 +1900,7 @@ kommen als Schübe, ein zu großer Sendestrom staut sich in der TCP-Sendewartesc
 Bildschirmteilen über TLS, Freezes bei `lost=0`). GCC allein reicht dort nicht. Clients deckeln deshalb auf den Wegen
 `tcp` und `turn` (TLS) selbst (Referenz `static/horn.js` `K.TX`, `txPlan`, `TxGov`; Tests `tests/horn_logik.js`):
 
-| Weg | `l` | `m` (höchstens Höhe) | Bildschirm (höchstens Höhe) |
+| Weg | `l` | `m` (höchstens kurze Seite) | Bildschirm (höchstens kurze Seite) |
 |---|---|---|---|
 | ICE-TCP | 150 kbit/s, 1/4, 20 fps `L1T2` | 600 kbit/s (720p), 30 fps `L1T3` | 900 kbit/s, 8 fps (1080p) |
 | TURN-TLS | 120 kbit/s | 450 kbit/s (540p) | 600 kbit/s, 5 fps (720p) |
@@ -1908,15 +1908,22 @@ Bildschirmteilen über TLS, Freezes bei `lost=0`). GCC allein reicht dort nicht.
 - **`l` bleibt auf TCP/TLS auch zu zweit an** (UDP weiter wie Bughunt P03: zu zweit ohne `l`). Nur so kann der Kodierer bei
   knapper Rate `m` pausieren und der Knoten `l` weiterreichen (er nimmt je Platz die höchste *lebende* Schicht im Budget).
 - **Bildschirm teilen** auf TCP/TLS: Kamera nur `l` (`m` aus), Bildschirm nach der Tabelle.
-- **Stufe aus der RTT** (Bild-Leitung, `candidate-pair.currentRoundTripTime`, Messung alle ~3 s), Grundwert = kleinste RTT
-  dieser Verbindung. Stau = RTT ≥ 120 ms **und** ≥ 50 % über dem Grundwert in 2 Messungen in Folge (≥ 1 s darüber: sofort)
+- **Höhe = kurze Seite:** Die Höchstwerte der Tabelle gelten für die kürzere Seite des Bildes (Hochkant zählt die Breite),
+  `scaleResolutionDownBy` = kurze Seite / Höchstwert (mindestens 1).
+- **Stufe aus der RTT** (Bild-Leitung, `candidate-pair.currentRoundTripTime`, Messung alle ~3 s). **Grundwert** = kleinste
+  RTT der letzten 2 min (`TX_BASE_WIN` = 120 000 ms), gehalten in Eimern zu 10 s (`TX_BASE_BUCKET` = 10 000 ms): je Eimer
+  das Minimum; ein Eimer fällt weg, wenn er ganz älter als 120 s ist. So folgt der Grundwert einem dauerhaften
+  Routenwechsel (z. B. 20 → 180 ms ohne Stau, nach ≤ ~130 s wieder Stufe 0 statt für immer Stufe 3). Hält ein echter Stau
+  länger als das Fenster an, steigt der Grundwert mit; der Regler probiert dann eine Stufe höher (Stau → wieder runter, mit
+  verdoppelter Wartezeit). Stau = RTT ≥ 120 ms **und** ≥ 50 % über dem Grundwert in 2 Messungen in Folge (≥ 1 s darüber: sofort)
   → eine Stufe tiefer, frühestens 6 s nach der letzten. Frei = höchstens 60 ms über dem Grundwert für 15 s → eine Stufe
   zurück; Stau innerhalb von 30 s nach dem Schritt zurück verdoppelt die Wartezeit (höchstens 2 min).
   Stufen 0–3: `m` und Bildschirm × 1 / 0,6 / 0,4 / 0,25; ab Stufe 2 `m` aus (nur `l`), Stufe 3 `l` × 0,7;
   Bildschirm höchstens 8|5 / 5 / 3 / 2 fps, Stufe 3 zusätzlich 1,5-fach kleiner.
 - Diagnose: Stufenwechsel als Ereignis `tx` (`L0>L1 rtt=… base=… tcp|turn`).
-- **Apps (offen):** dasselbe mit `RTCRtpSender.setParameters` (`active`, `maxBitrate`, `maxFramerate`,
-  `scaleResolutionDownBy` je `rid`), nur auf `tcp`/`turn`. Kein neuer Endpunkt, kein `MIN_APP`.
+- **Apps: iOS/macOS und Android umgesetzt (2.5)** – dasselbe mit `RTCRtpSender.setParameters` (`active`, `maxBitrate`,
+  `maxFramerate`, `scaleResolutionDownBy` je `rid`), nur auf `tcp`/`turn` (`HornTx` bzw. `HornLogic.TxGov`/`txPlan`).
+  Kein neuer Endpunkt, kein `MIN_APP`.
 - Hinweis zur Knoten-Schätzung `est_kbit` (Ereignis `layout`): Sie gilt für den **Downlink** des Beins, startet bei
   1200 kbit/s und sinkt nur bei Stau in der Warteschlange des Knotens. Ohne Stau bleibt sie bei 1200 – das ist keine
   Messung der Bandbreite. Ein Engpass im **Uplink** des Senders (`qualityLimitationReason=bandwidth`) zeigt sich dort nicht.

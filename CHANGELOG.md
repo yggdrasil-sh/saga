@@ -22,6 +22,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   geht er in bis zu drei Stufen herunter (Hysterese, zurück erst nach 15 s ohne Stau). Die kleine Schicht `l` bleibt auf
   TCP/TLS auch zu zweit an, damit Kodierer und Knoten bei knapper Rate auf sie ausweichen können; vorher sendete sie 0.
   Beim Bildschirmteilen über TCP/TLS sendet die Kamera nur `l`. Die Anruf-Diagnose meldet Stufenwechsel als Ereignis `tx`.
+- Web: Der Vergleichswert der RTT ist jetzt die kleinste RTT der letzten 2 Minuten (wie in den Apps), nicht mehr die
+  kleinste seit Beginn des Anrufs. Nach einem dauerhaften Routenwechsel ohne Stau (z. B. 20 → 180 ms) blieb die Senderate
+  bisher für immer auf der untersten Stufe; jetzt erholt sie sich nach gut zwei Minuten. Die Größen-Deckel gelten für die
+  kürzere Seite des Bildes, eine hochkant gehaltene Kamera wird auf TCP/TLS nicht mehr unnötig verkleinert.
 - Admin → Anrufe: Ist UDP am Knoten aus oder nicht erreichbar, steht das in der Spalte „Weg“ mit dem Port, den du
   freigeben musst. Beim eingebauten Knoten ist das `HORN_PORT`/udp (Standard 8443), direkt und mit gleicher Nummer, nicht
   über die TLS-Durchreiche. Vorher stand dort fälschlich der Port der Durchreiche.
