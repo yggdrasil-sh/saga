@@ -49,7 +49,7 @@
          {"w": 0.58, "blocks": [
            {"id": "whome04", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "red", "title": "Heute fällig",
                         "cfg": {"src": "tasks", "agg": "due_today", "fmt": "num"}}},
-           {"type": "database", "data": {"db": "$ref:tasks", "view": "heute", "views": null, "hide_title": true}}
+           {"type": "database", "data": {"db": "$ref:tasks", "view": "heute", "views": [{"id": "heute", "name": "Heute fällig", "type": "list", "filters": [{"pid": "faellig", "op": "on_or_before", "value": "today"}, {"pid": "erledigt", "op": "unchecked", "value": ""}], "sorts": [{"pid": "prio", "dir": "asc"}]}], "hide_title": true}}
          ]},
          {"w": 0.42, "blocks": [
            {"id": "whome05", "type": "widget", "data": {"v": 1, "kind": "upcoming", "size": "m", "style": "card", "accent": "blue", "title": "Anstehendes",
@@ -57,19 +57,19 @@
          ]}
        ]}},
        {"type": "header", "data": {"text": "Termine", "level": 2}},
-       {"type": "database", "data": {"db": "$ref:termine", "view": "anstehend", "views": null, "hide_title": true}},
+       {"type": "database", "data": {"db": "$ref:termine", "view": "anstehend", "views": [{"id": "anstehend", "name": "Anstehend", "type": "table", "filters": [{"pid": "datum", "op": "on_or_after", "value": "today"}], "sorts": [{"pid": "datum", "dir": "asc"}]}], "hide_title": true}},
        {"type": "header", "data": {"text": "Wochenplaner", "level": 2}},
-       {"type": "database", "data": {"db": "$ref:tasks", "view": "woche", "views": null, "hide_title": true}},
+       {"type": "database", "data": {"db": "$ref:tasks", "view": "woche", "views": [{"id": "woche", "name": "Wochenplaner", "type": "calendar", "date_by": "faellig", "range": "week", "colors": [{"pid": "prio", "op": "is", "value": "hoch", "color": "red"}]}], "hide_title": true}},
        {"type": "header", "data": {"text": "Gewohnheiten", "level": 2}},
        {"id": "whome06", "type": "widget", "data": {"v": 1, "kind": "habit", "size": "m", "style": "card", "accent": "green", "title": "Letzte 14 Tage",
                     "cfg": {"db": "$ref:log", "view": "alle", "date": "datum", "habits": ["sport", "lesen", "wasser"], "range": 14, "goal": 5}}},
-       {"type": "database", "data": {"db": "$ref:log", "view": "wochentag", "views": null, "hide_title": true}},
+       {"type": "database", "data": {"db": "$ref:log", "view": "wochentag", "views": [{"id": "wochentag", "name": "Nach Wochentag", "type": "board", "group_by": "wochentag", "sorts": [{"pid": "datum", "dir": "asc"}], "hidden": ["datum", "notiz", "wochentag"], "colors": [{"pid": "sport", "op": "checked", "value": "", "color": "green"}]}], "hide_title": true}},
        {"type": "header", "data": {"text": "Projekte", "level": 2}},
-       {"type": "database", "data": {"db": "$ref:projects", "view": "laufend", "views": null, "hide_title": true}},
+       {"type": "database", "data": {"db": "$ref:projects", "view": "laufend", "views": [{"id": "laufend", "name": "Laufend", "type": "table", "filters": [{"pid": "status", "op": "status_group", "value": "open"}], "sorts": [{"pid": "ziel", "dir": "asc"}], "hidden": ["aufgaben"]}], "hide_title": true}},
        {"type": "columns", "data": {"cols": [
          {"w": 0.6, "blocks": [
            {"type": "header", "data": {"text": "Leseliste", "level": 2}},
-           {"type": "database", "data": {"db": "$ref:books", "view": "regal", "views": null, "hide_title": true}}
+           {"type": "database", "data": {"db": "$ref:books", "view": "regal", "views": [{"id": "regal", "name": "Regal", "type": "gallery", "sorts": [{"pid": "status", "dir": "asc"}], "hidden": ["seiten", "seite"]}], "hide_title": true}}
          ]},
          {"w": 0.4, "blocks": [
            {"type": "header", "data": {"text": "Einkaufsliste", "level": 2}},
@@ -81,7 +81,7 @@
          ]}
        ]}},
        {"type": "header", "data": {"text": "Ressourcen", "level": 2}},
-       {"type": "database", "data": {"db": "$ref:ressourcen", "view": "galerie", "views": null, "hide_title": true}},
+       {"type": "database", "data": {"db": "$ref:ressourcen", "view": "galerie", "views": [{"id": "galerie", "name": "Galerie", "type": "gallery", "sorts": [{"pid": "kategorie", "dir": "asc"}]}], "hide_title": true}},
        {"type": "toggle", "data": {"title": "So richtest du die Startseite ein", "level": 3, "open": false, "blocks": [
          {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
            {"content": "Titelbild: im Seitenmenü „…“ auf „Titelbild“ gehen und ein eigenes Bild hochladen.", "meta": {}, "items": []},
