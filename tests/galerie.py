@@ -49,9 +49,9 @@ def call(m, p, b=None, u="hk-test-a", hdr=True):
 res = []
 
 
-def ok(n, c):
+def ok(n, c, info=None):
     res.append(bool(c))
-    print(("OK  " if c else "FAIL"), n)
+    print(("OK  " if c else "FAIL"), n, "" if c or info is None else f"-> {json.dumps(info, ensure_ascii=False)[:600]}")
 
 
 def sql(q, a=()):
@@ -90,6 +90,28 @@ def use(gid, lang="de", u="hk-test-a", **b):
     return call("POST", f"/api/gallery/{gid}/use?lang={lang}", b, u=u)
 
 
+def home_dash(d6):
+    """gal-fix: "Anstehendes" zeigt die Termine (Ansicht "anstehend") und offenen Aufgaben der Vorlage. Die Beispieldaten
+    haben feste Daten - erwartet wird, was davon in [heute, heute + 7) bzw. ueberfaellig liegt (spaeter evtl. leer)."""
+    from datetime import datetime, timedelta, timezone
+    today = datetime.now(timezone.utc).date()
+    t0, t1 = today.isoformat(), (today + timedelta(days=7)).isoformat()
+    bun = json.load(open(os.path.join(ROOT, "gallery", "home-dashboard.json"), encoding="utf-8"))
+    rows = {it["ref"]: it.get("rows") or [] for it in bun["items"] if it["kind"] == "database"}
+    want = [r["title"] for r in rows["termine"] if t0 <= r["props"].get("datum", "") < t1] + \
+           [r["title"] for r in rows["tasks"] if r["props"].get("faellig") and r["props"]["faellig"] < t1 and not r["props"].get("erledigt")]
+    titles = {x["title"]: x["id"] for x in call("GET", "/api/notes")[1] if x["id"] in d6["created"]}
+    w = next(b for b in walk(blocks(note(d6["root"]))) if b["type"] == "widget" and b["data"]["kind"] == "upcoming")
+    ok(f"home-dashboard: Anstehendes-Quellen = eigene Termine/Aufgaben ({w['data']['cfg'].get('dbs')})",
+       [x["db"] for x in w["data"]["cfg"].get("dbs") or []] == [titles["Termine"], titles["Aufgaben"]])
+    up = (call("GET", f"/api/notes/{d6['root']}/widgets?tz=UTC")[1].get("widgets") or {}).get(w["id"]) or {}
+    dd = up.get("data") or {}
+    got = [x["title"] for x in dd.get("items") or [] if x["k"] == "row"]
+    ok(f"home-dashboard: Anstehendes zeigt Termine/Aufgaben der Vorlage ({got}, +{dd.get('more')})",
+       not up.get("error") and dd.get("errors") == 0 and len(got) == len(set(got))
+       and (sorted(got) == sorted(want) if len(want) <= 8 else len(got) == 8 and set(got) <= set(want)), {"want": want, "up": up})
+
+
 try:
     # --- Pruefskript -----------------------------------------------------------------------------------------
     fx = os.path.join(ROOT, "tests", "gallery_fixtures")
@@ -99,11 +121,13 @@ try:
                        capture_output=True, text=True)
     want = {"ref-unbekannt.json": "unbekannter ref 'nix'", "typ-unbekannt.json": "'zauberwert'", "zu-gross.json": "mehr als 30",
             "id-falsch.json": "Dateinamen", "beispiel-verweis.json": "Beispiel", "json-kaputt.json": "JSON",
-            "wert-falsch.json": "unbekannte Option 'b'"}
+            "wert-falsch.json": "unbekannte Option 'b'", "quelle-fremd.json": "keine fremden IDs"}
     miss = [f for f, s in want.items() if f"FEHLER {f}" not in r.stdout or s not in r.stdout]
     ok(f"Pruefskript: kaputte Bundles erkannt, rc 1 (fehlt: {miss})", r.returncode == 1 and not miss)
     ok("Pruefskript: Typen und Blockverbote gemeldet", "'zeitmaschine'" in r.stdout and "'image' nicht erlaubt" in r.stdout
        and "Datum JJJJ-MM-TT" in r.stdout and "auch_nix" in r.stdout)
+    ok("Pruefskript: Anstehendes - nur eigene Datenbanken mit Datums-Eigenschaft, Widget-db keine Zahl",
+       "keine Datums-Eigenschaft von 'tb'" in r.stdout and "widget#2]: Widget cfg.db muss" in r.stdout)
     import tempfile
     import shutil
     with tempfile.TemporaryDirectory() as td:
@@ -210,6 +234,40 @@ try:
         wv = call("GET", f"/api/notes/{root['id']}/widgets")[1]
         met = ((wv or {}).get("widgets") or {}).get("wmet") or {}
         ok(f"Widget rechnet: offene Aufgaben = {met.get('value')}", met.get("value") == 2 and not met.get("error"))
+        # gal-fix: Anstehendes mit eigener Datenbank der Vorlage ($ref -> neue ID), Wetter ohne Ort bleibt ohne Ort
+        wa = next(b for b in bl if b["type"] == "widget" and b["data"]["kind"] == "upcoming")
+        ww = next(b for b in bl if b["type"] == "widget" and b["data"]["kind"] == "weather")
+        ok(f"Anstehendes: dbs auf die neue Datenbank ({wa['data']['cfg'].get('dbs')})",
+           wa["data"]["cfg"]["dbs"] == [{"db": T, "view": "offen", "date": "faellig"}])
+        up = ((wv or {}).get("widgets") or {}).get("wanst") or {}
+        ut = [x["title"] for x in (up.get("data") or {}).get("items") or []]
+        ok(f"Anstehendes zeigt die Zeile der Vorlage ({ut})", ut == ["Entwurf schreiben"] and not up.get("error"), up)
+        ok("Wetter ohne weather_place: ohne Ort", ww["data"]["cfg"]["lat"] is None and ww["data"]["cfg"]["place"] == "")
+        s, pv0 = call("GET", "/api/gallery/alles")
+        ok(f"Vorschau: ask_weather false bei Wetter aus ({pv0.get('ask_weather')})", s == 200 and pv0.get("ask_weather") is False)
+        s, dw = use("alles", examples=False, weather_place={"place": "Hamburg<b>", "lat": 53.55123, "lon": 9.99, "x": 1})
+        wcfg = next(b for b in walk(blocks(note(dw["root"]))) if b["type"] == "widget" and b["data"]["kind"] == "weather")["data"]["cfg"]
+        ok(f"weather_place: Ort ins Widget, bereinigt ({wcfg})", s == 200 and wcfg["lat"] == 53.55 and wcfg["lon"] == 9.99
+           and wcfg["place"] and "<" not in wcfg["place"] and wcfg["days"] == 3 and "x" not in wcfg)
+        bad = [use("alles", weather_place=v)[0] for v in ("Hamburg", {"place": "Ort"}, {"place": "Ort", "lat": 91, "lon": 1},
+                                                          {"place": "", "lat": 1, "lon": 1}, {"place": "Ort", "lat": True, "lon": 1})]
+        ok(f"weather_place ungueltig: 400 ({bad})", bad == [400] * 5)
+        ok("weather_place null wie ohne", use("alles", examples=False, weather_place=None)[0] == 200)
+        # Pruefung beim Anlegen (am Format-Check vorbei): fremde/numerische Quelle -> ValueError, eigene ok
+        from saga import gallery as galmod
+        bnd = {"items": [{"ref": "home", "kind": "page", "body": [{"type": "widget", "data": {"kind": "upcoming", "cfg": {"dbs": []}}}]},
+                         {"ref": "db1", "kind": "database"}]}
+        rule = []
+        for cfg in ({"dbs": [{"db": "$ref:db1", "date": "d"}]}, {"db": "$ref:db1"}, {"dbs": [{"db": 5, "date": "d"}]}, {"db": 5},
+                    {"dbs": [{"db": "$ref:home", "date": "d"}]}, {"dbs": [{"db": -3, "date": "d"}]}, {"dbs": "x"}):
+            bnd["items"][0]["body"][0]["data"]["cfg"] = cfg
+            try:
+                galmod._own_sources(bnd, set())
+                rule.append(True)
+            except ValueError:
+                rule.append(False)
+        ok(f"$ref-Regel beim Anlegen: eigene DB ja, fremd/numerisch/foederiert/Seite nein ({rule})", rule == [True, True] + [False] * 5)
+        ok("Foederation: Anstehendes kommt nie ueber Servergrenzen", page_widgets.clean_remote_data("upcoming", {"items": []}) is None)
         # Schaltflaeche auf geteilter Seite: B (Bearbeiten an der Startseite) legt per via eine Aufgabe aus der Vorlage an
         s, _ = call("PUT", f"/api/notes/{root['id']}/shares", {"type": "user", "target": "hk-test-b", "role": "edit"})
         s2, dd = call("POST", f"/api/notes/{tpl}/duplicate", {"parent_id": T, "via": root["id"], "title": "Von B"}, u="hk-test-b")
@@ -278,17 +336,28 @@ try:
                 ok(f"{x['id']} {lang} {'mit' if ex else 'ohne'} Beispiele: {s}", s == 200 and d6["root"] in d6["created"])
                 n6 = note(d6["root"])
                 ok(f"{x['id']}: keine $ref uebrig", all("$ref:" not in json.dumps(note(i)) for i in d6["created"][:40]) and n6["title"])
+                if x["id"] == "home-dashboard" and ex:
+                    home_dash(d6)
 
     # --- Admin-Schalter ---------------------------------------------------------------------------------------------
     sql("INSERT INTO setting (k, v) VALUES ('gallery_enabled', 'false') ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v")
+    sql("INSERT INTO setting (k, v) VALUES ('weather', ?) ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v", (json.dumps({"enabled": True}),))
     time.sleep(5.5)
     off = [call("GET", "/api/gallery"), call("GET", f"/api/gallery/{ids[0]}"), use(ids[0], u="hk-test-a")]
     ok(f"Admin aus: 404 {{\"error\": \"not found\"}} (Liste, Vorschau, Anlegen): {off}", all(x == (404, {"error": "not found"}) for x in off))
     sql("DELETE FROM setting WHERE k='gallery_enabled'")
     time.sleep(5.5)
     ok("Admin wieder an", call("GET", "/api/gallery")[0] == 200)
+    wx_gid = "alles" if fixtures else "home-dashboard"
+    if wx_gid in ids:
+        s, pv1 = call("GET", f"/api/gallery/{wx_gid}")
+        s2, pv2 = call("GET", f"/api/gallery/{ids[0] if ids[0] != wx_gid else ids[-1]}")
+        ok(f"Wetter an: ask_weather true fuer {wx_gid}, sonst false ({pv1.get('ask_weather')}/{pv2.get('ask_weather')})",
+           s == 200 and pv1.get("ask_weather") is True and (s2 == 200 and pv2.get("ask_weather") is False or len(ids) == 1))
+    sql("DELETE FROM setting WHERE k='weather'")
 finally:
     sql("DELETE FROM setting WHERE k='gallery_enabled'")
+    sql("DELETE FROM setting WHERE k='weather'")
     for u in ("hk-test-a", "hk-test-b"):
         sql("DELETE FROM note_share WHERE owner_uid=?", (u,))
         sql("DELETE FROM note WHERE uid=?", (u,))

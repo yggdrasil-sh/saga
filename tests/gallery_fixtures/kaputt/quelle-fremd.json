@@ -1,0 +1,87 @@
+{
+ "id": "quelle-fremd",
+ "v": 1,
+ "order": 1,
+ "category": "work",
+ "icon": "x",
+ "title": "Kaputt",
+ "desc": "",
+ "needs": [],
+ "root": "home",
+ "items": [
+  {
+   "ref": "home",
+   "kind": "page",
+   "parent": null,
+   "title": "Start",
+   "body": [
+    {
+     "id": "w1",
+     "type": "widget",
+     "data": {
+      "v": 1,
+      "kind": "upcoming",
+      "cfg": {
+       "dbs": [
+        {
+         "db": 42,
+         "date": "d"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "w2",
+     "type": "widget",
+     "data": {
+      "v": 1,
+      "kind": "upcoming",
+      "cfg": {
+       "dbs": [
+        {
+         "db": "$ref:tb",
+         "date": "name"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": "w3",
+     "type": "widget",
+     "data": {
+      "v": 1,
+      "kind": "metric",
+      "cfg": {
+       "db": 7,
+       "agg": "count"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "ref": "tb",
+   "kind": "database",
+   "parent": "home",
+   "title": "T",
+   "schema": {
+    "props": [
+     {
+      "id": "name",
+      "name": "N",
+      "type": "text"
+     }
+    ],
+    "views": [
+     {
+      "id": "t",
+      "name": "T",
+      "type": "table"
+     }
+    ]
+   }
+  }
+ ]
+}
