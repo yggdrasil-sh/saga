@@ -29,6 +29,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   nichts – je Bericht eine Zeile `clientlog`/`clientdiag` im Server-Log, Konto nur als Hash. Grenzen 16 KB/64 KB,
   10 Berichte/min und 200/Tag je Konto, 5 Diagnosen/h, zusätzlich je IP. Admin-Schalter „Fehlerberichte und ‚Diagnose
   senden‘“ (Allgemein → Diagnose, Standard an). Vertrag für die Apps: `docs/APP-API.md` „Fehlerberichte und Diagnose“.
+- Bereinigung: Hostnamen mit beliebiger Endung (z. B. `.family`, `.fritz.box`, `.lan`, `.home.arpa`, Punycode `xn--…`)
+  werden am Server und im Browser zu `<host>` (bisher nur bekannte Endungen bzw. im Browser gar nicht), Dateinamen auch
+  im Browser zu `<file>`; auch der Freitext der Diagnose maskiert Hostnamen. Programmbezeichner (`org.json.JSONException`,
+  `e.target.value`), eigene Skripte (`static/pages.js:120:15`, `pm-editor.js`) und Versionsnummern bleiben lesbar.
 
 ### Galerie (2.5): Vorlage „Home-Dashboard“
 - Neue Startseite für alles: analoge Uhr, Zitat des Tages, Wetter (ohne Ort bzw. bei ausgeschaltetem Wetter mit Hinweis),

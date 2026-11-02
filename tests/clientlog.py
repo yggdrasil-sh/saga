@@ -242,7 +242,7 @@ def unit():
     same = ["TypeError: e.target.value is undefined", "org.json.JSONException: x", "TypeError: window.HKLog.ev is not a function",
             "kotlin.KotlinNullPointerException", "TypeError: item.props.title is undefined", "TypeError: res.data.items is not iterable",
             "TypeError: this.state.rows is null", "at saveNow (static/pages.js:120:15)", "at saveNow (static/pm-editor.js:9:3)", "TypeError: x at static/pages.js:120:15",
-            "SyntaxError: JSON.parse: unexpected character", "Error: x at it not"]
+            "SyntaxError: JSON.parse: unexpected character", "Error: x at it not", "Error: pm-editor.js not loaded"]
     sb = {m: cl.scrub(m) for m in same if cl.scrub(m) != m}
     ok(f"Bereinigung: Programmbezeichner und Stack-Zeilen bleiben ({sb})", not sb)
     neg = ["Saga 2.5.0-rc.9", "Chrome 130", "Error: pm-editor.js not loaded", "Error: static/pages.js failed", "at Foo.swift:12",

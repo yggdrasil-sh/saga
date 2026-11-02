@@ -226,7 +226,7 @@ def scrub(s, limit=MSG_MAX):
 # ganze Abschnitte aus mindestens zwei Woertern, die genau so in einem Saga-Katalog stehen (z. B. "Nicht gespeichert"
 # vor ": {err}" - in jeder Sprache; einzelne Woerter wie ein Seitentitel "Woche" zaehlen nicht). Alles andere - etwa ein Seitentitel ohne Anfuehrungszeichen - wird <w>.
 _WORD = re.compile(r"[^\W\d_][\w$]*(?:\.[\w$]+)*")
-_DELIM = re.compile(r"((?<![\w.])static/[\w.\-/]+\.(?:js|mjs|css|html)(?::\d{1,7}:\d{1,8})?|<[a-z]+>|\{\w+(?::[^{}]*)?\}|[:;,!?()\[\]{}\"'`\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026|=]|\.(?=\s|$))")
+_DELIM = re.compile(r"((?<![\w.])static/[\w.\-/]+\.(?:js|mjs|css|html)(?::\d{1,7}:\d{1,8})?|(?<![\w.\-/])[A-Za-z][\w\-]*(?:\.[\w\-]+)*\.(?:m?js|css)\b|<[a-z]+>|\{\w+(?::[^{}]*)?\}|[:;,!?()\[\]{}\"'`\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026|=]|\.(?=\s|$))")
 _ERR_WORDS = frozenset("""
 a an the of to in on at by for from with without into is are was were be been not no null undefined nan true false
 cannot can could read write set get call called properties property reading setting object function functions method

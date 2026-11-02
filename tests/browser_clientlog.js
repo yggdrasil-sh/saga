@@ -72,6 +72,16 @@ async function main() {
     ok('Bericht: Kopf und Ort (app web, sid, screen pages, Stack static/…:Zeile:Spalte, keine Zahl aus dem Text)',
       b.app === 'web' && /^[A-Za-z0-9]{16}$/.test(b.sid || '') && er.screen === 'pages' && !/4711/.test(er.msg || '')
       && /<url>/.test(er.msg || '') && /<email>/.test(er.msg || ''), { b: { app: b.app, sid: b.sid, os: b.os, ver: b.ver }, er });
+    // --- Hostnamen mit beliebiger Endung und Dateinamen (wie saga/clientlog.py) -----------------------------------------
+    const hs = await p.evaluate(() => [
+      'Error: Hostname cloud.mueller.family not verified', 'getaddrinfo ENOTFOUND nas.fritz.box.', 'Error: router.lan:443',
+      'Error: xn--mller-kva.example', 'Error: Hochladen: Arzt_Brief.pdf (50 %)',
+      'TypeError: e.target.value is undefined', 'org.json.JSONException: x', 'at saveNow (static/pages.js:120:15)', 'Error: pm-editor.js not loaded'
+    ].map((m) => window.HKLog.scrub(m)));
+    ok('Bereinigung im Browser: Hostnamen -> <host>, Dateien -> <file>', hs.slice(0, 4).every((x) => /<host>/.test(x) && !/mueller|fritz|router|xn--/.test(x))
+      && /<file>/.test(hs[4]) && !/Arzt|pdf/.test(hs[4]), hs.slice(0, 5));
+    ok('Bereinigung im Browser: Bezeichner und Skripte bleiben', hs[5] === 'TypeError: e.target.value is undefined' && hs[6] === 'org.json.JSONException: x'
+      && hs[7] === 'at saveNow (static/pages.js:120:15)' && hs[8] === 'Error: pm-editor.js not loaded', hs.slice(5));
     // --- Drossel: neuer Fehler wartet, geht beim Verlassen mit ---------------------------------------------------------
     const log0 = logLen();
     await p.evaluate(() => { setTimeout(function spaeter() { throw new RangeError('maximum call stack size exceeded'); }, 0); });

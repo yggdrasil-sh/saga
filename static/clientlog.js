@@ -72,8 +72,8 @@
     // Woerter: nur Programm-Bezeichner, Eigenschaften in Anfuehrungszeichen ('title') und Woerter englischer
     // Fehlermeldungen bleiben (wie _ERR_WORDS in saga/clientlog.py) - alles andere, etwa ein Seitentitel ohne
     // Anfuehrungszeichen oder ein uebersetzter Text, wird <w>
-    s = s.replace(/<[a-z]+>|static\/[\w.\-\/]+|'[a-z_$][\w$.]{0,39}'|[^\s\d_.,:;()\[\]{}<>#'"`=+\-*\/!?&|%$~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026][^\s.,:;()\[\]{}<>#'"`=+\-*\/!?&|%~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026]*(?:\.[\w$]+)*/g, function (w) {
-      if (w[0] === '<' || w[0] === "'" || w.indexOf('static/') === 0 || w.length === 1 || /[.$_\d]|[a-z][A-Z]|(?:Error|Exception)$/.test(w) || ERRW[w.toLowerCase()] === 1) return w;
+    s = s.replace(/<[a-z]+>|static\/[\w.\-\/]+|[A-Za-z][\w\-]*(?:\.[\w\-]+)*\.(?:m?js|css)\b|'[a-z_$][\w$.]{0,39}'|[^\s\d_.,:;()\[\]{}<>#'"`=+\-*\/!?&|%$~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026][^\s.,:;()\[\]{}<>#'"`=+\-*\/!?&|%~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026]*(?:\.[\w$]+)*/g, function (w) {
+      if (w[0] === '<' || w[0] === "'" || w.indexOf('static/') === 0 || /\.(?:m?js|css)$/.test(w) || w.length === 1 || /[.$_\d]|[a-z][A-Z]|(?:Error|Exception)$/.test(w) || ERRW[w.toLowerCase()] === 1) return w;
       return '<w>';
     });
     s = s.replace(/\s{2,}/g, ' ').trim();
