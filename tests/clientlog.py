@@ -250,6 +250,12 @@ def unit():
            "MainActivity.kt:88", "Error: worker.mjs crashed"]
     gb = {m: cl.scrub(m) for m in neg if "<host>" in cl.scrub(m) or "<file>" in cl.scrub(m)}
     ok(f"Bereinigung: Dateien mit Code-Endung und Versionsnummern kein <host>/<file> ({gb})", not gb)
+    import time
+    t0 = time.monotonic()
+    for big in ("a." * 8000, "ab." * 5000 + "1", "x@" * 8000):
+        cl.scrub(big), cl.scrub_note(big)
+    dt = time.monotonic() - t0
+    ok(f"Bereinigung: lange Punkt-Ketten (16 KB) ohne quadratische Laufzeit ({dt:.2f} s)", dt < 1.0)
 
 
 def run(users):
