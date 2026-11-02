@@ -362,15 +362,16 @@
   var URL_KEYS = { url: 1, href: 1, link: 1, source: 1, embed: 1, src: 1, inst: 1 };
   function fileUrl(u) { return typeof u === 'string' && FILE_URL.test(u); }
   function cleanFile(f) { return f && typeof f === 'object' && !Array.isArray(f) && fileUrl(f.url) ? f : null; }
-  function cleanData(v, key, depth) {
+  // wg: Widget-Daten - dort ist cfg.src die Quelle ('fixed'|'db'|'tasks', saga/page_widgets.py), keine Adresse
+  function cleanData(v, key, depth, wg) {
     if (depth > 40) return null;
-    if (typeof v === 'string') return URL_KEYS[key] && v && !linkHref(v) ? '' : v;
-    if (Array.isArray(v)) return v.map(function (x) { return cleanData(x, key, depth + 1); });
+    if (typeof v === 'string') return URL_KEYS[key] && !(wg && key === 'src') && v && !linkHref(v) ? '' : v;
+    if (Array.isArray(v)) return v.map(function (x) { return cleanData(x, key, depth + 1, wg); });
     if (v && typeof v === 'object') {
       var o = {};
       Object.keys(v).forEach(function (k) {
         if (k === '__proto__' || k === 'constructor' || k === 'prototype') return;
-        o[k] = k === 'file' ? cleanFile(v[k]) : cleanData(v[k], k, depth + 1);
+        o[k] = k === 'file' ? cleanFile(v[k]) : cleanData(v[k], k, depth + 1, wg);
       });
       return o;
     }
@@ -389,7 +390,7 @@
       a = Object.assign({}, a);
       if (n.type === 'image' && a.file != null) a.file = cleanFile(a.file);
       if ((n.type === 'code' || n.type === 'math') && a.render != null) a.render = cleanRender(a.render);
-      if (OPAQUE.indexOf(n.type) >= 0 && a.data != null) a.data = cleanData(a.data, null, 0);
+      if (OPAQUE.indexOf(n.type) >= 0 && a.data != null) a.data = cleanData(a.data, null, 0, n.type === 'widget');
       if (n.type === 'unknown' && a.data != null) a.data = cleanData(a.data, null, 0);
       n = Object.assign({}, n, { attrs: a });
     }

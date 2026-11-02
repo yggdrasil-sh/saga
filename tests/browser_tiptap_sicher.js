@@ -94,6 +94,9 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
             S.linkHref('/logout'), S.linkHref('data:x'), S.linkHref('https://a\u0001b')];
   });
   ok('linkHref: nur http(s)/mailto', J(out) === J(['', '', 'https://a.example', 'mailto:a@b.example', '', '', '']), out);
+  const wg = await p.evaluate(() => window.HKPmSchema.cleanPm({ type: 'widget', attrs: { id: 'w1', data: { kind: 'progress',
+    cfg: { src: 'db', db: 5, view: '', prop: 'p' }, link: '/logout' } } }).attrs.data);
+  ok('cleanPm: Widget-Quelle (cfg.src db) bleibt beim Kopieren, Link-Felder weiter nur http(s)', wg.cfg.src === 'db' && wg.link === '', wg);
   const ad = await p.evaluate(() => window.HKPmAdapter && HKPmAdapter.inlineToHtml
     ? HKPmAdapter.inlineToHtml([{ type: 'text', text: 'x', marks: [{ type: 'link', attrs: { href: 'javascript:1' } }, { type: 'b' }] }]) : null);
   ok('Adapter: Link-Marke javascript: -> nur Text (fett bleibt)', ad === null || ad === '<b>x</b>', ad);
