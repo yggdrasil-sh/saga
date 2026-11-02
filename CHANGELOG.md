@@ -41,6 +41,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „noch X Tage“ (Formel), Wochenplaner (Kalender als Woche), Gewohnheiten-Raster und Tageslog-Board nach Wochentag mit
   Erfolgsquote (Formeln), Projekte mit Fortschrittsbalken (Rollup über die Aufgaben), Leseliste mit Fortschritt,
   Ressourcen-Galerie und Einkaufsliste. Übersetzt in en/es/ru/th.
+- „Anstehendes“ zeigt jetzt die Termine und offenen Aufgaben der Vorlage selbst: Vorlagen dürfen in Widget-Quellen
+  (`cfg.dbs` von „Anstehendes“) Datenbanken referenzieren, die **dieselbe Vorlage** anlegt (`"$ref:<datenbank>"`, beim
+  Anlegen auf die neuen IDs umgebogen). Fremde, bestehende oder numerische IDs bleiben verboten – geprüft im
+  Format-Check (`tools/gallery_check.py`: auch Ansicht und Datums-Eigenschaft) und noch einmal beim Anlegen. Die
+  Aufgaben-DB ist zwar Aufgabenquelle, „Anstehendes“ liest mit `tasks` aber nur Saga-Aufgaben – keine Doppelungen.
+- Wetter fragt beim Anlegen nach dem Ort: Hat eine Vorlage ein Wetter-Widget ohne Ort und ist Wetter eingeschaltet,
+  fragt der Galerie-Dialog im Web vor dem Anlegen nach dem Ort (Ortssuche des Servers wie im Widget, „Überspringen“
+  lässt das Widget wie bisher). API: `GET /api/gallery/{id}` liefert `ask_weather`, `POST /api/gallery/{id}/use`
+  nimmt optional `weather_place: {"place", "lat", "lon"}` (bereinigt wie im Widget-Editor, ungültig → 400). Ohne
+  Parameter wie bisher (Apps).
 - `tests/galerie.js` schreibt Hinweise direkt an `HK.toast` mit (statt per MutationObserver) – „Vorlage angelegt“ wird
   nicht mehr zeitabhängig vom Aufgaben-Hinweis überdeckt.
 
