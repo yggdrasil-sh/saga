@@ -1186,11 +1186,12 @@ async def fed_live(request: Request):
     # 2.5 (collab1): Sendungen nur mit Live-Mitschreiben zaehlen in einem eigenen Topf (vor der Signaturpruefung nur der
     # Topf gewaehlt - gepruefte Signatur braucht es trotzdem)
     raw = await request.body()
-    peek = COLLAB_LIVE is not None and len(raw) < 4 * 1024 * 1024 and b'"collab"' in raw and b'"type": "collab"' in raw.replace(b'":"', b'": "')
-    try:
-        peek = peek and all(isinstance(x, dict) and x.get("type") == "collab" for x in json.loads(raw).get("items") or [None])
-    except (ValueError, AttributeError):
-        peek = False
+    peek = False
+    if COLLAB_LIVE is not None and b'"collab"' in raw:
+        try:
+            peek = all(isinstance(x, dict) and x.get("type") == "collab" for x in json.loads(raw).get("items") or [None])
+        except (ValueError, AttributeError, RecursionError):
+            peek = False
     inp, err = await F._verify(request, rate=("#livec", COLLAB_LIVE_RATE) if peek else None)
     if err is not None:
         return err

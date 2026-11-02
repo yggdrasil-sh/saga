@@ -287,7 +287,7 @@ def run():
         api("a", an, "PUT", f"/api/notes/{nid}/shares", {"type": "remote", "target": f"@cleo@{HB}", "role": "view"})
         m = cc.wait("HELLO", r, timeout=12, pred=lambda x: json.loads(x[2][0]).get("update"))
         ok(f"Rolle Lesen auf A -> Cleo nur lesen ({m and m[2][0]})", m and json.loads(m[2][0]).get("ro") is True)
-        u = cc.edit(r, lambda d: text_of(d, 0).insert(0, "nein "), "ro1")
+        cc.edit(r, lambda d: text_of(d, 0).insert(0, "nein "), "ro1")
         m = cc.wait(("REJECT", "ACK"), r, timeout=8)
         ok(f"... Schreiben -> reject readonly ({m and m[0]})", m and m[0] == "REJECT" and json.loads(m[2][0])["code"] == "readonly")
         time.sleep(1)
