@@ -674,7 +674,124 @@
     });
   }
 
+  // =================================================================================================================
+  // Diagnose (T6, static/pm-diag.js): Round-Trip-Abweichungen unveraenderter Bloecke als Feldpfade - nie Werte
+  // =================================================================================================================
+  var DIAG_SEG = /^[A-Za-z_][A-Za-z0-9_]{0,31}$/, DIAG_MAX = 8, DIAG_DEPTH = 8;
+  function diagKey(k) { return DIAG_SEG.test(k) ? k : '*'; }
+  // Inline-HTML inhaltlich: Folge von Textlaeufen mit ihren Marken (samt Ziel/Farbe) und Inline-Knoten (Seitenverweis,
+  // Erwaehnung, Datum, Formel mit ihren Kennwerten, ohne den von resolve gesetzten Titel/Namen). Die Schreibweise
+  // (strong/b, Rangfolge, Klassen, target/rel, getrennte gleiche Laeufe) zaehlt nicht.
+  function htmlSig(s) {
+    var runs = [], stack = [], cap = null;
+    function pal(cls, pre) { for (var i = 0; i < cls.length; i++) if (cls[i].indexOf(pre) === 0 && inArr(PALETTE, cls[i].slice(pre.length))) return cls[i].slice(pre.length); return null; }
+    function key() {
+      var m = {}; stack.forEach(function (x) { if (x[1]) m[x[1][0]] = x[1][1]; });
+      if (has(m, 'bg')) delete m.mark;
+      return Object.keys(m).sort().map(function (k) { return k + '=' + m[k]; }).join(';');
+    }
+    function push(t, k) { var l = runs[runs.length - 1]; if (l && l[1] === k && l[2] !== 1) l[0] += t; else runs.push([t, k]); }
+    function atom(desc) { runs.push(['', key() + '|' + desc, 1]); }
+    tokenize(s, {
+      start: function (tag, a) {
+        if (cap) { cap[2]++; return; }
+        var cls = (a['class'] || '').split(/[ \t\n\r\f]+/), mk = null, c, mm;
+        if (tag === 'br') { atom('br'); return; }
+        if (tag === 'a' && (mm = NOTE_HREF.exec(a.href || ''))) { cap = ['page:' + mm[1], [], 0]; return; }
+        if (tag === 'span' && inArr(cls, 'hk-mention')) { cap = ['mention:' + (a['data-u'] || ''), [], 0]; return; }
+        if (tag === 'code' && inArr(cls, 'hk-math')) { cap = ['math', [], 0, 1]; return; }
+        if (tag === 'time') { cap = ['date:' + (a.datetime || '') + ':' + inArr(cls, 'hk-remind'), [], 0, 1]; return; }
+        if (tag === 'a') mk = ['link', a.href || ''];
+        else if (tag === 'b' || tag === 'strong') mk = ['b', ''];
+        else if (tag === 'i' || tag === 'em') mk = ['i', ''];
+        else if (tag === 'u' || tag === 's') mk = [tag, ''];
+        else if (tag === 'code') mk = ['icode', ''];
+        else if (tag === 'mark') mk = (c = pal(cls, 'hk-bg-')) ? ['bg', c] : ['mark', ''];
+        else if (tag === 'span') mk = (c = pal(cls, 'hk-c-')) ? ['color', c] : null;
+        stack.push([tag, mk]);
+      },
+      end: function (tag) {
+        if (cap) {
+          if (cap[2] > 0) { cap[2]--; return; }
+          var x = cap; cap = null;
+          atom(x[0] + (x[3] ? ':' + x[1].join('') : ''));   // Formel/Datum: Inhalt zaehlt, Titel/Name nicht
+          return;
+        }
+        for (var i = stack.length - 1; i >= 0; i--) if (stack[i][0] === tag) { stack.length = i; break; }
+      },
+      data: function (d) { if (cap) { cap[1].push(d); return; } if (d) push(d, key()); }
+    });
+    if (cap) atom(cap[0] + (cap[3] ? ':' + cap[1].join('') : ''));
+    return JSON.stringify(runs.map(function (r) { return [r[0], r[1]]; }));
+  }
+  function htmlSame(a, b) {
+    if (a === b) return true;
+    return htmlSig(a) === htmlSig(b);
+  }
+  // Pfade, an denen a und b sich unterscheiden (Feldnamen, Indizes; Schluessel, die kein Bezeichner sind -> *)
+  function diagPaths(a, b, opt) {
+    opt = opt || {};
+    var out = [], max = opt.max || DIAG_MAX;
+    function add(p) { if (out.length < max && out.indexOf(p) < 0) out.push(p); }
+    (function walk(x, y, p, dp) {
+      if (x === y || out.length >= max) return;
+      if (dp >= DIAG_DEPTH) { if (stable(x) !== stable(y)) add(p); return; }
+      if (isList(x) && isList(y)) {
+        if (x.length !== y.length) { add(p); return; }
+        for (var i = 0; i < x.length; i++) walk(x[i], y[i], p + '[' + i + ']', dp + 1);
+        return;
+      }
+      if (isDict(x) && isDict(y)) {
+        var ks = Object.keys(x).concat(Object.keys(y).filter(function (k) { return !has(x, k); })).sort();
+        ks.forEach(function (k) {
+          var q = (p ? p + '.' : '') + diagKey(k);
+          if (!has(x, k) || !has(y, k)) add(q); else walk(x[k], y[k], q, dp + 1);
+        });
+        return;
+      }
+      if (opt.html && typeof x === 'string' && typeof y === 'string' && (/[<&]/.test(x) || /[<&]/.test(y))) {
+        if (!htmlSame(x, y)) add(p);
+        return;
+      }
+      if (stable(x) !== stable(y)) add(p);
+    })(a, b, '', 0);
+    return out;
+  }
+  // Block ohne Kinder (die prueft die Diagnose je Kind-Knoten selbst); nur data und tunes zaehlen
+  function diagShallow(b) {
+    if (!isDict(b)) return b;
+    var d = isDict(b.data) ? assign({}, b.data) : b.data;
+    if (isDict(d) && isList(d.blocks)) d.blocks = d.blocks.length;
+    if (isDict(d) && b.type === 'columns' && isList(d.cols)) {
+      d.cols = d.cols.map(function (c) { return isDict(c) && isList(c.blocks) ? assign({}, c, { blocks: c.blocks.length }) : c; });
+    }
+    var o = { type: b.type, data: d };
+    if (b.tunes !== undefined) o.tunes = b.tunes;
+    return o;
+  }
+  // erlaubte Abweichungen des Originals vorab angleichen: Listenpunkte als Text -> Objekte
+  function diagLegacy(b) {
+    if (!isDict(b) || b.type !== 'list' || !isDict(b.data) || !isList(b.data.items)) return b;
+    function items(l) {
+      return l.map(function (it) {
+        if (typeof it === 'string') return { content: it, items: [], meta: {} };
+        return isDict(it) && isList(it.items) ? assign({}, it, { items: items(it.items) }) : it;
+      });
+    }
+    return assign({}, b, { data: assign({}, b.data, { items: items(b.data.items) }) });
+  }
+  // orig = geladener Block, ref = Normalform (blocksFromDoc(docFromBlocks(orig)) ohne Durchreichung), fresh = frisch
+  // aus dem Editor-Knoten serialisiert -> [{p, k}]: k 'norm' = Normalform weicht vom Original ab (ueber die erlaubten
+  // Abweichungen hinaus), 'fresh' = Editor-Knoten ergibt etwas anderes als die Normalform
+  function diagBlock(orig, ref, fresh) {
+    var out = [];
+    diagPaths(diagShallow(diagLegacy(orig)), diagShallow(ref), { html: true }).forEach(function (p) { out.push({ p: p, k: 'norm' }); });
+    if (fresh !== undefined) diagPaths(diagShallow(ref), diagShallow(fresh)).forEach(function (p) { out.push({ p: p, k: 'fresh' }); });
+    return out;
+  }
+
   return {
+    diag: { paths: diagPaths, block: diagBlock, shallow: diagShallow, htmlSame: htmlSame },
     docFromBlocks: docFromBlocks, blocksFromDoc: blocksFromDoc, bind: bind, blockToPm: blockToPm,
     pmToBlock: function (n, ctx) { return pmToBlock(n, ctx || {}, 0, null); },
     htmlToInline: htmlToInline, inlineToHtml: inlineToHtml, marksToAttrs: marksToAttrs, attrsToMarks: attrsToMarks,
