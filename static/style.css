@@ -2427,6 +2427,7 @@ button.up-it{cursor:pointer}button.up-it:hover{background:var(--hover,color-mix(
 /* Mathe-Block */
 .hk-mathblk{margin:.35rem 0;border-radius:8px;padding:.3rem .2rem}
 .hk-math-view{text-align:center;overflow-x:auto;overflow-y:hidden;padding:.3rem 0;cursor:text;font-size:1.15rem;min-height:1.6rem}
+.hk-tex-err{color:var(--down);font-family:ui-monospace,monospace;font-style:normal;white-space:pre-wrap}
 .hk-math-view.empty{color:var(--muted);font-size:.9rem;font-style:italic}
 .hk-math-ta{display:none;width:100%;box-sizing:border-box;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88rem;
   padding:.4rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg);margin-top:.25rem}

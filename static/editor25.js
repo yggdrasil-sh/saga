@@ -65,11 +65,17 @@
     });
     return katexP;
   }
-  var KOPT = { throwOnError: false, trust: false, strict: 'warn', maxSize: 20, maxExpand: 500 };
+  // throwOnError: true - die eingebaute Fehleranzeige von KaTeX setzt ein style-Attribut (color: errorColor) und
+  // verletzt damit die CSP (style-src-attr, Testlabor 2.11.); den Fehler zeigt Saga selbst (Klasse statt Inline-Stil)
+  var KOPT = { throwOnError: true, trust: false, strict: 'warn', maxSize: 20, maxExpand: 500 };
+  function texError(box, tex, e) {
+    var s = el('span', 'katex-error hk-tex-err', String(tex)); s.title = String((e && e.message) || e || '');
+    box.textContent = ''; box.appendChild(s);
+  }
   function renderTex(tex, box, display) {      // katex.render baut DOM ueber CSSOM (kein innerHTML, keine style-Attribute)
     return loadKatex().then(function (k) {
       box.textContent = '';
-      try { k.render(String(tex || ''), box, Object.assign({ displayMode: !!display }, KOPT)); return true; } catch (e) { box.textContent = String(e.message || e); return false; }
+      try { k.render(String(tex || ''), box, Object.assign({ displayMode: !!display }, KOPT)); return true; } catch (e) { texError(box, tex || '', e); return false; }
     });
   }
 
