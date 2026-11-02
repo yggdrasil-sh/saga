@@ -238,6 +238,16 @@ def _json_val(s):
     return json.loads(s), True
 
 
+def _put(local, it):
+    """Schluessel fuer alle Uhren eines Eintrags merken (zusammengefasste geloeschte Eintraege sind laenger als 1) -
+    nur fuer Map-Eintraege (Attribute); Text braucht keinen."""
+    if it["key"][1] is None:
+        return
+    c, k = it["id"]
+    for i in range(min(it["ln"], 1024)):
+        local[(c, k + i)] = it["key"]
+
+
 def _resolve(items, keys):
     """(Eltern-Tag, Schluessel) je Eintrag: explizit (parent/parentSub) bzw. ueber origin/rightOrigin (Ketten auch innerhalb
     des Updates). Gedaechtnis keys: {(client, clock): (tag, sub)} und {("T", client, clock): tag} fuer Typen.
@@ -255,7 +265,7 @@ def _resolve(items, keys):
         if par is not None:
             ptag = ("#" + par[1]) if par[0] == "root" else tag_of(par[1])
             it["key"] = (ptag, it["sub"])
-            local[it["id"]] = it["key"]
+            _put(local, it)
         else:
             todo.append(it)
     for _ in range(64):
@@ -271,7 +281,7 @@ def _resolve(items, keys):
                 left.append(it)
             else:
                 it["key"] = k
-                local[it["id"]] = k
+                _put(local, it)
         if len(left) == len(todo):
             break
         todo = left
