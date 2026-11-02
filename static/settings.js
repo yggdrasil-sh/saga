@@ -71,11 +71,13 @@
     if (window.HKBackup) HKBackup.section(body);             // Mein Backup (static/backup.js, 2.3)
     if (window.HKNextcloud) HKNextcloud.section(body);       // Nextcloud-Dateien in Seiten (static/nextcloud.js, 2.3)
     if (window.HKApi) HKApi.section(body);                   // 2.5: API-Tokens, Webhooks, MCP (static/apitokens.js)
+    helpSection(body);                                       // 2.5: Hilfe - "Diagnose senden" (static/clientlog.js)
     var TABS = [['account', T('Konto')], ['push', T('Mitteilungen')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['nextcloud', 'Nextcloud'], ['backup', T('Mein Backup')], ['apps', T('Apps & Geräte')], ['pages', T('Seiten')], ['api', 'API']];
     if (!window.HKApi) TABS.pop();
     if (!window.HKBackup) TABS.splice(6, 1);
     if (!window.HKNextcloud) TABS.splice(5, 1);
     if (!window.HKPush) TABS.splice(1, 1);
+    TABS.push(['help', T('Hilfe')]);
     var btns = TABS.map(function (t, i) {
       var b = el('button', 'hk-tab', t[1]); b.type = 'button'; b.id = 'hk-tab-' + t[0];
       b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', 'hk-pane-' + t[0]);
@@ -103,6 +105,41 @@
     if (focus === 'lang') focusLang = true;                   // Benutzermenue -> Sprache: Konto, Auswahl fokussiert
     var start = typeof focus === 'string' && $tab(focus) ? focus : 'account';
     show(start);
+  }
+
+  // --- Abschnitt "Hilfe" (2.5, clientlog1): Version, "Diagnose senden" - schickt die letzten Ereignisse dieses Tabs
+  //     (Fehler, Status je Endpunkt-Muster, Ansichtswechsel, Live-Kanal, Speichern; ohne Inhalte) und einen optionalen
+  //     Freitext an den Server; der antwortet mit einer Kennung D-XXXXX fuer den Admin (Server-Log "clientdiag")
+  function helpSection(body) {
+    var sec = el('section', 'hk-set hk-set-help'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, T('Hilfe')));
+    var verP = el('p', 'hk-hint'); sec.appendChild(verP);
+    api('GET', '/api/version').then(function (v) { verP.textContent = T('Saga {version}', { version: v.version || '?' }); }).catch(function () { verP.remove(); });
+    var box = el('div', 'hk-diag'); sec.appendChild(box);
+    if (!window.HKLog) return;
+    HKLog.enabled().then(function (on) {
+      if (!on) { box.appendChild(el('p', 'hk-hint', T('Diagnose ist auf diesem Server abgeschaltet.'))); return; }
+      box.appendChild(el('h4', null, T('Diagnose senden')));
+      box.appendChild(el('p', 'hk-hint', T('Hilft dem Admin, ein Problem zu finden: Saga schickt die letzten Ereignisse dieses Fensters – Fehlermeldungen, Antwortcodes des Servers, Ansichtswechsel, Verbindungsstatus. Ohne Inhalte, Titel, Namen und Adressen. Gespeichert wird nur eine Zeile im Server-Log.')));
+      var note = el('textarea', 'hk-in hk-diag-note'); note.maxLength = 1000; note.rows = 3;
+      note.placeholder = T('Was ist passiert? (optional, nur für den Admin)');
+      note.setAttribute('aria-label', T('Was ist passiert? (optional, nur für den Admin)'));
+      box.appendChild(note);
+      var go = el('button', 'btn', T('Diagnose senden')); go.type = 'button';
+      var st = el('p', 'hk-status'); st.setAttribute('role', 'status');
+      box.appendChild(go); box.appendChild(st);
+      go.addEventListener('click', function () {
+        go.disabled = true; status(st, T('Wird gesendet …'));
+        HKLog.diag(note.value).then(function (d) {
+          note.value = '';
+          st.textContent = ''; st.className = 'hk-status ok';
+          st.appendChild(document.createTextNode(T('Gesendet. Nenne dem Admin diese Kennung:') + ' '));
+          var code = el('code', 'hk-diag-id', d.id || '?'); st.appendChild(code);
+        }).catch(function (e) {
+          status(st, e.status === 429 ? T('Zu viele Anfragen – bitte kurz warten.') : T('Nicht gesendet: {err}', { err: e.message }), 'err');
+        }).then(function () { go.disabled = false; });
+      });
+    }).catch(function () {});
   }
 
   // --- Abschnitt "Seiten" (2.5, Tiptap-Umbau T2): neuer Seiten-Editor an/aus, nur wenn der Admin die Wahl freigibt

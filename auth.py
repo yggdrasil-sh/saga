@@ -97,6 +97,9 @@ DEFAULTS = {
     # saga/calldiag.py: POST /api/calls/diag, nur Server-Log, Feature calldiag1)
     "calls": {"enabled": True, "diag": True, "stun": "stun:stun.nextcloud.com:443", "turn_urls": "", "turn_mode": "rest", "turn_secret": "",
               "turn_user": "", "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45},
+    # Diagnose (2.5): clientlog = Fehlerberichte und "Diagnose senden" der Clients (saga/clientlog.py: POST /api/client/log
+    # und /api/client/diag, nur Server-Log "clientlog"/"clientdiag", Konto als Hash, Feature clientlog1)
+    "diag": {"clientlog": True},
     # Verschluesselte Backups auf ein WebDAV-Ziel (2.3, saga/backups.py): mode nextcloud|webdav, server (Nextcloud) bzw.
     # url (WebDAV-Ordner), user/password (Nextcloud: Anmeldename + App-Passwort aus dem Login Flow v2, flow=True ->
     # beim Trennen widerrufen), dav_user = Nextcloud-Benutzer-ID im WebDAV-Pfad, folder = Ordner fuer die Laeufe,

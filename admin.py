@@ -802,6 +802,7 @@ async def settings_post(request: Request):
             _flash(request, t("Wetter: {err}", err=err), "err")
             return _go("/settings")
     auth.save_setting("weather", {"enabled": _on(f, "weather_enabled"), **wx, "api_key": _s(f, "weather_api_key", 200)})
+    auth.save_setting("diag", {**(auth.settings(fresh=True).get("diag") or {}), "clientlog": _on(f, "diag_clientlog")})   # 2.5: clientlog1
     def _n(k, lo, hi, dflt):
         try:
             return max(lo, min(hi, int(f.get(k) or dflt)))
