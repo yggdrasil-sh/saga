@@ -1290,6 +1290,23 @@ def stats():
     return dict(_S["stats"], owner_subs=len(_R), relays=len(_H))
 
 
+def _gone_now(pid):
+    """In der Ereignisschleife: Verbindung zu pid getrennt - Weiterleitungen zu deren Seiten schliessen (lokale Abos bekommen
+    bye, Client faellt auf Stufe 1 zurueck) und Abos von dort auf Seiten hier fallen lassen."""
+    for relay in [r for r in list(_HW.values()) if r.pid == pid]:
+        _close(relay, "gone")
+    for rs in [x for x in list(_R.values()) if x.peer["id"] == pid]:
+        _in_loop(_drop_rs, rs)
+
+
+def _peer_gone(c, p):
+    """2.5 (Pentest 2, V1): wie saga.fed_chat/saga.fed_calls - offene Relais der getrennten Instanz nicht im Speicher lassen
+    (nach dem Commit, in der Ereignisschleife)."""
+    pid = p["id"]
+    c.after_commit(lambda: _in_loop(_gone_now, pid))
+
+
+F.PEER_GONE_HOOKS.append(_peer_gone)
 collab.FED = __import__(__name__, fromlist=["handle"])
 F.COLLAB_CAP = CAP
 F.CAPS2_FLAG[CAP] = enabled_cap

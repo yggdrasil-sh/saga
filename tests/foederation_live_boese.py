@@ -148,5 +148,36 @@ for x in ({"anchor": "nonsense", "head": "x"}, {"anchor": {}, "head": {}}, {"anc
     o = collab.aw_fields({"cursor": x, "sel": x, "block": "<b>", "typing": 1})
     ok(f"Awareness: ungueltig verworfen ({json.dumps(x)[:50]})", o == {})
 
+# 2.5 (Pentest 2, V1): Verbindung getrennt -> offene Weiterleitungen dieser Instanz schliessen (PEER_GONE_HOOK)
+class _Conn:
+    def __init__(self):
+        self.sent, self.subs = [], {}
+
+    def send(self, f):
+        self.sent.append(f)
+
+
+class _Sub:
+    def __init__(self, nid):
+        self.conn, self.nid = _Conn(), nid
+        self.conn.subs[nid] = self
+
+
+rl, other = FC._Relay("u1", NID, PID, RID), FC._Relay("u2", F.ref(PID + 1, RID), PID + 1, RID)
+for x in (rl, other):
+    sb = _Sub(x.nid)
+    x.subs[sb] = sb
+    FC._H[(x.uid, x.nid)], FC._HW[x.w] = x, x
+s1 = next(iter(rl.subs))
+ok("V1: Hook in PEER_GONE_HOOKS registriert", FC._peer_gone in F.PEER_GONE_HOOKS)
+hooked = []
+FC._peer_gone(type("C", (), {"after_commit": lambda self, fn: hooked.append(fn)})(), {"id": PID})
+ok("V1: Hook wirkt erst nach dem Commit", len(hooked) == 1 and not rl.closed)
+FC._gone_now(PID)
+ok("V1: Relais der getrennten Instanz geschlossen (bye an lokales Abo, aus _H/_HW)", rl.closed and rl.w not in FC._HW
+   and (rl.uid, rl.nid) not in FC._H and s1.conn.sent and s1.conn.sent[-1][:1] == bytes([collab.T_BYE]) and not s1.conn.subs)
+ok("V1: Relais anderer Instanzen bleiben", not other.closed and FC._HW.get(other.w) is other)
+FC._close(other)
+
 print(f"\nFOEDERATION-LIVE-BOESE {sum(res)}/{len(res)} OK – " + ("ALLES GRUEN" if all(res) else "FEHLER"))
 sys.exit(0 if all(res) else 1)

@@ -26,6 +26,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Sprachumschalter `/lang`: Die feste Konto-Sprache ändert sich nur noch aus dem eigenen UI (`Sec-Fetch-Site`
   same-origin/none, ohne den Kopf wie bisher, z. B. Apps). Ein Link von einer fremden Seite setzt nur das Sprach-Cookie
   dieses Browsers.
+- Live mitschreiben über Servergrenzen: Wird eine Verbindung getrennt, schließt Saga sofort die offenen Weiterleitungen
+  zu Seiten dieser Instanz (lokale Clients fallen auf das normale Speichern zurück) und lässt deren Abos auf Seiten hier
+  fallen, statt sie bis zum Ablauf im Speicher zu halten.
 ### Anrufe über Knoten: weniger Stocken auf TCP/TLS (2.5, Testlabor A1)
 - Web: Auf den Wegen TCP und TLS deckelt der Client die Senderate selbst (Kamera `m` 600 bzw. 450 kbit/s, Bildschirm
   900 kbit/s/8 fps bzw. 600 kbit/s/5 fps bis 720p). Steigt die RTT der Bild-Leitung deutlich über ihren kleinsten Wert,
