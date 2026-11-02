@@ -24,11 +24,14 @@ EVERY = 2.0                    # Abgleich
 RESEND_LOCAL = 8.0             # eigene Bruecke steht nicht: Befehl erneut
 RESEND_FED = 20.0              # fremde Bruecke: Auftrag erneut (Token 60 s)
 FNODE_TTL = 600                # Angaben zu fremden Knoten (Adresse, Schluessel) so lange
+FULL_HOLD = 300.0              # Hysterese (Labor 2.11.): ein voller Knoten (> horn.FULL) behaelt seine Bruecken so lange am
+                               # Stueck - nur neue Beine meiden ihn; abgebaut wird erst bei Ausfall/Leeren bzw. danach
 
 _LOCK = threading.Lock()
 _STATE = {"thread": None}
 _HUB = {}                      # call_id -> node_id des Mittelpunkts
 _BR = {}                       # bridge_id -> {"call", "dial", "hub", "sent", "fed": pid|None, "name"}
+_FULL = {}                     # node_id -> seit wann laufend, aber nicht bereit (voll)
 FN = {}                        # (call_id, pid, name) -> {"url", "pub", "at"} (P10, saga/fed_horn.py)
 FED = {}                       # saga/fed_horn.py: send_cascade(pid, call_id, body), send_uncascade(pid, call_id, bridge),
                                # quota(c, pid) -> {q, legs, kbit}
@@ -64,6 +67,21 @@ def plan(rows, prev_hub=None):
     return hub, sorted(n for n, _ in rows if n != hub)
 
 
+def usable(ready_ids, alive_ids, now, full=None, hold=FULL_HOLD):
+    """Knoten, deren Endpunkte fuer die Kaskade zaehlen: bereite und - Hysterese - laufende, die erst seit weniger als hold
+    Sekunden voll sind. Ohne das baute reconcile eine Bruecke ab, sobald der Knoten die Lastgrenze ueberschreitet, und
+    wieder auf, sobald er darunter faellt (Labor: 6 Auf-/Abbauten je Minute, Bild/Standbild im 10-s-Takt).
+    full: {node_id: seit} (wird hier gepflegt)."""
+    full = _FULL if full is None else full
+    for k in [k for k in full if k in ready_ids or k not in alive_ids]:
+        full.pop(k, None)
+    out = set(ready_ids)
+    for k in alive_ids:
+        if k not in ready_ids and now - full.setdefault(k, now) < hold:
+            out.add(k)
+    return out
+
+
 def reconcile(now=None):
     """Ein Abgleich: gewuenschte Bruecken aufbauen, ueberzaehlige abbauen."""
     now = now or time.time()
@@ -72,10 +90,15 @@ def reconcile(now=None):
                          "WHERE k.topo='horn' AND k.state<>'ended' AND k.lead IS NULL AND l.state='active' AND l.node IS NOT NULL "
                          "GROUP BY l.call_id, l.node").fetchall()
         by = {}
-        ok = {n["id"] for n in horn.ready_nodes(c)} if rows else set()
+        if rows:
+            ns = horn.nodes(c)
+            ok = usable({n["id"] for n in ns if horn.ready(n, now)}, {n["id"] for n in ns if horn.alive(n, now)}, now)
+        else:
+            ok = set()
         for cid, node, n in rows:
-            # nur bereite eigene Knoten: beim Leeren/Ausfall ziehen die Geraete ohnehin um (make-before-break) - eine
-            # Bruecke zum alten Knoten wuerde sie doppelt in den neuen Raum bringen
+            # nur laufende eigene Knoten: beim Leeren/Ausfall ziehen die Geraete ohnehin um (make-before-break) - eine
+            # Bruecke zum alten Knoten wuerde sie doppelt in den neuen Raum bringen. Ein voller Knoten zaehlt weiter
+            # (usable: Hysterese FULL_HOLD), seine Geraete bleiben ja dort
             if node.startswith("f:") or node in ok:
                 by.setdefault(cid, []).append((node, n))
         want = {}

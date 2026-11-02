@@ -793,6 +793,13 @@
   function mineLeg(x) { return !!x && (x.me === true || (!!x.who && x.who === meName())); }
   function legOf(R, dev) { var o = null; ((R && R.legs) || []).forEach(function (x) { if (x.device === dev) o = x; }); return o; }
   function myLeg(R) { return bridge() ? legOf(R, myDev().id) : null; }
+  // 2.5 Uebergabe (L1/L2): Beitrittsgeneration eines Endpunkts (Teilnehmerliste legs[].gen) - bedingtes /leave {by, gen}
+  function genOf(R, dev) { var x = legOf(R, dev); return x && typeof x.gen === 'number' && x.gen > 0 ? x.gen : null; }
+  function leaveBody(R, dev, reason, by) {
+    var b = { device: dev }; if (reason) b.reason = reason; if (by) b.by = by;
+    var g = genOf(R, dev); if (g !== null) b.gen = g;
+    return b;
+  }
   // Name des Chats zum Anruf - auch wenn gerade ein anderer Chat offen ist (Nr. 106: Kopf zeigte sonst "Gruppenanruf")
   function titleOf(cid) {
     var b = bridge(), c = b && b.cur();
@@ -801,7 +808,8 @@
   }
   function blockText(b, n) {
     return b === 'old' ? T('Dafür braucht jemand im Anruf Saga 2.4.') : b === 'full' ? T('Der Anruf ist voll (höchstens {n} Geräte).', { n: n || '?' })
-      : b === 'ended' ? T('Der Anruf ist schon beendet.') : b === 'none' ? T('Der Anruf ist noch nicht angenommen.') : T('Beitreten geht gerade nicht.');
+      : b === 'ended' ? T('Der Anruf ist schon beendet.') : b === 'none' ? T('Der Anruf ist noch nicht angenommen.')
+      : b === 'handover_busy' ? T('Ein anderes eigenes Gerät übernimmt den Anruf gerade – bitte kurz warten.') : T('Beitreten geht gerade nicht.');
   }
   // Teilnehmerliste uebernehmen (GET /api/calls/{id}, call.roster): Begleitgeraet ja/nein, Hinweise "ist hinzugekommen" /
   // "hat verlassen", Verbindungen zu Geraeten trennen, die nicht mehr dabei sind
@@ -827,8 +835,10 @@
     if (here && R.inRoom && !R.ho && !R.ending && old[here] && !legs.some(function (x) { return x.device === here; })) {
       // R09: nur wenn das andere Geraet gerade die Fuehrung uebernommen hat (neu dabei bzw. vorher Begleitgeraet) - ein
       // Begleitgeraet, das Begleitgeraet bleibt, heisst nur: dieses Geraet ist kurz aus der Liste gefallen (Aussetzer)
+      // 2.5 (Uebergabe): auch ein Geraet, das gerade uebernahm (handover) - kam state.ready nicht an bzw. bestand die eigene
+      // Verbindung noch nicht, hat es dieses Geraet per /leave abgemeldet (Rueckfall); sonst lief es bis zum naechsten /alive weiter
       var other = legs.filter(function (x) {
-        return x.me && x.device !== here && x.role !== 'companion' && (!old[x.device] || old[x.device].role === 'companion');
+        return x.me && x.device !== here && x.role !== 'companion' && (!old[x.device] || old[x.device].role === 'companion' || old[x.device].role === 'handover');
       })[0];
       if (other) {
         R.ending = true;
@@ -933,7 +943,7 @@
       if (k.dm) { R.dm = true; R.title = (k.peer && k.peer.name) || R.title; }   // 2.5: 1:1 ueber Knoten
       (r.signals || []).forEach(function (s) { R.seen[s.seq] = true; });
       if (k.state === 'ended') throw new Error(T('Der Anruf ist schon beendet.'));
-      if (!k.joinable) throw new Error(blockText(k.join_block, k.limit));
+      if (!k.joinable && !(role === 'handover' && k.takeover)) throw new Error(blockText(k.join_block, k.limit));   // L4: auch bei vollem Anruf
       R.legs = k.legs || [];
       if (role === 'handover') {
         var mine = R.legs.filter(function (x) { return x.who === meName() && x.device !== dev; });
@@ -1020,7 +1030,7 @@
   // dem bisherigen Geraet Bescheid (state.ready + replaces) - das schaltet im selben Moment ab und verlaesst den Anruf
   function hoCheck(R) {
     R = roomOf(R);
-    if (!R.ho || R.ho.done || !R.ready || R.done) return;
+    if (!R.ho || R.ho.done || R.ho.promo || !R.ready || R.done) return;   // promo: Begleitgeraet holt erst Ton-Recht (L3)
     if (R.horn) {
       if (!R.horn.cur) return;                         // 2.5: ueber einen Knoten - verbunden?
     } else {
@@ -1039,31 +1049,60 @@
     if (R.horn) {
       // ueber einen Knoten keine Direktverbindung zum alten Geraet: Bescheid ueber den Signalweg und zur Sicherheit
       // (aeltere App) dessen Platz kurz danach beim Server abmelden
+      // 2.5 (L2): Rueckfall nur fuer genau dieses Bein (gen) und solange dieses Geraet noch dabei ist (by) - ein schneller
+      // Rueckwechsel (< 3 s) wirft sonst das zurueckkehrende Geraet hinaus
       var o = {}; o[rep] = JSON.stringify({ t: 'state', ready: true, replaces: rep, mic: true, cam: !!R.cam, screen: !!R.screen });
-      var id0 = R.id;
-      hornSend(R, o).then(function () { setTimeout(function () { api('POST', '/api/calls/' + id0 + '/leave', { device: rep, reason: 'handover' }).catch(function () {}); }, 3000); });
-    } else if (A && A.established) sendSignal(A, { t: 'state', ready: true, replaces: rep, mic: true, cam: camWas === null ? !!R.cam : camWas, screen: !!R.screen });
-    else api('POST', '/api/calls/' + R.id + '/leave', { device: rep, reason: 'handover' }).catch(function () {});   // eigenes Geraet ohne Verbindung
+      var id0 = R.id, lb = leaveBody(R, rep, 'handover', myDev().id);
+      hornSend(R, o).then(function () { setTimeout(function () { api('POST', '/api/calls/' + id0 + '/leave', lb).catch(function () {}); }, 3000); });
+    } else if (A && A.established) {
+      sendSignal(A, { t: 'state', ready: true, replaces: rep, mic: true, cam: camWas === null ? !!R.cam : camWas, screen: !!R.screen });
+      // L2 (B5): auch im Mesh ein Rueckfall, falls state.ready verloren geht (nach handover_s/2, bedingt wie oben)
+      var id1 = R.id, lb1 = leaveBody(R, rep, 'handover', myDev().id);
+      setTimeout(function () { api('POST', '/api/calls/' + id1 + '/leave', lb1).catch(function () {}); }, HO_S * 500);
+    } else api('POST', '/api/calls/' + R.id + '/leave', leaveBody(R, rep, 'handover', myDev().id)).catch(function () {});   // eigenes Geraet ohne Verbindung
     R.ho = null;
     drawCtl(R); drawInfo(R);
   }
   function hoFail(R) {
     if (!R.ho || R.ho.done || !live(R)) return;
     R.ho = null; clearInterval(R.hoI);
-    api('POST', '/api/calls/' + R.id + '/leave', { device: myDev().id }).catch(function () {});
+    api('POST', '/api/calls/' + R.id + '/leave', leaveBody(R, myDev().id)).catch(function () {});
     R.ending = true;
     finish(R, T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.'), 'error');
   }
-  // Begleitgeraet -> Hauptgeraet ("Hierher übernehmen" im Anruffenster)
+  // Begleitgeraet -> Hauptgeraet ("Hierher übernehmen" im Anruffenster). 2.5 (L3) ueber einen Knoten: erst befoerdern
+  // (POST /promote, Token mit Ton-Recht), Ton-Bein mit den neuen Token neu aufbauen (gleiche leg_ref ersetzt das alte am
+  // Knoten), dann wie immer state.ready an das alte Geraet. Klappt das nicht: Befoerderung zuruecknehmen.
   function takeOver(R) {
     R = roomOf(R);
     if (!live(R) || R.ho) return;
     var mine = (R.legs || []).filter(function (x) { return x.who === meName() && x.device !== myDev().id; });
     var main = mine.filter(function (x) { return x.role !== 'companion'; })[0] || mine[0];
     if (!main) { R.companion = false; R.took = true; setMic(R, true); setSpk(R, true); drawCtl(R); drawInfo(R); return; }
-    R.ho = { rep: main.device };
-    hoCheck(R);
-    if (R.ho) R.hoT = setTimeout(function () { if (R.ho && !R.ho.done) { R.ho = null; HK.toast(T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.')); } }, HO_S * 1000);
+    var rep = main.device, ho = R.ho = { rep: rep };
+    var undo = function () {
+      if (ho.promoted) api('POST', '/api/calls/' + R.id + '/promote', { device: rep }).catch(function () {});
+      ho.promoted = false;
+    };
+    if (R.horn && feat('handover2')) {
+      ho.promo = true;
+      api('POST', '/api/calls/' + R.id + '/promote', { device: myDev().id, dev_class: mobile ? 'mobile' : 'desktop' }).then(function (r) {
+        if (!live(R) || R.ho !== ho) return;
+        ho.promoted = !r.already;
+        if (r.call) rosterIn(R, r.call.legs, r.call);
+        return hornReAudio(R, r.horn);
+      }).then(function () {
+        if (!live(R) || R.ho !== ho) return;
+        ho.promo = false; hoCheck(R);
+      }).catch(function (e) {
+        if (!live(R) || R.ho !== ho) return;
+        clearTimeout(R.hoT); R.ho = null; undo();
+        HK.toast((e && e.message ? e.message + ' – ' : '') + T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.'));
+      });
+    } else hoCheck(R);
+    if (R.ho) R.hoT = setTimeout(function () {
+      if (R.ho === ho && !ho.done) { R.ho = null; undo(); HK.toast(T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.')); }
+    }, HO_S * 1000);
   }
   // Dieses Geraet wurde von einem anderen eigenen Geraet uebernommen: still schalten, Bescheid geben, verlassen
   function handoverOut(R, from) {
@@ -1074,8 +1113,9 @@
     var byes = [];
     each(R, function (L) { if (L.established && peerCan(L, 'bye') && L.peerDevice !== from) byes.push(sendSignal(L, { t: 'bye', reason: 'handover' })); });
     var x = legOf(R, from), id = R.id, me_ = myDev().id;
+    var lb = leaveBody(R, me_, 'handover');           // 2.5 (L5): mit gen - ist dieses Geraet inzwischen wieder beigetreten, gilt es nicht
     Promise.race([Promise.all(byes), new Promise(function (r) { setTimeout(r, 1500); })]).then(function () {
-      api('POST', '/api/calls/' + id + '/leave', { device: me_, reason: 'handover' }).catch(function () {});
+      api('POST', '/api/calls/' + id + '/leave', lb).catch(function () {});
     });
     R.ending = true;
     finish(R, T('Anruf auf {dev} übernommen.', { dev: (x && x.dev_name) || T('anderes Gerät') }), 'info');
@@ -1722,7 +1762,12 @@
     if (mine.length) txt.textContent = T('Anruf läuft auf {dev}', { dev: (main && main.dev_name) || T('anderem Gerät') }) + (group ? '' : ' · ' + ((x.peer && x.peer.name) || ''));
     else txt.textContent = T('Gruppenanruf läuft') + ' · ' + T('{n} Geräte', { n: (x.legs || []).length });
     b.appendChild(txt);
-    if (!x.joinable) { b.appendChild(el('span', 'cl-run-s', blockText(x.join_block, x.limit))); return; }
+    if (!x.joinable) {
+      b.appendChild(el('span', 'cl-run-s', blockText(x.join_block, x.limit)));
+      // 2.5 (L4/E6): voller Anruf - Hinzufuegen nicht, Hierher uebernehmen schon (das ersetzte Geraet zaehlt nicht)
+      if (x.takeover && mine.length) b.appendChild(btn(T('Hierher übernehmen'), 'cl-pill cl-run-go', function () { joinHere(x.id, 'handover', video); }, T('Anruf ohne Unterbrechung auf dieses Gerät holen')));
+      return;
+    }
     if (mine.length) {
       b.appendChild(btn(T('Hinzufügen'), 'cl-pill', function () { joinHere(x.id, 'companion', false); }, T('Dieses Gerät als Begleitgerät hinzufügen (ohne Mikrofon und Ton)')));
       b.appendChild(btn(T('Hierher übernehmen'), 'cl-pill cl-run-go', function () { joinHere(x.id, 'handover', video); }, T('Anruf ohne Unterbrechung auf dieses Gerät holen')));
@@ -2050,6 +2095,7 @@
         if (!live(c)) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
         var t = s.getAudioTracks()[0]; c.local.addTrack(t);
         each(c, function (L) { var snd = L.pc && audioSender(L); if (snd && !c.mix) snd.replaceTrack(t).then(function () { delete L.rates.audio; applyRates(L); }); });
+        if (c.horn) hornMic(c);                       // 2.5 (L3): Begleitgeraet ueber Knoten hatte noch kein Mikrofon - Spur an die Ton-Beine
         setMic(c, true);
       }).catch(function (e) { HK.toast(mediaError(e, false)); });
       return;
@@ -3052,26 +3098,37 @@
   // Ein Stats-Bericht -> Proben (nur Video, inbound und outbound); pre = Praefix der Quelle (Knoten 'v', direkt 'p' + Geraet)
   function diagRep(R, rep, pre) {
     var D = diagOf(R); if (!D || !rep) return;
-    var now = Date.now(), rtt;
+    var now = Date.now(), rtt, srcOf = {};
     rep.forEach(function (x) { if (x.type === 'candidate-pair' && (x.nominated || x.selected) && x.state === 'succeeded' && typeof x.currentRoundTripTime === 'number') rtt = x.currentRoundTripTime * 1000; });
+    rep.forEach(function (x) { if (x.type === 'media-source' && x.kind === 'video') srcOf[x.id] = x; });
     rep.forEach(function (x) {
       if ((x.type !== 'inbound-rtp' && x.type !== 'outbound-rtp') || (x.kind || x.mediaType) !== 'video') return;
       var out = x.type === 'outbound-rtp', key = pre + x.id;
       if (now - (D.at[key] || 0) < DIAG_SAMPLE - 300) return;
+      var qd = x.qualityLimitationDurations || {}, src = out && x.mediaSourceId ? srcOf[x.mediaSourceId] : null;
       var cur = { ts: x.timestamp || now, b: (out ? x.bytesSent : x.bytesReceived) || 0, lost: x.packetsLost || 0, nack: x.nackCount || 0,
-                  pli: x.pliCount || 0, fz: x.freezeCount || 0, kf: (out ? x.keyFramesEncoded : x.keyFramesDecoded) || 0 };
+                  pli: x.pliCount || 0, fz: x.freezeCount || 0, kf: (out ? x.keyFramesEncoded : x.keyFramesDecoded) || 0,
+                  // 2.5 (Labor 2.11.): Geraete-CPU sichtbar machen - Begrenzung des Kodierers, Kodier-/Dekodierzeit, verworfene Rahmen
+                  qcpu: (qd.cpu || 0) * 1000, qbw: (qd.bandwidth || 0) * 1000, fr: (out ? x.framesEncoded : x.framesDecoded) || 0,
+                  tt: ((out ? x.totalEncodeTime : x.totalDecodeTime) || 0) * 1000, drop: out ? (src && src.frames) || 0 : x.framesDropped || 0,
+                  fzd: out ? 0 : (x.totalFreezesDuration || 0) * 1000 };
       var p = D.prev[key]; D.prev[key] = cur; D.at[key] = now;
       if (!p) return;                                  // erste Messung: nur Ausgangswerte
+      var nfr = Math.max(0, cur.fr - p.fr);
       var dt = Math.max(1, cur.ts - p.ts) / 1000, d = function (k) { return Math.max(0, cur[k] - p[k]); };
       var sm = { t: diagT(D), dir: out ? 'out' : 'in', src: String(pre + (x.mid != null ? x.mid : '')).replace(/[^A-Za-z0-9_\-:.]/g, '').slice(0, 16),
                  rid: out && /^(l|m|h)$/.test(x.rid || '') ? x.rid : '', fps: diagN(x.framesPerSecond), h: diagN(x.frameHeight),
                  kbps: diagN(d('b') * 8 / 1000 / dt), nack: d('nack'), pli: d('pli'), kf: d('kf'), rtt: diagN(rtt) };
-      if (!out) { sm.lost = d('lost'); sm.freeze = d('fz'); }
+      if (!out) { sm.lost = d('lost'); sm.freeze = d('fz'); sm.fdrop = d('drop'); sm.fzms = Math.round(d('fzd')); }
+      if (nfr) sm[out ? 'encms' : 'decms'] = Math.round(d('tt') / nfr * 10) / 10;
       if (out) {
+        sm.qcpu = Math.round(d('qcpu')); sm.qbw = Math.round(d('qbw'));
+        // Rahmen der Kamera, die der Kodierer nicht kodiert hat - nur fuer Schichten mit voller Bildrate (l hat bewusst 20 fps)
+        if (src && sm.rid !== 'l') sm.fdrop = Math.max(0, d('drop') - nfr);
         sm.qlr = /^(none|cpu|bandwidth|other)$/.test(x.qualityLimitationReason || '') ? x.qualityLimitationReason : '';
         sm.enc = String(x.encoderImplementation || '').replace(/[^A-Za-z0-9 _()\[\].,:+\/\-]/g, '').slice(0, 60);
       }
-      Object.keys(sm).forEach(function (k) { if (sm[k] === undefined) delete sm[k]; });
+      Object.keys(sm).forEach(function (k) { if (sm[k] === undefined || (!sm[k] && /^(qcpu|qbw|fdrop|fzms)$/.test(k))) delete sm[k]; });
       D.s.push(sm); if (D.s.length > 200) D.s.shift();
       D.hs.push(sm); if (D.hs.length > 300) D.hs.shift();
     });
@@ -3284,6 +3341,56 @@
       hornAudioEls(R, conn); hornMap(R); hornDraw(R);
     });
   }
+  // 2.5 Uebergabe (L3): Ton-Bein der aktuellen Verbindung mit frischen Token neu aufbauen (nach POST /promote: mit Ton-Recht).
+  // Gleiche leg_ref -> der Knoten ersetzt das alte Bein; das alte wird hier erst nach dem Verbinden des neuen geschlossen.
+  // blk = horn-Block der promote-Antwort (sonst frische Token ueber POST /horn).
+  function hornReAudio(R, blk) {
+    var H = R.horn, conn = H && H.cur;
+    if (!conn || conn.dead) return Promise.resolve();
+    var role = conn.legs.both ? 'both' : 'audio', old = conn.legs[role];
+    if (!old) return Promise.resolve();
+    var c0 = ((blk && blk.candidates) || []).filter(function (x) { return x.node === conn.node; })[0];
+    var p = c0 && !c0.used ? Promise.resolve(c0) : hornFresh(R, conn.cand, hornAvoid(H));
+    var L;
+    return p.then(function (cand) {
+      cand.used = true; conn.cand = cand;
+      return conn.path === 'turn' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : null;
+    }).then(function (turn) {
+      if (!live(R) || conn.dead) throw null;
+      old.replaced = true;
+      var q = hornLeg(R, conn, role, conn.path, turn);
+      L = conn.legs[role]; L.pend = true;                // hornMon: noch nicht verbunden ist hier kein Verbindungsverlust
+      return q;
+    }).then(function () {
+      return new Promise(function (ok) {
+        var t0 = Date.now(), iv = setInterval(function () {
+          var st = L.pc.connectionState;
+          if (st === 'connected' || st === 'failed' || st === 'closed' || Date.now() - t0 > 8000 || !live(R)) { clearInterval(iv); ok(st === 'connected'); }
+        }, 100);
+      });
+    }).then(function (up) {
+      L.pend = false;
+      if (!up) throw new Error(T('Verbindung nicht aufgebaut: {err}', { err: 'audio' }));
+      hornLegDrop(R, conn, old);
+      if (conn.ws === null && L.ws) conn.ws = L.ws;
+      hornAudioEls(R, conn); hornMic(R); hornDraw(R);
+    }, function (e) {
+      // neues Bein ging nicht: altes behalten (der Knoten hat es nur ersetzt, wenn das neue angenommen wurde)
+      if (L && conn.legs[role] === L && L !== old) { try { L.pc.close(); } catch (x) { /* zu */ } if (L.ws) { try { L.ws.close(); } catch (x) { /* zu */ } } conn.legs[role] = old; }
+      old.replaced = false;
+      throw e;
+    });
+  }
+  function hornLegDrop(R, conn, L) {
+    var H = R.horn;
+    if (L.ws) { var w = L.ws; L.ws = null; if (conn.ws === w) conn.ws = null; try { w.close(); } catch (e) { /* zu */ } }
+    try { L.pc.close(); } catch (e) { /* zu */ }
+    (L.recv || []).forEach(function (x) { if (H) delete H.vown[x.rid]; });
+    conn.audios = conn.audios.filter(function (a) {
+      if ((L.aud || []).indexOf(a._tr) < 0) return true;
+      a.srcObject = null; a.remove(); return false;
+    });
+  }
   // Ereigniskanal je Bein: Teilnehmende/CSRC (sofort beim Beitritt), Belegung, Zustand des Knotens, Bein beendet, Ping
   function hornEvents(R, conn, L, again) {
     if (!window.WebSocket || !L.id || conn.dead) return;
@@ -3294,7 +3401,7 @@
     if (!conn.ws) conn.ws = ws;                        // Ping (RTT) ueber den ersten Kanal
     ws.onmessage = function (e) {
       var m; try { m = JSON.parse(e.data); } catch (x) { return; }
-      if (!live(R) || conn.dead) return;
+      if (!live(R) || conn.dead || L.replaced) return;   // L3: Bein durch ein neues mit gleicher leg_ref ersetzt
       if (m.t === 'hello' || m.t === 'peers') hornPeersIn(R, conn, m.peers || {});
       if (m.t === 'hello' || m.t === 'layout') {
         if (m.slots) L.slots = m.slots; L.est = m.est_kbit || L.est; hornMap(R); hornDraw(R);
@@ -3319,7 +3426,7 @@
     ws.onclose = function () {
       if (L.ws === ws) L.ws = null;
       if (conn.ws === ws) conn.ws = null;
-      if (!live(R) || conn.dead || conn.closed) return;
+      if (!live(R) || conn.dead || conn.closed || L.replaced) return;
       // Neuverbindung scheitert sofort (Knoten nimmt keine Verbindung mehr an): Knoten weg - nicht erst auf ICE warten
       if (again && !opened) { if (R.horn.cur === conn) { hornLog(R.horn, conn, 'events weg'); hornSwitch(R, 'lost'); } return; }
       // Kanal weg, Bein noch da (Netzwechsel): neu verbinden; sonst ueberwacht hornMon die PeerConnection
@@ -3534,6 +3641,7 @@
     if (cur && !H.switching) {
       var worst = 'connected';
       Object.keys(cur.legs).forEach(function (k) {
+        if (cur.legs[k].pend) return;                  // L3: Ton-Bein wird gerade ersetzt
         var s = cur.legs[k].pc.connectionState;
         if (s === 'failed' || s === 'closed') worst = s; else if (s !== 'connected' && worst === 'connected') worst = 'disconnected';
       });
@@ -4053,7 +4161,14 @@
   function hornModIn(d) {
     var R = C; if (!R || R.id !== d.call_id || R.done) return;
     var me_ = myDev().id;
-    if (d.action === 'mute' && d.device === me_) {
+    if (d.action === 'mute' && d.device === me_ && d.why === 'handover') {
+      // 2.5 (L2): ein anderes eigenes Geraet hat die Fuehrung - dieses bleibt still als Begleitgeraet
+      if (R.ho) { clearTimeout(R.hoT); clearInterval(R.hoI); R.ho = null; }
+      R.companion = true; R.took = false;
+      if (R.mic) setMic(R, false);
+      setSpk(R, false);
+      HK.toast(T('Ein anderes eigenes Gerät führt den Anruf – dieses bleibt als Begleitgerät dabei.'), null, null, 8000);
+    } else if (d.action === 'mute' && d.device === me_) {
       if (R.mic) setMic(R, false);
       // Nr. 074: laenger sichtbar (der Hinweis lag frueher unter dem Anruffenster)
       HK.toast(T('{name} hat dich stummgeschaltet. Du kannst das Mikrofon selbst wieder einschalten.', { name: d.by || '?' }), null, null, 8000);

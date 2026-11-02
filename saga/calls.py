@@ -105,6 +105,8 @@ MIRROR_GAP = 150                       # Kopie eines Gruppenanrufs ohne Nachrich
 CAPS_MAX, _CAP = 16, re.compile(r"[a-z0-9_]{1,16}")
 SIG_RATE = 240                         # je Geraet und Minute
 CALL_RATE, CALL_RATE_H = 6, 40         # neue Anrufe je Konto: je Minute / je Stunde
+HANDOVER_S = 15                        # Uebernahme darf so lange dauern (config limits.handover_s)
+HO_RATE = 20                           # 2.5: Uebernahmen (join role handover, promote) je Konto und Minute - eigener Topf
 PAIR_RATE = 3                          # an dieselbe Person je Minute
 ALIVE_GAP = 45                         # so lange ohne /alive -> Verbindung gilt als verloren
 MAX_S = 12 * 3600                      # laengster Anruf
@@ -149,8 +151,11 @@ def _dmf(call):
     return {"dm": True} if _dmh(call) else {}
 
 
+FEATURE_HO = "handover2"                # 2.5 Anruf-Uebergabe: gen, /leave by/gen (stale), handover_busy, promote, Wiedereintritt
+
+
 def features():
-    return list(FEATURES) + (["horn"] if horn_on() else [])
+    return list(FEATURES) + [FEATURE_HO] + (["horn"] if horn_on() else [])
 
 
 def ring_s():
@@ -427,8 +432,9 @@ def roster(c, call, uid=None, legs=None):
     out = []
     for x in legs:
         who = _pp(c, call, x["who"], uid)                 # 2.5: andere in Stufe 3 von Anfang an als Handle
+        gen = horn.gen_of(x["joined"])                 # 2.5 Uebergabe (L1): Beitrittsgeneration des Endpunkts
         d = {"who": who, "device": x["device"], "dev_name": x["name"] or "", "role": x["role"], "state": x["state"],
-             "caps": caps_out(x["caps"]), "joined": x["joined"], "me": x["who"] == uid}
+             "caps": caps_out(x["caps"]), "joined": x["joined"], "gen": gen, "me": x["who"] == uid}
         d.update(_who_label(c, x["who"], nm))
         if (fed or v3) and not sharing.is_remote(x["who"]):
             d["handle"] = who if who != x["who"] else FED.FC.my_handle(c, x["who"])
@@ -437,9 +443,9 @@ def roster(c, call, uid=None, legs=None):
         if x.get("replaces"):
             d["replaces"] = x["replaces"]
         if (cn or x.get("node")) and not (x.get("node") or "").startswith("f:"):   # 2.5: Kennung am Knoten (Spur -> Geraet);
-            d["hp"] = horn.peer_ref(call["id"], x.get("node") or cn, x["device"])   # Knoten anderer Server: state.hp der Geraete
+            d["hp"] = horn.peer_ref(call["id"], x.get("node") or cn, x["device"], gen)   # Knoten anderer Server: state.hp der Geraete
         if hn:                                         # 2.5 P5: Kennung je Knoten (Wechsel zwischen Knoten, horn_web)
-            d["hpn"] = horn_web.peer_refs(call["id"], x["device"], hn)
+            d["hpn"] = horn_web.peer_refs(call["id"], x["device"], hn, gen)
         out.append(d)
     return out
 
@@ -544,6 +550,8 @@ def _dict(c, call, uid, nm=None, legs=None):
          "kind": call["kind"], "legs": roster(c, call, uid, legs), "joinable": can, "join_block": why, "limit": climit(c, call),
          "mine": [x["device"] for x in legs if x["who"] == uid], "rv": rv, "topo": call.get("topo") or "p2p",
          "now": round(now, 3)}                           # 2.5: Server-Uhr (Dauer ab answered, gleich fuer alle)
+    # 2.5 Uebergabe (L4, E6): "Hierher uebernehmen" geht auch bei vollem Anruf (das ersetzte Geraet zaehlt nicht)
+    d["takeover"] = bool(d["mine"]) and (can or why == "full")
     if group and FED is not None and FED.HORN_MESH.get(call["id"]):
         d["horn_mesh"] = FED.HORN_MESH[call["id"]]      # 2.5 P10: warum ohne Knoten (anderer Server kann keinen nutzen)
     if group:
@@ -719,7 +727,7 @@ def api_config(request: Request):
                            "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1", "horn_ready": _horn_ready(), "horn_dm": horn_dm_on()} if horn_on() else {}),
                            "limits": {"endpoints_video": limit("video"), "endpoints_audio": limit("audio"), "signals_max": SIGNALS_MAX,
                                       "signals_per_min": SIG_PER_MIN, "signals_hard": SIGNALS_HARD, "sig_rate": SIG_RATE,
-                                      "sealed_max": SEALED_MAX, "caps_max": CAPS_MAX, "ring_silent": RING_SILENT, "handover_s": 15,
+                                      "sealed_max": SEALED_MAX, "caps_max": CAPS_MAX, "ring_silent": RING_SILENT, "handover_s": HANDOVER_S,
                                       **(_horn_limits() if horn_on() else {})}})
 
 
@@ -1391,7 +1399,7 @@ async def api_join(cid: str, request: Request):
         d = _dict(c, call, uid)
         if is_horn(call):
             d["horn"] = horn_block(c, call, dev, r["leg"]["role"], dcl)
-        return chat._no_store({"ok": True, "call": d})
+        return chat._no_store({"ok": True, "call": d, "gen": horn.gen_of(r["leg"]["joined"])})
 
 
 def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, name=""):
@@ -1399,9 +1407,12 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     Geraets (None = hier). -> {"fwd", "leg", "n"} oder Fehler-Antwort."""
     legs = _legs(c, call["id"])
     others = [x for x in legs if x["device"] != dev]
+    cur = next((x for x in legs if x["device"] == dev), None)
     if call["state"] == "ended":
         return chat._no_store({"error": t("Der Anruf ist schon beendet."), "join_block": "ended"}, 409)
-    if any(x["device"] == dev for x in legs):
+    # 2.5 Uebergabe (L5): "Hierher uebernehmen" eines Geraets, das noch im Anruf ist (schneller Rueckwechsel, sein eigenes
+    # Verlassen ist noch unterwegs) = Wiedereintritt mit neuer Generation statt 409
+    if cur is not None and not (role == "handover" and cur["who"] == who and any(x["device"] == rep and x["who"] == who for x in others)):
         return chat._no_store({"error": t("Dieses Gerät ist schon im Anruf."), "join_block": "already"}, 409)
     if call["kind"] != "group" and call["state"] != "active":
         return chat._no_store({"error": t("Der Anruf ist noch nicht angenommen."), "join_block": "none"}, 409)
@@ -1419,7 +1430,8 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
                                           names=", ".join(sorted({_who_label(c, x["who"], nm)["name"] for x in old})) or t("Gegenüber")),
                                "join_block": "old", "legs": roster(c, call, who, legs)}, 409)
     lim = climit(c, call)
-    if len(others) + 1 > lim:
+    ho = role == "handover" and any(x["device"] == rep and x["who"] == who for x in others)
+    if len(others) + (0 if ho else 1) > lim:          # L4/E6: das ersetzte Geraet zaehlt bei einer Uebernahme nicht mit
         return chat._no_store({"error": t("Der Anruf ist voll (höchstens {n} Geräte).", n=lim), "join_block": "full",
                                "limit": lim, "legs": roster(c, call, who, legs)}, 409)
     node = None
@@ -1440,14 +1452,27 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
         role, rep = "member", None
     if role != "handover":
         rep = None
+    if role == "handover" and any(x["role"] == "handover" and x.get("replaces") == rep and now - (x["joined"] or 0) < HANDOVER_S
+                                  for x in others):
+        # L2 (B5): zwei Geraete uebernehmen gleichzeitig dasselbe Geraet - das zweite wartet (sonst bliebe ein Bein mit Mikrofon)
+        return chat._no_store({"error": t("Ein anderes eigenes Gerät übernimmt den Anruf gerade – bitte kurz warten."),
+                               "join_block": "handover_busy", "legs": roster(c, call, who, legs)}, 409)
     need = {x["device"] for x in others if x["who"] != who} if not hn else set()
     sig = _sealed_map(signals, {x["device"] for x in others}) if signals else {}
     if sig is None:
         return _bad(t("ungültige Angabe"))
     if not need <= set(sig):
         return chat._no_store({"error": t("Die Teilnehmenden haben sich geändert – bitte erneut beitreten."), "legs": roster(c, call, who, legs)}, 409)
-    if not _rate("call", who, CALL_RATE):
+    if not (_rate("handover", who, HO_RATE) if role == "handover" else _rate("call", who, CALL_RATE)):   # L5: eigener Topf
         return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+    if cur is not None:                                # L5 Wiedereintritt: altes Bein beenden (alte Generation), Liste ohne es
+        c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason='rejoin' WHERE call_id=? AND device=?", (now, call["id"], dev))
+        if hn:
+            horn.kick(c, call["id"], dev, cur.get("node"), horn.gen_of(cur["joined"]))
+        if cur["role"] == "member" or dev in (call["caller_device"], call["callee_device"]):
+            role, rep = "member", None                 # war noch Hauptgeraet: bleibt es (das andere Geraet gibt wieder ab)
+        now = max(now, (cur["joined"] or 0) + 0.002)  # neue Generation
+        emit_roster(c, call, _legs(c, call["id"]))     # Clients trennen die alte Verbindung (Mesh), dann neu
     _leg_put(c, call["id"], dev, who, role, peer_id, caps, rep, name=name, now=now)
     if node is not None:
         horn.set_leg_node(c, call["id"], dev, node["id"])
@@ -1463,7 +1488,7 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     emit_roster(c, call, legs)                         # zuerst die Liste, dann die Angebote (Clients pruefen das neue Geraet)
     fwd, n = _route(c, call, dev, sig, {x["device"]: x for x in legs}, now)
     c.execute("UPDATE chat_call SET nsig=nsig+? WHERE id=?", (len(sig), call["id"]))
-    print(f"call: {call['id'][:8]} Beitritt ({role}, {len(legs)} Endpunkte)", flush=True)
+    print(f"call: {call['id'][:8]} Beitritt ({role}{', wieder' if cur is not None else ''}, {len(legs)} Endpunkte)", flush=True)
     return {"fwd": fwd, "leg": next(x for x in legs if x["device"] == dev), "n": n}
 
 
@@ -1509,32 +1534,58 @@ async def api_horn(cid: str, request: Request):
     return chat._no_store({"ok": True, "horn": blk})
 
 
+def leave_cond(b):
+    """2.5 Uebergabe (L2): Bedingungen eines /leave -> (by, gen). by = Geraet, das uebernommen hat (muss noch aktiv sein),
+    gen = Generation des Beins, das gehen soll (muss noch dieselbe sein). Beides fehlt bei aelteren Clients."""
+    by = b.get("by") if isinstance(b.get("by"), str) and _HEX32.fullmatch(b.get("by")) else None
+    g = b.get("gen")
+    gen = int(g) if isinstance(g, (int, float)) and not isinstance(g, bool) and 0 <= g < 2 ** 53 else None
+    return by, gen
+
+
+def leave_stale(c, cid, who, dev, joined, by, gen):
+    """Gilt ein bedingtes /leave nicht mehr? Andere Generation (das Geraet ist inzwischen wieder beigetreten) oder das
+    uebernehmende Geraet ist nicht mehr aktiv (es hat selbst wieder abgegeben) -> True (nichts austragen)."""
+    if gen is not None and gen != horn.gen_of(joined):
+        return True
+    if by is not None:
+        r = c.execute("SELECT who, state FROM chat_call_leg WHERE call_id=? AND device=?", (cid, by)).fetchone()
+        if by == dev or not r or r[0] != who or r[1] != "active":
+            return True
+    return False
+
+
 @router.post("/api/calls/{cid}/leave")
 async def api_leave(cid: str, request: Request):
-    """Ein eigenes Geraet verlaesst den Anruf: {device}. 1:1: geht das letzte Geraet einer Seite, endet der Anruf; nach
-    einer Uebernahme laeuft er mit dem neuen Geraet weiter. Gruppe: laeuft weiter, solange mindestens zwei Personen dabei
-    sind."""
+    """Ein eigenes Geraet verlaesst den Anruf: {device, reason?, by?, gen?}. 1:1: geht das letzte Geraet einer Seite, endet
+    der Anruf; nach einer Uebernahme laeuft er mit dem neuen Geraet weiter. Gruppe: laeuft weiter, solange mindestens zwei
+    Personen dabei sind. 2.5 (L2): mit by/gen nur, wenn noch dasselbe Bein dabei ist und by aktiv ist - sonst
+    {ok, stale: true} (Rueckfall eines Geraets nach schnellem Rueckwechsel)."""
     uid, err = _me(request)
     if err:
         return err
     b = await _body(request) or {}
     dev = str(b.get("device") or "")
+    by, gen = leave_cond(b)
+    reason = b.get("reason") if b.get("reason") in ("handover", "hangup") else "hangup"
     with _db() as c, c:
         call, err = _mine(c, uid, cid, lock=True)
         if err:
             return err
-        leg = c.execute("SELECT who, state FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], dev)).fetchone() if _HEX32.fullmatch(dev) else None
+        leg = c.execute("SELECT who, state, joined FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], dev)).fetchone() if _HEX32.fullmatch(dev) else None
         if not leg or leg[0] != uid:
             return _bad(t("ungültige Angabe"))
         if leg[1] != "active" or call["state"] == "ended":
             return chat._no_store({"ok": True, "already": True})
+        if leave_stale(c, call["id"], uid, dev, leg[2], by, gen):
+            return chat._no_store({"ok": True, "stale": True})
         if call.get("lead") is not None and FED is not None:
             fed = call
         else:
-            _leave(c, call, dev, time.time(), b.get("reason") if b.get("reason") in ("handover", "hangup") else "hangup", by=uid)
+            _leave(c, call, dev, time.time(), reason, by=uid)
             return chat._no_store({"ok": True})
     from starlette.concurrency import run_in_threadpool
-    return await run_in_threadpool(FED.leave, uid, fed, dev)
+    return await run_in_threadpool(FED.leave, uid, fed, dev, reason, by, gen)
 
 
 def _leave(c, call, dev, now, reason="hangup", by=None):
@@ -1545,9 +1596,10 @@ def _leave(c, call, dev, now, reason="hangup", by=None):
     if not leg:
         return False
     c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason=? WHERE call_id=? AND device=?", (now, reason, call["id"], dev))
-    if is_horn(call):
-        horn.kick(c, call["id"], dev, leg.get("node"))  # 2.5: Beine am Knoten sofort beenden
+    if is_horn(call):                                  # 2.5: Beine am Knoten sofort beenden - nur diese Generation (L1)
+        horn.kick(c, call["id"], dev, leg.get("node"), horn.gen_of(leg["joined"]))
     legs = _legs(c, call["id"])
+    promoted = None
     if call["kind"] == "group":
         people = {x["who"] for x in legs}
         if not legs or (call["state"] == "active" and len(people) < 2):
@@ -1559,6 +1611,7 @@ def _leave(c, call, dev, now, reason="hangup", by=None):
             # Hauptgeraet weg (Uebernahme bzw. "Hierher uebernehmen" am Begleitgeraet): das neue Geraet wird Mitglied
             own.sort(key=lambda x: (x["replaces"] != dev, x["role"] != "handover", -(x["joined"] or 0)))
             c.execute("UPDATE chat_call_leg SET role='member', replaces=NULL WHERE call_id=? AND device=?", (call["id"], own[0]["device"]))
+            promoted = own[0]["device"]
             legs = _legs(c, call["id"])
     elif dev in (call["caller_device"], call["callee_device"]):
         side = "caller_device" if dev == call["caller_device"] else "callee_device"
@@ -1570,13 +1623,94 @@ def _leave(c, call, dev, now, reason="hangup", by=None):
             return True
         c.execute(f"UPDATE chat_call SET {side}=? WHERE id=?", (nxt[0]["device"], call["id"]))
         c.execute("UPDATE chat_call_leg SET role='member', replaces=NULL WHERE call_id=? AND device=?", (call["id"], nxt[0]["device"]))
+        promoted = nxt[0]["device"]
         call = _load(c, call["id"])
         legs = _legs(c, call["id"])
         _emit(c, _audience(c, call), "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active", "device": nxt[0]["device"],
                                                      "moved": side.split("_")[0]})
+    if _ho_leftover(c, call, leg["who"], dev, promoted, legs):
+        legs = _legs(c, call["id"])
     emit_roster(c, call, legs)
     print(f"call: {call['id'][:8]} Endpunkt weg ({reason}, {len(legs)} uebrig)", flush=True)
     return True
+
+
+def _ho_leftover(c, call, who, dev, keep, legs):
+    """2.5 Uebergabe (L2, B5): weitere Geraete derselben Person, die dev uebernehmen wollten (Rolle handover), nachdem dev
+    gegangen ist und ein anderes (keep) die Fuehrung hat: Begleitgeraet + call.mod (Mikrofon aus) - sonst bliebe ein
+    zweites Bein mit offenem Mikrofon (Doppel-Ton/Echo). -> Zahl der Geraete."""
+    rest = [x for x in legs if x["who"] == who and x["role"] == "handover" and x.get("replaces") == dev and x["device"] != keep]
+    for x in rest:
+        c.execute("UPDATE chat_call_leg SET role='companion', replaces=NULL WHERE call_id=? AND device=?", (call["id"], x["device"]))
+        if not sharing.is_remote(who):
+            _emit(c, [who], "call.mod", {"call_id": call["id"], "chat_id": call["chat_id"], "action": "mute", "device": x["device"],
+                                         "by": "", "why": "handover"})
+    return len(rest)
+
+
+@router.post("/api/calls/{cid}/promote")
+async def api_promote(cid: str, request: Request):
+    """2.5 Uebergabe (L3, E4): eigenes Begleitgeraet wird Hauptgeraet {device, dev_class?} - "Hierher uebernehmen" am
+    Begleitgeraet. Das bisherige Hauptgeraet derselben Person wird Begleitgeraet (1:1: caller_device/callee_device wechselt,
+    call.state moved). Ueber Knoten traegt die Antwort horn (frische Token MIT Ton-Recht; ebenso danach POST /horn) - das
+    Geraet baut damit sein Ton-Bein neu auf (gleiche leg_ref ersetzt das alte am Knoten) und meldet erst dann state.ready an
+    das alte Geraet. -> {ok, call, horn?}; schon Hauptgeraet: {ok, already: true}."""
+    uid, err = _me(request)
+    if err:
+        return err
+    b = await _body(request) or {}
+    dev = str(b.get("device") or "")
+    dcl = _dev_class(b)
+    with _db() as c, c:
+        call, err = _mine(c, uid, cid, lock=True)
+        if err:
+            return err
+        leg = c.execute("SELECT who, state, role FROM chat_call_leg WHERE call_id=? AND device=?", (cid, dev)).fetchone() if _HEX32.fullmatch(dev) else None
+        if not leg or leg[0] != uid or leg[1] != "active" or call["state"] == "ended":
+            return _bad(t("ungültige Angabe"), 409)
+        if leg[2] == "member" and (call["kind"] != "dm" or dev in (call["caller_device"], call["callee_device"])):
+            return chat._no_store({"ok": True, "already": True})
+        if not _rate("handover", uid, HO_RATE):
+            return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+        if call.get("lead") is not None and FED is not None:
+            fed = call
+        else:
+            promote_local(c, call, uid, dev)
+            fed = None
+    if fed is not None:
+        from starlette.concurrency import run_in_threadpool
+        err = await run_in_threadpool(FED.promote, uid, fed, dev)
+        if err is not None:
+            return err
+    with _db() as c:
+        call = _load(c, cid)
+        out = {"ok": True, "call": _dict(c, call, uid)}
+        if is_horn(call) and fed is None:
+            out["horn"] = horn_block(c, call, dev, "member", dcl)
+    if is_horn(call) and fed is not None:
+        from starlette.concurrency import run_in_threadpool
+        blk, e2 = await run_in_threadpool(FED.horn_block, uid, call, dev, "member", dcl, ())
+        if not e2:
+            out["horn"] = blk
+    return chat._no_store(out)
+
+
+def promote_local(c, call, who, dev):
+    """Befoerderung eintragen (dieser Server fuehrt den Anruf): dev -> member, andere Hauptgeraete von who -> companion."""
+    legs = _legs(c, call["id"])
+    old = [x["device"] for x in legs if x["who"] == who and x["device"] != dev and x["role"] != "companion"]
+    for d in old:
+        c.execute("UPDATE chat_call_leg SET role='companion', replaces=NULL WHERE call_id=? AND device=?", (call["id"], d))
+    c.execute("UPDATE chat_call_leg SET role='member', replaces=NULL WHERE call_id=? AND device=?", (call["id"], dev))
+    if call["kind"] == "dm":
+        side = "caller_device" if who == call["caller"] else "callee_device" if who == call["callee"] else None
+        if side and call[side] != dev:
+            c.execute(f"UPDATE chat_call SET {side}=? WHERE id=?", (dev, call["id"]))
+            call = _load(c, call["id"])
+            _emit(c, _audience(c, call), "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active", "device": dev,
+                                                         "moved": side.split("_")[0]})
+    emit_roster(c, call, _legs(c, call["id"]))
+    print(f"call: {call['id'][:8]} Begleitgeraet befoerdert ({len(old)} abgegeben)", flush=True)
 
 
 def _removed(c, cid, uid):

@@ -53,6 +53,38 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Behoben: Konsolenwarnung „TextSelection endpoint not pointing into a node with inline content“ bei jedem Öffnen einer
   live gebundenen Seite.
 
+### Anrufe: Geräte-Übergabe hin und her (2.5, Phase 1, Feature `handover2`)
+- Behoben (Labor: 3 von 10 Übergaben): Ein Gerät, das einen Anruf über einen Knoten abgegeben hatte, konnte ihn bis zu
+  3 min nicht zurückholen („token ungueltig: entfernt“). Die Kennung am Knoten trägt jetzt die Beitrittsgeneration
+  des Endpunkts (`legs[].gen`, nur Server – der Knoten bleibt unverändert); jedes erneute Beitreten bekommt eine neue
+  Kennung, das Entfernen am Knoten trifft nur die alte. Föderiert gilt die Generation des führenden Servers.
+- Behoben: Der Rückfall 3 s nach einer Übernahme (`POST …/leave` des alten Geräts) warf ein gerade zurückgekehrtes Gerät
+  hinaus. `/leave` nimmt `by` (Gerät, das übernommen hat) und `gen` und trägt nur noch aus, wenn noch dasselbe Bein
+  dabei ist und `by` aktiv ist – sonst `{ok, stale: true}`. Das Web schickt beides; im Mesh gibt es den Rückfall jetzt
+  auch (nach `handover_s`/2), falls `state.ready` verloren geht.
+- Neu: Zwei gleichzeitige Übernahmen desselben Geräts → `409 join_block: "handover_busy"`; ein liegengebliebenes
+  `handover`-Bein wird nach dem Abgang zum Begleitgerät und bekommt `call.mod {action: "mute", why: "handover"}`.
+- Neu: Schneller Rückwechsel – „Hierher übernehmen“ eines Geräts, das noch im Anruf ist, ist ein Wiedereintritt (statt
+  409 `already`); Übernahmen haben einen eigenen Topf (20/min statt 6 Beitritte/min).
+- Neu: `POST /api/calls/{id}/promote {device}` – ein Begleitgerät wird Hauptgerät (das bisherige Begleitgerät); die
+  Antwort und `POST …/horn` liefern danach Knoten-Token **mit** Ton-Recht. Das Web baut beim „Hierher übernehmen“ am
+  Begleitgerät über einen Knoten das Ton-Bein damit neu auf, bevor es `state.ready` schickt (vorher hörte die
+  Gegenseite nach so einer Übernahme nichts). Föderiert als Auftrag `promote` an den führenden Server.
+- Neu: „Hierher übernehmen“ auch im vollen Anruf (das ersetzte Gerät zählt nicht mit; Anruf-Objekt `takeover`),
+  Hinzufügen bleibt gesperrt.
+- Behoben: Kopie eines föderierten 1:1 übernimmt nach einer Übernahme beim führenden Server das neue Hauptgerät
+  (`caller_device`/`callee_device` in der Teilnehmerliste).
+- Behoben (Labor): Die Kaskade baute die Brücke zu einem Knoten über der Lastgrenze (> 90 %) ab und wieder auf
+  (alle ~10 s, Bild/Standbild im Wechsel). Ein voller Knoten behält seine Brücken jetzt bis zu 5 min am Stück (nur neue
+  Beine meiden ihn); abgebaut wird bei Ausfall, Leeren oder längerer Überlast.
+- Web: das alte Gerät beendet den Anruf auch, wenn es nur über die Teilnehmerliste erfährt, dass es übernommen wurde.
+- Anruf-Diagnose: Proben tragen zusätzlich `qcpu`/`qbw` (ms, die der Kodierer durch CPU bzw. Bandbreite begrenzt war),
+  `encms`/`decms` (Kodier-/Dekodierzeit je Rahmen), `fdrop` (nicht kodierte bzw. verworfene Rahmen) und `fzms`
+  (Dauer der Standbilder) – „Stottern ohne Verlust“ durch Geräte-CPU wird so sichtbar.
+- Vertrag für die Apps: `docs/APP-API.md` „Geräte-Übergabe hin und her“. Tests: `tests/anrufe_uebergabe.py` (neu),
+  `tests/foederation_anrufe_raum.py`, `tests/anruf_diag.py`, `tests/browser_horn_pingpong.js` (neu; mit Knoten bzw.
+  `MESH=1`).
+
 ### Fehlerberichte und „Diagnose senden“ (2.5, `clientlog1`)
 - Neu: Das Web meldet Programmfehler (`window.onerror`, nicht behandelte Promises) automatisch an den Server – gleiche
   Fehler gezählt statt wiederholt, höchstens ein Bericht je 30 s, der Rest beim Verlassen der Seite. Fehlertexte

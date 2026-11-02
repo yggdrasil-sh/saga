@@ -46,6 +46,7 @@ def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=N
     """Kandidaten fuer dieses Geraet: [{node, url, udp, here, load, peer, tokens, exp}], beste zuerst. P10: only = nur
     diese Knoten (geteilte), quota = Kontingent des verbundenen Servers (im Token)."""
     now = now or time.time()
+    gen = horn.leg_gen(c, call["id"], dev)
     ns = [n for n in horn.ready_nodes(c, now) if n["name"] not in avoid and (only is None or n["id"] in only)]
     h = home(c, call["id"], ns)
     if h:
@@ -57,9 +58,9 @@ def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=N
         toks = {}
         for r in ("audio", "video") + (("both",) if udp else ()):
             pub = [x for x in horn.PUB[r] if not (role == "companion" and x == "a")]
-            toks[r] = horn.token(n, call["id"], dev, r, udp, dev_class, pub, now=now, quota=quota)
+            toks[r] = horn.token(n, call["id"], dev, r, udp, dev_class, pub, now=now, quota=quota, gen=gen)
         out.append({"node": n["name"], "url": n["url"], "udp": udp, "here": n["id"] == h, "load": round(horn.util(n), 3),
-                    "peer": horn.peer_ref(call["id"], n["id"], dev), "tokens": toks, "exp": int(now) + horn.TOKEN_TTL})
+                    "peer": horn.peer_ref(call["id"], n["id"], dev, gen), "gen": gen, "tokens": toks, "exp": int(now) + horn.TOKEN_TTL})
     return out
 
 
@@ -98,6 +99,6 @@ def nodes_for(c, cid):
     return sorted(ids.items())
 
 
-def peer_refs(cid, dev, nodes):
-    """{knotenname: peer_ref} eines Geraets (nodes aus nodes_for)."""
-    return {name: horn.peer_ref(cid, nid, dev) for nid, name in nodes}
+def peer_refs(cid, dev, nodes, gen=0):
+    """{knotenname: peer_ref} eines Geraets (nodes aus nodes_for; gen = Beitrittsgeneration)."""
+    return {name: horn.peer_ref(cid, nid, dev, gen) for nid, name in nodes}

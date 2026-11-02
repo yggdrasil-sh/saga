@@ -182,6 +182,20 @@ def part_dm(anna, bert, dora):
     PERF["signal_a_b_ms"] = round((time.time() - t0) * 1000)
     ok(f"A -> B: Antwort an Berts Laptop ({s}, {PERF['signal_a_b_ms']} ms)", s == 200)
     ok("B: Antwort angekommen und geprueft", bool(wait(lambda: [b for b in got(bert, b2, cid, anna, anna.dev) if b["t"] == "answer"], 5)))
+    # 2.5 Uebergabe (L1): gleiche Generation auf beiden Servern; bedingtes Verlassen mit falscher gen -> stale (Kopie)
+    ga = {x["device"]: x.get("gen") for x in (call_of(anna, cid) or {}).get("legs", [])}
+    gb = {x["device"]: x.get("gen") for x in (call_of(bert, cid) or {}).get("legs", [])}
+    ok(f"A/B: gen je Endpunkt gleich (vom fuehrenden Server) ({len(ga)}, {len(gb)})", ga and ga == gb and all(isinstance(v, int) and v > 0 for v in ga.values()))
+    s, d = api("b", "fb-bert", "POST", f"/api/calls/{cid}/leave", {"device": b2["id"], "reason": "handover", "gen": 1})
+    ok(f"B: Verlassen mit veralteter gen -> stale, Laptop bleibt ({d})", s == 200 and d.get("stale") is True and b2["id"] in legs_of(anna, cid))
+    # 2.5 (L3, L11): Berts Laptop wird ueber den fuehrenden Server befoerdert, die Kopie auf B zieht callee_device nach
+    s, d = api("b", "fb-bert", "POST", f"/api/calls/{cid}/promote", {"device": b2["id"]})
+    ok(f"B: promote Berts Laptop (Auftrag promote an A) ({s}, {d.get('error')})", s == 200 and any(
+        x["device"] == b2["id"] and x["role"] == "member" for x in (d.get("call") or {}).get("legs", [])))
+    k = call_of(anna, cid)
+    ok("A: callee_device = Laptop, erstes Geraet Begleitgeraet", bool(k) and k["callee_device"] == b2["id"]
+       and any(x["device"] == bert.dev["id"] and x["role"] == "companion" for x in k["legs"]))
+    ok("B (Kopie): callee_device nachgezogen (L11)", wait(lambda: sql("b", "SELECT callee_device FROM chat_call WHERE id=?", (cid,))[0][0] == b2["id"], 5))
     # Uebernahme: Berts erstes Geraet verlaesst, der Laptop fuehrt weiter
     s, d = api("b", "fb-bert", "POST", f"/api/calls/{cid}/leave", {"device": bert.dev["id"], "reason": "handover"})
     ok(f"B: Berts erstes Geraet verlaesst ({s})", s == 200)

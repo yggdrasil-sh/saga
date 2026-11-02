@@ -5,7 +5,8 @@ ohne Anmeldung bzw. ohne X-Saga -> 404/401), strenge Pruefung (falsche Typen, La
 ausserhalb -> 400; unbekannte Felder werden verworfen), Groesse (> 32 KB -> 413), Ratenbegrenzung (1 POST je 15 s je Konto
 und Anruf -> 429, anderes Konto bzw. anderer Anruf nicht betroffen), Log-Zeile "calldiag" (eine je POST, Konto nur als
 Hash, kein Konto-/Anzeigename, keine IP-Adresse, unbekannte Felder nicht im Log), Admin-Schalter calls.diag (aus -> 404,
-Feature fehlt; Admin-Oberflaeche hat den Schalter). Wegwerf-Konten ca-dg*; raeumt auf."""
+Feature fehlt; Admin-Oberflaeche hat den Schalter). 2.5 (Labor 2.11.): Geraete-CPU je Probe (qcpu, qbw, encms, fdrop, decms,
+fzms) im Log. Wegwerf-Konten ca-dg*; raeumt auf."""
 import json
 import os
 import re
@@ -25,9 +26,10 @@ LOG = os.path.join(os.environ.get("STATE_DIR", "/tmp/hkstage"), "server.log")
 def body(cid, **kw):
     b = {"v": 1, "call": cid, "plat": "android", "app": "2.5.0-rc.3", "path": "horn", "transport": "udp", "node": "horn-1.example.org",
          "samples": [{"t": 3000, "dir": "in", "src": "v1", "rid": "", "fps": 24, "h": 540, "kbps": 812.5, "lost": 3, "nack": 4, "pli": 1,
-                      "freeze": 1, "kf": 1, "rtt": 38, "qlr": "", "enc": ""},
+                      "freeze": 1, "kf": 1, "rtt": 38, "qlr": "", "enc": "", "fdrop": 2, "decms": 3.4, "fzms": 420},
                      {"t": 3000, "dir": "out", "src": "v0", "rid": "h", "fps": 30, "h": 720, "kbps": 1400, "lost": 0, "nack": 0, "pli": 2,
-                      "freeze": 0, "kf": 2, "rtt": 38, "qlr": "bandwidth", "enc": "MediaCodec (c2.qti.avc.encoder)"}],
+                      "freeze": 0, "kf": 2, "rtt": 38, "qlr": "bandwidth", "enc": "MediaCodec (c2.qti.avc.encoder)",
+                      "qcpu": 1800, "qbw": 0, "encms": 12.5, "fdrop": 7}],
          "events": [{"t": 2500, "k": "layers", "d": "v est=1800 s0:m3@ab12"}, {"t": 2900, "k": "quality", "d": "good>mid"}]}
     b.update(kw)
     return b
@@ -101,6 +103,8 @@ def run():
            ("sample kbps Text", body(cid, samples=[dict(body(cid)["samples"][0], kbps="800")])),
            ("sample t fehlt", body(cid, samples=[{"dir": "in"}])),
            ("sample qlr", body(cid, samples=[dict(body(cid)["samples"][0], qlr="thermal")])),
+           ("sample qcpu Text", body(cid, samples=[dict(body(cid)["samples"][1], qcpu="viel")])),
+           ("sample fdrop negativ", body(cid, samples=[dict(body(cid)["samples"][0], fdrop=-2)])),
            ("sample src zu lang", body(cid, samples=[dict(body(cid)["samples"][0], src="a" * 17)])),
            ("sample src mit Name", body(cid, samples=[dict(body(cid)["samples"][0], src="Anna Diagnose")])),
            ("event k", body(cid, events=[{"t": 1, "k": "chat", "d": ""}])),
@@ -145,6 +149,9 @@ def run():
            a.get("samples", [{}, {}])[1].get("rid") == "h" and a["samples"][1].get("qlr") == "bandwidth"
            and a["samples"][1].get("enc", "").startswith("MediaCodec") and a["samples"][0].get("kbps") == 812.5
            and a.get("events", [{}])[0].get("k") == "layers")
+        ok("Zeile: Geraete-CPU (2.5, Labor): qcpu/encms/fdrop gesendet, fdrop/decms/fzms empfangen",
+           a.get("samples", [{}, {}])[1].get("qcpu") == 1800 and a["samples"][1].get("encms") == 12.5 and a["samples"][1].get("fdrop") == 7
+           and a["samples"][0].get("fdrop") == 2 and a["samples"][0].get("decms") == 3.4 and a["samples"][0].get("fzms") == 420)
         ok("zwei Konten -> zwei verschiedene Hashes", len(recs) == 2 and recs[0]["acct"] != recs[1]["acct"])
 
     # --- Anrufende: auch nach dem Auflegen darf die letzte Meldung kommen ----------------------------------------------
