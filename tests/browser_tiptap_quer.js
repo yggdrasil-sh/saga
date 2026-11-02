@@ -396,6 +396,14 @@ x++;</code></pre><hr><p>Bild: <img src="https://bilder.example/a.png" alt="Fremd
     await p.keyboard.press('Backspace'); await p.keyboard.press('Backspace');
     await p.keyboard.press('Escape'); await sleep(1500);
     ok('Peek: Esc schliesst, Eingabe gespeichert', (await p.evaluate(() => document.getElementById('pg-peek').hidden)) && /im Peek$/.test((await get(rid))[0].data.text), (await get(rid))[0]);
+    // Testlabor 2.11.: per Tastatur ueber "Oeffnen" (Fokus auf dem Knopf im Hauptdokument, Datenbank-Block isoliert
+    // Tasten) - Fokus wandert in den Peek, Esc schliesst, Fokus zurueck auf "Oeffnen" derselben Zeile
+    await p.locator('.db-open').first().focus(); await p.keyboard.press('Enter'); await sleep(1500);
+    const pf = await p.evaluate(() => ({ open: !document.getElementById('pg-peek').hidden, act: document.activeElement.id }));
+    ok('Peek per Tastatur: offen, Fokus im Rahmen', pf.open && pf.act === 'peek-frame', pf);
+    await p.locator('.db-open').first().focus(); await p.keyboard.press('Escape'); await sleep(1800);
+    const pc = await p.evaluate(() => ({ zu: document.getElementById('pg-peek').hidden, act: document.activeElement.className }));
+    ok('Peek: Esc bei Fokus auf "Oeffnen" im Hauptdokument schliesst, Fokus zurueck auf "Oeffnen"', pc.zu && /db-open/.test(pc.act), pc);
     // Oeffnen/Schliessen ohne Speicherleck (Muster browser_editor_leak.js: Knoten/Listener nach GC)
     const cdp = await A.ctx.newCDPSession(p);
     await cdp.send('Performance.enable'); await cdp.send('HeapProfiler.enable');

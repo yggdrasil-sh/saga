@@ -1227,7 +1227,13 @@
   // --- Kopfbereich: Titel, Icon, Menue, Vollbild ------------------------------
   $('pg-title').addEventListener('input', function () { S.dirtyTitle = true; schedule(); });
   $('pg-title').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); save(); if (S.editor) S.editor.caret.setToFirstBlock('start'); }
+    // Enter (und Pfeil runter am Titelende): Schreibmarke an den Anfang des ersten Blocks - wie Editor.js, auch im neuen
+    // Editor (live: leere Seite ohne Block, Testlabor 2.11.). Text rechts der Marke bleibt im Titel.
+    var down = e.key === 'ArrowDown' && !e.shiftKey && this.selectionStart === this.value.length && this.selectionEnd === this.value.length;
+    if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey || !(e.key === 'Enter' || down)) return;
+    if (!S.editor || readOnly()) { if (e.key === 'Enter') { e.preventDefault(); save(); } return; }
+    e.preventDefault(); if (e.key === 'Enter') save();
+    try { S.editor.caret.setToFirstBlock('start'); } catch (x) { /* Editor noch nicht bereit */ }
   });
   $('pg-title').addEventListener('blur', function () { save(); });
 
@@ -7993,14 +7999,35 @@
     $('peek-mode').textContent = c ? '◨' : '▣'; $('peek-mode').title = c ? T('Als Seitenansicht (rechts) anzeigen') : T('Mittig anzeigen');
   }
   function openPeek(id, ctx) {
+    // Ausloeser merken (Fokus nach dem Schliessen zurueck), Fokus in den Rahmen (Esc/Tastatur wirken dort; Testlabor 2.11.)
+    var a = document.activeElement;
+    if (!PK.id) {
+      PK.ret = a && a !== document.body && !$('pg-peek').contains(a) ? a : null;
+      var rw = PK.ret && PK.ret.closest && PK.ret.closest('[data-id]');            // Ansicht zeichnet nach dem Schliessen neu
+      PK.retSel = rw && PK.ret.classList.length ? '[data-id="' + rw.dataset.id + '"] .' + PK.ret.classList[0] : null;
+    }
     PK.id = id; PK.ctx = ctx || PK.ctx;
     $('pg-peek').hidden = false; peekModeUI();
     var db = byId(PK.ctx.dbId); $('peek-crumb').textContent = db ? (ti(db.icon) ? ti(db.icon) + ' ' : '') + label(db) : '';
     var i = PK.ctx.ids.indexOf(id); $('peek-prev').disabled = i <= 0; $('peek-next').disabled = i < 0 || i >= PK.ctx.ids.length - 1;
     var f = $('peek-frame');
+    peekFocus();
     if (f.dataset.loaded) { try { f.contentWindow.location.hash = '#' + id; return Promise.resolve(); } catch (x) { /* neu laden */ } }
     f.dataset.loaded = '1'; f.src = '/notes?embed=1#' + id;
     return Promise.resolve();
+  }
+  function peekFocus() {                       // Fokus in den Rahmen, ausser er hat ihn schon (Titel/Editor einer neuen Zeile)
+    try { var f = $('peek-frame'); if (document.activeElement !== f) f.focus(); } catch (x) { /* egal */ }
+  }
+  $('peek-frame').addEventListener('load', function () { if (PK.id && !$('pg-peek').contains(document.activeElement)) peekFocus(); });
+  function peekGone() {                        // Peek zu: Fokus zurueck zum Ausloeser (sofern noch da und sichtbar)
+    var r = PK.ret, sel = PK.retSel; PK.ret = PK.retSel = null; PK.id = null; $('pg-peek').hidden = true;
+    function free() { var a = document.activeElement; return !a || a === document.body || a === $('peek-frame') || $('pg-peek').contains(a); }
+    function back(x) { if (x && x.isConnected && x.getClientRects().length && free()) { try { x.focus({ preventScroll: true }); } catch (e) { /* egal */ } return true; } return false; }
+    back(r); if (!sel) return;
+    [150, 600, 1500].forEach(function (ms) {           // Ansicht danach neu gezeichnet: denselben Knopf wieder finden
+      setTimeout(function () { var x = null; try { x = document.querySelector(sel); } catch (e) { /* Kennung */ } if (!PK.id && x && document.activeElement !== x) back(x); }, ms);
+    });
   }
   function closePeek() {
     if (!PK.id) return Promise.resolve();
@@ -8012,7 +8039,7 @@
       saved = false;
     }).then(function () {      // ausstehendes Speichern im Rahmen abwarten
       var was = PK.id;
-      PK.id = null; $('pg-peek').hidden = true;
+      peekGone();
       // fix27 E4: unveraendert geschlossen -> weg; nur nach erfolgreichem Speichern im Rahmen (sonst sieht der Server
       // eine nicht gespeicherte Eingabe als "unveraendert" und loescht den Eintrag)
       return (saved ? freshDrop(was) : Promise.resolve(false)).then(function (gone) {
@@ -8033,7 +8060,17 @@
     if (!PK.id || !e.ctrlKey || !e.shiftKey || e.metaKey || e.altKey || (e.code !== 'KeyJ' && e.code !== 'KeyK')) return;
     e.preventDefault(); peekStep(e.code === 'KeyJ' ? 1 : -1);
   });
+  // Esc im Hauptdokument schliesst den Peek - in der Erfassungsphase: Datenbank-Bloecke isolieren ihre Tasten (isolate,
+  // stopPropagation), Esc auf "Oeffnen" in einer Zeile kam sonst nie an (Testlabor 2.11.). Offene Menues/Dialoge zuerst.
   document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || !PK.id || e.defaultPrevented || e.isComposing) return;
+    if (!$('pg-modal').hidden || !$('pg-picker').hidden || !$('pg-qs').hidden || HK.menuOpen() || document.querySelector('.ce-popover--opened, .pm-pop:not([hidden]) > *')) return;
+    var a = document.activeElement;
+    if (a && a !== document.body && !$('pg-peek').contains(a) && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;   // Eingabe hat Vorrang
+    e.preventDefault(); e.stopPropagation();
+    closePeek();
+  }, true);
+  document.addEventListener('keydown', function (e) {         // Eingabefeld im Hauptdokument ohne eigenes Esc
     if (e.key !== 'Escape' || !PK.id || e.defaultPrevented) return;
     if (!$('pg-modal').hidden || !$('pg-picker').hidden || !$('pg-qs').hidden) return;
     closePeek();
@@ -8051,7 +8088,7 @@
     if (e.data && e.data.hk === 'peek-step') peekStep(e.data.d > 0 ? 1 : -1);
     if (e.data && e.data.hk === 'peek-deleted') {                // Eintrag im Peek geloescht: Peek zu, Ansicht auffrischen, Rueckgaengig hier anbieten
       var ctx = PK.ctx, id = e.data.id;
-      PK.id = null; $('pg-peek').hidden = true;
+      peekGone();
       if (ctx && ctx.refresh) ctx.refresh();
       loadList();
       HK.toast(T('„{name}“ in den Papierkorb verschoben', { name: e.data.name || T('Eintrag') }), T('Rückgängig'), function () {
@@ -8930,6 +8967,14 @@
          kill: function (ed) { killEditor(ed); },
          save: function () { return save(); }, apply: function () { return liveApply(null); },
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
+         // pm-live.js: Server meldet "kein Zugriff mehr" (bye access) - sichtbar wie beim Speichern (Testlabor 2.11.:
+         // vorher blieb der Text ohne Hinweis stehen); sofort schreibgeschuetzt
+         lost: function (id) {
+           if (!S.cur || S.cur.id !== id || !foreign() || S.lost) return;
+           try { if (S.editor && S.editor.setEditable) S.editor.setEditable(false); } catch (x) { /* egal */ }
+           $('pg-title').readOnly = true;
+           lostAccess(404);
+         },
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
          reloadList: function () { return loadList(); }, remote: remoteChange,
          focusBlock: function () {                              // 2.5 (P3): Block mit der Schreibmarke (fuer die Anwesenheit)

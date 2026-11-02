@@ -123,6 +123,12 @@ async function main() {
     await p.click('#hk-user'); await p.click('.menu-item:has-text("Einstellungen")');
     await p.click('#hk-tab-help'); await p.waitForTimeout(600);
     ok('Einstellungen: Reiter Hilfe mit "Diagnose senden"', await p.locator('#hk-pane-help button:has-text("Diagnose senden")').isVisible());
+    // Testlabor 2.11.: der Freitext wird NICHT bereinigt wie die automatischen Angaben - der Hinweis muss das sagen
+    const hint = await p.evaluate(() => { const n = document.querySelector('.hk-diag-note'), h = document.getElementById('hk-diag-notehint');
+      return { gen: [...document.querySelectorAll('#hk-pane-help .hk-diag .hk-hint')].map((x) => x.textContent).join(' | '), note: h && h.textContent, desc: n && n.getAttribute('aria-describedby') }; });
+    ok('Hilfe: Hinweis "keine Inhalte" nur fuer die automatischen Angaben, Freitext-Hinweis am Feld (aria-describedby)',
+      /automatischen Angaben enthalten keine Inhalte/.test(hint.gen) && !/Ohne Inhalte, Titel, Namen und Adressen/.test(hint.gen)
+      && /so, wie du ihn schreibst/.test(hint.note || '') && hint.desc === 'hk-diag-notehint', hint);
     await p.fill('.hk-diag-note', 'Beim Speichern hing es kurz.');
     await p.click('#hk-pane-help button:has-text("Diagnose senden")');
     await p.waitForSelector('.hk-diag-id', { timeout: 8000 }).catch(() => {});

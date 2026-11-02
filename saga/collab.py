@@ -35,9 +35,9 @@ from pycrdt import Doc, get_update
 import auth
 from db import connect as _db
 from saga import bus, collab_model as model
-from saga.core import E, _session_user, _tok_hash, device_alive, origin_of, t, user_info
+from saga.core import E, _session_user, _tok_hash, device_alive, local_ref, origin_of, t, unnamed, user_info
 from saga.notes import NOTE_TITLE_MAX
-from saga.sharing import RANK, Access, names
+from saga.sharing import RANK, Access, is_remote, names
 
 PATH = "/api/collab"
 PROTO = 1
@@ -824,10 +824,19 @@ def _sub_check(uid, nid, schema):
 
 
 def _display(uid):
+    """(Name, Farbe) fuer Awareness/hello. Der Name geht an alle Abonnenten (jede Person mit eigener Sprache): ohne
+    Anzeigenamen sprachneutral die pseudonyme Kennung ('~x' bzw. '~x@host', nie der Anmeldename) - der Client zeigt
+    daraus "Unbekannte Person (abcd)" in SEINER Sprache (HK.personName; Testlabor 2.11.: sonst englisch, Thread ohne
+    Anfragesprache)."""
     with _db() as c:
         nm = names(c, [uid])
     from saga.live import pcolor
-    return nm.get(uid) or "", pcolor(uid)
+    n = nm.get(uid) or ""
+    ref = uid[1:] if is_remote(uid) else local_ref(uid)
+    r, _, h = ref.partition("@")
+    if n and r.startswith("~") and n == unnamed(r, h or None):
+        n = ref
+    return n, pcolor(uid)
 
 
 async def _get_room(nid):

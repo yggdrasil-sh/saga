@@ -163,6 +163,14 @@ async function peekEscDialog(browser, p) {
   ok('Bughunt 2: Esc im Teilen-Dialog im Peek schliesst nur den Dialog', opened && m === true && r, { opened, modalHidden: m, peekOpen: r });
   await q.keyboard.press('Escape'); await q.waitForTimeout(600);
   ok('... zweites Esc schliesst dann den Peek', await q.evaluate(() => document.getElementById('pg-peek').hidden));
+  // Testlabor 2.11.: "Oeffnen" per Tastatur - Fokus in den Rahmen; Esc mit Fokus auf "Oeffnen" (Hauptdokument, der
+  // Datenbank-Block isoliert Tasten) schliesst trotzdem, Fokus zurueck auf "Oeffnen"
+  await q.focus('.db-row .db-open'); await q.keyboard.press('Enter'); await q.waitForTimeout(1500);
+  const pf = await q.evaluate(() => ({ open: !document.getElementById('pg-peek').hidden, act: document.activeElement.id }));
+  ok('Peek per Tastatur: offen, Fokus im Rahmen', pf.open && pf.act === 'peek-frame', pf);
+  await q.focus('.db-row .db-open'); await q.keyboard.press('Escape'); await q.waitForTimeout(1800);
+  const pc = await q.evaluate(() => ({ zu: document.getElementById('pg-peek').hidden, act: document.activeElement.className }));
+  ok('Peek: Esc bei Fokus auf "Oeffnen" schliesst, Fokus zurueck auf "Oeffnen"', pc.zu && /db-open/.test(pc.act), pc);
   await q.context().close();
 }
 

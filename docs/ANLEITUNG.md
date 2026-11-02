@@ -1948,8 +1948,11 @@ die neuere Version nur zum Zurückspielen nehmen, z. B. `docker compose run --rm
 Browser und Apps melden Programmfehler automatisch, und unter **Einstellungen → Hilfe → Diagnose senden** schickt eine
 Person die letzten Ereignisse ihres Fensters (Fehler, Antwortcodes je Endpunkt, Ansichtswechsel, Live-Kanal, Speichern)
 mit einem optionalen Satz dazu. Sie bekommt eine Kennung wie `D-7K3FM`, die sie dem Admin nennt. Saga speichert davon
-nichts in der Datenbank – je Bericht steht genau eine Zeile im Server-Log, ohne Inhalte, Titel, Namen und IP-Adressen;
-das Konto erscheint nur als kurzer Hash (`acct`, stabil je Server, gleich in beiden Zeilenarten):
+nichts in der Datenbank – je Bericht steht genau eine Zeile im Server-Log. Die automatisch erfassten Angaben enthalten
+keine Inhalte, Titel, Namen und IP-Adressen; den optionalen Freitext (`user_note`) loggt Saga so, wie die Person ihn
+geschrieben hat – nur Internet- und E-Mail-Adressen sowie Schlüssel werden unkenntlich gemacht (die Person sieht dazu
+einen Hinweis am Textfeld). Das Konto erscheint nur als kurzer Hash (`acct`, stabil je Server, gleich in beiden
+Zeilenarten):
 
 ```bash
 docker logs saga 2>&1 | grep 'clientdiag {"id":"D-7K3FM"'     # eine bestimmte Diagnose

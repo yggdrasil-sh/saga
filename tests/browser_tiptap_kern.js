@@ -378,6 +378,23 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
   b = await saved(P8, 2000);
   ok('Wieder online: liegengebliebenes gespeichert', /plus off$/.test(b[0].data.text), b[0]);
 
+  // 11b) Testlabor 2.11.: Titel -> Text per Enter und Pfeil runter (Text rechts der Marke bleibt im Titel)
+  const PT = await mk('', [{ id: 'tb1', type: 'paragraph', data: { text: 'Inhalt' } }]);
+  await open(PT);
+  await p.focus('#pg-title'); await p.keyboard.type('Kopf', { delay: 15 }); await p.keyboard.press('Enter'); await sleep(150);
+  const sel1 = await p.evaluate(() => { const e = HKPages.k.editor().editor(), s = e.state.selection; return { act: document.activeElement.classList.contains('pm-doc'), off: s.from - 1, id: s.$from.parent.attrs.id }; });
+  ok('Titel + Enter: Schreibmarke am Anfang des ersten Blocks', sel1.act && sel1.id === 'tb1' && sel1.off === 0, sel1);
+  await p.focus('#pg-title'); await p.keyboard.press('End'); await p.keyboard.press('ArrowDown'); await sleep(150);
+  ok('Titel + Pfeil runter am Ende: ebenso in den Text', await p.evaluate(() => document.activeElement.classList.contains('pm-doc')));
+  await p.focus('#pg-title'); await p.keyboard.press('Home'); await p.keyboard.press('ArrowDown'); await sleep(100);
+  ok('... Pfeil runter nicht am Ende: bleibt im Titel', await p.evaluate(() => document.activeElement.id === 'pg-title'));
+  await sleep(1200); ok('... Titel unveraendert "Kopf"', (await p.api('GET', '/api/notes/' + PT)).title === 'Kopf', (await p.api('GET', '/api/notes/' + PT)).title);
+  // KaTeX: unvollstaendige Formel -> eigene Fehleranzeige, keine CSP-Verletzung (style-Attribut der KaTeX-Fehleranzeige)
+  const csp0 = (await p.evaluate(() => window.__csp)).length;
+  const kerr = await p.evaluate(() => { const d = document.createElement('div'); document.body.appendChild(d); return HKEd25.renderTex('a^', d, true).then((r) => { const o = { r, err: !!d.querySelector('.hk-tex-err'), st: d.querySelectorAll('[style]').length }; d.remove(); return o; }); });
+  await sleep(100);
+  ok('KaTeX-Fehler: eigene Anzeige (.hk-tex-err, kein style), keine CSP-Verletzung', kerr.r === false && kerr.err && !kerr.st && (await p.evaluate(() => window.__csp)).length === csp0, kerr);
+
   // 12) Speicher nach Seitenwechseln, ein Editor je Seite
   const cdp = await A.ctx.newCDPSession(p);
   await cdp.send('Performance.enable'); await cdp.send('HeapProfiler.enable');
@@ -399,7 +416,7 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
   ok('CSP-Verletzungen = 0 (securitypolicyviolation)', !csp.length, csp);
   ok('Keine Seitenfehler (pageerror)', !p.errs.length, p.errs);
   await D.setEditor(p, was.tiptap ? 'tiptap' : 'editorjs');
-  for (const id of [P1, P2, P3, P4, P5, P6, P7, P8, LM]) await p.api('DELETE', '/api/notes/' + id).catch(() => {});
+  for (const id of [P1, P2, P3, P4, P5, P6, P7, P8, LM, PT]) await p.api('DELETE', '/api/notes/' + id).catch(() => {});
   await br.close();
   const n = res.filter(Boolean).length;
   console.log(`\n${n}/${res.length} ${n === res.length ? 'ALLES GRUEN' : 'FEHLER'}`);

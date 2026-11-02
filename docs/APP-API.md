@@ -2687,7 +2687,10 @@ Ringpuffer im Speicher, ältere zuerst) + optional `note`:
 
 Jedes Ereignis hat `t` (ms, wie oben). `note`: Freitext der Person, ≤ 1000 Zeichen, **nur hier** erlaubt; geloggt als
 `user_note` (Zeilenumbrüche als ⏎, Schlüssel/Tokens, Adressen und E-Mail maskiert, sonst wie geschrieben – die Person
-schreibt ihn bewusst für den Admin; die App weist darauf hin).
+schreibt ihn bewusst für den Admin). Die App weist am Textfeld darauf hin – Web (Wortlaut, als Vorlage für die Apps):
+„Deinen Text sieht der Admin so, wie du ihn schreibst – nur Internet-Adressen, E-Mail-Adressen und Schlüssel werden
+unkenntlich gemacht. Schreib nichts hinein, was der Admin nicht lesen soll.“ Der allgemeine Hinweis („… keine Inhalte,
+Titel, Namen oder Adressen“) bezieht sich nur auf die **automatischen** Angaben, nie auf den Freitext.
 
 **Antworten:** `200 {"ok": true, "id": "D-7K3FM"}` – die Kennung (`D-` + 5 Zeichen aus `23456789ABCDEFGHJKMNPQRSTVWXYZ`)
 der Person anzeigen (kopierbar), sie steht auch in der Log-Zeile; `401`, `404`, `413`, `400` wie oben; `429` ab der
