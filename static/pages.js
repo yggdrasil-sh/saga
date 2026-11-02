@@ -858,6 +858,10 @@
     clearTimeout(S.timer); S.timer = setTimeout(save, 900);
   }
 
+  // 2.5 (clientlog1): Speichern im Ringpuffer fuer "Diagnose senden" - nur Zustand, nie Inhalt
+  function slog(st, code) {
+    try { if (window.HKLog) HKLog.ev('save', { st: st, s: code }); } catch (e) { /* nie stoeren */ }
+  }
   // Speichern nacheinander (Warteschlange): ein zweites Speichern waehrend das erste noch laeuft, wuerde sonst
   // die veraltete Revision mitschicken -> falscher Konflikt "mit sich selbst" (z. B. bei langsamer Verbindung)
   function save() {
@@ -893,6 +897,7 @@
       return req.then(function (d) {
         if (S.cur && S.cur.id === id && d.rev != null) S.cur.rev = d.rev;
         if (d.merged && S.cur && S.cur.id === id) mergedReply(id, d, sentStr, sentTitle);
+        if (d.merged) slog('merged');
         if (window.HKMention) HKMention.saved(d);                       // 2.5 (P6-6): Durchschreiben, neue Kopien nachladen
         if (S.cur && S.cur.id === id && d.updated) S.cur.updated = d.updated;
         if (S.cur && S.cur.id === id && S.cur.updated_by && !S.cur.updated_by.me) { S.cur.updated_by = { me: true }; applyMeta(); }
@@ -906,6 +911,7 @@
     }).catch(function (err) {
       S.dirtyBody = S.dirtyBody || !!body.body || (wantBody && !body.body); S.dirtyTitle = S.dirtyTitle || 'title' in body;
       if (body.body) S.lastBlocks = null;      // nicht angekommen: der naechste Versuch darf nicht als "unveraendert" entfallen (offline -> online)
+      if (!err.status && err.message !== 'conflict' && navigator.onLine !== false) slog('error', 0);   // ohne Anfrage (Editor-Inhalt nicht lesbar); Antworten erfasst clientlog.js
       if (err.message === 'conflict') { S.conflict = true; showConflict(err.data && err.data.by); state(T('Nicht gespeichert – Seite wurde zwischenzeitlich geändert'), 'err'); return; }
       // Freigabe entzogen, Teilen abgeschaltet (404) oder Rolle auf Lesen gefallen (403): verstaendlich melden, Text retten
       if ((err.status === 404 || err.status === 403) && S.cur && S.cur.id === id && foreign()) { lostAccess(err.status); return; }
