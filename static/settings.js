@@ -120,11 +120,16 @@
     HKLog.enabled().then(function (on) {
       if (!on) { box.appendChild(el('p', 'hk-hint', T('Diagnose ist auf diesem Server abgeschaltet.'))); return; }
       box.appendChild(el('h4', null, T('Diagnose senden')));
-      box.appendChild(el('p', 'hk-hint', T('Hilft dem Admin, ein Problem zu finden: Saga schickt die letzten Ereignisse dieses Fensters – Fehlermeldungen, Antwortcodes des Servers, Ansichtswechsel, Verbindungsstatus. Ohne Inhalte, Titel, Namen und Adressen. Gespeichert wird nur eine Zeile im Server-Log.')));
+      // Testlabor 2.11.: "ohne Inhalte, Titel, Namen" gilt nur fuer die automatisch erfassten Ereignisse - der Freitext
+      // geht so an den Admin, wie er geschrieben ist (nur Adressen, E-Mail und Schluessel unkenntlich, saga/clientlog.py)
+      box.appendChild(el('p', 'hk-hint', T('Hilft dem Admin, ein Problem zu finden: Saga schickt die letzten Ereignisse dieses Fensters – Fehlermeldungen, Antwortcodes des Servers, Ansichtswechsel, Verbindungsstatus. Diese automatischen Angaben enthalten keine Inhalte, Titel, Namen oder Adressen. Gespeichert wird nur eine Zeile im Server-Log.')));
       var note = el('textarea', 'hk-in hk-diag-note'); note.maxLength = 1000; note.rows = 3;
       note.placeholder = T('Was ist passiert? (optional, nur für den Admin)');
       note.setAttribute('aria-label', T('Was ist passiert? (optional, nur für den Admin)'));
       box.appendChild(note);
+      var nh = el('p', 'hk-hint hk-diag-notehint', T('Deinen Text sieht der Admin so, wie du ihn schreibst – nur Internet-Adressen, E-Mail-Adressen und Schlüssel werden unkenntlich gemacht. Schreib nichts hinein, was der Admin nicht lesen soll.'));
+      nh.id = 'hk-diag-notehint'; note.setAttribute('aria-describedby', nh.id);
+      box.appendChild(nh);
       var go = el('button', 'btn', T('Diagnose senden')); go.type = 'button';
       var st = el('p', 'hk-status'); st.setAttribute('role', 'status');
       box.appendChild(go); box.appendChild(st);
