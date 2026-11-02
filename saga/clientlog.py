@@ -120,7 +120,6 @@ def _host(m, strict=False):
 
 _UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 _HEX = re.compile(r"\b(?:0x)?[0-9a-f]{8,}\b", re.I)
-_TOKEN = re.compile(r"(?<![\w~])(?=[A-Za-z_\-+=]*\d)[A-Za-z0-9_\-+=]{20,}")   # lange Zufallsfolgen mit Ziffern (Base64, Schluessel)
 _HANDLE = re.compile(r"[~@][\w.\-]{2,}")                       # Handles (~abc...), @erwaehnungen, @name/slug
 _PATH = re.compile(r"(?<![\w.:<])/[^\s\"'<>()]+")                # absolute Pfade (auch /@name/seite)
 _NUM = re.compile(r"(?<![\w$])\d+(?:[.,]\d+)*|(?<=[A-Za-z_$])\d{3,}")   # auch "note4711", nicht "v2"/"h264" teilweise
@@ -132,6 +131,41 @@ _PROP = re.compile(r"[a-z_$][\w$.]{0,39}")          # Eigenschaft/Funktion in An
 _ALLOW = re.compile(r"[^\w\s.,:;()\[\]{}<>#'\"=+\-*/!?&|%$~^«»„“”–—…]")   # sonst -> ?
 _SPACES = re.compile(r"\s{2,}")
 
+
+
+# Lange Zufallsfolgen mit Ziffern (Base64, Schluessel): frueher (?<![\w~])(?=[A-Za-z_\-+=]*\d)[A-Za-z0-9_\-+=]{20,} -
+# die Vorausschau lief an jeder Stelle eines langen Buchstabenlaufs bis zu dessen Ende (quadratisch, "a-" * 2000 ~ 40 ms je
+# Feld). _token_sub liefert dasselbe linear: je Lauf aus der Klasse hoechstens ein Treffer, ab dem ersten erlaubten Anfang.
+_TOKEN_RUN = re.compile(r"[A-Za-z0-9_\-+=]+")
+_TOKEN_DIGIT = re.compile(r"\d")
+_ADIGIT = re.compile(r"[0-9]")
+_WORDCH = re.compile(r"\w")
+
+
+def _token_sub(s, rep="<tok>"):
+    """Wie frueher _TOKEN.sub(rep, s). Je Lauf L = [a, e) aus der Klasse ist der Treffer, wenn es einen gibt, s[p:e] mit dem
+    kleinsten Anfang p, vor dem kein \\w/~ steht (p = a, sonst hinter dem ersten "-", "+" oder "="). Groessere Anfaenge
+    haben nur weniger Laenge und weniger Ziffern - scheitert p, scheitern alle."""
+    out, pos = [], 0
+    for m in _TOKEN_RUN.finditer(s):
+        a, e = m.span()
+        if e - a < 20:
+            continue
+        p = a
+        if a and (s[a - 1] == "~" or _WORDCH.match(s, a - 1)):
+            x = [k for k in (s.find(c, a, e) for c in "-+=") if k >= 0]
+            if not x:
+                continue
+            p = min(x) + 1
+        if e - p < 20 or not (_ADIGIT.search(s, p, e) or _TOKEN_DIGIT.match(s, e)):
+            continue
+        out.append(s[pos:p])
+        out.append(rep)
+        pos = e
+    if not out:
+        return s
+    out.append(s[pos:])
+    return "".join(out)
 
 def _route_words(app):
     """Feste Bestandteile aller registrierten Pfade (api, notes, files, ...) - nur diese bleiben in Endpunkt-Mustern stehen."""
@@ -220,7 +254,7 @@ def scrub(s, limit=MSG_MAX):
     s = _HANDLE.sub("<id>", s)
     s = _UUID.sub("<uuid>", s)
     s = _HEX.sub("<hex>", s)
-    s = _TOKEN.sub("<tok>", s)
+    s = _token_sub(s)
     s = re.sub(r"(?<![\w.])static/[\w.\-/]+\.(?:js|mjs|css|html)(?::\d{1,7}:\d{1,8})?|" + _NUM.pattern,
                lambda m: m.group(0) if m.group(0).startswith("static/") else "<n>", s)
     s = _words(s)
