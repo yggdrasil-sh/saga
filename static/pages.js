@@ -4849,7 +4849,9 @@
         DB.role = d.role || 'owner';
         if (OPTS.getViews) {
           var had = (OPTS.getViews() || []).length; DB.localViews = initLocalViews();
-          if (!had && OPTS.saveViews) OPTS.saveViews(DB.localViews);   // einmalig im Block ablegen -> ab jetzt unabhaengig
+          // einmalig im Block ablegen -> ab jetzt unabhaengig. Still (initial): kein Speichern nur durchs Oeffnen, die
+          // Ansichten gehen mit der naechsten echten Aenderung mit (T6: auch bei langsamer Antwort nach S.loading)
+          if (!had && OPTS.saveViews) OPTS.saveViews(DB.localViews, true);
         }
         renderDb();
         taskHint();
@@ -6382,7 +6384,7 @@
       getView: function () { return self.data.view; },
       setView: function (v) { self.data.view = v; self.mark(); },
       getViews: function () { return self.data.views; },
-      saveViews: function (vs) { self.data.views = JSON.parse(JSON.stringify(vs)); self.mark(); },
+      saveViews: function (vs, initial) { self.data.views = JSON.parse(JSON.stringify(vs)); if (initial) { if (self.quiet) self.quiet(); } else self.mark(); },
       getHead: function () { return { title: !self.data.hide_title, tabs: !self.data.hide_tabs }; },
       setHead: canEdit() ? function (k, on) { self.data[k === 'title' ? 'hide_title' : 'hide_tabs'] = !on; self.mark(); } : null });
     this.inst.load(this.data.db);

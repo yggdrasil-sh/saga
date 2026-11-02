@@ -140,6 +140,7 @@
         attrs.data = clone(d || {});
         var tr = view.state.tr.setNodeMarkup(p, null, attrs).setMeta('hkTool', type);
         if (o && o.history === false) tr.setMeta('addToHistory', false);
+        if (o && o.quiet) tr.setMeta('hkQuiet', true);              // Nachtrag beim Laden: im Dokument, aber kein Speichern
         view.dispatch(tr);
         return true;
       },

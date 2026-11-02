@@ -37,10 +37,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { type: 'paragraph', data: { text: 'Ende' } }] };
   await api('PATCH', '/api/notes/' + id, { body: JSON.stringify(start), format: 'blocks' });
   await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id);
-  await p.waitForSelector('.cols .col-rs'); await sleep(1200);
+  await p.waitForSelector(D.UI.colResize); await sleep(1200);
 
   // --- G10: Toggle-Ueberschrift ist eine Ueberschrift (Groesse, Inhaltsverzeichnis) ---------------------------
-  const tglSize = await p.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.tgl-h2 .tgl-title')).fontSize));
+  const tglSize = await p.evaluate((s) => parseFloat(getComputedStyle(document.querySelector(s)).fontSize), D.UIF.toggleHead(2));
   const pSize = await p.evaluate((s) => parseFloat(getComputedStyle(document.querySelector(s)).fontSize), D.textOf('paragraph'));
   ok(`G10: Titel in Ueberschriftengroesse (${tglSize} > ${pSize})`, tglSize > pSize * 1.15);
   await sleep(500);
@@ -48,7 +48,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(`G10: Toggle-Ueberschrift im Inhaltsverzeichnis an ihrer Stelle (${toc.join(' | ')})`, toc.join('|') === 'Kapitel A|Ausklapp B|Kapitel C');
 
   // --- G1: Spaltenbreite ziehen ----------------------------------------------------------------------------------
-  const h = await p.locator('.cols > .col-rs').first().boundingBox();
+  const h = await p.locator(D.UI.colResize).first().boundingBox();
   const box = await p.locator('.cols').first().boundingBox();
   await p.mouse.move(h.x + h.width / 2, h.y + 40); await p.mouse.down();
   await p.mouse.move(box.x + box.width * 0.7, h.y + 40, { steps: 8 }); await p.mouse.up();
@@ -60,7 +60,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let bl = await body(id);
   let ws = bl[2].data.cols.map((c) => c.w);
   ok(`G1: Gewichte gespeichert, 5-%-Raster (${ws})`, ws[0] >= 0.65 && ws[0] <= 0.75 && Math.abs(ws[0] + ws[1] - 1) < 0.011 && Math.abs(ws[0] * 20 - Math.round(ws[0] * 20)) < 0.01, ws);
-  await p.locator('.cols > .col-rs').first().dblclick(); await sleep(3500);
+  await p.locator(D.UI.colResize).first().dblclick(); await sleep(3500);
   bl = await body(id);
   ok('G1: Doppelklick setzt beide gleich (w entfernt)', bl[2].data.cols.every((c) => c.w === undefined), bl[2].data.cols);
 
@@ -83,12 +83,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const para = p.locator(D.textOf('paragraph'), { hasText: 'Farbiger Absatz' }).first();
   await para.click(); await para.hover(); await sleep(250);
   await p.locator(D.UI.blockMenuBtn + ':visible').first().click(); await sleep(300);
-  const items = await p.evaluate((U) => [...document.querySelectorAll(`${U.blockMenu} ${U.popover} > ${U.popoverContainer} > ${U.popoverItems} > ${U.item} ${U.itemTitle}, ${U.popover} ${U.popoverItems} > ${U.item} ${U.itemTitle}`)].map((x) => x.textContent.trim()), D.UI);
+  const items = await p.evaluate((s) => [...document.querySelectorAll(s)].map((x) => x.textContent.trim()), D.BLOCK_ITEMS);
   const iConv = items.indexOf('Umwandeln in'), iCol = items.indexOf('Farbe'), iDup = items.indexOf('Duplizieren'), iLink = items.indexOf('Link zum Block kopieren'), iCom = items.indexOf('Kommentieren');
   ok(`G5: Reihenfolge Umwandeln, Farbe, Duplizieren, Link, Kommentieren (${items.slice(0, 9).join(', ')})`,
     iConv >= 0 && iConv < iCol && iCol < iDup && iDup < iLink && iLink < iCom, items);
-  await p.locator(D.menuItem('Farbe')).first().click(); await sleep(250);
-  await p.locator(D.menuItem('Blau (Hintergrund)')).first().click(); await sleep(300);
+  await p.locator(D.blockMenuItem('Farbe')).first().click(); await sleep(250);
+  await p.locator(D.blockMenuItem('Blau (Hintergrund)')).first().click(); await sleep(300);
   const cls = await para.evaluate((n) => { const b = n.closest('[data-block-id]'); return [b.className].concat([...b.querySelectorAll('*')].filter((x) => x.contains(n)).map((x) => x.className)).join(' '); });
   ok(`G3: Hintergrund sofort sichtbar (${cls})`, /hk-bg-blue/.test(cls));
   await sleep(3500);
@@ -154,17 +154,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const tv = (await api('POST', '/api/notes', { title: 'Toggle voll' })).id;
   const fullBlocks = [P('oben'), { type: 'toggle', data: { title: 'Voll', open: true, blocks: [P('Innen bleibt')] } }];
   await api('PATCH', '/api/notes/' + tv, { body: JSON.stringify({ blocks: fullBlocks }), format: 'blocks' });
-  await p.goto(BASE + '/notes?t=' + Date.now() + '#' + tv); await p.waitForSelector('.tgl-title'); await sleep(1200);
-  await p.hover('.tgl-title'); await sleep(250);
+  await p.goto(BASE + '/notes?t=' + Date.now() + '#' + tv); await p.waitForSelector(D.UI.toggleTitle); await sleep(1200);
+  await p.hover(D.UI.toggleTitle); await sleep(250);
   await p.locator(D.UI.blockMenuBtn + ':visible').first().click(); await sleep(300);
-  await p.locator(D.menuItem('Umwandeln in')).first().click(); await sleep(300);
-  await p.locator(D.menuItem('Überschrift')).last().click(); await sleep(400);
+  await p.locator(D.blockMenuItem('Umwandeln in')).first().click(); await sleep(300);
+  await p.locator(D.blockMenuItem(D.EDITOR === 'tiptap' ? 'Überschrift 2' : 'Überschrift')).last().click();   // Tiptap: Stufen einzeln await sleep(400);
   await p.keyboard.press('Escape');
-  if (await p.locator('.tgl-title').count()) { await p.click('.tgl-title'); await p.keyboard.press('Home'); await p.keyboard.press('Backspace'); }
+  if (await p.locator(D.UI.toggleTitle).count()) { await p.click(D.UI.toggleTitle); await p.keyboard.press('Home'); await p.keyboard.press('Backspace'); }
   await sleep(3500);
   bl = await body(tv);
   const tg = bl.find((b) => b.type === 'toggle');
-  ok('G10: Toggle mit Inhalt: Umwandeln/Ruecktaste behalten den Inhalt', bl.length === 2 && tg && /Innen bleibt/.test(JSON.stringify(tg.data.blocks)), bl);
+  // Tiptap: Ruecktaste am Titelanfang loest den Toggle auf (wie Notion) - Titel und Inhalt bleiben als Absaetze stehen
+  const kept = D.EDITOR === 'tiptap' ? bl.map((b) => b.data.text).join('|') === 'oben|Voll|Innen bleibt'
+    : bl.length === 2 && tg && /Innen bleibt/.test(JSON.stringify(tg.data.blocks));
+  ok('G10: Toggle mit Inhalt: Umwandeln/Ruecktaste behalten den Inhalt', kept, bl);
   await api('DELETE', '/api/notes/' + tv);
 
   // --- G5: Rolle Kommentieren - im Block-Menue nur Link und Kommentieren -------------------------------------------
@@ -182,7 +185,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     let ro = [];
     if (await btn.count()) {
       await btn.click(); await sleep(300);
-      ro = await q.evaluate((U) => [...document.querySelectorAll(`${U.popover} ${U.popoverItems} > ${U.item}:not(${U.itemHidden}) ${U.itemTitle}`)].map((x) => x.textContent.trim()), D.UI);
+      ro = await q.evaluate((s) => [...document.querySelectorAll(s)].map((x) => x.textContent.trim()), D.BLOCK_ITEMS);
     }
     await pr.click(); await q.keyboard.press(process.platform === 'darwin' ? 'Meta+/' : 'Control+/'); await sleep(300);
     const am = await q.evaluate(() => [...document.querySelectorAll('.menu:not([hidden]) .menu-item .mi-t')].map((x) => x.textContent.trim()));

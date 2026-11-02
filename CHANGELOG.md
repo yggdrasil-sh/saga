@@ -25,6 +25,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Qualitätsbegrenzung, Schicht-/Wegwechsel). Gespeichert wird nichts: eine Zeile `calldiag` je Meldung im Server-Log,
   Konto nur als Hash, ohne Namen und IP-Adressen. Vertrag: `docs/APP-API.md` „Anruf-Diagnose“.
 
+### Intern/Behoben (2.5, Tiptap-Umbau T6: Doppellauf der Browser-Tests)
+- Alle Browser-Reihen laufen mit `SAGA_EDITOR=editorjs` und `SAGA_EDITOR=tiptap`; Editor-Bedienelemente in den Tests nur
+  noch über `tests/lib/editor_dom.js` (`UI`, neu `UIF` für Selektoren mit Parameter, `BLOCK_ITEMS`/`blockMenuItem`).
+- Tiptap wie Editor.js: Inline-Formel-Popover mit KaTeX-Vorschau; Farbe über `HKEd25.applyColor` und Strg/⌘+⇧+H als
+  Marke; Block-Menü einer Tabelle mit Zeile/Spalte/Zelle einfärben; Umwandeln-Ziele über die Suche im Block-Menü
+  (⌘/ „Toggle-Überschrift 1“ ⏎); Kürzel direkt nach einem Klick treffen den geklickten Block; Bild einfügen an der
+  gerade gesetzten Schreibmarke; „Kleiner Text“; Slash-Menü auf dem Handy als Leiste unten.
+- Behoben (Tiptap): Eine Seite mit Datenbank-Block ohne eigene Ansichten (`views: null`, z. B. Galerie-Vorlagen) wurde
+  schon beim reinen Öffnen gespeichert. Die Ansichten werden jetzt still im Block abgelegt und gehen mit der nächsten
+  echten Änderung mit (wie Editor.js).
+- Neue Reihen `tests/browser_tiptap_ime.js` (Japanisch/Thai per CDP `Input.imeSetComposition`, CSP-Verletzungen = 0)
+  und `tests/browser_db_views_null.js` (beide Modi).
+
 ### Intern (2.5, Tiptap-Umbau Etappe T1: Bibliothek mitgeliefert)
 - Tiptap 3.32.2, ProseMirror und Yjs liegen als vorgebaute Bundles unter `static/vendor/tiptap/` (`saga-pm.js`
   Kern, `saga-y.js` Live, `saga-pm.css`; alle MIT, Lizenztexte in `licenses/`). Noch nirgends geladen – der neue

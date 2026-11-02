@@ -717,7 +717,7 @@ async function imageClipboard(browser) {
   const blocks = async id => JSON.parse((await p.api('GET', '/api/notes/' + id)).body || '{}').blocks || [];
   await p.open(s.a);
   await p.click('#pg-editor .image-tool__image-picture'); await p.waitForTimeout(300);
-  ok('2.1 Bild kopieren: Klick aufs Bild markiert den Block', await p.evaluate(() => document.querySelectorAll('#pg-editor .pg-picked').length === 1));
+  ok('2.1 Bild kopieren: Klick aufs Bild markiert den Block', await p.evaluate((s) => document.querySelectorAll('#pg-editor ' + s).length === 1, ED.UI.picked));
   await p.keyboard.press(mod + '+c'); await p.waitForTimeout(1200);
   const clip = await p.evaluate(async () => {
     try { const it = await navigator.clipboard.read(); const t = it[0].types; const h = t.includes('text/html') ? await (await it[0].getType('text/html')).text() : '';

@@ -394,7 +394,15 @@
         // Backspace/Entf bleibt (bewusste Aktion, Notion-Verhalten).
         handleTextInput: function (view) {
           var sel = view.state.selection, n = sel && sel.node;
-          return !!(n && n.isAtom && BLOCKSET[n.type.name]);
+          if (!(n && n.isAtom && BLOCKSET[n.type.name])) return false;
+          // T6: Schreibmarke laut DOM schon in einem Textblock (Klick, selectionchange noch nicht verarbeitet): die
+          // Auswahl dorthin holen und die Eingabe normal laufen lassen - sonst ginge das erste Zeichen verloren
+          var g = window.getSelection && window.getSelection(), dom = view.nodeDOM(sel.from);
+          if (g && g.rangeCount && g.focusNode && view.dom.contains(g.focusNode) && !(dom && dom.contains(g.focusNode))) {
+            var at = domFrom(-1);
+            if (at >= 0) { var $a = view.state.doc.resolve(at); if ($a.parent.isTextblock) { view.dispatch(view.state.tr.setSelection(S0.TextSelection.create(view.state.doc, at))); return false; } }
+          }
+          return true;
         }
       },
       filterTransaction: function (tr, state) {
@@ -1178,6 +1186,18 @@
     else { ch = ch.unsetMark('color'); if (c) ch = ch.setMark('color', { c: c }); }
     ch.run();
   }
+  // Farbe auf einen DOM-Bereich (HKEd25.applyColor, Strg/Cmd+Umschalt+H): st = {c, bg} wie in static/editor25.js
+  function colorRange(range, st) {
+    if (!ed || ro() || !range || range.collapsed || !st) return false;
+    var v = ed.view, a, b;
+    if (!v.dom.contains(range.commonAncestorContainer)) return false;
+    try { a = v.posAtDOM(range.startContainer, range.startOffset); b = v.posAtDOM(range.endContainer, range.endOffset); } catch (e) { return false; }
+    if (!(b > a)) return false;
+    var tr = ed.state.tr; tr.setSelection(P.pm.state.TextSelection.create(tr.doc, a, b)); v.dispatch(tr);
+    applyColor(COLORS.indexOf(st.c) >= 0 ? st.c : null, !!st.bg);
+    if (st.c) { try { localStorage.setItem('hk-last-color', JSON.stringify({ c: st.c, bg: !!st.bg })); } catch (e) { /* privat */ } }
+    return true;
+  }
   function refreshBubble() {
     if (!bubble || !ed) return;
     ['b', 'i', 'u', 's', 'icode'].forEach(function (k) { var x = bubble.querySelector('[data-a="' + k + '"]'); if (x) x.classList.toggle('on', ed.isActive(k)); });
@@ -1235,14 +1255,18 @@
     var n = ed.state.doc.nodeAt(pos); if (!n || n.type.name !== 'math_inline') return;
     var dom = ed.view.nodeDOM(pos), r = dom && dom.getBoundingClientRect ? dom.getBoundingClientRect() : { left: 20, bottom: 20 };
     var p = el('div', 'hk-mpop'); p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', T('Formel'));
+    var view = el('div', 'hk-mpop-v');                 // Vorschau mit KaTeX wie im Editor.js-Popover (static/editor25.js)
+    var tex = function (v) { if (window.HKEd25 && HKEd25.renderTex) HKEd25.renderTex(v, view, false).catch(function () { view.textContent = v; }); else view.textContent = v; };
     var inp = el('input', 'hk-mpop-in'); inp.type = 'text'; inp.value = n.attrs.tex || ''; inp.spellcheck = false; inp.setAttribute('aria-label', T('Formel (TeX)'));
     inp.readOnly = ro();
-    p.appendChild(inp); document.body.appendChild(p); mathPop = p;
+    p.appendChild(view); p.appendChild(inp); document.body.appendChild(p); mathPop = p;
+    tex(inp.value);
     p.style.left = Math.max(8, Math.min(r.left, window.innerWidth - p.offsetWidth - 8)) + 'px';
     p.style.top = Math.min(r.bottom + 6, window.innerHeight - p.offsetHeight - 8) + 'px';
     inp.addEventListener('input', function () {
       var cur = ed.state.doc.nodeAt(pos); if (!cur || cur.type.name !== 'math_inline') return;
       ed.view.dispatch(ed.state.tr.setNodeMarkup(pos, null, Object.assign({}, cur.attrs, { tex: inp.value })));
+      tex(inp.value);
     });
     inp.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === 'Escape') {
@@ -1318,7 +1342,7 @@
   }
   function onTr(a) {
     var tr = a.transaction;
-    if (!tr.docChanged || tr.getMeta('hkRemote') || !CB) return;
+    if (!tr.docChanged || tr.getMeta('hkRemote') || tr.getMeta('hkQuiet') || !CB) return;   // hkQuiet: pm-tools.js ctx.change quiet
     var ys = tr.getMeta('y-sync$'); if (ys && ys.isChangeOrigin) return;     // live: Stand aus Yjs (fremd/Undo), nicht als Eingabe melden
     CB.changed(changedIds(tr));
   }
@@ -1331,8 +1355,15 @@
       var a = document.activeElement, own = a && a.closest ? a.closest('[' + AID + ']') : null;
       return own && BOX.contains(own) ? own.getAttribute(AID) : null;
     }
-    var sel = ed.state.selection, b = sel instanceof P.pm.state.NodeSelection && isBlock(sel.node) ? { node: sel.node } : blockAt(sel.from);
+    var sel = ed.state.selection, b = sel instanceof P.pm.state.NodeSelection && isBlock(sel.node) ? { node: sel.node } : blockAt(domFrom(sel.from));
     return b && b.node.attrs.id ? b.node.attrs.id : null;
+  }
+  // T6: Stelle der Schreibmarke laut DOM-Auswahl. ProseMirror uebernimmt sie erst mit "selectionchange" (asynchron) - ein
+  // Tastenkuerzel direkt nach dem Klick (Cmd+/, Cmd+D aus static/keys.js) traefe sonst noch den vorherigen Block
+  function domFrom(fallback) {
+    var g = window.getSelection && window.getSelection();
+    if (!g || !g.rangeCount || !g.focusNode || !ed.view.dom.contains(g.focusNode)) return fallback;
+    try { return ed.view.posAtDOM(g.focusNode, g.focusOffset); } catch (e) { return fallback; }
   }
   function extensions() {
     var Tt = { Node: P.core.Node, Mark: P.core.Mark, Extension: P.core.Extension, mergeAttributes: P.core.mergeAttributes, UniqueID: P.UniqueID };
@@ -1748,5 +1779,5 @@
   function mod(name) { return modApi(name); }
 
   window.HKPmEditor = { load: load, create: create, slash: { register: slashReg, list: function () { return SLASH.slice(); } },
-                        TOOL_SCRIPTS: TOOL_SCRIPTS, use: use, api: mod };
+                        TOOL_SCRIPTS: TOOL_SCRIPTS, use: use, api: mod, colorRange: colorRange };
 })();

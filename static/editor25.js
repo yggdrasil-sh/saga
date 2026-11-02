@@ -313,6 +313,9 @@
   // Farbe auf eine Auswahl anwenden: st = {c, bg} oder {c: null, bg} (entfernen)
   function applyColor(range, st) {
     if (!range || range.collapsed) return false;
+    if (document.body.dataset.editor === 'tiptap') {             // Tiptap (T6): Marken ueber den Editor, nicht im DOM
+      return !!(window.HKPmEditor && HKPmEditor.colorRange && HKPmEditor.colorRange(range, st));
+    }
     var root = editableOf(range.commonAncestorContainer); if (!root) return false;
     var bg = !!st.bg;
     var anc = ancestorColored(range.commonAncestorContainer, bg, root);
@@ -406,7 +409,8 @@
       if (!s || !s.rangeCount || s.isCollapsed || !last || ro()) return;
       var r = s.getRangeAt(0), box = document.getElementById('pg-editor');
       if (!box || !box.contains(r.commonAncestorContainer)) return;
-      e.preventDefault(); applyColor(r, last);
+      e.preventDefault(); if (document.body.dataset.editor === 'tiptap') e.stopPropagation();   // nicht zusaetzlich Marker
+      applyColor(r, last);
     }
   }, true);
 
@@ -855,5 +859,6 @@
   window.HKMoveTune = HKMoveTune;
   window.HKEd25 = { mermaidPaint: mermaidPaint, mermaidPng: mermaidPng, renderStale: renderStale, scheduleRender: scheduleRender,
                     applyColor: applyColor, srcHash: srcHash, sha256js: function (s) { return sha256js(new TextEncoder().encode(s)); },
-                    renderMermaid: renderMermaid, selection: currentSelection, updateBar: updateBar, moveDialog: moveDialog };
+                    renderMermaid: renderMermaid, selection: currentSelection, updateBar: updateBar, moveDialog: moveDialog,
+                    renderTex: renderTex };
 })();

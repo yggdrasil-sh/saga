@@ -68,16 +68,16 @@ async function until(fn, ms = 9000) { const t = Date.now(); let v; while (Date.n
   bl = await blocks();
   ok(`3: Original = Fassung von Anna, darunter Fassung von Bert (${bl.map((b) => b.id + ':' + b.data.text).join(' | ')})`,
      bl[0].data.text === 'Erster Satz (Anna)' && bl[1].data.text === 'Erster Satz (Bert)' && bl[1].tunes && bl[1].tunes.hkconflict && bl[1].tunes.hkconflict.of === bl[0].id, bl);
-  const cfVis = await until(() => B.evaluate(() => !!document.querySelector('#pg-editor [data-block-id] .hk-conflict .hk-cf-take')));
+  const cfVis = await until(() => B.evaluate((s) => !!document.querySelector(s + ' .hk-cf-take'), D.UI.conflict));
   ok('3: Konfliktblock bei Bert (fremde Seite) sichtbar', cfVis);
-  const cfA = await until(() => A.evaluate(() => { const e = document.querySelector('.hk-conflict .hk-cf-t'); return e && e.textContent; }));
+  const cfA = await until(() => A.evaluate((s) => { const e = document.querySelector(s + ' .hk-cf-t'); return e && e.textContent; }, D.UI.conflict));
   ok(`3: Anna sieht die Fassung von Bert mit Anzeigenamen (${cfA})`, cfA && /Bert/.test(cfA) && !/fb-bert/.test(cfA));
-  await B.click('.hk-conflict .hk-cf-take');
+  await B.click(D.UI.conflict + ' .hk-cf-take');
   await sleep(4000);
   bl = await blocks();
   ok(`3: Uebernehmen (bei Bert) -> beim Eigentuemer nur noch Berts Fassung (${bl.map((b) => b.data.text).join(' | ')})`,
      bl.length === 3 && bl[0].data.text === 'Erster Satz (Bert)' && !(bl[0].tunes && bl[0].tunes.hkconflict), bl);
-  ok('3: Anna zeigt das Ergebnis ohne Neu laden', await until(async () => (await textOf(A, bl[0].id)) === 'Erster Satz (Bert)' && !(await A.$('.hk-conflict'))));
+  ok('3: Anna zeigt das Ergebnis ohne Neu laden', await until(async () => (await textOf(A, bl[0].id)) === 'Erster Satz (Bert)' && !(await A.$(D.UI.conflict))));
 
   ok(`Keine Fehler/CSP-Verstoesse (${A.errs.concat(B.errs).join(' / ')})`, !A.errs.length && !B.errs.length);
   await br.close();

@@ -57,6 +57,13 @@ const UI_EDITORJS = {
   search: '.ce-popover__search',
   nothingFound: '.ce-popover__nothing-found-message--displayed',
   inlineTool: '.ce-inline-tool',                              // Knopf der Inline-Leiste
+  colorTool: '.ce-inline-tool.hk-color-tool',                 // Farbknopf der Inline-Leiste
+  table: '.tc-table',                                         // einfache Tabelle (Block table)
+  tableHeadCol: '.hk-tbl-hcol',                               // Tabelle mit Kopfspalte
+  picked: '.pg-picked',                                       // per Klick markierter Block (Bild: Kopieren/Ausschneiden)
+  colResize: '.cols > .col-rs',                               // Griff zwischen zwei Spalten (Breite ziehen)
+  toggleTitle: '.tgl-title',                                  // Titel eines Toggles
+  conflict: `${ROOT} [data-block-id] .hk-conflict`,           // Leiste/Rahmen eines Konfliktblocks (darin .hk-cf-take/-drop/-t)
   editorBox: `${ROOT} .codex-editor`,                         // Flaeche des Editors (Breite/Lage)
   nativeBlock: `${ROOT} .ce-block`,                           // Blockelement des Editors selbst (Kontrolle: alle markiert?)
 };
@@ -77,15 +84,41 @@ const UI_TIPTAP = {
   search: '.pm-never',                                        // Slash-Menue ohne Suchfeld (E1)
   nothingFound: '.pm-never',
   inlineTool: '.pm-bubble .pm-bb',                            // Knopf der Formatierungsleiste (E8)
+  colorTool: '.pm-bubble .pm-bb-col',
+  table: '.pm-tbl',
+  tableHeadCol: '.pm-tbl-hcol',
+  picked: '.ProseMirror-selectednode',                        // Knotenauswahl
+  colResize: '.pm-cols-rs > .col-rs',
+  toggleTitle: '.pm-tgl-c > [data-pm-part="ttitle"]',
+  conflict: `${ROOT} .pm-cf-bar`,                             // Leiste ueber dem Konfliktblock (Dekoration)
   bubble: '.pm-bubble',
   editorBox: `${ROOT} .pm-doc`,
   nativeBlock: `${ROOT} .pm-blk, ${ROOT} .hk-tool`,
 };
 const UI = EDITOR === 'tiptap' ? UI_TIPTAP : UI_EDITORJS;
+// Bedienelemente mit Parameter (Funktionen -> Selektor). Getrennt von UI, weil UI per page.evaluate in den Browser geht
+// (nur Zeichenketten lassen sich uebergeben)
+const UIF_EDITORJS = {
+  colorPick: (c, name) => `.hk-cpal-b.hk-c-${c}`,             // Textfarbe in der geoeffneten Farbauswahl
+  tableCell: (r, c) => `.tc-row:nth-child(${r}) .tc-cell:nth-child(${c})`,   // Zelle (1-basiert)
+  tableRowCells: (r) => `.tc-row:nth-child(${r}) .tc-cell`,  // Zellen einer Zeile
+  toggleHead: (lv) => `.tgl-h${lv} .tgl-title`,               // Titel einer Toggle-Ueberschrift (Stufe 1-3)
+};
+const UIF_TIPTAP = {
+  colorPick: (c, name) => `.menu:not([hidden]) .menu-item:has(.mi-ic.hk-c-${c})`,   // Farbmenue (HK.openMenu)
+  tableCell: (r, c) => `.pm-tbl tr:nth-child(${r}) td:nth-child(${c})`,
+  tableRowCells: (r) => `.pm-tbl tr:nth-child(${r}) td`,
+  toggleHead: (lv) => `.pm-tgl-h${lv} > .pm-tgl-c > [data-pm-part="ttitle"]`,
+};
+const UIF = EDITOR === 'tiptap' ? UIF_TIPTAP : UIF_EDITORJS;
 // sichtbare Eintraege (Titel) des offenen Menues
 const UI_ITEMS = `${UI.popover} ${UI.item}:not(${UI.itemHidden}) ${UI.itemTitle}`;
 // Menue-Eintrag mit genau diesem Titel (Playwright-Selektor)
 const menuItem = (title) => `${UI.popover} ${UI.item}:has(${UI.itemTitle}:text-is("${q(title)}"))`;
+// Eintraege des Block-Menues (Griff ⋮⋮) samt Untermenue: Editor.js = Popover, Tiptap = HK.openMenu (.menu / .menu-sub)
+const BLOCK_ITEMS = EDITOR === 'tiptap' ? '.menu:not([hidden]) .menu-item .mi-t'
+  : `${UI.blockMenu} ${UI.popover} ${UI.popoverItems} ${UI.item}:not(${UI.itemHidden}) ${UI.itemTitle}, ${UI.popover} ${UI.popoverItems} > ${UI.item}:not(${UI.itemHidden}) ${UI.itemTitle}`;
+const blockMenuItem = (title) => EDITOR === 'tiptap' ? `.menu:not([hidden]) .menu-item:has(.mi-t:text-is("${q(title)}"))` : menuItem(title);
 
 // --- Funktionen (page = Playwright-Page) ---------------------------------------------------------------------------------
 // Fassade im Browser: blocks() als schlichte Liste {id, type, parent, slot, text}
@@ -109,8 +142,13 @@ async function find(page, o = {}) {
   return hit ? hit.id : null;
 }
 // sichtbarer Text eines Blocks (Textfeld) oder null
+// (ohne eingehaengte Bedienknoepfe wie den Kommentar-Knopf .cm-add, contenteditable=false - die sind kein Text)
 async function textOfBlock(page, id) {
-  return page.evaluate((s) => { const e = document.querySelector(s); return e ? e.textContent : null; }, text(id));
+  return page.evaluate((s) => {
+    const e = document.querySelector(s); if (!e) return null;
+    if (!e.querySelector('button[contenteditable="false"]')) return e.textContent;
+    const c = e.cloneNode(true); c.querySelectorAll('button[contenteditable="false"]').forEach((b) => b.remove()); return c.textContent;
+  }, text(id));
 }
 // Blockelement-HTML (innerHTML des Textfelds) oder null
 async function htmlOf(page, id) {
@@ -151,5 +189,5 @@ async function setEditor(page, kind = EDITOR) {
   return page.evaluate((on) => HK.api('PUT', '/api/account/editor', { tiptap: on }).then(() => true, () => false), kind === 'tiptap');
 }
 
-module.exports = { ROOT, EDITOR, UI_EDITORJS, UI_TIPTAP, isEditor, setEditor, block, ofType, top, text, textOf, topText, editIn, any, anyText, UI, UI_ITEMS, menuItem,
-  blocks, count, find, textOfBlock, htmlOf, focus, clickEnd, typeEnd, select, selected, current, waitBlock };
+module.exports = { ROOT, EDITOR, UI_EDITORJS, UI_TIPTAP, UIF, isEditor, setEditor, block, ofType, top, text, textOf, topText, editIn, any, anyText, UI, UI_ITEMS, menuItem,
+  BLOCK_ITEMS, blockMenuItem, blocks, count, find, textOfBlock, htmlOf, focus, clickEnd, typeEnd, select, selected, current, waitBlock };
