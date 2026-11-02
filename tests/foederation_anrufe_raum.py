@@ -274,6 +274,25 @@ def part_group(anna, bert, dora):
                                                       and [b for b in got(dora, dora.dev, cid, anna, anna.dev) if b["t"] == "offer"], 5)))
     three = sorted([anna.dev["id"], bert.dev["id"], dora.dev["id"]])
     ok("Teilnehmerliste auf A, B und C gespiegelt (3 Geraete)", wait(lambda: legs_of(anna, cid) == three and legs_of(bert, cid) == three and legs_of(dora, cid) == three, 8))
+    # 2.5 Fund F2/F1 (Pentest 2): der fuehrende Server (A) meldet C Endpunkte fremder Hosts bzw. Nicht-Mitglieder -> verworfen;
+    # Personen anderer beteiligter Server (Bert auf B, mit C nicht verbunden) bleiben; Namen bereinigt (Bidi/Steuerzeichen)
+    real = [{"device": u.dev["id"], "who": u.handle, "role": "member", "state": "active", "caps": CAPS, "name": ""} for u in (anna, bert, dora)]
+    fake_ev, fake_nm, fake_ok = C.hexid(), C.hexid(), C.hexid()
+    forged = real + [{"device": fake_ev, "who": "~bbbbbbbbbbbbbbbb@evil.example", "role": "member", "state": "active", "caps": CAPS},
+                     {"device": fake_nm, "who": "~aaaaaaaaaaaaaaaa@" + HB, "role": "member", "state": "active", "caps": CAPS},
+                     {"device": fake_ok, "who": anna.handle, "role": "companion", "state": "active", "caps": CAPS,
+                      "name": "Anna\u202e\u200bgpj.exe\x07 \u00b7 " + HB}]
+    s, _ = FC.signed_post("c", FC.own_priv("a"), "a", "/fed/v2/call", {"op": "roster", "id": cid, "kind": "group", "media": "video", "state": "active",
+                                                                       "legs": forged})
+    lc = {x["device"]: x for x in (call_of(dora, cid) or {}).get("legs", [])}
+    ok(f"F2: C verwirft Endpunkte fremder Hosts/Nicht-Mitglieder vom fuehrenden Server ({s}, {len(lc)} Endpunkte)", s == 200
+       and fake_ev not in lc and fake_nm not in lc and bert.dev["id"] in lc and fake_ok in lc)
+    ok("F2: C protokolliert den Fremd-Host-Endpunkt", any("roster: leg of" in x for x in FC.fed_log("c", "call.forged")))
+    nm = (lc.get(fake_ok) or {}).get("dev_name", "")
+    ok(f"F1: foederierter Geraetename bereinigt ({nm!r})", nm and not any(ch_ in nm for ch_ in ("\u202e", "\u200b", "\x07", "\u00b7")))
+    s, _ = FC.signed_post("c", FC.own_priv("a"), "a", "/fed/v2/call", {"op": "roster", "id": cid, "kind": "group", "media": "video", "state": "active",
+                                                                       "legs": real})
+    ok("C: Liste wieder wie beim fuehrenden Server", s == 200 and legs_of(dora, cid) == three)
     # 2.5 Gjallarhorn P4: Frame-Schluessel ueber Servergrenzen (versiegelt im Auftrag signal, sternfoermig ueber A)
     kb, sb = secrets.token_bytes(32), secrets.token_hex(8)
     fk = json.dumps({"t": "fkey", "n": 0, "kid": 0, "key": base64.b64encode(kb).decode(), "s": sb}, separators=(",", ":"))

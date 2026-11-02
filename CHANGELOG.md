@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Sicherheit: Fix-Runde nach Pentest 2 (Server)
+- Föderierte Anrufe: Ein führender Server kann in der Teilnehmerliste keine Teilnehmenden fremder Server mehr
+  unterschieben. Endpunkte fremder Personen übernimmt Saga nur, wenn sie zum führenden Server selbst gehören oder
+  Mitglied des Chats sind und ihr Server (falls hier bekannt) aktiv verbunden ist; anderes wird verworfen und als
+  `call.forged` protokolliert. Personen dritter Server in Gruppenanrufen (sternförmig über den führenden Server) bleiben.
+- Föderierte Anrufe: Geräte- und Anzeigenamen anderer Server werden wie andere fremde Namen bereinigt (Steuer-, Bidi- und
+  unsichtbare Zeichen, Trennpunkte).
 ### Anrufe über Knoten: weniger Stocken auf TCP/TLS (2.5, Testlabor A1)
 - Web: Auf den Wegen TCP und TLS deckelt der Client die Senderate selbst (Kamera `m` 600 bzw. 450 kbit/s, Bildschirm
   900 kbit/s/8 fps bzw. 600 kbit/s/5 fps bis 720p). Steigt die RTT der Bild-Leitung deutlich über ihren kleinsten Wert,

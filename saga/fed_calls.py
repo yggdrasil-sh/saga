@@ -199,8 +199,9 @@ OPS3 = ("join", "leave", "roster", "invite", "promote")
 
 
 def _name(d):
-    n = d.get("name")
-    return n[:80] if isinstance(n, str) else ""
+    """Geraete-/Anzeigename aus einer foederierten Nachricht: bereinigt wie Namen anderer Server (Steuer-, Bidi- und
+    unsichtbare Zeichen weg, keine Trennpunkte - federation.remote_name; Fund F1 Pentest 2)."""
+    return F.remote_name(d.get("name"), 80) if isinstance(d, dict) else ""
 
 
 def _h(c, who):
@@ -585,13 +586,35 @@ def group_ended(c, call, reason):
         c.after_commit(lambda pid=p["id"], body=body: FC._volatile(pid, body, path="/fed/v2/call", drop=False))
 
 
+def _remote_ok(c, call, peer, h, who, mem):
+    """2.5 (Fund F2 Pentest 2): Endpunkt einer fremden Person, den der fuehrende Server meldet, nur, wenn er dazugehoert:
+    Person des fuehrenden Servers selbst, oder Mitglied des Chats des Anrufs (Gruppenanruf: Personen dritter Server kommen
+    legitim ueber den fuehrenden Server, sternfoermig - auch ohne eigene Verbindung dorthin). Kennen wir den Server der
+    Person, muss die Verbindung aktiv sein (getrennt/gesperrt: nein). Sonst verwerfen und protokollieren."""
+    host = FC.split_handle(h)[1]
+    if host == peer["host"]:
+        return True
+    if mem.get(who) is not None:
+        q = F.peer_by(c, "host", host)
+        if q is None or q["status"] == "active":
+            return True
+    F.log(c, "call.forged", peer, f"roster: leg of {host}", throttle=(peer["id"], "cleghost"))
+    return False
+
+
+def _members_of(c, call):
+    return dict(FC.members(c, call["chat_id"])) if call.get("chat_id") else {}
+
+
 def _apply_legs(c, call, peer, legs, keep=None, gone=None):
     """Teilnehmerliste des fuehrenden Servers hier uebernehmen: Endpunkte anlegen/aktualisieren, fehlende austragen.
-    Eigene Geraete nur, wenn sie wirklich zum genannten Konto gehoeren."""
+    Eigene Geraete nur, wenn sie wirklich zum genannten Konto gehoeren; fremde nur vom fuehrenden Server selbst bzw. von
+    Mitgliedern des Chats (_remote_ok)."""
     if not isinstance(legs, list):
         return
     now = time.time()
     seen = set()
+    mem = None
     for x in legs[:chat.MEMBERS_MAX]:
         if not isinstance(x, dict):
             continue
@@ -603,6 +626,10 @@ def _apply_legs(c, call, peer, legs, keep=None, gone=None):
             continue
         if not local and FC.split_handle(x.get("who"))[1] == F.SELF_HOST:
             continue
+        if not local:
+            mem = _members_of(c, call) if mem is None else mem
+            if not _remote_ok(c, call, peer, x.get("who"), who, mem):
+                continue
         seen.add(dev)
         cur = c.execute("SELECT who, state, role FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], dev)).fetchone()
         role = x.get("role") if x.get("role") in calls.ROLES else "member"
@@ -1088,7 +1115,7 @@ def _room_signal_in(c, peer, d, call):
 
 def _apply_one(c, call, peer, x, now):
     who = _who(c, x.get("who"))
-    if not who or not sharing.is_remote(who):
+    if not who or not sharing.is_remote(who) or not _remote_ok(c, call, peer, x.get("who"), who, _members_of(c, call)):
         return
     calls._leg_put(c, call["id"], x["device"], who, x.get("role") if x.get("role") in calls.ROLES else "member", peer["id"],
                    calls.caps_in(x.get("caps")), None, name=_name(x), now=now)
