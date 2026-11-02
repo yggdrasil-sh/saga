@@ -30,7 +30,8 @@ def body(cid, **kw):
                      {"t": 3000, "dir": "out", "src": "v0", "rid": "h", "fps": 30, "h": 720, "kbps": 1400, "lost": 0, "nack": 0, "pli": 2,
                       "freeze": 0, "kf": 2, "rtt": 38, "qlr": "bandwidth", "enc": "MediaCodec (c2.qti.avc.encoder)",
                       "qcpu": 1800, "qbw": 0, "encms": 12.5, "fdrop": 7}],
-         "events": [{"t": 2500, "k": "layers", "d": "v est=1800 s0:m3@ab12"}, {"t": 2900, "k": "quality", "d": "good>mid"}]}
+         "events": [{"t": 2500, "k": "layers", "d": "v est=1800 s0:m3@ab12"}, {"t": 2900, "k": "quality", "d": "good>mid"},
+                    {"t": 2950, "k": "tx", "d": "L0>L1 rtt=330 base=160 turn"}]}
     b.update(kw)
     return b
 
@@ -144,7 +145,7 @@ def run():
            and not [ln for ln in lines if "geheim-feld" in ln or '"ip"' in ln or '"name"' in ln])
         ok(f"Zeile: Anruf gekuerzt, Plattform, Weg, Knoten, Zaehler ({a.get('call')}, {a.get('n')})",
            a.get("call") == cid[:12] and a.get("plat") == "android" and a.get("path") == "horn" and a.get("node") == "horn-1.example.org"
-           and a.get("n") == [2, 2])
+           and a.get("n") == [2, 3])
         ok("Zeile: Proben und Ereignisse vollstaendig (rid, qlr, enc, kbps)",
            a.get("samples", [{}, {}])[1].get("rid") == "h" and a["samples"][1].get("qlr") == "bandwidth"
            and a["samples"][1].get("enc", "").startswith("MediaCodec") and a["samples"][0].get("kbps") == 812.5
