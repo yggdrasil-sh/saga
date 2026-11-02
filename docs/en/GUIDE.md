@@ -130,7 +130,7 @@ default), Docker's userland proxy accepts the IPv6 connections and passes them o
 sign-ins and the rate limits, and the log does not show the real address. Saga detects this and shows a note in the
 admin area ("sign-ins arrive from the Docker gateway …"). Fix it with one of these:
 - **Reverse proxy on the host** (recommended, as above): Caddy/nginx listens on IPv4 and IPv6 directly, Saga only
-  locally (`HOST_BIND=127.0.0.1`), `TRUSTED_PROXIES=127.0.0.1` – the proxy sends the real address in `X-Forwarded-For`.
+  locally (`HOST_BIND=127.0.0.1`), `TRUSTED_PROXIES=*` (as above; in Docker the proxy appears as the gateway, not as 127.0.0.1) – the proxy sends the real address in `X-Forwarded-For`.
   If the proxy itself runs as a container in the same Docker network, it has the same problem: use `network_mode: host`
   for the proxy or IPv6 in the Docker network (next point), and set `TRUSTED_PROXIES` to its address in that network.
 - **IPv6 in the Docker network:** in `docker-compose.yml` under `networks: default:` set `enable_ipv6: true` and an

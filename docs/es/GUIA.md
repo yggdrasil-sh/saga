@@ -131,7 +131,7 @@ la puerta de enlace de Docker (p. ej. `172.18.0.1`). Saga ve entonces la misma d
 IPv6: comparten el freno tras intentos fallidos y los límites de frecuencia, y el registro no muestra la dirección real.
 Saga lo detecta y muestra un aviso en el área de administración. Solución, una de estas:
 - **Proxy inverso en el host** (recomendado, como arriba): Caddy/nginx escucha directamente en IPv4 e IPv6, Saga solo
-  en local (`HOST_BIND=127.0.0.1`), `TRUSTED_PROXIES=127.0.0.1`: el proxy envía la dirección real en `X-Forwarded-For`.
+  en local (`HOST_BIND=127.0.0.1`), `TRUSTED_PROXIES=*` (como arriba; en Docker el proxy aparece como la puerta de enlace, no como 127.0.0.1): el proxy envía la dirección real en `X-Forwarded-For`.
   Si el propio proxy corre como contenedor en la misma red de Docker, tiene el mismo problema: usa `network_mode: host`
   para el proxy o IPv6 en la red de Docker (siguiente punto) y pon `TRUSTED_PROXIES` a su dirección en esa red.
 - **IPv6 en la red de Docker:** en `docker-compose.yml`, en `networks: default:`, `enable_ipv6: true` y una subred

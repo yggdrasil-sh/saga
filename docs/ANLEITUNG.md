@@ -130,7 +130,7 @@ Docker-Gateways (z. B. `172.18.0.1`) weiter. Saga sieht dann für alle IPv6-Besu
 die Bremse nach Fehlversuchen und die Ratengrenzen, das Protokoll zeigt nicht die echte Adresse. Saga erkennt das und
 zeigt im Admin-Bereich einen Hinweis („Anmeldungen kommen vom Docker-Gateway …“). Abhilfe, eine davon:
 - **Reverse Proxy auf dem Host** (empfohlen, wie oben): Caddy/nginx lauscht direkt auf IPv4 und IPv6, Saga nur lokal
-  (`HOST_BIND=127.0.0.1`), `TRUSTED_PROXIES=127.0.0.1` – der Proxy schickt die echte Adresse in `X-Forwarded-For`.
+  (`HOST_BIND=127.0.0.1`), `TRUSTED_PROXIES=*` (wie oben; in Docker erscheint der Proxy als Gateway, nicht als 127.0.0.1) – der Proxy schickt die echte Adresse in `X-Forwarded-For`.
   Läuft der Proxy selbst als Container im selben Docker-Netz, gilt dasselbe Problem für ihn: dann `network_mode: host`
   für den Proxy oder IPv6 im Docker-Netz (nächster Punkt) und `TRUSTED_PROXIES` auf seine Adresse im Docker-Netz.
 - **IPv6 im Docker-Netz:** in der `docker-compose.yml` unter `networks: default:` `enable_ipv6: true` und ein
