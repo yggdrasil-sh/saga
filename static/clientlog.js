@@ -2,7 +2,8 @@
    Frueh geladen (vor common.js), ohne Abhaengigkeiten. Sammelt Programmfehler (window error, unhandledrejection) ohne
    Inhalte: Fehlertexte werden bereinigt (Adressen, E-Mail, Zahlen, IDs, Zitate -> Platzhalter), Stacks nur als
    Funktionsname + static/<datei>.js:Zeile:Spalte. Gleiche Fehler werden gezaehlt statt wiederholt, hoechstens ein
-   Bericht je 30 s, beim Verlassen der Seite der Rest (fetch keepalive - sendBeacon kann den Kopf X-Saga nicht setzen).
+   Bericht je 30 s, beim Verlassen der Seite der Rest (fetch mit keepalive statt sendBeacon: sendBeacon kann den Kopf
+   X-Saga nicht setzen, den der Server als Schutz vor fremden Seiten verlangt).
    Gesendet wird nur, wenn der Server clientlog1 meldet. Daneben ein Ringpuffer der letzten 200 Ereignisse im Speicher
    (Fehler, Status je Endpunkt-Muster, Ansichtswechsel, Live-Kanal, Speichern) - verlaesst den Browser nur ueber
    "Diagnose senden" (Einstellungen -> Hilfe, HKLog.diag). Fehler im Logger selbst werden nie gemeldet (keine Schleife). */
@@ -10,7 +11,7 @@
   'use strict';
   if (window.HKLog) return;
   var T0 = Date.now(), RATE = 30000, ITEMS = 20, RING = 200, MAX_REPORTS = 40;
-  var pending = [], byKey = {}, ring = [], lastSent = 0, timer = null, sent = 0, busy = false, off = false, feat = null, ver = '';
+  var pending = [], byKey = {}, ring = [], lastSent = 0, timer = null, sent = 0, busy = false, off = false, feat = null, featOn = false, ver = '';
   var SID = (function () {
     var a = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', s = '', r = new Uint8Array(16);
     try { crypto.getRandomValues(r); } catch (e) { for (var i = 0; i < 16; i++) r[i] = Math.floor(Math.random() * 256); }
@@ -20,7 +21,8 @@
   function now() { return Math.max(0, Date.now() - T0); }
   var oFetch = window.fetch ? window.fetch.bind(window) : null;
 
-  // --- Bereinigung (der Server bereinigt noch einmal; hier: so wenig wie moeglich verlassen lassen) ---------------------
+  // --- Bereinigung (der Server bereinigt noch einmal und ersetzt dazu jedes Wort, das weder nach Programm aussieht noch
+  //     in einer Fehlermeldung bzw. einem Saga-Text steht - z. B. einen Seitentitel ohne Anfuehrungszeichen) -------------
   var IDENT = /^[A-Za-z_$][\w$.]{0,39}$/;
   function scrub(s, max) {
     s = String(s == null ? '' : s).slice(0, 4000).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, ' ');
@@ -33,7 +35,8 @@
     s = s.replace(/'([^'\n]{0,200})'|"([^"\n]{0,200})"|`([^`\n]{0,200})`|„([^“”\n]{0,200})[“”]|“([^”\n]{0,200})”|«([^»\n]{0,200})»/g,
       function (m, a, b, c, d, e, f) {
         var x = a != null ? a : b != null ? b : c != null ? c : d != null ? d : e != null ? e : f;
-        return x && IDENT.test(x) ? m : m[0] + '<str>' + ('\'"`'.indexOf(m[0]) >= 0 ? m[0] : '');
+        var ascii = '\'"`'.indexOf(m[0]) >= 0;
+        return x && IDENT.test(x) ? (ascii ? m : "'" + x + "'") : ascii ? m[0] + '<str>' + m[0] : '"<str>"';
       });
     s = s.replace(/(^|[^\w.:<])\/[^\s"'<>()]+/g, function (m, pre) { return pre + '<path>'; });
     s = s.replace(/[~@][\w.\-]{2,}/g, '<id>');
@@ -42,9 +45,37 @@
     s = s.replace(/static\/[\w.\-\/]+\.(?:js|mjs|css|html)(?::\d{1,7}:\d{1,8})?|(^|[^\w$])\d+(?:[.,]\d+)*/g, function (m, pre) {
       return m.indexOf('static/') === 0 ? m : (pre || '') + '<n>';
     });
+    // Woerter: nur Programm-Bezeichner und Woerter englischer Fehlermeldungen bleiben (wie saga/clientlog.py _ERR_WORDS),
+    // alles andere - etwa ein Seitentitel ohne Anfuehrungszeichen - wird <w>
+    // Woerter: nur Programm-Bezeichner, Eigenschaften in Anfuehrungszeichen ('title') und Woerter englischer
+    // Fehlermeldungen bleiben (wie _ERR_WORDS in saga/clientlog.py) - alles andere, etwa ein Seitentitel ohne
+    // Anfuehrungszeichen oder ein uebersetzter Text, wird <w>
+    s = s.replace(/<[a-z]+>|static\/[\w.\-\/]+|'[a-z_$][\w$.]{0,39}'|[^\s\d_.,:;()\[\]{}<>#'"`=+\-*\/!?&|%$~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026][^\s.,:;()\[\]{}<>#'"`=+\-*\/!?&|%~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026]*(?:\.[\w$]+)*/g, function (w) {
+      if (w[0] === '<' || w[0] === "'" || w.indexOf('static/') === 0 || w.length === 1 || /[.$_\d]|[a-z][A-Z]|(?:Error|Exception)$/.test(w) || ERRW[w.toLowerCase()] === 1) return w;
+      return '<w>';
+    });
     s = s.replace(/\s{2,}/g, ' ').trim();
     return s.slice(0, max || 300);
   }
+  var ERRW = {};
+  ('a abort aborted access again allowed already an anr append are argument arguments array assignment at ' +
+    'attempting audio be been blocked bool boolean by call called can cannot canvas child children chunk class ' +
+    'clipboard close closed code codec completed connection constant constructor contains context could count ' +
+    'crash critical cross crypto database decode decoding decrypt defined denied device devices did disabled do ' +
+    'document does double dynamically element elements enabled encode encoding encrypt end enum error errors ' +
+    'eventsource exceeded exception execute executing exit expected export fail failed failure false fatal fetch ' +
+    'fetching float for from function functions gesture get had has have http https image import imported in ' +
+    'index input insert instance instanceof int interaction internal into invalid is it iterable iterator its ' +
+    'json key keys killed later length limit load loaded loading loop lost main map maximum media memory message ' +
+    'method methods missing module must name nan navigator network new nil no node nodes none not notifications ' +
+    'null number object observer of offline offset ok on online only oom open opened operation optional origin ' +
+    'out parent parse parsing paused permission play please promise properties property protocol queue quota ' +
+    'range read reading reference rejected rejection remove removed request required resolved resource response ' +
+    'script selector self service set setting should signal signature size socket stack state status still ' +
+    'storage stream streams string struct support supported syntax that the this thread timed timeout to token ' +
+    'track tracks transaction true try type types uncaught undefined undelivered unexpected unhandled unknown ' +
+    'upgrade user value values variable verification verify version video warning was webgl websocket were when ' +
+    'which while window with without worker write yet').split(' ').forEach(function (w) { ERRW[w] = 1; });
   var LOC = /(?:[a-z][a-z0-9+.\-]*:\/\/[^\/\s]*)?\/static\/([\w.\-\/]{1,80}?\.m?js)(?:\?[^\s:)]*)?:(\d{1,7}):(\d{1,8})/i;
   function stackOf(st) {
     if (typeof st !== 'string' || !st) return '';
@@ -167,22 +198,29 @@
     if (!oFetch) { feat = Promise.resolve(false); return feat; }
     feat = oFetch('/api/version', { credentials: 'same-origin', headers: { 'X-Saga': '1' } }).then(function (r) { return r.json(); }).then(function (v) {
       ver = String(v.version || '').replace(/[^A-Za-z0-9._+\-]/g, '').slice(0, 40);
-      return (v.features || []).indexOf('clientlog1') >= 0;
+      featOn = (v.features || []).indexOf('clientlog1') >= 0;
+      return featOn;
     }).catch(function () { feat = null; return false; });
     return feat;
   }
   function head() { return { v: 1, app: 'web', ver: ver, os: osOf(), dev: devOf(), sid: SID }; }
   function schedule() {
     if (timer || off || !pending.length) return;
+    feature();                                                     // frueh fragen: beim Verlassen ist die Antwort schon da
     var wait = Math.max(1500, lastSent + RATE - Date.now());     // kurz sammeln (Fehler + Folgefehler in einem Bericht)
     timer = setTimeout(function () { timer = null; flush(false); }, wait);
   }
   function flush(leaving) {
     if (off || !pending.length || !oFetch) return;
     if (sent >= MAX_REPORTS) { off = true; return; }
-    if (leaving && feat === null) return;                          // Feature unbekannt: beim Verlassen nicht erst fragen
+    if (leaving) { if (featOn) send(); return; }                   // Verlassen: nur, wenn das Feature schon bekannt ist - sofort
     feature().then(function (on) {
       if (!on) { if (feat) { off = true; pending = []; byKey = {}; } return; }
+      send();
+      schedule();
+    }).catch(function () {});
+  }
+  function send() {
       if (!pending.length) return;
       var items = pending; pending = []; byKey = {};
       var body = head(); body.items = items;
@@ -193,8 +231,6 @@
         if (r.status === 404) off = true;                            // Schalter aus
         else if (r.status === 429) lastSent = Date.now() + 60000;    // Server bremst: laenger warten
       }).catch(function () {});
-      schedule();
-    }).catch(function () {});
   }
   function onLeave() { try { if (pending.length) flush(true); } catch (e) { /* egal */ } }
   window.addEventListener('pagehide', onLeave);

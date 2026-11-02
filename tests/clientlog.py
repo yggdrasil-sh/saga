@@ -291,6 +291,13 @@ def run(users):
        and (it.get("stack") or "").count("<ext>") == 2 and "?v=" not in (it.get("stack") or ""))
     ok(f"src ohne Host und ?v=, n, line/col, screen ({it.get('src')}, {it.get('n')}, {it.get('line')}, {it.get('screen')})",
        it.get("src") == "static/pages.js" and it.get("n") == 3 and it.get("line") == 12 and it.get("col") == 5 and it.get("screen") == "pages")
+    s, _ = req("POST", "/api/client/log", D, head(items=[item(msg=f"Error: {TITLE} Kuchenbudenwoche"),
+                                                          item(msg="Nicht gespeichert: HTTP 500"),
+                                                          item(msg="ResizeObserver loop completed with undelivered notifications.")]))
+    lw = (lines_since(n0, "clientlog") or [""])[-1]
+    msgs = [x.get("msg") for x in (json.loads(lw[len("clientlog "):]).get("items") if lw else [])]
+    ok(f"Titel ohne Anfuehrungszeichen -> <w>, Katalog- und Fehlermeldungstexte bleiben ({msgs})",
+       msgs == ["Error: <w> <w> <w> <w>", "Nicht gespeichert: HTTP <n>", "ResizeObserver loop completed with undelivered notifications."])
     it2 = (rec.get("items") or [{}, {}])[1]
     ok(f"Bezeichner in Zitaten bleiben ('title'), fremde src -> <ext> ({it2.get('msg')}, {it2.get('src')})",
        "(reading 'title')" in (it2.get("msg") or "") and it2.get("src") == "<ext>" and it2.get("k") == "unhandled")

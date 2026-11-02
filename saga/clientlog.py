@@ -89,7 +89,8 @@ _NUM = re.compile(r"(?<![\w$])\d+(?:[.,]\d+)*|(?<=[A-Za-z_$])\d{3,}")   # auch "
 _QUOTE = re.compile("'([^'\\n]{0,200})'|\"([^\"\\n]{0,200})\"|`([^`\\n]{0,200})`|\u201e([^\u201c\u201d\\n]{0,200})[\u201c\u201d]"
                     "|\u201c([^\u201d\\n]{0,200})\u201d|\u00ab([^\u00bb\\n]{0,200})\u00bb|\u2018([^\u2019\\n]{0,200})\u2019")
 _IDENT = re.compile(r"[A-Za-z_$][\w$.]{0,39}")
-_ALLOW = re.compile(r"[^A-Za-z0-9_\s.,:;()\[\]{}<>#'\"=+\-*/!?&|%$~^À-ÖØ-öø-ÿ]")   # sonst -> ?
+_PROP = re.compile(r"[a-z_$][\w$.]{0,39}")          # Eigenschaft/Funktion in Anfuehrungszeichen ('title'), klein beginnend
+_ALLOW = re.compile(r"[^\w\s.,:;()\[\]{}<>#'\"=+\-*/!?&|%$~^«»„“”–—…]")   # sonst -> ?
 _SPACES = re.compile(r"\s{2,}")
 
 
@@ -159,7 +160,9 @@ def _url(m):
 def _quote(m):
     inner = next((g for g in m.groups() if g is not None), "")
     q = m.group(0)[0]
-    return m.group(0) if _IDENT.fullmatch(inner or "x") and inner else q + "<str>" + (q if q in "'\"`" else "")
+    if inner and _IDENT.fullmatch(inner):
+        return m.group(0) if q in "'\"`" else "'" + inner + "'"
+    return q + "<str>" + q if q in "'\"`" else '"<str>"'
 
 
 def scrub(s, limit=MSG_MAX):
@@ -179,9 +182,77 @@ def scrub(s, limit=MSG_MAX):
     s = _TOKEN.sub("<tok>", s)
     s = re.sub(r"(?<![\w.])static/[\w.\-/]+\.(?:js|mjs|css|html)(?::\d{1,7}:\d{1,8})?|" + _NUM.pattern,
                lambda m: m.group(0) if m.group(0).startswith("static/") else "<n>", s)
+    s = _words(s)
     s = _ALLOW.sub("?", s)
     s = _SPACES.sub(" ", s).strip()
     return s[:limit]
+
+
+# Woerter: erlaubt ist nur, was nach Programm aussieht (Bezeichner mit . _ $ Ziffer oder BinnenGross, ...Error/Exception,
+# einzelne Buchstaben = verkleinerte Namen), Woerter englischer Fehlermeldungen der Laufzeitumgebungen (_ERR_WORDS) und
+# ganze Abschnitte aus mindestens zwei Woertern, die genau so in einem Saga-Katalog stehen (z. B. "Nicht gespeichert"
+# vor ": {err}" - in jeder Sprache; einzelne Woerter wie ein Seitentitel "Woche" zaehlen nicht). Alles andere - etwa ein Seitentitel ohne Anfuehrungszeichen - wird <w>.
+_WORD = re.compile(r"[^\W\d_][\w$]*(?:\.[\w$]+)*")
+_DELIM = re.compile(r"(<[a-z]+>|\{\w+(?::[^{}]*)?\}|[:;,!?()\[\]{}\"'`\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026|=]|\.(?=\s|$))")
+_ERR_WORDS = frozenset("""
+a an the of to in on at by for from with without into is are was were be been not no null undefined nan true false
+cannot can could read write set get call called properties property reading setting object function functions method
+methods value values type types error errors exception failed fail failure load loading loaded fetch fetching network
+request response resource attempting when while operation aborted abort timeout timed out quota exceeded has been
+storage permission denied access allowed blocked origin cross script syntax unexpected token end input json parse
+parsing invalid argument arguments range maximum stack size reference defined assignment constant variable
+iterable iterator promise rejected resolved unhandled rejection uncaught internal unknown missing required expected
+element elements node nodes child children parent document window insert remove removed append contains selector
+execute executing constructor instance instanceof new length index offset count number string boolean array
+map key keys message name code status http https ok closed close open opened connection websocket eventsource socket
+media device devices stream streams track tracks play paused user gesture interaction not supported support disabled
+enabled decode encode encoding decoding image audio video codec context lost webgl canvas worker service navigator
+clipboard observer loop completed undelivered notifications limit is has have had does do did this that it its which
+only already still yet must should please try again later offline online state crypto decrypt encrypt signature verify
+verification module import export dynamically imported chunk database transaction version upgrade int double float
+bool optional nil none self class struct enum protocol thread main queue signal fatal crash exit killed memory oom anr
+warning critical
+""".split())
+_SEGS = {"v": None}
+
+
+def _seg_norm(x):
+    return " ".join(x.split()).lower()
+
+
+def catalog_segs():
+    """Abschnitte aller Katalogtexte (alle Sprachen), getrennt an Platzhaltern und Satzzeichen wie in _words."""
+    if _SEGS["v"] is None:
+        segs = set()
+        try:
+            from saga import i18n as _i18n
+            for cat in _i18n.CATALOG.values():
+                for k, v in cat.items():
+                    for x in (k, v):
+                        if isinstance(x, str) and len(x) < 400:
+                            segs.update(n for n in (_seg_norm(p) for p in _DELIM.split(x.split("##")[0])) if " " in n)
+        except Exception:  # noqa: BLE001 - ohne Kataloge: nur Fehlerwoerter
+            pass
+        _SEGS["v"] = frozenset(segs)
+    return _SEGS["v"]
+
+
+def _word(m):
+    w = m.group(0)
+    if len(w) == 1 or re.search(r"[.$_\d]|[a-z][A-Z]|(?:Error|Exception)$", w) or w.lower() in _ERR_WORDS:
+        return w
+    return "<w>"
+
+
+def _words(s):
+    segs, out, parts = catalog_segs(), [], _DELIM.split(s)
+    for i, part in enumerate(parts):
+        quoted = 0 < i < len(parts) - 1 and parts[i - 1] in ("'", '"', "`") and parts[i + 1] == parts[i - 1]
+        if i % 2 or not part.strip() or _seg_norm(part) in segs or (quoted and _PROP.fullmatch(part)):
+            out.append(part)
+        else:
+            out.append(_WORD.sub(_word, part))
+    return "".join(out)
 
 
 _LOC = re.compile(r"(?:[a-z][a-z0-9+.\-]*://[^/\s]*)?(/static/[\w.\-/]{1,80}?\.m?js)(?:\?[^\s:)]*)?:(\d{1,7}):(\d{1,8})", re.I)
