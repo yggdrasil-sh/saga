@@ -57,8 +57,8 @@ from saga.core import ADMIN_URL, ASSET_V, CA_FILE  # noqa: F401
 from saga.dashboard import all_services, services_changed, visible_services  # noqa: F401
 from saga.siteicons import svc_icon_path  # noqa: F401
 from saga.userdata import delete_user_data, revoke_user_logins, user_usage  # noqa: F401
-from saga.web_auth import EMAIL_RE, PROXY_WARN, _ip  # noqa: F401
-__all__ = ["app", "files_gc", "ADMIN_URL", "ASSET_V", "BASE_URL", "CA_FILE", "EMAIL_RE", "HERE", "PROXY_WARN", "SECRET", "_cal_fernet", "_ip",
+from saga.web_auth import EMAIL_RE, GW_WARN, PROXY_WARN, _ip  # noqa: F401
+__all__ = ["app", "files_gc", "ADMIN_URL", "ASSET_V", "BASE_URL", "CA_FILE", "EMAIL_RE", "HERE", "GW_WARN", "PROXY_WARN", "SECRET", "_cal_fernet", "_ip",
            "all_services", "delete_user_data", "revoke_user_logins", "services_changed", "svc_icon_path", "title", "user_usage",
            "visible_services"]
 

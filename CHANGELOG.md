@@ -29,6 +29,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Live mitschreiben über Servergrenzen: Wird eine Verbindung getrennt, schließt Saga sofort die offenen Weiterleitungen
   zu Seiten dieser Instanz (lokale Clients fallen auf das normale Speichern zurück) und lässt deren Abos auf Seiten hier
   fallen, statt sie bis zum Ablauf im Speicher zu halten.
+- Admin-Bereich: Hinweis, wenn Anmeldungen ohne `X-Forwarded-For` vom Gateway des Docker-Netzes kommen. Das passiert,
+  wenn Docker den Port veröffentlicht und IPv6-Besucher über den Userland-Proxy von Docker kommen: Sie verlieren ihre
+  Adresse und teilen sich die Bremse nach Fehlversuchen. Die Anleitung (Abschnitt 3, „IPv6 und Docker“) nennt die
+  Abhilfen (Reverse Proxy auf dem Host, IPv6 im Docker-Netz, `userland-proxy`).
+- Anleitung: Die Caddy-Vorlage lehnt fremde Hostnamen ab (`:80, :443 { abort }`), statt mit einer leeren Seite und
+  Status 200 zu antworten.
 ### Anrufe über Knoten: weniger Stocken auf TCP/TLS (2.5, Testlabor A1)
 - Web: Auf den Wegen TCP und TLS deckelt der Client die Senderate selbst (Kamera `m` 600 bzw. 450 kbit/s, Bildschirm
   900 kbit/s/8 fps bzw. 600 kbit/s/5 fps bis 720p). Steigt die RTT der Bild-Leitung deutlich über ihren kleinsten Wert,

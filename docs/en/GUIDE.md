@@ -113,7 +113,31 @@ saga.example.org {
     }
     reverse_proxy 127.0.0.1:8080
 }
+
+# Reject foreign host names: without this block Caddy answers requests with another Host header
+# (e.g. the IP address or someone else's name) with an empty page and status 200
+:80, :443 {
+    abort
+}
 ```
+
+Check: `curl -sk -o /dev/null -w '%{http_code}' -H 'Host: other.example' https://saga.example.org/` must return
+`000` (connection closed), not `200`.
+
+**IPv6 and Docker:** If Docker publishes the port (`HOST_BIND`/`HOST_PORT`) and the Docker network is IPv4 only (the
+default), Docker's userland proxy accepts the IPv6 connections and passes them on with the address of the Docker gateway
+(e.g. `172.18.0.1`). Saga then sees the same address for every IPv6 visitor: they share the slowdown after failed
+sign-ins and the rate limits, and the log does not show the real address. Saga detects this and shows a note in the
+admin area ("sign-ins arrive from the Docker gateway …"). Fix it with one of these:
+- **Reverse proxy on the host** (recommended, as above): Caddy/nginx listens on IPv4 and IPv6 directly, Saga only
+  locally (`HOST_BIND=127.0.0.1`), `TRUSTED_PROXIES=127.0.0.1` – the proxy sends the real address in `X-Forwarded-For`.
+  If the proxy itself runs as a container in the same Docker network, it has the same problem: use `network_mode: host`
+  for the proxy or IPv6 in the Docker network (next point), and set `TRUSTED_PROXIES` to its address in that network.
+- **IPv6 in the Docker network:** in `docker-compose.yml` under `networks: default:` set `enable_ipv6: true` and an
+  IPv6 subnet (`ipam: config: [{subnet: fd00:5a6a::/64}]`), plus `"ip6tables": true` in `/etc/docker/daemon.json`
+  (default since Docker 27). Docker then forwards IPv6 via NAT and the source address is kept.
+- `"userland-proxy": false` in `/etc/docker/daemon.json` turns the userland proxy off. Without IPv6 in the Docker
+  network Saga is then not reachable directly over IPv6 at all – only useful together with one of the points above.
 
 **nginx:**
 

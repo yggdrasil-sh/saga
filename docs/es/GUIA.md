@@ -114,7 +114,31 @@ saga.example.org {
     }
     reverse_proxy 127.0.0.1:8080
 }
+
+# Rechazar nombres de host ajenos: sin este bloque Caddy responde a peticiones con otra cabecera Host
+# (p. ej. la dirección IP o un nombre ajeno) con una página vacía y estado 200
+:80, :443 {
+    abort
+}
 ```
+
+Comprobar: `curl -sk -o /dev/null -w '%{http_code}' -H 'Host: otro.example' https://saga.example.org/` debe devolver
+`000` (conexión cerrada), no `200`.
+
+**IPv6 y Docker:** Si Docker publica el puerto (`HOST_BIND`/`HOST_PORT`) y la red de Docker solo tiene IPv4 (lo
+predeterminado), el proxy de espacio de usuario de Docker acepta las conexiones IPv6 y las reenvía con la dirección de
+la puerta de enlace de Docker (p. ej. `172.18.0.1`). Saga ve entonces la misma dirección para todos los visitantes
+IPv6: comparten el freno tras intentos fallidos y los límites de frecuencia, y el registro no muestra la dirección real.
+Saga lo detecta y muestra un aviso en el área de administración. Solución, una de estas:
+- **Proxy inverso en el host** (recomendado, como arriba): Caddy/nginx escucha directamente en IPv4 e IPv6, Saga solo
+  en local (`HOST_BIND=127.0.0.1`), `TRUSTED_PROXIES=127.0.0.1`: el proxy envía la dirección real en `X-Forwarded-For`.
+  Si el propio proxy corre como contenedor en la misma red de Docker, tiene el mismo problema: usa `network_mode: host`
+  para el proxy o IPv6 en la red de Docker (siguiente punto) y pon `TRUSTED_PROXIES` a su dirección en esa red.
+- **IPv6 en la red de Docker:** en `docker-compose.yml`, en `networks: default:`, `enable_ipv6: true` y una subred
+  IPv6 (`ipam: config: [{subnet: fd00:5a6a::/64}]`), además de `"ip6tables": true` en `/etc/docker/daemon.json`
+  (predeterminado desde Docker 27). Docker reenvía entonces IPv6 por NAT y se conserva la dirección de origen.
+- `"userland-proxy": false` en `/etc/docker/daemon.json` desactiva el proxy de espacio de usuario. Sin IPv6 en la red
+  de Docker, Saga deja de ser accesible directamente por IPv6: solo tiene sentido junto con uno de los puntos anteriores.
 
 **nginx:**
 

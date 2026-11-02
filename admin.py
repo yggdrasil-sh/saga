@@ -132,6 +132,9 @@ def _page(request, name, me=None, status=200, **kw):
     if me and not flash and time.time() - hk.PROXY_WARN["at"] < 86400:
         flash = [t("Hinweis: Anfragen kommen über einen Reverse Proxy ({ip}), der nicht in TRUSTED_PROXIES steht. Dann teilen sich alle Besucher eine Adresse (Sperre nach Fehlversuchen gilt für alle). Bitte TRUSTED_PROXIES auf diese Adresse setzen.",
                    ip=hk.PROXY_WARN["ip"]), "err"]
+    elif me and not flash and time.time() - hk.GW_WARN["at"] < 86400:
+        flash = [t("Hinweis: Anmeldungen kommen vom Docker-Gateway ({ip}) statt von der echten Adresse der Besucher (meist IPv6 über den Userland-Proxy von Docker). Dann teilen sich diese Besucher eine Adresse (Sperre nach Fehlversuchen gilt für alle). IPv6 im Docker-Netz einschalten oder einen Reverse Proxy mit TRUSTED_PROXIES davor setzen (Anleitung, Abschnitt 3).",
+                   ip=hk.GW_WARN["ip"]), "err"]
     html = tmpl.get_template(name).render(title=hk.title(), v=hk.ASSET_V, csrf=_csrf(request), me=me, flash=flash,
                                           base_url=hk.BASE_URL, path=request.url.path, version=VERSION,
                                           version_label=VERSION_LABEL, channel=channel(),

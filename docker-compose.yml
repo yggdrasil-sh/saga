@@ -43,6 +43,8 @@ services:
       db:
         condition: service_healthy
     ports:
+      # IPv6-Besucher bei reinem IPv4-Docker-Netz: der Userland-Proxy von Docker ersetzt ihre Adresse durch das Gateway
+      # (alle teilen sich die Fehlversuch-Bremse) - Reverse Proxy auf dem Host oder IPv6 im Docker-Netz (ANLEITUNG Abschnitt 3)
       - "${HOST_BIND:-0.0.0.0}:${HOST_PORT:-8080}:8080"
       - "${ADMIN_BIND:-127.0.0.1}:${ADMIN_HOST_PORT:-8081}:8081"
       # 2.5 Gjallarhorn (Feature-Flag calls.horn): eingebauter Knoten fuer grosse Gruppenanrufe auf HORN_PORT (8443).

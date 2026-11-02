@@ -30,6 +30,46 @@ def _next(v):
 
 
 PROXY_WARN = {"at": 0.0, "ip": ""}      # zuletzt erkannter, nicht vertrauter Reverse Proxy (Hinweis im Admin-Bereich)
+GW_WARN = {"at": 0.0, "ip": ""}         # 2.5 (Pentest 2, E1): Besucher erscheinen als Gateway des Docker-Netzes
+_GW = {"ip": None}
+
+
+def _gateway():
+    """Standard-Gateway dieses Containers (/proc/net/route, IPv4) bzw. '' ausserhalb von Docker oder ohne Route."""
+    if _GW["ip"] is None:
+        gw = ""
+        try:
+            import os
+            import socket
+            import struct
+            if os.path.exists("/.dockerenv") or os.environ.get("SAGA_TEST_GATEWAY"):
+                gw = os.environ.get("SAGA_TEST_GATEWAY") or ""
+                if not gw:
+                    with open("/proc/net/route") as f:
+                        for ln in f.read().splitlines()[1:]:
+                            x = ln.split()
+                            if len(x) > 2 and x[1] == "00000000":
+                                gw = socket.inet_ntoa(struct.pack("<L", int(x[2], 16)))
+                                break
+        except (OSError, ValueError):
+            gw = ""
+        _GW["ip"] = gw
+    return _GW["ip"]
+
+
+def _check_gateway(ip):
+    """Ohne X-Forwarded-For kommt die Anfrage vom Gateway des Docker-Netzes: der Userland-Proxy von Docker hat die
+    Quelladresse ersetzt (typisch IPv6-Besucher bei einem reinen IPv4-Netz) - alle teilen sich dann eine Adresse.
+    Melden (Log hoechstens stuendlich, Hinweis im Admin-Bereich)."""
+    gw = _gateway()
+    if not gw or ip != gw:
+        return
+    now = time.time()
+    if now - GW_WARN["at"] > 3600:
+        print(f"saga: WARNUNG - Anfragen kommen vom Docker-Gateway {ip} ohne X-Forwarded-For: Die echte Adresse der Besucher "
+              "(meist IPv6) geht verloren. IPv6 im Docker-Netz einschalten oder einen Reverse Proxy mit TRUSTED_PROXIES davor "
+              "setzen (Anleitung Abschnitt 3, IPv6).", flush=True)
+    GW_WARN.update(at=now, ip=ip)
 
 
 def _ip(request):
@@ -39,6 +79,8 @@ def _ip(request):
     xff = request.headers.get("x-saga-orig-for") if MEDIA_FRONT else request.headers.get("x-forwarded-for")
     if xff:
         _check_proxy(ip, xff)
+    else:
+        _check_gateway(ip)
     return ip
 
 

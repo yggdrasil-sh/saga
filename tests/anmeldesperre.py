@@ -182,6 +182,25 @@ def main():
         c.execute("UPDATE login_lock SET until=? WHERE username='as-lena'", (time.time() - 1,))
     ok("Abgelaufene Sperre gilt nicht mehr", auth.lock_of("as-lena") is None)
 
+    # --- 2.5 (Pentest 2, E1): Besucher erscheinen als Docker-Gateway (Userland-Proxy) -> Warnung -------------------
+    from saga import web_auth as W
+
+    class _Rq:
+        def __init__(self, ip, xff=None):
+            self.client = type("Cl", (), {"host": ip})()
+            self.headers = {"x-forwarded-for": xff} if xff else {}
+    gw0, w0 = dict(W._GW), dict(W.GW_WARN)
+    W._GW["ip"], W.GW_WARN["at"] = "172.30.0.1", 0.0
+    W._ip(_Rq("172.30.0.5"))
+    W._ip(_Rq("172.30.0.1", "198.51.100.7"))
+    ok("E1: andere Adresse bzw. mit X-Forwarded-For -> keine Gateway-Warnung", W.GW_WARN["at"] == 0.0)
+    W._ip(_Rq("172.30.0.1"))
+    ok("E1: Anfrage vom Docker-Gateway ohne X-Forwarded-For -> Warnung", W.GW_WARN["at"] > 0 and W.GW_WARN["ip"] == "172.30.0.1")
+    W._GW["ip"], W.GW_WARN["at"] = "", 0.0
+    W._ip(_Rq("172.30.0.1"))
+    ok("E1: ausserhalb von Docker (kein Gateway) -> keine Warnung", W.GW_WARN["at"] == 0.0)
+    W._GW.update(gw0); W.GW_WARN.update(w0)
+
     cleanup()
     n = sum(res)
     print(f"\nANMELDESPERRE {n}/{len(res)} - {'ALLES GRUEN' if n == len(res) else 'FEHLER'}")
