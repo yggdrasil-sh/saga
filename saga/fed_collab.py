@@ -716,6 +716,7 @@ async def _start(relay, sv=None):
                 raise ValueError("luecke")
             if relay.doc is not None and d.get("full_sync") and relay.gen and str(h.get("gen") or "") != relay.gen:
                 raise ValueError("gen")             # Zustand beim Eigentuemer neu aufgebaut: Clients neu laden (Stufe 1)
+            _checked(relay, u)                      # 2.5 (Sicherheit): wie Stufe 1 pruefen, bevor es lokale Clients sehen
             if relay.doc is None:
                 relay.doc = model.new_doc()
             sv0 = relay.doc.get_state()
@@ -723,7 +724,7 @@ async def _start(relay, sv=None):
             return relay.doc.get_update(sv0)
     try:
         diff = await asyncio.to_thread(build)
-    except (ValueError, yupd.Reject):
+    except (ValueError, yupd.Reject):           # auch _Unsafe
         return "federated"
     relay.gen = str(h.get("gen") or "")[:40]
     relay.role = h.get("role") if h.get("role") in collab.RANK else "view"
@@ -753,7 +754,9 @@ def _remote_frame(relay, b64, initial=False):
         if st is not None and not isinstance(st, dict):
             return
         if isinstance(st, dict):
-            st = {k: st[k] for k in ("cursor", "sel", "block", "typing", "name", "color") if k in st}
+            nm, col = st.get("name"), st.get("color")
+            st = collab.aw_fields(st)                 # 2.5 (Sicherheit): Form wie bei lokalen Clients pruefen
+            st.update(name=nm, color=col)
             st["me"] = False
             if st.get("color") not in model.PALETTE:
                 st["color"] = "gray"
@@ -813,12 +816,75 @@ def _close(relay, reason="gone"):
     relay.ev.set()
 
 
+class _Unsafe(ValueError):
+    """Zustand des Eigentuemers haelt die Pruefung des Heims nicht ein: Weiterleitung schliessen (Stufe 1)."""
+
+
+_NC_PSEUDO = re.compile(r"~[0-9a-f]{16}")                                 # nextcloud.pseudo
+
+
+def _home_check(relay, doc):
+    """2.5 (Sicherheit): Zustand (Form des Heims) wie Stufe 1 pruefen (federation._clean_remote_body), bevor ihn lokale
+    Clients sehen: Wurzeln/Schema, clean_blocks ohne Aenderung (Positivliste fuer Inline-HTML, Links nur sichere Schemata,
+    embed/nextcloud nur http(s)), Bild-/Datei-Bloecke und Vorschaubilder nur ueber den Proxy dieser Seite
+    (/api/fed/files/<seite>/<id>), Nextcloud-Autor nur als Platzhalter. Verstoss -> _Unsafe."""
+    from saga import pages
+    from saga.notes import _iter_blocks
+    if not model.roots_ok(doc):
+        raise _Unsafe("Wurzel")
+    try:
+        blocks_doc, title = model.read(doc)
+        raw = json.dumps(blocks_doc, ensure_ascii=False)
+        if len(title) > collab.NOTE_TITLE_MAX or title != pages._title_in(title):
+            raise _Unsafe("Titel")
+        own = F._rw_out(raw, relay.pid)                        # Form des Eigentuemers: /files/<id>, /notes#<id>
+        body, _ = pages.clean_blocks(own, max(len(own), 1))
+        if collab._no_stale(json.loads(body)["blocks"]) != collab._no_stale(json.loads(own)["blocks"]):
+            raise _Unsafe("sanitize")
+        pic = re.compile(r"/api/fed/files/" + re.escape(str(relay.nid)) + r"/[0-9a-f]{24}")
+        for b in _iter_blocks(blocks_doc["blocks"]):
+            d = b.get("data") if isinstance(b.get("data"), dict) else {}
+            t_ = b.get("type")
+            if t_ in ("image", "attaches"):
+                f = d.get("file")
+                u = f.get("url") if isinstance(f, dict) else None
+                if f is not None and not (isinstance(f, dict) and (u in (None, "") or (isinstance(u, str) and pic.fullmatch(u)))):
+                    raise _Unsafe("Bild")
+            if t_ in ("math", "code") and isinstance(d.get("render"), dict):
+                for k in ("png", "svg"):
+                    v = d["render"].get(k)
+                    if v is not None and not (isinstance(v, str) and pic.fullmatch(v)):
+                        raise _Unsafe("Vorschaubild")
+            if t_ == "nextcloud" and d.get("author") not in (None, "") and not (isinstance(d["author"], str) and _NC_PSEUDO.fullmatch(d["author"])):
+                raise _Unsafe("Nextcloud-Autor")
+    except _Unsafe:
+        raise
+    except Exception as ex:  # noqa: BLE001 - Modell/Schema/clean_blocks: nicht lesbar = nicht sicher
+        raise _Unsafe(type(ex).__name__) from None
+
+
+def _checked(relay, u):
+    """Im Thread (unter relay.lock): Update u (Form des Heims) auf einer Kopie anwenden und pruefen. -> _Unsafe"""
+    tmp = model.new_doc()
+    if relay.doc is not None:
+        tmp.apply_update(relay.doc.get_update())
+    tmp.apply_update(u)
+    try:
+        _home_check(relay, tmp)
+    except _Unsafe as ex:
+        _S["stats"]["unsafe"] = _S["stats"].get("unsafe", 0) + 1
+        print(f"fed_collab: Seite {relay.nid}: Zustand des Eigentuemers abgelehnt ({ex}) - Stufe 1", flush=True)
+        raise
+
+
 def _apply_remote(relay, upd):
-    """Im Thread (unter relay.lock): Update des Eigentuemers (seine Form) -> Doc des Heims. -> (diff, luecke?)"""
+    """Im Thread (unter relay.lock): Update des Eigentuemers (seine Form) -> Doc des Heims. -> (diff, luecke?)
+    _Unsafe, wenn der neue Zustand die Pruefung des Heims nicht einhaelt (dann bleibt das Doc unveraendert)."""
     with _db() as c:
         u = _xform(upd, relay.map.into(c), relay.keys, lambda: relay.doc.get_update())
     if u is None:
         return None, True
+    _checked(relay, u)
     sv0 = relay.doc.get_state()
     relay.doc.apply_update(u)
     try:
@@ -851,6 +917,9 @@ def live_in(c, peer, it):
             try:
                 with relay.lock:
                     diff, gap = _apply_remote(relay, parts[0])
+            except _Unsafe:
+                _in_loop(_close, relay, "federated")
+                return []
             except (ValueError, yupd.Reject):
                 diff, gap = None, True
             if gap:
@@ -1141,7 +1210,12 @@ async def _bundle_out(relay, items, due):
         out = []
         with relay.lock:
             if owner_full is not None:
-                _apply_remote(relay, owner_full)
+                try:
+                    _apply_remote(relay, owner_full)
+                except _Unsafe:
+                    return None
+                except (ValueError, yupd.Reject):
+                    pass
             for sub, ref, u in acc:
                 sv0 = relay.doc.get_state()
                 relay.doc.apply_update(u)
@@ -1150,10 +1224,16 @@ async def _bundle_out(relay, items, due):
             if d.get("sync2"):
                 try:
                     diff, gap = _apply_remote(relay, _unb64(d["sync2"], collab.STATE_MAX))
+                except _Unsafe:
+                    return None
                 except (ValueError, yupd.Reject):
                     diff = None
             return out, diff, relay.doc.get_update() if rejects else None
-    out, diff, fullh = await asyncio.to_thread(apply_all)
+    got = await asyncio.to_thread(apply_all)
+    if got is None:                             # Eigentuemer-Zustand unsicher: Weiterleitung schliessen (Stufe 1)
+        _close(relay, "federated")
+        return False
+    out, diff, fullh = got
     for sub, ref, u in out:
         if ref:
             sub.conn.send(collab.frame(collab.T_ACK, relay.nid, ref.encode()))
