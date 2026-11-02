@@ -1650,7 +1650,7 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
 |---|---|---|
 | `POST /api/calls` (Gruppen-, freier, Seiten-Chat) | `{id, chat_id, media, device, caps}` – **ohne** `signals` | `{ok, call}` (`kind: group`, `state: ringing`, nur der eigene Endpunkt). `409 {running}` = läuft schon → beitreten; `409` ohne `multi` bzw. Server ohne `calls3` |
 | `POST /api/calls/{id}/join` | `{device, role, replaces?, caps, signals: {geraet: versiegeltes offer}}` | `{ok, call}`. `409 {join_block, error, legs?, limit?}`; `409 {legs}` ohne `join_block` = Liste veraltet → neu anbieten; `403` fremdes Gerät; `429` |
-| `POST /api/calls/{id}/leave` | `{device, reason?: "hangup"\|"handover"}` | `{ok}`; nur eigene Geräte (auch ein anderes eigenes) |
+| `POST /api/calls/{id}/leave` | `{device, reason?: "hangup"\|"handover", by?, gen?}` | `{ok}`; nur eigene Geräte (auch ein anderes eigenes). 2.5: mit `by`/`gen` bedingt → `{ok, stale}` (Abschnitt „Geräte-Übergabe hin und her“) |
 | `POST /api/calls/{id}/invite` | `{uids: [benutzername \| Prinzipal]}` | `{ok, n}` – Gruppe: Mitglieder erneut klingeln lassen |
 | `POST /api/calls/{id}/end` | wie bisher, **mit `device`** | Gruppe bzw. Begleitgerät: nur dieses Gerät verlässt (`{ok, left: [...]}`); Hauptgerät im 1:1: Ende für alle |
 | `POST /api/calls/{id}/decline` | wie bisher | Gruppe: nur die eigene Einladung (alle eigenen Geräte hören auf zu klingeln) |
@@ -1962,6 +1962,87 @@ Admin-Einstellung `calls.horn_all` (Standard aus, Anrufe → Gjallarhorn). Ist s
   scheitert mit `join_block: "old"` („braucht Saga 2.5“). Klingeln wird nur, wenn das Gegenüber mindestens ein Gerät
   mit `horn` hat.
 
+## Geräte-Übergabe hin und her (2.5, `handover2`)
+
+Ergänzt „Anrufe: Mehrgeräte und Gruppen“ (Übernahme, Begleitgerät) und „Anrufe über Gjallarhorn-Knoten“. Ziel: beliebig
+oft zwischen eigenen Geräten wechseln (auch < 3 s hin und zurück), auch über Knoten und im vollen Anruf, ohne Doppel-Bein.
+Konzept und Befunde: `docs/anruf-uebergabe-hinzufuegen.md` (B1–B6, L1–L5, L11). Alles ist rückwärtsverträglich (neue
+Felder, ein neuer Endpunkt, neue Fehlerart); ältere Apps funktionieren weiter wie bisher. **Erkennen:**
+`GET /api/calls/config` → `features` enthält `handover2`. Nur dann `by`/`gen`, `promote` und den Wiedereintritt nutzen.
+
+### Beitrittsgeneration `gen`
+- Jeder Endpunkt hat eine **Beitrittsgeneration** `gen` (positive Ganzzahl, ms; steigt mit jedem erneuten Beitritt desselben
+  Geräts). Sie steht in `legs[].gen` (Anruf-Objekt, `call.roster`), in der Antwort von `POST …/join` (`gen` = eigene
+  Generation) und je Kandidat in `horn.candidates[].gen`.
+- Über Knoten ist die Kennung am Knoten (`hp`, `hpn`, `candidates[].peer`, `peer_ref` im Token) jetzt je Generation
+  verschieden. Der Knoten sperrt nach dem Verlassen nur die alte Kennung – ein Gerät kann sofort zurückkehren. Für Apps
+  ändert sich nichts außer: **Kennungen nie über einen Beitritt hinweg zwischenspeichern** (nach jedem `join` bzw. jeder
+  neuen Teilnehmerliste `hp`/`hpn` neu übernehmen; wie bisher).
+- Föderiert (Anruf, den ein anderer Server führt) gilt die Generation des führenden Servers; die Kopie übernimmt sie.
+
+### Bedingtes Verlassen
+`POST /api/calls/{id}/leave {device, reason?: "hangup"|"handover", by?, gen?}`
+- `gen`: Generation des Beins, das gehen soll (aus `legs[]`). Stimmt sie nicht mehr (das Gerät ist inzwischen wieder
+  beigetreten) → `200 {ok: true, stale: true}`, nichts passiert.
+- `by`: Gerät, das übernommen hat (das eigene, neue). Ist es nicht mehr aktiv (hat selbst wieder abgegeben) →
+  `{ok, stale: true}`.
+- Bein schon weg → wie bisher `{ok, already: true}`. Ohne `by`/`gen` wie bisher (unbedingt).
+- **Rückfall des neuen Geräts** nach `state.ready`: über Knoten nach 3 s, im **Mesh neu** nach `handover_s`/2 (7,5 s)
+  `leave {device: <altes>, reason: "handover", by: <eigenes>, gen: <gen des alten aus legs>}` – immer mit `by` und
+  `gen`.
+- **Altes Gerät** (`handoverOut`): `leave {device: <eigenes>, reason: "handover", gen: <eigene gen>}`; ebenso beim
+  Abbruch einer Übernahme (`handover_s` abgelaufen) mit eigener `gen`.
+- Erfährt ein Gerät aus der Teilnehmerliste, dass es fehlt und ein anderes eigenes Gerät mit `role != companion` die
+  Führung hat (auch eines, das vorher `handover` war), beendet es den Anruf hier („Anruf auf <Gerät> übernommen“).
+
+### Übernahme (`join role: "handover"`)
+- **Wiedereintritt:** ist das Gerät selbst noch im Anruf (schneller Rückwechsel, sein eigenes `leave` ist noch unterwegs),
+  ist `join {role: "handover", replaces: <anderes eigenes>}` ein Wiedereintritt: `200` mit **neuer** `gen` (bisher 409
+  `already`). War es noch Hauptgerät, bleibt es `member`. Die anderen sehen kurz eine Liste ohne das Gerät (Verbindung
+  trennen) und dann eine mit ihm (Mesh: neues Angebot annehmen). Ohne `role: "handover"` bleibt es `409 already`.
+- **Gleichzeitig:** übernimmt schon ein anderes eigenes Gerät dasselbe `replaces` (seit < `handover_s`) →
+  `409 {join_block: "handover_busy", error, legs}` – Hinweis „Ein anderes eigenes Gerät übernimmt den Anruf gerade –
+  bitte kurz warten.“, nicht automatisch wiederholen.
+- Ein liegengebliebenes `handover`-Bein (das ersetzte Gerät ist gegangen, ein anderes führt) wird `companion`; das Gerät
+  bekommt `call.mod {call_id, chat_id, action: "mute", device, by: "", why: "handover"}` → Mikrofon und Wiedergabe aus,
+  als Begleitgerät weiter (ältere Apps verstehen `action: "mute"`; `why` nur für den Hinweistext).
+- **Voller Anruf (E6):** das ersetzte Gerät zählt nicht mit. Anruf-Objekt: `takeover: true` = „Hierher übernehmen“ geht
+  (auch bei `joinable: false`, `join_block: "full"`); „Hinzufügen“ (Begleitgerät) bleibt gesperrt. Leiste: bei `full`
+  mit `takeover` nur „Hierher übernehmen“ zeigen.
+- **Rate:** Übernahmen (`join role handover`, `promote`) haben einen eigenen Topf: 20 je Konto und Minute (sonst
+  Beitritte 6/min). Danach `429` wie bisher.
+
+### Begleitgerät → Hauptgerät (`promote`, E4)
+`POST /api/calls/{id}/promote {device, dev_class?}` – `device` = eigenes, aktives Gerät im Anruf.
+- Wirkung: `device` → `member`, das bisherige Hauptgerät derselben Person → `companion`; 1:1: `caller_device`/
+  `callee_device` wechselt (`call.state {moved, device}`), `call.roster` an alle.
+- Antwort `{ok, call}`; über Knoten zusätzlich `horn` (Kandidaten mit Token **mit** Ton-Recht; danach liefert auch
+  `POST …/horn` solche). Schon Hauptgerät → `{ok, already: true}`. Fremdes/inaktives Gerät → `409`; föderiert mit einem
+  Server ohne `promote` → `409 {join_block: "old"}` (dann wie bisher ohne Beförderung übernehmen).
+- **Ablauf am Begleitgerät über Knoten („Hierher übernehmen“ im Anruf):** 1. `promote` → 2. **Ton-Bein neu** mit den
+  neuen Token am selben Knoten und Weg (`audio`, bei UDP `both`; gleiche `leg_ref` → der Knoten ersetzt das alte Bein;
+  das alte Bein bekommt `closed {why: "ersetzt"}` – das ist **kein** Verbindungsverlust, nicht wechseln), warten bis
+  `connected` (≤ 8 s) → 3. Mikrofon/Ton an, `state.ready` an das alte Gerät, Rückfall wie oben. Scheitert 1–2 oder läuft
+  `handover_s` ab: `promote {device: <altes Hauptgerät>}` (zurücknehmen), Hinweis „Übernahme hat nicht geklappt“.
+- Im Mesh ist `promote` nicht nötig (Begleitgeräte senden dort schon Ton); der Ablauf bleibt wie bisher.
+
+### Beispiele
+```json
+POST /api/calls/7927…/join  {"device":"a130…","role":"handover","replaces":"0e32…","caps":["…","multi","horn"]}
+→ 200 {"ok":true,"gen":1793634016726,"call":{"legs":[{"device":"a130…","role":"handover","replaces":"0e32…","gen":1793634016726,"hp":"…"},…],
+       "takeover":true,"horn":{"candidates":[{"node":"horn-0.example.org","peer":"…","gen":1793634016726,"tokens":{…}}]}}}
+→ 409 {"join_block":"handover_busy","error":"Ein anderes eigenes Gerät übernimmt den Anruf gerade – bitte kurz warten.","legs":[…]}
+POST /api/calls/7927…/leave {"device":"0e32…","reason":"handover","by":"a130…","gen":1793634001234}
+→ 200 {"ok":true,"stale":true}
+POST /api/calls/7927…/promote {"device":"a130…","dev_class":"mobile"}
+→ 200 {"ok":true,"call":{…},"horn":{"candidates":[…]}}
+call.mod {"call_id":"7927…","chat_id":12,"action":"mute","device":"5cbb…","by":"","why":"handover"}
+```
+
+Tests: `tests/anrufe_uebergabe.py` (Server, mit Knoten-Registereintrag ohne echten Knoten), `tests/foederation_anrufe_raum.py`
+(gen über drei Server, stale, `promote` über den führenden Server, `callee_device` der Kopie),
+`tests/browser_horn_pingpong.js` (Web; über Knoten im Labor, `MESH=1` ohne Knoten).
+
 ## Anruf-Diagnose (2.5, `calldiag1`)
 
 Clients melden während eines Anrufs Messwerte, damit sich Ruckeln über einen Knoten (z. B. Android → Knoten → iPhone)
@@ -1994,6 +2075,7 @@ Kopf `X-Saga: 1`), Body JSON ≤ 32 KB, **alle 30 s** während des Anrufs und **
 | `samples` | ≤ 200; `t` ms seit Anrufbeginn (ganzzahlig ≥ 0), `dir` Pflicht; `src` ≤ 16 Zeichen `[A-Za-z0-9_-:.]`, `rid` `l`/`m`/`h`/`""` (nur `out`) |
 | Zahlen | `fps h kbps lost nack pli freeze kf rtt` optional, Zahl ≥ 0 (kein Text, kein Bool); Zähler sind **Zuwächse seit der letzten Probe derselben Quelle**, `fps`/`h` aktuelle Werte, `kbps` Mittel seit der letzten Probe, `rtt` ms |
 | `qlr`, `enc` | `qualityLimitationReason` (nur `out`), `encoderImplementation` ≤ 60 Zeichen |
+| Geräte-CPU (2.5) | optional, Zahl ≥ 0, Zuwachs seit der letzten Probe: `out` – `qcpu`/`qbw` = ms, die der Kodierer durch CPU bzw. Bandbreite begrenzt war (`qualityLimitationDurations`), `encms` = mittlere Kodierzeit je Rahmen (ms, `totalEncodeTime`/`framesEncoded`), `fdrop` = Rahmen der Kamera, die nicht kodiert wurden (`media-source.frames` − `framesEncoded`; nur Schichten mit voller Bildrate); `in` – `fdrop` = `framesDropped`, `decms` = mittlere Dekodierzeit je Rahmen, `fzms` = Dauer der Standbilder (`totalFreezesDuration`). Werte 0 weglassen. Ältere Server verwerfen die Felder still. |
 | `events` | ≤ 100; `k` einer der Werte oben, `d` ≤ 120 Zeichen |
 
 Unbekannte Felder werden verworfen (nicht geloggt). Falscher Typ/Wert → `400 {error}` (Feldname in Klammern),
@@ -2005,7 +2087,8 @@ ohnehin laufenden `getStats` – Empfang (`inbound-rtp`, Bild) je Spur (`src` = 
 direkt), Senden (`outbound-rtp`) je Simulcast-Schicht `rid` mit `qlr` und `enc`. Ereignisse: `layers` (Belegung der
 Plätze aus dem Knoten-Ereignis `layout`, z. B. `v est=1800 t0:m3@ab12 s1:p` = Bein, geschätzte kbit/s, Platz:Schicht+Tid
 bzw. pausiert, Kennungspräfix), `switch`/`path` (Knoten- bzw. Wegwechsel), `quality` (Wechsel der Anzeigefarbe mit
-RTT/Verlust/Freezes im Fenster). Apps zusätzlich `thermal` (z. B. `serious`). Der Verlauf steht im Web außerdem im
+RTT/Verlust/Freezes im Fenster). Apps zusätzlich `thermal` (z. B. `serious`). **Auswerten:** Stottern bei kleiner RTT
+und ohne Verlust, aber mit `qcpu` > 0, steigendem `encms`/`decms` oder `fdrop` > 0 = Geräte-CPU, nicht Netz oder Knoten. Der Verlauf steht im Web außerdem im
 Debug-Snapshot (`HKCalls.horn().diag`, `HKCalls.room().diag`).
 
 **Anzeige „Empfangsqualität“ (alle Plattformen gleich):** Farbe aus RTT, Verlust und Freezes, aber über ein **gleitendes

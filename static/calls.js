@@ -835,8 +835,10 @@
     if (here && R.inRoom && !R.ho && !R.ending && old[here] && !legs.some(function (x) { return x.device === here; })) {
       // R09: nur wenn das andere Geraet gerade die Fuehrung uebernommen hat (neu dabei bzw. vorher Begleitgeraet) - ein
       // Begleitgeraet, das Begleitgeraet bleibt, heisst nur: dieses Geraet ist kurz aus der Liste gefallen (Aussetzer)
+      // 2.5 (Uebergabe): auch ein Geraet, das gerade uebernahm (handover) - kam state.ready nicht an bzw. bestand die eigene
+      // Verbindung noch nicht, hat es dieses Geraet per /leave abgemeldet (Rueckfall); sonst lief es bis zum naechsten /alive weiter
       var other = legs.filter(function (x) {
-        return x.me && x.device !== here && x.role !== 'companion' && (!old[x.device] || old[x.device].role === 'companion');
+        return x.me && x.device !== here && x.role !== 'companion' && (!old[x.device] || old[x.device].role === 'companion' || old[x.device].role === 'handover');
       })[0];
       if (other) {
         R.ending = true;
