@@ -83,9 +83,11 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
     region: document.querySelector('.gal-pv').getAttribute('aria-label') }));
   ok(`Vorschau: ${pv.title}, ${pv.n} Elemente, Enthaelt ${pv.contents.length}`, pv.title && pv.n > 1 && pv.contents.length === first.contents.length && pv.ex && pv.region);
   // alle Hinweise mitschreiben: die Testvorlage "alles" hat eine Datenbank "Aufgaben" ohne Aufgaben-Zuordnung - deren
-  // einmaliger Hinweis ("sieht nach Aufgaben aus", pages.js taskHint) darf "Vorlage angelegt" danach ersetzen
-  await p.evaluate(() => { window.__toasts = []; const t = document.querySelector('.toast');
-    new MutationObserver(() => { if (!t.hidden && t.textContent) window.__toasts.push(t.textContent); }).observe(t, { childList: true, characterData: true, subtree: true, attributes: true }); });
+  // einmaliger Hinweis ("sieht nach Aufgaben aus", pages.js taskHint) darf "Vorlage angelegt" danach ersetzen.
+  // Aufrufe von HK.toast direkt mitschreiben: ein MutationObserver meldet gesammelt in einer Microtask - laufen beide
+  // Hinweise vorher (beide in Promise-Ketten), saehe er nur noch den letzten Text (zeitabhaengig 19/20)
+  await p.evaluate(() => { window.__toasts = []; const orig = window.HK.toast;
+    window.HK.toast = function (msg) { window.__toasts.push(String(msg)); return orig.apply(this, arguments); }; });
   await p.click('#pg-modal .gal-use');
   const opened = await until(() => p.evaluate(() => document.getElementById('pg-modal').hidden && /^#\d+$/.test(location.hash) && document.getElementById('pg-title') &&
     document.getElementById('pg-title').value.trim()), 10000);
