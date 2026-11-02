@@ -13,8 +13,8 @@
 // - Gemeldet werden nur Knotentyp, Feldpfad (Feldnamen/Indizes, HKPmAdapter.diag) und Art - nie Inhalt, Text, IDs,
 //   Dateinamen oder Adressen. Je Sitzung dedupliziert, hoechstens ein POST je 60 s mit hoechstens 20 Eintraegen.
 //   Nur mit Feature pmdiag1 in /api/version (Admin-Schalter editor.diag); 403/404 -> fuer diese Sitzung aus.
-// Diagnose/Tests: window.HKPmDiag.state(), .flush() (Sendeabstand ignorieren), .tamper = fn(typ, block) -> block
-// (verfaelscht die frische Serialisierung, nur fuer Tests).
+// Diagnose/Tests: window.HKPmDiag.state(), .flush() (Sendeabstand ignorieren), .reset() (alles neu pruefen), .tamper bzw. window.__hkDiagTamper =
+// fn(typ, block) -> block (verfaelscht die frische Serialisierung, nur fuer Tests).
 (function (root) {
   'use strict';
   var GAP = 60000, MAX_ITEMS = 20, MAX_QUEUE = 100, LIVE_DELAY = 4000, FEAT_TTL = 300000;
@@ -66,6 +66,7 @@
     SELF = X;
     var AD = X.AD, S0 = X.P.pm.state, KEY = new S0.PluginKey('hkDiag');
     var CHECKED = new WeakSet(), liveT = null;
+    api.reset = function () { CHECKED = new WeakSet(); SENT = {}; Q.length = 0; ST.found = ST.checked = 0; };   // Tests
 
     // --- angefasste Bloecke: Teilbaeume, die dasselbe Objekt geblieben sind, sind unveraendert -----------------------
     function isBlk(n) { return X.isBlock(n); }
@@ -132,7 +133,8 @@
           CHECKED.add(n); ST.checked++;
           try {
             var fresh = AD.pmToBlock(n, opt);
-            if (typeof api.tamper === 'function') fresh = api.tamper(t, JSON.parse(JSON.stringify(fresh))) || fresh;
+            var tp = api.tamper || root.__hkDiagTamper;                       // nur Tests
+            if (typeof tp === 'function') fresh = tp(t, JSON.parse(JSON.stringify(fresh))) || fresh;
             var base = o || o0, ref;
             if (base) {
               ref = AD.pmToBlock(AD.blockToPm(base, { orig: null }), opt);
@@ -146,6 +148,7 @@
         if (found.length) queue(t, found);
       });
     }
+    features();                                      // Schalter frueh kennen: aus -> gar nicht erst pruefen
     function saved(out) { if (out && Array.isArray(out.blocks)) setTimeout(function () { try { check(out); } catch (e) { /* Diagnose darf nie stoeren */ } }, 0); }
 
     return { plugins: function () { return [plugin()]; }, api: { diagSaved: saved } };
