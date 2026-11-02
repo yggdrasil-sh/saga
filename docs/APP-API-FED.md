@@ -459,7 +459,7 @@ Endpunkte des **eigenen** Servers. Was mit dem Server der Seite geht, steht in j
 | Feld | Bedeutung |
 |---|---|
 | `remote.peer`, `remote.host`, `remote.name` | wie bisher |
-| `remote.caps` | NEU: Liste aus `db subpages upload versions export presence live chatgroups` (2.5: auch `tplbtn`, `widgets1`, `rowtpl`, `formula1`, `dbx1`, `widgets2`, `merge1`, `presence2`) – nur, was beide Server können und der Admin erlaubt. Fehlt eine Fähigkeit (Server 2.1/2.2), bleibt es bei Lesen, Kommentieren und Titel/Inhalt bearbeiten |
+| `remote.caps` | NEU: Liste aus `db subpages upload versions export presence live chatgroups` (2.5: auch `tplbtn`, `widgets1`, `rowtpl`, `formula1`, `dbx1`, `widgets2`, `merge1`, `presence2`, `collab1`) – nur, was beide Server können und der Admin erlaubt. Fehlt eine Fähigkeit (Server 2.1/2.2), bleibt es bei Lesen, Kommentieren und Titel/Inhalt bearbeiten |
 
 Die Rolle prüft immer der Server der Seite (`role` wie bei eigenen Freigaben). Fehler kommen wie gewohnt (403/404/409/
 423); kann der andere Server etwas noch nicht, antwortet der eigene Server mit **404** und dem Text „Der Server … kann das
@@ -502,6 +502,45 @@ noch nicht (ältere Saga-Version)“; nicht erreichbar → 502.
   (fehlt: der zuletzt gemeldete bleibt). Der Server der Seite drosselt je Person und Seite (120/min, sonst `429`).
   Antwort `users[]` und Live-Einträge `presence` (`POST /fed/v2/live`) tragen `block` und `color` nur für Gegenstellen
   mit `presence2`; das Heim übernimmt `block` nur als Block-ID und `color` nur aus der Palette.
+
+**Zwischen den Servern: `collab1` (2.5, P3-E7) – live mitschreiben.** Für Clients: `APP-API-COLLAB.md` Abschnitt 8
+(WS `/api/collab` mit negativer ID); in `remote.caps` heißt die Fähigkeit `collab1`.
+- **Fähigkeit** `collab1-<SCHEMA_HASH>` (z. B. `collab1-0338664bb3783791`): die Kennung trägt Modell, Schema-Version und
+  -Hash (`saga.collab_model`). Gemeldet nur, solange `notes.live` an ist (Umschalten tauscht die Fähigkeiten mit allen
+  verbundenen Servern neu aus). Live nur, wenn beide **dieselbe** Kennung und `live` melden; sonst Stufe 1 (`merge1`).
+- **Heim → Eigentümer:** `POST /fed/v2/notes/{rid}/collab` (signiert im Namen der Person, eigener Topf in der Drossel:
+  6000/min je Instanz) mit `{w, ops}`. `w` = Kennung der Weiterleitung (32 hex, je Person und Seite, zufällig), `ops`
+  höchstens 64 Einträge, Körper höchstens ~400 KB (sonst `413`):
+
+  | `k` | Felder | Bedeutung |
+  |---|---|---|
+  | `sub` | `schema`, `caps?`, `gen?`, `sv?` (base64) | erster Eintrag: Abo anlegen bzw. erneuern; mit `gen` + `sv` nur die Differenz |
+  | `u` | `u` (Update, base64), `r` (Kennung) | Update der Person (Werte in der Form des Eigentümers) |
+  | `aw` | `a` (`{cursor, sel, block, typing}` bzw. `null`) | Awareness |
+  | `s` | `sv` (Zustandsvektor, base64) | Abgleich: Antwort `sync2` mit allem, was dem Heim fehlt |
+  | `x` | – | Abo beenden |
+
+  Antwort (signiert) `{ok, hello?, sync2?, sv?, aw?, full_sync?, res?, full?, bye?, lost?}`: `res[]` je Update
+  `{r, a: 1}` (angenommen) oder `{r, j: <code>}` (abgelehnt, Codes wie `reject` in APP-API-COLLAB; dann `full` =
+  Vollzustand); `hello` mit `update: true`, wenn sich Rolle/Sperre geändert hat; `bye` (`access`, `gone`, `unsub`);
+  `lost: true` = Weiterleitung unbekannt (Eigentümer neu gestartet bzw. Abo abgelaufen) → Heim meldet sich mit `sub` neu
+  an. `403` fremde Kennung `w` (andere Person/Instanz/Seite) bzw. `collab1 disabled`; `404` kein Zugriff (`sub`);
+  `429` mehr als 25 Bündel/s je Person und Seite bzw. mehr als 200 Abos je Instanz / 10 je Person.
+- **Eigentümer → Heim:** `POST /fed/v2/live` mit Einträgen `{type: "collab", w, note: <rid>, to: <name>, f: [Rahmen]}` –
+  `f` sind Rahmen im Format von `/api/collab` (base64, höchstens 20 je Eintrag; `update`, `aw`, `hello` mit `update`,
+  `bye`). Antwort `{ok, gone?: [w]}`: Weiterleitungen, die es beim Heim nicht mehr gibt (der Eigentümer beendet sie).
+  Sendungen nur mit `collab`-Einträgen zählen in einem eigenen Topf (6000/min).
+- **Rechte** prüft der Eigentümer wie lokal: beim `sub`, je Bündel (Rolle, Sperre, Gruppen signiert im Bündel), bei
+  Freigabe-/Gruppenänderungen und alle 25 s; Abos ohne Bündel enden nach 35 s (das Heim gleicht alle 10 s ab). Jedes
+  Update durchläuft `clean_blocks` + `pages.body_checks` mit dem Prinzipal der Person, bevor es verteilt wird.
+- **Werte:** Beide Server rechnen nur Werte in Attributen/Marken um (nie den Aufbau der Updates, `saga/yupd.py`) –
+  Uhren und Zustandsvektoren sind auf beiden Seiten gleich. Zwischen den Servern gelten die Formen von `GET
+  /fed/v2/notes/{rid}`: Seiten-IDs und `/files/<id>` des Eigentümers, Erwähnungen als `@name@host` (ohne öffentlichen
+  Namen bleibt ein lokaler Handle stehen, den das Heim nicht auflöst), Nextcloud-Autor als Platzhalter. Verweistexte
+  (Titel) leert der Eigentümer in allem, was an das Heim geht.
+- **Grenzen beim Heim:** höchstens 200 Weiterleitungen (`FED_COLLAB_RELAYS`), 10 je Konto; Updates werden ≤ 50 ms
+  gesammelt, ein Bündel trägt höchstens ~256 KB Updates. Die Weiterleitung schließt sich, sobald kein lokales Abo mehr
+  besteht (`x` an den Eigentümer).
 
 Eingebettete Datenbanken in fremden Seiten (Block `database`, `data.db`) tragen ebenfalls negative IDs. Nicht über
 Servergrenzen: Löschen, Archivieren, Duplizieren/Vorlagen, Veröffentlichen, Freigaben, Rückverweise, KI auf der Seite.

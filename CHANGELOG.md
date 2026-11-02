@@ -295,6 +295,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Aufgabenquelle, dazu `due`, `prio`) und legt dann eine Zeile dort an – gleiche Regeln wie `POST /api/tasks {text, src}`.
   Ältere Apps ohne `src` unverändert; neue Fähigkeit `capsrc1` in `/api/version`.
 
+### Neu (2.5, P3-E7: live mitschreiben über Servergrenzen – `collab1`)
+- Seiten, die ein anderer Saga-Server mit dir geteilt hat, lassen sich jetzt **live** gemeinsam bearbeiten – mit
+  Personen auf dem Server der Seite und mit anderen Personen auf deinem Server. Der Browser spricht wie bei eigenen
+  Seiten mit `WS /api/collab` (negative ID); dein Server reicht Änderungen und Cursor als signierte Bündel
+  (`POST /fed/v2/notes/{id}/collab`) an den Server der Seite weiter, fremde Änderungen kommen über `/fed/v2/live`
+  (neuer Eintrag `collab`). Alle 10 s gleichen beide Server per Zustandsvektor ab – verlorene Nachrichten schließen
+  sich von selbst.
+- Der Server der Seite bleibt maßgeblich: Rechte (Bearbeiten/Lesen, Entzug, Sperre, Gruppen) je Bündel und periodisch,
+  dieselben Prüfungen wie beim Speichern vor dem Verteilen; Titel fremder Seiten gehen nie an den anderen Server.
+- Nur, wenn **beide** Server den Admin-Schalter „Gleichzeitig bearbeiten live“ an haben und dasselbe Dokumentmodell
+  sprechen (Fähigkeit `collab1-<schema>`); sonst bleibt es bei Stufe 1 (Zusammenführen, `merge1`) wie bisher. Apps
+  unverändert. Grenzen: Bündelgröße wie beim WebSocket, 25 Bündel/s je Person und Seite, 200 Weiterleitungen je Server.
+- Doku: `docs/APP-API-COLLAB.md` Abschnitt 8, `docs/APP-API-FED.md` „collab1“. Test: `tests/foederation_live.py`.
+
 ### Neu (2.5, P3 Stufe 2: gleichzeitig bearbeiten live – Server)
 - **Live gemeinsam schreiben (Test, Admin-Schalter, Standard aus).** Neuer WebSocket `/api/collab`: Mehrere Personen
   bearbeiten dieselbe Seite und sehen Eingaben und Cursor der anderen sofort (CRDT im Yjs-Format, Server mit `pycrdt`,

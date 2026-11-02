@@ -731,8 +731,9 @@ def _raw_target(request):
     return path, (request.scope.get("query_string") or b"").decode("latin-1")
 
 
-def _verify_sync(method, path, query, headers, body, statuses, connect_key=None, connect_base=None, raw=False):
-    """-> (_In, None) oder (None, fehlerantwort). Laeuft im Thread (Datenbank)."""
+def _verify_sync(method, path, query, headers, body, statuses, connect_key=None, connect_base=None, raw=False, rate=None):
+    """-> (_In, None) oder (None, fehlerantwort). Laeuft im Thread (Datenbank). rate: (topf, grenze je Minute) statt der
+    allgemeinen Grenze RATE (2.5: Live-Mitschreiben, saga.fed_collab - eigener Topf)."""
     holder = {}
 
     def lookup(keyid):
@@ -756,12 +757,13 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
                 throttle=(p["id"] if p else "?", str(ex)))
         return None, _unauth()
     peer = holder.get("peer") or {"id": None, "host": host_of(keyid), "base_url": keyid}
-    if not _rate.allow(peer["base_url"], RATE):
+    bucket, lim = rate or ("", RATE)
+    if not _rate.allow(peer["base_url"] + bucket, lim):
         # signiert (die Gegenstelle erkennt eine echte Bremse) und mit Wartezeit - sie wartet je Instanz, statt einzeln zu probieren
         priv, _ = own_key()
         body_ = json.dumps({"error": "too many requests"}).encode()
         h = fedsig.sign_response(priv, SELF_URL, 429, body_, nonce)
-        h.update({"Cache-Control": "no-store", "Retry-After": str(_rate.wait(peer["base_url"]))})
+        h.update({"Cache-Control": "no-store", "Retry-After": str(_rate.wait(peer["base_url"] + bucket))})
         return None, Response(body_, status_code=429, media_type="application/json", headers=h)
     inp = _In()
     inp.peer, inp.nonce, inp.body, inp.data = peer, nonce, body, None
@@ -793,13 +795,13 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
     return inp, None
 
 
-async def _verify(request, statuses=("active",), need_actor=False, raw=False):
+async def _verify(request, statuses=("active",), need_actor=False, raw=False, rate=None):
     """Signatur einer verbundenen Instanz pruefen -> (_In, None) oder (None, antwort). raw: Koerper sind Bytes (Datei)."""
     if not enabled():
         return None, _not_found()
     body = await request.body()
     path, query = _raw_target(request)
-    inp, err = await run_in_threadpool(_verify_sync, request.method, path, query, request.headers, body, statuses, None, None, raw)
+    inp, err = await run_in_threadpool(_verify_sync, request.method, path, query, request.headers, body, statuses, None, None, raw, rate)
     if err is None and need_actor and inp.principal is None:
         return None, _unauth("actor required", 400)
     return inp, err
@@ -2727,9 +2729,15 @@ PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live
              "formula1", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1")
 
 
+COLLAB_CAP = None            # 2.5 (saga.fed_collab): Faehigkeit "collab1-<schema>" - in caps der Seite als "collab1"
+
+
 def remote_info(peer):
     """Herkunft einer fremden Seite fuer Web/Apps: {peer, host, name, caps} - caps: was mit diesem Server geht (2.3)."""
-    return {"peer": peer["id"], "host": peer["host"], "name": peer["name"], "caps": [x for x in PAGE_CAPS if feature(peer, x)]}
+    caps = [x for x in PAGE_CAPS if feature(peer, x)]
+    if COLLAB_CAP and feature(peer, COLLAB_CAP) and feature(peer, "live"):
+        caps.append("collab1")              # 2.5 (P3-E7): live mitschreiben ueber WS /api/collab (gleiches Schema)
+    return {"peer": peer["id"], "host": peer["host"], "name": peer["name"], "caps": caps}
 
 
 def props_in(pid, props):

@@ -50,6 +50,8 @@ EXPORT_MAX = 64 * 1024 * 1024
 TREE_GAP = 2.0                       # Baum-Meldungen je Instanz hoechstens alle 2 s (gesammelt)
 LIVE_MAX = 50                        # Eintraege je POST /fed/v2/live
 PRES_RATE = 120                      # Anwesenheitsmeldungen je fremder Person und Seite pro Minute (presence2: Blockwechsel)
+COLLAB_LIVE = None                   # 2.5 (saga.fed_collab): fn(c, peer, eintrag) -> [weiterleitung, die es nicht mehr gibt]
+COLLAB_LIVE_RATE = 6000              # Live-Mitschreiben: Sendungen je Minute und Instanz
 PRES_GAP = 1.0                       # Heim: Blockwechsel hoechstens 1x/s an den Eigentuemer (spaetere werden zusammengefasst)
 _NAME = re.compile(r"[^\x00-\x1f/\\]{1,120}")
 
@@ -1181,7 +1183,16 @@ def _ev_live(c, p, it):
 
 @router.post("/fed/v2/live")
 async def fed_live(request: Request):
-    inp, err = await F._verify(request)
+    # 2.5 (collab1): Sendungen nur mit Live-Mitschreiben zaehlen in einem eigenen Topf (vor der Signaturpruefung nur der
+    # Topf gewaehlt - gepruefte Signatur braucht es trotzdem)
+    raw = await request.body()
+    peek = False
+    if COLLAB_LIVE is not None and b'"collab"' in raw:
+        try:
+            peek = all(isinstance(x, dict) and x.get("type") == "collab" for x in json.loads(raw).get("items") or [None])
+        except (ValueError, AttributeError, RecursionError):
+            peek = False
+    inp, err = await F._verify(request, rate=("#livec", COLLAB_LIVE_RATE) if peek else None)
     if err is not None:
         return err
     if not _caps(inp.peer, "live"):
@@ -1189,16 +1200,23 @@ async def fed_live(request: Request):
     items = (inp.data or {}).get("items") if isinstance(inp.data, dict) else None
     if not isinstance(items, list) or len(items) > LIVE_MAX:
         return F._signed(inp, 400, {"error": "bad items"})
-    if not F._rate.allow("live:" + inp.peer["base_url"], 600):
+    # 2.5 (collab1): nur Live-Mitschreiben -> eigener Topf (Tippen erzeugt viele kleine Sendungen)
+    cl = COLLAB_LIVE is not None and bool(items) and all(isinstance(it, dict) and it.get("type") == "collab" for it in items)
+    if not (F._rate.allow("livec:" + inp.peer["base_url"], COLLAB_LIVE_RATE) if cl else F._rate.allow("live:" + inp.peer["base_url"], 600)):
         return F._signed(inp, 429, {"error": "too many"})
 
     def run():
+        gone = []
         with _db() as c:
             for it in items:
-                if isinstance(it, dict):
+                if isinstance(it, dict) and it.get("type") == "collab":
+                    if COLLAB_LIVE is not None:
+                        gone += COLLAB_LIVE(c, inp.peer, it)
+                elif isinstance(it, dict):
                     _ev_live(c, inp.peer, it)
-    await run_in_threadpool(run)
-    return F._signed(inp, 200, {"ok": True})
+        return gone
+    gone = await run_in_threadpool(run)
+    return F._signed(inp, 200, {"ok": True, **({"gone": gone[:LIVE_MAX]} if gone else {})})
 
 
 # --- Heim-Routen (vor pages/page_tools/app_api registriert: nur negative IDs) ----------------------------------------

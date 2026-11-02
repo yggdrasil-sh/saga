@@ -11,8 +11,11 @@ unverändert. Dieses Papier reicht, um ohne Server-Code einen Client zu schreibe
 - **Aus** (oder `live1` fehlt, oder der WebSocket kommt nicht zustande, z. B. Proxy ohne Upgrade): **Stufe 1** wie
   bisher (`PATCH` mit `merge: 1`, `APP-API.md` „Gleichzeitig bearbeiten“). Ein Client muss jederzeit auf Stufe 1
   zurückfallen können (siehe „Rückfall“).
-- Seiten anderer Server (negative IDs) und Text-Notizen: nur Stufe 1 (`error` `federated` bzw. `format`).
-  Föderation (`collab1`) folgt in einer späteren Etappe.
+- Text-Notizen: nur Stufe 1 (`error` `format`).
+- **Seiten anderer Server** (negative IDs, 2.5 P3-E7): live, wenn das Seiten-Objekt in `remote.caps` den Wert
+  **`collab1`** trägt (beide Server können es, gleiches Dokumentmodell, `notes.live` auf **beiden** an). Der Client
+  spricht dann genau dieses Protokoll mit dem **eigenen** Server, `note_id` ist die negative ID – siehe Abschnitt 8.
+  Ohne `collab1`: `error` `federated` beim `sub`, Stufe 1 (`merge1`) wie bisher.
 
 ## 1. Verbindung
 
@@ -55,7 +58,8 @@ Jede Nachricht ist **ein** Binärrahmen:
 
 - `varuint` = lib0/Yjs-Kodierung: je Byte 7 Bit, niederwertige zuerst, höchstes Bit = „es folgt noch ein Byte“
   (300 = `ac 02`).
-- `note_id` = Seiten-ID (positiv). `0` für Nachrichten der Verbindung selbst (erstes `hello`, `ping`).
+- `note_id` = Seiten-ID (positiv; Seite eines anderen Servers: die negative ID, Abschnitt 8). `0` für Nachrichten der
+  Verbindung selbst (erstes `hello`, `ping`).
 - Teile sind **JSON** (UTF-8, ein Objekt) oder **Yjs-Binärdaten** – je nach Art (Tabelle). Leere/fehlende Teile sind
   erlaubt, wo „optional“ steht. Unbekannte zusätzliche Teile ignorieren.
 - Rahmen höchstens **256 KB** (größer: `reject` `size` bzw. Schließen 4429).
@@ -118,7 +122,8 @@ C                                   S
 | `update` | `true`, wenn das `hello` während des Abos kommt (Rechte/Sperre geändert): `ro`/`role` übernehmen, sonst nichts |
 
 **Fehler beim `sub`** (`error` mit derselben `note_id`, kein Abo): `notfound` (kein Zugriff oder gelöscht – bewusst nicht
-unterscheidbar), `format` (Text-Notiz), `federated` (negative ID), `limit` (mehr als 20 Seiten), `nosub` (Nachricht
+unterscheidbar), `format` (Text-Notiz), `federated` (negative ID ohne `collab1` bzw. Server der Seite gerade nicht
+bereit – Stufe 1), `limit` (mehr als 20 Seiten), `nosub` (Nachricht
 für eine nicht abonnierte Seite), `kind` (unbekannte Art).
 
 **Updates senden:** Jede lokale Transaktion als `update` (Yjs `encodeStateAsUpdate(doc, svVorher)` bzw. das Update aus
@@ -321,3 +326,27 @@ selbst als eigenes `update` an alle. Erst dann wird das Update dauerhaft abgeleg
 - Nach einem Neustart holt der Server Änderungen, die schon angenommen, aber noch nicht in `note.body` stehen, sofort nach.
 - Abschalten (`notes.live` aus) beendet alle Live-Verbindungen innerhalb von 25 s mit `bye off`; der Seiteninhalt ist
   dann schon materialisiert, Clients arbeiten mit Stufe 1 weiter.
+
+## 8. Seiten anderer Server (2.5, P3-E7, `collab1`)
+
+Für Clients ändert sich fast nichts: `sub`, `update`, `aw`, `sync1`, `unsub` mit der **negativen ID** an den eigenen
+Server. Der eigene Server (Heim) reicht alles an den Server der Seite (Eigentümer) weiter; der prüft und verteilt wie
+lokal. Unterschiede:
+
+- **Voraussetzung:** `remote.caps` der Seite enthält `collab1` (`GET /api/notes/{-id}`, `GET /api/fed/shared`). Ändert
+  sich das (z. B. `notes.live` beim Eigentümer aus), kommt `bye` mit `reason` `federated` → Stufe 1.
+- **`hello`** der Seite trägt zusätzlich `remote: true`. `role`/`ro`/`why` bestimmt der Server der Seite.
+- **`ack`** kommt erst, wenn der Server der Seite das Update angenommen hat (zwei HTTP-Wege: typisch 150–600 ms). Auch
+  fremde Cursor sind etwas träger.
+- **`reject`**: zusätzlich zu den Codes aus Abschnitt 3 entscheidet der Server der Seite (gleiche Codes). `retry` häufiger
+  (Server der Seite kurz nicht erreichbar): Vollzustand übernehmen, eigene Änderung nach 1–5 s erneut senden. Ein
+  Verweis auf eine eigene Seite oder eine Erwähnung einer Person ohne öffentlichen Namen lässt sich in eine fremde Seite
+  nicht live schreiben (`forbidden`) – wie bei Stufe 1, wo solche Verweise entschärft werden.
+- **Werte im Zustand** stehen in der Form des eigenen Servers wie bei `GET`: Seitenverweise als negative IDs,
+  Bilder/Dateien als `/api/fed/files/{-id}/{fid}`, eingebettete Datenbanken und Schaltflächen-Ziele negativ, eigene
+  Konten in Erwähnungen als Handle, alle anderen als `@name@host`. Titel fremder Seiten stehen nie im Zustand.
+- **`gen`** ist die Generation beim Server der Seite. Startet der eigene Server neu, verbindet der Client neu und
+  abonniert mit `gen` + Zustandsvektor; startet der Server der Seite neu, merkt der Client nichts (der eigene Server meldet
+  sich dort neu an), außer ggf. einem `reject` `retry`.
+- **Verlorene Nachrichten** zwischen den Servern sind harmlos: der eigene Server gleicht alle 10 s mit dem Zustandsvektor
+  ab; fehlende Updates kommen dann als `update`.

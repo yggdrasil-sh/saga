@@ -28,6 +28,7 @@ from saga import app_api, app_login, calendars, comments, csv_export, dashboard,
 from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, horn, horn_ops, i18n, live, mfa, notify, push, push_stream
 from saga import collab                     # 2.5 (P3 Stufe 2): WebSocket /api/collab, Admin-Schalter notes.live
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
+from saga import fed_collab                 # 2.5 (P3-E7): live mitschreiben ueber Servergrenzen (collab1)
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
 from saga import chat_x3                         # 2.5: Reaktionen, Bearbeiten, Sprachnachrichten (haengt sich in chat, fed_chat ein)
 from saga import chat_grp                        # 2.5: Gruppenbild/-rechte, Admin-Loeschen, Anheften, Blockieren, Melden (Chat-Standard B)
@@ -73,6 +74,7 @@ async def lifespan(_app):
     task = asyncio.create_task(_status_loop())
     live.start()                                             # Live-Kanal (/api/events) und Anwesenheit
     collab.start()                                           # 2.5 (P3 Stufe 2): gleichzeitig bearbeiten (CRDT-Hub)
+    fed_collab.start()                                       # 2.5 (P3-E7): Abos fremder Personen (collab1) aufraeumen
     push.start()                                             # Mitteilungen aufs Handy/Desktop (Warteschlange)
     push_stream.start()                                      # 2.5: eigene Push-Verbindung der Apps (/api/push/stream)
     federation.start()                                       # Foederation: Ausgangskorb (Ereignisse an andere Instanzen)
@@ -292,6 +294,7 @@ app.include_router(tasksrc.router)             # 2.5 (Paket 7): /api/tasks/src/{
 # Foederation zuerst: faengt nur NEGATIVE Seiten-/Kommentar-IDs (Seiten anderer Instanzen, Konverter "fedid") ab, dazu
 # /.well-known/saga, /fed/v1/... und /api/fed/... - alle positiven IDs laufen unveraendert zu pages/comments
 app.include_router(federation.router)
+app.include_router(fed_collab.router)        # 2.5 (P3-E7): POST /fed/v2/notes/{id}/collab - vor fed_pages (dort /fed/v2/notes/{id}/{rest})
 app.include_router(fed_pages.router)         # Teilen vollstaendig (2.3): /fed/v2/notes/..., /fed/v2/live, /api/notes/{-id}/rows|versions|export|move
 app.include_router(pages.router)
 app.include_router(siteicons.router)          # automatische Kachel-Symbole: /api/services/favicon/{key}
