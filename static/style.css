@@ -1559,6 +1559,8 @@ body.notes-page .np-name{font-size:.9rem;font-weight:500;color:var(--muted)}
 .hk-dlg-body.tabbed .hk-set>h3{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .hk-set .hk-field{margin:.45rem 0}
 .hk-set h4{margin:1.2rem 0 .3rem;font-size:.95rem}
+.hk-diag-note{display:block;width:100%;box-sizing:border-box;resize:vertical;margin:.4rem 0 .5rem}   /* 2.5: Diagnose senden */
+.hk-diag-id{user-select:all;font-weight:600;letter-spacing:.04em}
 .hk-qr-link{margin:.4rem 0}
 .hk-qr-link .hk-actions{flex-wrap:nowrap}
 .hk-qr-link .hk-tokval{min-width:0;flex:1}

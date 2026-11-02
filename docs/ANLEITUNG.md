@@ -1944,6 +1944,22 @@ die neuere Version nur zum Zurückspielen nehmen, z. B. `docker compose run --rm
 
 ## 12. Fehlerbehebung
 
+**Jemand meldet ein Problem – wo finde ich Fehlerberichte und Diagnosen?** (ab 2.5)
+Browser und Apps melden Programmfehler automatisch, und unter **Einstellungen → Hilfe → Diagnose senden** schickt eine
+Person die letzten Ereignisse ihres Fensters (Fehler, Antwortcodes je Endpunkt, Ansichtswechsel, Live-Kanal, Speichern)
+mit einem optionalen Satz dazu. Sie bekommt eine Kennung wie `D-7K3FM`, die sie dem Admin nennt. Saga speichert davon
+nichts in der Datenbank – je Bericht steht genau eine Zeile im Server-Log, ohne Inhalte, Titel, Namen und IP-Adressen;
+das Konto erscheint nur als kurzer Hash (`acct`, stabil je Server, gleich in beiden Zeilenarten):
+
+```bash
+docker logs saga 2>&1 | grep 'clientdiag {"id":"D-7K3FM"'     # eine bestimmte Diagnose
+docker logs saga 2>&1 | grep '^clientlog ' | tail -50          # die letzten automatischen Fehlerberichte
+```
+
+Ein- und ausschalten: Admin-Bereich → **Allgemein → Diagnose → „Fehlerberichte und ‚Diagnose senden‘“** (Standard an).
+Aus: Browser und Apps senden nichts mehr, der Knopf zeigt „abgeschaltet“. Wie lange die Zeilen bleiben, bestimmt die
+Log-Aufbewahrung von Docker bzw. des Log-Sammlers.
+
 **Nach dem Login lande ich wieder auf der Anmeldeseite.**
 `BASE_URL` muss genau die Adresse sein, die im Browser steht (inklusive `https://`). Bei `https` setzt Saga
 Cookies nur über HTTPS.

@@ -16,6 +16,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Fehlerberichte und „Diagnose senden“ (2.5, `clientlog1`)
+- Neu: Das Web meldet Programmfehler (`window.onerror`, nicht behandelte Promises) automatisch an den Server – gleiche
+  Fehler gezählt statt wiederholt, höchstens ein Bericht je 30 s, der Rest beim Verlassen der Seite. Fehlertexte
+  werden im Browser und noch einmal am Server bereinigt: Adressen, E-Mail, Zahlen, IDs, UUIDs, Schlüssel, Zitate und
+  Wörter, die weder nach Programm aussehen noch in einer Fehlermeldung bzw. einem Saga-Text stehen (z. B. ein
+  Seitentitel), werden Platzhalter; Stacks nur als Funktion + `static/<datei>.js:Zeile:Spalte`.
+- Neu: **Einstellungen → Hilfe → Diagnose senden** schickt die letzten 200 Ereignisse des Fensters (Fehler, Antwortcodes
+  je Endpunkt-Muster wie `/api/notes/:id`, Ansichtswechsel, Live-Kanal, Speichern ok/Konflikt/offline) und einen
+  optionalen Freitext; die Antwort nennt eine Kennung `D-XXXXX` für den Admin.
+- Server: `POST /api/client/log` und `POST /api/client/diag` (nur angemeldet, `saga/clientlog.py`). Gespeichert wird
+  nichts – je Bericht eine Zeile `clientlog`/`clientdiag` im Server-Log, Konto nur als Hash. Grenzen 16 KB/64 KB,
+  10 Berichte/min und 200/Tag je Konto, 5 Diagnosen/h, zusätzlich je IP. Admin-Schalter „Fehlerberichte und ‚Diagnose
+  senden‘“ (Allgemein → Diagnose, Standard an). Vertrag für die Apps: `docs/APP-API.md` „Fehlerberichte und Diagnose“.
+
 ### Galerie (2.5): Vorlage „Home-Dashboard“
 - Neue Startseite für alles: analoge Uhr, Zitat des Tages, Wetter (ohne Ort bzw. bei ausgeschaltetem Wetter mit Hinweis),
   Schaltflächen für neue Aufgabe/Termin/Tageslog/Projekt/Buch aus Vorlagen, Schnellzugriff als Toggle-Listen in drei

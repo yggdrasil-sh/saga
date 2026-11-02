@@ -123,6 +123,10 @@
     <h3>{{ _("Live-Kanal") }}</h3>
     <p class="hk-hint">{{ _("Aktive Live-Verbindungen: {n}", n=live_n) }}<br>{{ _("Offene Browser-Tabs und Apps, die Benachrichtigungen und Änderungen sofort bekommen (über den normalen Web-Port, siehe Anleitung „Reverse Proxy“).") }}</p>
   </section>
+  <section class="adm-card" id="diagnose">
+    <h3>{{ _("Diagnose") }}</h3>
+    {{ check(_('Fehlerberichte und „Diagnose senden“'), 'diag_clientlog', st.diag.clientlog, _('Browser und Apps melden Programmfehler automatisch, und Personen können unter Einstellungen → Hilfe eine Diagnose schicken. Gespeichert wird nichts – je Bericht eine Zeile im Server-Log (clientlog bzw. clientdiag mit der Kennung D-…), ohne Inhalte, Namen und IP-Adressen; das Konto nur als Hash. Finden: docker logs saga | grep clientdiag')) }}
+  </section>
   <section class="adm-card">
     <h3>{{ _("Updates") }}</h3>
     {{ check(_('Auf neue Versionen hinweisen'), 'update_check', st.update_check, _('Fragt höchstens zweimal am Tag bei GitHub nach der neuesten Version und zeigt hier im Admin-Bereich einen Hinweis. Dabei wird nur die neueste Versionsnummer abgerufen, sonst nichts übertragen.')) }}

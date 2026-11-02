@@ -266,6 +266,7 @@
     var helloT = setTimeout(function () { if (!L.hello && L.es === es) fallback('timeout'); }, 15000);   // Proxy puffert?
     on(es, 'hello', function () {
       clearTimeout(helloT); L.hello = true; L.fails = 0; stopPoll();
+      if (window.HKLog) HKLog.ev('conn', { ch: 'sse', st: 'open' });            // 2.5: Ringpuffer fuer "Diagnose senden"
       var first = !!L.first;
       if (L.first) { L.first = false; L.down = false; count().catch(function () {}); }
       else if (L.down) { L.down = false; resync(); }
@@ -309,12 +310,14 @@
     es.onerror = function () {
       if (L.es !== es) return;
       L.down = true; L.fails++;
+      if (window.HKLog) HKLog.ev('conn', { ch: 'sse', st: es.readyState === 2 ? 'closed' : 'retry' });
       // CLOSED: Server hat abgelehnt (401/503) - kein automatischer Neuaufbau. Sonst baut der Browser selbst neu auf.
       if (es.readyState === 2 || (!L.hello && L.fails >= 3)) fallback('error');
     };
   }
   function fallback(why) {
     if (L.es) { L.es.close(); L.es = null; }
+    if (window.HKLog) HKLog.ev('conn', { ch: 'poll', st: 'poll' });
     L.down = true;
     startPoll();
     clearTimeout(L.retryT);

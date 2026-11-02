@@ -2597,3 +2597,123 @@ Kopf `Authorization: Bearer hkd_…`. Danach nur Binär-Rahmen, das erste Byte i
 - Hinter `saga-media` (Container) wird die Verbindung als schlanker Tunnel durchgereicht; ein Reverse Proxy davor muss
   ruhende WebSocket-Verbindungen mindestens 30 min offen lassen (Anleitung, Abschnitt Reverse Proxy).
 
+## Fehlerberichte und Diagnose (2.5, `clientlog1`)
+
+Clients melden Programmfehler automatisch und schicken auf Wunsch der Person eine Diagnose („Diagnose senden“ in den
+Einstellungen, Abschnitt Hilfe/Über). Der Server **speichert nichts**: je angenommenem POST genau eine Zeile im
+Server-Log (`clientlog {…}` bzw. `clientdiag {…}`), Konto nur als kurzer HMAC-Hash `acct`, keine Namen, keine
+IP-Adressen. Admin-Schalter `diag.clientlog` (Allgemein → Diagnose, Standard **an**); aus → `404` und kein Feature.
+
+**Grundsatz: im Zweifel weniger senden.** Nie Seiten-/Chat-Inhalte, Titel, Dateinamen, Personennamen, URLs mit Pfad
+oder Query, E-Mail-Adressen, Tokens, Cookies, Schlüssel, Geräte-/Hardware-IDs. Der Server bereinigt zusätzlich (siehe
+unten) – Clients verlassen sich nicht darauf, sondern bereinigen selbst so weit wie möglich.
+
+**Erkennen:** `GET /api/version` → `features` enthält `clientlog1`. Ohne das Feature nichts senden (auch nichts
+puffern, das später gesendet würde).
+
+**Anmeldung:** wie die übrigen APIs – Sitzung (Web, App-Sitzung nach `/app/resume`) und Kopf `X-Saga: 1`. Ohne
+Anmeldung → `401`; Berichte aus der Zeit vor der Anmeldung verwerfen oder bis nach der Anmeldung aufheben.
+
+### Gemeinsamer Kopf
+
+```json
+{"v": 1, "app": "web|ios|mac|android|linux", "ver": "2.5.0", "os": "iOS 18.1", "dev": "phone|tablet|desktop", "sid": "k3J9xQ2mP7aZ4tWb"}
+```
+
+| Feld | Regel |
+| --- | --- |
+| `v` | `1` |
+| `app` | genau einer der Werte |
+| `ver` | App-Version, ≤ 40 Zeichen `[A-Za-z0-9._+-]` |
+| `os` | optional, ≤ 60 Zeichen `[A-Za-z0-9._ ()+;/-]`, grob (System + Hauptversion, Web: Browser + Hauptversion) |
+| `dev` | optional, einer der Werte |
+| `sid` | Zufallskennung 8–40 Zeichen `[A-Za-z0-9_-]`, neu je Sitzung bzw. App-Start (bzw. je Installation); **nie** aus Hardware-/Werbe-IDs abgeleitet. Der Server loggt höchstens 16 Zeichen |
+
+Unbekannte Felder werden verworfen (nicht geloggt). Falscher Typ/Wert → `400 {error}` mit dem Feldnamen in Klammern.
+
+### A) Automatische Fehlerberichte `POST /api/client/log`
+
+Body ≤ **16 KB**, Kopf + `items` (1–**20** Einträge):
+
+```json
+{"v": 1, "app": "android", "ver": "2.5.0", "os": "Android 15", "dev": "phone", "sid": "k3J9xQ2mP7aZ4tWb",
+ "items": [{"k": "crash", "msg": "IllegalStateException: Fragment not attached", "stack": "at com.saga.app.NotesFragment.onSave(NotesFragment.kt:88)\nat android.os.Handler.dispatchMessage(Handler.java:106)",
+            "src": "NotesFragment.kt", "line": 88, "screen": "pages", "n": 1, "t": 183000}]}
+```
+
+| Feld | Regel |
+| --- | --- |
+| `k` | `error` (abgefangener Fehler), `unhandled` (nicht behandelte Promise/Coroutine), `crash` (Absturz, beim nächsten Start gesendet), `anr` (Android: App reagierte nicht), `warn` (gezählte Warnung) |
+| `msg` | Fehlertext, Pflicht, ≤ 4000 Zeichen (gekürzt auf 300) |
+| `stack` | optional, ≤ 8000 Zeichen; geloggt höchstens 20 Zeilen / 2000 Zeichen |
+| `src` | optional, Quelldatei ohne Pfad (Apps) bzw. Skript-URL (Web) |
+| `line`, `col` | optional, ganze Zahlen ≥ 0 |
+| `screen` | optional, grober Ort `[a-z][a-z0-9-]{0,23}` – z. B. `pages`, `db-view`, `chat`, `calls`, `settings`, `dashboard`, `login`; nie Titel oder ID |
+| `n` | optional, Wiederholungen (≥ 1) – gleiche Fehler zählen statt mehrfach senden |
+| `t` | Pflicht, ms seit Start der Sitzung bzw. App (0 … 7 Tage) |
+
+**Antworten:** `200 {"ok": true}`; `401`; `404` (Schalter aus – bis zum nächsten Start nichts mehr senden); `413`
+(zu groß); `429 {"error", "retry_s"}` (verwerfen, frühestens nach `retry_s` wieder senden, **nicht** wiederholen);
+`400`.
+
+**Grenzen:** Client höchstens **1 Bericht je 30 s** (sammeln, dedupen), Server **10/min** und **200/Tag** je Konto,
+dazu eine großzügige Grenze je IP-Adresse. Absturz-Notizen beim nächsten Start in **einem** Bericht senden.
+
+### B) „Diagnose senden“ `POST /api/client/diag`
+
+Nur auf ausdrücklichen Knopfdruck der Person. Body ≤ **64 KB**: Kopf + `ev` (≤ **200** Ereignisse aus einem
+Ringpuffer im Speicher, ältere zuerst) + optional `note`:
+
+```json
+{"v": 1, "app": "ios", "ver": "2.5.0", "os": "iOS 18.1", "dev": "phone", "sid": "k3J9xQ2mP7aZ4tWb",
+ "ev": [{"t": 10, "k": "life", "st": "start"},
+        {"t": 2100, "k": "view", "screen": "pages"},
+        {"t": 2300, "k": "net", "m": "GET", "p": "/api/notes/:id", "s": 200, "ms": 84},
+        {"t": 9100, "k": "net", "m": "PATCH", "p": "/api/notes/:id", "s": 409, "ms": 120},
+        {"t": 9120, "k": "save", "st": "conflict", "s": 409},
+        {"t": 15000, "k": "conn", "ch": "sse", "st": "retry"},
+        {"t": 16000, "k": "err", "kind": "error", "msg": "URLError: The network connection was lost.", "screen": "pages"}],
+ "note": "Beim Speichern hing es kurz."}
+```
+
+| `k` | Felder |
+| --- | --- |
+| `err` | wie ein Eintrag in `items`, Art in `kind` statt `k` (`msg` Pflicht) |
+| `net` | `m` (`GET POST PUT PATCH DELETE HEAD`), `p` Endpunkt-**Muster** (IDs als `:id`; der Server ersetzt ohnehin jeden Abschnitt, der kein fester Teil eines Saga-Pfads ist, durch `:id`/`:x` und entfernt Query/Fragment), `s` Status (0 = keine Antwort), `ms` optional |
+| `view` | `screen` (wie oben) |
+| `conn` | `ch` `sse|poll|ws|collab|push|call`, `st` `open|closed|error|poll|retry` |
+| `save` | `st` `ok|conflict|offline|error|merged`, `s` optional (Status) |
+| `life` | `st` `start|hidden|visible|online|offline|resume` |
+
+Jedes Ereignis hat `t` (ms, wie oben). `note`: Freitext der Person, ≤ 1000 Zeichen, **nur hier** erlaubt; geloggt als
+`user_note` (Zeilenumbrüche als ⏎, Schlüssel/Tokens, Adressen und E-Mail maskiert, sonst wie geschrieben – die Person
+schreibt ihn bewusst für den Admin; die App weist darauf hin).
+
+**Antworten:** `200 {"ok": true, "id": "D-7K3FM"}` – die Kennung (`D-` + 5 Zeichen aus `23456789ABCDEFGHJKMNPQRSTVWXYZ`)
+der Person anzeigen (kopierbar), sie steht auch in der Log-Zeile; `401`, `404`, `413`, `400` wie oben; `429` ab der
+**6. Diagnose je Stunde** und Konto (plus Grenze je IP).
+
+### Was der Server bereinigt
+
+`msg`, `stack`-Zeilen und Fehler-Ereignisse: Steuer- und Richtungszeichen weg; URLs → `<url>` (eigene Skripte bleiben
+als `static/<datei>.js[:Zeile:Spalte]` ohne Host und `?v=`), E-Mail → `<email>`, Saga-Schlüssel/Bearer → `<secret>`,
+Pfade → `<path>`, Handles/@-Namen → `<id>`, UUIDs → `<uuid>`, Hex ≥ 8 → `<hex>`, lange Zufallsfolgen → `<tok>`,
+Zahlen → `<n>`; Text in Anführungszeichen → `"<str>"`, außer einem einzelnen Bezeichner (`'title'`); jedes übrige Wort,
+das weder nach Programm aussieht (Punkt, Unterstrich, Ziffer, BinnenGroß, `…Error`/`…Exception`) noch in englischen
+Fehlermeldungen vorkommt noch als mehrwortiger Abschnitt in einem Saga-Text (alle Sprachen) steht → `<w>`; sonstige
+Zeichen → `?`. Stack-Zeilen Web: `Funktion static/<datei>.js:Zeile:Spalte`, fremde Quellen nur `<ext>:Zeile:Spalte`;
+Apps: Datei:Zeile (`.swift .kt .java .py .m .c`) und `line N` bleiben, der Rest wie `msg`. `src`: `static/<datei>.js`,
+kurzer Dateiname ohne Pfad oder `<ext>`.
+
+**Log-Zeilen (Beispiel mit Testdaten):**
+
+```
+clientlog {"acct":"7c16129797","app":"web","ver":"2.5.0-rc.9","os":"Linux; Chrome 130","sid":"s949c2edac167458","dev":"desktop","items":[{"k":"error","msg":"Error: Seite \"<str>\" fuer <email> nicht geladen von <url> (id <n>, <uuid>, <hex>, <secret>, <id>)","stack":"Error: Seite \"<str>\" fehlt\nsaveNow static/pages.js:120:15\nObject.flush static/pm-editor.js:9:3\n<ext>:3:4","src":"static/pages.js","line":12,"col":5,"screen":"pages","n":3,"t":1234}]}
+clientdiag {"id":"D-A4ZGF","acct":"7c16129797","app":"web","ver":"2.5.0-rc.9","os":"Linux; Chrome 130","sid":"s05539490666beb6","dev":"desktop","ev":[{"t":30,"k":"net","m":"GET","p":"/api/notes/:id/comments","s":200,"ms":41},{"t":40,"k":"save","st":"conflict","s":409}],"user_note":"Beim Speichern kam ein Fehler. ⏎ Meine Adresse <email>","n":2}
+```
+
+**Referenz Web:** `static/clientlog.js` (`window.HKLog`: `ev(k, daten)` für den Ringpuffer, `report(err)`, `diag(note)`),
+Einstellungen → Hilfe in `static/settings.js`. **Apps (eigene Runde):** iOS/Mac `NSSetUncaughtExceptionHandler` +
+Signal-Handler schreiben eine Absturz-Notiz lokal (nur Text wie oben, kein Speicherabbild), beim nächsten Start als
+`crash` senden; Android `Thread.setDefaultUncaughtExceptionHandler` → Datei, beim nächsten Start senden, ANR über
+`ApplicationExitInfo` (API 30+) als `anr`; Linux `sys.excepthook`, GLib-Warnungen nur gezählt (`warn` mit `n`).
