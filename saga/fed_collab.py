@@ -54,7 +54,7 @@ OUT_MAX = 2000                                                      # wartende R
 FRAMES_MAX = 20                                                     # Rahmen je Live-Eintrag
 TEST_DROP = E.get("FED_COLLAB_TEST_DROP", "")                       # nur Tests: Datei - existiert sie, gehen Rueckmeldungen verloren
 _W_RE = re.compile(r"[0-9a-f]{32}")
-_LINK_TXT = re.compile(r'(<a href="/notes#-?[0-9]{1,19}">)(.+?)(</a>)', re.S)
+_LINK_TXT = re.compile(r'(<a href="/notes#-?[0-9]{1,19}">)((?:(?!<a[\s>]|</a>).)+)(</a>)', re.S)   # bis zum naechsten <a: linear
 
 _S = {"stats": {"bundles": 0, "rejected": 0, "dropped": 0, "relays": 0}}
 
