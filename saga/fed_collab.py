@@ -823,6 +823,16 @@ class _Unsafe(ValueError):
 _NC_PSEUDO = re.compile(r"~[0-9a-f]{16}")                                 # nextcloud.pseudo
 
 
+def _norm(x):
+    """Vergleichsform: Felder, die clean_blocks selbst ableitet (render.stale, synced.srev), zaehlen nicht."""
+    if isinstance(x, list):
+        return [_norm(v) for v in x]
+    if isinstance(x, dict):
+        return {k: (_norm({a: b for a, b in v.items() if a != "stale"}) if k == "render" and isinstance(v, dict) else _norm(v))
+                for k, v in x.items() if k != "srev"}
+    return x
+
+
 def _home_check(relay, doc):
     """2.5 (Sicherheit): Zustand (Form des Heims) wie Stufe 1 pruefen (federation._clean_remote_body), bevor ihn lokale
     Clients sehen: Wurzeln/Schema, clean_blocks ohne Aenderung (Positivliste fuer Inline-HTML, Links nur sichere Schemata,
@@ -839,7 +849,7 @@ def _home_check(relay, doc):
             raise _Unsafe("Titel")
         own = F._rw_out(raw, relay.pid)                        # Form des Eigentuemers: /files/<id>, /notes#<id>
         body, _ = pages.clean_blocks(own, max(len(own), 1))
-        if collab._no_stale(json.loads(body)["blocks"]) != collab._no_stale(json.loads(own)["blocks"]):
+        if _norm(json.loads(body)["blocks"]) != _norm(json.loads(own)["blocks"]):
             raise _Unsafe("sanitize")
         pic = re.compile(r"/api/fed/files/" + re.escape(str(relay.nid)) + r"/[0-9a-f]{24}")
         for b in _iter_blocks(blocks_doc["blocks"]):
@@ -1214,8 +1224,6 @@ async def _bundle_out(relay, items, due):
                     _apply_remote(relay, owner_full)
                 except _Unsafe:
                     return None
-                except (ValueError, yupd.Reject):
-                    pass
             for sub, ref, u in acc:
                 sv0 = relay.doc.get_state()
                 relay.doc.apply_update(u)

@@ -45,6 +45,10 @@ def env_of(k):
 T.env_of = F2.env_of = env_of
 
 
+AWC = {"anchor": {"type": None, "tname": "prosemirror", "item": None, "assoc": 0},      # gueltige relative Positionen
+       "head": {"type": None, "tname": "prosemirror", "item": None, "assoc": 0}}
+
+
 def ok(n, c, info=None):
     T.ok(n if c or info is None else f"{n} -> {str(info)[:400]}", c)
 
@@ -198,13 +202,13 @@ def run():
         ok("alle Eingaben erhalten", all(f"A{i}" in t[0] for i in range(6)) and all(f"B{i}" in t[1] for i in range(6))
            and all(f"C{i}" in t[2] for i in range(6)), t)
         # Awareness
-        cb.send("AW", r, {"cursor": {"b": "b2"}})
+        cb.send("AW", r, {"cursor": AWC, "block": "b2"})
         m = ca.wait("AW", nid, timeout=6)
         st = json.loads(m[2][0])["state"] if m else None
         ok(f"A: Awareness von Bert kommt an (Name vom Server) ({st})", isinstance(st, dict) and "Bert" in (st.get("name") or "") and st.get("cursor"))
         ok("A: kein Anmeldename in der Awareness", m and b"fb-bert" not in m[2][0])
         time.sleep(0.1)
-        ca.send("AW", nid, {"cursor": {"b": "b1"}})
+        ca.send("AW", nid, {"cursor": AWC, "block": "b1"})
         m = cb.wait("AW", r, timeout=6, pred=lambda x: b"Anna" in x[2][0])
         ok(f"B: Awareness von Anna kommt an ({m and m[2][0][:120]})", bool(m) and b"fa-anna" not in m[2][0])
         m = cc.wait("AW", r, timeout=6, pred=lambda x: b"Bert" in x[2][0])

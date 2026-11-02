@@ -186,11 +186,23 @@ try:
     bl, d = body_of(nid)
     ok(f"Materialisierung: note.body (rev {d['rev']})", bl and bl[0]["data"]["text"] == "Hallo Welt" and d["rev"] >= 2)
     # Awareness
-    a.send("AW", nid, {"cursor": {"x": 1}, "name": "Fake", "username": "hk-test-a"})
+    cur = {"anchor": {"type": {"client": 7, "clock": 3}, "tname": None, "item": {"client": 7, "clock": 4}, "assoc": 0},
+           "head": {"type": None, "tname": "prosemirror", "item": None, "assoc": -1}}
+    a.send("AW", nid, {"cursor": cur, "block": "b1", "typing": True, "name": "Fake", "username": "hk-test-a"})
     m = b.wait("AW", nid)
     st_ = json.loads(m[2][0])["state"] if m else {}
     ok(f"Awareness: Name/Farbe vom Server, kein Anmeldename ({st_})", st_ and st_["name"] != "Fake" and "username" not in st_
-       and st_["cursor"] == {"x": 1} and st_["color"] and "hk-test-a" not in json.dumps(st_))
+       and st_["cursor"] == {"anchor": {"type": {"client": 7, "clock": 3}, "item": {"client": 7, "clock": 4}, "assoc": 0},
+                             "head": {"tname": "prosemirror", "assoc": -1}}
+       and st_.get("block") == "b1" and st_.get("typing") is True and st_["color"] and "hk-test-a" not in json.dumps(st_))
+    # 2.5 (Sicherheit): kaputte Awareness (wirft sonst in y-prosemirror bei allen anderen) faellt weg
+    for bad in ({"anchor": "nonsense", "head": "x"}, {"anchor": {}, "head": {}}, {"anchor": {"item": {"client": -1, "clock": 0}}, "head": {"tname": "x"}},
+                {"anchor": {"item": {"client": 1, "clock": 0}, "evil": 1}, "head": {"tname": "x"}}, {"x": 1}, [1, 2], 5):
+        time.sleep(0.06)
+        a.send("AW", nid, {"cursor": bad, "sel": bad, "block": "<img>", "typing": "ja"})
+        m = b.wait("AW", nid)
+        st_ = json.loads(m[2][0])["state"] if m else None
+        ok(f"Awareness: ungueltig verworfen ({json.dumps(bad)[:60]} -> {st_})", isinstance(st_, dict) and not {"cursor", "sel", "block", "typing"} & set(st_))
     # Titel live
     a.edit(nid, lambda d: d.get("title", type=__import__("pycrdt").Text).insert(5, "!"))
     time.sleep(1.5)
