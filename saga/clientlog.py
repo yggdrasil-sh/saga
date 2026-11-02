@@ -75,10 +75,18 @@ def acct_hash(uid):
 
 # --- Bereinigung -----------------------------------------------------------------------------------------------------
 # Reihenfolge zaehlt: erst Dinge mit Struktur (URL, E-Mail, Zitat), dann IDs/Zahlen, zum Schluss der Zeichenfilter.
-_CTRL = re.compile("[\\x00-\\x1f\\x7f-\\x9f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069\\ufeff]")
+_CTRL = re.compile("[\\x00-\\x1f\\x7f-\\x9f\\u200b-\\u200f\\u2028\\u2029\\u202a-\\u202e\\u2066-\\u2069\\ufeff]")
 _URL = re.compile(r"\b[a-z][a-z0-9+.\-]{1,15}://[^\s\"'<>()]*|\bwww\.[^\s\"'<>()]+|\b(?:blob|data|javascript|mailto|tel):[^\s\"'<>()]*", re.I)
 _EMAIL = re.compile(r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+")
 _SECRET = re.compile(r"\b(?:hkd?|sga|hk_test)_[A-Za-z0-9_\-]{6,}|\bBearer\s+\S+", re.I)
+# Hostnamen (Server, NAS, ...): Abschnitt mit Bindestrich oder gaengige Endung - Bezeichner wie e.target.value bleiben
+_TLD = ("com|org|net|de|at|ch|eu|io|info|biz|lan|local|localdomain|home|internal|intranet|intra|corp|arpa|cloud|online|"
+        "site|xyz|co|me|tv|uk|fr|nl|be|it|es|pl|ru|th|jp|cn|us|ca|au")
+_HOST = re.compile(r"(?<![\w.\-/])(?:(?:[a-z0-9][a-z0-9\-]*\.)+(?:" + _TLD + r")|(?:[a-z0-9][a-z0-9\-]*\.)*[a-z0-9]*-[a-z0-9\-]*"
+                   r"\.(?!(?:m?js|css|html?|json|kt|swift|java|py)\b)[a-z]{2,})(?![\w\-]|\.\w)", re.I)
+# Dateinamen von Nutzerdateien (Endung): nie stehen lassen, auch wenn sie nach Bezeichner aussehen ("Brief_2.pdf")
+_FILE = re.compile(r"[^\s\"'`<>()\[\]{}:;,\u201e\u201c\u201d\u00ab\u00bb]*\.(?:pdf|docx?|xlsx?|xlsm|pptx?|od[tspg]|rtf|txt|csv|md|zip|rar|7z|tar|gz|png|"
+                   r"jpe?g|gif|webp|hei[cf]|bmp|svg|tiff?|mp[34]|m4[av]|wav|ogg|opus|flac|mov|webm|mkv|avi|epub|eml|vcf|ics|kdbx)(?![\w\-])", re.I)
 _UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 _HEX = re.compile(r"\b(?:0x)?[0-9a-f]{8,}\b", re.I)
 _TOKEN = re.compile(r"(?<![\w~])(?=[A-Za-z_\-+=]*\d)[A-Za-z0-9_\-+=]{20,}")   # lange Zufallsfolgen mit Ziffern (Base64, Schluessel)
@@ -175,6 +183,8 @@ def scrub(s, limit=MSG_MAX):
     s = _EMAIL.sub("<email>", s)
     s = _SECRET.sub("<secret>", s)
     s = _QUOTE.sub(_quote, s)
+    s = _HOST.sub("<host>", s)
+    s = _FILE.sub("<file>", s)
     s = _PATH.sub(_static_path, s)
     s = _HANDLE.sub("<id>", s)
     s = _UUID.sub("<uuid>", s)

@@ -211,8 +211,24 @@ def main():
     sys.exit(0 if all(res) else 1)
 
 
+def unit():
+    """Bereinigung direkt (Pruefer integ-clientlog): Dateinamen, Hostnamen, Zeilentrenner U+2028/U+2029."""
+    from saga import clientlog as cl
+    cases = {"Error: \u201eGehalt_2026.xlsx\u201c ist zu gro\u00df": ("Gehalt", "xlsx"), "Error: Hochladen: Arzt_Brief.pdf (50 %)": ("Arzt", "pdf"),
+             "Error: could not open 'befund.pdf'": ("befund",), "Error: Verbindung nicht aufgebaut: saga.firma-intern.de": ("firma", "saga."),
+             "Error: getaddrinfo ENOTFOUND nas.heim.lan": ("nas", "heim"), "Error: a\u2028b\u2029c": ("\u2028", "\u2029")}
+    bad = {m: cl.scrub(m) for m, pr in cases.items() if any(x in cl.scrub(m) for x in pr)}
+    ok(f"Bereinigung: Dateinamen, Hostnamen, Zeilentrenner ({bad})", not bad)
+    keep = ["TypeError: e.target.value is undefined", "TypeError: Cannot read properties of undefined (reading 'title')",
+            "Error: x at it not", "org.json.JSONException: x"]
+    ch = {m: cl.scrub(m) for m in keep if cl.scrub(m) != m}
+    ok(f"Bereinigung: Bezeichner und Fehlerwoerter bleiben ({ch})", not ch)
+    ok("Freitext: Zeilentrenner U+2028 weg", "\u2028" not in cl.scrub_note("a\u2028b"))
+
+
 def run(users):
     A, B, Cc, D = (ck(users[k]) for k in ("a", "b", "c", "d"))
+    unit()
     ok("/api/version: Feature clientlog1 (Standard an)", "clientlog1" in feats())
     ok("Standard in auth.DEFAULTS: diag.clientlog = True", auth.DEFAULTS["diag"].get("clientlog") is True)
     if logtxt() is None:
