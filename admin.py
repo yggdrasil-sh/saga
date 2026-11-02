@@ -808,7 +808,8 @@ async def settings_post(request: Request):
         except (TypeError, ValueError):
             return dflt
     eng = f.get("editor_engine") if f.get("editor_engine") in ("editorjs", "tiptap", "choice") else "editorjs"
-    auth.save_setting("editor", {**(auth.settings().get("editor") or {}), "engine": eng})          # 2.5 (Tiptap-Umbau T2)
+    auth.save_setting("editor", {**(auth.settings().get("editor") or {}), "engine": eng,          # 2.5 (Tiptap-Umbau T2)
+                                "diag": _on(f, "editor_diag")})                                  # T6: Editor-Diagnose (saga/pmdiag.py)
     live_was = bool((auth.settings().get("notes") or {}).get("live"))
     auth.save_setting("notes", {**(auth.settings().get("notes") or {}), "live": _on(f, "notes_live")})   # 2.5 (P3 Stufe 2)
     if live_was != _on(f, "notes_live"):

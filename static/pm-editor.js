@@ -36,7 +36,8 @@
   // Erweiterungen des Kern-Editors (T3: pm-struktur.js), melden sich mit HKPmEditor.use(fn) an (siehe "Erweiterungen")
   // T4c: pm-tools-text.js = Tabelle, Code, Mathe-Block; T5: pm-live.js = gleichzeitig bearbeiten live (Stufe 2)
   // T4d: pm-clip.js = Zwischenablage (Kopierformate, fremdes HTML, Dateiverweise beim Einfuegen)
-  var EXT_SCRIPTS = ['pm-clip.js', 'pm-struktur.js', 'pm-tools-text.js', 'pm-live.js'];
+  // T6: pm-diag.js = Editor-Diagnose (Round-Trip-Abweichungen unveraenderter Bloecke an POST /api/diag)
+  var EXT_SCRIPTS = ['pm-clip.js', 'pm-struktur.js', 'pm-tools-text.js', 'pm-live.js', 'pm-diag.js'];
   var LOCK = false;                                   // pm-live.js: nur lesen erzwingen (anderes Schema, R1)
   var LIVE = null;                                    // pm-live.js: {exts: [Erweiterungen], editable: bool}, solange live gebunden
   var EXTS = [], MODS = [];
@@ -1673,7 +1674,11 @@
     return {
       kind: 'tiptap', isReady: Promise.resolve(),
       render: function (data) { var lr = modApi('liveRender'); if (lr) return lr(data); build(data); return Promise.resolve(); },
-      save: function () { try { return Promise.resolve(saveNow()); } catch (e) { return Promise.reject(e); } },
+      save: function () {
+        var out; try { out = saveNow(); } catch (e) { return Promise.reject(e); }
+        var dg = modApi('diagSaved'); if (dg && !broken) dg(out);        // T6: Diagnose (pm-diag.js), laeuft danach
+        return Promise.resolve(out);
+      },
       applyBlocks: applyBlocks,
       setEditable: function (on) { on = !!on && !LOCK && !(LIVE && !LIVE.editable); if (ed && !broken && ed.isEditable !== on) ed.setEditable(on); },
       live: function () { return !!LIVE; },              // T5: Inhalt live gebunden (kein Speichern per PATCH)
@@ -1722,6 +1727,7 @@
     inNested: function (pos) { return !!ed && ed.state.doc.resolve(Math.min(pos, ed.state.doc.content.size)).depth > 1; },
     // T5 (static/pm-live.js): Editor mit/ohne Live-Bindung neu aufbauen, Stand als Block-JSON, Rueckrufe von pages.js
     build: build, saveNow: saveNow, cb: function () { return CB; }, ctx: function () { return ctx; }, markOrig: markOrig,
+    data0: function () { return data0; },             // T6 (pm-diag.js): geladener Stand
     live: function (v) { if (v !== undefined) LIVE = v; return LIVE; },
     lock: function (v) { if (v !== undefined) LOCK = !!v; return LOCK; },
     validate: function (b) { return !MODS.some(function (m) { try { return !!m.validate && m.validate(b) === false; } catch (e) { return false; } }); },
