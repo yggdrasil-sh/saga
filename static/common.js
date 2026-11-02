@@ -184,6 +184,7 @@
       var q = s.value.trim().toLowerCase();
       [].forEach.call(m.querySelectorAll('.menu-item'), function (b) { b.hidden = !!q && b.textContent.toLowerCase().indexOf(q) < 0; });
       [].forEach.call(m.querySelectorAll('.menu-label, .menu-sep, .menu-hint'), function (x) { x.hidden = !!q; });
+      m.classList.toggle('menu-q', !!q);            // Eintraege .mi-q (z. B. Ziele aus Untermenues) nur bei einer Suche
     });
     s.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); var f = visibleItems(m)[0]; if (f) f.click(); }
@@ -192,7 +193,7 @@
   }
   function openMenu(anchor, build, opts) {
     if (menuOwner === anchor) { closeMenu(); return; }
-    closeMenu(); build(menuEl);
+    closeMenu(); menuEl.classList.remove('menu-q'); build(menuEl);
     menuEl.classList.toggle('menu-top', !!(anchor.closest && anchor.closest('.modal, .hk-modal')));   // aus einem Dialog: darueber
     menuEl.classList.toggle('menu-call', !!(anchor.closest && anchor.closest('.cl-win')));           // aus dem Anruffenster (z 200)
     var search = opts && opts.search ? addSearch(menuEl, opts.search) : null;
@@ -242,7 +243,7 @@
     return b;
   }
   function menuLabel(text) { return el('div', 'menu-label', text); }
-  function visibleItems(m) { return [].filter.call(m.querySelectorAll('.menu-item'), function (b) { return !b.hidden && !b.disabled; }); }
+  function visibleItems(m) { var q = m.classList.contains('menu-q'); return [].filter.call(m.querySelectorAll('.menu-item'), function (b) { return !b.hidden && !b.disabled && (q || !b.classList.contains('mi-q')); }); }
   // Bughunt D21: Sprunglink "Zum Inhalt" - Fokus direkt auf das erste sichtbare Ziel (ohne #-Adresse: die Seiten nutzen
   // den Hash fuer die geoeffnete Seite)
   document.addEventListener('click', function (e) {

@@ -115,6 +115,10 @@ const UIF = EDITOR === 'tiptap' ? UIF_TIPTAP : UIF_EDITORJS;
 const UI_ITEMS = `${UI.popover} ${UI.item}:not(${UI.itemHidden}) ${UI.itemTitle}`;
 // Menue-Eintrag mit genau diesem Titel (Playwright-Selektor)
 const menuItem = (title) => `${UI.popover} ${UI.item}:has(${UI.itemTitle}:text-is("${q(title)}"))`;
+// Eintraege des Block-Menues (Griff ⋮⋮) samt Untermenue: Editor.js = Popover, Tiptap = HK.openMenu (.menu / .menu-sub)
+const BLOCK_ITEMS = EDITOR === 'tiptap' ? '.menu:not([hidden]) .menu-item .mi-t'
+  : `${UI.blockMenu} ${UI.popover} ${UI.popoverItems} ${UI.item}:not(${UI.itemHidden}) ${UI.itemTitle}, ${UI.popover} ${UI.popoverItems} > ${UI.item}:not(${UI.itemHidden}) ${UI.itemTitle}`;
+const blockMenuItem = (title) => EDITOR === 'tiptap' ? `.menu:not([hidden]) .menu-item:has(.mi-t:text-is("${q(title)}"))` : menuItem(title);
 
 // --- Funktionen (page = Playwright-Page) ---------------------------------------------------------------------------------
 // Fassade im Browser: blocks() als schlichte Liste {id, type, parent, slot, text}
@@ -181,4 +185,4 @@ async function setEditor(page, kind = EDITOR) {
 }
 
 module.exports = { ROOT, EDITOR, UI_EDITORJS, UI_TIPTAP, UIF, isEditor, setEditor, block, ofType, top, text, textOf, topText, editIn, any, anyText, UI, UI_ITEMS, menuItem,
-  blocks, count, find, textOfBlock, htmlOf, focus, clickEnd, typeEnd, select, selected, current, waitBlock };
+  BLOCK_ITEMS, blockMenuItem, blocks, count, find, textOfBlock, htmlOf, focus, clickEnd, typeEnd, select, selected, current, waitBlock };

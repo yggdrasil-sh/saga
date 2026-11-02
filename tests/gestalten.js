@@ -83,12 +83,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const para = p.locator(D.textOf('paragraph'), { hasText: 'Farbiger Absatz' }).first();
   await para.click(); await para.hover(); await sleep(250);
   await p.locator(D.UI.blockMenuBtn + ':visible').first().click(); await sleep(300);
-  const items = await p.evaluate((U) => [...document.querySelectorAll(`${U.blockMenu} ${U.popover} > ${U.popoverContainer} > ${U.popoverItems} > ${U.item} ${U.itemTitle}, ${U.popover} ${U.popoverItems} > ${U.item} ${U.itemTitle}`)].map((x) => x.textContent.trim()), D.UI);
+  const items = await p.evaluate((s) => [...document.querySelectorAll(s)].map((x) => x.textContent.trim()), D.BLOCK_ITEMS);
   const iConv = items.indexOf('Umwandeln in'), iCol = items.indexOf('Farbe'), iDup = items.indexOf('Duplizieren'), iLink = items.indexOf('Link zum Block kopieren'), iCom = items.indexOf('Kommentieren');
   ok(`G5: Reihenfolge Umwandeln, Farbe, Duplizieren, Link, Kommentieren (${items.slice(0, 9).join(', ')})`,
     iConv >= 0 && iConv < iCol && iCol < iDup && iDup < iLink && iLink < iCom, items);
-  await p.locator(D.menuItem('Farbe')).first().click(); await sleep(250);
-  await p.locator(D.menuItem('Blau (Hintergrund)')).first().click(); await sleep(300);
+  await p.locator(D.blockMenuItem('Farbe')).first().click(); await sleep(250);
+  await p.locator(D.blockMenuItem('Blau (Hintergrund)')).first().click(); await sleep(300);
   const cls = await para.evaluate((n) => { const b = n.closest('[data-block-id]'); return [b.className].concat([...b.querySelectorAll('*')].filter((x) => x.contains(n)).map((x) => x.className)).join(' '); });
   ok(`G3: Hintergrund sofort sichtbar (${cls})`, /hk-bg-blue/.test(cls));
   await sleep(3500);
@@ -157,14 +157,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await p.goto(BASE + '/notes?t=' + Date.now() + '#' + tv); await p.waitForSelector(D.UI.toggleTitle); await sleep(1200);
   await p.hover(D.UI.toggleTitle); await sleep(250);
   await p.locator(D.UI.blockMenuBtn + ':visible').first().click(); await sleep(300);
-  await p.locator(D.menuItem('Umwandeln in')).first().click(); await sleep(300);
-  await p.locator(D.menuItem('Überschrift')).last().click(); await sleep(400);
+  await p.locator(D.blockMenuItem('Umwandeln in')).first().click(); await sleep(300);
+  await p.locator(D.blockMenuItem(D.EDITOR === 'tiptap' ? 'Überschrift 2' : 'Überschrift')).last().click();   // Tiptap: Stufen einzeln await sleep(400);
   await p.keyboard.press('Escape');
   if (await p.locator(D.UI.toggleTitle).count()) { await p.click(D.UI.toggleTitle); await p.keyboard.press('Home'); await p.keyboard.press('Backspace'); }
   await sleep(3500);
   bl = await body(tv);
   const tg = bl.find((b) => b.type === 'toggle');
-  ok('G10: Toggle mit Inhalt: Umwandeln/Ruecktaste behalten den Inhalt', bl.length === 2 && tg && /Innen bleibt/.test(JSON.stringify(tg.data.blocks)), bl);
+  // Tiptap: Ruecktaste am Titelanfang loest den Toggle auf (wie Notion) - Titel und Inhalt bleiben als Absaetze stehen
+  const kept = D.EDITOR === 'tiptap' ? bl.map((b) => b.data.text).join('|') === 'oben|Voll|Innen bleibt'
+    : bl.length === 2 && tg && /Innen bleibt/.test(JSON.stringify(tg.data.blocks));
+  ok('G10: Toggle mit Inhalt: Umwandeln/Ruecktaste behalten den Inhalt', kept, bl);
   await api('DELETE', '/api/notes/' + tv);
 
   // --- G5: Rolle Kommentieren - im Block-Menue nur Link und Kommentieren -------------------------------------------
@@ -182,7 +185,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     let ro = [];
     if (await btn.count()) {
       await btn.click(); await sleep(300);
-      ro = await q.evaluate((U) => [...document.querySelectorAll(`${U.popover} ${U.popoverItems} > ${U.item}:not(${U.itemHidden}) ${U.itemTitle}`)].map((x) => x.textContent.trim()), D.UI);
+      ro = await q.evaluate((s) => [...document.querySelectorAll(s)].map((x) => x.textContent.trim()), D.BLOCK_ITEMS);
     }
     await pr.click(); await q.keyboard.press(process.platform === 'darwin' ? 'Meta+/' : 'Control+/'); await sleep(300);
     const am = await q.evaluate(() => [...document.querySelectorAll('.menu:not([hidden]) .menu-item .mi-t')].map((x) => x.textContent.trim()));

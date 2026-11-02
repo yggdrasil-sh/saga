@@ -10,6 +10,7 @@
 const PW = require(process.env.PLAYWRIGHT || 'playwright-core'), ENGINE = process.env.PW_BROWSER || 'chromium';
 const ED = require('./lib/editor_dom');           // Block-Menue ueber ED.UI (Editor-Bedienelemente gesammelt, T1)
 const MENU_IT = ED.UI.blockMenu + ' ' + ED.UI.item;
+const MENU_SUB = ED.EDITOR === 'tiptap' ? '.menu:not([hidden]) .menu-item' : MENU_IT;   // Tiptap: Untermenue ist ein eigenes .menu
 const BASE = process.env.SAGA_BASE, USER = process.env.SAGA_USER, PASS = process.env.SAGA_PASS;
 if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
 const res = [];
@@ -213,7 +214,7 @@ function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDat
       await until(p, (s) => [...document.querySelectorAll(s)].some((x) => /Zeile einfärben/.test(x.textContent)), MENU_IT, 5000);
       await p.evaluate((s) => [...document.querySelectorAll(s)].find((x) => /Zeile einfärben/.test(x.textContent)).click(), MENU_IT);
       await p.waitForTimeout(300);
-      await p.evaluate((s) => { const it = [...document.querySelectorAll(s)].find((x) => /^\s*Blau\s*$/.test(x.textContent)); if (it) it.click(); }, MENU_IT);
+      await p.evaluate((s) => { const it = [...document.querySelectorAll(s)].find((x) => /^\s*Blau\s*$/.test(x.textContent)); if (it) it.click(); }, MENU_SUB);
       ok('Zeile 2 blau eingefaerbt', await until(p, (s) => document.querySelectorAll(s).length === 2, ED.UIF.tableRowCells(2) + '.tbl-bg-blue'));
       let saved = null;
       for (let i = 0; i < 40; i++) { const g = await p.api('GET', '/api/notes/' + P); saved = JSON.parse(g.body).blocks[0].data; if (saved.headCol && saved.colors) break; await p.waitForTimeout(250); }

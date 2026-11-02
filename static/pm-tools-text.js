@@ -743,6 +743,14 @@
         m.appendChild(HK.menuItem(T('Erste Spalte als Kopf'), function () { TBL.set(id, { headCol: n.attrs.headCol ? null : true }); }, { icon: '▥', on: !!n.attrs.headCol }));
         m.appendChild(HK.menuItem(n.attrs.stretched ? T('Volle Breite aus') : T('Volle Breite ein'), function () { TBL.set(id, { stretched: !n.attrs.stretched }); }, { icon: '⇔' }));
         if (n.attrs.colWidths) m.appendChild(HK.menuItem(T('Spalten gleich breit'), function () { TBL.set(id, { colWidths: null }); }, { icon: '⇹' }));
+        // T6: Schreibmarke in einer Zelle dieser Tabelle -> einfaerben wie im Editor.js-Block-Menue (auch in der Tabellenleiste)
+        var cc = cellCtx(st()), cs = n.attrs.colors || {};
+        if (cc && cc.tpos === x.pos) {
+          var r = cc.r, c = cc.c;
+          m.appendChild(HK.menuItem(T('Zeile einfärben'), null, { icon: '◐', sub: paletteSub(id, 'r', String(r), (cs.r || {})[String(r)]) }));
+          m.appendChild(HK.menuItem(T('Spalte einfärben'), null, { icon: '◐', sub: paletteSub(id, 'c', String(c), (cs.c || {})[String(c)]) }));
+          m.appendChild(HK.menuItem(T('Zelle einfärben'), null, { icon: '◐', sub: paletteSub(id, 'x', r + ',' + c, (cs.x || {})[r + ',' + c]) }));
+        }
       } else if (t === 'code') {
         var h = HL(), lang = langOf(n);
         if (h) m.appendChild(HK.menuItem(T('Programmiersprache'), null, { icon: '</>', sub: function (sm) {

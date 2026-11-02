@@ -1135,6 +1135,8 @@
             m.appendChild(HK.menuItem(T('Umwandeln in'), null, { icon: '⇄', sub: function (sm) {
               CONV_TO.forEach(function (c) { sm.appendChild(HK.menuItem(c[1], function () { convertBlock(id, c[0]); }, { icon: c[2] })); });
             } }));
+            // T6: Ziele auch ueber die Suche (Cmd+/ "Toggle-Überschrift 1" Enter) wie im Editor.js-Aktionsmenue (static/keys.js)
+            CONV_TO.forEach(function (c) { var it = HK.menuItem(c[1], function () { convertBlock(id, c[0]); }, { icon: c[2] }); it.classList.add('mi-q'); m.appendChild(it); });
           }
           if (X.colorable(n)) {
             m.appendChild(HK.menuItem(T('Farbe'), null, { icon: 'A', sub: function (sm) {

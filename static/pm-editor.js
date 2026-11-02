@@ -1347,8 +1347,15 @@
       var a = document.activeElement, own = a && a.closest ? a.closest('[' + AID + ']') : null;
       return own && BOX.contains(own) ? own.getAttribute(AID) : null;
     }
-    var sel = ed.state.selection, b = sel instanceof P.pm.state.NodeSelection && isBlock(sel.node) ? { node: sel.node } : blockAt(sel.from);
+    var sel = ed.state.selection, b = sel instanceof P.pm.state.NodeSelection && isBlock(sel.node) ? { node: sel.node } : blockAt(domFrom(sel.from));
     return b && b.node.attrs.id ? b.node.attrs.id : null;
+  }
+  // T6: Stelle der Schreibmarke laut DOM-Auswahl. ProseMirror uebernimmt sie erst mit "selectionchange" (asynchron) - ein
+  // Tastenkuerzel direkt nach dem Klick (Cmd+/, Cmd+D aus static/keys.js) traefe sonst noch den vorherigen Block
+  function domFrom(fallback) {
+    var g = window.getSelection && window.getSelection();
+    if (!g || !g.rangeCount || !g.focusNode || !ed.view.dom.contains(g.focusNode)) return fallback;
+    try { return ed.view.posAtDOM(g.focusNode, g.focusOffset); } catch (e) { return fallback; }
   }
   function extensions() {
     var Tt = { Node: P.core.Node, Mark: P.core.Mark, Extension: P.core.Extension, mergeAttributes: P.core.mergeAttributes, UniqueID: P.UniqueID };
