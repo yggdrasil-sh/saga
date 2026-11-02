@@ -77,16 +77,47 @@ def acct_hash(uid):
 # Reihenfolge zaehlt: erst Dinge mit Struktur (URL, E-Mail, Zitat), dann IDs/Zahlen, zum Schluss der Zeichenfilter.
 _CTRL = re.compile("[\\x00-\\x1f\\x7f-\\x9f\\u200b-\\u200f\\u2028\\u2029\\u202a-\\u202e\\u2066-\\u2069\\ufeff]")
 _URL = re.compile(r"\b[a-z][a-z0-9+.\-]{1,15}://[^\s\"'<>()]*|\bwww\.[^\s\"'<>()]+|\b(?:blob|data|javascript|mailto|tel):[^\s\"'<>()]*", re.I)
-_EMAIL = re.compile(r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+")
+_EMAIL = re.compile(r"(?<![\w.+\-])[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+")
 _SECRET = re.compile(r"\b(?:hkd?|sga|hk_test)_[A-Za-z0-9_\-]{6,}|\bBearer\s+\S+", re.I)
-# Hostnamen (Server, NAS, ...): Abschnitt mit Bindestrich oder gaengige Endung - Bezeichner wie e.target.value bleiben
-_TLD = ("com|org|net|de|at|ch|eu|io|info|biz|lan|local|localdomain|home|internal|intranet|intra|corp|arpa|cloud|online|"
-        "site|xyz|co|me|tv|uk|fr|nl|be|it|es|pl|ru|th|jp|cn|us|ca|au")
-_HOST = re.compile(r"(?<![\w.\-/])(?:(?:[a-z0-9][a-z0-9\-]*\.)+(?:" + _TLD + r")|(?:[a-z0-9][a-z0-9\-]*\.)*[a-z0-9]*-[a-z0-9\-]*"
-                   r"\.(?!(?:m?js|css|html?|json|kt|swift|java|py)\b)[a-z]{2,})(?![\w\-]|\.\w)", re.I)
 # Dateinamen von Nutzerdateien (Endung): nie stehen lassen, auch wenn sie nach Bezeichner aussehen ("Brief_2.pdf")
-_FILE = re.compile(r"[^\s\"'`<>()\[\]{}:;,\u201e\u201c\u201d\u00ab\u00bb]*\.(?:pdf|docx?|xlsx?|xlsm|pptx?|od[tspg]|rtf|txt|csv|md|zip|rar|7z|tar|gz|png|"
-                   r"jpe?g|gif|webp|hei[cf]|bmp|svg|tiff?|mp[34]|m4[av]|wav|ogg|opus|flac|mov|webm|mkv|avi|epub|eml|vcf|ics|kdbx)(?![\w\-])", re.I)
+_FILE_EXT = ("pdf|docx?|xlsx?|xlsm|pptx?|od[tspg]|rtf|txt|csv|md|zip|rar|7z|tar|gz|png|"
+             "jpe?g|gif|webp|hei[cf]|bmp|svg|tiff?|mp[34]|m4[av]|wav|ogg|opus|flac|mov|webm|mkv|avi|epub|eml|vcf|ics|kdbx")
+_FILE = re.compile(r"(?<![^\s\"'`<>()\[\]{}:;,\u201e\u201c\u201d\u00ab\u00bb])[^\s\"'`<>()\[\]{}:;,\u201e\u201c\u201d\u00ab\u00bb]*\.(?:" + _FILE_EXT + r")(?![\w\-])", re.I)
+# Hostnamen (Server, NAS, ...) mit beliebiger Endung (.family, .fritz.box, .lan, .home.arpa, xn--...), wie ClientLog.kt der
+# Android-App. Bleiben: Dateien (letzte Endung ist Datei-/Code-Endung -> Datei-Regel bzw. eigene Skripte), Treffer mit
+# Grossbuchstaben (org.json.JSONException, window.HKLog.ev) und Eigenschaftsketten von JS-Objekten (e.target.value,
+# this.state.x: erster Abschnitt ein einzelner Buchstabe bzw. ein JS-Wurzelname, oder dahinter folgt eine typische
+# Laufzeitmeldung wie "is undefined"/"is not a function" wie bei Firefox). Punkt am Satzende gehoert nicht dazu.
+_HOST = re.compile(r"(?<![\w.$/\-])(?:[^\W_](?:[^\W_]|-)*\.)+([^\W\d_]{2,24}|xn--[a-z0-9\-]{1,59})(?![\w$(\-]|\.\w)", re.I)
+_CODE_EXT = frozenset("js mjs cjs ts tsx jsx css html htm json map wasm kt kts java swift py rb go rs c h cc cpp hpp m mm so "
+                      "dylib dll xml plist gradle sh log".split())
+_HOST_EXT = re.compile(r"(?:" + _FILE_EXT + r")", re.I)
+_JS_ROOTS = frozenset("this window self globalthis document navigator location history event ev evt err el obj opts options "
+                      "props state args ctx json math console process module exports crypto target".split())
+_JS_TAIL = re.compile(r"\s+(?:is|are)\s+(?:undefined|null|not\s+(?:a\s+function|a\s+constructor|iterable|defined|an\s+object))\b"
+                      r"|\?\.|\[|\s*=[^=]")
+
+
+# Modulwurzeln der Apps (Linux: hlidskjalf.api, gi.repository ...), bleiben in Fehlertexten lesbar
+_APP_ROOTS = frozenset("hlidskjalf gi".split())
+_HTTP_BEFORE = re.compile(r"\bhttp\.(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) $")
+
+
+def _host(m, strict=False):
+    h, tld = m.group(0), m.group(1).lower()
+    if tld in _CODE_EXT or _HOST_EXT.fullmatch(tld):
+        return h
+    if not strict:
+        first = h.split(".", 1)[0]
+        if (h != h.lower() or (len(first) == 1 and first.isalpha()) or first.lower() in _JS_ROOTS
+                or first.lower() in _APP_ROOTS or _JS_TAIL.match(m.string, m.end())):
+            return h
+        # feste Fehlertexte der Apps: "http.GET api.app.today" (Endpunkt-Muster, kein Host)
+        if first.lower() in ("api", "fed") and _HTTP_BEFORE.search(m.string, 0, m.start()):
+            return h
+    return "<host>"
+
+
 _UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 _HEX = re.compile(r"\b(?:0x)?[0-9a-f]{8,}\b", re.I)
 _TOKEN = re.compile(r"(?<![\w~])(?=[A-Za-z_\-+=]*\d)[A-Za-z0-9_\-+=]{20,}")   # lange Zufallsfolgen mit Ziffern (Base64, Schluessel)
@@ -183,7 +214,7 @@ def scrub(s, limit=MSG_MAX):
     s = _EMAIL.sub("<email>", s)
     s = _SECRET.sub("<secret>", s)
     s = _QUOTE.sub(_quote, s)
-    s = _HOST.sub("<host>", s)
+    s = _HOST.sub(_host, s)
     s = _FILE.sub("<file>", s)
     s = _PATH.sub(_static_path, s)
     s = _HANDLE.sub("<id>", s)
@@ -203,7 +234,7 @@ def scrub(s, limit=MSG_MAX):
 # ganze Abschnitte aus mindestens zwei Woertern, die genau so in einem Saga-Katalog stehen (z. B. "Nicht gespeichert"
 # vor ": {err}" - in jeder Sprache; einzelne Woerter wie ein Seitentitel "Woche" zaehlen nicht). Alles andere - etwa ein Seitentitel ohne Anfuehrungszeichen - wird <w>.
 _WORD = re.compile(r"[^\W\d_][\w$]*(?:\.[\w$]+)*")
-_DELIM = re.compile(r"(<[a-z]+>|\{\w+(?::[^{}]*)?\}|[:;,!?()\[\]{}\"'`\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026|=]|\.(?=\s|$))")
+_DELIM = re.compile(r"((?<![\w.])static/[\w.\-/]+\.(?:js|mjs|css|html)(?::\d{1,7}:\d{1,8})?|(?<![\w.\-/])[A-Za-z][\w\-]*(?:\.[\w\-]+)*\.(?:m?js|css)\b|<[a-z]+>|\{\w+(?::[^{}]*)?\}|[:;,!?()\[\]{}\"'`\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026|=]|\.(?=\s|$))")
 _ERR_WORDS = frozenset("""
 a an the of to in on at by for from with without into is are was were be been not no null undefined nan true false
 cannot can could read write set get call called properties property reading setting object function functions method
@@ -341,6 +372,7 @@ def scrub_note(s):
     s = _SECRET.sub("<secret>", s)
     s = _URL.sub("<url>", s)
     s = _EMAIL.sub("<email>", s)
+    s = _HOST.sub(lambda m: _host(m, strict=True), s)       # Freitext: auch Grossschreibung/Kurzformen -> <host>
     s = re.sub(r"(?<![\w-])[A-Za-z0-9_\-+/=]{32,}", "<tok>", s)
     return _SPACES.sub(" ", s).strip()[:NOTE_MAX]
 

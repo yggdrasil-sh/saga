@@ -224,6 +224,38 @@ def unit():
     ch = {m: cl.scrub(m) for m in keep if cl.scrub(m) != m}
     ok(f"Bereinigung: Bezeichner und Fehlerwoerter bleiben ({ch})", not ch)
     ok("Freitext: Zeilentrenner U+2028 weg", "\u2028" not in cl.scrub_note("a\u2028b"))
+    # Hostnamen mit beliebiger Endung (wie ClientLog.kt der Android-App): werden <host>, nichts vom Namen bleibt stehen
+    hosts = {"Error: Hostname cloud.mueller.family not verified": "mueller", "Error: saga.meinheim.family": "meinheim",
+             "getaddrinfo ENOTFOUND nas.fritz.box.": "fritz", "Error: connect ECONNREFUSED router.lan:443": "router",
+             "Error: db.internal unreachable": "db.internal", "Error: nas.home.arpa": "arpa",
+             "Error: xn--mller-kva.example nicht erreichbar": "xn--", "Error: b\u00fccher.example nicht erreichbar": "example",
+             "Error: mein-nas-2.heim01.lan": "heim01", "Error: srv01.k8s-cluster.corp antwortet nicht": "k8s",
+             "Error: 'saga.firma.de' fehlt": "firma", "UnknownHostException: Unable to resolve host \"wiki.kiste.home\"": "kiste",
+             "Error: cloud.mueller.family is not reachable": "mueller",
+             "OSError: Failed to resolve nas.fritz.box [Errno -2]": "fritz", "Error: ENOTFOUND nas.fritz.box [x]": "fritz"}
+    hb = {m: cl.scrub(m) for m, pr in hosts.items() if pr in cl.scrub(m) or "<host>" not in cl.scrub(m)}
+    ok(f"Bereinigung: Hostnamen mit beliebiger Endung -> <host> ({hb})", not hb)
+    nb = {m: cl.scrub_note(m) for m in ("Mein Server Cloud.Mueller.Family geht nicht", "nas.fritz.box ist weg")
+          if "<host>" not in cl.scrub_note(m)}
+    ok(f"Freitext: Hostnamen -> <host> ({nb})", not nb)
+    ok("Freitext: Abkuerzungen bleiben (z.B., u.a.)", cl.scrub_note("geht z.B. nicht, u.a. beim Laden") == "geht z.B. nicht, u.a. beim Laden")
+    # Programmbezeichner, eigene Skripte, Versionsnummern: kein <host>/<file>, Bezeichner unveraendert
+    same = ["TypeError: e.target.value is undefined", "org.json.JSONException: x", "TypeError: window.HKLog.ev is not a function",
+            "kotlin.KotlinNullPointerException", "TypeError: item.props.title is undefined", "TypeError: res.data.items is not iterable",
+            "TypeError: this.state.rows is null", "TypeError: res.data.items[i] is undefined", "TypeError: a.b?.c is undefined", "at saveNow (static/pages.js:120:15)", "at saveNow (static/pm-editor.js:9:3)", "TypeError: x at static/pages.js:120:15",
+            "SyntaxError: JSON.parse: unexpected character", "Error: x at it not", "Error: pm-editor.js not loaded"]
+    sb = {m: cl.scrub(m) for m in same if cl.scrub(m) != m}
+    ok(f"Bereinigung: Programmbezeichner und Stack-Zeilen bleiben ({sb})", not sb)
+    neg = ["Saga 2.5.0-rc.9", "Chrome 130", "Error: pm-editor.js not loaded", "Error: static/pages.js failed", "at Foo.swift:12",
+           "MainActivity.kt:88", "Error: worker.mjs crashed"]
+    gb = {m: cl.scrub(m) for m in neg if "<host>" in cl.scrub(m) or "<file>" in cl.scrub(m)}
+    ok(f"Bereinigung: Dateien mit Code-Endung und Versionsnummern kein <host>/<file> ({gb})", not gb)
+    import time
+    t0 = time.monotonic()
+    for big in ("a." * 8000, "ab." * 5000 + "1", "x@" * 8000):
+        cl.scrub(big), cl.scrub_note(big)
+    dt = time.monotonic() - t0
+    ok(f"Bereinigung: lange Punkt-Ketten (16 KB) ohne quadratische Laufzeit ({dt:.2f} s)", dt < 1.0)
 
 
 def run(users):

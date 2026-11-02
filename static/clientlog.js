@@ -24,6 +24,17 @@
   // --- Bereinigung (der Server bereinigt noch einmal und ersetzt dazu jedes Wort, das weder nach Programm aussieht noch
   //     in einer Fehlermeldung bzw. einem Saga-Text steht - z. B. einen Seitentitel ohne Anfuehrungszeichen) -------------
   var IDENT = /^[A-Za-z_$][\w$.]{0,39}$/;
+  var FX = 'pdf|docx?|xlsx?|xlsm|pptx?|od[tspg]|rtf|txt|csv|md|zip|rar|7z|tar|gz|png|jpe?g|gif|webp|hei[cf]|bmp|svg|tiff?|' +
+    'mp[34]|m4[av]|wav|ogg|opus|flac|mov|webm|mkv|avi|epub|eml|vcf|ics|kdbx';
+  var FILE_EXT = new RegExp('^(?:' + FX + ')$', 'i');
+  var FILE = new RegExp('[^\\s"\'`<>()\\[\\]{}:;,\u201e\u201c\u201d\u00ab\u00bb]*\\.(?:' + FX + ')(?![\\w\\-])', 'gi');
+  var HOST = /(^|[^\p{L}\p{N}_.$\/\-])((?:[\p{L}\p{N}](?:[\p{L}\p{N}]|-)*\.)+(\p{L}{2,24}|xn--[a-z0-9\-]{1,59}))(?![\p{L}\p{N}_$(\-]|\.[\p{L}\p{N}_])/giu;
+  var JS_TAIL = /^(?:\s+(?:is|are)\s+(?:undefined|null|not\s+(?:a\s+function|a\s+constructor|iterable|defined|an\s+object))\b|\?\.|\[|\s*=[^=])/;
+  var CODE_EXT = {}, JS_ROOTS = {};
+  ('js mjs cjs ts tsx jsx css html htm json map wasm kt kts java swift py rb go rs c h cc cpp hpp m mm so dylib dll xml plist ' +
+    'gradle sh log').split(' ').forEach(function (w) { CODE_EXT[w] = 1; });
+  ('this window self globalthis document navigator location history event ev evt err el obj opts options props state args ' +
+    'ctx json math console process module exports crypto target').split(' ').forEach(function (w) { JS_ROOTS[w] = 1; });
   function scrub(s, max) {
     s = String(s == null ? '' : s).slice(0, 4000).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, ' ');
     s = s.replace(/\b[a-z][a-z0-9+.\-]{1,15}:\/\/[^\s"'<>()]*|\bwww\.[^\s"'<>()]+|\b(?:blob|data|javascript|mailto|tel):[^\s"'<>()]*/gi, function (u) {
@@ -38,6 +49,17 @@
         var ascii = '\'"`'.indexOf(m[0]) >= 0;
         return x && IDENT.test(x) ? (ascii ? m : "'" + x + "'") : ascii ? m[0] + '<str>' + m[0] : '"<str>"';
       });
+    // Hostnamen mit beliebiger Endung (.family, .fritz.box, .lan, xn--...) -> <host>, wie HOST/_host in saga/clientlog.py:
+    // bleiben Dateien/Skripte (Endung), Treffer mit Grossbuchstaben (org.json.JSONException) und JS-Eigenschaftsketten
+    // (e.target.value, this.x.y, "a.b.c is undefined")
+    s = s.replace(HOST, function (m, pre, h, tld, off, all) {
+      var t = tld.toLowerCase(), first = h.split('.')[0];
+      if (CODE_EXT[t] === 1 || FILE_EXT.test(t) || h !== h.toLowerCase() || /^[a-z]$/i.test(first) || JS_ROOTS[first] === 1
+        || JS_TAIL.test(all.slice(off + m.length, off + m.length + 40))) return m;
+      return pre + '<host>';
+    });
+    // Dateinamen von Nutzerdateien -> <file> (wie _FILE in saga/clientlog.py)
+    s = s.replace(FILE, '<file>');
     s = s.replace(/(^|[^\w.:<])\/[^\s"'<>()]+/g, function (m, pre) { return pre + '<path>'; });
     s = s.replace(/[~@][\w.\-]{2,}/g, '<id>');
     s = s.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<uuid>');
@@ -50,8 +72,8 @@
     // Woerter: nur Programm-Bezeichner, Eigenschaften in Anfuehrungszeichen ('title') und Woerter englischer
     // Fehlermeldungen bleiben (wie _ERR_WORDS in saga/clientlog.py) - alles andere, etwa ein Seitentitel ohne
     // Anfuehrungszeichen oder ein uebersetzter Text, wird <w>
-    s = s.replace(/<[a-z]+>|static\/[\w.\-\/]+|'[a-z_$][\w$.]{0,39}'|[^\s\d_.,:;()\[\]{}<>#'"`=+\-*\/!?&|%$~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026][^\s.,:;()\[\]{}<>#'"`=+\-*\/!?&|%~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026]*(?:\.[\w$]+)*/g, function (w) {
-      if (w[0] === '<' || w[0] === "'" || w.indexOf('static/') === 0 || w.length === 1 || /[.$_\d]|[a-z][A-Z]|(?:Error|Exception)$/.test(w) || ERRW[w.toLowerCase()] === 1) return w;
+    s = s.replace(/<[a-z]+>|static\/[\w.\-\/]+|[A-Za-z][\w\-]*(?:\.[\w\-]+)*\.(?:m?js|css)\b|'[a-z_$][\w$.]{0,39}'|[^\s\d_.,:;()\[\]{}<>#'"`=+\-*\/!?&|%$~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026][^\s.,:;()\[\]{}<>#'"`=+\-*\/!?&|%~^\u00ab\u00bb\u201e\u201c\u201d\u2013\u2014\u2026]*(?:\.[\w$]+)*/g, function (w) {
+      if (w[0] === '<' || w[0] === "'" || w.indexOf('static/') === 0 || /\.(?:m?js|css)$/.test(w) || w.length === 1 || /[.$_\d]|[a-z][A-Z]|(?:Error|Exception)$/.test(w) || ERRW[w.toLowerCase()] === 1) return w;
       return '<w>';
     });
     s = s.replace(/\s{2,}/g, ' ').trim();
