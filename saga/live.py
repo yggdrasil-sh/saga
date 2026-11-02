@@ -394,7 +394,16 @@ def _resolve(kind, p, aud, pres):
                 out.append((p["uid"], "notification", {"unread": p["unread"], "read": p["ids"]}))
         elif kind == "note.changed":
             nid, by, origin = p["id"], p.get("by"), p.get("origin")
-            nm = names(c, [by]) if by else {}
+            nms = {}                                         # Name ohne Anzeigenamen ("Unbekannte Person") in der
+            def nm_for(u):                                   # Sprache des Empfaengers (Testlabor 2.11.: sonst englisch)
+                lg = account_lang(u)
+                if lg not in nms:
+                    tok = i18n.set_lang(lg)
+                    try:
+                        nms[lg] = names(c, [by]) if by else {}
+                    finally:
+                        i18n._cur.reset(tok)
+                return nms[lg]
             # Der Autor bekommt die Aenderung auf seinen ANDEREN Geraeten/Sitzungen (BUG-032) - nur die ausloesende
             # Sitzung nicht (ohne bekannte Herkunft wie bisher gar nicht)
             for u in sorted((set(pres.get(nid, {})) & aud) - (set() if origin else {by})):
@@ -402,7 +411,7 @@ def _resolve(kind, p, aud, pres):
                 if p.get("gone"):              # geloescht/archiviert: Zugriff hat jetzt niemand mehr - nur "weg", ohne Namen
                     out.append((u, "note.changed", {"id": nid, "rev": None, "updated": p.get("updated"), "gone": True, "by": None}, skip))
                 elif Access(c, u).role(nid):
-                    d = {"id": nid, "rev": p.get("rev"), "updated": p.get("updated"), "gone": False, "by": _person(nm, by, u) if by else None}
+                    d = {"id": nid, "rev": p.get("rev"), "updated": p.get("updated"), "gone": False, "by": _person(nm_for(u), by, u) if by else None}
                     if p.get("row"):                 # Zeile der Datenbank geaendert (BUG-049); ID nur, wenn u sie sehen darf
                         d["row"] = p["row"] if Access(c, u).role(p["row"]) else True
                     out.append((u, "note.changed", d, skip))

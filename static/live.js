@@ -403,8 +403,9 @@
     k.reloadList().then(function () {
       // offene fremde Seite: Rolle geaendert oder Zugriff weg -> neu oeffnen (mit ungespeicherten Aenderungen greift
       // beim Speichern der vorhandene Weg "Kein Zugriff mehr" / "Nur noch lesen")
-      if (!id || !k.foreign() || k.busy() || !k.cur() || k.cur().id !== id) return;
+      if (!id || !k.foreign() || !k.cur() || k.cur().id !== id) return;
       var now = k.byId(id);
+      if (k.busy()) { if (!now && k.lost) k.lost(id); return; }     // Zugriff weg mitten im Tippen: gleich sagen (2.11.)
       if (!now || (now.role && now.role !== role)) k.open(id);
     });
   }

@@ -8963,6 +8963,14 @@
          kill: function (ed) { killEditor(ed); },
          save: function () { return save(); }, apply: function () { return liveApply(null); },
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
+         // pm-live.js: Server meldet "kein Zugriff mehr" (bye access) - sichtbar wie beim Speichern (Testlabor 2.11.:
+         // vorher blieb der Text ohne Hinweis stehen); sofort schreibgeschuetzt
+         lost: function (id) {
+           if (!S.cur || S.cur.id !== id || !foreign() || S.lost) return;
+           try { if (S.editor && S.editor.setEditable) S.editor.setEditable(false); } catch (x) { /* egal */ }
+           $('pg-title').readOnly = true;
+           lostAccess(404);
+         },
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
          reloadList: function () { return loadList(); }, remote: remoteChange,
          focusBlock: function () {                              // 2.5 (P3): Block mit der Schreibmarke (fuer die Anwesenheit)

@@ -191,6 +191,19 @@ try:
     st_ = json.loads(m[2][0])["state"] if m else {}
     ok(f"Awareness: Name/Farbe vom Server, kein Anmeldename ({st_})", st_ and st_["name"] != "Fake" and "username" not in st_
        and st_["cursor"] == {"x": 1} and st_["color"] and "hk-test-a" not in json.dumps(st_))
+    # Testlabor 2.11.: ohne Anzeigenamen sprachneutral die pseudonyme Kennung (der Client zeigt "Unbekannte Person (…)"
+    # in SEINER Sprache), nie ein fest uebersetzter Text und nie der Anmeldename
+    from saga.collab import _display
+    from saga.core import local_ref as _lref
+    with connect() as c_:
+        was_dn = c_.execute("SELECT display_name FROM users WHERE username=?", (A,)).fetchone()[0]
+        c_.execute("UPDATE users SET display_name='' WHERE username=?", (A,)); c_.commit()
+    try:
+        nm_, _col = _display(A)
+        ok(f"Awareness ohne Anzeigenamen: Kennung statt uebersetztem Text ({nm_})", nm_ == _lref(A) and A not in nm_)
+    finally:
+        with connect() as c_:
+            c_.execute("UPDATE users SET display_name=? WHERE username=?", (was_dn, A)); c_.commit()
     # Titel live
     a.edit(nid, lambda d: d.get("title", type=__import__("pycrdt").Text).insert(5, "!"))
     time.sleep(1.5)

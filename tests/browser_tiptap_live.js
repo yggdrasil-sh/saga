@@ -25,7 +25,8 @@ const J = (x) => JSON.stringify(x);
     const ctx = await br.newContext({ viewport: { width: 1200, height: 900 }, locale: 'de-DE' });
     await ctx.addCookies([{ name: 'saga', value: ck, domain: new URL(BASE).hostname, path: '/' }]);
     const p = await ctx.newPage(); p.errs = [];
-    p.on('pageerror', (e) => p.errs.push(e.message));
+    p.on('pageerror', (e) => p.errs.push(e.message)); p.warns = [];
+    p.on('console', (m) => { if (/TextSelection endpoint/.test(m.text())) p.warns.push(m.text().slice(0, 120)); });
     await p.addInitScript(() => {
       window.__csp = [];
       document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective + ' ' + e.blockedURI));
@@ -97,6 +98,27 @@ const J = (x) => JSON.stringify(x);
   let g = await get(P1);
   ok('Materialisiert: GET = Stand der Editoren', g[0].data.text === 'Bert: Hallo von Anna' && g.length === 3, g);
   ok('Status still (kein "Speichert"/"Ungespeichert")', !/Speichert|Ungespeichert/.test(await a.textContent('#pg-state')), await a.textContent('#pg-state'));
+  ok('Kein "TextSelection endpoint"-Warnhinweis beim Live-Binden (Testlabor 2.11., Fund 7)', !a.warns.length && !b.warns.length, [a.warns, b.warns]);
+
+  // 1b) Testlabor 2.11.: Konto ohne Anzeigenamen - Cursor-Name in der Sprache der Betrachterin ("Unbekannte Person (…)"),
+  //     nie englisch vom Server, nie der Anmeldename
+  await a.api('PATCH', '/api/account', { name: '' });
+  await open(a, P1); await open(b, P1);
+  await D.focus(a, 'p2', 'end'); await sleep(900);
+  const unk = await b.evaluate(() => [...document.querySelectorAll('#pg-editor .hk-caret-n')].map((c) => c.textContent));
+  ok('Ohne Anzeigenamen: Cursor zeigt "Unbekannte Person (…)" (deutsch), keinen Anmeldenamen', unk.length === 1 && /^Unbekannte Person \([a-z2-7]{4}\)$/.test(unk[0]), unk);
+  ok('... HKPmLive.state().me bei Anna ebenso deutsch', /^Unbekannte Person \(/.test((await st(a)).me || ''), (await st(a)).me);
+  await a.api('PATCH', '/api/account', { name: 'Anna' });
+
+  // 1c) Testlabor 2.11.: Enter im Titel einer neuen (leeren) Seite springt live in den Text - ohne Scheinaenderung
+  const PE = (await a.api('POST', '/api/notes', { title: '' })).id; made.push(PE);
+  await open(a, PE);
+  await a.focus('#pg-title'); await a.keyboard.type('Titel', { delay: 20 }); await a.keyboard.press('Enter'); await sleep(200);
+  ok('Enter im Titel (leere Seite, live): Schreibmarke im Text, kein Absatz vorab', await a.evaluate(() => document.activeElement.classList.contains('pm-doc') && !HKPages.k.editor().editor().state.doc.childCount), await a.evaluate(() => document.activeElement.id || document.activeElement.className));
+  await a.keyboard.type('Erster Absatz', { delay: 20 });
+  ok('... Getipptes landet im Text, Titel bleibt "Titel"', await until(async () => { const n = await a.api('GET', '/api/notes/' + PE); const bl = JSON.parse(n.body || '{}').blocks || []; return n.title === 'Titel' && bl.length === 1 && bl[0].data.text === 'Erster Absatz'; }, 8000),
+    await a.api('GET', '/api/notes/' + PE));
+  await open(a, P1); await open(b, P1);
 
   // 2) Undo nimmt nur eigene Aenderungen zurueck
   await D.focus(a, 'p2', 'end'); await a.keyboard.type(' A', { delay: 20 }); await sleep(700);
@@ -161,6 +183,10 @@ const J = (x) => JSON.stringify(x);
   ok('Leser: Cursor der Leserin wird bei Anna nicht als Schreibmarke im Text gezeigt (fokuslos) bzw. ohne Anmeldename', !(await a.evaluate(() => document.querySelector('#pg-editor').innerHTML)).includes('hk-test-b'));
   await a.api('DELETE', '/api/notes/' + P1 + '/shares', { type: 'user', target: HANDLE2 });
   ok('Freigabe entzogen: Bert verliert die Live-Bindung (kein Abo mehr)', await until(async () => (await st(b)).mode !== 'live', 12000), await st(b));
+  ok('... Bert sieht sofort "Kein Zugriff mehr", Editor schreibgeschuetzt (Testlabor 2.11.)', await until(async () => b.evaluate(() => !document.getElementById('pg-modal').hidden
+    && /Kein Zugriff mehr/.test(document.getElementById('pg-modal').textContent) && !HKPages.k.editor().editor().isEditable), 6000),
+    await b.evaluate(() => document.getElementById('pg-modal').textContent.slice(0, 80)));
+  await b.evaluate(() => { const x = document.querySelector('#pg-modal .modal-x, #pg-modal button'); if (x) x.click(); }); await sleep(300);
 
   // 8) Falsches Schema (Pruefsumme manipuliert) -> nur lesen, sendet nichts, Seite unveraendert
   const P8 = await mk('Schema ' + RUN, [P('s1', 'Bleibt'), { id: 'u1', type: 'kuenftig', data: { x: 1 } }], 'edit');

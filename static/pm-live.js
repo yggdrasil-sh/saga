@@ -605,6 +605,7 @@
     if (reason === 'off') { W.off = true; FEAT.live = null; }
     toStufe1('bye-' + reason, reason !== 'restart');
     if (reason === 'restart' && PG === pg) { pg.want = true; }      // nach dem Neustart neu verbinden (closed -> failed)
+    if (reason === 'access') { var k = K(); if (k && k.lost) k.lost(pg.nid); }   // Freigabe entzogen: Hinweis, nur lesen
   }
   function onError(code) {
     log('error', code);
@@ -647,11 +648,14 @@
     var st = null;
     if (s && s.cursor) {
       var pal = PALETTE.indexOf(s.color) >= 0 ? s.color : 'gray';
-      st = { cursor: s.cursor, user: { name: String(s.name || '').slice(0, 80), color: '#000000', pal: pal } };
+      st = { cursor: s.cursor, user: { name: liveName(s.name), color: '#000000', pal: pal } };
     }
     if (st) pg.aw.set(sid, st); else pg.aw.delete(sid);
     if (pg.prov) pg.prov.awareness._remote(sid, st);
   }
+  // Name vom Server: Anzeigename oder - ohne ihn - die pseudonyme Kennung ('~x', '~x@host'); die wird hier in der eigenen
+  // Sprache lesbar ("Unbekannte Person (abcd)", HK.personName), nie roh gezeigt
+  function liveName(n) { n = String(n || '').slice(0, 80); return (HK.personName ? HK.personName(n) : n) || ''; }
   function aw() {                                     // eigene Awareness gebuendelt (hoechstens alle 100 ms) senden
     var pg = PG; if (!pg || !pg.live || pg.awT) return;
     pg.awT = setTimeout(function () {
@@ -701,7 +705,7 @@
     state: function () {
       return { mode: PG ? (PG.lock ? 'lock' : PG.live ? 'live' : 'stufe1') : 'aus', nid: PG && PG.nid, ro: !!(PG && PG.ro), live: !!(PG && PG.live),
                lock: !!(PG && PG.lock), unacked: PG ? PG.unacked.length : 0, held: PG ? PG.held.length : 0, ws: !!(W.ws && W.open), off: W.off,
-               role: PG && PG.info ? PG.info.role : null, me: PG && PG.info ? PG.info.name : null, stats: Object.assign({}, ST) };
+               role: PG && PG.info ? PG.info.role : null, me: PG && PG.info ? liveName(PG.info.name) : null, stats: Object.assign({}, ST) };
     },
     doc: function () { return PG && PG.doc; },
     // Verbindung kappen (Tests): ms lang kein Wiederverbinden
