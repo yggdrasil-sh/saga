@@ -106,7 +106,8 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   // --- Diagramm-Widget per Slash mit Vorschau ---------------------------------------------------------------------
   await p.locator(D.textOf('paragraph')).last().click(); await p.keyboard.type('/'); await sleep(400);
   await p.keyboard.type('Diagramm', { delay: 30 }); await sleep(400);
-  const menu = await p.evaluate((s) => [...document.querySelectorAll(s)].map((x) => x.textContent.trim()), D.UI_ITEMS);
+  const items = () => p.evaluate((s) => [...document.querySelectorAll(s)].map((x) => x.textContent.trim()), D.UI_ITEMS);
+  const menu = (await until(async () => { const l = await items(); return l.indexOf('Widget: Diagramm') >= 0 ? l : null; }, 4000)) || await items();
   ok(`Slash-Menue: "Widget: Diagramm" (${menu.slice(0, 3).join(', ')})`, menu.indexOf('Widget: Diagramm') >= 0, menu);
   await p.keyboard.press('Enter');
   await until(() => p.locator('.wg-panel').count());

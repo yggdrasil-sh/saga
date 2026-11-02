@@ -44,36 +44,49 @@ const P = (t) => ({ type: 'paragraph', data: { text: t } });
     ok(`${tag}: wieder online - Offline-Text gespeichert`, /sechs x off/.test(back.body || ''), (back.body || '').slice(-120));
     // Block-Menue: kein Suchfeld, Filtern im Text, unter der Zeile
     await p.keyboard.press('Enter'); await p.keyboard.type('/'); await sleep(500);
-    const m = await p.evaluate((U) => { const pop = document.querySelector(U.popover), para = document.activeElement;
-      const c = pop && pop.querySelector(':scope > ' + U.popoverContainer), s = pop && pop.querySelector(U.search);
-      const blk = para.closest('[data-block-id]');
-      return pop && { inl: pop.classList.contains('pg-slash-inline'), search: s ? s.getClientRects().length : 0, inPara: !!blk && blk.getAttribute('data-block-type') === 'paragraph',
-        top: Math.round(c.getBoundingClientRect().top), line: Math.round(para.getBoundingClientRect().bottom) }; }, D.UI);
+    // Tiptap: ein contenteditable fuer das ganze Dokument (activeElement = Editor) -> Block der Schreibmarke ueber die
+    // Fassade; Menue (.pm-pop) ist selbst der Behaelter und hat nie ein Suchfeld
+    const m = await p.evaluate(([U, TT]) => { const pop = document.querySelector(U.popover);
+      const cur = window.HKPages && HKPages.k.doc && HKPages.k.doc.current(), blk = TT ? cur && cur.el : document.activeElement.closest('[data-block-id]');
+      const para = TT ? blk : document.activeElement;
+      const c = pop && (pop.matches(U.popoverContainer) ? pop : pop.querySelector(':scope > ' + U.popoverContainer)), s = pop && pop.querySelector(U.search);
+      return pop && c && para && { inl: TT || pop.classList.contains('pg-slash-inline'), search: s ? s.getClientRects().length : 0, inPara: !!blk && blk.getAttribute('data-block-type') === 'paragraph',
+        top: Math.round(c.getBoundingClientRect().top), line: Math.round(para.getBoundingClientRect().bottom) }; }, [D.UI, D.EDITOR === 'tiptap']);
     ok(`${tag}: Menue ohne Suchfeld, Cursor im Text`, m && m.inl && !m.search && m.inPara, m);
     ok(`${tag}: Menue unter der Zeile (${m && m.top} >= ${m && m.line})`, m && m.top >= m.line, m);
     await p.keyboard.type('zit'); await sleep(300);
     const vis = await p.evaluate((s) => [...document.querySelectorAll(s)].filter((x) => x.getClientRects().length).map((x) => x.textContent.trim()), `${D.UI.popover} ${D.UI.item}`);
     ok(`${tag}: Weitertippen filtert (${vis.join(', ')})`, vis.length >= 1 && vis.every((v) => /zit/i.test(v)), vis);
     await p.keyboard.press('Enter'); await sleep(400);
-    ok(`${tag}: Enter macht ein Zitat`, await p.evaluate((U) => !!document.activeElement.closest('[data-block-type="quote"]') && !document.querySelector(U.popover), D.UI));
+    ok(`${tag}: Enter macht ein Zitat`, await p.evaluate((U) => { const c = HKPages.k.doc.current();
+      return !!(c ? c.type === 'quote' : document.activeElement.closest('[data-block-type="quote"]')) && !document.querySelector(U.popover); }, D.UI));
     await p.locator(D.textOf('paragraph'), { hasText: 'sechs' }).click(); await p.keyboard.press('End'); await p.keyboard.press('Enter');
     await p.keyboard.type('/x'); await sleep(300);
-    const x1 = await p.evaluate((U) => !!document.querySelector(U.popover + '.pg-slash-inline'), D.UI);
+    const x1 = await p.evaluate(([U, TT]) => !!document.querySelector(U.popover + (TT ? '' : '.pg-slash-inline')), [D.UI, D.EDITOR === 'tiptap']);
     await p.keyboard.press('Backspace'); await p.keyboard.press('Backspace'); await sleep(300);
     ok(`${tag}: "/" geloescht -> Menue zu`, x1 && await p.evaluate((U) => !document.querySelector(U.popover), D.UI), x1);
     await p.keyboard.type('/'); await sleep(300); await p.keyboard.press('Escape'); await sleep(300);
-    ok(`${tag}: Esc schliesst und nimmt "/" weg`, await p.evaluate((U) => !document.querySelector(U.popover) && document.activeElement.textContent === '', D.UI));
+    // Text des Blocks mit der Schreibmarke (Fassade; Editor.js: das Textfeld selbst)
+    const curTxt = () => p.evaluate(() => { const c = HKPages.k.doc.current(); return c ? c.el.textContent : document.activeElement.textContent; });
+    // Tiptap (E1, browser_tiptap_kern "Slash: Esc laesst ... stehen"): Esc schliesst nur, "/" bleibt Text
+    const escWant = D.EDITOR === 'tiptap' ? '/' : '';
+    ok(`${tag}: Esc schliesst und nimmt "/" weg` + (escWant ? ' (Tiptap: "/" bleibt)' : ''), await p.evaluate((U) => !document.querySelector(U.popover), D.UI) && (await curTxt()) === escWant, await curTxt());
+    if (escWant) { await p.keyboard.press('Backspace'); await sleep(100); }
     // Esc bei "/…" mit Leerzeichen (ein Satz, kein Befehl): Menue zu, Text bleibt stehen
     await p.keyboard.type('/x y z'); await sleep(300); await p.keyboard.press('Escape'); await sleep(300);
-    ok(`${tag}: Esc bei "/x y z" laesst den Text stehen`, await p.evaluate((U) => !document.querySelector(U.popover) && document.activeElement.textContent === '/x y z', D.UI));
+    ok(`${tag}: Esc bei "/x y z" laesst den Text stehen`, await p.evaluate((U) => !document.querySelector(U.popover), D.UI) && (await curTxt()) === '/x y z', await curTxt());
     await sleep(1500);
     // Leere Seite nach Wechsel aus einer laengeren Seite: Werkzeugleiste nicht unten
     await p.locator(D.textOf('paragraph'), { hasText: 'sechs' }).click(); await sleep(200);
     await p.locator('#pg-tree .pg-row, #pg-tree li', { hasText: 'Unbenannt' }).last().click(); await sleep(1500);
+    // Platzhalter: Editor.js data-placeholder(-active) am Textfeld, Tiptap data-ph (Dekoration) am Block oder darin
     const lp = await p.evaluate(([U, PS]) => { const t = document.querySelector(U.toolbar), b = document.querySelector(PS);
-      return { open: t.classList.contains(U.toolbarOpenClass), top: t.style.top, ph: b.dataset.placeholderActive || b.dataset.placeholder || '' }; }, [D.UI, D.textOf('paragraph')]);
+      const phEl = b && (b.closest('[data-ph]') || b.querySelector('[data-ph]'));
+      return { open: !!t && t.classList.contains(U.toolbarOpenClass), top: t ? t.style.top : '0px',
+        ph: (b && (b.dataset.placeholderActive || b.dataset.placeholder)) || (phEl && phEl.dataset.ph) || '' }; }, [D.UI, D.textOf('paragraph')]);
     ok(`${tag}: leere Seite - Werkzeugleiste der vorigen Seite zu (${lp.top})`, !lp.open || lp.top === '0px', lp);
-    ok(`${tag}: kurzer Platzhalter (${lp.ph})`, lp.ph === 'Tippe „/“ für Befehle', lp);
+    // Editor.js: "Tippe „/“ für Befehle" (pages.js), Tiptap: eigener kurzer Text der Schreibmarken-Zeile (pm-editor.js phText)
+    ok(`${tag}: kurzer Platzhalter (${lp.ph})`, lp.ph === (D.EDITOR === 'tiptap' ? 'Schreib etwas oder tippe „/“ …' : 'Tippe „/“ für Befehle'), lp);
     const eb = await p.locator(D.textOf('paragraph')).first().boundingBox();
     await p.mouse.move(eb.x + 30, eb.y + eb.height / 2); await sleep(300);
     const g = await p.evaluate(([U, PS]) => { const pl = document.querySelector(U.plusBtn), b = document.querySelector(PS);

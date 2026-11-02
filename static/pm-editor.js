@@ -394,7 +394,15 @@
         // Backspace/Entf bleibt (bewusste Aktion, Notion-Verhalten).
         handleTextInput: function (view) {
           var sel = view.state.selection, n = sel && sel.node;
-          return !!(n && n.isAtom && BLOCKSET[n.type.name]);
+          if (!(n && n.isAtom && BLOCKSET[n.type.name])) return false;
+          // T6: Schreibmarke laut DOM schon in einem Textblock (Klick, selectionchange noch nicht verarbeitet): die
+          // Auswahl dorthin holen und die Eingabe normal laufen lassen - sonst ginge das erste Zeichen verloren
+          var g = window.getSelection && window.getSelection(), dom = view.nodeDOM(sel.from);
+          if (g && g.rangeCount && g.focusNode && view.dom.contains(g.focusNode) && !(dom && dom.contains(g.focusNode))) {
+            var at = domFrom(-1);
+            if (at >= 0) { var $a = view.state.doc.resolve(at); if ($a.parent.isTextblock) { view.dispatch(view.state.tr.setSelection(S0.TextSelection.create(view.state.doc, at))); return false; } }
+          }
+          return true;
         }
       },
       filterTransaction: function (tr, state) {
