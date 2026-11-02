@@ -29,7 +29,7 @@
   var FILE_EXT = new RegExp('^(?:' + FX + ')$', 'i');
   var FILE = new RegExp('[^\\s"\'`<>()\\[\\]{}:;,\u201e\u201c\u201d\u00ab\u00bb]*\\.(?:' + FX + ')(?![\\w\\-])', 'gi');
   var HOST = /(^|[^\p{L}\p{N}_.$\/\-])((?:[\p{L}\p{N}](?:[\p{L}\p{N}]|-)*\.)+(\p{L}{2,24}|xn--[a-z0-9\-]{1,59}))(?![\p{L}\p{N}_$(\-]|\.[\p{L}\p{N}_])/giu;
-  var JS_TAIL = /^(?:\s+(?:is|are)\s+(?:undefined|null|not\s+(?:a\s+function|a\s+constructor|iterable|defined|an\s+object))\b|\s*(?:\?\.|\[|=[^=]))/;
+  var JS_TAIL = /^(?:\s+(?:is|are)\s+(?:undefined|null|not\s+(?:a\s+function|a\s+constructor|iterable|defined|an\s+object))\b|\?\.|\[|\s*=[^=])/;
   var CODE_EXT = {}, JS_ROOTS = {};
   ('js mjs cjs ts tsx jsx css html htm json map wasm kt kts java swift py rb go rs c h cc cpp hpp m mm so dylib dll xml plist ' +
     'gradle sh log').split(' ').forEach(function (w) { CODE_EXT[w] = 1; });

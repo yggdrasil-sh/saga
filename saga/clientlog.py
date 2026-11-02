@@ -95,7 +95,7 @@ _HOST_EXT = re.compile(r"(?:" + _FILE_EXT + r")", re.I)
 _JS_ROOTS = frozenset("this window self globalthis document navigator location history event ev evt err el obj opts options "
                       "props state args ctx json math console process module exports crypto target".split())
 _JS_TAIL = re.compile(r"\s+(?:is|are)\s+(?:undefined|null|not\s+(?:a\s+function|a\s+constructor|iterable|defined|an\s+object))\b"
-                      r"|\s*(?:\?\.|\[|=[^=])")
+                      r"|\?\.|\[|\s*=[^=]")
 
 
 # Modulwurzeln der Apps (Linux: hlidskjalf.api, gi.repository ...), bleiben in Fehlertexten lesbar

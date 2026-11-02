@@ -231,7 +231,8 @@ def unit():
              "Error: xn--mller-kva.example nicht erreichbar": "xn--", "Error: b\u00fccher.example nicht erreichbar": "example",
              "Error: mein-nas-2.heim01.lan": "heim01", "Error: srv01.k8s-cluster.corp antwortet nicht": "k8s",
              "Error: 'saga.firma.de' fehlt": "firma", "UnknownHostException: Unable to resolve host \"wiki.kiste.home\"": "kiste",
-             "Error: cloud.mueller.family is not reachable": "mueller"}
+             "Error: cloud.mueller.family is not reachable": "mueller",
+             "OSError: Failed to resolve nas.fritz.box [Errno -2]": "fritz", "Error: ENOTFOUND nas.fritz.box [x]": "fritz"}
     hb = {m: cl.scrub(m) for m, pr in hosts.items() if pr in cl.scrub(m) or "<host>" not in cl.scrub(m)}
     ok(f"Bereinigung: Hostnamen mit beliebiger Endung -> <host> ({hb})", not hb)
     nb = {m: cl.scrub_note(m) for m in ("Mein Server Cloud.Mueller.Family geht nicht", "nas.fritz.box ist weg")
@@ -241,7 +242,7 @@ def unit():
     # Programmbezeichner, eigene Skripte, Versionsnummern: kein <host>/<file>, Bezeichner unveraendert
     same = ["TypeError: e.target.value is undefined", "org.json.JSONException: x", "TypeError: window.HKLog.ev is not a function",
             "kotlin.KotlinNullPointerException", "TypeError: item.props.title is undefined", "TypeError: res.data.items is not iterable",
-            "TypeError: this.state.rows is null", "at saveNow (static/pages.js:120:15)", "at saveNow (static/pm-editor.js:9:3)", "TypeError: x at static/pages.js:120:15",
+            "TypeError: this.state.rows is null", "TypeError: res.data.items[i] is undefined", "TypeError: a.b?.c is undefined", "at saveNow (static/pages.js:120:15)", "at saveNow (static/pm-editor.js:9:3)", "TypeError: x at static/pages.js:120:15",
             "SyntaxError: JSON.parse: unexpected character", "Error: x at it not", "Error: pm-editor.js not loaded"]
     sb = {m: cl.scrub(m) for m in same if cl.scrub(m) != m}
     ok(f"Bereinigung: Programmbezeichner und Stack-Zeilen bleiben ({sb})", not sb)
