@@ -91,10 +91,10 @@ def catalog_tests():
     ok(f"Spanisch Teilen/Kommentare wie im Glossar ({len(want)} Begriffe)", not bad or print("      ", bad))
 
 
-def raw(base, path, cookie="", accept="de-DE,de;q=0.9", host=None):
+def raw(base, path, cookie="", accept="de-DE,de;q=0.9", host=None, headers=None):
     """GET ohne Client-Logik -> (status, kopfzeilen als Liste, text)"""
     con = http.client.HTTPConnection(base.hostname, base.port, timeout=30)
-    h = {"Host": host or base.netloc, "Accept-Language": accept}
+    h = {"Host": host or base.netloc, "Accept-Language": accept, **(headers or {})}
     if cookie:
         h["Cookie"] = cookie
     con.request("GET", path, headers=h)
@@ -164,6 +164,15 @@ def switch_tests(u):
     s, _, _ = u.req("GET", "/lang?l=de&next=/")
     ok("Umschalter angemeldet aendert die feste Konto-Sprache", s == 303 and u.api("GET", "/api/account")[1].get("lang") == "de"
        and html_lang(u.req("GET", "/")[2]) == "de")
+    # 2.5 (Pentest 2, E2): Top-Navigation von einer fremden Seite aendert die Konto-Sprache nicht (nur das Cookie)
+    nav = {"Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}
+    ck = "; ".join(f"{k}={v}" for k, v in u.ck.items())
+    st, _, _ = raw(B, "/lang?l=th&next=/", cookie=ck, host=HOST, headers=dict(nav, **{"Sec-Fetch-Site": "cross-site"}))
+    ok("E2: /lang cross-site laesst die Konto-Sprache", st == 303 and u.api("GET", "/api/account")[1].get("lang") == "de")
+    st, _, _ = raw(B, "/lang?l=th&next=/", cookie=ck, host=HOST, headers=dict(nav, **{"Sec-Fetch-Site": "same-site"}))
+    ok("E2: /lang same-site laesst die Konto-Sprache", st == 303 and u.api("GET", "/api/account")[1].get("lang") == "de")
+    st, _, _ = raw(B, "/lang?l=en&next=/", cookie=ck, host=HOST, headers=dict(nav, **{"Sec-Fetch-Site": "same-origin"}))
+    ok("E2: /lang same-origin (eigenes UI) aendert die Konto-Sprache", st == 303 and u.api("GET", "/api/account")[1].get("lang") == "en")
     u.api("PUT", "/api/account/lang", {"lang": ""})
     s, _, _ = u.req("GET", "/lang?l=es&next=/")
     ok("Konto automatisch: Umschalter setzt nur das Cookie", u.api("GET", "/api/account")[1].get("lang") == "" and u.ck.get("saga_lang") == "es")

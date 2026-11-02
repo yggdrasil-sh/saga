@@ -357,7 +357,10 @@ def lang_switch_response(request, uid, secure):
         # 2.5 (Sicherheit): angemeldet wirkt der Umschalter nur bei echter Navigation (Formular/Link im Dokument) - ein
         # <img src="/lang?l=..">, fetch o. ae. aendert weder die Konto-Sprache noch das Cookie
         return RedirectResponse(safe_next(request.query_params.get("next")), status_code=303, headers={"Cache-Control": "no-store"})
-    if uid:
+    site = request.headers.get("sec-fetch-site")
+    if uid and site in (None, "same-origin", "none"):
+        # 2.5 (Pentest 2, E2): die Konto-Sprache dauerhaft nur aus dem eigenen UI (bzw. ohne Sec-Fetch-Site: Apps, Werkzeuge)
+        # - ein Link einer fremden Seite (cross-site/same-site) setzt nur das Cookie dieses Browsers
         try:
             if user_lang(uid):
                 set_user_lang(uid, lang)
