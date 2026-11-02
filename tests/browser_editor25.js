@@ -43,13 +43,13 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
     const s = getSelection(); s.removeAllRanges(); s.addRange(r); e.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   }, [D.text(bid), word]);
   await p.click(D.text('f1')); await selWord('f1', 'schoene');
-  await p.waitForSelector(D.UI.inlineTool + '.hk-color-tool', { state: 'visible', timeout: 5000 }).catch(() => null);
-  const hasTool = await p.$(D.UI.inlineTool + '.hk-color-tool');
+  await p.waitForSelector(D.UI.colorTool, { state: 'visible', timeout: 5000 }).catch(() => null);
+  const hasTool = await p.$(D.UI.colorTool);
   ok('Inline-Leiste hat das Farbwerkzeug', !!hasTool);
   if (hasTool) {
-    await p.click(D.UI.inlineTool + '.hk-color-tool');
-    await p.waitForSelector('.hk-cpal');
-    await p.click('.hk-cpal-b.hk-c-red');
+    await p.click(D.UI.colorTool);
+    await p.waitForSelector(D.UI.colorPick('red'));
+    await p.click(D.UI.colorPick('red'));
   }
   let bl = await saved(f, (b) => /hk-c-red/.test(b[0].data.text) && b);
   ok(`Textfarbe gespeichert (${bl && bl[0].data.text})`, bl && bl[0].data.text === 'Hallo <span class="hk-c-red">schoene</span> Welt');
@@ -74,7 +74,7 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   // --- 2. Sechs Spalten, Dreierreihen bei 900 px --------------------------------------------------------------------
   const c = await mk('Spalten', [{ id: 'k', type: 'columns', data: { cols: [{ blocks: [P('k1', 'eins')] }, { blocks: [P('k2', 'zwei')] }] } }]); made.push(c);
   await open(c, '.cols');
-  await p.hover('.cols'); await p.click('.cols-ctl-b[aria-label="6 Spalten"]');
+  await p.hover('.cols', { position: { x: 12, y: 8 } }); await p.click('.cols-ctl-b[aria-label="6 Spalten"]');
   bl = await saved(c, (b) => b[0].data.cols.length === 6 && b);
   ok('6 Spalten gespeichert', bl && bl[0].data.cols.length === 6);
   const cols = async () => p.evaluate(() => getComputedStyle(document.querySelector('.cols')).gridTemplateColumns.split(' ').length);

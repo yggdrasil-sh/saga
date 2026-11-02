@@ -57,6 +57,12 @@ const UI_EDITORJS = {
   search: '.ce-popover__search',
   nothingFound: '.ce-popover__nothing-found-message--displayed',
   inlineTool: '.ce-inline-tool',                              // Knopf der Inline-Leiste
+  colorTool: '.ce-inline-tool.hk-color-tool',                 // Farbknopf der Inline-Leiste
+  colorPick: (c, name) => `.hk-cpal-b.hk-c-${c}`,             // Textfarbe in der geoeffneten Farbauswahl
+  table: '.tc-table',                                         // einfache Tabelle (Block table)
+  tableCell: (r, c) => `.tc-row:nth-child(${r}) .tc-cell:nth-child(${c})`,   // Zelle (1-basiert)
+  tableRowCells: (r) => `.tc-row:nth-child(${r}) .tc-cell`,  // Zellen einer Zeile
+  tableHeadCol: '.hk-tbl-hcol',                               // Tabelle mit Kopfspalte
   editorBox: `${ROOT} .codex-editor`,                         // Flaeche des Editors (Breite/Lage)
   nativeBlock: `${ROOT} .ce-block`,                           // Blockelement des Editors selbst (Kontrolle: alle markiert?)
 };
@@ -77,6 +83,12 @@ const UI_TIPTAP = {
   search: '.pm-never',                                        // Slash-Menue ohne Suchfeld (E1)
   nothingFound: '.pm-never',
   inlineTool: '.pm-bubble .pm-bb',                            // Knopf der Formatierungsleiste (E8)
+  colorTool: '.pm-bubble .pm-bb-col',
+  colorPick: (c, name) => `.menu:not([hidden]) .menu-item:has(.mi-ic.hk-c-${c})`,   // Farbmenue (HK.openMenu)
+  table: '.pm-tbl',
+  tableCell: (r, c) => `.pm-tbl tr:nth-child(${r}) td:nth-child(${c})`,
+  tableRowCells: (r) => `.pm-tbl tr:nth-child(${r}) td`,
+  tableHeadCol: '.pm-tbl-hcol',
   bubble: '.pm-bubble',
   editorBox: `${ROOT} .pm-doc`,
   nativeBlock: `${ROOT} .pm-blk, ${ROOT} .hk-tool`,

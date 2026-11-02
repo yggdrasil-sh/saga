@@ -16,10 +16,11 @@ const LAYOUTS = {
   einfach: [BTN, P, CAL],
 };
 // Menue-Rechteck (ohne Einblend-Animation) und was an Rasterpunkten darin zuoberst liegt
-const MEASURE = (U) => {
-  const pop = [...document.querySelectorAll('#pg-editor ' + U.popover)].filter((x) => !x.closest(U.blockMenu)).pop();
+// Editor.js: Menue im Editor (#pg-editor), Tiptap: Vorschlagsmenue (.pm-pop) direkt in <body>, Behaelter = Menue selbst
+const MEASURE = ([U, inRoot]) => {
+  const pop = [...document.querySelectorAll((inRoot ? '#pg-editor ' : '') + U.popover)].filter((x) => !x.closest(U.blockMenu)).pop();
   if (!pop) return null;
-  const c = pop.querySelector(':scope > ' + U.popoverContainer); c.style.animation = 'none';
+  const c = pop.matches(U.popoverContainer) ? pop : pop.querySelector(':scope > ' + U.popoverContainer); c.style.animation = 'none';
   const r = c.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = innerHeight, fremd = {};
   let n = 0;
   for (let x = r.left + 3; x < r.right - 3; x += 10) for (let y = r.top + 3; y < r.bottom - 3; y += 10) {
@@ -59,15 +60,16 @@ const MEASURE = (U) => {
     // Maus ueber den Kalender: dessen Umschalter (Monat/Liste) erscheint und darf nicht ueber dem Menue liegen
     const hb = await p.locator('.embed-cal .ag-head').first().boundingBox();
     if (hb && w > 650) { await p.mouse.move(hb.x + 20, hb.y + 6); await p.waitForTimeout(200); }
-    let m = await p.evaluate(MEASURE, D.UI);
+    let m = await p.evaluate(MEASURE, [D.UI, D.EDITOR !== 'tiptap']);
     ok(`${tag}: Menue offen`, !!m, m);
     if (!m) { await api('DELETE', '/api/notes/' + id); await ctx.close(); continue; }
     ok(`${tag}: Menue ganz im Fenster (links ${m.l}, rechts ${m.r} von ${m.vw})`, m.l >= 0 && m.r <= m.vw && m.t >= 0 && m.b <= m.vh, m);
     ok(`${tag}: Menue deckend und zuoberst`, Object.keys(m.fremd).length === 0 && m.n > 20 && !/rgba\(.*, 0\)|transparent/.test(m.bg), m);
     if (w > 650) {                                   // "Nichts gefunden" vollstaendig lesbar
       await p.keyboard.type('/'); await p.waitForTimeout(400);
-      m = await p.evaluate(MEASURE, D.UI);
-      ok(`${tag}: "Nichts gefunden" sichtbar und im Fenster`, m && m.nf && m.l >= 0 && Object.keys(m.fremd).length === 0, m);
+      m = await p.evaluate(MEASURE, [D.UI, D.EDITOR !== 'tiptap']);
+      if (D.EDITOR === 'tiptap') ok(`${tag}: ohne Treffer geht das Menue zu (kein halb verdecktes "Nichts gefunden")`, !m, m);   // E1: ohne Suchfeld
+      else ok(`${tag}: "Nichts gefunden" sichtbar und im Fenster`, m && m.nf && m.l >= 0 && Object.keys(m.fremd).length === 0, m);
     } else ok(`${tag}: Handy - Menue als Leiste unten ueber die volle Breite`, m.fixed && m.r - m.l > w * 0.9, m);
     await p.keyboard.press('Escape'); await p.waitForTimeout(250);
     await api('DELETE', '/api/notes/' + id);

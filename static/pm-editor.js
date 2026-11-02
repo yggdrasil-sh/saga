@@ -1178,6 +1178,18 @@
     else { ch = ch.unsetMark('color'); if (c) ch = ch.setMark('color', { c: c }); }
     ch.run();
   }
+  // Farbe auf einen DOM-Bereich (HKEd25.applyColor, Strg/Cmd+Umschalt+H): st = {c, bg} wie in static/editor25.js
+  function colorRange(range, st) {
+    if (!ed || ro() || !range || range.collapsed || !st) return false;
+    var v = ed.view, a, b;
+    if (!v.dom.contains(range.commonAncestorContainer)) return false;
+    try { a = v.posAtDOM(range.startContainer, range.startOffset); b = v.posAtDOM(range.endContainer, range.endOffset); } catch (e) { return false; }
+    if (!(b > a)) return false;
+    var tr = ed.state.tr; tr.setSelection(P.pm.state.TextSelection.create(tr.doc, a, b)); v.dispatch(tr);
+    applyColor(COLORS.indexOf(st.c) >= 0 ? st.c : null, !!st.bg);
+    if (st.c) { try { localStorage.setItem('hk-last-color', JSON.stringify({ c: st.c, bg: !!st.bg })); } catch (e) { /* privat */ } }
+    return true;
+  }
   function refreshBubble() {
     if (!bubble || !ed) return;
     ['b', 'i', 'u', 's', 'icode'].forEach(function (k) { var x = bubble.querySelector('[data-a="' + k + '"]'); if (x) x.classList.toggle('on', ed.isActive(k)); });
@@ -1748,5 +1760,5 @@
   function mod(name) { return modApi(name); }
 
   window.HKPmEditor = { load: load, create: create, slash: { register: slashReg, list: function () { return SLASH.slice(); } },
-                        TOOL_SCRIPTS: TOOL_SCRIPTS, use: use, api: mod };
+                        TOOL_SCRIPTS: TOOL_SCRIPTS, use: use, api: mod, colorRange: colorRange };
 })();
