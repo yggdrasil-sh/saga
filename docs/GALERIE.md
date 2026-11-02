@@ -92,7 +92,10 @@ Nicht erlaubt: `image attaches immich nextcloud` (brauchen eigene Dateien).
 - Widgets: `cfg.db: "$ref:<datenbank>"`, `view`/`prop` sind die festen IDs aus dem Schema. Widget-Blöcke brauchen eine `id`.
   Kennzahl/Fortschritt mit `cfg.src: "tasks"` (Saga-Aufgaben der betrachtenden Person) brauchen kein `db`.
   2.5 Paket 4: `habit` (`cfg.date`, `cfg.habits` = Häkchen-IDs) und `chart` (`cfg.x`/`y`/`series`) brauchen `cfg.db`;
-  `weather` ohne Koordinaten zeigt „noch nicht eingerichtet“; `upcoming` ohne `dbs` (persönliche Quellen).
+  `weather` ohne Koordinaten zeigt „noch nicht eingerichtet“ – ist Wetter eingeschaltet, fragt das Web beim Anlegen
+  nach dem Ort (`weather_place`). `upcoming` darf in `cfg.dbs` nur Datenbanken **dieser Vorlage** nennen:
+  `[{"db": "$ref:termine", "view": "anstehend", "date": "datum"}]` (`date` = Datums-Eigenschaft, `view` optional);
+  fremde oder numerische IDs sind verboten (Format-Check und beim Anlegen).
 
 ### Beispieldaten
 

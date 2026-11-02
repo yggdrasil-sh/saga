@@ -20,7 +20,7 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 from db import connect as _db
-from saga import gallery_format as gf
+from saga import gallery_format as gf, page_widgets as pw
 from saga.core import E, HERE, _api_guard, _bad, _body, origin_of, t
 from saga.databases import sign_buttons
 from saga.i18n import get_lang, norm
@@ -128,6 +128,7 @@ def api_gallery_one(gid: str, request: Request):
         return _gone()
     out = _summary(b)
     root = next(it for it in b["items"] if it["ref"] == b["root"])
+    out["ask_weather"] = _ask_weather(b)               # gal-fix: Web fragt vor dem Anlegen nach dem Ort (weather_place)
     out["preview"] = {"title": root.get("title") or "", "icon": root.get("icon") or "", "kind": root["kind"],
                       "wide": bool(root.get("wide")), "blocks": _preview_blocks(root.get("body"), b)}
     out["databases"] = [{"title": it.get("title") or "", "icon": it.get("icon") or "",
@@ -138,6 +139,56 @@ def api_gallery_one(gid: str, request: Request):
                          "templates": [tp.get("title") or "" for tp in it.get("templates") or []]}
                         for it in b["items"] if it["kind"] == "database"]
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+def _widgets(bundle):
+    """Alle Widget-Bloecke (data) der Seiten, Zeilen und Vorlagen eines Bundles (auch in Spalten/Toggles)."""
+    for it in bundle["items"]:
+        for e in [it] + list(it.get("rows") or []) + list(it.get("templates") or []):
+            for bl in gf._iter_blocks(e.get("body")):
+                if bl.get("type") == "widget" and isinstance(bl.get("data"), dict):
+                    yield bl["data"]
+
+
+def _no_place(d):
+    cfg = d.get("cfg") if isinstance(d.get("cfg"), dict) else {}
+    return d.get("kind") == "weather" and not (pw._num(cfg.get("lat")) and pw._num(cfg.get("lon")))
+
+
+def _ask_weather(bundle):
+    """True: die Vorlage hat ein Wetter-Widget ohne Ort und der Admin hat Wetter eingeschaltet."""
+    from saga import weather
+    return any(_no_place(d) for d in _widgets(bundle)) and weather.enabled()
+
+
+def _weather_place(v):
+    """weather_place beim Anlegen {"place", "lat", "lon"} -> bereinigt (wie der Widget-Editor) bzw. None; ungueltig: ValueError."""
+    if v is None:
+        return None
+    if not isinstance(v, dict):
+        raise ValueError
+    cfg = pw._clean_cfg("weather", {"place": v.get("place"), "lat": v.get("lat"), "lon": v.get("lon")})
+    if cfg["lat"] is None or cfg["lon"] is None or not cfg["place"]:
+        raise ValueError
+    return {"place": cfg["place"], "lat": cfg["lat"], "lon": cfg["lon"]}
+
+
+def _own_sources(bundle, keep):
+    """Widget-Quellen (cfg.db, Anstehendes cfg.dbs[].db) duerfen nur auf Datenbanken zeigen, die DIESE Vorlage eben anlegt
+    ("$ref:<datenbank>") - nie auf fremde/bestehende/numerische IDs. Das Format prueft das schon beim Laden; hier nochmals
+    vor dem Anlegen (Bundles koennten am Pruefskript vorbei entstehen)."""
+    own = {it["ref"] for it in bundle["items"] if it["kind"] == "database"}
+    for d in _widgets(bundle):
+        cfg = d.get("cfg") if isinstance(d.get("cfg"), dict) else {}
+        srcs = [cfg["db"]] if "db" in cfg and cfg["db"] is not None else []
+        if isinstance(cfg.get("dbs"), list):
+            srcs += [x.get("db") if isinstance(x, dict) else x for x in cfg["dbs"]]
+        elif "dbs" in cfg:
+            raise ValueError(t("ungültige Angabe"))
+        for v in srcs:
+            r = gf._ref_of(v)
+            if not r or r not in own:
+                raise ValueError(t("Widget-Quelle gehört nicht zur Vorlage"))
 
 
 def _rate_ok(uid):
@@ -193,6 +244,10 @@ def use(uid, gid, b, lang, origin=None):
     else:
         pid = None
     examples = b.get("examples", True) is not False
+    try:
+        wx = _weather_place(b.get("weather_place"))
+    except ValueError:
+        return _bad(t("Ort fürs Wetter ungültig"))
     bundle = _bundle(gid, lang)
     keep = _keep(bundle, examples)
     now = time.time()
@@ -211,8 +266,9 @@ def use(uid, gid, b, lang, origin=None):
                 return _bad(t("Vorlagen lassen sich nicht in eine Datenbank einfügen."))
         ids, order = {}, []
         try:
+            _own_sources(bundle, keep)
             _insert_all(c, uid, owner, bundle, keep, examples, pid, now, ids, order)
-            _fill(c, uid, owner, bundle, keep, examples, ids)
+            _fill(c, uid, owner, bundle, keep, examples, ids, wx)
         except _Reply:
             raise
         except (ValueError, TypeError, LookupError, OverflowError, AttributeError, KeyError) as ex:
@@ -288,8 +344,18 @@ def _insert_all(c, uid, owner, bundle, keep, examples, pid, now, ids, order):
     return ids
 
 
-def _body_json(c, owner, nid, blocks, ids, examples=True):
-    raw = json.dumps({"blocks": gf.resolve(gf.drop_examples(blocks or [], examples), ids)}, ensure_ascii=False)
+def _body_json(c, owner, nid, blocks, ids, examples=True, wx=None):
+    bl = gf.resolve(gf.drop_examples(blocks or [], examples), ids)      # resolve baut neue Objekte - Bundle bleibt unveraendert
+    for b in gf._iter_blocks(bl):
+        d = b.get("data") if b.get("type") == "widget" and isinstance(b.get("data"), dict) else None
+        if d is None:
+            continue
+        cfg = d.get("cfg") if isinstance(d.get("cfg"), dict) else {}
+        if isinstance(cfg.get("dbs"), list):          # Anstehendes: nicht angelegte Quellen (None) fallen weg
+            cfg["dbs"] = [x for x in cfg["dbs"] if isinstance(x, dict) and x.get("db") in ids.values()]
+        if wx and _no_place(d):                       # gal-fix: Ort aus dem Galerie-Dialog
+            d["cfg"] = dict(cfg, **wx)
+    raw = json.dumps({"blocks": bl}, ensure_ascii=False)
     body, _ = clean_blocks(raw)
     _check_file_refs(owner, json.loads(body)["blocks"])
     # Schaltflaechen mit Vorlage: Vorlage und Ziel sind eben in diesem Vorgang angelegt worden (Bundle erlaubt nur refs) -
@@ -299,7 +365,7 @@ def _body_json(c, owner, nid, blocks, ids, examples=True):
     return self_filters(body, "blocks", nid)            # 2.5: "$self" in Filtern eingebetteter Datenbanken = diese Seite
 
 
-def _fill(c, uid, owner, bundle, keep, examples, ids):
+def _fill(c, uid, owner, bundle, keep, examples, ids, wx=None):
     """Phase 2: refs ersetzen und Inhalte schreiben - Schemas, Gegenspalten, Werte der Zeilen, Inhalte."""
     dbs = [it for it in bundle["items"] if it["kind"] == "database" and it["ref"] in keep]
     # 1. Schemas (ohne Gegenspalten)
@@ -347,9 +413,9 @@ def _fill(c, uid, owner, bundle, keep, examples, ids):
                 _rel_sync(c, owner, sc, rid, cur, props)
                 c.execute("UPDATE note SET props=? WHERE id=? AND uid=?", (json.dumps(props, ensure_ascii=False), rid, owner))
             if e.get("body"):
-                c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (_body_json(c, owner, rid, e["body"], ids, examples), rid, owner))
+                c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (_body_json(c, owner, rid, e["body"], ids, examples, wx), rid, owner))
     # 4. Inhalte der Seiten und Datenbanken
     for it in bundle["items"]:
         if it["ref"] in keep and it.get("body"):
             nid = ids[it["ref"]]
-            c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (_body_json(c, owner, nid, it["body"], ids, examples), nid, owner))
+            c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (_body_json(c, owner, nid, it["body"], ids, examples, wx), nid, owner))

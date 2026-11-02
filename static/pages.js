@@ -3201,16 +3201,53 @@
             act.appendChild(el('p', 'gal-hint', remoteId(S.cur.id) ? T('Unter Seiten anderer Saga-Server geht das noch nicht – die Vorlage entsteht in deinen Seiten.')
               : T('Unter dieser Seite darfst du nichts anlegen – die Vorlage entsteht in deinen Seiten.')));
           var go = el('button', 'btn gal-use', T('Verwenden')); go.type = 'button';
-          go.addEventListener('click', function () {
+          var wxBox = null;
+          function use(place) {
             go.disabled = true;
-            var pid = sel ? opts[+sel.value][0] : null;
-            save().then(function () { return api('POST', '/api/gallery/' + encodeURIComponent(id) + '/use', { parent_id: pid, examples: ex.checked }); })
+            var pid = sel ? opts[+sel.value][0] : null, body = { parent_id: pid, examples: ex.checked };
+            if (place) body.weather_place = place;
+            save().then(function () { return api('POST', '/api/gallery/' + encodeURIComponent(id) + '/use', body); })
               .then(function (d) {
                 closeModal(); if (pid) { S.open[pid] = true; saveOpen(); }
                 return loadList().then(function () { return openPage(d.root); }).then(function () { HK.toast(T('Vorlage angelegt')); });
               })
-              .catch(function (err) { go.disabled = false; HK.toast(T('Vorlage nicht angelegt: {err}', { err: err.message })); });
-          });
+              .catch(function (err) { go.disabled = false; if (wxBox) wxBox.querySelectorAll('button').forEach(function (b) { b.disabled = false; }); HK.toast(T('Vorlage nicht angelegt: {err}', { err: err.message })); });
+          }
+          // gal-fix: Wetter-Widget ohne Ort und Wetter eingeschaltet -> vor dem Anlegen nach dem Ort fragen (Ortssuche des
+          // Servers wie im Widget-Editor; "Ueberspringen" legt das Widget wie bisher ohne Ort an)
+          function askPlace() {
+            go.hidden = true;
+            wxBox = el('div', 'gal-wx'); wxBox.setAttribute('role', 'group'); wxBox.setAttribute('aria-label', T('Ort fürs Wetter'));
+            wxBox.appendChild(el('p', 'gal-hint', '🌤️ ' + T('Die Vorlage enthält ein Wetter-Widget. Für welchen Ort?')));
+            var qi = el('input', 'flt-val gal-wx-q'); qi.type = 'search'; qi.placeholder = T('Ort suchen …'); qi.maxLength = 80;
+            qi.setAttribute('aria-label', T('Ort suchen …'));
+            var sb = el('button', 'btn btn-sm', T('Suchen')); sb.type = 'button';
+            var hits = el('div', 'wx-hits gal-wx-hits'); hits.setAttribute('role', 'listbox'); hits.setAttribute('aria-live', 'polite');
+            var skip = el('button', 'linkbtn gal-wx-skip', T('Überspringen')); skip.type = 'button';
+            var find = function () {
+              var q = qi.value.trim(); if (q.length < 2) return;
+              hits.textContent = '…';
+              api('GET', '/api/widgets/geocode?q=' + encodeURIComponent(q)).then(function (r) {
+                hits.textContent = '';
+                (r.results || []).forEach(function (x) {
+                  var b = el('button', 'menu-item', x.name + (x.admin && x.admin !== x.name ? ', ' + x.admin : '') + (x.country ? ' (' + x.country + ')' : ''));
+                  b.type = 'button'; b.setAttribute('role', 'option');
+                  b.addEventListener('click', function () { wxBox.querySelectorAll('button').forEach(function (y) { y.disabled = true; }); use({ place: x.name, lat: x.lat, lon: x.lon }); });
+                  hits.appendChild(b);
+                });
+                if (!(r.results || []).length) hits.textContent = T('Kein Ort gefunden');
+              }).catch(function (err) {
+                hits.textContent = err && err.status === 429 ? T('Zu viele Anfragen – bitte kurz warten.') : T('Ortssuche nicht erreichbar');
+              });
+            };
+            qi.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); find(); } });
+            sb.addEventListener('click', find);
+            skip.addEventListener('click', function () { skip.disabled = true; use(null); });
+            var row = el('span', 'wx-q'); row.appendChild(qi); row.appendChild(sb);
+            wxBox.appendChild(row); wxBox.appendChild(hits); wxBox.appendChild(skip);
+            act.appendChild(wxBox); qi.focus();
+          }
+          go.addEventListener('click', function () { if (x.ask_weather && !wxBox) askPlace(); else use(null); });
           act.appendChild(go); box.appendChild(act);
         }).catch(function (err) { box.textContent = ''; box.appendChild(el('p', 'nt-empty', T('Vorlage nicht geladen: {err}', { err: err.message }))); });
       }

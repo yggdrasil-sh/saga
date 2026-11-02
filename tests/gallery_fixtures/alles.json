@@ -13,7 +13,10 @@
       ]},
       {"w": 0.4, "blocks": [
         {"id": "wpro", "type": "widget", "data": {"v": 1, "kind": "progress", "title": "Erledigt", "cfg": {"src": "db", "db": "$ref:tasks", "mode": "checked", "prop": "erledigt"}}},
-        {"id": "wzit", "type": "widget", "data": {"v": 1, "kind": "quote", "title": "Gedanke", "cfg": {"src": "fixed", "items": ["Klein anfangen.", "Weiter geht's."], "pick": "daily"}}}
+        {"id": "wzit", "type": "widget", "data": {"v": 1, "kind": "quote", "title": "Gedanke", "cfg": {"src": "fixed", "items": ["Klein anfangen.", "Weiter geht's."], "pick": "daily"}}},
+        {"id": "wanst", "type": "widget", "data": {"v": 1, "kind": "upcoming", "cfg": {"days": 7, "cal": false, "tasks": false, "overdue": true,
+                 "dbs": [{"db": "$ref:tasks", "view": "offen", "date": "faellig"}]}}},
+        {"id": "wwet", "type": "widget", "data": {"v": 1, "kind": "weather", "cfg": {"place": "", "lat": null, "lon": null, "days": 3}}}
       ]}
     ]}},
     {"type": "buttons", "data": {"buttons": [

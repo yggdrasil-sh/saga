@@ -53,7 +53,8 @@
          ]},
          {"w": 0.42, "blocks": [
            {"id": "whome05", "type": "widget", "data": {"v": 1, "kind": "upcoming", "size": "m", "style": "card", "accent": "blue", "title": "Anstehendes",
-                        "cfg": {"days": 7, "cal": true, "tasks": true, "overdue": true, "limit": 8}}}
+                        "cfg": {"days": 7, "cal": true, "tasks": true, "overdue": true, "limit": 8,
+                                "dbs": [{"db": "$ref:termine", "view": "anstehend", "date": "datum"}, {"db": "$ref:tasks", "view": "board", "date": "faellig"}]}}}
          ]}
        ]}},
        {"type": "header", "data": {"text": "Termine", "level": 2}},

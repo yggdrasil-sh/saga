@@ -2269,6 +2269,8 @@ body.notes-page .page.p-small .page-body{font-size:.875rem}
   position:sticky;bottom:-1rem;background:var(--card)}   /* Verwenden bleibt sichtbar, auch wenn die Vorschau lang ist */
 .gal-opt{display:flex;align-items:center;gap:.3rem}
 .gal-hint{flex-basis:100%;margin:0;color:var(--muted);font-size:.85rem;text-align:right}
+.gal-wx{flex-basis:100%;display:flex;flex-direction:column;gap:.4rem;align-items:stretch;max-width:28rem;margin-left:auto}.gal-wx .gal-hint{text-align:left}
+.gal-wx-hits{max-height:12rem;overflow:auto}.gal-wx-skip{align-self:flex-end}
 .gal-use{cursor:pointer;color:var(--fg);border-color:var(--accent)}
 @media (max-width:640px){.gal-body{grid-template-columns:1fr}.gal-pv{max-height:none}.gal-pv-cols{flex-direction:column}.gal-act{justify-content:stretch}
   .gal-act .gal-use{flex:1}}

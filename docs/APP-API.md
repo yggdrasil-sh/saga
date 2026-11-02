@@ -636,6 +636,11 @@ Galerie-Endpunkte 404 `{"error": "not found"}` (nie 403).
 - `parent_id`: `null` = oberste Ebene, sonst eine Seite mit mindestens „Bearbeiten“ (wie „Neue Unterseite“; unter einer
   geteilten Seite gehört alles dem Eigentümer der Elternseite). Datenbank als Elternseite → 400. Negative ID (Seite eines
   anderen Saga-Servers) → 400 (in Etappe 1 nicht möglich). Fremd/gelöscht → 404, nur Lesen/Kommentieren → 403.
+- `weather_place` (optional, 2.5): `{"place": "Hamburg", "lat": 53.55, "lon": 9.99}` – trägt den Ort in Wetter-Widgets
+  der Vorlage ohne Ort ein (bereinigt wie im Widget-Editor: Koordinaten auf 2 Stellen; ungültig → 400). Die Vorschau
+  `GET /api/gallery/{id}` liefert dazu `ask_weather: true`, wenn die Vorlage ein Wetter-Widget ohne Ort hat und der Admin
+  Wetter eingeschaltet hat – dann vorher nach dem Ort fragen (Ortssuche `GET /api/widgets/geocode?q=`), „Überspringen“
+  = ohne `weather_place`. Ältere Server ignorieren das Feld.
 - Alles oder nichts: bei einem Fehler wird nichts angelegt (400/409 mit `error`). 409 = Seitengrenze des Kontos erreicht.
 - 429 bei mehr als 10 Aufrufen je Minute und Konto (`GALLERY_RATE`).
 - Angelegt wird in der Sprache `lang` (fehlende Übersetzung: Deutsch). Danach sind es normale Seiten ohne Verbindung zur Galerie.

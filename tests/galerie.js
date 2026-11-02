@@ -2,8 +2,31 @@
 // Esc), Befehlspalette, Neue-Seite-Menue, Vorschau, Verwenden -> Startseite offen + Hinweis, jede Vorlage einmal anlegen
 // (ausser der Abbruch-Testvorlage), schmal (Handy-Breite), hell/dunkel, Konsole ohne Fehler.
 // Server mit SAGA_GALLERY_DIR=tests/gallery_fixtures (oder gallery/). Das Konto CK sollte ohne Seiten starten.
+// Wetter-Ort beim Anlegen (gal-fix, nur mit gallery/ = Home-Dashboard): Wetter an (Einstellung per Python, SAGA_PY,
+// Standard python3 mit tests/pgshim) gegen einen lokalen Fake-Open-Meteo (kein echter Abruf) -> Dialog fragt nach dem Ort,
+// Ort waehlen bzw. Ueberspringen; Wetter aus -> keine Frage. "Anstehendes" zeigt die Zeilen der Vorlage.
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Cookie hk-test-a> node tests/galerie.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
+const http = require('http'), path = require('path'), cp = require('child_process');
+const ROOT = path.dirname(__dirname);
+function py(code) {
+  return cp.execFileSync(process.env.SAGA_PY || 'python3', ['-c', 'import auth, json, sys\n' + code], { cwd: ROOT, encoding: 'utf8',
+    env: Object.assign({}, process.env, { PYTHONPATH: 'tests/pgshim:.' }), stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+}
+// Fake-Open-Meteo: Vorhersage + Ortssuche (nur 127.0.0.1)
+const WX = { hits: 0, geo: 0 };
+const wxSrv = http.createServer((rq, rs) => {
+  const u = new URL(rq.url, 'http://x'); const t0 = new Date();
+  let body = {};
+  if (u.pathname === '/v1/search') { WX.geo++; body = { results: [{ name: 'Hamburg', admin1: 'Hamburg', country: 'Deutschland', latitude: 53.5507, longitude: 9.993 }] }; }
+  else if (u.pathname === '/v1/forecast') {
+    WX.hits++;
+    const days = [...Array(8)].map((_, i) => new Date(t0.getTime() + i * 864e5).toISOString().slice(0, 10));
+    body = { current: { temperature_2m: 12.3, weather_code: 3, wind_speed_10m: 14 }, daily: { time: days, weather_code: [3, 3, 3, 3, 3, 3, 3, 3],
+      temperature_2m_max: [13, 14, 15, 16, 17, 18, 19, 20], temperature_2m_min: [6, 7, 8, 9, 10, 11, 12, 13], precipitation_probability_max: [0, 0, 0, 0, 0, 0, 0, 0] } };
+  } else { rs.writeHead(404); return rs.end('{}'); }
+  rs.writeHead(200, { 'Content-Type': 'application/json' }); rs.end(JSON.stringify(body));
+});
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK;
 const BG = {}; const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -112,6 +135,78 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
     ok(`${x.id}: angelegt und geoeffnet (${t})`, !!t);
     await sleep(1200);
   }
+
+  // --- gal-fix: Wetter-Ort beim Anlegen (Home-Dashboard) -----------------------------------------------------------
+  if (usable.some((x) => x.id === 'home-dashboard')) {
+    await new Promise((r) => wxSrv.listen(0, '127.0.0.1', r));
+    const base = 'http://127.0.0.1:' + wxSrv.address().port;
+    let prevHosts = '';
+    const openTile = async () => {
+      await p.click('#pg-new'); await sleep(250);
+      await p.locator('.menu-item', { hasText: 'Aus der Galerie' }).click();
+      await until(async () => (await tiles()).length);
+      await p.click('#pg-modal .gal-tile[data-id="home-dashboard"]');
+      await until(() => p.locator('#pg-modal .gal-use').count());
+    };
+    const opened = async (before) => until(() => p.evaluate((b) => document.getElementById('pg-modal').hidden && location.hash !== b && /^#\d+$/.test(location.hash) ? +location.hash.slice(1) : 0, before), 10000);
+    const wcfg = async (id) => { const n = await api('GET', '/api/notes/' + id); const f = (bl) => bl.reduce((a, b) => a.concat([b], (b.data && b.data.cols || []).reduce((x, c) => x.concat(f(c.blocks || [])), [])), []);
+      return f(JSON.parse(n.body).blocks).filter((b) => b.type === 'widget'); };
+    try {
+      prevHosts = py("print(auth.settings(fresh=True).get('allowed_hosts') or '')");
+      py(`auth.save_setting('allowed_hosts', ${JSON.stringify((prevHosts ? prevHosts + ', ' : '') + '127.0.0.1:' + wxSrv.address().port)})
+auth.save_setting('weather', {'enabled': True, 'base_url': '${base}/v1/forecast', 'geo_url': '${base}/v1/search', 'api_key': ''})`);
+      await sleep(5600);                                   // Einstellungen sind im Server 5 s zwischengespeichert
+      // 1) Wetter an: Frage nach dem Ort, Ort waehlen
+      await openTile();
+      let before = await p.evaluate(() => location.hash);
+      await p.click('#pg-modal .gal-use');
+      const ask = await until(() => p.locator('#pg-modal .gal-wx .gal-wx-q').count());
+      ok('Wetter an: Dialog fragt nach dem Ort (Suchfeld hat den Fokus)', ask && await p.evaluate(() => document.activeElement && document.activeElement.classList.contains('gal-wx-q'))
+         && await p.locator('#pg-modal .gal-use').isHidden());
+      await p.fill('#pg-modal .gal-wx-q', 'Hamburg'); await p.keyboard.press('Enter');
+      const hit = await until(() => p.locator('#pg-modal .gal-wx-hits .menu-item').count());
+      ok(`Ortssuche ueber den Server (Fake, ${WX.geo} Abruf)`, hit && WX.geo >= 1);
+      await p.locator('#pg-modal .gal-wx-hits .menu-item').first().click();
+      let id = await opened(before);
+      const w1 = (await wcfg(id)).find((b) => b.data.kind === 'weather');
+      ok(`Ort ins Widget geschrieben (${JSON.stringify(w1 && w1.data.cfg)})`, w1 && w1.data.cfg.place === 'Hamburg' && w1.data.cfg.lat === 53.55 && w1.data.cfg.lon === 9.99);
+      const wt = await until(async () => { const t = await p.locator('.wg[data-kind="weather"]').textContent().catch(() => ''); return /12/.test(t) ? t : null; }, 10000);
+      ok(`Wetter-Widget zeigt Werte vom Fake (${(wt || '').slice(0, 60)})`, !!wt && !/eingerichtet/.test(wt));
+      // "Anstehendes" zeigt die Zeilen der Vorlage (Termine/Aufgaben; erwartet = was der Server liefert)
+      const up = await until(async () => { const r = await api('GET', '/api/notes/' + id + '/widgets'); const w = Object.values(r.widgets || {}).find((x) => x.kind === 'upcoming'); return w && w.data ? w : null; }, 6000);
+      const rows = ((up && up.data.items) || []).filter((x) => x.k === 'row').map((x) => x.title);
+      const dom = await until(async () => { const t = await p.locator('.wg[data-kind="upcoming"]').textContent().catch(() => ''); return rows.every((r) => t.indexOf(r) >= 0) ? t : null; }, 8000);
+      ok(`Anstehendes zeigt die Vorlagen-Zeilen (${rows.join(', ')})`, up && !up.error && up.data.errors === 0 && !!dom, up);
+      await sleep(800);
+      // 2) Ueberspringen: Widget bleibt ohne Ort
+      await openTile();
+      before = await p.evaluate(() => location.hash);
+      await p.click('#pg-modal .gal-use');
+      await until(() => p.locator('#pg-modal .gal-wx-skip').count());
+      await p.click('#pg-modal .gal-wx-skip');
+      id = await opened(before);
+      const w2 = (await wcfg(id)).find((b) => b.data.kind === 'weather');
+      const wt2 = await until(async () => { const t = await p.locator('.wg[data-kind="weather"]').textContent().catch(() => ''); return /eingerichtet/.test(t) ? t : null; }, 8000);
+      ok(`Ueberspringen: Widget ohne Ort, Hinweis wie bisher (${wt2})`, w2 && w2.data.cfg.lat == null && !!wt2);
+      await sleep(800);
+    } catch (e) { ok('Wetter-Ort: ' + e.message, false); }
+    finally {
+      try { py(`auth.save_setting('allowed_hosts', ${JSON.stringify(prevHosts)})
+from db import connect
+with connect() as c, c:
+    c.execute("DELETE FROM setting WHERE k='weather'")
+auth._settings_cache['v'] = None`); } catch (e) { ok('Einstellungen zuruecksetzen', false, e.message); }
+      wxSrv.close();
+    }
+    // 3) Wetter aus: keine Frage
+    await sleep(5600);
+    await openTile();
+    const before = await p.evaluate(() => location.hash);
+    await p.click('#pg-modal .gal-use');
+    const id3 = await opened(before);
+    ok('Wetter aus: ohne Frage angelegt', !!id3 && !(await p.locator('.gal-wx').count()));
+    await sleep(800);
+  } else ok('Wetter-Ort: Home-Dashboard nicht im Galerie-Ordner - uebersprungen', true);
 
   // --- schmal, hell/dunkel ---------------------------------------------------------------------------------------
   for (const scheme of ['light', 'dark']) {
