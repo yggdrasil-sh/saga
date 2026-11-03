@@ -4,8 +4,8 @@ POST /api/client/log  - automatische Fehlerberichte (Web: static/clientlog.js; A
 POST /api/client/diag - "Diagnose senden" aus den Einstellungen: Ringpuffer der letzten Ereignisse + optionaler Freitext
                         des Nutzers -> kurze Kennung D-XXXXX (steht auch in der Log-Zeile)
 
-Vertrag: docs/APP-API.md "Fehlerberichte und Diagnose". Keine Datenbank: je angenommenem POST genau EINE Zeile im
-Server-Log ("clientlog {...}" bzw. "clientdiag {...}"), Konto nur als kurzer HMAC-Hash, keine IP-Adressen, keine Namen.
+Vertrag: docs/APP-API.md "Fehlerberichte und Diagnose". Je angenommenem POST genau EINE Zeile im Server-Log
+(zusaetzlich derselbe Inhalt in diag_event fuer Admin -> Diagnose, saga/diagstore.py), ("clientlog {...}" bzw. "clientdiag {...}"), Konto nur als kurzer HMAC-Hash, keine IP-Adressen, keine Namen.
 Nur angemeldet (Sitzung bzw. Geraete-Sitzung der Apps, Kopf X-Saga). Der Server bereinigt alles noch einmal selbst
 (Platzhalter fuer Zahlen/IDs/UUIDs/Hex/E-Mail/URLs/Pfade/Zitate, Zeichenfilter, Laengen) - Clients tun das auch, aber
 verlassen darf sich der Server darauf nicht. Unbekannte Felder werden verworfen. Admin-Schalter diag.clientlog
@@ -21,6 +21,7 @@ import time
 from fastapi import APIRouter, Request
 
 import auth
+from saga import diagstore
 from saga.core import SECRET, _api_guard, _bad, parse_json, t
 from fastapi.responses import JSONResponse
 
@@ -588,6 +589,10 @@ def _line(prefix, rec):
     return prefix + " " + json.dumps(rec, separators=(",", ":"), ensure_ascii=False)
 
 
+def _client(d):
+    return (d.get("app", "") + " " + d.get("ver", "")).strip()
+
+
 def new_diag_id():
     return "D-" + "".join(secrets.choice(_DIAG_ALPHA) for _ in range(5))
 
@@ -615,7 +620,9 @@ async def api_log(request: Request):
         good, w = _rate_ok("log-ip", _ip(request), RATE_LOG_IP, now)
     if not good:
         return _too_many(w)
-    print(_line("clientlog", {"acct": acct_hash(uid), **d}), flush=True)
+    rec = {"acct": acct_hash(uid), **d}
+    print(_line("clientlog", rec), flush=True)
+    diagstore.record("clientlog", rec, client=_client(d))     # Admin -> Diagnose (zusaetzlich, blockiert nie)
     return _no_store({"ok": True})
 
 
@@ -643,5 +650,7 @@ async def api_diag(request: Request):
     if not good:
         return _too_many(w)
     did = new_diag_id()
-    print(_line("clientdiag", {"id": did, "acct": acct_hash(uid), **d, "n": len(d["ev"])}), flush=True)
+    rec = {"id": did, "acct": acct_hash(uid), **d, "n": len(d["ev"])}
+    print(_line("clientdiag", rec), flush=True)
+    diagstore.record("clientdiag", rec, ref=did, client=_client(d))
     return _no_store({"ok": True, "id": did})

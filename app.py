@@ -35,7 +35,8 @@ from saga import chat_grp                        # 2.5: Gruppenbild/-rechte, Adm
 from saga import chat_unfurl                     # 2.5 (Chat-Alltag): Linkvorschau fuer den Absender (netguard)
 from saga import calldiag                      # 2.5: Anruf-Diagnose POST /api/calls/diag (nur Server-Log)
 from saga import pmdiag                        # 2.5 (T6): Editor-Diagnose POST /api/diag (Round-Trip-Abweichungen, nur Server-Log)
-from saga import clientlog                     # 2.5: Fehlerberichte/Diagnose POST /api/client/log|diag (nur Server-Log)
+from saga import clientlog                     # 2.5: Fehlerberichte/Diagnose POST /api/client/log|diag (Server-Log + diag_event)
+from saga import diagstore                     # 2.5: Diagnose-Meldungen in der DB (Admin -> Diagnose), Puffer + Aufraeumen
 from saga import contacts                        # 2.5: Kontakte im Chat (Tabelle chat_contact, Endpunkte in saga.chat)
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, SecHeaders, title
 from saga.dashboard import _status_loop
@@ -116,10 +117,17 @@ async def lifespan(_app):
                 await asyncio.to_thread(siteicons.cleanup)    # Kachel-Symbole: alte .missing/.tmp, Favicons nach 30 Tagen
             except Exception as ex:
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
+            try:
+                n = await asyncio.to_thread(diagstore.purge)  # 2.5: Diagnose-Meldungen nach Aufbewahrung/Obergrenze
+                if n:
+                    print(f"diag: {n} alte Meldung(en) entfernt", flush=True)
+            except Exception as ex:
+                print(f"diag-purge: {type(ex).__name__}: {ex}", flush=True)
     gc_task = asyncio.create_task(_gc_loop())
     yield
     await collab.shutdown()                                  # offene Live-Seiten materialisieren und verdichten
     mentions.stop()
+    await asyncio.to_thread(diagstore.stop)                  # 2.5: gepufferte Diagnose-Meldungen noch schreiben
     webhooks.stop()
     backups.stop()
     tasksrc.stop()

@@ -949,6 +949,15 @@ CREATE TABLE IF NOT EXISTS chat_report (
     state TEXT NOT NULL DEFAULT 'open', done_by TEXT, done_at DOUBLE PRECISION);
 CREATE INDEX IF NOT EXISTS chat_report_reporter ON chat_report (reporter, created);
 CREATE INDEX IF NOT EXISTS chat_report_state ON chat_report (state, created);
+-- Diagnose-Meldungen (2.5, saga/diagstore.py, Migration 32, Admin -> Diagnose): Kopie der Log-Zeilen clientlog/clientdiag/
+-- pmdiag/calldiag (bereinigt, Konto nur als HMAC-Hash acct, keine IP-Adressen); ref = Kennung D-XXXXX bzw. Anruf-ID
+-- gekuerzt, client = App und Version. Aufbewahrung diag.keep_days, Obergrenze diag.max_rows (purge im Wartungslauf).
+CREATE TABLE IF NOT EXISTS diag_event (
+    id BIGSERIAL PRIMARY KEY, ts DOUBLE PRECISION NOT NULL, kind TEXT NOT NULL, ref TEXT, acct TEXT, client TEXT,
+    data JSONB NOT NULL);
+CREATE INDEX IF NOT EXISTS diag_event_ts ON diag_event (ts);
+CREATE INDEX IF NOT EXISTS diag_event_kind_ts ON diag_event (kind, ts);
+CREATE INDEX IF NOT EXISTS diag_event_ref ON diag_event (ref);
 -- Gjallarhorn (2.5, saga/horn.py, Konzept v2 §2.10, Migration 16): Knotenregister (eingebauter Knoten + gekoppelte) und
 -- Kopplungs-Token (nur als SHA-256, einmalig, 30 min). pub = Ed25519-Knotenschluessel (Base64), load = letzte Lastmeldung,
 -- dns_ids = Cloudflare-Eintraege (P7), removed = entfernt (pub gesperrt). Wahrheitswerte als SMALLINT wie ueberall (db._arg).
@@ -1311,6 +1320,17 @@ INSERT INTO chat_pref (chat_id, uid, muted_until) SELECT chat_id, uid, -1 FROM c
     31: """
 UPDATE setting SET v = jsonb_set(v::jsonb, '{engine}', '"tiptap"')::text
  WHERE k = 'editor' AND v::jsonb->>'engine' = 'editorjs';
+""",
+    # 2.5 (Admin -> Diagnose, 3.11.2026): Diagnose-Meldungen der Clients zusaetzlich zur Log-Zeile in der Datenbank
+    # (saga/diagstore.py). Tabelle diag_event legt SCHEMA oben an (hier nochmal, falls SCHEMA aelter waere) - Bestand: leer.
+    # Beliebig oft ausfuehrbar.
+    32: """
+CREATE TABLE IF NOT EXISTS diag_event (
+    id BIGSERIAL PRIMARY KEY, ts DOUBLE PRECISION NOT NULL, kind TEXT NOT NULL, ref TEXT, acct TEXT, client TEXT,
+    data JSONB NOT NULL);
+CREATE INDEX IF NOT EXISTS diag_event_ts ON diag_event (ts);
+CREATE INDEX IF NOT EXISTS diag_event_kind_ts ON diag_event (kind, ts);
+CREATE INDEX IF NOT EXISTS diag_event_ref ON diag_event (ref);
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

@@ -2,8 +2,8 @@
 Aenderungen) Bloecke, die der Nutzer NICHT bearbeitet hat, deren serialisierte Form aber von der geladenen abweicht
 (Round-Trip-Abweichung = Luecke im Adapter static/pm-adapter.js bzw. im Schema).
 
-Vertrag: docs/APP-API.md "Editor-Diagnose". Keine Datenbank: je POST genau EINE Zeile im Server-Log (Praefix "pmdiag"),
-Konto nur als kurzer Hash. Gemeldet werden nur Blocktyp, Feldpfad (Feldnamen und Indizes, z. B. data.content[2][1]) und
+Vertrag: docs/APP-API.md "Editor-Diagnose". Je POST genau EINE Zeile im Server-Log (Praefix "pmdiag"; dazu derselbe
+Inhalt in diag_event fuer Admin -> Diagnose, saga/diagstore.py), Konto nur als kurzer Hash. Gemeldet werden nur Blocktyp, Feldpfad (Feldnamen und Indizes, z. B. data.content[2][1]) und
 Art der Abweichung - nie Inhalt, Text, Block-IDs, Dateinamen oder Adressen. Felder werden streng geprueft (Zeichen,
 Laenge), unbekannte Felder verworfen. Hoechstens 1 POST je 55 s je Konto (429; der Client sendet hoechstens alle 60 s),
 hoechstens 20 Eintraege, Body hoechstens 8 KB (413). Admin-Schalter editor.diag (Standard an): aus -> 404 und kein
@@ -17,6 +17,7 @@ import time
 import auth
 from fastapi import APIRouter, Request
 
+from saga import diagstore
 from saga.core import SECRET, _api_guard, _bad, editor_engine, parse_json, t
 from saga.chat import _no_store
 
@@ -104,10 +105,13 @@ def _rate_ok(uid, now):
     return True
 
 
-def log_line(uid, d):
+def log_rec(uid, d):
+    return {"acct": acct_hash(uid), "mode": d["mode"], "sv": d["sv"], "av": d["av"], "n": len(d["items"]), "items": d["items"]}
+
+
+def log_line(uid, d, rec=None):
     """Eine Zeile: pmdiag <json> - Konto als Hash, Modus, Schema-Version, Asset-Stand, Eintraege (Typ, Pfad, Art)."""
-    rec = {"acct": acct_hash(uid), "mode": d["mode"], "sv": d["sv"], "av": d["av"], "n": len(d["items"]), "items": d["items"]}
-    return "pmdiag " + json.dumps(rec, separators=(",", ":"), ensure_ascii=True)
+    return "pmdiag " + json.dumps(rec or log_rec(uid, d), separators=(",", ":"), ensure_ascii=True)
 
 
 @router.post("/api/diag")
@@ -138,5 +142,7 @@ async def api_diag(request: Request):
         return _bad(t("ungültige Angabe"))
     if not _rate_ok(uid, time.time()):
         return _no_store({"error": t("Zu viele Anfragen – bitte kurz warten."), "retry_s": int(RATE_S)}, 429)
-    print(log_line(uid, d), flush=True)
+    rec = log_rec(uid, d)
+    print(log_line(uid, d, rec), flush=True)
+    diagstore.record("pmdiag", rec, client=("editor " + d["av"]).strip())   # Admin -> Diagnose (zusaetzlich, blockiert nie)
     return _no_store({"ok": True})

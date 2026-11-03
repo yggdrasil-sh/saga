@@ -1,8 +1,9 @@
 """Anruf-Diagnose (2.5, Analyse 1.11.): POST /api/calls/diag - Clients (Web, iOS, mac, Android, Linux) melden waehrend eines
 Anrufs gesammelte Messwerte (Empfang je Quelle, Senden je Simulcast-Schicht, Schicht-/Weg-/Qualitaetswechsel).
 
-Vertrag: docs/APP-API.md "Anruf-Diagnose". Keine Datenbank: je POST genau EINE kompakte Zeile im Server-Log (Praefix
-"calldiag", per docker logs zu sehen), Konto nur als kurzer Hash, keine IP-Adressen, keine Namen. Felder werden streng
+Vertrag: docs/APP-API.md "Anruf-Diagnose". Je POST genau EINE kompakte Zeile im Server-Log (Praefix "calldiag", per
+docker logs zu sehen; dazu derselbe Inhalt in diag_event fuer Admin -> Diagnose, saga/diagstore.py), Konto nur als kurzer
+Hash, keine IP-Adressen, keine Namen. Felder werden streng
 geprueft (Typ, Laenge, Wertebereich), unbekannte Felder verworfen. Nur Teilnehmende des Anrufs duerfen senden (sonst 404 wie
 bei den uebrigen Anruf-APIs), hoechstens 1 POST je 15 s je Konto und Anruf (429), Body hoechstens 32 KB (413).
 Admin-Schalter calls.diag (Standard an): aus -> 404 und kein Feature calldiag1 in /api/version."""
@@ -16,7 +17,7 @@ import time
 from fastapi import APIRouter, Request
 
 from db import connect as _db
-from saga import calls, chat
+from saga import calls, chat, diagstore
 from saga.core import SECRET, _bad, parse_json, t
 
 router = APIRouter()
@@ -142,11 +143,14 @@ def _rate_ok(uid, cid, now):
     return True
 
 
-def log_line(uid, d):
-    """Eine Zeile: calldiag <json> - Konto als Hash, Anruf-ID gekuerzt (zum Zuordnen der Meldungen beider Seiten)."""
-    rec = {"acct": acct_hash(uid), "call": d["call"][:12], **{k: d[k] for k in ("plat", "app", "path", "transport", "node")},
+def log_rec(uid, d):
+    return {"acct": acct_hash(uid), "call": d["call"][:12], **{k: d[k] for k in ("plat", "app", "path", "transport", "node")},
            "n": [len(d["samples"]), len(d["events"])], "samples": d["samples"], "events": d["events"]}
-    return "calldiag " + json.dumps(rec, separators=(",", ":"), ensure_ascii=False)
+
+
+def log_line(uid, d, rec=None):
+    """Eine Zeile: calldiag <json> - Konto als Hash, Anruf-ID gekuerzt (zum Zuordnen der Meldungen beider Seiten)."""
+    return "calldiag " + json.dumps(rec or log_rec(uid, d), separators=(",", ":"), ensure_ascii=False)
 
 
 @router.post("/api/calls/diag")
@@ -178,5 +182,7 @@ async def api_diag(request: Request):
             return err
     if not _rate_ok(uid, d["call"], time.time()):
         return chat._no_store({"error": t("Zu viele Anfragen – bitte kurz warten."), "retry_s": int(RATE_S)}, 429)
-    print(log_line(uid, d), flush=True)
+    rec = log_rec(uid, d)
+    print(log_line(uid, d, rec), flush=True)
+    diagstore.record("calldiag", rec, ref=rec["call"], client=(d["plat"] + " " + (d.get("app") or "")).strip())   # Admin -> Diagnose
     return chat._no_store({"ok": True})
