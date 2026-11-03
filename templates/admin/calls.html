@@ -234,7 +234,7 @@ ports:
     {{ field(_('TURN-Passwort'), 'calls_turn_password', '', max=300, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if st.calls.turn_password else '')) }}
     {{ check(_('TURN-Zugangsdaten löschen'), 'calls_turn_clear', false) }}
     {{ check(_('Nur über TURN verbinden'), 'calls_relay_only', st.calls.relay_only, _('Die Geräte sehen dann die IP-Adresse des Gegenübers nicht – kostet etwas Latenz und Bandbreite am TURN-Server. Wirkt nur mit eingetragenem TURN-Server.')) }}
-    {{ check(_('Anruf-Diagnose'), 'calls_diag', st.calls.diag, _('Apps und Browser melden alle 30 s Messwerte des Anrufs (Bildrate, Bitrate, Verlust, Schichtwechsel). Gespeichert wird nichts – je Meldung eine Zeile im Server-Log (calldiag), ohne Namen und IP-Adressen.')) }}
+    {{ check(_('Anruf-Diagnose'), 'calls_diag', st.calls.diag, _('Apps und Browser melden alle 30 s Messwerte des Anrufs (Bildrate, Bitrate, Verlust, Schichtwechsel). Je Meldung eine Zeile im Server-Log (calldiag) und derselbe Inhalt unter Admin → Diagnose, ohne Namen und IP-Adressen.')) }}
     <label class="adm-field"><span>{{ _("Klingeldauer (Sekunden)") }}</span>
       <input class="hk-in" type="number" name="calls_ring_s" min="15" max="120" value="{{ st.calls.ring_s or 45 }}">
       <small>{{ _("Danach gilt der Anruf als verpasst (Eintrag im Chat und Benachrichtigung).") }}</small></label>

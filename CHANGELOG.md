@@ -16,6 +16,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Admin: neue Seite „Diagnose“
+- Fehlerberichte, „Diagnose senden“ (Kennung `D-…`), Editor-Diagnose und Anruf-Diagnose stehen jetzt zusätzlich zur
+  Log-Zeile im Admin-Bereich unter **Diagnose** – kein `docker logs | grep` mehr nötig. Tabelle mit Zeit, Art, Kennung,
+  Client und Kurzfassung (100 je Seite), Filter nach Art und Zeitraum, Suche nach D-Kennung (exakte Treffer oben), auch
+  nach Anruf-ID oder Konto-Hash; Detail als formatiertes JSON, **Als Datei herunterladen** (JSONL der Auswahl), **Alle
+  löschen**. Nur für Admins (Admin-Port).
+- Gespeichert wird genau der Inhalt der Log-Zeile (schon bereinigt, Konto nur als Hash, keine IP-Adressen); die
+  Log-Zeilen bleiben unverändert. Aufbewahrung 14 Tage (1–90) und höchstens 200 000 Meldungen, beides auf der Seite
+  einstellbar; der stündliche Wartungslauf räumt auf. Die Schalter (Fehlerberichte, Editor-Diagnose, Anruf-Diagnose)
+  gelten weiter: aus → es wird nichts gespeichert.
+- Schreiben bremst die Anfragen nicht (Puffer, Hintergrund-Schreiben); ein Datenbankfehler dabei lässt die Meldung nie
+  scheitern. Datenbank-Migration 32 legt die Tabelle `diag_event` an.
+
 ### Seiten: Tiptap ist Standard-Editor (M3)
 - Tiptap ist jetzt Standard-Editor; Editor.js ist unter Admin → Allgemein → Seiten noch wählbar („Klassisch“, wird in
   einer späteren Version entfernt). Datenbank-Migration 31 stellt beim Update einmalig auf Tiptap um – bisher hat jedes

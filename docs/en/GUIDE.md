@@ -1755,6 +1755,28 @@ update it. The app's settings show both the app and the server version.
 
 ## 12. Troubleshooting
 
+**Someone reports a problem – where do I find error reports and diagnostics?** (2.5+)
+Browsers and apps report program errors automatically, and under **Settings → Help → Send diagnostics** a person sends
+the latest events of their window (errors, status codes per endpoint, view changes, live channel, saving) with an
+optional sentence. They get an ID such as `D-7K3FM` to pass on to the admin. Each report is one line in the server log
+(`clientlog {…}` / `clientdiag {…}`) and – since 2.5 – the same content in the admin area under **Diagnostics**: all
+reports (error reports `clientlog`, "Send diagnostics" `clientdiag`, editor diagnostics `pmdiag`, call diagnostics
+`calldiag`) with time, kind, ID, client (app and version) and a short summary, newest first, 100 per page. Type the ID
+into the search field (`D-7K3FM`, lower case works too; exact matches come first) – or the start of a call ID or an
+account hash. Filter by kind and time range; click the time to see the full report as formatted JSON. **Download as
+file** exports the current selection as JSONL, **Delete all** empties the list. Saga stores exactly the content of the
+log line (already cleaned up, account only as a short hash, no IP addresses, no content, titles or names; the optional
+free text as written, with addresses and keys masked); only admins can see it. Retention: 14 days by default (1–90) and
+at most 200,000 reports – older ones are removed hourly; both can be set on the same page. Call diagnostics send one
+report every 30 seconds per participant, so with many calls the row limit applies sooner.
+
+```bash
+docker logs saga 2>&1 | grep 'clientdiag {"id":"D-7K3FM"'     # one specific diagnostics report
+```
+
+Switches: admin area → **General → Diagnostics** (error reports and "Send diagnostics"), **General → Pages** (editor
+diagnostics), **Calls** (call diagnostics); all on by default. Off: nothing is sent and nothing is stored.
+
 **After signing in I end up on the sign-in page again.**
 `BASE_URL` must be exactly the address shown in the browser (including `https://`). With `https`, Saga only
 sets cookies over HTTPS.

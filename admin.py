@@ -1236,14 +1236,14 @@ async def diag_post(request: Request):
     if act == "clear":
         n = await run_in_threadpool(diagstore.delete_all)
         print(f"admin: {me['username']} Diagnose-Meldungen geloescht ({n})", flush=True)
-        _flash(request, t("{n} Meldungen gelöscht.", n=n))
+        _flash(request, t("{n} {n:Meldung|Meldungen} gelöscht.", n=n))
         return _go("/diag")
     keep = diagstore.clamp(f.get("keep_days"), diagstore.KEEP_DEF, diagstore.KEEP_MIN, diagstore.KEEP_MAX)
     mx = diagstore.clamp(f.get("max_rows"), diagstore.ROWS_DEF, diagstore.ROWS_MIN, diagstore.ROWS_MAX)
     auth.save_setting("diag", {**(auth.settings(fresh=True).get("diag") or {}), "keep_days": keep, "max_rows": mx})
     n = await run_in_threadpool(diagstore.purge)
     print(f"admin: {me['username']} Diagnose-Aufbewahrung {keep} Tage, hoechstens {mx} Zeilen", flush=True)
-    _flash(request, t("Gespeichert.") + ((" " + t("{n} Meldungen entfernt.", n=n)) if n else ""))
+    _flash(request, t("Gespeichert.") + ((" " + t("{n} {n:Meldung|Meldungen} entfernt.", n=n)) if n else ""))
     return _go(back)
 
 

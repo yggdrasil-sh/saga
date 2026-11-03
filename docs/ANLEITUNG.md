@@ -1979,8 +1979,8 @@ die neuere Version nur zum Zurückspielen nehmen, z. B. `docker compose run --rm
 **Jemand meldet ein Problem – wo finde ich Fehlerberichte und Diagnosen?** (ab 2.5)
 Browser und Apps melden Programmfehler automatisch, und unter **Einstellungen → Hilfe → Diagnose senden** schickt eine
 Person die letzten Ereignisse ihres Fensters (Fehler, Antwortcodes je Endpunkt, Ansichtswechsel, Live-Kanal, Speichern)
-mit einem optionalen Satz dazu. Sie bekommt eine Kennung wie `D-7K3FM`, die sie dem Admin nennt. Saga speichert davon
-nichts in der Datenbank – je Bericht steht genau eine Zeile im Server-Log. Die automatisch erfassten Angaben enthalten
+mit einem optionalen Satz dazu. Sie bekommt eine Kennung wie `D-7K3FM`, die sie dem Admin nennt. Je Bericht steht genau
+eine Zeile im Server-Log, und seit 2.5 derselbe Inhalt auch im Admin-Bereich unter **Diagnose** (siehe unten). Die automatisch erfassten Angaben enthalten
 keine Inhalte, Titel, Namen und IP-Adressen; den optionalen Freitext (`user_note`) loggt Saga so, wie die Person ihn
 geschrieben hat – nur Internet- und E-Mail-Adressen sowie Schlüssel werden unkenntlich gemacht (die Person sieht dazu
 einen Hinweis am Textfeld). Das Konto erscheint nur als kurzer Hash (`acct`, stabil je Server, gleich in beiden
@@ -1991,8 +1991,20 @@ docker logs saga 2>&1 | grep 'clientdiag {"id":"D-7K3FM"'     # eine bestimmte D
 docker logs saga 2>&1 | grep '^clientlog ' | tail -50          # die letzten automatischen Fehlerberichte
 ```
 
-Ein- und ausschalten: Admin-Bereich → **Allgemein → Diagnose → „Fehlerberichte und ‚Diagnose senden‘“** (Standard an).
-Aus: Browser und Apps senden nichts mehr, der Knopf zeigt „abgeschaltet“. Wie lange die Zeilen bleiben, bestimmt die
+Bequemer: Admin-Bereich → **Diagnose**. Dort stehen alle Meldungen – Fehlerberichte (`clientlog`), „Diagnose senden“
+(`clientdiag`), Editor-Diagnose (`pmdiag`) und Anruf-Diagnose (`calldiag`) – mit Zeit, Art, Kennung, Client (App und
+Version) und Kurzfassung, neueste zuerst, 100 je Seite. Ins Suchfeld die Kennung eintippen (`D-7K3FM`, auch klein
+geschrieben; exakte Treffer stehen oben) – oder den Anfang einer Anruf-ID bzw. einen Konto-Hash. Filter nach Art und
+Zeitraum; ein Klick auf die Zeit zeigt die ganze Meldung als formatiertes JSON. **Als Datei herunterladen** liefert die
+aktuelle Auswahl als JSONL (eine Meldung je Zeile), **Alle löschen** leert die Liste. Gespeichert wird genau der Inhalt der
+Log-Zeile (schon bereinigt, Konto nur als Hash, keine IP-Adressen); sehen können das nur Admins. Aufbewahrung: Standard
+14 Tage (einstellbar 1–90) und höchstens 200 000 Meldungen – ältere löscht Saga stündlich, beides auf derselben Seite
+einstellbar. Die Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung; bei vielen Anrufen greift dann
+eher die Obergrenze.
+
+Ein- und ausschalten: Admin-Bereich → **Allgemein → Diagnose → „Fehlerberichte und ‚Diagnose senden‘“** (Standard an),
+Editor-Diagnose unter **Allgemein → Seiten**, Anruf-Diagnose unter **Anrufe**. Aus: Browser und Apps senden nichts mehr
+(es wird auch nichts gespeichert), der Knopf zeigt „abgeschaltet“. Wie lange die Log-Zeilen bleiben, bestimmt die
 Log-Aufbewahrung von Docker bzw. des Log-Sammlers.
 
 **Nach dem Login lande ich wieder auf der Anmeldeseite.**

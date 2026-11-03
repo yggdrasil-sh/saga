@@ -2084,8 +2084,8 @@ Tests: `tests/anrufe_uebergabe.py` (Server, mit Knoten-Registereintrag ohne echt
 ## Anruf-Diagnose (2.5, `calldiag1`)
 
 Clients melden während eines Anrufs Messwerte, damit sich Ruckeln über einen Knoten (z. B. Android → Knoten → iPhone)
-nachvollziehen lässt. Der Server **speichert nichts**: je angenommener Meldung schreibt er genau eine Zeile ins
-Server-Log (`calldiag {…}`, per `docker logs` zu sehen) – Konto nur als kurzer Hash, Anruf-ID gekürzt, keine Namen, keine
+nachvollziehen lässt. Je angenommener Meldung schreibt der Server genau eine Zeile ins Server-Log (`calldiag {…}`, per
+`docker logs` zu sehen); derselbe Inhalt wird beim Admin gespeichert (Admin → Diagnose, Aufbewahrung einstellbar) – Konto nur als kurzer Hash, Anruf-ID gekürzt, keine Namen, keine
 IP-Adressen. Admin-Schalter `calls.diag` (Anrufe → 1:1-Anrufe, Standard **an**); aus → `404` und kein Feature.
 
 **Erkennen:** `GET /api/version` → `features` enthält `calldiag1`. Ohne das Feature nichts senden.
@@ -2144,8 +2144,8 @@ lassen.
 
 Während des Feldtests meldet der neue Web-Editor (Tiptap, `static/pm-diag.js`) **Round-Trip-Abweichungen**: Blöcke, die
 niemand bearbeitet hat, deren gespeicherte Form aber von der geladenen abweichen würde – ein Hinweis auf eine Lücke im
-Adapter (`docs/EDITOR-PM.md` „Diagnose“). Der Server **speichert nichts**: je angenommener Meldung eine Zeile
-`pmdiag {…}` im Server-Log. Gemeldet werden nur Blocktyp, Feldpfad und Art – **nie** Inhalt, Text, Block-IDs,
+Adapter (`docs/EDITOR-PM.md` „Diagnose“). Je angenommener Meldung eine Zeile `pmdiag {…}` im Server-Log; derselbe
+Inhalt wird beim Admin gespeichert (Admin → Diagnose, Aufbewahrung einstellbar). Gemeldet werden nur Blocktyp, Feldpfad und Art – **nie** Inhalt, Text, Block-IDs,
 Dateinamen oder Adressen. Admin-Schalter `editor.diag` (Einstellungen → Seiten → „Editor-Diagnose“, Standard **an**);
 aus → `404` und kein Feature. Apps senden nichts (sie haben keinen Tiptap-Editor).
 
@@ -2721,8 +2721,8 @@ Kopf `Authorization: Bearer hkd_…`. Danach nur Binär-Rahmen, das erste Byte i
 ## Fehlerberichte und Diagnose (2.5, `clientlog1`)
 
 Clients melden Programmfehler automatisch und schicken auf Wunsch der Person eine Diagnose („Diagnose senden“ in den
-Einstellungen, Abschnitt Hilfe/Über). Der Server **speichert nichts**: je angenommenem POST genau eine Zeile im
-Server-Log (`clientlog {…}` bzw. `clientdiag {…}`), Konto nur als kurzer HMAC-Hash `acct`, keine Namen, keine
+Einstellungen, Abschnitt Hilfe/Über). Je angenommenem POST genau eine Zeile im Server-Log (`clientlog {…}` bzw.
+`clientdiag {…}`); derselbe Inhalt wird beim Admin gespeichert (Admin → Diagnose, Aufbewahrung einstellbar), Konto nur als kurzer HMAC-Hash `acct`, keine Namen, keine
 IP-Adressen. Admin-Schalter `diag.clientlog` (Allgemein → Diagnose, Standard **an**); aus → `404` und kein Feature.
 
 **Grundsatz: im Zweifel weniger senden.** Nie Seiten-/Chat-Inhalte, Titel, Dateinamen, Personennamen, URLs mit Pfad

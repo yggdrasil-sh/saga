@@ -1837,6 +1837,31 @@ servidor, te pide que la actualices. En los ajustes de la app aparecen la versi�
 
 ## 12. Solución de problemas
 
+**Alguien informa de un problema: ¿dónde encuentro los informes de error y los diagnósticos?** (desde 2.5)
+Los navegadores y las apps informan automáticamente de errores del programa, y en **Ajustes → Ayuda → Enviar
+diagnóstico** una persona envía los últimos eventos de su ventana (errores, códigos de estado por endpoint, cambios de
+vista, canal en vivo, guardado) con una frase opcional. Recibe un identificador como `D-7K3FM` para dárselo al admin.
+Cada informe es una línea en el registro del servidor (`clientlog {…}` / `clientdiag {…}`) y, desde 2.5, el mismo
+contenido en el área de administración, en **Diagnóstico**: todos los informes (errores `clientlog`, «Enviar
+diagnóstico» `clientdiag`, diagnóstico del editor `pmdiag`, diagnóstico de llamadas `calldiag`) con hora, tipo,
+identificador, cliente (app y versión) y un resumen, los más nuevos primero, 100 por página. Escribe el identificador en
+el campo de búsqueda (`D-7K3FM`, también en minúsculas; las coincidencias exactas van primero), o el comienzo de un ID de
+llamada o un hash de cuenta. Filtra por tipo y periodo; al pulsar la hora se ve el informe completo como JSON
+formateado. **Descargar como archivo** exporta la selección actual como JSONL, **Eliminar todo** vacía la lista. Saga
+guarda exactamente el contenido de la línea del registro (ya depurado, la cuenta solo como hash corto, sin direcciones
+IP, contenidos, títulos ni nombres; el texto libre opcional tal como se escribió, con direcciones y claves ocultas); solo
+lo ven los admins. Conservación: 14 días por defecto (1–90) y como máximo 200 000 informes; los más antiguos se borran
+cada hora, ambos valores se ajustan en la misma página. El diagnóstico de llamadas envía un informe cada 30 segundos por
+participante, así que con muchas llamadas se alcanza antes el límite.
+
+```bash
+docker logs saga 2>&1 | grep 'clientdiag {"id":"D-7K3FM"'     # un diagnóstico concreto
+```
+
+Interruptores: área de administración → **General → Diagnóstico** (informes de error y «Enviar diagnóstico»),
+**General → Páginas** (diagnóstico del editor), **Llamadas** (diagnóstico de llamadas); todos activados por defecto.
+Desactivado: no se envía ni se guarda nada.
+
 **Después de iniciar sesión vuelvo a la página de inicio de sesión.**
 `BASE_URL` debe ser exactamente la dirección que aparece en el navegador (incluido `https://`). Con `https`,
 Saga solo envía cookies por HTTPS.

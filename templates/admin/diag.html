@@ -35,7 +35,7 @@
   <a class="btn" href="/diag/export{{ qs }}">{{ _("Als Datei herunterladen") }}</a>
 </form>
 
-<p class="hk-hint">{{ _("{n} Meldungen", n=total) }}{% if pages > 1 %} · {{ _("Seite {p} von {n}", p=page, n=pages) }}{% endif %}</p>
+<p class="hk-hint">{{ _("{n} {n:Meldung|Meldungen}", n=total) }}{% if pages > 1 %} · {{ _("Seite {p} von {n}", p=page, n=pages) }}{% endif %}</p>
 <table class="adm-table adm-diag">
   <tr><th>{{ _("Zeit") }}</th><th>{{ _("Art") }}</th><th>{{ _("Kennung") }}</th><th>{{ _("Client") }}</th><th>{{ _("Kurzfassung") }}</th></tr>
   {% for r in rows %}
@@ -59,7 +59,7 @@
 
 <section class="adm-card">
   <h3>{{ _("Aufbewahrung") }}</h3>
-  <p class="hk-hint">{{ _("Gespeichert: {n} Meldungen, {size}.", n=st.rows, size=(st.bytes // 1024) ~ ' KB') }}{% if st.oldest %} {{ _("Älteste:") }} {{ ts(st.oldest) }}{% endif %}</p>
+  <p class="hk-hint">{{ _("Gespeichert: {n} {n:Meldung|Meldungen}, {size}.", n=st.rows, size=(st.bytes // 1024) ~ ' KB') }}{% if st.oldest %} {{ _("Älteste:") }} {{ ts(st.oldest) }}{% endif %}</p>
   <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="save">
     <input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="since" value="{{ since }}"><input type="hidden" name="q" value="{{ q }}">
     <label class="adm-field"><span>{{ _("Aufbewahren (Tage)") }}</span>
