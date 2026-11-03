@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.concurrency import run_in_threadpool
@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, chat, chat_grp, cloudflare, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup, weather
+from saga import ai, avatars, backups, calls, chat, chat_grp, cloudflare, diagstore, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup, weather
 from saga.core import HSTS, RESTORE_TEST, TZ, BodyLimit, LangMiddleware, SecHeaders, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -1149,6 +1149,102 @@ async def reports_post(request: Request):
         print(f"admin: {me['username']} Meldung {f['id']} -> {act}", flush=True)
         _flash(request, t("Meldung gelöscht.") if act == "delete" else t("Meldung erledigt.") if act == "done" else t("Meldung wieder offen."))
     return _go("/reports" + ("?state=" + f["back"] if f.get("back") in ("done", "all") else ""))
+
+
+# --- Diagnose (2.5, saga/diagstore.py): Meldungen der Clients (clientlog/clientdiag/pmdiag/calldiag) ---------------------
+DIAG_PER = 100
+
+
+def _diag_filter(qp):
+    kind = qp.get("kind") if qp.get("kind") in diagstore.KINDS else ""
+    since = qp.get("since") if qp.get("since") in diagstore.SINCE else "7d"
+    q = clean_line(str(qp.get("q") or "")).strip()[:64]
+    return kind, since, q
+
+
+def _diag_qs(kind, since, q, **extra):
+    from urllib.parse import urlencode
+    d = {k: v for k, v in (("kind", kind), ("since", since), ("q", q)) if v}
+    d.update({k: v for k, v in extra.items() if v})
+    return ("?" + urlencode(d)) if d else ""
+
+
+@admin.get("/diag")
+def diag_page(request: Request):
+    """Diagnose-Meldungen: neueste zuerst, Filter Art/Zeitraum, Suche nach Kennung (D-XXXXX), Anruf-ID oder Konto-Hash.
+    Inhalte stammen von Clients - das Template gibt alles escaped aus (nie |safe)."""
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    qp = request.query_params
+    kind, since, q = _diag_filter(qp)
+    try:
+        page = max(1, min(100000, int(qp.get("page") or 1)))
+    except ValueError:
+        page = 1
+    diagstore.flush()                               # gerade eingegangene Meldungen sofort sichtbar
+    rows, total = diagstore.query(kind or None, since, q, page, DIAG_PER)
+    for r in rows:
+        r["summary"] = diagstore.summary(r)
+        r["exact"] = bool(q and (r.get("ref") or "").upper() == q.upper())
+    sel = None
+    if str(qp.get("id") or "").isdigit():
+        sel = diagstore.get(int(qp["id"]))
+        if sel:
+            sel["json"] = json.dumps(sel["data"], indent=2, ensure_ascii=False, sort_keys=True)
+    pages = max(1, (total + DIAG_PER - 1) // DIAG_PER)
+    return _page(request, "diag.html", me, rows=rows, total=total, page=page, pages=pages, kind=kind, since=since, q=q,
+                 sel=sel, kinds=diagstore.KINDS, cfg=diagstore.cfg(), st=diagstore.stats(), qs=_diag_qs(kind, since, q),
+                 qs_page=lambda p: _diag_qs(kind, since, q, page=str(p) if p > 1 else ""),
+                 sources={"clientlog": diag_src_on("clientlog"), "pmdiag": diag_src_on("pmdiag"), "calldiag": diag_src_on("calldiag")},
+                 keep=(diagstore.KEEP_MIN, diagstore.KEEP_MAX), rows_lim=(diagstore.ROWS_MIN, diagstore.ROWS_MAX))
+
+
+def diag_src_on(k):
+    st = auth.settings()
+    if k == "clientlog":
+        return bool((st.get("diag") or {}).get("clientlog", True))
+    if k == "pmdiag":
+        return bool((st.get("editor") or {}).get("diag", True))
+    return bool((st.get("calls") or {}).get("diag", True))
+
+
+@admin.get("/diag/export")
+def diag_export(request: Request):
+    """JSONL der aktuellen Filterung (neueste zuerst), als Datei."""
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    kind, since, q = _diag_filter(request.query_params)
+    diagstore.flush()
+    stamp = datetime.now(TZ).strftime("%Y%m%d-%H%M")
+    print(f"admin: {me['username']} Diagnose-Export ({kind or 'alle'}, {since})", flush=True)
+    return StreamingResponse(diagstore.export(kind or None, since, q), media_type="application/x-ndjson",
+                             headers=dict(HEADERS, **{"Content-Disposition": f'attachment; filename="saga-diagnose-{stamp}.jsonl"'}))
+
+
+@admin.post("/diag")
+async def diag_post(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    act = (f or {}).get("action")
+    back = "/diag" + _diag_qs(*_diag_filter(f or {}))
+    if f is None or act not in ("save", "clear"):
+        return _go("/diag")
+    if act == "clear":
+        n = await run_in_threadpool(diagstore.delete_all)
+        print(f"admin: {me['username']} Diagnose-Meldungen geloescht ({n})", flush=True)
+        _flash(request, t("{n} Meldungen gelöscht.", n=n))
+        return _go("/diag")
+    keep = diagstore.clamp(f.get("keep_days"), diagstore.KEEP_DEF, diagstore.KEEP_MIN, diagstore.KEEP_MAX)
+    mx = diagstore.clamp(f.get("max_rows"), diagstore.ROWS_DEF, diagstore.ROWS_MIN, diagstore.ROWS_MAX)
+    auth.save_setting("diag", {**(auth.settings(fresh=True).get("diag") or {}), "keep_days": keep, "max_rows": mx})
+    n = await run_in_threadpool(diagstore.purge)
+    print(f"admin: {me['username']} Diagnose-Aufbewahrung {keep} Tage, hoechstens {mx} Zeilen", flush=True)
+    _flash(request, t("Gespeichert.") + ((" " + t("{n} Meldungen entfernt.", n=n)) if n else ""))
+    return _go(back)
 
 
 # --- Foederation: andere Saga-Instanzen verbinden -----------------------------------------------------------

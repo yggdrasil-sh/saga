@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ts, csrf_field with context %}
+{% block pagetitle %}{{ _('Diagnose') }}{% endblock %}
+{% block content %}
+{# Inhalte stammen von Clients: alles nur escaped ausgeben (autoescape), nie |safe #}
+<h2>{{ _("Diagnose-Meldungen") }}</h2>
+<p class="hk-hint">{{ _("Fehlerberichte und „Diagnose senden“ aus Browser und Apps, Editor-Diagnose und Anruf-Diagnose – derselbe Inhalt wie die Zeilen im Server-Log (clientlog, clientdiag, pmdiag, calldiag). Gespeichert wird nur, was die Clients schon bereinigt schicken: keine Inhalte, Titel, Namen oder IP-Adressen; das Konto nur als kurzer Hash. Der optionale Freitext bei „Diagnose senden“ steht so da, wie die Person ihn geschrieben hat (Adressen und Schlüssel unkenntlich). Ältere Meldungen löscht Saga automatisch.") }}</p>
+{% if not sources.clientlog or not sources.pmdiag or not sources.calldiag %}
+<p class="adm-note" role="note">{{ _("Abgeschaltet (es kommt nichts an):") }}
+  {% if not sources.clientlog %}{{ _("Fehlerberichte und „Diagnose senden“") }}{% if not sources.pmdiag or not sources.calldiag %}, {% endif %}{% endif %}
+  {% if not sources.pmdiag %}{{ _("Editor-Diagnose") }}{% if not sources.calldiag %}, {% endif %}{% endif %}
+  {% if not sources.calldiag %}{{ _("Anruf-Diagnose") }}{% endif %}</p>
+{% endif %}
+
+{% if sel %}
+<section class="adm-card" id="detail">
+  <h3>{{ sel.kind }}{% if sel.ref %} · <code>{{ sel.ref }}</code>{% endif %}</h3>
+  <p class="hk-hint">{{ ts(sel.ts) }}{% if sel.client %} · {{ sel.client }}{% endif %}{% if sel.acct %} · {{ _("Konto (Hash)") }} <code>{{ sel.acct }}</code>{% endif %}</p>
+  <pre class="adm-json">{{ sel.json }}</pre>
+  <p><a class="btn small" href="/diag{{ qs }}">{{ _("Schließen") }}</a></p>
+</section>
+{% endif %}
+
+<form method="get" action="/diag" class="adm-diag-filter">
+  <label><span>{{ _("Kennung") }}</span>
+    <input class="hk-in" type="search" name="q" value="{{ q }}" placeholder="D-7K3FM" maxlength="64" autocomplete="off" spellcheck="false"></label>
+  <label><span>{{ _("Art") }}</span>
+    <select class="hk-in" name="kind"><option value="">{{ _("Alle") }}</option>
+      {% for k in kinds %}<option value="{{ k }}"{% if kind == k %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
+  <label><span>{{ _("Zeitraum") }}</span>
+    <select class="hk-in" name="since">
+      {% for k, label in [('1h', _('1 Stunde')), ('24h', _('24 Stunden')), ('7d', _('7 Tage')), ('30d', _('30 Tage')), ('all', _('Alle'))] %}
+      <option value="{{ k }}"{% if since == k %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <button class="btn btn-primary" type="submit">{{ _("Filtern") }}</button>
+  <a class="btn" href="/diag/export{{ qs }}">{{ _("Als Datei herunterladen") }}</a>
+</form>
+
+<p class="hk-hint">{{ _("{n} Meldungen", n=total) }}{% if pages > 1 %} · {{ _("Seite {p} von {n}", p=page, n=pages) }}{% endif %}</p>
+<table class="adm-table adm-diag">
+  <tr><th>{{ _("Zeit") }}</th><th>{{ _("Art") }}</th><th>{{ _("Kennung") }}</th><th>{{ _("Client") }}</th><th>{{ _("Kurzfassung") }}</th></tr>
+  {% for r in rows %}
+  <tr{% if r.exact %} class="hit"{% endif %}>
+    <td data-l="{{ _('Zeit') }}"><a href="/diag{{ qs }}{{ '&' if qs else '?' }}id={{ r.id }}#detail">{{ ts(r.ts) }}</a></td>
+    <td data-l="{{ _('Art') }}">{{ r.kind }}</td>
+    <td data-l="{{ _('Kennung') }}">{% if r.ref %}<code>{{ r.ref }}</code>{% endif %}</td>
+    <td data-l="{{ _('Client') }}">{{ r.client or '' }}</td>
+    <td data-l="{{ _('Kurzfassung') }}" class="adm-diag-sum">{{ r.summary }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="hk-hint">{{ _("Keine Meldungen.") }}</td></tr>
+  {% endfor %}
+</table>
+{% if pages > 1 %}
+<p class="adm-tabs">
+  {% if page > 1 %}<a class="btn small" href="/diag{{ qs_page(page - 1) }}">← {{ _("Neuere") }}</a>{% endif %}
+  {% if page < pages %}<a class="btn small" href="/diag{{ qs_page(page + 1) }}">{{ _("Ältere") }} →</a>{% endif %}
+</p>
+{% endif %}
+
+<section class="adm-card">
+  <h3>{{ _("Aufbewahrung") }}</h3>
+  <p class="hk-hint">{{ _("Gespeichert: {n} Meldungen, {size}.", n=st.rows, size=(st.bytes // 1024) ~ ' KB') }}{% if st.oldest %} {{ _("Älteste:") }} {{ ts(st.oldest) }}{% endif %}</p>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="save">
+    <input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="since" value="{{ since }}"><input type="hidden" name="q" value="{{ q }}">
+    <label class="adm-field"><span>{{ _("Aufbewahren (Tage)") }}</span>
+      <input class="hk-in" type="number" name="keep_days" value="{{ cfg.keep_days }}" min="{{ keep[0] }}" max="{{ keep[1] }}" required>
+      <small>{{ _("Ältere Meldungen löscht Saga stündlich ({a}–{b} Tage, Standard 14).", a=keep[0], b=keep[1]) }}</small></label>
+    <label class="adm-field"><span>{{ _("Höchstens (Zeilen)") }}</span>
+      <input class="hk-in" type="number" name="max_rows" value="{{ cfg.max_rows }}" min="{{ rows_lim[0] }}" max="{{ rows_lim[1] }}" step="1000" required>
+      <small>{{ _("Darüber fallen die ältesten weg (Standard 200 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.") }}</small></label>
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+  <form method="post" data-confirm="{{ _('Alle Diagnose-Meldungen endgültig löschen?') }}">{{ csrf_field() }}<input type="hidden" name="action" value="clear">
+    <div class="adm-actions"><button class="btn btn-danger" type="submit">{{ _("Alle löschen") }}</button></div>
+  </form>
+</section>
+{% endblock %}

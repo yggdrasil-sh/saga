@@ -1374,6 +1374,12 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .adm-table td{padding:.5rem;border-bottom:1px solid var(--border);vertical-align:top}
 .adm-table tr.off td{opacity:.55}
 .adm-table small{color:var(--muted)}
+.adm-table.adm-diag tr.hit td{background:var(--card-h)}
+.adm-diag-sum{overflow-wrap:anywhere;font-size:.85rem}
+.adm-diag-filter{display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-end;margin:.8rem 0}
+.adm-diag-filter label{display:flex;flex-direction:column;gap:.2rem;font-size:.85rem;color:var(--muted)}
+.adm-json{margin:0;padding:.7rem .9rem;max-height:60vh;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8rem;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .adm-ic img{border-radius:6px;object-fit:contain}
 .adm-inline{display:flex;gap:.3rem}
 .adm-inline .hk-in{flex:1;min-width:8rem}
