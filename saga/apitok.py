@@ -164,9 +164,15 @@ def lookup(raw):
 def authed(request, write=False, scope=None):
     """Bearer-Token der Anfrage -> (Tok, None) oder (None, Fehlerantwort 401/403/429). scope: noetiger Bereich."""
     hdr = request.headers.get("authorization") or ""
-    if not hdr.lower().startswith("bearer ") or len(hdr) > 200:
-        return None, _unauth()
-    tok, code = lookup(hdr[7:])
+    if hdr.lower().startswith("bearer ") and len(hdr) <= 200:
+        raw = hdr[7:]
+    else:
+        # Ausweich-Header fuer Clients, die "Authorization" selbst belegen: claude.ai-Connectoren ohne OAuth erlauben
+        # nur freigegebene Header-Namen (X-API-Key). Gleicher Token, gleiche Pruefung; X-Saga-Token als Alias.
+        raw = (request.headers.get("x-api-key") or request.headers.get("x-saga-token") or "").strip()
+        if not raw or len(raw) > 193:
+            return None, _unauth()
+    tok, code = lookup(raw)
     if tok is None:
         if code == "expired":
             return None, _err("expired", t("Der API-Token ist abgelaufen."), 401, {"WWW-Authenticate": 'Bearer error="invalid_token"'})

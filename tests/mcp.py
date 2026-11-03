@@ -75,6 +75,17 @@ try:
     st, d, raw = rpc(None, "initialize")
     ok("Ohne Token -> 401", st == 401)
     ok("Ohne Bereich mcp -> 403", rpc(TN, "initialize")[0] == 403)
+    # Ausweich-Header X-API-Key (claude.ai-Connectoren ohne OAuth: nur freigegebene Namen) und Alias X-Saga-Token
+    xb = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+    st, d = call("POST", "/mcp", b=xb, headers={"X-Saga-Token": T})[:2]
+    ok("X-Saga-Token statt Authorization -> Werkzeuge", st == 200 and bool(d.get("result", {}).get("tools")))
+    st, d = call("POST", "/mcp", b=xb, headers={"X-API-Key": T})[:2]
+    ok("X-API-Key statt Authorization -> Werkzeuge", st == 200 and bool(d.get("result", {}).get("tools")))
+    ok("X-API-Key falsch -> 401", call("POST", "/mcp", b=xb, headers={"X-API-Key": "sga_falsch"})[0] == 401)
+    ok("X-Saga-Token falsch -> 401", call("POST", "/mcp", b=xb, headers={"X-Saga-Token": "sga_falsch"})[0] == 401)
+    ok("X-Saga-Token ohne Bereich mcp -> 403", call("POST", "/mcp", b=xb, headers={"X-Saga-Token": TN})[0] == 403)
+    ok("X-Saga-Token zu lang -> 401", call("POST", "/mcp", b=xb, headers={"X-Saga-Token": "x" * 300})[0] == 401)
+    ok("gueltiger Bearer gewinnt vor X-Saga-Token", call("POST", "/mcp", b=xb, bearer=T, headers={"X-Saga-Token": "sga_falsch"})[0] == 200)
     ok("Fremder Origin -> 403", rpc(T, "initialize", headers={"Origin": "https://evil.example", "MCP-Protocol-Version": "2025-06-18"})[0] == 403)
     ok("GET /mcp -> 405, DELETE -> 405", call("GET", "/mcp", bearer=T)[0] == 405 and call("DELETE", "/mcp", bearer=T)[0] == 405)
     ok("Unbekannte Protokollversion im Kopf -> 400", call("POST", "/mcp", b={"jsonrpc": "2.0", "id": 1, "method": "ping"}, bearer=T,

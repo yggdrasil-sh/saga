@@ -16,6 +16,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### MCP-Server: Token auch über `X-API-Key`
+- Eigene Connectoren in Claude (claude.ai, Desktop, Handy) ohne OAuth erlauben nur freigegebene Header-Namen;
+  ein selbst gesetzter `Authorization`-Kopf kam nicht an – die Verbindung scheiterte mit 401. Saga nimmt das API-Token jetzt
+  zusätzlich über den Kopf `X-API-Key: sga_…` an (Alias `X-Saga-Token`) (gleiche Prüfung, Bereiche und Ratenbremse; ein gültiger
+  `Authorization: Bearer` hat Vorrang). Einrichtung in der Anleitung unter „MCP-Server“. OAuth folgt später.
+
 ### Admin: neue Seite „Diagnose“
 - Fehlerberichte, „Diagnose senden“ (Kennung `D-…`), Editor-Diagnose und Anruf-Diagnose stehen jetzt zusätzlich zur
   Log-Zeile im Admin-Bereich unter **Diagnose** – kein `docker logs | grep` mehr nötig. Tabelle mit Zeit, Art, Kennung,

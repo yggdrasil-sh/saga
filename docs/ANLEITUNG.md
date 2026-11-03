@@ -1445,6 +1445,12 @@ Ein Token kann nie mehr als dein Konto; „Widerrufen“ sperrt ihn sofort.
                            "headers": {"Authorization": "Bearer sga_…"}}}}
   ```
 
+  **Claude (claude.ai, Desktop, Handy) als eigener Connector:** Unter Einstellungen → Connectors einen eigenen Connector
+  mit der Adresse `https://saga.example.org/mcp` anlegen, **Authentifizierung „Keine Anmeldung“** wählen und einen
+  **Header** `x-api-key` (aus der Auswahlliste) mit dem Token als Wert (ohne „Bearer“) hinzufügen. Eigene Header-Namen
+  erlaubt Claude dort nur nach Freigabe; Saga nimmt das Token deshalb auch über `X-API-Key` an. Die Adresse muss aus dem Internet erreichbar sein,
+  weil Claude den Server von Anthropics Servern aus aufruft.
+
   Seiten, die andere geschrieben haben, können Anweisungen an die KI enthalten (Prompt-Injection). Gib KI-Tokens deshalb
   nur die nötigen Seitenbäume und möglichst nur Lese-Bereiche.
 
