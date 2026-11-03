@@ -160,13 +160,13 @@
     sec.appendChild(el('h3', null, T('Seiten')));
     var box = el('div'); sec.appendChild(box);
     api('GET', '/api/account/editor').then(function (d) {
-      var NAMES = { editorjs: T('Klassisch (Editor.js)'), tiptap: T('Neu (Tiptap, Test)') };
+      var NAMES = { editorjs: T('Klassisch (Editor.js)'), tiptap: T('Standard (Tiptap)') };
       if (!d.choice) { box.appendChild(el('p', 'hk-hint', T('Seiten-Editor: {name} – festgelegt vom Admin.', { name: NAMES[d.engine] || d.engine }))); return; }
       var l = el('label', 'hk-avset-row'), i = el('input', 'hk-switch'); i.type = 'checkbox'; i.setAttribute('role', 'switch'); i.checked = !!d.tiptap;
       i.id = 'hk-editor-tiptap';
-      l.appendChild(el('span', null, T('Neuen Seiten-Editor verwenden (Test)'))); l.appendChild(i); box.appendChild(l);
+      l.appendChild(el('span', null, T('Neuen Seiten-Editor verwenden (Tiptap)'))); l.appendChild(i); box.appendChild(l);
       var st = el('div', 'hk-status'); st.setAttribute('role', 'status'); box.appendChild(st);
-      box.appendChild(el('p', 'hk-hint', T('Der neue Editor ist noch im Aufbau. Blöcke, die er noch nicht kann, zeigt er als Karte und lässt sie unverändert – bearbeiten kannst du sie im klassischen Editor. Gespeichert wird in beiden Fällen dasselbe. Gilt ab dem nächsten Laden der Seite.')));
+      box.appendChild(el('p', 'hk-hint', T('Tiptap ist der Standard. Aus: klassischer Editor.js (wird in einer späteren Version entfernt). Blöcke, die Tiptap noch nicht kann, zeigt er als Karte und lässt sie unverändert. Gespeichert wird in beiden Fällen dasselbe. Gilt ab dem nächsten Laden der Seite.')));
       i.addEventListener('change', function () {
         i.disabled = true;
         api('PUT', '/api/account/editor', { tiptap: i.checked }).then(function (r) {
