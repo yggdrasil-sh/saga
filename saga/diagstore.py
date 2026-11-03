@@ -14,6 +14,7 @@ purge() im stuendlichen Wartungslauf (app.py _gc_loop), zusaetzlich nach vielen 
 Die Schalter der Quellen (diag.clientlog, editor.diag, calls.diag) gelten weiter: aus -> 404, also auch nichts gespeichert."""
 import collections
 import json
+import re
 import threading
 import time
 
@@ -153,12 +154,22 @@ def _where(kind=None, since=None, q=None, now=None):
     if s:
         w.append("ts >= ?")
         a.append((time.time() if now is None else now) - s)
-    q = (q or "").strip()[:64]
+    q = norm_q(q)
     if q:
-        # Kennung (D-XXXXX, gross/klein egal), Anfang einer Anruf-ID oder Konto-Hash
-        w.append("(upper(ref) = upper(?) OR ref LIKE ? OR acct = ?)")
-        a += [q, q.replace("\\", "").replace("%", "").replace("_", "\\_") + "%", q.lower()]
+        # Kennung D-XXXXX (exakt), Anfang einer Anruf-ID (Hex) oder Konto-Hash
+        w.append("(ref = ? OR ref LIKE ? OR acct = ?)")
+        a += [q, q + "%" if _HEX.fullmatch(q) else q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_"), q]
     return (" WHERE " + " AND ".join(w)) if w else "", a, q
+
+
+_DID = re.compile(r"[Dd]-[0-9A-Za-z]{5}")
+_HEX = re.compile(r"[0-9a-f]{4,32}")
+
+
+def norm_q(q):
+    """Suchtext: D-Kennung in Grossbuchstaben (wie vergeben), sonst klein (Anruf-ID und Konto-Hash sind Hex)."""
+    q = " ".join(str(q or "").split())[:64]
+    return q.upper() if _DID.fullmatch(q) else q.lower()
 
 
 def _row(r):
@@ -177,7 +188,7 @@ COLS = "id, ts, kind, ref, acct, client, data"
 def query(kind=None, since=None, q=None, page=1, per=100):
     """-> (zeilen, gesamt). Exakte Treffer der Kennung zuerst, sonst neueste zuerst."""
     w, a, q = _where(kind, since, q)
-    order = "ORDER BY (upper(coalesce(ref, '')) = upper(?)) DESC, ts DESC, id DESC" if q else "ORDER BY ts DESC, id DESC"
+    order = "ORDER BY (coalesce(ref, '') = ?) DESC, ts DESC, id DESC" if q else "ORDER BY ts DESC, id DESC"
     oa = [q] if q else []
     page = max(1, int(page or 1))
     with _db() as c:

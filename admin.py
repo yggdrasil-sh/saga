@@ -1158,7 +1158,7 @@ DIAG_PER = 100
 def _diag_filter(qp):
     kind = qp.get("kind") if qp.get("kind") in diagstore.KINDS else ""
     since = qp.get("since") if qp.get("since") in diagstore.SINCE else "7d"
-    q = clean_line(str(qp.get("q") or "")).strip()[:64]
+    q = diagstore.norm_q(clean_line(str(qp.get("q") or "")))
     return kind, since, q
 
 
@@ -1186,7 +1186,7 @@ def diag_page(request: Request):
     rows, total = diagstore.query(kind or None, since, q, page, DIAG_PER)
     for r in rows:
         r["summary"] = diagstore.summary(r)
-        r["exact"] = bool(q and (r.get("ref") or "").upper() == q.upper())
+        r["exact"] = bool(q and r.get("ref") == q)
     sel = None
     if str(qp.get("id") or "").isdigit():
         sel = diagstore.get(int(qp["id"]))
