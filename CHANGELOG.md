@@ -21,6 +21,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   ein selbst gesetzter `Authorization`-Kopf kam nicht an – die Verbindung scheiterte mit 401. Saga nimmt das API-Token jetzt
   zusätzlich über den Kopf `X-API-Key: sga_…` an (Alias `X-Saga-Token`) (gleiche Prüfung, Bereiche und Ratenbremse; ein gültiger
   `Authorization: Bearer` hat Vorrang). Einrichtung in der Anleitung unter „MCP-Server“. OAuth folgt später.
+- MCP-Server: Beim `initialize` lehnt Saga eine neuere Protokollversion im Kopf `MCP-Protocol-Version` nicht mehr mit
+  400 ab (claude.ai schickt dort schon die neueste), sondern handelt die eigene aus; `2025-11-25` wird auch danach im
+  Kopf geduldet. Abgelehnte Versionen stehen als `mcp: Protokollversion …` im Server-Log.
 
 ### Admin: neue Seite „Diagnose“
 - Fehlerberichte, „Diagnose senden“ (Kennung `D-…`), Editor-Diagnose und Anruf-Diagnose stehen jetzt zusätzlich zur

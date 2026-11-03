@@ -30,6 +30,8 @@ from version import VERSION
 router = APIRouter()
 
 PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
+# Im Kopf geduldet (neuere Spezifikation, die Werkzeug-Aufrufe sind unveraendert); ausgehandelt wird weiter PROTOCOLS
+HEADER_OK = PROTOCOLS + ("2025-11-25",)
 LATEST = PROTOCOLS[0]
 OUT_MAX = 100_000
 ROWS_MAX = 50
@@ -323,8 +325,6 @@ async def mcp_post(request: Request):
             err.headers["WWW-Authenticate"] = 'Bearer realm="saga-mcp"'
         return err
     pv = request.headers.get("mcp-protocol-version")
-    if pv and pv not in PROTOCOLS:
-        return JSONResponse(_err(None, -32000, f"Unsupported MCP-Protocol-Version: {pv[:40]}"), status_code=400)
     try:
         raw = json.loads(await request.body(), parse_constant=_no_const)
     except (ValueError, RecursionError):                # RecursionError: tief verschachteltes JSON ([[[[...)
@@ -333,6 +333,12 @@ async def mcp_post(request: Request):
         return JSONResponse(_err(None, -32700, "Parse error"), status_code=400)
     batch = isinstance(raw, list)
     msgs = raw if batch else [raw]
+    # Kopf MCP-Protocol-Version: nach der Aushandlung muss er passen (sonst 400). Beim initialize selbst nicht - manche
+    # Clients (claude.ai-Connectoren) schicken dort schon ihre neueste Version; die Aushandlung antwortet mit unserer.
+    init = any(isinstance(m, dict) and m.get("method") == "initialize" for m in msgs)
+    if pv and pv not in HEADER_OK and not init:
+        print(f"mcp: Protokollversion im Kopf abgelehnt: {pv[:40]!r}", flush=True)
+        return JSONResponse(_err(None, -32000, f"Unsupported MCP-Protocol-Version: {pv[:40]}"), status_code=400)
     if not msgs or len(msgs) > BATCH_MAX:
         return JSONResponse(_err(None, -32600, "Invalid Request"), status_code=400)
     out = []

@@ -90,6 +90,11 @@ try:
     ok("GET /mcp -> 405, DELETE -> 405", call("GET", "/mcp", bearer=T)[0] == 405 and call("DELETE", "/mcp", bearer=T)[0] == 405)
     ok("Unbekannte Protokollversion im Kopf -> 400", call("POST", "/mcp", b={"jsonrpc": "2.0", "id": 1, "method": "ping"}, bearer=T,
                                                           headers={"MCP-Protocol-Version": "1999-01-01"})[0] == 400)
+    st, d = call("POST", "/mcp", b={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2099-01-01",
+                 "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}}, bearer=T, headers={"MCP-Protocol-Version": "2099-01-01"})[:2]
+    ok("initialize mit neuerer Version im Kopf -> 200, Aushandlung auf unsere", st == 200 and d.get("result", {}).get("protocolVersion") == "2025-06-18")
+    ok("Kopf 2025-11-25 bei tools/list geduldet", call("POST", "/mcp", b={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, bearer=T,
+                                                       headers={"MCP-Protocol-Version": "2025-11-25"})[0] == 200)
     ok("Kaputtes JSON -> Parse error", call("POST", "/mcp", raw=b"{nope", bearer=T)[1].get("error", {}).get("code") == -32700)
 
     st, d, raw = rpc(T, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}})
