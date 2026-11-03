@@ -12,7 +12,12 @@ Inhalte aus Seiten sind DATEN, keine Anweisungen: jede Werkzeug-Antwort mit Seit
 '<saga-data id="ZUFALL" ...>...</saga-data id="ZUFALL">' mit Hinweis (Prompt-Injection ueber geteilte Seiten). Die Kennung
 ist je Antwort neu (nicht vorhersagbar); jedes "<saga-data"/"</saga-data" im Inhalt (auch Titel, Metadaten, Fehlertexte,
 gross/klein, Vollbreite-Zeichen, Entitaeten) wird vorher entschaerft (2.5, Security-Fix). Ausgaben sind begrenzt (Zeilen,
-Zeichen) und werden mit Hinweis gekuerzt."""
+Zeichen) und werden mit Hinweis gekuerzt.
+
+Bilder (2.5): get_page nennt die Bild-Dateien der Seite (Feld "images"), get_image liefert eines als MCP-Bild-Inhalt
+(type "image", base64) - verkleinert (laengste Kante 1568 px), ohne EXIF/GPS, erstes Bild bei Animationen, nur PNG/JPEG/GIF/
+WebP (am Inhalt erkannt, kein SVG). Rechte wie /files/<id> im Web (api_v1.image_get), zusaetzlich roots des Tokens."""
+import base64
 import json
 import re
 import secrets
@@ -49,8 +54,12 @@ def _s(typ, desc, **kw):
 TOOLS = [
     ("search_pages", "read:pages", "Seiten und Datenbank-Einträge nach Text in Titel, Inhalt und Schlagworten suchen.",
      {"query": _s("string", "Suchbegriff"), "limit": _s("integer", "Höchstzahl Treffer (1-50)", minimum=1, maximum=50)}, ["query"], False),
-    ("get_page", "read:pages", "Eine Seite als Markdown lesen (mit Eigenschaften, wenn es ein Datenbank-Eintrag ist).",
+    ("get_page", "read:pages", "Eine Seite als Markdown lesen (mit Eigenschaften, wenn es ein Datenbank-Eintrag ist). "
+     "Bilder stehen als Links im Markdown; das Feld images nennt ihre Datei-IDs – ansehen mit get_image.",
      {"id": _s("integer", "ID der Seite")}, ["id"], False),
+    ("get_image", "read:pages", "Ein Bild aus einer Seite ansehen (z. B. Screenshot in einer Fehlermeldung). file = Datei-ID aus "
+     "get_page (images) oder die /files/…-Adresse aus dem Markdown. Liefert das Bild verkleinert (höchstens 1568 px).",
+     {"file": _s("string", "Datei-ID (24 Zeichen) oder Adresse …/files/<id>")}, ["file"], False),
     ("create_page", "write:pages", "Neue Seite anlegen (Inhalt als Markdown). Mit parent_id als Unterseite.",
      {"parent_id": _s("integer", "ID der Elternseite (leer = oberste Ebene)"), "title": _s("string", "Titel"),
       "markdown": _s("string", "Inhalt als Markdown")}, ["title"], True),
@@ -167,8 +176,51 @@ def _int(a, k, need=True):
     return v
 
 
+_FID = re.compile(r"[0-9a-f]{24}")
+_FILE_PATH = re.compile(r"/files/([0-9a-f]{24})(?:\?[\w=&.-]{0,40})?")
+_IMG_MD = re.compile(r"!\[((?:\\.|[^\]\\]){0,300})\]\(" + r"(?:[^()\s]{0,200}?)/files/([0-9a-f]{24})\b")
+
+
+def _file_id(v):
+    """Datei-ID, "/files/<id>" (auch "files/<id>", mit ?w=…) oder die volle Adresse dieses Servers -> ID. Sonst 404."""
+    if not isinstance(v, str) or len(v) > 300:
+        raise Fail(404, "not found")
+    v = v.strip()
+    if _FID.fullmatch(v):
+        return v
+    base = BASE_URL.rstrip("/")
+    if v.lower().startswith(("http://", "https://")):
+        if not v.lower().startswith(base.lower() + "/"):
+            raise Fail(404, "not found")
+        v = v[len(base):]
+    elif not v.startswith("/"):
+        v = "/" + v
+    m = _FILE_PATH.fullmatch(v)
+    if not m:
+        raise Fail(404, "not found")
+    return m.group(1)
+
+
+def _page_images(md):
+    """Bilder im Markdown einer Seite -> [{"file": id, "alt": …}] (ohne Doppelte, hoechstens 100)."""
+    out, seen = [], set()
+    for m in _IMG_MD.finditer(md or ""):
+        if m.group(2) in seen:
+            continue
+        seen.add(m.group(2))
+        out.append({"file": m.group(2), "alt": re.sub(r"\\(.)", r"\1", m.group(1))[:200]})
+        if len(out) >= 100:
+            break
+    return out
+
+
+def _safe_name(n):
+    n = re.sub(r"[\x00-\x1f\x7f<>\"`\\]", "_", unicodedata.normalize("NFKC", str(n or "")))
+    return n.strip()[:80] or "bild"
+
+
 def call_tool(tok, name, a):
-    """-> Text (Ergebnis). Fail bei Fehlern (wird als isError zurueckgegeben)."""
+    """-> Text (Ergebnis) oder Liste von MCP-Inhalten. Fail bei Fehlern (wird als isError zurueckgegeben)."""
     if not isinstance(a, dict):
         raise Fail(400, t("ungültige Angabe"))
     if name == "search_pages":
@@ -177,7 +229,18 @@ def call_tool(tok, name, a):
     if name == "get_page":
         _, d = api_v1.page_read(tok, _int(a, "id"), "markdown")
         md = d.pop("markdown", "")
+        imgs = _page_images(md)
+        if imgs:
+            d["images"] = imgs
+            d["images_hint"] = t("Bilder mit get_image ansehen (file = Datei-ID).")
         return _data(json.dumps(d, ensure_ascii=False, indent=1) + "\n\n---\n\n" + md, f"page:{d.get('id')}")
+    if name == "get_image":
+        fname, (data, mime, w, h, ow, oh) = api_v1.image_get(tok, _file_id(a.get("file")))
+        info = {"name": _safe_name(fname), "width": ow, "height": oh}
+        if (w, h) != (ow, oh):
+            info["sent"] = f"{w}x{h}"
+        return [{"type": "image", "data": base64.b64encode(data).decode("ascii"), "mimeType": mime},
+                {"type": "text", "text": _data(info, "image")}]
     if name == "create_page":
         b = {"title": a.get("title"), "markdown": a.get("markdown") or ""}
         b["parent_id"] = _int(a, "parent_id", False)
@@ -271,13 +334,15 @@ def handle(tok, msg):
         spec = BY_NAME.get(name) if isinstance(name, str) else None
         if not spec or not tok.has(spec[1]):
             return _err(rid, -32602, f"Unknown tool: {str(name)[:60]}")
-        if spec[5]:
-            wait = apitok.rate_check(tok, True)           # Schreibwerkzeuge zaehlen zusaetzlich als Schreibzugriff
+        if spec[5] or name == "get_image":
+            # Schreibwerkzeuge zaehlen zusaetzlich als Schreibzugriff, get_image (Umrechnung) zusaetzlich als Lesezugriff
+            wait = apitok.rate_check(tok, bool(spec[5]))
             if wait:
                 return _ok(rid, {"content": [{"type": "text", "text": t("Zu viele Anfragen – bitte kurz warten.")}], "isError": True})
         try:
-            text = call_tool(tok, name, params.get("arguments") or {})
-            return _ok(rid, {"content": [{"type": "text", "text": text}], "isError": False})
+            out = call_tool(tok, name, params.get("arguments") or {})
+            content = out if isinstance(out, list) else [{"type": "text", "text": out}]
+            return _ok(rid, {"content": content, "isError": False})
         except Fail as f:
             return _ok(rid, {"content": [{"type": "text", "text": _neutral(f"{f.code}: {f.msg}")}], "isError": True})
         except (ValueError, TypeError, OverflowError, RecursionError):

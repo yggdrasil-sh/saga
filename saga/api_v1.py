@@ -716,6 +716,40 @@ def _file_ok(tok, fid, page):
         return r
 
 
+def file_seen(c, tok, owner, fid):
+    """Datei fid von owner: benutzt sie eine lebende Seite, die das Token sehen darf? Gleiche Regel wie der Web-Abruf
+    /files/<id> (files._file_visible: Seite des Besitzers mit der Datei, die ich sehen darf), zusaetzlich die roots."""
+    from saga.files import file_pages
+    if owner == tok.uid:
+        pages = file_pages(c, owner, fid)
+    else:
+        vis = Access(c, tok.uid).tree(owner)
+        pages = file_pages(c, owner, fid, within=vis) if vis else []
+    return any(in_roots(c, tok, owner, p) for p in pages)
+
+
+def image_get(tok, fid):
+    """MCP get_image: Bild verkleinert und ohne EXIF. Rechte wie /files/<id> im Web (eigene Datei oder Datei auf einer
+    sichtbaren Seite), mit roots nur ueber Seiten in den freigegebenen Baeumen; eigene Dateien ohne Seite nur mit
+    read:files und ohne roots (wie /api/v1/files). Nicht vorhanden und kein Recht: gleiches 404."""
+    from saga.files import image_for_ai
+    with _db() as c:
+        r = c.execute("SELECT name, mime, is_image, uid FROM file WHERE id=?", (fid,)).fetchone()
+        if not r:
+            raise Fail(404, "not found")
+        if not (r[3] == tok.uid and not tok.roots and tok.has("read:files")) and not file_seen(c, tok, r[3], fid):
+            raise Fail(404, "not found")
+    path = os.path.join(FILES_DIR, fid)
+    if not os.path.isfile(path):
+        raise Fail(404, "not found")
+    if not r[2]:
+        raise Fail(415, t("Die Datei ist kein Bild."), "not_image")
+    out = image_for_ai(path)
+    if out is None:
+        raise Fail(415, t("Das Bild lässt sich nicht lesen oder ist zu groß."), "not_image")
+    return r[0], out
+
+
 @router.get("/api/v1/files/{fid}")
 async def v1_file_get(fid: str, request: Request, page: int = 0):
     """Datei herunterladen: eigene Dateien direkt; fremde bzw. bei Tokens mit roots nur mit ?page=<Seite, die sie enthaelt>."""

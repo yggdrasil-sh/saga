@@ -135,6 +135,23 @@ def upload_owner(uid, note):
     return owner, None
 
 
+def file_pages(c, owner, fid, within=None):
+    """Lebende Seiten von owner, die die Datei benutzen (Inhalt, Symbol, Titelbild, Datei-Eigenschaft) - within: nur unter
+    diesen Seiten-IDs suchen (z. B. den fuer mich sichtbaren). -> Liste von IDs (hoechstens 200)."""
+    ref = f"/files/{fid}"
+    cond = "uid=? AND deleted_at IS NULL AND (instr(body, ?) > 0 OR icon=? OR cover=? OR instr(props, ?) > 0)"
+    if within is None:
+        return [r[0] for r in c.execute(f"SELECT id FROM note WHERE {cond} LIMIT 200", (owner, ref, ref, ref, ref))]
+    ids, out = list(within), []
+    for k in range(0, len(ids), 500):
+        part = ids[k:k + 500]
+        out += [r[0] for r in c.execute(f"SELECT id FROM note WHERE {cond} AND id IN ({','.join('?' * len(part))}) LIMIT 200",
+                                        (owner, ref, ref, ref, ref, *part))]
+        if len(out) >= 200:
+            break
+    return out[:200]
+
+
 def _file_visible(c, uid, owner, fid):
     """Datei eines anderen Kontos: sichtbar, wenn eine Seite des Besitzers sie benutzt (Inhalt, Symbol, Titelbild, 2.5: Wert
     einer Datei-Eigenschaft in props) und ich diese Seite sehen darf (Freigabe). Erst die sichtbaren Seiten (eine Abfrage ohne Inhalte), dann nur in DIESEN
@@ -343,6 +360,73 @@ def _make_thumb(path, base, w):
         os.replace(tmp, base + ext)
         return base + ext
     except (OSError, subprocess.SubprocessError):
+        return None
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+# 2.5: Bild fuer KI-Werkzeuge (MCP get_image) - verkleinert, ohne EXIF/GPS, erstes Bild bei Animationen. Eigener,
+# speicherbegrenzter Prozess wie bei den Vorschaubildern (Dekompressionsbombe sprengt hoechstens ihn).
+_AI_CODE = r"""
+import io, sys
+from PIL import Image, ImageOps
+path, tmp, edge, budget = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+Image.MAX_IMAGE_PIXELS = 50_000_000
+with Image.open(path, formats=["PNG", "JPEG", "GIF", "WEBP"]) as im:
+    ow, oh = im.size
+    if im.format == "JPEG":
+        im.draft("RGB", (edge, edge))
+    im.seek(0)
+    try:
+        im = ImageOps.exif_transpose(im)              # Ausrichtung uebernehmen, EXIF selbst wird nicht mitgeschrieben
+    except Exception:
+        pass
+    alpha = im.mode in ("RGBA", "LA", "PA") or (im.mode == "P" and "transparency" in im.info)
+    im = im.convert("RGBA" if alpha else "RGB")
+    if im.mode == "RGBA" and im.getextrema()[3][0] == 255:
+        im, alpha = im.convert("RGB"), False           # Alphakanal ohne Transparenz: JPEG
+    scale = min(1.0, edge / max(im.size))
+    for _ in range(8):
+        w, h = max(1, round(im.width * scale)), max(1, round(im.height * scale))
+        cur = im.resize((w, h), Image.LANCZOS) if (w, h) != im.size else im
+        buf = io.BytesIO()
+        if alpha:
+            cur.save(buf, "PNG", optimize=True)
+        else:
+            cur.save(buf, "JPEG", quality=85 if scale >= 0.5 else 75, optimize=True)
+        if buf.tell() <= budget:
+            break
+        scale *= 0.75
+    else:
+        sys.exit(3)
+    open(tmp, "wb").write(buf.getvalue())
+    print("image/png" if alpha else "image/jpeg", w, h, ow, oh)
+"""
+AI_EDGE = 1568                                      # laengste Kante (Empfehlung fuer Bild-Eingaben von Sprachmodellen)
+AI_BUDGET = 750_000                                 # Bytes vor base64 (~1 MB danach)
+_AI_SEM = threading.BoundedSemaphore(2)             # 2 Kerne: hoechstens zwei Umrechnungen gleichzeitig
+
+
+def image_for_ai(path):
+    """-> (bytes, mime, breite, hoehe, orig_breite, orig_hoehe) oder None (kein Bild, kaputt, zu gross)."""
+    os.makedirs(UPLOAD_TMP, mode=0o700, exist_ok=True)
+    tmp = os.path.join(UPLOAD_TMP, f"ai-{os.getpid()}-{threading.get_ident()}-{os.urandom(4).hex()}")
+    try:
+        with _AI_SEM:
+            r = subprocess.run([sys.executable, "-c", _AI_CODE, path, tmp, str(AI_EDGE), str(AI_BUDGET)], capture_output=True,
+                               text=True, timeout=60, preexec_fn=_thumb_limits)
+        parts = r.stdout.split()
+        if r.returncode != 0 or len(parts) != 5 or parts[0] not in ("image/png", "image/jpeg"):
+            return None
+        with open(tmp, "rb") as f:
+            data = f.read(AI_BUDGET + 1)
+        if not data or len(data) > AI_BUDGET:
+            return None
+        return (data, parts[0], *[int(x) for x in parts[1:]])
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
     finally:
         try:
