@@ -183,7 +183,7 @@ def migration():
 def main():
     cleanup()
     prev = auth.settings(fresh=True).get("diag")
-    auth.save_setting("diag", {"clientlog": True, "keep_days": 14, "max_rows": 200000})
+    auth.save_setting("diag", {"clientlog": True, "keep_days": 14, "max_rows": 50000})
     for k in ("a", "b", "c"):
         auth.create_user(PFX + k, None, {"a": "Anna Probe", "b": "Bert Probe", "c": "Cora Probe"}[k])
     auth.create_user(PFX + "adm", None, "Admin Probe", is_admin=True)
@@ -207,8 +207,8 @@ def main():
 def run():
     A, Bc, Cc = ck(PFX + "a"), ck(PFX + "b"), ck(PFX + "c")
     adm = PFX + "adm"
-    ok("Standard: diag.keep_days 14, diag.max_rows 200000",
-       auth.DEFAULTS["diag"].get("keep_days") == 14 and auth.DEFAULTS["diag"].get("max_rows") == 200000)
+    ok("Standard: diag.keep_days 14, diag.max_rows 50000",
+       auth.DEFAULTS["diag"].get("keep_days") == 14 and auth.DEFAULTS["diag"].get("max_rows") == 50000)
 
     # --- Meldung -> Tabelle ------------------------------------------------------------------------------------------
     s, _, _, _ = admin("POST", "/diag", adm, [("csrf", "x"), ("action", "clear")])

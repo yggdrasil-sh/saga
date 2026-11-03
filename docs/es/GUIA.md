@@ -1850,7 +1850,7 @@ llamada o un hash de cuenta. Filtra por tipo y periodo; al pulsar la hora se ve 
 formateado. **Descargar como archivo** exporta la selección actual como JSONL, **Eliminar todo** vacía la lista. Saga
 guarda exactamente el contenido de la línea del registro (ya depurado, la cuenta solo como hash corto, sin direcciones
 IP, contenidos, títulos ni nombres; el texto libre opcional tal como se escribió, con direcciones y claves ocultas); solo
-lo ven los admins. Conservación: 14 días por defecto (1–90) y como máximo 200 000 informes; los más antiguos se borran
+lo ven los admins. Conservación: 14 días por defecto (1–90) y como máximo 50 000 informes; los más antiguos se borran
 cada hora, ambos valores se ajustan en la misma página. El diagnóstico de llamadas envía un informe cada 30 segundos por
 participante, así que con muchas llamadas se alcanza antes el límite.
 

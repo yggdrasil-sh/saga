@@ -1767,7 +1767,7 @@ account hash. Filter by kind and time range; click the time to see the full repo
 file** exports the current selection as JSONL, **Delete all** empties the list. Saga stores exactly the content of the
 log line (already cleaned up, account only as a short hash, no IP addresses, no content, titles or names; the optional
 free text as written, with addresses and keys masked); only admins can see it. Retention: 14 days by default (1–90) and
-at most 200,000 reports – older ones are removed hourly; both can be set on the same page. Call diagnostics send one
+at most 50,000 reports – older ones are removed hourly; both can be set on the same page. Call diagnostics send one
 report every 30 seconds per participant, so with many calls the row limit applies sooner.
 
 ```bash

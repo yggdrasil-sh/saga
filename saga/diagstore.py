@@ -9,7 +9,7 @@ Die Log-Zeilen bleiben unveraendert. Keine IP-Adressen, keine Namen, keine Konto
 
 Schreiben bremst die Anfrage nicht: record() legt den Eintrag nur in einen begrenzten Puffer (ohne Datenbank); ein
 Hintergrund-Thread schreibt gesammelt (executemany). Datenbankfehler werden geloggt und der Stapel verworfen - die Anfrage
-merkt davon nichts. Aufbewahrung diag.keep_days (Standard 14, 1-90) und Obergrenze diag.max_rows (Standard 200 000):
+merkt davon nichts. Aufbewahrung diag.keep_days (Standard 14, 1-90) und Obergrenze diag.max_rows (Standard 50 000):
 purge() im stuendlichen Wartungslauf (app.py _gc_loop), zusaetzlich nach vielen neuen Eintraegen aus dem Schreib-Thread.
 Die Schalter der Quellen (diag.clientlog, editor.diag, calls.diag) gelten weiter: aus -> 404, also auch nichts gespeichert."""
 import collections
@@ -23,7 +23,7 @@ from db import connect as _db
 
 KINDS = ("clientlog", "clientdiag", "pmdiag", "calldiag")
 KEEP_DEF, KEEP_MIN, KEEP_MAX = 14, 1, 90
-ROWS_DEF, ROWS_MIN, ROWS_MAX = 200000, 1000, 2000000
+ROWS_DEF, ROWS_MIN, ROWS_MAX = 50000, 1000, 2000000
 BUF_MAX = 5000                                      # Puffer im Speicher (aelteste fallen weg, wenn die DB haengt)
 FLUSH_S = 1.0
 PURGE_EVERY = 5000                                  # nach so vielen neuen Eintraegen sofort aufraeumen (Deckel)

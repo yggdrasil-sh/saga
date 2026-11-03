@@ -790,7 +790,7 @@
  "Darstellung": "Вид",
  "Darstellung wechseln": "Сменить вид",
  "Darunter einfügen": "Вставить ниже",
- "Darüber fallen die ältesten weg (Standard 200 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.": "Сверх этого самые старые удаляются (по умолчанию 200 000). Диагностика звонков отправляет сообщение каждые 30 секунд от каждого участника.",
+ "Darüber fallen die ältesten weg (Standard 50 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.": "Сверх этого самые старые удаляются (по умолчанию 50 000). Диагностика звонков отправляет сообщение каждые 30 секунд от каждого участника.",
  "Das Bild ist zu groß (höchstens {n} MB).": "Изображение слишком большое (не более {n} МБ).",
  "Das Bild ließ sich nicht lesen (beschädigt oder kleiner als 16 × 16 Pixel).": "Не удалось прочитать изображение (повреждено или меньше 16 × 16 пикселей).",
  "Das Bild ließ sich nicht lesen.": "Не удалось прочитать изображение.",

@@ -67,7 +67,7 @@
       <small>{{ _("Ältere Meldungen löscht Saga stündlich ({a}–{b} Tage, Standard 14).", a=keep[0], b=keep[1]) }}</small></label>
     <label class="adm-field"><span>{{ _("Höchstens (Zeilen)") }}</span>
       <input class="hk-in" type="number" name="max_rows" value="{{ cfg.max_rows }}" min="{{ rows_lim[0] }}" max="{{ rows_lim[1] }}" step="1000" required>
-      <small>{{ _("Darüber fallen die ältesten weg (Standard 200 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.") }}</small></label>
+      <small>{{ _("Darüber fallen die ältesten weg (Standard 50 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.") }}</small></label>
     <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
   </form>
   <form method="post" data-confirm="{{ _('Alle Diagnose-Meldungen endgültig löschen?') }}">{{ csrf_field() }}<input type="hidden" name="action" value="clear">

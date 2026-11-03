@@ -790,7 +790,7 @@
  "Darstellung": "Presentación",
  "Darstellung wechseln": "Cambiar vista",
  "Darunter einfügen": "Insertar debajo",
- "Darüber fallen die ältesten weg (Standard 200 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.": "Por encima, se descartan los más antiguos (por defecto 200 000). El diagnóstico de llamadas envía un informe cada 30 segundos por participante.",
+ "Darüber fallen die ältesten weg (Standard 50 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.": "Por encima, se descartan los más antiguos (por defecto 50 000). El diagnóstico de llamadas envía un informe cada 30 segundos por participante.",
  "Das Bild ist zu groß (höchstens {n} MB).": "La imagen es demasiado grande (máximo {n} MB).",
  "Das Bild ließ sich nicht lesen (beschädigt oder kleiner als 16 × 16 Pixel).": "No se pudo leer la imagen (dañada o menor de 16 × 16 píxeles).",
  "Das Bild ließ sich nicht lesen.": "No se pudo leer la imagen.",

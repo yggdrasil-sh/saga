@@ -790,7 +790,7 @@
  "Darstellung": "Layout",
  "Darstellung wechseln": "Switch layout",
  "Darunter einfügen": "Insert below",
- "Darüber fallen die ältesten weg (Standard 200 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.": "Above that, the oldest are dropped (default 200,000). Call diagnostics send one report every 30 seconds per participant.",
+ "Darüber fallen die ältesten weg (Standard 50 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.": "Above that, the oldest are dropped (default 50,000). Call diagnostics send one report every 30 seconds per participant.",
  "Das Bild ist zu groß (höchstens {n} MB).": "The image is too large (at most {n} MB).",
  "Das Bild ließ sich nicht lesen (beschädigt oder kleiner als 16 × 16 Pixel).": "The image couldn't be read (damaged or smaller than 16 × 16 pixels).",
  "Das Bild ließ sich nicht lesen.": "The image couldn't be read.",

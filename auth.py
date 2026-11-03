@@ -100,7 +100,7 @@ DEFAULTS = {
     # Diagnose (2.5): clientlog = Fehlerberichte und "Diagnose senden" der Clients (saga/clientlog.py: POST /api/client/log
     # und /api/client/diag, Server-Log "clientlog"/"clientdiag", Konto als Hash, Feature clientlog1); keep_days/max_rows =
     # Aufbewahrung (Tage, 1-90) und Obergrenze (Zeilen) aller Diagnose-Meldungen in diag_event (saga/diagstore.py, Admin -> Diagnose)
-    "diag": {"clientlog": True, "keep_days": 14, "max_rows": 200000},
+    "diag": {"clientlog": True, "keep_days": 14, "max_rows": 50000},
     # Verschluesselte Backups auf ein WebDAV-Ziel (2.3, saga/backups.py): mode nextcloud|webdav, server (Nextcloud) bzw.
     # url (WebDAV-Ordner), user/password (Nextcloud: Anmeldename + App-Passwort aus dem Login Flow v2, flow=True ->
     # beim Trennen widerrufen), dav_user = Nextcloud-Benutzer-ID im WebDAV-Pfad, folder = Ordner fuer die Laeufe,

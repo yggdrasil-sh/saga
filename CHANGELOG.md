@@ -23,9 +23,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   nach Anruf-ID oder Konto-Hash; Detail als formatiertes JSON, **Als Datei herunterladen** (JSONL der Auswahl), **Alle
   löschen**. Nur für Admins (Admin-Port).
 - Gespeichert wird genau der Inhalt der Log-Zeile (schon bereinigt, Konto nur als Hash, keine IP-Adressen); die
-  Log-Zeilen bleiben unverändert. Aufbewahrung 14 Tage (1–90) und höchstens 200 000 Meldungen, beides auf der Seite
+  Log-Zeilen bleiben unverändert. Aufbewahrung 14 Tage (1–90) und höchstens 50 000 Meldungen, beides auf der Seite
   einstellbar; der stündliche Wartungslauf räumt auf. Die Schalter (Fehlerberichte, Editor-Diagnose, Anruf-Diagnose)
-  gelten weiter: aus → es wird nichts gespeichert.
+  gelten weiter: aus → es wird nichts gespeichert. Weil die Meldungen jetzt in der Datenbank liegen, sind sie auch in
+  den Sicherungen enthalten – samt dem Freitext, den jemand bei „Diagnose senden“ eingibt.
 - Schreiben bremst die Anfragen nicht (Puffer, Hintergrund-Schreiben); ein Datenbankfehler dabei lässt die Meldung nie
   scheitern. Datenbank-Migration 32 legt die Tabelle `diag_event` an.
 

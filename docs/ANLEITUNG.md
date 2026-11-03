@@ -1998,7 +1998,7 @@ geschrieben; exakte Treffer stehen oben) – oder den Anfang einer Anruf-ID bzw.
 Zeitraum; ein Klick auf die Zeit zeigt die ganze Meldung als formatiertes JSON. **Als Datei herunterladen** liefert die
 aktuelle Auswahl als JSONL (eine Meldung je Zeile), **Alle löschen** leert die Liste. Gespeichert wird genau der Inhalt der
 Log-Zeile (schon bereinigt, Konto nur als Hash, keine IP-Adressen); sehen können das nur Admins. Aufbewahrung: Standard
-14 Tage (einstellbar 1–90) und höchstens 200 000 Meldungen – ältere löscht Saga stündlich, beides auf derselben Seite
+14 Tage (einstellbar 1–90) und höchstens 50 000 Meldungen – ältere löscht Saga stündlich, beides auf derselben Seite
 einstellbar. Die Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung; bei vielen Anrufen greift dann
 eher die Obergrenze.
 

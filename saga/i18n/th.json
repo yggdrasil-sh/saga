@@ -790,7 +790,7 @@
  "Darstellung": "รูปแบบการแสดงผล",
  "Darstellung wechseln": "สลับรูปแบบการแสดงผล",
  "Darunter einfügen": "แทรกด้านล่าง",
- "Darüber fallen die ältesten weg (Standard 200 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.": "เกินจากนี้ รายการที่เก่าที่สุดจะถูกลบ (ค่าเริ่มต้น 200,000) การวินิจฉัยการโทรส่งรายงานทุก 30 วินาทีต่อผู้เข้าร่วมหนึ่งคน",
+ "Darüber fallen die ältesten weg (Standard 50 000). Anruf-Diagnose schickt alle 30 Sekunden je Person im Anruf eine Meldung.": "เกินจากนี้ รายการที่เก่าที่สุดจะถูกลบ (ค่าเริ่มต้น 50,000) การวินิจฉัยการโทรส่งรายงานทุก 30 วินาทีต่อผู้เข้าร่วมหนึ่งคน",
  "Das Bild ist zu groß (höchstens {n} MB).": "รูปภาพใหญ่เกินไป (สูงสุด {n} MB)",
  "Das Bild ließ sich nicht lesen (beschädigt oder kleiner als 16 × 16 Pixel).": "อ่านรูปภาพไม่ได้ (เสียหายหรือเล็กกว่า 16 × 16 พิกเซล)",
  "Das Bild ließ sich nicht lesen.": "อ่านรูปภาพไม่ได้",
