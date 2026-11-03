@@ -38,6 +38,15 @@ PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 # Im Kopf geduldet (neuere Spezifikation, die Werkzeug-Aufrufe sind unveraendert); ausgehandelt wird weiter PROTOCOLS
 HEADER_OK = PROTOCOLS + ("2025-11-25",)
 LATEST = PROTOCOLS[0]
+
+
+def header_ok(pv):
+    """Kopf MCP-Protocol-Version nach der Aushandlung annehmen? Bekannte Versionen und jede NEUERE im Format JJJJ-MM-TT:
+    claude.ai-Connectoren schicken ihre neueste Version (3.11.: '2026-07-28') auch nach der Aushandlung weiter - die
+    Werkzeug-Aufrufe sind unveraendert, eine Ablehnung (400) legte den Connector lahm. Aeltere unbekannte: 400."""
+    return pv in HEADER_OK or (bool(re.fullmatch(r"20\d\d-[01]\d-[0-3]\d", pv or "")) and pv > max(HEADER_OK))
+
+
 OUT_MAX = 100_000
 ROWS_MAX = 50
 BATCH_MAX = 20
@@ -401,7 +410,7 @@ async def mcp_post(request: Request):
     # Kopf MCP-Protocol-Version: nach der Aushandlung muss er passen (sonst 400). Beim initialize selbst nicht - manche
     # Clients (claude.ai-Connectoren) schicken dort schon ihre neueste Version; die Aushandlung antwortet mit unserer.
     init = any(isinstance(m, dict) and m.get("method") == "initialize" for m in msgs)
-    if pv and pv not in HEADER_OK and not init:
+    if pv and not header_ok(pv) and not init:
         print(f"mcp: Protokollversion im Kopf abgelehnt: {pv[:40]!r}", flush=True)
         return JSONResponse(_err(None, -32000, f"Unsupported MCP-Protocol-Version: {pv[:40]}"), status_code=400)
     if not msgs or len(msgs) > BATCH_MAX:

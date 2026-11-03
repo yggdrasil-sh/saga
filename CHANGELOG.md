@@ -24,6 +24,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - MCP-Server: Beim `initialize` lehnt Saga eine neuere Protokollversion im Kopf `MCP-Protocol-Version` nicht mehr mit
   400 ab (claude.ai schickt dort schon die neueste), sondern handelt die eigene aus; `2025-11-25` wird auch danach im
   Kopf geduldet. Abgelehnte Versionen stehen als `mcp: Protokollversion …` im Server-Log.
+- MCP-Server: Eine **neuere Protokollversion im Kopf** (`MCP-Protocol-Version`, Format JJJJ-MM-TT) wird jetzt auch nach
+  der Aushandlung geduldet. claude.ai schickt seit 3.11. `2026-07-28` bei jeder Anfrage; Saga lehnte das mit 400 ab und
+  der Connector blieb stehen. Ältere unbekannte oder kaputte Angaben bleiben 400.
+- **Live: neues Ereignis `db.rows` {db}.** Ändert sich ein Eintrag einer Datenbank, bekommen es alle mit Zugriff – nicht nur,
+  wer die Datenbank gerade offen hat. Eingebettete Datenbank-Blöcke auf anderen Seiten (Apps) laden damit live nach.
+  Je Konto und Datenbank höchstens eins je 2 s; beschrieben in `docs/APP-API-LIVE.md`.
 - MCP-Server: neues Werkzeug **`get_image`** – Claude kann Bilder aus Seiten ansehen (z. B. Screenshots in
   Fehlermeldungen). Eingabe ist die Datei-ID oder die `/files/<id>`-Adresse aus dem Markdown; die Antwort ist ein
   MCP-Bild-Inhalt (JPEG bzw. PNG bei Transparenz, längste Kante höchstens 1568 px, ohne EXIF/GPS, bei GIF das erste Bild)

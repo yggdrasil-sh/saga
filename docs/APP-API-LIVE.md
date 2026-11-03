@@ -140,3 +140,18 @@ und nutzen auch die Datenbank-Einträge aus der Liste (Eltern-Kette, Verschiebe-
 
 Gepackte Antworten (`Content-Encoding: gzip`) tragen ein **schwaches** ETag (`W/"…"`), ungepackte das starke. Für
 `If-None-Match` sind beide gleichwertig (304), auch gemischt.
+
+## Einträge einer Datenbank geändert: `db.rows`
+
+```
+event: db.rows
+data: {"db": 123}
+```
+
+Kommt, sobald sich ein Eintrag der Datenbank `db` ändert (Eigenschaften, neu, gelöscht), an **alle Verbindungen mit
+Zugriff auf die Datenbank**, nicht nur an die, die sie gerade offen haben (dafür gibt es weiter `note.changed` mit
+`row`). Je Konto und Datenbank höchstens eins je 2 s (gesammelt). Beim Nachholen per `Last-Event-ID` wird der Zugriff
+auf `db` erneut geprüft.
+
+Empfohlenes Verhalten: Ist die Datenbank irgendwo sichtbar (eigene Seite, eingebetteter Block, Widget), ihre Einträge
+mit `GET /api/notes/<db>/rows` neu laden. Unbekannte Ereignisse ignorieren ältere Apps ohnehin.

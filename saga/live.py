@@ -16,6 +16,8 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   note.changed     {id, rev, by:{name, username}, updated, gone}   an alle, die die Seite gerade offen haben (Anwesenheit)
   comments.changed {note_id, counts:{blocks, open, unread}}   an alle mit Zugriff (Zahlen je Empfaenger)
   shared.changed   {}                                  "Mit mir geteilt" neu laden
+  db.rows          {db}                                (3.11.) Eintraege einer Datenbank geaendert - an alle mit Zugriff (je Konto und
+                   Datenbank hoechstens eins je 2 s); eingebettete Datenbank-Bloecke laden nach
   notes.tree       {ids, op, ops, full}                (2.2) Seitenbaum geaendert, nur IDs - an alle Verbindungen des Eigentuemers
                    und an Konten mit Freigabe in der Kette; je Konto hoechstens eins je 2 s (gesammelt). op: created|updated|
                    moved|trashed|restored|archived|deleted|shared|mixed; full: zu viele IDs -> ganzen Baum laden. docs/APP-API-LIVE.md
@@ -189,6 +191,8 @@ def _note_of(typ, data):
         return None if data.get("gone") else data.get("id")
     if typ in ("comments.changed", "presence"):
         return data.get("note_id")
+    if typ == "db.rows":
+        return data.get("db")
     if typ == "notification":
         return ((data.get("item") or {}).get("note") or {}).get("id")
     return None
@@ -269,7 +273,7 @@ async def _dispatch():
                     _tree_queue(uid, data, item[3] if len(item) > 3 else None)
                     continue
                 if len(item) > 4 and item[4] == "debounce":   # hoechstens eins je TREE_GAP und Konto (Gruppenwechsel)
-                    _debounced(uid, typ, data)
+                    _debounced(uid, typ, data, item[3])
                     continue
                 _deliver(uid, typ, data, item[3] if len(item) > 3 else None)
         except Exception as ex:  # noqa: BLE001 - z. B. Datenbank gerade weg: dieses Ereignis entfaellt, der Kanal bleibt
@@ -282,18 +286,25 @@ _deb_pend = set()        # (uid, ereignis) - entprellt zugestellt (_debounced)
 _deb_last = {}           # (uid, ereignis) -> time.monotonic() der letzten Zustellung
 
 
-def _debounced(uid, typ, data):
-    """Ereignis ohne Inhalt (shared.changed nach Gruppenwechsel): das erste sofort, weitere innerhalb von TREE_GAP
-    Sekunden zu einem zusammengefasst (LDAP/OIDC-Abgleich bei jeder Anmeldung, viele Gruppen auf einmal)."""
-    key = (uid, typ)
+_deb_skip = {}           # key -> Herkunft, die das gesammelte Ereignis nicht bekommt (nur wenn ALLE Ausloeser von dort)
+
+
+def _debounced(uid, typ, data, skip=None):
+    """Ereignis ohne Inhalt (shared.changed nach Gruppenwechsel, db.rows): das erste sofort, weitere innerhalb von
+    TREE_GAP Sekunden zu einem zusammengefasst (LDAP/OIDC-Abgleich bei jeder Anmeldung, viele Gruppen auf einmal).
+    skip: ausloesende Herkunft (eigene Aenderung nicht zurueckspiegeln) - gesammelt nur, wenn alle von dort kamen."""
+    key = (uid, typ, (data or {}).get("db"))                       # db.rows: je Datenbank getrennt
     if key in _deb_pend:
+        if _deb_skip.get(key) != skip:
+            _deb_skip[key] = None
         return
     _deb_pend.add(key)
+    _deb_skip[key] = skip
 
     def go():
         _deb_pend.discard(key)
         _deb_last[key] = time.monotonic()
-        _deliver(uid, typ, data)
+        _deliver(uid, typ, data, _deb_skip.pop(key, None))
     wait = max(0.0, _deb_last.get(key, 0) + TREE_GAP - time.monotonic())
     _S["loop"].call_later(wait, go)
 
@@ -415,6 +426,13 @@ def _resolve(kind, p, aud, pres):
                     if p.get("row"):                 # Zeile der Datenbank geaendert (BUG-049); ID nur, wenn u sie sehen darf
                         d["row"] = p["row"] if Access(c, u).role(p["row"]) else True
                     out.append((u, "note.changed", d, skip))
+            # db.rows (3.11.): Eintraege geaendert - an ALLE mit Zugriff auf die Datenbank, nicht nur an die, die sie
+            # gerade offen haben (eingebettete Datenbank-Bloecke auf anderen Seiten laden dann nach). Nur die ID der
+            # Datenbank, je Konto und Datenbank hoechstens eins je TREE_GAP (gesammelt)
+            if p.get("row") and not p.get("gone"):
+                for u in sorted(aud):
+                    if Access(c, u).role(nid):          # eigene Aenderung: die ausloesende Sitzung/das Geraet nicht
+                        out.append((u, "db.rows", {"db": nid}, origin if u == by else None, "debounce"))
         elif kind == "comments.changed":
             nid = p["note_id"]
             if not c.execute("SELECT 1 FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone():

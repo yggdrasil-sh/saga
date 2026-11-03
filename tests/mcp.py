@@ -125,6 +125,10 @@ try:
     ok("initialize mit neuerer Version im Kopf -> 200, Aushandlung auf unsere", st == 200 and d.get("result", {}).get("protocolVersion") == "2025-06-18")
     ok("Kopf 2025-11-25 bei tools/list geduldet", call("POST", "/mcp", b={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, bearer=T,
                                                        headers={"MCP-Protocol-Version": "2025-11-25"})[0] == 200)
+    ok("Neuere Version im Kopf (2026-07-28) bei tools/list geduldet", call("POST", "/mcp", b={"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
+                                                                   bearer=T, headers={"MCP-Protocol-Version": "2026-07-28"})[0] == 200)
+    ok("Kaputte Version im Kopf -> 400", all(call("POST", "/mcp", b={"jsonrpc": "2.0", "id": 4, "method": "ping"}, bearer=T,
+                                                  headers={"MCP-Protocol-Version": v})[0] == 400 for v in ("latest", "2026-7-28", "2026-07-28x")))
     ok("Kaputtes JSON -> Parse error", call("POST", "/mcp", raw=b"{nope", bearer=T)[1].get("error", {}).get("code") == -32700)
 
     st, d, raw = rpc(T, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}})
