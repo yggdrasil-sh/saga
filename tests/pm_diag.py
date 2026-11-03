@@ -4,7 +4,7 @@ Geprueft: Feature pmdiag1 in /api/version (Standard an), Rechte (ohne Anmeldung 
 Editor.js -> 403, Konto mit Tiptap -> 200), strenge Pruefung (v, sv, mode, Typ, Pfad mit Werten/Leerzeichen/Text,
 Art, zu viele Eintraege, leere Liste -> 400; unbekannte Felder verworfen), Groesse (> 8 KB -> 413), Ratenbegrenzung
 (1 POST je 55 s je Konto -> 429, anderes Konto nicht betroffen), Log-Zeile "pmdiag" (eine je POST, Konto nur als Hash,
-dedupliziert, keine Namen, keine unbekannten Felder), nichts in der Datenbank (Zeilenzahlen aller Tabellen gleich),
+dedupliziert, keine Namen, keine unbekannten Felder), sonst nichts in der Datenbank (Zeilenzahlen aller Tabellen ausser diag_event gleich; Admin -> Diagnose),
 Admin-Schalter editor.diag (Admin-Oberflaeche zeigt ihn; aus -> 404, Feature fehlt). Wegwerf-Konten pd-*; raeumt auf.
 Lokal: wie tests/anruf_diag.py (Server-Ausgabe nach STATE_DIR/server.log)."""
 import base64
@@ -50,7 +50,8 @@ def feats():
 def counts():
     with connect() as c:
         tabs = [r[0] for r in c.execute("SELECT tablename FROM pg_tables WHERE schemaname = current_schema()").fetchall()]
-        return {t: c.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0] for t in tabs}
+        # diag_event (Admin -> Diagnose): dort landet jede Meldung absichtlich - siehe tests/admin_diagnose.py
+        return {t: c.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0] for t in tabs if t != "diag_event"}
 
 
 def cleanup():
@@ -132,6 +133,18 @@ def run():
         ok(f"Server-Log {LOG} lesbar (Server mit Ausgabe in STATE_DIR/server.log starten)", False)
         return
     lines = [ln for ln in txt[n0:].splitlines() if ln.startswith("pmdiag ")]
+    # Admin -> Diagnose (saga/diagstore.py): dieselben Eintraege in diag_event
+    acc = [json.loads(ln[len("pmdiag "):]).get("acct") for ln in lines]
+    st = []
+    for _ in range(20):
+        with connect() as c:
+            st = [r[0] for r in c.execute("SELECT data FROM diag_event WHERE kind='pmdiag' AND acct IN (?, ?) AND ts > ? ORDER BY id",
+                                          (acc + ["-", "-"])[:2] + [time.time() - 120]).fetchall()]
+        if len(st) >= 2:
+            break
+        time.sleep(0.3)
+    ok(f"diag_event: beide Meldungen, Inhalt wie die Log-Zeilen ({len(st)})",
+       [x if isinstance(x, dict) else json.loads(x) for x in st] == [json.loads(ln[len("pmdiag "):]) for ln in lines])
     ok(f"je angenommenem POST genau eine Zeile 'pmdiag' ({len(lines)})", len(lines) == 2)
     recs = [json.loads(ln[len("pmdiag "):]) for ln in lines]
     a = recs[0] if recs else {}

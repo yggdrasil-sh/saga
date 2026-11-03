@@ -154,6 +154,18 @@ def run():
            a.get("samples", [{}, {}])[1].get("qcpu") == 1800 and a["samples"][1].get("encms") == 12.5 and a["samples"][1].get("fdrop") == 7
            and a["samples"][0].get("fdrop") == 2 and a["samples"][0].get("decms") == 3.4 and a["samples"][0].get("fzms") == 420)
         ok("zwei Konten -> zwei verschiedene Hashes", len(recs) == 2 and recs[0]["acct"] != recs[1]["acct"])
+        # Admin -> Diagnose (saga/diagstore.py): dieselben Eintraege in diag_event (ref = Anruf-ID gekuerzt)
+        from db import connect
+        st = []
+        for _ in range(20):
+            with connect() as c:
+                st = [r[0] for r in c.execute("SELECT data FROM diag_event WHERE kind='calldiag' AND ref=? ORDER BY id", (cid[:12],)).fetchall()]
+            if len(st) >= 3:
+                break
+            time.sleep(0.3)
+        # drei Eintraege: der Grenzwert-POST davor und die beiden oben
+        ok(f"diag_event: alle angenommenen Meldungen, Inhalt wie die Log-Zeilen ({len(st)})",
+           len(st) == 3 and [json.loads(x) if isinstance(x, str) else x for x in st[1:]] == recs)
 
     # --- Anrufende: auch nach dem Auflegen darf die letzte Meldung kommen ----------------------------------------------
     req("POST", f"/api/calls/{cid}/end", A.k, {"reason": "hangup"})

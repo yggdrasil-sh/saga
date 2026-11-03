@@ -6,8 +6,8 @@ Bereinigung (Probe-Inhalte - Seitentitel, E-Mail, URL mit Pfad/Query, UUID, Hex,
 Skript-Pfade - stehen NICHT in der Log-Zeile; Stack auf static/<datei>.js:Zeile:Spalte gekuerzt; Endpunkt-Muster
 /api/notes/:id/...), Log-Zeilen "clientlog"/"clientdiag" (eine je POST, Konto nur als Hash, kein Konto-/Anzeigename,
 keine IP-Adresse; Diagnose-Kennung D-XXXXX in Antwort und Zeile; Freitext nur dort, als user_note, Geheimnisse maskiert),
-Ratenbegrenzung (10/min je Konto, 5 Diagnosen/h je Konto, IP-Grenze), nichts in der Datenbank (Zeilenzahlen aller
-Tabellen unveraendert), Admin-Schalter diag.clientlog ueber das echte Formular (aus -> 404 + kein Feature, wieder an).
+Ratenbegrenzung (10/min je Konto, 5 Diagnosen/h je Konto, IP-Grenze), sonst nichts in der Datenbank (Zeilenzahlen aller
+Tabellen ausser diag_event unveraendert - die Kopie fuer Admin -> Diagnose prueft tests/admin_diagnose.py), Admin-Schalter diag.clientlog ueber das echte Formular (aus -> 404 + kein Feature, wieder an).
 Wegwerf-Konten cl-<zufall>-*; raeumt auf.
 Aufruf: PYTHONPATH=tests/pgshim:. python tests/clientlog.py (Server mit Ausgabe in $STATE_DIR/server.log)."""
 import base64
@@ -169,7 +169,8 @@ def counts():
     with connect() as c:
         tabs = [r[0] for r in c.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()"
                                         " AND table_type = 'BASE TABLE'").fetchall()]
-        return {tb: c.execute(f'SELECT count(*) FROM "{tb}"').fetchone()[0] for tb in sorted(tabs)}
+        # diag_event (Admin -> Diagnose, saga/diagstore.py): dort landet jede Meldung absichtlich - eigene Reihe admin_diagnose.py
+        return {tb: c.execute(f'SELECT count(*) FROM "{tb}"').fetchone()[0] for tb in sorted(tabs) if tb != "diag_event"}
 
 
 def head(**kw):
