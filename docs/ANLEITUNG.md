@@ -1451,6 +1451,9 @@ Ein Token kann nie mehr als dein Konto; „Widerrufen“ sperrt ihn sofort.
   erlaubt Claude dort nur nach Freigabe; Saga nimmt das Token deshalb auch über `X-API-Key` an. Die Adresse muss aus dem Internet erreichbar sein,
   weil Claude den Server von Anthropics Servern aus aufruft.
 
+  Bilder in Seiten (etwa Screenshots in einer Fehlermeldung) kann die KI mit dem Werkzeug `get_image` ansehen – verkleinert,
+  ohne Standortdaten und nur, wenn der Token die Seite mit dem Bild sehen darf.
+
   Seiten, die andere geschrieben haben, können Anweisungen an die KI enthalten (Prompt-Injection). Gib KI-Tokens deshalb
   nur die nötigen Seitenbäume und möglichst nur Lese-Bereiche.
 

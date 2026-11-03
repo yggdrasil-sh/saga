@@ -3,8 +3,11 @@
 Prueft: 401 ohne Token, 403 ohne Bereich "mcp", fremder Origin -> 403, GET/DELETE -> 405, initialize (Protokollversion,
 serverInfo), tools/list nur mit passenden Bereichen, tools/call: Suche, Seite lesen (Markdown, Inhalt als Daten markiert),
 anlegen, anfuegen, Titel, Datenbanken auflisten/Schema/Abfrage per Name, Zeile anlegen/aendern, Aufgaben, Kommentar;
-roots und Rolle (fremde Seite -> Fehler), Ausgabegrenzen (Kuerzung), Batch, Benachrichtigung -> 202, Admin-Schalter."""
-import base64, json, os, sqlite3, sys, time, urllib.error, urllib.parse, urllib.request
+roots und Rolle (fremde Seite -> Fehler), Ausgabegrenzen (Kuerzung), Batch, Benachrichtigung -> 202, Admin-Schalter;
+get_image (per ID und Adresse, Verkleinerung, EXIF weg, PNG mit Transparenz, GIF, fremde/geteilte Datei, roots, Nicht-Bild,
+kaputte IDs) und Bild-IDs in get_page."""
+import base64, io, json, os, sqlite3, sys, time, urllib.error, urllib.parse, urllib.request
+from PIL import Image
 from itsdangerous import TimestampSigner
 
 B = os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8080"); DB = os.environ.get("HK_TEST_DB", "/data/saga.db")
@@ -43,6 +46,33 @@ def tool(tok, name, **args):
     st, d, raw = rpc(tok, "tools/call", {"name": name, "arguments": args})
     r = d.get("result") or {}
     return r.get("isError"), "".join(c.get("text", "") for c in r.get("content") or []), d
+
+
+def upload(cookie, note, name, data, ctype):
+    bnd = "----sagamcpimg"
+    mp = (f"--{bnd}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\nContent-Type: {ctype}\r\n\r\n").encode() \
+        + data + f"\r\n--{bnd}--\r\n".encode()
+    st, d, _ = call("POST", "/api/files", cookie, raw=mp, headers={"Content-Type": f"multipart/form-data; boundary={bnd}", "X-Saga-Note": str(note)})
+    return d.get("file", {}).get("url", "/files/x")[7:]
+
+
+def img_bytes(size, mode="RGB", fmt="JPEG", **kw):
+    im = Image.new(mode, size, (200, 30, 30, 0) if mode == "RGBA" else (30, 120, 200))
+    if mode != "RGBA":                                  # etwas Inhalt, damit JPEG nicht trivial klein ist
+        for x in range(0, size[0], 37):
+            for y in range(0, size[1], 41):
+                im.putpixel((x, y), (x % 255, y % 255, 90))
+    b = io.BytesIO(); im.save(b, fmt, **kw); return b.getvalue()
+
+
+def image_blocks(pairs):
+    return json.dumps({"blocks": [{"id": f"b{i}", "type": "image", "data": {"file": {"url": f"/files/{f}"}, "caption": cap}}
+                                  for i, (f, cap) in enumerate(pairs)]})
+
+
+def img_tool(tok, file):
+    st, d, raw = rpc(tok, "tools/call", {"name": "get_image", "arguments": {"file": file}})
+    return st, (d.get("result") or {}), d
 
 
 def db():
@@ -111,7 +141,7 @@ try:
     ok("tools/list: alle Werkzeuge mit vollen Bereichen", {"search_pages", "get_page", "create_page", "query_database", "create_row", "update_row",
                                                           "create_task", "add_comment"} <= names, names)
     rn = {x["name"] for x in rpc(TR, "tools/list")[1]["result"]["tools"]}
-    ok("tools/list: nur Lesen -> keine Schreibwerkzeuge, keine DB", rn == {"search_pages", "get_page"}, rn)
+    ok("tools/list: nur Lesen -> keine Schreibwerkzeuge, keine DB", rn == {"search_pages", "get_page", "get_image"}, rn)
     err, txt, d = tool(TR, "create_page", title="x")
     ok("Werkzeug ohne Bereich -> Fehler", d.get("error", {}).get("code") == -32602, d)
 
@@ -176,9 +206,76 @@ try:
     err, txt, _ = tool(T, "get_page", id=G)
     ok("Grosse Seite gekuerzt (mit Hinweis)", not err and len(txt) < 102_000 and ("gekürzt" in txt or "truncated" in txt.lower()), len(txt))
 
+    # Bilder (get_image)
+    P = call("POST", "/api/notes", A, {"title": "MCP Bilder", "parent_id": R})[1]["id"]
+    ex = Image.Exif(); ex[0x010F] = "KameraHersteller"; ex[0x8825] = {1: "N", 2: (52.0, 31.0, 0.0)}   # Make + GPS
+    BIG = upload(A, P, "gross <foto>.jpg", img_bytes((4000, 3000), exif=ex.tobytes(), quality=95), "image/jpeg")
+    PNG = upload(A, P, "transparent.png", img_bytes((300, 200), "RGBA", "PNG"), "image/png")
+    gif = io.BytesIO(); fr = [Image.new("P", (50, 40), i * 40) for i in range(3)]
+    fr[0].save(gif, "GIF", save_all=True, append_images=fr[1:], duration=100)
+    GIF = upload(A, P, "anim.gif", gif.getvalue(), "image/gif")
+    bomb = io.BytesIO(); Image.new("L", (9000, 9000), 0).save(bomb, "PNG", optimize=True)   # 81 Mio. Pixel, wenige KB
+    BOMB = upload(A, P, "bombe.png", bomb.getvalue(), "image/png")
+    TXT = upload(A, P, "notiz.png", b"%PDF-1.4 kein Bild", "image/png")             # Endung luegt
+    LOOSE = upload(A, "", "lose.png", img_bytes((20, 20), fmt="PNG"), "image/png")   # an keiner Seite
+    call("PATCH", f"/api/notes/{P}", A, {"format": "blocks", "body": image_blocks([(BIG, "Screenshot Fehler"), (PNG, ""), (GIF, ""), (TXT, ""), (BOMB, "")])})
+    err, txt, _ = tool(T, "get_page", id=P)
+    ok("get_page: images mit Datei-IDs und alt", not err and f'"file": "{BIG}"' in txt and "Screenshot Fehler" in txt and f"/files/{BIG}" in txt
+       and "get_image" in txt, txt[:600])
+    names = {x["name"] for x in rpc(TR, "tools/list")[1]["result"]["tools"]}
+    ok("tools/list: get_image mit read:pages", "get_image" in names, names)
+
+    st, r, d = img_tool(T, BIG)
+    c = r.get("content") or []
+    im0 = c[0] if c and c[0].get("type") == "image" else {}
+    try:
+        pic = Image.open(io.BytesIO(base64.b64decode(im0.get("data", ""))))
+        pic.load()
+    except Exception:
+        pic = None
+    ok("get_image per ID: Bild-Inhalt JPEG, base64, laengste Kante <= 1568", st == 200 and not r.get("isError") and im0.get("mimeType") == "image/jpeg"
+       and pic is not None and pic.format == "JPEG" and max(pic.size) <= 1568 and max(pic.size) >= 1500, (r.get("isError"), str(c)[:300]))
+    ok("get_image: <= ~1 MB base64", len(im0.get("data", "")) <= 1_050_000, len(im0.get("data", "")))
+    ok("get_image: EXIF/GPS entfernt", pic is not None and not pic.getexif() and b"KameraHersteller" not in base64.b64decode(im0.get("data", "")))
+    tx = "".join(x.get("text", "") for x in c if x.get("type") == "text")
+    ok("get_image: Text mit Name (bereinigt) und Originalmassen, als Daten markiert", '"width": 4000' in tx and '"height": 3000' in tx
+       and "<foto>" not in tx and "saga-data" in tx, tx[:400])
+    for form in (f"/files/{PNG}", f"{os.environ['BASE_URL'].rstrip('/')}/files/{PNG}?w=640", f"files/{PNG}"):
+        st, r, d = img_tool(T, form)
+        c = r.get("content") or [{}]
+        ok(f"get_image per Adresse {form[:12]}… -> PNG (Transparenz)", not r.get("isError") and c[0].get("mimeType") == "image/png"
+           and Image.open(io.BytesIO(base64.b64decode(c[0]["data"]))).mode == "RGBA", str(r)[:300])
+    st, r, d = img_tool(T, GIF)
+    c = r.get("content") or [{}]
+    ok("get_image: animiertes GIF -> ein Bild", not r.get("isError") and c[0].get("type") == "image"
+       and not getattr(Image.open(io.BytesIO(base64.b64decode(c[0].get("data", "")))), "is_animated", False), str(r)[:300])
+    ok("get_image: Lesetoken (read:pages) darf Bild der eigenen Seite", not img_tool(TR, BIG)[1].get("isError"))
+
+    def denied(tok, f):
+        st, r, d = img_tool(tok, f)
+        t_ = "".join(x.get("text", "") for x in r.get("content") or [])
+        return st == 200 and r.get("isError") is True and t_.startswith("not_found") and not any(x.get("type") == "image" for x in r.get("content") or [])
+    ok("get_image: Nicht-Bild (Endung .png, Inhalt PDF) -> Fehler", img_tool(T, TXT)[1].get("isError") is True)
+    st, r, d = img_tool(T, BOMB)
+    ok("get_image: Dekompressionsbombe -> Fehler, kein Serverfehler", st == 200 and r.get("isError") is True, str(r)[:200])
+    ok("get_image: eigene Datei an keiner Seite (ohne read:files) -> not_found", denied(T, LOOSE))
+    for bad in ("zz", "0" * 24, "../../etc/passwd", "/files/" + BIG + "/../x", "https://evil.example/files/" + BIG, BIG.upper(), "", 123, None):
+        ok(f"get_image: ungueltig {str(bad)[:20]!r} -> not_found", denied(T, bad))
+    BPI = call("POST", "/api/notes", X, {"title": "B Bild"})[1]["id"]
+    FB = upload(X, BPI, "b.png", img_bytes((40, 40), fmt="PNG"), "image/png")
+    call("PATCH", f"/api/notes/{BPI}", X, {"format": "blocks", "body": image_blocks([(FB, "")])})
+    ok("get_image: fremde Datei ohne Freigabe -> not_found (wie nicht vorhanden)", denied(T, FB))
+    call("PUT", f"/api/notes/{BPI}/shares", X, {"type": "user", "target": UA, "role": "view"})
+    ok("get_image: fremde Datei auf geteilter Seite -> Bild", not img_tool(T, FB)[1].get("isError"))
+    call("DELETE", f"/api/notes/{BPI}/shares", X, {"type": "user", "target": UA})
+    ok("get_image: Freigabe beendet -> wieder not_found", denied(T, FB))
+
     # roots
     TT = call("POST", "/api/account/api-tokens", A, {"name": "MCP roots", "scopes": ["mcp", "read:pages"], "roots": [D]})[1]["token"]
     ok("roots: Seite ausserhalb -> isError", tool(TT, "get_page", id=R)[0] is True and tool(TT, "get_page", id=Z)[0] is False)
+    ok("roots: Bild auf Seite ausserhalb -> not_found", denied(TT, BIG))
+    TP = call("POST", "/api/account/api-tokens", A, {"name": "MCP roots Bild", "scopes": ["mcp", "read:pages"], "roots": [P]})[1]["token"]
+    ok("roots: Bild auf Seite innerhalb -> Bild", not img_tool(TP, PNG)[1].get("isError"))
 
     # Batch
     st, d, _ = call("POST", "/mcp", b=[{"jsonrpc": "2.0", "id": 1, "method": "ping"}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}], bearer=T)
@@ -190,7 +287,7 @@ try:
     setting("api", None); time.sleep(5.5)
 finally:
     cn = db()
-    for q in ("DELETE FROM note_comment WHERE uid LIKE ?", "DELETE FROM note WHERE uid LIKE ?", "DELETE FROM task WHERE uid LIKE ?",
+    for q in ("DELETE FROM note_share WHERE owner_uid LIKE ?", "DELETE FROM file WHERE uid LIKE ?", "DELETE FROM note_comment WHERE uid LIKE ?", "DELETE FROM note WHERE uid LIKE ?", "DELETE FROM task WHERE uid LIKE ?",
               "DELETE FROM api_token WHERE uid LIKE ?"):
         try:
             cn.execute(q, ("hk-test-%",))

@@ -371,10 +371,11 @@ def _make_thumb(path, base, w):
 # 2.5: Bild fuer KI-Werkzeuge (MCP get_image) - verkleinert, ohne EXIF/GPS, erstes Bild bei Animationen. Eigener,
 # speicherbegrenzter Prozess wie bei den Vorschaubildern (Dekompressionsbombe sprengt hoechstens ihn).
 _AI_CODE = r"""
-import io, sys
+import io, sys, warnings
 from PIL import Image, ImageOps
 path, tmp, edge, budget = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
 Image.MAX_IMAGE_PIXELS = 50_000_000
+warnings.simplefilter("error", Image.DecompressionBombWarning)   # schon ueber der Grenze abbrechen, nicht erst beim Doppelten
 with Image.open(path, formats=["PNG", "JPEG", "GIF", "WEBP"]) as im:
     ow, oh = im.size
     if im.format == "JPEG":

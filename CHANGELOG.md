@@ -24,6 +24,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - MCP-Server: Beim `initialize` lehnt Saga eine neuere Protokollversion im Kopf `MCP-Protocol-Version` nicht mehr mit
   400 ab (claude.ai schickt dort schon die neueste), sondern handelt die eigene aus; `2025-11-25` wird auch danach im
   Kopf geduldet. Abgelehnte Versionen stehen als `mcp: Protokollversion …` im Server-Log.
+- MCP-Server: neues Werkzeug **`get_image`** – Claude kann Bilder aus Seiten ansehen (z. B. Screenshots in
+  Fehlermeldungen). Eingabe ist die Datei-ID oder die `/files/<id>`-Adresse aus dem Markdown; die Antwort ist ein
+  MCP-Bild-Inhalt (JPEG bzw. PNG bei Transparenz, längste Kante höchstens 1568 px, ohne EXIF/GPS, bei GIF das erste Bild)
+  plus Name und Originalmaße. Rechte wie beim Abruf von `/files/<id>` im Browser (eigene Datei oder Datei auf einer Seite,
+  die man sehen darf), mit `roots` nur über Seiten in den freigegebenen Bäumen; kein Recht und nicht vorhanden geben
+  dieselbe Meldung. Nur PNG, JPEG, GIF und WebP (am Inhalt erkannt), kein SVG. `get_page` nennt die Bilder der Seite
+  im Feld `images` (Datei-ID und Bildunterschrift).
 
 ### Admin: neue Seite „Diagnose“
 - Fehlerberichte, „Diagnose senden“ (Kennung `D-…`), Editor-Diagnose und Anruf-Diagnose stehen jetzt zusätzlich zur

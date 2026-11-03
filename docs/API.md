@@ -212,10 +212,15 @@ bei jeder Zustellung geprüft (Schutz gegen DNS-Rebinding).
 Saga bringt einen MCP-Server mit (Model Context Protocol, Transport „Streamable HTTP“): `POST https://saga.example.org/mcp`.
 Nötig ist ein Token mit dem Bereich **`mcp`** und den Datenbereichen, die die KI nutzen soll.
 
-**Werkzeuge** (es erscheinen nur die, die der Token darf): `search_pages`, `get_page`, `create_page`, `append_to_page`,
+**Werkzeuge** (es erscheinen nur die, die der Token darf): `search_pages`, `get_page`, `get_image`, `create_page`, `append_to_page`,
 `update_page_title`, `list_databases`, `get_database_schema`, `query_database`, `create_row`, `update_row`, `list_tasks`,
 `create_task`, `complete_task`, `add_comment`. Eigenschaften gehen per Name. Ausgaben sind begrenzt (50 Einträge je
-Abfrage, Seiten bis 100.000 Zeichen – darüber gekürzt mit Hinweis).
+Abfrage, Seiten bis 100.000 Zeichen – darüber gekürzt mit Hinweis). `get_page` nennt die Bilder der Seite im Feld
+`images` (`{"file": "<Datei-ID>", "alt": "…"}`); `get_image` (Bereich `read:pages`, Eingabe `file` = Datei-ID oder
+`/files/<id>`-Adresse) liefert ein Bild als MCP-Inhalt `{"type": "image", "data": <base64>, "mimeType": …}` –
+verkleinert auf höchstens 1568 px, ohne EXIF, nur PNG/JPEG/GIF/WebP. Rechte wie `/files/<id>` im Browser (eigene Datei
+oder Datei auf einer sichtbaren Seite, mit `roots` nur innerhalb der Bäume); eigene Dateien ohne Seite nur mit
+`read:files` und ohne `roots`.
 
 **Claude Code:**
 
