@@ -18,6 +18,7 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   p.on('dialog', (d) => { errs.push('dialog: ' + d.message()); d.dismiss(); });
   await p.addInitScript(() => { window.__xss = 0; });
   await p.goto(BASE + '/notes');
+  await D.useEditor(p);   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
   const api = (m, url, b) => p.evaluate(async ([m, url, b]) => {
     const r = await fetch(url, { method: m, headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });
     return r.json().catch(() => ({}));

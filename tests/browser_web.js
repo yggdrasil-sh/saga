@@ -26,6 +26,7 @@ async function session(browser, opts = {}) {
   await p.fill('input[name=username], input#username, input[type=text]', opts.user || USER);
   await p.fill('input[type=password]', opts.pass || PASS);
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
+  await ED.useEditor(p);   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
   await p.waitForTimeout(1000);
   p.api = (m, u, b) => p.evaluate(async ([m, u, b]) => {
     const r = await fetch(u, { method: m, headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });

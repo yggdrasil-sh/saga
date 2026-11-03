@@ -11,6 +11,7 @@ const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 
   const p = await ctx.newPage(); const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
   await p.goto(BASE + '/notes');
+  await D.useEditor(p);   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
   const api = (m, url, b) => p.evaluate(async ([m, url, b]) => { const r = await fetch(url, { method: m, headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); return r.json().catch(() => ({})); }, [m, url, b]);
   const id = (await api('POST', '/api/notes', { title: 'Toggle Code' })).id;
   const blocks = { blocks: [

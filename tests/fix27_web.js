@@ -19,6 +19,7 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     const p = await ctx.newPage(); p.errs = [];
     p.on('pageerror', (e) => p.errs.push(e.message));
     await p.goto(BASE + '/notes');
+    await ED.useEditor(p);   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
     p.api = (m, url, b) => p.evaluate(async ([m, url, b]) => {
       const r = await fetch(url, { method: m, headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });
       const j = await r.json().catch(() => ({})); if (j && typeof j === 'object' && !Array.isArray(j)) j._st = r.status; return j;

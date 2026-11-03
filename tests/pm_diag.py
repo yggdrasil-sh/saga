@@ -68,7 +68,8 @@ def main():
         auth.get_user(u) or auth.create_user(u, A_.PW, n)
     auth.get_user("pd-adm") or auth.create_user("pd-adm", A_.PW, "Admin Diagnose", is_admin=True)
     set_user_editor_tiptap("pd-a", True)
-    set_user_editor_tiptap("pd-b", True)               # pd-c bleibt bei Editor.js
+    set_user_editor_tiptap("pd-b", True)
+    set_user_editor_tiptap("pd-c", False)              # M3: ohne Wahl gilt Tiptap - pd-c waehlt ausdruecklich Editor.js
     time.sleep(A_.WAIT)
     try:
         run()
@@ -84,8 +85,8 @@ def main():
 def run():
     A, B, C = (A_.ck(u) for u, _ in USERS)
     ok(f"/api/version: Feature pmdiag1 (Standard an) ({feats()})", "pmdiag1" in feats())
-    ok("Standard in auth.DEFAULTS: editor.diag = True, engine bleibt editorjs",
-       auth.DEFAULTS["editor"].get("diag") is True and auth.DEFAULTS["editor"].get("engine") == "editorjs")
+    ok("Standard in auth.DEFAULTS: editor.diag = True, engine = tiptap (M3)",
+       auth.DEFAULTS["editor"].get("diag") is True and auth.DEFAULTS["editor"].get("engine") == "tiptap")
 
     # --- Rechte -----------------------------------------------------------------------------------------------------
     s, _ = req("POST", "/api/diag", None, body())

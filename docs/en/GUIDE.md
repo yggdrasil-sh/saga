@@ -507,6 +507,13 @@ public https addresses work; the admin allows home network servers under General
 feature can also be turned off completely. Saga caches thumbnails (`/data/nc-cache`, not in the backup, limit
 `NC_CACHE_MB`).
 
+#### Page editor
+
+On the web you edit pages with **Tiptap** (default since 2.5). The admin chooses under General → Pages → “Page
+editor”: **Default (Tiptap)**, **Classic (Editor.js)** – to be removed in a later version – or **Each person chooses**
+(then under Settings → Pages; without a choice of their own, Tiptap applies). Instances where the admin has already
+saved the editor explicitly keep that choice. Both editors save the same format; the apps are not affected.
+
 ### Publishing pages
 
 Any page can be made **public** – readable without signing in, shown in a clean layout, light or dark depending on

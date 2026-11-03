@@ -644,6 +644,14 @@ ganz normale Seiten und Datenbanken; nichts bleibt mit der Galerie verbunden. Un
 Der Admin kann die Galerie unter Allgemein → Seiten → „Vorlagengalerie anbieten“ abschalten. Eigene Vorlagen schreiben:
 `docs/GALERIE.md` (Prüfskript `python3 tools/gallery_check.py`).
 
+#### Seiten-Editor
+
+Seiten bearbeitest du im Web mit **Tiptap** (Standard seit 2.5). Der Admin legt unter Allgemein → Seiten →
+„Seiten-Editor“ fest: **Standard (Tiptap)**, **Klassisch (Editor.js)** – wird in einer späteren Version entfernt – oder
+**Jede Person wählt selbst** (dann unter Einstellungen → Seiten; ohne eigene Wahl gilt Tiptap). Instanzen, auf denen der
+Admin den Editor schon ausdrücklich gespeichert hat, behalten diese Wahl. Beide Editoren speichern dasselbe Format; die
+Apps sind nicht betroffen.
+
 ### Seiten veröffentlichen
 
 Jede Seite lässt sich **öffentlich** machen – lesbar ohne Anmeldung, schlicht dargestellt, hell oder dunkel nach

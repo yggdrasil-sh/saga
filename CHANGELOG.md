@@ -16,6 +16,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Seiten: Tiptap ist Standard-Editor (M3)
+- Tiptap ist jetzt Standard-Editor; Editor.js ist unter Admin → Allgemein → Seiten noch wählbar („Klassisch“, wird in
+  einer späteren Version entfernt). Instanzen mit ausdrücklich gespeicherter Wahl behalten sie.
+- Bei „Jede Person wählt selbst“ gilt ohne eigene Wahl Tiptap; die Wahl „Editor.js“ wird jetzt ausdrücklich gespeichert.
+
 ### Sicherheit: Fix-Runde nach Pentest 2 (Server)
 - Föderierte Anrufe: Ein führender Server kann in der Teilnehmerliste keine Teilnehmenden fremder Server mehr
   unterschieben. Endpunkte fremder Personen übernimmt Saga nur, wenn sie zum führenden Server selbst gehören oder

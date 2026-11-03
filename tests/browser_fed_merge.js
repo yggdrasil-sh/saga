@@ -19,7 +19,7 @@ async function until(fn, ms = 9000) { const t = Date.now(); let v; while (Date.n
     p.on('pageerror', (e) => p.errs.push(e.message));
     p.on('console', (m) => { if (m.type() === 'error' && /Content Security Policy|Refused|TypeError/.test(m.text())) p.errs.push(m.text()); });
     if (process.env.DEBUG) p.on('response', async (r) => { if (r.request().method() === 'PATCH') console.log('  <', tag, r.status(), (await r.text().catch(() => '')).slice(0, 200)); });
-    await p.goto(base + '/notes'); return p;
+    await p.goto(base + '/notes'); await D.useEditor(p); return p;   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
   };
   const A = await mk(BASE_A, process.env.CK_A, 'A'), B = await mk(BASE_B, process.env.CK_B, 'B');
   const api = (p, m, url, b) => p.evaluate(async ([m, url, b]) => {

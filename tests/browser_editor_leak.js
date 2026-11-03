@@ -34,6 +34,7 @@ function many(n, tag) {
     await p.goto(BASE + '/login');
     await p.fill('input[name=username], input#username, input[type=text]', USER); await p.fill('input[type=password]', PASS);
     await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
+    await D.useEditor(p);   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
     await sleep(800);
     const api = (m, u, b) => p.evaluate(async ([m, u, b]) => {
       const r = await fetch(u, { method: m, headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });

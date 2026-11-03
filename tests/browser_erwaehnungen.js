@@ -22,6 +22,7 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   const errs = [];
   const p = await mkCtx(CK), q = await mkCtx(CK2);
   await p.goto(BASE + '/notes'); await q.goto(BASE + '/notes');
+  await D.useEditor(p); await D.useEditor(q);   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
   const apiOf = (pg) => (m, url, b) => pg.evaluate(async ([m, url, b]) => {
     const r = await fetch(url, { method: m, headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });
     return r.json().catch(() => ({}));

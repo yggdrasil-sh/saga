@@ -14,6 +14,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   p.on('pageerror', (e) => errs.push(e.message));
   p.on('console', (m) => { if (m.type() === 'error' && /Content Security Policy|Refused/.test(m.text())) errs.push(m.text()); });
   await p.goto(BASE + '/notes');
+  await D.useEditor(p);   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
   const api = (m, url, b) => p.evaluate(async ([m, url, b]) => {
     const r = await fetch(url, { method: m, headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });
     return r.json().catch(() => ({}));

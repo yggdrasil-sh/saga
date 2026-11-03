@@ -21,6 +21,7 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   p.on('console', (m) => { if (m.type() === 'error' && /Content Security Policy|Refused/.test(m.text())) errs.push(m.text()); });
   p.on('request', (r) => { const h = new URL(r.url()).host; if (h !== new URL(BASE).host) ext.push(r.url()); });
   await p.goto(BASE + '/notes');
+  await D.useEditor(p);   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
   const api = (m, url, b) => p.evaluate(async ([m, url, b]) => {
     const r = await fetch(url, { method: m, headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });
     return r.json().catch(() => ({}));

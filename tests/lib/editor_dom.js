@@ -37,9 +37,10 @@ const any = `${ROOT} [data-block-id]`;
 // erstes Textfeld (Locator .first()) aller Bloecke - "irgendein Absatz" fuer waitForSelector
 const anyText = textOf('paragraph');
 
-// Welcher Editor? SAGA_EDITOR=editorjs (Standard) | tiptap. Der Server entscheidet beim Laden von /notes (Admin
-// editor.engine bzw. Konto-Wahl); setEditor() stellt die Konto-Wahl um (Admin muss "choice" erlauben), tests/run-Skripte
-// koennen sie auch vorab setzen. EDITOR ist nur die Erwartung - isEditor(page) prueft, was die Seite wirklich hat.
+// Welcher Editor? SAGA_EDITOR=editorjs (Standard der Testreihen) | tiptap. Der Server entscheidet beim Laden von /notes
+// (Admin editor.engine - seit M3 Standard tiptap - bzw. Konto-Wahl); setEditor() stellt die Konto-Wahl um (Admin muss
+// "choice" erlauben), useEditor() stellt sie auf EDITOR und bricht mit klarer Meldung ab, wenn der Server einen anderen
+// Editor fest vorgibt. EDITOR ist nur die Erwartung - isEditor(page) prueft, was die Seite wirklich hat.
 const EDITOR = process.env.SAGA_EDITOR === 'tiptap' ? 'tiptap' : 'editorjs';
 // Editor-eigene Bedienelemente (Editor.js 2.31). editorjs-only (T7)
 const UI_EDITORJS = {
@@ -189,5 +190,25 @@ async function setEditor(page, kind = EDITOR) {
   return page.evaluate((on) => HK.api('PUT', '/api/account/editor', { tiptap: on }).then(() => true, () => false), kind === 'tiptap');
 }
 
-module.exports = { ROOT, EDITOR, UI_EDITORJS, UI_TIPTAP, UIF, isEditor, setEditor, block, ofType, top, text, textOf, topText, editIn, any, anyText, UI, UI_ITEMS, menuItem,
+// Modus ausdruecklich setzen (M3: ohne Konto-Wahl gilt Tiptap): Konto-Wahl auf kind stellen und /notes neu laden.
+// Gibt der Server den Editor fest vor (editor.engine != choice) und passt er nicht, endet der Test mit FAIL.
+async function useEditor(page, kind = EDITOR) {
+  const r = await page.evaluate(async (on) => {
+    const h = { 'X-Saga': '1', 'Content-Type': 'application/json' };
+    const d = await (await fetch('/api/account/editor', { headers: h })).json().catch(() => ({}));
+    if (d.choice && (d.engine === 'tiptap') !== on) {
+      await fetch('/api/account/editor', { method: 'PUT', headers: h, body: JSON.stringify({ tiptap: on }) });
+      return { engine: on ? 'tiptap' : 'editorjs', changed: true };
+    }
+    return { engine: d.engine, changed: false };
+  }, kind === 'tiptap');
+  if (r.engine !== kind) {
+    console.log(`FAIL Editor-Modus: Server liefert ${r.engine}, Test erwartet ${kind} (SAGA_EDITOR) - Admin editor.engine = choice setzen`);
+    process.exit(1);
+  }
+  if (r.changed && /\/notes/.test(page.url())) await page.reload();
+  return r.engine;
+}
+
+module.exports = { ROOT, EDITOR, UI_EDITORJS, UI_TIPTAP, UIF, isEditor, setEditor, useEditor, block, ofType, top, text, textOf, topText, editIn, any, anyText, UI, UI_ITEMS, menuItem,
   BLOCK_ITEMS, blockMenuItem, blocks, count, find, textOfBlock, htmlOf, focus, clickEnd, typeEnd, select, selected, current, waitBlock };

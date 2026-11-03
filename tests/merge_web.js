@@ -22,7 +22,7 @@ async function until(fn, ms = 8000) { const t = Date.now(); let v; while (Date.n
     p.on('console', (m) => { if (m.type() === 'error' && /Content Security Policy|Refused|TypeError/.test(m.text())) p.errs.push(m.text()); });
     if (process.env.DEBUG) p.on('request', (r) => { if (r.method() === 'PATCH') console.log('  >', ck === CK ? 'A' : 'B', (r.postData() || '').replace(/"body":"[^]*?","format"/, '"body":…,"format"').slice(0, 200)); });
     if (process.env.DEBUG) p.on('response', async (r) => { if (r.request().method() === 'PATCH') console.log('  <', ck === CK ? 'A' : 'B', r.status(), (await r.text().catch(() => '')).slice(0, 160)); });
-    await p.goto(BASE + '/notes'); return p;
+    await p.goto(BASE + '/notes'); await D.useEditor(p); return p;   // M3: Editor-Modus ausdruecklich (SAGA_EDITOR)
   };
   const A = await mk(CK), B = await mk(CK2);
   const api = (p, m, url, b) => p.evaluate(async ([m, url, b]) => {

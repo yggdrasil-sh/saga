@@ -521,6 +521,14 @@ administración solo funcionan direcciones https públicas; el administrador aut
 General → «Conexiones de los usuarios», donde también puede desactivar la función por completo. Saga guarda en caché las
 miniaturas (`/data/nc-cache`, fuera de la copia de seguridad, límite `NC_CACHE_MB`).
 
+#### Editor de páginas
+
+En la web editas las páginas con **Tiptap** (predeterminado desde 2.5). El administrador elige en General → Páginas →
+«Editor de páginas»: **Predeterminado (Tiptap)**, **Clásico (Editor.js)** – se eliminará en una versión posterior – o
+**Cada persona elige** (entonces en Ajustes → Páginas; sin elección propia se usa Tiptap). Las instancias en las que el
+administrador ya guardó el editor de forma explícita mantienen esa elección. Ambos editores guardan el mismo formato;
+las apps no se ven afectadas.
+
 ### Publicar páginas
 
 Cualquier página puede hacerse **pública**: se lee sin iniciar sesión, con un diseño sencillo, claro u oscuro según
