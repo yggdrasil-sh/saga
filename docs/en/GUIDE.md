@@ -511,8 +511,8 @@ feature can also be turned off completely. Saga caches thumbnails (`/data/nc-cac
 
 On the web you edit pages with **Tiptap** (default since 2.5). The admin chooses under General → Pages → “Page
 editor”: **Default (Tiptap)**, **Classic (Editor.js)** – to be removed in a later version – or **Each person chooses**
-(then under Settings → Pages; without a choice of their own, Tiptap applies). Instances where the admin has already
-saved the editor explicitly keep that choice. Both editors save the same format; the apps are not affected.
+(then under Settings → Pages; without a choice of their own, Tiptap applies). When updating to this version,
+Saga switches to Tiptap once; if you choose Editor.js afterwards, it stays. Both editors save the same format; the apps are not affected.
 
 ### Publishing pages
 

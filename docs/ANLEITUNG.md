@@ -648,8 +648,8 @@ Der Admin kann die Galerie unter Allgemein → Seiten → „Vorlagengalerie anb
 
 Seiten bearbeitest du im Web mit **Tiptap** (Standard seit 2.5). Der Admin legt unter Allgemein → Seiten →
 „Seiten-Editor“ fest: **Standard (Tiptap)**, **Klassisch (Editor.js)** – wird in einer späteren Version entfernt – oder
-**Jede Person wählt selbst** (dann unter Einstellungen → Seiten; ohne eigene Wahl gilt Tiptap). Instanzen, auf denen der
-Admin den Editor schon ausdrücklich gespeichert hat, behalten diese Wahl. Beide Editoren speichern dasselbe Format; die
+**Jede Person wählt selbst** (dann unter Einstellungen → Seiten; ohne eigene Wahl gilt Tiptap). Beim Update auf diese
+Version stellt Saga einmalig auf Tiptap um; wer danach Editor.js wählt, behält es. Beide Editoren speichern dasselbe Format; die
 Apps sind nicht betroffen.
 
 ### Seiten veröffentlichen

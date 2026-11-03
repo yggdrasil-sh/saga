@@ -525,8 +525,8 @@ miniaturas (`/data/nc-cache`, fuera de la copia de seguridad, límite `NC_CACHE_
 
 En la web editas las páginas con **Tiptap** (predeterminado desde 2.5). El administrador elige en General → Páginas →
 «Editor de páginas»: **Predeterminado (Tiptap)**, **Clásico (Editor.js)** – se eliminará en una versión posterior – o
-**Cada persona elige** (entonces en Ajustes → Páginas; sin elección propia se usa Tiptap). Las instancias en las que el
-administrador ya guardó el editor de forma explícita mantienen esa elección. Ambos editores guardan el mismo formato;
+**Cada persona elige** (entonces en Ajustes → Páginas; sin elección propia se usa Tiptap). Al actualizar a esta versión,
+Saga cambia una vez a Tiptap; si después eliges Editor.js, se mantiene. Ambos editores guardan el mismo formato;
 las apps no se ven afectadas.
 
 ### Publicar páginas

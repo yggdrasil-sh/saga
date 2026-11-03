@@ -1305,6 +1305,13 @@ CREATE INDEX IF NOT EXISTS chat_pref_mute ON chat_pref (muted_until) WHERE muted
 INSERT INTO chat_pref (chat_id, uid, muted_until) SELECT chat_id, uid, -1 FROM chat_member WHERE muted<>0 AND left_at IS NULL
     ON CONFLICT (chat_id, uid) DO UPDATE SET muted_until=-1 WHERE chat_pref.muted_until IS NULL OR chat_pref.muted_until=0;
 """,
+    # 2.5 (M3, 3.11.2026): Tiptap wird Standard-Editor. Seit T2 hat jedes Speichern von Admin -> Allgemein
+    # editor.engine = "editorjs" abgelegt, auch ohne bewusste Wahl. Einmalig auf "tiptap" umstellen; wer danach
+    # Editor.js waehlt, behaelt es. "choice" bleibt unveraendert.
+    31: """
+UPDATE setting SET v = jsonb_set(v::jsonb, '{engine}', '"tiptap"')::text
+ WHERE k = 'editor' AND v::jsonb->>'engine' = 'editorjs';
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")

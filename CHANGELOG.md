@@ -18,7 +18,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Seiten: Tiptap ist Standard-Editor (M3)
 - Tiptap ist jetzt Standard-Editor; Editor.js ist unter Admin → Allgemein → Seiten noch wählbar („Klassisch“, wird in
-  einer späteren Version entfernt). Instanzen mit ausdrücklich gespeicherter Wahl behalten sie.
+  einer späteren Version entfernt). Datenbank-Migration 31 stellt beim Update einmalig auf Tiptap um – bisher hat jedes
+  Speichern unter Admin → Allgemein „Editor.js“ abgelegt, auch ohne bewusste Wahl. Wer danach wieder Editor.js wählt,
+  behält es; „Jede Person wählt selbst“ bleibt unverändert.
 - Bei „Jede Person wählt selbst“ gilt ohne eigene Wahl Tiptap; die Wahl „Editor.js“ wird jetzt ausdrücklich gespeichert.
 
 ### Sicherheit: Fix-Runde nach Pentest 2 (Server)
