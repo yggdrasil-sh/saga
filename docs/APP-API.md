@@ -2175,7 +2175,7 @@ Unbekannte Felder werden verworfen, doppelte Einträge zusammengefasst. Falscher
 **Log-Zeile (Beispiel):** `pmdiag {"acct":"1bccea4132","mode":"save","sv":2,"av":"5c0827be4a","n":1,"items":[{"t":"table","p":"data.content[2][1]","k":"fresh"}]}` –
 `acct` ist ein HMAC des Kontos (stabil je Server). Auswerten: `docker logs saga 2>&1 | grep '^pmdiag '`.
 
-## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
+## Videos und große Dateien im Chat: saga-file/v2 (2.4, Etappe E2; große Dateien ab 2.5)
 
 Verbindlicher Vertrag für iOS/iPadOS/macOS, Android, Linux und Web (Referenz: `static/chat-video.js`, `static/sw.js`,
 Server `saga/chat_files.py`, Format `saga/file_v2.py`). Videos bis `limits.file_max` (`ATTACH_MAX_MB`, Standard 10 MB)
@@ -2183,6 +2183,15 @@ bleiben im bisherigen Format v1 (ein AEAD-Block, `POST /api/chats/{id}/files`) u
 Größere Videos gehen **nur** im neuen Format `saga-file/v2` (blockweise, wahlfreier Zugriff, fortsetzbarer Upload).
 Ältere Apps zeigen sie als Anhang mit Namen; Öffnen schlägt dort fehl („Mit Saga 2.4 öffnen“). `MIN_APP` ändert sich
 nicht – alles Neue wird über `limits.file2` ausgehandelt.
+
+**Große Dateien (2.5):** Dasselbe gilt für jede andere Datei (PDF, Archiv, großes Bild …): über der v1-Grenze geht sie als
+`saga-file/v2` (gleicher Upload, gleiche Felder `x: 2`, `cs`; ohne Poster, Dauer und Verkleinern; Bilder dürfen ein
+Vorschaubild `th` wie bisher mitbringen). Der Server prüft beim v2-Upload keinen MIME-Typ. Empfänger speichern sie als
+Strom (blockweise entschlüsseln, nie ganz im Speicher nötig); Bilder ohne `th` erscheinen als Datei-Anhang.
+
+**v1-Grenze:** `limits.file_max`; in Chats mit Personen anderer Saga-Server (Chat-Objekt `fed: true` oder ein Mitglied mit
+`remote: true`) **höchstens 10 MiB** (10485760), auch wenn der eigene Server `ATTACH_MAX_MB` höher hat – die Gegenstelle
+nimmt v1 nur bis zu ihrer eigenen Grenze an. Darüber v2 bis `video_max`, darüber nicht senden (Hinweis).
 
 ### Fähigkeiten (`GET /api/chat/me`)
 
@@ -2193,13 +2202,14 @@ nicht – alles Neue wird über `limits.file2` ausgehandelt.
 
 - `file2: true` = der Server kann saga-file/v2 (Upload in Teilen, Range, Medien-Token). Fehlt das Feld (Server 2.3):
   nur v1 bis `file_max` anbieten.
-- `video_max` = größte **Klartext**-Größe eines v2-Videos (Admin: Einstellungen → Chats, sonst `VIDEO_MAX_MB`, Standard 500).
+- `video_max` = größte **Klartext**-Größe einer v2-Datei, Video oder nicht (Admin: Einstellungen → Chats → „Größte Datei im
+  Chat (MB)“, Schlüssel `chat_video_max_mb`, sonst `VIDEO_MAX_MB`, Standard 500).
 - `upload_part` = höchstens so viele Bytes je `PUT`. `file2_cs` = Blockgröße (in 2.4 immer 262144).
 - `quota`/`used` = Chat-Speicher des Kontos in Bytes (Standard 4096 MB, Admin änderbar); laufende Uploads zählen mit
   ihrer vollen Größe. Anzeigen als „Chat-Speicher: 1,2 von 4 GB“.
 - Chats über Servergrenzen: Chat-Objekt `big_files` (`true`, wenn alle beteiligten Server `chatfile2` können). Bei
-  `false` (Gegenüber hat Saga 2.3) nur Videos bis `file_max` anbieten, sonst Hinweis „Der Server des Gegenübers kann
-  große Videos noch nicht“. Der Server prüft es ohnehin (`409` beim Anlegen des Uploads und beim Senden).
+  `false` (Gegenüber hat Saga 2.3) nur Anhänge bis zur v1-Grenze anbieten, sonst Hinweis „Der Server des Gegenübers kann
+  große Dateien noch nicht“. Der Server prüft es ohnehin (`409` beim Anlegen des Uploads und beim Senden).
 
 ### Absender: Poster, Metadaten, „optimiert 720p“
 

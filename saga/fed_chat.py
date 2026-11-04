@@ -1885,7 +1885,7 @@ def send(uid, cid, b):
             if len(files) != len(set(fids)):
                 return _bad(t("Anhang nicht gefunden."), 400)
             if any(f["size"] > FILE_MAX + 64 for f in files) and not big_files_ok(c, ch):     # 2.4: 2.3-Server dabei
-                return _bad(t("Der Server des Gegenübers kann große Videos noch nicht (höchstens {n} MB).", n=FILE_MAX // 1048576), 409)
+                return _bad(t("Der Server des Gegenübers kann große Dateien noch nicht (höchstens {n} MB).", n=FILE_MAX // 1048576), 409)
     ents = entries(handles, uid=uid)                 # Netzwerk: Schluessel der anderen (Zwischenspeicher)
     if set(keys) != want_of(ents):
         return chat._no_store({"error": t("Die Mitglieder oder ihre Geräte haben sich geändert – bitte erneut senden."), "handles": handles}, 409)

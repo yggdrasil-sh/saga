@@ -106,9 +106,12 @@
     <label class="adm-field"><span>{{ _("Speicher für Chat-Anhänge je Konto (MB)") }}</span>
       <input class="hk-in" type="number" name="chat_quota_mb" min="0" max="1048576" value="{{ st.chat_quota_mb or 0 }}">
       <small>{{ _("0 = Standard ({n} MB, Umgebungsvariable CHAT_QUOTA_MB). Laufende Uploads zählen mit ihrer vollen Größe.", n=chat_quota_default) }}</small></label>
-    <label class="adm-field"><span>{{ _("Größtes Video im Chat (MB)") }}</span>
+    <label class="adm-field"><span>{{ _("Größte Datei im Chat (MB)") }}</span>
       <input class="hk-in" type="number" name="chat_video_max_mb" min="0" max="65536" value="{{ st.chat_video_max_mb or 0 }}">
-      <small>{{ _("0 = Standard ({n} MB, Umgebungsvariable VIDEO_MAX_MB). Videos über der Grenze für Anhänge (ATTACH_MAX_MB, Standard 10 MB) gehen im Blockformat von Saga 2.4 und werden gestreamt; ältere Apps zeigen dann „Mit Saga 2.4 öffnen“.", n=chat_video_default) }}</small></label>
+      <small>{{ _("0 = Standard ({n} MB, Umgebungsvariable VIDEO_MAX_MB). Gilt für Videos und große Dateien: alles über der Grenze für Anhänge geht im Blockformat (Videos ab Saga 2.4, andere Dateien ab 2.5) und wird gestreamt; ältere Apps zeigen dann „Mit neuerer Saga-Version öffnen“.", n=chat_video_default) }}</small></label>
+    <div class="adm-field" id="chat-attach-max"><span>{{ _("Grenze für Anhänge im alten Format (MB)") }}</span>
+      <input class="hk-in" type="text" value="{{ chat_attach_mb }}" readonly aria-readonly="true" tabindex="-1">
+      <small>{{ _("Nur lesbar – Umgebungsvariable ATTACH_MAX_MB (Standard 10), wirkt nach einem Neustart. Anhänge bis zu dieser Größe gehen im alten Format; in Chats mit anderen Saga-Servern höchstens 10 MB.") }}</small></div>
     {{ check(_('Linkvorschau in Chats'), 'chat_unfurl', st.chat_unfurl, _('Beim Schreiben holt der Server Titel, Beschreibung und ein kleines Bild der ersten Adresse (nur öffentliche Adressen, mit Zeit- und Größenlimit). Die Vorschau wird verschlüsselt mit der Nachricht verschickt; Empfänger laden nichts nach. Der Server sieht dabei die Adresse, speichert sie aber nicht.')) }}
     {{ check(_('Moderne Chats (Stufe 3) – Standard an'), 'chat_v3', st.chat_v3, _('Reaktionen, Bearbeiten, Sprachnachrichten und Systemzeilen in allen Chats; Chats laufen über Handles statt Anmeldenamen (niemand sieht mehr den Anmeldenamen des anderen), und lokale Gruppen nehmen Personen anderer Saga-Server auf. Neue Chats entstehen gleich so; bestehende stellt der Server stündlich um, sobald alle aktiven App-Geräte der Mitglieder Saga 2.5 haben – spätestens nach der Frist darunter. Nichts wird neu verschlüsselt, der Verlauf bleibt lesbar. Apps 2.3/2.4 lesen umgestellte Chats, ältere zeigen „Bitte die App aktualisieren“. Ausschalten stellt umgestellte Chats nicht zurück; Reaktionen, Bearbeiten und Sprachnachrichten sind dann aus.')) }}
     <label class="adm-field"><span>{{ _("Bestehende Chats spätestens umstellen nach (Tagen)") }}</span>

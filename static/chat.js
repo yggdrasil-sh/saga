@@ -1918,7 +1918,7 @@
   function fwdOne(src, target, m) {
     var skipped = 0;
     var files = (Array.isArray(m.body.files) ? m.body.files : []).slice(0, 10).filter(function (f) {
-      if (!f || f.voice || (f.x && f.x !== 1)) { skipped++; return false; }   // Sprachnachrichten, grosse Videos (saga-file/v2): nur Hinweis
+      if (!f || f.voice || (f.x && f.x !== 1)) { skipped++; return false; }   // Sprachnachrichten, grosse Videos/Dateien (saga-file/v2): nur Hinweis
       return true;
     });
     return Promise.all(files.map(function (f) {
@@ -2632,6 +2632,7 @@
   }
   function fileEl(cid, f) {
     var name = String(f.n || T('Datei')).slice(0, 200), img = IMG.test(f.m);
+    if (img && f.x === 2 && !(VID && f.th && f.th.id && f.th.k)) img = false;      // 2.5: grosses Bild ohne Vorschau -> Datei-Knopf
     if (img) {
       var fig = el('button', 'ct-img'); fig.type = 'button'; fig.setAttribute('aria-label', name);
       var box = fitBox(f.w, f.h) || dims[f.id];
@@ -2655,11 +2656,27 @@
     if (f.x && f.x !== 1 && f.x !== 2) {                // neueres Format: nicht still scheitern
       b.disabled = true; b.appendChild(el('span', 'ct-file-s', T('Mit einer neueren Saga-Version öffnen'))); return b;
     }
+    if (f.x === 2 && !VID) { b.disabled = true; return b; }
     b.addEventListener('click', function () {
+      if (f.x === 2) return saveBig(f, b);              // 2.5: grosse Datei (saga-file/v2) als Strom speichern
       plainUrl(cid, f).then(function (url) { save(url, name); setTimeout(function () { URL.revokeObjectURL(url); }, 60000); },
         function (e) { HK.toast(T('Anhang nicht geladen: {err}', { err: e.message })); });
     });
     return b;
+  }
+  // 2.5: grosse Datei (saga-file/v2, kein Video) speichern - blockweise ueber den Strom wie bei Videos; Fortschritt am Knopf
+  function saveBig(f, b) {
+    if (b.disabled) return;
+    var pr = el('span', 'ct-file-s ct-file-prog'); b.disabled = true; b.appendChild(pr);
+    VID.save(f, function (x) { pr.textContent = Math.round(x * 100) + ' %'; }).then(null, function (e) {
+      if (e && e.name !== 'AbortError') HK.toast(T('Anhang nicht geladen: {err}', { err: e.message }));
+    }).then(function () { pr.remove(); b.disabled = false; });
+  }
+  // 2.5: Klartext einer grossen Datei als Blob-URL (nur Bilder bis BIG_VIEW_MAX, sonst Speichern)
+  var BIG_VIEW_MAX = 100 * 1048576;
+  function bigPlainUrl(f) {
+    if (f.s > BIG_VIEW_MAX) return Promise.reject(new Error(T('Zu groß für die Vorschau – bitte speichern.')));
+    return VID.plain(f).then(function (p) { return URL.createObjectURL(new Blob([p], { type: IMG.test(f.m) ? f.m : 'application/octet-stream' })); });
   }
   // Video (2.4): nur Poster (lazy wie Bilder, f.th), Dauer, Abspielen erst im Player. Nie ein <video> in der Liste.
   function videoEl(cid, f, name) {
@@ -2712,10 +2729,13 @@
     var bar = el('div', 'hk-actions'), sv = btn(T('Speichern'), 'ct-view-save'); sv.disabled = true; bar.appendChild(sv); body.appendChild(bar);
     var t = memGet('t:' + f.id), im = el('img'); im.alt = name;
     if (t) { im.src = t; wrap.appendChild(im); }
-    plainUrl(cid, f).then(function (url) {
+    if (f.x === 2) {                                      // 2.5: grosses Bild (saga-file/v2): Speichern immer als Strom
+      sv.disabled = false; sv.addEventListener('click', function () { saveBig(f, sv); });
+    }
+    (f.x === 2 ? bigPlainUrl(f) : plainUrl(cid, f)).then(function (url) {
       if (!body.isConnected) { URL.revokeObjectURL(url); return; }
       viewUrl = url; im.src = url; if (!im.parentNode) wrap.appendChild(im); st.remove();
-      sv.disabled = false; sv.addEventListener('click', function () { save(url, name); });
+      if (f.x !== 2) { sv.disabled = false; sv.addEventListener('click', function () { save(url, name); }); }
     }, function (e) { st.textContent = T('Anhang nicht geladen: {err}', { err: e.message }); });
   }
   function save(url, name) { var a = el('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
@@ -2801,7 +2821,7 @@
     Array.prototype.forEach.call(this.files, function (f) {
       var vid = VID && VID.isVideo(f);
       if (vid && f.size > vmax && opt) f._force = true;    // zu gross: nur verkleinert (720p) moeglich
-      else if (f.size > (vid ? vmax : max)) { HK.toast(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: f.name, n: Math.round((vid ? vmax : max) / 1048576) })); return; }
+      else if (f.size > vmax) { HK.toast(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: f.name, n: Math.round(vmax / 1048576) })); return; }
       if (vid) f._opt = !!opt && (mobile || !!f._force);   // 2.4: vom Handy standardmaessig "optimiert 720p"
       if (vid) VID.probe(f).then(function (m) { f._ok = !!(m && m.w); f._meta = m; }, function () { f._ok = false; })
         .then(function () {
@@ -2936,12 +2956,28 @@
     return fetch('/api/chats/' + cid + '/files', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/octet-stream' }, body: blob })
       .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d.id; }); });
   }
+  // 2.5: Grenze fuer das alte Format (v1): file_max, in Chats mit anderen Saga-Servern hoechstens 10 MiB (deren
+  // ATTACH_MAX_MB kann kleiner sein); darueber saga-file/v2 bis video_max (wie Videos)
+  var FED_V1_MAX = 10485760;
+  function remoteChat(ch) { return !!(ch && (ch.fed || (ch.members || []).some(function (m) { return m.remote; }))); }
+  function v1Max(ch) {
+    var mx = (S.me && S.me.limits && S.me.limits.file_max) || 10485760;
+    return remoteChat(ch) ? Math.min(mx, FED_V1_MAX) : mx;
+  }
+  function bigCheck(ch, file, v1) {                     // -> Fehler oder null; file.size > v1
+    var lm = (S.me && S.me.limits) || {}, top = lm.file2 && VID ? Math.max(v1, lm.video_max || 0) : v1;
+    if (remoteChat(ch) && ch.big_files === false) return new Error(T('Der Server des Gegenübers kann große Dateien noch nicht (höchstens {n} MB).', { n: Math.round(v1 / 1048576) }));
+    if (file.size > top) return new Error(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: file.name, n: Math.round(top / 1048576) }));
+    return null;
+  }
   function uploadFiles(cid, list, chat) {                // list/chat (2.5): Weiterleiten in einen anderen Chat
     list = list || S.files; chat = chat || (S.cur && S.cur.id === cid ? S.cur : null);
     var ids = (S.me && S.me.limits && S.me.limits.file_ids_per_msg) || 10, slots = ids - list.length;
     var fc = chat ? fileCid(chat) : cid;                  // Verschluesselung: v1 chat_id, v2 chat_ref
+    var v1 = v1Max(chat);
     return Promise.all(list.map(function (f) {
-      if (VID && VID.isVideo(f)) return uploadVideo(cid, fc, f, slots-- > 0);
+      if (VID && VID.isVideo(f)) return uploadVideo(cid, fc, f, slots-- > 0, chat);
+      if (f.size > v1) return uploadBig(cid, fc, f, IMG.test(f.type || '') && slots-- > 0, chat, v1);
       var mime = f.type || 'application/octet-stream', withThumb = IMG.test(mime) && slots-- > 0;
       return f.arrayBuffer().then(function (buf) {
         var tp = withThumb ? run('make', { bytes: buf, mime: mime }).catch(function () { return null; }) : Promise.resolve(null);
@@ -2969,10 +3005,38 @@
       });
     }));
   }
+  // 2.5: grosse Datei (kein Video) ueber der v1-Grenze: saga-file/v2 mit fortsetzbarem Upload wie Videos (ohne Poster
+  // und Verkleinern). Bilder bis BIG_THUMB_MAX bekommen ein Vorschaubild (v1, eigener Schluessel) wie kleine Bilder.
+  var BIG_THUMB_MAX = 64 * 1048576;
+  function uploadBig(cid, fc, f, withThumb, ch, v1) {
+    var err = bigCheck(ch, f, v1);
+    if (err) return Promise.reject(err);
+    var mime = f.type || 'application/octet-stream', e = { id: null, k: null, n: f.name.slice(0, 200), m: mime, s: f.size };
+    function prog(x) { f._prog = T('Hochladen') + ' ' + Math.round(x * 100) + ' %'; drawFiles(); }
+    var th = !withThumb || f.size > BIG_THUMB_MAX ? Promise.resolve(null) : f.arrayBuffer().then(function (buf) {
+      return run('make', { bytes: buf, mime: mime }, [buf]);
+    }).then(function (t) {
+      e.w = t.w; e.h = t.h;
+      var thumb = new Blob([t.jpeg], { type: 'image/jpeg' }), tsz = t.jpeg.byteLength;
+      return run('enc', { cid: fc, bytes: t.jpeg }, [t.jpeg]).then(function (et) {
+        var ct = new Blob([et.blob]);
+        return upload(cid, ct).then(function (id) {
+          memPut('t:' + id, URL.createObjectURL(thumb)); bPut(id, ct);
+          return { id: id, k: et.key, m: 'image/jpeg', w: t.tw, h: t.th, s: tsz };
+        });
+      });
+    }).catch(function () { return null; });
+    var orig = VID.upload(cid, f, prog).then(function (r) { e.k = r.key; e.x = 2; e.cs = r.cs; return r.id; });
+    return Promise.all([orig, th]).then(function (r) {
+      e.id = r[0]; f._prog = '';
+      if (r[1]) { e.th = r[1]; var u = mem.get('t:' + r[1].id); if (u) memPut('t:' + e.id, u); }
+      return e;
+    });
+  }
   // Video (2.4): Poster/Dauer/Abmessungen hier erzeugen; optional verkleinern; bis file_max wie bisher (v1), darueber
   // saga-file/v2 mit fortsetzbarem Upload (static/chat-video.js). files[]: {id,k,n,m,s,dur,w,h, x:2,cs bei v2, th:{...}}
-  function uploadVideo(cid, fc, f, withPoster) {
-    var lm = S.me.limits || {}, max = lm.file_max || 10485760, meta = {};
+  function uploadVideo(cid, fc, f, withPoster, chat) {
+    var max = v1Max(chat || (S.cur && S.cur.id === cid ? S.cur : null)), meta = {};
     function prog(label) { return function (x) { f._prog = label + ' ' + Math.round(x * 100) + ' %'; drawFiles(); }; }
     return (f._meta ? Promise.resolve(f._meta) : VID.probe(f)).catch(function () { return {}; }).then(function (m) {
       meta = m || {};
@@ -2982,11 +3046,8 @@
       });
       return f;
     }).then(function (file) {
-      var ch = S.cur && S.cur.id === cid ? S.cur : null;
-      if (file.size > max && ch && ch.fed && ch.big_files === false) {   // Server des Gegenuebers ist 2.3 (ohne chatfile2)
-        throw new Error(T('Der Server des Gegenübers kann große Videos noch nicht (höchstens {n} MB).', { n: Math.round(max / 1048576) }));
-      }
-      if (file.size > (lm.file2 ? Math.max(max, lm.video_max || 0) : max)) throw new Error(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: f.name, n: Math.round(Math.max(max, lm.video_max || 0) / 1048576) }));
+      var ch = chat || (S.cur && S.cur.id === cid ? S.cur : null);
+      if (file.size > max) { var err = bigCheck(ch, file, max); if (err) throw err; }      // 2.3-Server dabei / ueber video_max
       var e = { id: null, k: null, n: (file.name || f.name).slice(0, 200), m: file.type || f.type || 'video/mp4', s: file.size };
       if (meta.dur) e.dur = meta.dur;
       if (meta.w && meta.h) { e.w = meta.w; e.h = meta.h; }

@@ -6,7 +6,9 @@
 // Nachricht; B sieht nur Poster und Dauer (kein <video> in der Liste), Abspielen ueber den Service Worker (/_m/...,
 // Range, blockweise entschluesselt), Spulen ans Ende, Bytes vom Server nur bereichsweise (kein Komplett-Download),
 // Herunterladen als entschluesselte Datei (Download-Strom ueber den Service Worker, gleiche Bytes wie das Original);
-// kleines Video (bis ATTACH_MAX_MB, v1) wie bisher; "optimiert 720p" nur angeboten, wenn der Browser MP4 aufnehmen kann.
+// kleines Video (bis ATTACH_MAX_MB, v1) wie bisher; "optimiert 720p" nur angeboten, wenn der Browser MP4 aufnehmen kann;
+// 2.5: grosse Datei (PDF) und grosses Bild ueber ATTACH_MAX_MB gehen ebenfalls als saga-file/v2 (Speichern als Strom,
+// Bild mit Vorschaubild und Ansicht in voller Groesse).
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os'), crypto = require('crypto');
@@ -185,6 +187,61 @@ function servedBytes(fid) {
     const cannot = await until(() => b.evaluate(() => { const m = document.querySelector('.ct-vid-cannot'); return m && m.textContent; }), 15000);
     ok('B: Player meldet "Kann im Browser nicht abgespielt werden – herunterladen" mit Knopf', cannot && /nicht abgespielt/.test(cannot) && /Herunterladen/.test(cannot), cannot);
     await shot(b, 'b-nicht-abspielbar');
+    await b.keyboard.press('Escape');
+
+    // --- 5c. grosse Datei, die kein Video ist (2.5): ueber file_max als saga-file/v2 (wie Videos), Speichern als Strom ------
+    const bigDoc = Buffer.concat([Buffer.from('%PDF-1.7\n'), crypto.randomBytes(lim.file_max + 300000)]);
+    let docPuts = 0, docFiles = 0;
+    await a.route('**/api/chat/uploads/*', r => { if (r.request().method() === 'PUT') docPuts++; return r.continue(); });
+    await a.route('**/api/chats/*/files', r => { docFiles++; return r.continue(); });
+    await a.setInputFiles('#ct-file', { name: 'Bericht.pdf', mimeType: 'application/pdf', buffer: bigDoc });
+    const docChip = await a.textContent('#ct-files');
+    ok('A: grosse Datei angenommen (Chip 📎, kein Video)', docChip.indexOf('Bericht.pdf') >= 0 && docChip.indexOf('🎬') < 0, docChip);
+    await a.fill('#ct-input', 'Grosse Datei');
+    await a.click('#ct-send');
+    const docSent = await until(() => a.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-file-n')].some(x => x.textContent === 'Bericht.pdf')), 60000);
+    ok(`A: grosse Datei gesendet - saga-file/v2 (${docPuts} PUT, ${docFiles} v1-Uploads)`, docSent && docPuts >= 1 && docFiles === 0, { docPuts, docFiles });
+    await a.unroute('**/api/chat/uploads/*'); await a.unroute('**/api/chats/*/files');
+    const docBtn = await until(() => b.evaluate(() => {
+      const x = [...document.querySelectorAll('#ct-msgs .ct-file')].find(e => e.querySelector('.ct-file-n') && e.querySelector('.ct-file-n').textContent === 'Bericht.pdf');
+      return x ? { dis: x.disabled, t: x.textContent } : null;
+    }), 30000);
+    ok('B: grosse Datei als Anhang mit Namen (nicht gesperrt)', docBtn && !docBtn.dis && !/neueren Saga/.test(docBtn.t), docBtn);
+    const [dl2] = await Promise.all([b.waitForEvent('download', { timeout: 60000 }),
+      b.locator('#ct-msgs .ct-file', { hasText: 'Bericht.pdf' }).last().click()]);
+    const out2 = path.join(os.tmpdir(), 'saga-doc-dl-' + Date.now());
+    await dl2.saveAs(out2);
+    const got2 = fs.readFileSync(out2); fs.unlinkSync(out2);
+    ok('B: grosse Datei gespeichert = Original (Strom ueber den Service Worker, gleiche Bytes, Dateiname)',
+      got2.length === bigDoc.length && sha(got2) === sha(bigDoc) && dl2.suggestedFilename() === 'Bericht.pdf', { len: got2.length, want: bigDoc.length, n: dl2.suggestedFilename() });
+
+    // --- 5d. grosses Bild (2.5): v2 mit Vorschaubild (v1), Ansicht im Browser ------------------------------------------
+    const png = Buffer.from(await a.evaluate((min) => new Promise(res => {
+      let w = 1200, cv, g;
+      for (;;) { cv = document.createElement('canvas'); cv.width = w; cv.height = w; g = cv.getContext('2d');
+        const d = g.createImageData(w, w);
+        for (let i = 0; i < d.data.length; i += 65536) crypto.getRandomValues(d.data.subarray(i, Math.min(d.data.length, i + 65536)));
+        for (let i = 3; i < d.data.length; i += 4) d.data[i] = 255;
+        g.putImageData(d, 0, 0); if (w * w * 3 > min * 1.2) break; w += 400; }
+      cv.toBlob(bl => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(bl); }, 'image/png');
+    }), lim.file_max), 'base64');
+    ok(`Testbild groesser als file_max (${(png.length / 1048576).toFixed(1)} MB)`, png.length > lim.file_max, png.length);
+    await a.setInputFiles('#ct-file', { name: 'Gross.png', mimeType: 'image/png', buffer: png });
+    await a.fill('#ct-input', 'Grosses Bild');
+    await a.click('#ct-send');
+    const imgB = await until(() => b.evaluate(() => {
+      const f = [...document.querySelectorAll('#ct-msgs .ct-img:not(.ct-vid)')].pop(); const im = f && f.querySelector('img');
+      return im && im.complete && im.naturalWidth > 0 && im.alt === 'Gross.png' ? im.naturalWidth : null;
+    }), 60000);
+    ok('B: grosses Bild zeigt Vorschaubild (<= 320 px) im Verlauf', imgB && imgB <= 320, imgB);
+    await b.locator('#ct-msgs .ct-img:not(.ct-vid)').last().click();
+    const full = await until(() => b.evaluate(() => { const im = document.querySelector('.ct-view img'); return im && im.complete && im.naturalWidth > 320 ? im.naturalWidth : null; }), 30000);
+    ok('B: Ansicht laedt das Original (saga-file/v2) in voller Groesse', full && full >= 1200, full);
+    const [dl3] = await Promise.all([b.waitForEvent('download', { timeout: 60000 }), b.click('.ct-view-save')]);
+    const out3 = path.join(os.tmpdir(), 'saga-img-dl-' + Date.now());
+    await dl3.saveAs(out3);
+    const got3 = fs.readFileSync(out3); fs.unlinkSync(out3);
+    ok('B: grosses Bild speichern = Original', sha(got3) === sha(png), { len: got3.length, want: png.length });
     await b.keyboard.press('Escape');
 
     // --- 6. Abmelden leert die Schluessel im Service Worker ------------------------------------------------------------

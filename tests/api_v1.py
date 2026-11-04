@@ -343,6 +343,13 @@ try:
             return r.status, data
         st, page = admin("/settings")
         ok("Admin: Einstellungen zeigen API-Abschnitt", st == 200 and 'name="api_enabled"' in page and 'name="api_mcp"' in page, st)
+        # 2.5: Chats - "Groesste Datei im Chat" (Schluessel chat_video_max_mb bleibt) und die Anhang-Grenze nur zur Anzeige
+        am = _re.search(r'id="chat-attach-max".*?<input([^>]*)>', page, _re.S)
+        att = int(os.environ.get("ATTACH_MAX_MB", "10") or 10)
+        ok("Admin: Chats zeigen \"Größte Datei im Chat\" und die Anhang-Grenze (ATTACH_MAX_MB, nur lesbar)",
+           "Größte Datei im Chat (MB)" in page and 'name="chat_video_max_mb"' in page and "Größtes Video" not in page
+           and am and "readonly" in am.group(1) and "name=" not in am.group(1) and f'value="{att}"' in am.group(1)
+           and "ATTACH_MAX_MB" in page, am and am.group(1))
         # alle Felder der Einstellungs-Form (die mit api_enabled) wie ein Browser zusammenstellen
         fm = next(m.group(0) for m in _re.finditer(r'<form[^>]*method="post"[^>]*>.*?</form>', page, _re.S) if 'name="api_enabled"' in m.group(0))
         fields = []

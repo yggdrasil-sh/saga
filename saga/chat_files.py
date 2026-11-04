@@ -139,7 +139,7 @@ async def api_upload_new(cid: int, request: Request):
     if file_v2.cipher_size(file_v2.plain_max_for(size)) != size:
         return _bad(t("ungültige Angabe"))                     # keine moegliche Groesse eines saga-file/v2-Blobs
     if size > _cipher_max():
-        return _bad(t("Video zu groß (höchstens {n} MB).", n=CH.video_max() // 1048576), 413)
+        return _bad(t("Datei zu groß (höchstens {n} MB).", n=CH.video_max() // 1048576), 413)
     if not CH._rate("file", uid, CH.FILE_RATE):
         return _bad(t("zu schnell"), 429)
     now = time.time()
@@ -148,7 +148,7 @@ async def api_upload_new(cid: int, request: Request):
         if err:
             return err
         if CH.is_fed(ch) and size > FILE_MAX + 64 and not CH.FED.big_files_ok(c, ch):
-            return _bad(t("Der Server des Gegenübers kann große Videos noch nicht (höchstens {n} MB).", n=FILE_MAX // 1048576), 409)
+            return _bad(t("Der Server des Gegenübers kann große Dateien noch nicht (höchstens {n} MB).", n=FILE_MAX // 1048576), 409)
         c.execute("SELECT 1 FROM users WHERE username=? FOR UPDATE", (uid,))     # parallele Anlagen je Konto nacheinander
         if c.execute("SELECT COUNT(*) FROM chat_upload WHERE uid=? AND expires>?", (uid, now)).fetchone()[0] >= CH.UPLOADS_PAR:
             return _bad(t("Höchstens {n} Uploads gleichzeitig – bitte warten, bis einer fertig ist.", n=CH.UPLOADS_PAR), 429)

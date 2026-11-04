@@ -225,7 +225,8 @@ def path_upload(k, cid, A, B, Cc):
        and req(k, "POST", f"/api/chats/{cid}/uploads", A, js={"size": 48 + C.F2_CS + 16 + 8, "fmt": 2})[0] == 400)
     ok(f"{k}: fmt 1 -> 400", req(k, "POST", f"/api/chats/{cid}/uploads", A, js={"size": size, "fmt": 1})[0] == 400)
     s, b, _ = req(k, "POST", f"/api/chats/{cid}/uploads", A, js={"size": FV.cipher_size((4 << 20) + 1), "fmt": 2})
-    ok(f"{k}: ueber VIDEO_MAX_MB -> 413 mit Hinweis", s == 413 and "4 MB" in jd(b).get("error", ""))
+    ok(f"{k}: ueber VIDEO_MAX_MB -> 413 mit Hinweis (\"Datei zu groß\")", s == 413 and "4 MB" in jd(b).get("error", "")
+       and jd(b).get("error", "").startswith("Datei zu groß"))
     ok(f"{k}: fremder Chat -> 404", req(k, "POST", f"/api/chats/{cid}/uploads", Cc, js={"size": size, "fmt": 2})[0] == 404)
     ok(f"{k}: ohne Anmeldung -> 401", req(k, "POST", f"/api/chats/{cid}/uploads", None, js={"size": size, "fmt": 2})[0] == 401)
     s, b, _ = req(k, "POST", f"/api/chats/{cid}/uploads", A, js={"size": size, "fmt": 2})
@@ -338,6 +339,26 @@ def path_upload(k, cid, A, B, Cc):
 files_other = {}
 
 
+def bigfile_part(cid, A, B):
+    """2.5: grosse Datei, die kein Video ist (PDF ueber file_max), im Format saga-file/v2 - der Server prueft keinen MIME-Typ."""
+    k = "P"
+    plain = b"%PDF-1.7\n" + os.urandom((2 << 20) - 9)          # 2 MB: ueber file_max (1 MB), unter video_max (4 MB)
+    blob, key = C.encrypt_file_f2(plain)
+    size = len(blob)
+    s, b, _ = req(k, "POST", f"/api/chats/{cid}/uploads", A, js={"size": size, "fmt": 2})
+    upid = jd(b).get("upload", "")
+    ok("P: v2-Upload einer Nicht-Video-Datei (PDF, 2 MB) angelegt", s == 200 and upid)
+    s, b, _ = put_part(k, upid, A, blob, 0, size)
+    d = jd(b)
+    ok("P: ... in einem Teil fertig -> Anhang fmt 2", s == 200 and d.get("done") is True and d.get("fmt") == 2 and d.get("id") == upid)
+    attach(cid, upid)
+    s, body, _ = req(k, "GET", f"/api/chat/files/{upid}", B)
+    ok("P: Empfaenger holt den ganzen Blob (200, gleiche Bytes)", s == 200 and body == blob)
+    ok("P: ... vollstaendig entschluesselt (%PDF, gleicher Klartext)", s == 200 and C.decrypt_file_f2(body, key) == plain)
+    s, b, _ = req(k, "GET", "/api/chat/me", A)
+    ok("P: limits: file_max 1 MB, video_max 4 MB gilt auch fuer Dateien", (jd(b).get("limits") or {}).get("video_max") == 4 << 20)
+
+
 def limits_part(cid, A):
     """Kontingent (laufende Uploads zaehlen), hoechstens 2 gleichzeitig, Admin-Werte, Verfall (purge)."""
     k = "P"
@@ -425,6 +446,7 @@ def main():
         ok("M: keine erfolgreichen Upload-Teile durch Python", n_py == 0)
     else:
         print("HINWEIS: saga-media fehlt - Teil M uebersprungen", flush=True)
+    bigfile_part(cid, A, B)
     limits_part(cid, A)
     # Kontoloeschung: laufende Uploads des Kontos weg
     s, b, _ = req("P", "POST", f"/api/chats/{cid}/uploads", ck("vd-b"), js={"size": FV.cipher_size(1000), "fmt": 2})

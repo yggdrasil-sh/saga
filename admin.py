@@ -766,7 +766,8 @@ def settings_page(request: Request):
     if not me:
         return _go("/login")
     return _page(request, "settings.html", me, st=auth.settings(fresh=True), langs=i18n.NAMES, published=publish.all_published(),
-                 live_n=live.count(), chat_quota_default=chat.QUOTA_MB_DEFAULT, chat_video_default=chat.VIDEO_MAX_MB_DEFAULT)
+                 live_n=live.count(), chat_quota_default=chat.QUOTA_MB_DEFAULT, chat_video_default=chat.VIDEO_MAX_MB_DEFAULT,
+                 chat_attach_mb=chat.FILE_MAX // 1048576)
 
 
 @admin.post("/settings")

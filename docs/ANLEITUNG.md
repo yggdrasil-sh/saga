@@ -1059,8 +1059,14 @@ speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
 Nachrichten und Anhänge löscht der Server stündlich, auch wenn ein Chat eine längere Frist hat. Beim Benutzer stehen nur
 Anzahlen (Chats, Geräte). Konto löschen entfernt Schlüssel, Geräte, Mitgliedschaften, gesendete Nachrichten und Anhänge;
 Direkt-Chats mit dem Konto verschwinden ganz. Grenzen: 64 KB je Nachricht, 60 Nachrichten je Minute, 10 Geräte je Konto,
-50 Mitglieder je Chat, **Speicher für Chat-Anhänge je Konto** (Standard 4096 MB, `CHAT_QUOTA_MB`) und **Größtes Video
+50 Mitglieder je Chat, **Speicher für Chat-Anhänge je Konto** (Standard 4096 MB, `CHAT_QUOTA_MB`) und **Größte Datei
 im Chat** (Standard 500 MB, `VIDEO_MAX_MB`) – beides im Admin unter „Chats“ änderbar. Kein zusätzlicher Port.
+
+**Anhanggrößen:** Zwei Grenzen wirken zusammen. Bis `ATTACH_MAX_MB` (Standard 10 MB, nur per Umgebungsvariable, wirkt
+nach einem Neustart; der Admin zeigt den aktuellen Wert unter „Chats“ nur an) gehen Anhänge im alten Format, das alle
+Apps können – in Chats mit anderen Saga-Servern höchstens 10 MB. Größere Dateien und Videos gehen bis **Größte Datei im
+Chat** im Blockformat `saga-file/v2` (Videos ab 2.4, andere Dateien ab 2.5) mit fortsetzbarem Upload und werden beim
+Empfänger als Strom gespeichert. `ATTACH_MAX_MB` hoch zu setzen ist dafür nicht nötig.
 
 **Moderne Chats (Stufe 3, ab 2.5 Standard an):** Admin → Allgemein → „Chats“ → **Moderne Chats (Stufe 3) – Standard an**.
 Damit gibt es in allen Chats Reaktionen, Bearbeiten, Sprachnachrichten und Systemzeilen; Chats laufen über Handles
@@ -2137,7 +2143,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Größe je Datei / Speicher je Benutzer |
 | `AVATAR_MAX_MB` | `5` | Größte Datei beim Hochladen eines Profilbilds |
 | `CHAT_QUOTA_MB` | `4096` | Speicher für Chat-Anhänge je Benutzer (verschlüsselt, unter `STATE_DIR/chat`; laufende Uploads zählen mit). Im Admin änderbar |
-| `VIDEO_MAX_MB` | `500` | Größtes Video im Chat (Format `saga-file/v2`, fortsetzbarer Upload). Im Admin änderbar |
+| `VIDEO_MAX_MB` | `500` | Größte Datei im Chat – Videos und große Dateien (Format `saga-file/v2`, fortsetzbarer Upload). Im Admin änderbar |
 | `SAGA_MEDIA` | `on` | `off` = Container ohne saga-media starten (Saga direkt auf Port 8080, wie bis 2.3; Abschnitt 3 „Medienpfad“) |
 | `MEDIA_INTERNAL_PORT` | `8079` | Mit saga-media: interner Port von Saga (nur `127.0.0.1`) |
 | `MEDIA_AUTHZ_TTL` | `60` | saga-media: so viele Sekunden höchstens gilt eine Leseerlaubnis für einen Anhang (0–60) |

@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Chat: große Dateien im Blockformat, Größen im Admin verständlich
+- Nicht nur Videos: jede Datei über der Anhang-Grenze geht im Blockformat `saga-file/v2` bis „Größte Datei im Chat“
+  (früher „Größtes Video im Chat“, gleicher Schlüssel `chat_video_max_mb`). Web: Upload fortsetzbar wie bei Videos,
+  Speichern als Strom, große Bilder mit Vorschaubild. In Chats mit anderen Saga-Servern altes Format höchstens 10 MB.
+- Admin → Einstellungen → Chats zeigt die aktuelle Anhang-Grenze (`ATTACH_MAX_MB`, nur lesbar). Meldungen sprechen von
+  „Datei“ statt „Video“.
+
 ### MCP-Server: Token auch über `X-API-Key`
 - Eigene Connectoren in Claude (claude.ai, Desktop, Handy) ohne OAuth erlauben nur freigegebene Header-Namen;
   ein selbst gesetzter `Authorization`-Kopf kam nicht an – die Verbindung scheiterte mit 401. Saga nimmt das API-Token jetzt
