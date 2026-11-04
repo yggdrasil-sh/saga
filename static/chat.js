@@ -1490,6 +1490,23 @@
     if (!t && (m.body.files || []).length) t = '📎 ' + m.body.files.map(function (f) { return f.n; }).join(', ');
     return t.length > 90 ? t.slice(0, 90) + '…' : t;
   }
+  // 2.5 (medien1): Zitat/Antwortleiste bei Anhang ohne Text: kleines Vorschaubild + "Foto"/"Video"/Dateiname
+  function quoteMedia(c, m) {
+    if (!c || !m || m.error || !m.body || String(m.body.text || '').trim() || m.body.preview) return null;
+    var fs = (Array.isArray(m.body.files) ? m.body.files : []).filter(Boolean);
+    if (!fs.length || fs[0].voice) return null;        // Sprachnachricht: bleibt bei "🎤 0:12" (preview)
+    var f = fs[0], vid = !!(VID && VID.isVideo(f)), img = !vid && IMG.test(f.m || '');
+    var label = img ? T('Foto') : vid ? T('Video') : '📎 ' + String(f.n || T('Datei')).slice(0, 90);
+    if (fs.length > 1) label += ' ' + T('(+{n} weitere)', { n: fs.length - 1 });
+    var thumb = null;
+    if ((img && (f.x !== 2 || (f.th && f.th.id && f.th.k))) || (vid && f.th && f.th.id && f.th.k)) {
+      thumb = el('img', 'ct-q-th'); thumb.alt = ''; thumb.decoding = 'async';
+      var cid = fileCid(c, m), u = memGet('t:' + f.id);
+      if (u) thumb.src = u;
+      else thumbUrl(cid, f).then(function (x) { thumb.src = x; }, function () { thumb.remove(); });
+    }
+    return { label: label, thumb: thumb };
+  }
   function drawMsgs(scroll) {
     var box = $('ct-msgs'), c = S.cur, atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
     var prevH = box.scrollHeight, prevTop = box.scrollTop;
@@ -1535,7 +1552,9 @@
       }
       if (m.reply_to) {
         var o = S.byId[m.reply_to], qd = el('button', 'ct-quote'); qd.type = 'button';
-        qd.appendChild(el('b', null, o && o._ai === 'ok' ? aiP().name : o && o.sender ? o.sender.name : '…')); qd.appendChild(el('span', null, preview(o)));
+        var qm = quoteMedia(c, o), qt = qd;
+        if (qm) { qd.classList.add('ct-q-media'); if (qm.thumb) qd.appendChild(qm.thumb); qt = el('span', 'ct-q-t'); qd.appendChild(qt); }
+        qt.appendChild(el('b', null, o && o._ai === 'ok' ? aiP().name : o && o.sender ? o.sender.name : '…')); qt.appendChild(el('span', null, qm ? qm.label : preview(o)));
         qd.addEventListener('click', function () { var t = box.querySelector('.ct-msg[data-id="' + m.reply_to + '"]'); if (t) { t.scrollIntoView({ block: 'center' }); t.classList.add('flash'); setTimeout(function () { t.classList.remove('flash'); }, 1200); } });
         b.appendChild(qd);
       }
@@ -1662,6 +1681,7 @@
       if (m.body) menu.appendChild(HK.menuItem(T('Antworten'), function () { HK.closeMenu(); S.reply = m; drawReply(); $('ct-input').focus(); }, { icon: '↩' }));
       if (canEdit(S.cur, m)) menu.appendChild(HK.menuItem(T('Bearbeiten'), function () { HK.closeMenu(); editStart(m); }, { icon: '✎' }));
       if (selectable(m)) menu.appendChild(HK.menuItem(T('Auswählen'), function () { HK.closeMenu(); selStart(m); }, { icon: '☑' }));     // 2.5
+      if (selectable(m)) menu.appendChild(HK.menuItem(T('Weiterleiten'), function () { HK.closeMenu(); fwdPick([m]); }, { icon: '↪' }));     // 2.5 (medien1)
       if (m.body && m.body.text) menu.appendChild(HK.menuItem(T('Text kopieren'), function () {
         HK.closeMenu(); if (navigator.clipboard) navigator.clipboard.writeText(m.body.text).then(function () { HK.toast(T('Kopiert.')); });
       }, { icon: '⧉' }));
@@ -1875,8 +1895,9 @@
     var f = bar.querySelector('button'); if (f) f.focus();
   }
   // Weiterleiten: Texte im Ziel neu verschluesselt (normaler Sendeweg), Bilder/Dateien hier entschluesselt und neu hochgeladen
-  function selForward() {
-    var list = selList(); if (!list.length) return;
+  function selForward() { fwdPick(selList()); }
+  function fwdPick(list) {                               // Mehrfachauswahl oder (2.5 medien1) eine Nachricht aus ihrem Menue
+    if (!list.length) return;
     if (list.length > SEL_FWD_MAX) { HK.toast(T('Höchstens {n} Nachrichten auf einmal weiterleiten.', { n: SEL_FWD_MAX })); return; }
     var body = overlay(T('Weiterleiten an …'));
     var inp = el('input', 'hk-in ct-fwd-q'); inp.type = 'search'; inp.placeholder = T('Chat suchen'); inp.setAttribute('aria-label', T('Chat suchen'));
@@ -1915,20 +1936,49 @@
       }, function (e) { HK.toast(T('Weiterleiten abgebrochen ({n} gesendet): {err}', { n: n, err: e.message }), null, null, 7000); });
     });
   }
+  // 2.5 (medien1): grosse Dateien (saga-file/v2) bis BIG_VIEW_MAX hier ganz entschluesseln und im Ziel neu hochladen
+  // (uploadFiles waehlt v1/v2 nach Groesse); Sprachnachrichten nur in Chats, die sie koennen (wie das Mikrofon), als v2
+  // mit Dauer und Wellenform. Was nicht geht, bleibt ein Hinweis "[Anhang nicht weitergeleitet]".
+  function fwdVoiceOk(target, f) {
+    var l = x3lim();
+    return !!(VOICE && VID && x3(target) && hasFeat('voice') && f.x === 2 && !(l.voice_max_bytes && f.s > l.voice_max_bytes));
+  }
+  function fwdBigOk(target, f) {
+    if (!VID || f.x !== 2 || !(f.s > 0) || f.s > BIG_VIEW_MAX) return false;
+    var v1 = v1Max(target);
+    return f.s <= v1 || !bigCheck(target, { size: f.s, name: String(f.n || '') }, v1);
+  }
   function fwdOne(src, target, m) {
-    var skipped = 0;
+    var skipped = 0, voices = [];
     var files = (Array.isArray(m.body.files) ? m.body.files : []).slice(0, 10).filter(function (f) {
-      if (!f || f.voice || (f.x && f.x !== 1)) { skipped++; return false; }   // Sprachnachrichten, grosse Videos/Dateien (saga-file/v2): nur Hinweis
+      if (!f) { skipped++; return false; }
+      if (f.voice) { if (fwdVoiceOk(target, f)) voices.push(f); else skipped++; return false; }
+      if (f.x === 2 ? !fwdBigOk(target, f) : (f.x && f.x !== 1)) { skipped++; return false; }
       return true;
     });
+    function plain(f) {
+      if (f.x === 2) return VID.plain(f);
+      return getBlob(f).then(function (buf) { return run('dec', { cid: fileCid(src, m), blob: buf, key: f.k }, [buf]); }).then(function (r) { return r.plain; });
+    }
+    var vup = voices.map(function (f) {
+      return VID.plain(f).then(function (p) {
+        return VID.upload(target.id, new Blob([p], { type: f.m || 'audio/ogg' }));
+      }).then(function (u) {
+        var e = { id: u.id, k: u.key, n: String(f.n || 'voice.ogg').slice(0, 200), m: f.m || 'audio/ogg; codecs=opus', s: u.size, x: 2, cs: u.cs, voice: true };
+        if (f.dur) e.dur = f.dur;
+        if (f.wf) e.wf = f.wf;
+        return e;
+      }).catch(function () { skipped++; return null; });
+    });
     return Promise.all(files.map(function (f) {
-      return getBlob(f).then(function (buf) { return run('dec', { cid: fileCid(src, m), blob: buf, key: f.k }, [buf]); }).then(function (r) {
-        return new File([r.plain], String(f.n || T('Datei')).slice(0, 200), { type: f.m || 'application/octet-stream' });
+      return plain(f).then(function (p) {
+        return new File([p], String(f.n || T('Datei')).slice(0, 200), { type: f.m || 'application/octet-stream' });
       }).catch(function () { skipped++; return null; });
     })).then(function (got) {
       got = got.filter(Boolean);
-      return got.length ? uploadFiles(target.id, got, target) : [];
-    }).then(function (up) {
+      return Promise.all([got.length ? uploadFiles(target.id, got, target) : [], Promise.all(vup)]);
+    }).then(function (r) {
+      var up = r[0].concat(r[1].filter(Boolean));
       var text = String(m.body.text || '');
       if (skipped) text = (text ? text + '\n' : '') + T('[Anhang nicht weitergeleitet]');
       var body = { v: 1, type: 'text', text: text };
@@ -2102,8 +2152,10 @@
       return;
     }
     if (!S.reply) return;
+    var qm = quoteMedia(S.cur, S.reply);
+    if (qm && qm.thumb) r.appendChild(qm.thumb);
     var t = el('div', 'ct-reply-t'); t.appendChild(el('b', null, T('Antwort an {name}', { name: S.reply.sender ? S.reply.sender.name : '' })));
-    t.appendChild(el('span', null, preview(S.reply))); r.appendChild(t);
+    t.appendChild(el('span', null, qm ? qm.label : preview(S.reply))); r.appendChild(t);
     var x = el('button', 'icon-btn', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Antwort abbrechen'));
     x.addEventListener('click', function () { S.reply = null; drawReply(); }); r.appendChild(x);
   }
@@ -2672,12 +2724,8 @@
       if (e && e.name !== 'AbortError') HK.toast(T('Anhang nicht geladen: {err}', { err: e.message }));
     }).then(function () { pr.remove(); b.disabled = false; });
   }
-  // 2.5: Klartext einer grossen Datei als Blob-URL (nur Bilder bis BIG_VIEW_MAX, sonst Speichern)
+  // 2.5: grosse Datei (saga-file/v2) nur bis BIG_VIEW_MAX ganz im Speicher (Bildansicht, Weiterleiten), sonst Speichern
   var BIG_VIEW_MAX = 100 * 1048576;
-  function bigPlainUrl(f) {
-    if (f.s > BIG_VIEW_MAX) return Promise.reject(new Error(T('Zu groß für die Vorschau – bitte speichern.')));
-    return VID.plain(f).then(function (p) { return URL.createObjectURL(new Blob([p], { type: IMG.test(f.m) ? f.m : 'application/octet-stream' })); });
-  }
   // Video (2.4): nur Poster (lazy wie Bilder, f.th), Dauer, Abspielen erst im Player. Nie ein <video> in der Liste.
   function videoEl(cid, f, name) {
     var fig = el('button', 'ct-img ct-vid'); fig.type = 'button'; fig.setAttribute('aria-label', T('Video abspielen: {name}', { name: name }));
@@ -2720,23 +2768,194 @@
     });
   }
 
-  // Original in groß (erst hier geladen); Speichern ueber den Knopf
-  var viewUrl = null;
-  function viewImage(cid, f, name) {
-    if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = null; }
-    var body = overlay(name, { wide: true }), wrap = el('div', 'ct-view'), st = el('p', 'hk-status', T('Lädt …'));
-    st.setAttribute('role', 'status'); wrap.appendChild(st); body.appendChild(wrap);
-    var bar = el('div', 'hk-actions'), sv = btn(T('Speichern'), 'ct-view-save'); sv.disabled = true; bar.appendChild(sv); body.appendChild(bar);
-    var t = memGet('t:' + f.id), im = el('img'); im.alt = name;
-    if (t) { im.src = t; wrap.appendChild(im); }
-    if (f.x === 2) {                                      // 2.5: grosses Bild (saga-file/v2): Speichern immer als Strom
-      sv.disabled = false; sv.addEventListener('click', function () { saveBig(f, sv); });
+  // Original in groß (erst hier geladen). 2.5 (medien1): Zoom (Rad, Spreizen, Doppelklick/-tippen, Ziehen verschiebt),
+  // vor/zurueck durch alle Bilder des Chats (Pfeiltasten, Knoepfe, Wischen), "n / m", Herunterladen, Teilen, Bild kopieren
+  var viewUrl = null, VZ_MAX = 8;
+  function viewable(f) { return !!f && IMG.test(f.m) && !(f.x === 2 && !(VID && f.th && f.th.id && f.th.k)); }   // wie fileEl
+  function galList(cid, f, name) {                      // alle Bilder des offenen Chats (aelteste zuerst); sonst nur dieses
+    var out = [], at = -1, c = S.cur;
+    if (c) S.msgs.forEach(function (m) {
+      if (m.kind !== 'msg' || m.error || !m.body || !Array.isArray(m.body.files)) return;
+      var mc = fileCid(c, m);
+      m.body.files.slice(0, 10).forEach(function (x) {
+        if (!viewable(x)) return;
+        if (x.id === f.id && at < 0) at = out.length;
+        out.push({ cid: mc, f: x, name: String(x.n || T('Datei')).slice(0, 200) });
+      });
+    });
+    if (at < 0) { out = [{ cid: cid, f: f, name: name }]; at = 0; }
+    return { list: out, at: at };
+  }
+  function plainBlob(cid, f) {                          // Klartext eines Bildes als Blob (v1 ganz, v2 bis BIG_VIEW_MAX)
+    if (f.x === 2) {
+      if (f.s > BIG_VIEW_MAX) return Promise.reject(new Error(T('Zu groß für die Vorschau – bitte speichern.')));
+      return VID.plain(f).then(function (p) { return new Blob([p], { type: f.m }); });
     }
-    (f.x === 2 ? bigPlainUrl(f) : plainUrl(cid, f)).then(function (url) {
-      if (!body.isConnected) { URL.revokeObjectURL(url); return; }
-      viewUrl = url; im.src = url; if (!im.parentNode) wrap.appendChild(im); st.remove();
-      if (f.x !== 2) { sv.disabled = false; sv.addEventListener('click', function () { save(url, name); }); }
-    }, function (e) { st.textContent = T('Anhang nicht geladen: {err}', { err: e.message }); });
+    return getBlob(f).then(function (buf) { return run('dec', { cid: cid, blob: buf, key: f.k }, [buf]); })
+      .then(function (r) { return new Blob([r.plain], { type: f.m }); });
+  }
+  function pngBlob(b) {                                 // Zwischenablage kann verlaesslich nur image/png
+    if (b.type === 'image/png') return Promise.resolve(b);
+    return createImageBitmap(b).then(function (bm) {
+      var cv = document.createElement('canvas'); cv.width = bm.width; cv.height = bm.height;
+      cv.getContext('2d').drawImage(bm, 0, 0);
+      return new Promise(function (res, rej) { cv.toBlob(function (o) { if (o) res(o); else rej(new Error('png')); }, 'image/png'); });
+    });
+  }
+  var canCopyImg = !!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem);
+  var canShareFile = (function () {
+    try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [new File([new Uint8Array(1)], 'x.png', { type: 'image/png' })] })); }
+    catch (e) { return false; }
+  })();
+  function viewImage(cid, f, name) {
+    var g = galList(cid, f, name), cur = null, tok = 0, blob = null;
+    var body = overlay(name, { wide: true }), dlg = body.parentNode, h2 = dlg.querySelector('.hk-dlg-head h2');
+    dlg.classList.add('ct-gal-dlg');
+    var wrap = el('div', 'ct-view ct-gal'), st = el('p', 'hk-status ct-gal-st'), im = el('img');
+    st.setAttribute('role', 'status'); im.draggable = false;
+    wrap.tabIndex = -1; wrap.appendChild(im); wrap.appendChild(st); body.appendChild(wrap);
+    function navBtn(cls, ic, label, d) {
+      var b = el('button', 'icon-btn ct-gal-nav ' + cls, ic); b.type = 'button'; b.setAttribute('aria-label', label); b.title = label;
+      b.addEventListener('click', function (e) { e.stopPropagation(); go(d); });
+      b.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+      wrap.appendChild(b); return b;
+    }
+    var pv = navBtn('ct-gal-prev', '‹', T('Vorheriges Bild'), -1), nx = navBtn('ct-gal-next', '›', T('Nächstes Bild'), 1);
+    var bar = el('div', 'hk-actions ct-gal-bar'), cnt = el('span', 'hk-hint ct-gal-n'); cnt.setAttribute('aria-live', 'polite');
+    var sv = btn(T('Herunterladen'), 'ct-view-save'), sh = btn(T('Teilen'), 'ct-gal-share'), cp = btn(T('Bild kopieren'), 'ct-gal-copy');
+    sh.hidden = !canShareFile; cp.hidden = !canCopyImg;
+    bar.appendChild(cnt); bar.appendChild(sh); bar.appendChild(cp); bar.appendChild(sv); body.appendChild(bar);
+
+    // --- Zoom/Verschieben: transform translate(x,y) scale(s), Ursprung Bildmitte -----------------------------------
+    var z = { s: 1, x: 0, y: 0 };
+    function clampZ() {
+      if (z.s <= 1.001) { z.s = 1; z.x = 0; z.y = 0; return; }
+      var w = im.offsetWidth * z.s, h = im.offsetHeight * z.s, W = wrap.clientWidth, H = wrap.clientHeight;
+      var mx = Math.max(0, (w - W) / 2), my = Math.max(0, (h - H) / 2);
+      z.x = Math.max(-mx, Math.min(mx, z.x)); z.y = Math.max(-my, Math.min(my, z.y));
+    }
+    function applyZ() {
+      clampZ();
+      im.style.transform = z.s === 1 ? '' : 'translate(' + z.x.toFixed(1) + 'px,' + z.y.toFixed(1) + 'px) scale(' + z.s.toFixed(3) + ')';
+      wrap.classList.toggle('ct-gal-zoomed', z.s > 1);
+    }
+    function zoomAt(s, cx, cy) {                        // cx/cy: Bildschirmpunkt, der beim Zoomen stehen bleibt
+      var r = wrap.getBoundingClientRect(), px = cx - (r.left + r.width / 2), py = cy - (r.top + r.height / 2);
+      s = Math.max(1, Math.min(VZ_MAX, s));
+      z.x = px - (px - z.x) * s / z.s; z.y = py - (py - z.y) * s / z.s; z.s = s;
+      applyZ();
+    }
+    function zoomCenter(s) { var r = wrap.getBoundingClientRect(); zoomAt(s, r.left + r.width / 2, r.top + r.height / 2); }
+    function resetZ() { z.s = 1; z.x = 0; z.y = 0; applyZ(); }
+    wrap.addEventListener('wheel', function (e) {
+      if (!im.src) return;
+      e.preventDefault();
+      var d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      zoomAt(z.s * Math.exp(-d * 0.0015), e.clientX, e.clientY);
+    }, { passive: false });
+    var pts = {}, pinch = null, drag = null, tap = null;
+    function npts() { return Object.keys(pts).length; }
+    function dist() { var k = Object.keys(pts), a = pts[k[0]], b = pts[k[1]]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; }
+    function mid() { var k = Object.keys(pts), a = pts[k[0]], b = pts[k[1]]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+    wrap.addEventListener('pointerdown', function (e) {
+      if (e.button !== undefined && e.button !== 0 && e.pointerType === 'mouse') return;
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+      try { wrap.setPointerCapture(e.pointerId); } catch (er) { /* egal */ }
+      if (npts() === 2) { drag = null; pinch = { d: dist(), s: z.s }; }
+      else if (npts() === 1) drag = { x0: e.clientX, y0: e.clientY, zx: z.x, zy: z.y, t: Date.now(), moved: false };
+    });
+    wrap.addEventListener('pointermove', function (e) {
+      if (!pts[e.pointerId]) return;
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (pinch && npts() >= 2) { var m = mid(); zoomAt(pinch.s * dist() / pinch.d, m.x, m.y); return; }
+      if (!drag) return;
+      var dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+      if (Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
+      if (z.s > 1) { z.x = drag.zx + dx; z.y = drag.zy + dy; applyZ(); }
+    });
+    function up(e) {
+      if (!pts[e.pointerId]) return;
+      delete pts[e.pointerId];
+      if (pinch) { if (npts() < 2) pinch = null; drag = null; return; }
+      var d = drag; drag = null;
+      if (!d || e.type === 'pointercancel') return;
+      var dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+      if (z.s === 1 && d.moved && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) { tap = null; go(dx < 0 ? 1 : -1); return; }   // Wischen
+      if (d.moved || Date.now() - d.t > 400 || e.target.closest('.ct-gal-nav')) { tap = null; return; }
+      var now = Date.now();                            // Doppelklick / Doppeltippen: 1x <-> 2,5x an dieser Stelle
+      if (tap && now - tap.t < 320 && Math.abs(tap.x - e.clientX) < 30 && Math.abs(tap.y - e.clientY) < 30) {
+        tap = null;
+        if (z.s > 1) resetZ(); else zoomAt(2.5, e.clientX, e.clientY);
+      } else tap = { t: now, x: e.clientX, y: e.clientY };
+    }
+    wrap.addEventListener('pointerup', up); wrap.addEventListener('pointercancel', up);
+    function onKey(e) {
+      if (!body.isConnected || e.defaultPrevented || HK.menuOpen() || document.querySelector('.hk-ask')) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      var k = e.key;
+      if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); go(k === 'ArrowLeft' ? -1 : 1); }
+      else if (k === '+' || k === '=') { e.preventDefault(); zoomCenter(z.s * 1.5); }
+      else if (k === '-') { e.preventDefault(); zoomCenter(z.s / 1.5); }
+      else if (k === '0') { e.preventDefault(); resetZ(); }
+    }
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', applyZ);
+    ovClean = function () {
+      document.removeEventListener('keydown', onKey); window.removeEventListener('resize', applyZ);
+      tok++; if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = null; }
+    };
+
+    // --- Anzeigen / Blaettern ----------------------------------------------------------------------------------
+    function show(i) {
+      var it = g.list[i]; if (!it) return;
+      g.at = i; cur = it; blob = null; var my = ++tok;
+      if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = null; }
+      resetZ();
+      h2.textContent = it.name; ov.setAttribute('aria-label', it.name); im.alt = it.name;
+      var n = g.list.length;
+      cnt.textContent = n > 1 ? (i + 1) + ' / ' + n : ''; cnt.title = n > 1 ? T('Bild {n} von {m}', { n: i + 1, m: n }) : '';
+      pv.hidden = nx.hidden = n < 2; pv.disabled = i === 0; nx.disabled = i === n - 1;
+      sv.disabled = it.f.x !== 2; sh.disabled = cp.disabled = true;
+      st.textContent = T('Lädt …'); st.hidden = false;
+      var t = memGet('t:' + it.f.id);
+      if (t) im.src = t; else im.removeAttribute('src');
+      plainBlob(it.cid, it.f).then(function (b) {
+        if (my !== tok || !body.isConnected) return;
+        blob = b; viewUrl = URL.createObjectURL(b); im.src = viewUrl; st.hidden = true;
+        sv.disabled = false; sh.disabled = cp.disabled = false;
+      }, function (e) {
+        if (my !== tok || !body.isConnected) return;
+        st.textContent = T('Anhang nicht geladen: {err}', { err: e.message });
+      });
+    }
+    function go(d) {
+      var i = g.at + d;
+      if (i < 0 || i >= g.list.length || i === g.at) return;
+      show(i);
+    }
+    sv.addEventListener('click', function () {
+      if (!cur) return;
+      if (cur.f.x === 2) return saveBig(cur.f, sv);       // 2.5: grosses Bild (saga-file/v2): Speichern immer als Strom
+      if (viewUrl) save(viewUrl, cur.name);
+    });
+    sh.addEventListener('click', function () {          // ohne await davor: Teilen braucht die Nutzergeste
+      if (!blob || !cur) return;
+      var file = new File([blob], cur.name, { type: blob.type || cur.f.m });
+      navigator.share({ files: [file], title: cur.name }).catch(function (e) {
+        if (e && e.name !== 'AbortError') HK.toast(T('Teilen nicht möglich: {err}', { err: e.message }));
+      });
+    });
+    cp.addEventListener('click', function () {
+      if (!blob) return;
+      var p = pngBlob(blob), done = function () { HK.toast(T('Bild kopiert.')); }, fail = function () { HK.toast(T('Kopieren nicht möglich.')); };
+      var w;
+      try { w = navigator.clipboard.write([new window.ClipboardItem({ 'image/png': p })]); }   // Promise im Item: Safari braucht die Geste
+      catch (e) { w = p.then(function (b) { return navigator.clipboard.write([new window.ClipboardItem({ 'image/png': b })]); }); }
+      w.then(done, fail);
+    });
+    show(g.at);
+    wrap.focus({ preventScroll: true });
   }
   function save(url, name) { var a = el('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
   function size(n) { n = +n || 0; return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? Math.round(n / 1024) + ' KB' : n + ' B'; }
