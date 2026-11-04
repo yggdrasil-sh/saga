@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Chat (Web): Bildansicht mit Zoom und Blättern, Zitat mit Vorschaubild, Weiterleiten im Nachrichtenmenü
+- Bildansicht: Mausrad und Spreizen zoomen (bis 8-fach), Ziehen verschiebt, Doppelklick 2,5-fach/zurück; Pfeiltasten,
+  Knöpfe und Wischen blättern durch alle Bilder des Chats („n / m“). Werkzeugleiste: Herunterladen, Teilen (wo der
+  Browser Dateien teilen kann), Bild kopieren.
+- Antwort auf eine Nachricht ohne Text zeigt im Zitat und in der Antwortleiste ein Vorschaubild und „Foto“, „Video“
+  oder den Dateinamen.
+- „Weiterleiten“ im Menü einer einzelnen Nachricht (derselbe Ablauf wie in der Mehrfachauswahl). Weitergeleitet werden
+  jetzt auch große Dateien im Blockformat (bis 100 MB) und Sprachnachrichten, wenn der Ziel-Chat sie annimmt.
+
 ### Chat: große Dateien im Blockformat, Größen im Admin verständlich
 - Nicht nur Videos: jede Datei über der Anhang-Grenze geht im Blockformat `saga-file/v2` bis „Größte Datei im Chat“
   (früher „Größtes Video im Chat“, gleicher Schlüssel `chat_video_max_mb`). Web: Upload fortsetzbar wie bei Videos,
