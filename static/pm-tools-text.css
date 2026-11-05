@@ -30,4 +30,4 @@
 .page-body .pm-code-pre code{font:inherit;background:none;padding:0;color:inherit;display:block;outline:none;min-height:1.5em}
 .page-body .pm-doc[contenteditable="false"] .hk-code-views .hk-code-vb{cursor:pointer}
 /* Mathe-Block */
-.page-body .pm-b-math.ProseMirror-selectednode{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent)}
+.page-body .ProseMirror-focused .pm-b-math.ProseMirror-selectednode{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent)}

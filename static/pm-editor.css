@@ -38,7 +38,11 @@
 /* Trennlinie */
 .page-body .pm-b-delimiter{padding:.6rem 0}
 .page-body .pm-b-delimiter hr{border:0;border-top:1px solid var(--border);margin:0}
-.page-body .ProseMirror-selectednode{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:1px}
+/* Markierter Block (Klick auf Bild, Kalender, Tabelle ...): wie Notion nur leicht eingefaerbt und nur, solange im Editor
+   gearbeitet wird - kein dauerhafter goldener Rahmen, wenn der Editor die Auswahl nach dem Laden auf einem Block hat */
+.page-body .ProseMirror-selectednode{outline:none}
+.page-body .ProseMirror-focused .ProseMirror-selectednode{outline:none;border-radius:6px;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
 /* Listen: Zaehler/Marken per CSS (Startwert ueber CSSOM counter-reset) */
 .page-body .pm-list{margin:0;padding:0 0 0 1.6rem;list-style:none;counter-reset:pmli}
 .page-body .pm-li{position:relative;counter-increment:pmli}
@@ -160,8 +164,8 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
 .page-body .pm-img-cap .is-empty[data-ph]::before{left:50%;transform:translateX(-50%);white-space:nowrap}
 
 .page-body .pm-img-up{padding:.9rem 1rem;border:1px dashed var(--border);border-radius:8px;text-align:center}
-.page-body .pm-b-image.ProseMirror-selectednode{outline:none}
-.page-body .pm-b-image.ProseMirror-selectednode .image-tool__image{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
+.page-body .pm-b-image.ProseMirror-selectednode{outline:none;box-shadow:none;background:none}
+.page-body .ProseMirror-focused .pm-b-image.ProseMirror-selectednode .image-tool__image{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
 .page-body .hk-tool-attaches{margin:.35rem 0}
 .page-body .pm-att{display:flex;align-items:center;gap:.7rem;padding:.55rem .75rem;border:1px solid var(--border);border-radius:8px;background:var(--card-h)}
 .page-body .pm-att-ic{min-width:2.2rem;height:2.2rem;display:flex;align-items:center;justify-content:center;border-radius:7px;background:var(--fg);color:var(--card);font:700 .62rem ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.02em}
