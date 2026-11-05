@@ -6843,6 +6843,31 @@
     [51, '🌦️', T('Nieselregen')], [61, '🌧️', T('Regen')], [66, '🌧️', T('Gefrierender Regen')], [71, '🌨️', T('Schnee')], [77, '🌨️', T('Schneegriesel')],
     [80, '🌦️', T('Regenschauer')], [85, '🌨️', T('Schneeschauer')], [95, '⛈️', T('Gewitter')]];
   function wmo(code) { var r = ['·', '']; WMO.forEach(function (x) { if (typeof code === 'number' && code >= x[0]) r = [x[1], x[2]]; }); return r; }
+  // Eigene Linien-Symbole statt Emoji (wie die SF-Symbole der Apps): Emoji sehen je System anders aus, Apples Nebel-Emoji
+  // ist z. B. ein graues Quadrat. Sonne/Blitz in der Akzentfarbe, Wolken/Regen/Schnee in der Schriftfarbe.
+  var WX_SVG = {
+    sun: '<circle cx="12" cy="12" r="4.2" class="wx-acc"/><path class="wx-acc" d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
+    part: '<circle cx="8.5" cy="8.5" r="3.2" class="wx-acc"/><path class="wx-acc" d="M8.5 2.2v1.6M2.2 8.5h1.6M4 4l1.1 1.1M13 4l-1.1 1.1"/><path d="M8 19.5h9a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6 1.3A2.9 2.9 0 0 0 8 19.5z"/>',
+    cloud: '<path d="M7 18.5h10.5a4 4 0 0 0 .5-8 5.8 5.8 0 0 0-11.1 1.5A3.3 3.3 0 0 0 7 18.5z"/>',
+    fog: '<path d="M7 13.5h10.5a3.6 3.6 0 0 0 .5-7.1 5.3 5.3 0 0 0-10.1 1.3A3 3 0 0 0 7 13.5z"/><path d="M4 17h16M6 20.5h12"/>',
+    drizzle: '<path d="M7 14.5h10.5a3.8 3.8 0 0 0 .5-7.5 5.5 5.5 0 0 0-10.5 1.4A3.1 3.1 0 0 0 7 14.5z"/><path class="wx-wet" d="M9 17.5v1M13 17.5v1M17 17.5v1"/>',
+    rain: '<path d="M7 13.5h10.5a3.8 3.8 0 0 0 .5-7.5 5.5 5.5 0 0 0-10.5 1.4A3.1 3.1 0 0 0 7 13.5z"/><path class="wx-wet" d="M8.5 16.5l-1 3M12.5 16.5l-1 3M16.5 16.5l-1 3"/>',
+    snow: '<path d="M7 13.5h10.5a3.8 3.8 0 0 0 .5-7.5 5.5 5.5 0 0 0-10.5 1.4A3.1 3.1 0 0 0 7 13.5z"/><path d="M8.5 17.2v2.6M7.2 18.5h2.6M15.5 17.2v2.6M14.2 18.5h2.6"/>',
+    storm: '<path d="M7 13.5h10.5a3.8 3.8 0 0 0 .5-7.5 5.5 5.5 0 0 0-10.5 1.4A3.1 3.1 0 0 0 7 13.5z"/><path class="wx-acc" d="M12.5 14.5l-2 3.5h3l-2 3.5"/>'
+  };
+  function wxKind(code) {
+    if (typeof code !== 'number') return null;
+    if (code >= 95) return 'storm'; if (code >= 85) return 'snow'; if (code >= 80) return 'rain'; if (code >= 71) return 'snow';
+    if (code >= 61) return 'rain'; if (code >= 51) return 'drizzle'; if (code >= 45) return 'fog'; if (code >= 3) return 'cloud';
+    if (code >= 1) return 'part'; return 'sun';
+  }
+  function wxIcon(code, cls) {
+    var k = wxKind(code), w = wmo(code), s = el('span', cls + ' wx-svg');
+    s.setAttribute('role', 'img'); s.setAttribute('aria-label', w[1]);
+    if (!k) { s.textContent = '·'; return s; }
+    s.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + WX_SVG[k] + '</svg>';
+    return s;
+  }
   var fWd = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short' }), fDm = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: 'numeric', month: 'short' });
   function dayOf(s) { var q = String(s).slice(0, 10).split('-'); return new Date(+q[0], +q[1] - 1, +q[2]); }
   WidgetTool.prototype.draw2 = function (body, w) {
@@ -6851,7 +6876,7 @@
     if (!data) { body.appendChild(el('div', 'wg-note', T('Noch keine Werte'))); return; }
     if (d.kind === 'weather') {
       var u = data.units === 'imperial' ? '°F' : '°C', now = data.now || {}, top = el('div', 'wx-now'), ic = wmo(now.code);
-      var sy = el('span', 'wx-ic', ic[0]); sy.setAttribute('role', 'img'); sy.setAttribute('aria-label', ic[1]); top.appendChild(sy);
+      top.appendChild(wxIcon(now.code, 'wx-ic'));
       top.appendChild(el('span', 'wg-v', (typeof now.t === 'number' ? fNum.format(Math.round(now.t)) : '–') + ' ' + u));
       var meta = el('span', 'wg-sub', (data.place ? data.place + ' · ' : '') + ic[1] + (typeof now.wind === 'number' ? ' · ' + T('Wind {v} {u}', { v: fNum.format(Math.round(now.wind)), u: data.units === 'imperial' ? 'mph' : 'km/h' }) : ''));
       top.appendChild(meta); body.appendChild(top);
@@ -6861,7 +6886,7 @@
         days.forEach(function (x) {
           var c = el('div', 'wx-day'), wi = wmo(x.code), dd = dayOf(x.d);
           c.appendChild(el('span', 'wx-wd', fWd.format(dd)));
-          var i2 = el('span', 'wx-ic2', wi[0]); i2.setAttribute('role', 'img'); i2.setAttribute('aria-label', wi[1]); c.appendChild(i2);
+          c.appendChild(wxIcon(x.code, 'wx-ic2'));
           c.appendChild(el('span', 'wx-mm', (typeof x.max === 'number' ? Math.round(x.max) : '–') + '° / ' + (typeof x.min === 'number' ? Math.round(x.min) : '–') + '°'));
           if (typeof x.rain === 'number' && x.rain > 0) c.appendChild(el('span', 'wx-rain', '💧' + x.rain + ' %'));
           row.appendChild(c);
