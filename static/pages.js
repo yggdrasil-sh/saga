@@ -7634,6 +7634,7 @@
   // --- Seitenleiste ein/aus (pro Browser) und volle Breite (pro Seite, Server) ------
   var isMacKey = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   function setSide(show) {
+    peek(false, true);
     document.body.classList.toggle('side-hidden', !show);
     var b = $('pg-side-btn'); b.setAttribute('aria-pressed', show ? 'true' : 'false');
     b.title = (show ? T('Seitenleiste ausblenden') : T('Seitenleiste einblenden')) + (isMacKey ? ' (⌘\\)' : ' (' + T('Strg') + '+\\)');
@@ -7657,10 +7658,39 @@
     if (open && finePointer.matches) { var f = $('pg-search'); if (f) setTimeout(function () { f.focus({ preventScroll: true }); }, 60); }
   }
   var finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+  // Zugeklappt (breite Fenster, Maus): Knopf oder linken Rand ueberfahren -> Seitenleiste schwebt als Karte herein
+  // (wie Notion); verschwindet kurz nachdem die Maus Karte, Knopf und Rand verlassen hat.
+  var peekTimer = 0, peekZone = null;
+  function peekable() { return finePointer.matches && !drawerMode() && document.body.classList.contains('side-hidden'); }
+  function peek(on, now) {
+    clearTimeout(peekTimer);
+    if (!on) {
+      if (now) { document.body.classList.remove('side-peek'); return; }
+      peekTimer = setTimeout(function () { document.body.classList.remove('side-peek'); }, 280);
+      return;
+    }
+    if (!peekable()) return;
+    var h = document.querySelector('.np-head');
+    document.body.style.setProperty('--peek-top', (h ? Math.round(h.getBoundingClientRect().bottom) + 8 : 64) + 'px');
+    document.body.classList.add('side-peek');
+  }
+  function peekWire() {
+    if (peekZone || !document.body.classList.contains('notes-page') || document.body.classList.contains('embed')) return;
+    peekZone = el('div', 'pg-peek-zone'); peekZone.setAttribute('aria-hidden', 'true'); document.body.appendChild(peekZone);
+    [peekZone, $('pg-side-btn'), $('pg-side')].forEach(function (x) {
+      if (!x) return;
+      x.addEventListener('mouseenter', function () { if (peekable()) peek(true); });
+      x.addEventListener('mouseleave', function () { if (document.body.classList.contains('side-peek')) peek(false); });
+    });
+    // Fokus per Tastatur in der schwebenden Leiste: offen lassen, beim Verlassen schliessen
+    $('pg-side').addEventListener('focusin', function () { if (document.body.classList.contains('side-peek')) clearTimeout(peekTimer); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.body.classList.contains('side-peek')) peek(false, true); });
+  }
   narrow.addEventListener('change', function () { drawer(false); });
   if (document.body.classList.contains('notes-page') && !document.body.classList.contains('embed')) {
     setSide(HK.store('hk-pg-side') !== '0');
     if (drawerMode()) drawer(false);
+    peekWire();
     $('pg-side-btn').addEventListener('click', function () {
       if (drawerMode()) drawer(!document.body.classList.contains('side-open'));
       else setSide(document.body.classList.contains('side-hidden'));

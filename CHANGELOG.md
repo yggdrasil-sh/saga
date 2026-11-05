@@ -16,6 +16,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Seiten (Web): Seitenleiste wie Notion
+- Ein-/Ausblenden (Knopf oben links, Strg/⌘+\\) gleitet in 200 ms statt zu springen.
+- Zugeklappt schwebt die Seitenleiste beim Überfahren des Knopfs oder des linken Fensterrands als Karte über der Seite
+  herein (der Inhalt bleibt stehen) und verschwindet wieder, wenn die Maus sie verlässt; Klick auf den Knopf heftet sie an.
+  Nur bei Maus/Trackpad und breiten Fenstern; auf dem Handy bleibt die Schublade. Mit „Bewegung reduzieren“ ohne Animation.
+
 ### Chat (Web): Bildansicht mit Zoom und Blättern, Zitat mit Vorschaubild, Weiterleiten im Nachrichtenmenü
 - Bildansicht: Mausrad und Spreizen zoomen (bis 8-fach), Ziehen verschiebt, Doppelklick 2,5-fach/zurück; Pfeiltasten,
   Knöpfe und Wischen blättern durch alle Bilder des Chats („n / m“). Werkzeugleiste: Herunterladen, Teilen (wo der

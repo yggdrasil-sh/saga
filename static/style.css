@@ -845,6 +845,28 @@ body.notes-page .np-main{max-width:none}
 .np-side-btn{margin-left:-.4rem}
 body.side-hidden .pages{grid-template-columns:minmax(0,1fr)}
 body.side-hidden .pages-side{display:none}
+/* Breite Fenster: Seitenleiste wie Notion - ein/aus gleitet (200 ms), zugeklappt schwebt sie beim Ueberfahren des
+   Knopfs oder des linken Rands als Karte ueber der Seite herein (Inhalt bleibt stehen, nichts wird neu umgebrochen) */
+@media (min-width:761px){
+  body.notes-page:not(.embed) .pages{grid-template-columns:270px minmax(0,1fr);
+    transition:grid-template-columns .2s ease,column-gap .2s ease}
+  body.notes-page:not(.embed) .pages-side{transition:transform .2s ease,opacity .2s ease}
+  body.notes-page.side-hidden:not(.embed) .pages{grid-template-columns:0px minmax(0,1fr);column-gap:0}
+  body.notes-page.side-hidden:not(.embed) .pages-side{display:flex;position:fixed;z-index:60;left:0;top:var(--peek-top,4.4rem);
+    width:270px;max-height:calc(100vh - var(--peek-top,4.4rem) - 1rem);overflow:auto;padding:.8rem .75rem 1rem;
+    background:var(--bg);border:1px solid var(--border);border-left:0;border-radius:0 14px 14px 0;
+    box-shadow:0 14px 28px -6px rgba(0,0,0,.35),0 2px 4px -1px rgba(0,0,0,.2);
+    transform:translateX(-250px);opacity:0;visibility:hidden;
+    transition:transform .2s ease,opacity .2s ease,visibility 0s linear .2s}
+  body.notes-page.side-hidden.side-peek:not(.embed) .pages-side{transform:none;opacity:1;visibility:visible;
+    transition:transform .2s ease,opacity .2s ease}
+  body.notes-page.side-hidden .pages-side>*{flex:none}
+  body.notes-page.side-hidden:not(.embed) .pages>:not(.pages-side){grid-column:2}   /* Leiste ist aus dem Raster raus */
+  .pg-peek-zone{position:fixed;left:0;top:0;bottom:0;width:10px;z-index:59}
+}
+@media (prefers-reduced-motion:reduce){
+  body.notes-page .pages,body.notes-page .pages-side{transition:none!important}
+}
 /* spezifischer als 'body.notes-page .page-head' (760px), sonst wirkt 'Volle Breite' nicht */
 body.notes-page .page.wide .page-head,body.notes-page .page.wide .page-body,body.notes-page .page.wide .props,
 body.notes-page .page.wide .backlinks{max-width:none}
