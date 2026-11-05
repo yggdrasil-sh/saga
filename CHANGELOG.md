@@ -23,6 +23,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Seitenleiste wie in den Apps: oben **Heute** (Startseite), **Chats** (mit Zahl ungelesener), **Aufgaben** und **Termine**
   (als eigene Ansicht, dieselben Bausteine wie die Seiten-Blöcke), darunter Favoriten, **Seiten**, **Zuletzt** (fünf
   zuletzt geöffnete) und **Mehr** (Schnellsuche, Graph, Archiv, Papierkorb). Nur der Seitenbaum scrollt.
+- Konto (Bild, Name, Menü) unten in der Seitenleiste wie bei Notion; die KI-Assistentin schwebt als runder Knopf unten rechts.
 - Ein-/Ausblenden (Knopf oben links, Strg/⌘+\\) gleitet in 200 ms statt zu springen.
 - Zugeklappt schwebt die Seitenleiste beim Überfahren des Knopfs oder des linken Fensterrands als Karte über der Seite
   herein (der Inhalt bleibt stehen) und verschwindet wieder, wenn die Maus sie verlässt; Klick auf den Knopf heftet sie an.
