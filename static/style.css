@@ -865,67 +865,81 @@ body.side-hidden .pages-side{display:none}
 :root{--side-bg:#131a24;--side-w:270px;--side-row:#1c2531}
 @media (prefers-color-scheme: light){:root{--side-bg:#ebe8e1;--side-row:#e1ddd3}}
 @media (min-width:761px){
-  body.notes-page:not(.embed) .np-head{position:fixed;z-index:62;top:0;left:0;width:var(--side-w);box-sizing:border-box;
+  body:is(.notes-page,.has-side):not(.embed) .np-head{position:fixed;z-index:62;top:0;left:0;width:var(--side-w);box-sizing:border-box;
     height:3rem;padding:0 .5rem 0 .6rem;gap:.15rem;flex-wrap:nowrap;border-bottom:0;background:var(--side-bg);overflow:hidden;
     transition:width .2s ease}
-  body.notes-page:not(.embed) .np-head .np-sep,body.notes-page:not(.embed) .np-head .np-name,
-  body.notes-page:not(.embed) .np-head .btn-t,body.notes-page:not(.embed) .np-head .ai-btn-t{display:none}
+  body:is(.notes-page,.has-side):not(.embed) .np-head .np-sep,body:is(.notes-page,.has-side):not(.embed) .np-head .np-name,
+  body:is(.notes-page,.has-side):not(.embed) .np-head .btn-t,body:is(.notes-page,.has-side):not(.embed) .np-head .ai-btn-t{display:none}
   /* Konto unten in der Seitenleiste (wie Notion): Bild, Name, Pfeil ueber die volle Breite */
-  body.notes-page:not(.embed) .np-head .hk-user{position:fixed;z-index:61;left:.5rem;bottom:.6rem;width:calc(var(--side-w) - 1rem);box-sizing:border-box;
+  body:is(.notes-page,.has-side):not(.embed) .np-head .hk-user{position:fixed;z-index:61;left:.5rem;bottom:.6rem;width:calc(var(--side-w) - 1rem);box-sizing:border-box;
     display:flex;align-items:center;gap:.5rem;padding:.4rem .55rem;border-radius:8px;text-align:left;color:var(--fg);font-size:.875rem}
-  body.notes-page:not(.embed) .np-head .hk-user:hover{background:var(--side-row)}
-  body.notes-page:not(.embed) .np-head .hk-user .hk-user-n{display:inline-block;flex:1;max-width:none;min-width:0}
-  body.notes-page:not(.embed) .pages-side{padding-bottom:3.6rem}
+  body:is(.notes-page,.has-side):not(.embed) .np-head .hk-user:hover{background:var(--side-row)}
+  body:is(.notes-page,.has-side):not(.embed) .np-head .hk-user .hk-user-n{display:inline-block;flex:1;max-width:none;min-width:0}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side{padding-bottom:3.6rem}
   /* KI schwebt unten rechts (wie Notion) - ein runder Knopf mit dem Bild der Assistentin */
-  body.notes-page:not(.embed) .np-head .ai-btn{position:fixed;z-index:57;right:1.25rem;bottom:1.25rem;width:2.9rem;height:2.9rem;padding:0;
+  body:is(.notes-page,.has-side):not(.embed) .np-head .ai-btn{position:fixed;z-index:57;right:1.25rem;bottom:1.25rem;width:2.9rem;height:2.9rem;padding:0;
     justify-content:center;border-radius:50%;background:var(--card);border:1px solid var(--border);box-shadow:0 6px 18px rgba(0,0,0,.28)}
-  body.notes-page:not(.embed) .np-head .ai-btn img,body.notes-page:not(.embed) .np-head .ai-btn>:first-child{width:2.1rem;height:2.1rem;font-size:1.3rem}
-  body.notes-page:not(.embed) .np-head .ai-btn[aria-expanded="true"]{visibility:hidden}
-  body.notes-page:not(.embed) .np-head .btn{padding:.3rem .4rem}
-  body.notes-page:not(.embed) .np-head .np-brand{font-size:.9rem;font-weight:600;color:var(--fg);margin-left:.15rem}
-  body.notes-page:not(.embed) .np-main{margin-left:var(--side-w);padding:.6rem 2.2rem 3rem;transition:margin-left .2s ease}
+  body:is(.notes-page,.has-side):not(.embed) .np-head .ai-btn img,body:is(.notes-page,.has-side):not(.embed) .np-head .ai-btn>:first-child{width:2.1rem;height:2.1rem;font-size:1.3rem}
+  body:is(.notes-page,.has-side):not(.embed) .np-head .ai-btn[aria-expanded="true"]{visibility:hidden}
+  body:is(.notes-page,.has-side):not(.embed) .np-head .btn{padding:.3rem .4rem}
+  body:is(.notes-page,.has-side):not(.embed) .np-head .np-brand{font-size:.9rem;font-weight:600;color:var(--fg);margin-left:.15rem}
+  body:is(.notes-page,.has-side):not(.embed) .np-main{margin-left:var(--side-w);padding:.6rem 2.2rem 3rem;transition:margin-left .2s ease}
   body.notes-page:not(.embed) .pages{display:block;min-height:0}
-  body.notes-page:not(.embed) .pages-side{position:fixed;z-index:60;top:0;bottom:0;left:0;width:var(--side-w);box-sizing:border-box;
+  body:is(.notes-page,.has-side):not(.embed) .pages-side{position:fixed;z-index:60;top:0;bottom:0;left:0;width:var(--side-w);box-sizing:border-box;
     max-height:none;overflow:auto;padding:3.4rem .5rem 1rem;gap:.35rem;background:var(--side-bg);
     border-right:1px solid color-mix(in srgb,var(--border) 60%,transparent);
     transition:transform .2s ease,opacity .2s ease}
-  body.notes-page:not(.embed) .pages-side>*{flex:none}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side>*{flex:none}
   /* nur der Seitenbaum scrollt - Kopf, Navigation, "Neue Seite", Zuletzt und Mehr bleiben stehen (Scrollen schloss sonst Menues) */
-  body.notes-page:not(.embed) .pages-side{overflow:hidden}
-  body.notes-page:not(.embed) .pages-side .pg-tree,body.notes-page:not(.embed) .pages-side .pg-results{flex:0 1 auto;min-height:3rem;overflow:auto}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side{overflow:hidden}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-tree,body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-results{flex:0 1 auto;min-height:3rem;overflow:auto}
   /* Zeilen wie Notion: 14 px, ~30 px hoch, runde Ecken, dezenter Hover */
-  body.notes-page:not(.embed) .pages-side .pg-row{min-height:1.85rem}
-  body.notes-page:not(.embed) .pages-side .pg-row:hover,body.notes-page:not(.embed) .pages-side .pg-row.on{background:var(--side-row)}
-  body.notes-page:not(.embed) .pages-side :is(.pg-nav-row,.pg-fav):is(:hover,:focus-visible,.on){background:var(--side-row)}
-  body.notes-page:not(.embed) .pages-side .pg-nav-row{font-size:.875rem}
-  body.notes-page:not(.embed) .pages-side .pg-name{font-size:.875rem}
-  body.notes-page:not(.embed) .pages-side .pg-section{font-size:.75rem;letter-spacing:0;text-transform:none;font-weight:500;margin:.7rem .5rem .15rem}
-  body.notes-page:not(.embed) .pages-side .pg-search{background:var(--side-row);border-color:transparent;border-radius:6px;font-size:.875rem;padding:.35rem .6rem}
-  body.notes-page:not(.embed) .pages-side .pg-search:focus{border-color:var(--field)}
-  body.notes-page:not(.embed) .pages-side .note-new{border-style:solid;border-color:transparent;text-align:left;font-size:.875rem;color:var(--muted);padding:.3rem .55rem}
-  body.notes-page:not(.embed) .pages-side .note-new:hover{background:var(--side-row);color:var(--fg)}
-  body.notes-page:not(.embed) .pg-side-foot{border-top:0;margin-top:0;padding-top:0}
-  body.notes-page:not(.embed) .pg-side-foot .pg-foot-btn{font-size:.875rem;padding:.3rem .55rem}
-  body.notes-page:not(.embed) .pg-side-foot .pg-foot-btn:hover{background:var(--side-row)}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-row{min-height:1.85rem}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-row:hover,body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-row.on{background:var(--side-row)}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side :is(.pg-nav-row,.pg-fav):is(:hover,:focus-visible,.on){background:var(--side-row)}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-nav-row{font-size:.875rem}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-name{font-size:.875rem}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-section{font-size:.75rem;letter-spacing:0;text-transform:none;font-weight:500;margin:.7rem .5rem .15rem}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-search{background:var(--side-row);border-color:transparent;border-radius:6px;font-size:.875rem;padding:.35rem .6rem}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-search:focus{border-color:var(--field)}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .note-new{border-style:solid;border-color:transparent;text-align:left;font-size:.875rem;color:var(--muted);padding:.3rem .55rem}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .note-new:hover{background:var(--side-row);color:var(--fg)}
+  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot{border-top:0;margin-top:0;padding-top:0}
+  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot .pg-foot-btn{font-size:.875rem;padding:.3rem .55rem}
+  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot .pg-foot-btn:hover{background:var(--side-row)}
   /* Seitenkopf (Pfad, Teilen, ...) oben wie die Notion-Leiste */
   body.notes-page:not(.embed) .page-bar{position:sticky;top:0;z-index:9;min-height:3rem;margin:-.6rem -2.2rem 1.4rem;padding:0 1rem 0 1.2rem;
     background:var(--bg)}
   /* zugeklappt */
-  body.notes-page.side-hidden:not(.embed) .np-main{margin-left:0}
+  body:is(.notes-page,.has-side).side-hidden:not(.embed) .np-main{margin-left:0}
   body.notes-page.side-hidden:not(.embed) .page-bar{padding-left:3.2rem}
-  body.notes-page.side-hidden:not(.embed) .np-head{width:3rem;padding:0 .4rem;background:transparent}
-  body.notes-page.side-hidden:not(.side-peek):not(.embed) .np-head>:not(.np-side-btn):not(.ai-btn){visibility:hidden}
-  body.notes-page.side-hidden:not(.embed) .pages-side{display:flex;top:.5rem;bottom:.5rem;border:1px solid var(--border);border-left:0;border-radius:0 14px 14px 0;
+  body:is(.notes-page,.has-side).side-hidden:not(.embed) .np-head{width:3rem;padding:0 .4rem;background:transparent}
+  body:is(.notes-page,.has-side).side-hidden:not(.side-peek):not(.embed) .np-head>:not(.np-side-btn):not(.ai-btn){visibility:hidden}
+  body:is(.notes-page,.has-side).side-hidden:not(.embed) .pages-side{display:flex;top:.5rem;bottom:.5rem;border:1px solid var(--border);border-left:0;border-radius:0 14px 14px 0;
     box-shadow:0 14px 28px -6px rgba(0,0,0,.35),0 2px 4px -1px rgba(0,0,0,.2);
     transform:translateX(-250px);opacity:0;visibility:hidden;
     transition:transform .2s ease,opacity .2s ease,visibility 0s linear .2s}
-  body.notes-page.side-hidden.side-peek:not(.embed) .pages-side{transform:none;opacity:1;visibility:visible;transition:transform .2s ease,opacity .2s ease}
-  body.notes-page.side-hidden.side-peek:not(.embed) .np-head{width:var(--side-w);padding:0 .5rem 0 .6rem;background:transparent}
-  body.notes-page.side-hidden.side-peek:not(.embed) .np-head>*{visibility:visible}
+  body:is(.notes-page,.has-side).side-hidden.side-peek:not(.embed) .pages-side{transform:none;opacity:1;visibility:visible;transition:transform .2s ease,opacity .2s ease}
+  body:is(.notes-page,.has-side).side-hidden.side-peek:not(.embed) .np-head{width:var(--side-w);padding:0 .5rem 0 .6rem;background:transparent}
+  body:is(.notes-page,.has-side).side-hidden.side-peek:not(.embed) .np-head>*{visibility:visible}
   .pg-peek-zone{position:fixed;left:0;top:0;bottom:0;width:10px;z-index:59}
+  /* Dashboard und Chats: Inhalt neben der Leiste; ihr Kopf bleibt oben ueber dem Inhalt */
+  body.has-side:not(.embed)>main,body.has-side:not(.embed)>.dash-head{margin-left:var(--side-w);transition:margin-left .2s ease}
+  body.has-side.side-hidden:not(.embed)>main,body.has-side.side-hidden:not(.embed)>.dash-head{margin-left:0}
+  body.has-side.side-hidden:not(.embed)>.dash-head{padding-left:3.6rem}
+  body.has-side.side-hidden:not(.embed) .ct-side-top{padding-left:2.6rem;transition:padding-left .2s ease}
+  body.has-side:not(.embed) .np-head .hk-user:not(:hover):not(:focus-visible){border-color:transparent;background:transparent}
+  body.has-side:not(.embed) .dash-head .hk-user{position:fixed;z-index:61;left:.5rem;bottom:.6rem;width:calc(var(--side-w) - 1rem);box-sizing:border-box;
+    display:flex;align-items:center;gap:.5rem;padding:.4rem .55rem;border-radius:8px;text-align:left;color:var(--fg);font-size:.875rem;border-color:transparent}
+  body.has-side:not(.embed) .dash-head .hk-user:hover{background:var(--side-row)}
+  body.has-side:not(.embed) .dash-head .hk-user .hk-user-n{display:inline-block;flex:1;max-width:none;min-width:0}
+  body.has-side.side-hidden:not(.side-peek):not(.embed) .dash-head .hk-user{visibility:hidden}
+  body.has-side:not(.embed) .dash-head .btn-notes,body.has-side:not(.embed) .np-head .np-pages,body.has-side:not(.embed) .np-head .np-dash,
+  body.has-side:not(.embed) .np-head .ct-e2e{display:none}
+  body.has-side:not(.embed) .shell-side .note-new,body.has-side:not(.embed) .shell-side .pg-foot-btn{text-decoration:none;display:flex}
 }
 @media (prefers-reduced-motion:reduce){
-  body.notes-page .np-main,body.notes-page .np-head,body.notes-page .pages-side{transition:none!important}
+  body.notes-page .np-main,body:is(.notes-page,.has-side) .np-head,body:is(.notes-page,.has-side) .pages-side,body.has-side>main,body.has-side>.dash-head{transition:none!important}
 }
 /* spezifischer als 'body.notes-page .page-head' (760px), sonst wirkt 'Volle Breite' nicht */
 body.notes-page .page.wide .page-head,body.notes-page .page.wide .page-body,body.notes-page .page.wide .props,
@@ -2655,3 +2669,6 @@ button.up-it{cursor:pointer}button.up-it:hover{background:var(--hover,color-mix(
 .adm-tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0 .8rem}
 .adm-report-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}
 .adm-reports td form{display:flex;flex-wrap:wrap;gap:.3rem}
+
+/* Dashboard/Chats auf schmalen Fenstern: keine Seitenleiste (Handy-Ansicht wie bisher) */
+@media (max-width:760px){body.has-side .shell-side,body.has-side .np-head.side-head,body.has-side .np-side-btn,body.has-side .pg-peek-zone{display:none}}

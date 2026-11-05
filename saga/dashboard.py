@@ -280,7 +280,7 @@ def _dashboard(request, start):
         new_comments=n_cm, chat_enabled=chat.enabled(), chat_unread=n_chat,
         title=title(), name=request.session.get("name", uid), uid=uid,
         favorites=[mine[k] for k in fav_keys], categories=cats, acct=account_ctx(info),
-        search_enabled=bool(SEARXNG_URL), v=ASSET_V, me_avatar=avatars.my_url(uid),
+        search_enabled=bool(SEARXNG_URL), v=ASSET_V, me_avatar=avatars.my_url(uid), side_cur="today",
     )
     return HTMLResponse(html, headers=icon_csp(SEC_HEADERS, uid))      # img-src: Origins der eigenen Lesezeichen
 

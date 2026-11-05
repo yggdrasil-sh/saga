@@ -2858,9 +2858,12 @@ def chats_page(request: Request):
         return go
     remember_ui_lang(uid, request)
     info = user_info(uid)
+    with _db() as c:
+        n_chat = unread_total(c, uid) if enabled() else 0
     html = tmpl.get_template("chats.html").render(title=title(), name=request.session.get("name", uid), v=ASSET_V, uid=uid,
                                                   enabled=enabled(), admin_url=ADMIN_URL if info and info["is_admin"] else "",
-                                                  me_avatar=avatars.my_url(uid))
+                                                  me_avatar=avatars.my_url(uid),
+                                                  chat_enabled=enabled(), chat_unread=n_chat, side_cur="chats")   # Seitenleiste (_side.html)
     headers = icon_csp(SEC_HEADERS, uid)             # Einstellungen -> Lesezeichen: Symbole direkt von der Seite
     headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'") \
         + "; media-src 'self' blob:"          # 2.4: Videos (Service Worker /_m/..., ohne ihn als Blob)

@@ -9128,6 +9128,18 @@
       var svc = api('GET', '/api/services').then(function (s) { S.services = s; }).catch(function () {});
       if (!EMBED && S.gal == null) galLoad().catch(function () {});       // 2.5: Galerie da? (aus/aelterer Server: Eintraege weg)
       return Promise.all([loadList(), svc]).then(function () {
+        // Einstieg aus der Seitenleiste von Dashboard/Chats (static/side.js): /notes?v=tasks|events, ?trash, ?archive, ?graph, ?qs, ?new
+        var q = new URLSearchParams(location.search), go = q.get('v'), mine = ['v', 'trash', 'archive', 'graph', 'qs', 'new'], want = {};
+        if (mine.some(function (k) { return q.has(k); })) {
+          mine.forEach(function (k) { want[k] = q.has(k); q.delete(k); });
+          var rest = q.toString(); history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+        }
+        if (go === 'tasks' || go === 'events') { showView(go); return; }
+        if (want.trash) { showTrash(); return; }
+        if (want.archive) setTimeout(showArchive, 0);
+        if (want.graph && $('pg-graph-btn')) setTimeout(function () { $('pg-graph-btn').click(); }, 0);
+        if (want.qs) setTimeout(openQS, 0);
+        if (want['new'] && $('pg-new')) setTimeout(function () { $('pg-new').click(); }, 0);
         var fromHash = parseInt(location.hash.slice(1), 10), last = +HK.store('hk-pg-last');
         if (fromHash && !anyById(fromHash)) return openPage(fromHash);       // alte/fremde Adresse: Server fragen ("Kein Zugriff")
         var start = anyById(fromHash) || byId(last) || children(null)[0];

@@ -17,6 +17,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Seiten (Web): Aufbau wie Notion
+- Die Seitenleiste gibt es jetzt auch auf **Heute** (Startseite) und **Chats**: gleicher Seitenbaum, Favoriten,
+  Zuletzt, Suche, Ein-/Ausblenden (Strg/⌘+\\) und Herein-Schweben am linken Rand; Klick auf eine Seite öffnet sie.
+  „Chats“ öffnet sich im selben Fenster statt in einem neuen Tab.
 - Breite Fenster: Seitenleiste in voller Höhe mit leicht abgesetztem Hintergrund, oben darin Saga, Chats, Glocke und
   Konto (nur Symbole); Zeilen 14 px wie Notion, Suchfeld und „Neue Seite“ schlichter. Rechts nur die Seite, ihr Kopf
   (Pfad, Teilen, …) bleibt beim Scrollen oben stehen.
