@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Anrufe (Web): kleines Fenster
+- Das verkleinerte Anruffenster lässt sich mit Maus oder Finger frei verschieben (auf freier Fläche ziehen); die Stelle
+  bleibt gemerkt und passt sich an, wenn das Browserfenster kleiner wird.
+- Anrufe über den Knoten: im kleinen Fenster war das Video nur ein schmaler Streifen und das eigene Bild lag mittendrin -
+  jetzt füllt das Video das Fenster, das eigene Bild sitzt unten rechts.
+- Ein Gegenüber (1:1) und das kleine Fenster zeigen das ganze Bild statt eines Zuschnitts: ein Handy im Hochformat
+  bleibt hoch, statt oben und unten abgeschnitten zu werden.
+- Chats mit Seitenleiste: die Seite war breiter als das Fenster (lief seitlich hinaus).
+
 ### Seiten (Web): Aufbau wie Notion
 - Die Seitenleiste gibt es jetzt auch auf **Heute** (Startseite) und **Chats**: gleicher Seitenbaum, Favoriten,
   Zuletzt, Suche, Ein-/Ausblenden (Strg/⌘+\\) und Herein-Schweben am linken Rand; Klick auf eine Seite öffnet sie.

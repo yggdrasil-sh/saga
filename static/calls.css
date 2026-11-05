@@ -522,3 +522,15 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
   .cl-win.horn .cl-ctl.narrow{flex-wrap:nowrap}
   .cl-win.horn .cl-ctl.narrow .cl-round{width:48px;height:48px;min-width:48px}
 }
+
+/* 2.5: verkleinertes Fenster bei Anrufen ueber den Knoten - die Regeln der grossen Ansicht (Buehne ab 6.6rem, unten
+   6.4rem frei, eigenes Bild bei 7rem) liessen im 260 px hohen Fenster nur einen ~50 px schmalen Streifen. */
+.cl-win.small.mesh.tiles .cl-grid,.cl-win.small.horn.mesh.tiles .cl-grid{inset:2.6rem .4rem 3.6rem}
+.cl-win.small.horn:not(.self-c0):not(.self-c1) .cl-local{top:auto;bottom:4.4rem}
+.cl-win.small.horn.self-c0 .cl-local,.cl-win.small.horn.self-c1 .cl-local{top:3.2rem}
+/* Ein Gegenueber (1:1) und das kleine Fenster: ganzes Bild statt Zuschnitt - ein Handy im Hochformat bleibt hoch */
+.cl-grid[data-n="1"] .cl-tv,.cl-win.small .cl-tv{object-fit:contain}
+/* Verschieben (calls.js smallDrag) */
+.cl-win.small{cursor:grab;touch-action:none}
+.cl-win.small.dragging{cursor:grabbing;user-select:none;transition:none}
+.cl-win.small :is(button,a,input,.cl-local){cursor:pointer}

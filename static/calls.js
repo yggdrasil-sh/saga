@@ -2399,6 +2399,43 @@
       lv.title = l; lv.setAttribute('aria-label', l);        // Tooltip und Vorlesetext gleich (D06)
     }
   }
+  // 2.5: verkleinertes Anruffenster frei verschieben (Maus/Finger auf freier Flaeche, nicht auf Knoepfen oder dem eigenen
+  // Bild); die Stelle merkt sich der Browser, beim Vergroessern gilt wieder das volle Fenster.
+  function smallPrefs() { try { return JSON.parse(localStorage.getItem('saga-call-small') || 'null'); } catch (e) { return null; } }
+  function smallPos(w) {
+    var p = smallPrefs(), on = w.classList.contains('small') && p && isFinite(p.x) && isFinite(p.y);
+    if (!on) { ['left', 'top', 'right', 'bottom'].forEach(function (k) { w.style[k] = ''; }); return; }
+    var r = w.getBoundingClientRect(), W = r.width || 360, H = r.height || 260, m = 8;
+    var x = Math.max(m, Math.min(window.innerWidth - W - m, p.x)), y = Math.max(m, Math.min(window.innerHeight - H - m, p.y));
+    w.style.left = x + 'px'; w.style.top = y + 'px'; w.style.right = 'auto'; w.style.bottom = 'auto';
+  }
+  function smallDrag(w) {
+    var d = null, NO = 'button,a,input,select,textarea,.cl-local,[role="menu"],.menu,.cl-grid[data-scroll="1"]';
+    w.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0 || !w.classList.contains('small') || (e.target.closest && e.target.closest(NO))) return;
+      var r = w.getBoundingClientRect(); d = { sx: e.clientX, sy: e.clientY, x: r.left, y: r.top, moved: false, id: e.pointerId };
+    });
+    w.addEventListener('pointermove', function (e) {
+      if (!d || e.pointerId !== d.id) return;
+      var dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+      if (!d.moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+      if (!d.moved) { d.moved = true; w.classList.add('dragging'); try { w.setPointerCapture(e.pointerId); } catch (x) { /* egal */ } }
+      var r = w.getBoundingClientRect(), m = 8;
+      var x = Math.max(m, Math.min(window.innerWidth - r.width - m, d.x + dx)), y = Math.max(m, Math.min(window.innerHeight - r.height - m, d.y + dy));
+      w.style.left = x + 'px'; w.style.top = y + 'px'; w.style.right = 'auto'; w.style.bottom = 'auto';
+    });
+    function end() {
+      if (!d) return; var was = d.moved; d = null; w.classList.remove('dragging');
+      if (!was) return;
+      var r = w.getBoundingClientRect();
+      try { localStorage.setItem('saga-call-small', JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })); } catch (x) { /* privat */ }
+      var stop = function (ev) { ev.stopPropagation(); ev.preventDefault(); };      // der Klick nach dem Ziehen loest nichts aus
+      w.addEventListener('click', stop, { capture: true, once: true });
+      setTimeout(function () { w.removeEventListener('click', stop, true); }, 0);
+    }
+    w.addEventListener('pointerup', end); w.addEventListener('pointercancel', end);
+    window.addEventListener('resize', function () { if (w.isConnected) smallPos(w); });
+  }
   function selfPip(w, lv) {
     lv.tabIndex = 0; lv.setAttribute('role', 'button');
     var start = null, moved = false;
@@ -2491,7 +2528,8 @@
     lv.addEventListener('resize', function () { selfFit(c); });
     lv.addEventListener('loadedmetadata', function () { selfFit(c); });
     var top = el('div', 'cl-top'), info = el('div', 'cl-info'), st = el('div', 'cl-status'); st.setAttribute('role', 'status');
-    var mini = btn(icon('shrink'), 'cl-mini cl-shrink', function () { w.classList.toggle('small'); selfFit(c); idleCheck(c); }, T('Kleiner/größer'));
+    var mini = btn(icon('shrink'), 'cl-mini cl-shrink', function () { w.classList.toggle('small'); smallPos(w); selfFit(c); idleCheck(c); }, T('Kleiner/größer'));
+    smallDrag(w);
     // 2.5: Vollbild (F) - links vom Verkleinern
     var full = btn(icon('full'), 'cl-mini cl-full', function () { meetFull(roomOf(c)); }, T('Vollbild') + ' (F)');
     // 2.4: Bild-im-Bild - nur, wo der Browser es kann (Document-PiP mit eigenen Knoepfen, sonst Video-PiP)
