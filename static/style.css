@@ -845,27 +845,58 @@ body.notes-page .np-main{max-width:none}
 .np-side-btn{margin-left:-.4rem}
 body.side-hidden .pages{grid-template-columns:minmax(0,1fr)}
 body.side-hidden .pages-side{display:none}
-/* Breite Fenster: Seitenleiste wie Notion - ein/aus gleitet (200 ms), zugeklappt schwebt sie beim Ueberfahren des
-   Knopfs oder des linken Rands als Karte ueber der Seite herein (Inhalt bleibt stehen, nichts wird neu umgebrochen) */
+/* Breite Fenster (Maus/Trackpad wie Handy egal): Aufbau wie Notion. Seitenleiste = eigene, volle Hoehe mit leicht
+   abgesetztem Hintergrund; oben darin die Kopfzeile (Saga, Chats, Glocke, Konto); rechts nur die Seite mit ihrer
+   Leiste (Pfad, Teilen, ...) als Kopf. Ein/aus gleitet (200 ms), zugeklappt schwebt die Leiste beim Ueberfahren des
+   Knopfs oder des linken Rands als Karte herein - der Inhalt bleibt dabei stehen. */
+:root{--side-bg:#131a24;--side-w:270px;--side-row:#1c2531}
+@media (prefers-color-scheme: light){:root{--side-bg:#ebe8e1;--side-row:#e1ddd3}}
 @media (min-width:761px){
-  body.notes-page:not(.embed) .pages{grid-template-columns:270px minmax(0,1fr);
-    transition:grid-template-columns .2s ease,column-gap .2s ease}
-  body.notes-page:not(.embed) .pages-side{transition:transform .2s ease,opacity .2s ease}
-  body.notes-page.side-hidden:not(.embed) .pages{grid-template-columns:0px minmax(0,1fr);column-gap:0}
-  body.notes-page.side-hidden:not(.embed) .pages-side{display:flex;position:fixed;z-index:60;left:0;top:var(--peek-top,4.4rem);
-    width:270px;max-height:calc(100vh - var(--peek-top,4.4rem) - 1rem);overflow:auto;padding:.8rem .75rem 1rem;
-    background:var(--bg);border:1px solid var(--border);border-left:0;border-radius:0 14px 14px 0;
+  body.notes-page:not(.embed) .np-head{position:fixed;z-index:62;top:0;left:0;width:var(--side-w);box-sizing:border-box;
+    height:3rem;padding:0 .5rem 0 .6rem;gap:.15rem;flex-wrap:nowrap;border-bottom:0;background:transparent;overflow:hidden;
+    transition:width .2s ease}
+  body.notes-page:not(.embed) .np-head .np-sep,body.notes-page:not(.embed) .np-head .np-name,
+  body.notes-page:not(.embed) .np-head .btn-t,body.notes-page:not(.embed) .np-head .hk-user-n{display:none}
+  body.notes-page:not(.embed) .np-head .btn{padding:.3rem .4rem}
+  body.notes-page:not(.embed) .np-head .np-brand{font-size:.9rem;font-weight:600;color:var(--fg);margin-left:.15rem}
+  body.notes-page:not(.embed) .np-main{margin-left:var(--side-w);padding:.6rem 2.2rem 3rem;transition:margin-left .2s ease}
+  body.notes-page:not(.embed) .pages{display:block;min-height:0}
+  body.notes-page:not(.embed) .pages-side{position:fixed;z-index:60;top:0;bottom:0;left:0;width:var(--side-w);box-sizing:border-box;
+    max-height:none;overflow:auto;padding:3.4rem .5rem 1rem;gap:.35rem;background:var(--side-bg);
+    border-right:1px solid color-mix(in srgb,var(--border) 60%,transparent);
+    transition:transform .2s ease,opacity .2s ease}
+  body.notes-page:not(.embed) .pages-side>*{flex:none}
+  /* Zeilen wie Notion: 14 px, ~30 px hoch, runde Ecken, dezenter Hover */
+  body.notes-page:not(.embed) .pages-side .pg-row{min-height:1.85rem}
+  body.notes-page:not(.embed) .pages-side .pg-row:hover,body.notes-page:not(.embed) .pages-side .pg-row.on{background:var(--side-row)}
+  body.notes-page:not(.embed) .pages-side .pg-name{font-size:.875rem}
+  body.notes-page:not(.embed) .pages-side .pg-section{font-size:.75rem;letter-spacing:0;text-transform:none;font-weight:500;margin:.7rem .5rem .15rem}
+  body.notes-page:not(.embed) .pages-side .pg-search{background:var(--side-row);border-color:transparent;border-radius:6px;font-size:.875rem;padding:.35rem .6rem}
+  body.notes-page:not(.embed) .pages-side .pg-search:focus{border-color:var(--field)}
+  body.notes-page:not(.embed) .pages-side .note-new{border-style:solid;border-color:transparent;text-align:left;font-size:.875rem;color:var(--muted);padding:.3rem .55rem}
+  body.notes-page:not(.embed) .pages-side .note-new:hover{background:var(--side-row);color:var(--fg)}
+  body.notes-page:not(.embed) .pg-side-foot{border-top:0;margin-top:.2rem}
+  body.notes-page:not(.embed) .pg-side-foot .pg-foot-btn{font-size:.875rem;padding:.3rem .55rem}
+  body.notes-page:not(.embed) .pg-side-foot .pg-foot-btn:hover{background:var(--side-row)}
+  /* Seitenkopf (Pfad, Teilen, ...) oben wie die Notion-Leiste */
+  body.notes-page:not(.embed) .page-bar{position:sticky;top:0;z-index:9;min-height:3rem;margin:-.6rem -2.2rem 1.4rem;padding:0 1rem 0 1.2rem;
+    background:var(--bg)}
+  /* zugeklappt */
+  body.notes-page.side-hidden:not(.embed) .np-main{margin-left:0}
+  body.notes-page.side-hidden:not(.embed) .page-bar{padding-left:3.2rem}
+  body.notes-page.side-hidden:not(.embed) .np-head{width:3rem;padding:0 .4rem}
+  body.notes-page.side-hidden:not(.embed) .np-head>:not(.np-side-btn){visibility:hidden}
+  body.notes-page.side-hidden:not(.embed) .pages-side{display:flex;top:.5rem;bottom:.5rem;border:1px solid var(--border);border-left:0;border-radius:0 14px 14px 0;
     box-shadow:0 14px 28px -6px rgba(0,0,0,.35),0 2px 4px -1px rgba(0,0,0,.2);
     transform:translateX(-250px);opacity:0;visibility:hidden;
     transition:transform .2s ease,opacity .2s ease,visibility 0s linear .2s}
-  body.notes-page.side-hidden.side-peek:not(.embed) .pages-side{transform:none;opacity:1;visibility:visible;
-    transition:transform .2s ease,opacity .2s ease}
-  body.notes-page.side-hidden .pages-side>*{flex:none}
-  body.notes-page.side-hidden:not(.embed) .pages>:not(.pages-side){grid-column:2}   /* Leiste ist aus dem Raster raus */
+  body.notes-page.side-hidden.side-peek:not(.embed) .pages-side{transform:none;opacity:1;visibility:visible;transition:transform .2s ease,opacity .2s ease}
+  body.notes-page.side-hidden.side-peek:not(.embed) .np-head{width:var(--side-w);padding:0 .5rem 0 .6rem}
+  body.notes-page.side-hidden.side-peek:not(.embed) .np-head>*{visibility:visible}
   .pg-peek-zone{position:fixed;left:0;top:0;bottom:0;width:10px;z-index:59}
 }
 @media (prefers-reduced-motion:reduce){
-  body.notes-page .pages,body.notes-page .pages-side{transition:none!important}
+  body.notes-page .np-main,body.notes-page .np-head,body.notes-page .pages-side{transition:none!important}
 }
 /* spezifischer als 'body.notes-page .page-head' (760px), sonst wirkt 'Volle Breite' nicht */
 body.notes-page .page.wide .page-head,body.notes-page .page.wide .page-body,body.notes-page .page.wide .props,

@@ -13,7 +13,7 @@ if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS se
   await Promise.all([p.waitForNavigation(), p.press('input[name=password]', 'Enter')]);
   await p.goto(BASE + '/notes'); await p.waitForTimeout(1500);
   const st = () => p.evaluate(() => { const s = document.getElementById('pg-side'), pg = document.getElementById('pages'); const r = s.getBoundingClientRect(), cs = getComputedStyle(s);
-    return { body: document.body.className, cols: getComputedStyle(pg).gridTemplateColumns, x: Math.round(r.x), w: Math.round(r.width), op: cs.opacity, vis: cs.visibility, pos: cs.position }; });
+    return { body: document.body.className, cols: getComputedStyle(document.querySelector('.np-main')).marginLeft, x: Math.round(r.x), w: Math.round(r.width), op: cs.opacity, vis: cs.visibility, pos: cs.position }; });
   const out = [];
   out.push(['start', await st()]);
   if (SHOTS) await p.screenshot({ path: SHOTS + '/1-offen.png' });
@@ -50,14 +50,14 @@ if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS se
   for (const [k, v] of out) console.log(k, JSON.stringify(v));
   const S = Object.fromEntries(out), bad = [];
   const ok = (c, m) => { if (!c) bad.push(m); };
-  ok(S.start.vis === 'visible' && S.start.pos !== 'fixed', 'Start: Leiste offen im Raster');
-  ok(S.zu.vis === 'hidden' && S.zu.cols.startsWith('0px'), 'Zugeklappt: Spalte 0, Leiste unsichtbar');
+  ok(S.start.vis === 'visible' && S.start.x === 0 && S.start.cols === '270px', 'Start: Leiste offen, Inhalt daneben');
+  ok(S.zu.vis === 'hidden' && S.zu.cols === '0px', 'Zugeklappt: Inhalt volle Breite, Leiste unsichtbar');
   ok(S['peek-knopf'].vis === 'visible' && S['peek-knopf'].x === 0 && S['peek-knopf'].pos === 'fixed', 'Knopf ueberfahren: Karte schwebt herein');
-  ok(S['peek-knopf'].cols === S.zu.cols, 'Schweben veraendert das Raster nicht');
+  ok(S['peek-knopf'].cols === S.zu.cols, 'Schweben verschiebt den Inhalt nicht');
   ok(S['in-karte'].vis === 'visible', 'Maus in der Karte: bleibt offen');
   ok(S.weg.vis === 'hidden', 'Maus weg: Karte verschwindet');
   ok(S.rand.vis === 'visible', 'Linker Rand: Karte schwebt herein');
-  ok(S.angeheftet.vis === 'visible' && S.angeheftet.pos !== 'fixed' && !S.angeheftet.body.includes('side-peek'), 'Klick heftet an');
+  ok(S.angeheftet.vis === 'visible' && S.angeheftet.cols === '270px' && !S.angeheftet.body.includes('side-peek'), 'Klick heftet an');
   ok(S['kuerzel-zu'].vis === 'hidden', 'Strg+\\ klappt zu');
   ok(S.schmal.x < 0, 'Handy: Schublade bleibt zu');
   ok(!errs.length, 'keine Seitenfehler: ' + errs.join(' | '));

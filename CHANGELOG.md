@@ -16,7 +16,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### Seiten (Web): Seitenleiste wie Notion
+### Seiten (Web): Aufbau wie Notion
+- Breite Fenster: Seitenleiste in voller Höhe mit leicht abgesetztem Hintergrund, oben darin Saga, Chats, Glocke und
+  Konto (nur Symbole); Zeilen 14 px wie Notion, Suchfeld und „Neue Seite“ schlichter. Rechts nur die Seite, ihr Kopf
+  (Pfad, Teilen, …) bleibt beim Scrollen oben stehen.
 - Ein-/Ausblenden (Knopf oben links, Strg/⌘+\\) gleitet in 200 ms statt zu springen.
 - Zugeklappt schwebt die Seitenleiste beim Überfahren des Knopfs oder des linken Fensterrands als Karte über der Seite
   herein (der Inhalt bleibt stehen) und verschwindet wieder, wenn die Maus sie verlässt; Klick auf den Knopf heftet sie an.
