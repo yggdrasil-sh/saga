@@ -484,6 +484,19 @@ body.notes-page #pg-full{display:none}
 .toast-action:hover{text-decoration:underline}
 .pg-section{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:.4rem .35rem .2rem}
 .pg-fav-list{list-style:none;margin:0 0 .3rem;padding:0}
+.pg-mainnav{display:flex;flex-direction:column;gap:1px}
+.pg-nav-row{display:flex;align-items:center;gap:.55rem;width:100%;box-sizing:border-box;appearance:none;background:none;border:0;border-radius:6px;
+  color:var(--fg);font:inherit;font-size:.88rem;text-align:left;text-decoration:none;padding:.32rem .55rem;cursor:pointer}
+.pg-nav-row:hover,.pg-nav-row:focus-visible,.pg-nav-row.on{background:var(--card-h)}
+.pg-nav-row.on{font-weight:600}
+.pg-nav-ic{flex:none;color:var(--muted)}
+.pg-nav-row .pg-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-nav-n{flex:none;min-width:1.2rem;padding:0 .35rem;border-radius:999px;background:var(--accent);color:var(--bg);font-size:.72rem;font-weight:600;text-align:center;line-height:1.2rem}
+.pg-favs .pg-section:last-child{display:none}       /* "Alle Seiten" - jetzt eigene Ueberschrift "Seiten" */
+.pg-view{margin-top:.6rem}
+.pg-view-body{max-width:900px}
+.pg-view-body .embed-head .embed-title-s{display:none}   /* Ueberschrift steht schon darueber */
+.pg-view:not([hidden])~.pages-empty{display:none}
 .pg-fav{display:flex;align-items:center;gap:.45rem;width:100%;appearance:none;background:none;border:0;border-radius:6px;
   color:var(--muted);font:inherit;font-size:.9rem;padding:.32rem .5rem;cursor:pointer;text-align:left}
 .pg-fav:hover,.pg-fav.on{background:var(--card-h);color:var(--fg)}
@@ -853,7 +866,7 @@ body.side-hidden .pages-side{display:none}
 @media (prefers-color-scheme: light){:root{--side-bg:#ebe8e1;--side-row:#e1ddd3}}
 @media (min-width:761px){
   body.notes-page:not(.embed) .np-head{position:fixed;z-index:62;top:0;left:0;width:var(--side-w);box-sizing:border-box;
-    height:3rem;padding:0 .5rem 0 .6rem;gap:.15rem;flex-wrap:nowrap;border-bottom:0;background:transparent;overflow:hidden;
+    height:3rem;padding:0 .5rem 0 .6rem;gap:.15rem;flex-wrap:nowrap;border-bottom:0;background:var(--side-bg);overflow:hidden;
     transition:width .2s ease}
   body.notes-page:not(.embed) .np-head .np-sep,body.notes-page:not(.embed) .np-head .np-name,
   body.notes-page:not(.embed) .np-head .btn-t,body.notes-page:not(.embed) .np-head .hk-user-n{display:none}
@@ -866,16 +879,21 @@ body.side-hidden .pages-side{display:none}
     border-right:1px solid color-mix(in srgb,var(--border) 60%,transparent);
     transition:transform .2s ease,opacity .2s ease}
   body.notes-page:not(.embed) .pages-side>*{flex:none}
+  /* nur der Seitenbaum scrollt - Kopf, Navigation, "Neue Seite", Zuletzt und Mehr bleiben stehen (Scrollen schloss sonst Menues) */
+  body.notes-page:not(.embed) .pages-side{overflow:hidden}
+  body.notes-page:not(.embed) .pages-side .pg-tree,body.notes-page:not(.embed) .pages-side .pg-results{flex:0 1 auto;min-height:3rem;overflow:auto}
   /* Zeilen wie Notion: 14 px, ~30 px hoch, runde Ecken, dezenter Hover */
   body.notes-page:not(.embed) .pages-side .pg-row{min-height:1.85rem}
   body.notes-page:not(.embed) .pages-side .pg-row:hover,body.notes-page:not(.embed) .pages-side .pg-row.on{background:var(--side-row)}
+  body.notes-page:not(.embed) .pages-side :is(.pg-nav-row,.pg-fav):is(:hover,:focus-visible,.on){background:var(--side-row)}
+  body.notes-page:not(.embed) .pages-side .pg-nav-row{font-size:.875rem}
   body.notes-page:not(.embed) .pages-side .pg-name{font-size:.875rem}
   body.notes-page:not(.embed) .pages-side .pg-section{font-size:.75rem;letter-spacing:0;text-transform:none;font-weight:500;margin:.7rem .5rem .15rem}
   body.notes-page:not(.embed) .pages-side .pg-search{background:var(--side-row);border-color:transparent;border-radius:6px;font-size:.875rem;padding:.35rem .6rem}
   body.notes-page:not(.embed) .pages-side .pg-search:focus{border-color:var(--field)}
   body.notes-page:not(.embed) .pages-side .note-new{border-style:solid;border-color:transparent;text-align:left;font-size:.875rem;color:var(--muted);padding:.3rem .55rem}
   body.notes-page:not(.embed) .pages-side .note-new:hover{background:var(--side-row);color:var(--fg)}
-  body.notes-page:not(.embed) .pg-side-foot{border-top:0;margin-top:.2rem}
+  body.notes-page:not(.embed) .pg-side-foot{border-top:0;margin-top:0;padding-top:0}
   body.notes-page:not(.embed) .pg-side-foot .pg-foot-btn{font-size:.875rem;padding:.3rem .55rem}
   body.notes-page:not(.embed) .pg-side-foot .pg-foot-btn:hover{background:var(--side-row)}
   /* Seitenkopf (Pfad, Teilen, ...) oben wie die Notion-Leiste */
@@ -884,14 +902,14 @@ body.side-hidden .pages-side{display:none}
   /* zugeklappt */
   body.notes-page.side-hidden:not(.embed) .np-main{margin-left:0}
   body.notes-page.side-hidden:not(.embed) .page-bar{padding-left:3.2rem}
-  body.notes-page.side-hidden:not(.embed) .np-head{width:3rem;padding:0 .4rem}
+  body.notes-page.side-hidden:not(.embed) .np-head{width:3rem;padding:0 .4rem;background:transparent}
   body.notes-page.side-hidden:not(.embed) .np-head>:not(.np-side-btn){visibility:hidden}
   body.notes-page.side-hidden:not(.embed) .pages-side{display:flex;top:.5rem;bottom:.5rem;border:1px solid var(--border);border-left:0;border-radius:0 14px 14px 0;
     box-shadow:0 14px 28px -6px rgba(0,0,0,.35),0 2px 4px -1px rgba(0,0,0,.2);
     transform:translateX(-250px);opacity:0;visibility:hidden;
     transition:transform .2s ease,opacity .2s ease,visibility 0s linear .2s}
   body.notes-page.side-hidden.side-peek:not(.embed) .pages-side{transform:none;opacity:1;visibility:visible;transition:transform .2s ease,opacity .2s ease}
-  body.notes-page.side-hidden.side-peek:not(.embed) .np-head{width:var(--side-w);padding:0 .5rem 0 .6rem}
+  body.notes-page.side-hidden.side-peek:not(.embed) .np-head{width:var(--side-w);padding:0 .5rem 0 .6rem;background:transparent}
   body.notes-page.side-hidden.side-peek:not(.embed) .np-head>*{visibility:visible}
   .pg-peek-zone{position:fixed;left:0;top:0;bottom:0;width:10px;z-index:59}
 }

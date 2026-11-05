@@ -1201,7 +1201,7 @@
     // save() in _origOpen vergleicht ohnehin mit dem gespeicherten Stand und speichert nur bei echtem Unterschied
     if (S.checking && S.cur && S.baseId === S.cur.id) S.dirtyBody = true;
     S.baseId = null; S.typed = false;
-    $('pg-trash').hidden = true;
+    $('pg-trash').hidden = true; hideView();
     if (PK.id) closePeek();
     return _origOpen(id).then(function () {
       if (S.cur) { S.loading = true; decorateLinks(); S.loading = false; renderTags(); loadBacklinks(S.cur.id); rememberRecent(S.cur.id); archiveBar(); applyLock(); applyPublic(); applyShare(); applyMeta(); }
@@ -2000,7 +2000,20 @@
 
 
   // --- Favoriten --------------------------------------------------------------
+  function renderRecent() {
+    var box = $('pg-recent'); if (!box) return;
+    var rec = recents().map(byId).filter(Boolean).slice(0, 5);
+    box.hidden = !rec.length;
+    var ul = $('pg-recent-list'); ul.textContent = '';
+    rec.forEach(function (p) {
+      var b = el('button', 'pg-fav' + (S.cur && S.cur.id === p.id ? ' on' : '')); b.type = 'button';
+      b.appendChild(icoNode(p.icon, '📄', 'pg-ic')); b.appendChild(el('span', 'pg-name', label(p)));
+      b.addEventListener('click', function () { openPage(p.id); });
+      var li = el('li'); li.appendChild(b); ul.appendChild(li);
+    });
+  }
   function renderFavs() {
+    renderRecent();
     var favs = S.pages.filter(function (p) { return p.pinned; });
     $('pg-favs').hidden = !favs.length;
     var ul = $('pg-fav-list'); ul.textContent = '';
@@ -2134,6 +2147,7 @@
   var fDate = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' });
   function showTrash() {
     save().then(function () {
+      hideView();
       S.cur = null; $('page').hidden = true; $('pg-empty').hidden = true; $('pg-trash').hidden = false;
       history.replaceState(null, '', location.pathname); document.title = T('Papierkorb') + ' · ' + T('Seiten');
       renderTree(); return loadTrash();
@@ -2167,6 +2181,27 @@
     });
   }
   $('pg-trash-btn').addEventListener('click', showTrash);
+  // Aufgaben und Termine als eigene Ansicht in der Seitenleiste (wie in den Apps) - dieselben Bausteine wie die Seiten-Bloecke
+  var VIEW = null;
+  function hideView() {
+    if (!VIEW) return; VIEW = null; $('pg-view').hidden = true; $('pg-view-body').textContent = '';
+    ['pg-nav-tasks', 'pg-nav-events'].forEach(function (id) { var b = $(id); if (b) b.classList.remove('on'); });
+  }
+  function showView(kind) {
+    save().then(function () {
+      hideView(); VIEW = kind;
+      S.cur = null; $('page').hidden = true; $('pg-empty').hidden = true; $('pg-trash').hidden = true; $('pg-view').hidden = false;
+      history.replaceState(null, '', location.pathname);
+      var title = kind === 'tasks' ? T('Aufgaben') : T('Termine');
+      $('pg-view-title').textContent = (kind === 'tasks' ? '✓ ' : '🗓 ') + title; document.title = title + ' · ' + T('Seiten');
+      var w = kind === 'tasks' ? new TasksTool().render() : new CalendarTool({ data: { view: 'month' } }).render();
+      $('pg-view-body').appendChild(w);
+      var b = $(kind === 'tasks' ? 'pg-nav-tasks' : 'pg-nav-events'); if (b) b.classList.add('on');
+      renderTree();
+    });
+  }
+  if ($('pg-nav-tasks')) $('pg-nav-tasks').addEventListener('click', function () { showView('tasks'); });
+  if ($('pg-nav-events')) $('pg-nav-events').addEventListener('click', function () { showView('events'); });
   $('pg-trash-empty').addEventListener('click', function () {
     if (!confirm(T('Papierkorb endgültig leeren? Das lässt sich nicht rückgängig machen.'))) return;
     api('POST', '/api/trash/empty').then(loadTrash).catch(function (err) { HK.toast(T('Nicht geleert: {err}', { err: err.message })); });
@@ -8750,6 +8785,7 @@
   function rememberRecent(id) {
     if (EMBED) return;
     var r = recents().filter(function (x) { return x !== id; }); r.unshift(id); HK.store('hk-pg-recent', JSON.stringify(r.slice(0, 20)));
+    renderRecent();
   }
   function pageLink(id, block) { return location.origin + '/notes#' + id + (block ? ':' + encodeURIComponent(block) : ''); }
   function copyLink(block) {

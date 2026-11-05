@@ -44,6 +44,12 @@ if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS se
   // Tastenkuerzel
   await p.keyboard.press('Control+Backslash'); await p.waitForTimeout(400);
   out.push(['kuerzel-zu', await st()]);
+  // Wie die Apps: Aufgaben und Termine als eigene Ansicht, Zuletzt-Liste
+  await p.keyboard.press('Control+Backslash'); await p.waitForTimeout(300);
+  const view = () => p.evaluate(() => ({ view: !document.getElementById('pg-view').hidden, empty: getComputedStyle(document.getElementById('pg-empty')).display, rows: document.querySelectorAll('#pg-mainnav .pg-nav-row').length }));
+  await p.click('#pg-nav-tasks'); await p.waitForTimeout(800); out.push(['aufgaben', await view()]);
+  await p.click('#pg-nav-events'); await p.waitForTimeout(800); out.push(['termine', await view()]);
+  await p.keyboard.press('Control+Backslash'); await p.waitForTimeout(300);
   // schmal (Handy): Schublade unveraendert
   await p.setViewportSize({ width: 500, height: 800 }); await p.waitForTimeout(300);
   out.push(['schmal', await st()]);
@@ -60,6 +66,8 @@ if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS se
   ok(S.angeheftet.vis === 'visible' && S.angeheftet.cols === '270px' && !S.angeheftet.body.includes('side-peek'), 'Klick heftet an');
   ok(S['kuerzel-zu'].vis === 'hidden', 'Strg+\\ klappt zu');
   ok(S.schmal.x < 0, 'Handy: Schublade bleibt zu');
+  ok(S.aufgaben.view && S.aufgaben.empty === 'none' && S.aufgaben.rows >= 3, 'Aufgaben: eigene Ansicht, Navigation da');
+  ok(S.termine.view, 'Termine: eigene Ansicht');
   ok(!errs.length, 'keine Seitenfehler: ' + errs.join(' | '));
   console.log(bad.length ? 'FEHLER:\n- ' + bad.join('\n- ') : 'ALLES GRUEN');
   await b.close();
