@@ -869,7 +869,8 @@ body.side-hidden .pages-side{display:none}
     height:3rem;padding:0 .5rem 0 .6rem;gap:.15rem;flex-wrap:nowrap;border-bottom:0;background:var(--side-bg);overflow:hidden;
     transition:width .2s ease}
   body.notes-page:not(.embed) .np-head .np-sep,body.notes-page:not(.embed) .np-head .np-name,
-  body.notes-page:not(.embed) .np-head .btn-t,body.notes-page:not(.embed) .np-head .hk-user-n{display:none}
+  body.notes-page:not(.embed) .np-head .btn-t,body.notes-page:not(.embed) .np-head .hk-user-n,body.notes-page:not(.embed) .np-head .ai-btn-t{display:none}
+  body.notes-page:not(.embed) .np-head .ai-btn{padding:.3rem .35rem}
   body.notes-page:not(.embed) .np-head .btn{padding:.3rem .4rem}
   body.notes-page:not(.embed) .np-head .np-brand{font-size:.9rem;font-weight:600;color:var(--fg);margin-left:.15rem}
   body.notes-page:not(.embed) .np-main{margin-left:var(--side-w);padding:.6rem 2.2rem 3rem;transition:margin-left .2s ease}
