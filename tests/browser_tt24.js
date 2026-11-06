@@ -105,15 +105,15 @@ async function session(browser, user, pass) {
     await a.waitForTimeout(600);
     ok('W5: Abbrechen laesst den Inhalt unveraendert', (await a.blocks(id)).join() === 'paragraph:Neu und wichtig');
 
-    // --- Web-Runde 2 (247/270): klebende Reiterleiste der Einstellungen schliesst oben buendig ab ------------------------
+    // --- Web-Runde 2 (247/270), seit UX-39 Navigation links statt Reiterleiste: sie bleibt stehen, wenn der Bereich scrollt --
     await a.goto(BASE + '/'); await a.waitForTimeout(800);
     await a.evaluate(() => window.HKSettings && window.HKSettings.open());
-    await a.waitForSelector('.hk-tabs'); await a.waitForTimeout(800);
+    await a.waitForSelector('.hk-setnav'); await a.waitForTimeout(800);
     const gap = await a.evaluate(() => {
-      const t = document.querySelector('.hk-tabs'), b = t.parentElement; b.scrollTop = 600;
-      return new Promise(r => setTimeout(() => r(Math.round(t.getBoundingClientRect().top - b.getBoundingClientRect().top)), 200));
+      const n = document.querySelector('.hk-setnav'), b = document.querySelector('.hk-set-main > .hk-dlg-body'), t0 = n.getBoundingClientRect().top; b.scrollTop = 600;
+      return new Promise(r => setTimeout(() => r(Math.round(n.getBoundingClientRect().top - t0)), 200));
     });
-    ok(`Reiterleiste klebt buendig am oberen Rand des Scrollbereichs (Abstand ${gap} px)`, gap !== null && Math.abs(gap) <= 1, gap);
+    ok(`Navigation der Einstellungen bleibt beim Scrollen stehen (Versatz ${gap} px)`, gap !== null && Math.abs(gap) <= 1, gap);
     await shot(a, 'reiter-klebend');
     await a.keyboard.press('Escape');
 

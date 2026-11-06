@@ -26,6 +26,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   erst beim Überfahren oder mit dem Fokus in der Zeile; jede Zeile hat einen vollständigen zugänglichen Namen. API:
   `?group=1`, `group_key`, `ids`, `unread_groups`, Gelesen per `groups` (alles rückwärtskompatibel, docs/APP-API.md);
   Push: verpasste Anrufe eines Chats ersetzen einander („5 verpasste Anrufe“), Kommentare einer Seite sind auf iOS gruppiert.
+- **Schnellsuche überall:** Strg/⌘+K öffnet auf „Heute“ und in den Chats dieselbe Schnellsuche wie bei den Seiten
+  direkt als Overlay (Seiten, „Zuletzt geöffnet“, „>“-Befehle, „+ Neue Seite“, „Im Web suchen“) statt nach
+  `/notes` zu springen; auch der Knopf „Schnellsuche“ der Seitenleiste. Beim Schließen geht der Fokus an den
+  Auslöser zurück – ohne vorherigen Fokus nicht mehr an einen längst geschlossenen Menüknopf.
+- **Tastenkürzel:** Strg/⌘+/ (im Editor bleibt es das Blockmenü) oder „?“ zeigt alle Kürzel gruppiert (Allgemein,
+  Navigation, Seiten und Editor, Chats, Marin), auf dem Mac mit ⌘ ⌥ ⇧; auch im Kontomenü und als Befehl.
+  Neu: Strg/⌘+Alt+N legt überall eine leere Seite an.
+- **Kontomenü:** „Sprache“ als Untermenü (direkt umschalten), „Tastenkürzel“, „Admin-Bereich ↗“ (nur Admins).
+- **Einstellungen mit Navigation links** statt elf Reitern in zwei Zeilen: Konto (Profil & Sprache, Sicherheit,
+  Mitteilungen) · Arbeitsbereich (Seiten, Kalender, Lesezeichen) · Verbindungen (Immich, Nextcloud, Apps & Geräte,
+  API) · Daten (Mein Backup) · Hilfe. Passwort, Passkeys und Authenticator stehen unter „Sicherheit“, die
+  Benachrichtigungen unter „Mitteilungen“. Am Handy erst die Liste, dann der Bereich mit „‹ Einstellungen“.
+  Bestehende Links auf einzelne Bereiche funktionieren weiter.
 - **Symbole in Menüs:** Ein eigener Satz Linien-Symbole (gleiche Größe, gleiche Strichstärke, ohne externe
   Bibliothek) ersetzt die bunten Emoji und Zeichen in Seitenmenü „···“, Neue-Seite-Menü, Blockmenü, Kontomenü,
   Spaltenkopf-Menü, /-Menü, Tabellen- und Chat-Menüs. Eigenschaftstypen haben eigene Symbole (Datum ist ein
