@@ -220,6 +220,11 @@ border:1px dashed var(--border);border-radius:12px;font:inherit;cursor:pointer;t
 .pg-add:hover{background:var(--border);color:var(--fg)}
 @media (hover:none){.pg-add{opacity:.6}}
 .pg-go:focus-visible,.pg-twisty:focus-visible,.pg-add:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* A11Y-11: Fokus liegt auf der Baumzeile (li role=treeitem) - Ring um die Zeile, nicht um den ganzen Ast */
+.pg-tree [role="treeitem"],.pg-fav-list [role="treeitem"]{outline:none}
+.pg-tree [role="treeitem"]:focus-visible>.pg-row,.pg-fav-list [role="treeitem"]:focus-visible>.pg-fav{outline:2px solid var(--accent);outline-offset:-2px}
+.pg-tree [role="treeitem"]:focus-visible>.pg-row .pg-add{opacity:1}
+.pg-fav{cursor:pointer}
 .pg-hit{display:flex;flex-direction:column;gap:.15rem;width:100%;text-align:left;appearance:none;background:none;border:0;
   border-radius:6px;color:var(--fg);font:inherit;padding:.45rem .5rem;cursor:pointer}
 .pg-hit:hover,.pg-hit:focus-visible{background:var(--card-h)}
@@ -1046,6 +1051,9 @@ body.notes-page .page.wide .backlinks{max-width:none}
 .mi-ic{flex:none;width:1.2rem;text-align:center;opacity:.85;font-size:.95em}
 .mi-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mi-hint{flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:.78rem}
+.mi-kbd{flex:none;margin-left:auto;font:inherit;font-size:.72rem;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 .3rem;white-space:nowrap}
+.menu-item[aria-checked="true"].mi-radio{color:var(--accent)}
+.menu-item.mi-radio .mi-ic.hk-ib{color:var(--accent)}
 .mi-arrow{flex:none;color:var(--muted);font-size:1rem;line-height:1}
 .mi-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:.05rem}
 .mi-tx .mi-t{flex:none}

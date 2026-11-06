@@ -134,7 +134,8 @@
       e.preventDefault(); if (e.key === '[' || e.code === 'BracketLeft') history.back(); else history.forward(); return;
     }
     if (!K.embed && mod(e) && e.shiftKey && !e.altKey && e.code === 'KeyU') { e.preventDefault(); K.goParent(); return; }
-    if (mod(e) && !e.shiftKey && !e.altKey && e.code === 'KeyL' && K.cur()) {
+    // Link zur Seite kopieren: Strg/⌘+L und (UX-19, wie im Seitenmenue angezeigt) Strg+Alt+L bzw. ⌘⌥L
+    if (mod(e) && !e.shiftKey && e.code === 'KeyL' && K.cur()) {
       var s = window.getSelection(); if (s && !s.isCollapsed && inEditor()) return;     // markierter Text: nicht stoeren
       e.preventDefault(); K.copyLink(); return;
     }

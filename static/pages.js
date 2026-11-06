@@ -534,11 +534,14 @@
 
   // --- Seitenbaum -----------------------------------------------------------
   function renderTree() {
-    var ul = $('pg-tree'); ul.textContent = ''; treeRootDnd(ul);
-    treeNodes(ul, children(null), 0, children, true);
-    if (!S.pages.length) {                                 // statt leerer Liste
-      var nl = el('li', 'pg-tree-empty', T('Noch keine Seiten')); nl.setAttribute('role', 'treeitem'); nl.setAttribute('aria-disabled', 'true'); ul.appendChild(nl);
-    }
+    var ul = $('pg-tree');
+    HK.treeNav.keep(ul, function () {                      // Fokus bleibt auf derselben Seite (A11Y-11)
+      ul.textContent = ''; treeRootDnd(ul);
+      treeNodes(ul, children(null), 0, children, true);
+      if (!S.pages.length) {                               // statt leerer Liste
+        var nl = el('li', 'pg-tree-empty', T('Noch keine Seiten')); nl.setAttribute('role', 'treeitem'); nl.setAttribute('aria-disabled', 'true'); ul.appendChild(nl);
+      }
+    });
     renderShared();
     $('pg-empty').hidden = S.pages.length > 0 || S.shared.length > 0 || !!S.cur || !!($('pg-noaccess') && !$('pg-noaccess').hidden);
     pickHintSoon();
@@ -562,38 +565,50 @@
     h.hidden = !!S.cur || !(S.pages.length || S.shared.length) || busy('page') || busy('pg-empty') || busy('pg-noaccess') || busy('pg-trash') || EMBED;
   }
   // Ein Zweig des Baums - eigene Seiten (mit Ziehen) und "Mit mir geteilt" (ohne Ziehen, "+" nur mit 'Bearbeiten')
+  // A11Y-11: echter Baum (static/treenav.js) - die Zeile (li) ist der EINE Fokus-Punkt, Twisty und "+" sind keine Tab-Stopps;
+  // Name = nur der Seitenname, "Geteilt"/"Vorlage"/neue Kommentare als Beschreibung
   function treeNodes(list, items, depth, kidsOf, own) {
-    items.forEach(function (p) {
+    items.forEach(function (p, i) {
       // Datenbank-Zeilen erscheinen nicht einzeln im Baum (wie in Notion)
-      var kids = p.kind === 'database' ? [] : kidsOf(p.id), li = el('li', 'pg-node'); li.setAttribute('role', 'treeitem');
+      var kids = p.kind === 'database' ? [] : kidsOf(p.id), li = el('li', 'pg-node');
+      var desc = [];
+      if (p.template) desc.push(T('Vorlage'));
+      if (own && p.shared) desc.push(T('Geteilt'));
+      if (!own && p.root && p.owner) desc.push(T('Geteilt von {name} · {role}', { name: p.owner.name, role: ROLE_YOU[p.role] || '' }));
+      if (p.unread) desc.push(T('Neue Kommentare'));
+      HK.treeNav.item(li, { id: p.id, level: depth + 1, pos: i + 1, size: items.length, expanded: kids.length ? !!S.open[p.id] : null,
+                            current: !!(S.cur && S.cur.id === p.id), name: label(p), desc: desc.join(', ') });
       var row = el('div', 'pg-row' + (S.cur && S.cur.id === p.id ? ' on' : ''));
       row.style.paddingLeft = (0.35 + depth * 1.05) + 'rem';
       var tw = el('button', 'pg-twisty' + (kids.length ? '' : ' leaf'), kids.length ? '▸' : '');
-      tw.type = 'button'; tw.tabIndex = kids.length ? 0 : -1;
+      tw.type = 'button'; tw.tabIndex = -1;
       if (S.open[p.id]) tw.classList.add('open');
-      tw.setAttribute('aria-label', S.open[p.id] ? T('Zuklappen') : T('Aufklappen'));
+      if (kids.length) tw.setAttribute('aria-label', S.open[p.id] ? T('Zuklappen') : T('Aufklappen'));
+      else tw.setAttribute('aria-hidden', 'true');
       // Auf-/Zuklappen: nur diesen Ast neu aufbauen bzw. entfernen (nicht den ganzen Baum)
       tw.addEventListener('click', function (e) {
-        e.stopPropagation(); S.open[p.id] = !S.open[p.id]; saveOpen();
+        e.stopPropagation(); if (!kids.length) return;
+        S.open[p.id] = !S.open[p.id]; saveOpen();
         var now = p.kind === 'database' ? [] : kidsOf(p.id), old = li.querySelector(':scope > .pg-sub');
         if (old) li.removeChild(old);
         tw.classList.toggle('open', !!S.open[p.id]);
         tw.setAttribute('aria-label', S.open[p.id] ? T('Zuklappen') : T('Aufklappen'));
+        li.setAttribute('aria-expanded', S.open[p.id] ? 'true' : 'false');
         if (now.length && S.open[p.id]) { var s2 = el('ul', 'pg-sub'); s2.setAttribute('role', 'group'); treeNodes(s2, now, depth + 1, kidsOf, own); li.appendChild(s2); }
       });
-      var go = el('button', 'pg-go'); go.type = 'button';
-      go.appendChild(icoNode(p.icon, '📄', 'pg-ic'));
+      var go = el('div', 'pg-go'); go.setAttribute('data-tn-go', '');
+      var ic = icoNode(p.icon, '📄', 'pg-ic'); ic.setAttribute('aria-hidden', 'true'); go.appendChild(ic);
       go.appendChild(el('span', 'pg-name', label(p)));
       if (p.template) go.appendChild(el('span', 'pg-badge', T('Vorlage')));
-      if (p.unread) { var ud = el('span', 'pg-unread'); ud.title = T('Neue Kommentare'); ud.setAttribute('aria-label', ud.title); go.appendChild(ud); }
+      if (p.unread) { var ud = el('span', 'pg-unread'); ud.title = T('Neue Kommentare'); go.appendChild(ud); }
       if (own && p.shared) {
-        var si = el('span', 'pg-shared-ic'); si.appendChild(grpIc()); si.title = T('Geteilt'); si.setAttribute('role', 'img'); si.setAttribute('aria-label', si.title); go.appendChild(si);
+        var si = el('span', 'pg-shared-ic'); si.appendChild(grpIc()); si.title = T('Geteilt'); go.appendChild(si);
       }
       if (!own && p.root && p.owner) go.title = T('Geteilt von {name} · {role}', { name: p.owner.name, role: ROLE_YOU[p.role] || '' });
       go.addEventListener('click', function () { openPage(p.id); });
       row.appendChild(tw); row.appendChild(go);
       if (own || (p.role === 'edit' && remCap(p, 'subpages'))) {      // fremde Instanz: nur, wenn ihr Server es kann (2.3)
-        var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = T('Unterseite hinzufügen');
+        var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = T('Unterseite hinzufügen'); plus.tabIndex = -1;
         plus.setAttribute('aria-label', T('Unterseite zu {name} hinzufügen', { name: label(p) }));
         plus.addEventListener('click', function (e) { e.stopPropagation(); if (own) newPageMenu(plus, p.id); else sharedPlusMenu(plus, p); });
         row.appendChild(plus);
@@ -616,10 +631,12 @@
       cnt.title = n === 1 ? T('1 Seite mit neuen Kommentaren') : T('{n} Seiten mit neuen Kommentaren', { n: n });
     }
     var off = $('pg-shared-off'); if (off) off.hidden = !S.shareOff;
-    treeNodes(ul, roots, 0, sharedKids, false);
-    [].forEach.call(ul.children, function (li, i) {        // Eigentuemer klein unter der obersten Seite
-      var p = roots[i], go = li.querySelector('.pg-go');
-      if (p && p.owner && go) { var o = el('span', 'pg-owner', p.owner.name); go.querySelector('.pg-name').appendChild(o); }
+    HK.treeNav.keep(ul, function () {
+      treeNodes(ul, roots, 0, sharedKids, false);
+      [].forEach.call(ul.children, function (li, i) {      // Eigentuemer klein unter der obersten Seite
+        var p = roots[i], go = li.querySelector('.pg-go');
+        if (p && p.owner && go) { var o = el('span', 'pg-owner', p.owner.name); go.querySelector('.pg-name').appendChild(o); }
+      });
     });
   }
 
@@ -1033,11 +1050,11 @@
       var e = el('li', 'pg-tree-empty', T('Zurzeit ist nichts mit dir geteilt.')); e.setAttribute('role', 'treeitem'); e.setAttribute('aria-disabled', 'true'); ul.appendChild(e);
     }
     drawer(true);
-    var f = ul.querySelector('.pg-go');
+    var f = ul.querySelector('[role="treeitem"]');
     box.scrollIntoView({ block: 'nearest' });
     box.classList.remove('hk-flash'); void box.offsetWidth; box.classList.add('hk-flash');
     setTimeout(function () { box.classList.remove('hk-flash'); }, 1600);
-    if (f) f.focus();
+    if (f) HK.treeNav.focus(ul, f);
   }
   // Seite nicht (mehr) erreichbar: eigener Hinweis statt "Noch keine Seiten" - ohne Titel/Symbol der Seite, mit
   // "Erneut versuchen" und "Zu Mit mir geteilt"
@@ -1299,19 +1316,51 @@
       }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
     }, { ic: 'home', on: on }));
   }
+  // UX-18/19: Seitenmenue nach Aufgaben gruppiert (wie Notion) - (1) Seite: Favorit, Link, Duplizieren, Verschieben;
+  // (2) Darstellung (Untermenue); (3) Verlauf, Graph, KI; (4) Import/Export/Vorlage/Startseite; (5) Archiv/Papierkorb.
+  // "Teilen …"/"Veröffentlichen …" und "Kommentare" nur, wenn ihr Knopf in der Kopfzeile fehlt (Peek bzw. keine offenen
+  // Kommentare) - was nur hier erreichbar ist, bleibt.
+  function linkItem(m) { m.appendChild(HK.menuItem(T('Link kopieren'), function () { copyLink(); }, { ic: 'link', kbd: isMac ? '⌘⌥L' : T('Strg') + '+Alt+L', keys: isMac ? 'Meta+Alt+L' : 'Control+Alt+L' })); }
+  function headVisible(id) { var b = $(id); return !!b && !b.hidden && !EMBED; }
+  function check(it, on, radio) {                     // Haken/Auswahl auch fuer Screenreader
+    it.setAttribute('role', radio ? 'menuitemradio' : 'menuitemcheckbox'); it.setAttribute('aria-checked', on ? 'true' : 'false'); return it;
+  }
+  // Untermenue "Darstellung": Breite, Schrift (mit sichtbarem Haken), kleiner Text; auf eigenen Seiten auch Titelbild, Sperre
+  function appearanceItem(m, c, btn, own) {
+    m.appendChild(HK.menuItem(T('Darstellung'), null, { ic: 'eye', sub: function (sm) {
+      sm.appendChild(check(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { ic: 'width', on: !!c.wide }), !!c.wide));
+      if (fontKnown(c)) {
+        var cur = c.font === 'serif' || c.font === 'mono' ? c.font : 'default';
+        var names = { 'default': T('Standard'), serif: T('Serif'), mono: T('Mono') };
+        sm.appendChild(el('div', 'menu-sep'));
+        sm.appendChild(HK.menuLabel(T('Schrift')));
+        ['default', 'serif', 'mono'].forEach(function (f) {
+          var it = HK.menuItem(names[f], function () { setDesign({ font: f }); }, { icon: f === cur ? 'i:check' : ' ' });
+          it.classList.add('pf-item-' + f, 'mi-radio'); sm.appendChild(check(it, f === cur, true));
+        });
+        sm.appendChild(el('div', 'menu-sep'));
+        sm.appendChild(check(HK.menuItem(T('Kleiner Text'), function () { setDesign({ small: !c.small }); }, { ic: 'type-small', on: !!c.small }), !!c.small));
+      }
+      if (!own) return;
+      // Bughunt D17: auf Touch-Geraeten steht "Titelbild" nicht mehr dauerhaft ueber dem Titel, sondern hier
+      if (!c.cover && !c.locked) sm.appendChild(HK.menuItem(T('Titelbild'), function () { coverMenu(btn); }, { ic: 'image' }));
+      sm.appendChild(check(HK.menuItem(c.locked ? T('Seite entsperren') : T('Seite sperren'), function () { setLocked(!c.locked); },
+        { ic: c.locked ? 'unlock' : 'lock', on: !!c.locked }), !!c.locked));
+    } }));
+  }
   $('pg-more').addEventListener('click', function () {
     var btn = this; if (!S.cur) return;
     HK.openMenu(btn, function (m) {
       var c = S.cur, n = descendants(c.id).length;
       if (foreign()) { foreignMenu(m, c); return; }        // fremde Seite: nur, was die Rolle erlaubt
+      // (1) Seite
       m.appendChild(HK.menuItem(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), function () { setPinned(!c.pinned); }, { ic: 'star', on: !!c.pinned }));
-      startItem(m, c);
-      m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { ic: 'width', on: !!c.wide }));
-      designMenu(m, c);
-      // Bughunt D17: auf Touch-Geraeten steht "Titelbild" nicht mehr dauerhaft ueber dem Titel, sondern hier
-      if (!c.cover && !c.locked) m.appendChild(HK.menuItem(T('Titelbild'), function () { coverMenu(btn); }, { ic: 'image' }));
-      m.appendChild(HK.menuItem(c.locked ? T('Seite entsperren') : T('Seite sperren'), function () { setLocked(!c.locked); }, { ic: c.locked ? 'unlock' : 'lock', on: !!c.locked }));
-      m.appendChild(el('div', 'menu-sep'));
+      linkItem(m);
+      if (!headVisible('pg-share')) {                                  // Peek: kein Teilen-Knopf in der Kopfzeile
+        m.appendChild(HK.menuItem(T('Teilen …'), openShare, { ic: 'users', on: !!c.shared }));
+        m.appendChild(HK.menuItem(T('Veröffentlichen …'), openPublish, { ic: 'globe', on: !!c.published }));
+      }
+      chatShareItem(m, c);                                             // 2.5: Seite in einen Chat teilen (static/chatdock.js)
       m.appendChild(HK.menuItem(T('Duplizieren'), duplicatePage, { ic: 'copy' }));
       m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { ic: 'plus' }));
       m.appendChild(HK.menuItem(T('Verschieben nach'), null, { ic: 'move', subSearch: T('Seite suchen …'), sub: function (sm) {
@@ -1322,22 +1371,26 @@
             { icon: ti(p.icon) || '📄', hint: ancestors(p.id).map(label).join(' / ') }));
         });
       } }));
-      m.appendChild(HK.menuItem(c.template ? T('Keine Vorlage mehr') : T('Als Vorlage markieren'), function () { setTemplate(!c.template); }, { ic: 'template', on: !!c.template }));
+      // (2) Darstellung
       m.appendChild(el('div', 'menu-sep'));
-      if (window.HKGraph) HKGraph.menu(m);                           // static/graph.js: lokaler Graph dieser Seite
+      appearanceItem(m, c, btn, true);
+      // (3) Verlauf, Zusammenhang, KI
+      m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { ic: 'history' }));
-      var shi = HK.menuItem(T('Teilen …'), openShare, { ic: 'users', on: !!c.shared });
-      m.appendChild(shi);
-      chatShareItem(m, c);                                             // 2.5: Seite in einen Chat teilen (static/chatdock.js)
-      m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
+      if (window.HKGraph) HKGraph.menu(m);                           // static/graph.js: lokaler Graph dieser Seite
+      if (!headVisible('pg-cm-btn')) m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
         { ic: 'comment', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
       if (window.HKAI) HKAI.menu(m);                                 // static/ai.js (nur, wenn der Assistent an ist)
-      m.appendChild(HK.menuItem(T('Veröffentlichen …'), openPublish, { ic: 'globe', on: !!c.published }));
+      // (4) Daten und Rolle der Seite
+      m.appendChild(el('div', 'menu-sep'));
+      if (c.kind !== 'database') m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: c.id }); }, { ic: 'upload', hint: T('als Unterseiten') }));
       m.appendChild(HK.menuItem(T('Exportieren'), null, { ic: 'download', sub: function (sm) {
         sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { ic: 'file' }));
         if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { ic: 'file-zip', hint: nSub(n) }));
       } }));
-      if (c.kind !== 'database') m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: c.id }); }, { ic: 'upload', hint: T('als Unterseiten') }));
+      m.appendChild(HK.menuItem(c.template ? T('Keine Vorlage mehr') : T('Als Vorlage markieren'), function () { setTemplate(!c.template); }, { ic: 'template', on: !!c.template }));
+      startItem(m, c);
+      // (5) Weg damit
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(c.archived ? T('Aus dem Archiv holen') : T('Archivieren'), function () { setArchived(c.id, !c.archived); },
         { ic: 'archive', hint: !c.archived && n ? '+ ' + nSub(n) : '' }));
@@ -1371,8 +1424,7 @@
     var rem = remoteId(c.id);
     startItem(m, c);
     if (canEdit()) {
-      if (remCap(c, 'db')) m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { ic: 'width', on: !!c.wide }));
-      if (remCap(c, 'db')) designMenu(m, c);
+      if (remCap(c, 'db')) appearanceItem(m, c, null, false);
       if (remCap(c, 'subpages')) {
         m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { ic: 'plus' }));
         var cand = sharedMoveTargets(c);
@@ -1387,7 +1439,7 @@
     }
     m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
       { ic: 'comment', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
-    m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { ic: 'link' }));
+    linkItem(m);
     if (!rem) chatShareItem(m, c);                     // Seitenverweise im Chat gibt es nur fuer Seiten dieses Servers
     if (window.HKGraph && !rem) HKGraph.menu(m);       // Graph kennt nur Seiten dieses Servers
     if (window.HKAI && !rem) HKAI.menu(m);            // KI nur fuer Seiten dieses Servers (andere Instanz: 404, BUG-052)
@@ -2023,12 +2075,16 @@
     renderRecent();
     var favs = S.pages.filter(function (p) { return p.pinned; });
     $('pg-favs').hidden = !favs.length;
-    var ul = $('pg-fav-list'); ul.textContent = '';
-    favs.forEach(function (p) {
-      var b = el('button', 'pg-fav' + (S.cur && S.cur.id === p.id ? ' on' : '')); b.type = 'button';
-      b.appendChild(icoNode(p.icon, '📄', 'pg-ic')); b.appendChild(el('span', 'pg-name', label(p)));
-      b.addEventListener('click', function () { openPage(p.id); });
-      var li = el('li'); li.appendChild(b); ul.appendChild(li);
+    var ul = $('pg-fav-list');
+    HK.treeNav.keep(ul, function () {                      // A11Y-11: Favoriten als flacher Baum, ein Tab-Stopp
+      ul.textContent = '';
+      favs.forEach(function (p, i) {
+        var b = el('div', 'pg-fav' + (S.cur && S.cur.id === p.id ? ' on' : '')); b.setAttribute('data-tn-go', '');
+        var ic = icoNode(p.icon, '📄', 'pg-ic'); ic.setAttribute('aria-hidden', 'true'); b.appendChild(ic); b.appendChild(el('span', 'pg-name', label(p)));
+        b.addEventListener('click', function () { openPage(p.id); });
+        var li = HK.treeNav.item(el('li', 'pg-fav-node'), { id: p.id, level: 1, pos: i + 1, size: favs.length, current: !!(S.cur && S.cur.id === p.id), name: label(p) });
+        li.appendChild(b); ul.appendChild(li);
+      });
     });
   }
   function setPinned(on) {
@@ -7752,18 +7808,6 @@
       applyFont(S.cur);
     }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
   }
-  function designMenu(m, c) {
-    if (!fontKnown(c)) return;
-    var cur = c.font === 'serif' || c.font === 'mono' ? c.font : 'default';
-    var names = { 'default': T('Standard'), serif: T('Serif'), mono: T('Mono') };
-    m.appendChild(HK.menuItem(T('Schrift'), null, { ic: 'type', hint: names[cur], sub: function (sm) {
-      ['default', 'serif', 'mono'].forEach(function (f) {
-        var it = HK.menuItem(names[f], function () { setDesign({ font: f }); }, { on: f === cur });
-        it.classList.add('pf-item-' + f); sm.appendChild(it);
-      });
-    } }));
-    m.appendChild(HK.menuItem(T('Kleiner Text'), function () { setDesign({ small: !c.small }); }, { ic: 'type-small', on: !!c.small }));
-  }
   function setWide(on) {
     var id = S.cur.id;
     api('PATCH', '/api/notes/' + id, { wide: on }).then(function () {
@@ -8882,7 +8926,7 @@
   function copyLink(block) {
     if (!S.cur) return;
     var u = pageLink(S.cur.id, block);
-    var done = function () { HK.toast(block ? T('Link zum Block kopiert') : T('Link zur Seite kopiert')); };
+    var done = function () { HK.toast(block ? T('Link zum Block kopiert') : T('Link kopiert')); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u).then(done, function () { prompt(T('Link kopieren:'), u); });
     else prompt(T('Link kopieren:'), u);
   }

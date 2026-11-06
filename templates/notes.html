@@ -44,11 +44,11 @@
       </div>
       <div class="pg-favs" id="pg-favs" hidden>
         <div class="pg-section">{{ _("Favoriten") }}</div>
-        <ul class="pg-fav-list" id="pg-fav-list"></ul>
+        <ul class="pg-fav-list" id="pg-fav-list" role="tree" aria-label="{{ _("Favoriten") }}"></ul>
         <div class="pg-section">{{ _("Alle Seiten") }}</div>
       </div>
       <div class="pg-section pg-sec-pages" id="pg-sec-pages">{{ _("Seiten") }}</div>
-      <ul class="pg-tree" id="pg-tree" role="tree"></ul>
+      <ul class="pg-tree" id="pg-tree" role="tree" aria-label="{{ _("Seiten") }}"></ul>
       <ul class="pg-results" id="pg-results" hidden></ul>
       <button type="button" class="note-new" id="pg-new"><svg class="pg-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>{{ _("Neue Seite") }}</span></button>
       <div class="pg-shared-box" id="pg-shared-box" hidden>
@@ -157,6 +157,7 @@
 <script src="/i18n/{{ lang() }}.js?v={{ i18n_v }}"></script>
 <script src="/static/common.js?v={{ v }}"></script>
 <script src="/static/icons.js?v={{ v }}"></script>
+<script src="/static/treenav.js?v={{ v }}"></script>
 <script src="/static/calendar.js?v={{ v }}"></script>
 <script src="/static/immich.js?v={{ v }}"></script>
 <script src="/static/code.js?v={{ v }}"></script>

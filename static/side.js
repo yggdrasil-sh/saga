@@ -64,46 +64,70 @@
   try { openState = JSON.parse(store('hk-pg-open') || '{}') || {}; } catch (e) { openState = {}; }
   function kids(id) { return pages.filter(function (p) { return (p.parent_id == null ? null : p.parent_id) === id && !p.archived; }); }
   function byId(id) { for (var i = 0; i < pages.length; i++) if (pages[i].id === id) return pages[i]; return null; }
-  function row(p, depth, withKids) {
-    var li = el('li', 'pg-node'); li.setAttribute('role', 'treeitem');
+  // A11Y-11: echter Baum (static/treenav.js) - ein Tab-Stopp, Pfeiltasten; Name = nur der Seitenname
+  var TN = HK.treeNav;
+  function row(p, depth, withKids, pos, size) {
+    var li = el('li', 'pg-node');
     var r = el('div', 'pg-row'); r.style.paddingLeft = (0.35 + depth * 1.05) + 'rem';
     var ks = withKids && p.kind !== 'database' ? kids(p.id) : [];
-    var tw = el('button', 'pg-twisty' + (ks.length ? '' : ' leaf'), ks.length ? '▸' : ''); tw.type = 'button'; tw.tabIndex = ks.length ? 0 : -1;
+    if (TN) TN.item(li, { id: p.id, level: depth + 1, pos: pos, size: size, expanded: ks.length ? !!openState[p.id] : null, name: label(p),
+                          desc: [p.template ? T('Vorlage') : '', p.shared ? T('Geteilt') : ''].filter(Boolean).join(', ') });
+    else li.setAttribute('role', 'treeitem');
+    var tw = el('button', 'pg-twisty' + (ks.length ? '' : ' leaf'), ks.length ? '▸' : ''); tw.type = 'button'; tw.tabIndex = -1;
     if (openState[p.id]) tw.classList.add('open');
-    tw.setAttribute('aria-label', openState[p.id] ? T('Zuklappen') : T('Aufklappen'));
+    if (ks.length) tw.setAttribute('aria-label', openState[p.id] ? T('Zuklappen') : T('Aufklappen')); else tw.setAttribute('aria-hidden', 'true');
     tw.addEventListener('click', function (e) {
-      e.stopPropagation(); openState[p.id] = !openState[p.id]; store('hk-pg-open', JSON.stringify(openState));
+      e.stopPropagation(); if (!ks.length) return;
+      openState[p.id] = !openState[p.id]; store('hk-pg-open', JSON.stringify(openState));
       var old = li.querySelector(':scope > .pg-sub'); if (old) li.removeChild(old);
       tw.classList.toggle('open', !!openState[p.id]);
-      if (openState[p.id] && ks.length) li.appendChild(sub(ks, depth + 1));
+      tw.setAttribute('aria-label', openState[p.id] ? T('Zuklappen') : T('Aufklappen'));
+      li.setAttribute('aria-expanded', openState[p.id] ? 'true' : 'false');
+      if (openState[p.id]) li.appendChild(sub(ks, depth + 1));
     });
-    var go = el('button', 'pg-go'); go.type = 'button'; go.appendChild(ico(p.icon)); go.appendChild(el('span', 'pg-name', label(p)));
+    var go = el('div', 'pg-go'); go.setAttribute('data-tn-go', '');
+    var ic = ico(p.icon); ic.setAttribute('aria-hidden', 'true'); go.appendChild(ic); go.appendChild(el('span', 'pg-name', label(p)));
     go.addEventListener('click', function () { open(p.id); });
     r.appendChild(tw); r.appendChild(go); li.appendChild(r);
     if (openState[p.id] && ks.length) li.appendChild(sub(ks, depth + 1));
     return li;
   }
-  function sub(list, depth) { var u = el('ul', 'pg-sub'); u.setAttribute('role', 'group'); list.forEach(function (p) { u.appendChild(row(p, depth, true)); }); return u; }
-  function favRow(p) {
-    var b = el('button', 'pg-fav'); b.type = 'button'; b.appendChild(ico(p.icon)); b.appendChild(el('span', 'pg-name', label(p)));
-    b.addEventListener('click', function () { open(p.id); }); var li = el('li'); li.appendChild(b); return li;
+  function sub(list, depth) {
+    var u = el('ul', 'pg-sub'); u.setAttribute('role', 'group');
+    list.forEach(function (p, i) { u.appendChild(row(p, depth, true, i + 1, list.length)); }); return u;
   }
+  function favRow(p, i, n) {
+    var b = el('div', 'pg-fav'); b.setAttribute('data-tn-go', '');
+    var ic = ico(p.icon); ic.setAttribute('aria-hidden', 'true'); b.appendChild(ic); b.appendChild(el('span', 'pg-name', label(p)));
+    b.addEventListener('click', function () { open(p.id); });
+    var li = el('li', 'pg-fav-node');
+    if (TN) TN.item(li, { id: p.id, level: 1, pos: i + 1, size: n, name: label(p) }); else li.setAttribute('role', 'treeitem');
+    li.appendChild(b); return li;
+  }
+  function keep(ul, build) { if (TN) TN.keep(ul, build); else build(); }
   function render() {
-    var q = ($('sh-search').value || '').trim().toLowerCase(), tree = $('sh-tree'); tree.textContent = '';
-    if (q) {
-      pages.filter(function (p) { return !p.archived && label(p).toLowerCase().indexOf(q) >= 0; }).slice(0, 40)
-        .forEach(function (p) { tree.appendChild(row(p, 0, false)); });
-      if (!tree.firstChild) tree.appendChild(el('li', 'pg-tree-empty', T('Keine Treffer')));
-    } else {
-      kids(null).forEach(function (p) { tree.appendChild(row(p, 0, true)); });
-      if (!tree.firstChild) tree.appendChild(el('li', 'pg-tree-empty', T('Noch keine Seiten')));
-    }
+    var q = ($('sh-search').value || '').trim().toLowerCase(), tree = $('sh-tree');
+    keep(tree, function () {
+      tree.textContent = '';
+      if (q) {
+        var hits = pages.filter(function (p) { return !p.archived && label(p).toLowerCase().indexOf(q) >= 0; }).slice(0, 40);
+        hits.forEach(function (p, i) { tree.appendChild(row(p, 0, false, i + 1, hits.length)); });
+        if (!tree.firstChild) tree.appendChild(el('li', 'pg-tree-empty', T('Keine Treffer')));
+      } else {
+        var top = kids(null);
+        top.forEach(function (p, i) { tree.appendChild(row(p, 0, true, i + 1, top.length)); });
+        if (!tree.firstChild) tree.appendChild(el('li', 'pg-tree-empty', T('Noch keine Seiten')));
+      }
+    });
     var favs = pages.filter(function (p) { return p.pinned && !p.archived; });
-    $('sh-favs').hidden = !favs.length; var fl = $('sh-fav-list'); fl.textContent = ''; favs.forEach(function (p) { fl.appendChild(favRow(p)); });
+    $('sh-favs').hidden = !favs.length; var fl = $('sh-fav-list');
+    keep(fl, function () { fl.textContent = ''; favs.forEach(function (p, i) { fl.appendChild(favRow(p, i, favs.length)); }); });
   }
   $('sh-search').addEventListener('input', render);
   $('sh-search').addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter') return; var first = $('sh-tree').querySelector('.pg-go'); if (first) { e.preventDefault(); first.click(); }
+    var t = $('sh-tree'), first;
+    if (e.key === 'ArrowDown' && TN) { first = TN.items(t)[0]; if (first) { e.preventDefault(); TN.focus(t, first); } return; }   // in den Baum
+    if (e.key !== 'Enter') return; first = t.querySelector('.pg-go'); if (first) { e.preventDefault(); first.click(); }
   });
   function load() {
     return HK.api('GET', '/api/notes').then(function (d) {

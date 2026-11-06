@@ -239,7 +239,7 @@
     place(subEl, { left: mr.left, right: mr.right, top: mr.top - 6, bottom: mr.top - 6 }, false);
     subEl.style.top = Math.max(8, Math.min(mr.top, window.innerHeight - subEl.offsetHeight - 8)) + 'px';
   }
-  // menuItem(text, aktion, {icon, ic, hint, hintBelow, on, danger, sub: function(menu){...}, subSearch: 'Platzhalter'})
+  // menuItem(text, aktion, {icon, ic, hint, hintBelow, kbd (Anzeige), keys (aria-keyshortcuts), on, danger, sub: function(menu){...}, subSearch: 'Platzhalter'})
   // ic: 'trash' bzw. icon: 'i:trash' = Linien-Symbol aus static/icons.js (VD-17); sonst icon als Zeichen wie bisher
   function menuItem(label, onClick, opts) {
     opts = opts || {};
@@ -256,6 +256,7 @@
       b.appendChild(el('span', 'mi-t', label));
       if (opts.hint) b.appendChild(el('span', 'mi-hint', opts.hint));
     }
+    if (opts.kbd) { b.appendChild(el('kbd', 'mi-kbd', opts.kbd)); if (opts.keys) b.setAttribute('aria-keyshortcuts', opts.keys); }   // UX-19: Kuerzel rechts wie im /-Menue
     if (opts.sub) {
       b.appendChild(window.HK && window.HK.iconBox ? window.HK.iconBox('i:chevron-right', 'mi-arrow', 14) : el('span', 'mi-arrow', '›')); b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false');
       var openIt = function () { openSub(b, opts.sub, { search: opts.subSearch }); };
