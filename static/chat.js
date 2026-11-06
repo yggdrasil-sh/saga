@@ -651,6 +651,51 @@
   window.SagaChatFed = { certs: fedCerts, keys: fedKeys, verify: fedVerify,
                          safety: function (myHandle, theirHandle, theirIdentPk) { return X.safetyNumberV2(myHandle, K.ident_pk, theirHandle, theirIdentPk); } };
 
+  // --- 2.5: Seitenpanel (static/chatdock.js) und "Seite in Chat teilen" -------------------------------------------
+  // Im Panel (/chats?panel=1, eingebettet neben Seiten/Heute) oeffnen sich Seiten-Links im umgebenden Fenster; das
+  // umgebende Fenster schickt "Seite teilen" und "Eingabe fokussieren" per postMessage (nur gleiche Herkunft).
+  var PANEL = document.body.classList.contains('ct-panel') && window.parent !== window;
+  function shareStart(n) {
+    if (!n || !(+n.id > 0)) return;
+    S.share = { id: +n.id, title: String(n.title || T('Unbenannt')).slice(0, 200) };
+    if (S.cur) { closeChat(); if (location.hash) history.replaceState(null, '', location.pathname + location.search); }
+    var old = $('ct-share'); if (old) old.remove();
+    var bar = el('div', 'ct-share'); bar.id = 'ct-share'; bar.setAttribute('role', 'status');
+    bar.appendChild(el('span', 'ct-share-t', T('Chat wählen, um „{title}“ zu teilen', { title: S.share.title })));
+    var x = el('button', 'icon-btn ct-share-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Abbrechen'));
+    x.addEventListener('click', function () { S.share = null; bar.remove(); });
+    bar.appendChild(x);
+    var list = $('ct-list'); if (list) list.parentNode.insertBefore(bar, list);
+  }
+  function shareApply() {
+    var sh = S.share; S.share = null; var bar = $('ct-share'); if (bar) bar.remove();
+    if (!sh) return;
+    var t = $('ct-input'), tok = '[[note:' + sh.id + ']] ';
+    if (t.value.indexOf('[[note:' + sh.id + ']]') < 0) t.value = (t.value && !/\s$/.test(t.value) ? t.value + ' ' : t.value) + tok;
+    autosize(); setTimeout(function () { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 0);
+  }
+  (function () {                                           // /chats?share=ID&title=… (Handy, ohne Panel)
+    var q = new URLSearchParams(location.search), id = +q.get('share');
+    if (id > 0) {
+      S.share = { id: id, title: (q.get('title') || T('Unbenannt')).slice(0, 200) };
+      q.delete('share'); q.delete('title'); var rest = q.toString();
+      history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+      setTimeout(function () { if (S.share && !S.cur) shareStart(S.share); }, 0);
+    }
+  })();
+  window.addEventListener('message', function (e) {
+    if (e.origin !== location.origin || e.source !== window.parent || !e.data || typeof e.data !== 'object') return;
+    if (e.data.t === 'saga-share') shareStart(e.data.note);
+    else if (e.data.t === 'saga-focus' && S.cur) { var t = $('ct-input'); if (t) t.focus(); }
+  });
+  if (PANEL) document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href]'); if (!a || e.defaultPrevented) return;
+    var u; try { u = new URL(a.getAttribute('href'), location.href); } catch (x) { return; }
+    if (u.origin !== location.origin || u.pathname === '/chats' || a.hasAttribute('download') || /^\/(files|_m|api)\//.test(u.pathname)) return;
+    e.preventDefault();                                    // Seite/Heute im umgebenden Fenster oeffnen
+    window.parent.postMessage({ t: 'saga-open', href: u.pathname + u.search + u.hash }, location.origin);
+  }, true);
+
   function route() {
     var h = decodeURIComponent(location.hash.slice(1) || ''), m;
     if ((m = /^c(\d+)$/.exec(h))) openChat(+m[1]);
@@ -1099,6 +1144,7 @@
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
       if (!same) draftLoad(c.id);                        // 2.5: Entwurf dieses Chats (nur dieser Browser)
+      if (S.share) shareApply();                         // 2.5: "Seite in Chat teilen" (Seitenpanel/?share=)
       if (GI && GI.id === c.id && ov) GI.draw();         // 2.5: offene Gruppeninfo aktualisieren (live)
       c.members.forEach(function (m) { if (!m.me && !trust[m.username]) trustP[m.username] = kvGet(trustKey(m.username)).then(function (t) { if (t) trust[m.username] = t; drawWarn(); return t; }).catch(function () { return null; }); });
       checkIdents(c);
@@ -1453,6 +1499,25 @@
     }
     if (last < s.length) box.appendChild(document.createTextNode(s.slice(last)));
   }
+  // 2.5: Vorschaukarte fuer verlinkte Seiten (hoechstens 3 je Nachricht) - Titel/Symbol nur mit eigenem Zugriff
+  // (/api/chat/notes); ohne Zugriff keine Karte, der Verweis im Text sagt dann "kein Zugriff"
+  function pageCards(b, text) {
+    var r = /\[\[note:([1-9][0-9]{0,17})\]\]/g, x, seen = {}, n = 0;
+    while ((x = r.exec(text)) && n < 3) {
+      if (seen[x[1]]) continue; seen[x[1]] = 1; n++;
+      var a = el('a', 'ct-pcard'); a.dataset.note = x[1]; a.hidden = true;
+      a.appendChild(el('span', 'ct-pcard-ic')); var t = el('span', 'ct-pcard-t'); t.appendChild(el('b', 'ct-pcard-n')); t.appendChild(el('span', 'ct-pcard-s')); a.appendChild(t);
+      fillCard(a); b.appendChild(a);
+    }
+  }
+  function fillCard(a) {
+    var n = S.notes[a.dataset.note]; if (!n) { a.hidden = true; return; }
+    a.hidden = false; a.href = '/notes#' + a.dataset.note;
+    var ic = a.querySelector('.ct-pcard-ic'); ic.textContent = '';
+    if (n.icon && n.icon.charAt(0) === '/') { var im = el('img'); im.alt = ''; im.src = n.icon; ic.appendChild(im); } else ic.textContent = n.icon || '📄';
+    a.querySelector('.ct-pcard-n').textContent = n.title;
+    a.querySelector('.ct-pcard-s').textContent = n.updated ? T('Seite · geändert {when}', { when: HK.relTime(n.updated - Date.now() / 1000) }) : T('Seite');
+  }
   function resolveNotes() {
     var ids = {};
     S.msgs.forEach(function (m) { var t = m.body && m.body.text; if (!t) return; var r = /\[\[note:([1-9][0-9]{0,17})\]\]/g, x; while ((x = r.exec(t))) if (!(x[1] in S.notes)) ids[x[1]] = 1; });
@@ -1464,6 +1529,7 @@
         if (n) { a.href = '/notes#' + a.dataset.note; a.target = 'hk-notes'; a.textContent = (n.icon ? n.icon + ' ' : '📄 ') + n.title; a.classList.remove('na'); }
         else { a.removeAttribute('href'); a.textContent = '📄 ' + T('Seite (kein Zugriff)'); a.classList.add('na'); }
       });
+      document.querySelectorAll('#ct-msgs .ct-pcard').forEach(fillCard);
     }).catch(function () {});
   }
   function callText(m) {
@@ -1562,6 +1628,7 @@
       else {
         if (m.body.text) { var tx = el('div', 'ct-text'); renderText(tx, m.body.text); b.appendChild(tx); }
         if (m.body.preview) { var pv = unfCard(c, m); if (pv) b.appendChild(pv); }        // 2.5 (unfurl1): Linkvorschau
+        else if (m.body.text) pageCards(b, m.body.text);                                   // 2.5: Vorschaukarte fuer [[note:ID]]
         if (mentionsMe(c, m)) row.classList.add('ct-ment');
         (Array.isArray(m.body.files) ? m.body.files : []).slice(0, 10).forEach(function (f) { b.appendChild(fileEl(fileCid(c, m), f)); });
       }

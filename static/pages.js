@@ -1329,6 +1329,7 @@
       var shi = HK.menuItem(T('Teilen …'), openShare, { icon: ' ', on: !!c.shared }), shc = shi.querySelector('.mi-ic');
       if (shc) { shc.textContent = ''; shc.appendChild(grpIc()); }                    // einfarbiges Gruppen-Symbol
       m.appendChild(shi);
+      chatShareItem(m, c);                                             // 2.5: Seite in einen Chat teilen (static/chatdock.js)
       m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
         { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
       if (window.HKAI) HKAI.menu(m);                                 // static/ai.js (nur, wenn der Assistent an ist)
@@ -1382,6 +1383,7 @@
     m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
       { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
     m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { icon: '🔗' }));
+    if (!rem) chatShareItem(m, c);                     // Seitenverweise im Chat gibt es nur fuer Seiten dieses Servers
     if (window.HKGraph && !rem) HKGraph.menu(m);       // Graph kennt nur Seiten dieses Servers
     if (window.HKAI && !rem) HKAI.menu(m);            // KI nur fuer Seiten dieses Servers (andere Instanz: 404, BUG-052)
     var n = descendants(c.id).length || S.shared.filter(function (p) { return p.parent_id === c.id; }).length;
@@ -8574,8 +8576,14 @@
   $('pg-share').addEventListener('click', function () { openShare(); });
   if ($('pg-chat')) $('pg-chat').addEventListener('click', function () {
     if (!S.cur) return;
+    if (window.HKChatDock) { HKChatDock.open('p' + S.cur.id, { focus: true }); return; }   // 2.5: Chat zur Seite im Seitenpanel
     var w = window.open('/chats#p' + S.cur.id, 'hk-chats'); if (w) w.focus();
   });
+  // 2.5: "In Chat teilen" - Chat waehlen, der Verweis steht dann in der Eingabe (Senden bleibt bei der Person)
+  function chatShareItem(m, c) {
+    if (!window.HKChatDock || !c || !(c.id > 0)) return;
+    m.appendChild(HK.menuItem(T('In Chat teilen …'), function () { HKChatDock.share({ id: c.id, title: c.title || T('Unbenannt') }); }, { icon: '📨' }));
+  }
   function openShare() {
     if (!S.cur || !isOwner()) return;
     var id = S.cur.id;

@@ -463,3 +463,22 @@ button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
 .ct-md-play{position:absolute;inset:auto auto .3rem .3rem;color:#fff;text-shadow:0 0 4px #000}
 .ct-md-link{overflow-wrap:anywhere;font-size:.88rem}
 .ct-md-more{margin-top:.5rem}
+
+/* 2.5: Vorschaukarte fuer verlinkte Seiten ([[note:ID]]) unter einer Nachricht */
+.ct-pcard{display:flex;gap:.6rem;align-items:center;margin-top:.4rem;padding:.45rem .65rem;border:1px solid var(--border);
+  border-left:3px solid var(--accent);border-radius:8px;background:var(--card);color:var(--fg);text-decoration:none;max-width:22rem}
+.ct-pcard[hidden]{display:none}
+.ct-pcard:hover{border-color:var(--accent)}
+.ct-pcard-ic{flex:none;width:1.9rem;height:1.9rem;display:grid;place-items:center;font-size:1.3rem;line-height:1;border-radius:6px;background:var(--bg);overflow:hidden}
+.ct-pcard-ic img{width:100%;height:100%;object-fit:cover}
+.ct-pcard-t{display:flex;flex-direction:column;min-width:0;gap:.05rem}
+.ct-pcard-n{font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ct-pcard-s{font-size:.72rem;color:var(--muted)}
+
+/* 2.5: "Seite in Chat teilen" - Hinweis ueber der Chat-Liste */
+.ct-share{display:flex;align-items:center;gap:.4rem;margin:.2rem .6rem .4rem;padding:.45rem .6rem;border-radius:8px;
+  background:color-mix(in srgb,var(--accent) 16%,transparent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);font-size:.84rem}
+.ct-share-t{flex:1;min-width:0}
+
+/* 2.5: Seitenpanel (/chats?panel=1 in static/chatdock.js) - ohne Kopfzeile, eine Spalte */
+body.ct-panel .np-head{display:none}

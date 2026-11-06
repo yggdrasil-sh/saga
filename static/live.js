@@ -120,6 +120,11 @@
     if (!it.read) { var d = el('span', 'lv-dot'); d.setAttribute('aria-label', T('Ungelesen')); b.appendChild(d); }
     b.addEventListener('click', function () { activate(it); });
     li.appendChild(b);
+    if (isChatIt(it) && dockOk()) {                     // 2.5: direkt antworten (Chat im Seitenpanel, Eingabe bereit)
+      var rp = el('button', 'lv-reply', T('Antworten')); rp.type = 'button';
+      rp.addEventListener('click', function (e) { e.stopPropagation(); if (!it.read) markRead([it.id]); closePanel(false); HKChatDock.open(it.url.split('#')[1] || '', { focus: true }); });
+      li.classList.add('lv-has-reply'); li.appendChild(rp);
+    }
     return li;
   }
   function draw() {
@@ -164,9 +169,12 @@
   }
   function place() {
     if (narrow.matches) { panel.style.top = panel.style.right = panel.style.left = ''; return; }
-    var r = bell.getBoundingClientRect();
-    panel.style.left = '';
+    var r = bell.getBoundingClientRect(), w = panel.offsetWidth || 380;
     panel.style.top = Math.round(r.bottom + 8) + 'px';
+    if (r.right - w < 8) {                             // 2.5: Glocke links in der Seitenleiste -> Liste nach rechts aufklappen
+      panel.style.right = ''; panel.style.left = Math.max(8, Math.round(r.left)) + 'px'; return;
+    }
+    panel.style.left = '';
     panel.style.right = Math.max(8, Math.round(window.innerWidth - r.right)) + 'px';
   }
   function openPanel() {
@@ -221,6 +229,7 @@
     }
     if ((it.kind === 'chat.message' || it.kind === 'chat.mention' || it.kind === 'call.missed') && it.access && it.url) {           // Chat (1.5): im Chat-Tab oeffnen
       if (location.pathname === '/chats') { location.hash = it.url.split('#')[1] || ''; return; }
+      if (dockOk()) { HKChatDock.open(it.url.split('#')[1] || '', { focus: true }); return; }   // 2.5: im Seitenpanel
       var cw = window.open(it.url, 'hk-chats'); if (cw) cw.focus(); return;
     }
     if (!it.access || !it.note) { HK.toast(T('Kein Zugriff mehr')); return; }
@@ -377,9 +386,22 @@
     if (k) { k.reloadList(); if (window.HKComments && k.cur()) HKComments.live(); ping(); }
   }
 
+  // 2.5: Chat-Benachrichtigung -> Antworten im Seitenpanel (static/chatdock.js; nicht auf /chats, nicht im Panel selbst)
+  function dockOk() { return !!(window.HKChatDock && HKChatDock.ok()); }
+  function isChatIt(it) { return (it.kind === 'chat.message' || it.kind === 'chat.mention') && it.access && it.url && it.url.indexOf('#') > 0; }
+  function chatToast(it) {
+    var h = it.url.split('#')[1];
+    if (document.hidden || HKChatDock.showing(h)) return;
+    var who = it.actor ? it.actor.name : T('Gelöschtes Konto');
+    var s = it.kind === 'chat.mention' ? T('{name} hat dich in einem Chat erwähnt', { name: who })
+      : (it.count || 1) > 1 ? T('{n} neue Nachrichten', { n: it.count }) : T('Neue Nachricht von {name}', { name: who });
+    if (it.title && it.title !== who) s += ' · 💬 ' + it.title;          // Direkt-Chat: Titel ist der Name
+    HK.toast(s, T('Antworten'), function () { if (!it.read) markRead([it.id]); HKChatDock.open(h, { focus: true }); }, 8000);
+  }
   function onNotification(d) {
     if (d.item) {
       var it = d.item;
+      if (!it.read && isChatIt(it) && dockOk()) chatToast(it);
       N.items = N.items.filter(function (x) { return x.id !== it.id && x.id !== d.replaces; });
       if (N.loaded) N.items.unshift(it);
       if (!it.read) ring();

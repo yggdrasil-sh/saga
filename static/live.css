@@ -110,3 +110,10 @@ body.cm-open .lv-pres-t{display:none}
 .ps-quiet .hk-in{width:auto;min-width:7rem}
 @media (max-width:560px){.ps-dev .hk-hint{flex-basis:100%}}
 @media (pointer:coarse){.ps-dev .btn{min-height:44px}}
+
+/* 2.5: "Antworten" an Chat-Benachrichtigungen (Chat im Seitenpanel, static/chatdock.js) */
+.lv-li.lv-has-reply{position:relative}
+.lv-li.lv-has-reply .lv-item{padding-bottom:2.1rem}
+.lv-reply{position:absolute;left:3.3rem;bottom:.55rem;border:1px solid var(--border);background:var(--card);color:var(--fg);font:inherit;font-size:.78rem;
+  padding:.15rem .6rem;border-radius:999px;cursor:pointer}
+.lv-reply:hover{border-color:var(--accent);color:var(--accent)}

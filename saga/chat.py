@@ -1144,8 +1144,9 @@ def _note_info(c, uid, ids):
     ok = [i for i in ids if acc.role(i)]
     if not ok:
         return {}
-    return {r[0]: {"id": r[0], "title": r[1] or t("Unbenannt"), "icon": r[2] or ""} for r in c.execute(
-        f"SELECT id, title, icon FROM note WHERE deleted_at IS NULL AND id IN ({','.join('?' * len(ok))})", tuple(ok))}
+    # updated: fuer die Vorschaukarte unter einer Nachricht mit Seitenverweis (2.5)
+    return {r[0]: {"id": r[0], "title": r[1] or t("Unbenannt"), "icon": r[2] or "", "updated": r[3]} for r in c.execute(
+        f"SELECT id, title, icon, updated FROM note WHERE deleted_at IS NULL AND id IN ({','.join('?' * len(ok))})", tuple(ok))}
 
 
 @router.get("/api/chat/notes")
@@ -2848,8 +2849,8 @@ notify.RENDER["chat.mention"] = _notif                 # 2.5 (chatmention1): erw
 
 # --- Seite /chats -------------------------------------------------------------------------------------------------
 @router.get("/chats", response_class=HTMLResponse)
-def chats_page(request: Request):
-    """Chats im eigenen Tab. Nur diese Seite darf WebAssembly kompilieren ('wasm-unsafe-eval' fuer libsodium.js) -
+def chats_page(request: Request, panel: str = ""):
+    """Chats im eigenen Tab (panel=1: kompakt im Seitenpanel neben Seiten/Heute, static/chatdock.js). Nur diese Seite darf WebAssembly kompilieren ('wasm-unsafe-eval' fuer libsodium.js) -
     die uebrige CSP bleibt gleich (kein eval, keine fremden Skripte)."""
     uid = _session_user(request)
     if not uid:
@@ -2858,13 +2859,17 @@ def chats_page(request: Request):
         return go
     remember_ui_lang(uid, request)
     info = user_info(uid)
+    panel = panel == "1"
     with _db() as c:
         n_chat = unread_total(c, uid) if enabled() else 0
     html = tmpl.get_template("chats.html").render(title=title(), name=request.session.get("name", uid), v=ASSET_V, uid=uid,
                                                   enabled=enabled(), admin_url=ADMIN_URL if info and info["is_admin"] else "",
                                                   me_avatar=avatars.my_url(uid),
-                                                  chat_enabled=enabled(), chat_unread=n_chat, side_cur="chats")   # Seitenleiste (_side.html)
+                                                  chat_enabled=enabled(), chat_unread=n_chat, side_cur="chats",   # Seitenleiste (_side.html)
+                                                  panel=panel)
     headers = icon_csp(SEC_HEADERS, uid)             # Einstellungen -> Lesezeichen: Symbole direkt von der Seite
     headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'") \
         + "; media-src 'self' blob:"          # 2.4: Videos (Service Worker /_m/..., ohne ihn als Blob)
+    if panel:                                 # 2.5: Chat-Seitenpanel - nur Saga selbst darf diese Ansicht einbetten
+        headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("frame-ancestors 'none'", "frame-ancestors 'self'")
     return HTMLResponse(html, headers=headers)

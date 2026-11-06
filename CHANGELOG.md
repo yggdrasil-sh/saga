@@ -16,6 +16,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Chats (Web): Chat-Panel neben Seiten und Heute, schnell antworten, Seiten teilen
+- **Chat-Panel rechts:** Ein Chat-Knopf unten rechts (neben dem KI-Knopf, mit Zahl der ungelesenen Nachrichten) öffnet
+  die Chats als Panel – auf Seiten und auf „Heute“, ohne die Seite zu verlassen. Ist der KI-Assistent an, wechseln die
+  Reiter „Marin | Chat“ oben im Panel zwischen beiden. ↗ öffnet die volle Chat-Ansicht. Das Panel lädt die echte,
+  Ende-zu-Ende-verschlüsselte Chat-Ansicht in kompakter Form; Anrufe klingeln weiter im Hauptfenster.
+- **Schnell antworten:** Neue Chat-Nachrichten zeigen einen Hinweis mit „Antworten“; auch Chat-Einträge in der Glocke
+  haben „Antworten“. Beides öffnet die Unterhaltung im Panel, die Eingabe ist sofort bereit.
+- **Seiten und Chats verbinden:** Im Seitenmenü (…) gibt es „In Chat teilen …“ – Chat wählen, der Seitenverweis steht
+  dann in der Eingabe. Nachrichten mit Seitenverweis zeigen eine Vorschaukarte (Symbol, Titel, zuletzt geändert; nur mit
+  eigenem Zugriff); ein Klick öffnet die Seite im Hauptfenster. Der Knopf „💬 Chat“ einer Seite öffnet ihren Chat im Panel.
+- Die Benachrichtigungsliste klappt nach rechts auf, wenn die Glocke links in der Seitenleiste sitzt (lief vorher aus dem Bild).
+- Auf dem Handy bleibt alles wie bisher in der vollen Chat-Ansicht.
+
 ### Anrufe (Web): kleines Fenster
 - Das verkleinerte Anruffenster lässt sich mit Maus oder Finger frei verschieben (auf freier Fläche ziehen); die Stelle
   bleibt gemerkt und passt sich an, wenn das Browserfenster kleiner wird.
