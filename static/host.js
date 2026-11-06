@@ -71,9 +71,10 @@
   }
 
   // --- Web -> Huelle ------------------------------------------------------------------------------------------------
-  var lastBadge = null;
+  var lastBadge = null, wantBadge = null;             // gesendet / zuletzt gewuenscht (fuer eine spaete Meldung)
   host.badge = function (n) {
     n = Math.max(0, Math.min(99999, parseInt(n, 10) || 0));
+    wantBadge = n;
     if (!has('badge')) return false;
     if (n === lastBadge && !upper()) return true;
     lastBadge = n;
@@ -164,7 +165,7 @@
     if (t === 'hello') {
       if (!setup(evt)) return false;
       emit('hello', { kind: host.kind, caps: host.caps.slice() });
-      if (lastBadge != null) { var b = lastBadge; lastBadge = null; host.badge(b); }
+      if (wantBadge != null) { lastBadge = null; host.badge(wantBadge); }
       return true;
     }
     if (!send) return false;                            // ohne Huelle keine Ereignisse annehmen

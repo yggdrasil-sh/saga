@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-QgtZ8s+43RT+DKgHa/LkZFN2JERbgM/KBhfE7Qnwp3M='; script-src 'sha256-DfgYUTYaX87ZHSR2Iarf72p0fxbdLv+5itOT2CEhtCA='; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-CrURT5nN+OPi6nJ4W4xcg8hryuWEiunefvthG8+zKWo='; script-src 'sha256-FCxWhRoTBYkori1dMEJpK52o/yuGsZKPXJ+ejJcAYvk='; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="light dark">
 <title>Saga – Keine Verbindung</title>
 <!-- Saga 2.5 (Desktop-Huelle, Offline O0): eigenstaendige Seite ohne weitere Dateien. Zeigt die Huelle lokal (aus dem
      App-Paket), der Service Worker bei Navigationsfehlern (static/sw.js). Stil und Skript inline, per Hash in der CSP
-     erlaubt (tests/browser_host.js prueft die Hashes). Texte de/en/es/ru/th im Skript; Hell/Dunkel nach System bzw.
-     localStorage 'hk-theme' (wie static/theme-boot.js). Nach Aenderungen an <style>/<script> die Hashes in der CSP neu
-     berechnen (sha256, base64; tests/browser_host.js meldet die erwarteten Werte). -->
+     erlaubt. Texte de/en/es/ru/th im Skript; Hell/Dunkel nach System bzw. localStorage 'hk-theme' (wie
+     static/theme-boot.js). Nach Aenderungen an Stil oder Skript die Hashes in der CSP neu berechnen (sha256, base64 des
+     Inhalts zwischen den Tags; tests/browser_host.js prueft sie und meldet die erwarteten Werte). -->
 <style>
 :root{--bg:#fdfcfa;--fg:#1d232c;--mut:#5c6673;--acc:#3d63dd;--accfg:#fff;--card:#fff;--line:#e4e1dc}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f141c;--fg:#e6e9ee;--mut:#9aa4b2;--acc:#7b9bff;--accfg:#0f141c;--card:#171e29;--line:#273142}}
