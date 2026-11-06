@@ -1258,7 +1258,8 @@ body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
 .imm-q{flex:1;min-width:8rem;border:1px solid var(--field);background:var(--card);color:var(--fg);border-radius:var(--r-sm);padding:.35rem .6rem;font:inherit}
 .imm-crumb{font-size:var(--fs-base);color:var(--muted);min-height:1.2rem}
 .imm-info{margin:.3rem 0;padding:.6rem .9rem}
-.imm-grid{overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;padding:2px}
+.imm-grid{overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;padding:2px;
+  flex:1 1 auto;min-height:0;align-content:start;grid-auto-rows:max-content}   /* gestaucht ueberlappten die quadratischen Kacheln */
 .imm-grid.albums{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
 .imm-tile{position:relative;aspect-ratio:1;border:0;padding:0;border-radius:var(--r-md);overflow:hidden;background:var(--card-h);cursor:pointer}
 .imm-tile img{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .2s}
