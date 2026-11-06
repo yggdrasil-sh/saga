@@ -5417,7 +5417,10 @@
         else if (p.type === 'person') line.appendChild(personChips(v));
         else if (p.type === 'files') line.appendChild(fileChips(v, false));
         else if (p.type === 'checkbox') line.textContent = '☑ ' + p.name;
-        else if (p.type === 'date') { line.textContent = '▦ ' + dateText(v); line.title = dateTitle(v); }
+        else if (p.type === 'date') {                // Design-Runde: Linien-Symbol (Kalender) statt Zeichen
+          line.classList.add('board-date'); line.appendChild(HK.iconBox('i:calendar', 'board-date-ic', 13)).setAttribute('aria-hidden', 'true');
+          line.appendChild(el('span', null, dateText(v))); line.title = dateTitle(v);
+        }
         else if (numLike(p)) { line.appendChild(el('span', null, p.name + ': ')); line.appendChild(numNode(p, v)); }
         else line.textContent = String(v);
         c.appendChild(line);
