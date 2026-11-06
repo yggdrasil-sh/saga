@@ -1,4 +1,4 @@
-// Seitenleiste fuer Dashboard und Chats (gleiches Aussehen wie /notes): Seitenbaum, Favoriten, Zuletzt, Suche,
+// Seitenleiste fuer Dashboard und Chats (gleiches Aussehen wie /notes): Seitenbaum, Favoriten, Suche,
 // Ein-/Ausblenden (Strg/⌘+\, wie /notes gemerkt) und Herein-Schweben am linken Rand. Seiten oeffnen sich auf /notes.
 (function () {
   'use strict';
@@ -100,8 +100,6 @@
     }
     var favs = pages.filter(function (p) { return p.pinned && !p.archived; });
     $('sh-favs').hidden = !favs.length; var fl = $('sh-fav-list'); fl.textContent = ''; favs.forEach(function (p) { fl.appendChild(favRow(p)); });
-    var rec = []; try { rec = (JSON.parse(store('hk-pg-recent') || '[]') || []).map(byId).filter(Boolean).slice(0, 5); } catch (e) { rec = []; }
-    $('sh-recent').hidden = !rec.length; var rl = $('sh-recent-list'); rl.textContent = ''; rec.forEach(function (p) { rl.appendChild(favRow(p)); });
   }
   $('sh-search').addEventListener('input', render);
   $('sh-search').addEventListener('keydown', function (e) {

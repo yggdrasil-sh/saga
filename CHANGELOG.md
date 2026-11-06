@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Web: Design-Runde (ruhiger, einheitlicher)
+- **Seitenleiste:** Die Chat-Liste auf der Chats-Seite war nur ~1,5 Zeilen hoch („Chats & Geräte“ überlappte) – jetzt
+  bis zu 6 volle Zeilen mit eigenem Scrollen. „Zuletzt“ steht nicht mehr in der Leiste (dafür auf „Heute“), „Mehr“ ist
+  eine Symbolzeile über dem Konto: Der Seitenbaum hat damit deutlich mehr Platz. Ein Linien-Symbolsatz statt ⌕ ✳ 📦 🗑,
+  „Neue Seite“ ohne Kasten, Abschnittsköpfe überall normal geschrieben, Konto mit Initiale statt 👤. Die Zeile „Chats“
+  bleibt auf der Chats-Seite stehen (markiert), der Papierkorb ist markiert, solange er offen ist. Im Leistenkopf bleibt
+  nur die Glocke; „Chats“ öffnet nicht mehr in einem anderen Tab.
+
 ### Galerie: Vorlage „Familien-Wiki“
 - Neue Vorlage (Persönlich) für die eigene Familie: Datenbank **„Familienmitglieder“** mit Generation, Spitzname,
   Geburts- und Sterbedatum, Geburts- und Wohnort, Beruf, Familienzweig und den Verknüpfungen **Eltern** und

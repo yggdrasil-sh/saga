@@ -506,6 +506,18 @@ body.notes-page #pg-full{display:none}
   font:inherit;font-size:.86rem;padding:.35rem .5rem;cursor:pointer;text-align:left}
 .pg-foot-btn:hover,.pg-foot-btn:focus-visible{background:var(--card-h);color:var(--fg)}
 .pg-foot-btn kbd{margin-left:auto}
+/* Design-Runde 02/03 (VD-16/20, UX-6/7): ein Linien-Symbolsatz wie oben, Text in --fg, nur das Symbol gedaempft */
+.pg-side-foot .pg-foot-btn,.ct-side-foot .pg-foot-btn{color:var(--fg)}
+.pg-foot-btn .pg-nav-ic,.note-new .pg-nav-ic{color:var(--muted)}
+.pg-foot-btn:hover .pg-nav-ic,.pg-foot-btn.on .pg-nav-ic,.note-new:hover .pg-nav-ic{color:var(--fg)}
+.pg-foot-btn.on{background:var(--card-h);font-weight:600}
+.pages-side .note-new{display:flex;align-items:center;gap:.55rem;text-align:left}
+/* AE-11/AE-23/VD-15: Abschnittskoepfe ueberall normal geschrieben (am Handy vorher VERSALIEN), "Neue Seite" ohne
+   gestrichelten Kasten (gestrichelt heisst sonst "Ablage hier") */
+.hk-user-av.hk-user-ini{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;color:#fff;font-size:.7rem;font-weight:600;flex:none}
+.pages-side .pg-section{text-transform:none;letter-spacing:0;font-size:.75rem;font-weight:500}
+.pages-side .note-new{border:1px solid transparent;border-radius:6px;padding:.32rem .5rem}
+.pages-side .note-new:hover,.pages-side .note-new:focus-visible{border-color:transparent;background:var(--card-h)}
 
 /* Papierkorb */
 .trash{max-width:760px;margin:0 auto;width:100%}
@@ -902,11 +914,20 @@ body.side-hidden .pages-side{display:none}
   body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-section{font-size:.75rem;letter-spacing:0;text-transform:none;font-weight:500;margin:.7rem .5rem .15rem}
   body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-search{background:var(--side-row);border-color:transparent;border-radius:6px;font-size:.875rem;padding:.35rem .6rem}
   body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-search:focus{border-color:var(--field)}
-  body:is(.notes-page,.has-side):not(.embed) .pages-side .note-new{border-style:solid;border-color:transparent;text-align:left;font-size:.875rem;color:var(--muted);padding:.3rem .55rem}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .note-new{border-style:solid;border-color:transparent;text-align:left;font-size:.875rem;color:var(--muted);padding:.3rem .5rem;border-radius:6px}
   body:is(.notes-page,.has-side):not(.embed) .pages-side .note-new:hover{background:var(--side-row);color:var(--fg)}
-  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot{border-top:0;margin-top:0;padding-top:0}
-  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot .pg-foot-btn{font-size:.875rem;padding:.3rem .55rem}
-  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot .pg-foot-btn:hover{background:var(--side-row)}
+  /* Design-Runde 02 (UX-2): "Zuletzt" steht jetzt auf Heute, "Mehr" ist eine Symbolzeile ueber dem Konto - der Baum
+     bekommt die Hoehe (vorher sah man auf DB-Seiten nur 3 von 13 Seiten) */
+  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot{flex-direction:row;gap:.15rem;margin-top:auto;padding:.35rem 0 0;
+    border-top:1px solid color-mix(in srgb,var(--border) 60%,transparent)}
+  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot .pg-foot-btn{flex:1;justify-content:center;padding:.4rem 0;min-height:2rem}
+  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot .pg-foot-btn:is(:hover,:focus-visible,.on){background:var(--side-row)}
+  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot .pg-foot-t{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  body:is(.notes-page,.has-side):not(.embed) .pg-side-foot .pg-foot-btn kbd{display:none}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-shared-box{flex:0 1 auto;min-height:0}
+  body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-shared-tree{max-height:30vh;overflow:auto}
+  /* UX-3: Chats und Heute stehen als Zeilen in der Leiste - im Leistenkopf bleibt nur die Glocke */
+  body.notes-page:not(.embed) .np-head :is(#hk-chats,.np-dash){display:none}
   /* Seitenkopf (Pfad, Teilen, ...) oben wie die Notion-Leiste */
   body.notes-page:not(.embed) .page-bar{position:sticky;top:0;z-index:9;min-height:3rem;margin:-.6rem -2.2rem 1.4rem;padding:0 1rem 0 1.2rem;
     background:var(--bg)}

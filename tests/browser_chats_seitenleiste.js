@@ -42,7 +42,12 @@ const inGrid = p => p.evaluate(() => { const s = document.getElementById('ct-sid
   ok('breit: nicht mehr als Spalte im Raster', !(await inGrid(a)));
   ok('breit: Klasse chats-in-side', await a.evaluate(() => document.body.classList.contains('chats-in-side')));
   ok('breit: Abschnitt "Chats" sichtbar', await a.isVisible('#sh-chats-h') && await a.isVisible('#sh-chats'));
-  ok('breit: keine zweite Chats-Zeile in der Navigation', await a.evaluate(() => !document.querySelector('#pg-mainnav a[href="/chats"]')));
+  // Design-Runde (UX-5): die Zeile "Chats" bleibt stehen und ist markiert (vorher fehlte sie, die Leiste sprang)
+  ok('breit: Chats-Zeile markiert', await a.evaluate(() => { const r = document.querySelector('#pg-mainnav a[href="/chats"]'); return !!r && r.classList.contains('on') && r.getAttribute('aria-current') === 'page'; }));
+  // Design-Runde (UX-1): Liste nicht gequetscht - alle Eintraege ganz sichtbar, "Chats & Geraete" ueberlappt nicht
+  ok('breit: Chat-Liste nicht gequetscht', await a.evaluate(() => { const l = document.getElementById('ct-list'), it = l.querySelectorAll('.ct-item'), f = document.getElementById('ct-settings');
+    if (!it.length) return false; const lr = l.getBoundingClientRect(), last = it[Math.min(it.length, 6) - 1].getBoundingClientRect(), fr = f.getBoundingClientRect();
+    return last.bottom <= lr.bottom + 1 && fr.top >= lr.bottom - 1; }));
   ok('breit: Eintrag sichtbar', await a.isVisible('#sh-chats .ct-item-b'));
   const cols = await a.evaluate(() => getComputedStyle(document.getElementById('ct')).gridTemplateColumns.split(' ').length);
   ok('breit: Raster hat nur eine Spalte', cols === 1, cols);

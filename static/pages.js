@@ -2183,6 +2183,11 @@
     });
   }
   $('pg-trash-btn').addEventListener('click', showTrash);
+  // Design-Runde (UX-7): "Papierkorb" in der Leiste markiert, solange er offen ist (#pg-trash wird an vielen Stellen versteckt)
+  if (window.MutationObserver) new MutationObserver(function () {
+    var on = !$('pg-trash').hidden; $('pg-trash-btn').classList.toggle('on', on);
+    if (on) $('pg-trash-btn').setAttribute('aria-current', 'page'); else $('pg-trash-btn').removeAttribute('aria-current');
+  }).observe($('pg-trash'), { attributes: true, attributeFilter: ['hidden'] });
   // Aufgaben und Termine als eigene Ansicht in der Seitenleiste (wie in den Apps) - dieselben Bausteine wie die Seiten-Bloecke
   var VIEW = null;
   function hideView() {

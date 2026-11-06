@@ -486,14 +486,16 @@ body.ct-panel .np-head{display:none}
 /* 2.5 (chats1): Chat-Liste in der Seitenleiste (Chats-Seite, breit) - keine eigene Listenspalte, Unterhaltung in voller Breite.
    static/side.js setzt #ct-side in #sh-chats um und die Klasse chats-in-side am body. */
 body.chats-in-side .ct{grid-template-columns:minmax(0,1fr)}
-body.chats-in-side:not(.embed) .pages-side>.pg-chats{flex:0 1 auto;min-height:6rem;max-height:52%;display:flex;flex-direction:column;overflow:hidden}
+/* Design-Runde 02 (UX-1): Die Liste schrumpfte mit "flex:0 1 auto" auf ihr min-height (6rem) - davon blieben nach Filter und
+   "Chats & Geraete" nur ~38 px fuer die Unterhaltungen. Jetzt feste Hoehe bis 6 Zeilen mit eigenem Scrollen; der Baum gibt nach. */
+body.chats-in-side:not(.embed) .pages-side>.pg-chats{flex:none;min-height:0;display:flex;flex-direction:column;overflow:visible}
 body.chats-in-side:not(.embed) .pages-side>.pg-chats[hidden],body.chats-in-side:not(.embed) .pages-side>.pg-sec-chats[hidden]{display:none}
-.pg-chats .ct-side{border-right:0;flex:0 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.pg-chats .ct-side{border-right:0;flex:none;min-height:0;display:flex;flex-direction:column;overflow:visible}
 .pg-chats .ct-side-top{padding:.1rem .1rem .35rem;gap:.35rem}
 .pg-chats .ct-filter{font-size:.875rem;padding:.3rem .55rem;background:var(--side-row);border-color:transparent;border-radius:6px}
 .pg-chats .ct-filter:focus{border-color:var(--field)}
 .pg-chats .ct-new{padding:.25rem .6rem;font-size:.82rem}
-.pg-chats .ct-list{padding:0;flex:0 1 auto;min-height:2.4rem}
+.pg-chats .ct-list{padding:0;flex:none;min-height:0;max-height:calc(6 * 2.15rem);overflow:auto}
 .pg-chats .ct-item-b{padding:.28rem .45rem;gap:.55rem;border-radius:6px;min-height:1.85rem}
 .pg-chats .ct-item-b:hover{background:var(--side-row)}
 .pg-chats .ct-item.on .ct-item-b{background:var(--side-row);box-shadow:none}

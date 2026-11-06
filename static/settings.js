@@ -583,6 +583,14 @@
     HK.avatarImg(av, url, 24);
   }
   if (btn.dataset.avatar) headAvatar(btn.dataset.avatar);
+  else (function () {                                   // Design-Runde (VD-16): ohne Profilbild die Initiale statt Emoji 👤
+    var first = btn.firstChild, nm = (btn.dataset.name || '').trim();
+    if (!nm || !first || first.nodeType !== 3 || first.nodeValue.indexOf('👤') < 0) return;
+    first.nodeValue = first.nodeValue.replace('👤', '');
+    var av = el('span', 'hk-user-av hk-user-ini', nm.charAt(0).toUpperCase()); av.setAttribute('aria-hidden', 'true');
+    av.style.background = 'hsl(' + hueOf(btn.dataset.user || nm) + ' 45% 36%)';
+    btn.insertBefore(av, btn.firstChild);
+  })();
 
   // Zuschneiden im Browser: quadratischer Ausschnitt (verschieben + zoomen), heraus kommt ein 512er-PNG. Der Server
   // kodiert es noch einmal neu (Groessen, ohne Metadaten).
