@@ -82,7 +82,64 @@
     setTimeout(function () { bell.classList.remove('ring'); }, 1200);
   }
 
+  // Design-Runde (UX-29/30): eine Zeile je Gespraechseinheit. Der Server buendelt (?group=1: ids, counts, group_key);
+  // was live dazukommt oder beim Blaettern nachkommt, fuegt absorb()/regroup() hier mit denselben Regeln hinzu.
+  function isGroup(it) { return !!(it.ids && it.ids.length > 1); }
+  function whoList(it) { return it.actors && it.actors.length ? it.actors : it.actor && it.actor.name ? [it.actor.name] : []; }
+  function uniq(a) { var o = []; a.forEach(function (x) { if (o.indexOf(x) < 0) o.push(x); }); return o; }
+  function absorb(g, it) {                            // it in g aufnehmen (die neuere Zeile wird Kopf)
+    var gi = g.ids || [g.id], gc = g.counts || [g.count || 1], ii = it.ids || [it.id], ic = it.counts || [it.count || 1];
+    var newer = ii[0] > gi[0], head = newer ? it : g, out = {}, k;
+    for (k in head) if (Object.prototype.hasOwnProperty.call(head, k)) out[k] = head[k];
+    var ids = newer ? ii.concat(gi) : gi.concat(ii), cts = newer ? ic.concat(gc) : gc.concat(ic), seen = {};
+    out.ids = []; out.counts = [];
+    ids.forEach(function (id, i) { if (!seen[id]) { seen[id] = 1; out.ids.push(id); out.counts.push(cts[i]); } });
+    out.count = out.counts.reduce(function (a, b) { return a + b; }, 0);
+    var nm = uniq(newer ? whoList(it).concat(whoList(g)) : whoList(g).concat(whoList(it)));
+    if (nm.length > 1) out.actors = nm; else delete out.actors;
+    out.mention = !!(g.mention || it.mention || g.kind === 'comment.mention' || it.kind === 'comment.mention');
+    out.media = g.media === it.media ? g.media : (g.media || it.media ? 'audio' : null);
+    out.first = Math.min(g.first || g.created, it.first || it.created);
+    return out;
+  }
+  function regroup(list) {                            // gleiche Einheit und gleicher Lesestand -> eine Zeile
+    var out = [], at = {};
+    list.forEach(function (it) {
+      if (!it.group_key) { out.push(it); return; }
+      var key = it.group_key + (it.read ? '|r' : '|u');
+      if (at[key] == null) { at[key] = out.length; out.push(it); return; }
+      out[at[key]] = absorb(out[at[key]], it);
+    });
+    out.sort(function (a, b) { return (b.ids ? b.ids[0] : b.id) - (a.ids ? a.ids[0] : a.id); });
+    return out;
+  }
+  function dropIds(list, gone) {                      // ersetzte/geloeschte Benachrichtigungen aus den Zeilen nehmen
+    return list.map(function (it) {
+      var ids = it.ids || [it.id];
+      if (!ids.some(function (x) { return gone.indexOf(x) >= 0; })) return it;
+      var cts = it.counts || [it.count || 1], keep = [], kc = [];
+      ids.forEach(function (x, i) { if (gone.indexOf(x) < 0) { keep.push(x); kc.push(cts[i]); } });
+      if (!keep.length) return null;
+      var o = {}, k; for (k in it) if (Object.prototype.hasOwnProperty.call(it, k)) o[k] = it[k];
+      o.ids = keep; o.counts = kc; o.count = kc.reduce(function (a, b) { return a + b; }, 0);
+      return o;
+    }).filter(Boolean);
+  }
+  var fTime = new Intl.DateTimeFormat(HK.locale, { hour: '2-digit', minute: '2-digit' });
+  function groupSentence(it) {
+    var n = it.count, unit = String(it.group_key).split(':')[0], s, who = whoList(it);
+    if (unit === 'chat') s = it.chat && it.chat.kind !== 'dm' && who.length ? T('{n} neue Nachrichten (von {names})') : T('{n} neue Nachrichten');
+    else if (unit === 'call') s = it.media === 'video' ? T('{n} verpasste Videoanrufe') : T('{n} verpasste Anrufe');
+    else s = it.mention ? T('{n} neue Kommentare (mit Erwähnung)') : T('{n} neue Kommentare');
+    var f = document.createDocumentFragment();
+    f.appendChild(el('b', null, it.title || (it.note && it.note.title) || T('Unbenannt')));
+    f.appendChild(document.createTextNode(' · '));
+    f.appendChild(HK.fmtNodes(s, { n: n, names: who.slice(0, 3).join(', ') + (who.length > 3 ? ' …' : '') }));
+    if (unit === 'call') f.appendChild(document.createTextNode(' · ' + T('zuletzt {time}', { time: fTime.format(new Date(it.created * 1000)) })));
+    return f;
+  }
   function sentence(it) {
+    if (isGroup(it)) return groupSentence(it);
     // dieselben Schluessel wie saga/notify.py (_text) - hier mit fettem Namen
     var name = el('b', null, it.actor ? it.actor.name : T('Gelöschtes Konto')), n = it.count || 1, s;
     if (it.kind === 'share.added') s = T('{name} hat eine Seite mit dir geteilt ({role})');
@@ -106,24 +163,41 @@
     var li = el('li', 'lv-li'), b = el('button', 'lv-item' + (it.read ? '' : ' unread')); b.type = 'button';
     if (it.kind === 'publish.withdrawn' || it.kind === 'backup.failed' || it.system) { var sh = el('span', 'lv-av lv-av-sys', '🛡'); sh.setAttribute('aria-hidden', 'true'); b.appendChild(sh); }
     else b.appendChild(avatar(it.actor ? it.actor.name : '?', it.actor ? it.actor.username : '', it.actor ? '' : 'lv-av-gone', it.actor && it.actor.avatar));
-    var body = el('span', 'lv-body');
+    var body = el('span', 'lv-body'), grp = isGroup(it), pl = null;
     var tx = el('span', 'lv-text'); tx.appendChild(sentence(it)); body.appendChild(tx);
     var ic = it.note && it.note.icon && it.note.icon.charAt(0) !== '/' ? it.note.icon : '📄';
-    if (it.kind === 'backup.failed') body.appendChild(el('span', 'lv-page', '🗄 ' + (it.title || T('Backups'))));
+    if (grp) { /* Titel steht vorn im Satz ("Jonas Brandt · 3 neue Nachrichten") */ }
+    else if (it.kind === 'backup.failed') body.appendChild(el('span', 'lv-page', '🗄 ' + (it.title || T('Backups'))));
     else if (it.system || !it.note && it.access && !it.chat) body.appendChild(el('span', 'lv-page', (it.kind === 'login.locked' ? '🔒 ' : '🗄 ') + (it.title || '')));   // Systemhinweise ohne Seite (Mein Backup, Kontosperre)
     else if (it.chat) body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? '💬 ' + (it.title || T('Chat')) : '🔒 ' + T('Kein Zugriff mehr')));
     else body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? ic + ' ' + (it.note.title || T('Unbenannt')) : '🔒 ' + T('Kein Zugriff mehr')));
+    pl = body.querySelector('.lv-page');
     if (it.excerpt) body.appendChild(el('span', 'lv-ex', it.excerpt));
     var tm = el('span', 'lv-time', HK.relTime(it.created - Date.now() / 1000)); tm.title = fFull.format(new Date(it.created * 1000));
     body.appendChild(tm);
     b.appendChild(body);
-    if (!it.read) { var d = el('span', 'lv-dot'); d.setAttribute('aria-label', T('Ungelesen')); b.appendChild(d); }
+    if (!it.read) { var d = el('span', 'lv-dot'); d.setAttribute('aria-hidden', 'true'); b.appendChild(d); }
+    // zugaenglicher Name: Satz, Ort (ohne Symbol), Auszug, Zeit, Lesestand - in dieser Reihenfolge, ohne Emoji-Ansagen
+    b.setAttribute('aria-label', [tx.textContent, pl ? pl.textContent.replace(/^\S+\s/, '') : '', it.excerpt || '',
+      tm.textContent, it.read ? '' : T('Ungelesen')].filter(Boolean).join(', '));
     b.addEventListener('click', function () { activate(it); });
     li.appendChild(b);
+    // Aktionen erscheinen beim Ueberfahren/Fokus der Zeile (Design-Runde UX-29); Tab erreicht sie weiter
     if (isChatIt(it) && dockOk()) {                     // 2.5: direkt antworten (Chat im Seitenpanel, Eingabe bereit)
-      var rp = el('button', 'lv-reply', T('Antworten')); rp.type = 'button';
-      rp.addEventListener('click', function (e) { e.stopPropagation(); if (!it.read) markRead([it.id]); closePanel(false); HKChatDock.open(it.url.split('#')[1] || '', { focus: true }); });
-      li.classList.add('lv-has-reply'); li.appendChild(rp);
+      var rp = el('button', 'lv-act lv-reply', T('Antworten')); rp.type = 'button';
+      rp.setAttribute('aria-label', T('Antworten') + ': ' + (it.title || T('Chat')));
+      rp.addEventListener('click', function (e) { e.stopPropagation(); readIt(it); closePanel(false); HKChatDock.open(it.url.split('#')[1] || '', { focus: true }); });
+      li.classList.add('lv-has-act'); li.appendChild(rp);
+    }
+    if (it.kind === 'call.missed' && it.access && it.chat && it.chat.kind === 'dm' && window.HKCalls) {   // UX-30: wie im Chat
+      var cb = el('button', 'lv-act lv-callback', T('Zurückrufen')); cb.type = 'button';
+      cb.setAttribute('aria-label', T('Zurückrufen') + ': ' + (it.title || ''));
+      cb.addEventListener('click', function (e) {
+        e.stopPropagation(); readIt(it); closePanel(false);
+        api('GET', '/api/chats/' + it.chat.id).then(function (r) { if (r && r.chat) window.HKCalls.start(r.chat, it.media === 'video'); })
+          .catch(function (err) { HK.toast(T('Nicht geladen: {err}', { err: err.message })); });
+      });
+      li.classList.add('lv-has-act'); li.appendChild(cb);
     }
     return li;
   }
@@ -131,7 +205,12 @@
     if (!N.open) return;
     var focusId = document.activeElement && document.activeElement.closest ? (document.activeElement.closest('.lv-item') || {}).dataset : null;
     plist.textContent = '';
-    N.items.forEach(function (it) { var li = itemNode(it); li.firstChild.dataset.id = String(it.id); plist.appendChild(li); });
+    N.items.forEach(function (it) {
+      var li = itemNode(it); li.firstChild.dataset.id = String(it.id);
+      if (it.group_key) li.firstChild.dataset.g = it.group_key;
+      if (isGroup(it)) li.firstChild.dataset.n = String(it.ids.length);
+      plist.appendChild(li);
+    });
     pstate.hidden = !!N.items.length || !N.loaded;
     pstate.textContent = '';
     if (N.loaded && !N.items.length) {
@@ -139,34 +218,46 @@
       pstate.appendChild(el('span', null, T('Hier erscheint, wenn jemand etwas mit dir teilt oder auf deinen Seiten kommentiert.')));
     }
     pfoot.hidden = !N.more;
-    if (focusId && focusId.id) { var f = plist.querySelector('.lv-item[data-id="' + focusId.id + '"]'); if (f) f.focus(); }
+    if (focusId && focusId.id) {                       // Fokus halten - auch wenn die Zeile live einen neuen Kopf bekam
+      var f = plist.querySelector('.lv-item[data-id="' + focusId.id + '"]') ||
+        (focusId.g ? [].filter.call(plist.querySelectorAll('.lv-item'), function (x) { return x.dataset.g === focusId.g; })[0] : null);
+      if (f) f.focus();
+    }
   }
   function load(older) {
     if (N.busy) return Promise.resolve();
     N.busy = true;
-    var url = '/api/notifications?limit=30' + (older && N.next ? '&before=' + N.next : '');
+    var url = '/api/notifications?limit=30&group=1' + (older && N.next ? '&before=' + N.next : '');
     return api('GET', url).then(function (d) {
-      N.items = older ? N.items.concat(d.items) : d.items;
-      N.more = !!d.more; N.next = d.next; N.unread = d.unread; N.loaded = true;
+      N.items = older ? regroup(N.items.concat(d.items)) : d.items;
+      N.more = !!d.more; N.next = d.next; N.unread = unreadOf(d); N.loaded = true;
       badgeDraw(); draw();
     }).catch(function (err) {
       if (N.open && !N.items.length) { pstate.hidden = false; pstate.textContent = T('Nicht geladen: {err}', { err: err.message }); }
     }).then(function () { N.busy = false; });
   }
   function count() {
-    return api('GET', '/api/notifications?limit=0' + (NOTES ? '' : '&counts=1')).then(function (d) {
-      var grew = d.unread > N.unread;
-      N.unread = d.unread; badgeDraw();
+    return api('GET', '/api/notifications?limit=0&group=1' + (NOTES ? '' : '&counts=1')).then(function (d) {
+      var grew = unreadOf(d) > N.unread;
+      N.unread = unreadOf(d); badgeDraw();
       if (!NOTES && d.comments_unread != null) pagesBadge(d.comments_unread);
       return grew;
     });
   }
-  function markRead(ids) {
+  // Zaehler an der Glocke = ungelesene ZEILEN (Gespraechseinheiten, wie Slack/Notion), nicht einzelne Mitteilungen
+  function unreadOf(d) { return d.unread_groups != null ? d.unread_groups : d.unread; }
+  function markRead(ids, groups) {
     var body = ids === 'all' ? { all: true } : { ids: ids };
-    N.items.forEach(function (it) { if (ids === 'all' || ids.indexOf(it.id) >= 0) it.read = true; });
+    if (groups && groups.length) body.groups = groups;
+    N.items.forEach(function (it) {
+      if (ids === 'all' || (it.ids || [it.id]).every(function (x) { return ids.indexOf(x) >= 0; }) ||
+          (groups && it.group_key && groups.indexOf(it.group_key) >= 0)) it.read = true;
+    });
+    N.items = regroup(N.items);
     draw();
-    return api('POST', '/api/notifications/read', body).then(function (d) { N.unread = d.unread; badgeDraw(); }).catch(function () {});
+    return api('POST', '/api/notifications/read', body).then(function (d) { N.unread = unreadOf(d); badgeDraw(); }).catch(function () {});
   }
+  function readIt(it) { if (!it.read) markRead(it.ids || [it.id], it.group_key ? [it.group_key] : null); }
   function place() {
     if (narrow.matches) { panel.style.top = panel.style.right = panel.style.left = ''; return; }
     var r = bell.getBoundingClientRect(), w = panel.offsetWidth || 380;
@@ -223,7 +314,7 @@
 
   // Eintrag oeffnen: als gelesen merken, Seite (und ggf. die Unterhaltung) zeigen
   function activate(it) {
-    if (!it.read) markRead([it.id]);
+    readIt(it);                                         // gebuendelt: alle Mitteilungen der Zeile (und der Einheit)
     closePanel(false);
     if (it.kind === 'backup.failed') {                   // Admin-Bereich (eigener Port) in einem neuen Tab
       if (it.url) { var aw = window.open(it.url, '_blank', 'noopener'); if (aw) aw.focus(); }
@@ -398,20 +489,28 @@
     var s = it.kind === 'chat.mention' ? T('{name} hat dich in einem Chat erwähnt', { name: who })
       : (it.count || 1) > 1 ? T('{n} neue Nachrichten', { n: it.count }) : T('Neue Nachricht von {name}', { name: who });
     if (it.title && it.title !== who) s += ' · 💬 ' + it.title;          // Direkt-Chat: Titel ist der Name
-    HK.toast(s, T('Antworten'), function () { if (!it.read) markRead([it.id]); HKChatDock.open(h, { focus: true }); }, 8000);
+    HK.toast(s, T('Antworten'), function () { readIt(it); HKChatDock.open(h, { focus: true }); }, 8000);
   }
   function onNotification(d) {
     if (d.item) {
       var it = d.item;
       if (!it.read && isChatIt(it) && dockOk()) chatToast(it);
-      N.items = N.items.filter(function (x) { return x.id !== it.id && x.id !== d.replaces; });
-      if (N.loaded) N.items.unshift(it);
+      N.items = dropIds(N.items, [it.id, d.replaces].filter(function (x) { return x != null; }));
+      if (N.loaded) N.items = regroup([it].concat(N.items));   // in die Zeile seiner Unterhaltung (neuer Kopf)
       if (!it.read) ring();
       if (it.kind && it.kind.indexOf('comment.') === 0) pagesBadgeSoon();
     } else if (d.read) {
-      N.items.forEach(function (x) { if (d.read === 'all' || (d.read.indexOf && d.read.indexOf(x.id) >= 0)) x.read = true; });
+      var part = false;
+      N.items.forEach(function (x) {
+        if (d.read === 'all') { x.read = true; return; }
+        if (!d.read.indexOf) return;
+        var ids = x.ids || [x.id], hit = ids.filter(function (y) { return d.read.indexOf(y) >= 0; }).length;
+        if (hit === ids.length) x.read = true; else if (hit && !x.read) part = true;
+      });
+      N.items = regroup(N.items);
+      if (part && N.open) setTimeout(function () { load(); }, 0);   // nur ein Teil einer Zeile gelesen: frisch buendeln
     }
-    if (d.unread != null) N.unread = d.unread;
+    if (d.unread != null) N.unread = unreadOf(d);
     badgeDraw(); draw();
   }
   function onComments(d) {

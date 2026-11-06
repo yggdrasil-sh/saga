@@ -111,9 +111,12 @@ body.cm-open .lv-pres-t{display:none}
 @media (max-width:560px){.ps-dev .hk-hint{flex-basis:100%}}
 @media (pointer:coarse){.ps-dev .btn{min-height:44px}}
 
-/* 2.5: "Antworten" an Chat-Benachrichtigungen (Chat im Seitenpanel, static/chatdock.js) */
-.lv-li.lv-has-reply{position:relative}
-.lv-li.lv-has-reply .lv-item{padding-bottom:2.1rem}
-.lv-reply{position:absolute;left:3.3rem;bottom:.55rem;border:1px solid var(--border);background:var(--card);color:var(--fg);font:inherit;font-size:.78rem;
-  padding:.15rem .6rem;border-radius:999px;cursor:pointer}
-.lv-reply:hover{border-color:var(--accent);color:var(--accent)}
+/* 2.5: "Antworten" an Chat-Benachrichtigungen (Chat im Seitenpanel, static/chatdock.js); Design-Runde (UX-29/30): Aktionen
+   ("Antworten", "Zurueckrufen") erst beim Ueberfahren oder mit dem Fokus in der Zeile - rechts ueber der Zeile, ohne Platz zu nehmen */
+.lv-li.lv-has-act{position:relative}
+.lv-act{position:absolute;right:.6rem;top:50%;transform:translateY(-50%);border:1px solid var(--border);background:var(--card);color:var(--fg);
+  font:inherit;font-size:.78rem;padding:.2rem .65rem;border-radius:999px;cursor:pointer;opacity:0;transition:opacity .12s}
+.lv-li.lv-has-act:hover .lv-act,.lv-li.lv-has-act:focus-within .lv-act{opacity:1}
+.lv-act:hover,.lv-act:focus-visible{border-color:var(--accent);color:var(--accent)}
+@media (pointer:coarse){.lv-act{opacity:1;position:static;transform:none;margin:0 0 .5rem 3.3rem;min-height:44px}}
+@media (prefers-reduced-motion:reduce){.lv-act{transition:none}}
