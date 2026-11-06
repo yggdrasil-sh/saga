@@ -23,6 +23,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „Neue Seite“ ohne Kasten, Abschnittsköpfe überall normal geschrieben, Konto mit Initiale statt 👤. Die Zeile „Chats“
   bleibt auf der Chats-Seite stehen (markiert), der Papierkorb ist markiert, solange er offen ist. Im Leistenkopf bleibt
   nur die Glocke; „Chats“ öffnet nicht mehr in einem anderen Tab.
+- **Editor ruhiger:** Überschriften 2 im Seiteninhalt sind keine grauen Versalien mehr („ZIEL“ → „Ziel“ in voller
+  Größe und Textfarbe). Hinweise (Callouts) sind eine leicht getönte Fläche mit feinem Goldstrich statt einer weißen
+  Karte mit Rahmen, Tabellen haben nur noch waagrechte Haarlinien und einen ruhigen Kopf, „+ Tag“ erscheint erst beim
+  Überfahren des Seitenkopfs (Tastatur und Touch unverändert), die Kopfknöpfe sind randlos (nur „Teilen“ behält einen
+  Rahmen), Überschriften haben etwas mehr Abstand nach oben.
 
 ### Galerie: Vorlage „Familien-Wiki“
 - Neue Vorlage (Persönlich) für die eigene Familie: Datenbank **„Familienmitglieder“** mit Generation, Spitzname,

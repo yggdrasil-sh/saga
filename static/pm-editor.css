@@ -6,7 +6,7 @@
 .page-body .pm-doc p,.page-body .pm-doc h1,.page-body .pm-doc h2,.page-body .pm-doc h3,.page-body .pm-doc h4{margin:0}
 .page-body .pm-blk{position:relative;padding:3px 2px;border-radius:4px}
 .page-body .pm-blk > .pm-in{min-height:1.6em}
-.page-body .pm-b-header{padding-top:.9em;padding-bottom:.15em}
+.page-body .pm-b-header{padding-top:1.1em;padding-bottom:.15em}   /* AE-16: Ueberschriften atmen etwas mehr */
 .page-body .pm-b-header:first-child{padding-top:.2em}
 .page-body .pm-b-header h1{font-size:1.875rem;line-height:1.3;font-weight:700;letter-spacing:-.01em}
 .page-body .pm-b-header h2{font-size:1.5rem;line-height:1.3;font-weight:700;letter-spacing:-.01em}
@@ -29,8 +29,9 @@
 .page-body .pm-qal{position:absolute;right:2px;top:2px;opacity:0}
 .page-body .pm-quote:hover .pm-qal{opacity:.7}
 /* Hinweis */
-.page-body .pm-callout{display:flex;gap:.6rem;align-items:flex-start;background:var(--card);border:1px solid var(--border);border-radius:6px;
-  padding:.65rem .85rem;margin:.25rem 0}
+.page-body .pm-callout{display:flex;gap:.6rem;align-items:flex-start;padding:.7rem .9rem;margin:.25rem 0;
+  /* Design-Runde 01 (VD-22/AE-14): getoente Flaeche mit feinem Goldstrich statt weisser Karte mit Rahmen (wirkte wie ein Formularfeld) */
+  background:color-mix(in srgb,var(--accent) 6%,var(--bg));border:0;border-radius:8px;box-shadow:inset 3px 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}
 .page-body .pm-callout > .pm-in{flex:1;min-width:0}
 .page-body .pm-nb{border:0;background:none;color:inherit;font:inherit;cursor:pointer;padding:0 .15rem;border-radius:4px;line-height:1.6}
 .page-body .pm-nb:hover{background:var(--card-h)}

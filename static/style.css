@@ -28,7 +28,9 @@ input[type=search]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
 .btn{display:inline-block;color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:8px;padding:.45rem .8rem;background:transparent}
 .btn:hover{color:var(--fg);border-color:var(--accent)}
 main{padding:1.2rem 2rem 2rem;max-width:1200px;margin:0 auto}
-h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:1.6rem 0 .7rem}
+/* Abschnittstitel (Heute, Dialoge ohne eigene Regel). Design-Runde 01 (VD-09/AE-12): nicht im Seiteninhalt - dort war jede H2
+   sonst eine graue Versalie ("ZIEL"); :where() haelt die Spezifitaet bei 0, eigene Regeln (.cm-title ...) gewinnen weiter. */
+:where(h2:not(.page-body h2)){font-size:.8rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:1.6rem 0 .7rem}
 .fav h2{color:var(--accent)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.8rem}
 
@@ -436,6 +438,10 @@ body.notes-page #pg-full{display:none}
 .tag-add{appearance:none;background:none;border:1px dashed var(--border);border-radius:999px;color:var(--muted);
   font:inherit;font-size:.78rem;padding:.08rem .65rem;cursor:pointer}   /* Bughunt D20: ohne opacity (war 3,1:1 hell) */
 .tag-add:hover,.tag-add:focus-visible{opacity:1;color:var(--fg);border-color:var(--accent)}
+/* Design-Runde 01 (AE-15/VD-26, Studie U13): "+ Tag" nur beim Ueberfahren des Kopfs bzw. per Tastatur, ohne gestrichelte Pille */
+@media (hover:hover){.page-head .tag-add{opacity:0;border-color:transparent;transition:opacity .15s ease}
+  .page-head:hover .tag-add,.page-head:focus-within .tag-add{opacity:1}
+  .page-head .tag-add:hover,.page-head .tag-add:focus-visible{border-color:transparent;background:var(--card-h)}}
 .tag-input{background:var(--bg);border:1px solid var(--accent);border-radius:999px;color:var(--fg);font:inherit;font-size:.78rem;
   padding:.1rem .65rem;width:9rem;outline:none}
 .pg-tagbar{display:flex;flex-wrap:wrap;gap:.3rem}
@@ -1825,6 +1831,10 @@ box-shadow:0 20px 60px rgba(0,0,0,.45);padding:1.1rem 1.2rem 1rem}
 .pg-head-b{border:1px solid var(--border);background:var(--card);color:var(--muted);font:inherit;font-size:.8rem;line-height:1.2;
   padding:.22rem .65rem;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:.3rem;flex:none}
 .pg-head-b:hover{color:var(--fg);background:var(--card-h)}
+/* Design-Runde 01 (AE-09): Kopfknoepfe randlos wie Text-Knoepfe, nur "Teilen" behaelt einen dezenten Rahmen */
+.page-bar .pg-head-b{border-color:transparent;background:transparent;border-radius:6px}
+.page-bar .pg-head-b:hover,.page-bar .pg-head-b[aria-expanded="true"]{background:var(--card-h);color:var(--fg)}
+.page-bar #pg-share{border-color:var(--border)}
 .pg-head-b:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .pg-head-b[hidden]{display:none}
 .pg-share-b.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
