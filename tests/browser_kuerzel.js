@@ -39,7 +39,7 @@ if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS se
   const row = t => info.rows.find(r => r.indexOf(t) === 0) || '';
   ok(/Strg\+K/.test(row('Schnellsuche')), 'PC: Schnellsuche = Strg+K', row('Schnellsuche'));
   ok(/Strg\+Alt\+N/.test(row('Neue leere Seite')), 'PC: Neue leere Seite = Strg+Alt+N');
-  ok(/Strg\+Alt\+L/.test(row('Link zur Seite kopieren')), 'Link zur Seite kopieren = Strg+Alt+L');
+  ok(/Strg\+L/.test(row('Link zur Seite kopieren')) && !/Alt/.test(row('Link zur Seite kopieren')), 'Link zur Seite kopieren = Strg+L');
   ok(/Strg\+J/.test(row('Marin öffnen')), 'Marin = Strg+J');
   ok(/Strg\+Shift\+J/.test(row('Vorschau: nächster')), 'Peek: Strg+Shift+J');
   ok(!info.rows.some(r => /⌘|⌥/.test(r)), 'PC: keine Mac-Zeichen');

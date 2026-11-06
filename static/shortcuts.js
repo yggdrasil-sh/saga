@@ -45,7 +45,7 @@
         [['Ctrl', 'Shift', 'K'], T('Vorschau: vorheriger Eintrag')]
       ]],
       [T('Seiten und Editor'), [
-        [['Mod', 'Alt', 'L'], T('Link zur Seite kopieren')],
+        [['Mod', 'L'], T('Link zur Seite kopieren')],
         [['/'], T('Block einfügen (im leeren Absatz)')],
         [['Mod', '/'], T('Blockmenü: umwandeln, duplizieren, löschen …')],
         [['Mod', 'Alt', '0–8'], T('Block umwandeln: Text, Überschrift 1–3, Checkliste, Aufzählung, Nummerierte Liste, Toggle, Code')],
