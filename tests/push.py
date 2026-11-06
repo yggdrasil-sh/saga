@@ -270,10 +270,12 @@ def main():
 def run(A, Bk, vpub):
     # --- Service Worker, CSP, Grundzustand ---------------------------------------------------------------
     s, body, r = req("GET", "/sw.js", raw_resp=True)
-    # 2.4 (Videos im Chat): fetch-Handler nur fuer /_m/ (alles andere geht unveraendert ans Netz, Static Routing)
-    ok(f"/sw.js: 200, JavaScript, Service-Worker-Allowed /, fetch-Handler nur fuer /_m/ ({s})",
+    # 2.4 (Videos im Chat): fetch-Handler nur fuer /_m/ und (2.5, Offline-Seite) Seiten-Navigationen - alles andere geht
+    # unveraendert ans Netz (Static Routing)
+    ok(f"/sw.js: 200, JavaScript, Service-Worker-Allowed /, fetch-Handler nur fuer /_m/ und Navigationen ({s})",
        s == 200 and "javascript" in r.getheader("content-type", "") and r.getheader("service-worker-allowed") == "/"
        and "showNotification" in body and body.count("'fetch'") == 1 and "u.pathname.indexOf('/_m/') !== 0" in body
+       and "requestMode: 'navigate'" in body and "/static/offline.html" in body
        and "source: 'network'" in body and "__SAGA_V__" not in body)
     s, _, r = req("GET", "/", A, raw_resp=True)
     ok("CSP der Seiten erlaubt Worker nur von 'self'", "worker-src 'self'" in (r.getheader("content-security-policy") or ""))

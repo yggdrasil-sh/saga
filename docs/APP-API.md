@@ -1,7 +1,8 @@
 # App-API – Verträge für die App-Teams
 
 Ergänzungen der HTTP-API für die Apps (iOS/iPadOS/macOS inkl. Widgets, Android, Linux). Live-Ereignisse stehen in
-`APP-API-LIVE.md`, Chat in `APP-API-CHAT.md`, KI in `APP-API-KI.md`.
+`APP-API-LIVE.md`, Chat in `APP-API-CHAT.md`, KI in `APP-API-KI.md`, die Brücke zur Desktop-Hülle (Web in nativer Hülle) in
+`APP-API-HOST.md`.
 
 ## Seite gestalten (2.5)
 
