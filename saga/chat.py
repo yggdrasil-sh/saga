@@ -2006,7 +2006,8 @@ def _drop_notifs(c, uids, cid):
                                        (u, pat))]
         if ids:
             c.execute(f"DELETE FROM notification WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))
-            bus.emit_after(c, "notification.read", {"uid": u, "ids": ids, "unread": notify.count_unread(c, u)})
+            bus.emit_after(c, "notification.read", {"uid": u, "ids": ids, "unread": notify.count_unread(c, u),
+                                                    "unread_groups": notify.count_unread_groups(c, u)})
 
 
 def _floor(c, cid):
@@ -2489,7 +2490,8 @@ async def api_read(cid: int, request: Request):
                                        (uid, '{"chat": %d, %%' % ch["id"]))]
         if ids:
             c.execute(f"UPDATE notification SET read_at=? WHERE id IN ({','.join('?' * len(ids))})", (time.time(), *ids))
-            bus.emit_after(c, "notification.read", {"uid": uid, "ids": ids, "unread": notify.count_unread(c, uid)})
+            bus.emit_after(c, "notification.read", {"uid": uid, "ids": ids, "unread": notify.count_unread(c, uid),
+                                                    "unread_groups": notify.count_unread_groups(c, uid)})
         _direct(c, [uid], "chat.read", {"chat_id": ch["id"], "seq": seq})
         total = unread_total(c, uid)
     out = {"ok": True, "last_read": seq, "unread": total}

@@ -389,7 +389,8 @@ def _resolve(kind, p, aud, pres):
                 i18n.set_lang(account_lang(uid))             # 'text' in der Sprache des Empfaengers (eigener Thread-Kontext)
                 it = notify.item(c, uid, p["id"])
                 if it:
-                    out.append((uid, "notification", {"item": it, "unread": notify.count_unread(c, uid), "replaces": p.get("replaces")}))
+                    out.append((uid, "notification", {"item": it, "unread": notify.count_unread(c, uid),
+                                                      "unread_groups": notify.count_unread_groups(c, uid), "replaces": p.get("replaces")}))
         elif kind == "direct":                               # Chat (1.5): Empfaenger stehen fest (Mitglieder), nur Kennungen
             for u in p.get("uids") or ():
                 if u in aud:
@@ -402,7 +403,7 @@ def _resolve(kind, p, aud, pres):
                 out.append((u, p["typ"], p["data"]))
         elif kind == "notification.read":
             if p["uid"] in aud:
-                out.append((p["uid"], "notification", {"unread": p["unread"], "read": p["ids"]}))
+                out.append((p["uid"], "notification", {"unread": p["unread"], "read": p["ids"], **({"unread_groups": p["unread_groups"]} if "unread_groups" in p else {})}))
         elif kind == "note.changed":
             nid, by, origin = p["id"], p.get("by"), p.get("origin")
             nms = {}                                         # Name ohne Anzeigenamen ("Unbekannte Person") in der

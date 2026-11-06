@@ -491,6 +491,7 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
     """-> {title, body, url, tag, kind, ts} oder None (Benachrichtigung weg / kein Zugriff mehr)."""
     names = with_names(prefs(c, uid), sub_kind, has_keys)
     tok = i18n.set_lang(account_lang(uid))
+    thread = None
     try:
         if kind == "test":
             body, url, tag = t("Testmitteilung – Mitteilungen kommen an."), "/", "test"
@@ -545,7 +546,20 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             body = it["text"] if names else _anon(kind)
             url = it["url"] if (it["url"] or "").startswith("/") else "/"     # Admin-Bereich (Backups): eigener Port
             tag = (f"thread-{it['thread_id']}" if it.get("thread_id") else f"note-{it['note']['id']}" if it.get("note") else f"n-{ref}")
-        return {"title": title(), "body": body, "url": url, "tag": tag, "kind": kind, "ts": int(created or time.time())}
+            thread = f"note-{it['note']['id']}" if it.get("note") and kind.startswith("comment.") else None
+            if kind == "call.missed" and it.get("chat"):
+                # Design-Runde (UX-30): verpasste Anrufe eines Chats ersetzen einander auf dem Geraet (gleicher tag /
+                # apns-collapse-id) - mit Zahl, wenn es mehrere ungelesene sind
+                gk = f"call:{it['chat']['id']}"
+                n = sum(1 for _, k in notify._unread_keys(c, uid, 500) if k == gk)
+                tag = f"missed-{it['chat']['id']}"
+                if n > 1:
+                    nm = (it.get("actor") or {}).get("name") if names else None
+                    body = t("{n} verpasste Anrufe von {name}", n=n, name=nm) if nm else t("{n} verpasste Anrufe", n=n)
+        msg = {"title": title(), "body": body, "url": url, "tag": tag, "kind": kind, "ts": int(created or time.time())}
+        if thread:
+            msg["thread"] = thread        # Design-Runde: APNs thread-id (Gruppe je Seite; tag ersetzt weiter je Unterhaltung)
+        return msg
     finally:
         i18n._cur.reset(tok)
 
@@ -638,7 +652,7 @@ def _send_apns(endpoint, msg, voip=False):
     if voip:
         body = dict({"aps": {}, "url": msg["url"], "kind": msg["kind"], "title": msg["title"], "body": msg["body"]}, **ids)
     else:
-        body = dict({"aps": {"alert": {"title": msg["title"], "body": msg["body"]}, "sound": "default", "thread-id": msg["tag"]},
+        body = dict({"aps": {"alert": {"title": msg["title"], "body": msg["body"]}, "sound": "default", "thread-id": msg.get("thread") or msg["tag"]},
                      "url": msg["url"], "kind": msg["kind"]}, **ids)
         if msg["kind"] in ("call", "call.group"):
             body["aps"]["interruption-level"] = "time-sensitive"

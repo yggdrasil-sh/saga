@@ -1946,5 +1946,14 @@ def chat_extra(c, uid, ch, d):
 
 chat.CALLS = __import__("sys").modules[__name__]
 
-# Benachrichtigung "Verpasster Anruf": Titel/Link wie bei Chat-Nachrichten (nur fuer aktuelle Mitglieder)
-notify.RENDER["call.missed"] = chat._notif
+# Benachrichtigung "Verpasster Anruf": Titel/Link wie bei Chat-Nachrichten (nur fuer aktuelle Mitglieder); Design-Runde
+# (UX-30): dazu media (audio/video) - die Glocke buendelt "5 verpasste Videoanrufe" und bietet "Zurueckrufen" an
+def _missed_notif(c, uid, item, d):
+    chat._notif(c, uid, item, d)
+    if item.get("access") and d.get("call"):
+        r = c.execute("SELECT media FROM chat_call WHERE id=?", (str(d["call"]),)).fetchone()
+        if r:
+            item["media"] = r[0]
+
+
+notify.RENDER["call.missed"] = _missed_notif

@@ -42,6 +42,11 @@ ROLE_KEYS = {"view": "Lesen##Rolle", "comment": "Kommentieren##Rolle", "edit": "
 # Von saga.mentions gesetzt: fn(c, owner, note_id, comment_id, author) -> Personen, die im Kommentar erwaehnt sind (mit Zugriff)
 COMMENT_MENTIONED = None
 COMMENT_TEXT = None                 # fn(c, body) -> Text mit '@Name' statt Token (saga.mentions)
+# Design-Runde (UX-29/30): Zeilen der Glocke je Gespraechseinheit buendeln (?group=1) - Art -> Einheit
+GROUP_KINDS = {"chat.message": "chat", "call.missed": "call", "comment.new": "page", "comment.reply": "page",
+               "comment.mention": "page"}
+GROUP_SCAN = 500                    # hoechstens so viele Zeilen je Abfrage zu Gruppen zusammenfassen
+GROUP_NAMES = 3                     # "(von A, B, C …)"
 
 
 # --- Einstellungen je Art ----------------------------------------------------------------------------
@@ -174,6 +179,33 @@ def count_unread(c, uid):
     return c.execute("SELECT COUNT(*) FROM notification WHERE uid=? AND read_at IS NULL", (uid,)).fetchone()[0]
 
 
+def group_key(kind, note_id, d):
+    """Design-Runde (UX-29/30): Gespraechseinheit einer Benachrichtigung -> 'chat:<id>' (Nachrichten eines Chats),
+    'call:<chat>' (verpasste Anrufe eines Chats), 'page:<seite>' bzw. 'page:<instanz>:<seite>' (Kommentare und
+    Erwaehnungen in Kommentaren auf einer Seite) oder None (wird nicht gebuendelt)."""
+    g = GROUP_KINDS.get(kind)
+    if not g:
+        return None
+    if g != "page":
+        ch = d.get("chat")
+        return f"{g}:{ch}" if ch not in (None, "") else None
+    fed = d.get("fed") if isinstance(d.get("fed"), dict) else None
+    if fed:
+        return f"page:{fed.get('peer')}:{fed.get('note')}" if fed.get("note") not in (None, "") else None
+    return f"page:{note_id}" if note_id else None
+
+
+def _unread_keys(c, uid, limit=2000):
+    """(id, Schluessel) der ungelesenen Benachrichtigungen (neueste zuerst)."""
+    return [(r[0], group_key(r[1], r[2], _json_load(r[3], {}))) for r in c.execute(
+        "SELECT id, kind, note_id, data FROM notification WHERE uid=? AND read_at IS NULL ORDER BY id DESC LIMIT ?", (uid, limit))]
+
+
+def count_unread_groups(c, uid):
+    """Ungelesene Zeilen der gebuendelten Glocke (eine je Gespraechseinheit, sonst je Benachrichtigung)."""
+    return len({k or ("id", rid) for rid, k in _unread_keys(c, uid)})
+
+
 # --- Ausgabe (je Empfaenger) ---------------------------------------------------------------------------
 N_COLS = "id, kind, actor_uid, note_id, comment_id, data, created, read_at"
 
@@ -261,12 +293,85 @@ def _render(c, uid, rows, acc=None):
             elif kind == "page.mention" and isinstance(d.get("block"), str) and d["block"]:
                 item["block_id"] = d["block"]          # 2.5 (P6-5): Sprung zum Block mit der Erwaehnung
                 item["url"] = f"/notes#{nid}:{d['block']}"
+        item["group_key"] = group_key(kind, nid, d)
         item["text"] = _text(kind, a_name, item["count"], d.get("role"), access)
         item["title"] = (n[0] or t("Unbenannt")) if access else t("Kein Zugriff mehr")
         if kind in RENDER:
             RENDER[kind](c, uid, item, d)
         out.append(item)
     return out
+
+
+def _group_text(g):
+    """Satz fuer eine gebuendelte Zeile (mehr als eine Benachrichtigung) - ohne Titel (der steht in 'title')."""
+    n, unit = g["count"], g["group_key"].split(":", 1)[0]
+    if unit == "chat":
+        if (g.get("chat") or {}).get("kind") not in (None, "dm") and g.get("actors"):
+            return t("{n} neue Nachrichten (von {names})", n=n, names=_names_short(g["actors"]))
+        return t("{n} neue Nachrichten", n=n)
+    if unit == "call":
+        return t("{n} verpasste Videoanrufe", n=n) if g.get("media") == "video" else t("{n} verpasste Anrufe", n=n)
+    if g.get("mention"):
+        return t("{n} neue Kommentare (mit Erwähnung)", n=n)
+    return t("{n} neue Kommentare", n=n)
+
+
+def _names_short(names_):
+    return ", ".join(names_[:GROUP_NAMES]) + (" …" if len(names_) > GROUP_NAMES else "")
+
+
+def grouped(items):
+    """Design-Runde (UX-29/30): Eintraege (neueste zuerst) je Gespraechseinheit und Lesestand zu EINER Zeile buendeln.
+    Die Zeile ist der neueste Eintrag (alle bisherigen Felder) plus ids/counts (alle gebuendelten Benachrichtigungen, neueste
+    zuerst), count (Summe), first (Zeit der aeltesten), actors (Namen, neueste zuerst) und text fuer die ganze Gruppe.
+    Eintraege ohne group_key bleiben einzeln (ids = [id])."""
+    out, at = [], {}
+    for it in items:
+        k = it.get("group_key")
+        nm = it.get("actors") or ([it["actor"]["name"]] if it.get("actor") else [])
+        g = at.get((k, it["read"])) if k else None
+        if g is None:
+            g = dict(it, ids=[it["id"]], counts=[it["count"]], first=it["created"])
+            g["actors"] = list(nm)
+            if it["kind"] == "comment.mention":
+                g["mention"] = True
+            if k:
+                at[(k, it["read"])] = g
+            out.append(g)
+            continue
+        g["ids"].append(it["id"])
+        g["counts"].append(it["count"])
+        g["count"] += it["count"]
+        g["first"] = it["created"]
+        g["actors"] += [a for a in nm if a not in g["actors"]]
+        if it["kind"] == "comment.mention":
+            g["mention"] = True
+        if g.get("media") != it.get("media"):
+            g["media"] = "audio" if g.get("media") or it.get("media") else None    # gemischt: "Anrufe"
+    for g in out:
+        if len(g["ids"]) > 1:
+            g["text"] = _group_text(g)
+        if len(g["actors"]) <= 1:
+            g.pop("actors")                          # wie bisher: actors nur bei mehreren Personen
+    return out
+
+
+def _group_rows(raw, limit):
+    """Zeilen (neueste zuerst, hoechstens GROUP_SCAN+1) -> (zeilen, more, next) fuer hoechstens limit Gruppen. Bricht vor
+    der ersten Gruppe ab, die nicht mehr passt; aeltere Mitglieder schon gezeigter Gruppen kommen dann mit der naechsten
+    Seite (?before=next) - die Weboberflaeche fuegt sie der vorhandenen Zeile hinzu."""
+    capped = len(raw) > GROUP_SCAN
+    raw = raw[:GROUP_SCAN]
+    keys = set()
+    for r in raw:
+        k = group_key(r[1], r[3], _json_load(r[5], {}))
+        kk = (k, r[7] is not None) if k else ("id", r[0])
+        if kk in keys:
+            continue
+        if len(keys) == limit:
+            return [x for x in raw if x[0] > r[0]], True, r[0] + 1
+        keys.add(kk)
+    return raw, capped, (raw[-1][0] if capped and raw else None)
 
 
 def _locked(c, uid, item, d):
@@ -290,9 +395,10 @@ def item(c, uid, rid):
 
 # --- Endpunkte -------------------------------------------------------------------------------------------
 @router.get("/api/notifications")
-def api_notifications(request: Request, unread: int = 0, before: int = 0, limit: int = 30, counts: int = 0):
+def api_notifications(request: Request, unread: int = 0, before: int = 0, limit: int = 30, counts: int = 0, group: int = 0):
     """Liste (neueste zuerst): ?unread=1 nur ungelesene, ?before=<id> naechste Seite, ?limit= (hoechstens 100; 0 = nur Zahlen).
-    -> {items, unread, more, next}; ?counts=1 zusaetzlich comments_unread (Seiten mit neuen Kommentaren)."""
+    -> {items, unread, more, next}; ?counts=1 zusaetzlich comments_unread (Seiten mit neuen Kommentaren).
+    ?group=1 (Design-Runde): je Gespraechseinheit eine Zeile (grouped(); limit zaehlt Zeilen) und unread_groups."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
@@ -305,11 +411,18 @@ def api_notifications(request: Request, unread: int = 0, before: int = 0, limit:
         if before > 0:
             sql += " AND id < ?"
             args.append(min(before, 2 ** 63 - 1))
-        rows = c.execute(sql + " ORDER BY id DESC LIMIT ?", (*args, limit + 1)).fetchall() if limit else []
-        more = len(rows) > limit
-        rows = rows[:limit]
-        out = {"items": _render(c, uid, rows), "unread": count_unread(c, uid), "more": more,
-               "next": rows[-1][0] if more and rows else None}
+        if group and limit:
+            rows, more, nxt = _group_rows(c.execute(sql + " ORDER BY id DESC LIMIT ?", (*args, GROUP_SCAN + 1)).fetchall(), limit)
+            items = grouped(_render(c, uid, rows))
+        else:
+            rows = c.execute(sql + " ORDER BY id DESC LIMIT ?", (*args, limit + 1)).fetchall() if limit else []
+            more = len(rows) > limit
+            rows = rows[:limit]
+            nxt = rows[-1][0] if more and rows else None
+            items = _render(c, uid, rows)
+        out = {"items": items, "unread": count_unread(c, uid), "more": more, "next": nxt}
+        if group:
+            out["unread_groups"] = count_unread_groups(c, uid)
         if counts:
             out["comments_unread"] = pages_unread(c, uid)       # Startseite: Seiten mit neuen Kommentaren (Knopf "Seiten")
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
@@ -317,7 +430,8 @@ def api_notifications(request: Request, unread: int = 0, before: int = 0, limit:
 
 @router.post("/api/notifications/read")
 async def api_notifications_read(request: Request):
-    """Als gelesen markieren: {ids: [..]} oder {all: true}. -> {ok, unread}"""
+    """Als gelesen markieren: {ids: [..]} oder {all: true}; Design-Runde: auch {groups: ["chat:12", ...]} (alle
+    ungelesenen dieser Gespraechseinheiten, group_key), mit ids kombinierbar. -> {ok, unread, unread_groups}"""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
@@ -330,19 +444,26 @@ async def api_notifications_read(request: Request):
             c.execute("UPDATE notification SET read_at=? WHERE uid=? AND read_at IS NULL", (now, uid))
             ids = "all"
         else:
-            ids = b.get("ids")
+            groups = b.get("groups")
+            ids = b.get("ids", [] if groups is not None else None)
             if not isinstance(ids, list) or len(ids) > 500:
+                return _bad(t("ungültige Angabe"))
+            if groups is not None and (not isinstance(groups, list) or len(groups) > 100
+                                       or any(not isinstance(g, str) or not g or len(g) > 200 for g in groups)):
                 return _bad(t("ungültige Angabe"))
             try:
                 ids = sorted({int(x) for x in ids if 0 < int(x) < 2 ** 63})
             except (TypeError, ValueError):
                 return _bad(t("ungültige Angabe"))
+            if groups:
+                gs = set(groups)
+                ids = sorted(set(ids) | {rid for rid, k in _unread_keys(c, uid, 5000) if k in gs})
             if ids:
                 c.execute(f"UPDATE notification SET read_at=? WHERE uid=? AND read_at IS NULL AND id IN ({','.join('?' * len(ids))})",
                           (now, uid, *ids))
-        n = count_unread(c, uid)
-        bus.emit_after(c, "notification.read", {"uid": uid, "ids": ids, "unread": n})    # andere offene Tabs/Apps
-    return JSONResponse({"ok": True, "unread": n})
+        n, ng = count_unread(c, uid), count_unread_groups(c, uid)
+        bus.emit_after(c, "notification.read", {"uid": uid, "ids": ids, "unread": n, "unread_groups": ng})    # andere Tabs/Apps
+    return JSONResponse({"ok": True, "unread": n, "unread_groups": ng})
 
 
 def _settings(c, uid):
