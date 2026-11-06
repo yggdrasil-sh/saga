@@ -19,6 +19,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ### Web: Design-Runde (ruhiger, einheitlicher)
 - **Seitenleiste ausgeblendet:** Sie klappt nur noch am linken Rand bzw. über dem Seitenleisten-Knopf auf, nicht mehr beim
   Überfahren der ganzen Kopfzeile (auch rechts bei „Teilen“ und „···“).
+- **Gesperrte Seite:** Statt der Pille „🔒 Gesperrt“ steht oben nur noch ein stilles Linien-Schloss neben „Teilen“; beim
+  Überfahren zeigt es dem Eigentümer das offene Schloss, ein Klick entsperrt.
 - **Seite löschen:** Liegt die offene Seite im Papierkorb, öffnet Saga die übergeordnete Seite, bei Seiten auf oberster
   Ebene „Heute“ – statt einer leeren Fläche mit „Wähle links eine Seite“. „Rückgängig“ steht auch nach dem Wechsel bereit.
 - **Glocke gebündelt:** eine Zeile je Unterhaltung statt jeder Mitteilung einzeln – „Jonas Brandt · 3 neue Nachrichten“,

@@ -8529,12 +8529,17 @@
     if (S.editor && S.editor.setEditable) S.editor.setEditable(!ro);      // Tiptap: editable an/aus
     var b = $('pg-lock');
     if (!b) {
-      b = el('button', 'pg-lock-b'); b.id = 'pg-lock'; b.type = 'button';
+      // Entscheidung des Maintainers: nur ein stilles Linien-Schloss (Design-Entwurf b), Eigentuemer sieht beim Ueberfahren das offene Schloss
+      b = el('button', 'pg-head-b'); b.id = 'pg-lock'; b.type = 'button';
+      b.appendChild(HK.icon('lock', 16));
+      var un = HK.icon('unlock', 16); un.classList.add('pg-lock-un'); b.appendChild(un);
       b.addEventListener('click', function () { if (isOwner()) setLocked(false); else lockHint(); });
-      $('pg-state').parentNode.insertBefore(b, $('pg-state'));
+      $('pg-state').after(b);                                   // direkt vor den Kopfknoepfen (nicht vor dem unsichtbaren Speicherstatus)
     }
-    b.hidden = !on || roRole(); b.textContent = T('🔒 Gesperrt');
-    b.title = isOwner() ? T('Seite ist gesperrt – klicken zum Entsperren') : T('Der Eigentümer hat die Seite gesperrt');
+    var own = isOwner();
+    b.hidden = !on || roRole(); b.classList.toggle('own', own);
+    b.setAttribute('aria-label', T('Gesperrt'));
+    b.title = own ? T('Seite ist gesperrt – klicken zum Entsperren') : T('Der Eigentümer hat die Seite gesperrt');
   }
   var LOCK_OK = '.embed-db, .embed-cal, .embed-tasks, .btnrow';      // bleibt auf gesperrten Seiten bedienbar
   function lockBlocked(e) {
@@ -8548,7 +8553,7 @@
     var n = Date.now(); if (n - lockHintT <= 2500) return; lockHintT = n;
     if (roRole()) HK.toast(role() === 'comment' ? T('💬 Du kannst diese Seite lesen und kommentieren, aber nicht bearbeiten.') : T('👁 Du kannst diese Seite nur lesen.'));
     else if (!isOwner()) HK.toast(T('🔒 Der Eigentümer hat diese Seite gesperrt.'));
-    else HK.toast(T('🔒 Seite ist gesperrt – oben auf „Gesperrt“ klicken zum Bearbeiten'));
+    else HK.toast(T('🔒 Seite ist gesperrt – oben auf das Schloss klicken zum Bearbeiten'));
   }
 
   // --- Teilen (1.3): Kopfzeile fuer fremde Seiten, Knopf "Teilen" (nur Eigentuemer), Dialog -------------------------
