@@ -7750,17 +7750,19 @@
   var finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
   // Zugeklappt (breite Fenster, Maus): Knopf oder linken Rand ueberfahren -> Seitenleiste schwebt als Karte herein
   // (wie Notion); verschwindet kurz nachdem die Maus Karte, Knopf und Rand verlassen hat.
-  var peekTimer = 0, peekZone = null;
+  // Offen bleibt sie, solange die Maus waagrecht im Bereich der Leiste steht - auch ueber Elementen, die im DOM in der Kopfzeile
+  // liegen und nur optisch in der Leiste sitzen ("Saga", Glocke, Knopf, Kontoknopf), und solange ein Menue aus ihr offen ist.
+  var peekTimer = 0, peekZone = null, peekX = -1;
   function peekable() { return finePointer.matches && !drawerMode() && document.body.classList.contains('side-hidden'); }
+  function peekInside() { var s = $('pg-side'); return !!s && peekX >= 0 && peekX <= s.getBoundingClientRect().right + 6; }
   function peek(on, now) {
-    clearTimeout(peekTimer);
+    clearTimeout(peekTimer); peekTimer = 0;
     if (!on) {
       if (now) { document.body.classList.remove('side-peek'); return; }
-      // Menue aus der Leiste offen (z. B. Kontomenue): offen lassen, bis es zu ist und die Maus nicht mehr ueber der Leiste
-      var side = $('pg-side'), drop = function () {
-        var me = $('hk-user');   // Kontoknopf liegt im DOM in der Kopfzeile, optisch unten in der Leiste
-        if (HK.menuFrom && (HK.menuFrom(side) || HK.menuFrom(me))) { peekTimer = setTimeout(drop, 300); return; }
-        if ((side && side.matches(':hover')) || (me && me.matches(':hover'))) return;
+      var drop = function () {
+        peekTimer = 0;
+        if (HK.menuFrom && (HK.menuFrom($('pg-side')) || HK.menuFrom($('hk-user')))) { peekTimer = setTimeout(drop, 300); return; }
+        if (peekInside()) return;
         document.body.classList.remove('side-peek');
       };
       peekTimer = setTimeout(drop, 280);
@@ -7772,11 +7774,15 @@
   function peekWire() {
     if (peekZone || !document.body.classList.contains('notes-page') || document.body.classList.contains('embed')) return;
     peekZone = el('div', 'pg-peek-zone'); peekZone.setAttribute('aria-hidden', 'true'); document.body.appendChild(peekZone);
-    [peekZone, $('pg-side-btn'), $('pg-side'), $('hk-user')].forEach(function (x) {
-      if (!x) return;
-      x.addEventListener('mouseenter', function () { if (peekable()) peek(true); });
-      x.addEventListener('mouseleave', function () { if (document.body.classList.contains('side-peek')) peek(false); });
+    [peekZone, $('pg-side-btn')].forEach(function (x) {
+      if (x) x.addEventListener('mouseenter', function () { if (peekable()) peek(true); });
     });
+    document.addEventListener('pointermove', function (e) {
+      if (e.pointerType && e.pointerType !== 'mouse') return;
+      peekX = e.clientX;
+      if (!document.body.classList.contains('side-peek')) return;
+      if (peekInside()) { clearTimeout(peekTimer); peekTimer = 0; } else if (!peekTimer) peek(false);
+    }, { passive: true });
     // Fokus per Tastatur in der schwebenden Leiste: offen lassen, beim Verlassen schliessen
     $('pg-side').addEventListener('focusin', function () { if (document.body.classList.contains('side-peek')) clearTimeout(peekTimer); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.body.classList.contains('side-peek')) peek(false, true); });

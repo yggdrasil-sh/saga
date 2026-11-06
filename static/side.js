@@ -24,16 +24,18 @@
     var b = $('pg-side-btn'); if (b) b.setAttribute('aria-pressed', show ? 'true' : 'false');
     store('hk-pg-side', show ? '1' : '0');
   }
-  var peekT = 0;
+  // Offen bleibt sie, solange die Maus waagrecht im Bereich der Leiste steht (auch ueber "Saga", Glocke, Kontoknopf, die im DOM
+  // in der Kopfzeile liegen) und solange ein Menue aus ihr offen ist.
+  var peekT = 0, peekX = -1;
+  function inside() { return peekX >= 0 && peekX <= side.getBoundingClientRect().right + 6; }
   function peek(on, now) {
-    clearTimeout(peekT);
+    clearTimeout(peekT); peekT = 0;
     if (!on) {
       if (now) { body.classList.remove('side-peek'); return; }
-      // Menue aus der Leiste offen (z. B. Kontomenue): offen lassen, bis es zu ist und die Maus nicht mehr ueber der Leiste
       var drop = function () {
-        var me = $('hk-user');   // Kontoknopf liegt im DOM in der Kopfzeile, optisch unten in der Leiste
-        if (HK.menuFrom && (HK.menuFrom(side) || HK.menuFrom(me))) { peekT = setTimeout(drop, 300); return; }
-        if (side.matches(':hover') || (me && me.matches(':hover'))) return;
+        peekT = 0;
+        if (HK.menuFrom && (HK.menuFrom(side) || HK.menuFrom($('hk-user')))) { peekT = setTimeout(drop, 300); return; }
+        if (inside()) return;
         body.classList.remove('side-peek');
       };
       peekT = setTimeout(drop, 280); return;
@@ -42,11 +44,15 @@
   }
   setSide(store('hk-pg-side') !== '0');
   var zone = el('div', 'pg-peek-zone'); zone.setAttribute('aria-hidden', 'true'); body.appendChild(zone);
-  [zone, $('pg-side-btn'), side, $('hk-user')].forEach(function (x) {
-    if (!x) return;
-    x.addEventListener('mouseenter', function () { peek(true); });
-    x.addEventListener('mouseleave', function () { if (body.classList.contains('side-peek')) peek(false); });
+  [zone, $('pg-side-btn')].forEach(function (x) {
+    if (x) x.addEventListener('mouseenter', function () { peek(true); });
   });
+  document.addEventListener('pointermove', function (e) {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
+    peekX = e.clientX;
+    if (!body.classList.contains('side-peek')) return;
+    if (inside()) { clearTimeout(peekT); peekT = 0; } else if (!peekT) peek(false);
+  }, { passive: true });
   var tb = $('pg-side-btn'); if (tb) tb.addEventListener('click', function () { setSide(body.classList.contains('side-hidden')); });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && body.classList.contains('side-peek')) { peek(false, true); return; }
