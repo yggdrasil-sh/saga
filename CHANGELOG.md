@@ -27,8 +27,6 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (`static/tokens.css`, auch für öffentliche Seiten und den Admin-Bereich) – 7 Schriftstufen statt rund 50 Einzelwerten,
   3 Eckenradien statt 30, eine Farbpalette statt vier. Optisch fast unverändert (Abweichungen höchstens 1 px Schrift bzw.
   wenige px Ecke).
-- **Seite löschen:** Liegt die offene Seite im Papierkorb, öffnet Saga die übergeordnete Seite, sonst die Nachbarseite
-  davor bzw. danach oder die zuletzt geöffnete – statt einer leeren Fläche mit „Wähle links eine Seite“.
 - **Glocke gebündelt:** eine Zeile je Unterhaltung statt jeder Mitteilung einzeln – „Jonas Brandt · 3 neue Nachrichten“,
   Gruppen-Chats „Team · 4 neue Nachrichten (von A, B)“, verpasste Anrufe eines Chats als „5 verpasste Videoanrufe ·
   zuletzt 11:13“ mit „Zurückrufen“, Kommentare einer Seite als „Seite X · 3 neue Kommentare“. Ein Klick öffnet und
