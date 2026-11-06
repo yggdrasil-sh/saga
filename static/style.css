@@ -2968,3 +2968,6 @@ a.qs-web{text-decoration:none;color:var(--fg)}
 .shp-web-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shp-web-go{flex:none;color:var(--fg);text-decoration:underline;text-underline-offset:2px}
 .sh-invite{flex:none;white-space:nowrap}
+/* Handy: Suchfeld eigene Zeile, darunter Rolle + "Einladen" (die allgemeine Regel fuer Suchfelder bis 600 px setzte
+   flex-basis 0 und quetschte das Feld neben Rolle und Knopf) */
+@media (max-width:560px){.sh-add .sh-q{flex:1 1 100%}}

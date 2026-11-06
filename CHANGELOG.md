@@ -50,6 +50,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Handy: Tab-Leiste unten** mit Heute · Seiten · Suchen · Chats (und der KI, wenn sie eingerichtet ist) in
   Daumenreichweite; „Seiten“ öffnet die Seitenleiste, „Suchen“ die Schnellsuche. Oben bleiben Glocke und Konto. Bei
   offener Tastatur und im Chat-Gespräch blendet sich die Leiste aus; von Chats führt jetzt ein Weg zurück zu den Seiten.
+- **Teilen und Veröffentlichen in einem Dialog:** „Teilen“ hat zwei Reiter „Personen“ | „Im Web“ (Pfeiltasten wechseln).
+  „Teilen“ in der Kopfzeile öffnet „Personen“, der Hinweis „🌐 Öffentlich“ und „Veröffentlichen …“ im Seitenmenü öffnen
+  „Im Web“; unter „Personen“ steht „Öffentlich im Web – ändern“, wenn die Seite veröffentlicht ist. Der doppelte rote
+  Knopf „Veröffentlichung beenden“ entfällt – der Schalter fragt beim Ausschalten nach. Neu: Knopf „Einladen“ neben Feld
+  und Rolle (aktiv mit eindeutigem Vorschlag, Enter lädt den ersten ein). Esc gibt den Fokus an den jeweiligen Auslöser zurück.
 ### Heute: echter Tagesstart statt Dashboard (Web)
 - `/dashboard` heißt im Web jetzt durchgehend **„Heute“** (Seitentitel „Heute · Saga“, Knöpfe und Schnellsuche).
   Oben eine ruhige Begrüßung („Guten Morgen, …“) mit Lagezeile aus echten Daten (Termine heute, überfällige und
