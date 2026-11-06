@@ -498,11 +498,11 @@
       var n = x.node, t = n.type.name, id = n.attrs.id;
       if (t === 'image' && fileOf(n)) {
         var a = n.attrs;
-        m.appendChild(HK.menuItem(T('Ausrichtung'), null, { icon: '↔', sub: alignSub(a.align, function (v) { byId(id, { align: v }); }) }));
+        m.appendChild(HK.menuItem(T('Ausrichtung'), null, { ic: 'align-center', sub: alignSub(a.align, function (v) { byId(id, { align: v }); }) }));
         [['withBorder', T('Mit Rahmen'), '▢'], ['withBackground', T('Mit Hintergrund'), '▣'], ['stretched', T('Volle Breite'), '⇔']].forEach(function (o) {
           m.appendChild(HK.menuItem(o[1], function () { var y = X.findId(id); if (y) byId(id, (function () { var p = {}; p[o[0]] = y.node.attrs[o[0]] !== true; return p; })()); }, { icon: o[2], on: a[o[0]] === true }));
         });
-        if (a.width != null) m.appendChild(HK.menuItem(T('Breite zurücksetzen'), function () { byId(id, { width: null }); }, { icon: '⤢' }));
+        if (a.width != null) m.appendChild(HK.menuItem(T('Breite zurücksetzen'), function () { byId(id, { width: null }); }, { ic: 'maximize' }));
       } else if (t === 'embed') {
         var d = isDict(n.attrs.data) ? n.attrs.data : {}, yt = M().ytId && M().ytId(String(d.url || '').replace(/&amp;/g, '&'));
         if (!yt) return;
@@ -512,8 +512,8 @@
           Object.keys(nd).forEach(function (k) { if (nd[k] === null) delete nd[k]; });
           dispatch(ed().state.tr.setNodeMarkup(y.pos, null, Object.assign({}, y.node.attrs, { data: nd })));
         };
-        m.appendChild(HK.menuItem(T('Ausrichtung'), null, { icon: '↔', sub: alignSub(d.align, function (v) { setD({ align: v }); }) }));
-        if (d.width != null) m.appendChild(HK.menuItem(T('Breite zurücksetzen'), function () { setD({ width: null }); }, { icon: '⤢' }));
+        m.appendChild(HK.menuItem(T('Ausrichtung'), null, { ic: 'align-center', sub: alignSub(d.align, function (v) { setD({ align: v }); }) }));
+        if (d.width != null) m.appendChild(HK.menuItem(T('Breite zurücksetzen'), function () { setD({ width: null }); }, { ic: 'maximize' }));
       }
     }
 

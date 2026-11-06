@@ -203,13 +203,13 @@
       var t = x.node, cs = t.attrs.colors || {};
       HK.openMenu(anchor, function (m) {
         m.appendChild(HK.menuLabel(T('Zeile {n}', { n: r + 1 })));
-        m.appendChild(HK.menuItem(T('Zeile oberhalb einfügen'), function () { TBL.addRow(id, r); }, { icon: '↥' }));
-        m.appendChild(HK.menuItem(T('Zeile unterhalb einfügen'), function () { TBL.addRow(id, r + 1); }, { icon: '↧' }));
-        if (r > 0) m.appendChild(HK.menuItem(T('Nach oben'), function () { TBL.moveRow(id, r, -1); }, { icon: '↑' }));
-        if (r < t.childCount - 1) m.appendChild(HK.menuItem(T('Nach unten'), function () { TBL.moveRow(id, r, 1); }, { icon: '↓' }));
-        m.appendChild(HK.menuItem(T('Zeile einfärben'), null, { icon: '◐', sub: paletteSub(id, 'r', String(r), (cs.r || {})[String(r)]) }));
+        m.appendChild(HK.menuItem(T('Zeile oberhalb einfügen'), function () { TBL.addRow(id, r); }, { ic: 'row-above' }));
+        m.appendChild(HK.menuItem(T('Zeile unterhalb einfügen'), function () { TBL.addRow(id, r + 1); }, { ic: 'row-below' }));
+        if (r > 0) m.appendChild(HK.menuItem(T('Nach oben'), function () { TBL.moveRow(id, r, -1); }, { ic: 'arrow-up' }));
+        if (r < t.childCount - 1) m.appendChild(HK.menuItem(T('Nach unten'), function () { TBL.moveRow(id, r, 1); }, { ic: 'arrow-down' }));
+        m.appendChild(HK.menuItem(T('Zeile einfärben'), null, { ic: 'droplet', sub: paletteSub(id, 'r', String(r), (cs.r || {})[String(r)]) }));
         m.appendChild(el('div', 'menu-sep'));
-        m.appendChild(HK.menuItem(T('Zeile löschen'), function () { TBL.delRow(id, r); }, { icon: '🗑', danger: true }));
+        m.appendChild(HK.menuItem(T('Zeile löschen'), function () { TBL.delRow(id, r); }, { ic: 'trash', danger: true }));
       });
     }
     function colMenu(anchor, id, c) {
@@ -218,14 +218,14 @@
       HK.openMenu(anchor, function (m) {
         m.appendChild(HK.menuLabel(T('Spalte {n}', { n: c + 1 })));
         if (n < MAX_COLS) {
-          m.appendChild(HK.menuItem(T('Spalte links einfügen'), function () { TBL.addCol(id, c); }, { icon: '⇤' }));
-          m.appendChild(HK.menuItem(T('Spalte rechts einfügen'), function () { TBL.addCol(id, c + 1); }, { icon: '⇥' }));
+          m.appendChild(HK.menuItem(T('Spalte links einfügen'), function () { TBL.addCol(id, c); }, { ic: 'col-left' }));
+          m.appendChild(HK.menuItem(T('Spalte rechts einfügen'), function () { TBL.addCol(id, c + 1); }, { ic: 'col-right' }));
         }
-        if (c > 0) m.appendChild(HK.menuItem(T('Nach links'), function () { TBL.moveCol(id, c, -1); }, { icon: '←' }));
-        if (c < n - 1) m.appendChild(HK.menuItem(T('Nach rechts'), function () { TBL.moveCol(id, c, 1); }, { icon: '→' }));
-        m.appendChild(HK.menuItem(T('Spalte einfärben'), null, { icon: '◐', sub: paletteSub(id, 'c', String(c), (cs.c || {})[String(c)]) }));
+        if (c > 0) m.appendChild(HK.menuItem(T('Nach links'), function () { TBL.moveCol(id, c, -1); }, { ic: 'arrow-left' }));
+        if (c < n - 1) m.appendChild(HK.menuItem(T('Nach rechts'), function () { TBL.moveCol(id, c, 1); }, { ic: 'arrow-right' }));
+        m.appendChild(HK.menuItem(T('Spalte einfärben'), null, { ic: 'droplet', sub: paletteSub(id, 'c', String(c), (cs.c || {})[String(c)]) }));
         m.appendChild(el('div', 'menu-sep'));
-        m.appendChild(HK.menuItem(T('Spalte löschen'), function () { TBL.delCol(id, c); }, { icon: '🗑', danger: true }));
+        m.appendChild(HK.menuItem(T('Spalte löschen'), function () { TBL.delCol(id, c); }, { ic: 'trash', danger: true }));
       });
     }
     function cellMenu(anchor, id, r, c) {
@@ -739,21 +739,21 @@
     function settings(m, x) {
       var n = x.node, t = n.type.name, id = n.attrs.id;
       if (t === 'table') {
-        m.appendChild(HK.menuItem(n.attrs.withHeadings ? T('Ohne Kopfzeile') : T('Mit Kopfzeile'), function () { TBL.set(id, { withHeadings: !n.attrs.withHeadings }); }, { icon: '▤' }));
-        m.appendChild(HK.menuItem(T('Erste Spalte als Kopf'), function () { TBL.set(id, { headCol: n.attrs.headCol ? null : true }); }, { icon: '▥', on: !!n.attrs.headCol }));
-        m.appendChild(HK.menuItem(n.attrs.stretched ? T('Volle Breite aus') : T('Volle Breite ein'), function () { TBL.set(id, { stretched: !n.attrs.stretched }); }, { icon: '⇔' }));
-        if (n.attrs.colWidths) m.appendChild(HK.menuItem(T('Spalten gleich breit'), function () { TBL.set(id, { colWidths: null }); }, { icon: '⇹' }));
+        m.appendChild(HK.menuItem(n.attrs.withHeadings ? T('Ohne Kopfzeile') : T('Mit Kopfzeile'), function () { TBL.set(id, { withHeadings: !n.attrs.withHeadings }); }, { ic: 'table-head' }));
+        m.appendChild(HK.menuItem(T('Erste Spalte als Kopf'), function () { TBL.set(id, { headCol: n.attrs.headCol ? null : true }); }, { ic: 'table-headcol', on: !!n.attrs.headCol }));
+        m.appendChild(HK.menuItem(n.attrs.stretched ? T('Volle Breite aus') : T('Volle Breite ein'), function () { TBL.set(id, { stretched: !n.attrs.stretched }); }, { ic: 'width' }));
+        if (n.attrs.colWidths) m.appendChild(HK.menuItem(T('Spalten gleich breit'), function () { TBL.set(id, { colWidths: null }); }, { ic: 'cols-even' }));
         // T6: Schreibmarke in einer Zelle dieser Tabelle -> einfaerben wie im Editor.js-Block-Menue (auch in der Tabellenleiste)
         var cc = cellCtx(st()), cs = n.attrs.colors || {};
         if (cc && cc.tpos === x.pos) {
           var r = cc.r, c = cc.c;
-          m.appendChild(HK.menuItem(T('Zeile einfärben'), null, { icon: '◐', sub: paletteSub(id, 'r', String(r), (cs.r || {})[String(r)]) }));
-          m.appendChild(HK.menuItem(T('Spalte einfärben'), null, { icon: '◐', sub: paletteSub(id, 'c', String(c), (cs.c || {})[String(c)]) }));
-          m.appendChild(HK.menuItem(T('Zelle einfärben'), null, { icon: '◐', sub: paletteSub(id, 'x', r + ',' + c, (cs.x || {})[r + ',' + c]) }));
+          m.appendChild(HK.menuItem(T('Zeile einfärben'), null, { ic: 'droplet', sub: paletteSub(id, 'r', String(r), (cs.r || {})[String(r)]) }));
+          m.appendChild(HK.menuItem(T('Spalte einfärben'), null, { ic: 'droplet', sub: paletteSub(id, 'c', String(c), (cs.c || {})[String(c)]) }));
+          m.appendChild(HK.menuItem(T('Zelle einfärben'), null, { ic: 'droplet', sub: paletteSub(id, 'x', r + ',' + c, (cs.x || {})[r + ',' + c]) }));
         }
       } else if (t === 'code') {
         var h = HL(), lang = langOf(n);
-        if (h) m.appendChild(HK.menuItem(T('Programmiersprache'), null, { icon: '</>', sub: function (sm) {
+        if (h) m.appendChild(HK.menuItem(T('Programmiersprache'), null, { ic: 'code', sub: function (sm) {
           h.langs.forEach(function (l) {
             sm.appendChild(HK.menuItem(l[1], function () {
               var y = byId(id); if (!y) return;

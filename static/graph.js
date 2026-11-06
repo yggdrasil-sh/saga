@@ -808,7 +808,7 @@
   window.HKGraph = {
     open: open, openLocal: openLocal, build: build, View: View,
     // static/pages.js: Eintrag im Seitenmenue "…"
-    menu: function (m) { if (curId() != null) m.appendChild(HK.menuItem(T('Lokaler Graph'), openLocal, { icon: '✳' })); },
+    menu: function (m) { if (curId() != null) m.appendChild(HK.menuItem(T('Lokaler Graph'), openLocal, { ic: 'graph' })); },
     current: function () { return FULL; }
   };
   var btn = document.getElementById('pg-graph-btn');

@@ -1167,7 +1167,7 @@
   function sharedPlusMenu(anchor, p) {
     var rem = remoteId(p.id), host = (p.remote || {}).host || '';
     HK.openMenu(anchor, function (m) {
-      m.appendChild(HK.menuItem(T('Leere Unterseite'), function () { newPage(p.id); }, { icon: '📄' }));
+      m.appendChild(HK.menuItem(T('Leere Unterseite'), function () { newPage(p.id); }, { ic: 'file' }));
       m.appendChild(el('div', 'menu-hint', rem ? T('Die Unterseite entsteht bei der Person, die die Seite geteilt hat (auf {host}). Vorlagen und Galerie gehen dort noch nicht.', { host: host })
         : T('Die Unterseite gehört der Person, die die Seite geteilt hat.')));
     });
@@ -1297,51 +1297,50 @@
         S.startPage = on ? null : c.id;
         HK.toast(on ? T('Startseite zurückgesetzt – Saga startet wieder mit „Heute“.') : T('Startseite festgelegt – Saga startet jetzt mit dieser Seite.'));
       }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
-    }, { icon: '🏠', on: on }));
+    }, { ic: 'home', on: on }));
   }
   $('pg-more').addEventListener('click', function () {
     var btn = this; if (!S.cur) return;
     HK.openMenu(btn, function (m) {
       var c = S.cur, n = descendants(c.id).length;
       if (foreign()) { foreignMenu(m, c); return; }        // fremde Seite: nur, was die Rolle erlaubt
-      m.appendChild(HK.menuItem(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), function () { setPinned(!c.pinned); }, { icon: c.pinned ? '☆' : '★' }));
+      m.appendChild(HK.menuItem(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), function () { setPinned(!c.pinned); }, { ic: 'star', on: !!c.pinned }));
       startItem(m, c);
-      m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
+      m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { ic: 'width', on: !!c.wide }));
       designMenu(m, c);
       // Bughunt D17: auf Touch-Geraeten steht "Titelbild" nicht mehr dauerhaft ueber dem Titel, sondern hier
-      if (!c.cover && !c.locked) m.appendChild(HK.menuItem(T('Titelbild'), function () { coverMenu(btn); }, { icon: '🖼' }));
-      m.appendChild(HK.menuItem(c.locked ? T('Seite entsperren') : T('Seite sperren'), function () { setLocked(!c.locked); }, { icon: '🔒', on: !!c.locked }));
+      if (!c.cover && !c.locked) m.appendChild(HK.menuItem(T('Titelbild'), function () { coverMenu(btn); }, { ic: 'image' }));
+      m.appendChild(HK.menuItem(c.locked ? T('Seite entsperren') : T('Seite sperren'), function () { setLocked(!c.locked); }, { ic: c.locked ? 'unlock' : 'lock', on: !!c.locked }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem(T('Duplizieren'), duplicatePage, { icon: '⧉' }));
-      m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
-      m.appendChild(HK.menuItem(T('Verschieben nach'), null, { icon: '↪', subSearch: T('Seite suchen …'), sub: function (sm) {
+      m.appendChild(HK.menuItem(T('Duplizieren'), duplicatePage, { ic: 'copy' }));
+      m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { ic: 'plus' }));
+      m.appendChild(HK.menuItem(T('Verschieben nach'), null, { ic: 'move', subSearch: T('Seite suchen …'), sub: function (sm) {
         var blocked = descendants(c.id).concat([c.id]);
-        if (c.parent_id) sm.appendChild(HK.menuItem(T('Oberste Ebene'), function () { moveFromMenu(c.id, null); }, { icon: '⌂' }));
+        if (c.parent_id) sm.appendChild(HK.menuItem(T('Oberste Ebene'), function () { moveFromMenu(c.id, null); }, { ic: 'home' }));
         S.pages.filter(function (p) { return blocked.indexOf(p.id) < 0 && p.id !== c.parent_id && p.kind !== 'database'; }).forEach(function (p) {
           sm.appendChild(HK.menuItem(label(p), function () { moveFromMenu(c.id, p.id); },
             { icon: ti(p.icon) || '📄', hint: ancestors(p.id).map(label).join(' / ') }));
         });
       } }));
-      m.appendChild(HK.menuItem(c.template ? T('Keine Vorlage mehr') : T('Als Vorlage markieren'), function () { setTemplate(!c.template); }, { icon: '📐', on: !!c.template }));
+      m.appendChild(HK.menuItem(c.template ? T('Keine Vorlage mehr') : T('Als Vorlage markieren'), function () { setTemplate(!c.template); }, { ic: 'template', on: !!c.template }));
       m.appendChild(el('div', 'menu-sep'));
       if (window.HKGraph) HKGraph.menu(m);                           // static/graph.js: lokaler Graph dieser Seite
-      m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { icon: '🕘' }));
-      var shi = HK.menuItem(T('Teilen …'), openShare, { icon: ' ', on: !!c.shared }), shc = shi.querySelector('.mi-ic');
-      if (shc) { shc.textContent = ''; shc.appendChild(grpIc()); }                    // einfarbiges Gruppen-Symbol
+      m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { ic: 'history' }));
+      var shi = HK.menuItem(T('Teilen …'), openShare, { ic: 'users', on: !!c.shared });
       m.appendChild(shi);
       chatShareItem(m, c);                                             // 2.5: Seite in einen Chat teilen (static/chatdock.js)
       m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
-        { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
+        { ic: 'comment', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
       if (window.HKAI) HKAI.menu(m);                                 // static/ai.js (nur, wenn der Assistent an ist)
-      m.appendChild(HK.menuItem(T('Veröffentlichen …'), openPublish, { icon: '🌐', on: !!c.published }));
-      m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
-        sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
-        if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { icon: '🗜', hint: nSub(n) }));
+      m.appendChild(HK.menuItem(T('Veröffentlichen …'), openPublish, { ic: 'globe', on: !!c.published }));
+      m.appendChild(HK.menuItem(T('Exportieren'), null, { ic: 'download', sub: function (sm) {
+        sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { ic: 'file' }));
+        if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { ic: 'file-zip', hint: nSub(n) }));
       } }));
-      if (c.kind !== 'database') m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: c.id }); }, { icon: '⇪', hint: T('als Unterseiten') }));
+      if (c.kind !== 'database') m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: c.id }); }, { ic: 'upload', hint: T('als Unterseiten') }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(c.archived ? T('Aus dem Archiv holen') : T('Archivieren'), function () { setArchived(c.id, !c.archived); },
-        { icon: '📦', hint: !c.archived && n ? '+ ' + nSub(n) : '' }));
+        { ic: 'archive', hint: !c.archived && n ? '+ ' + nSub(n) : '' }));
       m.appendChild(HK.menuItem(T('In den Papierkorb'), function () {
         var id = S.cur.id, name = label(S.cur), parent = S.cur.parent_id;
         save().then(function () { return api('DELETE', '/api/notes/' + id); }).then(function () {
@@ -1355,7 +1354,7 @@
           });
           return loadList().then(function () { if (parent && byId(parent)) return openPage(parent); renderTree(); });
         }).catch(function (err) { HK.toast(T('Nicht gelöscht: {err}', { err: err.message })); });
-      }, { icon: '🗑', danger: true, hint: n ? '+ ' + nSub(n) : '' }));
+      }, { ic: 'trash', danger: true, hint: n ? '+ ' + nSub(n) : '' }));
     });
   });
 
@@ -1366,30 +1365,30 @@
     var rem = remoteId(c.id);
     startItem(m, c);
     if (canEdit()) {
-      if (remCap(c, 'db')) m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
+      if (remCap(c, 'db')) m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { ic: 'width', on: !!c.wide }));
       if (remCap(c, 'db')) designMenu(m, c);
       if (remCap(c, 'subpages')) {
-        m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
+        m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { ic: 'plus' }));
         var cand = sharedMoveTargets(c);
-        if (cand.length) m.appendChild(HK.menuItem(T('Verschieben nach'), null, { icon: '↪', subSearch: T('Seite suchen …'), sub: function (sm) {
+        if (cand.length) m.appendChild(HK.menuItem(T('Verschieben nach'), null, { ic: 'move', subSearch: T('Seite suchen …'), sub: function (sm) {
           cand.forEach(function (p) {
             sm.appendChild(HK.menuItem(label(p), function () { moveFromMenu(c.id, p.id); }, { icon: ti(p.icon) || '📄', hint: ancestors(p.id).map(label).join(' / ') }));
           });
           sm.appendChild(el('div', 'menu-hint', T('Nur innerhalb des geteilten Bereichs mit denselben Freigaben.')));
         } }));
       }
-      if (remCap(c, 'versions')) m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { icon: '🕘' }));
+      if (remCap(c, 'versions')) m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { ic: 'history' }));
     }
     m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
-      { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
-    m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { icon: '🔗' }));
+      { ic: 'comment', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
+    m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { ic: 'link' }));
     if (!rem) chatShareItem(m, c);                     // Seitenverweise im Chat gibt es nur fuer Seiten dieses Servers
     if (window.HKGraph && !rem) HKGraph.menu(m);       // Graph kennt nur Seiten dieses Servers
     if (window.HKAI && !rem) HKAI.menu(m);            // KI nur fuer Seiten dieses Servers (andere Instanz: 404, BUG-052)
     var n = descendants(c.id).length || S.shared.filter(function (p) { return p.parent_id === c.id; }).length;
-    if (remCap(c, 'export')) m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
-      sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
-      if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { icon: '🗜' }));
+    if (remCap(c, 'export')) m.appendChild(HK.menuItem(T('Exportieren'), null, { ic: 'download', sub: function (sm) {
+      sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { ic: 'file' }));
+      if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { ic: 'file-zip' }));
     } }));
     m.appendChild(el('div', 'menu-hint', rem && !remCap(c, 'db') ? T('Diese Seite liegt auf {host}. Hier kannst du sie lesen, kommentieren und – mit Bearbeiten – Titel und Inhalt ändern.', { host: (c.remote || {}).host || '' })
                                              : rem ? T('Diese Seite liegt auf {host}. Löschen und Freigaben verwaltet der Eigentümer.', { host: (c.remote || {}).host || '' })
@@ -2856,17 +2855,17 @@
   function newPageMenu(anchor, parentId) {
     NPM = { anchor: anchor, parentId: parentId };
     HK.openMenu(anchor, function (m) {
-      m.appendChild(HK.menuItem(T('Leere Seite'), function () { newPage(parentId); }, { icon: '📄' }));
-      m.appendChild(HK.menuItem(T('Datenbank'), function () { newDatabase(parentId); }, { icon: '🗃️', hint: T('Tabelle, Board …') }));
-      if (!EMBED) m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: parentId }); }, { icon: '⇪', hint: T('CSV, Markdown, Obsidian') }));
+      m.appendChild(HK.menuItem(T('Leere Seite'), function () { newPage(parentId); }, { ic: 'file' }));
+      m.appendChild(HK.menuItem(T('Datenbank'), function () { newDatabase(parentId); }, { ic: 'database', hint: T('Tabelle, Board …') }));
+      if (!EMBED) m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: parentId }); }, { ic: 'upload', hint: T('CSV, Markdown, Obsidian') }));
       m.appendChild(HK.menuLabel(T('Vorlagen')));
-      if (S.gal !== false && !EMBED) m.appendChild(HK.menuItem(T('Aus der Galerie …'), function () { openGallery(parentId); }, { icon: '🖼️', hint: T('fertige Vorlagen') }));
+      if (S.gal !== false && !EMBED) m.appendChild(HK.menuItem(T('Aus der Galerie …'), function () { openGallery(parentId); }, { ic: 'gallery', hint: T('fertige Vorlagen') }));
       BUILTIN.forEach(function (t) { m.appendChild(HK.menuItem(t.name, function () { fromBuiltin(t, parentId); }, { icon: t.icon })); });
       S.pages.filter(function (p) { return p.template && (byId(p.parent_id) || {}).kind !== 'database'; }).forEach(function (p) {   // Fix27 #6: Eintrags-Vorlagen gehoeren zur Datenbank
         m.appendChild(HK.menuItem(label(p), function () { fromTemplate(p, parentId); }, { icon: ti(p.icon) || '📄', hint: T('eigene') }));
       });
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem(T('Vorlagen verwalten …'), function () { manageTemplates({ db: null, list: pageTemplates }); }, { icon: '📐' }));
+      m.appendChild(HK.menuItem(T('Vorlagen verwalten …'), function () { manageTemplates({ db: null, list: pageTemplates }); }, { ic: 'settings' }));
       m.appendChild(el('div', 'menu-hint', T('Eigene Vorlage: Seite öffnen → ⋯ → „Als Vorlage markieren“')));
     });
   }
@@ -2986,7 +2985,7 @@
             var rl = el('label', 'imp-tcol'), rb = el('input'); rb.type = 'radio'; rb.name = 'imp-tcol'; rb.checked = c.index === titleCol;
             rb.addEventListener('change', function () { if (rb.checked) { titleCol = c.index; syncSel(); } });
             rl.appendChild(rb); rl.appendChild(document.createTextNode(' ' + T('Titel'))); th.appendChild(rl);
-            c.selEl = sel('imp-type', [['skip', T('nicht übernehmen')]].concat(IMP_TYPES.map(function (k) { return [k, TYPES[k][1] + ' ' + TYPES[k][0]]; })),
+            c.selEl = sel('imp-type', [['skip', T('nicht übernehmen')]].concat(IMP_TYPES.map(function (k) { return [k, TYPES[k][0]]; })),
               c.type, function (v) { c.type = v; count(); }, T('Typ für Spalte {name}', { name: c.name }));
             th.appendChild(c.selEl);
           }
@@ -3390,12 +3389,12 @@
             m.appendChild(HK.menuItem(T('Duplizieren'), function () {
               act(api('POST', '/api/notes/' + t.id + '/duplicate', { parent_id: o.db || t.parent_id || null, template: true,
                 title: T('{name} (Kopie)', { name: t.title || T('Vorlage') }) }).then(function () { return loadList(); }));
-            }, { icon: '⧉' }));
-            if (o.setDflt) m.appendChild(HK.menuItem(isD ? T('Nicht mehr Standard') : T('Als Standard für „+ Neu“'), function () { act(o.setDflt(isD ? null : t.id)); }, { icon: '★', on: isD }));
+            }, { ic: 'copy' }));
+            if (o.setDflt) m.appendChild(HK.menuItem(isD ? T('Nicht mehr Standard') : T('Als Standard für „+ Neu“'), function () { act(o.setDflt(isD ? null : t.id)); }, { ic: 'star', on: isD }));
             m.appendChild(HK.menuItem(T('Keine Vorlage mehr'), function () {
               act(api('PATCH', '/api/notes/' + t.id, { template: false }).then(function () { return isD && o.setDflt ? o.setDflt(null) : null; })
                 .then(function () { return loadList(); }));
-            }, { icon: '📐', hintBelow: true, hint: o.db ? T('wird ein normaler Eintrag') : T('wird eine normale Seite') }));
+            }, { ic: 'template', hintBelow: true, hint: o.db ? T('wird ein normaler Eintrag') : T('wird eine normale Seite') }));
             m.appendChild(el('div', 'menu-sep'));
             m.appendChild(HK.menuItem(T('In den Papierkorb'), function () {
               HK.ask({ title: T('Vorlage „{name}“ in den Papierkorb?', { name: t.title || T('Unbenannt') }),
@@ -3403,7 +3402,7 @@
                 .then(function (y) {
                   if (y) act(api('DELETE', '/api/notes/' + t.id).then(function () { return isD && o.setDflt ? o.setDflt(null) : null; }).then(function () { return loadList(); }));
                 });
-            }, { icon: '🗑' }));
+            }, { ic: 'trash', danger: true }));
           });
         });
         li.appendChild(more); ul.appendChild(li);
@@ -3617,7 +3616,15 @@
     return null;
   }
   var TITLE_PROP = { id: 'title', name: T('Name'), type: 'text' };
-  var VIEW_ICON = { table: '▦', board: '▥', list: '☰', gallery: '▣', calendar: '🗓', chart: '📊', timeline: '┅' };
+  var VIEW_ICON = { table: 'table', board: 'board', list: 'list', gallery: 'gallery', calendar: 'calendar', chart: 'chart', timeline: 'timeline' };
+  // Design-Runde VD-18: Eigenschaftstypen als Linien-Symbole (static/icons.js) - Datum = Kalenderblatt, nicht mehr wie
+  // die Tabellenansicht; Status ist eine Auswahl mit p.status
+  var TYPE_IC = { text: 'text', number: 'hash', select: 'select', multi_select: 'tag', date: 'calendar', checkbox: 'checkbox', url: 'link',
+                 calc: 'sigma', relation: 'relation', formula: 'function', rollup: 'rollup', person: 'user', files: 'paperclip',
+                 created: 'clock', edited: 'edit', title: 'type' };
+  function typeIc(p) { var t = typeof p === 'string' ? p : p && p.type; return 'i:' + (p && p.status && t === 'select' ? 'status' : TYPE_IC[t] || 'text'); }
+  function typeIcEl(p, cls) { return HK.iconBox(typeIc(p), cls || 'db-ticon', 14); }
+  function withTypeIc(cls, p, text) { var s = el('span', cls); s.appendChild(typeIcEl(p)); s.appendChild(document.createTextNode(' ' + text)); return s; }
   // Automatische Eigenschaften (nur lesbar) und Zahlen-Darstellung
   TYPES.created = [T('Erstellt am'), '⏱']; TYPES.edited = [T('Zuletzt bearbeitet'), '✎'];
   var AUTO = { created: 'created', edited: 'updated' };
@@ -4411,8 +4418,8 @@
         if (ro()) {                                   // nur Lesen: sortieren geht (wird nicht gespeichert)
           m.appendChild(HK.menuLabel(prop ? prop.name : titleName()));
           var rp = prop ? prop.id : 'title';
-          m.appendChild(HK.menuItem(T('Aufsteigend sortieren'), function () { setSort(rp, 'asc'); }, { icon: '↑' }));
-          m.appendChild(HK.menuItem(T('Absteigend sortieren'), function () { setSort(rp, 'desc'); }, { icon: '↓' }));
+          m.appendChild(HK.menuItem(T('Aufsteigend sortieren'), function () { setSort(rp, 'asc'); }, { ic: 'arrow-up' }));
+          m.appendChild(HK.menuItem(T('Absteigend sortieren'), function () { setSort(rp, 'desc'); }, { ic: 'arrow-down' }));
           m.appendChild(el('div', 'menu-hint', T('Nur lesen – Änderungen an der Ansicht werden nicht gespeichert.')));
           return;
         }
@@ -4426,48 +4433,48 @@
         }, function () { HK.closeMenu(); });
         m.appendChild(name);
         var pid = prop ? prop.id : 'title';
-        m.appendChild(HK.menuItem(T('Aufsteigend sortieren'), function () { setSort(pid, 'asc'); }, { icon: '↑' }));
-        m.appendChild(HK.menuItem(T('Absteigend sortieren'), function () { setSort(pid, 'desc'); }, { icon: '↓' }));
-        if ((curView().sorts || []).length) m.appendChild(HK.menuItem(T('Sortierung aufheben'), function () { setSort(null); }, { icon: '✕' }));
+        m.appendChild(HK.menuItem(T('Aufsteigend sortieren'), function () { setSort(pid, 'asc'); }, { ic: 'arrow-up' }));
+        m.appendChild(HK.menuItem(T('Absteigend sortieren'), function () { setSort(pid, 'desc'); }, { ic: 'arrow-down' }));
+        if ((curView().sorts || []).length) m.appendChild(HK.menuItem(T('Sortierung aufheben'), function () { setSort(null); }, { ic: 'x' }));
         if (!prop) return;
         m.appendChild(el('div', 'menu-sep'));
         if (prop.type === 'calc') {                // Rechnung einstellen: A, B, Rechenart
           var nums = DB.schema.props.filter(function (x) { return x.type === 'number'; });
           if (!nums.length) m.appendChild(el('div', 'menu-hint', T('Lege erst zwei Zahlen-Spalten an (z. B. „Seiten“ und „Gelesen“).')));
           var cop = CALC_P.find(function (x) { return x[0] === (prop.op || 'div'); }) || CALC_P[0];
-          m.appendChild(HK.menuItem(T('Rechnung'), null, { icon: '∑', hint: cop[1], sub: function (sm) {
+          m.appendChild(HK.menuItem(T('Rechnung'), null, { ic: 'sigma', hint: cop[1], sub: function (sm) {
             CALC_P.forEach(function (x) { sm.appendChild(HK.menuItem(x[1], function () { prop.op = x[0]; if (x[0] === 'pct' && !prop.fmt) prop.fmt = 'percent'; saveSchema().then(renderDb); }, { icon: x[2], on: x === cop })); });
           } }));
           ['a', 'b'].forEach(function (k) {
             var cur = nums.find(function (x) { return x.id === prop[k]; });
             m.appendChild(HK.menuItem(T('Zahl {k}', { k: k.toUpperCase() }), null, { icon: k.toUpperCase(), hint: cur ? cur.name : T('wählen'), sub: function (sm) {
-              nums.forEach(function (x) { sm.appendChild(HK.menuItem(x.name, function () { prop[k] = x.id; saveSchema().then(renderDb); }, { icon: '#', on: x === cur })); });
+              nums.forEach(function (x) { sm.appendChild(HK.menuItem(x.name, function () { prop[k] = x.id; saveSchema().then(renderDb); }, { ic: 'hash', on: x === cur })); });
             } }));
           });
         }
         if (prop.type === 'formula') {
-          m.appendChild(HK.menuItem(T('Formel bearbeiten …'), function () { formulaEditor(prop); }, { icon: 'ƒ', hint: prop.rtype ? fxTypeName(prop.rtype) : '' }));
+          m.appendChild(HK.menuItem(T('Formel bearbeiten …'), function () { formulaEditor(prop); }, { ic: 'function', hint: prop.rtype ? fxTypeName(prop.rtype) : '' }));
         }
         if (prop.type === 'text' && prop.fx_hint) {   // 2.5 (Import, P2-E5): Notion-Formel/Rollup kam nur als Ergebnis (Text)
-          m.appendChild(HK.menuItem(T('In Formel umwandeln …'), function () { formulaEditor(prop); }, { icon: 'ƒ', hint: T('aus Import') }));
+          m.appendChild(HK.menuItem(T('In Formel umwandeln …'), function () { formulaEditor(prop); }, { ic: 'function', hint: T('aus Import') }));
         }
         if (prop.type === 'rollup') rollupMenu(m, prop);
         if (prop.type === 'person') {              // 2.5: mehrere Personen, Mitteilung bei Zuweisung (je Eigenschaft)
-          m.appendChild(HK.menuItem(T('Mehrere Personen'), function () { prop.multi = prop.multi === false; saveSchema().then(renderDb); }, { icon: '👥', on: prop.multi !== false }));
-          m.appendChild(HK.menuItem(T('Eingetragene benachrichtigen'), function () { prop.notify = prop.notify === false; saveSchema().then(renderDb); }, { icon: '🔔', on: prop.notify !== false }));
+          m.appendChild(HK.menuItem(T('Mehrere Personen'), function () { prop.multi = prop.multi === false; saveSchema().then(renderDb); }, { ic: 'users', on: prop.multi !== false }));
+          m.appendChild(HK.menuItem(T('Eingetragene benachrichtigen'), function () { prop.notify = prop.notify === false; saveSchema().then(renderDb); }, { ic: 'bell', on: prop.notify !== false }));
         }
         if (prop.type === 'files') {
-          m.appendChild(HK.menuItem(T('Höchstens'), null, { icon: '#', hint: String(prop.max || 10), sub: function (sm) {
+          m.appendChild(HK.menuItem(T('Höchstens'), null, { ic: 'hash', hint: String(prop.max || 10), sub: function (sm) {
             [1, 3, 5, 10, 20].forEach(function (n) { sm.appendChild(HK.menuItem(String(n), function () { prop.max = n; saveSchema().then(renderDb); }, { on: (prop.max || 10) === n })); });
           } }));
         }
         if (numLike(prop)) {
-          var FMT = [['', T('Zahl'), '#'], ['percent', T('Prozent'), '%'], ['euro', T('Euro'), '€']], SHOW = [['', T('Nur Zahl'), '#'], ['bar', T('Balken (0–100)'), '▬'], ['ring', T('Ring (0–100)'), '◔']];
+          var FMT = [['', T('Zahl'), 'i:hash'], ['percent', T('Prozent'), 'i:percent'], ['euro', T('Euro'), 'i:euro']], SHOW = [['', T('Nur Zahl'), 'i:hash'], ['bar', T('Balken (0–100)'), 'i:progress'], ['ring', T('Ring (0–100)'), 'i:pie']];
           var cf = FMT.find(function (f) { return f[0] === (prop.fmt || ''); }), cs = SHOW.find(function (f) { return f[0] === (prop.show || ''); });
-          m.appendChild(HK.menuItem(T('Zahlenformat'), null, { icon: '%', hint: cf[1], sub: function (sm) {
+          m.appendChild(HK.menuItem(T('Zahlenformat'), null, { ic: 'percent', hint: cf[1], sub: function (sm) {
             FMT.forEach(function (f) { sm.appendChild(HK.menuItem(f[1], function () { if (f[0]) prop.fmt = f[0]; else delete prop.fmt; saveSchema().then(renderDb); }, { icon: f[2], on: f === cf })); });
           } }));
-          m.appendChild(HK.menuItem(T('Anzeigen als'), null, { icon: '◔', hint: cs[1], sub: function (sm) {
+          m.appendChild(HK.menuItem(T('Anzeigen als'), null, { ic: 'pie', hint: cs[1], sub: function (sm) {
             SHOW.forEach(function (f) { sm.appendChild(HK.menuItem(f[1], function () { if (f[0]) prop.show = f[0]; else delete prop.show; saveSchema().then(renderDb); }, { icon: f[2], on: f === cs })); });
           } }));
         }
@@ -4475,9 +4482,9 @@
           m.appendChild(HK.menuItem(T('Als Status (Gruppen)'), function () {
             if (prop.status) delete prop.status; else { prop.status = true; autoGroups(prop); }
             saveSchema().then(renderDb);
-          }, { icon: '◐', on: !!prop.status, hint: prop.status ? T('an') : '' }));
+          }, { ic: 'status', on: !!prop.status, hint: prop.status ? T('an') : '' }));
           if (prop.status) {
-            m.appendChild(HK.menuItem(T('Gruppen zuordnen'), null, { icon: '○', sub: function (sm) {
+            m.appendChild(HK.menuItem(T('Gruppen zuordnen'), null, { ic: 'circle', sub: function (sm) {
               (prop.options || []).forEach(function (o) {
                 var line = el('div', 'vs-row sg-row'); line.appendChild(optChip(o));
                 var gs = el('select', 'flt-val'); gs.setAttribute('aria-label', T('Gruppe von {name}', { name: o.name }));
@@ -4491,8 +4498,8 @@
           }
         }
         if (prop.type === 'date') {                // 2.5 (datetime1): Uhrzeit und Zeitraum
-          m.appendChild(HK.menuItem(T('Mit Uhrzeit'), function () { if (prop.time) delete prop.time; else prop.time = true; saveSchema().then(renderDb); }, { icon: '🕒', on: !!prop.time }));
-          m.appendChild(HK.menuItem(T('Zeitraum (Beginn und Ende)'), function () { if (prop.range) delete prop.range; else prop.range = true; saveSchema().then(renderDb); }, { icon: '↔', on: !!prop.range }));
+          m.appendChild(HK.menuItem(T('Mit Uhrzeit'), function () { if (prop.time) delete prop.time; else prop.time = true; saveSchema().then(renderDb); }, { ic: 'clock', on: !!prop.time }));
+          m.appendChild(HK.menuItem(T('Zeitraum (Beginn und Ende)'), function () { if (prop.range) delete prop.range; else prop.range = true; saveSchema().then(renderDb); }, { ic: 'range', on: !!prop.range }));
         }
         if (prop.type === 'relation') {
           var tgt = byId(prop.target);
@@ -4500,8 +4507,8 @@
             if (prop.pair && !confirm(T('Zweiseitig ausschalten? Die Gegenspalte in „{db}“ wird samt ihren Einträgen entfernt.', { db: label(tgt || {}) }))) return;
             prop.two_way = !prop.pair;
             saveSchema().then(loadDb).then(function () { refreshDbViews(prop.target); });
-          }, { icon: '⇄', on: !!prop.pair, hint: prop.pair ? T('auch in {db}', { db: label(tgt || {}) }) : '' }));
-          m.appendChild(HK.menuItem(T('Verknüpft mit'), null, { icon: '↗', hint: label(byId(prop.target) || {}), subSearch: T('Datenbank suchen …'), sub: function (sm) {
+          }, { ic: 'swap', on: !!prop.pair, hint: prop.pair ? T('auch in {db}', { db: label(tgt || {}) }) : '' }));
+          m.appendChild(HK.menuItem(T('Verknüpft mit'), null, { ic: 'relation', hint: label(byId(prop.target) || {}), subSearch: T('Datenbank suchen …'), sub: function (sm) {
             S.pages.filter(function (d) { return d.kind === 'database'; }).forEach(function (d) {
               sm.appendChild(HK.menuItem(label(d), function () {
                 if (d.id === prop.target) return;
@@ -4512,7 +4519,7 @@
             });
           } }));
         }
-        m.appendChild(HK.menuItem(T('Typ'), null, { icon: TYPES[prop.type][1], hint: TYPES[prop.type][0], sub: function (sm) {
+        m.appendChild(HK.menuItem(T('Typ'), null, { icon: typeIc(prop), hint: TYPES[prop.type][0], sub: function (sm) {
           Object.keys(TYPES).forEach(function (t) {
             sm.appendChild(HK.menuItem(TYPES[t][0], function () {
               if (t === prop.type) return;
@@ -4520,7 +4527,7 @@
               prop.type = t; if ((t === 'select' || t === 'multi_select') && !prop.options) prop.options = [];
               if (t === 'relation' && !prop.target) prop.target = (S.pages.find(function (d) { return d.kind === 'database' && d.id !== DB.id; }) || { id: DB.id }).id;
               saveSchema().then(loadDb);
-            }, { icon: TYPES[t][1], on: t === prop.type }));
+            }, { icon: typeIc(t), on: t === prop.type }));
           });
         } }));
         m.appendChild(el('div', 'menu-sep'));
@@ -4528,32 +4535,32 @@
           if (!confirm(T('Spalte „{name}“ samt allen Werten löschen?', { name: prop.name }))) return;
           DB.schema.props = DB.schema.props.filter(function (p) { return p.id !== prop.id; });
           saveSchema().then(loadDb);
-        }, { icon: '🗑', danger: true }));
+        }, { ic: 'trash', danger: true }));
       });
     }
     function fxTypeName(rt) { return { number: T('Zahl'), text: T('Text'), checkbox: T('Häkchen'), date: T('Datum'), list: T('Liste') }[rt] || ''; }
     // Rollup: ueber welche Relation, welche Eigenschaft der Ziel-Datenbank, welche Rechnung
     function rollupMenu(m, prop) {
       var rels = DB.schema.props.filter(function (x) { return x.type === 'relation'; }), rel = rels.find(function (x) { return x.id === prop.rel; });
-      m.appendChild(HK.menuItem(T('Relation'), null, { icon: '↗', hint: rel ? rel.name : T('wählen'), sub: function (sm) {
+      m.appendChild(HK.menuItem(T('Relation'), null, { ic: 'relation', hint: rel ? rel.name : T('wählen'), sub: function (sm) {
         if (!rels.length) sm.appendChild(el('div', 'menu-hint', T('Für ein Rollup braucht die Datenbank erst eine Relation.')));
         rels.forEach(function (x) { sm.appendChild(HK.menuItem(x.name, function () { prop.rel = x.id; prop.target = 'title'; saveSchema().then(loadDb); }, { on: x === rel })); });
       } }));
       if (rel) {
-        m.appendChild(HK.menuItem(T('Eigenschaft'), null, { icon: '≡', hint: prop.target && prop.target !== 'title' ? '' : T('Name'), sub: function (sm) {
+        m.appendChild(HK.menuItem(T('Eigenschaft'), null, { ic: 'text', hint: prop.target && prop.target !== 'title' ? '' : T('Name'), sub: function (sm) {
           sm.appendChild(el('div', 'menu-hint', T('Lade …')));
           rollupTargets(rel.target).then(function (ps) {
             sm.textContent = '';
             [{ id: 'title', name: T('Name'), type: 'text' }].concat(ps).forEach(function (x) {
               if (x.type === 'rollup') return;              // Etappe 1: kein Rollup eines Rollups (keine Ketten ueber Datenbanken)
-              sm.appendChild(HK.menuItem(x.name, function () { prop.target = x.id; saveSchema().then(loadDb); }, { icon: (TYPES[x.type] || TYPES.text)[1], on: (prop.target || 'title') === x.id }));
+              sm.appendChild(HK.menuItem(x.name, function () { prop.target = x.id; saveSchema().then(loadDb); }, { icon: typeIc(x), on: (prop.target || 'title') === x.id }));
             });
           });
         } }));
       }
       var fns = ['show', 'count', 'filled', 'empty', 'pct_filled', 'unique', 'sum', 'avg', 'median', 'min', 'max', 'range', 'checked', 'unchecked', 'pct_checked', 'earliest', 'latest'];
       var RN = Object.assign({ show: T('Original anzeigen') }, CALC_NAMES);
-      m.appendChild(HK.menuItem(T('Berechnen'), null, { icon: '∑', hint: RN[prop.fn || 'count'], sub: function (sm) {
+      m.appendChild(HK.menuItem(T('Berechnen'), null, { ic: 'sigma', hint: RN[prop.fn || 'count'], sub: function (sm) {
         fns.forEach(function (f) { sm.appendChild(HK.menuItem(RN[f], function () { prop.fn = f; saveSchema().then(loadDb); }, { on: (prop.fn || 'count') === f })); });
       } }));
     }
@@ -4639,7 +4646,7 @@
         m.appendChild(HK.menuLabel(T('Neue Spalte')));
         Object.keys(TYPES).forEach(function (t) {
           if (t === 'relation') {
-            m.appendChild(HK.menuItem(T('Relation'), null, { icon: '↗', subSearch: T('Datenbank suchen …'), sub: function (sm) {
+            m.appendChild(HK.menuItem(T('Relation'), null, { ic: 'relation', subSearch: T('Datenbank suchen …'), sub: function (sm) {
               sm.appendChild(HK.menuLabel(T('Verknüpfen mit …')));
               S.pages.filter(function (d) { return d.kind === 'database'; }).forEach(function (d) {
                 sm.appendChild(HK.menuItem(label(d), function () {
@@ -4665,7 +4672,7 @@
               if (ns[0]) p.a = ns[0].id; if (ns[1]) p.b = ns[1].id;
             }
             DB.schema.props.push(p); saveSchema().then(renderDb);
-          }, { icon: TYPES[t][1] }));
+          }, { icon: typeIc(t) }));
         });
       });
     }
@@ -4822,11 +4829,11 @@
         });
         th.appendChild(h);
       }
-      var th0 = el('th', 'db-th db-th-title'); th0.appendChild(el('span', 'db-ticon', 'Aa')); th0.appendChild(document.createTextNode(' ' + titleName()));
+      var th0 = el('th', 'db-th db-th-title'); th0.appendChild(typeIcEl('title')); th0.appendChild(document.createTextNode(' ' + titleName()));
       th0.tabIndex = 0; th0.addEventListener('click', function () { headMenu(th0, null); }); resizer(th0, 'title'); hr.appendChild(th0);
       vis.forEach(function (p) {
         var th = el('th', 'db-th'); th.tabIndex = 0; resizer(th, p.id);
-        th.appendChild(el('span', 'db-ticon', TYPES[p.type][1])); th.appendChild(document.createTextNode(' ' + p.name));
+        th.appendChild(typeIcEl(p)); th.appendChild(document.createTextNode(' ' + p.name));
         th.addEventListener('click', function () { headMenu(th, p); });
         th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); headMenu(th, p); } });
         var srt = (tv.sorts || [])[0]; if (srt && srt.pid === p.id) th.setAttribute('aria-sort', srt.dir === 'desc' ? 'descending' : 'ascending');   // A11Y-22
@@ -5143,7 +5150,7 @@
               var h = (v.hidden || []).filter(function (x) { return x !== p.id; }); if (!cb.checked) h.push(p.id);
               if (h.length) v.hidden = h; else delete v.hidden; commit();
             });
-            l.appendChild(cb); l.appendChild(el('span', 'vs-pname', TYPES[p.type][1] + ' ' + p.name));
+            l.appendChild(cb); l.appendChild(withTypeIc('vs-pname', p, p.name));
             [['↑', -1], ['↓', 1]].forEach(function (d) {
               var b = el('button', 'vs-mv', d[0]); b.type = 'button'; b.disabled = i + d[1] < 0 || i + d[1] >= op.length;
               b.setAttribute('aria-label', d[1] < 0 ? T('{name} nach oben', { name: p.name }) : T('{name} nach unten', { name: p.name }));
@@ -5380,13 +5387,13 @@
         liveText(name, function (val) { if (val.trim()) { v.name = val.trim(); saveSchemaSoon(); renderDb(); } }, function () { HK.closeMenu(); });
         m.appendChild(name);
         m.appendChild(HK.menuLabel(T('Darstellung')));
-        m.appendChild(HK.menuItem(T('Tabelle'), function () { v.type = 'table'; saveSchema().then(renderDb); }, { icon: '▦', on: v.type === 'table' }));
-        m.appendChild(HK.menuItem(T('Board'), function () { v.type = 'board'; saveSchema().then(renderDb); }, { icon: '▥', on: v.type === 'board' }));
-        m.appendChild(HK.menuItem(T('Liste'), function () { v.type = 'list'; saveSchema().then(renderDb); }, { icon: '☰', on: v.type === 'list' }));
-        m.appendChild(HK.menuItem(T('Galerie'), function () { v.type = 'gallery'; saveSchema().then(renderDb); }, { icon: '▣', on: v.type === 'gallery' }));
-        m.appendChild(HK.menuItem(T('Kalender'), function () { v.type = 'calendar'; saveSchema().then(renderDb); }, { icon: '🗓', on: v.type === 'calendar' }));
-        m.appendChild(HK.menuItem(T('Diagramm##Chart'), function () { v.type = 'chart'; saveSchema().then(renderDb); }, { icon: '📊', on: v.type === 'chart' }));
-        m.appendChild(HK.menuItem(T('Zeitleiste'), function () { v.type = 'timeline'; saveSchema().then(renderDb); }, { icon: '┅', on: v.type === 'timeline' }));
+        m.appendChild(HK.menuItem(T('Tabelle'), function () { v.type = 'table'; saveSchema().then(renderDb); }, { ic: 'table', on: v.type === 'table' }));
+        m.appendChild(HK.menuItem(T('Board'), function () { v.type = 'board'; saveSchema().then(renderDb); }, { ic: 'board', on: v.type === 'board' }));
+        m.appendChild(HK.menuItem(T('Liste'), function () { v.type = 'list'; saveSchema().then(renderDb); }, { ic: 'list', on: v.type === 'list' }));
+        m.appendChild(HK.menuItem(T('Galerie'), function () { v.type = 'gallery'; saveSchema().then(renderDb); }, { ic: 'gallery', on: v.type === 'gallery' }));
+        m.appendChild(HK.menuItem(T('Kalender'), function () { v.type = 'calendar'; saveSchema().then(renderDb); }, { ic: 'calendar', on: v.type === 'calendar' }));
+        m.appendChild(HK.menuItem(T('Diagramm##Chart'), function () { v.type = 'chart'; saveSchema().then(renderDb); }, { ic: 'chart', on: v.type === 'chart' }));
+        m.appendChild(HK.menuItem(T('Zeitleiste'), function () { v.type = 'timeline'; saveSchema().then(renderDb); }, { ic: 'timeline', on: v.type === 'timeline' }));
         var sels = DB.schema.props.filter(groupable);
         if (v.type === 'board' && sels.length) {
           m.appendChild(HK.menuLabel(T('Gruppieren nach')));
@@ -5396,21 +5403,21 @@
           m.appendChild(el('div', 'menu-sep'));
           m.appendChild(HK.menuItem(T('Ansicht löschen'), function () {
             var nv = views().filter(function (x) { return x !== v; }); if (DB.localViews) DB.localViews = nv; else DB.schema.views = nv; saveSchema().then(renderDb);
-          }, { icon: '🗑', danger: true }));
+          }, { ic: 'trash', danger: true }));
         }
       });
     }
     function addView(anchor) {
       HK.openMenu(anchor, function (m) {
         m.appendChild(HK.menuLabel(T('Neue Ansicht')));
-        [['table', '▦', T('Tabelle')], ['board', '▥', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')], ['chart', '📊', T('Diagramm##Chart')], ['timeline', '┅', T('Zeitleiste')]].forEach(function (t) {
-          m.appendChild(HK.menuItem(t[2], function () {
-            var v = { id: rid(), name: t[2], type: t[0] };
+        [['table', T('Tabelle')], ['board', T('Board')], ['list', T('Liste')], ['gallery', T('Galerie')], ['calendar', T('Kalender')], ['chart', T('Diagramm##Chart')], ['timeline', T('Zeitleiste')]].forEach(function (t) {
+          m.appendChild(HK.menuItem(t[1], function () {
+            var v = { id: rid(), name: t[1], type: t[0] };
             var s = DB.schema.props.find(function (p) { return p.type === 'select'; }); if (t[0] === 'board' && s) v.group_by = s.id;
           var dd = DB.schema.props.find(function (p) { return p.type === 'date'; }); if ((t[0] === 'calendar' || t[0] === 'timeline') && dd) v.date_by = dd.id;
             if (t[0] === 'timeline') v.scale = 'week';
             views().push(v); setViewId(v.id); saveSchema().then(renderDb);
-          }, { icon: t[1] }));      // ganzes Zeichen (charAt(0) halbierte das Emoji 🗓)
+          }, { ic: VIEW_ICON[t[0]] }));
         });
       });
     }
@@ -5419,7 +5426,8 @@
       var bar = el('div', 'db-bar'), tabs = el('div', 'db-tabs'), cur = curView();
       tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', T('Ansichten'));
       views().forEach(function (v) {
-        var b = el('button', 'db-tab' + (v === cur ? ' on' : ''), (VIEW_ICON[v.type] || '▦') + ' ' + v.name); b.type = 'button';
+        var b = el('button', 'db-tab' + (v === cur ? ' on' : '')); b.type = 'button';
+        b.appendChild(HK.iconBox('i:' + (VIEW_ICON[v.type] || 'table'), 'db-tab-ic', 14)); b.appendChild(el('span', 'db-tab-t', v.name));   // AE-31
         b.title = v === cur ? T('Ansicht bearbeiten') : T('Ansicht wechseln');
         b.setAttribute('aria-pressed', v === cur ? 'true' : 'false');      // A11Y-20: aktive Ansicht nicht nur ueber .on
         b.addEventListener('click', function () { if (v === cur) { if (viewsLocked()) lockedHint(); else viewMenu(b, v); } else { setViewId(v.id); renderDb(); } });
@@ -5458,14 +5466,14 @@
         if (!(DB.templates || []).length) return newRow();
         HK.openMenu(nb, function (m) {                // Notion: "Neu ▾" mit den Vorlagen dieser Datenbank
           var dt = defaultTpl();
-          m.appendChild(HK.menuItem(T('Leerer Eintrag'), function () { newRow(null, true); }, { icon: '📄' }));
+          m.appendChild(HK.menuItem(T('Leerer Eintrag'), function () { newRow(null, true); }, { ic: 'file' }));
           m.appendChild(HK.menuLabel(T('Vorlagen')));
           DB.templates.forEach(function (t) {
             m.appendChild(HK.menuItem(t.title || T('Vorlage'), function () { newFromTemplate(t.id); }, { icon: ti(t.icon) || '📐', hint: t.id === dt ? T('Standard') : '' }));
           });
           if (DB.role === 'owner') {
             m.appendChild(el('div', 'menu-sep'));
-            m.appendChild(HK.menuItem(T('Vorlagen verwalten …'), templatesUI, { icon: '⚙' }));
+            m.appendChild(HK.menuItem(T('Vorlagen verwalten …'), templatesUI, { ic: 'settings' }));
           }
         });
       });
@@ -6227,7 +6235,7 @@
     addPeople(S.cur.people);
     ((parent.schema || {}).props || []).forEach(function (p) {
       var line = el('div', 'prop-line');
-      line.appendChild(el('span', 'prop-name', TYPES[p.type][1] + ' ' + p.name));
+      line.appendChild(withTypeIc('prop-name', p, p.name));
       line.appendChild(inst.valueEditor(p, row, function () { S.cur.props = row.props; renderProps(parent); }));
       box.appendChild(line);
     });
@@ -7842,13 +7850,13 @@
     if (!fontKnown(c)) return;
     var cur = c.font === 'serif' || c.font === 'mono' ? c.font : 'default';
     var names = { 'default': T('Standard'), serif: T('Serif'), mono: T('Mono') };
-    m.appendChild(HK.menuItem(T('Schrift'), null, { icon: 'Aa', hint: names[cur], sub: function (sm) {
+    m.appendChild(HK.menuItem(T('Schrift'), null, { ic: 'type', hint: names[cur], sub: function (sm) {
       ['default', 'serif', 'mono'].forEach(function (f) {
-        var it = HK.menuItem(names[f], function () { setDesign({ font: f }); }, { icon: f === cur ? '✓' : ' ', on: f === cur });
+        var it = HK.menuItem(names[f], function () { setDesign({ font: f }); }, { on: f === cur });
         it.classList.add('pf-item-' + f); sm.appendChild(it);
       });
     } }));
-    m.appendChild(HK.menuItem(T('Kleiner Text'), function () { setDesign({ small: !c.small }); }, { icon: 'a', on: !!c.small }));
+    m.appendChild(HK.menuItem(T('Kleiner Text'), function () { setDesign({ small: !c.small }); }, { ic: 'type-small', on: !!c.small }));
   }
   function setWide(on) {
     var id = S.cur.id;
@@ -8633,7 +8641,7 @@
   // 2.5: "In Chat teilen" - Chat waehlen, der Verweis steht dann in der Eingabe (Senden bleibt bei der Person)
   function chatShareItem(m, c) {
     if (!window.HKChatDock || !c || !(c.id > 0)) return;
-    m.appendChild(HK.menuItem(T('In Chat teilen …'), function () { HKChatDock.share({ id: c.id, title: c.title || T('Unbenannt') }); }, { icon: '📨' }));
+    m.appendChild(HK.menuItem(T('In Chat teilen …'), function () { HKChatDock.share({ id: c.id, title: c.title || T('Unbenannt') }); }, { ic: 'send' }));
   }
   function openShare() { openShareDlg('people'); }
   // --- UX-20: EIN Dialog "Teilen" mit zwei Reitern "Personen" | "Im Web" (wie Notion) ------------------------------

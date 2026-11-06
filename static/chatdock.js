@@ -42,8 +42,10 @@
   function aiName() { var s = hasAI() && window.HKAI.state(); return (s && s.persona && s.persona.name) || T('Saga KI'); }
   function switcher(active) {
     var w = el('div', 'cd-sw'); w.setAttribute('role', 'tablist');
-    [['ai', '✦ ' + aiName()], ['chat', '💬 ' + T('Chat')]].forEach(function (x) {
-      var b = el('button', 'cd-sw-b' + (x[0] === active ? ' on' : ''), x[1]); b.type = 'button'; b.setAttribute('role', 'tab');
+    [['ai', aiName(), 'sparkles'], ['chat', T('Chat'), 'message']].forEach(function (x) {   // VD-44: Linien-Symbole statt ✦/💬
+      var b = el('button', 'cd-sw-b' + (x[0] === active ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'tab');
+      if (HK.iconBox) b.appendChild(HK.iconBox('i:' + x[2], 'cd-sw-ic', 15));
+      b.appendChild(el('span', 'cd-sw-t', x[1]));
       b.setAttribute('aria-selected', x[0] === active ? 'true' : 'false');
       b.addEventListener('click', function () {
         if (x[0] === active) return;

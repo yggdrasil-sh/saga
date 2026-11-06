@@ -94,8 +94,8 @@
           cache.t = 0; done();
           HK.toast(T('✓ Geteilt mit {name} ({role})', { name: p.name, role: sel.options[sel.selectedIndex].textContent }));
         }).catch(function (err) { HK.toast(T('Nicht geteilt: {err}', { err: err.message })); });
-      }, { icon: '@' }));
-      m.appendChild(HK.menuItem(T('Abbrechen'), function () {}, { icon: '✕' }));
+      }, { ic: 'at' }));
+      m.appendChild(HK.menuItem(T('Abbrechen'), function () {}, { ic: 'x' }));
     }); }, 0);
   }
   function pick(it, range, insert) {

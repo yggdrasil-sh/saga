@@ -263,9 +263,9 @@
       });
     }
     var items = [];
-    if (mine) items.push([T('Bearbeiten'), function () { C.editing = cm.id; C.replyTo = null; render(); }, '✎']);
-    if (!cm.deleted && (mine || mod)) items.push([T('Löschen'), del, '🗑', true]);
-    if (first && mod && (others || cm.deleted)) items.push([T('Unterhaltung löschen'), delAll, '🗑', true]);
+    if (mine) items.push([T('Bearbeiten'), function () { C.editing = cm.id; C.replyTo = null; render(); }, 'i:edit']);
+    if (!cm.deleted && (mine || mod)) items.push([T('Löschen'), del, 'i:trash', true]);
+    if (first && mod && (others || cm.deleted)) items.push([T('Unterhaltung löschen'), delAll, 'i:trash', true]);
     if (items.length) {                                // Aktionen ruhig in einem ⋯-Menue je Kommentar
       var mb = el('button', 'icon-btn cm-more'); mb.type = 'button'; mb.textContent = '⋯';
       mb.setAttribute('aria-label', T('Aktionen für diesen Kommentar')); mb.setAttribute('aria-haspopup', 'menu'); mb.title = T('Aktionen');

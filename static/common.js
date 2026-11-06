@@ -231,7 +231,7 @@
     // Kein Platz neben dem Menue: Untermenue tritt an die Stelle des Hauptmenues (das wird ausgeblendet, statt
     // darueber offen zu liegen); oben "‹ <Eintrag>" fuehrt zurueck (wie Esc / Pfeil links).
     var back = el('button', 'menu-back'); back.type = 'button';
-    back.appendChild(el('span', 'mi-ic', '‹')); back.appendChild(el('span', 'mi-t', (item.querySelector('.mi-t') || item).textContent));
+    back.appendChild(window.HK && window.HK.iconBox ? window.HK.iconBox('i:chevron-left', 'mi-ic', 16) : el('span', 'mi-ic', '‹')); back.appendChild(el('span', 'mi-t', (item.querySelector('.mi-t') || item).textContent));
     back.addEventListener('click', function () { var so = subOwner; closeSub(); if (so) so.focus(); });
     subEl.insertBefore(back, subEl.firstChild);
     var mr = menuEl.getBoundingClientRect();
@@ -239,12 +239,17 @@
     place(subEl, { left: mr.left, right: mr.right, top: mr.top - 6, bottom: mr.top - 6 }, false);
     subEl.style.top = Math.max(8, Math.min(mr.top, window.innerHeight - subEl.offsetHeight - 8)) + 'px';
   }
-  // menuItem(text, aktion, {icon, hint, hintBelow, on, danger, sub: function(menu){...}, subSearch: 'Platzhalter'})
+  // menuItem(text, aktion, {icon, ic, hint, hintBelow, on, danger, sub: function(menu){...}, subSearch: 'Platzhalter'})
+  // ic: 'trash' bzw. icon: 'i:trash' = Linien-Symbol aus static/icons.js (VD-17); sonst icon als Zeichen wie bisher
   function menuItem(label, onClick, opts) {
     opts = opts || {};
     var b = el('button', 'menu-item' + (opts.on ? ' on' : '') + (opts.danger ? ' danger' : '') + (opts.sub ? ' has-sub' : ''));
     b.type = 'button'; b.setAttribute('role', 'menuitem');
-    if (opts.icon) b.appendChild(el('span', 'mi-ic', opts.icon));
+    var ic = opts.ic ? 'i:' + opts.ic : opts.icon;
+    if (ic && typeof ic === 'string' && ic.indexOf('i:') === 0) {
+      if (window.HK && window.HK.iconBox) b.appendChild(window.HK.iconBox(ic, 'mi-ic', 16));
+      else b.appendChild(el('span', 'mi-ic'));
+    } else if (ic) b.appendChild(el('span', 'mi-ic', ic));
     if (opts.hint && opts.hintBelow) {                 // Bughunt D13: langer Hinweis als zweite Zeile (sonst abgeschnitten)
       var tx = el('span', 'mi-tx'); tx.appendChild(el('span', 'mi-t', label)); tx.appendChild(el('span', 'mi-hint', opts.hint)); b.appendChild(tx);
     } else {
@@ -252,7 +257,7 @@
       if (opts.hint) b.appendChild(el('span', 'mi-hint', opts.hint));
     }
     if (opts.sub) {
-      b.appendChild(el('span', 'mi-arrow', '›')); b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false');
+      b.appendChild(window.HK && window.HK.iconBox ? window.HK.iconBox('i:chevron-right', 'mi-arrow', 14) : el('span', 'mi-arrow', '›')); b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false');
       var openIt = function () { openSub(b, opts.sub, { search: opts.subSearch }); };
       b.addEventListener('mouseenter', function () { openSub(b, opts.sub, { search: opts.subSearch, hover: true }); });
       b.addEventListener('click', function () { openIt(); var f = subEl.querySelector('input.menu-search, .menu-item'); if (f) f.focus(); });

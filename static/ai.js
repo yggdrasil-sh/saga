@@ -689,11 +689,11 @@
     // static/pages.js: Untermenue im Seitenmenue ("…"), nur wenn der Assistent an ist
     menu: function (m) {
       if (!A.st) return;
-      m.appendChild(HK.menuItem(T('Frage {name}', { name: P().name }), null, { icon: '✦', sub: function (sm) {
-        sm.appendChild(HK.menuItem(T('Zusammenfassen'), function () { show('page'); runPage('summarize'); }, { icon: '≡' }));
-        sm.appendChild(HK.menuItem(T('Aufgaben vorschlagen'), function () { show('page'); runPage('tasks'); }, { icon: '☐' }));
-        sm.appendChild(HK.menuItem(T('Markierten Text verbessern'), function () { show('page'); runPage('improve'); }, { icon: '✎' }));
-        sm.appendChild(HK.menuItem(T('Frag deine Seiten'), function () { show('ask'); }, { icon: '?' }));
+      m.appendChild(HK.menuItem(T('Frage {name}', { name: P().name }), null, { ic: 'sparkles', sub: function (sm) {
+        sm.appendChild(HK.menuItem(T('Zusammenfassen'), function () { show('page'); runPage('summarize'); }, { ic: 'text' }));
+        sm.appendChild(HK.menuItem(T('Aufgaben vorschlagen'), function () { show('page'); runPage('tasks'); }, { ic: 'checkbox' }));
+        sm.appendChild(HK.menuItem(T('Markierten Text verbessern'), function () { show('page'); runPage('improve'); }, { ic: 'edit' }));
+        sm.appendChild(HK.menuItem(T('Frag deine Seiten'), function () { show('ask'); }, { ic: 'help' }));
       } }));
     },
     // Design-Runde 04: optional mit vorbereiteter Frage (leere Seite "Mit … entwerfen"); Schreibmarke ans Ende

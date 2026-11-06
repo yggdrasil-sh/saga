@@ -89,8 +89,8 @@
     if (tt() && K.doc.menu && K.doc.menu(c.id)) return;      // Tiptap (T3): eigenes Block-Menue (static/pm-struktur.js)
     if (K.readOnly && K.readOnly()) {               // Lesen/Kommentieren bzw. gesperrt (2.5, G5): nur Link und Kommentieren
       HK.openMenu(c.el, function (m) {
-        m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { icon: '🔗' }));
-        if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.id); }, { icon: '💬' }));
+        m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { ic: 'link' }));
+        if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.id); }, { ic: 'comment' }));
       });
       return;
     }
@@ -114,13 +114,13 @@
           });
         } }));
       }
-      m.appendChild(HK.menuItem(T('Duplizieren'), function () { duplicate(c); }, { icon: '⧉', hint: MK + 'D' }));
-      m.appendChild(HK.menuItem(T('Nach oben'), function () { move(c, -1); }, { icon: '↑', hint: MK + '⇧↑' }));
-      m.appendChild(HK.menuItem(T('Nach unten'), function () { move(c, 1); }, { icon: '↓', hint: MK + '⇧↓' }));
-      m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { icon: '🔗' }));
-      if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.id); }, { icon: '💬' }));
+      m.appendChild(HK.menuItem(T('Duplizieren'), function () { duplicate(c); }, { ic: 'copy', hint: MK + 'D' }));
+      m.appendChild(HK.menuItem(T('Nach oben'), function () { move(c, -1); }, { ic: 'arrow-up', hint: MK + '⇧↑' }));
+      m.appendChild(HK.menuItem(T('Nach unten'), function () { move(c, 1); }, { ic: 'arrow-down', hint: MK + '⇧↓' }));
+      m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { ic: 'link' }));
+      if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.id); }, { ic: 'comment' }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem(T('Löschen'), function () { K.doc.remove([c.id]); }, { icon: '🗑', danger: true }));
+      m.appendChild(HK.menuItem(T('Löschen'), function () { K.doc.remove([c.id]); }, { ic: 'trash', danger: true }));
     }, { search: T('Aktion suchen …') });
   }
 
@@ -480,7 +480,7 @@
         tEl.parentElement.dispatchEvent(new Event('input', { bubbles: true }));
       }
       inp.addEventListener('change', apply); tm.addEventListener('change', apply);
-      m.appendChild(HK.menuItem(T('Datum entfernen'), function () { var p = tEl.parentElement; tEl.remove(); p.dispatchEvent(new Event('input', { bubbles: true })); }, { icon: '✕', danger: true }));
+      m.appendChild(HK.menuItem(T('Datum entfernen'), function () { var p = tEl.parentElement; tEl.remove(); p.dispatchEvent(new Event('input', { bubbles: true })); }, { ic: 'x', danger: true }));
     });
   });
 

@@ -11,10 +11,10 @@
   btn.addEventListener('click', function () {
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuLabel(btn.dataset.name || ''));
-      m.appendChild(HK.menuItem(T('Einstellungen'), function () { openSettings(); }, { icon: '⚙' }));
-      m.appendChild(HK.menuItem(T('Sprache'), function () { openSettings('lang'); }, { icon: '🌐' }));
-      if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich'), function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { icon: '🛡' }));
-      if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { icon: '📱' }));
+      m.appendChild(HK.menuItem(T('Einstellungen'), function () { openSettings(); }, { ic: 'settings' }));
+      m.appendChild(HK.menuItem(T('Sprache'), function () { openSettings('lang'); }, { ic: 'globe' }));
+      if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich'), function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { ic: 'shield' }));
+      if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { ic: 'smartphone' }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Abmelden'), function () {
         // Chat-Bild-Cache dieses Kontos (nur Ciphertext, static/chat.js) beim Abmelden leeren; Chat-Schluessel bleiben
@@ -38,7 +38,7 @@
             l.forEach(function (d) { if (/^saga-chat-blobs-/.test(d.name || '')) indexedDB.deleteDatabase(d.name); });
           }).catch(function () {}).then(go);
         } catch (e) { go(); }
-      }, { icon: '↪' }));
+      }, { ic: 'logout' }));
     });
   });
 

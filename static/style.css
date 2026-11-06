@@ -2946,7 +2946,6 @@ a.qs-web{text-decoration:none;color:var(--fg)}
 .pages-side .pg-search:focus{border-color:var(--accent)!important}
 /* A11Y-31: Nachrichtenverlauf per Tastatur scrollbar - Fokus sichtbar */
 .ct-msgs:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-=======
 /* ===== Design-Runde UX-20 Teilen/Web ==============================================================================
    EIN Dialog "Teilen" mit zwei Reitern "Personen" | "Im Web" (wie Notion). Reiter ruhig: Text gedaempft, der aktive
    in --fg mit 2-px-Unterstrich (kein Gold). Oben im Reiter "Personen" die Zeile "Oeffentlich im Web - aendern".
@@ -2971,3 +2970,27 @@ a.qs-web{text-decoration:none;color:var(--fg)}
 /* Handy: Suchfeld eigene Zeile, darunter Rolle + "Einladen" (die allgemeine Regel fuer Suchfelder bis 600 px setzte
    flex-basis 0 und quetschte das Feld neben Rolle und Knopf) */
 @media (max-width:560px){.sh-add .sh-q{flex:1 1 100%}}
+=======
+/* Design-Runde VD-17 Symbole (VD-18, VD-19, AE-07, AE-31, VD-44): Linien-Symbole aus static/icons.js (24er-Raster,
+   Strich 1.75) in fester Box - gleiche Groesse und Grundlinie fuer alle Bedienelemente; Emoji nur noch als Inhalt.
+   Farbe ruhig (--muted), beim Ueberfahren --fg; Danger-Eintraege faerbt allein die vorhandene .danger-Klasse. */
+.hk-ib{display:inline-flex;align-items:center;justify-content:center;flex:none;line-height:0}
+.hk-ib svg{display:block;flex:none}
+.mi-ic.hk-ib{width:1.2rem;height:1.2rem;opacity:1;font-size:inherit;color:var(--muted)}
+.menu-item:hover .mi-ic.hk-ib,.menu-item:focus-visible .mi-ic.hk-ib,.menu-item.sub-open .mi-ic.hk-ib,.menu-back:hover .mi-ic.hk-ib{color:var(--fg)}
+.menu-item.on .mi-ic.hk-ib{color:var(--accent)}
+.menu-item.danger .mi-ic.hk-ib{color:inherit}
+.mi-arrow.hk-ib{width:14px;height:14px;font-size:inherit}
+/* einheitliche Strichstaerke auch fuer aeltere SVG-Symbole in Menues und im /-Menue (Attribute 1.6-2) */
+.mi-ic svg,.pm-pop .hk-emo-e svg{stroke-width:1.75}
+.hk-emo-e.hk-ib{height:1.4rem;color:var(--muted)}
+.hk-emo-i.on .hk-emo-e.hk-ib,.hk-emo-i:hover .hk-emo-e.hk-ib{color:var(--fg)}
+/* Datenbank: Typsymbol in Spaltenkoepfen, Eigenschaftszeilen und Ansichts-Einstellungen (14 px) */
+.db-ticon.hk-ib{display:inline-flex;opacity:1;font-size:inherit;color:var(--muted);vertical-align:-2px;margin-right:.25rem}
+/* AE-31: Ansichts-Reiter mit Symbol in --muted 14 px (auch am aktiven Reiter) */
+.db-tab:not(.db-tab-add){display:inline-flex;align-items:center;gap:.35rem}
+.db-tab-ic{color:var(--muted)}
+/* VD-44: Reiter "Marin | Chat" im Seitenpanel */
+.cd-sw-b{display:inline-flex;align-items:center;gap:.4rem}
+.cd-sw-ic{color:var(--muted)}
+.cd-sw-b.on .cd-sw-ic{color:var(--fg)}

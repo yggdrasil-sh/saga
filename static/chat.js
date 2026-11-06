@@ -885,7 +885,7 @@
           api('DELETE', '/api/chat/contacts/' + q(ref)).then(function () {
             li.remove(); HK.toast(T('{name} aus den Kontakten entfernt.', { name: name })); if (done) done();
           }).catch(function (e2) { HK.toast(e2.message); });
-        }, { icon: '✕', danger: true }));
+        }, { ic: 'x', danger: true }));
       });
     });
     li.classList.add('ct-contact'); li.appendChild(m);
@@ -1245,8 +1245,8 @@
     blk.addEventListener('click', function () {
       HK.openMenu(blk, function (menu) {
         menu.textContent = '';
-        menu.appendChild(HK.menuItem(T('{name} sperren', { name: p.name || '?' }), function () { HK.closeMenu(); act('block', 'person'); }, { icon: '⛔', danger: true }));
-        menu.appendChild(HK.menuItem(T('Ganzen Server {host} sperren', { host: p.host || '?' }), function () { HK.closeMenu(); act('block', 'instance'); }, { icon: '⛔', danger: true }));
+        menu.appendChild(HK.menuItem(T('{name} sperren', { name: p.name || '?' }), function () { HK.closeMenu(); act('block', 'person'); }, { ic: 'ban', danger: true }));
+        menu.appendChild(HK.menuItem(T('Ganzen Server {host} sperren', { host: p.host || '?' }), function () { HK.closeMenu(); act('block', 'instance'); }, { ic: 'ban', danger: true }));
       });
     });
     if (c.kind !== 'dm' && p.remote === false) blk.hidden = true;     // eingeladen von einer Person dieses Servers: nur ablehnen
@@ -1751,25 +1751,25 @@
     HK.openMenu(anchor, function (menu) {
       menu.textContent = '';
       if (canReact(S.cur, m)) menu.appendChild(rxQuick(anchor, m));                 // 2.5: Reaktionen oben im Menue
-      if (m.body) menu.appendChild(HK.menuItem(T('Antworten'), function () { HK.closeMenu(); S.reply = m; drawReply(); $('ct-input').focus(); }, { icon: '↩' }));
-      if (canEdit(S.cur, m)) menu.appendChild(HK.menuItem(T('Bearbeiten'), function () { HK.closeMenu(); editStart(m); }, { icon: '✎' }));
-      if (selectable(m)) menu.appendChild(HK.menuItem(T('Auswählen'), function () { HK.closeMenu(); selStart(m); }, { icon: '☑' }));     // 2.5
-      if (selectable(m)) menu.appendChild(HK.menuItem(T('Weiterleiten'), function () { HK.closeMenu(); fwdPick([m]); }, { icon: '↪' }));     // 2.5 (medien1)
+      if (m.body) menu.appendChild(HK.menuItem(T('Antworten'), function () { HK.closeMenu(); S.reply = m; drawReply(); $('ct-input').focus(); }, { ic: 'reply' }));
+      if (canEdit(S.cur, m)) menu.appendChild(HK.menuItem(T('Bearbeiten'), function () { HK.closeMenu(); editStart(m); }, { ic: 'edit' }));
+      if (selectable(m)) menu.appendChild(HK.menuItem(T('Auswählen'), function () { HK.closeMenu(); selStart(m); }, { ic: 'checkbox' }));     // 2.5
+      if (selectable(m)) menu.appendChild(HK.menuItem(T('Weiterleiten'), function () { HK.closeMenu(); fwdPick([m]); }, { ic: 'move' }));     // 2.5 (medien1)
       if (m.body && m.body.text) menu.appendChild(HK.menuItem(T('Text kopieren'), function () {
         HK.closeMenu(); if (navigator.clipboard) navigator.clipboard.writeText(m.body.text).then(function () { HK.toast(T('Kopiert.')); });
-      }, { icon: '⧉' }));
+      }, { ic: 'copy' }));
       if (m.fstate === 'failed' && m.body && m.sender && m.sender.username === ME) menu.appendChild(HK.menuItem(T('Erneut senden'), function () {
         HK.closeMenu();
         sendBody(S.cur.id, m.body, 'msg', m.reply_to).then(function () {
           return api('DELETE', '/api/chats/' + S.cur.id + '/messages/' + m.id).catch(function () {});
         }).then(function () { dropMsg(m.id); return loadMsgs(false); }).catch(function (e) { HK.toast(T('Nicht gesendet: {err}', { err: e.message })); });
-      }, { icon: '↻' }));
+      }, { ic: 'refresh' }));
       grpMenu(menu, m);                                                            // 2.5: Anheften, Admin-Loeschen, Melden, Sperren
       if (m.sender && m.sender.username === ME) menu.appendChild(HK.menuItem(T('Für alle löschen'), function () {
         HK.closeMenu();
         HK.ask({ title: T('Nachricht für alle löschen?'), text: T('Die Nachricht und ihre Anhänge werden vom Server gelöscht. Wer sie schon gelesen hat, kann eine Kopie haben.'), ok: T('Löschen'), danger: true })
           .then(function (y) { if (y) api('DELETE', '/api/chats/' + S.cur.id + '/messages/' + m.id).then(function () { dropMsg(m.id); }).catch(function (e) { HK.toast(e.message); }); });
-      }, { icon: '🗑', danger: true }));
+      }, { ic: 'trash', danger: true }));
     });
   }
   function dropMsg(id) {
@@ -2165,7 +2165,7 @@
         lines.forEach(function (l) { box.appendChild(el('p', null, l)); });
         menu.appendChild(box);
         if (c.x3_why === 'devices' && (c.x3_wait || {}).mine && c.x3_wait.mine.length)
-          menu.appendChild(HK.menuItem(T('Geräte verwalten'), function () { HK.closeMenu(); settings(); }, { icon: '⚙' }));
+          menu.appendChild(HK.menuItem(T('Geräte verwalten'), function () { HK.closeMenu(); settings(); }, { ic: 'settings' }));
       });
     });
     sub.appendChild(b);
@@ -3102,8 +3102,8 @@
   $('ct-attach').addEventListener('click', function () {
     if (!immichOn) return $('ct-file').click();
     HK.openMenu(this, function (menu) {
-      menu.appendChild(HK.menuItem(T('Bild oder Datei …'), function () { HK.closeMenu(); $('ct-file').click(); }, { icon: '📎' }));
-      menu.appendChild(HK.menuItem(T('Aus Immich …'), function () { HK.closeMenu(); immichAttach(); }, { icon: '📷' }));
+      menu.appendChild(HK.menuItem(T('Bild oder Datei …'), function () { HK.closeMenu(); $('ct-file').click(); }, { ic: 'paperclip' }));
+      menu.appendChild(HK.menuItem(T('Aus Immich …'), function () { HK.closeMenu(); immichAttach(); }, { ic: 'camera' }));
     });
   });
   $('ct-file').addEventListener('change', function () {
@@ -3488,7 +3488,7 @@
   function muteSub(sm, c, after) {
     function go(b) { HK.closeMenu(); patchChat(c, b).then(function () { if (after) after(); }).catch(function () {}); }
     var now = Date.now() / 1000, eve = new Date(); eve.setHours(24, 0, 0, 0);
-    if (c.muted) sm.appendChild(HK.menuItem(T('Stummschaltung aufheben'), function () { go({ muted_until: 0 }); }, { icon: '🔔' }));
+    if (c.muted) sm.appendChild(HK.menuItem(T('Stummschaltung aufheben'), function () { go({ muted_until: 0 }); }, { ic: 'bell' }));
     [[T('1 Stunde'), now + 3600], [T('8 Stunden'), now + 8 * 3600], [T('Bis morgen'), eve.getTime() / 1000 + 8 * 3600],
      [T('1 Woche'), now + 7 * 86400], [T('Für immer'), -1]].forEach(function (x) {
       sm.appendChild(HK.menuItem(x[0], function () { go({ muted_until: x[1] }); }, { on: x[1] === -1 && c.muted_until === -1 }));
@@ -3501,13 +3501,13 @@
   }
   function muteMenu(anchor, c, after) { HK.openMenu(anchor, function (menu) { menu.textContent = ''; muteSub(menu, c, after); }); }
   function alltagItems(menu, anchor, c) {
-    menu.appendChild(HK.menuItem(muteLabel(c), null, { icon: c.muted ? '🔕' : '🔔', sub: function (sm) { muteSub(sm, c); } }));
+    menu.appendChild(HK.menuItem(muteLabel(c), null, { ic: c.muted ? 'bell-off' : 'bell', sub: function (sm) { muteSub(sm, c); } }));
     menu.appendChild(HK.menuItem(c.pinned ? T('Loslösen') : T('Anheften'), function () {
       HK.closeMenu(); patchChat(c, { pinned: !c.pinned }).catch(function () {});
-    }, { icon: '📌' }));
+    }, { ic: 'pin' }));
     if (!c.unread && !c.unread_mark) menu.appendChild(HK.menuItem(T('Als ungelesen markieren'), function () {
       HK.closeMenu(); patchChat(c, { unread_mark: true }).then(function () { if (S.cur && S.cur.id === c.id) { closeChat(); history.replaceState(null, '', location.pathname); } }).catch(function () {});
-    }, { icon: '●' }));
+    }, { ic: 'dot' }));
     if (c.can_hide) menu.appendChild(HK.menuItem(c.hidden ? T('Wieder anzeigen') : T('Für mich ausblenden'), function () {
       HK.closeMenu();
       patchChat(c, { hidden: !c.hidden }).then(function () {
@@ -3515,7 +3515,7 @@
         HK.toast(T('Ausgeblendet – der Chat kommt zurück, wenn dich jemand erwähnt.'));
         if (S.cur && S.cur.id === c.id) { closeChat(); history.replaceState(null, '', location.pathname); }
       }).catch(function () {});
-    }, { icon: c.hidden ? '👁' : '🙈' }));
+    }, { ic: c.hidden ? 'eye' : 'eye-off' }));
   }
   // Ausgeblendete Chats: Bereich unten in der Liste (beim Filtern durchsucht)
   function hiddenLoad() {
@@ -3776,18 +3776,18 @@
     HK.openMenu(anchor, function (menu) {
       menu.textContent = '';
       var others = c.members.filter(function (m) { return !m.me; });
-      if (c.kind === 'dm' && others[0]) menu.appendChild(HK.menuItem(T('Sicherheitsnummer'), function () { HK.closeMenu(); safety(others[0]); }, { icon: '🔐' }));
-      if (c.kind === 'dm') menu.appendChild(HK.menuItem(T('Mitglieder'), function () { HK.closeMenu(); members(); }, { icon: '👥', hint: String(c.member_count) }));
-      else menu.appendChild(HK.menuItem(T('Gruppeninfo …'), function () { HK.closeMenu(); groupInfo(); }, { icon: '👥', hint: String(c.member_count) }));
+      if (c.kind === 'dm' && others[0]) menu.appendChild(HK.menuItem(T('Sicherheitsnummer'), function () { HK.closeMenu(); safety(others[0]); }, { ic: 'lock' }));
+      if (c.kind === 'dm') menu.appendChild(HK.menuItem(T('Mitglieder'), function () { HK.closeMenu(); members(); }, { ic: 'users', hint: String(c.member_count) }));
+      else menu.appendChild(HK.menuItem(T('Gruppeninfo …'), function () { HK.closeMenu(); groupInfo(); }, { ic: 'users', hint: String(c.member_count) }));
       if (S.ai && S.ai.chat) menu.appendChild(HK.menuItem(c.ai ? T('{name} hier nicht mehr erlauben', { name: aiP().name }) : T('{name} in diesem Chat erlauben', { name: aiP().name }),
-        function () { HK.closeMenu(); aiToggle(c); }, { icon: '✦' }));
-      menu.appendChild(HK.menuItem(T('Medien, Dateien, Links'), function () { HK.closeMenu(); mediaView(c); }, { icon: '🖼' }));     // 2.5
+        function () { HK.closeMenu(); aiToggle(c); }, { ic: 'sparkles' }));
+      menu.appendChild(HK.menuItem(T('Medien, Dateien, Links'), function () { HK.closeMenu(); mediaView(c); }, { ic: 'image' }));     // 2.5
       alltagItems(menu, anchor, c);                       // 2.5: Stummschalten (Dauer/Modus), Anheften, ungelesen, ausblenden
       // Bughunt V12: die Laufzeiten als Untermenue (wie "Verschieben nach ›"), die aktuelle Wahl als Hinweis
       var mx = (S.me && S.me.limits && S.me.limits.retention_max) || 0;
       var rets = RET.filter(function (r) { return !(mx && (r[0] === 0 || r[0] > mx)); });
       var curR = rets.filter(function (r) { return c.retention_s === r[0]; })[0];
-      menu.appendChild(HK.menuItem(T('Nachrichten automatisch löschen nach'), null, { icon: '⏱', hint: curR ? curR[1] : '', sub: function (sm) {
+      menu.appendChild(HK.menuItem(T('Nachrichten automatisch löschen nach'), null, { ic: 'timer', hint: curR ? curR[1] : '', sub: function (sm) {
         rets.forEach(function (r) {
           sm.appendChild(HK.menuItem(r[1], function () {
             HK.closeMenu();
@@ -3796,8 +3796,8 @@
         });
       } }));
       if (c.kind === 'free') {
-        if (c.can_rename !== false) menu.appendChild(HK.menuItem(T('Umbenennen …'), function () { HK.closeMenu(); rename(); }, { icon: '✎' }));
-        menu.appendChild(HK.menuItem(T('Gruppe verlassen'), function () { HK.closeMenu(); leaveGroup(c); }, { icon: '⎋', danger: true }));
+        if (c.can_rename !== false) menu.appendChild(HK.menuItem(T('Umbenennen …'), function () { HK.closeMenu(); rename(); }, { ic: 'edit' }));
+        menu.appendChild(HK.menuItem(T('Gruppe verlassen'), function () { HK.closeMenu(); leaveGroup(c); }, { ic: 'logout', danger: true }));
       }
       manageItems(menu, c);
     });
@@ -3808,7 +3808,7 @@
   function chatMenu(anchor, c) {
     HK.openMenu(anchor, function (menu) {
       menu.textContent = '';
-      menu.appendChild(HK.menuItem(T('Öffnen'), function () { HK.closeMenu(); location.hash = 'c' + c.id; if (S.cur && S.cur.id === c.id) openChat(c.id); }, { icon: '↗' }));
+      menu.appendChild(HK.menuItem(T('Öffnen'), function () { HK.closeMenu(); location.hash = 'c' + c.id; if (S.cur && S.cur.id === c.id) openChat(c.id); }, { ic: 'external' }));
       alltagItems(menu, anchor, c);                       // 2.5: Stummschalten (Dauer/Modus), Anheften, ungelesen, ausblenden
       manageItems(menu, c);
     });
@@ -3816,8 +3816,8 @@
   function manageItems(menu, c) {
     grpChatItems(menu, c);                              // 2.5: Sperren / Melden im Direkt-Chat
     menu.appendChild(HK.menuItem(c.archived ? T('Aus Archiv holen') : T('Archivieren'), function () { HK.closeMenu(); archive(c, !c.archived); },
-      { icon: c.archived ? '⤴' : '🗄' }));
-    menu.appendChild(HK.menuItem(T('Chat löschen …'), function () { HK.closeMenu(); deleteDialog(c); }, { icon: '🗑', danger: true }));
+      { ic: c.archived ? 'archive-out' : 'archive' }));
+    menu.appendChild(HK.menuItem(T('Chat löschen …'), function () { HK.closeMenu(); deleteDialog(c); }, { ic: 'trash', danger: true }));
   }
   function archive(c, on) {
     return api('PATCH', '/api/chats/' + c.id, { archived: on }).then(function () {
@@ -4124,8 +4124,8 @@
       if (!c._avf) { inp.click(); return; }
       HK.openMenu(b, function (menu) {
         menu.textContent = '';
-        menu.appendChild(HK.menuItem(T('Neues Bild wählen …'), function () { HK.closeMenu(); inp.click(); }, { icon: '📷' }));
-        menu.appendChild(HK.menuItem(T('Bild entfernen'), function () { HK.closeMenu(); grpClearAvatar(c).catch(function (e) { HK.toast(e.message); }); }, { icon: '✕', danger: true }));
+        menu.appendChild(HK.menuItem(T('Neues Bild wählen …'), function () { HK.closeMenu(); inp.click(); }, { ic: 'camera' }));
+        menu.appendChild(HK.menuItem(T('Bild entfernen'), function () { HK.closeMenu(); grpClearAvatar(c).catch(function (e) { HK.toast(e.message); }); }, { ic: 'x', danger: true }));
       });
     });
     hd.appendChild(b); hd.appendChild(inp);
@@ -4236,7 +4236,7 @@
     var mine = m.sender && m.sender.username === ME;
     if (c.can_pin && !m.fstate) {
       var pinned = (c.pins || []).indexOf(m.id) >= 0;
-      menu.appendChild(HK.menuItem(pinned ? T('Lösen') : T('Anheften'), function () { HK.closeMenu(); pinMsg(c, m.id, !pinned); }, { icon: '📌' }));
+      menu.appendChild(HK.menuItem(pinned ? T('Lösen') : T('Anheften'), function () { HK.closeMenu(); pinMsg(c, m.id, !pinned); }, { ic: 'pin' }));
     }
     if (!mine && c.can_moderate) menu.appendChild(HK.menuItem(T('Löschen (Admin)'), function () {
       HK.closeMenu();
@@ -4244,11 +4244,11 @@
         ok: T('Löschen'), danger: true }).then(function (y) {
         if (y) api('DELETE', '/api/chats/' + c.id + '/messages/' + m.id).then(function () { tombLive({ id: m.id }); }).catch(function (e) { HK.toast(e.message); });
       });
-    }, { icon: '🗑', danger: true }));
+    }, { ic: 'trash', danger: true }));
     if (!mine && m.sender) {
       var tg = blockTarget(c, m);
-      if (tg && !grpBlocked(c, m) && c.kind !== 'dm') menu.appendChild(HK.menuItem(T('{name} sperren', { name: m.sender.name }), function () { HK.closeMenu(); blockPerson(c, tg, m.sender.name); }, { icon: '⛔' }));
-      menu.appendChild(HK.menuItem(T('Melden …'), function () { HK.closeMenu(); reportDialog(c, [m]); }, { icon: '⚑' }));
+      if (tg && !grpBlocked(c, m) && c.kind !== 'dm') menu.appendChild(HK.menuItem(T('{name} sperren', { name: m.sender.name }), function () { HK.closeMenu(); blockPerson(c, tg, m.sender.name); }, { ic: 'ban' }));
+      menu.appendChild(HK.menuItem(T('Melden …'), function () { HK.closeMenu(); reportDialog(c, [m]); }, { ic: 'flag' }));
     }
   }
   // Direkt-Chat: Sperren/Melden im Chat-Menue
@@ -4256,13 +4256,13 @@
     if (c.kind !== 'dm') return;
     var p = c.members.filter(function (m) { return !m.me; })[0] || {};
     var tg = p.handle || (c.peer || {}).handle || p.ref;      // Handle '~x@host' (so steht er in der Sperrliste)
-    if (tg && !isRemote(c) && !p.blocked) menu.appendChild(HK.menuItem(T('{name} sperren', { name: p.name || '?' }), function () { HK.closeMenu(); blockPerson(c, tg, p.name || '?'); }, { icon: '⛔', danger: true }));
+    if (tg && !isRemote(c) && !p.blocked) menu.appendChild(HK.menuItem(T('{name} sperren', { name: p.name || '?' }), function () { HK.closeMenu(); blockPerson(c, tg, p.name || '?'); }, { ic: 'ban', danger: true }));
     if (p.blocked) menu.appendChild(HK.menuItem(T('Entsperren'), function () {
       HK.closeMenu();
       api('DELETE', '/api/chat/blocks?target=' + q(tg)).then(function () { HK.toast(T('Entsperrt.')); openChat(c.id); }).catch(function (e) { HK.toast(e.message); });
-    }, { icon: '✓' }));
+    }, { ic: 'check' }));
     var last = S.msgs.filter(function (m) { return m.kind === 'msg' && m.sender && m.sender.username !== ME && m.body; }).slice(-5);
-    if (last.length) menu.appendChild(HK.menuItem(T('Melden …'), function () { HK.closeMenu(); reportDialog(c, last); }, { icon: '⚑' }));
+    if (last.length) menu.appendChild(HK.menuItem(T('Melden …'), function () { HK.closeMenu(); reportDialog(c, last); }, { ic: 'flag' }));
   }
 
   // --- Gruppeninfo (2.5): Klick auf den Chat-Kopf -----------------------------------------------------------------
@@ -4375,18 +4375,18 @@
         if (sub) t.appendChild(el('span', 'hk-hint ct-gi-h2', sub));
         li.appendChild(t);
         var acts = [];
-        if (!m.me) acts.push([T('Sicherheitsnummer'), function () { safety(m); }, '🔐']);
+        if (!m.me) acts.push([T('Sicherheitsnummer'), function () { safety(m); }, 'i:lock']);
         if (c.kind === 'free' && c.can_admin && (!m.me || m.admin)) {
-          if (!m.admin) acts.push([T('Zum Admin machen'), function () { giAdmin(c, m, true); }, '★']);
-          else acts.push([T('Admin entziehen'), function () { giAdmin(c, m, false); }, '☆']);
+          if (!m.admin) acts.push([T('Zum Admin machen'), function () { giAdmin(c, m, true); }, 'i:star']);
+          else acts.push([T('Admin entziehen'), function () { giAdmin(c, m, false); }, 'i:star']);
         }
-        if (c.kind === 'free' && c.can_manage && !m.me) acts.push([T('Aus Gruppe entfernen'), function () { giRemove(c, m); }, '✕', true]);
+        if (c.kind === 'free' && c.can_manage && !m.me) acts.push([T('Aus Gruppe entfernen'), function () { giRemove(c, m); }, 'i:x', true]);
         var why = null;                                // 2.5: Seiten-Chat - nur direkte Freigaben lassen sich entziehen
         if (c.kind === 'page' && c.can_manage && !m.me) {
-          if (m.removable) acts.push([T('Aus Chat entfernen'), function () { giRemovePage(c, m); }, '✕', true]);
+          if (m.removable) acts.push([T('Aus Chat entfernen'), function () { giRemovePage(c, m); }, 'i:x', true]);
           else why = m.via === 'group' ? T('Zugriff über eine Gruppe – dort entfernen.') : m.via === 'parent' ? T('Zugriff über eine übergeordnete Seite – dort die Freigabe entziehen.')
             : m.via === 'owner' ? T('Ihr gehört die Seite.') : T('Zugriff nicht nur über diese Seite – im Teilen-Dialog prüfen.');
-          if (why) acts.push([T('Aus Chat entfernen'), null, '✕', true, why]);
+          if (why) acts.push([T('Aus Chat entfernen'), null, 'i:x', true, why]);
         }
         if (acts.length) {
           var mb = el('button', 'icon-btn ct-gi-more', '⋯'); mb.type = 'button'; mb.dataset.gi = 'm:' + giHandle(m);

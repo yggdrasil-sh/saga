@@ -863,6 +863,7 @@
         if (it.desc) b.setAttribute('aria-description', it.desc);
         var ic = el('span', 'hk-emo-e'); ic.setAttribute('aria-hidden', 'true');
         if (/^<svg[\s>]/.test(it.ic || '')) ic.innerHTML = it.ic;           // Werkzeug-Symbol (eigener Code, toolbox.icon)
+        else if (/^i:/.test(it.ic || '') && HK.icon) { var sv = HK.icon(it.ic.slice(2), 17); if (sv) ic.appendChild(sv); ic.classList.add('hk-ib'); }   // VD-17
         else ic.textContent = it.ic || '';
         b.appendChild(ic);
         var tx = el('span', 'pm-mi-t'); tx.appendChild(el('span', 'hk-at-t', it.t));
@@ -911,23 +912,23 @@
   function slashReg(it) { SLASH.push(it); SLASH.sort(function (a, b) { return (a.order || 50) - (b.order || 50); }); }
   var G_BASIC = T('Grundblöcke'), G_SAGA = 'Saga';
   [
-    ['p', T('Text'), '¶', T('Einfacher Absatz'), 'text absatz paragraph', MOD + ALT + '0'],
+    ['p', T('Text'), 'i:pilcrow', T('Einfacher Absatz'), 'text absatz paragraph', MOD + ALT + '0'],
     ['h1', T('Überschrift 1'), 'H1', T('Große Überschrift'), 'heading titel h1', '#'],
     ['h2', T('Überschrift 2'), 'H2', T('Mittlere Überschrift'), 'heading h2', '##'],
     ['h3', T('Überschrift 3'), 'H3', T('Kleine Überschrift'), 'heading h3', '###'],
     ['h4', T('Überschrift 4'), 'H4', T('Kleinste Überschrift'), 'heading h4', '####'],
-    ['unordered', T('Aufzählung'), '•', T('Liste mit Punkten'), 'liste bullet punkte list', '-'],
-    ['ordered', T('Nummerierte Liste'), '1.', T('Liste mit Nummern'), 'nummer liste ordered', '1.'],
-    ['checklist', T('Checkliste'), '☑', T('Aufgaben zum Abhaken'), 'todo aufgabe haken checkbox', '[]'],
-    ['quote', T('Zitat'), '❝', T('Zitat mit Quelle'), 'zitat quote', '>'],
-    ['callout', T('Hinweis (Callout)'), '💡', T('Hervorgehobener Kasten mit Symbol'), 'callout hinweis box', ''],
-    ['delimiter', T('Trennlinie'), '—', T('Linie zwischen Abschnitten'), 'trenner linie hr divider', '---']
+    ['unordered', T('Aufzählung'), 'i:list', T('Liste mit Punkten'), 'liste bullet punkte list', '-'],
+    ['ordered', T('Nummerierte Liste'), 'i:list-ordered', T('Liste mit Nummern'), 'nummer liste ordered', '1.'],
+    ['checklist', T('Checkliste'), 'i:checkbox', T('Aufgaben zum Abhaken'), 'todo aufgabe haken checkbox', '[]'],
+    ['quote', T('Zitat'), 'i:quote', T('Zitat mit Quelle'), 'zitat quote', '>'],
+    ['callout', T('Hinweis (Callout)'), 'i:bulb', T('Hervorgehobener Kasten mit Symbol'), 'callout hinweis box', ''],
+    ['delimiter', T('Trennlinie'), 'i:minus', T('Linie zwischen Abschnitten'), 'trenner linie hr divider', '---']
   ].forEach(function (x, i) { slashReg({ key: x[0], group: G_BASIC, t: x[1], ic: x[2], desc: x[3], kw: x[4], kbd: x[5], order: 10 + i }); });
   [
-    ['@', T('Person erwähnen'), '@', T('Jemanden auf der Seite erwähnen'), 'erwaehnen person mention', '@'],
-    ['[[', T('Seitenverweis'), '🔗', T('Auf eine andere Seite verlinken'), 'verweis link seite page', '[['],
-    ['date', T('Datum oder Erinnerung'), '📅', T('Datum einfügen, Erinnerung legt eine Aufgabe an'), 'datum date erinnerung termin', '@'],
-    ['math', T('Formel im Text'), '∑', T('TeX-Formel in der Zeile'), 'formel mathe math tex', '$…$']
+    ['@', T('Person erwähnen'), 'i:at', T('Jemanden auf der Seite erwähnen'), 'erwaehnen person mention', '@'],
+    ['[[', T('Seitenverweis'), 'i:link', T('Auf eine andere Seite verlinken'), 'verweis link seite page', '[['],
+    ['date', T('Datum oder Erinnerung'), 'i:calendar', T('Datum einfügen, Erinnerung legt eine Aufgabe an'), 'datum date erinnerung termin', '@'],
+    ['math', T('Formel im Text'), 'i:sigma', T('TeX-Formel in der Zeile'), 'formel mathe math tex', '$…$']
   ].forEach(function (x, i) { slashReg({ key: x[0], group: G_SAGA, t: x[1], ic: x[2], desc: x[3], kw: x[4], kbd: x[5], order: 80 + i }); });
   function norm(s) { return String(s || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss'); }
   // Werkzeuge aus static/pm-tools*.js (HKTools.slash(): [{type, title, icon, data}])
@@ -1087,9 +1088,9 @@
   // Formatierungsleiste (E8): Umwandeln · B I U S · Code · Link · Farbe · Kommentar · KI (+ Formel)
   // =================================================================================================================
   var bubble = null;
-  var CONV_KEYS = [['p', T('Text'), '¶'], ['h1', T('Überschrift 1'), 'H1'], ['h2', T('Überschrift 2'), 'H2'], ['h3', T('Überschrift 3'), 'H3'],
-    ['h4', T('Überschrift 4'), 'H4'], ['unordered', T('Aufzählung'), '•'], ['ordered', T('Nummerierte Liste'), '1.'],
-    ['checklist', T('Checkliste'), '☑'], ['quote', T('Zitat'), '❝'], ['callout', T('Hinweis (Callout)'), '💡']];
+  var CONV_KEYS = [['p', T('Text'), 'i:pilcrow'], ['h1', T('Überschrift 1'), 'H1'], ['h2', T('Überschrift 2'), 'H2'], ['h3', T('Überschrift 3'), 'H3'],
+    ['h4', T('Überschrift 4'), 'H4'], ['unordered', T('Aufzählung'), 'i:list'], ['ordered', T('Nummerierte Liste'), 'i:list-ordered'],
+    ['checklist', T('Checkliste'), 'i:checkbox'], ['quote', T('Zitat'), 'i:quote'], ['callout', T('Hinweis (Callout)'), 'i:bulb']];
   function bubbleEl() {
     var b = el('div', 'pm-bubble'); b.setAttribute('role', 'toolbar'); b.setAttribute('aria-label', T('Formatierung'));
     function btn(a, txt, label, cls) {
@@ -1248,7 +1249,7 @@
       inp.addEventListener('change', apply); tm.addEventListener('change', apply);
       m.appendChild(HK.menuItem(T('Datum entfernen'), function () {
         var cur = ed.state.doc.nodeAt(pos); if (cur && cur.type.name === 'date') ed.view.dispatch(ed.state.tr.delete(pos, pos + cur.nodeSize));
-      }, { icon: '✕', danger: true }));
+      }, { ic: 'x', danger: true }));
     });
   }
   var mathPop = null;

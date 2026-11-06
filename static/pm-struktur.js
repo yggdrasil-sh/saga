@@ -1117,10 +1117,10 @@
     // Link, Kommentieren, Werkzeug-Einstellungen, Loeschen
     // =================================================================================================================
     var MK = X.isMac ? '⌘' : T('Strg') + '+', ALT = X.isMac ? '⌥' : 'Alt+';
-    var CONV_TO = [['p', T('Text'), '¶'], ['h1', T('Überschrift 1'), 'H1'], ['h2', T('Überschrift 2'), 'H2'], ['h3', T('Überschrift 3'), 'H3'],
-      ['h4', T('Überschrift 4'), 'H4'], ['unordered', T('Aufzählung'), '•'], ['ordered', T('Nummerierte Liste'), '1.'], ['checklist', T('Checkliste'), '☑'],
-      ['toggle', T('Toggle'), '▸'], ['t1', T('Toggle-Überschrift 1'), '▸1'], ['t2', T('Toggle-Überschrift 2'), '▸2'], ['t3', T('Toggle-Überschrift 3'), '▸3'],
-      ['quote', T('Zitat'), '❝'], ['callout', T('Hinweis (Callout)'), '💡']];
+    var CONV_TO = [['p', T('Text'), 'i:pilcrow'], ['h1', T('Überschrift 1'), 'H1'], ['h2', T('Überschrift 2'), 'H2'], ['h3', T('Überschrift 3'), 'H3'],
+      ['h4', T('Überschrift 4'), 'H4'], ['unordered', T('Aufzählung'), 'i:list'], ['ordered', T('Nummerierte Liste'), 'i:list-ordered'], ['checklist', T('Checkliste'), 'i:checkbox'],
+      ['toggle', T('Toggle'), 'i:chevron-right'], ['t1', T('Toggle-Überschrift 1'), 'i:chevron-right'], ['t2', T('Toggle-Überschrift 2'), 'i:chevron-right'], ['t3', T('Toggle-Überschrift 3'), 'i:chevron-right'],
+      ['quote', T('Zitat'), 'i:quote'], ['callout', T('Hinweis (Callout)'), 'i:bulb']];
     var TYPE_NAME = { paragraph: T('Text'), header: T('Überschrift'), list: T('Liste'), quote: T('Zitat'), callout: T('Hinweis'), delimiter: T('Trennlinie'),
       toggle: T('Toggle'), columns: T('Spalten'), synced: T('Synchronisierter Block') };
     function anchorFor(id) { var x = X.findId(id); return (x && domOf(x.pos)) || X.holder(); }
@@ -1132,7 +1132,7 @@
         m.appendChild(el('div', 'menu-label pm-blockmenu', TYPE_NAME[t] || (X.typeName && X.typeName(t)) || X.sagaType(n)));
         if (!readonly) {
           if (X.convertible(n)) {
-            m.appendChild(HK.menuItem(T('Umwandeln in'), null, { icon: '⇄', sub: function (sm) {
+            m.appendChild(HK.menuItem(T('Umwandeln in'), null, { ic: 'repeat', sub: function (sm) {
               CONV_TO.forEach(function (c) { sm.appendChild(HK.menuItem(c[1], function () { convertBlock(id, c[0]); }, { icon: c[2] })); });
             } }));
             // T6: Ziele auch ueber die Suche (Cmd+/ "Toggle-Überschrift 1" Enter) wie im Editor.js-Aktionsmenue (static/keys.js)
@@ -1148,25 +1148,25 @@
           }
           settingsItems(m, x);
           m.appendChild(el('div', 'menu-sep'));
-          m.appendChild(HK.menuItem(T('Duplizieren'), function () { setBlockSel([id]); dupSel(); }, { icon: '⧉', hint: MK + 'D' }));
-          m.appendChild(HK.menuItem(T('Nach oben'), function () { moveBlock(id, -1); }, { icon: '↑', hint: MK + '⇧↑' }));
-          m.appendChild(HK.menuItem(T('Nach unten'), function () { moveBlock(id, 1); }, { icon: '↓', hint: MK + '⇧↓' }));
+          m.appendChild(HK.menuItem(T('Duplizieren'), function () { setBlockSel([id]); dupSel(); }, { ic: 'copy', hint: MK + 'D' }));
+          m.appendChild(HK.menuItem(T('Nach oben'), function () { moveBlock(id, -1); }, { ic: 'arrow-up', hint: MK + '⇧↑' }));
+          m.appendChild(HK.menuItem(T('Nach unten'), function () { moveBlock(id, 1); }, { ic: 'arrow-down', hint: MK + '⇧↓' }));
           var cur = K.cur(), copy = !!(cur && K.remoteId && K.remoteId(cur.id));
           if (window.HKEd25 && HKEd25.moveDialog) {
             m.appendChild(HK.menuItem(copy ? T('Kopieren nach …') : T('Verschieben nach …'), function () {
               setTimeout(function () { HKEd25.moveDialog({ ids: [id], holders: [anchorFor(id)], types: [X.sagaType(n)], parent: x.parent, slot: x.slot, top: x.parent == null }, anchorFor(id)); }, 0);
-            }, { icon: '↪' }));
+            }, { ic: 'move' }));
           }
           if (cur && cur.id > 0 && t !== 'columns' && t !== 'database' && !(inSynced(x.pos) && t !== 'synced')) {
             var isS = t === 'synced' || t === 'synced_ref';
-            m.appendChild(HK.menuItem(isS ? T('Synchronisierten Block kopieren') : T('Als synchronisierten Block kopieren'), function () { wrapSynced(id); }, { icon: '⟳' }));
+            m.appendChild(HK.menuItem(isS ? T('Synchronisierten Block kopieren') : T('Als synchronisierten Block kopieren'), function () { wrapSynced(id); }, { ic: 'refresh' }));
           }
         }
-        m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { K.copyLink(id); }, { icon: '🔗' }));
-        if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(id); }, { icon: '💬' }));
+        m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { K.copyLink(id); }, { ic: 'link' }));
+        if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(id); }, { ic: 'comment' }));
         if (!readonly) {
           m.appendChild(el('div', 'menu-sep'));
-          m.appendChild(HK.menuItem(T('Löschen'), function () { setBlockSel([id]); deleteSel(); }, { icon: '🗑', danger: true }));
+          m.appendChild(HK.menuItem(T('Löschen'), function () { setBlockSel([id]); deleteSel(); }, { ic: 'trash', danger: true }));
         }
       }, { search: T('Aktion suchen …') });
       menuFocusBack(id);
@@ -1196,25 +1196,25 @@
       var n = x.node, t = n.type.name, id = n.attrs.id;
       function setA(patch) { var y = X.findId(id); if (!y) return; dispatch(state().tr.setNodeMarkup(y.pos, null, Object.assign({}, y.node.attrs, patch))); }
       if (t === 'columns') {
-        m.appendChild(HK.menuItem(T('Spaltenanzahl'), null, { icon: '▥', sub: function (sm) {
+        m.appendChild(HK.menuItem(T('Spaltenanzahl'), null, { ic: 'columns', sub: function (sm) {
           for (var k = 2; k <= MAX_COLS; k++) (function (k) { sm.appendChild(HK.menuItem(T('{n} Spalten', { n: k }), function () { var y = X.findId(id); if (y) setCount(y.pos, k); }, { on: n.childCount === k })); })(k);
         } }));
-        m.appendChild(HK.menuItem(T('Spalten gleich breit'), function () { var y = X.findId(id); if (y) { var tr = state().tr; setWidths(tr, y.pos, null); if (tr.docChanged) dispatch(tr); } }, { icon: '⇹' }));
+        m.appendChild(HK.menuItem(T('Spalten gleich breit'), function () { var y = X.findId(id); if (y) { var tr = state().tr; setWidths(tr, y.pos, null); if (tr.docChanged) dispatch(tr); } }, { ic: 'cols-even' }));
         var nx = nextTop(x.pos);
-        if (nx && nx.node.type.name === 'columns') m.appendChild(HK.menuItem(T('Mit den Spalten darunter zusammenführen'), function () { var y = X.findId(id); if (y) mergeBelow(y.pos); }, { icon: '⤓' }));
+        if (nx && nx.node.type.name === 'columns') m.appendChild(HK.menuItem(T('Mit den Spalten darunter zusammenführen'), function () { var y = X.findId(id); if (y) mergeBelow(y.pos); }, { ic: 'merge' }));
         else if (nx) {
-          m.appendChild(HK.menuItem(T('Block darunter in Spalte …'), null, { icon: '↑', sub: function (sm) {
+          m.appendChild(HK.menuItem(T('Block darunter in Spalte …'), null, { ic: 'arrow-up', sub: function (sm) {
             for (var c = 0; c < n.childCount; c++) (function (c) { sm.appendChild(HK.menuItem(T('Spalte {n}', { n: c + 1 }), function () { var y = X.findId(id); if (y) takeBelow(y.pos, c); })); })(c);
           } }));
         }
-        m.appendChild(HK.menuItem(T('Spalten auflösen'), function () { var y = X.findId(id); if (y) unwrapColumns(y.pos); }, { icon: '☰' }));
+        m.appendChild(HK.menuItem(T('Spalten auflösen'), function () { var y = X.findId(id); if (y) unwrapColumns(y.pos); }, { ic: 'rows' }));
       } else if (t === 'toggle') {
         [[0, T('Toggle')], [1, T('Toggle-Überschrift 1')], [2, T('Toggle-Überschrift 2')], [3, T('Toggle-Überschrift 3')]].forEach(function (o) {
-          if ((n.attrs.level || 0) !== o[0]) m.appendChild(HK.menuItem(o[1], function () { setA({ level: o[0] || null }); }, { icon: '▸' }));
+          if ((n.attrs.level || 0) !== o[0]) m.appendChild(HK.menuItem(o[1], function () { setA({ level: o[0] || null }); }, { ic: 'chevron-right' }));
         });
       } else if (t === 'list' && n.attrs.listStyle === 'ordered') {
         var meta = n.attrs.meta || {};
-        m.appendChild(HK.menuItem(T('Zählart'), null, { icon: '1.', sub: function (sm) {
+        m.appendChild(HK.menuItem(T('Zählart'), null, { ic: 'list-ordered', sub: function (sm) {
           [['numeric', '1, 2, 3'], ['lower-alpha', 'a, b, c'], ['upper-alpha', 'A, B, C'], ['lower-roman', 'i, ii, iii'], ['upper-roman', 'I, II, III']].forEach(function (c) {
             sm.appendChild(HK.menuItem(c[1], function () { var mm = Object.assign({}, meta); if (c[0] === 'numeric') delete mm.counterType; else mm.counterType = c[0]; setA({ meta: mm }); }, { on: (meta.counterType || 'numeric') === c[0] }));
           });
@@ -1223,9 +1223,9 @@
           var v = window.prompt(T('Nummer des ersten Punkts'), String(typeof meta.start === 'number' ? meta.start : 1));
           if (v == null) return; var k = parseInt(v, 10); if (!isFinite(k)) return;
           var mm = Object.assign({}, meta); if (k === 1) delete mm.start; else mm.start = Math.max(0, Math.min(99999, k)); setA({ meta: mm });
-        }, { icon: '#' }));
+        }, { ic: 'hash' }));
       } else if (t === 'quote') {
-        m.appendChild(HK.menuItem(n.attrs.alignment === 'center' ? T('Linksbündig') : T('Zentriert'), function () { setA({ alignment: n.attrs.alignment === 'center' ? 'left' : 'center' }); }, { icon: '⇔' }));
+        m.appendChild(HK.menuItem(n.attrs.alignment === 'center' ? T('Linksbündig') : T('Zentriert'), function () { setA({ alignment: n.attrs.alignment === 'center' ? 'left' : 'center' }); }, { ic: 'align-center' }));
       }
       if (X.settings) X.settings(m, x);   // weitere Typen (pm-tools-medien.js: Bild, Einbetten)
     }
