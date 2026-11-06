@@ -566,4 +566,16 @@
   window.HK.theme = window.SagaTheme || { get: function () { return 'auto'; }, set: function () {}, toggle: function () {},
     dark: function () { return !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); } };
   window.HK.isDark = function () { return window.HK.theme.dark(); };
+  // Seite geloescht und nach "Heute" gewechselt (pages.js): "Rueckgaengig" hier anbieten (hoechstens 30 s alt)
+  (function () {
+    var d = null; try { d = JSON.parse(sessionStorage.getItem('hk-del-undo') || 'null'); sessionStorage.removeItem('hk-del-undo'); } catch (e) { return; }
+    if (!d || !d.id || Date.now() - (d.t || 0) > 30000 || document.body.classList.contains('embed')) return;
+    var show = function () {
+      toast(T('„{name}“ in den Papierkorb verschoben', { name: d.name || '' }), T('Rückgängig'), function () {
+        api('POST', '/api/trash/' + d.id + '/restore').then(function () { location.href = '/notes#' + d.id; })
+          .catch(function (err) { toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
+      });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', show); else show();
+  })();
 })();

@@ -1397,22 +1397,22 @@
         { ic: 'archive', hint: !c.archived && n ? '+ ' + nSub(n) : '' }));
       m.appendChild(HK.menuItem(T('In den Papierkorb'), function () {
         var id = S.cur.id, name = label(S.cur), parent = S.cur.parent_id;
-        // Wohin danach: uebergeordnete Seite, sonst Nachbarseite davor/danach, sonst zuletzt geoeffnete - nie auf die leere Flaeche
-        var sibs = children(parent || null).map(function (x) { return x.id; }), at = sibs.indexOf(id);
-        var next = [parent, sibs[at - 1], sibs[at + 1]].concat(recents());
+        // Wohin danach (Entscheidung des Maintainers): Unterseite -> Elternseite, sonst nach "Heute". "Rueckgaengig" ueberlebt den
+        // Seitenwechsel ueber sessionStorage (common.js zeigt den Toast auf der naechsten Seite).
         save().then(function () { return api('DELETE', '/api/notes/' + id); }).then(function () {
           if (EMBED) {                     // im Peek: nicht zur uebergeordneten Seite springen - Peek schliessen (macht das Hauptfenster)
             S.cur = null; window.parent.postMessage({ hk: 'peek-deleted', id: id, name: name }, location.origin); return;
           }
           S.cur = null; $('page').hidden = true; setLocation(); history.replaceState(null, '', location.pathname);
+          if (!(parent && byId(parent))) {
+            try { sessionStorage.setItem('hk-del-undo', JSON.stringify({ id: id, name: name, t: Date.now() })); } catch (e) { /* ohne Speicher: kein Rueckgaengig */ }
+            location.href = '/dashboard'; return;
+          }
           HK.toast(T('„{name}“ in den Papierkorb verschoben', { name: name }), T('Rückgängig'), function () {
             api('POST', '/api/trash/' + id + '/restore').then(loadList).then(function () { return openPage(id); })
               .catch(function (err) { HK.toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
           });
-          return loadList().then(function () {
-            var to = next.filter(function (x) { return x && x !== id && byId(x); })[0];
-            if (to) return openPage(to); renderTree();
-          });
+          return loadList().then(function () { return openPage(parent); });
         }).catch(function (err) { HK.toast(T('Nicht gelöscht: {err}', { err: err.message })); });
       }, { ic: 'trash', danger: true, hint: n ? '+ ' + nSub(n) : '' }));
     });

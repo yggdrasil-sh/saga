@@ -17,8 +17,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Web: Design-Runde (ruhiger, einheitlicher)
-- **Seite löschen:** Liegt die offene Seite im Papierkorb, öffnet Saga die übergeordnete Seite, sonst die Nachbarseite
-  davor bzw. danach oder die zuletzt geöffnete – statt einer leeren Fläche mit „Wähle links eine Seite“.
+- **Seite löschen:** Liegt die offene Seite im Papierkorb, öffnet Saga die übergeordnete Seite, bei Seiten auf oberster
+  Ebene „Heute“ – statt einer leeren Fläche mit „Wähle links eine Seite“. „Rückgängig“ steht auch nach dem Wechsel bereit.
 - **Glocke gebündelt:** eine Zeile je Unterhaltung statt jeder Mitteilung einzeln – „Jonas Brandt · 3 neue Nachrichten“,
   Gruppen-Chats „Team · 4 neue Nachrichten (von A, B)“, verpasste Anrufe eines Chats als „5 verpasste Videoanrufe ·
   zuletzt 11:13“ mit „Zurückrufen“, Kommentare einer Seite als „Seite X · 3 neue Kommentare“. Ein Klick öffnet und
