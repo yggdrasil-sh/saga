@@ -482,3 +482,33 @@ button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
 
 /* 2.5: Seitenpanel (/chats?panel=1 in static/chatdock.js) - ohne Kopfzeile, eine Spalte */
 body.ct-panel .np-head{display:none}
+
+/* 2.5 (chats1): Chat-Liste in der Seitenleiste (Chats-Seite, breit) - keine eigene Listenspalte, Unterhaltung in voller Breite.
+   static/side.js setzt #ct-side in #sh-chats um und die Klasse chats-in-side am body. */
+body.chats-in-side .ct{grid-template-columns:minmax(0,1fr)}
+body.chats-in-side:not(.embed) .pages-side>.pg-chats{flex:0 1 auto;min-height:6rem;max-height:52%;display:flex;flex-direction:column;overflow:hidden}
+body.chats-in-side:not(.embed) .pages-side>.pg-chats[hidden],body.chats-in-side:not(.embed) .pages-side>.pg-sec-chats[hidden]{display:none}
+.pg-chats .ct-side{border-right:0;flex:0 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.pg-chats .ct-side-top{padding:.1rem .1rem .35rem;gap:.35rem}
+.pg-chats .ct-filter{font-size:.875rem;padding:.3rem .55rem;background:var(--side-row);border-color:transparent;border-radius:6px}
+.pg-chats .ct-filter:focus{border-color:var(--field)}
+.pg-chats .ct-new{padding:.25rem .6rem;font-size:.82rem}
+.pg-chats .ct-list{padding:0;flex:0 1 auto;min-height:2.4rem}
+.pg-chats .ct-item-b{padding:.28rem .45rem;gap:.55rem;border-radius:6px;min-height:1.85rem}
+.pg-chats .ct-item-b:hover{background:var(--side-row)}
+.pg-chats .ct-item.on .ct-item-b{background:var(--side-row);box-shadow:none}
+.pg-chats .ct-item.on .ct-item-n{font-weight:700}
+.pg-chats .ct-item-n{font-size:.875rem;font-weight:500}
+.pg-chats .ct-item.unread .ct-item-n{font-weight:700}
+.pg-chats .ct-item-s:not(.ct-draft),.pg-chats .ct-item-time{display:none}          /* kompakt wie die Seitenzeilen: Name + Ungelesen */
+.pg-chats .ct-item-s.ct-draft{font-size:.72rem}
+.pg-chats .ct-av{width:24px;height:24px;font-size:.78rem}
+.pg-chats .ct-av-k{border-radius:7px}
+.pg-chats .ct-empty{padding:.5rem .55rem;font-size:.8rem}
+.pg-chats .ct-side-foot{border-top:0;padding:.2rem 0 0}
+.pg-chats .ct-side-foot .pg-foot-btn{font-size:.85rem;padding:.3rem .5rem;width:100%;box-sizing:border-box}
+.pg-chats .ct-side-foot .pg-foot-btn:hover{background:var(--side-row)}
+.pg-chats .ct-share{margin:0 0 .35rem;font-size:.8rem}
+/* Seitenleiste eingeklappt: Ein-/Ausblende-Knopf links oben ueberdeckt sonst den Kopf der Unterhaltung */
+body.has-side.side-hidden.chats-in-side:not(.embed) .ct-head,body.has-side.side-hidden.chats-in-side:not(.embed) .ct-none{padding-left:3.4rem}
+body.has-side.side-hidden.chats-in-side:not(.embed) .pg-chats .ct-side-top{padding-left:.1rem}

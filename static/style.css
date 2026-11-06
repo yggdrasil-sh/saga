@@ -886,7 +886,7 @@ body.side-hidden .pages-side{display:none}
   body:is(.notes-page,.has-side):not(.embed) .np-main{margin-left:var(--side-w);padding:.6rem 2.2rem 3rem;transition:margin-left .2s ease}
   body.notes-page:not(.embed) .pages{display:block;min-height:0}
   body:is(.notes-page,.has-side):not(.embed) .pages-side{position:fixed;z-index:60;top:0;bottom:0;left:0;width:var(--side-w);box-sizing:border-box;
-    max-height:none;overflow:auto;padding:3.4rem .5rem 1rem;gap:.35rem;background:var(--side-bg);
+    max-height:none;overflow:auto;padding:3.4rem .5rem 3.6rem;gap:.35rem;background:var(--side-bg);
     border-right:1px solid color-mix(in srgb,var(--border) 60%,transparent);
     transition:transform .2s ease,opacity .2s ease}
   body:is(.notes-page,.has-side):not(.embed) .pages-side>*{flex:none}

@@ -43,6 +43,22 @@
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '\\' || e.code === 'Backslash')) { e.preventDefault(); setSide(body.classList.contains('side-hidden')); }
   });
 
+  // --- Chat-Liste in der Seitenleiste (Chats-Seite, Bildschirm breit) ------------------------------------------------
+  // Die Liste (#ct-side mit Filter, "Neu", Unterhaltungen, "Chats & Geraete") wird samt ihrer Knoten umgesetzt - chat.js
+  // zeichnet unveraendert in #ct-list weiter. Auf schmalen Bildschirmen (Seitenleiste dort aus) steht sie wie bisher links.
+  (function () {
+    var slot = $('sh-chats'), head = $('sh-chats-h'), cs = $('ct-side'), box = $('ct');
+    if (!slot || !cs || !box) return;
+    var wideMq = window.matchMedia('(min-width: 761px)');
+    function place() {
+      var inSide = wideMq.matches;
+      if (inSide) slot.appendChild(cs); else box.insertBefore(cs, box.firstChild);
+      slot.hidden = head.hidden = !inSide; body.classList.toggle('chats-in-side', inSide);
+    }
+    place();
+    if (wideMq.addEventListener) wideMq.addEventListener('change', place); else if (wideMq.addListener) wideMq.addListener(place);
+  })();
+
   // --- Seiten -----------------------------------------------------------------------------------------------------
   var pages = [], openState = {};
   try { openState = JSON.parse(store('hk-pg-open') || '{}') || {}; } catch (e) { openState = {}; }

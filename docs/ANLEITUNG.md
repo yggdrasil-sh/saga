@@ -1018,7 +1018,8 @@ speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
   überein, bestätigen – oder den **Wiederherstellungsschlüssel eingeben**. Danach liest das neue Gerät auch den bisherigen Verlauf.
   Wer beides nicht mehr hat, kann **neu beginnen** (neue Schlüssel; alte Nachrichten sind dann nicht mehr lesbar).
   Dafür fragt Saga nach deinem Passwort; bei SSO-Konten meldest du dich kurz neu an (danach 5 Minuten Zeit).
-- **Unterhaltungen:** **„+ Neu“** → Person suchen (kurze Namen wie „hd“ genau, sonst ab 3 Zeichen auch Teile) für einen **Direkt-Chat**, eine eigene Gruppe für einen
+- **Unterhaltungen:** Im Web steht die Liste auf breiten Bildschirmen als Abschnitt **„Chats“** in der Seitenleiste (links), die
+  Unterhaltung hat die ganze Breite; auf dem Handy bleibt sie eine eigene Liste. **„+ Neu“** → Person suchen (kurze Namen wie „hd“ genau, sonst ab 3 Zeichen auch Teile) für einen **Direkt-Chat**, eine eigene Gruppe für einen
   **Gruppen-Chat** (Mitglieder folgen der Gruppe, auch aus LDAP/SSO) oder „Gruppe mit mehreren Personen“ für eine
   **freie Gruppe** (der Ersteller lädt ein und entfernt; der Name ist verschlüsselt). Auf geteilten Seiten öffnet
   **„💬 Chat“** im Seitenkopf den **Seiten-Chat** mit allen, die die Seite sehen dürfen – ändern sich die Freigaben,

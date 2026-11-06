@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Chats (Web): Chat-Liste in der Seitenleiste, Unterhaltung in voller Breite
+- Auf der Chats-Seite steht die Liste der Unterhaltungen jetzt als Abschnitt „Chats“ in der Seitenleiste (Suchfeld,
+  „+ Neu“, Name mit Zahl der ungelesenen Nachrichten, „Chats & Geräte“), unter Heute, Aufgaben und Termine. Die eigene
+  Listenspalte entfällt, die Unterhaltung nutzt die ganze Breite. Viele Chats scrollen im Abschnitt, Seitenbaum und „Mehr“
+  bleiben darunter stehen. Ist die Seitenleiste eingeklappt, schwebt sie beim Überfahren des linken Rands herein wie auf
+  den Seiten. Auf dem Handy und im Chat-Panel bleibt die Listenspalte wie bisher.
+- Die Seitenleiste ließ unten den Papierkorb unter dem Benutzerknopf verschwinden (Auffüll-Abstand wurde überschrieben) – behoben.
+
 ### Chats (Web): Chat-Panel neben Seiten und Heute, schnell antworten, Seiten teilen
 - **Chat-Panel rechts:** Ein Chat-Knopf unten rechts (neben dem KI-Knopf, mit Zahl der ungelesenen Nachrichten) öffnet
   die Chats als Panel – auf Seiten und auf „Heute“, ohne die Seite zu verlassen. Ist der KI-Assistent an, wechseln die
