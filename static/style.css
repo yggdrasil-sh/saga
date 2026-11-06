@@ -933,7 +933,8 @@ body.side-hidden .pages-side{display:none}
   body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-shared-box{flex:0 1 auto;min-height:0}
   body:is(.notes-page,.has-side):not(.embed) .pages-side .pg-shared-tree{max-height:30vh;overflow:auto}
   /* UX-3: Chats und Heute stehen als Zeilen in der Leiste - im Leistenkopf bleibt nur die Glocke */
-  body.notes-page:not(.embed) .np-head :is(#hk-chats,.np-dash){display:none}
+  body:is(.notes-page,.has-side):not(.embed) .np-head :is(#hk-chats,.np-dash){display:none}
+  body.has-side:not(.embed) .np-head .btn:not(.hk-user):not(:hover):not(:focus-visible):not([aria-expanded="true"]){border-color:transparent;background:transparent}
   /* Seitenkopf (Pfad, Teilen, ...) oben wie die Notion-Leiste */
   body.notes-page:not(.embed) .page-bar{position:sticky;top:0;z-index:9;min-height:3rem;margin:-.6rem -2.2rem 1.4rem;padding:0 1rem 0 1.2rem;
     background:var(--bg)}
