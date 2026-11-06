@@ -61,6 +61,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Abschnittsüberschriften. Kopf wie auf Seiten und Chats (Glocke, Konto in der Seitenleiste); die eigene Suche, die
   zweite Glocke, die Kontobox und die Kürzelzeile entfallen. Admin-Bereich über das Kontomenü, Strg/⌘+K öffnet die
   Schnellsuche, „/“ die Suche der Seitenleiste. Die Websuche (SearXNG) wandert vom alten Suchfeld in die Schnellsuche: Zeile „Im Web suchen: …“ (Enter), die Treffer stehen direkt in der Liste (Host, Ausschnitt, Sofortantwort, „Mehr laden“), Tippen führt zurück zu den Seiten. Barrierefreiheit: Sprunglink „Zum Inhalt“, eine Kopfzeile, H1 „Heute“.
+### Anrufe (Web): ruhigere Anruf-Bühne
+- Weiche Vignette statt Flächenschwarz, Name etwas größer, Glasknöpfe (Auflegen in Rot mit leichtem Schein),
+  Knöpfe oben rahmenlos; Fokusrahmen im Anruf in Gold statt Blau (das Anruffenster bleibt auch im hellen Thema dunkel).
+- Ausgehender Anruf: langsamer Ring-Puls am großen Profilbild, solange es klingelt (aus bei „Bewegung reduzieren“);
+  der Puls beim eingehenden Anruf nutzt denselben Stil.
+- Eigenes Bild ohne harten Rahmen; bis das Kamerabild läuft bzw. bei ausgeschalteter Kamera steht dort die eigene
+  Initiale, unten rechts das Etikett „Du“ bzw. „Du · Kamera aus“.
 
 ### Galerie: Vorlage „Familien-Wiki“
 - Neue Vorlage (Persönlich) für die eigene Familie: Datenbank **„Familienmitglieder“** mit Generation, Spitzname,

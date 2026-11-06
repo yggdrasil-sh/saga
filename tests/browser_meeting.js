@@ -103,7 +103,7 @@ const CTLFIT = () => { const bs = [...document.querySelectorAll('.cl-win .cl-ctl
            red: !!rr && rr.left >= 0 && rr.right <= innerWidth && rr.width >= 44, more: !!document.querySelector('.cl-win .cl-ctl .cl-more') }; };
 const look = p => p.evaluate(LOOK);
 const selfBox = p => p.evaluate(() => { const v = document.querySelector('.cl-local'); if (!v || v.hidden || getComputedStyle(v).display === 'none') return null;
-  const r = v.getBoundingClientRect(); return { w: r.width, h: r.height, vw: v.videoWidth, vh: v.videoHeight }; });
+  const r = v.getBoundingClientRect(), vv = v.querySelector('video') || v; return { w: r.width, h: r.height, vw: vv.videoWidth, vh: vv.videoHeight }; });
 
 // Ablauf ueber einen Knoten (calls.horn_all, Testlabor): 1:1 A <-> B, A2 als Begleitgeraet, A2 teilt den Bildschirm.
 // Geprueft: Ben sieht EINE Kachel Anna (Personen ueber who), Anna sieht A2 nur als Chip, Bildschirm gross mit Hinweis-Chip

@@ -7,8 +7,9 @@
   background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:16px;padding:.8rem .9rem;
   box-shadow:0 12px 40px rgba(0,0,0,.35);animation:cl-in .25s ease-out}
 @keyframes cl-in{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}
-.cl-ring .cl-av{animation:cl-pulse 1.6s ease-in-out infinite}
-@keyframes cl-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--cl-green) 55%,transparent)}50%{box-shadow:0 0 0 10px transparent}}
+/* Ring-Puls (Design-Runde 09): eingehend (Karte) und ausgehend klingelnd (.cl-win.ringing) - ein Stil, Weite/Schatten je Ort */
+.cl-ring .cl-av{--cl-pw:12px;animation:cl-pulse 2.4s ease-out infinite}
+@keyframes cl-pulse{0%{box-shadow:0 0 0 0 rgba(201,164,92,.35),var(--cl-ps,0 0 #0000)}100%{box-shadow:0 0 0 var(--cl-pw,22px) rgba(201,164,92,0),var(--cl-ps,0 0 #0000)}}
 @media (prefers-reduced-motion: reduce){.cl-ring,.cl-ring .cl-av{animation:none}}
 .cl-ring-t{display:flex;flex-direction:column;min-width:0;flex:1}
 .cl-ring-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.02rem}
@@ -42,11 +43,19 @@
 .cl-win.has-video .cl-who{display:none}
 .cl-raudio{display:none}
 .cl-who{display:flex;flex-direction:column;align-items:center;gap:.8rem;padding:1rem;text-align:center}
-.cl-name{font-size:1.4rem;font-weight:600;overflow-wrap:anywhere}
+.cl-name{font-size:1.5rem;font-weight:600;letter-spacing:-.01em;overflow-wrap:anywhere}
 .cl-win.peer-muted .cl-name::after{content:" 🔇";font-size:1rem}
-.cl-local{position:absolute;right:1rem;bottom:6.2rem;width:min(28vw,220px);aspect-ratio:4/3;object-fit:cover;border-radius:10px;
-  background:#000;border:1px solid #3a475b;transform:scaleX(-1);z-index:2}
-.cl-win.screen .cl-local{transform:none;object-fit:contain}
+.cl-local{position:absolute;right:1rem;bottom:6.2rem;width:min(28vw,220px);aspect-ratio:4/3;border-radius:14px;overflow:hidden;
+  background:linear-gradient(160deg,#1b2330,#121821);border:0;box-shadow:0 0 0 1px rgba(255,255,255,.10),0 16px 40px rgba(0,0,0,.5);z-index:2}
+/* Design-Runde 09: Video im Rahmen, Platzhalter (Initiale) bis "playing" bzw. bei Kamera aus, Etikett unten rechts */
+.cl-local-v{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block;opacity:0;pointer-events:none}
+.cl-local.live .cl-local-v{opacity:1}
+.cl-win.screen .cl-local-v{transform:none;object-fit:contain}
+.cl-self-ph{position:absolute;inset:0;display:grid;place-items:center;color:#8b97a8;font-size:1.6rem;font-weight:600;pointer-events:none}
+.cl-local.live .cl-self-ph{display:none}
+.cl-self-lbl{position:absolute;right:6px;bottom:6px;max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:.72rem;line-height:1.5;padding:0 .5rem;border-radius:999px;color:#e6ebf2;background:rgba(11,15,21,.55);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);pointer-events:none}
 .cl-local[hidden]{display:none}
 .cl-top{grid-row:1;grid-column:1;z-index:3;display:flex;align-items:flex-start;gap:.5rem;padding:.8rem 1rem;position:relative;
   background:linear-gradient(#0b0f15cc,transparent)}
@@ -379,7 +388,7 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
 .cl-tile:hover .cl-tmb,.cl-tile:focus-within .cl-tmb,.cl-tile:focus .cl-tmb{opacity:1}
 .cl-mstrip .cl-btn.cl-tmb{min-width:32px;height:32px}
 @media (pointer:coarse){.cl-btn.cl-tmb{display:none}}
-.cl-win .cl-tile:focus-visible,.cl-win .cl-btn:focus-visible{outline:2px solid #7cc4ff;outline-offset:2px;box-shadow:0 0 0 4px #0b0f15}
+.cl-win .cl-tile:focus-visible,.cl-win .cl-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;box-shadow:0 0 0 4px #0b0f15}
 /* Hinweis-Chip "… teilt den Bildschirm" unten links in der Buehne (statt Banner), Zoom-Chip, Seiten, Griff */
 .cl-mchip{position:absolute;left:12px;bottom:6.4rem;z-index:4;display:flex;align-items:center;gap:.2rem;height:32px;max-width:50%;
   padding:0 0 0 .7rem;border-radius:8px;background:#000000b3;color:#fff;font-size:.85rem}
@@ -418,16 +427,16 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
 .cl-btn.cl-tmenu-i{padding-left:.8rem}
 .cl-lmenu-i:hover,.cl-tmenu-i:hover{background:#2a3444}
 .cl-btn.cl-lmenu-i:disabled{opacity:.45;cursor:default;filter:none}
-.cl-lmenu-r.on::before{content:"";position:absolute;left:.8rem;top:50%;width:.6rem;height:.6rem;margin-top:-.3rem;border-radius:50%;background:#7cc4ff}
+.cl-lmenu-r.on::before{content:"";position:absolute;left:.8rem;top:50%;width:.6rem;height:.6rem;margin-top:-.3rem;border-radius:50%;background:var(--accent)}
 .cl-lmenu-r:not(.on)::before{content:"";position:absolute;left:.75rem;top:50%;width:.6rem;height:.6rem;margin-top:-.38rem;border-radius:50%;border:1px solid #93a0b2}
-.cl-lmenu-c.on::before{content:"✓";position:absolute;left:.75rem;color:#7cc4ff;font-weight:700}
+.cl-lmenu-c.on::before{content:"✓";position:absolute;left:.75rem;color:var(--accent);font-weight:700}
 .cl-lmenu hr{border:0;border-top:1px solid #3a475b;margin:.3rem .2rem;width:auto}
 .cl-keys{position:absolute;z-index:7;top:50%;left:50%;transform:translate(-50%,-50%);width:min(27rem,calc(100% - 2rem));max-height:calc(100% - 2rem);overflow:auto;
   background:#151c27;border:1px solid #3a475b;border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.55);padding:.8rem 1rem 1rem;color:#e6ebf2}
 .cl-keys .cl-mini{color:#e6ebf2}
 .cl-keys svg{width:18px;height:18px}
 .cl-keys-l{display:grid;grid-template-columns:max-content 1fr;gap:.4rem 1rem;margin:.6rem 0 0;font-size:.92rem}
-.cl-keys-l dt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#7cc4ff;white-space:nowrap}
+.cl-keys-l dt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);white-space:nowrap}
 .cl-keys-l dd{margin:0}
 .cl-say{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .cl-full{color:#e6ebf2}
@@ -444,7 +453,7 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
 .cl-win.horn-scr .cl-share.cap{left:1.2rem;transform:none;display:flex;align-items:center;gap:.2rem;height:32px;padding:0 0 0 .7rem;max-width:50%;flex-wrap:nowrap}
 .cl-share.cap .cl-share-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 /* Eigenes Bild: Seitenverhaeltnis der Kamera (Groesse aus calls.js selfFit), rutscht beim Ausblenden nach unten */
-.cl-win:not(.small) .cl-local{aspect-ratio:auto;object-fit:cover;border-radius:14px;border:1px solid #ffffff33;max-width:none;transition:bottom .2s,top .2s}
+.cl-win:not(.small) .cl-local{aspect-ratio:auto;border-radius:14px;max-width:none;transition:bottom .2s,top .2s}
 .cl-win.self-tile .cl-local,.cl-win.self-off .cl-local{display:none}
 .cl-win.idle:not(.self-c0):not(.self-c1) .cl-local{bottom:16px}
 @media (max-width:640px){.cl-win:not(.self-c0):not(.self-c1):not(.self-c2):not(.self-c3):not(.small) .cl-local{top:5.5rem;bottom:auto}}
@@ -515,7 +524,7 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
   border-radius:10px;background:transparent;color:#e6ebf2;font-size:.95rem;text-align:left}
 .cl-moremenu .cl-btn.cl-more-i:hover,.cl-moremenu .cl-btn.cl-more-i:focus-visible{background:#2a3444}
 .cl-moremenu .cl-btn.cl-more-i.off{background:transparent;color:#e3b341}
-.cl-moremenu .cl-btn.cl-more-i.on{background:transparent;color:#7cc4ff}
+.cl-moremenu .cl-btn.cl-more-i.on{background:transparent;color:var(--accent)}
 .cl-moremenu .cl-more-i svg{width:22px;height:22px;flex:none}
 .cl-moremenu .cl-take{justify-content:center;background:var(--accent);color:#111}
 @media (max-width:640px){
@@ -534,3 +543,27 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
 .cl-win.small{cursor:grab;touch-action:none}
 .cl-win.small.dragging{cursor:grabbing;user-select:none;transition:none}
 .cl-win.small :is(button,a,input,.cl-local){cursor:pointer}
+
+/* Design-Runde 09 - Anruf-Buehne (AE-38/39/40, VD-04/05): eigener dunkler Tokensatz (im Anruf gilt immer dunkel, auch im
+   hellen Thema - Gold #c9a45c hat 7,9:1 auf #0b0f15), weiche Vignette, Glasknoepfe, ausgehendes Klingeln als Ring-Puls */
+.cl-win{--accent:#c9a45c;--fg:#e6ebf2;--card:#18202c;--card-h:#202b3a;--border:#263242;
+  background:radial-gradient(55% 45% at 50% 45%,#161d29 0%,#0b0f15 75%)}
+.cl-who .cl-av-big{box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.cl-win.ringing .cl-who .cl-av-big{--cl-pw:22px;--cl-ps:0 12px 40px rgba(0,0,0,.45);animation:cl-pulse 2.4s ease-out infinite}
+.cl-win.small.ringing .cl-who .cl-av-big{--cl-pw:12px}
+@media (prefers-reduced-motion: reduce){.cl-win.ringing .cl-who .cl-av-big{animation:none}}
+/* Glas: :where() haelt die Spezifitaet bei einer Klasse - Zustaende (.off/.on/.cl-red/.cl-pill/Menues) gewinnen weiter */
+:where(.cl-win) .cl-btn{background:rgba(255,255,255,.08);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-color:transparent;
+  transition:background-color .15s}
+:where(.cl-win) .cl-btn:where(:hover){background-color:rgba(255,255,255,.16)}
+.cl-win .cl-btn:hover{filter:none}
+.cl-win .cl-btn.on:hover,.cl-win .cl-btn.off:hover{filter:brightness(1.06)}
+.cl-win .cl-btn.cl-red{background:#d4483f;border-color:#d4483f;box-shadow:0 6px 18px rgba(212,72,63,.35)}
+.cl-win .cl-btn.cl-red:hover{background:#dc5a51}
+.cl-tb .cl-btn.cl-mini:not(.on){background:transparent;border-color:transparent;color:#aab4c3;-webkit-backdrop-filter:none;backdrop-filter:none}
+.cl-tb .cl-btn.cl-mini:not(.on):hover{background:rgba(255,255,255,.08);color:#e6ebf2}
+/* eigenes Bild klein: Blase (self-min) nur Initiale, kleines Fenster mit kleinerem Etikett */
+.cl-win.self-min .cl-self-lbl{display:none}
+.cl-win.self-min .cl-self-ph{font-size:1rem}
+.cl-win.small .cl-self-ph{font-size:1.1rem}
+.cl-win.small .cl-self-lbl{font-size:.62rem;right:4px;bottom:4px;max-width:calc(100% - 8px);padding:0 .35rem}

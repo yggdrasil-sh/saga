@@ -157,7 +157,10 @@
     step();
     if (kind !== 'end') tone = setInterval(step, kind === 'ring' ? 2600 : 4000);
   }
-  function stopTone() { if (tone) { clearInterval(tone); tone = null; } }
+  function stopTone() { if (tone) { clearInterval(tone); tone = null; } ringOutOff(); }
+  // Design-Runde 09: ausgehend klingelnd - langsamer Ring-Puls am grossen Avatar (calls.css .cl-win.ringing), bis angenommen/aufgelegt
+  function ringOut(c) { var R = roomOf(c); if (R && R.ui && !R.since) R.ui.w.classList.add('ringing'); }
+  function ringOutOff() { [].forEach.call(document.querySelectorAll('.cl-win.ringing'), function (w) { w.classList.remove('ringing'); }); }
   // Mehrere Tabs: nur einer klingelt hoerbar (der sichtbare, sonst der erste)
   var bc = null; try { bc = new BroadcastChannel('saga-call'); } catch (e) { bc = null; }
   var claimed = {};
@@ -712,7 +715,7 @@
       .then(function (r) {
         if (!live(c)) { api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup' }).catch(function () {}); return; }
         c.ready = true; c.call = r.call;
-        status(c, T('Klingelt …')); playTone('back');
+        status(c, T('Klingelt …')); playTone('back'); ringOut(c);
         flushIce(c); aliveOn(c);
       }, function (e) {
         if (e.status === 409 && e.data && e.data.devices && !again) return peerKeys(c, true).then(function () { return dial(c, true); });
@@ -1155,7 +1158,7 @@
       if (r.call.topo === 'horn') hornNew(R, r.call.horn);   // 2.5: ueber einen Knoten
       R.ready = true; R.inRoom = true; R.call = r.call; R.v2 = r.call.v === 2;
       rosterIn(R, r.call.legs, r.call);
-      status(R, T('Klingelt bei den anderen …')); playTone('back');
+      status(R, T('Klingelt bei den anderen …')); playTone('back'); ringOut(R);
       aliveOn(R);
       R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
       if (R.horn) hornGo(R, r.call.horn);
@@ -1699,12 +1702,12 @@
   // --- Eigenes Bild (§7): Seitenverhaeltnis der Kamera, Groesse S/M/L, Ecken, Minimieren -----------------------------------
   function selfFit(R) {
     R = roomOf(R); if (!R || !R.ui || !MT) return;
-    var lv = R.ui.lv, st = R.ui.stage, p = selfPrefs();
-    if (p.hidden) { lv.style.width = ''; lv.style.height = ''; return; }   // Blase (44 px) aus dem CSS
+    var lv = R.ui.lv, sv = R.ui.sv, st = R.ui.stage, p = selfPrefs();
+    if (p.hidden) { sv.style.width = ''; sv.style.height = ''; return; }   // Blase (44 px) aus dem CSS
     var ar = lv.videoWidth && lv.videoHeight ? lv.videoWidth / lv.videoHeight : (mobile ? 9 / 16 : 16 / 9);
     var s = MT.selfPipSize(st.clientWidth || window.innerWidth, st.clientHeight || window.innerHeight, ar, p.size || 'M');
-    if (R.ui.w.classList.contains('small')) { lv.style.width = ''; lv.style.height = ''; return; }
-    lv.style.width = s.w + 'px'; lv.style.height = s.h + 'px';
+    if (R.ui.w.classList.contains('small')) { sv.style.width = ''; sv.style.height = ''; return; }
+    sv.style.width = s.w + 'px'; sv.style.height = s.h + 'px';
   }
 
   // Sprecher: Pegel der empfangenen Tonspur (RTP-Quelle, ohne getStats) - 3x je Sekunde; Personen-Pegel = Maximum ueber
@@ -2372,7 +2375,7 @@
       status(c, msg || '', kind === 'error');
       // vorbei: keine Laufzeit/Verbindungsangaben und kein schwarzes Eigenbild mehr
       c.ui.info.textContent = ''; c.ui.un.hidden = true; if (c.ui.sink) c.ui.sink.remove();
-      c.ui.lv.srcObject = null; c.ui.lv.hidden = true; c.ui.w.classList.remove('has-video', 'screen', 'peer-muted', 'peer-screen', 'has-small');
+      c.ui.lv.srcObject = null; c.ui.sv.hidden = true; c.ui.sv.classList.remove('live'); c.ui.w.classList.remove('has-video', 'screen', 'peer-muted', 'peer-screen', 'has-small');
       c.ui.rv2.srcObject = null; c.ui.share.hidden = true; if (c.ui.hint) { c.ui.hint.remove(); c.ui.hint = null; }
       c.ui.w.classList.remove('mesh'); c.ui.grid.textContent = '';
       c.ui.ctl.textContent = '';
@@ -2386,6 +2389,10 @@
 
   // 2.5: eigenes Bild - in eine Ecke ziehen (rastet ein; Klassen self-c0..3 am Fenster) und per Klick/Enter zur kleinen
   // Blase verkleinern bzw. wieder vergroessern. Beides merkt sich der Browser fuer alle Anrufe (ohne Wahl: wie bisher).
+  function selfInitial() {
+    var u = document.getElementById('hk-user'), n = document.body.dataset.name || (u && u.dataset.name) || meName() || '?';
+    return String(n).trim().charAt(0).toUpperCase() || '?';
+  }
   function selfPrefs() { try { return JSON.parse(localStorage.getItem('saga-call-self') || '{}') || {}; } catch (e) { return {}; } }
   function selfSave(p) { try { localStorage.setItem('saga-call-self', JSON.stringify(p)); } catch (e) { /* privat */ } }
   function selfApply(w, lv) {
@@ -2468,7 +2475,7 @@
     lv.addEventListener('dblclick', function (e) {
       e.preventDefault(); clearTimeout(lv._clk);
       var p = selfPrefs(); p.size = p.size === 'S' ? 'M' : p.size === 'L' ? 'S' : 'L'; p.hidden = false;
-      selfSave(p); selfApply(w, lv); if (C && C.ui && C.ui.lv === lv) selfFit(C);
+      selfSave(p); selfApply(w, lv); if (C && C.ui && C.ui.sv === lv) selfFit(C);
     });
     lv.addEventListener('pointerup', end);
     lv.addEventListener('pointercancel', function () { start = null; lv.classList.remove('dragging'); lv.style.translate = ''; });
@@ -2494,7 +2501,14 @@
     var rv = el('video', 'cl-remote'); rv.autoplay = true; rv.muted = true; rv.playsInline = true; rv.setAttribute('playsinline', '');   // Ton: <audio>
     var ra = el('audio', 'cl-raudio'); ra.autoplay = true;
     ra.addEventListener('playing', function () { if (c.audioBlocked) { c.audioBlocked = false; c.snd = ''; drawInfo(c); } });
-    var who = el('div', 'cl-who'), lv = el('video', 'cl-local'); lv.hidden = true; lv.autoplay = true; lv.muted = true; lv.playsInline = true; lv.setAttribute('playsinline', '');
+    var who = el('div', 'cl-who'), lv = el('video', 'cl-local-v'); lv.autoplay = true; lv.muted = true; lv.playsInline = true; lv.setAttribute('playsinline', '');
+    // Design-Runde 09: eigenes Bild als Rahmen (.cl-local) um das Video - Platzhalter mit der Initiale, bis das Bild laeuft
+    // bzw. solange die Kamera aus ist, und Etikett "Du" / "Du · Kamera aus" unten rechts (nicht gespiegelt)
+    var sv = el('div', 'cl-local'), sph = el('div', 'cl-self-ph', selfInitial()), slb = el('div', 'cl-self-lbl', T('Du'));
+    sv.hidden = true; sph.setAttribute('aria-hidden', 'true'); slb.setAttribute('aria-hidden', 'true');
+    sv.appendChild(lv); sv.appendChild(sph); sv.appendChild(slb);
+    lv.addEventListener('playing', function () { if (lv.srcObject) sv.classList.add('live'); });
+    lv.addEventListener('emptied', function () { sv.classList.remove('live'); });
     // E3: zweites Fernbild (nur noch ohne Meeting-Logik; 2.5: Kamera und Bildschirm sind getrennte Kacheln, kein Tauschen)
     var rv2 = el('video', 'cl-remote2'); rv2.autoplay = true; rv2.muted = true; rv2.playsInline = true; rv2.setAttribute('playsinline', '');
     // 2.4 E4/E5: Kachelansicht ueber den Knoten (horn) - je Geraet eine Kachel
@@ -2523,8 +2537,8 @@
         if (n && n !== e.target) { e.preventDefault(); e.target.tabIndex = -1; n.tabIndex = 0; n.focus(); }
       });
     });
-    stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(rv2); stage.appendChild(grid); stage.appendChild(meet); stage.appendChild(lv);
-    selfPip(w, lv);
+    stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(rv2); stage.appendChild(grid); stage.appendChild(meet); stage.appendChild(sv);
+    selfPip(w, sv);
     lv.addEventListener('resize', function () { selfFit(c); });
     lv.addEventListener('loadedmetadata', function () { selfFit(c); });
     var top = el('div', 'cl-top'), info = el('div', 'cl-info'), st = el('div', 'cl-status'); st.setAttribute('role', 'status');
@@ -2551,7 +2565,7 @@
     var say = el('div', 'cl-say'); say.setAttribute('aria-live', 'polite'); say.setAttribute('role', 'status');   // Ansagen (§10)
     w.appendChild(stage); w.appendChild(top); w.appendChild(share); w.appendChild(un); w.appendChild(st); w.appendChild(ctl); w.appendChild(say);
     document.body.appendChild(w);
-    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null, grid: grid, tb: tb,
+    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, sv: sv, slb: slb, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null, grid: grid, tb: tb,
              top: top, stage: stage, meet: meet, mbig: mbig, mstrip: mstrip, mgrid: mgrid, pager: pager, pgT: pgT, pgPrev: pgPrev, pgNext: pgNext,
              mchip: mchip, mchipT: mchipT, zchip: zchip, zchipT: zchipT, mnov: mnov, say: say, idle: false, over: false };
     idleInit(c); meetZoomInit(c);
@@ -2661,10 +2675,14 @@
     if (!R.ui || R.done) return;
     // 2.5: das eigene Bild zeigt nur die Kamera - der eigene Bildschirm wird nie gespiegelt (§1.5); abschaltbar (Layout-Menue)
     var mine0 = R.cam && R.cam.readyState !== 'ended' ? R.cam : null;
-    if (mine0) { if (!R.ui.lv.srcObject || R.ui.lv.srcObject.getTracks()[0] !== mine0) R.ui.lv.srcObject = new MediaStream([mine0]); }
-    else R.ui.lv.srcObject = null;
-    R.ui.lv.hidden = !mine0 || mtPref('saga-call-selfshow', '1') === '0';
-    R.ui.w.classList.toggle('self-off', !!mine0 && mtPref('saga-call-selfshow', '1') === '0');
+    if (mine0) { if (!R.ui.lv.srcObject || R.ui.lv.srcObject.getTracks()[0] !== mine0) { R.ui.sv.classList.remove('live'); R.ui.lv.srcObject = new MediaStream([mine0]); } }
+    else { R.ui.lv.srcObject = null; R.ui.sv.classList.remove('live'); }
+    // Design-Runde 09: im Videoanruf (oder nachdem die Kamera einmal an war) bleibt das eigene Bild mit Platzhalter stehen
+    if (mine0) R.camSeen = true;
+    var selfWant = !!mine0 || R.media === 'video' || !!R.camSeen, selfShow = mtPref('saga-call-selfshow', '1') !== '0';
+    R.ui.sv.hidden = !selfWant || !selfShow;
+    R.ui.slb.textContent = mine0 ? T('Du') : T('Du') + ' · ' + T('Kamera aus');
+    R.ui.w.classList.toggle('self-off', selfWant && !selfShow);
     R.ui.w.classList.toggle('screen', !!R.screen);
     if (!R.horn && MT && !!R.meshOn !== meshView(R)) { drawTiles(R); return; }
     if (c.tile) { drawTile(c); drawShare(R); playAudio(c); return; }

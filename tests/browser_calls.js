@@ -97,7 +97,7 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     ok('DTLS-Fingerabdruck gegen die signierte SDP geprueft (verified)', sa && sb && sa.verified && sb.verified);
     ok('Weg: direkt (ohne TURN)', sa && sa.path === 'direct', sa && sa.path);
     ok('Anruffenster zeigt "Ende-zu-Ende verschlüsselt" und "direkt"', /Ende-zu-Ende verschlüsselt/.test(await a.textContent('.cl-info')) && /direkt/.test(await a.textContent('.cl-info')));
-    const own = await until(() => bc.evaluate(() => { const v = document.querySelector('.cl-local'); return v && !v.hidden && v.videoWidth > 0 && v.videoWidth; }), 5000, 100);
+    const own = await until(() => bc.evaluate(() => { const w = document.querySelector('.cl-local'), v = w && w.querySelector('video'); return w && !w.hidden && v && v.videoWidth > 0 && v.videoWidth; }), 5000, 100);
     ok('Angerufene sieht ihr Eigenbild sofort (Web-Runde 2: erst nach ~2 min)', own, own);
     const vid = await bc.evaluate(() => { const v = document.querySelector('.cl-remote'); return v && v.videoWidth; });
     ok('Video des Gegenuebers sichtbar (videoWidth > 0)', vid > 0, vid);
