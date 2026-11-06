@@ -2923,3 +2923,8 @@ body.heute-page .rail-add .tsrc-target{max-width:6.2rem}
   /* Kopf entlastet: Chats, Marin und Heute stehen unten */
   body:has(.mob-tabs) .np-head :is(#hk-chats,.np-dash,.ai-btn,.np-pages){display:none}
 }
+/* Schnellsuche: Websuche (SearXNG) - Treffer mit Host und Ausschnitt, Sofortantwort als ruhige Zeile */
+a.qs-web{text-decoration:none;color:var(--fg)}
+.qs-web .qs-web-host{font-size:.75rem;color:var(--muted)}
+.qs-web .pg-hit-s{color:var(--muted)}
+.qs-web-answer{margin:.3rem .6rem .5rem;padding:.5rem .7rem;border-radius:8px;background:var(--card-h);font-size:.88rem}

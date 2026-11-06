@@ -2218,7 +2218,8 @@
   var qs = { items: [], idx: 0 };
   var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   $('pg-qs-kbd').textContent = isMac ? '⌘K' : T('Strg') + ' K';
-  function openQS() { $('pg-qs').hidden = false; $('pg-qs-q').value = ''; renderQS(); $('pg-qs-q').focus(); }
+  var QS_WEB = document.body.dataset.web === '1';         // SearXNG eingerichtet: "Im Web suchen" (frueher Suchfeld auf Heute)
+  function openQS() { $('pg-qs').hidden = false; $('pg-qs-q').value = ''; qs.web = null; renderQS(); $('pg-qs-q').focus(); }
   function closeQS() { $('pg-qs').hidden = true; }
   function renderQS() {
     var q = $('pg-qs-q').value.trim().toLowerCase(), list = $('pg-qs-list');
@@ -2229,11 +2230,11 @@
                                      .sort(function (a, b) { return (rec.indexOf(b) >= 0) - (rec.indexOf(a) >= 0) || b.updated - a.updated; })
                  : rec.concat(allPages().filter(function (p) { return rec.indexOf(p) < 0; }).sort(function (a, b) { return b.updated - a.updated; }));
     if (!q && !cmdOnly) list.appendChild(el('div', 'menu-label', rec.length ? T('Zuletzt geöffnet') : T('Zuletzt bearbeitet')));
-    function item(text, sub, fn) {
+    function item(text, sub, fn, keep) {
       var b = el('button', 'picker-item'); b.type = 'button'; b.setAttribute('role', 'option');
       b.appendChild(el('span', 'picker-t', text)); if (sub) b.appendChild(el('span', 'picker-sub', sub));
-      b.addEventListener('click', function () { closeQS(); fn(); });
-      qs.items.push({ b: b, fn: fn }); list.appendChild(b);
+      b.addEventListener('click', function () { if (!keep) closeQS(); fn(); });
+      qs.items.push({ b: b, fn: fn, keep: keep }); list.appendChild(b);
       return b;
     }
     hits.slice(0, q ? 8 : 10).forEach(function (p) {
@@ -2253,6 +2254,7 @@
     if (q && !cmdOnly) item(T('+ Neue Seite „{name}“', { name: $('pg-qs-q').value.trim() }), '', function () {
       api('POST', '/api/notes', { title: $('pg-qs-q').value.trim() }).then(function (d) { return loadList().then(function () { return openPage(d.id); }); });
     });
+    if (q && !cmdOnly && QS_WEB) item('🌐 ' + T('Im Web suchen: „{q}“', { q: $('pg-qs-q').value.trim() }), '', function () { qsWeb($('pg-qs-q').value.trim(), 1); }, true);
     if (!qs.items.length) list.appendChild(el('div', 'pg-noresult', T('Nichts gefunden.')));
     qs.items.forEach(function (it, i) { it.b.classList.toggle('on', i === 0); });
     // Volltext (wie "Seiten durchsuchen"): Treffer im Inhalt nachladen, vor den Befehlen einfuegen
@@ -2281,12 +2283,46 @@
       }).catch(function () {});
     }, 200);
   }
+  // Websuche (SearXNG ueber /api/search, POST: Begriffe nicht im Access-Log): Ergebnisse ersetzen die Liste; Enter/Klick
+  // oeffnet den Treffer in einem neuen Tab, "Mehr laden" haengt die naechste Seite an, Tippen fuehrt zurueck zu den Seiten
+  function qsWeb(text, page) {
+    if (!text || (qs.web && qs.web.busy)) return;
+    var list = $('pg-qs-list');
+    if (page === 1) { list.textContent = ''; qs.items = []; qs.idx = 0; list.appendChild(el('div', 'menu-label', T('Web · „{q}“', { q: text }))); }
+    var more = list.querySelector('.qs-web-more'); if (more) { qs.items = qs.items.filter(function (it) { return it.b !== more; }); more.remove(); }
+    var load = el('div', 'pg-qs-hint', T('Suche läuft …')); list.appendChild(load);
+    qs.web = { q: text, page: page, busy: true };
+    fetch('/api/search', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Saga': '1' },
+      body: JSON.stringify({ q: text, page: page }) })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (x) {
+        load.remove(); if ($('pg-qs').hidden || !qs.web || qs.web.q !== text) return;
+        if (!x.ok) { list.appendChild(el('div', 'pg-noresult', x.d.error || T('Fehler bei der Suche'))); return; }
+        if (page === 1) (x.d.answers || []).forEach(function (a) { list.appendChild(el('div', 'qs-web-answer', a)); });
+        var start = qs.items.length;
+        (x.d.results || []).forEach(function (r) {
+          var b = el('a', 'picker-item qs-hit qs-web'); b.href = r.url; b.target = '_blank'; b.rel = 'noopener noreferrer'; b.setAttribute('role', 'option');
+          b.appendChild(el('span', 'picker-t', r.title)); b.appendChild(el('span', 'qs-web-host', r.host));
+          if (r.content) b.appendChild(el('span', 'pg-hit-s', r.content));
+          qs.items.push({ b: b, fn: function () { b.click(); }, keep: true }); list.appendChild(b);
+        });
+        if (page === 1 && !(x.d.results || []).length) list.appendChild(el('div', 'pg-noresult', T('Keine Ergebnisse.')));
+        if ((x.d.results || []).length && page < 10) {
+          var m = el('button', 'picker-item qs-web-more'); m.type = 'button'; m.setAttribute('role', 'option');
+          m.appendChild(el('span', 'picker-t', T('Mehr laden'))); var mf = function () { qsWeb(text, page + 1); };
+          m.addEventListener('click', mf); qs.items.push({ b: m, fn: mf, keep: true }); list.appendChild(m);
+        }
+        if (page === 1) { qs.idx = 0; qsHighlight(); } else if (qs.items[start]) { qs.idx = start; qsHighlight(); }
+      })
+      .catch(function () { load.remove(); list.appendChild(el('div', 'pg-noresult', T('Suche nicht erreichbar.'))); })
+      .then(function () { if (qs.web && qs.web.q === text) qs.web.busy = false; });
+  }
   function qsHighlight() { qs.items.forEach(function (it, i) { it.b.classList.toggle('on', i === qs.idx); if (i === qs.idx) it.b.scrollIntoView({ block: 'nearest' }); }); }
   $('pg-qs-q').addEventListener('input', renderQS);
   $('pg-qs-q').addEventListener('keydown', function (e) {
     if (e.key === 'ArrowDown') { e.preventDefault(); qs.idx = Math.min(qs.idx + 1, qs.items.length - 1); qsHighlight(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); qs.idx = Math.max(qs.idx - 1, 0); qsHighlight(); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (qs.items[qs.idx]) { closeQS(); qs.items[qs.idx].fn(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); var it = qs.items[qs.idx]; if (it) { if (!it.keep) closeQS(); it.fn(); } }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeQS(); }
   });
   $('pg-qs').addEventListener('mousedown', function (e) { if (e.target === this) closeQS(); });

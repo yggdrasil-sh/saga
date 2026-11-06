@@ -236,7 +236,8 @@ def notes_page(request: Request):
     html = tmpl.get_template("notes.html").render(title=title(), name=request.session.get("name", uid), v=ASSET_V, embed=embed,
                                                   chat_enabled=chat.enabled(), chat_unread=n_chat, me_avatar=avatars.my_url(uid),
                                                   admin_url=ADMIN_URL if user_info(uid)["is_admin"] else "",
-                                                  editor=editor_engine(uid))      # 2.5 (T2): editorjs | tiptap
+                                                  editor=editor_engine(uid),      # 2.5 (T2): editorjs | tiptap
+                                                  search_enabled=bool(SEARXNG_URL))   # Websuche in der Schnellsuche (SearXNG)
     headers = icon_csp(SEC_HEADERS, uid)             # Einstellungen -> Lesezeichen: Symbole direkt von der Seite
     if embed:
         headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("frame-ancestors 'none'", "frame-ancestors 'self'")

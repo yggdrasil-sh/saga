@@ -13,7 +13,7 @@
 {% if chat_enabled %}<link rel="stylesheet" href="/static/calls.css?v={{ v }}">{% endif %}
 <link rel="stylesheet" href="/static/ai.css?v={{ v }}">
 </head>
-<body class="notes-page{% if embed %} embed{% endif %}" data-v="{{ v }}" data-editor="{{ editor or 'editorjs' }}">
+<body class="notes-page{% if embed %} embed{% endif %}" data-v="{{ v }}" data-editor="{{ editor or 'editorjs' }}"{% if search_enabled %} data-web="1"{% endif %}>
 <a class="skip-link" href="#page" data-skip="pg-h1 pg-trash pg-empty pg-main">{{ _("Zum Inhalt") }}</a>
 <header class="np-head">
   <button type="button" class="icon-btn np-side-btn" id="pg-side-btn" title="{{ _("Seitenleiste ausblenden") }} ({{ _("Strg") }}+\)" aria-label="{{ _("Seitenleiste ein- oder ausblenden") }}" aria-pressed="true" aria-controls="pg-side">
@@ -145,7 +145,7 @@
 </div>
 <div class="qs" id="pg-qs" hidden>
   <div class="qs-box" role="dialog" aria-modal="true" aria-label="{{ _("Schnellsuche") }}">
-    <input type="text" id="pg-qs-q" placeholder="{{ _("Seite suchen … (Enter öffnet, Esc schließt)") }}" autocomplete="off" aria-label="{{ _("Seite suchen") }}">
+    <input type="text" id="pg-qs-q" placeholder="{{ _("Seite oder Befehl suchen …") }}" autocomplete="off" aria-label="{{ _("Seite suchen") }}">
     <div class="qs-list" id="pg-qs-list" role="listbox"></div>
   </div>
 </div>
