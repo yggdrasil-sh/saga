@@ -1343,6 +1343,9 @@
         { ic: 'archive', hint: !c.archived && n ? '+ ' + nSub(n) : '' }));
       m.appendChild(HK.menuItem(T('In den Papierkorb'), function () {
         var id = S.cur.id, name = label(S.cur), parent = S.cur.parent_id;
+        // Wohin danach: uebergeordnete Seite, sonst Nachbarseite davor/danach, sonst zuletzt geoeffnete - nie auf die leere Flaeche
+        var sibs = children(parent || null).map(function (x) { return x.id; }), at = sibs.indexOf(id);
+        var next = [parent, sibs[at - 1], sibs[at + 1]].concat(recents());
         save().then(function () { return api('DELETE', '/api/notes/' + id); }).then(function () {
           if (EMBED) {                     // im Peek: nicht zur uebergeordneten Seite springen - Peek schliessen (macht das Hauptfenster)
             S.cur = null; window.parent.postMessage({ hk: 'peek-deleted', id: id, name: name }, location.origin); return;
@@ -1352,7 +1355,10 @@
             api('POST', '/api/trash/' + id + '/restore').then(loadList).then(function () { return openPage(id); })
               .catch(function (err) { HK.toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
           });
-          return loadList().then(function () { if (parent && byId(parent)) return openPage(parent); renderTree(); });
+          return loadList().then(function () {
+            var to = next.filter(function (x) { return x && x !== id && byId(x); })[0];
+            if (to) return openPage(to); renderTree();
+          });
         }).catch(function (err) { HK.toast(T('Nicht gelöscht: {err}', { err: err.message })); });
       }, { ic: 'trash', danger: true, hint: n ? '+ ' + nSub(n) : '' }));
     });

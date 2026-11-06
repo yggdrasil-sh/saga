@@ -17,6 +17,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Web: Design-Runde (ruhiger, einheitlicher)
+- **Seite löschen:** Liegt die offene Seite im Papierkorb, öffnet Saga die übergeordnete Seite, sonst die Nachbarseite
+  davor bzw. danach oder die zuletzt geöffnete – statt einer leeren Fläche mit „Wähle links eine Seite“.
 - **Symbole in Menüs:** Ein eigener Satz Linien-Symbole (gleiche Größe, gleiche Strichstärke, ohne externe
   Bibliothek) ersetzt die bunten Emoji und Zeichen in Seitenmenü „···“, Neue-Seite-Menü, Blockmenü, Kontomenü,
   Spaltenkopf-Menü, /-Menü, Tabellen- und Chat-Menüs. Eigenschaftstypen haben eigene Symbole (Datum ist ein
