@@ -1,6 +1,6 @@
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 // Seitenmenue "···" (Design-Runde UX-18/19): Gruppen mit Trennern in fester Reihenfolge, "Link kopieren" per Menue und
-// Kuerzel (Strg+Alt+L bzw. ⌘⌥L, Kuerzel rechts im Menue), "Darstellung" als Untermenue mit sichtbarem Haken an der
+// Kuerzel (Strg+L bzw. ⌘L, Kuerzel rechts im Menue), "Darstellung" als Untermenue mit sichtbarem Haken an der
 // aktiven Schrift; "Teilen …"/"Veröffentlichen …" nur, wenn der Kopfzeilen-Knopf fehlt.
 //   SAGA_BASE=http://127.0.0.1:8099 SAGA_USER=konto SAGA_PASS=… [PLAYWRIGHT=…] node tests/browser_seitenmenue.js
 // Ein Konto mit Passwort; die Reihe legt ihre Seite selbst an und wirft sie am Ende in den Papierkorb.
@@ -44,7 +44,7 @@ async function until(f, ms) { const t0 = Date.now(); while (Date.now() - t0 < (m
   ok(s.filter(x => x !== '|').length <= 17, 'hoechstens 17 Eintraege (' + s.filter(x => x !== '|').length + ')');
   const li = await p.evaluate(() => { const it = [...document.querySelectorAll('.menu:not(.menu-sub) .menu-item')].find(x => x.querySelector('.mi-t').textContent === 'Link kopieren');
     return it && { kbd: (it.querySelector('kbd.mi-kbd') || {}).textContent || '', keys: it.getAttribute('aria-keyshortcuts'), svg: !!it.querySelector('.mi-ic svg') }; });
-  ok(li && /Alt\+L|⌘⌥L/.test(li.kbd) && /Alt\+L/.test(li.keys || '') && li.svg, 'Link kopieren: Kuerzel rechts, aria-keyshortcuts, Liniensymbol (' + JSON.stringify(li) + ')');
+  ok(li && /Strg\+L|Ctrl\+L|⌘L/.test(li.kbd) && /^(Control|Meta)\+L$/.test(li.keys || '') && li.svg, 'Link kopieren: Kuerzel rechts, aria-keyshortcuts, Liniensymbol (' + JSON.stringify(li) + ')');
 
   console.log('Link kopieren');
   const clip = () => p.evaluate(() => navigator.clipboard.readText());
@@ -54,12 +54,12 @@ async function until(f, ms) { const t0 = Date.now(); while (Date.now() - t0 < (m
   ok(await until(() => p.evaluate(() => /Link kopiert/.test(document.body.innerText))), 'Toast „Link kopiert“');
   await p.evaluate(() => navigator.clipboard.writeText('-'));
   await p.focus('#pg-title');
-  await p.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+KeyL' : 'Control+Alt+KeyL');
-  ok(await until(async () => (await clip()) === BASE.replace(/\/$/, '') + '/notes#' + id), 'Strg+Alt+L: Link in der Zwischenablage');
+  await p.keyboard.press(process.platform === 'darwin' ? 'Meta+KeyL' : 'Control+KeyL');
+  ok(await until(async () => (await clip()) === BASE.replace(/\/$/, '') + '/notes#' + id), 'Strg+L: Link in der Zwischenablage');
   await p.evaluate(() => navigator.clipboard.writeText('-'));
   await p.evaluate(() => document.activeElement.blur());
-  await p.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+KeyL' : 'Control+Alt+KeyL');
-  ok(await until(async () => (await clip()) === BASE.replace(/\/$/, '') + '/notes#' + id), 'Strg+Alt+L ausserhalb von Feldern (global auf der Seite)');
+  await p.keyboard.press(process.platform === 'darwin' ? 'Meta+KeyL' : 'Control+KeyL');
+  ok(await until(async () => (await clip()) === BASE.replace(/\/$/, '') + '/notes#' + id), 'Strg+L ausserhalb von Feldern (global auf der Seite)');
 
   console.log('Darstellung');
   const sub = () => p.evaluate(() => { const m = document.querySelector('.menu-sub:not([hidden])'); if (!m) return null;

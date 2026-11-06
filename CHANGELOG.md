@@ -46,7 +46,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Fokus bleibt nach dem Neuaufbau des Baums auf derselben Seite. Gilt auch für die Seitenleiste auf „Heute“ und Chats
   (dort führt ↓ im Suchfeld in den Baum).
 - **Seitenmenü „···“ aufgeräumt:** fünf Gruppen statt ~22 Einträgen nach Technik – Seite (Favorit, **Link kopieren**
-  mit Strg+Alt+L/⌘⌥L, Duplizieren, Verschieben), „Darstellung ›“ (Breite, Schrift mit sichtbarem Haken, kleiner Text,
+  mit dem vorhandenen Kürzel Strg+L/⌘L, Duplizieren, Verschieben), „Darstellung ›“ (Breite, Schrift mit sichtbarem Haken, kleiner Text,
   Titelbild, Sperre), Verlauf/Graph/KI, Import/Export/Vorlage/Startseite, Archiv/Papierkorb. „Teilen“ und
   „Veröffentlichen“ stehen nur noch im Menü, wo die Kopfzeile keinen Knopf dafür hat (Peek), „Kommentare“ nur, solange
   der Kommentar-Knopf fehlt. Kürzel stehen rechts wie im /-Menü. Board-Karten zeigen beim Datum ein Kalendersymbol.

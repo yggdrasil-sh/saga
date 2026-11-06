@@ -1320,7 +1320,7 @@
   // (2) Darstellung (Untermenue); (3) Verlauf, Graph, KI; (4) Import/Export/Vorlage/Startseite; (5) Archiv/Papierkorb.
   // "Teilen …"/"Veröffentlichen …" und "Kommentare" nur, wenn ihr Knopf in der Kopfzeile fehlt (Peek bzw. keine offenen
   // Kommentare) - was nur hier erreichbar ist, bleibt.
-  function linkItem(m) { m.appendChild(HK.menuItem(T('Link kopieren'), function () { copyLink(); }, { ic: 'link', kbd: isMac ? '⌘⌥L' : T('Strg') + '+Alt+L', keys: isMac ? 'Meta+Alt+L' : 'Control+Alt+L' })); }
+  function linkItem(m) { m.appendChild(HK.menuItem(T('Link kopieren'), function () { copyLink(); }, { ic: 'link', kbd: isMac ? '⌘L' : T('Strg') + '+L', keys: isMac ? 'Meta+L' : 'Control+L' })); }
   function headVisible(id) { var b = $(id); return !!b && !b.hidden && !EMBED; }
   function check(it, on, radio) {                     // Haken/Auswahl auch fuer Screenreader
     it.setAttribute('role', radio ? 'menuitemradio' : 'menuitemcheckbox'); it.setAttribute('aria-checked', on ? 'true' : 'false'); return it;
