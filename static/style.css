@@ -2731,3 +2731,56 @@ body.cd-open .cd-btn,body.ai-open .cd-btn{visibility:hidden}
 .cd-sw-b:hover:not(.on){color:var(--fg)}
 @media (min-width:1180px){body.cd-open:not(.embed) .np-main{padding-right:calc(400px + 3.8rem)}body.cd-open.has-side:not(.embed)>main,body.cd-open.has-side:not(.embed)>.dash-head{padding-right:calc(400px + 1.5rem)}}
 @media (max-width:760px){.cd-btn,.cd-panel{display:none}}
+
+/* ===== Design-Runde 06/07/08: Ruhe-Tokens fuer die Huelle =====================================================
+   Hellmodus "Papier" (VD-01/A11Y-02): Leseflaeche fast weiss, Leiste getoent; --muted auf --side-row jetzt 4,6:1 (vorher 4,17).
+   Warme, geschichtete Schatten statt 25-45 % Schwarz (VD-03/AE-20), heller Scrim (AE-21), kurze Eintritte fuer Menues,
+   Dialoge und Panels (AE-19), weiche Hover-Uebergaenge (AE-05). Dunkel: aktive Leistenzeile sichtbarer (VD-08). */
+:root{--side-row:#222c3a;--sh-1:0 1px 2px rgba(0,0,0,.3);--sh-pop:0 0 0 1px rgba(255,255,255,.04),0 12px 32px rgba(0,0,0,.45);
+  --sh-modal:0 0 0 1px rgba(255,255,255,.05),0 24px 64px rgba(0,0,0,.55);--scrim:rgba(4,7,12,.55)}
+@media (prefers-color-scheme: light){:root{--bg:#fdfcfa;--card-h:#f6f3ec;--border:#e7e2d7;--side-bg:#f6f4ef;--side-row:#ebe7de;
+  --sh-1:0 1px 2px rgba(60,45,20,.06);
+  --sh-pop:0 0 0 1px rgba(60,45,20,.06),0 4px 10px rgba(60,45,20,.06),0 16px 36px -8px rgba(60,45,20,.16);
+  --sh-modal:0 0 0 1px rgba(60,45,20,.06),0 10px 24px rgba(60,45,20,.08),0 32px 64px -16px rgba(60,45,20,.22);
+  --scrim:rgba(40,32,18,.22);
+  /* 07: deckende Pastellflaechen (auf getoenten Zeilen verschwimmen sie nicht); --tc-* darauf >= 4,5:1 */
+  --bc-gray:#ebeae7;--bc-brown:#f1e6df;--bc-orange:#fae5d3;--bc-yellow:#f8efc8;--bc-green:#ddedea;--bc-blue:#ddebf1;
+  --bc-purple:#eae4f2;--bc-pink:#f6e0eb;--bc-red:#fbe4e4}}
+.menu,.pm-pop,.pm-bubble{box-shadow:var(--sh-pop)}
+.modal-box,.qs-box,.hk-dialog{box-shadow:var(--sh-modal)}
+.modal,.qs,.ai-scrim,.cm-scrim,.pg-scrim,.peek.center{background:var(--scrim)}
+.ai-panel,.cm-panel,.cd-panel{box-shadow:var(--sh-modal);border-left-color:transparent}
+.ai-panel{background:var(--bg)}                          /* AE-35: wie das Chat-Panel daneben */
+body:is(.notes-page,.has-side):not(.embed) .np-head .ai-btn,.cd-btn{box-shadow:var(--sh-pop)}
+body:is(.notes-page,.has-side).side-hidden:not(.embed) .pages-side{box-shadow:var(--sh-pop)}
+.menu{animation:sg-pop .14s cubic-bezier(.2,.8,.2,1)}
+.modal-box,.qs-box,.hk-dialog{animation:sg-pop .18s cubic-bezier(.2,.8,.2,1)}
+.modal,.qs,.ai-scrim,.cm-scrim{animation:sg-fade .16s ease}
+@media (min-width:761px){.ai-panel,.cm-panel,.cd-panel{animation:sg-slide .2s cubic-bezier(.2,.8,.2,1)}}
+@keyframes sg-pop{from{opacity:0;transform:translateY(-4px) scale(.985)}}
+@keyframes sg-fade{from{opacity:0}}
+@keyframes sg-slide{from{opacity:0;transform:translateX(16px)}}
+.pg-row,.pg-nav-row,.pg-fav,.pg-foot-btn,.note-new,.menu-item,.db-tab,.dbl-row,.pg-head-b,.icon-btn{transition:background-color .12s ease,color .12s ease}
+
+/* 07 (VD-02/VD-27): DB-Etiketten aus einer Palette - Pastellflaeche + farbiger Text statt 40-%-Farbbloecke mit --fg */
+.opt{font-weight:500}
+.opt-gray{background:var(--bc-gray);color:var(--tc-gray)}.opt-brown{background:var(--bc-brown);color:var(--tc-brown)}
+.opt-orange{background:var(--bc-orange);color:var(--tc-orange)}.opt-yellow{background:var(--bc-yellow);color:var(--tc-yellow)}
+.opt-green{background:var(--bc-green);color:var(--tc-green)}.opt-blue{background:var(--bc-blue);color:var(--tc-blue)}
+.opt-purple{background:var(--bc-purple);color:var(--tc-purple)}.opt-pink{background:var(--bc-pink);color:var(--tc-pink)}
+.opt-red{background:var(--bc-red);color:var(--tc-red)}
+/* VD-28: auf eingefaerbten Karten/Zeilen bekommt das Etikett eine feine Kante, damit es nicht in der Flaeche verschwindet */
+:is(.board-card,.dbl-row,.cal-item).rc .opt{box-shadow:0 0 0 1px color-mix(in srgb,currentColor 25%,transparent)}
+
+/* 08 (AE-29/30, VD-31): Galerie-Karten neutral, Farbe nur leicht in der Vorschau; ohne Bild halb so hohe Vorschau */
+.dbg-card,.dbg-card.rc{background:var(--card);border:1px solid color-mix(in srgb,var(--border) 75%,transparent);border-radius:10px;
+  box-shadow:var(--sh-1);transition:box-shadow .15s ease,transform .15s ease,border-color .15s ease}
+.dbg-card:hover,.dbg-card:focus-visible{transform:translateY(-1px);border-color:var(--border);box-shadow:var(--sh-pop)}
+.dbg-card.rc .dbg-prev{background:color-mix(in srgb,var(--rc) 10%,var(--card))}
+.dbg-prev{border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent)}
+.dbg .dbg-prev:not(:has(img)),.dbg-l .dbg-prev:not(:has(img)){height:104px}
+.dbg-s .dbg-prev:not(:has(img)){height:72px}
+.dbg-ph{font-size:2.6rem;opacity:1}
+.dbg-card:has(.dbg-prev .dbg-ph) .dbg-tic{display:none}
+.dbg-body{padding:.7rem .85rem .85rem;gap:.3rem}
+@media (prefers-reduced-motion:reduce){.menu,.modal-box,.qs-box,.hk-dialog,.modal,.qs,.ai-scrim,.cm-scrim,.ai-panel,.cm-panel,.cd-panel{animation:none}}

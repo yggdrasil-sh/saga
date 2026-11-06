@@ -1,6 +1,6 @@
 /* Oeffentliche Seiten (/@name/<slug>, templates/public.html): schlicht, gut lesbar, ohne JavaScript.
    Farben wie Saga (hell/dunkel per prefers-color-scheme), Text mind. 4,5:1. */
-:root{--bg:#f3f1ec;--card:#fff;--fg:#1d2430;--muted:#5d6878;--accent:#7a5a12;--border:#d8d2c4;--code:#ebe6da;
+:root{--bg:#fdfcfa;--card:#fff;--fg:#1d2430;--muted:#5d6878;--accent:#7a5a12;--border:#e7e2d7;--code:#ebe6da;
 --warn:#8a5a00;--ok:#1f7a33;--down:#cf222e;--info:#0b5cad;color-scheme:light;
 --measure:42rem;--wide:62rem}  /* Lesebreite (~70 Zeichen) fuer Text; Bilder, Tabellen, Datenbanken, Spalten bis --wide */
 @media (prefers-color-scheme: dark){:root{--bg:#0f141c;--card:#18202c;--fg:#e6ebf2;--muted:#8b97a8;--accent:#c9a45c;--border:#263242;

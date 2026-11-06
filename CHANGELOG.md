@@ -28,6 +28,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Karte mit Rahmen, Tabellen haben nur noch waagrechte Haarlinien und einen ruhigen Kopf, „+ Tag“ erscheint erst beim
   Überfahren des Seitenkopfs (Tastatur und Touch unverändert), die Kopfknöpfe sind randlos (nur „Teilen“ behält einen
   Rahmen), Überschriften haben etwas mehr Abstand nach oben.
+- **Ruhigere Hülle:** Hellmodus „Papier“ (Lesefläche fast weiß, Seitenleiste leicht getönt, feinere Linien; die
+  aktive Leistenzeile erreicht jetzt 4,6:1), warme, weiche Schatten statt schwarzer, ein hellerer Hintergrund hinter
+  Dialogen, kurze Einblendungen für Menüs, Dialoge, Schnellsuche und Seitenpanels (bei „Bewegung reduzieren“ aus),
+  weiche Hover-Übergänge. **Datenbank-Etiketten** sind Pastellflächen mit farbigem Text statt satter Farbblöcke (eine
+  Palette mit den Textfarben), auf eingefärbten Karten mit feiner Kante. **Galerie-Karten** sind neutral, die Farbe
+  steht nur noch leicht in der Vorschau; ohne Titelbild ist die Vorschau halb so hoch (zwei volle Reihen je Bildschirm).
+  Im Dunkelmodus ist die aktive Leistenzeile besser zu sehen. Die öffentliche Seite nutzt dieselben hellen Farben.
 
 ### Galerie: Vorlage „Familien-Wiki“
 - Neue Vorlage (Persönlich) für die eigene Familie: Datenbank **„Familienmitglieder“** mit Generation, Spitzname,
