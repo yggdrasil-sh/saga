@@ -2863,7 +2863,7 @@ body:is(.notes-page,.has-side).side-hidden:not(.embed) .pages-side{box-shadow:va
 
 /* ===== Design-Runde 10/14: Bedienung und Kontrast ================================================================
    10 (UX-23): Chat- und Marin-Knopf lagen ueber "Kommentieren" - sie weichen dem Kommentar-Panel */
-body.cm-open .cd-btn,body.cm-open .np-head .ai-btn{visibility:hidden!important}
+body.cm-open .cd-btn,body.cm-open .np-head .ai-btn,body.cd-open .np-head .ai-btn,body.ai-open .np-head .ai-btn{visibility:hidden!important}   /* schwebende Knoepfe weichen jedem rechten Panel (verdeckten sonst Senden/Kommentieren) */
 /* 14 (A11Y-01/16): Platzhalter nicht im Browsergrau (3,4:1), sondern --muted */
 ::placeholder{color:var(--muted);opacity:1}
 .page-title::placeholder{color:color-mix(in srgb,var(--muted) 80%,transparent)}

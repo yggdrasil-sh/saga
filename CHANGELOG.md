@@ -19,8 +19,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ### Web: Design-Runde (ruhiger, einheitlicher)
 - **Seitenleiste ausgeblendet:** Sie klappt nur noch am linken Rand bzw. über dem Seitenleisten-Knopf auf, nicht mehr beim
   Überfahren der ganzen Kopfzeile (auch rechts bei „Teilen“ und „···“).
-- **Schwebende Seitenleiste:** Sie bleibt offen, solange die Maus über dem Kontoknopf unten steht oder ein Menü aus der
-  Leiste (z. B. das Kontomenü) offen ist – vorher klappte sie am unteren Rand zu, bevor man klicken konnte.
+- **Chat-Panel:** Der schwebende Marin-Knopf verdeckt den Senden-Knopf nicht mehr; er weicht wie der Chat-Knopf jedem
+  rechten Panel.
+- **Schwebende Seitenleiste:** Sie bleibt offen, solange die Maus im Bereich der Leiste steht (auch oben über „Saga“ und
+  Glocke und unten über dem Kontoknopf) oder ein Menü aus der Leiste offen ist – vorher klappte sie oben und unten zu,
+  bevor man klicken konnte.
 - **Gesperrte Seite:** Statt der Pille „🔒 Gesperrt“ steht oben nur noch ein stilles Linien-Schloss neben „Teilen“; beim
   Überfahren zeigt es dem Eigentümer das offene Schloss, ein Klick entsperrt.
 - **Seite löschen:** Liegt die offene Seite im Papierkorb, öffnet Saga die übergeordnete Seite, bei Seiten auf oberster
