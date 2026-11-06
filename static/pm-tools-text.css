@@ -8,12 +8,12 @@
 .page-body .pm-tbl td{border:0;border-bottom:1px solid color-mix(in srgb,var(--border) 70%,transparent);padding:6px 10px;vertical-align:top;min-width:40px;overflow-wrap:anywhere}
 /* Design-Runde 01 (VD-23/AE-13): nur waagrechte Haarlinien, Kopf ruhig in --muted statt Vollgitter mit cremigem Kopf */
 .page-body .pm-tbl tr:first-child>td{border-top:1px solid color-mix(in srgb,var(--border) 70%,transparent)}
-.page-body .pm-tbl.pm-tbl-head tr:first-child>td{font-weight:600;font-size:.8rem;color:var(--muted);background:transparent;border-bottom-color:var(--border)}
+.page-body .pm-tbl.pm-tbl-head tr:first-child>td{font-weight:600;font-size:var(--fs-sm);color:var(--muted);background:transparent;border-bottom-color:var(--border)}
 .page-body .pm-tbl.pm-tbl-hcol tr>td:first-child{font-weight:600;background:transparent}
 .page-body .pm-b-table.pm-tbl-stretched{margin-inline:calc(-1 * min(6vw, 4rem))}
 .page-body .pm-tbl-bar{position:absolute;top:0;left:2px;display:flex;gap:.25rem;opacity:0;pointer-events:none;transition:opacity .12s}
 .page-body .pm-b-table.pm-tbl-on .pm-tbl-bar{opacity:1;pointer-events:auto}
-.page-body .pm-tbl-b{border:1px solid var(--border);background:var(--card);color:var(--muted);font:inherit;font-size:.72rem;padding:.08rem .45rem;border-radius:5px;cursor:pointer}
+.page-body .pm-tbl-b{border:1px solid var(--border);background:var(--card);color:var(--muted);font:inherit;font-size:var(--fs-xs);padding:.08rem .45rem;border-radius:5px;cursor:pointer}
 .page-body .pm-tbl-b:hover{color:var(--fg);background:var(--card-h)}
 .page-body .pm-tbl-add{position:absolute;border:1px dashed var(--border);background:none;color:var(--muted);font:inherit;cursor:pointer;opacity:0;transition:opacity .12s;border-radius:4px}
 .page-body .pm-b-table:hover .pm-tbl-add{opacity:.8}
@@ -27,7 +27,7 @@
 .page-body .pm-doc[contenteditable="false"] :is(.pm-tbl-bar,.pm-tbl-add,.pm-tbl-rs){display:none}
 /* Code (Kopf/Mermaid-Ansichten wie .hk-code in style.css; Text verwaltet ProseMirror) */
 .page-body .pm-b-code{padding:0}
-.page-body .pm-code-pre{margin:0;padding:.65rem .8rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.84rem;line-height:1.5;
+.page-body .pm-code-pre{margin:0;padding:.65rem .8rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:var(--fs-base);line-height:1.5;
   white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2;min-height:2.4rem;color:var(--fg);box-sizing:border-box}
 .page-body .pm-code-pre code{font:inherit;background:none;padding:0;color:inherit;display:block;outline:none;min-height:1.5em}
 .page-body .pm-doc[contenteditable="false"] .hk-code-views .hk-code-vb{cursor:pointer}

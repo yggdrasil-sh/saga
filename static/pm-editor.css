@@ -11,7 +11,7 @@
 .page-body .pm-b-header h1{font-size:1.875rem;line-height:1.3;font-weight:700;letter-spacing:-.01em}
 .page-body .pm-b-header h2{font-size:1.5rem;line-height:1.3;font-weight:700;letter-spacing:-.01em}
 .page-body .pm-b-header h3{font-size:1.25rem;line-height:1.3;font-weight:700}
-.page-body .pm-b-header h4{font-size:1rem;line-height:1.4;font-weight:650}
+.page-body .pm-b-header h4{font-size:1rem;line-height:1.4;font-weight:600}
 .page-body .pm-blk[class*="hk-bg-"]{padding-inline:.45rem}
 .page-body .pm-blk[class*="hk-c-"] .pm-in{color:inherit}
 /* Platzhalter (E7): eigene Dekoration data-ph an leeren Textbloecken */
@@ -23,8 +23,8 @@
 .page-body .pm-doc [data-pm-part].is-empty[data-ph]::before{left:0;top:0}
 /* Zitat */
 .page-body .pm-quote{border-left:3px solid var(--fg);padding:.15rem .9rem;margin:.25rem 0}
-.page-body .pm-quote [data-pm-part="qtext"]{font-size:1.05rem}
-.page-body .pm-quote [data-pm-part="qcap"]{color:var(--muted);font-size:.9rem}
+.page-body .pm-quote [data-pm-part="qtext"]{font-size:var(--fs-md)}
+.page-body .pm-quote [data-pm-part="qcap"]{color:var(--muted);font-size:var(--fs-base)}
 .page-body .pm-quote.pm-al-center{text-align:center}
 .page-body .pm-qal{position:absolute;right:2px;top:2px;opacity:0}
 .page-body .pm-quote:hover .pm-qal{opacity:.7}
@@ -35,7 +35,7 @@
 .page-body .pm-callout > .pm-in{flex:1;min-width:0}
 .page-body .pm-nb{border:0;background:none;color:inherit;font:inherit;cursor:pointer;padding:0 .15rem;border-radius:4px;line-height:1.6}
 .page-body .pm-nb:hover{background:var(--card-h)}
-.page-body .pm-emo{font-size:1.15rem}
+.page-body .pm-emo{font-size:var(--fs-lg)}
 /* Trennlinie */
 .page-body .pm-b-delimiter{padding:.6rem 0}
 .page-body .pm-b-delimiter hr{border:0;border-top:1px solid var(--border);margin:0}
@@ -60,15 +60,15 @@
 .page-body .pm-ls-ordered.pm-ct-upper-alpha .pm-li::before{content:counter(pmli, upper-alpha) "."}
 .page-body .pm-check{position:absolute;left:-1.45rem;top:.3em;width:1rem;height:1rem;padding:0;border:1.5px solid var(--muted);border-radius:4px}
 .page-body .pm-done > .pm-check{background:var(--accent);border-color:var(--accent)}
-.page-body .pm-done > .pm-check::after{content:"✓";color:var(--bg);font-size:.75rem;line-height:1;position:absolute;left:2px;top:0}
+.page-body .pm-done > .pm-check::after{content:"✓";color:var(--bg);font-size:var(--fs-xs);line-height:1;position:absolute;left:2px;top:0}
 .page-body .pm-done > .pm-li-c > [data-pm-part="ltext"]{color:var(--muted);text-decoration:line-through}
 /* Karten (Werkzeuge, die T2 noch nicht bearbeitet) */
 .page-body .pm-card{display:flex;gap:.7rem;align-items:center;border:1px dashed var(--border);border-radius:8px;padding:.6rem .8rem;margin:.3rem 0;
   background:color-mix(in srgb,var(--card) 60%,transparent);cursor:default;user-select:none}
-.page-body .pm-card-ic{font-size:1.1rem;width:1.6rem;text-align:center;color:var(--muted)}
+.page-body .pm-card-ic{font-size:var(--fs-lg);width:1.6rem;text-align:center;color:var(--muted)}
 .page-body .pm-card-t{display:flex;flex-direction:column;min-width:0}
 .page-body .pm-card-pv{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.page-body .pm-card-h{color:var(--muted);font-size:.8rem}
+.page-body .pm-card-h{color:var(--muted);font-size:var(--fs-sm)}
 /* Mehrfachauswahl (Fassade select) */
 .page-body .pm-sel{background:color-mix(in srgb,var(--accent) 16%,transparent)}
 .page-body .pm-conflict{box-shadow:inset 3px 0 0 var(--warn, #e0a030)}
@@ -77,13 +77,13 @@
 .pm-pop{max-height:340px;min-width:240px}
 .pm-slash{width:300px}
 .pm-mi-t{display:flex;flex-direction:column;min-width:0;flex:1}
-.pm-mi-d{font-size:.75rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pm-mi-k{font:inherit;font-size:.72rem;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 .3rem}
+.pm-mi-d{font-size:var(--fs-xs);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pm-mi-k{font:inherit;font-size:var(--fs-xs);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 .3rem}
 .pm-pop .hk-emo-e svg{width:17px;height:17px;vertical-align:middle}
 /* Formatierungsleiste (E8): 0,15 s einblenden */
 .pm-bubble{position:absolute;z-index:130;display:flex;align-items:center;gap:1px;background:var(--card);border:1px solid var(--border);border-radius:8px;
   box-shadow:0 8px 24px rgba(0,0,0,.3);padding:3px;transition:opacity .15s ease;flex-wrap:wrap;max-width:min(560px,calc(100vw - 16px))}
-.pm-bb{border:0;background:none;color:var(--fg);font:inherit;font-size:.86rem;min-width:28px;height:28px;padding:0 .4rem;border-radius:5px;cursor:pointer}
+.pm-bb{border:0;background:none;color:var(--fg);font:inherit;font-size:var(--fs-base);min-width:28px;height:28px;padding:0 .4rem;border-radius:5px;cursor:pointer}
 .pm-bb:hover{background:var(--card-h)}
 .pm-bb.on{color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
 .pm-bb-b{font-weight:700}.pm-bb-i{font-style:italic}.pm-bb-u{text-decoration:underline}.pm-bb-s{text-decoration:line-through}
@@ -92,8 +92,8 @@
 .pm-blink[hidden]{display:none}
 .pm-blink .hk-in{width:100%}
 /* T6: "Kleiner Text" (p-small, 14 px) wie Editor.js */
-.page.p-small .page-body .pm-doc{font-size:.875rem}
-@media (max-width:760px){.page-body .pm-doc{font-size:16px}.page.p-small .page-body .pm-doc{font-size:.875rem}.pm-slash{width:min(300px,calc(100vw - 16px))}}
+.page.p-small .page-body .pm-doc{font-size:var(--fs-base)}
+@media (max-width:760px){.page-body .pm-doc{font-size:16px}.page.p-small .page-body .pm-doc{font-size:var(--fs-base)}.pm-slash{width:min(300px,calc(100vw - 16px))}}
 /* T6: Handy wie Editor.js (mobiles Popover): Slash-Menue als Leiste unten ueber die volle Breite (place() setzt nur left/top) */
 @media (max-width:650px){.pm-slash.pm-pop{left:8px!important;right:8px;width:auto;top:auto!important;bottom:8px;max-height:45vh}}
 /* --- Struktur (T3, static/pm-struktur.js) ------------------------------------------------------------------------ */
@@ -112,7 +112,7 @@
 @media (max-width:760px){.page-body .pm-cols-rs{display:none}}
 /* Toggle: Titel mit Pfeil, Inhalt eingerueckt mit Linie; zugeklappt per CSS verborgen (bleibt im Dokument) */
 .page-body .pm-tgl{padding-left:1.6rem}
-.page-body .pm-tgl-btn{position:absolute;left:0;top:3px;width:1.4rem;height:1.6em;color:var(--muted);font-size:.8rem;transition:transform .12s}
+.page-body .pm-tgl-btn{position:absolute;left:0;top:3px;width:1.4rem;height:1.6em;color:var(--muted);font-size:var(--fs-sm);transition:transform .12s}
 .page-body .pm-tgl.open > .pm-tgl-btn{transform:rotate(90deg)}
 .page-body .pm-tgl-c > [data-pm-part="ttitle"]{font-weight:600;min-height:1.6em}
 .page-body .pm-tgl-c > :not([data-pm-part]){border-left:2px solid var(--border);padding-left:.8rem;margin-left:-.1rem}
@@ -123,7 +123,7 @@
 .page-body .pm-tgl-h1 > .pm-tgl-c > [data-pm-part="ttitle"]{font-size:1.875rem}
 .page-body .pm-tgl-h2 > .pm-tgl-c > [data-pm-part="ttitle"]{font-size:1.5rem}
 .page-body .pm-tgl-h3 > .pm-tgl-c > [data-pm-part="ttitle"]{font-size:1.25rem}
-.page-body .pm-tgl-empty{display:block;border:0;background:none;color:var(--muted);font:inherit;font-size:.9rem;cursor:pointer;padding:.1rem .8rem;
+.page-body .pm-tgl-empty{display:block;border:0;background:none;color:var(--muted);font:inherit;font-size:var(--fs-base);cursor:pointer;padding:.1rem .8rem;
   border-left:2px solid var(--border);text-align:left}
 .page-body .pm-tgl-empty[hidden]{display:none}
 /* Synchronisiert (Rahmen/Leiste aus style.css .hk-sync) */
@@ -160,7 +160,7 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
 .page-body .pm-img.image-tool--withBackground .image-tool__image{padding:15px}
 .page-body .pm-img.image-tool--withBackground .image-tool__image-picture{max-width:60%}
 .page-body .pm-img.hk-iw.image-tool--withBackground .image-tool__image-picture{max-width:100%}
-.page-body .pm-img-cap{color:var(--muted);font-size:.85rem;text-align:center;min-height:1.2em;outline:none}
+.page-body .pm-img-cap{color:var(--muted);font-size:var(--fs-base);text-align:center;min-height:1.2em;outline:none}
 .page-body .pm-img-cap>[data-pm-part]{display:block;outline:none}
 .page-body .pm-img-cap .is-empty[data-ph]::before{left:50%;transform:translateX(-50%);white-space:nowrap}
 
@@ -173,7 +173,7 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
 .page-body .pm-att-tx{display:flex;flex-direction:column;min-width:0;flex:1;gap:2px}
 .page-body .pm-att-t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
 .page-body .pm-att-in{border:0;background:transparent;padding:0;font:inherit;font-weight:600;width:100%;outline:none}
-.page-body .pm-att-sz{font-size:.78rem;color:var(--muted)}
+.page-body .pm-att-sz{font-size:var(--fs-sm);color:var(--muted)}
 .page-body .pm-att-dl{padding:.3rem .5rem;border-radius:6px;color:var(--fg);text-decoration:none;background:var(--card)}
 .page-body .pm-att-dl:hover{background:var(--card-h)}
 .page-body .pm-att-none{color:var(--muted)}
@@ -195,10 +195,10 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
    Zeile, absolut positioniert (kein Layoutsprung beim Tippen), nur solange das Dokument leer ist */
 #pg-editor{position:relative}
 .ux-start{position:absolute;top:2.4rem;left:0;z-index:2;display:flex;flex-direction:column;gap:.1rem;max-width:22rem;user-select:none}
-.ux-start-h{font-size:.78rem;color:var(--muted);margin:0 0 .3rem 6px}
+.ux-start-h{font-size:var(--fs-sm);color:var(--muted);margin:0 0 .3rem 6px}
 .ux-start-l{display:flex;flex-direction:column;gap:.1rem}
 .ux-start-i{appearance:none;display:flex;align-items:center;gap:.55rem;width:100%;min-height:32px;padding:.3rem 6px;border:0;border-radius:6px;
-  background:transparent;color:var(--muted);font:inherit;font-size:.92rem;text-align:left;cursor:pointer}
+  background:transparent;color:var(--muted);font:inherit;font-size:var(--fs-base);text-align:left;cursor:pointer}
 .ux-start-i:hover,.ux-start-i.on{color:var(--fg);background:var(--side-row)}
 .ux-start-i.on{box-shadow:inset 3px 0 0 var(--accent)}
 .ux-start-i:focus-visible{outline:2px solid var(--accent);outline-offset:1px;color:var(--fg)}
