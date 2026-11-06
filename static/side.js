@@ -27,12 +27,22 @@
   var peekT = 0;
   function peek(on, now) {
     clearTimeout(peekT);
-    if (!on) { if (now) body.classList.remove('side-peek'); else peekT = setTimeout(function () { body.classList.remove('side-peek'); }, 280); return; }
+    if (!on) {
+      if (now) { body.classList.remove('side-peek'); return; }
+      // Menue aus der Leiste offen (z. B. Kontomenue): offen lassen, bis es zu ist und die Maus nicht mehr ueber der Leiste
+      var drop = function () {
+        var me = $('hk-user');   // Kontoknopf liegt im DOM in der Kopfzeile, optisch unten in der Leiste
+        if (HK.menuFrom && (HK.menuFrom(side) || HK.menuFrom(me))) { peekT = setTimeout(drop, 300); return; }
+        if (side.matches(':hover') || (me && me.matches(':hover'))) return;
+        body.classList.remove('side-peek');
+      };
+      peekT = setTimeout(drop, 280); return;
+    }
     if (fine.matches && wide.matches && body.classList.contains('side-hidden')) body.classList.add('side-peek');
   }
   setSide(store('hk-pg-side') !== '0');
   var zone = el('div', 'pg-peek-zone'); zone.setAttribute('aria-hidden', 'true'); body.appendChild(zone);
-  [zone, $('pg-side-btn'), side].forEach(function (x) {
+  [zone, $('pg-side-btn'), side, $('hk-user')].forEach(function (x) {
     if (!x) return;
     x.addEventListener('mouseenter', function () { peek(true); });
     x.addEventListener('mouseleave', function () { if (body.classList.contains('side-peek')) peek(false); });

@@ -566,6 +566,8 @@
   window.HK.theme = window.SagaTheme || { get: function () { return 'auto'; }, set: function () {}, toggle: function () {},
     dark: function () { return !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); } };
   window.HK.isDark = function () { return window.HK.theme.dark(); };
+  // Ist gerade ein Menue offen, das aus `box` heraus geoeffnet wurde? (Schwebende Seitenleiste bleibt dann offen)
+  window.HK.menuFrom = function (box) { return !!(box && !menuEl.hidden && menuOwner && box.contains(menuOwner)); };
   // Seite geloescht und nach "Heute" gewechselt (pages.js): "Rueckgaengig" hier anbieten (hoechstens 30 s alt)
   (function () {
     var d = null; try { d = JSON.parse(sessionStorage.getItem('hk-del-undo') || 'null'); sessionStorage.removeItem('hk-del-undo'); } catch (e) { return; }
