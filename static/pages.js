@@ -1342,6 +1342,7 @@
         sm.appendChild(check(HK.menuItem(T('Kleiner Text'), function () { setDesign({ small: !c.small }); }, { ic: 'type-small', on: !!c.small }), !!c.small));
       }
       if (!own) return;
+      sm.appendChild(el('div', 'menu-sep'));
       // Bughunt D17: auf Touch-Geraeten steht "Titelbild" nicht mehr dauerhaft ueber dem Titel, sondern hier
       if (!c.cover && !c.locked) sm.appendChild(HK.menuItem(T('Titelbild'), function () { coverMenu(btn); }, { ic: 'image' }));
       sm.appendChild(check(HK.menuItem(c.locked ? T('Seite entsperren') : T('Seite sperren'), function () { setLocked(!c.locked); },
