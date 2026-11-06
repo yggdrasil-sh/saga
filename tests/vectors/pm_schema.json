@@ -10577,6 +10577,879 @@
      "data": {
       "accent": "green",
       "cfg": {
+       "agg": "count",
+       "db": null,
+       "fmt": "num",
+       "prop": "",
+       "view": "alle"
+      },
+      "kind": "metric",
+      "size": "s",
+      "style": "card",
+      "title": "Familienmitglieder",
+      "v": 1
+     },
+     "id": "wfam01",
+     "type": "widget"
+    }
+   ],
+   "name": "galerie familie.json #0",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "data": {
+        "accent": "green",
+        "cfg": {
+         "agg": "count",
+         "db": null,
+         "fmt": "num",
+         "prop": "",
+         "view": "alle"
+        },
+        "kind": "metric",
+        "size": "s",
+        "style": "card",
+        "title": "Familienmitglieder",
+        "v": 1
+       },
+       "id": "wfam01"
+      },
+      "type": "widget"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "accent": "orange",
+      "cfg": {
+       "agg": "count",
+       "db": null,
+       "fmt": "num",
+       "prop": "",
+       "view": "tabelle"
+      },
+      "kind": "metric",
+      "size": "s",
+      "style": "card",
+      "title": "Erinnerungen",
+      "v": 1
+     },
+     "id": "wfam02",
+     "type": "widget"
+    }
+   ],
+   "name": "galerie familie.json #1",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "data": {
+        "accent": "orange",
+        "cfg": {
+         "agg": "count",
+         "db": null,
+         "fmt": "num",
+         "prop": "",
+         "view": "tabelle"
+        },
+        "kind": "metric",
+        "size": "s",
+        "style": "card",
+        "title": "Erinnerungen",
+        "v": 1
+       },
+       "id": "wfam02"
+      },
+      "type": "widget"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "accent": "purple",
+      "cfg": {
+       "agg": "count",
+       "db": null,
+       "fmt": "num",
+       "prop": "",
+       "view": "geburtstage"
+      },
+      "kind": "metric",
+      "size": "s",
+      "style": "card",
+      "title": "Geburtstage in 60 Tagen",
+      "v": 1
+     },
+     "id": "wfam03",
+     "type": "widget"
+    }
+   ],
+   "name": "galerie familie.json #2",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "data": {
+        "accent": "purple",
+        "cfg": {
+         "agg": "count",
+         "db": null,
+         "fmt": "num",
+         "prop": "",
+         "view": "geburtstage"
+        },
+        "kind": "metric",
+        "size": "s",
+        "style": "card",
+        "title": "Geburtstage in 60 Tagen",
+        "v": 1
+       },
+       "id": "wfam03"
+      },
+      "type": "widget"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "accent": "pink",
+      "cfg": {
+       "items": [
+        "Wurzeln geben Halt, Zweige geben Freiheit.",
+        "Jede Familie hat Geschichten, die es wert sind, weitererzählt zu werden.",
+        "Wer weiß, woher er kommt, findet leichter seinen Weg.",
+        "Erinnerungen sind das Band zwischen den Generationen.",
+        "Am Küchentisch entstehen die schönsten Familiengeschichten."
+       ],
+       "pick": "daily",
+       "src": "fixed"
+      },
+      "kind": "quote",
+      "size": "m",
+      "style": "card",
+      "title": "Familien-Gedanke",
+      "v": 1
+     },
+     "id": "wfam04",
+     "type": "widget"
+    }
+   ],
+   "name": "galerie familie.json #3",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "data": {
+        "accent": "pink",
+        "cfg": {
+         "items": [
+          "Wurzeln geben Halt, Zweige geben Freiheit.",
+          "Jede Familie hat Geschichten, die es wert sind, weitererzählt zu werden.",
+          "Wer weiß, woher er kommt, findet leichter seinen Weg.",
+          "Erinnerungen sind das Band zwischen den Generationen.",
+          "Am Küchentisch entstehen die schönsten Familiengeschichten."
+         ],
+         "pick": "daily",
+         "src": "fixed"
+        },
+        "kind": "quote",
+        "size": "m",
+        "style": "card",
+        "title": "Familien-Gedanke",
+        "v": 1
+       },
+       "id": "wfam04"
+      },
+      "type": "widget"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "level": 2,
+      "text": "🎂 Nächste Geburtstage"
+     },
+     "id": "v151x1",
+     "type": "header"
+    },
+    {
+     "data": {
+      "db": "$ref:personen",
+      "hide_title": true,
+      "view": "geburtstage",
+      "views": null
+     },
+     "id": "v151x2",
+     "type": "database"
+    }
+   ],
+   "name": "galerie familie.json #4",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v151x1",
+       "level": 2
+      },
+      "content": [
+       {
+        "text": "🎂 Nächste Geburtstage",
+        "type": "text"
+       }
+      ],
+      "type": "header"
+     },
+     {
+      "attrs": {
+       "data": {
+        "db": "$ref:personen",
+        "hide_title": true,
+        "view": "geburtstage",
+        "views": null
+       },
+       "id": "v151x2"
+      },
+      "type": "database"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "level": 2,
+      "text": "📸 Neueste Erinnerungen"
+     },
+     "id": "v152x1",
+     "type": "header"
+    },
+    {
+     "data": {
+      "db": "$ref:erinnerungen",
+      "hide_title": true,
+      "view": "galerie",
+      "views": null
+     },
+     "id": "v152x2",
+     "type": "database"
+    }
+   ],
+   "name": "galerie familie.json #5",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v152x1",
+       "level": 2
+      },
+      "content": [
+       {
+        "text": "📸 Neueste Erinnerungen",
+        "type": "text"
+       }
+      ],
+      "type": "header"
+     },
+     {
+      "attrs": {
+       "data": {
+        "db": "$ref:erinnerungen",
+        "hide_title": true,
+        "view": "galerie",
+        "views": null
+       },
+       "id": "v152x2"
+      },
+      "type": "database"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "level": 3,
+      "text": "📌 Steckbrief"
+     },
+     "id": "v153x1",
+     "type": "header"
+    },
+    {
+     "data": {
+      "items": [
+       {
+        "content": "Lieblingsessen: ",
+        "items": [],
+        "meta": {}
+       },
+       {
+        "content": "Hobbys: ",
+        "items": [],
+        "meta": {}
+       },
+       {
+        "content": "Lebensmotto: ",
+        "items": [],
+        "meta": {}
+       }
+      ],
+      "meta": {},
+      "style": "unordered"
+     },
+     "id": "v153x2",
+     "type": "list"
+    }
+   ],
+   "name": "galerie familie.json #6",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v153x1",
+       "level": 3
+      },
+      "content": [
+       {
+        "text": "📌 Steckbrief",
+        "type": "text"
+       }
+      ],
+      "type": "header"
+     },
+     {
+      "attrs": {
+       "id": "v153x2",
+       "listStyle": "unordered",
+       "meta": {}
+      },
+      "content": [
+       {
+        "attrs": {
+         "id": "l7fb0285a2",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [
+           {
+            "text": "Lieblingsessen: ",
+            "type": "text"
+           }
+          ],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       },
+       {
+        "attrs": {
+         "id": "l4114e030c",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [
+           {
+            "text": "Hobbys: ",
+            "type": "text"
+           }
+          ],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       },
+       {
+        "attrs": {
+         "id": "l3485edd0d",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [
+           {
+            "text": "Lebensmotto: ",
+            "type": "text"
+           }
+          ],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       }
+      ],
+      "type": "list"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "level": 3,
+      "text": "🏡 Lebensstationen"
+     },
+     "id": "v154x1",
+     "type": "header"
+    },
+    {
+     "data": {
+      "items": [
+       {
+        "content": "",
+        "items": [],
+        "meta": {}
+       }
+      ],
+      "meta": {},
+      "style": "unordered"
+     },
+     "id": "v154x2",
+     "type": "list"
+    }
+   ],
+   "name": "galerie familie.json #7",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v154x1",
+       "level": 3
+      },
+      "content": [
+       {
+        "text": "🏡 Lebensstationen",
+        "type": "text"
+       }
+      ],
+      "type": "header"
+     },
+     {
+      "attrs": {
+       "id": "v154x2",
+       "listStyle": "unordered",
+       "meta": {}
+      },
+      "content": [
+       {
+        "attrs": {
+         "id": "l34db00a97",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       }
+      ],
+      "type": "list"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "text": ""
+     },
+     "id": "v155x1",
+     "type": "paragraph"
+    }
+   ],
+   "name": "galerie familie.json #8",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v155x1"
+      },
+      "content": [],
+      "type": "paragraph"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "text": ""
+     },
+     "id": "v156x1",
+     "type": "paragraph"
+    }
+   ],
+   "name": "galerie familie.json #9",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v156x1"
+      },
+      "content": [],
+      "type": "paragraph"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "text": ""
+     },
+     "id": "v157x1",
+     "type": "paragraph"
+    }
+   ],
+   "name": "galerie familie.json #10",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v157x1"
+      },
+      "content": [],
+      "type": "paragraph"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "level": 3,
+      "text": "📌 Steckbrief"
+     },
+     "id": "v158x1",
+     "type": "header"
+    },
+    {
+     "data": {
+      "items": [
+       {
+        "content": "Lieblingsessen: Pflaumenkuchen mit Sahne",
+        "items": [],
+        "meta": {}
+       },
+       {
+        "content": "Hobbys: Garten, Kreuzworträtsel, Chorsingen",
+        "items": [],
+        "meta": {}
+       },
+       {
+        "content": "Lebensmotto: „Erst mal einen Kaffee.“",
+        "items": [],
+        "meta": {}
+       }
+      ],
+      "meta": {},
+      "style": "unordered"
+     },
+     "id": "v158x2",
+     "type": "list"
+    }
+   ],
+   "name": "galerie familie.json #11",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v158x1",
+       "level": 3
+      },
+      "content": [
+       {
+        "text": "📌 Steckbrief",
+        "type": "text"
+       }
+      ],
+      "type": "header"
+     },
+     {
+      "attrs": {
+       "id": "v158x2",
+       "listStyle": "unordered",
+       "meta": {}
+      },
+      "content": [
+       {
+        "attrs": {
+         "id": "lbfadfbc87",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [
+           {
+            "text": "Lieblingsessen: Pflaumenkuchen mit Sahne",
+            "type": "text"
+           }
+          ],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       },
+       {
+        "attrs": {
+         "id": "l9238d532f",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [
+           {
+            "text": "Hobbys: Garten, Kreuzworträtsel, Chorsingen",
+            "type": "text"
+           }
+          ],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       },
+       {
+        "attrs": {
+         "id": "l2da7a8c87",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [
+           {
+            "text": "Lebensmotto: „Erst mal einen Kaffee.“",
+            "type": "text"
+           }
+          ],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       }
+      ],
+      "type": "list"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "level": 3,
+      "text": "🏡 Lebensstationen"
+     },
+     "id": "v159x1",
+     "type": "header"
+    },
+    {
+     "data": {
+      "items": [
+       {
+        "content": "Kindheit am Meer",
+        "items": [],
+        "meta": {}
+       },
+       {
+        "content": "Lehrerin an der Dorfschule",
+        "items": [],
+        "meta": {}
+       },
+       {
+        "content": "Seit 1975 im Haus am Waldrand",
+        "items": [],
+        "meta": {}
+       }
+      ],
+      "meta": {},
+      "style": "unordered"
+     },
+     "id": "v159x2",
+     "type": "list"
+    }
+   ],
+   "name": "galerie familie.json #12",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v159x1",
+       "level": 3
+      },
+      "content": [
+       {
+        "text": "🏡 Lebensstationen",
+        "type": "text"
+       }
+      ],
+      "type": "header"
+     },
+     {
+      "attrs": {
+       "id": "v159x2",
+       "listStyle": "unordered",
+       "meta": {}
+      },
+      "content": [
+       {
+        "attrs": {
+         "id": "l23fba635f",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [
+           {
+            "text": "Kindheit am Meer",
+            "type": "text"
+           }
+          ],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       },
+       {
+        "attrs": {
+         "id": "l70e73d594",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [
+           {
+            "text": "Lehrerin an der Dorfschule",
+            "type": "text"
+           }
+          ],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       },
+       {
+        "attrs": {
+         "id": "l93db33378",
+         "meta": {}
+        },
+        "content": [
+         {
+          "content": [
+           {
+            "text": "Seit 1975 im Haus am Waldrand",
+            "type": "text"
+           }
+          ],
+          "type": "ltext"
+         }
+        ],
+        "type": "litem"
+       }
+      ],
+      "type": "list"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "text": "Aufgewachsen in einem kleinen Haus hinter den Dünen. Im Sommer half sie ihrem Vater beim Netzeflicken."
+     },
+     "id": "v160x1",
+     "type": "paragraph"
+    }
+   ],
+   "name": "galerie familie.json #13",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v160x1"
+      },
+      "content": [
+       {
+        "text": "Aufgewachsen in einem kleinen Haus hinter den Dünen. Im Sommer half sie ihrem Vater beim Netzeflicken.",
+        "type": "text"
+       }
+      ],
+      "type": "paragraph"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "text": "Karl lernte sie beim Tanz im Dorfgasthof kennen – er trat ihr zweimal auf die Füße und bekam trotzdem ein drittes Lied."
+     },
+     "id": "v161x1",
+     "type": "paragraph"
+    }
+   ],
+   "name": "galerie familie.json #14",
+   "pm": {
+    "content": [
+     {
+      "attrs": {
+       "id": "v161x1"
+      },
+      "content": [
+       {
+        "text": "Karl lernte sie beim Tanz im Dorfgasthof kennen – er trat ihr zweimal auf die Füße und bekam trotzdem ein drittes Lied.",
+        "type": "text"
+       }
+      ],
+      "type": "paragraph"
+     }
+    ],
+    "type": "doc"
+   }
+  },
+  {
+   "blocks": [
+    {
+     "data": {
+      "accent": "green",
+      "cfg": {
        "date": "datum",
        "db": null,
        "goal": 5,
@@ -10876,7 +11749,7 @@
          "meta": {},
          "style": "unordered"
         },
-        "id": "v152x2",
+        "id": "v167x2",
         "type": "list"
        }
       ],
@@ -10884,7 +11757,7 @@
       "open": true,
       "title": "📌 Alltag"
      },
-     "id": "v152x1",
+     "id": "v167x1",
      "type": "toggle"
     }
    ],
@@ -10893,7 +11766,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v152x1",
+       "id": "v167x1",
        "level": 3,
        "open": true
       },
@@ -10909,14 +11782,14 @@
        },
        {
         "attrs": {
-         "id": "v152x2",
+         "id": "v167x2",
          "listStyle": "unordered",
          "meta": {}
         },
         "content": [
          {
           "attrs": {
-           "id": "lbbee40113",
+           "id": "lb8a5fbcc0",
            "meta": {}
           },
           "content": [
@@ -10934,7 +11807,7 @@
          },
          {
           "attrs": {
-           "id": "l599c5d6a9",
+           "id": "l95521ef75",
            "meta": {}
           },
           "content": [
@@ -10952,7 +11825,7 @@
          },
          {
           "attrs": {
-           "id": "l0ccf5f7b6",
+           "id": "lf024a073f",
            "meta": {}
           },
           "content": [
@@ -11005,7 +11878,7 @@
          "meta": {},
          "style": "unordered"
         },
-        "id": "v153x2",
+        "id": "v168x2",
         "type": "list"
        }
       ],
@@ -11013,7 +11886,7 @@
       "open": true,
       "title": "🗂️ Projekte &amp; Wissen"
      },
-     "id": "v153x1",
+     "id": "v168x1",
      "type": "toggle"
     }
    ],
@@ -11022,7 +11895,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v153x1",
+       "id": "v168x1",
        "level": 3,
        "open": true
       },
@@ -11038,14 +11911,14 @@
        },
        {
         "attrs": {
-         "id": "v153x2",
+         "id": "v168x2",
          "listStyle": "unordered",
          "meta": {}
         },
         "content": [
          {
           "attrs": {
-           "id": "l7fb0285a2",
+           "id": "lb760b96be",
            "meta": {}
           },
           "content": [
@@ -11063,7 +11936,7 @@
          },
          {
           "attrs": {
-           "id": "l4114e030c",
+           "id": "la239cc01e",
            "meta": {}
           },
           "content": [
@@ -11081,7 +11954,7 @@
          },
          {
           "attrs": {
-           "id": "l3485edd0d",
+           "id": "l5c3669912",
            "meta": {}
           },
           "content": [
@@ -11129,7 +12002,7 @@
          "meta": {},
          "style": "unordered"
         },
-        "id": "v154x2",
+        "id": "v169x2",
         "type": "list"
        }
       ],
@@ -11137,7 +12010,7 @@
       "open": true,
       "title": "🌿 Freizeit"
      },
-     "id": "v154x1",
+     "id": "v169x1",
      "type": "toggle"
     }
    ],
@@ -11146,7 +12019,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v154x1",
+       "id": "v169x1",
        "level": 3,
        "open": true
       },
@@ -11162,14 +12035,14 @@
        },
        {
         "attrs": {
-         "id": "v154x2",
+         "id": "v169x2",
          "listStyle": "unordered",
          "meta": {}
         },
         "content": [
          {
           "attrs": {
-           "id": "l34db00a97",
+           "id": "l72a06c093",
            "meta": {}
           },
           "content": [
@@ -11187,7 +12060,7 @@
          },
          {
           "attrs": {
-           "id": "l13032f9d4",
+           "id": "l4fb01543e",
            "meta": {}
           },
           "content": [
@@ -11263,7 +12136,7 @@
        }
       ]
      },
-     "id": "v155x1",
+     "id": "v170x1",
      "type": "database"
     }
    ],
@@ -11321,7 +12194,7 @@
          }
         ]
        },
-       "id": "v155x1"
+       "id": "v170x1"
       },
       "type": "database"
      }
@@ -11388,7 +12261,7 @@
       "level": 2,
       "text": "Leseliste"
      },
-     "id": "v157x1",
+     "id": "v172x1",
      "type": "header"
     },
     {
@@ -11414,7 +12287,7 @@
        }
       ]
      },
-     "id": "v157x2",
+     "id": "v172x2",
      "type": "database"
     }
    ],
@@ -11423,7 +12296,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v157x1",
+       "id": "v172x1",
        "level": 2
       },
       "content": [
@@ -11458,7 +12331,7 @@
          }
         ]
        },
-       "id": "v157x2"
+       "id": "v172x2"
       },
       "type": "database"
      }
@@ -11473,7 +12346,7 @@
       "level": 2,
       "text": "Einkaufsliste"
      },
-     "id": "v158x1",
+     "id": "v173x1",
      "type": "header"
     },
     {
@@ -11511,7 +12384,7 @@
       "meta": {},
       "style": "checklist"
      },
-     "id": "v158x2",
+     "id": "v173x2",
      "type": "list"
     }
    ],
@@ -11520,7 +12393,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v158x1",
+       "id": "v173x1",
        "level": 2
       },
       "content": [
@@ -11533,14 +12406,14 @@
      },
      {
       "attrs": {
-       "id": "v158x2",
+       "id": "v173x2",
        "listStyle": "checklist",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "lbfadfbc87",
+         "id": "lb4a480537",
          "meta": {
           "checked": false
          }
@@ -11560,7 +12433,7 @@
        },
        {
         "attrs": {
-         "id": "l9238d532f",
+         "id": "l7103bc37f",
          "meta": {
           "checked": true
          }
@@ -11580,7 +12453,7 @@
        },
        {
         "attrs": {
-         "id": "l2da7a8c87",
+         "id": "l074e7b1b6",
          "meta": {
           "checked": false
          }
@@ -11600,7 +12473,7 @@
        },
        {
         "attrs": {
-         "id": "l482e9ff28",
+         "id": "l111709841",
          "meta": {
           "checked": false
          }
@@ -11654,7 +12527,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v159x1",
+     "id": "v174x1",
      "type": "list"
     }
    ],
@@ -11663,14 +12536,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v159x1",
+       "id": "v174x1",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l257816639",
+         "id": "lde6b07158",
          "meta": {}
         },
         "content": [
@@ -11688,7 +12561,7 @@
        },
        {
         "attrs": {
-         "id": "ld9c4c888d",
+         "id": "l32ac492b3",
          "meta": {}
         },
         "content": [
@@ -11706,7 +12579,7 @@
        },
        {
         "attrs": {
-         "id": "l3acd5e38d",
+         "id": "l63fe562d1",
          "meta": {}
         },
         "content": [
@@ -11724,7 +12597,7 @@
        },
        {
         "attrs": {
-         "id": "la59609f3f",
+         "id": "lf40f50cfb",
          "meta": {}
         },
         "content": [
@@ -11923,7 +12796,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v163x1",
+     "id": "v178x1",
      "type": "list"
     }
    ],
@@ -11932,14 +12805,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v163x1",
+       "id": "v178x1",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l1ab1f419c",
+         "id": "ld7dc775f6",
          "meta": {}
         },
         "content": [
@@ -11957,7 +12830,7 @@
        },
        {
         "attrs": {
-         "id": "l50b390171",
+         "id": "le5dae0bef",
          "meta": {}
         },
         "content": [
@@ -11975,7 +12848,7 @@
        },
        {
         "attrs": {
-         "id": "l8cb27d535",
+         "id": "lef015faec",
          "meta": {}
         },
         "content": [
@@ -12014,7 +12887,7 @@
        }
       ]
      },
-     "id": "v164x1",
+     "id": "v179x1",
      "type": "buttons"
     },
     {
@@ -12022,7 +12895,7 @@
       "emoji": "💡",
       "text": "Ein Klick legt die Notiz mit Agenda, Entscheidungen und Aufgaben an. Danach Datum und Art setzen."
      },
-     "id": "v164x2",
+     "id": "v179x2",
      "type": "callout"
     }
    ],
@@ -12044,14 +12917,14 @@
          }
         ]
        },
-       "id": "v164x1"
+       "id": "v179x1"
       },
       "type": "buttons"
      },
      {
       "attrs": {
        "emoji": "💡",
-       "id": "v164x2"
+       "id": "v179x2"
       },
       "content": [
        {
@@ -12382,7 +13255,7 @@
     },
     {
      "data": {},
-     "id": "v170x1",
+     "id": "v185x1",
      "type": "tasks"
     },
     {
@@ -12399,7 +13272,7 @@
        }
       ]
      },
-     "id": "v170x2",
+     "id": "v185x2",
      "type": "buttons"
     },
     {
@@ -12407,7 +13280,7 @@
       "emoji": "💡",
       "text": "Das sind deine Saga-Aufgaben – dieselben wie im Dashboard und in den Apps. Nutzt du zusätzlich die Vorlage „Aufgaben &amp; Projekte“, ergänze hier ein Kennzahl-Widget mit der Quelle „Datenbank“ und ihrer Datenbank „Aufgaben“."
      },
-     "id": "v170x3",
+     "id": "v185x3",
      "type": "callout"
     }
    ],
@@ -12436,7 +13309,7 @@
      {
       "attrs": {
        "data": {},
-       "id": "v170x1"
+       "id": "v185x1"
       },
       "type": "tasks"
      },
@@ -12455,14 +13328,14 @@
          }
         ]
        },
-       "id": "v170x2"
+       "id": "v185x2"
       },
       "type": "buttons"
      },
      {
       "attrs": {
        "emoji": "💡",
-       "id": "v170x3"
+       "id": "v185x3"
       },
       "content": [
        {
@@ -12483,7 +13356,7 @@
       "days": 7,
       "view": "list"
      },
-     "id": "v171x1",
+     "id": "v186x1",
      "type": "calendar"
     }
    ],
@@ -12496,7 +13369,7 @@
         "days": 7,
         "view": "list"
        },
-       "id": "v171x1"
+       "id": "v186x1"
       },
       "type": "calendar"
      }
@@ -12668,7 +13541,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v175x1",
+     "id": "v190x1",
      "type": "list"
     }
    ],
@@ -12677,14 +13550,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v175x1",
+       "id": "v190x1",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "ldbd509ac9",
+         "id": "lb1e08e336",
          "meta": {}
         },
         "content": [
@@ -12716,7 +13589,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v176x1",
+     "id": "v191x1",
      "type": "list"
     }
    ],
@@ -12725,14 +13598,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v176x1",
+       "id": "v191x1",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l7b08b76ee",
+         "id": "l050cdf306",
          "meta": {}
         },
         "content": [
@@ -12769,7 +13642,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v177x1",
+     "id": "v192x1",
      "type": "list"
     }
    ],
@@ -12778,14 +13651,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v177x1",
+       "id": "v192x1",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l2fbc84fa1",
+         "id": "l609ee0198",
          "meta": {}
         },
         "content": [
@@ -12803,7 +13676,7 @@
        },
        {
         "attrs": {
-         "id": "lc8090e5d1",
+         "id": "l0bc946c4d",
          "meta": {}
         },
         "content": [
@@ -12845,7 +13718,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v178x1",
+     "id": "v193x1",
      "type": "list"
     }
    ],
@@ -12854,14 +13727,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v178x1",
+       "id": "v193x1",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "ld7dc775f6",
+         "id": "l637f51e2e",
          "meta": {}
         },
         "content": [
@@ -12879,7 +13752,7 @@
        },
        {
         "attrs": {
-         "id": "le5dae0bef",
+         "id": "l430f52d2c",
          "meta": {}
         },
         "content": [
@@ -12916,7 +13789,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v179x1",
+     "id": "v194x1",
      "type": "list"
     }
    ],
@@ -12925,14 +13798,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v179x1",
+       "id": "v194x1",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l4e908a520",
+         "id": "lbcd92ad35",
          "meta": {}
         },
         "content": [
@@ -12962,7 +13835,7 @@
       "level": 3,
       "text": "Dokumente"
      },
-     "id": "v180x1",
+     "id": "v195x1",
      "type": "header"
     },
     {
@@ -12993,7 +13866,7 @@
       "meta": {},
       "style": "checklist"
      },
-     "id": "v180x2",
+     "id": "v195x2",
      "type": "list"
     },
     {
@@ -13001,7 +13874,7 @@
       "level": 3,
       "text": "Technik"
      },
-     "id": "v180x3",
+     "id": "v195x3",
      "type": "header"
     },
     {
@@ -13032,7 +13905,7 @@
       "meta": {},
       "style": "checklist"
      },
-     "id": "v180x4",
+     "id": "v195x4",
      "type": "list"
     }
    ],
@@ -13041,7 +13914,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v180x1",
+       "id": "v195x1",
        "level": 3
       },
       "content": [
@@ -13054,14 +13927,14 @@
      },
      {
       "attrs": {
-       "id": "v180x2",
+       "id": "v195x2",
        "listStyle": "checklist",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l8dabb195a",
+         "id": "l63c57c2d9",
          "meta": {
           "checked": false
          }
@@ -13081,7 +13954,7 @@
        },
        {
         "attrs": {
-         "id": "l9ada5b782",
+         "id": "l6f7f6b527",
          "meta": {
           "checked": false
          }
@@ -13101,7 +13974,7 @@
        },
        {
         "attrs": {
-         "id": "l895d1e815",
+         "id": "le16fa7655",
          "meta": {
           "checked": false
          }
@@ -13124,7 +13997,7 @@
      },
      {
       "attrs": {
-       "id": "v180x3",
+       "id": "v195x3",
        "level": 3
       },
       "content": [
@@ -13137,14 +14010,14 @@
      },
      {
       "attrs": {
-       "id": "v180x4",
+       "id": "v195x4",
        "listStyle": "checklist",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "lb1a437d46",
+         "id": "l7da584c13",
          "meta": {
           "checked": false
          }
@@ -13164,7 +14037,7 @@
        },
        {
         "attrs": {
-         "id": "lcc9a9b126",
+         "id": "l4f3fbd1cb",
          "meta": {
           "checked": false
          }
@@ -13184,7 +14057,7 @@
        },
        {
         "attrs": {
-         "id": "lb98999506",
+         "id": "le8e548150",
          "meta": {
           "checked": false
          }
@@ -13216,7 +14089,7 @@
       "level": 3,
       "text": "Kleidung"
      },
-     "id": "v181x1",
+     "id": "v196x1",
      "type": "header"
     },
     {
@@ -13247,7 +14120,7 @@
       "meta": {},
       "style": "checklist"
      },
-     "id": "v181x2",
+     "id": "v196x2",
      "type": "list"
     },
     {
@@ -13255,7 +14128,7 @@
       "level": 3,
       "text": "Bad &amp; Gesundheit"
      },
-     "id": "v181x3",
+     "id": "v196x3",
      "type": "header"
     },
     {
@@ -13286,7 +14159,7 @@
       "meta": {},
       "style": "checklist"
      },
-     "id": "v181x4",
+     "id": "v196x4",
      "type": "list"
     }
    ],
@@ -13295,7 +14168,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v181x1",
+       "id": "v196x1",
        "level": 3
       },
       "content": [
@@ -13308,14 +14181,14 @@
      },
      {
       "attrs": {
-       "id": "v181x2",
+       "id": "v196x2",
        "listStyle": "checklist",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "lc09db8cca",
+         "id": "lbff6a68d8",
          "meta": {
           "checked": false
          }
@@ -13335,7 +14208,7 @@
        },
        {
         "attrs": {
-         "id": "l55aa963c1",
+         "id": "lbb24c8659",
          "meta": {
           "checked": false
          }
@@ -13355,7 +14228,7 @@
        },
        {
         "attrs": {
-         "id": "le9cb63cc4",
+         "id": "l926c04e5a",
          "meta": {
           "checked": false
          }
@@ -13378,7 +14251,7 @@
      },
      {
       "attrs": {
-       "id": "v181x3",
+       "id": "v196x3",
        "level": 3
       },
       "content": [
@@ -13391,14 +14264,14 @@
      },
      {
       "attrs": {
-       "id": "v181x4",
+       "id": "v196x4",
        "listStyle": "checklist",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l08ed42f70",
+         "id": "l68da72f54",
          "meta": {
           "checked": false
          }
@@ -13418,7 +14291,7 @@
        },
        {
         "attrs": {
-         "id": "l888373796",
+         "id": "l5ec748cbc",
          "meta": {
           "checked": false
          }
@@ -13438,7 +14311,7 @@
        },
        {
         "attrs": {
-         "id": "l02bcfcc81",
+         "id": "lcbc5d6aee",
          "meta": {
           "checked": false
          }
@@ -13470,7 +14343,7 @@
       "level": 2,
       "text": "Zutaten"
      },
-     "id": "v182x1",
+     "id": "v197x1",
      "type": "header"
     },
     {
@@ -13485,7 +14358,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v182x2",
+     "id": "v197x2",
      "type": "list"
     }
    ],
@@ -13494,7 +14367,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v182x1",
+       "id": "v197x1",
        "level": 2
       },
       "content": [
@@ -13507,14 +14380,14 @@
      },
      {
       "attrs": {
-       "id": "v182x2",
+       "id": "v197x2",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l70e76266c",
+         "id": "ld003b3ece",
          "meta": {}
         },
         "content": [
@@ -13539,7 +14412,7 @@
       "level": 2,
       "text": "Zubereitung"
      },
-     "id": "v183x1",
+     "id": "v198x1",
      "type": "header"
     },
     {
@@ -13554,7 +14427,7 @@
       "meta": {},
       "style": "ordered"
      },
-     "id": "v183x2",
+     "id": "v198x2",
      "type": "list"
     }
    ],
@@ -13563,7 +14436,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v183x1",
+       "id": "v198x1",
        "level": 2
       },
       "content": [
@@ -13576,14 +14449,14 @@
      },
      {
       "attrs": {
-       "id": "v183x2",
+       "id": "v198x2",
        "listStyle": "ordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l43a0ad23a",
+         "id": "l99c7ce692",
          "meta": {}
         },
         "content": [
@@ -13608,7 +14481,7 @@
       "level": 2,
       "text": "Zutaten"
      },
-     "id": "v184x1",
+     "id": "v199x1",
      "type": "header"
     },
     {
@@ -13643,7 +14516,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v184x2",
+     "id": "v199x2",
      "type": "list"
     }
    ],
@@ -13652,7 +14525,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v184x1",
+       "id": "v199x1",
        "level": 2
       },
       "content": [
@@ -13665,14 +14538,14 @@
      },
      {
       "attrs": {
-       "id": "v184x2",
+       "id": "v199x2",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l0980a8a9e",
+         "id": "l4f5b079ec",
          "meta": {}
         },
         "content": [
@@ -13690,7 +14563,7 @@
        },
        {
         "attrs": {
-         "id": "l1a1ba39b1",
+         "id": "l87b32e4f8",
          "meta": {}
         },
         "content": [
@@ -13708,7 +14581,7 @@
        },
        {
         "attrs": {
-         "id": "lf3f905bb7",
+         "id": "lb111b46f7",
          "meta": {}
         },
         "content": [
@@ -13726,7 +14599,7 @@
        },
        {
         "attrs": {
-         "id": "laf7a0efcb",
+         "id": "l22d07cb06",
          "meta": {}
         },
         "content": [
@@ -13744,7 +14617,7 @@
        },
        {
         "attrs": {
-         "id": "ld18811c75",
+         "id": "lb48e8642f",
          "meta": {}
         },
         "content": [
@@ -13774,7 +14647,7 @@
       "level": 2,
       "text": "Zubereitung"
      },
-     "id": "v185x1",
+     "id": "v200x1",
      "type": "header"
     },
     {
@@ -13804,7 +14677,7 @@
       "meta": {},
       "style": "ordered"
      },
-     "id": "v185x2",
+     "id": "v200x2",
      "type": "list"
     }
    ],
@@ -13813,7 +14686,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v185x1",
+       "id": "v200x1",
        "level": 2
       },
       "content": [
@@ -13826,14 +14699,14 @@
      },
      {
       "attrs": {
-       "id": "v185x2",
+       "id": "v200x2",
        "listStyle": "ordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l7e01a1a88",
+         "id": "l7b5c37f41",
          "meta": {}
         },
         "content": [
@@ -13851,7 +14724,7 @@
        },
        {
         "attrs": {
-         "id": "lc76c6ea71",
+         "id": "l84e9e16aa",
          "meta": {}
         },
         "content": [
@@ -13869,7 +14742,7 @@
        },
        {
         "attrs": {
-         "id": "l8f1dca757",
+         "id": "l72a075c8e",
          "meta": {}
         },
         "content": [
@@ -13887,7 +14760,7 @@
        },
        {
         "attrs": {
-         "id": "l6f1c511ad",
+         "id": "lc18bb6020",
          "meta": {}
         },
         "content": [
@@ -13917,7 +14790,7 @@
       "level": 3,
       "text": "Montag"
      },
-     "id": "v186x1",
+     "id": "v201x1",
      "type": "header"
     },
     {
@@ -13932,7 +14805,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v186x2",
+     "id": "v201x2",
      "type": "list"
     }
    ],
@@ -13941,7 +14814,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v186x1",
+       "id": "v201x1",
        "level": 3
       },
       "content": [
@@ -13954,14 +14827,14 @@
      },
      {
       "attrs": {
-       "id": "v186x2",
+       "id": "v201x2",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l70e38c40e",
+         "id": "l1859ab7d7",
          "meta": {}
         },
         "content": [
@@ -13991,7 +14864,7 @@
       "level": 3,
       "text": "Dienstag"
      },
-     "id": "v187x1",
+     "id": "v202x1",
      "type": "header"
     },
     {
@@ -14006,7 +14879,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v187x2",
+     "id": "v202x2",
      "type": "list"
     }
    ],
@@ -14015,7 +14888,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v187x1",
+       "id": "v202x1",
        "level": 3
       },
       "content": [
@@ -14028,14 +14901,14 @@
      },
      {
       "attrs": {
-       "id": "v187x2",
+       "id": "v202x2",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "la70c9cf08",
+         "id": "l1c873526c",
          "meta": {}
         },
         "content": [
@@ -14065,7 +14938,7 @@
       "level": 3,
       "text": "Mittwoch"
      },
-     "id": "v188x1",
+     "id": "v203x1",
      "type": "header"
     },
     {
@@ -14080,7 +14953,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v188x2",
+     "id": "v203x2",
      "type": "list"
     }
    ],
@@ -14089,7 +14962,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v188x1",
+       "id": "v203x1",
        "level": 3
       },
       "content": [
@@ -14102,14 +14975,14 @@
      },
      {
       "attrs": {
-       "id": "v188x2",
+       "id": "v203x2",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "le98c7e6d8",
+         "id": "l6597bf368",
          "meta": {}
         },
         "content": [
@@ -14139,7 +15012,7 @@
       "level": 3,
       "text": "Donnerstag"
      },
-     "id": "v189x1",
+     "id": "v204x1",
      "type": "header"
     },
     {
@@ -14154,7 +15027,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v189x2",
+     "id": "v204x2",
      "type": "list"
     }
    ],
@@ -14163,7 +15036,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v189x1",
+       "id": "v204x1",
        "level": 3
       },
       "content": [
@@ -14176,14 +15049,14 @@
      },
      {
       "attrs": {
-       "id": "v189x2",
+       "id": "v204x2",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l539e52d35",
+         "id": "l4c61ceb11",
          "meta": {}
         },
         "content": [
@@ -14208,7 +15081,7 @@
       "level": 3,
       "text": "Freitag"
      },
-     "id": "v190x1",
+     "id": "v205x1",
      "type": "header"
     },
     {
@@ -14223,7 +15096,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v190x2",
+     "id": "v205x2",
      "type": "list"
     }
    ],
@@ -14232,7 +15105,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v190x1",
+       "id": "v205x1",
        "level": 3
       },
       "content": [
@@ -14245,14 +15118,14 @@
      },
      {
       "attrs": {
-       "id": "v190x2",
+       "id": "v205x2",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l635fb54a2",
+         "id": "l8ca5eb7dd",
          "meta": {}
         },
         "content": [
@@ -14282,7 +15155,7 @@
       "level": 3,
       "text": "Samstag"
      },
-     "id": "v191x1",
+     "id": "v206x1",
      "type": "header"
     },
     {
@@ -14297,7 +15170,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v191x2",
+     "id": "v206x2",
      "type": "list"
     }
    ],
@@ -14306,7 +15179,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v191x1",
+       "id": "v206x1",
        "level": 3
       },
       "content": [
@@ -14319,14 +15192,14 @@
      },
      {
       "attrs": {
-       "id": "v191x2",
+       "id": "v206x2",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "lab5ebaf15",
+         "id": "lbc38330dd",
          "meta": {}
         },
         "content": [
@@ -14351,7 +15224,7 @@
       "level": 3,
       "text": "Sonntag"
      },
-     "id": "v192x1",
+     "id": "v207x1",
      "type": "header"
     },
     {
@@ -14366,7 +15239,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v192x2",
+     "id": "v207x2",
      "type": "list"
     }
    ],
@@ -14375,7 +15248,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v192x1",
+       "id": "v207x1",
        "level": 3
       },
       "content": [
@@ -14388,14 +15261,14 @@
      },
      {
       "attrs": {
-       "id": "v192x2",
+       "id": "v207x2",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l045f6c0da",
+         "id": "l5ac828934",
          "meta": {}
         },
         "content": [
@@ -14425,7 +15298,7 @@
       "emoji": "🛒",
       "text": "Fehlt etwas? Gleich auf die Einkaufsliste setzen."
      },
-     "id": "v193x1",
+     "id": "v208x1",
      "type": "callout"
     }
    ],
@@ -14435,7 +15308,7 @@
      {
       "attrs": {
        "emoji": "🛒",
-       "id": "v193x1"
+       "id": "v208x1"
       },
       "content": [
        {
@@ -14456,14 +15329,14 @@
       "level": 3,
       "text": "Neu im Team?"
      },
-     "id": "v194x1",
+     "id": "v209x1",
      "type": "header"
     },
     {
      "data": {
       "text": "Starte mit dem Onboarding: erste Woche, Zugänge und wen du was fragen kannst."
      },
-     "id": "v194x2",
+     "id": "v209x2",
      "type": "paragraph"
     }
    ],
@@ -14472,7 +15345,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v194x1",
+       "id": "v209x1",
        "level": 3
       },
       "content": [
@@ -14485,7 +15358,7 @@
      },
      {
       "attrs": {
-       "id": "v194x2"
+       "id": "v209x2"
       },
       "content": [
        {
@@ -14506,14 +15379,14 @@
       "level": 3,
       "text": "Etwas gesucht?"
      },
-     "id": "v195x1",
+     "id": "v210x1",
      "type": "header"
     },
     {
      "data": {
       "text": "Häufige Fragen stehen in den FAQ, wer wofür zuständig ist, unter Ansprechpartner."
      },
-     "id": "v195x2",
+     "id": "v210x2",
      "type": "paragraph"
     }
    ],
@@ -14522,7 +15395,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v195x1",
+       "id": "v210x1",
        "level": 3
       },
       "content": [
@@ -14535,7 +15408,7 @@
      },
      {
       "attrs": {
-       "id": "v195x2"
+       "id": "v210x2"
       },
       "content": [
        {
@@ -14573,7 +15446,7 @@
       "meta": {},
       "style": "unordered"
      },
-     "id": "v196x1",
+     "id": "v211x1",
      "type": "list"
     }
    ],
@@ -14582,14 +15455,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v196x1",
+       "id": "v211x1",
        "listStyle": "unordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l0edd486a4",
+         "id": "l9a113378f",
          "meta": {}
         },
         "content": [
@@ -14607,7 +15480,7 @@
        },
        {
         "attrs": {
-         "id": "l2df08ca21",
+         "id": "ld98138101",
          "meta": {}
         },
         "content": [
@@ -14625,7 +15498,7 @@
        },
        {
         "attrs": {
-         "id": "lef2765cb6",
+         "id": "l0fadc3dbe",
          "meta": {}
         },
         "content": [
@@ -14654,7 +15527,7 @@
      "data": {
       "text": "Kernzeit ist von 10 bis 15 Uhr. Wer später kommt oder früher geht, sagt kurz im Team-Chat Bescheid."
      },
-     "id": "v197x1",
+     "id": "v212x1",
      "type": "paragraph"
     }
    ],
@@ -14663,7 +15536,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v197x1"
+       "id": "v212x1"
       },
       "content": [
        {
@@ -14706,7 +15579,7 @@
       "meta": {},
       "style": "ordered"
      },
-     "id": "v198x1",
+     "id": "v213x1",
      "type": "list"
     }
    ],
@@ -14715,14 +15588,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v198x1",
+       "id": "v213x1",
        "listStyle": "ordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "ld0880dd62",
+         "id": "l8d98b4976",
          "meta": {}
         },
         "content": [
@@ -14740,7 +15613,7 @@
        },
        {
         "attrs": {
-         "id": "l09944f254",
+         "id": "lae7d08819",
          "meta": {}
         },
         "content": [
@@ -14758,7 +15631,7 @@
        },
        {
         "attrs": {
-         "id": "l31cbe5147",
+         "id": "le5eec508d",
          "meta": {}
         },
         "content": [
@@ -14776,7 +15649,7 @@
        },
        {
         "attrs": {
-         "id": "l267ef9f3b",
+         "id": "lef25d5f43",
          "meta": {}
         },
         "content": [
@@ -14823,7 +15696,7 @@
       "meta": {},
       "style": "ordered"
      },
-     "id": "v199x1",
+     "id": "v214x1",
      "type": "list"
     }
    ],
@@ -14832,14 +15705,14 @@
     "content": [
      {
       "attrs": {
-       "id": "v199x1",
+       "id": "v214x1",
        "listStyle": "ordered",
        "meta": {}
       },
       "content": [
        {
         "attrs": {
-         "id": "l30e4f4add",
+         "id": "l91c05377a",
          "meta": {}
         },
         "content": [
@@ -14857,7 +15730,7 @@
        },
        {
         "attrs": {
-         "id": "l2d20f2927",
+         "id": "l8d9c8622b",
          "meta": {}
         },
         "content": [
@@ -14875,7 +15748,7 @@
        },
        {
         "attrs": {
-         "id": "l017ca7261",
+         "id": "l442eb01a7",
          "meta": {}
         },
         "content": [
@@ -14905,14 +15778,14 @@
       "emoji": "⚠️",
       "text": "Bitte keine Programme selbst installieren – der IT-Support prüft Lizenz und Datenschutz."
      },
-     "id": "v200x1",
+     "id": "v215x1",
      "type": "callout"
     },
     {
      "data": {
       "text": "Schreib dem IT-Support, wofür du die Software brauchst und ab wann."
      },
-     "id": "v200x2",
+     "id": "v215x2",
      "type": "paragraph"
     }
    ],
@@ -14922,7 +15795,7 @@
      {
       "attrs": {
        "emoji": "⚠️",
-       "id": "v200x1"
+       "id": "v215x1"
       },
       "content": [
        {
@@ -14934,7 +15807,7 @@
      },
      {
       "attrs": {
-       "id": "v200x2"
+       "id": "v215x2"
       },
       "content": [
        {
@@ -14954,7 +15827,7 @@
      "data": {
       "text": "Am Empfang. Für Gäste gibt es ein eigenes Netz."
      },
-     "id": "v201x1",
+     "id": "v216x1",
      "type": "paragraph"
     }
    ],
@@ -14963,7 +15836,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v201x1"
+       "id": "v216x1"
       },
       "content": [
        {
@@ -14983,7 +15856,7 @@
      "data": {
       "text": "Über den gemeinsamen Kalender: Raum als Teilnehmer zum Termin hinzufügen."
      },
-     "id": "v202x1",
+     "id": "v217x1",
      "type": "paragraph"
     }
    ],
@@ -14992,7 +15865,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v202x1"
+       "id": "v217x1"
       },
       "content": [
        {
@@ -15012,7 +15885,7 @@
      "data": {
       "text": "Den IT-Support – Kontakt siehe Ansprechpartner."
      },
-     "id": "v203x1",
+     "id": "v218x1",
      "type": "paragraph"
     }
    ],
@@ -15021,7 +15894,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v203x1"
+       "id": "v218x1"
       },
       "content": [
        {
@@ -15041,7 +15914,7 @@
      "data": {
       "text": "Ja, nach Absprache mit dem Team. Feste Teamtage stehen im Kalender."
      },
-     "id": "v204x1",
+     "id": "v219x1",
      "type": "paragraph"
     }
    ],
@@ -15050,7 +15923,7 @@
     "content": [
      {
       "attrs": {
-       "id": "v204x1"
+       "id": "v219x1"
       },
       "content": [
        {

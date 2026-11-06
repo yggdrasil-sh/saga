@@ -16,6 +16,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Galerie: Vorlage „Familien-Wiki“
+- Neue Vorlage (Persönlich) für die eigene Familie: Datenbank **„Familienmitglieder“** mit Generation, Spitzname,
+  Geburts- und Sterbedatum, Geburts- und Wohnort, Beruf, Familienzweig und den Verknüpfungen **Eltern** und
+  **Partner/in**. Alter, nächster Geburtstag, „Wird“ und „Noch (Tage)“ rechnen Formeln aus (am Geburtstag selbst 0 Tage).
+- Startseite mit Kennzahlen (Familienmitglieder, Erinnerungen, Geburtstage in 60 Tagen), wechselndem Familien-Gedanken,
+  Schaltflächen „Person hinzufügen“ / „Erinnerung festhalten“, den nächsten Geburtstagen, den neuesten Erinnerungen,
+  einem Board **nach Generationen** (Verstorbene grau) und großen Karten aller Personen, eingefärbt nach Generation.
+  Ein Titelbild oder das erste Foto auf der Seite einer Person wird zum Kartenbild.
+- Datenbank **„Erinnerungen“** (Fest, Reise, Meilenstein, Tradition, Alltag) mit Galerie, Zeitleiste und „Mit dabei“ –
+  die Erinnerung erscheint automatisch auf den Seiten der Personen. Seitenvorlagen für Person und Erinnerung,
+  Anleitungsseite „So funktioniert's“, Beispielfamilie (in 5 Sprachen).
+- Vorlagen allgemein: Die Gegenspalte einer zweiseitigen Verknüpfung wird in Ansichten, die bewusst Eigenschaften
+  ausblenden (Karten, Board, Listen), gleich mit ausgeblendet; Tabellen ohne Ausblendliste zeigen sie weiter.
+
 ### Chats (Web): Chat-Liste in der Seitenleiste, Unterhaltung in voller Breite
 - Auf der Chats-Seite steht die Liste der Unterhaltungen jetzt als Abschnitt „Chats“ in der Seitenleiste (Suchfeld,
   „+ Neu“, Name mit Zahl der ungelesenen Nachrichten, „Chats & Geräte“), unter Heute, Aufgaben und Termine. Die eigene

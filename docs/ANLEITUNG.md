@@ -633,7 +633,7 @@ Datenbanken anderer Saga-Server.
 
 #### Vorlagengalerie
 
-Fertige Vorlagen (z. B. Aufgaben & Projekte, Leseliste, Team-Wiki, Rezepte) öffnest du über **„+ Neue Seite“ → „Aus der
+Fertige Vorlagen (z. B. Aufgaben & Projekte, Leseliste, Team-Wiki, Rezepte, Familien-Wiki) öffnest du über **„+ Neue Seite“ → „Aus der
 Galerie …“**, auf dem leeren Start mit **„Mit einer Vorlage starten“** oder in der Befehlspalette (Strg+K bzw. ⌘K,
 „Vorlagengalerie“). Kacheln lassen sich nach Persönlich · Arbeit · Team filtern und durchsuchen (Pfeiltasten und Enter
 gehen auch). Ein Klick zeigt eine Vorschau der Startseite und was alles angelegt wird. **„Mit Beispielen“** (Standard an)

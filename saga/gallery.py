@@ -365,6 +365,20 @@ def _body_json(c, owner, nid, blocks, ids, examples=True, wx=None):
     return self_filters(body, "blocks", nid)            # 2.5: "$self" in Filtern eingebetteter Datenbanken = diese Seite
 
 
+def _pair_hide(c, owner, target, mid):
+    """Gegenspalte mid (Server-ID, in der Vorlage unbekannt) in Ansichten der Ziel-Datenbank ausblenden, die schon bewusst
+    Eigenschaften ausblenden (Galerie-/Board-Karten, Listen) - Tabellen ohne Ausblendliste zeigen sie weiter."""
+    sc = _db_schema(c, owner, target)
+    old = json.loads(json.dumps(sc))
+    hit = False
+    for v in sc.get("views") or []:
+        if isinstance(v, dict) and isinstance(v.get("hidden"), list) and mid not in v["hidden"]:
+            v["hidden"].append(mid); hit = True
+    if hit:
+        _schema_stamp(old, sc, owner)
+        c.execute("UPDATE note SET schema=? WHERE id=? AND uid=?", (json.dumps(sc, ensure_ascii=False), target, owner))
+
+
 def _fill(c, uid, owner, bundle, keep, examples, ids, wx=None):
     """Phase 2: refs ersetzen und Inhalte schreiben - Schemas, Gegenspalten, Werte der Zeilen, Inhalte."""
     dbs = [it for it in bundle["items"] if it["kind"] == "database" and it["ref"] in keep]
@@ -394,6 +408,7 @@ def _fill(c, uid, owner, bundle, keep, examples, ids, wx=None):
         for p in sc["props"]:
             if p["id"] in two_way[nid] and p["type"] == "relation" and not p.get("pair") and p["target"] != nid:
                 p["pair"] = _rel_link(c, owner, nid, _title_in(it.get("title")), p, actor=uid)
+                _pair_hide(c, owner, p["target"], p["pair"])
         _schema_stamp(old, sc, uid)
         c.execute("UPDATE note SET schema=? WHERE id=? AND uid=?", (json.dumps(sc, ensure_ascii=False), nid, owner))
     # 3. Werte von Vorlagen und Zeilen (Relationen: nur angelegte Zeilen; Gegenseite nachziehen)

@@ -1,0 +1,252 @@
+{
+  "id": "familie", "v": 1, "order": 65, "category": "personal",
+  "icon": "🌳", "title": "Familien-Wiki",
+  "desc": "Die eigene Familie an einem Ort: Personen mit Fotos und Geschichten, Generationen, Geburtstage und gemeinsame Erinnerungen.",
+  "needs": [],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Familien-Wiki", "icon": "🌳", "cover": null, "wide": true,
+     "body": [
+       {"type": "callout", "data": {"emoji": "🌳", "text": "Willkommen in unserer Familiengeschichte! Hier sammeln wir die Menschen, die uns wichtig sind – mit Geburtstagen, Fotos, Geschichten und gemeinsamen Erinnerungen."}},
+       {"type": "columns", "data": {"cols": [
+         {"w": 0.22, "blocks": [{"id": "wfam01", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "green", "title": "Familienmitglieder",
+                      "cfg": {"db": "$ref:personen", "view": "alle", "agg": "count", "prop": "", "fmt": "num"}}}]},
+         {"w": 0.22, "blocks": [{"id": "wfam02", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "orange", "title": "Erinnerungen",
+                      "cfg": {"db": "$ref:erinnerungen", "view": "tabelle", "agg": "count", "prop": "", "fmt": "num"}}}]},
+         {"w": 0.22, "blocks": [{"id": "wfam03", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "purple", "title": "Geburtstage in 60 Tagen",
+                      "cfg": {"db": "$ref:personen", "view": "geburtstage", "agg": "count", "prop": "", "fmt": "num"}}}]},
+         {"w": 0.34, "blocks": [{"id": "wfam04", "type": "widget", "data": {"v": 1, "kind": "quote", "size": "m", "style": "card", "accent": "pink", "title": "Familien-Gedanke",
+                      "cfg": {"src": "fixed", "pick": "daily", "items": [
+                        "Wurzeln geben Halt, Zweige geben Freiheit.",
+                        "Jede Familie hat Geschichten, die es wert sind, weitererzählt zu werden.",
+                        "Wer weiß, woher er kommt, findet leichter seinen Weg.",
+                        "Erinnerungen sind das Band zwischen den Generationen.",
+                        "Am Küchentisch entstehen die schönsten Familiengeschichten."]}}}]}
+       ]}},
+       {"type": "buttons", "data": {"buttons": [
+         {"label": "Person hinzufügen", "icon": "👤", "action": "db", "target": "$ref:personen", "tpl": "$ref:tpl_person", "title": "", "open": ""},
+         {"label": "Erinnerung festhalten", "icon": "📸", "action": "db", "target": "$ref:erinnerungen", "tpl": "$ref:tpl_erinnerung", "title": "", "open": ""},
+         {"label": "So funktioniert's", "icon": "🧭", "action": "page", "target": "$ref:anleitung", "open": "side"}
+       ]}},
+       {"type": "columns", "data": {"cols": [
+         {"w": 0.5, "blocks": [
+           {"type": "header", "data": {"text": "🎂 Nächste Geburtstage", "level": 2}},
+           {"type": "database", "data": {"db": "$ref:personen", "view": "geburtstage", "views": null, "hide_title": true}}]},
+         {"w": 0.5, "blocks": [
+           {"type": "header", "data": {"text": "📸 Neueste Erinnerungen", "level": 2}},
+           {"type": "database", "data": {"db": "$ref:erinnerungen", "view": "galerie", "views": null, "hide_title": true}}]}
+       ]}},
+       {"type": "header", "data": {"text": "🌳 Unsere Familie nach Generationen", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:personen", "view": "generationen", "views": null, "hide_title": true}},
+       {"type": "header", "data": {"text": "👨‍👩‍👧‍👦 Alle Familienmitglieder", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:personen", "view": "familie", "views": null, "hide_title": true}}
+     ]},
+
+    {"ref": "personen", "kind": "database", "parent": "home", "title": "Familienmitglieder", "icon": "👨‍👩‍👧‍👦",
+     "schema": {
+       "title_name": "Name",
+       "props": [
+         {"id": "generation", "name": "Generation", "type": "select", "options": [
+           {"id": "urgross", "name": "Urgroßeltern", "color": "brown"},
+           {"id": "gross", "name": "Großeltern", "color": "purple"},
+           {"id": "eltern_g", "name": "Eltern", "color": "blue"},
+           {"id": "kinder_g", "name": "Kinder", "color": "green"},
+           {"id": "enkel", "name": "Enkel", "color": "yellow"}]},
+         {"id": "spitzname", "name": "Wird genannt", "type": "text"},
+         {"id": "geboren", "name": "Geboren", "type": "date"},
+         {"id": "gestorben", "name": "Verstorben", "type": "date"},
+         {"id": "alter", "name": "Alter", "type": "formula",
+          "expr": "dateBetween(if(empty(prop(\"gestorben\")), today(), prop(\"gestorben\")), prop(\"geboren\"), \"years\")"},
+         {"id": "naechster", "name": "Nächster Geburtstag", "type": "formula",
+          "expr": "if(and(equal(month(prop(\"geboren\")), month(today())), equal(day(prop(\"geboren\")), day(today()))), today(), dateAdd(prop(\"geboren\"), dateBetween(today(), prop(\"geboren\"), \"years\") + 1, \"years\"))"},
+         {"id": "wird", "name": "Wird", "type": "formula",
+          "expr": "if(and(equal(month(prop(\"geboren\")), month(today())), equal(day(prop(\"geboren\")), day(today()))), dateBetween(today(), prop(\"geboren\"), \"years\"), dateBetween(today(), prop(\"geboren\"), \"years\") + 1)"},
+         {"id": "tage", "name": "Noch (Tage)", "type": "formula",
+          "expr": "if(and(equal(month(prop(\"geboren\")), month(today())), equal(day(prop(\"geboren\")), day(today()))), 0, dateBetween(dateAdd(prop(\"geboren\"), dateBetween(today(), prop(\"geboren\"), \"years\") + 1, \"years\"), today(), \"days\"))"},
+         {"id": "geburtsort", "name": "Geburtsort", "type": "text"},
+         {"id": "wohnort", "name": "Wohnt in", "type": "text"},
+         {"id": "beruf", "name": "Beruf", "type": "text"},
+         {"id": "eltern", "name": "Eltern", "type": "relation", "target": "$ref:personen"},
+         {"id": "partner", "name": "Partner/in", "type": "relation", "target": "$ref:personen"},
+         {"id": "zweig", "name": "Familienzweig", "type": "multi_select", "options": [
+           {"id": "mutter", "name": "Mütterlicherseits", "color": "pink"},
+           {"id": "vater", "name": "Väterlicherseits", "color": "blue"},
+           {"id": "angeheiratet", "name": "Angeheiratet", "color": "orange"}]}
+       ],
+       "views": [
+         {"id": "familie", "name": "Familie", "type": "gallery", "card": "l", "sorts": [{"pid": "geboren", "dir": "asc"}],
+          "hidden": ["alter", "gestorben", "naechster", "wird", "tage", "geburtsort", "wohnort", "beruf", "eltern", "partner", "zweig"],
+          "colors": [{"pid": "generation", "op": "is", "value": "urgross", "color": "brown"},
+                     {"pid": "generation", "op": "is", "value": "gross", "color": "purple"},
+                     {"pid": "generation", "op": "is", "value": "eltern_g", "color": "blue"},
+                     {"pid": "generation", "op": "is", "value": "kinder_g", "color": "green"},
+                     {"pid": "generation", "op": "is", "value": "enkel", "color": "yellow"}]},
+         {"id": "generationen", "name": "Generationen", "type": "board", "group_by": "generation", "sorts": [{"pid": "geboren", "dir": "asc"}],
+          "hidden": ["generation", "gestorben", "naechster", "wird", "tage", "geburtsort", "wohnort", "beruf", "eltern", "zweig"],
+          "colors": [{"pid": "gestorben", "op": "not_empty", "value": "", "color": "gray"}]},
+         {"id": "geburtstage", "name": "Geburtstage", "type": "table",
+          "filters": [{"pid": "geboren", "op": "not_empty", "value": ""}, {"pid": "gestorben", "op": "is_empty", "value": ""},
+                      {"pid": "tage", "op": "lt", "value": "60"}],
+          "sorts": [{"pid": "tage", "dir": "asc"}],
+          "hidden": ["generation", "spitzname", "geboren", "gestorben", "alter", "geburtsort", "wohnort", "beruf", "eltern", "partner", "zweig"]},
+         {"id": "alle", "name": "Alle (Tabelle)", "type": "table", "sorts": [{"pid": "geboren", "dir": "asc"}]},
+         {"id": "kalender", "name": "Geburtstage im Jahr", "type": "table",
+          "filters": [{"pid": "geboren", "op": "not_empty", "value": ""}, {"pid": "gestorben", "op": "is_empty", "value": ""}],
+          "sorts": [{"pid": "tage", "dir": "asc"}],
+          "hidden": ["spitzname", "gestorben", "alter", "geburtsort", "beruf", "eltern", "partner", "zweig"]}
+       ],
+       "default_tpl": "$ref:tpl_person"
+     },
+     "templates": [
+       {"ref": "tpl_person", "title": "Neue Person", "icon": "🙂", "props": {}, "default": true,
+        "body": [
+          {"type": "callout", "data": {"emoji": "📷", "text": "Tipp: Füge ein Foto als Titelbild oder hier im Text ein – es erscheint dann auf der Karte in „Familie“. Bilder aus der Nextcloud holst du mit „/“ → Nextcloud."}},
+          {"type": "columns", "data": {"cols": [
+            {"blocks": [
+              {"type": "header", "data": {"text": "📌 Steckbrief", "level": 3}},
+              {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+                {"content": "Lieblingsessen: ", "meta": {}, "items": []},
+                {"content": "Hobbys: ", "meta": {}, "items": []},
+                {"content": "Lebensmotto: ", "meta": {}, "items": []}]}}]},
+            {"blocks": [
+              {"type": "header", "data": {"text": "🏡 Lebensstationen", "level": 3}},
+              {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+                {"content": "", "meta": {}, "items": []}]}}]}
+          ]}},
+          {"type": "header", "data": {"text": "📖 Lebensgeschichte", "level": 2}},
+          {"type": "toggle", "data": {"title": "Kindheit und Jugend", "level": 3, "open": true, "blocks": [
+            {"type": "paragraph", "data": {"text": ""}}]}},
+          {"type": "toggle", "data": {"title": "Beruf und Leidenschaften", "level": 3, "open": false, "blocks": [
+            {"type": "paragraph", "data": {"text": ""}}]}},
+          {"type": "toggle", "data": {"title": "Liebe und Familie", "level": 3, "open": false, "blocks": [
+            {"type": "paragraph", "data": {"text": ""}}]}},
+          {"type": "header", "data": {"text": "💬 Was man sich erzählt", "level": 2}},
+          {"type": "quote", "data": {"text": "", "caption": "", "alignment": "left"}}
+        ]}
+     ],
+     "rows": [
+       {"ref": "p_anni", "title": "Anni Berger", "icon": "🕊️", "example": true,
+        "props": {"generation": "urgross", "spitzname": "Uroma Anni", "geboren": "1924-03-14", "gestorben": "2009-08-02",
+                  "geburtsort": "Kleinstadt am Fluss", "beruf": "Schneiderin", "zweig": ["mutter"]},
+        "body": [
+          {"type": "callout", "data": {"emoji": "🕊️", "text": "In liebevoller Erinnerung."}},
+          {"type": "paragraph", "data": {"text": "Uroma Anni hat ihr Leben lang genäht – für die ganze Familie, und am liebsten Faschingskostüme für die Kleinen."}}
+        ]},
+       {"ref": "p_karl", "title": "Karl Berger", "icon": "👴", "example": true,
+        "props": {"generation": "gross", "spitzname": "Opa Karl", "geboren": "1946-05-21", "geburtsort": "Kleinstadt am Fluss",
+                  "wohnort": "Am Waldrand", "beruf": "Schreiner im Ruhestand", "eltern": ["$ref:p_anni"], "partner": ["$ref:p_helga"], "zweig": ["mutter"]}},
+       {"ref": "p_helga", "title": "Helga Berger", "icon": "👵", "example": true,
+        "props": {"generation": "gross", "spitzname": "Oma Helga", "geboren": "1949-12-03", "geburtsort": "Am Meer",
+                  "wohnort": "Am Waldrand", "beruf": "Grundschullehrerin im Ruhestand", "partner": ["$ref:p_karl"], "zweig": ["mutter"]},
+        "body": [
+          {"type": "callout", "data": {"emoji": "📷", "text": "Hier könnte Omas schönstes Foto stehen – einfach ein Bild einfügen oder als Titelbild setzen."}},
+          {"type": "columns", "data": {"cols": [
+            {"blocks": [
+              {"type": "header", "data": {"text": "📌 Steckbrief", "level": 3}},
+              {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+                {"content": "Lieblingsessen: Pflaumenkuchen mit Sahne", "meta": {}, "items": []},
+                {"content": "Hobbys: Garten, Kreuzworträtsel, Chorsingen", "meta": {}, "items": []},
+                {"content": "Lebensmotto: „Erst mal einen Kaffee.“", "meta": {}, "items": []}]}}]},
+            {"blocks": [
+              {"type": "header", "data": {"text": "🏡 Lebensstationen", "level": 3}},
+              {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+                {"content": "Kindheit am Meer", "meta": {}, "items": []},
+                {"content": "Lehrerin an der Dorfschule", "meta": {}, "items": []},
+                {"content": "Seit 1975 im Haus am Waldrand", "meta": {}, "items": []}]}}]}
+          ]}},
+          {"type": "header", "data": {"text": "📖 Lebensgeschichte", "level": 2}},
+          {"type": "toggle", "data": {"title": "Kindheit und Jugend", "level": 3, "open": true, "blocks": [
+            {"type": "paragraph", "data": {"text": "Aufgewachsen in einem kleinen Haus hinter den Dünen. Im Sommer half sie ihrem Vater beim Netzeflicken."}}]}},
+          {"type": "toggle", "data": {"title": "Liebe und Familie", "level": 3, "open": false, "blocks": [
+            {"type": "paragraph", "data": {"text": "Karl lernte sie beim Tanz im Dorfgasthof kennen – er trat ihr zweimal auf die Füße und bekam trotzdem ein drittes Lied."}}]}},
+          {"type": "header", "data": {"text": "💬 Was man sich erzählt", "level": 2}},
+          {"type": "quote", "data": {"text": "Bei Oma gibt es keinen Besuch ohne Kuchen – und keinen Abschied ohne eine Dose für unterwegs.", "caption": "Die Enkel", "alignment": "left"}}
+        ]},
+       {"ref": "p_julia", "title": "Julia Berger", "icon": "👩", "example": true,
+        "props": {"generation": "eltern_g", "geboren": "1978-01-10", "geburtsort": "Am Waldrand", "wohnort": "In der Stadt",
+                  "beruf": "Architektin", "eltern": ["$ref:p_helga", "$ref:p_karl"], "partner": ["$ref:p_markus"], "zweig": ["mutter"]}},
+       {"ref": "p_markus", "title": "Markus Berger", "icon": "👨", "example": true,
+        "props": {"generation": "eltern_g", "geboren": "1976-11-28", "geburtsort": "Im Süden", "wohnort": "In der Stadt",
+                  "beruf": "Koch", "partner": ["$ref:p_julia"], "zweig": ["vater"]}},
+       {"ref": "p_lena", "title": "Lena Berger", "icon": "👧", "example": true,
+        "props": {"generation": "kinder_g", "spitzname": "Leni", "geboren": "2014-11-20", "wohnort": "In der Stadt",
+                  "eltern": ["$ref:p_julia", "$ref:p_markus"]}},
+       {"ref": "p_paul", "title": "Paul Berger", "icon": "👦", "example": true,
+        "props": {"generation": "kinder_g", "geboren": "2018-07-02", "wohnort": "In der Stadt",
+                  "eltern": ["$ref:p_julia", "$ref:p_markus"]}}
+     ]},
+
+    {"ref": "erinnerungen", "kind": "database", "parent": "home", "title": "Erinnerungen", "icon": "📸",
+     "schema": {
+       "title_name": "Erinnerung",
+       "props": [
+         {"id": "datum", "name": "Datum", "type": "date"},
+         {"id": "art", "name": "Anlass", "type": "select", "options": [
+           {"id": "fest", "name": "Fest", "color": "pink"},
+           {"id": "reise", "name": "Reise", "color": "blue"},
+           {"id": "meilenstein", "name": "Meilenstein", "color": "purple"},
+           {"id": "tradition", "name": "Tradition", "color": "orange"},
+           {"id": "alltag", "name": "Alltag", "color": "gray"}]},
+         {"id": "ort", "name": "Ort", "type": "text"},
+         {"id": "personen", "name": "Mit dabei", "type": "relation", "target": "$ref:personen", "two_way": true}
+       ],
+       "views": [
+         {"id": "galerie", "name": "Galerie", "type": "gallery", "card": "l", "sorts": [{"pid": "datum", "dir": "desc"}],
+          "hidden": ["ort", "personen"]},
+         {"id": "zeitleiste", "name": "Zeitleiste", "type": "timeline", "date_by": "datum"},
+         {"id": "anlass", "name": "Nach Anlass", "type": "board", "group_by": "art", "sorts": [{"pid": "datum", "dir": "desc"}]},
+         {"id": "tabelle", "name": "Tabelle", "type": "table", "sorts": [{"pid": "datum", "dir": "desc"}]}
+       ],
+       "default_tpl": "$ref:tpl_erinnerung"
+     },
+     "templates": [
+       {"ref": "tpl_erinnerung", "title": "Neue Erinnerung", "icon": "📸", "props": {}, "default": true,
+        "body": [
+          {"type": "callout", "data": {"emoji": "🖼️", "text": "Füge hier Fotos ein – das erste Bild wird zum Kartenbild in der Galerie."}},
+          {"type": "header", "data": {"text": "Was ist passiert?", "level": 2}},
+          {"type": "paragraph", "data": {"text": ""}},
+          {"type": "header", "data": {"text": "Schönster Moment", "level": 2}},
+          {"type": "quote", "data": {"text": "", "caption": "", "alignment": "left"}}
+        ]}
+     ],
+     "rows": [
+       {"ref": "e_hochzeit", "title": "Goldene Hochzeit von Helga und Karl", "icon": "💛", "example": true,
+        "props": {"datum": "2021-06-12", "art": "fest", "ort": "Gasthof am See",
+                  "personen": ["$ref:p_helga", "$ref:p_karl", "$ref:p_julia", "$ref:p_markus", "$ref:p_lena", "$ref:p_paul"]},
+        "body": [
+          {"type": "callout", "data": {"emoji": "🖼️", "text": "Hier die schönsten Fotos des Tages einfügen."}},
+          {"type": "header", "data": {"text": "Was ist passiert?", "level": 2}},
+          {"type": "paragraph", "data": {"text": "Fünfzig Jahre verheiratet! Die ganze Familie kam zusammen, Lena und Paul haben ein Gedicht aufgesagt und Opa Karl hat zum ersten Mal seit Jahren getanzt."}},
+          {"type": "header", "data": {"text": "Schönster Moment", "level": 2}},
+          {"type": "quote", "data": {"text": "Das Geheimnis? Jeden Tag ein bisschen lachen – und abends nie im Streit einschlafen.", "caption": "Oma Helga", "alignment": "left"}}
+        ]},
+       {"ref": "e_see", "title": "Sommer am See", "icon": "⛵", "example": true,
+        "props": {"datum": "2025-08-03", "art": "reise", "ort": "Bergsee",
+                  "personen": ["$ref:p_julia", "$ref:p_markus", "$ref:p_lena", "$ref:p_paul"]}},
+       {"ref": "e_schule", "title": "Lenas Einschulung", "icon": "🎒", "example": true,
+        "props": {"datum": "2021-09-04", "art": "meilenstein", "ort": "Grundschule",
+                  "personen": ["$ref:p_lena", "$ref:p_julia", "$ref:p_markus", "$ref:p_helga"]}},
+       {"ref": "e_plaetzchen", "title": "Plätzchenbacken bei Oma", "icon": "🍪", "example": true,
+        "props": {"datum": "2025-12-20", "art": "tradition", "ort": "Haus am Waldrand",
+                  "personen": ["$ref:p_helga", "$ref:p_lena", "$ref:p_paul"]}}
+     ]},
+
+    {"ref": "anleitung", "kind": "page", "parent": "home", "title": "So funktioniert's", "icon": "🧭", "cover": null,
+     "body": [
+       {"type": "callout", "data": {"emoji": "🌱", "text": "Die Beispielfamilie Berger zeigt, wie alles zusammenhängt. Lösche sie, sobald du deine eigene Familie eingetragen hast."}},
+       {"type": "header", "data": {"text": "👤 Personen eintragen", "level": 2}},
+       {"type": "list", "data": {"style": "ordered", "meta": {}, "items": [
+         {"content": "Auf der Startseite „Person hinzufügen“ wählen und den Namen eintragen.", "meta": {}, "items": []},
+         {"content": "Generation, Geburtstag und Wohnort setzen – Alter und nächster Geburtstag rechnet Saga selbst aus.", "meta": {}, "items": []},
+         {"content": "Bei „Eltern“ und „Partner/in“ die passenden Personen auswählen. So entsteht Schritt für Schritt euer Stammbaum.", "meta": {}, "items": []}]}},
+       {"type": "header", "data": {"text": "📷 Fotos", "level": 2}},
+       {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+         {"content": "Ein Titelbild oder das erste Bild auf der Seite einer Person erscheint als Karte in der Ansicht „Familie“.", "meta": {}, "items": []},
+         {"content": "Fotos aus der Nextcloud holst du mit „/“ → Nextcloud direkt in eine Seite.", "meta": {}, "items": []}]}},
+       {"type": "header", "data": {"text": "📸 Erinnerungen", "level": 2}},
+       {"type": "paragraph", "data": {"text": "Feste, Reisen und kleine Alltagsmomente bekommen eine eigene Seite. Unter „Mit dabei“ wählst du die Personen – bei ihnen erscheint die Erinnerung dann automatisch."}},
+       {"type": "header", "data": {"text": "🔒 Privatsphäre", "level": 2}},
+       {"type": "paragraph", "data": {"text": "Das Familien-Wiki ist zuerst nur für dich sichtbar. Über „Teilen“ lädst du gezielt Familienmitglieder ein – zum Lesen oder Mitschreiben."}}
+     ]}
+  ]
+}

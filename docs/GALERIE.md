@@ -65,7 +65,8 @@ Rückgabe 0 = in Ordnung, 1 = Fehler. Was das Skript akzeptiert, lädt auch der 
   mit `chart`-Spec wie `docs/APP-API.md` „Diagramme“), optional
   `title_name`, `default_tpl: "$ref:<vorlage>"`. `srev`, `_since` und `pair` setzt der Server.
 - Relation: `{"type": "relation", "target": "$ref:<datenbank>", "two_way": true}` – `two_way` legt in der Ziel-Datenbank
-  die Gegenspalte an (Name = Titel dieser Datenbank).
+  die Gegenspalte an (Name = Titel dieser Datenbank). Ihre ID vergibt der Server; Ansichten der Ziel-Datenbank mit
+  `hidden`-Liste blenden sie automatisch aus, Ansichten ohne `hidden` zeigen sie.
 - `templates`: Eintrags-Vorlagen `{"ref", "title", "icon", "props", "body", "default": true}` (höchstens eine `default`;
   setzt `default_tpl`, falls das Schema keinen hat).
 - `rows`: Zeilen `{"ref"?, "title", "icon", "props": {"<prop-id>": Wert}, "body", "example": true}`. `ref` nur nötig, wenn

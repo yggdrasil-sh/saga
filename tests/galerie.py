@@ -64,6 +64,22 @@ def sql(q, a=()):
         cn.close()
 
 
+def familie(d):
+    """Familien-Wiki: Gegenspalte der zweiseitigen Relation (Server-ID) ist in Kartenansichten mit Ausblendliste
+    ausgeblendet, in Tabellen ohne Ausblendliste sichtbar; Geburtstagsformeln rechnen."""
+    ns = [note(i) for i in d["created"]]
+    per = next(n for n in ns if n.get("kind") == "database" and n.get("title") == "Familienmitglieder")
+    sc = per.get("schema") or {}
+    mid = next((p["id"] for p in sc.get("props") or [] if p.get("type") == "relation" and p.get("pair") == "personen"), None)
+    vs = {v["id"]: v for v in sc.get("views") or []}
+    ok("familie: Gegenspalte angelegt", bool(mid), [p.get("id") for p in sc.get("props") or []])
+    ok("familie: Gegenspalte in Karten/Board/Geburtstagen ausgeblendet",
+       all(mid in (vs[k].get("hidden") or []) for k in ("familie", "generationen", "geburtstage", "kalender")))
+    ok("familie: Tabelle ohne Ausblendliste zeigt sie", mid not in (vs["alle"].get("hidden") or []))
+    s, rows = call("GET", f"/api/notes/{per['id']}/rows?view=geburtstage")
+    ok(f"familie: Geburtstags-Ansicht abrufbar ({s})", s == 200)
+
+
 def note(i, u="hk-test-a"):
     return call("GET", f"/api/notes/{i}", u=u)[1]
 
@@ -338,6 +354,8 @@ try:
                 ok(f"{x['id']}: keine $ref uebrig", all("$ref:" not in json.dumps(note(i)) for i in d6["created"][:40]) and n6["title"])
                 if x["id"] == "home-dashboard" and ex:
                     home_dash(d6)
+                if x["id"] == "familie" and ex:
+                    familie(d6)
 
     # --- Admin-Schalter ---------------------------------------------------------------------------------------------
     sql("INSERT INTO setting (k, v) VALUES ('gallery_enabled', 'false') ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v")
