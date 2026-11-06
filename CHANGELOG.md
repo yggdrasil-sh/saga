@@ -17,6 +17,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Web: Design-Runde (ruhiger, einheitlicher)
+- **Symbole in Menüs:** Ein eigener Satz Linien-Symbole (gleiche Größe, gleiche Strichstärke, ohne externe
+  Bibliothek) ersetzt die bunten Emoji und Zeichen in Seitenmenü „···“, Neue-Seite-Menü, Blockmenü, Kontomenü,
+  Spaltenkopf-Menü, /-Menü, Tabellen- und Chat-Menüs. Eigenschaftstypen haben eigene Symbole (Datum ist ein
+  Kalenderblatt statt des Tabellen-Zeichens, Mehrfachauswahl ein Etikett statt der Liste), die Ansichts-Reiter ruhige
+  Symbole in Grau, die Reiter „Marin | Chat“ Funken und Sprechblase. Emoji bleiben Inhalt (Seiten-Icons, Callouts,
+  Reaktionen).
 - **Seitenleiste:** Die Chat-Liste auf der Chats-Seite war nur ~1,5 Zeilen hoch („Chats & Geräte“ überlappte) – jetzt
   bis zu 6 volle Zeilen mit eigenem Scrollen. „Zuletzt“ steht nicht mehr in der Leiste (dafür auf „Heute“), „Mehr“ ist
   eine Symbolzeile über dem Konto: Der Seitenbaum hat damit deutlich mehr Platz. Ein Linien-Symbolsatz statt ⌕ ✳ 📦 🗑,
