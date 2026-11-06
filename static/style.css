@@ -2970,7 +2970,6 @@ a.qs-web{text-decoration:none;color:var(--fg)}
 /* Handy: Suchfeld eigene Zeile, darunter Rolle + "Einladen" (die allgemeine Regel fuer Suchfelder bis 600 px setzte
    flex-basis 0 und quetschte das Feld neben Rolle und Knopf) */
 @media (max-width:560px){.sh-add .sh-q{flex:1 1 100%}}
-=======
 /* Design-Runde VD-17 Symbole (VD-18, VD-19, AE-07, AE-31, VD-44): Linien-Symbole aus static/icons.js (24er-Raster,
    Strich 1.75) in fester Box - gleiche Groesse und Grundlinie fuer alle Bedienelemente; Emoji nur noch als Inhalt.
    Farbe ruhig (--muted), beim Ueberfahren --fg; Danger-Eintraege faerbt allein die vorhandene .danger-Klasse. */
