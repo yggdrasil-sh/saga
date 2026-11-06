@@ -27,6 +27,7 @@
 </header>
 {% if not panel %}{% include "_side.html" %}{% endif %}
 <main class="ct-main">
+  <h1 class="sr-only">{{ _("Chats") }}</h1>
   {% if not enabled %}
   <p class="ct-off" role="status">{{ _("Chats sind auf diesem Server abgeschaltet.") }}</p>
   {% else %}
@@ -75,7 +76,7 @@
         <div class="ct-warn" id="ct-warn" hidden role="alert"></div>
         <div class="ct-ai-note" id="ct-ai-note" hidden role="note"></div>
         <div class="ct-pins" id="ct-pins" hidden role="region" aria-label="{{ _("Angeheftete Nachrichten") }}"></div>
-        <div class="ct-msgs" id="ct-msgs" role="log" aria-label="{{ _("Nachrichten") }}"></div>
+        <div class="ct-msgs" id="ct-msgs" role="log" tabindex="0" aria-label="{{ _("Nachrichten") }}"></div>
         <div class="ct-typing" id="ct-typing" aria-live="polite"></div>
         <div class="ct-reply" id="ct-reply" hidden></div>
         <div class="ct-files" id="ct-files" hidden></div>

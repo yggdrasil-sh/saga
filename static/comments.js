@@ -46,13 +46,16 @@
     // Desktop: unter der Kopfleiste (Benutzermenue bleibt erreichbar); Handy: Bottom-Sheet ueber einem Schleier
     var hd = document.querySelector('.np-head'), top = hd && !narrow.matches ? Math.max(0, Math.round(hd.getBoundingClientRect().bottom)) : 0;
     panel.style.top = narrow.matches ? '' : top + 'px';
+    var was = !panel.hidden;
     panel.hidden = false; C.open = true; document.body.classList.add('cm-open');
+    if (!was) C.pf = HK.panelFocus(panel, { trap: narrow.matches, initial: '.cm-close' });   // A11Y-28: Fokus hinein, beim Schliessen zurueck
     scrim.hidden = !narrow.matches;
     if (narrow.matches) document.body.style.setProperty('--cm-sheet-h', Math.round(panel.getBoundingClientRect().height) + 'px');
   }
   function hide() {
     panel.hidden = true; scrim.hidden = true; scrim.style.clipPath = ''; C.open = false; C.block = null; C.replyTo = C.editing = null;
     document.body.classList.remove('cm-open'); markBlocks();
+    if (C.pf) { C.pf.release(); C.pf = null; }
   }
 
   // --- Daten ------------------------------------------------------------------------------------
@@ -395,7 +398,7 @@
       var b = blockEl(bid); if (!b || panel.hidden) return;
       var r = b.getBoundingClientRect(), top = panel.getBoundingClientRect().top, hd = document.querySelector('.np-head');
       var minTop = hd ? hd.getBoundingClientRect().bottom + 8 : 8, want = Math.max(minTop, top - r.height - 16);
-      if (Math.abs(r.top - want) > 4) scroller(b).scrollBy({ top: r.top - want, behavior: 'smooth' });
+      if (Math.abs(r.top - want) > 4) scroller(b).scrollBy({ top: r.top - want, behavior: HK.smooth() });
       setTimeout(hole, 450);
     }, 60);
   }

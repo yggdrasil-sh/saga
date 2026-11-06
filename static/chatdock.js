@@ -96,12 +96,15 @@
     if (!fresh && hash) {
       try { var w = D.frame.contentWindow; if (w.location.hash !== '#' + hash) w.location.hash = hash; } catch (e) { /* egal */ }
     }
+    var was = !panel.hidden;
     panel.hidden = false; body.classList.add('cd-open'); btn.setAttribute('aria-expanded', 'true');
+    if (!was) { D.pf = HK.panelFocus(panel, { initial: false, back: btn }); opts.focus = true; }   // A11Y-32: Fokus ins Eingabefeld, zurueck an den Knopf
     if (opts.share) post({ t: 'saga-share', note: opts.share });
     if (opts.focus) setTimeout(function () { post({ t: 'saga-focus' }); try { D.frame.focus(); } catch (e) { /* egal */ } }, fresh ? 1500 : 250);
   }
   function hide() {
     panel.hidden = true; body.classList.remove('cd-open'); btn.setAttribute('aria-expanded', 'false');
+    if (D.pf) { D.pf.release(); D.pf = null; }
     try { var h = D.frame && D.frame.contentWindow.location.hash; D.hash = h ? h.slice(1) : D.hash; } catch (e) { /* egal */ }
   }
   document.addEventListener('keydown', function (e) {
@@ -110,6 +113,7 @@
 
   // Links aus dem Panel (Seiten, Heute) im Hauptfenster oeffnen - Seiten ohne Neuladen, wenn /notes offen ist
   window.addEventListener('message', function (e) {
+    if (e.origin === location.origin && D.frame && e.source === D.frame.contentWindow && e.data && e.data.t === 'saga-close') { hide(); return; }
     if (e.origin !== location.origin || !D.frame || e.source !== D.frame.contentWindow || !e.data || e.data.t !== 'saga-open') return;
     var href = String(e.data.href || ''); if (!/^\/(?![\/\\])/.test(href) || /[\\\s]/.test(href)) return;   // nur Pfade dieser Saga
     var m = /^\/notes#(\d+)$/.exec(href), K = window.HKPages && window.HKPages.k;

@@ -2929,3 +2929,22 @@ a.qs-web{text-decoration:none;color:var(--fg)}
 .qs-web .qs-web-host{font-size:.75rem;color:var(--muted)}
 .qs-web .pg-hit-s{color:var(--muted)}
 .qs-web-answer{margin:.3rem .6rem .5rem;padding:.5rem .7rem;border-radius:8px;background:var(--card-h);font-size:.88rem}
+
+/* ===== Design-Runde A11y 2: Fokus und Bildschirmleser ===========================================================
+   A11Y-14: Inhaltsverzeichnis rechts per Tastatur - klappt bei Fokus auf wie beim Ueberfahren, Namen nur optisch versteckt
+   (vorher display:none -> Knoepfe ohne Namen, axe "button-name" kritisch; Fokusring um einen 2-px-Strich). */
+.hk-toc-t{display:block}
+.hk-toc:not(:hover):not(:focus-within) .hk-toc-t{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+.hk-toc:not(:hover):not(:focus-within) .hk-toc-i{min-height:10px}
+.hk-toc:focus-within{background:var(--card);border:1px solid var(--border);overflow:auto;box-shadow:var(--sh-pop)}
+.hk-toc:focus-within .hk-toc-i{justify-content:flex-start;min-height:24px}
+.hk-toc:focus-within .hk-toc-d{display:none}
+.hk-toc:hover{box-shadow:var(--sh-pop)}
+/* A11Y-05: Textfelder mit deutlichem 2-px-Fokus statt 1-px-Schatten; Seitentitel unterstrichen bei Tastaturfokus */
+:is(input,textarea,select):not([type=checkbox]):not([type=radio]):not(.page-title):focus-visible{box-shadow:0 0 0 2px var(--accent)}
+.page-title:focus-visible{box-shadow:inset 0 -2px 0 var(--accent)}
+/* A11Y-13: Suchfeld der Seitenleiste als Feld erkennbar (vorher 1,11:1, Rand transparent) */
+.pages-side .pg-search{border:1px solid color-mix(in srgb,var(--field) 70%,transparent)!important}
+.pages-side .pg-search:focus{border-color:var(--accent)!important}
+/* A11Y-31: Nachrichtenverlauf per Tastatur scrollbar - Fokus sichtbar */
+.ct-msgs:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}

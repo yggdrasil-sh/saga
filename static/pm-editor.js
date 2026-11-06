@@ -859,7 +859,9 @@
         if (it.group && it.group !== last) { var g = el('div', 'hk-at-g', it.group); g.setAttribute('role', 'presentation'); box.appendChild(g); last = it.group; }
         var b = el('button', 'hk-emo-i' + (i === idx ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'option');
         b.id = box.id + '-' + i; b.tabIndex = -1; b.setAttribute('aria-selected', i === idx ? 'true' : 'false');
-        var ic = el('span', 'hk-emo-e');
+        b.setAttribute('aria-label', it.t + (it.group ? ' (' + it.group + ')' : ''));   // A11Y-15: Name statt "¶TextEinfacher AbsatzStrg+Alt+0"
+        if (it.desc) b.setAttribute('aria-description', it.desc);
+        var ic = el('span', 'hk-emo-e'); ic.setAttribute('aria-hidden', 'true');
         if (/^<svg[\s>]/.test(it.ic || '')) ic.innerHTML = it.ic;           // Werkzeug-Symbol (eigener Code, toolbox.icon)
         else ic.textContent = it.ic || '';
         b.appendChild(ic);

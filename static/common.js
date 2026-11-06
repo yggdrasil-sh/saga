@@ -141,17 +141,29 @@
   function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
   // Kurze Rueckmeldung unten in der Mitte, optional mit Aktion (z.B. "Rueckgaengig"); ms: Anzeigedauer (sonst 3,5 bzw. 7 s)
-  var toastEl = el('div', 'toast'); toastEl.setAttribute('role', 'status'); toastEl.hidden = true;
+  var toastEl = el('div', 'toast'); toastEl.hidden = true;
+  // A11Y-06: Ansage ueber eine Region, die immer im Baum steht (sie wurde sonst im selben Takt sichtbar und gefuellt und
+  // oft verpasst); die Aktion verfaellt nicht, solange Maus oder Fokus auf der Meldung sind
+  var toastSr = el('div', 'sr-only'); toastSr.setAttribute('role', 'status'); toastSr.setAttribute('aria-live', 'polite');
+  document.body.appendChild(toastSr);
+  var toastHold = false, toastWait = 0;
+  toastEl.addEventListener('mouseenter', function () { toastHold = true; });
+  toastEl.addEventListener('mouseleave', function () { toastHold = false; });
+  toastEl.addEventListener('focusin', function () { toastHold = true; });
+  toastEl.addEventListener('focusout', function () { toastHold = false; });
+  function toastHide() { if (toastHold) { toastT = setTimeout(toastHide, 1000); return; } toastEl.hidden = true; }
   document.body.appendChild(toastEl);
   var toastT = null;
   function toast(msg, actionLabel, onAction, ms) {
     toastEl.textContent = msg; toastEl.hidden = false;
+    clearTimeout(toastWait); toastSr.textContent = '';
+    toastWait = setTimeout(function () { toastSr.textContent = msg + (actionLabel ? ' – ' + actionLabel : ''); }, 60);
     if (actionLabel) {
       var b = el('button', 'toast-action', actionLabel); b.type = 'button';
       b.addEventListener('click', function () { toastEl.hidden = true; onAction(); });
       toastEl.appendChild(b);
     }
-    clearTimeout(toastT); toastT = setTimeout(function () { toastEl.hidden = true; }, ms || (actionLabel ? 7000 : 3500));
+    clearTimeout(toastT); toastHold = false; toastT = setTimeout(toastHide, ms || (actionLabel ? 7000 : 3500));
   }
 
   // Popup-Menues im Notion-Stil: Symbol + Text + Zusatzinfo, seitliche Untermenues, optionales Suchfeld,
@@ -191,6 +203,14 @@
     });
     m.insertBefore(s, m.firstChild); return s;
   }
+  // A11Y-35: Menue schliessen, wenn der Fokus per Tastatur hinauslaeuft (Klick daneben schliesst es schon)
+  [menuEl, subEl].forEach(function (m) {
+    m.addEventListener('focusout', function (e) {
+      var to = e.relatedTarget; if (!to || menuEl.hidden) return;
+      if (menuEl.contains(to) || subEl.contains(to) || to === menuOwner) return;
+      closeMenu();
+    });
+  });
   function openMenu(anchor, build, opts) {
     if (menuOwner === anchor) { closeMenu(); return; }
     closeMenu(); menuEl.classList.remove('menu-q'); build(menuEl);
@@ -495,8 +515,43 @@
     today: todayIso
   };
 
+  // Design-Runde (A11Y-21/25/28/32/34): gemeinsamer Fokus-Helfer fuer Panels und Dialoge (Vorbild: Teilen-Dialog).
+  // panelFocus(panel, {trap, initial, back}) legt den Fokus hinein (initial: Element/Selektor, sonst das erste
+  // bedienbare Element), haelt ihn bei trap (aria-modal) per Tab im Panel und gibt ihn mit release() an den Ausloeser
+  // zurueck - nur, wenn er noch im Panel bzw. auf BODY steht (wer woanders hingeklickt hat, behaelt seinen Fokus).
+  function focusables(root) {
+    return Array.prototype.filter.call(root.querySelectorAll('button,[href],input,select,textarea,iframe,[tabindex]:not([tabindex="-1"])'),
+      function (x) { return !x.disabled && x.getClientRects().length && getComputedStyle(x).visibility !== 'hidden'; });
+  }
+  function panelFocus(panel, o) {
+    o = o || {};
+    var back = o.back || document.activeElement;
+    if (!back || back === document.body || (back.closest && back.closest('.menu'))) back = lastOwner || back;
+    function key(e) {
+      if (e.key !== 'Tab' || panel.hidden) return;
+      var f = focusables(panel); if (!f.length) return;
+      var a = f[0], z = f[f.length - 1], ae = document.activeElement;
+      if (e.shiftKey && (ae === a || !panel.contains(ae))) { e.preventDefault(); z.focus(); }
+      else if (!e.shiftKey && (ae === z || !panel.contains(ae))) { e.preventDefault(); a.focus(); }
+    }
+    if (o.trap) document.addEventListener('keydown', key, true);
+    if (o.initial !== false) setTimeout(function () {
+      if (panel.hidden || panel.contains(document.activeElement)) return;
+      var t = typeof o.initial === 'string' ? panel.querySelector(o.initial) : o.initial;
+      if (!t || !t.getClientRects().length) t = focusables(panel)[0];
+      if (t) try { t.focus(); } catch (e) { /* egal */ }
+    }, 0);
+    var done = false;
+    return { back: back, release: function (restore) {
+      if (done) return; done = true; document.removeEventListener('keydown', key, true);
+      var ae = document.activeElement;
+      if (restore === false || !back || !back.isConnected || typeof back.focus !== 'function') return;
+      if (!ae || ae === document.body || panel.contains(ae)) try { back.focus(); } catch (e) { /* egal */ }
+    } };
+  }
   window.HK = { personName: personName, tab: TAB, avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, lastMenuOwner: function () { return lastOwner; }, menuItem: menuItem, menuLabel: menuLabel,
                 menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg,
-                tasks: TS };
+                tasks: TS, panelFocus: panelFocus, focusables: focusables,
+                smooth: function () { return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'; } };   // A11Y-07
 })();

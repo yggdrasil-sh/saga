@@ -66,6 +66,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Datenbank (neue Datenbank direkt in der Seite), Importieren und – wenn der KI-Assistent an ist – „Mit … entwerfen“.
   Die Liste verschwindet mit dem ersten Zeichen und kommt wieder, wenn die Seite wieder leer ist; im leeren ersten
   Absatz wählen ↑/↓ einen Eintrag, Enter startet ihn, Esc blendet aus. Datenbanken, Einträge und Nur-Lesen zeigen nichts.
+- **Fokus und Bildschirmleser (2. Runde):** Gemeinsamer Fokus-Helfer für Panels: Die Schnellsuche hält den Fokus im
+  Dialog, Esc schließt sie überall darin, danach steht der Fokus wieder am Auslöser; Kommentar- und Chat-Panel holen den
+  Fokus und geben ihn zurück (Esc im Chat-Panel schließt es auch, wenn der Fokus im Chat steckt). Menüs und die Glocke
+  schließen, wenn man per Tab hinausläuft. Board-, Listen- und Galerie-Einträge öffnen auch per Leertaste, nach dem
+  Schließen steht der Fokus wieder auf der Karte; Board-Spalten sind benannte Gruppen, Ansichts-Reiter melden ihren
+  Zustand, Tabellen haben einen Namen und melden die Sortierung. Das Inhaltsverzeichnis rechts lässt sich per Tastatur
+  bedienen, das /-Menü nennt saubere Namen, die offene Seitenleiste am Handy sperrt den Inhalt dahinter, Meldungen werden
+  zuverlässig angesagt und verschwinden nicht, solange Maus oder Fokus darauf sind. Weiche Scroll-Animationen beachten
+  „Bewegung reduzieren“. Überschriften: Aufgaben, Termine, Papierkorb und Chats haben eine H1; Chat-Kopf und Anmeldung
+  (Fehler am Feld) für Bildschirmleser verbessert; Textfelder mit deutlicherem Fokusrahmen.
 
 ### Anrufe (Web): ruhigere Anruf-Bühne
 - Weiche Vignette statt Flächenschwarz, Name etwas größer, Glasknöpfe (Auflegen in Rot mit leichtem Schein),

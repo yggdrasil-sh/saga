@@ -2219,8 +2219,14 @@
   var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   $('pg-qs-kbd').textContent = isMac ? '⌘K' : T('Strg') + ' K';
   var QS_WEB = document.body.dataset.web === '1';         // SearXNG eingerichtet: "Im Web suchen" (frueher Suchfeld auf Heute)
-  function openQS() { $('pg-qs').hidden = false; $('pg-qs-q').value = ''; qs.web = null; renderQS(); $('pg-qs-q').focus(); }
-  function closeQS() { $('pg-qs').hidden = true; }
+  // A11Y-25/UX-26: Fokusfalle (aria-modal), Esc ueberall im Dialog, Fokus danach zurueck an den Ausloeser
+  function openQS() {
+    if (!$('pg-qs').hidden) { $('pg-qs-q').focus(); return; }
+    $('pg-qs').hidden = false; $('pg-qs-q').value = ''; qs.web = null; renderQS();
+    qs.pf = HK.panelFocus($('pg-qs').querySelector('.qs-box'), { trap: true, initial: '#pg-qs-q' }); $('pg-qs-q').focus();
+  }
+  function closeQS() { $('pg-qs').hidden = true; if (qs.pf) { qs.pf.release(); qs.pf = null; } }
+  $('pg-qs').addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('pg-qs').hidden) { e.preventDefault(); e.stopPropagation(); closeQS(); } });
   function renderQS() {
     var q = $('pg-qs-q').value.trim().toLowerCase(), list = $('pg-qs-list');
     list.textContent = ''; qs.items = []; qs.idx = 0;
@@ -4756,6 +4762,7 @@
       var scroll = el('div', 'db-scroll'), tb = el('table', 'db-table'), thead = el('thead'), hr = el('tr');
       var tv = curView(), vis = visibleProps(), widths = tv.widths || {}, cg = el('colgroup'), cols = {};
       tb.classList.toggle('db-wrap', !!tv.wrap);                 // 2.5: Zeilenumbruch (ganze Ansicht)
+      tb.setAttribute('aria-label', tv.name || T('Tabelle'));      // A11Y-22: Tabelle mit Namen der Ansicht
       var wrapCols = {}; (tv.wrap_cols || []).forEach(function (k) { wrapCols[k] = 1; });
       var freeze = Math.min(tv.freeze || 0, vis.length + 1);     // 2.5: so viele Spalten ab links fixiert (inkl. Name)
       if (freeze) tb.classList.add('db-freeze');
@@ -4821,7 +4828,8 @@
         var th = el('th', 'db-th'); th.tabIndex = 0; resizer(th, p.id);
         th.appendChild(el('span', 'db-ticon', TYPES[p.type][1])); th.appendChild(document.createTextNode(' ' + p.name));
         th.addEventListener('click', function () { headMenu(th, p); });
-        th.addEventListener('keydown', function (e) { if (e.key === 'Enter') headMenu(th, p); });
+        th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); headMenu(th, p); } });
+        var srt = (tv.sorts || [])[0]; if (srt && srt.pid === p.id) th.setAttribute('aria-sort', srt.dir === 'desc' ? 'descending' : 'ascending');   // A11Y-22
         hr.appendChild(th);
       });
       var add = el('th', 'db-th db-th-add'); var ab = el('button', 'db-add-col', '+'); ab.type = 'button'; ab.title = T('Spalte hinzufügen');
@@ -5409,9 +5417,11 @@
 
     function viewBar() {
       var bar = el('div', 'db-bar'), tabs = el('div', 'db-tabs'), cur = curView();
+      tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', T('Ansichten'));
       views().forEach(function (v) {
         var b = el('button', 'db-tab' + (v === cur ? ' on' : ''), (VIEW_ICON[v.type] || '▦') + ' ' + v.name); b.type = 'button';
         b.title = v === cur ? T('Ansicht bearbeiten') : T('Ansicht wechseln');
+        b.setAttribute('aria-pressed', v === cur ? 'true' : 'false');      // A11Y-20: aktive Ansicht nicht nur ueber .on
         b.addEventListener('click', function () { if (v === cur) { if (viewsLocked()) lockedHint(); else viewMenu(b, v); } else { setViewId(v.id); renderDb(); } });
         tabs.appendChild(b);
       });
@@ -5480,7 +5490,7 @@
       txt(); return b;
     }
     function boardCard(r, g) {
-      var c = tint(el('div', 'board-card'), r); c.draggable = true; c.tabIndex = 0; c.setAttribute('role', 'button');
+      var c = tint(el('div', 'board-card'), r); c.dataset.id = r.id; c.draggable = true; c.tabIndex = 0; c.setAttribute('role', 'button');
       var bt = el('div', 'board-title', (ti(r.icon) ? ti(r.icon) + ' ' : '') + (r.title || T('Unbenannt')));
       if (r.blocked) bt.insertBefore(blockedMark(r), bt.firstChild);
       c.appendChild(bt);
@@ -5502,7 +5512,7 @@
         c.appendChild(line);
       });
       c.addEventListener('click', function () { openRowUI(r.id); });
-      c.addEventListener('keydown', function (e) { if (e.key === 'Enter') openRowUI(r.id); });
+      c.addEventListener('keydown', function (e) { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openRowUI(r.id); } });   // A11Y-21: auch Leertaste
       c.addEventListener('dragstart', function (e) { dragId = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(ROW_DRAG, String(r.id)); c.classList.add('dragging'); });
       c.addEventListener('dragend', function () { dragId = null; c.classList.remove('dragging'); });
       return c;
@@ -5538,7 +5548,7 @@
       cols.forEach(function (col) {
         var c = el('div', 'board-col'), h = el('div', 'board-head');
         h.appendChild(col.o ? groupChip(col.o, g) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); h.appendChild(el('span', 'board-n', String(col.rows.length)));
-        c.appendChild(h);
+        c.appendChild(h); c.setAttribute('role', 'group'); c.setAttribute('aria-label', (h.textContent || '').replace(/\s+/g, ' ').trim());   // A11Y-21
         // Bughunt P07: je Spalte zuerst BOARD_PAGE Karten, der Rest per "Mehr laden" (1500 Karten = ~50 000 Knoten).
         // Aufgeklappt bleibt aufgeklappt (auch nach renderDb); eine gerade gezogene oder neue Karte ist immer zu sehen.
         var ck = curView().id + ':' + (col.o ? col.o.id : ''), lim = Math.max(BOARD_PAGE, boardLim[ck] || 0);
@@ -5607,7 +5617,7 @@
           var h = el('div', 'dbl-group'); h.appendChild(it.o ? groupChip(it.o, it.g) : el('span', 'board-none', T('Ohne {name}', { name: it.g.name }))); h.appendChild(el('span', 'board-n', String(it.n)));
           return h;
         }
-        var line = tint(el('div', 'dbl-row'), r); line.tabIndex = 0; line.setAttribute('role', 'button');
+        var line = tint(el('div', 'dbl-row'), r); line.dataset.id = r.id; line.tabIndex = 0; line.setAttribute('role', 'button');
         var left = el('div', 'dbl-left'), lv = curView();
         if (lv.sub && lv.sub.mode === 'nested' && !lv.group) { left.appendChild(subToggle(r)); if (!r._match) line.classList.add('db-row-ctx'); }
         if (r.blocked) left.appendChild(blockedMark(r));
@@ -5615,7 +5625,7 @@
         var right = el('div', 'dbl-props');
         vp.forEach(function (p) { var n = valueDisplay(p, r); if (n) right.appendChild(n); });
         line.appendChild(left); line.appendChild(right);
-        line.addEventListener('click', openRow(r)); line.addEventListener('keydown', function (e) { if (e.key === 'Enter') openRowUI(r.id); });
+        line.addEventListener('click', openRow(r)); line.addEventListener('keydown', function (e) { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openRowUI(r.id); } });   // A11Y-21: auch Leertaste
         return line;
       }
       var nb = el('button', 'db-new-row', T('+ Neu')); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); });
@@ -5634,7 +5644,7 @@
       var g = el('div', 'dbg' + (curView().card ? ' dbg-' + curView().card : ''));
       var nb = el('button', 'dbg-new', T('+ Neu')); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); }); g.appendChild(nb);
       chunked(sortedRows(), function (r) {
-        var c = tint(el('div', 'dbg-card'), r); c.tabIndex = 0; c.setAttribute('role', 'button');
+        var c = tint(el('div', 'dbg-card'), r); c.dataset.id = r.id; c.tabIndex = 0; c.setAttribute('role', 'button');
         var pv = el('div', 'dbg-prev');
         if (r.preview) { var im = el('img'); im.loading = 'lazy'; im.decoding = 'async'; im.src = thumb(r.preview, 640); im.alt = ''; pv.appendChild(im); }
         else pv.appendChild(icoNode(r.icon, '📄', 'dbg-ph'));
@@ -5644,7 +5654,7 @@
         tl.appendChild(document.createTextNode(r.title || T('Unbenannt'))); body.appendChild(tl);
         visibleProps().forEach(function (p) { var n = valueDisplay(p, r); if (n) body.appendChild(n); });
         c.appendChild(body);
-        c.addEventListener('click', openRow(r)); c.addEventListener('keydown', function (e) { if (e.key === 'Enter') openRowUI(r.id); });
+        c.addEventListener('click', openRow(r)); c.addEventListener('keydown', function (e) { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openRowUI(r.id); } });   // A11Y-21: auch Leertaste
         return c;
       }, g, nb, 120);
       return g;
@@ -7759,6 +7769,8 @@
       scrim.addEventListener('click', function () { drawer(false); });
     }
     scrim.hidden = !open;
+    // A11Y-37: offene Schublade ist modal - der verdeckte Inhalt (und Kopf ausser dem Schalter) ist so lange nicht bedienbar
+    [].forEach.call(document.querySelectorAll('#pages > :not(#pg-side), .np-head > :not(#pg-side-btn), #mob-tabs'), function (x) { x.inert = !!open; });
     var b = $('pg-side-btn');
     if (b && drawerMode()) { b.setAttribute('aria-expanded', open ? 'true' : 'false'); b.title = open ? T('Seitenleiste schließen') : T('Seiten anzeigen'); }
     // Suchfeld nur mit Maus/Tastatur fokussieren - auf Touch-Geraeten sprang sonst bei jedem Oeffnen die Tastatur auf
@@ -8176,7 +8188,8 @@
     if (!PK.id) {
       PK.ret = a && a !== document.body && !$('pg-peek').contains(a) ? a : null;
       var rw = PK.ret && PK.ret.closest && PK.ret.closest('[data-id]');            // Ansicht zeichnet nach dem Schliessen neu
-      PK.retSel = rw && PK.ret.classList.length ? '[data-id="' + rw.dataset.id + '"] .' + PK.ret.classList[0] : null;
+      PK.retSel = rw && PK.ret.classList.length ? (rw === PK.ret ? '.' + PK.ret.classList[0] + '[data-id="' + rw.dataset.id + '"]'   // Karte/Zeile selbst (A11Y-21)
+        : '[data-id="' + rw.dataset.id + '"] .' + PK.ret.classList[0]) : null;
     }
     PK.id = id; PK.ctx = ctx || PK.ctx;
     $('pg-peek').hidden = false; peekModeUI();
@@ -8877,7 +8890,7 @@
     var b = null;
     try { b = document.querySelector('#pg-editor .ce-block[data-id="' + CSS.escape(bid) + '"]'); } catch (e) { b = null; }
     if (!b) return false;
-    b.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    b.scrollIntoView({ block: 'center', behavior: HK.smooth() });
     b.classList.remove('hk-flash'); void b.offsetWidth; b.classList.add('hk-flash');
     setTimeout(function () { b.classList.remove('hk-flash'); }, 2200);
     return true;

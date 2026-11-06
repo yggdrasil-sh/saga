@@ -181,7 +181,7 @@
       var lv = tg ? (tg.classList.contains('tgl-h1') || tg.classList.contains('pm-tgl-h1') ? 1 : tg.classList.contains('tgl-h2') || tg.classList.contains('pm-tgl-h2') ? 2 : 3) : (+h.tagName.slice(1) || 2);
       var a = el('button', 'hk-toc-i l' + lv + (tg ? ' tgl' : '')); a.type = 'button';
       a.appendChild(el('span', 'hk-toc-d')); a.appendChild(el('span', 'hk-toc-t', h.textContent.trim()));
-      a.addEventListener('click', function () { h.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+      a.addEventListener('click', function () { h.scrollIntoView({ block: 'start', behavior: HK.smooth() }); });
       toc.appendChild(a);
     });
   }

@@ -190,6 +190,8 @@
     if (back) bell.focus();
   }
   bell.addEventListener('click', function () { if (N.open) closePanel(true); else openPanel(); });
+  // A11Y-35: per Tab aus der Liste hinaus -> zu (sonst stand sie offen, der Fokus dahinter)
+  panel.addEventListener('focusout', function (e) { var to = e.relatedTarget; if (N.open && to && !panel.contains(to) && to !== bell && !(to.closest && to.closest('.menu'))) closePanel(false); });
   pclose.addEventListener('click', function () { closePanel(true); });
   scrim.addEventListener('click', function () { closePanel(true); });
   allRead.addEventListener('click', function () { markRead('all'); });

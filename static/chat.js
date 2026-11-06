@@ -686,7 +686,13 @@
   window.addEventListener('message', function (e) {
     if (e.origin !== location.origin || e.source !== window.parent || !e.data || typeof e.data !== 'object') return;
     if (e.data.t === 'saga-share') shareStart(e.data.note);
-    else if (e.data.t === 'saga-focus' && S.cur) { var t = $('ct-input'); if (t) t.focus(); }
+    else if (e.data.t === 'saga-focus') { var t = S.cur ? $('ct-input') : ($('ct-filter') || $('ct-list')); if (t) t.focus(); }
+  });
+  // A11Y-32: Esc im Panel (Fokus steckt im Rahmen) schliesst das Panel im Hauptfenster - nur, wenn hier nichts anderes offen ist
+  if (PANEL) document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (document.querySelector('.menu:not([hidden]),.hk-modal,.ct-ov,.hk-ask,.ct-picker:not([hidden])') || !$('ct-reply').hidden || !$('ct-searchbar').hidden) return;
+    try { window.parent.postMessage({ t: 'saga-close' }, location.origin); } catch (x) { /* egal */ }
   });
   if (PANEL) document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('a[href]'); if (!a || e.defaultPrevented) return;
@@ -4420,7 +4426,9 @@
   (function () {
     var ht = document.querySelector('#ct-chat .ct-head-t'); if (!ht) return;
     ht.setAttribute('role', 'button'); ht.tabIndex = 0; ht.classList.add('ct-head-click');
-    ht.setAttribute('aria-label', T('Infos zum Chat'));
+    // A11Y-30: Name = sichtbarer Chat-Name (vorher ueberschrieb "Infos zum Chat" ihn), der Zweck als Beschreibung
+    var hint = el('span', null, T('Infos zum Chat')); hint.id = 'ct-head-hint'; hint.hidden = true; ht.parentNode.appendChild(hint);
+    ht.setAttribute('aria-labelledby', 'ct-title'); ht.setAttribute('aria-describedby', 'ct-head-hint');
     function go(e) { if (e.target.closest('a, button')) return; if (S.cur) groupInfo(); }
     ht.addEventListener('click', go);
     ht.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } });
