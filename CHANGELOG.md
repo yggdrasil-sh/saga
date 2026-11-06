@@ -50,6 +50,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Titelbild, Sperre), Verlauf/Graph/KI, Import/Export/Vorlage/Startseite, Archiv/Papierkorb. „Teilen“ und
   „Veröffentlichen“ stehen nur noch im Menü, wo die Kopfzeile keinen Knopf dafür hat (Peek), „Kommentare“ nur, solange
   der Kommentar-Knopf fehlt. Kürzel stehen rechts wie im /-Menü. Board-Karten zeigen beim Datum ein Kalendersymbol.
+- **Hell/Dunkel wählbar:** Kontomenü → „Darstellung“ (Automatisch/Hell/Dunkel) bzw. Einstellungen → Konto, oder
+  Strg/⌘+Umschalt+L. Gilt je Browser; „Automatisch“ folgt wie bisher dem System. Wirkt sofort ohne Neuladen, auch im
+  Chat-Panel und in anderen offenen Tabs, ohne Aufblitzen beim Laden. Öffentliche Seiten folgen weiter dem System.
 - **Symbole in Menüs:** Ein eigener Satz Linien-Symbole (gleiche Größe, gleiche Strichstärke, ohne externe
   Bibliothek) ersetzt die bunten Emoji und Zeichen in Seitenmenü „···“, Neue-Seite-Menü, Blockmenü, Kontomenü,
   Spaltenkopf-Menü, /-Menü, Tabellen- und Chat-Menüs. Eigenschaftstypen haben eigene Symbole (Datum ist ein
