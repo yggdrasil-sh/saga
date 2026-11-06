@@ -2788,8 +2788,9 @@ body:is(.notes-page,.has-side).side-hidden:not(.embed) .pages-side{box-shadow:va
 
 /* ===== Design-Runde 11/15: Handy-Grundlagen ======================================================================
    iOS zoomt in Felder unter 16 px und bleibt gezoomt (MOB-27/14/21/23) - nicht ueber maximum-scale (sperrt Zoomen),
-   sondern alle Eingaben auf Touch-Geraeten mind. 16 px; !important, weil Klassenregeln (.hk-in, .db-search) sonst gewinnen. */
-@media (pointer:coarse){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),select,textarea{font-size:max(16px,1em)!important}}
+   sondern alle Eingaben auf Touch-Geraeten mind. 16 px; !important, weil Klassenregeln (.hk-in, .db-search) sonst gewinnen.
+   Ausnahme Seitentitel: max(16px,1em) misst am Elternelement und drueckte den 1,6-2,5-rem-Titel sonst auf 16 px. */
+@media (pointer:coarse){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not(.page-title),select,textarea{font-size:max(16px,1em)!important}}
 /* 11 (MOB-07/A11Y-17): das unsichtbare "Spalte hinzufuegen" ragte 8 px ueber den Rand - die ganze Seite wackelte seitlich.
    Auf Touch gibt es Zeile/Spalte ueber die Tabellenleiste. */
 @media (hover:none){.page-body .pm-tbl-add{display:none}}
