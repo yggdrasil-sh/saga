@@ -91,6 +91,19 @@ const inGrid = p => p.evaluate(() => { const s = document.getElementById('ct-sid
   ok('Handy: Listenspalte wie bisher', await inGrid(m) && !(await inSide(m)));
   ok('Handy: Liste sichtbar', await m.isVisible('#ct-list .ct-item-b'));
   if (E.SHOTS) await m.screenshot({ path: E.SHOTS + '/chats-handy.png' });
+  // Design-Runde 13: im Gespraech ein Kopf, 16-px-Eingabe (kein iOS-Zoom), runder Senden-Knopf 44 px, kein Ueberlauf
+  await m.click('#ct-list .ct-item-b'); await m.waitForTimeout(1200);
+  const mc = await m.evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect();
+    return { head: getComputedStyle(document.querySelector('.np-head')).display, fs: getComputedStyle(document.getElementById('ct-input')).fontSize,
+      send: [Math.round(r('ct-send').width), Math.round(r('ct-send').height)], inp: Math.round(r('ct-input').width), back: Math.round(r('ct-back').width),
+      over: document.documentElement.scrollWidth - innerWidth }; });
+  console.log('handy-chat', JSON.stringify(mc));
+  ok('Handy-Chat: ein Kopf', mc.head === 'none');
+  ok('Handy-Chat: Eingabe 16 px', mc.fs === '16px');
+  ok('Handy-Chat: Senden 44 px rund', mc.send[0] === 44 && mc.send[1] === 44);
+  ok('Handy-Chat: Zurueck 44 px', mc.back >= 44);
+  ok('Handy-Chat: kein seitlicher Ueberlauf', mc.over <= 0);
+  if (E.SHOTS) await m.screenshot({ path: E.SHOTS + '/chats-handy-chat.png' });
 
   // --- Panel unveraendert ---
   await a.goto(BASE + '/chats?panel=1'); await a.waitForTimeout(1500);

@@ -35,6 +35,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Palette mit den Textfarben), auf eingefärbten Karten mit feiner Kante. **Galerie-Karten** sind neutral, die Farbe
   steht nur noch leicht in der Vorschau; ohne Titelbild ist die Vorschau halb so hoch (zwei volle Reihen je Bildschirm).
   Im Dunkelmodus ist die aktive Leistenzeile besser zu sehen. Die öffentliche Seite nutzt dieselben hellen Farben.
+- **Handy:** iOS zoomt nicht mehr in Eingabefelder (alle Eingaben auf Touch-Geräten mindestens 16 px, Zoomen bleibt
+  erlaubt). Seiten mit Tabelle laufen nicht mehr 8 px seitlich über. Der Seitenkopf steht in einer Zeile mit
+  44-px-Knöpfen (Vor/Zurück und Speicherstatus nur am Desktop, „Chat“ als Symbol), der Titel rückt nach oben. Im Chat
+  gibt es nur noch einen Kopf, die Eingabe ist breiter, Senden ist ein runder Knopf, die Safe-Area unten zählt nicht
+  mehr doppelt; der Status („online“) ist Text statt Pille. Häkchen, Kalender-Pfeile und Chips haben größere
+  Trefferflächen ohne Layoutsprung, Seitenleiste und Menüs auf Touch-Geräten (auch Tablets) 44-px-Zeilen.
 
 ### Galerie: Vorlage „Familien-Wiki“
 - Neue Vorlage (Persönlich) für die eigene Familie: Datenbank **„Familienmitglieder“** mit Generation, Spitzname,

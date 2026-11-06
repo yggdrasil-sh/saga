@@ -514,3 +514,23 @@ body.chats-in-side:not(.embed) .pages-side>.pg-chats[hidden],body.chats-in-side:
 /* Seitenleiste eingeklappt: Ein-/Ausblende-Knopf links oben ueberdeckt sonst den Kopf der Unterhaltung */
 body.has-side.side-hidden.chats-in-side:not(.embed) .ct-head,body.has-side.side-hidden.chats-in-side:not(.embed) .ct-none{padding-left:3.4rem}
 body.has-side.side-hidden.chats-in-side:not(.embed) .pg-chats .ct-side-top{padding-left:.1rem}
+
+/* ===== Design-Runde 13: Chat am Handy kompakt (MOB-23/24/25/26, AE-42) ============================================== */
+.ct-send-ic{display:none}
+.ct-send{display:inline-flex;align-items:center;justify-content:center;gap:.35rem}
+.ct-sub .ct-chip:not(a){border:0;background:none;padding:0}     /* Status ("online") als Text statt umrandeter Pille */
+@media (max-width:760px){
+  body.chats-page:has(.ct.ct-open) .np-head{display:none}      /* im Gespraech ein Kopf statt zwei */
+  body.chats-page{padding-bottom:0}                             /* Safe-Area zaehlt schon in .ct-compose */
+  .ct-head{padding:.3rem .4rem}
+  .ct-head .icon-btn{min-width:44px;min-height:44px}
+  .ct-back{min-width:44px;min-height:44px}
+  .ct-sub{flex-wrap:nowrap;white-space:nowrap;max-height:1.4em}
+  .ct-sub .ct-chip{font-size:.75rem;overflow:hidden;text-overflow:ellipsis}
+  .ct-compose{gap:.2rem;padding:.4rem .5rem calc(.4rem + env(safe-area-inset-bottom));align-items:flex-end}
+  .ct-compose .icon-btn{min-width:40px;min-height:44px}
+  .ct-input{font-size:16px;border-radius:20px;padding:.6rem .9rem;min-height:44px}
+  .ct-send{width:44px;height:44px;min-height:44px;padding:0;border-radius:50%;flex:none}
+  .ct-send .ct-send-ic{display:block}
+  .ct-send .ct-send-t{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+}

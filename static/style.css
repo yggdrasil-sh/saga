@@ -2784,3 +2784,40 @@ body:is(.notes-page,.has-side).side-hidden:not(.embed) .pages-side{box-shadow:va
 .dbg-card:has(.dbg-prev .dbg-ph) .dbg-tic{display:none}
 .dbg-body{padding:.7rem .85rem .85rem;gap:.3rem}
 @media (prefers-reduced-motion:reduce){.menu,.modal-box,.qs-box,.hk-dialog,.modal,.qs,.ai-scrim,.cm-scrim,.ai-panel,.cm-panel,.cd-panel{animation:none}}
+
+/* ===== Design-Runde 11/15: Handy-Grundlagen ======================================================================
+   iOS zoomt in Felder unter 16 px und bleibt gezoomt (MOB-27/14/21/23) - nicht ueber maximum-scale (sperrt Zoomen),
+   sondern alle Eingaben auf Touch-Geraeten mind. 16 px; !important, weil Klassenregeln (.hk-in, .db-search) sonst gewinnen. */
+@media (pointer:coarse){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),select,textarea{font-size:max(16px,1em)!important}}
+/* 11 (MOB-07/A11Y-17): das unsichtbare "Spalte hinzufuegen" ragte 8 px ueber den Rand - die ganze Seite wackelte seitlich.
+   Auf Touch gibt es Zeile/Spalte ueber die Tabellenleiste. */
+@media (hover:none){.page-body .pm-tbl-add{display:none}}
+@media (max-width:760px){.page-body .pm-tbl-addc{right:0}}
+/* 11 (MOB-08): Seitenkopf am Handy in einer Zeile (Titel 204-250 -> ~170 px), Knoepfe 44 px; Vor/Zurueck und der
+   Speicherstatus entfallen dort (Browser-Geste), "Chat" nur als Symbol */
+@media (max-width:760px){
+  body.notes-page .page-bar{flex-wrap:nowrap;gap:.1rem;min-height:44px;row-gap:0}
+  body.notes-page .page-bar .pg-nav,body.notes-page .page-bar #pg-state{display:none}
+  body.notes-page .page-bar .crumbs{flex:1 1 auto;min-width:0}
+  body.notes-page .page-bar :is(.pg-head-b,.icon-btn,.pg-lock-b){flex:none;min-width:44px;min-height:44px;display:inline-flex;align-items:center;
+    justify-content:center;padding:0 .45rem}
+  body.notes-page .page-bar #pg-share{min-height:34px;margin:0 .15rem}
+  body.notes-page .page-bar .pg-chat-b .pg-hb-t,body.notes-page .page-bar .pg-pub-l{display:none}
+}
+.pg-chat-b svg{flex:none}
+/* 15 (A11Y-36, MOB-02/20/36): groessere Trefferflaechen ohne Layoutsprung - unsichtbar ueber ::after */
+.task-check,.etk-check,.pg-twisty,.cal-nav,.etk-src-btn{position:relative}
+.task-check::after,.etk-check::after,.pg-twisty::after,.cal-nav::after,.etk-src-btn::after{content:"";position:absolute;inset:-4px}
+@media (pointer:coarse){
+  .task-check::after,.etk-check::after{inset:-13px}
+  .cal-nav::after{inset:-8px -13px}
+  .cal-add{min-width:32px;min-height:32px}
+  .db-chip,.pg-head-b,.tag-add,.pg-nav-b{position:relative}
+  .db-chip::after,.pg-head-b::after,.tag-add::after,.pg-nav-b::after{content:"";position:absolute;inset:-10px -2px}
+  /* Seitenleiste/Schublade und Menues: 44-px-Zeilen auch auf Tablets (gebunden an Touch statt an die Breite) */
+  :is(body.notes-page,body.has-side) .pages-side :is(.pg-row,.pg-nav-row,.pg-fav,.note-new){min-height:44px}
+  :is(body.notes-page,body.has-side) .pages-side .pg-row>*{min-height:44px;align-items:center}
+  :is(body.notes-page,body.has-side) .pages-side .pg-add{opacity:.75;width:40px;height:40px;font-size:1.2rem;border-radius:8px}
+  :is(body.notes-page,body.has-side) .pages-side .pg-foot-btn{min-height:44px}
+  .menu .menu-item{min-height:44px}
+}
