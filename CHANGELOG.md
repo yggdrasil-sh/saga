@@ -16,6 +16,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Desktop-Hülle: Brücke (Vorbereitung)
+- **Brückenvertrag `window.sagaHost`** (`static/host.js`, Vertrag `docs/APP-API-HOST.md`) für die kommenden Desktop-Apps
+  (Mac: Web-Oberfläche in `WKWebView`, Windows/Linux: Tauri 2). Erkennung über `SagaApp/…` im User-Agent und den
+  Nachrichtenweg der Hülle, Fähigkeiten meldet die Hülle selbst. Im Browser ändert sich nichts.
+- In der Hülle meldet das Web die Ungelesen-Zahl der Glocke (Dock/Tray), stößt nach Änderungen an Aufgaben, Terminen
+  und Seiten das Neuladen der Widgets an (höchstens alle 10 s), gibt fremde Links an den Systembrowser und zeigt
+  Live-Mitteilungen nur über die Hülle, wenn sie keinen eigenen Push-Kanal hat (mit Bereichen und Ruhezeiten). Kein
+  Browser-Abo in der Hülle – keine doppelten Mitteilungen.
+- **Deep-Links** `saga://…`/`hlidskjalf://…` → Web-Routen festgelegt; neu `/notes?v=tasks&new=task` öffnet die Aufgaben mit
+  fokussierter Eingabe „Neue Aufgabe“.
+- **Offline-Seite** `static/offline.html` (eigenständig, CSP-konform, Hell/Dunkel, fünf Sprachen); der Service Worker
+  zeigt sie, wenn eine Seite gar nicht lädt.
+
 ### Web: Design-Runde (ruhiger, einheitlicher)
 - **Seitenleiste ausgeblendet:** Sie klappt nur noch am linken Rand bzw. über dem Seitenleisten-Knopf auf, nicht mehr beim
   Überfahren der ganzen Kopfzeile (auch rechts bei „Teilen“ und „···“).
