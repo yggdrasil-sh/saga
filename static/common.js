@@ -562,4 +562,8 @@
                 menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg,
                 tasks: TS, panelFocus: panelFocus, focusables: focusables,
                 smooth: function () { return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'; } };   // A11Y-07
+  // Hell/Dunkel (static/theme-boot.js): wirksamer Modus statt matchMedia; Aenderungen per Ereignis 'hk-theme' auf window
+  window.HK.theme = window.SagaTheme || { get: function () { return 'auto'; }, set: function () {}, toggle: function () {},
+    dark: function () { return !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); } };
+  window.HK.isDark = function () { return window.HK.theme.dark(); };
 })();

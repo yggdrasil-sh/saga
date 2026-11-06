@@ -755,7 +755,7 @@
     function close() {
       if (!FULL) return;
       FULL = null; cancelAnimationFrame(view.raf); if (view.ro) view.ro.disconnect();
-      document.removeEventListener('keydown', onKey, true); mq.removeEventListener && mq.removeEventListener('change', onTheme);
+      document.removeEventListener('keydown', onKey, true); window.removeEventListener('hk-theme', onTheme);
       w.remove(); document.body.classList.remove('gr-open');
       if (back && back.isConnected) try { back.focus(); } catch (e) { /* egal */ }
     }
@@ -775,9 +775,8 @@
       }
     }
     document.addEventListener('keydown', onKey, true);
-    var mq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
     function onTheme() { view.pal = palette(); if (S.g) drawLegend(S.g); view.draw(); }
-    if (mq && mq.addEventListener) mq.addEventListener('change', onTheme);
+    window.addEventListener('hk-theme', onTheme);       // Hell/Dunkel: eigene Wahl, anderer Tab oder System (theme-boot.js)
     x.addEventListener('click', close);
     fitB.addEventListener('click', function () { view.user(); view.fit(); });
     FULL = { show: show, close: close, view: view };

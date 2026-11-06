@@ -536,5 +536,6 @@ body.has-side.side-hidden.chats-in-side:not(.embed) .pg-chats .ct-side-top{paddi
 }
 /* A11Y-29: Zeitstempel in eigenen Blasen >= 4,5:1 */
 .ct-msg.mine .ct-meta{color:#535e6d}
-@media (prefers-color-scheme: dark){.ct-msg.mine .ct-meta{color:#a3adbb}}
+@media (prefers-color-scheme: dark){:where(:root:not([data-theme=light])) .ct-msg.mine .ct-meta{color:#a3adbb}}
+:where(:root[data-theme=dark]) .ct-msg.mine .ct-meta{color:#a3adbb}
 .ct-call time{opacity:1}

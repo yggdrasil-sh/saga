@@ -42,6 +42,9 @@
       if (window.HKShortcuts) m.appendChild(HK.menuItem(T('Tastenkürzel'), function () { HKShortcuts.open({ back: btn }); },
         { ic: 'keyboard', hint: (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : T('Strg') + '+') + '/' }));
       if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich') + ' ↗', function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { ic: 'shield' }));
+      m.appendChild(HK.menuItem(T('Sprache'), function () { openSettings('lang'); }, { ic: 'globe' }));
+      m.appendChild(themeItem());                     // Hell/Dunkel (Design-Runde 3)
+      if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich'), function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { ic: 'shield' }));
       if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { ic: 'smartphone' }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Abmelden'), function () {
@@ -69,6 +72,28 @@
       }, { ic: 'logout' }));
     });
   });
+
+  // Darstellung: Automatisch (System) / Hell / Dunkel - je Browser (static/theme-boot.js, localStorage 'hk-theme')
+  var THEMES = [['auto', 'Automatisch', 'monitor'], ['light', 'Hell', 'sun'], ['dark', 'Dunkel', 'moon']];
+  function themeName(m) { for (var i = 0; i < THEMES.length; i++) if (THEMES[i][0] === m) return T(THEMES[i][1]); return ''; }
+  function themeItem() {
+    var cur = HK.theme.get();
+    return HK.menuItem(T('Darstellung##Farbe'), null, { ic: HK.isDark() ? 'moon' : 'sun', hint: themeName(cur), sub: function (sm) {
+      THEMES.forEach(function (t) { sm.appendChild(HK.menuItem(T(t[1]), function () { HK.theme.set(t[0]); }, { ic: t[2], on: HK.theme.get() === t[0] })); });
+    } });
+  }
+  function themeField(box) {                       // Einstellungen -> Konto, neben der Sprache
+    var wrap = el('div', 'hk-langsec hk-set-theme');
+    wrap.appendChild(el('h4', null, T('Darstellung##Farbe')));
+    var sel = el('select', 'hk-in'); sel.id = 'hk-theme'; sel.setAttribute('aria-label', T('Darstellung##Farbe'));
+    THEMES.forEach(function (t) { var o = el('option', null, t[0] === 'auto' ? T('Automatisch (System)') : T(t[1])); o.value = t[0]; sel.appendChild(o); });
+    sel.value = HK.theme.get();
+    sel.addEventListener('change', function () { HK.theme.set(sel.value); });
+    window.addEventListener('hk-theme', function () { if (sel.isConnected) sel.value = HK.theme.get(); });
+    wrap.appendChild(sel);
+    wrap.appendChild(el('p', 'hk-hint', T('Gilt nur für diesen Browser. „Automatisch“ folgt der Einstellung des Systems. Kürzel: {k}', { k: (/Mac|iP(hone|ad)/.test(navigator.platform) ? '⌘⇧L' : T('Strg+Umschalt+L')) })));
+    box.appendChild(wrap);
+  }
 
   // Adresse ?settings=<reiter> (z. B. Benachrichtigung "Mein Backup fehlgeschlagen"): Einstellungen auf diesem Reiter oeffnen
   window.addEventListener('load', function () {
@@ -807,6 +832,7 @@
     api('GET', '/api/account').then(function (a) {
       box.appendChild(el('p', 'hk-hint', a.username + ' · ' + a.source_label + (a.groups.length ? ' · ' + T('Gruppen: {list}', { list: a.groups.join(', ') }) : '')));
       langField(box, a);                                       // Sprache zuerst: gut auffindbar (auch Benutzermenue -> Sprache)
+      themeField(box);                                         // Hell/Dunkel (nur dieser Browser)
       avatarField(box, a);
       // UX-39: Passwort und Anmeldung stehen im Bereich "Sicherheit" (securitySection), Benachrichtigungen unter "Mitteilungen"
       var secBox = sec.parentNode && sec.parentNode.querySelector('.hk-set-security > .hk-sec-box') || box;
