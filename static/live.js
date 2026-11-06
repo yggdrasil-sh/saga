@@ -524,7 +524,7 @@
   function pushPrefs() {
     if (PS.p && Date.now() - PS.at < 300000) return PS.p;
     PS.at = Date.now();
-    PS.p = api('GET', '/api/push').catch(function () { return null; });
+    PS.p = api('GET', '/api/push').catch(function () { PS.at = 0; return null; });   // Fehler nicht 5 min merken
     return PS.p;
   }
   function quietNow(q) {
@@ -541,7 +541,8 @@
     pushPrefs().then(function (st) {
       var p = st && st.settings, cat = PCAT[it.kind];
       if (!st || !st.server || !st.server.enabled || !p) return;
-      if (cat && p.cats && p.cats[cat] === false) return;
+      if (!cat) return;                                    // wie der Server: nur Arten mit Push-Bereich (saga/push.py KIND_CAT)
+      if (p.cats && p.cats[cat] === false) return;
       if (quietNow(p.quiet)) return;
       var url = it.url || (it.note ? '/notes#' + it.note.id : '/');
       var o = { id: it.id, kind: it.kind, tag: it.group_key || (it.kind + ':' + it.id) };

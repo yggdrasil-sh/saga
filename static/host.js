@@ -200,16 +200,18 @@
 
   // Externe Links: fremde http(s)/mailto-Links und window.open zu fremden Adressen ueber die Huelle (Systembrowser)
   var nativeOpen = window.open.bind(window);
-  if (has('openExternal')) {
+  // Immer einrichten, Faehigkeit erst beim Klick pruefen (die Huelle darf sich spaet per 'hello' melden); ohne Huelle Durchreichen
+  {
     document.addEventListener('click', function (e) {
-      if (e.defaultPrevented || e.button !== 0) return;
+      if (!has('openExternal') || e.defaultPrevented || e.button !== 0) return;
       var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
-      if (!a || a.hasAttribute('download')) return;
+      // Links im Editor: normaler Klick setzt den Cursor (Strg/Cmd-Klick geht ueber window.open)
+      if (!a || a.hasAttribute('download') || a.isContentEditable || a.closest('[contenteditable=""],[contenteditable="true"]')) return;
       var f = foreign(a.getAttribute('href'));
       if (f && host.openExternal(f)) e.preventDefault();
     });
     window.open = function (u) {
-      var f = u ? foreign(u) : null;
+      var f = u && has('openExternal') ? foreign(u) : null;
       if (f && host.openExternal(f)) return null;
       return nativeOpen.apply(null, arguments);
     };

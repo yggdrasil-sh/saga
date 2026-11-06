@@ -22,7 +22,7 @@ self.addEventListener('install', function (e) {
   if (e.addRoutes) {
     try {
       var net = { condition: { not: { urlPattern: new URLPattern({ pathname: '/_m/*' }) } }, source: 'network' };
-      e.waitUntil(e.addRoutes([{ condition: { requestMode: 'navigate' }, source: 'fetch-event' }, net])
+      e.waitUntil(e.addRoutes([{ condition: { requestMode: 'navigate', requestMethod: 'GET' }, source: 'fetch-event' }, net])
         .catch(function () { return e.addRoutes([net]); }).catch(function () {}));
     } catch (x) { /* aeltere Fassung der Schnittstelle: dann eben ueber den fetch-Handler */ }
   }
@@ -30,7 +30,9 @@ self.addEventListener('install', function (e) {
   try { libLoad(); } catch (x) { /* beim ersten Video */ }   // Bibliothek beim Installieren ablegen (importScripts spaeter)
 });
 self.addEventListener('activate', function (e) {
-  e.waitUntil(Promise.all([self.clients.claim(), caches.keys().then(function (ks) {   // alte Fassungen der Offline-Seite weg
+  // Navigation Preload: die Netzanfrage startet parallel zum Aufwachen des Service Workers (kein Zeitverlust je Navigation)
+  var pre = self.registration.navigationPreload ? self.registration.navigationPreload.enable().catch(function () {}) : null;
+  e.waitUntil(Promise.all([pre, self.clients.claim(), caches.keys().then(function (ks) {   // alte Fassungen der Offline-Seite weg
     return Promise.all(ks.filter(function (k) { return k.indexOf(OFF) === 0 && k !== OFF + V; }).map(function (k) { return caches.delete(k); }));
   }).catch(function () {})]));
 });
@@ -127,7 +129,7 @@ self.addEventListener('fetch', function (e) {
   if (u.origin !== self.location.origin || e.request.method !== 'GET') return;
   if (e.request.mode === 'navigate' && u.pathname.indexOf('/_m/') !== 0) {
     // Netz wie immer; nur wenn es gar nicht antwortet (offline, Server weg): Offline-Seite aus dem Cache
-    e.respondWith(fetch(e.request).catch(function (err) {
+    e.respondWith(Promise.resolve(e.preloadResponse).then(function (r) { return r || fetch(e.request); }).catch(function (err) {
       return caches.open(OFF + V).then(function (c) { return c.match(OFF_URL); }).then(function (r) {
         if (!r) throw err;
         return r;

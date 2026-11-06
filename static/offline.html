@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-CrURT5nN+OPi6nJ4W4xcg8hryuWEiunefvthG8+zKWo='; script-src 'sha256-FCxWhRoTBYkori1dMEJpK52o/yuGsZKPXJ+ejJcAYvk='; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-CrURT5nN+OPi6nJ4W4xcg8hryuWEiunefvthG8+zKWo='; script-src 'sha256-IGqxGvu4pu/BCBWFa1XHtlLwLkhrRgWeQcVMH1BrUC4='; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="light dark">
 <title>Saga – Keine Verbindung</title>
 <!-- Saga 2.5 (Desktop-Huelle, Offline O0): eigenstaendige Seite ohne weitere Dateien. Zeigt die Huelle lokal (aus dem
@@ -66,7 +66,8 @@ button[disabled]{opacity:.6;cursor:default}
     if (busy) return;
     busy = true; $('r').disabled = true; $('s').textContent = X[3];
     setTimeout(function () { busy = false; $('r').disabled = false; $('s').textContent = X[4]; }, 4000);
-    if (!hostPost({ action: 'retry', v: 1 })) location.reload();
+    // Huelle laedt neu; alte App kennt 'retry' nicht -> nach 2 s selbst neu laden, falls die Seite noch steht
+    if (!hostPost({ action: 'retry', v: 1 })) location.reload(); else setTimeout(function () { location.reload(); }, 2000);
   }
   $('r').addEventListener('click', retry);
   window.addEventListener('online', retry);
