@@ -111,6 +111,65 @@
     }).catch(function () { /* Seitenleiste bleibt leer, Navigation geht trotzdem */ });
   }
   load();
+
+  // --- Schnellsuche (UX-10): Strg/⌘+K auch hier als Overlay (static/qs.js, wie auf /notes); Seiten oeffnen auf /notes ---------
+  var shared = null;
+  function allPages() { return pages.filter(function (p) { return !p.archived; }).concat(shared || []); }
+  function anyById(id) { return byId(id) || (shared || []).filter(function (p) { return p.id === id; })[0] || null; }
+  function ancestors(id) { var out = [], p = anyById(id), guard = 0; while (p && p.parent_id && guard++ < 50) { p = anyById(p.parent_id); if (p) out.unshift(p); } return out; }
+  function go(url) { location.href = url; }
+  var mk = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : T('Strg') + '+';
+  function actions() {
+    var a = [], chats = !!side.querySelector('a[href="/chats"]'), cur = body.classList.contains('chats-page') ? 'chats' : 'today';
+    function add(t, ic, fn, o) { o = o || {}; a.push({ t: t, ic: ic, fn: fn, kw: o.kw, kbd: o.kbd }); }
+    add(T('Neue Seite'), '＋', function () { go('/notes?new=blank'); }, { kw: 'new page anlegen erstellen', kbd: mk + (mk === '⌘' ? '⌥N' : 'Alt+N') });
+    add(T('Vorlagengalerie'), '🖼', function () { go('/notes?gallery=1'); }, { kw: 'gallery vorlagen templates galerie vorlage' });
+    add(T('Aufgaben'), '✓', function () { go('/notes?v=tasks'); }, { kw: 'tasks todo' });
+    add(T('Termine'), '🗓', function () { go('/notes?v=events'); }, { kw: 'events kalender calendar' });
+    add(T('Graph'), '✳', function () { go('/notes?graph=1'); }, { kw: 'graph netz verbindungen links obsidian' });
+    add(T('Archiv anzeigen'), '📦', function () { go('/notes?archive=1'); }, { kw: 'archiv archive' });
+    add(T('Papierkorb'), '🗑', function () { go('/notes?trash=1'); }, { kw: 'trash geloescht' });
+    add(T('Seitenleiste ein/aus'), '◧', function () { setSide(body.classList.contains('side-hidden')); }, { kw: 'sidebar', kbd: mk + '\\' });
+    if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich nextcloud schluessel' });
+    if (window.HKShortcuts) add(T('Tastenkürzel'), '⌨', function () { HKShortcuts.open(); }, { kw: 'shortcuts tastatur kuerzel hotkeys keyboard hilfe', kbd: mk + '/' });
+    if (cur !== 'today') add(T('Heute'), '⌂', function () { go('/dashboard'); }, { kw: 'home dashboard start today übersicht' });
+    if (chats && cur !== 'chats') add(T('Chats'), '💬', function () { go('/chats'); }, { kw: 'chat nachrichten messages' });
+    return a;
+  }
+  var QS = HK.quickSearch ? HK.quickSearch({
+    pages: allPages, byId: anyById, label: label, icon: function (p) { return isImg(p.icon) ? '' : (p.icon || ''); },
+    recents: function () { try { return (JSON.parse(store('hk-pg-recent') || '[]') || []).filter(function (x) { return typeof x === 'number'; }); } catch (e) { return []; } },
+    tags: function (p) { return p && Array.isArray(p.tags) ? p.tags.filter(function (t) { return typeof t === 'string'; }) : []; },
+    path: function (p) { var an = ancestors(p.id); return (p.owner ? p.owner.name + (an.length ? ' · ' : '') : '') + an.map(label).join(' / '); },
+    grpIc: function () { var s = el('span', 'ic-grp'); s.setAttribute('aria-hidden', 'true'); return s; },
+    open: open,
+    create: function (title) {
+      HK.api('POST', '/api/notes', { title: title }).then(function (d) { open(d.id); })
+        .catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
+    },
+    actions: actions,
+    web: body.dataset.web === '1',
+    // Mit mir geteilte Seiten beim ersten Oeffnen nachladen (der Seitenbaum kommt schon beim Laden)
+    ready: function () {
+      if (shared) return null;
+      return HK.api('GET', '/api/shared').then(function (d) { shared = Array.isArray(d) ? d : []; }, function () { shared = []; });
+    }
+  }) : null;
+  function otherModal() {
+    return [].some.call(document.querySelectorAll('[aria-modal="true"], dialog[open]'), function (d) {
+      return !d.closest('#pg-qs') && !d.closest('[hidden]') && d.getClientRects().length;
+    });
+  }
+  if (QS) {
+    HK.openQuickSearch = function (o) { QS.open(o); };
+    var qb = $('sh-qs-btn');
+    if (qb) qb.addEventListener('click', function (e) { e.preventDefault(); QS.open(); });
+    document.addEventListener('keydown', function (e) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || (e.key || '').toLowerCase() !== 'k') return;
+      if (!QS.isOpen() && otherModal()) return;          // anderer Dialog offen (Einstellungen, Rueckfrage, Chat-Dialoge)
+      e.preventDefault(); QS.open({ key: true });
+    });
+  }
   // Seiten geaendert (anderer Tab, anderes Geraet): Baum neu laden
   var lt = 0; document.addEventListener('hk-live', function (e) {
     var t = e && e.detail && e.detail.type; if (t && /^notes?\./.test(t)) { clearTimeout(lt); lt = setTimeout(load, 400); }

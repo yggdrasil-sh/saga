@@ -39,7 +39,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 import auth
 from db import connect as _db
 from saga import avatars, bus, chat_prefs as CP, contacts, file_v2, mfa, notify, sharing
-from saga.core import (HANDLE_RE, labels, legacy_sql, local_ref, resolve_input, resolve_ref, subtitles, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, icon_csp, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
+from saga.core import (HANDLE_RE, labels, legacy_sql, local_ref, resolve_input, resolve_ref, subtitles, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEARXNG_URL, SEC_HEADERS, icon_csp, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
 from saga.sharing import REMOTE_TYPES, Access, enabled as share_enabled, group_scope, groups_of, names
@@ -2868,6 +2868,7 @@ def chats_page(request: Request, panel: str = ""):
                                                   enabled=enabled(), admin_url=ADMIN_URL if info and info["is_admin"] else "",
                                                   me_avatar=avatars.my_url(uid),
                                                   chat_enabled=enabled(), chat_unread=n_chat, side_cur="chats",   # Seitenleiste (_side.html)
+                                                  search_enabled=bool(SEARXNG_URL),   # Websuche in der Schnellsuche (UX-10)
                                                   panel=panel)
     headers = icon_csp(SEC_HEADERS, uid)             # Einstellungen -> Lesezeichen: Symbole direkt von der Seite
     headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'") \

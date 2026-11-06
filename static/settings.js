@@ -8,12 +8,40 @@
   // In der Saga-App (iOS/macOS): Nachrichten an die App (die App nimmt sie nur von diesem Server an)
   var inApp = /(Saga|Hlidskjalf)App\//.test(navigator.userAgent) && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.hk;
   function toApp(msg) { if (inApp) window.webkit.messageHandlers.hk.postMessage(msg); }
+  // UX-40: Sprache als Untermenue (Liste aus /api/account, beim ersten Oeffnen geholt), Tastenkuerzel, Admin-Bereich (nur
+  // Admins: data-admin = ADMIN_URL). Kein Hell/Dunkel-Schalter (Entscheidung steht aus).
+  var acct = null;
+  function langSub(m) {
+    function fill(a) {
+      m.textContent = '';
+      (a.langs || []).forEach(function (l) {
+        var on = (a.lang || '') === l.code;
+        var it = HK.menuItem(l.code ? l.name : T('Automatisch'), function () {
+          if (on) return;
+          api('PUT', '/api/account/lang', { lang: l.code }).then(function () { location.reload(); })
+            .catch(function (err) { HK.toast(err.message); });
+        }, { on: on });
+        if (l.code) it.lang = l.code;
+        it.setAttribute('role', 'menuitemradio'); it.setAttribute('aria-checked', on ? 'true' : 'false');
+        m.appendChild(it);
+      });
+      m.appendChild(el('div', 'menu-sep'));
+      m.appendChild(HK.menuItem(T('Mehr zur Sprache …'), function () { openSettings('lang'); }, { ic: 'settings' }));
+    }
+    if (acct) { fill(acct); return; }
+    m.appendChild(el('div', 'menu-hint', T('Lädt …')));
+    api('GET', '/api/account').then(function (a) { acct = a; if (m.isConnected && !m.hidden) { fill(a); var f = m.querySelector('.menu-item'); if (f && m.contains(document.activeElement)) f.focus(); } })
+      .catch(function () { m.textContent = ''; m.appendChild(HK.menuItem(T('Sprache'), function () { openSettings('lang'); }, { ic: 'globe' })); });
+  }
   btn.addEventListener('click', function () {
+    if (!acct) api('GET', '/api/account').then(function (a) { acct = a; }).catch(function () {});
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuLabel(btn.dataset.name || ''));
       m.appendChild(HK.menuItem(T('Einstellungen'), function () { openSettings(); }, { ic: 'settings' }));
-      m.appendChild(HK.menuItem(T('Sprache'), function () { openSettings('lang'); }, { ic: 'globe' }));
-      if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich'), function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { ic: 'shield' }));
+      m.appendChild(HK.menuItem(T('Sprache'), null, { ic: 'globe', sub: langSub }));
+      if (window.HKShortcuts) m.appendChild(HK.menuItem(T('Tastenkürzel'), function () { HKShortcuts.open({ back: btn }); },
+        { ic: 'keyboard', hint: (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : T('Strg') + '+') + '/' }));
+      if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich') + ' ↗', function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { ic: 'shield' }));
       if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { ic: 'smartphone' }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Abmelden'), function () {
@@ -50,7 +78,9 @@
     openSettings(m[1]);
   });
 
-  var dlg = null;
+  var dlg = null, gearAt = 0;
+  // Kompatibel mit dem Zahnrad im Mitteilungs-Fenster (static/live.js oeffnet die Einstellungen mit 'account')
+  document.addEventListener('click', function (e) { if (e.target && e.target.closest && e.target.closest('.lv-gear')) gearAt = Date.now(); }, true);
   function closeSettings() { if (dlg) { dlg.remove(); dlg = null; document.removeEventListener('keydown', onKey); btn.focus(); } }
   function onKey(e) { if (e.key === 'Escape' && !HK.menuOpen()) { e.preventDefault(); closeSettings(); } }
   function openSettings(focus) {
@@ -64,10 +94,12 @@
     dlg.addEventListener('mousedown', function (e) { if (e.target === dlg) closeSettings(); });
     document.addEventListener('keydown', onKey);
     document.body.appendChild(dlg);
-    // Reiter statt eines langen Dialogs: Konto · Mitteilungen · Lesezeichen · Kalender · Immich · Apps & Geraete
-    var tabs = el('div', 'hk-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', T('Einstellungen'));
-    body.appendChild(tabs); body.classList.add('tabbed');
+    // UX-39: Navigation links (wie Notion/Linear) statt Reiter in zwei Zeilen: Gruppen Konto · Arbeitsbereich ·
+    // Verbindungen · Daten · Hilfe. Die Schluessel der Bereiche (HKSettings.open('<k>'), ?settings=<k>, #hk-tab-<k>,
+    // #hk-pane-<k>) bleiben dieselben; neu sind 'security' und 'notify' (= Mitteilungen, dort die Benachrichtigungen).
+    body.classList.add('navved');
     accountSection(body);
+    securitySection(body);                                   // Passwort, Passkeys, Authenticator (fuellt accountSection)
     bookmarkSection(body);
     calendarSection(body);
     immichSection(body);
@@ -78,39 +110,85 @@
     if (window.HKNextcloud) HKNextcloud.section(body);       // Nextcloud-Dateien in Seiten (static/nextcloud.js, 2.3)
     if (window.HKApi) HKApi.section(body);                   // 2.5: API-Tokens, Webhooks, MCP (static/apitokens.js)
     helpSection(body);                                       // 2.5: Hilfe - "Diagnose senden" (static/clientlog.js)
-    var TABS = [['account', T('Konto')], ['push', T('Mitteilungen')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['nextcloud', 'Nextcloud'], ['backup', T('Mein Backup')], ['apps', T('Apps & Geräte')], ['pages', T('Seiten')], ['api', 'API']];
-    if (!window.HKApi) TABS.pop();
-    if (!window.HKBackup) TABS.splice(6, 1);
-    if (!window.HKNextcloud) TABS.splice(5, 1);
-    if (!window.HKPush) TABS.splice(1, 1);
-    TABS.push(['help', T('Hilfe')]);
-    var btns = TABS.map(function (t, i) {
-      var b = el('button', 'hk-tab', t[1]); b.type = 'button'; b.id = 'hk-tab-' + t[0];
-      b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', 'hk-pane-' + t[0]);
-      var pane = body.querySelector('.hk-set-' + t[0]);
-      if (pane) { pane.id = 'hk-pane-' + t[0]; pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-labelledby', b.id); }
-      b.addEventListener('click', function () { show(t[0]); });
-      b.addEventListener('keydown', function (e) {          // Pfeiltasten wechseln den Reiter (WAI-ARIA Tabs)
-        var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0; if (!d) return;
-        e.preventDefault(); var n = TABS[(i + d + TABS.length) % TABS.length][0]; show(n); $tab(n).focus();
+    // Benachrichtigungen je Art (static/live.js) gehoeren zu "Mitteilungen" (frueher unter "Konto")
+    if (window.HKLive) {
+      var push = body.querySelector('.hk-set-push');
+      if (!push) { push = el('section', 'hk-set hk-set-push'); push.appendChild(el('h3', null, T('Mitteilungen'))); body.appendChild(push); }
+      HKLive.settingsSection(push);
+    }
+    var GROUPS = [
+      [T('Konto'), [['account', T('Profil & Sprache'), 'user'], ['security', T('Sicherheit'), 'shield'], ['push', T('Mitteilungen'), 'bell']]],
+      [T('Arbeitsbereich'), [['pages', T('Seiten'), 'file'], ['calendar', T('Kalender'), 'calendar'], ['bookmarks', T('Lesezeichen'), 'star']]],
+      [T('Verbindungen'), [['immich', 'Immich', 'image'], ['nextcloud', 'Nextcloud', 'link'], ['apps', T('Apps & Geräte'), 'smartphone'], ['api', 'API', 'code']]],
+      [T('Daten'), [['backup', T('Mein Backup'), 'download']]],
+      [null, [['help', T('Hilfe'), 'help']]]
+    ];
+    var nav = el('nav', 'hk-setnav'); nav.setAttribute('aria-label', T('Bereiche der Einstellungen'));
+    var main = el('div', 'hk-set-main'); card.insertBefore(main, body); main.appendChild(nav); main.appendChild(body);
+    var KEYS = [], btns = {};
+    GROUPS.forEach(function (g, gi) {
+      var items = g[1].filter(function (t) { return body.querySelector('.hk-set-' + t[0]); });
+      if (!items.length) return;
+      var grp = el('div', 'hk-setnav-g'), ul = el('ul');
+      if (g[0]) { var gh = el('div', 'hk-setnav-h', g[0]); gh.id = 'hk-setnav-h' + gi; grp.appendChild(gh); ul.setAttribute('aria-labelledby', gh.id); }
+      items.forEach(function (t) {
+        var li = el('li'), b = el('button', 'hk-setnav-i'); b.type = 'button'; b.id = 'hk-tab-' + t[0]; b.dataset.k = t[0];
+        b.setAttribute('aria-controls', 'hk-pane-' + t[0]);
+        if (HK.iconBox) b.appendChild(HK.iconBox('i:' + t[2], 'hk-setnav-ic', 17));
+        b.appendChild(el('span', 'hk-setnav-t', t[1]));
+        if (HK.iconBox) b.appendChild(HK.iconBox('i:chevron-right', 'hk-setnav-go', 15));
+        var pane = body.querySelector('.hk-set-' + t[0]);
+        pane.id = 'hk-pane-' + t[0]; pane.setAttribute('role', 'region');
+        var h3 = pane.querySelector('h3'); if (h3) { h3.id = 'hk-pane-h-' + t[0]; h3.tabIndex = -1; pane.setAttribute('aria-labelledby', h3.id); }
+        b.addEventListener('click', function () { show(t[0], true); });
+        li.appendChild(b); ul.appendChild(li); KEYS.push(t[0]); btns[t[0]] = b;
       });
-      tabs.appendChild(b); return b;
+      grp.appendChild(ul); nav.appendChild(grp);
     });
-    function $tab(k) { return btns[TABS.findIndex(function (t) { return t[0] === k; })]; }
-    function show(k) {
-      TABS.forEach(function (t, i) {
-        var on = t[0] === k, pane = body.querySelector('.hk-set-' + t[0]);
-        btns[i].setAttribute('aria-selected', on ? 'true' : 'false'); btns[i].tabIndex = on ? 0 : -1;
+    // Pfeil hoch/runter (Pos1/Ende) zwischen den Eintraegen der Navigation
+    nav.addEventListener('keydown', function (e) {
+      var i = KEYS.indexOf(e.target && e.target.dataset ? e.target.dataset.k : ''); if (i < 0) return;
+      var n = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? KEYS.length - 1 : null;
+      if (n === null) return;
+      e.preventDefault(); btns[KEYS[(n + KEYS.length) % KEYS.length]].focus();
+    });
+    // Handy (<= 760 px): erst die Liste, ein Eintrag oeffnet den Bereich mit "‹ Einstellungen" zurueck zur Liste
+    var narrow = window.matchMedia('(max-width: 760px)');
+    var backB = el('button', 'hk-set-back'); backB.type = 'button'; backB.setAttribute('aria-label', T('Zurück zur Übersicht'));
+    if (HK.iconBox) backB.appendChild(HK.iconBox('i:chevron-left', 'mi-ic', 18)); backB.appendChild(el('span', null, T('Einstellungen')));
+    head.insertBefore(backB, head.firstChild);
+    backB.addEventListener('click', function () { card.classList.add('nav-list'); var b = btns[cur]; if (b) b.focus(); });
+    var cur = null;
+    function show(k, focusHead) {
+      cur = k;
+      KEYS.forEach(function (key) {
+        var on = key === k, pane = body.querySelector('.hk-set-' + key);
+        if (on) btns[key].setAttribute('aria-current', 'page'); else btns[key].removeAttribute('aria-current');
         if (pane) pane.hidden = !on;
       });
+      card.classList.remove('nav-list');
       body.scrollTop = 0;
-      reveal($tab(k));
+      if (focusHead) { var h = $pane(k); if (h) try { h.focus({ preventScroll: true }); } catch (e) { h.focus(); } }
     }
-    // Handy: Leiste scrollt waagrecht - Verlauf am Rand, aktiver Reiter immer ganz sichtbar
-    var reveal = HK.scrollFade(tabs);
+    function $pane(k) { return document.getElementById('hk-pane-h-' + k); }
     if (focus === 'lang') focusLang = true;                   // Benutzermenue -> Sprache: Konto, Auswahl fokussiert
-    var start = typeof focus === 'string' && $tab(focus) ? focus : 'account';
-    show(start);
+    // Glocke -> Zahnrad (static/live.js oeffnet 'account' und sucht #hk-notify-set): Mitteilungen zeigen
+    if (focus === 'account' && Date.now() - gearAt < 800) focus = 'notify';
+    var want = focus === 'lang' ? 'account' : focus === 'notify' ? 'push' : focus;
+    var start = typeof want === 'string' && btns[want] ? want : 'account';
+    show(start, false);
+    if (narrow.matches && typeof want !== 'string') card.classList.add('nav-list');    // ohne Ziel: am Handy die Liste
+    setTimeout(function () {
+      if (!dlg || card.contains(document.activeElement) && document.activeElement !== card) return;
+      var t = card.classList.contains('nav-list') ? btns[start] : $pane(start);
+      if (t) try { t.focus({ preventScroll: true }); } catch (e) { t.focus(); }
+    }, 0);
+    if (focus === 'notify') {                                 // Benachrichtigungen je Art erscheinen nach dem Laden
+      var n = 0, tm = setInterval(function () {
+        var sct = document.getElementById('hk-notify-set');
+        if (sct || ++n > 30 || !dlg) { clearInterval(tm); if (sct && dlg) sct.scrollIntoView({ block: 'start' }); }
+      }, 100);
+    }
   }
 
   // --- Abschnitt "Hilfe" (2.5, clientlog1): Version, "Diagnose senden" - schickt die letzten Ereignisse dieses Tabs
@@ -713,19 +791,30 @@
     });
   }
 
+  // --- Abschnitt "Sicherheit" (UX-39): Passwort, Passkeys, Authenticator - den Inhalt legt accountSection hinein -------
+  function securitySection(body) {
+    var sec = el('section', 'hk-set hk-set-security'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, T('Sicherheit')));
+    var box = el('div', 'hk-sec-box'); sec.appendChild(box);
+    box.appendChild(el('p', 'hk-hint', T('Lädt …')));
+  }
+
   // --- Abschnitt "Konto": Name, E-Mail, Passwort (nur lokale Konten), Gruppen ------------------------------
   function accountSection(body) {
     var sec = el('section', 'hk-set hk-set-account'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, T('Konto')));
+    sec.appendChild(el('h3', null, T('Profil & Sprache')));
     var box = el('div'); sec.appendChild(box);
     api('GET', '/api/account').then(function (a) {
       box.appendChild(el('p', 'hk-hint', a.username + ' · ' + a.source_label + (a.groups.length ? ' · ' + T('Gruppen: {list}', { list: a.groups.join(', ') }) : '')));
       langField(box, a);                                       // Sprache zuerst: gut auffindbar (auch Benutzermenue -> Sprache)
       avatarField(box, a);
-      if (window.HKLive) HKLive.settingsSection(box);          // Benachrichtigungen je Art (static/live.js)
+      // UX-39: Passwort und Anmeldung stehen im Bereich "Sicherheit" (securitySection), Benachrichtigungen unter "Mitteilungen"
+      var secBox = sec.parentNode && sec.parentNode.querySelector('.hk-set-security > .hk-sec-box') || box;
+      if (secBox !== box) secBox.textContent = '';
       if (!a.can_edit) {
         box.appendChild(el('p', 'hk-hint', T('Name, E-Mail und Passwort verwaltet dein Anmeldedienst.')));
-        if (window.HKSecurity) HKSecurity.section(box);          // Passkeys/2FA (LDAP-Konten; bei SSO nur ein Hinweis)
+        if (secBox !== box) secBox.appendChild(el('p', 'hk-hint', T('Name, E-Mail und Passwort verwaltet dein Anmeldedienst.')));
+        if (window.HKSecurity) HKSecurity.section(secBox);       // Passkeys/2FA (LDAP-Konten; bei SSO nur ein Hinweis)
         publicNameField(box);
         fedField(box);
         return;
@@ -744,14 +833,14 @@
           btn.setAttribute('aria-label', T('Benutzermenü') + ': ' + d.name);
         }).catch(function (err) { status(st, err.message, 'err'); });
       });
-      box.appendChild(el('h4', null, T('Passwort ändern')));
+      secBox.appendChild(el('h4', null, T('Passwort ändern')));
       var o = input('password', '', T('Bisheriges Passwort')), n1 = input('password', '', T('mind. 10 Zeichen')), n2 = input('password', '', T('wiederholen'));
       o.autocomplete = 'current-password'; n1.autocomplete = n2.autocomplete = 'new-password';
-      box.appendChild(field(T('Bisheriges'), o)); box.appendChild(field(T('Neues Passwort'), n1)); box.appendChild(field(T('Wiederholen'), n2));
+      secBox.appendChild(field(T('Bisheriges'), o)); secBox.appendChild(field(T('Neues Passwort'), n1)); secBox.appendChild(field(T('Wiederholen'), n2));
       var st2 = el('div', 'hk-status'), bar2 = el('div', 'hk-actions'), pwb = el('button', 'btn', T('Passwort ändern')); pwb.type = 'button';
-      bar2.appendChild(pwb); box.appendChild(bar2); box.appendChild(st2);
-      box.appendChild(el('p', 'hk-hint', T('Andere Browser-Sitzungen und angemeldete Apps werden danach abgemeldet – außer dieser Sitzung und der App, in der du gerade bist.')));
-      if (window.HKSecurity) HKSecurity.section(box);          // Anmeldung & Sicherheit: Passkeys, Authenticator-App (static/security.js)
+      bar2.appendChild(pwb); secBox.appendChild(bar2); secBox.appendChild(st2);
+      secBox.appendChild(el('p', 'hk-hint', T('Andere Browser-Sitzungen und angemeldete Apps werden danach abgemeldet – außer dieser Sitzung und der App, in der du gerade bist.')));
+      if (window.HKSecurity) HKSecurity.section(secBox);       // Anmeldung & Sicherheit: Passkeys, Authenticator-App (static/security.js)
       publicNameField(box);
       fedField(box);
       pwb.addEventListener('click', function () {
@@ -761,7 +850,10 @@
           o.value = n1.value = n2.value = ''; status(st2, T('✓ Passwort geändert'), 'ok');
         }).catch(function (err) { status(st2, err.message, 'err'); }).then(function () { pwb.disabled = false; });
       });
-    }).catch(function (err) { box.textContent = T('Nicht geladen: {err}', { err: err.message }); });
+    }).catch(function (err) {
+      box.textContent = T('Nicht geladen: {err}', { err: err.message });
+      var sb = sec.parentNode && sec.parentNode.querySelector('.hk-set-security > .hk-sec-box'); if (sb) sb.textContent = box.textContent;
+    });
   }
 
   // --- Abschnitt "Lesezeichen": eigene Kacheln auf dem Dashboard (auch in den Apps) -----------------------------

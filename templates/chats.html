@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="/static/chat.css?v={{ v }}">
 <link rel="stylesheet" href="/static/calls.css?v={{ v }}">
 </head>
-<body class="chats-page {% if panel %}embed ct-panel{% else %}has-side{% endif %}" data-v="{{ v }}" data-uid="{{ uid }}" data-name="{{ name }}" data-enabled="{{ '1' if enabled else '' }}">
+<body class="chats-page {% if panel %}embed ct-panel{% else %}has-side{% endif %}" data-v="{{ v }}" data-uid="{{ uid }}" data-name="{{ name }}" data-enabled="{{ '1' if enabled else '' }}"{% if search_enabled and not panel %} data-web="1"{% endif %}>
 <header class="np-head">
   <button type="button" class="icon-btn np-side-btn" id="pg-side-btn" title="{{ _("Seitenleiste ein- oder ausblenden") }} ({{ _("Strg") }}+\)" aria-label="{{ _("Seitenleiste ein- oder ausblenden") }}" aria-pressed="true" aria-controls="pg-side"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
   <a class="np-brand" href="/dashboard" title="{{ _("Zu „Heute“") }}">{{ title }}</a>
@@ -105,8 +105,9 @@
 <script src="/i18n/{{ lang() }}.js?v={{ i18n_v }}"></script>
 <script src="/static/common.js?v={{ v }}"></script>
 <script src="/static/icons.js?v={{ v }}"></script>
-{% if not panel %}<script src="/static/side.js?v={{ v }}"></script>{% endif %}
+{% if not panel %}<script src="/static/qs.js?v={{ v }}"></script><script src="/static/side.js?v={{ v }}"></script>{% endif %}
 <script src="/static/settings.js?v={{ v }}"></script>
+<script src="/static/shortcuts.js?v={{ v }}"></script>
 <script src="/static/passkey.js?v={{ v }}"></script>
 <script src="/static/security.js?v={{ v }}"></script>
 <script src="/static/apitokens.js?v={{ v }}"></script>

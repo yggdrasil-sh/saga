@@ -2219,131 +2219,28 @@
     api('POST', '/api/trash/empty').then(loadTrash).catch(function (err) { HK.toast(T('Nicht geleert: {err}', { err: err.message })); });
   });
 
-  // --- Schnellsuche (Strg/Cmd+K) ----------------------------------------------
-  var qs = { items: [], idx: 0 };
+  // --- Schnellsuche (Strg/Cmd+K): gemeinsames Modul static/qs.js (auch auf Heute/Chats ueber static/side.js) ----------
   var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   $('pg-qs-kbd').textContent = isMac ? '⌘K' : T('Strg') + ' K';
-  var QS_WEB = document.body.dataset.web === '1';         // SearXNG eingerichtet: "Im Web suchen" (frueher Suchfeld auf Heute)
-  // A11Y-25/UX-26: Fokusfalle (aria-modal), Esc ueberall im Dialog, Fokus danach zurueck an den Ausloeser
-  function openQS() {
-    if (!$('pg-qs').hidden) { $('pg-qs-q').focus(); return; }
-    $('pg-qs').hidden = false; $('pg-qs-q').value = ''; qs.web = null; renderQS();
-    qs.pf = HK.panelFocus($('pg-qs').querySelector('.qs-box'), { trap: true, initial: '#pg-qs-q' }); $('pg-qs-q').focus();
-  }
-  function closeQS() { $('pg-qs').hidden = true; if (qs.pf) { qs.pf.release(); qs.pf = null; } }
-  $('pg-qs').addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('pg-qs').hidden) { e.preventDefault(); e.stopPropagation(); closeQS(); } });
-  function renderQS() {
-    var q = $('pg-qs-q').value.trim().toLowerCase(), list = $('pg-qs-list');
-    list.textContent = ''; qs.items = []; qs.idx = 0;
-    var cmdOnly = q.charAt(0) === '>'; if (cmdOnly) q = q.slice(1).trim();
-    var rec = recents().map(byId).filter(Boolean);
-    var hits = cmdOnly ? [] : q ? allPages().filter(function (p) { return (label(p) + ' ' + tagsOf(p).join(' ')).toLowerCase().indexOf(q) >= 0; })
-                                     .sort(function (a, b) { return (rec.indexOf(b) >= 0) - (rec.indexOf(a) >= 0) || b.updated - a.updated; })
-                 : rec.concat(allPages().filter(function (p) { return rec.indexOf(p) < 0; }).sort(function (a, b) { return b.updated - a.updated; }));
-    if (!q && !cmdOnly) list.appendChild(el('div', 'menu-label', rec.length ? T('Zuletzt geöffnet') : T('Zuletzt bearbeitet')));
-    function item(text, sub, fn, keep) {
-      var b = el('button', 'picker-item'); b.type = 'button'; b.setAttribute('role', 'option');
-      b.appendChild(el('span', 'picker-t', text)); if (sub) b.appendChild(el('span', 'picker-sub', sub));
-      b.addEventListener('click', function () { if (!keep) closeQS(); fn(); });
-      qs.items.push({ b: b, fn: fn, keep: keep }); list.appendChild(b);
-      return b;
-    }
-    hits.slice(0, q ? 8 : 10).forEach(function (p) {
-      var path = (p.owner ? p.owner.name + (ancestors(p.id).length ? ' · ' : '') : '') + ancestors(p.id).map(label).join(' / ');
-      var b = item((ti(p.icon) || '📄') + ' ' + label(p), path, function () { openPage(p.id); }), ps = b.querySelector('.picker-sub');
-      if (p.owner && ps) { ps.insertBefore(document.createTextNode(' '), ps.firstChild); ps.insertBefore(grpIc(), ps.firstChild); }
-    });
-    var acts = actions().filter(function (a) { return !q || (a.t + ' ' + (a.kw || '')).toLowerCase().indexOf(q) >= 0; });
-    var cmdAt = qs.items.length, cmdLabel = null;
-    if (acts.length && (q || cmdOnly)) {
-      list.appendChild(cmdLabel = el('div', 'menu-label', T('Befehle')));
-      acts.slice(0, cmdOnly ? 30 : 6).forEach(function (a) {
-        if (a.ic !== 'grp') { item(a.ic + ' ' + a.t, a.kbd || '', a.fn); return; }
-        var t = item(' ' + a.t, a.kbd || '', a.fn).querySelector('.picker-t'); t.insertBefore(grpIc(), t.firstChild);   // einfarbiges Symbol
-      });
-    } else if (!q) list.appendChild(el('div', 'pg-qs-hint', T('Tipp: „>“ zeigt alle Befehle')));
-    if (q && !cmdOnly) item(T('+ Neue Seite „{name}“', { name: $('pg-qs-q').value.trim() }), '', function () {
-      api('POST', '/api/notes', { title: $('pg-qs-q').value.trim() }).then(function (d) { return loadList().then(function () { return openPage(d.id); }); });
-    });
-    if (q && !cmdOnly && QS_WEB) item('🌐 ' + T('Im Web suchen: „{q}“', { q: $('pg-qs-q').value.trim() }), '', function () { qsWeb($('pg-qs-q').value.trim(), 1); }, true);
-    if (!qs.items.length) list.appendChild(el('div', 'pg-noresult', T('Nichts gefunden.')));
-    qs.items.forEach(function (it, i) { it.b.classList.toggle('on', i === 0); });
-    // Volltext (wie "Seiten durchsuchen"): Treffer im Inhalt nachladen, vor den Befehlen einfuegen
-    var token = qs.token = (qs.token || 0) + 1; clearTimeout(qs.timer);
-    if (!q || cmdOnly || q.length < 2) return;
-    qs.timer = setTimeout(function () {
-      api('POST', '/api/notes/search', { q: q }).then(function (res) {
-        if (token !== qs.token || $('pg-qs').hidden) return;
-        var seen = {}; hits.forEach(function (p) { seen[p.id] = 1; });
-        var extra = (res || []).filter(function (h) { return !seen[h.id] && byId(h.id); }).slice(0, 6);
-        if (!extra.length) return;
-        var at = cmdLabel ? cmdAt : qs.items.length - 1, before = cmdLabel || (qs.items[at] ? qs.items[at].b : null);
-        list.insertBefore(el('div', 'menu-label', T('Im Inhalt gefunden')), before);
-        var add = extra.map(function (h) {
-          var b = el('button', 'picker-item qs-hit'); b.type = 'button'; b.setAttribute('role', 'option');
-          b.appendChild(el('span', 'picker-t', (ti(h.icon) || '📄') + ' ' + label(h)));
-          if (h.snippet) b.appendChild(el('span', 'pg-hit-s', h.snippet));
-          var fn = function () { openPage(h.id); };
-          b.addEventListener('click', function () { closeQS(); fn(); });
-          list.insertBefore(b, before); return { b: b, fn: fn };
-        });
-        // Ohne Titel-Treffer stand die Auswahl auf "+ Neue Seite" -> jetzt den ersten Inhalts-Treffer waehlen
-        var curItem = qs.items[qs.idx], wasNew = !hits.length && qs.idx === qs.items.length - 1;
-        Array.prototype.splice.apply(qs.items, [at, 0].concat(add));
-        qs.idx = wasNew ? at : Math.max(0, qs.items.indexOf(curItem)); qsHighlight();
-      }).catch(function () {});
-    }, 200);
-  }
-  // Websuche (SearXNG ueber /api/search, POST: Begriffe nicht im Access-Log): Ergebnisse ersetzen die Liste; Enter/Klick
-  // oeffnet den Treffer in einem neuen Tab, "Mehr laden" haengt die naechste Seite an, Tippen fuehrt zurueck zu den Seiten
-  function qsWeb(text, page) {
-    if (!text || (qs.web && qs.web.busy)) return;
-    var list = $('pg-qs-list');
-    if (page === 1) { list.textContent = ''; qs.items = []; qs.idx = 0; list.appendChild(el('div', 'menu-label', T('Web · „{q}“', { q: text }))); }
-    var more = list.querySelector('.qs-web-more'); if (more) { qs.items = qs.items.filter(function (it) { return it.b !== more; }); more.remove(); }
-    var load = el('div', 'pg-qs-hint', T('Suche läuft …')); list.appendChild(load);
-    qs.web = { q: text, page: page, busy: true };
-    fetch('/api/search', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Saga': '1' },
-      body: JSON.stringify({ q: text, page: page }) })
-      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-      .then(function (x) {
-        load.remove(); if ($('pg-qs').hidden || !qs.web || qs.web.q !== text) return;
-        if (!x.ok) { list.appendChild(el('div', 'pg-noresult', x.d.error || T('Fehler bei der Suche'))); return; }
-        if (page === 1) (x.d.answers || []).forEach(function (a) { list.appendChild(el('div', 'qs-web-answer', a)); });
-        var start = qs.items.length;
-        (x.d.results || []).forEach(function (r) {
-          var b = el('a', 'picker-item qs-hit qs-web'); b.href = r.url; b.target = '_blank'; b.rel = 'noopener noreferrer'; b.setAttribute('role', 'option');
-          b.appendChild(el('span', 'picker-t', r.title)); b.appendChild(el('span', 'qs-web-host', r.host));
-          if (r.content) b.appendChild(el('span', 'pg-hit-s', r.content));
-          qs.items.push({ b: b, fn: function () { b.click(); }, keep: true }); list.appendChild(b);
-        });
-        if (page === 1 && !(x.d.results || []).length) list.appendChild(el('div', 'pg-noresult', T('Keine Ergebnisse.')));
-        if ((x.d.results || []).length && page < 10) {
-          var m = el('button', 'picker-item qs-web-more'); m.type = 'button'; m.setAttribute('role', 'option');
-          m.appendChild(el('span', 'picker-t', T('Mehr laden'))); var mf = function () { qsWeb(text, page + 1); };
-          m.addEventListener('click', mf); qs.items.push({ b: m, fn: mf, keep: true }); list.appendChild(m);
-        }
-        if (page === 1) { qs.idx = 0; qsHighlight(); } else if (qs.items[start]) { qs.idx = start; qsHighlight(); }
-      })
-      .catch(function () { load.remove(); list.appendChild(el('div', 'pg-noresult', T('Suche nicht erreichbar.'))); })
-      .then(function () { if (qs.web && qs.web.q === text) qs.web.busy = false; });
-  }
-  function qsHighlight() { qs.items.forEach(function (it, i) { it.b.classList.toggle('on', i === qs.idx); if (i === qs.idx) it.b.scrollIntoView({ block: 'nearest' }); }); }
-  $('pg-qs-q').addEventListener('input', renderQS);
-  $('pg-qs-q').addEventListener('keydown', function (e) {
-    if (e.key === 'ArrowDown') { e.preventDefault(); qs.idx = Math.min(qs.idx + 1, qs.items.length - 1); qsHighlight(); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); qs.idx = Math.max(qs.idx - 1, 0); qsHighlight(); }
-    else if (e.key === 'Enter') { e.preventDefault(); var it = qs.items[qs.idx]; if (it) { if (!it.keep) closeQS(); it.fn(); } }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeQS(); }
+  var QS = HK.quickSearch({
+    pages: allPages, byId: byId, recents: function () { return recents(); }, label: label, tags: tagsOf, grpIc: function () { return grpIc(); },
+    icon: function (p) { return ti(p.icon); },
+    path: function (p) { return (p.owner ? p.owner.name + (ancestors(p.id).length ? ' · ' : '') : '') + ancestors(p.id).map(label).join(' / '); },
+    open: function (id) { openPage(id); },
+    create: function (title) { api('POST', '/api/notes', { title: title }).then(function (d) { return loadList().then(function () { return openPage(d.id); }); }); },
+    actions: function () { return actions(); },
+    web: document.body.dataset.web === '1'               // SearXNG eingerichtet: "Im Web suchen" (frueher Suchfeld auf Heute)
   });
-  $('pg-qs').addEventListener('mousedown', function (e) { if (e.target === this) closeQS(); });
-  $('pg-qs-btn').addEventListener('click', openQS);
+  function openQS(o) { QS.open(o); }
+  // UX-41: Strg/⌘+Alt+N = neue leere Seite (static/shortcuts.js; auf Heute/Chats ueber /notes?new=blank)
+  if (!EMBED) HK.newBlankPage = function () { newPage(null); };
+  $('pg-qs-btn').addEventListener('click', function () { openQS(); });
   document.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
       // Mit markiertem Text im Editor gehoert Strg/Cmd+K dem Link-Werkzeug von Editor.js
       var sel = window.getSelection();
       if (sel && !sel.isCollapsed && $('pg-editor').contains(sel.anchorNode)) return;
-      e.preventDefault(); openQS();
+      e.preventDefault(); openQS({ key: true });
     }
     // preventDefault: Esc schliesst NUR den Dialog - nicht danach auch noch den Peek, in dem er steckt (Bughunt 2)
     else if (e.key === 'Escape' && !$('pg-modal').hidden) { e.preventDefault(); closeModal(); }
@@ -9030,6 +8927,7 @@
     if (S.gal !== false && !EMBED) add(T('Vorlagengalerie'), '🖼', function () { openGallery(null); },   // Fix27 #16: wie "+ Neue Seite" (Oberste Ebene vorgewaehlt)
                                        { kw: 'gallery vorlagen templates galerie vorlage' });
     if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich nextcloud schluessel' });
+    if (window.HKShortcuts) add(T('Tastenkürzel'), '⌨', function () { HKShortcuts.open(); }, { kw: 'shortcuts tastatur kuerzel hotkeys keyboard hilfe', kbd: mk + '/' });
     add(T('Heute'), '⌂', function () { location.href = '/dashboard'; }, { kw: 'home dashboard start today übersicht' });   // fix27 E2: "/" oeffnet ggf. die eigene Startseite
     return a;
   }
@@ -9296,7 +9194,7 @@
       return Promise.all([loadList(), svc]).then(function () {
         // Einstieg aus der Seitenleiste von Heute/Chats (static/side.js): /notes?v=tasks|events, ?trash, ?archive, ?graph, ?qs, ?new;
         // ?gallery = Vorlagengalerie (Schnellaktion "Aus Vorlage …" auf Heute)
-        var q = new URLSearchParams(location.search), go = q.get('v'), mine = ['v', 'trash', 'archive', 'graph', 'qs', 'new', 'gallery'], want = {};
+        var q = new URLSearchParams(location.search), go = q.get('v'), newArg = q.get('new'), mine = ['v', 'trash', 'archive', 'graph', 'qs', 'new', 'gallery'], want = {};
         if (mine.some(function (k) { return q.has(k); })) {
           mine.forEach(function (k) { want[k] = q.has(k); q.delete(k); });
           var rest = q.toString(); history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
@@ -9306,7 +9204,8 @@
         if (want.archive) setTimeout(showArchive, 0);
         if (want.graph && $('pg-graph-btn')) setTimeout(function () { $('pg-graph-btn').click(); }, 0);
         if (want.qs) setTimeout(openQS, 0);
-        if (want['new'] && $('pg-new')) setTimeout(function () { $('pg-new').click(); }, 0);
+        if (newArg === 'blank' && !EMBED) setTimeout(function () { newPage(null); }, 0);              // Strg/⌘+Alt+N auf Heute/Chats
+        else if (want['new'] && $('pg-new')) setTimeout(function () { $('pg-new').click(); }, 0);
         if (want.gallery && S.gal !== false && !EMBED) setTimeout(function () { openGallery(null); }, 0);
         var fromHash = parseInt(location.hash.slice(1), 10), last = +HK.store('hk-pg-last');
         if (fromHash && !anyById(fromHash)) return openPage(fromHash);       // alte/fremde Adresse: Server fragen ("Kein Zugriff")

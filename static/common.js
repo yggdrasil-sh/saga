@@ -173,8 +173,8 @@
   document.body.appendChild(menuEl); document.body.appendChild(subEl);
   var menuOwner = null, subOwner = null;
   function closeSub() { subEl.hidden = true; subEl.textContent = ''; menuEl.classList.remove('menu-covered'); if (subOwner) { subOwner.classList.remove('sub-open'); subOwner.setAttribute('aria-expanded', 'false'); } subOwner = null; }
-  var lastOwner = null;     // zuletzt geschlossenes Menue: Ausloeser (Dialoge geben den Fokus dorthin zurueck)
-  function closeMenu() { closeSub(); menuEl.hidden = true; menuEl.textContent = ''; if (menuOwner) { menuOwner.setAttribute('aria-expanded', 'false'); lastOwner = menuOwner; } menuOwner = null; }
+  var lastOwner = null, lastAt = 0;     // zuletzt geschlossenes Menue: Ausloeser (Dialoge geben den Fokus dorthin zurueck)
+  function closeMenu() { closeSub(); menuEl.hidden = true; menuEl.textContent = ''; if (menuOwner) { menuOwner.setAttribute('aria-expanded', 'false'); lastOwner = menuOwner; lastAt = Date.now(); } menuOwner = null; }
   function place(m, r, side) {
     var mw = m.offsetWidth, mh = m.offsetHeight, W = window.innerWidth, H = window.innerHeight, left, top;
     if (side) {                                  // Untermenue: rechts neben dem Eintrag, sonst links
@@ -531,7 +531,9 @@
   function panelFocus(panel, o) {
     o = o || {};
     var back = o.back || document.activeElement;
-    if (!back || back === document.body || (back.closest && back.closest('.menu'))) back = lastOwner || back;
+    // Aus einem Menue geoeffnet (Eintrag ist mit dem Menue verschwunden): an dessen Knopf - aber nur, wenn das Menue eben erst
+    // zuging; sonst (z. B. Strg/⌘+K ohne Fokus) bliebe ein laengst geschlossener, fremder Menueknopf das Ziel (UX-10)
+    if (!o.back && (!back || back === document.body || (back.closest && back.closest('.menu'))) && lastOwner && Date.now() - lastAt < 2500) back = lastOwner;
     function key(e) {
       if (e.key !== 'Tab' || panel.hidden) return;
       var f = focusables(panel); if (!f.length) return;

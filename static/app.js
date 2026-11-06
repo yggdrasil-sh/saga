@@ -118,18 +118,16 @@
   });
 
   // --- Tastenkuerzel ------------------------------------------------------------------------------------------------
-  // Strg/⌘+K: Schnellsuche (auf /notes); "/": Suche der Seitenleiste (schmal: Schnellsuche). 1-9 oeffnet Lesezeichen,
-  // N neue Seite, V Vorlage, E Termin, M KI-Assistent (T = Aufgabe: static/notes.js).
+  // Strg/⌘+K: Schnellsuche als Overlay (static/side.js + static/qs.js, UX-10); "/": Suche der Seitenleiste (schmal:
+  // Schnellsuche). 1-9 oeffnet Lesezeichen, N neue Seite, V Vorlage, E Termin, M KI-Assistent (T = Aufgabe: static/notes.js).
   function sideSearch() {
     var s = $('sh-search');
-    if (s && s.getClientRects().length) { s.focus(); s.select(); } else location.href = '/notes?qs=1';
+    if (s && s.getClientRects().length) { s.focus(); s.select(); }
+    else if (HK.openQuickSearch) HK.openQuickSearch({ key: true });
+    else location.href = '/notes?qs=1';
   }
   document.addEventListener('keydown', function (e) {
     var t = e.target;
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
-      if (document.querySelector('[aria-modal="true"]:not([hidden]), dialog[open]')) return;
-      e.preventDefault(); location.href = '/notes?qs=1'; return;
-    }
     if (e.metaKey || e.ctrlKey || e.altKey || typing(t)) return;
     if (HK && HK.menuOpen && HK.menuOpen()) return;
     var k = e.key;
