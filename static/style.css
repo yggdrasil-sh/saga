@@ -1,11 +1,4 @@
-/* Farben: Text mind. 4,5:1 (WCAG AA), Feldraender (--field) mind. 3:1 auf --bg und --card - hell UND dunkel.
-   --border bleibt fuer Karten/Trennlinien (rein dekorativ). --ok = Gruen fuer Text (--up nur fuer Punkte/Balken). */
-:root{--bg:#0f141c;--card:#18202c;--card-h:#202b3a;--fg:#e6ebf2;--muted:#8b97a8;--accent:#c9a45c;--border:#263242;--field:#5e6b80;
---up:#3fb950;--ok:#3fb950;--warn:#d29922;--down:#f85149;--unk:#5a6577;--warnbg:#3a2f12;--critbg:#3d1718;--plaque:#eef1f5;color-scheme:dark}
-@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){--bg:#f3f1ec;--card:#fff;--card-h:#faf6ee;--fg:#1d2430;--muted:#5d6878;--accent:#7a5a12;--border:#d8d2c4;
---field:#8f8670;--ok:#1f7a33;--warn:#8a5a00;--down:#cf222e;--warnbg:#fbf0d4;--critbg:#fbe0de;--unk:#b3bac5;color-scheme:light}}
-:root:where([data-theme=light]){--bg:#f3f1ec;--card:#fff;--card-h:#faf6ee;--fg:#1d2430;--muted:#5d6878;--accent:#7a5a12;--border:#d8d2c4;
---field:#8f8670;--ok:#1f7a33;--warn:#8a5a00;--down:#cf222e;--warnbg:#fbf0d4;--critbg:#fbe0de;--unk:#b3bac5;color-scheme:light}
+/* Farben, Schriftstufen und Radien: static/tokens.css (laedt vor dieser Datei, eine Quelle fuer alle Seiten). */
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 /* Sichtbarer Tastatur-Fokus ueberall (ohne Spezifitaet: Regeln mit eigener Fokus-Darstellung gewinnen) */
@@ -669,15 +662,6 @@ body.notes-page #pg-full{display:none}
 .val-checkbox input{width:1rem;height:1rem;accent-color:var(--accent);cursor:pointer}
 .val-link{color:var(--accent);text-decoration:none;padding:0 .3rem}
 .opt{display:inline-block;border-radius:4px;padding:.05rem .45rem;font-size:.8rem;line-height:1.5;white-space:nowrap;color:var(--fg)}
-.opt-gray{background:color-mix(in srgb,#9b9a97 30%,transparent)}
-.opt-brown{background:color-mix(in srgb,#9f6b53 35%,transparent)}
-.opt-orange{background:color-mix(in srgb,#d9730d 35%,transparent)}
-.opt-yellow{background:color-mix(in srgb,#dfab01 35%,transparent)}
-.opt-green{background:color-mix(in srgb,#0f7b6c 40%,transparent)}
-.opt-blue{background:color-mix(in srgb,#0b6e99 40%,transparent)}
-.opt-purple{background:color-mix(in srgb,#6940a5 40%,transparent)}
-.opt-pink{background:color-mix(in srgb,#ad1a72 35%,transparent)}
-.opt-red{background:color-mix(in srgb,#e03e3e 35%,transparent)}
 .menu-input{display:block;width:calc(100% - .8rem);margin:.3rem .4rem .35rem;background:var(--bg);border:1px solid var(--field);border-radius:6px;
   color:var(--fg);font:inherit;font-size:.85rem;padding:.35rem .5rem;outline:none}
 .menu-input:focus{border-color:var(--accent)}
@@ -889,9 +873,7 @@ body.side-hidden .pages-side{display:none}
    abgesetztem Hintergrund; oben darin die Kopfzeile (Saga, Chats, Glocke, Konto); rechts nur die Seite mit ihrer
    Leiste (Pfad, Teilen, ...) als Kopf. Ein/aus gleitet (200 ms), zugeklappt schwebt die Leiste beim Ueberfahren des
    Knopfs oder des linken Rands als Karte herein - der Inhalt bleibt dabei stehen. */
-:root{--side-bg:#131a24;--side-w:270px;--side-row:#1c2531}
-@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){--side-bg:#ebe8e1;--side-row:#e1ddd3}}
-:root:where([data-theme=light]){--side-bg:#ebe8e1;--side-row:#e1ddd3}
+:root{--side-w:270px}
 @media (min-width:761px){
   body:is(.notes-page,.has-side):not(.embed) .np-head{position:fixed;z-index:62;top:0;left:0;width:var(--side-w);box-sizing:border-box;
     height:3rem;padding:0 .5rem 0 .6rem;gap:.15rem;flex-wrap:nowrap;border-bottom:0;background:var(--side-bg);overflow:hidden;
@@ -1157,8 +1139,8 @@ a.fl-chip:hover{border-color:var(--accent)}
 .opt-item .mi-t{display:inline-flex;align-items:center;gap:.35rem}
 
 /* Bedingte Farbe (Zeilen/Karten) und gesperrte Datenbank */
-.rc-red{--rc:#e5534b}.rc-orange{--rc:#e0823d}.rc-yellow{--rc:#c69026}.rc-green{--rc:#46954a}.rc-blue{--rc:#4184e4}
-.rc-purple{--rc:#986ee2}.rc-pink{--rc:#c9519a}.rc-brown{--rc:#9a6b4c}.rc-gray{--rc:#8b97a8}
+.rc-red{--rc:var(--rc-red)}.rc-orange{--rc:var(--rc-orange)}.rc-yellow{--rc:var(--rc-yellow)}.rc-green{--rc:var(--rc-green)}.rc-blue{--rc:var(--rc-blue)}
+.rc-purple{--rc:var(--rc-purple)}.rc-pink{--rc:var(--rc-pink)}.rc-brown{--rc:var(--rc-brown)}.rc-gray{--rc:var(--rc-gray)}
 tr.rc > td{background:color-mix(in srgb,var(--rc) 14%,transparent)}
 tr.rc > td:first-child{box-shadow:inset 3px 0 0 var(--rc)}
 .dbl-row.rc,.cal-item.rc{background:color-mix(in srgb,var(--rc) 16%,var(--card));box-shadow:inset 3px 0 0 var(--rc)}
@@ -2247,9 +2229,6 @@ img.tpl-ic{height:1.4rem;object-fit:cover;border-radius:4px}
 .skip-link:focus{top:.6rem;outline:2px solid var(--fg);outline-offset:2px}
 
 /* 2.5 Graph der Seiten (static/graph.js). Knotenfarben: Grafik-Kontrast >= 3:1 auf --bg, hell und dunkel */
-:root{--gr-node:#9aa6b8;--gr-db:#b39ddb;--gr-row:#7fb0e0;--gr-tag:#6cc48a;--gr-line:#8b97a8;--gr-line-a:.32}
-@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){--gr-node:#6a7383;--gr-db:#7b5cc0;--gr-row:#3d72ad;--gr-tag:#2e8049;--gr-line:#5d6878;--gr-line-a:.3}}
-:root:where([data-theme=light]){--gr-node:#6a7383;--gr-db:#7b5cc0;--gr-row:#3d72ad;--gr-tag:#2e8049;--gr-line:#5d6878;--gr-line-a:.3}
 body.gr-open{overflow:hidden}
 .gr-full{position:fixed;inset:0;z-index:88;background:var(--bg);display:flex;flex-direction:column;outline:none}
 .gr-head{display:flex;align-items:center;gap:.5rem .7rem;padding:.55rem .75rem .55rem 1.1rem;border-bottom:1px solid var(--border);min-height:56px}
@@ -2349,9 +2328,6 @@ body.gr-open{overflow:hidden}
 
 /* Seite gestalten (2.5) ----------------------------------------------------------------------------------------
    Block-Farben (tunes.hkstyle): gleiche Palette wie die Auswahl-Farben (.opt-*), Text mind. 4,5:1 hell und dunkel */
-:root{--tc-gray:#b0afab;--tc-brown:#c9a08b;--tc-orange:#f0a35e;--tc-yellow:#e6c54f;--tc-green:#4fc4a9;--tc-blue:#62b4e2;--tc-purple:#b893e6;--tc-pink:#e682bb;--tc-red:#f28585;--bc-gray:color-mix(in srgb,#9b9a97 30%,transparent);--bc-brown:color-mix(in srgb,#9f6b53 30%,transparent);--bc-orange:color-mix(in srgb,#d9730d 30%,transparent);--bc-yellow:color-mix(in srgb,#dfab01 30%,transparent);--bc-green:color-mix(in srgb,#0f7b6c 30%,transparent);--bc-blue:color-mix(in srgb,#0b6e99 30%,transparent);--bc-purple:color-mix(in srgb,#6940a5 30%,transparent);--bc-pink:color-mix(in srgb,#ad1a72 30%,transparent);--bc-red:color-mix(in srgb,#e03e3e 30%,transparent)}
-@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){--tc-gray:#686763;--tc-brown:#8a5a44;--tc-orange:#a65300;--tc-yellow:#7f6200;--tc-green:#0b6e60;--tc-blue:#0b6893;--tc-purple:#6940a5;--tc-pink:#a8186e;--tc-red:#c22a2a;--bc-gray:color-mix(in srgb,#9b9a97 20%,transparent);--bc-brown:color-mix(in srgb,#9f6b53 20%,transparent);--bc-orange:color-mix(in srgb,#d9730d 20%,transparent);--bc-yellow:color-mix(in srgb,#dfab01 20%,transparent);--bc-green:color-mix(in srgb,#0f7b6c 20%,transparent);--bc-blue:color-mix(in srgb,#0b6e99 20%,transparent);--bc-purple:color-mix(in srgb,#6940a5 20%,transparent);--bc-pink:color-mix(in srgb,#ad1a72 20%,transparent);--bc-red:color-mix(in srgb,#e03e3e 20%,transparent)}}
-:root:where([data-theme=light]){--tc-gray:#686763;--tc-brown:#8a5a44;--tc-orange:#a65300;--tc-yellow:#7f6200;--tc-green:#0b6e60;--tc-blue:#0b6893;--tc-purple:#6940a5;--tc-pink:#a8186e;--tc-red:#c22a2a;--bc-gray:color-mix(in srgb,#9b9a97 20%,transparent);--bc-brown:color-mix(in srgb,#9f6b53 20%,transparent);--bc-orange:color-mix(in srgb,#d9730d 20%,transparent);--bc-yellow:color-mix(in srgb,#dfab01 20%,transparent);--bc-green:color-mix(in srgb,#0f7b6c 20%,transparent);--bc-blue:color-mix(in srgb,#0b6e99 20%,transparent);--bc-purple:color-mix(in srgb,#6940a5 20%,transparent);--bc-pink:color-mix(in srgb,#ad1a72 20%,transparent);--bc-red:color-mix(in srgb,#e03e3e 20%,transparent)}
 .hk-c-gray{color:var(--tc-gray)}.hk-c-brown{color:var(--tc-brown)}.hk-c-orange{color:var(--tc-orange)}.hk-c-yellow{color:var(--tc-yellow)}.hk-c-green{color:var(--tc-green)}.hk-c-blue{color:var(--tc-blue)}.hk-c-purple{color:var(--tc-purple)}.hk-c-pink{color:var(--tc-pink)}.hk-c-red{color:var(--tc-red)}
 .hk-bg-gray{background:var(--bc-gray)}.hk-bg-brown{background:var(--bc-brown)}.hk-bg-orange{background:var(--bc-orange)}.hk-bg-yellow{background:var(--bc-yellow)}.hk-bg-green{background:var(--bc-green)}.hk-bg-blue{background:var(--bc-blue)}.hk-bg-purple{background:var(--bc-purple)}.hk-bg-pink{background:var(--bc-pink)}.hk-bg-red{background:var(--bc-red)}
 .page-body .ce-block__content[class*="hk-bg-"]{border-radius:6px;padding-inline:.45rem}
@@ -2807,25 +2783,8 @@ body.cd-open .cd-btn,body.ai-open .cd-btn{visibility:hidden}
 /* ===== Design-Runde 06/07/08: Ruhe-Tokens fuer die Huelle ==============================================
    Hellmodus "Papier" (VD-01/A11Y-02): Leseflaeche fast weiss, Leiste getoent; --muted auf --side-row jetzt 4,6:1 (vorher 4,17).
    Warme, geschichtete Schatten statt 25-45 % Schwarz (VD-03/AE-20), heller Scrim (AE-21), kurze Eintritte fuer Menues,
-   Dialoge und Panels (AE-19), weiche Hover-Uebergaenge (AE-05). Dunkel: aktive Leistenzeile sichtbarer (VD-08). */
-:root{--side-row:#222c3a;--sh-1:0 1px 2px rgba(0,0,0,.3);--sh-pop:0 0 0 1px rgba(255,255,255,.04),0 12px 32px rgba(0,0,0,.45);
-  --sh-modal:0 0 0 1px rgba(255,255,255,.05),0 24px 64px rgba(0,0,0,.55);--scrim:rgba(4,7,12,.55)}
-@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){--bg:#fdfcfa;--card-h:#f6f3ec;--border:#e7e2d7;--side-bg:#f6f4ef;--side-row:#ebe7de;
-  --sh-1:0 1px 2px rgba(60,45,20,.06);
-  --sh-pop:0 0 0 1px rgba(60,45,20,.06),0 4px 10px rgba(60,45,20,.06),0 16px 36px -8px rgba(60,45,20,.16);
-  --sh-modal:0 0 0 1px rgba(60,45,20,.06),0 10px 24px rgba(60,45,20,.08),0 32px 64px -16px rgba(60,45,20,.22);
-  --scrim:rgba(40,32,18,.22);
-  /* 07: deckende Pastellflaechen (auf getoenten Zeilen verschwimmen sie nicht); --tc-* darauf >= 4,5:1 */
-  --bc-gray:#ebeae7;--bc-brown:#f1e6df;--bc-orange:#fae5d3;--bc-yellow:#f8efc8;--bc-green:#ddedea;--bc-blue:#ddebf1;
-  --bc-purple:#eae4f2;--bc-pink:#f6e0eb;--bc-red:#fbe4e4}}
-:root:where([data-theme=light]){--bg:#fdfcfa;--card-h:#f6f3ec;--border:#e7e2d7;--side-bg:#f6f4ef;--side-row:#ebe7de;
-  --sh-1:0 1px 2px rgba(60,45,20,.06);
-  --sh-pop:0 0 0 1px rgba(60,45,20,.06),0 4px 10px rgba(60,45,20,.06),0 16px 36px -8px rgba(60,45,20,.16);
-  --sh-modal:0 0 0 1px rgba(60,45,20,.06),0 10px 24px rgba(60,45,20,.08),0 32px 64px -16px rgba(60,45,20,.22);
-  --scrim:rgba(40,32,18,.22);
-  /* 07: deckende Pastellflaechen (auf getoenten Zeilen verschwimmen sie nicht); --tc-* darauf >= 4,5:1 */
-  --bc-gray:#ebeae7;--bc-brown:#f1e6df;--bc-orange:#fae5d3;--bc-yellow:#f8efc8;--bc-green:#ddedea;--bc-blue:#ddebf1;
-  --bc-purple:#eae4f2;--bc-pink:#f6e0eb;--bc-red:#fbe4e4}
+   Dialoge und Panels (AE-19), weiche Hover-Uebergaenge (AE-05). Dunkel: aktive Leistenzeile sichtbarer (VD-08).
+   Die Tokens selbst (Papier, Schatten, Scrim, Pastellflaechen) stehen seit Design-Runde 4 in static/tokens.css. */
 .menu,.pm-pop,.pm-bubble{box-shadow:var(--sh-pop)}
 .modal-box,.qs-box,.hk-dialog{box-shadow:var(--sh-modal)}
 .modal,.qs,.ai-scrim,.cm-scrim,.pg-scrim,.peek.center{background:var(--scrim)}

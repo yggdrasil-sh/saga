@@ -16,7 +16,7 @@ if (src.indexOf('  // Original in groß (erst hier geladen).') < 0) { console.er
 const a = src.indexOf('  // Original in groß (erst hier geladen).'), b = src.indexOf('  function save(url, name) {');
 const ovA = src.indexOf('  var ov = null;'), ovB = src.indexOf('  function btn(label');
 const btnLine = src.slice(ovB, src.indexOf('\n', ovB));
-const css = fs.readFileSync(path.join(ROOT, 'static', 'style.css'), 'utf8') + fs.readFileSync(path.join(ROOT, 'static', 'chat.css'), 'utf8');
+const css = fs.readFileSync(path.join(ROOT, 'static', 'tokens.css'), 'utf8') + fs.readFileSync(path.join(ROOT, 'static', 'style.css'), 'utf8') + fs.readFileSync(path.join(ROOT, 'static', 'chat.css'), 'utf8');
 const js = `(function(){
   var T = function (s, o) { return String(s).replace(/\\{(\\w+)\\}/g, function (_, k) { return o && k in o ? o[k] : _; }); };
   function el(t, c, x) { var e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }

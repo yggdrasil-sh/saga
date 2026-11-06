@@ -233,7 +233,10 @@ def main():
     s, _, css = req("GET", "/static/public.css")
     ok("public.css: Klassen fuer Farben (hell/dunkel), Breiten, Spalten",
        all(x in css for x in (".c-red{color:var(--tc-red)}", ".bg-blue{background:var(--bc-blue)}", ".iw-40{width:40%}", ".pw-70{flex-grow:70}",
-                              "prefers-color-scheme: dark", ".pub-f-serif", ".pub-small")))
+                              ".pub-f-serif", ".pub-small")))
+    s, _, tcss = req("GET", "/static/tokens.css")             # Design-Runde 4: Farben aus der gemeinsamen Token-Datei
+    ok("tokens.css: Palette hell/dunkel (eine Quelle fuer App und oeffentliche Seiten)",
+       s == 200 and all(x in tcss for x in ("--tc-red:", "--bc-blue:", "prefers-color-scheme: light", ":root:where([data-theme=light])")))
 
     # --- Markdown-Export ------------------------------------------------------------------------------------------
     s, hd, raw = req("GET", f"/api/notes/{pub}/export", A)

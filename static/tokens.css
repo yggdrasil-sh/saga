@@ -1,0 +1,45 @@
+/* Saga - Design-Tokens: EINE Quelle fuer App, Chats, Admin und oeffentliche Seiten (Design-Runde 4, VD-02/04/06/10/12/32).
+   Laedt auf jeder Seite VOR style.css bzw. public.css (CSP style-src 'self': eigene Datei statt Inline-Styles).
+   Dunkel ist die Grundeinstellung, Hell kommt aus prefers-color-scheme oder <html data-theme=light> (static/theme-boot.js);
+   jeder Farbschema-Block hat sein data-theme-Gegenstueck (tests/browser_thema.js). Oeffentliche Seiten haben kein
+   data-theme und folgen nur dem System.
+   Farben: Text mind. 4,5:1 (WCAG AA), Feldraender (--field) mind. 3:1 auf --bg und --card - hell UND dunkel.
+   --border fuer Karten/Trennlinien (rein dekorativ). --ok = Gruen fuer Text (--up nur fuer Punkte/Balken).
+   Die neun Auswahl-Farben: Grundtoene --hue-* (Notion-Palette), daraus Text --tc-* und Flaechen --bc-*. Etiketten (.opt-*),
+   Block-Farben, Widgets und Diagramme verwenden nur diese. Eigene Signalfarben: bedingte Farbe (--rc-*, Zeilen/Karten),
+   Graph-Knoten (--gr-*), Anruf-Buehne (static/calls.css, bewusst immer dunkel). */
+:root{--hue-gray:#9b9a97;--hue-brown:#9f6b53;--hue-orange:#d9730d;--hue-yellow:#dfab01;--hue-green:#0f7b6c;--hue-blue:#0b6e99;--hue-purple:#6940a5;--hue-pink:#ad1a72;--hue-red:#e03e3e;
+  /* Bedingte Farbe (Zeilen/Karten, .rc-*): kraeftige Toene fuer 14-16-%-Flaechen und 3-px-Kante */
+  --rc-red:#e5534b;--rc-orange:#e0823d;--rc-yellow:#c69026;--rc-green:#46954a;--rc-blue:#4184e4;--rc-purple:#986ee2;--rc-pink:#c9519a;--rc-brown:#9a6b4c;--rc-gray:#8b97a8;
+  /* Schrift (VD-10/12): 7 Stufen fuer die Bedienoberflaeche. Editor-Typografie (Fliesstext 16 px, Titel, H1-H3) und der
+     16-px-Schutz gegen Zoom am Handy haben eigene Werte. Gewichte nur 400/500/600/700. */
+  --fs-xs:.72rem;--fs-sm:.8rem;--fs-base:.875rem;--fs-md:1rem;--fs-lg:1.15rem;--fs-xl:1.3rem;--fs-2xl:1.6rem;
+  /* Radien (VD-32/AE-22): Steuerelemente, Karten/Menues/Dialoge, Pillen. Ausnahmen: Avatare 50 %, Sprechblasen, Blaetter. */
+  --r-sm:6px;--r-md:10px;--r-pill:999px}
+:root{
+  --bg:#0f141c;--card:#18202c;--card-h:#202b3a;--fg:#e6ebf2;--muted:#8b97a8;--accent:#c9a45c;--border:#263242;--field:#5e6b80;--code:#1d2633;--info:#58a6ff;
+  --up:#3fb950;--ok:#3fb950;--warn:#d29922;--down:#f85149;--unk:#5a6577;--warnbg:#3a2f12;--critbg:#3d1718;--plaque:#eef1f5;
+  --side-bg:#131a24;--side-row:#222c3a;
+  --sh-1:0 1px 2px rgba(0,0,0,.3);--sh-pop:0 0 0 1px rgba(255,255,255,.04),0 12px 32px rgba(0,0,0,.45);--sh-modal:0 0 0 1px rgba(255,255,255,.05),0 24px 64px rgba(0,0,0,.55);--scrim:rgba(4,7,12,.55);
+  --tc-gray:#b0afab;--tc-brown:#c9a08b;--tc-orange:#f0a35e;--tc-yellow:#e6c54f;--tc-green:#4fc4a9;--tc-blue:#62b4e2;--tc-purple:#b893e6;--tc-pink:#e682bb;--tc-red:#f28585;
+  --bc-gray:color-mix(in srgb,var(--hue-gray) 30%,transparent);--bc-brown:color-mix(in srgb,var(--hue-brown) 30%,transparent);--bc-orange:color-mix(in srgb,var(--hue-orange) 30%,transparent);--bc-yellow:color-mix(in srgb,var(--hue-yellow) 30%,transparent);--bc-green:color-mix(in srgb,var(--hue-green) 30%,transparent);--bc-blue:color-mix(in srgb,var(--hue-blue) 30%,transparent);--bc-purple:color-mix(in srgb,var(--hue-purple) 30%,transparent);--bc-pink:color-mix(in srgb,var(--hue-pink) 30%,transparent);--bc-red:color-mix(in srgb,var(--hue-red) 30%,transparent);
+  --gr-node:#9aa6b8;--gr-db:#b39ddb;--gr-row:#7fb0e0;--gr-tag:#6cc48a;--gr-line:#8b97a8;--gr-line-a:.32;
+  color-scheme:dark}
+@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){
+  --bg:#fdfcfa;--card:#fff;--card-h:#f6f3ec;--fg:#1d2430;--muted:#5d6878;--accent:#7a5a12;--border:#e7e2d7;--field:#8f8670;--code:#ebe6da;--info:#0b5cad;
+  --ok:#1f7a33;--warn:#8a5a00;--down:#cf222e;--warnbg:#fbf0d4;--critbg:#fbe0de;--unk:#b3bac5;
+  --side-bg:#f6f4ef;--side-row:#ebe7de;
+  --sh-1:0 1px 2px rgba(60,45,20,.06);--sh-pop:0 0 0 1px rgba(60,45,20,.06),0 4px 10px rgba(60,45,20,.06),0 16px 36px -8px rgba(60,45,20,.16);--sh-modal:0 0 0 1px rgba(60,45,20,.06),0 10px 24px rgba(60,45,20,.08),0 32px 64px -16px rgba(60,45,20,.22);--scrim:rgba(40,32,18,.22);
+  --tc-gray:#686763;--tc-brown:#8a5a44;--tc-orange:#a65300;--tc-yellow:#7f6200;--tc-green:#0b6e60;--tc-blue:#0b6893;--tc-purple:#6940a5;--tc-pink:#a8186e;--tc-red:#c22a2a;
+  --bc-gray:#ebeae7;--bc-brown:#f1e6df;--bc-orange:#fae5d3;--bc-yellow:#f8efc8;--bc-green:#ddedea;--bc-blue:#ddebf1;--bc-purple:#eae4f2;--bc-pink:#f6e0eb;--bc-red:#fbe4e4;
+  --gr-node:#6a7383;--gr-db:#7b5cc0;--gr-row:#3d72ad;--gr-tag:#2e8049;--gr-line:#5d6878;--gr-line-a:.3;
+  color-scheme:light}}
+:root:where([data-theme=light]){
+  --bg:#fdfcfa;--card:#fff;--card-h:#f6f3ec;--fg:#1d2430;--muted:#5d6878;--accent:#7a5a12;--border:#e7e2d7;--field:#8f8670;--code:#ebe6da;--info:#0b5cad;
+  --ok:#1f7a33;--warn:#8a5a00;--down:#cf222e;--warnbg:#fbf0d4;--critbg:#fbe0de;--unk:#b3bac5;
+  --side-bg:#f6f4ef;--side-row:#ebe7de;
+  --sh-1:0 1px 2px rgba(60,45,20,.06);--sh-pop:0 0 0 1px rgba(60,45,20,.06),0 4px 10px rgba(60,45,20,.06),0 16px 36px -8px rgba(60,45,20,.16);--sh-modal:0 0 0 1px rgba(60,45,20,.06),0 10px 24px rgba(60,45,20,.08),0 32px 64px -16px rgba(60,45,20,.22);--scrim:rgba(40,32,18,.22);
+  --tc-gray:#686763;--tc-brown:#8a5a44;--tc-orange:#a65300;--tc-yellow:#7f6200;--tc-green:#0b6e60;--tc-blue:#0b6893;--tc-purple:#6940a5;--tc-pink:#a8186e;--tc-red:#c22a2a;
+  --bc-gray:#ebeae7;--bc-brown:#f1e6df;--bc-orange:#fae5d3;--bc-yellow:#f8efc8;--bc-green:#ddedea;--bc-blue:#ddebf1;--bc-purple:#eae4f2;--bc-pink:#f6e0eb;--bc-red:#fbe4e4;
+  --gr-node:#6a7383;--gr-db:#7b5cc0;--gr-row:#3d72ad;--gr-tag:#2e8049;--gr-line:#5d6878;--gr-line-a:.3;
+  color-scheme:light}

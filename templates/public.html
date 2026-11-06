@@ -24,6 +24,7 @@
 <title>{{ _("Nicht gefunden") }}</title>
 {%- endif %}
 <link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
+<link rel="stylesheet" href="/static/tokens.css?v={{ v }}">
 <link rel="stylesheet" href="/static/public.css?v={{ v }}">
 </head>
 <body class="pub{% if mode == 'page' and page.wide %} pub-wide{% endif %}{% if mode == 'page' and page.font %} pub-f-{{ page.font }}{% endif %}{% if mode == 'page' and page.small %} pub-small{% endif %}">

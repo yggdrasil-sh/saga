@@ -111,7 +111,7 @@ const ld = BASE.replace(/\/$/, '');
   await p.evaluate(() => SagaTheme.set('auto'));
 
   // CSS: jede Regel aus @media (prefers-color-scheme) gilt auch erzwungen
-  for (const f of ['style.css', 'chat.css']) {
+  for (const f of ['tokens.css', 'style.css', 'chat.css']) {
     const css = await (await p.request.get(ld + '/static/' + f)).text();
     const blocks = css.match(/@media\s*\(prefers-color-scheme:\s*(light|dark)\)\s*\{/g) || [];
     const forced = (css.match(/:root(?::where\()?\[data-theme=(light|dark)\]/g) || []).length;

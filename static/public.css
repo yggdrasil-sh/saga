@@ -1,10 +1,6 @@
 /* Oeffentliche Seiten (/@name/<slug>, templates/public.html): schlicht, gut lesbar, ohne JavaScript.
-   Farben wie Saga (hell/dunkel per prefers-color-scheme), Text mind. 4,5:1. */
-:root{--bg:#fdfcfa;--card:#fff;--fg:#1d2430;--muted:#5d6878;--accent:#7a5a12;--border:#e7e2d7;--code:#ebe6da;
---warn:#8a5a00;--ok:#1f7a33;--down:#cf222e;--info:#0b5cad;color-scheme:light;
---measure:42rem;--wide:62rem}  /* Lesebreite (~70 Zeichen) fuer Text; Bilder, Tabellen, Datenbanken, Spalten bis --wide */
-@media (prefers-color-scheme: dark){:root{--bg:#0f141c;--card:#18202c;--fg:#e6ebf2;--muted:#8b97a8;--accent:#c9a45c;--border:#263242;
---code:#1d2633;--warn:#d29922;--ok:#3fb950;--down:#f85149;--info:#58a6ff;color-scheme:dark}}
+   Farben wie Saga aus static/tokens.css (hell/dunkel per prefers-color-scheme), Text mind. 4,5:1. */
+:root{--measure:42rem;--wide:62rem}  /* Lesebreite (~70 Zeichen) fuer Text; Bilder, Tabellen, Datenbanken, Spalten bis --wide */
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body.pub{margin:0;background:var(--bg);color:var(--fg);font:17px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -103,15 +99,15 @@ time{color:var(--accent)}
 .pub-db-title{font-weight:600;font-size:1.1rem;margin-bottom:.3rem}
 .pub-muted{color:var(--muted)}
 .opt{display:inline-block;border-radius:4px;padding:0 .45rem;font-size:.82rem;line-height:1.6;white-space:nowrap;margin:.05rem .1rem .05rem 0}
-.opt-gray{background:color-mix(in srgb,#9b9a97 30%,transparent)}
-.opt-brown{background:color-mix(in srgb,#9f6b53 35%,transparent)}
-.opt-orange{background:color-mix(in srgb,#d9730d 35%,transparent)}
-.opt-yellow{background:color-mix(in srgb,#dfab01 35%,transparent)}
-.opt-green{background:color-mix(in srgb,#0f7b6c 40%,transparent)}
-.opt-blue{background:color-mix(in srgb,#0b6e99 40%,transparent)}
-.opt-purple{background:color-mix(in srgb,#6940a5 40%,transparent)}
-.opt-pink{background:color-mix(in srgb,#ad1a72 35%,transparent)}
-.opt-red{background:color-mix(in srgb,#e03e3e 35%,transparent)}
+.opt-gray{background:color-mix(in srgb,var(--hue-gray) 30%,transparent)}
+.opt-brown{background:color-mix(in srgb,var(--hue-brown) 35%,transparent)}
+.opt-orange{background:color-mix(in srgb,var(--hue-orange) 35%,transparent)}
+.opt-yellow{background:color-mix(in srgb,var(--hue-yellow) 35%,transparent)}
+.opt-green{background:color-mix(in srgb,var(--hue-green) 40%,transparent)}
+.opt-blue{background:color-mix(in srgb,var(--hue-blue) 40%,transparent)}
+.opt-purple{background:color-mix(in srgb,var(--hue-purple) 40%,transparent)}
+.opt-pink{background:color-mix(in srgb,var(--hue-pink) 35%,transparent)}
+.opt-red{background:color-mix(in srgb,var(--hue-red) 35%,transparent)}
 .pub-cols{display:grid;gap:1.5rem;margin:.8rem 0}
 .pub-cols.n2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .pub-cols.n3{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -177,8 +173,6 @@ text-decoration:none;font-weight:500}
 
 /* Seite gestalten (2.5): Block-Farben aus der Palette der Auswahl-Farben (Text hell/dunkel mind. 4,5:1), Breite und
    Ausrichtung von Bildern/Playern, Spaltenbreiten, Toggle-Ueberschriften, Schrift je Seite. Nur Klassen (CSP: keine style-Attribute). */
-:root{--tc-gray:#686763;--tc-brown:#8a5a44;--tc-orange:#a65300;--tc-yellow:#7f6200;--tc-green:#0b6e60;--tc-blue:#0b6893;--tc-purple:#6940a5;--tc-pink:#a8186e;--tc-red:#c22a2a;--bc-gray:color-mix(in srgb,#9b9a97 20%,transparent);--bc-brown:color-mix(in srgb,#9f6b53 20%,transparent);--bc-orange:color-mix(in srgb,#d9730d 20%,transparent);--bc-yellow:color-mix(in srgb,#dfab01 20%,transparent);--bc-green:color-mix(in srgb,#0f7b6c 20%,transparent);--bc-blue:color-mix(in srgb,#0b6e99 20%,transparent);--bc-purple:color-mix(in srgb,#6940a5 20%,transparent);--bc-pink:color-mix(in srgb,#ad1a72 20%,transparent);--bc-red:color-mix(in srgb,#e03e3e 20%,transparent)}
-@media (prefers-color-scheme: dark){:root{--tc-gray:#b0afab;--tc-brown:#c9a08b;--tc-orange:#f0a35e;--tc-yellow:#e6c54f;--tc-green:#4fc4a9;--tc-blue:#62b4e2;--tc-purple:#b893e6;--tc-pink:#e682bb;--tc-red:#f28585;--bc-gray:color-mix(in srgb,#9b9a97 30%,transparent);--bc-brown:color-mix(in srgb,#9f6b53 30%,transparent);--bc-orange:color-mix(in srgb,#d9730d 30%,transparent);--bc-yellow:color-mix(in srgb,#dfab01 30%,transparent);--bc-green:color-mix(in srgb,#0f7b6c 30%,transparent);--bc-blue:color-mix(in srgb,#0b6e99 30%,transparent);--bc-purple:color-mix(in srgb,#6940a5 30%,transparent);--bc-pink:color-mix(in srgb,#ad1a72 30%,transparent);--bc-red:color-mix(in srgb,#e03e3e 30%,transparent)}}
 .c-gray{color:var(--tc-gray)}.c-brown{color:var(--tc-brown)}.c-orange{color:var(--tc-orange)}.c-yellow{color:var(--tc-yellow)}.c-green{color:var(--tc-green)}.c-blue{color:var(--tc-blue)}.c-purple{color:var(--tc-purple)}.c-pink{color:var(--tc-pink)}.c-red{color:var(--tc-red)}
 .bg-gray{background:var(--bc-gray)}.bg-brown{background:var(--bc-brown)}.bg-orange{background:var(--bc-orange)}.bg-yellow{background:var(--bc-yellow)}.bg-green{background:var(--bc-green)}.bg-blue{background:var(--bc-blue)}.bg-purple{background:var(--bc-purple)}.bg-pink{background:var(--bc-pink)}.bg-red{background:var(--bc-red)}
 [class*="bg-"]:is(p,h2,h3,h4,h5,blockquote,ul,ol,aside,details){border-radius:6px;padding:.15rem .45rem}
