@@ -1,6 +1,7 @@
 // Browser-Ende-zu-Ende fuer den Chat-Alltag (2.5, static/chat.js, static/chat-fmt.js; saga/chat_prefs.py) - zwei
 // Playwright-Kontexte (zwei Konten) im headless Chrome:
 //   SAGA_BASE=... SAGA_USER=konto-a SAGA_PASS=... SAGA_USER2=konto-b SAGA_PASS2=... [SHOTS=/pfad] node tests/browser_chat_alltag.js
+//   (Konto B braucht den Anzeigenamen "Bruno Web"; Linkvorschau: Server mit SAGA_UNFURL_TEST_PUBLIC=127.0.0.2)
 // Geprueft: Formatierung (fett/kursiv/durch/code/Block/Liste/Zitat) als Elemente, HTML/Skript im Text bleibt Text (kein
 // Element, kein Alert, keine Seitenfehler); @-Menue mit Mitglied, Token <@kennung> im verschluesselten Text, Hervorhebung
 // beim Erwaehnten, mentions an den Server (nie Anmeldename); Entwurf bleibt beim Chatwechsel und nach Neuladen, nach dem
@@ -73,7 +74,9 @@ function testServer() {
     await chatKeys(a, U1); await chatKeys(b, U2);
     ok('Chat-Schluessel in beiden Browsern bereit', !(await a.$('.ct-ov')) && !(await b.$('.ct-ov')));
     // Direkt-Chat A -> B, zweiter Chat (Seiten-Chat) fuer den Entwurfswechsel
-    const ppl = await api(a, 'GET', '/api/chat/people?q=' + encodeURIComponent('Bruno Web'));
+    // genau nach dem Anmeldenamen suchen: der Anzeigename "Bruno Web" kann in einer Test-DB mehrfach vorkommen (dann traf
+    // der erste Treffer ein fremdes Konto, B sah den Chat nicht - "Empfaenger: Nachricht hervorgehoben" scheiterte)
+    const ppl = await api(a, 'GET', '/api/chat/people?q=' + encodeURIComponent(U2));
     const bref = ((ppl.d.users || [])[0] || {}).username;
     const dm = await api(a, 'POST', '/api/chats', { kind: 'dm', user: bref });
     const pg = await api(a, 'POST', '/api/notes', { title: 'Alltag-Seite' });
