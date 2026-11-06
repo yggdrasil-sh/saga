@@ -202,7 +202,7 @@
     var fDayLong = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
     function draw(fresh) {
       accounts().then(function (accs) {
-        if (!accs.length) { box.hidden = true; return null; }          // nichts verbunden: Bereich bleibt unsichtbar
+        if (!accs.length) { box.hidden = true; heute(0); return null; } // nichts verbunden: Bereich bleibt unsichtbar
         var t0 = new Date(); t0 = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate());
         return load(t0, addDays(t0, 2), fresh).then(function (d) {
           box.hidden = false; list.textContent = '';
@@ -223,9 +223,13 @@
             list.appendChild(g);
           });
           cnt.textContent = n ? String(n) : '';
+          heute((map[ymd(t0)] || []).length);
           if (d.errors.length) list.appendChild(el('div', 'rc-err', '⚠ ' + d.errors.map(function (x) { return x.error; }).join(' · ')));
         });
       }).catch(function () { box.hidden = true; });
+    }
+    function heute(n) {                                  // "Heute" (static/app.js): Termine heute fuer die Lagezeile
+      (window.HKHeute = window.HKHeute || {}).events = n; document.dispatchEvent(new CustomEvent('hk-heute'));
     }
     document.getElementById('rail-cal-add').addEventListener('click', function () { eventDialog(null, { date: ymd(new Date()) }, function () { draw(true); }); });
     draw();

@@ -3,7 +3,7 @@
 {% block pagetitle %}{{ _('Dienste') }}{% endblock %}
 {% block content %}
 <h2>{{ _("Dienste") }}</h2>
-<p class="hk-hint">{{ _("Dienste erscheinen als Kacheln auf dem Dashboard (und in den Apps). Wer einen Dienst sieht, entscheidet die Gruppen-Kennung: Mitglieder der Gruppe {group} bekommen ihn automatisch – egal ob die Gruppe lokal ist oder aus LDAP/SSO kommt. Zusätzlich gehen weitere Gruppen oder „für alle“.", group=prefix ~ _("<kurzname>")) }}</p>
+<p class="hk-hint">{{ _("Dienste erscheinen als Kacheln auf „Heute“ (und in den Apps). Wer einen Dienst sieht, entscheidet die Gruppen-Kennung: Mitglieder der Gruppe {group} bekommen ihn automatisch – egal ob die Gruppe lokal ist oder aus LDAP/SSO kommt. Zusätzlich gehen weitere Gruppen oder „für alle“.", group=prefix ~ _("<kurzname>")) }}</p>
 <table class="adm-table">
   <tr><th></th><th>{{ _("Dienst") }}</th><th>{{ _("Kategorie") }}</th><th>{{ _("Zugang") }}</th><th>{{ _("Status") }}</th></tr>
   {% for s in rows %}

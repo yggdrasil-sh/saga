@@ -786,7 +786,7 @@
   function bookmarkSection(body) {
     var sec = el('section', 'hk-set hk-set-bookmarks'); body.appendChild(sec);
     sec.appendChild(el('h3', null, T('Lesezeichen')));
-    sec.appendChild(el('p', 'hk-hint', T('Eigene Kacheln auf dem Dashboard – nur für dich sichtbar, auch in den Apps. Symbol: Name von selfh.st/icons (z. B. „jellyfin“), leer = automatisch (passendes Symbol oder Favicon der Seite).')));
+    sec.appendChild(el('p', 'hk-hint', T('Eigene Kacheln auf „Heute“ – nur für dich sichtbar, auch in den Apps. Symbol: Name von selfh.st/icons (z. B. „jellyfin“), leer = automatisch (passendes Symbol oder Favicon der Seite).')));
     var list = el('div'); sec.appendChild(list);
     var add = el('button', 'btn', T('+ Lesezeichen')); add.type = 'button'; sec.appendChild(add);
     var formBox = el('div'); sec.appendChild(formBox);

@@ -1295,7 +1295,7 @@
     m.appendChild(HK.menuItem(on ? T('Startseite zurücksetzen') : T('Als Startseite festlegen'), function () {
       api('PATCH', '/api/account', { start_page: on ? null : c.id }).then(function () {
         S.startPage = on ? null : c.id;
-        HK.toast(on ? T('Startseite zurückgesetzt – Saga startet wieder mit dem Dashboard.') : T('Startseite festgelegt – Saga startet jetzt mit dieser Seite.'));
+        HK.toast(on ? T('Startseite zurückgesetzt – Saga startet wieder mit „Heute“.') : T('Startseite festgelegt – Saga startet jetzt mit dieser Seite.'));
       }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
     }, { icon: '🏠', on: on }));
   }
@@ -6377,7 +6377,7 @@
           var tdbs = S.pages.filter(function (p) { return p.kind === 'database'; });
           var tt2 = field(T('Ziel'), sel([['', T('Aufgaben (Inbox)')]].concat(tdbs.map(function (p) { return [String(p.id), (ti(p.icon) || '🗃️') + ' ' + label(p)]; })), b.target));
           tt2.addEventListener('change', function () { b.target = +tt2.value || null; tool.changed(); });
-          box.appendChild(el('div', 'menu-hint', T('Legt eine Saga-Aufgabe an (erscheint im Dashboard und in der Aufgabenleiste). Mit einer Datenbank als Ziel: ein neuer Eintrag dort – sie muss eine Aufgabenquelle sein.')));
+          box.appendChild(el('div', 'menu-hint', T('Legt eine Saga-Aufgabe an (erscheint auf „Heute“ und in der Aufgabenleiste). Mit einer Datenbank als Ziel: ein neuer Eintrag dort – sie muss eine Aufgabenquelle sein.')));
         }
         var del = el('button', 'menu-item danger', T('Schaltfläche entfernen')); del.type = 'button';
         del.addEventListener('click', function () { HK.closeMenu(); tool.buttons.splice(i, 1); if (!tool.buttons.length) tool.buttons.push({ label: T('Neu'), icon: '➕', action: '' }); tool.changed(); });
@@ -8881,7 +8881,7 @@
     if (S.gal !== false && !EMBED) add(T('Vorlagengalerie'), '🖼', function () { openGallery(null); },   // Fix27 #16: wie "+ Neue Seite" (Oberste Ebene vorgewaehlt)
                                        { kw: 'gallery vorlagen templates galerie vorlage' });
     if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich nextcloud schluessel' });
-    add(T('Übersicht (Startseite)'), '⌂', function () { location.href = '/dashboard'; }, { kw: 'home dashboard start' });   // fix27 E2: "/" oeffnet ggf. die eigene Startseite
+    add(T('Heute'), '⌂', function () { location.href = '/dashboard'; }, { kw: 'home dashboard start today übersicht' });   // fix27 E2: "/" oeffnet ggf. die eigene Startseite
     return a;
   }
 
@@ -9145,8 +9145,9 @@
       var svc = api('GET', '/api/services').then(function (s) { S.services = s; }).catch(function () {});
       if (!EMBED && S.gal == null) galLoad().catch(function () {});       // 2.5: Galerie da? (aus/aelterer Server: Eintraege weg)
       return Promise.all([loadList(), svc]).then(function () {
-        // Einstieg aus der Seitenleiste von Dashboard/Chats (static/side.js): /notes?v=tasks|events, ?trash, ?archive, ?graph, ?qs, ?new
-        var q = new URLSearchParams(location.search), go = q.get('v'), mine = ['v', 'trash', 'archive', 'graph', 'qs', 'new'], want = {};
+        // Einstieg aus der Seitenleiste von Heute/Chats (static/side.js): /notes?v=tasks|events, ?trash, ?archive, ?graph, ?qs, ?new;
+        // ?gallery = Vorlagengalerie (Schnellaktion "Aus Vorlage …" auf Heute)
+        var q = new URLSearchParams(location.search), go = q.get('v'), mine = ['v', 'trash', 'archive', 'graph', 'qs', 'new', 'gallery'], want = {};
         if (mine.some(function (k) { return q.has(k); })) {
           mine.forEach(function (k) { want[k] = q.has(k); q.delete(k); });
           var rest = q.toString(); history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
@@ -9157,6 +9158,7 @@
         if (want.graph && $('pg-graph-btn')) setTimeout(function () { $('pg-graph-btn').click(); }, 0);
         if (want.qs) setTimeout(openQS, 0);
         if (want['new'] && $('pg-new')) setTimeout(function () { $('pg-new').click(); }, 0);
+        if (want.gallery && S.gal !== false && !EMBED) setTimeout(function () { openGallery(null); }, 0);
         var fromHash = parseInt(location.hash.slice(1), 10), last = +HK.store('hk-pg-last');
         if (fromHash && !anyById(fromHash)) return openPage(fromHash);       // alte/fremde Adresse: Server fragen ("Kein Zugriff")
         var start = anyById(fromHash) || byId(last) || children(null)[0];

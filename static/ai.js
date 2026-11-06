@@ -6,7 +6,8 @@
 (function () {
   'use strict';
   var HK = window.HK, $ = HK.$, el = HK.el, api = HK.api;
-  if (!$('pg-editor') || document.body.classList.contains('embed')) return;
+  // Seiten (/notes) und "Heute" (/dashboard, nur "Frag deine Seiten" - keine offene Seite)
+  if ((!$('pg-editor') && !document.body.classList.contains('heute-page')) || document.body.classList.contains('embed')) return;
   var K = window.HKPages ? window.HKPages.k : null;
   var RANK = { view: 1, comment: 2, edit: 3, owner: 4 };
   var A = { st: null, run: null, sel: null, tab: 'ask', chat: [] };
@@ -82,7 +83,7 @@
   scrim.addEventListener('click', hide);
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || panel.hidden || e.defaultPrevented) return;
-    if (document.querySelector('.hk-ask') || HK.menuOpen() || !$('pg-modal').hidden) return;
+    if (document.querySelector('.hk-ask') || HK.menuOpen() || ($('pg-modal') && !$('pg-modal').hidden)) return;
     e.preventDefault(); e.stopPropagation(); hide();
   }, true);
   // UX-33: Strg/⌘+J oeffnet und schliesst Marin (Fokus ins Fragefeld)
@@ -242,7 +243,7 @@
     var opts = el('div', 'ai-opts'); opts.appendChild(optTasks); opts.appendChild(optCal);
     if (A.st && A.st.web) opts.appendChild(optWeb);
     var bar = el('div', 'ai-bar');
-    if (A.st && A.st.history_allowed) {
+    if (A.st && A.st.history_allowed && $('pg-modal')) {             // Verlauf im Seiten-Dialog (auf "Heute" nicht)
       var hb = el('button', 'linkbtn ai-hist-b', T('Verlauf')); hb.type = 'button';
       hb.addEventListener('click', openHistory); bar.appendChild(hb);
     }
@@ -673,10 +674,12 @@
       if (!d || !d.enabled) {
         A.st = null; hide();
         if (btn) { btn.remove(); btn = null; }
+        document.dispatchEvent(new CustomEvent('hk-ai'));
         return;
       }
       A.st = d; headBtn(); paintBtn(); paintHead(); askPh();
       if (!panel.hidden) render();
+      document.dispatchEvent(new CustomEvent('hk-ai'));
     }).catch(function () { /* naechstes Ereignis */ });
   }
   document.addEventListener('hk-live', function (e) {
@@ -700,5 +703,6 @@
   api('GET', '/api/ai/status').then(function (d) {
     if (!d || !d.enabled) return;
     A.st = d; headBtn(); paintHead(); askPh();
+    document.dispatchEvent(new CustomEvent('hk-ai'));               // "Heute": Schnellaktion "Frage …"
   }).catch(function () { /* kein Assistent */ });
 })();

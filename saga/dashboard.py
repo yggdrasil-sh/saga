@@ -276,7 +276,13 @@ def _dashboard(request, start):
     with _db() as c:
         n_cm = unread_count(c, uid)                  # "Neue Kommentare (n)" am Knopf "Seiten"
         n_chat = chat.unread_total(c, uid)           # Knopf "Chats": ungelesene Nachrichten
+    shown = request.session.get("name", uid)
+    first = (str(shown).split() or [uid])[0]
+    hour = time.localtime().tm_hour                  # Startwert; static/app.js richtet sich nach der Uhr des Browsers
+    greet = t("Guten Morgen, {name}", name=first) if 5 <= hour < 11 else (
+        t("Guten Tag, {name}", name=first) if 11 <= hour < 18 else t("Guten Abend, {name}", name=first))
     html = tmpl.get_template("index.html").render(
+        first_name=first, greeting=greet,
         new_comments=n_cm, chat_enabled=chat.enabled(), chat_unread=n_chat,
         title=title(), name=request.session.get("name", uid), uid=uid,
         favorites=[mine[k] for k in fav_keys], categories=cats, acct=account_ctx(info),

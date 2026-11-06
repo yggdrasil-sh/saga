@@ -8,15 +8,16 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="{{ title }}">
-<title>{{ title }}</title>
+<title>{{ _("Heute") }} · {{ title }}</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ v }}">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
 <link rel="stylesheet" href="/static/live.css?v={{ v }}">
 {% if chat_enabled %}<link rel="stylesheet" href="/static/calls.css?v={{ v }}">{% endif %}
+<link rel="stylesheet" href="/static/ai.css?v={{ v }}">
 </head>
-<body class="has-side" data-v="{{ v }}">
+<body class="has-side heute-page" data-v="{{ v }}">
 {% macro tile(s, cat) -%}
 <div class="tw{% if s.own %} own{% endif %}" data-g="{{ s.key }}" data-q="{{ (s.name ~ ' ' ~ s.host ~ ' ' ~ cat)|lower }}"{% if s.own %} data-bm="{{ s.id }}"{% endif %}>
   <a class="tile" href="{{ s.url }}" target="_blank" rel="noopener">
@@ -32,23 +33,12 @@
   {% if s.own %}<button class="bm-edit" type="button" data-bm="{{ s.id }}" title="{{ _("Lesezeichen bearbeiten") }}" aria-label="{{ _("Lesezeichen bearbeiten") }}">✎</button>{% endif %}
 </div>
 {%- endmacro %}
+<a class="skip-link" href="#heute" data-skip="heute">{{ _("Zum Inhalt") }}</a>
 <header class="np-head side-head">
   <button type="button" class="icon-btn np-side-btn" id="pg-side-btn" title="{{ _("Seitenleiste ein- oder ausblenden") }} ({{ _("Strg") }}+\)" aria-label="{{ _("Seitenleiste ein- oder ausblenden") }}" aria-pressed="true" aria-controls="pg-side"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
-  <a class="np-brand" href="/dashboard">{{ title }}</a>
-</header>
-{% include "_side.html" %}
-<header class="dash-head">
-  <h1>{{ title }}</h1>
-  <span class="greet">{{ _("Willkommen, {name}", name=name) }}</span>
+  <a class="np-brand" href="/dashboard" title="{{ _("Heute") }}">{{ title }}</a>
   <span class="spacer"></span>
-  <div class="clock" aria-live="off"><span id="clk-time">--:--</span><span id="clk-date"></span></div>
-  <input type="search" id="q" placeholder="{% if search_enabled %}{{ _("Dienste oder Web durchsuchen…") }}{% else %}{{ _("Suchen…") }}{% endif %}  ( / )"
-         aria-label="{{ _("Suchen") }}" data-web="{{ '1' if search_enabled else '' }}" autocomplete="off">
-  <a class="btn btn-notes" href="/notes" target="hk-notes" title="{{ _("Seiten in eigenem Tab öffnen") }} ( n )">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
-    <span class="btn-t">{{ _("Seiten") }}</span>
-    {% if new_comments %}<span class="btn-badge" title="{{ _("Neue Kommentare ({n})", n=new_comments) }}">💬 {{ new_comments }}</span>{% endif %}
-  </a>
+  <a class="btn np-pages" href="/notes">{{ _("Seiten") }}{% if new_comments %} <span class="btn-badge" title="{{ _("Neue Kommentare ({n})", n=new_comments) }}">💬 {{ new_comments }}</span>{% endif %}</a>
   {% if chat_enabled %}<a class="btn btn-notes btn-chats" id="hk-chats" href="/chats" target="hk-chats" title="{{ _("Chats (Ende-zu-Ende-verschlüsselt)") }}">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/></svg>
     <span class="btn-t">{{ _("Chats") }}</span>
@@ -56,7 +46,26 @@
   </a>{% endif %}
   <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-avatar="{{ me_avatar or '' }}" data-admin="{{ acct.admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
 </header>
-<main>
+{% include "_side.html" %}
+<main id="heute" class="hz" tabindex="-1">
+  <h1 class="sr-only">{{ _("Heute") }}</h1>
+  <section class="hz-top" aria-labelledby="hz-greet">
+    <p class="hz-greet" id="hz-greet" data-first="{{ first_name }}">{{ greeting }}</p>
+    <p class="hz-lage" id="hz-lage" aria-live="polite"><span id="hz-date"></span><span id="hz-parts"></span></p>
+    <div class="hz-acts" role="group" aria-label="{{ _("Schnellaktionen") }}">
+      <a class="hz-act" id="hz-new" href="/notes?new=1" aria-keyshortcuts="N"><span class="hz-act-ic" aria-hidden="true">＋</span>{{ _("Neue Seite") }}<kbd class="hz-kbd" aria-hidden="true">N</kbd></a>
+      <a class="hz-act" id="hz-tpl" href="/notes?gallery=1" aria-keyshortcuts="V"><span class="hz-act-ic" aria-hidden="true">▦</span>{{ _("Aus Vorlage …") }}<kbd class="hz-kbd" aria-hidden="true">V</kbd></a>
+      <button type="button" class="hz-act" id="hz-task" aria-keyshortcuts="T"><span class="hz-act-ic" aria-hidden="true">☐</span>{{ _("Aufgabe") }}<kbd class="hz-kbd" aria-hidden="true">T</kbd></button>
+      <button type="button" class="hz-act" id="hz-event" aria-keyshortcuts="E"><span class="hz-act-ic" aria-hidden="true">◷</span>{{ _("Termin") }}<kbd class="hz-kbd" aria-hidden="true">E</kbd></button>
+      <button type="button" class="hz-act" id="hz-ai" hidden aria-keyshortcuts="M"><span class="hz-act-ic" aria-hidden="true">✦</span><span id="hz-ai-t">{{ _("Frage {name}", name="Saga KI") }}</span><kbd class="hz-kbd" aria-hidden="true">M</kbd></button>
+    </div>
+  </section>
+
+  <section class="hz-sec hz-recent" id="hz-recent" aria-labelledby="hz-recent-h">
+    <h2 id="hz-recent-h">{{ _("Weitermachen") }}</h2>
+    <div class="hz-cards" id="hz-cards"></div>
+    <p class="hz-empty" id="hz-recent-empty" hidden>{{ _("Hier erscheinen die Seiten, die du zuletzt geöffnet hast.") }}</p>
+  </section>
 
   <details class="nt" id="nt">
     <summary>
@@ -94,22 +103,6 @@
     </div>
   </details>
 
-  {% if search_enabled %}
-  <button id="web-go" class="web-go" type="button" hidden>
-    <span class="web-go-ic">⌕</span><span>{{ _("Im Web suchen:") }} „<b id="web-go-q"></b>“</span>
-    <span class="web-go-k"><kbd>Shift</kbd>+<kbd>Enter</kbd></span>
-  </button>
-  <section id="web" class="web" hidden aria-live="polite">
-    <div class="web-head">
-      <h2>{{ _("Websuche") }}</h2>
-      <button class="btn small" id="web-close" type="button">{{ _("Schließen") }} <kbd>Esc</kbd></button>
-    </div>
-    <div id="web-meta" class="web-meta"></div>
-    <ol id="web-list" class="web-list"></ol>
-    <button id="web-more" class="btn" type="button" hidden>{{ _("Weitere Ergebnisse") }}</button>
-  </section>
-  {% endif %}
-
   <div class="cats">
   {% if favorites %}
   <section class="cat fav">
@@ -124,36 +117,10 @@
   </section>
   {% endfor %}
   </div>
-  <section class="q-pages" id="q-pages" hidden aria-live="polite">
-    <h2>{{ _("Seiten") }}</h2>
-    <div class="grid" id="q-pages-list"></div>
-  </section>
-  <p class="empty q-none" id="q-none" hidden aria-live="polite">{{ _("Keine Treffer.") }}</p>
   {% if not favorites and not categories %}
   <p class="empty">{{ _("Für dich sind noch keine Dienste freigeschaltet – lege dir eigene Lesezeichen an.") }}</p>
   {% endif %}
-  <div class="bm-add-row"><button class="btn" type="button" id="bm-add">{{ _("+ Lesezeichen") }}</button></div>
-  <details class="acct acct-foot">
-    <summary>
-      <span class="who">{{ uid }}{% if acct.mail %} · {{ acct.mail }}{% endif %}</span>
-      <span class="pw">{{ acct.source }}</span>
-    </summary>
-    <div class="acct-body">
-      <dl>
-        <dt>{{ _("Konto") }}</dt><dd>{{ acct.source }}</dd>
-        {% if acct.pw_changed %}<dt>{{ _("Passwort geändert") }}</dt><dd>{{ acct.pw_changed }}</dd>{% endif %}
-        {% if acct.last_login %}<dt>{{ _("Letzte Anmeldung") }}</dt><dd>{{ acct.last_login }}</dd>{% endif %}
-        <dt>{{ _("Gruppen") }}</dt><dd class="chips">{% for g in acct.groups %}<span class="chip">{{ g }}</span>{% else %}–{% endfor %}</dd>
-      </dl>
-      <div class="links">
-        <button class="btn" type="button" data-settings="account">{{ _("Konto & Passwort") }}</button>
-        <button class="btn" type="button" data-settings="bookmarks">{{ _("Lesezeichen verwalten") }}</button>
-        {% if acct.admin_url %}<a class="btn" href="{{ acct.admin_url }}" target="_blank" rel="noopener">{{ _("Admin-Bereich") }}</a>{% endif %}
-      </div>
-    </div>
-  </details>
-
-  <p class="hint"><kbd>/</kbd> {{ _("suchen") }} · <kbd>1</kbd>–<kbd>9</kbd> {{ _("öffnen") }} · <kbd>Enter</kbd> {{ _("erster Treffer") }}{% if search_enabled %} {{ _("(sonst Websuche)") }} · <kbd>Shift</kbd>+<kbd>Enter</kbd> {{ _("Websuche") }}{% endif %} · <kbd>t</kbd> {{ _("neue Aufgabe") }} · <kbd>n</kbd> {{ _("Seiten") }} · <kbd>★</kbd> {{ _("Favorit") }}</p>
+  <div class="bm-add-row"><button class="linkbtn" type="button" data-settings="bookmarks">{{ _("Lesezeichen verwalten") }}</button><button class="btn" type="button" id="bm-add">{{ _("+ Lesezeichen") }}</button></div>
 </main>
 
 <aside class="rail" id="rail" aria-label="{{ _("Offene Aufgaben") }}">
@@ -174,7 +141,7 @@
   </div>
   <form class="rail-add" id="rail-add" autocomplete="off">
     <span class="task-add-plus" aria-hidden="true">+</span>
-    <input type="text" id="rail-text" maxlength="500" placeholder="{{ _("Schnell hinzufügen …") }}" aria-label="{{ _("Aufgabe schnell hinzufügen") }}">
+    <input type="text" id="rail-text" maxlength="500" placeholder="{{ _("Aufgabe …") }}" aria-label="{{ _("Aufgabe schnell hinzufügen") }}">
   </form>
   <ul class="rail-list" id="rail-list"></ul>
   <p class="rail-empty" id="rail-empty" hidden>{{ _("Alles erledigt.") }}</p>
@@ -202,6 +169,7 @@
 <script src="/static/backup.js?v={{ v }}"></script>
 <script src="/static/nextcloud.js?v={{ v }}"></script>
 {% if chat_enabled %}<script src="/static/meeting.js?v={{ v }}"></script><script src="/static/calls.js?v={{ v }}"></script>{% endif %}
+<script src="/static/ai.js?v={{ v }}"></script>
 {% if chat_enabled %}<script src="/static/chatdock.js?v={{ v }}"></script>{% endif %}
 </body>
 </html>

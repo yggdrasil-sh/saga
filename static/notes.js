@@ -201,6 +201,10 @@
     $('rail-count').textContent = n ? String(n) : '';
     $('rail-tab-count').textContent = n ? String(n) : '';
     $('rail-show').classList.toggle('alert', over > 0);
+    // "Heute" (static/app.js): Zahlen fuer die Lagezeile
+    var td = todayIso(), H = window.HKHeute = window.HKHeute || {};
+    H.tasks = n; H.over = over; H.today = openList().filter(function (x) { return !x.overdue && x.due === td; }).length;
+    document.dispatchEvent(new CustomEvent('hk-heute'));
   }
 
   function renderTasks() {
@@ -327,13 +331,13 @@
     api('POST', '/api/tasks/clear-done').then(function () { state.showDone = false; return loadTasks(); });
   });
 
-  // --- Tastenkuerzel "t" -----------------------------------------------------
+  // --- Tastenkuerzel "t" (die uebrigen Kuerzel von "Heute": static/app.js) -----------------
   document.addEventListener('keydown', function (e) {
     var t = e.target;
-    if ((e.key !== 't' && e.key !== 'n') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if ((e.key !== 't' && e.key !== 'T') || e.metaKey || e.ctrlKey || e.altKey) return;
     if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    if (HK.menuOpen && HK.menuOpen()) return;
     e.preventDefault();
-    if (e.key === 'n') { window.open('/notes', 'hk-notes'); return; }   // immer derselbe Notizen-Tab
     if (railVisible()) { $('rail-text').focus(); return; }
     panel.open = true; $('task-text').focus();
   });
