@@ -7765,7 +7765,7 @@
   function peekWire() {
     if (peekZone || !document.body.classList.contains('notes-page') || document.body.classList.contains('embed')) return;
     peekZone = el('div', 'pg-peek-zone'); peekZone.setAttribute('aria-hidden', 'true'); document.body.appendChild(peekZone);
-    [peekZone, document.querySelector('.np-head'), $('pg-side')].forEach(function (x) {
+    [peekZone, $('pg-side-btn'), $('pg-side')].forEach(function (x) {
       if (!x) return;
       x.addEventListener('mouseenter', function () { if (peekable()) peek(true); });
       x.addEventListener('mouseleave', function () { if (document.body.classList.contains('side-peek')) peek(false); });

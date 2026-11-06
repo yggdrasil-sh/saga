@@ -32,7 +32,7 @@
   }
   setSide(store('hk-pg-side') !== '0');
   var zone = el('div', 'pg-peek-zone'); zone.setAttribute('aria-hidden', 'true'); body.appendChild(zone);
-  [zone, document.querySelector('.np-head'), side].forEach(function (x) {
+  [zone, $('pg-side-btn'), side].forEach(function (x) {
     if (!x) return;
     x.addEventListener('mouseenter', function () { peek(true); });
     x.addEventListener('mouseleave', function () { if (body.classList.contains('side-peek')) peek(false); });
