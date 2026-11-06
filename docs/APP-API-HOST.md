@@ -167,8 +167,8 @@ Kaltstart dieselbe Tabelle nativ anwenden (Server-Adresse + Pfad laden) oder ers
 | `saga://events` | Today-Widget (nächster Termin) | `/notes?v=events` |
 | `saga://new-task[?src=<id>]` | Widget-/Dock-Schnellaktion | `/notes?v=tasks&new=task` – Aufgaben-Ansicht, Eingabe „Neue Aufgabe“ fokussiert (**neu**). `src` (Aufgabenquelle) wertet das Web noch nicht aus → Inbox |
 | `saga://new-page` | (neu, Menüleiste/Tray) | `/notes?new=blank` |
-| `saga://new?parent=<id>` | Seiten-Widget „+“ | `/notes#<id>` (das Web legt per Link nichts an) |
-| `saga://new?db=<id>&view=<v>&k=<geheim>` | Datenbank-Widget „+“ | `/notes#<id>`. Anlegen macht die Hülle **nativ** nach Prüfung von `k` (`AppConfig.linkSecret`, wie `RootView.createFromLink`) über die API mit `hk_…`, dann `open` mit `saga://page/<neu>` |
+| `saga://new?parent=<id>` | Seiten-Widget „+“ | `/notes#<id>` (das Web legt per Link nichts an). Die Mac-Hülle legt nach Rückfrage „Neuen Eintrag anlegen?“ eine leere Unterseite an (`POST /api/notes` mit `parent_id`, Web-Sitzung wie unten) und öffnet `/notes#<neu>` |
+| `saga://new?db=<id>&view=<v>&k=<geheim>` | Datenbank-Widget „+“ | `/notes#<id>`. Anlegen macht die Hülle selbst: mit gültigem `k` (`AppConfig.linkSecret`, wie `RootView.createFromLink`) ohne Rückfrage, sonst nach Rückfrage. Vorgaben aus den Filtern der Ansicht `view` (is/eq/checked) liest sie über `GET /api/app/rows/<db>` mit `hk_…`; angelegt wird über die **Web-Sitzung** (`POST /api/notes` `{title: "", parent_id: <db>, props}`, Cookie aus dem WebView-Speicher, Kopf `X-Saga: 1`, bei `401` einmal `/app/resume` und wiederholen) – einen `hk_`-Endpunkt zum Anlegen gibt es nicht. Danach `/notes#<neu>`; bei Fehler Hinweis und `/notes#<db>` |
 | `saga://settings[/<bereich>]` | (neu, ⌘, bzw. Tray) | `/notes?settings=<bereich>` (`account`, `security`, `push`/`notify`, `pages`, `calendar`, `bookmarks`, `immich`, `nextcloud`, `apps`, `api`, `backup`, `help`, `lang`); ohne gültigen Bereich `account` |
 | `saga://chats` | Linux | `/chats` |
 | `saga://auth?code=…` | Rückkehr der Browser-Anmeldung | **nur Hülle** (`/app/exchange`) → `null` |

@@ -28,6 +28,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   fokussierter Eingabe „Neue Aufgabe“.
 - **Offline-Seite** `static/offline.html` (eigenständig, CSP-konform, Hell/Dunkel, fünf Sprachen); der Service Worker
   zeigt sie, wenn eine Seite gar nicht lädt.
+- Doku `docs/APP-API-HOST.md`: `saga://new?db=…`/`?parent=…` beschreiben jetzt, wie die Mac-Hülle anlegt (Vorgaben über
+  `GET /api/app/rows/<db>`, Anlegen über die Web-Sitzung mit `POST /api/notes`; kein `hk_`-Endpunkt zum Anlegen).
 
 ### Web: Design-Runde (ruhiger, einheitlicher)
 - **Seitenleiste ausgeblendet:** Sie klappt nur noch am linken Rand bzw. über dem Seitenleisten-Knopf auf, nicht mehr beim
