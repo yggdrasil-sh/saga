@@ -395,7 +395,7 @@
     if (ids.length) { A.sel = { page: c.id, ids: ids }; if (!panel.hidden && A.tab === 'page') selInfo(); }
   }
   document.addEventListener('selectionchange', function () { clearTimeout(A.selT); A.selT = setTimeout(remember, 120); });
-  document.addEventListener('mouseup', function (e) { if ($('pg-editor').contains(e.target)) setTimeout(remember, 0); });
+  document.addEventListener('mouseup', function (e) { var ed = $('pg-editor'); if (ed && ed.contains(e.target)) setTimeout(remember, 0); });
   document.addEventListener('hk-page-open', function () { A.sel = null; A.result = null; if (!panel.hidden) render(); });
 
   // --- Diese Seite ---------------------------------------------------------------------------------------------------

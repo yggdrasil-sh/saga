@@ -47,6 +47,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Pillen da und wird vom Bildschirmleser genannt. Datenbank-Zellen nennen Spalte und Wert („Status: In Arbeit“ statt nur
   „Status“). Marins Antworten werden angesagt; beim Schließen geht der Fokus an den Marin-Knopf zurück; **Strg/⌘+J**
   öffnet und schließt Marin.
+### Heute: echter Tagesstart statt Dashboard (Web)
+- `/dashboard` heißt im Web jetzt durchgehend **„Heute“** (Seitentitel „Heute · Saga“, Knöpfe und Schnellsuche).
+  Oben eine ruhige Begrüßung („Guten Morgen, …“) mit Lagezeile aus echten Daten (Termine heute, überfällige und
+  heute fällige Aufgaben), darunter Schnellaktionen mit Kürzeln: **Neue Seite** (N), **Aus Vorlage …** (V, öffnet die
+  Vorlagengalerie über `/notes?gallery=1`), **Aufgabe** (T), **Termin** (E) und – wenn der KI-Assistent an ist –
+  **Frage …** (M, mit dem Namen der KI; „Frag deine Seiten“ jetzt auch auf Heute).
+- Neuer Abschnitt **„Weitermachen“**: die bis zu sechs zuletzt geöffneten Seiten als Karten.
+- Lesezeichen kompakt als Zeilen mit getönter Initiale, Ziffern 1–9 nur beim Überfahren oder per Tastatur; ruhige
+  Abschnittsüberschriften. Kopf wie auf Seiten und Chats (Glocke, Konto in der Seitenleiste); die eigene Suche, die
+  zweite Glocke, die Kontobox und die Kürzelzeile entfallen. Admin-Bereich über das Kontomenü, Strg/⌘+K öffnet die
+  Schnellsuche, „/“ die Suche der Seitenleiste. Die Websuche (SearXNG) über das alte Suchfeld entfällt damit. Barrierefreiheit: Sprunglink „Zum Inhalt“, eine Kopfzeile, H1 „Heute“.
 
 ### Galerie: Vorlage „Familien-Wiki“
 - Neue Vorlage (Persönlich) für die eigene Familie: Datenbank **„Familienmitglieder“** mit Generation, Spitzname,
