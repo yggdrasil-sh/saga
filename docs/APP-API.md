@@ -2884,7 +2884,7 @@ bisher (eine Zeile je Benachrichtigung) – bestehende Apps brechen nicht.
 - `?limit=0&group=1` liefert nur die Zahlen (mit `unread_groups`).
 
 **`POST /api/notifications/read`** – zusätzlich `{"groups": ["chat:12", "page:7"]}` (höchstens 100, kombinierbar mit `ids`):
-markiert **alle** ungelesenen dieser Einheiten, auch die noch nicht geladenen. Antwort zusätzlich `unread_groups`.
+markiert alle ungelesenen dieser Einheiten (höchstens die neuesten 5000), auch die noch nicht geladenen. Antwort zusätzlich `unread_groups`.
 
 **Live** (`notification`): neue Einträge und Gelesen-Meldungen tragen zusätzlich `unread_groups`. Ein neuer Eintrag mit
 `group_key` gehört in die vorhandene ungelesene Zeile derselben Einheit (neuer Kopf, `replaces` wie bisher herausnehmen).

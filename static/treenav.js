@@ -67,7 +67,11 @@
         var go = li.querySelector('[data-tn-go]'); if (go) go.click(); break;
       default:
         if (e.key && e.key.length === 1 && /\S/.test(e.key)) {
-          var hit = typeAhead(ul, li, e.key); if (!hit) return; focusItem(ul, hit); break;
+          var hit = typeAhead(ul, li, e.key);
+          // Kein Treffer: Buchstaben trotzdem schlucken, sonst loesen sie auf Heute die Einzeltasten-Kuerzel aus (n, t, e, 1-9 ...);
+          // "?" und "/" bleiben fuer Kuerzeluebersicht bzw. Suche frei
+          if (!hit) { if (onItem && e.key !== '?' && e.key !== '/') { e.preventDefault(); e.stopPropagation(); } return; }
+          focusItem(ul, hit); break;
         }
         return;
     }

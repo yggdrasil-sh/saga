@@ -9,7 +9,7 @@
   var inApp = /(Saga|Hlidskjalf)App\//.test(navigator.userAgent) && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.hk;
   function toApp(msg) { if (inApp) window.webkit.messageHandlers.hk.postMessage(msg); }
   // UX-40: Sprache als Untermenue (Liste aus /api/account, beim ersten Oeffnen geholt), Tastenkuerzel, Admin-Bereich (nur
-  // Admins: data-admin = ADMIN_URL). Kein Hell/Dunkel-Schalter (Entscheidung steht aus).
+  // Admins: data-admin = ADMIN_URL). Darstellung (Hell/Dunkel) siehe themeItem.
   var acct = null;
   function langSub(m) {
     function fill(a) {
@@ -87,7 +87,8 @@
     THEMES.forEach(function (t) { var o = el('option', null, t[0] === 'auto' ? T('Automatisch (System)') : T(t[1])); o.value = t[0]; sel.appendChild(o); });
     sel.value = HK.theme.get();
     sel.addEventListener('change', function () { HK.theme.set(sel.value); });
-    window.addEventListener('hk-theme', function () { if (sel.isConnected) sel.value = HK.theme.get(); });
+    var sync = function () { if (sel.isConnected) sel.value = HK.theme.get(); else window.removeEventListener('hk-theme', sync); };
+    window.addEventListener('hk-theme', sync);
     wrap.appendChild(sel);
     wrap.appendChild(el('p', 'hk-hint', T('Gilt nur für diesen Browser. „Automatisch“ folgt der Einstellung des Systems. Kürzel: {k}', { k: (/Mac|iP(hone|ad)/.test(navigator.platform) ? '⌘⇧L' : T('Strg+Umschalt+L')) })));
     box.appendChild(wrap);
