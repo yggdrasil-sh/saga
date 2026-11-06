@@ -204,3 +204,5 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
 .ux-start-i:focus-visible{outline:2px solid var(--accent);outline-offset:1px;color:var(--fg)}
 .ux-start-ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 @media (prefers-reduced-motion: no-preference){.ux-start-i{transition:background-color .12s,color .12s}}
+/* Einladung liegt absolut: Platz reservieren, damit sie nicht ueber "Verlinkt von" ragt */
+.page-body:has(> .ux-start:not([hidden])){min-height:14rem}
