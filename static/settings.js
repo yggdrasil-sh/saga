@@ -39,12 +39,10 @@
       m.appendChild(HK.menuLabel(btn.dataset.name || ''));
       m.appendChild(HK.menuItem(T('Einstellungen'), function () { openSettings(); }, { ic: 'settings' }));
       m.appendChild(HK.menuItem(T('Sprache'), null, { ic: 'globe', sub: langSub }));
+      m.appendChild(themeItem());                     // Hell/Dunkel (Design-Runde 3)
       if (window.HKShortcuts) m.appendChild(HK.menuItem(T('Tastenkürzel'), function () { HKShortcuts.open({ back: btn }); },
         { ic: 'keyboard', hint: (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : T('Strg') + '+') + '/' }));
       if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich') + ' ↗', function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { ic: 'shield' }));
-      m.appendChild(HK.menuItem(T('Sprache'), function () { openSettings('lang'); }, { ic: 'globe' }));
-      m.appendChild(themeItem());                     // Hell/Dunkel (Design-Runde 3)
-      if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich'), function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { ic: 'shield' }));
       if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { ic: 'smartphone' }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Abmelden'), function () {
