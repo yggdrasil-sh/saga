@@ -8374,15 +8374,11 @@
   function pubCanShare() { return !!navigator.share && !!window.matchMedia && matchMedia('(pointer: coarse)').matches; }
   function pubBtn(label, fn, cls) { var b = el('button', 'btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.addEventListener('click', fn); return b; }
   function pubLink(u, cls) { var a = HK.urlNode(u, 'a', cls || 'pub-link-a'); a.href = u; a.target = '_blank'; a.rel = 'noopener'; return a; }
-  function openPublish() {
-    if (!S.cur) return;
-    var id = S.cur.id;
-    api('GET', '/api/notes/' + id + '/publish').then(function (st) {
-      openModal(T('Veröffentlichen'), function (body) { (st.name ? pubMain : pubName)(body, id, st); }, true);
-    }).catch(function (err) { HK.toast(T('Nicht geladen: {err}', { err: err.message })); });
-  }
+  // UX-20: Chip "Oeffentlich" und Seitenmenue "Veroeffentlichen ..." oeffnen den gemeinsamen Dialog im Reiter "Im Web"
+  function openPublish() { openShareDlg('web'); }
   // Schritt 1 (einmal je Konto): oeffentlicher Name. Ein Fehler ersetzt den Hilfetext unter dem Feld.
-  function pubName(body, id, st) {
+  // hook(ns): meldet dem gemeinsamen Dialog jeden neuen Stand (Zeile "Oeffentlich im Web" im Reiter "Personen")
+  function pubName(body, id, st, hook) {
     body.textContent = '';
     var box = el('div', 'pub-dlg'); body.appendChild(box);
     box.appendChild(el('p', null, T('Wähle zuerst deinen öffentlichen Namen. Er steht in jeder Adresse deiner öffentlichen Seiten und ist für alle sichtbar.')));
@@ -8413,13 +8409,14 @@
       go.disabled = true;
       api('PUT', '/api/account/public-name', { name: inp.value.trim().toLowerCase() }).then(function () {
         return api('GET', '/api/notes/' + id + '/publish');
-      }).then(function (ns) { pubMain(body, id, ns); })
+      }).then(function (ns) { if (hook) hook(ns); pubMain(body, id, ns, hook); })
         .catch(function (err) { pubStatus(msg, ''); setErr(err.message); go.disabled = false; });
     });
     check(); setTimeout(function () { inp.focus(); inp.select(); }, 0);
   }
-  // Schritt 2: 1 Schalter -> 2 Link-Karte -> 3 Adresse -> 4 Optionen -> 5 "Veroeffentlichung beenden"
-  function pubMain(body, id, st) {
+  // Schritt 2: 1 Schalter -> 2 Link-Karte -> 3 Adresse -> 4 Optionen. UX-21: kein eigener Knopf "Veroeffentlichung
+  // beenden" mehr - der Schalter tut dasselbe und fragt beim Ausschalten nach.
+  function pubMain(body, id, st, hook) {
     body.textContent = '';
     var box = el('div', 'pub-dlg'); body.appendChild(box);
     var url = '/api/notes/' + id + '/publish';
@@ -8452,9 +8449,6 @@
     [ch, chw, ix, pr].forEach(function (x) { opts.appendChild(x); }); box.appendChild(opts);
     var msg = el('div', 'hk-status'); msg.setAttribute('role', 'status'); box.appendChild(msg);
     box.appendChild(el('p', 'hk-hint', T('Öffentlicher Name: @{name} – ändern unter Einstellungen → Konto.', { name: st.name })));
-    // 5 Beenden
-    var end = el('button', 'btn btn-danger', T('Veröffentlichung beenden')); end.type = 'button';
-    var ebar = el('div', 'hk-actions pub-end'); ebar.appendChild(end); box.appendChild(ebar);
     function newSlug() { return slug.value.trim().toLowerCase(); }
     function drawCard() {
       card.textContent = '';
@@ -8512,7 +8506,6 @@
       var changed = pub && newSlug() !== st.slug;
       sbtn.hidden = !changed;
       setSlugErr.hint(changed ? T('Wird erst mit „Adresse ändern“ übernommen.') : '');
-      ebar.hidden = !pub;
       var po = st.profile_other;
       pr.hint.textContent = po ? T('Ersetzt die bisherige Profilseite „{title}“.', { title: po.title })
         : T('Erscheint unter deiner Profiladresse – höchstens eine Seite.');
@@ -8521,6 +8514,7 @@
     function sync(ns) {
       st = ns;
       if (S.cur && S.cur.id === id) { S.cur.published = !!ns.published; S.cur.public_url = ns.url; S.cur.published_via = ns.published_via; applyPublic(); }
+      if (hook) hook(ns);
     }
     function put(data, done) {
       if (!st.enabled) { pubStatus(msg, T('Veröffentlichen ist auf diesem Server abgeschaltet.'), 'err'); draw(); return; }
@@ -8561,7 +8555,6 @@
     slug.addEventListener('input', function () { pubStatus(msg, ''); setSlugErr(''); draw(); });
     slug.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); changeSlug(); } });
     sbtn.addEventListener('click', changeSlug);
-    end.addEventListener('click', stop);
     draw();
   }
 
@@ -8642,12 +8635,85 @@
     if (!window.HKChatDock || !c || !(c.id > 0)) return;
     m.appendChild(HK.menuItem(T('In Chat teilen …'), function () { HKChatDock.share({ id: c.id, title: c.title || T('Unbenannt') }); }, { icon: '📨' }));
   }
-  function openShare() {
-    if (!S.cur || !isOwner()) return;
+  function openShare() { openShareDlg('people'); }
+  // --- UX-20: EIN Dialog "Teilen" mit zwei Reitern "Personen" | "Im Web" (wie Notion) ------------------------------
+  // Beide Staende werden zusammen geladen; was nicht geladen werden darf/kann, ist als Reiter deaktiviert (mit Grund).
+  // Fokusfalle und Rueckgabe an den Ausloeser (Kopfzeile, Chip oder Seitenmenue) uebernimmt openModal/closeModal.
+  function openShareDlg(tab) {
+    if (!S.cur) return;
+    if (tab === 'people' && !isOwner()) return;               // wie bisher: Teilen nur fuer den Eigentuemer
     var id = S.cur.id;
-    api('GET', '/api/notes/' + id + '/shares').then(function (st) {
-      openModal(T('Teilen'), function (body) { shareMain(body, id, st); }, true);
-    }).catch(function (err) { HK.toast(T('Nicht geladen: {err}', { err: err.message })); });
+    function load(u) { return api('GET', u).then(function (d) { return { st: d }; }, function (err) { return { err: err }; }); }
+    Promise.all([
+      isOwner() ? load('/api/notes/' + id + '/shares') : Promise.resolve({ err: new Error(T('Nur der Eigentümer kann diese Seite teilen.')) }),
+      load('/api/notes/' + id + '/publish')
+    ]).then(function (r) {
+      var want = r[tab === 'web' ? 1 : 0];
+      if (r[0].err && r[1].err) { HK.toast(T('Nicht geladen: {err}', { err: want.err.message })); return; }
+      if (!S.cur || S.cur.id !== id) return;
+      openModal(T('Teilen'), function (body) { shareDlg(body, id, r[0], r[1], want.err ? (tab === 'web' ? 'people' : 'web') : tab); }, true);
+    });
+  }
+  function shareDlg(body, id, rs, rp, tab) {
+    var tl = el('div', 'shp-tabs'); tl.setAttribute('role', 'tablist'); tl.setAttribute('aria-label', T('Teilen'));
+    var off = el('p', 'shp-off'); off.hidden = true;
+    body.appendChild(tl); body.appendChild(off);
+    var defs = [['people', T('Personen'), rs], ['web', T('Im Web'), rp]], tabs = {}, panels = {};
+    defs.forEach(function (d) {
+      var b = el('button', 'shp-tab', d[1]); b.type = 'button'; b.id = 'shp-tab-' + d[0];
+      b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', 'shp-panel-' + d[0]);
+      var p = el('div', 'shp-panel'); p.id = 'shp-panel-' + d[0]; p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', b.id);
+      p.hidden = d[0] !== tab;                               // vor dem Aufbau: verborgene Felder holen sich keinen Fokus
+      if (d[2].err) {
+        b.setAttribute('aria-disabled', 'true'); b.title = d[2].err.message;
+        off.hidden = false; off.textContent = T('„{tab}“ ist nicht verfügbar: {err}', { tab: d[1], err: d[2].err.message });
+      }
+      b.addEventListener('click', function () { pick(d[0], false); });
+      tl.appendChild(b); body.appendChild(p); tabs[d[0]] = b; panels[d[0]] = p;
+    });
+    function ok(k) { return tabs[k].getAttribute('aria-disabled') !== 'true'; }
+    function pick(k, focus) {
+      if (!ok(k)) return;
+      tab = k;
+      Object.keys(tabs).forEach(function (x) {
+        var on = x === k;
+        tabs[x].setAttribute('aria-selected', on ? 'true' : 'false'); tabs[x].tabIndex = on ? 0 : -1; panels[x].hidden = !on;
+      });
+      if (focus) tabs[k].focus();
+    }
+    // Pfeiltasten (und Pos1/Ende) zwischen den Reitern; deaktivierte werden uebersprungen
+    tl.addEventListener('keydown', function (e) {
+      var ks = Object.keys(tabs).filter(ok), i = ks.indexOf(tab), n = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') n = ks[(i + 1) % ks.length];
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') n = ks[(i - 1 + ks.length) % ks.length];
+      else if (e.key === 'Home') n = ks[0];
+      else if (e.key === 'End') n = ks[ks.length - 1];
+      if (n == null) return;
+      e.preventDefault(); pick(n, true);
+    });
+    // Reiter "Personen": oben die Zeile "Oeffentlich im Web - aendern", solange die Seite (auch ueber eine Elternseite) oeffentlich ist
+    var web = el('div', 'shp-web'), inner = el('div');
+    panels.people.appendChild(web); panels.people.appendChild(inner);
+    function drawWeb(ps) {
+      var c = S.cur && S.cur.id === id ? S.cur : {};
+      var pub = ps ? !!ps.published : !!c.published, via = ps ? ps.published_via : c.published_via;
+      web.textContent = ''; web.hidden = !(pub || via);
+      if (web.hidden) return;
+      web.appendChild(el('span', 'shp-web-ic', '🌐'));
+      web.appendChild(el('span', 'shp-web-t', pub ? T('Öffentlich im Web') : T('Öffentlich über „{title}“', { title: (via && via.title) || T('Unbenannt') })));
+      if (ok('web')) {
+        var ch = el('button', 'linkbtn shp-web-go', T('ändern')); ch.type = 'button';
+        ch.setAttribute('aria-label', T('Veröffentlichung ändern'));
+        ch.addEventListener('click', function () { pick('web', true); });
+        web.appendChild(ch);
+      }
+    }
+    drawWeb(rp.st);
+    if (rs.st) shareMain(inner, id, rs.st);
+    if (rp.st) (rp.st.name ? pubMain : pubName)(panels.web, id, rp.st, drawWeb);
+    pick(tab, false);
+    // Ohne eigenes Eingabefeld (z. B. Reiter "Im Web"): Fokus auf den aktiven Reiter statt auf "Schliessen"
+    setTimeout(function () { if (!panels[tab].contains(document.activeElement)) tabs[tab].focus(); }, 0);
   }
   function roleSelect(cur, label_) {
     var s = el('select', 'hk-in sh-role'); s.setAttribute('aria-label', label_);
@@ -8666,7 +8732,10 @@
     inp.setAttribute('role', 'combobox'); inp.setAttribute('aria-expanded', 'false'); inp.setAttribute('aria-controls', 'sh-hits');
     var rsel = roleSelect('view', T('Rolle für neue Freigabe'));
     var wrap = el('div', 'sh-addwrap');                     // Treffer als Liste UEBER dem Dialog (kein Verschieben beim Klicken)
-    row.appendChild(inp); row.appendChild(rsel); wrap.appendChild(row); box.appendChild(wrap);
+    // UX-22: sichtbarer Knopf "Einladen" - aktiv, sobald ein eindeutiger Vorschlag da ist (einziger Treffer, genauer
+    // Name oder per Pfeiltaste gewaehlt); Klick auf einen Vorschlag laedt wie bisher direkt ein
+    var inv = el('button', 'btn btn-primary sh-invite', T('Einladen')); inv.type = 'button'; inv.disabled = true;
+    row.appendChild(inp); row.appendChild(rsel); row.appendChild(inv); wrap.appendChild(row); box.appendChild(wrap);
     var fm = el('p', 'hk-fieldmsg'); box.appendChild(fm);
     // Bei 1-2 Zeichen sucht der Server nur genaue Treffer (kurze Namen wie "hd") - Hinweis direkt am Feld; sonst hoechstens der Gruppen-Hinweis
     var scopeHint = st.scope ? T('Nur Personen aus deinen Gruppen.') : st.federation ? T('Andere Saga-Instanzen: name@server eingeben.') : '';
@@ -8789,18 +8858,28 @@
         chips.appendChild(b);
       });
     }
+    var cand = null, chosen = null;                // cand: eindeutiger Vorschlag; chosen: per Pfeiltaste gewaehlt
+    function invite(h) {
+      inp.value = ''; hideHits(); cand = chosen = null; drawInv(); drawChips();
+      put(h.type, h.target, rsel.value, T('✓ Geteilt mit {name} ({role})', { name: h.name, role: ROLE_NAME[rsel.value] })); inp.focus();
+    }
+    function drawInv() {
+      var h = chosen || cand;
+      inv.disabled = !h || inp.disabled;
+      inv.title = h ? T('{name} als {role} einladen', { name: h.name, role: ROLE_NAME[rsel.value] }) : T('Erst eine Person oder Gruppe wählen');
+    }
     function hitList(d) {
-      last = d; hits.textContent = ''; var any = false, tk = taken();
+      last = d; hits.textContent = ''; var any = false, tk = taken(), all = [], q = inp.value.trim().toLowerCase();
+      cand = chosen = null;
       function add(type, target, name, sub, url) {
         any = true;
+        var h = { type: type, target: target, name: name }; all.push(h);
         var b = el('button', 'sh-hit'); b.type = 'button'; b.setAttribute('role', 'option');
         b.appendChild(avatar(type, name, url));
         var tx = el('span', 'sh-who'); tx.appendChild(el('span', 'sh-name', name)); tx.appendChild(el('small', 'sh-sub', sub)); b.appendChild(tx);
         b.appendChild(el('span', 'sh-has', tk[type + ':' + target] ? T('hat Zugriff') : T('als {role} hinzufügen', { role: ROLE_NAME[rsel.value] })));
-        b.addEventListener('click', function () {
-          inp.value = ''; hideHits(); drawChips();
-          put(type, target, rsel.value, T('✓ Geteilt mit {name} ({role})', { name: name, role: ROLE_NAME[rsel.value] })); inp.focus();
-        });
+        b.addEventListener('click', function () { invite(h); });
+        b.addEventListener('focus', function () { chosen = h; drawInv(); });
         hits.appendChild(b);
       }
       (d.users || []).forEach(function (u) { add('user', u.username, u.name, T('Person auf diesem Server') + (u.sub ? ' · ' + u.sub : ''), u.avatar); });   // sub: Merkmal fuer Gleichnamige (2.4)
@@ -8812,9 +8891,13 @@
       });
       hits.hidden = !any; inp.setAttribute('aria-expanded', any ? 'true' : 'false');
       if (!any && inp.value.trim().length >= 3) setErr(d.remote_hint || T('Niemand gefunden.'));   // name@server: Grund vom Server
+      var exact = all.filter(function (h) { return String(h.name || '').toLowerCase() === q || String(h.target || '').toLowerCase().replace(/^@/, '') === q.replace(/^@/, ''); });
+      cand = all.length === 1 ? all[0] : exact.length === 1 ? exact[0] : null;
+      drawInv();
     }
     function search() {
       var q = inp.value.trim(); setErr(''); lenHint(q); pubStatus(msg, ''); clearTimeout(tmr); drawChips();
+      cand = chosen = null; drawInv();
       if (!q) { hideHits(); return; }
       var my = ++seq;
       tmr = setTimeout(function () {
@@ -8835,8 +8918,11 @@
       if (e.key === 'ArrowUp') { e.preventDefault(); if (i <= 0) inp.focus(); else items[i - 1].focus(); }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hideHits(); inp.focus(); }
     });
+    inv.addEventListener('click', function () { var h = chosen || cand; if (h) invite(h); });
+    inp.addEventListener('focus', function () { if (chosen) { chosen = null; drawInv(); } });
+    rsel.addEventListener('change', drawInv);
     inp.disabled = rsel.disabled = !st.enabled || !st.shareable;
-    drawHelp(); draw(); drawChips();
+    drawHelp(); draw(); drawChips(); drawInv();
     setTimeout(function () { if (!inp.disabled) inp.focus(); }, 0);
     inp.addEventListener('click', function () { if (hits.hidden && last && inp.value.trim()) hitList(last); });
   }
