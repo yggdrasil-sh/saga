@@ -2851,3 +2851,54 @@ Einstellungen → Hilfe in `static/settings.js`. **Apps (eigene Runde):** iOS/Ma
 Signal-Handler schreiben eine Absturz-Notiz lokal (nur Text wie oben, kein Speicherabbild), beim nächsten Start als
 `crash` senden; Android `Thread.setDefaultUncaughtExceptionHandler` → Datei, beim nächsten Start senden, ANR über
 `ApplicationExitInfo` (API 30+) als `anr`; Linux `sys.excepthook`, GLib-Warnungen nur gezählt (`warn` mit `n`).
+
+## Glocke gebündelt je Gesprächseinheit (2.5, Design-Runde)
+
+Die Weboberfläche zeigt je Unterhaltung **eine** Zeile („Jonas Brandt · 3 neue Nachrichten“, „5 verpasste Videoanrufe ·
+zuletzt 11:13“, „Seite X · 3 neue Kommentare“). Der Server bündelt auf Wunsch; **ohne** den neuen Parameter bleibt alles wie
+bisher (eine Zeile je Benachrichtigung) – bestehende Apps brechen nicht.
+
+**Neues Feld an jedem Eintrag** (auch ohne Bündeln, auch im Live-Ereignis `notification`): `group_key` – Gesprächseinheit oder
+`null` (wird nicht gebündelt):
+
+| Art | `group_key` |
+|---|---|
+| `chat.message` | `chat:<chat-id>` |
+| `call.missed` | `call:<chat-id>` (Eintrag hat zusätzlich `media`: `audio`/`video`) |
+| `comment.new`, `comment.reply`, `comment.mention` | `page:<seite>` bzw. `page:<instanz>:<seite>` (Seite einer anderen Instanz) |
+| alle anderen (`chat.mention`, `page.mention`, `share.*`, `db.assigned`, …) | `null` |
+
+**`GET /api/notifications?group=1`** – Einträge gleicher Einheit **und** gleichen Lesestands werden zu einer Zeile:
+- Die Zeile ist der **neueste** Eintrag mit allen bisherigen Feldern (`id`, `kind`, `created`, `actor`, `url`, `title`, …),
+  dazu `ids` (alle gebündelten Benachrichtigungen, neueste zuerst), `counts` (je Benachrichtigung, gleiche Reihenfolge),
+  `count` (Summe = Nachrichten/Anrufe/Kommentare), `first` (Zeit der ältesten), `actors` (Namen, neueste zuerst, nur bei mehreren
+  Personen), `mention: true` (Seiten-Zeile enthält eine Erwähnung), und `text` für die ganze Zeile: „{n} neue Nachrichten“,
+  Gruppen-Chat „{n} neue Nachrichten (von A, B)“, „{n} verpasste Videoanrufe“ bzw. „{n} verpasste Anrufe“ (gemischt/Ton),
+  „{n} neue Kommentare“ / „… (mit Erwähnung)“ – ohne Titel; der steht wie bisher in `title`.
+  Einzelne Einträge haben `ids: [id]`, `counts: [count]`, `text` wie bisher.
+- `limit` zählt **Zeilen**. `next`/`more` wie bisher (`?before=<next>`); ältere Mitglieder einer schon gezeigten Zeile
+  können mit der nächsten Seite als eigene Zeile kommen – in die vorhandene Zeile übernehmen (gleicher `group_key` und `read`).
+  Jede Benachrichtigung kommt genau einmal.
+- Antwort zusätzlich `unread_groups`: ungelesene **Zeilen**. Die Weboberfläche zeigt diese Zahl an der Glocke (wie Slack/Notion:
+  eine Unterhaltung = eins); `unread` (einzelne Benachrichtigungen) bleibt.
+- `?limit=0&group=1` liefert nur die Zahlen (mit `unread_groups`).
+
+**`POST /api/notifications/read`** – zusätzlich `{"groups": ["chat:12", "page:7"]}` (höchstens 100, kombinierbar mit `ids`):
+markiert **alle** ungelesenen dieser Einheiten, auch die noch nicht geladenen. Antwort zusätzlich `unread_groups`.
+
+**Live** (`notification`): neue Einträge und Gelesen-Meldungen tragen zusätzlich `unread_groups`. Ein neuer Eintrag mit
+`group_key` gehört in die vorhandene ungelesene Zeile derselben Einheit (neuer Kopf, `replaces` wie bisher herausnehmen).
+
+**Push:** `chat.message` hatte schon `tag: "chat-<id>"` (ersetzt je Chat; APNs `thread-id`/`apns-collapse-id`, Web-Push
+`Topic`). Neu: `call.missed` hat `tag: "missed-<chat-id>"` (verpasste Anrufe eines Chats ersetzen einander) und bei mehreren
+ungelesenen den Text „{n} verpasste Anrufe von {name}“ (ohne Namen: „{n} verpasste Anrufe“); Kommentare tragen `thread: "note-<seite>"` (APNs `thread-id`:
+Mitteilungen einer Seite gruppiert), `tag` bleibt je Unterhaltung. Apps, die `tag` als Mitteilungs-Kennung nutzen (Android),
+bekommen das ohne Änderung.
+
+Beispiel (`?group=1`):
+```json
+{"items": [{"id": 912, "kind": "chat.message", "group_key": "chat:12", "ids": [912, 905, 899], "counts": [1, 2, 1],
+            "count": 4, "first": 1793900000.1, "created": 1793900800.4, "read": false, "text": "4 neue Nachrichten",
+            "title": "Jonas Brandt", "chat": {"id": 12, "kind": "dm"}, "url": "/chats#c12", "actor": {"name": "Jonas Brandt"}}],
+ "unread": 9, "unread_groups": 3, "more": false, "next": null}
+```

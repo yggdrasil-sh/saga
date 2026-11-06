@@ -19,6 +19,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ### Web: Design-Runde (ruhiger, einheitlicher)
 - **Seite löschen:** Liegt die offene Seite im Papierkorb, öffnet Saga die übergeordnete Seite, sonst die Nachbarseite
   davor bzw. danach oder die zuletzt geöffnete – statt einer leeren Fläche mit „Wähle links eine Seite“.
+- **Glocke gebündelt:** eine Zeile je Unterhaltung statt jeder Mitteilung einzeln – „Jonas Brandt · 3 neue Nachrichten“,
+  Gruppen-Chats „Team · 4 neue Nachrichten (von A, B)“, verpasste Anrufe eines Chats als „5 verpasste Videoanrufe ·
+  zuletzt 11:13“ mit „Zurückrufen“, Kommentare einer Seite als „Seite X · 3 neue Kommentare“. Ein Klick öffnet und
+  markiert alle Mitteilungen der Zeile gelesen; die Zahl an der Glocke zählt Zeilen. „Antworten“/„Zurückrufen“ erscheinen
+  erst beim Überfahren oder mit dem Fokus in der Zeile; jede Zeile hat einen vollständigen zugänglichen Namen. API:
+  `?group=1`, `group_key`, `ids`, `unread_groups`, Gelesen per `groups` (alles rückwärtskompatibel, docs/APP-API.md);
+  Push: verpasste Anrufe eines Chats ersetzen einander („5 verpasste Anrufe“), Kommentare einer Seite sind auf iOS gruppiert.
 - **Symbole in Menüs:** Ein eigener Satz Linien-Symbole (gleiche Größe, gleiche Strichstärke, ohne externe
   Bibliothek) ersetzt die bunten Emoji und Zeichen in Seitenmenü „···“, Neue-Seite-Menü, Blockmenü, Kontomenü,
   Spaltenkopf-Menü, /-Menü, Tabellen- und Chat-Menüs. Eigenschaftstypen haben eigene Symbole (Datum ist ein
