@@ -98,7 +98,7 @@ if (!BASE || !USER || !PASS || !PEER || !PEER2) { console.error('SAGA_BASE, SAGA
   // 9) Design-Runde UX-18: steht "Teilen" in der Kopfzeile, fehlen "Teilen …"/"Veröffentlichen …" im Seitenmenue
   //    (der Dialog hat den Reiter "Im Web"); im Peek (kein Kopfzeilen-Knopf) stehen sie weiter im Menue
   await p.click('#pg-more'); await p.waitForTimeout(200);
-  ok(!(await p.$('.menu:not([hidden]) .menu-item:has-text("Veröffentlichen")')) && !(await p.$('.menu:not([hidden]) .menu-item:has-text("Teilen …")')),
+  ok(!(await p.$('.menu:not([hidden]) .menu-item:has(.mi-t:text-is("Veröffentlichen …"))')) && !(await p.$('.menu:not([hidden]) .menu-item:has(.mi-t:text-is("Teilen …"))')),
      'Seitenmenue: kein doppeltes Teilen/Veroeffentlichen neben dem Kopfzeilen-Knopf');
   await p.keyboard.press('Escape'); await p.waitForTimeout(250);
   s = await st(); ok(!s.open && s.act === 'pg-more', 'Esc: Fokus zurueck an das Seitenmenue');
