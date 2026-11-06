@@ -29,6 +29,7 @@
         [['?'], T('Tastenkürzel anzeigen (außerhalb von Eingabefeldern)')],
         [['Mod', 'Alt', 'N'], T('Neue leere Seite')],
         [['Mod', '\\'], T('Seitenleiste ein/aus')],
+        [['Mod', 'Shift', 'L'], T('Hell/Dunkel umschalten')],
         [['Esc'], T('Dialog, Menü oder Suche schließen')]
       ]],
       [T('Navigation'), [
