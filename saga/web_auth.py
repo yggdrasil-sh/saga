@@ -22,7 +22,7 @@ router = APIRouter()
 # --- Anmeldung, Registrierung, Abmeldung -------------------------------------------------------------
 # Erlaubte Ruecksprungziele nach dem Login - feste Positivliste statt beliebiger Pfade
 # (verhindert Open-Redirect ueber praeparierte Login-Links)
-NEXT_ALLOWED = {"/", "/notes", "/app/handoff", "/security"}
+NEXT_ALLOWED = {"/", "/notes", "/app/handoff", "/security", "/chats", "/dashboard"}
 EMAIL_RE = re.compile(r"[^@\s]{1,100}@[^@\s]{1,150}\.[^@\s]{2,40}")
 
 

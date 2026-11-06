@@ -6,8 +6,8 @@
 //   dann hier mit Range (Klartext-Bytes). Der Service Worker holt nur die noetigen Ciphertext-Bloecke (Range, Kopf
 //   X-Saga-Media-Token), entschluesselt sie blockweise und antwortet mit 206 als Strom - kein Komplett-Download, kein
 //   Klartext im Cache-Speicher. Schluessel nur im Speicher (Map), Kennung je Wiedergabe zufaellig (128 Bit), nur eigene
-//   Origin; "clear" beim Abmelden. Der fetch-Handler kuemmert sich nur um /_m/ - alles andere geht unveraendert ans Netz
-//   (in Chromium per Static Routing, ohne den Service Worker zu starten).
+//   Origin; "clear" beim Abmelden. Der fetch-Handler kuemmert sich um /_m/ und (fuer die Offline-Seite) um
+//   GET-Navigationen - alles andere geht unveraendert ans Netz (in Chromium per Static Routing, ohne den Service Worker zu starten).
 // - Offline-Seite (2.5, Desktop-Huelle O0): /static/offline.html liegt im Cache; schlaegt eine Seiten-Navigation
 //   (GET, eigene Origin) im Netz fehl, zeigt der Service Worker sie an Stelle der Seite. HTTP-Fehler des Servers bleiben,
 //   wie sie sind; andere Anfragen beruehrt das nicht.

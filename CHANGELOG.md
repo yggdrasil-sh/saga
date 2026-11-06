@@ -32,6 +32,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ### Web: Design-Runde (ruhiger, einheitlicher)
 - **Seitenleiste ausgeblendet:** Sie klappt nur noch am linken Rand bzw. über dem Seitenleisten-Knopf auf, nicht mehr beim
   Überfahren der ganzen Kopfzeile (auch rechts bei „Teilen“ und „···“).
+- **Anmeldung:** Wer abgemeldet `/chats` aufruft, landet nach der Anmeldung wieder in den Chats (vorher auf der Startseite).
 - **Chat-Panel:** Der schwebende Marin-Knopf verdeckt den Senden-Knopf nicht mehr; er weicht wie der Chat-Knopf jedem
   rechten Panel.
 - **Schwebende Seitenleiste:** Sie bleibt offen, solange die Maus im Bereich der Leiste steht (auch oben über „Saga“ und
