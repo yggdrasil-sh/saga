@@ -1,5 +1,5 @@
 // Saga 2.5 (Design-Runde UX-20/21/22) - EIN Dialog "Teilen" mit Reitern "Personen" | "Im Web":
-// Kopfzeile "Teilen" oeffnet "Personen", Chip "Oeffentlich" und Seitenmenue "Veroeffentlichen ..." oeffnen "Im Web";
+// Kopfzeile "Teilen" oeffnet "Personen", Chip "Oeffentlich" oeffnet "Im Web" (Seitenmenue ohne doppeltes Teilen, UX-18);
 // Pfeiltasten wechseln den Reiter; Knopf "Einladen" erst mit eindeutigem Vorschlag aktiv, Enter laedt den ersten ein;
 // Ausschalten fragt nach (kein roter Knopf mehr); Esc gibt den Fokus an den jeweiligen Ausloeser zurueck; 390 px ohne
 // seitlichen Ueberlauf; keine Skriptfehler. Braucht ein zweites und drittes Konto (SAGA_PEER, SAGA_PEER2) zum Einladen.
@@ -95,10 +95,11 @@ if (!BASE || !USER || !PASS || !PEER || !PEER2) { console.error('SAGA_BASE, SAGA
   ok(await p.evaluate(() => document.getElementById('pg-modal').contains(document.activeElement)), 'Fokusfalle: Tab bleibt im Dialog');
   await p.keyboard.press('Escape'); await p.waitForTimeout(250);
   s = await st(); ok(!s.open && s.act === 'pg-public', 'Esc: Fokus zurueck an den Chip');
-  // 9) Seitenmenue "Veroeffentlichen ..." -> Reiter "Im Web", Esc -> Fokus zurueck an "..."
-  await p.click('#pg-more'); await p.click('.menu-item:has-text("Veröffentlichen")');
-  await p.waitForSelector('.shp-tabs'); await p.waitForTimeout(300);
-  s = await st(); ok(s.open && s.tab === 'shp-tab-web', 'Seitenmenue: oeffnet Reiter "Im Web"');
+  // 9) Design-Runde UX-18: steht "Teilen" in der Kopfzeile, fehlen "Teilen …"/"Veröffentlichen …" im Seitenmenue
+  //    (der Dialog hat den Reiter "Im Web"); im Peek (kein Kopfzeilen-Knopf) stehen sie weiter im Menue
+  await p.click('#pg-more'); await p.waitForTimeout(200);
+  ok(!(await p.$('.menu:not([hidden]) .menu-item:has-text("Veröffentlichen")')) && !(await p.$('.menu:not([hidden]) .menu-item:has-text("Teilen …")')),
+     'Seitenmenue: kein doppeltes Teilen/Veroeffentlichen neben dem Kopfzeilen-Knopf');
   await p.keyboard.press('Escape'); await p.waitForTimeout(250);
   s = await st(); ok(!s.open && s.act === 'pg-more', 'Esc: Fokus zurueck an das Seitenmenue');
   // 10) Ausschalten bestaetigen: Seite privat, Zeile im Reiter "Personen" weg

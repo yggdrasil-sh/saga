@@ -120,15 +120,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // --- G9: Schrift umschalten -----------------------------------------------------------------------------------
   await p.click('#pg-more'); await sleep(200);
-  await p.locator('.menu-item:has(.mi-t:text-is("Schrift"))').first().click(); await sleep(200);
-  await p.locator('.menu-sub .menu-item:has(.mi-t:text-is("Serif")), .menu .menu-item:has(.mi-t:text-is("Serif"))').last().click(); await sleep(800);
+  // Design-Runde UX-18: Schrift steht im Untermenue "Darstellung"
+  await p.locator('.menu-item:has(.mi-t:text-is("Darstellung"))').first().click(); await sleep(200);
+  await p.locator('.menu-sub .menu-item:has(.mi-t:text-is("Serif"))').last().click(); await sleep(800);
   const ff = await p.evaluate((s) => getComputedStyle(document.querySelector(s)).fontFamily, D.textOf('paragraph'));
   const tf = await p.evaluate(() => getComputedStyle(document.getElementById('pg-title')).fontFamily);
   ok(`G9: Serif auf Inhalt und Titel (${ff.slice(0, 30)})`, /serif/i.test(ff) && /Georgia|serif/.test(tf) && !/sans-serif/.test(ff));
   const cf = await p.evaluate(() => { const c = document.querySelector('.page-body .inline-code, .page-body .hk-code-ta'); return c ? getComputedStyle(c).fontFamily : 'monospace'; });
   ok('G9: Code bleibt Mono', /mono|Menlo|Consolas/i.test(cf), cf);
   await p.click('#pg-more'); await sleep(200);
-  await p.locator('.menu-item:has(.mi-t:text-is("Kleiner Text"))').first().click(); await sleep(800);
+  await p.locator('.menu-item:has(.mi-t:text-is("Darstellung"))').first().click(); await sleep(200);
+  await p.locator('.menu-sub .menu-item:has(.mi-t:text-is("Kleiner Text"))').first().click(); await sleep(800);
   let n = await api('GET', '/api/notes/' + id);
   ok(`G9: gespeichert font=${n.font}, small=${n.small}`, n.font === 'serif' && n.small === true);
   const fs = await p.evaluate((s) => parseFloat(getComputedStyle(document.querySelector(s)).fontSize), D.textOf('paragraph'));

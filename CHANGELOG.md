@@ -39,6 +39,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   API) · Daten (Mein Backup) · Hilfe. Passwort, Passkeys und Authenticator stehen unter „Sicherheit“, die
   Benachrichtigungen unter „Mitteilungen“. Am Handy erst die Liste, dann der Bereich mit „‹ Einstellungen“.
   Bestehende Links auf einzelne Bereiche funktionieren weiter.
+- **Seitenbaum per Tastatur (wie Notion):** Seiten, „Mit mir geteilt“ und Favoriten sind je ein Tab-Stopp (vorher
+  2–3 je Zeile, auf /notes erst der ~52. Tab im Seitenkopf); ↑/↓ wandern, → klappt auf bzw. geht zum ersten Kind,
+  ← klappt zu bzw. geht zur Elternseite, Pos1/Ende, Enter öffnet, ein Buchstabe springt. Screenreader hören nur den
+  Seitennamen („Geteilt“ als Beschreibung), Ebene, Position und auf-/zugeklappt; die offene Seite ist markiert, der
+  Fokus bleibt nach dem Neuaufbau des Baums auf derselben Seite. Gilt auch für die Seitenleiste auf „Heute“ und Chats
+  (dort führt ↓ im Suchfeld in den Baum).
+- **Seitenmenü „···“ aufgeräumt:** fünf Gruppen statt ~22 Einträgen nach Technik – Seite (Favorit, **Link kopieren**
+  mit Strg+Alt+L/⌘⌥L, Duplizieren, Verschieben), „Darstellung ›“ (Breite, Schrift mit sichtbarem Haken, kleiner Text,
+  Titelbild, Sperre), Verlauf/Graph/KI, Import/Export/Vorlage/Startseite, Archiv/Papierkorb. „Teilen“ und
+  „Veröffentlichen“ stehen nur noch im Menü, wo die Kopfzeile keinen Knopf dafür hat (Peek), „Kommentare“ nur, solange
+  der Kommentar-Knopf fehlt. Kürzel stehen rechts wie im /-Menü. Board-Karten zeigen beim Datum ein Kalendersymbol.
 - **Symbole in Menüs:** Ein eigener Satz Linien-Symbole (gleiche Größe, gleiche Strichstärke, ohne externe
   Bibliothek) ersetzt die bunten Emoji und Zeichen in Seitenmenü „···“, Neue-Seite-Menü, Blockmenü, Kontomenü,
   Spaltenkopf-Menü, /-Menü, Tabellen- und Chat-Menüs. Eigenschaftstypen haben eigene Symbole (Datum ist ein
