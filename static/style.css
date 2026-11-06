@@ -2837,7 +2837,6 @@ body.cm-open .cd-btn,body.cm-open .np-head .ai-btn{visibility:hidden!important}
 .task-due.overdue,.etk-meta.overdue{color:#b3121f;background:transparent;font-weight:500}
 @media (prefers-color-scheme: dark){.task-due.overdue,.etk-meta.overdue{color:#ff7b72}}
 .task-due.overdue::before,.etk-meta.overdue::before{content:"⚠\FE0E" / "";margin-right:.25rem;font-weight:600}
-=======
 /* ===== Heute (Design-Runde 05: UX-8/9/12/13/14, AE-25/26/27, VD-39/40/41, A11Y-09) ==============================
    /dashboard als ruhiger Tagesstart: Begruessung + Lagezeile, Schnellaktionen, "Weitermachen", kompakte Lesezeichen.
    Kopf = Seitenleisten-Kopf (.np-head) wie auf /notes und /chats; schmal steht er oben als normale Kopfzeile. */
@@ -2993,3 +2992,6 @@ a.qs-web{text-decoration:none;color:var(--fg)}
 .cd-sw-b{display:inline-flex;align-items:center;gap:.4rem}
 .cd-sw-ic{color:var(--muted)}
 .cd-sw-b.on .cd-sw-ic{color:var(--fg)}
+/* Tab-Leiste weg, solange im Seiteninhalt oder Titel geschrieben wird (am Handy ist dann ohnehin die Tastatur offen;
+   Slash-/Block-Menues als Bottom-Sheet liegen sonst darunter) */
+@media (max-width:760px){body:has(:is(#pg-editor,.page-head):focus-within) .mob-tabs{display:none}}
