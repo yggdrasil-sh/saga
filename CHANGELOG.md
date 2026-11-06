@@ -47,6 +47,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Pillen da und wird vom Bildschirmleser genannt. Datenbank-Zellen nennen Spalte und Wert („Status: In Arbeit“ statt nur
   „Status“). Marins Antworten werden angesagt; beim Schließen geht der Fokus an den Marin-Knopf zurück; **Strg/⌘+J**
   öffnet und schließt Marin.
+- **Handy: Tab-Leiste unten** mit Heute · Seiten · Suchen · Chats (und der KI, wenn sie eingerichtet ist) in
+  Daumenreichweite; „Seiten“ öffnet die Seitenleiste, „Suchen“ die Schnellsuche. Oben bleiben Glocke und Konto. Bei
+  offener Tastatur und im Chat-Gespräch blendet sich die Leiste aus; von Chats führt jetzt ein Weg zurück zu den Seiten.
 ### Heute: echter Tagesstart statt Dashboard (Web)
 - `/dashboard` heißt im Web jetzt durchgehend **„Heute“** (Seitentitel „Heute · Saga“, Knöpfe und Schnellsuche).
   Oben eine ruhige Begrüßung („Guten Morgen, …“) mit Lagezeile aus echten Daten (Termine heute, überfällige und

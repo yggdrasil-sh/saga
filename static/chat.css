@@ -521,7 +521,7 @@ body.has-side.side-hidden.chats-in-side:not(.embed) .pg-chats .ct-side-top{paddi
 .ct-sub .ct-chip:not(a){border:0;background:none;padding:0}     /* Status ("online") als Text statt umrandeter Pille */
 @media (max-width:760px){
   body.chats-page:has(.ct.ct-open) .np-head{display:none}      /* im Gespraech ein Kopf statt zwei */
-  body.chats-page{padding-bottom:0}                             /* Safe-Area zaehlt schon in .ct-compose */
+  body.chats-page:has(.ct.ct-open){padding-bottom:0}           /* Safe-Area zaehlt schon in .ct-compose */
   .ct-head{padding:.3rem .4rem}
   .ct-head .icon-btn{min-width:44px;min-height:44px}
   .ct-back{min-width:44px;min-height:44px}

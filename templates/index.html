@@ -171,5 +171,6 @@
 {% if chat_enabled %}<script src="/static/meeting.js?v={{ v }}"></script><script src="/static/calls.js?v={{ v }}"></script>{% endif %}
 <script src="/static/ai.js?v={{ v }}"></script>
 {% if chat_enabled %}<script src="/static/chatdock.js?v={{ v }}"></script>{% endif %}
+{% with tab_cur = 'today' %}{% include "_tabbar.html" %}{% endwith %}<script src="/static/tabbar.js?v={{ v }}"></script>
 </body>
 </html>

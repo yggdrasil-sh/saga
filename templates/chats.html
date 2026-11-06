@@ -125,5 +125,6 @@
 {# Seitenpanel (static/chatdock.js): Anrufe klingeln im umgebenden Fenster, nicht ein zweites Mal hier #}
 {% if not panel %}<script src="/static/meeting.js?v={{ v }}"></script><script src="/static/calls.js?v={{ v }}"></script>{% endif %}
 {% endif %}
+{% if not panel %}{% with tab_cur = 'chats' %}{% include "_tabbar.html" %}{% endwith %}<script src="/static/tabbar.js?v={{ v }}"></script>{% endif %}
 </body>
 </html>
