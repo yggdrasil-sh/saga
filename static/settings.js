@@ -5,9 +5,10 @@
   var el = HK.el, api = HK.api;
   var btn = document.getElementById('hk-user');
   if (!btn) return;
-  // In der Saga-App (iOS/macOS): Nachrichten an die App (die App nimmt sie nur von diesem Server an)
-  var inApp = /(Saga|Hlidskjalf)App\//.test(navigator.userAgent) && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.hk;
-  function toApp(msg) { if (inApp) window.webkit.messageHandlers.hk.postMessage(msg); }
+  // In der Saga-App bzw. Desktop-Huelle: Nachrichten an die App ueber die Bruecke (static/host.js; die App nimmt sie nur
+  // von diesem Server an). App-Einstellungen: Faehigkeit 'settings', Schluessel uebergeben: 'token'.
+  var H = HK.host || { has: function () { return false; }, post: function () { return false; } };
+  function toApp(msg) { H.post(msg); }
   // UX-40: Sprache als Untermenue (Liste aus /api/account, beim ersten Oeffnen geholt), Tastenkuerzel, Admin-Bereich (nur
   // Admins: data-admin = ADMIN_URL). Darstellung (Hell/Dunkel) siehe themeItem.
   var acct = null;
@@ -43,7 +44,7 @@
       if (window.HKShortcuts) m.appendChild(HK.menuItem(T('Tastenkürzel'), function () { HKShortcuts.open({ back: btn }); },
         { ic: 'keyboard', hint: (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : T('Strg') + '+') + '/' }));
       if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich') + ' ↗', function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { ic: 'shield' }));
-      if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { ic: 'smartphone' }));
+      if (H.has('settings')) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { ic: 'smartphone' }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Abmelden'), function () {
         // Chat-Bild-Cache dieses Kontos (nur Ciphertext, static/chat.js) beim Abmelden leeren; Chat-Schluessel bleiben
@@ -536,7 +537,7 @@
           code.select();
           (navigator.clipboard ? navigator.clipboard.writeText(d.token) : Promise.reject()).then(function () { HK.toast(T('Kopiert')); }, function () { document.execCommand('copy'); HK.toast(T('Kopiert')); });
         });
-        if (inApp) {
+        if (H.has('token')) {
           var use = el('button', 'btn', T('In dieser App verwenden')); use.type = 'button';
           use.addEventListener('click', function () { toApp({ action: 'token', token: d.token }); use.textContent = T('✓ Übergeben'); use.disabled = true; });
           box.appendChild(use);

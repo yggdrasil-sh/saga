@@ -16,7 +16,10 @@
   var ICON = { webpush: '🖥', ntfy: '🔔', unifiedpush: '📱', apns: '📱' };
 
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* privat */ } return null; }
-  function supported() { return window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+  // Desktop-Huelle (static/host.js): kein Browser-Abo (WKWebView/WebView2 haben kein Web-Push) - Mitteilungen kommen
+  // ueber die Huelle selbst; so gibt es auch keine doppelten
+  function inHost() { return !!(HK.host && (HK.host.kind === 'mac' || HK.host.kind === 'tauri')); }
+  function supported() { return !inHost() && window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
   function iosNoPwa() {
     var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     return ios && !(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
@@ -119,6 +122,7 @@
       var line = el('p', 'hk-hint'), bar = el('div', 'hk-actions'), st = el('div', 'hk-status'); st.setAttribute('role', 'status');
       c.appendChild(line); c.appendChild(bar); c.appendChild(st);
       if (!S.server.webpush) { line.textContent = T('Browser-Mitteilungen sind auf diesem Server abgeschaltet.'); return; }
+      if (inHost()) { line.textContent = T('In der Saga-App kommen Mitteilungen über die App selbst (siehe Geräte unten).'); return; }
       if (iosNoPwa()) { line.textContent = T('Auf iPhone und iPad: Saga zuerst zum Home-Bildschirm hinzufügen (Teilen → „Zum Home-Bildschirm“), dann dort öffnen und hier einschalten.'); return; }
       if (!supported()) { line.textContent = T('Dieser Browser kann keine Mitteilungen empfangen (oder Saga läuft nicht über https).'); return; }
       current().then(function (s) {

@@ -76,6 +76,7 @@
     bell.setAttribute('aria-label', lbl); bell.title = lbl;
     bell.classList.toggle('has-unread', !!n);
     allRead.disabled = !n;
+    if (HK.host && N.counted) HK.host.badge(n);         // Desktop-Huelle: Zahl am Dock-/Tray-Symbol (static/host.js)
   }
   function ring() {
     bell.classList.remove('ring'); void bell.offsetWidth; bell.classList.add('ring');
@@ -230,7 +231,7 @@
     var url = '/api/notifications?limit=30&group=1' + (older && N.next ? '&before=' + N.next : '');
     return api('GET', url).then(function (d) {
       N.items = older ? regroup(N.items.concat(d.items)) : d.items;
-      N.more = !!d.more; N.next = d.next; N.unread = unreadOf(d); N.loaded = true;
+      N.more = !!d.more; N.next = d.next; N.unread = unreadOf(d); N.loaded = true; N.counted = true;
       badgeDraw(); draw();
     }).catch(function (err) {
       if (N.open && !N.items.length) { pstate.hidden = false; pstate.textContent = T('Nicht geladen: {err}', { err: err.message }); }
@@ -239,7 +240,7 @@
   function count() {
     return api('GET', '/api/notifications?limit=0&group=1' + (NOTES ? '' : '&counts=1')).then(function (d) {
       var grew = unreadOf(d) > N.unread;
-      N.unread = unreadOf(d); badgeDraw();
+      N.unread = unreadOf(d); N.counted = true; badgeDraw();
       if (!NOTES && d.comments_unread != null) pagesBadge(d.comments_unread);
       return grew;
     });
@@ -255,7 +256,7 @@
     });
     N.items = regroup(N.items);
     draw();
-    return api('POST', '/api/notifications/read', body).then(function (d) { N.unread = unreadOf(d); badgeDraw(); }).catch(function () {});
+    return api('POST', '/api/notifications/read', body).then(function (d) { N.unread = unreadOf(d); N.counted = true; badgeDraw(); }).catch(function () {});
   }
   function readIt(it) { if (!it.read) markRead(it.ids || [it.id], it.group_key ? [it.group_key] : null); }
   function place() {
@@ -497,7 +498,7 @@
       if (!it.read && isChatIt(it) && dockOk()) chatToast(it);
       N.items = dropIds(N.items, [it.id, d.replaces].filter(function (x) { return x != null; }));
       if (N.loaded) N.items = regroup([it].concat(N.items));   // in die Zeile seiner Unterhaltung (neuer Kopf)
-      if (!it.read) ring();
+      if (!it.read) { ring(); hostNotify(it); }
       if (it.kind && it.kind.indexOf('comment.') === 0) pagesBadgeSoon();
     } else if (d.read) {
       var part = false;
@@ -510,8 +511,43 @@
       N.items = regroup(N.items);
       if (part && N.open) setTimeout(function () { load(); }, 0);   // nur ein Teil einer Zeile gelesen: frisch buendeln
     }
-    if (d.unread != null) N.unread = unreadOf(d);
+    if (d.unread != null) { N.unread = unreadOf(d); N.counted = true; }
     badgeDraw(); draw();
+  }
+  // Desktop-Huelle mit Faehigkeit 'notify' (ohne eigenen Push-Kanal): System-Mitteilung ueber die Huelle. Es gelten die
+  // Mitteilungs-Einstellungen wie beim Push (Bereiche, Ruhezeiten, Namen zeigen; GET /api/push, 5 min gemerkt).
+  // Ohne Huelle bleibt es bei Web-Push (Service Worker) - in der Huelle gibt es kein Browser-Abo (static/push.js).
+  var PCAT = { 'share.added': 'share', 'share.role': 'share', 'comment.new': 'comment', 'comment.reply': 'comment', 'comment.mention': 'comment',
+               'page.mention': 'comment', 'db.assigned': 'assign', 'chat.message': 'chat', 'chat.mention': 'chat', 'publish.withdrawn': 'publish',
+               'call.missed': 'call', 'task.due': 'tasks', 'backup.failed': 'admin', 'chat.report': 'admin' };
+  var PS = { at: 0, p: null };
+  function pushPrefs() {
+    if (PS.p && Date.now() - PS.at < 300000) return PS.p;
+    PS.at = Date.now();
+    PS.p = api('GET', '/api/push').catch(function () { return null; });
+    return PS.p;
+  }
+  function quietNow(q) {
+    if (!q || !q.on || !/^\d\d:\d\d$/.test(q.from || '') || !/^\d\d:\d\d$/.test(q.to || '')) return false;
+    var hm;
+    try { hm = new Intl.DateTimeFormat('en-GB', { timeZone: q.tz || undefined, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()); }
+    catch (e) { var d0 = new Date(); hm = ('0' + d0.getHours()).slice(-2) + ':' + ('0' + d0.getMinutes()).slice(-2); }
+    var mm = function (s) { return +s.slice(0, 2) * 60 + +s.slice(3, 5); }, m = mm(hm), f = mm(q.from), t = mm(q.to);
+    if (f === t) return false;
+    return f < t ? (f <= m && m < t) : (m >= f || m < t);
+  }
+  function hostNotify(it) {
+    if (!HK.host || !HK.host.has('notify')) return;
+    pushPrefs().then(function (st) {
+      var p = st && st.settings, cat = PCAT[it.kind];
+      if (!st || !st.server || !st.server.enabled || !p) return;
+      if (cat && p.cats && p.cats[cat] === false) return;
+      if (quietNow(p.quiet)) return;
+      var url = it.url || (it.note ? '/notes#' + it.note.id : '/');
+      var o = { id: it.id, kind: it.kind, tag: it.group_key || (it.kind + ':' + it.id) };
+      if (p.names === false) { HK.host.notify('Saga', T('Neue Benachrichtigung'), url, o); return; }
+      HK.host.notify(it.title || (it.note && it.note.title) || (it.actor && it.actor.name) || 'Saga', sentence(it).textContent, url, o);
+    });
   }
   function onComments(d) {
     var k = K();
@@ -700,6 +736,8 @@
     }).catch(function () { box.remove(); });
   }
 
+  // Desktop-Huelle kommt nach vorn (Timer liefen im Hintergrund gedrosselt): Zaehler frisch holen
+  if (HK.host) HK.host.on('active', function (d) { if (d && d.active) count().catch(function () {}); });
   window.HKLive = { settingsSection: settingsSection, open: openPanel, state: function () { return { sse: !!(L.es && L.hello), poll: !!L.pollT, unread: N.unread }; } };
   badgeDraw();
   count().catch(function () {});

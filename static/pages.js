@@ -9265,7 +9265,16 @@
           mine.forEach(function (k) { want[k] = q.has(k); q.delete(k); });
           var rest = q.toString(); history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
         }
-        if (go === 'tasks' || go === 'events') { showView(go); return; }
+        if (go === 'tasks' || go === 'events') {
+          showView(go);
+          // 2.5 (Desktop-Huelle, saga://new-task): /notes?v=tasks&new=task -> Eingabe "Neue Aufgabe" gleich fokussieren
+          if (go === 'tasks' && newArg === 'task') (function wait(n) {
+            var inp = document.querySelector('#pg-view-body .etk-add');
+            if (inp && !inp.disabled) { inp.focus(); return; }
+            if (n < 50 && VIEW !== 'events') setTimeout(function () { wait(n + 1); }, 100);
+          })(0);
+          return;
+        }
         if (want.trash) { showTrash(); return; }
         if (want.archive) setTimeout(showArchive, 0);
         if (want.graph && $('pg-graph-btn')) setTimeout(function () { $('pg-graph-btn').click(); }, 0);

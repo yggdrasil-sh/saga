@@ -8,21 +8,32 @@
 //   Klartext im Cache-Speicher. Schluessel nur im Speicher (Map), Kennung je Wiedergabe zufaellig (128 Bit), nur eigene
 //   Origin; "clear" beim Abmelden. Der fetch-Handler kuemmert sich nur um /_m/ - alles andere geht unveraendert ans Netz
 //   (in Chromium per Static Routing, ohne den Service Worker zu starten).
+// - Offline-Seite (2.5, Desktop-Huelle O0): /static/offline.html liegt im Cache; schlaegt eine Seiten-Navigation
+//   (GET, eigene Origin) im Netz fehl, zeigt der Service Worker sie an Stelle der Seite. HTTP-Fehler des Servers bleiben,
+//   wie sie sind; andere Anfragen beruehrt das nicht.
 'use strict';
 var V = '__SAGA_V__';
+var OFF = 'saga-offline-', OFF_URL = '/static/offline.html';
 
 self.addEventListener('install', function (e) {
   self.skipWaiting();
-  // Static Routing (Chromium 123+): nur /_m/ geht an den fetch-Handler, alles andere direkt ans Netz
+  // Static Routing (Chromium 123+): nur /_m/ und Seiten-Navigationen (Offline-Seite) gehen an den fetch-Handler, alles
+  // andere direkt ans Netz. Kennt der Browser die Bedingung requestMode nicht, gilt die bisherige Regel (nur /_m/).
   if (e.addRoutes) {
     try {
-      e.waitUntil(e.addRoutes([{ condition: { not: { urlPattern: new URLPattern({ pathname: '/_m/*' }) } }, source: 'network' }])
-        .catch(function () {}));
+      var net = { condition: { not: { urlPattern: new URLPattern({ pathname: '/_m/*' }) } }, source: 'network' };
+      e.waitUntil(e.addRoutes([{ condition: { requestMode: 'navigate' }, source: 'fetch-event' }, net])
+        .catch(function () { return e.addRoutes([net]); }).catch(function () {}));
     } catch (x) { /* aeltere Fassung der Schnittstelle: dann eben ueber den fetch-Handler */ }
   }
+  e.waitUntil(caches.open(OFF + V).then(function (c) { return c.add(new Request(OFF_URL, { cache: 'reload' })); }).catch(function () {}));
   try { libLoad(); } catch (x) { /* beim ersten Video */ }   // Bibliothek beim Installieren ablegen (importScripts spaeter)
 });
-self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim()); });
+self.addEventListener('activate', function (e) {
+  e.waitUntil(Promise.all([self.clients.claim(), caches.keys().then(function (ks) {   // alte Fassungen der Offline-Seite weg
+    return Promise.all(ks.filter(function (k) { return k.indexOf(OFF) === 0 && k !== OFF + V; }).map(function (k) { return caches.delete(k); }));
+  }).catch(function () {})]));
+});
 
 function sameOrigin(url) {
   try { var u = new URL(url || '/', self.location.origin); return u.origin === self.location.origin ? u.href : self.location.origin + '/'; }
@@ -113,7 +124,18 @@ self.addEventListener('message', function (e) {
 self.addEventListener('fetch', function (e) {
   var u;
   try { u = new URL(e.request.url); } catch (x) { return; }
-  if (u.origin !== self.location.origin || u.pathname.indexOf('/_m/') !== 0 || e.request.method !== 'GET') return;
+  if (u.origin !== self.location.origin || e.request.method !== 'GET') return;
+  if (e.request.mode === 'navigate' && u.pathname.indexOf('/_m/') !== 0) {
+    // Netz wie immer; nur wenn es gar nicht antwortet (offline, Server weg): Offline-Seite aus dem Cache
+    e.respondWith(fetch(e.request).catch(function (err) {
+      return caches.open(OFF + V).then(function (c) { return c.match(OFF_URL); }).then(function (r) {
+        if (!r) throw err;
+        return r;
+      });
+    }));
+    return;
+  }
+  if (u.pathname.indexOf('/_m/') !== 0) return;
   e.respondWith(media(e, u));
 });
 

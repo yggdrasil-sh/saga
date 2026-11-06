@@ -88,6 +88,7 @@
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (d) {
           if (!r.ok) { var e = new Error(d.error || ('HTTP ' + r.status)); e.status = r.status; e.data = d; throw e; }   // Konflikt: e.data.by
+          if (method !== 'GET' && window.HK && window.HK.host) try { window.HK.host._changed(method, url); } catch (x) { /* Bruecke (static/host.js) */ }
           return d;
         });
       });

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-QgtZ8s+43RT+DKgHa/LkZFN2JERbgM/KBhfE7Qnwp3M='; script-src 'sha256-DfgYUTYaX87ZHSR2Iarf72p0fxbdLv+5itOT2CEhtCA='; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<title>Saga – Keine Verbindung</title>
+<!-- Saga 2.5 (Desktop-Huelle, Offline O0): eigenstaendige Seite ohne weitere Dateien. Zeigt die Huelle lokal (aus dem
+     App-Paket), der Service Worker bei Navigationsfehlern (static/sw.js). Stil und Skript inline, per Hash in der CSP
+     erlaubt (tests/browser_host.js prueft die Hashes). Texte de/en/es/ru/th im Skript; Hell/Dunkel nach System bzw.
+     localStorage 'hk-theme' (wie static/theme-boot.js). Nach Aenderungen an <style>/<script> die Hashes in der CSP neu
+     berechnen (sha256, base64; tests/browser_host.js meldet die erwarteten Werte). -->
+<style>
+:root{--bg:#fdfcfa;--fg:#1d232c;--mut:#5c6673;--acc:#3d63dd;--accfg:#fff;--card:#fff;--line:#e4e1dc}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f141c;--fg:#e6e9ee;--mut:#9aa4b2;--acc:#7b9bff;--accfg:#0f141c;--card:#171e29;--line:#273142}}
+:root[data-theme=dark]{--bg:#0f141c;--fg:#e6e9ee;--mut:#9aa4b2;--acc:#7b9bff;--accfg:#0f141c;--card:#171e29;--line:#273142}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px}
+.box{max-width:420px;width:100%;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:32px 24px}
+svg{width:48px;height:48px;color:var(--mut)}
+h1{font-size:1.25rem;margin:12px 0 6px}
+p{margin:0 0 20px;color:var(--mut)}
+button{font:inherit;font-weight:600;border:0;border-radius:8px;padding:10px 20px;background:var(--acc);color:var(--accfg);cursor:pointer}
+button:focus-visible{outline:3px solid var(--acc);outline-offset:3px}
+button[disabled]{opacity:.6;cursor:default}
+.st{min-height:1.5em;margin:14px 0 0;font-size:.875rem}
+</style>
+</head>
+<body>
+<main>
+  <div class="box" role="alert">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2l20 20"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.8"/><path d="M14.5 10.2A10 10 0 0 1 19 12.9"/><path d="M2 8.8a15 15 0 0 1 4.2-2.6"/><path d="M10.7 5a15 15 0 0 1 11.3 3.8"/><path d="M12 20h.01"/></svg>
+    <h1 id="t">Keine Verbindung zum Server</h1>
+    <p id="d">Saga ist gerade nicht erreichbar. Prüfe die Internetverbindung – sobald der Server wieder antwortet, geht es weiter.</p>
+    <button type="button" id="r">Erneut versuchen</button>
+    <p class="st" id="s" role="status" aria-live="polite"></p>
+  </div>
+</main>
+<script>
+(function () {
+  'use strict';
+  var L = {
+    en: ['No connection to the server', 'Saga cannot be reached right now. Check your internet connection – as soon as the server answers again, you can continue.', 'Try again', 'Connecting …', 'Still no connection.', 'Saga – No connection'],
+    es: ['Sin conexión con el servidor', 'Saga no está disponible en este momento. Comprueba la conexión a internet: en cuanto el servidor vuelva a responder, podrás continuar.', 'Reintentar', 'Conectando …', 'Sigue sin conexión.', 'Saga – Sin conexión'],
+    ru: ['Нет соединения с сервером', 'Saga сейчас недоступна. Проверьте подключение к интернету – как только сервер снова ответит, можно продолжить.', 'Повторить', 'Подключение …', 'Соединения по-прежнему нет.', 'Saga – Нет соединения'],
+    th: ['ไม่มีการเชื่อมต่อกับเซิร์ฟเวอร์', 'ขณะนี้ไม่สามารถเข้าถึง Saga ได้ โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ต เมื่อเซิร์ฟเวอร์ตอบกลับอีกครั้งก็ใช้งานต่อได้', 'ลองอีกครั้ง', 'กำลังเชื่อมต่อ …', 'ยังไม่มีการเชื่อมต่อ', 'Saga – ไม่มีการเชื่อมต่อ'],
+    de: ['Keine Verbindung zum Server', 'Saga ist gerade nicht erreichbar. Prüfe die Internetverbindung – sobald der Server wieder antwortet, geht es weiter.', 'Erneut versuchen', 'Verbinde …', 'Noch keine Verbindung.', 'Saga – Keine Verbindung']
+  };
+  var q = /[?&]lang=([a-z]{2})/.exec(location.search), langs = [q ? q[1] : ''].concat(navigator.languages || [navigator.language || '']);
+  var lang = 'de';
+  for (var i = 0; i < langs.length; i++) { var c = String(langs[i] || '').slice(0, 2).toLowerCase(); if (L[c]) { lang = c; break; } }
+  var X = L[lang], $ = function (id) { return document.getElementById(id); };
+  document.documentElement.lang = lang;
+  $('t').textContent = X[0]; $('d').textContent = X[1]; $('r').textContent = X[2]; document.title = X[5];
+  try { var th = localStorage.getItem('hk-theme'); if (th === 'light' || th === 'dark') document.documentElement.setAttribute('data-theme', th); } catch (e) { /* ohne Speicher: System */ }
+  // Huelle (docs/APP-API-HOST.md): Wiederholen macht die Huelle (sie kennt die Server-Adresse); sonst neu laden
+  function hostPost(m) {
+    try { var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.hk; if (h) { h.postMessage(m); return true; } } catch (e) { /* weiter */ }
+    try { var t = window.__TAURI_INTERNALS__; if (t && t.invoke) { t.invoke('saga_host', { msg: m }); return true; } } catch (e) { /* weiter */ }
+    return false;
+  }
+  var busy = false;
+  function retry() {
+    if (busy) return;
+    busy = true; $('r').disabled = true; $('s').textContent = X[3];
+    setTimeout(function () { busy = false; $('r').disabled = false; $('s').textContent = X[4]; }, 4000);
+    if (!hostPost({ action: 'retry', v: 1 })) location.reload();
+  }
+  $('r').addEventListener('click', retry);
+  window.addEventListener('online', retry);
+  $('r').focus();
+})();
+</script>
+</body>
+</html>
