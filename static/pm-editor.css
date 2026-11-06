@@ -71,7 +71,7 @@
 .page-body .pm-card-h{color:var(--muted);font-size:var(--fs-sm)}
 /* Mehrfachauswahl (Fassade select) */
 .page-body .pm-sel{background:color-mix(in srgb,var(--accent) 16%,transparent)}
-.page-body .pm-conflict{box-shadow:inset 3px 0 0 var(--warn, #e0a030)}
+.page-body .pm-conflict{box-shadow:inset 3px 0 0 var(--warn)}
 .pm-dropcursor{background:var(--accent);height:2px}
 /* Vorschlagsmenues: Slash mit Gruppen (E1), Beschreibung und Kuerzel */
 .pm-pop{max-height:340px;min-width:240px}

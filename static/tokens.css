@@ -7,7 +7,7 @@
    --border fuer Karten/Trennlinien (rein dekorativ). --ok = Gruen fuer Text (--up nur fuer Punkte/Balken).
    Die neun Auswahl-Farben: Grundtoene --hue-* (Notion-Palette), daraus Text --tc-* und Flaechen --bc-*. Etiketten (.opt-*),
    Block-Farben, Widgets und Diagramme verwenden nur diese. Eigene Signalfarben: bedingte Farbe (--rc-*, Zeilen/Karten),
-   Graph-Knoten (--gr-*), Anruf-Buehne (static/calls.css, bewusst immer dunkel). */
+   Graph-Knoten (--gr-*), Code-Hervorhebung (--syn-*), Anruf-Buehne (--cl-*, bewusst immer dunkel). */
 :root{--hue-gray:#9b9a97;--hue-brown:#9f6b53;--hue-orange:#d9730d;--hue-yellow:#dfab01;--hue-green:#0f7b6c;--hue-blue:#0b6e99;--hue-purple:#6940a5;--hue-pink:#ad1a72;--hue-red:#e03e3e;
   /* Bedingte Farbe (Zeilen/Karten, .rc-*): kraeftige Toene fuer 14-16-%-Flaechen und 3-px-Kante */
   --rc-red:#e5534b;--rc-orange:#e0823d;--rc-yellow:#c69026;--rc-green:#46954a;--rc-blue:#4184e4;--rc-purple:#986ee2;--rc-pink:#c9519a;--rc-brown:#9a6b4c;--rc-gray:#8b97a8;
@@ -15,7 +15,9 @@
      16-px-Schutz gegen Zoom am Handy haben eigene Werte. Gewichte nur 400/500/600/700. */
   --fs-xs:.72rem;--fs-sm:.8rem;--fs-base:.875rem;--fs-md:1rem;--fs-lg:1.15rem;--fs-xl:1.3rem;--fs-2xl:1.6rem;
   /* Radien (VD-32/AE-22): Steuerelemente, Karten/Menues/Dialoge, Pillen. Ausnahmen: Avatare 50 %, Sprechblasen, Blaetter. */
-  --r-sm:6px;--r-md:10px;--r-pill:999px}
+  --r-sm:6px;--r-md:10px;--r-pill:999px;
+  /* Anruf-Buehne (static/calls.css): bewusst immer dunkel, unabhaengig vom Farbschema */
+  --cl-green:#2ea043;--cl-red:#da3633;--cl-bg:#0b0f15;--cl-panel:#151c27;--cl-pop:#1a2230;--cl-btn:#2a3444;--cl-line:#3a475b;--cl-edge:#263242;--cl-fg:#e6ebf2;--cl-ok:#56d364;--cl-warn:#e3b341;--cl-err:#f85149;--cl-ink:#111}
 :root{
   --bg:#0f141c;--card:#18202c;--card-h:#202b3a;--fg:#e6ebf2;--muted:#8b97a8;--accent:#c9a45c;--border:#263242;--field:#5e6b80;--code:#1d2633;--info:#58a6ff;
   --up:#3fb950;--ok:#3fb950;--warn:#d29922;--down:#f85149;--unk:#5a6577;--warnbg:#3a2f12;--critbg:#3d1718;--plaque:#eef1f5;
@@ -24,6 +26,7 @@
   --tc-gray:#b0afab;--tc-brown:#c9a08b;--tc-orange:#f0a35e;--tc-yellow:#e6c54f;--tc-green:#4fc4a9;--tc-blue:#62b4e2;--tc-purple:#b893e6;--tc-pink:#e682bb;--tc-red:#f28585;
   --bc-gray:color-mix(in srgb,var(--hue-gray) 30%,transparent);--bc-brown:color-mix(in srgb,var(--hue-brown) 30%,transparent);--bc-orange:color-mix(in srgb,var(--hue-orange) 30%,transparent);--bc-yellow:color-mix(in srgb,var(--hue-yellow) 30%,transparent);--bc-green:color-mix(in srgb,var(--hue-green) 30%,transparent);--bc-blue:color-mix(in srgb,var(--hue-blue) 30%,transparent);--bc-purple:color-mix(in srgb,var(--hue-purple) 30%,transparent);--bc-pink:color-mix(in srgb,var(--hue-pink) 30%,transparent);--bc-red:color-mix(in srgb,var(--hue-red) 30%,transparent);
   --gr-node:#9aa6b8;--gr-db:#b39ddb;--gr-row:#7fb0e0;--gr-tag:#6cc48a;--gr-line:#8b97a8;--gr-line-a:.32;
+  --syn-c:#7d8799;--syn-s:#98c379;--syn-k:#c678dd;--syn-n:#d19a66;--syn-v:#e5c07b;--syn-p:#61afef;--syn-f:#56b6c2;--syn-t:#e5c07b;--syn-o:#56b6c2;--overdue:#ff7b72;
   color-scheme:dark}
 @media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){
   --bg:#fdfcfa;--card:#fff;--card-h:#f6f3ec;--fg:#1d2430;--muted:#5d6878;--accent:#7a5a12;--border:#e7e2d7;--field:#8f8670;--code:#ebe6da;--info:#0b5cad;
@@ -33,6 +36,7 @@
   --tc-gray:#686763;--tc-brown:#8a5a44;--tc-orange:#a65300;--tc-yellow:#7f6200;--tc-green:#0b6e60;--tc-blue:#0b6893;--tc-purple:#6940a5;--tc-pink:#a8186e;--tc-red:#c22a2a;
   --bc-gray:#ebeae7;--bc-brown:#f1e6df;--bc-orange:#fae5d3;--bc-yellow:#f8efc8;--bc-green:#ddedea;--bc-blue:#ddebf1;--bc-purple:#eae4f2;--bc-pink:#f6e0eb;--bc-red:#fbe4e4;
   --gr-node:#6a7383;--gr-db:#7b5cc0;--gr-row:#3d72ad;--gr-tag:#2e8049;--gr-line:#5d6878;--gr-line-a:.3;
+  --syn-c:#8a8f98;--syn-s:#2f7d32;--syn-k:#8e3cbf;--syn-n:#b35a00;--syn-v:#9a6b00;--syn-p:#1f5fbf;--syn-f:#0e7c86;--syn-t:#9a6b00;--syn-o:#0e7c86;--overdue:#b3121f;
   color-scheme:light}}
 :root:where([data-theme=light]){
   --bg:#fdfcfa;--card:#fff;--card-h:#f6f3ec;--fg:#1d2430;--muted:#5d6878;--accent:#7a5a12;--border:#e7e2d7;--field:#8f8670;--code:#ebe6da;--info:#0b5cad;
@@ -42,4 +46,5 @@
   --tc-gray:#686763;--tc-brown:#8a5a44;--tc-orange:#a65300;--tc-yellow:#7f6200;--tc-green:#0b6e60;--tc-blue:#0b6893;--tc-purple:#6940a5;--tc-pink:#a8186e;--tc-red:#c22a2a;
   --bc-gray:#ebeae7;--bc-brown:#f1e6df;--bc-orange:#fae5d3;--bc-yellow:#f8efc8;--bc-green:#ddedea;--bc-blue:#ddebf1;--bc-purple:#eae4f2;--bc-pink:#f6e0eb;--bc-red:#fbe4e4;
   --gr-node:#6a7383;--gr-db:#7b5cc0;--gr-row:#3d72ad;--gr-tag:#2e8049;--gr-line:#5d6878;--gr-line-a:.3;
+  --syn-c:#8a8f98;--syn-s:#2f7d32;--syn-k:#8e3cbf;--syn-n:#b35a00;--syn-v:#9a6b00;--syn-p:#1f5fbf;--syn-f:#0e7c86;--syn-t:#9a6b00;--syn-o:#0e7c86;--overdue:#b3121f;
   color-scheme:light}
