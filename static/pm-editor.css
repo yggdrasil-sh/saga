@@ -190,3 +190,17 @@ body.pm-dragging,body.pm-dragging *{cursor:grabbing !important;user-select:none}
 @media (max-width:760px){ .page-body .pm-blk.cm-has{padding-right:2.6rem} }
 /* T4d: Ansage fuer Bildschirmleser (Block verschoben), unsichtbar */
 .pm-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* Design-Runde 04 - leere Seite als Einladung (UX-15, AE-17; static/pages.js usShow): leise Liste unter der ersten
+   Zeile, absolut positioniert (kein Layoutsprung beim Tippen), nur solange das Dokument leer ist */
+#pg-editor{position:relative}
+.ux-start{position:absolute;top:2.4rem;left:0;z-index:2;display:flex;flex-direction:column;gap:.1rem;max-width:22rem;user-select:none}
+.ux-start-h{font-size:.78rem;color:var(--muted);margin:0 0 .3rem 6px}
+.ux-start-l{display:flex;flex-direction:column;gap:.1rem}
+.ux-start-i{appearance:none;display:flex;align-items:center;gap:.55rem;width:100%;min-height:32px;padding:.3rem 6px;border:0;border-radius:6px;
+  background:transparent;color:var(--muted);font:inherit;font-size:.92rem;text-align:left;cursor:pointer}
+.ux-start-i:hover,.ux-start-i.on{color:var(--fg);background:var(--side-row)}
+.ux-start-i.on{box-shadow:inset 3px 0 0 var(--accent)}
+.ux-start-i:focus-visible{outline:2px solid var(--accent);outline-offset:1px;color:var(--fg)}
+.ux-start-ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+@media (prefers-reduced-motion: no-preference){.ux-start-i{transition:background-color .12s,color .12s}}

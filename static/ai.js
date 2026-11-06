@@ -696,7 +696,11 @@
         sm.appendChild(HK.menuItem(T('Frag deine Seiten'), function () { show('ask'); }, { icon: '?' }));
       } }));
     },
-    open: function (tab) { show(tab); },
+    // Design-Runde 04: optional mit vorbereiteter Frage (leere Seite "Mit … entwerfen"); Schreibmarke ans Ende
+    open: function (tab, q) {
+      show(tab);
+      if (q && A.tab === 'ask') { askTa.value = q; try { askTa.focus(); askTa.setSelectionRange(q.length, q.length); } catch (e) { /* egal */ } }
+    },
     state: function () { return A.st; }
   };
 

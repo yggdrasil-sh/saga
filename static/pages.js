@@ -9204,6 +9204,123 @@
     }
   };
 
+  // --- Design-Runde 04 (UX-15, AE-17): leere Seite als Einladung (nur Tiptap) -----------------------------------------
+  // Unter dem leeren Dokument einer Seite (nicht Datenbank/Eintrag, nur mit Bearbeiten-Recht) eine leise Liste "Einfach
+  // losschreiben – oder starten mit:". Rein visuell: aendert das Dokument nicht, verschwindet beim ersten Zeichen und kommt
+  // wieder, wenn die Seite wieder leer ist. Tastatur im leeren ersten Absatz: Pfeil hoch/runter markiert, Enter startet,
+  // Esc blendet aus; ohne Markierung tippt man normal. Aktionen wie im Menue "+ Neue Seite" bzw. im /-Menue.
+  var US = { box: null, i: -1, off: false, pageId: null, X: null, items: [] };
+  var US_IC = {
+    gal: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    db: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>',
+    imp: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+    ai: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>'
+  };
+  function usPm() {                                   // Kern des Tiptap-Editors (static/pm-editor.js, Erweiterungs-Schnittstelle)
+    if (!US.X && window.HKPmEditor && typeof HKPmEditor.use === 'function' && window.SagaPM) HKPmEditor.use(function (X) { US.X = X; return null; });
+    return US.X && US.X.ed ? US.X.ed() : null;
+  }
+  function usEmpty(ed) {
+    var d = ed.state.doc;
+    if (d.childCount === 0) return true;
+    if (d.childCount !== 1) return false;
+    var f = d.firstChild; return f.type.name === 'paragraph' && f.content.size === 0;
+  }
+  function usWanted() {
+    if (!TIPTAP || EMBED || !S.cur || S.cur.kind === 'database' || !canEdit() || readOnly() || $('pg-editor').hidden) return false;
+    var par = S.cur.parent_id && anyById(S.cur.parent_id);
+    if (par && par.kind === 'database') return false;          // Eintrag einer Datenbank: keine Seiten-Einladung
+    var ed = usPm(); return !!(ed && ed.isEditable && usEmpty(ed));
+  }
+  function usActions() {
+    var out = [], pid = S.cur.id, ai = window.HKAI && HKAI.state && HKAI.state();
+    if (S.gal !== false) out.push({ k: 'gal', t: T('Vorlage aus der Galerie …'), run: function () { openGallery(pid); } });
+    out.push({ k: 'db', t: T('Datenbank (Tabelle, Board …)'), run: usDatabase });
+    if (!remoteId(pid)) out.push({ k: 'imp', t: T('Importieren (Markdown, CSV, Notion)'), run: function () { openImport({ parentId: pid }); } });
+    if (ai) out.push({ k: 'ai', t: T('Mit {name} entwerfen …', { name: (ai.persona && ai.persona.name) || T('Saga KI') }),
+                       run: function () { HKAI.open('ask', T('Entwirf mir eine Seite zu') + ' '); } });
+    return out;
+  }
+  // Datenbank: neue Datenbank unter dieser Seite anlegen und an Stelle des leeren Absatzes einbetten (wie /Datenbank +
+  // "+ Neue Datenbank hier", in einem Schritt); ohne Tiptap-Kern: als Unterseite (wie "+ Neue Seite" -> Datenbank)
+  function usDatabase() {
+    var page = S.cur, ed = usPm();
+    if (!ed || !US.X.nodeOf || !ed.schema.nodes.database) return newDatabase(page.id);
+    api('POST', '/api/notes', { kind: 'database', title: T('Neue Datenbank'), icon: '🗃️', parent_id: page.id })
+      .then(function (d) { return loadList().then(function () { return d; }); })
+      .then(function (d) {
+        var e2 = usPm(); if (!e2 || S.cur !== page || !usEmpty(e2)) return;
+        var nb = US.X.nodeOf({ type: 'database', data: { db: d.id }, id: US.X.newId() }), P2 = schemaOf(e2);
+        var tr = e2.state.tr, doc = tr.doc;
+        tr.replaceWith(0, doc.content.size, [nb, P2.nodes.paragraph.create({ id: US.X.newId() })]);
+        e2.view.dispatch(tr.scrollIntoView());
+      })
+      .catch(function (err) { HK.toast(T('Datenbank nicht angelegt: {err}', { err: err.message })); });
+  }
+  function schemaOf(ed) { return ed.schema || ed.state.schema; }
+  function usMark(i) {
+    US.i = i;
+    US.items.forEach(function (b, j) { b.classList.toggle('on', j === i); b.setAttribute('aria-selected', j === i ? 'true' : 'false'); });
+    if (US.say) US.say.textContent = i >= 0 && US.items[i] ? US.items[i].textContent : '';
+  }
+  function usHide() { if (US.box) { US.box.remove(); US.box = null; US.items = []; US.i = -1; } }
+  function usShow() {
+    if (US.box && US.box.isConnected) return;
+    var acts = usActions(), box = el('div', 'ux-start'), head = el('div', 'ux-start-h', T('Einfach losschreiben – oder starten mit:'));
+    head.id = 'ux-start-h'; box.appendChild(head);
+    var list = el('div', 'ux-start-l'); list.setAttribute('role', 'listbox'); list.setAttribute('aria-labelledby', 'ux-start-h');
+    box.contentEditable = 'false';
+    US.items = acts.map(function (a, j) {
+      var b = el('button', 'ux-start-i'); b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', 'false');
+      b.dataset.k = a.k; b.tabIndex = -1;
+      var ic = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      ic.setAttribute('viewBox', '0 0 24 24'); ic.setAttribute('aria-hidden', 'true'); ic.setAttribute('class', 'ux-start-ic'); ic.innerHTML = US_IC[a.k];
+      b.appendChild(ic); b.appendChild(el('span', null, a.t));
+      b.addEventListener('mousedown', function (e) { e.preventDefault(); });      // Schreibmarke bleibt im Editor
+      b.addEventListener('click', function () { usRun(j); });
+      list.appendChild(b); return b;
+    });
+    box.appendChild(list);
+    US.say = el('div', 'sr-only'); US.say.setAttribute('aria-live', 'polite'); box.appendChild(US.say);
+    US.acts = acts; US.i = -1;
+    $('pg-editor').appendChild(box); US.box = box;
+  }
+  function usRun(j) {
+    var a = US.acts && US.acts[j]; if (!a) return;
+    usMark(-1); a.run();                              // Liste bleibt: abgebrochene Galerie/Import -> Seite weiter leer
+  }
+  function usSync() {
+    US.t = 0;
+    var id = S.cur ? S.cur.id : null;
+    if (id !== US.pageId) { US.pageId = id; US.off = false; usHide(); }
+    var want = usWanted();
+    if (!want) { var ed = usPm(); if (ed && !usEmpty(ed)) US.off = false; usHide(); return; }
+    if (US.off) { usHide(); return; }
+    usShow();
+  }
+  function usSoon() { if (!US.t) US.t = requestAnimationFrame(usSync); }
+  if (TIPTAP && $('pg-editor') && window.MutationObserver) {
+    new MutationObserver(function (ms) {
+      if (US.box && ms.every(function (m) { return US.box.contains(m.target); })) return;      // eigene Aenderungen
+      usSoon();
+    }).observe($('pg-editor'), { childList: true, subtree: true, characterData: true });
+    document.addEventListener('hk-page-open', usSoon);
+    // Tastatur: vor ProseMirror (Capture am Container), nur im leeren ersten Absatz bei sichtbarer Liste
+    $('pg-editor').addEventListener('keydown', function (e) {
+      if (!US.box || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+      var pm = e.target.closest && e.target.closest('.ProseMirror'); if (!pm) return;
+      var n = US.items.length;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation();
+        usMark(e.key === 'ArrowDown' ? (US.i + 1 >= n ? -1 : US.i + 1) : (US.i < 0 ? n - 1 : US.i - 1));
+      } else if (e.key === 'Enter' && US.i >= 0 && !e.shiftKey) {
+        e.preventDefault(); e.stopPropagation(); usRun(US.i);
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation(); US.off = true; usHide();
+      }
+    }, true);
+  }
+
   window.addEventListener('hashchange', function () {
     var id = parseInt(location.hash.slice(1), 10), bm = location.hash.match(/^#-?\d+:(.+)$/);
     if (id && S.cur && S.cur.id === id && bm) { showBlock(decodeURIComponent(bm[1])); return; }

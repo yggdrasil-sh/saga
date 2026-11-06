@@ -61,6 +61,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Abschnittsüberschriften. Kopf wie auf Seiten und Chats (Glocke, Konto in der Seitenleiste); die eigene Suche, die
   zweite Glocke, die Kontobox und die Kürzelzeile entfallen. Admin-Bereich über das Kontomenü, Strg/⌘+K öffnet die
   Schnellsuche, „/“ die Suche der Seitenleiste. Die Websuche (SearXNG) wandert vom alten Suchfeld in die Schnellsuche: Zeile „Im Web suchen: …“ (Enter), die Treffer stehen direkt in der Liste (Host, Ausschnitt, Sofortantwort, „Mehr laden“), Tippen führt zurück zu den Seiten. Barrierefreiheit: Sprunglink „Zum Inhalt“, eine Kopfzeile, H1 „Heute“.
+### Seiten (Tiptap): leere Seite als Einladung
+- Unter einer neuen, leeren Seite steht leise „Einfach losschreiben – oder starten mit:“ mit Vorlage aus der Galerie,
+  Datenbank (neue Datenbank direkt in der Seite), Importieren und – wenn der KI-Assistent an ist – „Mit … entwerfen“.
+  Die Liste verschwindet mit dem ersten Zeichen und kommt wieder, wenn die Seite wieder leer ist; im leeren ersten
+  Absatz wählen ↑/↓ einen Eintrag, Enter startet ihn, Esc blendet aus. Datenbanken, Einträge und Nur-Lesen zeigen nichts.
+
 ### Anrufe (Web): ruhigere Anruf-Bühne
 - Weiche Vignette statt Flächenschwarz, Name etwas größer, Glasknöpfe (Auflegen in Rot mit leichtem Schein),
   Knöpfe oben rahmenlos; Fokusrahmen im Anruf in Gold statt Blau (das Anruffenster bleibt auch im hellen Thema dunkel).
