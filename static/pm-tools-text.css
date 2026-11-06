@@ -13,9 +13,9 @@
 .page-body .pm-b-table.pm-tbl-stretched{margin-inline:calc(-1 * min(6vw, 4rem))}
 .page-body .pm-tbl-bar{position:absolute;top:0;left:2px;display:flex;gap:.25rem;opacity:0;pointer-events:none;transition:opacity .12s}
 .page-body .pm-b-table.pm-tbl-on .pm-tbl-bar{opacity:1;pointer-events:auto}
-.page-body .pm-tbl-b{border:1px solid var(--border);background:var(--card);color:var(--muted);font:inherit;font-size:var(--fs-xs);padding:.08rem .45rem;border-radius:5px;cursor:pointer}
+.page-body .pm-tbl-b{border:1px solid var(--border);background:var(--card);color:var(--muted);font:inherit;font-size:var(--fs-xs);padding:.08rem .45rem;border-radius:var(--r-sm);cursor:pointer}
 .page-body .pm-tbl-b:hover{color:var(--fg);background:var(--card-h)}
-.page-body .pm-tbl-add{position:absolute;border:1px dashed var(--border);background:none;color:var(--muted);font:inherit;cursor:pointer;opacity:0;transition:opacity .12s;border-radius:4px}
+.page-body .pm-tbl-add{position:absolute;border:1px dashed var(--border);background:none;color:var(--muted);font:inherit;cursor:pointer;opacity:0;transition:opacity .12s;border-radius:var(--r-sm)}
 .page-body .pm-b-table:hover .pm-tbl-add{opacity:.8}
 .page-body .pm-tbl-add:hover{opacity:1;color:var(--fg);background:var(--card-h)}
 .page-body .pm-tbl-add:disabled{display:none}
