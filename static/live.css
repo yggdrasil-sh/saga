@@ -114,7 +114,7 @@ body.cm-open .lv-pres-t{display:none}
 /* 2.5: "Antworten" an Chat-Benachrichtigungen (Chat im Seitenpanel, static/chatdock.js); Design-Runde (UX-29/30): Aktionen
    ("Antworten", "Zurueckrufen") erst beim Ueberfahren oder mit dem Fokus in der Zeile - rechts ueber der Zeile, ohne Platz zu nehmen */
 .lv-li.lv-has-act{position:relative}
-.lv-act{position:absolute;right:.6rem;top:50%;transform:translateY(-50%);border:1px solid var(--border);background:var(--card);color:var(--fg);
+.lv-act{position:absolute;right:1.5rem;top:50%;transform:translateY(-50%);border:1px solid var(--border);background:var(--card);color:var(--fg);
   font:inherit;font-size:.78rem;padding:.2rem .65rem;border-radius:999px;cursor:pointer;opacity:0;transition:opacity .12s}
 .lv-li.lv-has-act:hover .lv-act,.lv-li.lv-has-act:focus-within .lv-act{opacity:1}
 .lv-act:hover,.lv-act:focus-visible{border-color:var(--accent);color:var(--accent)}

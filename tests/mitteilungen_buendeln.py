@@ -177,7 +177,16 @@ def main():
     ok(f"... unread_groups {d.get('unread_groups')} (2 Zeilen), unread {d['unread']} (7)", d.get("unread_groups") == 2 and d["unread"] == 7)
     single = [x for x in lst(A)["items"] if x["kind"] == "call.missed"][0]
     ok(f"... ohne Buendeln: alter Satz + media ({single['text']}, {single.get('media')})", single["text"].startswith("Verpasster Anruf von") and single.get("media") in ("audio", "video"))
+    from saga import calls, push                     # noqa: F401 - calls: Ausgabe "Verpasster Anruf" (notify.RENDER)
+    with connect() as c:
+        m = push.message(c, "gb-a", "call.missed", ref=cb[0]["id"], actor="gb-b", sub_kind="ntfy", has_keys=False)
+        m1 = push.message(c, "gb-a", "call.missed", ref=cb[0]["ids"][-1], actor="gb-b", sub_kind="ntfy", has_keys=False)
+    ok(f"Push: verpasste Anrufe je Chat ein tag, Text mit Zahl ({m and m['tag']}, {m and m['body']})",
+       m and m["tag"] == f"missed-{dm_b}" and m["body"] in ("5 verpasste Anrufe", "5 missed calls") and m1 and m1["tag"] == m["tag"])
     req("POST", "/api/notifications/read", A, {"all": True})
+    with connect() as c:
+        m = push.message(c, "gb-a", "call.missed", ref=cb[0]["id"], actor="gb-b", sub_kind="ntfy", has_keys=False)
+    ok(f"... gelesen: wieder der einfache Satz ({m and m['body']})", m and m["body"] in ("Verpasster Anruf", "Missed call"))   # Sprache des Kontos
 
     # --- Kommentare auf derselben Seite ---------------------------------------------------------------------------
     s, pg = req("POST", "/api/notes", A, {"title": "Glocke Seite", "icon": "🔔"})
@@ -197,6 +206,10 @@ def main():
        len(pc) == 1 and pc[0]["count"] == 3 and pc[0]["text"] == "3 neue Kommentare" and pc[0]["title"] == "Glocke Seite"
        and len(pc[0]["ids"]) == 3 and pc[0]["excerpt"] == "Kommentar 2")
     ok(f"... andere Seite eigene Zeile ({po[0]['text'] if po else None})", len(po) == 1 and po[0]["text"] == "Bert Glocke hat deine Seite kommentiert")
+    with connect() as c:
+        m = push.message(c, "gb-a", "comment.new", ref=pc[0]["id"], actor="gb-b", sub_kind="ntfy", has_keys=False) if pc else None
+    ok(f"Push: Kommentar mit thread je Seite (APNs thread-id), tag je Unterhaltung ({m and m.get('thread')}, {m and m['tag']})",
+       m and m.get("thread") == f"note-{pg}" and m["tag"].startswith("thread-"))
     s, r = req("POST", "/api/notifications/read", A, {"ids": pc[0]["ids"] if pc else []})
     ok(f"... Zeile gelesen (alle ids) -> nur noch die andere Seite ({r.get('unread_groups')})", r.get("unread_groups") == 1 and r.get("unread") == 1)
     req("POST", "/api/notifications/read", A, {"all": True})
@@ -237,7 +250,37 @@ def main():
     sys.exit(0 if all(res) else 1)
 
 
-if __name__ == "__main__":
+def seed():
+    """Fuer tests/browser_glocke.js: Konten gb-w* (Passwort PW), Bert 3x/Cora 1x Nachrichten, 5 verpasste Videoanrufe von Bert,
+    3 Kommentare auf einer Seite -> JSON mit Kennungen."""
+    cleanup()
+    auth.save_setting("share_enabled", True)
+    for u, n in (("gb-wa", "Anna Glocke"), ("gb-wb", "Bert Glocke"), ("gb-wc", "Cora Glocke")):
+        auth.create_user(u, PW, n)
+    A, Bk = ck("gb-wa"), ck("gb-wb")
+    dm_b, dm_c = chat("dm", ["gb-wa", "gb-wb"]), chat("dm", ["gb-wa", "gb-wc"])
+    s, pg = req("POST", "/api/notes", A, {"title": "Glocke Seite"})
+    req("PUT", f"/api/notes/{pg['id']}/shares", A, {"type": "user", "target": "gb-wb", "role": "comment"})
+    for i in range(3):
+        req("POST", f"/api/notes/{pg['id']}/comments", Bk, {"block_id": f"b{i}", "body": f"Kommentar {i}"})
+    for _ in range(5):
+        missed("gb-wa", "gb-wb", dm_b)
+    msg("gb-wa", "gb-wb", dm_b, fresh=True)
+    msg("gb-wa", "gb-wc", dm_c, fresh=True)
+    msg("gb-wa", "gb-wb", dm_b, fresh=True)
+    msg("gb-wa", "gb-wb", dm_b, fresh=True)
+    print(json.dumps({"user": "gb-wa", "pass": PW, "dm_b": dm_b, "dm_c": dm_c, "page": pg["id"]}))
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["seed"]:
+    seed()
+elif __name__ == "__main__" and sys.argv[1:2] == ["msg"]:           # msg <an> <von> <chat>: eine (neue) Nachricht
+    msg(sys.argv[2], sys.argv[3], int(sys.argv[4]), fresh=True)
+elif __name__ == "__main__" and sys.argv[1:2] == ["comment"]:       # comment <von> <seite> <block>: ueber den Server (live)
+    req("POST", f"/api/notes/{int(sys.argv[3])}/comments", ck(sys.argv[2]), {"block_id": sys.argv[4], "body": "Noch einer"})
+elif __name__ == "__main__" and sys.argv[1:2] == ["clean"]:
+    cleanup()
+elif __name__ == "__main__":
     try:
         main()
     except Exception:
