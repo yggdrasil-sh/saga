@@ -85,6 +85,11 @@
     if (document.querySelector('.hk-ask') || HK.menuOpen() || !$('pg-modal').hidden) return;
     e.preventDefault(); e.stopPropagation(); hide();
   }, true);
+  // UX-33: Strg/⌘+J oeffnet und schliesst Marin (Fokus ins Fragefeld)
+  document.addEventListener('keydown', function (e) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || (e.key || '').toLowerCase() !== 'j' || !A.st) return;
+    e.preventDefault(); if (panel.hidden) show(); else hide();
+  });
 
   function tabBtn(k, label) {
     var b = el('button', 'ai-tab', label); b.type = 'button'; b.setAttribute('role', 'tab'); b.dataset.k = k;
@@ -105,8 +110,10 @@
     var f = panel.querySelector('textarea, .ai-act'); if (f && !narrow.matches) f.focus();
   }
   function hide() {
+    var back = panel.contains(document.activeElement);       // A11Y-34: Fokus zurueck an den Marin-Knopf, nicht an die Glocke/BODY
     panel.hidden = true; scrim.hidden = true; document.body.classList.remove('ai-open');
     if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (back && btn && btn.offsetParent !== null) btn.focus();
   }
 
   function renderFoot() {
@@ -219,6 +226,7 @@
   }
 
   var chatBox = el('div', 'ai-chat');
+  chatBox.setAttribute('role', 'log'); chatBox.setAttribute('aria-live', 'polite');   // A11Y-33: Antworten werden angesagt
   function renderAsk() {
     body.appendChild(chatBox);
     if (!A.chat.length) {
@@ -307,6 +315,7 @@
   }
   function busy(on) {
     if (!on) A.run = null;
+    chatBox.setAttribute('aria-busy', on ? 'true' : 'false'); resBox.setAttribute('aria-busy', on ? 'true' : 'false');   // fertigen Text einmal lesen
     stopB.hidden = !on; sendB.disabled = on || !askTa.value.trim();
     [].forEach.call(panel.querySelectorAll('.ai-act'), function (b) { b.disabled = on; });
   }
@@ -390,6 +399,7 @@
 
   // --- Diese Seite ---------------------------------------------------------------------------------------------------
   var selLine = el('p', 'ai-sel'), resBox = el('div', 'ai-res');
+  resBox.setAttribute('role', 'log'); resBox.setAttribute('aria-live', 'polite');
   var target = el('select', 'hk-in ai-target'); target.setAttribute('aria-label', T('Zielsprache'));
   function selInfo() {
     var c = cur(), n = A.sel && c && A.sel.page === c.id ? A.sel.ids.length : 0;
@@ -653,7 +663,8 @@
   function paintBtn() {                                // "Frage Marin" mit kleinem Profilbild (schmal: nur das Bild)
     if (!btn) return;
     var lbl = T('Frage {name}', { name: P().name });
-    btn.textContent = ''; btn.title = lbl; btn.setAttribute('aria-label', lbl);
+    btn.textContent = ''; btn.title = lbl + ' (' + (/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘J' : T('Strg') + '+J') + ')'; btn.setAttribute('aria-label', lbl);
+    btn.setAttribute('aria-keyshortcuts', 'Control+J Meta+J');
     btn.appendChild(av(20)); btn.appendChild(el('span', 'ai-btn-t', lbl));
   }
   // Admin aendert Name/Bild oder schaltet die KI ein/aus (Live-Ereignis ai.persona.changed): Status neu laden

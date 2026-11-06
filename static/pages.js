@@ -4204,6 +4204,8 @@
       if (AUTO[t]) { wrap.appendChild(el('span', 'val-auto', stampText(v))); return wrap; }      // automatisch, nur lesbar
       if (t === 'calc') { wrap.appendChild(v == null ? el('span', 'val-empty', '–') : numNode(prop, v)); wrap.title = T('Berechnet – Einstellung im Spaltenkopf'); return wrap; }
       if (isFx(prop)) { wrap.appendChild(fxNode(prop, row) || el('span', 'val-empty', '–')); if (!wrap.title) wrap.title = t === 'formula' ? T('Formel – bearbeiten im Spaltenkopf') : T('Rollup – Einstellung im Spaltenkopf'); return wrap; }
+      // A11Y-19: der zugaengliche Name nennt Spalte UND Wert ("Status: In Arbeit") - vorher ueberschrieb "Status" den Wert
+      function valName(btn, name) { var tx = (btn.textContent || '').replace(/\s+/g, ' ').trim(); btn.setAttribute('aria-label', name + ': ' + (tx || T('Leer'))); }
       if (t === 'checkbox') {
         var cb = el('input'); cb.type = 'checkbox'; cb.checked = !!v; cb.setAttribute('aria-label', prop.name);
         cb.addEventListener('change', function () { setProp(row, prop.id, cb.checked).then(onDone); });
@@ -4214,13 +4216,13 @@
         if ((v || []).length) pb.appendChild(t === 'person' ? personChips(v) : fileChips(v, false)); else pb.appendChild(el('span', 'val-empty', T('Leer')));
         if ((DB.unsupported || []).indexOf(t) >= 0) { pb.disabled = true; pb.title = T('Auf dem Server dieser Datenbank nicht verfügbar'); }
         pb.addEventListener('click', function () { (t === 'person' ? personMenu : filesMenu)(pb, prop, row, onDone); });
-        wrap.appendChild(pb); return wrap;
+        valName(pb, prop.name); wrap.appendChild(pb); return wrap;
       }
       if (t === 'relation') {
         var rb = el('button', 'val-btn'); rb.type = 'button'; rb.setAttribute('aria-label', prop.name);
         if ((v || []).some(function (id) { return byId(id); })) rb.appendChild(relChips(v, false)); else rb.appendChild(el('span', 'val-empty', T('Leer')));
         rb.addEventListener('click', function () { relMenu(rb, prop, row, onDone); });
-        wrap.appendChild(rb); return wrap;
+        valName(rb, prop.name); wrap.appendChild(rb); return wrap;
       }
       if (t === 'select' || t === 'multi_select') {
         var b = el('button', 'val-btn'); b.type = 'button'; b.setAttribute('aria-label', prop.name);
@@ -4228,13 +4230,13 @@
         ids.forEach(function (id) { var o = (prop.options || []).find(function (x) { return x.id === id; }); if (o) b.appendChild(optChip(o)); });
         if (!ids.length) b.appendChild(el('span', 'val-empty', T('Leer')));
         b.addEventListener('click', function () { optionMenu(b, prop, row, onDone); });
-        wrap.appendChild(b); return wrap;
+        valName(b, prop.name); wrap.appendChild(b); return wrap;
       }
       if (t === 'number' && v != null && (prop.fmt || prop.show)) {        // formatierte Anzeige, Klick = bearbeiten
         var nb = el('button', 'val-btn val-numbtn'); nb.type = 'button'; nb.setAttribute('aria-label', T('{name} bearbeiten', { name: prop.name }));
         nb.appendChild(numNode(prop, v));
         nb.addEventListener('click', function () { wrap.textContent = ''; buildInput(); var i = wrap.querySelector('input'); if (i) { i.focus(); i.select(); } });
-        wrap.appendChild(nb); return wrap;
+        valName(nb, prop.name); wrap.appendChild(nb); return wrap;
       }
       // Datum in der Sprache der Oberflaeche anzeigen (Nr. 150: <input type=date> zeigt das Format des Browsers, z. B.
       // mm/dd/yyyy in einer deutschen Oberflaeche); Klick = bearbeiten wie bei Zahlen
@@ -4242,7 +4244,7 @@
         var dtb = el('button', 'val-btn val-datebtn'); dtb.type = 'button'; dtb.setAttribute('aria-label', T('{name} bearbeiten', { name: prop.name }));
         if (v) { dtb.textContent = dateText(v); dtb.title = dateTitle(v); } else dtb.appendChild(el('span', 'val-empty', T('Leer')));
         dtb.addEventListener('click', function () { dateMenu(dtb, prop, row, onDone); });
-        wrap.appendChild(dtb); return wrap;
+        valName(dtb, prop.name); wrap.appendChild(dtb); return wrap;
       }
       if (t === 'date' && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
         var dbt = el('button', 'val-btn val-datebtn', fDate2.format(new Date(v + 'T00:00:00'))); dbt.type = 'button';
@@ -4251,7 +4253,7 @@
           wrap.textContent = ''; buildInput(); var i = wrap.querySelector('input');
           if (i) { i.focus(); try { if (i.showPicker) i.showPicker(); } catch (e) { /* aeltere Browser */ } }
         });
-        wrap.appendChild(dbt); return wrap;
+        valName(dbt, prop.name); wrap.appendChild(dbt); return wrap;
       }
       buildInput(); return wrap;
       function buildInput() {
@@ -7576,7 +7578,9 @@
           row.appendChild(bd);
         }
         if (t.repeat) row.appendChild(el('span', 'etk-meta', '↻'));
-        if (t.due) row.appendChild(el('span', 'etk-meta' + (t.overdue ? ' overdue' : ''), fTaskDue.format(new Date(t.due + 'T00:00:00')) + (t.time ? ' ' + t.time : '')));
+        if (t.due) { var dm = el('span', 'etk-meta' + (t.overdue ? ' overdue' : ''), fTaskDue.format(new Date(t.due + 'T00:00:00')) + (t.time ? ' ' + t.time : ''));
+          if (t.overdue) dm.insertBefore(el('span', 'sr-only', T('Überfällig') + ': '), dm.firstChild);   // A11Y-03: nicht nur ueber die Farbe
+          row.appendChild(dm); }
         ul.appendChild(row);
       });
       if (!open.length) ul.appendChild(el('div', 'nt-empty', T('Alles erledigt 🎉')));

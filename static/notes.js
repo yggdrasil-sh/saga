@@ -15,6 +15,9 @@
     return { text: fDue.format(d), cls: iso < t ? 'overdue' : '' };
   }
 
+  // A11Y-03: "Ueberfaellig" nicht nur ueber die Farbe - Bildschirmleser hoeren es, sichtbar steht ein Warnzeichen davor (CSS)
+  function overdueSr(e) { if (e.classList.contains('overdue')) e.insertBefore(el('span', 'sr-only', T('Überfällig') + ': '), e.firstChild); return e; }
+
   var panel = $('nt');
   if (!panel) return;
   var state = { tasks: { open: [], done: [], items: [], sources: [] }, showDone: false };
@@ -154,7 +157,7 @@
       if (d || task.repeat || isRow(task)) {
         var m = el('span', 'rail-meta');
         if (isRow(task)) m.appendChild(TS.badge(task, state.tasks));
-        if (d) m.appendChild(el('span', 'task-due ' + d.cls, d.text + (task.time ? ' ' + task.time : '')));
+        if (d) m.appendChild(overdueSr(el('span', 'task-due ' + d.cls, d.text + (task.time ? ' ' + task.time : ''))));
         if (task.repeat) m.appendChild(el('span', 'rep', '↻'));
         main.appendChild(m);
       }
@@ -174,7 +177,7 @@
     var info = el('span', 'task-info');
     if (isRow(task)) info.appendChild(TS.badge(task, state.tasks));
     if (task.repeat) info.appendChild(el('span', 'rep', '↻ ' + REP[task.repeat]));
-    if (d) info.appendChild(el('span', 'task-due' + (!task.done && d.cls ? ' ' + d.cls : ''), d.text + (task.time ? ' ' + task.time : '')));
+    if (d) info.appendChild(overdueSr(el('span', 'task-due' + (!task.done && d.cls ? ' ' + d.cls : ''), d.text + (task.time ? ' ' + task.time : ''))));
     li.appendChild(info);
     var more = el('button', 'task-more', '⋯'); more.type = 'button';
     more.setAttribute('aria-label', T('Optionen für {text}', { text: task.text })); more.setAttribute('aria-haspopup', 'menu');

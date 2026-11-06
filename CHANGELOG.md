@@ -41,6 +41,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   gibt es nur noch einen Kopf, die Eingabe ist breiter, Senden ist ein runder Knopf, die Safe-Area unten zählt nicht
   mehr doppelt; der Status („online“) ist Text statt Pille. Häkchen, Kalender-Pfeile und Chips haben größere
   Trefferflächen ohne Layoutsprung, Seitenleiste und Menüs auf Touch-Geräten (auch Tablets) 44-px-Zeilen.
+- **Barrierefreiheit und Bedienung:** „Kommentieren“ wird nicht mehr von Chat- und Marin-Knopf verdeckt. Platzhalter,
+  Kalendertage anderer Monate und Zeitstempel in eigenen Chat-Blasen erreichen mindestens 4,5:1; die gewählte Zeile im
+  /-Menü, in der Schnellsuche und bei @ hat zusätzlich einen Goldbalken. „Überfällig“ steht mit Warnzeichen und ohne rote
+  Pillen da und wird vom Bildschirmleser genannt. Datenbank-Zellen nennen Spalte und Wert („Status: In Arbeit“ statt nur
+  „Status“). Marins Antworten werden angesagt; beim Schließen geht der Fokus an den Marin-Knopf zurück; **Strg/⌘+J**
+  öffnet und schließt Marin.
 
 ### Galerie: Vorlage „Familien-Wiki“
 - Neue Vorlage (Persönlich) für die eigene Familie: Datenbank **„Familienmitglieder“** mit Generation, Spitzname,

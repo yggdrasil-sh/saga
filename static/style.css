@@ -2821,3 +2821,18 @@ body:is(.notes-page,.has-side).side-hidden:not(.embed) .pages-side{box-shadow:va
   :is(body.notes-page,body.has-side) .pages-side .pg-foot-btn{min-height:44px}
   .menu .menu-item{min-height:44px}
 }
+
+/* ===== Design-Runde 10/14: Bedienung und Kontrast ================================================================
+   10 (UX-23): Chat- und Marin-Knopf lagen ueber "Kommentieren" - sie weichen dem Kommentar-Panel */
+body.cm-open .cd-btn,body.cm-open .np-head .ai-btn{visibility:hidden!important}
+/* 14 (A11Y-01/16): Platzhalter nicht im Browsergrau (3,4:1), sondern --muted */
+::placeholder{color:var(--muted);opacity:1}
+.page-title::placeholder{color:color-mix(in srgb,var(--muted) 80%,transparent)}
+/* A11Y-02: aktive Option im /-Menue, in der Schnellsuche und bei @ - Flaeche UND Goldbalken (vorher 1,08:1) */
+.pm-pop [aria-selected="true"],.hk-at .on,.picker-item.on{background:color-mix(in srgb,var(--accent) 14%,var(--card))!important;box-shadow:inset 3px 0 0 var(--accent)}
+/* A11Y-23: Kalendertage anderer Monate lesbar (vorher 1,87:1) */
+.cal-day.other .cal-num{opacity:1;color:var(--muted);font-style:italic}
+/* A11Y-03/AE-04: "Ueberfaellig" mit Warnzeichen und >= 4,5:1, ohne rote Pillenwand; Bildschirmleser hoeren es (sr-only im JS) */
+.task-due.overdue,.etk-meta.overdue{color:#b3121f;background:transparent;font-weight:500}
+@media (prefers-color-scheme: dark){.task-due.overdue,.etk-meta.overdue{color:#ff7b72}}
+.task-due.overdue::before,.etk-meta.overdue::before{content:"⚠\FE0E" / "";margin-right:.25rem;font-weight:600}
