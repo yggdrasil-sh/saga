@@ -3042,6 +3042,13 @@
     openSig(hornPeer(R, x), d).then(function (b) {
       if (!b || !live(R)) return;
       var F = window.SagaFrameE2E;
+      // Horn-Fix: Mesh-Signal (Angebot/ICE/Antwort) eines Geraets, das schon auf direkt gewechselt hat - call.topo kam hier
+      // noch nicht an: jetzt wechseln und das Signal ueber den Mesh-Weg zustellen
+      if ((b.t === 'offer' || b.t === 'answer' || b.t === 'ice') && feat('horn_direct1')) {
+        if (R.horn) hornToMesh(R, null);
+        if (!R.horn) sigRoute(R, d);
+        return;
+      }
       if (b.t === 'fkey') {
         var k = F.parseFkey(b); if (!k) return;
         H.X.peer(d.from_device, k.n, k.key, k.s).then(function (okk) { if (okk) hornAck(R, d.from_device, k.n, k.s, true); });
