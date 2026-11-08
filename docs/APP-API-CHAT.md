@@ -380,3 +380,23 @@ bzw. Gruppeninfo → „Medien, Dateien, Links“ (Reiter Medien/Dateien/Links, 
 
 Entwürfe je Chat bleiben auf dem Gerät (Web: `localStorage` `saga-chat-draft:<konto>:<chat>`, beim Abmelden gelöscht), nie
 auf dem Server. Emoji-Auswahl im Eingabefeld = dieselbe Auswahl wie bei Reaktionen.
+
+## 10. Chat-Geräte: Grenze beim Koppeln (2.5)
+
+Entscheidung des Maintainers (8.11.2026): Mit 10 aktiven Chat-Geräten (`DEVICES_MAX`) blieb ein neues Gerät nach
+„Mit anderem Gerät bestätigen“ im Bestätigungsschritt hängen – die Bestätigung scheiterte, die Anfrage blieb `pending`.
+Der Server meldet die Grenze jetzt überall gleich:
+
+- `GET /api/chat/me` → `limits.devices_max` (10) und neu `limits.devices_count` (aktive Geräte). Vor dem Koppeln prüfen
+  und gleich den Hinweis zeigen. Jedes Gerät hat `last_seen` (Zeitpunkt der letzten Abfrage mit diesem Gerät) – die
+  Weboberfläche markiert Geräte, die seit über 60 Tagen nicht genutzt wurden.
+- `POST /api/chat/link` (neues Gerät stellt die Anfrage), `POST /api/chat/devices` (Wiederherstellungsschlüssel) und
+  `POST /api/chat/link/{id}` (vorhandenes Gerät bestätigt) an der Grenze:
+  `409 {"error": "Du hast schon 10 Chat-Geräte. Entferne ein altes Gerät unter „Chats & Geräte“, dann klappt es.",
+  "code": "device_limit", "max": 10, "count": 10}` (`error` in der Sprache der Anfrage).
+- Scheitert die Bestätigung an der Grenze (sie wurde erst während der Anfrage erreicht), verschwindet die Anfrage aus
+  `GET /api/chat/link`, Live `chat.link {id, failed: true, code: "device_limit"}` geht an die eigenen Geräte, und das neue
+  Gerät bekommt beim nächsten `GET /api/chat/link/{id}` **einmal** `{"state": "failed", "code": "device_limit", "max",
+  "count", "error"}` (danach `gone`). Apps: bei `failed` das Warten beenden und auf „Chats & Geräte“ verweisen;
+  unbekannte `state`-Werte wie `expired`/`gone` behandeln (nicht weiter warten).
+- Das bestätigende Gerät zeigt die 409-Meldung (`error`) an, statt sie still zu verwerfen.

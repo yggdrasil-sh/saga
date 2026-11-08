@@ -294,8 +294,27 @@
   }
 
   // --- Neues Geraet: mit anderem Geraet koppeln oder Wiederherstellungsschluessel --------------------------------
+  // 2.5 (Entscheidung des Maintainers 8.11.): Geraetegrenze erreicht (Server: code device_limit, max, count) - klar sagen,
+  // wo man ein altes Geraet entfernt, statt im Bestaetigungsschritt zu haengen
+  function isLimit(x) { return !!(x && (x.code === 'device_limit' || (x.data && x.data.code === 'device_limit'))); }
+  function limitText(x) {
+    var d = (x && x.data) || x || {}, me = (S.me && S.me.limits) || {};
+    return T('Du hast schon {n} Chat-Geräte. Entferne ein altes Gerät unter „Chats & Geräte“, dann klappt es.', { n: d.count || me.devices_count || me.devices_max || 10 });
+  }
+  function limitHint(box, x, back) {
+    var p = el('div', 'hk-status err ct-limit');
+    p.appendChild(el('p', null, limitText(x)));
+    var bar = el('div', 'hk-actions');
+    bar.appendChild(btn(T('Chats & Geräte öffnen'), 'btn-primary ct-limit-go', settings));
+    if (back) bar.appendChild(btn(T('Zurück'), '', back));
+    p.appendChild(bar);
+    box.appendChild(p);
+    return p;
+  }
   function newDevice() {
     var box = overlay(T('Chats auf diesem Gerät'), { close: false });
+    var lim = S.me && S.me.limits;
+    if (lim && lim.devices_max && lim.devices_count >= lim.devices_max) limitHint(box, { count: lim.devices_count });
     box.appendChild(el('p', null, T('Deine Chats sind Ende-zu-Ende-verschlüsselt. Damit dieses Gerät sie lesen kann, braucht es deine Schlüssel – wähle einen Weg:')));
     var a = el('div', 'ct-choice');
     var b1 = btn(T('Mit anderem Gerät bestätigen'), 'btn-primary ct-link-go', linkStart);
@@ -333,7 +352,10 @@
         api('POST', '/api/chat/devices', { id: d.id, name: d.name, enc_pub: b64(d.enc_pk), sign_pub: b64(d.sign_pk), sig: b64(X.deviceSig(ME, b.ident_sk, d)) })
           .then(function () { return saveKeys({ v: 1, device: d, ident_sk: b.ident_sk, ident_pk: b.ident_pk, backup_sk: b.backup_sk, backup_pk: b.backup_pk }); })
           .then(function () { closeOverlay(); HK.toast(T('Dieses Gerät ist jetzt für Chats eingerichtet.')); ready(true); })
-          .catch(function (e) { st.className = 'hk-status err'; st.textContent = e.message; busy(go, false, T('Entsperren')); });
+          .catch(function (e) {
+            if (isLimit(e)) { st.textContent = ''; st.className = 'hk-status'; limitHint(box, e); busy(go, false, T('Entsperren')); return; }
+            st.className = 'hk-status err'; st.textContent = e.message; busy(go, false, T('Entsperren'));
+          });
       }, 30);
     }
     go.addEventListener('click', run);
@@ -353,7 +375,10 @@
       var bar = el('div', 'hk-actions'); box.appendChild(bar);
       bar.appendChild(btn(T('Abbrechen'), '', function () { stopLink(); api('DELETE', '/api/chat/link/' + r.id).catch(function () {}); newDevice(); }));
       S.linkWait = { id: r.id, d: d, t: setInterval(linkPoll, 3000) };
-    }).catch(function (e) { st.className = 'hk-status err'; st.textContent = e.message; box.appendChild(btn(T('Zurück'), '', newDevice)); });
+    }).catch(function (e) {
+      if (isLimit(e)) { st.textContent = ''; limitHint(box, e, newDevice); return; }
+      st.className = 'hk-status err'; st.textContent = e.message; box.appendChild(btn(T('Zurück'), '', newDevice));
+    });
   }
   function stopLink() { if (S.linkWait) { clearInterval(S.linkWait.t); S.linkWait = null; } }
   function linkPoll() {
@@ -363,6 +388,11 @@
       w.busy = false;
       if (r.state === 'pending') return;
       stopLink();
+      if (r.state === 'failed' && isLimit(r)) {          // am anderen Geraet bestaetigt, aber die Grenze ist erreicht
+        var fb = overlay(T('Mit anderem Gerät bestätigen'), { close: false });
+        limitHint(fb, r, newDevice);
+        return;
+      }
       if (r.state !== 'approved') { HK.toast(T('Die Anfrage ist abgelaufen oder wurde abgelehnt.')); newDevice(); return; }
       var b = X.parsePlain(X.sealOpen(ub(r.sealed), w.d.enc_pk, w.d.enc_sk));
       if (!eqB(b.ident_pk, ub(S.me.identity.ident_pub, 32))) throw new Error(T('Die übertragenen Schlüssel passen nicht zu deinem Konto.'));
@@ -391,7 +421,10 @@
         var d = { id: l.device_id, enc_pk: ub(l.enc_pub, 32), sign_pk: ub(l.sign_pub, 32) };
         api('POST', '/api/chat/link/' + l.id, { sig: b64(X.deviceSig(ME, K.ident_sk, d)), sealed: b64(X.seal(X.bundlePlain(K.ident_sk, K.backup_sk), d.enc_pk)) })
           .then(function () { closeOverlay(); HK.toast(T('Gerät bestätigt.')); })
-          .catch(function (err) { st.className = 'hk-status err'; st.textContent = err.message; busy(e.target, false); });
+          .catch(function (err) {
+            if (isLimit(err)) { st.textContent = ''; st.className = 'hk-status'; bar.hidden = true; limitHint(box, err); return; }
+            st.className = 'hk-status err'; st.textContent = err.message; busy(e.target, false);
+          });
       }));
     }).catch(function () {});
   }
@@ -402,10 +435,18 @@
     var list = el('ul', 'ct-devs'); box.appendChild(el('h3', null, T('Geräte mit Zugriff auf deine Chats'))); box.appendChild(list);
     api('GET', '/api/chat/me?device=' + q(dev())).then(function (me) {
       S.me = me;
-      me.devices.filter(function (d) { return !d.revoked; }).forEach(function (d) {
+      var act = me.devices.filter(function (d) { return !d.revoked; }), lim = me.limits || {};
+      if (lim.devices_max) {                             // 2.5: "8 von 10 Geräten" - an der Grenze rot
+        var cnt = el('p', 'hk-hint ct-dev-count' + (act.length >= lim.devices_max ? ' err' : ''),
+          T('{n} von {max} Geräten', { n: act.length, max: lim.devices_max }) + (act.length >= lim.devices_max ? ' – ' + T('Entferne ein altes Gerät, um ein neues hinzuzufügen.') : ''));
+        list.parentNode.insertBefore(cnt, list);
+      }
+      var old = Date.now() / 1000 - 60 * 86400;
+      act.forEach(function (d) {
         var li = el('li', 'ct-dev'), t = el('div', 'ct-dev-t');
         t.appendChild(el('b', null, d.name || T('Unbekanntes Gerät')));
         if (d.current) t.appendChild(el('span', 'ct-chip', T('dieses Gerät')));
+        else if ((d.last_seen || d.created) < old) { li.classList.add('ct-dev-old'); t.appendChild(el('span', 'ct-chip ct-chip-old', T('seit über 60 Tagen nicht genutzt'))); }
         t.appendChild(el('span', 'hk-hint', T('angemeldet {when}', { when: fDay.format(new Date(d.created * 1000)) }) +
           (d.last_seen ? ' · ' + T('zuletzt {when}', { when: HK.relTime(d.last_seen - Date.now() / 1000) }) : '')));
         li.appendChild(t);
@@ -422,6 +463,11 @@
         list.appendChild(li);
       });
     }).catch(function (e) { list.appendChild(el('li', 'hk-status err', e.message)); });
+    if (!K) {                                            // 2.5: von der Einrichtung hierher (Geraetegrenze) - danach weiter
+      var nb = el('div', 'hk-actions'); nb.appendChild(btn(T('Dieses Gerät einrichten'), 'btn-primary ct-dev-setup', newDevice));
+      box.appendChild(nb);
+      return;
+    }
     box.appendChild(el('h3', null, T('Wiederherstellungsschlüssel')));
     box.appendChild(el('p', 'hk-hint', T('Verloren oder womöglich gesehen? Erzeuge einen neuen – der alte gilt dann nicht mehr. Deine Schlüssel und Nachrichten bleiben gleich.')));
     box.appendChild(btn(T('Neuen Wiederherstellungsschlüssel erzeugen'), 'ct-rk-new', function () {

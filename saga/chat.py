@@ -725,7 +725,7 @@ def api_me(request: Request, device: str = ""):
     with _db() as c:
         ident = _identity(c, uid)
         devs = _devices(c, [uid], active=False).get(uid, [])
-        n_link = c.execute("SELECT COUNT(*) FROM chat_link WHERE uid=? AND approved IS NULL AND expires>?", (uid, time.time())).fetchone()[0]
+        n_link = c.execute("SELECT COUNT(*) FROM chat_link WHERE uid=? AND approved IS NULL AND error IS NULL AND expires>?", (uid, time.time())).fetchone()[0]
         nm = names(c, [uid])
         used = used_bytes(c, uid)
         extra = STATUS_ME(c, uid) if STATUS_ME is not None else {}
@@ -736,11 +736,28 @@ def api_me(request: Request, device: str = ""):
                      "sign_pub": d["sign_pub"], "sig": d["sig"]} for d in devs],
         "links": n_link, "reauth": _reauth_need(request, uid), "reauth_methods": mfa.methods(uid, request),
         "limits": {"msg_max": MSG_MAX, "file_max": FILE_MAX, "members_max": MEMBERS_MAX, "devices_max": DEVICES_MAX,
+                   "devices_count": sum(1 for d in devs if not d["revoked_at"]),       # 2.5: Grenze vor dem Koppeln pruefen
                    "files_per_msg": FILES_PER_MSG, "file_ids_per_msg": FILE_IDS_PER_MSG, "retention_max": retention_max(), "retentions": list(RETENTIONS),
                    # 2.4 (Videos im Chat): saga-file/v2 mit fortsetzbarem Upload; video_max = groesste Datei (Klartext-Bytes),
                    # upload_part = hoechstens je PUT, file2_cs = Blockgroesse, quota/used = Chat-Speicher des Kontos (Bytes)
                    "file2": True, "video_max": video_max(), "upload_part": UPLOAD_PART, "file2_cs": file_v2.CS,
                    "uploads_max": UPLOADS_PAR, "quota": quota(), "used": used}})
+
+
+def _device_count(c, uid):
+    return c.execute("SELECT COUNT(*) FROM chat_device WHERE uid=? AND revoked_at IS NULL", (uid,)).fetchone()[0]
+
+
+def _limit(n):
+    """Antwort-Inhalt "Geraetegrenze erreicht" (2.5, Entscheidung des Maintainers 8.11.): Apps werten code/max/count aus."""
+    return {"error": t("Du hast schon {n} Chat-Geräte. Entferne ein altes Gerät unter „Chats & Geräte“, dann klappt es.", n=n),
+            "code": "device_limit", "max": DEVICES_MAX, "count": n}
+
+
+def _limit_err(c, uid):
+    """-> 409 {error, code: device_limit, max, count}, wenn kein weiteres Geraet mehr passt, sonst None."""
+    n = _device_count(c, uid)
+    return _no_store(_limit(n), 409) if n >= DEVICES_MAX else None
 
 
 def _add_device(c, uid, ident_pub, d):
@@ -749,8 +766,9 @@ def _add_device(c, uid, ident_pub, d):
         return _bad(t("Ungültige Signatur des Geräts."))
     if c.execute("SELECT 1 FROM chat_device WHERE id=?", (d["id"],)).fetchone():
         return _bad(t("Dieses Gerät ist schon angemeldet."), 409)
-    if c.execute("SELECT COUNT(*) FROM chat_device WHERE uid=? AND revoked_at IS NULL", (uid,)).fetchone()[0] >= DEVICES_MAX:
-        return _bad(t("Höchstens {n} Geräte je Konto – bitte ein altes Gerät entfernen.", n=DEVICES_MAX), 409)
+    e = _limit_err(c, uid)
+    if e is not None:
+        return e
     c.execute("INSERT INTO chat_device (id, uid, name, enc_pub, sign_pub, sig, created, last_seen) VALUES (?,?,?,?,?,?,?,?)",
               (d["id"], uid, d["name"], d["enc_pub"], d["sign_pub"], d["sig"], time.time(), time.time()))
     bus.fire("chat.keys.changed", c, uid=uid)          # 2.3 (saga.fed_keys): verbundene Instanzen holen die Schluessel neu
@@ -926,11 +944,14 @@ def api_device_delete(did: str, request: Request):
 # 2. vorhandenes Geraet: GET /api/chat/link (offene Anfragen), zeigt denselben Code; nach Bestaetigung
 #    POST /api/chat/link/{id} {sig (Geraete-Zertifikat), sealed = crypto_box_seal(buendel_klartext, enc_pk des neuen Geraets)}
 # 3. neues Geraet: GET /api/chat/link/{id} -> {state: approved, sealed} (einmalig), oeffnet das Buendel.
+# 2.5: Geraetegrenze (DEVICES_MAX) - schon beim Anlegen 409 {code: device_limit, max, count}; scheitert die Bestaetigung
+# daran (Grenze inzwischen erreicht), merkt sich die Anfrage den Grund (error) und das neue Geraet bekommt beim Abholen
+# {state: failed, code, max, count, error} statt endlos "pending".
 def _link_row(r):
-    return dict(zip(("id", "device_id", "name", "enc_pub", "sign_pub", "created", "expires", "sealed", "approved"), r))
+    return dict(zip(("id", "device_id", "name", "enc_pub", "sign_pub", "created", "expires", "sealed", "approved", "error"), r))
 
 
-L_COLS = "id, device_id, name, enc_pub, sign_pub, created, expires, sealed, approved"
+L_COLS = "id, device_id, name, enc_pub, sign_pub, created, expires, sealed, approved, error"
 
 
 @router.post("/api/chat/link")
@@ -950,6 +971,9 @@ async def api_link_new(request: Request):
             return _bad(t("Zu viele offene Anfragen – bitte kurz warten."), 429)
         if c.execute("SELECT 1 FROM chat_device WHERE id=?", (d["id"],)).fetchone():
             return _bad(t("Dieses Gerät ist schon angemeldet."), 409)
+        e = _limit_err(c, uid)
+        if e is not None:
+            return e
         lid = secrets.token_hex(16)
         c.execute("INSERT INTO chat_link (id, uid, device_id, name, enc_pub, sign_pub, created, expires) VALUES (?,?,?,?,?,?,?,?)",
                   (lid, uid, d["id"], d["name"], d["enc_pub"], d["sign_pub"], now, now + LINK_TTL))
@@ -963,9 +987,9 @@ def api_link_list(request: Request):
     if err:
         return err
     with _db() as c:
-        rows = c.execute(f"SELECT {L_COLS} FROM chat_link WHERE uid=? AND approved IS NULL AND expires>? ORDER BY created",
+        rows = c.execute(f"SELECT {L_COLS} FROM chat_link WHERE uid=? AND approved IS NULL AND error IS NULL AND expires>? ORDER BY created",
                          (uid, time.time())).fetchall()
-    return _no_store({"links": [{k: v for k, v in _link_row(r).items() if k not in ("sealed", "approved")} for r in rows]})
+    return _no_store({"links": [{k: v for k, v in _link_row(r).items() if k not in ("sealed", "approved", "error")} for r in rows]})
 
 
 @router.get("/api/chat/link/{lid}")
@@ -981,6 +1005,9 @@ def api_link_get(lid: str, request: Request):
         if d["approved"]:
             c.execute("DELETE FROM chat_link WHERE id=?", (lid,))          # nur einmal abholbar
             return _no_store({"state": "approved", "sealed": d["sealed"]})
+        if d["error"]:
+            c.execute("DELETE FROM chat_link WHERE id=?", (lid,))          # Bestaetigung gescheitert (2.5): Grund melden
+            return _no_store({"state": "failed", **(_limit(_device_count(c, uid)) if d["error"] == "device_limit" else {"code": d["error"]})})
         if d["expires"] < time.time():
             c.execute("DELETE FROM chat_link WHERE id=?", (lid,))
             return _no_store({"state": "expired"})
@@ -997,13 +1024,18 @@ async def api_link_approve(lid: str, request: Request):
     if b64d(sealed, maxlen=2048) is None:
         return _bad(t("ungültige Angabe"))
     with _db() as c, c:
-        r = c.execute(f"SELECT {L_COLS} FROM chat_link WHERE id=? AND uid=? AND approved IS NULL AND expires>?", (lid, uid, time.time())).fetchone()
+        r = c.execute(f"SELECT {L_COLS} FROM chat_link WHERE id=? AND uid=? AND approved IS NULL AND error IS NULL AND expires>?", (lid, uid, time.time())).fetchone()
         ident = _identity(c, uid)
         if not r or not ident:
             return _bad("not found", 404)
         d = _link_row(r)
         e = _add_device(c, uid, ident["ident_pub"], {"id": d["device_id"], "name": d["name"], "enc_pub": d["enc_pub"],
                                                      "sign_pub": d["sign_pub"], "sig": b.get("sig")})
+        if e is not None and getattr(e, "status_code", 0) == 409 and _device_count(c, uid) >= DEVICES_MAX:
+            # 2.5: Grenze erreicht - das neue Geraet erfaehrt es beim naechsten Abholen (und live), statt weiter zu warten
+            c.execute("UPDATE chat_link SET error='device_limit' WHERE id=?", (lid,))
+            _direct(c, [uid], "chat.link", {"id": lid, "failed": True, "code": "device_limit"})
+            return e
         if e is not None:
             return e
         c.execute("UPDATE chat_link SET sealed=?, approved=? WHERE id=?", (sealed, time.time(), lid))

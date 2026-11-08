@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Chat: Gerätegrenze beim Koppeln
+- Mit 10 Chat-Geräten blieb ein neues Gerät nach „Mit anderem Gerät bestätigen“ hängen. Jetzt prüft der Server die Grenze
+  schon beim Anlegen der Anfrage und meldet sie überall gleich (`409 {code: "device_limit", max, count}`); scheitert erst
+  die Bestätigung daran, bekommt das neue Gerät `state: "failed"` statt endlos zu warten.
+- Web: verständlicher Hinweis mit Knopf „Chats & Geräte öffnen“ (auch schon beim Öffnen der Einrichtung); dort
+  „8 von 10 Geräten“ und eine Markierung für Geräte, die seit über 60 Tagen nicht genutzt wurden. Vertrag:
+  `docs/APP-API-CHAT.md` „Chat-Geräte: Grenze beim Koppeln“.
+
 ### Push: strukturierte Nutzlast, gelöschte Chat-Nachrichten in der Glocke
 - **Push-Nutzlast 2:** jede Mitteilung trägt neben `title`/`body` (unverändert) `v`, `lang`, `n`, `group_key` (wie die
   Glocke) und `chat`; `actor` nur, wenn der Satz den Namen ohnehin enthält („Namen zeigen“ an, verschlüsselter Weg).
