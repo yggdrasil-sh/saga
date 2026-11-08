@@ -18,6 +18,8 @@ const (
 	domHold       = 1500 * time.Millisecond // Mindestdauer des Hauptsprechers
 	domFactor     = 1.4                     // so viel lauter muss ein neuer Hauptsprecher sein
 	upHeadroom    = 1.15                    // Reserve vor einem Wechsel nach oben
+	keepSlack     = 1.1                     // ohne Stau bleibt die laufende Schicht bis 10 % ueber der Schaetzung
+	layerDwell    = 4 * time.Second         // nach einem Wechsel nach unten so lange nicht wieder hoch (gleiche Quelle)
 	defaultRateL  = 150e3                   // angenommene Raten, bis gemessen wurde
 	defaultRateM  = 500e3
 	defaultRateH  = 1500e3
@@ -251,6 +253,34 @@ func assignSticky(slots []*slot, want []*Peer) {
 			i++
 		}
 	}
+}
+
+// layerStep: darf ein Ausgang eine Schicht hoeher gehen (bzw. die laufende behalten)? Hysterese gegen Pendeln (jeder
+// Wechsel wartet auf ein Schluesselbild, die PLI dafuer erhoeht die Rate fuer alle Empfaenger):
+//   - laufende Schicht: bleibt, solange need <= budget; ohne Stau (limit > 0, keine Sperrzeit) bis keepSlack darueber -
+//     kurze Ratenspitzen (Schluesselbilder) schalten nicht herunter, echter Stau (Sperrzeit) sofort
+//   - hoehere Schicht: nur mit Reserve (upHeadroom) und fruehestens layerDwell nach dem letzten Wechsel nach unten
+func layerStep(cur bool, need, budget, limit float64, sinceDown int64) bool {
+	if cur {
+		return need <= budget || limit > 0 && need <= budget*keepSlack
+	}
+	if sinceDown < int64(layerDwell) {
+		return false
+	}
+	return need*upHeadroom <= limit
+}
+
+// layerRank: Reihenfolge der Schichten (fuer "nach unten")
+func layerRank(l string) int {
+	switch l {
+	case "l":
+		return 1
+	case "m":
+		return 2
+	case "h":
+		return 3
+	}
+	return 0
 }
 
 // layerRate liefert die gemessene (sonst angenommene) Rate einer Quelle.
@@ -517,7 +547,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			nr := rateOf(c)
 			cur := c.s.layer == c.opts[c.idx].Layer
 			need := sum - old + nr
-			if cur && need <= budget || need*upHeadroom <= limit {
+			since := int64(layerDwell)
+			if c.s.downAt != 0 && c.s.owner == c.s.downOwner {
+				since = now - c.s.downAt
+			}
+			if layerStep(cur, need, budget, limit, since) {
 				sum, c.rate = need, nr
 				continue
 			}
@@ -562,6 +596,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		st := c.opts[c.idx]
 		s.out.Assign(st.Source)
 		s.out.SetMaxTID(c.tid)
+		if layerRank(st.Layer) < layerRank(s.layer) { // nach unten: Mindestverweildauer fuer den Weg zurueck
+			s.downAt, s.downOwner = now, s.owner
+		}
 		s.paused, s.layer, s.tid = false, st.Layer, c.tid
 	}
 	for _, s := range vslots {

@@ -296,6 +296,9 @@ type slot struct {
 	layer  string
 	paused bool
 	tid    uint8
+	// Hysterese (layerStep): letzter Wechsel nach unten und fuer wen
+	downAt    int64
+	downOwner *Peer
 }
 
 // FwdLeg liefert das Bein des Weiterleiters (Flusher, Zaehler, Drossel).

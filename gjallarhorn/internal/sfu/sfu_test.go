@@ -499,3 +499,44 @@ func TestAssignStickyNewSpeaker(t *testing.T) {
 		t.Fatalf("a und b sollen ihre Plaetze behalten")
 	}
 }
+
+// Horn-Fix (Video-Freezes): Hysterese der Schichtwahl - kurze Ratenspitzen ohne Stau schalten die laufende Schicht nicht
+// herunter, Stau (Sperrzeit, limit 0) sofort; nach einem Wechsel nach unten erst nach layerDwell wieder hoch.
+func TestLayerStepHysteresis(t *testing.T) {
+	const budget = 500e3
+	long := int64(layerDwell)
+	if !layerStep(true, 520e3, budget, budget, long) {
+		t.Fatal("laufende Schicht bei +4 % ohne Stau heruntergeschaltet")
+	}
+	if layerStep(true, 560e3, budget, budget, long) {
+		t.Fatal("laufende Schicht bei +12 % behalten")
+	}
+	if layerStep(true, 520e3, budget, 0, long) {
+		t.Fatal("bei Stau (Sperrzeit) nicht heruntergeschaltet")
+	}
+	if !layerStep(true, 480e3, budget, 0, long) {
+		t.Fatal("unter der Schaetzung auch bei Stau behalten")
+	}
+	if layerStep(false, 300e3, budget, budget, int64(time.Second)) {
+		t.Fatal("1 s nach dem Wechsel nach unten schon wieder hoch")
+	}
+	if !layerStep(false, 300e3, budget, budget, long) {
+		t.Fatal("nach der Verweildauer mit Reserve nicht hoch")
+	}
+	if layerStep(false, 450e3, budget, budget, long) {
+		t.Fatal("ohne Reserve (upHeadroom) hoch")
+	}
+	// Pendeln: Rate der m-Schicht schwankt +-8 % um die Schaetzung, kein Stau -> kein einziger Wechsel
+	changes, cur := 0, true
+	for i := 0; i < 200; i++ {
+		need := budget * (1 + 0.08*float64(i%2*2-1))
+		ok := layerStep(cur, need, budget, budget, long)
+		if ok != cur {
+			changes++
+			cur = ok
+		}
+	}
+	if changes != 0 {
+		t.Fatalf("%d Wechsel bei schwankender Rate ohne Stau", changes)
+	}
+}
