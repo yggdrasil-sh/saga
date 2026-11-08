@@ -66,7 +66,7 @@ const texts = (p) => p.$$eval('#ct-msgs .ct-msg .ct-text', (n) => n.map((x) => x
     const pa = await session(browser, A, process.env.SAGA_USER_A, process.env.SAGA_PASS_A);
     const pb = await session(browser, B, process.env.SAGA_USER_B, process.env.SAGA_PASS_B);
     // --- A: Seite mit Datenbank anlegen und mit B teilen (Bearbeiten) ------------------------------------------------------
-    const P = (await pa.api('POST', '/api/notes', { title: 'Browser-Projekt ' + RUN })).id;
+    const P = (await pa.api('POST', '/api/notes', { title: 'Browser-Projekt ' + RUN, cover: null })).id;     // 2.5: ohne Zufalls-Titelbild
     const D = (await pa.api('POST', '/api/notes', { title: 'Browser-Aufgaben ' + RUN, kind: 'database', parent_id: P })).id;
     const sch = (await pa.api('GET', '/api/notes/' + D)).schema;
     sch.props.push({ id: 'ok', name: 'Erledigt', type: 'checkbox' });
@@ -96,7 +96,8 @@ const texts = (p) => p.$$eval('#ct-msgs .ct-msg .ct-text', (n) => n.map((x) => x
     // --- B: Titelbild in die fremde Seite hochladen; A sieht B auf der Seite ---------------------------------------------
     await pb.goto(B + '/notes#' + rP); await pb.waitForTimeout(2500);
     await pb.hover('#pg-title').catch(() => {});
-    const [fc] = await Promise.all([pb.waitForEvent('filechooser', { timeout: 10000 }), pb.evaluate(() => document.getElementById('pg-addcover').click())]);
+    await pb.evaluate(() => document.getElementById('pg-addcover').click()); await pb.waitForTimeout(300);   // 2.5: Menue (Galerie, Zufaellig, Hochladen)
+    const [fc] = await Promise.all([pb.waitForEvent('filechooser', { timeout: 10000 }), pb.locator('.menu .menu-item:has(.mi-t:text-is("Bild hochladen …"))').click()]);
     await fc.setFiles(tmpPng);
     const cov = await until(async () => { const n = await pa.api('GET', '/api/notes/' + P); return n.cover && n.cover.startsWith('/files/') && n.cover; }, 20000);
     ok('A: Titelbild liegt beim Eigentuemer (/files/…)', !!cov, cov);
