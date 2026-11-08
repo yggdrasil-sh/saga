@@ -35,7 +35,7 @@ ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app
              "push_sub", "push_queue", "push_stream_msg", "ai_history", "fed_invite", "fed_log", "fed_outbox", "backup_run",
              "user_backup_run", "import_run", "api_token", "webhook", "webhook_delivery"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
-UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
+UPSERT_KEYS = {"immich_key": ("uid",), "bookorbit_link": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
                "chat_msg_key": ("msg_seq", "recipient"),
                "fed_person": ("principal",), "fed_inbound": ("peer_id", "note_id", "target_type", "target"),
@@ -406,6 +406,9 @@ CREATE TABLE IF NOT EXISTS app_token (
 CREATE TABLE IF NOT EXISTS user_kv (uid TEXT NOT NULL, k TEXT NOT NULL, v TEXT, PRIMARY KEY (uid, k));
 CREATE TABLE IF NOT EXISTS immich_key (
     uid TEXT PRIMARY KEY, secret TEXT NOT NULL, name TEXT, created DOUBLE PRECISION, base_url TEXT);
+CREATE TABLE IF NOT EXISTS bookorbit_link (
+    uid TEXT PRIMARY KEY, base_url TEXT NOT NULL, account TEXT, secret TEXT, state TEXT NOT NULL DEFAULT 'ok',
+    refresh_exp DOUBLE PRECISION, created DOUBLE PRECISION, refreshed DOUBLE PRECISION, updated DOUBLE PRECISION);
 CREATE TABLE IF NOT EXISTS cal_account (
     id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, label TEXT, base_url TEXT NOT NULL, username TEXT NOT NULL,
     secret TEXT NOT NULL, calendars TEXT NOT NULL DEFAULT '[]', created DOUBLE PRECISION, updated DOUBLE PRECISION);
@@ -1349,6 +1352,15 @@ CREATE TABLE IF NOT EXISTS cover_gallery (
     id TEXT PRIMARY KEY, builtin INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0,
     deleted INTEGER NOT NULL DEFAULT 0, title TEXT, artist TEXT, date TEXT, source TEXT, url TEXT, grp TEXT,
     pos DOUBLE PRECISION, created DOUBLE PRECISION, created_by TEXT);
+""",
+    # 2.5 (BookOrbit Phase 1, saga/bookorbit.py): Verbindung je Konto zu einer BookOrbit-Instanz. secret = Refresh-Token
+    # (rotierend, verschluesselt wie Kalender-Passwoerter), nie das Passwort; state 'ok' | 'expired' (BookOrbit lehnt das
+    # Token ab -> secret NULL, neu anmelden); refreshed = letzte Erneuerung (Hintergrund etwa taeglich). Bestand: keine
+    # Zeilen. Beliebig oft ausfuehrbar.
+    35: """
+CREATE TABLE IF NOT EXISTS bookorbit_link (
+    uid TEXT PRIMARY KEY, base_url TEXT NOT NULL, account TEXT, secret TEXT, state TEXT NOT NULL DEFAULT 'ok',
+    refresh_exp DOUBLE PRECISION, created DOUBLE PRECISION, refreshed DOUBLE PRECISION, updated DOUBLE PRECISION);
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

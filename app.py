@@ -24,7 +24,7 @@ import auth
 import db
 from version import API_LEVEL, BUILD, FEATURES, LIVE_FEATURE, MIN_APP, VERSION, channel
 
-from saga import app_api, app_login, calendars, comments, csv_export, dashboard, databases, files, immich, links, page_tools, page_widgets, pages, publish, sharing, tasks, web_auth
+from saga import app_api, app_login, bookorbit, calendars, comments, csv_export, dashboard, databases, files, immich, links, page_tools, page_widgets, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, horn, horn_ops, i18n, live, mfa, notify, push, push_stream
 from saga import collab                     # 2.5 (P3 Stufe 2): WebSocket /api/collab, Admin-Schalter notes.live
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
@@ -87,6 +87,7 @@ async def lifespan(_app):
     tasksrc.start()                                          # 2.5 (Paket 7): taegliche Zusammenfassung task.due
     webhooks.start()                                         # 2.5: Webhook-Zustellung (Ausgangskorb webhook_delivery)
     mentions.start()                                         # 2.5 (P6-5): Erwaehnungen entprellt mitteilen
+    bookorbit.start()                                        # 2.5: BookOrbit-Tokens etwa taeglich erneuern
     await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
     await asyncio.to_thread(contacts.backfill_once)          # 2.5: Kontakte rueckwirkend aus vorhandenen Chats (einmalig)
 
@@ -128,6 +129,7 @@ async def lifespan(_app):
     yield
     await collab.shutdown()                                  # offene Live-Seiten materialisieren und verdichten
     mentions.stop()
+    bookorbit.stop()
     await asyncio.to_thread(diagstore.stop)                  # 2.5: gepufferte Diagnose-Meldungen noch schreiben
     webhooks.stop()
     backups.stop()
@@ -314,6 +316,7 @@ app.include_router(csv_export.router)         # 2.5 (Paket 2): GET /api/notes/{n
 app.include_router(files.router)
 app.include_router(databases.router)
 app.include_router(immich.router)
+app.include_router(bookorbit.router)                     # 2.5: BookOrbit (Leseliste, nur lesen)
 app.include_router(calendars.router)
 app.include_router(app_api.router)
 app.include_router(page_widgets.router)       # 2.5: Widgets in Seiten - /api/notes/{nid}/widgets, .../widgets/preview

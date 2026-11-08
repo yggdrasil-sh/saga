@@ -22,7 +22,10 @@ Clients in docs/APP-API.md ("Widgets in Seiten"). Nicht zu verwechseln mit den H
   Tag, Haekchen je Gewohnheit; Abhaken ueber saga.widgets_api), upcoming (IMMER Daten der betrachtenden Person: CalDAV,
   Saga-Aufgaben, Datums-Eigenschaften gewaehlter Datenbanken - nie zwischengespeichert, nie veroeffentlicht/foederiert),
   chart (saga.dbcalc.chart - dieselbe Logik wie die Datenbank-Ansicht "chart"). Diese Arten tragen im W zusaetzlich
-  "data" (strukturiert je Art, Vertrag docs/APP-API.md)."""
+  "data" (strukturiert je Art, Vertrag docs/APP-API.md).
+- 2.5 BookOrbit (Faehigkeit bookorbit1): reading ("Lesen") = IMMER die BookOrbit-Leseliste der betrachtenden Person
+  (saga.bookorbit, eigener Zwischenspeicher je Person) - Varianten cfg.show current (Gerade am Lesen), goal (Leseziel),
+  streak (Lesestraehne). Wie upcoming nie veroeffentlicht, nie ueber Servergrenzen. Ohne Verbindung data.state "none"."""
 import hashlib
 import json
 import random
@@ -45,8 +48,10 @@ from saga.sharing import Access, access, is_remote
 
 router = APIRouter()
 
-KINDS = ("clock", "countdown", "progress", "metric", "quote", "weather", "habit", "upcoming", "chart")
-KINDS2 = ("weather", "habit", "upcoming", "chart")            # 2.5 Paket 4: W mit "data", Foederation braucht widgets2
+KINDS = ("clock", "countdown", "progress", "metric", "quote", "weather", "habit", "upcoming", "chart", "reading")
+KINDS2 = ("weather", "habit", "upcoming", "chart", "reading")  # 2.5 Paket 4: W mit "data", Foederation braucht widgets2
+PERSONAL = ("upcoming", "reading")                            # Daten der betrachtenden Person: nie veroeffentlicht/foederiert
+READ_SHOW = ("current", "goal", "streak")                     # reading: Gerade am Lesen, Leseziel, Lesestraehne
 SIZES = ("s", "m", "l")
 STYLES = ("card", "plain")
 AGGS = dbcalc.AGGS
@@ -193,6 +198,10 @@ def _clean_cfg(kind, c):
                 "dbs": dbs[:UP_DBS_MAX], "limit": lim if isinstance(lim, int) and not isinstance(lim, bool) and 5 <= lim <= 30 else 10}
     if kind == "chart":
         return dict(dbcalc.clean_chart_spec(c), db=_db_id(c.get("db")), view=_id(c.get("view")))
+    if kind == "reading":
+        lim = c.get("limit")
+        return {"show": c["show"] if c.get("show") in READ_SHOW else "current",
+                "limit": lim if isinstance(lim, int) and not isinstance(lim, bool) and 1 <= lim <= 5 else 3}
     if kind == "quote":
         pick = "open" if c.get("pick") == "open" else "daily"
         if c.get("src") == "db":
@@ -530,6 +539,31 @@ def _upcoming(c, uid, cfg, today, tz, acc):
     return _W("upcoming", len(items), data=data)
 
 
+def _reading(uid, cfg):
+    """Lesen (BookOrbit): Leseliste der betrachtenden Person in der gewaehlten Variante. Ohne Verbindung/abgelaufen:
+    data.state "none"/"expired"/"unavailable" (kein error - die Clients zeigen einen Hinweis mit Link zu den Einstellungen)."""
+    from saga import bookorbit
+    r = bookorbit.reading(uid)
+    show = cfg.get("show") if cfg.get("show") in READ_SHOW else "current"
+    data = {"state": r.get("state") or "unavailable", "show": show}
+    if r.get("stale"):
+        data["stale"] = True
+    if data["state"] != "ok":
+        return _W("reading", data=data)
+    if show == "current":
+        books = r.get("books") or []
+        data["books"] = books[:cfg.get("limit") or 3]
+        data["more"] = max(0, len(books) - len(data["books"]))
+        return _W("reading", len(books), data=data)
+    if show == "goal":
+        g = r.get("goal")
+        data["goal"] = g
+        return _W("reading", g["done"] if g else None, g["goal"] if g else None, data=data)
+    s = r.get("streak")
+    data["streak"] = s
+    return _W("reading", s["current"] if s else None, data=data)
+
+
 def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None, public_labels=None):
     """Wert eines Widgets (W, siehe Modulkopf) mit den Rechten von uid. d: bereinigtes data.
     public_labels(ids) (Veroeffentlichen): Titel verknuepfter Seiten nur, soweit sie selbst oeffentlich erreichbar sind."""
@@ -552,6 +586,10 @@ def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None, pu
             if public_owner is not None or uid is None or is_remote(uid):
                 raise _Fail("no_access")            # persoenlich: nie veroeffentlicht, nie ueber Servergrenzen
             return _upcoming(c, uid, cfg, today, tz, acc or Access(c, uid))
+        if kind == "reading":
+            if public_owner is not None or uid is None or is_remote(uid):
+                raise _Fail("no_access")            # persoenlich: nie veroeffentlicht, nie ueber Servergrenzen
+            return _reading(uid, cfg)
         if cfg.get("src") == "tasks" and kind in ("metric", "progress"):
             if public_owner is not None or uid is None or is_remote(uid):
                 raise _Fail("no_access")            # Aufgaben gehoeren der betrachtenden Person dieses Servers
@@ -690,7 +728,7 @@ def page_widgets(uid, nid, params, kinds2=True):
                 if cfg.get("pick") == "open" and d.get("kind") == "quote":
                     out[bid] = compute(c, uid, bid, d, tz, acc, today=today)
                     continue
-                if d.get("kind") in ("upcoming", "weather"):  # persoenlich bzw. eigener Zwischenspeicher (saga.weather)
+                if d.get("kind") in ("upcoming", "weather", "reading"):  # persoenlich bzw. eigener Zwischenspeicher (weather, bookorbit)
                     out[bid] = compute(c, uid, bid, d, tz, acc, today=today)
                     continue
                 if cfg.get("src") == "tasks":                 # fix27 E3: Aufgaben - klein, immer frisch gerechnet
@@ -744,7 +782,7 @@ def value_for(uid, b, tz=None):
 def kind_name(kind):
     return {"clock": t("Uhr"), "countdown": t("Countdown"), "progress": t("Fortschritt"), "metric": t("Kennzahl"),
             "quote": t("Zitat"), "weather": t("Wetter"), "habit": t("Gewohnheiten"), "upcoming": t("Anstehendes"),
-            "chart": t("Diagramm##Chart")}.get(kind, t("Widget"))
+            "chart": t("Diagramm##Chart"), "reading": t("Lesen")}.get(kind, t("Widget"))
 
 
 def fmt_num(v, fmt=None):
@@ -805,6 +843,20 @@ def value_text(d, w, today, tz=None):
                           for h in data.get("habits") or [])
     if kind == "upcoming":
         return t("{n} {n:Eintrag|Einträge} in den nächsten {d} {d:Tag|Tagen}", n=len(data.get("items") or []) + (data.get("more") or 0), d=data.get("days") or 7)
+    if kind == "reading":
+        if data.get("state") != "ok":
+            return None
+        if data.get("show") == "goal":
+            g = data.get("goal") or {}
+            if not g:
+                return None
+            return t("{n} von {goal} Büchern ({year})", n=g.get("done", 0), goal=g["goal"], year=g.get("year") or "") if g.get("goal") \
+                else t("{n} {n:Buch|Bücher} gelesen ({year})", n=g.get("done", 0), year=g.get("year") or "")
+        if data.get("show") == "streak":
+            s = data.get("streak") or {}
+            return t("{n} {n:Tag|Tage} in Folge gelesen", n=s.get("current", 0)) if s else None
+        return " · ".join(f"{b.get('title') or t('Unbenannt')}" + (f" ({', '.join(b['authors'][:2])})" if b.get("authors") else "")
+                          + f" {fmt_num(round(b.get('progress') or 0), 'pct')}" for b in data.get("books") or []) or t("Gerade kein Buch")
     if kind == "chart":
         if data.get("type") == "number" or not data.get("cats"):
             return fmt_num(data.get("total"), data.get("fmt"))
@@ -1070,7 +1122,10 @@ def _fcolor(v):
 
 
 def clean_remote_data(kind, d):
-    """W.data von einer anderen Saga-Instanz -> bereinigte Kopie oder None. upcoming kommt nie ueber Servergrenzen."""
+    """W.data von einer anderen Saga-Instanz -> bereinigte Kopie oder None. upcoming und reading kommen nie ueber
+    Servergrenzen (persoenlich, PERSONAL)."""
+    if kind in PERSONAL:
+        return None
     if not isinstance(d, dict):
         return None
     if kind == "weather":
