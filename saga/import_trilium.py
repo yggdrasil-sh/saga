@@ -906,11 +906,28 @@ def _excerpt(m, cid):
     if n.fmt == "markdown" and m.kind == "zip":
         plain = re.sub(r"!\[[^\]]*\]\([^)]*\)|[#*_`>|]+|\[([^\]]*)\]\([^)]*\)", lambda x: x.group(1) or " ", txt)
     else:
-        plain = (html2blocks.content_root(txt) if m.kind == "zip" else html2blocks.parse_tree(txt)).text()
+        plain = _block_text(html2blocks.content_root(txt) if m.kind == "zip" else html2blocks.parse_tree(txt))
     plain = " ".join(plain.split())
     if n.title and plain.startswith(n.title):
         plain = plain[len(n.title):].lstrip(" :–-")
     return plain[:EXCERPT].rstrip() + ("…" if len(plain) > EXCERPT else "")
+
+
+def _block_text(root):
+    """Klartext eines HTML-Baums mit Leerzeichen zwischen Bloecken/Zellen (sonst "WortEnde" + "Anfang" zusammen)."""
+    out, st = [], [root]
+    while st:
+        n = st.pop()
+        if isinstance(n, str):
+            out.append(n)
+        elif n == " ":
+            out.append(" ")
+        else:
+            if n.tag in html2blocks.BLOCK or n.tag == "br":
+                out.append(" ")
+                st.append(" ")
+            st.extend(reversed(n.kids))
+    return "".join(out)
 
 
 def _dash_order(m, note):
@@ -944,7 +961,8 @@ def _overview(m, w, note, ref, icons, rep, path):
         target = w.refs.get(cid) if kind == "clone" else kref
         label = _prot_text(ttl or "…")
         link = f'<a href="/notes#$ref:{target}">{label}</a>' if target else label
-        icon = ("🔒" if kind == "locked" else icons.get(target)) or "📄"
+        # Kartensymbol: Ordner/Seite (das eigene Symbol zeigt der Seitenlink selbst - nicht doppelt)
+        icon = "🔒" if kind == "locked" else "📁" if (m.notes.get(cid) and m.notes[cid].kids) else "📄"
         ex = _excerpt(m, cid) if book and kind != "locked" else ""
         entries.append((i, cid, link, icon, ex))
     if book and view == "dashboard":

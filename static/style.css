@@ -455,6 +455,8 @@ body.notes-page #pg-full{display:none}
 .page-body a.note-link{color:var(--fg);text-decoration:none;background:var(--card-h);border:1px solid var(--border);
   border-radius:var(--r-sm);padding:.02em .4em;cursor:pointer;white-space:nowrap}
 .page-body a.note-link:hover{border-color:var(--accent)}
+/* Seitenlinks in Hinweisboxen (Unterseiten-Karten, schmale Spalten) duerfen umbrechen statt ueberzustehen */
+.page-body .pm-callout a.note-link,.page-body .callout-text a.note-link{white-space:normal;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 .page-body a.note-link.broken{color:var(--muted);text-decoration:line-through;border-style:dashed}
 .page-body a.svc-link{color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 45%,transparent);cursor:pointer}
 .page-body a.svc-link::after{content:"\00a0↗";font-size:.8em}
