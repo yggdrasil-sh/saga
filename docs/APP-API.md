@@ -646,6 +646,53 @@ Galerie-Endpunkte 404 `{"error": "not found"}` (nie 403).
 - 429 bei mehr als 10 Aufrufen je Minute und Konto (`GALLERY_RATE`).
 - Angelegt wird in der Sprache `lang` (fehlende Übersetzung: Deutsch). Danach sind es normale Seiten ohne Verbindung zur Galerie.
 
+## Titelbild-Galerie (2.5)
+
+Saga bringt 22 gemeinfreie Bilder mit (The Met Open Access, CC0; Liste: `static/covers/README.md`), der Admin kann
+eigene hinzufügen sowie Bilder ausblenden. **Für die Anzeige brauchen die Apps nichts Neues:** ein Galerie-Titelbild ist
+ein normaler Wert in `cover`, nur eben ein anderer Pfad.
+
+**Pfad:** `cover` = `/covers/<id>.jpg` (`<id>`: `[a-z0-9][a-z0-9-]{0,63}`, Uploads des Admins `u-<hash>`). Laden wie
+`/files/...`: Server-Adresse + Pfad. Öffentlich (ohne Anmeldung, auch für veröffentlichte Seiten und eigene Domains),
+`Cache-Control: public, max-age=2592000`, `ETag` / `If-None-Match` → 304. Der Inhalt einer ID ändert sich nicht (dauerhaft
+zwischenspeichern ist richtig). `?w=<px>` wird angenommen: bis 800 px eine verkleinerte Fassung (für Vorschaustreifen,
+z. B. `?w=384`), darüber das Original (1600 px breit). Die Apps hängen heute bei diesem Pfad nichts an – passt.
+
+**Setzen:** `PATCH /api/notes/{id}` `{"cover": "/covers/<id>.jpg", "cover_pos": <pos>}` – erlaubt sind nur bekannte IDs
+(sonst `400`, wie bei fremden Dateien). Auch beim Anlegen: `POST /api/notes` nimmt optional `cover` (eigenes Bild
+`/files/<id>` oder Galerie-Pfad; `cover_pos` fehlt → empfohlene Position des Bildes) und `cover: null` = ausdrücklich
+**ohne** Titelbild.
+
+**Zufall beim Anlegen:** `POST /api/notes` ohne `cover` (Seite, Unterseite, Datenbank; auch `/api/v1` und MCP) setzt ein
+zufälliges sichtbares Galerie-Bild samt empfohlener Position – außer für Zeilen einer Datenbank, Personen anderer
+Instanzen und wenn die Einstellung des Kontos aus ist. Ebenso eine Seite aus einer Vorlage ohne Titelbild
+(`POST /api/notes/{id}/duplicate` einer Vorlage, nicht in eine Datenbank, nicht `template: true`); hat die Vorlage eines,
+gilt dieses. Duplikate, Importe, Wiederherstellen, Teilen/Eingang (`/api/app/share`) und Tageszeilen bekommen keins.
+Galerie-Vorlagen: Startseite zufällig oder fest (`cover` in der Vorlage, `docs/GALERIE.md`).
+**Apps:** Wege, die keine „neue Seite“ im Sinne der Person sind (Teilen-Erweiterung, Konflikt-Kopie, Chat → Seite),
+schicken `"cover": null` mit (ältere Server ignorieren das Feld).
+
+`GET /api/covers` (Sitzung, `X-Saga: 1`) – sichtbare Bilder für eine Auswahl:
+```json
+{"covers": [{"id": "hokusai-welle", "url": "/covers/hokusai-welle.jpg", "thumb": "/covers/hokusai-welle.jpg?w=384",
+  "title": "Die große Welle vor Kanagawa", "artist": "Katsushika Hokusai", "date": "ca. 1830–32",
+  "source_url": "https://www.metmuseum.org/art/collection/search/45434", "source": "The Metropolitan Museum of Art, Open Access (CC0 1.0)",
+  "group": "holzschnitt", "pos": 45, "builtin": true}],
+ "groups": [{"id": "nordisch", "label": "Nordisch"}, {"id": "romantik", "label": "Romantik"}, {"id": "holzschnitt", "label": "Holzschnitt"},
+            {"id": "landschaft", "label": "Landschaft"}],
+ "license": "CC0-1.0", "source": "…", "random_cover": true}
+```
+`title` und `label` in der Sprache der Anfrage. `group` kann auch eine Gruppe des Admins sein (dann `label` = Name). Auswahl
+setzt `cover` = `url` und `cover_pos` = `pos`. Ausgeblendete/entfernte Bilder fehlen hier und im Zufall, Seiten mit
+ihnen zeigen sie weiter. Ältere Server: 404 → keine Galerie anbieten.
+
+**Einstellung:** `GET /api/account/pages` → `{"random_cover": true}`, `PUT /api/account/pages` `{"random_cover": false}`
+(Web: Einstellungen → Seiten → „Neue Seiten mit zufälligem Titelbild“, Standard an).
+
+**Föderation:** mitgelieferte Bilder (gibt es auf jedem Saga-Server gleich) gehen in beide Richtungen durch, Uploads des
+Admins nicht (die Seite zeigt dann kein Titelbild). Persönliche Sicherung: der Pfad bleibt erhalten und gilt beim
+Wiederherstellen, wenn der Zielserver das Bild kennt.
+
 ## Kachel-Symbole: `icon_url` (2.5)
 
 `GET /api/services` und `GET /api/bookmarks` liefern je Kachel zusätzlich **`icon_url`** – die fertige, relative

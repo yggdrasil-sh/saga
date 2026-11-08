@@ -53,7 +53,9 @@ Rückgabe 0 = in Ordnung, 1 = Fehler. Was das Skript akzeptiert, lädt auch der 
 "small": false, "example": false, "body": [Editor.js-Blöcke]}`
 
 - `parent` muss eine Seite sein, die **weiter oben** in `items` steht (keine Seiten in Datenbanken).
-- `cover` immer `null` (Titelbilder sind eigene Uploads).
+- `cover`: `null` oder die ID (bzw. der Pfad `/covers/<id>.jpg`) eines mitgelieferten Bildes der Titelbild-Galerie
+  (`static/covers/covers.json`, 2.5). `null` = die Startseite bekommt beim Anlegen ein zufälliges Galerie-Bild (Einstellung
+  des Kontos), Unterseiten und Datenbanken ohne `cover` bleiben ohne.
 
 ### Datenbank (`kind: "database"`)
 

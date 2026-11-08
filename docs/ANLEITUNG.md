@@ -321,6 +321,20 @@ Unter **Allgemein** stellst du ein:
 
 ![Admin: Allgemein](screenshots/admin-allgemein.png)
 
+Unter **Titelbilder** pflegst du die **Titelbild-Galerie** (2.5): Aus ihr wählen alle ein Titelbild (Titelbild →
+„Galerie …“ oder „Zufällig“), und neue Seiten bekommen daraus ein zufälliges Bild (abschaltbar je Konto unter
+Einstellungen → Seiten). Mitgeliefert sind 22 gemeinfreie Gemälde und Holzschnitte aus der Open-Access-Sammlung des
+Metropolitan Museum of Art (CC0). Du kannst
+
+- **Bilder hochladen** (mehrere auf einmal, je bis 20 MB; JPEG, PNG, WebP, HEIC) mit Titel, Urheber, Nachweis, Link,
+  Gruppe und empfohlener Position. Saga prüft das Bild am Inhalt, verkleinert es auf 1600 Pixel Breite und entfernt
+  Metadaten (EXIF, GPS). Gespeichert wird unter `STATE_DIR/covers` (gehört zur verschlüsselten Sicherung).
+- **Titel, Gruppe und Position ändern**, auch bei mitgelieferten Bildern.
+- **Ausblenden/Einblenden** (mitgelieferte und eigene) und **Entfernen** (nur eigene). Ausgeblendete und entfernte Bilder
+  verschwinden aus Auswahl und Zufall; Seiten, die sie schon nutzen, zeigen sie weiter – ein entferntes Bild wird erst
+  gelöscht, wenn keine Seite es mehr nutzt (die Rückfrage nennt die Zahl). Sind alle Bilder ausgeblendet, bekommen neue
+  Seiten kein Titelbild.
+
 ## 5. Benutzer und Registrierung
 
 Unter **Benutzer** legst du Konten an, setzt Passwörter, vergibst Gruppen und Admin-Rechte.

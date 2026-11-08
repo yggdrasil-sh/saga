@@ -25,6 +25,22 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Anhang-Knopf (Größe, Videos, höchstens 10 – jetzt mit Hinweis statt stillem Weglassen); nicht beim Bearbeiten und
   nicht in gesperrten oder schreibgeschützten Chats. Gilt auch im Chat-Seitenpanel.
 
+### Titelbild-Galerie
+- **Standard-Galerie:** 22 gemeinfreie Gemälde und Holzschnitte (The Met Open Access, CC0) in vier Gruppen – Nordisch,
+  Romantik, Holzschnitt, Landschaft. Web: Titelbild → „Galerie …“ (Vorschaustreifen, Titel und Künstler), „Zufällig“,
+  „Über dieses Bild“ (Nachweis mit Link zur Quelle).
+- **Neue Seiten bekommen ein zufälliges Titelbild** samt empfohlener Position – Seiten, Unterseiten und Datenbanken aus
+  Web, Apps, API und MCP sowie Seiten aus Vorlagen ohne eigenes Titelbild (hat die Vorlage eines, gilt dieses). Nicht für
+  Datenbank-Einträge, Aufgaben, Teilen/Eingang, Importe, Duplikate, Wiederherstellen und Personen anderer Instanzen.
+  Abschaltbar unter Einstellungen → Seiten („Neue Seiten mit zufälligem Titelbild“, Standard an).
+- **Admin → Titelbilder:** eigene Bilder hochladen (Prüfung am Inhalt, 1600 px, ohne EXIF/GPS, `STATE_DIR/covers`),
+  Titel/Gruppe/Position ändern, aus-/einblenden, entfernen – Seiten, die ein Bild schon nutzen, zeigen es weiter.
+- Ausgeliefert unter `/covers/<id>.jpg` (öffentlich, lange zwischenspeicherbar, ETag; auch für veröffentlichte Seiten
+  und eigene Domains). Die Apps zeigen Galerie-Titelbilder ohne Update. Neu: `GET /api/covers`, `GET/PUT
+  /api/account/pages`, `cover`/`cover: null` beim Anlegen (`docs/APP-API.md` „Titelbild-Galerie“). Galerie-Vorlagen
+  dürfen ein mitgeliefertes Bild als `cover` angeben (Reiseplaner: Lake Louise).
+- Datenbank-Migration 34 (Tabelle `cover_gallery`).
+
 ### Chat: Gerätegrenze beim Koppeln
 - Mit 10 Chat-Geräten blieb ein neues Gerät nach „Mit anderem Gerät bestätigen“ hängen. Jetzt prüft der Server die Grenze
   schon beim Anlegen der Anfrage und meldet sie überall gleich (`409 {code: "device_limit", max, count}`); scheitert erst

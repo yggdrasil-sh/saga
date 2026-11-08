@@ -20,6 +20,8 @@ def ok(n, c): res.append(bool(c)); print(("OK  " if c else "FAIL"), n)
 try:
     T = call("POST", "/api/settings/tokens", A, {"name": "Widget"})[1]["token"]
     TX = call("POST", "/api/settings/tokens", X, {"name": "Fremd"})[1]["token"]
+    # 2.5: neue Seiten sonst mit zufaelligem Galerie-Titelbild - hier gezielt aus ("Seite ohne Bild")
+    call("PUT", "/api/account/pages", A, {"random_cover": False})
     # Daten von A: Seite mit Unterseite, Datenbank mit Haekchen + Status, Vorlage
     pg = call("POST", "/api/notes", A, {"title": "Startseite", "icon": "🏠"})[1]["id"]
     sub = call("POST", "/api/notes", A, {"title": "Unterseite", "parent_id": pg})[1]["id"]
@@ -97,6 +99,10 @@ try:
     c, data, ct = raw(f"/api/app/page-image/{pg}/cover", T); ok(f"Titelbild ({ct})", c == 200 and data == PNG and ct == "image/png")
     ok("Symbol-Bild", raw(f"/api/app/page-image/{pg}/icon", T)[1] == PNG)
     ok("Seite ohne Bild -> 404", raw(f"/api/app/page-image/{sub}/cover", T)[0] == 404)
+    call("PATCH", f"/api/notes/{sub}", A, {"cover": "/covers/hokusai-welle.jpg"})
+    c, data, ct = raw(f"/api/app/page-image/{sub}/cover", T)
+    ok(f"Titelbild aus der Galerie (2.5) ({c}, {ct})", c == 200 and ct == "image/jpeg" and data[:2] == b"\xff\xd8")
+    call("PATCH", f"/api/notes/{sub}", A, {"cover": None})
     ok("Fremde Seite -> 404", raw(f"/api/app/page-image/{xdb}/cover", T)[0] == 404 and raw(f"/api/app/page-image/{pg}/cover", TX)[0] == 404)
     ok("Nur cover/icon", raw(f"/api/app/page-image/{pg}/body", T)[0] == 404)
     ok("Andere eigene Dateien NICHT über den Schlüssel", raw(other, T)[0] in (401, 403, 404) and raw("/api/files", T)[0] in (401, 403, 404, 405))
