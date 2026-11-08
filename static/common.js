@@ -601,6 +601,13 @@
     if (t && window.HKShell && window.HKShell.take(t)) return;
     location.href = url;
   };
+  // Mitteilung angetippt (static/sw.js fragt das Fenster zuerst): waehrend eines Anrufs oeffnet die Huelle das Ziel selbst
+  if (navigator.serviceWorker && !shellOf()) navigator.serviceWorker.addEventListener('message', function (e) {
+    var d = e.data; if (!d || d.op !== 'nav' || !e.ports || !e.ports[0]) return;
+    var S = window.HKShell, t = shellTarget(d.url), done = false;
+    try { done = !!(S && t && (S.busy() || S.on()) && S.take(t)); } catch (x) { done = false; }
+    e.ports[0].postMessage({ ok: done });
+  });
   (function () {
     var S = shellOf(); if (!S) return;
     document.documentElement.classList.add('hk-in-shell');

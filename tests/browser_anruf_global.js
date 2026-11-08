@@ -160,6 +160,18 @@ const cleanup = p => p.evaluate(() => fetch('/api/calls/active', { headers: { 'X
     await a.evaluate(() => window.HK.go('/dashboard'));
     ok('HK.go in der Huelle: Heute im Rahmen', await until(async () => (await framePath(a)) === '/dashboard' && rel(a) === '/dashboard', 10000), { f: await framePath(a), top: rel(a) });
     x = await alive(a, b, id); ok('Nach HK.go: Anruf laeuft weiter', allOk(x), x);
+    // Mitteilung angetippt: der Service Worker fragt das Fenster zuerst (op nav) - die Huelle oeffnet selbst
+    const nav = await a.evaluate(nid2 => new Promise(res => {
+      if (!navigator.serviceWorker) return res('kein SW');
+      const ch = new MessageChannel(); ch.port1.onmessage = ev => res(ev.data);
+      navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: { op: 'nav', url: location.origin + '/notes#' + nid2 }, ports: [ch.port2] }));
+      setTimeout(() => res('keine Antwort'), 2000);
+    }), nid);
+    ok('Mitteilung (SW op nav): Huelle uebernimmt, Seite im Rahmen', nav && nav.ok === true && await until(async () => (await framePath(a)) === '/notes#' + nid && rel(a) === '/notes#' + nid, 10000),
+       { nav, f: await framePath(a), top: rel(a) });
+    x = await alive(a, b, id); ok('Nach der Mitteilung: Anruf laeuft weiter', allOk(x), x);
+    await a.evaluate(() => window.HK.go('/dashboard'));
+    ok('HK.go bei offenem Rahmen: Heute im Rahmen', await until(async () => (await framePath(a)) === '/dashboard' && rel(a) === '/dashboard', 10000), { f: await framePath(a), top: rel(a) });
     ok('Kein beforeunload-Dialog, kein /end, keine Seitenfehler bis hier', !DIALOGS.length && !ENDS.length && !ERR.length, { DIALOGS, ENDS, ERR });
 
     // --- 5. Auflegen aus der Huelle ------------------------------------------------------------------------------------

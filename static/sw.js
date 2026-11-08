@@ -77,6 +77,16 @@ function onUpdate(d, title) {
   });
 }
 
+// 2.5 (Anruf-Huelle, static/shell.js): laeuft in dem Fenster ein Anruf, oeffnet es das Ziel selbst (im Rahmen) - ein
+// Neuladen wuerde den Anruf beenden. Antwortet die Seite nicht (aeltere Fassung), wird wie bisher navigiert.
+function navAsk(c, url) {
+  return new Promise(function (res) {
+    var ch = new MessageChannel(), t = setTimeout(function () { res(false); }, 800);
+    ch.port1.onmessage = function (ev) { clearTimeout(t); res(!!(ev.data && ev.data.ok)); };
+    try { c.postMessage({ op: 'nav', url: url }, [ch.port2]); } catch (x) { clearTimeout(t); res(false); }
+  });
+}
+
 self.addEventListener('notificationclick', function (e) {
   e.notification.close();
   var url = (e.notification.data && e.notification.data.url) || self.location.origin + '/';
@@ -85,8 +95,13 @@ self.addEventListener('notificationclick', function (e) {
       var c = list[i];
       if (c.url === url && 'focus' in c) return c.focus();
     }
-    for (var j = 0; j < list.length; j++) {          // offenes Saga-Fenster wiederverwenden
-      if ('navigate' in list[j] && 'focus' in list[j]) return list[j].focus().then(function (w) { return w.navigate(url); });
+    for (var j = 0; j < list.length; j++) {          // offenes Saga-Fenster wiederverwenden (kein Rahmen darin)
+      var cj = list[j];
+      if (cj.frameType === 'nested' || !('navigate' in cj) || !('focus' in cj)) continue;
+      return cj.focus().then(function (w) {
+        w = w || cj;
+        return navAsk(w, url).then(function (done) { return done ? w : w.navigate(url); });
+      });
     }
     return self.clients.openWindow(url);
   }));
