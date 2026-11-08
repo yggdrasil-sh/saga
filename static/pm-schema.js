@@ -353,6 +353,7 @@
   // sonst '' (kein Link). Leerzeichen am Rand zaehlen nicht, Steuerzeichen machen die Adresse ungueltig.
   function linkHref(h) {
     h = String(h == null ? '' : h).replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '');
+    if (/^\/files\/[0-9a-f]{24}$/.test(h)) return h;               // 2.5: Datei dieses Servers (wie pages._FILE_HREF)
     return /^(https?|mailto):/i.test(h) && !/[\u0000-\u001f\u007f]/.test(h) ? h : '';
   }
   // 2.5 (Sicherheit): PM-JSON aus fremder Hand (eingefuegtes Saga-HTML mit data-pm) vor dem Einfuegen entschaerfen - der

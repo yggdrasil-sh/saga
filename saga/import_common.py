@@ -680,8 +680,10 @@ def clean_body(c, uid, blocks, report, path):
     return body
 
 
-def store_file(run, c, name, src, size):
-    """Datei in FILES_DIR schreiben + Tabelle file. -> (fid, is_image)."""
+def store_file(run, c, name, src, size, svg=False):
+    """Datei in FILES_DIR schreiben + Tabelle file. -> (fid, is_image).
+    svg=True (nur Trilium-Import): sieht die Datei wie ein SVG aus und laesst sie sich bereinigen (saga/svg_clean.py),
+    wird die BEREINIGTE Fassung als Bild (image/svg+xml) gespeichert; sonst unveraendert als Datei."""
     from saga.files import _sniff_image
     fid = os.urandom(12).hex()
     dst = os.path.join(FILES_DIR, fid)
@@ -693,12 +695,21 @@ def store_file(run, c, name, src, size):
             if not b:
                 break
             if not head:
-                head = b[:16]
+                head = b[:4096]
             n += len(b)
             if n > FILE_MAX:
                 raise ImportFail("too_big", mb=FILE_MAX // MB)
             out.write(b)
-    img = _sniff_image(head)
+    img = _sniff_image(head[:16])
+    if svg and not img:
+        from saga import svg_clean
+        if n <= svg_clean.MAX_BYTES and svg_clean.looks_like_svg(head):
+            with open(dst, "rb") as f:
+                cleaned = svg_clean.clean(f.read())
+            if cleaned is not None:
+                with open(dst, "wb") as out:
+                    out.write(cleaned)
+                n, img = len(cleaned), "image/svg+xml"
     clean = re.sub(r"[\x00-\x1f/\\]", "_", str(name or "datei"))[:120] or "datei"
     c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
               (fid, run.uid, clean, img or "application/octet-stream", n, 1 if img else 0, _now()))
@@ -753,6 +764,8 @@ def apply_plan(run, plan, parent):
                 sc = {"props": [], "views": [{"id": "tabelle", "name": t("Tabelle"), "type": "table"}]} if kind == "database" else None
                 icon = it.get("icon") if isinstance(it.get("icon"), str) and 0 < len(it["icon"]) <= 8 else None
                 insert_page(c, uid, nid, it.get("title"), par, now + done * 1e-3, kind, icon, _tags_ok(it.get("tags")), sc, now=now)
+                if it.get("wide") is True:                       # volle Breite (Trilium fullContentWidth)
+                    c.execute("UPDATE note SET wide=1 WHERE id=? AND uid=?", (nid, uid))
                 run.created.append(nid)
                 rep.counts["databases" if kind == "database" else "pages"] += 1
                 done += 1
@@ -760,12 +773,14 @@ def apply_plan(run, plan, parent):
         run.step("pages", done, total)
 
     # 1) Dateien (Zeilen und Inhalte verweisen darauf)
-    fids = {}
+    fids, not_img = {}, set()
     for key, f in files.items():
         try:
             with _db() as c, c:
-                fid, img = store_file(run, c, f.get("name"), f["open"](), int(f.get("size") or 0))
+                fid, img = store_file(run, c, f.get("name"), f["open"](), int(f.get("size") or 0), svg=f.get("svg") is True)
             fids[key] = fid
+            if not img:
+                not_img.add("/files/" + fid)
             rep.counts["files"] += 1
         except ImportFail as ex:
             rep.skip(f.get("path") or f.get("name"), ex.code, **ex.p)
@@ -774,6 +789,7 @@ def apply_plan(run, plan, parent):
         done += 1
         run.step("files", done, total)
     plan["file_ids"] = fids
+    plan["ids"] = ids
     # 2) Runden: Seiten/Datenbanken leer anlegen (IDs vorab, Tiefenreihenfolge), dann Schemas und Zeilen der neuen
     #    Datenbanken; Items unter Zeilen folgen in der naechsten Runde
     late_bodies, deferred = [], []
@@ -808,7 +824,7 @@ def apply_plan(run, plan, parent):
                 blocks = fn() if callable(fn) else fn
                 if not blocks:
                     continue
-                blocks = _fix_files(resolve(blocks, ids, fids), fids)
+                blocks = _fix_files(resolve(blocks, ids, fids), fids, not_img)
                 body = clean_body(c, uid, blocks, rep, path)
                 c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (body, ids[ref], uid))
         run.step("content", done, total)
@@ -857,8 +873,9 @@ def _is_db_ref(items, ref):
     return any(it["ref"] == ref and it["kind"] == "database" for it in items)
 
 
-def _fix_files(blocks, fids):
-    """Bild-/Datei-Bloecke ohne aufgeloeste Datei -> Absatz mit dem Namen; Bild, das keins ist -> Anhang."""
+def _fix_files(blocks, fids, not_img=()):
+    """Bild-/Datei-Bloecke ohne aufgeloeste Datei -> Absatz mit dem Namen; Bild, das keins ist -> Anhang (laut Plan
+    is_image False oder beim Speichern nicht als Bild erkannt: not_img, z. B. ein SVG, das die Bereinigung ablehnt)."""
     from html import escape
     from saga.notes import _iter_blocks
     for b in _iter_blocks(blocks):
@@ -871,7 +888,7 @@ def _fix_files(blocks, fids):
             label = str(f.get("name") or d.get("caption") or d.get("title") or "")
             b["type"], b["data"] = "paragraph", {"text": escape(label, quote=False)[:300]}
             continue
-        if b["type"] == "image" and f.get("is_image") is False:
+        if b["type"] == "image" and (f.get("is_image") is False or url in not_img):
             b["type"], b["data"] = "attaches", {"file": {"url": url, "name": f.get("name") or "", "size": f.get("size") or 0,
                                                          "extension": str(f.get("name") or "").rsplit(".", 1)[-1][:10]},
                                                 "title": f.get("name") or ""}

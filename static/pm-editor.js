@@ -481,7 +481,7 @@
     if (t === 'callout') return cur ? T('Hinweis') : null;
     if (t === 'qtext') return T('Zitat');
     if (t === 'qcap') return T('Quelle');
-    if (t === 'icap') return T('Bildunterschrift');
+    if (t === 'icap') return cur ? T('Bildunterschrift') : null;      // nur am fokussierten/ausgewaehlten Bild (Trilium-Fund #15)
     if (t === 'ltext') return cur ? T('Liste') : null;
     return null;
   }
@@ -493,10 +493,11 @@
       props: { decorations: function (state) {
         if (!ed || !ed.isEditable) return null;
         var decos = [], $h = state.selection.$head, curPos = $h.parent.isTextblock ? $h.before() : -1;
+        var selImg = state.selection.node && state.selection.node.type.name === 'image' ? state.selection.from : -2;
         state.doc.descendants(function (n, pos, parent) {
           if (!n.isTextblock) return BLOCKSET[n.type.name] ? !cardish(n) : true;
           if (n.content.size) return false;
-          var t = phText(n, parent, pos === curPos);
+          var t = phText(n, parent, pos === curPos || (n.type.name === 'icap' && pos === selImg + 1));
           if (t) decos.push(VW.Decoration.node(pos, pos + n.nodeSize, { 'class': 'is-empty', 'data-ph': t }));
           return false;
         });

@@ -61,6 +61,7 @@ def _one_class(tag, cls, a):
 
 
 _NOTE_HREF = re.compile(r"/notes#[1-9][0-9]{0,17}")      # wie sharing._NOTE_LINK / publish._NOTE_HREF (BUG-090)
+_FILE_HREF = re.compile(r"/files/[0-9a-f]{24}")          # 2.5 (Trilium-Import): Verweis auf eine Datei dieses Servers
 # Echte HTML-Elemente ausserhalb der Positivliste werden entfernt; alles andere in spitzen Klammern ist Klartext
 _HTML_TAGS = set("html head body title meta link script style noscript template iframe frame frameset object embed applet param "
                  "img picture source video audio track canvas svg math map area form input button select option optgroup "
@@ -97,6 +98,8 @@ class _Sanitizer(HTMLParser):
             href = (a.get("href") or "").strip()
             if _NOTE_HREF.fullmatch(href):          # interner Seitenverweis, exakt /notes#<zahl>
                 keep = f' href="{href}"'
+            elif _FILE_HREF.fullmatch(href):        # Datei dieses Servers, exakt /files/<id> (Rechte prueft /files/<id>)
+                keep = f' href="{href}" target="_blank" rel="noopener noreferrer"'
             elif urlparse(href).scheme in ("http", "https", "mailto"):
                 keep = f' href="{html_escape(href, quote=True)}" target="_blank" rel="noopener noreferrer"'
             else:

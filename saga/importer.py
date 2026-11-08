@@ -276,7 +276,7 @@ def _wrap(u, work):
             root, parent = work(run, src)
         finally:
             src.close()
-        if run.report.items:
+        if run.report.items and run.report.page is None:     # Trilium legt den Bericht selbst unter die Sammelseite
             _report_page(run, parent)
         return root
     return go
@@ -331,7 +331,8 @@ def _csv_append(run, src, path, b, target):
 
 
 def _report_page(run, parent):
-    """Seite "Importbericht" neben dem Ziel (gleiche Elternseite; nie in einer Datenbank)."""
+    """Seite "Importbericht" neben dem Ziel (gleiche Elternseite; nie in einer Datenbank) - bzw. beim Trilium-Import als
+    letzte Unterseite der Sammelseite. Gruppen ohne Pfade (nur eine Zahl, z. B. Systemnotizen) ohne Liste. -> ID"""
     from html import escape
     rep = ic.report_out(run.report.to_json())
     cnt = rep["counts"]
@@ -341,8 +342,10 @@ def _report_page(run, parent):
         skipped=cnt.get("skipped", 0)), quote=False)}}]
     for i, g in enumerate(rep["groups"]):
         blocks.append({"id": f"irh{i}", "type": "header", "data": {"level": 3, "text": escape(g["text"], quote=False)}})
-        blocks.append({"id": f"irl{i}", "type": "list", "data": {"style": "unordered", "items": [
-            {"content": escape(x["path"] or "–", quote=False), "items": []} for x in g["items"][:500]]}})
+        paths = [x["path"] for x in g["items"][:500] if x["path"]]
+        if paths:
+            blocks.append({"id": f"irl{i}", "type": "list", "data": {"style": "unordered", "items": [
+                {"content": escape(x, quote=False), "items": []} for x in paths]}})
     if rep["more"]:
         blocks.append({"id": "irm", "type": "paragraph", "data": {"text": escape(t("… und {n} weitere.", n=rep["more"]), quote=False)}})
     with _db() as c, c:
@@ -357,6 +360,7 @@ def _report_page(run, parent):
         run.created.append(nid)
         tree_changed(c, run.uid, [nid], "created")
     run.report.page = nid
+    return nid
 
 
 @router.get("/api/import/runs")
