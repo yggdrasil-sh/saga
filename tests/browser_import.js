@@ -1,7 +1,8 @@
 // Browser-Test 2.5 (Paket 2): Import-Dialog (CSV -> neue Datenbank: Vorschau, Typ aendern, Spalte weglassen, Fortschritt,
 // Bericht, Oeffnen), "Zeilen aus CSV hinzufuegen" an einer Datenbank, CSV-Export aus dem Ansicht-Menue,
 // optional Markdown-Ordner (IMPORT_MD=1) und Notion-Export (IMPORT_NOTION=1: ZIP aus tests/fixtures/notion/a, Typ einer
-// Spalte im Dialog aendern, Formel-Spalte "In Formel umwandeln" im Spaltenmenue).
+// Spalte im Dialog aendern, Formel-Spalte "In Formel umwandeln" im Spaltenmenue) und Trilium-Sicherung (IMPORT_TRILIUM=1:
+// .db aus tests/trilium_fixture.py, PYTHON = Interpreter mit cryptography; Passwortfeld, falsches und richtiges Passwort).
 //   SAGA_BASE=... SAGA_USER=... SAGA_PASS=... [PLAYWRIGHT=...] node tests/browser_import.js
 'use strict';
 const fs = require('fs');
@@ -186,6 +187,40 @@ async function until(p, fn, arg, ms = 20000) {
           ok('Umgewandelt: Formel, Wert gerechnet', fx && fx.type === 'formula' && !fx.fx_hint && al && al.props[fx.id] === 2469, fx);
         }
       }
+    }
+    // --- Trilium-Sicherung mit geschuetzten Notizen (optional) ---------------------------------------------------------
+    if (process.env.IMPORT_TRILIUM === '1') {
+      const db = path.join(tmp, 'sicherung.db');
+      const py = 'import sys; sys.path.insert(0, sys.argv[1]); import trilium_fixture as F; F.build_db(sys.argv[2]); print(F.PW)';
+      const tpw = require('child_process').execFileSync(process.env.PYTHON || 'python3', ['-c', py, __dirname, db]).toString().trim();
+      await p.click('#pg-new');
+      await p.click('.menu:not([hidden]) .menu-item:has-text("Importieren")');
+      await p.waitForSelector('#pg-modal:not([hidden]) .imp-drop');
+      ok('Hinweis nennt Trilium', (await p.$eval('.imp-hint', (x) => x.textContent)).includes('Trilium'));
+      await p.setInputFiles('.imp-file', db);
+      await p.waitForSelector('.imp-pass', { timeout: 20000 });
+      const ts = await p.$eval('.imp-sum', (x) => x.textContent);
+      ok('Trilium-Analyse: Sicherung, Seiten, Klone', /Sicherung/.test(ts) && /1 Klone/.test(ts), ts);
+      ok('Passwortfeld mit Hinweis "nicht gespeichert"', (await p.$eval('.imp-pw', (x) => x.textContent)).includes('nicht gespeichert')
+        && await p.$eval('.imp-pass', (x) => x.type === 'password' && x.autocomplete === 'off'));
+      await p.fill('.imp-title', 'Aus Trilium');
+      await p.fill('.imp-pass', 'falsches-passwort');
+      await p.click('.imp-run');
+      ok('falsches Passwort: Meldung im Dialog, Feld geleert', await until(p, () => /falsch/.test((document.querySelector('.imp-msg.is-err') || {}).textContent || ''))
+        && await p.$eval('.imp-pass', (x) => x.value === ''));
+      await p.fill('.imp-pass', tpw);
+      await p.click('.imp-run');
+      ok('Trilium-Import fertig', await until(p, () => !!document.querySelector('.imp-done.ok'), null, 60000),
+        await p.$eval('#pg-modal-body', (x) => x.textContent.slice(0, 300)));
+      await p.click('.imp-open');
+      await p.waitForTimeout(800);
+      const troot = await p.evaluate(() => parseInt(location.hash.slice(1), 10)); made.push(troot);
+      ok('Sammelseite "Aus Trilium" geoeffnet', (await p.$eval('#pg-title', (x) => x.value || x.textContent)).includes('Aus Trilium'));
+      const all = await api('GET', '/api/notes');
+      const list = Array.isArray(all.notes || all.pages || all) ? (all.notes || all.pages || all) : [];
+      const kids = list.filter((x) => x.parent_id === troot).map((x) => x.title);
+      ok('Baum der Sammelseite (inkl. entschluesselter Notizen)', ['Projekte', 'Rezepte', 'Foto.png', 'Tresor', 'Geheimnis'].every((x) => kids.includes(x)), kids);
+      ok('Passwort nicht im Speicher der Seite', !(await p.evaluate((pw) => JSON.stringify(localStorage).includes(pw) || JSON.stringify(sessionStorage).includes(pw), tpw)));
     }
   } catch (e) {
     console.log('FEHLER', e.message); res.push(false);
