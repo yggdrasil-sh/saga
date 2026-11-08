@@ -2947,7 +2947,7 @@ Satzbausteine für den Neubau (Schlüssel wie im Web, `{name}` = `actor`):
   weggelassen; `[]` setzt zurück; keine Liste → 400.
 
 Fehlt ein Feld beim Erneuern (gleiche Adresse), bleibt der gespeicherte Wert (Migration 33: `push_sub.lang`, `push_sub.caps`).
-Der Browser (`static/push.js`) meldet `caps: ["update"]`.
+Der Browser (`static/push.js`) meldet `caps: ["update"]` bewusst **nicht**: Chrome zeigt bei Pushes ohne sichtbare Mitteilung „im Hintergrund aktualisiert“, Safari widerruft solche Abos. Im Web passt die Glocke über das Live-Ereignis `notification.changed`; der Service Worker kann Updates trotzdem verarbeiten, falls ein Abo sie anfordert.
 
 ### Gelöschte Chat-Nachrichten: Glocke, Live, Push
 

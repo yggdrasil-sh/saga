@@ -103,7 +103,7 @@ self.addEventListener('pushsubscriptionchange', function (e) {
       return fetch('/api/push/subscriptions', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-Saga': '1' },
-        body: JSON.stringify({ type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: '', caps: ['update'] })
+        body: JSON.stringify({ type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: '' })
       });
     }).catch(function () {}));
 });

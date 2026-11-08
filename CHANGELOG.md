@@ -31,7 +31,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   an (Migration 33). Vertrag: `docs/APP-API.md` „Push-Nutzlast 2“.
 - **Glocke:** Wird eine Chat-Nachricht für alle gelöscht (auch mehrere, Admin-Grabstein, föderiert), sinkt der Zähler
   des Eintrags bzw. verschwindet er; neues Live-Ereignis `notification.changed`; war er ungelesen, passen Geräte mit
-  `caps: ["update"]` (Browser, neue Apps) die gezeigte Mitteilung still an bzw. entfernen sie.
+  `caps: ["update"]` (neue Android-App; Browser bewusst nicht) die gezeigte Mitteilung still an bzw. entfernen sie.
 
 ### Desktop-Hülle: Brücke (Vorbereitung)
 - **Brückenvertrag `window.sagaHost`** (`static/host.js`, Vertrag `docs/APP-API-HOST.md`) für die kommenden Desktop-Apps
