@@ -496,8 +496,10 @@
   }
   function fetchOnce() {
     return fetch('/api/net', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(apply);
+      .then(function (r) { if (r.status === 401 || r.status === 403) { stopAll(); location.reload(); throw new Error('auth'); } if (!r.ok) throw new Error(r.status); return r.json(); }).then(apply);
   }
+  // Rechte entzogen/abgemeldet: nichts mehr abfragen, Neuladen fuehrt zur Anmeldung
+  function stopAll() { if (poll) { clearInterval(poll); poll = 0; } if (es) { es.close(); es = null; } fails = 99; }
   function startPoll() {
     if (poll) return;
     status(L.livetxt, true);
@@ -509,7 +511,7 @@
     if (es) return;
     es = new EventSource('/api/net/events');
     es.addEventListener('net', function (ev) { fails = 0; status(L.livetxt, true); try { apply(JSON.parse(ev.data)); } catch (e) { /* naechster Stand */ } });
-    es.addEventListener('bye', function () { if (es) { es.close(); es = null; } setTimeout(start, 1000); });
+    es.addEventListener('bye', function (ev) { if (es) { es.close(); es = null; } if (/auth/.test(String(ev && ev.data || ''))) { stopAll(); location.reload(); return; } setTimeout(start, 1000); });
     es.onerror = function () {
       status(L.reconnect, false);
       if (es && es.readyState === 2) { es = null; fails++; setTimeout(start, 3000); }
