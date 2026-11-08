@@ -1406,7 +1406,7 @@
           S.cur = null; $('page').hidden = true; setLocation(); history.replaceState(null, '', location.pathname);
           if (!(parent && byId(parent))) {
             try { sessionStorage.setItem('hk-del-undo', JSON.stringify({ id: id, name: name, t: Date.now() })); } catch (e) { /* ohne Speicher: kein Rueckgaengig */ }
-            location.href = '/dashboard'; return;
+            HK.go('/dashboard'); return;
           }
           HK.toast(T('„{name}“ in den Papierkorb verschoben', { name: name }), T('Rückgängig'), function () {
             api('POST', '/api/trash/' + id + '/restore').then(loadList).then(function () { return openPage(id); })
@@ -9087,7 +9087,7 @@
                                        { kw: 'gallery vorlagen templates galerie vorlage' });
     if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich nextcloud schluessel' });
     if (window.HKShortcuts) add(T('Tastenkürzel'), '⌨', function () { HKShortcuts.open(); }, { kw: 'shortcuts tastatur kuerzel hotkeys keyboard hilfe', kbd: mk + '/' });
-    add(T('Heute'), '⌂', function () { location.href = '/dashboard'; }, { kw: 'home dashboard start today übersicht' });   // fix27 E2: "/" oeffnet ggf. die eigene Startseite
+    add(T('Heute'), '⌂', function () { HK.go('/dashboard'); }, { kw: 'home dashboard start today übersicht' });   // fix27 E2: "/" oeffnet ggf. die eigene Startseite
     return a;
   }
 

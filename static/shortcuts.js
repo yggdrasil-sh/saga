@@ -143,7 +143,7 @@
       if (!isMac && e.key && e.key.length === 1 && e.key.toLowerCase() !== 'n') return;
       if (otherModal() || dlg) return;
       e.preventDefault();
-      if (HK.newBlankPage) HK.newBlankPage(); else location.href = '/notes?new=blank';
+      if (HK.newBlankPage) HK.newBlankPage(); else HK.go('/notes?new=blank');
     }
   });
 })();

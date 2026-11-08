@@ -118,7 +118,7 @@
   function srcMenu(task, btn) {
     var src = srcOf(task), mp = src.map || {};
     openMenu(btn, function (m) {
-      m.appendChild(menuItem(T('Eintrag öffnen'), function () { window.location.href = '/notes#' + task.id; }, { ic: 'external' }));
+      m.appendChild(menuItem(T('Eintrag öffnen'), function () { HK.go('/notes#' + task.id); }, { ic: 'external' }));
       if (!task.edit) { m.appendChild(menuLabel(T('Nur lesen – du kannst diesen Eintrag nicht ändern.'))); return; }
       if (mp.prio) {
         m.appendChild(menuLabel(T('Priorität')));

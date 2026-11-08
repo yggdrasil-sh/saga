@@ -393,11 +393,12 @@ def kopfzeilen():
     import asyncio
     from saga import core
 
-    def head(path, cookie=None, base=B):
+    def head(path, cookie=None, base=B, extra=None):
         c = http.client.HTTPConnection(base.hostname, base.port, timeout=30)
         h = {"Host": HOST if base is B else base.netloc, "Accept": "text/html"}
         if cookie:
             h["Cookie"] = "saga=" + cookie
+        h.update(extra or {})
         c.request("GET", path, headers=h)
         r = c.getresponse(); r.read()
         return r.status, {k.lower(): v for k, v in r.getheaders()}
@@ -415,6 +416,21 @@ def kopfzeilen():
     s, h = head("/notes?embed=1", ck("hd-kopf"))
     ok(f"/notes?embed=1 (Peek): SAMEORIGIN ({h.get('x-frame-options')})", s == 200 and h.get("x-frame-options") == "SAMEORIGIN"
        and "frame-ancestors 'self'" in h.get("content-security-policy", ""))
+    # 2.5 Anruf-Huelle: Hauptseiten nur als Rahmen gleicher Herkunft einbettbar (Sec-Fetch-* setzt nur der Browser)
+    fr = {"Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "same-origin"}
+    for pth in ("/notes", "/dashboard", "/chats"):
+        s, h = head(pth, ck("hd-kopf"), extra=fr)
+        ok(f"{pth} im Rahmen gleicher Herkunft: SAMEORIGIN ({s}, {h.get('x-frame-options')})",
+           s == 200 and h.get("x-frame-options") == "SAMEORIGIN" and "frame-ancestors 'self'" in h.get("content-security-policy", "")
+           and "frame-ancestors 'none'" not in h.get("content-security-policy", ""))
+    s, h = head("/notes", ck("hd-kopf"), extra={"Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "cross-site"})
+    ok(f"/notes im fremden Rahmen: DENY ({h.get('x-frame-options')})", s == 200 and h.get("x-frame-options") == "DENY")
+    s, h = head("/notes", ck("hd-kopf"), extra={"Sec-Fetch-Dest": "document", "Sec-Fetch-Site": "same-origin"})
+    ok(f"/notes als Dokument: DENY ({h.get('x-frame-options')})", s == 200 and h.get("x-frame-options") == "DENY")
+    s, h = head("/login", extra=fr)
+    ok(f"/login im Rahmen gleicher Herkunft: weiter DENY ({h.get('x-frame-options')})", s == 200 and h.get("x-frame-options") == "DENY")
+    s, h = head("/login", base=AD, extra=fr)
+    ok(f"Admin /login im Rahmen gleicher Herkunft: weiter DENY ({h.get('x-frame-options')})", h.get("x-frame-options") == "DENY")
     s, h = head("/api/notes", ck("hd-kopf"))
     ok("API: Permissions-Policy, ohne CSP kein X-Frame-Options", "permissions-policy" in h and "x-frame-options" not in h)
     s, h = head("/login", base=AD)
@@ -439,6 +455,27 @@ def kopfzeilen():
     o = asyncio.run(run(False, [(b"x-frame-options", b"SAMEORIGIN"), (b"content-security-policy", b"frame-ancestors 'none'")]))
     ok("HSTS=false: kein HSTS; vorhandenes X-Frame-Options bleibt",
        "strict-transport-security" not in o and o.get("x-frame-options") == "SAMEORIGIN")
+
+    async def run2(paths, path):
+        out = {}
+
+        async def app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200,
+                        "headers": [(b"content-security-policy", b"default-src 'self'; frame-ancestors 'none'")]})
+            await send({"type": "http.response.body", "body": b""})
+
+        async def snd(m):
+            if m["type"] == "http.response.start":
+                out.update({k.decode(): v.decode() for k, v in m["headers"]})
+        hd = [(b"sec-fetch-dest", b"iframe"), (b"sec-fetch-site", b"same-origin")]
+        await core.SecHeaders(app, hsts=False, frame_paths=paths)({"type": "http", "path": path, "method": "GET", "headers": hd}, None, snd)
+        return out
+    o = asyncio.run(run2(core.SHELL_FRAME_PATHS, "/notes"))
+    ok("SecHeaders: Rahmen gleicher Herkunft -> frame-ancestors 'self'", o.get("x-frame-options") == "SAMEORIGIN")
+    o = asyncio.run(run2((), "/notes"))
+    ok("SecHeaders ohne Rahmen-Pfade (Admin): DENY", o.get("x-frame-options") == "DENY")
+    o = asyncio.run(run2(core.SHELL_FRAME_PATHS, "/notes/x"))
+    ok("SecHeaders: anderer Pfad bleibt DENY", o.get("x-frame-options") == "DENY")
 
 
 if __name__ == "__main__":

@@ -55,7 +55,7 @@
   function newEvent() {
     var box = $('rail-cal'), add = $('rail-cal-add');
     if (box && !box.hidden && add) add.click();                     // Kalender verbunden: Dialog wie "+" bei den Terminen
-    else location.href = '/notes?v=events';
+    else HK.go('/notes?v=events');
   }
   function askAI() { if (window.HKAI && HKAI.state()) HKAI.open('ask'); }
   if ($('hz-task')) $('hz-task').addEventListener('click', newTask);
@@ -140,7 +140,7 @@
     var s = $('sh-search');
     if (s && s.getClientRects().length) { s.focus(); s.select(); }
     else if (HK.openQuickSearch) HK.openQuickSearch({ key: true });
-    else location.href = '/notes?qs=1';
+    else HK.go('/notes?qs=1');
   }
   document.addEventListener('keydown', function (e) {
     var t = e.target;
@@ -149,8 +149,8 @@
     var k = e.key;
     if (k === '/') { e.preventDefault(); sideSearch(); return; }
     if (/^[1-9]$/.test(k)) { e.preventDefault(); open(wraps()[+k - 1]); return; }
-    if (k === 'n' || k === 'N') { e.preventDefault(); location.href = '/notes?new=1'; return; }
-    if (k === 'v' || k === 'V') { e.preventDefault(); location.href = '/notes?gallery=1'; return; }
+    if (k === 'n' || k === 'N') { e.preventDefault(); HK.go('/notes?new=1'); return; }
+    if (k === 'v' || k === 'V') { e.preventDefault(); HK.go('/notes?gallery=1'); return; }
     if (k === 'e' || k === 'E') { e.preventDefault(); newEvent(); return; }
     if ((k === 'm' || k === 'M') && !$('hz-ai').hidden) { e.preventDefault(); askAI(); }
   });

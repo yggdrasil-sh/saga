@@ -52,8 +52,8 @@
         var go = function () {
           fetch('/logout', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1' } })
             .then(function (r) { return r.json(); })
-            .then(function (d) { location.href = (d && typeof d.next === 'string' && /^(\/(?!\/)|https?:\/\/)/.test(d.next)) ? d.next : '/login?bye=1'; },
-                  function () { location.href = '/logout'; });
+            .then(function (d) { HK.go((d && typeof d.next === 'string' && /^(\/(?!\/)|https?:\/\/)/.test(d.next)) ? d.next : '/login?bye=1'); },
+                  function () { HK.go('/logout'); });
         };
         try {                                          // Videos (2.4): Schluessel laufender Wiedergaben im Service Worker vergessen
           if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ op: 'clear' });

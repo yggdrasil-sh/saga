@@ -569,13 +569,71 @@
   window.HK.isDark = function () { return window.HK.theme.dark(); };
   // Ist gerade ein Menue offen, das aus `box` heraus geoeffnet wurde? (Schwebende Seitenleiste bleibt dann offen)
   window.HK.menuFrom = function (box) { return !!(box && !menuEl.hidden && menuOwner && box.contains(menuOwner)); };
+
+  // --- 2.5 Anruf-Huelle (static/shell.js) -------------------------------------------------------------------------
+  // Ein Anruf lebt im Dokument der Chat-Seite. Solange er laeuft, oeffnet die Chat-Seite andere Saga-Seiten in einem
+  // bildschirmfuellenden Rahmen (#hk-shell-frame), statt das Dokument zu verlassen. HK.go(url) ist der gemeinsame
+  // Navigationshelfer: in der Huelle -> Rahmen, im Rahmen -> normal im Rahmen (Chats zeigt die Huelle selbst; nach dem
+  // Anruf geht der naechste Wechsel wieder im obersten Fenster), sonst wie location.href.
+  // shellTarget: nur Seiten dieser Saga, die im Rahmen laufen duerfen (gleiche Herkunft, feste Pfade) -> relativer Pfad
+  function shellTarget(href) {
+    var u; try { u = new URL(String(href || ''), location.href); } catch (e) { return null; }
+    if (u.origin !== location.origin || !/^\/(dashboard|notes|chats)?$/.test(u.pathname)) return null;
+    if (u.pathname === '/chats' && /(^|&)panel=/.test(u.search.slice(1))) return null;
+    return u.pathname + u.search + u.hash;
+  }
+  // Huelle, wenn dieses Fenster ihr Rahmen ist (sonst null) - gleiche Herkunft, sonst wirft frameElement/parent
+  function shellOf() {
+    try { var f = window.frameElement; return f && f.id === 'hk-shell-frame' && window.parent.HKShell || null; } catch (e) { return null; }
+  }
+  var LEAVE = /^\/(login|logout|register|security|pair)(\/|$)/;   // Anmeldung & Co.: immer im obersten Fenster
+  window.HK.shell = shellOf;
+  window.HK.shellTarget = shellTarget;
+  window.HK.go = function (url) {
+    url = String(url || '');
+    var S = shellOf(), t = shellTarget(url), p = '';
+    try { p = new URL(url, location.href).pathname; } catch (e) { /* egal */ }
+    if (S) {
+      if (t && S.chats(t)) return;                              // Chats: die Huelle zeigt sich selbst
+      if (!S.busy() || LEAVE.test(p)) { S.leave(url); return; }   // Anruf vorbei bzw. Anmeldung: oberstes Fenster
+      location.href = url; return;
+    }
+    if (t && window.HKShell && window.HKShell.take(t)) return;
+    location.href = url;
+  };
+  (function () {
+    var S = shellOf(); if (!S) return;
+    document.documentElement.classList.add('hk-in-shell');
+    // Chat-Seite im Rahmen: die Huelle ist selbst die Chat-Seite - sie zeigt sich und wirft diesen Rahmen weg
+    if (location.pathname === '/chats' && !/(^|&)panel=/.test(location.search.slice(1))) {
+      window.HK.shellGone = true; S.chats(location.pathname + location.search + location.hash, true); return;
+    }
+    // Links im Rahmen: Saga-Seiten bleiben waehrend des Anrufs im Rahmen (Browser-Standard), _top/_parent auch;
+    // fremde Seiten in neuem Tab (sonst Anruf weg); nach dem Anruf wieder im obersten Fenster
+    window.addEventListener('click', function (e) {
+      var S2 = shellOf();
+      if (!S2 || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target && e.target.closest && e.target.closest('a[href]'); if (!a || a.hasAttribute('download')) return;
+      var tg = (a.getAttribute('target') || '').toLowerCase();
+      if (tg && tg !== '_self' && tg !== '_top' && tg !== '_parent') return;
+      var u; try { u = new URL(a.getAttribute('href'), location.href); } catch (x) { return; }
+      if (!/^https?:$/.test(u.protocol)) return;
+      var t = shellTarget(u.href), here = location.pathname + location.search;
+      if (t && S2.chats(t)) { e.preventDefault(); return; }
+      if (u.origin === location.origin && u.pathname + u.search === here && u.hash && !tg) return;   // Sprung innerhalb der Seite
+      if (!S2.busy()) { e.preventDefault(); S2.leave(u.href); return; }
+      if (t) { if (tg) { e.preventDefault(); location.href = t; } return; }
+      if (u.origin !== location.origin) { e.preventDefault(); window.open(u.href, '_blank', 'noopener'); return; }
+      if (LEAVE.test(u.pathname)) { e.preventDefault(); S2.leave(u.href); }
+    });
+  })();
   // Seite geloescht und nach "Heute" gewechselt (pages.js): "Rueckgaengig" hier anbieten (hoechstens 30 s alt)
   (function () {
     var d = null; try { d = JSON.parse(sessionStorage.getItem('hk-del-undo') || 'null'); sessionStorage.removeItem('hk-del-undo'); } catch (e) { return; }
     if (!d || !d.id || Date.now() - (d.t || 0) > 30000 || document.body.classList.contains('embed')) return;
     var show = function () {
       toast(T('„{name}“ in den Papierkorb verschoben', { name: d.name || '' }), T('Rückgängig'), function () {
-        api('POST', '/api/trash/' + d.id + '/restore').then(function () { location.href = '/notes#' + d.id; })
+        api('POST', '/api/trash/' + d.id + '/restore').then(function () { window.HK.go('/notes#' + d.id); })
           .catch(function (err) { toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
       });
     };

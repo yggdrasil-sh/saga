@@ -14,7 +14,7 @@
     return el('span', 'pg-ic', icon || '📄');
   }
   function label(p) { return p && p.title ? p.title : T('Unbenannt'); }
-  function open(id) { location.href = '/notes#' + id; }
+  function open(id) { HK.go('/notes#' + id); }
 
   // --- Ein/aus, Schweben ------------------------------------------------------------------------------------------
   var fine = window.matchMedia('(hover: hover) and (pointer: fine)'), wide = window.matchMedia('(min-width: 761px)');
@@ -157,7 +157,7 @@
   function allPages() { return pages.filter(function (p) { return !p.archived; }).concat(shared || []); }
   function anyById(id) { return byId(id) || (shared || []).filter(function (p) { return p.id === id; })[0] || null; }
   function ancestors(id) { var out = [], p = anyById(id), guard = 0; while (p && p.parent_id && guard++ < 50) { p = anyById(p.parent_id); if (p) out.unshift(p); } return out; }
-  function go(url) { location.href = url; }
+  function go(url) { HK.go(url); }   // 2.5: waehrend eines Anrufs im Rahmen der Huelle
   var mk = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : T('Strg') + '+';
   function actions() {
     var a = [], chats = !!side.querySelector('a[href="/chats"]'), cur = body.classList.contains('chats-page') ? 'chats' : 'today';

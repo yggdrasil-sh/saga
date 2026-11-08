@@ -25,6 +25,9 @@
   'use strict';
   var HK = window.HK, T = window.T;
   if (!HK || !document.getElementById('hk-user') || document.body.classList.contains('embed')) return;
+  // 2.5 (Anruf-Huelle, static/shell.js): im Rahmen der Huelle klingelt und telefoniert nur die Huelle - kein zweites
+  // Klingeln, und das Verlassen einer Seite im Rahmen beendet keinen Anruf
+  if (HK.shell && HK.shell()) return;
   var el = HK.el, api = HK.api;
   var CHATS = location.pathname === '/chats';
   var C = null;                                       // laufender Anruf (siehe newCall)
@@ -4550,7 +4553,10 @@
   }, { passive: true });
   document.addEventListener('fullscreenchange', function () { var R = C; if (R && R.ui) { R.ui.w.classList.toggle('fs', !!fsEl()); if (R.meshOn) meetSoon(R); idlePoke(R); } });
 
-  window.HKCalls = { head: head, start: start, state: function () {
+  window.HKCalls = { head: head, start: start,
+  // 2.5 (Anruf-Huelle): laeuft hier ein Anruf bzw. wird er aufgebaut (auch Raum, Knoten, Meeting)?
+  busy: function () { return !!(C && !C.done); },
+  state: function () {
     return C ? { id: C.id, role: C.role, connected: C.connected, verified: C.verified, path: C.path, bytesIn: C.bytesIn || 0,
                  mic: C.mic, cam: !!C.cam, screen: !!C.screen, remote: C.remoteState,
                  audio: Object.assign({ state: C.snd || '', blocked: !!C.audioBlocked }, C.audio || {}),

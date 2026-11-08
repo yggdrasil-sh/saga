@@ -6,7 +6,7 @@
 (function () {
   'use strict';
   var HK = window.HK, root = document.getElementById('ct');
-  if (!HK || !root) return;
+  if (!HK || !root || HK.shellGone) return;               // 2.5: Chat-Seite im Rahmen der Anruf-Huelle - die Huelle uebernimmt
   var $ = HK.$, el = HK.el, api = HK.api, T = window.T;
   var VID = window.SagaChatVideo || null;             // Videos im Chat (2.4, static/chat-video.js)
   var VOICE = window.SagaVoice || null;               // Sprachnachrichten (2.5, static/chat-voice.js)
@@ -755,7 +755,7 @@
     else if ((m = /^u(.+)$/.exec(h))) create({ kind: 'dm', user: m[1] });
     else if (h === 'settings') settings();
   }
-  window.addEventListener('hashchange', function () { if (S.ready) route(); });
+  window.addEventListener('hashchange', function () { if (S.ready && !(window.HKShell && window.HKShell.on())) route(); });   // 2.5: nicht, solange die Anruf-Huelle eine Seite zeigt
 
   // isFed: Krypto saga-chat/v2 (an Handles gebunden) - 2.3 Chats ueber Servergrenzen (v 2), 2.5 Stufe 3 auch lokal (v 3).
   // isRemote: wirklich ueber Servergrenzen (Herkunft zeigen, Anfragen, Heim-Server) - nur v 2.

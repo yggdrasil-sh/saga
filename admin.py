@@ -53,7 +53,7 @@ admin.add_middleware(BodyLimit, default=1024 * 1024,      # nur Formulare: 1 MB 
                      rules=[("POST", re.compile(r"/settings/ai/persona"), avatars.UPLOAD_MAX + 256 * 1024),   # Profilbild der KI
                             ("POST", re.compile(r"/covers/upload"), COVER_BODY_MAX)])                     # Titelbild-Galerie
 # Bughunt Sicherheit V2/V3: dieselben Kopfzeilen wie die App (HSTS nur, wenn auch der Admin-Bereich per https laeuft)
-admin.add_middleware(SecHeaders, hsts=HSTS and ADMIN_URL.startswith("https://"))
+admin.add_middleware(SecHeaders, hsts=HSTS and ADMIN_URL.startswith("https://"), frame_paths=())
 admin.mount("/static", StaticFiles(directory=os.path.join(hk.HERE, "static")), name="static")
 tmpl = Environment(loader=FileSystemLoader(os.path.join(hk.HERE, "templates", "admin")), autoescape=select_autoescape(["html"]))
 i18n.install(tmpl)

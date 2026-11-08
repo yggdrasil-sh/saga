@@ -718,6 +718,11 @@ def icon_csp(headers, uid):
 # - Permissions-Policy: Kamera/Mikrofon/Bildschirm teilen/Vollbild/Bild-im-Bild/Autoplay nur fuer Saga selbst (Anrufe,
 #   Sprachnachrichten); Vollbild/Bild-im-Bild/encrypted-media zusaetzlich fuer den YouTube-Einbetten-Block
 # - X-Frame-Options passend zu frame-ancestors der CSP ('none' -> DENY, 'self' -> SAMEORIGIN fuer das Peek-Fenster)
+# - 2.5 Anruf-Huelle (static/shell.js): die Hauptseiten (SHELL_FRAME_PATHS) laufen waehrend eines Anrufs im Rahmen der
+#   Chat-Seite. Nur wenn der Browser die Anfrage selbst als Rahmen-Navigation gleicher Herkunft kennzeichnet
+#   (Sec-Fetch-Dest: iframe, Sec-Fetch-Site: same-origin - beides setzt nur der Browser), wird frame-ancestors 'none' zu
+#   'self' (X-Frame-Options SAMEORIGIN). Fremde Seiten duerfen weiter nicht einbetten; ohne diese Kopfzeilen bleibt DENY.
+SHELL_FRAME_PATHS = ("/", "/dashboard", "/notes", "/chats")
 HSTS = BASE_URL.startswith("https://") and E.get("HSTS", "true").strip().lower() not in ("0", "false", "no", "off")
 _YT = '"https://www.youtube-nocookie.com"'
 PERMISSIONS_POLICY = ("camera=(self), microphone=(self), display-capture=(self), autoplay=(self), "
@@ -729,17 +734,26 @@ PERMISSIONS_POLICY = ("camera=(self), microphone=(self), display-capture=(self),
 class SecHeaders:
     """ASGI: HSTS, Permissions-Policy und X-Frame-Options ergaenzen (vorhandene Werte eines Endpunkts bleiben)."""
 
-    def __init__(self, app, hsts=None):
+    def __init__(self, app, hsts=None, frame_paths=SHELL_FRAME_PATHS):
         self.app = app
         self.hsts = HSTS if hsts is None else hsts
+        self.frame_paths = tuple(frame_paths or ())      # Admin-Bereich: keine (nie im Rahmen)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
 
+        shell = False
+        if scope.get("path") in self.frame_paths and scope.get("method") in ("GET", "HEAD"):
+            rh = {k.lower(): v for k, v in scope.get("headers") or []}
+            shell = rh.get(b"sec-fetch-dest") == b"iframe" and rh.get(b"sec-fetch-site") == b"same-origin"
+
         async def snd(m):
             if m["type"] == "http.response.start":
                 hs = list(m.get("headers") or [])
+                if shell:
+                    hs = [(k, v.replace(b"frame-ancestors 'none'", b"frame-ancestors 'self'"))
+                          if k.lower() == b"content-security-policy" else (k, v) for k, v in hs]
                 have = {k.lower() for k, _ in hs}
                 if self.hsts and b"strict-transport-security" not in have:
                     hs.append((b"strict-transport-security", b"max-age=31536000"))

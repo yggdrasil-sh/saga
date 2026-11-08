@@ -28,7 +28,7 @@
   var full = el('a', 'icon-btn cd-full', '↗'); full.href = '/chats'; full.title = T('In der Chat-Ansicht öffnen'); full.setAttribute('aria-label', full.title);
   full.addEventListener('click', function (e) {
     e.preventDefault(); var h = ''; try { h = D.frame ? D.frame.contentWindow.location.hash : ''; } catch (x) { h = ''; }
-    location.href = '/chats' + (h || '');
+    HK.go('/chats' + (h || ''));
   });
   var close = el('button', 'icon-btn cd-close', '×'); close.type = 'button'; close.setAttribute('aria-label', T('Chats schließen'));
   close.addEventListener('click', function () { hide(); });
@@ -89,7 +89,7 @@
     opts = opts || {};
     if (narrow.matches) {                                          // Handy: volle Chat-Ansicht
       var q = opts.share ? '?share=' + encodeURIComponent(opts.share.id) + '&title=' + encodeURIComponent(opts.share.title || '') : '';
-      location.href = '/chats' + q + (hash ? '#' + hash : ''); return;
+      HK.go('/chats' + q + (hash ? '#' + hash : '')); return;
     }
     aiClose();
     drawSwitch();
@@ -120,7 +120,7 @@
     var href = String(e.data.href || ''); if (!/^\/(?![\/\\])/.test(href) || /[\\\s]/.test(href)) return;   // nur Pfade dieser Saga
     var m = /^\/notes#(\d+)$/.exec(href), K = window.HKPages && window.HKPages.k;
     if (m && K && location.pathname === '/notes') { K.open(+m[1]); return; }
-    location.href = href;
+    HK.go(href);
   });
 
   // --- Ungelesen am Knopf -------------------------------------------------------------------------------------------

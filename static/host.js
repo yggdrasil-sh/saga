@@ -149,7 +149,7 @@
     if (s && window.HKSettings) { window.HKSettings.open(s[1]); return true; }     // Einstellungen ohne Neuladen
     var here = location.pathname + location.search;
     if (path.indexOf('#') > 0 && path.split('#')[0] === here) { location.hash = path.split('#')[1]; return true; }
-    location.assign(path);
+    if (window.HK && window.HK.go) window.HK.go(path); else location.assign(path);   // 2.5: Anruf-Huelle
     return true;
   }
   host.open = function (linkOrPath) {
