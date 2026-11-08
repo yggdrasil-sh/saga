@@ -297,9 +297,52 @@
     return { cam: cam, screen: { maxBitrate: Math.round(c.screen * f) * 1000, maxFramerate: fps, scaleResolutionDownBy: r2(Math.max(1, sc)) } };
   }
 
+  // Horn-Fix: Wiederaufbau nach Knotenverlust (Web; iOS/Android gleiche Regeln). Nie Rueckfall auf direkt.
+  // Backoff 1/2/4/8/15 s (+-20 % Zufall), Retry-After (429) hat Vorrang, Aufgabe nach 120 s ohne Erfolg. Erfolg zaehlt erst,
+  // wenn Daten kommen (rx); ein Verlust < 10 s nach dem Uebernehmen ist ein Fehlversuch derselben Folge.
+  var RC = { STEPS: [1000, 2000, 4000, 8000, 15000], JITTER: 0.2, MAX_MS: 120000, EARLY_MS: 10000 };
+  function Reconnect() { this.t0 = null; this.n = 0; this.adoptAt = 0; this.rxOk = true; }
+  // Verbindung weg -> true: neue Folge, sofort versuchen; false: Fehlversuch der laufenden Folge (fail() plant).
+  // Stabil war die Verbindung, wenn Daten kamen und sie mindestens EARLY_MS hielt (bzw. nie ueber hier aufgebaut wurde).
+  Reconnect.prototype.lost = function (now) {
+    var stable = this.rxOk && (!this.adoptAt || now - this.adoptAt >= RC.EARLY_MS);
+    this.rxOk = false; this.adoptAt = 0;
+    if (stable) { this.t0 = now; this.n = 0; return true; }
+    if (this.t0 === null) this.t0 = now;
+    return false;
+  };
+  // Versuch gescheitert -> { wait, n } bzw. { giveUp }. retryMs: Retry-After des Servers (ms, 0 = keiner), rnd in [0, 1)
+  Reconnect.prototype.fail = function (now, retryMs, rnd) {
+    this.rxOk = false;
+    if (this.t0 === null) this.t0 = now;
+    if (now - this.t0 >= RC.MAX_MS) return { giveUp: true };
+    var base = RC.STEPS[Math.min(this.n, RC.STEPS.length - 1)];
+    this.n++;
+    var r = typeof rnd === 'number' ? rnd : Math.random();
+    var w = Math.round(base * (1 - RC.JITTER + 2 * RC.JITTER * r));
+    if (retryMs > w) w = retryMs;
+    if (now + w - this.t0 > RC.MAX_MS) w = Math.max(0, this.t0 + RC.MAX_MS - now);   // letzter Versuch an der Grenze
+    return { wait: w, n: this.n };
+  };
+  Reconnect.prototype.adopted = function (now) { this.adoptAt = now; };
+  // Daten empfangen (rx > 0). Backoff und 2-min-Frist setzt erst ein Verlust nach >= EARLY_MS zurueck (lost)
+  Reconnect.prototype.rx = function () { this.rxOk = true; };
+  Reconnect.prototype.active = function () { return !this.rxOk; };
+  // Kandidaten fuer den Wiederaufbau: andere Knoten bevorzugen, sonst wieder der verlorene (nie leer, wenn es ihn gibt)
+  function reconnectList(list, lostNode) {
+    var other = (list || []).filter(function (c) { return c.node !== lostNode; });
+    return other.length ? other.concat((list || []).filter(function (c) { return c.node === lostNode; })) : (list || []);
+  }
+  // Retry-After eines Fehlers (429 der Kandidaten-Abfrage) in ms, sonst 0
+  function retryAfterMs(e) {
+    if (!e || e.status !== 429) return 0;
+    var s = e.data && typeof e.data.retry_after === 'number' ? e.data.retry_after : 0;
+    return Math.max(1, Math.min(300, s || 5)) * 1000;
+  }
+
   var api = { K: K, median: median, jitter: jitter, loadMs: loadMs, score: score, rank: rank, better: better, Switcher: Switcher,
               closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName,
-              TxGov: TxGov, txPlan: txPlan };
+              TxGov: TxGov, txPlan: txPlan, RC: RC, Reconnect: Reconnect, reconnectList: reconnectList, retryAfterMs: retryAfterMs };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SagaHorn = api;
 })(typeof self !== 'undefined' ? self : this);

@@ -246,5 +246,42 @@ ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.
   ok('keine RTT (null, 0, NaN): nichts', G.add(1000, null) === null && G.add(2000, 0) === null && G.add(3000, NaN) === null && G.level === 0);
 }
 
+// --- Horn-Fix: Wiederaufbau nach Knotenverlust (Backoff, Retry-After, 2-min-Frist, nie den einzigen Knoten meiden) -------
+{
+  const W = new H.Reconnect();
+  ok('erster Verlust einer stabilen Verbindung: sofort versuchen', W.lost(0) === true && W.active());
+  const waits = [];
+  for (let i = 0; i < 6; i++) waits.push(W.fail(1000 * i, 0, 0.5).wait);
+  ok(`Backoff 1/2/4/8/15/15 s ohne Zufall (${waits})`, waits.join() === '1000,2000,4000,8000,15000,15000');
+  const W2 = new H.Reconnect(); W2.lost(0);
+  const lo = W2.fail(0, 0, 0).wait, W3 = new H.Reconnect(); W3.lost(0);
+  const hi = W3.fail(0, 0, 0.999999).wait;
+  ok(`Zufall +-20 %: 1 s -> ${lo}..${hi} ms`, lo === 800 && hi === 1200);
+  const W4 = new H.Reconnect(); W4.lost(0);
+  ok('Retry-After (429) hat Vorrang vor kurzem Backoff', W4.fail(0, 7000, 0.5).wait === 7000);
+  ok('Fehler-Objekt -> Retry-After in ms (Body retry_after), ohne Angabe 5 s, andere Status 0',
+     H.retryAfterMs({ status: 429, data: { retry_after: 12 } }) === 12000 && H.retryAfterMs({ status: 429 }) === 5000
+     && H.retryAfterMs({ status: 409, data: { retry_after: 3 } }) === 0 && H.retryAfterMs(null) === 0);
+  const W5 = new H.Reconnect(); W5.lost(0);
+  let t = 0, d, n = 0;
+  while (!(d = W5.fail(t, 0, 0.5)).giveUp && n < 100) { t += d.wait; n++; }
+  ok(`Aufgabe nach 120 s ohne Erfolg (${n} Versuche, letzter bei ${t / 1000} s)`, d.giveUp && t === 120000 && n >= 8 && n <= 14);
+  const W6 = new H.Reconnect(); W6.lost(0); W6.fail(0, 0, 0.5); W6.fail(1000, 0, 0.5);
+  W6.adopted(4000);
+  ok('nach dem Uebernehmen ohne Daten noch aktiv (Monitor bleibt stumm, Hinweis bleibt)', W6.active());
+  W6.rx(4500);
+  ok('Daten empfangen: nicht mehr aktiv', !W6.active());
+  ok('Verlust < 10 s nach dem Uebernehmen: Fehlversuch (kein Sofort-Versuch)', W6.lost(9000) === false);
+  ok('... und der Backoff laeuft weiter (3. Stufe 4 s)', W6.fail(9000, 0, 0.5).wait === 4000);
+  W6.adopted(20000); W6.rx(20500);
+  ok('Verlust >= 10 s nach dem Uebernehmen mit Daten: neue Folge, sofort', W6.lost(31000) === true && W6.fail(31000, 0, 0.5).wait === 1000);
+  const W7 = new H.Reconnect(); W7.lost(0); W7.adopted(1000);
+  ok('uebernommen, aber nie Daten: Verlust nach 30 s ist Fehlversuch', W7.lost(31000) === false);
+  const L = [{ node: 'a' }, { node: 'b' }];
+  ok('Kandidaten: andere Knoten zuerst, der verlorene als letzter', H.reconnectList(L, 'a').map(c => c.node).join() === 'b,a');
+  ok('Kandidaten: nur der verlorene Knoten -> wieder dorthin (nicht meiden)', H.reconnectList([{ node: 'a' }], 'a').map(c => c.node).join() === 'a'
+     && H.reconnectList([], 'a').length === 0);
+}
+
 console.log(`\nHORN-LOGIK ${res.filter(Boolean).length}/${res.length}` + (res.every(Boolean) ? ' - ALLES GRUEN' : ' - FEHLER'));
 process.exit(res.every(Boolean) ? 0 : 1);

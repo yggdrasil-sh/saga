@@ -2922,7 +2922,7 @@
   // Stummschalten und Entfernen (Gastgeber).
   // Last-N (H6): Desktop 9 bewegte Bilder, Handy 4 - der Sprecherplatz zaehlt mit (Kachelplaetze = Last-N - 1)
   var HORN_WAIT_TCP = 4000, HORN_WAIT_UDP = 2000, HORN_WAIT_TURN = 10000, HORN_TILES = (mobile ? 4 : 9) - 1, HORN_MON = 500, HORN_PING = 2000;
-  var HORN_CANDS_EVERY = 30000, HORN_BAD_MS = 60000, HORN_RETRY_MAX = 120000;
+  var HORN_CANDS_EVERY = 30000, HORN_BAD_MS = 60000;
   function hornCan() { return typeof RTCRtpScriptTransform === 'function' || !!(window.RTCRtpSender && RTCRtpSender.prototype.createEncodedStreams); }
   var HORN_V = (function () {
     var s = (document.currentScript && document.currentScript.src) || '', m = /[?&]v=([^&#]+)/.exec(s);
@@ -2949,7 +2949,7 @@
   function hornView() { var v = layoutChoice(); return v === 'speaker' || v === 'presentation' ? 'speaker' : 'grid'; }
   function hornNew(R, blk) {
     R.horn = { blk: blk || {}, vown: {}, rseq: 0, X: null, L: null, key: null, q: [], peers: {}, known: {}, acks: {}, ackT: null, rekeyT: null, started: false,
-               cur: null, next: null, olds: [], seq: 0, bad: {}, sw: null, meas: {}, switches: [], switching: false, retryT: null, retry0: 0,
+               cur: null, next: null, olds: [], seq: 0, bad: {}, sw: null, meas: {}, switches: [], switching: false, rcT: null, rc: null, rcKeep: null,
                tiles: {}, more: null, view: R.dm ? 'speaker' : hornView(), st: {}, stT: null, monT: null, spkT: null, candT: 0, statT: 0, q5: null, net: null,
                runes: null, runesKey: '', plist: false, rpop: false, spk: null, speaking: {}, rosterT: 0, note: '', sent: 0 };
     return R.horn;
@@ -3126,6 +3126,7 @@
     var a = Object.keys(H.bad).filter(function (n) { return hornBad(H, n); });
     if (H.leaving && H.leaving.until > Date.now() && a.indexOf(H.leaving.node) < 0) a.push(H.leaving.node);
     (extra || []).forEach(function (n) { if (a.indexOf(n) < 0) a.push(n); });
+    if (H.rcKeep) a = a.filter(function (n) { return n !== H.rcKeep; });   // Horn-Fix: den verlorenen Knoten nie meiden
     return a;
   }
   // --- Anruf-Diagnose (2.5, POST /api/calls/diag, Feature calldiag1; Vertrag docs/APP-API.md "Anruf-Diagnose") ---------
@@ -3229,7 +3230,12 @@
   function hornCands(R, node, avoid) {
     var b = { device: myDev().id, dev_class: mobile ? 'mobile' : 'desktop', avoid: avoid || [] };
     if (node) b.node = node;
-    return api('POST', '/api/calls/' + R.id + '/horn', b).then(function (r) {
+    return api('POST', '/api/calls/' + R.id + '/horn', b).catch(function (e) {
+      // Horn-Fix: 429 = zu viele Abrufe, kein "kein Knoten" - Retry-After merken (hornRecover wartet so lange)
+      var ra = window.SagaHorn && window.SagaHorn.retryAfterMs ? window.SagaHorn.retryAfterMs(e) : 0;
+      if (ra && R.horn) R.horn.raUntil = Date.now() + ra;
+      throw e;
+    }).then(function (r) {
       if (R.horn) R.horn.fedErr = (r.horn && r.horn.error) || '';   // P10: warum kein Knoten (anderer Server)
       if (R.horn) R.horn.fedWhy = (r.horn && r.horn.error && r.horn.fed && r.horn.fed.why) || '';   // Nr. 119: Grund fuer hornRetry
       return (r.horn && r.horn.candidates) || [];
@@ -3264,14 +3270,14 @@
       return hornStart(R, (H.blk && H.blk.candidates) || [], 'join');
     }).catch(function (e) {
       if (!live(R) || e === null) return;
-      if (e && e.noNode) { hornRetry(R, 'join'); return; }
+      if (e && (e.noNode || e.status === 429)) { hornRetry(R, 'join', e); return; }   // 429: Retry-After abwarten
       fail(R, (e && e.message) || T('Verbindung nicht aufgebaut: {err}', { err: '?' }));
     });
   }
   // Kandidaten messen, nach Punktzahl ordnen, der Reihe nach versuchen. why: join | lost | draining | better | retry
   function hornStart(R, cands, why) {
     var H = R.horn;
-    cands = cands.filter(function (c) { return !hornBad(H, c.node) || cands.length === 1; });
+    cands = cands.filter(function (c) { return !hornBad(H, c.node) || cands.length === 1 || c.node === H.rcKeep; });
     if (!cands.length) return Promise.reject(hornNoNode());
     var one = cands.length === 1;
     // einziger Kandidat ohne UDP: gleich verbinden, Messung nur fuer die Anzeige; mit UDP erst messen (UDP-Probe, <= 800 ms)
@@ -3620,7 +3626,7 @@
       if (!live(R) || !R.horn || !H.olds.length) { clearInterval(H.arT); H.arT = null; if (live(R) && R.horn) hornAudioRoute(R); return; }
       hornAudioRoute(R);
     }, 100);
-    clearTimeout(H.retryT); H.retryT = null; H.retry0 = 0;
+    if (H.rc) H.rc.adopted(now);                       // Horn-Fix: Erfolg zaehlt erst mit Daten (hornMon: rx)
     if (!R.since) { R.since = now; stopTone(); }
     R.connected = true;
     if (R.ui) { R.ui.st.textContent = ''; R.ui.st.hidden = true; }
@@ -3634,22 +3640,18 @@
   // Wechseln. why: lost | draining | better (opt.to) | udp-loss / udp (opt.path, selber Knoten)
   function hornSwitch(R, why, opt) {
     var H = R.horn; opt = opt || {};
-    if (!H || !live(R) || H.switching || R.done) return;
+    if (!H || !live(R) || H.switching || H.rcT || R.done) return;
+    if (why === 'lost') { hornLost(R); return; }
     hornLog(H, H.cur, 'switch ' + why);
-    var cur = H.cur, hard = why === 'lost' || why === 'draining';
+    var cur = H.cur, hard = why === 'draining';
     H.switching = true;
-    if (why === 'lost' && cur) H.bad[cur.node] = Date.now() + HORN_BAD_MS;   // Leeren ist kein Fehler: nur beim Verlassen meiden
-    if (hard && cur) H.leaving = { node: cur.node, until: Date.now() + HORN_BAD_MS };
-    if (why === 'lost') hornNote(R, T('Verbindung zum Knoten {node} unterbrochen – wechsle …', { node: cur ? cur.node : '?' }));
-    else if (why === 'draining') hornNote(R, T('Knoten {node} wird gewartet – wechsle ohne Unterbrechung …', { node: cur ? cur.node : '?' }));
+    if (hard && cur) H.leaving = { node: cur.node, until: Date.now() + HORN_BAD_MS };   // Leeren ist kein Fehler: nur meiden
+    if (why === 'draining') hornNote(R, T('Knoten {node} wird gewartet – wechsle ohne Unterbrechung …', { node: cur ? cur.node : '?' }));
     var p;
     if (opt.path && cur) p = hornFresh(R, cur.cand, []).then(function (c) { return hornConnect(R, c, opt.path); }).then(function (conn) { hornAdopt(R, conn, why); });
     else p = hornCands(R, null, hornAvoid(H)).then(function (list) {
       if (opt.to) list = list.filter(function (c) { return c.node === opt.to; });
-      else if (hard && cur) {
-        var other = list.filter(function (c) { return c.node !== cur.node; });
-        list = other.length ? other : list;            // nur dieser eine Knoten: dorthin neu verbinden
-      }
+      else if (hard && cur) list = H.L.reconnectList(list, cur.node);
       if (!list.length && hard && cur) list = [cur.cand];
       return hornStart(R, list, why);
     });
@@ -3657,31 +3659,55 @@
       H.switching = false;
       if (!live(R) || e === null) return;
       if (e && e.message === T('Der Anruf ist schon beendet.')) { remoteEnded(R, {}); return; }
-      if (hard) hornRetry(R, why);                     // sonst bleibt die bisherige Verbindung
+      if (hard) { H.rcKeep = cur ? cur.node : null; hornRetry(R, why, e); }   // sonst bleibt die bisherige Verbindung
     });
   }
-  // Kein Knoten erreichbar: klare Meldung, erneut versuchen (Backoff bis 15 s), nach 2 min aufgeben
-  function hornRetry(R, why) {
-    var H = R.horn; if (!H || !live(R)) return;
-    if (!H.retry0) H.retry0 = Date.now();
-    if (Date.now() - H.retry0 > HORN_RETRY_MAX) { fail(R, T('Verbindung zum Knoten verloren.')); return; }
-    var n = (H.retryN = (H.retryN || 0) + 1), s = Math.min(15, 2 * n);
+  // Horn-Fix: Verbindung zum Knoten verloren - Wiederaufbau, immer ueber einen Knoten (nie direkt). Der verlorene Knoten
+  // wird nicht gemieden (oft ist er der einzige); gibt es andere, gehen sie vor. Waehrend des Wiederaufbaus ist der
+  // Monitor stumm (H.switching bzw. H.rcT), ein geplanter Versuch wird nie abgebrochen.
+  function hornLost(R) {
+    var H = R.horn, cur = H.cur;
+    H.rc = H.rc || new H.L.Reconnect();
+    hornLog(H, cur, 'switch lost');
+    H.rcKeep = cur ? cur.node : null;
+    H.leaving = null;
+    hornNote(R, T('Verbindung wird wiederhergestellt …'));
+    if (H.rc.lost(Date.now())) hornAttempt(R, 'lost');
+    else hornRetry(R, 'lost');                         // Verlust kurz nach dem Wiederaufbau: Fehlversuch, Backoff
+  }
+  function hornAttempt(R, why) {
+    var H = R.horn; if (!H || !live(R) || R.done) return;
+    H.switching = true;
+    H.bad = {};                                        // neuer Versuch: alle Knoten wieder zulassen
+    var keep = H.rcKeep;
+    hornCands(R, null, hornAvoid(H)).then(function (list) {
+      if (!live(R)) throw null;
+      if (keep) list = H.L.reconnectList(list, keep);
+      if (!list.length && keep && H.cur && H.cur.node === keep) list = [H.cur.cand];   // hornTry holt frische Token
+      return hornStart(R, list, H.cur ? why : why === 'join' ? 'join' : 'retry');
+    }).then(function () { H.switching = false; }, function (e) {
+      H.switching = false;
+      if (!live(R) || e === null) return;
+      // Bughunt 3: Anruf inzwischen beendet (404 ended) - nicht bis zu 2 min weiter versuchen
+      if (e && (e.message === T('Der Anruf ist schon beendet.') || e.status === 404)) { remoteEnded(R, {}); return; }
+      hornErr(H, '', e); hornRetry(R, why, e);
+    });
+  }
+  // Naechsten Versuch planen: Backoff 1/2/4/8/15 s (+-20 %), Retry-After (429) beachten, nach 2 min aufgeben.
+  // Ein schon geplanter Versuch bleibt stehen (kein Abbrechen und Neuplanen).
+  function hornRetry(R, why, e) {
+    var H = R.horn; if (!H || !live(R) || H.rcT) return;
+    H.rc = H.rc || new H.L.Reconnect();
+    var now = Date.now(), ra = Math.max(H.L.retryAfterMs(e), (H.raUntil || 0) - now, 0);
+    var d = H.rc.fail(now, ra, Math.random());
+    if (d.giveUp) { fail(R, T('Die Verbindung zum Anruf-Knoten ließ sich nicht wiederherstellen.')); return; }
     // Nr. 119: Notaus bzw. erschoepftes Kontingent beim anderen Server - Wiederholen hilft nicht (Notaus) bzw. selten
     // (Kontingent: hoechstens drei Versuche), statt bis zu 2 min "neuer Versuch" zu zeigen
-    if (H.fedErr && (H.fedWhy === 'off' || H.fedWhy === 'local_off' || (H.fedWhy === 'quota' && n > 3))) { fail(R, H.fedErr); return; }
-    hornNote(R, (H.fedErr ? H.fedErr + ' ' : '') + T('Kein Knoten erreichbar – neuer Versuch in {s} s …', { s: s }));
-    clearTimeout(H.retryT);
-    H.retryT = setTimeout(function () {
-      if (!live(R)) return;
-      H.bad = {};
-      hornCands(R, null, []).then(function (list) { return hornStart(R, list, H.cur ? 'lost' : why === 'join' ? 'join' : 'retry'); })
-        .catch(function (e) {
-          if (!live(R) || e === null) return;
-          // Bughunt 3: Anruf inzwischen beendet (404 ended) - nicht bis zu 2 min weiter versuchen
-          if (e && e.message === T('Der Anruf ist schon beendet.')) { remoteEnded(R, {}); return; }
-          hornErr(H, '', e); hornRetry(R, why);
-        });
-    }, s * 1000);
+    if (H.fedErr && (H.fedWhy === 'off' || H.fedWhy === 'local_off' || (H.fedWhy === 'quota' && d.n > 3))) { fail(R, H.fedErr); return; }
+    hornNote(R, (H.fedErr ? H.fedErr + ' ' : '') + (H.cur || why === 'lost' ? T('Verbindung wird wiederhergestellt …')
+      : T('Kein Knoten erreichbar – neuer Versuch in {s} s …', { s: Math.max(1, Math.round(d.wait / 1000)) })));
+    hornLog(H, null, 'retry ' + d.n + ' in ' + d.wait + 'ms');
+    H.rcT = setTimeout(function () { H.rcT = null; hornAttempt(R, why); }, d.wait);
   }
   // Neuzeichnen gebuendelt (Meldungen des Workers kommen je Empfaenger einzeln)
   function hornDrawSoon(R) {
@@ -3712,7 +3738,7 @@
   function hornMon(R) {
     var H = R.horn; if (!H || !live(R) || R.done) { if (H) clearInterval(H.monT); return; }
     var now = Date.now(), cur = H.cur;
-    if (cur && !H.switching) {
+    if (cur && !H.switching && !H.rcT) {
       var worst = 'connected';
       Object.keys(cur.legs).forEach(function (k) {
         if (cur.legs[k].pend) return;                  // L3: Ton-Bein wird gerade ersetzt
@@ -3728,7 +3754,10 @@
       var got = Object.keys(c.legs).some(function (k) {
         return (c.legs[k].aud || []).concat(c.legs[k].vid || []).some(function (x) { return x.receiver.getSynchronizationSources && x.receiver.getSynchronizationSources().length; });
       });
-      if (got || now - c.up > 1500) c.rx = now;
+      if (got || now - c.up > 1500) {
+        c.rx = now;
+        if (c === H.cur && H.rc && H.rc.active()) { H.rc.rx(); H.rcKeep = null; H.raUntil = 0; hornLog(H, c, 'wieder da'); }
+      }
     });
     // Alte Verbindungen schliessen (make-before-break): 2 s nachdem die neue liefert, wenn die alte nichts Eigenes mehr
     // bringt - kein Absender, den man nur dort hoert (der neue Knoten vergibt seine Tonplaetze erst nach ein paar
@@ -3760,7 +3789,7 @@
       hornProbe(cur.cand, window.SagaHorn.K.PROBE_MS).then(function (m) { if (live(R) && H.cur === cur) H.meas[cur.node] = m; });
     }
     // Andere Kandidaten (mit Kaskade, P9): alle 30 s frische Liste, messen, Hysterese entscheidet
-    if (cur && !H.switching && now - (H.candT || cur.created) >= HORN_CANDS_EVERY) {
+    if (cur && !H.switching && !H.rcT && now - (H.candT || cur.created) >= HORN_CANDS_EVERY) {
       H.candT = now;
       hornCands(R, null, []).then(function (list) {
         var others = list.filter(function (c) { return c.node !== cur.node; });
@@ -3823,7 +3852,7 @@
           hornTuneCam(R, conn);
         }
       }
-      if (conn === H.cur && !H.switching) {
+      if (conn === H.cur && !H.switching && !H.rcT) {
         var udpOk = conn.path !== 'udp' && conn.cand.udp && (H.meas[conn.node] || {}).udp != null;
         var x = H.sw.udp(Date.now(), loss, udpOk);
         if (x && x.path !== conn.path && (x.path !== 'udp' || conn.cand.tokens)) hornSwitch(R, x.why, { path: x.path });
@@ -4273,7 +4302,7 @@
   }
   function hornClose(R) {
     var H = R.horn; if (!H) return;
-    clearInterval(H.monT); clearInterval(H.spkT); clearInterval(H.arT); clearTimeout(H.retryT); H.monT = null; H.arT = null;
+    clearInterval(H.monT); clearInterval(H.spkT); clearInterval(H.arT); clearTimeout(H.rcT); H.rcT = null; H.monT = null; H.arT = null;
     hornConns(R).concat(H.olds).forEach(function (c) { hornConnClose(R, c); });
     H.cur = H.next = null; H.olds = [];
   }
