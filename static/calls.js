@@ -3044,9 +3044,17 @@
       var F = window.SagaFrameE2E;
       // Horn-Fix: Mesh-Signal (Angebot/ICE/Antwort) eines Geraets, das schon auf direkt gewechselt hat - call.topo kam hier
       // noch nicht an: jetzt wechseln und das Signal ueber den Mesh-Weg zustellen
+      // Nur nach Bestaetigung durch den Server (topo mesh) - sonst koennte ein Teilnehmer per Signal den Wechsel ohne
+      // POST /direct erzwingen. Signale bis dahin sammeln (hornToMesh stellt sie zu, auch wenn call.topo zuerst kommt).
       if ((b.t === 'offer' || b.t === 'answer' || b.t === 'ice') && feat('horn_direct1')) {
-        if (R.horn) hornToMesh(R, null);
-        if (!R.horn) sigRoute(R, d);
+        (H.meshQ = H.meshQ || []).push(d); if (H.meshQ.length > 80) H.meshQ.shift();
+        if (H.meshChk) return;
+        H.meshChk = true;
+        api('GET', '/api/calls/' + R.id).then(function (r) {
+          H.meshChk = false;
+          if (!live(R) || R.horn !== H) return;
+          if (r && r.call && r.call.topo === 'mesh') hornToMesh(R, null); else H.meshQ = [];
+        }, function () { H.meshChk = false; H.meshQ = []; });
         return;
       }
       if (b.t === 'fkey') {
@@ -3748,6 +3756,7 @@
   // Gruppenanruf: Angebote nur an Endpunkte mit groesserer Geraete-ID (kein Glare), von kleineren kommen sie
   function hornToMesh(R, offerTo) {
     if (!R.horn || R.done) return;
+    var pend = R.horn.meshQ || [];                    // vor der Bestaetigung eingegangene Mesh-Signale (hornSig)
     hornStop(R); R.horn = null;
     if (R.call) R.call.topo = 'mesh';
     R.directNote = T('Anruf-Knoten nicht erreichbar – direkt verbunden');
@@ -3756,6 +3765,7 @@
     var me_ = myDev().id;
     var list = Array.isArray(offerTo) ? offerTo : (R.legs || []).filter(function (x) { return x.device > me_; }).map(function (x) { return x.device; });
     list.forEach(function (dev) { meshOffer(R, dev); });
+    pend.forEach(function (d) { sigRoute(R, d); });
     drawTiles(R); drawCtl(R); drawInfo(R); drawMedia(R);
   }
   function meshOffer(R, dev) {
