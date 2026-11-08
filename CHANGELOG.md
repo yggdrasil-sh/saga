@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Push: strukturierte Nutzlast, gelöschte Chat-Nachrichten in der Glocke
+- **Push-Nutzlast 2:** jede Mitteilung trägt neben `title`/`body` (unverändert) `v`, `lang`, `n`, `group_key` (wie die
+  Glocke) und `chat`; `actor` nur, wenn der Satz den Namen ohnehin enthält („Namen zeigen“ an, verschlüsselter Weg).
+  Apps können den Satz in ihrer Sprache neu bauen. Abos nehmen optional `lang` (Sprache der App) und `caps: ["update"]`
+  an (Migration 33). Vertrag: `docs/APP-API.md` „Push-Nutzlast 2“.
+- **Glocke:** Wird eine Chat-Nachricht für alle gelöscht (auch mehrere, Admin-Grabstein, föderiert), sinkt der Zähler
+  des Eintrags bzw. verschwindet er; neues Live-Ereignis `notification.changed`; war er ungelesen, passen Geräte mit
+  `caps: ["update"]` (Browser, neue Apps) die gezeigte Mitteilung still an bzw. entfernen sie.
+
 ### Desktop-Hülle: Brücke (Vorbereitung)
 - **Brückenvertrag `window.sagaHost`** (`static/host.js`, Vertrag `docs/APP-API-HOST.md`) für die kommenden Desktop-Apps
   (Mac: Web-Oberfläche in `WKWebView`, Windows/Linux: Tauri 2). Erkennung über `SagaApp/…` im User-Agent und den

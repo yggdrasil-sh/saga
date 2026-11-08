@@ -2903,3 +2903,78 @@ Beispiel (`?group=1`):
             "title": "Jonas Brandt", "chat": {"id": 12, "kind": "dm"}, "url": "/chats#c12", "actor": {"name": "Jonas Brandt"}}],
  "unread": 9, "unread_groups": 3, "more": false, "next": null}
 ```
+
+## Push-Nutzlast 2 und Aktualisierung gezeigter Mitteilungen (2.5, `push2`)
+
+Entscheidung des Maintainers (8.11.2026): Apps bauen den Mitteilungssatz in **ihrer** Sprache neu, statt den fertigen
+Server-Satz zu zerlegen, und passen eine schon gezeigte Chat-Mitteilung an, wenn Nachrichten für alle gelöscht werden.
+`title`, `body`, `url`, `tag`, `kind`, `ts` (und die Anruf-Felder) bleiben **unverändert** – ältere Apps merken nichts.
+
+**Erkennen:** `GET /api/push` → `server.payload: 2` und `server.sub_caps: ["update"]` (ältere Server: Felder fehlen).
+
+### Neue Felder jeder Mitteilung (Web Push, UnifiedPush, eigene Verbindung `stream`, APNs)
+
+| Feld | Inhalt |
+|---|---|
+| `v` | `2` (Fassung der Nutzlast) |
+| `lang` | Sprache, in der `body` steht (`de`/`en`/`es`/`ru`/`th`) |
+| `kind` | wie bisher: Mitteilungsart (`chat.message`, `chat.mention`, `call`, `call.group`, `call.missed`, `comment.new`, …) |
+| `actor` | Anzeigename – **nur**, wenn `body` den Namen ohnehin enthält (Einstellung „Namen zeigen“ an **und** verschlüsselter Weg). Sonst fehlt das Feld. |
+| `n` | Anzahl: Chat = ungelesene Nachrichten dieses Chats in der Glocke (mindestens 1), Kommentare/Eintragungen = Bündel-Zähler, verpasste Anrufe = ungelesene des Chats, Anruf = 1. Fehlt bei der Testmitteilung. |
+| `group_key` | Gesprächseinheit wie in der Glocke: `chat:<id>`, `call:<chat-id>`, `page:<seite>` bzw. `page:<instanz>:<seite>`; fehlt, wo die Glocke nicht bündelt (`chat.mention`, `share.*`, Anrufe, …) |
+| `chat` | Chat-Kennung (Zahl) bei `chat.message`, `chat.mention`, `call.missed` (Anrufe hatten sie schon) |
+
+Kein Seitentitel, kein Chat-Name, keine Inhalte – gegenüber bisher kommt **keine** neue personenbezogene Angabe dazu (`actor`
+steht genau dann in der Nutzlast, wenn er schon im Satz stand). ntfy (Klartext-Weg ohne App) bekommt die Felder nicht; er
+zeigt nur den Satz. UnifiedPush reicht die Nutzlast unverändert durch (auch über einen ntfy-Verteiler); verschlüsselt bleibt
+sie unter 4 KB (Server-Grenze 3000 Byte vor der Verschlüsselung). APNs: die Felder stehen neben `aps` (unter 4 KB).
+
+Satzbausteine für den Neubau (Schlüssel wie im Web, `{name}` = `actor`):
+
+| `kind` | mit `actor` | ohne `actor` |
+|---|---|---|
+| `chat.message` | „Neue Nachricht von {name}“ | „Neue Nachricht“ (`n` > 1: App darf „{n} neue Nachrichten“ zeigen) |
+| `chat.mention` | „{name} hat dich in einem Chat erwähnt“ | „Du wurdest in einem Chat erwähnt“ |
+| `call.missed` | `n` = 1: „Verpasster Anruf von {name}“, `n` > 1: „{n} verpasste Anrufe von {name}“ | „Verpasster Anruf“ / „{n} verpasste Anrufe“ |
+| andere | Satz der Glocke (`text`) | fester Satz je Art (wie bisher) |
+
+### Abo: Sprache und Fähigkeiten
+
+`POST /api/push/subscriptions` nimmt zusätzlich (alle Typen, optional):
+- `lang`: `de`|`en`|`es`|`ru`|`th` – Mitteilungen dieses Geräts kommen in dieser Sprache (statt der des Kontos);
+  `""` = wieder Sprache des Kontos; andere Werte → 400.
+- `caps`: Liste, derzeit `["update"]` = das Gerät nimmt **Aktualisierungen** an (unten). Unbekannte Einträge werden still
+  weggelassen; `[]` setzt zurück; keine Liste → 400.
+
+Fehlt ein Feld beim Erneuern (gleiche Adresse), bleibt der gespeicherte Wert (Migration 33: `push_sub.lang`, `push_sub.caps`).
+Der Browser (`static/push.js`) meldet `caps: ["update"]`.
+
+### Gelöschte Chat-Nachrichten: Glocke, Live, Push
+
+Chat-Einträge der Glocke merken sich, welche Nachrichten (`seq`) sie bündeln. Wird eine Nachricht **für alle** gelöscht
+(`DELETE …/messages/{mid}`, `POST …/messages/delete`, Admin-Grabstein, föderiert vom Heim-Server), zieht der Server sie ab:
+`count` sinkt; ist nichts mehr übrig, verschwindet der Eintrag. `GET /api/notifications` (`?group=1`: `count`, `counts`,
+`unread`, `unread_groups`) stimmt danach sofort. Einträge von vor diesem Stand (ohne gemerkte Nachrichten) bleiben, wie sie sind.
+
+**Live** – neues Ereignis `notification.changed` an den Empfänger (ohne Ton):
+```json
+{"id": 912, "item": {…Eintrag wie in /api/notifications, count kleiner…}, "removed": false, "group_key": "chat:12",
+ "unread": 8, "unread_groups": 3}
+{"id": 912, "item": null, "removed": true, "group_key": "chat:12", "unread": 7, "unread_groups": 2}
+```
+Die `id` bleibt beim Verringern gleich; den Eintrag in seiner Zeile ersetzen bzw. herausnehmen (wie `replaces`).
+
+**Push** – nur, wenn der Eintrag noch **ungelesen** war, und nur an Abos mit `caps: ["update"]` (nie ntfy, nie VoIP):
+```json
+{"v": 2, "update": true, "kind": "chat.message", "tag": "chat-12", "group_key": "chat:12", "chat": 12, "n": 2,
+ "title": "Saga", "body": "Neue Nachricht von Jonas", "actor": "Jonas", "url": "/chats#c12", "ts": 1794000000, "lang": "de"}
+{"v": 2, "update": true, "removed": true, "kind": "chat.message", "tag": "chat-12", "group_key": "chat:12", "chat": 12,
+ "n": 0, "title": "Saga", "body": "", "url": "/chats#c12", "ts": 1794000000, "lang": "de"}
+```
+- `update: true`: **nie** neu klingeln/vibrieren. Die Mitteilung mit gleichem `tag` still ersetzen (Text, `n`); `removed: true`
+  (`n` 0): schließen. Ist keine Mitteilung mit diesem `tag` sichtbar und `removed` fehlt, darf die App sie still zeigen.
+- Web Push/`stream`: eigenes Topic (`u` + `tag`) – die Aktualisierung ersetzt eine noch nicht abgeholte Mitteilung beim
+  Push-Dienst **nicht**; `Urgency: normal`. APNs: Hintergrund-Push (`apns-push-type: background`, Priorität 5,
+  `aps.content-available: 1`, kein `alert`), Felder neben `aps`.
+- Mit „Namen zeigen“ aus gibt es kein `actor` und keinen Namen im Satz (wie immer).
+- Eine noch nicht zugestellte Mitteilung des Chats entfällt, wenn danach nichts Ungelesenes mehr übrig ist.
