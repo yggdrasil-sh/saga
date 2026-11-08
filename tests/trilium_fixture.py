@@ -19,6 +19,24 @@ PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08
        b"IDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfe\xa7\x35\x81\x84\x00\x00\x00\x00IEND\xaeB`\x82")
 PDF = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>'
+# SVG mit Skript/Ereignis/fremdem Verweis (wird bereinigt), SVG mit foreignObject (bleibt Datei), mit DOCTYPE (wie Exporte)
+SVG_BOESE = (b'<?xml version="1.0"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n'
+             b'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="300" height="100" onload="alert(1)">'
+             b'<script>alert(2)</script><a xlink:href="javascript:alert(3)"><rect width="10" height="10" fill="url(http://x.invalid/a)"/></a>'
+             b'<image xlink:href="http://x.invalid/b.png" width="5" height="5"/><circle r="4" style="fill:red;behavior:url(x)"/></svg>')
+SVG_FREMD = (b'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><foreignObject width="20" height="20">'
+             b'<div xmlns="http://www.w3.org/1999/xhtml">Text</div></foreignObject></svg>')
+VIEWCFG = b'{"widgets": {"zwei": {"x": 0, "y": 0, "w": 4, "h": 3}, "eins": {"x": 0, "y": 1, "w": 4, "h": 3}}}'
+SVGTEXT_HTML = ('<p>Bild:</p><figure class="image image-style-align-right image_resized" style="width:40%;">'
+                '<img src="api/attachments/sv1/image/gut.svg"></figure>'
+                '<figure class="image"><img src="api/attachments/sv2/image/boese.svg" width="300" height="100"></figure>'
+                '<figure class="image"><img src="api/attachments/sv3/image/fremd.svg"></figure>')
+ANH_HTML = ('<p>Siehe <a class="reference-link" href="#root/anh?viewMode=attachments&amp;attachmentId=afile">notiz.txt</a> hier.</p>'
+            '<ol start="3" style="list-style-type:lower-alpha;"><li>c</li><li>d</li></ol>'
+            '<pre><code class="language-text-x-trilium-auto">sudo apt update</code></pre>'
+            '<p>yaml</p><pre><code class="language-text-x-trilium-auto">x = 1</code></pre>'
+            '<figure class="table"><table class="ck-table-resized"><colgroup><col style="width:20%;"><col style="width:80%;"></colgroup>'
+            '<tbody><tr><td>a</td><td>b</td></tr></tbody></table></figure>')
 D = "2026-01-02 03:04:05.000+0100"
 U = "2026-01-02 02:04:05.000Z"
 
@@ -82,7 +100,42 @@ def notes(old=False):
         ("_hidden", "root", 999999, None, "Hidden Notes", "book", "", "", False),
         ("_options", "_hidden", 10, None, "Options", "book", "", "SYSTEM-NOTIZ", False),
         ("_lbRoot", "_hidden", 20, None, "Launch Bar", "launcher", "", "SYSTEM-NOTIZ", False),
+        ("_tplDash", "_hidden", 30, None, "Dashboard", "book", "", "", False),
     ]
+
+
+# 2.5 (Fixrunde): Sammlungen, Ordner, SVG, Datei-Link, Sondertypen - nur im neuen Schema (blobs/attachments)
+NEW = [
+    ("merm", "proj", 40, None, "Mermaid", "mermaid", "text/vnd.mermaid", "graph TD; A-->B", False),
+    ("leer", "proj", 50, None, "Leer", "canvas", "application/json", '{"type":"excalidraw","elements":[]}', False),
+    ("samml", "root", 22, None, "Sammlung", "book", "", '{"notes":[],"transform":{"x":0,"y":0,"scale":1}}', False),
+    ("eins", "samml", 10, None, "Eins", "text", "text/html", "<p>Erster Inhalt <b>hier</b></p><p>zweiter</p>", False),
+    ("zwei", "samml", 20, None, "Zwei", "code", "text/x-yaml", "a: 1\n", False),
+    ("liste", "root", 24, None, "Liste", "book", "", "", False),
+    ("lkind", "liste", 10, None, "Listenkind", "text", "text/html", "<p>Kurz</p>", False),
+    ("kal", "root", 26, None, "Kalender", "book", "", "", False),
+    ("termin", "kal", 10, None, "Termin", "text", "text/html", "<p>Am Montag</p>", False),
+    ("ordner", "root", 28, None, "Ordner", "text", "text/html", "", False),
+    ("unter", "ordner", 10, None, "Unterseite", "text", "text/html", "<p>innen</p>", False),
+    ("svgt", "root", 52, None, "SVG-Text", "text", "text/html", SVGTEXT_HTML, False),
+    ("anh", "root", 54, None, "Anhang", "text", "text/html", ANH_HTML, False),
+    ("breit", "root", 56, None, "Breit", "text", "text/html", "<p>breit</p>", False),
+    ("suche", "root", 58, None, "Suche", "search", "application/json", '{"searchString":"#wichtig"}', False),
+]
+NEW_ATTRS = [("_tplDash", "label", "iconClass", "bx bxs-dashboard", 0, 0), ("_tplDash", "label", "viewType", "dashboard", 0, 0),
+             ("samml", "relation", "template", "_tplDash", 0, 0), ("liste", "label", "viewType", "list", 0, 0),
+             ("liste", "label", "iconClass", "bx bx-star", 0, 1), ("kal", "label", "viewType", "calendar", 0, 0),
+             ("breit", "label", "fullContentWidth", "", 0, 0), ("breit", "label", "color", "#ff0000", 0, 0),
+             ("suche", "label", "searchString", "#wichtig", 0, 0)]
+# aid, owner, role, mime, titel, inhalt, zur Loeschung vorgemerkt
+NEW_ATTS = [("vc1", "samml", "viewConfig", "application/json", "dashboard.json", VIEWCFG, False),
+            ("mm1", "merm", "image", "image/svg+xml", "mermaid-export.svg", SVG, False),
+            ("orph1", "ordner", "image", "image/png", "alt.png", PNG, True),
+            ("sv1", "svgt", "image", "image/svg+xml", "gut.svg", SVG, False),
+            ("sv2", "svgt", "image", "image/svg+xml", "boese.svg", SVG_BOESE, False),
+            ("sv3", "svgt", "image", "image/svg+xml", "fremd.svg", SVG_FREMD, False),
+            ("orph2", "svgt", "image", "image/svg+xml", "weg.svg", SVG, True),
+            ("afile", "anh", "file", "text/plain", "notiz.txt", b"Notiztext\n", False)]
 
 
 CLONES = [("srv", "rez", 20, None)]                      # Server-Setup zusaetzlich unter Rezepte
@@ -148,6 +201,8 @@ def build_db(path, old=False, extra_sql=None, huge=False):
         rows.append(("riesig", "root", 70, None, "Riesig", "text", "text/html", "<p>" + "x" * (5 * 1024 * 1024) + "</p>", False))
     if old:                                            # alt: keine Anhaenge; Bild im Text verweist auf die Bild-Notiz
         rows = [r for r in rows if r[0] not in ("diag",)]
+    else:
+        rows += NEW
     for nid, par, pos, prefix, title, typ, mime, content, prot in rows:
         deleted = 1 if nid == "gone" else 0
         body = content if isinstance(content, bytes) else content.encode()
@@ -172,6 +227,12 @@ def build_db(path, old=False, extra_sql=None, huge=False):
         for aid, owner, role, mime, title, data in ATTS:
             c.execute("INSERT INTO blobs VALUES (?,?,NULL,?,?)", ("b" + aid, data, D, U))
             c.execute("INSERT INTO attachments VALUES (?,?,?,?,?,0,10,?,?,?,NULL,0,NULL)", (aid, owner, role, mime, title, "b" + aid, D, U))
+        for aid, owner, role, mime, title, data, erase in NEW_ATTS:
+            c.execute("INSERT INTO blobs VALUES (?,?,NULL,?,?)", ("b" + aid, data, D, U))
+            c.execute("INSERT INTO attachments VALUES (?,?,?,?,?,0,10,?,?,?,?,0,NULL)",
+                      (aid, owner, role, mime, title, "b" + aid, D, U, U if erase else None))
+        for k, (nid, typ, name, val, deleted, inh) in enumerate(NEW_ATTRS):
+            c.execute("INSERT INTO attributes VALUES (?,?,?,?,?,?,?,?,NULL,?)", (f"n{k}", nid, typ, name, val, k * 10, U, deleted, inh))
         c.execute("INSERT INTO blobs VALUES ('brev','<p>REVISION-ALT</p>',NULL,?,?)", (D, U))
         c.execute("INSERT INTO revisions VALUES ('r1','brot','text','text/html','Brot alt',0,'brev',?,?,?,?,?)", (U, U, U, D, D))
     for sql in extra_sql or []:

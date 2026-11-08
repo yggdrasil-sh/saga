@@ -109,6 +109,9 @@ def tree_lines(root):
 
     def walk(r, d):
         icon = f" {r['icon']}" if r["icon"] and r["icon"] != "📥" else ""
+        if r["icon"] == "📋" and r["title"].startswith("Importbericht"):      # Datum/Inhalt wechseln: nur Lage pruefen
+            out.append("  " * d + "Importbericht 📋")
+            return
         out.append("  " * d + r["title"] + " [" + ",".join(b["type"] for b in r["body"]) + "]" + icon)
         for k in sorted(kids.get(r["id"], []), key=lambda x: (x["sort"] or 0, x["id"])):
             walk(k, d + 1)
@@ -118,36 +121,60 @@ def tree_lines(root):
 
 
 SRV_BLOCKS = "paragraph,header,list,list,table,quote,callout,code,delimiter,paragraph,image,paragraph,paragraph,paragraph,math,toggle"
-FULL = f"""Trilium-Test []
-  Projekte [toggle,paragraph]
+# Sammelseite: Info-Kasten + Liste der obersten Seiten; Bericht als letzte Unterseite. Sammlungen (book) -> Karten bzw.
+# Liste, Icons aus iconClass (eigen/Vorlage/vererbt) bzw. Typ-Standard.
+FULL = f"""Trilium-Test [callout,list]
+  Projekte [toggle,paragraph] 📁
     Server-Setup [{SRV_BLOCKS}]
-      docker-compose.yml [code]
-      Konfig [code]
-    Skript - deploy.sh [code]
-    Diagramm [callout,attaches]
-  Rezepte []
+      docker-compose.yml [code] 💻
+      Konfig [code] 💻
+    Skript - deploy.sh [code] 💻
+    Diagramm [image,callout] 🎨
+    Mermaid [code] 📈
+    Leer [callout] 🎨
+  Rezepte [columns] 📚
     Brot [paragraph,attaches]
     Server-Setup [paragraph] 🔗
+  Sammlung [columns] 📊
+    Eins [paragraph,paragraph]
+    Zwei [code] 💻
+  Liste [list] ⭐
+    Listenkind [paragraph] ⭐
+  Kalender [callout,list] 📚
+    Termin [paragraph]
+  Ordner [list]
+    Unterseite [paragraph]
   Foto.png [image]
   Tresor [paragraph]
     Offen darunter [paragraph]
-  Geheimnis [paragraph]"""
-LOCKED = FULL.split("\n  Tresor")[0] + """
-  Geschützte Notiz [callout] 🔒
-    Offen darunter [paragraph]"""
-OLD = """Trilium-Test []
-  Projekte [toggle,paragraph]
-    Server-Setup [""" + SRV_BLOCKS + """]
-      docker-compose.yml [code]
-      Konfig [code]
-    Skript - deploy.sh [code]
-  Rezepte []
-    Brot [paragraph]
+  Geheimnis [paragraph]
+  SVG-Text [paragraph,image,image,attaches]
+  Anhang [paragraph,list,code,paragraph,code,table]
+  Breit [paragraph]
+  Suche [callout] 🔎
+  Importbericht 📋"""
+LOCKED = FULL.replace("""  Tresor [paragraph]
+    Offen darunter [paragraph]
+  Geheimnis [paragraph]
+""", """  Geschützte Notiz [callout] 🔒
+    Offen darunter [paragraph]
+""")
+ZIP = f"""Trilium-Test [callout,list]
+  Projekte [toggle,paragraph] 📁
+    Server-Setup [{SRV_BLOCKS}]
+      docker-compose.yml [code] 💻
+      Konfig [code] 💻
+    Skript - deploy.sh [code] 💻
+    Diagramm [image,callout] 🎨
+  Rezepte [columns] 📚
+    Brot [paragraph,attaches]
     Server-Setup [paragraph] 🔗
   Foto.png [image]
   Geschützte Notiz [callout] 🔒
-    Offen darunter [paragraph]"""
-MD = LOCKED.replace(SRV_BLOCKS, "paragraph,header,list,list,table,quote,callout,code,delimiter,paragraph,image,paragraph,paragraph,math")
+    Offen darunter [paragraph]
+  Importbericht 📋"""
+OLD = ZIP.replace("    Diagramm [image,callout] 🎨\n", "").replace("Brot [paragraph,attaches]", "Brot [paragraph]")
+MD = ZIP.replace(SRV_BLOCKS, "paragraph,header,list,list,table,quote,callout,code,delimiter,paragraph,image,paragraph,paragraph,math")
 
 
 def all_blocks(blocks):
@@ -213,6 +240,99 @@ def check_content(label, t, md=False):
     ok(f"{label}: Bild-Notiz -> Bild-Block", t["Foto.png"]["body"][0]["type"] == "image")
 
 
+def note_row(nid):
+    with connect() as c:
+        return c.execute("SELECT parent_id, wide, icon FROM note WHERE id=?", (nid,)).fetchone()
+
+
+def file_row(url):
+    with connect() as c:
+        return c.execute("SELECT name, mime, is_image FROM file WHERE id=?", (url.rsplit("/", 1)[-1],)).fetchone()
+
+
+def check_new(label, t, st):
+    """Fixrunde: Uebersicht, Sammelseite/Bericht, SVG, Datei-Link, Listen/Code/Tabelle, Sondertypen (nur Schema neu)."""
+    from saga.files import FILES_DIR
+    rep = st["report"]
+    root = next(r for r in t.values() if r["id"] == st["root"])
+    info, lst = root["body"][0], root["body"][1]
+    ok(f"{label}: Sammelseite - Info-Kasten mit Zahlen und Link zum Bericht, Bericht ist ihre Unterseite",
+       info["type"] == "callout" and "Aus Trilium importiert" in info["data"]["text"] and f'/notes#{rep["page"]}' in info["data"]["text"]
+       and note_row(rep["page"])[0] == st["root"], (info, rep.get("page")))
+    tops = [r for r in t.values() if r["parent"] == st["root"] and r["icon"] != "📋"]
+    ok(f"{label}: Sammelseite - Liste verlinkt alle obersten Seiten in Reihenfolge",
+       [i["content"] for i in lst["data"]["items"]] == [f'<a href="/notes#{r["id"]}">{r["title"]}</a>'
+                                                         for r in sorted(tops, key=lambda x: (x["sort"], x["id"]))], lst)
+    paths = [x["path"] for g in rep["groups"] for x in g["items"]]
+    codes = {g["code"]: g["text"] for g in rep["groups"]}
+    ok(f"{label}: Bericht - verwaiste Anhaenge (2), viewConfig (1), Farben (1) gezaehlt, kein _hidden-Pfad", "_hidden" not in paths
+       and codes.get("trilium_orphans", "").endswith(": 2") and codes.get("trilium_viewcfg", "").endswith(": 1")
+       and codes.get("trilium_color", "").endswith(": 1"), (codes, paths))
+    sm = t["Sammlung"]["body"][0]["data"]["cols"]
+    ok(f"{label}: Dashboard-Sammlung -> Karten in der Anordnung der viewConfig (Zwei vor Eins), Auszug, Ordner-/Seitensymbol",
+       len(sm) == 2 and sm[0]["blocks"][0]["data"]["text"] == f'<b><a href="/notes#{t["Zwei"]["id"]}">Zwei</a></b><br>YAML'
+       and sm[1]["blocks"][0]["data"]["text"] == f'<b><a href="/notes#{t["Eins"]["id"]}">Eins</a></b><br>Erster Inhalt hier zweiter'
+       and [c["blocks"][0]["data"]["emoji"] for c in sm] == ["📄", "📄"], sm)
+    rz = t["Rezepte"]["body"][0]["data"]["cols"]
+    ok(f"{label}: Sammlung ohne viewType -> Karten (Klon verlinkt die echte Seite)", len(rz) == 2
+       and f'/notes#{t["Brot"]["id"]}' in rz[0]["blocks"][0]["data"]["text"]
+       and f'/notes#{t["Server-Setup"]["id"]}' in rz[1]["blocks"][0]["data"]["text"]
+       and rz[1]["blocks"][0]["data"]["emoji"] == "📁", rz)
+    li = t["Liste"]["body"][0]["data"]["items"]
+    ok(f"{label}: Listen-Sammlung -> Liste mit Auszug", [i["content"] for i in li] == [f'<a href="/notes#{t["Listenkind"]["id"]}">Listenkind</a> – Kurz'], li)
+    kb = t["Kalender"]["body"]
+    ok(f"{label}: Kalender-Ansicht -> Hinweis + Liste + Bericht", "calendar" in kb[0]["data"]["text"]
+       and f'/notes#{t["Termin"]["id"]}' in kb[1]["data"]["items"][0]["content"] and "trilium_view" in codes, (kb, codes))
+    ob = t["Ordner"]["body"]
+    ok(f"{label}: leere Ordnerseite (verwaister Anhang weg) -> Liste der Unterseiten ohne Auszug",
+       ob[0]["data"]["items"][0]["content"] == f'<a href="/notes#{t["Unterseite"]["id"]}">Unterseite</a>', ob)
+    sv = t["SVG-Text"]["body"]
+    f1, f2, f3 = (file_row(b["data"]["file"]["url"]) for b in sv[1:4])
+    ok(f"{label}: SVG als Bild an der Stelle (Breite/Ausrichtung), zweifelhaftes SVG (foreignObject) als Datei",
+       sv[1]["data"].get("width") == 40 and sv[1]["data"].get("align") == "right" and sv[2]["data"].get("width") == 39
+       and f1[1:] == ("image/svg+xml", 1) and f2[1:] == ("image/svg+xml", 1) and f3[1:] == ("application/octet-stream", 0),
+       (sv, f1, f2, f3))
+    with open(os.path.join(FILES_DIR, sv[2]["data"]["file"]["url"].rsplit("/", 1)[-1]), "rb") as f:
+        bad = f.read().lower()
+    ok(f"{label}: SVG bereinigt gespeichert (kein script/onload/javascript:/fremde Adresse/DOCTYPE)",
+       not any(x in bad for x in (b"<script", b"onload", b"javascript", b"x.invalid", b"<!doctype", b"behavior")) and b"<rect" in bad, bad[:500])
+    s, h, _ = raw_get(sv[2]["data"]["file"]["url"])
+    ok(f"{label}: SVG-Auslieferung mit CSP sandbox + nosniff", s == 200 and h.get("content-type", "").startswith("image/svg+xml")
+       and "sandbox" in h.get("content-security-policy", "") and h.get("x-content-type-options") == "nosniff", (s, h))
+    ab = t["Anhang"]["body"]
+    furl = next((u for u in [file_url_of(A, "notiz.txt")] if u), "")
+    ok(f"{label}: Anhang-Link im Text als /files/-Verweis, Datei nicht zusaetzlich unten", furl and f'href="{furl}"' in ab[0]["data"]["text"]
+       and not any(b["type"] == "attaches" for b in ab), ab[0])
+    ok(f"{label}: ol start/Zaehlart -> meta", ab[1]["data"]["meta"] == {"start": 3, "counterType": "lower-alpha"}, ab[1])
+    ok(f"{label}: Trilium-automatisch: erkannt (bash) bzw. Sprachname im Absatz davor (yaml), Absatz bleibt",
+       ab[2]["data"]["language"] == "bash" and ab[3]["data"]["text"] == "yaml" and ab[4]["data"]["language"] == "yaml"
+       and "_auto" not in ab[2]["data"], ab[2:5])
+    ok(f"{label}: Tabellen-Spaltenbreiten", ab[5]["data"].get("colWidths") == [20, 80], ab[5])
+    ok(f"{label}: fullContentWidth -> volle Breite, Farbe verworfen", note_row(t["Breit"]["id"])[1] == 1
+       and "ff0000" not in json.dumps(t["Breit"]["body"]))
+    ok(f"{label}: gespeicherte Suche -> Hinweis mit Suchtext", "#wichtig" in t["Suche"]["body"][0]["data"]["text"], t["Suche"]["body"])
+    mm = t["Mermaid"]["body"]
+    ok(f"{label}: Mermaid -> Diagramm (Ansicht Vorschau) ohne zusaetzliche SVG-Karte", len(mm) == 1
+       and mm[0]["data"].get("language") == "mermaid" and mm[0]["data"].get("view") == "preview", mm)
+    ok(f"{label}: leere Zeichenflaeche -> eigener Hinweis", "Leere Zeichenfläche" in t["Leer"]["body"][0]["data"]["text"])
+    ok(f"{label}: keine Datei-Bloecke ohne Datei, keine leeren Bloecke", not [r["title"] for r in t.values() for b in all_blocks(r["body"])
+       if b["type"] in ("image", "attaches") and not (b["data"].get("file") or {}).get("url")])
+
+
+def file_url_of(u, name):
+    with connect() as c:
+        r = c.execute("SELECT id FROM file WHERE uid=? AND name=?", (u, name)).fetchone()
+    return f"/files/{r[0]}" if r else ""
+
+
+def raw_get(path, u=A):
+    c = http.client.HTTPConnection(B_.hostname, B_.port, timeout=60)
+    c.request("GET", path, headers={"Host": HOST, "Cookie": "saga=" + ck(u)})
+    r = c.getresponse()
+    d = r.read()
+    return r.status, {k.lower(): v for k, v in r.getheaders()}, d
+
+
 def files_of(u):
     with connect() as c:
         return sorted(r[0] for r in c.execute("SELECT name FROM file WHERE uid=?", (u,)).fetchall())
@@ -255,8 +375,8 @@ def run():
     s, a = req("POST", f"/api/import/{d2['token']}/analyze", {})
     tr = a.get("trilium") or {}
     ok("Analyse .db: Zahlen, Quelle, Passwortfeld noetig", s == 200 and tr.get("source") == "db" and tr.get("schema") == "blobs"
-       and tr.get("protected") == 2 and tr.get("password") is True and tr.get("clones") == 1 and tr.get("code") == 3
-       and tr.get("unsupported") == 1 and tr.get("hidden") >= 3, a)
+       and tr.get("protected") == 2 and tr.get("password") is True and tr.get("clones") == 1 and tr.get("code") == 5 and tr.get("files") == 8
+       and tr.get("unsupported") == 3 and tr.get("hidden") >= 4, a)
     s, d = upload("export.zip", F.build_zip("html"))
     ok("Upload ZIP mit !!!meta.json: Art trilium", s == 200 and d.get("kind") == "trilium", d)
     s, a = req("POST", f"/api/import/{d['token']}/analyze", {})
@@ -286,11 +406,13 @@ def run():
         ok("ohne Passwort: geschuetzte im Bericht nur mit Position", len(prot) == 2 and all(x["path"].startswith("🔒") for x in prot), rep)
         ok("ohne Passwort: geschuetzte Inhalte nicht in Saga", "Geheimer Inhalt" not in json.dumps([x["body"] for x in t.values()]))
         check_content(".db", t)
-        ok(".db: Anhaenge genau einmal (Bild-Notiz, plan, pdf, svg)", files_of(A) == sorted(["Foto.png", "plan.png", "rezept.pdf",
-                                                                                            "canvas-export.svg"]), files_of(A))
-        ok(".db: Hinweis-Seite fuer Canvas + Bericht", "Canvas" in t["Diagramm"]["body"][0]["data"]["text"]
-           and any(g["code"] == "trilium_type" for g in rep["groups"]), rep)
+        ok(".db: Anhaenge genau einmal (ohne verwaiste, viewConfig, Mermaid-Vorschau)", files_of(A) == sorted(
+            ["Foto.png", "plan.png", "rezept.pdf", "canvas-export.svg", "gut.svg", "boese.svg", "fremd.svg", "notiz.txt"]), files_of(A))
+        ok(".db: Canvas mit Vorschaubild ueber dem Hinweis + Bericht", t["Diagramm"]["body"][0]["type"] == "image"
+           and "Vorschaubild" in t["Diagramm"]["body"][1]["data"]["text"]
+           and any(g["code"] == "trilium_preview" for g in rep["groups"]), (t["Diagramm"]["body"], rep))
         ok("Bericht-Seite angelegt", rep.get("page") and req("GET", f"/api/notes/{rep['page']}")[0] == 200)
+        check_new(".db", t, st)
 
     # --- mit Passwort --------------------------------------------------------------------------------------------------
     s, r, st = run_import(db_new, "sicherung.db", {"kind": "trilium", "title": "Trilium-Test", "password": F.PW}, u=BU)
@@ -323,7 +445,7 @@ def run():
     # --- ZIP HTML / Markdown -------------------------------------------------------------------------------------------
     cleanup_user(A)
     s, r, st = run_import(F.build_zip("html"), "export.zip", {"kind": "trilium", "title": "Trilium-Test"})
-    t = check_tree("ZIP HTML", st, LOCKED)
+    t = check_tree("ZIP HTML", st, ZIP)
     if t:
         check_content("ZIP HTML", t)
         ok("ZIP HTML: Anhaenge genau einmal", files_of(A) == sorted(["Foto.png", "plan.png", "rezept.pdf", "canvas-export.svg"]), files_of(A))
