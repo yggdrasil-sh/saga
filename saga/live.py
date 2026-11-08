@@ -55,7 +55,7 @@ from collections import deque
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from db import connect as _db
-from saga import avatars, bus, i18n, notify
+from saga import avatars, bus, clientos, i18n, notify
 from saga.comments import counts as comment_counts
 from saga.core import E, _api_guard, _bad, _body, _session_user, _tok_hash, account_lang, device_alive, origin_of, ref_of, user_info
 from saga.notes import BLOCK_ID_RE, PALETTE, note_chain, share_targets
@@ -98,11 +98,12 @@ _pres_hits = {}          # uid -> letzte Anwesenheitsmeldung (Bremse)
 
 
 class _Client:
-    __slots__ = ("uid", "kind", "q", "bye", "since", "origin")
+    __slots__ = ("uid", "kind", "q", "bye", "since", "origin", "os")
 
-    def __init__(self, uid, kind, origin=None):
+    def __init__(self, uid, kind, origin=None, os_="other"):
         self.uid, self.kind, self.q, self.bye, self.since = uid, kind, asyncio.Queue(QUEUE), None, time.time()
         self.origin = origin             # Sitzung/Geraet (core.origin_of): eigene Aenderungen nicht an dieselbe Stelle zurueck
+        self.os = os_                    # 2.5 Netz-Karte (saga.clientos): nur die Grobklasse, kein User-Agent
 
     def put(self, msg):
         try:
@@ -152,6 +153,15 @@ def stop():
 def count():
     """Aktive Live-Verbindungen (Admin-Bereich, nur die Zahl)."""
     return sum(len(v) for v in list(_clients.values()))
+
+
+def os_counts():
+    """(2.5, Admin -> Netz) Live-Verbindungen je Grobklasse (saga.clientos) -> {klasse: anzahl}. Keine Konten."""
+    out = {}
+    for lst in list(_clients.values()):
+        for cl in list(lst):
+            out[cl.os] = out.get(cl.os, 0) + 1
+    return out
 
 
 def is_online(uid):
@@ -567,11 +577,11 @@ async def _housekeeping():
 
 
 # --- Verbindungen ----------------------------------------------------------------------------------------
-def _register(uid, kind, origin=None):
+def _register(uid, kind, origin=None, os_="other"):
     lst = _clients.setdefault(uid, [])
     while len(lst) >= MAX_PER_USER:
         lst.pop(0).close("limit")
-    cl = _Client(uid, kind, origin)
+    cl = _Client(uid, kind, origin, os_)
     lst.append(cl)
     _left.pop(uid, None)
     if uid not in _on:                                       # (2.4) jetzt online
@@ -673,11 +683,12 @@ async def api_events(request: Request):
     if kind == "web" and request.headers.get("sec-fetch-site") in ("cross-site", "same-site"):
         return _bad("forbidden", 403)
     last = request.headers.get("last-event-id") or request.query_params.get("last") or ""
+    os_ = clientos.of_request(request)
 
     async def gen():
         # erst hier anmelden: startet der Generator nie (Client sofort weg), bliebe sonst ein Eintrag ohne finally liegen.
         # Anmelden und Nachhol-Stand ohne await dazwischen: nichts doppelt, nichts verloren
-        cl = _register(uid, kind, origin)
+        cl = _register(uid, kind, origin, os_)
         msgs, ok = _replay(uid, last, origin) if last else ([], True)
         try:
             # retry: Wartezeit vor dem Neuaufbau; Fuellzeile: manche Proxys geben erst ab ein paar KB weiter

@@ -34,7 +34,7 @@ import time
 
 import auth
 from db import connect as _db
-from saga import core
+from saga import clientos, core
 
 PATH = "/api/push/stream"
 KEEP = 100                            # unbestaetigte Mitteilungen je Abo (darueber: die aeltesten weg)
@@ -61,11 +61,12 @@ def _spawn(coro):
 
 
 class _Conn:
-    __slots__ = ("ws", "sid", "uid", "did", "checked", "lock", "closed")
+    __slots__ = ("ws", "sid", "uid", "did", "checked", "lock", "closed", "os")
 
-    def __init__(self, ws, sid, uid, did):
+    def __init__(self, ws, sid, uid, did, os_="android-app"):
         self.ws, self.sid, self.uid, self.did = ws, sid, uid, did
         self.checked, self.lock, self.closed = time.monotonic(), None, False
+        self.os = os_                     # 2.5 Netz-Karte: nur die Grobklasse (saga.clientos)
 
     async def send(self, data):
         if self.closed:
@@ -111,6 +112,14 @@ def connected(sid):
 
 def count():
     return len(_conns)
+
+
+def os_counts():
+    """(2.5, Admin -> Netz) offene Push-Verbindungen je Grobklasse -> {klasse: anzahl}."""
+    out = {}
+    for cl in list(_conns.values()):
+        out[cl.os] = out.get(cl.os, 0) + 1
+    return out
 
 
 # =====================================================================================================
@@ -294,6 +303,7 @@ async def _serve(scope, receive, send):
     if (await receive())["type"] != "websocket.connect":
         return
     hdr = next((v.decode("latin-1") for k, v in scope.get("headers") or () if k == b"authorization"), "")
+    ua = next((v.decode("latin-1") for k, v in scope.get("headers") or () if k == b"user-agent"), "")
     ws = _Sock(send, receive)
     try:
         uid, did = await asyncio.to_thread(_who, hdr)
@@ -313,7 +323,8 @@ async def _serve(scope, receive, send):
     if not push.server().get("stream") or not sid:
         await ws.close(C_NOSUB)
         return
-    cl = _Conn(ws, sid, uid, did)
+    os_ = clientos.classify(ua)
+    cl = _Conn(ws, sid, uid, did, "android-app" if os_ == "other" else os_)   # Weg der Android-App (ohne Verteiler)
     old = _conns.get(sid)
     _conns[sid] = cl
     if old is not None:

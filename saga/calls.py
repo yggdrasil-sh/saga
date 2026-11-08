@@ -81,7 +81,7 @@ from fastapi import APIRouter, Request
 
 import auth
 from db import connect as _db
-from saga import bus, chat, horn, horn_bridge, horn_web, notify
+from saga import bus, chat, clientos, horn, horn_bridge, horn_web, notify
 from saga.core import SECRET, _bad, _body, local_ref, t
 from saga import sharing
 from saga.sharing import names
@@ -791,6 +791,7 @@ async def api_call(request: Request):
     if b is None:
         return _bad(t("ungültige Anfrage"))
     cid, media, dev = str(b.get("id") or ""), b.get("media"), str(b.get("device") or "")
+    clientos.note_call(dev, request)                  # 2.5 Netz-Karte: nur Grobklasse des Geraets (im Speicher)
     try:
         chat_id = int(b.get("chat_id") or 0)
     except (TypeError, ValueError):
@@ -1076,6 +1077,7 @@ async def api_answer(cid: str, request: Request):
         return err
     b = await _body(request) or {}
     dev = str(b.get("device") or "")
+    clientos.note_call(dev, request)
     now = time.time()
     with _db() as c, c:
         call, err = _mine(c, uid, cid, lock=True)
@@ -1336,6 +1338,7 @@ async def api_alive(cid: str, request: Request):
     b = await _body(request) or {}
     dev = str(b.get("device") or "")
     dev = dev if _HEX32.fullmatch(dev) else ""
+    clientos.note_call(dev, request)
     with _db() as c, c:
         call, err = _mine(c, uid, cid)
         if err:
@@ -1367,6 +1370,7 @@ async def api_join(cid: str, request: Request):
         return err
     b = await _body(request) or {}
     dev = str(b.get("device") or "")
+    clientos.note_call(dev, request)
     role = b.get("role") if b.get("role") in ROLES else "member"
     rep = b.get("replaces") if isinstance(b.get("replaces"), str) and _HEX32.fullmatch(b.get("replaces")) else None
     caps = caps_in(b.get("caps"))

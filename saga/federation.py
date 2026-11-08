@@ -653,9 +653,10 @@ def _send(method, url, headers, body, limit, timeout=TIMEOUT):
         raise FedError(f"nicht erreichbar ({netguard.net_why(ex)})")
 
 
-def fetch_info(base):
+def fetch_info(base, timeout=TIMEOUT):
     """Oeffentliche Angaben einer Instanz (/.well-known/saga) -> dict mit Schluessel und Fingerprint. FedError."""
-    status, _, data = _send("GET", base + "/.well-known/saga", {"Accept": "application/json", "User-Agent": f"Saga/{VERSION}"}, None, 65536)
+    status, _, data = _send("GET", base + "/.well-known/saga", {"Accept": "application/json", "User-Agent": f"Saga/{VERSION}"}, None, 65536,
+                            timeout)
     if status != 200:
         raise FedError(f"keine Saga-Instanz mit Foederation (HTTP {status})", status)
     try:
@@ -685,6 +686,7 @@ def call(peer, method, path, query="", body=None, actor=None, limit=RESP_MAX, ti
         # (aeltere Instanzen antworten auf "zu viele Anfragen" unsigniert - der Status zaehlt trotzdem fuer den Backoff)
         raise FedError(f"Antwort nicht signiert/ungueltig ({ex}; HTTP {status})", status,
                        retry_after(rh.get("retry-after")) if status == 429 else None)
+    _act(peer.get("id"), "out")
     return status, rh, data
 
 
@@ -697,6 +699,17 @@ def call_json(peer, method, path, query="", body=None, actor=None, timeout=TIMEO
     if not pages._json_depth_ok(d, 32):             # Antworten sind flach; tief Verschachteltes nur von boesartiger Gegenseite
         raise FedError("ungueltige Antwort", status)
     return status, d
+
+
+# 2.5 Admin -> Netz (saga/netmap.py): Zaehler gepruefter Nachrichten je Instanz (nur im Speicher, nur Anzahl) - die Karte
+# zeigt daraus kurze Pulse an der Kante. Keine Inhalte, keine Personen.
+ACTIVITY = {}                 # peer_id -> {"in": n, "out": n}
+
+
+def _act(pid, way):
+    if pid:
+        d = ACTIVITY.setdefault(pid, {"in": 0, "out": 0})
+        d[way] += 1
 
 
 def _touch(c, peer, err=None):
@@ -787,6 +800,7 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
                 _alias_seen(c, peer, h, inp.principal)
         if peer.get("id"):
             _touch(c, peer)
+            _act(peer["id"], "in")
     if body and not raw:
         try:
             inp.data = parse_json(body)              # Surrogate/NUL der Gegenseite bereinigt (BUG-008)
