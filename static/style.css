@@ -2448,12 +2448,13 @@ body.notes-page .page.p-small .page-body{font-size:var(--fs-base)}
 .wg-analog{width:5.5rem;height:5.5rem}.wg.wg-s .wg-analog{width:3.5rem;height:3.5rem}.wg.wg-l .wg-analog{width:8rem;height:8rem}
 .wg-face{fill:none;stroke:var(--border);stroke-width:3}
 .wg-hand{stroke:var(--wa);stroke-linecap:round;stroke-width:4}.wg-hand-m{stroke-width:3}.wg-hand-s{stroke:var(--muted);stroke-width:1.5}
-.wg-panel{display:grid;grid-template-columns:minmax(7rem,auto) 1fr;gap:.45rem .8rem;align-items:center;margin-top:.5rem;padding:.8rem;border:1px dashed var(--border);border-radius:var(--r-md);font-size:var(--fs-base)}
+.wg-panel{display:grid;grid-template-columns:minmax(7rem,max-content) minmax(0,1fr);gap:.45rem .8rem;align-items:center;margin-top:.5rem;padding:.8rem;border:1px dashed var(--border);border-radius:var(--r-md);font-size:var(--fs-base)}
 .wg-row{display:contents}
 .wg-row .wg-l{color:var(--muted)}
 .wg-row input[type=checkbox]{justify-self:start}
 .wg-items{min-height:5rem;resize:vertical}
 .wg-done{grid-column:1/-1;justify-self:end}
+.wg-panel>.wg-row.wg-note{display:block;grid-column:1/-1}                 /* Hinweis ueber beide Spalten: sonst bläht sein Text die auto-Spalte auf und die Felder schrumpfen */
 @media (max-width:640px){.wg-panel{grid-template-columns:1fr}.wg-row{display:flex;flex-direction:column;gap:.2rem}}
 /* Fix27 #2: Panel als Seitenleiste, wenn der Block zu schmal ist */
 .wg-panel.wg-panel-float{position:fixed;z-index:60;top:4.5rem;right:1rem;width:min(380px,calc(100vw - 2rem));max-height:calc(100vh - 6rem);overflow:auto;margin:0;background:var(--card,var(--bg));border:1px solid var(--border);box-shadow:0 8px 28px rgba(0,0,0,.18)}

@@ -16,6 +16,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Widget einrichten
+- Im Fenster „Widget einrichten“ (Wetter, Anstehendes, Lesen) schrumpften die Eingabefelder auf Knopfbreite und zeigten ihren Wert nicht: Der Hinweistext lag als lose Zelle in der Beschriftungsspalte und blähte sie auf. Der Hinweis geht jetzt über beide Spalten.
+
 ### BookOrbit: Leseliste unter „Heute“ und Widget „Lesen“ (Phase 1, nur lesen)
 - Neue Verbindung **Einstellungen → Verbindungen → BookOrbit** (je Konto, wie Immich): Adresse, Benutzer, Passwort –
   Saga meldet sich einmal an und speichert nur das Refresh-Token (verschlüsselt), nie das Passwort. Status
