@@ -6769,17 +6769,18 @@
   // Kennzahl und Zitat rechnet der Server mit den Rechten des Betrachters (GET /api/notes/{id}/widgets, alle 60 s,
   // solange die Seite sichtbar ist). Einrichten: Klick auf das Widget (Bearbeiten/Eigentuemer) -> Panel mit Vorschau.
   // 2.5 Paket 4 (Etappe 2): Wetter, Gewohnheiten, Anstehendes, Diagramm (Server rechnet, W.data; docs/APP-API.md)
-  var WG_KINDS = ['clock', 'countdown', 'progress', 'metric', 'quote', 'weather', 'habit', 'upcoming', 'chart'];
-  var WG_KINDS2 = ['weather', 'habit', 'upcoming', 'chart'];
+  var WG_KINDS = ['clock', 'countdown', 'progress', 'metric', 'quote', 'weather', 'habit', 'upcoming', 'chart', 'reading'];
+  var WG_KINDS2 = ['weather', 'habit', 'upcoming', 'chart', 'reading'];      // reading (2.5): BookOrbit, static/bookorbit.js
   var WG_NAMES = { clock: T('Uhr'), countdown: T('Countdown'), progress: T('Fortschritt'), metric: T('Kennzahl'), quote: T('Zitat'),
-    weather: T('Wetter'), habit: T('Gewohnheiten'), upcoming: T('Anstehendes'), chart: T('Diagramm##Chart') };
+    weather: T('Wetter'), habit: T('Gewohnheiten'), upcoming: T('Anstehendes'), chart: T('Diagramm##Chart'), reading: T('Lesen##BookOrbit') };
   var WG_IC = { clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', countdown: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9"/>',
     progress: '<rect x="3" y="9" width="18" height="6" rx="3"/><path d="M6 12h7"/>', metric: '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>',
     quote: '<path d="M7 7h4v4c0 3-2 5-4 5M14 7h4v4c0 3-2 5-4 5"/>',
     weather: '<circle cx="9" cy="9" r="3.5"/><path d="M9 2v1.5M2 9h1.5M4 4l1 1M14 4l-1 1M8 20h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.6 1.6A2.8 2.8 0 0 0 8 20z"/>',
     habit: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8.5 14.5l2 2 4-4"/>',
     upcoming: '<path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="17" r="3"/><path d="M18 15.5V17l1 .8"/>',
-    chart: '<path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/>' };
+    chart: '<path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/>',
+    reading: '<path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v14H7.5A2.5 2.5 0 0 0 5 19.5z"/><path d="M5 19.5A2.5 2.5 0 0 0 7.5 22H19v-5M9 7h6"/>' };
   var WG_ERR = { no_access: T('Kein Zugriff auf die Datenquelle'), gone: T('Die Datenquelle gibt es nicht mehr'),
     bad_cfg: T('Widget noch nicht fertig eingerichtet'), too_big: T('Zu viele Einträge für ein Widget'),
     disabled: T('Wetter ist auf diesem Server ausgeschaltet'), unavailable: T('Wetterdaten gerade nicht erreichbar') };
@@ -6791,7 +6792,7 @@
       progress: { src: 'fixed', value: 0, max: 100 }, metric: { db: null, view: '', agg: 'count', prop: '', fmt: 'num' },
       quote: { src: 'fixed', items: [], pick: 'daily' }, weather: { place: '', lat: null, lon: null, units: 'metric', days: 5 },
       habit: { db: null, view: '', date: '', habits: [], range: 7 }, upcoming: { days: 7, cal: true, tasks: true, overdue: true, dbs: [], limit: 10 },
-      chart: { db: null, view: '', type: 'bar', x: '', agg: 'count' } }[kind] || {};
+      chart: { db: null, view: '', type: 'bar', x: '', agg: 'count' }, reading: { show: 'current', limit: 3 } }[kind] || {};
   }
   function wgFmt(v, fmt) {
     if (v == null || typeof v !== 'number' || !isFinite(v)) return '–';
@@ -7018,6 +7019,22 @@
       if (!data.can_check) body.appendChild(el('div', 'wg-sub', T('Nur lesen – zum Abhaken braucht es „Bearbeiten“ an der Datenbank.')));
       return;
     }
+    if (d.kind === 'reading') {                         // 2.5: BookOrbit der betrachtenden Person (static/bookorbit.js)
+      var BO = HK.bookorbit;
+      if (!BO) { body.appendChild(el('div', 'wg-note', '…')); return; }
+      if (data.state !== 'ok') { body.appendChild(BO.hint(data.state)); return; }
+      if (data.show === 'goal') BO.goal(data.goal, body);
+      else if (data.show === 'streak') BO.streak(data.streak, body);
+      else {
+        var bl = el('div', 'bo-list');
+        (data.books || []).forEach(function (b) { bl.appendChild(BO.book(b, { compact: d.size === 's' })); });
+        if (!(data.books || []).length) bl.appendChild(el('div', 'wg-note', T('Gerade kein Buch')));
+        body.appendChild(bl);
+        if (data.more) body.appendChild(el('div', 'wg-sub', T('und {n} weitere', { n: data.more })));
+      }
+      if (data.stale) body.appendChild(el('div', 'wg-sub', T('Stand von vorhin')));
+      return;
+    }
     if (d.kind === 'upcoming') {
       var items = data.items || [];
       if (!items.length) body.appendChild(el('div', 'wg-note', T('Nichts in den nächsten {n} {n:Tag|Tagen}', { n: data.days || 7 })));
@@ -7158,6 +7175,12 @@
       sel(T('Einheiten'), [['metric', '°C, km/h'], ['imperial', '°F, mph']], cfg.units, function (v) { set('units', v); });
       sel(T('Tage'), [0, 1, 2, 3, 4, 5, 6, 7].map(function (n) { return [n, n ? T('Heute + {n}', { n: n }) : T('Nur heute')]; }), cfg.days == null ? 5 : cfg.days, function (v) { set('days', +v); });
       p.insertBefore(el('div', 'wg-row wg-note', T('Die Daten holt der Saga-Server bei Open-Meteo (Koordinaten auf etwa 1 km gerundet).')), at);
+      return;
+    }
+    if (k === 'reading') {
+      sel(T('Anzeigen'), [['current', T('Gerade am Lesen')], ['goal', T('Leseziel')], ['streak', T('Lesesträhne')]], cfg.show || 'current', function (v) { set('show', v); self.fill(); });
+      if ((cfg.show || 'current') === 'current') sel(T('Höchstens'), [1, 2, 3, 4, 5].map(function (n) { return [n, T('{n} {n:Buch|Bücher}', { n: n })]; }), cfg.limit || 3, function (v) { set('limit', +v); });
+      p.insertBefore(el('div', 'wg-row wg-note', T('Jede Person sieht ihre eigene BookOrbit-Leseliste – auch auf geteilten Seiten. Auf veröffentlichten Seiten erscheint das Widget nicht.')), at);
       return;
     }
     if (k === 'upcoming') {

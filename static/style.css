@@ -3092,3 +3092,25 @@ a.qs-web{text-decoration:none;color:var(--fg)}
 /* Tab-Leiste weg, solange im Seiteninhalt oder Titel geschrieben wird (am Handy ist dann ohnehin die Tastatur offen;
    Slash-/Block-Menues als Bottom-Sheet liegen sonst darunter) */
 @media (max-width:760px){body:has(:is(#pg-editor,.page-head):focus-within) .mob-tabs{display:none}}
+/* 2.5 BookOrbit: Widget "Lesen" und Karte "Lesen" unter Heute (static/bookorbit.js) */
+.bo-list{display:flex;flex-direction:column;gap:.6rem}
+.bo-book{display:flex;gap:.7rem;align-items:center;min-width:0}
+.bo-cover{flex:none;width:2.6rem;height:3.8rem;border-radius:var(--r-sm);background:color-mix(in srgb,var(--accent) 12%,var(--card));
+  display:flex;align-items:center;justify-content:center;font-size:1.3rem;overflow:hidden}
+.bo-cover img{width:100%;height:100%;object-fit:cover}
+.bo-compact .bo-cover{width:2.1rem;height:3rem;font-size:1.05rem}
+.bo-tx{display:flex;flex-direction:column;gap:.15rem;min-width:0;flex:1}
+.bo-ti{font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bo-au{font-size:var(--fs-xs);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bo-pr{display:flex;align-items:center;gap:.5rem}
+.bo-bar{flex:1;height:.35rem;border-radius:1rem;background:color-mix(in srgb,var(--fg) 12%,transparent);overflow:hidden}
+.bo-fill{display:block;height:100%;background:var(--accent);border-radius:1rem}
+.bo-pc{font-size:var(--fs-xs);color:var(--muted);font-variant-numeric:tabular-nums;min-width:2.6rem;text-align:right}
+.bo-days{display:flex;gap:.3rem;margin:.35rem 0}
+.bo-day{width:.75rem;height:.75rem;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--fg) 30%,transparent)}
+.bo-day.bo-on{background:var(--accent);border-color:var(--accent)}
+.bo-hint .linkbtn{font-size:inherit}
+.hz-read{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.7rem}
+.hz-read .bo-book{padding:.7rem .8rem;background:var(--card);border:1px solid color-mix(in srgb,var(--border) 80%,transparent);border-radius:var(--r-md)}
+.hz-read-s{grid-column:1/-1;margin:0;color:var(--muted);font-size:var(--fs-sm)}
+.hk-warn{color:var(--warn,#b45309)}

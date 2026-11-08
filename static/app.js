@@ -105,6 +105,22 @@
   });
   window.addEventListener('pageshow', function (e) { if (e.persisted) recent(); });      // zurueck aus /notes (bfcache)
 
+  // --- Lesen (2.5, BookOrbit): "Gerade am Lesen" kompakt - nur sichtbar, wenn ein BookOrbit verbunden ist ----------
+  //     (abgelaufene Anmeldung: kurzer Hinweis mit Weg zu den Einstellungen). Daten und Cover nur ueber den Saga-Server.
+  function reading() {
+    var sec = $('hz-reading'), box = $('hz-read'); if (!sec || !box || !HK || !HK.bookorbit) return;
+    HK.api('GET', '/api/bookorbit/reading').then(function (d) {
+      if (!d || d.state === 'none') { sec.hidden = true; return; }
+      box.textContent = '';
+      if (d.state !== 'ok') box.appendChild(HK.bookorbit.hint(d.state));
+      else if (!(d.books || []).length) box.appendChild(el('p', 'hz-empty', T('Gerade kein Buch')));
+      else (d.books || []).slice(0, 3).forEach(function (b) { box.appendChild(HK.bookorbit.book(b, { compact: true })); });
+      if (d.state === 'ok' && d.streak && d.streak.current) box.appendChild(el('p', 'hz-read-s', T('{n} {n:Tag|Tage} in Folge gelesen', { n: d.streak.current })));
+      sec.hidden = false;
+    }).catch(function () { sec.hidden = true; });
+  }
+  reading();
+
   // --- Icon-Fallback: Lesezeichen erst ueber den Server (icon_url), dann direkt von der Seite (data-d = icon_direct,
   //     CSP img-src erlaubt genau diese Origins), zuletzt die Initiale -----------------------------------------------
   document.querySelectorAll('.ic img').forEach(function (img) {

@@ -69,6 +69,11 @@
     <p class="hz-empty" id="hz-recent-empty" hidden>{{ _("Hier erscheinen die Seiten, die du zuletzt geöffnet hast.") }}</p>
   </section>
 
+  <section class="hz-sec hz-reading" id="hz-reading" aria-labelledby="hz-reading-h" hidden>
+    <h2 id="hz-reading-h">{{ _("Lesen##BookOrbit") }}</h2>
+    <div class="hz-read" id="hz-read"></div>
+  </section>
+
   <details class="nt" id="nt">
     <summary>
       <span class="nt-title">{{ _("Aufgaben") }}</span>
@@ -164,6 +169,7 @@
 <script src="/static/treenav.js?v={{ v }}"></script>
 <script src="/static/side.js?v={{ v }}"></script>
 <script src="/static/calendar.js?v={{ v }}"></script>
+<script src="/static/bookorbit.js?v={{ v }}"></script>
 <script src="/static/app.js?v={{ v }}"></script>
 <script src="/static/settings.js?v={{ v }}"></script>
 <script src="/static/shortcuts.js?v={{ v }}"></script>

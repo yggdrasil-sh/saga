@@ -782,7 +782,7 @@ def value_for(uid, b, tz=None):
 def kind_name(kind):
     return {"clock": t("Uhr"), "countdown": t("Countdown"), "progress": t("Fortschritt"), "metric": t("Kennzahl"),
             "quote": t("Zitat"), "weather": t("Wetter"), "habit": t("Gewohnheiten"), "upcoming": t("Anstehendes"),
-            "chart": t("Diagramm##Chart"), "reading": t("Lesen")}.get(kind, t("Widget"))
+            "chart": t("Diagramm##Chart"), "reading": t("Lesen##BookOrbit")}.get(kind, t("Widget"))
 
 
 def fmt_num(v, fmt=None):

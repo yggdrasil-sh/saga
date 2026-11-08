@@ -128,6 +128,7 @@
     bookmarkSection(body);
     calendarSection(body);
     immichSection(body);
+    bookorbitSection(body);                                  // 2.5: BookOrbit (Leseliste, nur lesen)
     tokenSection(body);
     pagesSection(body);                                      // 2.5 (Tiptap T2): Seiten-Editor
     if (window.HKPush) HKPush.section(body);                 // Mitteilungen aufs Handy/Desktop (static/push.js)
@@ -144,7 +145,7 @@
     var GROUPS = [
       [T('Konto'), [['account', T('Profil & Sprache'), 'user'], ['security', T('Sicherheit'), 'shield'], ['push', T('Mitteilungen'), 'bell']]],
       [T('Arbeitsbereich'), [['pages', T('Seiten'), 'file'], ['calendar', T('Kalender'), 'calendar'], ['bookmarks', T('Lesezeichen'), 'star']]],
-      [T('Verbindungen'), [['immich', 'Immich', 'image'], ['nextcloud', 'Nextcloud', 'link'], ['apps', T('Apps & Geräte'), 'smartphone'], ['api', 'API', 'code']]],
+      [T('Verbindungen'), [['immich', 'Immich', 'image'], ['bookorbit', 'BookOrbit', 'book'], ['nextcloud', 'Nextcloud', 'link'], ['apps', T('Apps & Geräte'), 'smartphone'], ['api', 'API', 'code']]],
       [T('Daten'), [['backup', T('Mein Backup'), 'download']]],
       [null, [['help', T('Hilfe'), 'help']]]
     ];
@@ -321,6 +322,48 @@
           msg.textContent = T('Prüfe …'); go.disabled = true;
           api('POST', '/api/settings/immich', { url: url.value.trim(), apikey: inp.value.trim() }).then(function () { inp.value = ''; load(); })
             .catch(function (e) { msg.textContent = e.message; go.disabled = false; });
+        });
+      }).catch(function (e) { box.textContent = T('Nicht geladen: {err}', { err: e.message }); });
+    }
+    load();
+  }
+
+  // --- Abschnitt "BookOrbit" (2.5): einmal anmelden, Saga behaelt nur das Refresh-Token (nie das Passwort) ------------
+  function bookorbitSection(body) {
+    var sec = el('section', 'hk-set hk-set-bookorbit'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, 'BookOrbit'));
+    var box = el('div'); sec.appendChild(box);
+    function load() {
+      api('GET', '/api/bookorbit/status').then(function (s) {
+        box.textContent = '';
+        var host = s.url ? ' (' + s.url.replace(/^https?:\/\//, '') + ')' : '';
+        if (s.connected && s.state === 'ok') {
+          box.appendChild(el('p', 'hk-bo-state', (s.name ? T('✅ Verbunden als {name}', { name: s.name }) : T('✅ Verbunden')) + host + ' – ' +
+            T('Deine Leseliste gibt es unter „Heute“ und als Widget „Lesen“ auf Seiten.')));
+        } else if (s.connected) {
+          box.appendChild(el('p', 'hk-bo-state hk-warn', T('⚠️ Anmeldung abgelaufen{host} – bitte neu anmelden.', { host: host })));
+        }
+        if (s.connected) {
+          var off = el('button', 'btn', T('Trennen')); off.type = 'button'; off.id = 'hk-bo-off';
+          off.addEventListener('click', function () { off.disabled = true; api('POST', '/api/bookorbit/disconnect').then(load, load); });
+          var bar0 = el('div', 'hk-actions'); bar0.appendChild(off); box.appendChild(bar0);
+          if (s.state === 'ok') return;
+        }
+        box.appendChild(el('p', 'hk-hint', T('Adresse deines BookOrbit (z. B. https://bookorbit.example.org) und dein BookOrbit-Konto. Saga meldet sich einmal an und speichert nur ein Sitzungs-Token (verschlüsselt), nie das Passwort. Saga liest nur: was du gerade liest, dein Leseziel und deine Lesesträhne.')));
+        var url = el('input', 'hk-in'); url.type = 'url'; url.id = 'hk-bo-url'; url.placeholder = 'https://bookorbit.example.org'; url.value = s.url || s.suggest || '';
+        box.appendChild(field(T('BookOrbit-Adresse'), url));
+        var user = el('input', 'hk-in'); user.type = 'text'; user.id = 'hk-bo-user'; user.autocomplete = 'off'; user.maxLength = 100;
+        box.appendChild(field(T('Benutzername'), user));
+        var pw = el('input', 'hk-in'); pw.type = 'password'; pw.id = 'hk-bo-pw'; pw.autocomplete = 'off'; pw.maxLength = 1024;
+        box.appendChild(field(T('Passwort'), pw));
+        var go = el('button', 'btn btn-primary', T('Anmelden')); go.type = 'button'; go.id = 'hk-bo-go';
+        var goBar = el('div', 'hk-actions'); goBar.appendChild(go); box.appendChild(goBar);
+        var msg = el('p', 'hk-hint'); msg.setAttribute('aria-live', 'polite'); box.appendChild(msg);
+        go.addEventListener('click', function () {
+          msg.textContent = T('Prüfe …'); go.disabled = true;
+          api('POST', '/api/bookorbit/connect', { url: url.value.trim(), username: user.value.trim(), password: pw.value })
+            .then(function () { pw.value = ''; load(); })
+            .catch(function (e) { pw.value = ''; msg.textContent = e.message; go.disabled = false; });
         });
       }).catch(function (e) { box.textContent = T('Nicht geladen: {err}', { err: e.message }); });
     }
