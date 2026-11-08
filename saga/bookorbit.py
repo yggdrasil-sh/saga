@@ -55,7 +55,7 @@ TICK_S = float(E.get("SAGA_BOOKORBIT_TICK_S") or 3600)
 TIMEOUT = 15
 BOOKS_MAX = 10
 _TOKEN = re.compile(r"^[a-f0-9]{64}$")
-_LOGIN_RATE = (5, 60.0)                                         # Anmeldeversuche je Konto und Minute
+_LOGIN_RATE = (8, 60.0)                                         # Anmeldeversuche (bis BookOrbit) je Konto und Minute
 # eigene Statuswerte von _call (keine HTTP-Codes): gesperrt (SSRF), Netzfehler, Weiterleitung, zu gross
 BLOCKED, NETERR, REDIRECT, TOOBIG = 900, 901, 902, 903
 
@@ -425,18 +425,18 @@ def api_status(request: Request):
     return JSONResponse(status(uid), headers={"Cache-Control": "no-store"})
 
 
-def _login_rate_ok(uid):
+def _login_rate_ok(uid, count=False):
+    """Hoechstens _LOGIN_RATE Anmeldungen je Konto und Minute; count=True: einen Versuch zaehlen (nur, wenn er BookOrbit
+    wirklich erreicht hat - abgewiesene Adressen zaehlen nicht)."""
     now = time.time()
     with _mem:
         xs = [x for x in _logins.get(uid, []) if now - x < _LOGIN_RATE[1]]
-        if len(xs) >= _LOGIN_RATE[0]:
-            _logins[uid] = xs
-            return False
-        xs.append(now)
+        if count:
+            xs.append(now)
         _logins[uid] = xs
         if len(_logins) > 5000:
             _logins.clear()
-        return True
+        return len(xs) < _LOGIN_RATE[0] or count
 
 
 def connect(uid, url, username, password):
@@ -452,6 +452,8 @@ def connect(uid, url, username, password):
     st, _, data = _call(base, "POST", "/auth/login",
                         {"username": username, "password": password, "clientKind": "native", "deviceLabel": "Saga"})
     password = None                                # noqa: F841 - Passwort nicht laenger als noetig halten
+    if st != BLOCKED:
+        _login_rate_ok(uid, count=True)
     d = _json(data) or {}
     if st == BLOCKED:
         return {"error": t("Diese Adresse zeigt auf einen internen Server, der nicht freigegeben ist")}, 400
@@ -464,10 +466,10 @@ def connect(uid, url, username, password):
     if st == 429:
         return {"error": t("BookOrbit: zu viele Anmeldeversuche – bitte später erneut")}, 429
     if st != 200:
-        return {"error": t("BookOrbit unter dieser Adresse nicht erreichbar")}, 502
+        return {"error": t("BookOrbit unter dieser Adresse nicht erreichbar")}, 400      # Eingabe pruefen, kein Serverfehler
     rt, at = str(d.get("refreshToken") or ""), d.get("accessToken")
     if not _TOKEN.match(rt) or not isinstance(at, str) or not at:
-        return {"error": t("Unter dieser Adresse antwortet kein BookOrbit")}, 502
+        return {"error": t("Unter dieser Adresse antwortet kein BookOrbit")}, 400
     u = d.get("user") if isinstance(d.get("user"), dict) else {}
     name = str(u.get("name") or u.get("username") or username)[:120]
     now = time.time()
