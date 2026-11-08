@@ -194,7 +194,7 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 
 	sl, err := room.AddLeg(g, path, sfu.Want{Audio: req.Audio, Speaker: req.Speaker, Screen: req.Screen, Tiles: req.Tiles})
 	if err != nil {
-		s.closeLeg(l)
+		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", err
 	}
 	s.mu.Lock()
@@ -227,7 +227,7 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		pc, err = api.NewPeerConnection(webrtc.Configuration{})
 	}
 	if err != nil {
-		s.closeLeg(l)
+		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", err
 	}
 	l.setPC(pc)
@@ -240,12 +240,12 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 			}
 			l.mu.Unlock()
 		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
-			go s.closeLeg(l)
+			go s.closeLeg(l, "verbindung "+st.String())
 		}
 	})
 	pc.OnTrack(func(tr *webrtc.TrackRemote, rc *webrtc.RTPReceiver) { s.sfuTrack(l, sl, pc, tr, rc) })
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: req.Offer}); err != nil {
-		s.closeLeg(l)
+		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", fmt.Errorf("angebot: %w", err)
 	}
 	for _, o := range sl.Outs() {
@@ -256,19 +256,19 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		t := &trackOut{o: o, id: o.ID, stream: "horn-" + o.ID, kind: rk, mime: mime}
 		sender, err := pc.AddTrack(t)
 		if err != nil {
-			s.closeLeg(l)
+			s.closeLeg(l, "aufbau fehlgeschlagen")
 			return nil, "", fmt.Errorf("spur: %w", err)
 		}
 		go readSenderRTCP(sender, o)
 	}
 	ans, err := pc.CreateAnswer(nil)
 	if err != nil {
-		s.closeLeg(l)
+		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", fmt.Errorf("antwort: %w", err)
 	}
 	gather := webrtc.GatheringCompletePromise(pc)
 	if err := pc.SetLocalDescription(ans); err != nil {
-		s.closeLeg(l)
+		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", err
 	}
 	select {
@@ -280,6 +280,7 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		sdpText = addPtime(sdpText, 40)
 	}
 	s.registerUfrag(l, sdpText)
+	logLegOpen(l)
 	return l, sdpText, nil
 }
 
@@ -382,7 +383,7 @@ func (s *server) onSFULegClosed(sl *sfu.Leg, why string) {
 		if debug {
 			log.Printf("debug %s: bein beendet (%s)", l.id, why)
 		}
-		go s.closeLeg(l)
+		go s.closeLeg(l, "knoten: "+why)
 	}
 }
 

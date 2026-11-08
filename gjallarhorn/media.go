@@ -238,7 +238,7 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 
 	pc, err := api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
-		s.closeLeg(l)
+		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", err
 	}
 	l.setPC(pc)
@@ -298,7 +298,7 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 		s.room.RemoveSource(src)
 	})
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: req.Offer}); err != nil {
-		s.closeLeg(l)
+		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", fmt.Errorf("angebot: %w", err)
 	}
 	for i, sb := range subs {
@@ -312,7 +312,7 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 		t := &trackOut{o: o, id: id, stream: "s-" + l.id + "-" + id, kind: rk, mime: mime}
 		sender, err := pc.AddTrack(t)
 		if err != nil {
-			s.closeLeg(l)
+			s.closeLeg(l, "aufbau fehlgeschlagen")
 			return nil, "", fmt.Errorf("spur: %w", err)
 		}
 		l.outs = append(l.outs, o)
@@ -321,12 +321,12 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 	}
 	ans, err := pc.CreateAnswer(nil)
 	if err != nil {
-		s.closeLeg(l)
+		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", fmt.Errorf("antwort: %w", err)
 	}
 	gather := webrtc.GatheringCompletePromise(pc)
 	if err := pc.SetLocalDescription(ans); err != nil {
-		s.closeLeg(l)
+		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", err
 	}
 	select {
@@ -353,6 +353,7 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 			}
 		}
 	}
+	logLegOpen(l)
 	return l, sdp, nil
 }
 
@@ -391,7 +392,33 @@ func hasKeyRequest(b []byte) bool {
 	return false
 }
 
-func (s *server) closeLeg(l *leg) {
+// shortID kuerzt eine Bein-ID fuers Protokoll.
+func shortID(id string) string {
+	if len(id) > 6 {
+		return id[:6]
+	}
+	return id
+}
+
+// legMode: Betriebsart eines Beins fuers Protokoll (node = Knoten-Bein,
+// sonst Spiegel/Bench). Ruft l.mu.
+func (l *leg) legMode() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.sl != nil {
+		return "node"
+	}
+	return "spiegel"
+}
+
+// logLegOpen: Protokollzeile "bein auf" (ohne Adressen/ufrag).
+func logLegOpen(l *leg) {
+	log.Printf("bein auf %s modus=%s weg=%s", shortID(l.id), l.legMode(), l.path)
+}
+
+// closeLeg schliesst ein Bein und protokolliert den Grund (ohne Adressen/ufrag).
+func (s *server) closeLeg(l *leg, reason string) {
+	mode := l.legMode()
 	l.mu.Lock()
 	if l.closed {
 		l.mu.Unlock()
@@ -399,6 +426,8 @@ func (s *server) closeLeg(l *leg) {
 	}
 	l.closed = true
 	l.mu.Unlock()
+	log.Printf("bein zu %s modus=%s weg=%s dauer=%s grund=%s", shortID(l.id), mode, l.path,
+		time.Since(l.created).Round(time.Second), reason)
 	s.mu.Lock()
 	delete(s.legs, l.id)
 	if l.ufrag != "" && s.ufrags[l.ufrag] == l {

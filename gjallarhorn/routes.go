@@ -157,7 +157,7 @@ func (s *server) apiLegDelete(w http.ResponseWriter, r *http.Request) {
 		l.mu.Unlock()
 		st.TURN = s.ttrace.setup(pc, created, iceAt, con)
 	}
-	s.closeLeg(l)
+	s.closeLeg(l, "abgemeldet")
 	writeJSON(w, 200, st)
 }
 

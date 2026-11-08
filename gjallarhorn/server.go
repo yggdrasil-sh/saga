@@ -393,7 +393,7 @@ func (s *server) shutdown() {
 	}
 	s.mu.Unlock()
 	for _, l := range ls {
-		s.closeLeg(l)
+		s.closeLeg(l, "knoten beendet")
 	}
 	if s.node != nil {
 		s.node.Close()
@@ -648,24 +648,50 @@ func (s *server) UDPCheck() netx.UDPCheck {
 	return netx.UDPCheck{State: "unbekannt"}
 }
 
+// legMaxAge: Hoechstalter fuer Beine ohne Knoten-Bein (Spiegel-/Bench-Modus).
+// Beine der Betriebsart node (l.sl != nil) leben so lange wie der Anruf.
+const legMaxAge = 15 * time.Minute
+
+// reapReason sagt, ob und warum der Aufraeumer ein Bein schliesst ("" = bleibt).
+// now ist injizierbar (Tests), st der aktuelle Verbindungszustand.
+func reapReason(l *leg, st webrtc.PeerConnectionState, now time.Time) string {
+	l.mu.Lock()
+	sfuLeg := l.sl != nil
+	l.mu.Unlock()
+	age := now.Sub(l.created)
+	switch {
+	case !sfuLeg && age > legMaxAge:
+		return "alter"
+	case (st == webrtc.PeerConnectionStateFailed || st == webrtc.PeerConnectionStateClosed) && age > 30*time.Second:
+		return "gescheitert"
+	case st == webrtc.PeerConnectionStateNew && age > 60*time.Second:
+		return "nie verbunden"
+	}
+	return ""
+}
+
 // reaper raeumt alte und gescheiterte Beine ab.
 func (s *server) reaper() {
 	for range time.Tick(5 * time.Second) {
-		now := time.Now()
-		var old []*leg
-		s.mu.Lock()
-		for _, l := range s.legs {
-			st := l.state()
-			if now.Sub(l.created) > 15*time.Minute ||
-				(st == webrtc.PeerConnectionStateFailed || st == webrtc.PeerConnectionStateClosed) && now.Sub(l.created) > 30*time.Second ||
-				st == webrtc.PeerConnectionStateNew && now.Sub(l.created) > 60*time.Second {
-				old = append(old, l)
-			}
+		s.reapOnce(time.Now())
+	}
+}
+
+func (s *server) reapOnce(now time.Time) {
+	type cand struct {
+		l   *leg
+		why string
+	}
+	var old []cand
+	s.mu.Lock()
+	for _, l := range s.legs {
+		if why := reapReason(l, l.state(), now); why != "" {
+			old = append(old, cand{l, why})
 		}
-		s.mu.Unlock()
-		for _, l := range old {
-			s.closeLeg(l)
-		}
+	}
+	s.mu.Unlock()
+	for _, c := range old {
+		s.closeLeg(c.l, "aufraeumer: "+c.why)
 	}
 }
 
