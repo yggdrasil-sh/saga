@@ -81,7 +81,8 @@ SYS_LABELS = {
     "launchertype", "builtinwidget", "basesize", "growthfactor", "command", "datepattern", "template", "tabwidth",
     "language", "mapincludestypes", "geolocation", "fullcontentwidth", "ancestordepth", "includearchived", "orderby",
     "orderdirection", "limit", "debug", "searchstring", "cliponly", "clipperinbox", "board:groupby", "calendar:title",
-    "webviewsrc", "renderdisplay", "textrepresentation", "ocrtext"}
+    "webviewsrc", "renderdisplay", "textrepresentation", "ocrtext", "filesize", "bookzoomlevel", "desktoponly", "mobileonly",
+    "bookmarkfolder", "hidehighlightwidget", "printscale"}
 SYS_RELATIONS = {"internallink", "imagelink", "includenotelink", "relationmaplink", "template", "inherit", "rendernote",
                  "widget", "sharecss", "sharejs", "sharefavicon", "sharetemplate", "searchscript", "targetnote", "ancestor",
                  "widget_relation", "child:template", "child:child:template"}
@@ -767,7 +768,7 @@ def _attr_blocks(note, m, w, want_tags, want_props):
     tags, rows = [], []
     for typ, name, val, _pos in note.attrs:
         low = name.lower()
-        if low.startswith(("label:", "relation:")) or low.startswith(("runon", "share")):
+        if low.startswith(("label:", "relation:", "child:", "runon", "share")):
             continue
         if typ == "label":
             if low in SYS_LABELS:

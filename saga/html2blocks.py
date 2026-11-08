@@ -5,7 +5,7 @@ Bloecke: h1-h6 -> header (Ebene bleibt), p -> paragraph (Bilder darin werden eig
 ul/ol (verschachtelt) -> list, ul.todo-list -> checklist, pre>code.language-* -> code (Sprache), blockquote -> quote,
 aside.admonition -> callout, details/summary -> toggle, table/figure.table -> table, figure.image/img -> image,
 hr -> delimiter, section/figure.include-note -> Absatz mit Seitenverweis, span.math-tex mit \\[..\\] allein im Absatz ->
-math. Inline: b/strong, i/em, u, s/del, code, mark, a, br, span.math-tex (\\(..\\)) -> code.hk-math. Leerraum wie im
+math (an seiner Stelle). Inline: b/strong, i/em, u, s/del, code, mark, a, br, span.math-tex (\\(..\\)) -> code.hk-math. Leerraum wie im
 Browser zusammengefasst (Trilium formatiert den Export eingerueckt); leere Absaetze (&nbsp;) fallen weg.
 
 Verweise loest der Aufrufer auf (Ctx): link(href) -> ("page", "$ref:x") | ("file", "$file:k", name, is_image) |
@@ -200,9 +200,13 @@ class _Inline:
             return
         if tag == "span" and "math-tex" in n.cls():
             tex = n.text().strip()
-            m = re.fullmatch(r"\\[(\[]([\s\S]*)\\[)\]]", tex)
-            tex = (m.group(1) if m else tex).strip()
-            if tex:
+            m = re.fullmatch(r"\\([(\[])([\s\S]*)\\[)\]]", tex)
+            display = bool(m and m.group(1) == "[")
+            tex = (m.group(2) if m else tex).strip()
+            if tex and display and self.images:           # \[..\]: eigener Mathe-Block an seiner Stelle
+                self.flush()
+                self.seg.append(("block", {"id": self.ctx.bid(), "type": "math", "data": {"tex": tex[:4000]}}))
+            elif tex:
                 self.raw('<code class="hk-math">' + _prot(escape(tex, quote=False)) + "</code>")
                 self.sp = False
             return
@@ -301,10 +305,6 @@ def _blocks(nodes, ctx, depth):
 
 
 def _para(ctx, html):
-    m = re.fullmatch(r'<code class="hk-math">([\s\S]*)</code>', html)
-    if m:                                         # nur Formel im Absatz (\[..\]): Mathe-Block
-        from html import unescape
-        return {"id": ctx.bid(), "type": "math", "data": {"tex": unescape(m.group(1)).replace("&#36;", "$")[:4000]}}
     return {"id": ctx.bid(), "type": "paragraph", "data": {"text": html}}
 
 
@@ -314,8 +314,9 @@ def _block(n, ctx, depth):
         txt = inline_html(n.kids, ctx)
         return [{"id": ctx.bid(), "type": "header", "data": {"text": txt, "level": int(tag[1])}}] if txt else []
     if tag == "p":
-        return _blocks(n.kids, ctx, depth) if any(isinstance(k, Node) and k.tag == "img" for k in _walk_inline(n)) \
-            else [b for b in [_para(ctx, inline_html(n.kids, ctx))] if (b["data"].get("text") or b["data"].get("tex"))]
+        return _blocks(n.kids, ctx, depth) if any(isinstance(k, Node) and (k.tag == "img" or "math-tex" in k.cls())
+                                                  for k in _walk_inline(n)) \
+            else [b for b in [_para(ctx, inline_html(n.kids, ctx))] if b["data"].get("text")]
     if tag in ("ul", "ol"):
         items = _items(n, ctx, 0)
         if not items:
