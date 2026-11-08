@@ -611,7 +611,7 @@
   });
   (function () {
     var S = shellOf(); if (!S) return;
-    document.documentElement.classList.add('hk-in-shell');
+    document.documentElement.classList.add('hk-in-shell');                  // Kennzeichen (Tests, Gestaltung)
     // Chat-Seite im Rahmen: die Huelle ist selbst die Chat-Seite - sie zeigt sich und wirft diesen Rahmen weg
     if (location.pathname === '/chats' && !/(^|&)panel=/.test(location.search.slice(1))) {
       window.HK.shellGone = true; S.chats(location.pathname + location.search + location.hash, true); return;
@@ -634,7 +634,9 @@
       if (!S2.busy()) { e.preventDefault(); S2.leave(u.href); return; }
       if (t) { if (tg) { e.preventDefault(); location.href = t; } return; }
       if (u.origin !== location.origin) { e.preventDefault(); window.open(u.href, '_blank', 'noopener'); return; }
-      if (LEAVE.test(u.pathname)) { e.preventDefault(); S2.leave(u.href); }
+      if (LEAVE.test(u.pathname)) { e.preventDefault(); S2.leave(u.href); return; }
+      // andere Saga-Adressen (Dateien, veroeffentlichte Seiten ...) duerfen nicht in den Rahmen: neuer Tab, Anruf bleibt
+      e.preventDefault(); window.open(u.href, '_blank', 'noopener');
     });
   })();
   // Seite geloescht und nach "Heute" gewechselt (pages.js): "Rueckgaengig" hier anbieten (hoechstens 30 s alt)
