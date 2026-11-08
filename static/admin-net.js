@@ -54,7 +54,7 @@
     PAL = { fg: v('--fg', '#ddd'), muted: v('--muted', '#888'), bg: v('--card', '#111'), border: v('--border', '#333'),
       ok: v('--ok', '#3fb950'), slow: v('--warn', '#d29922'), err: v('--down', '#f85149'), off: v('--unk', '#5a6577'),
       self: v('--accent', '#c9a45c'), peer: v('--info', '#58a6ff'), horn: v('--gr-db', '#b39ddb'), client: v('--gr-row', '#7fb0e0'),
-      line: v('--gr-line', '#8b97a8'), dot: v('--accent', '#c9a45c') };
+      line: v('--gr-line', '#8b97a8'), dot: v('--net-call', '#d6409f') };
     PAL.pending = PAL.off;
   }
   palette();
@@ -68,7 +68,7 @@
   function View() {
     this.c = canvas; this.ctx = canvas.getContext('2d'); this.nodes = []; this.byId = {}; this.edges = [];
     this.calls = []; this.pulses = []; this.hover = null; this.sel = null; this.raf = 0; this.alpha = 1; this.t = now();
-    this.w = 0; this.h = 0; this.k = 1; this.act = null; this.frames = 0;
+    this.w = 0; this.h = 0; this.k = 1; this.cx = 0; this.cy = 0; this.act = null; this.frames = 0;
   }
   var view = new View();
   View.prototype.resize = function () {
@@ -76,7 +76,7 @@
     if (!r.width || !r.height) return;
     this.w = r.width; this.h = r.height; this.dpr = dpr;
     this.c.width = Math.round(r.width * dpr); this.c.height = Math.round(r.height * dpr);
-    this.k = Math.max(0.55, Math.min(1.25, Math.min(r.width / 760, r.height / 460)));
+    this.fit(true);
     this.draw();
   };
   // Platz je Art: Winkel und Abstand von der Mitte (Clients links, Server rechts, Knoten oben)
@@ -174,7 +174,25 @@
     this.alpha = 1;
     for (var i = 0; i < 260 && this.alpha > 0.003; i++) this.tick();
     this.nodes.forEach(function (n) { n.a = n.ta; });
-    this.prune(); this.pulses = []; this.alpha = 0; this.draw();
+    this.prune(); this.pulses = []; this.alpha = 0; this.fit(true); this.draw();
+  };
+  // Einpassen: alle sichtbaren Knoten samt Beschriftung im Bild (weich nachgefuehrt, beim ersten Bild sofort)
+  View.prototype.fit = function (now_) {
+    if (!this.w) return false;
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    this.nodes.forEach(function (n) {
+      if (n.ta <= 0 || n.x == null) return;
+      x0 = Math.min(x0, n.x); x1 = Math.max(x1, n.x); y0 = Math.min(y0, n.y); y1 = Math.max(y1, n.y);
+    });
+    if (x0 === Infinity) return false;
+    // Raender in Pixeln: Knoten + Beschriftung (links/rechts ~85 px, oben ~40, unten ~60)
+    var tk = Math.max(0.25, Math.min(1.4, (this.w - 170) / Math.max(1, x1 - x0), (this.h - 100) / Math.max(1, y1 - y0)));
+    var tcx = (x0 + x1) / 2, tcy = (y0 + y1) / 2 + 10 / tk;
+    if (now_ || !this.fitted) { this.k = tk; this.cx = tcx; this.cy = tcy; this.fitted = true; return false; }
+    var dk = tk - this.k, dx = tcx - this.cx, dy = tcy - this.cy;
+    if (Math.abs(dk) < 0.002 && Math.abs(dx) < 0.3 && Math.abs(dy) < 0.3) return false;
+    this.k += dk * 0.12; this.cx += dx * 0.12; this.cy += dy * 0.12;
+    return true;
   };
   View.prototype.prune = function () {
     var self = this;
@@ -194,6 +212,7 @@
         if (n.a !== n.ta) { busy = true; n.a = n.ta > n.a ? Math.min(n.ta, n.a + fade) : Math.max(n.ta, n.a - fade); }
       });
       self.prune();
+      if (self.fit()) busy = true;
       self.pulses = self.pulses.filter(function (p) { return now() - p.t0 < p.dur; });
       self.frames++;
       self.draw();
@@ -203,24 +222,25 @@
   };
 
   // --- Zeichnen --------------------------------------------------------------------------------------------------------
-  View.prototype.toScreen = function (x, y) { return [this.w / 2 + x * this.k, this.h / 2 + y * this.k]; };
+  View.prototype.toScreen = function (x, y) { return [this.w / 2 + (x - this.cx) * this.k, this.h / 2 + (y - this.cy) * this.k]; };
+  // Gezeichnet wird in Bildschirm-Pixeln (Positionen skaliert, Knoten und Schrift immer gleich gross - auch bei vielen Knoten lesbar)
   View.prototype.draw = function () {
-    var ctx = this.ctx, self = this, P = PAL, k = this.k;
+    var ctx = this.ctx, self = this, P = PAL;
     if (!this.w) return;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.w, this.h);
-    ctx.save(); ctx.translate(this.w / 2, this.h / 2); ctx.scale(k, k);
+    function S(n) { return self.toScreen(n.x, n.y); }
     var hov = this.hover || this.sel;
     // Kanten
     this.edges.forEach(function (e) {
       var al = Math.min(e.s.a, e.t.a); if (al <= 0.01) return;
-      var hi = hov && (e.s === hov || e.t === hov);
+      var hi = hov && (e.s === hov || e.t === hov), a = S(e.s), b = S(e.t);
       ctx.globalAlpha = al * (hov && !hi ? 0.35 : 0.9);
-      ctx.strokeStyle = P[e.state] || P.line; ctx.lineWidth = (hi ? 3 : 2) / Math.sqrt(k);
+      ctx.strokeStyle = P[e.state] || P.line; ctx.lineWidth = hi ? 3 : 2;
       ctx.setLineDash(e.state === 'off' || e.state === 'pending' ? [6, 5] : e.kind === 'share' ? [2, 4] : []);
-      ctx.beginPath(); ctx.moveTo(e.s.x, e.s.y); ctx.lineTo(e.t.x, e.t.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
       if (e.rtt != null) {                                 // Latenz an der Kante
-        var mx = (e.s.x + e.t.x) / 2, my = (e.s.y + e.t.y) / 2, txt = e.rtt + ' ms';
+        var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, txt = e.rtt + ' ms';
         ctx.setLineDash([]); ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         var tw = ctx.measureText(txt).width + 8;
         ctx.fillStyle = P.bg; ctx.fillRect(mx - tw / 2, my - 8, tw, 16);
@@ -228,23 +248,26 @@
       }
     });
     ctx.setLineDash([]); ctx.globalAlpha = 1;
-    // Anrufe: Lichtpunkte entlang des Wegs (ohne Animation: ein ruhender Punkt je Weg in der Mitte)
-    var tt = now() / 1000, dots = 0;
+    // Anrufe: Weg als feine Spur, darauf Lichtpunkte (ohne Animation: ein ruhender Punkt je Weg in der Mitte)
+    var tt = now() / 1000, dots = 0, still = RM.matches || document.hidden;
     this.calls.forEach(function (cl) {
       cl.ways.forEach(function (w) {
-        var segs = [], tot = 0, i;
-        for (i = 0; i < w.length - 1; i++) { var dx = w[i + 1].x - w[i].x, dy = w[i + 1].y - w[i].y, l = Math.sqrt(dx * dx + dy * dy); segs.push(l); tot += l; }
+        var pts = w.map(S), segs = [], tot = 0, i;
+        for (i = 0; i < pts.length - 1; i++) { var dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1], l = Math.sqrt(dx * dx + dy * dy); segs.push(l); tot += l; }
         if (!tot) return;
+        var al = Math.min(w[0].a, w[w.length - 1].a);
+        ctx.globalAlpha = al * 0.35; ctx.strokeStyle = P.dot; ctx.lineWidth = 1.5; ctx.setLineDash([3, 5]);
+        ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke();
+        ctx.setLineDash([]);
         for (var j = 0; j < cl.n; j++) {
-          var f = RM.matches || document.hidden ? 0.5 : ((tt * 0.35 + cl.ph + j / cl.n) % 1);
+          var f = still ? 0.5 : ((tt * 0.3 + cl.ph + j / cl.n) % 1);
           var at = f * tot, si = 0;
           while (si < segs.length - 1 && at > segs[si]) { at -= segs[si]; si++; }
-          var q = segs[si] ? at / segs[si] : 0, x = w[si].x + (w[si + 1].x - w[si].x) * q, y = w[si].y + (w[si + 1].y - w[si].y) * q;
-          ctx.globalAlpha = Math.min(w[0].a, w[w.length - 1].a);
-          ctx.fillStyle = P.dot; ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 6.2832); ctx.fill();
-          ctx.globalAlpha *= 0.25; ctx.beginPath(); ctx.arc(x, y, 9, 0, 6.2832); ctx.fill();
+          var q = segs[si] ? at / segs[si] : 0, x = pts[si][0] + (pts[si + 1][0] - pts[si][0]) * q, y = pts[si][1] + (pts[si + 1][1] - pts[si][1]) * q;
+          ctx.globalAlpha = al; ctx.fillStyle = P.dot; ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 6.2832); ctx.fill();
+          ctx.globalAlpha = al * 0.25; ctx.beginPath(); ctx.arc(x, y, 9, 0, 6.2832); ctx.fill();
           dots++;
-          if (RM.matches || document.hidden) break;
+          if (still) break;
         }
       });
     });
@@ -253,40 +276,46 @@
     var tn = now();
     this.pulses.forEach(function (p) {
       var f = (tn - p.t0) / p.dur; if (f < 0 || f > 1) return;
-      var x = p.a.x + (p.b.x - p.a.x) * f, y = p.a.y + (p.b.y - p.a.y) * f;
+      var a = S(p.a), b = S(p.b), x = a[0] + (b[0] - a[0]) * f, y = a[1] + (b[1] - a[1]) * f;
       ctx.globalAlpha = 1 - f * 0.6; ctx.fillStyle = P.peer; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 6.2832); ctx.fill();
     });
     ctx.globalAlpha = 1;
     // Knoten
     this.nodes.forEach(function (n) {
       if (n.a <= 0.01) return;
-      var hi = !hov || n === hov || self.near(hov, n);
+      var hi = !hov || n === hov || self.near(hov, n), q = S(n), x = q[0], y = q[1];
       ctx.globalAlpha = n.a * (hi ? 1 : 0.45);
       var col = P[n.kind === 'remote' ? 'horn' : n.kind] || P.line;
-      ctx.fillStyle = P.bg; ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = P.bg; ctx.beginPath(); ctx.arc(x, y, n.r, 0, 6.2832); ctx.fill();
       ctx.lineWidth = n === hov ? 3.5 : 2.5; ctx.strokeStyle = n.kind === 'client' || n.kind === 'self' ? col : (P[n.state] || col);
       ctx.stroke();
       if (n.kind !== 'self' && n.kind !== 'client') {      // innerer Ring: Art (Zustand aussen)
-        ctx.lineWidth = 1; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(n.x, n.y, n.r - 4, 0, 6.2832); ctx.stroke();
+        ctx.lineWidth = 1; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, y, n.r - 4, 0, 6.2832); ctx.stroke();
       }
       var pth = path(n.sym);
       if (pth) {
         var s = n.r * 1.05 / 24;
-        ctx.save(); ctx.translate(n.x - 12 * s, n.y - 12 * s); ctx.scale(s, s);
+        ctx.save(); ctx.translate(x - 12 * s, y - 12 * s); ctx.scale(s, s);
         ctx.strokeStyle = col; ctx.lineWidth = 1.75; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(pth); ctx.restore();
       }
       if (n.badge) {
         ctx.font = 'bold 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        var bw = Math.max(18, ctx.measureText(n.badge).width + 10), bx = n.x + n.r * 0.75, by = n.y - n.r * 0.75;
+        var bw = Math.max(18, ctx.measureText(n.badge).width + 10), bx = x + n.r * 0.75, by = y - n.r * 0.75;
         ctx.fillStyle = col; ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(bx - bw / 2, by - 9, bw, 18, 9); else ctx.rect(bx - bw / 2, by - 9, bw, 18);
         ctx.fill(); ctx.fillStyle = P.bg; ctx.fillText(n.badge, bx, by + 0.5);
       }
-      ctx.font = (n.kind === 'self' ? '600 13px' : '12px') + ' system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillStyle = P.fg; ctx.fillText(trim(ctx, n.label, 150), n.x, n.y + n.r + 5);
-      if (n.sub) { ctx.font = '11px system-ui, sans-serif'; ctx.fillStyle = P.muted; ctx.fillText(trim(ctx, n.sub, 150), n.x, n.y + n.r + 20); }
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.font = (n.kind === 'self' ? '600 13px' : '12px') + ' system-ui, sans-serif';
+      var lw = trim(ctx, n.label, 160), sw = n.sub ? (ctx.font = '11px system-ui, sans-serif', trim(ctx, n.sub, 160)) : '';
+      ctx.font = (n.kind === 'self' ? '600 13px' : '12px') + ' system-ui, sans-serif';
+      var bw2 = Math.max(ctx.measureText(lw).width, sw ? ctx.measureText(sw).width : 0) + 8;
+      ctx.globalAlpha *= 0.85; ctx.fillStyle = P.bg; ctx.fillRect(x - bw2 / 2, y + n.r + 3, bw2, sw ? 32 : 18);   // Untergrund: Linien stoeren nicht
+      ctx.globalAlpha = n.a * (hi ? 1 : 0.45);
+      ctx.fillStyle = P.fg; ctx.fillText(lw, x, y + n.r + 5);
+      if (sw) { ctx.font = '11px system-ui, sans-serif'; ctx.fillStyle = P.muted; ctx.fillText(sw, x, y + n.r + 20); }
     });
-    ctx.globalAlpha = 1; ctx.restore();
+    ctx.globalAlpha = 1;
   };
   function trim(ctx, s, w) {
     s = String(s || ''); if (ctx.measureText(s).width <= w) return s;
@@ -297,11 +326,11 @@
     for (var i = 0; i < this.edges.length; i++) { var e = this.edges[i]; if ((e.s === a && e.t === b) || (e.t === a && e.s === b)) return true; }
     return false;
   };
-  View.prototype.at = function (cx, cy) {
-    var x = (cx - this.w / 2) / this.k, y = (cy - this.h / 2) / this.k, best = null, bd = Infinity;
+  View.prototype.at = function (cx, cy) {             // Treffer in Bildschirm-Pixeln (Knoten sind immer gleich gross)
+    var best = null, bd = Infinity, self = this;
     this.nodes.forEach(function (n) {
       if (n.a < 0.3) return;
-      var dx = n.x - x, dy = n.y - y, d = dx * dx + dy * dy, r = n.r + 6;
+      var q = self.toScreen(n.x, n.y), dx = q[0] - cx, dy = q[1] - cy, d = dx * dx + dy * dy, r = n.r + 6;
       if (d < r * r && d < bd) { bd = d; best = n; }
     });
     return best;
@@ -476,7 +505,7 @@
   window.SagaNet = { stats: function () {
     return { nodes: view.nodes.filter(function (n) { return n.ta > 0; }).map(function (n) { return n.kind + ':' + n.label; }),
       edges: view.edges.length, dots: view.dots || 0, calls: view.calls.length, frames: view.frames, anim: view.anim(), raf: !!view.raf };
-  }, apply: apply };
+  }, pos: function (id) { var n = view.byId[id]; return n ? view.toScreen(n.x, n.y) : null; }, apply: apply };
 
   var ro = window.ResizeObserver ? new ResizeObserver(function () { view.resize(); }) : null;
   if (ro) ro.observe(canvas); else window.addEventListener('resize', function () { view.resize(); });
