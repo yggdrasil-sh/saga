@@ -67,6 +67,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(300);
   const tip = await p.evaluate(() => { const t = document.getElementById('net-tip'); return { hidden: t.hidden, txt: t.textContent }; });
   ok(`Ueberfahren: Detailkarte des Servers ("${tip.txt.slice(0, 60)}")`, !tip.hidden && tip.txt.includes('Dieser Server') && tip.txt.includes('Version'));
+  const cover = await p.evaluate(() => {
+    const t = document.getElementById('net-tip'), c = document.getElementById('net-canvas').getBoundingClientRect(), r = t.getBoundingClientRect();
+    const sp = window.SagaNet.pos('self'), x = c.left + sp[0], y = c.top + sp[1];
+    return x + 20 > r.left && x - 20 < r.right && y + 20 > r.top && y - 20 < r.bottom;
+  });
+  ok('Detailkarte verdeckt den Knoten nicht', !cover);
   await p.screenshot({ path: path.join(SHOTS, 'netz-hell.png') });
   await p.mouse.move(bb.x + 5, bb.y + bb.height - 5);
   // Tastatur

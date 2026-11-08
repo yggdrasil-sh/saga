@@ -256,7 +256,7 @@
         for (i = 0; i < pts.length - 1; i++) { var dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1], l = Math.sqrt(dx * dx + dy * dy); segs.push(l); tot += l; }
         if (!tot) return;
         var al = Math.min(w[0].a, w[w.length - 1].a);
-        ctx.globalAlpha = al * 0.35; ctx.strokeStyle = P.dot; ctx.lineWidth = 1.5; ctx.setLineDash([3, 5]);
+        ctx.globalAlpha = al * 0.6; ctx.strokeStyle = P.dot; ctx.lineWidth = 1.75; ctx.setLineDash([4, 5]);
         ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke();
         ctx.setLineDash([]);
         for (var j = 0; j < cl.n; j++) {
@@ -377,16 +377,43 @@
     tip.appendChild(k);
     lines(n).forEach(function (t) { if (!t) return; var p = document.createElement('div'); p.textContent = t; tip.appendChild(p); });
     tip.hidden = false;
-    var sw = canvas.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
-    var x = Math.min(Math.max(4, px + 14), sw - tw - 4), y = py + 14 + th > canvas.clientHeight ? Math.max(4, py - th - 14) : py + 14;
-    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+    var p = place(n, tip.offsetWidth, tip.offsetHeight);
+    tip.style.left = p[0] + 'px'; tip.style.top = p[1] + 'px';
+    tip.dataset.node = n.id;
+  }
+  // Platz der Detailkarte: neben dem Knoten oder in einer Ecke - dort, wo sie am wenigsten verdeckt (nie den Knoten
+  // selbst, moeglichst keine anderen Knoten samt Beschriftung und keine Latenz-Beschriftungen an den Kanten)
+  function place(n, tw, th) {
+    var W = canvas.clientWidth, H = canvas.clientHeight, q = scr(n), g = n.r + 12, m = 8, boxes = [];
+    view.nodes.forEach(function (o) {
+      if (o.a < 0.3) return;
+      var c = scr(o);
+      boxes.push({ x0: c[0] - Math.max(o.r, 60), x1: c[0] + Math.max(o.r, 60), y0: c[1] - o.r - 10, y1: c[1] + o.r + 36, w: o === n ? 1000 : 10 });
+    });
+    view.edges.forEach(function (e) {
+      if (e.rtt == null) return;
+      var a = scr(e.s), b = scr(e.t), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      boxes.push({ x0: mx - 24, x1: mx + 24, y0: my - 9, y1: my + 9, w: 4 });
+    });
+    var cand = [[q[0] + g, q[1] - th / 2], [q[0] - g - tw, q[1] - th / 2], [q[0] - tw / 2, q[1] - g - th], [q[0] - tw / 2, q[1] + g + 34],
+                [m, m], [W - tw - m, m], [m, H - th - m], [W - tw - m, H - th - m]];
+    var best = null, bs = Infinity;
+    cand.forEach(function (c, i) {
+      var x = Math.min(Math.max(m, c[0]), W - tw - m), y = Math.min(Math.max(m, c[1]), H - th - m), sc = i < 4 ? 0 : 1;
+      boxes.forEach(function (b) {
+        var ox = Math.min(x + tw, b.x1) - Math.max(x, b.x0), oy = Math.min(y + th, b.y1) - Math.max(y, b.y0);
+        if (ox > 0 && oy > 0) sc += b.w;
+      });
+      if (sc < bs) { bs = sc; best = [x, y]; }
+    });
+    return best;
   }
   function scr(n) { var p = view.toScreen(n.x, n.y); return p; }
   canvas.addEventListener('pointermove', function (e) {
     if (e.pointerType === 'touch') return;
     var r = canvas.getBoundingClientRect(), n = view.at(e.clientX - r.left, e.clientY - r.top);
     if (n !== view.hover) { view.hover = n; canvas.style.cursor = n ? 'pointer' : ''; if (!view.raf) view.draw(); }
-    if (!view.sel) showTip(n, e.clientX - r.left, e.clientY - r.top);
+    if (!view.sel && (n ? tip.hidden || tip.dataset.node !== n.id : !tip.hidden)) showTip(n);
   });
   canvas.addEventListener('pointerleave', function () { view.hover = null; if (!view.sel) showTip(null); view.draw(); });
   canvas.addEventListener('click', function (e) {

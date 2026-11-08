@@ -1584,6 +1584,7 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .net-sym svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}
 .net-sym[data-sym=server]{color:var(--accent)}.net-sym[data-sym=peer]{color:var(--info)}.net-sym[data-sym=horn]{color:var(--gr-db)}.net-sym[data-sym=client]{color:var(--gr-row)}
 .net-ln{display:inline-block;width:1.6rem;height:0;border-top:3px solid var(--ok)}
+.net-ln.net-callln{border-top:2px dashed var(--net-call);width:1.1rem;margin-right:-.3rem}
 .net-ln.net-slow{border-top-color:var(--warn)}.net-ln.net-err{border-top-color:var(--down)}.net-ln.net-off{border-top:3px dashed var(--unk)}
 .net-dot{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;background:var(--net-call);box-shadow:0 0 0 4px color-mix(in srgb,var(--net-call) 25%,transparent)}
 .net-scroll{overflow-x:auto}
