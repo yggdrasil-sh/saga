@@ -2975,6 +2975,6 @@ Die `id` bleibt beim Verringern gleich; den Eintrag in seiner Zeile ersetzen bzw
   (`n` 0): schließen. Ist keine Mitteilung mit diesem `tag` sichtbar und `removed` fehlt, darf die App sie still zeigen.
 - Web Push/`stream`: eigenes Topic (`u` + `tag`) – die Aktualisierung ersetzt eine noch nicht abgeholte Mitteilung beim
   Push-Dienst **nicht**; `Urgency: normal`. APNs: Hintergrund-Push (`apns-push-type: background`, Priorität 5,
-  `aps.content-available: 1`, kein `alert`), Felder neben `aps`.
+  `aps.content-available: 1`, kein `alert`, `apns-collapse-id` `u` + `tag`), Felder neben `aps`.
 - Mit „Namen zeigen“ aus gibt es kein `actor` und keinen Namen im Satz (wie immer).
 - Eine noch nicht zugestellte Mitteilung des Chats entfällt, wenn danach nichts Ungelesenes mehr übrig ist.

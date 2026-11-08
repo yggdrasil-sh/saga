@@ -443,6 +443,32 @@ def run(A, Bk):
     ok("Alter Eintrag ohne seqs: Zaehler bleibt (nur die neue Nachricht abgezogen)", d0.get("n") == 1 and d0.get("seqs") == [] and old_id, d0)
     ok("Erwaehnung (chat.mention) mit dieser Nachricht: entfernt", mrow is None)
 
+    # APNs: Aktualisierung als Hintergrund-Push mit eigener collapse-id (ersetzt die eigentliche Mitteilung nicht)
+    seen = []
+
+    class _R:
+        status_code = 200
+
+    class _Cl:
+        def post(self, url, json=None, headers=None):      # noqa: A002
+            seen.append((headers, json))
+            return _R()
+    orig = (push.apns_cfg, push._apns_token, push._apns_client)
+    push.apns_cfg = lambda: {"ready": True, "url": "http://127.0.0.1:9", "bundle_id": "org.example.saga"}
+    push._apns_token = lambda cfg, renew=False: "t"
+    push._apns_client = lambda: _Cl()
+    try:
+        base = {"title": "Saga", "body": "", "url": "/chats#c1", "tag": "chat-1", "kind": "chat.message", "ts": 1}
+        push._send_apns("apns:sandbox:" + "a" * 64, dict(base))
+        push._send_apns("apns:sandbox:" + "a" * 64, dict(base, update=True, removed=True, n=0))
+    finally:
+        push.apns_cfg, push._apns_token, push._apns_client = orig
+    (h1, _b1), (h2, b2) = seen
+    ok("APNs-Aktualisierung: background, Prio 5, collapse-id u<tag>, ohne alert",
+       h1["apns-collapse-id"] == "chat-1" and h1["apns-push-type"] == "alert" and h2["apns-push-type"] == "background"
+       and h2["apns-priority"] == "5" and h2["apns-collapse-id"] == "uchat-1" and "alert" not in b2["aps"]
+       and b2["aps"].get("content-available") == 1 and b2.get("removed") is True, (h1, h2, b2))
+
 
 if __name__ == "__main__":
     main()

@@ -769,7 +769,7 @@ def _send_apns(endpoint, msg, voip=False):
             h = {"authorization": "bearer " + _apns_token(cfg, renew=bool(attempt)), "apns-topic": cfg["bundle_id"] + (".voip" if voip else ""),
                  "apns-push-type": "voip" if voip else "background" if update else "alert",
                  "apns-priority": "5" if update else "10", "apns-expiration": str(int(time.time()) + ttl),
-                 "apns-collapse-id": msg["tag"][:64]}
+                 "apns-collapse-id": (("u" if update else "") + msg["tag"])[:64]}     # Aktualisierung: eigene Kennung (wie Web-Push-Topic)
             r = _apns_client().post(f"{base}/3/device/{tok}", json=body, headers=h)
         except (httpx.HTTPError, OSError) as ex:
             return "retry", type(ex).__name__
