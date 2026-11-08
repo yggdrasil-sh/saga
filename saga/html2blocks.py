@@ -2,8 +2,10 @@
 Standardbibliothek; die Ausgabe geht wie bei md2blocks immer noch durch pages.clean_blocks (Positivliste).
 
 Bloecke: h1-h6 -> header (Ebene bleibt), p -> paragraph (Bilder darin werden eigene Bild-Bloecke an ihrer Stelle),
-ul/ol (verschachtelt) -> list, ul.todo-list -> checklist, pre>code.language-* -> code (Sprache), blockquote -> quote,
-aside.admonition -> callout, details/summary -> toggle, table/figure.table -> table, figure.image/img -> image,
+ul/ol (verschachtelt, ol start/list-style-type -> meta.start/counterType) -> list, ul.todo-list -> checklist,
+pre>code.language-* -> code (Sprache; Trilium "automatisch": Sprachname im Absatz davor bzw. guess_lang), blockquote -> quote,
+aside.admonition -> callout, details/summary -> toggle, table/figure.table -> table (colgroup -> colWidths),
+figure.image/img -> image (Breite/Ausrichtung),
 hr -> delimiter, section/figure.include-note -> Absatz mit Seitenverweis, span.math-tex mit \\[..\\] allein im Absatz ->
 math (an seiner Stelle). Inline: b/strong, i/em, u, s/del, code, mark, a, br, span.math-tex (\\(..\\)) -> code.hk-math. Leerraum wie im
 Browser zusammengefasst (Trilium formatiert den Export eingerueckt); leere Absaetze (&nbsp;) fallen weg.
@@ -299,7 +301,12 @@ def _blocks(nodes, ctx, depth):
             il.node(n)
             continue
         flush()
-        out.extend(_block(n, ctx, depth))
+        got = _block(n, ctx, depth)
+        if n.tag == "pre" and got and got[0]["type"] == "code" and got[0]["data"].pop("_auto", False):
+            named = _lang_named(out[-1]) if out and out[-1]["type"] == "paragraph" else ""
+            if named:                                   # Absatz "bash" direkt davor: diese Sprache (Absatz bleibt stehen)
+                got[0]["data"]["language"] = named
+        out.extend(got)
     flush()
     return out
 
@@ -322,7 +329,8 @@ def _block(n, ctx, depth):
         if not items:
             return []
         style = "checklist" if "todo-list" in cls else "ordered" if tag == "ol" else "unordered"
-        return [{"id": ctx.bid(), "type": "list", "data": {"style": style, "meta": {}, "items": items}}]
+        return [{"id": ctx.bid(), "type": "list", "data": {"style": style, "meta": _list_meta(n) if style == "ordered" else {},
+                                                            "items": items}}]
     if tag == "pre":
         return [_code(n, ctx)]
     if tag == "blockquote":
@@ -350,7 +358,7 @@ def _block(n, ctx, depth):
     if tag == "figure" and ("image" in cls or _find(n, lambda x: x.tag == "img") is not None):
         img = _find(n, lambda x: x.tag == "img")
         cap = next((k for k in n.kids if isinstance(k, Node) and k.tag == "figcaption"), None)
-        blk = _image(img, ctx, inline_html(cap.kids, ctx) if cap else "") if img is not None else None
+        blk = _image(img, ctx, inline_html(cap.kids, ctx) if cap else "", n) if img is not None else None
         return [blk] if blk else []
     if tag == "hr":
         return [{"id": ctx.bid(), "type": "delimiter", "data": {}}]
@@ -439,16 +447,95 @@ def lang_of_class(name):
 
 def _code(n, ctx):
     code = _find(n, lambda x: x.tag == "code") or n
-    lang = ""
+    lang, auto = "", False
     for c in code.cls() + n.cls():
         if c.startswith("language-"):
-            lang = lang_of_class(c[9:])
+            auto = c[9:].lower() in ("text-x-trilium-auto", "auto")
+            lang = "" if auto else lang_of_class(c[9:])
             break
     txt = code.text().replace("\r\n", "\n").strip("\n")
     if len(txt) > CODE_MAX:
         ctx.report("truncated")
         txt = txt[:CODE_MAX]
-    return {"id": ctx.bid(), "type": "code", "data": {"code": txt, "language": lang}}
+    d = {"code": txt, "language": guess_lang(txt) if auto else lang}
+    if auto:
+        d["_auto"] = True                            # _blocks: Sprachname im Absatz davor geht vor
+    return {"id": ctx.bid(), "type": "code", "data": d}
+
+
+# Sprachen, die der Saga-Code-Block kennt (static/code.js) - Namen, wie sie allein in einem Absatz vor dem Code stehen
+NAMED = {"bash": "bash", "shell": "bash", "sh": "bash", "zsh": "bash", "terminal": "bash", "konsole": "bash", "cli": "bash",
+         "yaml": "yaml", "yml": "yaml", "json": "json", "python": "python", "py": "python", "javascript": "javascript",
+         "js": "javascript", "typescript": "typescript", "ts": "typescript", "sql": "sql", "dockerfile": "dockerfile",
+         "ini": "ini", "toml": "ini", "conf": "ini", "nginx": "nginx", "xml": "xml", "html": "xml", "powershell": "powershell",
+         "ps1": "powershell", "pwsh": "powershell", "go": "go", "golang": "go", "rust": "rust", "css": "css",
+         "haskell": "haskell", "mermaid": "mermaid", "docker-compose": "yaml", "compose": "yaml"}
+_SHELL = re.compile(r"(?:\$ |# )?(?:sudo|apt|apt-get|dnf|yum|pacman|apk|docker|podman|systemctl|journalctl|cd|ls|cat|curl|wget|"
+                    r"chmod|chown|mkdir|echo|export|git|nano|vim|vi|cp|mv|rm|ln|tar|ssh|scp|rsync|pct|qm|pvesm|pveam|zfs|zpool|"
+                    r"mount|umount|useradd|usermod|passwd|ip|ping|nmcli|ufw|iptables|grep|find|source|make|pip|pip3|npm|"
+                    r"python3?|bash|sh|kubectl|helm|certbot|openssl|crontab|hostnamectl|timedatectl|reboot|shutdown|tee|"
+                    r"sed|awk|ps|kill|df|du|free|lsblk|blkid|fdisk|parted|mkfs(?:\.\w+)?|wg|wg-quick)\b")
+_PS = re.compile(r"\b(?:Get|Set|New|Remove|Add|Install|Import|Invoke|Start|Stop|Restart|Enable|Disable|Test|Write|Select|Where|"
+                 r"ForEach|Out|Export|Update|Connect)-[A-Z][A-Za-z]+|\$env:|\$PSVersionTable", re.M)
+_YAML_KEY = re.compile(r"^\s*(?:- )?[A-Za-z_][\w.-]*:(?:\s|$)")
+
+
+def guess_lang(txt):
+    """Trilium "automatisch": einfache, vorsichtige Erkennung -> Sprache oder "" (Text). Nur eindeutige Muster."""
+    s = (txt or "").strip()
+    if not s:
+        return ""
+    lines = [ln for ln in s.split("\n") if ln.strip() and not ln.lstrip().startswith("#")] or [s.split("\n")[0]]
+    first = s.split("\n", 1)[0].strip()
+    if first.startswith("#!"):
+        return "python" if "python" in first else "bash" if re.search(r"\b(?:ba|z|da)?sh\b", first) else ""
+    if s[0] in "{[":
+        try:
+            import json
+            json.loads(s)
+            return "json"
+        except ValueError:
+            pass
+    if _PS.search(s):
+        return "powershell"
+    if first == "---" or (len(lines) >= 2 and _YAML_KEY.match(lines[0]) and
+                          sum(1 for ln in lines if _YAML_KEY.match(ln) or ln.lstrip().startswith("- ")) >= max(2, len(lines) * 0.6)
+                          and not any(ln.rstrip().endswith((";", "{")) for ln in lines)):
+        return "yaml"
+    if re.match(r"(?i)^(?:FROM\s+\S+|ARG\s+\w+)", first) and re.search(r"(?m)^(?:RUN|COPY|CMD|ENTRYPOINT|WORKDIR)\s", s):
+        return "dockerfile"
+    shell = sum(1 for ln in lines if _SHELL.match(ln.strip()))
+    if shell and shell >= len(lines) * 0.5:
+        return "bash"
+    return ""
+
+
+def _lang_named(blk):
+    """Absatz, der nur aus einem Sprachnamen besteht ("bash", "YAML:") -> Sprache oder ""."""
+    t = re.sub(r"<[^>]*>", "", (blk.get("data") or {}).get("text") or "").replace("&nbsp;", " ").replace("\xa0", " ")
+    t = t.strip().rstrip(":").strip().lower()
+    return NAMED.get(t, "") if len(t) <= 20 else ""
+
+
+def _list_meta(n):
+    """<ol start="3" style="list-style-type:lower-alpha"> -> {"start": 3, "counterType": "lower-alpha"} (nur Abweichungen)."""
+    meta = {}
+    try:
+        st = int(str(n.a.get("start") or "1").strip())
+    except ValueError:
+        st = 1
+    if st != 1 and 0 <= st <= 99999:
+        meta["start"] = st
+    m = re.search(r"list-style-type\s*:\s*([a-z-]+)", n.a.get("style") or "", re.I)
+    typ = (m.group(1).lower() if m else "") or {"a": "lower-alpha", "A": "upper-alpha", "i": "lower-roman",
+                                                 "I": "upper-roman"}.get(n.a.get("type") or "", "")
+    if typ in ("lower-alpha", "upper-alpha", "lower-roman", "upper-roman"):
+        meta["counterType"] = typ
+    elif typ == "lower-latin":
+        meta["counterType"] = "lower-alpha"
+    elif typ == "upper-latin":
+        meta["counterType"] = "upper-alpha"
+    return meta
 
 
 def code_block(text, mime, ctx):
@@ -477,7 +564,27 @@ def _table(t, ctx):
     if not rows:
         return {"id": ctx.bid(), "type": "paragraph", "data": {"text": ""}}
     w = max(len(r) for r in rows) or 1
-    return {"id": ctx.bid(), "type": "table", "data": {"withHeadings": bool(head), "content": [r + [""] * (w - len(r)) for r in rows]}}
+    d = {"withHeadings": bool(head), "content": [r + [""] * (w - len(r)) for r in rows]}
+    cw = _col_widths(t, w)
+    if cw:
+        d["colWidths"] = cw
+    return {"id": ctx.bid(), "type": "table", "data": d}
+
+
+def _col_widths(t, n):
+    """<colgroup><col style="width:25%">... (CKEditor ck-table-resized) -> Prozente je Spalte (Saga normiert) oder None."""
+    cg = next((k for k in t.kids if isinstance(k, Node) and k.tag == "colgroup"), None)
+    if cg is None:
+        return None
+    ws = []
+    for col in (k for k in cg.kids if isinstance(k, Node) and k.tag == "col"):
+        m = re.search(r"(?:^|;)\s*width\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*(%|px)", col.a.get("style") or "", re.I)
+        if not m:
+            return None
+        ws.append((float(m.group(1)), m.group(2).lower()))
+    if len(ws) != n or len({u for _, u in ws}) != 1 or not all(v > 0 for v, _ in ws):
+        return None
+    return [round(v, 2) for v, _ in ws]
 
 
 def _cell(c, ctx):
@@ -513,7 +620,39 @@ def _list_lines(items, ind=""):
     return out
 
 
-def _image(img, ctx, caption):
+TEXT_W = 760                    # Breite der Textspalte in Saga (px, static/style.css .page-body) - fuer px-Angaben
+
+
+def _image_size(img, fig):
+    """Breite (Prozent der Textspalte, 10-95) und Ausrichtung eines Bildes aus CKEditor-Markup:
+    figure.image_resized/img.image_resized style="width:40%"/"width:300px", sonst das width-Attribut (natuerliche
+    Groesse - so zeigt Trilium kleine Bilder); figure.image-style-align-left/-right/-center, image-style-side -> rechts."""
+    out = {}
+    w = None
+    for el in (fig, img):
+        if el is None:
+            continue
+        m = re.search(r"(?:^|;)\s*width\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*(%|px)", el.a.get("style") or "", re.I)
+        if m:
+            v = float(m.group(1))
+            w = v if m.group(2) == "%" else v * 100.0 / TEXT_W
+            break
+    if w is None and re.fullmatch(r"[0-9]{1,5}", (img.a.get("width") or "").strip()):
+        w = int(img.a["width"]) * 100.0 / TEXT_W
+    if w is not None and 0 < w < 95:
+        out["width"] = int(min(95, max(10, round(w))))
+    cls = (fig.cls() if fig is not None else []) + img.cls()
+    for c in cls:
+        if c in ("image-style-align-left", "image-style-block-align-left"):
+            out["align"] = "left"
+        elif c in ("image-style-align-right", "image-style-block-align-right", "image-style-side"):
+            out["align"] = "right"
+        elif c in ("image-style-align-center", "image-style-block-align-center"):
+            out["align"] = "center"
+    return out
+
+
+def _image(img, ctx, caption, fig=None):
     src = (img.a.get("src") or "").strip()
     r = ctx.image(src) if src else None
     if r and r[0] == "file":
@@ -521,8 +660,9 @@ def _image(img, ctx, caption):
         ctx.used.add(ref)
         f = {"url": ref, "name": name, "is_image": is_img}
         if is_img:
-            return {"id": ctx.bid(), "type": "image", "data": {"file": f, "caption": caption or "", "withBorder": False,
-                                                               "stretched": False, "withBackground": False}}
+            d = {"file": f, "caption": caption or "", "withBorder": False, "stretched": False, "withBackground": False}
+            d.update(_image_size(img, fig))
+            return {"id": ctx.bid(), "type": "image", "data": d}
         return {"id": ctx.bid(), "type": "attaches", "data": {"file": f, "title": escape(name, quote=False)}}
     if src.lower().startswith(("http://", "https://")):
         ctx.report("ext_image", target=src[:200])
