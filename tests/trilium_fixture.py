@@ -10,8 +10,9 @@ import hashlib
 import io
 import json
 import os
-import sqlite3
 import zipfile
+
+import _sqlite3 as sqlite3      # C-Modul direkt: die Tests stellen tests/pgshim/sqlite3.py (Postgres) davor
 
 PW = "Probe-Kennwort-7319"
 PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\r"

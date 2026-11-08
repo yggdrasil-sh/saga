@@ -314,7 +314,8 @@ def zip_model(src, rep):
         if path and path in src.entries:
             note.size = src.entries[path].size
             note.path = path
-            note.load = (lambda limit=None, p=path: src.read(p, max(TEXT_MAX, FILE_MAX)) if limit is None else _head(src, p, limit))
+            cap = FILE_MAX if typ in ("image", "file") else TEXT_MAX
+            note.load = (lambda limit=None, p=path, cap=cap: src.read(p, cap) if limit is None else _head(src, p, limit))
             m.by_path[path] = ("n", nid)
         elif title == "[protected]":
             note.locked = True
@@ -467,7 +468,7 @@ def db_model(db, key, rep):
                 title = plain.decode("utf-8", "replace")
         note.title = "" if note.locked else title[:500]
         bid = r[5] if db.schema == "blobs" else nid
-        note.load = _db_loader(db, "notes", bid, prot and not note.locked, key)
+        note.load = _db_loader(db, FILE_MAX if note.type in ("image", "file") else TEXT_MAX, bid, prot and not note.locked, key)
         if note.type in ("image", "file") and not note.locked:
             sel = "FROM blobs WHERE blobId=?" if db.schema == "blobs" else "FROM note_contents WHERE noteId=?"
             note.size = (db.q(f"SELECT {db.olen}(content) {sel}", (bid,)) or [[0]])[0][0] or 0
@@ -506,7 +507,7 @@ def db_model(db, key, rep):
                 size = size * 3 // 4
             note = m.notes[owner]
             note.atts.append(TAtt(aid, title[:200] or aid, str(role or "file"), str(mime or ""), size,
-                                  _db_loader(db, "attachments", bid, bool(prot), key), "", pos or 0))
+                                  _db_loader(db, FILE_MAX, bid, bool(prot), key), "", pos or 0))
             m.att_owner[aid] = owner
     for note in m.notes.values():
         note.attrs.sort(key=lambda a: a[3])
@@ -514,13 +515,13 @@ def db_model(db, key, rep):
     return m
 
 
-def _db_loader(db, kind, bid, prot, key):
-    """Lader fuer einen Inhalt: load(limit=None) -> Bytes (limit: nur die ersten Bytes, Kopf fuers Erkennen)."""
+def _db_loader(db, cap, bid, prot, key):
+    """Lader fuer einen Inhalt (hoechstens cap Bytes, sonst ImportFail too_big): load(limit=None) -> Bytes (limit: nur
+    die ersten Bytes, Kopf fuers Erkennen)."""
     if db.schema == "blobs":
         sel, args = "FROM blobs WHERE blobId=?", (bid,)
     else:
         sel, args = "FROM note_contents WHERE noteId=?", (bid,)
-    cap = (FILE_MAX if kind == "attachments" else max(FILE_MAX, TEXT_MAX))
 
     def load(limit=None):
         if bid is None:
@@ -624,7 +625,10 @@ class Walk:
 def analyze(src, rep, u=None):
     path = db_path(u) if u else None
     if path:
-        db = _DB(path, TIME_ANALYZE)
+        try:
+            db = _DB(path, TIME_ANALYZE)
+        except sqlite3.Error:
+            raise ic.ImportFail("bad_file")
         try:
             m = db_model(db, None, rep)
         except sqlite3.Error:
@@ -666,7 +670,7 @@ def work(uid, u, b, parent):
     if pw and path:
         try:
             key = data_key(uid, path, pw)
-        except sqlite3.Error:
+        except (sqlite3.Error, ValueError, MemoryError):
             raise ic.ImportFail("bad_file")
     pw = None  # noqa: F841 - Passwort nicht laenger halten als noetig
 
