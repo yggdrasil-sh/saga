@@ -132,6 +132,10 @@
       node: function () { return node; },
       change: function (d, o) {
         if (destroyed || readOnly()) return false;
+        // Nachtrag beim Laden (quiet) bei live gebundenem Inhalt nicht ins Dokument: jede Transaktion ginge ueber Yjs an
+        // den Server, der materialisiert -> neue Revision ohne Bedienschritt und "geaendert"-Ereignis an alle Tabs. Das
+        // Werkzeug behaelt den Stand und gibt ihn mit der naechsten echten Aenderung mit (wie Editor.js)
+        if (o && o.quiet) { var kk = K(); if (kk && kk.liveBound && kk.liveBound()) return false; }
         var p = pos(); if (p === null) return false;
         var s = stable(d || {}), n = view.state.doc.nodeAt(p);
         if (!n || n.type !== node.type || s === stable(n.attrs.data || {})) return false;

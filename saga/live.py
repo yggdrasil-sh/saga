@@ -15,7 +15,8 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   notification     {item, unread, replaces} | {unread, read}   neue Benachrichtigung / gelesen (andere Tabs)
   notification.changed {id, item|null, removed, group_key, unread, unread_groups}   (2.5) Eintrag geaendert (Zaehler kleiner,
                    item neu) bzw. entfernt (removed, item null) - z. B. gebuendelte Chat-Nachricht fuer alle geloescht
-  note.changed     {id, rev, by:{name, username}, updated, gone}   an alle, die die Seite gerade offen haben (Anwesenheit)
+  note.changed     {id, rev, by:{name, username}, updated, gone}   an alle, die die Seite gerade offen haben (Anwesenheit);
+                   meta: true (2.5) = nur Eigenschaften/Symbol/Ort geaendert (rev gleich, Inhalt und Titel unveraendert)
   comments.changed {note_id, counts:{blocks, open, unread}}   an alle mit Zugriff (Zahlen je Empfaenger)
   shared.changed   {}                                  "Mit mir geteilt" neu laden
   db.rows          {db}                                (3.11.) Eintraege einer Datenbank geaendert - an alle mit Zugriff (je Konto und
@@ -436,6 +437,8 @@ def _resolve(kind, p, aud, pres):
                     d = {"id": nid, "rev": p.get("rev"), "updated": p.get("updated"), "gone": False, "by": _person(nm_for(u), by, u) if by else None}
                     if p.get("row"):                 # Zeile der Datenbank geaendert (BUG-049); ID nur, wenn u sie sehen darf
                         d["row"] = p["row"] if Access(c, u).role(p["row"]) else True
+                    elif p.get("meta"):              # 2.5: nur Eigenschaften/Symbol - Web: still nachziehen, kein "Neu laden"
+                        d["meta"] = True
                     out.append((u, "note.changed", d, skip))
             # db.rows (3.11.): Eintraege geaendert - an ALLE mit Zugriff auf die Datenbank, nicht nur an die, die sie
             # gerade offen haben (eingebettete Datenbank-Bloecke auf anderen Seiten laden dann nach). Nur die ID der
@@ -838,8 +841,9 @@ def _seen(c, uid, note_id, **_):
     bus.emit_after(c, "comments.changed", {"note_id": note_id, "only": uid})
 
 
-def _saved(c, note_id, rev=None, by=None, updated=None, gone=False, origin=None, row=None, **_):
-    bus.emit_after(c, "note.changed", {"id": note_id, "rev": rev, "by": by, "updated": updated, "gone": gone, "origin": origin, "row": row})
+def _saved(c, note_id, rev=None, by=None, updated=None, gone=False, origin=None, row=None, meta=False, **_):
+    bus.emit_after(c, "note.changed", {"id": note_id, "rev": rev, "by": by, "updated": updated, "gone": gone, "origin": origin, "row": row,
+                                       "meta": bool(meta)})
 
 
 def _target_uids(c, targets, owner=None):

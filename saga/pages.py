@@ -1365,7 +1365,9 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
             except ValueError as ex:
                 raise _Reply(_bad(user_error(ex, t("ungültige Angabe"))))
         # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
-        bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=by_, updated=now, origin=origin)
+        # meta: weder Inhalt noch Titel (Eigenschaften, Symbol, Ort ...) - rev bleibt, Web zieht still nach
+        bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=by_, updated=now, origin=origin,
+                 meta=not content)
         if "props" in b or "title" in b or "icon" in b:
             announce_row(c, owner, nid, uid, now, origin)     # Datenbank-Zeile: auch an Betrachter der Tabelle (BUG-049)
         if "body" in b:                     # 2.5: Webhooks page.updated / row.updated (Inhalt; Autosave fasst saga.webhooks zusammen)

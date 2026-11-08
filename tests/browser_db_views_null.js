@@ -2,7 +2,8 @@
 // (views: null, wie die Galerie-Vorlagen) oeffnen, ~9 s warten -> die Seite wird NICHT gespeichert (rev bleibt).
 // makeDbView legt die Ansichten beim ersten Laden im Block ab; gespeichert werden sie erst mit der naechsten echten
 // Aenderung (Editor.js-Verhalten). Laeuft in beiden Modi (SAGA_EDITOR=editorjs|tiptap; stellt die Konto-Wahl selbst ein,
-// Admin editor.engine = choice) und prueft danach: nach einer echten Aenderung sind die Ansichten mitgespeichert.
+// Admin editor.engine = choice) und prueft danach: nach einer echten Aenderung sind die Ansichten mitgespeichert
+// (live gebunden: erst mit einer Aenderung am Datenbank-Block selbst).
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Cookie hk-test-a> [SAGA_EDITOR=tiptap] node tests/browser_db_views_null.js
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
@@ -53,7 +54,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await D.typeEnd(p, 'v2', '!');
   let bl = null;
   for (let i = 0; i < 40; i++) { bl = JSON.parse((await api('GET', '/api/notes/' + pg)).body).blocks; if (bl[2] && bl[2].data.text === 'Unten!') break; await sleep(250); }
-  ok('Nach echter Aenderung gespeichert, Ansichten im Block', bl[2].data.text === 'Unten!' && Array.isArray(bl[1].data.views) && bl[1].data.views.length === 1 && bl[1].data.db === db, bl[1]);
+  // Live gebunden (notes.live, Tiptap): jeder Block steht einzeln im gemeinsamen Dokument - die Ansichten gehen erst mit
+  // der naechsten Aenderung AN DIESEM Block mit (Nachtrag beim Laden geht nicht ueber Yjs, sonst neue Revision ohne Bedienschritt)
+  const live = await p.evaluate(() => !!(HKPages.k.liveBound && HKPages.k.liveBound()));
+  if (live) ok('Live: Text gespeichert, Block unveraendert (views null)', bl[2].data.text === 'Unten!' && bl[1].data.views === null && bl[1].data.db === db, bl[1]);
+  else ok('Nach echter Aenderung gespeichert, Ansichten im Block', bl[2].data.text === 'Unten!' && Array.isArray(bl[1].data.views) && bl[1].data.views.length === 1 && bl[1].data.db === db, bl[1]);
   ok('Keine Seitenfehler', !errs.length, errs);
   for (const id of [pg, db]) await api('DELETE', '/api/notes/' + id);
   if (was.choice) await D.setEditor(p, was.tiptap ? 'tiptap' : 'editorjs');

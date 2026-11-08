@@ -9080,6 +9080,17 @@
     var newer = ev.rev != null && S.cur.rev != null ? ev.rev > S.cur.rev : false;
     if (!newer && !(ev.updated && S.cur.updated && ev.updated > S.cur.updated + 0.001)) return;
     if (S.conflict) return;                                         // Konflikt-Hinweis steht schon
+    // 2.5: nur Eigenschaften/Symbol geaendert (Server: meta, rev gleich) - Text und Titel sind unberuehrt, also kein
+    // "Neu laden": Eigenschaften still nachziehen
+    if (ev.meta && !newer) { metaRefresh(); return; }
+    // T5 live: der Inhalt (auch eigene Aenderungen anderer Tabs und das Materialisieren des Raums, das als Ereignis
+    // mit dem eigenen Namen auch an diesen Tab geht) kommt ueber Yjs - hier nur rev/Titel nachziehen, nie "Neu laden"
+    if (liveBody() && !S.lost && !S.loading) {
+      S.remoteAfter = Math.max(S.remoteAfter || 0, ev.rev || ((S.cur.rev || 0) + 1));
+      if (S.dirtyTitle) { clearTimeout(S.timer); save(); return; }
+      if (S.inflight || S.checking) return;
+      liveApply(ev.by); return;
+    }
     var a = document.activeElement, inEditor = a && $('pg-editor').contains(a) && a.isContentEditable;
     var typingElsewhere = a && $('page').contains(a) && !inEditor && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
     if (typingElsewhere || PK.id || document.body.classList.contains('side-open') || !$('pg-modal').hidden) { remoteHint(ev.by); return; }
@@ -9093,6 +9104,18 @@
     }
     if (busy()) { remoteHint(ev.by); return; }
     silentReload(ev.by);
+  }
+  // Eigenschaften (und Symbol) der offenen Seite neu holen, ohne den Editor anzufassen; Eingabe in den Eigenschaften
+  // geht vor (deren Speichern bringt den Stand ohnehin mit)
+  function metaRefresh() {
+    var id = S.cur && S.cur.id; if (!id) return;
+    var a = document.activeElement; if (a && $('pg-props').contains(a)) return;
+    api('GET', '/api/notes/' + id).then(function (n) {
+      if (!S.cur || S.cur.id !== id || S.loading) return;
+      S.cur.props = n.props; S.cur.updated = n.updated; S.cur.icon = n.icon;
+      var p = byId(id); if (p && p.icon !== n.icon) { p.icon = n.icon; renderTree(); renderCrumbs(); }
+      var b = document.activeElement; if (!(b && $('pg-props').contains(b))) applyKind();
+    }).catch(function () { /* naechstes Ereignis bzw. Oeffnen holt es nach */ });
   }
   // Darf diese Seite zusammengefuehrt werden? (Block-Seite, bearbeitbar; Seite eines anderen Servers nur, wenn er merge1
   // kann - sonst bleibt es dort beim 409-Weg mit Konfliktleiste)
@@ -9292,6 +9315,7 @@
          nested: function (holder, blocks, ph) { return nestedEditor(holder, blocks, ph, true); },   // 2.5 (P6-6): Inhalt synchronisierter Bloecke
          kill: function (ed) { killEditor(ed); },
          save: function () { return save(); }, apply: function () { return liveApply(null); },
+         liveBound: function () { return liveBody(); },          // pm-tools.js: Inhalt live gebunden (T5)
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
          // pm-live.js: Server meldet "kein Zugriff mehr" (bye access) - sichtbar wie beim Speichern (Testlabor 2.11.:
          // vorher blieb der Text ohne Hinweis stehen); sofort schreibgeschuetzt
