@@ -108,6 +108,7 @@ def reason_text(code, p=None):
         "protected": lambda: t("Geschützte Notiz – ohne Trilium-Passwort übersprungen"),
         "trilium_type": lambda: t("Trilium-Notiztyp „{type}“ – als Seite mit Hinweis übernommen", type=p.get("type", "")),
         "trilium_hidden": lambda: t("Systemnotizen von Trilium (versteckter Baum) nicht übernommen: {n}", n=p.get("n", "")),
+        "trilium_depth": lambda: t("Zu tief verschachtelt – Unterseiten auf derselben Ebene eingehängt"),
         "trilium_meta": lambda: t("Trilium-Export ohne gültige !!!meta.json."),
         "trilium_schema": lambda: t("Unbekanntes Trilium-Datenbankschema – nichts importiert."),
         "trilium_unsafe": lambda: t("Datenbankdatei enthält Trigger, Views oder virtuelle Tabellen – nicht importiert."),

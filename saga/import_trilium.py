@@ -63,6 +63,7 @@ TIME_ANALYZE, TIME_RUN, TIME_KEY = 60, 1800, 30
 MAGIC = b"SQLite format 3\x00"
 META = "!!!meta.json"
 PW_MAX = 1024
+DEPTH_MAX = 60                            # tiefer verschachtelte Notizen haengen auf dieser Ebene (Bericht)
 FAILS, FAILS_PER = 5, 600                 # Fehlversuche Passwort je Konto und Zeitraum
 _ID = re.compile(r"[A-Za-z0-9_]{1,64}")
 CODE_TYPES = ("code", "mermaid")
@@ -556,10 +557,10 @@ class Walk:
         self.stats = {"pages": 0, "code": 0, "files": 0, "protected": 0, "clones": 0, "unsupported": 0, "hidden": 0}
         seen = {m.root}
         self.refs[m.root] = "root"
-        stack = [(c, "root", "", k) for k, c in reversed(list(enumerate(m.notes[m.root].kids)))]
+        stack = [(c, "root", "", k, 1) for k, c in reversed(list(enumerate(m.notes[m.root].kids)))]
         n = 0
         while stack:
-            (cid, prefix, _pos, clone), pref, ppath, k = stack.pop()
+            (cid, prefix, _pos, clone), pref, ppath, k, depth = stack.pop()
             note = m.notes.get(cid)
             if note is None:
                 continue
@@ -604,8 +605,10 @@ class Walk:
                 self.stats["pages"] += 1
                 self.stats["files"] += len(note.atts)
                 self.entries.append((kind, cid, pref, title, path, ref))
-            for j, c in reversed(list(enumerate(note.kids))):
-                stack.append((c, ref, path, j))
+            if depth == DEPTH_MAX and note.kids and rep is not None:
+                rep.note(path, "trilium_depth")
+            for j, c in reversed(list(enumerate(note.kids))):     # zu tief: Kinder auf derselben Ebene wie die Notiz
+                stack.append((c, ref if depth < DEPTH_MAX else pref, path if depth < DEPTH_MAX else ppath, j, depth + 1))
         self.stats["hidden"] = sum(1 for x in m.notes if x not in seen and x != m.root and not x.startswith("#"))
 
     def _below(self, nid):
