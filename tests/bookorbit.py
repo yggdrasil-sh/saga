@@ -282,7 +282,8 @@ def unit():
 
 
 def part_ssrf(A):
-    for url, why in ((FAKE, "http ohne Freigabe"), (f"https://127.0.0.1:{PORT}", "interne Adresse ohne Freigabe"),
+    # Port + 1: nie freigegeben (auch wenn der Server mit BOOKORBIT_URL = Fake laeuft, z. B. fuer den Browser-Test)
+    for url, why in ((f"http://127.0.0.1:{PORT + 1}", "http ohne Freigabe"), (f"https://127.0.0.1:{PORT + 1}", "interne Adresse ohne Freigabe"),
                      ("https://10.1.2.3", "private IP"), ("https://169.254.169.254", "Metadaten-Adresse")):
         s, r = req("POST", "/api/bookorbit/connect", A, {"url": url, "username": "anna", "password": PW_A})
         ok(f"SSRF abgelehnt: {why} ({s})", s == 400, r)
