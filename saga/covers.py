@@ -239,7 +239,7 @@ def serve(name, request):
         return Response(status_code=404, headers={"Cache-Control": "no-cache"})
     st = os.stat(p)
     w = request.query_params.get("w") or ""
-    w = int(w) if w.isdigit() else 0
+    w = int(w) if re.fullmatch(r"[0-9]{1,5}", w) else 0          # nur ASCII-Ziffern (isdigit: '²' -> int() 500)
     w = 0 if w <= 0 or w > THUMB_MAX else max(64, (w + 63) // 64 * 64)      # Stufen, damit der Speicher klein bleibt
     etag = '"' + hashlib.sha1(f"{name}|{st.st_size}|{int(st.st_mtime)}|{w}".encode()).hexdigest()[:20] + '"'
     head = {"Cache-Control": CACHE, "ETag": etag, "X-Content-Type-Options": "nosniff"}
@@ -353,7 +353,7 @@ def process(data):
         pass
     try:
         with Image.open(io.BytesIO(data)) as im:
-            if im.format not in ("JPEG", "PNG", "WEBP", "GIF", "HEIF", "TIFF", "BMP"):
+            if im.format not in ("JPEG", "MPO", "PNG", "WEBP", "GIF", "HEIF", "TIFF", "BMP"):
                 raise ValueError
             if im.width * im.height > PIXELS_MAX or im.width < 64 or im.height < 64:
                 raise ValueError

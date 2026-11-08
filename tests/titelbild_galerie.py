@@ -178,6 +178,8 @@ def run():
     ok(f"?w=384 verkleinert ({s3}, {len(d3)} < {len(d)} Bytes)", s3 == 200 and 0 < len(d3) < len(d) // 3 and h3.get("etag") != h.get("etag"))
     s4, _, d4 = req("GET", "/covers/hokusai-welle.jpg?w=2000")
     ok("?w=2000 (wie die Linux-App beim Titelbild) -> Original", s4 == 200 and len(d4) == len(d))
+    for wq in ("%C2%B2", "9" * 5000):                      # Nicht-ASCII-Ziffer bzw. riesige Zahl: Original statt 500
+        ok(f"?w={wq[:8]} -> Original", req("GET", "/covers/hokusai-welle.jpg?w=" + wq)[0] == 200)
     for bad in ("/covers/unbekannt.jpg", "/covers/..%2Fcovers.json", "/covers/covers.json", "/covers/hokusai-welle.png", "/covers/README.md"):
         ok(f"{bad} -> 404", req("GET", bad)[0] == 404)
 
@@ -358,6 +360,13 @@ def run():
     with connect() as c:
         two = [x[0] for x in c.execute("SELECT title FROM cover_gallery WHERE created_by='cg-adm' AND title LIKE 'zwei-%' ORDER BY title").fetchall()]
     ok(f"Mehrere Bilder auf einmal, Titel = Dateiname ({two})", two == ["zwei-a", "zwei-b"])
+    from PIL import Image                                  # Kamera-/iPhone-JPEG mit Zusatzbildern (Pillow: Format MPO)
+    mb = io.BytesIO()
+    Image.new("RGB", (300, 200), (10, 90, 160)).save(mb, "MPO", save_all=True, append_images=[Image.new("RGB", (300, 200))])
+    adm.upload({"title": "cg-mpo"}, [("kamera.jpg", mb.getvalue())])
+    with connect() as c:
+        n_mpo = c.execute("SELECT COUNT(*) FROM cover_gallery WHERE title='cg-mpo'").fetchone()[0]
+    ok("JPEG mit Zusatzbildern (MPO) angenommen", n_mpo == 1)
 
     # bearbeiten (mitgeliefert)
     adm.form("/covers", {"id": "dahl-vesuv", "action": "save", "title": "Vesuv (Admin)", "artist": "", "group": "nordisch", "pos": "12"})
