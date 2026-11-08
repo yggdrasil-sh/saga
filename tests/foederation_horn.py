@@ -617,6 +617,22 @@ def part_owner(adm, anna, bert, ach, bch):
         time.sleep(10)
     ok(f"own: Anna nimmt an ({s}, {len(cands(j))} Kandidaten)", s == 200 and len(cands(j)) >= 1)
     ok("own: aktiv auf A und B", wait(lambda: (rows("a", cid) or [[0] * 6])[0][5] == "active" and (rows("b", cid) or [[0] * 6])[0][5] == "active", 10))
+    # Rueckfall auf direkt (Vertrag Abschnitt 3): die Kopie (B) darf nicht umschalten; A nur ohne Nachweis nicht
+    s, dr = api("b", "fb-bert", "POST", f"/api/calls/{cid}/direct", {"device": bert.dev["id"], "avoid": ["horn-a.test"]})
+    ok(f"own: /direct an der Kopie (B) -> 409 fed ({s}, {dr.get('horn_block')})", s == 409 and dr.get("horn_block") == "fed")
+    s, dr = api("a", "fa-anna", "POST", f"/api/calls/{cid}/direct", {"device": anna.dev["id"], "avoid": []})
+    ok(f"own: /direct bei bereitem Knoten -> 409 node_ready ({s}, {dr.get('horn_block')})", s == 409 and dr.get("horn_block") == "node_ready")
+    names = [x.get("node") for x in (dr.get("horn") or {}).get("candidates") or []]   # alle bereiten Kandidaten (mit Kaskade)
+    s, dr = api("a", "fa-anna", "POST", f"/api/calls/{cid}/direct", {"device": anna.dev["id"], "avoid": names})
+    ok(f"own: /direct ohne Nachweis (keine /horn-Abrufe) -> 409 node_ready ({s}, {dr.get('horn_block')})", s == 409 and dr.get("horn_block") == "node_ready")
+    for _ in range(3):
+        api("a", "fa-anna", "POST", f"/api/calls/{cid}/horn", {"device": anna.dev["id"], "avoid": []})
+    s, dr = api("a", "fa-anna", "POST", f"/api/calls/{cid}/direct", {"device": anna.dev["id"], "avoid": names})
+    ok(f"own: /direct mit Nachweis an A (avoid {names}) -> 200 mesh ({s}, {(dr.get('call') or {}).get('topo')})",
+       s == 200 and (dr.get("call") or {}).get("topo") == "mesh")
+    ok("own: B folgt (topo mesh ueber roster)", wait(lambda: (rows("b", cid) or [[0] * 6])[0][1] == "mesh", 10))
+    s, dr = api("a", "fa-anna", "POST", f"/api/calls/{cid}/direct", {"device": anna.dev["id"]})
+    ok(f"own: /direct erneut -> 200 (idempotent, {s})", s == 200 and (dr.get("call") or {}).get("topo") == "mesh")
     ok("own: Auflegen beendet auf beiden Seiten", end_call(cid, bert))
     # Anna ruft an: A fuehrt wie bisher
     for _ in range(8):                                 # Anrufgrenze je Minute (die Teile davor riefen oft an)
