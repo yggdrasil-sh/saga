@@ -13,6 +13,8 @@ naechsten Laden ab).
 Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (sharing.Access):
   hello            {boot, ping, presence_ttl}         gleich nach dem Verbinden (ohne id)
   notification     {item, unread, replaces} | {unread, read}   neue Benachrichtigung / gelesen (andere Tabs)
+  notification.changed {id, item|null, removed, group_key, unread, unread_groups}   (2.5) Eintrag geaendert (Zaehler kleiner,
+                   item neu) bzw. entfernt (removed, item null) - z. B. gebuendelte Chat-Nachricht fuer alle geloescht
   note.changed     {id, rev, by:{name, username}, updated, gone}   an alle, die die Seite gerade offen haben (Anwesenheit)
   comments.changed {note_id, counts:{blocks, open, unread}}   an alle mit Zugriff (Zahlen je Empfaenger)
   shared.changed   {}                                  "Mit mir geteilt" neu laden
@@ -193,7 +195,7 @@ def _note_of(typ, data):
         return data.get("note_id")
     if typ == "db.rows":
         return data.get("db")
-    if typ == "notification":
+    if typ in ("notification", "notification.changed"):
         return ((data.get("item") or {}).get("note") or {}).get("id")
     return None
 
@@ -401,6 +403,14 @@ def _resolve(kind, p, aud, pres):
                 to = importlib.import_module("saga.ai").hears(c, aud, p.get("before") or ())
             for u in sorted(to):
                 out.append((u, p["typ"], p["data"]))
+        elif kind == "notification.changed":                 # 2.5: Eintrag geaendert/entfernt (geloeschte Chat-Nachricht)
+            uid = p["uid"]
+            if uid in aud:
+                i18n.set_lang(account_lang(uid))
+                it = None if p.get("removed") else notify.item(c, uid, p["id"])
+                out.append((uid, "notification.changed", {"id": p["id"], "item": it, "removed": it is None,
+                                                          "group_key": p.get("group_key"), "unread": notify.count_unread(c, uid),
+                                                          "unread_groups": notify.count_unread_groups(c, uid)}))
         elif kind == "notification.read":
             if p["uid"] in aud:
                 out.append((p["uid"], "notification", {"unread": p["unread"], "read": p["ids"], **({"unread_groups": p["unread_groups"]} if "unread_groups" in p else {})}))

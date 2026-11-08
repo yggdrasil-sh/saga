@@ -95,6 +95,13 @@ FAIL_MAX = 5                         # so viele harte Fehler nacheinander -> Abo
 LEASE = 120                          # ein Prozess "haelt" einen Auftrag waehrend der Zustellung (mehrere Prozesse: SKIP LOCKED)
 TTL = 4 * 3600                       # so lange halten Push-Dienste eine Mitteilung fuer ein ausgeschaltetes Geraet vor
 PAYLOAD_MAX = 3000
+# 2.5 (Push-Nutzlast 2, Entscheidung des Maintainers 8.11.2026): maschinenlesbare Felder neben title/body (kind, actor, n,
+# group_key, chat, lang) - Apps bauen den Satz in ihrer Sprache neu. Abos koennen beim Anlegen eine Sprache (lang) und
+# Faehigkeiten (caps) mitschicken; "update": nimmt Aktualisierungen bereits gezeigter Mitteilungen an (UPDATE_KIND).
+PAYLOAD_V = 2
+SUB_CAPS = ("update",)
+UPDATE_KIND = "notify.update"         # interner Auftrag: Glocken-Eintrag geaendert (geloeschte Chat-Nachricht) -> Geraet anpassen
+UPDATE_TYPES = ("webpush", "unifiedpush", "stream", "apns")     # ntfy (Klartext ohne App) und VoIP: nie
 ENDPOINT_MAX = 1024
 TIME_RE = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 APNS_RE = re.compile(r"[0-9a-fA-F]{64,200}")
@@ -450,6 +457,44 @@ bus.on("notification.created", _on_notification)
 bus.on("push.send", _on_send)
 
 
+def _has_cap(caps, cap):
+    return cap in (caps or "").split(",")
+
+
+def enqueue_update(c, uid, kind, chat, removed=False):
+    """2.5: Glocken-Eintrag eines Chats hat sich geaendert (Nachricht fuer alle geloescht) -> Auftrag UPDATE_KIND an die Abos,
+    die Aktualisierungen annehmen (caps 'update'). Den Text/Zaehler bestimmt message() beim Zustellen. removed: der Eintrag
+    ist weg - eine noch nicht zugestellte Mitteilung dieses Chats entfaellt dann, wenn nichts Ungelesenes mehr da ist.
+    Ruhezeiten und Ratenbegrenzung gelten nicht (still, ersetzt nur), Bereich abgeschaltet: nichts. -> Anzahl Auftraege."""
+    if kind not in ("chat.message", "chat.mention") or not uid:
+        return 0
+    if removed and not notify.chat_unread(c, uid, kind, chat)[0]:
+        c.execute("DELETE FROM push_queue WHERE uid=? AND kind=? AND data=? AND tries=0", (uid, kind, json.dumps({"chat": chat})))
+    srv = server()
+    if not srv["enabled"] or not prefs(c, uid)["cats"].get(KIND_CAT[kind], True):
+        return 0
+    info = auth.user_info(uid)
+    if info is None:
+        return 0
+    sids = _route(c, _subs(c, uid, info.get("epoch"), srv), kind)
+    if not sids:
+        return 0
+    subs = [r[0] for r in c.execute(f"SELECT id, kind, caps FROM push_sub WHERE id IN ({','.join('?' * len(sids))})", tuple(sids)).fetchall()
+            if r[1] in UPDATE_TYPES and _has_cap(r[2], "update")]
+    if not subs or c.execute("SELECT COUNT(*) FROM push_queue WHERE uid=?", (uid,)).fetchone()[0] >= QUEUE_MAX:
+        return 0
+    now, d, n = time.time(), json.dumps({"chat": chat, "of": kind}), 0
+    for sid in subs:
+        if c.execute("SELECT 1 FROM push_queue WHERE sub_id=? AND kind=? AND data=? AND tries=0 LIMIT 1", (sid, UPDATE_KIND, d)).fetchone():
+            continue                      # wartet schon - message() rechnet beim Zustellen den aktuellen Stand
+        c.execute("INSERT INTO push_queue (uid, sub_id, kind, ref, actor, data, created, next_at) VALUES (?,?,?,?,?,?,?,?)",
+                  (uid, sid, UPDATE_KIND, None, None, d, now, now))
+        n += 1
+    if n:
+        c.after_commit(wake)
+    return n
+
+
 # =====================================================================================================
 # Text der Mitteilung (beim Zustellen, in der Sprache des Kontos, Zugriff erneut geprueft)
 # =====================================================================================================
@@ -487,25 +532,69 @@ def with_names(p, sub_kind, has_keys):
     return bool(p.get("names")) and (sub_kind in ("webpush", "apns", "apns-voip", "stream") or (sub_kind == "unifiedpush" and has_keys))
 
 
-def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", has_keys=True, created=None):
-    """-> {title, body, url, tag, kind, ts} oder None (Benachrichtigung weg / kein Zugriff mehr)."""
+def _fields(msg, lang, actor=None, n=None, group_key=None, **more):
+    """2.5 (Nutzlast 2): maschinenlesbare Felder dazu - actor NUR, wenn der Satz den Namen ohnehin enthaelt (also "Namen
+    zeigen" an und der Weg verschluesselt, with_names) - Datenschutz exakt wie bisher. Fehlende Werte: Feld fehlt."""
+    msg["v"], msg["lang"] = PAYLOAD_V, lang
+    if actor and actor in (msg.get("body") or ""):
+        msg["actor"] = actor
+    if n is not None:
+        msg["n"] = int(n)
+    if group_key:
+        msg["group_key"] = group_key
+    msg.update({k: v for k, v in more.items() if v is not None})
+    return msg
+
+
+def _chat_id(data):
+    return re.sub(r"[^A-Za-z0-9_.-]", "", str((data or {}).get("chat") or ""))[:64]
+
+
+def _chat_body(kind, nm):
+    if kind == "chat.mention":
+        return t("{name} hat dich in einem Chat erwähnt", name=nm) if nm else t("Du wurdest in einem Chat erwähnt")
+    return t("Neue Nachricht von {name}", name=nm) if nm else t("Neue Nachricht")
+
+
+def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", has_keys=True, created=None, lang=None):
+    """-> {title, body, url, tag, kind, ts, v, lang, ...} oder None (Benachrichtigung weg / kein Zugriff mehr).
+    lang: Sprache des Abos (2.5, beim Anlegen von der App gemeldet) - sonst die des Kontos."""
     names = with_names(prefs(c, uid), sub_kind, has_keys)
-    tok = i18n.set_lang(account_lang(uid))
+    lang = lang if lang in i18n.LANGS else account_lang(uid)
+    tok = i18n.set_lang(lang)
     thread = None
     try:
+        if kind == UPDATE_KIND:
+            # 2.5: Glocken-Eintrag eines Chats geaendert (Nachricht geloescht) - aktueller Stand; n 0 = Eintrag weg (removed)
+            of = (data or {}).get("of") if (data or {}).get("of") in ("chat.message", "chat.mention") else "chat.message"
+            chat = _chat_id(data)
+            if not chat.isdigit() or not c.execute("SELECT 1 FROM chat_member WHERE chat_id=? AND uid=? AND left_at IS NULL",
+                                                   (int(chat), uid)).fetchone():
+                return None
+            n, who = notify.chat_unread(c, uid, of, int(chat))
+            if n and not CHAT_PUSH_OK(c, int(chat), uid, of):
+                return None               # inzwischen stumm/ausgeblendet: nichts mehr anzeigen (Entfernen geht immer)
+            nm = notify.names(c, [who]).get(who) if who and names and n else None
+            msg = {"title": title(), "body": _chat_body(of, nm) if n else "", "url": "/chats#c" + chat, "tag": "chat-" + chat,
+                   "kind": of, "ts": int(created or time.time())}
+            return _fields(msg, lang, nm, n, notify.group_key(of, None, {"chat": int(chat)}), chat=int(chat), update=True,
+                           removed=True if not n else None)
         if kind == "test":
             body, url, tag = t("Testmitteilung – Mitteilungen kommen an."), "/", "test"
+            return _fields({"title": title(), "body": body, "url": url, "tag": tag, "kind": kind, "ts": int(created or time.time())}, lang)
         elif kind in ("chat.message", "chat.mention"):
-            chat = re.sub(r"[^A-Za-z0-9_.-]", "", str((data or {}).get("chat") or ""))[:64]
+            chat = _chat_id(data)
             if chat.isdigit() and not CHAT_PUSH_OK(c, int(chat), uid, kind):
                 return None               # inzwischen nicht mehr Mitglied, stummgeschaltet oder ausgeblendet (saga.chat_prefs)
             nm = notify.names(c, [actor]).get(actor) if actor and names else None
-            if kind == "chat.mention":
-                body = t("{name} hat dich in einem Chat erwähnt", name=nm) if nm else t("Du wurdest in einem Chat erwähnt")
-            else:
-                body = t("Neue Nachricht von {name}", name=nm) if nm else t("Neue Nachricht")
+            body = _chat_body(kind, nm)
             ref = ("c" + chat) if chat.isdigit() else chat          # wie die Glocke: /chats#c<id>
             url, tag = ("/chats#" + ref) if chat else "/chats", "chat-" + chat
+            # Nutzlast 2: n = ungelesene Nachrichten dieses Chats in der Glocke (mindestens 1), group_key wie die Glocke
+            n = (notify.chat_unread(c, uid, kind, int(chat))[0] or 1) if chat.isdigit() else 1
+            return _fields({"title": title(), "body": body, "url": url, "tag": tag, "kind": kind, "ts": int(created or time.time())},
+                           lang, nm, n, notify.group_key(kind, None, {"chat": int(chat)}) if chat.isdigit() else None,
+                           chat=int(chat) if chat.isdigit() else None)
         elif kind == "call":
             # Klingelnder Anruf (saga.calls): nur solange er klingelt; Kennungen fuer die Apps (CallKit/ConnectionService)
             cid = re.sub(r"[^0-9a-f]", "", str((data or {}).get("call") or ""))[:32]
@@ -516,9 +605,9 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             video = r[1] == "video"
             body = (t("Videoanruf von {name}", name=nm) if video else t("Anruf von {name}", name=nm)) if nm else \
                 (t("Eingehender Videoanruf") if video else t("Eingehender Anruf"))
-            return {"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
-                    "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm,
-                    "ttl": max(5, int(r[3] + _call_ttl() - time.time()))}
+            return _fields({"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
+                            "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm,
+                            "ttl": max(5, int(r[3] + _call_ttl() - time.time()))}, lang, nm, 1)
         elif kind == "call.group":
             # 2.4: Gruppenanruf (saga.calls) - nur solange die Einladung klingelt; aeltere Apps zeigen es als normale
             # Mitteilung (url oeffnet den Chat), 2.4-Apps lassen es klingeln (call, chat, media, group)
@@ -536,14 +625,16 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             else:
                 body = (t("Gruppen-Videoanruf von {name}", name=nm) if video else t("Gruppenanruf von {name}", name=nm)) if nm else \
                     (t("Gruppen-Videoanruf – beitreten") if video else t("Gruppenanruf – beitreten"))
-            return {"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
-                    "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm, "group": True,
-                    **({"dm": True} if dm else {}), "ttl": max(5, int(max(r[3], created or 0) + _call_ttl() - time.time()))}
+            return _fields({"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
+                            "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm, "group": True,
+                            **({"dm": True} if dm else {}), "ttl": max(5, int(max(r[3], created or 0) + _call_ttl() - time.time()))},
+                           lang, nm, 1)
         else:
             it = notify.item(c, uid, ref) if ref else None
             if not it or (kind != "publish.withdrawn" and not it["access"]):
                 return None
             body = it["text"] if names else _anon(kind)
+            nm, n = ((it.get("actor") or {}).get("name") if names else None), it.get("count") or 1
             url = it["url"] if (it["url"] or "").startswith("/") else "/"     # Admin-Bereich (Backups): eigener Port
             tag = (f"thread-{it['thread_id']}" if it.get("thread_id") else f"note-{it['note']['id']}" if it.get("note") else f"n-{ref}")
             thread = f"note-{it['note']['id']}" if it.get("note") and kind.startswith("comment.") else None
@@ -551,15 +642,15 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
                 # Design-Runde (UX-30): verpasste Anrufe eines Chats ersetzen einander auf dem Geraet (gleicher tag /
                 # apns-collapse-id) - mit Zahl, wenn es mehrere ungelesene sind
                 gk = f"call:{it['chat']['id']}"
-                n = sum(1 for _, k in notify._unread_keys(c, uid, 500) if k == gk)
+                n = max(1, sum(1 for _, k in notify._unread_keys(c, uid, 500) if k == gk))
                 tag = f"missed-{it['chat']['id']}"
                 if n > 1:
-                    nm = (it.get("actor") or {}).get("name") if names else None
                     body = t("{n} verpasste Anrufe von {name}", n=n, name=nm) if nm else t("{n} verpasste Anrufe", n=n)
         msg = {"title": title(), "body": body, "url": url, "tag": tag, "kind": kind, "ts": int(created or time.time())}
         if thread:
             msg["thread"] = thread        # Design-Runde: APNs thread-id (Gruppe je Seite; tag ersetzt weiter je Unterhaltung)
-        return msg
+        return _fields(msg, lang, nm, n, it.get("group_key"),
+                       chat=((it.get("chat") or {}).get("id") if kind == "call.missed" and isinstance(it.get("chat"), dict) else None))
     finally:
         i18n._cur.reset(tok)
 
@@ -587,6 +678,12 @@ def _ntfy_split(url):
     return f"{pu.scheme}://{pu.netloc}{base}", topic
 
 
+def _topic(msg):
+    """Topic beim Push-Dienst (neuere ersetzt eine noch nicht abgeholte gleiche). Aktualisierungen ("u" + tag) ersetzen die
+    eigentliche Mitteilung NICHT - die kommt zuerst an, danach die Aktualisierung."""
+    return re.sub(r"[^A-Za-z0-9_-]", "", ("u" if msg.get("update") else "") + (msg.get("tag") or ""))[:32]
+
+
 def send(sub, msg):
     """Eine Mitteilung an EIN Abo -> (ergebnis, detail); ergebnis: ok | gone (Abo entfernen) | retry | fail."""
     import httpx
@@ -603,19 +700,22 @@ def send(sub, msg):
             body = encrypt(raw, p256dh, auth_s)
         except ValueError as ex:
             return "gone", str(ex)[:80]
-        push_stream.deposit(sid, body, int(msg.get("ttl") or TTL), re.sub(r"[^A-Za-z0-9_-]", "", msg.get("tag") or "")[:32])
+        push_stream.deposit(sid, body, int(msg.get("ttl") or TTL), _topic(msg))
         return "ok", ""
     try:
         if kind == "webpush" or (kind == "unifiedpush" and p256dh and auth_s):
             h = {"TTL": str(msg.get("ttl") or TTL), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
-                 "Urgency": "high" if msg["kind"] in ("chat.message", "chat.mention", "call", "call.group") else "normal", "Authorization": vapid_header(endpoint)}
-            topic = re.sub(r"[^A-Za-z0-9_-]", "", msg.get("tag") or "")[:32]
+                 "Urgency": "high" if msg["kind"] in ("chat.message", "chat.mention", "call", "call.group") and not msg.get("update") else "normal",
+                 "Authorization": vapid_header(endpoint)}
+            topic = _topic(msg)
             if topic:
                 h["Topic"] = topic                                   # neuere ersetzt eine noch nicht abgeholte gleiche
             r = _client().post(endpoint, content=encrypt(raw, p256dh, auth_s), headers=h)
         elif kind == "unifiedpush":
             r = _client().post(endpoint, content=raw, headers={"Content-Type": "application/json", "TTL": str(msg.get("ttl") or TTL)})
         elif kind == "ntfy":
+            if msg.get("update"):
+                return "fail", "ntfy: keine Aktualisierungen"
             base, topic = _ntfy_split(endpoint)
             h = {"Content-Type": "application/json"}
             tok = auth._dec(secret) if secret else ""
@@ -648,9 +748,16 @@ def _send_apns(endpoint, msg, voip=False):
         return "fail", "APNs nicht eingerichtet"
     _, env, tok = (endpoint.split(":", 2) + ["", ""])[:3]
     base = (cfg.get("url") or APNS_HOSTS.get(env) or APNS_HOSTS["production"]).rstrip("/")
-    ids = {k: msg[k] for k in ("call", "chat", "media", "caller", "group", "dm") if msg.get(k) is not None}
+    ids = {k: msg[k] for k in ("call", "chat", "media", "caller", "group", "dm", "v", "lang", "actor", "n", "group_key",
+                               "update", "removed") if msg.get(k) is not None}
+    update = bool(msg.get("update")) and not voip
     if voip:
         body = dict({"aps": {}, "url": msg["url"], "kind": msg["kind"], "title": msg["title"], "body": msg["body"]}, **ids)
+    elif update:
+        # 2.5: Aktualisierung (Nachricht geloescht) still im Hintergrund - die App passt die gezeigte Mitteilung an bzw.
+        # entfernt sie (tag/group_key); ohne alert, ohne Ton
+        body = dict({"aps": {"content-available": 1}, "url": msg["url"], "kind": msg["kind"], "tag": msg["tag"],
+                     "title": msg["title"], "body": msg["body"]}, **ids)
     else:
         body = dict({"aps": {"alert": {"title": msg["title"], "body": msg["body"]}, "sound": "default", "thread-id": msg.get("thread") or msg["tag"]},
                      "url": msg["url"], "kind": msg["kind"]}, **ids)
@@ -660,7 +767,8 @@ def _send_apns(endpoint, msg, voip=False):
     for attempt in (0, 1):
         try:
             h = {"authorization": "bearer " + _apns_token(cfg, renew=bool(attempt)), "apns-topic": cfg["bundle_id"] + (".voip" if voip else ""),
-                 "apns-push-type": "voip" if voip else "alert", "apns-priority": "10", "apns-expiration": str(int(time.time()) + ttl),
+                 "apns-push-type": "voip" if voip else "background" if update else "alert",
+                 "apns-priority": "5" if update else "10", "apns-expiration": str(int(time.time()) + ttl),
                  "apns-collapse-id": msg["tag"][:64]}
             r = _apns_client().post(f"{base}/3/device/{tok}", json=body, headers=h)
         except (httpx.HTTPError, OSError) as ex:
@@ -711,8 +819,9 @@ def run_once(limit=20):
         sub = None
         try:
             with _db() as c:
-                sub = c.execute(f"SELECT {SUB_COLS} FROM push_sub WHERE id=? AND uid=?", (sid, uid)).fetchone()
-                msg = message(c, uid, kind, ref, actor, _json_load(data, {}), sub[2], bool(sub[4]), created) if sub else None
+                row = c.execute(f"SELECT {SUB_COLS}, lang FROM push_sub WHERE id=? AND uid=?", (sid, uid)).fetchone()
+                sub = tuple(row[:7]) if row else None
+                msg = message(c, uid, kind, ref, actor, _json_load(data, {}), sub[2], bool(sub[4]), created, lang=row[7]) if sub else None
             verdict, detail = send(sub, msg) if msg else ("drop", "")
         except Exception as ex:  # noqa: BLE001 - ein kaputter Auftrag haelt die Warteschlange nicht auf
             print(f"push: Auftrag {jid}: {type(ex).__name__}: {ex}", flush=True)
@@ -831,7 +940,8 @@ def _state(c, uid, did=None):
     return {"server": {"enabled": srv["enabled"], "webpush": srv["webpush"] and bool(pub), "vapid_public": pub,
                        "ntfy": srv["ntfy"], "unifiedpush": srv["unifiedpush"], "apns": srv["apns"],
                        "stream": srv["stream"], "stream_path": push_stream.PATH if srv["stream"] else None,
-                       "apns_bundle": a.get("bundle_id") if srv["apns"] else None},
+                       "apns_bundle": a.get("bundle_id") if srv["apns"] else None,
+                       "payload": PAYLOAD_V, "sub_caps": list(SUB_CAPS)},     # 2.5: Nutzlast 2, Abo-Felder lang/caps
             "settings": prefs(c, uid), "categories": [k for k in CATS if k != "admin" or (auth.user_info(uid) or {}).get("is_admin")],
             "kinds": CATS,
             "devices": _devices(c, uid, did), "limit": SUB_MAX}
@@ -915,7 +1025,18 @@ def _parse_sub(b, srv):
         return None, (t("ungültige Angabe"), 400)
     if kind not in ("apns", "apns-voip") and not srv[kind]:
         return None, (t("Diese Art von Mitteilungen ist auf diesem Server abgeschaltet."), 403)
-    f = {"kind": kind, "name": _clean_name(b.get("name")), "p256dh": None, "auth": None, "secret": None}
+    f = {"kind": kind, "name": _clean_name(b.get("name")), "p256dh": None, "auth": None, "secret": None, "lang": None, "caps": None}
+    # 2.5: Sprache der App (de|en|es|ru|th, "" = Sprache des Kontos) und Faehigkeiten - fehlt das Feld, bleibt es beim Erneuern
+    if "lang" in b:
+        lg = b.get("lang")
+        if lg not in (None, "") and lg not in i18n.LANGS:
+            return None, (t("ungültige Angabe"), 400)
+        f["lang"] = lg or ""
+    if "caps" in b:
+        cp = b.get("caps")
+        if not isinstance(cp, list) or len(cp) > 20 or any(not isinstance(x, str) for x in cp):
+            return None, (t("ungültige Angabe"), 400)
+        f["caps"] = ",".join(x for x in SUB_CAPS if x in cp)      # unbekannte Faehigkeiten still weglassen
     keys = b.get("keys") if isinstance(b.get("keys"), dict) else {}
     p256dh, auth_s = keys.get("p256dh") or b.get("p256dh"), keys.get("auth") or b.get("auth")
     if kind in ("apns", "apns-voip"):                  # apns-voip: PushKit-Token der App (nur klingelnde Anrufe, 2.1)
@@ -994,9 +1115,14 @@ async def api_push_subscribe(request: Request):
             sid = old[0]
             c.execute("UPDATE push_sub SET p256dh=?, auth=?, secret=COALESCE(?, secret), name=COALESCE(NULLIF(?, ''), name), device_id=?, created=?, fails=0, last_err=NULL "
                       "WHERE id=?", (f["p256dh"], f["auth"], f["secret"], f["name"], dev, now, sid))
+            if f["lang"] is not None:
+                c.execute("UPDATE push_sub SET lang=? WHERE id=?", (f["lang"] or None, sid))
+            if f["caps"] is not None:
+                c.execute("UPDATE push_sub SET caps=? WHERE id=?", (f["caps"], sid))
         else:
-            sid = c.execute("INSERT INTO push_sub (uid, kind, endpoint, p256dh, auth, secret, name, device_id, created) VALUES (?,?,?,?,?,?,?,?,?)",
-                            (uid, f["kind"], f["endpoint"], f["p256dh"], f["auth"], f["secret"], f["name"], dev, now)).lastrowid
+            sid = c.execute("INSERT INTO push_sub (uid, kind, endpoint, p256dh, auth, secret, name, device_id, created, lang, caps) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                            (uid, f["kind"], f["endpoint"], f["p256dh"], f["auth"], f["secret"], f["name"], dev, now,
+                             f["lang"] or None, f["caps"] or "")).lastrowid
         devs = _devices(c, uid, did)
     if web and f["kind"] == "webpush":
         request.session["push_sub"] = sid                           # Abmelden in diesem Browser beendet das Abo
@@ -1040,10 +1166,11 @@ async def api_push_unsubscribe_ep(request: Request):
 def test_send(uid, sid):
     """Testmitteilung sofort (ohne Warteschlange) -> (ergebnis, detail) oder None (kein solches Abo)."""
     with _db() as c:
-        sub = c.execute(f"SELECT {SUB_COLS} FROM push_sub WHERE id=? AND uid=?", (sid, uid)).fetchone()
-        if not sub:
+        row = c.execute(f"SELECT {SUB_COLS}, lang FROM push_sub WHERE id=? AND uid=?", (sid, uid)).fetchone()
+        if not row:
             return None
-        msg = message(c, uid, "test", sub_kind=sub[2], has_keys=bool(sub[4]))
+        sub = tuple(row[:7])
+        msg = message(c, uid, "test", sub_kind=sub[2], has_keys=bool(sub[4]), lang=row[7])
     if sub[2] in ("apns", "apns-voip") and not server()["apns"]:
         return "fail", "APNs nicht eingerichtet"
     if sub[2] == "apns-voip":                       # jede VoIP-Mitteilung muss in CallKit ein Anruf werden - Test per Anruf

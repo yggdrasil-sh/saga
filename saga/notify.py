@@ -47,6 +47,8 @@ GROUP_KINDS = {"chat.message": "chat", "call.missed": "call", "comment.new": "pa
                "comment.mention": "page"}
 GROUP_SCAN = 500                    # hoechstens so viele Zeilen je Abfrage zu Gruppen zusammenfassen
 GROUP_NAMES = 3                     # "(von A, B, C …)"
+SEQS_MAX = 200                      # 2.5: so viele gebuendelte Chat-Nachrichten (seq) merkt sich ein Eintrag (Loeschen zieht ab)
+CHAT_KINDS = ("chat.message", "chat.mention")
 
 
 # --- Einstellungen je Art ----------------------------------------------------------------------------
@@ -73,7 +75,10 @@ def create(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, b
         return None
     now = time.time()
     data = dict(data or {})
+    seq = data.pop("seq", None)       # 2.5: Chat - welche Nachrichten gebuendelt sind (data.seqs), fuer drop_seq()
     old = None
+    if seq is not None:
+        data["seqs"] = [seq]
     if bundle is not None:
         data.update(thread=bundle, n=1, actors=[actor] if actor else [])
         for rid, raw in c.execute("SELECT id, data FROM notification WHERE uid=? AND kind=? AND note_id=? AND read_at IS NULL AND created>? "
@@ -85,6 +90,8 @@ def create(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, b
                 # fortschreiben: alte Zeile weg, neue oben (Reihenfolge = id, Blaettern mit ?before=<id> bleibt stabil)
                 actors = [a for a in d.get("actors", []) if a != actor]
                 data.update(n=int(d.get("n") or 1) + 1, actors=([actor] if actor else []) + actors[:4])
+                if seq is not None:
+                    data["seqs"] = ([s for s in d.get("seqs") or [] if s != seq] + [seq])[-SEQS_MAX:]
                 c.execute("DELETE FROM notification WHERE id=?", (rid,))
                 old = rid
                 break
@@ -93,6 +100,44 @@ def create(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, b
     bus.emit_after(c, "notification", {"uid": uid, "id": nid, "replaces": old})
     bus.fire("notification.created", c, uid=uid, id=nid, kind=kind, actor=actor, replaces=old)    # saga.push (Handy/Desktop)
     return nid
+
+
+def chat_unread(c, uid, kind, chat):
+    """2.5: (Anzahl, juengste Person) der ungelesenen Benachrichtigungen dieser Art zu einem Chat (Summe der Buendel-Zaehler)."""
+    n, who = 0, None
+    for actor, raw in c.execute("SELECT actor_uid, data FROM notification WHERE uid=? AND kind=? AND note_id IS NULL AND read_at IS NULL "
+                                "ORDER BY id DESC LIMIT 50", (uid, kind)).fetchall():
+        if str(_json_load(raw, {}).get("chat")) == str(chat):
+            n += int(_json_load(raw, {}).get("n") or 1)
+            who = who or actor
+    return n, who
+
+
+def drop_seq(c, uids, chat, seq):
+    """2.5: Chat-Nachricht seq wurde fuer alle geloescht -> in den Glocken-Eintraegen dieser Konten (chat.message/chat.mention
+    mit dieser Nachricht im Buendel) n verringern bzw. den Eintrag entfernen, wenn er leer wird. Live-Ereignis
+    "notification.changed" je Eintrag (nach dem Commit). -> [(uid, id, kind, entfernt, war_ungelesen)].
+    Eintraege von vor 2.5 (ohne seqs) bleiben, wie sie sind."""
+    uids = sorted({u for u in uids or () if u and not is_remote(u)})
+    if not uids or seq is None:
+        return []
+    out = []
+    rows = c.execute(f"SELECT id, uid, kind, data, read_at FROM notification WHERE uid IN ({','.join('?' * len(uids))}) "
+                     "AND kind IN (?,?) AND note_id IS NULL AND data LIKE ?", (*uids, *CHAT_KINDS, '%"seqs": [%')).fetchall()
+    for rid, u, kind, raw, read_at in rows:
+        d = _json_load(raw, {})
+        if str(d.get("chat")) != str(chat) or seq not in (d.get("seqs") or []):
+            continue
+        d["seqs"] = [s for s in d["seqs"] if s != seq]
+        n = int(d.get("n") or 1) - 1
+        if n <= 0:
+            c.execute("DELETE FROM notification WHERE id=?", (rid,))
+        else:
+            d["n"] = n
+            c.execute("UPDATE notification SET data=? WHERE id=?", (json.dumps(d), rid))
+        out.append((u, rid, kind, n <= 0, read_at is None))
+        bus.emit_after(c, "notification.changed", {"uid": u, "id": rid, "removed": n <= 0, "group_key": group_key(kind, None, d)})
+    return out
 
 
 def group_members(c, name, limit=GROUP_MAX):

@@ -1332,6 +1332,13 @@ CREATE INDEX IF NOT EXISTS diag_event_ts ON diag_event (ts);
 CREATE INDEX IF NOT EXISTS diag_event_kind_ts ON diag_event (kind, ts);
 CREATE INDEX IF NOT EXISTS diag_event_ref ON diag_event (ref);
 """,
+    # 2.5 (Push-Nutzlast, Entscheidung des Maintainers 8.11.2026, saga/push.py): je Abo die Sprache der App (lang, NULL =
+    # Sprache des Kontos) und Faehigkeiten (caps, Komma-Liste, z. B. 'update' = nimmt Aktualisierungen bereits gezeigter
+    # Mitteilungen an). Bestand: leer (wie bisher). Beliebig oft ausfuehrbar.
+    33: """
+ALTER TABLE push_sub ADD COLUMN IF NOT EXISTS lang TEXT;
+ALTER TABLE push_sub ADD COLUMN IF NOT EXISTS caps TEXT NOT NULL DEFAULT '';
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")

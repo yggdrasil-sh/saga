@@ -381,6 +381,7 @@
     });
     on(es, 'reset', resync);
     on(es, 'notification', onNotification);
+    on(es, 'notification.changed', onNotificationChanged);   // 2.5: Eintrag kleiner/entfernt (geloeschte Chat-Nachricht)
     on(es, 'note.changed', function (d) {
       var k = K(); if (k) k.remote(d);
       try { document.dispatchEvent(new CustomEvent('hk-note-changed', { detail: d })); } catch (e) { /* alter Browser */ }
@@ -511,6 +512,13 @@
       N.items = regroup(N.items);
       if (part && N.open) setTimeout(function () { load(); }, 0);   // nur ein Teil einer Zeile gelesen: frisch buendeln
     }
+    if (d.unread != null) { N.unread = unreadOf(d); N.counted = true; }
+    badgeDraw(); draw();
+  }
+  // 2.5: ein Eintrag hat sich geaendert (Zaehler kleiner) oder ist weg (removed) - ohne Ton, nur Liste und Zahl anpassen
+  function onNotificationChanged(d) {
+    N.items = dropIds(N.items, [d.id]);
+    if (d.item && N.loaded) N.items = regroup(N.items.concat([d.item]));
     if (d.unread != null) { N.unread = unreadOf(d); N.counted = true; }
     badgeDraw(); draw();
   }

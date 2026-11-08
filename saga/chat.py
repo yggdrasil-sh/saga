@@ -640,6 +640,8 @@ def _fresh(c, ch, mem):
 def _direct(c, uids, typ, data):
     """Live-Ereignis (ohne Inhalt) an diese Konten - nach dem Commit (saga.live, Ereignis-Art 'direct')."""
     uids = sorted({u for u in uids if u})
+    if typ == "chat.deleted" and uids and data.get("seq") is not None:
+        CP.on_deleted(c, data.get("chat_id"), data["seq"], uids)     # 2.5: Glocke/Push ziehen die Nachricht ab (alle Loeschwege)
     if uids:
         bus.emit_after(c, "direct", {"uids": uids, "typ": typ, "data": data})
 

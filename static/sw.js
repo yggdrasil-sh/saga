@@ -46,6 +46,7 @@ self.addEventListener('push', function (e) {
   var d = {};
   try { d = e.data ? e.data.json() : {}; } catch (x) { d = {}; }
   var title = String(d.title || 'Saga').slice(0, 120);
+  if (d.update) { e.waitUntil(onUpdate(d, title)); return; }  // 2.5: gezeigte Mitteilung anpassen/entfernen (Nachricht geloescht)
   var opts = {
     body: String(d.body || '').slice(0, 300),
     tag: d.tag ? String(d.tag).slice(0, 64) : undefined,
@@ -60,6 +61,21 @@ self.addEventListener('push', function (e) {
   }
   e.waitUntil(self.registration.showNotification(title, opts));
 });
+
+// 2.5 (Nutzlast 2): Aktualisierung einer schon gezeigten Mitteilung (gleicher tag). removed: schliessen; sonst still mit
+// neuem Text ersetzen - ist keine sichtbar (die eigentliche kam nie an), still anzeigen, solange noch etwas offen ist (n > 0)
+function onUpdate(d, title) {
+  var tag = d.tag ? String(d.tag).slice(0, 64) : '';
+  if (!tag) return Promise.resolve();
+  return self.registration.getNotifications({ tag: tag }).then(function (list) {
+    if (d.removed) { list.forEach(function (n) { n.close(); }); return; }
+    return self.registration.showNotification(title, {
+      body: String(d.body || '').slice(0, 300), tag: tag, renotify: false, silent: true,
+      icon: '/static/icon-192.png', badge: '/static/icon-192.png',
+      timestamp: d.ts ? d.ts * 1000 : Date.now(), data: { url: sameOrigin(d.url) }
+    });
+  });
+}
 
 self.addEventListener('notificationclick', function (e) {
   e.notification.close();
@@ -87,7 +103,7 @@ self.addEventListener('pushsubscriptionchange', function (e) {
       return fetch('/api/push/subscriptions', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-Saga': '1' },
-        body: JSON.stringify({ type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: '' })
+        body: JSON.stringify({ type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: '', caps: ['update'] })
       });
     }).catch(function () {}));
 });

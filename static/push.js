@@ -48,7 +48,7 @@
   }
   function send(sub) {
     var j = sub.toJSON();
-    return api('POST', '/api/push/subscriptions', { type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: browserName() });
+    return api('POST', '/api/push/subscriptions', { type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: browserName(), caps: ['update'] });
   }
   // Einschalten: Erlaubnis -> Service Worker -> Abo (mit dem VAPID-Schluessel des Servers) -> beim Server anmelden
   function enable(vapid) {

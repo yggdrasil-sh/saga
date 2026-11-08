@@ -274,9 +274,20 @@ def on_message(c, cid, sender, seq, members, mentioned=(), reply_to=None, states
         if not kind:
             continue
         out[u] = kind
-        notify.create(c, u, kind, sender, data={"chat": cid}, bundle=cid)
+        notify.create(c, u, kind, sender, data={"chat": cid, "seq": seq}, bundle=cid)     # seq: Loeschen zieht ab (on_deleted)
         # Handy/Desktop (saga.push): nur die Chat-Kennung, nie Inhalt
         bus.fire("push.send", c, uid=u, kind=kind, actor=sender, data={"chat": cid})
+    return out
+
+
+def on_deleted(c, cid, seq, uids):
+    """2.5: Nachricht seq fuer alle geloescht (jeder Weg meldet chat.deleted ueber saga.chat._direct - eigenes, mehrere,
+    Admin-Grabstein, foederiert): Glocke der Mitglieder anpassen (saga.notify.drop_seq, Live notification.changed) und,
+    war der Eintrag ungelesen, die Mitteilung auf den Geraeten aktualisieren bzw. entfernen (saga.push.enqueue_update)."""
+    out = notify.drop_seq(c, uids, cid, seq)
+    for u, _rid, kind, removed, unread in out:
+        if unread:
+            _push.enqueue_update(c, u, kind, cid, removed)
     return out
 
 
