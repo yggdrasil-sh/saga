@@ -591,11 +591,12 @@
   window.HK.shellTarget = shellTarget;
   window.HK.go = function (url) {
     url = String(url || '');
-    var S = shellOf(), t = shellTarget(url), p = '';
-    try { p = new URL(url, location.href).pathname; } catch (e) { /* egal */ }
+    var S = shellOf(), t = shellTarget(url), p = '', own = true;
+    try { var pu = new URL(url, location.href); p = pu.pathname; own = pu.origin === location.origin; } catch (e) { /* egal */ }
     if (S) {
       if (t && S.chats(t)) return;                              // Chats: die Huelle zeigt sich selbst
-      if (!S.busy() || LEAVE.test(p)) { S.leave(url); return; }   // Anruf vorbei bzw. Anmeldung: oberstes Fenster
+      // Anruf vorbei, Anmeldung bzw. fremde Adresse (z. B. Abmelden beim Identitaetsanbieter): oberstes Fenster
+      if (!S.busy() || LEAVE.test(p) || !own) { S.leave(url); return; }
       location.href = url; return;
     }
     if (t && window.HKShell && window.HKShell.take(t)) return;
