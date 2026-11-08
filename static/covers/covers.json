@@ -1,0 +1,248 @@
+{
+ "source": "The Metropolitan Museum of Art, Open Access (CC0 1.0)",
+ "license": "CC0-1.0",
+ "covers": [
+  {
+   "id": "balke-nordkap",
+   "title_de": "Das Nordkap im Mondlicht",
+   "title_en": "The North Cape by Moonlight",
+   "artist": "Peder Balke",
+   "date": "1848",
+   "met_object": 441379,
+   "url": "https://www.metmuseum.org/art/collection/search/441379",
+   "group": "nordisch",
+   "pos": 55
+  },
+  {
+   "id": "dahl-wasserfall",
+   "title_de": "Zwei Männer vor einem Wasserfall bei Sonnenuntergang",
+   "title_en": "Two Men before a Waterfall at Sunset",
+   "artist": "Johan Christian Dahl",
+   "date": "1823",
+   "met_object": 439344,
+   "url": "https://www.metmuseum.org/art/collection/search/439344",
+   "group": "nordisch",
+   "pos": 45
+  },
+  {
+   "id": "dahl-kopenhagen",
+   "title_de": "Kopenhagener Hafen im Mondlicht",
+   "title_en": "Copenhagen Harbor by Moonlight",
+   "artist": "Johan Christian Dahl",
+   "date": "1846",
+   "met_object": 439343,
+   "url": "https://www.metmuseum.org/art/collection/search/439343",
+   "group": "nordisch",
+   "pos": 40
+  },
+  {
+   "id": "dahl-vesuv",
+   "title_de": "Ausbruch des Vesuvs",
+   "title_en": "An Eruption of Vesuvius",
+   "artist": "Johan Christian Dahl",
+   "date": "1824",
+   "met_object": 438159,
+   "url": "https://www.metmuseum.org/art/collection/search/438159",
+   "group": "nordisch",
+   "pos": 35
+  },
+  {
+   "id": "roerbye-zitadelle",
+   "title_de": "Blick von den Wällen der Zitadelle in Kopenhagen bei Mondlicht",
+   "title_en": "View from the Citadel Ramparts in Copenhagen by Moonlight",
+   "artist": "Martinus Rørbye",
+   "date": "1839",
+   "met_object": 438952,
+   "url": "https://www.metmuseum.org/art/collection/search/438952",
+   "group": "nordisch",
+   "pos": 45
+  },
+  {
+   "id": "thaulow-picquigny",
+   "title_de": "Picquigny",
+   "title_en": "Picquigny",
+   "artist": "Frits Thaulow",
+   "date": "1899",
+   "met_object": 852668,
+   "url": "https://www.metmuseum.org/art/collection/search/852668",
+   "group": "nordisch",
+   "pos": 55
+  },
+  {
+   "id": "friedrich-mond",
+   "title_de": "Zwei Männer betrachten den Mond",
+   "title_en": "Two Men Contemplating the Moon",
+   "artist": "Caspar David Friedrich",
+   "date": "ca. 1825–30",
+   "met_object": 438417,
+   "url": "https://www.metmuseum.org/art/collection/search/438417",
+   "group": "romantik",
+   "pos": 40
+  },
+  {
+   "id": "turner-walfaenger",
+   "title_de": "Walfänger",
+   "title_en": "Whalers",
+   "artist": "J. M. W. Turner",
+   "date": "ca. 1845",
+   "met_object": 437854,
+   "url": "https://www.metmuseum.org/art/collection/search/437854",
+   "group": "romantik",
+   "pos": 50
+  },
+  {
+   "id": "carus-milkel",
+   "title_de": "Schloss Milkel im Mondlicht",
+   "title_en": "Schloss Milkel in Moonlight",
+   "artist": "Carl Gustav Carus",
+   "date": "ca. 1833–35",
+   "met_object": 788905,
+   "url": "https://www.metmuseum.org/art/collection/search/788905",
+   "group": "romantik",
+   "pos": 40
+  },
+  {
+   "id": "carus-oybin",
+   "title_de": "Gotische Fenster in der Klosterruine Oybin",
+   "title_en": "Gothic Windows in the Ruins of the Monastery at Oybin",
+   "artist": "Carl Gustav Carus",
+   "date": "ca. 1828",
+   "met_object": 439122,
+   "url": "https://www.metmuseum.org/art/collection/search/439122",
+   "group": "romantik",
+   "pos": 45
+  },
+  {
+   "id": "hokusai-welle",
+   "title_de": "Die große Welle vor Kanagawa",
+   "title_en": "Under the Wave off Kanagawa (The Great Wave)",
+   "artist": "Katsushika Hokusai",
+   "date": "ca. 1830–32",
+   "met_object": 45434,
+   "url": "https://www.metmuseum.org/art/collection/search/45434",
+   "group": "holzschnitt",
+   "pos": 45
+  },
+  {
+   "id": "hokusai-roter-fuji",
+   "title_de": "Roter Fuji",
+   "title_en": "South Wind, Clear Sky (Red Fuji)",
+   "artist": "Katsushika Hokusai",
+   "date": "ca. 1830–32",
+   "met_object": 36490,
+   "url": "https://www.metmuseum.org/art/collection/search/36490",
+   "group": "holzschnitt",
+   "pos": 50
+  },
+  {
+   "id": "hokusai-gewitter",
+   "title_de": "Gewitter unterhalb des Fuji",
+   "title_en": "Storm below Mount Fuji",
+   "artist": "Katsushika Hokusai",
+   "date": "ca. 1830–32",
+   "met_object": 36492,
+   "url": "https://www.metmuseum.org/art/collection/search/36492",
+   "group": "holzschnitt",
+   "pos": 35
+  },
+  {
+   "id": "hiroshige-kanbara",
+   "title_de": "Abendschnee in Kanbara",
+   "title_en": "Evening Snow at Kanbara",
+   "artist": "Utagawa Hiroshige",
+   "date": "ca. 1833–34",
+   "met_object": 56915,
+   "url": "https://www.metmuseum.org/art/collection/search/56915",
+   "group": "holzschnitt",
+   "pos": 45
+  },
+  {
+   "id": "hiroshige-hira",
+   "title_de": "Abendschnee am Hira",
+   "title_en": "Evening Snow on Hira, Lake Biwa",
+   "artist": "Utagawa Hiroshige",
+   "date": "ca. 1835",
+   "met_object": 36533,
+   "url": "https://www.metmuseum.org/art/collection/search/36533",
+   "group": "holzschnitt",
+   "pos": 45
+  },
+  {
+   "id": "hiroshige-uchikawa",
+   "title_de": "Abendschnee bei Uchikawa",
+   "title_en": "Evening Snow at Uchikawa",
+   "artist": "Utagawa Hiroshige",
+   "date": "ca. 1836",
+   "met_object": 56890,
+   "url": "https://www.metmuseum.org/art/collection/search/56890",
+   "group": "holzschnitt",
+   "pos": 45
+  },
+  {
+   "id": "hiroshige-gion",
+   "title_de": "Der Gion-Schrein im Schnee",
+   "title_en": "The Gion Shrine in Snow",
+   "artist": "Utagawa Hiroshige",
+   "date": "ca. 1834",
+   "met_object": 56889,
+   "url": "https://www.metmuseum.org/art/collection/search/56889",
+   "group": "holzschnitt",
+   "pos": 45
+  },
+  {
+   "id": "bierstadt-landers-peak",
+   "title_de": "Die Rocky Mountains, Lander’s Peak",
+   "title_en": "The Rocky Mountains, Lander's Peak",
+   "artist": "Albert Bierstadt",
+   "date": "1863",
+   "met_object": 10154,
+   "url": "https://www.metmuseum.org/art/collection/search/10154",
+   "group": "landschaft",
+   "pos": 40
+  },
+  {
+   "id": "bierstadt-lake-louise",
+   "title_de": "Kanadische Rockies (Lake Louise)",
+   "title_en": "Canadian Rockies (Lake Louise)",
+   "artist": "Albert Bierstadt",
+   "date": "ca. 1889",
+   "met_object": 10149,
+   "url": "https://www.metmuseum.org/art/collection/search/10149",
+   "group": "landschaft",
+   "pos": 45
+  },
+  {
+   "id": "cole-oxbow",
+   "title_de": "The Oxbow",
+   "title_en": "View from Mount Holyoke after a Thunderstorm (The Oxbow)",
+   "artist": "Thomas Cole",
+   "date": "1836",
+   "met_object": 10497,
+   "url": "https://www.metmuseum.org/art/collection/search/10497",
+   "group": "landschaft",
+   "pos": 40
+  },
+  {
+   "id": "church-anden",
+   "title_de": "Herz der Anden",
+   "title_en": "Heart of the Andes",
+   "artist": "Frederic Edwin Church",
+   "date": "1859",
+   "met_object": 10481,
+   "url": "https://www.metmuseum.org/art/collection/search/10481",
+   "group": "landschaft",
+   "pos": 45
+  },
+  {
+   "id": "vangogh-zypressen",
+   "title_de": "Weizenfeld mit Zypressen",
+   "title_en": "Wheat Field with Cypresses",
+   "artist": "Vincent van Gogh",
+   "date": "1889",
+   "met_object": 436535,
+   "url": "https://www.metmuseum.org/art/collection/search/436535",
+   "group": "landschaft",
+   "pos": 40
+  }
+ ]
+}

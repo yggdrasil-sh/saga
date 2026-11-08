@@ -194,4 +194,5 @@ incluidos tienen sus propias licencias (`static/vendor/editorjs/licenses`). Fór
 (MIT, `static/vendor/mermaid/LICENSE`). El próximo editor incluye [Tiptap](https://tiptap.dev),
 [ProseMirror](https://prosemirror.net) y [Yjs](https://yjs.dev) (todos MIT, `static/vendor/tiptap/licenses`,
 compilados de forma reproducible desde `tools/vendor-tiptap`). Iconos de servicios de
-[selfh.st/icons](https://selfh.st/icons).
+[selfh.st/icons](https://selfh.st/icons). La galería de portadas (`static/covers`) contiene obras de
+dominio público de [The Met Open Access](https://www.metmuseum.org/about-the-met/policies-and-documents/open-access) (CC0 1.0).

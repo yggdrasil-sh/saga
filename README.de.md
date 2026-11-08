@@ -185,4 +185,5 @@ Fassung als Dienst für andere betreibt, muss deren Quelltext ebenfalls offenleg
 (`static/vendor/editorjs/licenses`). Formeln mit [KaTeX](https://katex.org) (MIT, `static/vendor/katex/LICENSE`),
 Diagramme mit [Mermaid](https://mermaid.js.org) (MIT, `static/vendor/mermaid/LICENSE`). Der kommende Editor bringt
 [Tiptap](https://tiptap.dev), [ProseMirror](https://prosemirror.net) und [Yjs](https://yjs.dev) mit (alle MIT,
-`static/vendor/tiptap/licenses`, reproduzierbar gebaut aus `tools/vendor-tiptap`). Dienst-Symbole von [selfh.st/icons](https://selfh.st/icons).
+`static/vendor/tiptap/licenses`, reproduzierbar gebaut aus `tools/vendor-tiptap`). Dienst-Symbole von [selfh.st/icons](https://selfh.st/icons). Die Titelbild-Galerie (`static/covers`) enthält
+gemeinfreie Werke aus [The Met Open Access](https://www.metmuseum.org/about-the-met/policies-and-documents/open-access) (CC0 1.0).
