@@ -16,6 +16,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Admin: Netz-Karte
+- Neuer Bereich **Netz** im Admin: Karte dieses Servers mit verbundenen Saga-Servern (Föderation: Zustand, Version,
+  Latenz, letzter Kontakt/Fehler, Fähigkeiten), Gjallarhorn-Knoten (eigene, geteilte, von Partnern freigegebene; TCP/UDP,
+  IPv4/IPv6, Latenz, Teilnehmende) und den gerade verbundenen Clients – nur als Anzahl je Betriebssystem bzw. App, ohne
+  Namen, Konten oder IP-Adressen. Live über Server-Sent Events, laufende Anrufe als wandernde Lichtpunkte
+  (Client → Server → Knoten → Partner), kurze Pulse bei Föderations-Nachrichten, weiches Ein- und Ausblenden;
+  `prefers-reduced-motion` ohne Animation, im Hintergrund-Tab pausiert. Tabellenansicht für Tastatur und Screenreader.
+- Messungen höchstens alle 60 s im Hintergrund und nur bei offener Karte (`SAGA_NET_PROBE`). Schnittstelle (nur Admin,
+  lesend): `GET /api/net`, `GET /api/net/events` im Admin-Bereich.
+- Die Kräfte-Simulation (Barnes-Hut) des Seiten-Graphen liegt jetzt in `static/graph-sim.js` und wird von beiden genutzt.
+
 ### Chat (Web): Bilder einfügen und Dateien ablegen
 - Bilder und Dateien aus der Zwischenablage lassen sich direkt ins Nachrichtenfeld einfügen (⌘V/Strg+V), auch in der
   Mac-Hülle (WKWebView liefert Bilder dort teils nur über `clipboardData.items`). Bildschirmfotos ohne Namen heißen

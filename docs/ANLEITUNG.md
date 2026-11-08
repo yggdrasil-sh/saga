@@ -335,6 +335,25 @@ Metropolitan Museum of Art (CC0). Du kannst
   gelöscht, wenn keine Seite es mehr nutzt (die Rückfrage nennt die Zahl). Sind alle Bilder ausgeblendet, bekommen neue
   Seiten kein Titelbild.
 
+Unter **Netz** (2.5) siehst du eine Karte aller Verbindungen dieses Servers – live und animiert:
+
+- **Dieser Server** in der Mitte, rechts die **verbundenen Saga-Server** (Föderation) mit Zustand, Version, Latenz,
+  letztem Kontakt, letztem Fehler und gemeinsamen Fähigkeiten. Die Kantenfarbe zeigt den Zustand: grün in Ordnung,
+  gelb langsam (ab 800 ms oder über eine Stunde ohne Kontakt), rot Fehler, gestrichelt aus bzw. ausstehend.
+- Oben die **Gjallarhorn-Knoten** (eigene, geteilte und von Partnern freigegebene) mit Version, TCP/UDP, IPv4/IPv6,
+  Latenz und Teilnehmerzahl.
+- Links die **Clients**, die gerade verbunden sind (Live-Kanal, Push-Verbindung der Android-App, Anruf-Teilnehmer),
+  zusammengefasst je Betriebssystem bzw. App – z. B. „iOS-App“, „Android-App“, „Browser · Windows“. Es gibt nur
+  Anzahlen: keine Namen, Konten oder IP-Adressen. Saga merkt sich dafür nur die Grobklasse aus dem User-Agent.
+- **Laufende Anrufe** wandern als Lichtpunkte vom Client über den Server und den Knoten bis zum Partner-Server;
+  Nachrichten der Föderation blitzen kurz an der Kante auf.
+
+Überfahren oder Antippen zeigt Details, mit der Tastatur wählen die Pfeiltasten Knoten aus. Alle Angaben stehen
+zusätzlich in Tabellen unter der Karte (für Screenreader und ohne JavaScript). Bei „Bewegung reduzieren“
+(prefers-reduced-motion) gibt es keine Animation, nur die Zustände; im Hintergrund-Tab pausiert die Karte.
+Messungen (Latenz zu Partnern und Knoten, UDP) macht Saga nie je Seitenaufruf, sondern höchstens einmal pro Minute im
+Hintergrund und nur, solange die Seite offen ist (`SAGA_NET_PROBE`, Sekunden, Standard 60).
+
 ## 5. Benutzer und Registrierung
 
 Unter **Benutzer** legst du Konten an, setzt Passwörter, vergibst Gruppen und Admin-Rechte.
