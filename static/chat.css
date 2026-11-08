@@ -129,6 +129,11 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
 .ct-file-s{color:var(--muted);font-size:var(--fs-xs);white-space:nowrap}
 .ct-typing{min-height:1.2rem;font-size:var(--fs-sm);color:var(--muted);padding:0 1.1rem;font-style:italic}
 .ct-reply,.ct-files{display:flex;align-items:center;gap:.5rem;padding:.4rem 1rem;border-top:1px solid var(--border);flex-wrap:wrap}
+/* Ablageflaeche beim Ziehen von Dateien auf die Unterhaltung */
+.ct-drop{position:absolute;inset:.5rem;z-index:30;display:flex;align-items:center;justify-content:center;pointer-events:none;
+  border:2px dashed var(--accent);border-radius:var(--r-md);background:color-mix(in srgb,var(--bg) 82%,transparent);color:var(--fg)}
+.ct-drop[hidden]{display:none}
+.ct-drop-t{font-size:var(--fs-md);font-weight:600;padding:.5rem 1rem;border-radius:var(--r-pill);background:var(--card);box-shadow:var(--sh-pop)}
 .ct-reply-t{flex:1;min-width:0;display:flex;flex-direction:column;font-size:var(--fs-sm);border-left:3px solid var(--accent);padding-left:.5rem}
 .ct-reply-t span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ct-compose{display:flex;align-items:flex-end;gap:.5rem;padding:.6rem 1rem calc(.7rem + env(safe-area-inset-bottom));border-top:1px solid var(--border)}

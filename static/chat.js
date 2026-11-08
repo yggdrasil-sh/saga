@@ -3152,25 +3152,96 @@
       menu.appendChild(HK.menuItem(T('Aus Immich …'), function () { HK.closeMenu(); immichAttach(); }, { ic: 'camera' }));
     });
   });
-  $('ct-file').addEventListener('change', function () {
+  // Anhaenge aus Dateiauswahl, Zwischenablage oder Ziehen und Ablegen (gleiche Pruefungen fuer alle Wege)
+  function addFiles(list) {
     var lm = (S.me && S.me.limits) || {}, max = lm.file_max || 10485760;
     var vmax = lm.file2 && VID ? Math.max(max, lm.video_max || 0) : max, opt = VID ? VID.canOptimize() : '';
-    var mobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    Array.prototype.forEach.call(this.files, function (f) {
+    var mobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches, over = false;
+    Array.prototype.forEach.call(list || [], function (f) {
       var vid = VID && VID.isVideo(f);
       if (vid && f.size > vmax && opt) f._force = true;    // zu gross: nur verkleinert (720p) moeglich
       else if (f.size > vmax) { HK.toast(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: f.name, n: Math.round(vmax / 1048576) })); return; }
+      if (S.files.length >= 10) { over = true; return; }
       if (vid) f._opt = !!opt && (mobile || !!f._force);   // 2.4: vom Handy standardmaessig "optimiert 720p"
       if (vid) VID.probe(f).then(function (m) { f._ok = !!(m && m.w); f._meta = m; }, function () { f._ok = false; })
         .then(function () {
-          if (!f._ok) { f._opt = false; if (f._force) { HK.toast(T('„{name}“ ist zu groß und lässt sich in diesem Browser nicht verkleinern.', { name: f.name })); S.files.splice(S.files.indexOf(f), 1); } }
+          if (!f._ok) { f._opt = false; if (f._force) { HK.toast(T('„{name}“ ist zu groß und lässt sich in diesem Browser nicht verkleinern.', { name: f.name })); var k = S.files.indexOf(f); if (k >= 0) S.files.splice(k, 1); } }
           drawFiles();
         });
-      if (S.files.length < 10) S.files.push(f);
+      S.files.push(f);
     });
-    this.value = ''; drawFiles();
+    if (over) HK.toast(T('Höchstens 10 Anhänge je Nachricht.'));
+    drawFiles(); micDraw();
     $('ct-input').focus();                                 // Enter sendet dann, statt die Dateiauswahl erneut zu oeffnen (BUG-099)
+  }
+  // Anhaengen erlaubt: Chat offen, Eingabe sichtbar (nicht gesperrt/schreibgeschuetzt/Anfrage), nicht beim Bearbeiten
+  function canAttach() {
+    var form = $('ct-compose');
+    return !!S.cur && !S.edit && !!form && !form.hidden && !$('ct-chat').hidden && !sending;
+  }
+  $('ct-file').addEventListener('change', function () { addFiles(this.files); this.value = ''; });
+
+  // Einfuegen aus der Zwischenablage. WebKit (Safari, WKWebView der Mac-Huelle) liefert Bilder aus der macOS-
+  // Zwischenablage teils nur ueber items (getAsFile), files bleibt dann leer - beides lesen, Doppelte vermeiden.
+  function clipFiles(dt) {
+    var out = [], seen = [];
+    Array.prototype.forEach.call(dt.files || [], function (f) { out.push(f); seen.push(f); });
+    if (!out.length) Array.prototype.forEach.call(dt.items || [], function (it) {
+      if (it.kind !== 'file') return;
+      var f = it.getAsFile && it.getAsFile(); if (f && seen.indexOf(f) < 0) { out.push(f); seen.push(f); }
+    });
+    return out;
+  }
+  var EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/tiff': 'tiff', 'image/bmp': 'bmp', 'image/heic': 'heic', 'image/avif': 'avif' };
+  function pastedName(f, i) {              // Bildschirmfoto o. ae. ohne echten Namen -> "Bild-JJJJ-MM-TT-HHMMSS.png"
+    var n = f.name || '';
+    if (n && !/^(image|bild|unknown|blob)(\.\w+)?$/i.test(n)) return f;
+    if (!/^image\//.test(f.type || '') && n) return f;
+    var d = new Date(), p = function (x) { return (x < 10 ? '0' : '') + x; };
+    var ext = EXT[f.type] || (/^image\/([\w.+-]+)$/.exec(f.type || '') || [])[1] || (/\.(\w+)$/.exec(n) || [])[1] || 'png';
+    var name = T('Bild') + '-' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds())
+      + (i ? '-' + (i + 1) : '') + '.' + String(ext).replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+    try { return new File([f], name, { type: f.type || 'image/png', lastModified: f.lastModified || Date.now() }); } catch (e) { return f; }
+  }
+  function insertText(t, txt) {
+    t.focus();
+    var ok = false; try { ok = document.execCommand && document.execCommand('insertText', false, txt); } catch (e) { ok = false; }
+    if (!ok || t.value.indexOf(txt) < 0) { t.setRangeText(txt, t.selectionStart, t.selectionEnd, 'end'); t.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+  $('ct-input').addEventListener('paste', function (e) {
+    var dt = e.clipboardData; if (!dt) return;
+    var files = clipFiles(dt); if (!files.length) return;          // reiner Text: normal einfuegen
+    e.preventDefault();
+    var txt = dt.getData('text/plain') || '';
+    // Aus dem Finder kopierte Dateien bringen ihre Namen als Text mit - den nicht zusaetzlich einfuegen
+    var names = files.map(function (f) { return f.name; }).join('\n');
+    if (txt && txt.replace(/\s+/g, ' ').trim() !== names.replace(/\s+/g, ' ').trim()) insertText(this, txt);
+    if (!canAttach()) { if (S.edit) HK.toast(T('Beim Bearbeiten lassen sich keine Anhänge hinzufügen.')); return; }
+    var k = 0; addFiles(files.map(function (f) { return /^image\//.test(f.type || '') || !f.name ? pastedName(f, k++) : f; }));
   });
+
+  // Ziehen und Ablegen von Dateien auf die Unterhaltung (Text ziehen bleibt normal)
+  (function () {
+    var chat = $('ct-chat'), depth = 0, zone = null;
+    function hasFiles(e) { var ty = e.dataTransfer && e.dataTransfer.types; return !!ty && Array.prototype.indexOf.call(ty, 'Files') >= 0; }
+    function show(on) {
+      if (on && !zone) { zone = el('div', 'ct-drop'); zone.setAttribute('aria-hidden', 'true'); zone.appendChild(el('span', 'ct-drop-t', T('Zum Anhängen hier ablegen'))); chat.appendChild(zone); }
+      if (zone) zone.hidden = !on;
+    }
+    chat.addEventListener('dragenter', function (e) { if (!hasFiles(e) || !canAttach()) return; e.preventDefault(); depth++; show(true); });
+    chat.addEventListener('dragover', function (e) { if (!hasFiles(e) || !canAttach()) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; show(true); });
+    chat.addEventListener('dragleave', function (e) { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) show(false); });
+    chat.addEventListener('drop', function (e) {
+      depth = 0; show(false);
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (!canAttach()) return;
+      addFiles(e.dataTransfer.files);
+    });
+    // Daneben abgelegte Dateien nicht im Fenster oeffnen (WKWebView/Browser wuerde die Chat-Ansicht verlassen)
+    window.addEventListener('dragover', function (e) { if (hasFiles(e)) e.preventDefault(); });
+    window.addEventListener('drop', function (e) { if (hasFiles(e)) { e.preventDefault(); depth = 0; show(false); } });
+  })();
 
   // --- Senden ---------------------------------------------------------------------------------------------------
   // Empfaenger vom Server holen und JEDEN Schluessel pruefen (Geraete-Zertifikat + Backup-Signatur gegen den

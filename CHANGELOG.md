@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Chat (Web): Bilder einfügen und Dateien ablegen
+- Bilder und Dateien aus der Zwischenablage lassen sich direkt ins Nachrichtenfeld einfügen (⌘V/Strg+V), auch in der
+  Mac-Hülle (WKWebView liefert Bilder dort teils nur über `clipboardData.items`). Bildschirmfotos ohne Namen heißen
+  `Bild-JJJJ-MM-TT-HHMMSS.png`; Text und Bild zugleich (z. B. aus dem Browser kopiert) wird beides übernommen.
+- Dateien lassen sich auf die Unterhaltung ziehen und dort ablegen (sichtbare Ablagefläche). Gleiche Prüfungen wie beim
+  Anhang-Knopf (Größe, Videos, höchstens 10 – jetzt mit Hinweis statt stillem Weglassen); nicht beim Bearbeiten und
+  nicht in gesperrten oder schreibgeschützten Chats. Gilt auch im Chat-Seitenpanel.
+
 ### Chat: Gerätegrenze beim Koppeln
 - Mit 10 Chat-Geräten blieb ein neues Gerät nach „Mit anderem Gerät bestätigen“ hängen. Jetzt prüft der Server die Grenze
   schon beim Anlegen der Anfrage und meldet sie überall gleich (`409 {code: "device_limit", max, count}`); scheitert erst
