@@ -350,6 +350,21 @@ def run():
         st = wait(r["run_id"]) if s2 == 202 else {}
         ok(f"Datei mit {label}: Analyse und Lauf sauber abgelehnt", s == 400 and "Trigger" in (a.get("error") or "")
            and st.get("state") == "failed" and "Trigger" in st.get("error", ""), (s, a, st))
+    # virtuelle Tabelle, deren Schema-Text "VIRTUAL" hinter einem Kommentar versteckt (Pruefer-Fund)
+    import _sqlite3
+    vp = os.path.join(TMP, "vtab.db")
+    F.build_db(vp)
+    vc = _sqlite3.connect(vp)
+    vc.execute("CREATE VIRTUAL TABLE vt USING fts5(a)")
+    vc.execute("PRAGMA writable_schema=ON")
+    vc.execute("UPDATE sqlite_master SET sql='CREATE/**/VIRTUAL TABLE vt USING fts5(a)' WHERE name='vt'")
+    vc.commit()
+    vc.close()
+    with open(vp, "rb") as f:
+        s, d = upload("x.db", f.read())
+    s, a = req("POST", f"/api/import/{d['token']}/analyze", {})
+    ok("Datei mit versteckter virtueller Tabelle: abgelehnt", s == 400 and "Trigger" in (a.get("error") or ""), (s, a))
+    req("DELETE", f"/api/import/{d['token']}")
     cleanup_user(A)
     s, r, st = run_import(F.build_db(os.path.join(TMP, "riesig.db"), huge=True), "riesig.db", {"kind": "trilium", "title": "Riesig"})
     big = [x["path"] for g in (st.get("report") or {}).get("groups", []) if g["code"] == "too_big" for x in g["items"]]

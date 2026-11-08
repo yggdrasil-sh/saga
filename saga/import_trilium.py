@@ -66,6 +66,8 @@ PW_MAX = 1024
 DEPTH_MAX = 60                            # tiefer verschachtelte Notizen haengen auf dieser Ebene (Bericht)
 FAILS, FAILS_PER = 5, 600                 # Fehlversuche Passwort je Konto und Zeitraum
 _ID = re.compile(r"[A-Za-z0-9_]{1,64}")
+_VIRTUAL = re.compile(r"(?<![A-Za-z0-9_$])virtual(?![A-Za-z0-9_$])", re.I)
+BRANCHES_MAX, ATTRS_MAX = NOTES_MAX * 4, NOTES_MAX * 20     # Zeilen, die ganz in den Speicher gelesen werden
 CODE_TYPES = ("code", "mermaid")
 PAGE_TYPES = ("text", "book", "code", "mermaid", "image", "file")
 SYS_LABELS = {
@@ -406,9 +408,9 @@ class _DB:
         return self.con.execute(sql, args).fetchall()
 
     def _check(self):
-        rows = self.q("SELECT type, name, sql FROM sqlite_master")
-        if any(r[0] in ("trigger", "view") or (r[0] == "table" and re.match(r"\s*create\s+virtual", r[2] or "", re.I))
-               for r in rows):
+        rows = self.q("SELECT type, name, sql, rootpage FROM sqlite_master")
+        if any(r[0] in ("trigger", "view") or (r[0] == "table" and (not r[3] or _VIRTUAL.search(r[2] or "")))
+               for r in rows):                      # virtuell: rootpage 0 bzw. VIRTUAL irgendwo (auch hinter Kommentaren)
             raise ic.ImportFail("trilium_unsafe")
         tabs = {r[1] for r in rows if r[0] == "table"}
         self.cols = {}
@@ -477,7 +479,9 @@ def db_model(db, key, rep):
                 note.size = note.size * 3 // 4
         m.notes[nid] = note
     m.root = "root"
-    pre = "prefix" if "prefix" in db.cols["branches"] else "''"
+    pre = "substr(prefix, 1, 200)" if "prefix" in db.cols["branches"] else "''"
+    if db.q("SELECT COUNT(*) FROM branches WHERE isDeleted=0")[0][0] > BRANCHES_MAX:
+        raise ic.ImportFail("trilium_many", n=NOTES_MAX)
     for cid, pid, pos, prefix in db.q(f"SELECT noteId, parentNoteId, notePosition, {pre} FROM branches WHERE isDeleted=0"):
         if pid in m.notes and cid in m.notes and cid != pid:
             m.notes[pid].kids.append((cid, prefix if isinstance(prefix, str) else "", pos if isinstance(pos, (int, float)) else 0, False))
@@ -486,7 +490,10 @@ def db_model(db, key, rep):
     ac = db.cols.get("attributes", set())
     if {"noteId", "type", "name", "value", "isDeleted"} <= ac:
         posc = "position" if "position" in ac else "0"
-        for nid, typ, name, val, pos in db.q(f"SELECT noteId, type, name, value, {posc} FROM attributes WHERE isDeleted=0"):
+        if db.q("SELECT COUNT(*) FROM attributes WHERE isDeleted=0")[0][0] > ATTRS_MAX:
+            raise ic.ImportFail("trilium_many", n=NOTES_MAX)
+        for nid, typ, name, val, pos in db.q(f"SELECT noteId, type, substr(name, 1, 100), substr(value, 1, 2000), {posc} "
+                                             "FROM attributes WHERE isDeleted=0"):
             if nid in m.notes and typ in ("label", "relation") and isinstance(name, str):
                 m.notes[nid].attrs.append((typ, name[:100], str(val or "")[:2000], pos or 0))
     tc = db.cols.get("attachments", set())
