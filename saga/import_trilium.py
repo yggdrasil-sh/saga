@@ -49,7 +49,7 @@ import time
 import urllib.parse
 from html import escape
 
-from saga import html2blocks, i18n, md2blocks
+from saga import html2blocks, i18n, md2blocks, svg_clean
 from saga import import_common as ic
 from saga.core import TZ, t
 from saga.files import _sniff_image
@@ -233,17 +233,25 @@ class Model:
     def __init__(self, kind):
         self.kind, self.notes, self.root, self.by_path, self.att_owner = kind, {}, None, {}, {}
         self.fmt, self.hidden, self.dirs, self.schema = None, 0, {}, ""
-        self.heads = {}
+        self.heads, self.orphans = {}, 0                  # orphans: verwaiste Anhaenge (zur Loeschung vorgemerkt)
 
     def head(self, key, load):
-        """Erste Bytes eines Inhalts (Bild?) - einmal je Datei."""
+        """Erste Bytes eines Inhalts (Bild? auch SVG - ob es eins bleibt, entscheidet die Bereinigung beim Speichern) -
+        einmal je Datei."""
         if key not in self.heads:
             try:
-                b = load(16) if load is not None else b""
+                b = load(1024) if load is not None else b""
             except (ic.ImportFail, OSError, sqlite3.Error, ValueError):
                 b = b""
-            self.heads[key] = bool(_sniff_image(b or b""))
+            self.heads[key] = bool(_sniff_image((b or b"")[:16])) or svg_clean.looks_like_svg(b or b"")
         return self.heads[key]
+
+    def is_svg(self, key, load):
+        try:
+            b = load(1024) if load is not None else b""
+        except (ic.ImportFail, OSError, sqlite3.Error, ValueError):
+            return False
+        return not _sniff_image((b or b"")[:16]) and svg_clean.looks_like_svg(b or b"")
 
 
 # ---------------------------------------------------------------------------------------------------- ZIP
@@ -324,7 +332,8 @@ def zip_model(src, rep):
             note.locked = True
         for k, a in enumerate(x.get("attributes") if isinstance(x.get("attributes"), list) else []):
             if isinstance(a, dict) and a.get("type") in ("label", "relation") and isinstance(a.get("name"), str):
-                note.attrs.append((a["type"], a["name"][:100], str(a.get("value") or "")[:2000], a.get("position") or k))
+                note.attrs.append((a["type"], a["name"][:100], str(a.get("value") or "")[:2000], a.get("position") or k,
+                                   a.get("isInheritable") is True))
         for k, a in enumerate(x.get("attachments") if isinstance(x.get("attachments"), list) else []):
             if not isinstance(a, dict):
                 continue
@@ -462,7 +471,7 @@ def db_model(db, key, rep):
         if not _ID.fullmatch(nid):
             continue
         title, prot = r[1] if isinstance(r[1], str) else "", bool(r[2])
-        note = TNote(nid, "", str(r[3] or "text")[:40], str(r[4] or "")[:120], "html" if (r[3] or "text") in ("text", "book") else None)
+        note = TNote(nid, "", str(r[3] or "text")[:40], str(r[4] or "")[:120], "html" if (r[3] or "text") == "text" else None)
         if prot:
             plain = decrypt(key, title) if key else None
             if plain is None:
@@ -490,19 +499,27 @@ def db_model(db, key, rep):
     ac = db.cols.get("attributes", set())
     if {"noteId", "type", "name", "value", "isDeleted"} <= ac:
         posc = "position" if "position" in ac else "0"
+        inhc = "isInheritable" if "isInheritable" in ac else "0"
         if db.q("SELECT COUNT(*) FROM attributes WHERE isDeleted=0")[0][0] > ATTRS_MAX:
             raise ic.ImportFail("trilium_many", n=NOTES_MAX)
-        for nid, typ, name, val, pos in db.q(f"SELECT noteId, type, substr(name, 1, 100), substr(value, 1, 2000), {posc} "
-                                             "FROM attributes WHERE isDeleted=0"):
+        for nid, typ, name, val, pos, inh in db.q(f"SELECT noteId, type, substr(name, 1, 100), substr(value, 1, 2000), {posc}, "
+                                                  f"{inhc} FROM attributes WHERE isDeleted=0"):
             if nid in m.notes and typ in ("label", "relation") and isinstance(name, str):
-                m.notes[nid].attrs.append((typ, name[:100], str(val or "")[:2000], pos or 0))
+                m.notes[nid].attrs.append((typ, name[:100], str(val or "")[:2000], pos or 0, bool(inh)))
     tc = db.cols.get("attachments", set())
     if db.schema == "blobs" and {"attachmentId", "ownerId", "role", "mime", "title", "blobId", "isDeleted"} <= tc:
         protc = "isProtected" if "isProtected" in tc else "0"
         posc = "position" if "position" in tc else "0"
-        for aid, owner, role, mime, title, bid, prot, pos in db.q(
-                f"SELECT attachmentId, ownerId, role, mime, title, blobId, {protc}, {posc} FROM attachments WHERE isDeleted=0"):
+        # zur Loeschung vorgemerkt (in Trilium unsichtbar, nicht mehr im Text): nicht uebernehmen; aeltere Schemata ohne
+        # die Spalte: alle
+        erc = "utcDateScheduledForErasureSince" if "utcDateScheduledForErasureSince" in tc else "NULL"
+        for aid, owner, role, mime, title, bid, prot, pos, erase in db.q(
+                f"SELECT attachmentId, ownerId, role, mime, title, blobId, {protc}, {posc}, {erc} FROM attachments WHERE isDeleted=0"):
             if owner not in m.notes or not isinstance(aid, str) or not _ID.fullmatch(aid):
+                continue
+            if erase:
+                if not owner.startswith("_"):
+                    m.orphans += 1
                 continue
             title = title if isinstance(title, str) else ""
             if prot:
@@ -556,18 +573,20 @@ def _db_loader(db, cap, bid, prot, key):
 # Plan (gleich fuer beide Quellen)
 # =====================================================================================================
 class Walk:
-    """Baum ab der Wurzel in Trilium-Reihenfolge -> Eintraege (art, nid, parent_ref, titel, pfad, ref)."""
+    """Baum ab der Wurzel in Trilium-Reihenfolge -> Eintraege (art, nid, parent_ref, titel, pfad, ref); kids_of: ref der
+    Elternseite -> [(ref, nid, titel, art)] in Reihenfolge (Unterseiten-Uebersicht); parent: nid -> nid der Elternnotiz
+    an der ersten Stelle (Vererbung von Attributen)."""
 
     def __init__(self, m, rep=None):
         self.m, self.rep = m, rep
-        self.refs, self.entries = {}, []
+        self.refs, self.entries, self.kids_of, self.parent = {}, [], {}, {}
         self.stats = {"pages": 0, "code": 0, "files": 0, "protected": 0, "clones": 0, "unsupported": 0, "hidden": 0}
         seen = {m.root}
         self.refs[m.root] = "root"
-        stack = [(c, "root", "", k, 1) for k, c in reversed(list(enumerate(m.notes[m.root].kids)))]
+        stack = [(c, "root", "", k, 1, m.root) for k, c in reversed(list(enumerate(m.notes[m.root].kids)))]
         n = 0
         while stack:
-            (cid, prefix, _pos, clone), pref, ppath, k, depth = stack.pop()
+            (cid, prefix, _pos, clone), pref, ppath, k, depth, pnid = stack.pop()
             note = m.notes.get(cid)
             if note is None:
                 continue
@@ -578,7 +597,9 @@ class Walk:
                 n += 1
                 self.stats["clones"] += 1
                 self.entries.append(("clone", cid, pref, title, ppath, f"k{n}"))
+                self.kids_of.setdefault(pref, []).append((f"k{n}", cid, title, "clone"))
                 continue
+            self.parent.setdefault(cid, pnid)
             seen.add(cid)
             if note.locked:
                 self.stats["protected"] += 1
@@ -595,6 +616,7 @@ class Walk:
                 ref = f"p{n}"
                 self.refs[cid] = ref
                 self.entries.append(("locked", cid, pref, t("Geschützte Notiz"), pos, ref))
+                self.kids_of.setdefault(pref, []).append((ref, cid, t("Geschützte Notiz"), "locked"))
                 path = pos
             else:
                 n += 1
@@ -610,12 +632,13 @@ class Walk:
                     self.stats["unsupported"] += 1
                     kind = "other"
                 self.stats["pages"] += 1
-                self.stats["files"] += len(note.atts)
+                self.stats["files"] += len(content_atts(note))
                 self.entries.append((kind, cid, pref, title, path, ref))
+                self.kids_of.setdefault(pref, []).append((ref, cid, title, kind))
             if depth == DEPTH_MAX and note.kids and rep is not None:
                 rep.note(path, "trilium_depth")
             for j, c in reversed(list(enumerate(note.kids))):     # zu tief: Kinder auf derselben Ebene wie die Notiz
-                stack.append((c, ref if depth < DEPTH_MAX else pref, path if depth < DEPTH_MAX else ppath, j, depth + 1))
+                stack.append((c, ref if depth < DEPTH_MAX else pref, path if depth < DEPTH_MAX else ppath, j, depth + 1, cid))
         self.stats["hidden"] = sum(1 for x in m.notes if x not in seen and x != m.root and not x.startswith("#"))
 
     def _below(self, nid):
@@ -695,9 +718,11 @@ def work(uid, u, b, parent):
             else:
                 m = zip_model(src, rep)
             plan = build_plan(m, rep, title, want_tags, want_props)
-            if len(plan["items"]) <= 1 and not plan["items"][0].get("body"):
+            if len(plan["items"]) <= 1 and (plan.get("synthetic") or not plan["items"][0].get("body")):
                 raise ic.ImportFail("nothing")
-            return ic.apply_plan(run, plan, parent), parent
+            root_id = ic.apply_plan(run, plan, parent)
+            finish(run, plan, root_id)                 # Bericht unter die Sammelseite, Info-Kasten mit Link
+            return root_id, parent
         except sqlite3.Error:
             if run.id in ic._cancel:
                 raise ic.Cancelled()
@@ -711,34 +736,50 @@ def work(uid, u, b, parent):
 def build_plan(m, rep, title, want_tags, want_props):
     w = Walk(m, rep)
     if w.stats["hidden"]:
-        rep.note("_hidden", "trilium_hidden", n=w.stats["hidden"])
+        rep.note("", "trilium_hidden", n=w.stats["hidden"])
+    if m.orphans:
+        rep.note("", "trilium_orphans", n=m.orphans)
     files, fkeys = {}, {}
 
     def add_file(k, name, size, load, path):
         if size > FILE_MAX:
             rep.skip(path or name, "too_big", mb=FILE_MAX // MB)
             return
-        files[k] = {"name": name, "size": size, "path": path or name, "open": (lambda: io.BytesIO(load()))}
+        # svg: darf (nur bereinigt, saga/svg_clean.py) als Bild gespeichert werden - Rasterbilder/Dateien bleiben, wie sie sind
+        files[k] = {"name": name, "size": size, "path": path or name, "open": (lambda: io.BytesIO(load())), "svg": True}
 
-    nf = 0
-    for kind, nid, _p, ttl, path, _r in w.entries:
+    nf, dropped, colors = 0, 0, 0
+    icons = {}
+    for kind, nid, _p, ttl, path, ref in w.entries:
         if kind not in ("page", "other"):
             continue
         note = m.notes[nid]
+        icons[ref] = _icon(m, w, nid)
+        colors += sum(1 for a in note.attrs if a[0] == "label" and a[1] == "color" and a[2])
         if note.type in ("image", "file") and note.load is not None:
             nf += 1
             fkeys[("n", nid)] = f"f{nf}"
             add_file(f"f{nf}", _file_name(note), note.size or _size(note), note.load, path)
-        for a in note.atts:
+        dropped += sum(1 for a in note.atts if a.role not in ("image", "file"))
+        for a in content_atts(note):
             nf += 1
             fkeys[("a", a.aid)] = f"f{nf}"
             add_file(f"f{nf}", a.title, a.size, a.load, f"{path}/{a.title}")
+    if dropped:
+        rep.note("", "trilium_viewcfg", n=dropped)
+    if colors:
+        rep.note("", "trilium_color", n=colors)
     root = m.notes[m.root]
-    rtitle = title or (root.title if m.root not in ("root", "#zip-root") and root.title else
+    synthetic = m.root in ("root", "#zip-root")
+    rtitle = title or (root.title if not synthetic and root.title else
                        t("Trilium-Import {date}", date=i18n.fmt_date(time.time(), TZ)))
     items = [{"ref": "root", "kind": "page", "parent": None, "title": rtitle, "icon": "📥", "path": rtitle}]
-    if m.root not in ("root", "#zip-root"):
-        _fill(items[0], m, w, root, rtitle, fkeys, files, rep, want_tags, want_props)
+    if synthetic:                                 # ganze Datenbank: Liste der obersten Seiten (Info-Kasten folgt nach dem Lauf)
+        items[0]["body"] = lambda: _overview(m, w, None, "root", icons, rep, rtitle)
+    else:
+        _fill(items[0], m, w, root, rtitle, fkeys, files, rep, want_tags, want_props, ref="root", icons=icons)
+        if _label(m, w, m.root, "fullContentWidth") is not None:
+            items[0]["wide"] = True
     for kind, nid, pref, ttl, path, ref in w.entries:
         it = {"ref": ref, "kind": "page", "parent": pref, "title": ttl, "path": path}
         note = m.notes[nid]
@@ -753,9 +794,204 @@ def build_plan(m, rep, title, want_tags, want_props):
             it["body"] = [{"id": "tl", "type": "callout", "data": {"emoji": "ℹ️", "text": escape(t(
                 "Geschützte Trilium-Notiz – ohne Trilium-Passwort nicht übernommen."), quote=False)}}]
         else:
-            _fill(it, m, w, note, ttl, fkeys, files, rep, want_tags, want_props, other=kind == "other")
+            if icons.get(ref):
+                it["icon"] = icons[ref]
+            if _label(m, w, nid, "fullContentWidth") is not None:
+                it["wide"] = True
+            _fill(it, m, w, note, ttl, fkeys, files, rep, want_tags, want_props, other=kind == "other", ref=ref, icons=icons)
         items.append(it)
-    return {"items": items, "files": files}
+    return {"items": items, "files": files, "synthetic": synthetic}
+
+
+def content_atts(note):
+    """Anhaenge, die Inhalt sind (Bild/Datei). Nicht: viewConfig u. ae. (Ansichtseinstellungen einer Sammlung), bei
+    Mermaid die gespeicherte Vorschau (Saga zeichnet das Diagramm selbst)."""
+    if note.type == "mermaid":
+        return []
+    return [a for a in note.atts if a.role in ("image", "file")]
+
+
+# =====================================================================================================
+# Icons, Attribute ueber Vorlagen/Vererbung
+# =====================================================================================================
+# Boxicons-Klasse (ohne bx/bxs/bxl-Praefix) -> Emoji (Saga-Seitensymbol); unbekannt -> Typ-Standard bzw. keins
+BOXICONS = {
+    "dashboard": "📊", "list-ul": "📋", "list-ol": "📋", "list-check": "✅", "folder": "📁", "folder-open": "📂",
+    "note": "📝", "notepad": "📝", "edit": "📝", "edit-alt": "📝", "pencil": "✏️", "book": "📖", "book-open": "📖",
+    "book-bookmark": "📖", "book-content": "📖", "library": "📚", "bookmark": "🔖", "bookmarks": "🔖", "code": "💻",
+    "code-alt": "💻", "code-block": "💻", "code-curly": "💻", "terminal": "💻", "calendar": "📅", "calendar-star": "📅",
+    "calendar-event": "📅", "calendar-check": "📅", "calendar-alt": "📅", "star": "⭐", "bug": "🐛", "server": "🖥️",
+    "desktop": "🖥️", "laptop": "💻", "chip": "🔌", "plug": "🔌", "cloud": "☁️", "lock": "🔒", "lock-alt": "🔒", "key": "🔑",
+    "link": "🔗", "link-alt": "🔗", "image": "🖼️", "image-alt": "🖼️", "photo-album": "🖼️", "bulb": "💡",
+    "check-square": "✅", "check-circle": "✅", "task": "✅", "home": "🏠", "home-alt": "🏠", "shield": "🛡️",
+    "shield-quarter": "🛡️", "shield-alt": "🛡️", "shield-alt-2": "🛡️", "wrench": "🔧", "cog": "⚙️", "user": "👤",
+    "group": "👥", "envelope": "✉️", "data": "🗄️", "network-chart": "🕸️", "wifi": "📶", "globe": "🌐", "world": "🌐",
+    "map": "🗺️", "map-alt": "🗺️", "table": "📊", "grid": "🔲", "grid-alt": "🔲", "search": "🔎", "file": "📄",
+    "file-blank": "📄", "detail": "📄", "trash": "🗑️", "trash-alt": "🗑️", "history": "🕓", "time": "🕓", "send": "📨",
+    "slideshow": "🎞️", "bar-chart": "📊", "bar-chart-alt-2": "📊", "pie-chart": "📊", "line-chart": "📈", "music": "🎵",
+    "camera": "📷", "video": "🎬", "heart": "❤️", "flag": "🚩", "rocket": "🚀", "game": "🎮", "joystick": "🕹️",
+    "car": "🚗", "cart": "🛒", "dollar": "💲", "wallet": "👛", "chat": "💬", "message": "💬", "message-square-dots": "💬",
+    "phone": "📞", "printer": "🖨️", "hdd": "💾", "save": "💾", "box": "📦", "package": "📦", "archive": "🗃️",
+    "brain": "🧠", "palette": "🎨", "paint": "🎨", "docker": "🐳", "tux": "🐧", "linux": "🐧", "windows": "🪟",
+    "github": "🐙", "apple": "🍎", "android": "🤖", "python": "🐍"}
+TYPE_ICON = {"book": "📚", "code": "💻", "mermaid": "📈", "canvas": "🎨", "relationMap": "🕸️", "search": "🔎",
+             "mindMap": "🧠", "webView": "🌐", "geoMap": "🗺️"}
+
+
+def _boxicon(v):
+    """'bx bx-calendar' / 'bx bxs-dashboard' / 'bx bxl-docker' -> Emoji oder None."""
+    for tok in reversed(str(v or "").split()):
+        mm = re.fullmatch(r"bx[sl]?-([a-z0-9-]{1,60})", tok.strip().lower())
+        if mm:
+            return BOXICONS.get(mm.group(1))
+    return None
+
+
+def _attr_tpl(m, nid, name, inh_only, depth=0):
+    """Label name an der Notiz (nur vererbbare, wenn inh_only) oder an ihren Vorlagen (relation:template, auch im
+    versteckten Baum) -> Wert oder None."""
+    note = m.notes.get(nid)
+    if note is None or depth > 4:
+        return None
+    for a in note.attrs:
+        if a[0] == "label" and a[1] == name and (a[4] or not inh_only):
+            return a[2]
+    for a in note.attrs:
+        if a[0] == "relation" and a[1] == "template" and a[2] != nid:
+            v = _attr_tpl(m, a[2], name, inh_only, depth + 1)
+            if v is not None:
+                return v
+    return None
+
+
+def _label(m, w, nid, name):
+    """Wie Trilium: eigenes Label -> Vorlage -> vererbbares Label eines Vorfahren (erste Stelle im Baum)."""
+    v = _attr_tpl(m, nid, name, False)
+    if v is not None:
+        return v
+    p, k = w.parent.get(nid), 0
+    while p is not None and p in m.notes and k < DEPTH_MAX:
+        v = _attr_tpl(m, p, name, True)
+        if v is not None:
+            return v
+        p, k = w.parent.get(p), k + 1
+    return None
+
+
+def _icon(m, w, nid):
+    return _boxicon(_label(m, w, nid, "iconClass")) or TYPE_ICON.get(m.notes[nid].type)
+
+
+# =====================================================================================================
+# Unterseiten-Uebersicht (Sammlungen, leere Ordner, Sammelseite) - statisch beim Import erzeugt
+# =====================================================================================================
+EXCERPT = 140
+LIST_VIEWS = ("list",)
+CARD_VIEWS = ("grid", "dashboard", "")
+
+
+def _excerpt(m, cid):
+    """Erste Zeichen Klartext einer Kindseite (Code: Sprache) fuer die Karten."""
+    n = m.notes.get(cid)
+    if n is None or n.locked:
+        return ""
+    if n.type in CODE_TYPES:
+        return "Mermaid" if n.type == "mermaid" else (html2blocks.lang_of_mime(n.mime) or "").upper() or t("Code")
+    if n.type != "text" or n.load is None:
+        return ""
+    try:
+        txt = n.load().decode("utf-8", "replace").lstrip("﻿")
+    except (ic.ImportFail, sqlite3.Error, OSError, ValueError):
+        return ""
+    if n.fmt == "markdown" and m.kind == "zip":
+        plain = re.sub(r"!\[[^\]]*\]\([^)]*\)|[#*_`>|]+|\[([^\]]*)\]\([^)]*\)", lambda x: x.group(1) or " ", txt)
+    else:
+        plain = (html2blocks.content_root(txt) if m.kind == "zip" else html2blocks.parse_tree(txt)).text()
+    plain = " ".join(plain.split())
+    if n.title and plain.startswith(n.title):
+        plain = plain[len(n.title):].lstrip(" :–-")
+    return plain[:EXCERPT].rstrip() + ("…" if len(plain) > EXCERPT else "")
+
+
+def _dash_order(m, note):
+    """Dashboard: Position der Kinder aus der viewConfig (widgets: {noteId: {x, y}}) -> {nid: (y, x)}."""
+    a = next((x for x in note.atts if x.role == "viewConfig"), None) if note is not None else None
+    if a is None or a.size > MB:
+        return {}
+    try:
+        d = json.loads(a.load().decode("utf-8", "replace"))
+    except (ValueError, UnicodeError, RecursionError, ic.ImportFail, sqlite3.Error, OSError):
+        return {}
+    ws = d.get("widgets") if isinstance(d, dict) else None
+    out = {}
+    for k, v in (ws.items() if isinstance(ws, dict) else []):
+        if isinstance(v, dict) and isinstance(v.get("y"), (int, float)) and isinstance(v.get("x"), (int, float)):
+            out[k] = (v["y"], v["x"])
+    return out
+
+
+def _overview(m, w, note, ref, icons, rep, path):
+    """Unterseiten als Bloecke: Sammlung (book) nach viewType - grid/dashboard -> Karten (columns + callout je Seite,
+    Dashboard in der Anordnung der viewConfig), list -> Liste mit Auszug, andere Ansichten (calendar, table, board ...)
+    -> Liste + Hinweis; leere Ordnerseite / Sammelseite (note None oder kein book) -> Liste der Seitenlinks."""
+    kids = w.kids_of.get(ref) or []
+    if not kids:
+        return []
+    book = note is not None and note.type == "book"
+    view = (_label(m, w, note.nid, "viewType") or "grid").strip() if book else "list"
+    entries = []
+    for i, (kref, cid, ttl, kind) in enumerate(kids):
+        target = w.refs.get(cid) if kind == "clone" else kref
+        label = _prot_text(ttl or "…")
+        link = f'<a href="/notes#$ref:{target}">{label}</a>' if target else label
+        icon = ("🔒" if kind == "locked" else icons.get(target)) or "📄"
+        ex = _excerpt(m, cid) if book and kind != "locked" else ""
+        entries.append((i, cid, link, icon, ex))
+    if book and view == "dashboard":
+        pos = _dash_order(m, note)
+        entries.sort(key=lambda e: (0, *pos[e[1]], e[0]) if e[1] in pos else (1, 0, 0, e[0]))
+    if book and view in CARD_VIEWS:
+        cards = [{"id": f"tv{k}", "type": "callout", "data": {"emoji": icon, "text": f"<b>{link}</b>" + (
+            "<br>" + _prot_text(ex) if ex else "")}} for k, (_i, _c, link, icon, ex) in enumerate(entries)]
+        if len(cards) == 1:
+            return cards
+        ncol = min(3, len(cards))
+        cols = [{"blocks": []} for _ in range(ncol)]
+        for k, c in enumerate(cards):                       # reihum: Lesereihenfolge zeilenweise wie im Raster
+            cols[k % ncol]["blocks"].append(c)
+        return [{"id": "tvc", "type": "columns", "data": {"cols": cols}}]
+    out = []
+    if book and view not in LIST_VIEWS:
+        rep.note(path, "trilium_view", view=view[:40])
+        out.append({"id": "tvh", "type": "callout", "data": {"emoji": "ℹ️", "text": escape(t(
+            "Trilium-Ansicht „{view}“ – hier als Liste der Unterseiten übernommen.", view=view[:40]), quote=False)}})
+    out.append({"id": "tvl", "type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+        {"content": link + (" – " + _prot_text(ex) if ex else ""), "meta": {}, "items": []} for _i, _c, link, _ic, ex in entries]}})
+    return out
+
+
+def finish(run, plan, root_id):
+    """Nach dem Einspielen: Importbericht als letzte Unterseite der Sammelseite und ein Info-Kasten auf der Sammelseite
+    (ganze Datenbank: oben, exportierter Teilbaum mit eigenem Inhalt: unten) mit Zahlen und Link zum Bericht."""
+    from db import connect
+    from saga import importer
+    if root_id is None:
+        return
+    rid = importer._report_page(run, root_id) if run.report.items else None
+    cnt = run.report.counts
+    txt = escape(t("Aus Trilium importiert am {date} – {pages} Seiten, {files} Dateien.", date=i18n.fmt_date(time.time(), TZ),
+                   pages=max(0, cnt.get("pages", 0) - 1), files=cnt.get("files", 0)), quote=False)
+    if rid:
+        txt += f' <a href="/notes#{int(rid)}">{escape(t("Importbericht"), quote=False)}</a>'
+    blk = {"id": "trinfo", "type": "callout", "data": {"emoji": "ℹ️", "text": txt}}
+    with connect() as c, c:
+        row = c.execute("SELECT body FROM note WHERE id=? AND uid=?", (root_id, run.uid)).fetchone()
+        try:
+            blocks = json.loads(row[0])["blocks"] if row and row[0] else []
+        except (ValueError, KeyError, TypeError):
+            blocks = []
+        blocks = [blk] + blocks if plan.get("synthetic") else blocks + [blk]
+        c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (ic.clean_body(c, run.uid, blocks, ic.Report(), ""), root_id, run.uid))
 
 
 def _size(note):
@@ -768,7 +1004,8 @@ def _size(note):
 def _file_name(note):
     name = note.title or "datei"
     if "." not in name[-6:]:
-        ext = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "application/pdf": ".pdf"}
+        ext = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "application/pdf": ".pdf",
+               "image/svg+xml": ".svg"}
         name += ext.get(note.mime, "")
     return name
 
@@ -780,7 +1017,7 @@ def _prot_text(s):
 def _attr_blocks(note, m, w, want_tags, want_props):
     """-> (tags, eigenschaften-block | None)."""
     tags, rows = [], []
-    for typ, name, val, _pos in note.attrs:
+    for typ, name, val, _pos, _inh in note.attrs:
         low = name.lower()
         if low.startswith(("label:", "relation:", "child:", "runon", "share")):
             continue
@@ -808,21 +1045,24 @@ def _attr_blocks(note, m, w, want_tags, want_props):
             {"content": r, "meta": {}, "items": []} for r in rows[:100]]}}]}}
 
 
-def _fill(it, m, w, note, title, fkeys, files, rep, want_tags, want_props, other=False):
+_FILE_KEY = re.compile(r"\$file:([A-Za-z0-9_.-]{1,80})")
+
+
+def _fill(it, m, w, note, title, fkeys, files, rep, want_tags, want_props, other=False, ref=None, icons=None):
     tags, props = _attr_blocks(note, m, w, want_tags, want_props)
     if tags:
         it["tags"] = tags[:20]
     path = it.get("path") or title
-    if other:
-        rep.note(path, "trilium_type", type=TYPE_NAMES.get(note.type, note.type))
 
     def body():
         out = _content(m, w, note, title, fkeys, files, rep, path, other)
-        used = {b["data"]["file"].get("url") for b in _iter(out) if b.get("type") in ("image", "attaches")
-                and isinstance(b.get("data"), dict) and isinstance(b["data"].get("file"), dict)}
-        for k, a in enumerate(note.atts):            # Anhaenge, die nicht im Text stehen: unten auf der Seite
+        atts = content_atts(note)
+        if ref is not None and (note.type == "book" or (not out and not atts and note.type == "text")):
+            out = out + _overview(m, w, note, ref, icons or {}, rep, path)     # Sammlung bzw. leere Ordnerseite
+        used = set(_FILE_KEY.findall(json.dumps(out)))       # Bild/Datei-Block oder Datei-Link im Text: steht schon da
+        for k, a in enumerate(atts):                 # Anhaenge, die nicht im Text stehen: unten auf der Seite
             key = fkeys.get(("a", a.aid))
-            if key is None or key not in files or "$file:" + key in used:
+            if key is None or key not in files or key in used:
                 continue
             f = {"url": "$file:" + key, "name": a.title, "is_image": m.head(key, a.load)}
             out.append({"id": f"ta{k}", "type": "image", "data": {"file": f, "caption": "", "withBorder": False, "stretched": False,
@@ -921,13 +1161,8 @@ def _content(m, w, note, title, fkeys, files, rep, path, other):
         return [{"id": "ti", "type": "attaches", "data": {"file": f, "title": escape(r[2], quote=False)}}]
     out = []
     if other:
-        hint = t("Trilium-Notiztyp „{type}“ – lässt sich in Saga nicht darstellen.", type=TYPE_NAMES.get(note.type, note.type))
-        src_url = next((v for typ, n, v, _ in note.attrs if typ == "label" and n == "webViewSrc"), "")
-        txt = escape(hint, quote=False)
-        if src_url.lower().startswith(("http://", "https://")):
-            txt += f'<br><a href="{escape(src_url, quote=True)}">{escape(src_url, quote=False)}</a>'
-        return [{"id": "tx", "type": "callout", "data": {"emoji": "ℹ️", "text": txt}}]
-    if note.load is None:
+        return _other(m, note, fkeys, files, rep, path)
+    if note.type == "book" or note.load is None:      # Sammlung: Inhalt ist keine Seite (JSON o. ae.) -> Uebersicht (_fill)
         return out
     try:
         raw = note.load()
@@ -942,6 +1177,7 @@ def _content(m, w, note, title, fkeys, files, rep, path, other):
         blk = html2blocks.code_block(txt, note.mime or ("text/x-mermaid" if note.type == "mermaid" else ""), ctx)
         if note.type == "mermaid":
             blk["data"]["language"] = "mermaid"
+            blk["data"]["view"] = "preview"          # Diagramm zeigen (wie Trilium); die Vorschau-SVG faellt weg
         return [blk]
     if not txt.strip():
         return out
@@ -964,6 +1200,64 @@ def _content(m, w, note, title, fkeys, files, rep, path, other):
     if out and out[0]["type"] == "header" and _plain(out[0]["data"].get("text", "")) == (note.title or "").strip():
         out = out[1:]
     return out
+
+
+PREVIEW_TYPES = ("canvas", "relationMap", "mindMap")
+
+
+def _other(m, note, fkeys, files, rep, path):
+    """Nicht abbildbarer Notiztyp -> Hinweis. Gespeicherte Suche: Suchtext; Zeichenflaeche/Relationskarte/Mind-Map:
+    gespeichertes Vorschaubild (Anhang role image) ueber dem Hinweis; leere Zeichenflaeche: eigener Hinweis."""
+    name = TYPE_NAMES.get(note.type, note.type)
+    if note.type == "search":
+        q = next((v for typ, n, v, _p, _i in note.attrs if typ == "label" and n == "searchString"), "")
+        txt = escape(t("Gespeicherte Suche aus Trilium"), quote=False)
+        if q:
+            txt += ': <code class="inline-code">' + _prot_text(q[:500]) + "</code>"
+        rep.note(path, "trilium_type", type=name)
+        return [{"id": "tx", "type": "callout", "data": {"emoji": "🔎", "text": txt}}]
+    out = []
+    if note.type in PREVIEW_TYPES:
+        for k, a in enumerate(x for x in content_atts(note) if x.role == "image"):
+            key = fkeys.get(("a", a.aid))
+            if key is None or key not in files:
+                continue
+            f = {"url": "$file:" + key, "name": a.title, "is_image": m.head(key, a.load)}
+            if f["is_image"]:
+                out.append({"id": f"tv{k}", "type": "image", "data": {"file": f, "caption": "", "withBorder": False,
+                                                                      "stretched": False, "withBackground": False}})
+    if out:
+        hint = t("{type} aus Trilium – in Saga nur als Vorschaubild verfügbar.", type=name)
+        rep.note(path, "trilium_preview", type=name)
+    elif note.type == "canvas" and _empty_canvas(note):
+        hint = t("Leere Zeichenfläche aus Trilium.")
+        rep.note(path, "trilium_type", type=name)
+    else:
+        hint = t("Trilium-Notiztyp „{type}“ – lässt sich in Saga nicht darstellen.", type=name)
+        rep.note(path, "trilium_type", type=name)
+    src_url = next((v for typ, n, v, _p, _i in note.attrs if typ == "label" and n == "webViewSrc"), "")
+    txt = escape(hint, quote=False)
+    if src_url.lower().startswith(("http://", "https://")):
+        txt += f'<br><a href="{escape(src_url, quote=True)}">{escape(src_url, quote=False)}</a>'
+    return out + [{"id": "tx", "type": "callout", "data": {"emoji": "ℹ️", "text": txt}}]
+
+
+def _empty_canvas(note):
+    """Canvas ohne Inhalt (leer bzw. {"elements": []} ohne sichtbare Elemente)."""
+    if note.load is None:
+        return True
+    try:
+        raw = note.load()
+    except (ic.ImportFail, sqlite3.Error, OSError):
+        return False
+    if not raw.strip():
+        return True
+    try:
+        d = json.loads(raw.decode("utf-8", "replace"))
+    except (ValueError, RecursionError):
+        return False
+    els = d.get("elements") if isinstance(d, dict) else None
+    return isinstance(els, list) and not any(isinstance(e, dict) and not e.get("isDeleted") for e in els)
 
 
 _MD_IMG = re.compile(r"[ \t]*(!\[[^\]\n]{0,500}\]\([^)\s]{1,1000}\))[ \t]*")
