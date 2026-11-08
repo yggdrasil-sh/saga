@@ -30,7 +30,7 @@ from saga import bus, calls, chat, fed_chat as FC, federation as F, horn, sharin
 from saga.core import _bad, t
 
 router = FC.router                      # gleiche Router-Einbindung wie die Chats (app.py)
-OPS = ("ring", "answer", "signal", "end", "decline", "alive", "join", "leave", "roster", "invite", "dmhorn")
+OPS = ("ring", "answer", "signal", "end", "decline", "alive", "join", "leave", "roster", "invite", "dmhorn", "dmhorn_lead")
 
 
 def peer_ok(p):
@@ -334,7 +334,7 @@ def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop"):
         h = FC.handle_of(other)
         p = F.peer_by(c, "host", FC.split_handle(h)[1])
         if not peer_horn_dm(p):
-            return calls._fallback("fed")
+            return calls._fallback("old")              # Horn-Fix: Gegenstelle kann kein 1:1 ueber Knoten - direkt mit Hinweis
         if not calls.horn.any_ready(c) or not FH.fed_ok(c, ch)[0]:
             return calls._fallback("node")
         if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
@@ -369,6 +369,83 @@ def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop"):
         out = calls._dict(c, call, uid)
         out["horn"] = calls.horn_block(c, call, dev, "member", dev_class)
         print(f"call: {cid[:8]} 1:1 ueber Knoten klingelt bei {p['host']} ({media})", flush=True)
+    return chat._no_store({"ok": True, "call": out})
+
+
+def peer_horn_req(p):
+    """Horn-Fix: die Gegenstelle besteht auf Knoten fuer 1:1 (calls.horn_all dort) und kann dmhorn - beide melden horn_dm."""
+    return peer_horn_dm(p) and F.peer_has(p, "horn_req")
+
+
+def dm_horn_route(uid, ch, cid, media, dev, caps, dev_class="desktop"):
+    """POST /api/calls {via: "horn"} im foederierten Direkt-Chat: Besteht der Server des Gegenuebers auf Knoten (horn_req),
+    fuehrt ER den Anruf ueber seine geteilten Knoten (Auftrag dmhorn_lead) - egal ob hier calls.horn_all an ist. Sonst wie
+    bisher: mit calls.horn_all fuehren wir (dm_horn_start), ohne: 409 fallback off (direkt).
+    Gegenueber zu alt (kann kein dmhorn): fallback old (direkt mit Hinweis)."""
+    with _db() as c:
+        other = next((u for u in chat.members(c, ch["id"]) if sharing.is_remote(u)), None)
+        p = F.peer_by(c, "host", FC.split_handle(FC.handle_of(other))[1]) if other else None
+    if p and peer_horn_req(p):
+        return dm_horn_lead_start(uid, ch, cid, media, dev, caps, p)
+    if not calls.horn_dm_on():
+        return calls._fallback("off")
+    return dm_horn_start(uid, ch, cid, media, dev, caps, dev_class)
+
+
+def dm_horn_lead_start(uid, ch, cid, media, dev, caps, p):
+    """Horn-Fix: der Server des Gegenuebers (Horn-Besitzer) fuehrt den Anruf - dort anlegen und klingeln lassen (synchron,
+    Auftrag dmhorn_lead), hier spiegeln (lead = dort) wie beim Gruppenanruf mit fremdem Heim. Kandidaten: geteilte Knoten
+    dort (FH.block). Geht es dort nicht: 409 fallback direct (nichts angelegt)."""
+    if not (calls._has(caps, "horn") and calls._has(caps, "multi")):
+        return calls._fallback("caps")
+    with _db() as c:
+        m = chat._member(c, ch["id"], uid)
+        other = next((u for u in chat.members(c, ch["id"]) if sharing.is_remote(u)), None)
+        ro = FC._ro_error(c, ch)
+        if ro:
+            return _bad(ro, 403)
+        if not other or not m or m.get("state") != "ok":
+            return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
+        if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
+            return _bad(t("Diesen Anruf gibt es schon."), 409)
+        if calls._busy(c, uid):
+            return _bad(t("Du telefonierst gerade schon."), 409)
+        if not calls._rate("call", uid, calls.CALL_RATE) or not calls._rate("call-h", uid, calls.CALL_RATE_H, 3600) \
+                or not calls._rate("pair", uid + "|" + other, calls.PAIR_RATE):
+            return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+        mh = FC.my_handle(c, uid)
+        dname = calls._dev_name(c, dev)
+        name = FC.label_of(c, other)["name"]
+    st, d = FC.sync_call(p, {"op": "dmhorn_lead", "id": cid, "ref": ch["ref"], "actor": mh, "device": dev, "media": media,
+                             "caps": calls.caps_out(caps), "name": dname, **_horn_hint(caps)}, path="/fed/v2/call")
+    d = d if isinstance(d, dict) else {}
+    if st is None:
+        FC._volatile(p["id"], {"op": "end", "id": cid, "actor": mh, "reason": "cancelled"}, path="/fed/v2/call", drop=False)
+        return _bad(t("Der Server {host} ist gerade nicht erreichbar.", host=p["host"]), 502)
+    if st == 409 and d.get("busy"):
+        return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)
+    if st == 409 and d.get("error") == "request":
+        return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
+    if st == 409 and d.get("horn_block") in ("peer", "off", "node"):
+        return calls._fallback(d["horn_block"])
+    if st == 429:
+        return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+    if st != 200:
+        return calls._fallback("fed")
+    now = time.time()
+    with _db() as c, c:
+        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
+                  "lead, peer_id) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,'horn',?,?) ON CONFLICT (id) DO NOTHING",
+                  (cid, ch["id"], uid, other, dev, media, now, now, now, caps, p["id"], p["id"]))
+        calls._leg_put(c, cid, dev, uid, "member", None, caps, name=dname, now=now)
+        call = calls._load(c, cid)
+        _apply_legs(c, call, p, d.get("legs"))
+        calls.emit_roster(c, call, fed=False)
+        out = calls._dict(c, calls._load(c, cid), uid)
+        print(f"call: {cid[:8]} 1:1 ueber Knoten von {p['host']} (dort gefuehrt, {media})", flush=True)
+    out["horn"], err = _horn_block(uid, call, dev, "member")
+    if err:
+        return err
     return chat._no_store({"ok": True, "call": out})
 
 
@@ -986,6 +1063,11 @@ def op_roster(c, peer, d):
         _RV[cid] = rv
         if len(_RV) > 5000:
             _RV.clear()
+    if call.get("topo") == "horn" and d.get("topo") == "mesh" and call["kind"] == "group":
+        # Horn-Fix: der fuehrende Server hat auf direkt gewechselt (kein Knoten erreichbar) - nur in diese Richtung
+        c.execute("UPDATE chat_call SET topo='mesh' WHERE id=?", (cid,))
+        call = calls._load(c, cid, lock=True)
+        calls._emit(c, calls._audience(c, call), "call.topo", {"call_id": cid, "chat_id": call["chat_id"], "topo": "mesh", "why": "node"})
     _apply_legs(c, call, peer, d.get("legs"), gone=d.get("gone"))
     if call["kind"] == "dm":
         _dm_devices(c, call, d)
@@ -1173,7 +1255,51 @@ def op_dmhorn(c, peer, d):
     return 200, {"ok": True}
 
 
-HANDLERS.update(join=op_join, leave=op_leave, roster=op_roster, invite=op_invite, dmhorn=op_dmhorn, promote=op_promote)
+def op_dmhorn_lead(c, peer, d):
+    """Horn-Fix ("Horn-Besitzer bestimmt"): der Server des Gegenuebers bittet uns, einen 1:1-Anruf aus dem foederierten
+    Direkt-Chat zu FUEHREN, weil wir auf Knoten bestehen (horn_req, calls.horn_all) - auch wenn dort horn_all aus ist. Wir
+    legen den Raum-Anruf ueber Knoten an (Endpunkt der anrufenden Person auf deren Server, callee = unser Konto) und
+    klingeln. Kandidaten fuer die anrufende Person: unsere geteilten Knoten (Auftrag horn). 409 horn_block off|node|peer:
+    nichts angelegt, dort ruft man direkt an."""
+    h, p_ = _actor3(c, peer, d)
+    cid, media, dev = d.get("id"), d.get("media"), d.get("device")
+    if not h or not (isinstance(cid, str) and FC._HEX32.fullmatch(cid) and media in calls.MEDIA and isinstance(dev, str) and FC._HEX32.fullmatch(dev)):
+        return 400, {"error": "bad request"}
+    if not peer_horn_dm(peer):
+        return 403, {"error": "horn disabled"}
+    ch = FC._from_home(c, peer, {"ref": d.get("ref")}) if FC.split_ref(d.get("ref"))[1] == peer["host"] else FC._home_chat(c, d)
+    mem = dict(FC.members(c, ch["id"])) if ch else {}
+    if not ch or ch["kind"] != "dm" or p_ not in mem:
+        return 404, {"error": "unknown chat"}
+    callee = next((u for u in mem if not sharing.is_remote(u)), None)
+    if not callee or mem[callee] != "ok" or mem[p_] != "ok" or ch["fstate"] or FC.blocked(c, callee, h):
+        return 409, {"error": "request"}
+    if not calls.enabled():
+        return 403, {"error": "calls disabled"}
+    if not calls.horn_dm_on():
+        return 409, {"horn_block": "off"}
+    if not FH.may_share(c, peer["id"]):                # Teilen aus/Notaus/kein geteilter Knoten: direkt
+        return 409, {"horn_block": "node"}
+    caps = calls.caps_in(d.get("caps"))
+    if not (calls._has(caps, "horn") and calls._has(caps, "multi")):
+        return 409, {"horn_block": "peer"}
+    if not calls._can_horn(c, callee):
+        return 409, {"horn_block": "peer"}
+    if not F._rate.allow("cring:" + h, calls.CALL_RATE) or not F._rate.allow("cringp:" + peer["host"], calls.CALL_RATE * 20):
+        return 429, {"error": "too many calls"}
+    if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
+        return 409, {"error": "duplicate id"}
+    if calls._busy_other(c, callee, cid):
+        return 409, {"busy": True}
+    now = time.time()
+    FH.note_nodes(peer["id"], d)
+    call = calls.group_create(c, ch, cid, media, p_, dev, caps, now, peer_id=peer["id"], name=_name(d), dm_peer=callee)
+    print(f"call: {cid[:8]} 1:1 ueber Knoten, wir fuehren (Anruf von {peer['host']}, {media})", flush=True)
+    return 200, {"ok": True, "role": "member", "legs": [_leg_out(c, x) for x in calls._legs(c, cid)], "topo": call.get("topo") or "horn"}
+
+
+HANDLERS.update(join=op_join, leave=op_leave, roster=op_roster, invite=op_invite, dmhorn=op_dmhorn, promote=op_promote,
+                dmhorn_lead=op_dmhorn_lead)
 
 
 @router.post("/fed/v2/call")

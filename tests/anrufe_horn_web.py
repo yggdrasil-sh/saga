@@ -353,6 +353,62 @@ def server_tests():
         req("POST", f"/api/calls/{cid}/leave", p.k, {"device": p.dev["id"]})
     sa.close()
     sd.close()
+    direct_tests(people, gid)
+
+
+def direct_tests(people, gid):
+    """Horn-Fix: laufender Anruf ueber Knoten -> direkt (POST /direct). Nur, wenn wirklich kein Knoten geht: bereite Knoten
+    -> 409 node_ready (mit Kandidaten); alle gemieden, aber ohne Nachweis (>= 3 /horn in der Minute) -> 409; mit Nachweis
+    -> 200 topo mesh, offer_to (groessere Geraete-IDs), call.topo an alle, Liste mit topo mesh, idempotent; danach kein /horn
+    mehr. Mehr Geraete als die Mesh-Grenze -> 409 limit."""
+    A, B, Cc, D, E = (people[u] for u, _ in USERS)
+    allx = ["localhost", B_NAME]
+    cid = secrets.token_hex(16)
+    sa = A_.Stream(A.k)
+    s, d = req("POST", "/api/calls", A.k, {"id": cid, "chat_id": gid, "media": "video", "device": A.dev["id"], "caps": CAPS})
+    s2, _ = req("POST", f"/api/calls/{cid}/join", E.k, {"device": E.dev["id"], "role": "member", "caps": CAPS})
+    ok(f"direkt: Anruf ueber Knoten mit 2 Geraeten ({s}, {s2}, {(d.get('call') or {}).get('topo')})", s == 200 and s2 == 200
+       and d["call"]["topo"] == "horn")
+    s, d = req("POST", f"/api/calls/{cid}/direct", E.k, {"device": E.dev["id"]})
+    ok(f"direkt: bereite Knoten, nichts gemieden -> 409 node_ready mit Kandidaten ({s}, {d.get('horn_block')})",
+       s == 409 and d.get("horn_block") == "node_ready" and cands_of({"horn": d.get("horn")}))
+    s, d = req("POST", f"/api/calls/{cid}/direct", E.k, {"device": E.dev["id"], "avoid": allx})
+    ok(f"direkt: alle gemieden, aber kein Nachweis des Wiederaufbaus -> 409 ({s}, {d.get('horn_block')})", s == 409 and d.get("horn_block") == "node_ready")
+    for _ in range(3):
+        req("POST", f"/api/calls/{cid}/horn", E.k, {"device": E.dev["id"], "avoid": allx})
+    m0 = sa.mark()
+    s, d = req("POST", f"/api/calls/{cid}/direct", E.k, {"device": E.dev["id"], "avoid": allx})
+    want = sorted(x for x in (A.dev["id"], E.dev["id"]) if x > E.dev["id"])
+    ok(f"direkt: mit Nachweis -> 200, topo mesh, offer_to = groessere IDs ({s}, {(d.get('call') or {}).get('topo')}, {d.get('offer_to')})",
+       s == 200 and d["call"]["topo"] == "mesh" and d.get("offer_to") == want, d)
+    ev = sa.wait("call.topo", lambda x: x.get("call_id") == cid, since=m0)
+    ros = sa.wait("call.roster", lambda x: x.get("call_id") == cid and x.get("topo") == "mesh", since=m0)
+    ok(f"direkt: call.topo an die anderen (why node, by E) und Liste mit topo mesh ({ev})", ev and ev.get("topo") == "mesh"
+       and ev.get("why") == "node" and ev.get("by") == E.dev["id"] and ros)
+    with connect() as c:
+        r = c.execute("SELECT topo FROM chat_call WHERE id=?", (cid,)).fetchone()
+        nn = c.execute("SELECT COUNT(*) FROM chat_call_leg WHERE call_id=? AND node IS NOT NULL", (cid,)).fetchone()[0]
+    ok(f"direkt: Datenbank topo mesh, keine Knoten an den Endpunkten ({r}, {nn})", r and r[0] == "mesh" and nn == 0)
+    s, d = req("POST", f"/api/calls/{cid}/direct", A.k, {"device": A.dev["id"]})
+    ok(f"direkt: zweite Anfrage (anderes Geraet) idempotent 200 ({s}, offer_to {d.get('offer_to')})", s == 200 and d["call"]["topo"] == "mesh"
+       and d.get("offer_to") == sorted(x for x in (A.dev["id"], E.dev["id"]) if x > A.dev["id"]))
+    s, d = req("POST", f"/api/calls/{cid}/horn", A.k, {"device": A.dev["id"]})
+    ok(f"direkt: danach kein /horn mehr (409, {s})", s == 409)
+    req("POST", f"/api/calls/{cid}/end", A.k, {"device": A.dev["id"]})
+    req("POST", f"/api/calls/{cid}/leave", E.k, {"device": E.dev["id"]})
+    # Grenze: 5 Geraete mit Video (Mesh hoechstens 4)
+    cid = secrets.token_hex(16)
+    s, d = req("POST", "/api/calls", A.k, {"id": cid, "chat_id": gid, "media": "video", "device": A.dev["id"], "caps": CAPS})
+    js = [req("POST", f"/api/calls/{cid}/join", p.k, {"device": p.dev["id"], "role": "member", "caps": CAPS})[0] for p in (B, Cc, D, E)]
+    for _ in range(3):
+        req("POST", f"/api/calls/{cid}/horn", D.k, {"device": D.dev["id"], "avoid": allx})
+    s, d = req("POST", f"/api/calls/{cid}/direct", D.k, {"device": D.dev["id"], "avoid": allx})
+    ok(f"direkt: 5 Geraete mit Video (Mesh-Grenze 4) -> 409 limit ({js}, {s}, {d.get('horn_block')}, {d.get('limit')})",
+       js == [200] * 4 and s == 409 and d.get("horn_block") == "limit" and d.get("limit") == 4)
+    req("POST", f"/api/calls/{cid}/end", A.k, {"device": A.dev["id"]})
+    for p in (B, Cc, D, E):
+        req("POST", f"/api/calls/{cid}/leave", p.k, {"device": p.dev["id"]})
+    sa.close()
 
 
 def browser():

@@ -263,9 +263,17 @@ ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.
      H.retryAfterMs({ status: 429, data: { retry_after: 12 } }) === 12000 && H.retryAfterMs({ status: 429 }) === 5000
      && H.retryAfterMs({ status: 409, data: { retry_after: 3 } }) === 0 && H.retryAfterMs(null) === 0);
   const W5 = new H.Reconnect(); W5.lost(0);
-  let t = 0, d, n = 0;
-  while (!(d = W5.fail(t, 0, 0.5)).giveUp && n < 100) { t += d.wait; n++; }
-  ok(`Aufgabe nach 120 s ohne Erfolg (${n} Versuche, letzter bei ${t / 1000} s)`, d.giveUp && t === 120000 && n >= 8 && n <= 14);
+  let t = 0, d, n = 0, dir = [];
+  while (!(d = W5.fail(t, 0, 0.5)).giveUp && n < 100) {
+    if (d.direct) { dir.push(t); if (dir.length === 1) W5.directRefused('node_ready'); else W5.directRefused('limit'); continue; }
+    t += d.wait; n++;
+  }
+  ok(`nach 30 s direkt anfragen, abgelehnt (node_ready) erneut nach >= 15 s, nach limit nie mehr (${dir})`,
+     dir.length === 2 && dir[0] >= 30000 && dir[0] < 46000 && dir[1] - dir[0] >= 15000);
+  ok(`ohne Direkt-Weg: Aufgabe nach 120 s (${n} Versuche, letzter bei ${t / 1000} s)`, d.giveUp && t === 120000 && n >= 8 && n <= 14);
+  const W8 = new H.Reconnect(); W8.lost(0); let t8 = 0, d8;
+  while (!(d8 = W8.fail(t8, 0, 0.5)).direct && !d8.giveUp) t8 += d8.wait;
+  ok(`erste Direkt-Anfrage nach ${t8 / 1000} s (>= 30 s, Backoff-Raster)`, d8.direct && t8 >= 30000 && t8 <= 45000);
   const W6 = new H.Reconnect(); W6.lost(0); W6.fail(0, 0, 0.5); W6.fail(1000, 0, 0.5);
   W6.adopted(4000);
   ok('nach dem Uebernehmen ohne Daten noch aktiv (Monitor bleibt stumm, Hinweis bleibt)', W6.active());

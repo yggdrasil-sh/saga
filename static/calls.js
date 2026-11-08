@@ -691,7 +691,10 @@
     if ((chat.v === 2 || chat.v === 3) && (chat.request || chat.readonly)) { HK.toast(T('Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben.')); return; }
     if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
     // 2.5: "Alle Anrufe ueber Knoten" (horn_dm) - 1:1 als Raum-Anruf ueber einen Knoten; geht es nicht: direkt wie bisher
-    if (!direct && cfg && cfg.horn_dm && myCaps().indexOf('horn') >= 0 && myCaps().indexOf('multi') >= 0) { startGroup(chat, video, true, true); return; }
+    // Horn-Fix: im foederierten Direkt-Chat auch ohne horn_dm hier (horn_dm_fed) - besteht der andere Server auf Knoten,
+    // fuehrt er den Anruf; sonst antwortet der Server 409 fallback (off) und es geht direkt wie bisher
+    var viaHorn = cfg && (cfg.horn_dm || (cfg.horn_dm_fed && chat.peer && chat.peer.handle));
+    if (!direct && viaHorn && myCaps().indexOf('horn') >= 0 && myCaps().indexOf('multi') >= 0) { startGroup(chat, video, true, true); return; }
     var c = C = newCall({ chat_id: chat.id, role: 'caller', media: video ? 'video' : 'audio', peer: chat.peer, v2: (chat.v === 2 || chat.v === 3) });
     audioCtx();
     win(c); status(c, T('Kamera und Mikrofon …'));
@@ -1170,6 +1173,9 @@
       var run = e && e.status === 409 && e.data && e.data.running;
       R.id = null;
       if (dm && e && e.status === 409 && e.data && e.data.fallback === 'direct') {   // 2.5: wie bisher direkt anrufen
+        var hb = e.data.horn_block;                     // Horn-Fix: Grund nennen (kein Knoten bzw. alte Gegenstelle)
+        if (hb === 'node') HK.toast(T('Anruf-Knoten nicht erreichbar – direkt verbunden'), null, null, 8000);
+        else if (hb === 'old' || hb === 'peer') HK.toast(T('Gegenstelle veraltet – direkt verbunden'), null, null, 8000);
         R.ending = true; finish(R, '', 'info'); closeWin(R); start(chat, video, true); return;
       }
       if (dm && e && e.status === 409 && e.data && e.data.busy) { finish(R, T('Besetzt – {name} telefoniert gerade.', { name: R.peer.name || '?' }), 'busy'); return; }
@@ -3304,6 +3310,7 @@
     }, function (e) {
       if (!live(R) || e === null) throw null;
       hornErr(H, c.node, e);
+      (H.tried = H.tried || {})[c.node] = true;       // Horn-Fix: fuer POST /direct (avoid)
       if (e && e.status === 404) throw new Error(T('Der Anruf ist schon beendet.'));
       H.bad[c.node] = Date.now() + HORN_BAD_MS;
       var nx = list[i + 1];
@@ -3671,6 +3678,7 @@
     hornLog(H, cur, 'switch lost');
     H.rcKeep = cur ? cur.node : null;
     H.leaving = null;
+    if (cur) (H.tried = H.tried || {})[cur.node] = true;
     hornNote(R, T('Verbindung wird wiederhergestellt …'));
     if (H.rc.lost(Date.now())) hornAttempt(R, 'lost');
     else hornRetry(R, 'lost');                         // Verlust kurz nach dem Wiederaufbau: Fehlversuch, Backoff
@@ -3700,6 +3708,8 @@
     H.rc = H.rc || new H.L.Reconnect();
     var now = Date.now(), ra = Math.max(H.L.retryAfterMs(e), (H.raUntil || 0) - now, 0);
     var d = H.rc.fail(now, ra, Math.random());
+    if (d.direct && feat('horn_direct1') && R.id) { hornDirect(R, why); return; }   // 30 s ohne Knoten: direkt (Server prueft)
+    if (d.direct) d = H.rc.fail(now, ra, Math.random());   // alter Server: kein Direkt-Wechsel
     if (d.giveUp) { fail(R, T('Die Verbindung zum Anruf-Knoten ließ sich nicht wiederherstellen.')); return; }
     // Nr. 119: Notaus bzw. erschoepftes Kontingent beim anderen Server - Wiederholen hilft nicht (Notaus) bzw. selten
     // (Kontingent: hoechstens drei Versuche), statt bis zu 2 min "neuer Versuch" zu zeigen
@@ -3708,6 +3718,53 @@
       : T('Kein Knoten erreichbar – neuer Versuch in {s} s …', { s: Math.max(1, Math.round(d.wait / 1000)) })));
     hornLog(H, null, 'retry ' + d.n + ' in ' + d.wait + 'ms');
     H.rcT = setTimeout(function () { H.rcT = null; hornAttempt(R, why); }, d.wait);
+  }
+  // Horn-Fix: 30 s ohne Knoten - den Server um den Wechsel auf direkt bitten (er prueft, dass wirklich keiner geht)
+  function hornDirect(R, why) {
+    var H = R.horn; if (!H || !live(R)) return;
+    H.switching = true;
+    hornLog(H, null, 'direct?');
+    api('POST', '/api/calls/' + R.id + '/direct', { device: myDev().id, avoid: Object.keys(H.tried || {}) }).then(function (r) {
+      H.switching = false;
+      if (!live(R)) return;
+      hornToMesh(R, r.offer_to);
+    }, function (e) {
+      H.switching = false;
+      if (!live(R) || e === null) return;
+      if (e && (e.status === 404 || e.message === T('Der Anruf ist schon beendet.'))) { remoteEnded(R, {}); return; }
+      var hb = e && e.data && e.data.horn_block;
+      if (hb) H.rc.directRefused(hb);
+      hornErr(H, '', e); hornRetry(R, why, e);
+    });
+  }
+  // Horn-Fix: Anruf laeuft jetzt direkt (eigene Anfrage oder call.topo) - Knoten-Verbindungen schliessen, Mesh wie im
+  // Gruppenanruf: Angebote nur an Endpunkte mit groesserer Geraete-ID (kein Glare), von kleineren kommen sie
+  function hornToMesh(R, offerTo) {
+    if (!R.horn || R.done) return;
+    hornStop(R); R.horn = null;
+    if (R.call) R.call.topo = 'mesh';
+    R.directNote = T('Anruf-Knoten nicht erreichbar – direkt verbunden');
+    HK.toast(R.directNote, null, null, 12000);
+    status(R, R.directNote);
+    var me_ = myDev().id;
+    var list = Array.isArray(offerTo) ? offerTo : (R.legs || []).filter(function (x) { return x.device > me_; }).map(function (x) { return x.device; });
+    list.forEach(function (dev) { meshOffer(R, dev); });
+    drawTiles(R); drawCtl(R); drawInfo(R); drawMedia(R);
+  }
+  function meshOffer(R, dev) {
+    var x = legOf(R, dev); if (!x || linkOf(R, dev) || !live(R)) return;
+    var L = newLink(R, dev, personOf(x));
+    peerKeys(L).then(function () {
+      if (!L.peerDevs[dev]) { dropLink(L, T('Unbekanntes Gerät von {name} abgelehnt.', { name: x.name || '?' })); return; }
+      L.pc = makePC(L); addLocal(L, L.pc, false);
+      return L.pc.createOffer().then(function (o) { return L.pc.setLocalDescription(o); }).then(function () {
+        L.n = 1;
+        return sendSignal(L, sdpBody(L, 'offer', L.pc.localDescription.sdp, 1));
+      }).then(function () {
+        flushIce(L);
+        L.connT = setTimeout(function () { if (live(L) && !L.connected) iceFailed(L); }, 30000);
+      });
+    }).catch(function (e) { if (live(L)) dropLink(L, T('Verbindung nicht aufgebaut: {err}', { err: (e && e.message) || '?' })); });
   }
   // Neuzeichnen gebuendelt (Meldungen des Workers kommen je Empfaenger einzeln)
   function hornDrawSoon(R) {
@@ -3756,7 +3813,7 @@
       });
       if (got || now - c.up > 1500) {
         c.rx = now;
-        if (c === H.cur && H.rc && H.rc.active()) { H.rc.rx(); H.rcKeep = null; H.raUntil = 0; hornLog(H, c, 'wieder da'); }
+        if (c === H.cur && H.rc && H.rc.active()) { H.rc.rx(); H.rcKeep = null; H.raUntil = 0; H.tried = {}; hornLog(H, c, 'wieder da'); }
       }
     });
     // Alte Verbindungen schliessen (make-before-break): 2 s nachdem die neue liefert, wenn die alte nichts Eigenes mehr
@@ -4370,6 +4427,8 @@
     else if (t === 'call.invite') {                   // 2.4: Gruppenanruf klingelt (grosse Gruppen: still, nur die Leiste)
       if (!(C && C.id === d.call_id)) ring(Object.assign({}, d, { group: true }));
       runCheck();
+    } else if (t === 'call.topo') {                   // Horn-Fix: Anruf ueber Knoten laeuft jetzt direkt
+      if (C && C.id === d.call_id && C.horn && d.topo === 'mesh') hornToMesh(C, null);
     } else if (t === 'call.roster') {                 // 2.4: Teilnehmerliste (laufender Anruf, Leiste auf anderen Geraeten)
       if (C && C.id === d.call_id && C.ready) rosterIn(C, d.legs, d);
       runCheck();

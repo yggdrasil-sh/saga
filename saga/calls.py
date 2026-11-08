@@ -109,6 +109,7 @@ CALL_RATE, CALL_RATE_H = 6, 40         # neue Anrufe je Konto: je Minute / je St
 HANDOVER_S = 15                        # Uebernahme darf so lange dauern (config limits.handover_s)
 HORN_RATE = 30                         # 2.5: Kandidaten-Abrufe (/horn) je Geraet und Minute (Datenbank) - Wiederaufbau mit Backoff
                                        # (1/2/4/8/15 s, je Versuch <= 2 Abrufe) und Erneuern (alle ~45 s) bleiben weit darunter
+DIRECT_PROOF = 3                       # Horn-Fix: so viele /horn-Abrufe in der Minute, bevor direkt trotz bereiter Knoten geht
 HO_RATE = 20                           # 2.5: Uebernahmen (join role handover, promote) je Konto und Minute - eigener Topf
 PAIR_RATE = 3                          # an dieselbe Person je Minute
 ALIVE_GAP = 45                         # so lange ohne /alive -> Verbindung gilt als verloren
@@ -158,7 +159,8 @@ FEATURE_HO = "handover2"                # 2.5 Anruf-Uebergabe: gen, /leave by/ge
 
 
 def features():
-    return list(FEATURES) + [FEATURE_HO] + (["horn"] if horn_on() else [])
+    # horn_direct1 (Horn-Fix): 429 mit Retry-After auf /horn, POST /direct (Rueckfall auf direkt), call.topo
+    return list(FEATURES) + [FEATURE_HO] + (["horn", "horn_direct1"] if horn_on() else [])
 
 
 def ring_s():
@@ -743,7 +745,8 @@ def api_config(request: Request):
                            "turn": has_turn(), "stun": bool(urls(c.get("stun"), ("stun", "stuns"))[0]), "ring_s": ring_s(),
                            "alive_s": 15, "max_s": MAX_S, "format": "saga-call/v1",
                            # 2.4: Body-Fassung, Server-Faehigkeiten und Grenzen (E4/E5: Endpunkte je Anruf im Mesh)
-                           "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1", "horn_ready": _horn_ready(), "horn_dm": horn_dm_on()} if horn_on() else {}),
+                           "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1", "horn_ready": _horn_ready(), "horn_dm": horn_dm_on(),
+                                                                                   "horn_dm_fed": FED is not None} if horn_on() else {}),
                            "limits": {"endpoints_video": limit("video"), "endpoints_audio": limit("audio"), "signals_max": SIGNALS_MAX,
                                       "signals_per_min": SIG_PER_MIN, "signals_hard": SIGNALS_HARD, "sig_rate": SIG_RATE,
                                       "sealed_max": SEALED_MAX, "caps_max": CAPS_MAX, "ring_silent": RING_SILENT, "handover_s": HANDOVER_S,
@@ -831,9 +834,10 @@ async def api_call(request: Request):
             if gr is not None:
                 return gr
             fed = ("group", ch)
-        elif b.get("via") == "horn" and not horn_dm_on():
+        elif b.get("via") == "horn" and not horn_dm_on() and not (chat.is_fed(ch) and horn_on()):
             return _fallback("off")
         elif b.get("via") == "horn" and chat.is_fed(ch):   # 2.5: 1:1 ueber Knoten mit einem anderen Server (Auftrag dmhorn)
+            # Horn-Fix: auch ohne calls.horn_all hier - besteht der andere Server auf Knoten, fuehrt er (dm_horn_route)
             if FED is None:
                 return _fallback("fed")
             if not _my_device(c, uid, dev):
@@ -856,7 +860,7 @@ async def api_call(request: Request):
     if fed is not None and fed[0] == "group":
         return await run_in_threadpool(FED.group_start, uid, fed[1], cid, media, dev, caps)
     if fed is not None and fed[0] == "dmhorn":
-        return await run_in_threadpool(FED.dm_horn_start, uid, fed[1], cid, media, dev, caps, _dev_class(b))
+        return await run_in_threadpool(FED.dm_horn_route, uid, fed[1], cid, media, dev, caps, _dev_class(b))
     if fed is not None:
         return await run_in_threadpool(FED.start, uid, fed[0], cid, media, dev, fed[1], caps)
     with _db() as c, c:
@@ -927,7 +931,8 @@ def _fallback(why):
            "caps": t("Dieses Gerät kann keine Anrufe über Knoten."),
            "node": t("Gerade ist kein Knoten bereit."),
            "peer": t("Das Gegenüber hat kein Gerät, das Anrufe über Knoten kann."),
-           "fed": t("Anrufe mit anderen Servern laufen direkt.")}.get(why, "")
+           "fed": t("Anrufe mit anderen Servern laufen direkt."),
+           "old": t("Gegenstelle veraltet – direkt verbunden")}.get(why, "")
     return chat._no_store({"error": msg, "fallback": "direct", "horn_block": why}, 409)
 
 
@@ -1559,6 +1564,64 @@ async def api_horn(cid: str, request: Request):
     if err:
         return _bad(err, 409)
     return chat._no_store({"ok": True, "horn": blk})
+
+
+@router.post("/api/calls/{cid}/direct")
+async def api_direct(cid: str, request: Request):
+    """Horn-Fix (Vertrag docs/APP-API.md "Rueckfall auf direkt"): laufender Anruf ueber einen Knoten -> direkt (Mesh), wenn
+    wirklich kein Knoten verfuegbar ist: {device, avoid?}. Erlaubt, wenn fuer dieses Geraet kein Kandidat bereit ist, oder
+    alle Kandidaten in avoid stehen (das Geraet erreicht sie nicht) und es in der laufenden Minute schon mindestens
+    DIRECT_PROOF Kandidaten-Abrufe (/horn) gemacht hat. Dazu: hoechstens so viele aktive Endpunkte wie die Mesh-Grenze.
+    -> 200 {ok, call, offer_to}; 409 horn_block node_ready (mit horn) | limit | fed; 404 beendet. Einmal direkt, bleibt der
+    Anruf direkt (call.topo an alle, Liste mit topo mesh, an andere Server ueber 'roster')."""
+    uid, err = _me(request)
+    if err:
+        return err
+    b = await _body(request) or {}
+    dev = str(b.get("device") or "")
+    avoid = set(horn_web._clean_avoid(b.get("avoid")))
+    now = time.time()
+    with _db() as c, c:
+        call, err = _mine(c, uid, cid, lock=True)
+        if err:
+            return err
+        leg = c.execute("SELECT who, state, role FROM chat_call_leg WHERE call_id=? AND device=?", (cid, dev)).fetchone() if _HEX32.fullmatch(dev) else None
+        if call["state"] == "ended" or not leg or leg[0] != uid or leg[1] != "active":
+            return chat._no_store({"error": t("Der Anruf ist schon beendet."), "ended": True}, 404)
+        legs = _legs(c, cid)
+        if call.get("topo") == "mesh" and call["kind"] == "group":      # schon direkt (auch: Wechsel durch ein anderes Geraet)
+            return chat._no_store({"ok": True, "call": _dict(c, call, uid), "offer_to": _offer_to(dev, legs)})
+        if not is_horn(call):
+            return _bad(t("ungültige Angabe"), 409)
+        if call.get("lead") is not None:
+            return chat._no_store({"error": t("Den Anruf führt ein anderer Server – direkt geht hier nicht."), "horn_block": "fed"}, 409)
+        wait = _rate_db(c, "direct", dev, 10)
+        if wait:
+            return JSONResponse({"error": t("Zu viele Anfragen – bitte kurz warten."), "retry_after": wait}, status_code=429,
+                                headers={"Retry-After": str(wait), "Cache-Control": "no-store"})
+        blk = horn_block(c, call, dev, leg[2], _dev_class(b), ())
+        names_ = {x.get("node") for x in (blk or {}).get("candidates") or []}
+        proof = c.execute("SELECT n FROM horn_rate WHERE k=? AND start > ?", (f"horn|{dev}", now - 60)).fetchone()
+        if names_ and not (names_ <= avoid and proof and proof[0] >= DIRECT_PROOF):
+            return chat._no_store({"error": t("Es gibt einen bereiten Anruf-Knoten – bitte darüber neu verbinden."),
+                                   "horn_block": "node_ready", "horn": blk}, 409)
+        act = [x for x in legs if x["state"] == "active"]
+        if len(act) > limit(call["media"]):
+            return chat._no_store({"error": t("Zu viele Geräte im Anruf, um direkt zu verbinden."), "horn_block": "limit",
+                                   "limit": limit(call["media"])}, 409)
+        horn.room_close(c, cid)
+        c.execute("UPDATE chat_call SET topo='mesh' WHERE id=?", (cid,))
+        c.execute("UPDATE chat_call_leg SET node=NULL WHERE call_id=?", (cid,))
+        call = _load(c, cid)
+        _emit(c, _audience(c, call), "call.topo", {"call_id": cid, "chat_id": call["chat_id"], "topo": "mesh", "why": "node", "by": dev})
+        emit_roster(c, call)
+        print(f"call: {cid[:8]} direkt (kein Knoten erreichbar, {len(act)} Endpunkte)", flush=True)
+        return chat._no_store({"ok": True, "call": _dict(c, call, uid), "offer_to": _offer_to(dev, _legs(c, cid))})
+
+
+def _offer_to(dev, legs):
+    """Nach dem Wechsel auf direkt: an wen dieses Geraet anbietet (aktive Endpunkte mit groesserer Geraete-ID, kein Glare)."""
+    return sorted(x["device"] for x in legs if x["state"] == "active" and x["device"] > dev)
 
 
 def leave_cond(b):

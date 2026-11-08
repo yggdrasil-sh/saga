@@ -300,14 +300,14 @@
   // Horn-Fix: Wiederaufbau nach Knotenverlust (Web; iOS/Android gleiche Regeln). Nie Rueckfall auf direkt.
   // Backoff 1/2/4/8/15 s (+-20 % Zufall), Retry-After (429) hat Vorrang, Aufgabe nach 120 s ohne Erfolg. Erfolg zaehlt erst,
   // wenn Daten kommen (rx); ein Verlust < 10 s nach dem Uebernehmen ist ein Fehlversuch derselben Folge.
-  var RC = { STEPS: [1000, 2000, 4000, 8000, 15000], JITTER: 0.2, MAX_MS: 120000, EARLY_MS: 10000 };
+  var RC = { STEPS: [1000, 2000, 4000, 8000, 15000], JITTER: 0.2, MAX_MS: 120000, EARLY_MS: 10000, DIRECT_MS: 30000, DIRECT_AGAIN_MS: 15000 };
   function Reconnect() { this.t0 = null; this.n = 0; this.adoptAt = 0; this.rxOk = true; }
   // Verbindung weg -> true: neue Folge, sofort versuchen; false: Fehlversuch der laufenden Folge (fail() plant).
   // Stabil war die Verbindung, wenn Daten kamen und sie mindestens EARLY_MS hielt (bzw. nie ueber hier aufgebaut wurde).
   Reconnect.prototype.lost = function (now) {
     var stable = this.rxOk && (!this.adoptAt || now - this.adoptAt >= RC.EARLY_MS);
     this.rxOk = false; this.adoptAt = 0;
-    if (stable) { this.t0 = now; this.n = 0; return true; }
+    if (stable) { this.t0 = now; this.n = 0; this.directNext = 0; this.noDirect = false; return true; }
     if (this.t0 === null) this.t0 = now;
     return false;
   };
@@ -316,6 +316,11 @@
     this.rxOk = false;
     if (this.t0 === null) this.t0 = now;
     if (now - this.t0 >= RC.MAX_MS) return { giveUp: true };
+    // nach 30 s ohne Knoten: direkt versuchen (der Server prueft; abgelehnt -> weiter ueber den Knoten, erneut nach 15 s)
+    if (!this.noDirect && now - this.t0 >= RC.DIRECT_MS && now >= (this.directNext || 0)) {
+      this.directNext = now + RC.DIRECT_AGAIN_MS;
+      return { direct: true, n: this.n };
+    }
     var base = RC.STEPS[Math.min(this.n, RC.STEPS.length - 1)];
     this.n++;
     var r = typeof rnd === 'number' ? rnd : Math.random();
@@ -324,6 +329,8 @@
     if (now + w - this.t0 > RC.MAX_MS) w = Math.max(0, this.t0 + RC.MAX_MS - now);   // letzter Versuch an der Grenze
     return { wait: w, n: this.n };
   };
+  // Server lehnt direkt ab: limit/fed = kein Direkt-Weg (nur noch Knoten bis zur 2-min-Grenze), node_ready = spaeter erneut
+  Reconnect.prototype.directRefused = function (why) { if (why === 'limit' || why === 'fed') this.noDirect = true; };
   Reconnect.prototype.adopted = function (now) { this.adoptAt = now; };
   // Daten empfangen (rx > 0). Backoff und 2-min-Frist setzt erst ein Verlust nach >= EARLY_MS zurueck (lost)
   Reconnect.prototype.rx = function () { this.rxOk = true; };
