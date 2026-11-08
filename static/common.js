@@ -615,6 +615,8 @@
       if (!S2 || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       var a = e.target && e.target.closest && e.target.closest('a[href]'); if (!a || a.hasAttribute('download')) return;
       var tg = (a.getAttribute('target') || '').toLowerCase();
+      var tn = ''; try { tn = String(window.top.name || '').toLowerCase(); } catch (x) { /* egal */ }
+      if (tn && tg === tn) tg = '_top';                         // z. B. target="hk-chats", wenn die Huelle so heisst
       if (tg && tg !== '_self' && tg !== '_top' && tg !== '_parent') return;
       var u; try { u = new URL(a.getAttribute('href'), location.href); } catch (x) { return; }
       if (!/^https?:$/.test(u.protocol)) return;

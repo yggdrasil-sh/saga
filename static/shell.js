@@ -98,7 +98,7 @@
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     var a = e.target && e.target.closest && e.target.closest('a[href]'); if (!a || a.hasAttribute('download')) return;
     var tg = (a.getAttribute('target') || '').toLowerCase();
-    if (tg && tg !== '_self' && tg !== '_top' && tg !== '_parent') return;
+    if (tg && tg !== '_self' && tg !== '_top' && tg !== '_parent' && tg !== String(window.name || '').toLowerCase()) return;
     var t = HK.shellTarget(a.getAttribute('href'));
     if (t && take(t)) e.preventDefault();
   });
