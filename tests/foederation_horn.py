@@ -227,9 +227,10 @@ def main():
             part_old(anna, bert, ch, bc)
         else:
             part_a(adm, anna, bert, ch, bc, ada)
-            part_dm(adm, anna, bert)
+            dmc = part_dm(adm, anna, bert)
             part_staffel(anna, ada, bert, ben, ch, bc, nc)
             part_b(adm, anna, bert, ben, ch, bc, nc, ada)
+            part_owner(adm, anna, bert, *dmc)
             part_c(adm, anna, bert, ch, bc)
             part_reasons(adm, anna, bert, ch, bc)
             part_sec()
@@ -462,6 +463,7 @@ def part_dm(adm, anna, bert):
     api("b", "fb-bert", "PUT", "/api/calls/caps", {"device": bert.dev["id"], "caps": CAPS})
     calls_cfg("a", horn_all=False)
     time.sleep(6)
+    return ach, bch
 
 
 def part_staffel(anna, ada, bert, ben, ch, bc, nc):
@@ -569,6 +571,78 @@ def part_b(adm, anna, bert, ben, ch, bc, nc, ada=None):
     adm["a"].post({"action": "horn_share", "id": str(pb), "allowed": "1", "legs": "", "mbit": ""})
     ok("b: Anruf endet", end_call(cid, anna, bert, ben, *((ada,) if ada is not None else ())))
     calls_post(adm["a"], {"action": "unshare", "id": na_id})
+
+
+def part_owner(adm, anna, bert, ach, bch):
+    """Horn-Fix "Horn-Besitzer bestimmt": A (calls.horn_all, teilt seinen Knoten mit B) meldet horn_req. Ruft Bert (B, dort
+    horn_all aus) Anna an, fuehrt A den 1:1-Anruf ueber seinen geteilten Knoten (Auftrag dmhorn_lead); ruft Anna an, wie
+    bisher (A fuehrt). horn_all aus -> bisheriges Verhalten (Bert: fallback off, direkt). B ohne horn (zu alt bzw. aus) ->
+    Anna: fallback old (direkt mit Hinweis "Gegenstelle veraltet")."""
+    HA = T.I["a"]["host"]
+    na = node_of(adm["a"], "horn-a.test")
+    calls_post(adm["a"], {"action": "share", "id": na["id"]})
+    ok("own: Knoten A teilt", wait(lambda: node_of(adm["a"], "horn-a.test").get("share") is True, 5))
+    calls_cfg("a", horn_all=True)
+    time.sleep(6)
+    calls_post(adm["a"], {"action": "caps"})
+    ok("own: B kennt horn_req von A (nach dem Abgleich)", wait(lambda: has_cap("b", HA, "horn_req"), 15))
+    s, cf = api("b", "fb-bert", "GET", "/api/calls/config")
+    ok(f"own: B ohne horn_all: config horn_dm aus, horn_dm_fed an ({cf.get('horn_dm')}, {cf.get('horn_dm_fed')})",
+       cf.get("horn_dm") is False and cf.get("horn_dm_fed") is True)
+
+    def rows(k, cid):
+        return [tuple(r) for r in sql(k, "SELECT kind, topo, caller, callee, lead, state FROM chat_call WHERE id=?", (cid,)) or []]
+
+    def bdial():
+        cid = C.hexid()
+        s, d = api("b", "fb-bert", "POST", "/api/calls", {"id": cid, "chat_id": bch["id"], "media": "audio", "device": bert.dev["id"], "caps": CAPS,
+                                                          "via": "horn", "dev_class": "desktop"})
+        return cid, s, d
+    cid, s, d = bdial()
+    call = d.get("call") or {}
+    ok(f"own: Bert (B) ruft Anna an -> ueber Knoten von A ({s}, {call.get('topo')}, dm {call.get('dm')}, {[c['node'] for c in cands(d)]})",
+       s == 200 and call.get("topo") == "horn" and [c["node"] for c in cands(d)] == ["horn-a.test"], d)
+    ra, rb = rows("a", cid), rows("b", cid)
+    ok(f"own: A fuehrt (lead leer, callee Anna), B spiegelt (lead A) ({ra}, {rb})", ra and ra[0][:2] == ("group", "horn") and ra[0][3] == "fa-anna"
+       and ra[0][4] is None and rb and rb[0][:3] == ("group", "horn", "fb-bert") and rb[0][4] is not None)
+    s, g = api("a", "fa-anna", "GET", f"/api/calls/{cid}")
+    gc = (g or {}).get("call") or {}
+    ok(f"own: Anna sieht den 1:1-Anruf klingeln ({s}, dm {gc.get('dm')}, {gc.get('state')})", s == 200 and gc.get("dm") is True and gc.get("state") == "ringing")
+    s, j = api("a", "fa-anna", "POST", f"/api/calls/{cid}/join", {"device": anna.dev["id"], "role": "member", "caps": CAPS})
+    ok(f"own: Anna nimmt an ({s}, {len(cands(j))} Kandidaten)", s == 200 and len(cands(j)) >= 1)
+    ok("own: aktiv auf A und B", wait(lambda: (rows("a", cid) or [[0] * 6])[0][5] == "active" and (rows("b", cid) or [[0] * 6])[0][5] == "active", 10))
+    ok("own: Auflegen beendet auf beiden Seiten", end_call(cid, bert))
+    # Anna ruft an: A fuehrt wie bisher
+    cid2 = C.hexid()
+    s, d = api("a", "fa-anna", "POST", "/api/calls", {"id": cid2, "chat_id": ach["id"], "media": "audio", "device": anna.dev["id"], "caps": CAPS,
+                                                      "via": "horn", "dev_class": "desktop"})
+    ok(f"own: Anna ruft Bert an -> ueber Knoten ({s}, {(d.get('call') or {}).get('topo')})", s == 200 and (d.get("call") or {}).get("topo") == "horn")
+    end_call(cid2, anna)
+    # horn_all aus: bisheriges Verhalten
+    calls_cfg("a", horn_all=False)
+    time.sleep(6)
+    calls_post(adm["a"], {"action": "caps"})
+    ok("own: horn_all aus -> horn_req bei B wieder unbekannt", wait(lambda: not has_cap("b", HA, "horn_req"), 15))
+    cid, s, d = bdial()
+    ok(f"own: Bert ruft an, horn_all aus -> fallback off, nichts angelegt ({s}, {d.get('horn_block')})", s == 409 and d.get("horn_block") == "off"
+       and not rows("a", cid) and not rows("b", cid))
+    # B ohne horn (alt bzw. aus): Anna mit horn_all -> fallback old
+    calls_cfg("a", horn_all=True)
+    calls_cfg("b", horn=False)
+    time.sleep(6)
+    calls_post(adm["b"], {"action": "caps"})
+    ok("own: B meldet kein horn_dm mehr", wait(lambda: not has_cap("a", T.I["b"]["host"], "horn_dm"), 15))
+    s, d = api("a", "fa-anna", "POST", "/api/calls", {"id": C.hexid(), "chat_id": ach["id"], "media": "audio", "device": anna.dev["id"],
+                                                           "caps": CAPS, "via": "horn"})
+    ok(f"own: Gegenstelle ohne horn_dm -> fallback old mit Hinweis ({s}, {d.get('horn_block')}, {d.get('error')})", s == 409
+       and d.get("fallback") == "direct" and d.get("horn_block") == "old" and "veraltet" in (d.get("error") or ""))
+    calls_cfg("a", horn_all=False)
+    calls_cfg("b")
+    time.sleep(6)
+    calls_post(adm["b"], {"action": "caps"})
+    calls_post(adm["a"], {"action": "caps"})
+    wait(lambda: has_cap("a", T.I["b"]["host"], "horn") and has_cap("b", HA, "horn"), 15)
+    calls_post(adm["a"], {"action": "unshare", "id": na["id"]})
 
 
 def part_c(adm, anna, bert, ch, bc):

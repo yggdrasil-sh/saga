@@ -16,6 +16,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Anrufe über Gjallarhorn-Knoten brachen nach 15 min ab und kamen nicht wieder
+- Knoten: Beine der Betriebsart `node` werden nicht mehr nach 15 min abgeräumt (die Grenze gilt nur noch für
+  Spiegel-/Bench-Beine). Jedes Bein protokolliert Auf- und Abbau mit Grund (ohne Adressen). Gegen Video-Standbilder bei
+  guter Leitung: Hysterese der Simulcast-Schichtwahl (kein Pendeln bei Ratenspitzen, nach unten erst wieder nach 4 s hoch).
+- Web: Nach einem Verbindungsverlust baut der Anruf über den Knoten neu auf – den verlorenen Knoten meidet er nicht mehr,
+  geplante Versuche werden nicht mehr abgebrochen, Backoff 1/2/4/8/15 s, Hinweis „Verbindung wird wiederhergestellt …“.
+  Erst wenn 30 s lang kein Knoten erreichbar ist, wechselt der Anruf auf direkt („Anruf-Knoten nicht erreichbar – direkt
+  verbunden“, `POST /api/calls/{id}/direct`, Ereignis `call.topo`); geht auch das nicht (zu viele Geräte), endet er nach
+  2 min mit klarer Meldung.
+- Server: Die Grenze für Kandidaten-Abrufe gilt über alle Prozesse und antwortet mit 429 + `Retry-After`/`retry_after`
+  (bisher ohne Wartezeit – Clients hielten das für „kein Knoten“).
+- Föderation: Der Server, dem der Knoten gehört, bestimmt (`horn_req`, Auftrag `dmhorn_lead`): mit „Alle Anrufe über
+  Knoten“ laufen 1:1-Anrufe mit Partnern, die seinen Knoten nutzen dürfen, in beide Richtungen über den Knoten – auch wenn
+  der Partner anruft. Kann die Gegenstelle das nicht, läuft der Anruf direkt mit Hinweis „Gegenstelle veraltet“.
+- Apps: Vertrag in `docs/APP-API.md` („Wiederaufbau und Rückfall auf direkt“, Feature `horn_direct1`) und
+  `docs/APP-API-FED.md` 7.6.
+
 ### Verbessert – Trilium-Import sieht aus wie in Trilium
 - Sammlungen (Bücher) zeigen ihre Unterseiten: Raster/Dashboard als Karten (Anordnung des Dashboards übernommen) mit
   kurzem Auszug, Listenansicht als Liste; andere Ansichten (Kalender, Tabelle …) als Liste mit Hinweis. Leere

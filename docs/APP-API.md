@@ -2116,6 +2116,42 @@ Admin-Einstellung `calls.horn_all` (Standard aus, Anrufe → Gjallarhorn). Ist s
   scheitert mit `join_block: "old"` („braucht Saga 2.5“). Klingeln wird nur, wenn das Gegenüber mindestens ein Gerät
   mit `horn` hat.
 
+### Wiederaufbau und Rückfall auf direkt (2.5 Horn-Fix, `horn_direct1`)
+
+Erkennen: `GET /api/calls/config` → `features` enthält `horn_direct1`. Ohne das Feature gilt das alte Verhalten.
+
+- **Grenze für `POST /api/calls/{id}/horn`:** 30 Abrufe je Gerät und Minute (in der Datenbank, gilt über alle
+  Prozesse). Darüber **429** mit Kopfzeile `Retry-After: <s>` und Body `{"error": "…", "retry_after": <int s>}`. 429 ist
+  **kein** „kein Knoten“: frühestens nach `max(retry_after, Backoff)` erneut versuchen.
+- **Wiederaufbau nach Knotenverlust:** Hinweis „Verbindung wird wiederhergestellt …“. Erster Versuch sofort, danach
+  1/2/4/8/15 s (je ±20 % Zufall), Retry-After hat Vorrang. Den verlorenen Knoten **nicht** in `avoid` schicken (oft ist
+  er der einzige); andere Kandidaten zuerst, der verlorene zuletzt. Während ein Versuch läuft oder geplant ist: keine
+  neue Verlust-Erkennung, nichts abbrechen. Erfolg erst mit empfangenen Daten; Verlust < 10 s nach dem Übernehmen =
+  Fehlversuch derselben Folge. Referenz: `static/horn.js` (`Reconnect`, `reconnectList`, `retryAfterMs`), Tests in
+  `tests/horn_logik.js`.
+- **Nach 30 s ohne Knoten:** `POST /api/calls/{id}/direct {device, avoid}` (avoid = Knoten, die das Gerät in dieser
+  Folge nicht erreicht hat). Der Server erlaubt den Wechsel nur, wenn für das Gerät kein Kandidat bereit ist – oder alle
+  Kandidaten in `avoid` stehen und das Gerät in der laufenden Minute schon mindestens 3 Kandidaten-Abrufe gemacht hat –
+  und höchstens so viele Endpunkte aktiv sind wie die Mesh-Grenze (`limits.endpoints_video`/`_audio`).
+  - 200 `{ok, call: {…, topo: "mesh"}, offer_to: [geraet, …]}` (idempotent: war der Anruf schon direkt, ebenso 200).
+  - 409 `{horn_block: "node_ready", horn}` – es gibt einen bereiten Knoten: weiter darüber versuchen (erneut nach 15 s).
+  - 409 `{horn_block: "limit", limit}` bzw. `{horn_block: "fed"}` (Anruf eines anderen Servers) – kein Direkt-Weg:
+    weiter über Knoten, **nach 120 s ohne Erfolg endet der Anruf** („Die Verbindung zum Anruf-Knoten ließ sich nicht
+    wiederherstellen.“).
+  - 404 `{ended: true}`, 429 wie oben.
+- **Ereignis `call.topo` `{call_id, chat_id, topo: "mesh", why: "node", by?}`** an alle Personen des Anrufs (andere
+  Server über `roster`), danach `call.roster` mit `topo: "mesh"`. Alle Geräte (auch ohne eigenen Verlust): Knoten-Beine
+  und Ereigniskanal schließen, dann Mesh wie im Gruppenanruf – **Angebote nur an Endpunkte mit größerer Geräte-ID**
+  (Zeichenkettenvergleich) per `POST /signal` (`t: "offer"`, `pc` = sortiertes Paar, `n: 1`), Angebote von kleineren IDs
+  beantworten. `offer_to` ist genau diese Liste. Hinweis „Anruf-Knoten nicht erreichbar – direkt verbunden“. Kein
+  Rückweg auf den Knoten im selben Anruf.
+- **Anrufstart:** 409 `fallback: "direct"` wie oben, neu `horn_block: "old"` (Gegenstelle kann kein 1:1 über Knoten).
+  Hinweise: `node` → „Anruf-Knoten nicht erreichbar – direkt verbunden“, `old`/`peer` → „Gegenstelle veraltet – direkt
+  verbunden“.
+- **Föderierte Direkt-Chats:** `config.horn_dm_fed: true` – auch ohne `horn_dm` mit `via: "horn"` anrufen; besteht der
+  Server des Gegenübers auf Knoten (`APP-API-FED.md` 7.6), läuft der Anruf darüber, sonst 409 `fallback` (`off`) und
+  direkt wie bisher.
+
 ## Geräte-Übergabe hin und her (2.5, `handover2`)
 
 Ergänzt „Anrufe: Mehrgeräte und Gruppen“ (Übernahme, Begleitgerät) und „Anrufe über Gjallarhorn-Knoten“. Ziel: beliebig

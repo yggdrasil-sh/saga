@@ -4687,6 +4687,7 @@
              meet: R.meshOn && R.mt ? Object.assign({ pin: R.mt.pin, stageWho: R.mt.pick && R.mt.pick.cur, idle: R.ui ? R.ui.w.classList.contains('idle') : false,
                els: Object.keys(R.mt.els).map(function (k) { var E = R.mt.els[k]; return { id: k, kind: E.t.kind, me: !!E.t.me, video: E.box.classList.contains('has-video'), track: !!E.track, label: E.box.getAttribute('aria-label') }; }) }, R.mt.view) : null,
              idle: R.ui ? R.ui.w.classList.contains('idle') : false,
+             topo: R.call ? R.call.topo || '' : '', direct: R.directNote || '', horn: !!R.horn,   // Horn-Fix: Rueckfall auf direkt
              speaker: R.spk || null, since: R.since || 0, legs: (R.legs || []).map(function (x) { return x.device; }), diag: diagSnap(R),
              links: links(R).map(function (L) {
                var E = els(L);

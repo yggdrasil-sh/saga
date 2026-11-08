@@ -450,6 +450,29 @@ Erst nach 200 legt A seinen Anruf an. Danach wie 7.4: Annehmen = `join` an A, Ka
 `leave`/`end`. Ablehnen bei B beendet die Kopie und schickt `end {reason: "declined"|"busy"}` an A (nur der
 Angerufene, nur solange es klingelt); A beendet den Anruf ohne Rückmeldung.
 
+### 7.6 Horn-Besitzer bestimmt (2.5 Horn-Fix, Cap `horn_req`)
+
+Ein Server mit `calls.horn_all` (und `calls.horn`) meldet zusätzlich `horn_req` (einseitig: der Partner muss es nicht
+melden). Hat der Partner („Stiefvater“) Zugriff auf einen geteilten Knoten dieses Servers („Mutter“), läuft **jeder**
+1:1-Anruf zwischen beiden über den Knoten – egal wer anruft:
+
+- Ruft eine Person der Mutter an: wie 7.5 (die Mutter führt).
+- Ruft eine Person des Partners an (`via: "horn"`, Clients schicken das bei `config.horn_dm_fed` auch ohne `horn_dm`):
+  Der Partner bittet die Mutter, den Anruf zu **führen**:
+
+| Auftrag | Richtung | Inhalt |
+|---|---|---|
+| `dmhorn_lead` | Partner → Mutter | `{id, ref, actor, device, media, caps, name, horn_nodes?}`: die Mutter legt den Raum-Anruf an (`kind: group`, `topo: horn`, `callee` = ihr Konto, Endpunkt der anrufenden Person mit `peer_id` = Partner) und lässt klingeln. Antworten: 200 `{legs, topo}`; 409 `{horn_block: "off"\|"node"\|"peer"}` (horn_all aus, kein geteilter Knoten für den Partner bzw. Notaus, Gerät/Gegenüber ohne `horn`), `{busy}`, `{error: "request"}` – dann ist nichts angelegt und der Partner antwortet seinem Client mit `fallback: "direct"` |
+
+  Erst nach 200 legt der Partner seine Kopie an (`lead` = Mutter). Kandidaten der anrufenden Person kommen von der
+  Mutter (Auftrag `horn`, geteilte Knoten, Kontingent wie 7.4).
+- Partner ohne `horn_dm` (älter oder Gjallarhorn aus): Anruf läuft direkt; die Mutter antwortet ihrem Client mit
+  `horn_block: "old"` („Gegenstelle veraltet – direkt verbunden“). Ein alter Client des Partners, der direkt anruft,
+  wird nicht abgewiesen.
+- Rückfall auf direkt im laufenden Anruf (`APP-API.md`, `horn_direct1`): nur der führende Server schaltet um
+  (`POST /direct` bei einer Kopie → 409 `horn_block: "fed"`); die Kopie übernimmt `topo: "mesh"` aus `roster` (nur in
+  diese Richtung) und meldet `call.topo` an ihre Geräte.
+
 ## 8. Seiten anderer Server vollständig (E4/E6)
 
 Seiten anderer Server haben wie bisher **negative IDs** (`-(id_dort * 1024 + peer_id)`) und laufen über die gewohnten

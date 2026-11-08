@@ -48,6 +48,14 @@ Platzhalter: `horn-1.example.org`.
   - Der Sprecher bekommt mehr, wenn die Schätzung reicht.
   - Ist zu wenig Rate da, werden Kacheln von hinten pausiert. Nach oben geht es nur mit 15 % Reserve und nach einer
     Sperrzeit, die sich bei Fehlversuchen verdoppelt (2 bis 30 s).
+  - Hysterese gegen Pendeln (Horn-Fix, `layerStep`): Ohne Stau bleibt die laufende Schicht bis 10 % über der Schätzung
+    (kurze Ratenspitzen, z. B. Schlüsselbilder, schalten nicht herunter); bei Stau (Sperrzeit) sofort herunter. Nach
+    einem Wechsel nach unten geht derselbe Platz für dieselbe Quelle frühestens nach 4 s wieder hoch.
+- **Lebensdauer der Beine (Horn-Fix):** Beine der Betriebsart `node` leben so lange wie der Anruf. Geräumt wird nur,
+  was gescheitert/geschlossen ist (nach 30 s) bzw. nie verbunden wurde (nach 60 s). Die frühere Grenze von 15 min
+  gilt nur noch für Spiegel-/Bench-Beine. Jedes Bein schreibt `bein auf`/`bein zu` ins Protokoll – gekürzte ID,
+  Betriebsart, Weg, Dauer, Grund (`aufraeumer: alter|gescheitert|nie verbunden`, `verbindung failed|closed`,
+  `knoten: …`, `abgemeldet`, `knoten beendet`, `aufbau fehlgeschlagen`); keine Adressen, kein ufrag.
 - **Schätzung je Bein:**
   - TCP: aus dem Alter der eigenen Warteschlange. Dank `TCP_NOTSENT_LOWAT` liegt der Stau im Knoten.
   - UDP: zusätzlich GCC (TWCC), als Stausignal. Ohne Probepakete ist GCC anwendungsbegrenzt und taugt nicht als

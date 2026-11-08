@@ -10,6 +10,7 @@
 // - Runensiegel: alle sehen dieselben 6 Runen, nach einem Abgang andere
 // - Live-Umschalten: Knoten A leert sich (SIGUSR1) -> alle wechseln make-before-break auf Knoten B, gleiche
 //   Frame-Schluessel, Tonluecke gemessen (Ziel 0); Knoten B faellt aus (SIGKILL) -> alle sofort zurueck auf A
+// - Horn-Fix: danach auch A angehalten (SIGSTOP) -> die 4 verbliebenen wechseln nach ~30 s auf direkt (Mesh), Hinweis
 // - Abgang mit neuem Schluessel; Gastgeberin schaltet stumm und entfernt jemanden (Teilnehmerliste)
 // - Hinweis vor dem Start ohne bereiten Knoten (Mesh-Grenze)
 // - Screenshots hell/dunkel bei 1280 und 390 px (SHOTS)
@@ -141,7 +142,7 @@ async function chatKeys(q) {
   }
   await q.waitForTimeout(800);
 }
-const BROWSERS = [];
+const BROWSERS = [], STOPPED = { a: false };
 const ARGS = o => ['--use-fake-ui-for-media-stream', '--unsafely-treat-insecure-origin-as-secure=' + o, '--ignore-certificate-errors',
   '--autoplay-policy=no-user-gesture-required', '--no-proxy-server', '--disable-features=WebRtcHideLocalIpsWithMdns', '--enable-precise-memory-info'];
 async function session(i, shared) {
@@ -610,6 +611,26 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
     const rj = await api(ps[5], 'POST', '/api/calls/' + ha.id + '/join', { device: devs[5], role: 'member', caps: await ps[5].evaluate(() => window.HKCalls.caps()) });
     ok(`F kann nicht wieder beitreten (${rj.status}, ${rj.data && rj.data.join_block})`, !rj.ok && rj.status === 409 && rj.data.join_block === 'removed', rj);
 
+    // --- Horn-Fix: kein Knoten mehr erreichbar (A angehalten, B weg) -> nach ~30 s Wiederaufbau direkt (Mesh, 4 Geraete) --
+    t0 = Date.now();
+    process.kill(+E.NODE_A_PID, 'SIGSTOP');
+    STOPPED.a = true;
+    const notYet = await until(async () => { const r = await ps[0].evaluate(() => window.HKCalls.room()); return r && r.horn && r; }, 1000, 200);
+    const mesh = await until(async () => {
+      const rs = await Promise.all(ps.slice(0, 4).map(p => p.evaluate(() => window.HKCalls.room())));
+      return rs.every(r => r && !r.horn && r.topo === 'mesh' && r.links.length === 3 && r.links.every(x => x.connected)) && rs;
+    }, 100000, 1000);
+    PERF.knoten_weg_bis_direkt_ms = Date.now() - t0;
+    const rd = await Promise.all(ps.slice(0, 4).map(p => p.evaluate(() => window.HKCalls.room())));
+    ok(`kein Knoten erreichbar: nach ${PERF.knoten_weg_bis_direkt_ms} ms direkt verbunden (Mesh, alle 3 Verbindungen je Geraet), Hinweis`,
+       !!notYet && !!mesh && PERF.knoten_weg_bis_direkt_ms >= 25000 && rd.every(r => /direkt verbunden/.test(r.direct)),
+       rd.map(r => r && { horn: r.horn, topo: r.topo, direct: r.direct, links: r.links.map(x => [x.device.slice(0, 4), x.connected, x.established]) }));
+    const hearMesh = await until(async () => (await Promise.all(ps.slice(0, 4).map(p => p.evaluate(() => window.HKCalls.room()))))
+      .every(r => r && r.links.every(x => x.bytesIn > 0)), 20000, 1000);
+    ok('direkt: alle empfangen Daten von allen', !!hearMesh);
+    process.kill(+E.NODE_A_PID, 'SIGCONT');
+    STOPPED.a = false;
+
     for (const p of ps.slice(0, 4)) await p.click('.cl-ctl .cl-red').catch(() => {});
     await ps[0].waitForTimeout(1500);
     rc = res.every(Boolean) ? 0 : 1;
@@ -617,6 +638,7 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
     console.log('FAIL Ausnahme: ' + (e && e.stack || e));
     rc = 1;
   } finally {
+    if (STOPPED.a) { try { process.kill(+E.NODE_A_PID, 'SIGCONT'); } catch (e) { /* weg */ } }
     for (const b of BROWSERS) await b.close().catch(() => {});
   }
   console.log('PERF ' + JSON.stringify(PERF));
