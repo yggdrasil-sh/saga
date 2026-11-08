@@ -425,6 +425,17 @@ def set_hidden(cid, hidden):
     return True
 
 
+def usage_all():
+    """{id: Anzahl Seiten (auch im Papierkorb)} fuer alle Galerie-Bilder in Benutzung."""
+    out = {}
+    with _db() as c:
+        for cv, n in c.execute("SELECT cover, COUNT(*) FROM note WHERE cover LIKE '/covers/%' GROUP BY cover").fetchall():
+            m = PATH_RE.fullmatch(cv or "")
+            if m:
+                out[m.group(1)] = n
+    return out
+
+
 def usage(cid):
     """Seiten (auch im Papierkorb), die dieses Bild als Titelbild nutzen."""
     with _db() as c:

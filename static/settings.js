@@ -261,7 +261,22 @@
   function pagesSection(body) {
     var sec = el('section', 'hk-set hk-set-pages'); body.appendChild(sec);
     sec.appendChild(el('h3', null, T('Seiten')));
+    var cv = el('div'); sec.appendChild(cv);
     var box = el('div'); sec.appendChild(box);
+    // 2.5: neue Seiten mit zufaelligem Bild aus der Titelbild-Galerie (Standard an)
+    api('GET', '/api/account/pages').then(function (d) {
+      var l = el('label', 'hk-avset-row'), i = el('input', 'hk-switch'); i.type = 'checkbox'; i.setAttribute('role', 'switch'); i.checked = !!d.random_cover;
+      i.id = 'hk-random-cover';
+      l.appendChild(el('span', null, T('Neue Seiten mit zufälligem Titelbild'))); l.appendChild(i); cv.appendChild(l);
+      var st = el('div', 'hk-status'); st.setAttribute('role', 'status'); cv.appendChild(st);
+      cv.appendChild(el('p', 'hk-hint', T('Neue Seiten bekommen ein Bild aus der Titelbild-Galerie, außer die Vorlage bringt eines mit. Datenbank-Einträge, Importe und Kopien bleiben ohne.')));
+      i.addEventListener('change', function () {
+        i.disabled = true;
+        api('PUT', '/api/account/pages', { random_cover: i.checked }).then(function (r) {
+          i.checked = !!r.random_cover; status(st, T('✓ Gespeichert'), 'ok');
+        }).catch(function (err) { i.checked = !i.checked; status(st, err.message, 'err'); }).then(function () { i.disabled = false; });
+      });
+    }).catch(function () { cv.remove(); });
     api('GET', '/api/account/editor').then(function (d) {
       var NAMES = { editorjs: T('Klassisch (Editor.js)'), tiptap: T('Standard (Tiptap)') };
       if (!d.choice) { box.appendChild(el('p', 'hk-hint', T('Seiten-Editor: {name} – festgelegt vom Admin.', { name: NAMES[d.engine] || d.engine }))); return; }
@@ -276,7 +291,7 @@
           i.checked = !!r.tiptap; status(st, T('✓ Gespeichert – Seite neu laden, um zu wechseln'), 'ok');
         }).catch(function (err) { i.checked = !i.checked; status(st, err.message, 'err'); }).then(function () { i.disabled = false; });
       });
-    }).catch(function () { sec.remove(); });
+    }).catch(function () { box.remove(); });
   }
 
   // --- Abschnitt "Immich" (eigener API-Schluessel; der Schluessel verlaesst den Server nie wieder) ------------------

@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, chat, chat_grp, cloudflare, diagstore, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup, weather
+from saga import ai, avatars, backups, calls, chat, chat_grp, cloudflare, covers, diagstore, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup, weather
 from saga.core import HSTS, RESTORE_TEST, TZ, BodyLimit, LangMiddleware, SecHeaders, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -41,13 +41,16 @@ ICON_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 HOST_RE = re.compile(r"[a-z0-9.-]{1,253}(:[0-9]{1,5})?")
 PREFIX_RE = re.compile(r"[a-z0-9_.-]{0,20}")
 
+COVER_BODY_MAX = 100 * 1024 * 1024 + 256 * 1024     # Titelbild-Galerie: mehrere Bilder je Formular, zusammen bis 100 MB
+
 admin = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 admin.add_middleware(LangMiddleware, session_key="aid")      # vor SessionMiddleware = laeuft danach (kennt die Sitzung)
 admin.add_middleware(SessionMiddleware, secret_key=hashlib.sha256(("hk-admin|" + hk.SECRET).encode()).hexdigest(),
                      session_cookie="hk_admin", https_only=ADMIN_URL.startswith("https://"), same_site="strict",
                      max_age=int(E.get("ADMIN_SESSION_HOURS", "4")) * 3600)
 admin.add_middleware(BodyLimit, default=1024 * 1024,      # nur Formulare: 1 MB reicht; zuletzt registriert = laeuft zuerst
-                     rules=[("POST", re.compile(r"/settings/ai/persona"), avatars.UPLOAD_MAX + 256 * 1024)])   # Profilbild der KI
+                     rules=[("POST", re.compile(r"/settings/ai/persona"), avatars.UPLOAD_MAX + 256 * 1024),   # Profilbild der KI
+                            ("POST", re.compile(r"/covers/upload"), COVER_BODY_MAX)])                     # Titelbild-Galerie
 # Bughunt Sicherheit V2/V3: dieselben Kopfzeilen wie die App (HSTS nur, wenn auch der Admin-Bereich per https laeuft)
 admin.add_middleware(SecHeaders, hsts=HSTS and ADMIN_URL.startswith("https://"))
 admin.mount("/static", StaticFiles(directory=os.path.join(hk.HERE, "static")), name="static")
@@ -1120,6 +1123,99 @@ async def published_post(request: Request):
         print(f"admin: {me['username']} zieht Veroeffentlichung {nid} zurueck", flush=True)
         _flash(request, t("Veröffentlichung zurückgezogen."))
     return _go("/published")
+
+
+# --- Titelbild-Galerie (2.5, saga/covers.py) ----------------------------------------------------------------
+@admin.get("/covers/{name}")
+def covers_img(name: str, request: Request):
+    """Vorschau im Admin-Bereich (eigene Origin, img-src 'self') - dieselben Dateien wie /covers/<id>.jpg der App."""
+    if not _me(request):
+        return Response(status_code=404)
+    return covers.serve(name, request)
+
+
+@admin.get("/covers")
+def covers_page(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    use = covers.usage_all()
+    rows = []
+    for e in covers.all_entries():
+        rows.append(dict(e, shown_title=covers.title_of(e), uses=use.get(e["id"], 0)))
+    groups = sorted({r["group"] for r in rows if r["group"]} | set(covers.GROUPS))
+    return _page(request, "covers.html", me, rows=rows, groups=groups, visible=len(covers.visible()),
+                 up_max=covers.UPLOAD_MAX // 1048576, up_files=covers.UPLOAD_FILES)
+
+
+@admin.post("/covers/upload")
+async def covers_upload(request: Request):
+    """Formular (multipart): image (ein oder mehrere), title, artist, date, source, url, group, pos."""
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    try:
+        if int(request.headers.get("content-length") or 0) > COVER_BODY_MAX:
+            _flash(request, t("Zu viele oder zu große Bilder (zusammen höchstens {n} MB).", n=COVER_BODY_MAX // 1048576), "err")
+            return _go("/covers")
+    except ValueError:
+        return _go("/covers")
+    f = await _form(request)
+    if f is None:
+        return _go("/covers")
+    ups = [u for u in f.getlist("image") if hasattr(u, "read") and getattr(u, "filename", "")][:covers.UPLOAD_FILES + 1]
+    if not ups:
+        _flash(request, t("Kein Bild gewählt."), "err")
+        return _go("/covers")
+    if len(ups) > covers.UPLOAD_FILES:
+        _flash(request, t("Höchstens {n} Bilder auf einmal.", n=covers.UPLOAD_FILES), "err")
+        return _go("/covers")
+    done, errs = [], []
+    for u in ups:
+        data = await u.read(covers.UPLOAD_MAX + 1)
+        title = _s(f, "title") or os.path.splitext(os.path.basename(u.filename or ""))[0][:200]     # ohne Titel: Dateiname
+        try:
+            cid = await run_in_threadpool(covers.add_upload, data, title, _s(f, "artist"), _s(f, "date", 60), _s(f, "source"),
+                                          _s(f, "url", 500), _s(f, "group", 40), f.get("pos") or 50, me["username"])
+            done.append(cid)
+        except ValueError as ex:
+            errs.append(f"{os.path.basename(u.filename or '?')[:80]}: {ex}")
+    if done:
+        print(f"admin: {me['username']} laedt Titelbilder hoch: {', '.join(done)}", flush=True)
+    if errs:
+        _flash(request, (t("{n} {n:Bild|Bilder} hochgeladen.", n=len(done)) + " " if done else "") + " · ".join(errs), "err")
+    else:
+        _flash(request, t("{n} {n:Bild|Bilder} hochgeladen.", n=len(done)))
+    return _go("/covers")
+
+
+@admin.post("/covers")
+async def covers_post(request: Request):
+    """action = save (title, artist, group, pos) | hide | show | remove, id."""
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    cid = str((f or {}).get("id") or "")
+    if f is None or not covers.ID_RE.fullmatch(cid) or not covers.get(cid):
+        return _go("/covers")
+    act = f.get("action")
+    if act == "save":
+        covers.update(cid, _s(f, "title"), _s(f, "artist"), _s(f, "group", 40), f.get("pos") if f.get("pos") not in (None, "") else None)
+        print(f"admin: {me['username']} aendert Titelbild {cid}", flush=True)
+        _flash(request, t("Gespeichert."))
+    elif act in ("hide", "show"):
+        covers.set_hidden(cid, act == "hide")
+        print(f"admin: {me['username']} {'blendet' if act == 'hide' else 'zeigt'} Titelbild {cid} {'aus' if act == 'hide' else 'wieder'}", flush=True)
+        _flash(request, t("Ausgeblendet – nicht mehr in Auswahl und Zufall; Seiten, die es nutzen, zeigen es weiter.") if act == "hide"
+               else t("Wieder in Auswahl und Zufall."))
+    elif act == "remove":
+        how, n = covers.remove(cid)
+        if how:
+            print(f"admin: {me['username']} entfernt Titelbild {cid} ({'weich, ' + str(n) + ' Seiten' if how == 'soft' else 'geloescht'})", flush=True)
+            _flash(request, t("Entfernt. {n} {n:Seite zeigt|Seiten zeigen} es weiter, bis dort ein anderes Titelbild gewählt wird.", n=n) if how == "soft"
+                   else t("Bild gelöscht."))
+    return _go("/covers#c-" + cid)
 
 
 # --- Meldungen aus Chats (2.5, report1, saga/chat_grp.py) ---------------------------------------------------

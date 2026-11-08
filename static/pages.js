@@ -3370,7 +3370,7 @@
       body.appendChild(ul);
       var add = el('button', 'btn btn-primary tpl-add', T('+ Neue Vorlage')); add.type = 'button';
       add.addEventListener('click', function () {
-        save().then(function () { return api('POST', '/api/notes', { parent_id: o.db || null, title: T('Neue Vorlage') }); })
+        save().then(function () { return api('POST', '/api/notes', { parent_id: o.db || null, title: T('Neue Vorlage'), cover: null }); })
           .then(function (d) { return api('PATCH', '/api/notes/' + d.id, { template: true }).then(function () { return d; }); })
           .then(function (d) { if (o.changed) o.changed(); closeModal(); return loadList().then(function () { return openPage(d.id); }); })
           .then(function () { if (S.cur && !readOnly()) { $('pg-title').focus(); $('pg-title').select(); } })
@@ -6273,20 +6273,90 @@
     if (has) { $('pg-cover-img').src = thumb(S.cur.cover, 2000); $('pg-cover-img').style.objectPosition = 'center ' + (S.cur.cover_pos == null ? 50 : S.cur.cover_pos) + '%'; }
     c.classList.remove('moving'); $('pg-cover-move').textContent = T('Verschieben');
   }
-  // Titelbild: hochladen oder aus Immich
-  function coverMenu(btn) {
-    if (!HK.immichPick || foreign()) return pickImage('cover');          // Immich ist das eigene Konto - nicht in fremden Seiten
-    HK.openMenu(btn, function (m) {
-      m.appendChild(HK.menuItem(T('🖼 Bild hochladen …'), function () { pickImage('cover'); }));
-      m.appendChild(HK.menuItem(T('📷 Aus Immich …'), function () {
-        var id = S.cur.id;
-        HK.immichPick(function (url) {
-          api('PATCH', '/api/notes/' + id, { cover: url, cover_pos: 50 }).then(function () {
-            if (S.cur && S.cur.id === id) { S.cur.cover = url; S.cur.cover_pos = 50; showCover(); }
-            HK.toast(T('Titelbild gespeichert'));
-          }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+  // Titelbild: Galerie, Zufall, hochladen oder aus Immich (2.5: Galerie = mitgelieferte gemeinfreie Bilder + Admin-Uploads)
+  function setCover(url, pos, msg) {
+    var id = S.cur.id;
+    return api('PATCH', '/api/notes/' + id, { cover: url, cover_pos: pos }).then(function () {
+      if (S.cur && S.cur.id === id) { S.cur.cover = url; S.cur.cover_pos = pos; showCover(); }
+      if (msg) HK.toast(msg);
+    }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+  }
+  var coverList = null;
+  function covers() {                                  // Liste einmal je Laden der Seite (Admin-Aenderungen: neu laden)
+    if (!coverList) coverList = api('GET', '/api/covers').catch(function (e) { coverList = null; throw e; });
+    return coverList;
+  }
+  function galleryOf(d) {                              // fremde Instanz: nur mitgelieferte Bilder (gibt es dort genauso)
+    return (d.covers || []).filter(function (c) { return !(S.cur && remoteId(S.cur.id)) || c.builtin; });
+  }
+  function isGallery(u) { return typeof u === 'string' && /^\/covers\/[a-z0-9][a-z0-9-]*\.jpg$/.test(u); }
+  function randomCover() {
+    covers().then(function (d) {
+      var list = galleryOf(d).filter(function (c) { return !S.cur || c.url !== S.cur.cover; });
+      if (!list.length) { HK.toast(T('Keine Bilder in der Galerie.')); return; }
+      var c = list[Math.floor(Math.random() * list.length)];
+      setCover(c.url, c.pos);
+    }).catch(function (err) { HK.toast(err.message); });
+  }
+  function coverCredit(c) { return [c.artist, c.date].filter(Boolean).join(', '); }
+  function galleryDialog() {
+    covers().then(function (d) {
+      var list = galleryOf(d);
+      openModal(T('Titelbild-Galerie'), function (box) {
+        var body = el('div', 'cg-body'); box.appendChild(body);
+        var top = el('div', 'cg-top');
+        var rnd = el('button', 'btn'); rnd.type = 'button'; rnd.appendChild(HK.iconBox('i:refresh', 'cg-ic', 16)); rnd.appendChild(document.createTextNode(T('Zufällig')));
+        rnd.addEventListener('click', function () { closeModal(); randomCover(); });
+        top.appendChild(rnd); body.appendChild(top);
+        if (!list.length) { body.appendChild(el('p', 'hk-hint', T('Keine Bilder in der Galerie.'))); return; }
+        (d.groups || []).forEach(function (g) {
+          var items = list.filter(function (c) { return (c.group || '') === g.id; });
+          if (!items.length) return;
+          var sec = el('section', 'cg-group'); sec.appendChild(el('h3', 'cg-h', g.label));
+          var strip = el('div', 'cg-strip'); strip.setAttribute('role', 'list');
+          items.forEach(function (c) {
+            var b = el('button', 'cg-item' + (S.cur && S.cur.cover === c.url ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'listitem');
+            var cr = coverCredit(c);
+            b.title = c.title + (cr ? ' – ' + cr : '');
+            b.setAttribute('aria-label', b.title);
+            var im = el('img'); im.src = c.thumb; im.alt = ''; im.loading = 'lazy'; im.decoding = 'async';
+            im.style.objectPosition = 'center ' + c.pos + '%';
+            b.appendChild(im);
+            var cap = el('span', 'cg-cap'); cap.appendChild(el('span', 'cg-t', c.title)); if (cr) cap.appendChild(el('span', 'cg-a', cr));
+            b.appendChild(cap);
+            b.addEventListener('click', function () { closeModal(); setCover(c.url, c.pos); });
+            strip.appendChild(b);
+          });
+          sec.appendChild(strip); body.appendChild(sec);
         });
-      }));
+        if (d.source) body.appendChild(el('p', 'hk-hint cg-src', T('Gemeinfreie Werke: {src}', { src: d.source })));
+      });
+    }).catch(function (err) { HK.toast(err.message); });
+  }
+  function coverAbout() {
+    covers().then(function (d) {
+      var c = (d.covers || []).filter(function (x) { return S.cur && x.url === S.cur.cover; })[0];
+      openModal(T('Über dieses Bild'), function (body) {
+        if (!c) { body.appendChild(el('p', 'hk-hint', T('Ein Bild aus der Titelbild-Galerie (nicht mehr zur Auswahl).'))); return; }
+        body.appendChild(el('p', 'cg-about-t', c.title));
+        var cr = coverCredit(c); if (cr) body.appendChild(el('p', null, cr));
+        if (c.source) body.appendChild(el('p', 'hk-hint', c.source));
+        if (c.source_url) {
+          var a = el('a', null, T('Zur Quelle ↗')); a.href = c.source_url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          body.appendChild(el('p')).appendChild(a);
+        }
+      }, true);
+    }).catch(function (err) { HK.toast(err.message); });
+  }
+  function coverMenu(btn) {
+    HK.openMenu(btn, function (m) {
+      m.appendChild(HK.menuItem(T('Galerie …'), galleryDialog, { ic: 'gallery' }));
+      m.appendChild(HK.menuItem(T('Zufällig'), randomCover, { ic: 'refresh' }));
+      m.appendChild(HK.menuItem(T('Bild hochladen …'), function () { pickImage('cover'); }, { ic: 'upload' }));
+      if (HK.immichPick && !foreign()) m.appendChild(HK.menuItem(T('Aus Immich …'), function () {      // Immich ist das eigene Konto
+        HK.immichPick(function (url) { setCover(url, 50, T('Titelbild gespeichert')); });
+      }, { ic: 'camera' }));
+      if (S.cur && isGallery(S.cur.cover)) m.appendChild(HK.menuItem(T('Über dieses Bild'), coverAbout, { ic: 'help' }));
     });
   }
   $('pg-addcover').addEventListener('click', function () { coverMenu(this); });

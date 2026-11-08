@@ -2173,7 +2173,7 @@
     function run() {
       busy(go, true); st.textContent = '';
       var p = rNew.checked
-        ? api('POST', '/api/notes', { title: title.value.trim() || T('Chat') }).then(function (r) { return appendTo(r.id, list).then(function () { return r.id; }); })
+        ? api('POST', '/api/notes', { title: title.value.trim() || T('Chat'), cover: null }).then(function (r) { return appendTo(r.id, list).then(function () { return r.id; }); })
         : appendTo(pick, list).then(function () { return pick; });
       p.then(function (nid) {
         closeOverlay(); selEnd();

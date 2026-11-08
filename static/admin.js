@@ -11,6 +11,24 @@
   document.querySelectorAll('button[data-confirm]').forEach(function (b) {
     b.addEventListener('click', function (e) { if (!confirm(b.dataset.confirm)) e.preventDefault(); });
   });
+  // Titelbild-Galerie (2.5): Position als Vorschau (Schieberegler -> object-position), gewaehltes Bild vor dem Hochladen zeigen
+  //  (style-src 'self': Position per CSSOM statt style-Attribut)
+  document.querySelectorAll('img[data-pos]').forEach(function (im) { im.style.objectPosition = 'center ' + im.dataset.pos + '%'; });
+  document.querySelectorAll('input[type=range][data-pos-for]').forEach(function (r) {
+    var im = document.getElementById(r.dataset.posFor); if (!im) return;
+    var upd = function () { im.style.objectPosition = 'center ' + r.value + '%'; };
+    r.addEventListener('input', upd); upd();
+  });
+  document.querySelectorAll('input[type=file][data-cover-file]').forEach(function (inp) {
+    var im = document.getElementById(inp.dataset.coverFile); if (!im) return;
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0];
+      if (!f || !/^image\//.test(f.type) || f.size > 20 * 1048576) { im.hidden = true; im.removeAttribute('src'); return; }
+      var rd = new FileReader();                         // data: (img-src 'self' data:) - blob: erlaubt die CSP nicht
+      rd.onload = function () { im.src = rd.result; im.hidden = false; };
+      rd.readAsDataURL(f);
+    });
+  });
   // Seite, die auf etwas wartet (Backup laeuft, Nextcloud-Anmeldung): nach ein paar Sekunden neu laden
   var rl = document.querySelector('[data-reload]');
   if (rl) setTimeout(function () { location.reload(); }, (parseFloat(rl.dataset.reload) || 5) * 1000);

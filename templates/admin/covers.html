@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, csrf_field with context %}
+{% block pagetitle %}{{ _('Titelbild-Galerie') }}{% endblock %}
+{% block content %}
+<h2>{{ _("Titelbild-Galerie") }}</h2>
+<p class="hk-hint">{{ _("Bilder, aus denen Benutzer ein Titelbild wählen – und aus denen neue Seiten ein zufälliges bekommen (Konto-Einstellung, Standard an). Mitgelieferte Bilder sind gemeinfreie Werke (Met Open Access, CC0); sie lassen sich ausblenden, aber nicht löschen. Ausgeblendete oder entfernte Bilder verschwinden aus Auswahl und Zufall, Seiten, die sie schon nutzen, zeigen sie weiter.") }}
+  {% if not visible %}<b>{{ _("Alle Bilder sind ausgeblendet – neue Seiten bekommen kein Titelbild.") }}</b>{% endif %}</p>
+
+<form method="post" action="/covers/upload" class="adm-form" enctype="multipart/form-data" id="upload">
+  {{ csrf_field() }}
+  <section class="adm-card">
+    <h3>{{ _("Bilder hochladen") }}</h3>
+    <div class="adm-cov-up">
+      <div class="adm-cov-prev"><img id="cov-up-prev" alt="" hidden data-pos-target></div>
+      <div>
+        <label class="adm-field"><span>{{ _("Bilder") }}</span>
+          <input class="hk-in" type="file" name="image" multiple required accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-cover-file="cov-up-prev">
+          <small>{{ _("JPEG, PNG, WebP oder HEIC, je höchstens {n} MB, bis zu {k} auf einmal. Saga verkleinert auf 1600 Pixel Breite und entfernt Metadaten (EXIF, GPS).", n=up_max, k=up_files) }}</small></label>
+        {{ field(_('Titel'), 'title', hint=_("Optional – ohne Titel gilt der Dateiname.")) }}
+        {{ field(_('Künstler oder Urheber'), 'artist') }}
+        {{ field(_('Datierung'), 'date', max=60) }}
+        {{ field(_('Nachweis'), 'source', hint=_("Optional, z. B. Sammlung und Lizenz.")) }}
+        {{ field(_('Link zur Quelle'), 'url', type='url', max=500, ph='https://') }}
+        {{ field(_('Gruppe'), 'group', max=40, list='cov-groups', hint=_("Aus der Liste wählen oder eine neue eintragen.")) }}
+        <label class="adm-field"><span>{{ _("Empfohlene Position (senkrecht)") }}</span>
+          <input type="range" name="pos" min="0" max="100" step="1" value="50" data-pos-for="cov-up-prev">
+          <small>{{ _("Welcher Ausschnitt im Seitenkopf zu sehen ist: 0 = oben, 100 = unten.") }}</small></label>
+      </div>
+    </div>
+  </section>
+  <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Hochladen") }}</button></div>
+</form>
+<datalist id="cov-groups">{% for g in groups %}<option value="{{ g }}">{% endfor %}</datalist>
+
+<h3>{{ _("Bilder") }} <small class="hk-hint">({{ rows|length }} · {{ _("sichtbar: {n}", n=visible) }})</small></h3>
+<div class="adm-cov-list">
+  {% for r in rows %}
+  {% set ask = (_('„{title}“ entfernen? {n} {n:Seite nutzt|Seiten nutzen} es – dort bleibt es sichtbar, die Datei bleibt so lange erhalten.', title=r.shown_title, n=r.uses) if r.uses else _('„{title}“ endgültig löschen? Keine Seite nutzt es.', title=r.shown_title)) %}
+  <form method="post" action="/covers" class="adm-cov{% if r.hidden %} off{% endif %}" id="c-{{ r.id }}">
+    {{ csrf_field() }}<input type="hidden" name="id" value="{{ r.id }}">
+    <div class="adm-cov-img"><img src="/covers/{{ r.id }}.jpg?w=448" alt="" loading="lazy" id="cov-img-{{ r.id }}" data-pos="{{ r.pos }}"></div>
+    <div class="adm-cov-meta">
+      <p class="adm-cov-id"><code>{{ r.id }}</code>
+        {% if r.builtin %}<span class="adm-tag">{{ _("mitgeliefert") }}</span>{% else %}<span class="adm-tag">{{ _("hochgeladen") }}</span>{% endif %}
+        {% if r.deleted %}<span class="adm-tag warn">{{ _("entfernt") }}</span>{% elif r.hidden %}<span class="adm-tag warn">{{ _("ausgeblendet") }}</span>{% endif %}
+        <small class="hk-hint">{{ _("genutzt von {n} {n:Seite|Seiten}", n=r.uses) }}</small></p>
+      {% if r.deleted %}
+        <p><b>{{ r.shown_title }}</b>{% if r.artist %} · {{ r.artist }}{% endif %}</p>
+        {% if not r.uses %}<div class="adm-actions"><button class="btn btn-danger" type="submit" name="action" value="remove" data-confirm="{{ ask }}">{{ _("Endgültig löschen") }}</button></div>{% endif %}
+      {% else %}
+        {{ field(_('Titel'), 'title', r.title, ph=r.shown_title) }}
+        {{ field(_('Künstler oder Urheber'), 'artist', r.artist) }}
+        {{ field(_('Gruppe'), 'group', r.group, max=40, list='cov-groups') }}
+        <label class="adm-field"><span>{{ _("Position") }}</span>
+          <input type="range" name="pos" min="0" max="100" step="1" value="{{ r.pos|round|int }}" data-pos-for="cov-img-{{ r.id }}"></label>
+        {% if r.url %}<p class="hk-hint"><a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ _("Quelle") }} ↗</a>{% if r.date %} · {{ r.date }}{% endif %}</p>{% endif %}
+        <div class="adm-actions">
+          <button class="btn btn-primary" type="submit" name="action" value="save">{{ _("Speichern") }}</button>
+          {% if r.hidden %}<button class="btn" type="submit" name="action" value="show">{{ _("Einblenden") }}</button>
+          {% else %}<button class="btn" type="submit" name="action" value="hide">{{ _("Ausblenden") }}</button>{% endif %}
+          {% if not r.builtin %}<button class="btn btn-danger" type="submit" name="action" value="remove" data-confirm="{{ ask }}">{{ _("Entfernen") }}</button>{% endif %}
+        </div>
+      {% endif %}
+    </div>
+  </form>
+  {% endfor %}
+</div>
+{% endblock %}
