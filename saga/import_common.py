@@ -104,6 +104,18 @@ def reason_text(code, p=None):
         "rel_ambiguous": lambda: t("Verknüpfung „{title}“ mehrdeutig – erster Treffer gewählt", title=p.get("title", "")),
         "orphan": lambda: t("Seite ohne passenden Eintrag – als Unterseite übernommen"),
         "notion_unsupported": lambda: t("Notion-Element nicht unterstützt – als Text übernommen"),
+        # Trilium (saga/import_trilium.py)
+        "protected": lambda: t("Geschützte Notiz – ohne Trilium-Passwort übersprungen"),
+        "trilium_type": lambda: t("Trilium-Notiztyp „{type}“ – als Seite mit Hinweis übernommen", type=p.get("type", "")),
+        "trilium_hidden": lambda: t("Systemnotizen von Trilium (versteckter Baum) nicht übernommen: {n}", n=p.get("n", "")),
+        "trilium_meta": lambda: t("Trilium-Export ohne gültige !!!meta.json."),
+        "trilium_schema": lambda: t("Unbekanntes Trilium-Datenbankschema – nichts importiert."),
+        "trilium_unsafe": lambda: t("Datenbankdatei enthält Trigger, Views oder virtuelle Tabellen – nicht importiert."),
+        "trilium_many": lambda: t("Zu viele Notizen (höchstens {n}).", n=p.get("n", "")),
+        "trilium_timeout": lambda: t("Zeitlimit beim Lesen der Trilium-Datenbank überschritten."),
+        "trilium_password": lambda: t("Trilium-Passwort falsch – nichts importiert."),
+        "trilium_rate": lambda: t("Zu viele Fehlversuche – bitte in einigen Minuten erneut versuchen."),
+        "trilium_nokey": lambda: t("Die Datenbank enthält keine Trilium-Passwortdaten."),
     }
     f = m.get(code)
     return f() if f else code

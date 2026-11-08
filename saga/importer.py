@@ -1,5 +1,6 @@
 """Importe (2.5, Paket 2): HTTP-Schnittstelle. Unterbau in saga/import_common.py, Formate in saga/import_csv.py (CSV ->
-Datenbank), saga/import_md.py (Markdown/Obsidian) und saga/import_notion.py (Notion-Export "Markdown & CSV"). Ablauf fuer Web und Apps (docs/APP-API.md, "Import"):
+Datenbank), saga/import_md.py (Markdown/Obsidian), saga/import_notion.py (Notion-Export "Markdown & CSV") und
+saga/import_trilium.py (Trilium: ZIP-Export oder Datenbank-Sicherung .db). Ablauf fuer Web und Apps (docs/APP-API.md, "Import"):
 
   POST /api/import/upload?name=<datei>[&token=<t>][&replace=1]   Rohdaten (Datenstrom) -> {token, files, kind}. Mehrere
                                                       Dateien (Ordner ohne ZIP): weitere Teile mit demselben token.
@@ -38,10 +39,16 @@ def _uid(request):
     return _api_guard(request)
 
 
-def kind_of(paths):
-    """Art eines Uploads aus den Dateinamen: csv | md | notion | None. Notion: Dateien mit Notion-ID im Namen bzw. ein
-    Export, der nur aus Teil-ZIPs besteht (Export-...-Part-1.zip)."""
-    from saga import import_notion
+KINDS = ("csv", "md", "notion", "trilium")
+
+
+def kind_of(paths, u=None):
+    """Art eines Uploads aus den Dateinamen: csv | md | notion | trilium | None. Notion: Dateien mit Notion-ID im Namen
+    bzw. ein Export, der nur aus Teil-ZIPs besteht (Export-...-Part-1.zip). Trilium: ZIP mit !!!meta.json bzw. (u:
+    Upload) eine einzelne SQLite-Datei (Trilium-Sicherung, am Inhalt erkannt)."""
+    from saga import import_notion, import_trilium
+    if import_trilium.looks_like(paths) or (u is not None and import_trilium.db_path(u)):
+        return "trilium"
     low = [p.lower() for p in paths]
     if import_notion.looks_like(paths) or import_notion.html_export(paths):
         return "notion"
@@ -115,7 +122,7 @@ async def api_upload(request: Request):
         except (zipfile.BadZipFile, OSError):
             ic.drop_upload(tok)
             return _bad(ic.reason_text("not_zip"))
-    return JSONResponse({"token": tok, "kind": kind_of(names), "files": len(u["files"]), "size": u["size"]},
+    return JSONResponse({"token": tok, "kind": kind_of(names, u), "files": len(u["files"]), "size": u["size"]},
                         headers={"Cache-Control": "no-store"})
 
 
@@ -160,7 +167,7 @@ def analyze(uid, tok, b):
     except ic.ImportFail as ex:
         return _bad(ic.reason_text(ex.code, ex.p))
     try:
-        kind = b.get("kind") if b.get("kind") in ("csv", "md", "notion") else kind_of(src.paths())
+        kind = b.get("kind") if b.get("kind") in KINDS else kind_of(src.paths(), u)
         out = {"kind": kind, "files": len(src.entries), "bytes": sum(e.size for e in src.entries.values())}
         if kind == "csv":
             path = _csv_path(src, b.get("path"))
@@ -174,6 +181,9 @@ def analyze(uid, tok, b):
         elif kind == "notion":
             from saga import import_notion
             out.update(import_notion.analyze(src, rep))
+        elif kind == "trilium":
+            from saga import import_trilium
+            out.update(import_trilium.analyze(src, rep, u))
         else:
             out["error"] = ic.reason_text("unsupported")
         out["report"] = ic.report_out(rep.to_json())
@@ -243,6 +253,13 @@ def start(uid, tok, b):
             return _bad(t("ungültige Angabe"))
         work = import_notion.work(tok, b, parent)
         name = str(b.get("title") or "")[:200] or "Notion"
+    elif kind == "trilium":
+        from saga import import_trilium
+        try:                                          # Passwort (nur hier) wird sofort geprueft und nicht behalten
+            work = import_trilium.work(uid, u, b, parent)
+        except ic.ImportFail as ex:
+            return _bad(ic.reason_text(ex.code, ex.p), 429 if ex.code == "trilium_rate" else 400)
+        name = str(b.get("title") or "")[:200] or "Trilium"
     else:
         return _bad(ic.reason_text("unsupported"))
     rid = ic.start_run(uid, kind, name or kind, _wrap(u, work), tok)
