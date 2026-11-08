@@ -3203,19 +3203,15 @@
       + (i ? '-' + (i + 1) : '') + '.' + String(ext).replace('jpeg', 'jpg').replace('svg+xml', 'svg');
     try { return new File([f], name, { type: f.type || 'image/png', lastModified: f.lastModified || Date.now() }); } catch (e) { return f; }
   }
-  function insertText(t, txt) {
-    t.focus();
-    var ok = false; try { ok = document.execCommand && document.execCommand('insertText', false, txt); } catch (e) { ok = false; }
-    if (!ok || t.value.indexOf(txt) < 0) { t.setRangeText(txt, t.selectionStart, t.selectionEnd, 'end'); t.dispatchEvent(new Event('input', { bubbles: true })); }
-  }
   $('ct-input').addEventListener('paste', function (e) {
     var dt = e.clipboardData; if (!dt) return;
     var files = clipFiles(dt); if (!files.length) return;          // reiner Text: normal einfuegen
+    // Text dabei (z. B. aus Word/Office, das zusaetzlich ein Bild des Textes mitliefert): nur Text, kein Anhang.
+    // Ausnahme Finder: der Text sind nur die Dateinamen -> Dateien anhaengen, Text nicht einfuegen.
+    var txt = (dt.getData('text/plain') || '').replace(/\s+/g, ' ').trim();
+    var names = files.map(function (f) { return f.name; }).join(' ').replace(/\s+/g, ' ').trim();
+    if (txt && txt !== names) return;                              // Browser fuegt den Text normal ein
     e.preventDefault();
-    var txt = dt.getData('text/plain') || '';
-    // Aus dem Finder kopierte Dateien bringen ihre Namen als Text mit - den nicht zusaetzlich einfuegen
-    var names = files.map(function (f) { return f.name; }).join('\n');
-    if (txt && txt.replace(/\s+/g, ' ').trim() !== names.replace(/\s+/g, ' ').trim()) insertText(this, txt);
     if (!canAttach()) { if (S.edit) HK.toast(T('Beim Bearbeiten lassen sich keine Anhänge hinzufügen.')); return; }
     var k = 0; addFiles(files.map(function (f) { return /^image\//.test(f.type || '') || !f.name ? pastedName(f, k++) : f; }));
   });

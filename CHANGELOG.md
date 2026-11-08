@@ -19,7 +19,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ### Chat (Web): Bilder einfügen und Dateien ablegen
 - Bilder und Dateien aus der Zwischenablage lassen sich direkt ins Nachrichtenfeld einfügen (⌘V/Strg+V), auch in der
   Mac-Hülle (WKWebView liefert Bilder dort teils nur über `clipboardData.items`). Bildschirmfotos ohne Namen heißen
-  `Bild-JJJJ-MM-TT-HHMMSS.png`; Text und Bild zugleich (z. B. aus dem Browser kopiert) wird beides übernommen.
+  `Bild-JJJJ-MM-TT-HHMMSS.png`. Ist Text dabei (z. B. aus Word, das zusätzlich ein Bild des Textes mitliefert),
+  wird nur der Text eingefügt; aus dem Finder kopierte Dateien (Text = Dateinamen) werden ohne Text angehängt.
 - Dateien lassen sich auf die Unterhaltung ziehen und dort ablegen (sichtbare Ablagefläche). Gleiche Prüfungen wie beim
   Anhang-Knopf (Größe, Videos, höchstens 10 – jetzt mit Hinweis statt stillem Weglassen); nicht beim Bearbeiten und
   nicht in gesperrten oder schreibgeschützten Chats. Gilt auch im Chat-Seitenpanel.

@@ -4,7 +4,7 @@
 //   (PW_CHANNEL=chromium; PW_ENGINE=webkit nimmt Playwright-WebKit, falls installiert)
 // Geprueft: synthetisches paste mit DataTransfer + PNG-Datei (namenlos "image.png") -> Anhang in #ct-files mit Namen
 // "Bild-JJJJ-MM-TT-HHMMSS.png", Senden -> Bild beim Empfaenger; reiner Text-Paste fuegt Text ein, kein Anhang; Text und
-// Bild zugleich -> beides; Bild nur ueber items (files leer, wie WebKit) -> Anhang; beim Bearbeiten kein Anhang; Drop mit
+// Bild zugleich (Word) -> nur Text; Finder (Dateiname als Text + Datei) -> Anhang ohne Text; Bild nur ueber items (files leer, wie WebKit) -> Anhang; beim Bearbeiten kein Anhang; Drop mit
 // Datei -> Ablageflaeche sichtbar, Anhang; 11. Datei -> Hinweis "Hoechstens 10"; keine Seitenfehler.
 // Kein waitForFunction (CSP ohne eval).
 'use strict';
@@ -51,10 +51,10 @@ const clearFiles = async p => { for (let i = 0; i < 12; i++) { const x = await p
 const toastText = p => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? t.textContent : ''; });
 
 // Im Browser: paste-Ereignis mit DataTransfer. mode: 'file' (files), 'items' (nur items, files leer - wie WebKit),
-// 'text' (nur Text), 'both' (Text + Bild)
+// 'text' (nur Text), 'both' (Text + Bild, wie Word), 'finder' (PDF-Datei + ihr Name als Text)
 const PASTE = ([mode, txt]) => {
   const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGM4uSQGK2IYWhIAv5xyQfgn2UgAAAAASUVORK5CYII='), c => c.charCodeAt(0));
-  const f = new File([png], 'image.png', { type: 'image/png' });
+  const f = mode === 'finder' ? new File(['%PDF-1.4'], 'Bericht.pdf', { type: 'application/pdf' }) : new File([png], 'image.png', { type: 'image/png' });
   const t = document.getElementById('ct-input'); t.focus();
   let dt;
   if (mode === 'items') {
@@ -123,13 +123,19 @@ const DROP = ([n, name]) => {
     c1 = await chips(a);
     ok('Text-Paste: nicht abgefangen, Text eingefuegt, kein Anhang', !p2.prevented && p2.value === 'nur Text' && c1.hidden, [p2, c1]);
 
-    // --- Text und Bild zugleich ---
+    // --- Word-Fall: Text und Bild zugleich -> nur Text, kein Anhang ---
     await a.fill('#ct-input', 'vorher ');
     await a.evaluate(() => { const t = document.getElementById('ct-input'); t.setSelectionRange(t.value.length, t.value.length); });
-    const p3 = await a.evaluate(PASTE, ['both', 'aus dem Browser']);
+    const p3 = await a.evaluate(PASTE, ['both', 'aus Word']);
     c1 = await chips(a);
-    ok('Text + Bild: Text eingefuegt und Bild angehaengt', p3.prevented && (await a.inputValue('#ct-input')) === 'vorher aus dem Browser' && c1.names.length === 1, [p3, c1, await a.inputValue('#ct-input')]);
-    await clearFiles(a); await a.fill('#ct-input', '');
+    ok('Text + Bild (Word): nur Text eingefuegt, kein Anhang', !p3.prevented && (await a.inputValue('#ct-input')) === 'vorher aus Word' && c1.hidden, [p3, c1, await a.inputValue('#ct-input')]);
+    await a.fill('#ct-input', '');
+
+    // --- Finder-Fall: Dateiname als Text + Datei -> Anhang ohne Text ---
+    const p5 = await a.evaluate(PASTE, ['finder', 'Bericht.pdf']);
+    c1 = await chips(a);
+    ok('Finder (Dateiname + Datei): Anhang mit Originalnamen, kein Text', p5.prevented && p5.value === '' && c1.names.length === 1 && c1.names[0] === '📎 Bericht.pdf', [p5, c1]);
+    await clearFiles(a);
 
     // --- WebKit-Fall: nur items ---
     const p4 = await a.evaluate(PASTE, ['items', '']);
