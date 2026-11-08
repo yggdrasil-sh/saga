@@ -35,7 +35,7 @@ GROUPS = ("nordisch", "romantik", "holzschnitt", "landschaft")      # Reihenfolg
 UPLOAD_MAX = 20 * 1024 * 1024        # Eingabe je Bild
 UPLOAD_FILES = 10                    # Bilder je Formular
 WIDTH = 1600                         # gespeicherte Breite (wie die mitgelieferten)
-PIXELS_MAX = 80_000_000              # Entpackbombe: mehr Bildpunkte nimmt Saga nicht an
+PIXELS_MAX = 40_000_000             # Entpackbombe: mehr Bildpunkte nimmt Saga nicht an
 THUMB_MAX = 800                      # ?w= bis hierhin verkleinern, darueber das Original
 CACHE = "public, max-age=2592000"     # 30 Tage; Inhalt einer ID aendert sich nicht (neue Bilder = neue ID)
 SETTING = "random_cover"             # user_kv: '0' = aus, sonst an

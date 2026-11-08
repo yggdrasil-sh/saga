@@ -9113,6 +9113,13 @@
     api('GET', '/api/notes/' + id).then(function (n) {
       if (!S.cur || S.cur.id !== id || S.loading) return;
       S.cur.props = n.props; S.cur.updated = n.updated; S.cur.icon = n.icon;
+      // Titelbild, Breite und Schrift kommen ebenfalls als meta-Ereignis (ohne Inhalt/Titel) - still nachziehen
+      var moving = $('pg-cover') && $('pg-cover').classList.contains('moving');
+      if (!moving && ((n.cover || '') !== (S.cur.cover || '') || n.cover_pos !== S.cur.cover_pos)) {
+        S.cur.cover = n.cover || ''; S.cur.cover_pos = n.cover_pos; showCover();
+      }
+      if (!!n.wide !== !!S.cur.wide) { S.cur.wide = !!n.wide; $('page').classList.toggle('wide', S.cur.wide); }
+      if (fontKnown(n)) { S.cur.font = n.font || null; S.cur.small = !!n.small; applyFont(S.cur); }
       var p = byId(id); if (p && p.icon !== n.icon) { p.icon = n.icon; renderTree(); renderCrumbs(); }
       var b = document.activeElement; if (!(b && $('pg-props').contains(b))) applyKind();
     }).catch(function () { /* naechstes Ereignis bzw. Oeffnen holt es nach */ });

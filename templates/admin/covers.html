@@ -3,7 +3,7 @@
 {% block pagetitle %}{{ _('Titelbild-Galerie') }}{% endblock %}
 {% block content %}
 <h2>{{ _("Titelbild-Galerie") }}</h2>
-<p class="hk-hint">{{ _("Bilder, aus denen Benutzer ein Titelbild wählen – und aus denen neue Seiten ein zufälliges bekommen (Konto-Einstellung, Standard an). Mitgelieferte Bilder sind gemeinfreie Werke (Met Open Access, CC0); sie lassen sich ausblenden, aber nicht löschen. Ausgeblendete oder entfernte Bilder verschwinden aus Auswahl und Zufall, Seiten, die sie schon nutzen, zeigen sie weiter.") }}
+<p class="hk-hint">{{ _("Bilder, aus denen Benutzer ein Titelbild wählen – und aus denen neue Seiten ein zufälliges bekommen (Konto-Einstellung, Standard an). Mitgelieferte Bilder sind gemeinfreie Werke (Met Open Access, CC0); sie lassen sich ausblenden, aber nicht löschen. Ausgeblendete oder entfernte Bilder verschwinden aus Auswahl und Zufall, Seiten, die sie schon nutzen, zeigen sie weiter.") }} {{ _("Hochgeladene Bilder sind wie Titelbilder veröffentlichter Seiten ohne Anmeldung abrufbar – bitte keine privaten Fotos hochladen.") }}
   {% if not visible %}<b>{{ _("Alle Bilder sind ausgeblendet – neue Seiten bekommen kein Titelbild.") }}</b>{% endif %}</p>
 
 <form method="post" action="/covers/upload" class="adm-form" enctype="multipart/form-data" id="upload">
