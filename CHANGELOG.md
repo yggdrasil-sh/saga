@@ -30,6 +30,28 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Browser die Anfrage selbst so kennzeichnet (`Sec-Fetch-Dest: iframe`, `Sec-Fetch-Site: same-origin`). Fremde Seiten
   bleiben bei `frame-ancestors 'none'`/`DENY`, ebenso Anmeldung und Admin-Bereich.
 
+### Neu (2.5): Trilium-Import
+- **Trilium importieren.** Im Import-Dialog den offiziellen ZIP-Export (HTML oder Markdown) oder die Sicherung
+  (`document.db`/`backup-*.db`) ablegen – Saga erkennt beides selbst (ZIP mit `!!!meta.json`, SQLite-Datei am Inhalt).
+  Bisher lief ein Trilium-ZIP über den Markdown-Import: Code-Notizen (`.dat`, z. B. Compose-/YAML-Dateien) und
+  `!!!meta.json` fielen weg, Baum, Labels und Links blieben ungenutzt.
+- Struktur 1:1: eine Sammelseite, darunter der Trilium-Baum in Trilium-Reihenfolge ohne Zwischenseiten (Notiz mit
+  Kindern = eine Seite mit Inhalt und Unterseiten), Titel aus Trilium (keine Dateiendungen), Zweig-Prefix als
+  „Prefix - Titel“, Klone als Verweisseite (🔗) auf die eine echte Seite. Text mit Überschriften, verschachtelten
+  Listen, Aufgaben, Tabellen, Zitaten, Hinweisboxen, Code mit Sprache, Formeln, Toggles und Bildern an ihrer Stelle;
+  Code-Notizen genau ein Code-Block mit Sprache aus dem Mime-Typ; Anhänge einmal an ihrer Seite; interne Links und
+  Include-Notizen als Seitenlinks; Labels ohne Wert als Tags, übrige Labels/Relationen im Block „Eigenschaften“.
+  Canvas, Mind Map & Co. werden Seiten mit Hinweis; gelöschte Notizen, Revisionen und der Systembaum fehlen.
+- **Geschützte Notizen** (nur Sicherung `.db`): optionales Trilium-Passwort im Dialog – nur für diesen Lauf, nie
+  gespeichert oder geloggt; falsches Passwort → Meldung, nichts angelegt; Fehlversuche gebremst. Ohne Passwort werden
+  sie übersprungen (Bericht nennt nur ihre Position).
+- Sicherheit: die Datenbank wird nur lesend geöffnet (`immutable`, DEFENSIVE, ohne Trigger/Views/Erweiterungen,
+  Zeitlimit); Dateien mit Triggern, Views oder virtuellen Tabellen sowie unbekannte Schemas werden abgelehnt.
+- Server: `saga/import_trilium.py` (Zwischenmodell für beide Quellen), `saga/html2blocks.py` (CKEditor-HTML →
+  Blöcke). `md2blocks`: eingerückte Unterliste anderer Art (z. B. `*` unter `1.`) bleibt Unterliste. Keine Migration.
+  `features`: `import_trilium1`. Tests `tests/import_trilium.py` (Testdaten-Generator `tests/trilium_fixture.py`),
+  Browser-Test `tests/browser_import.js` mit `IMPORT_TRILIUM=1`.
+
 ### Behoben – Widget einrichten
 - Im Fenster „Widget einrichten“ (Wetter, Anstehendes, Lesen) schrumpften die Eingabefelder auf Knopfbreite und zeigten ihren Wert nicht: Der Hinweistext lag als lose Zelle in der Beschriftungsspalte und blähte sie auf. Der Hinweis geht jetzt über beide Spalten.
 

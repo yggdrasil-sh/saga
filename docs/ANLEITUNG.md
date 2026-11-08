@@ -648,6 +648,15 @@ Unterseiten darunter): Datei oder Ordner in das Feld ziehen oder auswählen.
   und **Formeln/Rollups** (Notion exportiert nur das Ergebnis) – solche Spalten lassen sich danach im Spaltenmenü über
   **„In Formel umwandeln …“** durch eine echte Formel ersetzen. Bilder aus dem Internet bleiben Links, Seiten-Emojis
   und Ansichten (Filter, Board …) enthält der Export nicht. Der HTML-Export von Notion wird nicht unterstützt.
+- **Trilium:** entweder in Trilium per Rechtsklick auf eine Notiz (bzw. die Wurzel) **„Exportieren“** →
+  **„HTML im ZIP-Archiv“** (genauer) oder „Markdown“ wählen, oder die Sicherung nehmen (Datei `document.db` im
+  Trilium-Datenordner bzw. `backup-….db` aus „Sicherung“). Datei in den Import-Dialog ziehen. Übernommen werden der
+  Baum in Trilium-Reihenfolge (ein Zweig-Prefix steht vor dem Titel: „Prefix - Titel“), Text mit allen Formatierungen,
+  Code-Notizen als Code-Block mit Sprache, Bilder und Anhänge, interne Links, Labels (ohne Wert als Tags, mit Wert und
+  Relationen im Block „Eigenschaften“). Klone (eine Notiz an mehreren Stellen) werden an jeder weiteren Stelle eine
+  Verweisseite 🔗. **Geschützte Notizen** enthält nur die Sicherung: hat sie welche, fragt der Dialog nach dem
+  Trilium-Passwort – es wird nur für diesen Import benutzt und nicht gespeichert; ohne Passwort fehlen diese Notizen.
+  Canvas, Mind Maps, Relation Maps u. Ä. kann Saga nicht darstellen – sie werden Seiten mit Hinweis.
 
 Der Import läuft im Hintergrund mit Fortschritt und lässt sich abbrechen (bereits Angelegtes wandert dann in den
 Papierkorb). Am Ende zeigt der Dialog, was angelegt wurde und was **nicht übernommen** wurde (mit Grund); diese Liste

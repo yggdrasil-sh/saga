@@ -41,6 +41,7 @@ FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1", "move1", "ren
                                                                                   # POST /api/app/capture mit src
             "timeline1", "api1", "webhook1", "mcp1",                             # 2.5 Paket 1: Zeitleiste, /api/v1, Webhooks, MCP
             "import_notion1",                                                     # 2.5 Paket 2 E5: Notion-Import (docs/APP-API.md "Import")
+            "import_trilium1",                                                    # 2.5: Trilium-Import (ZIP-Export, .db-Sicherung; docs/APP-API.md "Import")
             "mention1", "synced1",                                               # 2.5 P6-5/P6-6: Erwaehnungen, synchronisierte Bloecke
             "chatadm1",                                                          # 2.5 Gruppeninfo: PATCH /api/chats/{cid}/members/{who}
             "contacts1",                                                         # 2.5 Kontakte: GET/DELETE /api/chat/contacts (docs/APP-API-CHAT.md)
