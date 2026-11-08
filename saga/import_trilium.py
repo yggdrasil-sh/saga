@@ -943,13 +943,34 @@ def _content(m, w, note, title, fkeys, files, rep, path, other):
             r = link(target) if target.startswith("#") else None
             return r
         ctx = md2blocks.Ctx(resolve, lambda code, **p: report(code, **p))
-        out = md2blocks.parse(txt, ctx)
+        out = md2blocks.parse(_md_images_apart(txt), ctx)
     else:
         ctx = html2blocks.Ctx(link, image, include, report)
         out = html2blocks.convert(txt, ctx, full_page=m.kind == "zip")
     if out and out[0]["type"] == "header" and _plain(out[0]["data"].get("text", "")) == (note.title or "").strip():
         out = out[1:]
     return out
+
+
+_MD_IMG = re.compile(r"[ \t]*(!\[[^\]\n]{0,500}\]\([^)\s]{1,1000}\))[ \t]*")
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+
+
+def _md_images_apart(txt):
+    """Bild mitten in einer Zeile (Trilium-Export: "Vorher ![](bild.png) nachher") -> eigene Zeile, damit es an seiner
+    Stelle ein Bild-Block wird (md2blocks kennt Bilder nur als eigene Zeile). Codebloecke bleiben unberuehrt."""
+    out, fence = [], None
+    for ln in txt.split("\n"):
+        m = _FENCE.match(ln)
+        if fence is None and m:
+            fence = m.group(1)[0]
+        elif fence is not None and m and m.group(1)[0] == fence:
+            fence = None
+        elif fence is None and "![" in ln and not _MD_IMG.fullmatch(ln) and not ln.lstrip().startswith(("|", ">", "-", "*", "+")) \
+                and not re.match(r"^\s*\d+[.)]\s", ln):
+            ln = _MD_IMG.sub(lambda x: "\n\n" + x.group(1) + "\n\n", ln).strip("\n")
+        out.append(ln)
+    return "\n".join(out)
 
 
 def _plain(h):

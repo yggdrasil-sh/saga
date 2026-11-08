@@ -615,8 +615,8 @@ def _list(lines, i, ctx):
                 meta = {"checked": False}
             while len(stack) > 1 and ind <= stack[-1][0]:
                 stack.pop()
-            if len(stack) == 1 and root["items"] and _kind(m.group(2), bool(tm)) != style:
-                break                                    # andere Listenart auf oberster Ebene: neue Liste
+            if len(stack) == 1 and root["items"] and ind <= stack[0][0] + 1 and _kind(m.group(2), bool(tm)) != style:
+                break                                    # andere Listenart auf oberster Ebene: neue Liste (eingerueckt: Unterliste)
             if ind > stack[-1][0] + 1 and last is not None and len(stack) < MAX_DEPTH:
                 stack.append((ind - 1, last))
             item = {"content": None, "meta": meta, "items": [], "_raw": [content.strip()]}
