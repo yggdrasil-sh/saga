@@ -175,7 +175,15 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   const [fc] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-block-id="' + imgNew.id + '"] .pm-img-pick')]);
   await fc.setFiles({ name: 'neu.png', mimeType: 'image/png', buffer: PNG });
   for (let i = 0; i < 40 && !(await p.$('[data-block-id="' + imgNew.id + '"] img[src^="/files/"]')); i++) await sleep(100);
-  await p.click('[data-block-id="' + imgNew.id + '"] [data-pm-part="icap"]'); await p.keyboard.type('Neu', { delay: 10 });
+  const para = await p.$('#pg-editor .pm-b-paragraph');
+  if (para) { await para.click(); await sleep(150); }
+  const ph0 = await p.evaluate(() => document.querySelectorAll('#pg-editor [data-pm-part="icap"][data-ph]').length);
+  ok('Platzhalter Bildunterschrift fehlt, solange kein Bild/keine Unterschrift fokussiert ist', !!para && ph0 === 0, { para: !!para, ph0 });
+  await p.click('[data-block-id="' + imgNew.id + '"] [data-pm-part="icap"]'); await sleep(150);
+  // Trilium-Fund #15: Platzhalter "Bildunterschrift" nur an der fokussierten/ausgewaehlten Unterschrift, nicht an allen Bildern
+  const ph = await p.evaluate((id) => [...document.querySelectorAll('#pg-editor [data-pm-part="icap"][data-ph]')].map((x) => x.closest('[data-block-id]').getAttribute('data-block-id') === id), imgNew.id);
+  ok('Platzhalter Bildunterschrift nur an der fokussierten Unterschrift', ph.length === 1 && ph[0] === true, ph);
+  await p.keyboard.type('Neu', { delay: 10 });
   b = await saved(P2);
   const ni = b.find((x) => x.type === 'image');
   ok('Bild hochgeladen + Unterschrift: Block-JSON wie Editor.js (file.url, caption, withBorder ...)', ni && /^\/files\/[0-9a-f]{24}$/.test(ni.data.file.url) && ni.data.caption === 'Neu' && ni.data.withBorder === false && ni.data.stretched === false, ni);
