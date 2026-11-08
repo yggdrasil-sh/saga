@@ -184,7 +184,37 @@ const cleanup = p => p.evaluate(() => fetch('/api/calls/active', { headers: { 'X
     await Promise.all([a.waitForNavigation({ timeout: 15000 }).catch(() => {}), a.click('#pg-side a.pg-nav-row[href="/dashboard"]')]);
     ok('Ohne Anruf: Heute aus den Chats laedt normal', rel(a) === '/dashboard' && !(await a.$('#hk-shell-frame')), rel(a));
 
-    // --- 7. Einbetten: nur Rahmen gleicher Herkunft ---------------------------------------------------------------------
+    // --- 7. Handy (390 px): Tab-Leiste der Huelle -> Heute im Rahmen, Tab-Leiste im Rahmen -> Chats --------------------
+    await a.setViewportSize({ width: 390, height: 844 });
+    await a.goto(BASE + '/chats#u' + encodeURIComponent(U2)); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1500);
+    await b.goto(BASE + '/chats'); await b.waitForTimeout(2000);
+    await a.click('#ct-call-a');
+    await b.waitForSelector('.cl-ring', { timeout: 15000 }).catch(() => {});
+    await b.click('.cl-ring .cl-big').catch(() => {});
+    const con2 = await until(async () => { const x2 = await st(a), y2 = await st(b); return x2 && y2 && x2.connected && y2.connected && x2; }, 25000);
+    ok('Handy: Anruf verbunden', !!con2);
+    const id2 = con2 && con2.id;
+    await a.click('.cl-shrink').catch(() => {}); await a.waitForTimeout(400);
+    // Zurueck aus dem Chat zur Liste, dann Tab "Heute" (die Tab-Leiste ist nur in der Liste sichtbar)
+    const tab = await a.$('#mob-tabs a[href="/dashboard"]');
+    if (tab) await tab.evaluate(e => e.click());
+    ok('Handy: Tab "Heute" oeffnet im Rahmen', await until(async () => (await framePath(a)) === '/dashboard' && rel(a) === '/dashboard', 15000), { f: await framePath(a), top: rel(a) });
+    const mob = await a.evaluate(() => ({ tabs: getComputedStyle(document.getElementById('mob-tabs')).display, fw: document.getElementById('hk-shell-frame').getBoundingClientRect().width }));
+    ok('Handy: eigene Tab-Leiste der Huelle aus, Rahmen volle Breite', mob.tabs === 'none' && mob.fw >= 389, mob);
+    const frm = await frameOf(a);
+    const ftab = frm && await frm.evaluate(() => { const t = document.querySelector('#mob-tabs a[href="/chats"]'); return !!(t && t.getClientRects().length); });
+    ok('Handy: Tab-Leiste im Rahmen sichtbar', ftab);
+    await shot(a, '05-handy-heute-im-rahmen');
+    let x2 = await alive(a, b, id2); ok('Handy: auf Heute laeuft der Anruf weiter', allOk(x2), x2);
+    if (frm) await frm.evaluate(() => document.querySelector('#mob-tabs a[href="/chats"]').click());
+    ok('Handy: Tab "Chats" im Rahmen zeigt die Huelle', await until(async () => !(await a.evaluate(() => window.HKShell.on())) && /^\/chats/.test(rel(a)), 8000), rel(a));
+    x2 = await alive(a, b, id2); ok('Handy: zurueck in den Chats laeuft der Anruf weiter', allOk(x2), x2);
+    await a.click('.cl-shrink').catch(() => {}); await a.waitForTimeout(300);
+    await a.click('.cl-ctl .cl-red').catch(() => {});
+    ok('Handy: Auflegen', await until(() => b.evaluate(() => !window.HKCalls.state()), 8000));
+    await a.setViewportSize({ width: 1280, height: 800 });
+
+    // --- 8. Einbetten: nur Rahmen gleicher Herkunft ---------------------------------------------------------------------
     const hdr = await a.evaluate(() => fetch('/notes').then(r => ({ csp: r.headers.get('content-security-policy'), xfo: r.headers.get('x-frame-options') })));
     ok('Seiten als Dokument weiter nicht einbettbar (frame-ancestors none / DENY)', /frame-ancestors 'none'/.test(hdr.csp || '') && hdr.xfo === 'DENY', hdr);
     ok('Am Ende: kein beforeunload-Dialog, kein /end aus einem Rahmen, keine Seitenfehler', !DIALOGS.length && !ENDS.some(e => e.frame) && !ERR.length, { DIALOGS, ENDS, ERR });
