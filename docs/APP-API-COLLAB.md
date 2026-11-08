@@ -279,7 +279,7 @@ Hinweis: Das Attribut `style` ist am Block immer die **Farbe** (`tunes.hkstyle`)
 
 | Marke | Wert | Inline-HTML (Normalform) |
 |---|---|---|
-| `link` | `{href}` (http/https/mailto) | `<a href="…" target="_blank" rel="noopener noreferrer">` |
+| `link` | `{href}` (http/https/mailto; seit 2.5 auch exakt `/files/<id>` – Datei dieses Servers, z. B. Anhang-Links aus dem Trilium-Import; Apps öffnen sie wie einen Datei-Block über die Sitzung) | `<a href="…" target="_blank" rel="noopener noreferrer">` |
 | `color` | `{c}` (Palette) | `<span class="hk-c-<c>">` |
 | `bg` | `{c}` (Palette) | `<mark class="hk-bg-<c>">` (schließt `mark` aus) |
 | `mark` | `{}` | `<mark class="cdx-marker">` (Gelb) |

@@ -16,6 +16,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Verbessert – Trilium-Import sieht aus wie in Trilium
+- Sammlungen (Bücher) zeigen ihre Unterseiten: Raster/Dashboard als Karten (Anordnung des Dashboards übernommen) mit
+  kurzem Auszug, Listenansicht als Liste; andere Ansichten (Kalender, Tabelle …) als Liste mit Hinweis. Leere
+  Ordnerseiten und die Sammelseite listen ihre Unterseiten statt des Start-Assistenten (nur beim Import erzeugt, statisch).
+- Seitensymbole aus Trilium (`iconClass`, auch über Vorlagen und vererbt) als Emoji, sonst nach Notiztyp; Notizfarben hat
+  Saga nicht (im Bericht gezählt). `fullContentWidth` → volle Breite.
+- SVG-Bilder erscheinen als Bild – nur serverseitig bereinigt (Positivliste, `saga/svg_clean.py`; zweifelhafte bleiben
+  Datei) und wie alle Dateien mit CSP-Sandbox ausgeliefert. Gilt nur für den Import; normales Hochladen unverändert.
+- Nicht mehr übernommen: in Trilium zur Löschung vorgemerkte (verwaiste) Anhänge, Ansichtseinstellungen (`dashboard.json`),
+  Mermaid-Vorschaubilder (Saga zeichnet das Diagramm selbst, Ansicht „Vorschau“); Inhalt von Sammlungen nicht als Text.
+- Anhang-Links im Text bleiben Links (`/files/<id>`) statt Text + doppelter Karte am Seitenende.
+- Nummerierte Listen mit Startwert/Zählart, Bildbreite und -ausrichtung, Tabellen-Spaltenbreiten; Code „automatisch“
+  wird vorsichtig erkannt (bzw. Sprachname im Absatz davor).
+- Zeichenfläche/Relationskarte: Vorschaubild über dem Hinweis, leere Zeichenfläche mit eigenem Hinweis; gespeicherte
+  Suche als Hinweis mit Suchtext.
+- Importbericht als letzte Unterseite der Sammelseite (dort ein Info-Kasten mit Zahlen und Link), nicht mehr als zweite
+  Seite oben; ohne technischen Pfad `_hidden`.
+- Editor: Platzhalter „Bildunterschrift“ nur noch am ausgewählten/fokussierten Bild.
+
 ### Behoben – Anruf endete beim Wechsel zu einer anderen Seite (Web)
 - Ein Anruf (1:1, Gruppe, Knoten, Meeting) bleibt jetzt bestehen, wenn man während des Gesprächs zu Heute, einer Seite,
   Aufgaben, Terminen oder Einstellungen wechselt. Solange ein Anruf läuft oder aufgebaut wird, öffnet die Chat-Seite

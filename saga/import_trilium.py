@@ -28,9 +28,14 @@ Abbildung (fuer beide Quellen gleich)
   - Klone (Notiz an mehreren Stellen): eine echte Seite (erste Stelle in Baumreihenfolge), an jeder weiteren Stelle
     eine Verweisseite (🔗) mit Link darauf.
   - text: HTML (saga/html2blocks.py) bzw. Markdown (md2blocks, ZIP im Format Markdown); erste Ueberschrift gleich dem
-    Titel faellt weg. code/mermaid: genau ein Code-Block, Sprache aus dem Mime-Typ. book: Seite. image/file: Datei
-    (Bild-/Datei-Block). Anhaenge: Saga-Dateien, an ihrer Stelle im Text; nicht im Text verwendete Anhaenge unten auf
-    der Seite der Besitzer-Notiz. Nicht Abbildbares (canvas, mindMap, relationMap, render, webView, ...): Seite mit
+    Titel faellt weg. code/mermaid: genau ein Code-Block, Sprache aus dem Mime-Typ (Mermaid: Ansicht Vorschau, ohne
+    die gespeicherte Vorschau-SVG). book: Seite mit Unterseiten-Uebersicht (viewType grid/dashboard -> Karten aus
+    columns/callout, Dashboard in der Anordnung der viewConfig; list -> Liste mit Auszug; sonst Liste + Hinweis), der
+    Inhalt einer Sammlung (JSON) wird nicht gelesen. Leere Text-Notiz mit Kindern und die Sammelseite: Liste der
+    Unterseiten. Icons: iconClass eigen -> Vorlage (relation:template, auch im versteckten Baum) -> vererbt -> Typ.
+    image/file: Datei (Bild-/Datei-Block). Anhaenge: Saga-Dateien, an ihrer Stelle im Text; nicht im Text verwendete Anhaenge unten auf
+    der Seite der Besitzer-Notiz (nur role image/file; zur Loeschung vorgemerkte und viewConfig nie; SVG nur bereinigt
+    als Bild, saga/svg_clean.py). Nicht Abbildbares (canvas, mindMap, relationMap, render, webView, ...): Seite mit
     Hinweis (+ Anhaenge, z. B. die SVG-Vorschau), im Bericht.
   - Interne Links (#root/.../id, Export-Pfade), Bilder (api/images, api/attachments), Include-Notizen -> Saga.
   - Labels ohne Wert -> Saga-Tags (Option tags), Labels mit Wert und Relationen -> ausklappbarer Block "Eigenschaften"

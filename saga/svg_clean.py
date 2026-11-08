@@ -12,8 +12,9 @@ Regeln
     xlink:href. href/xlink:href nur als Verweis im Dokument (#id); bei <image> zusaetzlich data:image/(png|jpeg|gif|webp);
     base64 - alles andere (http:, javascript:, data:text/html, fremde Dateien) faellt weg (image ohne Ziel: weg).
     Werte mit url(...) nur als url(#id).
-  - CSS (style-Attribut und <style>): Deklarationen mit url() ausser url(#id), expression(, javascript:, behavior,
-    -moz-binding, @-Regeln, Backslash-Escapes oder "<" fallen weg (<style> mit so etwas: ganz weg).
+  - CSS: im style-Attribut fallen Deklarationen mit url() ausser url(#id), expression(, javascript:, behavior,
+    -moz-binding, data:, Backslash-Escapes oder "<" weg. In <style> werden @import und @font-face entfernt und fremde
+    url(...) zu none; bleibt danach etwas Verdaechtiges (oder eine @-Regel ausser @media/@keyframes): <style> ganz weg.
   - Kommentare, Verarbeitungsanweisungen, CDATA-Grenzen verschwinden beim Parsen; Text bleibt (beim Schreiben escaped).
   - Grenzen: MAX_NODES Elemente, MAX_DEPTH Verschachtelung - darueber None.
 Ausgeliefert wird das Ergebnis wie jede Datei mit CSP "default-src 'none'; sandbox" + nosniff und im Editor nur per <img>
