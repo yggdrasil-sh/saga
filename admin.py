@@ -7,6 +7,7 @@ Sicherheit: eigenes Sitzungs-Cookie (SameSite=strict), CSRF-Token in jedem Formu
 noetig (nur Rueckfragen), Admin-Rechte werden bei jedem Aufruf neu geprueft. Den Port nicht ins
 Internet stellen (docker-compose bindet ihn standardmaessig nur an 127.0.0.1).
 """
+import asyncio
 import hashlib
 import json
 import os
@@ -29,7 +30,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, chat, chat_grp, cloudflare, covers, diagstore, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup, weather
+from saga import ai, avatars, backups, calls, chat, chat_grp, cloudflare, covers, diagstore, federation, horn, horn_ops, i18n, live, mfa, netmap, publish, push, push_stream, sharing, userbackup, weather
 from saga.core import HSTS, RESTORE_TEST, TZ, BodyLimit, LangMiddleware, SecHeaders, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -1490,6 +1491,70 @@ async def api_federation_peer(pid: int, request: Request):
     if new is None:
         return JSONResponse({"error": "not found"}, status_code=404)
     return JSONResponse({"id": pid, "opts": new}, headers={"Cache-Control": "no-store"})
+
+
+# --- Netz-Karte (2.5): Server, Partner, Gjallarhorn-Knoten, Clients (anonym, je Grobklasse) - saga/netmap.py -----------
+# Nur lesend. Daten: GET /api/net (Zwischenspeicher, Messungen im Hintergrund hoechstens alle 60 s). Live: GET /api/net/events
+# (Server-Sent Events im Admin-Bereich - derselbe Prozess wie die App, daher ohne Umweg; neuer Stand nur bei Aenderung,
+# Pruefung alle 2 s). Ohne JavaScript zeigt die Seite die Tabellen aus dem ersten Stand.
+NET_STREAMS = {"n": 0}
+NET_STREAMS_MAX = 20
+NET_STREAM_AGE = 900
+
+
+@admin.get("/net")
+def net_page(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    return _page(request, "net.html", me, net=netmap.snapshot())
+
+
+@admin.get("/api/net")
+def api_net(request: Request):
+    me, err = _api_admin(request)
+    if err:
+        return err
+    return JSONResponse(netmap.snapshot(), headers={"Cache-Control": "no-store"})
+
+
+@admin.get("/api/net/events")
+async def api_net_events(request: Request):
+    me, err = _api_admin(request)
+    if err:
+        return err
+    if NET_STREAMS["n"] >= NET_STREAMS_MAX:
+        return JSONResponse({"error": "too many connections"}, status_code=503, headers={"Retry-After": "30"})
+    uid, ep = me["username"], float(request.session.get("ep") or 0)
+
+    async def gen():
+        NET_STREAMS["n"] += 1
+        try:
+            yield "retry: 5000\n:" + " " * 2048 + "\n\n"
+            last, born, ping, checked = None, time.monotonic(), time.monotonic(), time.monotonic()
+            while time.monotonic() - born < NET_STREAM_AGE:
+                if time.monotonic() - checked > 30:            # Admin-Rechte laufend pruefen (gesperrt, abgemeldet)
+                    checked = time.monotonic()
+                    info = await run_in_threadpool(auth.user_info, uid)
+                    if not info or not info["is_admin"] or info["epoch"] > ep:
+                        yield "event: bye\ndata: {\"reason\":\"auth\"}\n\n"
+                        return
+                d = await run_in_threadpool(netmap.snapshot)
+                body = json.dumps({k: v for k, v in d.items() if k != "at"}, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+                if body != last:
+                    last = body
+                    ping = time.monotonic()
+                    yield "event: net\ndata: " + json.dumps(d, ensure_ascii=False, separators=(",", ":")) + "\n\n"
+                elif time.monotonic() - ping > 20:
+                    ping = time.monotonic()
+                    yield f": ping {int(time.time())}\n\n"
+                await asyncio.sleep(2)
+            yield "event: bye\ndata: {\"reason\":\"refresh\"}\n\n"
+        finally:
+            NET_STREAMS["n"] -= 1
+
+    return StreamingResponse(gen(), media_type="text/event-stream; charset=utf-8",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no", "X-Content-Type-Options": "nosniff"})
 
 
 # --- Mitteilungen aufs Handy/Desktop (Web Push, ntfy/UnifiedPush, APNs) ------------------------------------

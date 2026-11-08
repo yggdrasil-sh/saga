@@ -184,6 +184,7 @@
 {% if chat_enabled %}<script src="/static/meeting.js?v={{ v }}"></script><script src="/static/calls.js?v={{ v }}"></script>{% endif %}
 <script src="/static/ai.js?v={{ v }}"></script>
 {% if chat_enabled %}<script src="/static/chatdock.js?v={{ v }}"></script>{% endif %}
+<script src="/static/graph-sim.js?v={{ v }}"></script>
 <script src="/static/graph.js?v={{ v }}"></script>
 {% if not embed %}{% with tab_cur = 'pages' %}{% include "_tabbar.html" %}{% endwith %}<script src="/static/tabbar.js?v={{ v }}"></script>{% endif %}
 </body>

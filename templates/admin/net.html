@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ts with context %}
+{% block pagetitle %}{{ _('Netz') }}{% endblock %}
+{% block content %}
+{# Saga 2.5 (Bug-DB 1641): Netz-Karte - dieser Server, verbundene Server, Gjallarhorn-Knoten, Clients je Betriebssystem/App
+   (anonym, nur Anzahl). Daten: saga/netmap.py; Karte: static/admin-net.js (Canvas, Kraefte aus static/graph-sim.js).
+   Die Tabellen unten sind die barrierefreie Ansicht und der Rueckfall ohne JavaScript/Canvas. #}
+{% set CLS = {'ios-app': _('iOS-App'), 'android-app': _('Android-App'), 'mac-app': _('Mac-App'), 'windows-app': _('Windows-App'),
+              'linux-app': _('Linux-App'), 'web-windows': _('Browser · Windows'), 'web-mac': _('Browser · macOS'),
+              'web-linux': _('Browser · Linux'), 'web-android': _('Browser · Android'), 'web-ios': _('Browser · iOS'),
+              'web-other': _('Browser · anderes System'), 'other': _('Sonstige Clients')} %}
+{% set STATE = {'ok': _('In Ordnung'), 'slow': _('Langsam'), 'err': _('Fehler'), 'pending': _('Ausstehend'), 'off': _('Aus')} %}
+{% set KIND = {'self': _('Dieser Server'), 'peer': _('Verbundener Server'), 'own': _('Gjallarhorn-Knoten'),
+               'shared': _('Gjallarhorn-Knoten (geteilt)'), 'remote': _('Knoten eines Partners'), 'client': _('Clients')} %}
+{% set EDGE = {'fed': _('Föderation'), 'horn': _('Server ↔ Knoten'), 'share': _('Freigegebener Knoten'), 'client': _('Clients ↔ Server')} %}
+{% macro ms(v) %}{% if v is not none %}{{ v }} ms{% else %}–{% endif %}{% endmacro %}
+{% set names = {} %}
+{% set _x = names.update({'self': net.self.name}) %}
+{% for p in net.peers %}{% set _x = names.update({p.id: p.name}) %}{% endfor %}
+{% for h in net.horns %}{% set _x = names.update({h.id: h.name}) %}{% endfor %}
+{% for c in net.clients %}{% set _x = names.update({c.id: CLS[c.cls]}) %}{% endfor %}
+<h2>{{ _("Netz") }}</h2>
+<p class="hk-hint">{{ _("Karte der Verbindungen dieses Servers: verbundene Saga-Server, Gjallarhorn-Knoten und gerade verbundene Clients. Clients erscheinen nur als Anzahl je Betriebssystem bzw. App – ohne Namen, Konten oder IP-Adressen. Messwerte (Latenz, UDP) prüft Saga höchstens einmal pro Minute im Hintergrund, solange diese Seite offen ist.") }}</p>
+
+<section class="adm-card net-card" aria-labelledby="net-map-h">
+  <div class="net-head">
+    <h3 id="net-map-h">{{ _("Karte") }}</h3>
+    <span class="net-live" id="net-live" role="status" data-off="{{ _('Aktualisierung pausiert') }}" data-on="{{ _('Live') }}">{{ _("Stand beim Laden") }}</span>
+  </div>
+  <div class="net-stage" id="net-stage">
+    <canvas id="net-canvas" class="net-canvas" role="img" tabindex="0" aria-describedby="net-sum"
+            aria-label="{{ _('Netz-Karte (Grafik). Alle Angaben stehen auch in den Tabellen unten.') }}"></canvas>
+    <div class="net-tip" id="net-tip" hidden></div>
+    <noscript><p class="hk-hint">{{ _("Die Karte braucht JavaScript – alle Angaben stehen in den Tabellen unten.") }}</p></noscript>
+  </div>
+  <p class="net-sum" id="net-sum">{{ _("{a} verbundene Server, {b} Knoten, {c} Clients, {d} laufende Anrufe",
+      a=net.peers|length, b=net.horns|length, c=net.clients|sum(attribute='n'), d=net.calls|length) }}</p>
+  <ul class="net-legend" aria-label="{{ _('Legende') }}">
+    <li><span class="net-sym" data-sym="server"></span>{{ KIND.self }}</li>
+    <li><span class="net-sym" data-sym="peer"></span>{{ KIND.peer }}</li>
+    <li><span class="net-sym" data-sym="horn"></span>{{ _("Gjallarhorn-Knoten") }}</li>
+    <li><span class="net-sym" data-sym="client"></span>{{ _("Clients (Anzahl je System)") }}</li>
+    <li><span class="net-ln net-ok"></span>{{ STATE.ok }}</li>
+    <li><span class="net-ln net-slow"></span>{{ STATE.slow }}</li>
+    <li><span class="net-ln net-err"></span>{{ STATE.err }}</li>
+    <li><span class="net-ln net-off"></span>{{ _("Aus / ausstehend") }}</li>
+    <li><span class="net-dot"></span>{{ _("Laufender Anruf") }}</li>
+  </ul>
+</section>
+
+<section class="adm-card" id="net-tables" aria-labelledby="net-tab-h">
+  <h3 id="net-tab-h">{{ _("Knoten") }}</h3>
+  <div class="net-scroll"><table class="adm-table net-t" id="net-nodes">
+    <thead><tr><th scope="col">{{ _("Name") }}</th><th scope="col">{{ _("Art") }}</th><th scope="col">{{ _("Zustand") }}</th><th scope="col">{{ _("Details") }}</th></tr></thead>
+    <tbody>
+    <tr data-id="self"><th scope="row">{{ net.self.name }}<br><small>{{ net.self.host }}</small></th><td>{{ KIND.self }}</td><td>{{ STATE.ok }}</td>
+      <td>{{ _("Version") }} {{ net.self.version }} · {{ _("Föderation") }} {{ _("an") if net.self.fed else _("aus") }} · Gjallarhorn {{ _("an") if net.self.horn else _("aus") }}</td></tr>
+    {% for p in net.peers %}
+    <tr data-id="{{ p.id }}" class="net-st-{{ p.state }}"><th scope="row">{{ p.name }}{% if p.name != p.host %}<br><small>{{ p.host }}</small>{% endif %}</th><td>{{ KIND.peer }}</td>
+      <td><span class="net-pill"></span>{{ STATE[p.state] }}</td>
+      <td>{% if p.version %}{{ _("Version") }} {{ p.version }} · {% endif %}{{ _("Latenz") }} {{ ms(p.rtt) }} · {{ _("Letzter Kontakt") }} {{ ts(p.last_seen) }}
+        {% if p.last_error or p.probe_error %}<br><small>{{ _("Letzter Fehler:") }} {{ p.last_error or p.probe_error }}</small>{% endif %}
+        {% if p.caps %}<br><small>{{ _("Fähigkeiten:") }} {{ p.caps|join(', ') }}</small>{% endif %}</td></tr>
+    {% endfor %}
+    {% for h in net.horns %}
+    <tr data-id="{{ h.id }}" class="net-st-{{ h.state }}"><th scope="row">{{ h.name }}</th><td>{{ KIND[h.kind] }}{% if h.builtin %} <span class="adm-tag">{{ _("eingebaut") }}</span>{% endif %}{% if h.kind == 'remote' %}<br><small>{{ h['from'] }}</small>{% endif %}</td>
+      <td><span class="net-pill"></span>{{ STATE[h.state] }}</td>
+      <td>{% if h.kind != 'remote' %}{% if h.version %}{{ _("Version") }} {{ h.version }} · {% endif %}TCP {{ '✓' if h.tcp else '✗' }} · UDP {{ '✓' if h.udp_ok else ('–' if h.udp_ok is none else '✗') }} · IPv4 {{ '✓' if h.v4 else '–' }} · IPv6 {{ '✓' if h.v6 else '–' }}
+        <br><small>{{ _("Latenz") }} {{ ms(h.rtt) }}{% if h.udp_rtt is not none %} · UDP {{ ms(h.udp_rtt) }}{% endif %} · {{ _("Teilnehmende") }} {{ h.peers }} · {{ _("Auslastung") }} {{ h.util }} %</small>{% else %}{{ _("Vom Partner für diesen Server freigegeben") }}{% endif %}</td></tr>
+    {% endfor %}
+    {% for c in net.clients %}
+    <tr data-id="{{ c.id }}"><th scope="row">{{ CLS[c.cls] }}</th><td>{{ KIND.client }}</td><td>{{ c.n }}</td>
+      <td>{{ _("Live-Kanal {a} · Push {b} · in Anrufen {c}", a=c.live, b=c.push, c=c.call) }}</td></tr>
+    {% endfor %}
+    </tbody></table></div>
+
+  <h3>{{ _("Verbindungen") }}</h3>
+  <div class="net-scroll"><table class="adm-table net-t" id="net-edges">
+    <thead><tr><th scope="col">{{ _("Von") }}</th><th scope="col">{{ _("Nach") }}</th><th scope="col">{{ _("Art") }}</th><th scope="col">{{ _("Zustand") }}</th><th scope="col">{{ _("Latenz") }}</th></tr></thead>
+    <tbody>
+    {% for e in net.edges %}
+    <tr class="net-st-{{ e.state }}"><td>{{ names.get(e.a, e.a) }}</td><td>{{ names.get(e.b, e.b) }}</td><td>{{ EDGE[e.kind] }}</td><td><span class="net-pill"></span>{{ STATE[e.state] }}</td><td>{{ ms(e.rtt) }}</td></tr>
+    {% endfor %}
+    </tbody></table></div>
+
+  <h3>{{ _("Laufende Anrufe") }}</h3>
+  <div class="net-scroll"><table class="adm-table net-t" id="net-calls">
+    <thead><tr><th scope="col">{{ _("Anruf") }}</th><th scope="col">{{ _("Weg") }}</th><th scope="col">{{ _("Teilnehmende hier") }}</th><th scope="col">{{ _("Über andere Server") }}</th></tr></thead>
+    <tbody>
+    {% for k in net.calls %}
+    <tr><td>#{{ k.id[:6] }} · {{ _("Video") if k.media == 'video' else _("Ton") }}</td><td>{% if k.node %}{{ _("über Knoten {name}", name=names.get(k.node, '–')) }}{% else %}{{ _("direkt (Mesh)") }}{% endif %}</td>
+      <td>{{ k.local }}</td><td>{{ k.remote }}{% if k.peers %} ({% for x in k.peers %}{{ names.get(x, x) }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}</td></tr>
+    {% else %}
+    <tr class="net-none"><td colspan="4"><small>{{ _("Gerade läuft kein Anruf.") }}</small></td></tr>
+    {% endfor %}
+    </tbody></table></div>
+</section>
+<script type="application/json" id="net-i18n">{{ {'cls': CLS, 'state': STATE, 'kind': KIND, 'edge': EDGE,
+  'version': _('Version'), 'rtt': _('Latenz'), 'seen': _('Letzter Kontakt'), 'error': _('Letzter Fehler:'), 'caps': _('Fähigkeiten:'),
+  'peers': _('Teilnehmende'), 'util': _('Auslastung'), 'builtin': _('eingebaut'), 'shared_by': _('Vom Partner für diesen Server freigegeben'),
+  'live': _('Live-Kanal'), 'push': _('Push'), 'incall': _('in Anrufen'), 'fed': _('Föderation'), 'on': _('an'), 'off': _('aus'),
+  'video': _('Video'), 'audio': _('Ton'), 'via': _('über Knoten {name}'), 'mesh': _('direkt (Mesh)'), 'nocall': _('Gerade läuft kein Anruf.'),
+  'sum': _('{a} verbundene Server, {b} Knoten, {c} Clients, {d} laufende Anrufe'), 'calls_here': _('Anrufe hier: {n}'),
+  'paused': _('Aktualisierung pausiert'), 'livetxt': _('Live'), 'reconnect': _('Verbindung unterbrochen – neuer Versuch …'),
+  'never': _('nie'), 'ago_s': _('vor {n} s'), 'ago_m': _('vor {n} min'), 'ago_h': _('vor {n} h')}|tojson }}</script>
+<script type="application/json" id="net-data">{{ net|tojson }}</script>
+<script src="/static/graph-sim.js?v={{ v }}"></script>
+<script src="/static/admin-net.js?v={{ v }}"></script>
+{% endblock %}
