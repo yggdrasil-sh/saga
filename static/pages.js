@@ -2817,7 +2817,7 @@
     HK.openMenu(anchor, function (m) {
       m.appendChild(HK.menuItem(T('Leere Seite'), function () { newPage(parentId); }, { ic: 'file' }));
       m.appendChild(HK.menuItem(T('Datenbank'), function () { newDatabase(parentId); }, { ic: 'database', hint: T('Tabelle, Board …') }));
-      if (!EMBED) m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: parentId }); }, { ic: 'upload', hint: T('CSV, Markdown, Obsidian') }));
+      if (!EMBED) m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: parentId }); }, { ic: 'upload', hint: T('CSV, Markdown, Notion, Trilium') }));
       m.appendChild(HK.menuLabel(T('Vorlagen')));
       if (S.gal !== false && !EMBED) m.appendChild(HK.menuItem(T('Aus der Galerie …'), function () { openGallery(parentId); }, { ic: 'gallery', hint: T('fertige Vorlagen') }));
       BUILTIN.forEach(function (t) { m.appendChild(HK.menuItem(t.name, function () { fromBuiltin(t, parentId); }, { icon: t.icon })); });
@@ -2863,9 +2863,9 @@
         zone.appendChild(el('div', 'imp-drop-ic', '⇪'));
         zone.appendChild(el('p', 'imp-drop-t', opts.targetDb ? T('CSV-Datei hierher ziehen oder auswählen') : T('Datei oder Ordner hierher ziehen oder auswählen')));
         zone.appendChild(el('p', 'imp-hint', opts.targetDb ? T('CSV (Komma, Semikolon, Tab) – auch aus Excel.')
-          : T('CSV (wird eine Datenbank), Markdown-Dateien, ein Markdown-/Obsidian-Ordner, ein ZIP davon oder ein Notion-Export (ZIP, „Markdown & CSV“).')));
+          : T('CSV (wird eine Datenbank), Markdown-Dateien, ein Markdown-/Obsidian-Ordner, ein ZIP davon, ein Notion-Export (ZIP, „Markdown & CSV“) oder Trilium (ZIP-Export oder Sicherung .db).')));
         var fi = el('input'); fi.type = 'file'; fi.className = 'imp-file'; fi.multiple = !opts.targetDb;
-        fi.accept = opts.targetDb ? '.csv,.tsv,.txt,text/csv' : '.csv,.tsv,.txt,.md,.markdown,.zip,text/csv,text/markdown,application/zip,image/*,application/pdf';
+        fi.accept = opts.targetDb ? '.csv,.tsv,.txt,text/csv' : '.csv,.tsv,.txt,.md,.markdown,.zip,.db,.sqlite,text/csv,text/markdown,application/zip,image/*,application/pdf';
         var row = el('div', 'imp-btns'), b1 = el('button', 'btn btn-primary', T('Datei wählen …')); b1.type = 'button';
         b1.addEventListener('click', function () { fi.click(); }); row.appendChild(b1);
         if (!opts.targetDb) {
@@ -2900,6 +2900,7 @@
             csvForm();
           } else if (d.kind === 'md') mdForm();
           else if (d.kind === 'notion') notionForm();
+          else if (d.kind === 'trilium') triliumForm();
           else say(T('Dateityp nicht unterstützt'), true);
         }).catch(function (e) { say(e.message, true); });
       }
@@ -3030,7 +3031,44 @@
         runB.addEventListener('click', function () { start({ kind: 'notion', title: ti.value.trim(), types: types, parent_id: opts.parentId || undefined }); });
         foot.appendChild(back); foot.appendChild(runB); root.appendChild(foot); root.appendChild(msg); say('');
       }
-      function start(b) {
+      // Trilium (ZIP-Export oder Sicherung .db): Zusammenfassung, Optionen wie Markdown, Passwortfeld nur, wenn die
+      // Datenbank geschuetzte Notizen hat (das Passwort geht nur mit dem Lauf mit und wird nicht gespeichert)
+      function triliumForm() {
+        root.textContent = '';
+        var s = an.trilium || {};
+        root.appendChild(el('div', 'imp-sum', T('Trilium ({src}): {pages} Seiten, davon {code} Code-Notizen, {files} Bilder/Dateien, {clones} Klone',
+          { src: s.source === 'db' ? T('Sicherung') : T('ZIP-Export'), pages: s.pages || 0, code: s.code || 0, files: s.files || 0, clones: s.clones || 0 })));
+        if (s.unsupported) root.appendChild(el('p', 'imp-warn', '⚠ ' + T('{n} Notizen eines Typs, den Saga nicht darstellen kann (z. B. Canvas) – als Seite mit Hinweis.', { n: s.unsupported })));
+        (an.warnings || []).forEach(function (w) { root.appendChild(el('p', 'imp-warn', '⚠ ' + w)); });
+        var ti = el('input', 'hk-in imp-title'); ti.type = 'text'; ti.maxLength = 200; ti.placeholder = T('Name der Sammelseite (leer: „Trilium-Import“ mit Datum)');
+        ti.setAttribute('aria-label', T('Name der Sammelseite')); ti.value = s.title || ''; root.appendChild(ti);
+        var o = { tags: true, props: true };
+        [['tags', T('Labels ohne Wert als Tags übernehmen')], ['props', T('Übrige Labels und Relationen als ausklappbaren Block „Eigenschaften“')]].forEach(function (x) {
+          var l = el('label', 'imp-chk'), cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
+          cb.addEventListener('change', function () { o[x[0]] = cb.checked; });
+          l.appendChild(cb); l.appendChild(document.createTextNode(' ' + x[1])); root.appendChild(l);
+        });
+        var pw = null;
+        if (s.password) {
+          var box = el('div', 'imp-grp imp-pw');
+          box.appendChild(el('p', 'imp-hint', T('{n} geschützte Notizen gefunden. Mit dem Trilium-Passwort werden sie entschlüsselt übernommen, ohne Passwort übersprungen.', { n: s.protected })));
+          var pl = el('label', 'imp-pwl', T('Trilium-Passwort (optional)'));
+          pw = el('input', 'hk-in imp-pass'); pw.type = 'password'; pw.autocomplete = 'off'; pw.maxLength = 1024; pw.id = 'imp-pass';
+          pl.htmlFor = 'imp-pass'; box.appendChild(pl); box.appendChild(pw);
+          box.appendChild(el('p', 'imp-hint', T('Das Passwort wird nur für diesen Import benutzt und nicht gespeichert.')));
+          root.appendChild(box);
+        }
+        var foot = el('div', 'imp-foot'), back = el('button', 'btn', T('Andere Datei')); back.type = 'button'; back.addEventListener('click', pick);
+        var runB = el('button', 'btn btn-primary imp-run', T('Importieren')); runB.type = 'button';
+        runB.addEventListener('click', function () {
+          var b = { kind: 'trilium', title: ti.value.trim(), tags: o.tags, props: o.props, parent_id: opts.parentId || undefined };
+          if (pw && pw.value) b.password = pw.value;
+          start(b, function () { if (pw) pw.value = ''; });
+        });
+        foot.appendChild(back); foot.appendChild(runB); root.appendChild(foot); root.appendChild(msg); say('');
+      }
+      function start(b, after) {
+        if (after) after();
         api('POST', '/api/import/' + encodeURIComponent(tok) + '/run', b).then(function (d) { S.impRun = d.run_id; progress(d.run_id); })
           .catch(function (e) { say(e.message, true); });
       }

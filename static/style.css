@@ -2550,6 +2550,9 @@ body.notes-page .page.p-small .page-body{font-size:var(--fs-base)}
 .imp-done.err{color:var(--down)}
 .imp-grp summary{cursor:pointer}
 .imp-grp ul{margin:.3rem 0 .3rem 1rem;padding:0;font-size:var(--fs-base);color:var(--muted);max-height:12rem;overflow:auto;overflow-wrap:anywhere}
+.imp-pw{display:flex;flex-direction:column;gap:.35rem;margin-top:.4rem}
+.imp-pwl{font-weight:600;font-size:var(--fs-base)}
+.imp-pw .imp-hint{margin:0}
 @media (max-width:640px){.imp-foot{justify-content:stretch}.imp-foot .btn{flex:1}}
 
 /* 2.5 (P3 Stufe 1): Konfliktblock aus dem Zusammenfuehren, Block-Markierung anderer Personen (Farbe aus der Palette) */
