@@ -982,6 +982,27 @@ def import_zip(uid, zpath, opts):
             raise
 
 
+def _svg_again(path):
+    """Bereinigtes SVG (z. B. aus dem Trilium-Import) aus einer Sicherung: erneut bereinigen (saga/svg_clean.py) und als
+    Bild zulassen; laesst es sich nicht bereinigen, bleibt es eine Datei (None)."""
+    from saga import svg_clean
+    try:
+        if os.path.getsize(path) > svg_clean.MAX_BYTES:
+            return None
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        if not svg_clean.looks_like_svg(raw[:512]):
+            return None
+        cleaned = svg_clean.clean(raw)
+    except Exception:
+        return None
+    if not cleaned:
+        return None
+    with open(path, "wb") as fh:
+        fh.write(cleaned)
+    return "image/svg+xml"
+
+
 def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
     from saga.files import _sniff_image
     now = time.time()
@@ -996,6 +1017,8 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
         for old, (new, f) in fmap.items():
             with open(os.path.join(FILES_DIR, new), "rb") as fh:
                 img = _sniff_image(fh.read(16))
+            if not img and str(f.get("mime") or "") == "image/svg+xml":
+                img = _svg_again(os.path.join(FILES_DIR, new))
             c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
                       (new, uid, re.sub(r"[\x00-\x1f/\\]", "_", str(f.get("name") or "datei"))[:120] or "datei",
                        img or "application/octet-stream", os.path.getsize(os.path.join(FILES_DIR, new)), 1 if img else 0, now))

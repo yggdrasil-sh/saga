@@ -90,6 +90,24 @@ def main():
     clean_ok("Verarbeitungsanweisung/Kommentar", b'<?xml version="1.0"?><?xml-stylesheet href="http://x.invalid/a.xsl"?><!-- x -->' +
              svg('<rect width="1" height="1"/>'), b"<rect")
     out = S.clean(svg('<rect width="1" height="1"/>', 'onload="alert(1)"')) or b""
+    clean_ok("CSS image-set()/src()/cross-fade() mit fremder Adresse faellt weg",
+             svg('<style>rect{fill:image-set("http://x.invalid/a.png" 1x)}</style><rect width="1" height="1" '
+                 'style="background:src(\'http://x.invalid/\');mask:cross-fade(url(#a),url(#b))"/>'), b"<rect")
+    ok("CSS image-set() nicht im Ergebnis", b"image-set" not in (S.clean(svg('<style>rect{fill:image-set("http://x.invalid/a.png" 1x)}</style>'
+                                                                         '<rect width="1" height="1"/>')) or b"").lower())
+    import tempfile
+    from saga import userbackup as UB
+    with tempfile.TemporaryDirectory() as td:
+        pth = os.path.join(td, "f")
+        with open(pth, "wb") as fh:
+            fh.write(svg('<rect width="1" height="1" onload="alert(1)"/>'))
+        mime = UB._svg_again(pth)
+        with open(pth, "rb") as fh:
+            back = fh.read()
+        ok("Sicherung zurueckspielen: SVG erneut bereinigt und wieder Bild", mime == "image/svg+xml" and b"onload" not in back and b"<rect" in back)
+        with open(pth, "wb") as fh:
+            fh.write(b'<!DOCTYPE svg [<!ENTITY a "x">]><svg/>')
+        ok("Sicherung zurueckspielen: zweifelhaftes SVG bleibt Datei", UB._svg_again(pth) is None)
     ok("ergebnis wird erneut sauber geparst (stabil)", S.clean(out) is not None and S.clean(out).count(b"<rect") == 1)
 
     # --- zweifelhaft: abgelehnt (bleibt Datei) --------------------------------------------------------------------------

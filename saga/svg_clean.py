@@ -60,7 +60,7 @@ _DOCTYPE = re.compile(r"<!DOCTYPE\s+svg[^\[>]*>", re.I)
 _URL = re.compile(r"url\s*\(", re.I)
 _URL_LOCAL = re.compile(r"""url\(\s*(['"]?)#[A-Za-z_][\w.:-]*\1\s*\)""", re.I)
 _BAD_CSS = re.compile(r"expression\s*\(|javascript\s*:|vbscript\s*:|behavior\s*:|-moz-binding|@import|@font-face|@namespace"
-                      r"|\\|<|&#|data\s*:", re.I)
+                      r"|\\|<|&#|data\s*:|image-set\s*\(|cross-fade\s*\(|\bsrc\s*\(|\bimage\s*\(", re.I)
 _DATA_IMG = re.compile(r"data:image/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]{1,8000000}", re.I)
 _LOCAL_REF = re.compile(r"#[A-Za-z_][\w.:-]{0,200}")
 
