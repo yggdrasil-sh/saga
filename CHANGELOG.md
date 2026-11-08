@@ -16,6 +16,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### BookOrbit: Leseliste unter „Heute“ und Widget „Lesen“ (Phase 1, nur lesen)
+- Neue Verbindung **Einstellungen → Verbindungen → BookOrbit** (je Konto, wie Immich): Adresse, Benutzer, Passwort –
+  Saga meldet sich einmal an und speichert nur das Refresh-Token (verschlüsselt), nie das Passwort. Status
+  („verbunden als …“, „abgelaufen, bitte neu anmelden“), Trennen meldet Saga auch bei BookOrbit ab. Vorschlagsadresse
+  per `BOOKORBIT_URL`; interne Server nur mit Freigabe im Admin (SSRF-Schutz wie Immich, keine Weiterleitungen).
+- Token-Pflege: BookOrbit rotiert das Refresh-Token bei jedem Erneuern – Saga erneuert atomar je Konto (Sperre in der
+  Datenbank, auch bei mehreren Prozessen) und etwa täglich im Hintergrund (`SAGA_BOOKORBIT_REFRESH_S`).
+- **Heute** zeigt die Karte **Lesen** (gerade am Lesen mit Cover und Fortschritt, Lesesträhne), nur wenn verbunden.
+- Neues Seiten-Widget **Lesen** (`reading`): „Gerade am Lesen“, „Leseziel“, „Lesesträhne“ – immer die Daten der
+  betrachtenden Person, nie veröffentlicht oder föderiert. Cover kommen über Saga (`/api/bookorbit/cover/<id>`).
+- Apps: `features` `bookorbit1`, Endpunkte `/api/bookorbit/{status,connect,disconnect,reading,cover/<id>}`
+  (docs/APP-API.md „BookOrbit“). Datenbank: Migration 35 (`bookorbit_link`).
+
 ### Admin: Netz-Karte
 - Neuer Bereich **Netz** im Admin: Karte dieses Servers mit verbundenen Saga-Servern (Föderation: Zustand, Version,
   Latenz, letzter Kontakt/Fehler, Fähigkeiten), Gjallarhorn-Knoten (eigene, geteilte, von Partnern freigegebene; TCP/UDP,

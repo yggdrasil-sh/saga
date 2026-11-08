@@ -550,6 +550,65 @@ Android Compose-`Canvas`, Linux Cairo (P4-E2). Werte zusätzlich als Tabelle (Ba
 - **Föderation:** Fähigkeit `widgets2` (siehe `APP-API-FED.md`). Ohne sie fehlen die neuen Arten in der Antwort und das Heim
   meldet `"unsupported2": true` – Clients zeigen „Widget nur auf dem Ursprungsserver“.
 
+## BookOrbit: Leseliste und Widget „Lesen“ (2.5, `bookorbit1`)
+
+Anbindung einer selbst gehosteten **BookOrbit**-Bibliothek, Phase 1: **nur lesen** (BookOrbit → Saga), **je Konto**
+(wie Immich). Saga meldet sich einmal mit Benutzer und Passwort bei BookOrbit an (`POST /api/v1/auth/login` als nativer
+Client) und speichert **nur das Refresh-Token** (verschlüsselt), nie das Passwort. BookOrbit rotiert das Token bei jedem
+Erneuern; der Server erneuert atomar je Konto (Sperre in der Datenbank) und etwa täglich im Hintergrund, damit es ohne
+Nutzung nicht verfällt (Standard bei BookOrbit: 7 Tage). Apps sprechen **nie direkt** mit BookOrbit – alles, auch die
+Cover, geht über Saga. Fähigkeit in `/api/version` `features`: **`bookorbit1`**. `MIN_APP` bleibt.
+
+Alle Aufrufe mit Sitzung bzw. Geräte-/App-Schlüssel und `X-Saga: 1`:
+
+| Aufruf | Zweck |
+|---|---|
+| `GET /api/bookorbit/status` | `{"available": true, "connected": bool, "state": "none"\|"ok"\|"expired", "name", "url", "since", "suggest"}` – `suggest` = Vorschlagsadresse des Servers (`BOOKORBIT_URL`) oder `null` |
+| `POST /api/bookorbit/connect` | Body `{"url", "username", "password"}` → `{"ok": true, "name", "url"}`; Fehler 400 mit `error` (falsches Passwort, Passwort-Anmeldung bei BookOrbit abgeschaltet, interne Adresse ohne Freigabe, nicht erreichbar), 429 bei zu vielen Versuchen (8 je Minute und Konto; BookOrbit selbst begrenzt ebenfalls) |
+| `POST /api/bookorbit/disconnect` | Verbindung löschen und bei BookOrbit abmelden (beste Mühe) → `{"ok": true, "logged_out": bool}` |
+| `GET /api/bookorbit/reading` | Leseliste (siehe unten), je Konto einige Minuten zwischengespeichert |
+| `GET /api/bookorbit/cover/<bookId>` | Vorschaubild (PNG/JPEG/GIF/WebP, geprüft), `Cache-Control: private, max-age=3600`; 404 ohne Bild bzw. ohne Zugriff, 409 ohne (gültige) Verbindung |
+
+Adressen: öffentliche nur mit `https`, interne (privat/loopback/…) nur, wenn der Admin den Host freigibt (im Admin-Bereich
+freigegebene interne Hosts, wie für Kalender und Immich; `BOOKORBIT_URL` ist automatisch frei). Keine Weiterleitungen. Ein angehängtes `/api/v1` wird
+abgeschnitten.
+
+```json
+GET /api/bookorbit/reading
+{"state": "ok", "name": "Anna", "as_of": "2026-11-08T17:00:00Z", "stale": true?,
+ "books": [{"id": 11, "title": "Der Nachtzug", "authors": ["Ida Feld"], "progress": 42.4,
+            "cover": "/api/bookorbit/cover/11", "format": "epub"}],
+ "goal": {"goal": 12, "done": 3, "year": 2026},
+ "streak": {"current": 4, "longest": 9, "last7": [true, false, true, true, true, true, true]}}
+```
+
+- `state`: `none` (nicht verbunden – nur `{"state": "none"}`), `ok`, `expired` (BookOrbit lehnt das Token ab, z. B.
+  abgemeldet, Passwort geändert, 7 Tage ohne Erneuerung – „bitte neu anmelden“), `unavailable` (BookOrbit gerade nicht
+  erreichbar). Bei kurzem Ausfall kommt bis zu 6 h der letzte Stand mit `stale: true`.
+- `books`: „Gerade am Lesen“, zuletzt gelesen zuerst (höchstens 10), `progress` 0–100, `cover` relativ zur Saga-Adresse
+  oder `null`. Ein eigenes Feld „zuletzt gelesen am“ liefert BookOrbit hier nicht – die Reihenfolge trägt es.
+  `goal.goal` ist `null`, wenn in BookOrbit kein Leseziel gesetzt ist. Einzelne Teile können `null` sein (BookOrbit
+  meldet einen Teil als fehlgeschlagen).
+
+### Widget „Lesen“ (`kind: "reading"`, bookorbit1)
+
+Wie `upcoming` **immer die Daten der betrachtenden Person** – auch auf geteilten Seiten jede Person ihre eigene
+Leseliste; nie veröffentlicht, über Servergrenzen `no_access` (Föderation), Markdown-Export nur mit den eigenen Daten.
+cfg: `{"show": "current"|"goal"|"streak" ("current"), "limit": 1..5 (3)}` (`limit` nur für `current`).
+
+```json
+"data": {"state": "ok", "show": "current", "books": [{…wie oben…}], "more": 1}
+"data": {"state": "ok", "show": "goal", "goal": {"goal": 12, "done": 3, "year": 2026}}
+"data": {"state": "ok", "show": "streak", "streak": {"current": 4, "longest": 9, "last7": [...]}}
+"data": {"state": "none", "show": "current"}
+```
+
+- Ohne Verbindung bzw. abgelaufen: **kein** `error`, sondern `data.state` `none`/`expired`/`unavailable` – Clients zeigen
+  einen freundlichen Hinweis mit Weg zu den Einstellungen (Web: Einstellungen → Verbindungen → BookOrbit).
+- `value`: Anzahl der Bücher (`current`), gelesene Bücher (`goal`, `max` = Ziel), aktuelle Strähne (`streak`).
+- Cover laden Apps über `GET /api/bookorbit/cover/<id>` mit ihrem Schlüssel (nicht als nackte `<img>`-Adresse im Web:
+  der Aufruf braucht `X-Saga`).
+
 ## Eintrags-Vorlagen, Startseite, neue Einträge (2.5, Fix-Runde 27.10.)
 
 ### E1 – Eintrags-Vorlagen für Bearbeitende
