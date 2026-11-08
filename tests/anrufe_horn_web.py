@@ -136,6 +136,23 @@ def cands_of(d):
 
 
 # --- Ablauf -----------------------------------------------------------------------------------------------------------
+def horn_raw(cid, p, body):
+    """POST /horn mit Kopfzeilen -> (Status, {kopf: wert}, Body)."""
+    import urllib.parse
+    b = urllib.parse.urlparse(os.environ["HK_TEST_BASE"])
+    c = http.client.HTTPConnection(b.hostname, b.port, timeout=30)
+    c.request("POST", f"/api/calls/{cid}/horn", body=json.dumps(body), headers={"Host": A_.HOST, "Accept-Language": "de",
+              "Cookie": "saga=" + p.k, "X-Saga": "1", "Content-Type": "application/json"})
+    r = c.getresponse()
+    raw = r.read()
+    c.close()
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        d = {}
+    return r.status, {k.lower(): v for k, v in r.getheaders()}, d if isinstance(d, dict) else {}
+
+
 def main():
     A_.cleanup()
     prev = auth.settings(fresh=True)
@@ -280,6 +297,25 @@ def server_tests():
     s, d = req("POST", f"/api/calls/{cid}/horn", A.k, {"device": A.dev["id"]})
     ok(f"nach dem Leeren: Knoten des Anrufs ist jetzt der mit den meisten bereiten Endpunkten (B: 3 von 4) -> {cands_of(d)}",
        cands_of(d)[:1] == [B_NAME])
+    # Horn-Fix: Grenze fuer /horn je Geraet -> 429 mit Retry-After (Header) und retry_after (Body), Vertrag fuer Web/Apps
+    n200, st, hdr, body = 0, 0, {}, {}
+    for _ in range(40):
+        st, hdr, body = horn_raw(cid, A, {"device": A.dev["id"]})
+        if st != 200:
+            break
+        n200 += 1
+    ra = hdr.get("retry-after", "")
+    ok(f"/horn: nach {n200} Abrufen in der Minute 429 ({st}), Retry-After {ra!r}, retry_after {body.get('retry_after')!r}",
+       st == 429 and 25 <= n200 <= 30 and ra.isdigit() and 1 <= int(ra) <= 60 and body.get("retry_after") == int(ra)
+       and isinstance(body.get("error"), str) and "no-store" in hdr.get("cache-control", ""), body)
+    from saga import calls as CL
+    with connect() as c, c:                                  # zweiter Prozess (dieser Test) sieht denselben Zaehler
+        w2 = CL._rate_db(c, "horn", A.dev["id"], CL.HORN_RATE)
+        w3 = CL._rate_db(c, "horn-test", secrets.token_hex(16), 2)
+        w4 = CL._rate_db(c, "horn-test", "x" * 32, 1)
+        c.execute("DELETE FROM horn_rate WHERE k LIKE 'horn-test|%'")
+    ok(f"Grenze in der Datenbank: gilt auch fuer einen anderen Prozess (wartet {w2} s), frischer Topf frei ({w3}, {w4})",
+       1 <= w2 <= 60 and w3 == 0 and w4 == 0)
     # Ereigniskanal am Knoten B (Saga-Token): Bein anlegen geht hier nicht ohne Browser - hello eines unbekannten Beins 404
     s, _ = b_req("GET", "/api/sfu/leg/0000000000000000/events")
     ok(f"Ereigniskanal: unbekanntes Bein -> 404 ({s})", s == 404)

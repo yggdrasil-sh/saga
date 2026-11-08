@@ -973,6 +973,9 @@ CREATE TABLE IF NOT EXISTS horn_node (
 CREATE TABLE IF NOT EXISTS horn_pair (
     token_hash TEXT PRIMARY KEY, name TEXT NOT NULL, share SMALLINT NOT NULL DEFAULT 0,
     expires DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION);
+-- Horn-Fix (2.5, saga/calls.py _rate_db): Grenze fuer Kandidaten-Abrufe (/horn) in der Datenbank, damit sie auch mit
+-- mehreren Prozessen fuer den ganzen Server gilt. k = Topf|Geraet, festes Zeitfenster ab start, n = Abrufe darin.
+CREATE TABLE IF NOT EXISTS horn_rate (k TEXT PRIMARY KEY, start DOUBLE PRECISION NOT NULL, n INTEGER NOT NULL);
 -- Gjallarhorn P6 (saga/horn_ops.py): gesperrte Knotenschluessel (Entfernen), Pruefprotokoll der Knoten (nur Kennungen,
 -- keine Konto-/Geraetedaten) und Kontingente je verbundenem Server fuer geteilte Knoten (P10 nutzt sie; NULL = Standard
 -- aus calls.share_legs / calls.share_mbit, off = Notaus).

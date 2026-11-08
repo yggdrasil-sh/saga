@@ -78,6 +78,7 @@ import re
 import secrets
 import time
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 import auth
 from db import connect as _db
@@ -106,6 +107,8 @@ CAPS_MAX, _CAP = 16, re.compile(r"[a-z0-9_]{1,16}")
 SIG_RATE = 240                         # je Geraet und Minute
 CALL_RATE, CALL_RATE_H = 6, 40         # neue Anrufe je Konto: je Minute / je Stunde
 HANDOVER_S = 15                        # Uebernahme darf so lange dauern (config limits.handover_s)
+HORN_RATE = 30                         # 2.5: Kandidaten-Abrufe (/horn) je Geraet und Minute (Datenbank) - Wiederaufbau mit Backoff
+                                       # (1/2/4/8/15 s, je Versuch <= 2 Abrufe) und Erneuern (alle ~45 s) bleiben weit darunter
 HO_RATE = 20                           # 2.5: Uebernahmen (join role handover, promote) je Konto und Minute - eigener Topf
 PAIR_RATE = 3                          # an dieselbe Person je Minute
 ALIVE_GAP = 45                         # so lange ohne /alive -> Verbindung gilt als verloren
@@ -303,6 +306,22 @@ def _rate(kind, key, n, per=60.0):
     if len(_hits) > 20000:
         _hits.clear()
     return True
+
+
+def _rate_db(c, kind, key, n, per=60.0):
+    """Grenze in der Datenbank (gilt ueber alle Prozesse): festes Zeitfenster von per s je (kind, key). -> 0 (erlaubt,
+    gezaehlt) bzw. Sekunden bis zum naechsten Fenster (fuer Retry-After). Abgelehnte Abrufe zaehlen mit, verlaengern das
+    Fenster aber nicht."""
+    now = time.time()
+    r = c.execute("INSERT INTO horn_rate (k, start, n) VALUES (?, ?, 1) ON CONFLICT (k) DO UPDATE SET "
+                  "start = CASE WHEN horn_rate.start <= ? THEN EXCLUDED.start ELSE horn_rate.start END, "
+                  "n = CASE WHEN horn_rate.start <= ? THEN 1 ELSE horn_rate.n + 1 END RETURNING start, n",
+                  (f"{kind}|{key}", now, now - per, now - per)).fetchone()
+    if secrets.randbelow(200) == 0:                     # alte Zeilen gelegentlich wegraeumen
+        c.execute("DELETE FROM horn_rate WHERE start < ?", (now - 3600,))
+    if r[1] <= n:
+        return 0
+    return max(1, min(int(per), int(r[0] + per - now) + 1))
 
 
 def _me(request):
@@ -1519,8 +1538,12 @@ async def api_horn(cid: str, request: Request):
             return chat._no_store({"error": t("Der Anruf ist schon beendet."), "ended": True}, 404)
         if not is_horn(call) or call["state"] == "ended" or not leg or leg[0] != uid or leg[1] != "active":
             return _bad(t("ungültige Angabe"), 409)
-        if not _rate("horn", dev, 30):
-            return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+        wait = _rate_db(c, "horn", dev, HORN_RATE)
+        if wait:
+            # Vertrag fuer Web und Apps: 429 + Retry-After (s) + retry_after im Body - der Client wartet so lange und
+            # wertet das NICHT als "kein Knoten"
+            return JSONResponse({"error": t("Zu viele Anfragen – bitte kurz warten."), "retry_after": wait}, status_code=429,
+                                headers={"Retry-After": str(wait), "Cache-Control": "no-store"})
         avoid = horn_web._clean_avoid(b.get("avoid"))
         if call.get("lead") is None or FED is None:
             if isinstance(b.get("node"), str):
