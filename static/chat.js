@@ -4768,7 +4768,8 @@
         .map(function (d) { return { id: d.id, enc_pk: ub(d.enc_pub, 32), sign_pk: ub(d.sign_pub, 32) }; }) };
     });
   }
-  window.HKChat = { state: function () { return { ready: S.ready, device: dev(), cur: S.cur && S.cur.id, msgs: S.msgs.length, ai: aiOn(S.cur),
+  window.HKChat = { share: function (n) { shareStart(n); },          // 2.5: "Seite in Chat teilen" aus dem Rahmen der Anruf-Huelle
+    state: function () { return { ready: S.ready, device: dev(), cur: S.cur && S.cur.id, msgs: S.msgs.length, ai: aiOn(S.cur),
                                                    aiMsgs: S.msgs.filter(function (m) { return m._ai === 'ok'; }).length }; },
     callApi: { ready: function () { return !!(S.ready && K && X); }, me: function () { return ME; }, crypto: function () { return X; },
                device: function () { return K.device; }, peerKeys: callPeer, cur: function () { return S.cur; },

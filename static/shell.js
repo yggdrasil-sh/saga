@@ -14,7 +14,7 @@
   var body = document.body, F = null, on = false, title0 = document.title, syncT = 0;
   function busy() { return !!(window.HKCalls && window.HKCalls.busy && window.HKCalls.busy()); }
   function rel(l) { return l.pathname + l.search + l.hash; }
-  function isChats(t) { return /^\/chats(?:[?#]|$)/.test(t) && !/^\/chats\?/.test(t); }
+  function isChats(t) { return /^\/chats(?:[?#]|$)/.test(t); }   // ?panel=1 laesst HK.shellTarget gar nicht durch
   function hashOf(t) { var i = t.indexOf('#'); return i >= 0 ? t.slice(i) : ''; }
   function routeChats() {                                   // chat.js/calls.js: Unterhaltung aus dem Hash oeffnen
     if (!location.hash) return;
@@ -81,6 +81,9 @@
     if (drop) history.replaceState(null, '', u);
     else if (u !== rel(location)) history.pushState(null, '', u);
     routeChats();
+    // /chats?share=ID&title=… (Handy: "Seite in Chat teilen" aus einer Seite im Rahmen)
+    var q = new URLSearchParams((/\?([^#]*)/.exec(t || '') || [])[1] || ''), sid = +q.get('share');
+    if (sid > 0 && window.HKChat && window.HKChat.share) window.HKChat.share({ id: sid, title: q.get('title') || '' });
   }
   function take(t) {
     if (!t) return false;
