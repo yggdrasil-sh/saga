@@ -16,6 +16,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Anruf endete beim Wechsel zu einer anderen Seite (Web)
+- Ein Anruf (1:1, Gruppe, Knoten, Meeting) bleibt jetzt bestehen, wenn man während des Gesprächs zu Heute, einer Seite,
+  Aufgaben, Terminen oder Einstellungen wechselt. Solange ein Anruf läuft oder aufgebaut wird, öffnet die Chat-Seite
+  andere Saga-Seiten in einem bildschirmfüllenden Rahmen („Anruf-Hülle“, `static/shell.js`); Anrufleiste, Vollbild und
+  Bild-im-Bild bleiben darüber bedienbar. Adresszeile und Titel folgen der Seite, Zurück/Vor funktionieren, „Chats“
+  zeigt wieder die Chat-Seite – ohne Neuladen. Nach dem Auflegen bleibt die Seite stehen; der nächste Wechsel lädt
+  wieder ganz normal. Im Rahmen klingelt nichts doppelt, und das Verlassen einer Seite dort beendet keinen Anruf.
+- Gemeinsamer Navigationshelfer `HK.go(url)` (Seitenleiste, Befehlspalette, Tastenkürzel, Chat-Panel, Desktop-Brücke).
+  Links zu fremden Seiten öffnen sich während eines Anrufs in einem neuen Tab; was sich nicht abfangen lässt (Neuladen,
+  Adresse eintippen), fragt wie bisher nach.
+- Sicherheit: Heute, Seiten und Chats dürfen nur als Rahmen gleicher Herkunft eingebettet werden – und nur, wenn der
+  Browser die Anfrage selbst so kennzeichnet (`Sec-Fetch-Dest: iframe`, `Sec-Fetch-Site: same-origin`). Fremde Seiten
+  bleiben bei `frame-ancestors 'none'`/`DENY`, ebenso Anmeldung und Admin-Bereich.
+
 ### Behoben – Widget einrichten
 - Im Fenster „Widget einrichten“ (Wetter, Anstehendes, Lesen) schrumpften die Eingabefelder auf Knopfbreite und zeigten ihren Wert nicht: Der Hinweistext lag als lose Zelle in der Beschriftungsspalte und blähte sie auf. Der Hinweis geht jetzt über beide Spalten.
 

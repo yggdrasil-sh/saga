@@ -1146,6 +1146,10 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   Wahl gilt für diesen Browser) und eine **Mitteilung** aufs Handy/den Computer – „Anruf von Name“ bzw. ohne Namen,
   wenn „Namen zeigen“ aus ist. Alle Geräte und Tabs der Person klingeln; nimmt man auf einem an, hören die anderen auf.
   Annehmen auf dem Dashboard oder einer Seite öffnet den Anruf im Chat-Tab (dort liegen die Schlüssel des Browsers).
+- **Weiterarbeiten während des Anrufs (ab 2.5):** Im Chat-Tab kann man während eines Anrufs ganz normal zu Heute,
+  Seiten, Aufgaben, Terminen oder Einstellungen wechseln – der Anruf läuft weiter, die Anrufleiste bleibt sichtbar.
+  „Chats“ führt zurück zur Unterhaltung. Nur Neuladen oder eine von Hand eingetippte Adresse beenden den Anruf
+  (der Browser fragt vorher nach); Links zu fremden Seiten öffnen sich währenddessen in einem neuen Tab.
 - **Im Anruf:** großes Bild des Gegenübers, kleines eigenes Bild, **Stummschalten**, **Kamera an/aus** (auch in
   einem Audioanruf nachträglich), **Bildschirm teilen** (am Computer), **Auflegen**, „▭“ verkleinert das Fenster in
   eine Ecke (weiter im Chat schreiben). Oben stehen Dauer, Verbindungsqualität und der Weg: **direkt** oder **über
