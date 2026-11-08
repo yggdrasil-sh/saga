@@ -66,7 +66,7 @@ STALE_H = 48                                       # so lange ohne Erfolg -> Ben
 HISTORY_KEEP = 200                                 # Zeilen in backup_run
 RUN_RE = re.compile(r"^saga-(\d{8})-(\d{6})$")
 PARTS = ("db.dump.age", "dateien.tar.age", "geheimnisse.env.age", "manifest.json.age")
-DATA_DIRS = ("files", "chat", "svc-icons")        # unter STATE_DIR; files/thumbs entsteht neu
+DATA_DIRS = ("files", "chat", "svc-icons", "covers")   # unter STATE_DIR; files/thumbs entsteht neu; covers: Titelbild-Galerie (2.5)
 UA = f"Saga/{VERSION} (Backup)"
 FORMAT = "saga-backup/1"
 SECRET_KEYS = ("password", "webhook", "s3_key", "s3_secret")   # in auth.SECRET_FIELDS (Abschnitt "backup")
@@ -1349,7 +1349,7 @@ def _dump_db(work, prog):
 
 
 def _tar_files(dst, recips, prog):
-    """files (ohne thumbs), chat, svc-icons -> tar -> age; SHA-256 und Groesse des Klartexts nebenbei."""
+    """files (ohne thumbs), chat, svc-icons, covers -> tar -> age; SHA-256 und Groesse des Klartexts nebenbei."""
     prog("step.files", force=True)
     dirs = [d for d in DATA_DIRS if os.path.isdir(os.path.join(STATE_DIR, d))]
     cmd = _nice() + ["tar", "-C", STATE_DIR, "--exclude=files/thumbs", "-cf", "-"] + (dirs or ["--files-from", "/dev/null"])
@@ -1839,7 +1839,7 @@ def _safe_members(tar):
 
 
 def restore_files(path, keyfile):
-    """dateien.tar.age entschluesseln und nach STATE_DIR entpacken (nur files/, chat/, svc-icons/) -> Anzahl Dateien."""
+    """dateien.tar.age entschluesseln und nach STATE_DIR entpacken (nur files/, chat/, svc-icons/, covers/) -> Anzahl Dateien."""
     import tarfile
     ap = subprocess.Popen(["age", "-d", "-i", keyfile, path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     n = 0

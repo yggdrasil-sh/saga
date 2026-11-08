@@ -30,6 +30,24 @@ NEEDS = {"calendar", "immich", "nextcloud", "ai"}
 FONTS = ("serif", "mono")
 LANGS = ("en", "es", "ru", "th")                 # Quelle ist Deutsch
 
+# 2.5: Titelbild = ID (oder Pfad /covers/<id>.jpg) eines mitgelieferten Galerie-Bildes - wie saga.covers.builtin_path,
+# hier ohne Datenbank/Konfiguration (tools/gallery_check.py)
+_COVERS_JSON = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "covers", "covers.json")
+
+
+def cover_ids():
+    try:
+        with open(_COVERS_JSON, encoding="utf-8") as f:
+            return {str(c.get("id")) for c in json.load(f).get("covers") or []}
+    except (OSError, ValueError):
+        return set()
+
+
+def cover_ok(v):
+    m = re.fullmatch(r"(?:/covers/)?([a-z0-9][a-z0-9-]{0,63})(?:\.jpg)?", v) if isinstance(v, str) else None
+    return bool(m) and (v == m.group(1) or v == f"/covers/{m.group(1)}.jpg") and m.group(1) in cover_ids()
+
+
 MAX_ITEMS, MAX_ROWS, MAX_CHARS = 30, 200, 200_000
 UP_DBS_MAX = 5                                    # wie saga.page_widgets.UP_DBS_MAX (Anstehendes: Datenbank-Quellen)
 MAX_DEPTH = 8
@@ -548,8 +566,8 @@ def validate(bundle, name=None):
                 cx.err(w, f"parent {par!r} ist ein Beispiel, dieser Eintrag nicht")
         _register(cx, w, it.get("ref"), kind, it, None, ex)
         _check_entry(cx, w, it, kind)
-        if it.get("cover") is not None:
-            cx.err(w, "cover: nur null (Titelbilder sind eigene Uploads)")
+        if it.get("cover") is not None and not cover_ok(it.get("cover")):
+            cx.err(w, "cover: null oder ID/Pfad eines mitgelieferten Galerie-Bildes (static/covers/covers.json)")
         if "wide" in it and not isinstance(it["wide"], bool) or "small" in it and not isinstance(it["small"], bool):
             cx.err(w, "wide/small muessen true/false sein")
         if it.get("font") not in (None,) + FONTS:

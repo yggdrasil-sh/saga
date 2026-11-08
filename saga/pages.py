@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, dbcalc, dbvals, mentions, merge, nextcloud, page_widgets, synced, treesync
+from saga import bus, covers, dbcalc, dbvals, mentions, merge, nextcloud, page_widgets, synced, treesync
 from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, local_ref, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -871,6 +871,10 @@ def note_create(uid, b, origin=None):
             return _bad(t("ungültige Angabe"))
         kind = "database" if b.get("kind") == "database" else "page"
         schema = json.dumps(_default_schema(account_lang(owner)), ensure_ascii=False) if kind == "database" else None
+        try:
+            cover, cover_pos = _new_cover(c, uid, owner, parent, b)
+        except ValueError as ex:
+            return _bad(user_error(ex, t("ungültige Angabe")))
         props = None
         if parent and b.get("props"):
             ps = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database'", (parent, owner)).fetchone()
@@ -882,10 +886,10 @@ def note_create(uid, b, origin=None):
                     props = json.dumps(props, ensure_ascii=False)
                 except (ValueError, TypeError) as ex:
                     return _bad(user_error(ex, t("ungültige Werte")))
-        cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, created, updated, updated_by, created_by) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, "
+                        "created, updated, updated_by, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (owner, title, json.dumps({"blocks": []}), "blocks", icon, parent, now,
-                         json.dumps(tags, ensure_ascii=False), kind, schema, props, now, now, uid, uid))
+                         json.dumps(tags, ensure_ascii=False), kind, schema, props, cover, cover_pos, now, now, uid, uid))
         if props and ps:                                   # zweiseitige Relationen: Gegenseite nachziehen
             _rel_sync(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), _may_edit(acc, role))
             dbvals.assigned(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), uid)   # 2.5: db.assigned
@@ -893,6 +897,26 @@ def note_create(uid, b, origin=None):
             announce_row(c, owner, cur.lastrowid, uid, now, origin)      # neue Zeile (BUG-049)
         tree_changed(c, owner, [cur.lastrowid], "created", origin)
         return JSONResponse({"id": cur.lastrowid, "updated": now})
+
+
+def _new_cover(c, uid, owner, parent, b):
+    """Titelbild einer neuen Seite (2.5) -> (cover, cover_pos). b.cover gesetzt: eigenes Bild bzw. Galerie-Pfad, null/""
+    = ausdruecklich keins (Schnellerfassung, Chat -> Seite, neue Vorlage). Sonst ein zufaelliges Galerie-Bild - nicht fuer
+    Zeilen einer Datenbank und nicht fuer Personen anderer Instanzen; Einstellung random_cover der anlegenden Person."""
+    if "cover" in b:
+        cv = b.get("cover")
+        if cv in (None, ""):
+            return None, None
+        if not (isinstance(cv, str) and (_own_image(c, owner, cv) or covers.is_cover(cv))):
+            raise ValueError(t("Titelbild muss ein eigenes hochgeladenes Bild oder ein Bild der Galerie sein"))
+        pos = b.get("cover_pos")
+        pos = covers.pos_of(cv) if isinstance(pos, bool) or not isinstance(pos, (int, float)) else max(0.0, min(100.0, float(pos)))
+        return cv, pos
+    if is_remote(uid):
+        return None, None
+    if parent and c.execute("SELECT 1 FROM note WHERE id=? AND kind='database'", (parent,)).fetchone():
+        return None, None
+    return covers.auto(c, uid)
 
 
 def _title_in(v):
@@ -1263,10 +1287,10 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
                 cv = b["cover"]
                 if cv in (None, ""):
                     sets.append("cover=?"); args.append(None)
-                elif _own_image(c, owner, cv):
+                elif _own_image(c, owner, cv) or covers.is_cover(cv):       # 2.5: oder ein Bild der Titelbild-Galerie
                     sets.append("cover=?"); args.append(cv)
                 else:
-                    raise ValueError(t("Titelbild muss ein eigenes hochgeladenes Bild sein"))
+                    raise ValueError(t("Titelbild muss ein eigenes hochgeladenes Bild oder ein Bild der Galerie sein"))
             if "cover_pos" in b:
                 sets.append("cover_pos=?"); args.append(max(0.0, min(100.0, float(b["cover_pos"]))))
             if "tags" in b:

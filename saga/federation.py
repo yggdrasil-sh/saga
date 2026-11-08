@@ -33,7 +33,7 @@ from starlette.convertors import Convertor, register_url_convertor
 
 import auth
 from db import clean_line, connect as _db
-from saga import avatars, bus, comments, fed_dbx, fedsig, i18n, netguard, notify, pages, people, sharing
+from saga import avatars, bus, comments, covers, fed_dbx, fedsig, i18n, netguard, notify, pages, people, sharing
 from saga.core import BASE_URL, E, HANDLE_RE, RESTORE_TEST, SECRET, STATE_DIR, _api_guard, _bad, _body, _session_user, local_ref, parse_json, resolve_ref, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import BLOCK_ID_RE, FILE_MAX, FILES_DIR, _disposition, _iter_blocks
@@ -2513,6 +2513,8 @@ def _safe_pic(v, icon):
     s = v.strip() if isinstance(v, str) else ""
     if _PIC.fullmatch(s):
         return s
+    if not icon and covers.builtin_path(s) == s and s:      # 2.5: mitgeliefertes Galerie-Bild - gibt es hier genauso
+        return s
     if icon and len(s) <= 8 and not any(ch in s for ch in "<>&\"'/\\:") and not re.search(r"[\x00-\x1f\x7f]", s):
         return s
     return ""
@@ -2943,6 +2945,8 @@ def _pic_out(v, pid):
     if m:
         p, _ = unref(int(m.group(1)))
         return f"/files/{m.group(2)}" if p == pid else ""
+    if covers.builtin_path(v.strip()) == v.strip() and v.strip():        # 2.5: mitgeliefertes Galerie-Bild bleibt
+        return v.strip()
     return "" if v.strip().startswith("/") else v
 
 

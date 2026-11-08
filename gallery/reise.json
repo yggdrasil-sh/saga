@@ -5,7 +5,7 @@
   "needs": [],
   "root": "home",
   "items": [
-    {"ref": "home", "kind": "page", "parent": null, "title": "Reiseplaner", "icon": "🧳", "cover": null, "wide": true,
+    {"ref": "home", "kind": "page", "parent": null, "title": "Reiseplaner", "icon": "🧳", "cover": "bierstadt-lake-louise", "wide": true,
      "body": [
        {"type": "columns", "data": {"cols": [
          {"blocks": [{"id": "wreise1", "type": "widget", "data": {"v": 1, "kind": "countdown", "size": "m", "style": "card", "accent": "blue", "title": "Bis zur nächsten Reise",

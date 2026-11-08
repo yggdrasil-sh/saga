@@ -46,7 +46,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import auth
 import db
 from db import connect as _db
-from saga import backups, chat, contacts, i18n, netguard, nextcloud, notify
+from saga import backups, chat, contacts, covers, i18n, netguard, nextcloud, notify
 from saga.backups import BackupError
 from saga.core import BASE_URL, E, RESTORE_TEST, SECRET, TZ, _api_guard, _bad, _body, _json_load, account_lang, t
 from saga.notes import FILES_DIR, FILE_QUOTA, NOTE_BODY_MAX, NOTE_TOTAL_MAX, VERSION_MAX, _FILE_URL, _clean_props, _clean_schema, tree_changed
@@ -1061,8 +1061,10 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
                 except ValueError:
                     icon = None
                 cover = _remap_text(str(n.get("cover") or ""), nmap, fids)
-                if not (cover and _FILE_URL.fullmatch(cover) and c.execute("SELECT 1 FROM file WHERE id=? AND uid=? AND is_image=1",
-                                                                           (cover[7:], uid)).fetchone()):
+                if covers.is_cover(cover):          # 2.5: Bild der Titelbild-Galerie (gibt es auf diesem Server) - bleibt
+                    pass
+                elif not (cover and _FILE_URL.fullmatch(cover) and c.execute("SELECT 1 FROM file WHERE id=? AND uid=? AND is_image=1",
+                                                                             (cover[7:], uid)).fetchone()):
                     cover = None
                 try:
                     tags = json.dumps(_tags(_json_load(n.get("tags"), []) or []), ensure_ascii=False) if n.get("tags") else None

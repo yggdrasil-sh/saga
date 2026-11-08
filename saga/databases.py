@@ -10,10 +10,10 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from db import connect as _db
 from fastapi import APIRouter
-from saga import nextcloud
+from saga import covers, nextcloud
 from saga.core import SECRET, _api_guard, _bad, _body, _json_load, origin_of, t
 from saga.files import FILE_QUOTA, FILES_DIR, QuotaFull, copy_owned
-from saga.sharing import access
+from saga.sharing import access, is_remote
 from saga.notes import NOTE_TITLE_MAX, note_limit_error, self_filters, _FILE_URL, _check_parent, _iter_blocks, _purge_ids, announce_row, tree_changed
 
 
@@ -115,10 +115,15 @@ def note_duplicate(uid, nid, b, origin=None):
                 body, icon, cover, props = _foreign_copy(c, owner, dst, uid, parent, body, r[4], icon, cover, props)
             except QuotaFull:
                 return JSONResponse({"error": t("Speicherplatz voll (max. {n} MB)", n=FILE_QUOTA // 1048576)}, status_code=507)
+        cover_pos = r[9]
+        # 2.5: neue Seite aus einer Vorlage ohne Titelbild -> zufaelliges Galerie-Bild (wie beim Anlegen; nicht fuer
+        # Datenbank-Zeilen, Kopien von Vorlagen und Personen anderer Instanzen). Duplikate behalten ihr Titelbild bzw. keins.
+        if not cover and r[14] and not tpl and not into_db and (r[5] or "page") == "page" and not is_remote(uid):
+            cover, cover_pos = covers.auto(c, uid)
         # Alles kopieren, was die Seite ausmacht: auch Titelbild (+ Position), volle Breite, Schrift und kleiner Text
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, wide, "
                         "font, small, is_template, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (dst, title, body, r[4], icon, parent, now, r[2], r[5] or "page", r[6], props, cover, r[9], r[10], r[12], r[13] or 0,
+                        (dst, title, body, r[4], icon, parent, now, r[2], r[5] or "page", r[6], props, cover, cover_pos, r[10], r[12], r[13] or 0,
                          tpl, now, now))
         # Nextcloud-Bloecke: Signatur gilt je Seite; die Kopie stammt aus einer Seite des Eigentuemers (auch per via, R05)
         new_body = nextcloud.adopt(body, r[4], dst, cur.lastrowid)   # fremdes Ziel: Bloecke der Vorlage nur als Karte

@@ -1341,6 +1341,15 @@ ALTER TABLE push_sub ADD COLUMN IF NOT EXISTS lang TEXT;
 ALTER TABLE push_sub ADD COLUMN IF NOT EXISTS caps TEXT NOT NULL DEFAULT '';
 ALTER TABLE chat_link ADD COLUMN IF NOT EXISTS error TEXT;
 """,
+    # 2.5 (Titelbild-Galerie, saga/covers.py): vom Admin hochgeladene Bilder (id 'u-<hash>', Datei STATE_DIR/covers/<id>.jpg)
+    # und Admin-Aenderungen an mitgelieferten Bildern (builtin=1: ausgeblendet, Titel/Gruppe/Position). deleted=1: entfernt,
+    # aber noch von Seiten genutzt (Datei bleibt, nicht mehr waehlbar). Bestand: keine Zeilen. Beliebig oft ausfuehrbar.
+    34: """
+CREATE TABLE IF NOT EXISTS cover_gallery (
+    id TEXT PRIMARY KEY, builtin INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0,
+    deleted INTEGER NOT NULL DEFAULT 0, title TEXT, artist TEXT, date TEXT, source TEXT, url TEXT, grp TEXT,
+    pos DOUBLE PRECISION, created DOUBLE PRECISION, created_by TEXT);
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")

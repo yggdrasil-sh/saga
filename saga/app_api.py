@@ -9,7 +9,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga import dbcalc, dbquery, dbvals, people
+from saga import covers, dbcalc, dbquery, dbvals, people
 from saga.calendars import _cal_collect
 from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, mark_authed, t, t_account, user_info
 from saga.databases import _first_image
@@ -228,6 +228,8 @@ def api_app_page_image(nid: int, which: str, request: Request):
     with _db() as c:
         r = c.execute("SELECT cover, icon, body, format FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, uid)).fetchone()
         url = "" if not r else (r[1] if which == "icon" else (r[0] or _first_image(r[2], r[3])))
+        if which == "cover" and covers.is_cover(url):     # 2.5: Bild der Titelbild-Galerie
+            return covers.serve(url.rsplit("/", 1)[1], request)
         m = _FILE_URL.fullmatch(str(url or ""))
         f = m and c.execute("SELECT mime FROM file WHERE id=? AND uid=? AND is_image=1", (m.group(1), uid)).fetchone()
     path = os.path.join(FILES_DIR, m.group(1)) if f else ""

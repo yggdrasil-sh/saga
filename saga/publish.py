@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 import psycopg
 import auth
 from db import connect as _db
-from saga import avatars, bus, dbcalc, i18n, mathml, nextcloud, page_widgets
+from saga import avatars, bus, covers, dbcalc, i18n, mathml, nextcloud, page_widgets
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
@@ -1129,7 +1129,7 @@ def render_page(ctx, row):
     v["icon"] = _icon_html(ctx, row["icon"], "pub-icon")
     v["cover"] = ""
     if row["cover"]:
-        src = ctx.img(row["cover"], 2000)
+        src = row["cover"] if covers.is_cover(row["cover"]) else ctx.img(row["cover"], 2000)    # 2.5: Galerie - oeffentlich
         if src:
             pos = 50.0 if row["cover_pos"] is None else float(row["cover_pos"])
             v["cover"] = src

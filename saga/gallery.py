@@ -20,7 +20,7 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 from db import connect as _db
-from saga import gallery_format as gf, page_widgets as pw
+from saga import covers, gallery_format as gf, page_widgets as pw
 from saga.core import E, HERE, _api_guard, _bad, _body, origin_of, t
 from saga.databases import sign_buttons
 from saga.i18n import get_lang, norm
@@ -304,16 +304,28 @@ def _rows(it, examples_kept):
     return [(i, r) for i, r in enumerate(it.get("rows") or []) if examples_kept or not (ex_db or r.get("example") is True)]
 
 
-def _insert(c, uid, owner, title, icon, parent, sort, kind="page", tpl=0, wide=False, font=None, small=False):
+def _insert(c, uid, owner, title, icon, parent, sort, kind="page", tpl=0, wide=False, font=None, small=False, cover=None, cover_pos=None):
     lim = note_limit_error(c, owner, parent)
     if lim:
         raise _bad_reply(lim, 409)
     schema = json.dumps({"props": [], "views": [{"id": "tabelle", "name": t("Tabelle"), "type": "table"}]}) if kind == "database" else None
     cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, created, updated, "
-                    "updated_by, created_by, is_template, wide, font, small) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "updated_by, created_by, is_template, wide, font, small, cover, cover_pos) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (owner, _title_in(title), json.dumps({"blocks": []}), "blocks", _icon(icon), parent, sort, "[]", kind,
-                     schema, None, sort, sort, uid, uid, tpl, 1 if wide else 0, font if font in FONTS else None, 1 if small else 0))
+                     schema, None, sort, sort, uid, uid, tpl, 1 if wide else 0, font if font in FONTS else None, 1 if small else 0,
+                     cover, cover_pos))
     return cur.lastrowid
+
+
+def _cover(c, uid, it):
+    """2.5: Titelbild eines Eintrags - cover = ID/Pfad der mitgelieferten Galerie, sonst bekommt nur die Startseite der
+    Vorlage (ohne parent) ein zufaelliges Bild (Einstellung random_cover); Unterseiten/Datenbanken ohne cover bleiben ohne."""
+    p = covers.builtin_path(it.get("cover")) if it.get("cover") else ""
+    if p:
+        return p, covers.pos_of(p)
+    if it.get("parent") is None:
+        return covers.auto(c, uid)
+    return None, None
 
 
 def _insert_all(c, uid, owner, bundle, keep, examples, pid, now, ids, order):
@@ -324,8 +336,9 @@ def _insert_all(c, uid, owner, bundle, keep, examples, pid, now, ids, order):
             continue
         parent = ids[it["parent"]] if it.get("parent") else pid
         n += 1
+        cv, cp = _cover(c, uid, it)
         nid = _insert(c, uid, owner, it.get("title"), it.get("icon"), parent, now + n * 1e-3, it["kind"],
-                      wide=it.get("wide") is True, font=it.get("font"), small=it.get("small") is True)
+                      wide=it.get("wide") is True, font=it.get("font"), small=it.get("small") is True, cover=cv, cover_pos=cp)
         ids[it["ref"]] = nid
         order.append(nid)
         if _TEST_FAIL and _TEST_FAIL == it["ref"]:
