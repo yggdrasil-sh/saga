@@ -171,6 +171,9 @@ def _call(base, method, path, body=None, token=None, max_bytes=1024 * 1024):
     except httpx.HTTPError as ex:
         _local.client = None
         return (BLOCKED if isinstance(ex.__cause__, Blocked) else NETERR), "", b""
+    finally:                                       # Client ist thread-lokal und wird ueber Konten geteilt: nie Cookies
+        if cl is not None:                         # einer Person (z. B. Refresh-Cookie) an die naechste weiterreichen
+            cl.cookies.clear()
 
 
 def _json(data):
