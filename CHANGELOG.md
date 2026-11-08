@@ -41,6 +41,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   dürfen ein mitgeliefertes Bild als `cover` angeben (Reiseplaner: Lake Louise).
 - Datenbank-Migration 34 (Tabelle `cover_gallery`).
 
+### Seiten: eigene Änderung nicht mehr als fremd gemeldet
+- Mit „Gleichzeitig bearbeiten live“ erschien auf Seiten mit eingebetteter Datenbank „<Name> hat diese Seite geändert ·
+  Neu laden“ im eigenen Fenster, sobald der Fokus in einer Zelle stand: das Materialisieren des Live-Stands kam als
+  Ereignis auch an den eigenen Tab. Live gebunden gibt es diesen Hinweis jetzt nie (der Inhalt kommt ohnehin live);
+  Revision und Titel werden still nachgezogen.
+- Eine eingebettete Datenbank ohne eigene Ansichten (`views: null`) erhöhte live schon beim bloßen Öffnen die Revision
+  der Seite. Die Ansichten gehen jetzt erst mit der nächsten Änderung am Datenbank-Block mit.
+- Nur Eigenschaften/Symbol geändert: `note.changed` trägt `meta: true` (Revision gleich); das Web zieht die
+  Eigenschaften still nach statt „Neu laden“ anzubieten. Zellen, Zeilen und Schema der eingebetteten Datenbank ändern
+  Revision und `updated` der umgebenden Seite nicht (Test `tests/live_eingebettet.py`).
+
 ### Chat: Gerätegrenze beim Koppeln
 - Mit 10 Chat-Geräten blieb ein neues Gerät nach „Mit anderem Gerät bestätigen“ hängen. Jetzt prüft der Server die Grenze
   schon beim Anlegen der Anfrage und meldet sie überall gleich (`409 {code: "device_limit", max, count}`); scheitert erst

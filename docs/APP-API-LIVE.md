@@ -141,6 +141,13 @@ und nutzen auch die Datenbank-Einträge aus der Liste (Eltern-Kette, Verschiebe-
 Gepackte Antworten (`Content-Encoding: gzip`) tragen ein **schwaches** ETag (`W/"…"`), ungepackte das starke. Für
 `If-None-Match` sind beide gleichwertig (304), auch gemischt.
 
+## Nur Eigenschaften geändert: `note.changed` mit `meta`
+
+`note.changed` trägt `"meta": true`, wenn an der Seite weder Inhalt noch Titel geändert wurden (Eigenschaften, Symbol,
+Ort …); `rev` bleibt dann gleich, nur `updated` ist neuer. Empfohlen: Eigenschaften still nachladen, kein „Neu laden“
+anbieten. Änderungen an Zeilen, Zellen oder Schema einer eingebetteten Datenbank ändern die umgebende Seite nicht – sie
+kommen als `db.rows` bzw. `note.changed` mit der ID der Datenbank. Ältere Server senden `meta` nicht.
+
 ## Einträge einer Datenbank geändert: `db.rows`
 
 ```
