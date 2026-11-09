@@ -276,7 +276,13 @@ def _bm(x, lang):
 
 
 def t_lang(lang, key, **kw):
+    """Text in der Sprache des Kontos (gespeicherter Seiteninhalt), nicht der Anfrage."""
     return i18n.t_lang(lang, key, **kw)
+
+
+def _i18n_keys():
+    """Nie aufgerufen - nennt tools/i18n.py die Schluessel, die hier nur ueber t_lang/t_account benutzt werden."""
+    return (t("S. {n}"), t("In BookOrbit öffnen"), t("Notiz zum Buch"), t("Lesezeichen"), t("Notizen: {title}"), t("Unbenannt"))
 
 
 def _head(uid, base, bid, book, cover_url, lang):
