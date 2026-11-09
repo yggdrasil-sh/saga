@@ -18,7 +18,7 @@ PROP_TYPES = {"text", "number", "select", "multi_select", "date", "checkbox", "u
               "person", "files",            # 2.5: Spalten ja, Werte in Vorlagen nicht (Personen/Dateien gibt es dort nicht)
               "formula", "rollup"}
 VIEW_TYPES = {"table", "board", "list", "gallery", "calendar", "chart", "timeline"}
-WIDGET_KINDS = ("clock", "countdown", "progress", "metric", "quote", "weather", "habit", "upcoming", "chart", "reading")
+WIDGET_KINDS = ("clock", "countdown", "progress", "metric", "quote", "weather", "habit", "upcoming", "chart", "reading", "subpages")
 OPT_COLORS = {"gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"}
 PID = re.compile(r"[a-z0-9_]{1,24}")
 

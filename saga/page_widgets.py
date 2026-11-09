@@ -25,7 +25,13 @@ Clients in docs/APP-API.md ("Widgets in Seiten"). Nicht zu verwechseln mit den H
   "data" (strukturiert je Art, Vertrag docs/APP-API.md).
 - 2.5 BookOrbit (Faehigkeit bookorbit1): reading ("Lesen") = IMMER die BookOrbit-Leseliste der betrachtenden Person
   (saga.bookorbit, eigener Zwischenspeicher je Person) - Varianten cfg.show current (Gerade am Lesen), goal (Leseziel),
-  streak (Lesestraehne). Wie upcoming nie veroeffentlicht, nie ueber Servergrenzen. Ohne Verbindung data.state "none"."""
+  streak (Lesestraehne). Wie upcoming nie veroeffentlicht, nie ueber Servergrenzen. Ohne Verbindung data.state "none".
+- 2.5 Unterseiten (Faehigkeit subpages1): subpages = direkte Unterseiten der Seite, auf der der Block steht, als Liste oder
+  Galerie (cfg.view list | gallery, cfg.image cover | content | none, Kartengroesse = size). Immer mit den Rechten des
+  Betrachters (eigene: alle aktiven; fremde: nur, was Access.tree zeigt), Reihenfolge wie im Seitenbaum, hoechstens SP_MAX
+  Eintraege (data.more). Nie zwischengespeichert (eine Abfrage fuer die Kinder, eine fuer die Vorschaubilder).
+  Veroeffentlichen: nur Unterseiten, die selbst oeffentlich erreichbar sind (saga.publish). Ueber Servergrenzen
+  (Faehigkeit wsubpages1): der Eigentuemer rechnet mit dem Prinzipal, das Heim setzt IDs und Bilder um (clean_remote_data)."""
 import hashlib
 import json
 import random
@@ -48,10 +54,13 @@ from saga.sharing import Access, access, is_remote
 
 router = APIRouter()
 
-KINDS = ("clock", "countdown", "progress", "metric", "quote", "weather", "habit", "upcoming", "chart", "reading")
-KINDS2 = ("weather", "habit", "upcoming", "chart", "reading")  # 2.5 Paket 4: W mit "data", Foederation braucht widgets2
+KINDS = ("clock", "countdown", "progress", "metric", "quote", "weather", "habit", "upcoming", "chart", "reading", "subpages")
+KINDS2 = ("weather", "habit", "upcoming", "chart", "reading", "subpages")  # 2.5 Paket 4: W mit "data", Foederation braucht widgets2
 PERSONAL = ("upcoming", "reading")                            # Daten der betrachtenden Person: nie veroeffentlicht/foederiert
 READ_SHOW = ("current", "goal", "streak")                     # reading: Gerade am Lesen, Leseziel, Lesestraehne
+SP_VIEWS = ("list", "gallery")                                # subpages: Liste | Galerie
+SP_IMAGES = ("cover", "content", "none")                      # subpages: Kartenbild Titelbild | erstes Bild im Inhalt | keins
+SP_MAX = 200                                                  # subpages: Eintraege je Block (weitere: data.more)
 SIZES = ("s", "m", "l")
 STYLES = ("card", "plain")
 AGGS = dbcalc.AGGS
@@ -202,6 +211,9 @@ def _clean_cfg(kind, c):
         lim = c.get("limit")
         return {"show": c["show"] if c.get("show") in READ_SHOW else "current",
                 "limit": lim if isinstance(lim, int) and not isinstance(lim, bool) and 1 <= lim <= 5 else 3}
+    if kind == "subpages":
+        return {"view": c["view"] if c.get("view") in SP_VIEWS else "list",
+                "image": c["image"] if c.get("image") in SP_IMAGES else "cover"}
     if kind == "quote":
         pick = "open" if c.get("pick") == "open" else "daily"
         if c.get("src") == "db":
@@ -566,7 +578,73 @@ def _reading(uid, cfg):
     return _W("reading", s["current"] if s else None, data=data)
 
 
-def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None, public_labels=None):
+_IMG_OK = re.compile(r"/files/[0-9a-f]{24}|/covers/[a-z0-9][a-z0-9-]{0,63}\.jpg")
+_ICON_BAD = re.compile(r"[<>&\"'\x00-\x1f]")
+
+
+def _sp_icon(v):
+    """Symbol einer Unterseite: Emoji (hoechstens 8 Zeichen) oder eigenes Bild (/files/<id>) - sonst ""."""
+    s = v.strip() if isinstance(v, str) else ""
+    if s.startswith("/files/"):
+        return s if _IMG_OK.fullmatch(s) else ""
+    return s[:8] if s and not _ICON_BAD.search(s) else ""
+
+
+def subpages(c, uid, nid, cfg, acc=None, pub=None):
+    """Unterseiten (2.5): direkte, aktive Unterseiten von nid, die uid sehen darf, in Baum-Reihenfolge -> W.
+    pub (Veroeffentlichen, saga.publish._Ctx): nur Unterseiten mit pub.url_for(id); Bilder ueber pub.img (eigene Dateien
+    des Kontos) bzw. die oeffentliche Titelbild-Galerie; uid ist dann der Eigentuemer."""
+    from saga import covers
+    from saga.databases import _first_image
+    if not isinstance(nid, int) or isinstance(nid, bool) or nid <= 0:
+        raise _Fail("bad_cfg")
+    if pub is not None:
+        owner, role = uid, "view"
+    else:
+        acc = acc or Access(c, uid)
+        owner, role, err = access(c, uid, nid, "view", acc)
+        if err is not None:
+            raise _Fail("no_access")
+    rows = c.execute("SELECT id, title, icon, cover, kind FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
+                     "AND archived IS NULL AND is_template=0 ORDER BY sort NULLS FIRST, created, id", (owner, nid)).fetchall()
+    if pub is not None:
+        rows = [r for r in rows if pub.url_for(r[0])]
+    elif owner != uid:
+        vis = acc.tree(owner)                      # Freigaben: nur, was ich im Baum sehe (geerbt, ohne Unterbrechungen)
+        rows = [r for r in rows if r[0] in vis]
+    total = len(rows)
+    rows = rows[:SP_MAX]
+    mode = cfg.get("image") if cfg.get("image") in SP_IMAGES else "cover"
+    pv = {}
+    if mode == "content" and rows:                 # erstes Bild im Inhalt: abgeleitet (note_derived), frisch Geaendertes direkt
+        ids = [r[0] for r in rows]
+        pv = dict(c.execute("SELECT note_id, preview FROM note_derived WHERE note_id = ANY(?)", (ids,)).fetchall())
+        stale = {r[0] for r in c.execute("SELECT note_id FROM note_stale WHERE note_id = ANY(?)", (ids,)).fetchall()}
+        need = [i for i in ids if i in stale or i not in pv]
+        for i, body, fmt in (c.execute("SELECT id, body, format FROM note WHERE id = ANY(?) AND uid=?", (need, owner)).fetchall() if need else ()):
+            pv[i] = _first_image(body, fmt)
+
+    def img_of(src, w):
+        if not isinstance(src, str) or not _IMG_OK.fullmatch(src):
+            return None
+        if covers.PATH_RE.fullmatch(src):          # Titelbild-Galerie: oeffentlich
+            return src
+        return pub.img(src, w) if pub is not None else src
+
+    items = []
+    for i, title, icon, cover, kind in rows:
+        src = cover if mode == "cover" else pv.get(i) if mode == "content" else None
+        ic = _sp_icon(icon)
+        if ic.startswith("/files/"):
+            ic = img_of(ic, 160) or ""
+        items.append({"id": i, "title": re.sub(r"\s+", " ", clean_line(title or "")).strip()[:200], "icon": ic,
+                      "img": img_of(src, 640) if src else None, "kind": "database" if kind == "database" else "page"})
+    data = {"items": items, "total": total, "more": total - len(items),
+            "can_add": pub is None and role in ("owner", "edit") and not is_remote(uid)}
+    return _W("subpages", total, data=data)
+
+
+def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None, public_labels=None, nid=None):
     """Wert eines Widgets (W, siehe Modulkopf) mit den Rechten von uid. d: bereinigtes data.
     public_labels(ids) (Veroeffentlichen): Titel verknuepfter Seiten nur, soweit sie selbst oeffentlich erreichbar sind."""
     kind = d.get("kind") if isinstance(d, dict) else None
@@ -592,6 +670,10 @@ def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None, pu
             if public_owner is not None or uid is None or is_remote(uid):
                 raise _Fail("no_access")            # persoenlich: nie veroeffentlicht, nie ueber Servergrenzen
             return _reading(uid, cfg)
+        if kind == "subpages":
+            if public_owner is not None or uid is None:
+                raise _Fail("no_access")            # Veroeffentlichen: saga.publish ruft subpages() mit pub auf
+            return subpages(c, uid, nid, cfg, acc)
         if cfg.get("src") == "tasks" and kind in ("metric", "progress"):
             if public_owner is not None or uid is None or is_remote(uid):
                 raise _Fail("no_access")            # Aufgaben gehoeren der betrachtenden Person dieses Servers
@@ -699,9 +781,10 @@ def _tz_param(params):
     return ZoneInfo(v), v
 
 
-def page_widgets(uid, nid, params, kinds2=True):
+def page_widgets(uid, nid, params, kinds2=True, sp=True):
     """Werte aller vom Server gerechneten Widgets einer gespeicherten Seite (fuer Web/Apps und die Foederation).
-    kinds2=False (Gegenstelle ohne widgets2): Arten aus KINDS2 fehlen in der Antwort (Clients: "nur auf dem Ursprungsserver")."""
+    kinds2=False (Gegenstelle ohne widgets2): Arten aus KINDS2 fehlen in der Antwort (Clients: "nur auf dem Ursprungsserver").
+    sp=False (Gegenstelle ohne wsubpages1): Unterseiten fehlen in der Antwort."""
     try:
         tz, tzn = _tz_param(params)
     except ValueError:
@@ -736,8 +819,10 @@ def page_widgets(uid, nid, params, kinds2=True):
                 if cfg.get("pick") == "open" and d.get("kind") == "quote":
                     out[bid] = compute(c, uid, bid, d, tz, acc, today=today)
                     continue
-                if d.get("kind") in ("upcoming", "weather", "reading"):  # persoenlich bzw. eigener Zwischenspeicher (weather, bookorbit)
-                    out[bid] = compute(c, uid, bid, d, tz, acc, today=today)
+                if not sp and d.get("kind") == "subpages":
+                    continue
+                if d.get("kind") in ("upcoming", "weather", "reading", "subpages"):  # persoenlich bzw. eigener Zwischenspeicher
+                    out[bid] = compute(c, uid, bid, d, tz, acc, today=today, nid=nid)   # (weather, bookorbit); subpages: immer frisch
                     continue
                 if cfg.get("src") == "tasks":                 # fix27 E3: Aufgaben - klein, immer frisch gerechnet
                     out[bid] = compute(c, uid, bid, d, tz, acc, today=today)
@@ -772,16 +857,16 @@ def preview(uid, nid, block, params):
         _, _, err = access(c, uid, nid, "edit", acc)
         if err is not None:
             return err
-        w = compute(c, uid, bid, d, tz, acc)
+        w = compute(c, uid, bid, d, tz, acc, nid=nid)
     return JSONResponse({"widget": w}, headers={"Cache-Control": "no-store"})
 
 
-def value_for(uid, b, tz=None):
-    """W eines Blocks fuer den Markdown-Export (eigene Verbindung, Rechte von uid)."""
+def value_for(uid, b, tz=None, nid=None):
+    """W eines Blocks fuer den Markdown-Export (eigene Verbindung, Rechte von uid; nid = Seite, auf der er steht)."""
     if not isinstance(b, dict) or not server_kind(b.get("data")):
         return None
     with _db() as c:
-        return compute(c, uid, b.get("id") or "", b["data"], tz)
+        return compute(c, uid, b.get("id") or "", b["data"], tz, nid=nid)
 
 
 # =====================================================================================================
@@ -790,7 +875,7 @@ def value_for(uid, b, tz=None):
 def kind_name(kind):
     return {"clock": t("Uhr"), "countdown": t("Countdown"), "progress": t("Fortschritt"), "metric": t("Kennzahl"),
             "quote": t("Zitat"), "weather": t("Wetter"), "habit": t("Gewohnheiten"), "upcoming": t("Anstehendes"),
-            "chart": t("Diagramm##Chart"), "reading": t("Lesen##BookOrbit")}.get(kind, t("Widget"))
+            "chart": t("Diagramm##Chart"), "reading": t("Lesen##BookOrbit"), "subpages": t("Unterseiten")}.get(kind, t("Widget"))
 
 
 def fmt_num(v, fmt=None):
@@ -867,6 +952,13 @@ def value_text(d, w, today, tz=None):
             return t("{n} {n:Tag|Tage} in Folge gelesen", n=s.get("current", 0)) if s else None
         return " · ".join(f"{b.get('title') or t('Unbenannt')}" + (f" ({', '.join(b['authors'][:2])})" if b.get("authors") else "")
                           + f" {fmt_num(round(b.get('progress') or 0), 'pct')}" for b in data.get("books") or []) or t("Gerade kein Buch")
+    if kind == "subpages":
+        its = data.get("items") or []
+        if not its:
+            return t("Keine Unterseiten")
+        s = " · ".join((x.get("title") or t("Unbenannt")) for x in its[:50])
+        n = len(its) - 50 + (data.get("more") or 0)
+        return s + (" · " + t("und {n} weitere", n=n) if n > 0 else "")
     if kind == "chart":
         if data.get("type") == "number" or not data.get("cats"):
             return fmt_num(data.get("total"), data.get("fmt"))
@@ -1131,13 +1223,35 @@ def _fcolor(v):
     return v if v in PALETTE else None
 
 
-def clean_remote_data(kind, d):
+def clean_remote_data(kind, d, peer_id=None):
     """W.data von einer anderen Saga-Instanz -> bereinigte Kopie oder None. upcoming und reading kommen nie ueber
-    Servergrenzen (persoenlich, PERSONAL)."""
+    Servergrenzen (persoenlich, PERSONAL). subpages (peer_id noetig): IDs -> negative IDs dieser Instanz, eigene Bilder
+    der anderen Instanz ueber /api/fed/files/<unterseite>/<datei>, Bilder ihrer Titelbild-Galerie entfallen."""
     if kind in PERSONAL:
         return None
     if not isinstance(d, dict):
         return None
+    if kind == "subpages":
+        from saga import federation as F
+        if not isinstance(peer_id, int) or isinstance(peer_id, bool) or peer_id <= 0:
+            return None
+        items = []
+
+        def fimg(v, ref):
+            m = re.fullmatch(r"/files/([0-9a-f]{24})", v) if isinstance(v, str) else None
+            return f"/api/fed/files/{ref}/{m.group(1)}" if m else None
+
+        for x in (d.get("items") if isinstance(d.get("items"), list) else [])[:SP_MAX]:
+            if not isinstance(x, dict) or not F._ok_rid(x.get("id")):
+                continue
+            ref = F.ref(peer_id, x["id"])
+            ic = x.get("icon") if isinstance(x.get("icon"), str) else ""
+            ic = (fimg(ic, ref) or "") if ic.startswith("/") else _sp_icon(ic)
+            items.append({"id": ref, "title": _fstr(x.get("title"), 200), "icon": ic, "img": fimg(x.get("img"), ref),
+                          "kind": "database" if x.get("kind") == "database" else "page"})
+        total = _fint(d.get("total"), 0, 10 ** 7)
+        total = max(total if total is not None else len(items), len(items))
+        return {"items": items, "total": total, "more": max(0, total - len(items)), "can_add": d.get("can_add") is True}
     if kind == "weather":
         now = d.get("now") if isinstance(d.get("now"), dict) else {}
         days = []

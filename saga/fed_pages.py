@@ -245,7 +245,7 @@ async def _owner_req(request, nid, rest):
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, databases.formula_check_api, nid, b))
     if m == "GET" and rest == "widgets":             # 2.5: Widgets mit den Rechten der fremden Person (saga.page_widgets)
         return _need(inp, "widgets1") or _signed_resp(inp, await run_in_threadpool(F._as, inp, page_widgets.page_widgets, nid, q,
-                                                                                   _caps(inp.peer, "widgets2")))
+                                                                                   _caps(inp.peer, "widgets2"), _caps(inp.peer, "wsubpages1")))
     mh = re.fullmatch(r"widgets/([A-Za-z0-9_-]{1,40})/habit", rest)
     if m == "POST" and mh:                           # 2.5 Paket 4 (widgets2): Gewohnheit abhaken (Rechte der fremden Person)
         if _need(inp, "widgets2"):
@@ -721,8 +721,9 @@ def _w_people(uid, nid, q):
 _WBID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 
 
-def _w_widget_in(w):
-    """Wert eines Widgets von der anderen Instanz: nur die bekannten Felder, Typen geprueft, Text gekuerzt."""
+def _w_widget_in(w, peer_id=None):
+    """Wert eines Widgets von der anderen Instanz: nur die bekannten Felder, Typen geprueft, Text gekuerzt.
+    peer_id: Instanz, von der der Wert kommt (Unterseiten: IDs und Bilder werden auf diese Instanz umgesetzt)."""
     if not isinstance(w, dict):
         return None
     num = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e15 else None  # noqa: E731
@@ -734,7 +735,7 @@ def _w_widget_in(w):
             "error": w.get("error") if w.get("error") in page_widgets.ERRORS else None,
             **({"src_name": F._clean_text(w["src_name"], 130)} if w.get("kind") in ("metric", "progress") and w.get("error") is None
                and F._clean_text(w.get("src_name"), 130) else {}),
-            **({"data": page_widgets.clean_remote_data(w["kind"], w.get("data")) if w.get("error") not in page_widgets.ERRORS else None}
+            **({"data": page_widgets.clean_remote_data(w["kind"], w.get("data"), peer_id) if w.get("error") not in page_widgets.ERRORS else None}
                if w.get("kind") in page_widgets.KINDS2 else {})}
 
 
@@ -772,12 +773,14 @@ def _w_widgets(uid, nid, tz):
     status, _, d = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/widgets", q)
     if status != 200 or not isinstance(d, dict) or not isinstance(d.get("widgets"), dict):
         return F._pass_err(p, status, d)
-    out, w2 = {}, _caps(p, "widgets2")
+    out, w2, sp = {}, _caps(p, "widgets2"), _caps(p, "wsubpages1")
     for k, w in list(d["widgets"].items())[:page_widgets.WIDGETS_MAX]:
-        x = _w_widget_in(w) if isinstance(k, str) and _WBID.fullmatch(k) else None
-        if x and (w2 or x.get("kind") not in page_widgets.KINDS2):
+        x = _w_widget_in(w, p["id"]) if isinstance(k, str) and _WBID.fullmatch(k) else None
+        if x and (w2 or x.get("kind") not in page_widgets.KINDS2) and (sp or x.get("kind") != "subpages"):
             out[k] = x
     extra = {} if w2 else {"unsupported2": True}     # 2.5 Paket 4: Etappe-2-Arten nur auf dem Ursprungsserver
+    if not sp:                                       # 2.5 Unterseiten: Ursprungsserver ohne wsubpages1
+        extra["unsupported_kinds"] = ["subpages"]
     return JSONResponse({"widgets": out, **extra}, headers={"Cache-Control": "no-store"})
 
 
@@ -794,7 +797,7 @@ def _w_habit(uid, nid, bid, b, tz):
     status, _, d = _call(uid, p, "POST", f"/fed/v2/notes/{rid}/widgets/{bid}/habit", q, body)
     if status != 200 or not isinstance(d, dict) or not isinstance(d.get("widget"), dict):
         return F._pass_err(p, status, d)
-    return JSONResponse({"widget": _w_widget_in(d["widget"])}, headers={"Cache-Control": "no-store"})
+    return JSONResponse({"widget": _w_widget_in(d["widget"], p["id"])}, headers={"Cache-Control": "no-store"})
 
 
 def _w_chart(uid, nid, params):

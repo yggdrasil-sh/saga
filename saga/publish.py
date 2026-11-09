@@ -683,6 +683,8 @@ def _widget(ctx, d):
     ctx.n_db += page_widgets.server_kind(d)     # zaehlt wie ein Datenbank-Block (Aufwand je Aufruf begrenzt)
     if ctx.n_db > DB_BLOCKS_MAX:
         return ""
+    if kind == "subpages":
+        return _subpages(ctx, d)
     today = datetime.now(TZ).date()
     w = page_widgets.compute(ctx.c, ctx.uid, getattr(ctx, "bid", ""), d, TZ, public_owner=ctx.uid, today=today,
                              public_labels=_public_labels(ctx))
@@ -709,6 +711,57 @@ def _widget(ctx, d):
         pct = v / mx * 100 if isinstance(v, (int, float)) and isinstance(mx, (int, float)) and mx > 0 else 0
         out.append(f'<div class="pub-wg-bar"><span class="pb-{int(round(min(100, max(0, pct)) / 5) * 5)}"></span></div>')
     out.append("</div>")
+    return "".join(out)
+
+
+def _subpages(ctx, d):
+    """Unterseiten (2.5) statisch: nur Unterseiten, die selbst oeffentlich erreichbar sind (ctx.url_for), Bilder nur eigene
+    Dateien (ctx.img) bzw. die oeffentliche Titelbild-Galerie. Keine Unterseite oeffentlich -> Block entfaellt."""
+    nid = getattr(ctx, "nid", None)
+    if not nid:
+        return ""
+    cfg = d.get("cfg") if isinstance(d.get("cfg"), dict) else {}
+    try:
+        for (cid,) in ctx.c.execute("SELECT id FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND archived IS NULL "
+                                    "AND is_template=0", (ctx.uid, nid)).fetchall():
+            ctx.seed(cid, nid)                   # Kette ohne eigene Abfrage je Kind
+        w = page_widgets.subpages(ctx.c, ctx.uid, nid, cfg, pub=ctx)
+    except page_widgets._Fail:
+        return ""
+    data = w.get("data") or {}
+    items = data.get("items") or []
+    if not items:
+        return ""
+    gal = cfg.get("view") == "gallery"
+    size = d.get("size") if d.get("size") in page_widgets.SIZES else "m"
+    img = cfg.get("image") if cfg.get("image") in page_widgets.SP_IMAGES else "cover"
+    cls = ["pub-sp", "pub-sp-" + ("gallery" if gal else "list"), "pub-sp-" + size, "pub-sp-i" + img]
+    if d.get("style") == "card":
+        cls.append("pub-sp-card")
+    out = [f'<nav class="{" ".join(cls)}" aria-label="{escape(str(d.get("title") or t("Unterseiten")), quote=True)}">']
+    if d.get("title"):
+        out.append(f'<div class="pub-wg-t">{escape(str(d["title"]))}</div>')
+    out.append('<ul class="pub-sp-items">')
+    for x in items:
+        url = ctx.url_for(x["id"])
+        title = x.get("title") or t("Unbenannt")
+        ic = x.get("icon") or ""
+        if ic.startswith("/"):
+            icon = f'<img class="pub-sp-ic pub-sp-ic-img" src="{escape(ic, quote=True)}" alt="" loading="lazy">'
+        else:
+            icon = f'<span class="pub-sp-ic" aria-hidden="true">{escape(ic or ("▦" if x.get("kind") == "database" else "📄"))}</span>'
+        if gal:
+            pic = (f'<img src="{escape(x["img"], quote=True)}" alt="" loading="lazy">' if x.get("img") else
+                   f'<span class="pub-sp-ph" aria-hidden="true">{escape(ic) if ic and not ic.startswith("/") else "📄"}</span>')
+            pv = "" if img == "none" else f'<span class="pub-sp-pv">{pic}</span>'
+            out.append(f'<li><a class="pub-sp-it" href="{escape(url, quote=True)}">{pv}<span class="pub-sp-tt">{icon}'
+                       f'<span class="pub-sp-t">{escape(title)}</span></span></a></li>')
+        else:
+            out.append(f'<li><a class="pub-sp-it" href="{escape(url, quote=True)}">{icon}<span class="pub-sp-t">{escape(title)}</span></a></li>')
+    out.append("</ul>")
+    if data.get("more"):
+        out.append(f'<div class="pub-muted">{escape(t("und {n} weitere", n=data["more"]))}</div>')
+    out.append("</nav>")
     return "".join(out)
 
 

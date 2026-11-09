@@ -414,7 +414,7 @@ def md_page(rows, r, link, viewer=None):
     if r[5] == "blocks":
         try:
             return head + blocks_to_md(json.loads(r[4]).get("blocks", []), link, lambda x: (rows[x][1] or t("Unbenannt")) if x in rows else None,
-                                       (lambda b: page_widgets.value_for(viewer, b)) if viewer else None)
+                                       (lambda b: page_widgets.value_for(viewer, b, nid=r[0])) if viewer else None)
         except ValueError:
             return head
     return head + (r[4] or "") + "\n"

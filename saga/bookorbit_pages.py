@@ -381,7 +381,8 @@ def _i18n_keys():
     return (t("S. {n}"), t("In BookOrbit öffnen"), t("Notiz zum Buch"), t("Lesezeichen"), t("Unbenannt"), t("Bücher##Sammelseite"),
             t("Kapitel##Buchseite"), t("Ohne Kapitel"), t("Kapitel {n} von {m}"), t("{n} {n:Markierung|Markierungen}"),
             t("Noch keine Markierungen – schreib hier deine Notizen zum Kapitel."),
-            t("Deine Bücher aus BookOrbit: je Buch eine Seite mit Kapiteln, Markierungen und Lesezeichen. Neue Bücher kommen oben dazu."))
+            t("Deine Bücher aus BookOrbit: je Buch eine Seite mit Kapiteln, Markierungen und Lesezeichen. Neue Bücher kommen oben dazu."),
+            t("Deine Bücher aus BookOrbit: je Buch eine Seite mit Kapiteln, Markierungen und Lesezeichen. Neue Bücher kommen vorne dazu."))
 
 
 def _gray(html):
@@ -826,6 +827,17 @@ def _create(uid, title, icon, parent):
         raise Fail(f.status if f.status < 500 else 502, str(f))
 
 
+def _first(uid, nid, parent):
+    """Neue Buchseite als erste Unterseite der Sammelseite (steht sie schon vorne, passiert nichts)."""
+    from saga.pages import note_move
+    sib = _siblings(uid, parent)
+    if sib and sib[0] != nid:
+        try:
+            note_move(uid, nid, {"parent_id": parent, "index": 0})
+        except Exception:  # noqa: BLE001 - Reihenfolge ist Beiwerk
+            pass
+
+
 def _trash(uid, nid):
     from saga.pages import note_trash
     try:
@@ -902,34 +914,107 @@ def _home(uid, lang, make=True):
         return hid
 
 
-def _home_sync(uid, hid, v, lang, made):
-    with _db() as c:
-        pages = _pages_of(c, uid)
-        rows = c.execute(f"SELECT id, title FROM note WHERE uid=? AND deleted_at IS NULL AND id IN ({','.join('?' * len(pages)) or 'NULL'}) "
-                         "ORDER BY created DESC, id DESC", (uid, *pages.values())).fetchall() if pages else []
-    items = [{"content": _san(_link(r[0], _short(r[1], 200) or t_lang(lang, "Unbenannt"))), "meta": {}, "items": []} for r in rows]
-    listed = set(v["listed"])
+INTRO_OLD = "Deine Bücher aus BookOrbit: je Buch eine Seite mit Kapiteln, Markierungen und Lesezeichen. Neue Bücher kommen oben dazu."
+INTRO = "Deine Bücher aus BookOrbit: je Buch eine Seite mit Kapiteln, Markierungen und Lesezeichen. Neue Bücher kommen vorne dazu."
 
+
+def _intro(lang, key=INTRO):
+    return _san(_gray(_esc(t_lang(lang, key), quote=False)))
+
+
+def _gallery():
+    """Unterseiten-Block (saga.page_widgets, Art subpages): Buchseiten als Cover-Galerie (Cover = erstes Bild der Buchseite)."""
+    return {"type": "widget", "data": {"v": 1, "kind": "subpages", "size": "m", "cfg": {"view": "gallery", "image": "content"}}}
+
+
+def _has_gallery(blocks):
+    from saga.notes import _iter_blocks
+    try:
+        return any(b.get("type") == "widget" and isinstance(b.get("data"), dict) and b["data"].get("kind") == "subpages"
+                   for b in _iter_blocks(blocks))
+    except ValueError:
+        return True                                   # zu tief verschachtelt: lieber nichts einfuegen
+
+
+def _home_sync(uid, hid, v, lang, made):
+    """Inhalt der Sammelseite (2.5, 9.11. abends): Einleitung + Unterseiten-Block (Galerie, live aus dem Seitenbaum) statt
+    der frueheren Liste. Einmalig ("gal" in x): unveraenderte Liste (h passt) -> durch den Block ersetzt; bearbeitete Liste
+    bleibt stehen (gehoert jetzt der Person, wird nicht mehr nachgezogen), der Block kommt davor; hatte die Person die Liste
+    geloescht, kommt auch kein Block. Danach: geloeschter Block kommt nicht wieder. listed wird nicht mehr gebraucht."""
     def fn(blocks):
         xs = v["x"]
+        ch = False
         if made and "intro" not in xs:
-            text = _san(_gray(_esc(t_lang(lang, "Deine Bücher aus BookOrbit: je Buch eine Seite mit Kapiteln, Markierungen und "
-                                              "Lesezeichen. Neue Bücher kommen oben dazu."), quote=False)))
+            text = _intro(lang)
             blocks = [{"type": "paragraph", "data": {"text": text, "bo": {"k": "_home", "x": "intro", "h": _hn(text)}}}] + list(blocks)
             xs.append("intro")
-            ch0 = True
-        else:
-            ch0 = False
-        at = (_xi(blocks, "intro") + 1) if _xi(blocks, "intro") is not None else len(blocks)
+            ch = True
+        ii = _xi(blocks, "intro")
+        if ii is not None and not made:               # alte Einleitung ("oben dazu"), unveraendert -> neuer Text
+            b = blocks[ii]
+            old = _intro(lang, INTRO_OLD)
+            if _bo(b).get("h") == _hn((b.get("data") or {}).get("text") or "") and _hn(old) == _bo(b).get("h"):
+                text = _intro(lang)
+                blocks = blocks[:ii] + [dict(b, data=dict(b["data"], text=text, bo=dict(_bo(b), h=_hn(text))))] + blocks[ii + 1:]
+                ch = True
+        if "gal" in xs:
+            return (blocks if ch else None), None
+        xs.append("gal")
+        v["listed"] = []
+        if _has_gallery(blocks):                      # schon da (z. B. selbst eingefuegt)
+            return blocks, None
         i = _xi(blocks, "books")
-        use = items
-        if i is not None and _bo(blocks[i]).get("h") != _hl((blocks[i].get("data") or {}).get("items")):
-            use = [it for it in items if int(re.search(r"#(\d+)", it["content"]).group(1)) not in listed]   # nur Neues oben
-        out, ch = _put_list(blocks, use, "books", "_home", xs, at)
-        return (out if ch or ch0 else None), None
+        if i is not None:
+            b = blocks[i]
+            d = b.get("data") if isinstance(b.get("data"), dict) else {}
+            if b.get("type") == "list" and _bo(b).get("h") == _hl(d.get("items")):
+                return blocks[:i] + [_gallery()] + blocks[i + 1:], None      # unveraenderte Liste -> Block
+            return blocks[:i] + [_gallery()] + blocks[i:], None              # bearbeitet: bleibt, Block davor
+        if "books" in xs:                             # Liste hatte die Person geloescht: keinen Block aufdraengen
+            return (blocks if ch else None), None
+        at = (_xi(blocks, "intro") + 1) if _xi(blocks, "intro") is not None else len(blocks)
+        return blocks[:at] + [_gallery()] + blocks[at:], None
 
-    _apply(uid, hid, fn, v)
-    v["listed"] = (v["listed"] + [p for p in pages.values() if p not in listed])[-3000:]
+    st = dict(v)
+    before = list(v["x"])
+    try:
+        _apply(uid, hid, fn, v)
+    except Fail:
+        v.clear()
+        v.update(st, x=before)                         # nichts gespeichert: naechstes Mal noch einmal
+        raise
+    if "gal" in v["x"] and "gal" not in before:        # einmalig: Buecher neueste zuerst (nur, wenn nie umsortiert)
+        _newest_first(uid, hid)
+
+
+def _siblings(uid, parent):
+    with _db() as c:
+        return [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND deleted_at IS NULL AND parent_id=? "
+                                        "ORDER BY sort NULLS FIRST, created", (uid, parent)).fetchall()]
+
+
+def _newest_first(uid, hid):
+    """Buchseiten unter der Sammelseite: frueher kamen neue Buecher ans Ende des Seitenbaums (die Liste zeigte sie trotzdem
+    zuerst). Stehen sie noch genau in Anlege-Reihenfolge (nie selbst umsortiert), tauschen sie die Plaetze in umgekehrter
+    Reihenfolge - eigene Seiten dazwischen behalten ihren Platz. Sonst bleibt alles, wie es ist."""
+    from saga.pages import note_move
+    with _db() as c:
+        books = set(_pages_of(c, uid).values())
+        sib = _siblings(uid, hid)
+        mine = [x for x in sib if x in books]
+        made = dict(c.execute("SELECT id, created FROM note WHERE id = ANY(?)", (mine,)).fetchall()) if mine else {}
+    if len(mine) < 2 or mine != sorted(mine, key=lambda x: (made.get(x) or 0, x)):
+        return
+    rev = iter(sorted(mine, key=lambda x: (made.get(x) or 0, x), reverse=True))
+    want = [next(rev) if x in books else x for x in sib]
+    for k, nid in enumerate(want):
+        cur = _siblings(uid, hid)
+        if k < len(cur) and cur[k] == nid:
+            continue
+        try:
+            note_move(uid, nid, {"parent_id": hid, "index": k})
+        except Exception:  # noqa: BLE001 - Reihenfolge ist Beiwerk
+            return
 
 
 # --- Anlegen / Aktualisieren ------------------------------------------------------------------------------------------
@@ -1044,11 +1129,14 @@ def _build_locked(uid, book_id, parent_id, book, anns, bms, toc, alias, base, la
     created = False
     if nid is None:
         kv = {"page": None, "v": 2, "a": [], "n": [], "b": [], "x": [], "ch": {}, "new": []}
-        if parent_id is None:                   # 2.5 (9.11.): nicht mehr auf oberster Ebene, sondern in "Buecher"
+        home = parent_id is None
+        if home:                                # 2.5 (9.11.): nicht mehr auf oberster Ebene, sondern in "Buecher"
             parent_id = _home(uid, lang)
         nid = _create(uid, book["title"] or t_lang(lang, "Unbenannt"), ICON_BOOK, parent_id)
         kv["page"] = nid
         created = True
+        if home and parent_id:                  # neue Buecher vorne (Unterseiten-Galerie zeigt die Baum-Reihenfolge)
+            _first(uid, nid, parent_id)
     seen = {k: list(kv[k]) for k in ("a", "n", "b", "x")}
     title = book["title"] or t_lang(lang, "Unbenannt")
     try:

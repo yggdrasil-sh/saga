@@ -52,6 +52,7 @@ FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1", "move1", "ren
             "bookorbit1",                                                        # 2.5: BookOrbit (/api/bookorbit/..., Widget-Art reading)
             "bookorbit2",                                                        # 2.5: BookOrbit-Markierungen als Seite (/api/bookorbit/notes)
             "bookorbit3",                                                        # 2.5: Buecher -> Buch -> Kapitelseiten, Liste ?filter=read
+            "subpages1",                                                         # 2.5: Widget-Art subpages (Unterseiten als Liste/Galerie)
             "pm1")                                                               # 2.5 Tiptap T2: Web-Editor kann Saga-Schema v2 (nur informativ)
 # unfurl1 (2.5, Chat-Alltag C3) = GET /api/chat/unfurl - nur gemeldet, solange der Admin-Schalter chat_unfurl an ist (app.py).
 # live1 (2.5, P3 Stufe 2) = WebSocket /api/collab (CRDT, docs/APP-API-COLLAB.md) - nur gemeldet, solange der Admin-Schalter

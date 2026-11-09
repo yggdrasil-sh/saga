@@ -82,7 +82,7 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
          "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1",
-         "chatadm1", "groupinfo2", "moddel1", "msgpin1", "block2", "report1", "chatmention1"]
+         "wsubpages1", "chatadm1", "groupinfo2", "moddel1", "msgpin1", "block2", "report1", "chatmention1"]
 # 2.5 (Chat-Standard B, saga.chat_grp): groupinfo2 = Beschreibung/Bild freier Gruppen (kind desc/avatar wie title) und
 # Gruppenrechte (Auftrag 'perm' an das Heim, Ereignis 'chat.perm', perm_info/perm_send in chat.members; das Heim setzt
 # sie beim Senden durch); moddel1 = Admins loeschen fremde Nachrichten (Auftrag 'del' mit mod, Ereignis chat.msg.del mit
@@ -116,6 +116,9 @@ CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "li
 # POST /fed/v2/notes/{seite}/widgets/{block}/habit), Diagramm-Widget und Diagramm-Ansicht (GET /fed/v2/notes/{db}/chart) rechnet
 # der Eigentuemer-Server mit dem Prinzipal der Person; W traegt "data". "Anstehendes" ist persoenlich (Kalender/Aufgaben des
 # Heim-Servers) und kommt ueber Servergrenzen immer als no_access. Ohne widgets2: diese Arten fehlen in der Antwort.
+# wsubpages1 (2.5, Unterseiten) = Widget-Art subpages: der Eigentuemer liefert die Unterseiten, die der Prinzipal sehen darf
+# (IDs dieses Servers, Bilder als /files/<id> bzw. /covers/<id>.jpg); das Heim setzt IDs in negative IDs und Bilder in
+# /api/fed/files/<unterseite>/<id> um, Galerie-Titelbilder fallen weg. Ohne wsubpages1: Art fehlt, "unsupported_kinds".
 # csv (2.5, Paket 2) = Datenbank als CSV exportieren (GET /fed/v2/notes/{id}/export.csv, saga.csv_export) mit den Rechten
 # der fremden Person. Ohne csv: Menuepunkt fehlt fuer Datenbanken dieses Servers.
 # formula1 (2.5, Paket 1, saga.dbcalc) = Formel- und Rollup-Eigenschaften: der Eigentuemer-Server rechnet die Werte mit
