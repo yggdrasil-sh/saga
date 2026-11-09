@@ -647,7 +647,7 @@ Phase 2, weiter **nur lesen** (BookOrbit → Saga, nie zurück). Ablage seit `bo
 - Fehler: `409` mit `state` `none` (nicht verbunden) bzw. `expired` (neu anmelden), `502` mit `state` `unavailable`,
   `404` (Buch nicht in der eigenen BookOrbit-Bibliothek, `page_id` ohne Zuordnung, Ziel nicht erlaubt), `400`
   (ungültige Angaben, `book_id` und `page_id` zugleich), `423` (Buchseite gesperrt – erst entsperren; gesperrte
-  Kapitelseiten werden übersprungen), `429` (zu viele Aufrufe je Minute und Konto).
+  Kapitelseiten werden übersprungen), `429` (zu viele Aufrufe je Minute und Konto; die Liste `GET …/notes/books` hat eine eigene, großzügigere Grenze von 60 je Minute).
 - **Blöcke** (normale Blöcke, jeder übernommene trägt `data.bo`): Kopf (Cover als eigene Datei im Bild-Block, Absatz mit
   Autor:in und Link „In BookOrbit öffnen“, `bo.x` = `cover`/`info`), optional „Notiz zum Buch“ (`bo.x` = `bnh`/`bn`), je
   Markierung ein **Zitat-Block** (`text`, `caption` = „S. 12 · 21.10.2026“, Farbe als `tunes.hkstyle {c, bg: true}` aus der
@@ -666,7 +666,9 @@ Phase 2, weiter **nur lesen** (BookOrbit → Saga, nie zurück). Ablage seit `bo
   Kapitel-Liste bekommt nur neue Kapitel angehängt.
 - **Alte Notizseiten** (vor `bookorbit3`: eine Seite „Notizen: <Titel>“ mit Kapiteln als H2) werden beim nächsten
   Aktualisieren umgebaut: jeder Kapitel-Abschnitt (Zitate, Notizen und die eigenen Blöcke darin) wandert unverändert in
-  seine Kapitelseite, der Titel der Seite bleibt.
+  seine Kapitelseite, der Titel der Seite bleibt. Eigene Blöcke hinter dem letzten Zitat des letzten Kapitels bleiben auf der
+  Buchseite. Saga kopiert erst und entfernt die Abschnitte danach; ein Abbruch erzeugt höchstens Doppeltes, der nächste
+  Aufruf macht den Umbau fertig.
 - Einstiege im Web: Einstellungen → Verbindungen → BookOrbit („Markierungen als Seite übernehmen“: Suchfeld, Filter „Mit
   Markierungen“/„Gelesen“, je Buch „Als Seite“ bzw. „Öffnen“ und „Aktualisieren“), Buch antippen unter „Heute“ bzw. im
   Widget „Lesen“ → „Markierungen als Seite“, auf Buch- und Kapitelseiten Menü „…“ → „Aus BookOrbit aktualisieren“

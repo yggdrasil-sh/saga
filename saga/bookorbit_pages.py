@@ -17,6 +17,8 @@ Kapitelseite (📑, Titel = Kapitelname, Reihenfolge wie im Buch; Teile mit Kapi
 - Quellen bei BookOrbit: GET /books/<id>, GET /books/<id>/annotations?page=&pageSize=100&sortBy=position (seitenweise,
   Obergrenze ANN_MAX), GET /books/<id>/bookmarks, GET /epub/<id>/info. Liste: GET /annotations/books, mit Suche zusaetzlich
   GET /books/search (ganze Bibliothek), Filter "Gelesen": POST /books/query (readStatus read, neueste zuerst).
+  Die Liste ist begrenzt (SAGA_BOOKORBIT_LIST_RATE, 60 je Minute und Konto). Nebenwirkung des GET: einmalig je Konto
+  ("moved" fehlt noch) legt er die Sammelseite an und raeumt alte Notizseiten von der obersten Ebene hinein.
   Keiner dieser Wege verlangt "App Attest" (anders als /notebook/... - das ist nur fuer die offizielle iOS-App).
 - Zuordnung ohne Migration: user_kv "bookorbit_page:<bookId>" = {"page", "ch": {Kapitel-Schluessel: Seite}, "v": 2,
   "a"/"n"/"b": schon einmal uebernommene IDs, "x": schon einmal angelegte Kopf-/Abschnittsbloecke}. Jeder uebernommene
@@ -25,9 +27,12 @@ Kapitelseite (📑, Titel = Kapitelname, Reihenfolge wie im Buch; Teile mit Kapi
   kommt nicht wieder; eigene Texte bleiben; geaenderte Markierungen werden nur nachgezogen, solange der Block unveraendert
   ist (h passt). Bei BookOrbit geloeschte Markierungen bleiben in Saga stehen.
 - Alte Einseiten-Notizseiten (Phase 2 bis 9.11.: "Notizen: <Titel>", Kapitel als H2) werden beim naechsten Aktualisieren
-  umgebaut: je H2-Kapitel wandert der Abschnitt (Zitate, Notizen, eigene Bloecke bis zum naechsten Saga-Block eines anderen
-  Kapitels) unveraendert in die neue Kapitelseite. Der Titel der alten Seite bleibt. Erst wird die Buchseite (mit Revision)
-  gespeichert, dann entstehen die Kapitelseiten; scheitert das, kommen die Abschnitte zurueck (Versionen hat die Seite ohnehin).
+  umgebaut: je H2-Kapitel wandert der Abschnitt (Zitate, Notizen, eigene Bloecke bis vor den naechsten Saga-Block eines
+  anderen Kapitels) unveraendert in die neue Kapitelseite; beim letzten Kapitel endet der Abschnitt nach dessen letztem
+  Saga-Block - eigene Bloecke dahinter bleiben als Schlussgedanken auf der Buchseite. Der Titel der alten Seite bleibt.
+  Reihenfolge "erst kopieren, dann schneiden" (_build_pages): Kapitelseiten anlegen und je sofort in user_kv merken,
+  fehlende Bloecke hineinkopieren, erst dann (mit Revision) aus der Buchseite entfernen, was vollstaendig kopiert ist,
+  zuletzt v = 2. Ein Abbruch an beliebiger Stelle erzeugt hoechstens Doppeltes; der naechste Lauf macht weiter.
 - Nebenlaeufigkeit: Sperre in der Datenbank je Konto+Buch (bzw. Konto fuer die Sammelseite), Revisionskonflikte -> neu lesen.
 - Text aus BookOrbit ist Fremdinhalt: Klartext, maskiert, Laengen begrenzt, danach derselbe Bereiniger wie fuer den Editor
   (sanitize_inline). Ziel nur eigene Seiten (parent_id: eigene, nicht geloeschte Seite; keine Datenbank).
@@ -62,6 +67,7 @@ BOOKS_LIST_MAX = 50
 SEARCH_MAX = 20                                               # /books/search: limit <= 20 bei BookOrbit
 BUDGET = 190_000                                              # Zeichen JSON (Seite: hoechstens 200 000, saga.pages)
 _RATE = (int(E.get("SAGA_BOOKORBIT_NOTES_RATE") or 12), 60.0)   # Anlegen/Aktualisieren je Konto und Minute
+_RATE_LIST = (int(E.get("SAGA_BOOKORBIT_LIST_RATE") or 60), 60.0)  # Liste/Suche je Konto und Minute
 _KV = "bookorbit_page:"
 _KV_HOME = "bookorbit_notes_home"
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f​-‏‪-‮⁦-⁩]")
@@ -70,6 +76,7 @@ ICON_BOOK, ICON_HOME, ICON_CH = "📖", "📚", "📑"
 _mem = threading.Lock()
 _ulocks = {}
 _calls = {}
+_lcalls = {}
 
 
 def _ulock(uid):
@@ -80,17 +87,18 @@ def _ulock(uid):
         return lk
 
 
-def _rate_ok(uid):
+def _rate_ok(uid, store=None, rate=None):
+    store, rate = (_calls, _RATE) if store is None else (store, rate)
     now = time.time()
     with _mem:
-        xs = [x for x in _calls.get(uid, []) if now - x < _RATE[1]]
-        if len(xs) >= _RATE[0]:
-            _calls[uid] = xs
+        xs = [x for x in store.get(uid, []) if now - x < rate[1]]
+        if len(xs) >= rate[0]:
+            store[uid] = xs
             return False
         xs.append(now)
-        _calls[uid] = xs
-        if len(_calls) > 5000:
-            _calls.clear()
+        store[uid] = xs
+        if len(store) > 5000:
+            store.clear()
         return True
 
 
@@ -711,6 +719,7 @@ def _kv_get(c, uid, bid):
         out[k] = [x for x in (v.get(k) if isinstance(v.get(k), list) else []) if _int(x) is not None][: ANN_MAX * 4]
     out["x"] = [x for x in (v.get("x") if isinstance(v.get("x"), list) else []) if isinstance(x, str)][:20]
     ch = v.get("ch") if isinstance(v.get("ch"), dict) else {}
+    out["new"] = [x for x in (v.get("new") if isinstance(v.get("new"), list) else []) if isinstance(x, str)][: CH_MAX * 3]
     out["ch"] = {k: p for k, p in list(ch.items())[: CH_MAX * 3] if isinstance(k, str) and re.fullmatch(r"c[0-9a-f]{12}", k) and _pid(p)}
     return out
 
@@ -938,8 +947,10 @@ def _store_cover(uid, bid):
 
 
 def _legacy_segments(blocks):
-    """Alte Einseiten-Notizseite: je H2-Kapitel (data.bo.c, Schluessel k) der Abschnitt bis zum naechsten Saga-Block eines
-    anderen Kapitels -> [(k, label, start, ende)]."""
+    """Alte Einseiten-Notizseite: je H2-Kapitel (data.bo.c, Schluessel k) ein Abschnitt -> [(k, label, start, ende)].
+    Regel: ein Abschnitt reicht von seiner Ueberschrift bis vor den naechsten Saga-Block eines anderen Kapitels (bzw. die
+    naechste Kapitel-Ueberschrift); eigene Bloecke darin wandern mit. Nur beim letzten Abschnitt endet er nach dem letzten
+    Saga-Block des Kapitels - eigene Bloecke dahinter (Schlussgedanken zum Buch) bleiben auf der Buchseite."""
     segs, i = [], 0
     while i < len(blocks):
         m = _bo(blocks[i])
@@ -950,11 +961,29 @@ def _legacy_segments(blocks):
                 if mj and (mj.get("c") or mj.get("k") != k):
                     break
                 j += 1
-            segs.append((k, _line(_norm(blocks[i]["data"].get("text")), CHAPTER_MAX) or "…", i, j))
+            segs.append([k, _line(_norm(blocks[i]["data"].get("text")), CHAPTER_MAX) or "…", i, j])
             i = j
         else:
             i += 1
-    return segs
+    if segs:
+        k, _, i, j = segs[-1]
+        segs[-1][3] = max([x + 1 for x in range(i + 1, j) if (_bo(blocks[x]) or {}).get("k") == k] or [i + 1])
+    return [tuple(x) for x in segs]
+
+
+def _has(blocks, b):
+    """Steht Block b (aus der alten Seite) schon in blocks? Gleiche Block-ID und Art oder gleicher Inhalt."""
+    sig = json.dumps([b.get("type"), b.get("data")], sort_keys=True, ensure_ascii=False)
+    return any((b.get("id") and x.get("id") == b.get("id") and x.get("type") == b.get("type"))
+               or json.dumps([x.get("type"), x.get("data")], sort_keys=True, ensure_ascii=False) == sig for x in blocks if isinstance(x, dict))
+
+
+_STEP = None                                     # Testhaken (tests/bookorbit_seiten.py): _STEP(name) darf werfen = Abbruch
+
+
+def _step(name):
+    if _STEP:
+        _STEP(name)
 
 
 def build(uid, book_id=None, parent_id=None, page_id=None):
@@ -979,7 +1008,14 @@ def build(uid, book_id=None, parent_id=None, page_id=None):
         # Transaktion dieser eigenen Verbindung bis zum Ende des Blocks (Muster wie saga/contacts.py).
         with _db() as lk, lk:
             lk.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (f"bo:{uid}:{book_id}",))
-            res = _build_locked(uid, book_id, parent_id, book, anns, bms, toc, alias, base, lang)
+            try:
+                res = _build_locked(uid, book_id, parent_id, book, anns, bms, toc, alias, base, lang)
+            except Fail:
+                raise
+            except Exception as ex:  # noqa: BLE001 - nie ein halber Stand ohne Antwort; der naechste Lauf macht weiter
+                import logging
+                logging.getLogger("saga").exception("bookorbit build")
+                raise Fail(502, t("Unerwarteter Fehler: {detail}", detail=type(ex).__name__))
     try:
         _home(uid, lang)                                # Liste der Sammelseite nachziehen (eigene Sperre)
     except Fail:
@@ -995,7 +1031,7 @@ def _build_locked(uid, book_id, parent_id, book, anns, bms, toc, alias, base, la
         nid = kv["page"] if _page_ok(c, uid, kv["page"]) else None
     created = False
     if nid is None:
-        kv = {"page": None, "v": 2, "a": [], "n": [], "b": [], "x": [], "ch": {}}
+        kv = {"page": None, "v": 2, "a": [], "n": [], "b": [], "x": [], "ch": {}, "new": []}
         if parent_id is None:                   # 2.5 (9.11.): nicht mehr auf oberster Ebene, sondern in "Buecher"
             parent_id = _home(uid, lang)
         nid = _create(uid, book["title"] or t_lang(lang, "Unbenannt"), ICON_BOOK, parent_id)
@@ -1005,72 +1041,119 @@ def _build_locked(uid, book_id, parent_id, book, anns, bms, toc, alias, base, la
     title = book["title"] or t_lang(lang, "Unbenannt")
     try:
         return _build_pages(uid, book_id, nid, created, kv, seen, book, anns, bms, toc, alias, base, lang, title)
-    except Fail:
-        if created:
+    except BaseException:
+        if created:                              # neue Buchseite (ohne fremden Inhalt) samt Kapitelseiten wieder weg
             _trash(uid, nid)
         raise
 
 
+def _kv_save(uid, book_id, nid, seen, kv):
+    with _db() as c, c:
+        _kv_put(c, uid, book_id, dict(seen, page=nid, ch=kv["ch"], v=kv["v"], new=kv["new"]))
+
+
 def _build_pages(uid, book_id, nid, created, kv, seen, book, anns, bms, toc, alias, base, lang, title):
+    """Ablauf (jeder Schritt wiederaufsetzbar, ein Abbruch erzeugt hoechstens Doppeltes, nie Verlust):
+    1. Kapitel bestimmen (TOC, Markierungen, Abschnitte einer alten Einseiten-Seite, schon zugeordnete Kapitelseiten).
+    2. Fehlende Kapitelseiten anlegen - Zuordnung je Seite sofort in user_kv ("new" = angelegt, noch nicht eingerichtet),
+       ein Wiederanlauf verwendet sie weiter.
+    3. Alte Einseiten-Seite (v != 2): erst kopieren - je Abschnitt die noch fehlenden Bloecke in die Kapitelseite -, dann
+       schneiden: aus der Buchseite (mit Revision) nur Abschnitte entfernen, deren Bloecke alle in der Kapitelseite stehen.
+       Erst wenn kein solcher Abschnitt mehr uebrig ist: v = 2.
+    4. Markierungen je Kapitelseite, 5. Buchseite (Kopf, Notiz, Kapitel-Liste, Ohne Kapitel, Lesezeichen)."""
     added = updated = 0
     full = False
-    # 1. Alte Einseiten-Seite: Kapitel-Abschnitte herausloesen (erst die Buchseite speichern, dann Kapitelseiten anlegen)
-    moved = {}
+    kv.setdefault("new", [])
     legacy = []
-    if kv["v"] != 2 and not created:
+    migrate = kv["v"] != 2 and not created
+    if migrate:
         legacy = [(k, lab) for k, lab, _, _ in _legacy_segments(_read(uid, nid)[0])]
     with _db() as c:
-        have = {k for k, p in kv["ch"].items()}
         alive = _alive(c, uid, list(kv["ch"].values()))
-    chapters, alias, ch_cut = _chapters(toc, alias, anns, legacy, have)
+        titles = {r[0]: r[1] for r in c.execute(f"SELECT id, title FROM note WHERE id IN ({','.join('?' * len(alive)) or 'NULL'})",
+                                                 tuple(alive)).fetchall()} if alive else {}
+    chapters, alias, ch_cut = _chapters(toc, alias, anns, legacy, set(kv["ch"]))
     keys = {e["key"] for e in chapters}
+    for k, p in kv["ch"].items():                     # zugeordnete Kapitelseite ohne Kapitel (mehr): weiter fuehren
+        if p in alive and k not in keys:
+            chapters.append({"key": k, "label": _line(titles.get(p), CHAPTER_MAX) or "…", "depth": 1, "parent": None})
+            keys.add(k)
     remap = {k: alias.get(lab.casefold(), k) for k, lab in legacy}
-
-    if legacy:
-        def cut_out(blocks):
-            moved.clear()
-            segs = [s for s in _legacy_segments(blocks) if remap.get(s[0], s[0]) in keys]
-            if not segs:
-                return None, None
-            out, last = [], 0
-            for k, lab, i, j in segs:
-                out.extend(blocks[last:i])
-                moved.setdefault(remap.get(k, k), []).extend(blocks[i + 1:j])
-                last = j
-            out.extend(blocks[last:])
-            return out, None
-        _apply(uid, nid, cut_out, {})
     # 2. Kapitelseiten: vorhandene behalten, geloeschte nicht wieder, neue in Buchreihenfolge anlegen
     pages = {k: p for k, p in kv["ch"].items() if p in alive}
     new_pages = set()
-    try:
-        prev_of = {}
-        for e in chapters:
-            k = e["key"]
-            parent = pages.get(e["parent"]) if e["depth"] == 2 and e["parent"] else None
-            parent = parent or nid
-            if k in pages or k in kv["ch"]:          # vorhanden bzw. von der Person geloescht
-                prev_of[parent] = pages.get(k, prev_of.get(parent))
-                continue
-            p = _create(uid, _short(e["label"], CH_TITLE_MAX) or "…", ICON_CH, parent)
-            pages[k] = kv["ch"][k] = p
-            new_pages.add(k)
-            if not created:
-                _order_after(uid, p, parent, prev_of.get(parent))
-            prev_of[parent] = p
-    except Fail:                                       # angelegte Kapitelseiten wieder weg, Abschnitte zurueck
-        for k in new_pages:
-            _trash(uid, pages.pop(k))
-            kv["ch"].pop(k, None)
-        _restore(uid, nid, moved, chapters, lang)
-        raise
-    kv["v"] = 2
-    with _db() as c, c:                                # Seiten sind angelegt: Zuordnung sofort merken
-        _kv_put(c, uid, book_id, dict(seen, page=nid, ch=kv["ch"], v=2))
-    # 3. Markierungen je Kapitelseite
+    prev_of = {}
+    for e in chapters:
+        k = e["key"]
+        parent = pages.get(e["parent"]) if e["depth"] == 2 and e["parent"] else None
+        parent = parent or nid
+        if k in pages or k in kv["ch"]:              # vorhanden bzw. von der Person geloescht
+            prev_of[parent] = pages.get(k, prev_of.get(parent))
+            continue
+        p = _create(uid, _short(e["label"], CH_TITLE_MAX) or "…", ICON_CH, parent)
+        pages[k] = kv["ch"][k] = p
+        kv["new"] = [x for x in kv["new"] if x != k] + [k]
+        _kv_save(uid, book_id, nid, seen, kv)          # sofort merken: ein Wiederanlauf legt sie nicht noch einmal an
+        new_pages.add(k)
+        _step("created")
+        if not created:
+            _order_after(uid, p, parent, prev_of.get(parent))
+        prev_of[parent] = p
+    fresh_keys = set(kv["new"]) & set(pages)
     order = [e for e in chapters if e["key"] in pages]
     pos = {e["key"]: i + 1 for i, e in enumerate(order)}
     label = {e["key"]: e["label"] for e in chapters}
+
+    def nav_of(e):
+        part = None
+        if e["depth"] == 2 and e["parent"] in pages:
+            part = (pages[e["parent"]], _short(label[e["parent"]], CH_TITLE_MAX))
+        return _nav(nid, title, part, pos[e["key"]], len(order), lang)
+    entry = {e["key"]: e for e in order}
+    # 3. Alte Einseiten-Seite: erst kopieren, dann schneiden
+    if migrate:
+        book_blocks = _read(uid, nid)[0]
+        for k0, lab, i, j in _legacy_segments(book_blocks):
+            k = remap.get(k0, k0)
+            if k not in pages:
+                continue                               # kein Kapitelseite (Obergrenze/geloescht): Abschnitt bleibt
+            seg = [b for b in book_blocks[i + 1:j] if isinstance(b, dict)]
+
+            def copy(blocks, seg=seg, k=k):
+                miss = [b for b in seg if not _has(blocks, b)]
+                if not miss:
+                    return None, None
+                if not blocks:
+                    return [nav_of(entry[k])] + miss, None
+                at = _xi(blocks, "back")
+                at = 0 if at is None else at + 1
+                return blocks[:at] + miss + blocks[at:], None
+            _apply(uid, pages[k], copy, {})
+            _step("copied")
+        left = []
+
+        def cut(blocks):
+            left.clear()
+            segs = _legacy_segments(blocks)
+            out, last, drop = [], 0, False
+            for k0, lab, i, j in segs:
+                k = remap.get(k0, k0)
+                if k not in pages:
+                    continue
+                target = _read(uid, pages[k])[0]
+                if not all(_has(target, b) for b in blocks[i + 1:j] if isinstance(b, dict)):
+                    left.append(k)                     # (noch) nicht vollstaendig kopiert: Abschnitt bleibt diesmal
+                    continue
+                out.extend(blocks[last:i])
+                last, drop = j, True
+            out.extend(blocks[last:])
+            return (out if drop else None), None
+        _apply(uid, nid, cut, {})
+        _step("cut")
+        if not left:
+            kv["v"] = 2
+            _kv_save(uid, book_id, nid, seen, kv)
+    # 4. Markierungen je Kapitelseite
     keyof = lambda a: alias.get(a["chapter"].casefold()) if a["chapter"] else None   # noqa: E731
     by_k, rest = {}, []
     for a in anns:
@@ -1084,18 +1167,15 @@ def _build_pages(uid, book_id, nid, created, kv, seen, book, anns, bms, toc, ali
     counts = {}
     for e in order:
         k, p = e["key"], pages[e["key"]]
-        part = None
-        if e["depth"] == 2 and e["parent"] in pages:
-            part = (pages[e["parent"]], _short(label[e["parent"]], CH_TITLE_MAX))
-        nav = _nav(nid, title, part, pos[k], len(order), lang)
+        nav = nav_of(e)
         mine = by_k.get(k, [])
 
-        def fn(blocks, k=k, p=p, nav=nav, mine=mine, fresh=k in new_pages):
+        def fn(blocks, k=k, nav=nav, mine=mine, fresh=k in fresh_keys):
             nonlocal added, updated, full
             ch = False
             blocks = list(blocks)
             if fresh and not blocks:
-                blocks = [nav] + moved.get(k, [])
+                blocks = [nav]
                 ch = True
             else:
                 i = _xi(blocks, "back")
@@ -1118,12 +1198,12 @@ def _build_pages(uid, book_id, nid, created, kv, seen, book, anns, bms, toc, ali
         try:
             _apply(uid, p, fn, seen)
         except Fail as f:
-            if k in moved and k in new_pages:          # Abschnitt der alten Seite nicht verlieren
-                _restore(uid, nid, {k: moved[k]}, chapters, lang)
             if f.status not in (403, 404, 423):       # gesperrt/weg: diese Kapitelseite auslassen
                 raise
             counts.setdefault(k, 0)
-    # 4. Buchseite: Kopf, Notiz zum Buch, Kapitel-Liste, Markierungen ohne Kapitel, Lesezeichen
+        if k in kv["new"]:
+            kv["new"] = [x for x in kv["new"] if x != k]
+    # 5. Buchseite: Kopf, Notiz zum Buch, Kapitel-Liste, Markierungen ohne Kapitel, Lesezeichen
     items, by = [], {}
     for e in order:
         n = counts.get(e["key"], 0)
@@ -1147,27 +1227,9 @@ def _build_pages(uid, book_id, nid, created, kv, seen, book, anns, bms, toc, ali
         return (out if a1 or u1 or ch or created else None), None
 
     _apply(uid, nid, book_fn, seen)
-    with _db() as c, c:
-        _kv_put(c, uid, book_id, dict(seen, page=nid, ch=kv["ch"], v=2))
+    _kv_save(uid, book_id, nid, seen, kv)
     return {"page_id": nid, "created": created, "added": added, "updated": updated, "chapters": len(order),
             "chapters_added": len(new_pages), "_full": full or ch_cut}
-
-
-def _restore(uid, nid, moved, chapters, lang):
-    """Kapitelseite liess sich nicht anlegen: herausgeloeste Abschnitte (mit Ueberschrift) zurueck ans Ende der Buchseite."""
-    if not moved:
-        return
-    lab = {e["key"]: e["label"] for e in chapters}
-
-    def fn(blocks):
-        out = list(blocks)
-        for k, bl in moved.items():
-            out += [_chapter(lab.get(k, "…"), k)] + bl
-        return out, None
-    try:
-        _apply(uid, nid, fn, {})
-    except Fail:
-        pass
 
 
 # --- Buecherliste (Einstellungen) ---------------------------------------------------------------------------------------
@@ -1260,6 +1322,8 @@ async def api_books(request: Request):
     flt = request.query_params.get("filter") or None
     if flt not in (None, "read"):
         return _bad(t("ungültige Angabe"))
+    if not _rate_ok(uid, _lcalls, _RATE_LIST):
+        return _bad(t("Zu viele Anfragen – bitte eine Minute warten."), 429)
     from starlette.concurrency import run_in_threadpool
     try:
         return JSONResponse(await run_in_threadpool(books, uid, q, flt), headers={"Cache-Control": "no-store"})

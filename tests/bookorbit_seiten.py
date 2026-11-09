@@ -134,6 +134,10 @@ def reset_books():
                  "ann": [A(3501, "Alte Stelle A", "Kapitel A"), A(3502, "Alte Stelle B", "Kapitel B"), A(3503, "Alte Stelle ohne", None),
                          A(3504, "Neu in C", "Kapitel C")], "bm": []},
             36: {"title": "Einsortiert", "authors": [], "personalNote": None, "cover": False, "ann": [A(3651, "Stelle E", "E1")], "bm": []},
+            **{60 + n: {"title": f"Abbruch {n}", "authors": [], "personalNote": None, "cover": False,
+                        "toc": [T("Kapitel A"), T("Kapitel B"), T("Kapitel C")],
+                        "ann": [A(6000 + 10 * n + 1, f"Stelle A{n}", "Kapitel A"), A(6000 + 10 * n + 2, f"Stelle B{n}", "Kapitel B"),
+                                A(6000 + 10 * n + 3, f"Neu C{n}", "Kapitel C")], "bm": []} for n in range(1, 6)},
             37: {"title": "Ohne Markierungen", "authors": [{"id": 3, "name": "Pia Lind", "sortName": None}], "personalNote": None, "cover": False,
                  "read": "2026-11-01T09:00:00.000Z", "toc": [T("Eins"), T("Zwei")], "ann": [], "bm": []},
             38: {"title": "Riesiges Inhaltsverzeichnis", "authors": [], "personalNote": None, "cover": False,
@@ -364,6 +368,7 @@ def main():
         part_idem(Ca)
         part_update(Ca, nid)
         part_legacy(Ca, legacy)
+        part_crash(Ca)
         part_search_read(Ca)
         part_page_id(Ca, Cb, nid)
         part_parent(Ca, Cb)
@@ -391,6 +396,7 @@ def setup_legacy(Ca):
                    {"type": "paragraph", "data": {"text": "Eigener Gedanke zu A"}},
                    {"type": "header", "data": {"text": "Kapitel B", "level": 2, "bo": {"k": kB, "c": 1}}},
                    q(3502, "Alte Stelle B", kB),
+                   {"type": "paragraph", "data": {"text": "Schlussgedanke zum Buch"}},
                    q(3503, "Alte Stelle ohne", "c0"),
                    {"type": "header", "data": {"text": "Lesezeichen", "level": 2, "bo": {"k": "_bm", "x": "bmh"}}},
                    {"type": "paragraph", "data": {"text": "🔖 Alt", "bo": {"k": "_bm", "b": 3601, "h": "0"}}}])
@@ -410,7 +416,7 @@ def setup_legacy(Ca):
 def part_list(Ca, legacy):
     s, d = req("GET", "/api/bookorbit/notes/books", Ca)
     bs = {b["id"]: b for b in d.get("books") or []} if isinstance(d, dict) else {}
-    ok(f"Buecherliste: Buecher mit Markierungen und Anzahl ({s})", s == 200 and set(bs) == {31, 32, 33, 34, 35, 36} and bs[31]["count"] == 9
+    ok(f"Buecherliste: Buecher mit Markierungen und Anzahl ({s})", s == 200 and set(bs) == {31, 32, 33, 34, 35, 36, 61, 62, 63, 64, 65} and bs[31]["count"] == 9
        and bs[32]["count"] == 350, d)
     b = bs.get(31) or {}
     ok("Buch: Titel, Autor, Cover ueber Saga, noch keine Seite", b.get("title") == "Das Meer der Worte" and b.get("author") == "Ida Feld"
@@ -617,11 +623,61 @@ def part_legacy(Ca, legacy):
     s, p, bc = page(Ca, ch.get("Kapitel C"))
     ok("neues Kapitel C bekommt die neue Markierung", [bo(b).get("x") or bo(b).get("a") for b in bc] == ["back", 3504], bc)
     allt = "".join(text_of(page(Ca, x)[2]) for x in all_pages(35))
-    ok("nichts verloren, nichts doppelt", all(allt.count(t) == 1 for t in ("Alte Stelle A", "Alte Stelle B", "Alte Stelle ohne", "Eigener Gedanke zu A", "🔖 Alt")), allt[:300])
+    ok("nichts verloren, nichts doppelt", all(allt.count(t) == 1 for t in ("Alte Stelle A", "Alte Stelle B", "Alte Stelle ohne", "Eigener Gedanke zu A",
+                                                                         "Schlussgedanke zum Buch", "🔖 Alt")), allt[:300])
+    ok("eigener Text hinter dem letzten Kapitel bleibt auf der Buchseite", "Schlussgedanke zum Buch" in text_of(bl)
+       and "Schlussgedanke" not in text_of(page(Ca, ch.get("Kapitel B"))[2]), [b["data"].get("text") for b in bl])
     ids = all_pages(35)
     r0 = revs(ids)
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 35})
     ok("umgebaute Seite: danach idempotent", s == 200 and d.get("added") == 0 and d.get("chapters_added") == 0 and revs(ids) == r0, d)
+
+
+CRASH = [("created", 1), ("created", 3), ("copied", 1), ("copied", 2), ("cut", 1)]
+
+
+def part_crash(Ca):
+    """Umbau einer alten Seite an jeder Stelle abgebrochen (Testhaken bp._STEP wirft RuntimeError), danach normaler Lauf:
+    jeder eigene Text genau einmal, keine doppelten Kapitelseiten, danach idempotent."""
+    import subprocess
+    for n, (step, nth) in enumerate(CRASH, 1):
+        bid = 60 + n
+        kA, kB = ckey("Kapitel A"), ckey("Kapitel B")
+        old = req("POST", "/api/notes", Ca, {"title": f"Notizen: Abbruch {n}", "cover": None})[1]["id"]
+        qa = {"type": "quote", "data": {"text": f"Stelle A{n}", "caption": "", "alignment": "left", "bo": {"k": kA, "a": 6000 + 10 * n + 1, "h": "0"}}}
+        qb = {"type": "quote", "data": {"text": f"Stelle B{n}", "caption": "", "alignment": "left", "bo": {"k": kB, "a": 6000 + 10 * n + 2, "h": "0"}}}
+        save(Ca, old, [{"type": "paragraph", "data": {"text": "Info", "bo": {"k": "_head", "x": "info"}}},
+                       {"type": "header", "data": {"text": "Kapitel A", "level": 2, "bo": {"k": kA, "c": 1}}}, qa,
+                       {"type": "paragraph", "data": {"text": f"Eigenes A{n}"}},
+                       {"type": "header", "data": {"text": "Kapitel B", "level": 2, "bo": {"k": kB, "c": 1}}}, qb,
+                       {"type": "paragraph", "data": {"text": f"Eigenes B{n}"}}, dict(qb, data=dict(qb["data"], text=f"Zweite B{n}", bo=dict(qb["data"]["bo"], a=6000 + 10 * n + 4))),
+                       {"type": "paragraph", "data": {"text": f"Schluss{n}"}}])
+        with connect() as c, c:
+            c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?,?,?)", ("bos-a", f"bookorbit_page:{bid}",
+                      json.dumps({"page": old, "a": [6000 + 10 * n + 1, 6000 + 10 * n + 2, 6000 + 10 * n + 4], "n": [], "b": [], "x": ["info"]})))
+        script = ("import sys, json; sys.path.insert(0, '.'); from saga import bookorbit_pages as bp\n"
+                  f"cnt = [0]\n"
+                  f"def st(name):\n    if name == {step!r}:\n        cnt[0] += 1\n        if cnt[0] == {nth}: raise RuntimeError('Abbruch')\n"
+                  "bp._STEP = st\n"
+                  f"try: print(json.dumps(bp.build('bos-a', {bid})))\n"
+                  "except bp.Fail as f: print(json.dumps({'error': f.msg, 'status': f.status}))")
+        pr = subprocess.run([sys.executable, "-c", script], capture_output=True, timeout=120,
+                            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), env=dict(os.environ))
+        out = (pr.stdout.decode().strip().splitlines() or ["{}"])[-1]
+        ok(f"Abbruch nach {step} #{nth}: Lauf bricht ab", '"status": 502' in out, (out, pr.stderr.decode()[-300:]))
+        s1, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": bid})
+        ids = all_pages(bid)
+        r0 = revs(ids)
+        s2, d2 = req("POST", "/api/bookorbit/notes", Ca, {"book_id": bid})
+        allt = "".join(text_of(page(Ca, x)[2]) for x in all_pages(bid))
+        names = [x[1] for x in kids(old)]
+        ok(f"Abbruch nach {step} #{nth}: naechster Lauf macht fertig, nichts verloren, nichts doppelt ({s1}, {s2})",
+           s1 == 200 and s2 == 200 and names == ["Kapitel A", "Kapitel B", "Kapitel C"] and kv(bid).get("v") == 2
+           and all(allt.count(x) == 1 for x in (f"Stelle A{n}", f"Stelle B{n}", f"Zweite B{n}", f"Eigenes A{n}", f"Eigenes B{n}", f"Schluss{n}", f"Neu C{n}"))
+           and d2.get("added") == 0 and revs(ids) == r0, (d, d2, names, kv(bid).get("v"), [allt.count(x) for x in (f"Stelle A{n}", f"Eigenes A{n}", f"Eigenes B{n}", f"Schluss{n}")]))
+        s3, p, bl = page(Ca, old)
+        ok(f"Abbruch nach {step} #{nth}: Schlussgedanke bleibt auf der Buchseite, Abschnitte draussen",
+           f"Schluss{n}" in text_of(bl) and not any(bo(b).get("c") for b in bl), [b["data"].get("text") for b in bl])
 
 
 def part_search_read(Ca):
@@ -783,6 +839,8 @@ def part_expired(Ca):
 def part_rate(Ca):
     st = [req("POST", "/api/bookorbit/notes", Ca, {"book_id": 31})[0] for _ in range(45)]
     ok("Rate je Konto begrenzt (429)", 429 in st, st[-5:])
+    st = [req("GET", "/api/bookorbit/notes/books?q=x", Ca)[0] for _ in range(65)]
+    ok("Liste/Suche je Konto begrenzt (429 nach 60 je Minute)", 429 in st and st.count(429) <= 65 - 50, st[-5:])
 
 
 if __name__ == "__main__":
