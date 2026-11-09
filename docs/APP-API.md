@@ -1899,7 +1899,7 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
 | `POST /api/calls/{id}/end` | wie bisher, **mit `device`** | Gruppe bzw. Begleitgerät: nur dieses Gerät verlässt (`{ok, left: [...]}`); Hauptgerät im 1:1: Ende für alle |
 | `POST /api/calls/{id}/decline` | wie bisher | Gruppe: nur die eigene Einladung (alle eigenen Geräte hören auf zu klingeln) |
 | `POST /api/calls/{id}/alive` | `{device}` | zusätzlich `leg: "left"` = dieses Gerät ist nicht mehr im Anruf (z. B. übernommen) → Anruf hier beenden |
-| `POST /api/calls/{id}/signal` | wie bisher | Ziele = alle anderen aktiven Endpunkte (`legs`); föderiert sternförmig über den führenden Server |
+| `POST /api/calls/{id}/signal` | wie bisher | Ziele = alle anderen aktiven Endpunkte (`legs`); föderiert sternförmig über den führenden Server. 2.5: Ziele, die gerade kein aktiver Endpunkt (mehr) sind, fallen einzeln weg → `{ok, n, dropped: [geraet]}` (Liste neu holen); 400 nur bei Formfehlern bzw. ohne ein einziges gültiges Ziel |
 
 `join`: `signals` muss je ein Angebot an **jedes Gerät anderer Personen** enthalten (eigene Geräte optional, empfohlen).
 Ein zweites eigenes Gerät mit `role: "member"` wird zum `companion`. `handover` braucht `replaces` = eigenes Gerät im
@@ -2307,6 +2307,12 @@ Felder, ein neuer Endpunkt, neue Fehlerart); ältere Apps funktionieren weiter w
 - **Rückfall des neuen Geräts** nach `state.ready`: über Knoten nach 3 s, im **Mesh neu** nach `handover_s`/2 (7,5 s)
   `leave {device: <altes>, reason: "handover", by: <eigenes>, gen: <gen des alten aus legs>}` – immer mit `by` und
   `gen`.
+- **Bündel nach der Übernahme:** `fkey` und `state` (mit `hp`) gehen wie bisher in einer Anfrage an alle Endpunkte der
+  eigenen Liste – auch, wenn das ersetzte Gerät darin noch steht. Seit 2.5 (Fund 9.11.) verwirft der Server veraltete Ziele
+  einzeln (`dropped`) statt die ganze Anfrage mit 400 abzulehnen; vorher bekam das (föderierte) Gegenüber weder
+  Schlüssel noch Kennung des neuen Geräts, wenn das alte in derselben Sekunde ging (kein Bild, kein Ton). Apps: bei
+  `dropped` die Teilnehmerliste neu holen; ein 400 auf ein Bündel (älterer Server) nicht stillschweigend hinnehmen,
+  sondern nach dem nächsten `call.roster` erneut senden.
 - **Altes Gerät** (`handoverOut`): `leave {device: <eigenes>, reason: "handover", gen: <eigene gen>}`; ebenso beim
   Abbruch einer Übernahme (`handover_s` abgelaufen) mit eigener `gen`.
 - Erfährt ein Gerät aus der Teilnehmerliste, dass es fehlt und ein anderes eigenes Gerät mit `role != companion` die

@@ -347,7 +347,7 @@ v2-Schlüssel). Für Server-Entwickler:
 | `leave` | Server des Geräts → führender | `id, actor, device` | `200 {ok}` |
 | `roster` | führender → alle anderen (nach dem Commit, verwerfbar, alle 60 s erneut) | `id, ref, kind, media, state, created, from, from_device, legs: [{device, who: handle, role, state, caps, name, replaces?}], ring: [handles], invites: {handle: state}, rv` | `200 {ok, old: [handles ohne Gerät mit multi]}`; nur vom führenden Server (sonst `403`); `rv` = Stand – eine ältere Liste überschreibt keine neuere |
 | `invite` | beliebig → führender bzw. führender → Server der Person | `id, actor, who: [handles]` | `200 {ok, n}` |
-| `signal` | wie 2.3, im Raum zusätzlich `leg` (Endpunkt des Absenders) | vom führenden Server auch für Personen dritter Server (`actor` = deren Handle) | |
+| `signal` | wie 2.3, im Raum zusätzlich `leg` (Endpunkt des Absenders) | vom führenden Server auch für Personen dritter Server (`actor` = deren Handle) | 2.5: im Raum verwirft jede Seite Ziele, die bei ihr kein aktiver Endpunkt (mehr) sind, einzeln → `200 {ok, n, dropped?}`; `400` nur ohne ein gültiges Ziel bzw. bei Formfehlern (ältere Server lehnen das ganze Bündel ab) |
 | `alive` | zusätzlich `device` (Lebenszeichen je Endpunkt an den führenden Server) | | |
 | `end` | Gruppe: **nur** vom führenden Server | | |
 

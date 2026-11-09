@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Übergabe über Knoten an ein Gerät, das föderierte Gegenüber sieht/hört nichts
+- Nach „Hierher übernehmen“ (z. B. iPhone → Browser) in einem föderierten 1:1 über Gjallarhorn sah und hörte das
+  Gegenüber zeitweise nichts, obwohl das neue Gerät sendete. Ursache: Das neue Gerät schickt Frame-Schlüssel und Zustand
+  (Kennung am Knoten) in einer Anfrage an alle Endpunkte seiner Liste; ging das alte Gerät in derselben Sekunde, lehnte
+  der Server die ganze Anfrage ab (400). Jetzt fallen nur die veralteten Ziele weg (`dropped`, auch zwischen Servern),
+  der Web-Client holt dann die Teilnehmerliste neu. Test: `tests/foederation_horn_uebergabe.py`.
+
 ### Neu – Block „Unterseiten“ (Liste | Galerie)
 - Neuer Live-Block **Unterseiten** (wie Notions Unterseiten-/Galerie-Ansicht, Widget-Art `subpages`): zeigt die direkten
   Unterseiten der Seite als Liste (Symbol + Titel) oder als Galerie (Karten im Raster, Kartengröße S/M/L, auf dem Handy
