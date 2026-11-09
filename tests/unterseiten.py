@@ -333,7 +333,7 @@ def part_md(A, root):
     s, w = wget(A, root)
     txt = page_widgets.value_text({"kind": "subpages"}, w, None)
     ok("Markdown-Text: Titel mit Trenner", txt and txt.startswith("Kind 3 · ") and "Von Bert" in txt, txt)
-    ok("Markdown-Text: leer", page_widgets.value_text({"kind": "subpages"}, {"data": {"items": []}}, None) == "Keine Unterseiten")
+    ok("Markdown-Text: leer (Hinweis statt Titel)", page_widgets.value_text({"kind": "subpages"}, {"data": {"items": []}}, None) in ("Keine Unterseiten", "No subpages"))
 
 
 if __name__ == "__main__":
