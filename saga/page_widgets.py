@@ -1251,7 +1251,7 @@ def clean_remote_data(kind, d, peer_id=None):
                           "kind": "database" if x.get("kind") == "database" else "page"})
         total = _fint(d.get("total"), 0, 10 ** 7)
         total = max(total if total is not None else len(items), len(items))
-        return {"items": items, "total": total, "more": max(0, total - len(items)), "can_add": d.get("can_add") is True}
+        return {"items": items, "total": total, "more": max(0, total - len(items)), "can_add": False}   # ueber Servergrenzen nie (APP-API-FED.md)
     if kind == "weather":
         now = d.get("now") if isinstance(d.get("now"), dict) else {}
         days = []

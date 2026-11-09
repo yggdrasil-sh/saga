@@ -322,8 +322,8 @@ def part_fed():
     ok("Foederation: eigene Bilder ueber /api/fed/files/<unterseite>/<datei>, Galerie/fremde Adressen weg",
        it.get(r7, {}).get("img") == f"/api/fed/files/{r7}/{'b' * 24}" and it[r7]["icon"] == f"/api/fed/files/{r7}/{'a' * 24}"
        and it[r8]["img"] is None and it[r8]["icon"] == "🌲" and it[r9]["img"] is None and it[r9]["icon"] == "" and it[r9]["kind"] == "page", it)
-    ok("Foederation: nur bekannte Felder, total/more stimmig", set(out) == {"items", "total", "more", "can_add"} and out["total"] == 5
-       and out["more"] == 2, out)
+    ok("Foederation: nur bekannte Felder, total/more stimmig, can_add nie", set(out) == {"items", "total", "more", "can_add"}
+       and out["total"] == 5 and out["more"] == 2 and out["can_add"] is False, out)
     ok("Foederation: ohne Instanz kein Ergebnis", page_widgets.clean_remote_data("subpages", data, None) is None)
     x = fed_pages._w_widget_in({"kind": "subpages", "value": 3, "data": data}, 3)
     ok("Foederation: _w_widget_in uebernimmt data umgesetzt", x["data"]["items"][0]["id"] == r7 and x["value"] == 3, x)
