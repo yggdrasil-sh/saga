@@ -104,6 +104,11 @@
 .page-body .pm-b-columns > .cols-ctl{top:-1.4rem}
 .page-body .pm-b-columns:hover > .cols-ctl,.page-body .pm-b-columns > .cols-ctl:focus-within{opacity:1}
 @media (hover:none){.page-body .pm-b-columns:is(:focus-within,.col-tap) > .cols-ctl{opacity:.85;pointer-events:auto}}
+/* N11: schmal liegt die Leiste nicht ueber der Karte darueber, sondern im Fluss ueber der Reihe (nur an der aktiven Reihe) */
+@media (max-width:760px){
+  .page-body .pm-b-columns > .cols-ctl{position:relative;top:auto;right:auto;display:none;width:fit-content;max-width:100%;flex-wrap:wrap;margin:0 0 .35rem auto}
+  .page-body .pm-b-columns:is(:focus-within,.col-tap) > .cols-ctl{display:flex;opacity:.85;pointer-events:auto}
+}
 .page-body .pm-cols-rs{position:absolute;inset:0;pointer-events:none}
 .page-body .pm-cols-rs > .col-rs{pointer-events:auto}
 .page-body .pm-col-c{min-height:1.6em}

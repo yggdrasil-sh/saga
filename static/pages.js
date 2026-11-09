@@ -6816,7 +6816,7 @@
 
     function paint(W) {
       plot.textContent = ''; legend.textContent = ''; plot.appendChild(tipBox); hideTip();
-      var narrow = W < 260, tiny = W < 200, H;
+      var narrow = W < 260, tiny = W < 180, H;
       if (opts.size) H = Math.round(Math.min(CH_H[opts.size] || CH_H.m, Math.max(120, W * 0.8)));
       else H = Math.round(Math.max(160, Math.min(W * 0.55, 300)));
       box.classList.toggle('ch-narrow', W < 360); box.classList.toggle('ch-tiny', tiny);
@@ -6892,7 +6892,7 @@
         else {
           // nach gemessener Breite der gezeigten Nachbarn (gekuerzt hoechstens 90 px), nicht nach dem laengsten Label (N9)
           var tw = labels.map(function (l) { return Math.min(chartTextW(l), 90); });
-          var fits = function (e) { for (var i = 0; i + e < N; i += e) if (band * e < (tw[i] + tw[i + e]) / 2 + 8) return false; return true; };
+          var fits = function (e) { for (var i = 0; i + e < N; i += e) if (band * e < (tw[i] + tw[i + e]) / 2 + 6) return false; return true; };
           while (every < N && !fits(every)) every++;
         }
         cats.forEach(function (c, i) {

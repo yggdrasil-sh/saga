@@ -1270,6 +1270,10 @@ body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
 .page-body .col:hover .col-add,.page-body .col-add:focus-visible{opacity:1}
 .page-body .col-add:hover{background:var(--card-h);color:var(--fg)}
 @media (hover:none){.page-body .col-add{display:none}.page-body .col:is(:focus-within,.col-tap)>.col-add{display:inline-block;opacity:.7}}
+/* Fund 18: untereinander (schmal) haelt das unsichtbare "+ Block" keinen Platz frei (sonst ~30 px Loch je Spalte, auch mit
+   Maus in schmalem Fenster) - es erscheint nur an der angetippten bzw. fokussierten Spalte */
+@media (max-width:760px){.page-body .col:not(:focus-within):not(.col-tap)>.col-add{display:none}}
+@container cols (max-width:440px){.page-body .col:not(:focus-within):not(.col-tap)>.col-add{display:none}}
 
 /* Immich-Bilderauswahl */
 .imm-card{width:min(920px,96vw);max-height:88vh;display:flex;flex-direction:column}
@@ -2839,7 +2843,7 @@ button.up-it{cursor:pointer}button.up-it:hover{background:var(--hover,color-mix(
 /* Tiptap: Spalten-Bloecke ab 3 Spalten duerfen breiter als die Textspalte werden (bis 1000/1100 px, mittig, nie breiter
    als der Inhaltsbereich der Seite) */
 /* N2: 3, 4, 5 und 6 Spalten teilen dieselbe Aussenkante (62rem wie --wide in public.css); 2 Spalten bleiben buendig zum Text */
-.page-body .pm-doc>.pm-b-columns.pm-cols-wide{--cols-max:62rem;margin-inline:min(0px,calc((100% - min(var(--cols-max),100cqw - 3rem)) / 2))}
+.page-body .pm-doc>.pm-b-columns.pm-cols-wide{--cols-max:62rem;margin-inline:min(0px,calc((100% - min(var(--cols-max),100cqw - 8rem)) / 2))}   /* 4rem Rand: Kommentar-Knopf (.cm-add) und Inhaltsverzeichnis (.hk-toc) bleiben frei */
 .ce-inline-tool.hk-color-tool .hk-color-a{font-weight:700;text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:2px}
 .ce-inline-tool.hk-imath-tool{font-size:var(--fs-md);font-family:serif}
 .hk-cpal{position:fixed;z-index:97;background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:.45rem .5rem;
