@@ -995,7 +995,7 @@ body.notes-page .page.wide .backlinks{max-width:none}
 /* Editor.js setzt unten Innenabstand per Skript - in Spalten/Toggles unnoetig viel Leerraum */
 .page-body .col .codex-editor__redactor,.page-body .tgl-body .codex-editor__redactor{padding-bottom:6px !important}
 .page-body .tgl-body{line-height:normal}
-@media (max-width:760px){.page-body .cols{grid-template-columns:minmax(0,1fr);gap:.6rem}}   /* Fix27 #17: untereinander kein 47-px-Loch zwischen Widgets */
+@media (max-width:760px){.page-body .cols.cols.cols.cols{grid-template-columns:minmax(0,1fr);gap:.6rem}}   /* staerker als die Container-Regeln (Widget-Design-Runde) */   /* Fix27 #17: untereinander kein 47-px-Loch zwischen Widgets */
 .page-body .cols{position:relative}
 .page-body .cols-ctl{position:absolute;top:-1.6rem;right:0;display:flex;align-items:center;gap:.15rem;padding:.1rem .25rem;border-radius:var(--r-sm);
   background:var(--card);border:1px solid var(--border);font-size:var(--fs-xs);color:var(--muted);opacity:0;transition:opacity .12s;z-index:2}
@@ -2767,6 +2767,10 @@ button.up-it{cursor:pointer}button.up-it:hover{background:var(--hover,color-mix(
    Eigene Breiten (Griffe) gelten nur, solange nicht umgebrochen ist. */
 .page{container:pg/inline-size}
 .page-body :has(> .cols){container:cols/inline-size}
+@container cols (max-width:1330px){
+  .page-body .cols.cols-n6,.page-body .cols.cols-n6.cols-w{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .page-body .cols.cols-n6>.col-rs,.page-body .cols.cols-n6~.pm-cols-rs{display:none}
+}
 @container cols (max-width:1100px){
   .page-body .cols.cols-many,.page-body .cols.cols-many.cols-w{grid-template-columns:repeat(3,minmax(0,1fr))}
   .page-body .cols.cols-many>.col-rs,.page-body .cols.cols-many~.pm-cols-rs{display:none}

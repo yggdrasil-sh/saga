@@ -79,9 +79,11 @@ async function until(fn, ms = 10000) { const t = Date.now(); let v; while (Date.
   bl = await saved(c, (b) => b[0].data.cols.length === 6 && b);
   ok('6 Spalten gespeichert', bl && bl[0].data.cols.length === 6);
   const cols = async () => p.evaluate(() => getComputedStyle(document.querySelector('.cols')).gridTemplateColumns.split(' ').length);
-  ok('1280 px: 6 nebeneinander', (await cols()) === 6, await cols());
+  // Widget-Design-Runde (9.11.): Umbruch nach Breite des Blocks, je Spalte mind. ~200 px - 6 Spalten nebeneinander erst
+  // ab ~1330 px Blockbreite (Volle Breite), sonst Dreierreihen; schmaler Zweierreihen, unter 760 px Viewport untereinander
+  ok('1280 px: Dreierreihen (6 x 200 px passen nicht)', (await cols()) === 3, await cols());
   await p.setViewportSize({ width: 900, height: 900 }); await sleep(300);
-  ok('900 px: Dreierreihen', (await cols()) === 3, await cols());
+  ok('900 px: Zweier- oder Dreierreihen', [2, 3].indexOf(await cols()) >= 0, await cols());
   await p.setViewportSize({ width: 600, height: 900 }); await sleep(300);
   ok('600 px: untereinander', (await cols()) === 1, await cols());
   await p.setViewportSize({ width: 1280, height: 900 });

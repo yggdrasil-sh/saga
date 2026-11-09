@@ -64,7 +64,7 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   const vs = p.locator('.flt-box.vs');
   await vs.locator('.vs-row', { has: p.locator('.vs-lbl', { hasText: /^Rechenart$/ }) }).locator('select').selectOption('sum'); await sleep(400);
   await vs.locator('.vs-row', { has: p.locator('.vs-lbl', { hasText: /^Eigenschaft$/ }) }).locator('select').selectOption('betrag'); await sleep(400);
-  await vs.locator('.vs-row', { has: p.locator('.vs-lbl', { hasText: /^Darstellung$/ }) }).locator('select').selectOption('donut'); await sleep(400);
+  await vs.locator('.vs-row', { has: p.locator('.vs-lbl', { hasText: /^(Diagrammart|Darstellung)$/ }) }).locator('select').selectOption('donut'); await sleep(400);
   await p.keyboard.press('Escape');
   const donut = await until(async () => { const t = await p.locator('.dbc .ch-svg .ch-big').count() ? await p.locator('.dbc .ch-svg .ch-big').textContent() : ''; return /70/.test(t) ? t : null; }, 8000);
   ok(`Ring mit Summe in der Mitte (${donut})`, !!donut);
@@ -91,11 +91,11 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   const grid = await until(async () => (await p.locator('.wg[data-kind="habit"] .hb-row:not(.hb-head)').count()) === 2, 8000);
   ok('Gewohnheiten: zwei Zeilen im Raster', grid);
   const streak = await p.locator('.wg[data-kind="habit"] .hb-row:not(.hb-head)').first().locator('.hb-st').textContent();
-  ok(`Sport: Serie 2 (gestern + vorgestern), Quote 29 % (${streak})`, /29/.test(streak) && /2/.test(streak.split('🔥')[1] || ''), streak);
+  ok(`Sport: Serie 2 (gestern + vorgestern), Quote 29 % (${streak})`, /29/.test(streak) && /2/.test(streak.split('🔥')[1] || streak.split('%')[1] || ''), streak);
   const todayBtn = p.locator('.wg[data-kind="habit"] .hb-row:not(.hb-head)').first().locator('button.hb-c.hb-today');
   ok('heutiger Tag als Knopf (abhakbar)', await todayBtn.count() === 1);
   await todayBtn.click();
-  const after = await until(async () => { const t = await p.locator('.wg[data-kind="habit"] .hb-row:not(.hb-head)').first().locator('.hb-st').textContent(); return /🔥\s*3/.test(t) ? t : null; }, 8000);
+  const after = await until(async () => { const t = await p.locator('.wg[data-kind="habit"] .hb-row:not(.hb-head)').first().locator('.hb-st').textContent(); return /(🔥|%)\s*3/.test(t) ? t : null; }, 8000);
   ok(`Abhaken per Klick: Serie 3 (${after})`, !!after);
   const r = await api('GET', '/api/notes/' + hdb + '/rows');
   ok('Zeile fuer heute angelegt, Sport gesetzt', r.rows.some((x) => x.props.datum === ymd(now) && x.props.sport === true), r.rows.map((x) => x.props));

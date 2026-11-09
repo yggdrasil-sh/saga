@@ -8188,7 +8188,7 @@
   ColumnsTool.prototype.grid = function () {
     var self = this, w = this.w, n = this.editors.length;
     w.classList.toggle('cols-many', n >= 5);        // 2.5 (P6-1): 5-6 Spalten - unter 1100 px in Dreierreihen (CSS)
-    [2, 3, 4].forEach(function (k) { w.classList.toggle('cols-n' + k, n === k); });   // Umbruch nach Containerbreite (CSS)
+    [2, 3, 4, 5, 6].forEach(function (k) { w.classList.toggle('cols-n' + k, n === k); });   // Umbruch nach Containerbreite (CSS)
     if (this.ws && this.ws.length !== n) this.ws = null;
     if (this.ws) w.style.setProperty('--cols-t', frs(this.ws)); else w.style.removeProperty('--cols-t');
     w.classList.toggle('cols-w', !!this.ws);
