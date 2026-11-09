@@ -83,9 +83,17 @@ func TestFlapZustand(t *testing.T) {
 	if f.held {
 		t.Fatal("ohne tiefere Schicht gesperrt")
 	}
-	drive(&f, true, true, now, 200*time.Millisecond)
+	now = drive(&f, true, true, now, 200*time.Millisecond)
 	if !f.use {
 		t.Fatal("nach gemeinsamem Ausfall nicht sofort nutzbar")
+	}
+	// alte, hochgezaehlte Wartezeit wirkt nicht nach: nach einer Rueckkehr ohne Hysterese faengt ein Flattern wieder
+	// bei flapHold an (auch innerhalb von flapStable)
+	f.hold = flapMax
+	now = drive(&f, true, true, now, 2*time.Second)
+	drive(&f, false, true, now, 200*time.Millisecond)
+	if !f.held || f.hold != flapHold {
+		t.Fatalf("nach gemeinsamem Ausfall: held %v hold %v", f.held, f.hold)
 	}
 }
 

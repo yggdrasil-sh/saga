@@ -70,14 +70,15 @@ func (f *flap) step(live, lower bool, bps float64, now int64) {
 			f.run = time.Duration(now - f.liveAt)
 		}
 		if lower {
-			switch {
-			case f.hold <= 0 || now-f.useAt >= int64(flapStable):
-				f.hold = flapHold
-			case f.backAt != 0 && f.backAt >= f.useAt: // gerade erst nach der Hysterese zurueck: wieder geflattert
+			// gerade erst nach der Hysterese zurueck: wieder geflattert -> verdoppeln; sonst (erstes Flattern, nach
+			// Stabilitaet oder nach einer Rueckkehr ohne Hysterese, z. B. gemeinsamer Ausfall) wieder flapHold
+			if f.hold > 0 && f.backAt != 0 && f.backAt >= f.useAt && now-f.useAt < int64(flapStable) {
 				f.hold *= 2
 				if f.hold > flapMax {
 					f.hold = flapMax
 				}
+			} else {
+				f.hold = flapHold
 			}
 			f.held = true
 			f.flaps++
