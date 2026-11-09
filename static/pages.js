@@ -6690,8 +6690,12 @@
   function chartTextW(s) {
     if (!chCtx) {
       try { chCtx = document.createElement('canvas').getContext('2d'); } catch (e) { chCtx = null; }
-      var cs = getComputedStyle(document.documentElement);
-      chFont = (parseFloat(cs.fontSize) || 16) * 0.72 + 'px ' + (getComputedStyle(document.body || document.documentElement).fontFamily || 'sans-serif');
+      // Achsenschrift wie .ch-t (--fs-xs der Seite) - am Handy ist sie groesser als 0.72 x Grundschrift (N9)
+      var pr = document.createElement('span'), host = document.querySelector('.page-body') || document.body || document.documentElement, fz = 0, ff = '';
+      pr.style.cssText = 'position:absolute;visibility:hidden;font-size:var(--fs-xs)'; pr.textContent = '0';
+      try { host.appendChild(pr); var pcs = getComputedStyle(pr); fz = parseFloat(pcs.fontSize); ff = pcs.fontFamily; pr.remove(); } catch (e) { fz = 0; }
+      if (!fz) fz = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) * 0.72;
+      chFont = fz + 'px ' + (ff || getComputedStyle(document.body || document.documentElement).fontFamily || 'sans-serif');
     }
     if (!chCtx) return String(s).length * 6.5;
     chCtx.font = chFont; return chCtx.measureText(String(s)).width;
@@ -6740,7 +6744,13 @@
     if (opts.ctx) { var hd0 = el('div', 'ch-head'); hd0.appendChild(el('span', 'ch-ctx', opts.ctx)); box.appendChild(hd0); }
     if (res.type === 'number') {
       var nv = box.appendChild(el('div', 'wg-v ch-num', chartFmt(res.total, fmt))); nv.title = nv.textContent;
-      if (window.ResizeObserver) new ResizeObserver(function () { var w = box.clientWidth; if (w > 0) box.classList.toggle('ch-tiny', w < 200); }).observe(box);
+      if (window.ResizeObserver) {
+        var seen0 = false, ro0 = new ResizeObserver(function () {
+          if (!box.isConnected) { if (seen0) ro0.disconnect(); return; }      // Seite gewechselt: Beobachter loesen
+          seen0 = true; var w = box.clientWidth; if (w > 0) box.classList.toggle('ch-tiny', w < 200);
+        });
+        ro0.observe(box);
+      }
       if (typeof res.goal === 'number') box.appendChild(el('div', 'wg-sub', T('Ziel: {wert}', { wert: chartFmt(res.goal, fmt) })));
       return box;
     }
@@ -6861,7 +6871,11 @@
       } else {
         PL = Math.round(Math.min(W * 0.4, Math.max.apply(null, tlab.map(chartTextW)) + 10));
       }
-      if (typeof res.goal === 'number' && !tiny && !horiz) PT = 16;
+      // Ziellinie: Beschriftung nie ueber Balken/Linie - quer: ueber der Zeichenflaeche an der Linie; senkrecht: rechts neben
+      // der Linie (eigener Rand), in schmalen Karten als Legenden-Eintrag
+      var gl = typeof res.goal === 'number' && !tiny ? T('Ziel') + ' ' + chartAxisFmt(res.goal, fmt) : '', glSide = !!gl && !horiz && W >= 300;
+      if (gl && horiz) PT = 18;
+      if (glSide) PR = Math.round(chartTextW(gl) + 12);
       svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.setAttribute('width', W); svg.setAttribute('height', H);
       var pw = W - PL - PR, ph = H - PT - PB;
       var vpos = horiz ? function (v) { return PL + (v - lo) / (hi - lo) * pw; } : function (v) { return PT + ph - (v - lo) / (hi - lo) * ph; };
@@ -6876,8 +6890,10 @@
       if (!tiny) {
         if (horiz) every = Math.max(1, Math.ceil(14 / band));
         else {
-          var want = Math.min(Math.max.apply(null, labels.map(chartTextW).concat([0])), 90) + 8;
-          while (every < N && band * every < want) every++;
+          // nach gemessener Breite der gezeigten Nachbarn (gekuerzt hoechstens 90 px), nicht nach dem laengsten Label (N9)
+          var tw = labels.map(function (l) { return Math.min(chartTextW(l), 90); });
+          var fits = function (e) { for (var i = 0; i + e < N; i += e) if (band * e < (tw[i] + tw[i + e]) / 2 + 8) return false; return true; };
+          while (every < N && !fits(every)) every++;
         }
         cats.forEach(function (c, i) {
           if (i % every) return;
@@ -6903,11 +6919,14 @@
         });
       } else {
         // Linie/Flaeche; gestapelte Flaeche: kumulierte Grundlinie je Kategorie (oberste Kurve = Summe)
-        var cum = cats.map(function () { return 0; }), dots = N <= 24 && band >= 12 && !tiny;
+        var cum = cats.map(function () { return 0; }), cumN = cum.slice(), dots = N <= 24 && band >= 12 && !tiny;
         var layers = series.map(function (s, si) {
-          var pts = [], prev = cum.slice();
+          var pts = [];
           (s.values || []).forEach(function (v, i) {
-            if (stack) { var vv = typeof v === 'number' && v > 0 ? v : 0; cum[i] += vv; pts.push([PL + band * (i + 0.5), vpos(cum[i]), i, v, cum[i], vpos(prev[i])]); }
+            if (stack) {
+              var vv = typeof v === 'number' ? v : 0, acc = vv < 0 ? cumN : cum, b0 = acc[i]; acc[i] += vv;
+              pts.push([PL + band * (i + 0.5), vpos(acc[i]), i, v, acc[i], vpos(b0)]);
+            }
             else if (typeof v === 'number') pts.push([PL + band * (i + 0.5), vpos(v), i, v, v, vpos(Math.max(lo, 0))]);
           });
           return { s: s, si: si, pts: pts };
@@ -6928,23 +6947,31 @@
           });
         });
       }
-      if (typeof res.goal === 'number' && !tiny) {
+      if (gl) {
         var g = vpos(res.goal);
         n('line', horiz ? { 'class': 'ch-goal', x1: g.toFixed(1), y1: PT, x2: g.toFixed(1), y2: PT + ph } : { 'class': 'ch-goal', x1: PL, y1: g.toFixed(1), x2: PL + pw, y2: g.toFixed(1) });
-        var gl = T('Ziel') + ' ' + chartAxisFmt(res.goal, fmt);
-        if (horiz) n('text', { 'class': 'ch-t ch-goal-t', x: (g - 4).toFixed(1), y: PT + 10, 'text-anchor': 'end' }, null, gl);
-        else n('text', { 'class': 'ch-t ch-goal-t', x: PL + pw, y: (g - 4).toFixed(1), 'text-anchor': 'end' }, null, gl);
+        if (horiz) {
+          var gw = chartTextW(gl), gx = Math.max(PL + gw / 2, Math.min(W - gw / 2 - 1, g));
+          n('text', { 'class': 'ch-t ch-goal-t', x: gx.toFixed(1), y: PT - 6, 'text-anchor': 'middle' }, null, gl);
+        } else if (glSide) n('text', { 'class': 'ch-t ch-goal-t', x: PL + pw + 6, y: (g + 4).toFixed(1), 'text-anchor': 'start' }, null, gl);
       }
-      if (multi) legendList(series.map(function (s, si) { return [serCls[si], s.label || '', null]; }), narrow ? 4 : 10);
+      var lg = multi ? series.map(function (s, si) { return [serCls[si], s.label || '', null]; }) : [];
+      if (gl && !horiz && !glSide) lg.push(['ch-sw-goal', gl, null]);
+      if (lg.length) legendList(lg, narrow ? 4 : 10);
     }
-    var lastW = 0, tmr = null;
-    function measure() { var w = Math.round(box.clientWidth); if (w > 0 && Math.abs(w - lastW) >= 2) { lastW = w; paint(w); } }
+    var lastW = 0, tmr = null, ro = null, seen = false;
+    function measure() {
+      if (!box.isConnected) { if (seen && ro) { ro.disconnect(); ro = null; } return; }   // Element weg (Seitenwechsel): Beobachter loesen
+      seen = true;
+      var w = Math.round(box.clientWidth); if (w > 0 && Math.abs(w - lastW) >= 2) { lastW = w; paint(w); }
+    }
     paint(opts.width || 640); lastW = 0;
     if (window.ResizeObserver) {
-      new ResizeObserver(function () {
+      ro = new ResizeObserver(function () {
         if (!lastW) { measure(); return; }                      // erstes Mal sofort (kein Flackern), danach entprellt
         clearTimeout(tmr); tmr = setTimeout(measure, 80);
-      }).observe(box);
+      });
+      ro.observe(box);
     }
     return box;
   }
@@ -7204,7 +7231,11 @@
     if (w && w.error === 'bad_cfg') { this.empty(body, d.kind); return; }
     if (w && w.error) {
       body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg));
-      if (this.editable() && (w.error === 'gone' || w.error === 'no_access')) body.appendChild(el('div', 'wg-sub', T('Quelle neu wählen')));   // Regel 9: naechster Schritt
+      if (this.editable() && (w.error === 'gone' || w.error === 'no_access')) {   // Regel 9: naechster Schritt - echter Knopf, oeffnet Einrichten
+        var rb = el('button', 'wg-relink', T('Quelle neu wählen')); rb.type = 'button';
+        rb.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); if (!self.panel) self.openPanel(); });
+        body.appendChild(rb);
+      }
       return;
     }
     if (WG_KINDS2.indexOf(d.kind) >= 0) { this.draw2(body, w); return; }
@@ -7220,7 +7251,7 @@
       var pb = wgBar(raw, d.title || WG_NAMES.progress); if (raw > 100) c.classList.add('wg-over'); body.appendChild(pb);
       if (w) {
         var r2 = el('div', 'wg-row2'); r2.appendChild(el('span', 'wg-sub', T('{a} von {b}', { a: wgFmt(pv, w.fmt), b: wgFmt(mx, w.fmt) })));
-        if (raw > 100.05) r2.appendChild(el('span', 'wg-chip', '+' + pctText(raw - 100)));
+        if (raw > 100.05) r2.appendChild(el('span', 'wg-chip wg-chip-over', '+' + pctText(raw - 100)));   // N5: neutral (Akzent), nicht gruen
         else if (raw >= 99.95) r2.appendChild(el('span', 'wg-chip', '✓ ' + T('Ziel erreicht')));
         body.appendChild(r2);
         var sn = cfg.src === 'db' || cfg.src === 'tasks' ? srcName() : ''; if (sn) body.appendChild(el('div', 'wg-f', sn));
@@ -7229,15 +7260,17 @@
     }
     if (d.kind === 'metric') {
       body.appendChild(w ? wgVal(wgFmt(w.value, w.fmt)) : el('div', 'wg-v', '…'));
+      // Kontextzeile direkt unter dem Wert (wie Uhr/Countdown); weg, wenn sie nur den Titel wiederholt (N6)
+      var ms = w ? srcName() : '', same = function (a, b) { return String(a || '').trim().toLocaleLowerCase() === String(b || '').trim().toLocaleLowerCase(); };
+      if (ms && !same(ms, d.title)) body.appendChild(el('div', 'wg-sub wg-ctx', ms));
       if (w && typeof w.max === 'number') {
         var pm = w.max ? Math.max(0, (w.value || 0) / w.max * 100) : 0;
         if (pm > 100) c.classList.add('wg-over');
         body.appendChild(wgBar(pm, T('Ziel: {wert}', { wert: wgFmt(w.max, w.fmt) })));
         var r3 = el('div', 'wg-row2'); r3.appendChild(el('span', 'wg-sub', T('{pct} vom Ziel {wert}', { pct: pctText(pm), wert: wgFmt(w.max, w.fmt) })));
-        if (pm > 100.05) r3.appendChild(el('span', 'wg-chip', '+' + pctText(pm - 100)));
+        if (pm > 100.05) r3.appendChild(el('span', 'wg-chip wg-chip-over', '+' + pctText(pm - 100)));
         body.appendChild(r3);
       }
-      var ms = w ? srcName() : ''; if (ms) body.appendChild(el('div', 'wg-f', ms));
       return;
     }
     // Zitat: Auswahl immer durch den Server (Tag des Betrachters + Block-ID bzw. zufaellig), auch bei eigenen Texten.
@@ -7293,8 +7326,8 @@
     if (d.kind === 'weather') {
       var u = data.units === 'imperial' ? '°F' : '°C', now = data.now || {}, top = el('div', 'wx-now'), ic = wmo(now.code);
       top.appendChild(wxIcon(now.code, 'wx-ic'));
-      top.appendChild(wgVal((typeof now.t === 'number' ? fNum.format(Math.round(now.t)) : '–') + ' ' + u));
-      var meta = el('span', 'wg-sub', (data.place ? data.place + ' · ' : '') + ic[1] + (typeof now.wind === 'number' ? ' · ' + T('Wind {v} {u}', { v: fNum.format(Math.round(now.wind)), u: data.units === 'imperial' ? 'mph' : 'km/h' }) : ''));
+      top.appendChild(wgVal((typeof now.t === 'number' ? fNum.format(Math.round(now.t)) : '–') + '\u00a0' + u));
+      var meta = el('span', 'wg-sub', (data.place ? data.place + ' · ' : '') + ic[1] + (typeof now.wind === 'number' ? ' · ' + T('Wind {v} {u}', { v: fNum.format(Math.round(now.wind)), u: data.units === 'imperial' ? 'mph' : 'km/h' }).replace(/(\d) (mph|km\/h)/, '$1\u00a0$2') : ''));
       top.appendChild(meta); body.appendChild(top);
       var days = (data.days || []).slice(1);
       if (days.length) {
@@ -7306,7 +7339,7 @@
           var mm = el('span', 'wx-mm', (typeof x.max === 'number' ? Math.round(x.max) : '–') + '° ');
           mm.appendChild(el('span', 'wx-lo', (typeof x.min === 'number' ? Math.round(x.min) : '–') + '°'));
           c.appendChild(mm);
-          c.appendChild(el('span', 'wx-rain', typeof x.rain === 'number' && x.rain > 0 ? '💧' + x.rain + ' %' : ''));
+          c.appendChild(el('span', 'wx-rain', typeof x.rain === 'number' && x.rain > 0 ? '💧' + x.rain + '\u00a0%' : ''));
           row.appendChild(c);
         });
         body.appendChild(row);
@@ -7339,6 +7372,13 @@
         r.appendChild(st); tb.appendChild(r);
       });
       body.appendChild(tb);
+      // N7: schmale Karte zeigt weniger Tage als die Quote abdeckt -> Hinweis (CSS blendet je Breite den passenden ein)
+      if (nd > 7) {
+        var cut = el('div', 'wg-f hb-cut' + (nd > 14 ? ' hb-cut-30' : ''));
+        if (nd > 14) cut.appendChild(el('span', 'hb-cut14', T('letzte {n} Tage', { n: 14 })));
+        cut.appendChild(el('span', 'hb-cut7', T('letzte {n} Tage', { n: 7 })));
+        body.appendChild(cut);
+      }
       if (!data.can_check) body.appendChild(el('div', 'wg-f', T('Nur lesen – zum Abhaken braucht es „Bearbeiten“ an der Datenbank.')));
       return;
     }

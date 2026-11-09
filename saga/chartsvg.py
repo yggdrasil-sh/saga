@@ -37,8 +37,24 @@ def _f(v, fmt):
     return i18n.fmt_num(v, fmt)
 
 
-def _cls(color, i):
-    return f"ch-c-{color}" if color else f"ch-s{i % SERIES_N}"
+def _colors(items, one):
+    """Farbklassen wie static/pages.js chartColors: echte Optionsfarben nur, wenn >= 2 verschiedene vorkommen; sonst Palette
+    ch-s0..7 bzw. eine Farbe (ch-one) fuer eine einzelne Reihe (N3). "Andere"/"Leer" neutral."""
+    def neutral(x):
+        return x.get("key") in ("__other__", None) and "key" in x
+    real = {x.get("color") for x in items if not neutral(x) and x.get("color") and x.get("color") != "gray"}
+    out, k = [], 0
+    for x in items:
+        if neutral(x):
+            out.append("ch-other")
+        elif len(real) >= 2:
+            out.append(f"ch-c-{x.get('color') if x.get('color') and x.get('color') != 'gray' else 'gray'}")
+        elif one:
+            out.append("ch-one")
+        else:
+            out.append(f"ch-s{k % SERIES_N}")
+            k += 1
+    return out
 
 
 def _table(res):
@@ -72,6 +88,7 @@ def render(res, title=""):
     aria = escape(title or i18n.t("Diagramm##Chart"))
     out = [f'<svg class="pub-ch" viewBox="0 0 {W} {H}" role="img" aria-label="{aria}" xmlns="http://www.w3.org/2000/svg">']
     if typ in ("pie", "donut"):
+        ccls = _colors(cats, False)
         vals = [max(0.0, float(v)) if isinstance(v, (int, float)) else 0.0 for v in series[0].get("values") or []]
         tot = sum(vals)
         cx, cy, r = 150, H / 2, 120
@@ -91,17 +108,19 @@ def render(res, title=""):
                       f"A{ri},{ri} 0 {big} 0 {cx + ri * math.cos(a0):.1f},{cy + ri * math.sin(a0):.1f}Z"]
             else:
                 p.append(f"L{cx},{cy}Z")
-            out.append(f'<path class="ch-f {_cls(c.get("color"), i)}" d="{" ".join(p)}"><title>{escape(c.get("label") or "")}: {escape(_f(v, fmt))}</title></path>')
+            out.append(f'<path class="ch-f {ccls[i]}" d="{" ".join(p)}"><title>{escape(c.get("label") or "")}: {escape(_f(v, fmt))}</title></path>')
             a0 = a1
         if ri:
             out.append(f'<text class="ch-big" x="{cx}" y="{cy + 8}" text-anchor="middle">{escape(_f(res.get("total"), fmt))}</text>')
         for i, c in enumerate(cats[:12]):                      # Legende rechts
             y = 30 + i * 21
-            out.append(f'<rect class="ch-f {_cls(c.get("color"), i)}" x="300" y="{y - 10}" width="12" height="12" rx="2"/>'
+            out.append(f'<rect class="ch-f {ccls[i]}" x="300" y="{y - 10}" width="12" height="12" rx="2"/>'
                        f'<text class="ch-t" x="318" y="{y}">{escape((c.get("label") or "")[:34])} · {escape(_f(vals[i] if i < len(vals) else None, fmt))}</text>')
         out.append("</svg>")
         return "".join(out) + _table(res)
     stack = res.get("stack") is True
+    multi = len(series) > 1
+    ccls, scls = _colors(cats, True), _colors(series, False)
     allv = []
     if stack:
         for i in range(len(cats)):
@@ -165,7 +184,7 @@ def render(res, title=""):
                     p0, p1 = base, vpos(v)
                     off = band * .11 + si * bw
                 start = (PAD_T if horiz else PAD_L) + band * i + off
-                col = _cls(s.get("color") or (cats[i].get("color") if len(series) == 1 else None), si if len(series) > 1 else i if cats[i].get("color") else 0)
+                col = scls[si] if multi else ccls[i]
                 tip = f"<title>{escape(cats[i].get('label') or '')}{' · ' + escape(s.get('label')) if s.get('label') else ''}: {escape(_f(v, fmt))}</title>"
                 if horiz:
                     out.append(f'<rect class="ch-f {col}" x="{min(p0, p1):.1f}" y="{start:.1f}" width="{abs(p1 - p0):.1f}" height="{bw:.1f}" rx="2">{tip}</rect>')
@@ -176,7 +195,7 @@ def render(res, title=""):
             pts = [(PAD_L + band * (i + .5), vpos(v)) for i, v in enumerate(s.get("values") or []) if isinstance(v, (int, float))]
             if not pts:
                 continue
-            col = _cls(s.get("color"), si)
+            col = scls[si] if multi else "ch-one"
             d = " ".join(f"{'M' if j == 0 else 'L'}{x:.1f},{y:.1f}" for j, (x, y) in enumerate(pts))
             if typ == "area":
                 out.append(f'<path class="ch-a {col}" d="{d} L{pts[-1][0]:.1f},{vpos(max(lo, 0)):.1f} L{pts[0][0]:.1f},{vpos(max(lo, 0)):.1f}Z"/>')
@@ -191,7 +210,7 @@ def render(res, title=""):
         x = PAD_L
         for si, s in enumerate(series):
             lab = (s.get("label") or "")[:20]
-            out.append(f'<rect class="ch-f {_cls(s.get("color"), si)}" x="{x}" y="{H - 18}" width="10" height="10" rx="2"/>'
+            out.append(f'<rect class="ch-f {scls[si]}" x="{x}" y="{H - 18}" width="10" height="10" rx="2"/>'
                        f'<text class="ch-t" x="{x + 14}" y="{H - 9}">{escape(lab)}</text>')
             x += 24 + len(lab) * 7
             if x > W - 60:

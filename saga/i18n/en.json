@@ -2432,6 +2432,7 @@
  "Letzte eigene Nachricht bearbeiten (leeres Eingabefeld)": "Edit your last message (empty input)",
  "Letzte Testwiederherstellung": "Last test restore",
  "Letzte vier Zeichen": "Last four characters",
+ "letzte {n} Tage": "last {n} days",
  "Letzter Fehler:": "Last error:",
  "Letzter Fehler: {err}": "Last error: {err}",
  "Letzter Kontakt": "Last contact",

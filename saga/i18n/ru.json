@@ -2432,6 +2432,7 @@
  "Letzte eigene Nachricht bearbeiten (leeres Eingabefeld)": "Изменить своё последнее сообщение (пустое поле ввода)",
  "Letzte Testwiederherstellung": "Последнее тестовое восстановление",
  "Letzte vier Zeichen": "Последние четыре символа",
+ "letzte {n} Tage": "последние {n} дн.",
  "Letzter Fehler:": "Последняя ошибка:",
  "Letzter Fehler: {err}": "Последняя ошибка: {err}",
  "Letzter Kontakt": "Последний контакт",

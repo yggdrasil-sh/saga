@@ -246,6 +246,21 @@ def unit():
     ok("Diagramm: Datum 9999-12-31 in allen Eimern ohne Fehler", not bad, bad)
     svg = chartsvg.render({"type": "bar", "cats": [{"key": "a", "label": "<A>", "color": "red"}], "series": [{"key": "", "label": "", "values": [3]}], "fmt": "num"})
     ok("SVG: escaped, ohne style-Attribute", "&lt;A&gt;" in svg and " style=" not in svg and "<svg" in svg)
+    # N3: eine Reihe = eine Farbe; echte Optionsfarben erst ab zwei verschiedenen; Palette bei mehreren Reihen und im Ring
+
+
+    def rect_cls(res):
+        return [m for m in re.findall(r'<(?:rect|path) class="ch-f (ch-[\w-]+)"', chartsvg.render(res))]
+    one = rect_cls({"type": "bar", "cats": [{"key": "a", "label": "A"}, {"key": "b", "label": "B", "color": "red"}, {"key": "c", "label": "C"}],
+                    "series": [{"key": "", "label": "", "values": [1, 2, 3]}], "fmt": "num"})
+    ok(f"SVG N3: eine Reihe ohne zwei Optionsfarben = eine Farbe ({one})", one == ["ch-one"] * 3, one)
+    opt = rect_cls({"type": "bar", "cats": [{"key": "a", "label": "A", "color": "red"}, {"key": "b", "label": "B", "color": "blue"}, {"key": "__other__", "label": "Andere"}],
+                    "series": [{"key": "", "label": "", "values": [1, 2, 3]}], "fmt": "num"})
+    ok(f"SVG N3: echte Optionsfarben bleiben, Andere neutral ({opt})", opt == ["ch-c-red", "ch-c-blue", "ch-other"], opt)
+    ser = rect_cls({"type": "bar", "cats": [{"key": "a", "label": "A"}], "series": [{"key": "x", "label": "X", "values": [1]}, {"key": "y", "label": "Y", "values": [2]}], "fmt": "num"})
+    ok(f"SVG N3: mehrere Reihen Palette ({ser})", ser[:2] == ["ch-s0", "ch-s1"], ser)
+    ring = rect_cls({"type": "donut", "cats": [{"key": "a", "label": "A"}, {"key": "b", "label": "B"}], "series": [{"key": "", "label": "", "values": [1, 2]}], "fmt": "num"})
+    ok(f"SVG N3: Ring Palette ({ring})", ring[:2] == ["ch-s0", "ch-s1"], ring)
     ok("check_url: http ohne Freigabe abgelehnt", weather.check_url("http://wetter.example.org/v1/forecast")[1] is not None)
     ok("check_url: Zugangsdaten/Query abgelehnt", weather.check_url("https://u:p@x.example.org/f")[1] and weather.check_url("https://x.example.org/f?a=1")[1])
     ok("check_url: fremder Port ohne Freigabe abgelehnt", weather.check_url("https://x.example.org:8443/f")[1] is not None)

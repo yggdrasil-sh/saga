@@ -2432,6 +2432,7 @@
  "Letzte eigene Nachricht bearbeiten (leeres Eingabefeld)": "แก้ไขข้อความล่าสุดของคุณ (ช่องป้อนว่าง)",
  "Letzte Testwiederherstellung": "การกู้คืนทดสอบล่าสุด",
  "Letzte vier Zeichen": "อักขระสี่ตัวสุดท้าย",
+ "letzte {n} Tage": "{n} วันล่าสุด",
  "Letzter Fehler:": "ข้อผิดพลาดล่าสุด:",
  "Letzter Fehler: {err}": "ข้อผิดพลาดล่าสุด: {err}",
  "Letzter Kontakt": "ติดต่อล่าสุด",
