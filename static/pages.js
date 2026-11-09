@@ -4063,7 +4063,9 @@
       if (snap === DB.snap) return Promise.resolve();                            // Datenbank selbst unveraendert
       // srev: Stand des Schemas - der Server loescht so keine Spalten, die inzwischen jemand anderes angelegt hat (BUG-001)
       return api('PATCH', '/api/notes/' + DB.id, { schema: DB.schema }).then(function (d) {
-        if (d && d.srev != null) { DB.schema.srev = d.srev; snap = JSON.stringify(DB.schema); }
+        // srev in den GESENDETEN Stand uebernehmen - nicht den aktuellen Stand neu einlesen: was waehrend der Anfrage
+        // geaendert wurde (z. B. Diagramm-Darstellung gleich nach der Rechenart), gilt sonst als gespeichert und geht verloren
+        if (d && d.srev != null) { DB.schema.srev = d.srev; var sent = JSON.parse(snap); sent.srev = d.srev; snap = JSON.stringify(sent); }
         DB.snap = snap; return d;
       })
         .catch(function (err) { HK.toast(T('Spalte nicht gespeichert: {err}', { err: err.message })); throw err; });
