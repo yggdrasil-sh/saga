@@ -555,6 +555,59 @@ Android Compose-`Canvas`, Linux Cairo (P4-E2). Werte zusätzlich als Tabelle (Ba
 - **Föderation:** Fähigkeit `widgets2` (siehe `APP-API-FED.md`). Ohne sie fehlen die neuen Arten in der Antwort und das Heim
   meldet `"unsupported2": true` – Clients zeigen „Widget nur auf dem Ursprungsserver“.
 
+## Unterseiten als Liste oder Galerie (2.5, `subpages1`)
+
+Neue Widget-Art **`subpages`** (Block `widget`, wie Notions Unterseiten-/Galerie-Ansicht): die **direkten Unterseiten der
+Seite, auf der der Block steht**, als Liste oder Kartenraster. Fähigkeit in `/api/version` `features`: **`subpages1`**.
+Ältere Apps zeigen die Ersatzkarte („Widget – neuere Version nötig“); **Regel 0** gilt (Block unverändert zurückschreiben).
+Einrichten im Web (Slash-Befehl „/Unterseiten“, Suchbegriffe „Galerie“, „gallery“, „subpages“, „Kinderseiten“); Apps
+zeigen an und öffnen die Seiten. Die Art gehört zu den Etappe-2-Arten (`W.data`, nie persönlich).
+
+```json
+{"id": "b7", "type": "widget",
+ "data": {"v": 1, "kind": "subpages", "size": "m", "style": "plain", "title": "Leseliste",
+          "cfg": {"view": "gallery", "image": "content"}}}
+```
+
+| Feld | Werte (der Server bereinigt beim Speichern) |
+|---|---|
+| `cfg.view` | `list` (Standard: Symbol + Titel je Zeile) oder `gallery` (Karten im Raster). Unbekannt → `list`. |
+| `cfg.image` | Kartenbild der Galerie: `cover` (Standard, Titelbild der Seite), `content` (erstes Bild im Seiteninhalt, auch in Spalten/Toggles – z. B. Buchcover), `none` (keine Bildfläche). Unbekannt → `cover`. In der Liste ohne Bedeutung. |
+| `size` | **Kartengröße** `s`/`m`/`l` (Mindestbreite einer Spalte; Liste: Zeilenhöhe/Schrift). |
+| `style` | `plain` ist für diese Art der **Standard**, wenn `style` fehlt (ohne Rahmen, wie Notion); `card` = Rahmen um den ganzen Block. |
+| `accent`, `title` | wie bei allen Widgets (`accent` ohne sichtbare Wirkung). Andere Felder in `cfg` fallen weg. |
+
+Werte kommen wie bei allen Widgets über **`GET /api/notes/{id}/widgets`** (Seite mit dem Block, ab „Lesen“) bzw. beim
+Einrichten `POST …/widgets/preview` – immer frisch (kein Zwischenspeicher), mit den **Rechten der betrachtenden Person**:
+
+```json
+W = {"kind": "subpages", "value": 6, "max": null, "text": null, "fmt": null, "as_of": "2026-11-09T20:00:00Z", "error": null,
+     "data": {"items": [{"id": 812, "title": "Der Nebelturm", "icon": "📖", "img": "/files/0123456789abcdef01234567", "kind": "page"},
+                        {"id": 813, "title": "Leseliste", "icon": "", "img": null, "kind": "database"}],
+              "total": 6, "more": 0, "can_add": true}}
+```
+
+- `items`: nur **aktive** Unterseiten (nicht im Papierkorb, nicht archiviert, keine Vorlagen), die die Person sehen darf
+  (eigene: alle; geteilte Seite: was ihr Seitenbaum zeigt), **Reihenfolge wie im Seitenbaum** (`sort`, dann angelegt).
+  Höchstens **200** Einträge; `total` = alle sichtbaren, `more` = nicht mitgelieferte („+ n weitere“). `value` = `total`.
+- `title` Klartext (≤ 200, leer = „Unbenannt“ zeigen), `icon` wie im Seitenbaum (Emoji oder `/files/<id>`, leer = Standardsymbol),
+  `kind` `page` | `database` (Datenbank-Symbol als Rückfall).
+- `img`: je `cfg.image` `/files/<id>` (laden wie andere Dateien, mit Schlüssel bzw. Sitzung; `?w=` für Vorschaubilder),
+  `/covers/<id>.jpg` (Titelbild-Galerie, öffentlich) oder `null` (kein Bild / `none`). Fehlt das Bild: ruhige Fläche mit
+  großem Seitensymbol. Seitenverhältnis wie im Web: `content` **2:3 (Hochformat)**, `cover` **16:9**.
+- `can_add`: die Person darf hier Unterseiten anlegen (Eigentümer/„Bearbeiten“) – für den Leerzustand „Unterseite anlegen“
+  (`POST /api/notes` mit `parent_id`).
+- Ohne Zugriff auf die Seite: wie immer `403`/`404` ohne Werte. Live: neue, umbenannte, verschobene und gelöschte
+  Unterseiten stehen beim nächsten Abruf drin (Web: zusätzlich sofort, wenn sich der Seitenbaum ändert).
+- **Veröffentlichte Seiten:** statische Liste/Galerie (Links, ohne JS und Inline-Styles) **nur mit Unterseiten, die selbst
+  öffentlich erreichbar sind** (Seite „mit Unterseiten“ veröffentlicht oder eigens veröffentlicht); Bilder nur eigene
+  Dateien über die Adresse der Veröffentlichung bzw. die Titelbild-Galerie. Keine öffentliche Unterseite → Block entfällt.
+- **Föderation** (Fähigkeit `wsubpages1`, `APP-API-FED.md`): der Eigentümer-Server rechnet mit dem Prinzipal; das Heim setzt
+  `id` auf negative IDs und `/files/<id>` auf `/api/fed/files/<unterseite>/<id>` um, Bilder der Titelbild-Galerie des
+  anderen Servers fallen weg (`img: null`), `can_add` ist dort immer `false`. Ohne `wsubpages1` fehlt die Art in der Antwort
+  und das Heim meldet `"unsupported_kinds": ["subpages"]` – Clients zeigen „Widget nur auf dem Ursprungsserver“.
+- **Markdown-Export:** „**Unterseiten:** Titel · Titel · …“.
+
 ## BookOrbit: Leseliste und Widget „Lesen“ (2.5, `bookorbit1`)
 
 Anbindung einer selbst gehosteten **BookOrbit**-Bibliothek, Phase 1: **nur lesen** (BookOrbit → Saga), **je Konto**
@@ -619,9 +672,14 @@ cfg: `{"show": "current"|"goal"|"streak" ("current"), "limit": 1..5 (3)}` (`limi
 Phase 2, weiter **nur lesen** (BookOrbit → Saga, nie zurück). Ablage seit `bookorbit3`:
 
 - **Sammelseite** „Bücher“ (📚, Sprache des Kontos): entsteht beim ersten Bedarf auf oberster Ebene, Saga merkt sie sich
-  (umbenennen/verschieben bleibt; gelöscht → beim nächsten Bedarf neu). Inhalt: Einleitung (`bo.x` = `intro`) und Liste der
-  Buchseiten, neueste zuerst (`list`, `bo.x` = `books`). Beim ersten Anlegen wandern Notizseiten, die noch auf oberster
-  Ebene liegen, einmalig hinein; selbst einsortierte bleiben.
+  (umbenennen/verschieben bleibt; gelöscht → beim nächsten Bedarf neu). Inhalt: Einleitung (`bo.x` = `intro`) und seit 9.11.
+  abends ein **Unterseiten-Block** (`kind: "subpages"`, `view: "gallery"`, `image: "content"`, `size: "m"` – das Cover ist
+  das erste Bild der Buchseite). Neue Buchseiten kommen im Seitenbaum **an die erste Stelle** (Galerie: vorne). Bestehende
+  Sammelseiten stellt Saga einmalig um: unveränderte Liste (`list`, `bo.x` = `books`) → Unterseiten-Block an ihrer Stelle;
+  bearbeitete Liste bleibt stehen (wird nicht mehr nachgezogen), der Block kommt davor; selbst gelöschte Liste → kein Block;
+  einen gelöschten Block legt Saga nicht wieder an. Stehen die Buchseiten noch in Anlege-Reihenfolge, sortiert Saga sie dabei
+  einmalig neueste zuerst. Beim ersten Anlegen wandern Notizseiten, die noch auf oberster Ebene liegen, einmalig hinein;
+  selbst einsortierte bleiben.
 - **Buchseite** je Buch (📖, Titel = Buchtitel; ohne `parent_id` in der Sammelseite): Kopf, „Notiz zum Buch“, Abschnitt
   „Kapitel“ (H2 `bo.x` = `chh`, Liste `bo.x` = `chl`: Seitenverweise `/notes#<id>` in Buchreihenfolge, Teile mit ihren
   Kapiteln eingerückt, dahinter grau die Anzahl Markierungen), Markierungen ohne Kapitel unter „Ohne Kapitel“

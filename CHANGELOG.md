@@ -16,6 +16,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – Block „Unterseiten“ (Liste | Galerie)
+- Neuer Live-Block **Unterseiten** (wie Notions Unterseiten-/Galerie-Ansicht, Widget-Art `subpages`): zeigt die direkten
+  Unterseiten der Seite als Liste (Symbol + Titel) oder als Galerie (Karten im Raster, Kartengröße S/M/L, auf dem Handy
+  zwei Spalten). Kartenbild wählbar: Titelbild der Seite (16:9), erstes Bild im Inhalt (2:3 Hochformat, z. B. Buchcover –
+  auch aus Spalten) oder keins; fehlt das Bild, steht das Seitensymbol groß auf einer ruhigen Fläche. Einfügen per
+  „/Unterseiten“ (auch „Galerie“, „gallery“, „subpages“, „Kinderseiten“) in Tiptap und Editor.js, Einstellungen im üblichen
+  Widget-Dialog. Karten sind Links (Tastatur, Screenreader); leer mit „Unterseite anlegen“.
+- Immer mit den Rechten der betrachtenden Person (geteilte Seiten: nur, was ihr Seitenbaum zeigt), Reihenfolge wie im
+  Seitenbaum, ohne Papierkorb, Archiv und Vorlagen, höchstens 200 Karten („+ n weitere“). Neue, umbenannte, verschobene und
+  gelöschte Unterseiten erscheinen ohne Neuladen.
+- Veröffentlichte Seiten: statisch, nur mit Unterseiten, die selbst öffentlich sind – keine privaten Titel oder Bilder.
+  Föderation: Fähigkeit `wsubpages1` (IDs und Bilder auf das Heim umgesetzt), ohne sie „nur auf dem Ursprungsserver“.
+- Apps: Fähigkeit `subpages1`, Datenformat in `docs/APP-API.md` „Unterseiten als Liste oder Galerie“ (Apps zeigen bis zu
+  ihrem Update die Ersatzkarte).
+- BookOrbit: Die Sammelseite „Bücher“ zeigt die Buchseiten jetzt als **Cover-Galerie** (Unterseiten-Block, Kartenbild
+  „erstes Bild im Inhalt“, Größe M) statt einer Liste; neue Bücher kommen im Seitenbaum nach vorne. Bestehende
+  Sammelseiten werden einmalig umgestellt (unveränderte Liste → Galerie; selbst bearbeitete Liste bleibt; selbst gelöschte
+  Liste oder Galerie kommt nicht wieder; nie umsortierte Buchseiten einmalig neueste zuerst).
+
 ### Behoben – Widgets (Nacharbeit)
 - Diagramm „Balken quer“: kurze Kategorien wurden durch eine Rundung der Randbreite gekürzt („Anna“ → „An…“).
 - Diagramm-Widget: Die Kontextzeile nennt die Eigenschaften („Summe Menge nach Wer“) jetzt auch, bevor der Einrichten-Dialog
