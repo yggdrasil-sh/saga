@@ -491,7 +491,8 @@ def _kv_get(c, uid, bid):
     except (TypeError, ValueError):
         v = None
     v = v if isinstance(v, dict) else {}
-    out = {"page": _int(v.get("page")) if isinstance(v.get("page"), int) and v.get("page") > 0 else None}
+    pg = v.get("page")
+    out = {"page": pg if isinstance(pg, int) and not isinstance(pg, bool) and 0 < pg < 2 ** 63 else None}
     for k in ("a", "n", "b"):
         out[k] = [x for x in (v.get(k) if isinstance(v.get(k), list) else []) if _int(x) is not None][: ANN_MAX * 4]
     out["x"] = [x for x in (v.get("x") if isinstance(v.get("x"), list) else []) if isinstance(x, str)][:10]
