@@ -18,7 +18,8 @@ Kapitelseite (📑, Titel = Kapitelname, Reihenfolge wie im Buch; Teile mit Kapi
   Obergrenze ANN_MAX), GET /books/<id>/bookmarks, GET /epub/<id>/info. Liste: GET /annotations/books, mit Suche zusaetzlich
   GET /books/search (ganze Bibliothek), Filter "Gelesen": POST /books/query (readStatus read, neueste zuerst).
   Die Liste ist begrenzt (SAGA_BOOKORBIT_LIST_RATE, 60 je Minute und Konto). Nebenwirkung des GET: einmalig je Konto
-  ("moved" fehlt noch) legt er die Sammelseite an und raeumt alte Notizseiten von der obersten Ebene hinein.
+  ("moved" fehlt noch) legt er die Sammelseite an und raeumt alte Notizseiten von der obersten Ebene hinein; ebenso einmalig
+  ("gal" fehlt noch) stellt er eine bestehende Sammelseite auf den Unterseiten-Block um (sonst beim naechsten Anlegen).
   Keiner dieser Wege verlangt "App Attest" (anders als /notebook/... - das ist nur fuer die offizielle iOS-App).
 - Zuordnung ohne Migration: user_kv "bookorbit_page:<bookId>" = {"page", "ch": {Kapitel-Schluessel: Seite}, "v": 2,
   "a"/"n"/"b": schon einmal uebernommene IDs, "x": schon einmal angelegte Kopf-/Abschnittsbloecke}. Jeder uebernommene
@@ -1396,11 +1397,11 @@ def books(uid, q=None, flt=None):
                 continue
             have.add(bid)
             out.append(_row(bid, x.get("title"), _authors(x.get("authors")), None if full else 0, pages))
-    else:                                       # ohne Suche: lose Buchseiten von frueher einmalig in die Sammelseite
-        try:
+    else:                                       # ohne Suche: lose Buchseiten von frueher einmalig in die Sammelseite;
+        try:                                    # 2.5 (9.11. abends): Sammelseite einmalig auf die Galerie umstellen
             with _db() as c:
-                moved = _home_get(c, uid)["moved"]
-            if pages and not moved:
+                hv = _home_get(c, uid)
+            if pages and (not hv["moved"] or (hv["page"] and "gal" not in hv["x"])):
                 _home(uid, account_lang(uid))
         except Exception:  # noqa: BLE001
             pass
