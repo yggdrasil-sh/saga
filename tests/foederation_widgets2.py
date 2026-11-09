@@ -9,6 +9,8 @@ Geprueft:
 - Abhaken ueber Servergrenzen (POST /api/notes/{-id}/widgets/{block}/habit) mit Bert's Rechten (Lesen -> 403, Bearbeiten -> ok).
 - Diagramm-Ansicht einer fremden Datenbank (GET /api/notes/{-db}/chart).
 - Gegenstelle ohne widgets2: neue Arten fehlen, unsupported2; Abhaken 409; Diagramm unsupported. Ohne widgets1: unsupported.
+- Unterseiten (wsubpages1): A liefert die Unterseiten, die Bert sehen darf; B setzt IDs auf negative IDs und Titelbilder auf
+  /api/fed/files/<unterseite>/<datei> um (abrufbar fuer Bert); ohne wsubpages1 fehlt die Art (unsupported_kinds).
 Ports: FEDWG2_PORTS="a,a-admin,b,b-admin,wetter" (Standard 8260,8261,8262,8263,8264). Raeumt auf (Datenbanken geloescht)."""
 import json, os, sys, threading, time
 from datetime import date, timedelta
@@ -77,7 +79,11 @@ def part(pa, pb):
         api("a", an, "POST", "/api/notes", {"title": d, "parent_id": db, "props": {"datum": d, "sport": sp, "kat": k}})
     api("a", an, "POST", "/api/tasks", {"text": "Geheime Aufgabe Anna", "due": TODAY.isoformat()})
     seite = api("a", an, "POST", "/api/notes", {"title": "Cockpit2"})[1]["id"]
+    kinder = [api("a", an, "POST", "/api/notes", {"title": f"Unterseite {i}", "parent_id": seite, "cover": None})[1]["id"] for i in range(2)]
+    furl = T.upload("a", an)
+    api("a", an, "PATCH", f"/api/notes/{kinder[0]}", {"cover": furl})
     s, _ = api("a", an, "PATCH", f"/api/notes/{seite}", {"format": "blocks", "body": json.dumps({"blocks": [
+        W("sp", "subpages", {"view": "gallery", "image": "cover"}),
         W("wx", "weather", {"place": "Kiel", "lat": 54.32, "lon": 10.12, "days": 3}),
         W("hb", "habit", {"db": db, "view": "alle", "date": "datum", "habits": ["sport"], "range": 7}),
         W("up", "upcoming", {"days": 7}),
@@ -108,6 +114,14 @@ def part(pa, pb):
     ok("B: W-Format mit data", all(set(x) == {"kind", "value", "max", "text", "fmt", "as_of", "error", "data"} for k, x in w.items() if k != "met")
        and set(w.get("met", {})) - {"src_name"} == {"kind", "value", "max", "text", "fmt", "as_of", "error"}, w)
     ok("B: kein unsupported2", "unsupported2" not in d)
+    spd = w.get("sp", {}).get("data") or {}
+    r0, r1 = ref(pa, kinder[0]), ref(pa, kinder[1])
+    fid = (furl or "").rsplit("/", 1)[-1]
+    ok("B: Unterseiten von A mit negativen IDs, Titelbild ueber /api/fed/files", [x["id"] for x in spd.get("items", [])] == [r0, r1]
+       and spd["items"][0]["img"] == f"/api/fed/files/{r0}/{fid}" and spd["items"][1]["img"] is None and spd.get("can_add") is False
+       and spd["items"][0]["title"] == "Unterseite 0" and "unsupported_kinds" not in d, w.get("sp"))
+    s2, _, img = T.hreq("b", "GET", f"/api/fed/files/{r0}/{fid}", cookie=T.ck("b", "fb-bert"))
+    ok(f"B: Kartenbild fuer Bert abrufbar ({s2})", s2 == 200 and bytes(img or b"")[:4] == b"\x89PNG")
 
     day = TODAY.isoformat()
     s, d = api("b", "fb-bert", "POST", f"/api/notes/{rS}/widgets/hb/habit", {"pid": "sport", "day": day, "on": False})
@@ -136,6 +150,15 @@ def part(pa, pb):
     s, d = api("b", "fb-bert", "GET", f"/api/notes/{rD}/chart?view=dia")
     ok(f"B: Diagramm ohne widgets2 -> unsupported ({s})", s == 200 and d.get("error") == "unsupported")
     sql("b", "UPDATE fed_peer SET caps=?, caps_at=? WHERE id=?", (json.dumps(old), time.time(), pb))
+    set_caps("b", pb, {"wsubpages1"})
+    s, d = api("b", "fb-bert", "GET", f"/api/notes/{rS}/widgets")
+    ok(f"B: A ohne wsubpages1 -> Unterseiten fehlen, unsupported_kinds ({s})", s == 200 and "sp" not in d.get("widgets", {})
+       and d.get("unsupported_kinds") == ["subpages"] and "wx" in d.get("widgets", {}), d)
+    sql("b", "UPDATE fed_peer SET caps=?, caps_at=? WHERE id=?", (json.dumps(old), time.time(), pb))
+    olda = set_caps("a", pa, {"wsubpages1"})
+    s, d = api("b", "fb-bert", "GET", f"/api/notes/{rS}/widgets")
+    ok(f"A: Gegenstelle ohne wsubpages1 -> A rechnet keine Unterseiten ({s})", s == 200 and "sp" not in d.get("widgets", {}) and "wx" in d.get("widgets", {}), d)
+    sql("a", "UPDATE fed_peer SET caps=?, caps_at=? WHERE id=?", (json.dumps(olda), time.time(), pa))
     # A selbst laesst die Etappe-2-Arten weg, wenn B widgets2 nicht meldet
     olda = set_caps("a", pa, {"widgets2"})
     s, d = api("b", "fb-bert", "GET", f"/api/notes/{rS}/widgets")
