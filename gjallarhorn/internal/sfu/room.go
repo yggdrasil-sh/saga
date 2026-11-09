@@ -250,6 +250,7 @@ type source struct {
 	offAt     int64 // Bildschirm: seit wann nicht nutzbar (0 = nutzbar bzw. noch nicht gesehen)
 	remote    bool  // P9: kommt ueber eine Bruecke (fliesst nur auf Nachfrage)
 	on        bool  // P9: laut anderem Knoten aktiv
+	fl        flap  // Hysterese gegen flatternde Schichten (flap.go)
 }
 
 // live: Quelle nutzbar - eigene, wenn sie in der letzten Sekunde Pakete hatte; Quellen ueber eine Bruecke, wenn der
@@ -299,6 +300,11 @@ type slot struct {
 	// Hysterese (layerStep): letzter Wechsel nach unten und fuer wen
 	downAt    int64
 	downOwner *Peer
+	// zuletzt weitergeleitete Quelle (auch ueber eine Pause) und Grund des letzten Wechsels fuer die naechste Meldung
+	src                       *source
+	srcAt                     int64
+	why                       string
+	whyKbit, whyLive, whyHold int
 }
 
 // FwdLeg liefert das Bein des Weiterleiters (Flusher, Zaehler, Drossel).
@@ -666,7 +672,8 @@ func (l *Leg) Layout() []Slot {
 func (l *Leg) layoutLocked() []Slot {
 	out := make([]Slot, len(l.slots))
 	for i, s := range l.slots {
-		out[i] = Slot{Index: i, Class: s.class, Layer: s.layer, MaxTID: s.tid, Paused: s.paused}
+		out[i] = Slot{Index: i, Class: s.class, Layer: s.layer, MaxTID: s.tid, Paused: s.paused,
+			Why: s.why, SrcKbit: s.whyKbit, LiveMs: s.whyLive, HoldMs: s.whyHold}
 		if s.owner != nil {
 			out[i].Peer, out[i].CSRC = s.owner.ID, s.owner.CSRC
 		}

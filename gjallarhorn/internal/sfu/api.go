@@ -300,6 +300,13 @@ type Slot struct {
 	Layer  string `json:"layer,omitempty"`
 	MaxTID uint8  `json:"tid"`
 	Paused bool   `json:"paused,omitempty"`
+	// Diagnose, nur in der Meldung des Wechsels selbst (alte Geraete ignorieren die Felder): Grund (budget | gone |
+	// back), Rate der Quelle in kbit/s, ihre Live-Zeit (gone: vor dem Ausfall, back: am Stueck) und die Wartezeit der
+	// Hysterese (gone: bis zur Rueckkehr, back: die abgewartete) in ms.
+	Why     string `json:"why,omitempty"`
+	SrcKbit int    `json:"src_kbit,omitempty"`
+	LiveMs  int    `json:"live_ms,omitempty"`
+	HoldMs  int    `json:"hold_ms,omitempty"`
 }
 
 // LayoutEvent meldet die Belegung eines Beins.

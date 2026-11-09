@@ -73,6 +73,9 @@ func (r *Room) Tick() {
 		if ev, ok := l.layoutChanged(); ok {
 			events = append(events, ev)
 		}
+		for _, s := range l.slots { // Grund nur in der Meldung des Wechsels selbst
+			s.why = ""
+		}
 	}
 	if cfg.KeyframeEvery > 0 {
 		for _, p := range peers {
@@ -127,6 +130,8 @@ func (r *Room) measurePeer(p *Peer, dt float64, now int64) {
 			}
 		}
 	}
+	stepFlaps(p.cam, now) // Hysterese gegen flatternde Schichten (flap.go)
+	stepFlaps(p.scr, now)
 	act := 0.0
 	if a := p.audio; a != nil {
 		vp := a.VoicePkts.Swap(0)
@@ -297,7 +302,8 @@ func layerRate(st *source) float64 {
 	return defaultRateH
 }
 
-// layers liefert die nutzbaren Schichten einer Quellen-Menge, unten zuerst.
+// layers liefert die nutzbaren Schichten einer Quellen-Menge, unten zuerst. Eine Schicht, die nach einem Flattern noch
+// in der Hysterese steckt (flap.go), zaehlt nicht; ist sonst nichts nutzbar, die tiefste live.
 func layers(m map[string]*source, stream bool, now int64) []*source {
 	order := [...]string{"l", "m", "h"}
 	var out []*source
@@ -305,11 +311,16 @@ func layers(m map[string]*source, stream bool, now int64) []*source {
 		if stream && k == "h" && len(out) >= 2 {
 			break // TCP: hoechstens 2 Schichten (H4)
 		}
-		if s := m[k]; s != nil && s.live(now) {
+		if s := m[k]; s != nil && s.usable(now) {
 			out = append(out, s)
 		}
 	}
-	if len(out) == 0 { // nichts aktiv: irgendeine vorhandene, unten zuerst
+	if len(out) == 0 { // nichts nutzbar: die tiefste live (gesperrt), sonst irgendeine vorhandene, unten zuerst
+		for _, k := range order {
+			if s := m[k]; s != nil && s.live(now) {
+				return []*source{s}
+			}
+		}
 		for _, k := range order {
 			if s := m[k]; s != nil {
 				return []*source{s}
@@ -589,6 +600,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	for _, c := range cs {
 		s := c.s
 		if c.idx < 0 {
+			if s.layer != "" && s.owner != nil && s.src != nil && s.src.peer == s.owner {
+				s.setWhy(whyBudget, s.src, now) // laufendes Bild pausiert
+			}
 			s.out.Assign(nil)
 			s.paused, s.layer = s.owner != nil, ""
 			continue
@@ -596,6 +610,21 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		st := c.opts[c.idx]
 		s.out.Assign(st.Source)
 		s.out.SetMaxTID(c.tid)
+		if prev := s.src; prev != nil && prev.peer == s.owner && (st != prev || s.layer == "") {
+			switch {
+			case s.layer == "": // Pause zu Ende
+				s.setWhy(whyBudget, st, now)
+			case layerRank(st.Layer) < layerRank(prev.Layer) && !prev.usable(now):
+				s.setWhy(whyGone, prev, now)
+			case layerRank(st.Layer) > layerRank(prev.Layer) && st.fl.backAt != 0 && st.fl.backAt > s.srcAt:
+				s.setWhy(whyBack, st, now)
+			default:
+				s.setWhy(whyBudget, st, now)
+			}
+		}
+		if st != s.src {
+			s.src, s.srcAt = st, now
+		}
 		if layerRank(st.Layer) < layerRank(s.layer) { // nach unten: Mindestverweildauer fuer den Weg zurueck
 			s.downAt, s.downOwner = now, s.owner
 		}
