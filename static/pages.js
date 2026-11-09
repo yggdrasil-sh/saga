@@ -5759,7 +5759,7 @@
           out.appendChild(el('div', 'wg-note', r && r.error === 'unsupported' ? T('Diagramm nur auf dem Ursprungsserver') : WG_ERR[(r && r.error) || 'bad_cfg'] || WG_ERR.bad_cfg)); return;
         }
         var res = r.chart;
-        out.appendChild(chartSvg(res, { title: v.name, onCat: res.ids ? function (i) {
+        out.appendChild(chartSvg(res, { title: v.name, ctx: chartCtx(spec, res, DB.schema.props), cap: chartAggLabel(spec), onCat: res.ids ? function (i) {
           rowsBox.textContent = '';
           var ids = res.ids[i] || [], c = res.cats[i] || {}, head = el('div', 'dbc-rows-h');
           head.appendChild(el('strong', null, chartCatLabel(res, c) + ' · ' + T('{n} {n:Eintrag|Einträge}', { n: ids.length })));
@@ -6664,7 +6664,9 @@
   // --- Diagramme (2.5, Paket 4): eigenes SVG, keine Bibliothek (P4-E2). Der Server liefert fertige Reihen
   // (saga/dbcalc.py chart, Vertrag docs/APP-API.md "Diagramme"); hier wird nur gezeichnet - dieselben Formen wie
   // saga/chartsvg.py (veroeffentlichte Seiten). Achsenwerte wie chartsvg.nice_ticks (Vektoren tests/chart_ticks.json).
-  var CH_W = 640, CH_H = 300, CH_PL = 56, CH_PR = 16, CH_PT = 16, CH_PB = 56, CH_SN = 8;
+  // Design-Runde: viewBox = echte Breite des Containers (ResizeObserver), Schrift damit echte Pixel; Hoehe nach Groesse
+  // S/M/L (Widget) bzw. aus der Breite (Ansicht); Palette statt Grau, wenn Optionen keine (verschiedenen) Farben haben.
+  var CH_SN = 8, CH_H = { s: 140, m: 220, l: 300 }, chCtx = null, chFont = '';
   function chartTicks(lo, hi, n) {
     n = n || 5;
     if (lo === hi) { hi = lo >= 0 ? lo + 1 : lo; lo = Math.min(0, lo); if (lo === hi) hi = lo + 1; }
@@ -6675,6 +6677,31 @@
     return out;
   }
   function chartFmt(v, fmt) { return v == null || typeof v !== 'number' || !isFinite(v) ? '–' : fmt === 'pct' ? pctText(v) : fmt === 'eur' ? fEur.format(v) : fNum.format(v); }
+  // Achse: kompakte Zahlen (volle Zahl im Tooltip und in der Tabelle)
+  var fCmp = null, fCmpE = null;
+  function chartAxisFmt(v, fmt) {
+    if (fmt === 'pct') return pctText(v);
+    try {
+      if (!fCmp) { fCmp = new Intl.NumberFormat(window.SAGA_LOCALE, { notation: 'compact', maximumFractionDigits: 1 }); fCmpE = new Intl.NumberFormat(window.SAGA_LOCALE, { style: 'currency', currency: 'EUR', notation: 'compact', minimumFractionDigits: 0, maximumFractionDigits: 1 }); }
+      return (fmt === 'eur' ? fCmpE : fCmp).format(v);
+    } catch (e) { return chartFmt(v, fmt); }
+  }
+  // Textbreite in px (Achsenschrift --fs-xs) ueber ein Canvas - das SVG haengt beim Zeichnen evtl. noch nicht im Dokument
+  function chartTextW(s) {
+    if (!chCtx) {
+      try { chCtx = document.createElement('canvas').getContext('2d'); } catch (e) { chCtx = null; }
+      var cs = getComputedStyle(document.documentElement);
+      chFont = (parseFloat(cs.fontSize) || 16) * 0.72 + 'px ' + (getComputedStyle(document.body || document.documentElement).fontFamily || 'sans-serif');
+    }
+    if (!chCtx) return String(s).length * 6.5;
+    chCtx.font = chFont; return chCtx.measureText(String(s)).width;
+  }
+  function chartFit(s, w) {                                  // auf Breite w kuerzen (mit …)
+    s = String(s || ''); if (chartTextW(s) <= w) return s;
+    var lo = 0, hi = s.length;
+    while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (chartTextW(s.slice(0, mid) + '…') <= w) lo = mid; else hi = mid - 1; }
+    return lo ? s.slice(0, lo) + '…' : '';
+  }
   function chartCatLabel(res, c) {
     if (res.x_kind === 'date' && c.start && c.key !== '__other__') {
       var q = c.start.split('-'), d = new Date(+q[0], +q[1] - 1, +q[2]), b = res.bucket || 'month';
@@ -6687,125 +6714,252 @@
     }
     return c.label || '';
   }
-  // res: Ergebnis des Servers; opts: {title, onCat(i)} -> Element (div.chart mit SVG, Legende und Tabelle in <details>)
+  // Farbklassen: "gray"/leer = keine Farbe. Optionsfarben nur, wenn >= 2 verschiedene echte vorkommen, sonst Palette
+  // ch-s0..7 (bzw. eine Farbe bei einer Reihe ohne Optionsfarben: ch-one = Widget-Farbe). "Andere"/"Leer" immer neutral.
+  function chartColors(list, one) {
+    var neutral = function (x) { return x.key === '__other__' || x.key === null; };
+    var real = {}; list.forEach(function (x) { if (!neutral(x) && x.color && x.color !== 'gray') real[x.color] = 1; });
+    var useOpt = Object.keys(real).length >= 2, k = 0;
+    return list.map(function (x) {
+      if (neutral(x)) return 'ch-other';
+      if (useOpt) return 'ch-c-' + (x.color && x.color !== 'gray' ? x.color : 'gray');
+      return one ? 'ch-one' : 'ch-s' + (k++ % CH_SN);
+    });
+  }
+  // res: Ergebnis des Servers; opts: {title, onCat(i), size ('s'|'m'|'l', nur Widget), ctx (Kontextzeile), accent}
+  // -> Element (div.chart: Kontextzeile, Zeichnung, Legende, Tabelle in <details>)
   function chartSvg(res, opts) {
     opts = opts || {};
-    var NS = 'http://www.w3.org/2000/svg', box = el('div', 'chart');
+    var NS = 'http://www.w3.org/2000/svg', box = el('div', 'chart' + (opts.accent ? ' ch-acc' : '')), svg = null;
     function n(tag, attrs, parent, txt) {
       var e = document.createElementNS(NS, tag); Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
       if (txt != null) e.textContent = txt; (parent || svg).appendChild(e); return e;
     }
-    function cls(color, i) { return color ? 'ch-c-' + color : 'ch-s' + (i % CH_SN); }
-    function tip(e, txt) { n('title', {}, e, txt); }
-    function clickable(e, i, txt) {
-      if (!opts.onCat) return;
-      e.setAttribute('tabindex', '0'); e.setAttribute('role', 'button'); e.setAttribute('aria-label', txt); e.classList.add('ch-hit');
-      e.addEventListener('click', function () { opts.onCat(i); });
-      e.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); opts.onCat(i); } });
-    }
     if (!res || !res.type) return box;
     var fmt = res.fmt, cats = res.cats || [], series = res.series || [];
+    if (opts.ctx) { var hd0 = el('div', 'ch-head'); hd0.appendChild(el('span', 'ch-ctx', opts.ctx)); box.appendChild(hd0); }
     if (res.type === 'number') {
       box.appendChild(el('div', 'wg-v ch-num', chartFmt(res.total, fmt)));
       if (typeof res.goal === 'number') box.appendChild(el('div', 'wg-sub', T('Ziel: {wert}', { wert: chartFmt(res.goal, fmt) })));
       return box;
     }
     if (!cats.length || !series.length) { box.appendChild(el('div', 'wg-note', T('Keine Einträge.'))); return box; }
-    var svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 ' + CH_W + ' ' + CH_H); svg.setAttribute('class', 'ch-svg');
-    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', opts.title || T('Diagramm##Chart')); box.appendChild(svg);
     var labels = cats.map(function (c) { return chartCatLabel(res, c); });
-    if (res.type === 'pie' || res.type === 'donut') {
-      var vals = (series[0].values || []).map(function (v) { return typeof v === 'number' && v > 0 ? v : 0; });
-      var tot = vals.reduce(function (a, b) { return a + b; }, 0), cx = 150, cy = CH_H / 2, r = 120, ri = res.type === 'donut' ? 66 : 0, a0 = -Math.PI / 2;
-      cats.forEach(function (c, i) {
-        var v = vals[i]; if (!tot || !v) return;
-        var a1 = v >= tot ? a0 + 2 * Math.PI - 1e-4 : a0 + v / tot * 2 * Math.PI, big = a1 - a0 > Math.PI ? 1 : 0;
-        var P = function (rr, a) { return (cx + rr * Math.cos(a)).toFixed(1) + ',' + (cy + rr * Math.sin(a)).toFixed(1); };
-        var d = 'M' + P(r, a0) + ' A' + r + ',' + r + ' 0 ' + big + ' 1 ' + P(r, a1) + (ri ? ' L' + P(ri, a1) + ' A' + ri + ',' + ri + ' 0 ' + big + ' 0 ' + P(ri, a0) + 'Z' : ' L' + cx + ',' + cy + 'Z');
-        var pth = n('path', { d: d, 'class': 'ch-f ' + cls(c.color, i) });
-        var txt = labels[i] + ': ' + chartFmt(v, fmt) + ' (' + pctText(v / tot * 100) + ')';
-        tip(pth, txt); clickable(pth, i, txt);
-        a0 = a1;
-      });
-      if (ri) n('text', { 'class': 'ch-big', x: cx, y: cy + 8, 'text-anchor': 'middle' }, null, chartFmt(res.total, fmt));
-      cats.slice(0, 12).forEach(function (c, i) {
-        var y = 30 + i * 21;
-        n('rect', { 'class': 'ch-f ' + cls(c.color, i), x: 300, y: y - 10, width: 12, height: 12, rx: 2 });
-        n('text', { 'class': 'ch-t', x: 318, y: y }, null, labels[i].slice(0, 34) + ' · ' + chartFmt(vals[i], fmt));
-      });
-    } else {
-      var stack = !!res.stack, allv = [];
-      if (stack) cats.forEach(function (c, i) {
-        var pos = 0, neg = 0; series.forEach(function (s) { var v = s.values[i]; if (typeof v === 'number') { if (v >= 0) pos += v; else neg += v; } }); allv.push(pos, neg);
-      });
-      else series.forEach(function (s) { (s.values || []).forEach(function (v) { if (typeof v === 'number') allv.push(v); }); });
-      if (typeof res.goal === 'number') allv.push(res.goal);
-      var ticks = chartTicks(Math.min.apply(null, allv.concat([0])), Math.max.apply(null, allv.concat([0]))), lo = ticks[0], hi = ticks[ticks.length - 1];
-      var horiz = res.type === 'hbar', pw = CH_W - CH_PL - CH_PR, ph = CH_H - CH_PT - CH_PB;
-      var vpos = horiz ? function (v) { return CH_PL + (v - lo) / (hi - lo) * pw; } : function (v) { return CH_PT + ph - (v - lo) / (hi - lo) * ph; };
-      ticks.forEach(function (tk) {
-        var p = vpos(tk);
-        if (horiz) { n('line', { 'class': 'ch-g', x1: p, y1: CH_PT, x2: p, y2: CH_PT + ph }); n('text', { 'class': 'ch-t', x: p, y: CH_H - CH_PB + 16, 'text-anchor': 'middle' }, null, chartFmt(tk, fmt)); }
-        else { n('line', { 'class': 'ch-g', x1: CH_PL, y1: p, x2: CH_PL + pw, y2: p }); n('text', { 'class': 'ch-t', x: CH_PL - 6, y: p + 4, 'text-anchor': 'end' }, null, chartFmt(tk, fmt)); }
-      });
-      var N = cats.length, band = (horiz ? ph : pw) / N, every = Math.max(1, Math.ceil(N / (horiz ? 8 : 12)));
-      cats.forEach(function (c, i) {
-        if (i % every) return;
-        var m = (horiz ? CH_PT : CH_PL) + band * (i + 0.5), lab = labels[i].length > 14 ? labels[i].slice(0, 13) + '…' : labels[i];
-        if (horiz) n('text', { 'class': 'ch-t', x: CH_PL - 6, y: m + 4, 'text-anchor': 'end' }, null, lab);
-        else n('text', { 'class': 'ch-t', x: m, y: CH_H - CH_PB + 16, 'text-anchor': 'middle' }, null, lab);
-      });
-      if (res.type === 'bar' || res.type === 'hbar') {
-        var k = stack ? 1 : series.length, bw = band * 0.78 / k, base = vpos(0), accP = cats.map(function () { return 0; }), accN = accP.slice();
-        series.forEach(function (s, si) {
-          (s.values || []).forEach(function (v, i) {
-            if (typeof v !== 'number') return;
-            var p0, p1, off;
-            if (stack) { var a = v >= 0 ? accP[i] : accN[i], b = a + v; if (v >= 0) accP[i] = b; else accN[i] = b; p0 = vpos(a); p1 = vpos(b); off = band * 0.11; }
-            else { p0 = base; p1 = vpos(v); off = band * 0.11 + si * bw; }
-            var st = (horiz ? CH_PT : CH_PL) + band * i + off, col = series.length > 1 ? cls(s.color, si) : cls(cats[i].color, 0);
-            var rc = horiz ? n('rect', { 'class': 'ch-f ' + col, x: Math.min(p0, p1).toFixed(1), y: st.toFixed(1), width: Math.abs(p1 - p0).toFixed(1), height: bw.toFixed(1), rx: 2 })
-              : n('rect', { 'class': 'ch-f ' + col, x: st.toFixed(1), y: Math.min(p0, p1).toFixed(1), width: bw.toFixed(1), height: Math.abs(p1 - p0).toFixed(1), rx: 2 });
-            var txt = labels[i] + (s.label ? ' · ' + s.label : '') + ': ' + chartFmt(v, fmt);
-            tip(rc, txt); clickable(rc, i, txt);
-          });
-        });
-      } else {
-        series.forEach(function (s, si) {
-          var pts = []; (s.values || []).forEach(function (v, i) { if (typeof v === 'number') pts.push([CH_PL + band * (i + 0.5), vpos(v), i, v]); });
-          if (!pts.length) return;
-          var col = cls(s.color, si), d = pts.map(function (q, j) { return (j ? 'L' : 'M') + q[0].toFixed(1) + ',' + q[1].toFixed(1); }).join(' ');
-          if (res.type === 'area') { var b0 = vpos(Math.max(lo, 0)).toFixed(1); n('path', { 'class': 'ch-a ' + col, d: d + ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + b0 + ' L' + pts[0][0].toFixed(1) + ',' + b0 + 'Z' }); }
-          n('path', { 'class': 'ch-l ' + col, d: d });
-          if (pts.length <= 40) pts.forEach(function (q) {
-            var cc = n('circle', { 'class': 'ch-f ' + col, cx: q[0].toFixed(1), cy: q[1].toFixed(1), r: 3.5 });
-            var txt = labels[q[2]] + (s.label ? ' · ' + s.label : '') + ': ' + chartFmt(q[3], fmt); tip(cc, txt); clickable(cc, q[2], txt);
-          });
-        });
-      }
-      if (typeof res.goal === 'number') {
-        var g = vpos(res.goal);
-        n('line', horiz ? { 'class': 'ch-goal', x1: g, y1: CH_PT, x2: g, y2: CH_PT + ph } : { 'class': 'ch-goal', x1: CH_PL, y1: g, x2: CH_PL + pw, y2: g });
-      }
-      if (series.length > 1) {
-        var lg = el('div', 'ch-legend');
-        series.forEach(function (s, si) { var it = el('span', 'ch-li'); it.appendChild(el('i', 'ch-sw ' + cls(s.color, si))); it.appendChild(document.createTextNode(s.label || '')); lg.appendChild(it); });
-        box.appendChild(lg);
-      }
-    }
-    if (res.other) box.appendChild(el('div', 'wg-sub', T('„Andere“ fasst {n} weitere zusammen.', { n: res.other })));
-    if (res.truncated) box.appendChild(el('div', 'wg-sub', T('Gekürzt – nur die ersten Werte werden gezeigt.')));
-    var det = el('details', 'ch-tab'), sm = el('summary', null, T('Werte als Tabelle')), tb = el('table', 'db-table'), hr = el('tr');
+    var round = res.type === 'pie' || res.type === 'donut', multi = series.length > 1 && !round;
+    var catCls = chartColors(cats, !round && !multi), serCls = chartColors(series, false);
+    var plot = el('div', 'ch-plot'), tipBox = el('div', 'ch-tip'), legend = el('ul', 'ch-legend'), sizeTotal = el('div', 'wg-v ch-num');
+    tipBox.setAttribute('aria-hidden', 'true');
+    box.appendChild(plot); box.appendChild(legend);
+    if (res.other) box.appendChild(el('div', 'wg-sub ch-note', T('„Andere“ fasst {n} weitere zusammen.', { n: res.other })));
+    if (res.truncated) box.appendChild(el('div', 'wg-sub ch-note', T('Gekürzt – nur die ersten Werte werden gezeigt.')));
+    // Werte als Tabelle (in schmalen Karten als kleiner Knopf oben rechts, siehe paint)
+    var det = el('details', 'ch-tab'), sm = el('summary', null), tb = el('table', 'db-table'), hr = el('tr');
+    sm.appendChild(el('span', 'ch-tab-ic')).setAttribute('aria-hidden', 'true'); sm.appendChild(el('span', 'ch-tab-l', T('Werte als Tabelle')));
     det.appendChild(sm); hr.appendChild(el('th', null, ''));
     series.forEach(function (s) { hr.appendChild(el('th', null, series.length > 1 ? (s.label || '') : T('Wert'))); });
     var th = el('thead'); th.appendChild(hr); tb.appendChild(th); var tbd = el('tbody'); tb.appendChild(tbd);
     cats.forEach(function (c, i) { var tr = el('tr'); tr.appendChild(el('th', null, labels[i])); series.forEach(function (s) { tr.appendChild(el('td', null, chartFmt(s.values[i], fmt))); }); tbd.appendChild(tr); });
     det.appendChild(tb); box.appendChild(det);
+
+    // Tooltip: eigenes Kaestchen (Name + volle Zahl), Maus und Tastatur
+    function mark(e, i, name, val, cls) {
+      e.setAttribute('data-tl', name); e.setAttribute('data-tv', val);
+      if (cls) e.setAttribute('data-tc', cls);
+      if (!opts.onCat) return;
+      e.setAttribute('tabindex', '0'); e.setAttribute('role', 'button'); e.setAttribute('aria-label', name + ': ' + val); e.classList.add('ch-hit');
+      e.addEventListener('click', function () { opts.onCat(i); });
+      e.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); opts.onCat(i); } });
+    }
+    function showTip(t, x, y) {
+      tipBox.textContent = '';
+      var hd = el('div', 'ch-tip-h'); hd.appendChild(el('i', 'ch-sw ' + (t.getAttribute('data-tc') || ''))); hd.appendChild(el('span', null, t.getAttribute('data-tl')));
+      tipBox.appendChild(hd); tipBox.appendChild(el('div', 'ch-tip-v', t.getAttribute('data-tv')));
+      tipBox.classList.add('on');
+      var pw = plot.clientWidth, tw = tipBox.offsetWidth, th2 = tipBox.offsetHeight;
+      var lx = Math.max(0, Math.min(pw - tw, x - tw / 2)), ly = y - th2 - 10; if (ly < 0) ly = y + 14;
+      tipBox.style.left = lx + 'px'; tipBox.style.top = ly + 'px';
+    }
+    function hideTip() { tipBox.classList.remove('on'); }
+    plot.addEventListener('pointermove', function (ev) {
+      var t = ev.target && ev.target.closest ? ev.target.closest('[data-tl]') : null;
+      if (!t) { hideTip(); return; }
+      var r = plot.getBoundingClientRect(); showTip(t, ev.clientX - r.left, ev.clientY - r.top);
+    });
+    plot.addEventListener('pointerleave', hideTip);
+    plot.addEventListener('focusin', function (ev) {
+      var t = ev.target && ev.target.closest ? ev.target.closest('[data-tl]') : null; if (!t) return;
+      var r = plot.getBoundingClientRect(), b = t.getBoundingClientRect(); showTip(t, b.left - r.left + b.width / 2, b.top - r.top);
+    });
+    plot.addEventListener('focusout', hideTip);
+
+    function legendList(items, max) {       // items: [cls, name, wert|null]
+      legend.textContent = '';
+      items.slice(0, items.length > max ? max - 1 : max).forEach(function (it) {
+        var li = el('li', 'ch-li'); li.appendChild(el('i', 'ch-sw ' + it[0]));
+        var nm = el('span', 'ch-ln', it[1]); nm.title = it[1]; li.appendChild(nm);
+        if (it[2] != null) li.appendChild(el('span', 'ch-lv', it[2]));
+        legend.appendChild(li);
+      });
+      if (items.length > max) legend.appendChild(el('li', 'ch-li ch-more', T('+ {n} weitere', { n: items.length - max + 1 })));
+    }
+
+    function paint(W) {
+      plot.textContent = ''; legend.textContent = ''; plot.appendChild(tipBox); hideTip();
+      var narrow = W < 260, tiny = W < 200, H;
+      if (opts.size) H = Math.round(Math.min(CH_H[opts.size] || CH_H.m, Math.max(120, W * 0.8)));
+      else H = Math.round(Math.max(160, Math.min(W * 0.55, 300)));
+      box.classList.toggle('ch-narrow', W < 360); box.classList.toggle('ch-tiny', tiny);
+      det.classList.toggle('ch-tab-btn', W < 360);
+      if (W < 360) { sm.setAttribute('aria-label', T('Werte als Tabelle')); sm.title = T('Werte als Tabelle'); } else { sm.removeAttribute('aria-label'); sm.removeAttribute('title'); }
+      if (sizeTotal.parentNode) sizeTotal.parentNode.removeChild(sizeTotal);
+      svg = document.createElementNS(NS, 'svg'); svg.setAttribute('class', 'ch-svg' + (round ? ' ch-round' : ''));
+      svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', opts.title || T('Diagramm##Chart'));
+      plot.insertBefore(svg, tipBox);
+      if (round) {
+        var beside = W >= 300, D = Math.round(beside ? Math.min(H, W * 0.45) : Math.min(H, W, 220));
+        plot.classList.toggle('ch-beside', beside);
+        box.classList.toggle('ch-pie-beside', beside);
+        svg.setAttribute('viewBox', '0 0 ' + D + ' ' + D); svg.setAttribute('width', D); svg.setAttribute('height', D);
+        var vals = (series[0].values || []).map(function (v) { return typeof v === 'number' && v > 0 ? v : 0; });
+        var tot = vals.reduce(function (a, b) { return a + b; }, 0), cx = D / 2, cy = D / 2, r = D / 2 - 2, ri = res.type === 'donut' ? r * 0.62 : 0, a0 = -Math.PI / 2;
+        var segs = cats.filter(function (c, i) { return vals[i] > 0; }).length, gapA = segs > 1 ? Math.min(0.02, 1.2 / r) : 0;
+        cats.forEach(function (c, i) {
+          var v = vals[i]; if (!tot || !v) return;
+          var a1 = v >= tot ? a0 + 2 * Math.PI - 1e-4 : a0 + v / tot * 2 * Math.PI, s0 = a0 + gapA / 2, s1 = Math.max(s0 + 1e-4, a1 - gapA / 2), big = s1 - s0 > Math.PI ? 1 : 0;
+          var P = function (rr, a) { return (cx + rr * Math.cos(a)).toFixed(1) + ',' + (cy + rr * Math.sin(a)).toFixed(1); };
+          var d = 'M' + P(r, s0) + ' A' + r.toFixed(1) + ',' + r.toFixed(1) + ' 0 ' + big + ' 1 ' + P(r, s1) + (ri ? ' L' + P(ri, s1) + ' A' + ri.toFixed(1) + ',' + ri.toFixed(1) + ' 0 ' + big + ' 0 ' + P(ri, s0) + 'Z' : ' L' + cx + ',' + cy + 'Z');
+          var pth = n('path', { d: d, 'class': 'ch-f ch-seg ' + catCls[i] });
+          mark(pth, i, labels[i], chartFmt(v, fmt) + ' · ' + pctText(v / tot * 100), catCls[i]);
+          a0 = a1;
+        });
+        if (ri) {
+          var tv = chartFmt(res.total, fmt), fs = Math.max(12, Math.min(26, ri * 0.42, (ri * 1.7) / Math.max(3, tv.length) * 1.6));
+          n('text', { 'class': 'ch-big', x: cx, y: (cy + fs * 0.2).toFixed(1), 'text-anchor': 'middle', 'font-size': fs.toFixed(1) }, null, tv);
+          if (ri > 34) n('text', { 'class': 'ch-cap', x: cx, y: (cy + fs * 0.2 + 15).toFixed(1), 'text-anchor': 'middle' }, null, opts.cap || T('Gesamt'));
+        }
+        plot.appendChild(legend);
+        legendList(cats.map(function (c, i) { return [catCls[i], labels[i], chartFmt(vals[i], fmt)]; }), beside ? Math.max(3, Math.floor(D / 24)) : (tiny ? 4 : 6));
+        return;
+      }
+      plot.classList.remove('ch-beside'); box.classList.remove('ch-pie-beside'); box.insertBefore(legend, plot.nextSibling);
+      var stack = !!res.stack && multi, allv = [], horiz = res.type === 'hbar';
+      if (stack) cats.forEach(function (c, i) {
+        var pos = 0, neg = 0; series.forEach(function (s) { var v = s.values[i]; if (typeof v === 'number') { if (v >= 0) pos += v; else neg += v; } }); allv.push(pos, neg);
+      });
+      else series.forEach(function (s) { (s.values || []).forEach(function (v) { if (typeof v === 'number') allv.push(v); }); });
+      if (typeof res.goal === 'number' && !tiny) allv.push(res.goal);
+      var ticks = chartTicks(Math.min.apply(null, allv.concat([0])), Math.max.apply(null, allv.concat([0])), narrow ? 3 : (H < 180 ? 4 : 5)), lo = ticks[0], hi = ticks[ticks.length - 1];
+      var tlab = ticks.map(function (tk) { return chartAxisFmt(tk, fmt); }), N = cats.length;
+      var PL, PR = 8, PT = 8, PB = 20;
+      if (tiny) {                                              // kompakt: Gesamtwert und Balken ohne Achsen
+        PL = 2; PR = 2; PT = 4; PB = 2; H = Math.round(Math.min(H, 72));
+        sizeTotal.textContent = chartFmt(res.total, fmt); box.insertBefore(sizeTotal, plot);
+      } else if (horiz) {
+        var lw = Math.max.apply(null, labels.map(chartTextW).concat([0]));
+        PL = Math.round(Math.min(W * 0.4, lw + 10)); PR = Math.round(Math.max(8, chartTextW(tlab[tlab.length - 1]) / 2 + 2));
+      } else {
+        PL = Math.round(Math.min(W * 0.4, Math.max.apply(null, tlab.map(chartTextW)) + 10));
+      }
+      if (typeof res.goal === 'number' && !tiny && !horiz) PT = 16;
+      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.setAttribute('width', W); svg.setAttribute('height', H);
+      var pw = W - PL - PR, ph = H - PT - PB;
+      var vpos = horiz ? function (v) { return PL + (v - lo) / (hi - lo) * pw; } : function (v) { return PT + ph - (v - lo) / (hi - lo) * ph; };
+      if (!tiny) {
+        ticks.forEach(function (tk, j) {
+          var p = vpos(tk), base = tk === 0 ? ' ch-g0' : '';
+          if (horiz) { n('line', { 'class': 'ch-g' + base, x1: p.toFixed(1), y1: PT, x2: p.toFixed(1), y2: PT + ph }); n('text', { 'class': 'ch-t', x: p.toFixed(1), y: H - 5, 'text-anchor': 'middle' }, null, tlab[j]); }
+          else { n('line', { 'class': 'ch-g' + base, x1: PL, y1: p.toFixed(1), x2: PL + pw, y2: p.toFixed(1) }); n('text', { 'class': 'ch-t', x: PL - 6, y: (p + 4).toFixed(1), 'text-anchor': 'end' }, null, tlab[j]); }
+        });
+      }
+      var band = (horiz ? ph : pw) / N, every = 1;
+      if (!tiny) {
+        if (horiz) every = Math.max(1, Math.ceil(14 / band));
+        else {
+          var want = Math.min(Math.max.apply(null, labels.map(chartTextW).concat([0])), 90) + 8;
+          while (every < N && band * every < want) every++;
+        }
+        cats.forEach(function (c, i) {
+          if (i % every) return;
+          var m = (horiz ? PT : PL) + band * (i + 0.5);
+          if (horiz) n('text', { 'class': 'ch-t', x: PL - 6, y: (m + 4).toFixed(1), 'text-anchor': 'end' }, null, chartFit(labels[i], PL - 10));
+          else n('text', { 'class': 'ch-t', x: m.toFixed(1), y: H - 5, 'text-anchor': 'middle' }, null, chartFit(labels[i], band * every - 6));
+        });
+      }
+      if (res.type === 'bar' || res.type === 'hbar' || (tiny && res.type !== 'line' && res.type !== 'area')) {
+        var k = stack ? 1 : series.length, inner = band * (N > 1 ? 0.72 : 0.5), bw = inner / k, gap = k > 1 ? Math.min(2, bw * 0.15) : 0, base = vpos(0), accP = cats.map(function () { return 0; }), accN = accP.slice();
+        var rr = Math.min(4, (bw - gap) / 3);
+        series.forEach(function (s, si) {
+          (s.values || []).forEach(function (v, i) {
+            if (typeof v !== 'number') return;
+            var p0, p1, off;
+            if (stack) { var a = v >= 0 ? accP[i] : accN[i], b = a + v; if (v >= 0) accP[i] = b; else accN[i] = b; p0 = vpos(a); p1 = vpos(b); off = (band - inner) / 2; }
+            else { p0 = base; p1 = vpos(v); off = (band - inner) / 2 + si * bw; }
+            var st = (horiz ? PT : PL) + band * i + off, col = multi ? serCls[si] : catCls[i], w = Math.max(1, bw - gap), len = Math.abs(p1 - p0);
+            var rc = horiz ? n('rect', { 'class': 'ch-f ' + col + (stack ? ' ch-seg' : ''), x: Math.min(p0, p1).toFixed(1), y: st.toFixed(1), width: len.toFixed(1), height: w.toFixed(1), rx: Math.min(rr, len / 2).toFixed(1) })
+              : n('rect', { 'class': 'ch-f ' + col + (stack ? ' ch-seg' : ''), x: st.toFixed(1), y: Math.min(p0, p1).toFixed(1), width: w.toFixed(1), height: len.toFixed(1), rx: Math.min(rr, len / 2).toFixed(1) });
+            mark(rc, i, labels[i] + (multi && s.label ? ' · ' + s.label : ''), chartFmt(v, fmt), col);
+          });
+        });
+      } else {
+        // Linie/Flaeche; gestapelte Flaeche: kumulierte Grundlinie je Kategorie (oberste Kurve = Summe)
+        var cum = cats.map(function () { return 0; }), dots = N <= 24 && band >= 12 && !tiny;
+        var layers = series.map(function (s, si) {
+          var pts = [], prev = cum.slice();
+          (s.values || []).forEach(function (v, i) {
+            if (stack) { var vv = typeof v === 'number' && v > 0 ? v : 0; cum[i] += vv; pts.push([PL + band * (i + 0.5), vpos(cum[i]), i, v, cum[i], vpos(prev[i])]); }
+            else if (typeof v === 'number') pts.push([PL + band * (i + 0.5), vpos(v), i, v, v, vpos(Math.max(lo, 0))]);
+          });
+          return { s: s, si: si, pts: pts };
+        });
+        var path = function (pts, yi) { return pts.map(function (q, j) { return (j ? 'L' : 'M') + q[0].toFixed(1) + ',' + q[yi].toFixed(1); }).join(' '); };
+        if (res.type === 'area') layers.forEach(function (L) {
+          if (!L.pts.length) return;
+          var back = L.pts.slice().reverse().map(function (q) { return 'L' + q[0].toFixed(1) + ',' + q[5].toFixed(1); }).join(' ');
+          n('path', { 'class': 'ch-a ' + (multi ? serCls[L.si] : 'ch-one'), d: path(L.pts, 1) + ' ' + back + 'Z' });
+        });
+        layers.forEach(function (L) {
+          if (!L.pts.length) return;
+          var col = multi ? serCls[L.si] : 'ch-one';
+          n('path', { 'class': 'ch-l ' + col, d: path(L.pts, 1) });
+          if (!tiny) L.pts.forEach(function (q) {
+            var cc = n('circle', { 'class': 'ch-f ch-dot ' + col + (dots ? '' : ' ch-dot-h'), cx: q[0].toFixed(1), cy: q[1].toFixed(1), r: dots ? 3 : 5, 'data-top': q[4] });
+            mark(cc, q[2], labels[q[2]] + (L.s.label ? ' · ' + L.s.label : ''), chartFmt(q[3], fmt) + (stack ? ' (' + T('Gesamt') + ' ' + chartFmt(q[4], fmt) + ')' : ''), col);
+          });
+        });
+      }
+      if (typeof res.goal === 'number' && !tiny) {
+        var g = vpos(res.goal);
+        n('line', horiz ? { 'class': 'ch-goal', x1: g.toFixed(1), y1: PT, x2: g.toFixed(1), y2: PT + ph } : { 'class': 'ch-goal', x1: PL, y1: g.toFixed(1), x2: PL + pw, y2: g.toFixed(1) });
+        var gl = T('Ziel') + ' ' + chartAxisFmt(res.goal, fmt);
+        if (horiz) n('text', { 'class': 'ch-t ch-goal-t', x: (g - 4).toFixed(1), y: PT + 10, 'text-anchor': 'end' }, null, gl);
+        else n('text', { 'class': 'ch-t ch-goal-t', x: PL + pw, y: (g - 4).toFixed(1), 'text-anchor': 'end' }, null, gl);
+      }
+      if (multi) legendList(series.map(function (s, si) { return [serCls[si], s.label || '', null]; }), narrow ? 4 : 10);
+    }
+    var lastW = 0, tmr = null;
+    function measure() { var w = Math.round(box.clientWidth); if (w > 0 && Math.abs(w - lastW) >= 2) { lastW = w; paint(w); } }
+    paint(opts.width || 640); lastW = 0;
+    if (window.ResizeObserver) {
+      new ResizeObserver(function () {
+        if (!lastW) { measure(); return; }                      // erstes Mal sofort (kein Flackern), danach entprellt
+        clearTimeout(tmr); tmr = setTimeout(measure, 80);
+      }).observe(box);
+    }
     return box;
   }
   // Einstellungen eines Diagramms (Ansicht und Widget teilen sie): fill(rowFn, spec, props, commit)
   var CH_TYPES = [['bar', T('Balken')], ['hbar', T('Balken quer')], ['line', T('Linie')], ['area', T('Fläche')], ['pie', T('Kreis')], ['donut', T('Ring')], ['number', T('Zahl')]];
   var CH_AGGS = [['count', T('Anzahl')], ['sum', T('Summe')], ['avg', T('Durchschnitt')], ['min', T('Min')], ['max', T('Max')], ['pct_checked', T('% angehakt')]];
+  // Kontextzeile ueber dem Diagramm ("Summe Betrag nach Kategorie · 4 Eintraege"); Namen nur, wenn das Schema da ist
+  function chartAggLabel(spec) { var a = CH_AGGS.filter(function (x) { return x[0] === ((spec && spec.agg) || 'count'); })[0]; return a ? a[1] : ''; }
+  function chartCtx(spec, res, props) {
+    if (!spec || !res) return '';
+    var nm = function (id) { if (id === 'title') return T('Name'); var p = (props || []).filter(function (x) { return x.id === id; })[0]; return p ? (p.name || '') : ''; };
+    var head = chartAggLabel(spec), yn = spec.agg !== 'count' && spec.y ? nm(spec.y) : '', xn = spec.x && res.type !== 'number' ? nm(spec.x) : '';
+    if (yn) head += ' ' + yn;
+    if (xn) head = T('{wert} nach {x}', { wert: head, x: xn });
+    return typeof res.rows === 'number' ? head + ' · ' + T('{n} {n:Eintrag|Einträge}', { n: res.rows }) : head;
+  }
   function chartAxisOk(p) {
     if (!p) return false;
     var t = p.type, rt = (t === 'formula' || t === 'rollup') ? p.rtype : null;
@@ -7234,7 +7388,9 @@
       return;
     }
     // Diagramm
-    body.appendChild(chartSvg(data, { title: d.title || T('Diagramm##Chart') }));
+    var csc = this.schemas && this.schemas[(d.cfg || {}).db];
+    body.appendChild(chartSvg(data, { title: d.title || T('Diagramm##Chart'), size: d.size === 's' || d.size === 'l' ? d.size : 'm', accent: COLORS.indexOf(d.accent) >= 0,
+      ctx: chartCtx(d.cfg, data, csc && csc.props), cap: chartAggLabel(d.cfg) }));
   };
   WidgetTool.prototype.habit = function (pid, day, on, btn) {
     var self = this, id = S.cur && S.cur.id, tz = '';
