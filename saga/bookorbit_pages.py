@@ -41,7 +41,7 @@ BM_MAX = 200                                                  # Lesezeichen je B
 TEXT_MAX, NOTE_MAX, CHAPTER_MAX = 3000, 3000, 200
 BOOKS_LIST_MAX = 50
 BUDGET = 190_000                                              # Zeichen JSON (Seite: hoechstens 200 000, saga.pages)
-_RATE = (12, 60.0)                                            # Anlegen/Aktualisieren je Konto und Minute
+_RATE = (int(E.get("SAGA_BOOKORBIT_NOTES_RATE") or 12), 60.0)   # Anlegen/Aktualisieren je Konto und Minute
 _KV = "bookorbit_page:"
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f​-‏‪-‮⁦-⁩]")
 
