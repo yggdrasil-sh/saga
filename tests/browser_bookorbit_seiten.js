@@ -5,6 +5,7 @@
 // Ein kleines Fake-BookOrbit laeuft in diesem Skript auf 127.0.0.1:BOOKORBIT_TEST_PORT (18645); der Server muss mit
 // BOOKORBIT_URL=http://127.0.0.1:<port> laufen (Vorschlag = automatisch freigegeben).
 //   HK_TEST_BASE=http://127.0.0.1:18640 CK=<Cookie> [SHOTS=/tmp/bookorbit] node tests/browser_bookorbit_seiten.js
+// Mit beiden Editoren laufen lassen (Admin editor.engine = tiptap bzw. editorjs): beide muessen data.bo behalten.
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
 const http = require('http'), crypto = require('crypto'), fs = require('fs');
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK, PORT = +(process.env.BOOKORBIT_TEST_PORT || 18645), SHOTS = process.env.SHOTS || '';
@@ -84,6 +85,7 @@ const fake = http.createServer((q, r) => {
   const title = await until(async () => { const v = await p.locator('#pg-title').inputValue().catch(() => ''); return /Notizen:/.test(v) ? v : null; }, 10000);
   ok('"Als Seite": Seite "Notizen: Die Bibliothek im Nebel" geoeffnet', title === 'Notizen: Die Bibliothek im Nebel', title);
   const id = +(p.url().split('#')[1] || 0);
+  console.log('Editor: ' + await p.evaluate(() => document.body.dataset.editor || '?'));
   const shown = await until(async () => { const t = await p.locator('#pg-editor').textContent().catch(() => ''); return /Nebel kam/.test(t) && /eigene Stille/.test(t) ? t : null; }, 8000);
   ok('Editor zeigt Kapitel, Zitate und Notiz', !!shown && /Erstes Kapitel/.test(shown) && /Das merke ich mir/.test(shown), shown && shown.slice(0, 300));
   ok('Editor zeigt Zitat-Bloecke', await p.locator('#pg-editor [data-block-type="quote"], #pg-editor .cdx-quote').count() >= 2);
