@@ -50,6 +50,7 @@ FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1", "move1", "ren
             "mute2", "chatpin1", "markunread1", "chathide1",                     # 2.5 Chat-Alltag A (PATCH /api/chats/{cid}, docs/APP-API-CHAT.md 9)
             "chatmention1", "chatfmt1", "chatmedia1",                            # 2.5 Chat-Alltag C: @Erwaehnung, Formatierung, ?has=file
             "bookorbit1",                                                        # 2.5: BookOrbit (/api/bookorbit/..., Widget-Art reading)
+            "bookorbit2",                                                        # 2.5: BookOrbit-Markierungen als Seite (/api/bookorbit/notes)
             "pm1")                                                               # 2.5 Tiptap T2: Web-Editor kann Saga-Schema v2 (nur informativ)
 # unfurl1 (2.5, Chat-Alltag C3) = GET /api/chat/unfurl - nur gemeldet, solange der Admin-Schalter chat_unfurl an ist (app.py).
 # live1 (2.5, P3 Stufe 2) = WebSocket /api/collab (CRDT, docs/APP-API-COLLAB.md) - nur gemeldet, solange der Admin-Schalter

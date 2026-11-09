@@ -24,7 +24,7 @@ import auth
 import db
 from version import API_LEVEL, BUILD, FEATURES, LIVE_FEATURE, MIN_APP, VERSION, channel
 
-from saga import app_api, app_login, bookorbit, calendars, comments, csv_export, dashboard, databases, files, immich, links, page_tools, page_widgets, pages, publish, sharing, tasks, web_auth
+from saga import app_api, app_login, bookorbit, bookorbit_pages, calendars, comments, csv_export, dashboard, databases, files, immich, links, page_tools, page_widgets, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, horn, horn_ops, i18n, live, mfa, notify, push, push_stream
 from saga import collab                     # 2.5 (P3 Stufe 2): WebSocket /api/collab, Admin-Schalter notes.live
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
@@ -317,6 +317,7 @@ app.include_router(files.router)
 app.include_router(databases.router)
 app.include_router(immich.router)
 app.include_router(bookorbit.router)                     # 2.5: BookOrbit (Leseliste, nur lesen)
+app.include_router(bookorbit_pages.router)               # 2.5: BookOrbit-Markierungen als Seite (nur lesen)
 app.include_router(calendars.router)
 app.include_router(app_api.router)
 app.include_router(page_widgets.router)       # 2.5: Widgets in Seiten - /api/notes/{nid}/widgets, .../widgets/preview
