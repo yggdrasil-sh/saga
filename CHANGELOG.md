@@ -23,6 +23,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Anstehendes „ohne Rahmen“: lief 4 px über den Rand der Spalte (Hover-Fläche).
 - Diagramm-Ziellinie und Ziel-Feld beim Fortschritt waren in en/es/ru/th als Speicherziel übersetzt („Target“, „Destino“,
   „Хранилище“) – eigener Schlüssel „Ziel##Goal“ (Goal/Objetivo/Цель/เป้าหมาย).
+- Kennzahl und Fortschritt aus einer Datenbank liefern den Namen der Quelle (`src_name`, nur mit Zugriff, nie veröffentlicht)
+  – die Apps zeigen damit „Rechenart · Quelle“ wie das Web; das Web nutzt ihn für föderierte Kopien (`docs/APP-API.md`).
+- Editor.js-Spalten: Karten einer Reihe sind jetzt gleich hoch wie bei Tiptap (Widget als einziger Block einer Spalte).
 
 ### Geändert – Widgets neu gestaltet (Widget-Design-Runde)
 - Gemeinsames Gerüst: Kopf mit Symbol und einzeiligem Titel, großer Wert in Textfarbe mit kleiner Einheit, gedämpfte

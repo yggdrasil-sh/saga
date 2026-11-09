@@ -2522,6 +2522,12 @@ body.notes-page .page.p-small .page-body{font-size:var(--fs-base)}
 .page-body .pm-col-c > .hk-tool-widget:only-child > .wg-blk > .wg{flex:1 1 auto}
 .page-body .pm-col-c > .hk-tool-widget:first-child > .wg-blk{margin-top:0}
 .page-body .pm-col-c > .hk-tool-widget:last-child > .wg-blk{margin-bottom:0}
+/* Editor.js-Spalten (Nacharbeit 15): dasselbe - Widget als einziger Block einer Spalte fuellt die Hoehe der Reihe */
+.page-body .col:has(> .col-ed > .codex-editor > .codex-editor__redactor > .ce-block:only-child > .ce-block__content > .wg-blk){display:flex;flex-direction:column}
+.page-body .col:has(> .col-ed > .codex-editor > .codex-editor__redactor > .ce-block:only-child > .ce-block__content > .wg-blk) :is(.col-ed,.codex-editor,.codex-editor__redactor,.ce-block,.ce-block__content,.wg-blk){flex:1 1 auto;display:flex;flex-direction:column;min-width:0;width:100%;box-sizing:border-box}   /* Breite fest: Auto-Raender + container:inline-size liessen sie sonst auf 0 schrumpfen */
+.page-body .col:has(> .col-ed > .codex-editor > .codex-editor__redactor > .ce-block:only-child > .ce-block__content > .wg-blk) .codex-editor__redactor{padding-bottom:0!important}
+.page-body .col:has(> .col-ed > .codex-editor > .codex-editor__redactor > .ce-block:only-child > .ce-block__content > .wg-blk) .wg-blk{margin:0}
+.page-body .col:has(> .col-ed > .codex-editor > .codex-editor__redactor > .ce-block:only-child > .ce-block__content > .wg-blk) .wg-blk > .wg{flex:1 1 auto}
 /* Vorlagengalerie (2.5, static/pages.js openGallery) - nur Variablen, dadurch hell/dunkel; schmal: eine Spalte */
 .modal-box.hk-dialog-gal{width:min(920px,100%);max-height:min(760px,92vh)}
 .hk-dialog-gal .modal-body{flex:1;min-height:0}

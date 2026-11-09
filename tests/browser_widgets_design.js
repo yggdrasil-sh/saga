@@ -66,6 +66,9 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
       deep: [...w.querySelectorAll('*')].some((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.right > r.right + 1; }) };
   }));
   const rowHeights = (sel) => p.evaluate((sel) => { const c = document.querySelector(sel); return [...c.querySelectorAll('.wg')].map((w) => Math.round(w.getBoundingClientRect().height)); }, sel);
+  // je sichtbarer Zeile (gleiche Oberkante) gleich hoch - Editor.js bricht 4 Spalten in Textbreite auf 2x2 um
+  const rowsEqual = (sel) => p.evaluate((sel) => { const g = {}; [...document.querySelector(sel).querySelectorAll('.wg')].forEach((w) => { const r = w.getBoundingClientRect(); (g[Math.round(r.top)] = g[Math.round(r.top)] || []).push(Math.round(r.height)); });
+    return Object.values(g); }, sel);
   const cols = (sel) => p.evaluate((sel) => getComputedStyle(document.querySelector(sel + ' .cols') || document.querySelector(sel)).gridTemplateColumns.split(' ').length, sel);
   const blk = (id) => D.block(id);
 
@@ -75,7 +78,8 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   ok(`Desktop: Gewohnheiten 7/30 Tage ohne Ueberlauf, heute + Quote sichtbar (${JSON.stringify(hb)})`,
     hb.length === 2 && hb.every((x) => x.over <= 1 && !x.deep && x.today === 2 && x.todayIn && x.stIn), hb);
   const h1 = await rowHeights(blk('c1'));
-  if (engine === 'tiptap') ok(`Desktop: Karten der Reihe gleich hoch (${h1})`, h1.length === 4 && Math.max(...h1) - Math.min(...h1) <= 1, h1);   // Editor.js: nicht umgesetzt
+  if (engine === 'tiptap') ok(`Desktop: Karten der Reihe gleich hoch (${h1})`, h1.length === 4 && Math.max(...h1) - Math.min(...h1) <= 1, h1);
+  else { const g = await rowsEqual(blk('c1')); ok(`Desktop (Editor.js): Karten je Zeile gleich hoch (${JSON.stringify(g)})`, g.flat().length === 4 && g.every((r) => Math.max(...r) - Math.min(...r) <= 1), g); }   // Nacharbeit 15
   const vals = await p.evaluate(() => [...document.querySelectorAll('.wg-v')].map((v) => ({ t: v.textContent, lines: Math.round(v.getBoundingClientRect().height / parseFloat(getComputedStyle(v).lineHeight)), ws: getComputedStyle(v).whiteSpace })));
   ok(`Werte einzeilig (${vals.map((v) => v.t + ':' + v.lines).join(', ')})`, vals.length >= 4 && vals.every((v) => v.lines <= 1 && v.ws === 'nowrap'), vals);
   const unit = await p.locator(blk('w3') + ' .wg-v small').textContent().catch(() => '');
