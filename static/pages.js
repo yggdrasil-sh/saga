@@ -6739,7 +6739,8 @@
     var fmt = res.fmt, cats = res.cats || [], series = res.series || [];
     if (opts.ctx) { var hd0 = el('div', 'ch-head'); hd0.appendChild(el('span', 'ch-ctx', opts.ctx)); box.appendChild(hd0); }
     if (res.type === 'number') {
-      box.appendChild(el('div', 'wg-v ch-num', chartFmt(res.total, fmt)));
+      var nv = box.appendChild(el('div', 'wg-v ch-num', chartFmt(res.total, fmt))); nv.title = nv.textContent;
+      if (window.ResizeObserver) new ResizeObserver(function () { var w = box.clientWidth; if (w > 0) box.classList.toggle('ch-tiny', w < 200); }).observe(box);
       if (typeof res.goal === 'number') box.appendChild(el('div', 'wg-sub', T('Ziel: {wert}', { wert: chartFmt(res.goal, fmt) })));
       return box;
     }

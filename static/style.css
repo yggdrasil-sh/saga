@@ -2679,7 +2679,7 @@ tr.rc > td.db-fz{background:color-mix(in srgb,var(--rc) 14%,var(--bg))}
 .ch-head{display:flex;align-items:center;gap:.5rem;min-height:1.2rem;font-size:var(--fs-sm);color:var(--muted)}
 .ch-ctx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chart.ch-narrow .ch-head{padding-right:1.8rem}
-.ch-num{color:var(--fg)}.chart.ch-tiny .ch-num{font-size:var(--fs-xl);white-space:nowrap;overflow-wrap:normal;overflow:hidden;text-overflow:ellipsis}.chart.ch-acc .ch-num{color:var(--wa)}
+.ch-num{color:var(--fg);white-space:nowrap;overflow-wrap:normal;overflow:hidden;text-overflow:ellipsis}.chart.ch-tiny .ch-num{font-size:var(--fs-xl);white-space:nowrap;overflow-wrap:normal;overflow:hidden;text-overflow:ellipsis}.chart.ch-acc .ch-num{color:var(--wa)}
 .ch-plot{position:relative;min-width:0}.ch-plot.ch-beside{display:flex;align-items:center;gap:1.2rem}
 .ch-svg{display:block;overflow:visible}.ch-svg:not(.ch-round){width:100%;height:auto}.ch-round{flex:none;max-width:100%;height:auto;margin:0 auto}
 .ch-plot.ch-beside .ch-round{margin:0}
@@ -2701,7 +2701,7 @@ tr.rc > td.db-fz{background:color-mix(in srgb,var(--rc) 14%,var(--bg))}
 .ch-legend:empty{display:none}
 .ch-li{display:inline-flex;align-items:center;gap:.4rem;min-width:0;max-width:100%}.ch-ln{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .ch-lv{color:var(--fg);font-variant-numeric:tabular-nums;margin-left:auto;padding-left:.5rem;white-space:nowrap}.ch-more{color:var(--muted);font-style:italic}
-.ch-plot.ch-beside .ch-legend{flex-direction:column;flex-wrap:nowrap;flex:1;gap:.3rem}.ch-plot.ch-beside .ch-li{display:flex}
+.ch-plot.ch-beside .ch-legend{flex-direction:column;flex-wrap:nowrap;flex:1;gap:.3rem;max-width:20rem}.ch-plot.ch-beside .ch-li{display:flex}
 .ch-plot:not(.ch-beside) .ch-round+.ch-tip+.ch-legend{margin-top:.6rem;flex-direction:column;gap:.25rem}.ch-plot:not(.ch-beside) .ch-round+.ch-tip+.ch-legend .ch-li{display:flex}
 .ch-sw{display:inline-block;flex:none;width:.65rem;height:.65rem;border-radius:3px;background:var(--ch,var(--tc-blue))}
 .ch-note{font-size:var(--fs-xs)}
