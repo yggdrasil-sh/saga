@@ -117,7 +117,9 @@ def origins():
 def push_origins():
     """Nach einer Aenderung (Teilen, Erlaubt-Liste, Notaus): allen Knoten die erlaubten Herkuenfte schicken und den
     verbundenen Servern die Adressen unserer geteilten Knoten (hello, fuer deren CSP)."""
+    global _ORIG_SENT
     lst = origins()
+    _ORIG_SENT = lst
     for nid in list(horn._CONNS):
         horn.send(nid, {"t": "origins", "list": lst})
     if not F.enabled():
@@ -139,8 +141,29 @@ def hello_extra(pid):
     return {"horn_shared": urls[:8]}
 
 
+_ORIG_SENT = None                       # zuletzt an die Knoten geschickte Herkunftsliste (None = seit dem Start noch keine)
+
+
+def sync_origins():
+    """Herkunftsliste an alle verbundenen Knoten schicken, wenn sie sich geaendert hat. Aufgerufen nach jedem hello: Ein
+    Server, der erst NACH dem Koppeln des Knotens verbunden wird oder 'horn' erst spaeter meldet, steht sonst bis zum
+    naechsten Verbinden des Steuerkanals nicht in der CORS-Liste - seine Browser erreichen den geteilten Knoten nicht."""
+    global _ORIG_SENT
+    lst = origins()
+    if lst == _ORIG_SENT:
+        return False
+    _ORIG_SENT = lst
+    for nid in list(horn._CONNS):
+        horn.send(nid, {"t": "origins", "list": lst})
+    return True
+
+
 def hello_in(pid, d):
-    """Adressen der geteilten Knoten des Servers pid merken (fuer unsere CSP)."""
+    """Adressen der geteilten Knoten des Servers pid merken (fuer unsere CSP); Herkunftsliste der Knoten nachziehen."""
+    try:
+        sync_origins()
+    except Exception as ex:  # noqa: BLE001
+        print(f"horn: Herkunftsliste: {type(ex).__name__}", flush=True)
     if not isinstance(d, dict) or not isinstance(d.get("horn_shared"), list):
         return
     urls = sorted({u for u in d["horn_shared"][:8] if _https(u)})

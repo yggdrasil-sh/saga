@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – geteilter Knoten: Browser eines neu verbundenen Servers erreichen ihn nicht (CORS)
+- Wurde ein Server erst verbunden, nachdem der Knoten schon gekoppelt war (oder meldete er Knoten-Anrufe erst später),
+  erfuhr der Knoten seine Herkunft erst beim nächsten Verbinden des Steuerkanals. Bis dahin scheiterten die Browser
+  des neuen Servers am geteilten Knoten („Kein Knoten erreichbar“). Die Herkunftsliste geht jetzt nach jedem
+  Fähigkeiten-Abgleich an die Knoten, sobald sie sich ändert (`saga/fed_horn.py` `sync_origins`,
+  Test `tests/horn_herkunft.py`). Gefunden im Anruf-Labortest.
+
 ### Behoben – Übergabe über Knoten an ein Gerät, das föderierte Gegenüber sieht/hört nichts
 - Nach „Hierher übernehmen“ (z. B. iPhone → Browser) in einem föderierten 1:1 über Gjallarhorn sah und hörte das
   Gegenüber zeitweise nichts, obwohl das neue Gerät sendete. Ursache: Das neue Gerät schickt Frame-Schlüssel und Zustand
