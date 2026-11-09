@@ -7280,6 +7280,9 @@
     if (p.classList.contains('wg-panel-float')) p.querySelector('.wg-panel-h').appendChild(done); else p.appendChild(done);
     if (this.placeFloat) this.placeFloat();
     // Handy (Blatt unten, Fund 8): Widget nach oben scrollen, damit die Vorschau ueber dem Blatt sichtbar bleibt
+    if (!p.classList.contains('wg-panel-float')) {                // inline: Panel ins Bild holen, wenn es unten beginnt (Regel 12)
+      var pr = p.getBoundingClientRect(); if (pr.top > innerHeight - 160) try { p.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { p.scrollIntoView(false); }
+    }
     if (p.classList.contains('wg-panel-float') && innerWidth <= 640) {
       document.body.classList.add('wg-sheet');
       try { this.w.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { this.w.scrollIntoView(); }
