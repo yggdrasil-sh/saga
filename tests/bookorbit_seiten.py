@@ -323,6 +323,7 @@ def part_update(Ca, nid):
     bl[i2]["data"]["text"] = "Von mir umformuliert"
     i3 = find(bl, a=103)
     del bl[i3]
+    bl[find(bl, a=104)]["tunes"] = {"hkstyle": {"c": "red"}}      # Person faerbt ein Zitat um (Text bleibt)
     s, d = save(Ca, nid, bl, p.get("rev"))
     ok(f"eigene Aenderungen gespeichert ({s})", s == 200, d)
     a = F.books["anna"][31]["ann"]
@@ -343,6 +344,8 @@ def part_update(Ca, nid):
     ok("in Saga bearbeiteter Block bleibt (BookOrbit-Aenderung nicht uebernommen)", bl[find(bl, a=102)]["data"]["text"] == "Von mir umformuliert")
     ok("in Saga geloeschte Markierung kommt nicht wieder", find(bl, a=103) is None)
     ok("unveraenderter Block nachgezogen", bl[find(bl, a=104)]["data"]["text"] == "Vierte Stelle, korrigiert.", bl[find(bl, a=104)])
+    ok("eigene Farbe des Zitats bleibt beim Nachziehen", (bl[find(bl, a=104)].get("tunes") or {}).get("hkstyle") == {"c": "red"},
+       bl[find(bl, a=104)].get("tunes"))
     ok("bei BookOrbit geloeschte Markierung bleibt in Saga", find(bl, a=105) is not None)
     i107, ich2 = find(bl, a=107), next(i for i, b in enumerate(bl) if b["type"] == "header" and b["data"]["text"] == "Kapitel 2")
     ok("neue Markierung beim eigenen Kapitel (vor Kapitel 2)", i107 is not None and find(bl, a=102) < i107 < ich2, (i107, ich2))

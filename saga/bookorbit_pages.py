@@ -347,14 +347,14 @@ def merge(blocks, anns, bms, book, seen, head, lang):
         old = blocks[i]
         if old.get("type") != nb["type"] or not unchanged(old, *keys):
             return
-        if all(old["data"].get(k) == nb["data"][k] for k in keys) and old.get("tunes") == nb.get("tunes"):
+        if all(old["data"].get(k) == nb["data"][k] for k in keys):    # Farbe (tunes) allein ist Gestaltung der Person
             return
         d = dict(old["data"])
         for k in keys:
             d[k] = nb["data"][k]
         d["bo"] = dict(_bo(old), h=nb["data"]["bo"]["h"])
         x = dict(old, data=d)
-        if "tunes" in nb:
+        if "tunes" in nb and not old.get("tunes"):     # eigene Farbe der Person nie ueberschreiben
             x["tunes"] = nb["tunes"]
         blocks[i] = x
         updated += 1
@@ -579,10 +579,15 @@ def build(uid, book_id=None, parent_id=None, page_id=None):
                 raise Fail(404, "not found")
             if r[1] != "blocks":
                 raise Fail(409, t("Diese Seite ist keine Block-Seite"))
-            try:
-                blocks = (json.loads(r[0] or "{}") or {}).get("blocks") or []
+            try:                                 # nicht lesbarer Inhalt: nie mit leerer Liste weiterschreiben (Datenverlust)
+                doc = json.loads(r[0] or "{}") or {}
+                blocks = doc.get("blocks") if isinstance(doc, dict) else None
+                if blocks is None and isinstance(doc, dict) and "blocks" not in doc:
+                    blocks = []
+                if not isinstance(blocks, list):
+                    raise ValueError
             except ValueError:
-                blocks = []
+                raise Fail(409, t("Diese Seite ist keine Block-Seite"))
             seen = {k: list(kv[k]) for k in ("a", "n", "b", "x")}
             out, added, updated, full = merge(blocks, anns, bms, book, seen, head, lang)
             if not added and not updated and not (head and created):
