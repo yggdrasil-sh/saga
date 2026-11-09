@@ -525,6 +525,8 @@ Ergebnis (`W.data` bzw. `chart` der Ansicht):
   jede Kategorie `start` (erster Tag des Eimers, Clients formatieren selbst); Lücken zwischen erstem und letztem Eimer sind
   gefüllt (Wert 0 bzw. `null`). `label` kommt in der Sprache der Anfrage. `color`: Palette (`gray … red`) oder `null`
   (Client nimmt seine Reihenfolge: blue, orange, green, purple, pink, yellow, red, brown).
+- `x_name`/`y_name` (ab 2.5, optional): Namen der Achsen-Eigenschaften für die Kontextzeile („Summe Betrag nach Status ·
+  8 Einträge“); `y_name` fehlt bei `count`, `x_name` bei `number`. Clients ohne Schema nehmen diese Namen.
 - Nur **eine** Reihe (`series[0].key == ""`) ohne `series`-Spec; Kreis/Ring nutzen nur `series[0]`.
 - `number`: `cats`/`series` leer, nur `total` (bei `count` = Anzahl Zeilen). `value` = `total`, `max` = `goal`.
 - `truncated`: Kategorien oder Reihen gekürzt. Ungeeignete/unbekannte Eigenschaft (auch Datei-Spalten): `error: "bad_cfg"`.

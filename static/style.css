@@ -2795,6 +2795,7 @@ button.hb-c{cursor:pointer}button.hb-c:hover{border-color:var(--wa)}.hb-heat but
 .up-day{font-size:var(--fs-xs);font-weight:600;color:var(--muted);margin:.45rem 0 .1rem;text-transform:uppercase;letter-spacing:.04em}
 .up-day:first-child{margin-top:0}.up-day.up-day-over{color:var(--down)}
 .up-it{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:.5rem;min-height:28px;padding:.1rem .25rem;margin:0 -.25rem;border-radius:var(--r-sm);font-size:var(--fs-base);background:none;border:0;color:inherit;font:inherit;text-align:left;width:calc(100% + .5rem);box-sizing:border-box}
+.wg.wg-plain .up-it{margin:0;width:100%;padding-inline:0}   /* ohne Rahmen: kein Ueberstand fuer die Hover-Flaeche (lief 4 px ueber) */
 button.up-it{cursor:pointer}button.up-it:hover{background:var(--hover,color-mix(in srgb,var(--fg) 6%,transparent))}
 .up-ic{display:inline-flex;justify-content:center;align-items:center;width:16px;height:16px}
 .up-dot{width:8px;height:8px;border-radius:50%;background:var(--wa)}

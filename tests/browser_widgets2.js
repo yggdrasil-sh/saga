@@ -157,6 +157,12 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
     return w ? [...w.querySelectorAll('.ch-svg path.ch-f')].map((r) => (r.getAttribute('class').match(/ch-(s\d|c-\w+)/) || [])[0]) : [];
   });
   ok(`Ring ohne Optionsfarben: nicht grau, alle verschieden (${ringCls.join(' ')})`, ringCls.length === 3 && new Set(ringCls).size === 3 && !ringCls.some((c) => /gray/.test(c || '')), ringCls);
+  // Quer: kurze Kategorien werden nicht gekuerzt (Rundung der Randbreite schnitt "Anna" zu "An…")
+  const qLab = await p.evaluate(() => {
+    const w = [...document.querySelectorAll('.wg[data-kind="chart"]')].find((x) => /Quer/.test(x.querySelector('.wg-t') ? x.querySelector('.wg-t').textContent : ''));
+    return w ? [...w.querySelectorAll('.ch-svg text.ch-t')].map((t) => t.textContent).filter((t) => /^[A-Z]/.test(t)) : [];
+  });
+  ok(`Quer: Namen ungekuerzt (${qLab.join(', ')})`, qLab.length === 3 && qLab.every((t) => !/…/.test(t)), qLab);
   // N3: eine Reihe = eine Farbe (ohne zwei echte Optionsfarben), auch bei Balken nach Kategorie
   const oneCls = await p.evaluate(() => {
     const w = [...document.querySelectorAll('.wg[data-kind="chart"]')].find((x) => /Quer/.test(x.querySelector('.wg-t') ? x.querySelector('.wg-t').textContent : ''));

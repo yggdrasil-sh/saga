@@ -6867,7 +6867,7 @@
         sizeTotal.textContent = chartFmt(res.total, fmt); box.insertBefore(sizeTotal, plot);
       } else if (horiz) {
         var lw = Math.max.apply(null, labels.map(chartTextW).concat([0]));
-        PL = Math.round(Math.min(W * 0.4, lw + 10)); PR = Math.round(Math.max(8, chartTextW(tlab[tlab.length - 1]) / 2 + 2));
+        PL = Math.ceil(Math.min(W * 0.4, lw + 11)); PR = Math.round(Math.max(8, chartTextW(tlab[tlab.length - 1]) / 2 + 2));
       } else {
         PL = Math.round(Math.min(W * 0.4, Math.max.apply(null, tlab.map(chartTextW)) + 10));
       }
@@ -6898,7 +6898,7 @@
         cats.forEach(function (c, i) {
           if (i % every) return;
           var m = (horiz ? PT : PL) + band * (i + 0.5);
-          if (horiz) n('text', { 'class': 'ch-t', x: PL - 6, y: (m + 4).toFixed(1), 'text-anchor': 'end' }, null, chartFit(labels[i], PL - 10));
+          if (horiz) n('text', { 'class': 'ch-t', x: PL - 6, y: (m + 4).toFixed(1), 'text-anchor': 'end' }, null, chartFit(labels[i], PL - 9));      // +1 px gegen Rundung: kurze Namen nicht kuerzen ("Anna" -> "An…")
           else n('text', { 'class': 'ch-t', x: m.toFixed(1), y: H - 5, 'text-anchor': 'middle' }, null, chartFit(labels[i], band * every - 6));
         });
       }
@@ -6983,7 +6983,9 @@
   function chartCtx(spec, res, props) {
     if (!spec || !res) return '';
     var nm = function (id) { if (id === 'title') return T('Name'); var p = (props || []).filter(function (x) { return x.id === id; })[0]; return p ? (p.name || '') : ''; };
-    var head = chartAggLabel(spec), yn = spec.agg !== 'count' && spec.y ? nm(spec.y) : '', xn = spec.x && res.type !== 'number' ? nm(spec.x) : '';
+    // Namen kommen vom Server (x_name/y_name), das Schema ist im Widget erst nach dem Einrichten-Dialog geladen
+    var head = chartAggLabel(spec), yn = spec.agg !== 'count' && spec.y ? (nm(spec.y) || res.y_name || '') : '',
+      xn = spec.x && res.type !== 'number' ? (nm(spec.x) || res.x_name || '') : '';
     if (yn) head += ' ' + yn;
     if (xn) head = T('{wert} nach {x}', { wert: head, x: xn });
     return typeof res.rows === 'number' ? head + ' · ' + T('{n} {n:Eintrag|Einträge}', { n: res.rows }) : head;

@@ -870,8 +870,15 @@ def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None, w
            "truncated": False, "rows": len(rows)}
     if "goal" in spec:
         res["goal"] = spec["goal"]
+    # Namen der Achsen-Eigenschaften fuer die Kontextzeile ("Summe Betrag nach Status") - der Client hat das Schema nicht immer
+    pn = {str(p.get("id")): str(p.get("name") or "") for p in (schema or {}).get("props") or [] if isinstance(p, dict)}
+    pn["title"] = t("Name")
+    if spec["agg"] != "count" and spec.get("y") in pn:
+        res["y_name"] = pn[spec["y"]][:130]
     if typ == "number":
         return res
+    if spec.get("x") in pn:
+        res["x_name"] = pn[spec["x"]][:130]
     if not spec.get("x"):
         raise Fail("bad_cfg")
     ax = _Axis(schema, q, spec["x"], spec, labels, untitled, tz, people)

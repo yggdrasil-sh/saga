@@ -593,6 +593,10 @@ def part_chart(A, Bk, C):
     c = r.get("chart") or {}
     ok(f"Ansicht: Monats-Eimer ohne Luecken, kumulativ ({s})", [x["key"] for x in c.get("cats", [])] == ["2026-01", "2026-02", "2026-03"]
        and c["series"][0]["values"] == [2, 3, 5] and c["cats"][0]["start"] == "2026-01-01" and c["x_kind"] == "date", c)
+    s, r = req("GET", f"/api/notes/{db}/chart?view=dia&tz=Europe/Berlin", A)
+    c = r.get("chart") or {}
+    ok(f"Ansicht: Namen der Achsen fuer die Kontextzeile (x_name/y_name: {c.get('x_name')}/{c.get('y_name')})",
+       bool(c.get("x_name")) and bool(c.get("y_name")) and "x_name" in c and len(c["x_name"]) <= 130, c)
     ok("Ansicht ohne chart -> error bad_cfg", req("GET", f"/api/notes/{db}/chart?view=alle", A)[1].get("error") == "bad_cfg")
     ok("tz ungueltig -> 400", req("GET", f"/api/notes/{db}/chart?tz=Mars/Base", A)[0] == 400)
     ok("Bert ohne Zugriff -> 404", req("GET", f"/api/notes/{db}/chart?view=dia", Bk)[0] == 404)

@@ -1175,6 +1175,9 @@ def clean_remote_data(kind, d):
                "other": _fint(d.get("other"), 0, 10 ** 6) or 0, "truncated": d.get("truncated") is True, "rows": _fint(d.get("rows"), 0, 10 ** 7) or 0}
         if d.get("bucket") in dbcalc.CHART_BUCKETS:
             out["bucket"] = d["bucket"]
+        for k in ("x_name", "y_name"):
+            if isinstance(d.get(k), str):
+                out[k] = _fstr(d[k], 130)
         for k in ("stack", "cumulative"):
             if d.get(k) is True:
                 out[k] = True

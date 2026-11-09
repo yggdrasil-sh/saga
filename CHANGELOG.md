@@ -16,6 +16,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Widgets (Nacharbeit)
+- Diagramm „Balken quer“: kurze Kategorien wurden durch eine Rundung der Randbreite gekürzt („Anna“ → „An…“).
+- Diagramm-Widget: Die Kontextzeile nennt die Eigenschaften („Summe Menge nach Wer“) jetzt auch, bevor der Einrichten-Dialog
+  geöffnet wurde – der Server liefert dafür `x_name`/`y_name` im Ergebnis (`docs/APP-API.md`).
+- Anstehendes „ohne Rahmen“: lief 4 px über den Rand der Spalte (Hover-Fläche).
+
 ### Geändert – Widgets neu gestaltet (Widget-Design-Runde)
 - Gemeinsames Gerüst: Kopf mit Symbol und einzeiligem Titel, großer Wert in Textfarbe mit kleiner Einheit, gedämpfte
   Kontextzeile; Akzent nur für Balken, Punkte, Ringe und den heutigen Tag (eigene Farbe färbt auch den Wert). Werte
