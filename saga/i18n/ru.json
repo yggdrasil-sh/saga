@@ -4265,6 +4265,7 @@
  "Ziel trennen?": "Отключить хранилище?",
  "Ziel trennen? Vorhandene Backups im Ziel bleiben erhalten.": "Отключить хранилище? Имеющиеся копии в нём сохранятся.",
  "Ziel voll: {need} nötig, {free} frei.": "Хранилище заполнено: нужно {need}, свободно {free}.",
+ "Ziel##Goal": "Цель",
  "Ziel-Datenbank der Relation nicht gefunden": "Целевая база данных связи не найдена",
  "Ziel-Datenbank fehlt.": "Не указана целевая база данных.",
  "Ziel: {n} pro Woche, diese Woche {k}": "Цель: {n} в неделю, на этой неделе {k}",

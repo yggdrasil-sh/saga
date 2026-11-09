@@ -4265,6 +4265,7 @@
  "Ziel trennen?": "Ziel trennen?",
  "Ziel trennen? Vorhandene Backups im Ziel bleiben erhalten.": "Ziel trennen? Vorhandene Backups im Ziel bleiben erhalten.",
  "Ziel voll: {need} nötig, {free} frei.": "Ziel voll: {need} nötig, {free} frei.",
+ "Ziel##Goal": "Ziel##Goal",
  "Ziel-Datenbank der Relation nicht gefunden": "Ziel-Datenbank der Relation nicht gefunden",
  "Ziel-Datenbank fehlt.": "Ziel-Datenbank fehlt.",
  "Ziel: {n} pro Woche, diese Woche {k}": "Ziel: {n} pro Woche, diese Woche {k}",

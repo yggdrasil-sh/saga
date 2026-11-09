@@ -4265,6 +4265,7 @@
  "Ziel trennen?": "Disconnect target?",
  "Ziel trennen? Vorhandene Backups im Ziel bleiben erhalten.": "Disconnect the target? Existing backups at the target are kept.",
  "Ziel voll: {need} nötig, {free} frei.": "Target full: {need} needed, {free} free.",
+ "Ziel##Goal": "Goal",
  "Ziel-Datenbank der Relation nicht gefunden": "Target database of the relation not found",
  "Ziel-Datenbank fehlt.": "Target database missing.",
  "Ziel: {n} pro Woche, diese Woche {k}": "Goal: {n} per week, this week {k}",

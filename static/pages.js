@@ -6873,7 +6873,7 @@
       }
       // Ziellinie: Beschriftung nie ueber Balken/Linie - quer: ueber der Zeichenflaeche an der Linie; senkrecht: rechts neben
       // der Linie (eigener Rand), in schmalen Karten als Legenden-Eintrag
-      var gl = typeof res.goal === 'number' && !tiny ? T('Ziel') + ' ' + chartAxisFmt(res.goal, fmt) : '', glSide = !!gl && !horiz && W >= 300;
+      var gl = typeof res.goal === 'number' && !tiny ? T('Ziel##Goal') + ' ' + chartAxisFmt(res.goal, fmt) : '', glSide = !!gl && !horiz && W >= 300;
       if (gl && horiz) PT = 18;
       if (glSide) PR = Math.round(chartTextW(gl) + 12);
       svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.setAttribute('width', W); svg.setAttribute('height', H);
@@ -7691,7 +7691,7 @@
     if (k === 'progress') {
       sel(T('Fortschritt aus'), [['checked', T('Anteil angehakt')], ['sum', T('Summe einer Zahl bis zum Ziel')]], cfg.mode, function (v) { cfg.mode = v; cfg.prop = ''; self.changed(); self.fill(); self.update(); });
       sel(T('Eigenschaft'), [['', T('– wählen –')]].concat(byType(cfg.mode === 'sum' ? ['number', 'calc'] : ['checkbox'])), cfg.prop, function (v) { set('prop', v); });
-      if (cfg.mode === 'sum') inp(T('Ziel'), 'number', cfg.goal, function (v) { if (+v > 0) cfg.goal = +v; else delete cfg.goal; self.changed(); self.update(); }, { step: 'any', min: '0' });
+      if (cfg.mode === 'sum') inp(T('Ziel##Goal'), 'number', cfg.goal, function (v) { if (+v > 0) cfg.goal = +v; else delete cfg.goal; self.changed(); self.update(); }, { step: 'any', min: '0' });
       return;
     }
     if (k === 'metric') {

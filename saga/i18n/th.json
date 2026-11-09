@@ -4265,6 +4265,7 @@
  "Ziel trennen?": "ยกเลิกการเชื่อมต่อปลายทาง?",
  "Ziel trennen? Vorhandene Backups im Ziel bleiben erhalten.": "ยกเลิกการเชื่อมต่อปลายทาง? ข้อมูลสำรองที่มีอยู่ที่ปลายทางจะยังอยู่",
  "Ziel voll: {need} nötig, {free} frei.": "ปลายทางเต็ม: ต้องการ {need} ว่าง {free}",
+ "Ziel##Goal": "เป้าหมาย",
  "Ziel-Datenbank der Relation nicht gefunden": "ไม่พบฐานข้อมูลปลายทางของความสัมพันธ์",
  "Ziel-Datenbank fehlt.": "ไม่มีฐานข้อมูลปลายทาง",
  "Ziel: {n} pro Woche, diese Woche {k}": "เป้าหมาย: {n} ต่อสัปดาห์ สัปดาห์นี้ {k}",

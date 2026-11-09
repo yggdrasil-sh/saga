@@ -21,6 +21,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Diagramm-Widget: Die Kontextzeile nennt die Eigenschaften („Summe Menge nach Wer“) jetzt auch, bevor der Einrichten-Dialog
   geöffnet wurde – der Server liefert dafür `x_name`/`y_name` im Ergebnis (`docs/APP-API.md`).
 - Anstehendes „ohne Rahmen“: lief 4 px über den Rand der Spalte (Hover-Fläche).
+- Diagramm-Ziellinie und Ziel-Feld beim Fortschritt waren in en/es/ru/th als Speicherziel übersetzt („Target“, „Destino“,
+  „Хранилище“) – eigener Schlüssel „Ziel##Goal“ (Goal/Objetivo/Цель/เป้าหมาย).
 
 ### Geändert – Widgets neu gestaltet (Widget-Design-Runde)
 - Gemeinsames Gerüst: Kopf mit Symbol und einzeiligem Titel, großer Wert in Textfarbe mit kleiner Einheit, gedämpfte

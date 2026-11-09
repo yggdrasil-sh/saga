@@ -4265,6 +4265,7 @@
  "Ziel trennen?": "¿Desconectar destino?",
  "Ziel trennen? Vorhandene Backups im Ziel bleiben erhalten.": "¿Desconectar el destino? Las copias existentes en el destino se conservan.",
  "Ziel voll: {need} nötig, {free} frei.": "Destino lleno: se necesitan {need}, hay {free} libres.",
+ "Ziel##Goal": "Objetivo",
  "Ziel-Datenbank der Relation nicht gefunden": "No se encontró la base de datos de destino de la relación",
  "Ziel-Datenbank fehlt.": "Falta la base de datos de destino.",
  "Ziel: {n} pro Woche, diese Woche {k}": "Objetivo: {n} por semana, esta semana {k}",
