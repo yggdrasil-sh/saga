@@ -609,6 +609,39 @@ cfg: `{"show": "current"|"goal"|"streak" ("current"), "limit": 1..5 (3)}` (`limi
 - Cover laden Apps über `GET /api/bookorbit/cover/<id>` mit ihrem Schlüssel (nicht als nackte `<img>`-Adresse im Web:
   der Aufruf braucht `X-Saga`).
 
+### Markierungen als Seite (2.5, `bookorbit2`)
+
+Phase 2, weiter **nur lesen** (BookOrbit → Saga, nie zurück): die Markierungen eines Buchs werden eine Saga-Seite
+„Notizen: <Titel>“ (Icon 📖). „Aktualisieren“ fügt nur Neues an; eigene Ergänzungen und Bearbeitungen bleiben.
+
+| Aufruf | Zweck |
+|---|---|
+| `GET /api/bookorbit/notes/books?q=` | Bücher mit Markierungen (höchstens 50, `q` sucht in Titel/Autor) → `{"state": "ok", "books": [{"id", "title", "author", "count", "cover", "page_id"}]}`. `cover` wie oben über Saga (kann 404 sein), `page_id` = schon vorhandene Seite oder `null` |
+| `POST /api/bookorbit/notes` | Body `{"book_id", "parent_id"?}` (anlegen bzw. aktualisieren) **oder** `{"page_id"}` (die Seite selbst aktualisieren) → `{"ok": true, "page_id", "book_id", "created", "added", "updated", "total", "truncated", "url"}` |
+
+- `parent_id`: nur eine **eigene**, nicht gelöschte Seite (keine Datenbank, keine nur freigegebene Seite) – sonst `404`.
+  Ohne `parent_id` entsteht die Seite auf oberster Ebene. Liegt die zugeordnete Seite im Papierkorb, entsteht eine neue.
+- `added`: neu übernommene Markierungen und Notizen, `updated`: nachgezogene Blöcke, `total`: Markierungen des Buchs bei
+  BookOrbit, `truncated`: nicht alles übernommen (höchstens 1000 Markierungen je Buch, Seite höchstens ~190 000 Zeichen).
+- Fehler: `409` mit `state` `none` (nicht verbunden) bzw. `expired` (neu anmelden), `502` mit `state` `unavailable`,
+  `404` (Buch nicht in der eigenen BookOrbit-Bibliothek, `page_id` ohne Zuordnung, Ziel nicht erlaubt), `400`
+  (ungültige Angaben, `book_id` und `page_id` zugleich), `429` (mehr als 12 Aufrufe je Minute und Konto).
+- **Aufbau der Seite** (normale Blöcke, jeder übernommene trägt `data.bo`): Kopf (Cover als eigene Datei im Bild-Block,
+  Absatz mit Autor:in und Link „In BookOrbit öffnen“, `bo.x` = `cover`/`info`), optional „Notiz zum Buch“
+  (`bo.x` = `bnh`/`bn`), je Kapitel eine Überschrift (Ebene 2, `bo.c`), je Markierung ein **Zitat-Block** (`text`, `caption`
+  = „S. 12 · 21.10.2026“, Farbe als `tunes.hkstyle {c, bg: true}` aus der Palette, `bo.a` = Markierungs-ID), die eigene
+  Notiz dazu als Absatz direkt darunter (`bo.n`), am Ende „Lesezeichen“ (`bo.x` = `bmh`, je Lesezeichen `bo.b`).
+  `bo.k` = Kapitel-Schlüssel, `bo.h` = Prüfsumme des Inhalts, wie Saga ihn geschrieben hat.
+- **Wichtig für Editoren der Apps:** `data.bo` (und andere unbekannte Felder in `data`) beim Speichern **unverändert
+  mitschicken**. Fehlt es, bleibt die Seite trotzdem richtig (Saga merkt sich übernommene IDs auch serverseitig und legt
+  nichts doppelt an), nur ändern sich solche Blöcke dann nicht mehr mit BookOrbit.
+- Regeln beim Aktualisieren: Neues landet beim eigenen Kapitel (nach dessen letztem übernommenen Block), neue Kapitel vor
+  den Lesezeichen, eine später geschriebene Notiz direkt unter ihr Zitat. Bei BookOrbit gelöschte Markierungen bleiben.
+  In Saga gelöschte kommen nicht wieder. Geänderte werden nur nachgezogen, solange der Block unverändert ist (`bo.h` passt).
+- Einstiege im Web: Einstellungen → Verbindungen → BookOrbit („Markierungen als Seite übernehmen“), Buch antippen unter
+  „Heute“ bzw. im Widget „Lesen“ → „Markierungen als Seite“, auf der Seite selbst Menü „…“ → „Aus BookOrbit
+  aktualisieren“ (sichtbar, wenn ein Block `data.bo.x = "info"` hat).
+
 ## Eintrags-Vorlagen, Startseite, neue Einträge (2.5, Fix-Runde 27.10.)
 
 ### E1 – Eintrags-Vorlagen für Bearbeitende

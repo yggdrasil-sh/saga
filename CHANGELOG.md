@@ -16,6 +16,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – BookOrbit: Markierungen als Seite (Phase 2, nur lesen)
+- Buch wählen → Seite „Notizen: <Titel>“ (📖) mit Cover, Autor:in und Link zu BookOrbit, je Kapitel einer Überschrift,
+  jeder Markierung als Zitat (Seite, Datum, Farbe aus der Palette) und der eigenen Notiz darunter; Notiz zum Buch und
+  Lesezeichen als eigene Abschnitte. „Aktualisieren“ fügt nur Neues an: eigene Ergänzungen und Bearbeitungen bleiben, in
+  Saga Gelöschtes kommt nicht wieder, bei BookOrbit Gelöschtes bleibt stehen. Saga schreibt nichts zu BookOrbit zurück.
+- Web: Einstellungen → Verbindungen → BookOrbit („Markierungen als Seite übernehmen“), Buch antippen unter „Heute“ und im
+  Widget „Lesen“, Seitenmenü „Aus BookOrbit aktualisieren“.
+- Server: `GET /api/bookorbit/notes/books`, `POST /api/bookorbit/notes` (Fähigkeit `bookorbit2`, Vertrag in
+  `docs/APP-API.md`). Ohne Migration (Zuordnung in `user_kv`, Kennung `data.bo` in den Blöcken). Grenzen: 1000
+  Markierungen je Buch (seitenweise abgerufen), Seitengröße, Textlänge, 12 Aufrufe je Minute; Text aus BookOrbit wird
+  als Klartext übernommen und bereinigt.
+
 ### Behoben – Anrufe über Gjallarhorn-Knoten brachen nach 15 min ab und kamen nicht wieder
 - Knoten: Beine der Betriebsart `node` werden nicht mehr nach 15 min abgeräumt (die Grenze gilt nur noch für
   Spiegel-/Bench-Beine). Jedes Bein protokolliert Auf- und Abbau mit Grund (ohne Adressen). Gegen Video-Standbilder bei
