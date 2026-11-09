@@ -559,58 +559,63 @@ def build(uid, book_id=None, parent_id=None, page_id=None):
         anns, total, cut = _annotations(uid, book_id)
         bms = _bookmarks(uid, book_id)
         base = link[0]
-        with _db() as c:
-            kv = _kv_get(c, uid, book_id)
-            nid = kv["page"] if _page_ok(c, uid, kv["page"]) else None
-        created = False
-        if nid is None:
-            kv = {"page": None, "a": [], "n": [], "b": [], "x": []}
-            title = t_account(uid, "Notizen: {title}", title=book["title"] or t_lang(lang, "Unbenannt"))[:200]
-            try:
-                nid = _relay(note_create(uid, {"title": title, "icon": "📖", "parent_id": parent_id, "cover": None}))["id"]
-            except ApiFail as f:
-                raise Fail(f.status if f.status < 500 else 502, str(f))
-            created = True
-        head = _head(uid, base, book_id, book, _store_cover(uid, book_id) if created else None, lang) if created else None
-        for attempt in range(3):
+        # Sperre ueber Prozesse hinweg (je Konto und Buch): Zuordnung lesen, Seite anlegen, zusammenfuehren und Zuordnung
+        # schreiben laufen nacheinander - zwei gleichzeitige Aufrufe legen nie zwei Seiten an. Die Sperre haelt die offene
+        # Transaktion dieser eigenen Verbindung bis zum Ende des Blocks (Muster wie saga/contacts.py).
+        with _db() as lk, lk:
+            lk.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (f"bo:{uid}:{book_id}",))
             with _db() as c:
-                r = c.execute("SELECT body, format, rev FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, uid)).fetchone()
-            if not r:
-                raise Fail(404, "not found")
-            if r[1] != "blocks":
-                raise Fail(409, t("Diese Seite ist keine Block-Seite"))
-            try:                                 # nicht lesbarer Inhalt: nie mit leerer Liste weiterschreiben (Datenverlust)
-                doc = json.loads(r[0] or "{}") or {}
-                blocks = doc.get("blocks") if isinstance(doc, dict) else None
-                if blocks is None and isinstance(doc, dict) and "blocks" not in doc:
-                    blocks = []
-                if not isinstance(blocks, list):
-                    raise ValueError
-            except ValueError:
-                raise Fail(409, t("Diese Seite ist keine Block-Seite"))
-            seen = {k: list(kv[k]) for k in ("a", "n", "b", "x")}
-            out, added, updated, full = merge(blocks, anns, bms, book, seen, head, lang)
-            if not added and not updated and not (head and created):
+                kv = _kv_get(c, uid, book_id)
+                nid = kv["page"] if _page_ok(c, uid, kv["page"]) else None
+            created = False
+            if nid is None:
+                kv = {"page": None, "a": [], "n": [], "b": [], "x": []}
+                title = t_account(uid, "Notizen: {title}", title=book["title"] or t_lang(lang, "Unbenannt"))[:200]
+                try:
+                    nid = _relay(note_create(uid, {"title": title, "icon": "📖", "parent_id": parent_id, "cover": None}))["id"]
+                except ApiFail as f:
+                    raise Fail(f.status if f.status < 500 else 502, str(f))
+                created = True
+            head = _head(uid, base, book_id, book, _store_cover(uid, book_id) if created else None, lang) if created else None
+            for attempt in range(3):
+                with _db() as c:
+                    r = c.execute("SELECT body, format, rev FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, uid)).fetchone()
+                if not r:
+                    raise Fail(404, "not found")
+                if r[1] != "blocks":
+                    raise Fail(409, t("Diese Seite ist keine Block-Seite"))
+                try:                                 # nicht lesbarer Inhalt: nie mit leerer Liste weiterschreiben (Datenverlust)
+                    doc = json.loads(r[0] or "{}") or {}
+                    blocks = doc.get("blocks") if isinstance(doc, dict) else None
+                    if blocks is None and isinstance(doc, dict) and "blocks" not in doc:
+                        blocks = []
+                    if not isinstance(blocks, list):
+                        raise ValueError
+                except ValueError:
+                    raise Fail(409, t("Diese Seite ist keine Block-Seite"))
+                seen = {k: list(kv[k]) for k in ("a", "n", "b", "x")}
+                out, added, updated, full = merge(blocks, anns, bms, book, seen, head, lang)
+                if not added and not updated and not (head and created):
+                    with _db() as c, c:
+                        _kv_put(c, uid, book_id, dict(seen, page=nid))
+                    break
+                try:
+                    try:
+                        _relay(_note_update(uid, nid, {"body": json.dumps({"blocks": out}, ensure_ascii=False), "format": "blocks", "rev": r[2]}))
+                    except _Reply as rp:
+                        _relay(rp.resp)
+                except ApiFail as f:
+                    if f.status == 409 and attempt < 2:      # dazwischen gespeichert: neu lesen und noch einmal zusammenfuehren
+                        continue
+                    if created:
+                        from saga.pages import note_trash
+                        note_trash(uid, nid)
+                    raise Fail(f.status if f.status < 500 else 502, str(f))
                 with _db() as c, c:
                     _kv_put(c, uid, book_id, dict(seen, page=nid))
                 break
-            try:
-                try:
-                    _relay(_note_update(uid, nid, {"body": json.dumps({"blocks": out}, ensure_ascii=False), "format": "blocks", "rev": r[2]}))
-                except _Reply as rp:
-                    _relay(rp.resp)
-            except ApiFail as f:
-                if f.status == 409 and attempt < 2:      # dazwischen gespeichert: neu lesen und noch einmal zusammenfuehren
-                    continue
-                if created:
-                    from saga.pages import note_trash
-                    note_trash(uid, nid)
-                raise Fail(f.status if f.status < 500 else 502, str(f))
-            with _db() as c, c:
-                _kv_put(c, uid, book_id, dict(seen, page=nid))
-            break
-        else:
-            raise Fail(409, t("Seite wurde gerade geändert – bitte noch einmal versuchen"))
+            else:
+                raise Fail(409, t("Seite wurde gerade geändert – bitte noch einmal versuchen"))
     return {"ok": True, "page_id": nid, "book_id": book_id, "created": created, "added": added, "updated": updated,
             "total": total, "truncated": bool(cut or full), "url": f"/notes#{nid}"}
 

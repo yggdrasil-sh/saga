@@ -625,7 +625,8 @@ Phase 2, weiter **nur lesen** (BookOrbit → Saga, nie zurück): die Markierunge
   BookOrbit, `truncated`: nicht alles übernommen (höchstens 1000 Markierungen je Buch, Seite höchstens ~190 000 Zeichen).
 - Fehler: `409` mit `state` `none` (nicht verbunden) bzw. `expired` (neu anmelden), `502` mit `state` `unavailable`,
   `404` (Buch nicht in der eigenen BookOrbit-Bibliothek, `page_id` ohne Zuordnung, Ziel nicht erlaubt), `400`
-  (ungültige Angaben, `book_id` und `page_id` zugleich), `429` (mehr als 12 Aufrufe je Minute und Konto).
+  (ungültige Angaben, `book_id` und `page_id` zugleich), `423` (Seite gesperrt – erst entsperren), `429` (mehr als
+  12 Aufrufe je Minute und Konto).
 - **Aufbau der Seite** (normale Blöcke, jeder übernommene trägt `data.bo`): Kopf (Cover als eigene Datei im Bild-Block,
   Absatz mit Autor:in und Link „In BookOrbit öffnen“, `bo.x` = `cover`/`info`), optional „Notiz zum Buch“
   (`bo.x` = `bnh`/`bn`), je Kapitel eine Überschrift (Ebene 2, `bo.c`), je Markierung ein **Zitat-Block** (`text`, `caption`

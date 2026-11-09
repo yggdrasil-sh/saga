@@ -749,6 +749,40 @@
     return { blocks: paras.map(function (s) { return { type: 'paragraph', data: { text: HK.escapeHtml(s).replace(/\n/g, '<br>') } }; }) };
   }
 
+  // 2.5 (bookorbit2): Editor.js speichert bei Absatz, Ueberschrift und Zitat nur die eigenen Felder - unbekannte Felder in
+  // data (z. B. data.bo der aus BookOrbit uebernommenen Bloecke) gingen beim Speichern verloren. Sie werden je Block-ID
+  // beim Zeichnen bzw. Aktualisieren gemerkt und beim Speichern unveraendert ergaenzt (nur, was das Werkzeug selbst nicht
+  // liefert; der Server bereinigt wie immer). Den Absatz stellt Editor.js intern bereit - daher hier statt einer Huelle wie
+  // hkImage. Neue Bloecke (Duplizieren, Umwandeln) haben eine neue ID und damit keine gemerkten Felder.
+  var KEEP_KNOWN = { paragraph: { text: 1 }, header: { text: 1, level: 1 }, quote: { text: 1, caption: 1, alignment: 1 } };
+  function keepExtras(ed, data) {
+    if (!ed || ed.hkKeep) return;
+    var memo = ed.hkKeep = {};
+    function note(id, type, d) {
+      if (!id) return;
+      var known = KEEP_KNOWN[type], x = null;
+      if (known && d && typeof d === 'object') Object.keys(d).forEach(function (k) { if (!known[k] && d[k] !== undefined) (x = x || {})[k] = JSON.parse(JSON.stringify(d[k])); });
+      if (x) memo[id] = { t: type, x: x }; else delete memo[id];
+    }
+    function noteAll(doc) { ((doc && doc.blocks) || []).forEach(function (b) { if (b) note(b.id, b.type, b.data); }); }
+    noteAll(data);
+    var render = ed.render.bind(ed), save = ed.save.bind(ed), upd = ed.blocks.update.bind(ed.blocks);
+    ed.render = function (doc) { Object.keys(memo).forEach(function (k) { delete memo[k]; }); noteAll(doc); return render(doc); };
+    ed.blocks.update = function (id, d, tunes) {
+      if (d) { var b = ed.blocks.getById && ed.blocks.getById(id); note(id, b ? b.name : (memo[id] || {}).t, d); }
+      return upd.apply(null, arguments);
+    };
+    ed.save = function () {
+      return save().then(function (o) {
+        ((o && o.blocks) || []).forEach(function (b) {
+          var m = b && memo[b.id];
+          if (m && m.t === b.type && b.data) Object.keys(m.x).forEach(function (k) { if (!(k in b.data)) b.data[k] = JSON.parse(JSON.stringify(m.x[k])); });
+        });
+        return o;
+      });
+    };
+  }
+
   function ensureEditor(data) {
     if (TIPTAP) {                                     // static/pm-editor.js: Tiptap hinter derselben Schnittstelle
       if (S.editor) return S.editor.render(data).then(function () { return S.editor; });
@@ -811,6 +845,7 @@
       });
       $('pg-editor').addEventListener('input', function () { if (!S.loading) tryShortcut(S.editor); });
       return S.editor.isReady.then(function () {
+        keepExtras(S.editor, data);
         try { new window.DragDrop(S.editor); } catch (e) { /* Ziehen ist Komfort - Editor laeuft auch ohne */ }
         return S.editor;
       });

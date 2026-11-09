@@ -98,6 +98,8 @@ def reset_books():
                          "note": None, "updatedAt": "2026-10-05T08:00:00.000Z", "clientId": "x", "origin": "web", "chapterId": None}]},
             32: {"title": "Viele Markierungen", "authors": [], "personalNote": None, "cover": False,
                  "ann": [A(1000 + i, f"Stelle {i}", f"K{i // 50}", "#FACC15", None, i) for i in range(350)], "bm": []},
+            34: {"title": "Gleichzeitig", "authors": [], "personalNote": None, "cover": True, "slow": 1.0,
+                 "ann": [A(8001, "Zwei Prozesse auf einmal", "K")], "bm": []},
             33: {"title": "Lange Texte", "authors": [{"id": 2, "name": "Ole Stein", "sortName": None}], "personalNote": None, "cover": False,
                  "ann": [A(5000 + i, ("Wort " * 1200) + str(i), "Lang", "#FB923C", None, None) for i in range(100)], "bm": []},
         },
@@ -188,6 +190,8 @@ class FH(BaseHTTPRequestHandler):
             if rest == ["bookmarks"]:
                 return self.send(200, b["bm"])
             if rest == ["thumbnail"]:
+                if b.get("slow"):
+                    time.sleep(b["slow"])                # liegt in der Sperre (Cover beim Anlegen) -> Wettlauf sichtbar
                 return self.send(200, PNG, "image/png") if b["cover"] else self.send(404, {"message": "No thumbnail"})
         self.send(404, {"message": "Not Found"})
 
@@ -249,6 +253,7 @@ def main():
         part_page_id(Ca, Cb, nid)
         part_parent(Ca, Cb)
         part_limits(Ca)
+        part_parallel(Ca)
         part_trash(Ca, nid)
         part_bad(Ca)
         part_expired(Ca)
@@ -260,7 +265,7 @@ def main():
 def part_list(Ca):
     s, d = req("GET", "/api/bookorbit/notes/books", Ca)
     bs = {b["id"]: b for b in d.get("books") or []} if isinstance(d, dict) else {}
-    ok(f"Buecherliste: drei Buecher mit Anzahl ({s})", s == 200 and set(bs) == {31, 32, 33} and bs[31]["count"] == 6 and bs[32]["count"] == 350, d)
+    ok(f"Buecherliste: drei Buecher mit Anzahl ({s})", s == 200 and set(bs) == {31, 32, 33, 34} and bs[31]["count"] == 6 and bs[32]["count"] == 350, d)
     b = bs.get(31) or {}
     ok("Buch: Titel, Autor, Cover ueber Saga, noch keine Seite", b.get("title") == "Das Meer der Worte" and b.get("author") == "Ida Feld"
        and b.get("cover") == "/api/bookorbit/cover/31" and b.get("page_id") is None, b)
@@ -426,6 +431,27 @@ def part_limits(Ca):
        and len(p.get("body") or "") < 200000 and len(qs) == d.get("added"), (d, len(p.get("body") or "")))
     ok("Textlaenge je Markierung begrenzt", qs and all(len(b["data"]["text"]) <= 3000 for b in qs) and qs[0]["data"]["text"].endswith("…"),
        len(qs[0]["data"]["text"]) if qs else None)
+
+
+def part_parallel(Ca):
+    """Zwei Prozesse legen dasselbe Buch gleichzeitig an (Server + eigener Prozess): Sperre in der Datenbank -> eine Seite."""
+    import subprocess
+    script = ("import sys, json; sys.path.insert(0, '.'); from saga import bookorbit_pages as bp\n"
+              "try: print(json.dumps(bp.build('bos-a', 34)))\n"
+              "except bp.Fail as f: print(json.dumps({'error': f.msg}))")
+    pr = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), env=dict(os.environ))
+    time.sleep(0.3)
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 34})
+    po, pe = pr.communicate(timeout=60)
+    try:
+        d2 = json.loads(po.decode().strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        d2 = {"raw": po.decode()[-300:], "err": pe.decode()[-300:]}
+    with connect() as c:
+        n = c.execute("SELECT COUNT(*) FROM note WHERE uid='bos-a' AND title='Notizen: Gleichzeitig' AND deleted_at IS NULL").fetchone()[0]
+    ok(f"zwei Prozesse gleichzeitig: genau eine Seite ({s}, {n})", s == 200 and n == 1 and d.get("page_id") == d2.get("page_id")
+       and sorted([d.get("created"), d2.get("created")]) == [False, True], (d, d2))
 
 
 def part_trash(Ca, nid):
