@@ -2490,7 +2490,7 @@ body.notes-page .page.p-small .page-body{font-size:var(--fs-base)}
 .wg-row input[type=checkbox]{justify-self:start}
 .wg-items{min-height:5rem;resize:vertical}
 .wg-panel>.wg-row.wg-cnt{display:block;grid-column:2;justify-self:end;font-size:var(--fs-xs);color:var(--muted);margin-top:-.25rem}
-.wg-done{grid-column:1/-1;justify-self:end}
+.wg-done{grid-column:1/-1;justify-self:end;min-height:32px}
 .wg-panel>.wg-row.wg-note{display:block;grid-column:1/-1}                 /* Hinweis ueber beide Spalten: sonst bläht sein Text die auto-Spalte auf und die Felder schrumpfen */
 @media (max-width:640px){.wg-panel{grid-template-columns:1fr}.wg-row{display:flex;flex-direction:column;gap:.2rem}.wg-panel>.wg-row.wg-cnt{grid-column:1}}
 /* Fix27 #2: schmale Spalten -> Panel schwebt rechts (Desktop) bzw. als Blatt unten (Handy), Widget bleibt als Vorschau sichtbar */

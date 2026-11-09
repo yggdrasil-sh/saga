@@ -222,10 +222,14 @@ blockquote[class*="bg-"],ul[class*="bg-"],ol[class*="bg-"]{padding-top:.4rem;pad
 .pub-ch{width:100%;height:auto;max-height:22rem;display:block}
 .pub-ch-tab{margin-top:.4rem;font-size:.85em}.pub-ch-tab summary{cursor:pointer;color:var(--muted)}
 .pub-wx-now{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}.pub-wx-ic{font-size:1.8rem}
-.pub-wx-days{display:grid;grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr));gap:.4rem;margin-top:.5rem;font-size:.9em}
+.pub-wx-days{display:grid;grid-template-columns:repeat(auto-fill,minmax(5.5rem,1fr));gap:.4rem;margin-top:.5rem;font-size:.9em}
 .pub-wx-day{display:flex;flex-direction:column;align-items:center;gap:.1rem}.pub-wx-src{margin-top:.4rem;font-size:.75em;color:var(--muted)}
-.pub-hb{border-collapse:collapse;font-size:.9em}.pub-hb th{text-align:left;padding-right:.6rem;font-weight:500}.pub-hb td{padding:0 .15rem;text-align:center}
-.pub-hb-on{color:var(--wa)}.pub-hb-off{color:var(--border)}
+/* Gewohnheiten: Name und Quote oben, Tage darunter (bricht um statt aus der Karte zu laufen; Widget-Design-Runde) */
+.pub-hb,.pub-hb tbody{display:block;font-size:.9em}.pub-hb tr{display:flex;flex-wrap:wrap;align-items:center;gap:0 .2rem;margin:.35rem 0}
+.pub-hb th{order:0;flex:1 1 calc(100% - 4rem);min-width:0;text-align:left;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pub-hb td.pub-muted{order:1;flex:0 0 3.6rem;text-align:right;white-space:nowrap}
+.pub-hb td{order:2;padding:0;text-align:center;line-height:1.2}
+.pub-hb-on{color:var(--wa)}.pub-hb-off{color:var(--field,var(--muted))}
 /* 2.5 (P6-1): Mathe als MathML (vom Server), Mermaid als gespeichertes Vorschaubild */
 .pub-mathblock{margin:1rem 0;overflow-x:auto;text-align:center}
 .pub-mathblock math{font-size:1.15em}
