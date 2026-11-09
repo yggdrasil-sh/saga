@@ -6921,7 +6921,7 @@
     return w;
   };
   WidgetTool.prototype.editable = function () { return !this.ro && !readOnly() && WG_KINDS.indexOf(this.data.kind) >= 0; };
-  WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); if (this.panel && this.panel.classList.contains('wg-panel-float')) { clearInterval(this.floatT); this.panel.remove(); this.panel = null; } };
+  WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); if (this.panel && this.panel.classList.contains('wg-panel-float')) { clearInterval(this.floatT); if (this.floatRs) removeEventListener('resize', this.floatRs); this.floatRs = this.placeFloat = null; this.panel.remove(); this.panel = null; } };
   WidgetTool.prototype.changed = function () {
     if (S.loading) return;
     if (this.block && this.block.dispatchChange) this.block.dispatchChange(); else { S.dirtyBody = true; schedule(); }
@@ -7162,12 +7162,20 @@
       p.appendChild(el('div', 'wg-panel-h', T('Widget einrichten')));
       p.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); self.closePanel(); } });
       document.body.appendChild(p);
-      if (innerWidth > 640) {          // neben das Widget, damit die Live-Vorschau sichtbar bleibt
-        var r = this.w.getBoundingClientRect(), pw = p.offsetWidth;
-        if (r.right + 12 + pw <= innerWidth - 8) p.style.left = (r.right + 12) + 'px';
-        else if (r.left - 12 - pw >= 8) p.style.left = (r.left - 12 - pw) + 'px';
-        if (p.style.left) { p.style.right = 'auto'; p.style.top = Math.max(8, Math.min(r.top, innerHeight - p.offsetHeight - 8)) + 'px'; }
-      }
+      // Lage erst NACH dem Befuellen rechnen und bei jeder Aenderung des Inhalts neu (fill, Fenstergroesse): sonst stand
+      // das Panel mit der Hoehe des leeren Rahmens an der Widget-Oberkante und wuchs unten aus dem Bild ("Fertig"
+      // unerreichbar, Diagramm-Widget in Spalten nicht einzurichten - Widget-Design-Runde 9.11.)
+      this.placeFloat = function () {
+        if (!p.isConnected || innerWidth <= 640) { p.style.left = p.style.top = p.style.right = p.style.maxHeight = ''; return; }
+        var r = self.w.getBoundingClientRect(), pw = p.offsetWidth, left = null;
+        if (r.right + 12 + pw <= innerWidth - 8) left = r.right + 12;
+        else if (r.left - 12 - pw >= 8) left = r.left - 12 - pw;
+        if (left == null) { p.style.left = p.style.top = p.style.right = p.style.maxHeight = ''; return; }   // CSS: rechts oben
+        p.style.left = left + 'px'; p.style.right = 'auto'; p.style.maxHeight = (innerHeight - 16) + 'px';
+        p.style.top = Math.max(8, Math.min(r.top, innerHeight - p.offsetHeight - 8)) + 'px';
+      };
+      this.floatRs = function () { if (self.placeFloat) self.placeFloat(); };
+      addEventListener('resize', this.floatRs);
       this.floatT = setInterval(function () { if (!self.w.isConnected) self.closePanel(); }, 500);
     } else this.w.appendChild(p);
     this.fill();
@@ -7175,18 +7183,25 @@
     done.addEventListener('click', function () { self.closePanel(); });
     this.doneBtn = done;
     p.appendChild(done);
+    if (this.placeFloat) this.placeFloat();
     if (p.classList.contains('wg-panel-float')) { var f0 = p.querySelector('input,select,textarea'); if (f0) f0.focus(); }
     void d;
   };
   WidgetTool.prototype.closePanel = function () {
     var fl = this.panel && this.panel.classList.contains('wg-panel-float');
     clearInterval(this.floatT); this.w.classList.remove('wg-editing');
+    if (this.floatRs) removeEventListener('resize', this.floatRs); this.floatRs = this.placeFloat = null;
     if (this.panel) this.panel.remove(); this.panel = null; this.pv = null;
     if (fl && !this.w.isConnected) return;
     this.draw(); loadWidgets();
     if (fl) try { this.card.focus(); } catch (e) { /* egal */ }
   };
   WidgetTool.prototype.fill = function () {
+    if (!this.panel) return;
+    this.fillRows();
+    if (this.placeFloat) this.placeFloat();                // Hoehe hat sich geaendert (z. B. Datenbank gewaehlt)
+  };
+  WidgetTool.prototype.fillRows = function () {
     var self = this, d = this.data, cfg = d.cfg, p = this.panel;
     [].slice.call(p.querySelectorAll('.wg-row')).forEach(function (x) { x.remove(); });
     var at = p.querySelector('.wg-done');
