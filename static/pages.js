@@ -7034,7 +7034,7 @@
         if (!p) cv.textContent = '–';
         else if (p.h != null) { cv.appendChild(document.createTextNode(String(p.h))); cv.appendChild(el('small', null, T('Std.'))); cv.appendChild(document.createTextNode(' ' + p.m)); cv.appendChild(el('small', null, T('Min.'))); }
         else if (!p.n) cv.textContent = T('Heute');
-        else { cv.appendChild(document.createTextNode(fNum.format(p.n))); cv.appendChild(el('small', null, T('{n:Tag|Tage}', { n: p.n }))); }
+        else { cv.appendChild(document.createTextNode(fNum.format(p.n))); cv.appendChild(el('small', null, T('{n} {n:Tag|Tage}', { n: p.n }).replace(String(p.n), '').trim())); }
         cv.title = wgCountdown(cfg, new Date()) || '';
         var ds = p ? fCalcDay2.format(p.day) + (cfg.time ? ' · ' + cfg.time : '') : '';
         when.textContent = p ? (p.since ? T('seit {datum}', { datum: ds }) : T('bis {datum}', { datum: ds })) : '';
@@ -7047,7 +7047,11 @@
     if (wgServer(d) && S.wMissing) { body.appendChild(el('div', 'wg-note', T('Werte gibt es erst mit einer neueren Server-Version'))); return; }
     if (WG_KINDS2.indexOf(d.kind) >= 0 && remoteId(S.cur && S.cur.id) && S.wUnsupported2) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
     if (w && w.error === 'bad_cfg') { this.empty(body, d.kind); return; }
-    if (w && w.error) { body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg)); return; }
+    if (w && w.error) {
+      body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg));
+      if (this.editable() && (w.error === 'gone' || w.error === 'no_access')) body.appendChild(el('div', 'wg-sub', T('Quelle neu wählen')));   // Regel 9: naechster Schritt
+      return;
+    }
     if (WG_KINDS2.indexOf(d.kind) >= 0) { this.draw2(body, w); return; }
     var srcName = function () {                              // Kontextzeile: Rechenart und Quelle (Name nur, wenn ich die Datenbank sehe)
       if (cfg.src === 'tasks') return d.kind === 'metric' ? WG_AGG[cfg.agg] || WG_AGG.open : T('Saga-Aufgaben');

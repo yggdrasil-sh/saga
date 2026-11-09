@@ -2725,7 +2725,11 @@ button.hb-c{cursor:pointer}button.hb-c:hover{border-color:var(--wa)}.hb-heat but
   .hb-head{margin-bottom:-.35rem}
   .hb-st{justify-content:flex-end}
 }
-/* sehr schmal bzw. Groesse S: nur die letzten 7 Tage (heute bleibt rechts) */
+/* schmal: bei 30 Tagen nur die letzten 14, sehr schmal bzw. Groesse S nur die letzten 7 (heute bleibt rechts) */
+@container wg (max-width:419px){
+  .hb-heat .hb-cells>:nth-last-child(n+15){display:none}
+  .hb-heat .hb-cells{grid-template-columns:repeat(min(var(--hbn),14),minmax(0,var(--hbc)))}
+}
 @container wg (max-width:239px){
   .hb-heat .hb-cells>:nth-last-child(n+8){display:none}
   .hb-heat .hb-cells{grid-template-columns:repeat(7,minmax(0,1.2rem));justify-content:space-between;gap:3px}

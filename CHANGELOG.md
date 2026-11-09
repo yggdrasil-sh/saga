@@ -16,6 +16,22 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Widgets neu gestaltet (Widget-Design-Runde)
+- Gemeinsames Gerüst: Kopf mit Symbol und einzeiligem Titel, großer Wert in Textfarbe mit kleiner Einheit, gedämpfte
+  Kontextzeile; Akzent nur für Balken, Punkte, Ringe und den heutigen Tag (eigene Farbe färbt auch den Wert). Werte
+  brechen nicht mehr um, Größe S/M/L wirkt auf Abstände, Wert, Listen und Raster.
+- Je Art: Countdown „42 Tage“ mit Zieldatum; Fortschritt/Kennzahl mit „x von y“, Ziel und Marker über 100 %, Kennzahl
+  mit Rechenart und Quelle; Zitat mit Serifen, Zitatzeichen und Quelle („… – Name“), lange Zitate mit „…“; Uhr analog
+  mit Stundenmarken, Datum und Zeitzone; Gewohnheiten ohne Überlauf (heute und Quote immer sichtbar, 14/30 Tage als
+  Heatmap, offene Kreise im Dunkeln sichtbar); Anstehendes als Agenda mit einheitlichen Symbolen; Wetter-Tage in
+  schmalen Karten als Liste; Lesen-Titel zweizeilig.
+- Nicht eingerichtet: ruhiger Hinweis „… einrichten“ mit Symbol statt Warndreieck. Einrichten: „Rahmen“ statt
+  „Darstellung“ (Diagramm: „Diagrammart“), Felder mind. 32 px, „Fertig“ im mitlaufenden Kopf; am Handy bleibt das Widget
+  über dem Blatt sichtbar.
+- Spalten: Widgets einer Reihe gleich hoch; Spalten brechen nach der Breite des Blocks um (4 → 2×2, schmal
+  untereinander) statt erst am Handy; Spalten-Blöcke ab 3 Spalten dürfen breiter als die Textspalte werden (bis 1100 px,
+  Tiptap und veröffentlichte Seiten).
+
 ### Neu – BookOrbit: Markierungen als Seite (Phase 2, nur lesen)
 - Buch wählen → Seite „Notizen: <Titel>“ (📖) mit Cover, Autor:in und Link zu BookOrbit, je Kapitel einer Überschrift,
   jeder Markierung als Zitat (Seite, Datum, Farbe aus der Palette) und der eigenen Notiz darunter; Notiz zum Buch und
