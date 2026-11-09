@@ -6887,7 +6887,7 @@
       }
       if (res.type === 'bar' || res.type === 'hbar' || (tiny && res.type !== 'line' && res.type !== 'area')) {
         var k = stack ? 1 : series.length, inner = band * (N > 1 ? 0.72 : 0.5), bw = inner / k, gap = k > 1 ? Math.min(2, bw * 0.15) : 0, base = vpos(0), accP = cats.map(function () { return 0; }), accN = accP.slice();
-        var rr = Math.min(4, (bw - gap) / 3);
+        var rr = stack ? Math.min(2, (bw - gap) / 4) : Math.min(4, (bw - gap) / 3);
         series.forEach(function (s, si) {
           (s.values || []).forEach(function (v, i) {
             if (typeof v !== 'number') return;

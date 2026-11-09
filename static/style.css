@@ -2679,7 +2679,7 @@ tr.rc > td.db-fz{background:color-mix(in srgb,var(--rc) 14%,var(--bg))}
 .ch-head{display:flex;align-items:center;gap:.5rem;min-height:1.2rem;font-size:var(--fs-sm);color:var(--muted)}
 .ch-ctx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chart.ch-narrow .ch-head{padding-right:1.8rem}
-.ch-num{color:var(--fg)}.chart.ch-acc .ch-num{color:var(--wa)}
+.ch-num{color:var(--fg)}.chart.ch-tiny .ch-num{font-size:var(--fs-xl);white-space:nowrap;overflow-wrap:normal;overflow:hidden;text-overflow:ellipsis}.chart.ch-acc .ch-num{color:var(--wa)}
 .ch-plot{position:relative;min-width:0}.ch-plot.ch-beside{display:flex;align-items:center;gap:1.2rem}
 .ch-svg{display:block;overflow:visible}.ch-svg:not(.ch-round){width:100%;height:auto}.ch-round{flex:none;max-width:100%;height:auto;margin:0 auto}
 .ch-plot.ch-beside .ch-round{margin:0}
@@ -2690,7 +2690,7 @@ tr.rc > td.db-fz{background:color-mix(in srgb,var(--rc) 14%,var(--bg))}
 .ch-t{fill:var(--muted);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
 .ch-big{fill:var(--fg);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.01em}.ch-cap{fill:var(--muted);font-size:var(--fs-xs)}
 .chart.ch-acc .ch-big{fill:var(--wa)}
-.ch-goal{stroke:var(--muted);stroke-width:1.25;stroke-dasharray:4 4}.ch-goal-t{fill:var(--muted)}
+.ch-goal{stroke:var(--muted);stroke-width:1.25;stroke-dasharray:4 4}.ch-goal-t{fill:var(--muted);paint-order:stroke;stroke:var(--card,var(--bg));stroke-width:3px;stroke-linejoin:round}
 .ch-hit{cursor:pointer;transition:opacity .12s}.ch-hit:hover,.ch-hit:focus-visible{opacity:.78;outline:none}
 .ch-hit:focus-visible{stroke:var(--fg);stroke-width:1.5}
 .ch-tip{position:absolute;left:0;top:0;z-index:5;pointer-events:none;opacity:0;transition:opacity .1s;background:var(--card,var(--bg));color:var(--fg);

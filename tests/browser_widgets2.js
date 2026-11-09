@@ -1,7 +1,8 @@
 // Widgets Etappe 2 + Diagramme (2.5, Paket 4) im Web: Diagramm-Ansicht einer Datenbank (Umschalten im Menue, SVG,
 // Einrichten, Klick auf Balken zeigt die Eintraege), Diagramm-Widget per Slash mit Live-Vorschau, Gewohnheiten (Raster,
 // Abhaken per Klick, Serie), Anstehendes (eigene Aufgaben, gruppiert), Wetter-Fehlerzustand bei ausgeschaltetem Wetter,
-// Achsen-Vektoren (tests/chart_ticks.json) gegen chartTicks, keine Seiten-/CSP-Fehler.
+// Achsen-Vektoren (tests/chart_ticks.json) gegen chartTicks, Diagramme in 4 Spalten (Schrift >= 10 px, Palette ohne
+// Optionsfarben, Flaeche gestapelt, Tabelle als Knopf), keine Seiten-/CSP-Fehler.
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8230 CK=<Cookie hk-test-a> node tests/browser_widgets2.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
 const D = require('./lib/editor_dom');            // Bloecke ueber data-block-* und HKPages.k.doc (T1)
@@ -121,6 +122,65 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   const bl = await body(id);
   const cw = bl.find((b) => b.type === 'widget' && b.data.kind === 'chart');
   ok('gespeichert: chart mit db/x', cw && cw.data.cfg.db === db && cw.data.cfg.x === 'kat' && cw.data.cfg.type === 'bar', cw);
+
+  // --- Diagramme in 4 Spalten (Design-Runde): echte Schriftgroesse, Palette ohne Optionsfarben, Flaeche gestapelt -----
+  const rdb = (await api('POST', '/api/notes', { title: 'B2 Reihen', kind: 'database' })).id;
+  await api('PATCH', '/api/notes/' + rdb, { schema: { props: [
+    { id: 'wer', name: 'Wer', type: 'select', options: [{ id: 'a', name: 'Anna' }, { id: 'b', name: 'Ben', color: 'gray' }, { id: 'c', name: 'Cleo' }] },
+    { id: 'n', name: 'Menge', type: 'number' }, { id: 'am', name: 'Am', type: 'date' }], views: [{ id: 'tab', name: 'Tabelle', type: 'table' }] } });
+  for (const [w, nn, am] of [['a', 3, '2026-08-05'], ['b', 4, '2026-08-09'], ['c', 5, '2026-08-20'], ['a', 2, '2026-09-03'], ['b', 6, '2026-09-11'], ['c', 1, '2026-09-28'], ['a', 7, '2026-10-02']]) {
+    await api('POST', '/api/notes', { title: w + nn, parent_id: rdb, props: { wer: w, n: nn, am: am } });
+  }
+  const CW = (bid, cfg, t) => W(bid, 'chart', Object.assign({ db: rdb, view: '', agg: 'sum', y: 'n' }, cfg), { title: t });
+  const cid = (await api('POST', '/api/notes', { title: 'B2 Diagramme' })).id;
+  await api('PATCH', '/api/notes/' + cid, { format: 'blocks', body: JSON.stringify({ blocks: [
+    { id: 'cc', type: 'columns', data: { cols: [
+      CW('c1', { type: 'bar', x: 'am', bucket: 'month', series: 'wer' }, 'Reihen'),
+      CW('c2', { type: 'area', x: 'am', bucket: 'month', series: 'wer', stack: true }, 'Flaeche gestapelt'),
+      CW('c3', { type: 'donut', x: 'wer' }, 'Ring'),
+      CW('c4', { type: 'hbar', x: 'wer' }, 'Quer')].map((w) => ({ blocks: [w] })) } }, P('')] }), wide: true });
+  await p.setViewportSize({ width: 1920, height: 1000 });
+  await p.goto(BASE + '/notes?t=' + Date.now() + '#' + cid);
+  await until(() => p.evaluate(() => document.querySelectorAll('.wg[data-kind="chart"] .ch-svg').length === 4), 10000); await sleep(400);
+  const fonts = await p.evaluate(() => [...document.querySelectorAll('.wg[data-kind="chart"] .ch-svg:not(.ch-round)')].map((s) => {
+    const sc = s.getBoundingClientRect().width / s.viewBox.baseVal.width;
+    return { w: Math.round(s.getBoundingClientRect().width), min: Math.min(...[...s.querySelectorAll('text.ch-t')].map((t) => parseFloat(getComputedStyle(t).fontSize) * sc)) };
+  }));
+  ok(`4 Spalten: Achsentext effektiv >= 10 px (${JSON.stringify(fonts)})`, fonts.length === 3 && fonts.every((f) => f.min >= 10 && isFinite(f.min)), fonts);
+  const serCls = await p.evaluate(() => {
+    const w = [...document.querySelectorAll('.wg[data-kind="chart"]')].find((x) => /Reihen/.test(x.textContent));
+    return w ? [...new Set([...w.querySelectorAll('.ch-svg rect.ch-f')].map((r) => (r.getAttribute('class').match(/ch-(s\d|c-\w+|one|other)/) || [])[0]))] : [];
+  });
+  ok(`Reihen ohne Optionsfarbe: verschiedene Palettenfarben (${serCls.join(' ')})`, serCls.length === 3 && serCls.every((c) => /^ch-s\d$/.test(c)), serCls);
+  const ringCls = await p.evaluate(() => {
+    const w = [...document.querySelectorAll('.wg[data-kind="chart"]')].find((x) => /Ring/.test(x.querySelector('.wg-t') ? x.querySelector('.wg-t').textContent : ''));
+    return w ? [...w.querySelectorAll('.ch-svg path.ch-f')].map((r) => (r.getAttribute('class').match(/ch-(s\d|c-\w+)/) || [])[0]) : [];
+  });
+  ok(`Ring ohne Optionsfarben: nicht grau, alle verschieden (${ringCls.join(' ')})`, ringCls.length === 3 && new Set(ringCls).size === 3 && !ringCls.some((c) => /gray/.test(c || '')), ringCls);
+  const st = await p.evaluate(() => {
+    const w = [...document.querySelectorAll('.wg[data-kind="chart"]')].find((x) => /gestapelt/.test(x.textContent));
+    if (!w) return null;
+    const num = (s) => { const v = parseFloat(String(s).replace(/\./g, '').replace(',', '.')); return isFinite(v) ? v : 0; };
+    const sums = [...w.querySelectorAll('.ch-tab tbody tr')].map((tr) => [...tr.querySelectorAll('td')].reduce((a, td) => a + num(td.textContent), 0));
+    const by = {}; w.querySelectorAll('.ch-svg circle[data-top]').forEach((c) => { (by[c.getAttribute('cx')] = by[c.getAttribute('cx')] || []).push([+c.getAttribute('data-top'), +c.getAttribute('cy')]); });
+    const tops = Object.keys(by).sort((a, b) => a - b).map((k) => { const g = by[k].sort((a, b) => b[0] - a[0]); return { top: g[0][0], highest: g[0][1] === Math.min(...g.map((x) => x[1])) }; });
+    return { sums, tops };
+  });
+  ok(`Flaeche gestapelt: oberste Kurve = Summe je Monat (${JSON.stringify(st)})`, !!st && st.sums.length === 3 && st.tops.length === 3
+    && st.tops.every((t, i) => Math.abs(t.top - st.sums[i]) < 1e-9 && t.highest), st);
+  await p.setViewportSize({ width: 1280, height: 900 }); await sleep(400);
+  const narrowTab = await p.evaluate(() => [...document.querySelectorAll('.wg[data-kind="chart"] details.ch-tab')].map((d) => {
+    const s = d.querySelector('summary'), r = s.getBoundingClientRect();
+    return { btn: d.classList.contains('ch-tab-btn'), w: Math.round(r.width), name: s.getAttribute('aria-label') || s.textContent };
+  }));
+  ok(`schmale Karten: Tabelle als kleiner Knopf mit Namen (${JSON.stringify(narrowTab[0])})`, narrowTab.length === 4 && narrowTab.every((x) => x.btn && x.w <= 28 && /Tabelle/.test(x.name)), narrowTab);
+  await api('PATCH', '/api/notes/' + cid, { wide: false });
+  await p.goto(BASE + '/notes?t=' + Date.now() + '#' + cid);
+  await until(() => p.evaluate(() => document.querySelectorAll('.wg[data-kind="chart"] .ch-svg').length === 4), 10000); await sleep(400);
+  const tiny = await p.evaluate(() => [...document.querySelectorAll('.wg[data-kind="chart"] .chart')].map((c) => ({ w: c.clientWidth, tiny: c.classList.contains('ch-tiny'),
+    num: !!c.querySelector(':scope > .ch-num'), ticks: c.querySelectorAll('text.ch-t').length })));
+  ok(`unter 200 px: kompakt (Gesamtwert + Balken, keine Achsen) (${JSON.stringify(tiny[0])})`, tiny.length === 4 && tiny.every((x) => x.w >= 200 || (x.tiny && x.ticks === 0)) && tiny.some((x) => x.tiny && x.num), tiny);
+  await api('DELETE', '/api/notes/' + cid); await api('DELETE', '/api/notes/' + rdb);
 
   // --- schmal (Handy) --------------------------------------------------------------------------------------------
   await p.setViewportSize({ width: 390, height: 800 }); await sleep(600);

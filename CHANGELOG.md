@@ -32,6 +32,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   untereinander) statt erst am Handy; Spalten-Blöcke ab 3 Spalten dürfen breiter als die Textspalte werden (bis 1100 px,
   Tiptap und veröffentlichte Seiten).
 
+### Geändert – Diagramme (Widget und Datenbank-Ansicht)
+- Zeichnung in der echten Breite (Schrift echte 11 px auch in Spalten und am Handy), Höhe nach Größe S/M/L; unter 260 px
+  weniger Ticks, unter 200 px kompakt (Gesamtwert und Balken).
+- Ohne (verschiedene) Optionsfarben eine Palette statt Grau; „Andere“/„Leer“ neutral. Werte in Textfarbe, Widget-Farbe färbt.
+- „Fläche gestapelt“ stapelt, Achsenbreite aus der längsten Beschriftung, kompakte Achsenzahlen, Beschriftungen nach Platz
+  ausgedünnt, Legende als Liste mit „+ n weitere“, eigener Tooltip, Kontextzeile („Summe · 36 Einträge“), Ring mit Gesamtwert.
+- „Werte als Tabelle“ in schmalen Karten als kleiner Knopf (für Screenreader benannt).
+
 ### Neu – BookOrbit: Markierungen als Seite (Phase 2, nur lesen)
 - Buch wählen → Seite „Notizen: <Titel>“ (📖) mit Cover, Autor:in und Link zu BookOrbit, je Kapitel einer Überschrift,
   jeder Markierung als Zitat (Seite, Datum, Farbe aus der Palette) und der eigenen Notiz darunter; Notiz zum Buch und
