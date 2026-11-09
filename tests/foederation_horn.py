@@ -16,7 +16,7 @@ Geprueft:
 - Fall c (B ohne Knoten, A teilt nicht): Mesh-Rueckfall mit klarer Meldung (call.horn_mesh) auf A und B.
 Kompatibilitaet: FED_B_APP=<Saga 2.4> -> B meldet kein horn, Gruppenanruf bleibt still im Mesh (kein Hinweis), keine
 Serverfehler. Raeumt auf (Datenbanken, Knoten-Ordner)."""
-import base64, json, os, re, secrets, shutil, subprocess, sys, tempfile, time
+import base64, json, os, re, secrets, shutil, signal, subprocess, sys, tempfile, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation as T  # noqa: E402
@@ -628,7 +628,19 @@ def part_owner(adm, anna, bert, ach, bch):
     for _ in range(3):
         api("a", "fa-anna", "POST", f"/api/calls/{cid}/horn", {"device": anna.dev["id"], "avoid": []})
     s, dr = api("a", "fa-anna", "POST", f"/api/calls/{cid}/direct", {"device": anna.dev["id"], "avoid": names})
-    ok(f"own: /direct mit Nachweis an A (avoid {names}) -> 200 mesh ({s}, {(dr.get('call') or {}).get('topo')})",
+    ok(f"own: gefaelschtes /direct (Nachweis, alles gemieden, Knoten gesund) -> 409 node_ready, Anruf bleibt horn ({s}, {dr.get('horn_block')})",
+       s == 409 and dr.get("horn_block") == "node_ready" and (rows("a", cid) or [[0] * 6])[0][1] == "horn")
+    stopped = [n for n in ("horn-a.test", "horn-a2.test") if n in NODES]
+    for n in stopped:                                  # echter Ausfall: beide eigenen Knoten von A antworten nicht mehr
+        NODES[n]["proc"].send_signal(signal.SIGSTOP)
+    try:
+        for _ in range(3):
+            api("a", "fa-anna", "POST", f"/api/calls/{cid}/horn", {"device": anna.dev["id"], "avoid": []})
+        s, dr = api("a", "fa-anna", "POST", f"/api/calls/{cid}/direct", {"device": anna.dev["id"], "avoid": names})
+    finally:
+        for n in stopped:
+            NODES[n]["proc"].send_signal(signal.SIGCONT)
+    ok(f"own: echter Ausfall (Knoten angehalten, Probe scheitert) -> 200 mesh ({s}, {(dr.get('call') or {}).get('topo')})",
        s == 200 and (dr.get("call") or {}).get("topo") == "mesh")
     ok("own: B folgt (topo mesh ueber roster)", wait(lambda: (rows("b", cid) or [[0] * 6])[0][1] == "mesh", 10))
     s, dr = api("a", "fa-anna", "POST", f"/api/calls/{cid}/direct", {"device": anna.dev["id"]})

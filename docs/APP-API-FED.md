@@ -457,6 +457,9 @@ melden). Hat der Partner („Stiefvater“) Zugriff auf einen geteilten Knoten d
 1:1-Anruf zwischen beiden über den Knoten – egal wer anruft:
 
 - Ruft eine Person der Mutter an: wie 7.5 (die Mutter führt).
+- Haben **beide** Server `horn_all` an, melden beide `horn_req`: dann führt immer der Server der **angerufenen** Person
+  (`dm_horn_route`, `saga/fed_calls.py`). Teilt er keinen Knoten mit dem Server der anrufenden Person (409 `node`/`off`),
+  führt dieser wie in 7.5 über seine eigenen Knoten.
 - Ruft eine Person des Partners an (`via: "horn"`, Clients schicken das bei `config.horn_dm_fed` auch ohne `horn_dm`):
   Der Partner bittet die Mutter, den Anruf zu **führen**:
 

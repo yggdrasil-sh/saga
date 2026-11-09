@@ -376,23 +376,40 @@ def direct_tests(people, gid):
     ok(f"direkt: alle gemieden, aber kein Nachweis des Wiederaufbaus -> 409 ({s}, {d.get('horn_block')})", s == 409 and d.get("horn_block") == "node_ready")
     for _ in range(3):
         req("POST", f"/api/calls/{cid}/horn", E.k, {"device": E.dev["id"], "avoid": allx})
-    m0 = sa.mark()
     s, d = req("POST", f"/api/calls/{cid}/direct", E.k, {"device": E.dev["id"], "avoid": allx})
-    want = sorted(x for x in (A.dev["id"], E.dev["id"]) if x > E.dev["id"])
-    ok(f"direkt: mit Nachweis -> 200, topo mesh, offer_to = groessere IDs ({s}, {(d.get('call') or {}).get('topo')}, {d.get('offer_to')})",
+    with connect() as c:
+        tp = c.execute("SELECT topo FROM chat_call WHERE id=?", (cid,)).fetchone()[0]
+    ok(f"direkt: gefaelscht (Nachweis + alles gemieden, Knoten gesund) -> 409 node_ready, bleibt horn ({s}, {d.get('horn_block')}, {tp})",
+       s == 409 and d.get("horn_block") == "node_ready" and tp == "horn")
+    # echter Ausfall: eingebauter Knoten angehalten (Probe ohne pong); Knoten B hat keinen Steuerkanal (unbekannt) ->
+    # zusaetzlich Zweitmeldung eines anderen Kontos noetig
+    pa = node_pid()
+    os.kill(pa, signal.SIGSTOP)
+    try:
+        s, d = req("POST", f"/api/calls/{cid}/direct", E.k, {"device": E.dev["id"], "avoid": allx})
+        ok(f"direkt: Knoten A tot, Knoten B unbekannt, nur eine Meldung -> 409 node_ready ({s}, {d.get('horn_block')})",
+           s == 409 and d.get("horn_block") == "node_ready")
+        for _ in range(3):
+            req("POST", f"/api/calls/{cid}/horn", A.k, {"device": A.dev["id"], "avoid": allx})
+        m0 = sa.mark()
+        s, d = req("POST", f"/api/calls/{cid}/direct", A.k, {"device": A.dev["id"], "avoid": allx})
+    finally:
+        os.kill(pa, signal.SIGCONT)
+    want = sorted(x for x in (A.dev["id"], E.dev["id"]) if x > A.dev["id"])
+    ok(f"direkt: Zweitmeldung (anderes Konto) bei totem Knoten -> 200, topo mesh, offer_to = groessere IDs ({s}, {(d.get('call') or {}).get('topo')}, {d.get('offer_to')})",
        s == 200 and d["call"]["topo"] == "mesh" and d.get("offer_to") == want, d)
     ev = sa.wait("call.topo", lambda x: x.get("call_id") == cid, since=m0)
     ros = sa.wait("call.roster", lambda x: x.get("call_id") == cid and x.get("topo") == "mesh", since=m0)
-    ok(f"direkt: call.topo an die anderen (why node, by E) und Liste mit topo mesh ({ev})", ev and ev.get("topo") == "mesh"
-       and ev.get("why") == "node" and ev.get("by") == E.dev["id"] and ros)
+    ok(f"direkt: call.topo (why node, by A) und Liste mit topo mesh ({ev})", ev and ev.get("topo") == "mesh"
+       and ev.get("why") == "node" and ev.get("by") == A.dev["id"] and ros)
     with connect() as c:
         r = c.execute("SELECT topo FROM chat_call WHERE id=?", (cid,)).fetchone()
         nn = c.execute("SELECT COUNT(*) FROM chat_call_leg WHERE call_id=? AND node IS NOT NULL", (cid,)).fetchone()[0]
     ok(f"direkt: Datenbank topo mesh, keine Knoten an den Endpunkten ({r}, {nn})", r and r[0] == "mesh" and nn == 0)
-    s, d = req("POST", f"/api/calls/{cid}/direct", A.k, {"device": A.dev["id"]})
+    s, d = req("POST", f"/api/calls/{cid}/direct", E.k, {"device": E.dev["id"]})
     ok(f"direkt: zweite Anfrage (anderes Geraet) idempotent 200 ({s}, offer_to {d.get('offer_to')})", s == 200 and d["call"]["topo"] == "mesh"
-       and d.get("offer_to") == sorted(x for x in (A.dev["id"], E.dev["id"]) if x > A.dev["id"]))
-    s, d = req("POST", f"/api/calls/{cid}/horn", A.k, {"device": A.dev["id"]})
+       and d.get("offer_to") == sorted(x for x in (A.dev["id"], E.dev["id"]) if x > E.dev["id"]))
+    s, d = req("POST", f"/api/calls/{cid}/horn", E.k, {"device": E.dev["id"]})
     ok(f"direkt: danach kein /horn mehr (409, {s})", s == 409)
     req("POST", f"/api/calls/{cid}/end", A.k, {"device": A.dev["id"]})
     req("POST", f"/api/calls/{cid}/leave", E.k, {"device": E.dev["id"]})

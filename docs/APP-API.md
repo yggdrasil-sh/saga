@@ -2130,9 +2130,13 @@ Erkennen: `GET /api/calls/config` → `features` enthält `horn_direct1`. Ohne d
   Fehlversuch derselben Folge. Referenz: `static/horn.js` (`Reconnect`, `reconnectList`, `retryAfterMs`), Tests in
   `tests/horn_logik.js`.
 - **Nach 30 s ohne Knoten:** `POST /api/calls/{id}/direct {device, avoid}` (avoid = Knoten, die das Gerät in dieser
-  Folge nicht erreicht hat). Der Server erlaubt den Wechsel nur, wenn für das Gerät kein Kandidat bereit ist – oder alle
-  Kandidaten in `avoid` stehen und das Gerät in der laufenden Minute schon mindestens 3 Kandidaten-Abrufe gemacht hat –
-  und höchstens so viele Endpunkte aktiv sind wie die Mesh-Grenze (`limits.endpoints_video`/`_audio`).
+  Folge nicht erreicht hat). Der Server glaubt dem Gerät nicht allein: erlaubt nur, wenn für das Gerät kein Knoten bereit
+  ist – oder alle Kandidaten in `avoid` stehen, das Gerät in der laufenden Minute schon mindestens 3 Kandidaten-Abrufe
+  gemacht hat **und** die eigene Probe des Servers (Steuerkanal, Lastmeldung ≤ 12 s alt, `ping`/`pong` binnen 2 s) bei
+  allen eigenen bereiten Knoten scheitert. Für Knoten, über die der Server nichts Sicheres weiß (anderer Server, kein
+  Steuerkanal), braucht es zusätzlich eine Zweitmeldung: ein aktives Gerät eines anderen Kontos hat in den letzten 30 s
+  ebenfalls `/direct` gemeldet. Dazu höchstens so viele aktive Endpunkte wie die Mesh-Grenze
+  (`limits.endpoints_video`/`_audio`). Apps: nichts weiter zu tun – bei 409 `node_ready` nach 15 s erneut fragen.
   - 200 `{ok, call: {…, topo: "mesh"}, offer_to: [geraet, …]}` (idempotent: war der Anruf schon direkt, ebenso 200).
   - 409 `{horn_block: "node_ready", horn}` – es gibt einen bereiten Knoten: weiter darüber versuchen (erneut nach 15 s).
   - 409 `{horn_block: "limit", limit}` bzw. `{horn_block: "fed"}` (Anruf eines anderen Servers) – kein Direkt-Weg:

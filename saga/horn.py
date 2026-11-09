@@ -406,6 +406,36 @@ def send(node_id, msg):
     return True
 
 
+PROBE_S = 2.0                           # Horn-Fix: so lange auf pong warten
+PROBE_LOAD_S = 12                       # ... und die letzte Lastmeldung (alle 5 s) darf hoechstens so alt sein
+
+
+def probe(node_ids, timeout=PROBE_S):
+    """Horn-Fix: eigene Probe der Knoten ueber den Steuerkanal (aus einem Thread, blockiert bis timeout). -> (gesund,
+    unbekannt): gesund = Steuerverbindung in diesem Prozess, Lastmeldung juenger als PROBE_LOAD_S und pong auf ein
+    frisches ping; unbekannt = keine Steuerverbindung in diesem Prozess (anderer Prozess bzw. Knoten ohne Steuerkanal) -
+    darueber weiss der Server nichts Sicheres. Alles andere gilt als ausgefallen."""
+    now = time.time()
+    sent, unknown, healthy = {}, set(), set()
+    for nid in set(node_ids):
+        if nid not in _CONNS:
+            unknown.add(nid)
+            continue
+        if now - ((_LIVE.get(nid) or {}).get("at") or 0) > PROBE_LOAD_S:
+            continue                                   # keine frische Lastmeldung: ausgefallen (kein ping noetig)
+        if send(nid, {"t": "ping"}):
+            sent[nid] = now
+    end = now + timeout
+    while sent and time.time() < end:
+        for nid in list(sent):
+            if ((_LIVE.get(nid) or {}).get("pong") or 0) >= sent[nid]:
+                healthy.add(nid)
+                sent.pop(nid)
+        if sent:
+            time.sleep(0.05)
+    return healthy, unknown
+
+
 def room_open(c, cid, node_id, max_peers=None):
     _later(c, lambda: send(node_id, {"t": "open", "call_ref": call_ref(cid, node_id), **({"max_peers": max_peers} if max_peers else {})}))
 
@@ -778,6 +808,8 @@ async def ctl(ws: WebSocket):
                     await asyncio.to_thread(_store_load, nid, ld, now, st)
             elif t == "closed":
                 pass                                   # Knoten hat einen leeren Raum selbst geschlossen
+            elif t == "pong":                          # Horn-Fix: Antwort auf ping (Probe vor dem Wechsel auf direkt)
+                _LIVE.setdefault(nid, {"db": 0})["pong"] = time.time()
             elif t == "bridge" and isinstance(m.get("bridge"), str):   # P9: Kaskade abgelehnt (Grund)
                 live = _LIVE.setdefault(nid, {"db": 0})
                 live.setdefault("bridges", {})[m["bridge"][:64]] = {"st": "err", "why": str(m.get("why") or "")[:200]}

@@ -386,7 +386,12 @@ def dm_horn_route(uid, ch, cid, media, dev, caps, dev_class="desktop"):
         other = next((u for u in chat.members(c, ch["id"]) if sharing.is_remote(u)), None)
         p = F.peer_by(c, "host", FC.split_handle(FC.handle_of(other))[1]) if other else None
     if p and peer_horn_req(p):
-        return dm_horn_lead_start(uid, ch, cid, media, dev, caps, p)
+        r = dm_horn_lead_start(uid, ch, cid, media, dev, caps, p)
+        # Teilt der andere Server keinen Knoten mit uns (bzw. horn_all dort inzwischen aus) und wir haben selbst horn_all:
+        # dann fuehren wir wie bisher ueber unsere Knoten (statt direkt)
+        st, body = _resp(r)
+        if not (st == 409 and body.get("horn_block") in ("node", "off") and calls.horn_dm_on()):
+            return r
     if not calls.horn_dm_on():
         return calls._fallback("off")
     return dm_horn_start(uid, ch, cid, media, dev, caps, dev_class)

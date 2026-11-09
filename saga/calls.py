@@ -109,6 +109,7 @@ CALL_RATE, CALL_RATE_H = 6, 40         # neue Anrufe je Konto: je Minute / je St
 HANDOVER_S = 15                        # Uebernahme darf so lange dauern (config limits.handover_s)
 HORN_RATE = 30                         # 2.5: Kandidaten-Abrufe (/horn) je Geraet und Minute (Datenbank) - Wiederaufbau mit Backoff
                                        # (1/2/4/8/15 s, je Versuch <= 2 Abrufe) und Erneuern (alle ~45 s) bleiben weit darunter
+DIRECT_CONFIRM_S = 30                  # Horn-Fix: Zweitmeldung eines anderen Kontos fuer Knoten ohne eigene Probe
 DIRECT_PROOF = 3                       # Horn-Fix: so viele /horn-Abrufe in der Minute, bevor direkt trotz bereiter Knoten geht
 HO_RATE = 20                           # 2.5: Uebernahmen (join role handover, promote) je Konto und Minute - eigener Topf
 PAIR_RATE = 3                          # an dieselbe Person je Minute
@@ -1569,9 +1570,15 @@ async def api_horn(cid: str, request: Request):
 @router.post("/api/calls/{cid}/direct")
 async def api_direct(cid: str, request: Request):
     """Horn-Fix (Vertrag docs/APP-API.md "Rueckfall auf direkt"): laufender Anruf ueber einen Knoten -> direkt (Mesh), wenn
-    wirklich kein Knoten verfuegbar ist: {device, avoid?}. Erlaubt, wenn fuer dieses Geraet kein Kandidat bereit ist, oder
-    alle Kandidaten in avoid stehen (das Geraet erreicht sie nicht) und es in der laufenden Minute schon mindestens
-    DIRECT_PROOF Kandidaten-Abrufe (/horn) gemacht hat. Dazu: hoechstens so viele aktive Endpunkte wie die Mesh-Grenze.
+    wirklich kein Knoten verfuegbar ist: {device, avoid?}. Der Server glaubt dem Geraet nicht allein:
+    - ohne bereiten Knoten fuer dieses Geraet: erlaubt;
+    - sonst muss das Geraet alle in avoid nennen und in der laufenden Minute DIRECT_PROOF Kandidaten-Abrufe gemacht haben,
+      UND die eigene Probe (horn.probe: Steuerkanal, frische Lastmeldung, ping/pong) muss bei allen eigenen bereiten
+      Knoten scheitern. Antwortet einer: 409 node_ready (der Anruf bleibt auf dem Knoten).
+    - Knoten, ueber die der Server nichts Sicheres weiss (anderer Server, Steuerkanal nicht in diesem Prozess): zusaetzlich
+      Zweitmeldung - ein aktives Geraet eines anderen Kontos hat in den letzten DIRECT_CONFIRM_S ebenfalls /direct
+      gemeldet. Bis dahin 409 node_ready.
+    - hoechstens so viele aktive Endpunkte wie die Mesh-Grenze, sonst 409 limit.
     -> 200 {ok, call, offer_to}; 409 horn_block node_ready (mit horn) | limit | fed; 404 beendet. Einmal direkt, bleibt der
     Anruf direkt (call.topo an alle, Liste mit topo mesh, an andere Server ueber 'roster')."""
     uid, err = _me(request)
@@ -1581,8 +1588,10 @@ async def api_direct(cid: str, request: Request):
     dev = str(b.get("device") or "")
     avoid = set(horn_web._clean_avoid(b.get("avoid")))
     now = time.time()
-    with _db() as c, c:
-        call, err = _mine(c, uid, cid, lock=True)
+    node_ready = lambda blk: chat._no_store({"error": t("Es gibt einen bereiten Anruf-Knoten – bitte darüber neu verbinden."),  # noqa: E731
+                                             "horn_block": "node_ready", "horn": blk}, 409)
+    with _db() as c, c:                                   # 1. pruefen und Meldung festhalten (ohne zu warten)
+        call, err = _mine(c, uid, cid)
         if err:
             return err
         leg = c.execute("SELECT who, state, role FROM chat_call_leg WHERE call_id=? AND device=?", (cid, dev)).fetchone() if _HEX32.fullmatch(dev) else None
@@ -1599,23 +1608,47 @@ async def api_direct(cid: str, request: Request):
         if wait:
             return JSONResponse({"error": t("Zu viele Anfragen – bitte kurz warten."), "retry_after": wait}, status_code=429,
                                 headers={"Retry-After": str(wait), "Cache-Control": "no-store"})
-        blk = horn_block(c, call, dev, leg[2], _dev_class(b), ())
-        names_ = {x.get("node") for x in (blk or {}).get("candidates") or []}
-        proof = c.execute("SELECT n FROM horn_rate WHERE k=? AND start > ?", (f"horn|{dev}", now - 60)).fetchone()
-        if names_ and not (names_ <= avoid and proof and proof[0] >= DIRECT_PROOF):
-            return chat._no_store({"error": t("Es gibt einen bereiten Anruf-Knoten – bitte darüber neu verbinden."),
-                                   "horn_block": "node_ready", "horn": blk}, 409)
         act = [x for x in legs if x["state"] == "active"]
         if len(act) > limit(call["media"]):
             return chat._no_store({"error": t("Zu viele Geräte im Anruf, um direkt zu verbinden."), "horn_block": "limit",
                                    "limit": limit(call["media"])}, 409)
+        # Meldung dieses Geraets (Zweitmeldung fuer die anderen): Zeile je Anruf und Geraet in horn_rate
+        c.execute("INSERT INTO horn_rate (k, start, n) VALUES (?, ?, 1) ON CONFLICT (k) DO UPDATE SET start=EXCLUDED.start, n=horn_rate.n+1",
+                  (f"dask|{cid}|{dev}", now))
+        blk = horn_block(c, call, dev, leg[2], _dev_class(b), ())
+        cands = {x.get("node") for x in (blk or {}).get("candidates") or []}
+        own = {n["id"]: n["name"] for n in horn.ready_nodes(c)}     # alle eigenen bereiten Knoten, nicht nur die Kandidaten
+        names_ = cands | set(own.values())
+        proof = c.execute("SELECT n FROM horn_rate WHERE k=? AND start > ?", (f"horn|{dev}", now - 60)).fetchone()
+        if names_ and not (cands <= avoid and proof and proof[0] >= DIRECT_PROOF):
+            return node_ready(blk)
+        others = {x["device"] for x in act if x["who"] != uid}
+    from starlette.concurrency import run_in_threadpool
+    healthy, unknown = await run_in_threadpool(horn.probe, list(own)) if own else (set(), set())
+    if healthy:                                           # 2. eigene Probe: ein Knoten antwortet -> kein Ausfall
+        print(f"call: {cid[:8]} direkt abgelehnt (Knoten antwortet: {sorted(own[x] for x in healthy)})", flush=True)
+        return node_ready(blk)
+    foreign = cands - set(own.values())                   # Kandidaten, die nicht unsere sind (anderer Server)
+    with _db() as c, c:                                   # 3. Zweitmeldung, wo der Server nichts weiss; dann wechseln
+        if (unknown or foreign) and others:
+            keys = [f"dask|{cid}|{d}" for d in sorted(others)]
+            ok2 = c.execute("SELECT 1 FROM horn_rate WHERE k IN (" + ",".join("?" * len(keys)) + ") AND start > ? LIMIT 1",
+                            (*keys, time.time() - DIRECT_CONFIRM_S)).fetchone()
+            if not ok2:
+                return node_ready(blk)
+        call = _load(c, cid, lock=True)
+        if not call or call["state"] == "ended":
+            return chat._no_store({"error": t("Der Anruf ist schon beendet."), "ended": True}, 404)
+        if call.get("topo") == "mesh":
+            return chat._no_store({"ok": True, "call": _dict(c, call, uid), "offer_to": _offer_to(dev, _legs(c, cid))})
         horn.room_close(c, cid)
         c.execute("UPDATE chat_call SET topo='mesh' WHERE id=?", (cid,))
         c.execute("UPDATE chat_call_leg SET node=NULL WHERE call_id=?", (cid,))
         call = _load(c, cid)
         _emit(c, _audience(c, call), "call.topo", {"call_id": cid, "chat_id": call["chat_id"], "topo": "mesh", "why": "node", "by": dev})
         emit_roster(c, call)
-        print(f"call: {cid[:8]} direkt (kein Knoten erreichbar, {len(act)} Endpunkte)", flush=True)
+        n_act = len(_legs(c, cid))
+        print(f"call: {cid[:8]} direkt (kein Knoten erreichbar, {n_act} Endpunkte)", flush=True)
         return chat._no_store({"ok": True, "call": _dict(c, call, uid), "offer_to": _offer_to(dev, _legs(c, cid))})
 
 
