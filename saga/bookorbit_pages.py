@@ -994,6 +994,18 @@ def _siblings(uid, parent):
                                         "ORDER BY sort NULLS FIRST, created", (uid, parent)).fetchall()]
 
 
+def _untouched(mine, key):
+    """Nie selbst umsortiert? Entweder reine Anlege-Reihenfolge, oder das Muster der Sammelseite vom 9.11.: erst die damals
+    hineingeraeumten Buecher (je an Index 0 -> absteigend), dahinter die spaeter angelegten (ans Ende -> aufsteigend),
+    und alles vorne ist aelter als alles hinten."""
+    ks = [key(x) for x in mine]
+    for p in range(len(ks) + 1):
+        head, tail = ks[:p], ks[p:]
+        if head == sorted(head, reverse=True) and tail == sorted(tail) and (not head or not tail or max(head) < min(tail)):
+            return True
+    return False
+
+
 def _newest_first(uid, hid):
     """Buchseiten unter der Sammelseite: frueher kamen neue Buecher ans Ende des Seitenbaums (die Liste zeigte sie trotzdem
     zuerst). Stehen sie noch genau in Anlege-Reihenfolge (nie selbst umsortiert), tauschen sie die Plaetze in umgekehrter
@@ -1004,7 +1016,7 @@ def _newest_first(uid, hid):
         sib = _siblings(uid, hid)
         mine = [x for x in sib if x in books]
         made = dict(c.execute("SELECT id, created FROM note WHERE id = ANY(?)", (mine,)).fetchall()) if mine else {}
-    if len(mine) < 2 or mine != sorted(mine, key=lambda x: (made.get(x) or 0, x)):
+    if len(mine) < 2 or not _untouched(mine, lambda x: (made.get(x) or 0, x)):
         return
     rev = iter(sorted(mine, key=lambda x: (made.get(x) or 0, x), reverse=True))
     want = [next(rev) if x in books else x for x in sib]

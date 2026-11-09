@@ -872,6 +872,12 @@ def part_convert(Ca):
     run()
     _, _, bl = page(Ca, h)
     ok("Galerie geloescht -> kommt nicht wieder; selbst umsortierte Reihenfolge bleibt", gal(bl) is None and kids(h)[0][0] == bp[0], (bl, kids(h)))
+    from saga.bookorbit_pages import _untouched
+    k = lambda x: x                                          # noqa: E731 - Schluessel = Anlegezeit
+    ok("Nie umsortiert erkannt: Anlege-Reihenfolge und Muster 9.11. (hineingeraeumt absteigend, danach neu aufsteigend)",
+       _untouched([1, 2, 3], k) and _untouched([3, 2, 1, 4, 5], k) and _untouched([2, 1, 3], k) and _untouched([3, 2, 1], k))
+    ok("Umsortiert erkannt: Mischung bleibt unangetastet",
+       not _untouched([1, 3, 2], k) and not _untouched([3, 1, 2], k) and not _untouched([2, 1, 4, 3], k) and not _untouched([4, 1, 2, 3], k))
     h, bp, own = setup("items")
     run()
     _, _, bl = page(Ca, h)
