@@ -1173,7 +1173,7 @@ def _room_signal_in(c, peer, d, call):
         if not x and not ringing_dm:
             return 403, {"error": "device"}
         local = {k for k, v in legs.items() if v["peer_id"] is None} | (calls._active_devices(c, call["callee"]) if ringing_dm else set())
-        sig = _sealed(d.get("signals"), local)
+        sig, dropped = calls._room_sealed(d.get("signals"), local)   # 2.5: veraltete Ziele einzeln verwerfen (Uebergabe)
         if sig is None:
             return 400, {"error": "bad signals"}
         if call["nsig"] + len(sig) > calls.pairs_budget(call, len(legs) + 1, now) * 2 or not F._rate.allow("csig:" + dev, calls.SIG_RATE):
@@ -1181,7 +1181,7 @@ def _room_signal_in(c, peer, d, call):
         fwd, n = calls._route(c, call, dev, sig, legs, now)
         c.execute("UPDATE chat_call SET nsig=nsig+?" + (", seen_b=?" if call["kind"] == "group" else "") + " WHERE id=?",
                   (len(sig),) + ((now,) if call["kind"] == "group" else ()) + (call["id"],))
-        return 200, {"ok": True, "n": n}
+        return 200, {"ok": True, "n": n, **({"dropped": dropped} if dropped else {})}
     if call["lead"] is not None:
         return 403, {"error": "not lead"}
     h, p_ = _actor3(c, peer, d)

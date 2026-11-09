@@ -541,6 +541,20 @@ def _sealed_map(m, allowed=None):
     return m
 
 
+def _room_sealed(m, allowed):
+    """2.5 (Uebergabe ueber Knoten, foederiert): wie _sealed_map, aber Ziele, die gerade kein Endpunkt (mehr) sind, fallen
+    einzeln weg statt die ganze Anfrage abzulehnen. Ein Geraet buendelt fkey/state an alle Endpunkte seiner Liste; geht
+    das ersetzte Geraet in derselben Sekunde, kannte das neue es noch - vorher kam 400 und das Gegenueber bekam weder den
+    Frame-Schluessel noch die Kennung am Knoten (state.hp): kein Bild, kein Ton. -> (dict, weggefallen) oder (None, [])
+    bei Formfehlern bzw. ohne ein einziges gueltiges Ziel."""
+    if _sealed_map(m) is None:
+        return None, []
+    if allowed is None:
+        return m, []
+    sig = {k: v for k, v in m.items() if k in allowed}
+    return (sig or None), sorted(k for k in m if k not in allowed)
+
+
 def _dict(c, call, uid, nm=None, legs=None):
     me_caller = call["caller"] == uid
     group = call["kind"] == "group"
@@ -1280,7 +1294,7 @@ async def api_signal(cid: str, request: Request):
         n = sum(len(x) for x in fwd["fwd"].values())
         if fwd["fwd"] and not await run_in_threadpool(FED.forward, call, uid, dev, fwd["fwd"], fwd["leg"]):
             return _bad(t("Die andere Seite ist gerade nicht erreichbar."), 502)
-        return chat._no_store({"ok": True, "n": fwd["n"] + n})
+        return chat._no_store({"ok": True, "n": fwd["n"] + n, **({"dropped": fwd["dropped"]} if fwd.get("dropped") else {})})
     if fed is not None:
         return await run_in_threadpool(FED.signal, uid, fed, dev, fsig)
     return chat._no_store({"ok": True, "n": len(out)})
@@ -1307,7 +1321,7 @@ def _room_signal(c, call, who, dev, signals, legs, now, peer_id=None):
         if not me or me["who"] != who or me["state"] != "active":
             return _bad(t("ungültige Angabe"), 403)
         allowed = set(legs) - {dev}
-    sig = _sealed_map(signals, allowed)
+    sig, dropped = _room_sealed(signals, allowed)
     if sig is None:
         return _bad(t("ungültige Angabe"))
     nall = c.execute("SELECT COUNT(*) FROM chat_call_leg WHERE call_id=?", (call["id"],)).fetchone()[0]
@@ -1317,7 +1331,7 @@ def _room_signal(c, call, who, dev, signals, legs, now, peer_id=None):
     c.execute("UPDATE chat_call SET nsig=nsig+? WHERE id=?", (len(sig), call["id"]))
     if peer_id is None:
         _seen(c, call, who, dev, now)
-    return {"n": n, "fwd": fwd, "leg": me}
+    return {"n": n, "fwd": fwd, "leg": me, "dropped": dropped}
 
 
 def _route(c, call, frm, sig, legs, now):

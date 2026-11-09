@@ -2997,7 +2997,13 @@
     })).then(function (list) {
       var sig = {}; list.forEach(function (x) { if (x) sig[x[0]] = x[1]; });
       if (!Object.keys(sig).length || !live(R)) return;
-      return api('POST', '/api/calls/' + R.id + '/signal', { device: myDev().id, signals: sig }).catch(function (e) {
+      return api('POST', '/api/calls/' + R.id + '/signal', { device: myDev().id, signals: sig }).then(function (r) {
+        // 2.5 (Uebergabe): Ziele, die kein Endpunkt mehr sind, verwirft der Server einzeln (dropped) - Liste ist veraltet
+        if (r && Array.isArray(r.dropped) && r.dropped.length && H && Date.now() - (H.rosterT || 0) > 2000) {
+          H.rosterT = Date.now();
+          api('GET', '/api/calls/' + R.id + '?device=' + q(myDev().id)).then(function (k) { if (live(R) && k.call) rosterIn(R, k.call.legs, k.call); }).catch(function () {});
+        }
+      }, function (e) {
         if (e.status === 409) remoteEnded(R, { reason: 'gone' });
       });
     }).then(function () { if (H) H.sent = (H.sent || 0) + devs.length; });
