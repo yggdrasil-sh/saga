@@ -732,7 +732,8 @@ def _w_widget_in(w):
             "fmt": w.get("fmt") if w.get("fmt") in page_widgets.FMTS else None,
             "as_of": w.get("as_of") if isinstance(w.get("as_of"), str) and re.fullmatch(r"[0-9T:\-Z+.]{10,32}", w["as_of"]) else None,
             "error": w.get("error") if w.get("error") in page_widgets.ERRORS else None,
-            **({"src_name": F._clean_text(w["src_name"], 130)} if isinstance(w.get("src_name"), str) and w["src_name"].strip() else {}),
+            **({"src_name": F._clean_text(w["src_name"], 130)} if w.get("kind") in ("metric", "progress") and w.get("error") is None
+               and F._clean_text(w.get("src_name"), 130) else {}),
             **({"data": page_widgets.clean_remote_data(w["kind"], w.get("data")) if w.get("error") not in page_widgets.ERRORS else None}
                if w.get("kind") in page_widgets.KINDS2 else {})}
 
