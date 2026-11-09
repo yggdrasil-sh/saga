@@ -82,7 +82,7 @@ def countdown_texts():
     got = [page_widgets.countdown_text({"date": x, "dir": dr}, d0) for x, dr in
            (("2026-11-06", "until"), ("2026-11-09", "until"), ("2026-11-12", "until"), ("2026-11-12", "since"), ("2026-11-01", "since"))]
     t = page_widgets.t
-    ok(f"Countdown-Texte ({got})", got[0] == t("Ziel erreicht") and got[1] == t("heute") and "3" in got[2] and got[3] == t("Noch nicht erreicht")
+    ok(f"Countdown-Texte ({got})", got[0] == t("Ziel erreicht##Countdown") and got[1] == t("heute") and "3" in got[2] and got[3] == t("Noch nicht erreicht")
        and "8" in got[4] and got[0] != got[3], got)
 
 

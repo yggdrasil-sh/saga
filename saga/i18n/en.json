@@ -4252,6 +4252,7 @@
  "Ziel antwortet nicht (Zeitüberschreitung).": "Target not responding (timeout).",
  "Ziel der neuen Aufgabe": "Where to add the new task",
  "Ziel erreicht": "Goal reached",
+ "Ziel erreicht##Countdown": "Date reached",
  "Ziel für Spalte {name}": "Target for column {name}",
  "Ziel getrennt, App-Passwort in Nextcloud widerrufen.": "Target disconnected, app password revoked in Nextcloud.",
  "Ziel getrennt.": "Target disconnected.",

@@ -4252,6 +4252,7 @@
  "Ziel antwortet nicht (Zeitüberschreitung).": "ปลายทางไม่ตอบสนอง (หมดเวลา)",
  "Ziel der neuen Aufgabe": "ปลายทางของงานใหม่",
  "Ziel erreicht": "ถึงเป้าหมายแล้ว",
+ "Ziel erreicht##Countdown": "ถึงวันที่แล้ว",
  "Ziel für Spalte {name}": "ปลายทางของคอลัมน์ {name}",
  "Ziel getrennt, App-Passwort in Nextcloud widerrufen.": "ยกเลิกการเชื่อมต่อปลายทางแล้ว และเพิกถอนรหัสผ่านแอปใน Nextcloud แล้ว",
  "Ziel getrennt.": "ยกเลิกการเชื่อมต่อปลายทางแล้ว",

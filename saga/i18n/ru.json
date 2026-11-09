@@ -4252,6 +4252,7 @@
  "Ziel antwortet nicht (Zeitüberschreitung).": "Хранилище не отвечает (тайм-аут).",
  "Ziel der neuen Aufgabe": "Куда добавить новую задачу",
  "Ziel erreicht": "Цель достигнута",
+ "Ziel erreicht##Countdown": "Дата наступила",
  "Ziel für Spalte {name}": "Цель для столбца {name}",
  "Ziel getrennt, App-Passwort in Nextcloud widerrufen.": "Хранилище отключено, пароль приложения в Nextcloud отозван.",
  "Ziel getrennt.": "Хранилище отключено.",

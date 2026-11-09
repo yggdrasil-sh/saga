@@ -813,7 +813,7 @@ def countdown_text(cfg, today):
         return None
     n, how = cd
     if n < 0:                                     # wie Web/Apps (9.11.): vorbei bzw. "seit" in der Zukunft
-        return t("Ziel erreicht") if how == "until" else t("Noch nicht erreicht")
+        return t("Ziel erreicht##Countdown") if how == "until" else t("Noch nicht erreicht")
     if n == 0:
         return t("heute")
     return t("noch {n} {n:Tag|Tage}", n=n) if how == "until" else t("seit {n} {n:Tag|Tagen}", n=n)

@@ -4252,6 +4252,7 @@
  "Ziel antwortet nicht (Zeitüberschreitung).": "El destino no responde (tiempo agotado).",
  "Ziel der neuen Aufgabe": "Destino de la nueva tarea",
  "Ziel erreicht": "Objetivo alcanzado",
+ "Ziel erreicht##Countdown": "Fecha alcanzada",
  "Ziel für Spalte {name}": "Destino de la columna {name}",
  "Ziel getrennt, App-Passwort in Nextcloud widerrufen.": "Destino desconectado; contraseña de aplicación revocada en Nextcloud.",
  "Ziel getrennt.": "Destino desconectado.",

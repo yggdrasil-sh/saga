@@ -7220,7 +7220,7 @@
         var p = wgCdParts(cfg, new Date()); cv.textContent = ''; cv.classList.remove('wg-v-st', 'wg-v-mu');
         if (!p) cv.textContent = '–';
         else if (p.h != null) { cv.appendChild(document.createTextNode(String(p.h))); cv.appendChild(el('small', null, T('Std.'))); cv.appendChild(document.createTextNode(' ' + p.m)); cv.appendChild(el('small', null, T('Min.'))); }
-        else if (p.done) { cv.textContent = p.since ? T('Noch nicht erreicht') : T('Ziel erreicht'); cv.classList.add('wg-v-st'); cv.classList.toggle('wg-v-mu', p.since); }
+        else if (p.done) { cv.textContent = p.since ? T('Noch nicht erreicht') : T('Ziel erreicht##Countdown'); cv.classList.add('wg-v-st'); cv.classList.toggle('wg-v-mu', p.since); }
         else if (!p.n) cv.textContent = T('Heute');
         else { cv.appendChild(document.createTextNode(fNum.format(p.n))); cv.appendChild(el('small', null, T('{n} {n:Tag|Tage}', { n: p.n }).replace(String(p.n), '').trim())); }
         cv.title = wgCountdown(cfg, new Date()) || '';
