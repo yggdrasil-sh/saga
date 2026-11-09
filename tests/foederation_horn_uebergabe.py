@@ -16,8 +16,9 @@ Geprueft (je Runde neue Kennung je Generation):
   der Teilnehmerliste von A; die Kopie auf B fuehrt das neue Geraet und nicht mehr das alte.
 - Gegenrichtung: Bert schickt sein Buendel an {altes, neues Geraet} (seine Liste kann kurz veraltet sein) -> 200, das
   neue Geraet bekommt den Schluessel.
-- Ein Buendel nur an ein gegangenes Geraet bleibt 400 (keine stillen Leerlaeufe), fremde Ziele sind weiter ungueltig.
-Ports 8530-8533, Datenbanken saga_anruf_fa/_fb. Raeumt auf."""
+- Ein nie beteiligtes Geraet im Buendel faellt weg (dropped) und bekommt weder auf A noch auf B etwas; ein Buendel nur an
+  ein gegangenes Geraet bleibt 400 (keine stillen Leerlaeufe), Formfehler ebenso.
+Ports 8794-8797, Datenbanken saga_fhua/_fhub. Raeumt auf."""
 import base64, json, os, secrets, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -25,10 +26,10 @@ import foederation_horn as FH  # noqa: E402  (Instanzen, Verbinden, Einstellunge
 import chatlib as C  # noqa: E402
 
 T, F2 = FH.T, FH.F2
-T.I["a"].update(port=8530, admin=8531, db="saga_anruf_fa", url="http://127.0.0.1:8530", host="127.0.0.1:8530", state="/tmp/st-anruf/fa",
-                allow="localhost:8532")
-T.I["b"].update(port=8532, admin=8533, db="saga_anruf_fb", url="http://localhost:8532", host="localhost:8532", state="/tmp/st-anruf/fb",
-                allow="127.0.0.1:8530")
+T.I["a"].update(port=8795, admin=8794, db="saga_fhua", url="http://127.0.0.1:8795", host="127.0.0.1:8795", state="/tmp/fedhornueb-a",
+                allow="localhost:8797")
+T.I["b"].update(port=8797, admin=8796, db="saga_fhub", url="http://localhost:8797", host="localhost:8797", state="/tmp/fedhornueb-b",
+                allow="127.0.0.1:8795")
 ok, wait, sql = T.ok, T.wait, T.sql
 api, User = FH.api, FH.User
 CAPS = FH.CAPS
@@ -151,7 +152,6 @@ def handover(anna, bert, cid, old, new, early, rnd):
 def main():
     rc = 1
     try:
-        os.makedirs("/tmp/st-anruf", exist_ok=True)
         adm = FH.setup(horn_b=True)
         HA, HB = T.I["a"]["host"], T.I["b"]["host"]
         fake_node()
@@ -184,6 +184,17 @@ def main():
         handover(anna, bert, cid, a2, a1, False, 2)
         handover(anna, bert, cid, a1, a2, True, 3)
         handover(anna, bert, cid, a2, a1, True, 4)
+        # Ein nie beteiligtes Geraet im Buendel faellt weg und bekommt nichts - weder auf A noch auf B (auch nicht weitergereicht)
+        xd = C.device()
+        s, d = api("a", "fa-anna", "POST", f"/api/calls/{cid}/signal", {"device": a1["id"], "signals": {
+            bert.dev["id"]: seal(cid, anna, a1, bert, bert.dev, fkey()), xd["id"]: seal(cid, anna, a1, anna, xd, fkey())}})
+        ok(f"Anna -> {{Bert, fremdes Geraet}} -> 200, nur das fremde faellt weg ({s}, {d.get('dropped')})", s == 200 and d.get("dropped") == [xd["id"]])
+        s, d = api("b", "fb-bert", "POST", f"/api/calls/{cid}/signal", {"device": bert.dev["id"], "signals": {
+            a1["id"]: seal(cid, bert, bert.dev, anna, a1, fkey()), xd["id"]: seal(cid, bert, bert.dev, anna, xd, fkey())}})
+        ok(f"Bert -> {{Telefon, fremdes Geraet}} -> 200, nur das fremde faellt weg ({s}, {d.get('dropped')})", s == 200 and d.get("dropped") == [xd["id"]])
+        time.sleep(1)
+        ok("fremdes Geraet hat weder auf A noch auf B ein Signal", all(
+            (sql(k, "SELECT COUNT(*) FROM chat_call_signal WHERE call_id=? AND to_device=?", (cid, xd["id"])) or [[1]])[0][0] == 0 for k in "ab"))
         # Ohne ein einziges gueltiges Ziel bleibt es 400; ein fremdes, nie beteiligtes Geraet ebenso
         s, d = api("a", "fa-anna", "POST", f"/api/calls/{cid}/signal", {"device": a1["id"], "signals": {
             a2["id"]: seal(cid, anna, a1, anna, a2, fkey())}})
