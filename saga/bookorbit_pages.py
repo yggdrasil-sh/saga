@@ -971,11 +971,23 @@ def _legacy_segments(blocks):
     return [tuple(x) for x in segs]
 
 
+def _sig(b):
+    """Inhalt eines Blocks fuer den Abgleich - so, wie der Server ihn speichern wuerde (clean_blocks), damit Bereinigen beim
+    Speichern nicht als Aenderung zaehlt."""
+    from saga.pages import clean_blocks
+    try:
+        c = json.loads(clean_blocks(json.dumps({"blocks": [b]}, ensure_ascii=False))[0]).get("blocks") or []
+        b = c[0] if c and isinstance(c[0], dict) else b
+    except Exception:  # noqa: BLE001 - dann roh vergleichen
+        pass
+    return json.dumps([b.get("type"), b.get("data")], sort_keys=True, ensure_ascii=False)
+
+
 def _has(blocks, b):
-    """Steht Block b (aus der alten Seite) schon in blocks? Gleiche Block-ID und Art oder gleicher Inhalt."""
-    sig = json.dumps([b.get("type"), b.get("data")], sort_keys=True, ensure_ascii=False)
-    return any((b.get("id") and x.get("id") == b.get("id") and x.get("type") == b.get("type"))
-               or json.dumps([x.get("type"), x.get("data")], sort_keys=True, ensure_ascii=False) == sig for x in blocks if isinstance(x, dict))
+    """Steht Block b (aus der alten Seite) schon in blocks? Nur bei gleichem Inhalt (Art + Daten) - die Block-ID allein reicht
+    nicht: hat die Person den Block nach dem Kopieren noch geaendert, wird er erneut kopiert (lieber doppelt als verloren)."""
+    sig = _sig(b)
+    return any(isinstance(x, dict) and _sig(x) == sig for x in blocks)
 
 
 _STEP = None                                     # Testhaken (tests/bookorbit_seiten.py): _STEP(name) darf werfen = Abbruch

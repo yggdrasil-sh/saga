@@ -665,6 +665,13 @@ def part_crash(Ca):
                             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), env=dict(os.environ))
         out = (pr.stdout.decode().strip().splitlines() or ["{}"])[-1]
         ok(f"Abbruch nach {step} #{nth}: Lauf bricht ab", '"status": 502' in out, (out, pr.stderr.decode()[-300:]))
+        edited = (step, nth) == ("copied", 1)
+        if edited:                                  # Pruefer: nach dem Abbruch bearbeitet die Person die Buchseite weiter
+            s0, p0, bl0 = page(Ca, old)
+            for b in bl0:
+                if b.get("type") == "paragraph" and b["data"].get("text") == f"Eigenes A{n}":
+                    b["data"]["text"] = f"Eigenes A{n} – nachträglich geändert"
+            save(Ca, old, bl0, p0.get("rev"))
         s1, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": bid})
         ids = all_pages(bid)
         r0 = revs(ids)
@@ -673,7 +680,8 @@ def part_crash(Ca):
         names = [x[1] for x in kids(old)]
         ok(f"Abbruch nach {step} #{nth}: naechster Lauf macht fertig, nichts verloren, nichts doppelt ({s1}, {s2})",
            s1 == 200 and s2 == 200 and names == ["Kapitel A", "Kapitel B", "Kapitel C"] and kv(bid).get("v") == 2
-           and all(allt.count(x) == 1 for x in (f"Stelle A{n}", f"Stelle B{n}", f"Zweite B{n}", f"Eigenes A{n}", f"Eigenes B{n}", f"Schluss{n}", f"Neu C{n}"))
+           and all(allt.count(x) == 1 for x in (f"Stelle A{n}", f"Stelle B{n}", f"Zweite B{n}", f"Eigenes B{n}", f"Schluss{n}", f"Neu C{n}")
+                   + ((f"Eigenes A{n} – nachträglich geändert",) if edited else (f"Eigenes A{n}",)))
            and d2.get("added") == 0 and revs(ids) == r0, (d, d2, names, kv(bid).get("v"), [allt.count(x) for x in (f"Stelle A{n}", f"Eigenes A{n}", f"Eigenes B{n}", f"Schluss{n}")]))
         s3, p, bl = page(Ca, old)
         ok(f"Abbruch nach {step} #{nth}: Schlussgedanke bleibt auf der Buchseite, Abschnitte draussen",
