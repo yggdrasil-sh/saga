@@ -116,38 +116,78 @@
       return r;
     }, function (e) { busy = false; say(T('BookOrbit: {err}', { err: e.message })); throw e; });
   }
+  // Liste in den Einstellungen: Suche (entprellt, auch Buecher ohne Markierungen) und Filter "Gelesen" (2.5, 9.11.)
   function notesList(box) {
     box.textContent = '';
-    var st = el('p', 'hk-hint', T('Lade …')); box.appendChild(st);
-    api('GET', '/api/bookorbit/notes/books').then(function (d) {
-      box.textContent = '';
-      var books = (d && d.books) || [];
-      if (!books.length) { box.appendChild(el('p', 'hk-hint', T('Keine Bücher mit Markierungen gefunden.'))); return; }
-      var ul = el('ul', 'bo-nl'); ul.setAttribute('aria-label', T('Bücher mit Markierungen'));
-      books.forEach(function (b) {
-        var li = el('li', 'bo-nl-row'), cv = el('span', 'bo-cover'); cv.setAttribute('aria-hidden', 'true'); cv.textContent = '📖';
-        cover(b.cover).then(function (u) { if (!u) return; var im = el('img'); im.alt = ''; im.src = u; cv.textContent = ''; cv.appendChild(im); });
-        li.appendChild(cv);
-        var tx = el('span', 'bo-tx');
-        tx.appendChild(el('span', 'bo-ti', b.title || T('Unbenannt')));
-        tx.appendChild(el('span', 'bo-au', (b.author ? b.author + ' · ' : '') + T('{n} {n:Markierung|Markierungen}', { n: b.count })));
-        li.appendChild(tx);
-        var go = el('button', 'btn bo-nl-go', b.page_id ? T('Aktualisieren') : T('Als Seite')); go.type = 'button';
-        go.setAttribute('aria-label', (b.page_id ? T('Aktualisieren') : T('Als Seite')) + ': ' + (b.title || ''));
-        go.addEventListener('click', function () {
-          go.disabled = true;
-          toPage(b.id).then(function () { go.disabled = false; }, function () { go.disabled = false; });
-        });
-        li.appendChild(go);
-        if (b.page_id) {
-          var op = el('button', 'btn bo-nl-open', T('Öffnen')); op.type = 'button';
-          op.addEventListener('click', function () { openNote(b.page_id); });
-          li.appendChild(op);
-        }
-        ul.appendChild(li);
+    var bar = el('div', 'bo-nl-bar');
+    var q = el('input', 'hk-in bo-nl-q'); q.type = 'search'; q.id = 'hk-bo-q'; q.placeholder = T('Buch suchen …');
+    q.setAttribute('aria-label', T('Buch in BookOrbit suchen')); q.autocomplete = 'off'; q.maxLength = 200;
+    var chips = el('div', 'chips bo-nl-f'); chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', T('Anzeigen'));
+    var mode = '';
+    [['', T('Mit Markierungen')], ['read', T('Gelesen##BookOrbit-Filter')]].forEach(function (f) {
+      var c = el('button', 'chip chip-btn' + (f[0] === mode ? ' on' : ''), f[1]); c.type = 'button'; c.dataset.f = f[0];
+      c.setAttribute('aria-pressed', f[0] === mode ? 'true' : 'false');
+      c.addEventListener('click', function () {
+        if (mode === f[0]) return;
+        mode = f[0];
+        Array.prototype.forEach.call(chips.children, function (x) { var on = x.dataset.f === mode; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+        load();
       });
-      box.appendChild(ul);
-    }).catch(function (e) { box.textContent = ''; box.appendChild(el('p', 'hk-hint hk-warn', T('Nicht geladen: {err}', { err: e.message }))); });
+      chips.appendChild(c);
+    });
+    bar.appendChild(q); bar.appendChild(chips); box.appendChild(bar);
+    var out = el('div', 'bo-nl-out'); out.setAttribute('aria-live', 'polite'); box.appendChild(out);
+    var seq = 0, tm = null;
+    q.addEventListener('input', function () { clearTimeout(tm); tm = setTimeout(load, 350); });
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(tm); load(); } });
+    function sub(b) {
+      var p = [];
+      if (b.author) p.push(b.author);
+      if (typeof b.count === 'number') p.push(b.count ? T('{n} {n:Markierung|Markierungen}', { n: b.count }) : T('keine Markierungen'));
+      if (b.read_at) { var d = new Date(b.read_at); if (!isNaN(d)) p.push(T('gelesen {date}', { date: d.toLocaleDateString(document.documentElement.lang || undefined) })); }
+      return p.join(' · ');
+    }
+    function load() {
+      var my = ++seq, term = q.value.trim();
+      out.textContent = ''; out.appendChild(el('p', 'hk-hint', T('Lade …')));
+      var url = '/api/bookorbit/notes/books?' + (term ? 'q=' + encodeURIComponent(term) + '&' : '') + (mode ? 'filter=' + mode : '');
+      api('GET', url.replace(/[?&]$/, '')).then(function (d) {
+        if (my !== seq) return;
+        out.textContent = '';
+        var books = (d && d.books) || [];
+        if (!books.length) {
+          out.appendChild(el('p', 'hk-hint', mode === 'read' ? (term ? T('Kein gelesenes Buch gefunden.') : T('In BookOrbit ist noch kein Buch als gelesen markiert.'))
+            : term ? T('Kein Buch gefunden.') : T('Keine Bücher mit Markierungen gefunden.')));
+          return;
+        }
+        var ul = el('ul', 'bo-nl'); ul.setAttribute('aria-label', mode === 'read' ? T('Gelesene Bücher') : T('Bücher mit Markierungen'));
+        books.forEach(function (b) {
+          var li = el('li', 'bo-nl-row'), cv = el('span', 'bo-cover'); cv.setAttribute('aria-hidden', 'true'); cv.textContent = '📖';
+          cover(b.cover).then(function (u) { if (!u) return; var im = el('img'); im.alt = ''; im.src = u; cv.textContent = ''; cv.appendChild(im); });
+          li.appendChild(cv);
+          var tx = el('span', 'bo-tx');
+          tx.appendChild(el('span', 'bo-ti', b.title || T('Unbenannt')));
+          var s2 = sub(b); if (s2) tx.appendChild(el('span', 'bo-au', s2));
+          li.appendChild(tx);
+          var nm = ': ' + (b.title || '');
+          if (b.page_id) {
+            var op = el('button', 'btn btn-primary bo-nl-open', T('Öffnen')); op.type = 'button'; op.setAttribute('aria-label', T('Öffnen') + nm);
+            op.addEventListener('click', function () { openNote(b.page_id); });
+            li.appendChild(op);
+          }
+          var go = el('button', 'btn bo-nl-go', b.page_id ? T('Aktualisieren') : T('Als Seite')); go.type = 'button';
+          go.setAttribute('aria-label', (b.page_id ? T('Aktualisieren') : T('Als Seite')) + nm);
+          go.addEventListener('click', function () {
+            go.disabled = true;
+            toPage(b.id).then(function () { go.disabled = false; }, function () { go.disabled = false; });
+          });
+          li.appendChild(go);
+          ul.appendChild(li);
+        });
+        out.appendChild(ul);
+      }).catch(function (e) { if (my !== seq) return; out.textContent = ''; out.appendChild(el('p', 'hk-hint hk-warn', T('Nicht geladen: {err}', { err: e.message }))); });
+    }
+    load();
   }
   function bookMenu(anchor, b) {
     if (!HK.openMenu || !HK.menuItem || !b || !b.id) return;
@@ -155,8 +195,8 @@
       m.appendChild(HK.menuItem(T('Markierungen als Seite'), function () { toPage(b.id); }, { ic: 'file' }));
     });
   }
-  // Seite aus BookOrbit? (Kopfzeile mit data.bo.x = "info", siehe saga/bookorbit_pages.py)
-  function isPage(n) { return !!(n && n.format === 'blocks' && /"bo":\s*\{[^{}]*"x":\s*"info"/.test(n.body || '')); }
+  // Seite aus BookOrbit? Buchseite (data.bo.x = "info") oder Kapitelseite (data.bo.x = "back"), siehe saga/bookorbit_pages.py
+  function isPage(n) { return !!(n && n.format === 'blocks' && /"bo":\s*\{[^{}]*"x":\s*"(info|back)"/.test(n.body || '')); }
   window.HK.bookorbit = { cover: cover, book: book, goal: goal, streak: streak, hint: hint, toPage: toPage, notesList: notesList,
                           bookMenu: bookMenu, isPage: isPage };
 })();

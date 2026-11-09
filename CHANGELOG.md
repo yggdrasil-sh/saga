@@ -78,6 +78,22 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Markierungen je Buch (seitenweise abgerufen), Seitengröße, Textlänge, 12 Aufrufe je Minute; Text aus BookOrbit wird
   als Klartext übernommen und bereinigt.
 
+### Neu – BookOrbit: Ablage „Bücher → Buch → Kapitel“, Suche, „Gelesen“
+- Sammelseite „Bücher“ (📚, automatisch, gemerkt; umbenennen/verschieben bleibt, gelöscht → neu) mit Übersicht der
+  Buchseiten (neueste oben). Alte Notizseiten auf oberster Ebene wandern einmalig hinein, selbst einsortierte bleiben.
+- Buchseite (Titel = Buchtitel) mit Kopf, Notiz zum Buch, Abschnitt „Kapitel“ (Verweise in Buchreihenfolge, Teile
+  eingerückt, Anzahl Markierungen grau dahinter), „Ohne Kapitel“ und Lesezeichen. Je Kapitel eine eigene Unterseite (📑) –
+  auch für Kapitel ohne Markierungen, aus dem Inhaltsverzeichnis des EPUB (Teile mit Kapiteln als Unter-Unterseiten,
+  höchstens 150) – mit Kopfzeile „← Buch · Kapitel n von m“, Zitaten und einem Platzhalter, solange sie leer ist.
+- Aktualisieren bleibt idempotent: neue Kapitel/Markierungen kommen an die richtige Stelle, gelöschte Kapitelseiten und
+  Markierungen nicht wieder, eigene Texte bleiben. Alte Einseiten-Notizseiten werden umgebaut (Abschnitte samt eigener
+  Texte in die Kapitelseiten, Titel bleibt).
+- Einstellungen: Suchfeld (auch Bücher ohne Markierungen aus der ganzen Bibliothek) und Filter „Gelesen“ (fertig gelesene
+  Bücher, zuletzt beendet zuerst); vorhandene Seiten mit „Öffnen“. „Aus BookOrbit aktualisieren“ auch auf Kapitelseiten.
+- Server: `GET /api/bookorbit/notes/books?q=&filter=read`, Antwort von `POST /api/bookorbit/notes` mit `chapters`,
+  `chapters_added` (Fähigkeit `bookorbit3`). BookOrbit-Aufrufe: `GET /epub/<id>/info`, `GET /books/search`,
+  `POST /books/query`. Ohne Migration.
+
 ### Behoben – Anrufe über Gjallarhorn-Knoten brachen nach 15 min ab und kamen nicht wieder
 - Knoten: Beine der Betriebsart `node` werden nicht mehr nach 15 min abgeräumt (die Grenze gilt nur noch für
   Spiegel-/Bench-Beine). Jedes Bein protokolliert Auf- und Abbau mit Grund (ohne Adressen). Gegen Video-Standbilder bei

@@ -1423,7 +1423,7 @@
       if (HK.bookorbit && HK.bookorbit.isPage(c)) m.appendChild(HK.menuItem(T('Aus BookOrbit aktualisieren'), function () {     // 2.5: bookorbit2
         var id = c.id;
         save().then(function () { return HK.bookorbit.toPage({ page_id: id }, { open: false }); })
-          .then(function (r) { if (r && (r.added || r.updated) && S.cur && S.cur.id === id) openPage(id); }).catch(function () {});
+          .then(function (r) { if (r && (r.added || r.updated || r.chapters_added) && S.cur && S.cur.id === id) openPage(id); }).catch(function () {});
       }, { ic: 'refresh' }));
       if (c.kind !== 'database') m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: c.id }); }, { ic: 'upload', hint: T('als Unterseiten') }));
       m.appendChild(HK.menuItem(T('Exportieren'), null, { ic: 'download', sub: function (sm) {

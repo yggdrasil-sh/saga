@@ -1,26 +1,32 @@
-"""BookOrbit Phase 2 (2.5, saga/bookorbit_pages.py): Markierungen eines Buchs als Seite "Notizen: <Titel>".
+"""BookOrbit Phase 2 (2.5, saga/bookorbit_pages.py): Markierungen als Seiten "Buecher -> Buch -> Kapitel".
 
 Nie echtes Netz: ein kleines Fake-BookOrbit auf 127.0.0.1:BOOKORBIT_TEST_PORT (Standard 18645) mit Login/Refresh,
 GET /annotations/books, GET /books/<id>, GET /books/<id>/annotations (seitenweise, wie BookOrbit: pageSize <= 100),
-GET /books/<id>/bookmarks, GET /books/<id>/thumbnail.
+GET /books/<id>/bookmarks, GET /books/<id>/thumbnail, GET /epub/<id>/info (toc), GET /books/search (limit <= 20, Liste),
+POST /books/query (Filter readStatus, Sortierung finishedAt).
 Server starten mit: BOOKORBIT_URL=http://127.0.0.1:<port> (Vorschlag = automatisch freigegeben), SAGA_BOOKORBIT_ANN_MAX=250,
-SAGA_BOOKORBIT_NOTES_RATE=40, SAGA_BOOKORBIT_CACHE_S=2.
+SAGA_BOOKORBIT_NOTES_RATE=40, SAGA_BOOKORBIT_CH_MAX=20, SAGA_BOOKORBIT_CACHE_S=2.
 Geprueft:
-- Faehigkeit bookorbit2; ohne Anmeldung 401; ohne Verbindung 409 (state none).
-- Buecherliste mit Anzahl, Cover ueber Saga, zugeordnete Seite.
-- Seite anlegen: Titel/Icon, Kopf (Cover als eigene Datei, Autor, Link zu BookOrbit), Notiz zum Buch, je Kapitel eine
-  Ueberschrift, Zitat-Bloecke mit Seite/Datum, Farbe aus der Palette, eigene Notiz als Absatz darunter, Lesezeichen.
-- Fremdinhalt maskiert (HTML aus BookOrbit wird Text).
-- Idempotenz: zweites Aktualisieren aendert nichts (Revision gleich).
-- Eigene Ergaenzungen bleiben, bearbeitete Bloecke bleiben, in Saga geloeschte kommen nicht wieder, bei BookOrbit geloeschte
-  bleiben stehen, unveraenderte werden nachgezogen, Neues landet beim eigenen Kapitel bzw. als neues Kapitel vor den
-  Lesezeichen, eine spaeter geschriebene Notiz direkt unter ihr Zitat.
-- Aktualisieren ueber page_id; Ziel-Elternseite nur eigene Seiten (fremde, Datenbank, unbekannt -> 404).
-- Grenzen: seitenweiser Abruf (pageSize 100), Obergrenze SAGA_BOOKORBIT_ANN_MAX, Groesse der Seite, Textlaenge, Rate.
-- Rechte: andere Person kommt weder an die Zuordnung noch an die Seite; Seite im Papierkorb -> neue Seite.
+- Faehigkeiten bookorbit2/bookorbit3; ohne Anmeldung 401; ohne Verbindung 409 (state none).
+- Liste: Anzahl, Cover ueber Saga, zugeordnete Seite; Suche auch ueber die ganze Bibliothek (Buch ohne Markierungen, count 0);
+  Filter "Gelesen" (neueste zuerst, read_at, auch mit Suche); ungueltiger Filter 400.
+- Aufraeumen: alte Notizseiten auf oberster Ebene wandern einmalig in die Sammelseite "Buecher" (📚, Einleitung, Liste der
+  Buchseiten, neueste zuerst); selbst einsortierte bleiben; alte Einseiten-Seite wird umgebaut (Abschnitte samt eigener
+  Texte in Kapitelseiten, Titel bleibt, nichts doppelt, nichts verloren).
+- Buchseite: Titel = Buchtitel, Icon 📖, in der Sammelseite, Kopf, Notiz zum Buch, Kapitel-Liste (Teile eingerueckt, Anzahl),
+  Markierungen ohne Kapitel unter "Ohne Kapitel", Lesezeichen am Ende.
+- Kapitelseiten aus dem TOC (Tiefe 2 als Unter-Unterseiten, tiefere zum Vorfahren), Reihenfolge wie im Buch, Kopfzeile
+  "← Buch · Kapitel n von m", Platzhalter wenn leer, Markierungen im richtigen Kapitel (auch andere Schreibweise),
+  Fremdinhalt maskiert (Zitate und Kapitelnamen), Obergrenze CH_MAX, Buch ohne TOC -> Kapitel aus Markierungen.
+- Idempotenz (keine Revision aendert sich), eigene Texte bleiben, bearbeitete Bloecke bleiben, in Saga geloeschte
+  Markierungen/Kapitelseiten kommen nicht wieder, neue TOC-Kapitel kommen an die richtige Stelle, Platzhalter weicht
+  (nur unveraendert), bearbeitete Kapitel-Liste bekommt nur Neues, Spalten-Verschiebung verdoppelt nichts.
+- Sammelseite: gemerkt, umbenannt/verschoben respektiert, geloescht -> neu.
+- Aktualisieren ueber page_id (Buch- und Kapitelseite); Ziel-Elternseite nur eigene Seiten (fremde, Datenbank, unbekannt -> 404).
+- Grenzen: seitenweiser Abruf, ANN_MAX, Groesse der Seite, Textlaenge, Rate. Rechte: andere Person sieht/aendert nichts.
 - Abgelaufene Verbindung -> 409 state expired; Buch nicht in der Bibliothek -> 404; ungueltige Angaben -> 400.
 Wegwerf-Konten bos-a/bos-b, raeumt auf. Umgebung wie tests/bookorbit.py."""
-import base64, http.client, json, os, secrets, sys, threading, time, urllib.parse
+import base64, hashlib, http.client, json, os, secrets, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itsdangerous import TimestampSigner
 import auth
@@ -30,6 +36,7 @@ B = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099"
 HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
 S = TimestampSigner(os.environ["SESSION_SECRET"])
 PORT = int(os.environ.get("BOOKORBIT_TEST_PORT", "18645"))
+CH_MAX = int(os.environ.get("SAGA_BOOKORBIT_CH_MAX", "150"))
 FAKE = f"http://127.0.0.1:{PORT}"
 PW_A, PW_B = "Pw-A-" + secrets.token_hex(6), "Pw-B-" + secrets.token_hex(6)
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 120
@@ -38,7 +45,7 @@ n500 = [0]
 
 
 def ok(n, c, info=None):
-    res.append(bool(c)); print(("OK  " if c else "FAIL"), n, "" if c or info is None else f"-> {str(info)[:500]}", flush=True)
+    res.append(bool(c)); print(("OK  " if c else "FAIL"), n, "" if c or info is None else f"-> {str(info)[:600]}", flush=True)
 
 
 def ck(u):
@@ -46,7 +53,7 @@ def ck(u):
 
 
 def req(m, p, cookie=None, body=None):
-    c = http.client.HTTPConnection(B.hostname, B.port, timeout=60)
+    c = http.client.HTTPConnection(B.hostname, B.port, timeout=120)
     h = {"Host": HOST, "Accept-Language": "de"}
     if cookie:
         h["Cookie"] = "saga=" + cookie; h["X-Saga"] = "1"
@@ -64,13 +71,28 @@ def req(m, p, cookie=None, body=None):
     return r.status, out
 
 
+def ckey(t):
+    return "c" + hashlib.sha256(t.encode()).hexdigest()[:12]
+
+
+def hh(*parts):
+    return hashlib.sha256(json.dumps(list(parts), ensure_ascii=False).encode()).hexdigest()[:16]
+
+
 # =====================================================================================================
 # Fake-BookOrbit
 # =====================================================================================================
-def A(i, text, chapter, color="#FACC15", note=None, page=None, day="2026-10-0"):
+def A(i, text, chapter, color="#FACC15", note=None, page=None):
     return {"id": i, "bookId": 0, "cfi": None, "jumpFileId": None, "pageno": page, "text": text, "color": color, "style": "highlight",
             "note": note, "chapterTitle": chapter, "origin": "web", "positionStatus": "exact", "chapterIndex": None,
             "highlightedAt": f"2026-10-{(i % 27) + 1:02d}T10:00:00.000Z", "createdAt": "2026-10-01T10:00:00.000Z", "starredAt": None}
+
+
+def T(label, *kids):
+    d = {"label": label, "href": "Text/" + hashlib.md5(label.encode()).hexdigest()[:6] + ".xhtml"}
+    if kids:
+        d["children"] = list(kids)
+    return d
 
 
 class F:
@@ -80,6 +102,7 @@ class F:
     refresh = {}            # refresh -> user
     books = {}              # user -> {bid: {...}}
     ann_calls = []          # (bid, page, pageSize)
+    bad_calls = []          # Aufrufe ausserhalb der Grenzen von BookOrbit
     revoked = set()
 
 
@@ -87,13 +110,18 @@ def reset_books():
     F.books = {
         "anna": {
             31: {"title": "Das Meer der Worte", "authors": [{"id": 1, "name": "Ida Feld", "sortName": None}], "personalNote": "Lieblingsbuch\ndes Jahres",
-                 "cover": True,
+                 "cover": True, "read": "2026-10-01T09:00:00.000Z",
+                 "toc": [T("Vorwort"), T("Teil Eins", T("Kapitel 1"), T("Kapitel 2", T("Abschnitt 2.1"))), T("Kapitel 3"), T("Nachwort"),
+                         T("Anhang & <i>Quellen</i>")],
                  "ann": [A(101, "Am Anfang war das Wasser.", "Kapitel 1", "#FACC15", "Schoener Einstieg", 12),
                          A(102, "Zweite Stelle im ersten Kapitel.", "Kapitel 1", "#4ADE80", None, 14),
                          A(103, "Dritte Stelle, spaeter geloescht in Saga.", "Kapitel 1", "#F472B6", None, 15),
                          A(104, "Vierte Stelle, wird bei BookOrbit geaendert.", "Kapitel 2", "#38BDF8", None, 30),
                          A(105, "Fuenfte Stelle, wird bei BookOrbit geloescht.", "Kapitel 2", "#9CA3AF", None, 31),
-                         A(106, "Sechste <img src=x onerror=alert(1)> & <script>x</script>", "Kapitel 2", "#C084FC", None, 33)],
+                         A(106, "Sechste <img src=x onerror=alert(1)> & <script>x</script>", "Kapitel 2", "#C084FC", None, 33),
+                         A(110, "Andere Schreibweise des Kapitels.", "kapitel 2", "#FACC15", None, 34),
+                         A(111, "Tiefer im Inhaltsverzeichnis.", "Abschnitt 2.1", "#FACC15", None, 35),
+                         A(109, "Ohne Kapitel markiert.", None, "#FACC15", None, 99)],
                  "bm": [{"id": 501, "bookId": 31, "cfi": None, "title": "Wichtige Stelle", "positionSeconds": None, "createdAt": "2026-10-05T08:00:00.000Z",
                          "note": None, "updatedAt": "2026-10-05T08:00:00.000Z", "clientId": "x", "origin": "web", "chapterId": None}]},
             32: {"title": "Viele Markierungen", "authors": [], "personalNote": None, "cover": False,
@@ -102,6 +130,14 @@ def reset_books():
                  "ann": [A(8001, "Zwei Prozesse auf einmal", "K")], "bm": []},
             33: {"title": "Lange Texte", "authors": [{"id": 2, "name": "Ole Stein", "sortName": None}], "personalNote": None, "cover": False,
                  "ann": [A(5000 + i, ("Wort " * 1200) + str(i), "Lang", "#FB923C", None, None) for i in range(100)], "bm": []},
+            35: {"title": "Altbestand", "authors": [], "personalNote": None, "cover": False, "toc": [T("Kapitel A"), T("Kapitel B"), T("Kapitel C")],
+                 "ann": [A(3501, "Alte Stelle A", "Kapitel A"), A(3502, "Alte Stelle B", "Kapitel B"), A(3503, "Alte Stelle ohne", None),
+                         A(3504, "Neu in C", "Kapitel C")], "bm": []},
+            36: {"title": "Einsortiert", "authors": [], "personalNote": None, "cover": False, "ann": [A(3651, "Stelle E", "E1")], "bm": []},
+            37: {"title": "Ohne Markierungen", "authors": [{"id": 3, "name": "Pia Lind", "sortName": None}], "personalNote": None, "cover": False,
+                 "read": "2026-11-01T09:00:00.000Z", "toc": [T("Eins"), T("Zwei")], "ann": [], "bm": []},
+            38: {"title": "Riesiges Inhaltsverzeichnis", "authors": [], "personalNote": None, "cover": False,
+                 "toc": [T(f"Teil {i}") for i in range(CH_MAX + 10)], "ann": [], "bm": []},
         },
         "bert": {41: {"title": "Bergluft", "authors": [], "personalNote": None, "cover": False, "ann": [A(9001, "Bert liest", None)], "bm": []}},
     }
@@ -112,6 +148,11 @@ def _creds(user):
     F.refresh[rt] = user; F.access[at] = user
     iso = lambda s: time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() + s)) + ".000Z"
     return {"accessToken": at, "accessTokenExpiresAt": iso(900), "refreshToken": rt, "refreshTokenExpiresAt": iso(7 * 86400), "sessionId": 1}
+
+
+def _card(bid, b):
+    return {"id": bid, "status": "ready", "title": b["title"], "authors": [a["name"] for a in b["authors"]] + ["<b>X</b>"][:0],
+            "readStatus": {"status": "read", "source": "manual", "startedAt": None, "finishedAt": b["read"], "updatedAt": b["read"]} if b.get("read") else None}
 
 
 class FH(BaseHTTPRequestHandler):
@@ -151,6 +192,23 @@ class FH(BaseHTTPRequestHandler):
             if self.path.startswith("/__revoke/"):
                 F.revoked.add(self.path[10:])
                 return self.send(200, {})
+        if self.path == "/api/v1/books/query":
+            u = self.user()
+            if not u:
+                return self.send(401, {"message": "Unauthorized"})
+            size = ((d.get("pagination") or {}).get("size")) or 50
+            rules = ((d.get("filter") or {}).get("rules")) or []
+            if size > 200 or not isinstance(d.get("sort", []), list):
+                F.bad_calls.append(self.path)
+                return self.send(400, {"message": "bad query"})
+            want = next((r.get("value") for r in rules if r.get("field") == "readStatus" and r.get("operator") == "includesAny"), None)
+            mine = F.books.get(u, {})
+            xs = [(k, v) for k, v in mine.items() if not want or ("read" in want and v.get("read"))]
+            if d.get("q"):
+                xs = [(k, v) for k, v in xs if d["q"].lower() in v["title"].lower()]
+            if (d.get("sort") or [{}])[0].get("field") == "finishedAt":
+                xs.sort(key=lambda kv: kv[1].get("read") or "", reverse=(d["sort"][0].get("dir") == "desc"))
+            return self.send(200, {"items": [_card(k, v) for k, v in xs][:size], "total": len(xs), "page": 0, "size": size})
         self.send(404, {"message": "Not Found"})
 
     def do_GET(self):
@@ -170,6 +228,22 @@ class FH(BaseHTTPRequestHandler):
             if q.get("q"):
                 out = [x for x in out if q["q"].lower() in x["bookTitle"].lower()]
             return self.send(200, out[:lim])
+        if pu.path == "/api/v1/books/search":
+            lim = int(q.get("limit") or 10)
+            if lim > 20 or not q.get("q"):
+                F.bad_calls.append(self.path)
+                return self.send(400, {"message": "limit must not be greater than 20"})
+            out = [{"id": k, "title": v["title"], "seriesName": None, "authors": [a["name"] for a in v["authors"]], "libraryId": 1,
+                    "libraryName": "Bibliothek"} for k, v in sorted(mine.items(), key=lambda kv: kv[1]["title"]) if q["q"].lower() in v["title"].lower()]
+            return self.send(200, out[:lim])
+        if len(parts) == 6 and parts[1:4] == ["api", "v1", "epub"] and parts[4].isdigit() and parts[5] == "info":
+            b = mine.get(int(parts[4]))
+            if not b:
+                return self.send(404, {"message": "Book not found"})
+            if "toc" not in b:
+                return self.send(400, {"message": "Not an EPUB"})
+            return self.send(200, {"containerPath": "OEBPS/content.opf", "rootPath": "OEBPS/", "spine": [], "manifest": [], "optionalFiles": [],
+                                   "toc": {"label": "Table of Contents", "children": b["toc"]}, "metadata": {}, "coverPath": None})
         if len(parts) >= 5 and parts[1:4] == ["api", "v1", "books"] and parts[4].isdigit():
             bid = int(parts[4]); b = mine.get(bid)
             if not b:
@@ -226,6 +300,44 @@ def find(blocks, **kw):
     return next((i for i, b in enumerate(blocks) if all(bo(b).get(k) == v for k, v in kw.items())), None)
 
 
+def kids(pid, uid="bos-a"):
+    with connect() as c:
+        return [(r[0], r[1], r[2]) for r in c.execute("SELECT id, title, icon FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
+                                                      "ORDER BY sort NULLS FIRST, created, id", (uid, pid)).fetchall()]
+
+
+def kv(bid, uid="bos-a"):
+    with connect() as c:
+        r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k=?", (uid, f"bookorbit_page:{bid}")).fetchone()
+    return json.loads(r[0]) if r else {}
+
+
+def home():
+    with connect() as c:
+        r = c.execute("SELECT v FROM user_kv WHERE uid='bos-a' AND k='bookorbit_notes_home'").fetchone()
+    return json.loads(r[0]) if r else {}
+
+
+def parent_of(nid):
+    with connect() as c:
+        r = c.execute("SELECT parent_id FROM note WHERE id=?", (nid,)).fetchone()
+    return r[0] if r else "?"
+
+
+def revs(ids):
+    with connect() as c:
+        return {i: c.execute("SELECT rev FROM note WHERE id=?", (i,)).fetchone()[0] for i in ids}
+
+
+def all_pages(bid):
+    k = kv(bid)
+    return [k["page"]] + list(k.get("ch", {}).values())
+
+
+def text_of(bl):
+    return json.dumps(bl, ensure_ascii=False)
+
+
 def main():
     cleanup()
     reset_books()
@@ -235,7 +347,7 @@ def main():
             auth.create_user(u, "Bookorbit-Pass-123", u)
         Ca, Cb = ck("bos-a"), ck("bos-b")
         s, d = req("GET", "/api/version")
-        ok("Faehigkeit bookorbit2", "bookorbit2" in d.get("features", []), d)
+        ok("Faehigkeiten bookorbit2 und bookorbit3", {"bookorbit2", "bookorbit3"} <= set(d.get("features", [])), d)
         s, _ = req("GET", "/api/bookorbit/notes/books")
         ok(f"Buecherliste ohne Anmeldung 401 ({s})", s == 401)
         s, _ = req("POST", "/api/bookorbit/notes", None, {"book_id": 31})
@@ -246,151 +358,316 @@ def main():
         ok(f"Anlegen ohne Verbindung: 409 state none ({s})", s == 409 and d.get("state") == "none", d)
         s, d = req("POST", "/api/bookorbit/connect", Ca, {"url": FAKE, "username": "anna", "password": PW_A})
         ok(f"Anna verbunden ({s})", s == 200, d)
-        part_list(Ca)
+        legacy = setup_legacy(Ca)
+        part_list(Ca, legacy)
         nid = part_create(Ca)
-        part_idem(Ca, nid)
+        part_idem(Ca)
         part_update(Ca, nid)
+        part_legacy(Ca, legacy)
+        part_search_read(Ca)
         part_page_id(Ca, Cb, nid)
         part_parent(Ca, Cb)
         part_limits(Ca)
         part_parallel(Ca)
+        part_home(Ca)
         part_trash(Ca, nid)
         part_bad(Ca)
+        ok("BookOrbit nie ausserhalb seiner Grenzen aufgerufen (search limit <= 20, query size <= 200)", not F.bad_calls, F.bad_calls)
         part_expired(Ca)
         part_rate(Ca)
     finally:
         srv.shutdown()
 
 
-def part_list(Ca):
+# --- alte Einseiten-Notizseiten (Stand bis 9.11.) ---------------------------------------------------------------------
+def setup_legacy(Ca):
+    def q(i, text, k):
+        return {"type": "quote", "data": {"text": text, "caption": "", "alignment": "left", "bo": {"k": k, "a": i, "h": hh(text, "")}}}
+    kA, kB = ckey("Kapitel A"), ckey("Kapitel B")
+    old = req("POST", "/api/notes", Ca, {"title": "Notizen: Altbestand", "icon": "📖", "cover": None})[1]["id"]
+    save(Ca, old, [{"type": "paragraph", "data": {"text": "Alt · <a href=\"x\">In BookOrbit öffnen</a>", "bo": {"k": "_head", "x": "info"}}},
+                   {"type": "header", "data": {"text": "Kapitel A", "level": 2, "bo": {"k": kA, "c": 1}}},
+                   q(3501, "Alte Stelle A", kA),
+                   {"type": "paragraph", "data": {"text": "Eigener Gedanke zu A"}},
+                   {"type": "header", "data": {"text": "Kapitel B", "level": 2, "bo": {"k": kB, "c": 1}}},
+                   q(3502, "Alte Stelle B", kB),
+                   q(3503, "Alte Stelle ohne", "c0"),
+                   {"type": "header", "data": {"text": "Lesezeichen", "level": 2, "bo": {"k": "_bm", "x": "bmh"}}},
+                   {"type": "paragraph", "data": {"text": "🔖 Alt", "bo": {"k": "_bm", "b": 3601, "h": "0"}}}])
+    shelf = req("POST", "/api/notes", Ca, {"title": "Meine Lektuere", "cover": None})[1]["id"]
+    old2 = req("POST", "/api/notes", Ca, {"title": "Notizen: Einsortiert", "parent_id": shelf, "cover": None})[1]["id"]
+    kE = ckey("E1")
+    save(Ca, old2, [{"type": "paragraph", "data": {"text": "Info", "bo": {"k": "_head", "x": "info"}}},
+                    {"type": "header", "data": {"text": "E1", "level": 2, "bo": {"k": kE, "c": 1}}}, q(3651, "Stelle E", kE)])
+    with connect() as c, c:
+        c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?,?,?)", ("bos-a", "bookorbit_page:35",
+                  json.dumps({"page": old, "a": [3501, 3502, 3503], "n": [], "b": [3601], "x": ["info"]})))
+        c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?,?,?)", ("bos-a", "bookorbit_page:36",
+                  json.dumps({"page": old2, "a": [3651], "n": [], "b": [], "x": ["info"]})))
+    return {"old": old, "old2": old2, "shelf": shelf}
+
+
+def part_list(Ca, legacy):
     s, d = req("GET", "/api/bookorbit/notes/books", Ca)
     bs = {b["id"]: b for b in d.get("books") or []} if isinstance(d, dict) else {}
-    ok(f"Buecherliste: drei Buecher mit Anzahl ({s})", s == 200 and set(bs) == {31, 32, 33, 34} and bs[31]["count"] == 6 and bs[32]["count"] == 350, d)
+    ok(f"Buecherliste: Buecher mit Markierungen und Anzahl ({s})", s == 200 and set(bs) == {31, 32, 33, 34, 35, 36} and bs[31]["count"] == 9
+       and bs[32]["count"] == 350, d)
     b = bs.get(31) or {}
     ok("Buch: Titel, Autor, Cover ueber Saga, noch keine Seite", b.get("title") == "Das Meer der Worte" and b.get("author") == "Ida Feld"
        and b.get("cover") == "/api/bookorbit/cover/31" and b.get("page_id") is None, b)
+    ok("alte Seiten sind zugeordnet", bs.get(35, {}).get("page_id") == legacy["old"] and bs.get(36, {}).get("page_id") == legacy["old2"], bs.get(35))
     ok("keine BookOrbit-Adresse/Token in der Liste", FAKE not in json.dumps(d) and "acc-" not in json.dumps(d))
+    h = home()
+    s2, p, bl = page(Ca, h.get("page"))
+    ok("Aufraeumen: Sammelseite „Bücher“ 📚 auf oberster Ebene angelegt und gemerkt", s2 == 200 and p.get("title") == "Bücher" and p.get("icon") == "📚"
+       and p.get("parent_id") is None and h.get("moved") is True, (h, p.get("title")))
+    ok("Aufraeumen: alte Seite von oberster Ebene in die Sammelseite", parent_of(legacy["old"]) == h.get("page"), parent_of(legacy["old"]))
+    ok("Aufraeumen: selbst einsortierte Seite bleibt, wo sie ist", parent_of(legacy["old2"]) == legacy["shelf"], parent_of(legacy["old2"]))
+    li = bl[find(bl, x="books")] if find(bl, x="books") is not None else {}
+    ok("Sammelseite: Einleitung (grau) und Liste der Buchseiten", find(bl, x="intro") == 0 and "hk-c-gray" in bl[0]["data"]["text"]
+       and li.get("type") == "list" and f'/notes#{legacy["old"]}' in text_of(li) and f'/notes#{legacy["old2"]}' in text_of(li), bl)
     s, d = req("GET", "/api/bookorbit/notes/books?q=" + urllib.parse.quote("viele"), Ca)
     ok(f"Suche q ({s})", s == 200 and [b["id"] for b in d.get("books", [])] == [32], d)
+    s, d = req("GET", "/api/bookorbit/notes/books?filter=alles", Ca)
+    ok(f"unbekannter Filter -> 400 ({s})", s == 400, d)
 
 
 def part_create(Ca):
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 31})
-    ok(f"Seite angelegt ({s})", s == 200 and d.get("created") is True and d.get("added") == 6 and d.get("total") == 6
-       and d.get("truncated") is False and isinstance(d.get("page_id"), int), d)
+    ok(f"Buch angelegt ({s})", s == 200 and d.get("created") is True and d.get("added") == 9 and d.get("total") == 9 and d.get("chapters") == 7
+       and d.get("chapters_added") == 7 and d.get("truncated") is False and isinstance(d.get("page_id"), int), d)
     nid = d.get("page_id")
     s, p, bl = page(Ca, nid)
-    ok("Titel „Notizen: <Titel>“, Icon 📖", p.get("title") == "Notizen: Das Meer der Worte" and p.get("icon") == "📖", (p.get("title"), p.get("icon")))
-    types = [b["type"] for b in bl]
-    ok("Kopf: Cover als eigene Datei", types and types[0] == "image" and str(bl[0]["data"]["file"]["url"]).startswith("/files/"), bl[:1])
+    ok("Buchseite: Titel = Buchtitel, Icon 📖, in der Sammelseite", p.get("title") == "Das Meer der Worte" and p.get("icon") == "📖"
+       and p.get("parent_id") == home().get("page"), (p.get("title"), p.get("icon"), p.get("parent_id")))
+    ok("Kopf: Cover als eigene Datei (links, 25 %)", bl and bl[0]["type"] == "image" and str(bl[0]["data"]["file"]["url"]).startswith("/files/")
+       and bl[0]["data"].get("width") == 25, bl[:1])
     info = bl[1]["data"]["text"] if len(bl) > 1 else ""
     ok("Kopf: Autor und Link zum Buch in BookOrbit", "Ida Feld" in info and f'href="{FAKE}/book/31"' in info and "In BookOrbit öffnen" in info, info)
     i = find(bl, x="bn")
-    ok("Notiz zum Buch als eigener Abschnitt", i is not None and bl[i - 1]["type"] == "header" and "Lieblingsbuch<br>des Jahres" in bl[i]["data"]["text"],
-       bl[i] if i is not None else bl)
-    hs = [(b["data"]["text"], b["data"].get("level")) for b in bl if b["type"] == "header" and bo(b).get("c")]
-    ok("je Kapitel eine Ueberschrift (Reihenfolge des Buchs)", hs == [("Kapitel 1", 2), ("Kapitel 2", 2)], hs)
-    qs = [b for b in bl if b["type"] == "quote"]
-    ok("sechs Zitat-Bloecke mit BookOrbit-ID", [bo(b).get("a") for b in qs] == [101, 102, 103, 104, 105, 106], [bo(b) for b in qs])
-    q1 = qs[0]["data"] if qs else {}
-    ok("Zitat: Text, Seite und Datum in der Unterschrift", q1.get("text") == "Am Anfang war das Wasser." and q1.get("caption") == "S. 12 · 21.10.2026", q1)
-    cols = [((b.get("tunes") or {}).get("hkstyle") or {}).get("c") for b in qs]
-    ok("Farben auf die Palette abgebildet", cols == ["yellow", "green", "pink", "blue", "gray", "purple"], cols)
-    j = find(bl, a=101)
-    ok("eigene Notiz als Absatz direkt unter dem Zitat", j is not None and bl[j + 1]["type"] == "paragraph" and bo(bl[j + 1]).get("n") == 101
-       and bl[j + 1]["data"]["text"] == "Schoener Einstieg", bl[j + 1] if j is not None else None)
-    x = qs[5]["data"]["text"] if len(qs) > 5 else ""
+    ok("Notiz zum Buch als eigener Abschnitt", i is not None and bl[i - 1]["type"] == "header" and "Lieblingsbuch<br>des Jahres" in bl[i]["data"]["text"], bl)
+    order = [bo(b).get("x") or ("a%d" % bo(b)["a"] if bo(b).get("a") else bo(b).get("b")) for b in bl]
+    ok("Buchseite: Kopf, Notiz, Kapitel, Ohne Kapitel, Lesezeichen", order == ["cover", "info", "bnh", "bn", "chh", "chl", "mh", "a109", "bmh", 501], order)
+    ok("Abschnitt „Kapitel“ und „Ohne Kapitel“ als H2", bl[4]["data"]["text"] == "Kapitel" and bl[6]["data"]["text"] == "Ohne Kapitel"
+       and bl[4]["data"]["level"] == 2, (bl[4], bl[6]))
+    top = kids(nid)
+    ok("Kapitelseiten in Buchreihenfolge (Tiefe 1), Icon 📑", [x[1] for x in top] == ["Vorwort", "Teil Eins", "Kapitel 3", "Nachwort", "Anhang & <i>Quellen</i>"]
+       and all(x[2] == "📑" for x in top), top)
+    ch = {x[1]: x[0] for x in top}
+    sub = kids(ch.get("Teil Eins"))
+    ok("Teil mit Kapiteln darunter (Tiefe 2), tiefere Eintraege ohne eigene Seite", [x[1] for x in sub] == ["Kapitel 1", "Kapitel 2"], sub)
+    ch.update({x[1]: x[0] for x in sub})
+    lst = bl[5]["data"]["items"]
+    ok("Kapitel-Liste: Verweise in Buchreihenfolge, Teil eingerueckt", [it["content"].split('"')[1] for it in lst] ==
+       [f"/notes#{ch[k]}" for k in ("Vorwort", "Teil Eins", "Kapitel 3", "Nachwort", "Anhang & <i>Quellen</i>")]
+       and [it["content"].split('"')[1] for it in lst[1]["items"]] == [f"/notes#{ch['Kapitel 1']}", f"/notes#{ch['Kapitel 2']}"], lst)
+    ok("Kapitel-Liste: Anzahl klein/grau dahinter", "3 Markierungen" in lst[1]["items"][0]["content"] and "hk-c-gray" in lst[1]["items"][0]["content"]
+       and "5 Markierungen" in lst[1]["items"][1]["content"] and "Markierung" not in lst[0]["content"], lst[1])
+    ok("Kapitelname aus BookOrbit maskiert", "&lt;i&gt;Quellen" in lst[4]["content"] and "<i>" not in lst[4]["content"] and "&amp;" in lst[4]["content"], lst[4])
+    s, p1, b1 = page(Ca, ch["Kapitel 1"])
+    nav = b1[0]["data"]["text"] if b1 else ""
+    ok("Kapitelseite: Kopfzeile „← Buch · Teil · Kapitel n von m“", find(b1, x="back") == 0 and f'href="/notes#{nid}"' in nav
+       and f'href="/notes#{ch["Teil Eins"]}"' in nav and "Kapitel 3 von 7" in nav and "←" in nav and "hk-c-gray" in nav, nav)
+    ok("Kapitel 1: drei Zitate in Reihenfolge, Notiz darunter", [bo(b).get("a") for b in b1 if b["type"] == "quote"] == [101, 102, 103]
+       and bo(b1[2]).get("n") == 101 and b1[2]["data"]["text"] == "Schoener Einstieg", b1)
+    q1 = b1[1]["data"]
+    ok("Zitat: Text, Seite und Datum in der Unterschrift, Farbe", q1.get("text") == "Am Anfang war das Wasser." and q1.get("caption") == "S. 12 · 21.10.2026"
+       and b1[1].get("tunes", {}).get("hkstyle") == {"c": "yellow", "bg": True}, b1[1])
+    s, p2, b2 = page(Ca, ch["Kapitel 2"])
+    ok("Kapitel 2: auch andere Schreibweise und tieferer TOC-Eintrag", [bo(b).get("a") for b in b2 if b["type"] == "quote"] == [104, 105, 106, 110, 111], b2)
+    x = next((b["data"]["text"] for b in b2 if bo(b).get("a") == 106), "")
     ok("Fremdinhalt maskiert (kein HTML aus BookOrbit)", "<img" not in x and "<script" not in x and "&lt;img" in x and "&amp;" in x, x)
-    k = find(bl, x="bmh")
-    ok("Lesezeichen als eigener Abschnitt am Ende", k is not None and k == len(bl) - 2 and bo(bl[-1]).get("b") == 501
-       and "Wichtige Stelle" in bl[-1]["data"]["text"], bl[-2:])
+    s, p3, b3 = page(Ca, ch["Kapitel 3"])
+    ok("Kapitel ohne Markierungen: Kopfzeile und Platzhalter (grau)", [bo(b).get("x") for b in b3] == ["back", "ph"] and "hk-c-gray" in b3[1]["data"]["text"]
+       and "Noch keine Markierungen" in b3[1]["data"]["text"] and "Kapitel 5 von 7" in b3[0]["data"]["text"], b3)
     s, d = req("GET", "/api/bookorbit/notes/books", Ca)
-    ok("Liste kennt jetzt die Seite", {b["id"]: b["page_id"] for b in d.get("books", [])}.get(31) == nid, d)
-    with connect() as c:
-        kv = c.execute("SELECT v FROM user_kv WHERE uid='bos-a' AND k='bookorbit_page:31'").fetchone()
-    ok("Zuordnung in user_kv (ohne Migration)", kv and json.loads(kv[0]).get("page") == nid and sorted(json.loads(kv[0])["a"]) == [101, 102, 103, 104, 105, 106], kv)
+    ok("Liste kennt jetzt die Buchseite", {b["id"]: b["page_id"] for b in d.get("books", [])}.get(31) == nid, d)
+    k = kv(31)
+    ok("Zuordnung in user_kv: Buchseite, Kapitelseiten, v2", k.get("page") == nid and k.get("v") == 2 and len(k.get("ch", {})) == 7
+       and sorted(k["a"]) == [101, 102, 103, 104, 105, 106, 109, 110, 111], k)
+    s, p, hb = page(Ca, home()["page"])
+    li = hb[find(hb, x="books")]["data"]["items"] if find(hb, x="books") is not None else []
+    ok("Sammelseite: neue Buchseite oben in der Liste", li and f"/notes#{nid}" in li[0]["content"], li)
     return nid
 
 
-def part_idem(Ca, nid):
-    rev0 = page(Ca, nid)[1].get("rev")
+def part_idem(Ca):
+    ids = all_pages(31) + [home()["page"]]
+    r0 = revs(ids)
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 31})
-    rev1 = page(Ca, nid)[1].get("rev")
-    ok(f"zweites Aktualisieren: nichts neu, Seite unveraendert ({s})", s == 200 and d.get("page_id") == nid and d.get("created") is False
-       and d.get("added") == 0 and d.get("updated") == 0 and rev0 == rev1, (d, rev0, rev1))
+    r1 = revs(ids)
+    ok(f"zweites Aktualisieren: nichts neu, keine Seite geaendert ({s})", s == 200 and d.get("created") is False and d.get("added") == 0
+       and d.get("updated") == 0 and d.get("chapters_added") == 0 and r0 == r1, (d, r0, r1))
+
+
+def chap(nid, title):
+    flat = []
+    for x in kids(nid):
+        flat.append(x)
+        flat.extend(kids(x[0]))
+    return next((x[0] for x in flat if x[1] == title), None)
 
 
 def part_update(Ca, nid):
-    s, p, bl = page(Ca, nid)
-    i1 = find(bl, n=101)
-    bl.insert(i1 + 1, {"type": "paragraph", "data": {"text": "Meine eigene Ergaenzung"}})
-    i2 = find(bl, a=102)
-    bl[i2]["data"]["text"] = "Von mir umformuliert"
-    i3 = find(bl, a=103)
-    del bl[i3]
-    bl[find(bl, a=104)]["tunes"] = {"hkstyle": {"c": "red"}}      # Person faerbt ein Zitat um (Text bleibt)
-    s, d = save(Ca, nid, bl, p.get("rev"))
-    ok(f"eigene Aenderungen gespeichert ({s})", s == 200, d)
-    a = F.books["anna"][31]["ann"]
-    a.insert(2, A(107, "Neu im ersten Kapitel.", "Kapitel 1", "#FACC15", None, 16))
-    a.append(A(108, "Ganz neues Kapitel.", "Kapitel 3", "#4ADE80", "mit Notiz", 50))
+    k1, k2, k3, vw, nw = (chap(nid, t) for t in ("Kapitel 1", "Kapitel 2", "Kapitel 3", "Vorwort", "Nachwort"))
+    s, p, bl = page(Ca, k1)
+    bl.insert(find(bl, n=101) + 1, {"type": "paragraph", "data": {"text": "Meine eigene Ergaenzung"}})
+    bl[find(bl, a=102)]["data"]["text"] = "Von mir umformuliert"
+    del bl[find(bl, a=103)]
+    s, d = save(Ca, k1, bl, p.get("rev"))
+    ok(f"eigene Aenderungen in Kapitel 1 gespeichert ({s})", s == 200, d)
+    s, p, bl = page(Ca, k2)
+    bl[find(bl, a=104)]["tunes"] = {"hkstyle": {"c": "red"}}
+    save(Ca, k2, bl, p.get("rev"))
+    s, p, bl = page(Ca, vw)
+    bl[find(bl, x="ph")]["data"]["text"] = "Meine Gedanken zum Vorwort"       # Platzhalter ueberschrieben
+    save(Ca, vw, bl, p.get("rev"))
+    s, _ = req("DELETE", f"/api/notes/{nw}", Ca)
+    ok(f"Kapitelseite „Nachwort“ geloescht ({s})", s == 200)
+    b = F.books["anna"][31]
+    a = b["ann"]
+    a.insert(3, A(107, "Neu im ersten Kapitel.", "Kapitel 1", "#FACC15", None, 16))
+    a.append(A(108, "Endlich etwas in Kapitel 3.", "Kapitel 3", "#4ADE80", "mit Notiz", 50))
+    a.append(A(113, "Erste Markierung im Vorwort.", "Vorwort", "#4ADE80", None, 2))
+    a.append(A(112, "Im geloeschten Nachwort.", "Nachwort", "#4ADE80", None, 90))
     next(x for x in a if x["id"] == 102)["text"] = "BookOrbit-Text geaendert (Saga-Block bearbeitet)"
     next(x for x in a if x["id"] == 104)["text"] = "Vierte Stelle, korrigiert."
     a[:] = [x for x in a if x["id"] != 105]
     next(x for x in a if x["id"] == 106)["note"] = "Spaeter notiert"
-    F.books["anna"][31]["bm"].append(dict(F.books["anna"][31]["bm"][0], id=502, title="Zweites Lesezeichen", note="Hier weiter"))
+    b["bm"].append(dict(b["bm"][0], id=502, title="Zweites Lesezeichen", note="Hier weiter"))
+    b["toc"].insert(1, T("Prolog"))
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 31})
-    ok(f"Aktualisieren: 107, 108 und Notiz zu 106 neu, 104 nachgezogen ({s})", s == 200 and d.get("added") == 3 and d.get("updated") == 1
-       and d.get("total") == 7, d)
-    s, p, bl = page(Ca, nid)
+    ok(f"Aktualisieren: 107, 108, 113 und Notiz zu 106 neu, 104 nachgezogen, Prolog neu ({s})", s == 200 and d.get("added") == 4
+       and d.get("updated") == 1 and d.get("chapters_added") == 1 and d.get("chapters") == 7, d)
+    s, p, bl = page(Ca, k1)
     j = find(bl, n=101)
-    ok("eigene Ergaenzung bleibt an ihrer Stelle", j is not None and bl[j + 1]["data"].get("text") == "Meine eigene Ergaenzung" and not bo(bl[j + 1]),
-       bl[j + 1] if j is not None else None)
-    ok("in Saga bearbeiteter Block bleibt (BookOrbit-Aenderung nicht uebernommen)", bl[find(bl, a=102)]["data"]["text"] == "Von mir umformuliert")
+    ok("eigene Ergaenzung bleibt an ihrer Stelle", j is not None and bl[j + 1]["data"].get("text") == "Meine eigene Ergaenzung" and not bo(bl[j + 1]), bl)
+    ok("in Saga bearbeiteter Block bleibt", bl[find(bl, a=102)]["data"]["text"] == "Von mir umformuliert")
     ok("in Saga geloeschte Markierung kommt nicht wieder", find(bl, a=103) is None)
-    ok("unveraenderter Block nachgezogen", bl[find(bl, a=104)]["data"]["text"] == "Vierte Stelle, korrigiert.", bl[find(bl, a=104)])
-    ok("eigene Farbe des Zitats bleibt beim Nachziehen", (bl[find(bl, a=104)].get("tunes") or {}).get("hkstyle") == {"c": "red"},
-       bl[find(bl, a=104)].get("tunes"))
+    ok("neue Markierung in ihrem Kapitel", find(bl, a=107) is not None and find(bl, a=107) > find(bl, a=102), [bo(x) for x in bl])
+    s, p, bl = page(Ca, k2)
+    ok("unveraenderter Block nachgezogen, eigene Farbe bleibt", bl[find(bl, a=104)]["data"]["text"] == "Vierte Stelle, korrigiert."
+       and bl[find(bl, a=104)].get("tunes", {}).get("hkstyle") == {"c": "red"}, bl[find(bl, a=104)])
     ok("bei BookOrbit geloeschte Markierung bleibt in Saga", find(bl, a=105) is not None)
-    i107, ich2 = find(bl, a=107), next(i for i, b in enumerate(bl) if b["type"] == "header" and b["data"]["text"] == "Kapitel 2")
-    ok("neue Markierung beim eigenen Kapitel (vor Kapitel 2)", i107 is not None and find(bl, a=102) < i107 < ich2, (i107, ich2))
-    i108, ibm = find(bl, a=108), find(bl, x="bmh")
-    ok("neues Kapitel mit Ueberschrift vor den Lesezeichen", i108 is not None and bl[i108 - 1]["type"] == "header"
-       and bl[i108 - 1]["data"]["text"] == "Kapitel 3" and bo(bl[i108 + 1]).get("n") == 108 and i108 < ibm, bl[i108 - 1:i108 + 2] if i108 else bl)
     i106 = find(bl, a=106)
-    ok("spaeter geschriebene Notiz direkt unter ihr Zitat", bo(bl[i106 + 1]).get("n") == 106 and bl[i106 + 1]["data"]["text"] == "Spaeter notiert",
-       bl[i106 + 1])
-    ok("neues Lesezeichen am Ende", bo(bl[-1]).get("b") == 502 and "Hier weiter" in bl[-1]["data"]["text"], bl[-1])
-    ok("Kopf nicht doppelt", sum(1 for b in bl if bo(b).get("x") == "info") == 1 and sum(1 for b in bl if bo(b).get("x") == "cover") == 1)
-    rev0 = p.get("rev")
-    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 31})
-    ok("danach wieder idempotent", s == 200 and d.get("added") == 0 and d.get("updated") == 0 and page(Ca, nid)[1].get("rev") == rev0, d)
-    # Block in eine Spalte verschoben (nicht mehr oberste Ebene): zaehlt als vorhanden, wird nicht neu angelegt
+    ok("spaeter geschriebene Notiz direkt unter ihr Zitat", bo(bl[i106 + 1]).get("n") == 106 and bl[i106 + 1]["data"]["text"] == "Spaeter notiert", bl[i106 + 1])
+    s, p, bl = page(Ca, k3)
+    ok("Platzhalter (unveraendert) weicht der ersten Markierung", find(bl, x="ph") is None and [bo(x).get("a") or bo(x).get("n") or bo(x).get("x") for x in bl]
+       == ["back", 108, 108], bl)
+    s, p, bl = page(Ca, vw)
+    ok("ueberschriebener Platzhalter bleibt als eigener Text, Zitat darueber", [x["data"].get("text") if bo(x).get("x") == "ph" else bo(x).get("a") or bo(x).get("x")
+                                                                                for x in bl] == ["back", 113, "Meine Gedanken zum Vorwort"], bl)
+    ok("geloeschte Kapitelseite kommt nicht wieder, ihre Markierung nirgends", chap(nid, "Nachwort") is None
+       and "Im geloeschten Nachwort" not in "".join(text_of(page(Ca, x)[2]) for x in all_pages(31)), kids(nid))
+    top = [x[1] for x in kids(nid)]
+    ok("neues TOC-Kapitel an der richtigen Stelle", top == ["Vorwort", "Prolog", "Teil Eins", "Kapitel 3", "Anhang & <i>Quellen</i>"], top)
     s, p, bl = page(Ca, nid)
+    lst = bl[find(bl, x="chl")]["data"]["items"]
+    ok("Kapitel-Liste neu aufgebaut (Prolog, ohne Nachwort)", len(lst) == 5 and f"/notes#{chap(nid, 'Prolog')}" in lst[1]["content"]
+       and f"/notes#{nw}" not in text_of(lst), lst)
+    ok("neues Lesezeichen am Ende der Buchseite", bo(bl[-1]).get("b") == 502 and "Hier weiter" in bl[-1]["data"]["text"], bl[-1])
+    ok("Kopf nicht doppelt", sum(1 for b in bl if bo(b).get("x") == "info") == 1 and sum(1 for b in bl if bo(b).get("x") == "cover") == 1)
+    s, p, bp = page(Ca, chap(nid, "Prolog"))
+    ok("neue Kapitelseite: Kopfzeile „Kapitel 2 von 7“ und Platzhalter", [bo(x).get("x") for x in bp] == ["back", "ph"] and "Kapitel 2 von 7" in bp[0]["data"]["text"], bp)
+    s, p, bv = page(Ca, vw)
+    ok("Kopfzeile der anderen Kapitel nachgezogen (Kapitel 3 von 7 -> 4 von 7)", "Kapitel 4 von 7" in page(Ca, k1)[2][0]["data"]["text"],
+       page(Ca, k1)[2][0])
+    ids = all_pages(31)
+    r0 = revs(ids)
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 31})
+    ok("danach wieder idempotent", s == 200 and d.get("added") == 0 and d.get("updated") == 0 and revs(ids) == r0, d)
+    # Kapitel-Liste von der Person bearbeitet: nur Neues kommt dazu
+    s, p, bl = page(Ca, nid)
+    i = find(bl, x="chl")
+    bl[i]["data"]["items"].append({"content": "Mein eigener Eintrag", "meta": {}, "items": []})
+    save(Ca, nid, bl, p.get("rev"))
+    b["toc"].append(T("Glossar"))
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 31})
+    s2, p, bl = page(Ca, nid)
+    lst = bl[find(bl, x="chl")]["data"]["items"]
+    ok("bearbeitete Kapitel-Liste: eigener Eintrag bleibt, neues Kapitel angefuegt", s == 200 and d.get("chapters_added") == 1
+       and lst[-2]["content"] == "Mein eigener Eintrag" and f"/notes#{chap(nid, 'Glossar')}" in lst[-1]["content"] and len(lst) == 7, lst)
+    # Block in eine Spalte verschoben (nicht mehr oberste Ebene): zaehlt als vorhanden, wird nicht neu angelegt
+    s, p, bl = page(Ca, k2)
     i = find(bl, a=104)
     moved = bl.pop(i)
     bl.insert(i, {"type": "columns", "data": {"cols": [{"blocks": [moved]}, {"blocks": [{"type": "paragraph", "data": {"text": "daneben"}}]}]}})
-    save(Ca, nid, bl, p.get("rev"))
+    save(Ca, k2, bl, p.get("rev"))
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 31})
-    s2, p, bl = page(Ca, nid)
+    s2, p, bl = page(Ca, k2)
     ok("in Spalte verschobener Block wird nicht verdoppelt", s == 200 and d.get("added") == 0 and find(bl, a=104) is None
-       and "Vierte Stelle" in json.dumps(bl, ensure_ascii=False), d)
+       and text_of(bl).count("Vierte Stelle") == 1, d)
+
+
+def part_legacy(Ca, legacy):
+    old = legacy["old"]
+    s, p0, bl0 = page(Ca, old)
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 35})
+    ok(f"alte Einseiten-Seite umgebaut ({s})", s == 200 and d.get("created") is False and d.get("page_id") == old and d.get("added") == 1
+       and d.get("chapters") == 3 and d.get("chapters_added") == 3, d)
+    s, p, bl = page(Ca, old)
+    ok("alte Seite: Titel bleibt", p.get("title") == "Notizen: Altbestand", p.get("title"))
+    ok("alte Seite: keine Kapitel-Ueberschriften mehr, Rest bleibt", not any(bo(b).get("c") for b in bl) and find(bl, a=3503) is not None
+       and find(bl, b=3601) is not None and find(bl, x="chl") is not None and find(bl, x="mh") is None, [bo(b) for b in bl])
+    ch = {x[1]: x[0] for x in kids(old)}
+    ok("Kapitelseiten A, B, C in Reihenfolge", list(ch) == ["Kapitel A", "Kapitel B", "Kapitel C"], ch)
+    s, p, ba = page(Ca, ch.get("Kapitel A"))
+    ok("Abschnitt A samt eigenem Text in die Kapitelseite", [bo(b).get("x") or bo(b).get("a") or b["data"].get("text") for b in ba]
+       == ["back", 3501, "Eigener Gedanke zu A"], ba)
+    s, p, bc = page(Ca, ch.get("Kapitel C"))
+    ok("neues Kapitel C bekommt die neue Markierung", [bo(b).get("x") or bo(b).get("a") for b in bc] == ["back", 3504], bc)
+    allt = "".join(text_of(page(Ca, x)[2]) for x in all_pages(35))
+    ok("nichts verloren, nichts doppelt", all(allt.count(t) == 1 for t in ("Alte Stelle A", "Alte Stelle B", "Alte Stelle ohne", "Eigener Gedanke zu A", "🔖 Alt")), allt[:300])
+    ids = all_pages(35)
+    r0 = revs(ids)
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 35})
+    ok("umgebaute Seite: danach idempotent", s == 200 and d.get("added") == 0 and d.get("chapters_added") == 0 and revs(ids) == r0, d)
+
+
+def part_search_read(Ca):
+    s, d = req("GET", "/api/bookorbit/notes/books?q=" + urllib.parse.quote("ohne"), Ca)
+    b = next((x for x in d.get("books", []) if x["id"] == 37), None) if isinstance(d, dict) else None
+    ok(f"Suche findet Buch ohne Markierungen (ganze Bibliothek, count 0) ({s})", s == 200 and b and b["count"] == 0 and b["author"] == "Pia Lind"
+       and b["page_id"] is None, d)
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 37})
+    ok(f"Buch ohne Markierungen als Seite: Kapitel aus dem TOC ({s})", s == 200 and d.get("created") and d.get("added") == 0 and d.get("chapters") == 2, d)
+    nid = d.get("page_id")
+    ok("Kapitelseiten Eins, Zwei mit Platzhalter", [x[1] for x in kids(nid)] == ["Eins", "Zwei"]
+       and find(page(Ca, kids(nid)[0][0])[2], x="ph") is not None, kids(nid))
+    s, d = req("GET", "/api/bookorbit/notes/books?filter=read", Ca)
+    bs = d.get("books", []) if isinstance(d, dict) else []
+    ok(f"Filter Gelesen: neueste zuerst, auch ohne Markierungen ({s})", s == 200 and d.get("filter") == "read" and [x["id"] for x in bs] == [37, 31]
+       and bs[0]["read_at"].startswith("2026-11-01") and bs[0]["page_id"] == nid and bs[1]["count"] == 12 and bs[0]["count"] == 0, d)
+    s, d = req("GET", "/api/bookorbit/notes/books?filter=read&q=" + urllib.parse.quote("meer"), Ca)
+    ok(f"Filter Gelesen mit Suche ({s})", s == 200 and [x["id"] for x in d.get("books", [])] == [31], d)
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 38})
+    ok(f"Obergrenze Kapitelseiten ({CH_MAX}) -> truncated ({s})", s == 200 and d.get("chapters") == CH_MAX and d.get("truncated") is True
+       and len(kids(d.get("page_id"))) == CH_MAX, d)
 
 
 def part_page_id(Ca, Cb, nid):
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"page_id": nid})
-    ok(f"Aktualisieren ueber page_id ({s})", s == 200 and d.get("page_id") == nid and d.get("book_id") == 31 and d.get("added") == 0, d)
+    ok(f"Aktualisieren ueber page_id (Buchseite) ({s})", s == 200 and d.get("page_id") == nid and d.get("book_id") == 31 and d.get("added") == 0, d)
+    k1 = chap(nid, "Kapitel 1")
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"page_id": k1})
+    ok(f"Aktualisieren ueber page_id (Kapitelseite) ({s})", s == 200 and d.get("page_id") == nid and d.get("book_id") == 31, d)
     other = req("POST", "/api/notes", Ca, {"title": "Eigene Seite"})[1]["id"]
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"page_id": other})
     ok(f"page_id einer Seite ohne BookOrbit -> 404 ({s})", s == 404, d)
     s, d = req("POST", "/api/bookorbit/connect", Cb, {"url": FAKE, "username": "bert", "password": PW_B})
     ok(f"Bert verbunden ({s})", s == 200, d)
-    s, d = req("POST", "/api/bookorbit/notes", Cb, {"page_id": nid})
-    ok(f"Bert: Annas Seite ueber page_id -> 404 ({s})", s == 404, d)
+    ids = all_pages(31)
+    r0 = revs(ids)
+    for x in (nid, k1):
+        s, d = req("POST", "/api/bookorbit/notes", Cb, {"page_id": x})
+        ok(f"Bert: Annas Seite ueber page_id -> 404 ({s})", s == 404, d)
+        s, d = req("GET", f"/api/notes/{x}", Cb)
+        ok(f"Bert: Annas Seite nicht lesbar ({s})", s in (403, 404), d)
     s, d = req("POST", "/api/bookorbit/notes", Cb, {"book_id": 31})
     ok(f"Bert: Annas Buch (nicht in seiner Bibliothek) -> 404 ({s})", s == 404, d)
     s, d = req("GET", "/api/bookorbit/notes/books", Cb)
     ok("Bert sieht nur seine Buecher", s == 200 and [b["id"] for b in d.get("books", [])] == [41] and d["books"][0]["page_id"] is None, d)
+    ok("Annas Seiten dabei unveraendert", revs(ids) == r0)
 
 
 def part_parent(Ca, Cb):
@@ -399,6 +676,7 @@ def part_parent(Ca, Cb):
     req("PUT", f"/api/notes/{bert}/shares", Cb, {"type": "user", "target": "bos-a", "role": "edit"})
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 33, "parent_id": bert})
     ok(f"Ziel: fremde (auch freigegebene) Seite -> 404 ({s})", s == 404, d)
+    ok("Berts Seite hat keine Unterseiten bekommen", kids(bert, "bos-b") == [])
     dbid = req("POST", "/api/notes", Ca, {"title": "DB", "kind": "database"})[1]["id"]
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 33, "parent_id": dbid})
     ok(f"Ziel: Datenbank -> 404 ({s})", s == 404, d)
@@ -409,25 +687,25 @@ def part_parent(Ca, Cb):
     ok("dabei nichts angelegt", n == 0)
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 32, "parent_id": mine})
     s2, p, _ = page(Ca, d.get("page_id"))
-    ok(f"Ziel: eigene Seite -> Unterseite ({s})", s == 200 and p.get("parent_id") == mine, (d, p.get("parent_id")))
+    ok(f"Ziel: eigene Seite -> Buchseite darunter ({s})", s == 200 and p.get("parent_id") == mine, (d, p.get("parent_id")))
 
 
 def part_limits(Ca):
     calls = [c for c in F.ann_calls if c[0] == 32]
     ok("seitenweise abgerufen: pageSize 100, Obergrenze 250 -> drei Seiten", calls[-3:] == [(32, 1, 100), (32, 2, 100), (32, 3, 100)]
        and len([c for c in calls if c[1] == 4]) == 0, calls)
-    with connect() as c:
-        pid = json.loads(c.execute("SELECT v FROM user_kv WHERE uid='bos-a' AND k='bookorbit_page:32'").fetchone()[0])["page"]
-    s, p, bl = page(Ca, pid)
-    qs = [b for b in bl if b["type"] == "quote"]
-    ok("Obergrenze: 250 Zitate, Kapitel-Ueberschriften K0..K4", len(qs) == 250 and
-       [b["data"]["text"] for b in bl if b["type"] == "header"] == ["K0", "K1", "K2", "K3", "K4"], len(qs))
+    pid = kv(32)["page"]
+    ch = kids(pid)
+    ok("ohne TOC: Kapitelseiten aus den Markierungen (K0..K4)", [x[1] for x in ch] == ["K0", "K1", "K2", "K3", "K4"], ch)
+    n = sum(1 for x in ch for b in page(Ca, x[0])[2] if b["type"] == "quote")
+    ok("Obergrenze: 250 Zitate verteilt", n == 250, n)
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 32})
     ok(f"Antwort meldet total 350 und truncated ({s})", s == 200 and d.get("total") == 350 and d.get("truncated") is True and d.get("added") == 0, d)
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 33})
-    s2, p, bl = page(Ca, d.get("page_id"))
+    lang = kids(d.get("page_id"))
+    s2, p, bl = page(Ca, lang[0][0]) if lang else (0, {}, [])
     qs = [b for b in bl if b["type"] == "quote"]
-    ok(f"Groessengrenze der Seite: abgeschnitten statt Fehler ({s})", s == 200 and d.get("truncated") is True and 0 < d.get("added") < 100
+    ok(f"Groessengrenze der Kapitelseite: abgeschnitten statt Fehler ({s})", s == 200 and d.get("truncated") is True and 0 < d.get("added") < 100
        and len(p.get("body") or "") < 200000 and len(qs) == d.get("added"), (d, len(p.get("body") or "")))
     ok("Textlaenge je Markierung begrenzt", qs and all(len(b["data"]["text"]) <= 3000 for b in qs) and qs[0]["data"]["text"].endswith("…"),
        len(qs[0]["data"]["text"]) if qs else None)
@@ -449,15 +727,34 @@ def part_parallel(Ca):
     except (ValueError, IndexError):
         d2 = {"raw": po.decode()[-300:], "err": pe.decode()[-300:]}
     with connect() as c:
-        n = c.execute("SELECT COUNT(*) FROM note WHERE uid='bos-a' AND title='Notizen: Gleichzeitig' AND deleted_at IS NULL").fetchone()[0]
-    ok(f"zwei Prozesse gleichzeitig: genau eine Seite ({s}, {n})", s == 200 and n == 1 and d.get("page_id") == d2.get("page_id")
-       and sorted([d.get("created"), d2.get("created")]) == [False, True], (d, d2))
+        n = c.execute("SELECT COUNT(*) FROM note WHERE uid='bos-a' AND title='Gleichzeitig' AND deleted_at IS NULL").fetchone()[0]
+        k = c.execute("SELECT COUNT(*) FROM note WHERE uid='bos-a' AND title='K' AND deleted_at IS NULL").fetchone()[0]
+    ok(f"zwei Prozesse gleichzeitig: genau eine Buch- und eine Kapitelseite ({s}, {n}, {k})", s == 200 and n == 1 and k == 1
+       and d.get("page_id") == d2.get("page_id") and sorted([d.get("created"), d2.get("created")]) == [False, True], (d, d2))
+
+
+def part_home(Ca):
+    h = home()["page"]
+    shelf = req("POST", "/api/notes", Ca, {"title": "Regal", "cover": None})[1]["id"]
+    req("PATCH", f"/api/notes/{h}", Ca, {"title": "Meine Buecher"})
+    req("POST", f"/api/notes/{h}/move", Ca, {"parent_id": shelf, "index": 0})
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 36})
+    s2, p, _ = page(Ca, h)
+    ok(f"Sammelseite umbenannt und verschoben: bleibt so ({s})", s == 200 and home()["page"] == h and p.get("title") == "Meine Buecher"
+       and p.get("parent_id") == shelf, (home(), p.get("title"), p.get("parent_id")))
+    s, _ = req("DELETE", f"/api/notes/{h}", Ca)
+    s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 37})
+    h2 = home()["page"]
+    s2, p, bl = page(Ca, h2)
+    ok(f"Sammelseite geloescht -> neu angelegt, Buch wieder darin ({s})", s == 200 and h2 != h and p.get("title") == "Bücher" and p.get("parent_id") is None
+       and parent_of(d.get("page_id")) == h2 and find(bl, x="books") is not None, (d, h2, p.get("title")))
 
 
 def part_trash(Ca, nid):
     s, _ = req("DELETE", f"/api/notes/{nid}", Ca)
     s, d = req("POST", "/api/bookorbit/notes", Ca, {"book_id": 31})
-    ok(f"Seite im Papierkorb -> neue Seite mit allem ({s})", s == 200 and d.get("created") is True and d.get("page_id") != nid and d.get("added") == 7, d)
+    ok(f"Buchseite im Papierkorb -> neue Buchseite mit allem ({s})", s == 200 and d.get("created") is True and d.get("page_id") != nid
+       and d.get("added") == 12 and d.get("chapters_added") == 9, d)
 
 
 def part_bad(Ca):

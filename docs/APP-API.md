@@ -614,39 +614,63 @@ cfg: `{"show": "current"|"goal"|"streak" ("current"), "limit": 1..5 (3)}` (`limi
 - Cover laden Apps über `GET /api/bookorbit/cover/<id>` mit ihrem Schlüssel (nicht als nackte `<img>`-Adresse im Web:
   der Aufruf braucht `X-Saga`).
 
-### Markierungen als Seite (2.5, `bookorbit2`)
+### Markierungen als Seite (2.5, `bookorbit2`; Ablage „Bücher → Buch → Kapitel“ und Filter „Gelesen“: `bookorbit3`)
 
-Phase 2, weiter **nur lesen** (BookOrbit → Saga, nie zurück): die Markierungen eines Buchs werden eine Saga-Seite
-„Notizen: <Titel>“ (Icon 📖). „Aktualisieren“ fügt nur Neues an; eigene Ergänzungen und Bearbeitungen bleiben.
+Phase 2, weiter **nur lesen** (BookOrbit → Saga, nie zurück). Ablage seit `bookorbit3`:
+
+- **Sammelseite** „Bücher“ (📚, Sprache des Kontos): entsteht beim ersten Bedarf auf oberster Ebene, Saga merkt sie sich
+  (umbenennen/verschieben bleibt; gelöscht → beim nächsten Bedarf neu). Inhalt: Einleitung (`bo.x` = `intro`) und Liste der
+  Buchseiten, neueste zuerst (`list`, `bo.x` = `books`). Beim ersten Anlegen wandern Notizseiten, die noch auf oberster
+  Ebene liegen, einmalig hinein; selbst einsortierte bleiben.
+- **Buchseite** je Buch (📖, Titel = Buchtitel; ohne `parent_id` in der Sammelseite): Kopf, „Notiz zum Buch“, Abschnitt
+  „Kapitel“ (H2 `bo.x` = `chh`, Liste `bo.x` = `chl`: Seitenverweise `/notes#<id>` in Buchreihenfolge, Teile mit ihren
+  Kapiteln eingerückt, dahinter grau die Anzahl Markierungen), Markierungen ohne Kapitel unter „Ohne Kapitel“
+  (`bo.x` = `mh`), zuletzt „Lesezeichen“.
+- **Kapitelseiten** (📑, Titel = Kapitelname, höchstens 120 Zeichen) als Unterseiten der Buchseite, Teile mit Kapiteln als
+  Unter-Unterseiten. Kapitel kommen aus dem Inhaltsverzeichnis des EPUB (Tiefe 1 und 2; tiefere Einträge zählen zum Kapitel
+  darüber) und aus den Markierungen (`chapterTitle`, ohne Groß-/Kleinschreibung); kein EPUB/kein Inhaltsverzeichnis → nur
+  Kapitel aus Markierungen; höchstens 150 Kapitelseiten je Buch (darüber: Markierungen auf der Buchseite, `truncated`).
+  Oben eine Kopfzeile „← Buch [· Teil] · Kapitel n von m“ (`bo.x` = `back`), dann die Zitate; leer: grauer Platzhalter
+  (`bo.x` = `ph`), den die Person überschreiben darf.
 
 | Aufruf | Zweck |
 |---|---|
-| `GET /api/bookorbit/notes/books?q=` | Bücher mit Markierungen (höchstens 50, `q` sucht in Titel/Autor) → `{"state": "ok", "books": [{"id", "title", "author", "count", "cover", "page_id"}]}`. `cover` wie oben über Saga (kann 404 sein), `page_id` = schon vorhandene Seite oder `null` |
-| `POST /api/bookorbit/notes` | Body `{"book_id", "parent_id"?}` (anlegen bzw. aktualisieren) **oder** `{"page_id"}` (die Seite selbst aktualisieren) → `{"ok": true, "page_id", "book_id", "created", "added", "updated", "total", "truncated", "url"}` |
+| `GET /api/bookorbit/notes/books?q=&filter=` | Bücher mit Markierungen (höchstens 50, `q` sucht in Titel/Autor) → `{"state": "ok", "books": [{"id", "title", "author", "count", "cover", "page_id"}]}`. Mit `q` zusätzlich Treffer aus der **ganzen Bibliothek** (BookOrbit `/books/search`, höchstens 20; `count` 0). `filter=read`: fertig gelesene Bücher (höchstens 50, zuletzt beendet zuerst, mit oder ohne Markierungen, `q` möglich) → zusätzlich `"filter": "read"` und je Buch `read_at` (ISO, kann `""` sein). `count` ist `null`, wenn unbekannt. `cover` wie oben über Saga (kann 404 sein), `page_id` = vorhandene **Buchseite** oder `null`. Anderer `filter` → `400` |
+| `POST /api/bookorbit/notes` | Body `{"book_id", "parent_id"?}` (anlegen bzw. aktualisieren) **oder** `{"page_id"}` (Buch- oder Kapitelseite: das ganze Buch aktualisieren) → `{"ok": true, "page_id", "book_id", "created", "added", "updated", "total", "truncated", "chapters", "chapters_added", "url"}` |
 
+- `page_id`/`url` = Buchseite. `chapters`: vorhandene Kapitelseiten, `chapters_added`: in diesem Aufruf angelegte.
 - `parent_id`: nur eine **eigene**, nicht gelöschte Seite (keine Datenbank, keine nur freigegebene Seite) – sonst `404`.
-  Ohne `parent_id` entsteht die Seite auf oberster Ebene. Liegt die zugeordnete Seite im Papierkorb, entsteht eine neue.
-- `added`: neu übernommene Markierungen und Notizen, `updated`: nachgezogene Blöcke, `total`: Markierungen des Buchs bei
-  BookOrbit, `truncated`: nicht alles übernommen (höchstens 1000 Markierungen je Buch, Seite höchstens ~190 000 Zeichen).
+  Ohne `parent_id` entsteht die Buchseite in der Sammelseite. Liegt die Buchseite im Papierkorb, entsteht eine neue.
+- `added`: neu übernommene Markierungen und Notizen (alle Seiten des Buchs), `updated`: nachgezogene Blöcke, `total`:
+  Markierungen des Buchs bei BookOrbit, `truncated`: nicht alles übernommen (höchstens 1000 Markierungen je Buch, je Seite
+  höchstens ~190 000 Zeichen, höchstens 150 Kapitelseiten).
 - Fehler: `409` mit `state` `none` (nicht verbunden) bzw. `expired` (neu anmelden), `502` mit `state` `unavailable`,
   `404` (Buch nicht in der eigenen BookOrbit-Bibliothek, `page_id` ohne Zuordnung, Ziel nicht erlaubt), `400`
-  (ungültige Angaben, `book_id` und `page_id` zugleich), `423` (Seite gesperrt – erst entsperren), `429` (mehr als
-  12 Aufrufe je Minute und Konto).
-- **Aufbau der Seite** (normale Blöcke, jeder übernommene trägt `data.bo`): Kopf (Cover als eigene Datei im Bild-Block,
-  Absatz mit Autor:in und Link „In BookOrbit öffnen“, `bo.x` = `cover`/`info`), optional „Notiz zum Buch“
-  (`bo.x` = `bnh`/`bn`), je Kapitel eine Überschrift (Ebene 2, `bo.c`), je Markierung ein **Zitat-Block** (`text`, `caption`
-  = „S. 12 · 21.10.2026“, Farbe als `tunes.hkstyle {c, bg: true}` aus der Palette, `bo.a` = Markierungs-ID), die eigene
-  Notiz dazu als Absatz direkt darunter (`bo.n`), am Ende „Lesezeichen“ (`bo.x` = `bmh`, je Lesezeichen `bo.b`).
-  `bo.k` = Kapitel-Schlüssel, `bo.h` = Prüfsumme des Inhalts, wie Saga ihn geschrieben hat.
+  (ungültige Angaben, `book_id` und `page_id` zugleich), `423` (Buchseite gesperrt – erst entsperren; gesperrte
+  Kapitelseiten werden übersprungen), `429` (zu viele Aufrufe je Minute und Konto).
+- **Blöcke** (normale Blöcke, jeder übernommene trägt `data.bo`): Kopf (Cover als eigene Datei im Bild-Block, Absatz mit
+  Autor:in und Link „In BookOrbit öffnen“, `bo.x` = `cover`/`info`), optional „Notiz zum Buch“ (`bo.x` = `bnh`/`bn`), je
+  Markierung ein **Zitat-Block** (`text`, `caption` = „S. 12 · 21.10.2026“, Farbe als `tunes.hkstyle {c, bg: true}` aus der
+  Palette, `bo.a` = Markierungs-ID), die eigene Notiz dazu als Absatz direkt darunter (`bo.n`), Lesezeichen (`bo.x` = `bmh`,
+  je Lesezeichen `bo.b`). `bo.k` = Kapitel-Schlüssel, `bo.h` = Prüfsumme des Inhalts, wie Saga ihn geschrieben hat
+  (Kopfzeile, Platzhalter und Listen: über Text und Verweisziele, nicht über den angezeigten Seitentitel).
 - **Wichtig für Editoren der Apps:** `data.bo` (und andere unbekannte Felder in `data`) beim Speichern **unverändert
   mitschicken**. Fehlt es, bleibt die Seite trotzdem richtig (Saga merkt sich übernommene IDs auch serverseitig und legt
   nichts doppelt an), nur ändern sich solche Blöcke dann nicht mehr mit BookOrbit.
-- Regeln beim Aktualisieren: Neues landet beim eigenen Kapitel (nach dessen letztem übernommenen Block), neue Kapitel vor
-  den Lesezeichen, eine später geschriebene Notiz direkt unter ihr Zitat. Bei BookOrbit gelöschte Markierungen bleiben.
-  In Saga gelöschte kommen nicht wieder. Geänderte werden nur nachgezogen, solange der Block unverändert ist (`bo.h` passt).
-- Einstiege im Web: Einstellungen → Verbindungen → BookOrbit („Markierungen als Seite übernehmen“), Buch antippen unter
-  „Heute“ bzw. im Widget „Lesen“ → „Markierungen als Seite“, auf der Seite selbst Menü „…“ → „Aus BookOrbit
-  aktualisieren“ (sichtbar, wenn ein Block `data.bo.x = "info"` hat).
+- Regeln beim Aktualisieren: Neues landet auf seiner Kapitelseite (nach dem letzten übernommenen Zitat, sonst unter der
+  Kopfzeile; ein unveränderter Platzhalter weicht), neue Kapitel des Inhaltsverzeichnisses bekommen eine Seite an der
+  richtigen Stelle, eine später geschriebene Notiz kommt direkt unter ihr Zitat. In Saga gelöschte Markierungen,
+  Kapitelseiten und Abschnitte kommen nicht wieder; Markierungen eines gelöschten Kapitels werden nicht mehr übernommen.
+  Bei BookOrbit gelöschte Markierungen bleiben. Geänderte werden nur nachgezogen, solange der Block unverändert ist
+  (`bo.h` passt). Unveränderte Kopfzeilen und Kapitel-Listen zieht Saga nach (Zählung, neue Kapitel); eine bearbeitete
+  Kapitel-Liste bekommt nur neue Kapitel angehängt.
+- **Alte Notizseiten** (vor `bookorbit3`: eine Seite „Notizen: <Titel>“ mit Kapiteln als H2) werden beim nächsten
+  Aktualisieren umgebaut: jeder Kapitel-Abschnitt (Zitate, Notizen und die eigenen Blöcke darin) wandert unverändert in
+  seine Kapitelseite, der Titel der Seite bleibt.
+- Einstiege im Web: Einstellungen → Verbindungen → BookOrbit („Markierungen als Seite übernehmen“: Suchfeld, Filter „Mit
+  Markierungen“/„Gelesen“, je Buch „Als Seite“ bzw. „Öffnen“ und „Aktualisieren“), Buch antippen unter „Heute“ bzw. im
+  Widget „Lesen“ → „Markierungen als Seite“, auf Buch- und Kapitelseiten Menü „…“ → „Aus BookOrbit aktualisieren“
+  (sichtbar, wenn ein Block `data.bo.x = "info"` bzw. `"back"` hat).
 
 ## Eintrags-Vorlagen, Startseite, neue Einträge (2.5, Fix-Runde 27.10.)
 

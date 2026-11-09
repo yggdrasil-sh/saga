@@ -343,7 +343,7 @@
           if (HK.bookorbit && HK.bookorbit.notesList) {        // 2.5 (bookorbit2): Markierungen eines Buchs als Seite
             var nl = el('div', 'hk-bo-notes'); nl.id = 'hk-bo-notes';
             nl.appendChild(el('h4', null, T('Markierungen als Seite übernehmen')));
-            nl.appendChild(el('p', 'hk-hint', T('Je Buch eine Seite „Notizen: <Titel>“ mit deinen Markierungen als Zitate. „Aktualisieren“ fügt nur Neues an – deine eigenen Ergänzungen bleiben. Saga schreibt nichts zu BookOrbit zurück.')));
+            nl.appendChild(el('p', 'hk-hint', T('Je Buch eine Seite unter „Bücher“ – mit einer Unterseite je Kapitel, deinen Markierungen als Zitate und den Lesezeichen. „Aktualisieren“ fügt nur Neues an, deine eigenen Texte bleiben. Saga schreibt nichts zu BookOrbit zurück.')));
             var nbox = el('div'); nl.appendChild(nbox); box.appendChild(nl);
             HK.bookorbit.notesList(nbox);
           }
