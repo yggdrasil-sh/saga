@@ -3334,3 +3334,6 @@ a.qs-web{text-decoration:none;color:var(--fg)}
 body.hk-shell-on{overflow:hidden}
 body.hk-shell-on>.np-head,body.hk-shell-on>#pg-side,body.hk-shell-on>.pg-peek-zone,body.hk-shell-on>.ct-main,
 body.hk-shell-on>#mob-tabs{display:none!important}
+
+/* 2.5: Links im Editor oeffnen mit einfachem Klick (wie Notion) - Zeiger zeigt es an */
+#pg-editor a[href]{cursor:pointer}

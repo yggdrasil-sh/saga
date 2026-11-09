@@ -26,6 +26,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Kennzahl und Fortschritt aus einer Datenbank liefern den Namen der Quelle (`src_name`, nur mit Zugriff, nie veröffentlicht)
   – die Apps zeigen damit „Rechenart · Quelle“ wie das Web; das Web nutzt ihn für föderierte Kopien (`docs/APP-API.md`).
 - Editor.js-Spalten: Karten einer Reihe sind jetzt gleich hoch wie bei Tiptap (Widget als einziger Block einer Spalte).
+- Links im Editor öffnen jetzt wie bei Notion mit einem einfachen Klick (externe Links in einem neuen Tab, Seitenverweise
+  direkt); Alt- oder Shift-Klick setzt nur den Cursor, Doppelklick oder Ziehen markiert. Bisher ging das nur mit Strg/⌘-Klick.
 - Countdown wie in der iOS-App: Ist das Datum vorbei, steht „Ziel erreicht“ statt „Heute“; „seit“ mit einem Datum in der
   Zukunft zeigt „Noch nicht erreicht“. Mit Uhrzeit (automatisch) zählt die Uhrzeit. Auch im Markdown-Export.
 

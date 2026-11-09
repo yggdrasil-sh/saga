@@ -1659,19 +1659,27 @@
     });
   }
 
-  // Klick auf Verweise im Editor: Seitenverweise und Dienste oeffnen direkt,
-  // normale Links nur mit Strg/Cmd (sonst wird der Text bearbeitet)
+  // Klick auf Verweise im Editor (2.5, wie Notion): Seitenverweise oeffnen die Seite, alle anderen Links einen neuen Tab -
+  // schon mit einfachem Klick. Bearbeiten: Link markieren (Ziehen/Doppelklick -> Formatleiste) oder Alt/Shift-Klick setzt
+  // nur den Cursor. Nach dem Ziehen (Auswahl nicht leer) oeffnet nichts.
+  var linkTimer = 0;
   function linkClick(e) {
     var a = e.target.closest && e.target.closest('a[href]');
-    if (!a) return;
+    if (!a || e.button !== 0) return;
     var href = a.getAttribute('href'), m = href.match(NOTE_HREF), mod = e.ctrlKey || e.metaKey;
-    if (m) {
-      e.preventDefault();
-      if (!byId(+m[1])) { HK.toast(foreign() ? T('Seite ohne Zugriff') : T('Diese Seite gibt es nicht mehr.')); return; }
-      if (mod) window.open('/notes#' + m[1], '_blank', 'noopener'); else location.hash = '#' + m[1];
-    } else if (a.classList.contains('svc-link') || mod) {
-      e.preventDefault(); window.open(href, '_blank', 'noopener');
+    if (!m && !/^(https?:|mailto:|tel:|\/(?!\/))/i.test(href)) return;   // nur unbedenkliche Ziele (Bereiniger filtert ohnehin)
+    if (e.detail > 1) { clearTimeout(linkTimer); return; }               // Doppelklick markiert ein Wort - nichts oeffnen
+    if (!mod && (e.altKey || e.shiftKey)) return;
+    var sel = window.getSelection(); if (!mod && sel && sel.rangeCount && !sel.isCollapsed) return;
+    e.preventDefault();
+    function go() {
+      if (m) {
+        if (!byId(+m[1])) { HK.toast(foreign() ? T('Seite ohne Zugriff') : T('Diese Seite gibt es nicht mehr.')); return; }
+        if (mod) window.open('/notes#' + m[1], '_blank', 'noopener'); else location.hash = '#' + m[1];
+      } else window.open(href, '_blank', 'noopener');
     }
+    clearTimeout(linkTimer);
+    if (mod) go(); else linkTimer = setTimeout(go, 260);                // kurz warten: wird es ein Doppelklick?
   }
   $('pg-editor').addEventListener('click', linkClick, true);
 
