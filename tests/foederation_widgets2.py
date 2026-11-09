@@ -106,7 +106,7 @@ def part(pa, pb):
     ok("B: Diagramm von A", [c["key"] for c in w.get("ch", {}).get("data", {}).get("cats", [])] == ["x", "y"]
        and w["ch"]["data"]["series"][0]["values"] == [2, 1], w.get("ch"))
     ok("B: W-Format mit data", all(set(x) == {"kind", "value", "max", "text", "fmt", "as_of", "error", "data"} for k, x in w.items() if k != "met")
-       and set(w.get("met", {})) == {"kind", "value", "max", "text", "fmt", "as_of", "error"}, w)
+       and set(w.get("met", {})) - {"src_name"} == {"kind", "value", "max", "text", "fmt", "as_of", "error"}, w)
     ok("B: kein unsupported2", "unsupported2" not in d)
 
     day = TODAY.isoformat()

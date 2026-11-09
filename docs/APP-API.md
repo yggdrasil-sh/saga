@@ -358,6 +358,9 @@ W = {"kind": "metric", "value": 4, "max": 10, "text": null, "fmt": "num", "as_of
 
 - `value`/`max`: Zahl oder `null` (`null` = „–“, z. B. Summe ohne Zahlen). Fortschritt: `value` von `max`; Kennzahl:
   `max` = `goal`. `text`: Zitat. `fmt`: Kennzahl (`pct_checked` immer `pct`), sonst `null`.
+- `src_name` (ab 2.5, optional): Titel der Quell-Datenbank bei `metric` und `progress` mit `src` `db` (≤ 130 Zeichen) für
+  die Kontextzeile „Rechenart · Quelle“ bzw. „Quelle“. Nur, wenn der Betrachter die Datenbank sehen darf; fehlt auf
+  veröffentlichten Seiten, bei Fehlern und bei `src` `tasks`. Föderierte Kopien reichen ihn bereinigt weiter.
 - `error`: `null` | `no_access` (Betrachter darf die Quell-Datenbank nicht sehen – dann **keine** Werte und kein Name,
   auch nicht für nicht vorhandene IDs) | `gone` (Datenbank im Papierkorb) | `bad_cfg` (unvollständig, Eigenschaft
   unbekannt) | `too_big` (mehr als 5000 Zeilen, wie `LIMIT_MAX` von `…/rows`).

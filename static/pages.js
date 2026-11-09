@@ -7244,7 +7244,7 @@
     var srcName = function () {                              // Kontextzeile: Rechenart und Quelle (Name nur, wenn ich die Datenbank sehe)
       if (cfg.src === 'tasks') return d.kind === 'metric' ? WG_AGG[cfg.agg] || WG_AGG.open : T('Saga-Aufgaben');
       var db = cfg.db && (S.pages || []).concat(S.shared || []).filter(function (x) { return x.id === cfg.db; })[0];
-      return [d.kind === 'metric' ? WG_AGG[cfg.agg] : '', db ? label(db) : ''].filter(Boolean).join(' · ');
+      return [d.kind === 'metric' ? WG_AGG[cfg.agg] : '', db ? label(db) : (w.src_name || '')].filter(Boolean).join(' · ');   // src_name: Server (z. B. foederierte Kopie)
     };
     if (d.kind === 'progress') {
       // Fix27 #10: Zahl wie gerechnet (auch ueber 100 %), Balken hoechstens voll; darueber Marker "+n %" (Regel 7)

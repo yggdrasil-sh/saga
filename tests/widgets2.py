@@ -622,6 +622,16 @@ def part_chart(A, Bk, C):
     s, r = req("GET", f"/api/notes/{page}/widgets", C)
     ok("Cora (Seite ja, DB nein): no_access ohne Werte/Namen", r["widgets"]["ch"]["error"] == "no_access" and r["widgets"]["ch"]["data"] is None
        and "Essen" not in json.dumps(r) and "Ausgaben" not in json.dumps(r))
+    # Nacharbeit 12: Kennzahl/Fortschritt nennen die Quelle (src_name) nur mit Zugriff
+    sp = req("POST", "/api/notes", A, {"title": "Quelle"})[1]["id"]
+    save(A, sp, [W("metric", {"db": db, "agg": "sum", "prop": "betrag"}, bid="m"), W("progress", {"src": "db", "db": db, "mode": "sum", "prop": "betrag", "goal": 100}, bid="p"),
+                 W("metric", {"src": "tasks", "agg": "open"}, bid="t")])
+    ws = req("GET", f"/api/notes/{sp}/widgets", A)[1]["widgets"]
+    ok("Kennzahl/Fortschritt: src_name = Titel der Quell-DB, Aufgaben ohne", ws["m"].get("src_name") == "Ausgaben" and ws["p"].get("src_name") == "Ausgaben"
+       and "src_name" not in ws["t"], ws)
+    req("PUT", f"/api/notes/{sp}/shares", A, {"type": "user", "target": "w2-c", "role": "view"})
+    r = req("GET", f"/api/notes/{sp}/widgets", C)[1]
+    ok("Cora ohne DB-Zugriff: kein src_name", r["widgets"]["m"]["error"] == "no_access" and "Ausgaben" not in json.dumps(r), r)
     req("POST", "/api/notes", A, {"title": "e6", "parent_id": db, "props": {"status": "lauf", "betrag": 1}})
     s, r = req("GET", f"/api/notes/{page}/widgets", A)
     ok("Aenderung an der Quelle rechnet sofort neu (Zwischenspeicher am Quellstand)", r["widgets"]["ch"]["data"]["series"][0]["values"] == [10, 21.5, 35])

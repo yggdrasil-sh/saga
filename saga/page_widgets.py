@@ -259,9 +259,11 @@ def aggregate(op, pid, rows, schema):
 # =====================================================================================================
 # Rechnen
 # =====================================================================================================
-def _W(kind, value=None, mx=None, text=None, fmt=None, error=None, as_of=None, data=None):
+def _W(kind, value=None, mx=None, text=None, fmt=None, error=None, as_of=None, data=None, src_name=None):
     w = {"kind": kind, "value": value, "max": mx, "text": text, "fmt": fmt,
          "as_of": as_of or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "error": error}
+    if isinstance(src_name, str) and src_name.strip():   # 2.5: Titel der Quell-DB (metric/progress), nur mit Zugriff
+        w["src_name"] = re.sub(r"\s+", " ", src_name).strip()[:130]
     if kind in KINDS2:                       # 2.5 Paket 4: strukturierte Werte (null bei Fehler)
         w["data"] = None if error else data
     return w
@@ -621,6 +623,12 @@ def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None, pu
             except dbcalc.Fail as f:
                 raise _Fail(f.code)
             return _W(kind, res["total"], cfg.get("goal"), fmt=res["fmt"], data=res)
+        # 2.5 Nacharbeit 12: Kontextzeile "Rechenart · Quelle" in den Apps - Titel der Quell-DB nur fuer Betrachter mit Zugriff
+        # (_source hat das Recht geprueft), nie auf veroeffentlichten Seiten
+        sn = None
+        if not pub and kind in ("progress", "metric"):
+            tr = c.execute("SELECT title FROM note WHERE id=? AND uid=?", (cfg["db"], owner)).fetchone()
+            sn = tr[0] if tr and isinstance(tr[0], str) else None
         if kind == "progress":
             if cfg.get("mode") == "sum":
                 if not _num(cfg.get("goal")):
@@ -629,16 +637,16 @@ def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None, pu
                 if not cfg.get("prop"):
                     raise _Fail("bad_cfg")
                 pf = next((x.get("fmt") for x in (schema.get("props") or []) if isinstance(x, dict) and x.get("id") == cfg["prop"]), None)   # Fix27 #10
-                return _W(kind, v if v is not None else 0, cfg["goal"], fmt={"euro": "eur", "percent": "pct"}.get(pf))
+                return _W(kind, v if v is not None else 0, cfg["goal"], fmt={"euro": "eur", "percent": "pct"}.get(pf), src_name=sn)
             if not cfg.get("prop"):
                 raise _Fail("bad_cfg")
-            return _W(kind, aggregate("checked", cfg["prop"], rows, schema), len(rows))
+            return _W(kind, aggregate("checked", cfg["prop"], rows, schema), len(rows), src_name=sn)
         if kind == "metric":
             agg = cfg.get("agg") or "count"
             if agg != "count" and not cfg.get("prop"):
                 raise _Fail("bad_cfg")
             v = aggregate(agg, cfg.get("prop") or "", rows, schema)
-            return _W(kind, v, cfg.get("goal"), fmt="pct" if agg == "pct_checked" else cfg.get("fmt") or "num")
+            return _W(kind, v, cfg.get("goal"), fmt="pct" if agg == "pct_checked" else cfg.get("fmt") or "num", src_name=sn)
         # quote aus der Datenbank: Text der Eigenschaft (oder Titel) je Zeile
         pid = cfg.get("prop") or ""
         q = dbquery.Query(schema)

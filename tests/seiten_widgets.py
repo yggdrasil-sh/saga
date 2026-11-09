@@ -170,7 +170,9 @@ def main():
     w = d.get("widgets", {}) if isinstance(d, dict) else {}
     ok(f"GET widgets ({s})", s == 200 and set(w) == {"cnt", "open", "sum", "avg", "min", "max", "pct", "bad", "pc", "ps", "qd", "qf", "incol"}, sorted(w))
     keys = {"kind", "value", "max", "text", "fmt", "as_of", "error"}
-    ok("Antwortformat W (genau die Felder)", all(set(x) == keys for x in w.values()), list(w.values())[:1])
+    ok("Antwortformat W (genau die Felder; src_name nur Kennzahl/Fortschritt aus DB)",
+       all(set(x) - {"src_name"} == keys for x in w.values()) and all(x.get("kind") in ("metric", "progress") for x in w.values() if "src_name" in x)
+       and w["cnt"].get("src_name") and "src_name" not in w["bad"], list(w.values())[:1])
     ok("count (Ansicht alle) = 4, (Ansicht offen) = 2", w["cnt"]["value"] == 4 and w["open"]["value"] == 2, (w["cnt"], w["open"]))
     ok("sum = 5.5 (leere Werte zaehlen nicht), goal als max, fmt", w["sum"]["value"] == 5.5 and w["sum"]["max"] == 10 and w["sum"]["fmt"] == "num", w["sum"])
     ok("avg/min/max", w["avg"]["value"] == 2.75 and w["min"]["value"] == 2 and w["max"]["value"] == 3.5, (w["avg"], w["min"], w["max"]))

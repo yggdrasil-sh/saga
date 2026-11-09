@@ -73,7 +73,9 @@ def part(pa, pb):
     w = d.get("widgets", {}) if isinstance(d, dict) else {}
     ok(f"B: DB mit Bert geteilt -> Werte (Summe 20, 2 von 3) ({s})", s == 200 and w.get("sum", {}).get("value") == 20
        and w.get("prog", {}).get("value") == 2 and w["prog"].get("max") == 3, w)
-    ok("B: Antwortformat W", all(set(x) == {"kind", "value", "max", "text", "fmt", "as_of", "error"} for x in w.values()), w)
+    ok("B: Antwortformat W (+ src_name der geteilten Quelle)", all(set(x) - {"src_name"} == {"kind", "value", "max", "text", "fmt", "as_of", "error"} for x in w.values())
+       and w["prog"].get("src_name") == "Geheime Zahlen" and all("src_name" not in x for x in w.values() if x.get("kind") not in ("metric", "progress"))
+       and w["sum"]["src_name"] == "Geheime Zahlen", w)
 
     s, d = api("b", "fb-olga", "GET", f"/api/notes/{rS}/widgets")
     ok(f"B: Olga ohne Freigabe -> keine Werte ({s})", s in (403, 404) and "widgets" not in (d or {}), d)
