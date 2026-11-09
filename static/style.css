@@ -2442,6 +2442,7 @@ body.notes-page .page.p-small .page-body{font-size:var(--fs-base)}
 .wg.wg-l{--wg-vmax:2.5rem;--wg-face:8rem;padding:1.125rem 1.25rem;min-height:9rem;gap:.65rem}
 .wg.wg-card{background:var(--card);border-color:var(--border)}
 .wg.wg-plain{padding-inline:0;background:none}
+.wg .wg-v.wg-v-st{font-size:clamp(1rem,10cqi,calc(var(--wg-vmax) * .75))}.wg .wg-v.wg-v-mu{color:var(--muted);font-weight:500}   /* Countdown "Ziel erreicht"/"Noch nicht erreicht": kleiner wie iOS */
 .wg.wg-ed{cursor:pointer}.wg.wg-card.wg-ed:hover{border-color:var(--field)}
 .wg-a-gray{--wa:var(--tc-gray)}.wg-a-brown{--wa:var(--tc-brown)}.wg-a-orange{--wa:var(--tc-orange)}.wg-a-yellow{--wa:var(--tc-yellow)}.wg-a-green{--wa:var(--tc-green)}.wg-a-blue{--wa:var(--tc-blue)}.wg-a-purple{--wa:var(--tc-purple)}.wg-a-pink{--wa:var(--tc-pink)}.wg-a-red{--wa:var(--tc-red)}
 .wg-h{display:flex;align-items:center;gap:.4rem;min-width:0;color:var(--muted)}

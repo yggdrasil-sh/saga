@@ -7149,8 +7149,11 @@
     var tgt = new Date(+q[0], +q[1] - 1, +q[2], hm ? +hm[0] : 0, hm ? +hm[1] : 0), since = cfg.dir === 'since', ms = since ? now - tgt : tgt - now;
     var day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()), dayT = new Date(+q[0], +q[1] - 1, +q[2]);
     var days = Math.round((since ? day0 - dayT : dayT - day0) / 86400000);
-    if (cfg.unit === 'auto' && hm && ms > 0 && ms < 86400000) return { since: since, h: Math.floor(ms / 3600000), m: Math.floor(ms % 3600000 / 60000), day: dayT };
-    return { since: since, n: Math.max(0, days), day: dayT };
+    // Countdown wie iOS (9.11.): vorbei -> "Ziel erreicht", "seit" in der Zukunft -> "Noch nicht erreicht"; mit Uhrzeit (auto) zaehlt die Uhrzeit
+    if (cfg.unit === 'auto' && hm && ms <= 0) return { since: since, done: true, day: dayT };
+    if (cfg.unit === 'auto' && hm && ms < 86400000) return { since: since, h: Math.floor(ms / 3600000), m: Math.floor(ms % 3600000 / 60000), day: dayT };
+    if (days < 0) return { since: since, done: true, day: dayT };
+    return { since: since, n: days, day: dayT };
   }
   WidgetTool.prototype.empty = function (body, kind) {
     var c = this.card, e = el('div', 'wg-empty'), ic = el('span', 'wg-empty-ic'); ic.innerHTML = wgIcon(kind); e.appendChild(ic);
@@ -7214,9 +7217,10 @@
       if (!cfg.date) { this.empty(body, 'countdown'); return; }
       var cv = el('div', 'wg-v'), when = el('div', 'wg-sub'); body.appendChild(cv); body.appendChild(when);
       var paintC = function () {
-        var p = wgCdParts(cfg, new Date()); cv.textContent = '';
+        var p = wgCdParts(cfg, new Date()); cv.textContent = ''; cv.classList.remove('wg-v-st', 'wg-v-mu');
         if (!p) cv.textContent = '–';
         else if (p.h != null) { cv.appendChild(document.createTextNode(String(p.h))); cv.appendChild(el('small', null, T('Std.'))); cv.appendChild(document.createTextNode(' ' + p.m)); cv.appendChild(el('small', null, T('Min.'))); }
+        else if (p.done) { cv.textContent = p.since ? T('Noch nicht erreicht') : T('Ziel erreicht'); cv.classList.add('wg-v-st'); cv.classList.toggle('wg-v-mu', p.since); }
         else if (!p.n) cv.textContent = T('Heute');
         else { cv.appendChild(document.createTextNode(fNum.format(p.n))); cv.appendChild(el('small', null, T('{n} {n:Tag|Tage}', { n: p.n }).replace(String(p.n), '').trim())); }
         cv.title = wgCountdown(cfg, new Date()) || '';

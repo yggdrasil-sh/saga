@@ -804,7 +804,7 @@ def countdown_days(cfg, today):
     if not _day_ok(cfg.get("date")):
         return None
     n = (date.fromisoformat(cfg["date"]) - today).days
-    return (max(0, n), "until") if cfg.get("dir") != "since" else (max(0, -n), "since")
+    return (n, "until") if cfg.get("dir") != "since" else (-n, "since")      # negativ = vorbei bzw. noch nicht begonnen
 
 
 def countdown_text(cfg, today):
@@ -812,6 +812,8 @@ def countdown_text(cfg, today):
     if cd is None:
         return None
     n, how = cd
+    if n < 0:                                     # wie Web/Apps (9.11.): vorbei bzw. "seit" in der Zukunft
+        return t("Ziel erreicht") if how == "until" else t("Noch nicht erreicht")
     if n == 0:
         return t("heute")
     return t("noch {n} {n:Tag|Tage}", n=n) if how == "until" else t("seit {n} {n:Tag|Tagen}", n=n)

@@ -75,6 +75,17 @@ def save(A, nid, blocks):
     return json.loads(req("GET", f"/api/notes/{nid}", A)[1]["body"])["blocks"]
 
 
+def countdown_texts():
+    """Countdown-Text (Markdown/Vorschau) wie Web/Apps: vorbei -> Ziel erreicht, "seit" in der Zukunft -> Noch nicht erreicht."""
+    from datetime import date
+    d0 = date(2026, 11, 9)
+    got = [page_widgets.countdown_text({"date": x, "dir": dr}, d0) for x, dr in
+           (("2026-11-06", "until"), ("2026-11-09", "until"), ("2026-11-12", "until"), ("2026-11-12", "since"), ("2026-11-01", "since"))]
+    t = page_widgets.t
+    ok(f"Countdown-Texte ({got})", got[0] == t("Ziel erreicht") and got[1] == t("heute") and "3" in got[2] and got[3] == t("Noch nicht erreicht")
+       and "8" in got[4] and got[0] != got[3], got)
+
+
 def vectors():
     v = json.load(open(os.path.join(HERE, "widget_vectors.json")))
     bad = []
@@ -94,6 +105,7 @@ def vectors():
 def main():
     cleanup()
     vectors()
+    countdown_texts()
     for u, n in (("sw-a", "Anna Widget"), ("sw-b", "Bert Widget"), ("sw-c", "Cora Widget")):
         auth.create_user(u, "Widget-Pass-123", n)
     A, Bk, C = ck("sw-a"), ck("sw-b"), ck("sw-c")

@@ -51,6 +51,8 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
       W('m2', 'metric', { db: adb, agg: 'sum', prop: 'betrag', fmt: 'eur' }, { title: 'Grün', accent: 'green' }), W('e1', 'chart', { db: null }, {})),
     COLS('c3', W('t1', 'metric', { src: 'tasks', agg: 'open', fmt: 'num' }, { title: 'offene AUFGABEN' }),
       W('q1', 'quote', { src: 'fixed', items: ['Kurz und gut.'] }, { title: 'Zitat' }), W('u1', 'upcoming', { days: 7, cal: false, tasks: true }, { title: 'Hoch' })),
+    COLS('c4', W('cd1', 'countdown', { date: ymd(new Date(now.getTime() - 3 * 864e5)), dir: 'until', unit: 'days' }, { title: 'Vorbei' }),
+      W('cd2', 'countdown', { date: ymd(new Date(now.getTime() + 3 * 864e5)), dir: 'since', unit: 'days' }, { title: 'Noch nicht' })),
     { id: 'p1', type: 'paragraph', data: { text: 'Ende' } }] }) });
 
   const open = async () => {
@@ -86,6 +88,8 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   ok(`Kennzahl: Einheit klein abgesetzt (${unit})`, unit === '€');
   const colr = await p.evaluate(() => { const g = (s) => getComputedStyle(document.querySelector(s)).color; return { fg: getComputedStyle(document.body).color, plain: g('.wg[data-kind="metric"]:not([class*="wg-a-"]) .wg-v'), green: g('.wg.wg-a-green .wg-v') }; });
   ok(`Wert in Textfarbe, eigene Farbe faerbt ihn (${JSON.stringify(colr)})`, colr.plain === colr.fg && colr.green !== colr.fg, colr);
+  const cdt = await p.evaluate(() => ['cd1', 'cd2'].map((id) => { const w = [...document.querySelectorAll('.wg[data-kind="countdown"]')].find((x) => (x.querySelector('.wg-t') || {}).textContent === (id === 'cd1' ? 'Vorbei' : 'Noch nicht')); return w ? w.querySelector('.wg-v').textContent : null; }));
+  ok(`Countdown vorbei/noch nicht wie iOS (${cdt})`, cdt[0] === 'Ziel erreicht' && cdt[1] === 'Noch nicht erreicht', cdt);
   ok('Fortschritt ueber 100 %: Marker "+50 %"', /\+50\s?%/.test(await p.locator(blk('w4') + ' .wg-chip').textContent().catch(() => '')));
   // N5: ueber 100 % neutral - Marker und Balken in Akzentfarbe, nicht in --ok
   const ov = await p.evaluate((sel) => { const w = document.querySelector(sel), ch = w.querySelector('.wg-chip'), f = w.querySelector('.wg-fill'), t = document.createElement('i');
