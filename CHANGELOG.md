@@ -42,6 +42,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Sammelseiten werden einmalig umgestellt (unveränderte Liste → Galerie; selbst bearbeitete Liste bleibt; selbst gelöschte
   Liste oder Galerie kommt nicht wieder; nie umsortierte Buchseiten einmalig neueste zuerst).
 
+### Behoben – Anrufe über Knoten: Bild pendelte bei Sendern, die eine Schicht nur zeitweise liefern
+- Senkte ein Handy nach längerem Anruf (Wärme/CPU) seine mittlere Simulcast-Schicht und lieferte sie nur noch zeitweise,
+  schaltete der Knoten des Empfängers ständig zwischen mittlerer und unterer Schicht hin und her; jedes Schlüsselbild
+  fraß bei kleiner Rate das Bild (1–4 Bilder/s). Jetzt kommt eine so ausgefallene Schicht erst nach 3 s am Stück zurück,
+  bei wiederholtem Flattern nach doppelter Wartezeit (bis 60 s, nach 30 s Stabilität wieder 3 s). Schalten nach unten
+  bei Ausfall bleibt sofort, Wechsel wegen der Downlink-Schätzung bleiben wie bisher. Gilt auch über Brücken.
+- Diagnose: Das Ereignis `layout` nennt je Wechsel den Grund (`budget`, `gone`, `back`) mit Rate, Live- und Wartezeit
+  der Quelle; das Web zeigt ihn im Diagnose-Ereignis `layers` (z. B. `s0:l3@ab12!gone,31k,12.4s,w3s`). Alte Apps
+  ignorieren die neuen Felder. Knoten neu ausrollen.
+
 ### Behoben – Widgets (Nacharbeit)
 - Diagramm „Balken quer“: kurze Kategorien wurden durch eine Rundung der Randbreite gekürzt („Anna“ → „An…“).
 - Diagramm-Widget: Die Kontextzeile nennt die Eigenschaften („Summe Menge nach Wer“) jetzt auch, bevor der Einrichten-Dialog

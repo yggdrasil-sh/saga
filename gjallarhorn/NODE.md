@@ -51,6 +51,23 @@ Platzhalter: `horn-1.example.org`.
   - Hysterese gegen Pendeln (Horn-Fix, `layerStep`): Ohne Stau bleibt die laufende Schicht bis 10 % über der Schätzung
     (kurze Ratenspitzen, z. B. Schlüsselbilder, schalten nicht herunter); bei Stau (Sperrzeit) sofort herunter. Nach
     einem Wechsel nach unten geht derselbe Platz für dieselbe Quelle frühestens nach 4 s wieder hoch.
+  - Hysterese gegen flatternde Schichten (`internal/sfu/flap.go`, je Quelle, damit für eigene Beine und Brücken
+    gleich): Senkt der Sender eine Schicht selbst (libwebrtc bei CPU-Last/Wärme) und liefert sie nur noch zeitweise,
+    fällt sie sofort aus der Auswahl, sobald sie nicht mehr live ist (keine Pakete in der letzten Sekunde bzw. über
+    die Brücke „aus“ gemeldet), während eine tiefere live ist. Wieder genommen wird sie erst nach **3 s am Stück
+    live**; flattert sie, bevor sie nach der Rückkehr 30 s stabil war, verdoppelt sich die Wartezeit (bis 60 s), nach
+    30 s Stabilität beginnt sie wieder bei 3 s. Fallen alle Schichten zugleich weg (Sender, Netz, Freigabe
+    pausiert), gibt es keine Wartezeit. Budget-Wechsel (Schätzung, Kontingent) bleiben bei `layerStep`. Die Brücke
+    meldet `on` ungefiltert; die Hysterese wirkt am Knoten, der die Schicht wählt.
+  - PLI-Bremse: höchstens eine Anforderung je Quelle und `fwd.PLIInterval` (500 ms), für alle Empfänger zusammen;
+    Abo-Wechsel (`Out.Assign`, auch über die Brücke: `pli` bzw. neuer Ausgang auf der Gegenseite) laufen durch
+    dieselbe Bremse (`TestPLIAbstandBeiWechsel`).
+  - Grund je Wechsel im Ereignis `layout`: Slots tragen nur in der Meldung des Wechsels selbst `why`
+    (`budget` | `gone` = bisherige Schicht nicht mehr live | `back` = Rückkehr nach der Hysterese), `src_kbit`
+    (gemessene Rate der Quelle; `gone`: der weggefallenen, sonst der neuen), `live_ms` (`gone`: Live-Zeit vor dem
+    Ausfall, `back`: am Stück) und `hold_ms` (`gone`: Wartezeit bis zur Rückkehr, `back`: die abgewartete). Alte
+    Geräte ignorieren die Felder. Das Web hängt sie an den Platz im Diagnose-Ereignis `layers` an
+    (`s0:l3@ab12!gone,31k,12.4s,w3s`).
 - **Lebensdauer der Beine (Horn-Fix):** Beine der Betriebsart `node` leben so lange wie der Anruf. Geräumt wird nur,
   was gescheitert/geschlossen ist (nach 30 s) bzw. nie verbunden wurde (nach 60 s). Die frühere Grenze von 15 min
   gilt nur noch für Spiegel-/Bench-Beine. Jedes Bein schreibt `bein auf`/`bein zu` ins Protokoll – gekürzte ID,

@@ -46,8 +46,10 @@ func (r *Room) run(tick time.Duration) {
 }
 
 // Tick fuehrt einen Steuerschritt aus (sonst im Takt; fuer Tests oeffentlich).
-func (r *Room) Tick() {
-	now := fwd.Now()
+func (r *Room) Tick() { r.tickAt(fwd.Now()) }
+
+// tickAt: Steuerschritt zur Zeit now (Tests mit kuenstlicher Zeit).
+func (r *Room) tickAt(now int64) {
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()

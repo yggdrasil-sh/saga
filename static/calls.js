@@ -3486,6 +3486,12 @@
       a.srcObject = null; a.remove(); return false;
     });
   }
+  // Grund eines Schichtwechsels (Knoten-Slot why/src_kbit/live_ms/hold_ms, nur in der Meldung des Wechsels) fuer die Diagnose
+  function hornWhy(x) {
+    if (!x.why || !/^[a-z]{1,8}$/.test(x.why)) return '';
+    var s = function (ms) { return Math.round((+ms || 0) / 100) / 10 + 's'; };
+    return '!' + x.why + ',' + Math.round(+x.src_kbit || 0) + 'k,' + s(x.live_ms) + (x.hold_ms ? ',w' + s(x.hold_ms) : '');
+  }
   // Ereigniskanal je Bein: Teilnehmende/CSRC (sofort beim Beitritt), Belegung, Zustand des Knotens, Bein beendet, Ping
   function hornEvents(R, conn, L, again) {
     if (!window.WebSocket || !L.id || conn.dead) return;
@@ -3502,7 +3508,7 @@
         if (m.slots) L.slots = m.slots; L.est = m.est_kbit || L.est; hornMap(R); hornDraw(R);
         if (conn === R.horn.cur) {                      // Diagnose: Schichtbelegung (nur Aenderungen)
           var lay = L.role[0] + ' est=' + (m.est_kbit || 0) + ' ' + (L.slots || []).filter(function (x) { return x.class !== 'audio'; }).map(function (x) {
-            return x.class[0] + x.i + ':' + (x.paused ? 'p' : (x.layer || '-') + (x.tid != null ? x.tid : '')) + (x.peer ? '@' + String(x.peer).slice(0, 4) : '');
+            return x.class[0] + x.i + ':' + (x.paused ? 'p' : (x.layer || '-') + (x.tid != null ? x.tid : '')) + (x.peer ? '@' + String(x.peer).slice(0, 4) : '') + hornWhy(x);
           }).join(' ');
           if (lay !== L.layLast) { L.layLast = lay; diagEv(R, 'layers', lay); }
         }
