@@ -4,6 +4,8 @@
 // - Werte (.wg-v) brechen nicht um (eine Zeile), Wert in Textfarbe, eigene Farbe faerbt ihn
 // - 4 Spalten: am Desktop breiter als die Textspalte (Tiptap) und nebeneinander; Tablet hoch mit Seitenleiste 2x2;
 //   Handy untereinander mit ~10 px Abstand
+// - Nacharbeit: Kontextzeile direkt unter dem Wert (N1), Zitat oben (N1), 3 und 4 Spalten mit gleicher Aussenkante (N2),
+//   Kennzahl ohne Zeile gleich dem Titel (N6), ueber 100 % in Akzentfarbe (N5), Hinweis "letzte 7 Tage" (N7)
 // - nicht eingerichtet: Leerzustand mit Symbol, ohne Warndreieck; Einrichten-Panel: "Rahmen" statt "Darstellung"
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8150 CK=<Cookie hk-test-a> [SAGA_EDITOR=tiptap] node tests/browser_widgets_design.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
@@ -47,6 +49,8 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
     COLS('c2', W('h7', 'habit', { db: hdb, date: 'datum', habits: ['sport', 'lesen'], range: 7 }, { title: 'Sieben' }),
       W('h30', 'habit', { db: hdb, date: 'datum', habits: ['sport', 'lesen'], range: 30 }, { title: 'Dreißig' }),
       W('m2', 'metric', { db: adb, agg: 'sum', prop: 'betrag', fmt: 'eur' }, { title: 'Grün', accent: 'green' }), W('e1', 'chart', { db: null }, {})),
+    COLS('c3', W('t1', 'metric', { src: 'tasks', agg: 'open', fmt: 'num' }, { title: 'offene AUFGABEN' }),
+      W('q1', 'quote', { src: 'fixed', items: ['Kurz und gut.'] }, { title: 'Zitat' }), W('u1', 'upcoming', { days: 7, cal: false, tasks: true }, { title: 'Hoch' })),
     { id: 'p1', type: 'paragraph', data: { text: 'Ende' } }] }) });
 
   const open = async () => {
@@ -79,11 +83,36 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   const colr = await p.evaluate(() => { const g = (s) => getComputedStyle(document.querySelector(s)).color; return { fg: getComputedStyle(document.body).color, plain: g('.wg[data-kind="metric"]:not([class*="wg-a-"]) .wg-v'), green: g('.wg.wg-a-green .wg-v') }; });
   ok(`Wert in Textfarbe, eigene Farbe faerbt ihn (${JSON.stringify(colr)})`, colr.plain === colr.fg && colr.green !== colr.fg, colr);
   ok('Fortschritt ueber 100 %: Marker "+50 %"', /\+50\s?%/.test(await p.locator(blk('w4') + ' .wg-chip').textContent().catch(() => '')));
+  // N5: ueber 100 % neutral - Marker und Balken in Akzentfarbe, nicht in --ok
+  const ov = await p.evaluate((sel) => { const w = document.querySelector(sel), ch = w.querySelector('.wg-chip'), f = w.querySelector('.wg-fill'), t = document.createElement('i');
+    t.style.color = 'var(--ok)'; w.appendChild(t); const okc = getComputedStyle(t).color; t.remove();
+    return { chip: getComputedStyle(ch).color, fill: getComputedStyle(f).backgroundColor, ok: okc }; }, blk('w4'));
+  ok(`N5: ueber 100 % in Akzentfarbe statt gruen (${JSON.stringify(ov)})`, ov.chip === ov.fill && ov.chip !== ov.ok, ov);
+  // N1: Kontextzeile der Kennzahl direkt unter dem Wert, auch in der gestreckten Karte
+  const ctxGap = await p.evaluate((ids) => ids.map((sel) => { const w = document.querySelector(sel); const v = w.querySelector('.wg-v'), c = w.querySelector('.wg-ctx');
+    return c ? Math.round(c.getBoundingClientRect().top - v.getBoundingClientRect().bottom) : null; }), [blk('w3'), blk('m2')]);
+  ok(`N1: Kennzahl-Kontextzeile direkt unter dem Wert (${ctxGap})`, ctxGap.every((g) => g !== null && g >= 0 && g <= 12), ctxGap);
+  // N1: Zitat oben in der Karte (nicht mittig im Leerraum)
+  const qTop = await p.evaluate((sel) => { const w = document.querySelector(sel), b = w.querySelector('.wg-b'), q = w.querySelector('.wg-qw');
+    return { off: Math.round(q.getBoundingClientRect().top - b.getBoundingClientRect().top), free: Math.round(b.getBoundingClientRect().bottom - q.getBoundingClientRect().bottom) }; }, blk('q1'));
+  ok(`N1: Zitat oben ausgerichtet (${JSON.stringify(qTop)})`, qTop.off <= 4, qTop);
+  // N6: Zusatzzeile gleich dem Titel (Gross/Klein egal) entfaellt
+  const t1 = await p.evaluate((sel) => { const w = document.querySelector(sel); return { ctx: w.querySelectorAll('.wg-ctx').length, txt: w.innerText.replace(/\s+/g, ' ') }; }, blk('t1'));
+  ok(`N6: Kennzahl ohne Zeile gleich dem Titel (${JSON.stringify(t1)})`, t1.ctx === 0, t1);
+  // N7: Gewohnheiten 30 Tage in schmaler Karte -> Hinweis "letzte n Tage"; 7 Tage ohne Hinweis
+  const cut = await p.evaluate((ids) => ids.map((sel) => { const w = document.querySelector(sel), shown = [...w.querySelectorAll('.hb-row:not(.hb-head) .hb-cells')][0];
+    const n = shown ? [...shown.children].filter((c) => c.getBoundingClientRect().width > 0).length : 0;
+    const h = [...w.querySelectorAll('.hb-cut > span')].filter((x) => x.getBoundingClientRect().height > 0).map((x) => x.textContent);
+    return { n, hint: h.join('|'), w: Math.round(w.getBoundingClientRect().width) }; }), [blk('h7'), blk('h30')]);
+  ok(`N7: weniger Tage als die Quote -> Hinweis passend zur Anzahl (${JSON.stringify(cut)})`, cut[0].hint === '' && (cut[1].n === 30 ? cut[1].hint === '' : cut[1].hint === 'letzte ' + cut[1].n + ' Tage'), cut);
   const empty = await p.locator(blk('e1') + ' .wg-empty').count(), warn = await p.locator(blk('e1') + ' .wg-err').count();
   ok('Nicht eingerichtet: Leerzustand ohne Warndreieck', empty === 1 && warn === 0, { empty, warn });
   if (engine === 'tiptap') {
     const wd = await p.evaluate(() => { const b = document.querySelector('[data-block-id="c1"]'), t = document.querySelector('.pm-doc'); return { b: Math.round(b.getBoundingClientRect().width), t: Math.round(t.getBoundingClientRect().width) }; });
     ok(`Tiptap: 4 Spalten breiter als die Textspalte, hoechstens 1100 px (${JSON.stringify(wd)})`, wd.b > wd.t && wd.b <= 1100, wd);
+    // N2: 3 und 4 Spalten haben dieselbe Aussenkante
+    const ed = await p.evaluate((ids) => ids.map((sel) => { const r = document.querySelector(sel + ' .cols').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)]; }), [blk('c1'), blk('c3')]);
+    ok(`N2: 3 und 4 Spalten gleiche Aussenkante (${JSON.stringify(ed)})`, Math.abs(ed[0][0] - ed[1][0]) <= 1 && Math.abs(ed[0][1] - ed[1][1]) <= 1, ed);
   }
   // Tiptap: Block bis 1100 px breit -> 4 nebeneinander; Editor.js bleibt in der Textspalte (760 px) -> 2x2
   const nD = await cols(blk('c1'));
@@ -101,9 +130,14 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   const n820 = await cols(blk('c1'));
   ok(`Tablet hoch: 4 Spalten umgebrochen (2x2 oder untereinander: ${n820})`, n820 === 2 || n820 === 1, n820);
   const ws820 = await p.evaluate(() => [...document.querySelectorAll('.page-body .col')].map((w) => Math.round(w.getBoundingClientRect().width)));
-  ok(`Tablet hoch: jede Spalte mind. 200 px breit (${ws820})`, ws820.length >= 8 && ws820.every((x) => x >= 200), ws820);
+  ok(`Tablet hoch: jede Spalte mind. 200 px breit (${ws820})`, ws820.length >= 11 && ws820.every((x) => x >= 200), ws820);
   hb = await habits();
   ok(`Tablet hoch: Gewohnheiten ohne Ueberlauf, heute sichtbar (${JSON.stringify(hb)})`, hb.every((x) => x.over <= 1 && !x.deep && x.todayIn && x.stIn), hb);
+
+  // Fund 18 auch mit Maus im schmalen Fenster: kein unsichtbares "+ Block" als Loch zwischen gestapelten Widgets
+  await p.setViewportSize({ width: 700, height: 900 }); await sleep(600);
+  const gapsM = await p.evaluate((sel) => { const ws = [...document.querySelector(sel).querySelectorAll('.wg')].map((w) => w.getBoundingClientRect()); return ws.slice(1).map((r, i) => Math.round(r.top - ws[i].bottom)).filter((g) => g > 0); }, blk('c1'));
+  if (engine === 'tiptap') ok(`Schmales Fenster (Maus): Abstand gestapelter Widgets <= 18 px (${gapsM})`, gapsM.length >= 1 && gapsM.every((g) => g <= 18), gapsM);
 
   // --- Handy: untereinander, ~10 px Abstand --------------------------------------------------------------------------
   const hctx = await br.newContext({ viewport: { width: 390, height: 844 }, locale: 'de-DE', isMobile: true, hasTouch: true });

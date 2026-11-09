@@ -29,14 +29,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „Darstellung“ (Diagramm: „Diagrammart“), Felder mind. 32 px, „Fertig“ im mitlaufenden Kopf; am Handy bleibt das Widget
   über dem Blatt sichtbar.
 - Spalten: Widgets einer Reihe gleich hoch; Spalten brechen nach der Breite des Blocks um (4 → 2×2, schmal
-  untereinander) statt erst am Handy; Spalten-Blöcke ab 3 Spalten dürfen breiter als die Textspalte werden (Tiptap bis
-  1100 px, veröffentlichte Seiten bis zur breiten Seitenbreite).
+  untereinander) statt erst am Handy; Spalten-Blöcke mit 3 bis 6 Spalten dürfen breiter als die Textspalte werden und
+  haben dieselbe Außenkante (62rem wie die breite Seitenbreite veröffentlichter Seiten, Rand für Kommentar-Knopf und
+  Inhaltsverzeichnis), 2 Spalten bleiben bündig zur Textspalte.
+- Nacharbeit: Kontextzeilen stehen direkt unter dem Wert statt unten in gestreckten Karten (nur „Wetterdaten:
+  Open-Meteo“ bleibt unten), Zitat oben ausgerichtet; Kennzahl ohne Zusatzzeile, die nur den Titel wiederholt;
+  Fortschritt/Kennzahl über 100 % in Akzentfarbe statt Grün; Gewohnheiten zeigen in schmalen Karten „letzte 14 Tage“ bzw.
+  „letzte 7 Tage“; „Quelle neu wählen“ ist ein Knopf und öffnet Einrichten; Anstehendes (L): Symbol an der ersten Zeile;
+  geschützte Leerzeichen zwischen Zahl und Einheit. Untereinander (Handy, schmales Fenster) ~10 px Abstand ohne Platzhalter
+  für „+ Block“; die Spalten-Leiste liegt schmal über der Reihe statt über der Karte darüber.
 
 ### Geändert – Diagramme (Widget und Datenbank-Ansicht)
 - Zeichnung in der echten Breite (Schrift echte 11 px auch in Spalten und am Handy), Höhe nach Größe S/M/L; unter 260 px
-  weniger Ticks, unter 200 px kompakt (Gesamtwert und Balken).
-- Ohne (verschiedene) Optionsfarben eine Palette statt Grau; „Andere“/„Leer“ neutral. Werte in Textfarbe, Widget-Farbe färbt.
-- „Fläche gestapelt“ stapelt, Achsenbreite aus der längsten Beschriftung, kompakte Achsenzahlen, Beschriftungen nach Platz
+  weniger Ticks, unter 180 px kompakt (Gesamtwert und Balken). x-Beschriftungen nach gemessener Textbreite ausgedünnt.
+- Eine Reihe = eine Farbe (Blau bzw. Widget-Farbe), auch bei Balken nach Kategorie; Palette nur bei mehreren Reihen und
+  Kreis/Ring; echte Optionsfarben (mind. zwei verschiedene) werden übernommen – im Web und auf veröffentlichten Seiten
+  gleich. „Andere“/„Leer“ neutral. Werte in Textfarbe, Widget-Farbe färbt.
+- Ziellinie: Beschriftung neben der Linie (rechts bzw. über quer liegenden Balken), in schmalen Karten in der Legende –
+  nie mehr über einem Balken.
+- „Fläche gestapelt“ stapelt (negative Werte nach unten wie beim gestapelten Balken), Achsenbreite aus der längsten Beschriftung, kompakte Achsenzahlen, Beschriftungen nach Platz
   ausgedünnt, Legende als Liste mit „+ n weitere“, eigener Tooltip, Kontextzeile („Summe · 36 Einträge“), Ring mit Gesamtwert.
 - „Werte als Tabelle“ in schmalen Karten als kleiner Knopf (für Screenreader benannt).
 

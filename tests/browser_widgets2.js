@@ -157,6 +157,12 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
     return w ? [...w.querySelectorAll('.ch-svg path.ch-f')].map((r) => (r.getAttribute('class').match(/ch-(s\d|c-\w+)/) || [])[0]) : [];
   });
   ok(`Ring ohne Optionsfarben: nicht grau, alle verschieden (${ringCls.join(' ')})`, ringCls.length === 3 && new Set(ringCls).size === 3 && !ringCls.some((c) => /gray/.test(c || '')), ringCls);
+  // N3: eine Reihe = eine Farbe (ohne zwei echte Optionsfarben), auch bei Balken nach Kategorie
+  const oneCls = await p.evaluate(() => {
+    const w = [...document.querySelectorAll('.wg[data-kind="chart"]')].find((x) => /Quer/.test(x.querySelector('.wg-t') ? x.querySelector('.wg-t').textContent : ''));
+    return w ? [...w.querySelectorAll('.ch-svg rect.ch-f')].map((r) => (r.getAttribute('class').match(/ch-(s\d|c-\w+|one|other)/) || [])[0]) : [];
+  });
+  ok(`Eine Reihe nach Kategorie: eine Farbe (${oneCls.join(' ')})`, oneCls.length === 3 && oneCls.every((c) => c === 'ch-one'), oneCls);
   const st = await p.evaluate(() => {
     const w = [...document.querySelectorAll('.wg[data-kind="chart"]')].find((x) => /gestapelt/.test(x.textContent));
     if (!w) return null;
@@ -177,9 +183,12 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   await api('PATCH', '/api/notes/' + cid, { wide: false });
   await p.goto(BASE + '/notes?t=' + Date.now() + '#' + cid);
   await until(() => p.evaluate(() => document.querySelectorAll('.wg[data-kind="chart"] .ch-svg').length === 4), 10000); await sleep(400);
-  const tiny = await p.evaluate(() => [...document.querySelectorAll('.wg[data-kind="chart"] .chart')].map((c) => ({ w: c.clientWidth, tiny: c.classList.contains('ch-tiny'),
+  // Spalten brechen bei ~200 px je Spalte um - Breite suchen, bei der die Diagramme schmaler als 180 px werden
+  const tinyM = () => p.evaluate(() => [...document.querySelectorAll('.wg[data-kind="chart"] .chart')].map((c) => ({ w: c.clientWidth, tiny: c.classList.contains('ch-tiny'),
     num: !!c.querySelector(':scope > .ch-num'), ticks: c.querySelectorAll('text.ch-t').length })));
-  ok(`unter 200 px: kompakt (Gesamtwert + Balken, keine Achsen) (${JSON.stringify(tiny[0])})`, tiny.length === 4 && tiny.every((x) => x.w >= 200 || (x.tiny && x.ticks === 0)) && tiny.some((x) => x.tiny && x.num), tiny);
+  let tiny = await tinyM();
+  for (let vw = 1400; vw >= 900 && !tiny.some((x) => x.w < 180); vw -= 10) { await p.setViewportSize({ width: vw, height: 900 }); await sleep(250); tiny = await tinyM(); }
+  ok(`unter 180 px: kompakt (Gesamtwert + Balken, keine Achsen) (${JSON.stringify(tiny[0])})`, tiny.length === 4 && tiny.every((x) => x.w >= 180 || (x.tiny && x.ticks === 0)) && tiny.some((x) => x.tiny && x.num), tiny);
   await api('DELETE', '/api/notes/' + cid); await api('DELETE', '/api/notes/' + rdb);
 
   // --- schmal (Handy) --------------------------------------------------------------------------------------------
