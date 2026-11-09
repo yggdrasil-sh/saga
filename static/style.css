@@ -2742,7 +2742,7 @@ tr.rc > td.db-fz{background:color-mix(in srgb,var(--rc) 14%,var(--bg))}
   .wx-ic2.wx-svg{width:1.3rem;height:1.3rem;margin:0}
   .wx-mm{text-align:right;grid-column:4}.wx-rain{grid-column:3;grid-row:1}
 }
-@container wg (max-width:210px){.wx-day .wx-rain{display:none}.wx-day{grid-template-columns:2rem 1.4rem minmax(0,1fr)}.wx-mm{grid-column:3}}
+@container wg (max-width:180px){.wx-day .wx-rain{display:none}.wx-day{grid-template-columns:2rem 1.4rem minmax(0,1fr)}.wx-mm{grid-column:3}}
 /* Gewohnheiten: Name + Quote/Serie oben, Tage darunter ueber die volle Breite (nie Ueberlauf, heute immer rechts sichtbar);
    ab 420 px eine Zeile je Gewohnheit. 7 Tage Kreise, 14/30 Tage Quadrate wie eine Heatmap. Fund 2/14/21 */
 .hb-grid{--hbc:1.4rem;display:flex;flex-direction:column;gap:.55rem;min-width:0}
