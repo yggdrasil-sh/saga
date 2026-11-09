@@ -114,7 +114,7 @@
       box.textContent = '';
       if (d.state !== 'ok') box.appendChild(HK.bookorbit.hint(d.state));
       else if (!(d.books || []).length) box.appendChild(el('p', 'hz-empty', T('Gerade kein Buch')));
-      else (d.books || []).slice(0, 3).forEach(function (b) { box.appendChild(HK.bookorbit.book(b, { compact: true })); });
+      else (d.books || []).slice(0, 3).forEach(function (b) { box.appendChild(HK.bookorbit.book(b, { compact: true, menu: true })); });
       if (d.state === 'ok' && d.streak && d.streak.current) box.appendChild(el('p', 'hz-read-s', T('{n} {n:Tag|Tage} in Folge gelesen', { n: d.streak.current })));
       sec.hidden = false;
     }).catch(function () { sec.hidden = true; });

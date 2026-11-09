@@ -2,7 +2,10 @@
    "Lesen" unter "Heute" (static/app.js). Cover kommen immer ueber den Saga-Server (/api/bookorbit/cover/<id>, mit
    X-Saga als Blob) - der Browser spricht nie selbst mit BookOrbit.
    HK.bookorbit.cover(url) -> Promise<objectURL|null>, HK.bookorbit.book(b, opts) -> Element, .goal(g), .streak(s),
-   .hint(state) -> Hinweis mit Knopf zu Einstellungen -> BookOrbit. */
+   .hint(state) -> Hinweis mit Knopf zu Einstellungen -> BookOrbit.
+   Phase 2 (Faehigkeit bookorbit2): .toPage(bookId | {page_id}) -> Markierungen als Seite anlegen/aktualisieren (Meldung,
+   danach die Seite oeffnen), .notesList(box) -> Liste "Markierungen als Seite übernehmen" (Einstellungen),
+   .bookMenu(anchor, b) -> Menue an einem Buch (Widget/Heute), .isPage(note) -> Seite stammt aus BookOrbit. */
 (function () {
   'use strict';
   window.HK = window.HK || {};
@@ -36,6 +39,13 @@
     bar.setAttribute('aria-valuenow', String(p)); bar.setAttribute('aria-label', T('Fortschritt'));
     var pr = el('span', 'bo-pr'); pr.appendChild(bar); pr.appendChild(el('span', 'bo-pc', p + ' %'));
     tx.appendChild(pr); row.appendChild(tx);
+    if (opts.menu && b.id && HK.openMenu) {             // Phase 2: Buch antippen -> "Markierungen als Seite"
+      row.classList.add('bo-tap'); row.tabIndex = 0; row.setAttribute('role', 'button'); row.setAttribute('aria-haspopup', 'menu');
+      row.setAttribute('aria-label', (b.title || T('Unbenannt')) + ' – ' + T('Markierungen als Seite'));
+      var pick = function (e) { e.stopPropagation(); e.preventDefault(); bookMenu(row, b); };
+      row.addEventListener('click', pick);
+      row.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') pick(e); });
+    }
     return row;
   }
   function goal(g, box) {
@@ -72,5 +82,81 @@
     }
     return box;
   }
-  window.HK.bookorbit = { cover: cover, book: book, goal: goal, streak: streak, hint: hint };
+  // --- Phase 2: Markierungen als Seite (nur lesen: BookOrbit -> Saga) ----------------------------------------------
+  function api(m, url, b) {
+    if (HK.api) return HK.api(m, url, b);
+    return fetch(url, { method: m, credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || r.status); return d; }); });
+  }
+  function say(msg) { if (HK.toast) HK.toast(msg); }
+  function openNote(id) {
+    if (window.HKSettings && window.HKSettings.close) window.HKSettings.close();
+    if (location.pathname === '/notes') { if (location.hash === '#' + id && HK.reloadPage) HK.reloadPage(); else location.hash = '#' + id; }
+    else if (HK.go) HK.go('/notes#' + id); else location.href = '/notes#' + id;
+  }
+  function resultText(r) {
+    var parts = [];
+    if (r.created) parts.push(T('Seite angelegt: {n} {n:Markierung|Markierungen}', { n: r.added }));
+    else if (r.added || r.updated) parts.push(T('{n} neu, {m} aktualisiert', { n: r.added, m: r.updated }));
+    else parts.push(T('Keine neuen Markierungen'));
+    if (r.truncated) parts.push(T('nicht alle übernommen (Obergrenze erreicht)'));
+    return parts.join(' – ');
+  }
+  // bookId (Zahl) oder {page_id: n}; opts.open === false: Seite nicht oeffnen. -> Promise<Antwort>
+  var busy = false;
+  function toPage(what, opts) {
+    opts = opts || {};
+    if (busy) return Promise.resolve(null);
+    busy = true;
+    var body = typeof what === 'number' ? { book_id: what } : what;
+    say(T('Hole Markierungen aus BookOrbit …'));
+    return api('POST', '/api/bookorbit/notes', body).then(function (r) {
+      busy = false; say(resultText(r));
+      if (opts.open !== false) openNote(r.page_id);
+      return r;
+    }, function (e) { busy = false; say(T('BookOrbit: {err}', { err: e.message })); throw e; });
+  }
+  function notesList(box) {
+    box.textContent = '';
+    var st = el('p', 'hk-hint', T('Lade …')); box.appendChild(st);
+    api('GET', '/api/bookorbit/notes/books').then(function (d) {
+      box.textContent = '';
+      var books = (d && d.books) || [];
+      if (!books.length) { box.appendChild(el('p', 'hk-hint', T('Keine Bücher mit Markierungen gefunden.'))); return; }
+      var ul = el('ul', 'bo-nl'); ul.setAttribute('aria-label', T('Bücher mit Markierungen'));
+      books.forEach(function (b) {
+        var li = el('li', 'bo-nl-row'), cv = el('span', 'bo-cover'); cv.setAttribute('aria-hidden', 'true'); cv.textContent = '📖';
+        cover(b.cover).then(function (u) { if (!u) return; var im = el('img'); im.alt = ''; im.src = u; cv.textContent = ''; cv.appendChild(im); });
+        li.appendChild(cv);
+        var tx = el('span', 'bo-tx');
+        tx.appendChild(el('span', 'bo-ti', b.title || T('Unbenannt')));
+        tx.appendChild(el('span', 'bo-au', (b.author ? b.author + ' · ' : '') + T('{n} {n:Markierung|Markierungen}', { n: b.count })));
+        li.appendChild(tx);
+        var go = el('button', 'btn bo-nl-go', b.page_id ? T('Aktualisieren') : T('Als Seite')); go.type = 'button';
+        go.setAttribute('aria-label', (b.page_id ? T('Aktualisieren') : T('Als Seite')) + ': ' + (b.title || ''));
+        go.addEventListener('click', function () {
+          go.disabled = true;
+          toPage(b.id).then(function () { go.disabled = false; }, function () { go.disabled = false; });
+        });
+        li.appendChild(go);
+        if (b.page_id) {
+          var op = el('button', 'btn bo-nl-open', T('Öffnen')); op.type = 'button';
+          op.addEventListener('click', function () { openNote(b.page_id); });
+          li.appendChild(op);
+        }
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }).catch(function (e) { box.textContent = ''; box.appendChild(el('p', 'hk-hint hk-warn', T('Nicht geladen: {err}', { err: e.message }))); });
+  }
+  function bookMenu(anchor, b) {
+    if (!HK.openMenu || !HK.menuItem || !b || !b.id) return;
+    HK.openMenu(anchor, function (m) {
+      m.appendChild(HK.menuItem(T('Markierungen als Seite'), function () { toPage(b.id); }, { ic: 'file' }));
+    });
+  }
+  // Seite aus BookOrbit? (Kopfzeile mit data.bo.x = "info", siehe saga/bookorbit_pages.py)
+  function isPage(n) { return !!(n && n.format === 'blocks' && /"bo":\s*\{[^{}]*"x":\s*"info"/.test(n.body || '')); }
+  window.HK.bookorbit = { cover: cover, book: book, goal: goal, streak: streak, hint: hint, toPage: toPage, notesList: notesList,
+                          bookMenu: bookMenu, isPage: isPage };
 })();

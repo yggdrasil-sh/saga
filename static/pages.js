@@ -1349,6 +1349,7 @@
         { ic: c.locked ? 'unlock' : 'lock', on: !!c.locked }), !!c.locked));
     } }));
   }
+  HK.reloadPage = function () { if (S.cur) openPage(S.cur.id); };     // 2.5: nach "Aus BookOrbit aktualisieren" (static/bookorbit.js)
   $('pg-more').addEventListener('click', function () {
     var btn = this; if (!S.cur) return;
     HK.openMenu(btn, function (m) {
@@ -1384,6 +1385,11 @@
       if (window.HKAI) HKAI.menu(m);                                 // static/ai.js (nur, wenn der Assistent an ist)
       // (4) Daten und Rolle der Seite
       m.appendChild(el('div', 'menu-sep'));
+      if (HK.bookorbit && HK.bookorbit.isPage(c)) m.appendChild(HK.menuItem(T('Aus BookOrbit aktualisieren'), function () {     // 2.5: bookorbit2
+        var id = c.id;
+        save().then(function () { return HK.bookorbit.toPage({ page_id: id }, { open: false }); })
+          .then(function (r) { if (r && (r.added || r.updated) && S.cur && S.cur.id === id) openPage(id); }).catch(function () {});
+      }, { ic: 'refresh' }));
       if (c.kind !== 'database') m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: c.id }); }, { ic: 'upload', hint: T('als Unterseiten') }));
       m.appendChild(HK.menuItem(T('Exportieren'), null, { ic: 'download', sub: function (sm) {
         sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { ic: 'file' }));
@@ -7065,7 +7071,7 @@
       else if (data.show === 'streak') BO.streak(data.streak, body);
       else {
         var bl = el('div', 'bo-list');
-        (data.books || []).forEach(function (b) { bl.appendChild(BO.book(b, { compact: d.size === 's' })); });
+        (data.books || []).forEach(function (b) { bl.appendChild(BO.book(b, { compact: d.size === 's', menu: true })); });
         if (!(data.books || []).length) bl.appendChild(el('div', 'wg-note', T('Gerade kein Buch')));
         body.appendChild(bl);
         if (data.more) body.appendChild(el('div', 'wg-sub', T('und {n} weitere', { n: data.more })));

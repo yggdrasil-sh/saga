@@ -340,6 +340,13 @@
         if (s.connected && s.state === 'ok') {
           box.appendChild(el('p', 'hk-bo-state', (s.name ? T('✅ Verbunden als {name}', { name: s.name }) : T('✅ Verbunden')) + host + ' – ' +
             T('Deine Leseliste gibt es unter „Heute“ und als Widget „Lesen“ auf Seiten.')));
+          if (HK.bookorbit && HK.bookorbit.notesList) {        // 2.5 (bookorbit2): Markierungen eines Buchs als Seite
+            var nl = el('div', 'hk-bo-notes'); nl.id = 'hk-bo-notes';
+            nl.appendChild(el('h4', null, T('Markierungen als Seite übernehmen')));
+            nl.appendChild(el('p', 'hk-hint', T('Je Buch eine Seite „Notizen: <Titel>“ mit deinen Markierungen als Zitate. „Aktualisieren“ fügt nur Neues an – deine eigenen Ergänzungen bleiben. Saga schreibt nichts zu BookOrbit zurück.')));
+            var nbox = el('div'); nl.appendChild(nbox); box.appendChild(nl);
+            HK.bookorbit.notesList(nbox);
+          }
         } else if (s.connected) {
           box.appendChild(el('p', 'hk-bo-state hk-warn', T('⚠️ Anmeldung abgelaufen{host} – bitte neu anmelden.', { host: host })));
         }
@@ -1034,5 +1041,5 @@
     _close();
     if (changed && document.getElementById('bm-add')) { changed = false; location.reload(); }
   };
-  window.HKSettings = { open: openSettings, editBookmark: editBookmark };
+  window.HKSettings = { open: openSettings, close: closeSettings, editBookmark: editBookmark };
 })();
