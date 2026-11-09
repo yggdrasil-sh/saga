@@ -62,7 +62,7 @@
     var out = [];
     Object.keys(REG).forEach(function (t) {
       var s = REG[t], list = s.slash || [{ title: s.title, icon: s.icon, data: {} }];
-      list.forEach(function (e) { out.push({ type: t, title: e.title || s.title, icon: e.icon || s.icon, data: clone(e.data || {}) }); });
+      list.forEach(function (e) { out.push({ type: t, title: e.title || s.title, icon: e.icon || s.icon, data: clone(e.data || {}), kw: e.kw || '' }); });
     });
     return out;
   }
@@ -236,7 +236,7 @@
   //        live(inst, data, h) -> bool   neue Daten von aussen ohne Neuaufbau einspielen (true = erledigt);
   //                                  h = {busy()}; sonst Neuaufbau (verschoben, solange ein Feld/Menue offen ist)
   //        destroy(inst)             zusaetzliches Aufraeumen
-  //        title, icon, slash}       sonst aus Klasse.toolbox
+  //        title, icon, slash}       sonst aus Klasse.toolbox (Eintraege {title, icon, data, kw}; kw = Suchbegriffe)
   // Klasse darf ein Name sein (String): dann aus HKPages.k.tools beim Einhaengen.
   function fromEditorJs(Klasse, opts) {
     opts = opts || {};
@@ -245,7 +245,7 @@
       var k = K(), t = k && k.tools; return t && t[Klasse];
     }
     var C0 = cls(), tb = C0 && C0.toolbox;
-    var slashList = opts.slash || (Array.isArray(tb) ? tb.map(function (x) { return { title: x.title, icon: x.icon, data: x.data || {} }; })
+    var slashList = opts.slash || (Array.isArray(tb) ? tb.map(function (x) { return { title: x.title, icon: x.icon, data: x.data || {}, kw: x.kw || '' }; })
       : tb ? [{ title: tb.title, icon: tb.icon, data: {} }] : null);
     var first = Array.isArray(tb) ? tb[0] : tb;
     return {

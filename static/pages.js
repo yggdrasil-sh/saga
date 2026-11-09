@@ -146,8 +146,31 @@
     var all = [].filter.call(pop.querySelectorAll('.ce-popover-item'), function (x) { return !x.classList.contains('ce-popover-item--disabled'); });
     function ti(x) { var e = x.querySelector('.ce-popover-item__title'); return e ? e.textContent.trim().toLowerCase() : ''; }
     return all.filter(function (x) { return ti(x).indexOf(q) === 0; })[0] || all.filter(function (x) { return ti(x).indexOf(q) >= 0; })[0]
-      || all.filter(function (x) { return String(x.getAttribute('data-item-name') || '').toLowerCase().indexOf(q) === 0; })[0] || null;
+      || all.filter(function (x) { return String(x.getAttribute('data-item-name') || '').toLowerCase().indexOf(q) === 0; })[0]
+      || (q.length >= 3 ? all.filter(function (x) { return slashKwOf(x).indexOf(q) >= 0; })[0] : null) || null;
   }
+  // 2.5 (Unterseiten): weitere Suchbegriffe je Eintrag (toolbox.kw, z. B. "Galerie" -> Unterseiten). Editor.js filtert nur nach
+  // dem Titel - Treffer ueber Suchbegriffe blendet slashKwShow nach dessen Filtern wieder ein.
+  function slashKwOf(x) {
+    var e = x.querySelector('.ce-popover-item__title'), t = e ? e.textContent.trim() : '';
+    var tb = (typeof WidgetTool === 'function' && WidgetTool.toolbox) || [];
+    for (var i = 0; i < tb.length; i++) if (tb[i].kw && tb[i].title === t) return tb[i].kw;
+    return '';
+  }
+  function slashKwHit(x, q) { return q.length >= 3 && slashKwOf(x).indexOf(q) >= 0; }
+  function slashKwShow(pop, q) {
+    q = String(q || '').replace(/\u00a0/g, ' ').trim().toLowerCase();
+    if (!pop || q.length < 3) return;
+    var hit = false;
+    [].forEach.call(pop.querySelectorAll('.ce-popover-item.ce-popover-item--hidden'), function (x) { if (slashKwHit(x, q)) { x.classList.remove('ce-popover-item--hidden'); hit = true; } });
+    if (hit) [].forEach.call(pop.querySelectorAll('.ce-popover__nothing-found-message--displayed'), function (m) { m.classList.remove('ce-popover__nothing-found-message--displayed'); });
+  }
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    if (!t || !t.classList || !t.classList.contains('cdx-search-field__input')) return;
+    var pop = t.closest('.ce-popover'), q = t.value;
+    setTimeout(function () { slashKwShow(pop, q); }, 0);       // nach dem Filtern von Editor.js (Ziel-Listener)
+  }, true);                                                  // Capture: auch das nicht blubbernde input aus slashInline
   // Schnell getipptes "/Hinweis⏎" auf dem Desktop: der Text landete noch im Absatz (Menue war noch nicht offen bzw. hatte
   // das Suchfeld noch nicht) -> Enter waehlt den passenden Block, statt "/Hinweis" als Text stehen zu lassen.
   document.addEventListener('keydown', function (e) {
@@ -256,7 +279,7 @@
     var q = txt.slice(1).trim().toLowerCase();
     [].forEach.call(pop.querySelectorAll('.ce-popover-item'), function (x) {
       var ti = x.querySelector('.ce-popover-item__title');
-      x.classList.toggle('pg-slash-hidden', !!q && !(ti && ti.textContent.toLowerCase().indexOf(q) >= 0));
+      x.classList.toggle('pg-slash-hidden', !!q && !(ti && ti.textContent.toLowerCase().indexOf(q) >= 0) && !slashKwHit(x, q));
     });
   }, true);
   // Farbe per Slash-Kuerzel: "/…" entfernen, Menue schliessen, Block (den Absatz mit dem "/") einfaerben
@@ -740,7 +763,7 @@
         api('GET', '/api/share/info').then(function (d) { var off = !d.enabled && d.received > 0; if (off !== !!S.shareOff) { S.shareOff = off; renderShared(); } })
           .catch(function () {});
       } else S.shareOff = false;
-      renderTree(); renderCrumbs(); renderTagBar(); renderFiltered(); return list; });
+      renderTree(); renderCrumbs(); renderTagBar(); renderFiltered(); wgTree(); return list; });
   }
 
   // --- Editor ---------------------------------------------------------------
@@ -7042,10 +7065,11 @@
   // Kennzahl und Zitat rechnet der Server mit den Rechten des Betrachters (GET /api/notes/{id}/widgets, alle 60 s,
   // solange die Seite sichtbar ist). Einrichten: Klick auf das Widget (Bearbeiten/Eigentuemer) -> Panel mit Vorschau.
   // 2.5 Paket 4 (Etappe 2): Wetter, Gewohnheiten, Anstehendes, Diagramm (Server rechnet, W.data; docs/APP-API.md)
-  var WG_KINDS = ['clock', 'countdown', 'progress', 'metric', 'quote', 'weather', 'habit', 'upcoming', 'chart', 'reading'];
-  var WG_KINDS2 = ['weather', 'habit', 'upcoming', 'chart', 'reading'];      // reading (2.5): BookOrbit, static/bookorbit.js
+  // subpages (2.5): direkte Unterseiten als Liste oder Galerie - immer mit den Rechten des Betrachters vom Server (W.data)
+  var WG_KINDS = ['clock', 'countdown', 'progress', 'metric', 'quote', 'weather', 'habit', 'upcoming', 'chart', 'reading', 'subpages'];
+  var WG_KINDS2 = ['weather', 'habit', 'upcoming', 'chart', 'reading', 'subpages'];      // reading (2.5): BookOrbit, static/bookorbit.js
   var WG_NAMES = { clock: T('Uhr'), countdown: T('Countdown'), progress: T('Fortschritt'), metric: T('Kennzahl'), quote: T('Zitat'),
-    weather: T('Wetter'), habit: T('Gewohnheiten'), upcoming: T('Anstehendes'), chart: T('Diagramm##Chart'), reading: T('Lesen##BookOrbit') };
+    weather: T('Wetter'), habit: T('Gewohnheiten'), upcoming: T('Anstehendes'), chart: T('Diagramm##Chart'), reading: T('Lesen##BookOrbit'), subpages: T('Unterseiten') };
   var WG_IC = { clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', countdown: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9"/>',
     progress: '<rect x="3" y="9" width="18" height="6" rx="3"/><path d="M6 12h7"/>', metric: '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>',
     quote: '<path d="M7 7h4v4c0 3-2 5-4 5M14 7h4v4c0 3-2 5-4 5"/>',
@@ -7053,7 +7077,8 @@
     habit: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8.5 14.5l2 2 4-4"/>',
     upcoming: '<path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="17" r="3"/><path d="M18 15.5V17l1 .8"/>',
     chart: '<path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/>',
-    reading: '<path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v14H7.5A2.5 2.5 0 0 0 5 19.5z"/><path d="M5 19.5A2.5 2.5 0 0 0 7.5 22H19v-5M9 7h6"/>' };
+    reading: '<path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v14H7.5A2.5 2.5 0 0 0 5 19.5z"/><path d="M5 19.5A2.5 2.5 0 0 0 7.5 22H19v-5M9 7h6"/>',
+    subpages: '<rect x="3" y="3" width="7.5" height="9" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="9" rx="1.5"/><path d="M3 16h7.5M3 20h5.5M13.5 16H21M13.5 20H19"/>' };
   var WG_ERR = { no_access: T('Kein Zugriff auf die Datenquelle'), gone: T('Die Datenquelle gibt es nicht mehr'),
     bad_cfg: T('Widget noch nicht fertig eingerichtet'), too_big: T('Zu viele Einträge für ein Widget'),
     disabled: T('Wetter ist auf diesem Server ausgeschaltet'), unavailable: T('Wetterdaten gerade nicht erreichbar') };
@@ -7065,7 +7090,8 @@
       progress: { src: 'fixed', value: 0, max: 100 }, metric: { db: null, view: '', agg: 'count', prop: '', fmt: 'num' },
       quote: { src: 'fixed', items: [], pick: 'daily' }, weather: { place: '', lat: null, lon: null, units: 'metric', days: 5 },
       habit: { db: null, view: '', date: '', habits: [], range: 7 }, upcoming: { days: 7, cal: true, tasks: true, overdue: true, dbs: [], limit: 10 },
-      chart: { db: null, view: '', type: 'bar', x: '', agg: 'count' }, reading: { show: 'current', limit: 3 } }[kind] || {};
+      chart: { db: null, view: '', type: 'bar', x: '', agg: 'count' }, reading: { show: 'current', limit: 3 },
+      subpages: { view: 'list', image: 'cover' } }[kind] || {};
   }
   function wgFmt(v, fmt) {
     if (v == null || typeof v !== 'number' || !isFinite(v)) return '–';
@@ -7099,7 +7125,12 @@
     this.block = o.block; this.ro = !!o.readOnly; this.pv = null; this.schemas = {};
   }
   WidgetTool.isReadOnlySupported = true;
-  WidgetTool.toolbox = WG_KINDS.map(function (k) { return { title: T('Widget: {art}', { art: WG_NAMES[k] }), icon: wgIcon(k), data: { kind: k } }; });
+  // Unterseiten heissen im Menue wie in Notion schlicht "Unterseiten" (kein Widget im engeren Sinn); kw: weitere Suchbegriffe
+  // fuer das "/"-Menue beider Editoren (Tiptap: pm-editor.js toolSlash, Editor.js: slashKw unten)
+  var WG_KW = { subpages: 'unterseiten galerie gallery subpages kinderseiten child pages liste' };
+  WidgetTool.toolbox = WG_KINDS.map(function (k) {
+    return { title: k === 'subpages' ? T('Unterseiten') : T('Widget: {art}', { art: WG_NAMES[k] }), icon: wgIcon(k), data: { kind: k }, kw: WG_KW[k] || '' };
+  });
   WidgetTool.prototype.render = function () {
     var self = this, w = el('div', 'wg-blk'); this.w = w; isolate(w);
     this.card = el('div'); w.appendChild(this.card);
@@ -7175,7 +7206,7 @@
   WidgetTool.prototype.draw = function () {
     var self = this, d = this.data, c = this.card, cfg = d.cfg || {};
     clearInterval(this.tick); this.tick = null;
-    c.className = 'wg wg-' + (d.size === 's' || d.size === 'l' ? d.size : 'm') + ' wg-' + (d.style === 'plain' ? 'plain' : 'card')
+    c.className = 'wg wg-' + (d.size === 's' || d.size === 'l' ? d.size : 'm') + ' wg-' + ((d.style || (d.kind === 'subpages' ? 'plain' : 'card')) === 'plain' ? 'plain' : 'card')
       + (COLORS.indexOf(d.accent) >= 0 ? ' wg-a-' + d.accent : '') + (this.editable() ? ' wg-ed' : '');
     c.textContent = '';
     c.dataset.kind = String(d.kind || '');
@@ -7241,7 +7272,7 @@
     var w = d.kind === 'progress' && cfg.src !== 'db' && cfg.src !== 'tasks' ? { value: +cfg.value || 0, max: +cfg.max || 100 } : this.value();
     if (wgServer(d) && remoteId(S.cur && S.cur.id) && S.wUnsupported) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
     if (wgServer(d) && S.wMissing) { body.appendChild(el('div', 'wg-note', T('Werte gibt es erst mit einer neueren Server-Version'))); return; }
-    if (WG_KINDS2.indexOf(d.kind) >= 0 && remoteId(S.cur && S.cur.id) && S.wUnsupported2) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
+    if (WG_KINDS2.indexOf(d.kind) >= 0 && remoteId(S.cur && S.cur.id) && (S.wUnsupported2 || (S.wUnsupportedKinds || []).indexOf(d.kind) >= 0)) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
     if (w && w.error === 'bad_cfg') { this.empty(body, d.kind); return; }
     if (w && w.error) {
       body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg));
@@ -7396,6 +7427,7 @@
       if (!data.can_check) body.appendChild(el('div', 'wg-f', T('Nur lesen – zum Abhaken braucht es „Bearbeiten“ an der Datenbank.')));
       return;
     }
+    if (d.kind === 'subpages') { this.drawSp(body, data); return; }
     if (d.kind === 'reading') {                         // 2.5: BookOrbit der betrachtenden Person (static/bookorbit.js)
       var BO = HK.bookorbit;
       if (!BO) { body.appendChild(el('div', 'wg-note', '…')); return; }
@@ -7455,6 +7487,51 @@
     api('POST', '/api/notes/' + id + '/widgets/' + encodeURIComponent(this.block.id) + '/habit' + (tz ? '?tz=' + encodeURIComponent(tz) : ''), { pid: pid, day: day, on: on })
       .then(function (r) { if (r && r.widget) { S.wvals = S.wvals || {}; S.wvals[self.block.id] = r.widget; self.draw(); } })
       .catch(function (err) { btn.disabled = false; btn.classList.toggle('hb-on', !on); HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+  };
+  // Unterseiten (2.5): Liste (Symbol + Titel) oder Galerie (Karten im Raster). Karten sind Links (/notes#id, Tastatur,
+  // Screenreader); Bild je cfg.image - "content" (erstes Bild im Inhalt, z. B. Buchcover) im Hochformat 2:3, "cover"
+  // (Titelbild, breite Banner) im Querformat 16:9, "none" ohne Bildflaeche. Fehlt das Bild: ruhige Flaeche mit grossem Symbol.
+  function spSrc(u, w) { return /^\/covers\/[a-z0-9-]+\.jpg$/.test(u) ? u + '?w=' + w : thumb(u, w); }
+  WidgetTool.prototype.drawSp = function (body, data) {
+    var self = this, d = this.data, cfg = d.cfg || {}, gal = cfg.view === 'gallery', im = cfg.image === 'content' || cfg.image === 'none' ? cfg.image : 'cover';
+    var items = data.items || [], c = this.card;
+    c.classList.add('wg-sp', gal ? 'sp-gal' : 'sp-lst');
+    if (this.editable()) {                                // Einrichten auch per Tastatur (die Flaeche besteht fast nur aus Links)
+      var gb = el('button', 'sp-cfg'); gb.type = 'button'; var gi = HK.icon && HK.icon('settings', 15); if (gi) gb.appendChild(gi); else gb.textContent = '⚙';
+      gb.setAttribute('aria-label', T('Unterseiten einrichten')); gb.title = T('Unterseiten einrichten');
+      gb.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); if (!self.panel) self.openPanel(); });
+      c.appendChild(gb);
+    }
+    if (!items.length) {
+      var e0 = el('div', 'sp-empty'), ic0 = el('span', 'wg-empty-ic'); ic0.innerHTML = wgIcon('subpages'); e0.appendChild(ic0);
+      e0.appendChild(el('div', 'wg-empty-a', T('Noch keine Unterseiten')));
+      if (data.can_add && !readOnly() && S.cur) {
+        var nb = el('button', 'btn btn-sm sp-new', T('Unterseite anlegen')); nb.type = 'button';
+        nb.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); newPage(S.cur.id); });
+        e0.appendChild(nb);
+      } else e0.appendChild(el('div', 'wg-empty-h', T('Hier erscheinen die Seiten, die unter dieser Seite liegen.')));
+      body.appendChild(e0);
+      return;
+    }
+    var ul = el('ul', gal ? 'sp-grid sp-i-' + im : 'sp-list');
+    ul.setAttribute('aria-label', d.title || T('Unterseiten'));
+    items.forEach(function (x) {
+      var li = el('li', 'sp-li'), a = el('a', 'sp-it'), tt = x.title || T('Unbenannt'), isDb = x.kind === 'database';
+      a.href = '/notes#' + x.id; a.dataset.id = String(x.id);
+      a.setAttribute('aria-label', isDb ? T('{titel} (Datenbank)', { titel: tt }) : tt);
+      if (gal && im !== 'none') {
+        var pv = el('span', 'sp-pv');
+        if (x.img) { var ig = el('img'); ig.loading = 'lazy'; ig.decoding = 'async'; ig.alt = ''; ig.src = spSrc(x.img, im === 'content' ? 400 : 640); pv.appendChild(ig); }
+        else { pv.classList.add('sp-pv-ph'); pv.appendChild(icoNode(x.icon, isDb ? '▦' : '📄', 'sp-ph')); }
+        a.appendChild(pv);
+      }
+      var row = el('span', 'sp-row'), ic = icoNode(x.icon, isDb ? '▦' : '📄', 'sp-ic'); ic.setAttribute('aria-hidden', 'true');
+      if (!(gal && im !== 'none' && !x.img)) row.appendChild(ic);       // Platzhalter zeigt das Symbol schon gross
+      var tl = el('span', 'sp-t', tt); tl.title = tt; row.appendChild(tl);
+      a.appendChild(row); li.appendChild(a); ul.appendChild(li);
+    });
+    body.appendChild(ul);
+    if (data.more) body.appendChild(el('div', 'wg-sub sp-more', T('und {n} weitere', { n: data.more })));
   };
   // Einrichten: Panel unter dem Widget, jede Aenderung zeichnet neu (Vorschau ueber den Server, wo er rechnet)
   WidgetTool.prototype.openPanel = function () {
@@ -7535,9 +7612,10 @@
       return row(label, i);
     }
     inp(T('Titel'), 'text', d.title || '', function (v) { if (v.trim()) d.title = v.slice(0, 80); else delete d.title; self.changed(); self.update(); }, { maxlength: '80' });
-    sel(T('Größe'), [['s', T('Klein')], ['m', T('Mittel')], ['l', T('Groß')]], d.size || 'm', function (v) { set('size', v, true); });
-    sel(T('Rahmen'), [['card', T('Karte')], ['plain', T('Ohne Rahmen')]], d.style || 'card', function (v) { set('style', v, true); });   // Fund 26: nicht "Darstellung" (= Diagrammart)
-    sel(T('Farbe'), [['', T('Standard')]].concat(COLORS.map(function (c) { return [c, COLOR_NAMES[c]]; })), d.accent || '', function (v) { if (v) d.accent = v; else delete d.accent; self.changed(); self.update(); });
+    var spk = d.kind === 'subpages';
+    sel(spk ? T('Kartengröße') : T('Größe'), [['s', T('Klein')], ['m', T('Mittel')], ['l', T('Groß')]], d.size || 'm', function (v) { set('size', v, true); });
+    sel(T('Rahmen'), [['card', T('Karte')], ['plain', T('Ohne Rahmen')]], d.style || (spk ? 'plain' : 'card'), function (v) { set('style', v, true); });   // Fund 26: nicht "Darstellung" (= Diagrammart)
+    if (!spk) sel(T('Farbe'), [['', T('Standard')]].concat(COLORS.map(function (c) { return [c, COLOR_NAMES[c]]; })), d.accent || '', function (v) { if (v) d.accent = v; else delete d.accent; self.changed(); self.update(); });
     var k = d.kind;
     if (k === 'clock') {
       var zones = [];
@@ -7583,6 +7661,12 @@
       sel(T('Einheiten'), [['metric', '°C, km/h'], ['imperial', '°F, mph']], cfg.units, function (v) { set('units', v); });
       sel(T('Tage'), [0, 1, 2, 3, 4, 5, 6, 7].map(function (n) { return [n, n ? T('Heute + {n}', { n: n }) : T('Nur heute')]; }), cfg.days == null ? 5 : cfg.days, function (v) { set('days', +v); });
       p.insertBefore(el('div', 'wg-row wg-note', T('Die Daten holt der Saga-Server bei Open-Meteo (Koordinaten auf etwa 1 km gerundet).')), at);
+      return;
+    }
+    if (k === 'subpages') {
+      sel(T('Ansicht'), [['list', T('Liste')], ['gallery', T('Galerie')]], cfg.view || 'list', function (v) { set('view', v); self.fill(); });
+      if (cfg.view === 'gallery') sel(T('Kartenbild'), [['cover', T('Titelbild der Seite')], ['content', T('Erstes Bild im Inhalt')], ['none', T('Kein Bild')]], cfg.image || 'cover', function (v) { set('image', v); });
+      p.insertBefore(el('div', 'wg-row wg-note', T('Zeigt die Seiten direkt unter dieser Seite in der Reihenfolge des Seitenbaums – jede Person nur die, die sie sehen darf.')), at);
       return;
     }
     if (k === 'reading') {
@@ -7742,6 +7826,7 @@
     return api('GET', '/api/notes/' + id + '/widgets' + (tz ? '?tz=' + encodeURIComponent(tz) : '')).then(function (r) {
       if (!S.cur || S.cur.id !== id) return;
       S.wvals = (r && r.widgets) || {}; S.wUnsupported = !!(r && r.unsupported); S.wUnsupported2 = !!(r && (r.unsupported || r.unsupported2)); S.wMissing = false;
+      S.wUnsupportedKinds = r && Array.isArray(r.unsupported_kinds) ? r.unsupported_kinds : [];
       mine.forEach(function (x) { if (!x.panel) x.draw(); });
     }).catch(function (err) {
       if (!S.cur || S.cur.id !== id) return;
@@ -7749,6 +7834,8 @@
     });
   }
   function wgSoon() { clearTimeout(S.wgT); S.wgT = setTimeout(loadWidgets, 300); }
+  // Unterseiten (2.5): Baum neu geladen (angelegt, umbenannt, verschoben, geloescht - auch von anderen) -> Werte neu holen
+  function wgTree() { var any = false; WG.forEach(function (x) { if (x.data && x.data.kind === 'subpages' && x.w && x.w.isConnected) any = true; }); if (any) wgSoon(); }
   document.addEventListener('hk-page-open', function () { S.wvals = {}; S.wUnsupported = false; S.wMissing = false; });
   document.addEventListener('hk-page-ready', function () { loadWidgets(); });
   setInterval(function () { if (!document.hidden && S.cur) loadWidgets(); }, 60000);

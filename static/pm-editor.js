@@ -938,7 +938,7 @@
     if (!window.HKTools || typeof HKTools.slash !== 'function') return [];
     try {
       return (HKTools.slash() || []).map(function (x, i) {
-        return { key: 'tool', group: TOOL_GROUP[x.type] || G_SAGA, t: x.title, ic: x.icon || '□', kw: x.type, order: 60 + i,
+        return { key: 'tool', group: TOOL_GROUP[x.type] || G_SAGA, t: x.title, ic: x.icon || '□', kw: x.type + (x.kw ? ' ' + x.kw : ''), order: 60 + i,
                  block: { type: x.type, data: x.data || {} } };
       });
     } catch (e) { return []; }
