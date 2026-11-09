@@ -287,3 +287,117 @@ func TestPLIAbstandBeiWechsel(t *testing.T) {
 		t.Fatalf("plis l %d m %d in %v (hoechstens %d)", pl.Load(), pm.Load(), el, max)
 	}
 }
+
+// TestFlapFeldmuster (Feldbefund, direkter Anruf ueber UDP, est konstant): Nach einem Verlust-Schub schaltet der Sender
+// m im Takt an und aus - am Knoten sichtbar m 0,2-1,2 s weg, dann 3-4 s (einmal 21 s) da. Ohne Hysterese folgte jeder
+// Ausgang diesem Takt (je Wechsel ein Schluesselbild). Mit Hysterese bleibt der Platz ueberwiegend auf l, die Wartezeit
+// waechst ueber die laengste Live-Phase hinaus und die Zahl der Wechsel bleibt klein.
+func TestFlapFeldmuster(t *testing.T) {
+	fr := newFlapRoom(t)
+	fr.on(true)
+	fr.tick(5 * time.Second)
+	if fr.layer() != "m" {
+		t.Fatalf("start: %q", fr.layer())
+	}
+	off := []time.Duration{1200, 445, 1187, 1000, 599} // ms, aus den Messwerten (l-Dauer am Knoten)
+	on := []time.Duration{3599, 20968, 4200, 3201, 3600}
+	n0, onL, total := len(fr.evs), time.Duration(0), time.Duration(0)
+	step := func(d time.Duration) {
+		for end := fr.now + int64(d); fr.now < end; {
+			fr.tick(200 * time.Millisecond)
+			total += 200 * time.Millisecond
+			if fr.layer() == "l" {
+				onL += 200 * time.Millisecond
+			}
+		}
+	}
+	for total < 5*time.Minute {
+		for i := range off {
+			fr.on(false)
+			step(off[i] * time.Millisecond)
+			fr.on(true)
+			step(on[i] * time.Millisecond)
+		}
+	}
+	cycles := 0
+	for total2 := time.Duration(0); total2 < 5*time.Minute; {
+		for i := range off {
+			total2 += (off[i] + on[i]) * time.Millisecond
+			cycles++
+		}
+	}
+	changes := len(fr.evs) - n0
+	if changes > 16 { // ohne Hysterese: 2 je Takt (~2*cycles)
+		t.Fatalf("pendelt: %d Wechsel in %v (%d Takte des Senders)", changes, total, cycles)
+	}
+	if onL < total*8/10 {
+		t.Fatalf("nur %v von %v auf l", onL, total)
+	}
+	fr.r.mu.Lock()
+	hold := fr.r.peers["fern"].cam["m"].fl.hold
+	fr.r.mu.Unlock()
+	if hold < 4*flapHold { // gewachsen; laenger als jede Live-Phase des Musters -> l bleibt
+		t.Fatalf("wartezeit %v nicht gewachsen", hold)
+	}
+	t.Logf("%d Wechsel in %v bei %d Sender-Takten, %v auf l", changes, total, cycles, onL)
+}
+
+// TestBudgetFehlversuchAufschub (Feldbefund h<->m an der Schwelle): Faellt ein Platz binnen upFail nach dem Hochschalten
+// wegen des Budgets wieder zurueck, verdoppelt sich der Aufschub fuer den naechsten Versuch (bis upDwellMax); haelt die
+// hoehere Schicht laenger, gilt wieder layerDwell.
+func TestBudgetFehlversuchAufschub(t *testing.T) {
+	fr := newFlapRoom(t)
+	fr.on(true)
+	fr.tick(5 * time.Second)
+	est := func(v float64) {
+		fr.r.mu.Lock()
+		fr.l.est.max = v
+		fr.r.mu.Unlock()
+	}
+	dwell := func() time.Duration {
+		fr.r.mu.Lock()
+		defer fr.r.mu.Unlock()
+		return fr.l.slots[0].dwell
+	}
+	if fr.layer() != "m" || fr.l.slots[0].class != "speaker" {
+		t.Fatalf("start: %q", fr.layer())
+	}
+	// Grundfall: herunter (budget), lange unten, wieder hoch -> frueh. erlaubt nach layerDwell
+	est(300e3)
+	fr.tick(200 * time.Millisecond)
+	est(25e6)
+	base := fr.until("m", 40*time.Second)
+	if dwell() != 0 {
+		t.Fatalf("aufschub ohne Fehlversuch: %v", dwell())
+	}
+	want := layerDwell
+	for i := 0; i < 5; i++ { // Fehlversuche: kurz nach dem Hochschalten wieder herunter
+		fr.tick(600 * time.Millisecond)
+		est(300e3)
+		fr.tick(200 * time.Millisecond)
+		if fr.layer() != "l" || fr.last().Why != whyBudget {
+			t.Fatalf("runde %d: %q %+v", i, fr.layer(), fr.last())
+		}
+		want = min(2*want, upDwellMax)
+		if dwell() != want {
+			t.Fatalf("runde %d: aufschub %v, erwartet %v", i, dwell(), want)
+		}
+		est(25e6)
+		d := fr.until("m", 60*time.Second)
+		if d < want-layerDwell+base-400*time.Millisecond {
+			t.Fatalf("runde %d: nach %v wieder hoch (aufschub %v, grundfall %v)", i, d, want, base)
+		}
+		t.Logf("runde %d: wieder hoch nach %v (aufschub %v, grundfall %v)", i, d, want, base)
+	}
+	// gehalten: naechste Ruecknahme stellt zurueck
+	fr.tick(3 * time.Second)
+	est(300e3)
+	fr.tick(200 * time.Millisecond)
+	if fr.layer() != "l" || dwell() != 0 {
+		t.Fatalf("nach dem Halten: %q aufschub %v", fr.layer(), dwell())
+	}
+	est(25e6)
+	if d := fr.until("m", 40*time.Second); d > base+400*time.Millisecond {
+		t.Fatalf("nach dem Halten erst nach %v hoch (grundfall %v)", d, base)
+	}
+}

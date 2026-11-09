@@ -300,6 +300,10 @@ type slot struct {
 	// Hysterese (layerStep): letzter Wechsel nach unten und fuer wen
 	downAt    int64
 	downOwner *Peer
+	// Aufschub nach gescheitertem Hochschalten (Budget): letzter Wechsel nach oben, fuer wen, aktueller Aufschub
+	upAt    int64
+	upOwner *Peer
+	dwell   time.Duration
 	// zuletzt weitergeleitete Quelle (auch ueber eine Pause) und Grund des letzten Wechsels fuer die naechste Meldung
 	src                       *source
 	srcAt                     int64

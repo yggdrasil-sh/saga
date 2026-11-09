@@ -20,6 +20,8 @@ const (
 	upHeadroom    = 1.15                    // Reserve vor einem Wechsel nach oben
 	keepSlack     = 1.1                     // ohne Stau bleibt die laufende Schicht bis 10 % ueber der Schaetzung
 	layerDwell    = 4 * time.Second         // nach einem Wechsel nach unten so lange nicht wieder hoch (gleiche Quelle)
+	upFail        = 2 * time.Second         // Budget-Ruecknahme so kurz nach dem Hochschalten: Aufschub verdoppeln
+	upDwellMax    = 32 * time.Second        // Obergrenze dieses Aufschubs
 	defaultRateL  = 150e3                   // angenommene Raten, bis gemessen wurde
 	defaultRateM  = 500e3
 	defaultRateH  = 1500e3
@@ -563,6 +565,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			since := int64(layerDwell)
 			if c.s.downAt != 0 && c.s.owner == c.s.downOwner {
 				since = now - c.s.downAt
+				if c.s.dwell > layerDwell { // nach gescheiterten Versuchen laenger warten
+					since -= int64(c.s.dwell - layerDwell)
+				}
 			}
 			if layerStep(cur, need, budget, limit, since) {
 				sum, c.rate = need, nr
@@ -628,7 +633,22 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			s.src, s.srcAt = st, now
 		}
 		if layerRank(st.Layer) < layerRank(s.layer) { // nach unten: Mindestverweildauer fuer den Weg zurueck
+			// Budget-Ruecknahme binnen upFail nach dem Hochschalten (Rate der Zielschicht unterschaetzt, z. B. nach
+			// einer Aufloesungsaenderung): Aufschub verdoppeln; nach laengerem Halten bzw. anderer Quelle zurueck
+			fast := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner && now-s.upAt < int64(upFail)
+			switch {
+			case fast:
+				base := s.dwell
+				if s.downOwner != s.owner || base < layerDwell {
+					base = layerDwell
+				}
+				s.dwell = min(2*base, upDwellMax)
+			case s.why == whyBudget || s.downOwner != s.owner:
+				s.dwell = 0
+			}
 			s.downAt, s.downOwner = now, s.owner
+		} else if s.layer != "" && layerRank(st.Layer) > layerRank(s.layer) {
+			s.upAt, s.upOwner = now, s.owner
 		}
 		s.paused, s.layer, s.tid = false, st.Layer, c.tid
 	}

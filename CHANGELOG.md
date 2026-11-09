@@ -51,6 +51,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Diagnose: Das Ereignis `layout` nennt je Wechsel den Grund (`budget`, `gone`, `back`) mit Rate, Live- und Wartezeit
   der Quelle; das Web zeigt ihn im Diagnose-Ereignis `layers` (z. B. `s0:l3@ab12!gone,31k,12.4s,w3s`). Alte Apps
   ignorieren die neuen Felder. Knoten neu ausrollen.
+- Hochschalten an der Budget-Schwelle: Fiel ein Platz binnen 2 s nach dem Hochschalten wieder zurück, versuchte der
+  Knoten es alle 4 s erneut (je Versuch ein großes Schlüsselbild des Senders). Der Aufschub verdoppelt sich jetzt je
+  Fehlversuch (bis 32 s) und beginnt wieder bei 4 s, sobald die höhere Schicht länger hält.
 
 ### Behoben – Widgets (Nacharbeit)
 - Diagramm „Balken quer“: kurze Kategorien wurden durch eine Rundung der Randbreite gekürzt („Anna“ → „An…“).
