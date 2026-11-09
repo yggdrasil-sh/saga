@@ -255,7 +255,8 @@ func TestTemporalAndPictureID(t *testing.T) {
 		seq++
 		pic++
 	}
-	waitFor(t, func() bool { return w.count() == 3 })
+	// das dritte Auslassen (Rahmen 5) kann nach dem dritten Schreiben gezaehlt werden - auf beides warten
+	waitFor(t, func() bool { return w.count() == 3 && leg.Stats.TIDSkipped.Load() == 3 })
 	if leg.Stats.TIDSkipped.Load() != 3 {
 		t.Fatalf("ausgelassen %d", leg.Stats.TIDSkipped.Load())
 	}
