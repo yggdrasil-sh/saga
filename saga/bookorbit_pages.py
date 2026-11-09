@@ -1401,8 +1401,10 @@ def books(uid, q=None, flt=None):
         try:                                    # 2.5 (9.11. abends): Sammelseite einmalig auf die Galerie umstellen
             with _db() as c:
                 hv = _home_get(c, uid)
-            if pages and (not hv["moved"] or (hv["page"] and "gal" not in hv["x"])):
+            if pages and not hv["moved"]:
                 _home(uid, account_lang(uid))
+            elif pages and hv["page"] and "gal" not in hv["x"]:   # nur umstellen: selbst geloeschte Sammelseite nicht neu anlegen
+                _home(uid, account_lang(uid), make=False)
         except Exception:  # noqa: BLE001
             pass
     return {"state": "ok", "books": out}

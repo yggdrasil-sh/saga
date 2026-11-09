@@ -881,6 +881,15 @@ def part_convert(Ca):
     run()
     _, _, bl = page(Ca, h)
     ok("Umstellung: Liste war geloescht -> keine Galerie aufgedraengt", gal(bl) is None and "gal" in home().get("x", []), (bl, home()))
+    h, bp, own = setup()                         # Sammelseite vor der Umstellung selbst geloescht: Liste anzeigen legt sie nicht neu an
+    req("DELETE", f"/api/notes/{h}", Ca)
+    with connect() as c:
+        n0 = c.execute("SELECT COUNT(*) FROM note WHERE uid='bos-a' AND parent_id IS NULL AND deleted_at IS NULL").fetchone()[0]
+    s, _ = req("GET", "/api/bookorbit/notes/books", Ca)
+    with connect() as c:
+        n1 = c.execute("SELECT COUNT(*) FROM note WHERE uid='bos-a' AND parent_id IS NULL AND deleted_at IS NULL").fetchone()[0]
+    ok(f"Umstellung: geloeschte Sammelseite kommt beim Anzeigen der Liste nicht wieder ({s})", s == 200 and n1 == n0
+       and home().get("page") == h, (n0, n1, home()))
     with connect() as c, c:
         c.execute("DELETE FROM user_kv WHERE uid='bos-a' AND k LIKE 'bookorbit_page:7%'")
 
