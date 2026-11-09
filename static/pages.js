@@ -6817,7 +6817,7 @@
   function chartSpecRows(row, sel, spec, props, titleLabel, commit) {
     function set(k, v) { if (v === '' || v == null || v === false) delete spec[k]; else spec[k] = v; commit(); }
     var byId = function (id) { return props.find(function (p) { return p.id === id; }); };
-    sel(T('Darstellung'), CH_TYPES, spec.type || 'bar', function (v) { spec.type = v; if (v === 'pie' || v === 'donut' || v === 'number') { delete spec.series; delete spec.stack; } if (v !== 'line' && v !== 'area') delete spec.cumulative; commit(true); });
+    sel(T('Diagrammart'), CH_TYPES, spec.type || 'bar', function (v) { spec.type = v; if (v === 'pie' || v === 'donut' || v === 'number') { delete spec.series; delete spec.stack; } if (v !== 'line' && v !== 'area') delete spec.cumulative; commit(true); });
     if (spec.type !== 'number') {
       var axes = [['title', titleLabel]].concat(props.filter(chartAxisOk).map(function (p) { return [p.id, p.name || p.id]; }));
       sel(T('Gruppieren nach'), [['', T('– wählen –')]].concat(axes), spec.x || '', function (v) { spec.x = v; delete spec.bucket; delete spec.status; commit(true); });
@@ -6923,7 +6923,7 @@
     return w;
   };
   WidgetTool.prototype.editable = function () { return !this.ro && !readOnly() && WG_KINDS.indexOf(this.data.kind) >= 0; };
-  WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); if (this.panel && this.panel.classList.contains('wg-panel-float')) { clearInterval(this.floatT); if (this.floatRs) removeEventListener('resize', this.floatRs); this.floatRs = this.placeFloat = null; this.panel.remove(); this.panel = null; } };
+  WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); if (this.panel && this.panel.classList.contains('wg-panel-float')) { clearInterval(this.floatT); document.body.classList.remove('wg-sheet'); if (this.floatRs) removeEventListener('resize', this.floatRs); this.floatRs = this.placeFloat = null; this.panel.remove(); this.panel = null; } };
   WidgetTool.prototype.changed = function () {
     if (S.loading) return;
     if (this.block && this.block.dispatchChange) this.block.dispatchChange(); else { S.dirtyBody = true; schedule(); }
@@ -6933,6 +6933,50 @@
     var bid = this.block && this.block.id;
     return (S.wvals && bid && S.wvals[bid]) || null;
   };
+  // Widget-Design-Runde (9.11.): gemeinsames Geruest je Art - Kopf (Symbol + Titel einzeilig), grosser Wert in Textfarbe mit
+  // kleiner Einheit, gedaempfte Kontextzeile, strukturierter Inhalt; "nicht eingerichtet" als ruhiger Leerzustand (.wg-empty)
+  var WG_HINT = { countdown: T('Datum wählen'), progress: T('Quelle und Ziel wählen'), metric: T('Datenbank und Rechenart wählen'),
+    quote: T('Zitate eintragen oder Datenbank wählen'), weather: T('Ort suchen'), habit: T('Datenbank und Häkchen wählen'),
+    chart: T('Datenbank und Gruppierung wählen'), upcoming: T('Quellen wählen'), reading: T('BookOrbit verbinden'), clock: '' };
+  var WG_AGG = { count: T('Anzahl'), sum: T('Summe'), avg: T('Durchschnitt'), min: T('Min'), max: T('Max'), pct_checked: T('% angehakt'),
+    open: T('Offene Aufgaben'), due_today: T('Heute fällig'), overdue: T('Überfällig'), done_week: T('Diese Woche erledigt') };
+  var WG_FLAME = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1 3.5 5 6 5 11a5 5 0 0 1-10 0c0-2.2 1-3.8 2.3-5 .2 1.6 1 2.7 2.2 3.2C11 8.6 11.3 5.3 12 2z"/></svg>';
+  // Zahl als Text -> grosser Wert mit kleiner Einheit ("2.250,00 €" -> 2.250,00 + <small>€</small>, "62 %" -> 62 + <small>%</small>)
+  function wgVal(txt, cls) {
+    var v = el('div', 'wg-v' + (cls ? ' ' + cls : '')), s = String(txt == null ? '–' : txt);
+    var m = /^(.*?[\d)])\s*([^\d\s.,\-−+()]{1,4})$/.exec(s), m2 = !m && /^([^\d\-−+\s]{1,4})\s*(.*\d.*)$/.exec(s);
+    if (m) { v.appendChild(document.createTextNode(m[1])); v.appendChild(el('small', null, m[2])); }
+    else if (m2) { v.appendChild(el('small', null, m2[1])); v.appendChild(document.createTextNode(m2[2])); }
+    else v.textContent = s;
+    v.title = s;
+    return v;
+  }
+  function wgBar(pct, label) {
+    var bar = el('div', 'wg-bar'), fill = el('span', 'wg-fill'), p = Math.max(0, Math.min(100, pct || 0));
+    fill.style.width = p.toFixed(1) + '%'; bar.appendChild(fill);
+    bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.setAttribute('aria-valuenow', String(Math.round(p)));
+    if (label) bar.setAttribute('aria-label', label);
+    return bar;
+  }
+  // Countdown in Teilen: Zahl gross, Einheit klein, Zieldatum als Kontext
+  function wgCdParts(cfg, now) {
+    if (!cfg.date || !/^\d{4}-\d{2}-\d{2}$/.test(cfg.date)) return null;
+    var q = cfg.date.split('-'), hm = /^\d{2}:\d{2}$/.test(cfg.time || '') ? cfg.time.split(':') : null;
+    var tgt = new Date(+q[0], +q[1] - 1, +q[2], hm ? +hm[0] : 0, hm ? +hm[1] : 0), since = cfg.dir === 'since', ms = since ? now - tgt : tgt - now;
+    var day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()), dayT = new Date(+q[0], +q[1] - 1, +q[2]);
+    var days = Math.round((since ? day0 - dayT : dayT - day0) / 86400000);
+    if (cfg.unit === 'auto' && hm && ms > 0 && ms < 86400000) return { since: since, h: Math.floor(ms / 3600000), m: Math.floor(ms % 3600000 / 60000), day: dayT };
+    return { since: since, n: Math.max(0, days), day: dayT };
+  }
+  WidgetTool.prototype.empty = function (body, kind) {
+    var c = this.card, e = el('div', 'wg-empty'), ic = el('span', 'wg-empty-ic'); ic.innerHTML = wgIcon(kind); e.appendChild(ic);
+    c.classList.add('wg-unset');
+    if (this.editable()) {
+      e.appendChild(el('div', 'wg-empty-a', T('{art} einrichten', { art: WG_NAMES[kind] || T('Widget') })));
+      if (WG_HINT[kind]) e.appendChild(el('div', 'wg-empty-h', WG_HINT[kind]));
+    } else e.appendChild(el('div', 'wg-empty-a', T('Noch nicht eingerichtet')));
+    body.appendChild(e);
+  };
   WidgetTool.prototype.draw = function () {
     var self = this, d = this.data, c = this.card, cfg = d.cfg || {};
     clearInterval(this.tick); this.tick = null;
@@ -6941,48 +6985,59 @@
     c.textContent = '';
     c.dataset.kind = String(d.kind || '');
     if (WG_KINDS.indexOf(d.kind) < 0) { c.appendChild(el('div', 'wg-note', T('Widget – neuere Version nötig'))); return; }
-    if (d.title) c.appendChild(el('div', 'wg-t', String(d.title)));
+    if (d.title) {
+      var hd = el('div', 'wg-h'), hi = el('span', 'wg-hi'); hi.innerHTML = wgIcon(d.kind); hi.setAttribute('aria-hidden', 'true');
+      var tt = el('div', 'wg-t', String(d.title)); tt.title = String(d.title);
+      hd.appendChild(hi); hd.appendChild(tt); c.appendChild(hd);
+    }
     var body = el('div', 'wg-b'); c.appendChild(body);
     if (d.kind === 'clock') {
       var fmt = { hour: '2-digit', minute: '2-digit', hour12: cfg.h24 === false };
       if (cfg.sec) fmt.second = '2-digit';
-      var fd = { weekday: 'long', day: 'numeric', month: 'long' };
-      if (cfg.tz) { fmt.timeZone = cfg.tz; fd.timeZone = cfg.tz; }
-      var ft, fdt;
-      try { ft = new Intl.DateTimeFormat(window.SAGA_LOCALE, fmt); fdt = new Intl.DateTimeFormat(window.SAGA_LOCALE, fd); }
-      catch (e) { ft = new Intl.DateTimeFormat(window.SAGA_LOCALE, { hour: '2-digit', minute: '2-digit' }); fdt = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }); }
+      var fd = { weekday: 'long', day: 'numeric', month: 'long' }, fdS = { weekday: 'short', day: 'numeric', month: 'short' }, fhm = { hour: '2-digit', minute: '2-digit', hour12: cfg.h24 === false };
+      if (cfg.tz) { fmt.timeZone = fd.timeZone = fdS.timeZone = fhm.timeZone = cfg.tz; }
+      var ft, fdt, fds, fh;
+      try { ft = new Intl.DateTimeFormat(window.SAGA_LOCALE, fmt); fdt = new Intl.DateTimeFormat(window.SAGA_LOCALE, fd); fds = new Intl.DateTimeFormat(window.SAGA_LOCALE, fdS); fh = new Intl.DateTimeFormat(window.SAGA_LOCALE, fhm); }
+      catch (e) { ft = fh = new Intl.DateTimeFormat(window.SAGA_LOCALE, { hour: '2-digit', minute: '2-digit' }); fdt = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }); fds = fdt; }
+      var city = cfg.tz ? String(cfg.tz).split('/').pop().replace(/_/g, ' ') : '';
       var v = el('div', 'wg-v wg-clock'), sub = el('div', 'wg-sub'), hands = null;
       if (cfg.analog) {
-        var NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 100 100'); svg.setAttribute('class', 'wg-analog');
-        svg.setAttribute('aria-hidden', 'true');
-        var face = document.createElementNS(NS, 'circle'); face.setAttribute('cx', '50'); face.setAttribute('cy', '50'); face.setAttribute('r', '46'); face.setAttribute('class', 'wg-face'); svg.appendChild(face);
+        var NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), wrap = el('div', 'wg-clock-a');
+        svg.setAttribute('viewBox', '0 0 100 100'); svg.setAttribute('class', 'wg-analog'); svg.setAttribute('aria-hidden', 'true');
+        var mk = function (tag, a) { var x = document.createElementNS(NS, tag); Object.keys(a).forEach(function (k) { x.setAttribute(k, a[k]); }); svg.appendChild(x); return x; };
+        mk('circle', { cx: 50, cy: 50, r: 46, 'class': 'wg-face' });
+        for (var i = 0; i < 12; i++) { var q4 = i % 3 === 0; mk('line', { x1: 50, y1: 7.5, x2: 50, y2: q4 ? 15 : 12, 'class': 'wg-tick' + (q4 ? ' wg-tick-q' : ''), transform: 'rotate(' + i * 30 + ' 50 50)' }); }
         hands = ['h', 'm', 's'].filter(function (k) { return k !== 's' || cfg.sec; }).map(function (k) {
-          var l = document.createElementNS(NS, 'line'); l.setAttribute('x1', '50'); l.setAttribute('y1', '50'); l.setAttribute('x2', '50');
-          l.setAttribute('y2', k === 'h' ? '26' : k === 'm' ? '14' : '10'); l.setAttribute('class', 'wg-hand wg-hand-' + k); svg.appendChild(l); return [k, l];
+          return [k, mk('line', { x1: 50, y1: k === 's' ? 60 : 54, x2: 50, y2: k === 'h' ? 27 : k === 'm' ? 15 : 12, 'class': 'wg-hand wg-hand-' + k })];
         });
-        body.appendChild(svg);
-      }
-      body.appendChild(v); body.appendChild(sub);
+        mk('circle', { cx: 50, cy: 50, r: 3, 'class': 'wg-pin' }); if (cfg.sec) mk('circle', { cx: 50, cy: 50, r: 1.6, 'class': 'wg-pin-s' });
+        wrap.appendChild(svg); wrap.appendChild(sub); body.appendChild(wrap);
+      } else { body.appendChild(v); body.appendChild(sub); }
       var paint = function () {
         var now = new Date();
-        v.textContent = ft.format(now); sub.textContent = fdt.format(now);
         if (hands) {
+          sub.textContent = fh.format(now) + ' · ' + fds.format(now) + (city ? ' · ' + city : '');
           var parts = {}; (ft.formatToParts ? new Intl.DateTimeFormat('en-GB', { hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false, timeZone: cfg.tz || undefined }).formatToParts(now) : [])
             .forEach(function (p) { parts[p.type] = +p.value; });
           var H = (parts.hour || 0) % 12, M = parts.minute || 0, Sx = parts.second || 0;
           hands.forEach(function (x) { var a = x[0] === 'h' ? (H + M / 60) * 30 : x[0] === 'm' ? (M + Sx / 60) * 6 : Sx * 6; x[1].setAttribute('transform', 'rotate(' + a.toFixed(1) + ' 50 50)'); });
-        }
+        } else { v.textContent = ft.format(now); sub.textContent = fdt.format(now) + (city ? ' · ' + city : ''); }
       };
       paint(); this.tick = setInterval(function () { if (!self.w.isConnected) { self.destroy(); return; } if (!document.hidden) paint(); }, cfg.sec ? 1000 : 15000);
       return;
     }
     if (d.kind === 'countdown') {
+      if (!cfg.date) { this.empty(body, 'countdown'); return; }
       var cv = el('div', 'wg-v'), when = el('div', 'wg-sub'); body.appendChild(cv); body.appendChild(when);
       var paintC = function () {
-        var txt = wgCountdown(cfg, new Date());
-        cv.textContent = txt == null ? '–' : txt;
-        if (cfg.date) { var q = cfg.date.split('-'); when.textContent = fCalcDay2.format(new Date(+q[0], +q[1] - 1, +q[2])) + (cfg.time ? ' · ' + cfg.time : ''); }
-        else when.textContent = T('Kein Datum gewählt');
+        var p = wgCdParts(cfg, new Date()); cv.textContent = '';
+        if (!p) cv.textContent = '–';
+        else if (p.h != null) { cv.appendChild(document.createTextNode(String(p.h))); cv.appendChild(el('small', null, T('Std.'))); cv.appendChild(document.createTextNode(' ' + p.m)); cv.appendChild(el('small', null, T('Min.'))); }
+        else if (!p.n) cv.textContent = T('Heute');
+        else { cv.appendChild(document.createTextNode(fNum.format(p.n))); cv.appendChild(el('small', null, T('{n:Tag|Tage}', { n: p.n }))); }
+        cv.title = wgCountdown(cfg, new Date()) || '';
+        var ds = p ? fCalcDay2.format(p.day) + (cfg.time ? ' · ' + cfg.time : '') : '';
+        when.textContent = p ? (p.since ? T('seit {datum}', { datum: ds }) : T('bis {datum}', { datum: ds })) : '';
       };
       paintC(); this.tick = setInterval(function () { if (!self.w.isConnected) { self.destroy(); return; } if (!document.hidden) paintC(); }, 60000);
       return;
@@ -6991,29 +7046,53 @@
     if (wgServer(d) && remoteId(S.cur && S.cur.id) && S.wUnsupported) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
     if (wgServer(d) && S.wMissing) { body.appendChild(el('div', 'wg-note', T('Werte gibt es erst mit einer neueren Server-Version'))); return; }
     if (WG_KINDS2.indexOf(d.kind) >= 0 && remoteId(S.cur && S.cur.id) && S.wUnsupported2) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
+    if (w && w.error === 'bad_cfg') { this.empty(body, d.kind); return; }
     if (w && w.error) { body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg)); return; }
     if (WG_KINDS2.indexOf(d.kind) >= 0) { this.draw2(body, w); return; }
+    var srcName = function () {                              // Kontextzeile: Rechenart und Quelle (Name nur, wenn ich die Datenbank sehe)
+      if (cfg.src === 'tasks') return d.kind === 'metric' ? WG_AGG[cfg.agg] || WG_AGG.open : T('Saga-Aufgaben');
+      var db = cfg.db && (S.pages || []).concat(S.shared || []).filter(function (x) { return x.id === cfg.db; })[0];
+      return [d.kind === 'metric' ? WG_AGG[cfg.agg] : '', db ? label(db) : ''].filter(Boolean).join(' · ');
+    };
     if (d.kind === 'progress') {
-      // Fix27 #10: Zahl wie gerechnet (auch ueber 100 %), Balken hoechstens voll
-      var pv = w ? w.value : null, mx = w ? w.max : null, raw = typeof pv === 'number' && typeof mx === 'number' && mx > 0 ? Math.max(0, pv / mx * 100) : 0, pct = Math.min(100, raw);
-      body.appendChild(el('div', 'wg-v', w ? pctText(raw) : '…'));
-      var bar = el('div', 'wg-bar'), fill = el('span', 'wg-fill'); fill.style.width = pct.toFixed(1) + '%'; bar.appendChild(fill); body.appendChild(bar);
-      bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.setAttribute('aria-valuenow', String(Math.round(pct)));
-      if (w) body.appendChild(el('div', 'wg-sub', wgFmt(pv, w.fmt) + ' / ' + wgFmt(mx, w.fmt)));
-      return;
-    }
-    if (d.kind === 'metric') {
-      body.appendChild(el('div', 'wg-v', w ? wgFmt(w.value, w.fmt) : '…'));
-      if (w && typeof w.max === 'number') {
-        var pm = w.max ? Math.max(0, Math.min(100, (w.value || 0) / w.max * 100)) : 0;
-        var b2 = el('div', 'wg-bar'), f2 = el('span', 'wg-fill'); f2.style.width = pm.toFixed(1) + '%'; b2.appendChild(f2); body.appendChild(b2);
-        body.appendChild(el('div', 'wg-sub', T('Ziel: {wert}', { wert: wgFmt(w.max, w.fmt) })));
+      // Fix27 #10: Zahl wie gerechnet (auch ueber 100 %), Balken hoechstens voll; darueber Marker "+n %" (Regel 7)
+      var pv = w ? w.value : null, mx = w ? w.max : null, raw = typeof pv === 'number' && typeof mx === 'number' && mx > 0 ? Math.max(0, pv / mx * 100) : 0;
+      body.appendChild(w ? wgVal(pctText(raw)) : el('div', 'wg-v', '…'));
+      var pb = wgBar(raw, d.title || WG_NAMES.progress); if (raw > 100) c.classList.add('wg-over'); body.appendChild(pb);
+      if (w) {
+        var r2 = el('div', 'wg-row2'); r2.appendChild(el('span', 'wg-sub', T('{a} von {b}', { a: wgFmt(pv, w.fmt), b: wgFmt(mx, w.fmt) })));
+        if (raw > 100.05) r2.appendChild(el('span', 'wg-chip', '+' + pctText(raw - 100)));
+        else if (raw >= 99.95) r2.appendChild(el('span', 'wg-chip', '✓ ' + T('Ziel erreicht')));
+        body.appendChild(r2);
+        var sn = cfg.src === 'db' || cfg.src === 'tasks' ? srcName() : ''; if (sn) body.appendChild(el('div', 'wg-f', sn));
       }
       return;
     }
-    // Zitat: Auswahl immer durch den Server (Tag des Betrachters + Block-ID bzw. zufaellig), auch bei eigenen Texten
+    if (d.kind === 'metric') {
+      body.appendChild(w ? wgVal(wgFmt(w.value, w.fmt)) : el('div', 'wg-v', '…'));
+      if (w && typeof w.max === 'number') {
+        var pm = w.max ? Math.max(0, (w.value || 0) / w.max * 100) : 0;
+        if (pm > 100) c.classList.add('wg-over');
+        body.appendChild(wgBar(pm, T('Ziel: {wert}', { wert: wgFmt(w.max, w.fmt) })));
+        var r3 = el('div', 'wg-row2'); r3.appendChild(el('span', 'wg-sub', T('{pct} vom Ziel {wert}', { pct: pctText(pm), wert: wgFmt(w.max, w.fmt) })));
+        if (pm > 100.05) r3.appendChild(el('span', 'wg-chip', '+' + pctText(pm - 100)));
+        body.appendChild(r3);
+      }
+      var ms = w ? srcName() : ''; if (ms) body.appendChild(el('div', 'wg-f', ms));
+      return;
+    }
+    // Zitat: Auswahl immer durch den Server (Tag des Betrachters + Block-ID bzw. zufaellig), auch bei eigenen Texten.
+    // Endet der Text mit "- Name" bzw. "— Name", steht die Quelle in einer eigenen Zeile.
     var txt = w ? w.text : null;
-    body.appendChild(el('blockquote', 'wg-q', txt || (w ? T('Noch keine Zitate') : '…')));
+    if (w && !txt) { this.empty(body, 'quote'); return; }
+    if (!w) { body.appendChild(el('div', 'wg-note', '…')); return; }
+    var src = null, mq = /^([\s\S]{8,}?)\s+(?:—|–|--)\s*(\p{Lu}[^—–\n]{1,59})$/u.exec(String(txt).trim());
+    if (mq && mq[2].trim().split(/\s+/).length <= 6 && !/[.!?…:]$/.test(mq[2].trim())) { txt = mq[1]; src = mq[2].trim(); }
+    var qw = el('figure', 'wg-qw'); qw.style.margin = '0';
+    var qm = el('span', 'wg-qm', '“'); qm.setAttribute('aria-hidden', 'true'); qw.appendChild(qm);
+    var bq = el('blockquote', 'wg-q', txt); bq.title = String(w.text); qw.appendChild(bq);
+    if (src) qw.appendChild(el('figcaption', 'wg-qs', '— ' + src));
+    body.appendChild(qw);
   };
   var fCalcDay2 = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   // 2.5 Paket 4: Anzeige der Etappe-2-Arten (Werte immer vom Server: W.data)
@@ -7055,49 +7134,53 @@
     if (d.kind === 'weather') {
       var u = data.units === 'imperial' ? '°F' : '°C', now = data.now || {}, top = el('div', 'wx-now'), ic = wmo(now.code);
       top.appendChild(wxIcon(now.code, 'wx-ic'));
-      top.appendChild(el('span', 'wg-v', (typeof now.t === 'number' ? fNum.format(Math.round(now.t)) : '–') + ' ' + u));
+      top.appendChild(wgVal((typeof now.t === 'number' ? fNum.format(Math.round(now.t)) : '–') + ' ' + u));
       var meta = el('span', 'wg-sub', (data.place ? data.place + ' · ' : '') + ic[1] + (typeof now.wind === 'number' ? ' · ' + T('Wind {v} {u}', { v: fNum.format(Math.round(now.wind)), u: data.units === 'imperial' ? 'mph' : 'km/h' }) : ''));
       top.appendChild(meta); body.appendChild(top);
       var days = (data.days || []).slice(1);
       if (days.length) {
-        var row = el('div', 'wx-days');
+        var row = el('div', 'wx-days'); row.style.setProperty('--wxn', String(days.length));
         days.forEach(function (x) {
-          var c = el('div', 'wx-day'), wi = wmo(x.code), dd = dayOf(x.d);
+          var c = el('div', 'wx-day'), dd = dayOf(x.d);
           c.appendChild(el('span', 'wx-wd', fWd.format(dd)));
           c.appendChild(wxIcon(x.code, 'wx-ic2'));
-          c.appendChild(el('span', 'wx-mm', (typeof x.max === 'number' ? Math.round(x.max) : '–') + '° / ' + (typeof x.min === 'number' ? Math.round(x.min) : '–') + '°'));
-          if (typeof x.rain === 'number' && x.rain > 0) c.appendChild(el('span', 'wx-rain', '💧' + x.rain + ' %'));
+          var mm = el('span', 'wx-mm', (typeof x.max === 'number' ? Math.round(x.max) : '–') + '° ');
+          mm.appendChild(el('span', 'wx-lo', (typeof x.min === 'number' ? Math.round(x.min) : '–') + '°'));
+          c.appendChild(mm);
+          c.appendChild(el('span', 'wx-rain', typeof x.rain === 'number' && x.rain > 0 ? '💧' + x.rain + ' %' : ''));
           row.appendChild(c);
         });
         body.appendChild(row);
       }
-      var src = el('div', 'wx-src', T('Wetterdaten: Open-Meteo.com') + (data.stale ? ' · ' + T('Stand von vorhin') : ''));
-      body.appendChild(src);
+      body.appendChild(el('div', 'wx-src', T('Wetterdaten: Open-Meteo.com') + (data.stale ? ' · ' + T('Stand von vorhin') : '')));
       return;
     }
     if (d.kind === 'habit') {
-      var tb = el('div', 'hb-grid'), hd = el('div', 'hb-row hb-head');
-      tb.style.setProperty('--hbn', String((data.days || []).length || 7));
-      hd.appendChild(el('span', 'hb-name', ''));
-      (data.days || []).forEach(function (x) { var dd = dayOf(x); hd.appendChild(el('span', 'hb-d', data.days.length > 14 ? (dd.getDate() % 5 === 0 ? String(dd.getDate()) : '') : fWd.format(dd).slice(0, 2))); });
-      hd.appendChild(el('span', 'hb-st', '')); tb.appendChild(hd);
+      var nd = (data.days || []).length || 7, tb = el('div', 'hb-grid' + (nd > 7 ? ' hb-heat' : '')), hd = el('div', 'hb-row hb-head'), hc = el('div', 'hb-cells');
+      tb.style.setProperty('--hbn', String(nd));
+      hd.appendChild(el('span', 'hb-name', '')); hd.appendChild(hc); hd.appendChild(el('span', 'hb-st', ''));
+      (data.days || []).forEach(function (x) { var dd = dayOf(x); hc.appendChild(el('span', 'hb-d', nd > 7 ? (dd.getDate() % 5 === 0 || x === data.today ? String(dd.getDate()) : '') : fWd.format(dd).slice(0, 2))); });
+      hd.setAttribute('aria-hidden', 'true'); tb.appendChild(hd);
       (data.habits || []).forEach(function (h) {
-        var r = el('div', 'hb-row'); r.appendChild(el('span', 'hb-name', h.name || ''));
+        var r = el('div', 'hb-row'), nm = el('span', 'hb-name', h.name || ''), cells = el('div', 'hb-cells'); nm.title = h.name || '';
+        r.appendChild(nm); r.appendChild(cells);
         (h.done || []).forEach(function (on, i) {
           var day = data.days[i], b = el(data.can_check ? 'button' : 'span', 'hb-c' + (on ? ' hb-on' : '') + (day === data.today ? ' hb-today' : ''));
           b.setAttribute('aria-label', (h.name || '') + ', ' + fDm.format(dayOf(day)) + ': ' + (on ? T('erledigt') : T('offen')));
           if (data.can_check) {
             b.type = 'button'; b.setAttribute('aria-pressed', on ? 'true' : 'false');
             b.addEventListener('click', function (e) { e.stopPropagation(); self.habit(h.pid, day, !on, b); });
-          }
-          r.appendChild(b);
+          } else b.setAttribute('role', 'img');
+          cells.appendChild(b);
         });
-        var st = el('span', 'hb-st'); st.appendChild(el('b', null, h.pct + ' %')); st.appendChild(el('small', null, ' 🔥' + h.streak));
+        var st = el('span', 'hb-st'), sk = el('small'), fl = el('span', 'hb-fl'); fl.innerHTML = WG_FLAME;
+        st.appendChild(el('b', null, pctText(h.pct)));
+        sk.appendChild(fl); sk.appendChild(document.createTextNode(String(h.streak || 0))); st.appendChild(sk);
         st.title = T('Erfolgsquote {pct} %, {n} {n:Tag|Tage} in Folge', { pct: h.pct, n: h.streak }) + (data.goal ? ' · ' + T('Ziel: {n} pro Woche, diese Woche {k}', { n: data.goal, k: h.week }) : '');
         r.appendChild(st); tb.appendChild(r);
       });
       body.appendChild(tb);
-      if (!data.can_check) body.appendChild(el('div', 'wg-sub', T('Nur lesen – zum Abhaken braucht es „Bearbeiten“ an der Datenbank.')));
+      if (!data.can_check) body.appendChild(el('div', 'wg-f', T('Nur lesen – zum Abhaken braucht es „Bearbeiten“ an der Datenbank.')));
       return;
     }
     if (d.kind === 'reading') {                         // 2.5: BookOrbit der betrachtenden Person (static/bookorbit.js)
@@ -7113,31 +7196,36 @@
         body.appendChild(bl);
         if (data.more) body.appendChild(el('div', 'wg-sub', T('und {n} weitere', { n: data.more })));
       }
-      if (data.stale) body.appendChild(el('div', 'wg-sub', T('Stand von vorhin')));
+      if (data.stale) body.appendChild(el('div', 'wg-f', T('Stand von vorhin')));
       return;
     }
     if (d.kind === 'upcoming') {
-      var items = data.items || [];
+      // Agenda: Tagekoepfe, einheitliche Symbolspalte (Aufgabe = Kreis, Termin = Punkt), Zeit rechts; Groesse S = 4 Eintraege
+      // ohne Tagekoepfe (Tag steht dann rechts), L = Titel zweizeilig mit Kalender
+      var items = data.items || [], small = d.size === 's', more = data.more || 0;
+      if (small && items.length > 4) { more += items.length - 4; items = items.slice(0, 4); }
       if (!items.length) body.appendChild(el('div', 'wg-note', T('Nichts in den nächsten {n} {n:Tag|Tagen}', { n: data.days || 7 })));
       var last = null, list = el('div', 'up-list'), t0 = dayOf(data.from || ymd(new Date()));
+      var dayName = function (dd) { var diff = Math.round((dd - t0) / 86400000); return diff === 0 ? T('Heute') : diff === 1 ? T('Morgen') : fWd.format(dd) + ', ' + fDm.format(dd); };
       items.forEach(function (x) {
         var dd = dayOf(x.start), key = x.overdue ? 'over' : ymd(dd);
-        if (key !== last) {
-          last = key; var diff = Math.round((dd - t0) / 86400000);
-          list.appendChild(el('div', 'up-day', x.overdue ? T('Überfällig') : diff === 0 ? T('Heute') : diff === 1 ? T('Morgen') : fWd.format(dd) + ', ' + fDm.format(dd)));
-        }
+        if (key !== last && !small) { last = key; list.appendChild(el('div', 'up-day' + (x.overdue ? ' up-day-over' : ''), x.overdue ? T('Überfällig') : dayName(dd))); }
         var it = el(x.note ? 'button' : 'div', 'up-it up-' + x.k + (x.overdue ? ' up-over' : ''));
         if (x.note) it.type = 'button';
-        var dot = el('i', 'up-dot'); if (x.color) dot.style.background = x.color; it.appendChild(dot);
+        var icw = el('span', 'up-ic'), mark = el('i', x.k === 'task' ? 'up-box' : 'up-dot');
+        if (x.color && x.k !== 'task') mark.style.background = x.color;
+        icw.appendChild(mark); icw.setAttribute('aria-hidden', 'true'); it.appendChild(icw);
+        var ti = el('span', 'up-ti', x.title || T('Unbenannt')); ti.title = (x.k === 'task' ? T('Aufgabe') : T('Termin')) + ': ' + (x.title || '') + (x.cal ? ' · ' + x.cal : ''); it.appendChild(ti);
         var tm = x.allday ? (x.k === 'event' ? T('ganztägig') : '') : String(x.start).slice(11, 16);
-        if (tm) it.appendChild(el('span', 'up-tm', tm));
-        it.appendChild(el('span', 'up-ti', (x.k === 'task' ? '☐ ' : '') + (x.title || T('Unbenannt'))));
+        if (x.overdue) tm = fDm.format(dd);
+        else if (small) tm = dayName(dd).split(',')[0] + (tm && !x.allday ? ' ' + tm : '');
+        it.appendChild(el('span', 'up-tm', tm));
         if (x.cal) it.appendChild(el('span', 'up-cal', x.cal));
         if (x.note) it.addEventListener('click', function (e) { e.stopPropagation(); location.hash = '#' + x.note; });
         list.appendChild(it);
       });
       body.appendChild(list);
-      if (data.more) body.appendChild(el('div', 'wg-sub', T('und {n} weitere', { n: data.more })));
+      if (more) body.appendChild(el('div', 'wg-f', T('und {n} weitere', { n: more })));
       if (data.errors) body.appendChild(el('div', 'wg-sub wg-err', T('{n} {n:Quelle|Quellen} nicht erreichbar', { n: data.errors })));
       return;
     }
@@ -7161,7 +7249,7 @@
     // Seitenleiste auf (Widget bleibt als Live-Vorschau sichtbar und markiert); Esc oder "Fertig" schliesst.
     if (this.w.getBoundingClientRect().width < 420) {
       p.classList.add('wg-panel-float'); p.setAttribute('role', 'dialog'); this.w.classList.add('wg-editing');
-      p.appendChild(el('div', 'wg-panel-h', T('Widget einrichten')));
+      var ph = el('div', 'wg-panel-h'); ph.appendChild(el('span', null, T('Widget einrichten'))); p.appendChild(ph);
       p.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); self.closePanel(); } });
       document.body.appendChild(p);
       // Lage erst NACH dem Befuellen rechnen und bei jeder Aenderung des Inhalts neu (fill, Fenstergroesse): sonst stand
@@ -7184,14 +7272,20 @@
     var done = el('button', 'btn wg-done', T('Fertig')); done.type = 'button';
     done.addEventListener('click', function () { self.closePanel(); });
     this.doneBtn = done;
-    p.appendChild(done);
+    // schwebend/Blatt: "Fertig" rechts im Kopf, der oben stehen bleibt (Regel 12); inline wie bisher am Ende
+    if (p.classList.contains('wg-panel-float')) p.querySelector('.wg-panel-h').appendChild(done); else p.appendChild(done);
     if (this.placeFloat) this.placeFloat();
+    // Handy (Blatt unten, Fund 8): Widget nach oben scrollen, damit die Vorschau ueber dem Blatt sichtbar bleibt
+    if (p.classList.contains('wg-panel-float') && innerWidth <= 640) {
+      document.body.classList.add('wg-sheet');
+      try { this.w.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { this.w.scrollIntoView(); }
+    }
     if (p.classList.contains('wg-panel-float')) { var f0 = p.querySelector('input,select,textarea'); if (f0) f0.focus(); }
     void d;
   };
   WidgetTool.prototype.closePanel = function () {
     var fl = this.panel && this.panel.classList.contains('wg-panel-float');
-    clearInterval(this.floatT); this.w.classList.remove('wg-editing');
+    clearInterval(this.floatT); this.w.classList.remove('wg-editing'); document.body.classList.remove('wg-sheet');
     if (this.floatRs) removeEventListener('resize', this.floatRs); this.floatRs = this.placeFloat = null;
     if (this.panel) this.panel.remove(); this.panel = null; this.pv = null;
     if (fl && !this.w.isConnected) return;
@@ -7206,7 +7300,7 @@
   WidgetTool.prototype.fillRows = function () {
     var self = this, d = this.data, cfg = d.cfg, p = this.panel;
     [].slice.call(p.querySelectorAll('.wg-row')).forEach(function (x) { x.remove(); });
-    var at = p.querySelector('.wg-done');
+    var at = p.querySelector(':scope > .wg-done');      // schwebend steht "Fertig" im Kopf: Zeilen dann ans Ende
     function row(label, input) { var r = el('label', 'wg-row'); r.appendChild(el('span', 'wg-l', label)); r.appendChild(input); p.insertBefore(r, at); return input; }
     function set(k, v, top) { if (top) d[k] = v; else cfg[k] = v; self.changed(); self.update(); }
     function sel(label, opts, cur, fn) {
@@ -7224,7 +7318,7 @@
     }
     inp(T('Titel'), 'text', d.title || '', function (v) { if (v.trim()) d.title = v.slice(0, 80); else delete d.title; self.changed(); self.update(); }, { maxlength: '80' });
     sel(T('Größe'), [['s', T('Klein')], ['m', T('Mittel')], ['l', T('Groß')]], d.size || 'm', function (v) { set('size', v, true); });
-    sel(T('Darstellung'), [['card', T('Karte')], ['plain', T('Ohne Rahmen')]], d.style || 'card', function (v) { set('style', v, true); });
+    sel(T('Rahmen'), [['card', T('Karte')], ['plain', T('Ohne Rahmen')]], d.style || 'card', function (v) { set('style', v, true); });   // Fund 26: nicht "Darstellung" (= Diagrammart)
     sel(T('Farbe'), [['', T('Standard')]].concat(COLORS.map(function (c) { return [c, COLOR_NAMES[c]]; })), d.accent || '', function (v) { if (v) d.accent = v; else delete d.accent; self.changed(); self.update(); });
     var k = d.kind;
     if (k === 'clock') {
@@ -7330,8 +7424,13 @@
     }
     if (k === 'quote' && cfg.src !== 'db') {
       var ta = el('textarea', 'flt-val wg-items'); ta.rows = 4; ta.value = (cfg.items || []).join('\n'); ta.placeholder = T('Ein Zitat je Zeile');
-      ta.addEventListener('input', function () { set('items', ta.value.split('\n').map(function (x) { return x.trim().slice(0, 300); }).filter(Boolean).slice(0, 20)); });
-      row(T('Zitate'), ta);
+      var cnt = el('div', 'wg-row wg-cnt'), count = function () {      // Fund 15: Laenge sichtbar statt stiller Kuerzung
+        var mx = ta.value.split('\n').reduce(function (a, x) { return Math.max(a, x.trim().length); }, 0);
+        cnt.textContent = T('Längstes Zitat: {n} / {max} Zeichen', { n: mx, max: 300 }); cnt.classList.toggle('wg-err', mx > 300);
+      };
+      ta.addEventListener('input', function () { count(); set('items', ta.value.split('\n').map(function (x) { return x.trim().slice(0, 300); }).filter(Boolean).slice(0, 20)); });
+      row(T('Zitate'), ta); p.insertBefore(cnt, at); count();
+      p.insertBefore(el('div', 'wg-row wg-note', T('Quelle am Ende mit Gedankenstrich, z. B. „… – Seneca“.')), at);
       sel(T('Auswahl'), [['daily', T('Jeden Tag ein anderes')], ['open', T('Bei jedem Öffnen zufällig')]], cfg.pick, function (v) { set('pick', v); });
       return;
     }
@@ -8085,6 +8184,7 @@
   ColumnsTool.prototype.grid = function () {
     var self = this, w = this.w, n = this.editors.length;
     w.classList.toggle('cols-many', n >= 5);        // 2.5 (P6-1): 5-6 Spalten - unter 1100 px in Dreierreihen (CSS)
+    [2, 3, 4].forEach(function (k) { w.classList.toggle('cols-n' + k, n === k); });   // Umbruch nach Containerbreite (CSS)
     if (this.ws && this.ws.length !== n) this.ws = null;
     if (this.ws) w.style.setProperty('--cols-t', frs(this.ws)); else w.style.removeProperty('--cols-t');
     w.classList.toggle('cols-w', !!this.ws);

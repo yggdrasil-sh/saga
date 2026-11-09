@@ -106,6 +106,8 @@
         var n = node.childCount, ws = live || weights(node);
         dom.style.setProperty('--cols', String(n)); inner.style.setProperty('--cols', String(n));
         inner.classList.toggle('cols-many', n >= 5);
+        [2, 3, 4].forEach(function (k) { inner.classList.toggle('cols-n' + k, n === k); });   // Umbruch nach Containerbreite (CSS)
+        dom.classList.toggle('pm-cols-wide', n >= 3); dom.classList.toggle('pm-cols-xl', n >= 4);   // ab 3 Spalten breiter als der Text
         if (ws) inner.style.setProperty('--cols-t', frs(ws)); else inner.style.removeProperty('--cols-t');
         inner.classList.toggle('cols-w', !!ws);
         while (rs.children.length > Math.max(0, n - 1)) rs.lastChild.remove();
