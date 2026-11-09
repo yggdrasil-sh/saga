@@ -10,8 +10,8 @@ Geprueft:
 - Faehigkeiten bookorbit2/bookorbit3; ohne Anmeldung 401; ohne Verbindung 409 (state none).
 - Liste: Anzahl, Cover ueber Saga, zugeordnete Seite; Suche auch ueber die ganze Bibliothek (Buch ohne Markierungen, count 0);
   Filter "Gelesen" (neueste zuerst, read_at, auch mit Suche); ungueltiger Filter 400.
-- Aufraeumen: alte Notizseiten auf oberster Ebene wandern einmalig in die Sammelseite "Buecher" (📚, Einleitung, Liste der
-  Buchseiten, neueste zuerst); selbst einsortierte bleiben; alte Einseiten-Seite wird umgebaut (Abschnitte samt eigener
+- Aufraeumen: alte Notizseiten auf oberster Ebene wandern einmalig in die Sammelseite "Buecher" (📚, Einleitung,
+  Unterseiten-Block als Cover-Galerie, neue Buecher vorne im Seitenbaum); selbst einsortierte bleiben; alte Einseiten-Seite wird umgebaut (Abschnitte samt eigener
   Texte in Kapitelseiten, Titel bleibt, nichts doppelt, nichts verloren).
 - Buchseite: Titel = Buchtitel, Icon 📖, in der Sammelseite, Kopf, Notiz zum Buch, Kapitel-Liste (Teile eingerueckt, Anzahl),
   Markierungen ohne Kapitel unter "Ohne Kapitel", Lesezeichen am Ende.
@@ -300,6 +300,11 @@ def bo(b):
     return (b.get("data") or {}).get("bo") or {}
 
 
+def gal(blocks):
+    """Index des Unterseiten-Blocks (Widget-Art subpages) oder None."""
+    return next((i for i, b in enumerate(blocks) if b.get("type") == "widget" and (b.get("data") or {}).get("kind") == "subpages"), None)
+
+
 def find(blocks, **kw):
     return next((i for i, b in enumerate(blocks) if all(bo(b).get(k) == v for k, v in kw.items())), None)
 
@@ -375,6 +380,7 @@ def main():
         part_limits(Ca)
         part_parallel(Ca)
         part_home(Ca)
+        part_convert(Ca)
         part_trash(Ca, nid)
         part_bad(Ca)
         ok("BookOrbit nie ausserhalb seiner Grenzen aufgerufen (search limit <= 20, query size <= 200)", not F.bad_calls, F.bad_calls)
@@ -429,9 +435,15 @@ def part_list(Ca, legacy):
        and p.get("parent_id") is None and h.get("moved") is True, (h, p.get("title")))
     ok("Aufraeumen: alte Seite von oberster Ebene in die Sammelseite", parent_of(legacy["old"]) == h.get("page"), parent_of(legacy["old"]))
     ok("Aufraeumen: selbst einsortierte Seite bleibt, wo sie ist", parent_of(legacy["old2"]) == legacy["shelf"], parent_of(legacy["old2"]))
-    li = bl[find(bl, x="books")] if find(bl, x="books") is not None else {}
-    ok("Sammelseite: Einleitung (grau) und Liste der Buchseiten", find(bl, x="intro") == 0 and "hk-c-gray" in bl[0]["data"]["text"]
-       and li.get("type") == "list" and f'/notes#{legacy["old"]}' in text_of(li) and f'/notes#{legacy["old2"]}' in text_of(li), bl)
+    g = bl[gal(bl)]["data"] if gal(bl) is not None else {}
+    ok("Sammelseite: Einleitung (grau, „vorne dazu“) und Unterseiten-Galerie (Kartenbild Inhalt, Größe m), keine Liste mehr",
+       find(bl, x="intro") == 0 and "hk-c-gray" in bl[0]["data"]["text"] and "vorne dazu" in bl[0]["data"]["text"] and gal(bl) == 1
+       and g.get("size") == "m" and g.get("cfg") == {"view": "gallery", "image": "content"} and find(bl, x="books") is None
+       and "gal" in (h.get("x") or []) and not h.get("listed"), (bl, h))
+    s3, w = req("GET", f"/api/notes/{h.get('page')}/widgets", Ca)
+    wd = ((w.get("widgets") or {}).get(bl[gal(bl)]["id"]) or {}).get("data") or {} if gal(bl) is not None and isinstance(w, dict) else {}
+    ok(f"Galerie zeigt die eingeraeumte Buchseite (selbst einsortierte nicht, liegt anderswo) ({s3})",
+       [x["id"] for x in wd.get("items") or []] == [legacy["old"]], w)
     s, d = req("GET", "/api/bookorbit/notes/books?q=" + urllib.parse.quote("viele"), Ca)
     ok(f"Suche q ({s})", s == 200 and [b["id"] for b in d.get("books", [])] == [32], d)
     s, d = req("GET", "/api/bookorbit/notes/books?filter=alles", Ca)
@@ -492,8 +504,8 @@ def part_create(Ca):
     ok("Zuordnung in user_kv: Buchseite, Kapitelseiten, v2", k.get("page") == nid and k.get("v") == 2 and len(k.get("ch", {})) == 7
        and sorted(k["a"]) == [101, 102, 103, 104, 105, 106, 109, 110, 111], k)
     s, p, hb = page(Ca, home()["page"])
-    li = hb[find(hb, x="books")]["data"]["items"] if find(hb, x="books") is not None else []
-    ok("Sammelseite: neue Buchseite oben in der Liste", li and f"/notes#{nid}" in li[0]["content"], li)
+    ok("Sammelseite: neue Buchseite steht im Seitenbaum vorne (Galerie zeigt sie zuerst), Galerie unveraendert",
+       kids(home()["page"])[0][0] == nid and gal(hb) == 1 and len([b for b in hb if b.get("type") == "widget"]) == 1, (kids(home()["page"]), hb))
     return nid
 
 
@@ -811,7 +823,66 @@ def part_home(Ca):
     h2 = home()["page"]
     s2, p, bl = page(Ca, h2)
     ok(f"Sammelseite geloescht -> neu angelegt, Buch wieder darin ({s})", s == 200 and h2 != h and p.get("title") == "Bücher" and p.get("parent_id") is None
-       and parent_of(d.get("page_id")) == h2 and find(bl, x="books") is not None, (d, h2, p.get("title")))
+       and parent_of(d.get("page_id")) == h2 and gal(bl) is not None and find(bl, x="books") is None, (d, h2, p.get("title")))
+
+
+def part_convert(Ca):
+    """Bestehende Sammelseite (Stand bis 9.11.: Einleitung + Liste) -> einmalig Unterseiten-Galerie (2.5, 9.11. abends)."""
+    from saga import bookorbit_pages as BP
+    intro_old = BP._intro("de", BP.INTRO_OLD)
+
+    def setup(edit=None):
+        h = req("POST", "/api/notes", Ca, {"title": "Bücher", "icon": "📚", "cover": None})[1]["id"]
+        bp = [req("POST", "/api/notes", Ca, {"title": f"Altbuch {i}", "parent_id": h, "cover": None})[1]["id"] for i in range(3)]
+        own = req("POST", "/api/notes", Ca, {"title": "Eigene Notiz", "parent_id": h, "cover": None})[1]["id"]
+        items = [{"content": BP._san(BP._link(x, f"Altbuch {i}")), "meta": {}, "items": []} for i, x in reversed(list(enumerate(bp)))]
+        li = {"type": "list", "data": {"style": "unordered", "meta": {}, "items": items, "bo": {"k": "_home", "x": "books", "h": BP._hl(items)}}}
+        if edit == "items":
+            li["data"]["items"] = items + [{"content": "Eigener Eintrag", "meta": {}, "items": []}]
+        blocks = [{"type": "paragraph", "data": {"text": intro_old, "bo": {"k": "_home", "x": "intro", "h": BP._hn(intro_old)}}}]
+        blocks += [] if edit == "deleted" else [li]
+        blocks.append({"type": "paragraph", "data": {"text": "Mein Schlusswort"}})
+        save(Ca, h, blocks)
+        with connect() as c, c:
+            c.execute("DELETE FROM user_kv WHERE uid='bos-a' AND k LIKE 'bookorbit_page:7%'")
+            for i, x in enumerate(bp):
+                c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?,?,?)", ("bos-a", f"bookorbit_page:7{i}", json.dumps({"page": x, "v": 2})))
+            c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?,?,?)", ("bos-a", "bookorbit_notes_home",
+                      json.dumps({"page": h, "moved": True, "x": ["intro", "books"], "listed": bp})))
+        return h, bp, own
+
+    def run():                                   # wie am Ende jedes Anlegens/Aktualisierens (ohne die Rate zu belasten)
+        return 200 if BP._home("bos-a", "de") == home().get("page") else 500
+
+    h, bp, own = setup()
+    s = run()
+    _, _, bl = page(Ca, h)
+    hv = home()
+    ok(f"Umstellung: unveraenderte Liste -> Unterseiten-Galerie an derselben Stelle, Einleitung neu, eigener Text bleibt ({s})",
+       s == 200 and [b["type"] for b in bl] == ["paragraph", "widget", "paragraph"] and gal(bl) == 1 and "vorne dazu" in bl[0]["data"]["text"]
+       and bl[2]["data"]["text"] == "Mein Schlusswort" and "gal" in hv.get("x", []) and hv.get("listed") == [], (bl, hv))
+    order = [k[0] for k in kids(h)]
+    ok("Umstellung: Buchseiten einmalig neueste zuerst, eigene Seite behaelt ihren Platz", order == [bp[2], bp[1], bp[0], own], (order, bp, own))
+    revs0 = revs([h])
+    run()
+    ok("Umstellung idempotent (keine neue Revision, Reihenfolge bleibt)", revs([h]) == revs0 and [k[0] for k in kids(h)] == order, (revs([h]), revs0))
+    req("POST", f"/api/notes/{bp[0]}/move", Ca, {"parent_id": h, "index": 0})
+    _, _, bl = page(Ca, h)
+    save(Ca, h, [b for b in bl if b.get("type") != "widget"])
+    run()
+    _, _, bl = page(Ca, h)
+    ok("Galerie geloescht -> kommt nicht wieder; selbst umsortierte Reihenfolge bleibt", gal(bl) is None and kids(h)[0][0] == bp[0], (bl, kids(h)))
+    h, bp, own = setup("items")
+    run()
+    _, _, bl = page(Ca, h)
+    ok("Umstellung: bearbeitete Liste bleibt (wird nicht mehr nachgezogen), Galerie davor",
+       [b["type"] for b in bl] == ["paragraph", "widget", "list", "paragraph"] and "Eigener Eintrag" in text_of(bl[2]), bl)
+    h, bp, own = setup("deleted")
+    run()
+    _, _, bl = page(Ca, h)
+    ok("Umstellung: Liste war geloescht -> keine Galerie aufgedraengt", gal(bl) is None and "gal" in home().get("x", []), (bl, home()))
+    with connect() as c, c:
+        c.execute("DELETE FROM user_kv WHERE uid='bos-a' AND k LIKE 'bookorbit_page:7%'")
 
 
 def part_trash(Ca, nid):
