@@ -1197,7 +1197,8 @@ def _room_signal_in(c, peer, d, call):
     if not isinstance(r, dict):
         return _resp(r)
     c.execute("UPDATE chat_call_leg SET seen=? WHERE call_id=? AND device=?", (now, call["id"], dev))
-    return 200, {"ok": True, "n": r["n"]}, _post_forward(call, p_, dev, r["fwd"], r["leg"], skip=peer["id"])
+    return 200, {"ok": True, "n": r["n"], **({"dropped": r["dropped"]} if r.get("dropped") else {})}, \
+        _post_forward(call, p_, dev, r["fwd"], r["leg"], skip=peer["id"])
 
 
 def _apply_one(c, call, peer, x, now):
