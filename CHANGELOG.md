@@ -29,8 +29,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „Darstellung“ (Diagramm: „Diagrammart“), Felder mind. 32 px, „Fertig“ im mitlaufenden Kopf; am Handy bleibt das Widget
   über dem Blatt sichtbar.
 - Spalten: Widgets einer Reihe gleich hoch; Spalten brechen nach der Breite des Blocks um (4 → 2×2, schmal
-  untereinander) statt erst am Handy; Spalten-Blöcke ab 3 Spalten dürfen breiter als die Textspalte werden (bis 1100 px,
-  Tiptap und veröffentlichte Seiten).
+  untereinander) statt erst am Handy; Spalten-Blöcke ab 3 Spalten dürfen breiter als die Textspalte werden (Tiptap bis
+  1100 px, veröffentlichte Seiten bis zur breiten Seitenbreite).
 
 ### Geändert – Diagramme (Widget und Datenbank-Ansicht)
 - Zeichnung in der echten Breite (Schrift echte 11 px auch in Spalten und am Handy), Höhe nach Größe S/M/L; unter 260 px

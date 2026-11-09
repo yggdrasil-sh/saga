@@ -7245,7 +7245,7 @@
     var txt = w ? w.text : null;
     if (w && !txt) { this.empty(body, 'quote'); return; }
     if (!w) { body.appendChild(el('div', 'wg-note', '…')); return; }
-    var src = null, mq = /^([\s\S]{8,}?)\s+(?:—|–|--)\s*(\p{Lu}[^—–\n]{1,59})$/u.exec(String(txt).trim());
+    var src = null, mq = /^([\s\S]{8,}?(?:[.!?…"“”»«’']|\n))\s*(?:—|–|--)\s*(\p{Lu}[^—–\n]{1,59})$/u.exec(String(txt).trim());
     if (mq && mq[2].trim().split(/\s+/).length <= 6 && !/[.!?…:]$/.test(mq[2].trim())) { txt = mq[1]; src = mq[2].trim(); }
     var qw = el('figure', 'wg-qw'); qw.style.margin = '0';
     var qm = el('span', 'wg-qm', '“'); qm.setAttribute('aria-hidden', 'true'); qw.appendChild(qm);
