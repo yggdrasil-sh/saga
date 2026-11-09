@@ -7518,6 +7518,12 @@
     items.forEach(function (x) {
       var li = el('li', 'sp-li'), a = el('a', 'sp-it'), tt = x.title || T('Unbenannt'), isDb = x.kind === 'database';
       a.href = '/notes#' + x.id; a.dataset.id = String(x.id);
+      a.addEventListener('click', function (e) {                // in der App oeffnen (Strg/⌘/Mittelklick: neuer Tab wie ueblich)
+        if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault(); e.stopPropagation();
+        if (S.cur && S.cur.id === x.id) return;
+        location.hash = '#' + x.id;
+      });
       a.setAttribute('aria-label', isDb ? T('{titel} (Datenbank)', { titel: tt }) : tt);
       if (gal && im !== 'none') {
         var pv = el('span', 'sp-pv');
@@ -7581,6 +7587,7 @@
   WidgetTool.prototype.closePanel = function () {
     var fl = this.panel && this.panel.classList.contains('wg-panel-float');
     clearInterval(this.floatT); this.w.classList.remove('wg-editing'); document.body.classList.remove('wg-sheet');
+    clearTimeout(this.pvT); this.pvSeq = (this.pvSeq || 0) + 1;   // spaete Vorschau nach "Fertig" nicht mehr uebernehmen (bliebe als pv haengen)
     if (this.floatRs) removeEventListener('resize', this.floatRs); this.floatRs = this.placeFloat = null;
     if (this.panel) this.panel.remove(); this.panel = null; this.pv = null;
     if (fl && !this.w.isConnected) return;
