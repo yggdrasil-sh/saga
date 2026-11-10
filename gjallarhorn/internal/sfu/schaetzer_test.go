@@ -33,6 +33,9 @@ type estRoom struct {
 	free  float64       // letzte Rate, die die Leitung trug
 	evs   []Slot
 	on    map[*fwd.Source]bool // Quellen des ersten Senders
+	pevs  []Slot               // Probe-Ereignisse (Probing)
+	fill  float64              // Fuellrate dieses Takts (bit/s)
+	padMB float64              // gesendete Fuelldaten
 }
 
 const estAudio = 40e3
@@ -40,12 +43,18 @@ const estAudio = 40e3
 func newEstRoom(t *testing.T, h, gcc float64) *estRoom { return newEstGroup(t, h, gcc, 1) }
 
 // newEstGroup: wie newEstRoom, aber mit n Sendern (fern, fern2, ...) und n-1 Kacheln neben dem Sprecherplatz.
-func newEstGroup(t *testing.T, h, gcc float64, n int) *estRoom {
+func newEstGroup(t *testing.T, h, gcc float64, n int) *estRoom { return newEstCfg(t, h, gcc, n, false) }
+
+// newEstCfg: ... mit bzw. ohne Probing (Config.Probing). Mit Probing meldet das Modell Ueberlast wie pion-GCC
+// (Leg.ExtOver), sobald die Verzoegerung auffaellt.
+func newEstCfg(t *testing.T, h, gcc float64, n int, probing bool) *estRoom {
 	er := &estRoom{t: t, now: fwd.Now(), src: map[string]*fwd.Source{}, gcc: gcc, floor: gcc, capF: 1.5, grow: 50e3,
 		rates: map[string]float64{"l": 150e3, "m": 500e3, "h": h}}
-	nd := NewNode(Config{Name: "k", Tick: time.Hour, OnLayout: func(ev LayoutEvent) {
+	nd := NewNode(Config{Name: "k", Tick: time.Hour, Probing: probing, OnLayout: func(ev LayoutEvent) {
 		for _, s := range ev.Slots {
-			if s.Class == "speaker" {
+			if s.Probe != "" { // Probe-Ereignisse getrennt: evs bleibt die Folge der Wechsel des Sprecherplatzes
+				er.pevs = append(er.pevs, s)
+			} else if s.Class == "speaker" {
 				er.evs = append(er.evs, s)
 			}
 		}
@@ -60,6 +69,9 @@ func newEstGroup(t *testing.T, h, gcc float64, n int) *estRoom {
 		t.Fatal(err)
 	}
 	er.l.Ext = func() int { return int(er.gcc) }
+	if probing {
+		er.l.ExtOver = func() bool { return er.over >= 2 }
+	}
 	for i := 0; i < n; i++ {
 		id := "fern"
 		if i > 0 {
@@ -103,6 +115,13 @@ func (er *estRoom) tick() {
 		s.Bytes.Add(uint64(er.allR[i] * dt / 8))
 	}
 	rate := estAudio + er.sent
+	// Fuelldaten einer Probe (Probing): Das Modell sendet sie mit der eingestellten Rate, die Leitung sieht sie
+	er.fill = float64(er.l.fl.Padding())
+	if er.fill > 0 {
+		er.l.fl.Stats.PadBytes.Add(uint64(er.fill * dt / 8))
+		er.padMB += er.fill * dt / 8e6
+		rate += er.fill
+	}
 	er.l.fl.Stats.BytesOut.Add(uint64(rate * dt / 8))
 	switch {
 	case er.loss:

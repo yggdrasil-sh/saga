@@ -287,6 +287,13 @@ type Leg struct {
 
 	// Ext liefert eine externe Schaetzung in bit/s (GCC auf UDP), 0 = keine.
 	Ext func() int
+	// ExtOver meldet, dass die externe Schaetzung gerade Ueberlast sieht (GCC: Zustand "overuse" bzw. "decrease");
+	// ExtRTT die zuletzt gemessene Umlaufzeit (0 = unbekannt). Beide optional, nur fuer Probing (probe.go).
+	ExtOver func() bool
+	ExtRTT  func() time.Duration
+
+	pr    probe
+	pstat ProbeStats
 }
 
 // slot ist ein Empfangsplatz (Steuerdaten).
@@ -313,12 +320,19 @@ type slot struct {
 	srcAt                     int64
 	why                       string
 	whyKbit, whyLive, whyHold int
+	// Probe-Ereignis fuer die naechste Meldung (probe.go): start | ok | fail | abort, Grund, Zielrate in kbit/s
+	pev, pwhy string
+	pkbit     int
 }
 
 // dwell: Aufschub fuer den Schritt auf eine Schicht nach gescheiterten Versuchen.
 type dwell struct {
 	d  time.Duration
 	at int64
+	// Probing (probe.go): Abstand nach gescheiterten Proben, frueheste naechste Probe, letzte bestandene Probe
+	pd   time.Duration
+	next int64
+	ok   int64
 }
 
 // dwellOf: aktueller Aufschub fuer den Schritt auf die Schicht l.
@@ -587,6 +601,7 @@ func (r *Room) removeLegLocked(l *Leg) {
 	for _, o := range l.outs {
 		o.Detach()
 	}
+	l.fl.SetPadding(nil, 0)
 	p := l.Peer
 	delete(p.legs, l)
 	if len(p.legs) == 0 {
@@ -690,7 +705,8 @@ func (l *Leg) layoutLocked() []Slot {
 	out := make([]Slot, len(l.slots))
 	for i, s := range l.slots {
 		out[i] = Slot{Index: i, Class: s.class, Layer: s.layer, MaxTID: s.tid, Paused: s.paused,
-			Why: s.why, SrcKbit: s.whyKbit, LiveMs: s.whyLive, HoldMs: s.whyHold}
+			Why: s.why, SrcKbit: s.whyKbit, LiveMs: s.whyLive, HoldMs: s.whyHold,
+			Probe: s.pev, ProbeWhy: s.pwhy, ProbeKbit: s.pkbit}
 		if s.owner != nil {
 			out[i].Peer, out[i].CSRC = s.owner.ID, s.owner.CSRC
 		}

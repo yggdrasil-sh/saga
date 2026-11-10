@@ -244,6 +244,10 @@ type Config struct {
 	StartKbit int
 	// MaxDownKbit begrenzt die Schaetzung je Bein (Standard 25000).
 	MaxDownKbit int
+	// Probing (experimentell): UDP-Beine mit GCC pruefen einen Schritt nach oben, den nur die Schaetzung verhindert,
+	// vorab mit Fuelldaten (probe.go). Aus (Standard hier; der Knoten schaltet es mit HORN_PROBING ein bzw. aus):
+	// Verhalten wie zuvor - der Wechsel selbst ist die Probe.
+	Probing bool
 
 	// OnLayout meldet, welche Teilnehmenden ein Bein in welchem Platz bekommt
 	// (fuer die Kachelansicht; die Saga-Steuerung reicht es ans Geraet).
@@ -307,6 +311,14 @@ type Slot struct {
 	SrcKbit int    `json:"src_kbit,omitempty"`
 	LiveMs  int    `json:"live_ms,omitempty"`
 	HoldMs  int    `json:"hold_ms,omitempty"`
+	// Probing (experimentell), nur in der Meldung des Ereignisses selbst, auf dem Platz, der hoeher gehen soll:
+	// start | ok | fail | abort, Zielrate des Beins in kbit/s und bei fail/abort der Grund (gcc = Ziel gefallen,
+	// over = GCC meldet Ueberlast, queue = eigene Warteschlange; platz/ausgang/fuell = Belegung geaendert bzw. Fuelldaten
+	// nicht gesendet). Die Belegung
+	// selbst aendert sich durch eine Probe nicht; alte Geraete ignorieren die Felder.
+	Probe     string `json:"probe,omitempty"`
+	ProbeKbit int    `json:"probe_kbit,omitempty"`
+	ProbeWhy  string `json:"probe_why,omitempty"`
 }
 
 // LayoutEvent meldet die Belegung eines Beins.

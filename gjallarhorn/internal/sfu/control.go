@@ -80,8 +80,8 @@ func (r *Room) tickAt(now int64) {
 		if ev, ok := l.layoutChanged(); ok {
 			events = append(events, ev)
 		}
-		for _, s := range l.slots { // Grund nur in der Meldung des Wechsels selbst
-			s.why = ""
+		for _, s := range l.slots { // Grund und Probe-Ereignis nur in der Meldung des Wechsels bzw. Ereignisses selbst
+			s.why, s.pev, s.pwhy, s.pkbit = "", "", "", 0
 		}
 	}
 	if cfg.KeyframeEvery > 0 {
@@ -471,7 +471,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		assignSticky(tiles, cand)
 	}
 	// Schaetzung und Verteilung
-	budget := l.est.update(l, dt, now)
+	prb := l.probing(cfg)
+	l.est.probing = prb
+	l.est.update(l, dt, now)
+	l.probeStep(now) // laufende Probe: weiter, Abbruch oder Freigabe (hebt dann die Schaetzung)
+	budget := l.est.bps
 	quotaCap := 1e12
 	if q := me.quota; q != nil { // P10: Kontingent des verbundenen Servers, gleich verteilt auf seine Teilnehmenden
 		quotaCap = q.downShare()
@@ -566,6 +570,14 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			wish = need
 		}
 	}
+	// Probing: der erste Schritt nach oben (in der Reihenfolge des Vorrangs), den nur die Schaetzung bzw. die
+	// Vorgeschichte verhindert - fuer ihn beginnt am Ende des Takts eine Probe (probe.go)
+	prb = prb && l.est.gccLast > 0
+	var cand struct {
+		s    *slot
+		rank int
+		need float64
+	}
 	// Kacheln, die gerade nichts zeigen, starten pausiert und kommen nur mit
 	// Reserve dazu (gegen Pendeln bei schwankenden Raten)
 	for _, c := range cs {
@@ -600,7 +612,21 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			}
 			// nach gescheiterten Versuchen laenger warten - je Schicht: Ein Platz, der nach h-Versuchen spaeter von m
 			// auf l faellt, darf nach layerDwell zurueck auf m
-			if d := c.s.dw[layerRank(c.opts[c.idx].Layer)]; d.d > layerDwell && c.s.owner == c.s.dwellOwner && now-d.at < int64(d.d) {
+			rank := layerRank(c.opts[c.idx].Layer)
+			var d dwell
+			if c.s.owner == c.s.dwellOwner {
+				d = c.s.dw[rank]
+			}
+			sinceDown, blocked := since, false
+			switch {
+			case d.d <= layerDwell:
+			case prb && !cur:
+				// Probing: Nach einem gescheiterten Versuch gibt nur eine bestandene Probe den naechsten frei - dafuer
+				// auch vor Ablauf des Aufschubs (probe.go)
+				if d.ok == 0 || now-d.ok > int64(probeGrant) {
+					since, blocked = 0, true
+				}
+			case now-d.at < int64(d.d):
 				since = 0
 			}
 			lim := limit
@@ -619,6 +645,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			}
 			if !cur {
 				deny(need)
+				if prb && cand.s == nil && stepper == nil && upLimit > 0 && sinceDown >= int64(layerDwell) && now >= d.next &&
+					(blocked || need*upHeadroom > upLimit) {
+					cand.s, cand.rank, cand.need = c.s, rank, need
+				}
 			}
 			c.idx--
 			c.rate = rateOf(c)
@@ -642,6 +672,12 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			sum, c.rate = sum+nr, nr
 		} else {
 			deny(sum + nr)
+			if prb && cand.s == nil && stepper == nil && upLimit > 0 && c.s.owner != nil {
+				rank := layerRank(c.opts[0].Layer)
+				if c.s.owner != c.s.dwellOwner || now >= c.s.dw[rank].next {
+					cand.s, cand.rank, cand.need = c.s, rank, sum+nr
+				}
+			}
 			c.idx = -1
 		}
 	}
@@ -660,6 +696,14 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	l.est.want = wish*upHeadroom*wantSlack + audioCut
 	if l.est.want > quotaCap {
 		l.est.want = quotaCap
+	}
+	moved := false // aendert dieser Takt die Auswahl? Dann beginnt keine Probe (die Rate ist in Bewegung)
+	for _, c := range cs {
+		to := ""
+		if c.idx >= 0 {
+			to = c.opts[c.idx].Layer
+		}
+		moved = moved || to != c.s.layer
 	}
 	for _, c := range cs {
 		s := c.s
@@ -712,6 +756,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			switch {
 			case fast:
 				d.d, d.at = min(2*max(d.d, layerDwell), upDwellMax), now
+				if prb { // der Fehlversuch entwertet auch eine bestandene Probe: Abstand bis zur naechsten verdoppeln
+					d.failProbe(now)
+				}
 			case s.why == whyBudget && d.d > 0:
 				d.d, d.at = min(d.d, upDwellSoft), now
 			}
@@ -733,6 +780,24 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		if s.owner == nil {
 			s.out.Assign(nil)
 			s.paused, s.layer = false, ""
+		}
+	}
+	// Probe fuer den abgelehnten Schritt: nur, wenn sich in diesem Takt nichts bewegt hat, keine andere laeuft, die
+	// Zielrate ins Kontingent passt und ein laufender Bild-Ausgang zum Fuellen da ist (der des Platzes selbst, sonst
+	// der erste laufende in der Reihenfolge des Vorrangs)
+	if cand.s != nil && !moved && l.pr.stage == 0 && cand.need*upHeadroom+audioCut <= quotaCap {
+		fs := cand.s
+		if fs.layer == "" || fs.paused || fs.out.Current() == nil {
+			fs = nil
+			for _, s := range order {
+				if s.owner != nil && s.layer != "" && !s.paused && s.out.Current() != nil {
+					fs = s
+					break
+				}
+			}
+		}
+		if fs != nil {
+			l.probeBegin(cand.s, fs, cand.rank, cand.need, sum, audioCut, now)
 		}
 	}
 }
@@ -783,7 +848,11 @@ func (l *Leg) layoutChanged() (LayoutEvent, bool) {
 		b.WriteByte(';')
 	}
 	sig := b.String()
-	if sig == l.sig {
+	ev := false // ein Probe-Ereignis wird gemeldet, auch wenn sich die Belegung nicht aendert
+	for _, s := range sl {
+		ev = ev || s.Probe != ""
+	}
+	if sig == l.sig && !ev {
 		return LayoutEvent{}, false
 	}
 	l.sig = sig
@@ -820,6 +889,16 @@ type estimator struct {
 	lagMarkAt int64
 	failAt    int64 // letzte gescheiterte Folge: wann gescheitert, wann begonnen
 	failFrom  int64
+	// Probing (probe.go)
+	probing    bool    // dieses Bein probt mit Fuelldaten: der Deckel folgt nicht mehr dem Bedarf (want)
+	padLast    uint64  // Fuell-Bytes beim letzten Takt
+	prOn       bool    // Probe laeuft: Stausignale nur beobachten (prSig), Schaetzung unveraendert
+	prUntil    int64   // ... ebenso bis hierhin nach einer gescheiterten Probe (probeFloor)
+	prReady    bool    // GCC-Ziel im Schutz weit genug ueber der Medienrate (wie ready)
+	prSig      string  // Stausignal dieses Takts waehrend des Schutzes: gcc | over | queue
+	prPeak     float64 // hoechstes GCC-Ziel seit Beginn der Probe
+	grant      float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
+	grantUntil int64
 }
 
 // Schwellen der Schaetzung.
@@ -911,8 +990,40 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	b := st.BytesOut.Load()
 	rate := float64(b-e.lastBytes) * 8 / dt
 	e.lastBytes = b
+	// Fuelldaten einer Probe zaehlen zur Bein-Rate, aber nicht zur Medienrate, mit der hier gerechnet wird
+	if pb := st.PadBytes.Load(); pb != e.padLast {
+		rate = max(rate-float64(pb-e.padLast)*8/dt, 0)
+		e.padLast = pb
+	}
 	age := time.Duration(st.TickAgeNs.Swap(0))
 	drops := st.TickDrops.Swap(0)
+	if e.prOn || e.prUntil != 0 && now < e.prUntil {
+		// Probe bzw. kurz nach einer gescheiterten: Stausignale nur festhalten. Die Schaetzung bleibt, wie sie vor der
+		// Probe war - nach oben geht in dieser Zeit nichts (ready).
+		v := 0.0
+		if l.Ext != nil {
+			v = float64(l.Ext())
+		}
+		e.prSig = ""
+		switch {
+		case !e.prOn:
+		case age > congAge || drops > 0:
+			e.prSig = "queue"
+		case v > 0 && v < e.prPeak*gccFall:
+			e.prSig = "gcc"
+		case l.ExtOver != nil && l.ExtOver():
+			e.prSig = "over"
+		}
+		if v > e.prPeak {
+			e.prPeak = v
+		}
+		e.gccLast, e.lag, e.ready = v, false, false
+		e.prReady = v <= 0 || v >= rate*gccReady
+		e.rateAvg = 0.8*e.rateAvg + 0.2*rate
+		return e.bps
+	}
+	after := e.prUntil != 0 // erster Takt nach dem Schutz einer gescheiterten Probe
+	e.prUntil = 0
 	// GCC (UDP) ist ohne Probepakete anwendungsbegrenzt und taugt daher nur als Stausignal: Ziel unter der Rate =
 	// Stau - ausser das Ziel laeuft der Rate nur nach (lagging, begrenzte Schonfrist).
 	gccLow := 0.0
@@ -920,6 +1031,11 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	if l.Ext != nil {
 		v := float64(l.Ext())
 		e.ready = v <= 0 || v >= rate*gccReady
+		if after && v > 0 && v < rate*0.9 {
+			// Das Ziel liegt auch probeFloor nach der gescheiterten Probe noch unter der Rate: Stau wie frueher, ohne
+			// Schonfrist (das Ziel ist im Schutz gefallen; dass es inzwischen wieder steigt, entschuldigt nichts)
+			e.lagAt, e.lagDead, e.lagJump, e.deadAt = now, true, false, now
+		}
 		switch {
 		case v > 0 && v < rate*0.9:
 			e.lagSeen = now
@@ -984,8 +1100,11 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		if c < e.start {
 			c = e.start
 		}
-		if l.Ext != nil && c < e.want {
+		if l.Ext != nil && c < e.want && !(e.probing && e.gccLast > 0) {
 			c = e.want
+		}
+		if now < e.grantUntil && c < e.grant { // bestandene Probe: bis der Schritt in der Rate sichtbar ist
+			c = e.grant
 		}
 		if e.bps > c {
 			e.bps = c
