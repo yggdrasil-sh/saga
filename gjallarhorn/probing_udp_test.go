@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -338,5 +339,36 @@ func TestRRRTT(t *testing.T) {
 	}
 	if _, ok := rrRTT(b[:len(b)-3], now); ok {
 		t.Fatal("abgeschnittener Bericht")
+	}
+}
+
+// TestStatsLateDropped: Der Zaehler der verworfenen Nachzuegler (fwd.LegStats.LateDropped) steht in der Statistik des
+// Beins - wie pad_bytes nur, wenn er nicht null ist.
+func TestStatsLateDropped(t *testing.T) {
+	l := &leg{id: "b1", path: "udp", role: "sub", fl: fwd.NewLeg(), created: time.Now()}
+	defer l.fl.Close()
+	js := func() map[string]any {
+		b, err := json.Marshal(l.stats())
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := map[string]any{}
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	m := js()
+	if _, ok := m["late_dropped"]; ok {
+		t.Fatalf("late_dropped ohne Nachzuegler in der Statistik: %v", m)
+	}
+	if _, ok := m["pad_bytes"]; ok {
+		t.Fatalf("pad_bytes ohne Probe in der Statistik: %v", m)
+	}
+	l.fl.Stats.LateDropped.Add(3)
+	l.fl.Stats.PadBytes.Add(267)
+	m = js()
+	if m["late_dropped"] != float64(3) || m["pad_bytes"] != float64(267) {
+		t.Fatalf("late_dropped %v, pad_bytes %v (erwartet 3 und 267)", m["late_dropped"], m["pad_bytes"])
 	}
 }

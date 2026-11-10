@@ -604,7 +604,7 @@ func (s *server) apiSFULayout(w http.ResponseWriter, r *http.Request) {
 	st := l.stats()
 	ps := l.sl.ProbeStats()
 	writeJSON(w, 200, map[string]any{"slots": l.sl.Layout(), "est_kbit": l.sl.EstimateKbit(), "stats": st,
-		"probes": map[string]any{"started": ps.Started, "passed": ps.Passed, "failed": ps.Failed, "aborted": ps.Aborted, "pad_bytes": ps.PadBytes, "last": ps.Last},
+		"probes": map[string]any{"started": ps.Started, "passed": ps.Passed, "failed": ps.Failed, "aborted": ps.Aborted, "pad_bytes": ps.PadBytes, "late_dropped": ps.LateDropped, "last": ps.Last},
 		"pauses": l.fl.Stats.Pauses.Load(), "tid_skipped": l.fl.Stats.TIDSkipped.Load(), "write_stalls": l.fl.Stats.WriteStalls.Load()})
 }
 

@@ -601,10 +601,10 @@ func (l *leg) stats() legStats {
 	}
 	st := legStats{ID: l.id, Path: l.path, Role: l.role, State: l.state().String(),
 		PktsOut: fl.Stats.PktsOut.Load(), BytesOut: fl.Stats.BytesOut.Load(), PadBytes: fl.Stats.PadBytes.Load(),
-		Dropped: fl.Stats.FramesDropped.Load(), Stalls: fl.Stats.Stalls.Load(),
+		LateDrop: fl.Stats.LateDropped.Load(), Dropped: fl.Stats.FramesDropped.Load(), Stalls: fl.Stats.Stalls.Load(),
 		MaxQMs: float64(fl.Stats.MaxAgeNs.Load()) / 1e6, FwdP95us: fl.Stats.P95us(),
 		Overflow: fl.Stats.Overflow.Load(), WriteErrs: fl.Stats.WriteErrs.Load(),
-		Secs: time.Since(l.created).Seconds(), LateDrop: fl.Stats.LateDropped.Load(), ended: ended}
+		Secs: time.Since(l.created).Seconds(), ended: ended}
 	for _, x := range srcs {
 		k := "audio"
 		if x.Kind == fwd.Video {

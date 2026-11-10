@@ -97,6 +97,7 @@ type probe struct {
 type ProbeStats struct {
 	Started, Passed, Failed, Aborted uint64
 	PadBytes                         uint64 // gesendete Fuell-Bytes
+	LateDropped                      uint64 // verworfene Nachzuegler jenseits der Fuell-Historie (fwd.LegStats.LateDropped)
 	Last                             string // Ausgang der letzten Probe: ok, fail:<grund> bzw. abort:<grund>
 }
 
@@ -106,6 +107,7 @@ func (l *Leg) ProbeStats() ProbeStats {
 	defer l.room.mu.Unlock()
 	ps := l.pstat
 	ps.PadBytes = l.fl.Stats.PadBytes.Load()
+	ps.LateDropped = l.fl.Stats.LateDropped.Load()
 	return ps
 }
 
