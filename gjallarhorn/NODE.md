@@ -142,7 +142,8 @@ Platzhalter: `horn-1.example.org`.
     60 % der Füllrate). Dass das GCC-Ziel die Zielrate erreicht, wird **nicht** verlangt: pion-GCC hebt sein Ziel
     auch auf freier Leitung nur um rund 8 % je Sekunde. Der Wechsel folgt im selben bzw. nächsten Takt.
   - Abstand: nach einer gescheiterten Probe 10 s, verdoppelnd bis 2 min, je Platz und Schicht; eine bestandene Probe
-    oder 30 s Halten der Schicht setzt zurück.
+    oder 30 s Halten der Schicht setzt zurück. Bis dahin gibt es für diesen Schritt auch keinen Versuch ohne Probe
+    (die Schätzung wächst sonst über den Startwert wieder weit genug).
   - Aufschub und Probe: Der Aufschub (8/16/32 s … 5 min) entsteht unverändert, wenn ein echter Wechsel scheitert.
     Danach braucht der nächste Versuch auf diese Schicht eine bestandene Probe; geprobt wird frühestens nach dem
     Aufschub, höchstens aber nach 2 min – echte Versuche kommen so nie häufiger als ohne Probing, und eine frei

@@ -624,13 +624,13 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// passed: Fuer genau diesen Schritt ist gerade eine Probe bestanden (probe.go)
 			passed := prb && !cur && d.ok != 0 && now-d.ok <= int64(probeGrant)
 			switch {
-			case d.d <= layerDwell:
-			case prb && !cur:
-				// Probing: Nach einem gescheiterten Versuch gibt nur eine bestandene Probe den naechsten frei - dafuer
-				// auch vor Ablauf des Aufschubs
+			case prb && !cur && (d.d > layerDwell || d.pd > 0):
+				// Probing: Nach einem gescheiterten Versuch bzw. einer gescheiterten Probe gibt nur eine bestandene
+				// Probe den naechsten Versuch frei - dafuer auch vor Ablauf des Aufschubs
 				if !passed {
 					since, blocked = 0, true
 				}
+			case d.d <= layerDwell:
 			case now-d.at < int64(d.d):
 				since = 0
 			}
@@ -680,15 +680,18 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		c.idx = 0
 		nr := rateOf(c)
-		if (sum+nr)*upHeadroom <= upLimit {
+		// Probing: nach einer gescheiterten Probe fuer diese Kachel erst wieder mit einer bestandenen
+		var d dwell
+		if c.s.owner == c.s.dwellOwner {
+			d = c.s.dw[layerRank(c.opts[0].Layer)]
+		}
+		blocked := prb && d.pd > 0 && (d.ok == 0 || now-d.ok > int64(probeGrant))
+		if (sum+nr)*upHeadroom <= upLimit && !blocked {
 			sum, c.rate = sum+nr, nr
 		} else {
 			deny(sum + nr)
-			if prb && cand.s == nil && stepper == nil && upLimit > 0 && c.s.owner != nil {
-				rank := layerRank(c.opts[0].Layer)
-				if c.s.owner != c.s.dwellOwner || now >= c.s.dw[rank].next {
-					cand.s, cand.rank, cand.need = c.s, rank, sum+nr
-				}
+			if prb && cand.s == nil && stepper == nil && upLimit > 0 && c.s.owner != nil && now >= d.next {
+				cand.s, cand.rank, cand.need = c.s, layerRank(c.opts[0].Layer), sum+nr
 			}
 			c.idx = -1
 		}

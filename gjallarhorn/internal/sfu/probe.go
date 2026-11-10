@@ -89,6 +89,7 @@ type probe struct {
 type ProbeStats struct {
 	Started, Passed, Failed, Aborted uint64
 	PadBytes                         uint64 // gesendete Fuell-Bytes
+	Last                             string // Ausgang der letzten Probe: ok, fail:<grund> bzw. abort:<grund>
 }
 
 // ProbeStats liefert die Zaehler der Proben dieses Beins.
@@ -220,6 +221,9 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 		}
 	}
 	p.s.setProbe(res, why, p.target)
+	if l.pstat.Last = res; why != "" {
+		l.pstat.Last += ":" + why
+	}
 	*p = probe{}
 }
 
