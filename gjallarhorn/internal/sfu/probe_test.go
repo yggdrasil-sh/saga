@@ -265,7 +265,7 @@ func TestProbingWegwechsel(t *testing.T) {
 	er.link = 1000e3
 	er.until("m", 2*time.Second)
 	er.measure(90*time.Second, nil) // Proben nach 0, 10, 30, 70 s gescheitert: Abstand 80 s
-	old := er.l.slots[1].dw[layerRank("h")]
+	old := er.l.pf
 	if old.pd < 80*time.Second || old.next <= er.now {
 		t.Fatalf("vor dem Wegwechsel: abstand %v, naechste Probe in %v", old.pd, time.Duration(old.next-er.now))
 	}
@@ -285,7 +285,7 @@ func TestProbingWegwechsel(t *testing.T) {
 	}
 	swap("empf-tcp", PathTCP)
 	er.measure(10*time.Second, nil)
-	if d := er.l.slots[1].dw[layerRank("h")]; d != old {
+	if d := er.l.pf; d != old {
 		t.Fatalf("auf dem TCP-Bein: %+v, erwartet %+v", d, old)
 	}
 	swap("empf-udp", PathUDP)
@@ -297,7 +297,7 @@ func TestProbingWegwechsel(t *testing.T) {
 	if res.started != 1 || res.failed != 1 {
 		t.Fatalf("nach Ablauf des Abstands: %v", res)
 	}
-	if d := er.l.slots[1].dw[layerRank("h")]; d.pd != probeGapMax {
+	if d := er.l.pf; d.pd != probeGapMax {
 		t.Fatalf("abstand nach der naechsten gescheiterten Probe %v, erwartet %v", d.pd, probeGapMax)
 	}
 	// ohne Probing merkt sich der Raum nichts
@@ -311,5 +311,169 @@ func TestProbingWegwechsel(t *testing.T) {
 	off.r.RemoveLeg(off.l.Ref)
 	if len(off.r.mem) != 0 {
 		t.Fatal("ohne Probing gemerkt")
+	}
+}
+
+// senders: die Sender des Modells (alle ausser dem Empfaenger), in Beitrittsfolge.
+func (er *estRoom) senders() []*Peer {
+	var ps []*Peer
+	for _, p := range er.r.sortedPeers() {
+		if p != er.l.Peer {
+			ps = append(ps, p)
+		}
+	}
+	return ps
+}
+
+// speak macht p zum Hauptsprecher (der Sprecherplatz des Empfaengers wechselt den Besitzer).
+func (er *estRoom) speak(p *Peer) {
+	er.r.mu.Lock()
+	er.r.dominant = p
+	er.r.mu.Unlock()
+}
+
+// TestProbingSprecherwechsel (Prueferfund 2): Gruppe mit 4 Sendern auf enger Leitung, der Sprecher wechselt alle 6, 10
+// bzw. 20 s. Der Abstand nach gescheiterten Proben haengt am Bein und an der Zielrate, nicht am Platz und seinem
+// Besitzer - sonst begann er bei jedem Sprecherwechsel von vorn (115 bis 145 Proben in 10 min und mehr Zeit ueber der
+// Leitung als ohne Probing). Jetzt: Zahl der Proben wie im 1:1-Fall, Zeit ueber der Leitung weit unter der ohne
+// Probing, und ein Fehlversuch sperrt die Zielrate auch fuer den naechsten Sprecher.
+func TestProbingSprecherwechsel(t *testing.T) {
+	for _, rot := range []time.Duration{6 * time.Second, 10 * time.Second, 20 * time.Second} {
+		for _, link := range []float64{700e3, 1000e3, 1400e3, 1700e3} {
+			t.Run(fmt.Sprintf("%v-%.0f", rot, link/1000), func(t *testing.T) {
+				var res [2]probeRun
+				var evs int
+				for i, on := range []bool{false, true} {
+					er := newEstCfg(t, 1250e3, 810e3, 4, on)
+					er.link = link
+					er.tick()
+					ps := er.senders()
+					res[i] = er.measure(10*time.Minute, func(el time.Duration) { er.speak(ps[int(el/rot)%len(ps)]) })
+					evs = len(er.pevs)
+					t.Logf("probing %v: %v", on, res[i])
+				}
+				off, on := res[0], res[1]
+				if on.started > 15 {
+					t.Fatalf("%d Proben in 10 min (1:1-Fall: 8)", on.started)
+				}
+				if on.over > off.over || on.fails > off.fails {
+					t.Fatalf("mit Probing schlechter: %v ueber der Leitung, %d Fehlversuche (ohne: %v, %d)", on.over, on.fails, off.over, off.fails)
+				}
+				if evs > 2*on.started {
+					t.Fatalf("%d Probe-Meldungen fuer %d Proben", evs, on.started)
+				}
+			})
+		}
+	}
+}
+
+// TestProbingBesitzerwechsel (Pruefer G7): Wechselt der Besitzer des Platzes mitten in der Probe, endet sie sofort als
+// abgebrochen (nicht als gescheitert - das fallende GCC-Ziel kommt vom Wechsel), die Fuelldaten sind aus, und die
+// naechste Probe kommt fruehestens probeRetry spaeter.
+func TestProbingBesitzerwechsel(t *testing.T) {
+	er := newEstCfg(t, 2500e3, 810e3, 3, true)
+	er.tick()
+	ps := er.senders()
+	sw, lastEnd := 0, int64(0)
+	for i := 0; i < 3000; i++ {
+		if er.l.pr.stage == 2 && er.l.pr.n == 1 {
+			if lastEnd != 0 && er.now-lastEnd < int64(probeRetry) {
+				t.Fatalf("naechste Probe schon %v nach dem Abbruch", time.Duration(er.now-lastEnd))
+			}
+			sw++
+			er.speak(ps[sw%len(ps)])
+			er.tick()
+			if er.l.pr.stage != 0 || er.l.fl.Padding() != 0 || er.l.pstat.Last != "abort:platz" {
+				t.Fatalf("wechsel %d: stufe %d, fuellrate %d, ausgang %q", sw, er.l.pr.stage, er.l.fl.Padding(), er.l.pstat.Last)
+			}
+			lastEnd = er.now
+			continue
+		}
+		er.tick()
+		if er.l.pr.stage != 0 && er.now-er.l.pr.at > int64(3*time.Second) {
+			t.Fatalf("probe haengt in stufe %d", er.l.pr.stage)
+		}
+	}
+	if st := er.l.pstat; sw < 5 || st.Failed != 0 || st.Aborted != uint64(sw) {
+		t.Fatalf("%d Wechsel, proben %+v", sw, st)
+	}
+}
+
+// TestProbingAbstandJeZielrate: die Regeln des Abstands im Einzelnen (legFail).
+func TestProbingAbstandJeZielrate(t *testing.T) {
+	var f legFail
+	now := int64(time.Hour)
+	if f.covers(1e6) || f.blocks(1e6, now) {
+		t.Fatal("ohne Vorgeschichte gesperrt")
+	}
+	f.fail(1500e3, now)
+	if !f.blocks(1500e3, now) || !f.blocks(3e6, now) || !f.blocks(1400e3, now) || f.blocks(1300e3, now) {
+		t.Fatal("gesperrt sind Zielraten ab 90 % der gescheiterten, kleinere nicht")
+	}
+	if f.blocks(1500e3, now+int64(probeGap)) || !f.covers(1500e3) || f.covers(1e6) {
+		t.Fatal("nach dem Abstand darf geprobt werden; ohne bestandene Probe bleibt der Schritt gesperrt")
+	}
+	for i, want := range []time.Duration{20 * time.Second, 40 * time.Second, 80 * time.Second, probeGapMax, probeGapMax} {
+		now += int64(f.pd)
+		f.fail(1500e3, now)
+		if f.pd != want {
+			t.Fatalf("abstand nach %d weiteren: %v, erwartet %v", i+1, f.pd, want)
+		}
+	}
+	f.fail(900e3, now) // kleinere Zielrate gescheitert: Schwelle sinkt, Abstand bleibt
+	if f.rate != 900e3 || f.pd != probeGapMax || !f.blocks(850e3, now) {
+		t.Fatalf("nach kleinerer Zielrate: %+v", f)
+	}
+	f.pass(700e3) // darunter bestanden: aendert nichts
+	if f.pd == 0 {
+		t.Fatal("bestandene Probe unter der Schwelle setzt zurueck")
+	}
+	f.pass(950e3)
+	if f != (legFail{}) {
+		t.Fatalf("bestandene Probe ab der Schwelle setzt nicht zurueck: %+v", f)
+	}
+	f.fail(1e6, now)
+	f.decay(f.next + int64(f.pd) + int64(upHold) - 1)
+	if f.pd == 0 {
+		t.Fatal("zu frueh verfallen")
+	}
+	f.decay(f.next + int64(f.pd) + int64(upHold))
+	if f.pd != 0 {
+		t.Fatal("nicht verfallen")
+	}
+	// probeBlindAfter: nach N gescheiterten Proben in Folge ein Versuch ohne Probe (Standard 0 = nie)
+	defer func(v int) { probeBlindAfter = v }(probeBlindAfter)
+	f = legFail{}
+	for i := 0; i < 5; i++ {
+		f.fail(1e6, now)
+	}
+	if !f.covers(1e6) {
+		t.Fatal("Standard: nie ohne Probe")
+	}
+	probeBlindAfter = 3
+	if f.covers(1e6) {
+		t.Fatal("probeBlindAfter 3: nach 5 gescheiterten Proben noch gesperrt")
+	}
+}
+
+// TestProbingKnappeLeitung (Prueferfund 4, Verhalten bewusst so): Eine Leitung zwischen Bedarf und Bedarf x upHeadroom
+// traegt h, besteht die Probe (Zielrate mit Reserve) aber nie - mit Probing erreicht sie h nicht; ab Bedarf x 1,16
+// besteht die Probe. Mit probeBlindAfter = 3 bekaeme sie nach drei gescheiterten Proben einen Versuch ohne Probe.
+func TestProbingKnappeLeitung(t *testing.T) {
+	defer func(v int) { probeBlindAfter = v }(probeBlindAfter)
+	for _, c := range []struct {
+		f     float64
+		blind int
+		h     bool
+	}{{1.05, 0, false}, {1.14, 0, false}, {1.16, 0, true}, {1.05, 3, true}} {
+		probeBlindAfter = c.blind
+		er := newEstCfg(t, 1250e3, 810e3, 1, true)
+		er.link = 1250e3*c.f + estAudio
+		er.until("m", 2*time.Second)
+		res := er.measure(10*time.Minute, nil)
+		t.Logf("leitung = bedarf x %.2f, probeBlindAfter %d: %v, verlauf %v", c.f, c.blind, res, res.seen)
+		if got := res.seen["h"] > 8*time.Minute; got != c.h {
+			t.Fatalf("leitung = bedarf x %.2f, probeBlindAfter %d: h %v, erwartet %v", c.f, c.blind, got, c.h)
+		}
 	}
 }

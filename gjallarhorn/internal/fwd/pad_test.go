@@ -185,7 +185,7 @@ func TestPaddingNoAlloc(t *testing.T) {
 		e, _ := leg.pop()
 		leg.process(e.p, e.o)
 		e.p.release()
-		now += int64(5 * time.Millisecond)
+		now += int64(time.Millisecond) // der ganze Lauf bleibt unter PadMax (Totmann)
 		leg.pad(now)
 	}
 	for i := 0; i < 10; i++ {
@@ -194,7 +194,7 @@ func TestPaddingNoAlloc(t *testing.T) {
 	if n := testing.AllocsPerRun(2000, run); n != 0 {
 		t.Fatalf("allokationen je paket: %v", n)
 	}
-	if n := leg.Stats.PadPkts.Load() - pads; n < 2000 {
+	if n := leg.Stats.PadPkts.Load() - pads; n < 2000 || leg.Padding() == 0 {
 		t.Fatalf("nur %d Fuellpakete im Lauf", n)
 	}
 }

@@ -623,8 +623,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			sinceDown, blocked := since, false
 			// passed: Fuer genau diesen Schritt ist gerade eine Probe bestanden (probe.go)
 			passed := prb && !cur && d.ok != 0 && now-d.ok <= int64(probeGrant)
+			tgt := need*upHeadroom + audioCut // Zielrate des Beins fuer diesen Schritt
 			switch {
-			case prb && !cur && (d.d > layerDwell || d.pd > 0):
+			case prb && !cur && (d.d > layerDwell || l.pf.covers(tgt)):
 				// Probing: Nach einem gescheiterten Versuch bzw. einer gescheiterten Probe gibt nur eine bestandene
 				// Probe den naechsten Versuch frei - dafuer auch vor Ablauf des Aufschubs
 				if !passed {
@@ -652,13 +653,16 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				sum, c.rate = need, nr
 				if !cur {
 					stepper = c
+					if prb && !passed && l.pf.pd > 0 && tgt >= l.pf.rate*probeNear {
+						l.pf.n = 0 // Versuch ohne Probe (probeBlindAfter): der naechste erst nach weiteren gescheiterten Proben
+					}
 				}
 				continue
 			}
 			if !cur {
 				deny(need)
 				if prb && cand.s == nil && stepper == nil && upLimit > 0 && sinceDown >= int64(layerDwell) && now >= d.next &&
-					(blocked || need*upHeadroom > upLimit) {
+					!l.pf.blocks(tgt, now) && (blocked || need*upHeadroom > upLimit) {
 					cand.s, cand.rank, cand.need = c.s, rank, need
 				}
 			}
@@ -685,12 +689,13 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		if c.s.owner == c.s.dwellOwner {
 			d = c.s.dw[layerRank(c.opts[0].Layer)]
 		}
-		blocked := prb && d.pd > 0 && (d.ok == 0 || now-d.ok > int64(probeGrant))
+		tgt := (sum+nr)*upHeadroom + audioCut
+		blocked := prb && l.pf.covers(tgt) && (d.ok == 0 || now-d.ok > int64(probeGrant))
 		if (sum+nr)*upHeadroom <= upLimit && !blocked {
 			sum, c.rate = sum+nr, nr
 		} else {
 			deny(sum + nr)
-			if prb && cand.s == nil && stepper == nil && upLimit > 0 && c.s.owner != nil && now >= d.next {
+			if prb && cand.s == nil && stepper == nil && upLimit > 0 && c.s.owner != nil && now >= d.next && !l.pf.blocks(tgt, now) {
 				cand.s, cand.rank, cand.need = c.s, layerRank(c.opts[0].Layer), sum+nr
 			}
 			c.idx = -1
@@ -772,13 +777,18 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			case fast:
 				d.d, d.at = min(2*max(d.d, layerDwell), upDwellMax), now
 				d.afterFail(now)
+				if prb && s.upT > 0 {
+					// Der Fehlversuch gilt fuer das Bein, nicht nur fuer diesen Platz und Besitzer: Wechselt der Sprecher,
+					// braucht auch der naechste fuer eine Zielrate ab dieser eine bestandene Probe
+					l.pf.fail(s.upT, now)
+				}
 			case s.why == whyBudget && d.d > 0:
 				d.d, d.at = min(d.d, upDwellSoft), now
 				d.afterFail(now)
 			}
 			s.downAt, s.downOwner = now, s.owner
 		} else if s.layer != "" && layerRank(st.Layer) > layerRank(s.layer) {
-			s.upAt, s.upOwner = now, s.owner
+			s.upAt, s.upOwner, s.upT = now, s.owner, sum*upHeadroom+audioCut
 		}
 		s.paused, s.layer, s.tid = false, st.Layer, c.tid
 		// gehalten: Die Schicht laeuft seit upHold - ihr Aufschub und der aller tieferen ist erledigt
@@ -803,7 +813,12 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	if moved {
 		l.movedAt = now
 	}
-	if cand.s != nil && now-l.movedAt >= int64(probeQuiet) && l.pr.stage == 0 && cand.need*upHeadroom+audioCut <= quotaCap {
+	l.pf.decay(now)
+	// Darf der naechste Schritt ohne Probe versucht werden, folgt der Deckel der Schaetzung wieder dem Bedarf (wie ohne
+	// Probing): nach probeBlindAfter gescheiterten Proben in Folge
+	l.est.blind = prb && probeBlindAfter > 0 && l.pf.pd > 0 && l.pf.n >= probeBlindAfter
+	if cand.s != nil && now-l.movedAt >= int64(probeQuiet) && now >= l.prNext && l.pr.stage == 0 &&
+		cand.need*upHeadroom+audioCut <= quotaCap {
 		fs := cand.s
 		if fs.layer == "" || fs.paused {
 			fs = nil
@@ -909,6 +924,7 @@ type estimator struct {
 	failFrom  int64
 	// Probing (probe.go)
 	probing    bool    // dieses Bein probt mit Fuelldaten: der Deckel folgt nicht mehr dem Bedarf (want)
+	blind      bool    // ... ausser der naechste Schritt darf ohne Probe versucht werden (planLeg)
 	padLast    uint64  // Fuell-Bytes beim letzten Takt
 	prOn       bool    // Probe laeuft: Stausignale nur beobachten (prSig), Schaetzung unveraendert
 	prUntil    int64   // ... ebenso bis hierhin nach einer gescheiterten Probe (probeFloor)
@@ -1119,7 +1135,7 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		if c < e.start {
 			c = e.start
 		}
-		if l.Ext != nil && c < e.want && !(e.probing && e.gccLast > 0) {
+		if l.Ext != nil && c < e.want && !(e.probing && e.gccLast > 0 && !e.blind) {
 			c = e.want
 		}
 		if now < e.grantUntil && c < e.grant { // bestandene Probe: bis der Schritt in der Rate sichtbar ist

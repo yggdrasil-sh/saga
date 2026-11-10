@@ -147,14 +147,16 @@ func (l *Leg) probeStep(now int64) {
 	}
 	e := &l.est
 	switch {
-	case e.prSig != "": // Stausignal: gescheitert
-		l.probeEnd(probeFail, e.prSig, now)
-		return
+	// Belegung geaendert (Sprecherwechsel, Pause): Abbruch ohne Wertung - zuerst pruefen, denn mit dem Wechsel sinkt
+	// die Rate und das GCC-Ziel kann ihr folgen, was sonst als Stausignal zaehlte
 	case p.s.owner != p.owner || p.s.layer != p.layer:
 		l.probeEnd(probeAbort, "platz", now)
 		return
 	case p.fs.owner != p.fown || p.fs.layer == "" || p.fs.paused:
 		l.probeEnd(probeAbort, "ausgang", now)
+		return
+	case e.prSig != "": // Stausignal: gescheitert
+		l.probeEnd(probeFail, e.prSig, now)
 		return
 	}
 	p.n++
@@ -204,20 +206,25 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 		if e.bps < p.target {
 			e.bps = min(p.target, e.max)
 		}
+		l.pf.pass(p.target)
 		if d != nil {
-			d.pd, d.next, d.ok = 0, now+int64(probeGap), now
+			d.next, d.ok = now+int64(probeGap), now
 		}
 	case probeFail:
 		l.pstat.Failed++
 		e.shieldOff(now, probeFloor)
+		l.pf.fail(p.target, now)
 		if d != nil {
-			d.failProbe(now)
+			d.ok = 0
 		}
 	default:
 		l.pstat.Aborted++
 		e.shieldOff(now, 0)
-		if d != nil && d.next < now+int64(probeRetry) {
-			d.next = now + int64(probeRetry)
+		l.prNext = now + int64(probeRetry)
+		if why == "fuell" {
+			// Die Fuelldaten sind nicht geflossen (Quelle still, Ausgang wartet): Der naechste Versuch braechte dasselbe -
+			// Abstand wie nach einer gescheiterten Probe, statt alle probeRetry von vorn
+			l.pf.fail(p.target, now)
 		}
 	}
 	p.s.setProbe(res, why, p.target)
@@ -227,10 +234,70 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 	*p = probe{}
 }
 
-// failProbe: gescheiterte Probe - Abstand bis zur naechsten verdoppeln.
-func (d *dwell) failProbe(now int64) {
-	d.pd = min(max(2*d.pd, probeGap), probeGapMax)
-	d.next, d.ok = max(d.next, now+int64(d.pd)), 0
+// legFail: Abstand nach gescheiterten Proben, je Bein und Zielrate. Eine gescheiterte Probe mit Zielrate X sperrt
+// bis next jede Probe mit einer Zielrate ab probeNear x X - gleich fuer welchen Platz und welchen Besitzer (in Gruppen
+// wechselt der Sprecherplatz laufend den Besitzer; hinge der Abstand am Platz, begaenne er jedes Mal von vorn). Proben
+// mit deutlich kleinerer Zielrate duerfen frueher. Bis eine Probe ab dieser Zielrate besteht, gibt es dafuer auch
+// keinen Versuch ohne Probe (covers).
+type legFail struct {
+	rate float64       // kleinste gescheiterte Zielrate (bit/s)
+	pd   time.Duration // aktueller Abstand (0 = keine Vorgeschichte)
+	next int64         // fruehestens dann die naechste Probe ab dieser Zielrate
+	n    int           // gescheiterte Proben in Folge
+}
+
+// probeNear: Zielraten ab diesem Anteil einer gescheiterten gelten als "dieselbe oder hoeher".
+const probeNear = 0.9
+
+// probeBlindAfter: Nach so vielen gescheiterten Proben in Folge darf ein Schritt einmal ohne bestandene Probe versucht
+// werden (wie ohne Probing, mit Aufschub, falls er scheitert). 0 = nie (Standard). Hintergrund: Die Probe prueft die
+// Zielrate mit Reserve (Bedarf x upHeadroom). Eine Leitung zwischen Bedarf und Bedarf x upHeadroom traegt die Schicht,
+// besteht die Probe aber nie - mit 0 erreicht sie die Schicht mit Probing nicht. Ob das so bleibt, entscheidet sich
+// nach dem Labor; ein Wert wie 3 gaebe solchen Leitungen nach 10 + 20 + 40 s einen Versuch. Variable fuer Tests.
+var probeBlindAfter = 0
+
+// covers: Braucht ein Schritt mit Zielrate t eine bestandene Probe, weil eine Probe ab dieser Rate gescheitert ist?
+func (f *legFail) covers(t float64) bool {
+	if f.pd == 0 || t < f.rate*probeNear {
+		return false
+	}
+	return probeBlindAfter <= 0 || f.n < probeBlindAfter
+}
+
+// blocks: Ist eine Probe mit Zielrate t jetzt noch gesperrt?
+func (f *legFail) blocks(t float64, now int64) bool {
+	return f.pd > 0 && t >= f.rate*probeNear && now < f.next
+}
+
+// fail: Probe (bzw. echter Versuch) mit Zielrate t gescheitert - Abstand verdoppeln; eine kleinere gescheiterte
+// Zielrate senkt die Schwelle, ohne den Abstand zurueckzusetzen.
+func (f *legFail) fail(t float64, now int64) {
+	switch {
+	case f.pd == 0:
+		f.rate, f.pd = t, probeGap
+	case t >= f.rate*probeNear:
+		f.pd = min(2*f.pd, probeGapMax)
+		f.rate = min(f.rate, t)
+	default:
+		f.rate = t
+	}
+	f.next = now + int64(f.pd)
+	f.n++
+}
+
+// pass: Probe mit Zielrate t bestanden - die Vorgeschichte ab dieser Rate ist erledigt.
+func (f *legFail) pass(t float64) {
+	if f.pd > 0 && t >= f.rate*probeNear {
+		*f = legFail{}
+	}
+}
+
+// decay: Will seit dem Ende der Sperre lange niemand mehr so hoch hinaus (Abstand + upHold ohne neue Probe), ist die
+// Vorgeschichte erledigt - entspricht "upHold Halten der Schicht setzt zurueck" je Platz.
+func (f *legFail) decay(now int64) {
+	if f.pd > 0 && now >= f.next+int64(f.pd)+int64(upHold) {
+		*f = legFail{}
+	}
 }
 
 // afterFail: Ein echter Wechsel auf diese Schicht ist gescheitert bzw. wurde zurueckgenommen (Aufschub d.d gesetzt) -
@@ -272,6 +339,7 @@ type memKey struct{ recv, owner, class string }
 
 type memEnt struct {
 	dw    [4]dwell
+	pf    legFail // nur im Eintrag des Beins (Besitzer und Platzart leer)
 	until int64
 }
 
@@ -286,19 +354,31 @@ func (r *Room) remember(l *Leg) {
 			delete(r.mem, k)
 		}
 	}
+	if r.mem == nil {
+		r.mem = map[memKey]memEnt{}
+	}
+	if l.pf.pd > 0 && len(r.mem) < memMax {
+		r.mem[memKey{recv: l.Peer.ID}] = memEnt{pf: l.pf, until: now + int64(memKeep)}
+	}
 	for _, s := range l.slots {
 		if s.dwellOwner == nil || s.dw == ([4]dwell{}) || len(r.mem) >= memMax {
 			continue
 		}
-		if r.mem == nil {
-			r.mem = map[memKey]memEnt{}
-		}
-		r.mem[memKey{l.Peer.ID, s.dwellOwner.ID, s.class}] = memEnt{s.dw, now + int64(memKeep)}
+		r.mem[memKey{l.Peer.ID, s.dwellOwner.ID, s.class}] = memEnt{dw: s.dw, until: now + int64(memKeep)}
 	}
 }
 
 // recall gibt gemerkte Eintraege an Plaetze zurueck, die fuer ihren Besitzer noch keine eigene Vorgeschichte haben.
 func (r *Room) recall(l *Leg, vslots []*slot, now int64) {
+	if l.pf.pd == 0 {
+		k := memKey{recv: l.Peer.ID}
+		if e, ok := r.mem[k]; ok {
+			delete(r.mem, k)
+			if now < e.until {
+				l.pf = e.pf
+			}
+		}
+	}
 	for _, s := range vslots {
 		if s.owner == nil || s.dwellOwner == s.owner {
 			continue

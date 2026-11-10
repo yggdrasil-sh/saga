@@ -296,7 +296,9 @@ type Leg struct {
 
 	pr      probe
 	pstat   ProbeStats
-	movedAt int64 // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
+	pf      legFail // Abstand nach gescheiterten Proben, je Zielrate
+	prNext  int64   // nach einer abgebrochenen Probe: fruehestens dann die naechste auf diesem Bein
+	movedAt int64   // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
 }
 
 // slot ist ein Empfangsplatz (Steuerdaten).
@@ -313,6 +315,7 @@ type slot struct {
 	// Aufschub nach gescheitertem Hochschalten (Budget): letzter Wechsel nach oben, fuer wen, aktueller Aufschub
 	upAt    int64
 	upOwner *Peer
+	upT     float64 // Zielrate des Beins (mit Reserve und Ton) bei diesem Wechsel - fuer Leg.pf, wenn er scheitert
 	// ... je Schicht (Index layerRank): Dauer und Beginn, fuer dwellOwner. Ein gescheiterter Versuch auf m sagt nichts
 	// ueber h und umgekehrt. heldAt: seit wann die laufende Quelle ohne Pause laeuft
 	dw         [4]dwell
@@ -332,8 +335,8 @@ type slot struct {
 type dwell struct {
 	d  time.Duration
 	at int64
-	// Probing (probe.go): Abstand nach gescheiterten Proben, frueheste naechste Probe, letzte bestandene Probe
-	pd   time.Duration
+	// Probing (probe.go): frueheste naechste Probe fuer diesen Schritt, letzte bestandene Probe. Der Abstand nach
+	// gescheiterten Proben haengt nicht hier, sondern am Bein (Leg.pf) - er gilt je Zielrate, nicht je Platz.
 	next int64
 	ok   int64
 }
