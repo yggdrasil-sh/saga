@@ -84,16 +84,18 @@ func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook) (*webrtc.API, e
 		}
 	}
 	ir := &interceptor.Registry{}
+	// nur Tests: abgehende Rueckmeldungen (transport-cc, NACK) mitlesen - vor den Erzeugern eintragen, sonst
+	// schreiben diese am Mitleser vorbei
+	if twccTap != nil || nackTap != nil {
+		ir.Add(twccTapFactory{})
+	}
 	if udp {
-		if err := webrtc.ConfigureNack(m, ir); err != nil {
+		if err := webrtc.ConfigureNackWithOptions(m, ir, nackGenOpts()); err != nil {
 			return nil, err
 		}
 	}
 	if err := webrtc.ConfigureRTCPReports(ir); err != nil {
 		return nil, err
-	}
-	if twccTap != nil { // nur Tests: abgehende transport-cc-Rueckmeldung mitlesen
-		ir.Add(twccTapFactory{})
 	}
 	if err := webrtc.ConfigureTWCCSender(m, ir); err != nil {
 		return nil, err
@@ -595,6 +597,9 @@ func (s *server) apiSFULayout(w http.ResponseWriter, r *http.Request) {
 // twccTap (nur Tests, vor newServer setzen) bekommt jede transport-cc-Rueckmeldung, die der Knoten an Geraete schickt.
 var twccTap func(*rtcp.TransportLayerCC)
 
+// nackTap (nur Tests, vor newServer setzen) bekommt jede NACK-Rueckmeldung, die der Knoten an Geraete schickt.
+var nackTap func(*rtcp.TransportLayerNack)
+
 type twccTapFactory struct{}
 
 func (twccTapFactory) NewInterceptor(string) (interceptor.Interceptor, error) {
@@ -606,8 +611,15 @@ type twccTapI struct{ interceptor.NoOp }
 func (*twccTapI) BindRTCPWriter(w interceptor.RTCPWriter) interceptor.RTCPWriter {
 	return interceptor.RTCPWriterFunc(func(ps []rtcp.Packet, a interceptor.Attributes) (int, error) {
 		for _, p := range ps {
-			if cc, ok := p.(*rtcp.TransportLayerCC); ok && twccTap != nil {
-				twccTap(cc)
+			switch p := p.(type) {
+			case *rtcp.TransportLayerCC:
+				if twccTap != nil {
+					twccTap(p)
+				}
+			case *rtcp.TransportLayerNack:
+				if nackTap != nil {
+					nackTap(p)
+				}
 			}
 		}
 		return w.Write(ps, a)

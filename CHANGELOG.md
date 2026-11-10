@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Knoten fordert Pakete eines pausierten Bild-Stroms endlos nach
+- Hatte ein Bild-Strom Lücken (Verlust-Schub) und sendete das Gerät danach auf diesem Strom nichts mehr (höhere
+  Simulcast-Ebene pausiert, Kamera aus), forderte der Knoten die fehlenden Pakete dauerhaft alle 100 ms nach. Das
+  Gerät übertrug sie immer wieder neu, was an seiner Senderate zehrte. Der Knoten fordert ein fehlendes Paket jetzt
+  höchstens zehnmal nach (rund 1 s, wie die Browser selbst); danach hilft ohnehin nur ein neues Schlüsselbild
+  (`gjallarhorn/media.go` `nackGenOpts`, Test `TestUDPNackPausierterStrom`). Gefunden im Anruf-Labortest
+  (Android-Sender blieb nach einem Verlust-Schub bei ~30 kbit/s).
+
 ### Behoben – geteilter Knoten: Browser eines neu verbundenen Servers erreichen ihn nicht (CORS)
 - Wurde ein Server erst verbunden, nachdem der Knoten schon gekoppelt war (oder meldete er Knoten-Anrufe erst später),
   erfuhr der Knoten seine Herkunft erst beim nächsten Verbinden des Steuerkanals. Bis dahin scheiterten die Browser

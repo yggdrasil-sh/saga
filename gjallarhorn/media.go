@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
@@ -21,6 +22,16 @@ const (
 	mimeOpus = webrtc.MimeTypeOpus
 	mimeVP8  = webrtc.MimeTypeVP8
 )
+
+// nackMaxJePaket begrenzt, wie oft der Knoten ein fehlendes Paket nachfordert (alle 100 ms, also rund 1 s lang;
+// libwebrtc haelt es ebenso mit 10 Versuchen). Ohne Grenze fordert pion Luecken eines Stroms endlos nach, sobald
+// dieser nichts Neues mehr sendet (pausierte Simulcast-Ebene, Kamera aus): Das Fenster rueckt dann nie weiter, und
+// die Neuuebertragungen des Geraets zehren dauerhaft an seiner Senderate.
+const nackMaxJePaket = 10
+
+func nackGenOpts() []nack.GeneratorOption {
+	return []nack.GeneratorOption{nack.GeneratorMaxNacksPerPacket(nackMaxJePaket)}
+}
 
 // newAPI baut eine pion-API je Weg. nack=false fuer TCP-Beine (H5): keine
 // NACK/RTX, Opus ohne FEC, ptime 40, DTX an.
@@ -60,7 +71,7 @@ func newAPI(se webrtc.SettingEngine, nack bool) (*webrtc.API, error) {
 	}
 	ir := &interceptor.Registry{}
 	if nack {
-		if err := webrtc.ConfigureNack(m, ir); err != nil {
+		if err := webrtc.ConfigureNackWithOptions(m, ir, nackGenOpts()); err != nil {
 			return nil, err
 		}
 	}
