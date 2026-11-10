@@ -451,3 +451,61 @@ func TestPaddingTotmann(t *testing.T) {
 	}
 	checkPad(t, w)
 }
+
+// TestPaddingHistorieVeraltet: Lange nach einer Probe (mehr als 32768 Pakete ohne Quellwechsel) geht ein Nachzuegler
+// weiter mit richtiger Folgenummer hinaus. Ohne padHistAge hielt der 16-Bit-Vergleich mit der stehengebliebenen
+// Historie ihn fuer "aelter als die Historie" und verwarf ihn (LateDropped).
+func TestPaddingHistorieVeraltet(t *testing.T) {
+	leg := NewLeg()
+	defer leg.Close()
+	w := &hrec{}
+	o := leg.NewOut("v", "p", Video, ClassSpeaker, "l")
+	o.Bind(w, 7, 96)
+	src := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	o.Assign(src)
+	seq, ts := uint16(100), uint32(0)
+	frame := func(key bool) {
+		ts += 3000
+		seq++
+		src.Inject(vp8part(seq, ts, true, key, true))
+	}
+	frame(true)
+	waitFor(t, func() bool { return w.count() == 1 })
+	leg.SetPadding(o, 1e6)
+	for i := 0; i < 2*padHist+8; i++ { // mehr Fuell-Stellen, als die Historie fasst
+		frame(false)
+		time.Sleep(6 * time.Millisecond)
+	}
+	leg.SetPadding(nil, 0)
+	time.Sleep(20 * time.Millisecond)
+	if leg.Stats.PadPkts.Load() == 0 {
+		t.Fatal("keine Fuellpakete")
+	}
+	for i := 0; i < 33000; i++ {
+		frame(false)
+		if i%500 == 499 {
+			time.Sleep(2 * time.Millisecond) // Warteschlange nicht ueberlaufen lassen
+		}
+	}
+	waitFor(t, func() bool { return leg.QueueLen() == 0 })
+	time.Sleep(20 * time.Millisecond)
+	if n := leg.Stats.Overflow.Load(); n != 0 {
+		t.Fatalf("%d Pakete uebergelaufen", n)
+	}
+	n0 := w.count()
+	w.mu.Lock()
+	prev := w.hdrs[n0-1].SequenceNumber
+	w.mu.Unlock()
+	src.Inject(vp8part(seq+2, ts+6000, true, false, true)) // seq+1 fehlt zunaechst ...
+	waitFor(t, func() bool { return w.count() == n0+1 })
+	src.Inject(vp8part(seq+1, ts+3000, true, false, true)) // ... und kommt nach
+	time.Sleep(30 * time.Millisecond)
+	if n := leg.Stats.LateDropped.Load(); n != 0 {
+		t.Fatalf("%d Nachzuegler verworfen", n)
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.hdrs) != n0+2 || w.hdrs[n0].SequenceNumber != prev+2 || w.hdrs[n0+1].SequenceNumber != prev+1 {
+		t.Fatalf("nach %d: %d Pakete, erwartet %d und %d", prev, len(w.hdrs)-n0, prev+2, prev+1)
+	}
+}
