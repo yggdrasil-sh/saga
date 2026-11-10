@@ -217,3 +217,201 @@ func BenchmarkPad(b *testing.B) {
 		leg.pad(now)
 	}
 }
+
+// padBench: Bein ohne Schreiber - Pakete und Fuell-Schuebe von Hand, in fester Reihenfolge.
+type padBench struct {
+	t   *testing.T
+	leg *Leg
+	o   *Out
+	w   *hrec
+	now int64
+}
+
+func newPadBench(t *testing.T) *padBench {
+	b := &padBench{t: t, leg: &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}, w: &hrec{}, now: Now()}
+	b.leg.padBuf[PadSize-1] = PadSize
+	b.o = b.leg.NewOut("v", "p", Video, ClassSpeaker, "h", "l")
+	b.o.Bind(b.w, 7, 96)
+	return b
+}
+
+// in: ein Paket der Quelle s durch den Schreiber.
+func (b *padBench) in(s *Source, seq uint16, ts uint32, start, key, marker bool) {
+	s.Inject(vp8part(seq, ts, start, key, marker))
+	for {
+		e, ok := b.leg.pop()
+		if !ok {
+			return
+		}
+		b.leg.process(e.p, e.o)
+		e.p.release()
+	}
+}
+
+// fill: ein Fuell-Schub von n Paketen (falls der Ausgang zwischen zwei Bildern steht).
+func (b *padBench) fill(n int) {
+	b.leg.SetPadding(b.o, 1e9)
+	b.now += int64(time.Millisecond)
+	b.leg.padT, b.leg.padCredit = b.now, float64(n*padWire)
+	b.leg.pad(b.now)
+	b.leg.SetPadding(nil, 0)
+}
+
+// check: jede Folgenummer genau einmal, zusammen ein lueckenloser Bereich; liefert Medien- und Fuellpakete.
+func (b *padBench) check() (media, pads int) {
+	b.t.Helper()
+	seen := map[uint16]bool{}
+	var first uint16
+	for i, h := range b.w.hdrs {
+		if seen[h.SequenceNumber] {
+			b.t.Fatalf("folgenummer %d doppelt vergeben (paket %d)", h.SequenceNumber, i)
+		}
+		seen[h.SequenceNumber] = true
+		if i == 0 {
+			first = h.SequenceNumber
+		}
+		if h.Padding {
+			pads++
+		} else {
+			media++
+		}
+	}
+	for i := 0; i < len(b.w.hdrs); i++ {
+		if !seen[first+uint16(i)] {
+			b.t.Fatalf("luecke bei folgenummer %d (%d Pakete ab %d)", first+uint16(i), len(b.w.hdrs), first)
+		}
+	}
+	return media, pads
+}
+
+// TestPaddingSpaetesPaket (Prueferfund): Ein Paket der Quelle, das erst nach Fuellpaketen eintrifft, aber vor deren
+// Stelle gehoert (Nachsendung, Umsortierung), geht mit dem Versatz von damals hinaus - frueher landete es auf einer
+// schon vergebenen Fuell-Folgenummer, und seine eigene Luecke blieb offen. Geprueft vor und nach einem und mehreren
+// Fuell-Schueben, ueber den Ueberlauf der Folgenummern und mit einem Quellwechsel dazwischen.
+func TestPaddingSpaetesPaket(t *testing.T) {
+	for _, base := range []uint16{100, 65500} { // 65500: Ein- und Ausgang laufen im Test ueber 65535
+		b := newPadBench(t)
+		lo := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+		hi := &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000}
+		b.o.Assign(lo)
+		q := base
+		b.in(lo, q, 3000, true, true, true) // Bild 1
+		// Bild 2 = q+1, q+2, q+3(M); q+2 fehlt zunaechst
+		b.in(lo, q+1, 6000, true, false, false)
+		b.fill(5) // mitten im Bild: nichts
+		b.in(lo, q+3, 6000, false, false, true)
+		b.fill(7)
+		b.in(lo, q+2, 6000, false, false, false) // Nachsendung nach einem Schub
+		b.fill(4)                                // weiter an derselben Bildgrenze - das verspaetete Paket verschiebt sie nicht
+		// Bild 3 = q+4(M), Schub, Bild 4 = q+5, q+6(M) umsortiert, Schub, Bild 5 = q+7 .. q+9(M) mit q+8 spaet
+		b.in(lo, q+4, 9000, true, false, true)
+		b.fill(3)
+		b.in(lo, q+6, 12000, false, false, true)
+		b.in(lo, q+5, 12000, true, false, false) // Umsortierung innerhalb des Bilds, vor jedem Schub dieses Bilds
+		b.fill(6)
+		b.in(lo, q+7, 15000, true, false, false)
+		b.in(lo, q+9, 15000, false, false, true)
+		b.fill(2)
+		b.in(lo, q+10, 18000, true, false, true)
+		b.fill(2)
+		b.in(lo, q+8, 15000, false, false, false) // Nachsendung nach zwei Schueben
+		b.in(lo, q+8, 15000, false, false, false) // ... und noch einmal (Doppel der Quelle): dieselbe Folgenummer
+		b.w.mu.Lock()
+		n := len(b.w.hdrs)
+		if d := b.w.hdrs[n-1].SequenceNumber - b.w.hdrs[n-2].SequenceNumber; d != 0 {
+			t.Fatalf("doppelt eingetroffenes Paket mit zwei Folgenummern (Abstand %d)", d)
+		}
+		b.w.hdrs, b.w.pls = b.w.hdrs[:n-1], b.w.pls[:n-1]
+		b.w.mu.Unlock()
+		media, pads := b.check()
+		if media != 11 || pads != 7+4+3+6+2+2 {
+			t.Fatalf("basis %d: %d Medien-, %d Fuellpakete", base, media, pads)
+		}
+		// Quellwechsel: neue Historie. Ein Nachzuegler der alten Quelle wird nicht mehr weitergeleitet, ein
+		// verspaetetes Paket der neuen passt wieder.
+		b.o.Assign(hi)
+		h := base + 3000
+		b.in(hi, h, 90000, true, true, false)
+		b.in(hi, h+2, 90000, false, false, true)
+		b.fill(5)
+		b.in(lo, q+11, 21000, true, false, true) // alte Quelle: verworfen
+		b.in(hi, h+1, 90000, false, false, false)
+		b.fill(1)
+		b.in(hi, h+3, 93000, true, false, true)
+		media, pads = b.check()
+		if media != 15 || pads != 24+5+1 {
+			t.Fatalf("basis %d nach dem Quellwechsel: %d Medien-, %d Fuellpakete", base, media, pads)
+		}
+		// Nachsende-Puffer (NACK): Das verspaetete Paket traegt die Folgenummer seiner Luecke - der Empfaenger, der
+		// genau diese nachfragt, bekommt das richtige Medienpaket. Hier: Zeitstempel je Folgenummer passt zum Bild.
+		b.w.mu.Lock()
+		byTS := map[uint32][]uint16{}
+		for _, hd := range b.w.hdrs {
+			if !hd.Padding {
+				byTS[hd.Timestamp] = append(byTS[hd.Timestamp], hd.SequenceNumber)
+			}
+		}
+		b.w.mu.Unlock()
+		for ts, seqs := range byTS {
+			lo16, hi16 := seqs[0], seqs[0]
+			for _, s := range seqs {
+				if int16(s-lo16) < 0 {
+					lo16 = s
+				}
+				if int16(s-hi16) > 0 {
+					hi16 = s
+				}
+			}
+			if int(hi16-lo16)+1 != len(seqs) {
+				t.Fatalf("basis %d: Bild mit Zeitstempel %d nicht zusammenhaengend: %v", base, ts, seqs)
+			}
+		}
+		if b.leg.Stats.LateDropped.Load() != 0 {
+			t.Fatalf("verworfen: %d", b.leg.Stats.LateDropped.Load())
+		}
+	}
+}
+
+// TestPaddingSpaetAelterAlsHistorie: Ein Nachzuegler, der aelter ist als die Historie (mehr als padHist gefuellte
+// Bildgrenzen), wird verworfen statt auf eine vergebene Folgenummer zu geraten - die Luecke bleibt, ein Doppel
+// entsteht nicht. Innerhalb der Historie passt auch die aelteste Stelle noch.
+func TestPaddingSpaetAelterAlsHistorie(t *testing.T) {
+	b := newPadBench(t)
+	s := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	b.o.Assign(s)
+	b.in(s, 10, 0, true, true, true)
+	b.in(s, 11, 3000, true, false, false) // 12 fehlt
+	b.in(s, 13, 3000, false, false, true)
+	seq := uint16(13)
+	frames := func(n int) {
+		for i := 0; i < n; i++ {
+			b.fill(2)
+			seq++
+			b.in(s, seq, uint32(seq)*3000, true, false, true)
+		}
+	}
+	frames(padHist) // die Stelle hinter Paket 13 ist jetzt die aelteste im Ring
+	b.in(s, 12, 3000, false, false, false)
+	media, _ := b.check()
+	if media != 3+padHist+1 {
+		t.Fatalf("nachzuegler an der aeltesten Stelle nicht eingereiht: %d Medienpakete", media)
+	}
+	// zweite Luecke, diesmal faellt ihre Stelle aus dem Ring
+	seq++ // fehlt
+	gap := seq
+	seq++
+	b.in(s, seq, uint32(seq)*3000, true, false, true)
+	frames(padHist + 3)
+	n0 := b.w.count()
+	b.in(s, gap, uint32(gap)*3000, true, false, true)
+	if b.w.count() != n0 || b.leg.Stats.LateDropped.Load() != 1 {
+		t.Fatalf("nachzuegler jenseits der Historie geschrieben (%d Pakete, verworfen %d)", b.w.count()-n0, b.leg.Stats.LateDropped.Load())
+	}
+	seen := map[uint16]bool{}
+	for _, h := range b.w.hdrs {
+		if seen[h.SequenceNumber] {
+			t.Fatalf("folgenummer %d doppelt", h.SequenceNumber)
+		}
+		seen[h.SequenceNumber] = true
+	}
+}
