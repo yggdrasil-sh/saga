@@ -930,6 +930,7 @@ type estimator struct {
 	prUntil    int64   // ... ebenso bis hierhin nach einer gescheiterten Probe (probeFloor)
 	prReady    bool    // GCC-Ziel im Schutz weit genug ueber der Medienrate (wie ready)
 	prTail     bool    // Nachlauf der Probe: ein fallendes Ziel zaehlt nicht (siehe probeStep)
+	prN, prBad int     // Takte seit dem Abbruch; davon zuletzt in Folge mit Stausignal ohne Fuelldaten
 	prSig      string  // Stausignal dieses Takts waehrend des Schutzes: gcc | over | queue
 	prPeak     float64 // hoechstes GCC-Ziel seit Beginn der Probe
 	grant      float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
@@ -1032,7 +1033,28 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	}
 	age := time.Duration(st.TickAgeNs.Swap(0))
 	drops := st.TickDrops.Swap(0)
-	if e.prOn || e.prUntil != 0 && now < e.prUntil {
+	shield := e.prOn || e.prUntil != 0 && now < e.prUntil
+	if shield && !e.prOn {
+		// Nach einer gescheiterten Probe schuetzt die Frist nur vor dem Stau, den die Fuelldaten selbst erzeugt haben -
+		// der baut sich binnen probeDrain Takten ab. Steht danach, ohne Fuelldaten, weiter ein Stausignal an (eigene
+		// Warteschlange; GCC-Ziel unter der Medienrate und dabei fallend bzw. Ueberlast gemeldet), probeBad Takte in
+		// Folge, ist die Leitung wirklich eingebrochen: Schutz sofort beenden und reagieren wie ohne Probing.
+		v := 0.0
+		if l.Ext != nil {
+			v = float64(l.Ext())
+		}
+		bad := age > congAge || drops > 0 ||
+			v > 0 && v < rate*0.9 && (v < e.gccLast*gccFall || l.ExtOver != nil && l.ExtOver())
+		if e.prN++; e.prN > probeDrain && bad {
+			e.prBad++
+		} else {
+			e.prBad = 0
+		}
+		if e.prBad >= probeBad {
+			shield = false
+		}
+	}
+	if shield {
 		// Probe bzw. kurz nach einer gescheiterten: Stausignale nur festhalten. Die Schaetzung bleibt, wie sie vor der
 		// Probe war - nach oben geht in dieser Zeit nichts (ready).
 		v := 0.0

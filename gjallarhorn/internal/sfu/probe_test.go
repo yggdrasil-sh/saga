@@ -477,3 +477,70 @@ func TestProbingKnappeLeitung(t *testing.T) {
 		}
 	}
 }
+
+// TestProbingEinbruchInDerProbe (Prueferfund 3): Bricht die Leitung waehrend einer Probe wirklich ein (von 1150 auf
+// 300 kbit/s, traegt nur noch l), darf der Schutz der Schaetzung das nicht verdecken. Frueher blieb m die ganze Frist
+// (2 s) stehen und wurde erst nach 2,4 s verlassen; ohne Probing sind es 0,8 s. Jetzt endet der Schutz, sobald das
+// Stausignal ohne Fuelldaten weiter ansteht - hoechstens 0,6 s spaeter als ohne Probing. Eine Probe, die nur an der
+// eigenen Fuellung scheitert (Leitung traegt m weiter), veraendert die Schaetzung weiterhin nicht.
+func TestProbingEinbruchInDerProbe(t *testing.T) {
+	leave := map[string]time.Duration{}
+	for _, mode := range []string{"aus", "an-in-probe", "an-ohne-probe"} {
+		er := newEstCfg(t, 1250e3, 810e3, 1, mode != "aus")
+		er.link = 1150e3
+		er.until("m", 2*time.Second)
+		er.run(8 * time.Second)
+		hit := false
+		for i := 0; i < 600 && !hit; i++ {
+			er.tick()
+			switch mode {
+			case "an-in-probe":
+				hit = er.l.pr.stage == 2
+			case "an-ohne-probe":
+				hit = i > 100 && er.l.pr.stage == 0 && er.l.est.prUntil == 0 && er.layer() == "m"
+			default:
+				hit = i > 100 && er.layer() == "m"
+			}
+		}
+		if !hit {
+			t.Fatalf("%s: Ausgangslage nicht erreicht", mode)
+		}
+		er.link = 300e3
+		start, over := er.now, time.Duration(0)
+		tl := time.Duration(-1)
+		for er.now-start < int64(20*time.Second) {
+			er.tick()
+			if estAudio+er.sent > er.link {
+				over += 200 * time.Millisecond
+			}
+			if tl < 0 && er.layer() != "m" {
+				tl = time.Duration(er.now - start)
+			}
+		}
+		leave[mode] = tl
+		t.Logf("%s: verlaesst m nach %v, %v ueber der Leitung, am Ende %q", mode, tl, over, er.layer())
+		if tl < 0 || er.layer() != "l" {
+			t.Fatalf("%s: m nicht verlassen bzw. am Ende %q", mode, er.layer())
+		}
+	}
+	if d := leave["an-in-probe"] - leave["aus"]; d > 600*time.Millisecond {
+		t.Fatalf("Einbruch in der Probe %v spaeter erkannt als ohne Probing (%v gegen %v)", d, leave["an-in-probe"], leave["aus"])
+	}
+	if leave["an-ohne-probe"] > leave["aus"] {
+		t.Fatalf("ohne laufende Probe spaeter als ohne Probing: %v gegen %v", leave["an-ohne-probe"], leave["aus"])
+	}
+	// Gegenstueck: Die Probe scheitert nur an der eigenen Fuellung - m bleibt, die Schaetzung bleibt
+	er := newEstCfg(t, 1250e3, 810e3, 1, true)
+	er.link = 1150e3
+	er.until("m", 2*time.Second)
+	for i := 0; i < 600 && er.l.pstat.Failed == 0; i++ {
+		er.tick()
+	}
+	est := er.l.EstimateKbit()
+	for i := 0; i < 25; i++ {
+		er.tick()
+		if er.layer() != "m" || er.l.EstimateKbit() < est {
+			t.Fatalf("takt %d nach gescheiterter Probe: schicht %q, schaetzung %d (vorher %d)", i, er.layer(), er.l.EstimateKbit(), est)
+		}
+	}
+}

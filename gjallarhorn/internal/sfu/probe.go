@@ -57,6 +57,8 @@ const (
 	probeGrant    = time.Second     // so lange gilt eine bestandene Probe fuer den Schritt
 	probeSlack    = 1.1             // ... auch wenn sein Bedarf seit Beginn der Probe um so viel gewachsen ist
 	probeFloor    = lagFloor        // so lange nach einem Abbruch faellt die Schaetzung nicht unter den Stand davor
+	probeDrain    = 2               // ... es sei denn, nach so vielen Takten ohne Fuelldaten steht weiter ein Stausignal an,
+	probeBad      = 2               // und zwar so viele Takte in Folge (echter Einbruch, estimator.update)
 )
 
 // Ergebnis einer Probe in der Layout-Meldung (Slot.Probe).
@@ -319,7 +321,7 @@ func (e *estimator) shieldOn(now int64) {
 
 func (e *estimator) shieldOff(now int64, floor time.Duration) {
 	e.prOn, e.prSig = false, ""
-	e.prUntil = 0
+	e.prUntil, e.prN, e.prBad = 0, 0, 0
 	if floor > 0 {
 		e.prUntil = now + int64(floor)
 	}
