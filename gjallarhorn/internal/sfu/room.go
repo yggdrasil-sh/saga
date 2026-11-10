@@ -303,11 +303,9 @@ type slot struct {
 	// Aufschub nach gescheitertem Hochschalten (Budget): letzter Wechsel nach oben, fuer wen, aktueller Aufschub
 	upAt    int64
 	upOwner *Peer
-	dwell   time.Duration
-	// ... er gilt seit dwellAt fuer dwellOwner und nur fuer Schritte auf Schichten ab dwellRank (die gescheiterte und
-	// alles darueber); heldAt: seit wann die laufende Quelle ohne Pause laeuft
-	dwellAt    int64
-	dwellRank  int
+	// ... je Schicht (Index layerRank): Dauer und Beginn, fuer dwellOwner. Ein gescheiterter Versuch auf m sagt nichts
+	// ueber h und umgekehrt. heldAt: seit wann die laufende Quelle ohne Pause laeuft
+	dw         [4]dwell
 	dwellOwner *Peer
 	heldAt     int64
 	// zuletzt weitergeleitete Quelle (auch ueber eine Pause) und Grund des letzten Wechsels fuer die naechste Meldung
@@ -316,6 +314,15 @@ type slot struct {
 	why                       string
 	whyKbit, whyLive, whyHold int
 }
+
+// dwell: Aufschub fuer den Schritt auf eine Schicht nach gescheiterten Versuchen.
+type dwell struct {
+	d  time.Duration
+	at int64
+}
+
+// dwellOf: aktueller Aufschub fuer den Schritt auf die Schicht l.
+func (s *slot) dwellOf(l string) time.Duration { return s.dw[layerRank(l)].d }
 
 // FwdLeg liefert das Bein des Weiterleiters (Flusher, Zaehler, Drossel).
 func (l *Leg) FwdLeg() *fwd.Leg { return l.fl }

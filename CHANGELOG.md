@@ -35,11 +35,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   nicht: Die Schätzung folgt dem Ziel sofort wie bisher.
 - Kein Dauer-Pendeln auf einer Leitung zwischen zwei Ebenen: Mit der bisherigen Obergrenze von 32 s kam dort ohne
   Ende alle 32 s ein Versuch nach oben (im Labor 20 in 10 min, jeder mit Schlüsselbildern und kurz verdecktem Ton).
-  Der Aufschub verdoppelt sich jetzt bis 5 min (Modell: 7 Versuche in 10 min, danach einer je 5 min). Er gilt nur
-  für den Weg zur gescheiterten Ebene und darüber – fällt ein Platz später tiefer, darf er nach 4 s wieder bis
-  darunter. Weg ist er, sobald die gescheiterte Ebene 30 s gehalten hat (bisher: nach 2 s). Hielt ein Versuch länger
-  als 2 s und fällt dann wegen des Budgets zurück, halbiert sich der Aufschub (höchstens 32 s): Eine frei gewordene
-  Leitung bleibt nach einem einzelnen Rückfall nicht minutenlang unten. Diese Regeln gelten für alle Wege; auf UDP
+  Der Aufschub verdoppelt sich jetzt bis 5 min (Modell: 7 Versuche in 10 min, danach einer je 5 min). Jede Ebene
+  hat ihren eigenen Aufschub – fällt ein Platz nach gescheiterten Versuchen auf die hohe Ebene später tiefer, darf
+  er nach 4 s zurück auf die mittlere. Weg ist der Aufschub, sobald die Ebene 30 s gehalten hat (bisher: nach 2 s).
+  Hielt ein Versuch länger als 2 s und fällt dann wegen des Budgets zurück, gilt höchstens ein Aufschub von 32 s:
+  Eine frei gewordene Leitung bleibt nach einem einzelnen Rückfall nicht minutenlang unten. Diese Regeln gelten für
+  alle Wege; auf UDP
   zählt zusätzlich eine gescheiterte Schonfrist als Fehlversuch, auch wenn sie später als 2 s endet.
 - Gruppen über UDP: Je Takt geht höchstens ein Platz eine Ebene höher – gingen mehrere zugleich, sprang die Rate um
   die Summe, und ein Stau danach war keinem Schritt zuzuordnen. Kacheln, die aus der Pause dazukommen, zählen nicht

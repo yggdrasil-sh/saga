@@ -268,7 +268,7 @@ func TestSchaetzerEngeLeitung(t *testing.T) {
 			if onH > time.Duration(len(ups))*c.hold {
 				t.Fatalf("%v von 20 min auf h (%d Versuche)", onH, len(ups))
 			}
-			if d := er.l.slots[1].dwell; d != upDwellMax {
+			if d := er.l.slots[1].dwellOf("h"); d != upDwellMax {
 				t.Fatalf("aufschub %v, erwartet %v", d, upDwellMax)
 			}
 			if last := time.Duration(ups[len(ups)-1] - downs[len(ups)-2]); last < upDwellMax-time.Second {
@@ -501,13 +501,13 @@ func TestSchaetzerAufschubZurueck(t *testing.T) {
 	sl := er.l.slots[1]
 	er.link = 1000e3
 	er.until("m", 2*time.Second)
-	for i := 0; sl.dwell < upDwellMax; i++ {
+	for i := 0; sl.dwellOf("h") < upDwellMax; i++ {
 		if i > 5*60*15 {
-			t.Fatalf("aufschub nach 15 min erst %v", sl.dwell)
+			t.Fatalf("aufschub nach 15 min erst %v", sl.dwellOf("h"))
 		}
 		er.tick()
 	}
-	grown := sl.dwell
+	grown := sl.dwellOf("h")
 	er.link = 0
 	burst := func() {
 		er.loss = true
@@ -521,20 +521,20 @@ func TestSchaetzerAufschubZurueck(t *testing.T) {
 		t.Fatalf("freie Leitung: %q", er.layer())
 	}
 	burst()
-	if sl.dwell != upDwellSoft {
-		t.Fatalf("nach 10 s auf h: aufschub %v, erwartet %v", sl.dwell, upDwellSoft)
+	if sl.dwellOf("h") != upDwellSoft {
+		t.Fatalf("nach 10 s auf h: aufschub %v, erwartet %v", sl.dwellOf("h"), upDwellSoft)
 	}
 	soft := er.until("h", upDwellSoft+20*time.Second)
 	if soft < upDwellSoft-layerDwell {
 		t.Fatalf("schon nach %v wieder hoch (aufschub %v)", soft, upDwellSoft)
 	}
 	er.run(upHold + time.Second)
-	if er.layer() != "h" || sl.dwell != 0 {
-		t.Fatalf("nach %v auf h: %q, aufschub %v, erwartet 0", upHold, er.layer(), sl.dwell)
+	if er.layer() != "h" || sl.dwellOf("h") != 0 {
+		t.Fatalf("nach %v auf h: %q, aufschub %v, erwartet 0", upHold, er.layer(), sl.dwellOf("h"))
 	}
 	burst()
-	if sl.dwell != 0 {
-		t.Fatalf("nach dem Schub: aufschub %v, erwartet 0", sl.dwell)
+	if sl.dwellOf("h") != 0 {
+		t.Fatalf("nach dem Schub: aufschub %v, erwartet 0", sl.dwellOf("h"))
 	}
 	d := er.until("h", 15*time.Second)
 	er.run(20 * time.Second)
@@ -607,39 +607,48 @@ func TestSchaetzerGruppeEinSchritt(t *testing.T) {
 	}
 }
 
-// TestSchaetzerAufschubNurObereSchicht (Prueferfund): Der Aufschub nach gescheiterten h-Versuchen gilt nur fuer den Weg
-// nach h. Bricht die Leitung kurz darauf so weit ein, dass der Platz auf l faellt, ist er nach dem Einbruch zuegig
-// wieder auf m - und nicht erst nach dem Aufschub (im Modell waren das fast 5 min auf l). Der Einbruch stellt den
-// Aufschub und seine Uhr nicht zurueck: Der naechste h-Versuch kommt wie geplant.
-func TestSchaetzerAufschubNurObereSchicht(t *testing.T) {
-	er := newEstRoom(t, 1250e3, 810e3)
-	sl := er.l.slots[1]
-	er.link = 1000e3
-	er.until("m", 2*time.Second)
-	for i := 0; sl.dwell < upDwellMax; i++ {
-		if i > 5*60*15 {
-			t.Fatalf("aufschub nach 15 min erst %v", sl.dwell)
-		}
-		er.tick()
+// TestSchaetzerAufschubJeSchicht (Prueferfunde): Der Aufschub nach gescheiterten h-Versuchen gilt nur fuer den Schritt
+// auf h. Bricht die Leitung kurz darauf so weit ein, dass der Platz auf l faellt, ist er nach dem Einbruch zuegig
+// wieder auf m - und nicht erst nach dem h-Aufschub (im Modell waren das fast 5 min auf l). Das gilt auch, wenn im
+// Einbruch ein m-Versuch scheitert: Er bekommt seinen eigenen, kleinen Aufschub und erbt nicht den von h. Der Einbruch
+// stellt den h-Aufschub und seine Uhr nicht zurueck: Der naechste h-Versuch kommt wie geplant.
+func TestSchaetzerAufschubJeSchicht(t *testing.T) {
+	for _, dip := range []time.Duration{2 * time.Second, 12 * time.Second, 20 * time.Second} {
+		t.Run(dip.String(), func(t *testing.T) {
+			er := newEstRoom(t, 1250e3, 810e3)
+			sl := er.l.slots[1]
+			er.link = 1000e3
+			er.until("m", 2*time.Second)
+			for i := 0; sl.dwellOf("h") < upDwellMax; i++ {
+				if i > 5*60*15 {
+					t.Fatalf("aufschub nach 15 min erst %v", sl.dwellOf("h"))
+				}
+				er.tick()
+			}
+			failed := er.now
+			er.run(10 * time.Second)
+			er.link = 400e3
+			er.until("l", 5*time.Second)
+			er.run(dip)
+			er.link = 1000e3
+			back := time.Duration(0)
+			if er.layer() != "m" {
+				back = er.until("m", 40*time.Second)
+			}
+			er.run(upHold + 2*time.Second)
+			if er.layer() != "m" || sl.dwellOf("h") != upDwellMax || sl.dwellOf("m") != 0 {
+				t.Fatalf("nach dem Einbruch: %q, aufschub h %v, m %v", er.layer(), sl.dwellOf("h"), sl.dwellOf("m"))
+			}
+			for er.now-failed < int64(upDwellMax-2*time.Second) {
+				er.tick()
+				if er.layer() == "h" {
+					t.Fatalf("h-Versuch schon %v nach dem Fehlversuch", time.Duration(er.now-failed))
+				}
+			}
+			next := er.until("h", 30*time.Second)
+			t.Logf("nach dem Einbruch wieder m nach %v; naechster h-Versuch %v nach dem letzten", back, upDwellMax-2*time.Second+next)
+		})
 	}
-	failed := er.now
-	er.run(10 * time.Second)
-	er.link = 400e3
-	er.until("l", 5*time.Second)
-	er.run(2 * time.Second)
-	er.link = 1000e3
-	back := er.until("m", 40*time.Second)
-	if sl.dwell != upDwellMax || sl.dwellRank != layerRank("h") {
-		t.Fatalf("aufschub %v ab Rang %d nach dem Einbruch", sl.dwell, sl.dwellRank)
-	}
-	for er.now-failed < int64(upDwellMax-2*time.Second) {
-		er.tick()
-		if er.layer() == "h" {
-			t.Fatalf("h-Versuch schon %v nach dem Fehlversuch", time.Duration(er.now-failed))
-		}
-	}
-	next := er.until("h", 30*time.Second)
-	t.Logf("nach dem Einbruch wieder m nach %v; naechster h-Versuch %v nach dem letzten", back, upDwellMax-2*time.Second+next)
 }
 
 // TestSchaetzerQuelleWeg (Prueferfund): Hat h nach einer engen Phase lange gehalten, ist der alte Aufschub erledigt -
@@ -650,17 +659,17 @@ func TestSchaetzerQuelleWeg(t *testing.T) {
 	sl := er.l.slots[1]
 	er.link = 1000e3
 	er.until("m", 2*time.Second)
-	for i := 0; sl.dwell < 2*time.Minute; i++ {
+	for i := 0; sl.dwellOf("h") < 2*time.Minute; i++ {
 		if i > 5*60*15 {
-			t.Fatalf("aufschub nach 15 min erst %v", sl.dwell)
+			t.Fatalf("aufschub nach 15 min erst %v", sl.dwellOf("h"))
 		}
 		er.tick()
 	}
 	er.link = 0
 	er.until("h", upDwellMax)
 	er.run(time.Minute)
-	if er.layer() != "h" || sl.dwell != 0 {
-		t.Fatalf("nach 1 min auf h: %q, aufschub %v", er.layer(), sl.dwell)
+	if er.layer() != "h" || sl.dwellOf("h") != 0 {
+		t.Fatalf("nach 1 min auf h: %q, aufschub %v", er.layer(), sl.dwellOf("h"))
 	}
 	off := map[*fwd.Source]bool{}
 	for s, v := range er.on {
@@ -672,4 +681,43 @@ func TestSchaetzerQuelleWeg(t *testing.T) {
 	er.r.SetRemote("fern", -1, er.on)
 	d := er.until("h", 20*time.Second)
 	t.Logf("h wieder %v, nachdem der Sender es zurueckgab", d)
+}
+
+// TestSchaetzerWechselndesScheitern (Prueferfund): Scheitert h abwechselnd sofort und nach laengerem Halten (unter
+// upHold), darf der Aufschub nicht jedes Mal von vorn beginnen - sonst kommt das Dauer-Pendeln zurueck (im Modell 38
+// bis 40 Versuche je 10 min). Die spaete Ruecknahme deckelt ihn nur auf upDwellSoft, sie verkuerzt ihn nicht.
+func TestSchaetzerWechselndesScheitern(t *testing.T) {
+	for _, hold := range []time.Duration{12 * time.Second, 15 * time.Second} {
+		t.Run(hold.String(), func(t *testing.T) {
+			er := newEstRoom(t, 1250e3, 810e3)
+			er.until("h", 10*time.Second)
+			ups, onH, late := 1, time.Duration(0), true
+			upAt, start := er.now, er.now
+			for er.now-start < int64(10*time.Minute) {
+				was := er.layer()
+				wait := 400 * time.Millisecond
+				if late {
+					wait = hold
+				}
+				er.loss = was == "h" && er.now-upAt >= int64(wait)
+				er.tick()
+				switch is := er.layer(); {
+				case was != "h" && is == "h":
+					ups, upAt = ups+1, er.now
+				case was == "h" && is != "h":
+					late = !late
+				}
+				if er.layer() == "h" {
+					onH += 200 * time.Millisecond
+				}
+			}
+			if ups > 16 {
+				t.Fatalf("pendelt: %d h-Versuche in 10 min (%v auf h)", ups, onH)
+			}
+			if ups < 6 {
+				t.Fatalf("nur %d h-Versuche in 10 min", ups)
+			}
+			t.Logf("%d h-Versuche in 10 min, %v auf h", ups, onH)
+		})
+	}
 }

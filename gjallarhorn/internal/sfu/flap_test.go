@@ -344,8 +344,8 @@ func TestFlapFeldmuster(t *testing.T) {
 
 // TestBudgetFehlversuchAufschub (Feldbefund h<->m an der Schwelle): Faellt ein Platz binnen upFail nach dem Hochschalten
 // wegen des Budgets wieder zurueck, verdoppelt sich der Aufschub fuer den naechsten Versuch (bis upDwellMax). Hielt ein
-// Versuch laenger als upFail, halbiert die Ruecknahme ihn (hoechstens upDwellSoft); sobald die hoehere Schicht upHold
-// gehalten hat, ist er weg und es gilt wieder layerDwell.
+// Versuch laenger als upFail, deckelt die Ruecknahme ihn auf upDwellSoft; sobald die hoehere Schicht upHold gehalten
+// hat, ist er weg und es gilt wieder layerDwell.
 func TestBudgetFehlversuchAufschub(t *testing.T) {
 	fr := newFlapRoom(t)
 	fr.on(true)
@@ -358,7 +358,7 @@ func TestBudgetFehlversuchAufschub(t *testing.T) {
 	dwell := func() time.Duration {
 		fr.r.mu.Lock()
 		defer fr.r.mu.Unlock()
-		return fr.l.slots[0].dwell
+		return fr.l.slots[0].dwellOf("m")
 	}
 	if fr.layer() != "m" || fr.l.slots[0].class != "speaker" {
 		t.Fatalf("start: %q", fr.layer())
@@ -390,11 +390,11 @@ func TestBudgetFehlversuchAufschub(t *testing.T) {
 		}
 		t.Logf("runde %d: wieder hoch nach %v (aufschub %v, grundfall %v)", i, d, want, base)
 	}
-	// kurz gehalten (laenger als upFail, kuerzer als upHold): kein Fehlversuch - halbiert, hoechstens upDwellSoft
+	// kurz gehalten (laenger als upFail, kuerzer als upHold): kein Fehlversuch - hoechstens upDwellSoft
 	fr.tick(3 * time.Second)
 	est(300e3)
 	fr.tick(200 * time.Millisecond)
-	want = min(want/2, upDwellSoft)
+	want = min(want, upDwellSoft)
 	if fr.layer() != "l" || dwell() != want {
 		t.Fatalf("nach kurzem Halten: %q aufschub %v, erwartet %v", fr.layer(), dwell(), want)
 	}
