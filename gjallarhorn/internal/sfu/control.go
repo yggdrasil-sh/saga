@@ -830,12 +830,21 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// der erste laufende in der Reihenfolge des Vorrangs)
 	if moved {
 		l.movedAt = now
+		if l.pr.stage != 0 {
+			// Die Auswahl hat sich waehrend der Probe geaendert (auch an einem anderen Platz): Die Rate, auf die die
+			// Fuellung berechnet war, stimmt nicht mehr - Abbruch ohne Wertung
+			l.probeEnd(probeAbort, "platz", now)
+		}
 	}
 	l.pf.decay(now)
 	// Darf der naechste Schritt ohne Probe versucht werden, folgt der Deckel der Schaetzung wieder dem Bedarf (wie ohne
 	// Probing): nach probeBlindAfter gescheiterten Proben in Folge
 	l.est.blind = prb && probeBlindAfter > 0 && l.pf.pd > 0 && l.pf.n >= probeBlindAfter
-	if cand.s != nil && now-l.movedAt >= int64(probeQuiet) && now >= l.prNext && l.pr.stage == 0 &&
+	quiet := int64(probeQuiet)
+	if l.pstat.Started == 0 {
+		quiet = int64(probeQuietFirst)
+	}
+	if cand.s != nil && now-l.movedAt >= quiet && now >= l.prNext && l.pr.stage == 0 &&
 		cand.need*upHeadroom+audioCut <= quotaCap {
 		fs := cand.s
 		if fs.layer == "" || fs.paused {
@@ -846,6 +855,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 					break
 				}
 			}
+		}
+		// Eine stille Quelle traegt keine Fuellpakete (sie folgen nur auf ein Bildende): dann nicht proben
+		if fs != nil && (fs.src == nil || !fs.src.live(now)) {
+			fs = nil
 		}
 		if fs != nil {
 			l.probeBegin(cand.s, fs, cand.rank, cand.need, sum, audioCut, now)

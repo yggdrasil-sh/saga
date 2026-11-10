@@ -36,6 +36,7 @@ type estRoom struct {
 	pevs  []Slot               // Probe-Ereignisse (Probing)
 	fill  float64              // Fuellrate dieses Takts (bit/s)
 	padMB float64              // gesendete Fuelldaten
+	noPad bool                 // Fuelldaten werden eingestellt, aber nicht gesendet
 }
 
 const estAudio = 40e3
@@ -117,6 +118,9 @@ func (er *estRoom) tick() {
 	rate := estAudio + er.sent
 	// Fuelldaten einer Probe (Probing): Das Modell sendet sie mit der eingestellten Rate, die Leitung sieht sie
 	er.fill = float64(er.l.fl.Padding())
+	if er.noPad { // die Fuellpakete fliessen nicht (stille Quelle, Ausgang wartet auf ein Schluesselbild)
+		er.fill = 0
+	}
 	if er.fill > 0 {
 		er.l.fl.Stats.PadBytes.Add(uint64(er.fill * dt / 8))
 		er.padMB += er.fill * dt / 8e6

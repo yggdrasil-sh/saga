@@ -54,11 +54,14 @@ const (
 	probeGapMax   = 2 * time.Minute
 	probeRetry    = 2 * time.Second // Abstand nach einer abgebrochenen Probe (Belegung geaendert)
 	probeQuiet    = layerDwell      // so lange muss die Bild-Auswahl des Beins unveraendert laufen, bevor geprobt wird
-	probeGrant    = time.Second     // so lange gilt eine bestandene Probe fuer den Schritt
-	probeSlack    = 1.1             // ... auch wenn sein Bedarf seit Beginn der Probe um so viel gewachsen ist
-	probeFloor    = lagFloor        // so lange nach einem Abbruch faellt die Schaetzung nicht unter den Stand davor
-	probeDrain    = 2               // ... es sei denn, nach so vielen Takten ohne Fuelldaten steht weiter ein Stausignal an,
-	probeBad      = 2               // und zwar so viele Takte in Folge (echter Einbruch, estimator.update)
+	// ... vor der ersten Probe eines Beins kuerzer: Es gibt noch keinen Wechsel, dessen Folgen (Schluesselbild,
+	// nachlaufendes Ziel) abzuwarten waeren - nur der Anlauf (erstes Schluesselbild, erste Rueckmeldungen an GCC)
+	probeQuietFirst = 2 * time.Second
+	probeGrant      = time.Second // so lange gilt eine bestandene Probe fuer den Schritt
+	probeSlack      = 1.1         // ... auch wenn sein Bedarf seit Beginn der Probe um so viel gewachsen ist
+	probeFloor      = lagFloor    // so lange nach einem Abbruch faellt die Schaetzung nicht unter den Stand davor
+	probeDrain      = 2           // ... es sei denn, nach so vielen Takten ohne Fuelldaten steht weiter ein Stausignal an,
+	probeBad        = 2           // und zwar so viele Takte in Folge (echter Einbruch, estimator.update)
 )
 
 // Ergebnis einer Probe in der Layout-Meldung (Slot.Probe).

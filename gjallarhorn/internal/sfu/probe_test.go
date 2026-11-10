@@ -574,3 +574,21 @@ func TestProbingGrosserSchritt(t *testing.T) {
 		t.Fatalf("probe-ereignisse %+v", er.pevs)
 	}
 }
+
+// TestProbingFuelldatenFliessenNicht (Prueferfund 8): Stellt der Takt die Fuellrate ein, aber der Schreiber sendet
+// nichts (Quelle still, Ausgang wartet auf ein Schluesselbild), endet die Probe als abgebrochen ("fuell") - bestanden
+// ist sie nicht. Der naechste Versuch kommt mit wachsendem Abstand wie nach einer gescheiterten Probe, nicht alle 2 s.
+func TestProbingFuelldatenFliessenNicht(t *testing.T) {
+	er := newEstCfg(t, 1250e3, 810e3, 1, true)
+	er.noPad = true
+	er.until("m", 2*time.Second)
+	res := er.measure(5*time.Minute, nil)
+	t.Logf("%v, letzte %q", res, er.l.pstat.Last)
+	if res.ok != 0 || res.ups != 0 || res.aborted < 3 || res.aborted > 6 || er.l.pstat.Last != "abort:fuell" {
+		t.Fatalf("%v, letzte %q (erwartet 3 bis 6 abgebrochene Proben in 5 min, kein Schritt)", res, er.l.pstat.Last)
+	}
+	er.noPad = false
+	if d := er.until("h", probeGapMax+10*time.Second); d > probeGapMax+5*time.Second {
+		t.Fatalf("h erst nach %v", d)
+	}
+}
