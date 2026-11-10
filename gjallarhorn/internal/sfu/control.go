@@ -756,11 +756,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			switch {
 			case fast:
 				d.d, d.at = min(2*max(d.d, layerDwell), upDwellMax), now
-				if prb { // der Fehlversuch entwertet auch eine bestandene Probe: Abstand bis zur naechsten verdoppeln
-					d.failProbe(now)
-				}
+				d.afterFail(now)
 			case s.why == whyBudget && d.d > 0:
 				d.d, d.at = min(d.d, upDwellSoft), now
+				d.afterFail(now)
 			}
 			s.downAt, s.downOwner = now, s.owner
 		} else if s.layer != "" && layerRank(st.Layer) > layerRank(s.layer) {
@@ -787,10 +786,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// der erste laufende in der Reihenfolge des Vorrangs)
 	if cand.s != nil && !moved && l.pr.stage == 0 && cand.need*upHeadroom+audioCut <= quotaCap {
 		fs := cand.s
-		if fs.layer == "" || fs.paused || fs.out.Current() == nil {
+		if fs.layer == "" || fs.paused {
 			fs = nil
 			for _, s := range order {
-				if s.owner != nil && s.layer != "" && !s.paused && s.out.Current() != nil {
+				if s.owner != nil && s.layer != "" && !s.paused {
 					fs = s
 					break
 				}
@@ -895,6 +894,7 @@ type estimator struct {
 	prOn       bool    // Probe laeuft: Stausignale nur beobachten (prSig), Schaetzung unveraendert
 	prUntil    int64   // ... ebenso bis hierhin nach einer gescheiterten Probe (probeFloor)
 	prReady    bool    // GCC-Ziel im Schutz weit genug ueber der Medienrate (wie ready)
+	prTail     bool    // Nachlauf der Probe: ein fallendes Ziel zaehlt nicht (siehe probeStep)
 	prSig      string  // Stausignal dieses Takts waehrend des Schutzes: gcc | over | queue
 	prPeak     float64 // hoechstes GCC-Ziel seit Beginn der Probe
 	grant      float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
@@ -1009,7 +1009,7 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		case !e.prOn:
 		case age > congAge || drops > 0:
 			e.prSig = "queue"
-		case v > 0 && v < e.prPeak*gccFall:
+		case v > 0 && v < e.prPeak*gccFall && !e.prTail:
 			e.prSig = "gcc"
 		case l.ExtOver != nil && l.ExtOver():
 			e.prSig = "over"

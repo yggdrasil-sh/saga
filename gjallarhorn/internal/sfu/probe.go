@@ -36,9 +36,11 @@ import (
 // ist danach fuer einen neuen Versuch auf diese Schicht eine bestandene Probe noetig - der blosse Ablauf des Aufschubs
 // genuegt nicht mehr (genau diese blinden Versuche kosten Schluesselbilder). Dafuer darf schon waehrend des Aufschubs
 // geprobt werden, sobald der Proben-Abstand um ist, und eine bestandene Probe erlaubt den Versuch vorzeitig. Die Probe
-// verlaengert den Aufschub nie. Ein echter Fehlversuch zaehlt zugleich als gescheiterte Probe (Abstand verdoppelt):
-// Besteht die Probe wiederholt, waehrend der Wechsel scheitert, kommen die Versuche so hoechstens im Proben-Abstand
-// (10, 20, 40 ... 120 s) und nicht haeufiger als bisher.
+// verlaengert den Aufschub nie. Nach einem echten Fehlversuch (bzw. einer Budget-Ruecknahme mit Vorgeschichte) wird
+// fruehestens nach dem Aufschub geprobt, hoechstens aber nach probeGapMax (dwell.afterFail): Besteht die Probe
+// wiederholt, waehrend der Wechsel scheitert, kommen die Versuche so nie haeufiger als ohne Probing (8, 16, 32 ... s) -
+// eine bestandene Probe setzt nur den Abstand nach gescheiterten Proben zurueck, nicht diesen. "Vorzeitig" wirkt also
+// bei langen Aufschueben (ueber 2 min bis 5 min): Eine frei gewordene Leitung ist nach spaetestens 2 min wieder oben.
 const (
 	probeRamp     = 2                       // Takte mit halber Fuellrate
 	probeMinTicks = 3                       // Mindestlaenge des Fensters in Takten
@@ -167,7 +169,11 @@ func (l *Leg) probeStep(now int64) {
 				l.probeEnd(probeAbort, "fuell", now)
 				return
 			}
+			// Im Nachlauf zaehlt ein fallendes Ziel nicht als Stau: Mit dem Ende der Fuelldaten sinkt die empfangene
+			// Rate, und pion-GCC nimmt sein Ziel nahe einer frueheren Staurate auf das 1,5-Fache davon zurueck
+			// (rate_controller: min(Ziel + Schritt, 1,5 x empfangen)). Ueberlast und Warteschlange zaehlen weiter.
 			p.stage, p.n, p.at = 3, 0, now
+			e.prTail = true
 			l.fl.SetPadding(nil, 0)
 		}
 	case 3:
@@ -215,10 +221,16 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 	*p = probe{}
 }
 
-// failProbe: gescheiterte Probe (bzw. echter Fehlversuch) - Abstand bis zur naechsten verdoppeln.
+// failProbe: gescheiterte Probe - Abstand bis zur naechsten verdoppeln.
 func (d *dwell) failProbe(now int64) {
 	d.pd = min(max(2*d.pd, probeGap), probeGapMax)
-	d.next, d.ok = now+int64(d.pd), 0
+	d.next, d.ok = max(d.next, now+int64(d.pd)), 0
+}
+
+// afterFail: Ein echter Wechsel auf diese Schicht ist gescheitert bzw. wurde zurueckgenommen (Aufschub d.d gesetzt) -
+// die naechste Probe fruehestens nach dem Aufschub, hoechstens nach probeGapMax. Ohne Probing ohne Wirkung.
+func (d *dwell) afterFail(now int64) {
+	d.next, d.ok = max(d.next, now+int64(min(d.d, probeGapMax))), 0
 }
 
 // setProbe haelt ein Probe-Ereignis fuer die naechste Layout-Meldung fest.
@@ -229,7 +241,7 @@ func (s *slot) setProbe(ev, why string, target float64) {
 // shieldOn: Eine Probe beginnt - bis shieldOff (und danach floor lang) beobachtet der Schaetzer Stausignale nur
 // (prSig), statt die Schaetzung zu aendern.
 func (e *estimator) shieldOn(now int64) {
-	e.prOn, e.prSig, e.prPeak, e.prUntil = true, "", e.gccLast, 0
+	e.prOn, e.prSig, e.prPeak, e.prUntil, e.prTail = true, "", e.gccLast, 0, false
 }
 
 func (e *estimator) shieldOff(now int64, floor time.Duration) {
