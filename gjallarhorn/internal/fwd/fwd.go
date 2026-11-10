@@ -557,6 +557,7 @@ type Out struct {
 	hiPic      uint16 // ... und PictureID
 	hiTS       uint32 // ... und juengster geschriebener Zeitstempel
 	pauseAt    int64
+	frameEnd   bool // letztes geschriebenes Paket trug das Bildende (Marker): Fuellpakete duerfen folgen
 	// Stand des Ausgangs in der Folge seiner Quelle. Ein Paket, das erst eintrifft, nachdem der Ausgang an seiner Stelle
 	// vorbei ist (Nachsendung, Umsortierung - Packet.late), muss mit den Versaetzen von damals hinaus: Mit den heutigen
 	// landete es auf einer schon vergebenen Folgenummer, und seine eigene Luecke bliebe offen. Jede uebersprungene
@@ -812,6 +813,7 @@ type LegStats struct {
 	WriteStalls           atomic.Uint64
 	WriteStallNs          atomic.Uint64
 	TIDSkipped            atomic.Uint64
+	PadPkts, PadBytes     atomic.Uint64 // Fuellpakete einer Probe (SetPadding); in PktsOut/BytesOut enthalten
 	LateDropped           atomic.Uint64 // verspaetete Pakete, die ein Ausgang nicht mehr einordnen konnte (verworfen)
 }
 
@@ -868,6 +870,100 @@ type Leg struct {
 	tokT    int64
 
 	throttle atomic.Int64 // Testdrossel in bit/s (0 = aus)
+
+	// Fuelldaten (Probe vor einem Schritt nach oben): Der Steuerpfad setzt nur Ausgang und Rate, der Schreiber fuegt
+	// die Pakete ein (pad). Ohne Sperren und Allokationen je Paket.
+	padBps    atomic.Int64        // Fuellrate in bit/s (0 = aus)
+	padOut    atomic.Pointer[Out] // Bild-Ausgang, auf dessen SSRC gefuellt wird
+	padBuf    [PadSize]byte       // Nutzlast eines Fuellpakets (letztes Byte = Laenge); nur lesen
+	padCredit float64             // Guthaben in Byte (nur Schreiber)
+	padT      int64
+	padTimer  *time.Timer
+}
+
+// Fuellpakete: reine RTP-Padding-Pakete (P-Bit, keine Nutzlast) mit PadSize Byte Padding, also padWire Byte je Paket
+// ohne Erweiterungen. Geschrieben wird nur zwischen zwei Bildern (nach einem Paket mit Marker), hoechstens padBurst
+// Guthaben am Stueck; ist die Warteschlange leer, alle padTick.
+const (
+	PadSize  = 255
+	padWire  = 12 + PadSize
+	padTick  = 5 * time.Millisecond
+	padBurst = 40 * time.Millisecond
+)
+
+// SetPadding stellt die Fuellrate des Beins ein (Steuerpfad): bps bit/s reine Padding-Pakete auf der SSRC des
+// Bild-Ausgangs o, eingefuegt nur direkt nach einem Bildende, mit fortlaufender Folgenummer des Ausgangs und dem
+// Zeitstempel des letzten Bilds. o == nil oder bps <= 0 schaltet ab. Die Bytes zaehlen in BytesOut und PadBytes mit.
+func (l *Leg) SetPadding(o *Out, bps int64) {
+	if o == nil || bps <= 0 || o.leg != l || o.Kind != Video {
+		l.padBps.Store(0)
+		l.padOut.Store(nil)
+		return
+	}
+	l.padOut.Store(o)
+	l.padBps.Store(bps)
+}
+
+// Padding liefert die eingestellte Fuellrate in bit/s (0 = aus).
+func (l *Leg) Padding() int64 { return l.padBps.Load() }
+
+// pad schreibt Fuellpakete, soweit das Guthaben reicht und der Ausgang zwischen zwei Bildern steht. Nur
+// Schreiber-Goroutine. Meldet, ob etwas geschrieben wurde.
+func (l *Leg) pad(now int64) bool {
+	r := l.padBps.Load()
+	if r <= 0 {
+		return false
+	}
+	if l.padT == 0 || now-l.padT > int64(4*padBurst) { // neue Probe: ohne altes Guthaben beginnen
+		l.padT, l.padCredit = now, 0
+	}
+	l.padCredit += float64(now-l.padT) * float64(r) / 8e9
+	l.padT = now
+	if lim := float64(r) / 8 * padBurst.Seconds(); l.padCredit > lim && l.padCredit > padWire {
+		l.padCredit = max(lim, padWire)
+	}
+	if l.padCredit < padWire {
+		return false
+	}
+	o := l.padOut.Load()
+	if o == nil || !o.frameEnd || o.dropping || o.cur.Load() == nil {
+		return false
+	}
+	b := o.bound.Load()
+	if b == nil || b.w == nil {
+		return false
+	}
+	h := &o.hdr
+	wrote := false
+	for l.padCredit >= padWire {
+		l.padCredit -= padWire
+		l.shape(padWire)
+		h.Version = 2
+		h.Padding = true
+		h.Extension = false
+		h.Extensions = h.Extensions[:0]
+		h.Marker = false
+		h.PayloadType = b.pt
+		h.SequenceNumber = o.lastSeq + 1
+		h.Timestamp = o.lastTS
+		h.SSRC = b.ssrc
+		h.CSRC = nil
+		if _, err := b.w.WriteRTP(h, l.padBuf[:]); err != nil {
+			l.Stats.WriteErrs.Add(1)
+			Totals.WriteErrs.Add(1)
+			break
+		}
+		o.lastSeq++
+		o.seqDelta++ // die Folgenummern der Quelle ruecken um das Fuellpaket weiter
+		l.Stats.PktsOut.Add(1)
+		l.Stats.BytesOut.Add(padWire)
+		l.Stats.PadPkts.Add(1)
+		l.Stats.PadBytes.Add(padWire)
+		Totals.PktsOut.Add(1)
+		Totals.BytesOut.Add(padWire)
+		wrote = true
+	}
+	return wrote
 }
 
 // SetThrottle begrenzt die Senderate des Beins (nur fuer Tests: nachgebildeter
@@ -908,6 +1004,7 @@ func (l *Leg) SetFlusher(f Flusher) { l.flusher.Store(&flushBox{f}) }
 // NewLeg legt ein Bein an und startet seinen Schreiber.
 func NewLeg() *Leg {
 	l := &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}
+	l.padBuf[PadSize-1] = PadSize
 	go l.run()
 	return l
 }
@@ -975,8 +1072,20 @@ func (l *Leg) run() {
 				}
 				continue
 			}
+			var padC <-chan time.Time
+			if l.padBps.Load() > 0 { // Probe laeuft: zwischen den Bildern im Takt padTick fuellen
+				if l.padTimer == nil {
+					l.padTimer = time.NewTimer(padTick)
+				} else {
+					l.padTimer.Reset(padTick)
+				}
+				padC = l.padTimer.C
+			}
 			select {
 			case <-l.wake:
+				continue
+			case <-padC:
+				dirty = l.pad(Now())
 				continue
 			case <-l.done:
 				for {
@@ -998,6 +1107,9 @@ func (l *Leg) run() {
 		l.process(e.p, e.o)
 		e.p.release()
 		dirty = true
+		if l.padBps.Load() > 0 {
+			l.pad(Now())
+		}
 	}
 }
 
@@ -1195,8 +1307,9 @@ func (l *Leg) process(p *Packet, o *Out) {
 		Totals.WriteErrs.Add(1)
 		return
 	}
-	if !late { // ein verspaetetes Paket aendert nicht, wo der Ausgang steht (naechste Folgenummer, Zeitbasis)
+	if !late { // ein verspaetetes Paket aendert nicht, wo der Ausgang steht (naechste Folgenummer, Zeitbasis, Bildgrenze)
 		o.lastSeq, o.lastTS, o.lastT = seq, ts, now
+		o.frameEnd = h.Marker
 		o.hiSeq = seq
 	} else if int16(seq-o.hiSeq) > 0 {
 		o.hiSeq = seq // ... ausser fuer den naechsten Neuanfang: Seine Nummer ist vergeben (anchor)
