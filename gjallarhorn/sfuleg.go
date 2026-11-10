@@ -17,7 +17,9 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/interceptor/pkg/gcc"
+	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/turn/v5"
 	"github.com/pion/webrtc/v4"
@@ -90,7 +92,7 @@ func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook) (*webrtc.API, e
 		ir.Add(twccTapFactory{})
 	}
 	if udp {
-		if err := webrtc.ConfigureNackWithOptions(m, ir, nackGenOpts()); err != nil {
+		if err := configureNackNoPad(m, ir); err != nil {
 			return nil, err
 		}
 	}
@@ -224,6 +226,12 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		s.gcc.mu.Unlock()
 		if est != nil {
 			sl.Ext = est.GetTargetBitrate
+			// Probing: Ueberlast laut GCC (Verzoegerung) und Umlaufzeit aus den Empfaengerberichten
+			sl.ExtOver = func() bool {
+				st := est.GetStats()
+				return st["usage"] == "overuse" || st["state"] == "decrease"
+			}
+			sl.ExtRTT = func() time.Duration { return time.Duration(l.rttNs.Load()) }
 		}
 	} else {
 		pc, err = api.NewPeerConnection(webrtc.Configuration{})
@@ -261,7 +269,7 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 			s.closeLeg(l, "aufbau fehlgeschlagen")
 			return nil, "", fmt.Errorf("spur: %w", err)
 		}
-		go readSenderRTCP(sender, o)
+		go readSenderRTCP(sender, o, &l.rttNs)
 	}
 	ans, err := pc.CreateAnswer(nil)
 	if err != nil {
@@ -594,8 +602,54 @@ func (s *server) apiSFULayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st := l.stats()
+	ps := l.sl.ProbeStats()
 	writeJSON(w, 200, map[string]any{"slots": l.sl.Layout(), "est_kbit": l.sl.EstimateKbit(), "stats": st,
+		"probes": map[string]uint64{"started": ps.Started, "passed": ps.Passed, "failed": ps.Failed, "aborted": ps.Aborted, "pad_bytes": ps.PadBytes},
 		"pauses": l.fl.Stats.Pauses.Load(), "tid_skipped": l.fl.Stats.TIDSkipped.Load(), "write_stalls": l.fl.Stats.WriteStalls.Load()})
+}
+
+// configureNackNoPad richtet NACK wie webrtc.ConfigureNackWithOptions ein (Erzeuger mit nackGenOpts, Antworter mit
+// Nachsende-Puffer), haelt aber reine Fuellpakete (Probing, fwd.Leg.SetPadding) aus dem Puffer heraus: Ein verlorenes
+// Fuellpaket nachzusenden waere wertlos und kaeme genau dann, wenn die Leitung ohnehin staut. Der Empfaenger fragt
+// ein paarmal vergeblich nach und gibt auf; die Bilder sind davon nicht betroffen (das Fuellpaket liegt zwischen zwei
+// Bildern).
+func configureNackNoPad(m *webrtc.MediaEngine, ir *interceptor.Registry) error {
+	gen, err := nack.NewGeneratorInterceptor(nackGenOpts()...)
+	if err != nil {
+		return err
+	}
+	resp, err := nack.NewResponderInterceptor()
+	if err != nil {
+		return err
+	}
+	m.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack"}, webrtc.RTPCodecTypeVideo)
+	m.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack", Parameter: "pli"}, webrtc.RTPCodecTypeVideo)
+	ir.Add(padSkipFactory{resp})
+	ir.Add(gen)
+	return nil
+}
+
+type padSkipFactory struct{ f interceptor.Factory }
+
+func (p padSkipFactory) NewInterceptor(id string) (interceptor.Interceptor, error) {
+	i, err := p.f.NewInterceptor(id)
+	if err != nil {
+		return nil, err
+	}
+	return &padSkip{i}, nil
+}
+
+// padSkip reicht reine Fuellpakete am Nachsende-Puffer vorbei.
+type padSkip struct{ interceptor.Interceptor }
+
+func (p *padSkip) BindLocalStream(info *interceptor.StreamInfo, w interceptor.RTPWriter) interceptor.RTPWriter {
+	buffered := p.Interceptor.BindLocalStream(info, w)
+	return interceptor.RTPWriterFunc(func(h *rtp.Header, pl []byte, a interceptor.Attributes) (int, error) {
+		if h.Padding && len(pl) == fwd.PadSize && int(pl[len(pl)-1]) == len(pl) {
+			return w.Write(h, pl, a)
+		}
+		return buffered.Write(h, pl, a)
+	})
 }
 
 // twccTap (nur Tests, vor newServer setzen) bekommt jede transport-cc-Rueckmeldung, die der Knoten an Geraete schickt.

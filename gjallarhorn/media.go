@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/interceptor"
@@ -168,6 +170,7 @@ type leg struct {
 	srcs      []*fwd.Source
 	srcEnd    [3]uint64 // Zaehler des Abgleichs der beendeten Spuren: Doppel, zu alt, spaet (endSrc)
 	closed    bool
+	rttNs     atomic.Int64 // Umlaufzeit aus den Empfaengerberichten (Probing: Laenge des Fensters)
 }
 
 func classOf(s string) fwd.Class {
@@ -330,7 +333,7 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 		}
 		l.outs = append(l.outs, o)
 		s.room.AddOut(o)
-		go readSenderRTCP(sender, o)
+		go readSenderRTCP(sender, o, nil)
 	}
 	ans, err := pc.CreateAnswer(nil)
 	if err != nil {
@@ -373,18 +376,59 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 var debug = os.Getenv("HORN_DEBUG") == "1"
 
 // readSenderRTCP liest Rueckmeldungen des Empfaengers; PLI/FIR gehen an die Quelle.
-func readSenderRTCP(sender *webrtc.RTPSender, o *fwd.Out) {
+func readSenderRTCP(sender *webrtc.RTPSender, o *fwd.Out, rtt *atomic.Int64) {
 	buf := make([]byte, 1500)
 	for {
 		n, _, err := sender.Read(buf)
 		if err != nil {
 			return
 		}
+		if rtt != nil {
+			if d, ok := rrRTT(buf[:n], time.Now()); ok {
+				rtt.Store(int64(d))
+			}
+		}
 		if !hasKeyRequest(buf[:n]) {
 			continue
 		}
 		o.KeyRequest()
 	}
+}
+
+// rrRTT liest die Umlaufzeit aus den Empfangsberichten eines RTCP-Verbunds (SR/RR: jetzt - LSR - DLSR, RFC 3550
+// 6.4.1), ohne zu allokieren. Unsere Senderberichte tragen die Systemzeit als NTP-Zeit.
+func rrRTT(b []byte, now time.Time) (time.Duration, bool) {
+	for len(b) >= 4 {
+		rc, pt := int(b[0]&0x1f), b[1]
+		ln := (int(b[2])<<8 | int(b[3]) + 1) * 4
+		if ln > len(b) {
+			return 0, false
+		}
+		off := 0
+		switch pt {
+		case 200: // Senderbericht: 28 Byte Kopf
+			off = 28
+		case 201: // Empfaengerbericht
+			off = 8
+		}
+		for i := 0; off != 0 && i < rc && off+24 <= ln; i, off = i+1, off+24 {
+			lsr := binary.BigEndian.Uint32(b[off+16:])
+			dlsr := binary.BigEndian.Uint32(b[off+20:])
+			if lsr == 0 {
+				continue
+			}
+			sec := uint64(now.Unix()) + 2208988800 // NTP zaehlt ab 1900
+			frac := uint64(now.Nanosecond()) << 32 / 1e9
+			mid := uint32((sec<<32 | frac) >> 16)
+			d := mid - lsr - dlsr // in 1/65536 s
+			if d == 0 || d > 5<<16 {
+				continue
+			}
+			return time.Duration(uint64(d) * 1e9 >> 16), true
+		}
+		b = b[ln:]
+	}
+	return 0, false
 }
 
 // hasKeyRequest sucht PLI (PT 206, FMT 1) oder FIR (PT 206, FMT 4) im
@@ -488,6 +532,7 @@ type legStats struct {
 	ConnectMs int64      `json:"connect_ms"`
 	PktsOut   uint64     `json:"pkts_out"`
 	BytesOut  uint64     `json:"bytes_out"`
+	PadBytes  uint64     `json:"pad_bytes,omitempty"` // Fuelldaten der Proben (in bytes_out enthalten)
 	Dropped   uint64     `json:"frames_dropped"`
 	Stalls    uint64     `json:"stalls"`
 	MaxQMs    float64    `json:"max_queue_ms"`
@@ -555,7 +600,7 @@ func (l *leg) stats() legStats {
 		return legStats{ID: l.id, Path: l.path, Role: l.role, State: "new"}
 	}
 	st := legStats{ID: l.id, Path: l.path, Role: l.role, State: l.state().String(),
-		PktsOut: fl.Stats.PktsOut.Load(), BytesOut: fl.Stats.BytesOut.Load(),
+		PktsOut: fl.Stats.PktsOut.Load(), BytesOut: fl.Stats.BytesOut.Load(), PadBytes: fl.Stats.PadBytes.Load(),
 		Dropped: fl.Stats.FramesDropped.Load(), Stalls: fl.Stats.Stalls.Load(),
 		MaxQMs: float64(fl.Stats.MaxAgeNs.Load()) / 1e6, FwdP95us: fl.Stats.P95us(),
 		Overflow: fl.Stats.Overflow.Load(), WriteErrs: fl.Stats.WriteErrs.Load(),

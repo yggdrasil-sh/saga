@@ -48,6 +48,7 @@ type config struct {
 	Bench     bool
 	Mode      string // "probe" (Spiegel) oder "node" (Weiterleiter)
 	Dev       bool   // HORN_DEV=1: Entwicklungs-Token und Testseite (nur Tests!)
+	Probing   bool   // HORN_PROBING (Standard an): Probing mit Fuelldaten, siehe internal/sfu/probe.go
 	Certs     netx.CertOptions
 }
 
@@ -77,6 +78,8 @@ func loadConfig(bench bool) (*config, error) {
 		Bench:  bench,
 		Mode:   env("HORN_MODE", "probe"),
 		Dev:    env("HORN_DEV", "0") == "1",
+		// experimentell: Probing mit Fuelldaten vor einem Schritt nach oben (UDP-Beine mit GCC); 0 = aus
+		Probing: env("HORN_PROBING", "1") != "0",
 	}
 	if c.Mode != "probe" && c.Mode != "node" {
 		return nil, errors.New("HORN_MODE: probe oder node")
@@ -242,7 +245,8 @@ func newServer(cfg *config) (*server, error) {
 	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32),
 		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32), verifier: &sagaVerifier{}, graves: map[string]time.Time{}, kicked: map[string]time.Time{}}
 	if cfg.Mode == "node" {
-		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers}
+		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers,
+			Probing: cfg.Probing}
 		if cfg.Dev {
 			nc.Verifier = sfu.VerifierFunc(s.verifyDev)
 			log.Printf("WARNUNG: HORN_DEV=1 - Entwicklungs-Token ohne Saga, nur fuer Tests")

@@ -618,12 +618,14 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				d = c.s.dw[rank]
 			}
 			sinceDown, blocked := since, false
+			// passed: Fuer genau diesen Schritt ist gerade eine Probe bestanden (probe.go)
+			passed := prb && !cur && d.ok != 0 && now-d.ok <= int64(probeGrant)
 			switch {
 			case d.d <= layerDwell:
 			case prb && !cur:
 				// Probing: Nach einem gescheiterten Versuch gibt nur eine bestandene Probe den naechsten frei - dafuer
-				// auch vor Ablauf des Aufschubs (probe.go)
-				if d.ok == 0 || now-d.ok > int64(probeGrant) {
+				// auch vor Ablauf des Aufschubs
+				if !passed {
 					since, blocked = 0, true
 				}
 			case now-d.at < int64(d.d):
@@ -634,6 +636,13 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				lim = upLimit
 				if oneUp && stepper != nil && stepper != c {
 					lim = 0
+				}
+				// Die Probe hat die Rate des Schritts belegt, wie sie zu ihrem Beginn war. Schwankt der Bedarf seither
+				// leicht (Schluesselbild in der geglaetteten Rate der Quelle), scheitert der Schritt nicht daran.
+				if t := need*upHeadroom + audioCut; passed && lim > 0 && t > budget+audioCut && t <= l.est.grant*probeSlack && t <= quotaCap {
+					l.est.bps = max(l.est.bps, min(t, l.est.max))
+					budget = max(budget, need*upHeadroom)
+					lim, limit, upLimit = budget, budget, budget
 				}
 			}
 			if layerStep(cur, need, budget, lim, since) {
