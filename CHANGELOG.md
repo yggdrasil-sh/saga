@@ -30,9 +30,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
     stehen, ist das Stau wie bisher.
 - Damit echte Engpässe nicht schlechter dran sind: Nach oben geht es nur, wenn das GCC-Ziel mindestens 1,25 × der
   gesendeten Rate ist (sonst wäre ein Stau danach nicht als Fall erkennbar). Scheitert ein Versuch, zählt er als
-  Fehlversuch – der Aufschub wächst wie gehabt (8, 16, höchstens 32 s) –, und die Schätzung fällt 2 s lang nicht
+  Fehlversuch – der Aufschub wächst (8, 16, 32 s … höchstens 5 min, siehe unten) –, und die Schätzung fällt 2 s lang nicht
   unter den Stand vor dem Versuch. Bricht die Leitung ohne vorherigen Schritt nach oben ein, gilt diese Untergrenze
   nicht: Die Schätzung folgt dem Ziel sofort wie bisher.
+- Kein Dauer-Pendeln auf einer Leitung zwischen zwei Ebenen: Mit der bisherigen Obergrenze von 32 s kam dort ohne
+  Ende alle 32 s ein Versuch nach oben (im Labor 20 in 10 min, jeder mit Schlüsselbildern und kurz verdecktem Ton).
+  Der Aufschub verdoppelt sich jetzt bis 5 min (Modell: 7 Versuche in 10 min, danach einer je 5 min). Zurückgestellt
+  wird er erst, wenn die höhere Ebene mindestens 30 s gehalten hat (bisher: länger als 2 s); ein Rückfall dazwischen
+  zählt nicht als Fehlversuch und lässt ihn unverändert. Diese beiden Regeln gelten für alle Wege.
+- Gruppen über UDP: Je Takt geht höchstens ein Platz eine Ebene höher – gingen mehrere zugleich, sprang die Rate um
+  die Summe, und ein Stau danach war keinem Schritt zuzuordnen. Kacheln, die aus der Pause dazukommen, zählen nicht
+  mit (`TestSchaetzerGruppeEinSchritt`).
 - Bei Stau fällt ein Platz auf der hohen Ebene nur noch so weit, wie die Schätzung es verlangt (auf die mittlere,
   wenn sie reicht). Bisher ging es während der Sperrzeit immer bis auf die unterste.
 - TCP-/TLS-Beine behalten Deckel und Stau-Erkennung (über das Paketalter); nur der vorige Punkt gilt für alle Wege. Die Felder der
@@ -90,7 +98,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   ignorieren die neuen Felder. Knoten neu ausrollen.
 - Hochschalten an der Budget-Schwelle: Fiel ein Platz binnen 2 s nach dem Hochschalten wieder zurück, versuchte der
   Knoten es alle 4 s erneut (je Versuch ein großes Schlüsselbild des Senders). Der Aufschub verdoppelt sich jetzt je
-  Fehlversuch (bis 32 s) und beginnt wieder bei 4 s, sobald die höhere Schicht länger hält.
+  Fehlversuch (inzwischen bis 5 min, siehe oben) und beginnt wieder bei 4 s, sobald die höhere Schicht hält.
 
 ### Behoben – Widgets (Nacharbeit)
 - Diagramm „Balken quer“: kurze Kategorien wurden durch eine Rundung der Randbreite gekürzt („Anna“ → „An…“).

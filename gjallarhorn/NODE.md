@@ -54,8 +54,13 @@ Platzhalter: `horn-1.example.org`.
     einem Wechsel nach unten geht derselbe Platz für dieselbe Quelle frühestens nach 4 s wieder hoch.
     Fällt ein Platz binnen 2 s nach dem Hochschalten wegen des Budgets wieder zurück (Rate der Zielschicht
     unterschätzt, z. B. kurz nach einer Auflösungsänderung des Senders), verdoppelt sich dieser Aufschub je
-    Fehlversuch (8, 16, höchstens 32 s); hielt die höhere Schicht länger als 2 s, gelten wieder 4 s
-    (`TestBudgetFehlversuchAufschub`).
+    Fehlversuch (8, 16, 32 s … höchstens 5 min – auf einer Leitung zwischen zwei Schichten bleibt so am Ende ein
+    Versuch je 5 min statt einer alle 32 s). Zurückgestellt auf 4 s wird er erst, wenn die höhere Schicht mindestens
+    30 s gehalten hat; ein Rückfall nach 2 bis 30 s ist kein Fehlversuch und lässt ihn unverändert
+    (`TestBudgetFehlversuchAufschub`, `TestSchaetzerAufschubZurueck`).
+  - UDP: Je Takt geht höchstens ein Platz eine Schicht höher (derselbe Platz darf mehrere Schichten nehmen); jeder
+    Schritt ist eine Probe der Leitung, und ein Stau danach soll einem Schritt zuzuordnen sein. Kacheln, die aus der
+    Pause dazukommen, zählen nicht mit (`TestSchaetzerGruppeEinSchritt`).
   - Hysterese gegen flatternde Schichten (`internal/sfu/flap.go`, je Quelle, damit für eigene Beine und Brücken
     gleich): Senkt der Sender eine Schicht selbst (libwebrtc bei CPU-Last/Wärme) und liefert sie nur noch zeitweise,
     fällt sie sofort aus der Auswahl, sobald sie nicht mehr live ist (keine Pakete in der letzten Sekunde bzw. über
@@ -101,7 +106,7 @@ Platzhalter: `horn-1.example.org`.
     das Ziel auch bei anhaltendem Stau zunächst wieder (der Verlust-Teil holt mit 5 % je 200 ms zum
     Verzögerungs-Teil auf); erst von einem erholten Ziel aus ist ein Stau nach dem Schritt als Fall erkennbar.
   - UDP, gescheiterter Versuch: Endet die Schonfrist nach einem Hochschalten mit Stau, zählt der Rückfall als
-    Fehlversuch (Aufschub 8/16/32 s, siehe oben), auch wenn er später als 2 s kommt. Die Schätzung fällt dabei 2 s
+    Fehlversuch (Aufschub 8/16/32 s … bis 5 min, siehe oben), auch wenn er später als 2 s kommt. Die Schätzung fällt dabei 2 s
     lang nicht unter die Rate vor dem Versuch – der erste Rücksprung des Ziels (85 % eines Messfensters, das noch
     zur Hälfte die alte Rate enthält) sagt nichts über die Stufe davor.
   - Tests: `internal/sfu/schaetzer_test.go` (freie Leitung, enge Leitung, Stau-Schub, Einzelregeln), mit einem

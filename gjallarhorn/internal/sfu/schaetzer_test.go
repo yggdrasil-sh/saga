@@ -20,53 +20,67 @@ type estRoom struct {
 	src   map[string]*fwd.Source
 	rates map[string]float64 // Rate je Schicht (bit/s)
 	now   int64
-	sent  string  // Schicht, die gerade wirklich gesendet wird (einen Takt nach dem Wechsel: Schluesselbild)
-	link  float64 // Leitung (bit/s), 0 = frei
-	gcc   float64 // GCC-Ziel
-	capF  float64 // Ziel hoechstens capF x gesendete Rate (pion nahe einer frueheren Staurate: 1,5); 0 = ohne
-	floor float64 // ... aber nicht unter den Anfangswert (der Anlauf des Anrufs ist nicht Gegenstand)
-	grow  float64 // Anstieg des Ziels ohne Stau (bit/s je Sekunde)
-	loss  bool    // Stau-Schub: Ziel faellt auf 600 kbit/s (traegt m, nicht h)
-	over  int     // Takte ueber der Leitung
-	free  float64 // letzte Rate, die die Leitung trug
+	sent  float64       // Bildrate, die gerade wirklich gesendet wird (einen Takt nach dem Wechsel: Schluesselbild)
+	all   []*fwd.Source // Quellen aller Sender
+	allR  []float64     // ... und ihre Raten
+	link  float64       // Leitung (bit/s), 0 = frei
+	gcc   float64       // GCC-Ziel
+	capF  float64       // Ziel hoechstens capF x gesendete Rate (pion nahe einer frueheren Staurate: 1,5); 0 = ohne
+	floor float64       // ... aber nicht unter den Anfangswert (der Anlauf des Anrufs ist nicht Gegenstand)
+	grow  float64       // Anstieg des Ziels ohne Stau (bit/s je Sekunde)
+	loss  bool          // Stau-Schub: Ziel faellt auf 600 kbit/s (traegt m, nicht h)
+	over  int           // Takte ueber der Leitung
+	free  float64       // letzte Rate, die die Leitung trug
 	evs   []Slot
 }
 
 const estAudio = 40e3
 
-func newEstRoom(t *testing.T, h, gcc float64) *estRoom {
+func newEstRoom(t *testing.T, h, gcc float64) *estRoom { return newEstGroup(t, h, gcc, 1) }
+
+// newEstGroup: wie newEstRoom, aber mit n Sendern (fern, fern2, ...) und n-1 Kacheln neben dem Sprecherplatz.
+func newEstGroup(t *testing.T, h, gcc float64, n int) *estRoom {
 	er := &estRoom{t: t, now: fwd.Now(), src: map[string]*fwd.Source{}, gcc: gcc, floor: gcc, capF: 1.5, grow: 50e3,
 		rates: map[string]float64{"l": 150e3, "m": 500e3, "h": h}}
-	n := NewNode(Config{Name: "k", Tick: time.Hour, OnLayout: func(ev LayoutEvent) {
+	nd := NewNode(Config{Name: "k", Tick: time.Hour, OnLayout: func(ev LayoutEvent) {
 		for _, s := range ev.Slots {
 			if s.Class == "speaker" {
 				er.evs = append(er.evs, s)
 			}
 		}
 	}})
-	t.Cleanup(n.Close)
-	r, err := n.CreateRoom("raumschaetzer", nil)
+	t.Cleanup(nd.Close)
+	r, err := nd.CreateRoom("raumschaetzer", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	er.r = r
-	if er.l, err = r.AddLeg(Grant{Room: "raumschaetzer", Peer: "empf", Leg: "empf-b", Role: RoleBoth}, PathUDP, Want{Audio: 1, Speaker: true}); err != nil {
+	if er.l, err = r.AddLeg(Grant{Room: "raumschaetzer", Peer: "empf", Leg: "empf-b", Role: RoleBoth}, PathUDP, Want{Audio: 1, Speaker: true, Tiles: n - 1}); err != nil {
 		t.Fatal(err)
 	}
 	er.l.Ext = func() int { return int(er.gcc) }
-	if !r.AddRemote("b1", "fern", Desktop, nil) {
-		t.Fatal("aufnehmen")
-	}
-	on := map[*fwd.Source]bool{}
-	for k := range er.rates {
-		s := r.RemoteSource("b1", "fern", fwd.Video, k, false, 0, nil)
-		if s == nil {
-			t.Fatal("quelle " + k)
+	for i := 0; i < n; i++ {
+		id := "fern"
+		if i > 0 {
+			id += string(rune('1' + i))
 		}
-		er.src[k] = s
-		on[s] = true
+		if !r.AddRemote("b1", id, Desktop, nil) {
+			t.Fatal("aufnehmen")
+		}
+		on := map[*fwd.Source]bool{}
+		for _, k := range []string{"l", "m", "h"} {
+			s := r.RemoteSource("b1", id, fwd.Video, k, false, 0, nil)
+			if s == nil {
+				t.Fatal("quelle " + k)
+			}
+			if i == 0 {
+				er.src[k] = s
+			}
+			er.all, er.allR = append(er.all, s), append(er.allR, er.rates[k])
+			on[s] = true
+		}
+		r.SetRemote(id, -1, on)
 	}
-	r.SetRemote("fern", -1, on)
 	return er
 }
 
@@ -83,10 +97,10 @@ func (er *estRoom) layer() string {
 func (er *estRoom) tick() {
 	const dt = 0.2
 	er.now += int64(200 * time.Millisecond)
-	for k, s := range er.src {
-		s.Bytes.Add(uint64(er.rates[k] * dt / 8))
+	for i, s := range er.all {
+		s.Bytes.Add(uint64(er.allR[i] * dt / 8))
 	}
-	rate := estAudio + er.rates[er.sent]
+	rate := estAudio + er.sent
 	er.l.fl.Stats.BytesOut.Add(uint64(rate * dt / 8))
 	switch {
 	case er.loss:
@@ -112,7 +126,27 @@ func (er *estRoom) tick() {
 		}
 	}
 	er.r.tickAt(er.now)
-	er.sent = er.layer()
+	er.sent = 0
+	for _, s := range er.l.Layout() {
+		if s.Class != "audio" && !s.Paused {
+			er.sent += er.rates[s.Layer]
+		}
+	}
+}
+
+// video: Schichten der Bild-Plaetze in Platzfolge, pausiert bzw. leer als "p" (z. B. "hmm", "lmp").
+func (er *estRoom) video() string {
+	out := ""
+	for _, s := range er.l.Layout() {
+		switch {
+		case s.Class == "audio":
+		case s.Paused || s.Layer == "":
+			out += "p"
+		default:
+			out += s.Layer
+		}
+	}
+	return out
 }
 
 func (er *estRoom) run(d time.Duration) {
@@ -504,4 +538,67 @@ func TestSchaetzerAufschubZurueck(t *testing.T) {
 		t.Fatalf("nach dem Zuruecksetzen nicht stabil: %q", er.layer())
 	}
 	t.Logf("aufschub %v -> unveraendert nach kurzem Halten -> 0 nach %v; h wieder nach %v", grown, upHold, d)
+}
+
+// vrank: Rang eines Platzes in video() - pausiert 0, l 1, m 2, h 3.
+func vrank(c byte) int {
+	if c == 'p' {
+		return 0
+	}
+	return layerRank(string(c))
+}
+
+// TestSchaetzerGruppeEinSchritt: Empfaenger mit Sprecherplatz und zwei Kacheln, drei Sender (UDP). Je Takt geht
+// hoechstens ein Platz eine Schicht hoeher - frueher konnten zwei Kacheln im selben Takt von l auf m gehen, die Rate
+// sprang um beide, und ein Stau danach war keinem Schritt zuzuordnen. Kacheln aus der Pause (auf l) zaehlen nicht:
+// Zu Beginn sind sofort alle zu sehen. Auf freier Leitung erreichen alle Plaetze ihr Ziel (Sprecher h, Kacheln m);
+// auf einer Leitung, die das nicht traegt, bleibt die Zahl der Versuche klein, und die Summe liegt kaum je ueber der
+// Leitung.
+func TestSchaetzerGruppeEinSchritt(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		link  float64
+		tries int // hoechstens so viele Schritte nach oben in 10 min
+	}{{"frei", 0, 12}, {"eng-1700", 1700e3, 25}} {
+		t.Run(c.name, func(t *testing.T) {
+			er := newEstGroup(t, 1250e3, 810e3, 3)
+			er.link = c.link
+			er.tick() // erste Belegung: alle sofort zu sehen
+			if v := er.video(); v[1] == 'p' || v[2] == 'p' {
+				t.Fatalf("erste Belegung %q: Kachel pausiert", v)
+			}
+			ups, over, seen := 0, 0, map[string]time.Duration{}
+			start := er.now
+			for er.now-start < int64(10*time.Minute) {
+				was := er.video()
+				er.tick()
+				is := er.video()
+				n := 0
+				for i := range is {
+					if vrank(is[i]) > vrank(was[i]) && vrank(is[i]) > 1 {
+						n++
+					}
+				}
+				if n > 1 {
+					t.Fatalf("%v: %d Plaetze im selben Takt eine Schicht hoeher (%s -> %s)", time.Duration(er.now-start), n, was, is)
+				}
+				ups += n
+				seen[is] += 200 * time.Millisecond
+				if c.link > 0 && estAudio+er.sent > c.link {
+					over++
+				}
+			}
+			if ups > c.tries {
+				t.Fatalf("%d Schritte nach oben in 10 min (hoechstens %d): %v", ups, c.tries, seen)
+			}
+			if c.link == 0 {
+				if er.video() != "hmm" || seen["hmm"] < 9*time.Minute {
+					t.Fatalf("freie Leitung: am Ende %q, Verlauf %v", er.video(), seen)
+				}
+			} else if d := time.Duration(over) * 200 * time.Millisecond; d > 20*time.Second {
+				t.Fatalf("%v von 10 min ueber der Leitung: %v", d, seen)
+			}
+			t.Logf("%d Schritte nach oben, %v ueber der Leitung, Verlauf %v", ups, time.Duration(over)*200*time.Millisecond, seen)
+		})
+	}
 }

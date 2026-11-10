@@ -551,10 +551,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	if l.est.lag || !l.est.ready {
 		upLimit = 0
 	}
-	// Auf UDP geht je Takt hoechstens ein Platz nach oben (Schicht hoeher bzw. Kachel dazu; derselbe Platz darf mehrere
-	// Schichten nehmen): Jeder Schritt ist eine Probe der Leitung - gingen mehrere Plaetze im selben Takt, springt die
-	// Rate um die Summe, und ein Stau danach liesse sich keinem Schritt zuordnen. Ob der Schritt traegt, zeigt erst der
-	// naechste Takt (Schonfrist bzw. ready). TCP bleibt wie bisher.
+	// Auf UDP geht je Takt hoechstens ein Platz eine Schicht hoeher (derselbe Platz darf mehrere Schichten nehmen): Jeder
+	// Schritt ist eine Probe der Leitung - gingen mehrere Plaetze im selben Takt, springt die Rate um die Summe, und ein
+	// Stau danach liesse sich keinem Schritt zuordnen. Ob der Schritt traegt, zeigt erst der naechste Takt (Schonfrist
+	// bzw. ready). Kacheln, die aus der Pause dazukommen (unterste Schicht), zaehlen nicht mit: Jemanden zu zeigen geht
+	// vor. TCP bleibt wie bisher.
 	oneUp := l.Ext != nil
 	var stepper *choice
 	// wish: kleinster Bedarf eines Schritts nach oben, der in diesem Takt nicht ging (fuer den Deckel der Schaetzung)
@@ -634,9 +635,8 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		c.idx = 0
 		nr := rateOf(c)
-		if (sum+nr)*upHeadroom <= upLimit && !(oneUp && stepper != nil) {
+		if (sum+nr)*upHeadroom <= upLimit {
 			sum, c.rate = sum+nr, nr
-			stepper = c
 		} else {
 			deny(sum + nr)
 			c.idx = -1
