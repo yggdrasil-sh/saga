@@ -581,6 +581,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		rank int
 		need float64
 	}
+	big, wishBig := false, 0.0 // dieser Schritt ist nicht probbar; kleinster Bedarf eines abgelehnten solchen Schritts
 	// Kacheln, die gerade nichts zeigen, starten pausiert und kommen nur mit
 	// Reserve dazu (gegen Pendeln bei schwankenden Raten)
 	for _, c := range cs {
@@ -621,6 +622,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				d = c.s.dw[rank]
 			}
 			sinceDown, blocked := since, false
+			// Ein Schritt, fuer den die Fuellrate ueber probeFillMax laege (z. B. Bildschirm von l auf h), laesst sich
+			// nicht proben. Er wird nicht "halb geprobt" freigegeben, sondern laeuft wie ohne Probing: Der Deckel der
+			// Schaetzung folgt seinem Bedarf (wantBig), der Wechsel selbst ist die Probe, der Aufschub das Netz.
+			prb := prb && !(need*upHeadroom-sum > probeFillMax)
+			big = !prb && !cur && l.est.probing && l.est.gccLast > 0
 			// passed: Fuer genau diesen Schritt ist gerade eine Probe bestanden (probe.go)
 			passed := prb && !cur && d.ok != 0 && now-d.ok <= int64(probeGrant)
 			tgt := need*upHeadroom + audioCut // Zielrate des Beins fuer diesen Schritt
@@ -640,6 +646,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				lim = upLimit
 				if oneUp && stepper != nil && stepper != c {
 					lim = 0
+				}
+				// Waechst die Schaetzung gerade fuer einen nicht probbaren Schritt ueber den Deckel hinaus (wantBig),
+				// gilt das nicht fuer die probbaren: Sie brauchen weiter ihre Probe
+				if prb && l.est.wantBig > 0 && l.est.capProbed > 0 {
+					lim = min(lim, l.est.capProbed-audioCut)
 				}
 				// Die Probe hat die Rate des Schritts belegt, wie sie zu ihrem Beginn war. Schwankt der Bedarf seither
 				// leicht (Schluesselbild in der geglaetteten Rate der Quelle), scheitert der Schritt nicht daran.
@@ -661,6 +672,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			}
 			if !cur {
 				deny(need)
+				if big && (wishBig == 0 || need < wishBig) {
+					wishBig = need
+				}
 				if prb && cand.s == nil && stepper == nil && upLimit > 0 && sinceDown >= int64(layerDwell) && now >= d.next &&
 					!l.pf.blocks(tgt, now) && (blocked || need*upHeadroom > upLimit) {
 					cand.s, cand.rank, cand.need = c.s, rank, need
@@ -716,6 +730,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	l.est.want = wish*upHeadroom*wantSlack + audioCut
 	if l.est.want > quotaCap {
 		l.est.want = quotaCap
+	}
+	l.est.wantBig = 0
+	if wishBig > 0 {
+		l.est.wantBig = min(wishBig*upHeadroom*wantSlack+audioCut, quotaCap)
 	}
 	moved := false // aendert dieser Takt die Auswahl? Dann beginnt keine Probe (die Rate ist in Bewegung)
 	for _, c := range cs {
@@ -925,6 +943,8 @@ type estimator struct {
 	// Probing (probe.go)
 	probing    bool    // dieses Bein probt mit Fuelldaten: der Deckel folgt nicht mehr dem Bedarf (want)
 	blind      bool    // ... ausser der naechste Schritt darf ohne Probe versucht werden (planLeg)
+	wantBig    float64 // ... bzw. bis zum Bedarf eines Schritts, der sich nicht proben laesst (Fuellrate ueber probeFillMax)
+	capProbed  float64 // Deckel ohne wantBig: so weit duerfen probbare Schritte ohne Probe
 	padLast    uint64  // Fuell-Bytes beim letzten Takt
 	prOn       bool    // Probe laeuft: Stausignale nur beobachten (prSig), Schaetzung unveraendert
 	prUntil    int64   // ... ebenso bis hierhin nach einer gescheiterten Probe (probeFloor)
@@ -1162,6 +1182,10 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		}
 		if now < e.grantUntil && c < e.grant { // bestandene Probe: bis der Schritt in der Rate sichtbar ist
 			c = e.grant
+		}
+		e.capProbed = c
+		if e.probing && c < e.wantBig { // nicht probbarer Schritt: wie ohne Probing bis zu seinem Bedarf
+			c = e.wantBig
 		}
 		if e.bps > c {
 			e.bps = c

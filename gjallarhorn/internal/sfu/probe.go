@@ -122,7 +122,10 @@ func (l *Leg) probeBegin(s, fs *slot, rank int, need, sum, audio float64, now in
 	target := need*upHeadroom + audio
 	fill := target - sum - audio
 	if fill > probeFillMax {
+		// Freigegeben wird nur, was wirklich geprobt wurde. (planLeg probt Schritte mit groesserer Fuellrate gar nicht
+		// erst; das hier greift nur, wenn die Raten seither gewandert sind.)
 		fill = probeFillMax
+		target = sum + audio + fill
 	}
 	if fill <= 0 {
 		return

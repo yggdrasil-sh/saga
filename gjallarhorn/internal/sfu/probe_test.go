@@ -544,3 +544,33 @@ func TestProbingEinbruchInDerProbe(t *testing.T) {
 		}
 	}
 }
+
+// TestProbingGrosserSchritt (Prueferfund 5): Ein Schritt, dessen Fuellrate ueber probeFillMax (1,5 Mbit/s) laege, wird
+// nicht geprobt und nicht "halb geprobt" freigegeben - er laeuft wie ohne Probing (der Wechsel ist die Probe, der
+// Aufschub das Netz). Hier h mit 3 Mbit/s von m aus: mit und ohne Probing dieselben Schritte, keine Probe.
+func TestProbingGrosserSchritt(t *testing.T) {
+	for _, link := range []float64{0, 2500e3} {
+		var res [2]probeRun
+		for i, on := range []bool{false, true} {
+			er := newEstCfg(t, 3000e3, 810e3, 1, on)
+			er.link = link
+			er.until("m", 2*time.Second)
+			res[i] = er.measure(10*time.Minute, nil)
+			t.Logf("leitung %.0f probing %v: %v, verlauf %v", link/1000, on, res[i], res[i].seen)
+		}
+		off, on := res[0], res[1]
+		if on.started != 0 || on.padMB != 0 {
+			t.Fatalf("nicht probbarer Schritt geprobt: %v", on)
+		}
+		if on.ups != off.ups || on.fails != off.fails || on.seen["h"] != off.seen["h"] {
+			t.Fatalf("leitung %.0f: mit Probing %v / %v, ohne %v / %v", link/1000, on, on.seen, off, off.seen)
+		}
+	}
+	// Grenze: Fuellrate knapp unter dem Deckel wird geprobt, die Freigabe entspricht der geprobten Rate
+	er := newEstCfg(t, 1700e3, 810e3, 1, true) // 1700 x 1,15 - 500 = 1455 kbit/s Fuellrate
+	er.until("m", 2*time.Second)
+	er.until("h", 20*time.Second)
+	if len(er.pevs) != 2 || er.pevs[1].Probe != probeOK || er.pevs[1].ProbeKbit < 1990 || er.pevs[1].ProbeKbit > 1996 || er.fill != 0 {
+		t.Fatalf("probe-ereignisse %+v", er.pevs)
+	}
+}
