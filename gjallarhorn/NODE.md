@@ -49,7 +49,8 @@ Platzhalter: `horn-1.example.org`.
   - Ist zu wenig Rate da, werden Kacheln von hinten pausiert. Nach oben geht es nur mit 15 % Reserve und nach einer
     Sperrzeit, die sich bei Fehlversuchen verdoppelt (2 bis 30 s).
   - Hysterese gegen Pendeln (Horn-Fix, `layerStep`): Ohne Stau bleibt die laufende Schicht bis 10 % über der Schätzung
-    (kurze Ratenspitzen, z. B. Schlüsselbilder, schalten nicht herunter); bei Stau (Sperrzeit) sofort herunter. Nach
+    (kurze Ratenspitzen, z. B. Schlüsselbilder, schalten nicht herunter); bei Stau (Sperrzeit) sofort herunter – so
+    weit, wie die Schätzung es verlangt (von `h` auf `m`, wenn sie `m` trägt; früher immer bis `l`). Nach
     einem Wechsel nach unten geht derselbe Platz für dieselbe Quelle frühestens nach 4 s wieder hoch.
     Fällt ein Platz binnen 2 s nach dem Hochschalten wegen des Budgets wieder zurück (Rate der Zielschicht
     unterschätzt, z. B. kurz nach einer Auflösungsänderung des Senders), verdoppelt sich dieser Aufschub je
@@ -80,7 +81,28 @@ Platzhalter: `horn-1.example.org`.
 - **Schätzung je Bein:**
   - TCP: aus dem Alter der eigenen Warteschlange. Dank `TCP_NOTSENT_LOWAT` liegt der Stau im Knoten.
   - UDP: zusätzlich GCC (TWCC), als Stausignal. Ohne Probepakete ist GCC anwendungsbegrenzt und taugt nicht als
-    Obergrenze.
+    Obergrenze. Stau ist ein GCC-Ziel unter 90 % der gesendeten Rate – außer es läuft der Rate nur nach
+    (`estimator.lagging`, `internal/sfu/control.go`). pion-GCC senkt sein Ziel nur bei Stau (Verzögerung: auf 85 % der
+    empfangenen Rate; Verlust über 10 %) und hebt es sonst mit rund 8 %/s. Springt die gesendete Rate (höhere
+    Schicht, Kachel dazu, Schlüsselbild), liegt ein stehendes oder steigendes Ziel deshalb eine Weile darunter,
+    ohne dass die Leitung eng wäre. Diese **Schonfrist** gilt nur, solange das Ziel nicht fällt (weder im Takt des
+    Ratensprungs noch danach um mehr als 3 % unter seinen Höchstwert), je Sekunde um mindestens 1,5 % steigt,
+    insgesamt höchstens 15 s lang und nicht während einer Sperrzeit; sonst zählt das Ziel wie bisher als Stau.
+    Solange sie läuft, kommt nichts Neues dazu (kein weiterer Schritt nach oben).
+  - UDP, Deckel: Die freie Schätzung wächst höchstens bis `1,6 × gesendete Rate + 300 kbit/s` (mindestens der
+    Startwert) – und auf UDP mindestens bis zum Bedarf des nächsten Schritts nach oben (bzw. der laufenden Auswahl)
+    mit 15 % Reserve und 5 % Zuschlag, zuzüglich des Tonabzugs, höchstens das Kontingent. Der Wechsel selbst ist
+    die Probe; scheitert er, meldet GCC das. Ohne diese Regel blieb ein Empfänger im 1:1 auf `m` (≈ 500 kbit/s →
+    Deckel 1200 kbit/s; Browser-`h` braucht mit Reserve ≈ 1430 kbit/s). TCP behält den alten Deckel.
+  - UDP, nach oben: nur, wenn das GCC-Ziel mindestens 1,25 × der gesendeten Rate ist. Nach einem Rücksprung steigt
+    das Ziel auch bei anhaltendem Stau zunächst wieder (der Verlust-Teil holt mit 5 % je 200 ms zum
+    Verzögerungs-Teil auf); erst von einem erholten Ziel aus ist ein Stau nach dem Schritt als Fall erkennbar.
+  - UDP, gescheiterter Versuch: Endet die Schonfrist nach einem Hochschalten mit Stau, zählt der Rückfall als
+    Fehlversuch (Aufschub 8/16/32 s, siehe oben), auch wenn er später als 2 s kommt. Die Schätzung fällt dabei 2 s
+    lang nicht unter die Rate vor dem Versuch – der erste Rücksprung des Ziels (85 % eines Messfensters, das noch
+    zur Hälfte die alte Rate enthält) sagt nichts über die Stufe davor.
+  - Tests: `internal/sfu/schaetzer_test.go` (freie Leitung, enge Leitung, Stau-Schub, Einzelregeln), mit einem
+    Modell des GCC-Ziels nach Messwerten am echten `gcc.SendSideBWE`.
 - **Vorrang und Verwerfen (H3):**
   - Die Warteschlange je Bein arbeitet nach Vorrang: Ton > Bildschirm > Sprecher > Kacheln.
   - Ist ein Rahmen älter als 150 ms, verwirft der Knoten Bilder bis zum nächsten Schlüsselbild und fordert eine PLI

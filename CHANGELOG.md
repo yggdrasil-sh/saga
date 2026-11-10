@@ -16,6 +16,27 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Knoten: im 1:1 über UDP bleibt das Bild auf der mittleren Ebene
+- Im Anruf zu zweit über den Knoten bekam der Empfänger dauerhaft nur die mittlere Simulcast-Ebene (640×360), obwohl
+  der Sender die hohe schickte und die Leitung frei war. Zwei Regeln der Schätzung standen im Weg
+  (`gjallarhorn/internal/sfu/control.go`, Tests `schaetzer_test.go`):
+  - **Deckel:** Die Schätzung durfte nur bis `1,6 × gesendete Rate + 300 kbit/s` wachsen. Wer nur die mittlere Ebene
+    bekam (≈ 500 kbit/s), blieb bei 1200 kbit/s; die hohe Ebene eines Browsers (≈ 1250 kbit/s, mit Reserve
+    ≈ 1430) wurde nie versucht. Auf UDP reicht der Deckel jetzt mindestens bis zum Bedarf des nächsten Schritts nach
+    oben – der Wechsel selbst ist die Probe.
+  - **Nachlaufendes GCC-Ziel:** Nach dem Hochschalten springt die gesendete Rate, das GCC-Ziel zieht erst über
+    Sekunden nach. Das galt als Stau, der Knoten schaltete zurück. Jetzt ist ein Ziel unter der Rate kein Stau,
+    solange es nicht fällt und weiter steigt (mindestens 1,5 % je Sekunde, höchstens 15 s). Fällt es oder bleibt es
+    stehen, ist das Stau wie bisher.
+- Damit echte Engpässe nicht schlechter dran sind: Nach oben geht es nur, wenn das GCC-Ziel mindestens 1,25 × der
+  gesendeten Rate ist (sonst wäre ein Stau danach nicht als Fall erkennbar). Scheitert ein Versuch, zählt er als
+  Fehlversuch – der Aufschub wächst wie gehabt (8, 16, höchstens 32 s) –, und die Schätzung fällt nicht unter den
+  Stand vor dem Versuch.
+- Bei Stau fällt ein Platz auf der hohen Ebene nur noch so weit, wie die Schätzung es verlangt (auf die mittlere,
+  wenn sie reicht). Bisher ging es während der Sperrzeit immer bis auf die unterste.
+- TCP-/TLS-Beine sind nicht betroffen (dort bleibt der alte Deckel, Stau über das Paketalter). Die Felder der
+  Ereignisse `layout`/`layers` sind unverändert. Gefunden im Anruf-Labortest („Fund 2“).
+
 ### Behoben – Knoten fordert Pakete eines pausierten Bild-Stroms endlos nach
 - Hatte ein Bild-Strom Lücken (Verlust-Schub) und sendete das Gerät danach auf diesem Strom nichts mehr (höhere
   Simulcast-Ebene pausiert, Kamera aus), forderte der Knoten die fehlenden Pakete dauerhaft alle 100 ms nach. Das
