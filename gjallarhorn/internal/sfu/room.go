@@ -304,6 +304,12 @@ type slot struct {
 	upAt    int64
 	upOwner *Peer
 	dwell   time.Duration
+	// ... er gilt seit dwellAt fuer dwellOwner und nur fuer Schritte auf Schichten ab dwellRank (die gescheiterte und
+	// alles darueber); heldAt: seit wann die laufende Quelle ohne Pause laeuft
+	dwellAt    int64
+	dwellRank  int
+	dwellOwner *Peer
+	heldAt     int64
 	// zuletzt weitergeleitete Quelle (auch ueber eine Pause) und Grund des letzten Wechsels fuer die naechste Meldung
 	src                       *source
 	srcAt                     int64

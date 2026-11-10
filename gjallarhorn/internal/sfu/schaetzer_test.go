@@ -32,6 +32,7 @@ type estRoom struct {
 	over  int           // Takte ueber der Leitung
 	free  float64       // letzte Rate, die die Leitung trug
 	evs   []Slot
+	on    map[*fwd.Source]bool // Quellen des ersten Senders
 }
 
 const estAudio = 40e3
@@ -75,6 +76,7 @@ func newEstGroup(t *testing.T, h, gcc float64, n int) *estRoom {
 			}
 			if i == 0 {
 				er.src[k] = s
+				er.on = on
 			}
 			er.all, er.allR = append(er.all, s), append(er.allR, er.rates[k])
 			on[s] = true
@@ -489,18 +491,19 @@ func TestEstimatorEinbruchOhneVersuch(t *testing.T) {
 	}
 }
 
-// TestSchaetzerAufschubZurueck: die Ruecksetz-Regel. Nach Fehlversuchen auf enger Leitung (Aufschub gewachsen) wird die
-// Leitung frei, h haelt. Ein Stau-Schub nach kurzem Halten (unter upHold) ist kein Fehlversuch und laesst den Aufschub
-// stehen; nach upHold stellt die naechste Ruecknahme ihn zurueck, und h ist nach wenigen Sekunden wieder da - eine gute
-// Leitung bleibt nach einem einzelnen Rueckfall nicht minutenlang auf m.
+// TestSchaetzerAufschubZurueck: die Ruecksetz-Regel. Nach Fehlversuchen auf enger Leitung (Aufschub bei upDwellMax)
+// wird die Leitung frei, h haelt. Ein Stau-Schub nach kurzem Halten (unter upHold) ist kein Fehlversuch: Der Aufschub
+// faellt auf upDwellSoft, h ist nach einer halben Minute wieder da (Prueferfund: blieb er stehen, dauerte das 5 min).
+// Haelt h upHold, ist der Aufschub weg - auch ohne Ruecknahme -, und nach dem naechsten Schub ist h nach wenigen
+// Sekunden zurueck. Eine gute Leitung bleibt nach einem einzelnen Rueckfall nicht minutenlang auf m.
 func TestSchaetzerAufschubZurueck(t *testing.T) {
 	er := newEstRoom(t, 1250e3, 810e3)
 	sl := er.l.slots[1]
 	er.link = 1000e3
 	er.until("m", 2*time.Second)
-	for i := 0; sl.dwell < 32*time.Second; i++ {
-		if i > 600 {
-			t.Fatalf("aufschub nach 2 min erst %v", sl.dwell)
+	for i := 0; sl.dwell < upDwellMax; i++ {
+		if i > 5*60*15 {
+			t.Fatalf("aufschub nach 15 min erst %v", sl.dwell)
 		}
 		er.tick()
 	}
@@ -518,26 +521,27 @@ func TestSchaetzerAufschubZurueck(t *testing.T) {
 		t.Fatalf("freie Leitung: %q", er.layer())
 	}
 	burst()
-	if sl.dwell != grown {
-		t.Fatalf("nach 10 s auf h: aufschub %v, erwartet unveraendert %v", sl.dwell, grown)
+	if sl.dwell != upDwellSoft {
+		t.Fatalf("nach 10 s auf h: aufschub %v, erwartet %v", sl.dwell, upDwellSoft)
 	}
-	if d := er.until("h", grown+20*time.Second); d < grown-layerDwell {
-		t.Fatalf("schon nach %v wieder hoch (aufschub %v)", d, grown)
+	soft := er.until("h", upDwellSoft+20*time.Second)
+	if soft < upDwellSoft-layerDwell {
+		t.Fatalf("schon nach %v wieder hoch (aufschub %v)", soft, upDwellSoft)
 	}
 	er.run(upHold + time.Second)
-	if er.layer() != "h" {
-		t.Fatalf("freie Leitung nach dem Schub: %q", er.layer())
+	if er.layer() != "h" || sl.dwell != 0 {
+		t.Fatalf("nach %v auf h: %q, aufschub %v, erwartet 0", upHold, er.layer(), sl.dwell)
 	}
 	burst()
 	if sl.dwell != 0 {
-		t.Fatalf("nach %v auf h: aufschub %v, erwartet 0", upHold, sl.dwell)
+		t.Fatalf("nach dem Schub: aufschub %v, erwartet 0", sl.dwell)
 	}
 	d := er.until("h", 15*time.Second)
 	er.run(20 * time.Second)
 	if er.layer() != "h" {
 		t.Fatalf("nach dem Zuruecksetzen nicht stabil: %q", er.layer())
 	}
-	t.Logf("aufschub %v -> unveraendert nach kurzem Halten -> 0 nach %v; h wieder nach %v", grown, upHold, d)
+	t.Logf("aufschub %v -> %v nach kurzem Halten (h wieder nach %v) -> 0 nach %v Halten (h wieder nach %v)", grown, upDwellSoft, soft, upHold, d)
 }
 
 // vrank: Rang eines Platzes in video() - pausiert 0, l 1, m 2, h 3.
@@ -601,4 +605,71 @@ func TestSchaetzerGruppeEinSchritt(t *testing.T) {
 			t.Logf("%d Schritte nach oben, %v ueber der Leitung, Verlauf %v", ups, time.Duration(over)*200*time.Millisecond, seen)
 		})
 	}
+}
+
+// TestSchaetzerAufschubNurObereSchicht (Prueferfund): Der Aufschub nach gescheiterten h-Versuchen gilt nur fuer den Weg
+// nach h. Bricht die Leitung kurz darauf so weit ein, dass der Platz auf l faellt, ist er nach dem Einbruch zuegig
+// wieder auf m - und nicht erst nach dem Aufschub (im Modell waren das fast 5 min auf l). Der Einbruch stellt den
+// Aufschub und seine Uhr nicht zurueck: Der naechste h-Versuch kommt wie geplant.
+func TestSchaetzerAufschubNurObereSchicht(t *testing.T) {
+	er := newEstRoom(t, 1250e3, 810e3)
+	sl := er.l.slots[1]
+	er.link = 1000e3
+	er.until("m", 2*time.Second)
+	for i := 0; sl.dwell < upDwellMax; i++ {
+		if i > 5*60*15 {
+			t.Fatalf("aufschub nach 15 min erst %v", sl.dwell)
+		}
+		er.tick()
+	}
+	failed := er.now
+	er.run(10 * time.Second)
+	er.link = 400e3
+	er.until("l", 5*time.Second)
+	er.run(2 * time.Second)
+	er.link = 1000e3
+	back := er.until("m", 40*time.Second)
+	if sl.dwell != upDwellMax || sl.dwellRank != layerRank("h") {
+		t.Fatalf("aufschub %v ab Rang %d nach dem Einbruch", sl.dwell, sl.dwellRank)
+	}
+	for er.now-failed < int64(upDwellMax-2*time.Second) {
+		er.tick()
+		if er.layer() == "h" {
+			t.Fatalf("h-Versuch schon %v nach dem Fehlversuch", time.Duration(er.now-failed))
+		}
+	}
+	next := er.until("h", 30*time.Second)
+	t.Logf("nach dem Einbruch wieder m nach %v; naechster h-Versuch %v nach dem letzten", back, upDwellMax-2*time.Second+next)
+}
+
+// TestSchaetzerQuelleWeg (Prueferfund): Hat h nach einer engen Phase lange gehalten, ist der alte Aufschub erledigt -
+// auch wenn die naechste Ruecknahme nicht vom Budget kommt, sondern der Sender h kurz wegnimmt. Frueher wurde nur bei
+// einer Budget-Ruecknahme zurueckgestellt; h kam dann erst nach dem alten Aufschub wieder.
+func TestSchaetzerQuelleWeg(t *testing.T) {
+	er := newEstRoom(t, 1250e3, 810e3)
+	sl := er.l.slots[1]
+	er.link = 1000e3
+	er.until("m", 2*time.Second)
+	for i := 0; sl.dwell < 2*time.Minute; i++ {
+		if i > 5*60*15 {
+			t.Fatalf("aufschub nach 15 min erst %v", sl.dwell)
+		}
+		er.tick()
+	}
+	er.link = 0
+	er.until("h", upDwellMax)
+	er.run(time.Minute)
+	if er.layer() != "h" || sl.dwell != 0 {
+		t.Fatalf("nach 1 min auf h: %q, aufschub %v", er.layer(), sl.dwell)
+	}
+	off := map[*fwd.Source]bool{}
+	for s, v := range er.on {
+		off[s] = v && s != er.src["h"]
+	}
+	er.r.SetRemote("fern", -1, off)
+	er.until("m", 3*time.Second)
+	er.run(3 * time.Second)
+	er.r.SetRemote("fern", -1, er.on)
+	d := er.until("h", 20*time.Second)
+	t.Logf("h wieder %v, nachdem der Sender es zurueckgab", d)
 }

@@ -35,15 +35,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   nicht: Die Schätzung folgt dem Ziel sofort wie bisher.
 - Kein Dauer-Pendeln auf einer Leitung zwischen zwei Ebenen: Mit der bisherigen Obergrenze von 32 s kam dort ohne
   Ende alle 32 s ein Versuch nach oben (im Labor 20 in 10 min, jeder mit Schlüsselbildern und kurz verdecktem Ton).
-  Der Aufschub verdoppelt sich jetzt bis 5 min (Modell: 7 Versuche in 10 min, danach einer je 5 min). Zurückgestellt
-  wird er erst, wenn die höhere Ebene mindestens 30 s gehalten hat (bisher: länger als 2 s); ein Rückfall dazwischen
-  zählt nicht als Fehlversuch und lässt ihn unverändert. Diese beiden Regeln gelten für alle Wege.
+  Der Aufschub verdoppelt sich jetzt bis 5 min (Modell: 7 Versuche in 10 min, danach einer je 5 min). Er gilt nur
+  für den Weg zur gescheiterten Ebene und darüber – fällt ein Platz später tiefer, darf er nach 4 s wieder bis
+  darunter. Weg ist er, sobald die gescheiterte Ebene 30 s gehalten hat (bisher: nach 2 s). Hielt ein Versuch länger
+  als 2 s und fällt dann wegen des Budgets zurück, halbiert sich der Aufschub (höchstens 32 s): Eine frei gewordene
+  Leitung bleibt nach einem einzelnen Rückfall nicht minutenlang unten. Diese Regeln gelten für alle Wege; auf UDP
+  zählt zusätzlich eine gescheiterte Schonfrist als Fehlversuch, auch wenn sie später als 2 s endet.
 - Gruppen über UDP: Je Takt geht höchstens ein Platz eine Ebene höher – gingen mehrere zugleich, sprang die Rate um
   die Summe, und ein Stau danach war keinem Schritt zuzuordnen. Kacheln, die aus der Pause dazukommen, zählen nicht
   mit (`TestSchaetzerGruppeEinSchritt`).
 - Bei Stau fällt ein Platz auf der hohen Ebene nur noch so weit, wie die Schätzung es verlangt (auf die mittlere,
   wenn sie reicht). Bisher ging es während der Sperrzeit immer bis auf die unterste.
-- TCP-/TLS-Beine behalten Deckel und Stau-Erkennung (über das Paketalter); nur der vorige Punkt gilt für alle Wege. Die Felder der
+- TCP-/TLS-Beine behalten Deckel und Stau-Erkennung (über das Paketalter); für alle Wege gelten nur der vorige Punkt
+  und die Regeln zum Aufschub. Die Felder der
   Ereignisse `layout`/`layers` sind unverändert. Gefunden im Anruf-Labortest („Fund 2“).
 
 ### Behoben – Knoten fordert Pakete eines pausierten Bild-Stroms endlos nach

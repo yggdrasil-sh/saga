@@ -22,7 +22,8 @@ const (
 	layerDwell    = 4 * time.Second         // nach einem Wechsel nach unten so lange nicht wieder hoch (gleiche Quelle)
 	upFail        = 2 * time.Second         // Budget-Ruecknahme so kurz nach dem Hochschalten: Aufschub verdoppeln
 	upDwellMax    = 5 * time.Minute         // Obergrenze dieses Aufschubs
-	upHold        = 30 * time.Second        // so lange gehalten: die naechste Budget-Ruecknahme stellt den Aufschub zurueck
+	upHold        = 30 * time.Second        // so lange haelt die gescheiterte Schicht (oder eine hoehere): Aufschub zurueck
+	upDwellSoft   = 32 * time.Second        // Aufschub hoechstens so lang, wenn ein Versuch laenger als upFail hielt
 	wantSlack     = 1.05                    // Deckel der Schaetzung so weit ueber dem Bedarf des naechsten Schritts (mit Reserve)
 	defaultRateL  = 150e3                   // angenommene Raten, bis gemessen wurde
 	defaultRateM  = 500e3
@@ -596,9 +597,12 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			since := int64(layerDwell)
 			if c.s.downAt != 0 && c.s.owner == c.s.downOwner {
 				since = now - c.s.downAt
-				if c.s.dwell > layerDwell { // nach gescheiterten Versuchen laenger warten
-					since -= int64(c.s.dwell - layerDwell)
-				}
+			}
+			// nach gescheiterten Versuchen laenger warten - aber nur auf dem Weg zur gescheiterten Schicht (und
+			// darueber): Ein Platz, der nach einem h-Versuch spaeter von m auf l faellt, darf nach layerDwell zurueck auf m
+			if c.s.dwell > layerDwell && c.s.owner == c.s.dwellOwner && layerRank(c.opts[c.idx].Layer) >= c.s.dwellRank &&
+				now-c.s.dwellAt < int64(c.s.dwell) {
+				since = 0
 			}
 			lim := limit
 			if !cur {
@@ -683,34 +687,51 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				s.setWhy(whyBudget, st, now)
 			}
 		}
-		held := now - s.srcAt // so lange lief die bisherige Quelle auf diesem Platz
+		if st != s.src || s.layer == "" {
+			s.heldAt = now
+		}
 		if st != s.src {
 			s.src, s.srcAt = st, now
 		}
 		if layerRank(st.Layer) < layerRank(s.layer) { // nach unten: Mindestverweildauer fuer den Weg zurueck
 			// Budget-Ruecknahme binnen upFail nach dem Hochschalten (Rate der Zielschicht unterschaetzt, z. B. nach
-			// einer Aufloesungsaenderung): Aufschub verdoppeln (bis upDwellMax). Zurueckgestellt wird er erst, wenn die
-			// hoehere Schicht mindestens upHold gehalten hat (bzw. bei anderer Quelle); eine Ruecknahme dazwischen laesst
-			// ihn, wie er ist - sonst begaenne nach einem einzelnen etwas laengeren Versuch alles wieder bei layerDwell
+			// einer Aufloesungsaenderung): Aufschub verdoppeln (bis upDwellMax); er gilt ab der gescheiterten Schicht
+			// (dwellRank). Zurueckgestellt wird er, sobald diese Schicht upHold gehalten hat (unten, unabhaengig von
+			// einer Ruecknahme) bzw. bei anderer Quelle. Hielt ein Versuch laenger als upFail und faellt dann wegen
+			// des Budgets, traegt die Leitung die Schicht zumindest zeitweise: Aufschub halbieren, hoechstens upDwellSoft
+			// - eine frei gewordene Leitung bleibt nach einem einzelnen Rueckfall nicht minutenlang unten. Ruecknahmen
+			// von tieferen Schichten (Einbruch m -> l) lassen ihn und seine Uhr unberuehrt.
 			// - ebenso, wenn die Schonfrist nach diesem Hochschalten gescheitert ist (GCC-Ziel gefallen bzw. nicht
 			// nachgezogen, estimator.probeFailed): auch das ist ein gescheiterter Versuch, kein Halten
 			fast := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner &&
 				(now-s.upAt < int64(upFail) || l.est.probeFailed(s.upAt, now))
+			from := layerRank(s.layer)
 			switch {
 			case fast:
 				base := s.dwell
-				if s.downOwner != s.owner || base < layerDwell {
-					base = layerDwell
+				if s.dwellOwner != s.owner || base < layerDwell {
+					base, s.dwellRank = layerDwell, from
 				}
 				s.dwell = min(2*base, upDwellMax)
-			case s.downOwner != s.owner || s.why == whyBudget && held >= int64(upHold):
+				s.dwellRank = min(s.dwellRank, from)
+				s.dwellAt, s.dwellOwner = now, s.owner
+			case s.dwellOwner != s.owner:
 				s.dwell = 0
+			case s.why == whyBudget && s.dwell > 0 && from >= s.dwellRank:
+				if s.dwell = min(s.dwell/2, upDwellSoft); s.dwell <= layerDwell {
+					s.dwell = 0
+				}
+				s.dwellAt = now
 			}
 			s.downAt, s.downOwner = now, s.owner
 		} else if s.layer != "" && layerRank(st.Layer) > layerRank(s.layer) {
 			s.upAt, s.upOwner = now, s.owner
 		}
 		s.paused, s.layer, s.tid = false, st.Layer, c.tid
+		// gehalten: Die gescheiterte Schicht (oder eine hoehere) laeuft seit upHold - der Aufschub ist erledigt
+		if s.dwell > 0 && (s.dwellOwner != s.owner || layerRank(st.Layer) >= s.dwellRank && now-s.heldAt >= int64(upHold)) {
+			s.dwell = 0
+		}
 	}
 	for _, s := range vslots {
 		if s.owner == nil {

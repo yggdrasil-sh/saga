@@ -55,9 +55,14 @@ Platzhalter: `horn-1.example.org`.
     Fällt ein Platz binnen 2 s nach dem Hochschalten wegen des Budgets wieder zurück (Rate der Zielschicht
     unterschätzt, z. B. kurz nach einer Auflösungsänderung des Senders), verdoppelt sich dieser Aufschub je
     Fehlversuch (8, 16, 32 s … höchstens 5 min – auf einer Leitung zwischen zwei Schichten bleibt so am Ende ein
-    Versuch je 5 min statt einer alle 32 s). Zurückgestellt auf 4 s wird er erst, wenn die höhere Schicht mindestens
-    30 s gehalten hat; ein Rückfall nach 2 bis 30 s ist kein Fehlversuch und lässt ihn unverändert
-    (`TestBudgetFehlversuchAufschub`, `TestSchaetzerAufschubZurueck`).
+    Versuch je 5 min statt einer alle 32 s). Der Aufschub gilt nur für Schritte auf die gescheiterte Schicht und
+    darüber; fällt der Platz später tiefer (Einbruch `m` → `l`), darf er nach 4 s wieder bis unter die gescheiterte
+    Schicht, und Aufschub samt Uhr bleiben stehen (`TestSchaetzerAufschubNurObereSchicht`). Weg ist der Aufschub,
+    sobald die gescheiterte Schicht (oder eine höhere) 30 s ohne Pause gehalten hat – unabhängig davon, warum sie
+    später endet (`TestSchaetzerQuelleWeg`). Hielt ein Versuch länger als 2 s und fällt dann wegen des Budgets
+    zurück, ist das kein Fehlversuch: Der Aufschub halbiert sich, höchstens 32 s
+    (`TestBudgetFehlversuchAufschub`, `TestSchaetzerAufschubZurueck`). Auf UDP zählt zusätzlich eine gescheiterte
+    Schonfrist als Fehlversuch (siehe unten).
   - UDP: Je Takt geht höchstens ein Platz eine Schicht höher (derselbe Platz darf mehrere Schichten nehmen); jeder
     Schritt ist eine Probe der Leitung, und ein Stau danach soll einem Schritt zuzuordnen sein. Kacheln, die aus der
     Pause dazukommen, zählen nicht mit (`TestSchaetzerGruppeEinSchritt`).

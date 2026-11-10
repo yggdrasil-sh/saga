@@ -343,9 +343,9 @@ func TestFlapFeldmuster(t *testing.T) {
 }
 
 // TestBudgetFehlversuchAufschub (Feldbefund h<->m an der Schwelle): Faellt ein Platz binnen upFail nach dem Hochschalten
-// wegen des Budgets wieder zurueck, verdoppelt sich der Aufschub fuer den naechsten Versuch (bis upDwellMax). Eine
-// Ruecknahme nach etwas laengerem Halten (unter upHold) laesst ihn stehen; erst wenn die hoehere Schicht upHold gehalten
-// hat, gilt wieder layerDwell.
+// wegen des Budgets wieder zurueck, verdoppelt sich der Aufschub fuer den naechsten Versuch (bis upDwellMax). Hielt ein
+// Versuch laenger als upFail, halbiert die Ruecknahme ihn (hoechstens upDwellSoft); sobald die hoehere Schicht upHold
+// gehalten hat, ist er weg und es gilt wieder layerDwell.
 func TestBudgetFehlversuchAufschub(t *testing.T) {
 	fr := newFlapRoom(t)
 	fr.on(true)
@@ -390,10 +390,11 @@ func TestBudgetFehlversuchAufschub(t *testing.T) {
 		}
 		t.Logf("runde %d: wieder hoch nach %v (aufschub %v, grundfall %v)", i, d, want, base)
 	}
-	// kurz gehalten (laenger als upFail, kuerzer als upHold): kein Fehlversuch, aber auch kein Zuruecksetzen
+	// kurz gehalten (laenger als upFail, kuerzer als upHold): kein Fehlversuch - halbiert, hoechstens upDwellSoft
 	fr.tick(3 * time.Second)
 	est(300e3)
 	fr.tick(200 * time.Millisecond)
+	want = min(want/2, upDwellSoft)
 	if fr.layer() != "l" || dwell() != want {
 		t.Fatalf("nach kurzem Halten: %q aufschub %v, erwartet %v", fr.layer(), dwell(), want)
 	}
@@ -401,8 +402,11 @@ func TestBudgetFehlversuchAufschub(t *testing.T) {
 	if d := fr.until("m", want+time.Minute); d < want-layerDwell+base-400*time.Millisecond {
 		t.Fatalf("nach kurzem Halten schon nach %v wieder hoch (aufschub %v)", d, want)
 	}
-	// upHold gehalten: naechste Ruecknahme stellt zurueck
+	// upHold gehalten: Aufschub weg, auch ohne Ruecknahme
 	fr.tick(upHold + time.Second)
+	if dwell() != 0 {
+		t.Fatalf("nach %v Halten: aufschub %v", upHold, dwell())
+	}
 	est(300e3)
 	fr.tick(200 * time.Millisecond)
 	if fr.layer() != "l" || dwell() != 0 {
