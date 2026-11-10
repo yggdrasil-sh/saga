@@ -874,6 +874,7 @@ type Leg struct {
 	// Fuelldaten (Probe vor einem Schritt nach oben): Der Steuerpfad setzt nur Ausgang und Rate, der Schreiber fuegt
 	// die Pakete ein (pad). Ohne Sperren und Allokationen je Paket.
 	padBps    atomic.Int64        // Fuellrate in bit/s (0 = aus)
+	padUntil  atomic.Int64        // Totmann: danach fuellt der Schreiber nicht mehr, auch wenn niemand abschaltet
 	padOut    atomic.Pointer[Out] // Bild-Ausgang, auf dessen SSRC gefuellt wird
 	padBuf    [PadSize]byte       // Nutzlast eines Fuellpakets (letztes Byte = Laenge); nur lesen
 	padCredit float64             // Guthaben in Byte (nur Schreiber)
@@ -891,6 +892,11 @@ const (
 	padBurst = 40 * time.Millisecond
 )
 
+// PadMax: Laenger als so fuellt ein Bein nach einem SetPadding nicht (Totmann). Der Steuerpfad stellt die Rate je
+// Stufe einer Probe neu ein (laengste Stufe 1,5 s); haengt der Takt, hoert das Fuellen von selbst auf. Variable fuer
+// Tests.
+var PadMax = 3 * time.Second
+
 // SetPadding stellt die Fuellrate des Beins ein (Steuerpfad): bps bit/s reine Padding-Pakete auf der SSRC des
 // Bild-Ausgangs o, eingefuegt nur direkt nach einem Bildende, mit fortlaufender Folgenummer des Ausgangs und dem
 // Zeitstempel des letzten Bilds. o == nil oder bps <= 0 schaltet ab. Die Bytes zaehlen in BytesOut und PadBytes mit.
@@ -901,7 +907,12 @@ func (l *Leg) SetPadding(o *Out, bps int64) {
 		return
 	}
 	l.padOut.Store(o)
+	l.padUntil.Store(Now() + int64(PadMax))
 	l.padBps.Store(bps)
+	select { // Schreiber wecken: Er fuellt auch zwischen den Bildern (padTick), nicht erst nach dem naechsten Paket
+	case l.wake <- struct{}{}:
+	default:
+	}
 }
 
 // Padding liefert die eingestellte Fuellrate in bit/s (0 = aus).
@@ -912,6 +923,10 @@ func (l *Leg) Padding() int64 { return l.padBps.Load() }
 func (l *Leg) pad(now int64) bool {
 	r := l.padBps.Load()
 	if r <= 0 {
+		return false
+	}
+	if now > l.padUntil.Load() { // Totmann
+		l.padBps.CompareAndSwap(r, 0)
 		return false
 	}
 	if l.padT == 0 || now-l.padT > int64(4*padBurst) { // neue Probe: ohne altes Guthaben beginnen

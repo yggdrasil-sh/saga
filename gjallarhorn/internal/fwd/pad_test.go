@@ -415,3 +415,39 @@ func TestPaddingSpaetAelterAlsHistorie(t *testing.T) {
 		seen[h.SequenceNumber] = true
 	}
 }
+
+// TestPaddingTotmann: Schaltet niemand ab (Takt haengt), hoert das Bein nach PadMax von selbst auf zu fuellen - und
+// SetPadding weckt den Schreiber, er fuellt also auch, wenn nach dem letzten Bild gerade kein Paket kommt.
+func TestPaddingTotmann(t *testing.T) {
+	old := PadMax
+	PadMax = 150 * time.Millisecond
+	defer func() { PadMax = old }()
+	leg := NewLeg()
+	defer leg.Close()
+	w := &hrec{}
+	o := leg.NewOut("v", "p", Video, ClassSpeaker, "l")
+	o.Bind(w, 7, 96)
+	s := &Source{Owner: "p", Layer: "l", Kind: Video}
+	o.Assign(s)
+	s.Inject(vp8part(1, 0, true, true, true))
+	waitFor(t, func() bool { return w.count() == 1 })
+	time.Sleep(20 * time.Millisecond) // der Schreiber schlaeft
+	leg.SetPadding(o, 1e6)
+	time.Sleep(60 * time.Millisecond)
+	if n := leg.Stats.PadPkts.Load(); n < 10 {
+		t.Fatalf("nur %d Fuellpakete 60 ms nach SetPadding ohne weiteres Bild (Schreiber nicht geweckt)", n)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if leg.Padding() != 0 {
+		t.Fatalf("fuellrate nach dem Totmann noch %d", leg.Padding())
+	}
+	n := leg.Stats.PadPkts.Load()
+	time.Sleep(60 * time.Millisecond)
+	if leg.Stats.PadPkts.Load() != n {
+		t.Fatal("fuellt nach dem Totmann weiter")
+	}
+	if got := float64(n) * padWire * 8; got > 1e6*0.25 {
+		t.Fatalf("%d Fuellpakete in 150 ms bei 1 Mbit/s", n)
+	}
+	checkPad(t, w)
+}
