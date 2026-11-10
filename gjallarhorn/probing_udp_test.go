@@ -10,7 +10,6 @@ import (
 
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
-	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/logging"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -293,7 +292,6 @@ func TestNackOhneFuellpakete(t *testing.T) {
 	if len(out) < 6 || len(re) != 2 || re[0]+re[1] != 7 {
 		t.Fatalf("geschrieben %v, nachgesendet %v (erwartet 2 und 5, nicht die Fuellpakete 3 und 4)", out[:min(6, len(out))], re)
 	}
-	_ = nack.GeneratorMaxNacksPerPacket
 }
 
 // TestRRRTT: Umlaufzeit aus einem Empfaengerbericht (jetzt - LSR - DLSR).

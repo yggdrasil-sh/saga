@@ -29,7 +29,7 @@ import (
 // die die Zielrate nicht traegt, staut binnen weniger Rueckmeldungen und GCC meldet Ueberlast.
 //
 // Abstand: nach einer gescheiterten Probe probeGap, verdoppelnd bis probeGapMax, je Platz und Schicht; eine bestandene
-// Probe oder upHold Halten der Schicht setzt zurueck. Nach einer bestandenen Probe frueestens probeGap spaeter die
+// Probe oder upHold Halten der Schicht setzt zurueck. Nach einer bestandenen Probe fruehestens probeGap spaeter die
 // naechste (falls der freigegebene Schritt aus anderem Grund ausbleibt).
 //
 // Verhaeltnis zum Aufschub (dwell): Der Aufschub entsteht unveraendert, wenn ein echter Wechsel scheitert. Mit Probing
