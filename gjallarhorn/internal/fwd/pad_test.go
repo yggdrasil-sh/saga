@@ -1,8 +1,11 @@
 package fwd
 
 import (
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/pion/rtp"
 )
 
 // vp8part: Paket eines Bilds aus mehreren Paketen (start = erstes, marker = letztes), mit Nutzlast.
@@ -138,7 +141,7 @@ func TestPaddingFolgenummern(t *testing.T) {
 	t.Logf("%d Fuellpakete, %d Medienpakete", pads, media)
 }
 
-// TestPaddingRate: Die Fuellrate wird im Mittel eingehalten (Bilder mit 30/s, Fuellen dazwischen im Takt padTick).
+// TestPaddingRate: Die Fuellrate wird im Mittel eingehalten (Bilder mit 30/s, Fuellen direkt hinter jedem Bild).
 func TestPaddingRate(t *testing.T) {
 	leg := NewLeg()
 	defer leg.Close()
@@ -165,6 +168,86 @@ func TestPaddingRate(t *testing.T) {
 	}
 	checkPad(t, w)
 	t.Logf("fuellrate %.0f kbit/s (eingestellt %.0f)", got/1000, rate/1000)
+}
+
+// trec schreibt mit, wann welches Paket hinausging (Fuellpaket oder Medium).
+type trec struct {
+	mu  sync.Mutex
+	at  []time.Time
+	pad []bool
+}
+
+func (r *trec) WriteRTP(h *rtp.Header, p []byte) (int, error) {
+	r.mu.Lock()
+	r.at = append(r.at, time.Now())
+	r.pad = append(r.pad, h.Padding)
+	r.mu.Unlock()
+	return len(p), nil
+}
+
+// TestPaddingHaengtAmMedium: Solange das Bein Pakete sendet, gehen Fuellpakete nur direkt hinter einem Paket hinaus,
+// nie in einem eigenen Takt dazwischen. pion-GCC fasst zusammen, was binnen 5 ms nach dem ersten Paket einer Gruppe
+// gesendet wurde, und misst vom ersten Senden bis zur letzten Ankunft: Ein Fuell-Schub kurz vor einem Medienpaket
+// verlaengert die Gruppe scheinbar, die Laufzeitmessung rauscht, und Proben scheitern auf freier Leitung (Saga 2.5 N2).
+// Schweigt das Bein laenger als padIdle, fuellt der Schreiber von selbst weiter - die Rate bleibt.
+func TestPaddingHaengtAmMedium(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		gap  time.Duration
+	}{{"dicht", 15 * time.Millisecond}, {"still", 120 * time.Millisecond}} {
+		t.Run(c.name, func(t *testing.T) {
+			leg := NewLeg()
+			defer leg.Close()
+			w := &trec{}
+			o := leg.NewOut("v", "p", Video, ClassSpeaker, "l")
+			o.Bind(w, 7, 96)
+			s := &Source{Owner: "p", Layer: "l", Kind: Video}
+			o.Assign(s)
+			s.Inject(vp8part(1, 0, true, true, true))
+			waitFor(t, func() bool { w.mu.Lock(); defer w.mu.Unlock(); return len(w.at) == 1 })
+			const rate = 900e3
+			leg.SetPadding(o, rate)
+			start := time.Now()
+			for i := 2; time.Since(start) < 600*time.Millisecond; i++ {
+				s.Inject(vp8part(uint16(i), uint32(i)*3000, true, false, true))
+				time.Sleep(c.gap)
+			}
+			leg.SetPadding(nil, 0)
+			el := time.Since(start).Seconds()
+			time.Sleep(20 * time.Millisecond)
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			// allein: Fuell-Schuebe, die nicht an einem Medienpaket haengen (mehr als 8 ms nach dem letzten Paket begonnen);
+			// eng: solche, die weniger als padIdle/2 nach dem letzten Paket begannen (ein dichter eigener Takt)
+			pads, media, allein, eng := 0, 0, 0, 0
+			for i, pd := range w.pad {
+				if !pd {
+					media++
+					continue
+				}
+				pads++
+				if d := w.at[i].Sub(w.at[i-1]); d > 8*time.Millisecond {
+					allein++
+					if d < padIdle/2 {
+						eng++
+					}
+				}
+			}
+			got := float64(pads) * padWire * 8 / el
+			t.Logf("%d Bilder, %d Fuellpakete (%.0f kbit/s), %d Schuebe ohne Medienpaket davor, davon %d im engen Takt", media, pads,
+				got/1000, allein, eng)
+			if got < 0.7*rate || got > 1.1*rate {
+				t.Fatalf("fuellrate %.0f kbit/s, eingestellt %.0f", got/1000, rate/1000)
+			}
+			// (ein, zwei Ausreisser, wenn der Test selbst haengt und das Bein so lange wirklich schweigt)
+			if c.gap < padIdle && allein > 2 {
+				t.Fatalf("%d Fuell-Schuebe ohne Medienpaket davor bei %d Bildern im Abstand %v", allein, media, c.gap)
+			}
+			if c.gap > padIdle && (allein < media || eng > 2) {
+				t.Fatalf("stilles Bein: %d eigene Schuebe bei %d Bildern, %d davon im engen Takt", allein, media, eng)
+			}
+		})
+	}
 }
 
 // TestPaddingNoAlloc: Fuellpakete ohne Allokation; der Paketpfad bleibt auch mit laufender Probe frei davon.

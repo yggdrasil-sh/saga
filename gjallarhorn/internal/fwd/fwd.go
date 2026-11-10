@@ -884,12 +884,22 @@ type Leg struct {
 
 // Fuellpakete: reine RTP-Padding-Pakete (P-Bit, keine Nutzlast) mit PadSize Byte Padding, also padWire Byte je Paket
 // ohne Erweiterungen. Geschrieben wird nur zwischen zwei Bildern (nach einem Paket mit Marker), hoechstens padBurst
-// Guthaben am Stueck; ist die Warteschlange leer, alle padTick.
+// Guthaben am Stueck - und zwar direkt hinter einem Paket des Beins (Ton oder Bild), im selben Schub. Einen eigenen Takt
+// haben die Fuellpakete nur, wenn das Bein padIdle lang nichts zu senden hatte (stille Quelle, wenige Bilder/s).
+//
+// Warum kein dichter eigener Takt (bis Saga 2.5 N2: alle 5 ms): pion-GCC fasst Pakete zu Gruppen zusammen - alles, was
+// binnen 5 ms nach dem ersten Paket einer Gruppe gesendet wurde - und misst die Laufzeit einer Gruppe von der Sendezeit
+// ihres ersten bis zur Ankunft ihres letzten Pakets (gcc/arrival_group_accumulator.go). Ein Fuell-Schub, dem binnen
+// 5 ms ein Ton- oder Bildpaket folgt, bildet mit ihm eine Gruppe, die um genau diesen Abstand "laenger unterwegs" war;
+// die naechste ist wieder kurz. Bei einem Takt von 5 ms traf das fast jede zweite Gruppe: Die Laufzeitmessung
+// schwankte auf freier Leitung um 4 ms (Median, bis 14 ms) statt um 0,4 ms, die Schaetzung lag in jedem zehnten Takt
+// ueber der Schwelle, und etwa jede 30. Probe scheiterte faelschlich an "Ueberlast". Haengen die Fuellpakete an den
+// Paketen, die ohnehin gehen, bleibt das Gruppenmuster das des Mediums (gemessen: 0,3 ms, nie ueber der Schwelle).
 const (
 	PadSize  = 255
 	padWire  = 12 + PadSize
-	padTick  = 5 * time.Millisecond
-	padBurst = 40 * time.Millisecond
+	padIdle  = 40 * time.Millisecond
+	padBurst = 50 * time.Millisecond // etwas ueber padIdle: ein verspaeteter Wecker kostet kein Guthaben
 )
 
 // PadMax: Laenger als so fuellt ein Bein nach einem SetPadding nicht (Totmann). Der Steuerpfad stellt die Rate je
@@ -909,7 +919,7 @@ func (l *Leg) SetPadding(o *Out, bps int64) {
 	l.padOut.Store(o)
 	l.padUntil.Store(Now() + int64(PadMax))
 	l.padBps.Store(bps)
-	select { // Schreiber wecken: Er fuellt auch zwischen den Bildern (padTick), nicht erst nach dem naechsten Paket
+	select { // Schreiber wecken: Er fuellt auch ohne Pakete (nach padIdle), nicht erst nach dem naechsten Paket
 	case l.wake <- struct{}{}:
 	default:
 	}
@@ -1088,16 +1098,23 @@ func (l *Leg) run() {
 				continue
 			}
 			var padC <-chan time.Time
-			if l.padBps.Load() > 0 { // Probe laeuft: zwischen den Bildern im Takt padTick fuellen
+			if l.padBps.Load() > 0 { // Probe laeuft und nichts zu senden: nach padIdle Ruhe fuellen
 				if l.padTimer == nil {
-					l.padTimer = time.NewTimer(padTick)
+					l.padTimer = time.NewTimer(padIdle)
 				} else {
-					l.padTimer.Reset(padTick)
+					l.padTimer.Reset(padIdle)
 				}
 				padC = l.padTimer.C
 			}
 			select {
 			case <-l.wake:
+				if l.padBps.Load() > 0 {
+					// Beginn einer Probe (SetPadding weckt): Uhr des Guthabens jetzt starten, damit der erste Schub
+					// ohne Pakete nach padIdle kommt und nicht erst einen Wecker spaeter
+					if now := Now(); l.padT == 0 || now-l.padT > int64(4*padBurst) {
+						l.pad(now)
+					}
+				}
 				continue
 			case <-padC:
 				dirty = l.pad(Now())
