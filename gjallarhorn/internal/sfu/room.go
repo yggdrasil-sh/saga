@@ -210,6 +210,8 @@ type Room struct {
 	seq       uint64
 	lastTick  int64
 	peersSig  string // Teilnehmende bei der letzten OnPeers-Meldung
+	// Aufschub und Proben-Abstand entfernter Beine (probe.go, remember/recall): ueberleben einen Wegwechsel
+	mem map[memKey]memEnt
 }
 
 // Ref liefert die Raumkennung.
@@ -603,6 +605,7 @@ func (r *Room) removeLegLocked(l *Leg) {
 		o.Detach()
 	}
 	l.fl.SetPadding(nil, 0)
+	r.remember(l)
 	p := l.Peer
 	delete(p.legs, l)
 	if len(p.legs) == 0 {

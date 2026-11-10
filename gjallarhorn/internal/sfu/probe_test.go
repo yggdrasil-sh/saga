@@ -257,3 +257,59 @@ func TestProbingWechselndesScheitern(t *testing.T) {
 		t.Fatalf("mit Probing %d h-Versuche in 10 min, ohne %d", ups[1], ups[0])
 	}
 }
+
+// TestProbingWegwechsel: Aufschub und Proben-Abstand ueberleben einen Wegwechsel udp -> tcp -> udp. Auf einer Leitung,
+// die h nicht traegt, kaeme sonst nach jedem Wechsel sofort die naechste Probe bzw. der naechste Versuch.
+func TestProbingWegwechsel(t *testing.T) {
+	er := newEstCfg(t, 1250e3, 810e3, 1, true)
+	er.link = 1000e3
+	er.until("m", 2*time.Second)
+	er.measure(90*time.Second, nil) // Proben nach 0, 10, 30, 70 s gescheitert: Abstand 80 s
+	old := er.l.slots[1].dw[layerRank("h")]
+	if old.pd < 80*time.Second || old.next <= er.now {
+		t.Fatalf("vor dem Wegwechsel: abstand %v, naechste Probe in %v", old.pd, time.Duration(old.next-er.now))
+	}
+	swap := func(ref string, path Path) *Leg {
+		er.r.RemoveLeg(er.l.Ref)
+		l, err := er.r.AddLeg(Grant{Room: "raumschaetzer", Peer: "empf", Leg: ref, Role: RoleBoth}, path, Want{Audio: 1, Speaker: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if path == PathUDP {
+			l.Ext = func() int { return int(er.gcc) }
+			l.ExtOver = func() bool { return er.over >= 2 }
+		}
+		er.l = l
+		er.sent = 0
+		return l
+	}
+	swap("empf-tcp", PathTCP)
+	er.measure(10*time.Second, nil)
+	if d := er.l.slots[1].dw[layerRank("h")]; d != old {
+		t.Fatalf("auf dem TCP-Bein: %+v, erwartet %+v", d, old)
+	}
+	swap("empf-udp", PathUDP)
+	res := er.measure(time.Duration(old.next-er.now)-2*time.Second, nil)
+	if res.started != 0 || res.ups > 1 { // der Schritt auf m ist kein Versuch auf h
+		t.Fatalf("nach dem Wegwechsel vor Ablauf des Abstands: %v, verlauf %v", res, res.seen)
+	}
+	res = er.measure(10*time.Second, nil)
+	if res.started != 1 || res.failed != 1 {
+		t.Fatalf("nach Ablauf des Abstands: %v", res)
+	}
+	if d := er.l.slots[1].dw[layerRank("h")]; d.pd != probeGapMax {
+		t.Fatalf("abstand nach der naechsten gescheiterten Probe %v, erwartet %v", d.pd, probeGapMax)
+	}
+	// ohne Probing merkt sich der Raum nichts
+	off := newEstCfg(t, 1250e3, 810e3, 1, false)
+	off.link = 1000e3
+	off.until("m", 2*time.Second)
+	off.measure(time.Minute, nil)
+	if off.l.slots[1].dwellOf("h") == 0 {
+		t.Fatal("kein Aufschub ohne Probing")
+	}
+	off.r.RemoveLeg(off.l.Ref)
+	if len(off.r.mem) != 0 {
+		t.Fatal("ohne Probing gemerkt")
+	}
+}

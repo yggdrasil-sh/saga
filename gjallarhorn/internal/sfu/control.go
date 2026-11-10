@@ -470,6 +470,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		assignSticky(tiles, cand)
 	}
+	if len(r.mem) > 0 {
+		r.recall(l, vslots, now)
+	}
 	// Schaetzung und Verteilung
 	prb := l.probing(cfg)
 	l.est.probing = prb

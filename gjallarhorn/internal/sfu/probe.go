@@ -253,3 +253,60 @@ func (e *estimator) shieldOff(now int64, floor time.Duration) {
 		e.prUntil = now + int64(floor)
 	}
 }
+
+// Aufschub und Proben-Abstand haengen am Platz eines Beins. Wechselt ein Geraet den Weg (udp -> tcp -> udp), entsteht
+// ein neues Bein, und beides begaenne von vorn - auf einer Leitung, die h nicht traegt, kaeme nach jedem Wegwechsel
+// sofort wieder ein Versuch. Deshalb merkt sich der Raum die Eintraege eines entfernten Beins je (Empfaenger, Besitzer
+// der Quelle, Platzart) fuer memKeep und gibt sie dem naechsten Platz desselben Empfaengers fuer denselben Besitzer
+// zurueck. Nur mit Probing (Schalter aus: Verhalten wie zuvor).
+const (
+	memKeep = upDwellMax // so lange nach dem Entfernen des Beins
+	memMax  = 512        // Eintraege je Raum
+)
+
+type memKey struct{ recv, owner, class string }
+
+type memEnt struct {
+	dw    [4]dwell
+	until int64
+}
+
+// remember merkt sich Aufschub und Proben-Abstand der Plaetze eines Beins, das entfernt wird.
+func (r *Room) remember(l *Leg) {
+	if !r.cfg.Probing {
+		return
+	}
+	now := r.lastTick
+	for k, e := range r.mem {
+		if now >= e.until {
+			delete(r.mem, k)
+		}
+	}
+	for _, s := range l.slots {
+		if s.dwellOwner == nil || s.dw == ([4]dwell{}) || len(r.mem) >= memMax {
+			continue
+		}
+		if r.mem == nil {
+			r.mem = map[memKey]memEnt{}
+		}
+		r.mem[memKey{l.Peer.ID, s.dwellOwner.ID, s.class}] = memEnt{s.dw, now + int64(memKeep)}
+	}
+}
+
+// recall gibt gemerkte Eintraege an Plaetze zurueck, die fuer ihren Besitzer noch keine eigene Vorgeschichte haben.
+func (r *Room) recall(l *Leg, vslots []*slot, now int64) {
+	for _, s := range vslots {
+		if s.owner == nil || s.dwellOwner == s.owner {
+			continue
+		}
+		k := memKey{l.Peer.ID, s.owner.ID, s.class}
+		e, ok := r.mem[k]
+		if !ok {
+			continue
+		}
+		delete(r.mem, k)
+		if now < e.until {
+			s.dw, s.dwellOwner = e.dw, s.owner
+		}
+	}
+}
