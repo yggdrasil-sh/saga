@@ -292,8 +292,9 @@ type Leg struct {
 	ExtOver func() bool
 	ExtRTT  func() time.Duration
 
-	pr    probe
-	pstat ProbeStats
+	pr      probe
+	pstat   ProbeStats
+	movedAt int64 // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
 }
 
 // slot ist ein Empfangsplatz (Steuerdaten).

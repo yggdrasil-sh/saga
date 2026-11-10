@@ -790,10 +790,14 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			s.paused, s.layer = false, ""
 		}
 	}
-	// Probe fuer den abgelehnten Schritt: nur, wenn sich in diesem Takt nichts bewegt hat, keine andere laeuft, die
-	// Zielrate ins Kontingent passt und ein laufender Bild-Ausgang zum Fuellen da ist (der des Platzes selbst, sonst
+	// Probe fuer den abgelehnten Schritt: nur, wenn sich die Auswahl seit probeQuiet nicht bewegt hat (nach einem Wechsel
+	// bzw. zu Beginn des Beins sind Rate und GCC-Ziel noch in Bewegung), keine andere laeuft, die Zielrate ins
+	// Kontingent passt und ein laufender Bild-Ausgang zum Fuellen da ist (der des Platzes selbst, sonst
 	// der erste laufende in der Reihenfolge des Vorrangs)
-	if cand.s != nil && !moved && l.pr.stage == 0 && cand.need*upHeadroom+audioCut <= quotaCap {
+	if moved {
+		l.movedAt = now
+	}
+	if cand.s != nil && now-l.movedAt >= int64(probeQuiet) && l.pr.stage == 0 && cand.need*upHeadroom+audioCut <= quotaCap {
 		fs := cand.s
 		if fs.layer == "" || fs.paused {
 			fs = nil

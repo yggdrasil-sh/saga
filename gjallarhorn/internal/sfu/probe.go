@@ -53,6 +53,7 @@ const (
 	probeGap      = 10 * time.Second        // Abstand nach einer gescheiterten Probe (verdoppelnd)
 	probeGapMax   = 2 * time.Minute
 	probeRetry    = 2 * time.Second // Abstand nach einer abgebrochenen Probe (Belegung geaendert)
+	probeQuiet    = layerDwell      // so lange muss die Bild-Auswahl des Beins unveraendert laufen, bevor geprobt wird
 	probeGrant    = time.Second     // so lange gilt eine bestandene Probe fuer den Schritt
 	probeSlack    = 1.1             // ... auch wenn sein Bedarf seit Beginn der Probe um so viel gewachsen ist
 	probeFloor    = lagFloor        // so lange nach einem Abbruch faellt die Schaetzung nicht unter den Stand davor
