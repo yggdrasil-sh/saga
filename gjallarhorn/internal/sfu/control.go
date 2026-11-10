@@ -780,6 +780,7 @@ type estimator struct {
 	lagAt     int64   // Beginn der laufenden Folge (0 = keine)
 	lagSeen   int64   // letzter Takt mit Ziel unter der Rate
 	lagDead   bool    // Folge gescheitert: bis zu ihrem Ende zaehlt das Ziel wieder wie frueher als Stau
+	lagJump   bool    // Folge begann mit einem Ratensprung (Schritt nach oben): nur dann gilt die Untergrenze lagFloor
 	lagPeak   float64 // hoechstes Ziel seit Beginn
 	lagMark   float64 // Ziel bei der letzten Fortschrittspruefung
 	lagMarkAt int64
@@ -818,15 +819,19 @@ const (
 	lagClear = 2 * time.Second  // so lange ohne Rueckstand: Folge beendet
 	lagLink  = 3 * time.Second  // Folge beginnt binnen dieser Zeit nach einem Hochschalten: gehoert zu diesem Versuch
 	lagFloor = 2 * time.Second  // so lange nach dem Scheitern nicht unter den Stand vor dem Versuch
+	// Die Untergrenze gilt nur, wenn die Folge mit einem Ratensprung begann (Schritt nach oben). Bricht die Leitung
+	// bei gleichbleibender Rate ein, gibt es keinen "Stand davor" - dann zaehlt das Ziel sofort wie frueher.
+	lagJumpMin = 1.1
 )
 
 // lagging: Das GCC-Ziel v liegt unter der gesendeten Rate - laeuft es nur nach (true, kein Stau) oder ist das Stau?
-func (e *estimator) lagging(v float64, now int64) bool {
+func (e *estimator) lagging(v, rate float64, now int64) bool {
 	if e.lagAt == 0 {
 		if now < e.holdUntil || e.gccLast <= 0 {
 			return false
 		}
 		e.lagAt, e.lagBase = now, e.rateAvg
+		e.lagJump = rate > e.lagBase*lagJumpMin
 		if v < e.gccLast*gccFall { // faellt, waehrend die Rate es ueberholt: Stau, bis zum Ende dieser Folge
 			e.lagDead, e.deadAt = true, now
 			return false
@@ -884,7 +889,7 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		switch {
 		case v > 0 && v < rate*0.9:
 			e.lagSeen = now
-			if e.lagging(v, now) {
+			if e.lagging(v, rate, now) {
 				e.lag = true
 			} else {
 				gccLow = v
@@ -906,7 +911,7 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		}
 		// runter auf 85 % des tatsaechlich Durchgegangenen (nicht kumulativ)
 		t := rate * 0.85
-		if e.lagDead && gccLow > 0 && now-e.deadAt < int64(lagFloor) && t < e.lagBase {
+		if e.lagDead && e.lagJump && gccLow > 0 && now-e.deadAt < int64(lagFloor) && t < e.lagBase {
 			t = e.lagBase // gescheiterter Versuch nach oben: zurueck auf den Stand davor, nicht darunter
 		}
 		if t > e.bps {

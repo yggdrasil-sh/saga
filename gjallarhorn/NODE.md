@@ -89,6 +89,9 @@ Platzhalter: `horn-1.example.org`.
     Ratensprungs noch danach um mehr als 3 % unter seinen Höchstwert), je Sekunde um mindestens 1,5 % steigt,
     insgesamt höchstens 15 s lang und nicht während einer Sperrzeit; sonst zählt das Ziel wie bisher als Stau.
     Solange sie läuft, kommt nichts Neues dazu (kein weiterer Schritt nach oben).
+    Scheitert sie, fällt die Schätzung 2 s lang nicht unter die Rate vor dem Ratensprung – aber nur, wenn die Folge
+    mit einem Ratensprung begann (Rate über 1,1 × ihres geglätteten Werts). Bricht die Leitung bei gleichbleibender
+    Rate ein, folgt die Schätzung dem Ziel sofort.
   - UDP, Deckel: Die freie Schätzung wächst höchstens bis `1,6 × gesendete Rate + 300 kbit/s` (mindestens der
     Startwert) – und auf UDP mindestens bis zum Bedarf des nächsten Schritts nach oben (bzw. der laufenden Auswahl)
     mit 15 % Reserve und 5 % Zuschlag, zuzüglich des Tonabzugs, höchstens das Kontingent. Der Wechsel selbst ist

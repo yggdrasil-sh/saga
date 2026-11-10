@@ -394,3 +394,54 @@ func TestEstimatorNachlauf(t *testing.T) {
 		t.Fatalf("tcp-deckel %v", v.e.bps)
 	}
 }
+
+// TestEstimatorEinbruchOhneVersuch: Bricht die Leitung bei gleichbleibender Rate ein (kein Schritt nach oben davor),
+// folgt die Schaetzung dem Ziel sofort - die Untergrenze "Stand vor dem Versuch" gilt nur nach einem Ratensprung.
+func TestEstimatorEinbruchOhneVersuch(t *testing.T) {
+	type env struct {
+		e   estimator
+		l   *Leg
+		now int64
+		gcc float64
+	}
+	mk := func(gcc float64) *env {
+		v := &env{l: &Leg{fl: fwd.NewLeg()}, now: int64(100 * time.Second), gcc: gcc}
+		t.Cleanup(v.l.fl.Close)
+		v.e.init(1.2e6, 25e6)
+		v.l.Ext = func() int { return int(v.gcc) }
+		return v
+	}
+	step := func(v *env, rate float64) {
+		v.l.fl.Stats.BytesOut.Add(uint64(rate * 0.2 / 8))
+		v.now += int64(200 * time.Millisecond)
+		v.e.update(v.l, 0.2, v.now)
+	}
+	// 10 s stabil auf 1290 kbit/s, dann faellt das Ziel auf 300 kbit/s
+	v := mk(3e6)
+	for i := 0; i < 50; i++ {
+		step(v, 1290e3)
+	}
+	v.e.bps = 2e6
+	v.gcc = 300e3
+	step(v, 1290e3)
+	if v.e.lag || v.e.lagJump || v.e.bps > 320e3 {
+		t.Fatalf("einbruch ohne versuch: lag=%v sprung=%v schaetzung=%.0f (soll ~300k)", v.e.lag, v.e.lagJump, v.e.bps)
+	}
+	// Gegenstueck: gleicher Einbruch im Takt eines Ratensprungs (540 -> 1290 kbit/s) - Stand davor haelt lagFloor lang
+	w := mk(3e6)
+	for i := 0; i < 50; i++ {
+		step(w, 540e3)
+	}
+	w.e.bps = 2e6
+	w.gcc = 300e3
+	step(w, 1290e3)
+	if !w.e.lagJump || w.e.bps < 500e3 || w.e.bps > 560e3 {
+		t.Fatalf("einbruch im versuch: sprung=%v schaetzung=%.0f (soll ~540k)", w.e.lagJump, w.e.bps)
+	}
+	for i := 0; i < 11; i++ { // nach lagFloor folgt die Schaetzung dem Ziel
+		step(w, 540e3)
+	}
+	if w.e.bps > 320e3 {
+		t.Fatalf("nach der Untergrenze: schaetzung=%.0f (soll ~300k)", w.e.bps)
+	}
+}

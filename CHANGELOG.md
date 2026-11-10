@@ -30,11 +30,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
     stehen, ist das Stau wie bisher.
 - Damit echte Engpässe nicht schlechter dran sind: Nach oben geht es nur, wenn das GCC-Ziel mindestens 1,25 × der
   gesendeten Rate ist (sonst wäre ein Stau danach nicht als Fall erkennbar). Scheitert ein Versuch, zählt er als
-  Fehlversuch – der Aufschub wächst wie gehabt (8, 16, höchstens 32 s) –, und die Schätzung fällt nicht unter den
-  Stand vor dem Versuch.
+  Fehlversuch – der Aufschub wächst wie gehabt (8, 16, höchstens 32 s) –, und die Schätzung fällt 2 s lang nicht
+  unter den Stand vor dem Versuch. Bricht die Leitung ohne vorherigen Schritt nach oben ein, gilt diese Untergrenze
+  nicht: Die Schätzung folgt dem Ziel sofort wie bisher.
 - Bei Stau fällt ein Platz auf der hohen Ebene nur noch so weit, wie die Schätzung es verlangt (auf die mittlere,
   wenn sie reicht). Bisher ging es während der Sperrzeit immer bis auf die unterste.
-- TCP-/TLS-Beine sind nicht betroffen (dort bleibt der alte Deckel, Stau über das Paketalter). Die Felder der
+- TCP-/TLS-Beine behalten Deckel und Stau-Erkennung (über das Paketalter); nur der vorige Punkt gilt für alle Wege. Die Felder der
   Ereignisse `layout`/`layers` sind unverändert. Gefunden im Anruf-Labortest („Fund 2“).
 
 ### Behoben – Knoten fordert Pakete eines pausierten Bild-Stroms endlos nach
