@@ -118,6 +118,51 @@ Platzhalter: `horn-1.example.org`.
     zur Hälfte die alte Rate enthält) sagt nichts über die Stufe davor.
   - Tests: `internal/sfu/schaetzer_test.go` (freie Leitung, enge Leitung, Stau-Schub, Einzelregeln), mit einem
     Modell des GCC-Ziels nach Messwerten am echten `gcc.SendSideBWE`.
+- **Probing mit Fülldaten (experimentell, `HORN_PROBING`, Standard an; `HORN_PROBING=0` = aus):**
+  - Wozu: Ohne Proben ist der Schichtwechsel selbst die Probe. Scheitert er, kostet das ein Schlüsselbild, den
+    Rückwechsel und kurz verdeckten Ton; der Aufschub begrenzt nur, wie oft. Mit Probing füllt der Knoten die Leitung
+    vor einem Schritt nach oben kurz mit wertlosen RTP-Padding-Paketen auf die Rate, die der Schritt bräuchte. Trägt
+    die Leitung das ohne Stausignal, wird der Schritt freigegeben; sonst bleibt alles, wie es ist.
+  - Für wen: nur UDP-Beine mit GCC. TCP-/TLS-Beine und der Schalter „aus“ verhalten sich exakt wie oben beschrieben.
+  - Auslöser: Ein Schritt nach oben (auch Bildschirm, auch eine Kachel aus der Pause) scheitert nur an der Schätzung
+    – keine Sperrzeit, keine laufende Schonfrist, GCC-Ziel mindestens 1,25 × der Rate, die Bild-Auswahl des Beins
+    seit 4 s unverändert. Höchstens eine Probe je Bein. Der Deckel der Schätzung folgt mit Probing nicht mehr dem
+    Bedarf des nächsten Schritts (er bleibt bei `1,6 × Rate + 300 kbit/s`, mindestens der Startwert); was darüber
+    liegt, braucht eine bestandene Probe.
+  - Ablauf: Zielrate = Bedarf des Schritts × 1,15 + Ton; Füllrate = Zielrate − laufende Rate, höchstens
+    1,5 Mbit/s, nie über das Kontingent (P10). 2 Takte halbe Füllrate, dann volle Füllrate für das Fenster
+    (2,5 Umlaufzeiten aus den Empfängerberichten, mindestens 3 Takte, höchstens 1,5 s; ohne Umlaufzeit 1 s), danach
+    2 Takte Nachlauf ohne Fülldaten.
+  - Stausignale (sofortiger Abbruch): GCC-Ziel fällt um mehr als 3 % unter seinen Höchstwert seit Beginn (nicht im
+    Nachlauf), pion-GCC meldet Überlast (`usage` „overuse“ bzw. `state` „decrease“), Alter oder Verlust in der
+    eigenen Warteschlange. Während der Probe und 2 s nach einem Abbruch ändert sich die Schätzung nicht – ein Stau,
+    den die Fülldaten erzeugt haben, sagt nichts über die laufende Auswahl. Liegt das GCC-Ziel danach immer noch
+    unter der Rate, zählt das als Stau wie bisher.
+  - Bestanden: kein Stausignal bis zum Ende des Nachlaufs, und die Fülldaten sind wirklich geflossen (mindestens
+    60 % der Füllrate). Dass das GCC-Ziel die Zielrate erreicht, wird **nicht** verlangt: pion-GCC hebt sein Ziel
+    auch auf freier Leitung nur um rund 8 % je Sekunde. Der Wechsel folgt im selben bzw. nächsten Takt.
+  - Abstand: nach einer gescheiterten Probe 10 s, verdoppelnd bis 2 min, je Platz und Schicht; eine bestandene Probe
+    oder 30 s Halten der Schicht setzt zurück.
+  - Aufschub und Probe: Der Aufschub (8/16/32 s … 5 min) entsteht unverändert, wenn ein echter Wechsel scheitert.
+    Danach braucht der nächste Versuch auf diese Schicht eine bestandene Probe; geprobt wird frühestens nach dem
+    Aufschub, höchstens aber nach 2 min – echte Versuche kommen so nie häufiger als ohne Probing, und eine frei
+    gewordene Leitung ist nach spätestens 2 min (statt 5 min) wieder oben. Die Probe verlängert den Aufschub nie.
+    Aufschub und Proben-Abstand überleben einen Wegwechsel (udp → tcp → udp) des Geräts für 5 min.
+  - Füllpakete (`internal/fwd`, `Leg.SetPadding`): reine Padding-Pakete (P-Bit, 255 Byte, keine Nutzlast) auf der
+    Bild-SSRC des Ausgangs, nur zwischen zwei Bildern (nach einem Paket mit Marker), mit fortlaufender Folgenummer
+    des Ausgangs und dem Zeitstempel des letzten Bilds; zwischen den Bildern im 5-ms-Takt. Der Takt setzt nur
+    Atomics, der Schreiber des Beins füllt ohne Sperren und Allokationen. Der NACK-Antworter puffert Füllpakete
+    nicht (ein verlorenes wird nicht nachgesendet). Die Raten der Quellen zählen sie nicht mit, die Rate des Beins
+    schon.
+  - Datenverbrauch: rund 0,1–0,15 MB je Probe von 360p auf 720p (gescheiterte Proben brechen früher ab, im Modell
+    0,02–0,07 MB); auf einer dauerhaft zu engen Leitung etwa 8 Proben in 10 min.
+  - Diagnose: Im Ereignis `layout` trägt der Platz, der höher gehen soll, einmalig `probe` (`start` | `ok` | `fail` |
+    `abort`), `probe_kbit` (Zielrate) und `probe_why` (`gcc`, `over`, `queue`; bei `abort`: `platz`, `ausgang`,
+    `fuell`). Alte Geräte ignorieren die Felder; die Belegung ändert sich durch eine Probe nicht. Zähler je Bein:
+    `GET /api/sfu/leg/{id}` → `probes {started, passed, failed, aborted, pad_bytes}`, `stats.pad_bytes`.
+  - Tests: `internal/sfu/probe_test.go` (Modell mit Fülldaten: enge Leitung, Leitung wird frei, Störschübe,
+    Gruppen, Wegwechsel), `internal/fwd/pad_test.go` (Folgenummern, kein Füllpaket mitten im Bild, keine
+    Allokation), `probing_udp_test.go` (Ende zu Ende mit pion-Gegenstelle hinter einem Engpass).
 - **Vorrang und Verwerfen (H3):**
   - Die Warteschlange je Bein arbeitet nach Vorrang: Ton > Bildschirm > Sprecher > Kacheln.
   - Ist ein Rahmen älter als 150 ms, verwirft der Knoten Bilder bis zum nächsten Schlüsselbild und fordert eine PLI

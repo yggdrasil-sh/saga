@@ -47,6 +47,22 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Nicht am Gerät geprüft:** Dass Browser Wiederholungen so schicken und behandeln, ist am Code von pion und libwebrtc
   gelesen und passt zu den Labordaten; gemessen ist die Wirkung bisher nur mit der Test-Gegenstelle.
 
+### Neu – Knoten: Probing mit Fülldaten vor dem Hochschalten (experimentell)
+- Bisher war auf UDP der Schichtwechsel selbst die Probe der Leitung: Trug sie die höhere Ebene nicht, kostete das
+  ein Schlüsselbild, den Rückwechsel und kurz verdeckten Ton, und der Aufschub (8 s … 5 min) begrenzte nur die
+  Häufigkeit (Modell: 7 Fehlversuche in 10 min auf einer Leitung zwischen zwei Ebenen). Jetzt füllt der Knoten die
+  Leitung vor einem Schritt nach oben für gut eine Sekunde mit wertlosen RTP-Padding-Paketen auf die Rate, die der
+  Schritt bräuchte. Meldet GCC dabei keinen Stau, wird der Schritt freigegeben; sonst bleibt alles, wie es ist – kein
+  Schlüsselbild, kein Wechsel (Modell: 0 Fehlversuche, 8 Proben mit zusammen 0,2–0,6 MB in 10 min).
+- Nur UDP-Beine mit GCC. TCP-/TLS-Wege bleiben unverändert. Nach gescheiterten Proben wächst der Abstand von 10 s
+  bis 2 min; nach einem echten Fehlversuch braucht der nächste Versuch eine bestandene Probe, frühestens nach dem
+  bisherigen Aufschub, höchstens nach 2 min. Aufschub und Proben-Abstand überleben einen Wegwechsel des Geräts.
+- Schalter am Knoten: `HORN_PROBING` (Standard an, `0` = aus – dann verhält sich der Knoten wie zuvor). Datenverbrauch
+  rund 0,1–0,15 MB je Probe von 360p auf 720p. Diagnose: Felder `probe`, `probe_kbit`, `probe_why` im Ereignis
+  `layout` (alte Clients ignorieren sie) und Zähler `probes`/`pad_bytes` unter `GET /api/sfu/leg/{id}`.
+  Einzelheiten in `gjallarhorn/NODE.md` („Probing mit Fülldaten“), Code `gjallarhorn/internal/sfu/probe.go` und
+  `internal/fwd` (`Leg.SetPadding`).
+
 ### Behoben – Knoten: im 1:1 über UDP bleibt das Bild auf der mittleren Ebene
 - Im Anruf zu zweit über den Knoten bekam der Empfänger dauerhaft nur die mittlere Simulcast-Ebene (640×360), obwohl
   der Sender die hohe schickte und die Leitung frei war. Zwei Regeln der Schätzung standen im Weg
