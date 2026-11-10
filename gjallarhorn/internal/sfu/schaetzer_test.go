@@ -28,6 +28,7 @@ type estRoom struct {
 	grow  float64 // Anstieg des Ziels ohne Stau (bit/s je Sekunde)
 	loss  bool    // Stau-Schub: Ziel faellt auf 600 kbit/s (traegt m, nicht h)
 	over  int     // Takte ueber der Leitung
+	free  float64 // letzte Rate, die die Leitung trug
 	evs   []Slot
 }
 
@@ -91,11 +92,20 @@ func (er *estRoom) tick() {
 	case er.loss:
 		er.gcc = 600e3
 	case er.link > 0 && rate > er.link:
-		if er.over++; er.over >= 2 { // Verzoegerung faellt nach ~0,3 s auf: 85 % dessen, was durchkommt
-			er.gcc = 0.85 * er.link
+		// Verzoegerung faellt nach ~0,3 s auf: 85 % dessen, was durchkommt. Bei deutlicher Ueberlast enthaelt das
+		// Messfenster dann noch ueberwiegend die alte Rate (gemessen: erster Wert ~1,03 x alte Rate); danach holt
+		// der Verlust-Teil mit 5 % je 200 ms auf.
+		tgt := 0.85 * er.link
+		switch er.over++; {
+		case er.over == 2 && rate > 1.1*er.link:
+			er.gcc = min(tgt, 1.03*er.free)
+		case er.over == 2:
+			er.gcc = tgt
+		case er.over > 2:
+			er.gcc = min(tgt, er.gcc*1.05)
 		}
 	default:
-		er.over = 0
+		er.over, er.free = 0, rate
 		er.gcc += er.grow * dt
 		if c := max(er.capF*rate, er.floor); er.capF > 0 && er.gcc > c {
 			er.gcc = c
@@ -162,14 +172,15 @@ func TestSchaetzerFreieLeitung(t *testing.T) {
 }
 
 // TestSchaetzerEngeLeitung (b): Die Leitung traegt m, aber nicht h. Der Versuch nach oben endet zuegig (Ziel faellt:
-// sofort; Ziel springt auf 85 % der Leitung und steht: nach hoechstens zwei Fortschrittspruefungen), zaehlt als
-// gescheitert, und der Aufschub waechst (8/16/32 s) - kein Pendeln.
+// sofort; milde Ueberlast, Ziel springt auf 85 % der Leitung und steht: nach hoechstens zwei Fortschrittspruefungen),
+// zaehlt als gescheitert, und der Aufschub waechst (8/16/32 s) - kein Pendeln. Der Rueckfall geht auf m, nicht auf l,
+// obwohl der erste Ruecksprung des Ziels kaum ueber der m-Rate liegt.
 func TestSchaetzerEngeLeitung(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		link float64
 		hold time.Duration // laengste Zeit auf h je Versuch
-	}{{"ziel-faellt-800", 800e3, time.Second}, {"ziel-steht-1000", 1000e3, 3 * time.Second}} {
+	}{{"ziel-faellt-800", 800e3, time.Second}, {"ziel-faellt-1000", 1000e3, time.Second}, {"ziel-steht-1200", 1200e3, 3 * time.Second}} {
 		t.Run(c.name, func(t *testing.T) {
 			er := newEstRoom(t, 1250e3, 810e3)
 			er.link = c.link
@@ -312,12 +323,27 @@ func TestEstimatorNachlauf(t *testing.T) {
 	if !v.e.probeFailed(v.now-int64(time.Second), v.now) || v.e.probeFailed(v.now-int64(10*time.Second), v.now) {
 		t.Fatal("gescheiterte Schonfrist nicht dem Hochschalten kurz davor zugeordnet")
 	}
-	// faellt in dem Takt, in dem die Rate es ueberholt: Stau ohne Schonfrist
+	// faellt in dem Takt, in dem die Rate es ueberholt: Stau ohne Schonfrist. Die Schaetzung faellt dabei lagFloor
+	// lang nicht unter die Rate vor dem Versuch (der erste Ruecksprung liegt oft knapp darunter), danach schon.
 	v = mk(800e3)
-	step(v, 540e3)
-	v.gcc = 700e3
+	for i := 0; i < 10; i++ {
+		step(v, 540e3)
+	}
+	if !v.e.ready {
+		t.Fatal("ziel 800 bei rate 540 nicht bereit fuer einen Schritt nach oben")
+	}
+	v.gcc = 450e3
 	if !step(v, 1290e3) {
 		t.Fatal("fallendes Ziel beim Ratensprung entschuldigt")
+	}
+	if v.e.bps < 539e3 || v.e.bps > 541e3 {
+		t.Fatalf("schaetzung nach gescheitertem Versuch %v, erwartet den Stand davor (540 kbit/s)", v.e.bps)
+	}
+	for i := 0; i < 12; i++ {
+		step(v, 540e3)
+	}
+	if v.e.bps > 450e3+1 || v.e.ready {
+		t.Fatalf("ziel bleibt unter der alten Rate: schaetzung %v, bereit %v", v.e.bps, v.e.ready)
 	}
 	// steht: Stau spaetestens nach zwei Pruefabstaenden
 	v = mk(800e3)

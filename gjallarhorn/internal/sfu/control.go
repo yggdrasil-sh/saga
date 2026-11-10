@@ -544,8 +544,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	}
 	// Solange das GCC-Ziel der zuletzt erhoehten Rate noch nachlaeuft (Schonfrist, estimator.lagging), ist der letzte
 	// Schritt nach oben unbestaetigt: Laufendes bleibt (mit keepSlack), Neues kommt erst danach dazu.
+	// Ebenso nichts Neues, solange sich das Ziel von einem Ruecksprung noch nicht erholt hat (estimator.ready): Erst
+	// ein Ziel deutlich ueber der Rate macht einen Stau nach dem naechsten Schritt als Fall des Ziels erkennbar.
 	upLimit := limit
-	if l.est.lag {
+	if l.est.lag || !l.est.ready {
 		upLimit = 0
 	}
 	// wish: kleinster Bedarf eines Schritts nach oben, der in diesem Takt nicht ging (fuer den Deckel der Schaetzung)
@@ -770,7 +772,11 @@ type estimator struct {
 	want float64
 	// Schonfrist fuer ein nachlaufendes GCC-Ziel (lagging)
 	gccLast   float64 // GCC-Ziel im letzten Takt
+	ready     bool    // Ziel mindestens gccReady x Rate (bzw. kein GCC): Schritte nach oben erlaubt
+	rateAvg   float64 // gesendete Rate, ueber rund 1 s geglaettet
 	lag       bool    // in diesem Takt entschuldigt: Ziel unter der Rate, aber nicht gefallen
+	lagBase   float64 // geglaettete Rate vor Beginn der Folge
+	deadAt    int64   // wann die Folge gescheitert ist
 	lagAt     int64   // Beginn der laufenden Folge (0 = keine)
 	lagSeen   int64   // letzter Takt mit Ziel unter der Rate
 	lagDead   bool    // Folge gescheitert: bis zu ihrem Ende zaehlt das Ziel wieder wie frueher als Stau
@@ -797,13 +803,21 @@ const (
 //   - es steigt weiter: je lagStep mindestens um lagRise (ein nach dem Stau-Ruecksprung stehendes Ziel faellt so auf)
 //   - hoechstens lagMax am Stueck; eine Folge endet erst nach lagClear ohne Rueckstand
 //   - es laeuft keine Sperrzeit (kurz nach einem Stau gilt die alte Regel)
+//
+// Nach einem Ruecksprung steigt das Ziel auch bei anhaltendem Stau zunaechst wieder (der Verlust-Teil holt mit 5 % je
+// 200 ms zum Verzoegerungs-Teil auf, der bei 85 % der Leitung steht). Damit ein Stau nach einem Schritt nach oben als
+// Fall erkennbar ist, geht es nur nach oben, wenn das Ziel mindestens gccReady ueber der Rate liegt (ready). Scheitert
+// die Schonfrist, faellt die Schaetzung lagFloor lang nicht unter die Rate vor dem Versuch: Der erste Ruecksprung des
+// Ziels (85 % eines Fensters, das noch halb die alte Rate enthaelt) sagt nichts ueber die Stufe davor.
 const (
 	gccFall  = 0.97             // Ziel unter diesem Anteil des Vergleichswerts: gefallen
+	gccReady = 1.25             // Ziel mindestens so weit ueber der Rate: Schritt nach oben erlaubt
 	lagRise  = 1.015            // Mindestanstieg je lagStep
 	lagStep  = time.Second      // Abstand der Fortschrittspruefung
-	lagMax   = 12 * time.Second // laengste Schonfrist
+	lagMax   = 15 * time.Second // laengste Schonfrist
 	lagClear = 2 * time.Second  // so lange ohne Rueckstand: Folge beendet
 	lagLink  = 3 * time.Second  // Folge beginnt binnen dieser Zeit nach einem Hochschalten: gehoert zu diesem Versuch
+	lagFloor = 2 * time.Second  // so lange nach dem Scheitern nicht unter den Stand vor dem Versuch
 )
 
 // lagging: Das GCC-Ziel v liegt unter der gesendeten Rate - laeuft es nur nach (true, kein Stau) oder ist das Stau?
@@ -812,11 +826,12 @@ func (e *estimator) lagging(v float64, now int64) bool {
 		if now < e.holdUntil || e.gccLast <= 0 {
 			return false
 		}
+		e.lagAt, e.lagBase = now, e.rateAvg
 		if v < e.gccLast*gccFall { // faellt, waehrend die Rate es ueberholt: Stau, bis zum Ende dieser Folge
-			e.lagAt, e.lagDead = now, true
+			e.lagDead, e.deadAt = true, now
 			return false
 		}
-		e.lagAt, e.lagDead, e.lagPeak, e.lagMark, e.lagMarkAt = now, false, v, v, now
+		e.lagDead, e.lagPeak, e.lagMark, e.lagMarkAt = false, v, v, now
 		return true
 	}
 	if e.lagDead {
@@ -834,7 +849,7 @@ func (e *estimator) lagging(v float64, now int64) bool {
 		e.lagMark, e.lagMarkAt = v, now
 	}
 	if !ok {
-		e.lagDead, e.failAt, e.failFrom = true, now, e.lagAt
+		e.lagDead, e.deadAt, e.failAt, e.failFrom = true, now, now, e.lagAt
 	}
 	return ok
 }
@@ -862,9 +877,10 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	// GCC (UDP) ist ohne Probepakete anwendungsbegrenzt und taugt daher nur als Stausignal: Ziel unter der Rate =
 	// Stau - ausser das Ziel laeuft der Rate nur nach (lagging, begrenzte Schonfrist).
 	gccLow := 0.0
-	e.lag = false
+	e.lag, e.ready = false, true
 	if l.Ext != nil {
 		v := float64(l.Ext())
+		e.ready = v <= 0 || v >= rate*gccReady
 		switch {
 		case v > 0 && v < rate*0.9:
 			e.lagSeen = now
@@ -878,6 +894,11 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		}
 		e.gccLast = v
 	}
+	if e.rateAvg == 0 {
+		e.rateAvg = rate
+	} else {
+		e.rateAvg = 0.8*e.rateAvg + 0.2*rate
+	}
 	switch {
 	case age > congAge || drops > 0 || gccLow > 0:
 		if gccLow > 0 && gccLow < rate {
@@ -885,6 +906,9 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		}
 		// runter auf 85 % des tatsaechlich Durchgegangenen (nicht kumulativ)
 		t := rate * 0.85
+		if e.lagDead && gccLow > 0 && now-e.deadAt < int64(lagFloor) && t < e.lagBase {
+			t = e.lagBase // gescheiterter Versuch nach oben: zurueck auf den Stand davor, nicht darunter
+		}
 		if t > e.bps {
 			t = e.bps
 		}
