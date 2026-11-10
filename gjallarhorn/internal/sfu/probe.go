@@ -43,7 +43,8 @@ import (
 // fruehestens nach dem Aufschub geprobt, hoechstens aber nach probeGapMax (dwell.afterFail): Besteht die Probe
 // wiederholt, waehrend der Wechsel scheitert, kommen die Versuche so nie haeufiger als ohne Probing (8, 16, 32 ... s) -
 // eine bestandene Probe setzt nur den Abstand nach gescheiterten Proben zurueck, nicht diesen. "Vorzeitig" wirkt also
-// bei langen Aufschueben (ueber 2 min bis 5 min): Eine frei gewordene Leitung ist nach spaetestens 2 min wieder oben.
+// bei langen Aufschueben (ueber 2 min bis 5 min): Eine frei gewordene Leitung ist nach gut 2 min wieder oben (Probe
+// spaetestens 2 min nach dem letzten Fehlversuch, dazu Ruhezeit, Probe und Wechsel - gemessen bis 2 min 43 s).
 const (
 	probeRamp     = 2                       // Takte mit halber Fuellrate
 	probeMinTicks = 3                       // Mindestlaenge des Fensters in Takten

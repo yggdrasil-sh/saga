@@ -159,9 +159,17 @@ Platzhalter: `horn-1.example.org`.
   - Aufschub und Probe: Der Aufschub (8/16/32 s … 5 min) entsteht unverändert, wenn ein echter Wechsel scheitert.
     Der Fehlversuch zählt zugleich wie eine gescheiterte Probe seiner Zielrate (für das ganze Bein). Derselbe Platz
     probt für diese Schicht frühestens nach dem Aufschub, höchstens aber nach 2 min – echte Versuche kommen so nie
-    häufiger als ohne Probing, und eine frei gewordene Leitung ist nach spätestens 2 min (statt 5 min) wieder oben.
+    häufiger als ohne Probing, und eine frei gewordene Leitung ist nach gut 2 min (statt 5 min) wieder oben:
+    Die Probe kommt spätestens 2 min nach dem letzten Fehlversuch, dazu kommen Ruhezeit, Probe und Wechsel –
+    gemessen bis 2 min 43 s.
     Die Probe verlängert den Aufschub nie. Aufschub und Proben-Abstand überleben einen Wegwechsel (udp → tcp → udp)
     des Geräts für 5 min.
+  - **Abwägung – Gruppe mit Sprecherwechsel, Leitung wird frei:** Mit Probing kommt eine solche Gruppe nach dem
+    Freiwerden der Leitung langsamer auf die volle Belegung zurück: 2 min 15 s bis 2 min 34 s gegenüber 25–44 s
+    ohne Probing (mit Probing gilt der Abstand nach gescheiterten Proben je Bein und Zielrate und überlebt den
+    Sprecherwechsel). Dafür gibt es in der engen Phase davor 0–2 statt 9–19 Fehlversuche (jeder mit Schlüsselbild,
+    Rückwechsel und kurz verdecktem Ton). Mit `HORN_PROBING=0` kommt eine solche Gruppe schneller zurück, zahlt
+    aber in der engen Zeit.
   - **Bekannte Grenze – Leitung zwischen Bedarf und Bedarf × 1,15:** Die Probe prüft die Zielrate mit Reserve. Eine
     Leitung, die die höhere Schicht gerade trägt, aber nicht 15 % mehr (Modell: Browser-`h` mit 1250 kbit/s auf
     einer Leitung von 1,3 bis 1,47 Mbit/s), besteht die Probe nie und **erreicht die Schicht mit Probing nicht** –
@@ -170,15 +178,35 @@ Platzhalter: `horn-1.example.org`.
     Probe, mit Aufschub, falls er scheitert). Entscheidung nach dem Labor.
   - Füllpakete (`internal/fwd`, `Leg.SetPadding`): reine Padding-Pakete (P-Bit, 255 Byte, keine Nutzlast) auf der
     Bild-SSRC des Ausgangs, nur zwischen zwei Bildern (nach einem Paket mit Marker), mit fortlaufender Folgenummer
-    des Ausgangs und dem Zeitstempel des letzten Bilds; zwischen den Bildern im 5-ms-Takt. Der Takt setzt nur
-    Atomics, der Schreiber des Beins füllt ohne Sperren und Allokationen. Ein Paket der Quelle, das erst nach einem
+    des Ausgangs und dem Zeitstempel des letzten Bilds. Sie gehen **direkt hinter einem Paket des Beins** hinaus
+    (Ton oder Bild, im selben Schub, höchstens das Guthaben von 50 ms); einen eigenen Takt gibt es nur, wenn das
+    Bein 40 ms lang nichts zu senden hatte (stille Quelle, wenige Bilder/s). Grund (Saga 2.5, N2): pion-GCC fasst
+    zu einer Gruppe zusammen, was binnen 5 ms nach ihrem ersten Paket gesendet wurde, und misst vom ersten Senden
+    bis zur letzten Ankunft. Der frühere eigene 5-ms-Takt setzte Füll-Schübe laufend kurz vor Ton- und Bildpakete;
+    die Gruppen wurden scheinbar verschieden lang, die Laufzeitmessung rauschte während einer Probe auf freier
+    Leitung um 4 ms (Median) statt 0,4 ms, und etwa jede 30. Probe scheiterte dort fälschlich mit `fail:gcc`
+    (in 22 Läufen des Prüfers einmal drei in Folge). Mit Füllpaketen hinter den Medienpaketen bleibt das
+    Gruppenmuster das des Mediums: 0,3–0,4 ms, in 90 Läufen keine gescheiterte Probe auf freier Leitung. Der Takt
+    der Steuerung setzt nur Atomics, der Schreiber des Beins füllt ohne Sperren und Allokationen. Ein Paket der Quelle, das erst nach einem
     Füll-Schub eintrifft, aber davor gehört (Nachsendung, Umsortierung), geht mit dem Versatz von damals hinaus
     (Historie der letzten 16 Füll-Stellen je Ausgang; ältere Nachzügler werden verworfen – eine Lücke ist besser
-    als eine doppelt vergebene Folgenummer). Totmann: Nach 3 s ohne neue Vorgabe füllt das Bein nicht mehr. Der
+    als eine doppelt vergebene Folgenummer; Zähler `late_dropped`, siehe Diagnose). Totmann: Nach 3 s ohne neue Vorgabe füllt das Bein nicht mehr. Der
     NACK-Antworter puffert Füllpakete nicht (ein verlorenes wird nicht nachgesendet). Die Raten der Quellen zählen
     sie nicht mit, die Rate des Beins schon.
   - Zeit bis zur oberen Ebene auf freier Leitung: Der erste Schritt wartet auf Ruhezeit und Probe – im Modell `h`
-    4 s nach Beginn (ohne Probing 1,4 s), mit pion-Gegenstelle 3,3 s nach dem Verbinden.
+    4 s nach Beginn (ohne Probing 1,4 s), mit pion-Gegenstelle 3,3–3,5 s nach dem Verbinden.
+  - **Offen – Leitungen mit Ratengrenze knapp über dem Bedarf (nur am Testaufbau gemessen, nicht im Labor):** Der
+    Testaufbau (pion hinter einem nachgebildeten Engpass, Zeitauflösung des Empfängers rund 1 ms) zeigt, dass
+    pion-GCC auf einer ratenbegrenzten Leitung schon beim Einsetzen der Fülldaten häufig Überlast meldet, obwohl
+    die Leitung die Zielrate trägt – jeder Schub braucht dort messbar Zeit durch den Engpass, und die Schwelle des
+    Überlast-Erkenners ist in der ruhigen Zeit davor weit gesunken. Schritt von `m` auf `h` (Zielrate rund
+    1,8 Mbit/s), je 10 Läufe: Leitung 10 Mbit/s – alle 10 Proben bestanden (mit dem alten 5-ms-Takt 11 von 18
+    gescheitert, 3 Läufe ohne `h` in 44 s); Leitung 6 Mbit/s – 19 von 24 Proben gescheitert, 5 Läufe ohne `h` in
+    44 s (alter Takt: 16 von 21, ebenfalls 5). Leitung 1,2 Mbit/s, Schritt von `l` zurück auf `m` (Zielrate rund
+    0,8 Mbit/s): scheitert in beiden Fassungen etwa jedes zweite Mal. Die Probe irrt hier zur sicheren Seite (kein
+    Wechsel, nächste Probe nach 10/20/40 s), kostet aber Bildqualität auf Leitungen, die mehr trügen. Ob echte
+    Leitungen sich so verhalten, zeigt erst das Labor; mögliche Stellschrauben danach: `probeBlindAfter`, eine
+    flachere Rampe, eine eigene Auswertung der Laufzeiten statt des Überlast-Signals von pion.
   - Datenverbrauch und Zahl der Proben (Modell, je 10 min): bestandene Probe von 360p auf 720p 0,14 MB;
     gescheiterte brechen früher ab (0,02–0,07 MB). Dauerhaft zu enge Leitung, 1:1: 8 Proben, 0,2–0,6 MB. Gruppe
     mit 4 Sendern und Sprecherwechsel auf enger Leitung: 7–11 Proben, 0,1–0,4 MB. Freie Leitung mit Stau-Schüben
@@ -188,11 +216,13 @@ Platzhalter: `horn-1.example.org`.
     `abort`), `probe_kbit` (Zielrate) und `probe_why` (`gcc`, `over`, `queue`; bei `abort`: `platz`, `ausgang`,
     `fuell`) – also höchstens zwei zusätzliche Meldungen je Probe. Alte Geräte ignorieren die Felder; die Belegung
     ändert sich durch eine Probe nicht. Zähler je Bein: `GET /api/sfu/leg/{id}` → `probes {started, passed, failed,
-    aborted, pad_bytes, last}`, `stats.pad_bytes`.
+    aborted, pad_bytes, late_dropped, last}`, `stats.pad_bytes`, `stats.late_dropped` (verworfene Nachzügler
+    jenseits der Füll-Historie – sollte 0 bleiben; steigt er, kommen Pakete der Quelle sehr spät an, und die
+    Historie von 16 Füll-Stellen reicht nicht). Beide Felder fehlen in `stats`, solange sie 0 sind.
   - Tests: `internal/sfu/probe_test.go` (Modell mit Fülldaten: enge Leitung, Leitung wird frei, Störschübe,
     Gruppen, Sprecherwechsel, Einbruch in der Probe, knappe Leitung, großer Schritt, Wegwechsel),
-    `internal/fwd/pad_test.go` (Folgenummern, verspätete Pakete, kein Füllpaket mitten im Bild, Totmann, keine
-    Allokation), `probing_udp_test.go` (Ende zu Ende mit pion-Gegenstelle hinter einem Engpass).
+    `internal/fwd/pad_test.go` (Folgenummern, verspätete Pakete, kein Füllpaket mitten im Bild, Füllpakete nur
+    hinter Medienpaketen, Totmann, keine Allokation), `probing_udp_test.go` (Ende zu Ende mit pion-Gegenstelle hinter einem Engpass).
 - **Vorrang und Verwerfen (H3):**
   - Die Warteschlange je Bein arbeitet nach Vorrang: Ton > Bildschirm > Sprecher > Kacheln.
   - Ist ein Rahmen älter als 150 ms, verwirft der Knoten Bilder bis zum nächsten Schlüsselbild und fordert eine PLI
