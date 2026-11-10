@@ -22,6 +22,7 @@ const (
 	layerDwell    = 4 * time.Second         // nach einem Wechsel nach unten so lange nicht wieder hoch (gleiche Quelle)
 	upFail        = 2 * time.Second         // Budget-Ruecknahme so kurz nach dem Hochschalten: Aufschub verdoppeln
 	upDwellMax    = 32 * time.Second        // Obergrenze dieses Aufschubs
+	wantSlack     = 1.05                    // Deckel der Schaetzung so weit ueber dem Bedarf des naechsten Schritts (mit Reserve)
 	defaultRateL  = 150e3                   // angenommene Raten, bis gemessen wurde
 	defaultRateM  = 500e3
 	defaultRateH  = 1500e3
@@ -469,13 +470,17 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	}
 	// Schaetzung und Verteilung
 	budget := l.est.update(l, dt, now)
+	quotaCap := 1e12
 	if q := me.quota; q != nil { // P10: Kontingent des verbundenen Servers, gleich verteilt auf seine Teilnehmenden
-		if c := q.downShare(); budget > c {
-			budget = c
+		quotaCap = q.downShare()
+		if budget > quotaCap {
+			budget = quotaCap
 		}
 	}
+	audioCut := 0.0
 	if l.Role == RoleBoth {
-		budget -= audioRateUDP * float64(len(aslots))
+		audioCut = audioRateUDP * float64(len(aslots))
+		budget -= audioCut
 	}
 	stream := l.Path.Stream()
 	type choice struct {
@@ -537,6 +542,19 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	if !l.est.canUp(now) {
 		limit = 0
 	}
+	// Solange das GCC-Ziel der zuletzt erhoehten Rate noch nachlaeuft (Schonfrist, estimator.lagging), ist der letzte
+	// Schritt nach oben unbestaetigt: Laufendes bleibt (mit keepSlack), Neues kommt erst danach dazu.
+	upLimit := limit
+	if l.est.lag {
+		upLimit = 0
+	}
+	// wish: kleinster Bedarf eines Schritts nach oben, der in diesem Takt nicht ging (fuer den Deckel der Schaetzung)
+	wish := 0.0
+	deny := func(need float64) {
+		if wish == 0 || need < wish {
+			wish = need
+		}
+	}
 	// Kacheln, die gerade nichts zeigen, starten pausiert und kommen nur mit
 	// Reserve dazu (gegen Pendeln bei schwankenden Raten)
 	for _, c := range cs {
@@ -560,7 +578,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			old := c.rate
 			c.idx++
 			nr := rateOf(c)
-			cur := c.s.layer == c.opts[c.idx].Layer
+			// "laufend" ist auch jede Schicht unter der laufenden derselben Quelle: Sonst scheiterte bei Stau (limit 0)
+			// schon der Zwischenschritt l -> m, und ein Platz auf h fiele trotz ausreichender Schaetzung bis auf l.
+			cur := c.s.layer == c.opts[c.idx].Layer ||
+				c.s.src != nil && c.s.src.peer == c.s.owner && layerRank(c.opts[c.idx].Layer) < layerRank(c.s.layer)
 			need := sum - old + nr
 			since := int64(layerDwell)
 			if c.s.downAt != 0 && c.s.owner == c.s.downOwner {
@@ -569,9 +590,16 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 					since -= int64(c.s.dwell - layerDwell)
 				}
 			}
-			if layerStep(cur, need, budget, limit, since) {
+			lim := limit
+			if !cur {
+				lim = upLimit
+			}
+			if layerStep(cur, need, budget, lim, since) {
 				sum, c.rate = need, nr
 				continue
+			}
+			if !cur {
+				deny(need)
 			}
 			c.idx--
 			c.rate = rateOf(c)
@@ -591,9 +619,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		c.idx = 0
 		nr := rateOf(c)
-		if (sum+nr)*upHeadroom <= limit {
+		if (sum+nr)*upHeadroom <= upLimit {
 			sum, c.rate = sum+nr, nr
 		} else {
+			deny(sum + nr)
 			c.idx = -1
 		}
 	}
@@ -603,6 +632,15 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				up(c, 1)
 			}
 		}
+	}
+	// Bedarf fuer den Deckel der Schaetzung im naechsten Takt (estimator.want): der naechste Schritt nach oben, sonst
+	// die laufende Auswahl - jeweils mit Reserve, zuzueglich des Tonabzugs, hoechstens das Kontingent.
+	if wish < sum {
+		wish = sum
+	}
+	l.est.want = wish*upHeadroom*wantSlack + audioCut
+	if l.est.want > quotaCap {
+		l.est.want = quotaCap
 	}
 	for _, c := range cs {
 		s := c.s
@@ -635,7 +673,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		if layerRank(st.Layer) < layerRank(s.layer) { // nach unten: Mindestverweildauer fuer den Weg zurueck
 			// Budget-Ruecknahme binnen upFail nach dem Hochschalten (Rate der Zielschicht unterschaetzt, z. B. nach
 			// einer Aufloesungsaenderung): Aufschub verdoppeln; nach laengerem Halten bzw. anderer Quelle zurueck
-			fast := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner && now-s.upAt < int64(upFail)
+			// - ebenso, wenn die Schonfrist nach diesem Hochschalten gescheitert ist (GCC-Ziel gefallen bzw. nicht
+			// nachgezogen, estimator.probeFailed): auch das ist ein gescheiterter Versuch, kein Halten
+			fast := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner &&
+				(now-s.upAt < int64(upFail) || l.est.probeFailed(s.upAt, now))
 			switch {
 			case fast:
 				base := s.dwell
@@ -724,6 +765,20 @@ type estimator struct {
 	backoff         time.Duration
 	lastDown        int64
 	ups, downs      uint64
+	// want: Bedarf der laufenden Auswahl bzw. des naechsten Schritts nach oben (planLeg, bit/s mit Reserve) - der
+	// Deckel der freien Schaetzung liegt auf UDP nie darunter
+	want float64
+	// Schonfrist fuer ein nachlaufendes GCC-Ziel (lagging)
+	gccLast   float64 // GCC-Ziel im letzten Takt
+	lag       bool    // in diesem Takt entschuldigt: Ziel unter der Rate, aber nicht gefallen
+	lagAt     int64   // Beginn der laufenden Folge (0 = keine)
+	lagSeen   int64   // letzter Takt mit Ziel unter der Rate
+	lagDead   bool    // Folge gescheitert: bis zu ihrem Ende zaehlt das Ziel wieder wie frueher als Stau
+	lagPeak   float64 // hoechstes Ziel seit Beginn
+	lagMark   float64 // Ziel bei der letzten Fortschrittspruefung
+	lagMarkAt int64
+	failAt    int64 // letzte gescheiterte Folge: wann gescheitert, wann begonnen
+	failFrom  int64
 }
 
 // Schwellen der Schaetzung.
@@ -732,6 +787,63 @@ const (
 	clearAge = 40 * time.Millisecond  // darunter frei
 	minBps   = 100e3
 )
+
+// Schonfrist fuer ein nachlaufendes GCC-Ziel. pion-GCC senkt sein Ziel nur bei Stau (Verzoegerung: auf 85 % der
+// empfangenen Rate; Verlust ueber 10 %: um den halben Verlustanteil) und hebt es sonst mit rund 8 %/s (nahe einer
+// frueheren Staurate additiv, etwa ein halbes Paket je Antwortzeit). Springt die gesendete Rate (Schicht hoeher, Kachel
+// dazu, Schluesselbild), liegt ein unveraendertes oder steigendes Ziel daher eine Weile unter der Rate, ohne dass die
+// Leitung eng waere. Entschuldigt wird das nur, solange alle Bedingungen gelten - sonst zaehlt es wie frueher als Stau:
+//   - das Ziel faellt nicht (weder im Takt, in dem die Rate es ueberholt, noch danach unter gccFall des Hoechstwerts)
+//   - es steigt weiter: je lagStep mindestens um lagRise (ein nach dem Stau-Ruecksprung stehendes Ziel faellt so auf)
+//   - hoechstens lagMax am Stueck; eine Folge endet erst nach lagClear ohne Rueckstand
+//   - es laeuft keine Sperrzeit (kurz nach einem Stau gilt die alte Regel)
+const (
+	gccFall  = 0.97             // Ziel unter diesem Anteil des Vergleichswerts: gefallen
+	lagRise  = 1.015            // Mindestanstieg je lagStep
+	lagStep  = time.Second      // Abstand der Fortschrittspruefung
+	lagMax   = 12 * time.Second // laengste Schonfrist
+	lagClear = 2 * time.Second  // so lange ohne Rueckstand: Folge beendet
+	lagLink  = 3 * time.Second  // Folge beginnt binnen dieser Zeit nach einem Hochschalten: gehoert zu diesem Versuch
+)
+
+// lagging: Das GCC-Ziel v liegt unter der gesendeten Rate - laeuft es nur nach (true, kein Stau) oder ist das Stau?
+func (e *estimator) lagging(v float64, now int64) bool {
+	if e.lagAt == 0 {
+		if now < e.holdUntil || e.gccLast <= 0 {
+			return false
+		}
+		if v < e.gccLast*gccFall { // faellt, waehrend die Rate es ueberholt: Stau, bis zum Ende dieser Folge
+			e.lagAt, e.lagDead = now, true
+			return false
+		}
+		e.lagAt, e.lagDead, e.lagPeak, e.lagMark, e.lagMarkAt = now, false, v, v, now
+		return true
+	}
+	if e.lagDead {
+		return false
+	}
+	if v > e.lagPeak {
+		e.lagPeak = v
+	}
+	ok := true
+	switch {
+	case v < e.lagPeak*gccFall, now-e.lagAt >= int64(lagMax):
+		ok = false
+	case now-e.lagMarkAt >= int64(lagStep):
+		ok = v >= e.lagMark*lagRise
+		e.lagMark, e.lagMarkAt = v, now
+	}
+	if !ok {
+		e.lagDead, e.failAt, e.failFrom = true, now, e.lagAt
+	}
+	return ok
+}
+
+// probeFailed: Ist die Schonfrist gescheitert, die mit dem Hochschalten zur Zeit upAt begann (Stau binnen upFail
+// zuvor gemeldet)?
+func (e *estimator) probeFailed(upAt, now int64) bool {
+	return e.failAt != 0 && now-e.failAt < int64(upFail) && e.failFrom >= upAt && e.failFrom-upAt < int64(lagLink)
+}
 
 func (e *estimator) init(start, max float64) {
 	e.bps, e.start, e.max = start, start, max
@@ -747,13 +859,24 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	e.lastBytes = b
 	age := time.Duration(st.TickAgeNs.Swap(0))
 	drops := st.TickDrops.Swap(0)
-	// GCC (UDP) ist ohne Probepakete anwendungsbegrenzt (Ziel ~1,5 x Rate)
-	// und taugt daher nur als Stausignal: Ziel unter der Rate = Stau.
+	// GCC (UDP) ist ohne Probepakete anwendungsbegrenzt und taugt daher nur als Stausignal: Ziel unter der Rate =
+	// Stau - ausser das Ziel laeuft der Rate nur nach (lagging, begrenzte Schonfrist).
 	gccLow := 0.0
+	e.lag = false
 	if l.Ext != nil {
-		if v := float64(l.Ext()); v > 0 && v < rate*0.9 {
-			gccLow = v
+		v := float64(l.Ext())
+		switch {
+		case v > 0 && v < rate*0.9:
+			e.lagSeen = now
+			if e.lagging(v, now) {
+				e.lag = true
+			} else {
+				gccLow = v
+			}
+		case e.lagAt != 0 && now-e.lagSeen >= int64(lagClear):
+			e.lagAt, e.lagDead = 0, false
 		}
+		e.gccLast = v
 	}
 	switch {
 	case age > congAge || drops > 0 || gccLow > 0:
@@ -788,14 +911,18 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		if rate > e.bps {
 			e.bps = rate
 		}
-		if now >= e.holdUntil {
+		if now >= e.holdUntil && !e.lag {
 			e.bps *= 1.04
 			e.ups++
 		}
-		// ohne Proben nicht beliebig ueber das Gemessene hinaus
+		// ohne Proben nicht beliebig ueber das Gemessene hinaus - auf UDP aber mindestens bis zum Bedarf des naechsten
+		// Schritts (der Wechsel selbst ist die Probe, GCC meldet ihr Scheitern). TCP bleibt beim alten Deckel.
 		c := rate*1.6 + 300e3
 		if c < e.start {
 			c = e.start
+		}
+		if l.Ext != nil && c < e.want {
+			c = e.want
 		}
 		if e.bps > c {
 			e.bps = c
