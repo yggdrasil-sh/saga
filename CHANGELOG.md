@@ -53,13 +53,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Häufigkeit (Modell: 7 Fehlversuche in 10 min auf einer Leitung zwischen zwei Ebenen). Jetzt füllt der Knoten die
   Leitung vor einem Schritt nach oben für gut eine Sekunde mit wertlosen RTP-Padding-Paketen auf die Rate, die der
   Schritt bräuchte. Meldet GCC dabei keinen Stau, wird der Schritt freigegeben; sonst bleibt alles, wie es ist – kein
-  Schlüsselbild, kein Wechsel (Modell: 0 Fehlversuche, 8 Proben mit zusammen 0,2–0,6 MB in 10 min).
-- Nur UDP-Beine mit GCC. TCP-/TLS-Wege bleiben unverändert. Nach gescheiterten Proben wächst der Abstand von 10 s
-  bis 2 min; nach einem echten Fehlversuch braucht der nächste Versuch eine bestandene Probe, frühestens nach dem
-  bisherigen Aufschub, höchstens nach 2 min. Aufschub und Proben-Abstand überleben einen Wegwechsel des Geräts.
+  Schlüsselbild, kein Wechsel.
+- Zahlen aus dem Modell, je 10 min: 1:1 auf zu enger Leitung 0 statt 7 Fehlversuche bei 8 Proben (0,2–0,6 MB);
+  Gruppe mit 4 Sendern und Sprecherwechsel auf enger Leitung 0–3 statt 38–65 Fehlversuche bei 7–11 Proben, 3–4 s
+  statt 13–18 s über der Leitung. Auf freier Leitung mit häufigen Stau-Schüben kostet jede Rückkehr auf die obere
+  Ebene eine Probe (bis 28 Proben, 3,9 MB) ohne Gewinn gegenüber „aus“.
+- Nur UDP-Beine mit GCC; TCP-/TLS-Wege bleiben unverändert. Der Abstand nach gescheiterten Proben (10 s bis 2 min)
+  gilt je Bein und Zielrate, nicht je Platz; nach einem echten Fehlversuch braucht der nächste Versuch eine
+  bestandene Probe. Aufschub und Proben-Abstand überleben einen Wegwechsel des Geräts.
+- Bekannte Grenzen: Die obere Ebene kommt auf freier Leitung später (im Modell nach 4 s statt 1,4 s). Schritte, die mehr als 1,5 Mbit/s Füllung bräuchten, werden nicht geprobt und laufen wie bisher.
+  **Eine Leitung zwischen Bedarf und Bedarf × 1,15 erreicht die höhere Ebene mit Probing nicht** (die Probe prüft
+  mit Reserve; Stellschraube `probeBlindAfter`, Standard aus) – Entscheidung nach dem Labor.
 - Schalter am Knoten: `HORN_PROBING` (Standard an, `0` = aus – dann verhält sich der Knoten wie zuvor). Datenverbrauch
-  rund 0,1–0,15 MB je Probe von 360p auf 720p. Diagnose: Felder `probe`, `probe_kbit`, `probe_why` im Ereignis
-  `layout` (alte Clients ignorieren sie) und Zähler `probes`/`pad_bytes` unter `GET /api/sfu/leg/{id}`.
+  rund 0,1–0,15 MB je bestandener Probe von 360p auf 720p. Diagnose: Felder `probe`, `probe_kbit`, `probe_why` im
+  Ereignis `layout` (alte Clients ignorieren sie) und Zähler `probes`/`pad_bytes` unter `GET /api/sfu/leg/{id}`.
   Einzelheiten in `gjallarhorn/NODE.md` („Probing mit Fülldaten“), Code `gjallarhorn/internal/sfu/probe.go` und
   `internal/fwd` (`Leg.SetPadding`).
 

@@ -20,17 +20,20 @@ import (
 //
 // Ein Stausignal in 1 bis 3 bricht sofort ab (gescheitert): GCC-Ziel gefallen (gccFall unter dem Hoechstwert seit
 // Beginn), GCC meldet Ueberlast (Leg.ExtOver) oder Alter/Verlust in der eigenen Warteschlange. Die Schaetzung bleibt
-// dabei und probeFloor danach unveraendert (estimator.shield) - ein Stau, den die Fuelldaten selbst erzeugt haben, sagt
-// nichts ueber die laufende Auswahl.
+// dabei und bis probeFloor danach unveraendert (estimator.update) - ein Stau, den die Fuelldaten selbst erzeugt haben,
+// sagt nichts ueber die laufende Auswahl. Steht das Stausignal aber auch ohne Fuelldaten weiter an (probeDrain,
+// probeBad), ist die Leitung wirklich eingebrochen: Der Schutz endet sofort.
 //
 // Bestanden ist die Probe ohne Stausignal bis zum Ende des Nachlaufs. Dass das GCC-Ziel die Zielrate erreicht, wird
 // nicht verlangt: pion-GCC hebt sein Ziel auch bei freier Leitung nur um rund 8 %/s (gemessen), in einem Fenster von
 // gut einer Sekunde also um hoechstens ein Zehntel. Den Beleg liefert die Verzoegerungsmessung selbst - eine Leitung,
 // die die Zielrate nicht traegt, staut binnen weniger Rueckmeldungen und GCC meldet Ueberlast.
 //
-// Abstand: nach einer gescheiterten Probe probeGap, verdoppelnd bis probeGapMax, je Platz und Schicht; eine bestandene
-// Probe oder upHold Halten der Schicht setzt zurueck. Nach einer bestandenen Probe fruehestens probeGap spaeter die
-// naechste (falls der freigegebene Schritt aus anderem Grund ausbleibt).
+// Abstand: nach einer gescheiterten Probe probeGap, verdoppelnd bis probeGapMax - je Bein und Zielrate (legFail), nicht
+// je Platz; eine bestandene Probe ab dieser Zielrate oder laengere Ruhe setzt zurueck. Nach einer bestandenen Probe
+// fruehestens probeGap spaeter die naechste fuer denselben Schritt (falls er aus anderem Grund ausbleibt).
+//
+// Nicht geprobt wird ein Schritt, dessen Fuellrate ueber probeFillMax laege: Er laeuft wie ohne Probing (planLeg).
 //
 // Verhaeltnis zum Aufschub (dwell): Der Aufschub entsteht unveraendert, wenn ein echter Wechsel scheitert. Mit Probing
 // ist danach fuer einen neuen Versuch auf diese Schicht eine bestandene Probe noetig - der blosse Ablauf des Aufschubs
