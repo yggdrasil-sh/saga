@@ -173,8 +173,10 @@ func TestSchaetzerFreieLeitung(t *testing.T) {
 
 // TestSchaetzerEngeLeitung (b): Die Leitung traegt m, aber nicht h. Der Versuch nach oben endet zuegig (Ziel faellt:
 // sofort; milde Ueberlast, Ziel springt auf 85 % der Leitung und steht: nach hoechstens zwei Fortschrittspruefungen),
-// zaehlt als gescheitert, und der Aufschub waechst (8/16/32 s) - kein Pendeln. Der Rueckfall geht auf m, nicht auf l,
-// obwohl der erste Ruecksprung des Ziels kaum ueber der m-Rate liegt.
+// zaehlt als gescheitert, und der Aufschub waechst (8, 16, 32 s ... bis upDwellMax) - kein Pendeln: Im Labor kam mit
+// der alten Obergrenze von 32 s auf einer solchen Leitung ohne Ende alle 32 s ein Versuch (20 in 10 min, jeder mit
+// Schluesselbildern und kurz verdecktem Ton). Der Rueckfall geht auf m, nicht auf l, obwohl der erste Ruecksprung des
+// Ziels kaum ueber der m-Rate liegt.
 func TestSchaetzerEngeLeitung(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -188,7 +190,11 @@ func TestSchaetzerEngeLeitung(t *testing.T) {
 			var ups, downs []int64
 			onH := time.Duration(0)
 			start := er.now
-			for er.now-start < int64(3*time.Minute) {
+			at10 := 0 // Versuche in den ersten 10 min
+			for er.now-start < int64(20*time.Minute) {
+				if er.now-start < int64(10*time.Minute) {
+					at10 = len(ups)
+				}
 				was := er.layer()
 				er.tick()
 				switch is := er.layer(); {
@@ -204,11 +210,11 @@ func TestSchaetzerEngeLeitung(t *testing.T) {
 					onH += 200 * time.Millisecond
 				}
 			}
-			if len(ups) < 3 {
-				t.Fatalf("nur %d Versuche nach oben in 3 min (der Wechsel ist die Probe)", len(ups))
+			if at10 < 5 {
+				t.Fatalf("nur %d Versuche nach oben in 10 min (der Wechsel ist die Probe)", at10)
 			}
-			if len(ups) > 8 {
-				t.Fatalf("pendelt: %d Versuche in 3 min", len(ups))
+			if at10 > 8 || len(ups) > 11 {
+				t.Fatalf("pendelt: %d Versuche in 10 min, %d in 20 min", at10, len(ups))
 			}
 			for i := range downs {
 				if d := time.Duration(downs[i] - ups[i]); d > c.hold {
@@ -224,12 +230,15 @@ func TestSchaetzerEngeLeitung(t *testing.T) {
 				want = min(2*want, upDwellMax)
 			}
 			if onH > time.Duration(len(ups))*c.hold {
-				t.Fatalf("%v von 3 min auf h (%d Versuche)", onH, len(ups))
+				t.Fatalf("%v von 20 min auf h (%d Versuche)", onH, len(ups))
 			}
 			if d := er.l.slots[1].dwell; d != upDwellMax {
 				t.Fatalf("aufschub %v, erwartet %v", d, upDwellMax)
 			}
-			t.Logf("%d Versuche, zusammen %v auf h", len(ups), onH)
+			if last := time.Duration(ups[len(ups)-1] - downs[len(ups)-2]); last < upDwellMax-time.Second {
+				t.Fatalf("letzter Abstand %v, erwartet %v", last, upDwellMax)
+			}
+			t.Logf("%d Versuche in 10 min, %d in 20 min, zusammen %v auf h", at10, len(ups), onH)
 		})
 	}
 }
@@ -444,4 +453,55 @@ func TestEstimatorEinbruchOhneVersuch(t *testing.T) {
 	if w.e.bps > 320e3 {
 		t.Fatalf("nach der Untergrenze: schaetzung=%.0f (soll ~300k)", w.e.bps)
 	}
+}
+
+// TestSchaetzerAufschubZurueck: die Ruecksetz-Regel. Nach Fehlversuchen auf enger Leitung (Aufschub gewachsen) wird die
+// Leitung frei, h haelt. Ein Stau-Schub nach kurzem Halten (unter upHold) ist kein Fehlversuch und laesst den Aufschub
+// stehen; nach upHold stellt die naechste Ruecknahme ihn zurueck, und h ist nach wenigen Sekunden wieder da - eine gute
+// Leitung bleibt nach einem einzelnen Rueckfall nicht minutenlang auf m.
+func TestSchaetzerAufschubZurueck(t *testing.T) {
+	er := newEstRoom(t, 1250e3, 810e3)
+	sl := er.l.slots[1]
+	er.link = 1000e3
+	er.until("m", 2*time.Second)
+	for i := 0; sl.dwell < 32*time.Second; i++ {
+		if i > 600 {
+			t.Fatalf("aufschub nach 2 min erst %v", sl.dwell)
+		}
+		er.tick()
+	}
+	grown := sl.dwell
+	er.link = 0
+	burst := func() {
+		er.loss = true
+		er.until("m", 2*time.Second)
+		er.run(time.Second)
+		er.loss = false
+	}
+	er.until("h", grown+20*time.Second)
+	er.run(10 * time.Second)
+	if er.layer() != "h" {
+		t.Fatalf("freie Leitung: %q", er.layer())
+	}
+	burst()
+	if sl.dwell != grown {
+		t.Fatalf("nach 10 s auf h: aufschub %v, erwartet unveraendert %v", sl.dwell, grown)
+	}
+	if d := er.until("h", grown+20*time.Second); d < grown-layerDwell {
+		t.Fatalf("schon nach %v wieder hoch (aufschub %v)", d, grown)
+	}
+	er.run(upHold + time.Second)
+	if er.layer() != "h" {
+		t.Fatalf("freie Leitung nach dem Schub: %q", er.layer())
+	}
+	burst()
+	if sl.dwell != 0 {
+		t.Fatalf("nach %v auf h: aufschub %v, erwartet 0", upHold, sl.dwell)
+	}
+	d := er.until("h", 15*time.Second)
+	er.run(20 * time.Second)
+	if er.layer() != "h" {
+		t.Fatalf("nach dem Zuruecksetzen nicht stabil: %q", er.layer())
+	}
+	t.Logf("aufschub %v -> unveraendert nach kurzem Halten -> 0 nach %v; h wieder nach %v", grown, upHold, d)
 }

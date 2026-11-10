@@ -21,7 +21,8 @@ const (
 	keepSlack     = 1.1                     // ohne Stau bleibt die laufende Schicht bis 10 % ueber der Schaetzung
 	layerDwell    = 4 * time.Second         // nach einem Wechsel nach unten so lange nicht wieder hoch (gleiche Quelle)
 	upFail        = 2 * time.Second         // Budget-Ruecknahme so kurz nach dem Hochschalten: Aufschub verdoppeln
-	upDwellMax    = 32 * time.Second        // Obergrenze dieses Aufschubs
+	upDwellMax    = 5 * time.Minute         // Obergrenze dieses Aufschubs
+	upHold        = 30 * time.Second        // so lange gehalten: die naechste Budget-Ruecknahme stellt den Aufschub zurueck
 	wantSlack     = 1.05                    // Deckel der Schaetzung so weit ueber dem Bedarf des naechsten Schritts (mit Reserve)
 	defaultRateL  = 150e3                   // angenommene Raten, bis gemessen wurde
 	defaultRateM  = 500e3
@@ -550,6 +551,12 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	if l.est.lag || !l.est.ready {
 		upLimit = 0
 	}
+	// Auf UDP geht je Takt hoechstens ein Platz nach oben (Schicht hoeher bzw. Kachel dazu; derselbe Platz darf mehrere
+	// Schichten nehmen): Jeder Schritt ist eine Probe der Leitung - gingen mehrere Plaetze im selben Takt, springt die
+	// Rate um die Summe, und ein Stau danach liesse sich keinem Schritt zuordnen. Ob der Schritt traegt, zeigt erst der
+	// naechste Takt (Schonfrist bzw. ready). TCP bleibt wie bisher.
+	oneUp := l.Ext != nil
+	var stepper *choice
 	// wish: kleinster Bedarf eines Schritts nach oben, der in diesem Takt nicht ging (fuer den Deckel der Schaetzung)
 	wish := 0.0
 	deny := func(need float64) {
@@ -595,9 +602,15 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			lim := limit
 			if !cur {
 				lim = upLimit
+				if oneUp && stepper != nil && stepper != c {
+					lim = 0
+				}
 			}
 			if layerStep(cur, need, budget, lim, since) {
 				sum, c.rate = need, nr
+				if !cur {
+					stepper = c
+				}
 				continue
 			}
 			if !cur {
@@ -621,8 +634,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		c.idx = 0
 		nr := rateOf(c)
-		if (sum+nr)*upHeadroom <= upLimit {
+		if (sum+nr)*upHeadroom <= upLimit && !(oneUp && stepper != nil) {
 			sum, c.rate = sum+nr, nr
+			stepper = c
 		} else {
 			deny(sum + nr)
 			c.idx = -1
@@ -669,12 +683,15 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				s.setWhy(whyBudget, st, now)
 			}
 		}
+		held := now - s.srcAt // so lange lief die bisherige Quelle auf diesem Platz
 		if st != s.src {
 			s.src, s.srcAt = st, now
 		}
 		if layerRank(st.Layer) < layerRank(s.layer) { // nach unten: Mindestverweildauer fuer den Weg zurueck
 			// Budget-Ruecknahme binnen upFail nach dem Hochschalten (Rate der Zielschicht unterschaetzt, z. B. nach
-			// einer Aufloesungsaenderung): Aufschub verdoppeln; nach laengerem Halten bzw. anderer Quelle zurueck
+			// einer Aufloesungsaenderung): Aufschub verdoppeln (bis upDwellMax). Zurueckgestellt wird er erst, wenn die
+			// hoehere Schicht mindestens upHold gehalten hat (bzw. bei anderer Quelle); eine Ruecknahme dazwischen laesst
+			// ihn, wie er ist - sonst begaenne nach einem einzelnen etwas laengeren Versuch alles wieder bei layerDwell
 			// - ebenso, wenn die Schonfrist nach diesem Hochschalten gescheitert ist (GCC-Ziel gefallen bzw. nicht
 			// nachgezogen, estimator.probeFailed): auch das ist ein gescheiterter Versuch, kein Halten
 			fast := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner &&
@@ -686,7 +703,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 					base = layerDwell
 				}
 				s.dwell = min(2*base, upDwellMax)
-			case s.why == whyBudget || s.downOwner != s.owner:
+			case s.downOwner != s.owner || s.why == whyBudget && held >= int64(upHold):
 				s.dwell = 0
 			}
 			s.downAt, s.downOwner = now, s.owner
