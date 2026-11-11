@@ -196,12 +196,12 @@ func TestProbingAnrufbeginn(t *testing.T) {
 	if d[1] != d[0] {
 		t.Fatalf("h zu Anrufbeginn mit Probing nach %v, ohne nach %v", d[1], d[0])
 	}
-	// Quelle nicht eingeschwungen: h geht sofort durch (300 kbit/s), dann faehrt der Kodierer hoch und ein Stau-Schub
-	// nimmt h binnen upFail zurueck
+	// Quelle nicht eingeschwungen: h geht mit 300 kbit/s durch - seit srcSettle nicht mehr im ersten Takt, sondern sobald
+	// die Quelle nicht mehr jung ist -, dann faehrt der Kodierer hoch und ein Stau-Schub nimmt h binnen upFail zurueck
 	var back [2]time.Duration
 	for i, on := range []bool{false, true} {
 		er := newEstCfg(t, 300e3, 810e3, 1, on)
-		er.until("h", 2*time.Second)
+		er.until("h", srcSettle+time.Second)
 		er.rates["h"], er.allR[2] = 1250e3, 1250e3
 		er.run(600 * time.Millisecond)
 		er.loss = true
@@ -437,6 +437,8 @@ func TestProbingWegwechselFreierVersuch(t *testing.T) {
 // Schaetzung dem Bedarf der laufenden Auswahl (4 % je Takt). Mit Probing blieb sie bis zum ersten Bild beim Anfangswert
 // (im Modell haelt h trotzdem; der Rueckfall im Labor ist hier nicht nachgestellt). Im Anlauf - der freie Versuch des
 // Beins ist nicht verbraucht - laeuft jetzt alles wie ohne Probing: Schicht und Schaetzung Takt fuer Takt gleich.
+// Seit srcSettle (control.go) geht h nicht mehr beim Aufbau durch, sondern nach rund 2 s; die Gleichheit mit und ohne
+// Probing gilt unveraendert, jetzt ueber m, den Schritt und h.
 func TestProbingAnlaufWieOhne(t *testing.T) {
 	type st struct {
 		layer string
@@ -460,16 +462,23 @@ func TestProbingAnlaufWieOhne(t *testing.T) {
 			t.Fatalf("Probe im Anlauf: %+v", er.l.pstat)
 		}
 	}
+	up := -1 // erster Takt auf h: seit srcSettle nicht mehr Takt 0 (junge Quelle), sondern nach rund 2 s - dann haelt h
 	for k := range seq[0] {
-		if seq[0][k].layer != "h" {
-			t.Fatalf("ohne Probing: Takt %d auf %q (Modell soll h von Anfang an halten)", k, seq[0][k].layer)
+		if up < 0 && seq[0][k].layer == "h" {
+			up = k
+		}
+		if want := map[bool]string{false: "m", true: "h"}[up >= 0]; seq[0][k].layer != want {
+			t.Fatalf("ohne Probing: Takt %d auf %q, soll %q (erst m, ab dem Schritt h)", k, seq[0][k].layer, want)
 		}
 		if seq[1][k] != seq[0][k] {
 			t.Fatalf("Takt %d (%.1f s): mit Probing %+v, ohne %+v", k, float64(k)*0.2, seq[1][k], seq[0][k])
 		}
 	}
+	if at := time.Duration(up+1) * 200 * time.Millisecond; up < 0 || at < srcSettle || at > srcSettle+time.Second {
+		t.Fatalf("erster Schritt auf h in Takt %d, soll %v bis %v nach Beginn", up, srcSettle, srcSettle+time.Second)
+	}
 	if seq[0][0].est != 1200 || seq[1][3].est <= 1200 {
 		t.Fatalf("Schaetzung waechst im Anlauf nicht mit dem Bedarf: %+v", seq[1][:5])
 	}
-	t.Logf("Anlauf: h ab Takt 0 mit und ohne Probing, Schaetzung %d -> %d -> %d kbit/s", seq[1][0].est, seq[1][1].est, seq[1][3].est)
+	t.Logf("Anlauf: m ab Takt 0, h ab Takt %d mit und ohne Probing, Schaetzung %d -> %d -> %d kbit/s", up, seq[1][0].est, seq[1][1].est, seq[1][3].est)
 }

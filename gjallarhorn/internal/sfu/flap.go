@@ -90,6 +90,12 @@ func (f *flap) step(live, lower bool, bps float64, now int64) {
 // usable: Quelle live und nicht durch die Hysterese gesperrt.
 func (st *source) usable(now int64) bool { return st.live(now) && !st.fl.held }
 
+// young: Die Quelle ist erst seit weniger als srcSettle ohne Unterbrechung live - ihre gemessene Rate taugt noch nicht
+// fuer einen Schritt hinauf (control.go, srcSettle).
+func (st *source) young(now int64) bool {
+	return st.fl.liveAt != 0 && now-st.fl.liveAt < int64(srcSettle)
+}
+
 // stepFlaps fuehrt die Hysterese fuer eine Schicht-Menge (Kamera bzw. Bildschirm) einen Takt weiter.
 func stepFlaps(m map[string]*source, now int64) {
 	lower := false

@@ -32,6 +32,20 @@ const (
 	tileFPSMargin = 1.25
 )
 
+// srcSettle: So lange nach ihrem Beginn (seit sie ohne Unterbrechung live ist) gilt die gemessene Rate einer Quelle noch
+// nicht fuer einen Schritt hinauf auf sie - auf UDP-Beinen mit GCC zaehlt dann mindestens die angenommene Rate
+// (defaultRate*). Die Messung beginnt mit dem ersten Teil-Takt und ist auf rund 2 s geglaettet; der Kodierer faehrt
+// zudem erst hoch. Zum Anrufbeginn stand h deshalb mit 250 bis 300 kbit/s statt 1250 in der Rechnung, der Schritt ging
+// im ersten oder zweiten Takt des Beins durch - in einem Moment, in dem das GCC-Ziel noch keine Aussage ueber die
+// Leitung ist (es folgt in der ersten Sekunde nur der gerade gesendeten Rate, pion klemmt es auf deren 1,5-Faches).
+// Sprang die Rate dann auf die echte von h, lag das Ziel darunter und war gerade gefallen: "Stau", Rueckfall nach
+// 0,4 bis 2,4 s, h erst nach dem Aufschub (8 s) wieder. Im Labor (headless Chromium, freie Leitung) traf das 46 von 49
+// Richtungen, deren erster Schritt mit der Schaetzung auf dem Anfangswert fiel; Schritte ab rund 2 s hielten.
+// Mit der angenommenen Rate passt h nicht in die Anfangsschaetzung, der Deckel folgt dem Bedarf (want), und der
+// Schritt kommt nach rund 2 s - mit eingeschwungener Messung.
+// Variable fuer Tests.
+var srcSettle = 2 * time.Second
+
 // screenResume: Kommt eine Bildschirmquelle nach mindestens so langer Stille (zusaetzlich zur Sekunde bis „nicht
 // aktiv“) wieder, zaehlt das als neuer Beginn der Freigabe (Apps und Web beenden das Teilen mit replaceTrack(null),
 // die Quelle bleibt angemeldet). Variable fuer Tests.
@@ -305,6 +319,11 @@ func layerRate(st *source) float64 {
 	if st.bps > 1000 {
 		return st.bps
 	}
+	return nominalRate(st)
+}
+
+// nominalRate: angenommene Rate einer Schicht, solange keine belastbare Messung da ist.
+func nominalRate(st *source) float64 {
 	switch st.Layer {
 	case "l":
 		return defaultRateL
@@ -625,6 +644,14 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			cur := c.s.layer == c.opts[c.idx].Layer ||
 				c.s.src != nil && c.s.src.peer == c.s.owner && layerRank(c.opts[c.idx].Layer) < layerRank(c.s.layer)
 			need := sum - old + nr
+			// real: Bedarf mit der gemessenen Rate - er gilt, sobald die Schicht laeuft. Fuer den Schritt hinauf auf eine
+			// junge Quelle (srcSettle) zaehlt dagegen mindestens die angenommene Rate, siehe srcSettle.
+			real := need
+			if !cur && oneUp {
+				if nom := nominalRate(c.opts[c.idx]); nr < nom && c.opts[c.idx].young(now) {
+					need = sum - old + nom
+				}
+			}
 			since := int64(layerDwell)
 			if c.s.downAt != 0 && c.s.owner == c.s.downOwner {
 				since = now - c.s.downAt
@@ -682,7 +709,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				}
 			}
 			if layerStep(cur, need, budget, lim, since) {
-				sum, c.rate = need, nr
+				sum, c.rate = real, nr
 				if !cur {
 					stepper = c
 					if prb && !passed && l.pf.pd > 0 && tgt >= l.pf.rate*probeNear {
