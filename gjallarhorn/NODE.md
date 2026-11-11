@@ -167,9 +167,20 @@ Platzhalter: `horn-1.example.org`.
       unter den Höchstwert, nicht im Nachlauf) **und** es liegt unter dem 1,2-Fachen der Rate vor der Probe – so tief
       klemmt pion nie – oder im selben Takt meldet die Laufzeit-Messung Überlast (`usage` „overuse“ bzw. `state`
       „decrease“) bzw. der Verlustanteil liegt zwei Takte in Folge 5 Punkte über dem Stand vor der Probe (`gcc`).
-    - *Kein Stau:* Ziel gefallen, liegt aber über 87 % dessen, was das Bein in den letzten 500 ms gesendet hat
-      (mit Fülldaten). Empfangen wird höchstens, was gesendet wurde – ein Rücksprung läge bei höchstens 85 %. Die
-      Probe läuft weiter (Zähler `clamped`).
+    - *Kein Stau:* Ziel gefallen, liegt aber über dem, was das Bein in den letzten 500 ms gesendet hat (mit
+      Fülldaten; Schwelle 1,0 × Senderate). Ein Rücksprung läge bei 85 % der Rate, die pion empfangen hat, eine
+      Klemmung beim 1,5-Fachen. Die Probe läuft weiter (Zähler `clamped`).
+      Die Senderate zählt dafür wie pion-GCC: Kopf samt Erweiterungen + Nutzlast (`LegStats.HdrExtra`, 8 Byte je
+      Paket für transport-cc – bei Füllpaketen 3 %, über alles rund 1 %); alle anderen Raten bleiben bei `BytesOut`.
+      Auf Dauer wird höchstens empfangen, was gesendet wurde – im einzelnen Fenster nicht: pion teilt die Bytes seines
+      500-ms-Fensters durch die Zeit zwischen dessen erstem und letztem Paket, und sein Fenster liegt um den Weg der
+      Rückmeldung versetzt. Gemessen (Testaufbau mit pion-Gegenstelle, 9 Läufe, gleiche Bytes): pions Empfangsrate
+      liegt im Mittel 3–4 % über der Senderate, in 5 % der Takte über 10–13 %. Bei 50 Rücksprüngen lag das Ziel in
+      26 Fällen über 87 % der Senderate (die Schwelle bis Prüfung 3 – sie trennte nicht), in den 24 Fällen innerhalb
+      einer Probe höchstens bei 86 %, außerhalb bis 99 %; über 100 % nur einmal, gleich nach einem Schritt nach
+      unten (dort wird weder geprobt noch entschuldigt). Klemmungen (62) lagen bei mindestens 105 %. Der Abstand ist also
+      klein: Was die Senderate nicht trennt, fangen die übrigen Signale (Überlast, Verlust, weiterer Fall) – und die
+      Ausnahme in der Schonfrist gilt nur kurz nach einem Schritt (unten).
     - *Einzelner Hinweis* (Fall nicht einzuordnen; Überlast oder Verlust ohne Fall): Die Probe läuft weiter und wartet
       auf Bestätigung, das Fenster wird dafür bis 1 s verlängert. Ein zweiter Hinweis, solange der erste offen ist:
       Stau, gescheitert (`gcc`, `over`, `loss`). Steigt das Ziel 2 Takte in Folge wieder (Regler im Zustand „Anstieg“
@@ -178,7 +189,14 @@ Platzhalter: `horn-1.example.org`.
       (binnen 10 s) unklar, zählt sie als gescheitert.
     Dieselbe Klemmung traf auch den Wechsel selbst (nach bestandener Probe springt die Rate durch das Band, das Ziel
     fällt unter die neue Rate – im Testaufbau hielt `h` 0,2 s): Mit Probing erkennt die Schonfrist sie nach derselben
-    Regel und verlangt von da an nur, dass das Ziel wieder steigt. Ohne Probing bleibt die Schonfrist, wie sie war.
+    Regel und verlangt von da an nur, dass das Ziel wieder steigt – aber nur 3 s lang nach einem Schritt nach oben
+    (`clampWin`): So lange kann pions Empfangsrate noch Pakete von vor dem Schritt enthalten (Fenster 500 ms, davor
+    das Schlüsselbild der neuen Schicht und der Weg der Rückmeldung). Danach ist ein gefallenes Ziel unter der Rate
+    wieder sofort Stau, wie ohne Probing: Im Dauerzustand springt die Rate nicht durch das Band, und die Ausnahme
+    verdeckte dort einen echten Rücksprung bei leichtem Stau bis zu 15 s (Prüfung 3). Preis: Auf verrauschter freier
+    Leitung fällt `h` wieder so oft wie ohne Probing (Testaufbau mit Jitter und Pausen, je 2 min: 4 und 0 Rückfälle
+    mit, 3 und 1 ohne Probing) – pion springt dort wirklich zurück, nur ohne Stau. Ohne Probing bleibt die
+    Schonfrist, wie sie war.
     Während der Probe und bis 2 s nach einem Abbruch (gescheitert oder unklar) ändert sich die
     Schätzung nicht – ein Stau, den die Fülldaten erzeugt haben, sagt nichts über die laufende Auswahl. Der Schutz
     gilt nur dafür: Steht 2 Takte nach dem Ende der Fülldaten weiter ein Stausignal an (Warteschlange; GCC-Ziel
@@ -202,7 +220,7 @@ Platzhalter: `horn-1.example.org`.
     Die Probe kommt spätestens 2 min nach dem letzten Fehlversuch, dazu kommen Ruhezeit, Probe und Wechsel –
     gemessen bis 2 min 43 s.
     Die Probe verlängert den Aufschub nie. Aufschub und Proben-Abstand überleben einen Wegwechsel (udp → tcp → udp)
-    des Geräts für 5 min.
+    des Geräts für 5 min, ebenso der verbrauchte freie Versuch zum Anrufbeginn (auch ohne gescheiterte Probe).
   - **Abwägung – Gruppe mit Sprecherwechsel, Leitung wird frei:** Mit Probing kommt eine solche Gruppe nach dem
     Freiwerden der Leitung langsamer auf die volle Belegung zurück: 2 min 15 s bis 2 min 34 s gegenüber 25–44 s
     ohne Probing (Modell mit pion-nahem Ziel-Regler, 3 min auf 1,2 Mbit/s, Sprecherwechsel alle 20 s: 104 s gegenüber

@@ -76,8 +76,9 @@ const (
 	// Eigene Auswertung (probeJudge, fallClass)
 	// Ziel ueber diesem Anteil der eigenen Senderate (estimator.sendRate): kein Ruecksprung. Der laege bei 85 % der
 	// Rate, die pion empfangen hat - und die liegt im selben Augenblick oft ueber der Senderate der letzten 500 ms,
-	// auch wenn beide dieselben Bytes zaehlen (siehe fallClass). Gemessen bei 43 Rueckspruengen: Ziel hoechstens 96 %
-	// der Senderate; Klemmungen (67) mindestens 105 %.
+	// auch wenn beide dieselben Bytes zaehlen (siehe fallClass). Gemessen bei 50 Rueckspruengen: Ziel hoechstens 99 %
+	// der Senderate (in einer Probe 86 %; einmal darueber, gleich nach einem Schritt nach unten - dort wird weder
+	// geprobt noch entschuldigt); Klemmungen (62) mindestens 105 %.
 	probeDecSent = 1.0
 	probeDecBase = 1.2              // Ziel unter diesem Vielfachen der Rate vor der Probe: Ruecksprung (Klemmung laege bei 1,5)
 	probeLossUp  = 0.05             // Verlustanteil um so viel ueber dem Stand vor der Probe, zwei Takte in Folge: Hinweis auf Stau
@@ -562,9 +563,10 @@ const (
 // (8 Byte je Paket mehr als BytesOut; bei Fuellpaketen 3 %), deshalb zaehlt sendRate sie mit (LegStats.HdrExtra). Zum
 // anderen teilt pion die Bytes seines Fensters durch die Zeit zwischen dessen erstem und letztem Paket (das erste Paket
 // zaehlt mit, die Zeit davor nicht), und sein Fenster liegt um den Weg der Rueckmeldung versetzt - bei Bildern, die in
-// Schueben kommen, liegt seine Rate dadurch im Mittel 4 % ueber der Senderate (gleiche Bytes; 95 % der Takte bis
-// 10 %), bei einem Ruecksprung gemessen bis 13 %. Die Schwelle probeDecSent = 1,0 laesst dafuer 17 % (bis Pruefung 3:
-// 0,87, also 2 % - weniger als allein der Unterschied der Zaehlung).
+// Schueben kommen, liegt seine Rate dadurch im Mittel 3 bis 4 % ueber der Senderate (gleiche Bytes; in 5 % der Takte
+// ueber 10 %), bei einem Ruecksprung gemessen bis 16 %. Die Schwelle probeDecSent = 1,0 laesst dafuer 17 % (bis
+// Pruefung 3: 0,87, also 2 % - weniger als allein der Unterschied der Zaehlung). Viel Abstand ist das nicht; hoeher
+// kann die Schwelle nicht liegen, ohne Klemmungen zu verfehlen (gemessen ab 105 % der Senderate).
 func (e *estimator) fallClass(v float64) int {
 	switch {
 	case v < probeDecBase*e.prBase:

@@ -77,6 +77,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   - Diagnose: je Probenende eine Zeile im Log des Knotens (Bein-Kurzkennung, Schritt, Zielrate, Ergebnis, Grund,
     Dauer); das Web übernimmt `probe`/`probe_kbit`/`probe_why` in sein Diagnose-Ereignis `layers`
     (z. B. `s3:m3@ab12?fail:gcc,1599k`); Zähler `unclear` und `clamped` unter `GET /api/sfu/leg/{id}`.
+  - Nach der dritten Prüfung: Der Vergleich mit der eigenen Senderate zählt die Bytes jetzt wie pion-GCC (mit
+    Kopf-Erweiterungen) und nimmt als Schwelle die Senderate selbst statt 87 % davon – mit 87 % lag im Testaufbau
+    jeder zweite echte Rücksprung über der Schwelle und hätte als Klemmung gegolten. Die Ausnahme für den Wechsel nach bestandener Probe gilt
+    nur noch 3 s nach einem Schritt nach oben; danach reagiert der Knoten auf ein gefallenes Ziel wieder sofort, wie
+    ohne Probing. Der freie Versuch zum Anrufbeginn lebt nach einem Wegwechsel des Geräts nicht wieder auf.
   - Modell (pion-naher Ziel-Regler): „eng, dann frei“ – obere Ebene 35 s nach dem Freiwerden (davor: in 6 min nicht);
     Gruppe mit Sprecherwechsel nach dem Freiwerden 104 s (davor: in 6 min nicht; ohne Probing 10 s).
 - Nur UDP-Beine mit GCC; TCP-/TLS-Wege bleiben unverändert. Der Abstand nach gescheiterten Proben (10 s bis 2 min)

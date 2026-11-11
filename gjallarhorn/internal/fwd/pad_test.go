@@ -655,3 +655,68 @@ func TestPaddingHistorieVeraltet(t *testing.T) {
 		t.Fatalf("nach %d: %d Pakete, erwartet %d und %d", prev, len(w.hdrs)-n0, prev+2, prev+1)
 	}
 }
+
+// xrec: Schreiber, der wie die Kette von pion erst beim Schreiben eine Kopf-Erweiterung setzt (transport-cc: 2 Byte,
+// mit Rahmen 8 Byte je Paket) und dann zaehlt wie pion-GCC: Kopf samt Erweiterungen + Nutzlast.
+type xrec struct {
+	mu          sync.Mutex
+	pkts, bytes uint64
+}
+
+func (r *xrec) WriteRTP(h *rtp.Header, p []byte) (int, error) {
+	if err := h.SetExtension(5, []byte{0, 1}); err != nil {
+		return 0, err
+	}
+	r.mu.Lock()
+	r.pkts++
+	r.bytes += uint64(h.MarshalSize() + len(p))
+	r.mu.Unlock()
+	return len(p), nil
+}
+
+// TestHdrExtra (Pruefung 3, Fund 1): BytesOut + HdrExtra ist genau, was pion-GCC je Paket zaehlt - fuer Bild, Ton und
+// Fuellpakete. BytesOut selbst bleibt, wie es war (12 + CSRC + Nutzlast).
+func TestHdrExtra(t *testing.T) {
+	leg := NewLeg()
+	defer leg.Close()
+	w := &xrec{}
+	o := leg.NewOut("v", "p", Video, ClassSpeaker, "h", "l")
+	o.Bind(w, 7, 96)
+	a := leg.NewOut("a", "", Audio, ClassAudio)
+	a.Bind(w, 8, 111)
+	vs := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	as := &Source{Owner: "p", Layer: "a", Kind: Audio, Clock: 48000, CSRC: 77} // Ton traegt den Sprecher als CSRC
+	o.Assign(vs)
+	a.Assign(as)
+	leg.SetPadding(o, 2e6)
+	seq, n := uint16(0), uint64(0)
+	for i := 0; i < 20; i++ {
+		for k := 0; k < 2; k++ {
+			seq++
+			vs.Inject(vp8part(seq, uint32(i+1)*3000, k == 0, i == 0, k == 1))
+		}
+		as.Inject(append(vp8pkt(uint16(i+1), uint32(i+1)*960, false, false, false), make([]byte, 80)...))
+		n += 3
+		time.Sleep(15 * time.Millisecond)
+	}
+	leg.SetPadding(nil, 0)
+	time.Sleep(20 * time.Millisecond)
+	st := &leg.Stats
+	cnt := func() (uint64, uint64) { w.mu.Lock(); defer w.mu.Unlock(); return w.pkts, w.bytes }
+	waitFor(t, func() bool { p, _ := cnt(); return p == st.PktsOut.Load() && p >= n+st.PadPkts.Load() })
+	pkts, bytes := cnt()
+	if st.PadPkts.Load() < 50 {
+		t.Fatalf("nur %d Fuellpakete", st.PadPkts.Load())
+	}
+	if got := st.BytesOut.Load() + st.HdrExtra.Load(); got != bytes {
+		t.Fatalf("BytesOut %d + HdrExtra %d = %d, pion zaehlt %d (%d Pakete)", st.BytesOut.Load(), st.HdrExtra.Load(), got, bytes, pkts)
+	}
+	if st.HdrExtra.Load() != 8*pkts {
+		t.Fatalf("HdrExtra %d bei %d Paketen, erwartet 8 Byte je Paket", st.HdrExtra.Load(), pkts)
+	}
+	if st.BytesOut.Load() != o.Bytes.Load()+a.Bytes.Load()+st.PadBytes.Load() || st.PadBytes.Load() != st.PadPkts.Load()*padWire {
+		t.Fatalf("BytesOut %d, Ausgaenge %d + %d, Fuell %d", st.BytesOut.Load(), o.Bytes.Load(), a.Bytes.Load(), st.PadBytes.Load())
+	}
+	t.Logf("%d Pakete (%d Fuell): BytesOut %d, mit Kopf-Erweiterungen %d (+%.1f %%; Fuellpakete +%.1f %%)", pkts, st.PadPkts.Load(),
+		st.BytesOut.Load(), bytes, 100*float64(st.HdrExtra.Load())/float64(st.BytesOut.Load()), 100*8.0/padWire)
+}
