@@ -130,6 +130,22 @@ Platzhalter: `horn-1.example.org`.
     eine Probe je Bein. Der Deckel der Schätzung folgt mit Probing nicht mehr dem Bedarf des nächsten Schritts (er
     bleibt bei `1,6 × Rate + 300 kbit/s`, mindestens der Startwert von 1,2 Mbit/s); was darüber liegt, braucht eine
     bestandene Probe. Schritte darunter gehen weiter ohne Probe.
+  - **Freier Versuch (ohne Probe, zeitlich wie ohne Probing)** – in zwei Fällen, jeweils einmal:
+    - *Anrufbeginn:* Der erste Schritt nach oben eines Beins, den die Schätzung allein nicht hergibt. Es gibt noch
+      keine Vorgeschichte, die eine Probe rechtfertigt, und die Probe kostete gut 4 s (Labor: `h` stabil nach 12,8 s
+      statt 8,8 s). Verbraucht mit dem Versuch, mit der ersten gescheiterten Probe und mit dem ersten Rückfall eines
+      Platzes. Nicht als Rückfall zählt, wenn die Schicht beim Schritt hinauf noch nicht eingeschwungen war (sie
+      sendet inzwischen mehr als das 1,3-Fache – zu Anrufbeginn die Regel: `h` geht mit 300 kbit/s durch und fällt,
+      sobald der Kodierer hochgefahren ist); es bleibt dann beim Aufschub wie ohne Probing.
+    - *Rückkehr:* Fällt ein Platz von einer Schicht zurück, die er mindestens 30 s gehalten hat, darf er einmal ohne
+      Probe wieder hinauf (nach 4 s Mindestverweildauer, die Schätzung wächst bis zum Bedarf des Schritts). Hält die
+      Schicht danach wieder 30 s, gilt das beim nächsten Rückfall erneut; fällt sie früher, braucht der Weg zurück
+      eine Probe. Nur für dieselbe Quelle, nicht nach einem Sprecherwechsel.
+    Solange ein freier Versuch ansteht, beginnt auf dem Bein keine Probe; er gilt nur für seinen Schritt (andere
+    Plätze gehen in der Zeit nicht ohne Probe mit). Scheitert er, entsteht der Aufschub wie ohne Probing, und es gilt
+    wieder die Proben-Pflicht. Preis: auf einer Leitung, die die Schicht nicht trägt, ein Fehlversuch mehr zu
+    Anrufbeginn (Modell, 10 min auf 1,0 Mbit/s: 1 statt 0; ohne Probing 7) und einer, wenn die Leitung nach langem
+    Halten eng wird.
   - Ablauf: Zielrate = Bedarf des Schritts × 1,15 + Ton; Füllrate = Zielrate − laufende Rate, nie über das
     Kontingent (P10). 2 Takte halbe Füllrate, dann volle Füllrate für das Fenster (2,5 Umlaufzeiten aus den
     Empfängerberichten, mindestens 3 Takte, höchstens 1,5 s; ohne Umlaufzeit 1 s), danach 2 Takte Nachlauf ohne
@@ -138,16 +154,39 @@ Platzhalter: `horn-1.example.org`.
   - **Deckel der Füllrate, 1,5 Mbit/s:** Ein Schritt, der mehr Füllung bräuchte (z. B. Bildschirm von der unteren
     auf die obere Ebene), wird nicht geprobt und auch nicht „halb geprobt“ freigegeben. Er läuft wie ohne Probing:
     Der Deckel der Schätzung folgt seinem Bedarf, der Wechsel selbst ist die Probe, der Aufschub das Netz.
-  - Stausignale (sofortiger Abbruch, „gescheitert“): GCC-Ziel fällt um mehr als 3 % unter seinen Höchstwert seit
-    Beginn (nicht im Nachlauf), pion-GCC meldet Überlast (`usage` „overuse“ bzw. `state` „decrease“), Alter oder
-    Verlust in der eigenen Warteschlange. Während der Probe und bis 2 s nach einem Abbruch ändert sich die
+  - **Auswertung (eigene, seit Saga 2.5 Prüfung 2):** Ein gefallenes GCC-Ziel allein lässt die Probe nicht mehr
+    scheitern. Grund: pion-GCC senkt sein Ziel auf zwei Arten – beim *Rücksprung* wegen Stau auf 85 % der
+    empfangenen Rate, und ohne jeden Stau durch eine *Klemmung*: Liegt die empfangene Rate nahe der Rate beim
+    letzten Rücksprung, rechnet der Anstieg `min(Ziel + Schritt, 1,5 × empfangen)`. Ein Ziel, das seit dem Rücksprung
+    weit gewachsen ist (GCC ist ohne Fülldaten anwendungsbegrenzt und wächst mit 8 %/s ungebremst), fällt dabei in
+    einem Zug – und die Fülldaten der Probe schieben die empfangene Rate selbst in dieses Band. Das war die Ursache
+    der falsch gescheiterten Proben auf freier Leitung im Labor (16–54 % `fail:gcc`); im Testaufbau ohne jedes
+    Rauschen nachgestellt (Ziel 2796 → 1069 kbit/s bei Laufzeit-Trend 0,7 ms und Schwelle 6 ms).
+    Je Takt wertet die Probe aus:
+    - *Stau, gescheitert:* Alter oder Verlust in der eigenen Warteschlange (`queue`); Ziel gefallen (mehr als 3 %
+      unter den Höchstwert, nicht im Nachlauf) **und** es liegt unter dem 1,2-Fachen der Rate vor der Probe – so tief
+      klemmt pion nie – oder im selben Takt meldet die Laufzeit-Messung Überlast (`usage` „overuse“ bzw. `state`
+      „decrease“) bzw. der Verlustanteil liegt 5 Punkte über dem Stand vor der Probe (`gcc`).
+    - *Kein Stau:* Ziel gefallen, liegt aber über 87 % dessen, was das Bein in den letzten 500 ms gesendet hat
+      (mit Fülldaten). Empfangen wird höchstens, was gesendet wurde – ein Rücksprung läge bei höchstens 85 %. Die
+      Probe läuft weiter (Zähler `clamped`).
+    - *Einzelner Hinweis* (Fall nicht einzuordnen; Überlast oder Verlust ohne Fall): Die Probe läuft weiter und wartet
+      auf Bestätigung, das Fenster wird dafür bis 1 s verlängert. Ein zweiter Hinweis, solange der erste offen ist:
+      Stau, gescheitert (`gcc`, `over`, `loss`). Steigt das Ziel 2 Takte in Folge wieder (Regler im Zustand „Anstieg“
+      – bei anhaltendem Stau stünde es), ist der Hinweis ausgeräumt. Steigt es 2 Takte nicht: Ergebnis **unklar** –
+      Abbruch ohne Wertung (`abort`, Grund `unklar`, kein Abstand), Wiederholung nach 2 s. Ist auch die Wiederholung
+      (binnen 10 s) unklar, zählt sie als gescheitert.
+    Dieselbe Klemmung traf auch den Wechsel selbst (nach bestandener Probe springt die Rate durch das Band, das Ziel
+    fällt unter die neue Rate – im Testaufbau hielt `h` 0,2 s): Mit Probing erkennt die Schonfrist sie nach derselben
+    Regel und verlangt von da an nur, dass das Ziel wieder steigt. Ohne Probing bleibt die Schonfrist, wie sie war.
+    Während der Probe und bis 2 s nach einem Abbruch (gescheitert oder unklar) ändert sich die
     Schätzung nicht – ein Stau, den die Fülldaten erzeugt haben, sagt nichts über die laufende Auswahl. Der Schutz
     gilt nur dafür: Steht 2 Takte nach dem Ende der Fülldaten weiter ein Stausignal an (Warteschlange; GCC-Ziel
     unter der Medienrate und dabei fallend bzw. Überlast gemeldet), zwei Takte in Folge, endet er sofort, und der
     Knoten reagiert wie ohne Probing (Modell, Einbruch von 1150 auf 300 kbit/s mitten in der Probe: Rückzug nach
     1,2 s; ohne Probing 0,8 s). Liegt das GCC-Ziel am Ende der 2 s noch unter der Rate, zählt das als Stau wie
     bisher.
-  - Bestanden: kein Stausignal bis zum Ende des Nachlaufs, und die Fülldaten sind wirklich geflossen (mindestens
+  - Bestanden: kein Stau und kein offener Hinweis bis zum Ende des Nachlaufs, und die Fülldaten sind wirklich geflossen (mindestens
     60 % der Füllrate; sonst „abgebrochen“ mit Abstand wie gescheitert). Dass das GCC-Ziel die Zielrate erreicht,
     wird **nicht** verlangt: pion-GCC hebt sein Ziel auch auf freier Leitung nur um rund 8 % je Sekunde. Der
     Wechsel folgt im selben bzw. nächsten Takt.
@@ -166,7 +205,8 @@ Platzhalter: `horn-1.example.org`.
     des Geräts für 5 min.
   - **Abwägung – Gruppe mit Sprecherwechsel, Leitung wird frei:** Mit Probing kommt eine solche Gruppe nach dem
     Freiwerden der Leitung langsamer auf die volle Belegung zurück: 2 min 15 s bis 2 min 34 s gegenüber 25–44 s
-    ohne Probing (mit Probing gilt der Abstand nach gescheiterten Proben je Bein und Zielrate und überlebt den
+    ohne Probing (Modell mit pion-nahem Ziel-Regler, 3 min auf 1,2 Mbit/s, Sprecherwechsel alle 20 s: 104 s gegenüber
+    10 s; vor der eigenen Auswertung kam sie dort in 6 min gar nicht zurück) (mit Probing gilt der Abstand nach gescheiterten Proben je Bein und Zielrate und überlebt den
     Sprecherwechsel). Dafür gibt es in der engen Phase davor 0–2 statt 9–19 Fehlversuche (jeder mit Schlüsselbild,
     Rückwechsel und kurz verdecktem Ton). Mit `HORN_PROBING=0` kommt eine solche Gruppe schneller zurück, zahlt
     aber in der engen Zeit.
@@ -179,8 +219,11 @@ Platzhalter: `horn-1.example.org`.
   - Füllpakete (`internal/fwd`, `Leg.SetPadding`): reine Padding-Pakete (P-Bit, 255 Byte, keine Nutzlast) auf der
     Bild-SSRC des Ausgangs, nur zwischen zwei Bildern (nach einem Paket mit Marker), mit fortlaufender Folgenummer
     des Ausgangs und dem Zeitstempel des letzten Bilds. Sie gehen **direkt hinter einem Paket des Beins** hinaus
-    (Ton oder Bild, im selben Schub, höchstens das Guthaben von 50 ms); einen eigenen Takt gibt es nur, wenn das
-    Bein 40 ms lang nichts zu senden hatte (stille Quelle, wenige Bilder/s). Grund (Saga 2.5, N2): pion-GCC fasst
+    (Ton oder Bild, im selben Schub, höchstens das Guthaben von 110 ms); einen eigenen Takt gibt es nur, wenn das
+    Bein 100 ms lang nichts zu senden hatte (stille Quelle, weniger als 10 Bilder/s). Die 100 ms liegen mit Absicht
+    weit über dem Bildabstand üblicher Kameras: Mit 40 ms (bis Prüfung 2) feuerte der Wecker auf einem Bein ohne
+    dichten Ton bei 22–25 Bildern/s kurz vor jedem Bild (Test: 28 von 30 Bildern mit eigenem Füll-Schub in den 8 ms
+    davor; jetzt 0, bei 24 und 30 Bildern/s). Grund (Saga 2.5, N2): pion-GCC fasst
     zu einer Gruppe zusammen, was binnen 5 ms nach ihrem ersten Paket gesendet wurde, und misst vom ersten Senden
     bis zur letzten Ankunft. Der frühere eigene 5-ms-Takt setzte Füll-Schübe laufend kurz vor Ton- und Bildpakete;
     die Gruppen wurden scheinbar verschieden lang, die Laufzeitmessung rauschte während einer Probe auf freier
@@ -193,9 +236,10 @@ Platzhalter: `horn-1.example.org`.
     als eine doppelt vergebene Folgenummer; Zähler `late_dropped`, siehe Diagnose). Totmann: Nach 3 s ohne neue Vorgabe füllt das Bein nicht mehr. Der
     NACK-Antworter puffert Füllpakete nicht (ein verlorenes wird nicht nachgesendet). Die Raten der Quellen zählen
     sie nicht mit, die Rate des Beins schon.
-  - Zeit bis zur oberen Ebene auf freier Leitung: Der erste Schritt wartet auf Ruhezeit und Probe – im Modell `h`
-    4 s nach Beginn (ohne Probing 1,4 s), mit pion-Gegenstelle 3,3–3,5 s nach dem Verbinden.
-  - **Offen – Leitungen mit Ratengrenze knapp über dem Bedarf (nur am Testaufbau gemessen, nicht im Labor):** Der
+  - Zeit bis zur oberen Ebene auf freier Leitung: Der erste Schritt läuft ohne Probe (freier Versuch) – im Modell
+    `h` 1,4 s nach Beginn, mit und ohne Probing gleich.
+  - **Offen – Leitungen mit Ratengrenze knapp über dem Bedarf (am Testaufbau gemessen, vor der eigenen Auswertung;
+    seither nicht neu gemessen – im Labor vom 11.11. bestanden auf 6 Mbit/s 7 von 7 Proben):** Der
     Testaufbau (pion hinter einem nachgebildeten Engpass, Zeitauflösung des Empfängers rund 1 ms) zeigt, dass
     pion-GCC auf einer ratenbegrenzten Leitung schon beim Einsetzen der Fülldaten häufig Überlast meldet, obwohl
     die Leitung die Zielrate trägt – jeder Schub braucht dort messbar Zeit durch den Engpass, und die Schwelle des
@@ -213,14 +257,24 @@ Platzhalter: `horn-1.example.org`.
     alle 10–30 s: eine Probe je Rückkehr auf die obere Ebene, 8–28 Proben, 1,1–3,9 MB – hier ist Probing am
     teuersten und bringt gegenüber „aus“ keinen Gewinn.
   - Diagnose: Im Ereignis `layout` trägt der Platz, der höher gehen soll, einmalig `probe` (`start` | `ok` | `fail` |
-    `abort`), `probe_kbit` (Zielrate) und `probe_why` (`gcc`, `over`, `queue`; bei `abort`: `platz`, `ausgang`,
+    `abort`), `probe_kbit` (Zielrate) und `probe_why` (`gcc`, `over`, `loss`, `queue`; bei `abort`: `unklar`, `platz`, `ausgang`,
     `fuell`) – also höchstens zwei zusätzliche Meldungen je Probe. Alte Geräte ignorieren die Felder; die Belegung
-    ändert sich durch eine Probe nicht. Zähler je Bein: `GET /api/sfu/leg/{id}` → `probes {started, passed, failed,
-    aborted, pad_bytes, late_dropped, last}`, `stats.pad_bytes`, `stats.late_dropped` (verworfene Nachzügler
+    ändert sich durch eine Probe nicht. Das Web übernimmt sie in sein Diagnose-Ereignis `layers` hinter dem Platz
+    (`s3:m3@ab12?start,1599k`, `?ok,1599k`, `?fail:gcc,1599k`, `?abort:unklar,1599k`). Der Knoten schreibt je
+    Probenende eine Zeile ins Log – nur die Kurzkennung des Beins wie bei „bein auf“, keine Kennungen von Personen,
+    Geräten oder Räumen:
+    `probe 5884a4 platz=speaker schritt=m>h ziel=1882k fuell=1136k ergebnis=fail grund=gcc dauer=0.4s stufe=1 geklemmt=0 est=1338k gcc=721k`
+    (`stufe` 1 halbe Füllrate, 2 volle, 3 Nachlauf; `geklemmt` = Fälle des Ziels in dieser Probe, die kein Stau
+    waren; `est`/`gcc` = Schätzung des Beins und GCC-Ziel beim Ende). Zähler je Bein: `GET /api/sfu/leg/{id}` →
+    `probes {started, passed, failed, aborted, unclear, clamped, pad_bytes, late_dropped, last}` (`unclear` = davon
+    abgebrochen, weil das Ergebnis unklar war), `stats.pad_bytes`, `stats.late_dropped` (verworfene Nachzügler
     jenseits der Füll-Historie – sollte 0 bleiben; steigt er, kommen Pakete der Quelle sehr spät an, und die
     Historie von 16 Füll-Stellen reicht nicht). Beide Felder fehlen in `stats`, solange sie 0 sind.
   - Tests: `internal/sfu/probe_test.go` (Modell mit Fülldaten: enge Leitung, Leitung wird frei, Störschübe,
     Gruppen, Sprecherwechsel, Einbruch in der Probe, knappe Leitung, großer Schritt, Wegwechsel),
+    `internal/sfu/probe_robust_test.go` (Klemmung des Ziels auf freier und enger Leitung, unklares Ergebnis und
+    Wiederholung, Rückkehr nach langem Halten, Anrufbeginn; dazu im Modell ein Ziel-Regler nach den Regeln von
+    pion-GCC, `estRoom.pion`), `internal/sfu/probe_zahlen_test.go` (Kennzahlen mit und ohne Probing, Ausgabe mit `-v`),
     `internal/fwd/pad_test.go` (Folgenummern, verspätete Pakete, kein Füllpaket mitten im Bild, Füllpakete nur
     hinter Medienpaketen, Totmann, keine Allokation), `probing_udp_test.go` (Ende zu Ende mit pion-Gegenstelle hinter einem Engpass).
 - **Vorrang und Verwerfen (H3):**

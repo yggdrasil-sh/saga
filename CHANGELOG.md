@@ -54,10 +54,31 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Leitung vor einem Schritt nach oben für gut eine Sekunde mit wertlosen RTP-Padding-Paketen auf die Rate, die der
   Schritt bräuchte. Meldet GCC dabei keinen Stau, wird der Schritt freigegeben; sonst bleibt alles, wie es ist – kein
   Schlüsselbild, kein Wechsel.
-- Zahlen aus dem Modell, je 10 min: 1:1 auf zu enger Leitung 0 statt 7 Fehlversuche bei 8 Proben (0,2–0,6 MB);
+- Zahlen aus dem Modell, je 10 min: 1:1 auf zu enger Leitung 1 statt 7 Fehlversuche bei 7 Proben (0,2–0,7 MB);
   Gruppe mit 4 Sendern und Sprecherwechsel auf enger Leitung 0–3 statt 38–65 Fehlversuche bei 7–11 Proben, 3–4 s
-  statt 13–18 s über der Leitung. Auf freier Leitung mit häufigen Stau-Schüben kostet jede Rückkehr auf die obere
-  Ebene eine Probe (bis 28 Proben, 3,9 MB) ohne Gewinn gegenüber „aus“.
+  statt 13–18 s über der Leitung. Auf freier Leitung mit Stau-Schüben alle 10–30 s kostet jede Rückkehr auf die obere
+  Ebene eine Probe (27 Proben, 3,8 MB; Anteil auf der oberen Ebene 74 % statt 37 %); kommen die Schübe seltener
+  (alle 45–90 s), geht es ohne Probe zurück wie bei „aus“.
+- **Nach zwei Laborrunden (10./11.11.) – Probing auf freier Leitung:** Dort scheiterten 16–54 % der Proben fälschlich
+  (`fail:gcc`), und das Bild blieb nach einem gewöhnlichen Rückfall bis 279 s auf der mittleren Ebene (ohne Probing
+  4–6 s); die obere Ebene kam zu Anrufbeginn später (12,8 s statt 8,8 s).
+  - Ursache gefunden und nachgestellt: pion-GCC klemmt sein Ziel nahe der Rate des letzten Rücksprungs auf das
+    1,5-Fache der empfangenen Rate – ohne Stau, ausgelöst von den Fülldaten selbst. Die Probe wertet jetzt selbst aus,
+    ob die Leitung staut (Vergleich des Ziels mit der eigenen Senderate, Überlast laut Laufzeit-Messung, Verlust
+    gegenüber dem Stand vor der Probe, eigene Warteschlange); ein einzelner Hinweis wird über die nächsten Takte
+    bestätigt oder ausgeräumt. Bleibt das Ergebnis unklar, wird die Probe einmal nach 2 s wiederholt, erst dann zählt
+    sie als gescheitert. Dieselbe Klemmung ließ auch den Wechsel nach bestandener Probe scheitern – behoben (nur mit
+    Probing).
+  - Freier Versuch: Fällt ein Platz von einer Ebene zurück, die er mindestens 30 s gehalten hat, geht er einmal ohne
+    Probe wieder hinauf (zeitlich wie ohne Probing). Der erste Schritt nach oben eines Beins läuft ebenfalls ohne
+    Probe. Preis: auf zu enger Leitung ein Fehlversuch zu Anrufbeginn (ohne Probing 7 in 10 min).
+  - Füllpakete: Der Ruhe-Wecker liegt bei 100 ms statt 40 ms – auf einem Bein ohne dichten Ton feuerte er bei
+    22–25 Bildern/s kurz vor jedem Bild und störte die Laufzeit-Messung.
+  - Diagnose: je Probenende eine Zeile im Log des Knotens (Bein-Kurzkennung, Schritt, Zielrate, Ergebnis, Grund,
+    Dauer); das Web übernimmt `probe`/`probe_kbit`/`probe_why` in sein Diagnose-Ereignis `layers`
+    (z. B. `s3:m3@ab12?fail:gcc,1599k`); Zähler `unclear` und `clamped` unter `GET /api/sfu/leg/{id}`.
+  - Modell (pion-naher Ziel-Regler): „eng, dann frei“ – obere Ebene 35 s nach dem Freiwerden (davor: in 6 min nicht);
+    Gruppe mit Sprecherwechsel nach dem Freiwerden 104 s (davor: in 6 min nicht; ohne Probing 10 s).
 - Nur UDP-Beine mit GCC; TCP-/TLS-Wege bleiben unverändert. Der Abstand nach gescheiterten Proben (10 s bis 2 min)
   gilt je Bein und Zielrate, nicht je Platz; nach einem echten Fehlversuch braucht der nächste Versuch eine
   bestandene Probe. Aufschub und Proben-Abstand überleben einen Wegwechsel des Geräts.
@@ -69,7 +90,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   die volle Belegung zurück (2 min 15 s bis 2 min 34 s statt 25–44 s), hat dafür in der engen Phase 0–2 statt 9–19
   Fehlversuche. Eine frei gewordene Leitung ist nach gut 2 min wieder oben (gemessen bis 2 min 43 s; ohne Probing
   bis 5 min).
-- Bekannte Grenzen: Die obere Ebene kommt auf freier Leitung später (im Modell nach 4 s statt 1,4 s). Schritte, die mehr als 1,5 Mbit/s Füllung bräuchten, werden nicht geprobt und laufen wie bisher.
+- Bekannte Grenzen: Schritte, die mehr als 1,5 Mbit/s Füllung bräuchten, werden nicht geprobt und laufen wie bisher.
   **Eine Leitung zwischen Bedarf und Bedarf × 1,15 erreicht die höhere Ebene mit Probing nicht** (die Probe prüft
   mit Reserve; Stellschraube `probeBlindAfter`, Standard aus) – Entscheidung nach dem Labor. Offen: Auf Leitungen
   mit Ratengrenze knapp über dem Bedarf scheitern Proben am Testaufbau häufig, obwohl die Leitung trüge (6 Mbit/s

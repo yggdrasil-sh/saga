@@ -638,8 +638,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// passed: Fuer genau diesen Schritt ist gerade eine Probe bestanden (probe.go)
 			passed := prb && !cur && d.ok != 0 && now-d.ok <= int64(probeGrant)
 			tgt := need*upHeadroom + audioCut // Zielrate des Beins fuer diesen Schritt
-			// free: Dieser Schritt darf ohne Probe versucht werden - zeitlich wie ohne Probing (Aufschub, Deckel)
-			free := prb && !cur && !passed && l.freeStep(c.s, rank)
+			// free: Dieser Schritt darf ohne Probe versucht werden - zeitlich wie ohne Probing (Aufschub, Deckel). Nicht,
+			// wenn er ohnehin nicht gehen kann (Kontingent, Obergrenze der Schaetzung) oder sein Aufschub schon ueber
+			// den ersten hinaus gewachsen ist: Ein freier Versuch, der lange aussteht, hielte alle Proben des Beins auf.
+			free := prb && !cur && !passed && tgt <= quotaCap && tgt <= l.est.max && d.d <= 2*layerDwell && l.freeStep(c.s, rank)
 			switch {
 			case prb && !cur && !free && (d.d > layerDwell || l.pf.covers(tgt)):
 				// Probing: Nach einem gescheiterten Versuch bzw. einer gescheiterten Probe gibt nur eine bestandene

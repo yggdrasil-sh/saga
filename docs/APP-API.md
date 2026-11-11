@@ -2413,7 +2413,9 @@ direkt), Senden (`outbound-rtp`) je Simulcast-Schicht `rid` mit `qlr` und `enc`.
 Plätze aus dem Knoten-Ereignis `layout`, z. B. `v est=1800 t0:m3@ab12 s1:p` = Bein, geschätzte kbit/s, Platz:Schicht+Tid
 bzw. pausiert, Kennungspräfix; beim Platz, der gerade wechselte, ggf. `!Grund,Rate,Live-Zeit,wWartezeit` aus den
 Slot-Feldern `why`/`src_kbit`/`live_ms`/`hold_ms`, z. B. `s0:l3@ab12!gone,31k,12.4s,w3s` – Gründe `budget`, `gone`
-= Schicht nicht mehr live, `back` = Rückkehr nach der Hysterese, siehe `gjallarhorn/NODE.md`), `switch`/`path` (Knoten- bzw. Wegwechsel), `quality` (Wechsel der Anzeigefarbe mit
+= Schicht nicht mehr live, `back` = Rückkehr nach der Hysterese, siehe `gjallarhorn/NODE.md`; beim Platz, für den der
+Knoten gerade eine Probe mit Fülldaten begonnen oder beendet hat, `?Ergebnis[:Grund],Zielrate` aus den Slot-Feldern
+`probe`/`probe_why`/`probe_kbit`, z. B. `s3:m3@ab12?fail:gcc,1599k`), `switch`/`path` (Knoten- bzw. Wegwechsel), `quality` (Wechsel der Anzeigefarbe mit
 RTT/Verlust/Freezes im Fenster), `tx` (Sendestufe auf TCP/TLS, siehe „Senderate auf TCP/TLS“). Apps zusätzlich `thermal` (z. B. `serious`). **Auswerten:** Stottern bei kleiner RTT
 und ohne Verlust, aber mit `qcpu` > 0, steigendem `encms`/`decms` oder `fdrop` > 0 = Geräte-CPU, nicht Netz oder Knoten. Der Verlauf steht im Web außerdem im
 Debug-Snapshot (`HKCalls.horn().diag`, `HKCalls.room().diag`).
