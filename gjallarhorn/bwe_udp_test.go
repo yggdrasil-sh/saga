@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -648,4 +649,54 @@ func TestUDPBWEMessung(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestUDPBWELast (nur mit HORN_BWE_LAST=<sekunden>[,<empfaenger>]; kein Regressionstest): Rechenzeit des Prozesses
+// (Knoten und Bots zusammen, user + sys) ueber einen Lauf auf freier Leitung mit dem Schalter aus HORN_BWE_LAST_ART
+// (gcc | mit). Je Aufruf ein Lauf - zum Vergleich abwechselnd mit beiden Stellungen rufen.
+func TestUDPBWELast(t *testing.T) {
+	want := os.Getenv("HORN_BWE_LAST")
+	if want == "" {
+		t.Skip("nur mit HORN_BWE_LAST")
+	}
+	parts := strings.Split(want, ",")
+	sec, _ := strconv.Atoi(parts[0])
+	nrcv := 1
+	if len(parts) > 1 {
+		nrcv, _ = strconv.Atoi(parts[1])
+	}
+	mode, _ := parseBWE(os.Getenv("HORN_BWE_LAST_ART"))
+	a := newBWEAufbau(t, mode, nil)
+	api, err := sfuBotAPI("udp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < nrcv; i++ {
+		b := &sfuBot{peer: fmt.Sprintf("empf%d", i), path: "udp"}
+		b.level.Store(127)
+		if err := b.join(httpClient(), a.base, api, "raum-bwe", 0, "desktop"); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(b.close)
+		b.start()
+	}
+	if !a.until(15*time.Second, func() bool { return a.layer() == "h" }) {
+		t.Fatalf("kein h: %q", a.layer())
+	}
+	time.Sleep(2 * time.Second)
+	cpu := func() time.Duration {
+		var ru syscall.Rusage
+		_ = syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
+		return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
+	}
+	c0, t0, b0 := cpu(), time.Now(), a.l.fl.Stats.BytesOut.Load()
+	time.Sleep(time.Duration(sec) * time.Second)
+	c1, el := cpu(), time.Since(t0)
+	kbit := float64(a.l.fl.Stats.BytesOut.Load()-b0) * 8 / el.Seconds() / 1000
+	var fb uint64
+	if b := a.l.bweWrap(); b != nil {
+		fb = b.m.Counters().Feedbacks
+	}
+	t.Logf("LAST art=%s empfaenger=%d dauer=%.1fs cpu=%.3fs (%.2f %% eines Kerns) schicht=%s rate=%.0fk rueckmeldungen=%d",
+		mode, nrcv, el.Seconds(), (c1 - c0).Seconds(), (c1-c0).Seconds()/el.Seconds()*100, a.layer(), kbit, fb)
 }

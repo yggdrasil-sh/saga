@@ -47,6 +47,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Nicht am Gerät geprüft:** Dass Browser Wiederholungen so schicken und behandeln, ist am Code von pion und libwebrtc
   gelesen und passt zu den Labordaten; gemessen ist die Wirkung bisher nur mit der Test-Gegenstelle.
 
+### Neu – Knoten: eigener Stau-Detektor liest mit (experimentell, schreibt nur mit)
+- Mit `HORN_BWE=mit` liest auf UDP-Beinen ein eigener Stau-Detektor die transport-cc-Rückmeldungen neben pion-GCC mit
+  und schreibt sein Urteil ins Log: eine Zeile `bwe` je Zustandswechsel (frei, Warnung, Stau), Zusatzfelder in der
+  Zeile `probe` (Urteil sofort und nach einem kurzen Nachlauf – die Zeile kommt dafür bis zu 1 s später) und Zähler
+  unter `GET /api/sfu/leg/{id}` (`"bwe"`). **Er entscheidet nichts**; Schichtwahl, Schätzung und Proben bleiben, wie
+  sie sind. Standard ist `HORN_BWE=gcc`: Dann ist der Mitleser gar nicht eingebaut.
+- Wozu: pion-GCC senkt sein Ziel auf freier Leitung gelegentlich in einem Zug weit unter die Senderate (in den
+  Messläufen z. B. von 25 000 auf rund 1400 kbit/s), und der Knoten fällt dann grundlos eine Ebene zurück. Der Detektor
+  soll zeigen, ob ein eigenes Urteil aus Schlange und Verlust dort richtig liegt, bevor es etwas entscheiden darf.
+  Verfahren, Zeilen und bekannte Grenzen: `gjallarhorn/NODE.md`.
+
 ### Neu – Knoten: Probing mit Fülldaten vor dem Hochschalten (experimentell)
 - Bisher war auf UDP der Schichtwechsel selbst die Probe der Leitung: Trug sie die höhere Ebene nicht, kostete das
   ein Schlüsselbild, den Rückwechsel und kurz verdeckten Ton, und der Aufschub (8 s … 5 min) begrenzte nur die

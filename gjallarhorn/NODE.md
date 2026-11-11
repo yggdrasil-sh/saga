@@ -310,6 +310,56 @@ Platzhalter: `horn-1.example.org`.
     pion-GCC, `estRoom.pion`), `internal/sfu/probe_zahlen_test.go` (Kennzahlen mit und ohne Probing, Ausgabe mit `-v`),
     `internal/fwd/pad_test.go` (Folgenummern, verspätete Pakete, kein Füllpaket mitten im Bild, Füllpakete nur
     hinter Medienpaketen, Totmann, keine Allokation), `probing_udp_test.go` (Ende zu Ende mit pion-Gegenstelle hinter einem Engpass).
+- **Eigener Stau-Detektor, Stufe 0 – schreibt nur mit (experimentell, `HORN_BWE`, Standard `gcc`):**
+  - `HORN_BWE=gcc` (Standard): pion-GCC allein, wie bisher – die Hülle wird gar nicht eingebaut (die Fabrik des
+    Schätzers bleibt, wie sie war). `HORN_BWE=mit`: Um den pion-Schätzer jedes UDP-Beins liegt eine Hülle, die jedes
+    abgehende Paket (TWCC-Folgenummer, Sendezeit, Größe, Art) und jede transport-cc-Rückmeldung mitliest und danach
+    unverändert an pion-GCC weitergibt. Daneben urteilt ein eigener Detektor (`internal/bwe`) über die Leitung. **Er
+    entscheidet nichts:** Schichtwahl, Schätzung und Proben laufen wie bei `gcc`. Jeder andere Wert gilt als `gcc`
+    (mit Warnzeile). Beim Start steht bei `mit` eine Zeile `HORN_BWE=mit: …` im Log.
+  - Verfahren: Pakete werden nach Sendezeit zu Fenstern gebündelt (mindestens 100 ms und 20 gemeldete Pakete,
+    höchstens 500 ms). Die Schlange eines Fensters ist seine kleinste Laufzeit (Ankunft minus Sendezeit) über der
+    Basis, der kleinsten Laufzeit der letzten 30 s – Jitter und kurze Pausen heben das Minimum nicht, eine stehende
+    Schlange schon. Zustände: `frei`, `warnung` (2 Fenster mit Schlange über 50 ms oder 3 mit Verlust ab 8 %),
+    `stau` (4 bzw. 6 solche Fenster), zurück nach `frei` nach 3 bzw. 5 Fenstern mit Schlange unter 20 ms und Verlust
+    unter 3 %; `unbekannt` ohne Rückmeldung (1 s bei laufendem Senden) und nach einem Wegwechsel (ICE wählt ein
+    anderes Adresspaar – die Basis wird verworfen).
+  - Zeile je Zustandswechsel (nur die Kurzkennung des Beins, keine Kennungen von Personen, Geräten oder Räumen):
+    `bwe 5884a4 zustand=stau vorher=warnung grund=schlange schlange=123ms verlust=2.5% durchsatz=1012k kapazitaet=1007k gcc=1062k est=1200k`
+    (`grund`: `schlange`, `verlust`, `leer`, `stille`, `beginn`, `wechsel`; `durchsatz` = vom Empfänger bestätigt über
+    die letzte Sekunde; `kapazitaet` = Durchsatz der Fenster, die den letzten Stau gezeigt haben, 0 = noch keiner;
+    `gcc`/`est` = GCC-Ziel und Schätzung des Knotens zum Vergleich).
+  - Zusatz in der Zeile `probe`: `… est=1338k gcc=721k bwe=staut bwe_schlange=140ms bwe_verlust=0.0% bwe_durchsatz=699k bwe_zustand=warnung bwe_fenster=4 bwe_sofort=staut-nicht`.
+    `bwe` ist das Urteil des Detektors über die Pakete der Probe **nach dem Nachlauf** (zwei Umlaufzeiten + 200 ms,
+    höchstens 1 s; ohne bekannte Umlaufzeit 500 ms), `bwe_sofort` das, was er beim Ende der Probe schon wusste – je
+    `staut`, `staut-nicht` oder `unklar`. `bwe_schlange` ist die zweithöchste Fenster-Schlange der Probe,
+    `bwe_durchsatz` die Spitze des bestätigten Durchsatzes über mindestens 400 ms, `bwe_zustand` der schlechteste
+    Zustand in der Probe, `bwe_fenster` die Zahl der Fenster. **Die Zeile `probe` kommt bei `mit` um den Nachlauf
+    später** (bei `gcc` sofort und ohne Zusatz). `staut-nicht` gilt für das, was gesendet wurde: Bricht GCC eine
+    Probe nach 0,4 s bei halber Füllrate ab, sagt es nichts über die Zielrate – dazu `bwe_durchsatz` neben `ziel` lesen.
+  - Zähler und Zustand je Bein: `GET /api/sfu/leg/{id}` → `"bwe"` (nur bei `mit`): `mode`, `state`, `why`,
+    `queue_ms`, `loss`, `acked_kbit`, `cap_kbit`, `age_ms` (Alter der letzten Rückmeldung, −1 = keine), `sent {video,
+    audio, rtx, pad}`, `feedbacks`, `bad` (nicht entpackbar), `acked`, `lost`, `dup`, `recovered` (als verloren
+    gemeldet, später doch angekommen), `unknown` (Folgenummer nicht im Ring), `windows`, `thin` (Fenster mit zu wenig
+    Paketen), `late`, `resets`, `to_free`, `to_warn`, `to_cong`, `to_unknown`.
+  - Bekannte Grenzen: (1) **Wiederholungen sind unsichtbar** – der NACK-Antworter liegt in der Kette vor dem
+    Schätzer und schreibt an ihm und am TWCC-Kopf vorbei; weder pion-GCC noch der Mitleser sehen sie (`sent.rtx`
+    bleibt 0). (2) **Niedrige Paketrate:** Auf `l` ohne Ton (~25 Pakete/s) dauert ein Fenster bis 0,5 s, Stau wird
+    erst nach rund 2 s gemeldet. (3) **Längerer Weg ohne ICE-Wechsel** (Laufzeit steigt bleibend, z. B. +80 ms, ohne
+    dass ICE ein anderes Paar wählt) sieht bis zu 30 s wie Stau aus, bis die Basis herausgealtert ist. (4) In der
+    Enge ist der Detektor langsamer als GCC: Warnung nach 0,4–0,7 s, Stau nach 0,8–1,0 s (GCC meldet Überlast nach
+    0,2–0,3 s) – die Rückmeldung über ein Paket in der Schlange kommt um die Schlange später. Fällt der Knoten vorher
+    zurück (nach 0,4 s), läuft die Schlange ab, und der Detektor meldet bei knapper Enge oder kurzem Puffer (Policer)
+    oft nur `warnung`, keinen `stau`. (5) Urteile über Proben, die GCC früh abbricht, bleiben oft `unklar`.
+  - Rechenlast: je abgehendem Paket rund 25 ns, je Rückmeldung mit 16 Paketen rund 0,8 µs, keine Allokation
+    (`go test ./internal/bwe -bench .`). Rechenzeit eines ganzen Laufs (Knoten und Bots in einem Prozess, 60 s auf
+    `h`, je 3 Läufe): 1:1 `gcc` 3,32 s, `mit` 3,34 s; ein Sender und 8 Empfänger `gcc` 8,48 s, `mit` 8,63 s – der
+    Unterschied (+0,5 % bzw. +1,7 %) liegt in der Streuung der Läufe.
+  - Tests: `internal/bwe/*_test.go` (Detektor an einer künstlichen Leitung: Jitter, Pausen, wachsende Schlange,
+    Verlust, Policer, Wegwechsel, Stille, dünner Strom, Probe; Entpacker; Zuordnung), `bwe_udp_test.go` (Schalter,
+    Zeilen, Ende zu Ende mit pion-Gegenstelle bei `mit` und `gcc`, Zeile `probe` sofort und nach dem Nachlauf; mit
+    `HORN_BWE_MESSUNG=<fall,…>` und `HORN_BWE_OUT=<ordner>` Messläufe Detektor gegen GCC, mit `HORN_BWE_LAST=<s>[,<empfänger>]`
+    Rechenzeit eines Laufs).
 - **Vorrang und Verwerfen (H3):**
   - Die Warteschlange je Bein arbeitet nach Vorrang: Ton > Bildschirm > Sprecher > Kacheln.
   - Ist ein Rahmen älter als 150 ms, verwirft der Knoten Bilder bis zum nächsten Schlüsselbild und fordert eine PLI
