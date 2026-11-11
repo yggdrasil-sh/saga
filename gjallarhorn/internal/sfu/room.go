@@ -332,7 +332,10 @@ type slot struct {
 	upAt    int64
 	upOwner *Peer
 	upT     float64 // Zielrate des Beins (mit Reserve und Ton) bei diesem Wechsel - fuer Leg.pf, wenn er scheitert
-	upRate  float64 // Rate der Zielschicht bei diesem Wechsel (Probing: war die Quelle schon eingeschwungen?)
+	// Probing: Rate der Schicht, als der Platz zuletzt auf sie hinaufging bzw. mit ihr begann, und fuer wen - war die
+	// Quelle da schon eingeschwungen (unramped in planLeg)?
+	rampRate  float64
+	rampOwner *Peer
 	// ... je Schicht (Index layerRank): Dauer und Beginn, fuer dwellOwner. Ein gescheiterter Versuch auf m sagt nichts
 	// ueber h und umgekehrt. heldAt: seit wann die laufende Quelle ohne Pause laeuft
 	dw         [4]dwell

@@ -818,8 +818,8 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// seinem Schritt hinauf - der Schritt ging mit einer zu kleinen Rate durch (Anrufbeginn: der Kodierer faehrt
 			// erst hoch; im Labor h nach 0,2 s mit 299 kbit/s statt 1250). Sein Scheitern sagt nichts ueber die Leitung:
 			// Es bleibt beim Aufschub wie ohne Probing, zaehlt aber nicht als gescheiterter Versuch des Beins.
-			unramped := prb && was != nil && was.peer == s.owner && s.upOwner == s.owner && s.upRate > 0 &&
-				layerRate(was) > probeRampUp*s.upRate
+			unramped := prb && was != nil && was.peer == s.owner && s.rampOwner == s.owner && s.rampRate > 0 &&
+				layerRate(was) > probeRampUp*s.rampRate
 			if s.dwellOwner != s.owner {
 				s.dw, s.dwellOwner = [4]dwell{}, s.owner
 			}
@@ -842,7 +842,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				l.freeGrant(s, layerRank(st.Layer), layerRank(s.layer), heldFor, unramped)
 			}
 		} else if s.layer != "" && layerRank(st.Layer) > layerRank(s.layer) {
-			s.upAt, s.upOwner, s.upT, s.upRate = now, s.owner, sum*upHeadroom+audioCut, layerRate(st)
+			s.upAt, s.upOwner, s.upT = now, s.owner, sum*upHeadroom+audioCut
+			s.rampRate, s.rampOwner = layerRate(st), s.owner
+		} else if s.layer == "" || s.rampOwner != s.owner {
+			s.rampRate, s.rampOwner = layerRate(st), s.owner // Platz beginnt auf dieser Schicht (Anrufbeginn, neuer Besitzer)
 		}
 		s.paused, s.layer, s.tid = false, st.Layer, c.tid
 		// gehalten: Die Schicht laeuft seit upHold - ihr Aufschub und der aller tieferen ist erledigt
