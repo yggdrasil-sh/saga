@@ -253,6 +253,9 @@ type Config struct {
 	// (fuer die Kachelansicht; die Saga-Steuerung reicht es ans Geraet).
 	// Wird ausserhalb aller Sperren aufgerufen.
 	OnLayout func(LayoutEvent)
+	// OnProbe meldet das Ende jeder Probe (Probing) - fuer das Log des Knotens. Wird ausserhalb aller Sperren
+	// aufgerufen.
+	OnProbe func(ProbeEvent)
 	// OnLegClosed meldet ein vom Knoten beendetes Bein (ersetzt, entfernt,
 	// Raum geschlossen), damit der Aufrufer die PeerConnection schliesst.
 	OnLegClosed func(l *Leg, why string)

@@ -37,6 +37,11 @@ type estRoom struct {
 	fill  float64              // Fuellrate dieses Takts (bit/s)
 	padMB float64              // gesendete Fuelldaten
 	noPad bool                 // Fuelldaten werden eingestellt, aber nicht gesendet
+	// pion: Ziel-Regler naeher an pion-GCC (pionGCC) - ohne Stau ungebremster Anstieg (8 %/s), nahe der Rate beim
+	// letzten Ruecksprung (decAt) Klemmung auf 1,5 x der empfangenen Rate
+	pion  bool
+	decAt float64    // empfangene Rate beim letzten Ruecksprung (0 = noch keiner)
+	hist  [3]float64 // empfangene Rate der letzten Takte
 }
 
 const estAudio = 40e3
@@ -99,6 +104,14 @@ func newEstCfg(t *testing.T, h, gcc float64, n int, probing bool) *estRoom {
 	return er
 }
 
+// newEstProbe: Bein mit Probing, dessen freier Versuch zum Anrufbeginn verbraucht ist (probe.go) - fuer Tests, deren
+// Gegenstand die Probe selbst ist: Jeder Schritt, den die Schaetzung nicht hergibt, braucht hier eine bestandene Probe.
+func newEstProbe(t *testing.T, h, gcc float64, n int) *estRoom {
+	er := newEstCfg(t, h, gcc, n, true)
+	er.l.firstUsed = true
+	return er
+}
+
 func (er *estRoom) layer() string {
 	for _, s := range er.l.Layout() {
 		if s.Class == "speaker" {
@@ -128,6 +141,8 @@ func (er *estRoom) tick() {
 	}
 	er.l.fl.Stats.BytesOut.Add(uint64(rate * dt / 8))
 	switch {
+	case er.pion:
+		er.pionGCC(rate)
 	case er.loss:
 		er.gcc = 600e3
 	case er.link > 0 && rate > er.link:
@@ -156,6 +171,44 @@ func (er *estRoom) tick() {
 		if s.Class != "audio" && !s.Paused {
 			er.sent += er.rates[s.Layer]
 		}
+	}
+}
+
+// pionGCC: das GCC-Ziel eines Takts nach den Regeln des Ziel-Reglers von pion (pkg/gcc, rate_controller - nur die
+// Regeln, kein Code von dort). recv ist die empfangene Rate ueber rund 500 ms.
+//   - Stau (Schub bzw. Rate ueber der Leitung, ab dem zweiten Takt): Ruecksprung auf 85 % von recv; recv wird gemerkt.
+//   - sonst, recv binnen 10 % der gemerkten Rate: Ziel = min(Ziel + kleiner Schritt, 1,5 x recv) - ein weit gewachsenes
+//     Ziel faellt dabei in einem Zug (die Klemmung, an der Proben auf freier Leitung scheiterten).
+//   - sonst: + 8 %/s, ohne Deckel (ausser 1,5 x recv liegt ueber dem Ziel und wuerde uebersprungen).
+func (er *estRoom) pionGCC(rate float64) {
+	got := rate
+	if er.link > 0 && got > er.link {
+		got = er.link
+	}
+	er.hist[2], er.hist[1], er.hist[0] = er.hist[1], er.hist[0], got
+	if er.hist[1] == 0 {
+		er.hist[1], er.hist[2] = got, got
+	}
+	recv := (er.hist[0] + er.hist[1] + 0.5*er.hist[2]) / 2.5
+	switch {
+	case er.loss:
+		er.over = 2
+		er.gcc, er.decAt = min(er.gcc, 600e3), recv
+	case er.link > 0 && rate > er.link:
+		if er.over++; er.over >= 2 {
+			er.gcc, er.decAt = min(er.gcc, 0.85*recv), recv
+		}
+	default:
+		er.over, er.free = 0, rate
+		if d := recv - er.decAt; er.decAt > 0 && d <= 0.1*er.decAt && d >= -0.1*er.decAt {
+			er.gcc = min(er.gcc+20e3, 1.5*recv)
+			break
+		}
+		g := er.gcc * 1.0155 // 8 %/s
+		if c := 1.5 * recv; g > c && c > er.gcc {
+			g = c
+		}
+		er.gcc = min(g, 25e6)
 	}
 }
 

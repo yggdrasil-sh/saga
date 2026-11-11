@@ -84,8 +84,9 @@ func (er *estRoom) measure(d time.Duration, step func(el time.Duration)) probeRu
 
 // TestProbingEngeLeitung (a): Die Leitung traegt m, aber nicht h (1,0 bzw. 1,25 Mbit/s, h 1250 kbit/s), 10 min. Ohne
 // Probing ist der Wechsel die Probe: 7 bis 8 Versuche, jeder mit Schluesselbild, Rueckwechsel und verdecktem Ton. Mit
-// Probing scheitert stattdessen die Probe - kein einziger Wechsel auf h, der Platz bleibt auf m; die Proben kommen im
-// Abstand 10, 20, 40 ... 120 s.
+// Probing scheitert stattdessen die Probe - bis auf den einen freien Versuch zum Anrufbeginn (der erste Schritt nach
+// oben laeuft ohne Probe wie ohne Probing) kein Wechsel auf h, der Platz bleibt auf m; die Proben kommen im Abstand
+// 10, 20, 40 ... 120 s.
 func TestProbingEngeLeitung(t *testing.T) {
 	for _, link := range []float64{1000e3, 1250e3} {
 		t.Run(fmt.Sprintf("%.0f", link/1000), func(t *testing.T) {
@@ -113,8 +114,8 @@ func TestProbingEngeLeitung(t *testing.T) {
 			if on.padMB > 1 {
 				t.Fatalf("fuelldaten %.2f MB in 10 min", on.padMB)
 			}
-			if on.seen["m"] < 10*time.Minute-time.Second {
-				t.Fatalf("mit Probing nicht durchgehend auf m: %v", on.seen)
+			if on.seen["m"] < 10*time.Minute-5*time.Second {
+				t.Fatalf("mit Probing nicht (bis auf den ersten Versuch) durchgehend auf m: %v", on.seen)
 			}
 		})
 	}
@@ -142,7 +143,7 @@ func probingWirdFrei(t *testing.T, tightFor time.Duration) {
 			t.Fatalf("probing %v: h haelt nicht auf freier Leitung: %v", on, after.seen)
 		}
 		t.Logf("probing %v: enge Phase %v; h %v nach dem Freiwerden; danach %v", on, tight, took[i], after)
-		if on && (tight.fails != 0 || after.fails != 0) {
+		if on && (tight.fails > 1 || after.fails != 0) { // eng: hoechstens der freie Versuch zum Anrufbeginn
 			t.Fatalf("fehlversuche mit Probing: eng %d, frei %d", tight.fails, after.fails)
 		}
 	}
@@ -205,7 +206,7 @@ func TestProbingGruppe(t *testing.T) {
 // TestProbingFreieLeitung: freie Leitung, das GCC-Ziel steht wie im Labor bei 1,5 x der Rate. Die erste Probe besteht,
 // h kommt ohne Fehlversuch und bleibt; die Probe kostet rund 0,1 bis 0,15 MB.
 func TestProbingFreieLeitung(t *testing.T) {
-	er := newEstCfg(t, 1250e3, 810e3, 1, true)
+	er := newEstProbe(t, 1250e3, 810e3, 1)
 	er.until("m", 2*time.Second)
 	d := er.until("h", 15*time.Second)
 	res := er.measure(time.Minute, nil)
@@ -371,11 +372,16 @@ func TestProbingSprecherwechsel(t *testing.T) {
 // abgebrochen (nicht als gescheitert - das fallende GCC-Ziel kommt vom Wechsel), die Fuelldaten sind aus, und die
 // naechste Probe kommt fruehestens probeRetry spaeter.
 func TestProbingBesitzerwechsel(t *testing.T) {
-	er := newEstCfg(t, 2500e3, 810e3, 3, true)
+	er := newEstProbe(t, 2500e3, 810e3, 3)
 	er.tick()
 	ps := er.senders()
 	sw, lastEnd := 0, int64(0)
 	for i := 0; i < 3000; i++ {
+		// (Gegenstand ist der Abbruch: ohne freie Versuche nach langem Halten, sonst kaeme die Gruppe bald ohne
+		// weitere Proben auf volle Belegung)
+		for _, s := range er.l.slots {
+			s.free = [4]bool{}
+		}
 		if er.l.pr.stage == 2 && er.l.pr.n == 1 {
 			if lastEnd != 0 && er.now-lastEnd < int64(probeRetry) {
 				t.Fatalf("naechste Probe schon %v nach dem Abbruch", time.Duration(er.now-lastEnd))
@@ -459,6 +465,8 @@ func TestProbingAbstandJeZielrate(t *testing.T) {
 // TestProbingKnappeLeitung (Prueferfund 4, Verhalten bewusst so): Eine Leitung zwischen Bedarf und Bedarf x upHeadroom
 // traegt h, besteht die Probe (Zielrate mit Reserve) aber nie - mit Probing erreicht sie h nicht; ab Bedarf x 1,16
 // besteht die Probe. Mit probeBlindAfter = 3 bekaeme sie nach drei gescheiterten Proben einen Versuch ohne Probe.
+// (Bein mit Vorgeschichte. Der freie Versuch zum Anrufbeginn bzw. nach langem Halten erreicht h auf so einer Leitung
+// einmal ohne Probe - TestProbingAnrufbeginn; die Luecke bleibt fuer alles danach.)
 func TestProbingKnappeLeitung(t *testing.T) {
 	defer func(v int) { probeBlindAfter = v }(probeBlindAfter)
 	for _, c := range []struct {
@@ -467,7 +475,7 @@ func TestProbingKnappeLeitung(t *testing.T) {
 		h     bool
 	}{{1.05, 0, false}, {1.14, 0, false}, {1.16, 0, true}, {1.05, 3, true}} {
 		probeBlindAfter = c.blind
-		er := newEstCfg(t, 1250e3, 810e3, 1, true)
+		er := newEstProbe(t, 1250e3, 810e3, 1)
 		er.link = 1250e3*c.f + estAudio
 		er.until("m", 2*time.Second)
 		res := er.measure(10*time.Minute, nil)
@@ -567,7 +575,7 @@ func TestProbingGrosserSchritt(t *testing.T) {
 		}
 	}
 	// Grenze: Fuellrate knapp unter dem Deckel wird geprobt, die Freigabe entspricht der geprobten Rate
-	er := newEstCfg(t, 1700e3, 810e3, 1, true) // 1700 x 1,15 - 500 = 1455 kbit/s Fuellrate
+	er := newEstProbe(t, 1700e3, 810e3, 1) // 1700 x 1,15 - 500 = 1455 kbit/s Fuellrate
 	er.until("m", 2*time.Second)
 	er.until("h", 20*time.Second)
 	if len(er.pevs) != 2 || er.pevs[1].Probe != probeOK || er.pevs[1].ProbeKbit < 1990 || er.pevs[1].ProbeKbit > 1996 || er.fill != 0 {
@@ -579,7 +587,7 @@ func TestProbingGrosserSchritt(t *testing.T) {
 // nichts (Quelle still, Ausgang wartet auf ein Schluesselbild), endet die Probe als abgebrochen ("fuell") - bestanden
 // ist sie nicht. Der naechste Versuch kommt mit wachsendem Abstand wie nach einer gescheiterten Probe, nicht alle 2 s.
 func TestProbingFuelldatenFliessenNicht(t *testing.T) {
-	er := newEstCfg(t, 1250e3, 810e3, 1, true)
+	er := newEstProbe(t, 1250e3, 810e3, 1)
 	er.noPad = true
 	er.until("m", 2*time.Second)
 	res := er.measure(5*time.Minute, nil)

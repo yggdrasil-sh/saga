@@ -211,7 +211,8 @@ type Room struct {
 	lastTick  int64
 	peersSig  string // Teilnehmende bei der letzten OnPeers-Meldung
 	// Aufschub und Proben-Abstand entfernter Beine (probe.go, remember/recall): ueberleben einen Wegwechsel
-	mem map[memKey]memEnt
+	mem  map[memKey]memEnt
+	pevs []ProbeEvent // beendete Proben dieses Takts (Config.OnProbe)
 }
 
 // Ref liefert die Raumkennung.
@@ -297,11 +298,13 @@ type Leg struct {
 	// die Leitung staut (probe.go), statt sich nur auf die Bewegung des Ziels zu verlassen.
 	ExtStat func() ExtStat
 
-	pr      probe
-	pstat   ProbeStats
-	pf      legFail // Abstand nach gescheiterten Proben, je Zielrate
-	prNext  int64   // nach einer abgebrochenen Probe: fruehestens dann die naechste auf diesem Bein
-	movedAt int64   // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
+	pr        probe
+	pstat     ProbeStats
+	pf        legFail // Abstand nach gescheiterten Proben, je Zielrate
+	prNext    int64   // nach einer abgebrochenen Probe: fruehestens dann die naechste auf diesem Bein
+	firstUsed bool    // der freie Versuch zum Anrufbeginn ist verbraucht (probe.go)
+	unkAt     int64   // letzte Probe ohne klares Ergebnis (0 = keine offen): Die naechste solche zaehlt als gescheitert
+	movedAt   int64   // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
 }
 
 // ExtStat: Zustand der externen Schaetzung (GCC) - Laufzeit-Trend gegen seine Schwelle, Verlust, die beiden Teilziele.
@@ -329,11 +332,15 @@ type slot struct {
 	upAt    int64
 	upOwner *Peer
 	upT     float64 // Zielrate des Beins (mit Reserve und Ton) bei diesem Wechsel - fuer Leg.pf, wenn er scheitert
+	upRate  float64 // Rate der Zielschicht bei diesem Wechsel (Probing: war die Quelle schon eingeschwungen?)
 	// ... je Schicht (Index layerRank): Dauer und Beginn, fuer dwellOwner. Ein gescheiterter Versuch auf m sagt nichts
 	// ueber h und umgekehrt. heldAt: seit wann die laufende Quelle ohne Pause laeuft
 	dw         [4]dwell
 	dwellOwner *Peer
 	heldAt     int64
+	// Probing: freier Versuch je Schicht nach einem Rueckfall von einer lange gehaltenen Schicht, fuer freeOwner (probe.go)
+	free      [4]bool
+	freeOwner *Peer
 	// zuletzt weitergeleitete Quelle (auch ueber eine Pause) und Grund des letzten Wechsels fuer die naechste Meldung
 	src                       *source
 	srcAt                     int64

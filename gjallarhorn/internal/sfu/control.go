@@ -95,7 +95,12 @@ func (r *Room) tickAt(now int64) {
 		}
 	}
 	peersEv := cfg.OnPeers != nil && r.peersChangedLocked()
+	pevs := r.pevs
+	r.pevs = nil
 	r.mu.Unlock()
+	for _, ev := range pevs {
+		cfg.OnProbe(ev)
+	}
 	if peersEv {
 		cfg.OnPeers(r.ref)
 	}
@@ -582,6 +587,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		need float64
 	}
 	big, wishBig := false, 0.0 // dieser Schritt ist nicht probbar; kleinster Bedarf eines abgelehnten solchen Schritts
+	// wishFree: kleinster Bedarf eines abgelehnten Schritts, der ohne Probe versucht werden darf (freier Versuch,
+	// probe.go) - der Deckel der Schaetzung folgt ihm wie ohne Probing, und solange beginnt keine Probe
+	wishFree := 0.0
 	// Kacheln, die gerade nichts zeigen, starten pausiert und kommen nur mit
 	// Reserve dazu (gegen Pendeln bei schwankenden Raten)
 	for _, c := range cs {
@@ -630,8 +638,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// passed: Fuer genau diesen Schritt ist gerade eine Probe bestanden (probe.go)
 			passed := prb && !cur && d.ok != 0 && now-d.ok <= int64(probeGrant)
 			tgt := need*upHeadroom + audioCut // Zielrate des Beins fuer diesen Schritt
+			// free: Dieser Schritt darf ohne Probe versucht werden - zeitlich wie ohne Probing (Aufschub, Deckel)
+			free := prb && !cur && !passed && l.freeStep(c.s, rank)
 			switch {
-			case prb && !cur && (d.d > layerDwell || l.pf.covers(tgt)):
+			case prb && !cur && !free && (d.d > layerDwell || l.pf.covers(tgt)):
 				// Probing: Nach einem gescheiterten Versuch bzw. einer gescheiterten Probe gibt nur eine bestandene
 				// Probe den naechsten Versuch frei - dafuer auch vor Ablauf des Aufschubs
 				if !passed {
@@ -649,7 +659,8 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				}
 				// Waechst die Schaetzung gerade fuer einen nicht probbaren Schritt ueber den Deckel hinaus (wantBig),
 				// gilt das nicht fuer die probbaren: Sie brauchen weiter ihre Probe
-				if prb && l.est.wantBig > 0 && l.est.capProbed > 0 {
+				// ... ebenso, wenn sie fuer einen freien Versuch waechst (wantFree): Der gilt nur fuer seinen Schritt
+				if prb && !free && (l.est.wantBig > 0 || l.est.wantFree > 0) && l.est.capProbed > 0 {
 					lim = min(lim, l.est.capProbed-audioCut)
 				}
 				// Die Probe hat die Rate des Schritts belegt, wie sie zu ihrem Beginn war. Schwankt der Bedarf seither
@@ -667,6 +678,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 					if prb && !passed && l.pf.pd > 0 && tgt >= l.pf.rate*probeNear {
 						l.pf.n = 0 // Versuch ohne Probe (probeBlindAfter): der naechste erst nach weiteren gescheiterten Proben
 					}
+					// Freier Versuch verbraucht - aber nur, wenn der Schritt ihn brauchte (sonst waere er auch mit
+					// Probing ohne Probe gegangen: Schaetzung hoch genug, keine Vorgeschichte)
+					if free && (d.d > layerDwell || l.pf.covers(tgt) || l.est.capProbed > 0 && need*upHeadroom > l.est.capProbed-audioCut) {
+						l.freeUsed(c.s, rank)
+					}
 				}
 				continue
 			}
@@ -675,7 +691,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				if big && (wishBig == 0 || need < wishBig) {
 					wishBig = need
 				}
-				if prb && cand.s == nil && stepper == nil && upLimit > 0 && sinceDown >= int64(layerDwell) && now >= d.next &&
+				if free && (wishFree == 0 || need < wishFree) {
+					wishFree = need
+				}
+				if prb && !free && cand.s == nil && stepper == nil && upLimit > 0 && sinceDown >= int64(layerDwell) && now >= d.next &&
 					!l.pf.blocks(tgt, now) && (blocked || need*upHeadroom > upLimit) {
 					cand.s, cand.rank, cand.need = c.s, rank, need
 				}
@@ -705,6 +724,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		tgt := (sum+nr)*upHeadroom + audioCut
 		blocked := prb && l.pf.covers(tgt) && (d.ok == 0 || now-d.ok > int64(probeGrant))
+		if prb && l.est.wantFree > 0 && l.est.capProbed > 0 && (sum+nr)*upHeadroom > l.est.capProbed-audioCut {
+			blocked = true // die Schaetzung waechst gerade fuer den freien Versuch eines anderen Platzes, nicht fuer diese Kachel
+		}
 		if (sum+nr)*upHeadroom <= upLimit && !blocked {
 			sum, c.rate = sum+nr, nr
 		} else {
@@ -734,6 +756,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	l.est.wantBig = 0
 	if wishBig > 0 {
 		l.est.wantBig = min(wishBig*upHeadroom*wantSlack+audioCut, quotaCap)
+	}
+	l.est.wantFree = 0
+	if wishFree > 0 {
+		l.est.wantFree = min(wishFree*upHeadroom*wantSlack+audioCut, quotaCap)
 	}
 	moved := false // aendert dieser Takt die Auswahl? Dann beginnt keine Probe (die Rate ist in Bewegung)
 	for _, c := range cs {
@@ -768,6 +794,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				s.setWhy(whyBudget, st, now)
 			}
 		}
+		heldFor, was := now-s.heldAt, s.src // so lange lief die bisherige Quelle dieses Platzes
 		if st != s.src || s.layer == "" {
 			s.heldAt = now
 		}
@@ -787,6 +814,12 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// nachgezogen, estimator.probeFailed): auch das ist ein gescheiterter Versuch, kein Halten
 			fast := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner &&
 				(now-s.upAt < int64(upFail) || l.est.probeFailed(s.upAt, now))
+			// unramped (nur Probing): Die Schicht, von der der Platz faellt, sendet inzwischen deutlich mehr als bei
+			// seinem Schritt hinauf - der Schritt ging mit einer zu kleinen Rate durch (Anrufbeginn: der Kodierer faehrt
+			// erst hoch; im Labor h nach 0,2 s mit 299 kbit/s statt 1250). Sein Scheitern sagt nichts ueber die Leitung:
+			// Es bleibt beim Aufschub wie ohne Probing, zaehlt aber nicht als gescheiterter Versuch des Beins.
+			unramped := prb && was != nil && was.peer == s.owner && s.upOwner == s.owner && s.upRate > 0 &&
+				layerRate(was) > probeRampUp*s.upRate
 			if s.dwellOwner != s.owner {
 				s.dw, s.dwellOwner = [4]dwell{}, s.owner
 			}
@@ -795,7 +828,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			case fast:
 				d.d, d.at = min(2*max(d.d, layerDwell), upDwellMax), now
 				d.afterFail(now)
-				if prb && s.upT > 0 {
+				if prb && s.upT > 0 && !unramped {
 					// Der Fehlversuch gilt fuer das Bein, nicht nur fuer diesen Platz und Besitzer: Wechselt der Sprecher,
 					// braucht auch der naechste fuer eine Zielrate ab dieser eine bestandene Probe
 					l.pf.fail(s.upT, now)
@@ -805,8 +838,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				d.afterFail(now)
 			}
 			s.downAt, s.downOwner = now, s.owner
+			if prb && was != nil && was.peer == s.owner { // Rueckfall derselben Quelle, kein Besitzerwechsel
+				l.freeGrant(s, layerRank(st.Layer), layerRank(s.layer), heldFor, unramped)
+			}
 		} else if s.layer != "" && layerRank(st.Layer) > layerRank(s.layer) {
-			s.upAt, s.upOwner, s.upT = now, s.owner, sum*upHeadroom+audioCut
+			s.upAt, s.upOwner, s.upT, s.upRate = now, s.owner, sum*upHeadroom+audioCut, layerRate(st)
 		}
 		s.paused, s.layer, s.tid = false, st.Layer, c.tid
 		// gehalten: Die Schicht laeuft seit upHold - ihr Aufschub und der aller tieferen ist erledigt
@@ -844,7 +880,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	if l.pstat.Started == 0 {
 		quiet = int64(probeQuietFirst)
 	}
-	if cand.s != nil && now-l.movedAt >= quiet && now >= l.prNext && l.pr.stage == 0 &&
+	if cand.s != nil && wishFree == 0 && now-l.movedAt >= quiet && now >= l.prNext && l.pr.stage == 0 &&
 		cand.need*upHeadroom+audioCut <= quotaCap {
 		fs := cand.s
 		if fs.layer == "" || fs.paused {
@@ -957,6 +993,7 @@ type estimator struct {
 	probing    bool    // dieses Bein probt mit Fuelldaten: der Deckel folgt nicht mehr dem Bedarf (want)
 	blind      bool    // ... ausser der naechste Schritt darf ohne Probe versucht werden (planLeg)
 	wantBig    float64 // ... bzw. bis zum Bedarf eines Schritts, der sich nicht proben laesst (Fuellrate ueber probeFillMax)
+	wantFree   float64 // ... bzw. eines Schritts, der ohne Probe versucht werden darf (freier Versuch, probe.go)
 	capProbed  float64 // Deckel ohne wantBig: so weit duerfen probbare Schritte ohne Probe
 	padLast    uint64  // Fuell-Bytes beim letzten Takt
 	prOn       bool    // Probe laeuft: Stausignale nur beobachten (prSig), Schaetzung unveraendert
@@ -964,10 +1001,16 @@ type estimator struct {
 	prReady    bool    // GCC-Ziel im Schutz weit genug ueber der Medienrate (wie ready)
 	prTail     bool    // Nachlauf der Probe: ein fallendes Ziel zaehlt nicht (siehe probeStep)
 	prN, prBad int     // Takte seit dem Abbruch; davon zuletzt in Folge mit Stausignal ohne Fuelldaten
-	prSig      string  // Stausignal dieses Takts waehrend des Schutzes: gcc | over | queue
-	prPeak     float64 // hoechstes GCC-Ziel seit Beginn der Probe
-	grant      float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
-	grantUntil int64
+	prSig      string  // hartes Stausignal dieses Takts waehrend des Schutzes: queue (eigene Warteschlange)
+	prPeak     float64 // hoechstes GCC-Ziel seit Beginn der Probe bzw. seit dem letzten gewerteten Fall
+	// Eigene Auswertung der Probe (probe.go, probeJudge): Hinweise dieses Takts
+	prEv            string  // Ueberlast laut Laufzeit-Messung (over) bzw. Verlust gestiegen (loss)
+	prFall          int     // Ziel gefallen: fallClamp | fallAmb | fallDec (0 = nicht gefallen)
+	prBase          float64 // Rate des Beins vor der Probe (ohne Fuelldaten, geglaettet)
+	prLoss0         float64 // Verlustanteil vor der Probe
+	tot1, tot2, tot float64 // Rate des Beins mit Fuelldaten in den letzten drei Takten (tot = dieser)
+	grant           float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
+	grantUntil      int64
 }
 
 // Schwellen der Schaetzung.
@@ -1014,7 +1057,9 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 		}
 		e.lagAt, e.lagBase = now, e.rateAvg
 		e.lagJump = rate > e.lagBase*lagJumpMin
-		if v < e.gccLast*gccFall { // faellt, waehrend die Rate es ueberholt: Stau, bis zum Ende dieser Folge
+		// faellt, waehrend die Rate es ueberholt: Stau, bis zum Ende dieser Folge - ausser der Fall ist kein Ruecksprung
+		// von GCC, sondern die Klemmung an die Empfangsrate (clamped): Dann beginnt die Schonfrist beim neuen Ziel
+		if v < e.gccLast*gccFall && !e.clamped(v) {
 			e.lagDead, e.deadAt = true, now
 			return false
 		}
@@ -1029,6 +1074,9 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 	}
 	ok := true
 	switch {
+	case v < e.lagPeak*gccFall && now-e.lagAt < int64(lagMax) && e.clamped(v):
+		// Klemmung waehrend der Schonfrist: kein Stau - aber von hier aus muss das Ziel wieder steigen
+		e.lagPeak, e.lagMark, e.lagMarkAt = v, v, now
 	case v < e.lagPeak*gccFall, now-e.lagAt >= int64(lagMax):
 		ok = false
 	case now-e.lagMarkAt >= int64(lagStep):
@@ -1039,6 +1087,17 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 		e.lagDead, e.deadAt, e.failAt, e.failFrom = true, now, now, e.lagAt
 	}
 	return ok
+}
+
+// clamped: Das GCC-Ziel v ist gefallen und liegt unter der Rate - aber so hoch, dass es kein Ruecksprung wegen Stau
+// sein kann (der laege bei hoechstens 85 % dessen, was in den letzten 500 ms gesendet wurde). Dann hat pion sein Ziel
+// nur an die empfangene Rate geklemmt (1,5 x, siehe fallClass in probe.go). Das trifft auch den Wechsel selbst: Springt
+// die Rate nach einem Schritt nach oben durch das Band um die letzte Staurate, faellt ein weit gewachsenes Ziel auf das
+// 1,5-Fache der noch gemischten Empfangsrate - unter die neue Rate. Ohne diese Unterscheidung scheiterte der Schritt
+// auf freier Leitung gleich nach einer bestandenen Probe (im Container nachgestellt: h hielt 0,2 s). Nur mit Probing;
+// ohne bleibt die Regel, wie sie war.
+func (e *estimator) clamped(v float64) bool {
+	return e.probing && v > probeDecSent*(e.tot+e.tot1+0.5*e.tot2)/2.5
 }
 
 // probeFailed: Ist die Schonfrist gescheitert, die mit dem Hochschalten zur Zeit upAt begann (Stau binnen upFail
@@ -1059,6 +1118,7 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	b := st.BytesOut.Load()
 	rate := float64(b-e.lastBytes) * 8 / dt
 	e.lastBytes = b
+	e.tot2, e.tot1, e.tot = e.tot1, e.tot, rate
 	// Fuelldaten einer Probe zaehlen zur Bein-Rate, aber nicht zur Medienrate, mit der hier gerechnet wird
 	if pb := st.PadBytes.Load(); pb != e.padLast {
 		rate = max(rate-float64(pb-e.padLast)*8/dt, 0)
@@ -1094,15 +1154,31 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		if l.Ext != nil {
 			v = float64(l.Ext())
 		}
-		e.prSig = ""
+		e.prSig, e.prEv, e.prFall = "", "", 0
 		switch {
 		case !e.prOn:
 		case age > congAge || drops > 0:
 			e.prSig = "queue"
-		case v > 0 && v < e.prPeak*gccFall && !e.prTail:
-			e.prSig = "gcc"
-		case l.ExtOver != nil && l.ExtOver():
-			e.prSig = "over"
+		default:
+			// Hinweise fuer die eigene Auswertung der Probe (probeJudge): Ueberlast laut Laufzeit-Messung, Verlust
+			// gegenueber dem Stand vor der Probe, und ein gefallenes Ziel - eingeordnet danach, ob es ein Ruecksprung
+			// von GCC sein kann (fallClass). Ein gewerteter Fall setzt den Vergleichswert neu an.
+			var x ExtStat
+			if l.ExtStat != nil {
+				x = l.ExtStat()
+			} else if l.ExtOver != nil {
+				x.Over = l.ExtOver()
+			}
+			switch {
+			case x.Over:
+				e.prEv = "over"
+			case x.Loss > e.prLoss0+probeLossUp:
+				e.prEv = "loss"
+			}
+			if v > 0 && v < e.prPeak*gccFall && !e.prTail {
+				e.prFall = e.fallClass(v)
+				e.prPeak = v
+			}
 		}
 		if v > e.prPeak {
 			e.prPeak = v
@@ -1199,6 +1275,9 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		e.capProbed = c
 		if e.probing && c < e.wantBig { // nicht probbarer Schritt: wie ohne Probing bis zu seinem Bedarf
 			c = e.wantBig
+		}
+		if e.probing && c < e.wantFree { // freier Versuch (probe.go): ebenso
+			c = e.wantFree
 		}
 		if e.bps > c {
 			e.bps = c
