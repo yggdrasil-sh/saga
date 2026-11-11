@@ -82,6 +82,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
     jeder zweite echte Rücksprung über der Schwelle und hätte als Klemmung gegolten. Die Ausnahme für den Wechsel nach bestandener Probe gilt
     nur noch 3 s nach einem Schritt nach oben; danach reagiert der Knoten auf ein gefallenes Ziel wieder sofort, wie
     ohne Probing. Der freie Versuch zum Anrufbeginn lebt nach einem Wegwechsel des Geräts nicht wieder auf.
+  - Anrufbeginn (Laborrunde 3: obere Ebene stabil ab 8,4 s statt 3,0 s): Bis der freie Versuch eines Beins verbraucht
+    ist, plant es genau wie ohne Probing (Deckel der Schätzung, Schonfrist, Aufschub); Probing greift erst danach.
   - Modell (pion-naher Ziel-Regler): „eng, dann frei“ – obere Ebene 35 s nach dem Freiwerden (davor: in 6 min nicht);
     Gruppe mit Sprecherwechsel nach dem Freiwerden 104 s (davor: in 6 min nicht; ohne Probing 10 s).
 - Nur UDP-Beine mit GCC; TCP-/TLS-Wege bleiben unverändert. Der Abstand nach gescheiterten Proben (10 s bis 2 min)

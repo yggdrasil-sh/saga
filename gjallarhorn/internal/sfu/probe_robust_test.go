@@ -430,3 +430,46 @@ func TestProbingWegwechselFreierVersuch(t *testing.T) {
 		t.Fatalf("gemerkt ohne Vorgeschichte: %d", len(fr.r.mem))
 	}
 }
+
+// TestProbingAnlaufWieOhne (Labor, Runde 3: h stabil ab 8,4 s statt 3,0 s; mit Probing stand die Schaetzung beim Schritt
+// auf h beim Anfangswert, ohne bei 1248 bzw. 1297 kbit/s): h geht beim Aufbau durch, der Ausgang wartet noch auf das
+// Schluesselbild - das Bein sendet fast nichts -, und der Kodierer faehrt hoch. Ohne Probing folgt der Deckel der
+// Schaetzung dem Bedarf der laufenden Auswahl (4 % je Takt). Mit Probing blieb sie bis zum ersten Bild beim Anfangswert
+// (im Modell haelt h trotzdem; der Rueckfall im Labor ist hier nicht nachgestellt). Im Anlauf - der freie Versuch des
+// Beins ist nicht verbraucht - laeuft jetzt alles wie ohne Probing: Schicht und Schaetzung Takt fuer Takt gleich.
+func TestProbingAnlaufWieOhne(t *testing.T) {
+	type st struct {
+		layer string
+		est   int
+	}
+	var seq [2][]st
+	for i, on := range []bool{false, true} {
+		er := newEstCfg(t, 1000e3, 810e3, 1, on)
+		for k := 0; k < 100; k++ {
+			if k >= 1 && k <= 3 { // der Kodierer faehrt hoch
+				er.rates["h"] += 100e3
+				er.allR[2] = er.rates["h"]
+			}
+			er.tick()
+			if k < 5 { // noch kein Schluesselbild: Das Bein sendet nur Ton
+				er.sent = 0
+			}
+			seq[i] = append(seq[i], st{er.layer(), er.l.EstimateKbit()})
+		}
+		if on && er.l.pstat.Started != 0 {
+			t.Fatalf("Probe im Anlauf: %+v", er.l.pstat)
+		}
+	}
+	for k := range seq[0] {
+		if seq[0][k].layer != "h" {
+			t.Fatalf("ohne Probing: Takt %d auf %q (Modell soll h von Anfang an halten)", k, seq[0][k].layer)
+		}
+		if seq[1][k] != seq[0][k] {
+			t.Fatalf("Takt %d (%.1f s): mit Probing %+v, ohne %+v", k, float64(k)*0.2, seq[1][k], seq[0][k])
+		}
+	}
+	if seq[0][0].est != 1200 || seq[1][3].est <= 1200 {
+		t.Fatalf("Schaetzung waechst im Anlauf nicht mit dem Bedarf: %+v", seq[1][:5])
+	}
+	t.Logf("Anlauf: h ab Takt 0 mit und ohne Probing, Schaetzung %d -> %d -> %d kbit/s", seq[1][0].est, seq[1][1].est, seq[1][3].est)
+}

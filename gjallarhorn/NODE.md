@@ -137,6 +137,9 @@ Platzhalter: `horn-1.example.org`.
       Platzes. Nicht als Rückfall zählt, wenn die Schicht beim Schritt hinauf noch nicht eingeschwungen war (sie
       sendet inzwischen mehr als das 1,3-Fache – zu Anrufbeginn die Regel: `h` geht mit 300 kbit/s durch und fällt,
       sobald der Kodierer hochgefahren ist); es bleibt dann beim Aufschub wie ohne Probing.
+      Bis dieser Versuch verbraucht ist (Anlauf), plant das Bein genau wie ohne Probing: Der Deckel der Schätzung
+      folgt dem Bedarf der laufenden Auswahl, Schonfrist und Aufschub wie dort, keine Proben (Labor, Runde 3: mit
+      Probing stand die Schätzung beim ersten Schritt auf dem Anfangswert, `h` hielt seltener – stabil ab 8,4 s statt 3,0 s).
     - *Rückkehr:* Fällt ein Platz von einer Schicht zurück, die er mindestens 30 s gehalten hat, darf er einmal ohne
       Probe wieder hinauf (nach 4 s Mindestverweildauer, die Schätzung wächst bis zum Bedarf des Schritts). Hält die
       Schicht danach wieder 30 s, gilt das beim nächsten Rückfall erneut; fällt sie früher, braucht der Weg zurück
