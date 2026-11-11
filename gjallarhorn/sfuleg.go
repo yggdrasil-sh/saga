@@ -402,6 +402,30 @@ func (s *server) onSFULegClosed(sl *sfu.Leg, why string) {
 	}
 }
 
+// onProbe (sfu.Config.OnProbe): eine Zeile je Probenende ins Log - Bein (Kurzkennung wie "bein auf"), Schritt,
+// Zielrate, Ergebnis, Grund, Dauer. Keine Kennungen von Personen, Geraeten oder Raeumen, keine Adressen.
+func (s *server) onProbe(ev sfu.ProbeEvent) {
+	s.mu.Lock()
+	l := s.bySFU[ev.Leg]
+	s.mu.Unlock()
+	if l == nil {
+		return
+	}
+	log.Print(probeLine(shortID(l.id), ev))
+}
+
+func probeLine(id string, ev sfu.ProbeEvent) string {
+	from, why := ev.From, ev.Why
+	if from == "" {
+		from = "p"
+	}
+	if why == "" {
+		why = "-"
+	}
+	return fmt.Sprintf("probe %s platz=%s schritt=%s>%s ziel=%dk fuell=%dk ergebnis=%s grund=%s dauer=%.1fs stufe=%d geklemmt=%d est=%dk gcc=%dk",
+		id, ev.Class, from, ev.To, ev.TargetKbit, ev.FillKbit, ev.Result, why, ev.Dur.Seconds(), ev.Stage, ev.Clamped, ev.EstKbit, ev.GccKbit)
+}
+
 // ---------- Entwicklungs-Pruefer (HORN_DEV=1) ----------
 
 // devToken ist der Inhalt eines Entwicklungs-Tokens: base64(json).base64(hmac).
@@ -605,7 +629,7 @@ func (s *server) apiSFULayout(w http.ResponseWriter, r *http.Request) {
 	st := l.stats()
 	ps := l.sl.ProbeStats()
 	writeJSON(w, 200, map[string]any{"slots": l.sl.Layout(), "est_kbit": l.sl.EstimateKbit(), "stats": st,
-		"probes": map[string]any{"started": ps.Started, "passed": ps.Passed, "failed": ps.Failed, "aborted": ps.Aborted, "pad_bytes": ps.PadBytes, "late_dropped": ps.LateDropped, "last": ps.Last},
+		"probes": map[string]any{"started": ps.Started, "passed": ps.Passed, "failed": ps.Failed, "aborted": ps.Aborted, "unclear": ps.Unclear, "clamped": ps.Clamped, "pad_bytes": ps.PadBytes, "late_dropped": ps.LateDropped, "last": ps.Last},
 		"pauses": l.fl.Stats.Pauses.Load(), "tid_skipped": l.fl.Stats.TIDSkipped.Load(), "write_stalls": l.fl.Stats.WriteStalls.Load()})
 }
 

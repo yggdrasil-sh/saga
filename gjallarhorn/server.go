@@ -245,7 +245,7 @@ func newServer(cfg *config) (*server, error) {
 	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32),
 		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32), verifier: &sagaVerifier{}, graves: map[string]time.Time{}, kicked: map[string]time.Time{}}
 	if cfg.Mode == "node" {
-		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers,
+		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers, OnProbe: s.onProbe,
 			Probing: cfg.Probing}
 		if cfg.Dev {
 			nc.Verifier = sfu.VerifierFunc(s.verifyDev)
