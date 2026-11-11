@@ -147,3 +147,48 @@ func TestAnlaufAlteQuelle(t *testing.T) {
 		t.Fatalf("spaeter Beitritt erreicht h nicht: %v", with)
 	}
 }
+
+// TestProbingAnlaufOhneJungeQuelle (Pruefung bwe0): Der Anlauf (bis der freie Versuch des Beins verbraucht ist, plant
+// es wie ohne Probing) muss auch ohne die Regel fuer junge Quellen gelten - etwa fuer ein Bein, das zu laufenden
+// Quellen stoesst. Seit srcSettle hielt kein Test den Anlauf mehr fest (TestProbingAnlaufWieOhne lief auch ohne ihn
+// durch, weil h dort erst nach 2 s geht). Hier mit srcSettle 0: h geht beim Aufbau durch, der Ausgang wartet noch auf
+// das Schluesselbild, der Kodierer faehrt hoch - Schicht und Schaetzung Takt fuer Takt gleich mit und ohne Probing,
+// keine Probe.
+func TestProbingAnlaufOhneJungeQuelle(t *testing.T) {
+	old := srcSettle
+	srcSettle = 0
+	t.Cleanup(func() { srcSettle = old })
+	type st struct {
+		layer string
+		est   int
+	}
+	var seq [2][]st
+	for i, on := range []bool{false, true} {
+		er := newEstCfg(t, 1000e3, 810e3, 1, on)
+		for k := 0; k < 100; k++ {
+			if k >= 1 && k <= 3 { // der Kodierer faehrt hoch
+				er.rates["h"] += 100e3
+				er.allR[2] = er.rates["h"]
+			}
+			er.tick()
+			if k < 5 { // noch kein Schluesselbild: Das Bein sendet nur Ton
+				er.sent = 0
+			}
+			seq[i] = append(seq[i], st{er.layer(), er.l.EstimateKbit()})
+		}
+		if on && er.l.pstat.Started != 0 {
+			t.Fatalf("Probe im Anlauf: %+v", er.l.pstat)
+		}
+	}
+	if seq[0][0].layer != "h" {
+		t.Fatalf("ohne Regel soll h im ersten Takt durchgehen, ist %q", seq[0][0].layer)
+	}
+	for k := range seq[0] {
+		if seq[1][k] != seq[0][k] {
+			t.Fatalf("Takt %d (%.1f s): mit Probing %+v, ohne %+v", k, float64(k)*0.2, seq[1][k], seq[0][k])
+		}
+	}
+	if seq[1][3].est <= 1200 {
+		t.Fatalf("Schaetzung waechst im Anlauf nicht mit dem Bedarf: %+v", seq[1][:5])
+	}
+}
