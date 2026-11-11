@@ -184,7 +184,7 @@ Platzhalter: `horn-1.example.org`.
     gilt nur dafür: Steht 2 Takte nach dem Ende der Fülldaten weiter ein Stausignal an (Warteschlange; GCC-Ziel
     unter der Medienrate und dabei fallend bzw. Überlast gemeldet), zwei Takte in Folge, endet er sofort, und der
     Knoten reagiert wie ohne Probing (Modell, Einbruch von 1150 auf 300 kbit/s mitten in der Probe: Rückzug nach
-    1,2 s; ohne Probing 0,8 s). Liegt das GCC-Ziel am Ende der 2 s noch unter der Rate, zählt das als Stau wie
+    1,2 s; ohne Probing 0,4 s, in den ersten 20 s nach dem Start des Knotens 0,8 s). Liegt das GCC-Ziel am Ende der 2 s noch unter der Rate, zählt das als Stau wie
     bisher.
   - Bestanden: kein Stau und kein offener Hinweis bis zum Ende des Nachlaufs, und die Fülldaten sind wirklich geflossen (mindestens
     60 % der Füllrate; sonst „abgebrochen“ mit Abstand wie gescheitert). Dass das GCC-Ziel die Zielrate erreicht,
