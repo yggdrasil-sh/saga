@@ -1013,6 +1013,7 @@ type estimator struct {
 	prFall          int     // Ziel gefallen: fallClamp | fallAmb | fallDec (0 = nicht gefallen)
 	prBase          float64 // Rate des Beins vor der Probe (ohne Fuelldaten, geglaettet)
 	prLoss0         float64 // Verlustanteil vor der Probe
+	prLossN         int     // Takte in Folge mit Verlust deutlich darueber
 	tot1, tot2, tot float64 // Rate des Beins mit Fuelldaten in den letzten drei Takten (tot = dieser)
 	grant           float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
 	grantUntil      int64
@@ -1174,10 +1175,19 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 			} else if l.ExtOver != nil {
 				x.Over = l.ExtOver()
 			}
+			// Verlust zaehlt erst im zweiten Takt in Folge: pion mittelt den Verlustanteil ueber rund 200 ms und zaehlt
+			// ein Paket, das zur Rueckmeldung noch fehlt, als verloren - ein einzelner Ausschlag (spaetes Paket) klingt
+			// binnen eines Takts ab, echter Verlust durch die Fuelldaten bleibt stehen. (Ohne das: in 152 Proben auf
+			// freier Leitung am Testaufbau zweimal faelschlich "loss".)
+			if x.Loss > e.prLoss0+probeLossUp {
+				e.prLossN++
+			} else {
+				e.prLossN = 0
+			}
 			switch {
 			case x.Over:
 				e.prEv = "over"
-			case x.Loss > e.prLoss0+probeLossUp:
+			case e.prLossN >= 2:
 				e.prEv = "loss"
 			}
 			if v > 0 && v < e.prPeak*gccFall && !e.prTail {

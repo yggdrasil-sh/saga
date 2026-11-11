@@ -415,15 +415,18 @@ func (s *server) onProbe(ev sfu.ProbeEvent) {
 }
 
 func probeLine(id string, ev sfu.ProbeEvent) string {
-	from, why := ev.From, ev.Why
+	from, why, hint := ev.From, ev.Why, ev.Hint
 	if from == "" {
 		from = "p"
 	}
 	if why == "" {
 		why = "-"
 	}
-	return fmt.Sprintf("probe %s platz=%s schritt=%s>%s ziel=%dk fuell=%dk ergebnis=%s grund=%s dauer=%.1fs stufe=%d geklemmt=%d est=%dk gcc=%dk",
-		id, ev.Class, from, ev.To, ev.TargetKbit, ev.FillKbit, ev.Result, why, ev.Dur.Seconds(), ev.Stage, ev.Clamped, ev.EstKbit, ev.GccKbit)
+	if hint == "" {
+		hint = "-"
+	}
+	return fmt.Sprintf("probe %s platz=%s schritt=%s>%s ziel=%dk fuell=%dk ergebnis=%s grund=%s dauer=%.1fs stufe=%d geklemmt=%d hinweis=%s est=%dk gcc=%dk",
+		id, ev.Class, from, ev.To, ev.TargetKbit, ev.FillKbit, ev.Result, why, ev.Dur.Seconds(), ev.Stage, ev.Clamped, hint, ev.EstKbit, ev.GccKbit)
 }
 
 // ---------- Entwicklungs-Pruefer (HORN_DEV=1) ----------

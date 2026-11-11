@@ -218,3 +218,45 @@ func TestProbingAnrufbeginn(t *testing.T) {
 		t.Fatalf("zurueck auf h mit Probing nach %v, ohne nach %v", back[1], back[0])
 	}
 }
+
+// TestProbingVerlust: Verlust als Hinweis auf Stau - gemessen gegen den Stand vor der Probe (hier 1 %). Ein Ausschlag in
+// einem einzelnen Takt (pion zaehlt ein Paket, das zur Rueckmeldung noch fehlt, als verloren) zaehlt nicht; steht der
+// Verlust mit den Fuelldaten an (Leitung mit Ratengrenze ohne Warteschlange), scheitert die Probe mit "loss".
+func TestProbingVerlust(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		loss func(n int) float64 // Verlustanteil im n-ten Takt der vollen Fuellrate
+		want string
+	}{
+		{"ausschlag", func(n int) float64 {
+			if n == 1 {
+				return 0.12
+			}
+			return 0.01
+		}, probeOK},
+		{"anhaltend", func(n int) float64 { return 0.09 }, probeFail + ":loss"},
+		{"wie-zuvor", func(n int) float64 { return 0.04 }, probeOK},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			er := newEstProbe(t, 1250e3, 810e3, 1)
+			loss := 0.01
+			er.l.ExtStat = func() ExtStat { return ExtStat{Loss: loss} }
+			er.until("m", 2*time.Second)
+			got := ""
+			for i := 0; i < 300 && got == ""; i++ {
+				loss = 0.01
+				if p := &er.l.pr; p.stage == 2 {
+					loss = c.loss(p.n)
+				}
+				was := er.l.pr.stage
+				er.tick()
+				if was != 0 && er.l.pr.stage == 0 {
+					got = er.l.pstat.Last
+				}
+			}
+			if got != c.want {
+				t.Fatalf("ausgang %q, erwartet %q (proben %+v)", got, c.want, er.l.pstat)
+			}
+		})
+	}
+}

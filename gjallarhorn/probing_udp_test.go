@@ -18,6 +18,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/netx"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 )
 
 // engpass bildet auf der Empfangsseite eine Leitung mit Ratengrenze nach: Pakete warten in einer Schlange (hoechstens
@@ -295,6 +296,23 @@ func TestUDPProbing(t *testing.T) {
 				t.Fatalf("umlaufzeit %v (der Engpass verzoegert um 20 ms)", rtt)
 			}
 		})
+	}
+}
+
+// TestProbeLogzeile: die Zeile je Probenende im Log des Knotens - Kurzkennung des Beins, Schritt, Zielrate, Ergebnis,
+// Grund, Dauer; nichts, was auf Personen, Geraete oder Raeume zeigt (das Ereignis traegt nur das Bein).
+func TestProbeLogzeile(t *testing.T) {
+	got := probeLine("5884a4", sfu.ProbeEvent{Class: "speaker", From: "m", To: "h", TargetKbit: 1882, FillKbit: 1136, Result: "fail",
+		Why: "gcc", Dur: 400 * time.Millisecond, Stage: 1, EstKbit: 1338, GccKbit: 721})
+	want := "probe 5884a4 platz=speaker schritt=m>h ziel=1882k fuell=1136k ergebnis=fail grund=gcc dauer=0.4s stufe=1 geklemmt=0 hinweis=- est=1338k gcc=721k"
+	if got != want {
+		t.Fatalf("log-zeile\n %s\nerwartet\n %s", got, want)
+	}
+	got = probeLine("0e9442", sfu.ProbeEvent{Class: "tile", To: "l", TargetKbit: 830, FillKbit: 500, Result: "ok", Dur: 1400 * time.Millisecond,
+		Stage: 3, Clamped: 1, Hint: "over", EstKbit: 830, GccKbit: 1100})
+	want = "probe 0e9442 platz=tile schritt=p>l ziel=830k fuell=500k ergebnis=ok grund=- dauer=1.4s stufe=3 geklemmt=1 hinweis=over est=830k gcc=1100k"
+	if got != want {
+		t.Fatalf("log-zeile\n %s\nerwartet\n %s", got, want)
 	}
 }
 

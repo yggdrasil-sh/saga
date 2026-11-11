@@ -76,7 +76,7 @@ const (
 	// Eigene Auswertung (probeJudge, fallClass)
 	probeDecSent = 0.87             // Ziel ueber diesem Anteil der Senderate: kein Ruecksprung (der laege bei hoechstens 85 %)
 	probeDecBase = 1.2              // Ziel unter diesem Vielfachen der Rate vor der Probe: Ruecksprung (Klemmung laege bei 1,5)
-	probeLossUp  = 0.05             // Verlustanteil um so viel ueber dem Stand vor der Probe: Hinweis auf Stau
+	probeLossUp  = 0.05             // Verlustanteil um so viel ueber dem Stand vor der Probe, zwei Takte in Folge: Hinweis auf Stau
 	probeConfirm = 2                // so viele Takte mit steigendem Ziel raeumen einen einzelnen Hinweis aus
 	probeStall   = 2                // ... so viele ohne Anstieg lassen ihn stehen (Ergebnis unklar)
 	probeSusMax  = 3                // hoechstens so viele ausgeraeumte Hinweise je Probe, sonst unklar
@@ -133,6 +133,7 @@ type ProbeEvent struct {
 	Dur        time.Duration // Dauer der Probe
 	Stage      int           // Stufe beim Ende: 1 halbe Fuellrate, 2 volle, 3 Nachlauf
 	Clamped    int           // Faelle des GCC-Ziels in dieser Probe, die kein Stau waren
+	Hint       string        // letzter einzelner Hinweis auf Stau (gcc | over | loss), auch wenn er ausgeraeumt wurde
 	EstKbit    int           // Schaetzung des Beins nach der Probe
 	GccKbit    int           // GCC-Ziel beim Ende
 }
@@ -396,7 +397,7 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 			}
 		}
 		l.room.pevs = append(l.room.pevs, ProbeEvent{Leg: l, Class: p.s.class, From: p.layer, To: to, TargetKbit: int(p.target / 1000),
-			FillKbit: int(p.fill / 1000), Result: res, Why: why, Dur: time.Duration(now - p.t0), Stage: p.stage, Clamped: p.clamps,
+			FillKbit: int(p.fill / 1000), Result: res, Why: why, Dur: time.Duration(now - p.t0), Stage: p.stage, Clamped: p.clamps, Hint: p.susWhy,
 			EstKbit: int(e.bps / 1000), GccKbit: int(e.gccLast / 1000)})
 	}
 	*p = probe{}
@@ -530,7 +531,7 @@ func (s *slot) setProbe(ev, why string, target float64) {
 // (prSig, prEv, prFall), statt die Schaetzung zu aendern. loss0 ist der Verlustanteil vor der Probe.
 func (e *estimator) shieldOn(now int64, loss0 float64) {
 	e.prOn, e.prSig, e.prPeak, e.prUntil, e.prTail = true, "", e.gccLast, 0, false
-	e.prEv, e.prFall, e.prBase, e.prLoss0 = "", 0, e.rateAvg, loss0
+	e.prEv, e.prFall, e.prBase, e.prLoss0, e.prLossN = "", 0, e.rateAvg, loss0, 0
 }
 
 // Einordnung eines gefallenen GCC-Ziels waehrend der Probe (estimator.prFall).

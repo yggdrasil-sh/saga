@@ -166,7 +166,7 @@ Platzhalter: `horn-1.example.org`.
     - *Stau, gescheitert:* Alter oder Verlust in der eigenen Warteschlange (`queue`); Ziel gefallen (mehr als 3 %
       unter den Höchstwert, nicht im Nachlauf) **und** es liegt unter dem 1,2-Fachen der Rate vor der Probe – so tief
       klemmt pion nie – oder im selben Takt meldet die Laufzeit-Messung Überlast (`usage` „overuse“ bzw. `state`
-      „decrease“) bzw. der Verlustanteil liegt 5 Punkte über dem Stand vor der Probe (`gcc`).
+      „decrease“) bzw. der Verlustanteil liegt zwei Takte in Folge 5 Punkte über dem Stand vor der Probe (`gcc`).
     - *Kein Stau:* Ziel gefallen, liegt aber über 87 % dessen, was das Bein in den letzten 500 ms gesendet hat
       (mit Fülldaten). Empfangen wird höchstens, was gesendet wurde – ein Rücksprung läge bei höchstens 85 %. Die
       Probe läuft weiter (Zähler `clamped`).
@@ -263,9 +263,10 @@ Platzhalter: `horn-1.example.org`.
     (`s3:m3@ab12?start,1599k`, `?ok,1599k`, `?fail:gcc,1599k`, `?abort:unklar,1599k`). Der Knoten schreibt je
     Probenende eine Zeile ins Log – nur die Kurzkennung des Beins wie bei „bein auf“, keine Kennungen von Personen,
     Geräten oder Räumen:
-    `probe 5884a4 platz=speaker schritt=m>h ziel=1882k fuell=1136k ergebnis=fail grund=gcc dauer=0.4s stufe=1 geklemmt=0 est=1338k gcc=721k`
+    `probe 5884a4 platz=speaker schritt=m>h ziel=1882k fuell=1136k ergebnis=fail grund=gcc dauer=0.4s stufe=1 geklemmt=0 hinweis=- est=1338k gcc=721k`
     (`stufe` 1 halbe Füllrate, 2 volle, 3 Nachlauf; `geklemmt` = Fälle des Ziels in dieser Probe, die kein Stau
-    waren; `est`/`gcc` = Schätzung des Beins und GCC-Ziel beim Ende). Zähler je Bein: `GET /api/sfu/leg/{id}` →
+    waren; `hinweis` = letzter einzelner Hinweis auf Stau, auch wenn er ausgeräumt wurde – bei `abort`/`unklar` der,
+    der stehen blieb; `est`/`gcc` = Schätzung des Beins und GCC-Ziel beim Ende). Zähler je Bein: `GET /api/sfu/leg/{id}` →
     `probes {started, passed, failed, aborted, unclear, clamped, pad_bytes, late_dropped, last}` (`unclear` = davon
     abgebrochen, weil das Ergebnis unklar war), `stats.pad_bytes`, `stats.late_dropped` (verworfene Nachzügler
     jenseits der Füll-Historie – sollte 0 bleiben; steigt er, kommen Pakete der Quelle sehr spät an, und die
