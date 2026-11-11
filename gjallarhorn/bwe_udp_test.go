@@ -70,8 +70,11 @@ func TestBWEZeilen(t *testing.T) {
 	if got != want {
 		t.Fatalf("\n%s\n%s", got, want)
 	}
-	got = bweProbe(bwe.Verdict{Result: bwe.VerdictFree, QueueUs: 3900, Loss: 0, Bps: 1_640_000, WorstSt: bwe.Free, Windows: 15})
-	want = " bwe=staut-nicht bwe_schlange=3ms bwe_verlust=0.0% bwe_durchsatz=1640k bwe_zustand=frei bwe_fenster=15"
+	got = bweProbe(bwe.Verdict{Result: bwe.VerdictFree, QueueUs: 3900, Loss: 0, Bps: 1_640_000, WorstSt: bwe.Free, Windows: 15}, bwe.Verdict{Result: bwe.VerdictUnclear})
+	want = " bwe=staut-nicht bwe_schlange=3ms bwe_verlust=0.0% bwe_durchsatz=1640k bwe_zustand=frei bwe_fenster=15 bwe_sofort=unklar"
+	if bweTail(0) != 500*time.Millisecond || bweTail(40*time.Millisecond) != 280*time.Millisecond || bweTail(3*time.Second) != time.Second {
+		t.Fatal("nachlauf")
+	}
 	if got != want {
 		t.Fatalf("\n%s\n%s", got, want)
 	}

@@ -439,9 +439,18 @@ func (s *server) onProbe(ev sfu.ProbeEvent) {
 	}
 	line := probeLine(shortID(l.id), ev)
 	if b := l.bweWrap(); b != nil {
-		// HORN_BWE=mit: Urteil des eigenen Detektors ueber die Pakete, die waehrend der Probe gesendet wurden
-		now := bweNow()
-		line += bweProbe(b.m.Span(now-int64(ev.Dur), now))
+		// HORN_BWE=mit: Urteil des eigenen Detektors ueber die Pakete, die waehrend der Probe gesendet wurden - einmal
+		// sofort (was er beim Ende der Probe wusste) und einmal nach dem Nachlauf, wenn die Rueckmeldungen zu den letzten
+		// Paketen da sind. Die Zeile kommt dafuer um den Nachlauf spaeter.
+		to := bweNow()
+		from := to - int64(ev.Dur)
+		sofort := b.m.Span(from, to)
+		wait := bweTail(time.Duration(l.rttNs.Load()))
+		go func() {
+			time.Sleep(wait)
+			log.Print(line + bweProbe(b.m.Span(from, to), sofort))
+		}()
+		return
 	}
 	log.Print(line)
 }

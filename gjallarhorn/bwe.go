@@ -110,10 +110,20 @@ func bweLine(id string, c bwe.Change, gccBps, estKbit int) string {
 		id, c.To, c.From, c.Why, s.QueueUs/1000, s.Loss*100, s.AckedBps/1000, s.CapBps/1000, gccBps/1000, estKbit)
 }
 
-// bweProbe: Zusatz zur Zeile "probe" - Urteil des Detektors ueber die Pakete der Probe.
-func bweProbe(v bwe.Verdict) string {
-	return fmt.Sprintf(" bwe=%s bwe_schlange=%dms bwe_verlust=%.1f%% bwe_durchsatz=%dk bwe_zustand=%s bwe_fenster=%d",
-		v.Result, v.QueueUs/1000, v.Loss*100, v.Bps/1000, v.WorstSt, v.Windows)
+// bweProbe: Zusatz zur Zeile "probe" - Urteil des Detektors ueber die Pakete der Probe nach dem Nachlauf (v) und
+// das Urteil, das er beim Ende der Probe schon hatte (sofort).
+func bweProbe(v, sofort bwe.Verdict) string {
+	return fmt.Sprintf(" bwe=%s bwe_schlange=%dms bwe_verlust=%.1f%% bwe_durchsatz=%dk bwe_zustand=%s bwe_fenster=%d bwe_sofort=%s",
+		v.Result, v.QueueUs/1000, v.Loss*100, v.Bps/1000, v.WorstSt, v.Windows, sofort.Result)
+}
+
+// bweTail: Nachlauf nach einer Probe, bis die Rueckmeldungen zu ihren letzten Paketen da sind - zwei Umlaufzeiten
+// + 200 ms, hoechstens 1 s (ohne bekannte Umlaufzeit 500 ms).
+func bweTail(rtt time.Duration) time.Duration {
+	if rtt <= 0 {
+		return 500 * time.Millisecond
+	}
+	return min(2*rtt+200*time.Millisecond, time.Second)
 }
 
 // bweAttach verbindet den Mitleser eines neuen UDP-Beins mit dem Bein: Logzeile je Zustandswechsel. Die Zeile
