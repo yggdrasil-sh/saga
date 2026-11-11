@@ -587,7 +587,8 @@ func (e *estimator) shieldOff(now int64, floor time.Duration) {
 // ein neues Bein, und beides begaenne von vorn - auf einer Leitung, die h nicht traegt, kaeme nach jedem Wegwechsel
 // sofort wieder ein Versuch. Deshalb merkt sich der Raum die Eintraege eines entfernten Beins je (Empfaenger, Besitzer
 // der Quelle, Platzart) fuer memKeep und gibt sie dem naechsten Platz desselben Empfaengers fuer denselben Besitzer
-// zurueck. Nur mit Probing (Schalter aus: Verhalten wie zuvor).
+// zurueck - dazu je Empfaenger den Proben-Abstand des Beins und ob sein freier Versuch zum Anrufbeginn verbraucht ist.
+// Nur mit Probing (Schalter aus: Verhalten wie zuvor).
 const (
 	memKeep = upDwellMax // so lange nach dem Entfernen des Beins
 	memMax  = 512        // Eintraege je Raum
@@ -598,6 +599,7 @@ type memKey struct{ recv, owner, class string }
 type memEnt struct {
 	dw    [4]dwell
 	pf    legFail // nur im Eintrag des Beins (Besitzer und Platzart leer)
+	first bool    // ... ebenso: der freie Versuch zum Anrufbeginn ist verbraucht (Leg.firstUsed)
 	until int64
 }
 
@@ -615,8 +617,10 @@ func (r *Room) remember(l *Leg) {
 	if r.mem == nil {
 		r.mem = map[memKey]memEnt{}
 	}
-	if l.pf.pd > 0 && len(r.mem) < memMax {
-		r.mem[memKey{recv: l.Peer.ID}] = memEnt{pf: l.pf, until: now + int64(memKeep)}
+	// Der verbrauchte freie Versuch zum Anrufbeginn gehoert dazu, auch ohne gescheiterte Probe und ohne Aufschub (h
+	// haelt seit dem ersten Schritt) - sonst lebte er mit jedem Wegwechsel wieder auf
+	if (l.pf.pd > 0 || l.firstUsed) && len(r.mem) < memMax {
+		r.mem[memKey{recv: l.Peer.ID}] = memEnt{pf: l.pf, first: l.firstUsed, until: now + int64(memKeep)}
 	}
 	for _, s := range l.slots {
 		if s.dwellOwner == nil || s.dw == ([4]dwell{}) || len(r.mem) >= memMax {
@@ -634,7 +638,8 @@ func (r *Room) recall(l *Leg, vslots []*slot, now int64) {
 			delete(r.mem, k)
 			if now < e.until {
 				l.pf = e.pf
-				l.firstUsed = true // Vorgeschichte von vor dem Wegwechsel: kein freier Versuch zum Anrufbeginn
+				// Vorgeschichte von vor dem Wegwechsel bzw. dort schon verbraucht: kein freier Versuch zum Anrufbeginn
+				l.firstUsed = l.firstUsed || e.first || e.pf.pd > 0
 			}
 		}
 	}

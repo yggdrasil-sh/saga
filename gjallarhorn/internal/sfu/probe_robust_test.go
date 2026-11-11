@@ -3,6 +3,8 @@ package sfu
 import (
 	"testing"
 	"time"
+
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 )
 
 // TestProbingKlemmung (Labor 10./11.11.: 16 bis 54 % der Proben auf freier Leitung "fail:gcc"): pion-GCC klemmt sein
@@ -258,5 +260,173 @@ func TestProbingVerlust(t *testing.T) {
 				t.Fatalf("ausgang %q, erwartet %q (proben %+v)", got, c.want, er.l.pstat)
 			}
 		})
+	}
+}
+
+// TestProbingKlemmungNurNachSchritt (Pruefung 3, Fund 2): Die Ausnahme "gefallenes Ziel unter der Rate ist eine
+// Klemmung, kein Stau" (estimator.clamped) gilt nur clampWin lang nach einem Schritt nach oben. Danach reagiert ein
+// Bein mit Probing auf ein gefallenes Ziel Takt fuer Takt wie eines ohne (Stand vor dem Probing) - auch wenn das Ziel
+// ueber der Senderate der letzten 500 ms liegt (Rate schwankt, Schluesselbild).
+func TestProbingKlemmungNurNachSchritt(t *testing.T) {
+	type env struct {
+		e   estimator
+		l   *Leg
+		now int64
+		gcc float64
+	}
+	mk := func(probing bool) *env {
+		v := &env{l: &Leg{fl: fwd.NewLeg()}, now: int64(100 * time.Second), gcc: 3e6}
+		t.Cleanup(v.l.fl.Close)
+		v.e.init(1.2e6, 25e6)
+		v.e.probing = probing
+		v.l.Ext = func() int { return int(v.gcc) }
+		return v
+	}
+	step := func(v *env, rate float64) {
+		v.l.fl.Stats.BytesOut.Add(uint64(rate * 0.2 / 8))
+		v.l.fl.Stats.HdrExtra.Add(uint64(rate * 0.2 / 8 / 100)) // Kopf-Erweiterungen: 1 %
+		v.now += int64(200 * time.Millisecond)
+		v.e.update(v.l, 0.2, v.now)
+	}
+	// Lage: 540 kbit/s, dann springt die Rate auf 1290 und das Ziel faellt im selben Takt von 3000 auf 1100 kbit/s -
+	// unter die neue Rate, aber ueber die Senderate der letzten 500 ms (848 kbit/s). after: so lange vor dem Sprung
+	// lag der letzte Schritt nach oben (0 = keiner).
+	jump := func(probing bool, after time.Duration) *env {
+		v := mk(probing)
+		for i := 0; i < 50; i++ {
+			step(v, 540e3)
+		}
+		if after > 0 {
+			v.e.stepAt = v.now + int64(200*time.Millisecond) - int64(after)
+		}
+		v.e.bps = 2e6
+		v.gcc = 1100e3
+		step(v, 1290e3)
+		return v
+	}
+	// (i) kurz nach dem Schritt: Klemmung, die Schonfrist beginnt, die Schaetzung bleibt
+	for _, after := range []time.Duration{200 * time.Millisecond, time.Second, clampWin - 200*time.Millisecond} {
+		if v := jump(true, after); !v.e.lag || v.e.lagDead || v.e.bps < 2e6 {
+			t.Fatalf("%v nach dem Schritt: lag=%v gescheitert=%v schaetzung=%.0f (erwartet: Schonfrist)", after, v.e.lag, v.e.lagDead, v.e.bps)
+		}
+	}
+	// (ii) ohne Schritt bzw. lange danach: Stau, sofort - dieselbe Schaetzung wie ohne Probing, Takt fuer Takt
+	for _, after := range []time.Duration{0, clampWin, 10 * time.Second, time.Minute} {
+		on, off := jump(true, after), jump(false, 0)
+		for i := 0; ; i++ {
+			if on.e.lag || on.e.bps != off.e.bps || on.e.holdUntil != off.e.holdUntil || on.e.lagDead != off.e.lagDead {
+				t.Fatalf("%v nach dem Schritt, Takt %d: mit Probing lag=%v schaetzung=%.0f, ohne lag=%v schaetzung=%.0f",
+					after, i, on.e.lag, on.e.bps, off.e.lag, off.e.bps)
+			}
+			if i == 20 {
+				break
+			}
+			step(on, 1290e3)
+			step(off, 1290e3)
+		}
+		if on.e.bps > 1100e3+1 {
+			t.Fatalf("%v nach dem Schritt: schaetzung %.0f folgt dem Ziel nicht", after, on.e.bps)
+		}
+	}
+	// ohne Probing aendert auch ein frischer Schritt nichts
+	if v := jump(false, time.Second); v.e.lag {
+		t.Fatal("ohne Probing entschuldigt")
+	}
+}
+
+// TestProbingDauerstau (Pruefung 3, Fund 2): leichter Dauerstau auf h, lange nach dem letzten Schritt - die Leitung
+// liegt 3 bis 8 % unter der Rate, GCC springt zurueck auf 85 % dessen, was es als empfangen rechnet (bis 8 % ueber
+// der Senderate des Beins, estRoom.bias). Das Ziel landet damit zwischen 78 und 89 % der Rate - teils in dem Band, in
+// dem bis Pruefung 3 eine Schonfrist begann (ueber 87 % der Senderate). Der Platz faellt mit Probing im selben Takt wie
+// ohne.
+func TestProbingDauerstau(t *testing.T) {
+	for _, under := range []float64{0.03, 0.05, 0.08} {
+		for _, bias := range []float64{0, 0.04, 0.08} {
+			var d [2]time.Duration
+			var v [2]float64
+			for i, on := range []bool{false, true} {
+				er := newEstCfg(t, 1250e3, 810e3, 1, on)
+				er.pion, er.bias = true, bias
+				er.until("h", 15*time.Second)
+				er.run(time.Minute)
+				if er.layer() != "h" {
+					t.Fatalf("probing %v: h haelt nicht", on)
+				}
+				er.link = (1 - under) * (1250e3 + estAudio)
+				start := er.now
+				for er.layer() == "h" && er.now-start < int64(20*time.Second) {
+					er.tick()
+					if v[i] == 0 && er.over >= 2 {
+						v[i] = er.gcc / (1250e3 + estAudio)
+					}
+				}
+				d[i] = time.Duration(er.now - start)
+			}
+			t.Logf("leitung %2.0f %% unter der Rate, pion liest %2.0f %% mehr: ziel nach dem ruecksprung %.3f x rate, rueckfall ohne Probing nach %v, mit nach %v",
+				under*100, bias*100, v[1], d[0], d[1])
+			if d[1] != d[0] || d[0] >= 20*time.Second {
+				t.Fatalf("leitung %.0f %% unter der Rate (bias %.2f): rueckfall ohne Probing nach %v, mit nach %v", under*100, bias, d[0], d[1])
+			}
+		}
+	}
+}
+
+// TestProbingWegwechselFreierVersuch (Pruefung 3, Fund 3): Der freie Versuch zum Anrufbeginn ist verbraucht, h haelt -
+// keine gescheiterte Probe, kein Aufschub. Nach einem Wegwechsel (udp -> tcp -> udp) lebt er nicht wieder auf: Auf
+// der inzwischen engen Leitung gibt es keinen Versuch auf h ohne Probe.
+func TestProbingWegwechselFreierVersuch(t *testing.T) {
+	er := newEstCfg(t, 1250e3, 810e3, 1, true)
+	er.until("h", 15*time.Second)
+	er.run(20 * time.Second)
+	if !er.l.firstUsed || er.l.pf.pd != 0 || er.l.pstat.Started != 0 {
+		t.Fatalf("vor dem Wegwechsel: verbraucht %v, abstand %v, proben %+v", er.l.firstUsed, er.l.pf.pd, er.l.pstat)
+	}
+	for _, s := range er.l.slots {
+		if s.dw != ([4]dwell{}) {
+			t.Fatalf("aufschub vor dem Wegwechsel: %+v", s.dw)
+		}
+	}
+	swap := func(ref string, path Path) {
+		er.r.RemoveLeg(er.l.Ref)
+		l, err := er.r.AddLeg(Grant{Room: "raumschaetzer", Peer: "empf", Leg: ref, Role: RoleBoth}, path, Want{Audio: 1, Speaker: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if path == PathUDP {
+			l.Ext = func() int { return int(er.gcc) }
+			l.ExtOver = func() bool { return er.over >= 2 }
+		}
+		er.l, er.sent = l, 0
+	}
+	er.link = 1000e3 // traegt m, nicht h
+	swap("empf-tcp", PathTCP)
+	er.run(5 * time.Second)
+	if !er.l.firstUsed {
+		t.Fatal("auf dem TCP-Bein: freier Versuch nicht als verbraucht gemerkt")
+	}
+	swap("empf-udp", PathUDP)
+	er.tick()
+	if !er.l.firstUsed {
+		t.Fatal("nach dem Wegwechsel: freier Versuch lebt wieder auf")
+	}
+	res := er.measure(40*time.Second, nil)
+	for k, d := range res.seen {
+		if vrank(k[0]) > 2 {
+			t.Fatalf("nach dem Wegwechsel %v auf h ohne bestandene Probe: %v, verlauf %v", d, res, res.seen)
+		}
+	}
+	if res.started == 0 || res.ok != 0 {
+		t.Fatalf("nach dem Wegwechsel: %v (erwartet: Proben fuer h, keine bestanden)", res)
+	}
+	// Gegenstueck: Ein Bein, das seinen freien Versuch noch hat (kein Schritt nach oben noetig gewesen), hinterlaesst
+	// nichts - das naechste Bein beginnt wie ein neuer Anruf
+	fr := newEstCfg(t, 1250e3, 810e3, 1, true)
+	fr.tick()
+	if fr.l.firstUsed {
+		t.Fatal("freier Versuch schon im ersten Takt verbraucht")
+	}
+	fr.r.RemoveLeg(fr.l.Ref)
+	if len(fr.r.mem) != 0 {
+		t.Fatalf("gemerkt ohne Vorgeschichte: %d", len(fr.r.mem))
 	}
 }

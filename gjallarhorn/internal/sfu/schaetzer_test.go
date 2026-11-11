@@ -42,6 +42,9 @@ type estRoom struct {
 	pion  bool
 	decAt float64    // empfangene Rate beim letzten Ruecksprung (0 = noch keiner)
 	hist  [3]float64 // empfangene Rate der letzten Takte
+	// bias: pion liest seine Empfangsrate um so viel hoeher, als das Bein in 500 ms gesendet hat (gemessen im Mittel
+	// 4 %, bis gut 10 %: Rechnung ueber die Zeit zwischen erstem und letztem Paket des Fensters) - wirkt im Ruecksprung
+	bias float64
 }
 
 const estAudio = 40e3
@@ -196,7 +199,7 @@ func (er *estRoom) pionGCC(rate float64) {
 		er.gcc, er.decAt = min(er.gcc, 600e3), recv
 	case er.link > 0 && rate > er.link:
 		if er.over++; er.over >= 2 {
-			er.gcc, er.decAt = min(er.gcc, 0.85*recv), recv
+			er.gcc, er.decAt = min(er.gcc, 0.85*recv*(1+er.bias)), recv
 		}
 	default:
 		er.over, er.free = 0, rate
