@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -64,6 +65,24 @@ func TestBWESchalter(t *testing.T) {
 		if isGCC == mit || isWrap != mit {
 			t.Fatalf("mit=%v: schaetzer %T", mit, est)
 		}
+	}
+}
+
+// Wegwechsel: Nur ein anderes Adresspaar setzt die Basis des Detektors zurueck - nicht dasselbe Paar noch einmal.
+func TestBWEPaarwechsel(t *testing.T) {
+	b := newBWEWrap(nil)
+	paar := func(lport, rport uint16) *webrtc.ICECandidatePair {
+		return &webrtc.ICECandidatePair{
+			Local:  &webrtc.ICECandidate{Protocol: webrtc.ICEProtocolUDP, Address: "127.0.0.1", Port: lport, Typ: webrtc.ICECandidateTypeHost},
+			Remote: &webrtc.ICECandidate{Protocol: webrtc.ICEProtocolUDP, Address: "127.0.0.1", Port: rport, Typ: webrtc.ICECandidateTypePrflx},
+		}
+	}
+	var got []bool
+	for _, cp := range []*webrtc.ICECandidatePair{paar(7000, 40001), paar(7000, 40001), paar(7000, 40001), paar(7000, 40002), paar(7000, 40002), paar(7000, 40001), nil, {}} {
+		got = append(got, b.pairChanged(cp))
+	}
+	if want := []bool{true, false, false, true, false, true, false, false}; !slices.Equal(got, want) {
+		t.Fatalf("%v, erwartet %v", got, want)
 	}
 }
 

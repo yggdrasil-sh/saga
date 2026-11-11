@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pion/interceptor"
@@ -12,6 +13,7 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
+	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 )
@@ -54,6 +56,26 @@ func bweNow() int64 { return int64(time.Since(bweEpoch)) }
 type bweWrap struct {
 	cc.BandwidthEstimator
 	m *bwe.Mitleser
+
+	pairMu sync.Mutex
+	pair   string // zuletzt gewaehltes Adresspaar (pairChanged)
+}
+
+// pairChanged: Hat ICE ein anderes Adresspaar gewaehlt als zuletzt? Die erste Wahl zaehlt als Wechsel, dasselbe Paar
+// noch einmal nicht - sonst verloere der Detektor ohne Not seine Basis, und eine stehende Schlange ginge in der neuen
+// Basis auf.
+func (b *bweWrap) pairChanged(cp *webrtc.ICECandidatePair) bool {
+	if cp == nil || cp.Local == nil || cp.Remote == nil {
+		return false
+	}
+	key := fmt.Sprintf("%s %s:%d > %s %s:%d", cp.Local.Protocol, cp.Local.Address, cp.Local.Port, cp.Remote.Protocol, cp.Remote.Address, cp.Remote.Port)
+	b.pairMu.Lock()
+	defer b.pairMu.Unlock()
+	if key == b.pair {
+		return false
+	}
+	b.pair = key
+	return true
 }
 
 func newBWEWrap(est cc.BandwidthEstimator) *bweWrap {

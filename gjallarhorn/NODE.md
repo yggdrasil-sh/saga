@@ -351,6 +351,11 @@ Platzhalter: `horn-1.example.org`.
     0,2–0,3 s) – die Rückmeldung über ein Paket in der Schlange kommt um die Schlange später. Fällt der Knoten vorher
     zurück (nach 0,4 s), läuft die Schlange ab, und der Detektor meldet bei knapper Enge oder kurzem Puffer (Policer)
     oft nur `warnung`, keinen `stau`. (5) Urteile über Proben, die GCC früh abbricht, bleiben oft `unklar`.
+    (6) **Anrufbeginn mit Chromium:** In den ersten 1–2,5 s meldet der Browser 5–75 % der Pakete als nicht
+    angekommen, auch ohne jeden Engpass (Ursache offen; mit der pion-Gegenstelle der Tests tritt es nicht auf) – der
+    Detektor meldet dort `warnung grund=verlust` (in 30 von 48 Beinen, einmal `stau`). (7) **Wechselt ICE zwischen
+    zwei gleichwertigen Adresspaaren hin und her** (im Container alle 2–5 s, weil der Knoten auf zwei Adressen
+    erreichbar ist), verliert der Detektor jedes Mal seine Basis und ist für ein Fenster `unbekannt`.
   - Rechenlast: je abgehendem Paket rund 25 ns, je Rückmeldung mit 16 Paketen rund 0,8 µs, keine Allokation
     (`go test ./internal/bwe -bench .`). Rechenzeit eines ganzen Laufs (Knoten und Bots in einem Prozess, 60 s auf
     `h`, je 3 Läufe): 1:1 `gcc` 3,32 s, `mit` 3,34 s; ein Sender und 8 Empfänger `gcc` 8,48 s, `mit` 8,63 s – der

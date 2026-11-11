@@ -291,10 +291,15 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		}
 		go readSenderRTCP(sender, o, &l.rttNs)
 		if b := l.bweWrap(); b != nil && !bweHooked {
-			// HORN_BWE=mit: Waehlt ICE ein anderes Adresspaar, gilt die bisherige Laufzeit-Basis nicht mehr
+			// HORN_BWE=mit: Waehlt ICE ein anderes Adresspaar, gilt die bisherige Laufzeit-Basis nicht mehr. Wird
+			// dasselbe Paar noch einmal gemeldet, ist das kein Wegwechsel.
 			if tr := sender.Transport(); tr != nil && tr.ICETransport() != nil {
 				bweHooked = true
-				tr.ICETransport().OnSelectedCandidatePairChange(func(*webrtc.ICECandidatePair) { b.m.Reset(bweNow()) })
+				tr.ICETransport().OnSelectedCandidatePairChange(func(cp *webrtc.ICECandidatePair) {
+					if b.pairChanged(cp) {
+						b.m.Reset(bweNow())
+					}
+				})
 			}
 		}
 	}
