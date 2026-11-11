@@ -489,8 +489,12 @@ func TestProbingKnappeLeitung(t *testing.T) {
 // TestProbingEinbruchInDerProbe (Prueferfund 3): Bricht die Leitung waehrend einer Probe wirklich ein (von 1150 auf
 // 300 kbit/s, traegt nur noch l), darf der Schutz der Schaetzung das nicht verdecken. Frueher blieb m die ganze Frist
 // (2 s) stehen und wurde erst nach 2,4 s verlassen; ohne Probing sind es 0,8 s. Jetzt endet der Schutz, sobald das
-// Stausignal ohne Fuelldaten weiter ansteht - hoechstens 0,6 s spaeter als ohne Probing. Eine Probe, die nur an der
-// eigenen Fuellung scheitert (Leitung traegt m weiter), veraendert die Schaetzung weiterhin nicht.
+// Stausignal ohne Fuelldaten weiter ansteht - nach 1,2 s, hoechstens 0,8 s spaeter als ohne Probing. Eine Probe, die
+// nur an der eigenen Fuellung scheitert (Leitung traegt m weiter), veraendert die Schaetzung weiterhin nicht.
+// (Ohne Probing sind es 0,4 oder 0,8 s, je nach Alter des Prozesses: In den ersten 20 s gilt der erste Stau eines
+// Beins als "kurz nach dem letzten" - estimator.lastDown beginnt bei 0 -, die Sperrzeit ist dann doppelt so lang.
+// Mit der frueheren Schranke von 0,6 s war dieser Test deshalb nur in einem jungen Prozess gruen: mit -count ab etwa
+// der 15. Wiederholung rot, auch schon vor den Aenderungen der Pruefung 2.)
 func TestProbingEinbruchInDerProbe(t *testing.T) {
 	leave := map[string]time.Duration{}
 	for _, mode := range []string{"aus", "an-in-probe", "an-ohne-probe"} {
@@ -531,7 +535,7 @@ func TestProbingEinbruchInDerProbe(t *testing.T) {
 			t.Fatalf("%s: m nicht verlassen bzw. am Ende %q", mode, er.layer())
 		}
 	}
-	if d := leave["an-in-probe"] - leave["aus"]; d > 600*time.Millisecond {
+	if d := leave["an-in-probe"] - leave["aus"]; d > 800*time.Millisecond || leave["an-in-probe"] > 1200*time.Millisecond {
 		t.Fatalf("Einbruch in der Probe %v spaeter erkannt als ohne Probing (%v gegen %v)", d, leave["an-in-probe"], leave["aus"])
 	}
 	if leave["an-ohne-probe"] > leave["aus"] {
