@@ -896,10 +896,14 @@ type Leg struct {
 // ueber der Schwelle, und etwa jede 30. Probe scheiterte faelschlich an "Ueberlast". Haengen die Fuellpakete an den
 // Paketen, die ohnehin gehen, bleibt das Gruppenmuster das des Mediums (gemessen: 0,3 ms, nie ueber der Schwelle).
 const (
-	PadSize  = 255
-	padWire  = 12 + PadSize
-	padIdle  = 40 * time.Millisecond
-	padBurst = 50 * time.Millisecond // etwas ueber padIdle: ein verspaeteter Wecker kostet kein Guthaben
+	PadSize = 255
+	padWire = 12 + PadSize
+	// padIdle liegt mit Absicht weit ueber dem Bildabstand ueblicher Kameras (30 Bilder/s: 33 ms, 24: 42 ms, 15: 67 ms).
+	// Mit 40 ms (bis Saga 2.5 Pruefung 2) feuerte der Wecker auf einem Bein ohne dichten Ton bei 22 bis 25 Bildern/s
+	// kurz vor jedem Bild - genau das Muster von oben: Fuell-Schub und Bild binnen 5 ms in einer Gruppe. Jetzt haengen
+	// die Fuellpakete ab 10 Bildern/s immer am Bild; den eigenen Takt gibt es nur noch darunter.
+	padIdle  = 100 * time.Millisecond
+	padBurst = 110 * time.Millisecond // etwas ueber padIdle: ein verspaeteter Wecker kostet kein Guthaben
 )
 
 // PadMax: Laenger als so fuellt ein Bein nach einem SetPadding nicht (Totmann). Der Steuerpfad stellt die Rate je
