@@ -18,16 +18,23 @@ import (
 //     ohne Umlaufzeit probeWin)
 //  3. Nachlauf ohne Fuelldaten fuer probeSettle Takte (die Rueckmeldung zum Ende des Fensters steht noch aus)
 //
-// Ein Stausignal in 1 bis 3 bricht sofort ab (gescheitert): GCC-Ziel gefallen (gccFall unter dem Hoechstwert seit
-// Beginn), GCC meldet Ueberlast (Leg.ExtOver) oder Alter/Verlust in der eigenen Warteschlange. Die Schaetzung bleibt
-// dabei und bis probeFloor danach unveraendert (estimator.update) - ein Stau, den die Fuelldaten selbst erzeugt haben,
+// Ob die Leitung dabei staut, wertet die Probe selbst aus (probeJudge, fallClass): eigene Warteschlange, Ueberlast laut
+// Laufzeit-Messung (Leg.ExtStat bzw. ExtOver), Verlust gegenueber dem Stand vor der Probe - und ein gefallenes
+// GCC-Ziel nur, wenn es ein Ruecksprung sein kann (pion klemmt sein Ziel auch ohne Stau an die Empfangsrate, und
+// gerade die Fuelldaten loesen das aus). Stau: sofort gescheitert. Ein einzelner Hinweis wird ueber die naechsten
+// Takte bestaetigt oder ausgeraeumt; bleibt das Ergebnis unklar, endet die Probe ohne Wertung und wird einmal nach
+// probeRetry wiederholt - erst dann zaehlt sie als gescheitert. Die Schaetzung bleibt waehrend der Probe und bis
+// probeFloor nach einem Abbruch unveraendert (estimator.update) - ein Stau, den die Fuelldaten selbst erzeugt haben,
 // sagt nichts ueber die laufende Auswahl. Steht das Stausignal aber auch ohne Fuelldaten weiter an (probeDrain,
 // probeBad), ist die Leitung wirklich eingebrochen: Der Schutz endet sofort.
 //
-// Bestanden ist die Probe ohne Stausignal bis zum Ende des Nachlaufs. Dass das GCC-Ziel die Zielrate erreicht, wird
+// Bestanden ist die Probe ohne Stau und ohne offenen Hinweis bis zum Ende des Nachlaufs. Dass das GCC-Ziel die Zielrate erreicht, wird
 // nicht verlangt: pion-GCC hebt sein Ziel auch bei freier Leitung nur um rund 8 %/s (gemessen), in einem Fenster von
 // gut einer Sekunde also um hoechstens ein Zehntel. Den Beleg liefert die Verzoegerungsmessung selbst - eine Leitung,
 // die die Zielrate nicht traegt, staut binnen weniger Rueckmeldungen und GCC meldet Ueberlast.
+//
+// Ohne Probe (freier Versuch, siehe freeStep): der erste Schritt nach oben eines Beins und die Rueckkehr auf eine
+// Schicht, die mindestens upHold gehalten hat - jeweils einmal, zeitlich wie ohne Probing.
 //
 // Abstand: nach einer gescheiterten Probe probeGap, verdoppelnd bis probeGapMax - je Bein und Zielrate (legFail), nicht
 // je Platz; eine bestandene Probe ab dieser Zielrate oder laengere Ruhe setzt zurueck. Nach einer bestandenen Probe
