@@ -74,7 +74,11 @@ const (
 	probeDrain      = 2           // ... es sei denn, nach so vielen Takten ohne Fuelldaten steht weiter ein Stausignal an,
 	probeBad        = 2           // und zwar so viele Takte in Folge (echter Einbruch, estimator.update)
 	// Eigene Auswertung (probeJudge, fallClass)
-	probeDecSent = 0.87             // Ziel ueber diesem Anteil der Senderate: kein Ruecksprung (der laege bei hoechstens 85 %)
+	// Ziel ueber diesem Anteil der eigenen Senderate (estimator.sendRate): kein Ruecksprung. Der laege bei 85 % der
+	// Rate, die pion empfangen hat - und die liegt im selben Augenblick oft ueber der Senderate der letzten 500 ms,
+	// auch wenn beide dieselben Bytes zaehlen (siehe fallClass). Gemessen bei 43 Rueckspruengen: Ziel hoechstens 96 %
+	// der Senderate; Klemmungen (67) mindestens 105 %.
+	probeDecSent = 1.0
 	probeDecBase = 1.2              // Ziel unter diesem Vielfachen der Rate vor der Probe: Ruecksprung (Klemmung laege bei 1,5)
 	probeLossUp  = 0.05             // Verlustanteil um so viel ueber dem Stand vor der Probe, zwei Takte in Folge: Hinweis auf Stau
 	probeConfirm = 2                // so viele Takte mit steigendem Ziel raeumen einen einzelnen Hinweis aus
@@ -549,14 +553,23 @@ const (
 // ueber das 1,5-Fache gewachsen ist (GCC ist ohne Fuelldaten anwendungsbegrenzt und waechst mit 8 %/s ungebremst),
 // faellt dabei in einem Zug auf 1,5 x empfangen. Die Fuelldaten einer Probe schieben die empfangene Rate selbst in
 // dieses Band - das war die Ursache der falsch gescheiterten Proben auf freier Leitung (Labor 10./11.11.: bis 54 %;
-// im Container ohne jedes Rauschen nachgestellt). Unterscheiden laesst sich beides an der eigenen Senderate: Empfangen
-// wird hoechstens, was gesendet wurde. Nach (1) liegt das Ziel also hoechstens bei 85 % der Senderate des Fensters,
-// nach (2) auf freier Leitung beim 1,5-Fachen der Rate, die schon vor der Probe lief, oder darueber.
+// im Container ohne jedes Rauschen nachgestellt). Unterscheiden laesst sich beides an der eigenen Senderate der
+// letzten 500 ms (estimator.sendRate): Nach (1) liegt das Ziel darunter, nach (2) auf freier Leitung beim 1,5-Fachen
+// der Rate, die schon vor der Probe lief, oder darueber.
+//
+// Wie scharf das trennt: Auf Dauer wird hoechstens empfangen, was gesendet wurde - in einem einzelnen Fenster nicht.
+// Zum einen muessen beide Seiten dieselben Bytes zaehlen: pion rechnet je Paket Kopf samt Erweiterungen + Nutzlast
+// (8 Byte je Paket mehr als BytesOut; bei Fuellpaketen 3 %), deshalb zaehlt sendRate sie mit (LegStats.HdrExtra). Zum
+// anderen teilt pion die Bytes seines Fensters durch die Zeit zwischen dessen erstem und letztem Paket (das erste Paket
+// zaehlt mit, die Zeit davor nicht), und sein Fenster liegt um den Weg der Rueckmeldung versetzt - bei Bildern, die in
+// Schueben kommen, liegt seine Rate dadurch im Mittel 4 % ueber der Senderate (gleiche Bytes; 95 % der Takte bis
+// 10 %), bei einem Ruecksprung gemessen bis 13 %. Die Schwelle probeDecSent = 1,0 laesst dafuer 17 % (bis Pruefung 3:
+// 0,87, also 2 % - weniger als allein der Unterschied der Zaehlung).
 func (e *estimator) fallClass(v float64) int {
 	switch {
 	case v < probeDecBase*e.prBase:
 		return fallDec
-	case v > probeDecSent*(e.tot+e.tot1+0.5*e.tot2)/2.5: // Senderate der letzten 500 ms (mit Fuelldaten)
+	case v > probeDecSent*e.sendRate():
 		return fallClamp
 	}
 	return fallAmb

@@ -815,6 +815,10 @@ type LegStats struct {
 	TIDSkipped            atomic.Uint64
 	PadPkts, PadBytes     atomic.Uint64 // Fuellpakete einer Probe (SetPadding); in PktsOut/BytesOut enthalten
 	LateDropped           atomic.Uint64 // verspaetete Pakete, die ein Ausgang nicht mehr einordnen konnte (verworfen)
+	// HdrExtra: Bytes des RTP-Kopfs, die in BytesOut fehlen - die Kopf-Erweiterungen, die erst der Schreiber anfuegt
+	// (transport-cc). BytesOut + HdrExtra ist, was pion-GCC je Paket zaehlt (Kopf samt Erweiterungen + Nutzlast); nur
+	// die Probe vergleicht damit (sfu: estimator.tot), alle anderen Raten bleiben bei BytesOut.
+	HdrExtra atomic.Uint64
 }
 
 // P95us schaetzt das 95. Perzentil der Weiterleitungszeit in Mikrosekunden.
@@ -984,6 +988,7 @@ func (l *Leg) pad(now int64) bool {
 		}
 		o.lastSeq++
 		o.seqDelta++ // die Folgenummern der Quelle ruecken um das Fuellpaket weiter
+		l.Stats.HdrExtra.Add(hdrExtra(h))
 		l.Stats.PktsOut.Add(1)
 		l.Stats.BytesOut.Add(padWire)
 		l.Stats.PadPkts.Add(1)
@@ -1358,6 +1363,7 @@ func (l *Leg) process(p *Packet, o *Out) {
 	o.Bytes.Add(n)
 	l.Stats.PktsOut.Add(1)
 	l.Stats.BytesOut.Add(n)
+	l.Stats.HdrExtra.Add(hdrExtra(h))
 	Totals.PktsOut.Add(1)
 	Totals.BytesOut.Add(n)
 	us := (t1 - p.t) / 1000
@@ -1367,6 +1373,12 @@ func (l *Leg) process(p *Packet, o *Out) {
 		k++
 	}
 	l.Stats.Hist[k].Add(1)
+}
+
+// hdrExtra: Um so viele Bytes ist der Kopf h, wie er hinausging, laenger als 12 + CSRC (LegStats.HdrExtra). Nach dem
+// Schreiben aufrufen: Die Kette des Schreibers setzt ihre Erweiterungen in denselben Kopf.
+func hdrExtra(h *rtp.Header) uint64 {
+	return uint64(max(h.MarshalSize()-12-4*len(h.CSRC), 0))
 }
 
 // writeRaw: Kaskade - Paket unveraendert bis auf die Folgenummer (Kopie, das Paket ist geteilt).

@@ -849,6 +849,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		} else if s.layer == "" || s.rampOwner != s.owner {
 			s.rampRate, s.rampOwner = layerRate(st), s.owner // Platz beginnt auf dieser Schicht (Anrufbeginn, neuer Besitzer)
 		}
+		if prb && layerRank(st.Layer) > layerRank(s.layer) {
+			l.est.stepAt = now // Schritt nach oben (auch aus der Pause): Die Rate springt, siehe estimator.clamped
+		}
 		s.paused, s.layer, s.tid = false, st.Layer, c.tid
 		// gehalten: Die Schicht laeuft seit upHold - ihr Aufschub und der aller tieferen ist erledigt
 		if s.dwellOwner != s.owner {
@@ -1001,6 +1004,8 @@ type estimator struct {
 	wantFree   float64 // ... bzw. eines Schritts, der ohne Probe versucht werden darf (freier Versuch, probe.go)
 	capProbed  float64 // Deckel ohne wantBig: so weit duerfen probbare Schritte ohne Probe
 	padLast    uint64  // Fuell-Bytes beim letzten Takt
+	stepAt     int64   // letzter Schritt nach oben eines Platzes dieses Beins (planLeg; 0 = noch keiner)
+	hxLast     uint64  // Bytes der Kopf-Erweiterungen beim letzten Takt (fwd.LegStats.HdrExtra)
 	prOn       bool    // Probe laeuft: Stausignale nur beobachten (prSig), Schaetzung unveraendert
 	prUntil    int64   // ... ebenso bis hierhin nach einer gescheiterten Probe (probeFloor)
 	prReady    bool    // GCC-Ziel im Schutz weit genug ueber der Medienrate (wie ready)
@@ -1014,7 +1019,7 @@ type estimator struct {
 	prBase          float64 // Rate des Beins vor der Probe (ohne Fuelldaten, geglaettet)
 	prLoss0         float64 // Verlustanteil vor der Probe
 	prLossN         int     // Takte in Folge mit Verlust deutlich darueber
-	tot1, tot2, tot float64 // Rate des Beins mit Fuelldaten in den letzten drei Takten (tot = dieser)
+	tot1, tot2, tot float64 // Rate des Beins mit Fuelldaten und Kopf-Erweiterungen in den letzten drei Takten (tot = dieser)
 	grant           float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
 	grantUntil      int64
 }
@@ -1065,7 +1070,7 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 		e.lagJump = rate > e.lagBase*lagJumpMin
 		// faellt, waehrend die Rate es ueberholt: Stau, bis zum Ende dieser Folge - ausser der Fall ist kein Ruecksprung
 		// von GCC, sondern die Klemmung an die Empfangsrate (clamped): Dann beginnt die Schonfrist beim neuen Ziel
-		if v < e.gccLast*gccFall && !e.clamped(v) {
+		if v < e.gccLast*gccFall && !e.clamped(v, now) {
 			e.lagDead, e.deadAt = true, now
 			return false
 		}
@@ -1080,7 +1085,7 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 	}
 	ok := true
 	switch {
-	case v < e.lagPeak*gccFall && now-e.lagAt < int64(lagMax) && e.clamped(v):
+	case v < e.lagPeak*gccFall && now-e.lagAt < int64(lagMax) && e.clamped(v, now):
 		// Klemmung waehrend der Schonfrist: kein Stau - aber von hier aus muss das Ziel wieder steigen
 		e.lagPeak, e.lagMark, e.lagMarkAt = v, v, now
 	case v < e.lagPeak*gccFall, now-e.lagAt >= int64(lagMax):
@@ -1096,15 +1101,29 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 }
 
 // clamped: Das GCC-Ziel v ist gefallen und liegt unter der Rate - aber so hoch, dass es kein Ruecksprung wegen Stau
-// sein kann (der laege bei hoechstens 85 % dessen, was in den letzten 500 ms gesendet wurde). Dann hat pion sein Ziel
-// nur an die empfangene Rate geklemmt (1,5 x, siehe fallClass in probe.go). Das trifft auch den Wechsel selbst: Springt
-// die Rate nach einem Schritt nach oben durch das Band um die letzte Staurate, faellt ein weit gewachsenes Ziel auf das
-// 1,5-Fache der noch gemischten Empfangsrate - unter die neue Rate. Ohne diese Unterscheidung scheiterte der Schritt
-// auf freier Leitung gleich nach einer bestandenen Probe (im Container nachgestellt: h hielt 0,2 s). Nur mit Probing;
-// ohne bleibt die Regel, wie sie war.
-func (e *estimator) clamped(v float64) bool {
-	return e.probing && v > probeDecSent*(e.tot+e.tot1+0.5*e.tot2)/2.5
+// sein kann (sendRate, probeDecSent). Dann hat pion sein Ziel nur an die empfangene Rate geklemmt (1,5 x, siehe
+// fallClass in probe.go). Das trifft auch den Wechsel selbst: Springt die Rate nach einem Schritt nach oben durch das
+// Band um die letzte Staurate, faellt ein weit gewachsenes Ziel auf das 1,5-Fache der noch gemischten Empfangsrate -
+// unter die neue Rate. Ohne diese Unterscheidung scheiterte der Schritt auf freier Leitung gleich nach einer
+// bestandenen Probe (im Container nachgestellt: h hielt 0,2 s).
+//
+// Nur mit Probing und nur clampWin lang nach einem Schritt nach oben - sonst bleibt die Regel, wie sie war (ein
+// gefallenes Ziel unter der Rate ist Stau, sofort). Im Dauerzustand springt die Rate nicht durch das Band; dort
+// verdeckte die Ausnahme sonst einen echten Ruecksprung bei leichtem Stau bis zu lagMax (Pruefung 3, Fund 2).
+func (e *estimator) clamped(v float64, now int64) bool {
+	return e.probing && e.stepAt != 0 && now-e.stepAt < int64(clampWin) && v > probeDecSent*e.sendRate()
 }
+
+// clampWin: So lange nach einem Schritt nach oben kann die Klemmung den Wechsel treffen. Sie braucht eine Empfangsrate,
+// die noch Pakete von vor dem Schritt enthaelt: das Fenster von pion (500 ms), davor das Schluesselbild der neuen
+// Schicht (der Ausgang wechselt erst mit ihm, bis rund 1 s) und der Weg der Rueckmeldung (Umlaufzeit und Abstand der
+// Rueckmeldungen, zusammen bis rund 0,5 s), dazu ein Takt Abtastung - gut 2 s. Derselbe Wert wie lagLink (so lange
+// nach einem Hochschalten gehoert eine Schonfrist zu diesem Versuch).
+const clampWin = lagLink
+
+// sendRate: Was das Bein in den letzten 500 ms gesendet hat (bit/s) - mit Fuelldaten und so gezaehlt wie bei pion-GCC
+// (Kopf samt Erweiterungen, fwd.LegStats.HdrExtra). 500 ms ist das Fenster, ueber das pion die Empfangsrate bildet.
+func (e *estimator) sendRate() float64 { return (e.tot + e.tot1 + 0.5*e.tot2) / 2.5 }
 
 // probeFailed: Ist die Schonfrist gescheitert, die mit dem Hochschalten zur Zeit upAt begann (Stau binnen upFail
 // zuvor gemeldet)?
@@ -1124,7 +1143,10 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	b := st.BytesOut.Load()
 	rate := float64(b-e.lastBytes) * 8 / dt
 	e.lastBytes = b
-	e.tot2, e.tot1, e.tot = e.tot1, e.tot, rate
+	// tot zaehlt wie pion-GCC: mit den Kopf-Erweiterungen, die BytesOut nicht enthaelt (fallClass, clamped)
+	hx := st.HdrExtra.Load()
+	e.tot2, e.tot1, e.tot = e.tot1, e.tot, rate+float64(hx-e.hxLast)*8/dt
+	e.hxLast = hx
 	// Fuelldaten einer Probe zaehlen zur Bein-Rate, aber nicht zur Medienrate, mit der hier gerechnet wird
 	if pb := st.PadBytes.Load(); pb != e.padLast {
 		rate = max(rate-float64(pb-e.padLast)*8/dt, 0)
