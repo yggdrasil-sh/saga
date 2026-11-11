@@ -109,6 +109,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Einzelheiten in `gjallarhorn/NODE.md` („Probing mit Fülldaten“), Code `gjallarhorn/internal/sfu/probe.go` und
   `internal/fwd` (`Leg.SetPadding`).
 
+### Geändert – Knoten: Anrufbeginn über UDP – obere Ebene nach rund 2 s, dafür ohne Rückfall
+- Zu Beginn eines Anrufs schaltete der Knoten oft schon in den ersten 0,4 s auf die obere Ebene (720p), weil deren
+  Rate da erst mit 250–300 kbit/s gemessen war (der Kodierer fährt noch hoch). Die Schätzung der Leitung ist in dem
+  Moment noch nicht eingeschwungen; der Sprung auf die echte Rate galt als Stau, das Bild fiel nach 0,4–2,4 s zurück
+  und kam erst nach 8 s wieder (Labor mit Chromium auf freier Leitung: 46 von 49 solcher Anrufbeginne – unabhängig
+  vom Probing, auch am Stand davor).
+- Jetzt rechnet der Knoten für den Schritt hinauf auf eine Quelle, die noch keine 2 s sendet, mit ihrer angenommenen
+  Rate. Der Anruf beginnt auf der mittleren Ebene, die obere kommt nach rund 2 s und bleibt (Testaufbau mit
+  Chromium: Rückfall in 1 von 30 statt 59 von 60 Richtungen). **Verhaltensänderung auch mit `HORN_PROBING=0`.**
+  Enge Leitung im Modell (1,0 Mbit/s, 60 s): gleich viele Versuche auf die obere Ebene, mehr Zeit auf der mittleren.
+
 ### Behoben – Knoten: im 1:1 über UDP bleibt das Bild auf der mittleren Ebene
 - Im Anruf zu zweit über den Knoten bekam der Empfänger dauerhaft nur die mittlere Simulcast-Ebene (640×360), obwohl
   der Sender die hohe schickte und die Leitung frei war. Zwei Regeln der Schätzung standen im Weg
