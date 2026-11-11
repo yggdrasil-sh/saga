@@ -540,6 +540,7 @@ func TestUDPBWEAus(t *testing.T) {
 //	s60      Jitter 0-6 ms, alle ~1,5 s eine Pause von 30-90 ms, 90 s
 //	frei0    freie Leitung, 60 s
 //	policer  20 s frei, 30 s Policer 1000 kbit/s (Puffer 20 ms), 30 s frei
+//	engjit   30 s Leitung 1000 kbit/s, dann 240 s frei mit Jitter 0-6 ms und Pausen wie s60 (Proben nach dem Rueckfall)
 //	mitte    20 s frei, 20 s Leitung 1000 kbit/s, 20 s frei, 20 s Leitung 1250 kbit/s, 20 s frei
 func TestUDPBWEMessung(t *testing.T) {
 	want := os.Getenv("HORN_BWE_MESSUNG")
@@ -564,6 +565,7 @@ func TestUDPBWEMessung(t *testing.T) {
 		"s60":     {func(s *strecke) { s.jit.Store(6e6); s.pause.Store(true) }, nil, 90},
 		"frei0":   {nil, nil, 60},
 		"policer": {nil, []schritt{{20, "policer-1000", eng(1000, 20)}, {50, "frei", frei}}, 80},
+		"engjit":  {eng(1000, 300), []schritt{{30, "frei", func(s *strecke) { s.rate.Store(0); s.jit.Store(6e6); s.pause.Store(true) }}}, 270},
 		"mitte":   {nil, []schritt{{20, "eng-1000", eng(1000, 300)}, {40, "frei", frei}, {60, "eng-1250", eng(1250, 300)}, {80, "frei", frei}}, 100},
 	}
 	out := os.Getenv("HORN_BWE_OUT")
