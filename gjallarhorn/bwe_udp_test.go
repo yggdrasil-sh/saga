@@ -22,11 +22,14 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/interceptor/pkg/gcc"
+	"github.com/pion/interceptor/pkg/twcc"
 	"github.com/pion/logging"
+	"github.com/pion/rtcp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/netx"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 )
 
 // HORN_BWE: Schalterwerte.
@@ -77,6 +80,97 @@ func TestBWEZeilen(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("\n%s\n%s", got, want)
+	}
+}
+
+// Zeile "probe" bei HORN_BWE=mit: Das Urteil des Detektors steht zweimal darin - bwe_sofort= (was er beim Ende der
+// Probe wusste) und bwe= (nach dem Nachlauf, wenn die Rueckmeldungen zu den letzten Paketen da sind). Probe von 0,4 s
+// in eine Enge (1600 kbit/s auf 700): Beim Ende sind erst die Pakete der ersten ~0,17 s gemeldet (die Meldung kommt
+// um die Schlange spaeter) - sofort "staut-nicht"; nach dem Nachlauf "staut". Die Zeile kommt erst nach dem Nachlauf,
+// genau einmal. Ohne Mitleser (gcc) kommt sie sofort und ohne Zusatz.
+func TestBWEProbeNachlauf(t *testing.T) {
+	for bweNow() < int64(3200*time.Millisecond) { // die Sendezeiten unten liegen bis 3 s zurueck
+		time.Sleep(50 * time.Millisecond)
+	}
+	logs := &logFang{t0: time.Now()}
+	old := log.Writer()
+	log.SetOutput(logs)
+	defer log.SetOutput(old)
+	sl, sl2 := &sfu.Leg{}, &sfu.Leg{}
+	l := &leg{id: "a1b2c3d4e5f6", bwe: newBWEWrap(nil)}
+	l2 := &leg{id: "0f9e8d7c6b5a"}
+	s := &server{bySFU: map[*sfu.Leg]*leg{sl: l, sl2: l2}}
+	m := l.bwe.m
+
+	// 3 s Senden, alle 5 ms 1000 Byte; die letzten 0,4 s durch eine Leitung mit 700 kbit/s (20 ms Laufzeit)
+	type pkt struct {
+		seq   uint16
+		arrNs int64
+	}
+	end := bweNow()
+	var pend []pkt
+	var linkFree int64
+	seq := uint16(65000) // mit Umlauf der Folgenummer
+	for at := end - int64(3*time.Second); at < end; at += int64(5 * time.Millisecond) {
+		m.Sent(at, seq, 1000, bwe.KindVideo)
+		arr := at
+		if at >= end-int64(400*time.Millisecond) {
+			linkFree = max(linkFree, at) + 11_428_571 // 1000 Byte bei 700 kbit/s, ns
+			arr = linkFree
+		}
+		pend = append(pend, pkt{seq, arr + int64(20*time.Millisecond)})
+		seq++
+	}
+	rec := twcc.NewRecorder(1)
+	feed := func(bis int64) { // der Empfaenger meldet alle 50 ms, was bis dahin angekommen ist
+		for len(pend) > 0 && pend[0].arrNs <= bis {
+			to := pend[0].arrNs + int64(50*time.Millisecond)
+			for len(pend) > 0 && pend[0].arrNs <= min(to, bis) {
+				rec.Record(2, pend[0].seq, pend[0].arrNs/1000+7_000_000)
+				pend = pend[1:]
+			}
+			for _, p := range rec.BuildFeedbackPacket() {
+				m.Feedback(bweNow(), p.(*rtcp.TransportLayerCC))
+			}
+		}
+	}
+	feed(end)
+	if len(pend) < 30 {
+		t.Fatalf("nur %d Pakete noch unterwegs", len(pend))
+	}
+	ev := sfu.ProbeEvent{Leg: sl, Class: "speaker", From: "m", To: "h", TargetKbit: 1879, FillKbit: 800, Result: "fail", Why: "gcc",
+		Dur: 400 * time.Millisecond, Stage: 1, Hint: "gcc", EstKbit: 1100, GccKbit: 900}
+	s.onProbe(ev)
+	ev.Leg = sl2
+	s.onProbe(ev)
+	time.Sleep(100 * time.Millisecond)
+	feed(1 << 62) // die uebrigen Rueckmeldungen kommen im Nachlauf (ohne Umlaufzeit 500 ms)
+	if n := len(logs.grep("probe a1b2c3")); n != 0 {
+		t.Fatalf("zeile vor dem Nachlauf (%d)", n)
+	}
+	gccLines := logs.grep("probe 0f9e8d")
+	if len(gccLines) != 1 || strings.Contains(gccLines[0].S, "bwe") || !strings.HasSuffix(gccLines[0].S, "ergebnis=fail grund=gcc dauer=0.4s stufe=1 geklemmt=0 hinweis=gcc est=1100k gcc=900k") {
+		t.Fatalf("gcc: %v", gccLines)
+	}
+	time.Sleep(700 * time.Millisecond)
+	lines := logs.grep("probe a1b2c3")
+	if len(lines) != 1 {
+		t.Fatalf("%d Zeilen", len(lines))
+	}
+	t.Log(lines[0].S)
+	if lines[0].T < 0.45 {
+		t.Fatalf("zeile nach %.2f s - vor dem Nachlauf", lines[0].T)
+	}
+	re := regexp.MustCompile(`probe a1b2c3 platz=speaker schritt=m>h ziel=1879k fuell=800k ergebnis=fail grund=gcc dauer=0\.4s stufe=1 geklemmt=0 hinweis=gcc est=1100k gcc=900k bwe=staut bwe_schlange=(\d+)ms bwe_verlust=0\.0% bwe_durchsatz=(\d+)k bwe_zustand=(warnung|stau) bwe_fenster=[45] bwe_sofort=staut-nicht$`)
+	g := re.FindStringSubmatch(lines[0].S)
+	if g == nil {
+		t.Fatalf("zeile: %q", lines[0].S)
+	}
+	if q, _ := strconv.Atoi(g[1]); q < 100 || q > 300 {
+		t.Fatalf("schlange %d ms", q)
+	}
+	if d, _ := strconv.Atoi(g[2]); d < 600 || d > 800 {
+		t.Fatalf("durchsatz %dk (Leitung 700k)", d)
 	}
 }
 
