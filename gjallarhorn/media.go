@@ -171,6 +171,13 @@ type leg struct {
 	srcEnd    [3]uint64 // Zaehler des Abgleichs der beendeten Spuren: Doppel, zu alt, spaet (endSrc)
 	closed    bool
 	rttNs     atomic.Int64 // Umlaufzeit aus den Empfaengerberichten (Probing: Laenge des Fensters)
+	bwe       *bweWrap     // nur HORN_BWE=mit (UDP-Beine): Mitleser mit eigenem Stau-Detektor, sonst nil
+}
+
+func (l *leg) bweWrap() *bweWrap {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.bwe
 }
 
 func classOf(s string) fwd.Class {

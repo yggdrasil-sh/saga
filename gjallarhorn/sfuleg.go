@@ -37,6 +37,7 @@ import (
 type gccHook struct {
 	mu   sync.Mutex
 	next func(cc.BandwidthEstimator)
+	mit  bool // HORN_BWE=mit: Huelle mit Mitleser und eigenem Stau-Detektor um den Schaetzer (bwe.go)
 }
 
 // newSFUAPI baut die pion-API fuer SFU-Beine. UDP: NACK/RTX, TWCC-Kopf auf
@@ -103,10 +104,21 @@ func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook) (*webrtc.API, e
 		return nil, err
 	}
 	if udp && hook != nil {
-		ccf, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
+		newGCC := func() (cc.BandwidthEstimator, error) {
 			return gcc.NewSendSideBWE(gcc.SendSideBWEInitialBitrate(1_200_000), gcc.SendSideBWEMinBitrate(100_000),
 				gcc.SendSideBWEMaxBitrate(25_000_000), gcc.SendSideBWEPacer(gcc.NewNoOpPacer()))
-		})
+		}
+		factory := newGCC
+		if hook.mit { // sonst bleibt die Fabrik, wie sie war: keine Huelle
+			factory = func() (cc.BandwidthEstimator, error) {
+				est, err := newGCC()
+				if err != nil {
+					return nil, err
+				}
+				return newBWEWrap(est), nil
+			}
+		}
+		ccf, err := cc.NewInterceptor(factory)
 		if err != nil {
 			return nil, err
 		}
@@ -233,6 +245,12 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 			}
 			sl.ExtRTT = func() time.Duration { return time.Duration(l.rttNs.Load()) }
 			sl.ExtStat = func() sfu.ExtStat { return gccStat(est.GetStats()) }
+			if b, ok := est.(*bweWrap); ok { // HORN_BWE=mit
+				l.mu.Lock()
+				l.bwe = b
+				l.mu.Unlock()
+				bweAttach(l, b, est.GetTargetBitrate, sl.EstimateKbit)
+			}
 		}
 	} else {
 		pc, err = api.NewPeerConnection(webrtc.Configuration{})
@@ -259,6 +277,7 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		s.closeLeg(l, "aufbau fehlgeschlagen")
 		return nil, "", fmt.Errorf("angebot: %w", err)
 	}
+	bweHooked := false
 	for _, o := range sl.Outs() {
 		rk, mime := webrtc.RTPCodecTypeAudio, mimeOpus
 		if o.Kind == fwd.Video {
@@ -271,6 +290,13 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 			return nil, "", fmt.Errorf("spur: %w", err)
 		}
 		go readSenderRTCP(sender, o, &l.rttNs)
+		if b := l.bweWrap(); b != nil && !bweHooked {
+			// HORN_BWE=mit: Waehlt ICE ein anderes Adresspaar, gilt die bisherige Laufzeit-Basis nicht mehr
+			if tr := sender.Transport(); tr != nil && tr.ICETransport() != nil {
+				bweHooked = true
+				tr.ICETransport().OnSelectedCandidatePairChange(func(*webrtc.ICECandidatePair) { b.m.Reset(bweNow()) })
+			}
+		}
 	}
 	ans, err := pc.CreateAnswer(nil)
 	if err != nil {
@@ -411,7 +437,13 @@ func (s *server) onProbe(ev sfu.ProbeEvent) {
 	if l == nil {
 		return
 	}
-	log.Print(probeLine(shortID(l.id), ev))
+	line := probeLine(shortID(l.id), ev)
+	if b := l.bweWrap(); b != nil {
+		// HORN_BWE=mit: Urteil des eigenen Detektors ueber die Pakete, die waehrend der Probe gesendet wurden
+		now := bweNow()
+		line += bweProbe(b.m.Span(now-int64(ev.Dur), now))
+	}
+	log.Print(line)
 }
 
 func probeLine(id string, ev sfu.ProbeEvent) string {
@@ -631,9 +663,13 @@ func (s *server) apiSFULayout(w http.ResponseWriter, r *http.Request) {
 	}
 	st := l.stats()
 	ps := l.sl.ProbeStats()
-	writeJSON(w, 200, map[string]any{"slots": l.sl.Layout(), "est_kbit": l.sl.EstimateKbit(), "stats": st,
+	out := map[string]any{"slots": l.sl.Layout(), "est_kbit": l.sl.EstimateKbit(), "stats": st,
 		"probes": map[string]any{"started": ps.Started, "passed": ps.Passed, "failed": ps.Failed, "aborted": ps.Aborted, "unclear": ps.Unclear, "clamped": ps.Clamped, "pad_bytes": ps.PadBytes, "late_dropped": ps.LateDropped, "last": ps.Last},
-		"pauses": l.fl.Stats.Pauses.Load(), "tid_skipped": l.fl.Stats.TIDSkipped.Load(), "write_stalls": l.fl.Stats.WriteStalls.Load()})
+		"pauses": l.fl.Stats.Pauses.Load(), "tid_skipped": l.fl.Stats.TIDSkipped.Load(), "write_stalls": l.fl.Stats.WriteStalls.Load()}
+	if b := l.bweWrap(); b != nil { // HORN_BWE=mit: Zustand und Zaehler des eigenen Detektors
+		out["bwe"] = bweJSON(b)
+	}
+	writeJSON(w, 200, out)
 }
 
 // configureNackNoPad richtet NACK wie webrtc.ConfigureNackWithOptions ein (Erzeuger mit nackGenOpts, Antworter mit

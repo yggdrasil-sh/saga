@@ -49,6 +49,7 @@ type config struct {
 	Mode      string // "probe" (Spiegel) oder "node" (Weiterleiter)
 	Dev       bool   // HORN_DEV=1: Entwicklungs-Token und Testseite (nur Tests!)
 	Probing   bool   // HORN_PROBING (Standard an): Probing mit Fuelldaten, siehe internal/sfu/probe.go
+	BWE       string // HORN_BWE: gcc (Standard) oder mit (eigener Stau-Detektor liest mit und schreibt mit), siehe bwe.go
 	Certs     netx.CertOptions
 }
 
@@ -83,6 +84,10 @@ func loadConfig(bench bool) (*config, error) {
 	}
 	if c.Mode != "probe" && c.Mode != "node" {
 		return nil, errors.New("HORN_MODE: probe oder node")
+	}
+	var warn string
+	if c.BWE, warn = parseBWE(os.Getenv("HORN_BWE")); warn != "" {
+		log.Printf("WARNUNG: %s", warn)
 	}
 	c.UDPListen = env("HORN_UDP_LISTEN", c.Listen)
 	pm, err := netx.ParseProxyMode(env("HORN_PROXY_PROTOCOL", "0"))
@@ -245,6 +250,9 @@ func newServer(cfg *config) (*server, error) {
 	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32),
 		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32), verifier: &sagaVerifier{}, graves: map[string]time.Time{}, kicked: map[string]time.Time{}}
 	if cfg.Mode == "node" {
+		if s.gcc.mit = cfg.BWE == bweMit; s.gcc.mit {
+			log.Printf("HORN_BWE=mit: eigener Stau-Detektor liest auf UDP-Beinen mit (entscheidet nichts)")
+		}
 		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers, OnProbe: s.onProbe,
 			Probing: cfg.Probing}
 		if cfg.Dev {
