@@ -293,12 +293,25 @@ type Leg struct {
 	// ExtRTT die zuletzt gemessene Umlaufzeit (0 = unbekannt). Beide optional, nur fuer Probing (probe.go).
 	ExtOver func() bool
 	ExtRTT  func() time.Duration
+	// ExtStat liefert den Zustand der externen Schaetzung im Einzelnen (optional): Damit wertet die Probe selbst aus, ob
+	// die Leitung staut (probe.go), statt sich nur auf die Bewegung des Ziels zu verlassen.
+	ExtStat func() ExtStat
 
 	pr      probe
 	pstat   ProbeStats
 	pf      legFail // Abstand nach gescheiterten Proben, je Zielrate
 	prNext  int64   // nach einer abgebrochenen Probe: fruehestens dann die naechste auf diesem Bein
 	movedAt int64   // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
+}
+
+// ExtStat: Zustand der externen Schaetzung (GCC) - Laufzeit-Trend gegen seine Schwelle, Verlust, die beiden Teilziele.
+type ExtStat struct {
+	Over     bool    // Ueberlast gemeldet (wie ExtOver)
+	DelayMs  float64 // Laufzeit-Trend (ms; steigend = Stau baut sich auf)
+	ThreshMs float64 // Schwelle, ab der der Trend als Ueberlast zaehlt (ms, passt sich an)
+	Loss     float64 // geglaetteter Verlustanteil der Rueckmeldungen (0..1)
+	DelayBps int     // Ziel aus der Laufzeit (bit/s)
+	LossBps  int     // Ziel aus dem Verlust (bit/s)
 }
 
 // slot ist ein Empfangsplatz (Steuerdaten).

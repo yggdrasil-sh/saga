@@ -232,6 +232,7 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 				return st["usage"] == "overuse" || st["state"] == "decrease"
 			}
 			sl.ExtRTT = func() time.Duration { return time.Duration(l.rttNs.Load()) }
+			sl.ExtStat = func() sfu.ExtStat { return gccStat(est.GetStats()) }
 		}
 	} else {
 		pc, err = api.NewPeerConnection(webrtc.Configuration{})
@@ -682,4 +683,20 @@ func (*twccTapI) BindRTCPWriter(w interceptor.RTCPWriter) interceptor.RTCPWriter
 		}
 		return w.Write(ps, a)
 	})
+}
+
+// gccStat uebersetzt die Statistik von pion-GCC (Karte mit festen Schluesseln) in sfu.ExtStat. Fehlende oder anders
+// getypte Eintraege bleiben null - die Probe faellt dann auf die Bewegung des Ziels zurueck.
+func gccStat(st map[string]any) sfu.ExtStat {
+	f := func(k string) float64 {
+		switch v := st[k].(type) {
+		case float64:
+			return v
+		case int:
+			return float64(v)
+		}
+		return 0
+	}
+	return sfu.ExtStat{Over: st["usage"] == "overuse" || st["state"] == "decrease", DelayMs: f("delayEstimate"),
+		ThreshMs: f("delayThreshold"), Loss: f("averageLoss"), DelayBps: int(f("delayTargetBitrate")), LossBps: int(f("lossTargetBitrate"))}
 }
