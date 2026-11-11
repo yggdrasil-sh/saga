@@ -481,6 +481,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// Schaetzung und Verteilung
 	prb := l.probing(cfg)
 	l.est.probing = prb
+	// Anlauf (probe.go, freier Versuch zum Anrufbeginn): Bis der freie Versuch des Beins verbraucht ist, plant es genau
+	// wie ohne Probing - Deckel der Schaetzung, Schonfrist und Aufschub wie dort, keine Proben.
+	l.est.first = prb && !l.firstUsed
 	l.est.update(l, dt, now)
 	l.probeStep(now) // laufende Probe: weiter, Abbruch oder Freigabe (hebt dann die Schaetzung)
 	budget := l.est.bps
@@ -581,6 +584,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// Probing: der erste Schritt nach oben (in der Reihenfolge des Vorrangs), den nur die Schaetzung bzw. die
 	// Vorgeschichte verhindert - fuer ihn beginnt am Ende des Takts eine Probe (probe.go)
 	prb = prb && l.est.gccLast > 0
+	// book: Buchfuehrung zu Schritten und Rueckfaellen (freier Versuch, Abstand je Zielrate) - auch im Anlauf.
+	// start: Anlauf, siehe oben - die Planung selbst laeuft dann ohne Probing (prb aus).
+	book, start := prb, prb && l.est.first
+	prb = prb && !start
 	var cand struct {
 		s    *slot
 		rank int
@@ -633,8 +640,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// Ein Schritt, fuer den die Fuellrate ueber probeFillMax laege (z. B. Bildschirm von l auf h), laesst sich
 			// nicht proben. Er wird nicht "halb geprobt" freigegeben, sondern laeuft wie ohne Probing: Der Deckel der
 			// Schaetzung folgt seinem Bedarf (wantBig), der Wechsel selbst ist die Probe, der Aufschub das Netz.
-			prb := prb && !(need*upHeadroom-sum > probeFillMax)
-			big = !prb && !cur && l.est.probing && l.est.gccLast > 0
+			fits := !(need*upHeadroom-sum > probeFillMax)
+			prb := prb && fits
+			big = !prb && !cur && !start && l.est.probing && l.est.gccLast > 0
 			// passed: Fuer genau diesen Schritt ist gerade eine Probe bestanden (probe.go)
 			passed := prb && !cur && d.ok != 0 && now-d.ok <= int64(probeGrant)
 			tgt := need*upHeadroom + audioCut // Zielrate des Beins fuer diesen Schritt
@@ -684,6 +692,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 					// Probing ohne Probe gegangen: Schaetzung hoch genug, keine Vorgeschichte)
 					if free && (d.d > layerDwell || l.pf.covers(tgt) || l.est.capProbed > 0 && need*upHeadroom > l.est.capProbed-audioCut) {
 						l.freeUsed(c.s, rank)
+					}
+					// Anlauf: ebenso - der Schritt ging wie ohne Probing, haette mit Probing aber eine Probe gebraucht
+					// (nicht probbare Schritte ausgenommen: Sie laufen immer so)
+					if start && fits && (d.d > layerDwell || l.est.capProbed > 0 && need*upHeadroom > l.est.capProbed-audioCut) {
+						l.firstUsed = true
 					}
 				}
 				continue
@@ -820,7 +833,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// seinem Schritt hinauf - der Schritt ging mit einer zu kleinen Rate durch (Anrufbeginn: der Kodierer faehrt
 			// erst hoch; im Labor h nach 0,2 s mit 299 kbit/s statt 1250). Sein Scheitern sagt nichts ueber die Leitung:
 			// Es bleibt beim Aufschub wie ohne Probing, zaehlt aber nicht als gescheiterter Versuch des Beins.
-			unramped := prb && was != nil && was.peer == s.owner && s.rampOwner == s.owner && s.rampRate > 0 &&
+			unramped := book && was != nil && was.peer == s.owner && s.rampOwner == s.owner && s.rampRate > 0 &&
 				layerRate(was) > probeRampUp*s.rampRate
 			if s.dwellOwner != s.owner {
 				s.dw, s.dwellOwner = [4]dwell{}, s.owner
@@ -830,7 +843,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			case fast:
 				d.d, d.at = min(2*max(d.d, layerDwell), upDwellMax), now
 				d.afterFail(now)
-				if prb && s.upT > 0 && !unramped {
+				if book && s.upT > 0 && !unramped {
 					// Der Fehlversuch gilt fuer das Bein, nicht nur fuer diesen Platz und Besitzer: Wechselt der Sprecher,
 					// braucht auch der naechste fuer eine Zielrate ab dieser eine bestandene Probe
 					l.pf.fail(s.upT, now)
@@ -840,7 +853,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				d.afterFail(now)
 			}
 			s.downAt, s.downOwner = now, s.owner
-			if prb && was != nil && was.peer == s.owner { // Rueckfall derselben Quelle, kein Besitzerwechsel
+			if book && was != nil && was.peer == s.owner { // Rueckfall derselben Quelle, kein Besitzerwechsel
 				l.freeGrant(s, layerRank(st.Layer), layerRank(s.layer), heldFor, unramped)
 			}
 		} else if s.layer != "" && layerRank(st.Layer) > layerRank(s.layer) {
@@ -849,7 +862,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		} else if s.layer == "" || s.rampOwner != s.owner {
 			s.rampRate, s.rampOwner = layerRate(st), s.owner // Platz beginnt auf dieser Schicht (Anrufbeginn, neuer Besitzer)
 		}
-		if prb && layerRank(st.Layer) > layerRank(s.layer) {
+		if book && layerRank(st.Layer) > layerRank(s.layer) {
 			l.est.stepAt = now // Schritt nach oben (auch aus der Pause): Die Rate springt, siehe estimator.clamped
 		}
 		s.paused, s.layer, s.tid = false, st.Layer, c.tid
@@ -999,6 +1012,7 @@ type estimator struct {
 	failFrom  int64
 	// Probing (probe.go)
 	probing    bool    // dieses Bein probt mit Fuelldaten: der Deckel folgt nicht mehr dem Bedarf (want)
+	first      bool    // ... aber noch nicht: Anlauf, der freie Versuch des Beins steht aus - alles wie ohne Probing (planLeg)
 	blind      bool    // ... ausser der naechste Schritt darf ohne Probe versucht werden (planLeg)
 	wantBig    float64 // ... bzw. bis zum Bedarf eines Schritts, der sich nicht proben laesst (Fuellrate ueber probeFillMax)
 	wantFree   float64 // ... bzw. eines Schritts, der ohne Probe versucht werden darf (freier Versuch, probe.go)
@@ -1111,7 +1125,7 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 // gefallenes Ziel unter der Rate ist Stau, sofort). Im Dauerzustand springt die Rate nicht durch das Band; dort
 // verdeckte die Ausnahme sonst einen echten Ruecksprung bei leichtem Stau bis zu lagMax (Pruefung 3, Fund 2).
 func (e *estimator) clamped(v float64, now int64) bool {
-	return e.probing && e.stepAt != 0 && now-e.stepAt < int64(clampWin) && v > probeDecSent*e.sendRate()
+	return e.probing && !e.first && e.stepAt != 0 && now-e.stepAt < int64(clampWin) && v > probeDecSent*e.sendRate()
 }
 
 // clampWin: So lange nach einem Schritt nach oben kann die Klemmung den Wechsel treffen. Sie braucht eine Empfangsrate,
@@ -1315,6 +1329,9 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		}
 		if e.probing && c < e.wantFree { // freier Versuch (probe.go): ebenso
 			c = e.wantFree
+		}
+		if e.first && l.Ext != nil && c < e.want { // Anlauf: Deckel wie ohne Probing (capProbed bleibt der mit Probing)
+			c = e.want
 		}
 		if e.bps > c {
 			e.bps = c
