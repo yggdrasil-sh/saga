@@ -625,6 +625,7 @@ func TestUDPBWEAus(t *testing.T) {
 //	policer  20 s frei, 30 s Policer 1000 kbit/s (Puffer 20 ms), 30 s frei
 //	engjit   30 s Leitung 1000 kbit/s, dann 240 s frei mit Jitter 0-6 ms und Pausen wie s60 (Proben nach dem Rueckfall)
 //	mitte    20 s frei, 20 s Leitung 1000 kbit/s, 20 s frei, 20 s Leitung 1250 kbit/s, 20 s frei
+//	knapp    wie mitte, aber Leitung 1450 und 1520 kbit/s - knapp unter der Rate von h (rund 1570 kbit/s)
 func TestUDPBWEMessung(t *testing.T) {
 	want := os.Getenv("HORN_BWE_MESSUNG")
 	if want == "" {
@@ -650,6 +651,7 @@ func TestUDPBWEMessung(t *testing.T) {
 		"policer": {nil, []schritt{{20, "policer-1000", eng(1000, 20)}, {50, "frei", frei}}, 80},
 		"engjit":  {eng(1000, 300), []schritt{{30, "frei", func(s *strecke) { s.rate.Store(0); s.jit.Store(6e6); s.pause.Store(true) }}}, 270},
 		"mitte":   {nil, []schritt{{20, "eng-1000", eng(1000, 300)}, {40, "frei", frei}, {60, "eng-1250", eng(1250, 300)}, {80, "frei", frei}}, 100},
+		"knapp":   {nil, []schritt{{20, "eng-1450", eng(1450, 300)}, {40, "frei", frei}, {60, "eng-1520", eng(1520, 300)}, {80, "frei", frei}}, 100},
 	}
 	out := os.Getenv("HORN_BWE_OUT")
 	n, _ := strconv.Atoi(os.Getenv("HORN_BWE_N"))
