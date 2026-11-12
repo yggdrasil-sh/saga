@@ -878,8 +878,17 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// begaenne bei abwechselnd fruehem und spaetem Scheitern jedes Mal alles von vorn).
 			// - ebenso, wenn die Schonfrist nach diesem Hochschalten gescheitert ist (GCC-Ziel gefallen bzw. nicht
 			// nachgezogen, estimator.probeFailed): auch das ist ein gescheiterter Versuch, kein Halten
-			fast := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner &&
-				(now-s.upAt < int64(upFail) || l.est.probeFailed(s.upAt, now))
+			// - ebenso (nur Probing), wenn Schritte mit einer eben bestandenen Probe probeFreshN Mal in Folge binnen
+			// probeFresh zurueckfallen: Die Leitung traegt die kurze Probe, aber nicht die Schicht (Token-Bucket-Policer:
+			// der Eimer traegt 0,4 bis 0,6 s Fuellung, die Dauerlast nicht) - gescheiterte Versuche, kein Halten. Ein
+			// einzelner frischer Rueckfall zaehlt nicht (Stoerung von aussen kurz nach dem Schritt).
+			own := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner
+			if fresh := own && book && s.upProbe && now-s.upAt < int64(probeFresh); fresh {
+				s.freshN++
+			} else if own {
+				s.freshN = 0
+			}
+			fast := own && (now-s.upAt < int64(upFail) || l.est.probeFailed(s.upAt, now) || s.freshN >= probeFreshN)
 			// unramped (nur Probing): Die Schicht, von der der Platz faellt, sendet inzwischen deutlich mehr als bei
 			// seinem Schritt hinauf - der Schritt ging mit einer zu kleinen Rate durch (Anrufbeginn: der Kodierer faehrt
 			// erst hoch; im Labor h nach 0,2 s mit 299 kbit/s statt 1250). Sein Scheitern sagt nichts ueber die Leitung:
@@ -912,6 +921,12 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			}
 		} else if s.layer != "" && layerRank(st.Layer) > layerRank(s.layer) {
 			s.upAt, s.upOwner, s.upT = now, s.owner, sum*upHeadroom+audioCut
+			// mit bestandener Probe (probe.go, probeEnd: dwell.ok dieses Platzes und dieser Schicht)?
+			s.upProbe = false
+			if s.dwellOwner == s.owner {
+				d := s.dw[layerRank(st.Layer)]
+				s.upProbe = d.ok != 0 && now-d.ok <= int64(probeGrant)
+			}
 			s.rampRate, s.rampOwner = layerRate(st), s.owner
 		} else if s.layer == "" || s.rampOwner != s.owner {
 			s.rampRate, s.rampOwner = layerRate(st), s.owner // Platz beginnt auf dieser Schicht (Anrufbeginn, neuer Besitzer)

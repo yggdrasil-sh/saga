@@ -616,3 +616,41 @@ func TestProbingFuelldatenFliessenNicht(t *testing.T) {
 		t.Fatalf("h erst nach %v", d)
 	}
 }
+
+// TestProbingFrischerRueckfall (Stufe 3, labbwe2: Token-Bucket-Policer knapp unter h): Die Leitung traegt die kurze
+// Probe, aber nicht die Schicht - jede Probe besteht, h faellt nach rund 5 s zurueck. Ohne Gegenmittel (probeFresh 0)
+// beginnt das alle paar Sekunden von vorn: Der Rueckfall nach mehr als upFail zaehlt nicht als Fehlversuch, und die
+// bestandene Probe setzt den Abstand zurueck. Mit probeFresh zaehlt der Rueckfall binnen 15 s als Fehlversuch: Der
+// Aufschub waechst (8, 16, 32 ... s, Proben danach hoechstens probeDwellMax), die Zahl der Versuche faellt auf einen
+// Bruchteil. Je gcc und eigen.
+func TestProbingFrischerRueckfall(t *testing.T) {
+	run := func(eigen bool, fresh time.Duration) (ups int, onH time.Duration) {
+		old := probeFresh
+		probeFresh = fresh
+		defer func() { probeFresh = old }()
+		er := neuEigen(t, eigen, 1250e3, 810e3, 1)
+		er.l.firstUsed = true
+		er.grow = 400e3 // GCC zieht nach dem Schritt binnen 2 s nach: Die Schonfrist besteht, h laeuft erst einmal
+		er.until("m", 2*time.Second)
+		var hFor time.Duration
+		res := er.measure(10*time.Minute, func(el time.Duration) {
+			er.link = 0 // die Probe traegt der Eimer
+			if er.layer() == "h" {
+				if hFor += 200 * time.Millisecond; hFor >= 6*time.Second { // ... h nur 6 s, dann ist er leer
+					er.link = 1200e3
+				}
+			} else {
+				hFor = 0
+			}
+		})
+		return res.ups, res.seen["h"]
+	}
+	for _, eigen := range []bool{false, true} {
+		ups0, h0 := run(eigen, 0)
+		ups, h := run(eigen, probeFresh)
+		t.Logf("eigen=%v: Schritte auf h in 10 min ohne probeFresh %d (%v auf h), mit %d (%v)", eigen, ups0, h0.Round(time.Second), ups, h.Round(time.Second))
+		if ups0 < 30 || ups > 12 || ups == 0 {
+			t.Fatalf("eigen=%v: Schritte auf h ohne probeFresh %d, mit %d (erwartet: mindestens 30, dann hoechstens 12)", eigen, ups0, ups)
+		}
+	}
+}

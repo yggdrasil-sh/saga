@@ -625,6 +625,16 @@ type legFail struct {
 	n    int           // gescheiterte Proben in Folge
 }
 
+// probeFresh: Fallen Schritte, die mit einer bestandenen Probe kamen, probeFreshN Mal in Folge binnen dieser Zeit
+// zurueck, zaehlt das als echter Fehlversuch (Aufschub, Proben-Abstand; planLeg: fast). UDP-Aufbau mit
+// Token-Bucket-Policer 1450 bzw. 1500 kbit/s (Eimer 150 bzw. 100 ms): alle Proben bestanden, die Schritte fielen nach
+// 3,1 bis 13,4 s zurueck - immer wieder, ohne dass Aufschub oder Abstand wuchsen. Erst der zweite in Folge: Auf einer
+// freien Leitung mit Stoerschueben (TestProbingStoerschuebe) faellt auch mal ein Schritt bald nach der Probe, der
+// naechste haelt dann. Variable fuer Tests.
+var probeFresh = 15 * time.Second
+
+const probeFreshN = 2
+
 // probeNear: Zielraten ab diesem Anteil einer gescheiterten gelten als "dieselbe oder hoeher".
 const probeNear = 0.9
 

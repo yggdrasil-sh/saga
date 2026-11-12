@@ -351,6 +351,8 @@ type slot struct {
 	upAt    int64
 	upOwner *Peer
 	upT     float64 // Zielrate des Beins (mit Reserve und Ton) bei diesem Wechsel - fuer Leg.pf, wenn er scheitert
+	upProbe bool    // ... und er kam mit einer eben bestandenen Probe (Probing: frischer Rueckfall, probeFresh)
+	freshN  int     // frische Rueckfaelle in Folge (Schritt mit bestandener Probe, binnen probeFresh zurueck), fuer upOwner
 	// Probing: Rate der Schicht, als der Platz zuletzt auf sie hinaufging bzw. mit ihr begann, und fuer wen - war die
 	// Quelle da schon eingeschwungen (unramped in planLeg)?
 	rampRate  float64
