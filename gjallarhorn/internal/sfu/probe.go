@@ -125,6 +125,7 @@ type probe struct {
 	fown   *Peer    // ... und sein Besitzer
 	out    *fwd.Out // ... sein Ausgang
 	target float64  // Zielrate des Beins (bit/s, mit Ton)
+	need   float64  // Bedarf des Beins nach dem Schritt ohne die Reserve (bit/s, mit Ton) - das muss auch bestaetigt sein
 	fill   float64  // volle Fuellrate (bit/s)
 	win    int64    // Dauer des Fensters
 	pad0   uint64   // Fuell-Bytes des Beins zu Beginn des Fensters
@@ -226,7 +227,7 @@ func (l *Leg) probeBegin(s, fs *slot, rank int, need, sum, audio float64, now in
 		}
 	}
 	l.pr = probe{stage: 1, at: now, t0: now, s: s, owner: s.owner, layer: s.layer, rank: rank, fs: fs, fown: fs.owner, out: fs.out,
-		target: target, fill: fill, win: win}
+		target: target, need: (target-audio)/upHeadroom + audio, fill: fill, win: win}
 	loss0 := 0.0
 	if l.ExtStat != nil {
 		loss0 = l.ExtStat().Loss
@@ -384,7 +385,7 @@ func (l *Leg) probeVerdict(now int64) {
 	v, r := l.ExtSpan(time.Duration(now-p.t0), time.Duration(now-p.fillEnd), time.Duration(now-rf))
 	p.det, p.detSent, p.detAcked = v.Result, r.SentBps, r.AckedBps
 	proof := r.Ns >= int64(probeProofMin) && float64(r.SentBps) >= probeSentMin*p.target &&
-		float64(r.AckedBps) >= probeAckMin*float64(r.SentBps)
+		float64(r.AckedBps) >= probeAckMin*float64(r.SentBps) && float64(r.AckedBps) >= p.need
 	switch {
 	case v.Result == bwe.VerdictCong:
 		l.probeEnd(probeFail, "stau", now)
@@ -400,15 +401,20 @@ func (l *Leg) probeVerdict(now int64) {
 		case v.Result != bwe.VerdictFree:
 			why = "bwe"
 		}
+		// ramp: Das Stausignal von GCC kam schon in der Rampe (halbe Fuellung) - die volle Fuellung lief nie, die Probe
+		// hat die Zielrate nicht geprueft. Die zweite solche Probe in Folge zaehlt als gescheitert: In der Enge folgte
+		// sonst auf zwei Rampen-Abbrueche eine dritte Probe, die mit voller Fuellung eine Schlange von 50 bis 100 ms baut.
+		ramp := p.gsig != "" && p.fillFrom == 0
 		if l.unkAt != 0 && now-l.unkAt <= int64(probeUnkGap) {
 			l.unkN++
 		} else {
-			l.unkN = 1
+			l.unkN, l.unkRamp = 1, false
 		}
-		if l.unkN >= probeUnkMax {
+		if l.unkN >= probeUnkMax || ramp && l.unkRamp {
 			l.probeEnd(probeFail, why, now)
 			return
 		}
+		l.unkRamp = ramp
 		p.susWhy = why
 		l.probeEnd(probeAbort, whyUnclear, now)
 	}
@@ -485,7 +491,7 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 		d = p.s.dwFor(p.rank)
 	}
 	if res != probeAbort {
-		l.unkAt, l.unkN = 0, 0
+		l.unkAt, l.unkN, l.unkRamp = 0, 0, false
 	}
 	l.pstat.Clamped += uint64(p.clamps)
 	switch res {

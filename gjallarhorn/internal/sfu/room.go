@@ -313,6 +313,7 @@ type Leg struct {
 	firstUsed bool    // der freie Versuch zum Anrufbeginn ist verbraucht (probe.go)
 	unkAt     int64   // letzte Probe ohne klares Ergebnis (0 = keine offen): Die naechste solche zaehlt als gescheitert
 	unkN      int     // eigen: Proben ohne klares Ergebnis in Folge (probeUnkMax)
+	unkRamp   bool    // ... die letzte davon endete schon in der Rampe (Stausignal von GCC bei halber Fuellung)
 	movedAt   int64   // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
 }
 
