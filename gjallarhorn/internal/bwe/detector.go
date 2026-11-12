@@ -177,8 +177,14 @@ type Rates struct {
 // Tip: Was die zuletzt gemeldeten Pakete zeigen (Detector.Tip).
 type Tip struct {
 	// Clear: Der Detektor widerlegt einen Stau ausdruecklich - Zustand frei, Basis nicht jung, Rueckmeldung frisch und
-	// nah an der Gegenwart, die juengsten Pakete ohne Schlange, Verlust nicht gestiegen.
-	Clear    bool
+	// nah an der Gegenwart, die juengsten Pakete ohne Schlange, Verlust nicht gestiegen. Clear = Calm und nicht LossUp.
+	Clear bool
+	// Calm: dasselbe ohne den Verlust - Zustand frei, Basis nicht jung, Rueckmeldung frisch, keine Schlange an der Spitze.
+	// LossUp: Der Verlust an der Spitze ist gegenueber den 10 s davor gestiegen bzw. hoch. Getrennt, weil ein einzelner
+	// Verlust-Schub kein Zeichen der Leitung sein muss (das Schluesselbild nach einem Schichtwechsel ueberlaeuft einen
+	// kurzen Puffer) - die Steuerung haelt eine eben bestandene Probe deshalb nur gegen Calm (sfu: estimator.held).
+	Calm     bool
+	LossUp   bool
 	QueueUs  int64   // kleinste Laufzeit der juengsten TipPkts Pakete ueber der Basis
 	Loss     float64 // Verlustanteil der letzten TipLossNs
 	LossLong float64 // ... der 10 s davor
@@ -768,8 +774,10 @@ func (d *Detector) Tip(nowNs int64) Tip {
 		return t
 	}
 	t.QueueUs = minDl - b
-	t.Clear = d.state == Free && !d.young(newest) && t.N >= min(3, c.TipPkts) &&
+	t.Calm = d.state == Free && !d.young(newest) && t.N >= min(3, c.TipPkts) &&
 		d.lastFbNs > 0 && nowNs-d.lastFbNs <= c.TipAgeNs && t.LagNs <= c.TipLagNs &&
-		t.QueueUs < c.TipQueueUs && (lost < 2 || t.Loss <= t.LossLong+c.TipLossUp) && t.Loss < c.LossHi
+		t.QueueUs < c.TipQueueUs
+	t.LossUp = !(lost < 2 || t.Loss <= t.LossLong+c.TipLossUp) || t.Loss >= c.LossHi
+	t.Clear = t.Calm && !t.LossUp
 	return t
 }
