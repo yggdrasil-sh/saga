@@ -694,6 +694,7 @@ func (s *server) apiSFULayout(w http.ResponseWriter, r *http.Request) {
 		j := bweJSON(b)
 		if b.mode == bweEigen {
 			j["refuted"] = ps.Refuted // Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat
+			j["held"] = ps.Held       // ... bzw. die nur das Halten nach einer bestandenen Probe getragen hat
 		}
 		out["bwe"] = j
 	}

@@ -258,7 +258,7 @@ func newServer(cfg *config) (*server, error) {
 			s.gcc.bwe = bweEigen
 			log.Printf("HORN_BWE=eigen: eigener Stau-Detektor wertet auf UDP-Beinen die Proben und widerlegt grundlose Faelle des GCC-Ziels")
 		}
-		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers, OnProbe: s.onProbe,
+		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers, OnProbe: s.onProbe, OnLegEvent: s.onLegEvent,
 			Probing: cfg.Probing}
 		if cfg.Dev {
 			nc.Verifier = sfu.VerifierFunc(s.verifyDev)

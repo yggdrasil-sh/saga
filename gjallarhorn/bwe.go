@@ -27,6 +27,9 @@ import (
 //	eigen  Stufe 1 und 2: wie mit, und der Detektor entscheidet mit - er wertet die Proben (GCC haelt nur noch die
 //	     Fuellung an) und widerlegt einen Fall des GCC-Ziels, den die Leitung nicht zeigt (sfu.Leg.ExtTip, ExtSpan).
 //
+// Bei mit und eigen kommt dazu je Ruecknahme einer Schicht eine Zeile "schicht" mit Grund, bei eigen je Widerlegung
+// eine Zeile "bwe ... widerlegung=beginn|ende" (legEventLine).
+//
 // Jeder andere Wert gilt als gcc (mit Warnzeile).
 const (
 	bweGCC   = "gcc"
@@ -169,6 +172,53 @@ func bweLine(id string, c bwe.Change, gccBps, estKbit int) string {
 	s := c.Snap
 	return fmt.Sprintf("bwe %s zustand=%s vorher=%s grund=%s schlange=%dms verlust=%.1f%% durchsatz=%dk kapazitaet=%dk gcc=%dk est=%dk",
 		id, c.To, c.From, c.Why, s.QueueUs/1000, s.Loss*100, s.AckedBps/1000, s.CapBps/1000, gccBps/1000, estKbit)
+}
+
+// onLegEvent (sfu.Config.OnLegEvent): eine Zeile je Beginn und Ende einer Widerlegung (HORN_BWE=eigen) und je
+// Ruecknahme einer Schicht, mit Grund. Nur fuer Beine mit eigenem Stau-Detektor (HORN_BWE=mit bzw. eigen) - bei gcc
+// bleibt das Log, wie es war. Bein als Kurzkennung wie in "bein auf"; keine Kennungen von Personen, Geraeten oder
+// Raeumen, keine Adressen.
+func (s *server) onLegEvent(ev sfu.LegEvent) {
+	s.mu.Lock()
+	l := s.bySFU[ev.Leg]
+	s.mu.Unlock()
+	if l == nil {
+		return
+	}
+	b := l.bweWrap()
+	if b == nil {
+		return
+	}
+	log.Print(legEventLine(shortID(l.id), ev, b.m.Tip(bweNow())))
+}
+
+// legEventLine: Zeile zu einem Ereignis der Steuerung, mit dem, was der Detektor in diesem Augenblick an der Spitze
+// sieht (Zustand, Schlange, Verlust der letzten 500 ms; Schlange -1 = nichts Frisches).
+//
+//	bwe 5884a4 widerlegung=beginn art=spitze gcc=1130k rate=1330k est=1480k zustand=frei schlange=1ms verlust=0.0%
+//	bwe 5884a4 widerlegung=ende art=spitze grund=erholt dauer=1.6s gcc=1250k rate=1330k est=1480k zustand=frei schlange=1ms verlust=0.0%
+//	schicht 5884a4 platz=speaker h>m grund=gcc-fall est=1100k gcc=900k rate=1330k zustand=frei schlange=24ms verlust=3.1%
+func legEventLine(id string, ev sfu.LegEvent, tip bwe.Tip) string {
+	q := int64(-1)
+	if tip.QueueUs >= 0 {
+		q = tip.QueueUs / 1000
+	}
+	tail := fmt.Sprintf("gcc=%dk rate=%dk est=%dk zustand=%s schlange=%dms verlust=%.1f%%", ev.GccKbit, ev.RateKbit, ev.EstKbit, tip.State, q, tip.Loss*100)
+	switch ev.Kind {
+	case sfu.LegRefute:
+		return fmt.Sprintf("bwe %s widerlegung=beginn art=%s %s", id, ev.Art, tail)
+	case sfu.LegRefuteEnd:
+		return fmt.Sprintf("bwe %s widerlegung=ende art=%s grund=%s dauer=%.1fs %s", id, ev.Art, ev.Why, ev.Dur.Seconds(), tail)
+	}
+	from, to := ev.From, ev.To
+	if from == "" {
+		from = "p"
+	}
+	if to == "" {
+		to = "p"
+	}
+	return fmt.Sprintf("schicht %s platz=%s %s>%s grund=%s est=%dk gcc=%dk rate=%dk zustand=%s schlange=%dms verlust=%.1f%%",
+		id, ev.Class, from, to, ev.Why, ev.EstKbit, ev.GccKbit, ev.RateKbit, tip.State, q, tip.Loss*100)
 }
 
 // bweProbe: Zusatz zur Zeile "probe" - Urteil des Detektors ueber die Pakete der Probe nach dem Nachlauf (v) und

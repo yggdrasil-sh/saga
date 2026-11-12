@@ -156,6 +156,26 @@ func TestBWEZeilen(t *testing.T) {
 	if got != want {
 		t.Fatalf("\n%s\n%s", got, want)
 	}
+	// Widerlegung und Ruecknahme einer Schicht (sfu.LegEvent)
+	tip := bwe.Tip{State: bwe.Free, QueueUs: 1400, Loss: 0.031}
+	for _, c := range []struct {
+		ev   sfu.LegEvent
+		tip  bwe.Tip
+		want string
+	}{
+		{sfu.LegEvent{Kind: sfu.LegRefute, Art: "spitze", GccKbit: 1130, RateKbit: 1330, EstKbit: 1480}, tip,
+			"bwe 5884a4 widerlegung=beginn art=spitze gcc=1130k rate=1330k est=1480k zustand=frei schlange=1ms verlust=3.1%"},
+		{sfu.LegEvent{Kind: sfu.LegRefuteEnd, Art: "halten", Why: "detektor", Dur: 1600 * time.Millisecond, GccKbit: 393, RateKbit: 600, EstKbit: 835}, bwe.Tip{State: bwe.Warn, QueueUs: -1},
+			"bwe 5884a4 widerlegung=ende art=halten grund=detektor dauer=1.6s gcc=393k rate=600k est=835k zustand=warnung schlange=-1ms verlust=0.0%"},
+		{sfu.LegEvent{Kind: sfu.LegDown, Why: "gcc-fall", Class: "speaker", From: "h", To: "m", GccKbit: 900, RateKbit: 1330, EstKbit: 1100}, tip,
+			"schicht 5884a4 platz=speaker h>m grund=gcc-fall est=1100k gcc=900k rate=1330k zustand=frei schlange=1ms verlust=3.1%"},
+		{sfu.LegEvent{Kind: sfu.LegDown, Why: "bedarf", Class: "tile", From: "l", GccKbit: 900, RateKbit: 700, EstKbit: 650}, tip,
+			"schicht 5884a4 platz=tile l>p grund=bedarf est=650k gcc=900k rate=700k zustand=frei schlange=1ms verlust=3.1%"},
+	} {
+		if got := legEventLine("5884a4", c.ev, c.tip); got != c.want {
+			t.Fatalf("\n%s\n%s", got, c.want)
+		}
+	}
 	got = bweProbe(bwe.Verdict{Result: bwe.VerdictFree, QueueUs: 3900, Loss: 0, Bps: 1_640_000, WorstSt: bwe.Free, Windows: 15}, bwe.Verdict{Result: bwe.VerdictUnclear})
 	want = " bwe=staut-nicht bwe_schlange=3ms bwe_verlust=0.0% bwe_durchsatz=1640k bwe_zustand=frei bwe_fenster=15 bwe_sofort=unklar"
 	if bweTail(0) != 500*time.Millisecond || bweTail(40*time.Millisecond) != 280*time.Millisecond || bweTail(3*time.Second) != time.Second {
@@ -754,6 +774,9 @@ func TestUDPBWEMessung(t *testing.T) {
 			for _, ln := range a.logs.grep("bwe " + shortID(a.l.id)) {
 				t.Logf("%6.1f %s", ln.T, ln.S)
 			}
+			for _, ln := range a.logs.grep("schicht " + shortID(a.l.id)) {
+				t.Logf("%6.1f %s", ln.T, ln.S)
+			}
 			if out == "" {
 				return
 			}
@@ -764,7 +787,7 @@ func TestUDPBWEMessung(t *testing.T) {
 			}
 			a.logs.mu.Lock()
 			for _, ln := range a.logs.lines {
-				if strings.Contains(ln.S, "probe ") || strings.Contains(ln.S, "bwe ") {
+				if strings.Contains(ln.S, "probe ") || strings.Contains(ln.S, "bwe ") || strings.Contains(ln.S, "schicht ") {
 					_ = enc.Encode(map[string]any{"t": ln.T, "log": ln.S[strings.Index(ln.S, " ")+1:]})
 				}
 			}
