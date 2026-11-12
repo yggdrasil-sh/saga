@@ -105,10 +105,10 @@ func (f *fakeEst) AddStream(_ *interceptor.StreamInfo, w interceptor.RTPWriter) 
 	})
 }
 
-// Doppel: Geht eine RTP-Folgenummer auf einem Strom ein zweites Mal hinaus (die Quelle hat das Paket zweimal
-// geliefert, siehe fwd.TestDoppelDerQuelle), zaehlt die Huelle es als Doppel. Es geht weiter hinaus; bei eigen an
-// pion-GCC vorbei (dessen Verlust-Regler zaehlte es sonst als verloren), bei mit bleibt GCC unberuehrt. Bleibt die
-// Bestaetigung aus, ist das fuer den Detektor kein Verlust.
+// Doppel: Geht eine RTP-Folgenummer auf einem Strom ein zweites Mal hinaus, zaehlt die Huelle es als Doppel (sent.dup)
+// - seit dem Abgleich je Quelle (fwd.TestDoppelDerQuelle) sollte das nicht mehr vorkommen, der Zaehler bleibt als
+// Messwert. Es geht hinaus wie jedes Paket, auch durch pion-GCC (bei mit wie bei eigen; das fruehere Vorbeileiten bei
+// eigen wirkte nicht, TestPruefDoppelGCCVerlust). Bleibt die Bestaetigung aus, ist das fuer den Detektor kein Verlust.
 func TestBWEDoppel(t *testing.T) {
 	for _, mode := range []string{bweMit, bweEigen} {
 		est := &fakeEst{}
@@ -143,8 +143,8 @@ func TestBWEDoppel(t *testing.T) {
 		if len(out) != 9+1100+1 {
 			t.Fatalf("%s: %d Pakete hinaus", mode, len(out))
 		}
-		if want := len(out) - map[string]int{bweMit: 0, bweEigen: 2}[mode]; len(est.seen) != want {
-			t.Fatalf("%s: GCC sah %d Pakete, erwartet %d", mode, len(est.seen), want)
+		if len(est.seen) != len(out) {
+			t.Fatalf("%s: GCC sah %d Pakete, erwartet alle %d", mode, len(est.seen), len(out))
 		}
 	}
 }

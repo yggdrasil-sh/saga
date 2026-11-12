@@ -90,12 +90,15 @@ func newBWEWrap(est cc.BandwidthEstimator, mode string) *bweWrap {
 }
 
 // dupWin merkt sich die zuletzt gesendeten RTP-Folgenummern eines Stroms (je Platz die Nummer + 1, 0 = leer): Geht
-// eine Nummer ein zweites Mal hinaus, ist das Paket ein Doppel. Der Weiterleiter vergibt Folgenummern lueckenlos und
-// reicht ein Paket, das die Quelle zweimal liefert, zweimal mit derselben Nummer weiter (fwd: Folgenummer = die der
-// Quelle + Versatz; kein Abgleich auf Doppel). Das geschieht, wenn der sendende Browser zum Fuellen alte Pakete ueber
-// RTX wiederholt - pion gibt sie entpackt auf der Spur zurueck (TrackRemote.Read, readRTX). Der Empfaenger verwirft
-// das Doppel am SRTP-Wiederholungsschutz, bevor er es zaehlt oder per transport-cc bestaetigt; ohne diese
-// Unterscheidung saehe es wie Verlust aus (Labor labbwe1, 7.1 und 7.2).
+// eine Nummer ein zweites Mal hinaus, ist das Paket ein Doppel. Der Empfaenger verwirft es am
+// SRTP-Wiederholungsschutz, bevor er es zaehlt oder per transport-cc bestaetigt - es saehe wie Verlust aus (Labor
+// labbwe1, 7.1 und 7.2: Der sendende Browser wiederholt alte Pakete ueber RTX, pion gibt sie entpackt mit der
+// urspruenglichen Nummer zurueck, und der Weiterleiter reichte jedes Exemplar weiter).
+//
+// Seit dem Abgleich je Quelle (fwd.Source.admit) erreicht kein Doppel der Quelle mehr die Huelle, und der Weiterleiter
+// vergibt keine Folgenummer zweimal. Das Fenster bleibt als Messwert: sent.dup und dup_unacked sollten 0 sein - alles
+// andere hiesse, der Weiterleiter hat doch eine Nummer doppelt vergeben. Der Detektor wertet ein solches Paket, dessen
+// Bestaetigung ausbleibt, weiter nicht als Verlust.
 type dupWin [1024]uint32
 
 func (d *dupWin) seen(seq uint16) bool {
@@ -143,13 +146,9 @@ func (b *bweWrap) AddStream(info *interceptor.StreamInfo, w interceptor.RTPWrite
 			dupMu.Unlock()
 			b.m.Sent(bweNow(), binary.BigEndian.Uint16(raw), h.MarshalSize()+len(pl), k)
 		}
-		if dup && b.mode == bweEigen {
-			// eigen: Das Doppel geht hinaus wie bisher, aber an pion-GCC vorbei - sonst zaehlte dessen Verlust-Regler es
-			// als verloren (es wird nie bestaetigt) und senkte das Ziel ohne jeden Stau. Bei mit bleibt GCC unberuehrt.
-			// Pruefung (TestPruefDoppelGCCVerlust): Das wirkt so nicht - pion fuehrt die transport-cc-Nummer aus der
-			// Rueckmeldung auch dann als verloren, wenn es das Paket nie gesehen hat (leere Bestaetigung ohne Ankunftszeit).
-			return w.Write(h, pl, a)
-		}
+		// Ein Doppel geht wie jedes Paket durch pion-GCC. (Bis zur Nacharbeit ging es bei eigen an GCC vorbei - ohne
+		// Wirkung: pion fuehrt die transport-cc-Nummer aus der Rueckmeldung auch dann als verloren, wenn es das Paket nie
+		// gesehen hat; TestPruefDoppelGCCVerlust. Gegen den falschen Verlust hilft nur der Abgleich im Weiterleiter.)
 		return inner.Write(h, pl, a)
 	})
 }

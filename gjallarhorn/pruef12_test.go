@@ -13,25 +13,26 @@ import (
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 )
 
-// Pruefung von HORN_BWE=eigen: Doppel gehen bei eigen an pion-GCC vorbei (bwe.go) - zaehlt dessen Verlust-Regler sie
-// dann wirklich nicht mehr? Hier mit dem echten pion-Schaetzer: jedes vierte Paket ein Doppel, das der Empfaenger nicht
-// bestaetigt; sonst kein Verlust. Gemessen wird der Verlustanteil, den pion-GCC fuehrt (averageLoss), ohne Doppel,
-// bei mit (Doppel gehen durch GCC) und bei eigen (an GCC vorbei) - und mit dem Abgleich des Weiterleiters davor
-// (abgleich: dieselbe Quelle mit 25 % Doppeln laeuft durch fwd.Source und einen Ausgang in die Huelle).
+// Doppel und pion-GCC, mit dem echten pion-Schaetzer: jedes vierte Paket ein Doppel, das der Empfaenger nicht
+// bestaetigt; sonst kein Verlust. Gemessen wird der Verlustanteil, den pion-GCC fuehrt (averageLoss), und sein Ziel -
+// ohne Doppel, mit Doppeln direkt in die Huelle (so reichte sie der Weiterleiter frueher durch) und mit dem Abgleich
+// des Weiterleiters davor (abgleich: dieselbe Quelle mit 25 % Doppeln laeuft durch fwd.Source und einen Ausgang in
+// die Huelle).
 //
-// Befund (haelt den Stand fest): Das Vorbeileiten aendert nichts. Die Rueckmeldung des Empfaengers fuehrt die
-// transport-cc-Nummer des Doppels als nicht angekommen; pion findet sie nicht in seiner Liste gesendeter Pakete und
-// reicht dafuer eine leere Bestaetigung weiter (interceptor internal/cc, unpack...Chunk), und der Verlust-Regler zaehlt
-// jede Bestaetigung ohne Ankunftszeit als verloren (pkg/gcc, updateLossEstimate). Es hilft nur, die Doppel gar nicht
-// erst hinauszuschicken: Mit dem Abgleich je Quelle (fwd.Source.admit) erreicht keines die Huelle, pion-GCC fuehrt
-// keinen Verlust, und das Ziel bleibt, wo es ohne Doppel steht (rund 1400 statt 134 kbit/s).
+// Befund: Ein Doppel, das hinausgeht, zaehlt pion-GCC als verloren (25 % Verlust, Ziel 134 statt rund 1400 kbit/s).
+// Es an pion-GCC vorbeizuleiten half nicht (bis zur Nacharbeit bei eigen versucht): Die Rueckmeldung des Empfaengers
+// fuehrt die transport-cc-Nummer des Doppels als nicht angekommen; pion findet sie nicht in seiner Liste gesendeter
+// Pakete und reicht dafuer eine leere Bestaetigung weiter (interceptor internal/cc, unpack...Chunk), und der
+// Verlust-Regler zaehlt jede Bestaetigung ohne Ankunftszeit als verloren (pkg/gcc, updateLossEstimate). Es hilft nur,
+// die Doppel gar nicht erst hinauszuschicken: Mit dem Abgleich je Quelle (fwd.Source.admit) erreicht keines die
+// Huelle, pion-GCC fuehrt keinen Verlust, und das Ziel bleibt, wo es ohne Doppel steht.
 func TestPruefDoppelGCCVerlust(t *testing.T) {
 	loss := map[string]float64{}
 	ziel := map[string]int{}
 	for _, c := range []struct {
 		name, mode string
 		dup, fwd   bool
-	}{{"ohne", bweEigen, false, false}, {"mit", bweMit, true, false}, {"eigen", bweEigen, true, false}, {"abgleich", bweEigen, true, true}} {
+	}{{"ohne", bweEigen, false, false}, {"direkt", bweEigen, true, false}, {"abgleich", bweEigen, true, true}} {
 		est, err := gcc.NewSendSideBWE(gcc.SendSideBWEInitialBitrate(1_000_000), gcc.SendSideBWEPacer(gcc.NewNoOpPacer()))
 		if err != nil {
 			t.Fatal(err)
@@ -131,14 +132,11 @@ func TestPruefDoppelGCCVerlust(t *testing.T) {
 		}
 		_ = est.Close()
 	}
-	if loss["ohne"] > 0.01 || loss["mit"] < 0.15 {
-		t.Fatalf("Aufbau stimmt nicht: Verlust ohne Doppel %.3f, bei mit %.3f", loss["ohne"], loss["mit"])
+	if loss["ohne"] > 0.01 || loss["direkt"] < 0.15 {
+		t.Fatalf("Aufbau stimmt nicht: Verlust ohne Doppel %.3f, mit Doppeln direkt in die Huelle %.3f", loss["ohne"], loss["direkt"])
 	}
-	if loss["eigen"] < 0.15 {
-		t.Fatalf("eigen: pion-GCC fuehrt nur noch %.1f %% Verlust - das Vorbeileiten wirkt jetzt; diesen Test und NODE.md anpassen", loss["eigen"]*100)
-	}
-	if loss["abgleich"] > 0.01 || ziel["abgleich"] < ziel["ohne"]*9/10 || ziel["mit"] > ziel["ohne"]/2 {
-		t.Fatalf("mit Abgleich: Verlust %.1f %%, Ziel %d kbit/s - ohne Doppel %d, mit Doppeln ohne Abgleich %d", loss["abgleich"]*100, ziel["abgleich"], ziel["ohne"], ziel["mit"])
+	if loss["abgleich"] > 0.01 || ziel["abgleich"] < ziel["ohne"]*9/10 || ziel["direkt"] > ziel["ohne"]/2 {
+		t.Fatalf("mit Abgleich: Verlust %.1f %%, Ziel %d kbit/s - ohne Doppel %d, mit Doppeln ohne Abgleich %d", loss["abgleich"]*100, ziel["abgleich"], ziel["ohne"], ziel["direkt"])
 	}
 }
 
