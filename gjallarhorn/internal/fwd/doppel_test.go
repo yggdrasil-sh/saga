@@ -718,7 +718,7 @@ func TestAbgleichZufall(t *testing.T) {
 	defer func() { MaxQueueAge = old }()
 	late := 0
 	for seed := int64(1); seed <= 60; seed++ {
-		late += zufallLauf(t, seed)
+		late += zufallLauf(t, seed, nil)
 	}
 	if late < 1000 {
 		t.Fatalf("nur %d Nachzuegler weitergeleitet - der Test prueft zu wenig", late)
@@ -735,7 +735,10 @@ type zpkt struct {
 	tidAt int  // > 0: vor diesem Paket die Zeitschicht-Grenze auf tidAt-1 stellen
 }
 
-func zufallLauf(t *testing.T, seed int64) (lateOut int) {
+// zufallLauf: ein Lauf von TestAbgleichZufall. nach (falls gesetzt) wird in beiden Laeufen nach denselben Paketen
+// aufgerufen - nach jedem, das auch im Vergleichslauf vorkommt - und darf dort am Ausgang eingreifen (im Branch mit
+// Fuellpaketen des Knotens: ein Fuell-Schub).
+func zufallLauf(t *testing.T, seed int64, nach func(leg *Leg, o *Out, i int)) (lateOut int) {
 	rng := rand.New(rand.NewSource(seed))
 	base := uint16(rng.Intn(65536))
 	if seed%3 == 0 {
@@ -842,6 +845,7 @@ func zufallLauf(t *testing.T, seed int64) (lateOut int) {
 		o.Bind(w, 7, 96)
 		s := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
 		o.Assign(s)
+		done := map[int]bool{}
 		for _, i := range order {
 			if i < 0 {
 				o.SetMaxTID(uint8(-i - 1))
@@ -856,9 +860,16 @@ func zufallLauf(t *testing.T, seed int64) (lateOut int) {
 				leg.process(e.p, e.o)
 				e.p.release()
 			}
+			if nach != nil && !done[i] && !lateAt[i] {
+				nach(leg, o, i)
+			}
+			done[i] = true
 		}
 		out := map[int]res{}
 		for j, h := range w.hdrs {
+			if h.Padding { // Fuellpaket des Knotens (nach)
+				continue
+			}
 			i := int(ptag(w.pls[j]))
 			r := out[i]
 			r.seq, r.pic = h.SequenceNumber, parse(w.pls[j]).PicID
