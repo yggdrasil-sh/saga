@@ -164,8 +164,6 @@ func TestSFUMixed(t *testing.T) {
 	}
 }
 
-// TestSFUAuth: ohne gueltiges Token kein Bein und kein TURN; ohne HORN_DEV
-// gibt es weder Token- noch Raum-Endpunkte.
 // TestLegEndSrc: Eine beendete Spur steht nicht mehr in sources[] des Beins; ihre Zaehler des Abgleichs bleiben ihm
 // als Summe erhalten (Zeile "bein zu").
 func TestLegEndSrc(t *testing.T) {
@@ -190,6 +188,8 @@ func TestLegEndSrc(t *testing.T) {
 	}
 }
 
+// TestSFUAuth: ohne gueltiges Token kein Bein und kein TURN; ohne HORN_DEV
+// gibt es weder Token- noch Raum-Endpunkte.
 func TestSFUAuth(t *testing.T) {
 	s := testNodeServer(t, false)
 	base := "https://" + s.mux.Addr().String()
