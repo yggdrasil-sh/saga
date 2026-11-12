@@ -21,6 +21,11 @@ const (
 	KindAudio
 	KindRTX // Wiederholung (am Abgriff der Huelle derzeit nicht sichtbar, siehe NODE.md)
 	KindPad // Fuellpaket einer Probe
+	// KindDup: Doppel - ein Paket mit einer RTP-Folgenummer, die auf dieser SSRC gerade schon hinausging (die Quelle hat
+	// es zweimal geliefert, z. B. als Fuell-Wiederholung des sendenden Browsers). Der Empfaenger verwirft es am
+	// SRTP-Wiederholungsschutz, bevor er es zaehlt oder bestaetigt: Bleibt die Bestaetigung aus, ist das kein Verlust
+	// der Leitung (Mitleser.Feedback).
+	KindDup
 	kindN
 )
 
@@ -59,33 +64,57 @@ const (
 
 // Config: Schwellen des Detektors (Startwerte aus dem Konzept; Laborgroessen).
 type Config struct {
-	WinNs      int64   // Mindestdauer eines Messfensters (Sendezeit)
-	WinPkts    int     // Mindestzahl gemeldeter Pakete je Fenster
-	WinMaxNs   int64   // spaetestens dann schliesst ein Fenster (duenner Strom)
-	WinMinPkts int     // Fenster mit weniger gemeldeten Paketen zaehlen nicht (unbestimmt)
-	BaseSec    int     // Basis = kleinste Laufzeit der letzten BaseSec Sekunden (hoechstens baseMax)
-	QueueHiUs  int64   // Schlange ab hier: "Schlange"
-	QueueLoUs  int64   // Schlange unter hier: "leer"
-	LossHi     float64 // Verlustanteil eines Fensters ab hier: "hoch"
-	LossLo     float64 // darunter: "niedrig"
-	WarnQueue  int     // Fenster "Schlange" bis zur Warnung
-	WarnLoss   int     // Fenster "Verlust hoch" bis zur Warnung
-	CongQueue  int     // ... bis zum Stau
-	CongLoss   int
-	ClearWarn  int   // Fenster "leer und Verlust niedrig" in Folge: Warnung -> frei
-	ClearCong  int   // ... Stau -> frei
-	SilentNs   int64 // so lange keine Rueckmeldung bei laufendem Senden: unbekannt
-	RateNs     int64 // Spanne fuer den laufenden bestaetigten Durchsatz
-	ProbeMinNs int64 // Spanne fuer den Durchsatz einer Probe (Spitze ueber mindestens so lange)
+	WinNs      int64 // Mindestdauer eines Messfensters (Sendezeit)
+	WinPkts    int   // Mindestzahl gemeldeter Pakete je Fenster
+	WinMaxNs   int64 // spaetestens dann schliesst ein Fenster (duenner Strom)
+	WinMinPkts int   // Fenster mit weniger gemeldeten Paketen zaehlen nicht (unbestimmt)
+	BaseSec    int   // Basis = kleinste Laufzeit der letzten BaseSec Sekunden (hoechstens baseMax)
+	QueueHiUs  int64 // Schlange ab hier: "Schlange"
+	QueueLoUs  int64 // Schlange unter hier: "leer"
+	// Verlust wird nicht je Fenster beurteilt (20 Pakete: bei 5 % Zufallsverlust haben 26 % der Fenster 10 % und mehr),
+	// sondern ueber die letzten LossPkts gemeldeten Pakete, hoechstens LossSpanNs zurueck (lossOver).
+	LossHi      float64 // Verlustanteil ab hier: "hoch" (nur, wenn auch das Fenster selbst Verlust hat)
+	LossLo      float64 // darunter: "niedrig" (Rueckkehr nach frei)
+	LossPkts    int     // so viele gemeldete Pakete zurueck
+	LossSpanNs  int64   // ... hoechstens so weit (Sendezeit)
+	LossMinPkts int     // weniger gemeldete Pakete: Verlust unbestimmt (weder hoch noch niedrig)
+	WarnQueue   int     // Fenster "Schlange" bis zur Warnung
+	WarnLoss    int     // Fenster "Verlust hoch" bis zur Warnung
+	CongQueue   int     // ... bis zum Stau
+	CongLoss    int
+	ClearWarn   int   // Fenster "leer und Verlust niedrig" in Folge: Warnung -> frei
+	ClearCong   int   // ... Stau -> frei
+	SilentNs    int64 // so lange keine Rueckmeldung bei laufendem Senden: unbekannt
+	RateNs      int64 // Spanne fuer den laufenden bestaetigten Durchsatz
+	ProbeMinNs  int64 // Spanne fuer den Durchsatz einer Probe (Spitze ueber mindestens so lange)
+	GraceNs     int64 // Schonzeit nach Beinbeginn: so lange nach dem ersten gemeldeten Paket zaehlt Verlust nicht
+	BaseYoungNs int64 // Basis juenger als das: Urteile "staut nicht" bzw. "widerlegt" gibt es noch nicht (unklar)
+	// Spitze (Tip): die zuletzt gemeldeten Pakete - widerlegt der Detektor einen Stau, den GCC gerade meldet?
+	TipPkts    int     // so viele juengste Pakete mit Ankunftszeit (kleinste Laufzeit ueber der Basis)
+	TipSpanNs  int64   // ... hoechstens so weit auseinander gesendet
+	TipQueueUs int64   // Schlange an der Spitze darunter: keine
+	TipLossNs  int64   // Verlust an der Spitze: ueber so viel Sendezeit
+	TipLossUp  float64 // ... hoechstens so viel ueber dem Verlust der 10 s davor
+	TipAgeNs   int64   // letzte Rueckmeldung hoechstens so alt
+	TipLagNs   int64   // juengstes gemeldetes Paket hoechstens so lange her gesendet
+	// Urteil ueber eine Spanne (Span)
+	SpanLossUp   float64 // Verlust der Spanne um so viel ueber dem der Zeit davor (und mindestens SpanLossMin): staut
+	SpanLossMin  float64
+	SpanLossSame float64 // hoechstens so viel darueber (bzw. unter SpanLossFree): Verlust unauffaellig
+	SpanLossFree float64
 }
 
 // Defaults liefert die Startwerte (Konzept 4.2).
 func Defaults() Config {
 	return Config{
 		WinNs: 100e6, WinPkts: 20, WinMaxNs: 500e6, WinMinPkts: 5, BaseSec: 30,
-		QueueHiUs: 50_000, QueueLoUs: 20_000, LossHi: 0.08, LossLo: 0.03,
-		WarnQueue: 2, WarnLoss: 3, CongQueue: 4, CongLoss: 6, ClearWarn: 3, ClearCong: 5,
+		QueueHiUs: 50_000, QueueLoUs: 20_000,
+		LossHi: 0.12, LossLo: 0.08, LossPkts: 160, LossSpanNs: 3e9, LossMinPkts: 60,
+		WarnQueue: 2, WarnLoss: 2, CongQueue: 4, CongLoss: 10, ClearWarn: 3, ClearCong: 5,
 		SilentNs: 1e9, RateNs: 1e9, ProbeMinNs: 400e6,
+		GraceNs: 3e9, BaseYoungNs: 2e9,
+		TipPkts: 5, TipSpanNs: 300e6, TipQueueUs: 15_000, TipLossNs: 500e6, TipLossUp: 0.04, TipAgeNs: 400e6, TipLagNs: 600e6,
+		SpanLossUp: 0.05, SpanLossMin: 0.08, SpanLossSame: 0.02, SpanLossFree: 0.03,
 	}
 }
 
@@ -112,7 +141,7 @@ type Snap struct {
 	State    State
 	Why      string  // Grund des letzten Wechsels
 	QueueUs  int64   // Schlange des letzten gewerteten Fensters
-	Loss     float64 // Verlustanteil des letzten gewerteten Fensters
+	Loss     float64 // Verlustanteil der letzten LossPkts gemeldeten Pakete (Stand des letzten gewerteten Fensters)
 	AckedBps int64   // bestaetigter Durchsatz der letzten RateNs
 	CapBps   int64   // Durchsatz der Fenster, die den letzten Stau gezeigt haben (0 = noch kein Stau)
 	AgeNs    int64   // Alter der letzten Rueckmeldung (-1 = noch keine)
@@ -129,6 +158,33 @@ type Verdict struct {
 	WorstSt  State
 	PadPkts  int
 	LostPkts int
+	// LossBefore: Verlustanteil der 10 s vor der Spanne (ein Verlust, der schon vorher da war, sagt nichts ueber die
+	// Fuelldaten). Young: Die Basis ist jung oder wurde in bzw. kurz vor der Spanne zurueckgesetzt - "staut nicht" gibt
+	// es dann nicht. Hint: ein Anzeichen fuer Stau unterhalb der Schwellen (Schlange ab QueueLoUs, Verlust gestiegen,
+	// Warnung) - zusammen mit einem Stausignal von GCC reicht das (sfu, probe.go).
+	LossBefore float64
+	Young      bool
+	Hint       bool
+}
+
+// Rates: gesendete und bestaetigte Rate ueber dieselben Pakete (Detector.Rates).
+type Rates struct {
+	SentBps  int64 // gesendet: Bytes aller Pakete der Fenster je Sendezeit
+	AckedBps int64 // vom Empfaenger bestaetigt: angekommene Bytes derselben Fenster je Ankunftszeit
+	Ns       int64 // Sendezeit, ueber die gemessen wurde (0 = nichts Messbares)
+}
+
+// Tip: Was die zuletzt gemeldeten Pakete zeigen (Detector.Tip).
+type Tip struct {
+	// Clear: Der Detektor widerlegt einen Stau ausdruecklich - Zustand frei, Basis nicht jung, Rueckmeldung frisch und
+	// nah an der Gegenwart, die juengsten Pakete ohne Schlange, Verlust nicht gestiegen.
+	Clear    bool
+	QueueUs  int64   // kleinste Laufzeit der juengsten TipPkts Pakete ueber der Basis
+	Loss     float64 // Verlustanteil der letzten TipLossNs
+	LossLong float64 // ... der 10 s davor
+	N        int     // Pakete mit Ankunftszeit an der Spitze
+	LagNs    int64   // so lange her wurde das juengste gemeldete Paket gesendet
+	State    State
 }
 
 const (
@@ -142,6 +198,7 @@ type win struct {
 	startNs, endNs int64 // Sendezeit erstes/letztes Paket
 	n, lost, pad   int
 	bytes          int64 // empfangene Bytes
+	sbytes         int64 // gesendete Bytes (auch der verlorenen Pakete)
 	minD           int64 // kleinste Laufzeit (us), nur bei timed > 0
 	timed          int
 	arr0, arr1     int64 // kleinste/groesste Ankunft (us)
@@ -153,7 +210,15 @@ type win struct {
 const (
 	histN   = 128 // geschlossene Fenster (mind. 12,8 s)
 	baseMax = 64
+	tipN    = 128 // zuletzt gemeldete Pakete
 )
+
+type tipAck struct {
+	sentNs int64
+	dl     int64 // Laufzeit (us), nur bei timed
+	lost   bool
+	timed  bool
+}
 
 // Detector: nicht nebenlaeufig benutzbar (der Mitleser haelt die Sperre).
 type Detector struct {
@@ -183,6 +248,15 @@ type Detector struct {
 	minSentNs  int64 // Pakete, die davor gesendet wurden, zaehlen nicht (Reset: noch auf dem alten Weg unterwegs)
 	lastSentNs int64
 
+	firstNs  int64 // Sendezeit des ersten gemeldeten Pakets (Beginn der Schonzeit; 0 = noch keins)
+	baseFrom int64 // Sendezeit des ersten Pakets in der Basis seit dem letzten Verwerfen (0 = Basis leer)
+	resetNs  int64 // letztes Verwerfen der Basis (Sendezeit-Uhr; 0 = nie)
+
+	// Spitze: die zuletzt gemeldeten Pakete (Tip)
+	tip  [tipN]tipAck
+	tipI int // naechster Platz
+	tipC int // belegte Plaetze
+
 	// Zaehler
 	Windows, Thin, Late uint64
 	Changes             [4]uint64 // Wechsel in den Zustand
@@ -202,6 +276,14 @@ func (d *Detector) clearBase() {
 	for i := range d.baseSec {
 		d.baseSec[i] = -1
 	}
+	d.baseFrom = 0
+	d.tipC = 0
+}
+
+// young: Ist die Basis zur Sendezeit atNs noch jung (bzw. leer)? Eine junge Basis kann selbst schon eine Schlange
+// enthalten - was darueber liegt, ist dann zu klein gemessen.
+func (d *Detector) young(atNs int64) bool {
+	return d.baseFrom == 0 || atNs-d.baseFrom < d.cfg.BaseYoungNs
 }
 
 // Reset verwirft Basis und laufendes Fenster (Wegwechsel: die Laufzeit des neuen Wegs ist eine andere). Der Zustand
@@ -210,6 +292,7 @@ func (d *Detector) Reset(nowNs int64) *Change {
 	d.clearBase()
 	d.curOpen = false
 	d.minSentNs = nowNs
+	d.resetNs = max(nowNs, 1)
 	d.qRun, d.lRun, d.clearRun = 0, 0, 0
 	return d.set(nowNs, Unknown, WhyReset)
 }
@@ -247,9 +330,17 @@ func (d *Detector) Feedback(nowNs int64, acks []Ack, out []Change) []Change {
 		w := &d.cur
 		w.endNs = a.SentNs
 		w.n++
+		w.sbytes += int64(a.Size)
+		if d.firstNs == 0 {
+			d.firstNs = max(a.SentNs, 1)
+		}
 		if a.Kind == KindPad {
 			w.pad++
 		}
+		t := &d.tip[d.tipI]
+		d.tipI = (d.tipI + 1) % tipN
+		d.tipC = min(d.tipC+1, tipN)
+		*t = tipAck{sentNs: a.SentNs, lost: a.Lost}
 		if a.Lost {
 			w.lost++
 			continue
@@ -259,6 +350,7 @@ func (d *Detector) Feedback(nowNs int64, acks []Ack, out []Change) []Change {
 			continue
 		}
 		dl := a.ArrivalUs - a.SentNs/1000
+		t.dl, t.timed = dl, true
 		if w.timed == 0 || dl < w.minD {
 			w.minD = dl
 		}
@@ -291,6 +383,30 @@ func (d *Detector) baseAdd(sentNs, dl int64) {
 	} else if dl < d.baseMin[i] {
 		d.baseMin[i] = dl
 	}
+	if d.baseFrom == 0 {
+		d.baseFrom = max(sentNs, 1)
+	}
+}
+
+// lossOver: Verlustanteil der gemeldeten Pakete in den geschlossenen Fenstern mit Sendezeit in [fromNs, toNs),
+// hoechstens die letzten maxPkts (0 = alle); dazu die Zahl der Pakete. Geht von hinten nach vorn.
+func (d *Detector) lossOver(fromNs, toNs int64, maxPkts int) (float64, int) {
+	n, lost := 0, 0
+	for i := d.histN - 1; i >= d.lo(); i-- {
+		w := d.at(i)
+		if w.endNs >= toNs {
+			continue
+		}
+		if w.endNs < fromNs || maxPkts > 0 && n >= maxPkts {
+			break
+		}
+		n += w.n
+		lost += w.lost
+	}
+	if n == 0 {
+		return 0, 0
+	}
+	return float64(lost) / float64(n), n
 }
 
 // base liefert die kleinste Laufzeit der letzten BaseSec Sekunden vor (und einschliesslich) sentNs.
@@ -317,79 +433,75 @@ func (d *Detector) closeWin(nowNs int64) *Change {
 	d.Windows++
 	c := d.cfg
 	w.valid = w.n >= c.WinMinPkts
-	loss := 0.0
-	if w.n > 0 {
-		loss = float64(w.lost) / float64(w.n)
-	}
 	qKnown := false
 	if w.timed > 0 {
 		if b, ok := d.base(w.endNs); ok {
 			w.queueUs, qKnown = w.minD-b, true
 		}
 	}
-	var ch *Change
-	if !w.valid {
-		d.Thin++
-	} else {
-		qHi := qKnown && w.queueUs > c.QueueHiUs
-		qLo := qKnown && w.queueUs < c.QueueLoUs
-		lHi := loss >= c.LossHi
-		lLo := loss < c.LossLo
-		if d.qRun == 0 && d.lRun == 0 && (qHi || lHi) {
-			d.runFrom = d.histN
-		}
-		// Folgen: ein Fenster im Zwischenbereich zaehlt nicht und setzt nicht zurueck
-		if qHi {
-			d.qRun++
-		} else if qLo {
-			d.qRun = 0
-		}
-		if lHi {
-			d.lRun++
-		} else if lLo {
-			d.lRun = 0
-		}
-		if qLo && lLo {
-			d.clearRun++
-		} else {
-			d.clearRun = 0
-		}
-		d.lastQ, d.lastLoss = w.queueUs, loss
-		to, why := d.state, whyNothing
-		bad := WhyLoss // Grund eines Wechsels nach Warnung bzw. Stau
-		if d.qRun >= c.CongQueue || d.qRun >= c.WarnQueue && d.lRun < c.CongLoss {
-			bad = WhyQueue
-		}
-		switch {
-		case d.qRun >= c.CongQueue || d.lRun >= c.CongLoss:
-			to, why = Congested, bad
-		case d.state == Congested:
-			if d.clearRun >= c.ClearCong {
-				to, why = Free, WhyClear
-			}
-		case d.qRun >= c.WarnQueue || d.lRun >= c.WarnLoss:
-			to, why = Warn, bad
-		case d.state == Warn:
-			if d.clearRun >= c.ClearWarn {
-				to, why = Free, WhyClear
-			}
-		case d.state == Unknown:
-			to, why = Free, WhyFirst
-		}
-		w.state = to
-		d.hist[d.histN%histN] = w
-		d.histN++
-		if to != d.state {
-			if to == Congested {
-				d.capBps = d.rateOver(d.runFrom, d.histN)
-			}
-			ch = d.set(nowNs, to, why)
-		}
-		return ch
-	}
+	// Verlust: ueber die letzten LossPkts gemeldeten Pakete einschliesslich dieses Fensters (auch duenne Fenster zaehlen
+	// hier mit - Pakete sind Pakete)
 	w.state = d.state
 	d.hist[d.histN%histN] = w
 	d.histN++
+	lossN, nN := d.lossOver(w.endNs-c.LossSpanNs, w.endNs+1, c.LossPkts)
+	if !w.valid {
+		d.Thin++
+		return nil
+	}
+	grace := d.firstNs != 0 && w.startNs-d.firstNs < c.GraceNs // Schonzeit nach Beinbeginn: Verlust zaehlt nicht
+	qHi := qKnown && w.queueUs > c.QueueHiUs
+	qLo := qKnown && w.queueUs < c.QueueLoUs
+	lHi := !grace && nN >= c.LossMinPkts && lossN >= c.LossHi && w.lost > 0
+	lLo := grace || nN >= c.LossMinPkts && lossN < c.LossLo || nN < c.LossMinPkts && w.lost == 0
+	if d.qRun == 0 && d.lRun == 0 && (qHi || lHi) {
+		d.runFrom = d.histN - 1
+	}
+	// Folgen: ein Fenster im Zwischenbereich zaehlt nicht und setzt nicht zurueck
+	if qHi {
+		d.qRun++
+	} else if qLo {
+		d.qRun = 0
+	}
+	if lHi {
+		d.lRun++
+	} else if lLo {
+		d.lRun = 0
+	}
+	if qLo && lLo {
+		d.clearRun++
+	} else {
+		d.clearRun = 0
+	}
+	d.lastQ, d.lastLoss = w.queueUs, lossN
+	to, why := d.state, whyNothing
+	bad := WhyLoss // Grund eines Wechsels nach Warnung bzw. Stau
+	if d.qRun >= c.CongQueue || d.qRun >= c.WarnQueue && d.lRun < c.CongLoss {
+		bad = WhyQueue
+	}
+	switch {
+	case d.qRun >= c.CongQueue || d.lRun >= c.CongLoss:
+		to, why = Congested, bad
+	case d.state == Congested:
+		if d.clearRun >= c.ClearCong {
+			to, why = Free, WhyClear
+		}
+	case d.qRun >= c.WarnQueue || d.lRun >= c.WarnLoss:
+		to, why = Warn, bad
+	case d.state == Warn:
+		if d.clearRun >= c.ClearWarn {
+			to, why = Free, WhyClear
+		}
+	case d.state == Unknown:
+		to, why = Free, WhyFirst
+	}
+	d.at(d.histN - 1).state = to
+	if to != d.state {
+		if to == Congested {
+			d.capBps = d.rateOver(d.runFrom, d.histN)
+		}
+		return d.set(nowNs, to, why)
+	}
 	return nil
 }
 
@@ -480,10 +592,16 @@ func (d *Detector) Snapshot(nowNs int64) Snap {
 	return s
 }
 
-// Span urteilt ueber die Fenster, deren Pakete zwischen fromNs und toNs gesendet wurden (eine Probe): staut bei
-// Schlange ueber der Schwelle (in mindestens zwei Fenstern), hohem Verlust oder wenn der Detektor in der Spanne Stau
-// gemeldet hat; staut nicht bei leerer Schlange, niedrigem Verlust und durchgehend "frei"; sonst unklar. Das noch
+// Span urteilt ueber die Fenster, deren Pakete zwischen fromNs und toNs gesendet wurden (eine Probe). Das noch
 // laufende Fenster zaehlt mit, soweit es schon Rueckmeldungen hat.
+//
+//   - staut: Schlange ueber der Schwelle (in mindestens zwei Fenstern), der Detektor hat in der Spanne Stau gemeldet,
+//     oder der Verlust liegt deutlich ueber dem der Zeit davor (SpanLossUp, mindestens SpanLossMin und drei Pakete) -
+//     Verlust, der mit der Last kommt, ist das Zeichen einer Ratengrenze (Policer); Verlust, der schon vorher da war
+//     (Zufallsverlust), sagt nichts.
+//   - staut nicht: Schlange leer, durchgehend "frei", Verlust nicht gestiegen - und die Basis ist nicht jung (kein
+//     Zuruecksetzen in oder kurz vor der Spanne).
+//   - sonst unklar.
 func (d *Detector) Span(fromNs, toNs int64) Verdict {
 	v := Verdict{Result: VerdictUnclear, WorstSt: Unknown}
 	var qs []int64 // Schlangen der gewerteten Fenster
@@ -546,13 +664,112 @@ func (d *Detector) Span(fromNs, toNs int64) Verdict {
 		}
 	}
 	c := d.cfg
+	v.LossBefore, _ = d.lossOver(fromNs-10e9, fromNs, 0)
+	v.Young = d.young(fromNs) || d.resetNs != 0 && d.resetNs >= fromNs-c.BaseYoungNs
+	lossUp := v.Loss >= v.LossBefore+c.SpanLossUp && v.Loss >= c.SpanLossMin && lost >= 3
+	lossSame := v.Loss <= max(c.SpanLossFree, v.LossBefore+c.SpanLossSame)
+	v.Hint = qn > 0 && v.QueueUs >= c.QueueLoUs || !lossSame && lost >= 2 || v.WorstSt >= Warn
 	switch {
 	case qn == 0 || n < c.WinMinPkts:
 		// nichts Wertbares
-	case v.QueueUs > c.QueueHiUs || v.Loss >= c.LossHi || v.WorstSt == Congested:
+	case v.QueueUs > c.QueueHiUs || lossUp || v.WorstSt == Congested:
 		v.Result = VerdictCong
-	case v.QueueUs < c.QueueLoUs && v.Loss < c.LossLo && v.WorstSt == Free:
+	case v.QueueUs < c.QueueLoUs && lossSame && v.WorstSt == Free && !v.Young:
 		v.Result = VerdictFree
 	}
 	return v
+}
+
+// Rates: gesendete und bestaetigte Rate ueber die geschlossenen Fenster, die ganz zwischen fromNs und toNs gesendet
+// wurden - "vom Empfaenger bestaetigt" gegen "im selben Zeitraum gesendet". Gesendet zaehlt je Sendezeit (bis zum
+// Beginn des naechsten Fensters), bestaetigt je Ankunftszeit derselben Pakete (rateOver): Waechst unterwegs eine
+// Schlange, dehnt sich die Ankunft, und die bestaetigte Rate bleibt hinter der gesendeten zurueck; verlorene Pakete
+// fehlen ihr ganz.
+func (d *Detector) Rates(fromNs, toNs int64) Rates {
+	first, last := -1, -1
+	var sb int64
+	for i := d.lo(); i < d.histN; i++ {
+		w := d.at(i)
+		if w.startNs < fromNs || w.endNs > toNs {
+			continue
+		}
+		if first < 0 {
+			first = i
+		}
+		last = i
+		sb += w.sbytes
+	}
+	if first < 0 {
+		return Rates{}
+	}
+	end := d.at(last).endNs
+	switch {
+	case last+1 < d.histN:
+		end = d.at(last + 1).startNs
+	case d.curOpen:
+		end = d.cur.startNs
+	}
+	ns := end - d.at(first).startNs
+	if ns <= 0 {
+		return Rates{}
+	}
+	return Rates{SentBps: sb * 8 * 1e9 / ns, AckedBps: d.rateOver(first, last+1), Ns: ns}
+}
+
+// Tip: Was zeigen die zuletzt gemeldeten Pakete - widerlegt der Detektor einen Stau, den GCC gerade meldet (Clear)?
+// Die Schwellen des Zustands (Schlange ueber 50 ms in zwei Fenstern) sind fuer diese Frage zu traege: Bis sie
+// anschlagen, ist der Knoten laengst unten. Umgekehrt genuegt hier viel weniger: Staut die Leitung wirklich, haben
+// schon die juengsten bestaetigten Pakete eine Schlange (GCC schliesst aus denselben Rueckmeldungen auf Ueberlast).
+// Gemessen wird die KLEINSTE Laufzeit der letzten TipPkts Pakete ueber der Basis: Nach einer Pause der Leitung kommen
+// die aufgehaltenen Pakete zusammen an - das zuletzt gesendete hat kaum gewartet -, in einer wachsenden Schlange hat
+// jedes gewartet.
+func (d *Detector) Tip(nowNs int64) Tip {
+	c := d.cfg
+	t := Tip{State: d.state, QueueUs: -1, LagNs: -1}
+	var newest int64 = -1
+	var minDl int64
+	lost, n := 0, 0
+	for k := 1; k <= d.tipC; k++ {
+		a := &d.tip[(d.tipI-k+tipN)%tipN]
+		if newest < 0 {
+			if !a.timed {
+				if a.lost {
+					lost++
+					n++
+				}
+				continue
+			}
+			newest = a.sentNs
+		}
+		if a.sentNs < newest-c.TipLossNs {
+			break
+		}
+		n++
+		if a.lost {
+			lost++
+		}
+		if a.timed && t.N < c.TipPkts && a.sentNs >= newest-c.TipSpanNs {
+			if t.N == 0 || a.dl < minDl {
+				minDl = a.dl
+			}
+			t.N++
+		}
+	}
+	if newest < 0 {
+		return t
+	}
+	t.LagNs = nowNs - newest
+	if n > 0 {
+		t.Loss = float64(lost) / float64(n)
+	}
+	t.LossLong, _ = d.lossOver(newest-c.TipLossNs-10e9, newest-c.TipLossNs, 0)
+	b, ok := d.base(newest)
+	if !ok {
+		return t
+	}
+	t.QueueUs = minDl - b
+	t.Clear = d.state == Free && !d.young(newest) && t.N >= min(3, c.TipPkts) &&
+		d.lastFbNs > 0 && nowNs-d.lastFbNs <= c.TipAgeNs && t.LagNs <= c.TipLagNs &&
+		t.QueueUs < c.TipQueueUs && (lost < 2 || t.Loss <= t.LossLong+c.TipLossUp) && t.Loss < c.LossHi
+	return t
 }

@@ -45,6 +45,7 @@ type Counters struct {
 	ToCong     uint64        // ... Stau
 	Resets     uint64        // Basis zurueckgesetzt
 	LostByKind [kindN]uint64 // verlorene Pakete je Art
+	DupUnacked uint64        // Doppel (KindDup), die als nicht angekommen gemeldet wurden - zaehlen nicht als Verlust
 }
 
 // Mitleser: Ring der abgehenden Pakete, Zuordnung der Rueckmeldungen, Detektor. Nebenlaeufig benutzbar. Entscheidet
@@ -118,6 +119,13 @@ func (m *Mitleser) Feedback(nowNs int64, fb *rtcp.TransportLayerCC) {
 			return
 		}
 		a := Ack{SentNs: e.ns, Size: int(e.size), Kind: e.kind}
+		if e.kind == KindDup && st == StLost {
+			// Ein Doppel verwirft der Empfaenger am SRTP-Wiederholungsschutz, bevor er es bestaetigt - das ist kein Verlust
+			// der Leitung. (Kommt es an, weil das Original verloren ging, zaehlt es wie jedes Paket.)
+			e.fl |= slLost
+			m.cnt.DupUnacked++
+			return
+		}
 		switch st {
 		case StLost:
 			e.fl |= slLost
@@ -177,6 +185,20 @@ func (m *Mitleser) Span(fromNs, toNs int64) Verdict {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.det.Span(fromNs, toNs)
+}
+
+// Tip: Was die zuletzt gemeldeten Pakete zeigen (Detector.Tip).
+func (m *Mitleser) Tip(nowNs int64) Tip {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.det.Tip(nowNs)
+}
+
+// Rates: gesendete und bestaetigte Rate der Pakete, die zwischen fromNs und toNs gesendet wurden (Detector.Rates).
+func (m *Mitleser) Rates(fromNs, toNs int64) Rates {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.det.Rates(fromNs, toNs)
 }
 
 // Counters liefert die Zaehler.

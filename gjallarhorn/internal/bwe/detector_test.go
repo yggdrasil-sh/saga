@@ -18,6 +18,7 @@ type leitung struct {
 	baseMs  float64
 	jitMs   float64 // +- gleichverteilt
 	loss    float64
+	lossAt  func(t float64) float64 // falls gesetzt: Verlustanteil zur Sendezeit t (statt loss)
 	pauseEv float64 // mittlerer Abstand von Pausen der Leitung (s), 0 = keine
 	pauseMs [2]float64
 	fbMs    float64
@@ -69,7 +70,11 @@ func (l *leitung) send(kind Kind, size int) {
 		}
 	}
 	at := t
-	ok := l.rng.Float64() >= l.loss
+	loss := l.loss
+	if l.lossAt != nil {
+		loss = l.lossAt(t)
+	}
+	ok := l.rng.Float64() >= loss
 	if l.capBps > 0 {
 		if l.linkFree < t {
 			l.linkFree = t
@@ -256,7 +261,9 @@ func TestDetektorVerlust(t *testing.T) {
 			t.Fatalf("1 %% verlust, seed %d: %v, warnungen %d stau %d", seed, l.state(), l.count(Warn), l.count(Congested))
 		}
 	}
-	for _, loss := range []float64{0.12, 0.2, 0.35} {
+	// Schwerer anhaltender Verlust: Stau, ohne Flattern. (Bis Stufe 0 schon ab 12 %; seit der Verlust ueber die letzten
+	// 160 Pakete beurteilt wird und "hoch" bei 12 % beginnt, liegt Dauerverlust von 12 % auf der Schwelle.)
+	for _, loss := range []float64{0.2, 0.35} {
 		worst := 0.0
 		for seed := int64(1); seed <= 10; seed++ {
 			l := newLeitung(seed, 160, 1000)
@@ -274,7 +281,7 @@ func TestDetektorVerlust(t *testing.T) {
 			}
 		}
 		t.Logf("Verlust %.0f %%: Stau spaetestens nach %.2f s (10 Laeufe)", loss*100, worst)
-		if lim := map[float64]float64{0.12: 4, 0.2: 1.5, 0.35: 1.2}[loss]; worst > lim {
+		if lim := map[float64]float64{0.2: 3, 0.35: 2}[loss]; worst > lim {
 			t.Fatalf("verlust %.0f %%: %.2f s", loss*100, worst)
 		}
 	}
@@ -286,7 +293,7 @@ func TestDetektorVerlust(t *testing.T) {
 	tc := l.firstAfter(Congested, 5) - 5
 	s := l.d.Snapshot(int64(l.now * 1e9))
 	t.Logf("Policer 20 ms: Stau nach %.2f s, Grund %s, Schlange %d ms, Verlust %.0f %%, Durchsatz %d kbit/s", tc, s.Why, s.QueueUs/1000, s.Loss*100, s.AckedBps/1000)
-	if tc < 0 || tc > 1.2 || s.Why != WhyLoss || s.QueueUs > 50_000 || s.AckedBps < 900_000 || s.AckedBps > 1_100_000 {
+	if tc < 0 || tc > 1.8 || s.Why != WhyLoss || s.QueueUs > 50_000 || s.AckedBps < 900_000 || s.AckedBps > 1_100_000 {
 		t.Fatalf("policer: %.2f %+v", tc, s)
 	}
 }
