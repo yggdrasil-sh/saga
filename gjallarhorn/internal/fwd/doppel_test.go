@@ -10,7 +10,7 @@ import (
 )
 
 // Tests zum Abgleich auf Doppel je Quelle (Source.admit) und zu verspaeteten Paketen am Ausgang (Leg.process,
-// Out.lateDelta). Alle Laeufe von Hand, ohne Schreiber-Goroutine: feste Reihenfolge, keine Zeitabhaengigkeit.
+// Out.advance, Out.slots). Alle Laeufe von Hand, ohne Schreiber-Goroutine: feste Reihenfolge, keine Zeitabhaengigkeit.
 
 // dbench: Bein ohne Schreiber mit einem Bild- und einem Ton-Ausgang.
 type dbench struct {
@@ -632,7 +632,7 @@ func TestSpaetAelterAlsRing(t *testing.T) {
 }
 
 // TestAbgleichLangerLauf: Der Ausgang steht ueber mehr als einen Umlauf der Folgenummern auf derselben Quelle und
-// laesst dabei laufend Bilder aus. Grenze und Historie bleiben in Reichweite der 16-Bit-Vergleiche: Nachzuegler gehen
+// laesst dabei laufend Bilder aus. Stand und Ring bleiben in Reichweite der 16-Bit-Vergleiche: Nachzuegler gehen
 // auch nach 150000 Paketen mit ihrer Nummer hinaus, keiner wird faelschlich verworfen.
 func TestAbgleichLangerLauf(t *testing.T) {
 	leg := &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}
@@ -931,4 +931,298 @@ func zufallLauf(t *testing.T, seed int64, nach func(leg *Leg, o *Out, i int)) (l
 		}
 	}
 	return lateOut
+}
+
+// hpics: die PictureIDs der bisher geschriebenen Pakete des Bild-Ausgangs.
+func hpics(w *hrec) []uint16 {
+	out := make([]uint16, len(w.pls))
+	for i, pl := range w.pls {
+		out[i] = parse(pl).PicID
+	}
+	return out
+}
+
+// TestNachzueglerVorWechsel (Fund der Pruefung): Liegt direkt hinter dem letzten geschriebenen Paket eine Luecke und
+// kommt danach nur Ausgelassenes, traegt der Nachzuegler die Nummer gleich nach dem letzten geschriebenen Paket. Der
+// naechste Schichtwechsel bzw. Neuanfang darf sie nicht noch einmal vergeben: Der Ausgang setzt hinter der hoechsten
+// Nummer an, die er je geschrieben hat (Out.anchor, hiSeq) - und ebenso bei der PictureID, wenn ein ganzes Bild
+// nachgekommen ist. Vorher trugen Nachzuegler und Schluesselbild dieselbe Nummer ([20 21 21]); der Empfaenger
+// verwirft dann das Schluesselbild-Paket.
+func TestNachzueglerVorWechsel(t *testing.T) {
+	// 1. Zeitschicht ueber der Grenze: 20 geschrieben, 21 fehlt, 22 (TL1) ausgelassen, 21 kommt nach, Wechsel
+	b := newDbench(t)
+	lo := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	hi := &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000}
+	b.o.Assign(lo)
+	b.o.SetMaxTID(0)
+	b.in(lo, fpkt(20, 0, 100, 1, 0, true, true, true, 20))     // Bild A (TL0, Schluesselbild)
+	b.in(lo, fpkt(22, 6000, 102, 2, 1, true, false, true, 22)) // Bild C (TL1): ausgelassen; Bild B (21) fehlt
+	b.in(lo, fpkt(21, 3000, 101, 2, 0, true, false, true, 21)) // Bild B (TL0) kommt nach: Nummer und PictureID seiner Stelle
+	b.o.Assign(hi)
+	b.in(hi, fpkt(700, 9000, 400, 9, 0, true, true, false, 700)) // Schluesselbild der neuen Schicht
+	b.in(hi, fpkt(701, 9000, 400, 9, 0, false, false, true, 701))
+	got, pics := b.seqs(), hpics(b.w)
+	uniq(t, got)
+	if !sameSeqs(got, 20, 21, 22, 23) || !sameSeqs(pics, 100, 101, 102, 102) || b.o.Current() != hi || lo.Late.Load() != 1 {
+		t.Fatalf("zeitschicht: folgenummern %v, PictureIDs %v, spaet %d", got, pics, lo.Late.Load())
+	}
+	// ... kommt der Nachzuegler erst nach dem Wechsel, geht er nicht mehr hinaus: Seine Luecke ist verfallen, der
+	// Wechsel schliesst lueckenlos an wie bisher
+	b = newDbench(t)
+	lo = &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	hi = &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000}
+	b.o.Assign(lo)
+	b.o.SetMaxTID(0)
+	b.in(lo, fpkt(20, 0, 100, 1, 0, true, true, true, 20))
+	b.in(lo, fpkt(22, 6000, 102, 2, 1, true, false, true, 22))
+	b.o.Assign(hi)
+	b.in(hi, fpkt(700, 9000, 400, 9, 0, true, true, true, 700))
+	b.in(lo, fpkt(21, 3000, 101, 2, 0, true, false, true, 21))
+	b.in(hi, fpkt(701, 12000, 401, 10, 0, true, false, true, 701))
+	if got := b.seqs(); !sameSeqs(got, 20, 21, 22) || lo.Late.Load() != 1 {
+		t.Fatalf("nachzuegler nach dem wechsel: %v, spaet %d", got, lo.Late.Load())
+	}
+
+	// 2. Verwerfen bis zum Schluesselbild: 30, 31 geschrieben, 32 fehlt, 33 und 34 verworfen, 32 kommt nach, Wechsel
+	old := MaxQueueAge
+	defer func() { MaxQueueAge = old }()
+	b = newDbench(t)
+	lo = &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000, PLI: func(uint32) {}}
+	hi = &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000, PLI: func(uint32) {}}
+	b.o.Assign(hi)
+	b.in(hi, fpkt(30, 0, 100, 1, 0, true, true, false, 30))
+	b.in(hi, fpkt(31, 0, 100, 1, 0, false, false, true, 31))
+	MaxQueueAge = -1 // jedes Paket gilt als zu alt: ab dem naechsten Rahmenanfang verwerfen
+	b.in(hi, fpkt(33, 6000, 102, 3, 0, true, false, false, 33))
+	MaxQueueAge = old
+	if !b.o.dropping {
+		t.Fatal("kein Verwerfen")
+	}
+	b.in(hi, fpkt(34, 6000, 102, 3, 0, false, false, true, 34))
+	b.in(hi, fpkt(32, 3000, 101, 2, 0, true, false, true, 32)) // Bild von vor dem Verwerfen kommt nach
+	b.o.Assign(lo)                                             // die Steuerung nimmt die Schicht zurueck
+	b.in(lo, fpkt(900, 9000, 500, 7, 0, true, true, true, 900))
+	b.in(lo, fpkt(901, 12000, 501, 8, 0, true, false, true, 901))
+	got, pics = b.seqs(), hpics(b.w)
+	uniq(t, got)
+	if !sameSeqs(got, 30, 31, 32, 33, 34) || !sameSeqs(pics, 100, 100, 101, 102, 103) || b.o.Current() != lo || b.o.dropping {
+		t.Fatalf("verwerfen: folgenummern %v, PictureIDs %v", got, pics)
+	}
+
+	// 3. Neuanfang derselben Quelle: 40, 41 geschrieben, 42 fehlt, 43 (TL1) ausgelassen, 42 kommt nach, dann beginnt
+	// die Quelle ihre Folge neu (weit zurueck, juengerer Zeitstempel)
+	b = newDbench(t)
+	s := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	b.o.Assign(s)
+	b.o.SetMaxTID(0)
+	b.in(s, fpkt(40, 0, 100, 1, 0, true, true, false, 40))
+	b.in(s, fpkt(41, 0, 100, 1, 0, false, false, true, 41))
+	b.in(s, fpkt(43, 6000, 102, 2, 1, true, false, true, 43))
+	b.in(s, fpkt(42, 3000, 101, 2, 0, true, false, true, 42))
+	b.in(s, fpkt(60000, 9000, 103, 3, 0, true, false, true, 60000)) // 5579 hinter dem Stand: neue Folge
+	b.in(s, fpkt(60001, 12000, 104, 4, 0, true, false, true, 60001))
+	got, pics = b.seqs(), hpics(b.w)
+	uniq(t, got)
+	if !sameSeqs(got, 40, 41, 42, 43, 44) || !sameSeqs(pics, 100, 100, 101, 102, 103) || s.TooOld.Load() != 0 {
+		t.Fatalf("neuanfang: folgenummern %v, PictureIDs %v, alt %d", got, pics, s.TooOld.Load())
+	}
+
+	// 4. ohne wartende Luecke bleibt alles, wie es war: Der Wechsel schliesst lueckenlos an - auch nach ausgelassenen
+	// Bildern am Ende
+	b = newDbench(t)
+	lo = &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	hi = &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000}
+	b.o.Assign(lo)
+	b.o.SetMaxTID(0)
+	b.in(lo, fpkt(20, 0, 100, 1, 0, true, true, true, 20))
+	b.in(lo, fpkt(21, 3000, 101, 1, 1, true, false, true, 21)) // ausgelassen
+	b.in(lo, fpkt(22, 6000, 102, 1, 2, true, false, true, 22)) // ausgelassen
+	b.o.Assign(hi)
+	b.in(hi, fpkt(700, 9000, 400, 9, 0, true, true, true, 700))
+	if got, pics := b.seqs(), hpics(b.w); !sameSeqs(got, 20, 21) || !sameSeqs(pics, 100, 101) {
+		t.Fatalf("ohne luecke: folgenummern %v, PictureIDs %v", got, pics)
+	}
+}
+
+// rawRec zeichnet die Folgenummern des Rohwegs (Kaskade) auf.
+type rawRec struct{ seqs []uint16 }
+
+func (r *rawRec) WriteRaw(b []byte) error {
+	r.seqs = append(r.seqs, binary.BigEndian.Uint16(b[2:]))
+	return nil
+}
+
+// TestNachzueglerVorWechselRoh: dasselbe auf dem Rohweg (Bruecke zwischen Knoten) - auch dort vergibt der Wechsel die
+// Nummer eines Nachzueglers nicht noch einmal.
+func TestNachzueglerVorWechselRoh(t *testing.T) {
+	leg := &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}
+	o := leg.NewOut("v", "p", Video, ClassSpeaker)
+	w := &rawRec{}
+	o.BindRaw(w)
+	in := func(s *Source, pkt []byte) {
+		s.Inject(pkt)
+		for {
+			e, ok := leg.pop()
+			if !ok {
+				return
+			}
+			leg.process(e.p, e.o)
+			e.p.release()
+		}
+	}
+	lo := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	hi := &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000}
+	o.Assign(lo)
+	o.SetMaxTID(0)
+	in(lo, fpkt(20, 0, 100, 1, 0, true, true, true, 20))
+	in(lo, fpkt(22, 6000, 102, 2, 1, true, false, true, 22)) // ausgelassen; 21 fehlt
+	in(lo, fpkt(21, 3000, 101, 2, 0, true, false, true, 21)) // kommt nach
+	o.Assign(hi)
+	in(hi, fpkt(700, 9000, 400, 9, 0, true, true, true, 700))
+	in(hi, fpkt(701, 12000, 401, 10, 0, true, false, true, 701))
+	uniq(t, w.seqs)
+	if !sameSeqs(w.seqs, 20, 21, 22, 23) {
+		t.Fatalf("rohweg: %v", w.seqs)
+	}
+}
+
+// TestAbgleichZufallWechsel: zwei Schichten einer Quelle mit Verlust, Nachsendungen, Umsortierung, Wiederholungen und
+// Fuellpaketen; der Ausgang wechselt zufaellig zwischen ihnen (am naechsten Schluesselbild), aendert seine
+// Zeitschicht-Grenze, verwirft zeitweise bis zum Schluesselbild, und eine Schicht beginnt ihre Folge einmal neu (weit
+// zurueck; was davor gesendet wurde, ist bis dahin eingetroffen). Geprueft wird ueber alles: Keine Folgenummer wird
+// zweimal vergeben, kein Paket geht zweimal hinaus, keine PictureID steht fuer zwei verschiedene Bilder, und die
+// Folgenummern am Ausgang springen nie weiter als die Luecken der Quelle.
+func TestAbgleichZufallWechsel(t *testing.T) {
+	old := MaxQueueAge
+	defer func() { MaxQueueAge = old }()
+	late := 0
+	sw0 := Totals.Switches.Load()
+	for seed := int64(1); seed <= 60; seed++ {
+		MaxQueueAge = time.Hour
+		rng := rand.New(rand.NewSource(seed))
+		leg := &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}
+		o := leg.NewOut("v", "p", Video, ClassSpeaker)
+		w := &hrec{}
+		o.Bind(w, 7, 96)
+		type zi struct {
+			at, f int // trifft nach so vielen Schritten ein; Bild
+			raw   []byte
+		}
+		src := [2]*Source{}
+		arr := [2]map[int][][]byte{}
+		steps := 0
+		for k := 0; k < 2; k++ {
+			src[k] = &Source{Owner: "p", Layer: []string{"l", "h"}[k], Kind: Video, Clock: 90000, PLI: func(uint32) {}}
+			seq := uint16(rng.Intn(65536))
+			pat := []uint8{0, 2, 1, 2}
+			step := 0
+			restart, restartStep := -1, 0
+			if k == int(seed%2) {
+				restart = 150 + rng.Intn(200) // an diesem Bild beginnt die Folge neu
+			}
+			var items []zi
+			for f := 0; f < 500; f++ {
+				if f == restart {
+					seq -= uint16(2000 + rng.Intn(20000))
+					restartStep = step + 1
+				}
+				tid := pat[f%4]
+				key := f%24 == 0
+				n := 1 + rng.Intn(3)
+				for i := 0; i < n; i++ {
+					tag := uint32(k)<<28 | uint32(f)<<8 | uint32(i)
+					raw := fpkt(seq, uint32(f)*3000, uint16(2000*k+f), uint8(f/4), tid, i == 0, key, i == n-1, tag)
+					seq++
+					step++
+					at := step
+					switch r := rng.Intn(100); {
+					case key && i == 0: // Schluesselbild-Anfaenge kommen in Reihe (sonst gibt es keinen Wechsel)
+					case r < 3:
+						continue // verloren
+					case r < 10:
+						at += 1 + rng.Intn(25) // Nachsendung bzw. Umsortierung
+					}
+					items = append(items, zi{at, f, raw})
+					for rng.Intn(100) < 12 { // Wiederholung
+						items = append(items, zi{at + rng.Intn(200), f, raw})
+					}
+				}
+				if rng.Intn(12) == 0 {
+					items = append(items, zi{step, f, padpkt(seq, uint32(f)*3000)})
+					seq++
+				}
+			}
+			arr[k] = map[int][][]byte{}
+			for _, it := range items {
+				if restart >= 0 && it.f < restart && it.at >= restartStep {
+					it.at = restartStep - 1 // vor dem Neubeginn gesendet: bis dahin eingetroffen
+				}
+				arr[k][it.at] = append(arr[k][it.at], it.raw)
+			}
+			steps = max(steps, step+230)
+		}
+		o.Assign(src[0])
+		cur := 0
+		for st := 1; st <= steps; st++ {
+			switch r := rng.Intn(400); {
+			case r < 8:
+				cur = 1 - cur
+				o.Assign(src[cur])
+			case r < 14:
+				o.SetMaxTID(uint8([]int{0, 1, 3}[rng.Intn(3)]))
+			case r < 17:
+				MaxQueueAge = -1 // ab dem naechsten Rahmenanfang verwerfen bis zum Schluesselbild
+			}
+			for k := 0; k < 2; k++ {
+				for _, raw := range arr[k][st] {
+					src[k].Inject(raw)
+					for {
+						e, ok := leg.pop()
+						if !ok {
+							break
+						}
+						leg.process(e.p, e.o)
+						e.p.release()
+					}
+					if o.dropping {
+						MaxQueueAge = time.Hour
+					}
+				}
+			}
+		}
+		seqs := hseqs(w)
+		uniq(t, seqs)
+		tags := map[uint32]bool{}
+		picOf := map[uint16]uint32{} // PictureID am Ausgang -> Bild (Schicht und Nummer)
+		hi := seqs[0]
+		for j, pl := range w.pls {
+			tag := ptag(pl)
+			if tags[tag] {
+				t.Fatalf("seed %d: Paket %#x ging zweimal hinaus", seed, tag)
+			}
+			tags[tag] = true
+			pic, bild := parse(pl).PicID, tag>>8
+			if g, have := picOf[pic]; have && g != bild {
+				t.Fatalf("seed %d: PictureID %d fuer Bild %#x und Bild %#x (Paket %d, Folgenummer %d)", seed, pic, g, bild, j, seqs[j])
+			}
+			picOf[pic] = bild
+			// kein Sprung am Ausgang: die Quellen verlieren hoechstens wenige Pakete am Stueck, und ein Wechsel bzw.
+			// Neubeginn schliesst an
+			if d := int16(seqs[j] - hi); d > 40 {
+				t.Fatalf("seed %d: Sprung der Folgenummern am Ausgang um %d (Paket %d: %v)", seed, d, j, seqs[max(j-3, 0):j+1])
+			} else if d > 0 {
+				hi = seqs[j]
+			}
+		}
+		if n := leg.Stats.LateDropped.Load(); n != 0 {
+			t.Fatalf("seed %d: %d Nachzuegler verworfen", seed, n)
+		}
+		if src[0].TooOld.Load()+src[1].TooOld.Load() != 0 {
+			t.Fatalf("seed %d: zu alt %d/%d", seed, src[0].TooOld.Load(), src[1].TooOld.Load())
+		}
+		late += int(src[0].Late.Load() + src[1].Late.Load())
+	}
+	if sw := Totals.Switches.Load() - sw0; late < 2000 || sw < 300 {
+		t.Fatalf("nur %d Nachzuegler und %d Wechsel - der Test prueft zu wenig", late, sw)
+	}
 }

@@ -528,6 +528,8 @@ type Out struct {
 	tl0Delta   uint8
 	lastPic    uint16
 	lastTL0    uint8
+	hiSeq      uint16 // hoechste geschriebene Folgenummer - in Reihe (dann gleich lastSeq) oder von einem Nachzuegler
+	hiPic      uint16 // ... und PictureID
 	pauseAt    int64
 	// Stand des Ausgangs in der Folge seiner Quelle. Ein Paket, das erst eintrifft, nachdem der Ausgang an seiner Stelle
 	// vorbei ist (Nachsendung, Umsortierung - Packet.late), muss mit den Versaetzen von damals hinaus: Mit den heutigen
@@ -722,7 +724,11 @@ func (o *Out) anchor(p *Packet, now int64) {
 		o.tsDelta = 0
 		return
 	}
-	o.seqDelta = o.lastSeq + 1 - in
+	// Hinter der hoechsten Nummer, die der Ausgang je geschrieben hat - auch von einem Nachzuegler (hiSeq), nicht hinter
+	// dem letzten Paket in Reihe (lastSeq): Lag direkt dahinter eine Luecke und kam danach nur Ausgelassenes, traegt
+	// der Nachzuegler lastSeq+1, und das Schluesselbild nach dem Wechsel bekaeme dieselbe Nummer. Luecken, die jetzt
+	// noch offen sind, verfallen: Nach dem Neuanfang geht kein Nachzuegler von davor mehr hinaus (span).
+	o.seqDelta = o.hiSeq + 1 - in
 	step := uint32(3000)
 	if clk := uint64(p.src.Clock); clk != 0 && o.lastT != 0 {
 		el := now - o.lastT
@@ -741,7 +747,8 @@ func (o *Out) anchor(p *Packet, now int64) {
 	o.tsDelta = o.lastTS + step - p.h.TS
 	if o.Kind == Video && p.vp8.HasPicID {
 		if o.picStarted {
-			o.picDelta = o.lastPic + 1 - p.vp8.PicID
+			// ebenso die PictureID: hinter der hoechsten geschriebenen - ein ganz nachgekommenes Bild hat sonst dieselbe
+			o.picDelta = o.hiPic + 1 - p.vp8.PicID
 			o.tl0Delta = o.lastTL0 + 1 - p.vp8.TL0
 		}
 	}
@@ -1136,6 +1143,9 @@ func (l *Leg) process(p *Packet, o *Out) {
 		}
 		if !late {
 			o.lastPic, o.lastTL0, o.picStarted = pic, tl0, true
+			o.hiPic = pic
+		} else if m := v.PicIDMask(); v.HasPicID && (pic-o.hiPic)&m != 0 && (pic-o.hiPic)&m <= m/2 {
+			o.hiPic = pic // ein nachgekommenes Bild hinter dem letzten in Reihe geschriebenen
 		}
 	}
 	t0 := Now()
@@ -1154,6 +1164,9 @@ func (l *Leg) process(p *Packet, o *Out) {
 	}
 	if !late { // ein verspaetetes Paket aendert nicht, wo der Ausgang steht (naechste Folgenummer, Zeitbasis)
 		o.lastSeq, o.lastTS, o.lastT = seq, ts, now
+		o.hiSeq = seq
+	} else if int16(seq-o.hiSeq) > 0 {
+		o.hiSeq = seq // ... ausser fuer den naechsten Neuanfang: Seine Nummer ist vergeben (anchor)
 	}
 	n := uint64(12 + 4*len(h.CSRC) + len(payload))
 	o.Pkts.Add(1)
@@ -1192,6 +1205,9 @@ func (l *Leg) writeRaw(p *Packet, o *Out, w RawWriter, seq uint16, now int64, la
 	}
 	if !late {
 		o.lastSeq, o.lastTS, o.lastT = seq, p.h.TS, now
+		o.hiSeq = seq
+	} else if int16(seq-o.hiSeq) > 0 {
+		o.hiSeq = seq
 	}
 	n := uint64(p.n)
 	o.Pkts.Add(1)
