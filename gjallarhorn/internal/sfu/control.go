@@ -689,7 +689,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// Ein Schritt, fuer den die Fuellrate ueber probeFillMax laege (z. B. Bildschirm von l auf h), laesst sich
 			// nicht proben. Er wird nicht "halb geprobt" freigegeben, sondern laeuft wie ohne Probing: Der Deckel der
 			// Schaetzung folgt seinem Bedarf (wantBig), der Wechsel selbst ist die Probe, der Aufschub das Netz.
-			fits := !(need*upHeadroom-sum > probeFillMax)
+			fits := !(max(need*probeHead, sum+probeFillMin)-sum > probeFillMax) // Fuellrate der Probe, siehe probeBegin
 			prb := prb && fits
 			big = !prb && !cur && !start && l.est.probing && l.est.gccLast > 0
 			// passed: Fuer genau diesen Schritt ist gerade eine Probe bestanden (probe.go)
@@ -723,8 +723,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 					lim = min(lim, l.est.capProbed-audioCut)
 				}
 				// Die Probe hat die Rate des Schritts belegt, wie sie zu ihrem Beginn war. Schwankt der Bedarf seither
-				// leicht (Schluesselbild in der geglaetteten Rate der Quelle), scheitert der Schritt nicht daran.
-				if t := need*upHeadroom + audioCut; passed && lim > 0 && t > budget+audioCut && t <= l.est.grant*probeSlack && t <= quotaCap {
+				// leicht (Schluesselbild in der geglaetteten Rate der Quelle), scheitert der Schritt nicht daran. Belegt
+				// ist der Bedarf mal probeHead (Fuellziel); den Schritt gibt das mit seiner vollen Reserve frei.
+				if t := need*upHeadroom + audioCut; passed && lim > 0 && t > budget+audioCut && need*probeHead+audioCut <= l.est.grant*probeSlack && t <= quotaCap {
 					l.est.bps = max(l.est.bps, min(t, l.est.max))
 					budget = max(budget, need*upHeadroom)
 					lim, limit, upLimit = budget, budget, budget

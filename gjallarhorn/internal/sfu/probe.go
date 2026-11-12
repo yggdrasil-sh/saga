@@ -16,7 +16,7 @@ import (
 // Ablauf einer Probe (alles im Takt, die Pakete schreibt der Schreiber des Beins):
 //  1. halbe Fuellrate fuer probeRamp Takte
 //  2. volle Fuellrate fuer das Fenster (2,5 Umlaufzeiten, mindestens probeMinTicks Takte, hoechstens probeWinMax;
-//     ohne Umlaufzeit probeWin)
+//     ohne Umlaufzeit probeWin - seit Stufe 3 also 0,4 bis 0,6 s)
 //  3. Nachlauf ohne Fuelldaten fuer probeSettle Takte (die Rueckmeldung zum Ende des Fensters steht noch aus)
 //
 // Ob die Leitung dabei staut, wertet die Probe selbst aus (probeJudge, fallClass): eigene Warteschlange, Ueberlast laut
@@ -37,9 +37,12 @@ import (
 // Ohne Probe (freier Versuch, siehe freeStep): der erste Schritt nach oben eines Beins und die Rueckkehr auf eine
 // Schicht, die mindestens upHold gehalten hat - jeweils einmal, zeitlich wie ohne Probing.
 //
-// Abstand: nach einer gescheiterten Probe probeGap, verdoppelnd bis probeGapMax - je Bein und Zielrate (legFail), nicht
-// je Platz; eine bestandene Probe ab dieser Zielrate oder laengere Ruhe setzt zurueck. Nach einer bestandenen Probe
-// fruehestens probeGap spaeter die naechste fuer denselben Schritt (falls er aus anderem Grund ausbleibt).
+// Abstand: nach einer gescheiterten Probe probeGap, je weitere gescheiterte mal probeGapUp bis probeGapMax (3 s, 4,5 s,
+// 6,75 s ... 20 s) - je Bein und Zielrate (legFail), nicht je Platz; eine bestandene Probe ab dieser Zielrate oder
+// laengere Ruhe setzt zurueck (die naechste gescheiterte beginnt wieder bei probeGap). Nach einer bestandenen Probe
+// fruehestens probeGap spaeter die naechste fuer denselben Schritt (falls er aus anderem Grund ausbleibt). Proben ohne
+// Wertung (unklar, abgebrochen) aendern den Abstand nicht - eine Folge unklarer Proben endet selbst mit einer
+// gescheiterten (probeUnclear, probeVerdict).
 //
 // Nicht geprobt wird ein Schritt, dessen Fuellrate ueber probeFillMax laege: Er laeuft wie ohne Probing (planLeg).
 //
@@ -48,24 +51,35 @@ import (
 // genuegt nicht mehr (genau diese blinden Versuche kosten Schluesselbilder). Dafuer darf schon waehrend des Aufschubs
 // geprobt werden, sobald der Proben-Abstand um ist, und eine bestandene Probe erlaubt den Versuch vorzeitig. Die Probe
 // verlaengert den Aufschub nie. Nach einem echten Fehlversuch (bzw. einer Budget-Ruecknahme mit Vorgeschichte) wird
-// fruehestens nach dem Aufschub geprobt, hoechstens aber nach probeGapMax (dwell.afterFail): Besteht die Probe
+// fruehestens nach dem Aufschub geprobt, hoechstens aber nach probeDwellMax (dwell.afterFail): Besteht die Probe
 // wiederholt, waehrend der Wechsel scheitert, kommen die Versuche so nie haeufiger als ohne Probing (8, 16, 32 ... s) -
 // eine bestandene Probe setzt nur den Abstand nach gescheiterten Proben zurueck, nicht diesen. "Vorzeitig" wirkt also
 // bei langen Aufschueben (ueber 2 min bis 5 min): Eine frei gewordene Leitung ist nach gut 2 min wieder oben (Probe
 // spaetestens 2 min nach dem letzten Fehlversuch, dazu Ruhezeit, Probe und Wechsel - gemessen bis 2 min 43 s).
+// Zusammenspiel mit dem kurzen Proben-Abstand (Stufe 3): Der Aufschub entsteht nur aus echten Wechseln, die scheitern;
+// gescheiterte Proben setzen ihn nicht. In anhaltender Enge ohne Fehlversuch gilt also allein der Proben-Abstand
+// (hoechstens probeGapMax, 20 s) - der Aufschub zieht ihn nicht auf Minuten. Erst wenn Wechsel nach bestandener Probe
+// wiederholt scheitern (Leitung traegt die Probe, nicht die Schicht), bremst er wie ohne Probing.
 const (
-	probeRamp     = 2                       // Takte mit halber Fuellrate
-	probeMinTicks = 3                       // Mindestlaenge des Fensters in Takten
-	probeWin      = time.Second             // Fenster ohne bekannte Umlaufzeit
-	probeWinMax   = 1500 * time.Millisecond // laengstes Fenster
-	probeRTTs     = 2.5                     // Fenster in Umlaufzeiten
-	probeSettle   = 2                       // Takte Nachlauf
-	probeFillMax  = 1500e3                  // hoechste Fuellrate (bit/s)
-	probeMinFill  = 0.6                     // so viel der Fuellrate muss im Fenster wirklich gesendet worden sein
-	probeGap      = 10 * time.Second        // Abstand nach einer gescheiterten Probe (verdoppelnd)
-	probeGapMax   = 2 * time.Minute
-	probeRetry    = 2 * time.Second // Abstand nach einer abgebrochenen Probe (Belegung geaendert)
-	probeQuiet    = layerDwell      // so lange muss die Bild-Auswahl des Beins unveraendert laufen, bevor geprobt wird
+	probeRamp     = 2                      // Takte mit halber Fuellrate
+	probeMinTicks = 2                      // Mindestlaenge des Fensters in Takten (Stufe 3: 0,4 s, vorher 3)
+	probeWin      = 600 * time.Millisecond // Fenster ohne bekannte Umlaufzeit (vorher 1 s)
+	probeWinMax   = 600 * time.Millisecond // laengstes Fenster (vorher 1,5 s)
+	probeRTTs     = 2.5                    // Fenster in Umlaufzeiten
+	probeSettle   = 2                      // Takte Nachlauf
+	probeFillMax  = 1500e3                 // hoechste Fuellrate (bit/s)
+	probeMinFill  = 0.6                    // so viel der Fuellrate muss im Fenster wirklich gesendet worden sein
+	probeGap      = 3 * time.Second        // Abstand nach einer gescheiterten Probe (Stufe 3; vorher 10 s verdoppelnd bis 2 min)
+	probeGapUp    = 1.5                    // ... je weitere gescheiterte Probe mal so viel
+	probeGapMax   = 20 * time.Second       // ... hoechstens
+	probeDwellMax = 2 * time.Minute        // nach einem echten Fehlversuch die naechste Probe hoechstens so spaet (dwell.afterFail)
+	// Fuellziel: Die Probe fuellt auf den Bedarf des Schritts mal probeHead (Stufe 3; vorher upHeadroom, 1,15) - mindestens
+	// probeFillMin ueber der laufenden Rate, damit sich die Probe im Nachweis von Schwankungen der Bildrate abhebt
+	// (Schluesselbilder, 3 bis 4 % in der Rate des 100-ms-Rasters; bei kleinen Schritten waeren 5 % weniger als das).
+	probeHead    = 1.05
+	probeFillMin = 200e3
+	probeRetry   = 2 * time.Second // Abstand nach einer abgebrochenen Probe (Belegung geaendert)
+	probeQuiet   = layerDwell      // so lange muss die Bild-Auswahl des Beins unveraendert laufen, bevor geprobt wird
 	// ... vor der ersten Probe eines Beins kuerzer: Es gibt noch keinen Wechsel, dessen Folgen (Schluesselbild,
 	// nachlaufendes Ziel) abzuwarten waeren - nur der Anlauf (erstes Schluesselbild, erste Rueckmeldungen an GCC)
 	probeQuietFirst = 2 * time.Second
@@ -95,9 +109,9 @@ const (
 	// Reserve (1/upHeadroom). Die Fuellpakete folgen nur auf Medienpakete und erreichen die Fuellrate nicht immer ganz
 	// (UDP-Laeufe: Schritt l -> m 87 bis 102 % der Zielrate, m -> h 98 bis 103 %); mit 0,9 blieb jede vierte Probe
 	// l -> m auf freier Leitung ohne Nachweis.
-	probeSentMin  = 1 / upHeadroom
+	probeSentMin  = 1 / probeHead
 	probeAckMin   = 0.95                   // ... und davon vom Empfaenger im selben Zeitraum bestaetigt mindestens so viel
-	probeProofMin = 400 * time.Millisecond // ... gemessen ueber mindestens so viel Sendezeit
+	probeProofMin = 300 * time.Millisecond // ... gemessen ueber mindestens so viel Sendezeit (Fenster 0,4 bis 0,6 s; vorher 400 ms)
 	probeTail     = 500 * time.Millisecond // Nachlauf bis zum Urteil ohne bekannte Umlaufzeit (sonst 2 Umlaufzeiten + 200 ms, hoechstens 1 s)
 )
 
@@ -124,7 +138,8 @@ type probe struct {
 	fs     *slot    // Platz, auf dessen Ausgang gefuellt wird
 	fown   *Peer    // ... und sein Besitzer
 	out    *fwd.Out // ... sein Ausgang
-	target float64  // Zielrate des Beins (bit/s, mit Ton)
+	target float64  // Zielrate des Beins (bit/s, mit Ton): Bedarf x probeHead (bzw. probeFillMin ueber der laufenden Rate)
+	stepT  float64  // ... dieselbe mit der Reserve des Schritts (upHeadroom) - in diesem Mass fuehrt legFail Buch
 	fill   float64  // volle Fuellrate (bit/s)
 	win    int64    // Dauer des Fensters
 	pad0   uint64   // Fuell-Bytes des Beins zu Beginn des Fensters
@@ -234,13 +249,15 @@ func (s *slot) dwFor(rank int) *dwell {
 // probeBegin startet die Probe fuer den Schritt von Platz s auf die Schicht rank: need ist die Bildrate der Auswahl
 // nach dem Schritt, sum die laufende, audio der Tonanteil (alles bit/s).
 func (l *Leg) probeBegin(s, fs *slot, rank int, need, sum, audio float64, now int64) {
-	target := need*upHeadroom + audio
+	target := max(need*probeHead, sum+probeFillMin) + audio
+	stepT := need*upHeadroom + audio
 	fill := target - sum - audio
 	if fill > probeFillMax {
 		// Freigegeben wird nur, was wirklich geprobt wurde. (planLeg probt Schritte mit groesserer Fuellrate gar nicht
 		// erst; das hier greift nur, wenn die Raten seither gewandert sind.)
 		fill = probeFillMax
 		target = sum + audio + fill
+		stepT = min(stepT, (sum+fill)*upHeadroom/probeHead+audio)
 	}
 	if fill <= 0 {
 		return
@@ -252,7 +269,7 @@ func (l *Leg) probeBegin(s, fs *slot, rank int, need, sum, audio float64, now in
 		}
 	}
 	l.pr = probe{stage: 1, at: now, t0: now, s: s, owner: s.owner, layer: s.layer, rank: rank, fs: fs, fown: fs.owner, out: fs.out,
-		target: target, fill: fill, win: win}
+		target: target, stepT: stepT, fill: fill, win: win}
 	loss0 := 0.0
 	if l.ExtStat != nil {
 		loss0 = l.ExtStat().Loss
@@ -539,14 +556,14 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 		if e.bps < p.target {
 			e.bps = min(p.target, e.max)
 		}
-		l.pf.pass(p.target)
+		l.pf.pass(p.stepT)
 		if d != nil {
 			d.next, d.ok = now+int64(probeGap), now
 		}
 	case probeFail:
 		l.pstat.Failed++
 		e.shieldOff(now, probeFloor)
-		l.pf.fail(p.target, now)
+		l.pf.fail(p.stepT, now)
 		l.firstUsed = true
 		if d != nil {
 			d.ok = 0
@@ -566,7 +583,7 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 		if why == "fuell" {
 			// Die Fuelldaten sind nicht geflossen (Quelle still, Ausgang wartet): Der naechste Versuch braechte dasselbe -
 			// Abstand wie nach einer gescheiterten Probe, statt alle probeRetry von vorn
-			l.pf.fail(p.target, now)
+			l.pf.fail(p.stepT, now)
 		}
 	}
 	p.s.setProbe(res, why, p.target)
@@ -623,14 +640,14 @@ func (f *legFail) blocks(t float64, now int64) bool {
 	return f.pd > 0 && t >= f.rate*probeNear && now < f.next
 }
 
-// fail: Probe (bzw. echter Versuch) mit Zielrate t gescheitert - Abstand verdoppeln; eine kleinere gescheiterte
+// fail: Probe (bzw. echter Versuch) mit Zielrate t gescheitert - Abstand mal probeGapUp; eine kleinere gescheiterte
 // Zielrate senkt die Schwelle, ohne den Abstand zurueckzusetzen.
 func (f *legFail) fail(t float64, now int64) {
 	switch {
 	case f.pd == 0:
 		f.rate, f.pd = t, probeGap
 	case t >= f.rate*probeNear:
-		f.pd = min(2*f.pd, probeGapMax)
+		f.pd = min(time.Duration(float64(f.pd)*probeGapUp), probeGapMax)
 		f.rate = min(f.rate, t)
 	default:
 		f.rate = t
@@ -702,9 +719,9 @@ func (l *Leg) freeGrant(s *slot, to, from int, heldFor int64, unramped bool) {
 }
 
 // afterFail: Ein echter Wechsel auf diese Schicht ist gescheitert bzw. wurde zurueckgenommen (Aufschub d.d gesetzt) -
-// die naechste Probe fruehestens nach dem Aufschub, hoechstens nach probeGapMax. Ohne Probing ohne Wirkung.
+// die naechste Probe fruehestens nach dem Aufschub, hoechstens nach probeDwellMax. Ohne Probing ohne Wirkung.
 func (d *dwell) afterFail(now int64) {
-	d.next, d.ok = max(d.next, now+int64(min(d.d, probeGapMax))), 0
+	d.next, d.ok = max(d.next, now+int64(min(d.d, probeDwellMax))), 0
 }
 
 // setProbe haelt ein Probe-Ereignis fuer die naechste Layout-Meldung fest.

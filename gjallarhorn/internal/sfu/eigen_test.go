@@ -192,8 +192,11 @@ func TestEigenEchteEnge(t *testing.T) {
 //     bei gcc "fail:over" mit Abstand): bei eigen haelt die Fuellung an, der Detektor sieht keinen Stau, aber der
 //     Nachweis fehlt - unklar, Wiederholung ohne Abstand, dann bestanden.
 //   - freie Leitung ohne Stoerung: bestanden wie bei gcc.
+//
+// Seit Stufe 3 (Fuellziel Bedarf x 1,05) traegt eine Leitung von 1400 kbit/s die Probe auf h (1250 + Ton, gefuellt auf
+// 1352 kbit/s) - sie besteht, und h haelt (TestEigenProbeKnappTraegt). Eng sind hier 1000 und 1250 kbit/s.
 func TestEigenProbe(t *testing.T) {
-	for _, link := range []float64{1000e3, 1250e3, 1400e3} {
+	for _, link := range []float64{1000e3, 1250e3} {
 		for _, pion := range []bool{false, true} {
 			er := neuEigen(t, true, 1250e3, 810e3, 1)
 			er.l.firstUsed = true
@@ -219,12 +222,11 @@ func TestEigenProbe(t *testing.T) {
 		first := probeOver(t, er, 0, 1)
 		var second string
 		if eigen {
-			if first != probeAbort+":"+whyUnclear || er.l.pf.pd != 0 {
+			// Seit Stufe 3 ist das Fenster 0,4 bis 0,6 s: Die zwei Takte voller Fuellung bis zum Halt durch GCC belegen
+			// die Zielrate schon (Nachweis ueber 300 ms) - der Detektor sieht keinen Stau: bestanden, ohne Wiederholung.
+			// (Vorher mit bis zu 1,5 s Fenster: unklar, Wiederholung, dann bestanden.)
+			if first != probeOK || er.l.pf.pd != 0 {
 				t.Fatalf("eigen: erste Probe %q, abstand %v", first, er.l.pf.pd)
-			}
-			second = probeOver(t, er)
-			if second != probeOK {
-				t.Fatalf("eigen: Wiederholung %q", second)
 			}
 		} else if first != probeFail+":over" || er.l.pf.pd != probeGap {
 			t.Fatalf("gcc: %q, abstand %v", first, er.l.pf.pd)
@@ -234,10 +236,12 @@ func TestEigenProbe(t *testing.T) {
 		t.Logf("eigen=%v: falsche Ueberlast in der Probe: %q, dann %q; h %v nach Beginn (%.1f s nach der ersten Probe)", eigen, first, second,
 			time.Duration(er.now-start).Round(100*time.Millisecond), d.Seconds())
 	}
-	// dauerhaft falsche Ueberlast: nach probeUnkMax unklaren Proben in Folge gescheitert, mit Abstand
+	// dauerhaft falsche Ueberlast, die Fuellung haelt nach einem Takt an (kein Nachweis): nach probeUnkMax unklaren
+	// Proben in Folge gescheitert, mit Abstand
 	er := neuEigen(t, true, 1250e3, 810e3, 1)
 	er.l.firstUsed = true
 	er.until("m", 2*time.Second)
+	short(er)
 	var got []string
 	for i := 0; i < probeUnkMax; i++ {
 		got = append(got, probeOver(t, er, 0, 1))
@@ -278,7 +282,7 @@ func TestEigenProbe(t *testing.T) {
 	er.r.mu.Unlock()
 	er.until("m", 2*time.Second)
 	er.det.buf, er.det.mute = 0.015, true // kurzer Puffer: die Schlange zeigt nichts
-	er.link = 1400e3
+	er.link = 1270e3                      // seit Stufe 3 (Ziel 1352k): unter dem Bedarf von h (1290k); vorher 1400 bei Ziel 1477k
 	er.grow, er.capF = 0, 0
 	gcc := er.gcc
 	er.l.ExtOver = func() bool { return false }
@@ -291,9 +295,38 @@ func TestEigenProbe(t *testing.T) {
 		er.tick()
 	}
 	er.tick()
-	t.Logf("Leitung 1400 bei Ziel %dk, GCC still, Puffer 15 ms: %s (%s), gesendet %dk, bestaetigt %dk, Urteil %s", ev.TargetKbit, ev.Result, ev.Why, ev.SentKbit, ev.AckedKbit, ev.Det)
+	t.Logf("Leitung 1270 bei Ziel %dk, GCC still, Puffer 15 ms: %s (%s), gesendet %dk, bestaetigt %dk, Urteil %s", ev.TargetKbit, ev.Result, ev.Why, ev.SentKbit, ev.AckedKbit, ev.Det)
 	if ev.Result == probeOK || ev.Det != bwe.VerdictFree {
 		t.Fatalf("bestanden trotz fehlendem Nachweis (bzw. Urteil nicht staut-nicht): %+v", ev)
+	}
+}
+
+// short: Der Nachweis des Detektor-Modells reicht nie ueber probeProofMin (die Fuellung lief zu kurz) - fuer Tests, in
+// denen GCC die Fuellung anhaelt und das Ergebnis deshalb unklar sein soll (Fenster seit Stufe 3 nur 0,4 bis 0,6 s).
+func short(er *estRoom) {
+	span := er.l.ExtSpan
+	er.l.ExtSpan = func(from, to, rateFrom time.Duration) (bwe.Verdict, bwe.Rates) {
+		v, r := span(from, to, rateFrom)
+		r.Ns = min(r.Ns, int64(probeProofMin)-1)
+		return v, r
+	}
+}
+
+// TestEigenProbeKnappTraegt (Stufe 3): Leitung 1400 kbit/s, h braucht 1250 + Ton - mit dem Fuellziel Bedarf x 1,05
+// (1352 kbit/s) besteht die Probe, h kommt und haelt 10 min ohne Fehlversuch. Vorher (x 1,15, 1477 kbit/s) scheiterte
+// jede Probe, und die Leitung blieb auf m, obwohl sie h trug.
+func TestEigenProbeKnappTraegt(t *testing.T) {
+	for _, pion := range []bool{false, true} {
+		er := neuEigen(t, true, 1250e3, 810e3, 1)
+		er.l.firstUsed = true
+		er.pion, er.link = pion, 1400e3
+		er.until("m", 2*time.Second)
+		z := er.zahlen(10*time.Minute, nil)
+		ps := er.l.ProbeStats()
+		t.Logf("1400 kbit/s (pion-Regler %v): %v, proben %+v", pion, z, ps)
+		if ps.Passed == 0 || z.share < 0.95 || z.fails != 0 {
+			t.Fatalf("1400 kbit/s: bestandene Proben %d, h %.1f %%, Fehlversuche %d", ps.Passed, z.share*100, z.fails)
+		}
 	}
 }
 
