@@ -562,6 +562,87 @@ func TestPaddingSpaetAelterAlsHistorie(t *testing.T) {
 	}
 }
 
+// TestPaddingNachAusgelassenemBild: Fuellpakete bekommen die naechste freie Folgenummer - hinter den Luecken, die noch
+// auf ihr Paket warten. Hat der Ausgang seit dem letzten Bildende ein Bild ausgelassen und fehlte davor ein Paket,
+// gehoert die Nummer direkt hinter dem letzten geschriebenen Paket diesem Nachzuegler (frueher bekam sie das erste
+// Fuellpaket, der Nachzuegler landete darauf).
+func TestPaddingNachAusgelassenemBild(t *testing.T) {
+	b := newPadBench(t)
+	s := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	b.o.Assign(s)
+	b.o.SetMaxTID(0)
+	inj := func(pkt []byte) {
+		s.Inject(pkt)
+		for {
+			e, ok := b.leg.pop()
+			if !ok {
+				return
+			}
+			b.leg.process(e.p, e.o)
+			e.p.release()
+		}
+	}
+	inj(fpkt(10, 0, 100, 1, 0, true, true, true, 10)) // F (TL0)
+	// G (TL0, Paket 11) fehlt zunaechst
+	inj(fpkt(12, 6000, 102, 2, 1, true, false, true, 12)) // S (TL1): ausgelassen
+	b.fill(2)                                             // zwei Fuellpakete an der Bildgrenze hinter F
+	inj(fpkt(13, 9000, 103, 3, 0, true, false, true, 13)) // H (TL0)
+	inj(fpkt(11, 3000, 101, 2, 0, true, false, true, 11)) // G kommt nach
+	b.fill(1)
+	inj(fpkt(14, 12000, 104, 4, 0, true, false, true, 14)) // I (TL0)
+	media, pads := b.check()                               // jede Folgenummer genau einmal, zusammen lueckenlos
+	if media != 4 || pads != 3 {
+		t.Fatalf("%d Medien-, %d Fuellpakete", media, pads)
+	}
+	var got []uint16
+	for i, h := range b.w.hdrs {
+		if h.Padding {
+			got = append(got, 0)
+			continue
+		}
+		got = append(got, h.SequenceNumber)
+		if tag := ptag(b.w.pls[i]); tag == 11 && h.SequenceNumber != 11 {
+			t.Fatalf("Nachzuegler G auf Folgenummer %d", h.SequenceNumber)
+		}
+	}
+	// F 10, Fuell 12 13, H 14, G 11, Fuell 15, I 16
+	if want := []uint16{10, 0, 0, 14, 11, 0, 16}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("Folgenummern der Medienpakete %v, erwartet %v", got, want)
+	}
+	if h := b.w.hdrs[1]; h.SequenceNumber != 12 || b.w.hdrs[5].SequenceNumber != 15 {
+		t.Fatalf("Fuellpakete auf %d und %d", h.SequenceNumber, b.w.hdrs[5].SequenceNumber)
+	}
+}
+
+// TestPaddingZufall: der Zufallslauf des Abgleichs (doppel_test.go: Verlust, Nachsendungen, Umsortierung, Wiederholungen,
+// Fuellpakete der Quelle, wechselnde Zeitschicht-Grenze) - dazu Fuell-Schuebe des Knotens an jeder dritten Bildgrenze.
+// Fuellpakete und ausgelassene Bilder aendern beide den Versatz; ein Nachzuegler muss trotzdem auf der Nummer seiner
+// Stelle landen, keine Nummer darf zweimal vergeben werden (auch nicht an ein Fuellpaket).
+func TestPaddingZufall(t *testing.T) {
+	old := MaxQueueAge
+	MaxQueueAge = time.Hour
+	defer func() { MaxQueueAge = old }()
+	late, pads := 0, uint64(0)
+	for seed := int64(101); seed <= 140; seed++ {
+		late += zufallLauf(t, seed, func(leg *Leg, o *Out, i int) {
+			if i%3 != 0 {
+				return
+			}
+			leg.padBuf[PadSize-1] = PadSize
+			n0 := leg.Stats.PadPkts.Load()
+			now := Now()
+			leg.SetPadding(o, 1e9)
+			leg.padT, leg.padCredit = now, float64((1+i%4)*padWire)
+			leg.pad(now) // schreibt nur, wenn der Ausgang zwischen zwei Bildern steht
+			leg.SetPadding(nil, 0)
+			pads += leg.Stats.PadPkts.Load() - n0
+		})
+	}
+	if late < 500 || pads < 5000 {
+		t.Fatalf("%d Nachzuegler weitergeleitet, %d Fuellpakete - der Test prueft zu wenig", late, pads)
+	}
+}
+
 // TestPaddingTotmann: Schaltet niemand ab (Takt haengt), hoert das Bein nach PadMax von selbst auf zu fuellen - und
 // SetPadding weckt den Schreiber, er fuellt also auch, wenn nach dem letzten Bild gerade kein Paket kommt.
 func TestPaddingTotmann(t *testing.T) {

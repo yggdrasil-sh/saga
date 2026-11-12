@@ -977,7 +977,11 @@ func (l *Leg) pad(now int64) bool {
 		h.Extensions = h.Extensions[:0]
 		h.Marker = false
 		h.PayloadType = b.pt
-		h.SequenceNumber = o.lastSeq + 1
+		// Die naechste freie Folgenummer ist die, die das naechste Paket der Quelle bekaeme. Sie liegt hinter allem
+		// Geschriebenen und hinter den Luecken, die noch auf ihr Paket warten: Hat der Ausgang seit dem letzten Bildende
+		// Bilder ausgelassen und fehlte dazwischen ein Paket, ist lastSeq+1 dessen Nummer, nicht die eines Fuellpakets.
+		seq := o.lastIn + 1 + o.seqDelta
+		h.SequenceNumber = seq
 		h.Timestamp = o.lastTS
 		h.SSRC = b.ssrc
 		h.CSRC = nil
@@ -986,8 +990,11 @@ func (l *Leg) pad(now int64) bool {
 			Totals.WriteErrs.Add(1)
 			break
 		}
-		o.lastSeq++
-		o.seqDelta++ // die Folgenummern der Quelle ruecken um das Fuellpaket weiter
+		o.lastSeq = seq
+		// Die Folgenummern der Quelle ruecken um das Fuellpaket weiter. Stellen, an denen der Ausgang schon vorbei ist,
+		// haben sich ihren Versatz gemerkt (slots): Ein Nachzuegler von vor dem Schub landet nicht auf der Nummer eines
+		// Fuellpakets.
+		o.seqDelta++
 		l.Stats.HdrExtra.Add(hdrExtra(h))
 		l.Stats.PktsOut.Add(1)
 		l.Stats.BytesOut.Add(padWire)
