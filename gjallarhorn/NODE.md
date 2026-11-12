@@ -87,8 +87,9 @@ Platzhalter: `horn-1.example.org`.
 - **Lebensdauer der Beine (Horn-Fix):** Beine der Betriebsart `node` leben so lange wie der Anruf. Geräumt wird nur,
   was gescheitert/geschlossen ist (nach 30 s) bzw. nie verbunden wurde (nach 60 s). Die frühere Grenze von 15 min
   gilt nur noch für Spiegel-/Bench-Beine. Jedes Bein schreibt `bein auf`/`bein zu` ins Protokoll – gekürzte ID,
-  Betriebsart, Weg, Dauer, Grund (`aufraeumer: alter|gescheitert|nie verbunden`, `verbindung failed|closed`,
-  `knoten: …`, `abgemeldet`, `knoten beendet`, `aufbau fehlgeschlagen`); keine Adressen, kein ufrag.
+  Betriebsart, Weg, Dauer, die Zähler des Abgleichs auf Doppel (siehe unten) und zuletzt der Grund
+  (`aufraeumer: alter|gescheitert|nie verbunden`, `verbindung failed|closed`, `knoten: …`, `abgemeldet`,
+  `knoten beendet`, `aufbau fehlgeschlagen`); keine Adressen, kein ufrag.
 - **Schätzung je Bein:**
   - TCP: aus dem Alter der eigenen Warteschlange. Dank `TCP_NOTSENT_LOWAT` liegt der Stau im Knoten.
   - UDP: zusätzlich GCC (TWCC), als Stausignal. Ohne Probepakete ist GCC anwendungsbegrenzt und taugt nicht als
@@ -123,6 +124,43 @@ Platzhalter: `horn-1.example.org`.
     an (höchstens 1 je Quelle und 500 ms). Ton wird nie verworfen.
 - **NACK/RTX und TWCC:** NACK/RTX gibt es nur auf UDP. TWCC-Rückmeldung für den Uplink der Geräte auf allen Wegen.
   Opus auf TCP: ptime 40, ohne FEC, mit DTX.
+- **Doppel und Nachzügler (Abgleich je Quelle, `internal/fwd`):** pion gibt RTX-Pakete des sendenden Geräts entpackt mit
+  der ursprünglichen Folgenummer zurück – Nachsendungen nach einem NACK, aber auch Wiederholungen, mit denen ein
+  Browser füllt bzw. probt. Vor der Verteilung gleicht jede Quelle deshalb mit einem Fenster der letzten 1024
+  Folgenummern ab (`Source.admit`; Lese-Goroutine, ohne Sperre und Allokation, 2,3 KiB je Quelle):
+  - **Das erste Exemplar geht durch, jedes weitere wird verworfen und gezählt** (`dups`) – Bild und Ton, auch auf der
+    Brücke und für reine Füllpakete des Absenders. Ein Doppel zählt weder in Rate und Bildrate der Schicht noch als
+    Schlüsselbild oder Lebenszeichen. Vorher ging es mit derselben Folgenummer an jeden Empfänger (im Labor 11–17 %
+    mehr Pakete, im Einzelfall das Doppelte), der es ungezählt und unbestätigt verwarf – für die Schätzung des Knotens
+    sah das wie Verlust aus –, und es verstellte den Ausgang: Schlüsselbild nach einem Schichtwechsel auf einer schon
+    vergebenen Nummer, Versatz während eines ausgelassenen Bildes eins zu weit, ein doppeltes Füllpaket zählte zweimal.
+  - **Spätes erstes Exemplar** (das Original ging auf dem Weg zum Knoten verloren und kommt per NACK nach, oder
+    Umsortierung): Es geht mit der Folgenummer und PictureID **seiner Stelle** hinaus – der Lücke, die der Empfänger
+    sieht und nachfordert. Dafür merkt sich jede Stelle, die ein Ausgang überspringt, wie er an ihr vorbeiging (Ring,
+    256 Stellen, 2,5 KiB je Ausgang): Versätze, ob er dort Bilder ausließ oder bis zum Schlüsselbild verwarf, welche
+    Zeitschicht galt. Das späte Paket ändert den Stand des Ausgangs nicht (nächste Folgenummer, Bildzustand,
+    Schichtwechsel) und geht nicht hinaus, wenn der Ausgang an seiner Stelle verwarf, seine Zeitschicht ausließ oder
+    die übrigen Pakete seines Bildes ausgelassen hat. Ist die Stelle älter als der Ring (bei der hohen Schicht rund
+    1,5 s; der Knoten fordert etwa 1 s lang nach), wird es verworfen und gezählt (`late_dropped`) – nie landet es auf
+    einer schon vergebenen Nummer. Ein verspätetes Füllpaket des Absenders rückt nichts mehr; an seiner Stelle bleibt
+    für die Empfänger eine Lücke, die niemand füllt (sie fragen höchstens zehnmal nach).
+  - **Älter als das Fenster:** verworfen und getrennt gezählt (`too_old`). Das Fenster reicht weiter zurück, als der
+    Knoten nachfordert (512 Nummern) und als libwebrtc Pakete für Wiederholungen vorhält (rund 600 bzw. 1–3 s).
+  - **Sprung über das Fenster hinaus:** Trägt das Paket einen jüngeren Zeitstempel als alles bisher Gesehene (lange
+    Unterbrechung; Brücke, deren Ausgang auf der Gegenseite nach einer Pause neu beginnt), setzt die Quelle das Fenster
+    sofort neu auf – nichts geht verloren. Springt die Folge dabei rückwärts, zählt jeder Ausgang lückenlos weiter,
+    statt alte Nummern noch einmal zu vergeben. Ein Neustart mit fremder Zeitbasis gilt ab dem zweiten Paket in Reihe
+    (wie RFC 3550, das erste davon geht verloren); ein einzelnes Paket von weit zurück ist zu alt.
+  - **Grenzen:** Das Verhalten der Browser dazu ist am Code von pion und libwebrtc gelesen, nicht am Gerät gemessen.
+    Fehlt der Anfang eines Bildes, läuft sein Rest wie bisher unter dem Zustand des Bildes davor. Ein später
+    Rahmenanfang wird nach der Zeitschicht-Grenze beurteilt, die galt, als der Ausgang an seiner Stelle vorbeiging.
+  - **Zähler:** `GET /api/stats` → `dups`, `too_old`, `late` (späte erste Exemplare, weitergegeben), `late_dropped`
+    (alle in `pkts_in` enthalten). `GET /api/leg/{id}` und `stats` in `GET /api/sfu/leg/{id}` → `sources[]` je
+    eingehender Spur des Beins (`kind`, `layer`, `pkts` ohne Doppel, `dups`, `too_old`, `late`) und `late_dropped` des
+    Beins als Empfänger. Protokollzeile `bein zu … doppel=… alt=… spaet=… spaet_verworfen=… grund=…`.
+  - Tests: `internal/fwd/doppel_test.go` (Umlauf der Folgenummern, Sprung und Neustart, Schichtwechsel, Nachsendung,
+    ausgelassene Bilder, Verwerfen, Füllpakete, Kontingent, Ton, Zufallslauf gegen einen ungestörten Vergleichslauf).
+    Kosten (`BenchmarkForward1`/`BenchmarkFanout10`): rund 20 ns je Paket und Quelle, 8 ns je Ausgang, keine Allokation.
 - **Rahmen bleiben opak:** Gelesen wird nur der VP8-Descriptor (Schlüsselbild, TID, PictureID) und das P-Bit. Der
   E2E-Trailer wird nie angefasst.
 
@@ -355,7 +393,9 @@ für die Brücke keine Rolle.
   jemand sieht. Umschalten wie lokal am nächsten Schlüsselbild.
 - **Pakete bleiben unverändert** (Kopferweiterungen inklusive, Frame-E2E: die Brücke sieht nur Chiffrat). Nur die
   Folgenummer hält der Ausgang lückenlos, wenn er nach H3 verwirft (Warteschlange älter als 150 ms → Bild bis zum
-  nächsten Schlüsselbild verwerfen, Ton nie).
+  nächsten Schlüsselbild verwerfen, Ton nie). Doppel der Quelle gehen auch hier nicht hinüber, Nachzügler mit der
+  Nummer ihrer Stelle (Abgleich je Quelle, siehe Weiterleiter). Beginnt der Ausgang der Gegenseite nach einer Pause
+  neu, erkennt die Quelle hier die neue Folge am jüngeren Zeitstempel.
 - **Kennungen:** Teilnehmende behalten ihre Kennung (`peer_ref`) ihres Knotens; die CSRC vergibt jeder Knoten selbst. Gibt
   es eine Kennung schon (Gerät beim Wechsel auf beiden Knoten), gewinnt der erste Weg.
 - **Ende:** `uncascade`, Raum zu, Lesefehler, oder 30 s ohne eigene Teilnehmende und ohne weitere Brücke. Die

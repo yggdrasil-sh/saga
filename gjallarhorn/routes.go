@@ -215,6 +215,11 @@ type nodeStats struct {
 	WriteStalls   uint64  `json:"write_stalls"`
 	PLIp95ms      float64 `json:"pli_p95_ms"`
 	TailProbes    uint64  `json:"tail_probes"`
+	// Abgleich des Weiterleiters (fwd.Source.admit): in pkts_in enthalten
+	Dups        uint64 `json:"dups"`         // verworfene Doppel der Quellen
+	TooOld      uint64 `json:"too_old"`      // verworfen: aelter als das Fenster
+	Late        uint64 `json:"late"`         // spaete erste Exemplare (weitergegeben)
+	LateDropped uint64 `json:"late_dropped"` // davon an einem Ausgang nicht mehr einzuordnen
 }
 
 func (s *server) nodeStats() nodeStats {
@@ -233,6 +238,8 @@ func (s *server) nodeStats() nodeStats {
 		Uptime:     time.Since(s.start).Seconds(),
 		TIDSkipped: fwd.Totals.TIDSkipped.Load(), Switches: fwd.Totals.Switches.Load(), Pauses: fwd.Totals.Pauses.Load(),
 		WriteStalls: fwd.Totals.WriteStalls.Load(), PLIp95ms: fwd.PLIRespP(0.95), TailProbes: netx.TailProbes.Load(),
+		Dups: fwd.Totals.Dups.Load(), TooOld: fwd.Totals.TooOld.Load(), Late: fwd.Totals.Late.Load(),
+		LateDropped: fwd.Totals.LateDropped.Load(),
 	}
 	if s.udp != nil {
 		ns.UDPDropped = s.udp.Dropped.Load()

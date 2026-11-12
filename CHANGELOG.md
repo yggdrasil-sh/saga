@@ -16,6 +16,34 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Knoten: Wiederholungen des Absenders gehen nicht mehr an die Empfänger
+- Ein sendender Browser wiederholt alte Pakete über RTX – als Antwort auf ein NACK, aber auch zum Füllen und Proben.
+  Der Knoten bekommt sie mit der ursprünglichen Folgenummer und leitete bisher **jedes Exemplar** weiter, mit derselben
+  Folgenummer an jeden Empfänger. Folgen: 11–17 % mehr Pakete als nötig (im Labor in einem Lauf das Doppelte); der
+  Empfänger verwirft das Doppel, ohne es zu zählen oder zu bestätigen – die Schätzung des Knotens hielt das für Verlust
+  und nahm die Bildqualität zurück, obwohl die Leitung frei war; dazu gerieten die Folgenummern durcheinander
+  (Schlüsselbild nach einem Schichtwechsel auf einer schon vergebenen Nummer, Versatz während eines ausgelassenen Bildes
+  eins zu weit – der Empfänger verwirft dann echte Pakete).
+- Jetzt gleicht jede Quelle vor der Verteilung mit einem Fenster der letzten 1024 Folgenummern ab
+  (`gjallarhorn/internal/fwd`): Das erste Exemplar geht durch, jedes weitere wird verworfen und gezählt. Das gilt für
+  Bild und Ton, auf der Brücke zwischen Knoten und für Füllpakete des Absenders. Wiederholungen zählen auch nicht mehr
+  in die Rate und Bildrate einer Schicht.
+- **Nachsendungen kommen an der richtigen Stelle an:** Ein Paket, das auf dem Weg zum Knoten verloren ging und per NACK
+  nachkommt, trägt jetzt immer die Folgenummer seiner Lücke – auch wenn der Knoten inzwischen Bilder ausgelassen
+  (Kacheln mit halber Bildrate) oder bis zum Schlüsselbild verworfen hat. Bisher bekam es in diesen Fällen eine schon
+  vergebene Nummer und ging verloren; ein verspäteter Rahmenanfang konnte außerdem das laufende Bild abbrechen oder
+  einen Schichtwechsel auf ein Bild auslösen, dessen Rest schon vorbei war. Ist die Stelle nicht mehr bestimmbar
+  (älter als rund 1,5 s auf der hohen Schicht), wird das Paket verworfen und gezählt, statt eine Nummer doppelt zu
+  vergeben.
+- Springt die Folge einer Quelle weit (lange Unterbrechung, Brücke nach einer Pause), setzt der Abgleich neu auf, ohne
+  ein Paket zu verwerfen; springt sie rückwärts, zählt der Ausgang lückenlos weiter.
+- Neue Zähler: `GET /api/stats` → `dups`, `too_old`, `late`, `late_dropped`; je Bein `sources[]` (je eingehender Spur
+  `pkts`, `dups`, `too_old`, `late`) und `late_dropped`; Protokollzeile `bein zu … doppel=… alt=… spaet=…
+  spaet_verworfen=… grund=…` (der Grund steht jetzt am Ende). Kosten im Weiterleiter: rund 20 ns je Paket, keine
+  Allokation. Einzelheiten und Grenzen: `gjallarhorn/NODE.md` („Doppel und Nachzügler“).
+- **Nicht am Gerät geprüft:** Dass Browser Wiederholungen so schicken und behandeln, ist am Code von pion und libwebrtc
+  gelesen und passt zu den Labordaten; gemessen ist die Wirkung bisher nur mit der Test-Gegenstelle.
+
 ### Behoben – Knoten: im 1:1 über UDP bleibt das Bild auf der mittleren Ebene
 - Im Anruf zu zweit über den Knoten bekam der Empfänger dauerhaft nur die mittlere Simulcast-Ebene (640×360), obwohl
   der Sender die hohe schickte und die Leitung frei war. Zwei Regeln der Schätzung standen im Weg

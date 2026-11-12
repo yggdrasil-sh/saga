@@ -2071,7 +2071,9 @@ exp, jti}` – zufällige Kennungen je Knoten, keine Konto- oder Gerätenamen. R
   Empfangsplätze in fester Reihenfolge (Ton: 3; Bild: Sprecher, Bildschirm falls angefragt, Kacheln).
 - `POST {url}/api/sfu/turn {token}` → `{username, credential}` für TURN-TLS auf demselben Port (TLS-Weg).
 - `GET {url}/api/sfu/leg/{id}` → Belegung `slots[] {i, class, peer, csrc, layer, paused}` und Schätzung;
-  `DELETE` beendet das Bein.
+  `DELETE` beendet das Bein. Unter `stats` stehen Zähler des Beins (nur zur Diagnose, Apps werten sie nicht aus),
+  darunter `sources[] {kind, layer, pkts, dups, too_old, late}` je eingehender Spur und `late_dropped` – der Abgleich
+  des Knotens auf wiederholte Pakete des Absenders, siehe `gjallarhorn/NODE.md` („Doppel und Nachzügler“).
 - Fehler: 401 Token ungültig, abgelaufen, schon benutzt, für einen anderen Knoten oder Person entfernt; 404 Raum
   unbekannt (Anruf beendet); 429 voll.
 

@@ -369,6 +369,9 @@ func (s *server) sfuTrack(l *leg, sl *sfu.Leg, pc *webrtc.PeerConnection, tr *we
 	if debug {
 		log.Printf("debug %s %s: quelle %s/%s ssrc %d ext %d", l.id, l.path, tr.Kind(), src.Layer, src.SSRC, ext)
 	}
+	l.mu.Lock()
+	l.srcs = append(l.srcs, src) // fuer die Zaehler des Beins (stats)
+	l.mu.Unlock()
 	src.ReadLoop(read)
 	if r := s.node.Room(sl.Grant.Room); r != nil {
 		r.RemoveSource(src)

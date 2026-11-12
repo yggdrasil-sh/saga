@@ -437,8 +437,15 @@ func (s *server) closeLeg(l *leg, reason string) {
 	}
 	l.closed = true
 	l.mu.Unlock()
-	log.Printf("bein zu %s modus=%s weg=%s dauer=%s grund=%s", shortID(l.id), mode, l.path,
-		time.Since(l.created).Round(time.Second), reason)
+	// Abgleich des Weiterleiters fuer die Quellen dieses Beins: verworfene Doppel, Pakete aelter als das Fenster,
+	// spaete erste Exemplare - und was dieses Bein als Empfaenger nicht mehr einordnen konnte
+	st := l.stats()
+	var dups, old, late uint64
+	for _, x := range st.Sources {
+		dups, old, late = dups+x.Dups, old+x.TooOld, late+x.Late
+	}
+	log.Printf("bein zu %s modus=%s weg=%s dauer=%s doppel=%d alt=%d spaet=%d spaet_verworfen=%d grund=%s", shortID(l.id), mode, l.path,
+		time.Since(l.created).Round(time.Second), dups, old, late, st.LateDrop, reason)
 	s.mu.Lock()
 	delete(s.legs, l.id)
 	if l.ufrag != "" && s.ufrags[l.ufrag] == l {
@@ -487,6 +494,18 @@ type legStats struct {
 	TURN      *TURNSetup `json:"turn_setup,omitempty"`
 	WriteErrs uint64     `json:"write_errs"`
 	Secs      float64    `json:"secs"`
+	LateDrop  uint64     `json:"late_dropped,omitempty"` // verspaetete Pakete, die dieses Bein nicht mehr einordnen konnte
+	Sources   []srcStats `json:"sources,omitempty"`      // eingehende Spuren dieses Beins
+}
+
+// srcStats: Zaehler einer eingehenden Spur (Abgleich auf Doppel im Weiterleiter, fwd.Source).
+type srcStats struct {
+	Kind   string `json:"kind"`              // audio | video
+	Layer  string `json:"layer"`             // a | l | m | h
+	Pkts   uint64 `json:"pkts"`              // angenommene Pakete (ohne Doppel und zu alte)
+	Dups   uint64 `json:"dups,omitempty"`    // verworfen: Folgenummer schon gesehen
+	TooOld uint64 `json:"too_old,omitempty"` // verworfen: aelter als das Fenster
+	Late   uint64 `json:"late,omitempty"`    // spaete erste Exemplare (weitergegeben)
 }
 
 func (l *leg) setPC(pc *webrtc.PeerConnection) {
@@ -510,6 +529,7 @@ func (l *leg) stats() legStats {
 	l.mu.Lock()
 	con := l.connected
 	fl := l.fl
+	srcs := append([]*fwd.Source(nil), l.srcs...)
 	l.mu.Unlock()
 	if fl == nil {
 		return legStats{ID: l.id, Path: l.path, Role: l.role, State: "new"}
@@ -519,7 +539,15 @@ func (l *leg) stats() legStats {
 		Dropped: fl.Stats.FramesDropped.Load(), Stalls: fl.Stats.Stalls.Load(),
 		MaxQMs: float64(fl.Stats.MaxAgeNs.Load()) / 1e6, FwdP95us: fl.Stats.P95us(),
 		Overflow: fl.Stats.Overflow.Load(), WriteErrs: fl.Stats.WriteErrs.Load(),
-		Secs: time.Since(l.created).Seconds()}
+		Secs: time.Since(l.created).Seconds(), LateDrop: fl.Stats.LateDropped.Load()}
+	for _, x := range srcs {
+		k := "audio"
+		if x.Kind == fwd.Video {
+			k = "video"
+		}
+		st.Sources = append(st.Sources, srcStats{Kind: k, Layer: x.Layer, Pkts: x.Pkts.Load(),
+			Dups: x.Dups.Load(), TooOld: x.TooOld.Load(), Late: x.Late.Load()})
+	}
 	if !con.IsZero() {
 		st.ConnectMs = con.Sub(l.created).Milliseconds()
 	}

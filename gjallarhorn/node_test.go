@@ -142,6 +142,25 @@ func TestSFUMixed(t *testing.T) {
 	if sl[0].Class != "speaker" || sl[0].Peer != "bot0" {
 		t.Fatalf("sprecher %+v", sl[0])
 	}
+	// Zaehler des Abgleichs auf Doppel: je eingehender Spur am Bein und gesamt am Knoten sichtbar. Die Bots wiederholen
+	// nichts, also keine Doppel.
+	st := s.getLeg(bs[2].legIDs[0]).stats()
+	if len(st.Sources) != 3 {
+		t.Fatalf("quellen des udp-beins: %+v", st.Sources)
+	}
+	for _, x := range st.Sources {
+		if x.Pkts == 0 || x.Dups != 0 || x.TooOld != 0 || (x.Kind != "audio" && x.Kind != "video") || x.Layer == "" {
+			t.Fatalf("quelle %+v", x)
+		}
+	}
+	js, _ := json.Marshal(s.nodeStats())
+	var ns map[string]any
+	_ = json.Unmarshal(js, &ns)
+	for _, k := range []string{"dups", "too_old", "late", "late_dropped"} {
+		if _, ok := ns[k]; !ok {
+			t.Fatalf("knoten-statistik ohne %s", k)
+		}
+	}
 }
 
 // TestSFUAuth: ohne gueltiges Token kein Bein und kein TURN; ohne HORN_DEV
