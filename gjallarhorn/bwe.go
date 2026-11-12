@@ -146,6 +146,8 @@ func (b *bweWrap) AddStream(info *interceptor.StreamInfo, w interceptor.RTPWrite
 		if dup && b.mode == bweEigen {
 			// eigen: Das Doppel geht hinaus wie bisher, aber an pion-GCC vorbei - sonst zaehlte dessen Verlust-Regler es
 			// als verloren (es wird nie bestaetigt) und senkte das Ziel ohne jeden Stau. Bei mit bleibt GCC unberuehrt.
+			// Pruefung (TestPruefDoppelGCCVerlust): Das wirkt so nicht - pion fuehrt die transport-cc-Nummer aus der
+			// Rueckmeldung auch dann als verloren, wenn es das Paket nie gesehen hat (leere Bestaetigung ohne Ankunftszeit).
 			return w.Write(h, pl, a)
 		}
 		return inner.Write(h, pl, a)

@@ -350,7 +350,11 @@ Platzhalter: `horn-1.example.org`.
     der Browser der Quelle auf `m` gut doppelt so viele Bytes wie sonst (25,2 gegen 11,5 MB), während seine Ebene `h`
     aktiv, aber leer war. Bei `mit` und `eigen` erkennt die Hülle solche Pakete an der wiederholten Folgenummer
     (Fenster von 1024 Nummern je Strom): Bleibt ihre Bestätigung aus, zählt das nicht als Verlust (Zähler
-    `sent.dup`, `dup_unacked`). Bei `eigen` gehen sie zudem an pion-GCC vorbei (hinaus gehen sie weiter). **Der
+    `sent.dup`, `dup_unacked`). Bei `eigen` gehen sie zudem an pion-GCC vorbei (hinaus gehen sie weiter) – **das wirkt
+    aber nicht** (Prüfung, `TestPruefDoppelGCCVerlust`): pion führt die transport-cc-Nummer des Doppels aus der
+    Rückmeldung auch dann als verloren, wenn es das Paket nie gesehen hat (bei 25 % Doppeln 25 % Verlust und ein Ziel
+    von 134 statt 1400 kbit/s, wie bei `mit`). Gegen den falschen Verlust bei pion-GCC hilft nur, die Doppel gar
+    nicht weiterzuleiten. **Der
     Weiterleiter selbst ist nicht geändert** – die Doppel kosten weiter Bandbreite und stören bei `gcc` weiter den
     Verlust-Regler; ein Abgleich in `internal/fwd` wäre die eigentliche Behebung (offen, Entscheidung des Besitzers).
   - Zeile je Zustandswechsel (nur die Kurzkennung des Beins, keine Kennungen von Personen, Geräten oder Räumen):
