@@ -10,6 +10,7 @@ import (
 	"github.com/pion/interceptor/pkg/twcc"
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 )
 
@@ -43,7 +44,7 @@ func TestPruefDoppelGCCVerlust(t *testing.T) {
 		rec := twcc.NewRecorder(1)
 		var mu sync.Mutex // rec, tw: im Fall abgleich schreibt der Schreiber des Beins
 		tw := uint16(0)
-		out := 0
+		out, got := 0, 0
 		// write: ein Paket in die Huelle; arrives = der Empfaenger zaehlt und bestaetigt es
 		write := func(h *rtp.Header, pl []byte, arrives bool) {
 			mu.Lock()
@@ -55,6 +56,7 @@ func TestPruefDoppelGCCVerlust(t *testing.T) {
 				t.Error(err)
 			}
 			if arrives {
+				got++
 				rec.Record(7, tw, time.Now().UnixMicro())
 			}
 		}
@@ -119,9 +121,15 @@ func TestPruefDoppelGCCVerlust(t *testing.T) {
 		ziel[c.name] = est.GetTargetBitrate() / 1000
 		cnt := b.m.Counters()
 		mu.Lock()
-		n := out
+		n, g := out, got
 		mu.Unlock()
-		t.Logf("%s: pion-GCC fuehrt Verlust %.1f %%, Ziel %d kbit/s; %d Pakete in die Huelle; Detektor: verloren %d, Doppel unbestaetigt %d", c.name, loss[c.name]*100, ziel[c.name], n, cnt.Lost, cnt.DupUnacked)
+		var dups, old, late uint64
+		if src != nil {
+			dups, old, late = src.Dups.Load(), src.TooOld.Load(), src.Late.Load()
+		}
+		t.Logf("%s: pion-GCC fuehrt Verlust %.1f %%, Ziel %d kbit/s; %d Pakete in die Huelle, der Empfaenger zaehlt %d (Verhaeltnis %.2f); "+
+			"Detektor: Verlust %.1f %%, verloren %d, Doppel gesendet %d, davon unbestaetigt %d; Abgleich der Quelle: Doppel %d, zu alt %d, spaet %d",
+			c.name, loss[c.name]*100, ziel[c.name], n, g, float64(n)/float64(g), b.m.Snapshot(bweNow()).Loss*100, cnt.Lost, cnt.Sent[bwe.KindDup], cnt.DupUnacked, dups, old, late)
 		if cnt.Lost != 0 {
 			t.Fatalf("%s: Detektor zaehlt %d verlorene Pakete", c.name, cnt.Lost)
 		}
