@@ -263,9 +263,11 @@ Platzhalter: `horn-1.example.org`.
     (in 22 Läufen des Prüfers einmal drei in Folge). Mit Füllpaketen hinter den Medienpaketen bleibt das
     Gruppenmuster das des Mediums: 0,3–0,4 ms, in 90 Läufen keine gescheiterte Probe auf freier Leitung. Der Takt
     der Steuerung setzt nur Atomics, der Schreiber des Beins füllt ohne Sperren und Allokationen. Ein Paket der Quelle, das erst nach einem
-    Füll-Schub eintrifft, aber davor gehört (Nachsendung, Umsortierung), geht mit dem Versatz von damals hinaus
-    (Historie der letzten 16 Füll-Stellen je Ausgang; ältere Nachzügler werden verworfen – eine Lücke ist besser
-    als eine doppelt vergebene Folgenummer; Zähler `late_dropped`, siehe Diagnose). Totmann: Nach 3 s ohne neue Vorgabe füllt das Bein nicht mehr. Der
+    Füll-Schub eintrifft, aber davor gehört (Nachsendung, Umsortierung), geht mit dem Versatz von damals hinaus:
+    Jede Stelle, die der Ausgang überspringt, merkt sich ihren Versatz selbst – dieselbe Mechanik wie bei
+    ausgelassenen Bildern, siehe „Doppel und Nachzügler“ (256 Stellen je Ausgang; ältere Nachzügler werden verworfen
+    – eine Lücke ist besser als eine doppelt vergebene Folgenummer; Zähler `late_dropped`). Füllpakete bekommen die
+    nächste freie Folgenummer hinter den Lücken, die noch auf ihr Paket warten. Totmann: Nach 3 s ohne neue Vorgabe füllt das Bein nicht mehr. Der
     NACK-Antworter puffert Füllpakete nicht (ein verlorenes wird nicht nachgesendet). Die Raten der Quellen zählen
     sie nicht mit, die Rate des Beins schon.
   - Zeit bis zur oberen Ebene auf freier Leitung: Der erste Schritt läuft ohne Probe (freier Versuch) – im Modell
@@ -300,9 +302,9 @@ Platzhalter: `horn-1.example.org`.
     waren; `hinweis` = letzter einzelner Hinweis auf Stau, auch wenn er ausgeräumt wurde – bei `abort`/`unklar` der,
     der stehen blieb; `est`/`gcc` = Schätzung des Beins und GCC-Ziel beim Ende). Zähler je Bein: `GET /api/sfu/leg/{id}` →
     `probes {started, passed, failed, aborted, unclear, clamped, pad_bytes, late_dropped, last}` (`unclear` = davon
-    abgebrochen, weil das Ergebnis unklar war), `stats.pad_bytes`, `stats.late_dropped` (verworfene Nachzügler
-    jenseits der Füll-Historie – sollte 0 bleiben; steigt er, kommen Pakete der Quelle sehr spät an, und die
-    Historie von 16 Füll-Stellen reicht nicht). Beide Felder fehlen in `stats`, solange sie 0 sind.
+    abgebrochen, weil das Ergebnis unklar war), `stats.pad_bytes`, `stats.late_dropped` (verworfene Nachzügler,
+    deren Stelle der Ausgang nicht mehr kennt – sollte 0 bleiben; steigt er, kommen Pakete der Quelle mehr als 256
+    Pakete zu spät an). Beide Felder fehlen in `stats`, solange sie 0 sind.
   - Tests: `internal/sfu/probe_test.go` (Modell mit Fülldaten: enge Leitung, Leitung wird frei, Störschübe,
     Gruppen, Sprecherwechsel, Einbruch in der Probe, knappe Leitung, großer Schritt, Wegwechsel),
     `internal/sfu/probe_robust_test.go` (Klemmung des Ziels auf freier und enger Leitung, unklares Ergebnis und

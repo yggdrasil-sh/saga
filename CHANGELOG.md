@@ -138,7 +138,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   für einen Schritt mit 1,8 Mbit/s Zielrate: 19 von 24) – ob echte Leitungen sich so verhalten, zeigt das Labor.
 - Schalter am Knoten: `HORN_PROBING` (Standard an, `0` = aus – dann verhält sich der Knoten wie zuvor). Datenverbrauch
   rund 0,1–0,15 MB je bestandener Probe von 360p auf 720p. Diagnose: Felder `probe`, `probe_kbit`, `probe_why` im
-  Ereignis `layout` (alte Clients ignorieren sie) und Zähler `probes`/`pad_bytes`/`late_dropped` (verworfene Nachzügler jenseits der Füll-Historie) unter
+  Ereignis `layout` (alte Clients ignorieren sie) und Zähler `probes`/`pad_bytes`/`late_dropped` (verworfene Nachzügler, deren Stelle der Ausgang nicht mehr kennt) unter
   `GET /api/sfu/leg/{id}`.
   Einzelheiten in `gjallarhorn/NODE.md` („Probing mit Fülldaten“), Code `gjallarhorn/internal/sfu/probe.go` und
   `internal/fwd` (`Leg.SetPadding`).

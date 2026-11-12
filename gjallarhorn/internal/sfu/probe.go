@@ -177,7 +177,7 @@ type ProbeStats struct {
 	Refuted                          uint64 // eigen: Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat (estimator.refute)
 	Clamped                          uint64 // Faelle des GCC-Ziels in Proben, die kein Stau waren (probeJudge)
 	PadBytes                         uint64 // gesendete Fuell-Bytes
-	LateDropped                      uint64 // verworfene Nachzuegler jenseits der Fuell-Historie (fwd.LegStats.LateDropped)
+	LateDropped                      uint64 // verworfene Nachzuegler, deren Stelle der Ausgang nicht mehr kennt (fwd.LegStats.LateDropped)
 	Last                             string // Ausgang der letzten Probe: ok, fail:<grund> bzw. abort:<grund>
 }
 
