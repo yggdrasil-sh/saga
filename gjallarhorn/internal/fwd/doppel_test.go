@@ -390,6 +390,26 @@ func TestSpaetBeiZeitschichten(t *testing.T) {
 	if b.leg.Stats.LateDropped.Load() != 0 || s.Late.Load() != 5 || b.leg.Stats.TIDSkipped.Load() != 3 {
 		t.Fatalf("verworfen %d, spaet %d, ausgelassen %d", b.leg.Stats.LateDropped.Load(), s.Late.Load(), b.leg.Stats.TIDSkipped.Load())
 	}
+	// Schichtwechsel direkt nach einem Nachzuegler: PictureID und TL0PICIDX der neuen Schicht schliessen an das letzte
+	// Bild in Reihe an, nicht an den Nachzuegler
+	b.in(s, fpkt(35, 9*3000, 109, 5, 0, true, false, false, 35)) // J (TL0): 35, 36 - das Ende fehlt zunaechst
+	b.in(s, fpkt(37, 10*3000, 110, 6, 0, true, false, true, 37)) // K (TL0)
+	b.in(s, fpkt(36, 9*3000, 109, 5, 0, false, false, true, 36)) // Nachsendung aus J
+	hi := &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000}
+	b.o.Assign(hi)
+	b.in(hi, fpkt(7000, 500000, 9000, 40, 0, true, true, true, 7000))
+	n := len(b.w.hdrs)
+	if n != len(want)+4 {
+		t.Fatalf("%d Pakete geschrieben: %v", n, b.seqs())
+	}
+	k, late, key := parse(b.w.pls[n-3]), parse(b.w.pls[n-2]), parse(b.w.pls[n-1])
+	if ptag(b.w.pls[n-3]) != 37 || ptag(b.w.pls[n-2]) != 36 || late.PicID != k.PicID-1 {
+		t.Fatalf("Nachsendung aus J: PictureID %d, K traegt %d", late.PicID, k.PicID)
+	}
+	if key.PicID != k.PicID+1 || key.TL0 != k.TL0+1 || b.w.hdrs[n-1].SequenceNumber != b.w.hdrs[n-3].SequenceNumber+1 {
+		t.Fatalf("neue Schicht: PictureID %d TL0 %d Folgenummer %d - letztes Bild in Reihe %d/%d/%d", key.PicID, key.TL0,
+			b.w.hdrs[n-1].SequenceNumber, k.PicID, k.TL0, b.w.hdrs[n-3].SequenceNumber)
+	}
 }
 
 // TestDoppelImAusgelassenenBild (frueher TestDoppelDerQuelleFolgen, zweiter Teil): Ein Doppel aus der Bildmitte, das
@@ -431,18 +451,18 @@ func TestDoppelImAusgelassenenBild(t *testing.T) {
 	b.in(s, vp8pkt(31, 0, false, false, true))     // Doppel waehrend des Verwerfens
 	b.in(s, vp8pkt(35, 6000, false, false, true))  // Doppel eines verworfenen Pakets
 	b.in(s, vp8pkt(33, 3000, false, false, true))  // Nachsendung von vor dem Verwerfen: geht hinaus
-	b.in(s, vp8pkt(36, 9000, true, false, true))   // weiter verworfen
-	b.in(s, vp8pkt(38, 12000, false, false, true)) // Schluesselbild 37, 38: der Anfang fehlt - Rest verworfen
-	b.in(s, vp8pkt(37, 12000, true, true, false))  // der Anfang kommt nach: beendet das Verwerfen nicht
+	b.in(s, vp8pkt(38, 12000, false, false, true)) // Bild 36 fehlt ganz; Schluesselbild 37, 38: der Anfang fehlt - Rest verworfen
+	b.in(s, vp8pkt(36, 9000, true, false, true))   // das ganze Bild kommt nach: waehrend des Verwerfens geht es nicht hinaus
+	b.in(s, vp8pkt(37, 12000, true, true, false))  // der Schluesselbild-Anfang kommt nach: beendet das Verwerfen nicht
 	if !b.o.dropping || !b.o.want.Load() {
 		t.Fatal("verspaeteter Schluesselbild-Anfang hat das Verwerfen beendet")
 	}
 	b.in(s, vp8pkt(39, 15000, true, true, false)) // naechstes Schluesselbild 39, 40
 	b.in(s, vp8pkt(40, 15000, false, false, true))
 	got := b.seqs()
-	// 30 31 32 | 33 (Nachsendung) | 34 35 36 38 verworfen, 37 Luecke | 39 -> 35, 40 -> 36
-	if !sameSeqs(got, 30, 31, 32, 33, 35, 36) || s.Dups.Load() != 2 || b.o.dropping {
-		t.Fatalf("verwerfen: %v, doppel %d", got, s.Dups.Load())
+	// 30 31 32 | 33 (Nachsendung) | 34 35 38 verworfen, 36 und 37 Luecken | 39 -> 36, 40 -> 37
+	if !sameSeqs(got, 30, 31, 32, 33, 36, 37) || s.Dups.Load() != 2 || s.Late.Load() != 3 || b.o.dropping {
+		t.Fatalf("verwerfen: %v, doppel %d, spaet %d", got, s.Dups.Load(), s.Late.Load())
 	}
 }
 
