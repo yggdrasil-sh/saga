@@ -600,7 +600,12 @@ func TestUDPBWEMessung(t *testing.T) {
 			t.Fatalf("fall %q unbekannt", name)
 		}
 		t.Run(name, func(t *testing.T) {
-			a := newBWEAufbau(t, bweMit, f.prep)
+			// HORN_BWE_ART=gcc | mit | eigen (Standard mit): Schalterstellung des Laufs
+			art := bweMit
+			if v := os.Getenv("HORN_BWE_ART"); v != "" {
+				art, _ = parseBWE(v)
+			}
+			a := newBWEAufbau(t, art, f.prep)
 			b := a.l.bweWrap()
 			type probe struct {
 				T      float64 `json:"t"`
@@ -617,6 +622,7 @@ func TestUDPBWEMessung(t *testing.T) {
 				Trend  float64 `json:"trend,omitempty"`
 				Thresh float64 `json:"thresh,omitempty"`
 				GLoss  float64 `json:"gloss,omitempty"`
+				Clear  bool    `json:"clear,omitempty"` // Spitze des Detektors widerlegt Stau (bwe.Tip.Clear)
 			}
 			var rows []any
 			plan := f.plan
@@ -634,17 +640,25 @@ func TestUDPBWEMessung(t *testing.T) {
 				if el >= f.dur {
 					break
 				}
-				s := a.snap()
+				var s bwe.Snap
+				clear := false
+				if b != nil {
+					s = a.snap()
+					clear = b.m.Tip(bweNow()).Clear
+				}
 				x := a.l.sl.ExtStat()
 				by := a.l.fl.Stats.BytesOut.Load() + a.l.fl.Stats.HdrExtra.Load()
 				rate := float64(by-lastB) * 8 / now.Sub(lastT).Seconds() / 1000
 				lastB, lastT = by, now
-				rows = append(rows, probe{T: el, Layer: a.layer(), Gcc: b.GetTargetBitrate() / 1000, Est: a.l.sl.EstimateKbit(), Rate: int(rate),
-					State: s.State.String(), Queue: s.QueueUs / 1000, Loss: s.Loss, Acked: s.AckedBps / 1000, Over: x.Over, Trend: x.DelayMs, Thresh: x.ThreshMs, GLoss: x.Loss})
+				rows = append(rows, probe{T: el, Layer: a.layer(), Gcc: a.l.sl.Ext() / 1000, Est: a.l.sl.EstimateKbit(), Rate: int(rate),
+					State: s.State.String(), Queue: s.QueueUs / 1000, Loss: s.Loss, Acked: s.AckedBps / 1000, Over: x.Over, Trend: x.DelayMs, Thresh: x.ThreshMs, GLoss: x.Loss, Clear: clear})
 			}
 			time.Sleep(300 * time.Millisecond)
-			c := b.m.Counters()
-			t.Logf("%s: zaehler %+v, proben %+v, strecke-verlust %d", name, c, a.l.sl.ProbeStats(), a.st.lost.Load())
+			var c bwe.Counters
+			if b != nil {
+				c = b.m.Counters()
+			}
+			t.Logf("%s (%s): zaehler %+v, proben %+v, strecke-verlust %d", name, art, c, a.l.sl.ProbeStats(), a.st.lost.Load())
 			for _, ln := range a.logs.grep("probe " + shortID(a.l.id)) {
 				t.Logf("%6.1f %s", ln.T, ln.S)
 			}
@@ -666,7 +680,7 @@ func TestUDPBWEMessung(t *testing.T) {
 				}
 			}
 			a.logs.mu.Unlock()
-			_ = enc.Encode(map[string]any{"zaehler": c})
+			_ = enc.Encode(map[string]any{"zaehler": c, "art": art, "proben": a.l.sl.ProbeStats()})
 			if err := os.WriteFile(filepath.Join(out, fmt.Sprintf("%s-%d.jsonl", name, n)), buf.Bytes(), 0o644); err != nil {
 				t.Fatal(err)
 			}

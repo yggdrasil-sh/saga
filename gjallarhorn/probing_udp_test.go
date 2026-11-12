@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -130,13 +131,23 @@ func probeBotAPI(t *testing.T) (*webrtc.API, *engpass) {
 //   - eng (1,2 Mbit/s, traegt m, nicht h): Nach dem einen freien Versuch zum Anrufbeginn scheitert die Probe (Stau laut
 //     eigener Auswertung), der Platz bleibt auf m - kein weiterer Wechsel, keine Bildpause.
 func TestUDPProbing(t *testing.T) {
+	// HORN_BWE_ART=eigen: derselbe Ablauf mit dem eigenen Stau-Detektor (sonst der Standard gcc)
+	mode, _ := parseBWE(os.Getenv("HORN_BWE_ART"))
+	testUDPProbing(t, mode)
+}
+
+// TestUDPProbingEigen: derselbe Ablauf mit HORN_BWE=eigen - der Detektor wertet die Proben und widerlegt grundlose
+// Faelle des GCC-Ziels; an echter Enge aendert sich nichts.
+func TestUDPProbingEigen(t *testing.T) { testUDPProbing(t, bweEigen) }
+
+func testUDPProbing(t *testing.T, mode string) {
 	for _, c := range []struct {
 		name string
 		link int64
 	}{{"frei", 0}, {"eng-1200", 1200e3}} {
 		t.Run(c.name, func(t *testing.T) {
 			cfg := &config{Name: "localhost", Listen: "127.0.0.1:0", UDP: true, UDPListen: "127.0.0.1:0", Data: t.TempDir(),
-				ICEIPs: []string{"127.0.0.1"}, RelayIP: net.ParseIP("127.0.0.1"), MaxLegs: 32, Mode: "node", Dev: true, Probing: true,
+				ICEIPs: []string{"127.0.0.1"}, RelayIP: net.ParseIP("127.0.0.1"), MaxLegs: 32, Mode: "node", Dev: true, Probing: true, BWE: mode,
 				Certs: netx.CertOptions{Name: "localhost", Self: true}}
 			s, err := newServer(cfg)
 			if err != nil {

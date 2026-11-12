@@ -91,7 +91,7 @@ const (
 	// Wertung durch den eigenen Stau-Detektor (HORN_BWE=eigen, probeVerdict)
 	probeUnkMax   = 3                      // so viele Proben ohne klares Ergebnis in Folge (je binnen probeUnkWin): die letzte zaehlt als gescheitert
 	probeSentMin  = 0.9                    // Durchsatz-Nachweis: bei voller Fuellung gesendet mindestens so viel der Zielrate ...
-	probeAckMin   = 0.92                   // ... und davon vom Empfaenger im selben Zeitraum bestaetigt mindestens so viel
+	probeAckMin   = 0.95                   // ... und davon vom Empfaenger im selben Zeitraum bestaetigt mindestens so viel
 	probeProofMin = 400 * time.Millisecond // ... gemessen ueber mindestens so viel Sendezeit
 	probeTail     = 500 * time.Millisecond // Nachlauf bis zum Urteil ohne bekannte Umlaufzeit (sonst 2 Umlaufzeiten + 200 ms, hoechstens 1 s)
 )

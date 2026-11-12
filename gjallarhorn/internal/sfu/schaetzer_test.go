@@ -45,6 +45,9 @@ type estRoom struct {
 	// bias: pion liest seine Empfangsrate um so viel hoeher, als das Bein in 500 ms gesendet hat (gemessen im Mittel
 	// 4 %, bis gut 10 %: Rechnung ueber die Zeit zwischen erstem und letztem Paket des Fensters) - wirkt im Ruecksprung
 	bias float64
+	// eigen_test.go: Modell des eigenen Stau-Detektors (HORN_BWE=eigen) und grundlose Zielstuerze von GCC
+	det    *estDet
+	falsch int // so viele Takte lang faellt das GCC-Ziel auf 85 % der Rate, ohne dass die Leitung staut
 }
 
 const estAudio = 40e3
@@ -167,6 +170,13 @@ func (er *estRoom) tick() {
 		if c := max(er.capF*rate, er.floor); er.capF > 0 && er.gcc > c {
 			er.gcc = c
 		}
+	}
+	if er.falsch > 0 { // grundloser Zielsturz (eigen_test.go): Ruecksprung auf 85 % der Rate, die Leitung ist frei
+		er.falsch--
+		er.gcc = min(er.gcc, 0.85*rate)
+	}
+	if er.det != nil {
+		er.det.step(er, rate)
 	}
 	er.r.tickAt(er.now)
 	er.sent = 0

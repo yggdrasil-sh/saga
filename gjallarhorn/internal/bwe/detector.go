@@ -113,7 +113,7 @@ func Defaults() Config {
 		WarnQueue: 2, WarnLoss: 2, CongQueue: 4, CongLoss: 10, ClearWarn: 3, ClearCong: 5,
 		SilentNs: 1e9, RateNs: 1e9, ProbeMinNs: 400e6,
 		GraceNs: 3e9, BaseYoungNs: 2e9,
-		TipPkts: 5, TipSpanNs: 300e6, TipQueueUs: 15_000, TipLossNs: 500e6, TipLossUp: 0.04, TipAgeNs: 400e6, TipLagNs: 600e6,
+		TipPkts: 5, TipSpanNs: 300e6, TipQueueUs: 10_000, TipLossNs: 500e6, TipLossUp: 0.04, TipAgeNs: 400e6, TipLagNs: 600e6,
 		SpanLossUp: 0.05, SpanLossMin: 0.08, SpanLossSame: 0.02, SpanLossFree: 0.03,
 	}
 }
