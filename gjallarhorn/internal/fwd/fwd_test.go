@@ -579,3 +579,66 @@ func TestDoppelDerQuelle(t *testing.T) {
 		t.Fatalf("folgenummern %v, pkts_out %d (erwartet: Doppel mit derselben Folgenummer, alle 6 gezaehlt)", w.seqs, leg.Stats.PktsOut.Load())
 	}
 }
+
+// TestDoppelDerQuelleFolgen haelt fest, was ein Doppel der Quelle (TestDoppelDerQuelle) im Ausgang sonst noch anrichtet
+// (Pruefung von HORN_BWE=eigen; heutiges Verhalten, hier nicht geaendert - spricht fuer einen Abgleich auf Doppel im
+// Weiterleiter):
+//   - Ein aelteres Doppel setzt den Stand des Ausgangs zurueck (lastSeq): Folgt direkt darauf ein Schichtwechsel, bekommt
+//     das Schluesselbild der neuen Schicht eine Folgenummer, die schon vergeben war - der Empfaenger verwirft es am
+//     SRTP-Wiederholungsschutz.
+//   - Ein Doppel aus der Bildmitte, das eintrifft, waehrend ein Bild ausgelassen wird (Zeitschicht ueber maxTID), zaehlt
+//     als ausgelassenes Paket des laufenden Bildes: Der Versatz rueckt eins zu weit, das naechste weitergeleitete Paket
+//     traegt die Folgenummer des letzten.
+func TestDoppelDerQuelleFolgen(t *testing.T) {
+	// Schichtwechsel direkt nach einem aelteren Doppel
+	leg := NewLeg()
+	defer leg.Close()
+	w := &rec{}
+	o := leg.NewOut("v", "p", Video, ClassTile)
+	o.Bind(w, 9, 96)
+	a := &Source{Owner: "p", Layer: "m", Kind: Video, Clock: 90000}
+	o.Assign(a)
+	a.Inject(vp8pkt(101, 4000, true, true, true))
+	a.Inject(vp8pkt(102, 7000, true, false, true))
+	a.Inject(vp8pkt(103, 10000, true, false, true))
+	a.Inject(vp8pkt(104, 13000, true, false, true))
+	a.Inject(vp8pkt(102, 7000, true, false, true)) // aelteres Doppel
+	waitFor(t, func() bool { return w.count() == 5 })
+	b := &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000}
+	o.Assign(b)
+	b.Inject(vp8pkt(5000, 90000, true, true, true))
+	waitFor(t, func() bool { return w.count() == 6 })
+	w.mu.Lock()
+	s := append([]uint16(nil), w.seqs...)
+	w.mu.Unlock()
+	t.Logf("Schichtwechsel nach Doppel: Folgenummern %v (relativ %d)", s, s[5]-s[0])
+	if s[4] != s[1] || s[5] != s[2] {
+		t.Fatalf("erwartet (heutiges Verhalten): Schluesselbild der neuen Schicht auf der Nummer des dritten Pakets; Folgenummern %v", s)
+	}
+
+	// Doppel aus der Bildmitte waehrend eines ausgelassenen Bildes
+	leg2 := NewLeg()
+	defer leg2.Close()
+	w2 := &rec{}
+	o2 := leg2.NewOut("v", "p", Video, ClassTile)
+	o2.Bind(w2, 9, 96)
+	c := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
+	o2.Assign(c)
+	o2.SetMaxTID(0)
+	mid := func(b []byte) []byte { b[12] &^= 0x10; return b } // kein Rahmenanfang
+	c.Inject(vp8tid(20, 0, 100, 1, 0, false, true))           // Bild A (TL0), zwei Pakete
+	c.Inject(mid(vp8tid(21, 0, 100, 1, 0, false, true)))
+	c.Inject(vp8tid(22, 3000, 101, 1, 1, false, false))      // Bild B (TL1): wird ausgelassen
+	c.Inject(mid(vp8tid(21, 0, 100, 1, 0, false, true)))     // Doppel aus Bild A
+	c.Inject(mid(vp8tid(23, 3000, 101, 1, 1, false, false))) // Rest von Bild B
+	c.Inject(vp8tid(24, 6000, 102, 2, 0, false, false))      // Bild C (TL0)
+	waitFor(t, func() bool { return w2.count() == 3 })
+	time.Sleep(20 * time.Millisecond)
+	w2.mu.Lock()
+	s2 := append([]uint16(nil), w2.seqs...)
+	w2.mu.Unlock()
+	t.Logf("Doppel im ausgelassenen Bild: Folgenummern %v", s2)
+	if len(s2) != 3 || s2[1] != s2[0]+1 || s2[2] != s2[1] {
+		t.Fatalf("erwartet (heutiges Verhalten): Bild C auf der Nummer des letzten Pakets von Bild A; Folgenummern %v", s2)
+	}
+}
