@@ -143,7 +143,8 @@ Platzhalter: `horn-1.example.org`.
     die übrigen Pakete seines Bildes ausgelassen hat. Ist die Stelle älter als der Ring (bei der hohen Schicht rund
     1,5 s; der Knoten fordert etwa 1 s lang nach), wird es verworfen und gezählt (`late_dropped`) – nie landet es auf
     einer schon vergebenen Nummer. Umgekehrt setzt ein Schichtwechsel bzw. Neuanfang der Quelle hinter der höchsten
-    Folgenummer und PictureID an, die der Ausgang **je geschrieben** hat – auch von einem Nachzügler: Lag dessen
+    Folgenummer und PictureID und nach dem jüngsten Zeitstempel an, die der Ausgang **je geschrieben** hat – auch von
+    einem Nachzügler (ein ganz nachgekommenes Bild kann jünger sein als das letzte in Reihe geschriebene): Lag dessen
     Lücke direkt hinter dem letzten in Reihe geschriebenen Paket und kam danach nur Ausgelassenes, trüge das
     Schlüsselbild sonst seine Nummer (der Empfänger verwürfe es). Lücken, die beim Wechsel noch offen sind, verfallen
     – ein Nachzügler von davor geht danach nicht mehr hinaus; ohne ihn schließt der Wechsel lückenlos an wie bisher.

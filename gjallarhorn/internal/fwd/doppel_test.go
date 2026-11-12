@@ -942,12 +942,23 @@ func hpics(w *hrec) []uint16 {
 	return out
 }
 
+// htss: die Zeitstempel der bisher geschriebenen Pakete.
+func htss(w *hrec) []uint32 {
+	out := make([]uint32, len(w.hdrs))
+	for i, h := range w.hdrs {
+		out[i] = h.Timestamp
+	}
+	return out
+}
+
 // TestNachzueglerVorWechsel (Fund der Pruefung): Liegt direkt hinter dem letzten geschriebenen Paket eine Luecke und
 // kommt danach nur Ausgelassenes, traegt der Nachzuegler die Nummer gleich nach dem letzten geschriebenen Paket. Der
 // naechste Schichtwechsel bzw. Neuanfang darf sie nicht noch einmal vergeben: Der Ausgang setzt hinter der hoechsten
 // Nummer an, die er je geschrieben hat (Out.anchor, hiSeq) - und ebenso bei der PictureID, wenn ein ganzes Bild
 // nachgekommen ist. Vorher trugen Nachzuegler und Schluesselbild dieselbe Nummer ([20 21 21]); der Empfaenger
-// verwirft dann das Schluesselbild-Paket.
+// verwirft dann das Schluesselbild-Paket. Auch die Zeitbasis setzt nie auf oder vor einem schon geschriebenen
+// Zeitstempel an: Das nachgekommene Bild ist juenger als das letzte in Reihe geschriebene, und bis zum Wechsel vergeht
+// hier weniger Zeit, als zwischen den beiden liegt.
 func TestNachzueglerVorWechsel(t *testing.T) {
 	// 1. Zeitschicht ueber der Grenze: 20 geschrieben, 21 fehlt, 22 (TL1) ausgelassen, 21 kommt nach, Wechsel
 	b := newDbench(t)
@@ -965,6 +976,9 @@ func TestNachzueglerVorWechsel(t *testing.T) {
 	uniq(t, got)
 	if !sameSeqs(got, 20, 21, 22, 23) || !sameSeqs(pics, 100, 101, 102, 102) || b.o.Current() != hi || lo.Late.Load() != 1 {
 		t.Fatalf("zeitschicht: folgenummern %v, PictureIDs %v, spaet %d", got, pics, lo.Late.Load())
+	}
+	if ts := htss(b.w); ts[1] != 3000 || int32(ts[2]-ts[1]) <= 0 || ts[3] != ts[2] {
+		t.Fatalf("zeitschicht: Zeitstempel %v - das Schluesselbild nach dem Wechsel ist nicht juenger als der Nachzuegler", ts)
 	}
 	// ... kommt der Nachzuegler erst nach dem Wechsel, geht er nicht mehr hinaus: Seine Luecke ist verfallen, der
 	// Wechsel schliesst lueckenlos an wie bisher
@@ -1008,6 +1022,9 @@ func TestNachzueglerVorWechsel(t *testing.T) {
 	if !sameSeqs(got, 30, 31, 32, 33, 34) || !sameSeqs(pics, 100, 100, 101, 102, 103) || b.o.Current() != lo || b.o.dropping {
 		t.Fatalf("verwerfen: folgenummern %v, PictureIDs %v", got, pics)
 	}
+	if ts := htss(b.w); ts[2] != 3000 || int32(ts[3]-ts[2]) <= 0 || int32(ts[4]-ts[3]) <= 0 {
+		t.Fatalf("verwerfen: Zeitstempel %v", ts)
+	}
 
 	// 3. Neuanfang derselben Quelle: 40, 41 geschrieben, 42 fehlt, 43 (TL1) ausgelassen, 42 kommt nach, dann beginnt
 	// die Quelle ihre Folge neu (weit zurueck, juengerer Zeitstempel)
@@ -1025,6 +1042,9 @@ func TestNachzueglerVorWechsel(t *testing.T) {
 	uniq(t, got)
 	if !sameSeqs(got, 40, 41, 42, 43, 44) || !sameSeqs(pics, 100, 100, 101, 102, 103) || s.TooOld.Load() != 0 {
 		t.Fatalf("neuanfang: folgenummern %v, PictureIDs %v, alt %d", got, pics, s.TooOld.Load())
+	}
+	if ts := htss(b.w); ts[2] != 3000 || int32(ts[3]-ts[2]) <= 0 || int32(ts[4]-ts[3]) <= 0 {
+		t.Fatalf("neuanfang: Zeitstempel %v", ts)
 	}
 
 	// 4. ohne wartende Luecke bleibt alles, wie es war: Der Wechsel schliesst lueckenlos an - auch nach ausgelassenen
@@ -1169,8 +1189,9 @@ func TestSprungKnappZurueck(t *testing.T) {
 // Fuellpaketen; der Ausgang wechselt zufaellig zwischen ihnen (am naechsten Schluesselbild), aendert seine
 // Zeitschicht-Grenze, verwirft zeitweise bis zum Schluesselbild, und eine Schicht beginnt ihre Folge einmal neu (weit
 // zurueck; was davor gesendet wurde, ist bis dahin eingetroffen). Geprueft wird ueber alles: Keine Folgenummer wird
-// zweimal vergeben, kein Paket geht zweimal hinaus, keine PictureID steht fuer zwei verschiedene Bilder, und die
-// Folgenummern am Ausgang springen nie weiter als die Luecken der Quelle.
+// zweimal vergeben, kein Paket geht zweimal hinaus, keine PictureID steht fuer zwei verschiedene Bilder, die
+// Folgenummern am Ausgang springen nie weiter als die Luecken der Quelle, und das Schluesselbild nach einem Wechsel
+// traegt einen juengeren Zeitstempel als alles, was der Ausgang davor geschrieben hat.
 func TestAbgleichZufallWechsel(t *testing.T) {
 	old := MaxQueueAge
 	defer func() { MaxQueueAge = old }()
@@ -1274,8 +1295,19 @@ func TestAbgleichZufallWechsel(t *testing.T) {
 		tags := map[uint32]bool{}
 		picOf := map[uint16]uint32{} // PictureID am Ausgang -> Bild (Schicht und Nummer)
 		hi := seqs[0]
+		tss := htss(w)
+		maxTS, prevSrc := tss[0], ptag(w.pls[0])>>28
 		for j, pl := range w.pls {
 			tag := ptag(pl)
+			if k := tag >> 28; k != prevSrc { // Wechsel der Schicht: dieses Paket ist das Schluesselbild danach
+				if int32(tss[j]-maxTS) <= 0 {
+					t.Fatalf("seed %d: Zeitstempel %d nach dem Wechsel (Paket %d) nicht juenger als ein schon geschriebener (%d)", seed, tss[j], j, maxTS)
+				}
+				prevSrc = k
+			}
+			if int32(tss[j]-maxTS) > 0 {
+				maxTS = tss[j]
+			}
 			if tags[tag] {
 				t.Fatalf("seed %d: Paket %#x ging zweimal hinaus", seed, tag)
 			}

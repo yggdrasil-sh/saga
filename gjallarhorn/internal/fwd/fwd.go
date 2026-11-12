@@ -555,6 +555,7 @@ type Out struct {
 	lastTL0    uint8
 	hiSeq      uint16 // hoechste geschriebene Folgenummer - in Reihe (dann gleich lastSeq) oder von einem Nachzuegler
 	hiPic      uint16 // ... und PictureID
+	hiTS       uint32 // ... und juengster geschriebener Zeitstempel
 	pauseAt    int64
 	// Stand des Ausgangs in der Folge seiner Quelle. Ein Paket, das erst eintrifft, nachdem der Ausgang an seiner Stelle
 	// vorbei ist (Nachsendung, Umsortierung - Packet.late), muss mit den Versaetzen von damals hinaus: Mit den heutigen
@@ -769,7 +770,14 @@ func (o *Out) anchor(p *Packet, now int64) {
 		}
 		step = uint32(st)
 	}
-	o.tsDelta = o.lastTS + step - p.h.TS
+	// Zeitbasis: so weit hinter dem letzten Paket in Reihe, wie seither vergangen ist - aber nie auf oder vor einem
+	// Zeitstempel, den der Ausgang schon geschrieben hat: Ein nachgekommenes Bild kann juenger sein als das letzte in
+	// Reihe geschriebene (hiTS), und das Schluesselbild nach dem Wechsel truege sonst einen aelteren Zeitstempel.
+	ts := o.lastTS + step
+	if int32(o.hiTS-ts) >= 0 {
+		ts = o.hiTS + 1
+	}
+	o.tsDelta = ts - p.h.TS
 	if o.Kind == Video && p.vp8.HasPicID {
 		if o.picStarted {
 			// ebenso die PictureID: hinter der hoechsten geschriebenen - ein ganz nachgekommenes Bild hat sonst dieselbe
@@ -1192,6 +1200,9 @@ func (l *Leg) process(p *Packet, o *Out) {
 		o.hiSeq = seq
 	} else if int16(seq-o.hiSeq) > 0 {
 		o.hiSeq = seq // ... ausser fuer den naechsten Neuanfang: Seine Nummer ist vergeben (anchor)
+	}
+	if !late || int32(ts-o.hiTS) > 0 {
+		o.hiTS = ts
 	}
 	n := uint64(12 + 4*len(h.CSRC) + len(payload))
 	o.Pkts.Add(1)
