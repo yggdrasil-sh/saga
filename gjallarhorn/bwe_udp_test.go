@@ -646,6 +646,10 @@ func TestUDPBWEAus(t *testing.T) {
 //	engjit   30 s Leitung 1000 kbit/s, dann 240 s frei mit Jitter 0-6 ms und Pausen wie s60 (Proben nach dem Rueckfall)
 //	mitte    20 s frei, 20 s Leitung 1000 kbit/s, 20 s frei, 20 s Leitung 1250 kbit/s, 20 s frei
 //	knapp    wie mitte, aber Leitung 1450 und 1520 kbit/s - knapp unter der Rate von h (rund 1570 kbit/s)
+//	plan     freier Ablauf aus HORN_BWE_PLAN, Dauer HORN_BWE_DAUER
+//
+// Mit HORN_BWE_NACHPROBE bricht die Leitung nach dem Plan ein, sobald eine Probe bestanden ist und der Platz auf h
+// steht - Gegenprobe zum Halten nach bestandener Probe (wie schnell wird h verlassen?).
 func TestUDPBWEMessung(t *testing.T) {
 	want := os.Getenv("HORN_BWE_MESSUNG")
 	if want == "" {
@@ -735,6 +739,56 @@ func TestUDPBWEMessung(t *testing.T) {
 			}
 			var rows []any
 			plan := f.plan
+			// HORN_BWE_NACHPROBE="<kbit>:<puffer-ms>[:<verzug-ms>]" (Gegenprobe zum Halten nach bestandener Probe): Ist der
+			// Plan abgearbeitet, bricht die Leitung ein, sobald eine Probe bestanden ist und der Sprecherplatz auf h steht
+			// (hoechstens 10 ms danach, plus Verzug) - Ereignis "einbruch-<kbit>-<puffer>ms". Der Lauf endet 12 s danach.
+			var einbruch atomic.Int64 // ns seit a.t0, 0 = noch nicht
+			einbruchWas := ""
+			if spec := os.Getenv("HORN_BWE_NACHPROBE"); spec != "" {
+				ff := strings.Split(spec, ":")
+				kbit, _ := strconv.ParseInt(ff[0], 10, 64)
+				bufMs := int64(300)
+				if len(ff) > 1 {
+					bufMs, _ = strconv.ParseInt(ff[1], 10, 64)
+				}
+				var verzug int64
+				if len(ff) > 2 {
+					verzug, _ = strconv.ParseInt(ff[2], 10, 64)
+				}
+				einbruchWas = fmt.Sprintf("einbruch-%d-%dms", kbit, bufMs)
+				planEnd := 0.0
+				if len(plan) > 0 {
+					planEnd = plan[len(plan)-1].at
+				}
+				stop := make(chan struct{})
+				t.Cleanup(func() { close(stop) })
+				go func() {
+					var passed0 uint64
+					have := false
+					for {
+						select {
+						case <-stop:
+							return
+						case <-time.After(10 * time.Millisecond):
+						}
+						if time.Since(a.t0).Seconds() < planEnd+0.5 {
+							continue
+						}
+						ps := a.l.sl.ProbeStats()
+						if !have {
+							passed0, have = ps.Passed, true
+							continue
+						}
+						if ps.Passed > passed0 && a.layer() == "h" {
+							time.Sleep(time.Duration(verzug) * time.Millisecond)
+							eng(kbit, bufMs)(a.st)
+							einbruch.Store(int64(time.Since(a.t0)))
+							return
+						}
+					}
+				}()
+			}
+			einbruchRow := false
 			lastB := a.l.fl.Stats.BytesOut.Load() + a.l.fl.Stats.HdrExtra.Load()
 			lastT := time.Now()
 			for {
@@ -745,6 +799,15 @@ func TestUDPBWEMessung(t *testing.T) {
 					plan[0].do(a.st)
 					rows = append(rows, probe{T: el, Ev: plan[0].what})
 					plan = plan[1:]
+				}
+				if at := einbruch.Load(); at != 0 {
+					if !einbruchRow {
+						einbruchRow = true
+						rows = append(rows, probe{T: float64(at) / 1e9, Ev: einbruchWas})
+					}
+					if el >= float64(at)/1e9+12 {
+						break
+					}
 				}
 				if el >= f.dur {
 					break
