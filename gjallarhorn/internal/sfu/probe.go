@@ -125,7 +125,6 @@ type probe struct {
 	fown   *Peer    // ... und sein Besitzer
 	out    *fwd.Out // ... sein Ausgang
 	target float64  // Zielrate des Beins (bit/s, mit Ton)
-	need   float64  // Bedarf des Beins nach dem Schritt ohne die Reserve (bit/s, mit Ton) - das muss auch bestaetigt sein
 	fill   float64  // volle Fuellrate (bit/s)
 	win    int64    // Dauer des Fensters
 	pad0   uint64   // Fuell-Bytes des Beins zu Beginn des Fensters
@@ -252,7 +251,7 @@ func (l *Leg) probeBegin(s, fs *slot, rank int, need, sum, audio float64, now in
 		}
 	}
 	l.pr = probe{stage: 1, at: now, t0: now, s: s, owner: s.owner, layer: s.layer, rank: rank, fs: fs, fown: fs.owner, out: fs.out,
-		target: target, need: (target-audio)/upHeadroom + audio, fill: fill, win: win}
+		target: target, fill: fill, win: win}
 	loss0 := 0.0
 	if l.ExtStat != nil {
 		loss0 = l.ExtStat().Loss
@@ -409,8 +408,12 @@ func (l *Leg) probeVerdict(now int64) {
 	}
 	v, r := l.ExtSpan(time.Duration(now-p.t0), time.Duration(now-p.fillEnd), time.Duration(now-rf))
 	p.det, p.detSent, p.detAcked = v.Result, r.SentBps, r.AckedBps
-	proof := r.Ns >= int64(probeProofMin) && float64(r.SentBps) >= probeSentMin*p.target &&
-		float64(r.AckedBps) >= probeAckMin*float64(r.SentBps) && float64(r.AckedBps) >= p.need
+	// Durchsatz-Nachweis: Der Bedarf des Schritts (die Zielrate ohne die Reserve, probeSentMin) wurde gesendet UND
+	// bestaetigt, und vom Gesendeten kam mindestens probeAckMin an. Ohne "bestaetigt >= Bedarf" reichten
+	// 87 % x 95 % = 83 % der Zielrate - weniger, als die Schicht braucht.
+	need := probeSentMin * p.target
+	proof := r.Ns >= int64(probeProofMin) && float64(r.SentBps) >= need && float64(r.AckedBps) >= need &&
+		float64(r.AckedBps) >= probeAckMin*float64(r.SentBps)
 	switch {
 	case v.Result == bwe.VerdictCong:
 		l.probeEnd(probeFail, "stau", now)

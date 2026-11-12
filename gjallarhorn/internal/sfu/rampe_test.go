@@ -56,15 +56,16 @@ func TestEigenRampe(t *testing.T) {
 }
 
 // TestEigenNachweisBedarf (Fund 8): Bestanden ist eine Probe nur, wenn die bestaetigte Rate auch den Bedarf der
-// Zielschicht deckt - neben "gesendet mindestens 87 % der Zielrate" und "davon mindestens 95 % bestaetigt". Sonst
-// reichten 87 % x 95 % = 83 % der Zielrate, weniger als der Schritt braucht (87 %).
+// Zielschicht deckt (die Zielrate ohne die Reserve, 87 %) - neben "gesendet mindestens 87 % der Zielrate" und "davon
+// mindestens 95 % bestaetigt". Sonst reichten 87 % x 95 % = 83 % der Zielrate, weniger als der Schritt braucht.
 func TestEigenNachweisBedarf(t *testing.T) {
 	for _, c := range []struct {
 		sent, acked float64 // Anteil der Zielrate
 		want        string
 	}{
 		{1.00, 1.00, probeOK},
-		{0.90, 0.88, probeOK},                        // bestaetigt ueber dem Bedarf (87,3 % der Zielrate)
+		{0.90, 0.88, probeOK},                        // bestaetigt ueber dem Bedarf (87,0 % der Zielrate)
+		{0.875, 0.871, probeOK},                      // knapp: beides gerade ueber dem Bedarf
 		{0.88, 0.845, probeAbort + ":" + whyUnclear}, // 96 % des Gesendeten, aber unter dem Bedarf
 		{0.95, 0.89, probeAbort + ":" + whyUnclear},  // ueber dem Bedarf, aber nur 93,7 % des Gesendeten
 		{0.80, 0.80, probeAbort + ":" + whyUnclear},  // Zielrate nicht gesendet
@@ -72,17 +73,14 @@ func TestEigenNachweisBedarf(t *testing.T) {
 		er := neuEigen(t, true, 1250e3, 810e3, 1)
 		er.l.firstUsed = true
 		er.until("m", 2*time.Second)
-		var target, need float64
+		var target float64
 		er.l.ExtSpan = func(_, _, _ time.Duration) (bwe.Verdict, bwe.Rates) {
-			target, need = er.l.pr.target, er.l.pr.need
+			target = er.l.pr.target
 			return bwe.Verdict{Result: bwe.VerdictFree}, bwe.Rates{SentBps: int64(c.sent * target), AckedBps: int64(c.acked * target), Ns: 1e9}
 		}
 		got := probeOver(t, er)
 		if got != c.want {
-			t.Fatalf("gesendet %.0f %%, bestaetigt %.1f %% der Zielrate (Bedarf %.1f %%): %q, erwartet %q", c.sent*100, c.acked*100, need/target*100, got, c.want)
-		}
-		if n := need / target; n < 0.87 || n > 0.88 {
-			t.Fatalf("Bedarf %.0f von Zielrate %.0f", need, target)
+			t.Fatalf("gesendet %.1f %%, bestaetigt %.1f %% der Zielrate %.0f (Bedarf %.1f %%): %q, erwartet %q", c.sent*100, c.acked*100, target, probeSentMin*100, got, c.want)
 		}
 	}
 }

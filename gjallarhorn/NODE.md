@@ -407,8 +407,8 @@ Platzhalter: `horn-1.example.org`.
       Schritts ohne die Reserve von 15 %; die Füllpakete folgen nur auf Medienpakete und erreichen die Füllrate nicht
       immer ganz – gemessen `l`→`m` 87–102 %, `m`→`h` 98–103 % der Zielrate), und der Empfänger hat
       davon **im selben Zeitraum** mindestens 95 % bestätigt (bestätigte Bytes je Ankunftszeit gegen gesendete Bytes
-      je Sendezeit derselben Messfenster, über mindestens 400 ms) – **mindestens aber den Bedarf des Schritts**
-      (Zielrate ohne die Reserve; sonst reichten 87 % × 95 % = 83 % der Zielrate, weniger als die Schicht braucht).
+      je Sendezeit derselben Messfenster, über mindestens 400 ms) – und **auch das Bestätigte erreicht mindestens
+      87 % der Zielrate** (sonst reichten 87 % × 95 % = 83 % der Zielrate, weniger als die Schicht braucht).
       Alles zählt am selben Zähler (alle Pakete des Beins mit Kopf, Ton und Füllung) – nicht mehr Zielrate (mit
       Reserve und Ton) gegen Durchsatz. Hält GCC die
       Füllung früh an, ist die Zielrate nie gesendet worden; `staut-nicht` sagt dann nichts über sie (Labor: auf
