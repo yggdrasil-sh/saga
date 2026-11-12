@@ -27,6 +27,7 @@ import (
 	"github.com/pion/interceptor/pkg/twcc"
 	"github.com/pion/logging"
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
@@ -87,6 +88,64 @@ func TestBWEPaarwechsel(t *testing.T) {
 	}
 	if want := []bool{true, false, false, true, false, true, false, false}; !slices.Equal(got, want) {
 		t.Fatalf("%v, erwartet %v", got, want)
+	}
+}
+
+// fakeEst: Schaetzer-Attrappe - zaehlt, was durch seinen Schreiber geht (wie pion-GCC: AddStream liefert den eigenen
+// Schreiber, der an w weiterreicht).
+type fakeEst struct {
+	cc.BandwidthEstimator
+	seen []uint16
+}
+
+func (f *fakeEst) AddStream(_ *interceptor.StreamInfo, w interceptor.RTPWriter) interceptor.RTPWriter {
+	return interceptor.RTPWriterFunc(func(h *rtp.Header, pl []byte, a interceptor.Attributes) (int, error) {
+		f.seen = append(f.seen, h.SequenceNumber)
+		return w.Write(h, pl, a)
+	})
+}
+
+// Doppel: Geht eine RTP-Folgenummer auf einem Strom ein zweites Mal hinaus (die Quelle hat das Paket zweimal
+// geliefert, siehe fwd.TestDoppelDerQuelle), zaehlt die Huelle es als Doppel. Es geht weiter hinaus; bei eigen an
+// pion-GCC vorbei (dessen Verlust-Regler zaehlte es sonst als verloren), bei mit bleibt GCC unberuehrt. Bleibt die
+// Bestaetigung aus, ist das fuer den Detektor kein Verlust.
+func TestBWEDoppel(t *testing.T) {
+	for _, mode := range []string{bweMit, bweEigen} {
+		est := &fakeEst{}
+		b := newBWEWrap(est, mode)
+		var out []uint16
+		info := &interceptor.StreamInfo{SSRC: 7, MimeType: mimeVP8, RTPHeaderExtensions: []interceptor.RTPHeaderExtension{{URI: sdp.TransportCCURI, ID: 5}}}
+		w := b.AddStream(info, interceptor.RTPWriterFunc(func(h *rtp.Header, pl []byte, _ interceptor.Attributes) (int, error) {
+			out = append(out, h.SequenceNumber)
+			return len(pl), nil
+		}))
+		tw := uint16(0)
+		send := func(seq uint16) {
+			h := &rtp.Header{Version: 2, PayloadType: 96, SSRC: 7, SequenceNumber: seq}
+			tw++
+			_ = h.SetExtension(5, []byte{byte(tw >> 8), byte(tw)})
+			if _, err := w.Write(h, make([]byte, 100), nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// 1000..1009, dabei 1004 und 1002 noch einmal; dann weit weiter (Umlauf des Fensters) und 1004 erneut: kein Doppel
+		for _, s := range []uint16{1000, 1001, 1002, 1003, 1004, 1004, 1005, 1002, 1006} {
+			send(s)
+		}
+		for s := uint16(1007); s < 1007+1100; s++ {
+			send(s)
+		}
+		send(1004)
+		c := b.m.Counters()
+		if c.Sent[bwe.KindDup] != 2 || c.Sent[bwe.KindVideo] != 7+1100+1 {
+			t.Fatalf("%s: gezaehlt %+v", mode, c.Sent)
+		}
+		if len(out) != 9+1100+1 {
+			t.Fatalf("%s: %d Pakete hinaus", mode, len(out))
+		}
+		if want := len(out) - map[string]int{bweMit: 0, bweEigen: 2}[mode]; len(est.seen) != want {
+			t.Fatalf("%s: GCC sah %d Pakete, erwartet %d", mode, len(est.seen), want)
+		}
 	}
 }
 

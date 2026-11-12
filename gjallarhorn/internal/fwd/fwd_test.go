@@ -547,3 +547,35 @@ func TestPlayoutDelay(t *testing.T) {
 		t.Fatalf("allokationen je paket: %v", n)
 	}
 }
+
+// TestDoppelDerQuelle haelt das heutige Verhalten fest (Befund aus dem Labor labbwe1, 7.1/7.2 - hier nicht geaendert):
+// Liefert eine Quelle ein Paket zweimal, geht es zweimal hinaus, beide Male mit derselben Folgenummer. Das geschieht,
+// wenn der sendende Browser zum Fuellen bzw. Proben alte Pakete ueber RTX wiederholt: pion gibt sie entpackt (mit der
+// urspruenglichen Folgenummer) auf der Spur zurueck. Der Empfaenger verwirft das Doppel am SRTP-Wiederholungsschutz,
+// ohne es zu zaehlen oder per transport-cc zu bestaetigen - fuer pion-GCC sieht es wie Verlust aus. Die Huelle bei
+// HORN_BWE=mit/eigen erkennt solche Pakete an der wiederholten Folgenummer (bwe.go, dupWin).
+func TestDoppelDerQuelle(t *testing.T) {
+	room := NewRoom(time.Hour)
+	defer room.Close()
+	leg := NewLeg()
+	defer leg.Close()
+	w := &rec{}
+	o := leg.NewOut("v0", "p1", Video, ClassSpeaker, "m")
+	o.Bind(w, 7, 96)
+	room.AddOut(o)
+	src := &Source{Owner: "p1", Layer: "m", Kind: Video}
+	room.AddSource(src)
+	src.Inject(vp8pkt(101, 4000, true, true, true))
+	src.Inject(vp8pkt(102, 7000, true, false, true))
+	src.Inject(vp8pkt(102, 7000, true, false, true)) // Wiederholung der Quelle
+	src.Inject(vp8pkt(103, 10000, true, false, true))
+	src.Inject(vp8pkt(101, 4000, true, true, true)) // aeltere Wiederholung
+	src.Inject(vp8pkt(104, 13000, true, false, true))
+	waitFor(t, func() bool { return w.count() == 6 })
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	d := func(i int) uint16 { return w.seqs[i] - w.seqs[0] }
+	if d(1) != 1 || d(2) != 1 || d(3) != 2 || d(4) != 0 || d(5) != 3 || leg.Stats.PktsOut.Load() != 6 {
+		t.Fatalf("folgenummern %v, pkts_out %d (erwartet: Doppel mit derselben Folgenummer, alle 6 gezaehlt)", w.seqs, leg.Stats.PktsOut.Load())
+	}
+}
