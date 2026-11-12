@@ -78,7 +78,7 @@ func uniq(t *testing.T, seqs []uint16) {
 	seen := map[uint16]int{}
 	for i, s := range seqs {
 		if j, ok := seen[s]; ok {
-			t.Fatalf("folgenummer %d zweimal vergeben (paket %d und %d): %v", s, j, i, seqs)
+			t.Fatalf("folgenummer %d zweimal vergeben (paket %d und %d): ... %v ... %v", s, j, i, seqs[max(j-4, 0):min(j+5, len(seqs))], seqs[max(i-4, 0):min(i+5, len(seqs))])
 		}
 		seen[s] = i
 	}
