@@ -142,24 +142,40 @@ Platzhalter: `horn-1.example.org`.
     Schichtwechsel) und geht nicht hinaus, wenn der Ausgang an seiner Stelle verwarf, seine Zeitschicht ausließ oder
     die übrigen Pakete seines Bildes ausgelassen hat. Ist die Stelle älter als der Ring (bei der hohen Schicht rund
     1,5 s; der Knoten fordert etwa 1 s lang nach), wird es verworfen und gezählt (`late_dropped`) – nie landet es auf
-    einer schon vergebenen Nummer. Ein verspätetes Füllpaket des Absenders rückt nichts mehr; an seiner Stelle bleibt
-    für die Empfänger eine Lücke, die niemand füllt (sie fragen höchstens zehnmal nach).
+    einer schon vergebenen Nummer. Umgekehrt setzt ein Schichtwechsel bzw. Neuanfang der Quelle hinter der höchsten
+    Folgenummer und PictureID an, die der Ausgang **je geschrieben** hat – auch von einem Nachzügler: Lag dessen
+    Lücke direkt hinter dem letzten in Reihe geschriebenen Paket und kam danach nur Ausgelassenes, trüge das
+    Schlüsselbild sonst seine Nummer (der Empfänger verwürfe es). Lücken, die beim Wechsel noch offen sind, verfallen
+    – ein Nachzügler von davor geht danach nicht mehr hinaus; ohne ihn schließt der Wechsel lückenlos an wie bisher.
+    Ein verspätetes Füllpaket des Absenders rückt nichts mehr; an seiner Stelle bleibt für die Empfänger eine Lücke,
+    die niemand füllt (sie fragen höchstens zehnmal nach).
   - **Älter als das Fenster:** verworfen und getrennt gezählt (`too_old`). Das Fenster reicht weiter zurück, als der
     Knoten nachfordert (512 Nummern) und als libwebrtc Pakete für Wiederholungen vorhält (rund 600 bzw. 1–3 s).
   - **Sprung über das Fenster hinaus:** Trägt das Paket einen jüngeren Zeitstempel als alles bisher Gesehene (lange
     Unterbrechung; Brücke, deren Ausgang auf der Gegenseite nach einer Pause neu beginnt), setzt die Quelle das Fenster
-    sofort neu auf – nichts geht verloren. Springt die Folge dabei rückwärts, zählt jeder Ausgang lückenlos weiter,
-    statt alte Nummern noch einmal zu vergeben. Ein Neustart mit fremder Zeitbasis gilt ab dem zweiten Paket in Reihe
-    (wie RFC 3550, das erste davon geht verloren); ein einzelnes Paket von weit zurück ist zu alt.
+    sofort neu auf – nichts geht verloren. Das gilt auch, wenn die neue Folge nach einem Umlauf knapp **hinter** dem
+    alten Stand beginnt, also im Fenster (Brücke nach sehr langer Pause): Ein Paket hinter dem Stand, dessen
+    Zeitstempel mehr als 10 s (bei 90 kHz) jünger ist als alles Gesehene, kann keine Nachsendung sein. Springt die
+    Folge rückwärts, zählt jeder Ausgang lückenlos weiter, statt alte Nummern noch einmal zu vergeben. Ein Neustart
+    mit fremder Zeitbasis gilt ab dem zweiten Paket in Reihe (wie RFC 3550, das erste davon geht verloren); ein
+    einzelnes Paket von weit zurück ist zu alt. **Alte Nachsendungen** – hinter dem Stand, älter als das Fenster,
+    Zeitstempel weniger als rund 47 s (90 kHz) zurück – beginnen keine neue Folge, auch nicht zwei in Reihe (bei sehr
+    hoher Umlaufzeit kommen Nachsendungen am Stück; die Folge setzte sonst rückwärts neu an). Preis: Eine fremde
+    Folge, die rückwärts beginnt und deren Zeitstempel zufällig so nah liegt (rund 0,1 %), gilt erst als neu, wenn
+    ihr Zeitstempel jünger wird oder ihre Nummern den alten Stand erreichen.
   - **Grenzen:** Das Verhalten der Browser dazu ist am Code von pion und libwebrtc gelesen, nicht am Gerät gemessen.
     Fehlt der Anfang eines Bildes, läuft sein Rest wie bisher unter dem Zustand des Bildes davor. Ein später
     Rahmenanfang wird nach der Zeitschicht-Grenze beurteilt, die galt, als der Ausgang an seiner Stelle vorbeiging.
   - **Zähler:** `GET /api/stats` → `dups`, `too_old`, `late` (späte erste Exemplare, weitergegeben), `late_dropped`
     (alle in `pkts_in` enthalten). `GET /api/leg/{id}` und `stats` in `GET /api/sfu/leg/{id}` → `sources[]` je
-    eingehender Spur des Beins (`kind`, `layer`, `pkts` ohne Doppel, `dups`, `too_old`, `late`) und `late_dropped` des
-    Beins als Empfänger. Protokollzeile `bein zu … doppel=… alt=… spaet=… spaet_verworfen=… grund=…`.
+    laufender eingehender Spur des Beins (`kind`, `layer`, `pkts` ohne Doppel, `dups`, `too_old`, `late`) und
+    `late_dropped` des Beins als Empfänger. Protokollzeile `bein zu … doppel=… alt=… spaet=… spaet_verworfen=…
+    grund=…` – darin zählen auch die Spuren mit, die vor dem Ende des Beins endeten (sie stehen nicht mehr in
+    `sources[]`).
   - Tests: `internal/fwd/doppel_test.go` (Umlauf der Folgenummern, Sprung und Neustart, Schichtwechsel, Nachsendung,
-    ausgelassene Bilder, Verwerfen, Füllpakete, Kontingent, Ton, Zufallslauf gegen einen ungestörten Vergleichslauf).
+    ausgelassene Bilder, Verwerfen, Füllpakete, Kontingent, Ton, Zufallslauf gegen einen ungestörten Vergleichslauf;
+    Nachzügler direkt vor einem Schichtwechsel bzw. Neuanfang, alte Nachsendungen in Reihe, Sprung knapp zurück,
+    Zufallslauf mit Schichtwechseln: keine Folgenummer und keine PictureID zweimal).
     Kosten (`BenchmarkForward1`/`BenchmarkFanout10`): rund 20 ns je Paket und Quelle, 8 ns je Ausgang, keine Allokation.
 - **Rahmen bleiben opak:** Gelesen wird nur der VP8-Descriptor (Schlüsselbild, TID, PictureID) und das P-Bit. Der
   E2E-Trailer wird nie angefasst.

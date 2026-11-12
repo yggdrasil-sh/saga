@@ -36,7 +36,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (älter als rund 1,5 s auf der hohen Schicht), wird das Paket verworfen und gezählt, statt eine Nummer doppelt zu
   vergeben.
 - Springt die Folge einer Quelle weit (lange Unterbrechung, Brücke nach einer Pause), setzt der Abgleich neu auf, ohne
-  ein Paket zu verwerfen; springt sie rückwärts, zählt der Ausgang lückenlos weiter.
+  ein Paket zu verwerfen – auch wenn sie nach einem Umlauf knapp hinter dem alten Stand beginnt; springt sie
+  rückwärts, zählt der Ausgang lückenlos weiter. Nachsendungen, die älter als das Fenster sind, gelten nie als neue
+  Folge. Ein Schichtwechsel vergibt keine Nummer (und keine PictureID) noch einmal, die schon ein nachgesendetes
+  Paket trägt.
 - Neue Zähler: `GET /api/stats` → `dups`, `too_old`, `late`, `late_dropped`; je Bein `sources[]` (je eingehender Spur
   `pkts`, `dups`, `too_old`, `late`) und `late_dropped`; Protokollzeile `bein zu … doppel=… alt=… spaet=…
   spaet_verworfen=… grund=…` (der Grund steht jetzt am Ende). Kosten im Weiterleiter: rund 20 ns je Paket, keine
