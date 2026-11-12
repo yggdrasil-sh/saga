@@ -379,9 +379,10 @@ Platzhalter: `horn-1.example.org`.
     `bwe 5884a4 widerlegung=ende art=spitze grund=erholt dauer=1.6s gcc=1250k rate=1330k est=1480k zustand=frei schlange=1ms verlust=0.0%`
     (`art`: `spitze` – der Detektor widerlegt ausdrücklich; `halten` – Halten nach bestandener Probe. `grund` am Ende:
     `erholt` – das Ziel liegt wieder über der Rate; `detektor` – er widerlegt nicht mehr, das Signal von GCC gilt;
-    `faellt`, `steht`, `frist` – die Schonfrist ist gescheitert; `probe`.) `zustand`, `schlange` und `verlust` sind,
-    was der Detektor in dem Augenblick an der Spitze sieht (Verlust der letzten 500 ms; Schlange −1 = nichts
-    Frisches). Nur Zustandswechsel, nicht je Takt; nur die Kurzkennung des Beins.
+    `faellt`, `steht`, `frist` – die Schonfrist ist gescheitert; `probe`.) `rate` ist die Medienrate des Takts, an
+    der das GCC-Ziel gemessen wurde (nicht die geglättete); `zustand`, `schlange` und `verlust` sind, was der Detektor
+    in dem Augenblick an der Spitze sieht (Verlust der letzten 500 ms; Schlange −1 = nichts Frisches). Nur
+    Zustandswechsel, nicht je Takt; nur die Kurzkennung des Beins.
   - Zusatz in der Zeile `probe` bei `mit`: `… est=1338k gcc=721k bwe=staut bwe_schlange=140ms bwe_verlust=0.0% bwe_durchsatz=699k bwe_zustand=warnung bwe_fenster=4 bwe_sofort=staut-nicht`.
     `bwe` ist das Urteil des Detektors über die Pakete der Probe **nach dem Nachlauf** (zwei Umlaufzeiten + 200 ms,
     höchstens 1 s; ohne bekannte Umlaufzeit 500 ms), `bwe_sofort` das, was er beim Ende der Probe schon wusste – je
@@ -470,13 +471,17 @@ Platzhalter: `horn-1.example.org`.
     der Detektor **kein Zeichen von Stau** zeigt – Zustand `frei`, Basis mindestens 2 s alt, Rückmeldung frisch,
     kleinste Laufzeit der letzten 5 bestätigten Pakete höchstens 10 ms über der Basis (die Bedingungen der
     Widerlegung ohne die zum Verlust). Gestiegener Verlust ist ein Zeichen – außer in den **ersten 1,2 s nach dem
-    Schritt** (das Schlüsselbild; gemessen stand der Verlust 0,7–0,8 s lang in den Rückmeldungen). Eine Schlange an
-    der Spitze zählt sofort, ebenso die eigene Warteschlange des Knotens. Nach den 3 s steht die Folge wie jede
-    Widerlegung auf dem Detektor: Er muss in jedem Takt ausdrücklich widerlegen, und das Ziel muss wieder steigen.
-    Sieht der Detektor nichts (Rückmeldung alt, Basis jung, Wegwechsel), gilt das Halten nicht. **Grenze:** Bricht die
-    Leitung gleich nach dem Schritt ein und zeigt sich das nur als Verlust (Policer, Puffer unter 10 ms), wird das bis
-    zu 1,2 s später behandelt als ohne das Halten (Modell: 1,2 statt 0,4 s); mit einer Schlange so schnell wie
-    bisher. Ein Schritt nach oben **ohne** Probe (die Schätzung hat sich von selbst erholt) wird nicht gehalten.
+    letzten Schritt nach oben** des Beins (das Schlüsselbild; gemessen stand der Verlust 0,7–0,8 s lang in den
+    Rückmeldungen). Eine Schlange an der Spitze zählt sofort, ebenso die eigene Warteschlange des Knotens. Nach den
+    3 s steht die Folge wie jede Widerlegung auf dem Detektor: Er muss in jedem Takt ausdrücklich widerlegen, und das
+    Ziel muss wieder steigen. Sieht der Detektor nichts (Rückmeldung alt, Basis jung, Wegwechsel), gilt das Halten
+    nicht. Das Halten gilt **für das Bein**, nicht für einen Platz (die Schätzung ist eine je Bein): In den 3 s ist
+    auch ein weiterer Schritt nach oben ohne Probe gehalten – eine Kachel aus der Pause, ein anderer Platz –, und
+    er setzt die 1,2 s für den Verlust neu an (längstens bis zum Ende der 3 s). Außerhalb der 3 s wird ein Schritt
+    ohne Probe nicht gehalten. **Grenze:** Bricht die Leitung gleich nach dem Schritt ein und zeigt sich das nur als
+    Verlust (Policer, Puffer unter 10 ms), wird das bis zu 1,2 s später behandelt als ohne das Halten – mit weiteren
+    Schritten nach oben in der Zeit bis zu 3 s (Modell: 1,2 statt 0,4 s; über UDP gemessen 0,64 statt 0,44 s); mit
+    einer Schlange so schnell wie bisher (über UDP 0,44–0,46 s in allen Läufen, vorher 0,43–0,44 s).
     **Eigenes Bündel in einer laufenden Widerlegung:** Ein Schlüsselbild geht als Bündel hinaus; auf einer Leitung
     mit Ratengrenze stehen seine Pakete hintereinander an, und die Spitze zeigt einen Takt lang eine Schlange (am
     Testaufbau 18–31 ms bei 1450–1520 kbit/s). Fiele die Widerlegung dabei weg, endete sie an jedem Schlüsselbild, das
@@ -484,9 +489,14 @@ Platzhalter: `horn-1.example.org`.
     Deshalb übersteht eine **laufende** Widerlegung **einen** Takt ohne ausdrückliche Widerlegung, wenn das Bein in
     diesem oder im vorigen Takt selbst ein Bündel gesendet hat (Medienrate mindestens 1,25 × der geglätteten Rate
     davor) und der Detektor sonst nichts zeigt (Zustand `frei`, Basis mindestens 2 s alt, Rückmeldung frisch, Verlust
-    nicht gestiegen). Nicht zwei Takte in Folge. Eine Widerlegung **beginnt** so nicht, und ohne eigenes Bündel gilt
-    das Signal von GCC sofort wie bisher. **Grenze:** Beginnt eine echte Enge im selben Takt wie ein eigenes Bündel,
-    gilt das Signal von GCC einen Takt (0,2 s) später (Modell: 0,4 statt 0,2 s).
+    nicht gestiegen). Nicht zweimal binnen 300 ms – bei 200 ms je Takt also nicht zwei Takte in Folge (verspätet sich
+    ein Takt unter Last, können zwei aufeinanderfolgende entschuldigt werden). Eine Widerlegung **beginnt** so nicht,
+    und ohne eigenes Bündel gilt das Signal von GCC sofort wie bisher. Die Bedingung „eigenes Bündel“ trifft nicht nur
+    auf ein Schlüsselbild zu: Sie gilt auch rund 1 s lang nach jedem Schritt nach oben (die geglättete Rate läuft
+    nach) und bei Beinen mit wenigen Bildern je Sekunde in vielen Takten – deshalb die Begrenzung auf einen Takt.
+    **Grenze:** Beginnt eine echte Enge in einem solchen Takt, während eine Widerlegung läuft (auch das Halten nach
+    einer bestandenen Probe, sofern der Verlust nicht gestiegen ist), gilt das Signal von GCC einen Takt (0,2 s)
+    später (Modell: 0,4 statt 0,2 s).
     Aufschub, Schonfrist, Sperrzeit, „ein Schritt je Takt“ und die Regeln des Probings gelten unverändert.
   - **`eigen` gegen `gcc` im Testaufbau** (pion-Gegenstelle hinter einer nachgebildeten Leitung, 7 Fälle × 3
     Durchgänge je Stellung, im Wechsel; `TestUDPBWEMessung`): Rückfälle auf freier Leitung in 1844 s: `gcc` 12 (9-mal
@@ -507,8 +517,10 @@ Platzhalter: `horn-1.example.org`.
     entpackbar), `acked`, `lost`, `dup` (doppelt gemeldet), `recovered` (als verloren gemeldet, später doch
     angekommen), `unknown` (Folgenummer nicht im Ring), `windows`, `thin` (Fenster mit zu wenig Paketen), `late`,
     `resets`, `to_free`, `to_warn`, `to_cong`, `to_unknown`; bei `eigen` dazu `refuted` (Fälle des GCC-Ziels unter
-    die Rate, die der Detektor widerlegt hat), `held` (Schonfristen, die nur das Halten nach einer bestandenen
-    Probe getragen hat) und `bursts` (Takte einer laufenden Widerlegung, die ein eigenes Bündel entschuldigt hat).
+    die Rate, die der Detektor widerlegt hat), `held` (Folgen, deren Widerlegung mit dem Halten nach einer
+    bestandenen Probe begann – eine als `spitze` begonnene Folge, die später nur das Halten trägt, zählt bei
+    `refuted`) und `bursts` (Takte einer laufenden Widerlegung, die ein eigenes Bündel entschuldigt hat, auch wenn
+    die Folge im selben Takt aus anderem Grund endete).
   - Bekannte Grenzen: (1) **Wiederholungen sind unsichtbar** – der NACK-Antworter liegt in der Kette vor dem
     Schätzer und schreibt an ihm und am TWCC-Kopf vorbei; weder pion-GCC noch der Mitleser sehen sie (`sent.rtx`
     bleibt 0; sie tragen die transport-cc-Nummer des Originals und erscheinen als `recovered`). (2) **Niedrige

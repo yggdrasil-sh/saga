@@ -185,7 +185,7 @@ type LegEvent struct {
 	Why                        string        // Grund (Ende einer Widerlegung, Ruecknahme)
 	Dur                        time.Duration // Dauer der Widerlegung (LegRefuteEnd)
 	Class, From, To            string        // Ruecknahme: Platzart, Schicht davor und danach
-	EstKbit, GccKbit, RateKbit int           // Schaetzung des Beins, GCC-Ziel, gesendete Rate (geglaettet)
+	EstKbit, GccKbit, RateKbit int           // Schaetzung des Beins, GCC-Ziel, Medienrate dieses Takts (an ihr wird das Ziel gemessen)
 }
 
 const (
@@ -199,7 +199,7 @@ type ProbeStats struct {
 	Started, Passed, Failed, Aborted uint64
 	Unclear                          uint64 // davon (Aborted) ohne klares Ergebnis beendet und wiederholt
 	Refuted                          uint64 // eigen: Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat (estimator.refute)
-	Held                             uint64 // eigen: Schonfristen, die nur das Halten nach einer bestandenen Probe getragen hat (estimator.held)
+	Held                             uint64 // eigen: Folgen, deren Widerlegung mit dem Halten nach einer bestandenen Probe begann (estimator.held)
 	Bursts                           uint64 // eigen: Takte einer laufenden Widerlegung, die ein eigenes Buendel entschuldigt hat (estimator.blip)
 	Clamped                          uint64 // Faelle des GCC-Ziels in Proben, die kein Stau waren (probeJudge)
 	PadBytes                         uint64 // gesendete Fuell-Bytes

@@ -193,7 +193,8 @@ func (s *server) onLegEvent(ev sfu.LegEvent) {
 }
 
 // legEventLine: Zeile zu einem Ereignis der Steuerung, mit dem, was der Detektor in diesem Augenblick an der Spitze
-// sieht (Zustand, Schlange, Verlust der letzten 500 ms; Schlange -1 = nichts Frisches).
+// sieht (Zustand, Schlange, Verlust der letzten 500 ms; Schlange -1 = nichts Frisches). rate ist die Medienrate des
+// Takts, an der das GCC-Ziel gemessen wurde (nicht die geglaettete).
 //
 //	bwe 5884a4 widerlegung=beginn art=spitze gcc=1130k rate=1330k est=1480k zustand=frei schlange=1ms verlust=0.0%
 //	bwe 5884a4 widerlegung=ende art=spitze grund=erholt dauer=1.6s gcc=1250k rate=1330k est=1480k zustand=frei schlange=1ms verlust=0.0%

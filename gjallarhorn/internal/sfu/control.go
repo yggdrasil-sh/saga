@@ -509,7 +509,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	l.est.update(l, dt, now)
 	if n := l.est.note; n.kind != "" && cfg.OnLegEvent != nil { // Beginn bzw. Ende einer Widerlegung (eigen)
 		r.levs = append(r.levs, LegEvent{Leg: l, Kind: n.kind, Art: n.art, Why: n.why, Dur: n.dur,
-			EstKbit: int(l.est.bps / 1000), GccKbit: int(l.est.gccLast / 1000), RateKbit: int(l.est.rateAvg / 1000)})
+			EstKbit: int(l.est.bps / 1000), GccKbit: int(l.est.gccLast / 1000), RateKbit: int(l.est.rateTick / 1000)})
 	}
 	l.probeStep(now) // laufende Probe: weiter, Abbruch oder Freigabe (hebt dann die Schaetzung)
 	budget := l.est.bps
@@ -987,7 +987,7 @@ func (l *Leg) downEvent(s *slot, to string, quota bool, now int64, cfg Config) {
 		why = "kontingent"
 	}
 	l.room.levs = append(l.room.levs, LegEvent{Leg: l, Kind: LegDown, Why: why, Class: s.class, From: s.layer, To: to,
-		EstKbit: int(e.bps / 1000), GccKbit: int(e.gccLast / 1000), RateKbit: int(e.rateAvg / 1000)})
+		EstKbit: int(e.bps / 1000), GccKbit: int(e.gccLast / 1000), RateKbit: int(e.rateTick / 1000)})
 }
 
 // keepActive behaelt Teilnehmende, die schon einen Platz haben und weiter
@@ -1104,20 +1104,21 @@ type estimator struct {
 	grant           float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
 	grantUntil      int64
 	// Eigener Stau-Detektor (Leg.ExtTip, HORN_BWE=eigen)
-	det        bool   // das Bein hat einen
-	detClear   bool   // ... und er widerlegt in diesem Takt einen Stau ausdruecklich (bwe.Tip.Clear)
-	detCalm    bool   // ... bzw. zeigt wenigstens keine Schlange (bwe.Tip.Calm: wie Clear, ohne den Verlust)
-	detFresh   bool   // ... bzw. sieht die Leitung ueberhaupt (bwe.Tip.Fresh: wie Calm, ohne die Schlange)
-	detLossUp  bool   // ... der Verlust an der Spitze ist gestiegen (bwe.Tip.LossUp)
-	lagDet     bool   // die laufende Schonfrist besteht nur, weil der Detektor einen Fall des Ziels widerlegt hat
-	refuted    uint64 // Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat
-	proofUntil int64  // Halten nach bestandener Probe (held): bis hierhin nimmt das GCC-Ziel allein die Schicht nicht zurueck
-	heldN      uint64 // Schonfristen, die nur das Halten nach einer bestandenen Probe getragen hat
+	det        bool    // das Bein hat einen
+	detClear   bool    // ... und er widerlegt in diesem Takt einen Stau ausdruecklich (bwe.Tip.Clear)
+	detCalm    bool    // ... bzw. zeigt wenigstens keine Schlange (bwe.Tip.Calm: wie Clear, ohne den Verlust)
+	detFresh   bool    // ... bzw. sieht die Leitung ueberhaupt (bwe.Tip.Fresh: wie Calm, ohne die Schlange)
+	detLossUp  bool    // ... der Verlust an der Spitze ist gestiegen (bwe.Tip.LossUp)
+	lagDet     bool    // die laufende Schonfrist besteht nur, weil der Detektor einen Fall des Ziels widerlegt hat
+	refuted    uint64  // Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat
+	proofUntil int64   // Halten nach bestandener Probe (held): bis hierhin nimmt das GCC-Ziel allein die Schicht nicht zurueck
+	heldN      uint64  // Folgen, deren Widerlegung mit dem Halten nach einer bestandenen Probe begann
+	rateTick   float64 // Medienrate dieses Takts - an ihr wird das GCC-Ziel gemessen (fuers Log)
 	// Eigenes Buendel in einer laufenden Widerlegung (blip)
 	ratePrev float64 // Medienrate des vorigen Takts
 	avgPrev  float64 // ... und die geglaettete Rate davor
 	blipAt   int64   // letzter entschuldigter Takt (0 = keiner)
-	blips    uint64  // entschuldigte Takte
+	blips    uint64  // entschuldigte Takte (auch wenn die Folge im selben Takt aus anderem Grund endete)
 	// Fuers Log (LegEvent): laufende Widerlegung, Ereignis dieses Takts, Grund der letzten verweigerten Schonfrist und
 	// der letzten Senkung der Schaetzung
 	refAt   int64  // Beginn der laufenden Widerlegung (0 = keine)
@@ -1147,19 +1148,23 @@ const (
 	// hat gegen GCC bestanden (der Detektor sah keinen Stau, die Zielrate kam an); gehorchte die Schaetzung GCC gleich
 	// danach wieder, hielte der Schritt 0,2 s (Leitung 1400 kbit/s mit 20 ms Puffer: 6 Schritte l -> m, keiner hielt).
 	probeKeep = 3 * time.Second
-	// probeBurst: So lange nach dem Schritt zaehlt in dieser Zeit ein gestiegener Verlust nicht als Zeichen von Stau - das
-	// Schluesselbild der neuen Schicht kommt als Buendel und ueberlaeuft einen kurzen Puffer (gemessen: der Verlust
-	// stand 0,7 bis 0,8 s lang in den letzten 500 ms der Rueckmeldungen). Eine Schlange zaehlt sofort.
+	// probeBurst: So lange nach dem letzten Schritt nach oben des Beins (stepAt) zaehlt in dieser Zeit ein gestiegener
+	// Verlust nicht als Zeichen von Stau - das Schluesselbild der neuen Schicht kommt als Buendel und ueberlaeuft einen
+	// kurzen Puffer (gemessen: der Verlust stand 0,7 bis 0,8 s lang in den letzten 500 ms der Rueckmeldungen). Eine
+	// Schlange zaehlt sofort. Ein weiterer Schritt nach oben innerhalb von probeKeep (anderer Platz, Kachel aus der
+	// Pause) setzt die Frist neu an - laengstens bis probeKeep nach der Probe.
 	probeBurst = 1200 * time.Millisecond
 )
 
 // Eigenes Buendel in einer laufenden Widerlegung (HORN_BWE=eigen, estimator.blip).
 const (
 	// burstMin: Ab dieser Rate eines Takts gegenueber der geglaetteten Rate hat das Bein selbst ein Buendel gesendet
-	// (Schluesselbild: am Testaufbau 1,35 x, bei einer Kamera das 2- bis 3-fache; gewoehnliche Takte schwanken um wenige
-	// Prozent).
+	// (Schluesselbild: am Testaufbau 1,35 x, bei einer Kamera das 2- bis 3-fache). Die Bedingung trifft auch sonst zu:
+	// rund 1 s lang nach jedem Schritt nach oben (die geglaettete Rate laeuft nach) und bei Beinen mit wenigen Bildern
+	// je Sekunde in vielen Takten. Deshalb ist die Ausnahme auf einen Takt begrenzt.
 	burstMin = 1.25
-	// blipGap: Entschuldigt wird ein Takt, nicht zwei in Folge (Takt 200 ms).
+	// blipGap: Entschuldigt wird nicht zweimal binnen dieser Zeit - bei 200 ms je Takt also nicht zwei Takte in Folge.
+	// (Verspaetet sich ein Takt unter Last um mehr als 100 ms, koennen zwei aufeinanderfolgende entschuldigt werden.)
 	blipGap = 300 * time.Millisecond
 )
 
@@ -1327,12 +1332,16 @@ func (e *estimator) refStart(art string, now int64) {
 
 // held (HORN_BWE=eigen): Gilt in diesem Takt das Halten nach einer bestandenen Probe? Bis probeKeep nach der Probe,
 // solange der Detektor kein Zeichen von Stau zeigt: Zustand frei, Rueckmeldung frisch, keine Schlange an der Spitze
-// (bwe.Tip.Calm). Ein gestiegener Verlust ist ein Zeichen - ausser in den ersten probeBurst nach dem Schritt (das
-// Schluesselbild der neuen Schicht). Sieht der Detektor nichts (Rueckmeldung alt, Basis jung), gilt das Halten nicht:
-// Dann entscheidet GCC wie bisher.
+// (bwe.Tip.Calm). Ein gestiegener Verlust ist ein Zeichen - ausser in den ersten probeBurst nach dem letzten Schritt
+// nach oben (das Schluesselbild der neuen Schicht). Sieht der Detektor nichts (Rueckmeldung alt, Basis jung), gilt das
+// Halten nicht: Dann entscheidet GCC wie bisher.
+//
+// Das Halten gilt fuer das Bein, nicht fuer einen Platz: In der Zeit ist auch ein weiterer Schritt nach oben ohne
+// Probe gehalten (die Schaetzung ist eine je Bein).
 //
 // Grenze: Ein Einbruch gleich nach dem Schritt, der sich nur als Verlust zeigt (Policer, Puffer unter 10 ms), wird
-// bis zu probeBurst spaeter behandelt als ohne das Halten; mit einer Schlange an der Spitze so schnell wie bisher.
+// bis zu probeBurst spaeter behandelt als ohne das Halten (gemessen ueber UDP: 0,2 s) - mit weiteren Schritten nach
+// oben in der Zeit bis zu probeKeep; mit einer Schlange an der Spitze so schnell wie bisher.
 func (e *estimator) held(now int64) bool {
 	if !e.det || now >= e.proofUntil || !e.detCalm {
 		return false
@@ -1341,15 +1350,16 @@ func (e *estimator) held(now int64) bool {
 }
 
 // blip (HORN_BWE=eigen): Die laufende Widerlegung gilt in diesem Takt nicht - aber nur, weil das Bein selbst ein
-// Buendel gesendet hat (Schluesselbild: Medienrate dieses oder des vorigen Takts mindestens burstMin x der geglaetteten
-// Rate davor) und der Detektor sonst nichts zeigt: Zustand frei, Rueckmeldung frisch, Verlust nicht gestiegen
-// (bwe.Tip.Fresh, nicht LossUp). Die Schlange an der Spitze ist dann das Abbild des eigenen Buendels - die letzten
-// bestaetigten Pakete standen hintereinander an - und laeuft binnen eines Takts wieder ab. Entschuldigt wird EIN Takt,
-// nicht zwei in Folge; eine Widerlegung beginnt so nicht (refute), sie uebersteht es nur.
+// Buendel gesendet hat (Medienrate dieses oder des vorigen Takts mindestens burstMin x der geglaetteten Rate davor -
+// ein Schluesselbild, siehe burstMin) und der Detektor sonst nichts zeigt: Zustand frei, Rueckmeldung frisch, Verlust
+// nicht gestiegen (bwe.Tip.Fresh, nicht LossUp). Die Schlange an der Spitze ist dann das Abbild des eigenen Buendels -
+// die letzten bestaetigten Pakete standen hintereinander an - und laeuft binnen eines Takts wieder ab. Entschuldigt
+// wird EIN Takt (blipGap); eine Widerlegung beginnt so nicht (refute), sie uebersteht es nur.
 //
 // Ohne das endete am Testaufbau rund jede zweite Widerlegung auf einer Leitung knapp unter h an einem Schluesselbild
 // der Quelle (alle 10 s; 5 von 11), und der Platz fiel auf l - obwohl die Leitung m mit doppelter Reserve trug.
-// Grenze: Beginnt eine echte Enge im selben Takt wie ein eigenes Buendel, gilt das Signal von GCC einen Takt spaeter.
+// Grenze: Beginnt eine echte Enge in einem solchen Takt - beim Schluesselbild oder in der Sekunde nach einem Schritt
+// nach oben - waehrend eine Widerlegung laeuft, gilt das Signal von GCC einen Takt spaeter.
 func (e *estimator) blip(rate float64, now int64) bool {
 	if !e.det || !e.detFresh || e.detLossUp {
 		return false
@@ -1412,6 +1422,7 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		rate = max(rate-float64(pb-e.padLast)*8/dt, 0)
 		e.padLast = pb
 	}
+	e.rateTick = rate
 	age := time.Duration(st.TickAgeNs.Swap(0))
 	drops := st.TickDrops.Swap(0)
 	e.note = legNote{}
