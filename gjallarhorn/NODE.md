@@ -499,17 +499,37 @@ Platzhalter: `horn-1.example.org`.
     einer bestandenen Probe, sofern der Verlust nicht gestiegen ist), gilt das Signal von GCC einen Takt (0,2 s)
     später (Modell: 0,4 statt 0,2 s).
     Aufschub, Schonfrist, Sperrzeit, „ein Schritt je Takt“ und die Regeln des Probings gelten unverändert.
-  - **`eigen` gegen `gcc` im Testaufbau** (pion-Gegenstelle hinter einer nachgebildeten Leitung, 7 Fälle × 3
-    Durchgänge je Stellung, im Wechsel; `TestUDPBWEMessung`): Rückfälle auf freier Leitung in 1844 s: `gcc` 12 (9-mal
-    `h`→`m`, 3-mal `m`→`l`), `eigen` 2 (einer in den ersten 2 s des Beins, solange die Basis jung ist; einer 1 s nach
-    einem widerlegten Zielsturz bei einer Ratenspitze – Ursache nicht abschließend geklärt), 12 widerlegte Zielstürze.
-    Anteil auf `h` bei Jitter und Pausen: 80 % gegen 91 % (90 s) und 90 % gegen 93 % (240 s nach einer Enge).
-    Beginn einer Enge mitten im Anruf (Policer 1000, Leitung 1000/1250/1450/1520 kbit/s, je 3-mal): der Platz fällt
-    in allen 15 Fällen je Stellung 0,4 s danach (Raster 0,1 s) – kein Unterschied. Proben `m`→`h` auf Enge und
-    Policer: `gcc` 32 von 32 gescheitert; `eigen` 27 gescheitert, 14 unklar (wiederholt), **keine bestanden**. Auf
-    freier Leitung: `gcc` 30 von 30 bestanden, `eigen` 28 von 29 (eine unklar, wiederholt), kein `fail`. Der Detektor
-    meldete auf freier Leitung weder Warnung noch Stau. `TestUDPProbing` mit `eigen`: 50 von 50 Läufen grün (auf
-    1,2 Mbit/s 129 Proben: 50 gescheitert, 56 unklar; `h` kam dort nur mit dem freien Versuch zum Anrufbeginn).
+  - **`eigen` gegen `gcc` im Testaufbau** (pion-Gegenstelle hinter einer nachgebildeten Leitung; `TestUDPBWEMessung`;
+    Stand nach der Nacharbeit, die Zahlen davor in Klammern).
+    *Serie* (7 Fälle × 3 Durchgänge je Stellung, im Wechsel): Rückfälle auf freier Leitung in 1844 s: `gcc` 12 (12),
+    `eigen` **0** (2); 18 (12) widerlegte Zielstürze, 17 davon endeten mit erholtem Ziel. Anteil auf `h` bei Jitter und
+    Pausen: 83 % gegen 95 % (90 s) und 89 % gegen 96 % (240 s nach einer Enge). Beginn einer Enge mitten im Anruf
+    (Policer 1000, Leitung 1000/1250/1450/1520 kbit/s, je 3-mal): der Platz fällt in allen 15 Fällen je Stellung 0,4 s
+    danach (Raster 0,1 s) – kein Unterschied. Proben `m`→`h` auf Enge und Policer: `gcc` 33 von 33 gescheitert; `eigen`
+    29 gescheitert, 12 unklar (wiederholt), **keine bestanden**. Auf freier Leitung: `gcc` 32 von 32 bestanden, `eigen`
+    23 von 25 (zwei unklar, wiederholt), kein `fail` – `eigen` probt dort seltener, weil es seltener zurückfällt
+    (Fülldaten der Serie 4,5 gegen 5,5 MB). Der Detektor meldete auf freier Leitung weder Warnung noch Stau. Nach der
+    Freigabe einer Enge steht `h` bei `eigen` im Median nach 16 s (30 s Leitung 1000), 20 s (Policer), 11 s
+    (Leitung 1000/1250) bzw. 5 s (1450/1520) wieder, bei `gcc` nach 14, 20, 17 und 14 s – das bestimmt der Abstand
+    nach den gescheiterten Proben in der Enge (10 s, verdoppelnd), bei je 3 bis 6 Freigaben mit entsprechender
+    Streuung.
+    *Leitung knapp unter `h`* (1450/1520/1550 kbit/s, je 120 s, 6 Läufe je Stellung): Zeit auf `m`/`l` bei `eigen`
+    687/30 s (685/32), bei `gcc` 547/170 s; Proben 46 (59) gegen 31, Fülldaten 2,0 MB (2,8) gegen 1,1 MB. Die
+    Rampen-Regel hat die unklaren Proben von 36 auf 21 gesenkt – je Folge bleibt eine; „nahe `gcc`“ ist das nicht.
+    Von den 7 Rückfällen auf `l`, die `eigen` dort noch hat, tragen 6 den Grund `gcc-steht`: Das Ziel erholt sich
+    nach einem widerlegten Sturz und stürzt erneut, bevor die Folge geschlossen ist (offen). Von 16 Widerlegungen
+    endeten 10 mit erholtem Ziel, keine mehr an einem Schlüsselbild.
+    *Leitung 1400 kbit/s mit 20 ms Puffer:* über 120 s (2 Läufe) `eigen` 214/25 s auf `m`/`l` (62/177), `gcc` 125/114 s.
+    Gezielt (Beginn auf 500 kbit/s, dann 1400/20 ms, je 4 Läufe): Nach einer bestandenen Probe `l`→`m` hielt `m` bei
+    `eigen` in 5 von 5 Schritten länger als 3 s (3,8 bis über 56 s), vor der Nacharbeit fielen 3 von 7 nach 0,2–0,4 s
+    zurück. Der kürzeste (3,8 s) endete nach dem Halten an einem Verlust-Schub durch ein Schlüsselbild, als das
+    GCC-Ziel noch unter der Rate lag.
+    *Knapp über `h`* (1600/1700 kbit/s, 4 Läufe): `eigen` verlässt `h` nach 1,2–1,6 s, `gcc` nach 0,4–0,8 s (Grenze
+    oben). *Einbruch gleich nach einer bestandenen Probe* (auf 1000 kbit/s, je 4 Läufe): mit Schlange (Puffer 300 ms)
+    `h` verlassen nach 0,44–0,46 s (vor der Nacharbeit 0,43–0,44 s, `gcc` 0,43–0,45 s); nur als Verlust sichtbar
+    (Puffer 5 ms) 0,46–0,65 s (0,42–0,47 s, `gcc` 0,43–0,64 s).
+    `TestUDPProbing` mit `eigen`: vor der Nacharbeit 50 von 50 Läufen grün (auf 1,2 Mbit/s 129 Proben: 50 gescheitert,
+    56 unklar; `h` kam dort nur mit dem freien Versuch zum Anrufbeginn), danach in allen Läufen der Abschlussprüfung.
     Mit echtem Browser ist `eigen` noch nicht gemessen.
   - Zähler und Zustand je Bein: `GET /api/sfu/leg/{id}` → `"bwe"` (nur bei `mit` und `eigen`): `mode`, `state`, `why`,
     `queue_ms`, `loss`, `acked_kbit`, `cap_kbit`, `age_ms` (Alter der letzten Rückmeldung, −1 = keine), `sent {video,

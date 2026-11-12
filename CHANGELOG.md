@@ -100,6 +100,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Leitung ihn nicht als Schlange zeigt – Puffer unter 10 ms bei wenigen Prozent Überlast, Verlust, der schon länger
   als rund 10 s anhält, Policer mit 10–12 % Verlust. Die Ebene bleibt dann länger als bei `gcc` (bis das GCC-Ziel
   nicht mehr steigt, längstens 15 s). Mit echtem Browser ist `eigen` noch nicht gemessen.
+- **Gemessen am Testaufbau** (Test-Gegenstelle hinter einer nachgebildeten Leitung, `eigen` gegen `gcc`): auf freier
+  Leitung mit Jitter und kurzen Pausen kein grundloser Rückfall mehr (`gcc` 12 in 31 min), obere Ebene 95–96 % statt
+  83–89 % der Zeit; der Beginn einer Enge wird gleich schnell behandelt (0,4 s). Auf einer Leitung knapp unter der
+  oberen Ebene 687 statt 547 von 720 s auf der mittleren Ebene – dafür 46 statt 31 Proben und 2,0 statt 1,1 MB
+  Fülldaten. Liegt die Leitung knapp über der oberen Ebene, verlässt `eigen` sie 0,8–1,2 s später als `gcc`.
 - Regeln, Zeilen, Messwerte und Grenzen: `gjallarhorn/NODE.md`.
 
 ### Neu – Knoten: Probing mit Fülldaten vor dem Hochschalten (experimentell)
