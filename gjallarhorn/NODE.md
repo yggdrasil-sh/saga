@@ -344,7 +344,8 @@ Platzhalter: `horn-1.example.org`.
     unverändert an pion-GCC weitergibt. Daneben urteilt ein eigener Detektor (`internal/bwe`) über die Leitung. **Er
     entscheidet nichts:** Schichtwahl, Schätzung und Proben laufen wie bei `gcc`. `HORN_BWE=eigen` (Stufe 1 und 2):
     dieselbe Hülle, und der Detektor **entscheidet mit** – siehe „`eigen`“ unten. Jeder andere Wert gilt als `gcc`
-    (mit Warnzeile). Beim Start steht bei `mit` bzw. `eigen` eine Zeile `HORN_BWE=…: …` im Log.
+    (mit Warnzeile). Beim Start steht bei `mit` bzw. `eigen` eine Zeile `HORN_BWE=…: …` im Log. Bei `eigen` gilt
+    außerdem die Anlauf-Regel (junge Quelle, siehe oben; Test-Einstellung `HORN_ANLAUF`).
   - Verfahren: Pakete werden nach Sendezeit zu Fenstern gebündelt (mindestens 100 ms und 20 gemeldete Pakete,
     höchstens 500 ms). Die Schlange eines Fensters ist seine kleinste Laufzeit (Ankunft minus Sendezeit) über der
     Basis, der kleinsten Laufzeit der letzten 30 s – Jitter und kurze Pausen heben das Minimum nicht, eine stehende
