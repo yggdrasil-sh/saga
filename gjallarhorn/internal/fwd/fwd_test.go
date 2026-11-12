@@ -159,14 +159,21 @@ func TestHotPathNoAlloc(t *testing.T) {
 	o.cur.Store(s)
 	s.subscribe(o)
 	b := vp8pkt(1, 0, true, false, true)
+	seq := uint16(1)
+	next := func() { // fortlaufende Folgenummern: dasselbe Paket noch einmal waere ein Doppel der Quelle
+		binary.BigEndian.PutUint16(b[2:], seq)
+		seq++
+	}
 	// warm laufen (Pool fuellen)
 	for i := 0; i < 10; i++ {
+		next()
 		s.Inject(b)
 		e, _ := leg.pop()
 		leg.process(e.p, e.o)
 		e.p.release()
 	}
 	n := testing.AllocsPerRun(2000, func() {
+		next()
 		s.Inject(b)
 		e, _ := leg.pop()
 		leg.process(e.p, e.o)
@@ -174,6 +181,21 @@ func TestHotPathNoAlloc(t *testing.T) {
 	})
 	if n != 0 {
 		t.Fatalf("allokationen je paket: %v", n)
+	}
+	// ... und ebenso, wenn die Quelle jedes Paket zweimal liefert (das Doppel faellt im Abgleich weg)
+	n = testing.AllocsPerRun(2000, func() {
+		next()
+		s.Inject(b)
+		s.Inject(b)
+		e, _ := leg.pop()
+		leg.process(e.p, e.o)
+		e.p.release()
+		if _, ok := leg.pop(); ok {
+			t.Fatal("Doppel verteilt")
+		}
+	})
+	if n != 0 {
+		t.Fatalf("allokationen je paket mit Doppel: %v", n)
 	}
 }
 
@@ -434,7 +456,11 @@ func TestHotPathRewriteNoAlloc(t *testing.T) {
 	o.SetMaxTID(0)
 	b0 := vp8tid(1, 0, 100, 1, 0, false, false)
 	b1 := vp8tid(2, 0, 101, 1, 1, false, false)
+	seq := uint16(1)
 	run := func() {
+		binary.BigEndian.PutUint16(b0[2:], seq) // fortlaufende Folgenummern (sonst Doppel der Quelle)
+		binary.BigEndian.PutUint16(b1[2:], seq+1)
+		seq += 2
 		s.Inject(b0)
 		e, _ := leg.pop()
 		leg.process(e.p, e.o)
@@ -508,7 +534,10 @@ func TestPlayoutDelay(t *testing.T) {
 	}
 	key := vp8pkt(4, 6000, true, true, true)
 	o.Bind(nopW{}, 1, 96)
+	seq := uint16(4)
 	n := testing.AllocsPerRun(1000, func() {
+		binary.BigEndian.PutUint16(key[2:], seq) // fortlaufende Folgenummern (sonst Doppel der Quelle)
+		seq++
 		s.Inject(key)
 		e, _ := leg.pop()
 		leg.process(e.p, e.o)
