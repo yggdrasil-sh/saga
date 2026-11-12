@@ -166,6 +166,7 @@ type leg struct {
 	connected time.Time
 	iceAt     time.Time
 	srcs      []*fwd.Source
+	srcEnd    [3]uint64 // Zaehler des Abgleichs der beendeten Spuren: Doppel, zu alt, spaet (endSrc)
 	closed    bool
 }
 
@@ -306,6 +307,7 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 			n, _, err := tr.Read(b)
 			return n, err
 		})
+		l.endSrc(src)
 		s.room.RemoveSource(src)
 	})
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: req.Offer}); err != nil {
@@ -440,7 +442,7 @@ func (s *server) closeLeg(l *leg, reason string) {
 	// Abgleich des Weiterleiters fuer die Quellen dieses Beins: verworfene Doppel, Pakete aelter als das Fenster,
 	// spaete erste Exemplare - und was dieses Bein als Empfaenger nicht mehr einordnen konnte
 	st := l.stats()
-	var dups, old, late uint64
+	dups, old, late := st.ended[0], st.ended[1], st.ended[2] // beendete Spuren
 	for _, x := range st.Sources {
 		dups, old, late = dups+x.Dups, old+x.TooOld, late+x.Late
 	}
@@ -495,7 +497,8 @@ type legStats struct {
 	WriteErrs uint64     `json:"write_errs"`
 	Secs      float64    `json:"secs"`
 	LateDrop  uint64     `json:"late_dropped,omitempty"` // verspaetete Pakete, die dieses Bein nicht mehr einordnen konnte
-	Sources   []srcStats `json:"sources,omitempty"`      // eingehende Spuren dieses Beins
+	Sources   []srcStats `json:"sources,omitempty"`      // laufende eingehende Spuren dieses Beins
+	ended     [3]uint64  // Summen der beendeten Spuren (Doppel, zu alt, spaet) - fuer die Zeile "bein zu"
 }
 
 // srcStats: Zaehler einer eingehenden Spur (Abgleich auf Doppel im Weiterleiter, fwd.Source).
@@ -525,11 +528,28 @@ func (l *leg) state() webrtc.PeerConnectionState {
 	return pc.ConnectionState()
 }
 
+// endSrc: Die Spur ist zu Ende. Ihre Zaehler des Abgleichs gehen in die Summe des Beins ein (Zeile "bein zu"), die
+// Quelle selbst steht nicht mehr in sources[] - sonst wuechse die Liste eines langen Beins mit jeder neuen Spur.
+func (l *leg) endSrc(src *fwd.Source) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for i, x := range l.srcs {
+		if x == src {
+			l.srcs = append(l.srcs[:i], l.srcs[i+1:]...)
+			l.srcEnd[0] += src.Dups.Load()
+			l.srcEnd[1] += src.TooOld.Load()
+			l.srcEnd[2] += src.Late.Load()
+			return
+		}
+	}
+}
+
 func (l *leg) stats() legStats {
 	l.mu.Lock()
 	con := l.connected
 	fl := l.fl
 	srcs := append([]*fwd.Source(nil), l.srcs...)
+	ended := l.srcEnd
 	l.mu.Unlock()
 	if fl == nil {
 		return legStats{ID: l.id, Path: l.path, Role: l.role, State: "new"}
@@ -539,7 +559,7 @@ func (l *leg) stats() legStats {
 		Dropped: fl.Stats.FramesDropped.Load(), Stalls: fl.Stats.Stalls.Load(),
 		MaxQMs: float64(fl.Stats.MaxAgeNs.Load()) / 1e6, FwdP95us: fl.Stats.P95us(),
 		Overflow: fl.Stats.Overflow.Load(), WriteErrs: fl.Stats.WriteErrs.Load(),
-		Secs: time.Since(l.created).Seconds(), LateDrop: fl.Stats.LateDropped.Load()}
+		Secs: time.Since(l.created).Seconds(), LateDrop: fl.Stats.LateDropped.Load(), ended: ended}
 	for _, x := range srcs {
 		k := "audio"
 		if x.Kind == fwd.Video {

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/netx"
 )
 
@@ -165,6 +166,30 @@ func TestSFUMixed(t *testing.T) {
 
 // TestSFUAuth: ohne gueltiges Token kein Bein und kein TURN; ohne HORN_DEV
 // gibt es weder Token- noch Raum-Endpunkte.
+// TestLegEndSrc: Eine beendete Spur steht nicht mehr in sources[] des Beins; ihre Zaehler des Abgleichs bleiben ihm
+// als Summe erhalten (Zeile "bein zu").
+func TestLegEndSrc(t *testing.T) {
+	l := &leg{id: "bein-x", created: time.Now(), fl: fwd.NewLeg()}
+	defer l.fl.Close()
+	a := &fwd.Source{Kind: fwd.Audio, Layer: "a"}
+	v := &fwd.Source{Kind: fwd.Video, Layer: "h"}
+	l.srcs = []*fwd.Source{a, v}
+	a.Dups.Add(1)
+	v.Dups.Add(5)
+	v.TooOld.Add(2)
+	v.Late.Add(7)
+	l.endSrc(v)
+	l.endSrc(v) // schon ausgetragen: ohne Wirkung
+	st := l.stats()
+	if len(st.Sources) != 1 || st.Sources[0].Kind != "audio" || st.Sources[0].Dups != 1 || st.ended != [3]uint64{5, 2, 7} {
+		t.Fatalf("quellen %+v, beendet %v", st.Sources, st.ended)
+	}
+	l.endSrc(a)
+	if st := l.stats(); len(st.Sources) != 0 || st.ended != [3]uint64{6, 2, 7} {
+		t.Fatalf("quellen %+v, beendet %v", st.Sources, st.ended)
+	}
+}
+
 func TestSFUAuth(t *testing.T) {
 	s := testNodeServer(t, false)
 	base := "https://" + s.mux.Addr().String()
