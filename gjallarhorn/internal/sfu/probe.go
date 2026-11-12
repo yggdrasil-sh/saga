@@ -433,13 +433,18 @@ func (l *Leg) probeVerdict(now int64) {
 		// ramp: Das Stausignal von GCC kam schon in der Rampe (halbe Fuellung) - die volle Fuellung lief nie, die Probe
 		// hat die Zielrate nicht geprueft. Die zweite solche Probe in Folge zaehlt als gescheitert: In der Enge folgte
 		// sonst auf zwei Rampen-Abbrueche eine dritte Probe, die mit voller Fuellung eine Schlange von 50 bis 100 ms baut.
+		// Wiederholt wird eine Rampen-Probe ausserdem nur, wenn die letzte gewertete Probe auf dieses Ziel (ab probeNear
+		// ihrer Zielrate, binnen probeUnkGap) nicht gescheitert war: In anhaltender Enge ging sonst jeder gescheiterten
+		// Probe genau eine unklare voraus (Messung bwe13: 21 von 24). Auf freier Leitung bleibt der zweite Versuch.
 		ramp := p.gsig != "" && p.fillFrom == 0
+		lj := &l.lastJ
+		afterFail := lj.failed && p.target >= lj.rate*probeNear && now-lj.at <= int64(probeUnkGap)
 		if l.unkAt != 0 && now-l.unkAt <= int64(probeUnkGap) {
 			l.unkN++
 		} else {
 			l.unkN, l.unkRamp = 1, false
 		}
-		if l.unkN >= probeUnkMax || ramp && l.unkRamp {
+		if l.unkN >= probeUnkMax || ramp && (l.unkRamp || afterFail) {
 			l.probeEnd(probeFail, why, now)
 			return
 		}
@@ -521,6 +526,7 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 	}
 	if res != probeAbort {
 		l.unkAt, l.unkN, l.unkRamp = 0, 0, false
+		l.lastJ.rate, l.lastJ.failed, l.lastJ.at = p.target, res == probeFail, now
 	}
 	l.pstat.Clamped += uint64(p.clamps)
 	switch res {

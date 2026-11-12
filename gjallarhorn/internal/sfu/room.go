@@ -316,6 +316,14 @@ type Leg struct {
 	unkN      int     // eigen: Proben ohne klares Ergebnis in Folge (probeUnkMax)
 	unkRamp   bool    // ... die letzte davon endete schon in der Rampe (Stausignal von GCC bei halber Fuellung)
 	movedAt   int64   // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
+
+	// eigen: die letzte gewertete Probe (bestanden oder gescheitert) - Zielrate, Ergebnis, Zeit. Eine Rampen-Probe wird
+	// nur wiederholt, wenn diese auf dasselbe Ziel nicht gescheitert war (probeVerdict).
+	lastJ struct {
+		rate   float64
+		failed bool
+		at     int64
+	}
 }
 
 // ExtStat: Zustand der externen Schaetzung (GCC) - Laufzeit-Trend gegen seine Schwelle, Verlust, die beiden Teilziele.
