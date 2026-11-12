@@ -380,7 +380,9 @@ Platzhalter: `horn-1.example.org`.
       gestiegen, Warnung) → zwei Hinweise: gescheitert, Grund der von GCC. (Im Labor lag die Schlange in der Enge oft
       bei 43–48 ms, knapp unter der Schwelle von 50 ms.)
     - `staut-nicht` **und** Durchsatz-Nachweis → bestanden – auch wenn GCC ein Stausignal gemeldet hatte. Nachweis:
-      Während der vollen Füllung wurden mindestens 90 % der Zielrate **wirklich gesendet**, und der Empfänger hat
+      Während der vollen Füllung wurden mindestens 87 % der Zielrate **wirklich gesendet** (das ist der Bedarf des
+      Schritts ohne die Reserve von 15 %; die Füllpakete folgen nur auf Medienpakete und erreichen die Füllrate nicht
+      immer ganz – gemessen `l`→`m` 87–102 %, `m`→`h` 98–103 % der Zielrate), und der Empfänger hat
       davon **im selben Zeitraum** mindestens 95 % bestätigt (bestätigte Bytes je Ankunftszeit gegen gesendete Bytes
       je Sendezeit derselben Messfenster, über mindestens 400 ms). Beides zählt am selben Zähler (alle Pakete des
       Beins mit Kopf, Ton und Füllung) – nicht mehr Zielrate (mit Reserve und Ton) gegen Durchsatz. Hält GCC die
@@ -416,7 +418,7 @@ Platzhalter: `horn-1.example.org`.
     haben schon die jüngsten bestätigten Pakete eine Schlange (GCC schließt aus denselben Rückmeldungen auf
     Überlast). Die kleinste Laufzeit, weil nach einer Pause der Leitung die aufgehaltenen Pakete zusammen ankommen –
     das zuletzt gesendete hat kaum gewartet –, in einer wachsenden Schlange aber jedes gewartet hat. Modell (1520
-    kbit/s auf 1000/1250/1400 kbit/s und Policer 1000): Die Widerlegung hält längstens 0,15/0,19/0,25/0,15 s nach
+    kbit/s auf 1000/1250/1400 kbit/s und Policer 1000): Die Widerlegung hält längstens 0,15/0,15/0,17/0,15 s nach
     Beginn der Enge – GCC meldet nach 0,2–0,3 s. Auf freier Leitung widerlegt sie in 99,9–100 % der Takte (Jitter,
     Pausen 30–90 ms), bei 3 % bzw. 5 % Zufallsverlust in 95–98 % bzw. 91–96 %.
     **Grenze:** Liegt die Leitung nur wenige Prozent unter der Rate, wächst die Schlange so langsam, dass die

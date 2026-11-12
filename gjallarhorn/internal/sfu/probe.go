@@ -89,9 +89,13 @@ const (
 	probeSusOver = time.Second      // so lange darf das Fenster wegen eines offenen Hinweises ueberzogen werden
 	probeUnkWin  = 10 * time.Second // zweites unklares Ergebnis binnen dieser Zeit: gescheitert
 	// Wertung durch den eigenen Stau-Detektor (HORN_BWE=eigen, probeVerdict)
-	probeUnkMax   = 3                      // so viele Proben ohne klares Ergebnis in Folge (je binnen probeUnkGap): die letzte zaehlt als gescheitert
-	probeUnkGap   = time.Minute            // ... laenger auseinander zaehlen sie nicht als Folge (die Wiederholung kann auf ein erholtes GCC-Ziel warten muessen)
-	probeSentMin  = 0.9                    // Durchsatz-Nachweis: bei voller Fuellung gesendet mindestens so viel der Zielrate ...
+	probeUnkMax = 3           // so viele Proben ohne klares Ergebnis in Folge (je binnen probeUnkGap): die letzte zaehlt als gescheitert
+	probeUnkGap = time.Minute // ... laenger auseinander zaehlen sie nicht als Folge (die Wiederholung kann auf ein erholtes GCC-Ziel warten muessen)
+	// Durchsatz-Nachweis: bei voller Fuellung gesendet mindestens so viel der Zielrate - der Bedarf des Schritts ohne die
+	// Reserve (1/upHeadroom). Die Fuellpakete folgen nur auf Medienpakete und erreichen die Fuellrate nicht immer ganz
+	// (UDP-Laeufe: Schritt l -> m 87 bis 102 % der Zielrate, m -> h 98 bis 103 %); mit 0,9 blieb jede vierte Probe
+	// l -> m auf freier Leitung ohne Nachweis.
+	probeSentMin  = 1 / upHeadroom
 	probeAckMin   = 0.95                   // ... und davon vom Empfaenger im selben Zeitraum bestaetigt mindestens so viel
 	probeProofMin = 400 * time.Millisecond // ... gemessen ueber mindestens so viel Sendezeit
 	probeTail     = 500 * time.Millisecond // Nachlauf bis zum Urteil ohne bekannte Umlaufzeit (sonst 2 Umlaufzeiten + 200 ms, hoechstens 1 s)
@@ -364,7 +368,7 @@ func (l *Leg) spanCong(now int64) bool {
 //   - GCC hat ein Stausignal gemeldet und der Detektor zeigt wenigstens ein Anzeichen (Schlange ab 20 ms, Verlust
 //     gestiegen, Warnung; bwe.Verdict.Hint): zwei Hinweise - gescheitert, Grund der von GCC.
 //   - Der Detektor meldet "staut nicht" UND der Durchsatz-Nachweis stimmt: bestanden. Nachweis: Bei voller Fuellung
-//     wurde mindestens probeSentMin der Zielrate wirklich gesendet, und der Empfaenger hat davon im selben Zeitraum
+//     wurde mindestens probeSentMin der Zielrate (der Bedarf des Schritts) wirklich gesendet, und der Empfaenger hat davon im selben Zeitraum
 //     mindestens probeAckMin bestaetigt (bwe.Rates, ueber mindestens probeProofMin). Beides am selben Zaehler
 //     (Pakete des Beins mit Kopf, Ton und Fuellung) - nicht Zielrate gegen Durchsatz. Haelt GCC die Fuellung frueh an,
 //     ist die Zielrate nie gesendet worden: "staut nicht" sagt dann nichts ueber sie (Labor: auf enger Leitung 10 von

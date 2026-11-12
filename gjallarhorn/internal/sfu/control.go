@@ -1176,7 +1176,7 @@ func (e *estimator) clamped(v float64, now int64) bool {
 // GCC (Warnung nach 0,4 bis 0,7 s, GCC 0,2 bis 0,3 s; im Labor meldete er in 11 von 12 Schritten nichts, bevor der
 // Knoten unten war). Die Widerlegung dagegen stuetzt sich auf die Laufzeit der juengsten Pakete ueber der Basis
 // (10 ms): In echter Enge ist sie zu dem Zeitpunkt, an dem GCC Ueberlast meldet, schon ueberschritten (Modell: sie
-// haelt bis 0,15 bis 0,25 s nach Beginn der Enge) - das Signal von GCC gilt dort also so schnell wie bisher. Nur wo
+// haelt bis 0,15 bis 0,17 s nach Beginn der Enge) - das Signal von GCC gilt dort also so schnell wie bisher. Nur wo
 // die Leitung den Fall des Ziels nicht zeigt, bleibt die Schicht. Grenze: Liegt die Leitung nur knapp unter der Rate
 // (wenige Prozent), waechst die Schlange so langsam, dass die Widerlegung noch gilt, wenn GCC schon meldet - dann
 // bleibt die Schicht, bis die Schlange 10 ms erreicht (hoechstens rund 1 s laenger als bei gcc, bei einer Schlange
