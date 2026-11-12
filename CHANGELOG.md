@@ -78,9 +78,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
     Schritt, weil das Schlüsselbild der neuen Ebene einen kurzen Puffer überläuft). Vorher bestand die Probe gegen
     GCC, und die Ebene war 0,2 s später wieder weg (Leitung mit 1400 kbit/s und 20 ms Puffer). Grenze: Ein Einbruch
     gleich nach dem Schritt, der sich nur als Verlust zeigt, wird bis zu 1,2 s später behandelt.
+  - **Schlüsselbild in einer laufenden Widerlegung:** Ein Schlüsselbild geht als Bündel hinaus und zeigt auf einer
+    Leitung mit Ratengrenze einen Takt lang eine Schlange. Die Widerlegung übersteht diesen einen Takt jetzt, wenn
+    das Bein das Bündel selbst gesendet hat und der Detektor sonst nichts zeigt; vorher endete sie daran, und die
+    Ebene fiel grundlos (am Testaufbau rund jede zweite Widerlegung auf einer Leitung knapp unter der oberen Ebene).
   - **Neue Logzeilen** (bei `mit` und `eigen`; bei `gcc` unverändert): `schicht <bein> platz=… h>m grund=…` je
     Rücknahme einer Ebene mit Grund, bei `eigen` dazu `bwe <bein> widerlegung=beginn|ende art=spitze|halten …` je
-    Widerlegung (am Ende mit Grund und Dauer). Zähler `held` neben `refuted` unter `GET /api/sfu/leg/{id}`.
+    Widerlegung (am Ende mit Grund und Dauer). Zähler `held` und `bursts` neben `refuted` unter
+    `GET /api/sfu/leg/{id}`.
 - Detektor (auch bei `HORN_BWE=mit`): Verlust ohne Verzögerung meldet er nicht mehr als Stau – Zufallsverlust von
   3–5 % ergibt keine Meldung mehr, die ersten 3 s eines Beins zählen beim Verlust nicht, und aus `stau` kommt er auch
   bei dauerhaft 4–5 % Verlust wieder heraus. Schwerer anhaltender Verlust (Policer) wird weiter als Stau gemeldet, nur

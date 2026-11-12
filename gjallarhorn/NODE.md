@@ -477,6 +477,16 @@ Platzhalter: `horn-1.example.org`.
     Leitung gleich nach dem Schritt ein und zeigt sich das nur als Verlust (Policer, Puffer unter 10 ms), wird das bis
     zu 1,2 s später behandelt als ohne das Halten (Modell: 1,2 statt 0,4 s); mit einer Schlange so schnell wie
     bisher. Ein Schritt nach oben **ohne** Probe (die Schätzung hat sich von selbst erholt) wird nicht gehalten.
+    **Eigenes Bündel in einer laufenden Widerlegung:** Ein Schlüsselbild geht als Bündel hinaus; auf einer Leitung
+    mit Ratengrenze stehen seine Pakete hintereinander an, und die Spitze zeigt einen Takt lang eine Schlange (am
+    Testaufbau 18–31 ms bei 1450–1520 kbit/s). Fiele die Widerlegung dabei weg, endete sie an jedem Schlüsselbild, das
+    in sie fällt – gemessen rund jede zweite (5 von 11), mit Rückfall auf `l`, obwohl die Leitung `m` doppelt trug.
+    Deshalb übersteht eine **laufende** Widerlegung **einen** Takt ohne ausdrückliche Widerlegung, wenn das Bein in
+    diesem oder im vorigen Takt selbst ein Bündel gesendet hat (Medienrate mindestens 1,25 × der geglätteten Rate
+    davor) und der Detektor sonst nichts zeigt (Zustand `frei`, Basis mindestens 2 s alt, Rückmeldung frisch, Verlust
+    nicht gestiegen). Nicht zwei Takte in Folge. Eine Widerlegung **beginnt** so nicht, und ohne eigenes Bündel gilt
+    das Signal von GCC sofort wie bisher. **Grenze:** Beginnt eine echte Enge im selben Takt wie ein eigenes Bündel,
+    gilt das Signal von GCC einen Takt (0,2 s) später (Modell: 0,4 statt 0,2 s).
     Aufschub, Schonfrist, Sperrzeit, „ein Schritt je Takt“ und die Regeln des Probings gelten unverändert.
   - **`eigen` gegen `gcc` im Testaufbau** (pion-Gegenstelle hinter einer nachgebildeten Leitung, 7 Fälle × 3
     Durchgänge je Stellung, im Wechsel; `TestUDPBWEMessung`): Rückfälle auf freier Leitung in 1844 s: `gcc` 12 (9-mal
@@ -497,8 +507,8 @@ Platzhalter: `horn-1.example.org`.
     entpackbar), `acked`, `lost`, `dup` (doppelt gemeldet), `recovered` (als verloren gemeldet, später doch
     angekommen), `unknown` (Folgenummer nicht im Ring), `windows`, `thin` (Fenster mit zu wenig Paketen), `late`,
     `resets`, `to_free`, `to_warn`, `to_cong`, `to_unknown`; bei `eigen` dazu `refuted` (Fälle des GCC-Ziels unter
-    die Rate, die der Detektor widerlegt hat) und `held` (Schonfristen, die nur das Halten nach einer bestandenen
-    Probe getragen hat).
+    die Rate, die der Detektor widerlegt hat), `held` (Schonfristen, die nur das Halten nach einer bestandenen
+    Probe getragen hat) und `bursts` (Takte einer laufenden Widerlegung, die ein eigenes Bündel entschuldigt hat).
   - Bekannte Grenzen: (1) **Wiederholungen sind unsichtbar** – der NACK-Antworter liegt in der Kette vor dem
     Schätzer und schreibt an ihm und am TWCC-Kopf vorbei; weder pion-GCC noch der Mitleser sehen sie (`sent.rtx`
     bleibt 0; sie tragen die transport-cc-Nummer des Originals und erscheinen als `recovered`). (2) **Niedrige
@@ -528,8 +538,9 @@ Platzhalter: `horn-1.example.org`.
     30 min, unbestätigte Pakete ohne Verzögerung und Doppel, Schonzeit, Dauerverlust, junge Basis, Policer, Spitze,
     Raten; Entpacker; Zuordnung), `internal/sfu/eigen_test.go` (Raten-Modell mit Detektor: grundloser Zielsturz,
     echte Enge, Wertung der Probe, Einbruch in der Probe, Kennzahlen `gcc` gegen `eigen` mit `-v`),
-    `internal/sfu/halten_test.go` und `rampe_test.go` (Halten nach bestandener Probe samt Gegenprobe „Einbruch gleich
-    nach dem Schritt“, zweite Rampen-Probe, Nachweis „bestätigt ≥ Bedarf“, Ereignisse fürs Log),
+    `internal/sfu/halten_test.go`, `rampe_test.go` und `buendel_test.go` (Halten nach bestandener Probe samt
+    Gegenprobe „Einbruch gleich nach dem Schritt“, zweite Rampen-Probe, Nachweis „bestätigt ≥ Bedarf“, Ereignisse fürs
+    Log, eigenes Bündel in einer laufenden Widerlegung),
     `internal/bwe/halten_test.go` (Spitze bei Schlüsselbild-Bündel, Enge und Policer),
     `internal/fwd` (`TestDoppelDerQuelle`), `pruef12_test.go` (`TestPruefDoppelGCCVerlust`: pion-GCC mit und ohne
     Abgleich), `bwe_udp_test.go` (Schalter, Zeilen, Doppel in der Hülle, Ende zu Ende mit
