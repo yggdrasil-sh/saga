@@ -653,6 +653,34 @@ func TestUDPBWEMessung(t *testing.T) {
 		"mitte":   {nil, []schritt{{20, "eng-1000", eng(1000, 300)}, {40, "frei", frei}, {60, "eng-1250", eng(1250, 300)}, {80, "frei", frei}}, 100},
 		"knapp":   {nil, []schritt{{20, "eng-1450", eng(1450, 300)}, {40, "frei", frei}, {60, "eng-1520", eng(1520, 300)}, {80, "frei", frei}}, 100},
 	}
+	// Fall "plan": freier Ablauf aus HORN_BWE_PLAN = "<s>:<kbit>:<puffer-ms>,..." (kbit 0 = frei), Dauer HORN_BWE_DAUER (s) -
+	// fuer Leitungen, die die festen Faelle nicht abdecken (Policer mit kurzem Puffer, Leitung knapp unter der Rate).
+	if spec := os.Getenv("HORN_BWE_PLAN"); spec != "" {
+		var plan []schritt
+		for _, part := range strings.Split(spec, ",") {
+			f := strings.Split(part, ":")
+			if len(f) != 3 {
+				t.Fatalf("HORN_BWE_PLAN: %q", part)
+			}
+			at, _ := strconv.ParseFloat(f[0], 64)
+			kbit, _ := strconv.ParseInt(f[1], 10, 64)
+			buf, _ := strconv.ParseInt(f[2], 10, 64)
+			if kbit == 0 {
+				plan = append(plan, schritt{at, "frei", frei})
+			} else {
+				plan = append(plan, schritt{at, fmt.Sprintf("eng-%d-%dms", kbit, buf), eng(kbit, buf)})
+			}
+		}
+		dur, _ := strconv.ParseFloat(os.Getenv("HORN_BWE_DAUER"), 64)
+		if dur <= 0 {
+			dur = 100
+		}
+		faelle["plan"] = struct {
+			prep func(*strecke)
+			plan []schritt
+			dur  float64
+		}{nil, plan, dur}
+	}
 	out := os.Getenv("HORN_BWE_OUT")
 	n, _ := strconv.Atoi(os.Getenv("HORN_BWE_N"))
 	for _, name := range strings.Split(want, ",") {
