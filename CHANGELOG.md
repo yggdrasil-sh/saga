@@ -63,22 +63,38 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   und darf einen Rückfall verhindern, den nur pion-GCC verlangt.
   - **Proben:** Das Stausignal von GCC hält nur noch die Fülldaten an. Ob die Probe bestanden ist, entscheidet der
     Detektor nach einem kurzen Nachlauf: gescheitert bei Stau; bestanden nur ohne Stau **und** mit Durchsatz-Nachweis
-    (die Zielrate wurde wirklich gesendet, und der Empfänger hat sie im selben Zeitraum bestätigt); sonst unklar –
-    dann wird ohne Wartezeit wiederholt, höchstens dreimal in Folge. Proben scheitern dadurch auf freier Leitung
+    (mindestens 87 % der Zielrate wurden wirklich gesendet – das ist der Bedarf der Ebene ohne die Reserve von 15 % –,
+    der Empfänger hat davon im selben Zeitraum mindestens 95 % bestätigt, und das Bestätigte deckt den Bedarf); sonst
+    unklar – dann wird ohne Wartezeit wiederholt, höchstens dreimal in Folge. Hielt GCC die Fülldaten schon in der
+    Rampe an (halbe Füllung), zählt bereits die zweite solche Probe in Folge als gescheitert – auf enger Leitung
+    folgte sonst eine dritte mit voller Füllung, die selbst eine Schlange baute. Proben scheitern auf freier Leitung
     seltener grundlos; auf enger Leitung bleibt es dabei, dass keine besteht.
   - **Schichtwahl:** Fällt das GCC-Ziel unter die Senderate, während die jüngsten Rückmeldungen keine Schlange und
     keinen neuen Verlust zeigen, bleibt die Ebene – solange das in jedem Takt so bleibt und das Ziel wieder steigt.
     Zeigt die Leitung den Stau, gilt das Signal von GCC sofort, wie bisher. Der Detektor nimmt von sich aus keine
     Ebene zurück.
+  - **Halten nach bestandener Probe:** 3 s lang nach einer bestandenen Probe nimmt das GCC-Ziel allein die neue Ebene
+    nicht zurück – nur ein Zeichen des Detektors (Schlange an der Spitze; gestiegener Verlust erst ab 1,2 s nach dem
+    Schritt, weil das Schlüsselbild der neuen Ebene einen kurzen Puffer überläuft). Vorher bestand die Probe gegen
+    GCC, und die Ebene war 0,2 s später wieder weg (Leitung mit 1400 kbit/s und 20 ms Puffer). Grenze: Ein Einbruch
+    gleich nach dem Schritt, der sich nur als Verlust zeigt, wird bis zu 1,2 s später behandelt.
+  - **Neue Logzeilen** (bei `mit` und `eigen`; bei `gcc` unverändert): `schicht <bein> platz=… h>m grund=…` je
+    Rücknahme einer Ebene mit Grund, bei `eigen` dazu `bwe <bein> widerlegung=beginn|ende art=spitze|halten …` je
+    Widerlegung (am Ende mit Grund und Dauer). Zähler `held` neben `refuted` unter `GET /api/sfu/leg/{id}`.
 - Detektor (auch bei `HORN_BWE=mit`): Verlust ohne Verzögerung meldet er nicht mehr als Stau – Zufallsverlust von
   3–5 % ergibt keine Meldung mehr, die ersten 3 s eines Beins zählen beim Verlust nicht, und aus `stau` kommt er auch
   bei dauerhaft 4–5 % Verlust wieder heraus. Schwerer anhaltender Verlust (Policer) wird weiter als Stau gemeldet, nur
   etwas später (nach rund 1,5 s statt 0,9 s).
-- **Fund dabei (nicht behoben):** Wiederholt der sendende Browser zum Füllen alte Pakete über RTX, leitet der Knoten
-  sie ein zweites Mal mit derselben Folgenummer weiter. Der Empfänger verwirft sie ungezählt und unbestätigt – für
-  pion-GCC sieht das wie Verlust aus, und es kostet Bandbreite (im Labor 11–17 % mehr Pakete, in einem Lauf doppelt so
-  viele). Bei `mit` und `eigen` zählt der Detektor solche Pakete nicht als Verlust (Zähler `sent.dup`, `dup_unacked`
-  unter `GET /api/sfu/leg/{id}`); der Weiterleiter selbst ist unverändert.
+- **Fund dabei:** Wiederholt der sendende Browser zum Füllen alte Pakete über RTX, leitete der Knoten sie ein zweites
+  Mal mit derselben Folgenummer weiter – für pion-GCC sah das wie Verlust aus. Behoben durch den Abgleich im
+  Weiterleiter (oben): Bei 25 % Wiederholungen bleibt das GCC-Ziel jetzt bei rund 1400 kbit/s statt bei 134 – bei
+  jeder Stellung des Schalters. Die Zähler `sent.dup` und `dup_unacked` (`GET /api/sfu/leg/{id}`) bleiben als
+  Messwert und sollten 0 sein. Der Versuch, solche Pakete bei `eigen` an pion-GCC vorbeizuleiten, ist entfernt (er
+  wirkte nicht).
+- **Grenzen** (Einzelheiten in `gjallarhorn/NODE.md`): Die Widerlegung kann einen echten Engpass übersehen, wo die
+  Leitung ihn nicht als Schlange zeigt – Puffer unter 10 ms bei wenigen Prozent Überlast, Verlust, der schon länger
+  als rund 10 s anhält, Policer mit 10–12 % Verlust. Die Ebene bleibt dann länger als bei `gcc` (bis das GCC-Ziel
+  nicht mehr steigt, längstens 15 s). Mit echtem Browser ist `eigen` noch nicht gemessen.
 - Regeln, Zeilen, Messwerte und Grenzen: `gjallarhorn/NODE.md`.
 
 ### Neu – Knoten: Probing mit Fülldaten vor dem Hochschalten (experimentell)
