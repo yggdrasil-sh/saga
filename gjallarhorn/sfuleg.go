@@ -37,7 +37,7 @@ import (
 type gccHook struct {
 	mu   sync.Mutex
 	next func(cc.BandwidthEstimator)
-	mit  bool // HORN_BWE=mit: Huelle mit Mitleser und eigenem Stau-Detektor um den Schaetzer (bwe.go)
+	bwe  string // HORN_BWE=mit bzw. eigen: Huelle mit Mitleser und eigenem Stau-Detektor um den Schaetzer (bwe.go); sonst ""
 }
 
 // newSFUAPI baut die pion-API fuer SFU-Beine. UDP: NACK/RTX, TWCC-Kopf auf
@@ -109,13 +109,13 @@ func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook) (*webrtc.API, e
 				gcc.SendSideBWEMaxBitrate(25_000_000), gcc.SendSideBWEPacer(gcc.NewNoOpPacer()))
 		}
 		factory := newGCC
-		if hook.mit { // sonst bleibt die Fabrik, wie sie war: keine Huelle
+		if mode := hook.bwe; mode != "" { // sonst bleibt die Fabrik, wie sie war: keine Huelle
 			factory = func() (cc.BandwidthEstimator, error) {
 				est, err := newGCC()
 				if err != nil {
 					return nil, err
 				}
-				return newBWEWrap(est), nil
+				return newBWEWrap(est, mode), nil
 			}
 		}
 		ccf, err := cc.NewInterceptor(factory)
@@ -245,11 +245,14 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 			}
 			sl.ExtRTT = func() time.Duration { return time.Duration(l.rttNs.Load()) }
 			sl.ExtStat = func() sfu.ExtStat { return gccStat(est.GetStats()) }
-			if b, ok := est.(*bweWrap); ok { // HORN_BWE=mit
+			if b, ok := est.(*bweWrap); ok { // HORN_BWE=mit bzw. eigen
 				l.mu.Lock()
 				l.bwe = b
 				l.mu.Unlock()
 				bweAttach(l, b, est.GetTargetBitrate, sl.EstimateKbit)
+				if b.mode == bweEigen {
+					bweHooks(sl, b)
+				}
 			}
 		}
 	} else {
@@ -443,6 +446,13 @@ func (s *server) onProbe(ev sfu.ProbeEvent) {
 		return
 	}
 	line := probeLine(shortID(l.id), ev)
+	if b := l.bweWrap(); b != nil && b.mode == bweEigen {
+		// HORN_BWE=eigen: Die Probe hat den Nachlauf selbst abgewartet und ist vom Detektor gewertet (ev.Det) - die Zeile
+		// kommt sofort, mit seinem Urteil, dem Stausignal von GCC und dem Durchsatz-Nachweis.
+		to := bweNow()
+		log.Print(line + bweProbeEigen(ev, b.m.Span(to-int64(ev.Dur), to)))
+		return
+	}
 	if b := l.bweWrap(); b != nil {
 		// HORN_BWE=mit: Urteil des eigenen Detektors ueber die Pakete, die waehrend der Probe gesendet wurden - einmal
 		// sofort (was er beim Ende der Probe wusste) und einmal nach dem Nachlauf, wenn die Rueckmeldungen zu den letzten
@@ -680,8 +690,12 @@ func (s *server) apiSFULayout(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"slots": l.sl.Layout(), "est_kbit": l.sl.EstimateKbit(), "stats": st,
 		"probes": map[string]any{"started": ps.Started, "passed": ps.Passed, "failed": ps.Failed, "aborted": ps.Aborted, "unclear": ps.Unclear, "clamped": ps.Clamped, "pad_bytes": ps.PadBytes, "late_dropped": ps.LateDropped, "last": ps.Last},
 		"pauses": l.fl.Stats.Pauses.Load(), "tid_skipped": l.fl.Stats.TIDSkipped.Load(), "write_stalls": l.fl.Stats.WriteStalls.Load()}
-	if b := l.bweWrap(); b != nil { // HORN_BWE=mit: Zustand und Zaehler des eigenen Detektors
-		out["bwe"] = bweJSON(b)
+	if b := l.bweWrap(); b != nil { // HORN_BWE=mit bzw. eigen: Zustand und Zaehler des eigenen Detektors
+		j := bweJSON(b)
+		if b.mode == bweEigen {
+			j["refuted"] = ps.Refuted // Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat
+		}
+		out["bwe"] = j
 	}
 	writeJSON(w, 200, out)
 }

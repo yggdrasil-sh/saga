@@ -36,7 +36,7 @@ import (
 
 // HORN_BWE: Schalterwerte.
 func TestBWESchalter(t *testing.T) {
-	for in, want := range map[string]string{"": bweGCC, "gcc": bweGCC, " GCC ": bweGCC, "mit": bweMit, "Mit": bweMit, "eigen": bweGCC, "1": bweGCC} {
+	for in, want := range map[string]string{"": bweGCC, "gcc": bweGCC, " GCC ": bweGCC, "mit": bweMit, "Mit": bweMit, "eigen": bweEigen, " Eigen": bweEigen, "selbst": bweGCC, "1": bweGCC} {
 		got, warn := parseBWE(in)
 		if got != want {
 			t.Fatalf("%q: %s", in, got)
@@ -45,9 +45,10 @@ func TestBWESchalter(t *testing.T) {
 			t.Fatalf("%q: warnung %q", in, warn)
 		}
 	}
-	// gcc (Standard): Die Fabrik liefert den pion-Schaetzer selbst, keine Huelle. mit: die Huelle.
-	for _, mit := range []bool{false, true} {
-		hook := &gccHook{mit: mit}
+	// gcc (Standard): Die Fabrik liefert den pion-Schaetzer selbst, keine Huelle. mit und eigen: die Huelle.
+	for _, mode := range []string{"", bweMit, bweEigen} {
+		mit := mode != ""
+		hook := &gccHook{bwe: mode}
 		se := webrtc.SettingEngine{}
 		api, err := newSFUAPI(se, true, hook)
 		if err != nil {
@@ -63,14 +64,17 @@ func TestBWESchalter(t *testing.T) {
 		_, isGCC := est.(*gcc.SendSideBWE)
 		_, isWrap := est.(*bweWrap)
 		if isGCC == mit || isWrap != mit {
-			t.Fatalf("mit=%v: schaetzer %T", mit, est)
+			t.Fatalf("%q: schaetzer %T", mode, est)
+		}
+		if w, ok := est.(*bweWrap); ok && w.mode != mode {
+			t.Fatalf("%q: huelle mit %q", mode, w.mode)
 		}
 	}
 }
 
 // Wegwechsel: Nur ein anderes Adresspaar setzt die Basis des Detektors zurueck - nicht dasselbe Paar noch einmal.
 func TestBWEPaarwechsel(t *testing.T) {
-	b := newBWEWrap(nil)
+	b := newBWEWrap(nil, bweMit)
 	paar := func(lport, rport uint16) *webrtc.ICECandidatePair {
 		return &webrtc.ICECandidatePair{
 			Local:  &webrtc.ICECandidate{Protocol: webrtc.ICEProtocolUDP, Address: "127.0.0.1", Port: lport, Typ: webrtc.ICECandidateTypeHost},
@@ -117,7 +121,7 @@ func TestBWEProbeNachlauf(t *testing.T) {
 	log.SetOutput(logs)
 	defer log.SetOutput(old)
 	sl, sl2 := &sfu.Leg{}, &sfu.Leg{}
-	l := &leg{id: "a1b2c3d4e5f6", bwe: newBWEWrap(nil)}
+	l := &leg{id: "a1b2c3d4e5f6", bwe: newBWEWrap(nil, bweMit)}
 	l2 := &leg{id: "0f9e8d7c6b5a"}
 	s := &server{bySFU: map[*sfu.Leg]*leg{sl: l, sl2: l2}}
 	m := l.bwe.m

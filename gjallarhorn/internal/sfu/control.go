@@ -1063,6 +1063,11 @@ type estimator struct {
 	tot1, tot2, tot float64 // Rate des Beins mit Fuelldaten und Kopf-Erweiterungen in den letzten drei Takten (tot = dieser)
 	grant           float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
 	grantUntil      int64
+	// Eigener Stau-Detektor (Leg.ExtTip, HORN_BWE=eigen)
+	det      bool   // das Bein hat einen
+	detClear bool   // ... und er widerlegt in diesem Takt einen Stau ausdruecklich (bwe.Tip.Clear)
+	lagDet   bool   // die laufende Schonfrist besteht nur, weil der Detektor einen Fall des Ziels widerlegt hat
+	refuted  uint64 // Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat
 }
 
 // Schwellen der Schaetzung.
@@ -1109,9 +1114,11 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 		}
 		e.lagAt, e.lagBase = now, e.rateAvg
 		e.lagJump = rate > e.lagBase*lagJumpMin
+		e.lagDet = false
 		// faellt, waehrend die Rate es ueberholt: Stau, bis zum Ende dieser Folge - ausser der Fall ist kein Ruecksprung
-		// von GCC, sondern die Klemmung an die Empfangsrate (clamped): Dann beginnt die Schonfrist beim neuen Ziel
-		if v < e.gccLast*gccFall && !e.clamped(v, now) {
+		// von GCC, sondern die Klemmung an die Empfangsrate (clamped): Dann beginnt die Schonfrist beim neuen Ziel.
+		// Ebenso (eigen), wenn der eigene Detektor den Stau in diesem Takt ausdruecklich widerlegt (refute).
+		if v < e.gccLast*gccFall && !e.clamped(v, now) && !e.refute() {
 			e.lagDead, e.deadAt = true, now
 			return false
 		}
@@ -1126,7 +1133,11 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 	}
 	ok := true
 	switch {
-	case v < e.lagPeak*gccFall && now-e.lagAt < int64(lagMax) && e.clamped(v, now):
+	case e.lagDet && !e.detClear:
+		// Die Schonfrist stand nur auf der Widerlegung durch den Detektor - und der widerlegt nicht mehr (Schlange an
+		// der Spitze, Verlust gestiegen, Warnung, Rueckmeldung alt): Das Signal von GCC gilt, sofort.
+		ok = false
+	case v < e.lagPeak*gccFall && now-e.lagAt < int64(lagMax) && (e.clamped(v, now) || e.refute()):
 		// Klemmung waehrend der Schonfrist: kein Stau - aber von hier aus muss das Ziel wieder steigen
 		e.lagPeak, e.lagMark, e.lagMarkAt = v, v, now
 	case v < e.lagPeak*gccFall, now-e.lagAt >= int64(lagMax):
@@ -1153,6 +1164,29 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 // verdeckte die Ausnahme sonst einen echten Ruecksprung bei leichtem Stau bis zu lagMax (Pruefung 3, Fund 2).
 func (e *estimator) clamped(v float64, now int64) bool {
 	return e.probing && !e.first && e.stepAt != 0 && now-e.stepAt < int64(clampWin) && v > probeDecSent*e.sendRate()
+}
+
+// refute (HORN_BWE=eigen): Das GCC-Ziel ist gefallen und liegt unter der Rate - aber der eigene Stau-Detektor widerlegt
+// den Stau in diesem Takt ausdruecklich (bwe.Tip.Clear: Zustand frei, die juengsten bestaetigten Pakete ohne Schlange,
+// Verlust nicht gestiegen, Rueckmeldung frisch). Dann beginnt wie bei der Klemmung die Schonfrist beim neuen Ziel: Es
+// muss von dort wieder steigen (lagRise), laengstens lagMax - und die Widerlegung muss in jedem weiteren Takt der Folge
+// neu gelten (lagDet in lagging), sonst gilt das Signal von GCC sofort.
+//
+// Warum so und nicht umgekehrt ("Detektor meldet Stau"): In echter Enge ist der Zustand des Detektors langsamer als
+// GCC (Warnung nach 0,4 bis 0,7 s, GCC 0,2 bis 0,3 s; im Labor meldete er in 11 von 12 Schritten nichts, bevor der
+// Knoten unten war). Die Widerlegung dagegen stuetzt sich auf die Laufzeit der juengsten Pakete ueber der Basis
+// (15 ms): In echter Enge ist sie zu dem Zeitpunkt, an dem GCC Ueberlast meldet, schon ueberschritten (Modell: sie
+// haelt bis 0,15 bis 0,25 s nach Beginn der Enge) - das Signal von GCC gilt dort also so schnell wie bisher. Nur wo
+// die Leitung den Fall des Ziels nicht zeigt, bleibt die Schicht.
+func (e *estimator) refute() bool {
+	if !e.det || !e.detClear {
+		return false
+	}
+	if !e.lagDet {
+		e.lagDet = true
+		e.refuted++
+	}
+	return true
 }
 
 // clampWin: So lange nach einem Schritt nach oben kann die Klemmung den Wechsel treffen. Sie braucht eine Empfangsrate,
@@ -1195,6 +1229,9 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	}
 	age := time.Duration(st.TickAgeNs.Swap(0))
 	drops := st.TickDrops.Swap(0)
+	if e.det = l.ExtTip != nil; e.det {
+		e.detClear = l.ExtTip().Clear
+	}
 	shield := e.prOn || e.prUntil != 0 && now < e.prUntil
 	if shield && !e.prOn {
 		// Nach einer gescheiterten Probe schuetzt die Frist nur vor dem Stau, den die Fuelldaten selbst erzeugt haben -
@@ -1275,7 +1312,7 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	if l.Ext != nil {
 		v := float64(l.Ext())
 		e.ready = v <= 0 || v >= rate*gccReady
-		if after && v > 0 && v < rate*0.9 {
+		if after && v > 0 && v < rate*0.9 && !(e.det && e.detClear) {
 			// Das Ziel liegt auch probeFloor nach der gescheiterten Probe noch unter der Rate: Stau wie frueher, ohne
 			// Schonfrist (das Ziel ist im Schutz gefallen; dass es inzwischen wieder steigt, entschuldigt nichts)
 			e.lagAt, e.lagDead, e.lagJump, e.deadAt = now, true, false, now

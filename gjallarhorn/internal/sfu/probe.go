@@ -3,6 +3,7 @@ package sfu
 import (
 	"time"
 
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 )
 
@@ -87,6 +88,12 @@ const (
 	probeSusMax  = 3                // hoechstens so viele ausgeraeumte Hinweise je Probe, sonst unklar
 	probeSusOver = time.Second      // so lange darf das Fenster wegen eines offenen Hinweises ueberzogen werden
 	probeUnkWin  = 10 * time.Second // zweites unklares Ergebnis binnen dieser Zeit: gescheitert
+	// Wertung durch den eigenen Stau-Detektor (HORN_BWE=eigen, probeVerdict)
+	probeUnkMax   = 3                      // so viele Proben ohne klares Ergebnis in Folge (je binnen probeUnkWin): die letzte zaehlt als gescheitert
+	probeSentMin  = 0.9                    // Durchsatz-Nachweis: bei voller Fuellung gesendet mindestens so viel der Zielrate ...
+	probeAckMin   = 0.92                   // ... und davon vom Empfaenger im selben Zeitraum bestaetigt mindestens so viel
+	probeProofMin = 400 * time.Millisecond // ... gemessen ueber mindestens so viel Sendezeit
+	probeTail     = 500 * time.Millisecond // Nachlauf bis zum Urteil ohne bekannte Umlaufzeit (sonst 2 Umlaufzeiten + 200 ms, hoechstens 1 s)
 )
 
 // Ergebnis einer Probe in der Layout-Meldung (Slot.Probe).
@@ -124,6 +131,14 @@ type probe struct {
 	susStall int     // Takte in Folge ohne Anstieg
 	susN     int     // ausgeraeumte Hinweise
 	clamps   int     // Faelle des Ziels, die kein Ruecksprung waren (Klemmung an die Empfangsrate)
+	// Wertung durch den eigenen Stau-Detektor (HORN_BWE=eigen): GCC haelt nur die Fuellung an
+	gsig     string // Stausignal von GCC, das die Fuellung angehalten hat bzw. im Nachlauf kam (gcc | over | loss; "" = keins)
+	fillFrom int64  // Beginn der vollen Fuellung (0 = nie erreicht)
+	fillEnd  int64  // Ende der Fuellung
+	wait     int    // Takte Nachlauf bis zum Urteil
+	det      string // Urteil des Detektors (bwe.Verdict.Result) und die Raten des Nachweises - fuer das Ereignis
+	detSent  int64
+	detAcked int64
 }
 
 // ProbeEvent: Ende einer Probe (Config.OnProbe).
@@ -141,12 +156,20 @@ type ProbeEvent struct {
 	Hint       string        // letzter einzelner Hinweis auf Stau (gcc | over | loss), auch wenn er ausgeraeumt wurde
 	EstKbit    int           // Schaetzung des Beins nach der Probe
 	GccKbit    int           // GCC-Ziel beim Ende
+	// Nur HORN_BWE=eigen (sonst leer): Urteil des eigenen Detektors (staut | staut-nicht | unklar), das Stausignal von
+	// GCC, das die Fuellung angehalten hat ("" = keins), und der Durchsatz-Nachweis - bei voller Fuellung gesendet und
+	// im selben Zeitraum bestaetigt (kbit/s, 0 = volle Fuellung nicht erreicht).
+	Det       string
+	GccSig    string
+	SentKbit  int
+	AckedKbit int
 }
 
 // ProbeStats zaehlt die Proben eines Beins.
 type ProbeStats struct {
 	Started, Passed, Failed, Aborted uint64
 	Unclear                          uint64 // davon (Aborted) ohne klares Ergebnis beendet und wiederholt
+	Refuted                          uint64 // eigen: Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat (estimator.refute)
 	Clamped                          uint64 // Faelle des GCC-Ziels in Proben, die kein Stau waren (probeJudge)
 	PadBytes                         uint64 // gesendete Fuell-Bytes
 	LateDropped                      uint64 // verworfene Nachzuegler jenseits der Fuell-Historie (fwd.LegStats.LateDropped)
@@ -160,6 +183,7 @@ func (l *Leg) ProbeStats() ProbeStats {
 	ps := l.pstat
 	ps.PadBytes = l.fl.Stats.PadBytes.Load()
 	ps.LateDropped = l.fl.Stats.LateDropped.Load()
+	ps.Refuted = l.est.refuted
 	return ps
 }
 
@@ -228,19 +252,32 @@ func (l *Leg) probeStep(now int64) {
 		l.probeEnd(probeFail, e.prSig, now)
 		return
 	}
-	switch why, res := l.probeJudge(); res {
-	case probeFail:
-		l.probeEnd(probeFail, why, now)
-		return
-	case probeAbort:
-		l.probeUnclear(why, now)
-		return
+	eig := l.ExtSpan != nil // HORN_BWE=eigen: Der Detektor wertet, GCC haelt nur die Fuellung an
+	if !eig || p.gsig == "" {
+		switch why, res := l.probeJudge(); {
+		case res == "":
+		case eig:
+			// Stausignal von GCC (gescheitert oder unklar): das schnelle Signal zum Anhalten der Fuellung. Ueber die
+			// Wertung entscheidet der Detektor nach dem Nachlauf (probeVerdict).
+			p.gsig = why
+			if p.stage < 3 {
+				l.probeHold(now)
+				return
+			}
+		case res == probeFail:
+			l.probeEnd(probeFail, why, now)
+			return
+		default:
+			l.probeUnclear(why, now)
+			return
+		}
 	}
 	p.n++
 	switch p.stage {
 	case 1:
 		if p.n >= probeRamp {
 			p.stage, p.n, p.at, p.pad0 = 2, 0, now, l.fl.Stats.PadBytes.Load()
+			p.fillFrom = now
 			l.fl.SetPadding(p.out, int64(p.fill))
 		}
 	case 2:
@@ -250,6 +287,11 @@ func (l *Leg) probeStep(now int64) {
 		}
 		if p.n >= probeMinTicks && el >= p.win || el >= int64(probeWinMax) {
 			if p.sus > 0 { // auch nach der Verlaengerung nicht ausgeraeumt
+				if eig {
+					p.gsig = p.susWhy
+					l.probeHold(now)
+					return
+				}
 				l.probeUnclear(p.susWhy, now)
 				return
 			}
@@ -265,8 +307,17 @@ func (l *Leg) probeStep(now int64) {
 			p.stage, p.n, p.at = 3, 0, now
 			e.prTail = true
 			l.fl.SetPadding(nil, 0)
+			p.fillEnd, p.wait = now, max(probeSettle, l.tailTicks())
 		}
 	case 3:
+		if eig {
+			// Nachlauf, bis die Rueckmeldungen zu den letzten Paketen der Fuellung da sind - dann wertet der Detektor.
+			// Meldet er schon vorher Stau (nach einem Stausignal von GCC), wartet die Probe nicht weiter.
+			if p.n >= p.wait || p.gsig != "" && l.spanCong(now) {
+				l.probeVerdict(now)
+			}
+			return
+		}
 		if p.n >= probeSettle {
 			if p.sus > 0 { // Hinweis im Nachlauf, nicht mehr auszuraeumen
 				l.probeUnclear(p.susWhy, now)
@@ -274,6 +325,87 @@ func (l *Leg) probeStep(now int64) {
 			}
 			l.probeEnd(probeOK, "", now)
 		}
+	}
+}
+
+// tailTicks: Nachlauf in Takten, bis die Rueckmeldungen zu den letzten Paketen einer Probe da sind - zwei Umlaufzeiten
+// + 200 ms, hoechstens 1 s; ohne bekannte Umlaufzeit probeTail.
+func (l *Leg) tailTicks() int {
+	d := probeTail
+	if l.ExtRTT != nil {
+		if rtt := l.ExtRTT(); rtt > 0 {
+			d = min(2*rtt+200*time.Millisecond, time.Second)
+		}
+	}
+	return int((d + 199*time.Millisecond) / (200 * time.Millisecond))
+}
+
+// probeHold (eigen): GCC hat ein Stausignal gemeldet - die Fuellung haelt sofort an, die Probe wartet den Nachlauf ab.
+func (l *Leg) probeHold(now int64) {
+	p := &l.pr
+	l.fl.SetPadding(nil, 0)
+	p.stage, p.n, p.at = 3, 0, now
+	p.fillEnd, p.wait = now, l.tailTicks()
+	l.est.prTail = true
+}
+
+// spanCong (eigen): Meldet der Detektor ueber die Pakete der Probe schon jetzt Stau?
+func (l *Leg) spanCong(now int64) bool {
+	p := &l.pr
+	v, _ := l.ExtSpan(time.Duration(now-p.t0), time.Duration(now-p.fillEnd), time.Duration(now-p.fillEnd))
+	return v.Result == bwe.VerdictCong
+}
+
+// probeVerdict (HORN_BWE=eigen): Wertung der Probe durch den eigenen Stau-Detektor, nach dem Nachlauf.
+//
+//   - Der Detektor meldet ueber die Pakete der Probe Stau (Schlange, Verlust mit der Last gestiegen): gescheitert
+//     ("stau"), mit Abstand wie bisher.
+//   - GCC hat ein Stausignal gemeldet und der Detektor zeigt wenigstens ein Anzeichen (Schlange ab 20 ms, Verlust
+//     gestiegen, Warnung; bwe.Verdict.Hint): zwei Hinweise - gescheitert, Grund der von GCC.
+//   - Der Detektor meldet "staut nicht" UND der Durchsatz-Nachweis stimmt: bestanden. Nachweis: Bei voller Fuellung
+//     wurde mindestens probeSentMin der Zielrate wirklich gesendet, und der Empfaenger hat davon im selben Zeitraum
+//     mindestens probeAckMin bestaetigt (bwe.Rates, ueber mindestens probeProofMin). Beides am selben Zaehler
+//     (Pakete des Beins mit Kopf, Ton und Fuellung) - nicht Zielrate gegen Durchsatz. Haelt GCC die Fuellung frueh an,
+//     ist die Zielrate nie gesendet worden: "staut nicht" sagt dann nichts ueber sie (Labor: auf enger Leitung 10 von
+//     29 Proben "staut nicht", keine mit Nachweis).
+//   - sonst unklar: ohne Abstand wiederholen (probeRetry) - hoechstens probeUnkMax Mal in Folge, die letzte zaehlt als
+//     gescheitert.
+func (l *Leg) probeVerdict(now int64) {
+	p := &l.pr
+	rf := p.fillFrom
+	if rf == 0 || rf > p.fillEnd {
+		rf = p.fillEnd
+	}
+	v, r := l.ExtSpan(time.Duration(now-p.t0), time.Duration(now-p.fillEnd), time.Duration(now-rf))
+	p.det, p.detSent, p.detAcked = v.Result, r.SentBps, r.AckedBps
+	proof := r.Ns >= int64(probeProofMin) && float64(r.SentBps) >= probeSentMin*p.target &&
+		float64(r.AckedBps) >= probeAckMin*float64(r.SentBps)
+	switch {
+	case v.Result == bwe.VerdictCong:
+		l.probeEnd(probeFail, "stau", now)
+	case p.gsig != "" && v.Hint:
+		l.probeEnd(probeFail, p.gsig, now)
+	case v.Result == bwe.VerdictFree && proof:
+		l.probeEnd(probeOK, "", now)
+	default:
+		why := "nachweis" // "staut nicht", aber die Zielrate ist nicht belegt
+		switch {
+		case p.gsig != "":
+			why = p.gsig
+		case v.Result != bwe.VerdictFree:
+			why = "bwe"
+		}
+		if l.unkAt != 0 && now-l.unkAt <= int64(probeUnkWin) {
+			l.unkN++
+		} else {
+			l.unkN = 1
+		}
+		if l.unkN >= probeUnkMax {
+			l.probeEnd(probeFail, why, now)
+			return
+		}
+		p.susWhy = why
+		l.probeEnd(probeAbort, whyUnclear, now)
 	}
 }
 
@@ -348,7 +480,7 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 		d = p.s.dwFor(p.rank)
 	}
 	if res != probeAbort {
-		l.unkAt = 0
+		l.unkAt, l.unkN = 0, 0
 	}
 	l.pstat.Clamped += uint64(p.clamps)
 	switch res {
@@ -403,7 +535,8 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 		}
 		l.room.pevs = append(l.room.pevs, ProbeEvent{Leg: l, Class: p.s.class, From: p.layer, To: to, TargetKbit: int(p.target / 1000),
 			FillKbit: int(p.fill / 1000), Result: res, Why: why, Dur: time.Duration(now - p.t0), Stage: p.stage, Clamped: p.clamps, Hint: p.susWhy,
-			EstKbit: int(e.bps / 1000), GccKbit: int(e.gccLast / 1000)})
+			EstKbit: int(e.bps / 1000), GccKbit: int(e.gccLast / 1000),
+			Det: p.det, GccSig: p.gsig, SentKbit: int(p.detSent / 1000), AckedKbit: int(p.detAcked / 1000)})
 	}
 	*p = probe{}
 }

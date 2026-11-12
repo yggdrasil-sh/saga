@@ -16,6 +16,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 )
 
 // HORN_BWE: Wer die Leitung eines UDP-Beins beurteilt ("Weg B").
@@ -23,11 +24,14 @@ import (
 //	gcc  (Standard) pion-GCC allein, wie bisher - der Mitleser wird gar nicht eingebaut.
 //	mit  Stufe 0: Der eigene Stau-Detektor (internal/bwe) liest die transport-cc-Rueckmeldungen mit und schreibt
 //	     sein Urteil ins Log (Zeile "bwe" je Zustandswechsel, Zusatz in der Zeile "probe"). Er entscheidet nichts.
+//	eigen  Stufe 1 und 2: wie mit, und der Detektor entscheidet mit - er wertet die Proben (GCC haelt nur noch die
+//	     Fuellung an) und widerlegt einen Fall des GCC-Ziels, den die Leitung nicht zeigt (sfu.Leg.ExtTip, ExtSpan).
 //
 // Jeder andere Wert gilt als gcc (mit Warnzeile).
 const (
-	bweGCC = "gcc"
-	bweMit = "mit"
+	bweGCC   = "gcc"
+	bweMit   = "mit"
+	bweEigen = "eigen"
 )
 
 // parseBWE liefert die Betriebsart und, wenn der Wert unbekannt ist, eine Warnung.
@@ -37,8 +41,10 @@ func parseBWE(v string) (mode, warn string) {
 		return bweGCC, ""
 	case bweMit:
 		return bweMit, ""
+	case bweEigen:
+		return bweEigen, ""
 	}
-	return bweGCC, fmt.Sprintf("HORN_BWE=%q unbekannt (gcc oder mit) - nutze gcc", v)
+	return bweGCC, fmt.Sprintf("HORN_BWE=%q unbekannt (gcc, mit oder eigen) - nutze gcc", v)
 }
 
 // bweEpoch: Nullpunkt der Sendezeiten des Mitlesers (Prozessuhr, monoton).
@@ -55,7 +61,8 @@ func bweNow() int64 { return int64(time.Since(bweEpoch)) }
 // eingetragen und schreibt an cc vorbei.
 type bweWrap struct {
 	cc.BandwidthEstimator
-	m *bwe.Mitleser
+	m    *bwe.Mitleser
+	mode string // bweMit | bweEigen
 
 	pairMu sync.Mutex
 	pair   string // zuletzt gewaehltes Adresspaar (pairChanged)
@@ -78,8 +85,26 @@ func (b *bweWrap) pairChanged(cp *webrtc.ICECandidatePair) bool {
 	return true
 }
 
-func newBWEWrap(est cc.BandwidthEstimator) *bweWrap {
-	return &bweWrap{BandwidthEstimator: est, m: bwe.NewMitleser(bwe.Defaults())}
+func newBWEWrap(est cc.BandwidthEstimator, mode string) *bweWrap {
+	return &bweWrap{BandwidthEstimator: est, m: bwe.NewMitleser(bwe.Defaults()), mode: mode}
+}
+
+// dupWin merkt sich die zuletzt gesendeten RTP-Folgenummern eines Stroms (je Platz die Nummer + 1, 0 = leer): Geht
+// eine Nummer ein zweites Mal hinaus, ist das Paket ein Doppel. Der Weiterleiter vergibt Folgenummern lueckenlos und
+// reicht ein Paket, das die Quelle zweimal liefert, zweimal mit derselben Nummer weiter (fwd: Folgenummer = die der
+// Quelle + Versatz; kein Abgleich auf Doppel). Das geschieht, wenn der sendende Browser zum Fuellen alte Pakete ueber
+// RTX wiederholt - pion gibt sie entpackt auf der Spur zurueck (TrackRemote.Read, readRTX). Der Empfaenger verwirft
+// das Doppel am SRTP-Wiederholungsschutz, bevor er es zaehlt oder per transport-cc bestaetigt; ohne diese
+// Unterscheidung saehe es wie Verlust aus (Labor labbwe1, 7.1 und 7.2).
+type dupWin [1024]uint32
+
+func (d *dupWin) seen(seq uint16) bool {
+	e := &d[seq&1023]
+	if *e == uint32(seq)+1 {
+		return true
+	}
+	*e = uint32(seq) + 1
+	return false
 }
 
 func (b *bweWrap) AddStream(info *interceptor.StreamInfo, w interceptor.RTPWriter) interceptor.RTPWriter {
@@ -99,7 +124,10 @@ func (b *bweWrap) AddStream(info *interceptor.StreamInfo, w interceptor.RTPWrite
 		kind = bwe.KindAudio
 	}
 	rtxPT, rtxSSRC := info.PayloadTypeRetransmission, info.SSRCRetransmission
+	dups := &dupWin{} // je Strom; der Schreiber eines Beins ruft nacheinander
+	var dupMu sync.Mutex
 	return interceptor.RTPWriterFunc(func(h *rtp.Header, pl []byte, a interceptor.Attributes) (int, error) {
+		dup := false
 		if raw := h.GetExtension(ext); len(raw) >= 2 {
 			k := kind
 			switch {
@@ -108,7 +136,17 @@ func (b *bweWrap) AddStream(info *interceptor.StreamInfo, w interceptor.RTPWrite
 			case rtxSSRC != 0 && h.SSRC == rtxSSRC || rtxPT != 0 && h.PayloadType == rtxPT:
 				k = bwe.KindRTX
 			}
+			dupMu.Lock()
+			if dup = dups.seen(h.SequenceNumber); dup {
+				k = bwe.KindDup
+			}
+			dupMu.Unlock()
 			b.m.Sent(bweNow(), binary.BigEndian.Uint16(raw), h.MarshalSize()+len(pl), k)
+		}
+		if dup && b.mode == bweEigen {
+			// eigen: Das Doppel geht hinaus wie bisher, aber an pion-GCC vorbei - sonst zaehlte dessen Verlust-Regler es
+			// als verloren (es wird nie bestaetigt) und senkte das Ziel ohne jeden Stau. Bei mit bleibt GCC unberuehrt.
+			return w.Write(h, pl, a)
 		}
 		return inner.Write(h, pl, a)
 	})
@@ -139,6 +177,22 @@ func bweProbe(v, sofort bwe.Verdict) string {
 		v.Result, v.QueueUs/1000, v.Loss*100, v.Bps/1000, v.WorstSt, v.Windows, sofort.Result)
 }
 
+// bweProbeEigen: Zusatz zur Zeile "probe" bei HORN_BWE=eigen - das Urteil, nach dem die Probe gewertet wurde (bwe=,
+// "-" = vor dem Urteil beendet), das Stausignal von GCC, das die Fuellung angehalten hat (bwe_gcc=, "-" = keins), und
+// der Durchsatz-Nachweis: bei voller Fuellung gesendet und im selben Zeitraum bestaetigt (0 = volle Fuellung nicht
+// erreicht). Schlange, Verlust, Zustand und Fenster wie bei mit, ueber die ganze Probe samt Nachlauf.
+func bweProbeEigen(ev sfu.ProbeEvent, v bwe.Verdict) string {
+	det, sig := ev.Det, ev.GccSig
+	if det == "" {
+		det = "-"
+	}
+	if sig == "" {
+		sig = "-"
+	}
+	return fmt.Sprintf(" bwe=%s bwe_gcc=%s bwe_gesendet=%dk bwe_bestaetigt=%dk bwe_schlange=%dms bwe_verlust=%.1f%% bwe_zustand=%s bwe_fenster=%d",
+		det, sig, ev.SentKbit, ev.AckedKbit, v.QueueUs/1000, v.Loss*100, v.WorstSt, v.Windows)
+}
+
 // bweTail: Nachlauf nach einer Probe, bis die Rueckmeldungen zu ihren letzten Paketen da sind - zwei Umlaufzeiten
 // + 200 ms, hoechstens 1 s (ohne bekannte Umlaufzeit 500 ms).
 func bweTail(rtt time.Duration) time.Duration {
@@ -158,6 +212,17 @@ func bweAttach(l *leg, b *bweWrap, est func() int, estKbit func() int) {
 	})
 }
 
+// bweHooks (eigen): Der Detektor entscheidet mit - die Steuerung (internal/sfu) fragt ihn je Takt, ob die juengsten
+// Rueckmeldungen einen Stau widerlegen (ExtTip), und am Ende einer Probe nach Urteil und Raten ueber deren Pakete
+// (ExtSpan; Zeiten als Abstand zu jetzt, die Steuerung hat eine andere Uhr).
+func bweHooks(sl *sfu.Leg, b *bweWrap) {
+	sl.ExtTip = func() bwe.Tip { return b.m.Tip(bweNow()) }
+	sl.ExtSpan = func(from, to, rateFrom time.Duration) (bwe.Verdict, bwe.Rates) {
+		now := bweNow()
+		return b.m.Span(now-int64(from), now-int64(to)), b.m.Rates(now-int64(rateFrom), now-int64(to))
+	}
+}
+
 // bweJSON: Zaehler und Zustand fuer GET /api/sfu/leg/{id}.
 func bweJSON(b *bweWrap) map[string]any {
 	s := b.m.Snapshot(bweNow())
@@ -167,10 +232,11 @@ func bweJSON(b *bweWrap) map[string]any {
 		age = s.AgeNs / 1e6
 	}
 	return map[string]any{
-		"mode": bweMit, "state": s.State.String(), "why": s.Why, "queue_ms": s.QueueUs / 1000, "loss": s.Loss,
+		"mode": b.mode, "state": s.State.String(), "why": s.Why, "queue_ms": s.QueueUs / 1000, "loss": s.Loss,
 		"acked_kbit": s.AckedBps / 1000, "cap_kbit": s.CapBps / 1000, "age_ms": age,
-		"sent":      map[string]uint64{"video": c.Sent[bwe.KindVideo], "audio": c.Sent[bwe.KindAudio], "rtx": c.Sent[bwe.KindRTX], "pad": c.Sent[bwe.KindPad]},
-		"feedbacks": c.Feedbacks, "bad": c.Bad, "acked": c.Acked, "lost": c.Lost, "dup": c.Dup, "recovered": c.Recovered, "unknown": c.Unknown,
+		"sent":        map[string]uint64{"video": c.Sent[bwe.KindVideo], "audio": c.Sent[bwe.KindAudio], "rtx": c.Sent[bwe.KindRTX], "pad": c.Sent[bwe.KindPad], "dup": c.Sent[bwe.KindDup]},
+		"dup_unacked": c.DupUnacked,
+		"feedbacks":   c.Feedbacks, "bad": c.Bad, "acked": c.Acked, "lost": c.Lost, "dup": c.Dup, "recovered": c.Recovered, "unknown": c.Unknown,
 		"windows": c.Windows, "thin": c.Thin, "late": c.Late, "resets": c.Resets,
 		"to_free": c.ToFree, "to_warn": c.ToWarn, "to_cong": c.ToCong, "to_unknown": c.ToUnknown,
 	}

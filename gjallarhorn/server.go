@@ -49,7 +49,7 @@ type config struct {
 	Mode      string // "probe" (Spiegel) oder "node" (Weiterleiter)
 	Dev       bool   // HORN_DEV=1: Entwicklungs-Token und Testseite (nur Tests!)
 	Probing   bool   // HORN_PROBING (Standard an): Probing mit Fuelldaten, siehe internal/sfu/probe.go
-	BWE       string // HORN_BWE: gcc (Standard) oder mit (eigener Stau-Detektor liest mit und schreibt mit), siehe bwe.go
+	BWE       string // HORN_BWE: gcc (Standard), mit (eigener Stau-Detektor liest und schreibt mit) oder eigen (er entscheidet mit), siehe bwe.go
 	Certs     netx.CertOptions
 }
 
@@ -250,8 +250,13 @@ func newServer(cfg *config) (*server, error) {
 	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32),
 		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32), verifier: &sagaVerifier{}, graves: map[string]time.Time{}, kicked: map[string]time.Time{}}
 	if cfg.Mode == "node" {
-		if s.gcc.mit = cfg.BWE == bweMit; s.gcc.mit {
+		switch cfg.BWE {
+		case bweMit:
+			s.gcc.bwe = bweMit
 			log.Printf("HORN_BWE=mit: eigener Stau-Detektor liest auf UDP-Beinen mit (entscheidet nichts)")
+		case bweEigen:
+			s.gcc.bwe = bweEigen
+			log.Printf("HORN_BWE=eigen: eigener Stau-Detektor wertet auf UDP-Beinen die Proben und widerlegt grundlose Faelle des GCC-Ziels")
 		}
 		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers, OnProbe: s.onProbe,
 			Probing: cfg.Probing}

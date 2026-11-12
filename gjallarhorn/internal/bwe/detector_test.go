@@ -19,7 +19,7 @@ type leitung struct {
 	jitMs   float64 // +- gleichverteilt
 	loss    float64
 	lossAt  func(t float64) float64 // falls gesetzt: Verlustanteil zur Sendezeit t (statt loss)
-	pauseEv float64 // mittlerer Abstand von Pausen der Leitung (s), 0 = keine
+	pauseEv float64                 // mittlerer Abstand von Pausen der Leitung (s), 0 = keine
 	pauseMs [2]float64
 	fbMs    float64
 	fbLoss  float64 // Anteil verlorener Rueckmeldungen

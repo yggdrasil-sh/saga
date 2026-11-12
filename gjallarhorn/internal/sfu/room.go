@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 )
 
@@ -297,6 +298,13 @@ type Leg struct {
 	// ExtStat liefert den Zustand der externen Schaetzung im Einzelnen (optional): Damit wertet die Probe selbst aus, ob
 	// die Leitung staut (probe.go), statt sich nur auf die Bewegung des Ziels zu verlassen.
 	ExtStat func() ExtStat
+	// ExtTip und ExtSpan (optional, HORN_BWE=eigen): der eigene Stau-Detektor des Knotens (internal/bwe) entscheidet
+	// mit. ExtTip sagt je Takt, ob die juengsten Rueckmeldungen einen Stau ausdruecklich widerlegen (estimator.lagging:
+	// Ein gefallenes GCC-Ziel allein ist dann kein Stau). ExtSpan liefert am Ende einer Probe sein Urteil ueber die
+	// Pakete, die zwischen from und to gesendet wurden, und die gesendete und bestaetigte Rate ab rateFrom (alle drei
+	// als Abstand zu jetzt) - damit wertet die Probe (probe.go, probeVerdict); GCC haelt nur noch die Fuellung an.
+	ExtTip  func() bwe.Tip
+	ExtSpan func(from, to, rateFrom time.Duration) (bwe.Verdict, bwe.Rates)
 
 	pr        probe
 	pstat     ProbeStats
@@ -304,6 +312,7 @@ type Leg struct {
 	prNext    int64   // nach einer abgebrochenen Probe: fruehestens dann die naechste auf diesem Bein
 	firstUsed bool    // der freie Versuch zum Anrufbeginn ist verbraucht (probe.go)
 	unkAt     int64   // letzte Probe ohne klares Ergebnis (0 = keine offen): Die naechste solche zaehlt als gescheitert
+	unkN      int     // eigen: Proben ohne klares Ergebnis in Folge (probeUnkMax)
 	movedAt   int64   // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
 }
 
