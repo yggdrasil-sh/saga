@@ -1086,6 +1086,85 @@ func TestNachzueglerVorWechselRoh(t *testing.T) {
 	}
 }
 
+// TestAlteNachsendungenInReihe (Fund der Pruefung): Zwei Nachsendungen, die aelter als das Fenster sind und direkt
+// nacheinander eintreffen (sehr hohe Umlaufzeit; Nachsendungen kommen am Stueck), sind kein Neustart der Folge - beide
+// fallen als zu alt weg, der Ausgang laeuft weiter. Ein Neustart mit fremder Zeitbasis (Zeitstempel weit weg) gilt
+// weiter ab dem zweiten Paket in Reihe, auch rueckwaerts.
+func TestAlteNachsendungenInReihe(t *testing.T) {
+	b := newDbench(t)
+	s := &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000}
+	b.o.Assign(s)
+	// 150 Pakete/s: Bilder zu 5 Paketen, 3000 Pakete = 20 s
+	pk := func(q int) []byte { return vp8pkt(uint16(1000+q), uint32(q/5)*3000, q%5 == 0, q == 0, q%5 == 4) }
+	for q := 0; q < 3000; q++ {
+		b.in(s, pk(q))
+	}
+	ts := uint32(600 * 3000)
+	n := len(b.seqs())
+	for _, q := range []int{1500, 1501, 1502} { // 1497 bis 1499 hinter dem Stand (10 s alt), in Reihe
+		b.in(s, pk(q))
+	}
+	if got := b.seqs(); len(got) != n || s.TooOld.Load() != 3 || s.Dups.Load() != 0 || s.Late.Load() != 0 {
+		t.Fatalf("alte Nachsendungen in Reihe: %d Pakete hinaus (erwartet %d), alt %d, doppel %d, spaet %d", len(got), n, s.TooOld.Load(), s.Dups.Load(), s.Late.Load())
+	}
+	b.in(s, vp8pkt(4000, ts, true, false, true)) // die Folge laeuft weiter, der Ausgang schliesst an
+	b.in(s, vp8pkt(3999, ts-3000, true, false, true))
+	got := b.seqs()
+	uniq(t, got)
+	if len(got) != n+1 || got[n] != got[n-1]+1 || s.Dups.Load() != 1 {
+		t.Fatalf("nach den alten Nachsendungen: %v, doppel %d", got[n-2:], s.Dups.Load())
+	}
+	// fremde Zeitbasis rueckwaerts: das erste Paket faellt weg, das zweite in Reihe beginnt die neue Folge
+	far := ts - 1<<23
+	b.in(s, vp8pkt(500, far, true, true, true))
+	if got := b.seqs(); len(got) != n+1 || s.TooOld.Load() != 4 {
+		t.Fatalf("erstes Paket der fremden Folge: %d hinaus, alt %d", len(got), s.TooOld.Load())
+	}
+	b.in(s, vp8pkt(501, far+3000, true, false, true))
+	b.in(s, vp8pkt(502, far+6000, true, false, true))
+	got = b.seqs()
+	uniq(t, got)
+	if len(got) != n+3 || got[n+2] != got[n]+2 || s.TooOld.Load() != 4 {
+		t.Fatalf("fremde Zeitbasis rueckwaerts: %v, alt %d", got[n-1:], s.TooOld.Load())
+	}
+}
+
+// TestSprungKnappZurueck (Fund der Pruefung): Nach einer sehr langen Pause (Bruecke) kann die neue Folge nach einem
+// Umlauf knapp hinter dem alten Stand beginnen - im Fenster, wo sonst nur Nachsendungen und Doppel liegen. Ihr
+// Zeitstempel ist dann deutlich juenger als alles Gesehene: Die Quelle setzt das Fenster neu auf, kein Paket faellt als
+// Doppel weg, der Ausgang schliesst lueckenlos an. Eine echte Nachsendung (alter Zeitstempel) bleibt eine Nachsendung.
+func TestSprungKnappZurueck(t *testing.T) {
+	b := newDbench(t)
+	s := &Source{Owner: "p", Layer: "a", Kind: Audio, Clock: 48000}
+	b.a.Assign(s)
+	for q := 0; q < 600; q++ {
+		if q == 590 {
+			continue // fehlt zunaechst
+		}
+		b.in(s, audpkt(uint16(10000+q), uint32(q)*960))
+	}
+	b.in(s, audpkt(10590, 590*960)) // Nachsendung: alter Zeitstempel, bleibt eine Nachsendung
+	if n := len(hseqs(b.wa)); n != 600 || s.Late.Load() != 1 || s.Dups.Load() != 0 {
+		t.Fatalf("vor der Pause: %d Pakete, spaet %d, doppel %d", n, s.Late.Load(), s.Dups.Load())
+	}
+	// 30 min spaeter beginnt die Folge 500 Nummern hinter dem alten Stand (nach einem Umlauf)
+	ts := uint32(600*960 + 30*60*48000)
+	for q := 0; q < 700; q++ {
+		b.in(s, audpkt(uint16(10100+q), ts+uint32(q)*960))
+	}
+	b.in(s, audpkt(10150, ts+50*960)) // Doppel in der neuen Folge
+	got := hseqs(b.wa)
+	uniq(t, got)
+	if len(got) != 1300 || s.Dups.Load() != 1 || s.TooOld.Load() != 0 || s.Late.Load() != 1 {
+		t.Fatalf("sprung knapp zurueck: %d Pakete hinaus (erwartet 1300), doppel %d, alt %d, spaet %d", len(got), s.Dups.Load(), s.TooOld.Load(), s.Late.Load())
+	}
+	for i := 601; i < len(got); i++ { // die neue Folge schliesst lueckenlos an
+		if got[i] != got[i-1]+1 {
+			t.Fatalf("luecke am Ausgang bei %d: %v", i, got[i-2:i+2])
+		}
+	}
+}
+
 // TestAbgleichZufallWechsel: zwei Schichten einer Quelle mit Verlust, Nachsendungen, Umsortierung, Wiederholungen und
 // Fuellpaketen; der Ausgang wechselt zufaellig zwischen ihnen (am naechsten Schluesselbild), aendert seine
 // Zeitschicht-Grenze, verwirft zeitweise bis zum Schluesselbild, und eine Schicht beginnt ihre Folge einmal neu (weit

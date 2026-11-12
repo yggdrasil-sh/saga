@@ -172,6 +172,16 @@ type Source struct {
 const (
 	dupWin  = 1024
 	dupMask = dupWin - 1
+	// tsJump: Ein Paket hinter dem Stand mit einem um mehr als so viele Takte juengeren Zeitstempel als der juengste
+	// gesehene gehoert zu einer neuen Folge (10 s bei 90 kHz, 19 s bei 48 kHz). In einem Strom steigen Zeitstempel mit
+	// den Folgenummern; eine Nachsendung oder ein umsortiertes Paket ist nie juenger als das Paket mit der hoechsten
+	// Nummer.
+	tsJump = 900_000
+	// tsOld: Ein Paket ausserhalb des Fensters hinter dem Stand, dessen Zeitstempel weniger als so viele Takte
+	// zurueckliegt (47 s bei 90 kHz, 87 s bei 48 kHz), ist eine alte Nachsendung - libwebrtc haelt Pakete dafuer
+	// hoechstens einige Sekunden vor. Ein Neustart mit fremder Zeitbasis liegt mit seinem zufaelligen Zeitstempel fast
+	// immer weiter weg.
+	tsOld = 1 << 22
 )
 
 // Urteil des Abgleichs ueber ein Paket.
@@ -190,7 +200,10 @@ const (
 // zurueck) beginnt eine neue Folge, wenn der Zeitstempel juenger ist als der juengste gesehene - so sieht eine Pause
 // der Quelle aus (lange Unterbrechung, Bruecke: der Ausgang der Gegenseite war abgemeldet), waehrend eine Wiederholung
 // immer einen alten Zeitstempel traegt -, oder wenn das zweite Paket in Reihe eintrifft (Neustart mit fremder Zeitbasis,
-// wie RFC 3550 A.1; das erste davon geht verloren). Alles andere dort ist aelter als das Fenster.
+// wie RFC 3550 A.1; das erste davon geht verloren). Alles andere dort ist aelter als das Fenster; alte Nachsendungen
+// (hinter dem Stand, Zeitstempel nur wenig zurueck - tsOld) zaehlen dabei nicht als Beginn einer neuen Folge, auch
+// nicht zwei in Reihe. Landet eine neue Folge nach einem Umlauf knapp hinter dem alten Stand, also im Fenster, zeigt
+// das ihr deutlich juengerer Zeitstempel (tsJump).
 func (s *Source) admit(seq uint16, ts uint32) int {
 	if !s.seqInit {
 		s.seqInit = true
@@ -216,6 +229,13 @@ func (s *Source) admit(seq uint16, ts uint32) int {
 	}
 	if s.hi-seq < dupWin { // hinter dem Stand (oder gleich), im Fenster
 		s.badSet = false
+		if int32(ts-s.hiTS) > tsJump {
+			// Hinter dem Stand, aber deutlich juenger als alles Gesehene: keine Nachsendung (die traegt einen alten
+			// Zeitstempel), sondern eine neue Folge, die nach einem Umlauf knapp hinter dem alten Stand beginnt
+			// (Bruecke nach sehr langer Pause).
+			s.restart(seq, ts)
+			return seqNew
+		}
 		i := seq & dupMask
 		if s.seen[i>>6]&(1<<(i&63)) != 0 {
 			return seqDup
@@ -227,7 +247,12 @@ func (s *Source) admit(seq uint16, ts uint32) int {
 		s.restart(seq, ts)
 		return seqNew
 	}
-	s.bad, s.badSet = seq+1, true
+	// Aelter als das Fenster. Die Nummer danach bestaetigt eine neue Folge - ausser das Paket liegt hinter dem Stand
+	// und sein Zeitstempel nur wenig zurueck: Das ist eine alte Nachsendung, und zwei davon in Reihe (Nachsendungen
+	// kommen am Stueck) sind kein Neustart.
+	if !(int16(seq-s.hi) < 0 && s.hiTS-ts < tsOld) {
+		s.bad, s.badSet = seq+1, true
+	}
 	return seqOld
 }
 
