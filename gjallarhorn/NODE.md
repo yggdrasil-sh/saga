@@ -310,61 +310,161 @@ Platzhalter: `horn-1.example.org`.
     pion-GCC, `estRoom.pion`), `internal/sfu/probe_zahlen_test.go` (Kennzahlen mit und ohne Probing, Ausgabe mit `-v`),
     `internal/fwd/pad_test.go` (Folgenummern, verspätete Pakete, kein Füllpaket mitten im Bild, Füllpakete nur
     hinter Medienpaketen, Totmann, keine Allokation), `probing_udp_test.go` (Ende zu Ende mit pion-Gegenstelle hinter einem Engpass).
-- **Eigener Stau-Detektor, Stufe 0 – schreibt nur mit (experimentell, `HORN_BWE`, Standard `gcc`):**
+- **Eigener Stau-Detektor (experimentell, `HORN_BWE`, Standard `gcc`; „Weg B“):**
   - `HORN_BWE=gcc` (Standard): pion-GCC allein, wie bisher – die Hülle wird gar nicht eingebaut (die Fabrik des
-    Schätzers bleibt, wie sie war). `HORN_BWE=mit`: Um den pion-Schätzer jedes UDP-Beins liegt eine Hülle, die jedes
-    abgehende Paket (TWCC-Folgenummer, Sendezeit, Größe, Art) und jede transport-cc-Rückmeldung mitliest und danach
+    Schätzers bleibt, wie sie war). `HORN_BWE=mit` (Stufe 0): Um den pion-Schätzer jedes UDP-Beins liegt eine Hülle, die
+    jedes abgehende Paket (TWCC-Folgenummer, Sendezeit, Größe, Art) und jede transport-cc-Rückmeldung mitliest und danach
     unverändert an pion-GCC weitergibt. Daneben urteilt ein eigener Detektor (`internal/bwe`) über die Leitung. **Er
-    entscheidet nichts:** Schichtwahl, Schätzung und Proben laufen wie bei `gcc`. Jeder andere Wert gilt als `gcc`
-    (mit Warnzeile). Beim Start steht bei `mit` eine Zeile `HORN_BWE=mit: …` im Log.
+    entscheidet nichts:** Schichtwahl, Schätzung und Proben laufen wie bei `gcc`. `HORN_BWE=eigen` (Stufe 1 und 2):
+    dieselbe Hülle, und der Detektor **entscheidet mit** – siehe „`eigen`“ unten. Jeder andere Wert gilt als `gcc`
+    (mit Warnzeile). Beim Start steht bei `mit` bzw. `eigen` eine Zeile `HORN_BWE=…: …` im Log.
   - Verfahren: Pakete werden nach Sendezeit zu Fenstern gebündelt (mindestens 100 ms und 20 gemeldete Pakete,
     höchstens 500 ms). Die Schlange eines Fensters ist seine kleinste Laufzeit (Ankunft minus Sendezeit) über der
     Basis, der kleinsten Laufzeit der letzten 30 s – Jitter und kurze Pausen heben das Minimum nicht, eine stehende
-    Schlange schon. Zustände: `frei`, `warnung` (2 Fenster mit Schlange über 50 ms oder 3 mit Verlust ab 8 %),
-    `stau` (4 bzw. 6 solche Fenster), zurück nach `frei` nach 3 bzw. 5 Fenstern mit Schlange unter 20 ms und Verlust
-    unter 3 %; `unbekannt` ohne Rückmeldung (1 s bei laufendem Senden) und nach einem Wegwechsel (ICE wählt ein
-    anderes Adresspaar – die Basis wird verworfen).
+    Schlange schon. Der Verlust wird nicht je Fenster beurteilt, sondern über die letzten 160 gemeldeten Pakete
+    (höchstens 3 s zurück, mindestens 60 Pakete): Bei 5 % Zufallsverlust haben 26 % aller Fenster von 20 Paketen
+    10 % Verlust und mehr – das ergab im Modell 66–171 falsche Warnungen in 30 min, jetzt 0–1.
+    Zustände: `frei`, `warnung` (2 Fenster mit Schlange über 50 ms, oder 2 Fenster in Folge mit Verlust ab 12 % über
+    die letzten 160 Pakete und Verlust im Fenster selbst), `stau` (4 Fenster Schlange bzw. 10 Fenster Verlust),
+    zurück nach `frei` nach 3 bzw. 5 Fenstern mit Schlange unter 20 ms und Verlust unter 8 %; `unbekannt` ohne
+    Rückmeldung (1 s bei laufendem Senden) und nach einem Wegwechsel (ICE wählt ein anderes Adresspaar – die Basis
+    wird verworfen).
+  - **Verlust ohne Stau** (Labor vom 12.11., wichtigster Fund): Reiner Verlust ohne Verzögerung ergibt höchstens
+    `warnung`; `stau grund=verlust` nur bei schwerem, anhaltendem Verlust (ab 12 % über gut eine Sekunde – das Bild
+    eines Policers, bei dem Verlust das einzige Signal ist: Modell 1000/1200/1400 kbit/s bei `h`: Warnung nach
+    0,6–0,9 s, Stau nach 1,4–1,7 s; bis Stufe 0 nach 0,4–0,5 s und 0,8–0,9 s). Dauerverlust um 4–5 % ergibt keine
+    Meldung, und ein früher erreichter `stau` löst sich dort wieder (Modell: nach 2,1 s; vorher blieb ein Bein 3 min
+    hängen, weil die Rückkehr unter 3 % verlangte). **Schonzeit:** In den ersten 3 s eines Beins zählt Verlust nicht
+    (Labor: frühe `warnung grund=verlust` auf 32 % der Beine); eine Schlange zählt auch dann.
+  - **Doppel – welche Pakete der Browser nicht zählt** (Labor 7.1/7.2; am Code und an den Labordaten geklärt, mit
+    echtem Browser noch nicht gegengeprüft): Liefert eine Quelle ein Paket zweimal, leitet der Knoten es zweimal
+    weiter – mit **derselben RTP-Folgenummer**, aber neuer transport-cc-Nummer (`internal/fwd`: Folgenummer = die der
+    Quelle + Versatz, kein Abgleich auf Doppel; `TestDoppelDerQuelle`). Das geschieht, wenn der **sendende** Browser
+    zum Füllen bzw. Proben alte Pakete über RTX wiederholt (libwebrtc füllt mit Wiederholungen, sobald RTX
+    ausgehandelt ist – zum Anrufbeginn, nach „Kamera an“, beim Start des Teilens und dauerhaft, solange eine obere
+    Simulcast-Ebene mangels Schätzung aus ist): pion gibt RTX-Pakete entpackt, mit der ursprünglichen Folgenummer,
+    auf der Spur zurück. Der **Empfänger** verwirft das Doppel am SRTP-Wiederholungsschutz – bevor er es zählt
+    (`packetsReceived`), als Lücke sähe (`packetsLost`) oder per transport-cc bestätigt. Für den Knoten sieht es wie
+    Verlust aus, für pion-GCC ebenso (dessen Verlust-Regler senkt das Ziel ab 10 %). Im Labor passte dazu: gesendet/
+    gezählt 1,11–1,17 in den Teilen-Läufen auch beim alten Stand, und im Einzellauf mit dem Verhältnis 1,55 sendete
+    der Browser der Quelle auf `m` gut doppelt so viele Bytes wie sonst (25,2 gegen 11,5 MB), während seine Ebene `h`
+    aktiv, aber leer war. Bei `mit` und `eigen` erkennt die Hülle solche Pakete an der wiederholten Folgenummer
+    (Fenster von 1024 Nummern je Strom): Bleibt ihre Bestätigung aus, zählt das nicht als Verlust (Zähler
+    `sent.dup`, `dup_unacked`). Bei `eigen` gehen sie zudem an pion-GCC vorbei (hinaus gehen sie weiter). **Der
+    Weiterleiter selbst ist nicht geändert** – die Doppel kosten weiter Bandbreite und stören bei `gcc` weiter den
+    Verlust-Regler; ein Abgleich in `internal/fwd` wäre die eigentliche Behebung (offen, Entscheidung des Besitzers).
   - Zeile je Zustandswechsel (nur die Kurzkennung des Beins, keine Kennungen von Personen, Geräten oder Räumen):
     `bwe 5884a4 zustand=stau vorher=warnung grund=schlange schlange=123ms verlust=2.5% durchsatz=1012k kapazitaet=1007k gcc=1062k est=1200k`
-    (`grund`: `schlange`, `verlust`, `leer`, `stille`, `beginn`, `wechsel`; `durchsatz` = vom Empfänger bestätigt über
-    die letzte Sekunde; `kapazitaet` = Durchsatz der Fenster, die den letzten Stau gezeigt haben, 0 = noch keiner;
-    `gcc`/`est` = GCC-Ziel und Schätzung des Knotens zum Vergleich).
-  - Zusatz in der Zeile `probe`: `… est=1338k gcc=721k bwe=staut bwe_schlange=140ms bwe_verlust=0.0% bwe_durchsatz=699k bwe_zustand=warnung bwe_fenster=4 bwe_sofort=staut-nicht`.
+    (`grund`: `schlange`, `verlust`, `leer`, `stille`, `beginn`, `wechsel`; `verlust` = Anteil über die letzten 160
+    gemeldeten Pakete; `durchsatz` = vom Empfänger bestätigt über die letzte Sekunde; `kapazitaet` = Durchsatz der
+    Fenster, die den letzten Stau gezeigt haben, 0 = noch keiner; `gcc`/`est` = GCC-Ziel und Schätzung des Knotens
+    zum Vergleich).
+  - Zusatz in der Zeile `probe` bei `mit`: `… est=1338k gcc=721k bwe=staut bwe_schlange=140ms bwe_verlust=0.0% bwe_durchsatz=699k bwe_zustand=warnung bwe_fenster=4 bwe_sofort=staut-nicht`.
     `bwe` ist das Urteil des Detektors über die Pakete der Probe **nach dem Nachlauf** (zwei Umlaufzeiten + 200 ms,
     höchstens 1 s; ohne bekannte Umlaufzeit 500 ms), `bwe_sofort` das, was er beim Ende der Probe schon wusste – je
     `staut`, `staut-nicht` oder `unklar`. `bwe_schlange` ist die zweithöchste Fenster-Schlange der Probe,
     `bwe_durchsatz` die Spitze des bestätigten Durchsatzes über mindestens 400 ms, `bwe_zustand` der schlechteste
     Zustand in der Probe, `bwe_fenster` die Zahl der Fenster. **Die Zeile `probe` kommt bei `mit` um den Nachlauf
-    später** (bei `gcc` sofort und ohne Zusatz). `staut-nicht` gilt für das, was gesendet wurde: Bricht GCC eine
-    Probe nach 0,4 s bei halber Füllrate ab, sagt es nichts über die Zielrate – dazu `bwe_durchsatz` neben `ziel` lesen.
-  - Zähler und Zustand je Bein: `GET /api/sfu/leg/{id}` → `"bwe"` (nur bei `mit`): `mode`, `state`, `why`,
+    später** (bei `gcc` sofort und ohne Zusatz). Urteil über eine Spanne: `staut` bei Schlange über 50 ms (in
+    mindestens zwei Fenstern), bei gemeldetem Stau oder wenn der Verlust der Spanne deutlich **über dem der 10 s
+    davor** liegt (5 Punkte mehr, mindestens 8 % und 3 Pakete – Verlust, der mit der Last kommt, ist das Zeichen einer
+    Ratengrenze; Verlust, der schon vorher da war, sagt nichts); `staut-nicht` bei Schlange unter 20 ms, durchgehend
+    `frei` und nicht gestiegenem Verlust; `unklar` sonst – auch, wenn die Basis jünger als 2 s ist bzw. in oder kurz
+    vor der Spanne zurückgesetzt wurde (eine junge Basis kann selbst schon eine Schlange enthalten).
+  - **`eigen` – Stufe 1, Wertung der Proben:** Das Stausignal von GCC (Ziel gefallen, Überlast, Verlust; auch ein
+    unbestätigter einzelner Hinweis, der stehen bleibt) hält nur noch die **Füllung an**. Danach wartet die Probe den
+    Nachlauf ab (wie oben; mindestens 2 Takte), und der Detektor wertet:
+    - `staut` → gescheitert (`grund=stau`), mit Abstand wie bisher. Meldet der Detektor nach einem Stausignal von GCC
+      schon vor Ende des Nachlaufs Stau, wartet die Probe nicht weiter.
+    - Stausignal von GCC **und** ein Anzeichen beim Detektor unterhalb seiner Schwellen (Schlange ab 20 ms, Verlust
+      gestiegen, Warnung) → zwei Hinweise: gescheitert, Grund der von GCC. (Im Labor lag die Schlange in der Enge oft
+      bei 43–48 ms, knapp unter der Schwelle von 50 ms.)
+    - `staut-nicht` **und** Durchsatz-Nachweis → bestanden – auch wenn GCC ein Stausignal gemeldet hatte. Nachweis:
+      Während der vollen Füllung wurden mindestens 90 % der Zielrate **wirklich gesendet**, und der Empfänger hat
+      davon **im selben Zeitraum** mindestens 95 % bestätigt (bestätigte Bytes je Ankunftszeit gegen gesendete Bytes
+      je Sendezeit derselben Messfenster, über mindestens 400 ms). Beides zählt am selben Zähler (alle Pakete des
+      Beins mit Kopf, Ton und Füllung) – nicht mehr Zielrate (mit Reserve und Ton) gegen Durchsatz. Hält GCC die
+      Füllung früh an, ist die Zielrate nie gesendet worden; `staut-nicht` sagt dann nichts über sie (Labor: auf
+      enger Leitung 10 von 29 Proben `staut-nicht`, keine davon mit Nachweis).
+    - sonst unklar → Abbruch ohne Wertung (`abort`, Grund `unklar`, kein Abstand), Wiederholung nach 2 s. Höchstens
+      **drei** unklare Proben in Folge (je binnen 60 s nach der vorigen): die dritte zählt als gescheitert, mit
+      Abstand (Grund: das Signal von GCC, sonst `nachweis` bzw. `bwe`).
+    Preis: Auf einer engen Leitung, auf der GCC die Füllung anhält, bevor der Detektor etwas sieht, kommen so bis zu
+    drei kurze Proben (je 0,4–0,8 s Füllung, dann Nachlauf) statt einer je Abstand; im Modell 21 statt 7 Proben in
+    10 min auf 1,0 Mbit/s, 0,49 statt 0,16 MB. Die eigene Warteschlange (`queue`) lässt die Probe weiter sofort
+    scheitern. Bricht die Leitung mitten in der Probe ein, kommt der Rückzug im Modell 0,2 s später als bei `gcc`
+    (1,4 statt 1,2 s).
+    Zeile `probe` bei `eigen` (sofort, die Probe hat den Nachlauf selbst abgewartet):
+    `… est=1878k gcc=900k bwe=staut-nicht bwe_gcc=- bwe_gesendet=1940k bwe_bestaetigt=1940k bwe_schlange=0ms bwe_verlust=0.0% bwe_zustand=frei bwe_fenster=12`
+    (`bwe` = das Urteil, nach dem gewertet wurde; `bwe_gcc` = Stausignal von GCC, das die Füllung angehalten hat,
+    `-` = keins; `bwe_gesendet`/`bwe_bestaetigt` = der Nachweis, 0 = volle Füllung nicht erreicht).
+  - **`eigen` – Stufe 2, Schicht-Entscheidung:** Fällt das GCC-Ziel unter die Rate, nimmt der Knoten bei `gcc` die
+    Schicht zurück – auch wenn die Leitung frei ist (pion springt nach einer kurzen Pause der Leitung oder wegen
+    Verlust-Meldungen zurück; im Testaufbau 11-mal in 1679 s auf freier Leitung, der Detektor jedes Mal `frei`). Bei
+    `eigen` gilt: **Das Signal von GCC gilt weiter, solange der Detektor es nicht ausdrücklich widerlegt.** Widerlegt
+    ist ein Stau nur, wenn alles zutrifft: Zustand `frei`, Basis mindestens 2 s alt, letzte Rückmeldung höchstens
+    400 ms alt, das jüngste bestätigte Paket höchstens 600 ms zuvor gesendet, die **kleinste Laufzeit der letzten 5
+    bestätigten Pakete höchstens 10 ms über der Basis**, Verlust der letzten 500 ms nicht gestiegen (höchstens 4
+    Punkte über dem der 10 s davor) und unter 12 %. Dann beginnt – wie bei der Klemmung – eine Schonfrist beim neuen
+    Ziel: Es muss von dort wieder steigen (1,5 % je Sekunde), längstens 15 s, und die Widerlegung muss **in jedem
+    Takt neu gelten**. Fällt sie weg (Schlange an der Spitze, Verlust, Warnung, Rückmeldung alt), gilt das Signal von
+    GCC sofort. Der Detektor nimmt von sich aus **keine** Schicht zurück – ein längerer Weg ohne ICE-Wechsel sähe
+    sonst bis zu 30 s wie Stau aus (Grenze 3).
+    Warum diese Richtung: Der *Zustand* des Detektors ist in echter Enge langsamer als GCC (Warnung nach 0,4–0,7 s,
+    GCC 0,2–0,3 s; im Labor meldete er in 11 von 12 Schritten nichts, bevor der Knoten unten war) – auf seine Meldung
+    zu warten hieße, echte Enge später zu behandeln. Die *Widerlegung* braucht weniger: Staut die Leitung wirklich,
+    haben schon die jüngsten bestätigten Pakete eine Schlange (GCC schließt aus denselben Rückmeldungen auf
+    Überlast). Die kleinste Laufzeit, weil nach einer Pause der Leitung die aufgehaltenen Pakete zusammen ankommen –
+    das zuletzt gesendete hat kaum gewartet –, in einer wachsenden Schlange aber jedes gewartet hat. Modell (1520
+    kbit/s auf 1000/1250/1400 kbit/s und Policer 1000): Die Widerlegung hält längstens 0,15/0,19/0,25/0,15 s nach
+    Beginn der Enge – GCC meldet nach 0,2–0,3 s. Auf freier Leitung widerlegt sie in 99,9–100 % der Takte (Jitter,
+    Pausen 30–90 ms), bei 3 % bzw. 5 % Zufallsverlust in 95–98 % bzw. 91–96 %.
+    **Grenze:** Liegt die Leitung nur wenige Prozent unter der Rate, wächst die Schlange so langsam, dass die
+    Widerlegung noch gilt, wenn GCC schon meldet – die Schicht bleibt dann, bis die Schlange 10 ms erreicht (Modell,
+    Leitung 1,5 % bzw. 3 % unter `h`: 0,8 bzw. 0,6 s statt 0,4 s). Auf Leitungen mit starkem Jitter (LTE, ±20 ms)
+    widerlegt die Spitze selten – dort bleibt es beim Verhalten von `gcc`.
+    Aufschub, Schonfrist, Sperrzeit, „ein Schritt je Takt“ und die Regeln des Probings gelten unverändert.
+  - Zähler und Zustand je Bein: `GET /api/sfu/leg/{id}` → `"bwe"` (nur bei `mit` und `eigen`): `mode`, `state`, `why`,
     `queue_ms`, `loss`, `acked_kbit`, `cap_kbit`, `age_ms` (Alter der letzten Rückmeldung, −1 = keine), `sent {video,
-    audio, rtx, pad}`, `feedbacks`, `bad` (nicht entpackbar), `acked`, `lost`, `dup`, `recovered` (als verloren
-    gemeldet, später doch angekommen), `unknown` (Folgenummer nicht im Ring), `windows`, `thin` (Fenster mit zu wenig
-    Paketen), `late`, `resets`, `to_free`, `to_warn`, `to_cong`, `to_unknown`.
+    audio, rtx, pad, dup}`, `dup_unacked` (Doppel ohne Bestätigung – kein Verlust), `feedbacks`, `bad` (nicht
+    entpackbar), `acked`, `lost`, `dup` (doppelt gemeldet), `recovered` (als verloren gemeldet, später doch
+    angekommen), `unknown` (Folgenummer nicht im Ring), `windows`, `thin` (Fenster mit zu wenig Paketen), `late`,
+    `resets`, `to_free`, `to_warn`, `to_cong`, `to_unknown`; bei `eigen` dazu `refuted` (Fälle des GCC-Ziels unter
+    die Rate, die der Detektor widerlegt hat).
   - Bekannte Grenzen: (1) **Wiederholungen sind unsichtbar** – der NACK-Antworter liegt in der Kette vor dem
     Schätzer und schreibt an ihm und am TWCC-Kopf vorbei; weder pion-GCC noch der Mitleser sehen sie (`sent.rtx`
-    bleibt 0). (2) **Niedrige Paketrate:** Auf `l` ohne Ton (~25 Pakete/s) dauert ein Fenster bis 0,5 s, Stau wird
-    erst nach rund 2 s gemeldet. (3) **Längerer Weg ohne ICE-Wechsel** (Laufzeit steigt bleibend, z. B. +80 ms, ohne
-    dass ICE ein anderes Paar wählt) sieht bis zu 30 s wie Stau aus, bis die Basis herausgealtert ist. (4) In der
-    Enge ist der Detektor langsamer als GCC: Warnung nach 0,4–0,7 s, Stau nach 0,8–1,0 s (GCC meldet Überlast nach
-    0,2–0,3 s) – die Rückmeldung über ein Paket in der Schlange kommt um die Schlange später. Fällt der Knoten vorher
-    zurück (nach 0,4 s), läuft die Schlange ab, und der Detektor meldet bei knapper Enge oder kurzem Puffer (Policer)
-    oft nur `warnung`, keinen `stau`. (5) Urteile über Proben, die GCC früh abbricht, bleiben oft `unklar`.
-    (6) **Anrufbeginn mit Chromium:** In den ersten 1–2,5 s meldet der Browser 5–75 % der Pakete als nicht
-    angekommen, auch ohne jeden Engpass (Ursache offen; mit der pion-Gegenstelle der Tests tritt es nicht auf) – der
-    Detektor meldet dort `warnung grund=verlust` (in 30 von 48 Beinen, einmal `stau`). (7) **Wechselt ICE zwischen
-    zwei gleichwertigen Adresspaaren hin und her** (im Container alle 2–5 s, weil der Knoten auf zwei Adressen
-    erreichbar ist), verliert der Detektor jedes Mal seine Basis und ist für ein Fenster `unbekannt`.
+    bleibt 0; sie tragen die transport-cc-Nummer des Originals und erscheinen als `recovered`). (2) **Niedrige
+    Paketrate:** Auf `l` ohne Ton (~25 Pakete/s) dauert ein Fenster bis 0,5 s, Stau wird erst nach rund 2 s
+    gemeldet; der Verlust ist dort erst nach 60 Paketen (gut 2 s) bestimmt. (3) **Längerer Weg ohne ICE-Wechsel**
+    (Laufzeit steigt bleibend, z. B. +80 ms, ohne dass ICE ein anderes Paar wählt) sieht bis zu 30 s wie Stau aus,
+    bis die Basis herausgealtert ist – bei `eigen` gilt in der Zeit das Signal von GCC wie bei `gcc`, und Proben
+    scheitern. (4) In der Enge ist der Zustand des Detektors langsamer als GCC: Warnung nach 0,4–0,7 s, Stau nach
+    0,8–1,0 s (GCC meldet Überlast nach 0,2–0,3 s) – die Rückmeldung über ein Paket in der Schlange kommt um die
+    Schlange später. Fällt der Knoten vorher zurück (nach 0,4 s), läuft die Schlange ab, und der Detektor meldet bei
+    knapper Enge oder kurzem Puffer (Policer) oft nur `warnung`, keinen `stau`. (5) Urteile über Proben, die GCC
+    früh anhält, bleiben oft `unklar`. (6) **Anrufbeginn mit Chromium:** In den ersten 1–2,5 s meldet der Browser
+    5–75 % der Pakete als nicht angekommen, auch ohne jeden Engpass – nach heutigem Stand die Doppel des sendenden
+    Browsers (oben; mit der pion-Gegenstelle der Tests tritt es nicht auf). Schonzeit und Doppel-Erkennung fangen
+    es ab; ob danach nichts übrig bleibt, zeigt erst das Labor. (7) **Wechselt ICE zwischen zwei gleichwertigen
+    Adresspaaren hin und her** (im Container alle 2–5 s, weil der Knoten auf zwei Adressen erreichbar ist; im Labor
+    nicht beobachtet), verliert der Detektor jedes Mal seine Basis: ein Fenster `unbekannt`, und bei `eigen` für 2 s
+    weder Widerlegung noch `staut-nicht` – das Bein verhält sich dann wie bei `gcc`, Proben bleiben unklar. (8) Nicht
+    als Doppel erkennbare unbestätigte Pakete ohne Verzögerung ergeben `warnung`, ab gut 1 s Dauer `stau`
+    (Modell, Schübe von 0,3–0,9 s mit 45–85 %: 108–134 Warnungen in 3 × 30 min, kein Stau).
   - Rechenlast: je abgehendem Paket rund 25 ns, je Rückmeldung mit 16 Paketen rund 0,8 µs, keine Allokation
     (`go test ./internal/bwe -bench .`). Rechenzeit eines ganzen Laufs (Knoten und Bots in einem Prozess, 60 s auf
-    `h`, je 3 Läufe): 1:1 `gcc` 3,32 s, `mit` 3,34 s; ein Sender und 8 Empfänger `gcc` 8,48 s, `mit` 8,63 s – der
-    Unterschied (+0,5 % bzw. +1,7 %) liegt in der Streuung der Läufe.
+    `h`, je 3 Läufe; Stufe 0): 1:1 `gcc` 3,32 s, `mit` 3,34 s; ein Sender und 8 Empfänger `gcc` 8,48 s, `mit` 8,63 s –
+    der Unterschied (+0,5 % bzw. +1,7 %) liegt in der Streuung der Läufe.
   - Tests: `internal/bwe/*_test.go` (Detektor an einer künstlichen Leitung: Jitter, Pausen, wachsende Schlange,
-    Verlust, Policer, Wegwechsel, Stille, dünner Strom, Probe; Entpacker; Zuordnung), `bwe_udp_test.go` (Schalter,
-    Zeilen, Ende zu Ende mit pion-Gegenstelle bei `mit` und `gcc`, Zeile `probe` sofort und nach dem Nachlauf; mit
-    `HORN_BWE_MESSUNG=<fall,…>` und `HORN_BWE_OUT=<ordner>` Messläufe Detektor gegen GCC, mit `HORN_BWE_LAST=<s>[,<empfänger>]`
-    Rechenzeit eines Laufs).
+    Verlust, Policer, Wegwechsel, Stille, dünner Strom, Probe; `eigen_test.go`: Zufallsverlust 3 % und 5 % über
+    30 min, unbestätigte Pakete ohne Verzögerung und Doppel, Schonzeit, Dauerverlust, junge Basis, Policer, Spitze,
+    Raten; Entpacker; Zuordnung), `internal/sfu/eigen_test.go` (Raten-Modell mit Detektor: grundloser Zielsturz,
+    echte Enge, Wertung der Probe, Einbruch in der Probe, Kennzahlen `gcc` gegen `eigen` mit `-v`),
+    `internal/fwd` (`TestDoppelDerQuelle`), `bwe_udp_test.go` (Schalter, Zeilen, Doppel in der Hülle, Ende zu Ende mit
+    pion-Gegenstelle bei `mit` und `gcc`, Zeile `probe` sofort und nach dem Nachlauf; mit
+    `HORN_BWE_MESSUNG=<fall,…>`, `HORN_BWE_ART=gcc|mit|eigen` und `HORN_BWE_OUT=<ordner>` Messläufe, mit
+    `HORN_BWE_LAST=<s>[,<empfänger>]` Rechenzeit eines Laufs), `probing_udp_test.go` (`TestUDPProbingEigen`: der
+    Ablauf von `TestUDPProbing` mit `eigen`; `TestUDPProbing` selbst mit `HORN_BWE_ART=eigen`).
 - **Vorrang und Verwerfen (H3):**
   - Die Warteschlange je Bein arbeitet nach Vorrang: Ton > Bildschirm > Sprecher > Kacheln.
   - Ist ein Rahmen älter als 150 ms, verwirft der Knoten Bilder bis zum nächsten Schlüsselbild und fordert eine PLI

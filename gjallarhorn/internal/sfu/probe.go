@@ -89,7 +89,8 @@ const (
 	probeSusOver = time.Second      // so lange darf das Fenster wegen eines offenen Hinweises ueberzogen werden
 	probeUnkWin  = 10 * time.Second // zweites unklares Ergebnis binnen dieser Zeit: gescheitert
 	// Wertung durch den eigenen Stau-Detektor (HORN_BWE=eigen, probeVerdict)
-	probeUnkMax   = 3                      // so viele Proben ohne klares Ergebnis in Folge (je binnen probeUnkWin): die letzte zaehlt als gescheitert
+	probeUnkMax   = 3                      // so viele Proben ohne klares Ergebnis in Folge (je binnen probeUnkGap): die letzte zaehlt als gescheitert
+	probeUnkGap   = time.Minute            // ... laenger auseinander zaehlen sie nicht als Folge (die Wiederholung kann auf ein erholtes GCC-Ziel warten muessen)
 	probeSentMin  = 0.9                    // Durchsatz-Nachweis: bei voller Fuellung gesendet mindestens so viel der Zielrate ...
 	probeAckMin   = 0.95                   // ... und davon vom Empfaenger im selben Zeitraum bestaetigt mindestens so viel
 	probeProofMin = 400 * time.Millisecond // ... gemessen ueber mindestens so viel Sendezeit
@@ -395,7 +396,7 @@ func (l *Leg) probeVerdict(now int64) {
 		case v.Result != bwe.VerdictFree:
 			why = "bwe"
 		}
-		if l.unkAt != 0 && now-l.unkAt <= int64(probeUnkWin) {
+		if l.unkAt != 0 && now-l.unkAt <= int64(probeUnkGap) {
 			l.unkN++
 		} else {
 			l.unkN = 1

@@ -58,6 +58,29 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   soll zeigen, ob ein eigenes Urteil aus Schlange und Verlust dort richtig liegt, bevor es etwas entscheiden darf.
   Verfahren, Zeilen und bekannte Grenzen: `gjallarhorn/NODE.md`.
 
+### Neu – Knoten: eigener Stau-Detektor entscheidet mit (experimentell, `HORN_BWE=eigen`)
+- Neuer Schalterwert `HORN_BWE=eigen` (Standard bleibt `gcc`, unverändert): Der eigene Stau-Detektor wertet die Proben
+  und darf einen Rückfall verhindern, den nur pion-GCC verlangt.
+  - **Proben:** Das Stausignal von GCC hält nur noch die Fülldaten an. Ob die Probe bestanden ist, entscheidet der
+    Detektor nach einem kurzen Nachlauf: gescheitert bei Stau; bestanden nur ohne Stau **und** mit Durchsatz-Nachweis
+    (die Zielrate wurde wirklich gesendet, und der Empfänger hat sie im selben Zeitraum bestätigt); sonst unklar –
+    dann wird ohne Wartezeit wiederholt, höchstens dreimal in Folge. Proben scheitern dadurch auf freier Leitung
+    seltener grundlos; auf enger Leitung bleibt es dabei, dass keine besteht.
+  - **Schichtwahl:** Fällt das GCC-Ziel unter die Senderate, während die jüngsten Rückmeldungen keine Schlange und
+    keinen neuen Verlust zeigen, bleibt die Ebene – solange das in jedem Takt so bleibt und das Ziel wieder steigt.
+    Zeigt die Leitung den Stau, gilt das Signal von GCC sofort, wie bisher. Der Detektor nimmt von sich aus keine
+    Ebene zurück.
+- Detektor (auch bei `HORN_BWE=mit`): Verlust ohne Verzögerung meldet er nicht mehr als Stau – Zufallsverlust von
+  3–5 % ergibt keine Meldung mehr, die ersten 3 s eines Beins zählen beim Verlust nicht, und aus `stau` kommt er auch
+  bei dauerhaft 4–5 % Verlust wieder heraus. Schwerer anhaltender Verlust (Policer) wird weiter als Stau gemeldet, nur
+  etwas später (nach rund 1,5 s statt 0,9 s).
+- **Fund dabei (nicht behoben):** Wiederholt der sendende Browser zum Füllen alte Pakete über RTX, leitet der Knoten
+  sie ein zweites Mal mit derselben Folgenummer weiter. Der Empfänger verwirft sie ungezählt und unbestätigt – für
+  pion-GCC sieht das wie Verlust aus, und es kostet Bandbreite (im Labor 11–17 % mehr Pakete, in einem Lauf doppelt so
+  viele). Bei `mit` und `eigen` zählt der Detektor solche Pakete nicht als Verlust (Zähler `sent.dup`, `dup_unacked`
+  unter `GET /api/sfu/leg/{id}`); der Weiterleiter selbst ist unverändert.
+- Regeln, Zeilen, Messwerte und Grenzen: `gjallarhorn/NODE.md`.
+
 ### Neu – Knoten: Probing mit Fülldaten vor dem Hochschalten (experimentell)
 - Bisher war auf UDP der Schichtwechsel selbst die Probe der Leitung: Trug sie die höhere Ebene nicht, kostete das
   ein Schlüsselbild, den Rückwechsel und kurz verdeckten Ton, und der Aufschub (8 s … 5 min) begrenzte nur die
