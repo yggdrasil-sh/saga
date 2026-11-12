@@ -298,9 +298,14 @@ type strecke struct {
 	buf   atomic.Int64 // ns, Schlange hoechstens so lang
 	jit   atomic.Int64 // ns, Jitter 0..jit je Paket
 	pause atomic.Bool  // alle ~1,5 s eine Pause von 30-90 ms
-	wait  time.Duration
-	ch    chan engPkt
-	lost  atomic.Int64
+	// Token-Bucket-Policer (statt der Schlange, wenn tbRate > 0): Ein Paket geht ohne Verzoegerung durch, solange der
+	// Eimer (tbDepth lang die Rate) genug Guthaben hat, sonst wird es verworfen - wie ein Policer beim Anbieter, der
+	// kurze Spitzen traegt und Dauerlast ueber der Rate abschneidet.
+	tbRate  atomic.Int64 // bit/s
+	tbDepth atomic.Int64 // ns
+	wait    time.Duration
+	ch      chan engPkt
+	lost    atomic.Int64
 }
 
 func newStrecke(c net.PacketConn) *strecke {
@@ -308,7 +313,8 @@ func newStrecke(c net.PacketConn) *strecke {
 	e.buf.Store(int64(300 * time.Millisecond))
 	go func() {
 		rng := rand.New(rand.NewSource(1))
-		var last, pauseTo time.Time
+		var last, pauseTo, tbAt time.Time
+		var tokens float64 // Guthaben des Policers (bit)
 		nextPause := time.Now().Add(1500 * time.Millisecond)
 		for {
 			b := make([]byte, 1600)
@@ -319,6 +325,21 @@ func newStrecke(c net.PacketConn) *strecke {
 			}
 			now := time.Now()
 			at := now
+			if r := e.tbRate.Load(); r > 0 {
+				depth := float64(r) * time.Duration(e.tbDepth.Load()).Seconds()
+				if tbAt.IsZero() {
+					tokens = depth
+				}
+				tokens = min(depth, tokens+now.Sub(tbAt).Seconds()*float64(r))
+				tbAt = now
+				if tokens < float64(n*8) {
+					e.lost.Add(1)
+					continue
+				}
+				tokens -= float64(n * 8)
+			} else {
+				tbAt = time.Time{}
+			}
 			if r := e.rate.Load(); r > 0 {
 				if last.Before(now) {
 					last = now
@@ -675,9 +696,13 @@ func TestUDPBWEMessung(t *testing.T) {
 		do   func(*strecke)
 	}
 	eng := func(kbit int64, bufMs int64) func(*strecke) {
-		return func(s *strecke) { s.buf.Store(bufMs * 1e6); s.rate.Store(kbit * 1000) }
+		return func(s *strecke) { s.tbRate.Store(0); s.buf.Store(bufMs * 1e6); s.rate.Store(kbit * 1000) }
 	}
-	frei := func(s *strecke) { s.rate.Store(0) }
+	frei := func(s *strecke) { s.rate.Store(0); s.tbRate.Store(0) }
+	// tb: Token-Bucket-Policer mit kbit und Eimer depthMs lang die Rate (strecke.tbRate)
+	tb := func(kbit, depthMs int64) func(*strecke) {
+		return func(s *strecke) { s.rate.Store(0); s.tbDepth.Store(depthMs * 1e6); s.tbRate.Store(kbit * 1000) }
+	}
 	faelle := map[string]struct {
 		prep func(*strecke)
 		plan []schritt
@@ -691,21 +716,25 @@ func TestUDPBWEMessung(t *testing.T) {
 		"mitte":   {nil, []schritt{{20, "eng-1000", eng(1000, 300)}, {40, "frei", frei}, {60, "eng-1250", eng(1250, 300)}, {80, "frei", frei}}, 100},
 		"knapp":   {nil, []schritt{{20, "eng-1450", eng(1450, 300)}, {40, "frei", frei}, {60, "eng-1520", eng(1520, 300)}, {80, "frei", frei}}, 100},
 	}
-	// Fall "plan": freier Ablauf aus HORN_BWE_PLAN = "<s>:<kbit>:<puffer-ms>,..." (kbit 0 = frei), Dauer HORN_BWE_DAUER (s) -
-	// fuer Leitungen, die die festen Faelle nicht abdecken (Policer mit kurzem Puffer, Leitung knapp unter der Rate).
+	// Fall "plan": freier Ablauf aus HORN_BWE_PLAN = "<s>:<kbit>:<puffer-ms>[:tb],..." (kbit 0 = frei), Dauer HORN_BWE_DAUER (s) -
+	// fuer Leitungen, die die festen Faelle nicht abdecken (Policer mit kurzem Puffer, Leitung knapp unter der Rate). Mit
+	// ":tb" ist der Abschnitt ein Token-Bucket-Policer (Eimer <puffer-ms> lang die Rate, keine Schlange).
 	if spec := os.Getenv("HORN_BWE_PLAN"); spec != "" {
 		var plan []schritt
 		for _, part := range strings.Split(spec, ",") {
 			f := strings.Split(part, ":")
-			if len(f) != 3 {
+			if len(f) != 3 && (len(f) != 4 || f[3] != "tb") {
 				t.Fatalf("HORN_BWE_PLAN: %q", part)
 			}
 			at, _ := strconv.ParseFloat(f[0], 64)
 			kbit, _ := strconv.ParseInt(f[1], 10, 64)
 			buf, _ := strconv.ParseInt(f[2], 10, 64)
-			if kbit == 0 {
+			switch {
+			case kbit == 0:
 				plan = append(plan, schritt{at, "frei", frei})
-			} else {
+			case len(f) == 4:
+				plan = append(plan, schritt{at, fmt.Sprintf("tb-%d-%dms", kbit, buf), tb(kbit, buf)})
+			default:
 				plan = append(plan, schritt{at, fmt.Sprintf("eng-%d-%dms", kbit, buf), eng(kbit, buf)})
 			}
 		}

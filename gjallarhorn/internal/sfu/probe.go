@@ -111,7 +111,7 @@ const (
 	// l -> m auf freier Leitung ohne Nachweis.
 	probeSentMin  = 1 / probeHead
 	probeAckMin   = 0.95                   // ... und davon vom Empfaenger im selben Zeitraum bestaetigt mindestens so viel
-	probeProofMin = 300 * time.Millisecond // ... gemessen ueber mindestens so viel Sendezeit (Fenster 0,4 bis 0,6 s; vorher 400 ms)
+	probeProofMin = 200 * time.Millisecond // ... gemessen ueber mindestens so viel Sendezeit (vorher 400 ms); bwe.Rates zaehlt nur ganze 100-ms-Fenster der Fuellung - bei 0,4 s Fenster 2 oder 3
 	probeTail     = 500 * time.Millisecond // Nachlauf bis zum Urteil ohne bekannte Umlaufzeit (sonst 2 Umlaufzeiten + 200 ms, hoechstens 1 s)
 )
 
@@ -251,13 +251,21 @@ func (s *slot) dwFor(rank int) *dwell {
 func (l *Leg) probeBegin(s, fs *slot, rank int, need, sum, audio float64, now int64) {
 	target := max(need*probeHead, sum+probeFillMin) + audio
 	stepT := need*upHeadroom + audio
-	fill := target - sum - audio
+	// Gefuellt wird bis zur Zielrate auf der Leitung: Sendet das Bein gerade weniger, als die Planung mit den geglaetteten
+	// Raten seiner Schichten annimmt (sie enthalten die Schluesselbilder), fuellt die Probe die Luecke mit. Mit der
+	// Reserve 1,15 ging diese Luecke (UDP-Laeufe l -> m: gesendet 85 bis 92 % der Zielrate) im Nachweis unter; mit 1,05
+	// fehlte dem Nachweis sonst der Bedarf.
+	base := sum + audio
+	if sr := l.est.sendRate(); sr > 0 && sr < base {
+		base = sr
+	}
+	fill := target - base
 	if fill > probeFillMax {
 		// Freigegeben wird nur, was wirklich geprobt wurde. (planLeg probt Schritte mit groesserer Fuellrate gar nicht
 		// erst; das hier greift nur, wenn die Raten seither gewandert sind.)
 		fill = probeFillMax
-		target = sum + audio + fill
-		stepT = min(stepT, (sum+fill)*upHeadroom/probeHead+audio)
+		target = base + fill
+		stepT = min(stepT, (target-audio)*upHeadroom/probeHead+audio)
 	}
 	if fill <= 0 {
 		return
