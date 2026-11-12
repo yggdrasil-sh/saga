@@ -134,28 +134,33 @@ func TestEigenEinbruchNachProbe(t *testing.T) {
 	}
 }
 
+// legFang sammelt die Ereignisse der Steuerung eines Modell-Laufs (Config.OnLegEvent).
+func legFang(er *estRoom) *[]LegEvent {
+	var evs []LegEvent
+	er.r.mu.Lock()
+	er.r.cfg.OnLegEvent = func(e LegEvent) { evs = append(evs, e) }
+	er.r.mu.Unlock()
+	return &evs
+}
+
+// legZeile: die Ereignisse als eine Zeile, zum Vergleichen.
+func legZeile(evs []LegEvent) string {
+	out := ""
+	for _, e := range evs {
+		switch e.Kind {
+		case LegDown:
+			out += fmt.Sprintf("[down %s %s>%s %s]", e.Class, e.From, e.To, e.Why)
+		default:
+			out += fmt.Sprintf("[%s %s %s]", e.Kind, e.Art, e.Why)
+		}
+	}
+	return out
+}
+
 // TestLegEreignisse: Beginn und Ende einer Widerlegung und jede Ruecknahme einer Schicht werden gemeldet
 // (Config.OnLegEvent) - mit Art, Grund und Dauer; nur beim Wechsel, nicht je Takt.
 func TestLegEreignisse(t *testing.T) {
-	fang := func(er *estRoom) *[]LegEvent {
-		var evs []LegEvent
-		er.r.mu.Lock()
-		er.r.cfg.OnLegEvent = func(e LegEvent) { evs = append(evs, e) }
-		er.r.mu.Unlock()
-		return &evs
-	}
-	zeile := func(evs []LegEvent) string {
-		out := ""
-		for _, e := range evs {
-			switch e.Kind {
-			case LegDown:
-				out += fmt.Sprintf("[down %s %s>%s %s]", e.Class, e.From, e.To, e.Why)
-			default:
-				out += fmt.Sprintf("[%s %s %s]", e.Kind, e.Art, e.Why)
-			}
-		}
-		return out
-	}
+	fang, zeile := legFang, legZeile
 	// grundloser Zielsturz: widerlegt, das Ziel erholt sich
 	er := neuEigen(t, true, 1250e3, 810e3, 1)
 	er.pion = true

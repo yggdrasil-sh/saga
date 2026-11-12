@@ -20,9 +20,11 @@ type estDet struct {
 	q     float64 // Schlange am Ende des Takts (s)
 	qPrev float64
 	hist  []estDetTick
-	blind bool // der Detektor sieht nichts (Rueckmeldung alt): widerlegt nie
-	mute  bool // Verlust am vollen Puffer bleibt unbemerkt (fuer den Test des Durchsatz-Nachweises allein)
-	burst int  // so viele Takte lang meldet der Detektor Verlust ohne Schlange (Schluesselbild ueberlaeuft einen kurzen Puffer)
+	blind bool    // der Detektor sieht nichts (Rueckmeldung alt): widerlegt nie
+	mute  bool    // Verlust am vollen Puffer bleibt unbemerkt (fuer den Test des Durchsatz-Nachweises allein)
+	burst int     // so viele Takte lang meldet der Detektor Verlust ohne Schlange (Schluesselbild ueberlaeuft einen kurzen Puffer)
+	spike float64 // Schlange an der Spitze nur in diesem Takt (s): durch ein eigenes Buendel (estRoom.bund) bzw. kick
+	kick  float64 // ... fuer den naechsten Takt vorgemerkt, ohne eigenes Buendel (Stoerung von aussen)
 }
 
 type estDetTick struct {
@@ -61,10 +63,10 @@ func (er *estRoom) eigen() *estRoom {
 	d := &estDet{buf: 0.3}
 	er.det = d
 	er.l.ExtTip = func() bwe.Tip {
-		q := d.qPrev + 0.25*(d.q-d.qPrev)
+		q := d.qPrev + 0.25*(d.q-d.qPrev) + d.spike
 		lost := len(d.hist) > 0 && d.hist[len(d.hist)-1].lost
 		calm := !d.blind && q < 0.010
-		return bwe.Tip{Clear: calm && !lost, Calm: calm, LossUp: lost, QueueUs: int64(q * 1e6)}
+		return bwe.Tip{Clear: calm && !lost, Calm: calm, Fresh: !d.blind, LossUp: lost, QueueUs: int64(q * 1e6)}
 	}
 	er.l.ExtSpan = func(from, to, rateFrom time.Duration) (bwe.Verdict, bwe.Rates) {
 		v := bwe.Verdict{Result: bwe.VerdictUnclear}

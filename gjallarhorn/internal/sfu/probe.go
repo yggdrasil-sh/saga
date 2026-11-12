@@ -200,6 +200,7 @@ type ProbeStats struct {
 	Unclear                          uint64 // davon (Aborted) ohne klares Ergebnis beendet und wiederholt
 	Refuted                          uint64 // eigen: Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat (estimator.refute)
 	Held                             uint64 // eigen: Schonfristen, die nur das Halten nach einer bestandenen Probe getragen hat (estimator.held)
+	Bursts                           uint64 // eigen: Takte einer laufenden Widerlegung, die ein eigenes Buendel entschuldigt hat (estimator.blip)
 	Clamped                          uint64 // Faelle des GCC-Ziels in Proben, die kein Stau waren (probeJudge)
 	PadBytes                         uint64 // gesendete Fuell-Bytes
 	LateDropped                      uint64 // verworfene Nachzuegler, deren Stelle der Ausgang nicht mehr kennt (fwd.LegStats.LateDropped)
@@ -213,7 +214,7 @@ func (l *Leg) ProbeStats() ProbeStats {
 	ps := l.pstat
 	ps.PadBytes = l.fl.Stats.PadBytes.Load()
 	ps.LateDropped = l.fl.Stats.LateDropped.Load()
-	ps.Refuted, ps.Held = l.est.refuted, l.est.heldN
+	ps.Refuted, ps.Held, ps.Bursts = l.est.refuted, l.est.heldN, l.est.blips
 	return ps
 }
 

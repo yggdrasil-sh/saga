@@ -48,6 +48,9 @@ type estRoom struct {
 	// eigen_test.go: Modell des eigenen Stau-Detektors (HORN_BWE=eigen) und grundlose Zielstuerze von GCC
 	det    *estDet
 	falsch int // so viele Takte lang faellt das GCC-Ziel auf 85 % der Rate, ohne dass die Leitung staut
+	// bund: eigenes Buendel im naechsten Takt (bit/s zusaetzlich ueber den Takt - ein Schluesselbild); auf einer Leitung
+	// mit Ratengrenze zeigt der Detektor dafuer einen Takt lang eine Schlange an der Spitze
+	bund float64
 }
 
 const estAudio = 40e3
@@ -145,7 +148,9 @@ func (er *estRoom) tick() {
 		er.padMB += er.fill * dt / 8e6
 		rate += er.fill
 	}
-	er.l.fl.Stats.BytesOut.Add(uint64(rate * dt / 8))
+	bund := er.bund
+	er.bund = 0
+	er.l.fl.Stats.BytesOut.Add(uint64((rate + bund) * dt / 8))
 	switch {
 	case er.pion:
 		er.pionGCC(rate)
@@ -177,6 +182,10 @@ func (er *estRoom) tick() {
 	}
 	if er.det != nil {
 		er.det.step(er, rate)
+		er.det.spike, er.det.kick = er.det.kick, 0
+		if bund > 0 && er.link > 0 {
+			er.det.spike += bund * dt / er.link // das Buendel steht hintereinander an der Leitung an
+		}
 	}
 	er.r.tickAt(er.now)
 	er.sent = 0
