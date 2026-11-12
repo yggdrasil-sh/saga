@@ -353,7 +353,8 @@ Platzhalter: `horn-1.example.org`.
     aktiv, aber leer war. **Seit dem Abgleich im Weiterleiter erreicht kein Doppel der Quelle mehr ein Bein** – bei
     keiner Stellung des Schalters, auch nicht bei `gcc`: pion-GCC führt dafür keinen Verlust mehr
     (`TestPruefDoppelGCCVerlust`, Quelle mit 25 % Doppeln, echter pion-Schätzer: mit Abgleich 0,0 % Verlust und Ziel
-    1406 kbit/s wie ohne Doppel; dieselben Doppel direkt in die Hülle 25,0 % Verlust und 134 kbit/s).
+    rund 1405 kbit/s wie ohne Doppel – 1404 bis 1406 je Lauf, 900 Pakete gesendet und 900 gezählt; dieselben Doppel
+    direkt in die Hülle 25,0 % Verlust und 134 kbit/s, 1200 gesendet und 900 gezählt).
     Bei `mit` und `eigen` erkennt die Hülle ein Paket mit wiederholter Folgenummer weiterhin (Fenster von 1024 Nummern
     je Strom): Bleibt seine Bestätigung aus, zählt das für den Detektor nicht als Verlust (Zähler `sent.dup`,
     `dup_unacked`). Beide Zähler bleiben als Messwert und **sollten 0 sein** – alles andere hieße, der Weiterleiter
