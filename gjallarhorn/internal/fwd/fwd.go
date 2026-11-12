@@ -990,7 +990,7 @@ func (l *Leg) pad(now int64) bool {
 			Totals.WriteErrs.Add(1)
 			break
 		}
-		o.lastSeq = seq
+		o.lastSeq, o.hiSeq = seq, seq
 		// Die Folgenummern der Quelle ruecken um das Fuellpaket weiter. Stellen, an denen der Ausgang schon vorbei ist,
 		// haben sich ihren Versatz gemerkt (slots): Ein Nachzuegler von vor dem Schub landet nicht auf der Nummer eines
 		// Fuellpakets.

@@ -548,12 +548,12 @@ func TestPlayoutDelay(t *testing.T) {
 	}
 }
 
-// TestDoppelDerQuelle haelt das heutige Verhalten fest (Befund aus dem Labor labbwe1, 7.1/7.2 - hier nicht geaendert):
-// Liefert eine Quelle ein Paket zweimal, geht es zweimal hinaus, beide Male mit derselben Folgenummer. Das geschieht,
-// wenn der sendende Browser zum Fuellen bzw. Proben alte Pakete ueber RTX wiederholt: pion gibt sie entpackt (mit der
-// urspruenglichen Folgenummer) auf der Spur zurueck. Der Empfaenger verwirft das Doppel am SRTP-Wiederholungsschutz,
-// ohne es zu zaehlen oder per transport-cc zu bestaetigen - fuer pion-GCC sieht es wie Verlust aus. Die Huelle bei
-// HORN_BWE=mit/eigen erkennt solche Pakete an der wiederholten Folgenummer (bwe.go, dupWin).
+// TestDoppelDerQuelle (Befund aus dem Labor labbwe1, 7.1/7.2): Liefert eine Quelle ein Paket zweimal - der sendende
+// Browser wiederholt zum Fuellen bzw. Proben alte Pakete ueber RTX, pion gibt sie entpackt (mit der urspruenglichen
+// Folgenummer) auf der Spur zurueck -, geht nur das erste Exemplar hinaus. Frueher gingen beide mit derselben
+// Folgenummer an jeden Empfaenger, der das Doppel am SRTP-Wiederholungsschutz verwarf, ohne es zu zaehlen oder per
+// transport-cc zu bestaetigen - fuer pion-GCC und den Detektor sah das wie Verlust aus. Hier ueber den laufenden
+// Schreiber; die Einzelfaelle des Abgleichs stehen in doppel_test.go.
 func TestDoppelDerQuelle(t *testing.T) {
 	room := NewRoom(time.Hour)
 	defer room.Close()
@@ -571,24 +571,24 @@ func TestDoppelDerQuelle(t *testing.T) {
 	src.Inject(vp8pkt(103, 10000, true, false, true))
 	src.Inject(vp8pkt(101, 4000, true, true, true)) // aeltere Wiederholung
 	src.Inject(vp8pkt(104, 13000, true, false, true))
-	waitFor(t, func() bool { return w.count() == 6 })
+	waitFor(t, func() bool { return w.count() == 4 })
+	time.Sleep(20 * time.Millisecond)
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	d := func(i int) uint16 { return w.seqs[i] - w.seqs[0] }
-	if d(1) != 1 || d(2) != 1 || d(3) != 2 || d(4) != 0 || d(5) != 3 || leg.Stats.PktsOut.Load() != 6 {
-		t.Fatalf("folgenummern %v, pkts_out %d (erwartet: Doppel mit derselben Folgenummer, alle 6 gezaehlt)", w.seqs, leg.Stats.PktsOut.Load())
+	if len(w.seqs) != 4 || d(1) != 1 || d(2) != 2 || d(3) != 3 || leg.Stats.PktsOut.Load() != 4 || src.Dups.Load() != 2 {
+		t.Fatalf("folgenummern %v, pkts_out %d, doppel %d (erwartet: jedes Paket einmal, 2 Doppel verworfen)", w.seqs, leg.Stats.PktsOut.Load(), src.Dups.Load())
 	}
 }
 
-// TestDoppelDerQuelleFolgen haelt fest, was ein Doppel der Quelle (TestDoppelDerQuelle) im Ausgang sonst noch anrichtet
-// (Pruefung von HORN_BWE=eigen; heutiges Verhalten, hier nicht geaendert - spricht fuer einen Abgleich auf Doppel im
-// Weiterleiter):
-//   - Ein aelteres Doppel setzt den Stand des Ausgangs zurueck (lastSeq): Folgt direkt darauf ein Schichtwechsel, bekommt
-//     das Schluesselbild der neuen Schicht eine Folgenummer, die schon vergeben war - der Empfaenger verwirft es am
-//     SRTP-Wiederholungsschutz.
-//   - Ein Doppel aus der Bildmitte, das eintrifft, waehrend ein Bild ausgelassen wird (Zeitschicht ueber maxTID), zaehlt
-//     als ausgelassenes Paket des laufenden Bildes: Der Versatz rueckt eins zu weit, das naechste weitergeleitete Paket
-//     traegt die Folgenummer des letzten.
+// TestDoppelDerQuelleFolgen (Pruefung von HORN_BWE=eigen, Fund 2): Was ein Doppel der Quelle im Ausgang frueher sonst
+// noch anrichtete, bleibt jetzt aus:
+//   - Ein aelteres Doppel setzte den Stand des Ausgangs zurueck (lastSeq): Folgte direkt darauf ein Schichtwechsel,
+//     bekam das Schluesselbild der neuen Schicht eine Folgenummer, die schon vergeben war ([101 102 103 104 102 103]) -
+//     der Empfaenger verwirft es am SRTP-Wiederholungsschutz. Jetzt: [101 102 103 104 105].
+//   - Ein Doppel aus der Bildmitte, das eintraf, waehrend ein Bild ausgelassen wurde (Zeitschicht ueber maxTID), zaehlte
+//     als ausgelassenes Paket des laufenden Bildes: Der Versatz rueckte eins zu weit, das naechste weitergeleitete Paket
+//     trug die Folgenummer des letzten ([20 21 21]). Jetzt: [20 21 22].
 func TestDoppelDerQuelleFolgen(t *testing.T) {
 	// Schichtwechsel direkt nach einem aelteren Doppel
 	leg := NewLeg()
@@ -603,17 +603,19 @@ func TestDoppelDerQuelleFolgen(t *testing.T) {
 	a.Inject(vp8pkt(103, 10000, true, false, true))
 	a.Inject(vp8pkt(104, 13000, true, false, true))
 	a.Inject(vp8pkt(102, 7000, true, false, true)) // aelteres Doppel
-	waitFor(t, func() bool { return w.count() == 5 })
+	waitFor(t, func() bool { return w.count() == 4 && a.Dups.Load() == 1 })
 	b := &Source{Owner: "p", Layer: "h", Kind: Video, Clock: 90000}
 	o.Assign(b)
 	b.Inject(vp8pkt(5000, 90000, true, true, true))
-	waitFor(t, func() bool { return w.count() == 6 })
+	waitFor(t, func() bool { return w.count() == 5 })
 	w.mu.Lock()
 	s := append([]uint16(nil), w.seqs...)
 	w.mu.Unlock()
-	t.Logf("Schichtwechsel nach Doppel: Folgenummern %v (relativ %d)", s, s[5]-s[0])
-	if s[4] != s[1] || s[5] != s[2] {
-		t.Fatalf("erwartet (heutiges Verhalten): Schluesselbild der neuen Schicht auf der Nummer des dritten Pakets; Folgenummern %v", s)
+	t.Logf("Schichtwechsel nach Doppel: Folgenummern %v", s)
+	for i := 1; i < len(s); i++ {
+		if s[i] != s[i-1]+1 {
+			t.Fatalf("Schluesselbild der neuen Schicht nicht auf der naechsten freien Nummer; Folgenummern %v", s)
+		}
 	}
 
 	// Doppel aus der Bildmitte waehrend eines ausgelassenen Bildes
@@ -638,7 +640,7 @@ func TestDoppelDerQuelleFolgen(t *testing.T) {
 	s2 := append([]uint16(nil), w2.seqs...)
 	w2.mu.Unlock()
 	t.Logf("Doppel im ausgelassenen Bild: Folgenummern %v", s2)
-	if len(s2) != 3 || s2[1] != s2[0]+1 || s2[2] != s2[1] {
-		t.Fatalf("erwartet (heutiges Verhalten): Bild C auf der Nummer des letzten Pakets von Bild A; Folgenummern %v", s2)
+	if len(s2) != 3 || s2[1] != s2[0]+1 || s2[2] != s2[1]+1 || c.Dups.Load() != 1 {
+		t.Fatalf("erwartet: Bild C auf der naechsten freien Nummer, 1 Doppel verworfen; Folgenummern %v, doppel %d", s2, c.Dups.Load())
 	}
 }

@@ -539,7 +539,7 @@ type legStats struct {
 	ConnectMs int64      `json:"connect_ms"`
 	PktsOut   uint64     `json:"pkts_out"`
 	BytesOut  uint64     `json:"bytes_out"`
-	PadBytes  uint64     `json:"pad_bytes,omitempty"`    // Fuelldaten der Proben (in bytes_out enthalten)
+	PadBytes  uint64     `json:"pad_bytes,omitempty"` // Fuelldaten der Proben (in bytes_out enthalten)
 	Dropped   uint64     `json:"frames_dropped"`
 	Stalls    uint64     `json:"stalls"`
 	MaxQMs    float64    `json:"max_queue_ms"`

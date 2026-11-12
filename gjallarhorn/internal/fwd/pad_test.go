@@ -1,6 +1,7 @@
 package fwd
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"testing"
@@ -326,7 +327,10 @@ func TestPaddingNoAlloc(t *testing.T) {
 	b := vp8pkt(1, 0, true, false, true)
 	now := Now()
 	pads := leg.Stats.PadPkts.Load()
+	seq := uint16(1)
 	run := func() {
+		binary.BigEndian.PutUint16(b[2:], seq) // fortlaufende Folgenummern (sonst Doppel der Quelle)
+		seq++
 		s.Inject(b)
 		e, _ := leg.pop()
 		leg.process(e.p, e.o)
@@ -433,7 +437,8 @@ func (b *padBench) check() (media, pads int) {
 // TestPaddingSpaetesPaket (Prueferfund): Ein Paket der Quelle, das erst nach Fuellpaketen eintrifft, aber vor deren
 // Stelle gehoert (Nachsendung, Umsortierung), geht mit dem Versatz von damals hinaus - frueher landete es auf einer
 // schon vergebenen Fuell-Folgenummer, und seine eigene Luecke blieb offen. Geprueft vor und nach einem und mehreren
-// Fuell-Schueben, ueber den Ueberlauf der Folgenummern und mit einem Quellwechsel dazwischen.
+// Fuell-Schueben, ueber den Ueberlauf der Folgenummern und mit einem Quellwechsel dazwischen. Den Versatz merkt sich
+// die uebersprungene Stelle selbst (Out.slots) - dieselbe Mechanik wie bei ausgelassenen Bildern (doppel_test.go).
 func TestPaddingSpaetesPaket(t *testing.T) {
 	for _, base := range []uint16{100, 65500} { // 65500: Ein- und Ausgang laufen im Test ueber 65535
 		b := newPadBench(t)
@@ -461,14 +466,11 @@ func TestPaddingSpaetesPaket(t *testing.T) {
 		b.in(lo, q+10, 18000, true, false, true)
 		b.fill(2)
 		b.in(lo, q+8, 15000, false, false, false) // Nachsendung nach zwei Schueben
-		b.in(lo, q+8, 15000, false, false, false) // ... und noch einmal (Doppel der Quelle): dieselbe Folgenummer
-		b.w.mu.Lock()
-		n := len(b.w.hdrs)
-		if d := b.w.hdrs[n-1].SequenceNumber - b.w.hdrs[n-2].SequenceNumber; d != 0 {
-			t.Fatalf("doppelt eingetroffenes Paket mit zwei Folgenummern (Abstand %d)", d)
+		n := b.w.count()
+		b.in(lo, q+8, 15000, false, false, false) // ... und noch einmal (Doppel der Quelle): faellt im Abgleich weg
+		if b.w.count() != n || lo.Dups.Load() != 1 {
+			t.Fatalf("doppelt eingetroffenes Paket: %d geschrieben, als Doppel gezaehlt %d", b.w.count()-n, lo.Dups.Load())
 		}
-		b.w.hdrs, b.w.pls = b.w.hdrs[:n-1], b.w.pls[:n-1]
-		b.w.mu.Unlock()
 		media, pads := b.check()
 		if media != 11 || pads != 7+4+3+6+2+2 {
 			t.Fatalf("basis %d: %d Medien-, %d Fuellpakete", base, media, pads)
@@ -518,10 +520,10 @@ func TestPaddingSpaetesPaket(t *testing.T) {
 	}
 }
 
-// TestPaddingSpaetAelterAlsHistorie: Ein Nachzuegler, der aelter ist als die Historie (mehr als padHist gefuellte
-// Bildgrenzen), wird verworfen statt auf eine vergebene Folgenummer zu geraten - die Luecke bleibt, ein Doppel
-// entsteht nicht. Innerhalb der Historie passt auch die aelteste Stelle noch.
-func TestPaddingSpaetAelterAlsHistorie(t *testing.T) {
+// TestPaddingSpaetAelterAlsRing: Ein Nachzuegler, dessen Stelle der Ausgang nicht mehr kennt (mehr als lateWin-1
+// Pakete zurueck), wird verworfen statt auf eine vergebene Folgenummer zu geraten - die Luecke bleibt, ein Doppel
+// entsteht nicht. Am Rand des Rings passt er noch, auch nach Fuell-Schueben an jeder Bildgrenze dazwischen.
+func TestPaddingSpaetAelterAlsRing(t *testing.T) {
 	b := newPadBench(t)
 	s := &Source{Owner: "p", Layer: "l", Kind: Video, Clock: 90000}
 	b.o.Assign(s)
@@ -536,22 +538,22 @@ func TestPaddingSpaetAelterAlsHistorie(t *testing.T) {
 			b.in(s, seq, uint32(seq)*3000, true, false, true)
 		}
 	}
-	frames(padHist) // die Stelle hinter Paket 13 ist jetzt die aelteste im Ring
+	frames(lateWin - 2) // die Luecke liegt jetzt lateWin-1 Stellen zurueck
 	b.in(s, 12, 3000, false, false, false)
 	media, _ := b.check()
-	if media != 3+padHist+1 {
-		t.Fatalf("nachzuegler an der aeltesten Stelle nicht eingereiht: %d Medienpakete", media)
+	if media != 3+lateWin-2+1 {
+		t.Fatalf("nachzuegler am Rand des Rings nicht eingereiht: %d Medienpakete", media)
 	}
 	// zweite Luecke, diesmal faellt ihre Stelle aus dem Ring
 	seq++ // fehlt
 	gap := seq
 	seq++
 	b.in(s, seq, uint32(seq)*3000, true, false, true)
-	frames(padHist + 3)
+	frames(lateWin)
 	n0 := b.w.count()
 	b.in(s, gap, uint32(gap)*3000, true, false, true)
 	if b.w.count() != n0 || b.leg.Stats.LateDropped.Load() != 1 {
-		t.Fatalf("nachzuegler jenseits der Historie geschrieben (%d Pakete, verworfen %d)", b.w.count()-n0, b.leg.Stats.LateDropped.Load())
+		t.Fatalf("nachzuegler jenseits des Rings geschrieben (%d Pakete, verworfen %d)", b.w.count()-n0, b.leg.Stats.LateDropped.Load())
 	}
 	seen := map[uint16]bool{}
 	for _, h := range b.w.hdrs {
@@ -679,10 +681,10 @@ func TestPaddingTotmann(t *testing.T) {
 	checkPad(t, w)
 }
 
-// TestPaddingHistorieVeraltet: Lange nach einer Probe (mehr als 32768 Pakete ohne Quellwechsel) geht ein Nachzuegler
-// weiter mit richtiger Folgenummer hinaus. Ohne padHistAge hielt der 16-Bit-Vergleich mit der stehengebliebenen
-// Historie ihn fuer "aelter als die Historie" und verwarf ihn (LateDropped).
-func TestPaddingHistorieVeraltet(t *testing.T) {
+// TestPaddingLangeNachProbe: Lange nach einer Probe (mehr als 32768 Pakete ohne Quellwechsel) geht ein Nachzuegler
+// weiter mit richtiger Folgenummer hinaus. (Mit der frueheren Fuell-Historie hielt der 16-Bit-Vergleich mit einer
+// stehengebliebenen Stelle ihn ohne Alterung fuer "aelter als die Historie" und verwarf ihn.)
+func TestPaddingLangeNachProbe(t *testing.T) {
 	leg := NewLeg()
 	defer leg.Close()
 	w := &hrec{}
@@ -699,7 +701,7 @@ func TestPaddingHistorieVeraltet(t *testing.T) {
 	frame(true)
 	waitFor(t, func() bool { return w.count() == 1 })
 	leg.SetPadding(o, 1e6)
-	for i := 0; i < 2*padHist+8; i++ { // mehr Fuell-Stellen, als die Historie fasst
+	for i := 0; i < 40; i++ { // Fuell-Schuebe an 40 Bildgrenzen
 		frame(false)
 		time.Sleep(6 * time.Millisecond)
 	}
