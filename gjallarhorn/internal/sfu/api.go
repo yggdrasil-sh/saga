@@ -248,6 +248,11 @@ type Config struct {
 	// vorab mit Fuelldaten (probe.go). Aus (Standard hier; der Knoten schaltet es mit HORN_PROBING ein bzw. aus):
 	// Verhalten wie zuvor - der Wechsel selbst ist die Probe.
 	Probing bool
+	// Anlauf (Test-Einstellung, am Knoten HORN_ANLAUF): Gilt die Anlauf-Regel (srcSettle, control.go - Schritt hinauf
+	// auf eine junge Quelle rechnet mit der angenommenen Rate)? AnlaufStandard: nur auf Beinen, deren eigener
+	// Stau-Detektor mitentscheidet (HORN_BWE=eigen, Leg.ExtSpan); bei gcc und mit plant der Anlauf wie ohne die Regel.
+	// AnlaufAn bzw. AnlaufAus ueberstimmen das fuer alle UDP-Beine mit GCC.
+	Anlauf int
 
 	// OnLayout meldet, welche Teilnehmenden ein Bein in welchem Platz bekommt
 	// (fuer die Kachelansicht; die Saga-Steuerung reicht es ans Geraet).
@@ -269,6 +274,13 @@ type Config struct {
 	// ausserhalb aller Sperren aufgerufen.
 	OnPeers func(room string)
 }
+
+// Werte von Config.Anlauf.
+const (
+	AnlaufStandard = 0
+	AnlaufAn       = 1
+	AnlaufAus      = -1
+)
 
 func (c Config) withDefaults() Config {
 	if c.Tick <= 0 {

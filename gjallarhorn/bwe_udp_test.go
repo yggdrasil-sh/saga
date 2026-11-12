@@ -35,6 +35,19 @@ import (
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 )
 
+// HORN_ANLAUF: Werte der Test-Einstellung.
+func TestAnlaufSchalter(t *testing.T) {
+	for in, want := range map[string]int{"": sfu.AnlaufStandard, "1": sfu.AnlaufAn, " 1 ": sfu.AnlaufAn, "0": sfu.AnlaufAus, "an": sfu.AnlaufStandard, "2": sfu.AnlaufStandard} {
+		got, warn := parseAnlauf(in)
+		if got != want {
+			t.Fatalf("%q: %d", in, got)
+		}
+		if known := strings.TrimSpace(in) == "" || strings.TrimSpace(in) == "0" || strings.TrimSpace(in) == "1"; known != (warn == "") {
+			t.Fatalf("%q: warnung %q", in, warn)
+		}
+	}
+}
+
 // HORN_BWE: Schalterwerte.
 func TestBWESchalter(t *testing.T) {
 	for in, want := range map[string]string{"": bweGCC, "gcc": bweGCC, " GCC ": bweGCC, "mit": bweMit, "Mit": bweMit, "eigen": bweEigen, " Eigen": bweEigen, "selbst": bweGCC, "1": bweGCC} {
@@ -444,6 +457,7 @@ func newBWEAufbau(t *testing.T, mode string, prep func(*strecke)) *bweAufbau {
 	cfg := &config{Name: "localhost", Listen: "127.0.0.1:0", UDP: true, UDPListen: "127.0.0.1:0", Data: t.TempDir(),
 		ICEIPs: []string{"127.0.0.1"}, RelayIP: net.ParseIP("127.0.0.1"), MaxLegs: 32, Mode: "node", Dev: true, Probing: true, BWE: mode,
 		Certs: netx.CertOptions{Name: "localhost", Self: true}}
+	cfg.Anlauf, _ = parseAnlauf(os.Getenv("HORN_ANLAUF")) // Test-Einstellung wie am Knoten (ohne Wert: Standard je Art)
 	s, err := newServer(cfg)
 	if err != nil {
 		t.Fatal(err)

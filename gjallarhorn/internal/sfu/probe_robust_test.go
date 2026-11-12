@@ -447,6 +447,7 @@ func TestProbingAnlaufWieOhne(t *testing.T) {
 	var seq [2][]st
 	for i, on := range []bool{false, true} {
 		er := newEstCfg(t, 1000e3, 810e3, 1, on)
+		setAnlauf(er, AnlaufAn) // die Regel gilt im Standard nur bei eigen; der Anlauf ohne sie: TestProbingAnlaufOhneJungeQuelle
 		for k := 0; k < 100; k++ {
 			if k >= 1 && k <= 3 { // der Kodierer faehrt hoch
 				er.rates["h"] += 100e3

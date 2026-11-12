@@ -50,6 +50,21 @@ func parseBWE(v string) (mode, warn string) {
 	return bweGCC, fmt.Sprintf("HORN_BWE=%q unbekannt (gcc, mit oder eigen) - nutze gcc", v)
 }
 
+// parseAnlauf: HORN_ANLAUF (Test-Einstellung fuers Labor) - gilt die Anlauf-Regel (sfu: srcSettle, Schritt hinauf auf
+// eine junge Quelle rechnet mit der angenommenen Rate)? 1 = auf allen UDP-Beinen mit GCC, 0 = auf keinem, ohne Wert der
+// Standard: nur bei HORN_BWE=eigen. Jeder andere Wert gilt als ohne Wert (mit Warnzeile).
+func parseAnlauf(v string) (mode int, warn string) {
+	switch strings.TrimSpace(v) {
+	case "":
+		return sfu.AnlaufStandard, ""
+	case "1":
+		return sfu.AnlaufAn, ""
+	case "0":
+		return sfu.AnlaufAus, ""
+	}
+	return sfu.AnlaufStandard, fmt.Sprintf("HORN_ANLAUF=%q unbekannt (1, 0 oder leer) - nutze den Standard je HORN_BWE", v)
+}
+
 // bweEpoch: Nullpunkt der Sendezeiten des Mitlesers (Prozessuhr, monoton).
 var bweEpoch = time.Now()
 

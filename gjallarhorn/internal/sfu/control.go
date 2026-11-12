@@ -43,8 +43,22 @@ const (
 // Richtungen, deren erster Schritt mit der Schaetzung auf dem Anfangswert fiel; Schritte ab rund 2 s hielten.
 // Mit der angenommenen Rate passt h nicht in die Anfangsschaetzung, der Deckel folgt dem Bedarf (want), und der
 // Schritt kommt nach rund 2 s - mit eingeschwungener Messung.
+// Die Regel gilt nur auf Beinen mit HORN_BWE=eigen (Leg.anlauf; Labor labbwe2: allein, bei gcc, brachte sie nichts
+// Messbares - 5 gegen 4 Rueckfaelle von 32 -, kostete aber rund 2 s bis h). Config.Anlauf ueberstimmt das fuer Tests.
 // Variable fuer Tests.
 var srcSettle = 2 * time.Second
+
+// anlauf: Gilt die Anlauf-Regel (srcSettle) fuer dieses Bein? Standard: nur, wenn der eigene Stau-Detektor mitentscheidet
+// (HORN_BWE=eigen, ExtSpan gesetzt); Config.Anlauf (HORN_ANLAUF) ueberstimmt das.
+func (l *Leg) anlauf(cfg Config) bool {
+	switch cfg.Anlauf {
+	case AnlaufAn:
+		return true
+	case AnlaufAus:
+		return false
+	}
+	return l.ExtSpan != nil
+}
 
 // screenResume: Kommt eine Bildschirmquelle nach mindestens so langer Stille (zusaetzlich zur Sekunde bis „nicht
 // aktiv“) wieder, zaehlt das als neuer Beginn der Freigabe (Apps und Web beenden das Teilen mit replaceTrack(null),
@@ -599,6 +613,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// bzw. ready). Kacheln, die aus der Pause dazukommen (unterste Schicht), zaehlen nicht mit: Jemanden zu zeigen geht
 	// vor. TCP bleibt wie bisher.
 	oneUp := l.Ext != nil
+	settle := oneUp && l.anlauf(cfg) // Anlauf-Regel (srcSettle)
 	var stepper *choice
 	// wish: kleinster Bedarf eines Schritts nach oben, der in diesem Takt nicht ging (fuer den Deckel der Schaetzung)
 	wish := 0.0
@@ -654,7 +669,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// real: Bedarf mit der gemessenen Rate - er gilt, sobald die Schicht laeuft. Fuer den Schritt hinauf auf eine
 			// junge Quelle (srcSettle) zaehlt dagegen mindestens die angenommene Rate, siehe srcSettle.
 			real := need
-			if !cur && oneUp {
+			if !cur && settle {
 				if nom := nominalRate(c.opts[c.idx]); nr < nom && c.opts[c.idx].young(now) {
 					need = sum - old + nom
 				}
