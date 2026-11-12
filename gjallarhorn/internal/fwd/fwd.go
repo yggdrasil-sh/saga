@@ -91,7 +91,7 @@ var Totals struct {
 	Dups        atomic.Uint64 // verworfen: Folgenummer schon gesehen (Wiederholung des Absenders)
 	TooOld      atomic.Uint64 // verworfen: aelter als das Fenster des Abgleichs
 	Late        atomic.Uint64 // spaete erste Exemplare (Nachsendung, Umsortierung), weitergegeben
-	LateDropped atomic.Uint64 // davon an einem Ausgang nicht mehr einzuordnen (aelter als dessen Historie)
+	LateDropped atomic.Uint64 // davon an einem Ausgang nicht mehr einzuordnen (aelter als dessen Ring; verworfen)
 }
 
 // WriteStallMin: ab dieser Dauer zaehlt ein Schreibvorgang als Stau.
@@ -529,107 +529,61 @@ type Out struct {
 	lastPic    uint16
 	lastTL0    uint8
 	pauseAt    int64
-	// Der Versatz der Folgenummern (seqDelta) und der PictureID (picDelta) aendert sich, wo der Ausgang Pakete seiner
-	// Quelle nicht weitergibt (ausgelassene Bilder einer Zeitschicht, Verwerfen bis zum Schluesselbild). Ein Paket, das
-	// erst danach eintrifft, aber vor diese Stelle gehoert (Nachsendung, Umsortierung - Packet.late), muss mit den
-	// Versaetzen von damals hinaus: Mit den heutigen landete es auf einer schon vergebenen Folgenummer, und seine eigene
-	// Luecke bliebe offen. hist merkt sich dafuer die letzten seqHist solchen Stellen, hfloor die Grenze, vor der nichts
-	// mehr bekannt ist. Zurueckgesetzt bei jedem Neuanfang (anchor: Quellwechsel, neue Folge der Quelle).
-	lastIn uint16           // Eingangs-Folgenummer (Seq - skip) des letzten in Reihe verarbeiteten Pakets der Quelle
-	hist   [seqHist]seqStep // Ring, aelteste Stelle bei hpos-hn
-	hn     uint8            // belegte Stellen
-	hpos   uint8            // naechste Schreibstelle
-	run    bool             // die juengste Stelle ist ein noch offener ausgelassener Abschnitt
-	hcut   bool             // hfloor liegt hinter dem letzten Neuanfang: davor ist der Versatz vergessen
-	hfloor uint16           // verspaetete Pakete vor dieser Eingangs-Folgenummer gehen nicht hinaus
+	// Stand des Ausgangs in der Folge seiner Quelle. Ein Paket, das erst eintrifft, nachdem der Ausgang an seiner Stelle
+	// vorbei ist (Nachsendung, Umsortierung - Packet.late), muss mit den Versaetzen von damals hinaus: Mit den heutigen
+	// landete es auf einer schon vergebenen Folgenummer, und seine eigene Luecke bliebe offen. Jede uebersprungene
+	// Stelle merkt sich dafuer in slots, wie der Ausgang an ihr vorbeiging (advance). Nur Schreiber-Goroutine.
+	lastIn uint16            // Eingangs-Folgenummer (Seq - skip) des letzten in Reihe verarbeiteten Pakets der Quelle
+	prevTS uint16            // dessen Zeitstempel (untere 16 Bit)
+	span   uint16            // so viele Stellen hinter lastIn sind bekannt (seit dem letzten Neuanfang, hoechstens lateWin-1)
+	slots  [lateWin]lateSlot // Ring nach Eingangs-Folgenummer
 
 	// Zaehler des Ausgangs
 	Pkts, Bytes atomic.Uint64
 }
 
-// seqStep ist eine Stelle der Folge, an der sich die Versaetze eines Ausgangs aendern: Die Pakete mit Eingangs-
-// Folgenummer in [from, to) gehen nicht hinaus; davor galten prev (Folgenummer) und pic (PictureID).
-type seqStep struct{ from, to, prev, pic uint16 }
+// lateSlot: Stand eines Ausgangs an einer Stelle der Folge, deren Paket noch fehlte, als er an ihr vorbeiging.
+type lateSlot struct {
+	seqD, picD     uint16 // Versatz der Folgenummer und der PictureID
+	prevTS, nextTS uint16 // Zeitstempel (untere 16 Bit) der Pakete, die in Reihe davor und danach kamen
+	st             uint8  // slotSkip, slotDrop, ab Bit 2 die hoechste weitergeleitete Zeitschicht (tidCur)
+}
 
 const (
-	// seqHist: so viele Stellen kennt ein Ausgang rueckwaerts (Zweierpotenz, hoechstens 128). Laesst er jedes zweite
-	// Bild aus (Zeitschicht, 30 Bilder/s), sind das gut 2 s - laenger als der Knoten nachfordert (10-mal alle 100 ms).
-	seqHist = 32
-	// seqKeep: Weiter als so viele Pakete hinter der Stelle des Ausgangs wird nichts aufgehoben. So alte Pakete
-	// laesst schon die Quelle nicht mehr durch (dupWin), und die Vergleiche (16 Bit Abstand) bleiben eindeutig.
-	seqKeep = 2 * dupWin
+	// lateWin: so viele Stellen kennt ein Ausgang rueckwaerts (Zweierpotenz). Der Knoten fordert ein fehlendes Paket
+	// rund 1 s lang nach (10-mal alle 100 ms); bei 170 Paketen/s (hohe Schicht) sind 256 Stellen 1,5 s, bei den
+	// Kacheln ein Vielfaches. Aelteres wird verworfen und gezaehlt (LateDropped). Kosten: 2,5 KiB je Ausgang.
+	lateWin  = 256
+	lateMask = lateWin - 1
+
+	slotSkip = 1 // der Ausgang liess an dieser Stelle aus (Zeitschicht ueber der Grenze oder Verwerfen)
+	slotDrop = 2 // ... und zwar bis zum naechsten Schluesselbild (dropping)
 )
 
-// Urteil ueber ein verspaetetes Paket an einem Ausgang (lateDelta).
-const (
-	lateOK   = iota // geht mit den Versaetzen seiner Stelle hinaus
-	lateSkip        // gehoert in einen Abschnitt, den der Ausgang nicht weitergegeben hat, oder vor seinen Neuanfang
-	lateLost        // aelter als die Historie: Versatz unbekannt
-)
-
-// lateDelta liefert fuer ein verspaetetes Paket mit der Eingangs-Folgenummer in die Versaetze seiner Stelle.
-func (o *Out) lateDelta(in uint16) (seqD, picD uint16, st int) {
-	if o.lastIn-in >= seqKeep { // weit zurueck oder vor der Stelle des Ausgangs (er hat Pakete verpasst): nicht einzuordnen
-		return 0, 0, lateLost
-	}
-	if int16(in-o.hfloor) < 0 {
-		if o.hcut {
-			return 0, 0, lateLost
+// advance: Der Ausgang rueckt in der Folge seiner Quelle von lastIn auf das Paket in Reihe mit der Eingangs-Folgenummer
+// in und dem Zeitstempel ts vor (vor dessen Verarbeitung aufrufen). Die uebersprungenen Stellen merken sich den Stand
+// von jetzt - das ist der, den ihr Paket vorgefunden haette.
+func (o *Out) advance(in uint16, ts uint32) {
+	gap := in - o.lastIn
+	if gap != 1 {
+		sl := lateSlot{seqD: o.seqDelta, picD: o.picDelta, prevTS: o.prevTS, nextTS: uint16(ts), st: o.tidCur << 2}
+		if o.dropping {
+			sl.st |= slotSkip | slotDrop
+		} else if o.skipFrame {
+			sl.st |= slotSkip
 		}
-		return 0, 0, lateSkip
-	}
-	for i := uint8(0); i < o.hn; i++ {
-		e := &o.hist[(o.hpos-o.hn+i)&(seqHist-1)]
-		if int16(in-e.from) < 0 {
-			return e.prev, e.pic, lateOK
+		n := gap - 1
+		if n > lateWin {
+			n = lateWin
 		}
-		if (o.run && i == o.hn-1) || int16(in-e.to) < 0 {
-			return 0, 0, lateSkip
+		for q := in - n; q != in; q++ {
+			o.slots[q&lateMask] = sl
 		}
 	}
-	return o.seqDelta, o.picDelta, lateOK
-}
-
-// step merkt sich eine neue Stelle; ist der Ring voll, faellt die aelteste heraus.
-func (o *Out) step(e seqStep) {
-	if o.hn == seqHist {
-		o.hcut, o.hfloor = true, o.hist[o.hpos&(seqHist-1)].to
-		o.hn--
-	}
-	o.hist[o.hpos&(seqHist-1)] = e
-	o.hpos = (o.hpos + 1) & (seqHist - 1)
-	o.hn++
-}
-
-// skipStep: Das Paket mit der Eingangs-Folgenummer in wird nicht weitergegeben. Beginnt damit ein ausgelassener
-// Abschnitt, merkt sich der Ausgang die Stelle samt den Versaetzen davor (vor dem Aendern der Versaetze aufrufen).
-func (o *Out) skipStep(in uint16) {
-	if !o.run {
-		o.step(seqStep{from: in, to: in, prev: o.seqDelta, pic: o.picDelta})
-		o.run = true
-	}
-}
-
-// trim haelt Grenze und Historie in Reichweite (bei jedem Paket in Reihe): Was weiter als seqKeep hinter der Stelle
-// des Ausgangs liegt, faellt weg.
-func (o *Out) trim(in uint16) {
-	lim := in - seqKeep
-	if int16(o.hfloor-lim) >= 0 {
-		return
-	}
-	o.hfloor, o.hcut = lim, true
-	for o.hn > 0 {
-		e := &o.hist[(o.hpos-o.hn)&(seqHist-1)]
-		if o.run && o.hn == 1 { // offener Abschnitt: bleibt, beginnt aber nicht vor der Grenze
-			if int16(e.from-lim) < 0 {
-				e.from = lim
-			}
-			return
-		}
-		if int16(e.to-lim) > 0 {
-			return
-		}
-		o.hn--
+	if n := uint32(o.span) + uint32(gap); n < lateWin {
+		o.span = uint16(n)
+	} else {
+		o.span = lateWin - 1
 	}
 }
 
@@ -761,7 +715,7 @@ func (o *Out) Forget(s *Source) {
 
 func (o *Out) anchor(p *Packet, now int64) {
 	in := p.h.Seq - p.skip
-	o.hn, o.hpos, o.run, o.hcut, o.hfloor = 0, 0, false, false, in // Neuanfang: nichts davor geht noch hinaus
+	o.span = 0 // Neuanfang: nichts davor geht noch hinaus
 	if !o.started {
 		o.started = true
 		o.seqDelta = 0
@@ -818,7 +772,7 @@ type LegStats struct {
 	WriteStalls           atomic.Uint64
 	WriteStallNs          atomic.Uint64
 	TIDSkipped            atomic.Uint64
-	LateDropped           atomic.Uint64 // verspaetete Pakete, aelter als die Historie des Ausgangs (verworfen)
+	LateDropped           atomic.Uint64 // verspaetete Pakete, die ein Ausgang nicht mehr einordnen konnte (verworfen)
 }
 
 // P95us schaetzt das 95. Perzentil der Weiterleitungszeit in Mikrosekunden.
@@ -1026,23 +980,42 @@ func (l *Leg) process(p *Packet, o *Out) {
 	v := &p.vp8
 	in := p.h.Seq - p.skip
 	late := p.late
-	var seqD, picD uint16
-	pdFrame := false
 	if late {
-		// Verspaetetes Paket (erstes Exemplar, aber hinter dem Stand der Quelle - Nachsendung, Umsortierung): Es aendert
-		// nicht, wo der Ausgang steht - kein Quellwechsel, kein Bildzustand, keine Versaetze -, und geht mit den
-		// Versaetzen seiner Stelle hinaus (die Nummer der Luecke, die der Empfaenger sieht und nachfordert) oder gar nicht.
+		// Verspaetetes Paket (erstes Exemplar, aber hinter dem Stand der Quelle - Nachsendung, Umsortierung): Es loest
+		// keinen Quellwechsel aus (der Rest seines Bildes ist schon vorbei).
 		if src != cur || !o.started {
 			return
 		}
-		var st int
-		if seqD, picD, st = o.lateDelta(in); st != lateOK {
-			if st == lateLost {
+		// Ist der Ausgang an seiner Stelle noch nicht vorbei (seither kamen nur Fuellpakete der Quelle, oder ihm fehlen
+		// Pakete), ist es fuer ihn ein Paket in Reihe.
+		late = int16(in-o.lastIn) <= 0
+	}
+	var seqD, picD uint16
+	pdFrame := false
+	if late {
+		// Der Ausgang ist an der Stelle schon vorbei: Das Paket aendert nicht, wo er steht - kein Bildzustand, keine
+		// Versaetze -, und geht mit den Versaetzen seiner Stelle hinaus (die Nummer der Luecke, die der Empfaenger
+		// sieht und nachfordert) oder gar nicht: nicht, wenn der Ausgang dort ohnehin ausliess. Das entscheidet der
+		// Stand, den die Stelle sich gemerkt hat.
+		if d := o.lastIn - in; d == 0 || d > o.span {
+			// Vor dem letzten Neuanfang des Ausgangs (dort leitete er diese Quelle noch nicht weiter): nichts zu tun.
+			// Sonst aelter als der Ring - oder der Ausgang ist an der Stelle noch gar nicht vorbei, weil ihm Pakete
+			// fehlen (Ueberlauf): Der Versatz ist unbekannt. Verwerfen und zaehlen statt auf eine schon vergebene
+			// Nummer zu schreiben.
+			if o.span == lateWin-1 {
 				l.Stats.LateDropped.Add(1)
 				Totals.LateDropped.Add(1)
 			}
 			return
 		}
+		sl := &o.slots[in&lateMask]
+		if sl.st&slotDrop != 0 || (v.HasTID && v.TID > sl.st>>2) {
+			return // an dieser Stelle verwarf der Ausgang bzw. liess diese Zeitschicht aus
+		}
+		if ts := uint16(p.h.TS); sl.st&slotSkip != 0 && (ts == sl.prevTS || ts == sl.nextTS) {
+			return // gehoert zu einem Bild, dessen uebrige Pakete der Ausgang ausgelassen hat
+		}
+		seqD, picD = sl.seqD, sl.picD
 		pdFrame = v.FrameStart && v.Key
 	} else if o.Kind == Video {
 		if src != cur {
@@ -1057,9 +1030,12 @@ func (l *Leg) process(p *Packet, o *Out) {
 			o.dropping = false
 			Totals.Switches.Add(1)
 		} else if !o.started || int16(in-o.lastIn) <= 0 {
-			// Die Quelle hat ihre Folge neu begonnen (Sprung zurueck, Source.admit): Der Ausgang zaehlt lueckenlos
-			// weiter, statt auf laengst vergebene Nummern zurueckzuspringen.
+			// Ein Paket in Reihe, das nicht vor dem Stand des Ausgangs liegt: Die Quelle hat ihre Folge neu begonnen
+			// (Sprung zurueck, Source.admit). Der Ausgang zaehlt lueckenlos weiter, statt auf laengst vergebene Nummern
+			// zurueckzuspringen.
 			o.anchor(p, now)
+		} else {
+			o.advance(in, p.h.TS)
 		}
 		if v.FrameStart {
 			o.pdFrame = v.Key
@@ -1095,15 +1071,12 @@ func (l *Leg) process(p *Packet, o *Out) {
 				Totals.TIDSkipped.Add(1)
 			}
 			if (o.dropping || o.skipFrame) && v.HasPicID {
-				o.skipStep(in)
 				o.picDelta-- // PictureID bleibt lueckenlos
 			}
 		}
 		if o.dropping || o.skipFrame {
-			o.skipStep(in)
 			o.seqDelta-- // Folgenummern bleiben lueckenlos
-			o.lastIn = in
-			o.trim(in)
+			o.lastIn, o.prevTS = in, uint16(p.h.TS)
 			return
 		}
 	} else if src != cur {
@@ -1116,14 +1089,11 @@ func (l *Leg) process(p *Packet, o *Out) {
 		Totals.Switches.Add(1)
 	} else if !o.started || int16(in-o.lastIn) <= 0 {
 		o.anchor(p, now) // neue Folge der Quelle, siehe oben
+	} else {
+		o.advance(in, p.h.TS)
 	}
 	if !late {
-		if o.run { // ein ausgelassener Abschnitt endet vor diesem Paket
-			o.hist[(o.hpos-1)&(seqHist-1)].to = in
-			o.run = false
-		}
-		o.lastIn = in
-		o.trim(in)
+		o.lastIn, o.prevTS = in, uint16(p.h.TS)
 		seqD, picD, pdFrame = o.seqDelta, o.picDelta, o.pdFrame
 	}
 	seq := in + seqD
