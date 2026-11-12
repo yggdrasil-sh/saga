@@ -122,6 +122,12 @@ Platzhalter: `horn-1.example.org`.
     solcher Schritte, auch ohne Probing; im Testaufbau mit Chromium 59 von 60, mit der Regel 1 von 30. Jetzt bleibt
     der Platz zuerst auf `m`, der Deckel folgt dem Bedarf, `h` kommt nach rund 2 s und hält. Gilt mit und ohne
     Probing; für die laufende Schicht, für Beine, die zu laufenden Quellen stoßen, und für TCP ändert sich nichts.
+    **Seit Stufe 3 nur bei `HORN_BWE=eigen`** (Labor `labbwe2`: die Regel allein, bei `gcc`, brachte nichts Messbares –
+    Rückfälle zum Anrufbeginn 5 gegen 4 von 32 –, kostete aber rund 2 s bis `h`). Bei `gcc` und `mit` plant der
+    Anrufbeginn wieder wie vor der Regel (im Modell Takt für Takt gleich dem Stand `22a5bd3`).
+    **Test-Einstellung `HORN_ANLAUF`** (nur fürs Labor): `1` = Regel auf allen UDP-Beinen mit GCC an, `0` = aus, ohne
+    Wert der Standard je `HORN_BWE`; jeder andere Wert gilt als ohne Wert (Warnzeile). Beim Start steht bei `1`/`0` eine
+    Zeile `HORN_ANLAUF=…` im Log.
   - UDP, gescheiterter Versuch: Endet die Schonfrist nach einem Hochschalten mit Stau, zählt der Rückfall als
     Fehlversuch (Aufschub 8/16/32 s … bis 5 min, siehe oben), auch wenn er später als 2 s kommt. Die Schätzung fällt dabei 2 s
     lang nicht unter die Rate vor dem Versuch – der erste Rücksprung des Ziels (85 % eines Messfensters, das noch
@@ -160,10 +166,13 @@ Platzhalter: `horn-1.example.org`.
     wieder die Proben-Pflicht. Preis: auf einer Leitung, die die Schicht nicht trägt, ein Fehlversuch mehr zu
     Anrufbeginn (Modell, 10 min auf 1,0 Mbit/s: 1 statt 0; ohne Probing 7) und einer, wenn die Leitung nach langem
     Halten eng wird.
-  - Ablauf: Zielrate = Bedarf des Schritts × 1,15 + Ton; Füllrate = Zielrate − laufende Rate, nie über das
-    Kontingent (P10). 2 Takte halbe Füllrate, dann volle Füllrate für das Fenster (2,5 Umlaufzeiten aus den
-    Empfängerberichten, mindestens 3 Takte, höchstens 1,5 s; ohne Umlaufzeit 1 s), danach 2 Takte Nachlauf ohne
-    Fülldaten. Ändert sich die Bild-Auswahl währenddessen (Sprecherwechsel, Pause), bricht die Probe ohne Wertung
+  - Ablauf (seit Stufe 3): Zielrate = Bedarf des Schritts × 1,05 + Ton, mindestens 200 kbit/s über der laufenden
+    Rate (vorher × 1,15); Füllrate = Zielrate − was das Bein gerade sendet (die geglätteten Schichtraten der Planung
+    enthalten die Schlüsselbilder, im Fenster wird weniger gesendet – mit 5 % Reserve fehlte dem Nachweis sonst der
+    Bedarf), nie über das Kontingent (P10). 2 Takte halbe Füllrate, dann volle Füllrate für das Fenster (2,5
+    Umlaufzeiten aus den Empfängerberichten, mindestens 2 Takte, höchstens 0,6 s – also 0,4 oder 0,6 s; vorher 3 Takte
+    bis 1,5 s), danach 2 Takte Nachlauf ohne Fülldaten. Eine bestandene Probe gibt den Schritt mit seiner vollen
+    Reserve (× 1,15) frei. Ändert sich die Bild-Auswahl währenddessen (Sprecherwechsel, Pause), bricht die Probe ohne Wertung
     ab; die nächste kommt frühestens 2 s später.
   - **Deckel der Füllrate, 1,5 Mbit/s:** Ein Schritt, der mehr Füllung bräuchte (z. B. Bildschirm von der unteren
     auf die obere Ebene), wird nicht geprobt und auch nicht „halb geprobt“ freigegeben. Er läuft wie ohne Probing:
@@ -223,7 +232,8 @@ Platzhalter: `horn-1.example.org`.
     wird **nicht** verlangt: pion-GCC hebt sein Ziel auch auf freier Leitung nur um rund 8 % je Sekunde. Der
     Wechsel folgt im selben bzw. nächsten Takt.
   - Abstand: je **Bein und Zielrate**, nicht je Platz (in Gruppen wechselt der Sprecherplatz laufend den Besitzer).
-    Eine gescheiterte Probe mit Zielrate X sperrt Proben ab 0,9 × X für 10 s, verdoppelnd bis 2 min; Proben mit
+    Eine gescheiterte Probe mit Zielrate X sperrt Proben ab 0,9 × X für 3 s, je weitere gescheiterte × 1,5 bis
+    höchstens 20 s (3 / 4,5 / 6,75 / 10,1 / 15,2 / 20 s; seit Stufe 3, vorher 10 s verdoppelnd bis 2 min); Proben mit
     kleinerer Zielrate dürfen früher. Bis eine Probe ab dieser Rate besteht, gibt es dafür auch keinen Versuch
     ohne Probe – gleich für welchen Platz. Eine bestandene Probe setzt zurück, ebenso längere Ruhe (Abstand + 30 s
     ohne neue Probe).
@@ -232,7 +242,22 @@ Platzhalter: `horn-1.example.org`.
     probt für diese Schicht frühestens nach dem Aufschub, höchstens aber nach 2 min – echte Versuche kommen so nie
     häufiger als ohne Probing, und eine frei gewordene Leitung ist nach gut 2 min (statt 5 min) wieder oben:
     Die Probe kommt spätestens 2 min nach dem letzten Fehlversuch, dazu kommen Ruhezeit, Probe und Wechsel –
-    gemessen bis 2 min 43 s.
+    gemessen bis 2 min 43 s. **Zusammenspiel mit dem kurzen Abstand (Stufe 3):** Gescheiterte Proben setzen keinen
+    Aufschub; er entsteht nur aus echten Wechseln, die scheitern. In anhaltender Enge ohne Fehlversuch gilt allein der
+    Proben-Abstand (höchstens 20 s), der Aufschub zieht ihn nicht auf Minuten. Die 2 min nach einem echten Fehlversuch
+    bleiben als Netz (eigene Grenze `probeDwellMax`): Mit 20 s kämen auf einer Leitung, die die Probe trägt, die
+    Schicht aber nicht, Versuche alle ~20 s.
+  - **Frischer Rückfall (Stufe 3, Token-Bucket-Policer):** Fallen Schritte, die mit einer bestandenen Probe kamen,
+    **zweimal in Folge binnen 15 s** zurück (`probeFresh`, `probeFreshN`), zählt das wie ein Fehlversuch binnen 2 s
+    (Aufschub wächst, die nächste Probe erst nach ihm). Ein Rückfall nach mehr als 15 s setzt die Folge zurück; ein
+    einzelner frischer Rückfall zählt nicht (Störschub kurz nach dem Schritt – mit der ersten Fassung, die schon ihn
+    zählte, sank im Modell „frei, Schübe alle 10–30 s“ der Anteil `h` von 76 auf 32 %). Hintergrund (Labor
+    `labbwe2`; im Testaufbau mit Token-Bucket 1450 kbit/s / Eimer 150 ms und 1500 / 100 ms nachgestellt): Der Eimer
+    trägt die kurze Probe (0,4–0,6 s; er leert sich erst nach 0,5–1 s voller Füllung), aber nicht die Dauerlast – alle
+    Proben bestanden, jeder Schritt fiel nach 3–13 s zurück, nach `upFail` und bestandener Schonfrist, also ohne
+    Aufschub, und die nächste bestandene Probe setzte den Abstand zurück. Ein Nachweis im letzten Teil des Fensters
+    hilft dagegen nicht (der Eimer ist in 0,6 s nicht leer). Modell (h trägt 6 s, dann nicht): Schritte auf `h` in
+    10 min 39 → 9.
     Die Probe verlängert den Aufschub nie. Aufschub und Proben-Abstand überleben einen Wegwechsel (udp → tcp → udp)
     des Geräts für 5 min, ebenso der verbrauchte freie Versuch zum Anrufbeginn (auch ohne gescheiterte Probe).
   - **Abwägung – Gruppe mit Sprecherwechsel, Leitung wird frei:** Mit Probing kommt eine solche Gruppe nach dem
@@ -242,10 +267,10 @@ Platzhalter: `horn-1.example.org`.
     Sprecherwechsel). Dafür gibt es in der engen Phase davor 0–2 statt 9–19 Fehlversuche (jeder mit Schlüsselbild,
     Rückwechsel und kurz verdecktem Ton). Mit `HORN_PROBING=0` kommt eine solche Gruppe schneller zurück, zahlt
     aber in der engen Zeit.
-  - **Bekannte Grenze – Leitung zwischen Bedarf und Bedarf × 1,15:** Die Probe prüft die Zielrate mit Reserve. Eine
-    Leitung, die die höhere Schicht gerade trägt, aber nicht 15 % mehr (Modell: Browser-`h` mit 1250 kbit/s auf
-    einer Leitung von 1,3 bis 1,47 Mbit/s), besteht die Probe nie und **erreicht die Schicht mit Probing nicht** –
-    ohne Probing hält sie dort. Ab Bedarf × 1,16 besteht die Probe. Stellschraube im Code: `probeBlindAfter` in
+  - **Bekannte Grenze – Leitung zwischen Bedarf und Bedarf × 1,05** (vor Stufe 3: × 1,15): Die Probe prüft die
+    Zielrate mit Reserve. Eine Leitung, die die höhere Schicht gerade trägt, aber nicht 5 % mehr (Modell:
+    Browser-`h` mit 1250 kbit/s auf einer Leitung bis 1,34 Mbit/s), besteht die Probe nie und **erreicht die Schicht
+    mit Probing nicht** – ohne Probing hält sie dort. Ab Bedarf × 1,06 besteht die Probe. Stellschraube im Code: `probeBlindAfter` in
     `internal/sfu/probe.go` (Standard 0 = nie; z. B. 3 = nach drei gescheiterten Proben in Folge ein Versuch ohne
     Probe, mit Aufschub, falls er scheitert). Entscheidung nach dem Labor.
   - Füllpakete (`internal/fwd`, `Leg.SetPadding`): reine Padding-Pakete (P-Bit, 255 Byte, keine Nutzlast) auf der
@@ -405,12 +430,13 @@ Platzhalter: `horn-1.example.org`.
       gestiegen, Warnung) → zwei Hinweise: gescheitert, Grund der von GCC. (Im Labor lag die Schlange in der Enge oft
       bei 43–48 ms, knapp unter der Schwelle von 50 ms.)
     - `staut-nicht` **und** Durchsatz-Nachweis → bestanden – auch wenn GCC ein Stausignal gemeldet hatte. Nachweis:
-      Während der vollen Füllung wurden mindestens 87 % der Zielrate **wirklich gesendet** (das ist der Bedarf des
-      Schritts ohne die Reserve von 15 %; die Füllpakete folgen nur auf Medienpakete und erreichen die Füllrate nicht
-      immer ganz – gemessen `l`→`m` 87–102 %, `m`→`h` 98–103 % der Zielrate), und der Empfänger hat
+      Während der vollen Füllung wurde der **Bedarf des Schritts wirklich gesendet** (die Zielrate ohne die Reserve:
+      seit Stufe 3 95,2 % der Zielrate, Reserve 5 %; vorher 87 %, Reserve 15 %), und der Empfänger hat
       davon **im selben Zeitraum** mindestens 95 % bestätigt (bestätigte Bytes je Ankunftszeit gegen gesendete Bytes
-      je Sendezeit derselben Messfenster, über mindestens 400 ms) – und **auch das Bestätigte erreicht mindestens
-      87 % der Zielrate** (sonst reichten 87 % × 95 % = 83 % der Zielrate, weniger als die Schicht braucht).
+      je Sendezeit derselben Messfenster, über mindestens 200 ms – ganze 100-ms-Fenster der Füllung, bei 0,4 s Fenster
+      2 oder 3; vorher 400 ms) – und **auch das Bestätigte erreicht den Bedarf** (sonst reichten Bedarf × 95 %, weniger
+      als die Schicht braucht). Damit der Bedarf im Fenster wirklich gesendet wird, füllt die Probe seit Stufe 3 gegen
+      das, was das Bein gerade sendet (siehe Ablauf; vorher `l`→`m` gemessen 87–102 % der Zielrate).
       Alles zählt am selben Zähler (alle Pakete des Beins mit Kopf, Ton und Füllung) – nicht mehr Zielrate (mit
       Reserve und Ton) gegen Durchsatz. Hält GCC die
       Füllung früh an, ist die Zielrate nie gesendet worden; `staut-nicht` sagt dann nichts über sie (Labor: auf
@@ -419,7 +445,10 @@ Platzhalter: `horn-1.example.org`.
       **drei** unklare Proben in Folge (je binnen 60 s nach der vorigen): die dritte zählt als gescheitert, mit
       Abstand (Grund: das Signal von GCC, sonst `nachweis` bzw. `bwe`). **Kam das Stausignal von GCC schon in der
       Rampe** (halbe Füllung – die volle Füllung lief nie, die Probe hat die Zielrate nicht geprüft), zählt schon die
-      **zweite** solche Probe in Folge als gescheitert.
+      **zweite** solche Probe in Folge als gescheitert – und seit Stufe 3 schon die **erste**, wenn die letzte gewertete
+      Probe (bestanden oder gescheitert) auf dieses Ziel (ab 0,9 × ihrer Zielrate, binnen 60 s) gescheitert war: In
+      anhaltender Enge ging sonst jeder gescheiterten Probe genau eine unklare voraus (Messung `bwe13`: 21 von 24). Auf
+      freier Leitung (letzte gewertete bestanden) bleibt der zweite Versuch.
     Preis: Auf einer engen Leitung, auf der GCC die Füllung anhält, bevor der Detektor etwas sieht, kommen so zwei
     kurze Proben (je 0,4–0,8 s Füllung, dann Nachlauf) statt einer je Abstand – vor der Rampen-Regel bis zu drei, und
     die dritte lief oft bis zur vollen Füllung und baute 50–100 ms Schlange. Im Modell 14–16 statt 7 Proben in
