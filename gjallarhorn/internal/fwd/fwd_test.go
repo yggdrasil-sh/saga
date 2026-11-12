@@ -193,12 +193,35 @@ func BenchmarkFanout10(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		binary.BigEndian.PutUint16(pk[2:], uint16(i)) // fortlaufende Folgenummern wie eine echte Quelle
 		s.Inject(pk)
 		for _, l := range legs {
 			e, _ := l.pop()
 			l.process(e.p, e.o)
 			e.p.release()
 		}
+	}
+}
+
+// BenchmarkForward1: eine Quelle, ein Ausgang, fortlaufende Folgenummern - Kosten je Paket durch Source.handle und
+// Leg.process (ohne Schreiber-Goroutine).
+func BenchmarkForward1(b *testing.B) {
+	s := &Source{Owner: "p", Layer: "l", Kind: Video}
+	l := &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}
+	o := l.NewOut("v", "p", Video, ClassTile, "l")
+	o.Bind(nopW{}, 1, 96)
+	o.cur.Store(s)
+	s.subscribe(o)
+	pk := vp8pkt(1, 0, true, false, true)
+	pk = append(pk, make([]byte, 1000)...)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		binary.BigEndian.PutUint16(pk[2:], uint16(i))
+		s.Inject(pk)
+		e, _ := l.pop()
+		l.process(e.p, e.o)
+		e.p.release()
 	}
 }
 
