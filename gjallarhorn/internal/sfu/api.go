@@ -256,6 +256,9 @@ type Config struct {
 	// OnProbe meldet das Ende jeder Probe (Probing) - fuer das Log des Knotens. Wird ausserhalb aller Sperren
 	// aufgerufen.
 	OnProbe func(ProbeEvent)
+	// OnLegEvent meldet Beginn und Ende jeder Widerlegung (HORN_BWE=eigen) und jede Ruecknahme einer Schicht mit ihrem
+	// Grund - fuer das Log des Knotens. Nur Zustandswechsel, nicht je Takt. Wird ausserhalb aller Sperren aufgerufen.
+	OnLegEvent func(LegEvent)
 	// OnLegClosed meldet ein vom Knoten beendetes Bein (ersetzt, entfernt,
 	// Raum geschlossen), damit der Aufrufer die PeerConnection schliesst.
 	OnLegClosed func(l *Leg, why string)

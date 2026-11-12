@@ -171,11 +171,36 @@ type ProbeEvent struct {
 	AckedKbit int
 }
 
+// LegEvent: Ereignis aus der Steuerung eines Beins (Config.OnLegEvent).
+//
+//	LegRefute     Beginn einer Widerlegung (HORN_BWE=eigen): Das GCC-Ziel liegt unter der Rate und ist gefallen bzw. steht,
+//	              aber der Detektor widerlegt den Stau - Art spitze (bwe.Tip.Clear) oder halten (eben bestandene Probe,
+//	              kein Zeichen von Stau; estimator.held). Die Schicht bleibt.
+//	LegRefuteEnd  ihr Ende mit Grund und Dauer: erholt (das Ziel liegt wieder ueber der Rate), detektor (er widerlegt
+//	              nicht mehr - das Signal von GCC gilt), faellt, steht, frist (Schonfrist gescheitert), probe
+//	LegDown       Ruecknahme einer Schicht desselben Besitzers (To "" = Pause) mit Grund, siehe downEvent
+type LegEvent struct {
+	Leg                        *Leg
+	Kind                       string
+	Art                        string        // Widerlegung: spitze | halten
+	Why                        string        // Grund (Ende einer Widerlegung, Ruecknahme)
+	Dur                        time.Duration // Dauer der Widerlegung (LegRefuteEnd)
+	Class, From, To            string        // Ruecknahme: Platzart, Schicht davor und danach
+	EstKbit, GccKbit, RateKbit int           // Schaetzung des Beins, GCC-Ziel, gesendete Rate (geglaettet)
+}
+
+const (
+	LegRefute    = "refute"
+	LegRefuteEnd = "refute-end"
+	LegDown      = "down"
+)
+
 // ProbeStats zaehlt die Proben eines Beins.
 type ProbeStats struct {
 	Started, Passed, Failed, Aborted uint64
 	Unclear                          uint64 // davon (Aborted) ohne klares Ergebnis beendet und wiederholt
 	Refuted                          uint64 // eigen: Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat (estimator.refute)
+	Held                             uint64 // eigen: Schonfristen, die nur das Halten nach einer bestandenen Probe getragen hat (estimator.held)
 	Clamped                          uint64 // Faelle des GCC-Ziels in Proben, die kein Stau waren (probeJudge)
 	PadBytes                         uint64 // gesendete Fuell-Bytes
 	LateDropped                      uint64 // verworfene Nachzuegler, deren Stelle der Ausgang nicht mehr kennt (fwd.LegStats.LateDropped)
@@ -189,7 +214,7 @@ func (l *Leg) ProbeStats() ProbeStats {
 	ps := l.pstat
 	ps.PadBytes = l.fl.Stats.PadBytes.Load()
 	ps.LateDropped = l.fl.Stats.LateDropped.Load()
-	ps.Refuted = l.est.refuted
+	ps.Refuted, ps.Held = l.est.refuted, l.est.heldN
 	return ps
 }
 
@@ -500,6 +525,7 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 		e.shieldOff(now, 0)
 		e.ready = e.prReady
 		e.grant, e.grantUntil = p.target, now+int64(probeGrant)
+		e.proofUntil = now + int64(probeKeep) // eigen: Halten nach bestandener Probe (estimator.held)
 		if e.bps < p.target {
 			e.bps = min(p.target, e.max)
 		}

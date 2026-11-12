@@ -109,9 +109,12 @@ func (r *Room) tickAt(now int64) {
 		}
 	}
 	peersEv := cfg.OnPeers != nil && r.peersChangedLocked()
-	pevs := r.pevs
-	r.pevs = nil
+	pevs, levs := r.pevs, r.levs
+	r.pevs, r.levs = nil, nil
 	r.mu.Unlock()
+	for _, ev := range levs {
+		cfg.OnLegEvent(ev)
+	}
 	for _, ev := range pevs {
 		cfg.OnProbe(ev)
 	}
@@ -504,6 +507,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// wie ohne Probing - Deckel der Schaetzung, Schonfrist und Aufschub wie dort, keine Proben.
 	l.est.first = prb && !l.firstUsed
 	l.est.update(l, dt, now)
+	if n := l.est.note; n.kind != "" && cfg.OnLegEvent != nil { // Beginn bzw. Ende einer Widerlegung (eigen)
+		r.levs = append(r.levs, LegEvent{Leg: l, Kind: n.kind, Art: n.art, Why: n.why, Dur: n.dur,
+			EstKbit: int(l.est.bps / 1000), GccKbit: int(l.est.gccLast / 1000), RateKbit: int(l.est.rateAvg / 1000)})
+	}
 	l.probeStep(now) // laufende Probe: weiter, Abbruch oder Freigabe (hebt dann die Schaetzung)
 	budget := l.est.bps
 	quotaCap := 1e12
@@ -816,6 +823,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		if c.idx < 0 {
 			if s.layer != "" && s.owner != nil && s.src != nil && s.src.peer == s.owner {
 				s.setWhy(whyBudget, s.src, now) // laufendes Bild pausiert
+				l.downEvent(s, "", budget+audioCut >= quotaCap, now, cfg)
 			}
 			s.out.Assign(nil)
 			s.paused, s.layer = s.owner != nil, ""
@@ -880,7 +888,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				d.afterFail(now)
 			}
 			s.downAt, s.downOwner = now, s.owner
-			if book && was != nil && was.peer == s.owner { // Rueckfall derselben Quelle, kein Besitzerwechsel
+			if was != nil && was.peer == s.owner { // Rueckfall derselben Quelle, kein Besitzerwechsel
+				l.downEvent(s, st.Layer, budget+audioCut >= quotaCap, now, cfg)
+			}
+			if book && was != nil && was.peer == s.owner {
 				l.freeGrant(s, layerRank(st.Layer), layerRank(s.layer), heldFor, unramped)
 			}
 		} else if s.layer != "" && layerRank(st.Layer) > layerRank(s.layer) {
@@ -948,6 +959,35 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			l.probeBegin(cand.s, fs, cand.rank, cand.need, sum, audioCut, now)
 		}
 	}
+}
+
+// downEvent meldet die Ruecknahme einer Schicht (Platz s faellt von s.layer auf to, "" = Pause) mit ihrem Grund - fuers
+// Log des Knotens (Config.OnLegEvent). Gruende:
+//
+//	quelle       die Schicht ist nicht mehr nutzbar (Quelle weg bzw. flattert)
+//	schlange     die Schaetzung ist in diesem Takt gefallen: eigene Warteschlange (Alter, verworfene Rahmen)
+//	gcc-<warum>  ... bzw. das GCC-Ziel liegt unter der Rate und ist nicht entschuldigt: fall (gefallen, als die Rate es
+//	             ueberholte), faellt, steht, frist (Schonfrist gescheitert), detektor (eine Widerlegung endete, weil der
+//	             Detektor nicht mehr widerlegt), sperre (Sperrzeit nach einem Stau), tot (Folge schon gescheitert),
+//	             nach-probe (Ziel nach einer gescheiterten Probe weiter unter der Rate)
+//	kontingent   das Kontingent des verbundenen Servers begrenzt
+//	bedarf       die Schaetzung ist nicht gefallen, aber die Auswahl passt nicht mehr hinein (Rate der Quellen gestiegen)
+func (l *Leg) downEvent(s *slot, to string, quota bool, now int64, cfg Config) {
+	if cfg.OnLegEvent == nil {
+		return
+	}
+	e := &l.est
+	why := "bedarf"
+	switch {
+	case s.why == whyGone:
+		why = "quelle"
+	case e.downAt != 0 && now-e.downAt <= int64(400*time.Millisecond):
+		why = e.downWhy
+	case quota:
+		why = "kontingent"
+	}
+	l.room.levs = append(l.room.levs, LegEvent{Leg: l, Kind: LegDown, Why: why, Class: s.class, From: s.layer, To: to,
+		EstKbit: int(e.bps / 1000), GccKbit: int(e.gccLast / 1000), RateKbit: int(e.rateAvg / 1000)})
 }
 
 // keepActive behaelt Teilnehmende, die schon einen Platz haben und weiter
@@ -1064,11 +1104,48 @@ type estimator struct {
 	grant           float64 // bestandene Probe: Deckel und Schaetzung mindestens so hoch, bis grantUntil
 	grantUntil      int64
 	// Eigener Stau-Detektor (Leg.ExtTip, HORN_BWE=eigen)
-	det      bool   // das Bein hat einen
-	detClear bool   // ... und er widerlegt in diesem Takt einen Stau ausdruecklich (bwe.Tip.Clear)
-	lagDet   bool   // die laufende Schonfrist besteht nur, weil der Detektor einen Fall des Ziels widerlegt hat
-	refuted  uint64 // Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat
+	det        bool   // das Bein hat einen
+	detClear   bool   // ... und er widerlegt in diesem Takt einen Stau ausdruecklich (bwe.Tip.Clear)
+	detCalm    bool   // ... bzw. zeigt wenigstens keine Schlange (bwe.Tip.Calm: wie Clear, ohne den Verlust)
+	detLossUp  bool   // ... der Verlust an der Spitze ist gestiegen (bwe.Tip.LossUp)
+	lagDet     bool   // die laufende Schonfrist besteht nur, weil der Detektor einen Fall des Ziels widerlegt hat
+	refuted    uint64 // Faelle des GCC-Ziels unter die Rate, die der Detektor widerlegt hat
+	proofUntil int64  // Halten nach bestandener Probe (held): bis hierhin nimmt das GCC-Ziel allein die Schicht nicht zurueck
+	heldN      uint64 // Schonfristen, die nur das Halten nach einer bestandenen Probe getragen hat
+	// Fuers Log (LegEvent): laufende Widerlegung, Ereignis dieses Takts, Grund der letzten verweigerten Schonfrist und
+	// der letzten Senkung der Schaetzung
+	refAt   int64  // Beginn der laufenden Widerlegung (0 = keine)
+	refArt  string // ... ihre Art: refSpitze | refHalten
+	note    legNote
+	lagWhy  string
+	downWhy string
+	downAt  int64
 }
+
+// legNote: Ereignis der Schaetzung in diesem Takt (Beginn bzw. Ende einer Widerlegung) - planLeg macht daraus ein
+// LegEvent.
+type legNote struct {
+	kind, art, why string
+	dur            time.Duration
+}
+
+// Art einer Widerlegung (LegEvent.Art).
+const (
+	refSpitze = "spitze" // der Detektor widerlegt den Stau ausdruecklich (bwe.Tip.Clear)
+	refHalten = "halten" // eben bestandene Probe, der Detektor zeigt kein Zeichen von Stau (held)
+)
+
+// Halten nach bestandener Probe (HORN_BWE=eigen, estimator.held).
+const (
+	// probeKeep: So lange nach einer bestandenen Probe nimmt das GCC-Ziel allein die Schicht nicht zurueck. Die Probe
+	// hat gegen GCC bestanden (der Detektor sah keinen Stau, die Zielrate kam an); gehorchte die Schaetzung GCC gleich
+	// danach wieder, hielte der Schritt 0,2 s (Leitung 1400 kbit/s mit 20 ms Puffer: 6 Schritte l -> m, keiner hielt).
+	probeKeep = 3 * time.Second
+	// probeBurst: So lange nach dem Schritt zaehlt in dieser Zeit ein gestiegener Verlust nicht als Zeichen von Stau - das
+	// Schluesselbild der neuen Schicht kommt als Buendel und ueberlaeuft einen kurzen Puffer (gemessen: der Verlust
+	// stand 0,7 bis 0,8 s lang in den letzten 500 ms der Rueckmeldungen). Eine Schlange zaehlt sofort.
+	probeBurst = 1200 * time.Millisecond
+)
 
 // Schwellen der Schaetzung.
 const (
@@ -1110,6 +1187,7 @@ const (
 func (e *estimator) lagging(v, rate float64, now int64) bool {
 	if e.lagAt == 0 {
 		if now < e.holdUntil || e.gccLast <= 0 {
+			e.lagWhy = "sperre"
 			return false
 		}
 		e.lagAt, e.lagBase = now, e.rateAvg
@@ -1117,15 +1195,19 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 		e.lagDet = false
 		// faellt, waehrend die Rate es ueberholt: Stau, bis zum Ende dieser Folge - ausser der Fall ist kein Ruecksprung
 		// von GCC, sondern die Klemmung an die Empfangsrate (clamped): Dann beginnt die Schonfrist beim neuen Ziel.
-		// Ebenso (eigen), wenn der eigene Detektor den Stau in diesem Takt ausdruecklich widerlegt (refute).
-		if v < e.gccLast*gccFall && !e.clamped(v, now) && !e.refute() {
-			e.lagDead, e.deadAt = true, now
+		// Ebenso (eigen), wenn der eigene Detektor den Stau in diesem Takt ausdruecklich widerlegt bzw. nach einer eben
+		// bestandenen Probe kein Zeichen von Stau zeigt (refute).
+		if v < e.gccLast*gccFall && !e.clamped(v, now) && !e.refute(now) {
+			e.lagDead, e.deadAt, e.lagWhy = true, now, "fall"
 			return false
 		}
 		e.lagDead, e.lagPeak, e.lagMark, e.lagMarkAt = false, v, v, now
 		return true
 	}
 	if e.lagDead {
+		if e.deadAt != now {
+			e.lagWhy = "tot" // die Folge ist schon frueher gescheitert und noch nicht zu Ende
+		}
 		return false
 	}
 	if v > e.lagPeak {
@@ -1133,21 +1215,32 @@ func (e *estimator) lagging(v, rate float64, now int64) bool {
 	}
 	ok := true
 	switch {
-	case e.lagDet && !e.detClear:
+	case e.lagDet && !e.detClear && !e.held(now):
 		// Die Schonfrist stand nur auf der Widerlegung durch den Detektor - und der widerlegt nicht mehr (Schlange an
 		// der Spitze, Verlust gestiegen, Warnung, Rueckmeldung alt): Das Signal von GCC gilt, sofort.
-		ok = false
-	case v < e.lagPeak*gccFall && now-e.lagAt < int64(lagMax) && (e.clamped(v, now) || e.refute()):
+		ok, e.lagWhy = false, "detektor"
+	case v < e.lagPeak*gccFall && now-e.lagAt < int64(lagMax) && (e.clamped(v, now) || e.refute(now)):
 		// Klemmung waehrend der Schonfrist: kein Stau - aber von hier aus muss das Ziel wieder steigen
 		e.lagPeak, e.lagMark, e.lagMarkAt = v, v, now
-	case v < e.lagPeak*gccFall, now-e.lagAt >= int64(lagMax):
-		ok = false
+	case v < e.lagPeak*gccFall:
+		ok, e.lagWhy = false, "faellt"
+	case now-e.lagAt >= int64(lagMax):
+		ok, e.lagWhy = false, "frist"
 	case now-e.lagMarkAt >= int64(lagStep):
-		ok = v >= e.lagMark*lagRise
+		// Fortschritt - im Halten nach einer bestandenen Probe darf das Ziel auch stehen
+		switch ok = v >= e.lagMark*lagRise; {
+		case ok:
+		case e.held(now):
+			ok = true
+			e.refStart(refHalten, now)
+		default:
+			e.lagWhy = "steht"
+		}
 		e.lagMark, e.lagMarkAt = v, now
 	}
 	if !ok {
 		e.lagDead, e.deadAt, e.failAt, e.failFrom = true, now, now, e.lagAt
+		e.refEnd(e.lagWhy, now)
 	}
 	return ok
 }
@@ -1181,15 +1274,62 @@ func (e *estimator) clamped(v float64, now int64) bool {
 // (wenige Prozent), waechst die Schlange so langsam, dass die Widerlegung noch gilt, wenn GCC schon meldet - dann
 // bleibt die Schicht, bis die Schlange 10 ms erreicht (hoechstens rund 1 s laenger als bei gcc, bei einer Schlange
 // unter 10 ms).
-func (e *estimator) refute() bool {
-	if !e.det || !e.detClear {
+//
+// Halten nach bestandener Probe (held): probeKeep lang nach einer bestandenen Probe genuegt dafuer, dass der Detektor
+// kein Zeichen von Stau zeigt - auch ein Verlust-Schub in den ersten probeBurst nach dem Schritt zaehlt dann nicht. Die
+// Folge steht danach wie jede Widerlegung auf dem Detektor (lagDet): Sobald das Halten endet, muss er in jedem Takt
+// ausdruecklich widerlegen.
+func (e *estimator) refute(now int64) bool {
+	switch {
+	case !e.det:
+		return false
+	case e.detClear:
+		e.refStart(refSpitze, now)
+	case e.held(now):
+		e.refStart(refHalten, now)
+	default:
 		return false
 	}
-	if !e.lagDet {
-		e.lagDet = true
-		e.refuted++
-	}
 	return true
+}
+
+// refStart: Die laufende Schonfrist steht ab jetzt auf dem Detektor (lagDet) - Beginn einer Widerlegung.
+func (e *estimator) refStart(art string, now int64) {
+	if e.lagDet {
+		return
+	}
+	e.lagDet = true
+	if art == refSpitze {
+		e.refuted++
+	} else {
+		e.heldN++
+	}
+	e.refAt, e.refArt = now, art
+	e.note = legNote{kind: LegRefute, art: art}
+}
+
+// held (HORN_BWE=eigen): Gilt in diesem Takt das Halten nach einer bestandenen Probe? Bis probeKeep nach der Probe,
+// solange der Detektor kein Zeichen von Stau zeigt: Zustand frei, Rueckmeldung frisch, keine Schlange an der Spitze
+// (bwe.Tip.Calm). Ein gestiegener Verlust ist ein Zeichen - ausser in den ersten probeBurst nach dem Schritt (das
+// Schluesselbild der neuen Schicht). Sieht der Detektor nichts (Rueckmeldung alt, Basis jung), gilt das Halten nicht:
+// Dann entscheidet GCC wie bisher.
+//
+// Grenze: Ein Einbruch gleich nach dem Schritt, der sich nur als Verlust zeigt (Policer, Puffer unter 10 ms), wird
+// bis zu probeBurst spaeter behandelt als ohne das Halten; mit einer Schlange an der Spitze so schnell wie bisher.
+func (e *estimator) held(now int64) bool {
+	if !e.det || now >= e.proofUntil || !e.detCalm {
+		return false
+	}
+	return !e.detLossUp || e.stepAt != 0 && now-e.stepAt < int64(probeBurst)
+}
+
+// refEnd: Die Folge, die auf einer Widerlegung stand, ist zu Ende (fuers Log).
+func (e *estimator) refEnd(why string, now int64) {
+	if e.refAt == 0 {
+		return
+	}
+	e.note = legNote{kind: LegRefuteEnd, art: e.refArt, why: why, dur: time.Duration(now - e.refAt)}
+	e.refAt = 0
 }
 
 // clampWin: So lange nach einem Schritt nach oben kann die Klemmung den Wechsel treffen. Sie braucht eine Empfangsrate,
@@ -1232,8 +1372,10 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	}
 	age := time.Duration(st.TickAgeNs.Swap(0))
 	drops := st.TickDrops.Swap(0)
+	e.note = legNote{}
 	if e.det = l.ExtTip != nil; e.det {
-		e.detClear = l.ExtTip().Clear
+		tip := l.ExtTip()
+		e.detClear, e.detCalm, e.detLossUp = tip.Clear, tip.Calm, tip.LossUp
 	}
 	shield := e.prOn || e.prUntil != 0 && now < e.prUntil
 	if shield && !e.prOn {
@@ -1319,6 +1461,8 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 			// Das Ziel liegt auch probeFloor nach der gescheiterten Probe noch unter der Rate: Stau wie frueher, ohne
 			// Schonfrist (das Ziel ist im Schutz gefallen; dass es inzwischen wieder steigt, entschuldigt nichts)
 			e.lagAt, e.lagDead, e.lagJump, e.deadAt = now, true, false, now
+			e.lagWhy = "nach-probe"
+			e.refEnd("probe", now)
 		}
 		switch {
 		case v > 0 && v < rate*0.9:
@@ -1330,6 +1474,7 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 			}
 		case e.lagAt != 0 && now-e.lagSeen >= int64(lagClear):
 			e.lagAt, e.lagDead = 0, false
+			e.refEnd("erholt", now) // das Ziel liegt wieder ueber der Rate
 		}
 		e.gccLast = v
 	}
@@ -1340,6 +1485,13 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	}
 	switch {
 	case age > congAge || drops > 0 || gccLow > 0:
+		// Grund der Senkung (fuers Log, LegEvent): die eigene Warteschlange oder das GCC-Ziel unter der Rate - und
+		// warum es nicht entschuldigt war (lagging)
+		if e.downAt = now; age > congAge || drops > 0 {
+			e.downWhy = "schlange"
+		} else {
+			e.downWhy = "gcc-" + e.lagWhy
+		}
 		if gccLow > 0 && gccLow < rate {
 			rate = gccLow / 0.85
 		}

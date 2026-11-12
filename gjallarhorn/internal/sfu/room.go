@@ -214,6 +214,7 @@ type Room struct {
 	// Aufschub und Proben-Abstand entfernter Beine (probe.go, remember/recall): ueberleben einen Wegwechsel
 	mem  map[memKey]memEnt
 	pevs []ProbeEvent // beendete Proben dieses Takts (Config.OnProbe)
+	levs []LegEvent   // Widerlegungen und Ruecknahmen dieses Takts (Config.OnLegEvent)
 }
 
 // Ref liefert die Raumkennung.
