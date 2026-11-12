@@ -426,6 +426,18 @@ Platzhalter: `horn-1.example.org`.
     Leitung 1,5 % bzw. 3 % unter `h`: 0,8 bzw. 0,6 s statt 0,4 s). Auf Leitungen mit starkem Jitter (LTE, ±20 ms)
     widerlegt die Spitze selten – dort bleibt es beim Verhalten von `gcc`.
     Aufschub, Schonfrist, Sperrzeit, „ein Schritt je Takt“ und die Regeln des Probings gelten unverändert.
+  - **`eigen` gegen `gcc` im Testaufbau** (pion-Gegenstelle hinter einer nachgebildeten Leitung, 7 Fälle × 3
+    Durchgänge je Stellung, im Wechsel; `TestUDPBWEMessung`): Rückfälle auf freier Leitung in 1844 s: `gcc` 12 (9-mal
+    `h`→`m`, 3-mal `m`→`l`), `eigen` 2 (einer in den ersten 2 s des Beins, solange die Basis jung ist; einer 1 s nach
+    einem widerlegten Zielsturz bei einer Ratenspitze – Ursache nicht abschließend geklärt), 12 widerlegte Zielstürze.
+    Anteil auf `h` bei Jitter und Pausen: 80 % gegen 91 % (90 s) und 90 % gegen 93 % (240 s nach einer Enge).
+    Beginn einer Enge mitten im Anruf (Policer 1000, Leitung 1000/1250/1450/1520 kbit/s, je 3-mal): der Platz fällt
+    in allen 15 Fällen je Stellung 0,4 s danach (Raster 0,1 s) – kein Unterschied. Proben `m`→`h` auf Enge und
+    Policer: `gcc` 32 von 32 gescheitert; `eigen` 27 gescheitert, 14 unklar (wiederholt), **keine bestanden**. Auf
+    freier Leitung: `gcc` 30 von 30 bestanden, `eigen` 28 von 29 (eine unklar, wiederholt), kein `fail`. Der Detektor
+    meldete auf freier Leitung weder Warnung noch Stau. `TestUDPProbing` mit `eigen`: 50 von 50 Läufen grün (auf
+    1,2 Mbit/s 129 Proben: 50 gescheitert, 56 unklar; `h` kam dort nur mit dem freien Versuch zum Anrufbeginn).
+    Mit echtem Browser ist `eigen` noch nicht gemessen.
   - Zähler und Zustand je Bein: `GET /api/sfu/leg/{id}` → `"bwe"` (nur bei `mit` und `eigen`): `mode`, `state`, `why`,
     `queue_ms`, `loss`, `acked_kbit`, `cap_kbit`, `age_ms` (Alter der letzten Rückmeldung, −1 = keine), `sent {video,
     audio, rtx, pad, dup}`, `dup_unacked` (Doppel ohne Bestätigung – kein Verlust), `feedbacks`, `bad` (nicht
