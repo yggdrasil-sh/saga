@@ -309,13 +309,14 @@ type Leg struct {
 
 	pr        probe
 	pstat     ProbeStats
-	pf        legFail // Abstand nach gescheiterten Proben, je Zielrate
-	prNext    int64   // nach einer abgebrochenen Probe: fruehestens dann die naechste auf diesem Bein
-	firstUsed bool    // der freie Versuch zum Anrufbeginn ist verbraucht (probe.go)
-	unkAt     int64   // letzte Probe ohne klares Ergebnis (0 = keine offen): Die naechste solche zaehlt als gescheitert
-	unkN      int     // eigen: Proben ohne klares Ergebnis in Folge (probeUnkMax)
-	unkRamp   bool    // ... die letzte davon endete schon in der Rampe (Stausignal von GCC bei halber Fuellung)
-	movedAt   int64   // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
+	pf        legFail    // Abstand nach gescheiterten Proben, je Zielrate
+	fb        freshBrake // Bremse nach frischen Rueckfaellen, je Zielrate (probe.go)
+	prNext    int64      // nach einer abgebrochenen Probe: fruehestens dann die naechste auf diesem Bein
+	firstUsed bool       // der freie Versuch zum Anrufbeginn ist verbraucht (probe.go)
+	unkAt     int64      // letzte Probe ohne klares Ergebnis (0 = keine offen): Die naechste solche zaehlt als gescheitert
+	unkN      int        // eigen: Proben ohne klares Ergebnis in Folge (probeUnkMax)
+	unkRamp   bool       // ... die letzte davon endete schon in der Rampe (Stausignal von GCC bei halber Fuellung)
+	movedAt   int64      // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
 
 	// eigen: die letzte gewertete Probe (bestanden oder gescheitert) - Zielrate, Ergebnis, Zeit. Eine Rampen-Probe wird
 	// nur wiederholt, wenn diese auf dasselbe Ziel nicht gescheitert war (probeVerdict).
@@ -352,7 +353,6 @@ type slot struct {
 	upOwner *Peer
 	upT     float64 // Zielrate des Beins (mit Reserve und Ton) bei diesem Wechsel - fuer Leg.pf, wenn er scheitert
 	upProbe bool    // ... und er kam mit einer eben bestandenen Probe (Probing: frischer Rueckfall, probeFresh)
-	freshN  int     // frische Rueckfaelle in Folge (Schritt mit bestandener Probe, binnen probeFresh zurueck), fuer upOwner
 	// Probing: Rate der Schicht, als der Platz zuletzt auf sie hinaufging bzw. mit ihr begann, und fuer wen - war die
 	// Quelle da schon eingeschwungen (unramped in planLeg)?
 	rampRate  float64

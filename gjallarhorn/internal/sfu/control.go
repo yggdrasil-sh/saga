@@ -566,6 +566,15 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		c.rate = rateOf(c)
 		sum += c.rate
 	}
+	// Bremse nach frischem Rueckfall (freshBrake, probe.go): Solange die lange Probe aussteht, deckelt sie die Auswahl
+	// unter der Zielrate des gefallenen Schritts (capNeed, Bildrate) - Schritte nach oben wie laufende Schichten. Ein
+	// Deckel nur fuer den einzelnen Schritt genuegt nicht: Geplant wird in der Reihenfolge des Vorrangs, jeder Platz
+	// beginnt auf der untersten Schicht. In der Gruppe ging nach einem Sprecherwechsel der neue Sprecher so von l auf h,
+	// waehrend die Kacheln als "laufend" auf m blieben - die Summe lag in der Bremse, der Schritt des Sprechers nicht.
+	capNeed := 0.0
+	if prb {
+		capNeed = l.fb.capNeed(audioCut)
+	}
 	// Reserve: nach oben nur mit Abstand und ausserhalb der Sperrzeit
 	limit := budget
 	if !l.est.canUp(now) {
@@ -657,13 +666,15 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			big = !prb && !cur && !start && l.est.probing && l.est.gccLast > 0
 			// passed: Fuer genau diesen Schritt ist gerade eine Probe bestanden (probe.go)
 			passed := prb && !cur && d.ok != 0 && now-d.ok <= int64(probeGrant)
-			tgt := need*upHeadroom + audioCut // Zielrate des Beins fuer diesen Schritt
+			tgt := need*upHeadroom + audioCut    // Zielrate des Beins fuer diesen Schritt
+			brake := prb && !cur && l.fb.on(tgt) // Schritt in der Bremse nach frischem Rueckfall (freshBrake)
 			// free: Dieser Schritt darf ohne Probe versucht werden - zeitlich wie ohne Probing (Aufschub, Deckel). Nicht,
 			// wenn er ohnehin nicht gehen kann (Kontingent, Obergrenze der Schaetzung) oder sein Aufschub schon ueber
 			// den ersten hinaus gewachsen ist: Ein freier Versuch, der lange aussteht, hielte alle Proben des Beins auf.
-			free := prb && !cur && !passed && tgt <= quotaCap && tgt <= l.est.max && d.d <= 2*layerDwell && l.freeStep(c.s, rank)
+			// Nach einem frischen Rueckfall auf diese Zielrate (freshBrake) kein freier Versuch und kein Schritt ohne Probe.
+			free := prb && !cur && !passed && tgt <= quotaCap && tgt <= l.est.max && d.d <= 2*layerDwell && l.freeStep(c.s, rank) && !brake
 			switch {
-			case prb && !cur && !free && (d.d > layerDwell || l.pf.covers(tgt)):
+			case prb && !cur && !free && (d.d > layerDwell || l.pf.covers(tgt) || brake):
 				// Probing: Nach einem gescheiterten Versuch bzw. einer gescheiterten Probe gibt nur eine bestandene
 				// Probe den naechsten Versuch frei - dafuer auch vor Ablauf des Aufschubs
 				if !passed {
@@ -694,7 +705,8 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 					lim, limit, upLimit = budget, budget, budget
 				}
 			}
-			if layerStep(cur, need, budget, lim, since) {
+			capped := capNeed > 0 && need > capNeed
+			if layerStep(cur, need, budget, lim, since) && !capped {
 				sum, c.rate = need, nr
 				if !cur {
 					stepper = c
@@ -723,7 +735,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 					wishFree = need
 				}
 				if prb && !free && cand.s == nil && stepper == nil && upLimit > 0 && sinceDown >= int64(layerDwell) && now >= d.next &&
-					!l.pf.blocks(tgt, now) && (blocked || need*upHeadroom > upLimit) {
+					!l.pf.blocks(tgt, now) && !l.fb.blocks(tgt, now) && (blocked || capped || need*upHeadroom > upLimit) {
 					cand.s, cand.rank, cand.need = c.s, rank, need
 				}
 			}
@@ -751,15 +763,16 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			d = c.s.dw[layerRank(c.opts[0].Layer)]
 		}
 		tgt := (sum+nr)*upHeadroom + audioCut
-		blocked := prb && l.pf.covers(tgt) && (d.ok == 0 || now-d.ok > int64(probeGrant))
+		blocked := prb && (l.pf.covers(tgt) || l.fb.on(tgt)) && (d.ok == 0 || now-d.ok > int64(probeGrant))
 		if prb && l.est.wantFree > 0 && l.est.capProbed > 0 && (sum+nr)*upHeadroom > l.est.capProbed-audioCut {
 			blocked = true // die Schaetzung waechst gerade fuer den freien Versuch eines anderen Platzes, nicht fuer diese Kachel
 		}
-		if (sum+nr)*upHeadroom <= upLimit && !blocked {
+		if (sum+nr)*upHeadroom <= upLimit && !blocked && !(capNeed > 0 && sum+nr > capNeed) {
 			sum, c.rate = sum+nr, nr
 		} else {
 			deny(sum + nr)
-			if prb && cand.s == nil && stepper == nil && upLimit > 0 && c.s.owner != nil && now >= d.next && !l.pf.blocks(tgt, now) {
+			if prb && cand.s == nil && stepper == nil && upLimit > 0 && c.s.owner != nil && now >= d.next && !l.pf.blocks(tgt, now) &&
+				!l.fb.blocks(tgt, now) {
 				cand.s, cand.rank, cand.need = c.s, layerRank(c.opts[0].Layer), sum+nr
 			}
 			c.idx = -1
@@ -842,16 +855,17 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// - ebenso, wenn die Schonfrist nach diesem Hochschalten gescheitert ist (GCC-Ziel gefallen bzw. nicht
 			// nachgezogen, estimator.probeFailed): auch das ist ein gescheiterter Versuch, kein Halten
 			// - ebenso (nur Probing), wenn Schritte mit einer eben bestandenen Probe probeFreshN Mal in Folge binnen
-			// probeFresh zurueckfallen: Die Leitung traegt die kurze Probe, aber nicht die Schicht (Token-Bucket-Policer:
-			// der Eimer traegt 0,4 bis 0,6 s Fuellung, die Dauerlast nicht) - gescheiterte Versuche, kein Halten. Ein
-			// einzelner frischer Rueckfall zaehlt nicht (Stoerung von aussen kurz nach dem Schritt).
+			// probeFresh zurueckfallen: Die Leitung traegt die Probe, aber nicht die Schicht (Token-Bucket-Policer: der
+			// Eimer traegt die Fuellung, die Dauerlast nicht) - gescheiterte Versuche, kein Halten. Der erste frische
+			// Rueckfall fuehrt zur langen Probe (freshBrake, probe.go). Gezaehlt wird je Bein, nicht je Platz: In der
+			// Gruppe nimmt der Rueckfall nach einem geprobten Schritt des Sprechers zuerst eine Kachel zurueck.
 			own := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner
-			if fresh := own && book && s.upProbe && now-s.upAt < int64(probeFresh); fresh {
-				s.freshN++
-			} else if own {
-				s.freshN = 0
+			brake := false
+			if book && s.why == whyBudget && was != nil && was.peer == s.owner {
+				brake = l.fb.down(now)
 			}
-			fast := own && (now-s.upAt < int64(upFail) || l.est.probeFailed(s.upAt, now) || s.freshN >= probeFreshN)
+			fast := own && (now-s.upAt < int64(upFail) || l.est.probeFailed(s.upAt, now) ||
+				brake && s.upProbe && now-s.upAt < int64(probeFresh))
 			// unramped (nur Probing): Die Schicht, von der der Platz faellt, sendet inzwischen deutlich mehr als bei
 			// seinem Schritt hinauf - der Schritt ging mit einer zu kleinen Rate durch (Anrufbeginn: der Kodierer faehrt
 			// erst hoch; im Labor h nach 0,2 s mit 299 kbit/s statt 1250). Sein Scheitern sagt nichts ueber die Leitung:
@@ -890,6 +904,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				d := s.dw[layerRank(st.Layer)]
 				s.upProbe = d.ok != 0 && now-d.ok <= int64(probeGrant)
 			}
+			if book && s.upProbe {
+				l.fb.stepped(s.upT, now)
+			}
 			s.rampRate, s.rampOwner = layerRate(st), s.owner
 		} else if s.layer == "" || s.rampOwner != s.owner {
 			s.rampRate, s.rampOwner = layerRate(st), s.owner // Platz beginnt auf dieser Schicht (Anrufbeginn, neuer Besitzer)
@@ -926,6 +943,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 	}
 	l.pf.decay(now)
+	l.fb.decay(now)
 	// Darf der naechste Schritt ohne Probe versucht werden, folgt der Deckel der Schaetzung wieder dem Bedarf (wie ohne
 	// Probing): nach probeBlindAfter gescheiterten Proben in Folge
 	l.est.blind = prb && probeBlindAfter > 0 && l.pf.pd > 0 && l.pf.n >= probeBlindAfter

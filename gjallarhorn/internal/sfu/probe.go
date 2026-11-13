@@ -78,8 +78,15 @@ const (
 	// (Schluesselbilder, 3 bis 4 % in der Rate des 100-ms-Rasters; bei kleinen Schritten waeren 5 % weniger als das).
 	probeHead    = 1.05
 	probeFillMin = 200e3
-	probeRetry   = 2 * time.Second // Abstand nach einer abgebrochenen Probe (Belegung geaendert)
-	probeQuiet   = layerDwell      // so lange muss die Bild-Auswahl des Beins unveraendert laufen, bevor geprobt wird
+	// Lange Probe (Stufe 3b, freshBrake): Nach einem frischen Rueckfall faehrt die naechste Probe auf dieses Ziel mit
+	// dem Fenster und Fuellziel von vor Stufe 3 - fest probeWinLong (unabhaengig von der Umlaufzeit) und Bedarf x
+	// probeHeadLong. Ein Token-Bucket-Policer knapp unter der Zielrate traegt die kurze Probe aus seinem Eimer: Sie schiebt
+	// nur (Bedarf x 1,05 - Policer-Rate) x 0,4 bis 0,6 s ueber die Grenze, rund 80 bis 120 kbit - ein Eimer von 1 bis
+	// 2 x Rate x 100 ms (145 bis 290 kbit) leert sich nie. Die lange schiebt (Bedarf x 1,15 - Policer-Rate) x 1,5 s,
+	// rund 400 bis 600 kbit (Pruefer bwe3: mit altem Fenster, aber Fuellziel 1,05 blieb der Zyklus - beides ist noetig).
+	// (Variablen fuer Tests, siehe unten.)
+	probeRetry = 2 * time.Second // Abstand nach einer abgebrochenen Probe (Belegung geaendert)
+	probeQuiet = layerDwell      // so lange muss die Bild-Auswahl des Beins unveraendert laufen, bevor geprobt wird
 	// ... vor der ersten Probe eines Beins kuerzer: Es gibt noch keinen Wechsel, dessen Folgen (Schluesselbild,
 	// nachlaufendes Ziel) abzuwarten waeren - nur der Anlauf (erstes Schluesselbild, erste Rueckmeldungen an GCC)
 	probeQuietFirst = 2 * time.Second
@@ -115,6 +122,12 @@ const (
 	probeTail     = 500 * time.Millisecond // Nachlauf bis zum Urteil ohne bekannte Umlaufzeit (sonst 2 Umlaufzeiten + 200 ms, hoechstens 1 s)
 )
 
+// Lange Probe nach frischem Rueckfall (siehe oben bei probeHead). Variablen fuer Tests.
+var (
+	probeWinLong  = 1500 * time.Millisecond
+	probeHeadLong = upHeadroom
+)
+
 // Ergebnis einer Probe in der Layout-Meldung (Slot.Probe).
 const (
 	probeStart = "start"
@@ -142,6 +155,9 @@ type probe struct {
 	stepT  float64  // ... dieselbe mit der Reserve des Schritts (upHeadroom) - in diesem Mass fuehrt legFail Buch
 	fill   float64  // volle Fuellrate (bit/s)
 	win    int64    // Dauer des Fensters
+	wmax   int64    // ... hoechstens (probeWinMax, bei der langen Probe probeWinLong)
+	head   float64  // Fuellziel: Bedarf x head (probeHead, lange Probe probeHeadLong)
+	long   bool     // lange Probe nach frischem Rueckfall (freshBrake)
 	pad0   uint64   // Fuell-Bytes des Beins zu Beginn des Fensters
 	t0     int64    // Beginn der Probe
 	// Eigene Auswertung (probeJudge): offener Hinweis auf Stau
@@ -249,8 +265,13 @@ func (s *slot) dwFor(rank int) *dwell {
 // probeBegin startet die Probe fuer den Schritt von Platz s auf die Schicht rank: need ist die Bildrate der Auswahl
 // nach dem Schritt, sum die laufende, audio der Tonanteil (alles bit/s).
 func (l *Leg) probeBegin(s, fs *slot, rank int, need, sum, audio float64, now int64) {
-	target := max(need*probeHead, sum+probeFillMin) + audio
 	stepT := need*upHeadroom + audio
+	// Lange Probe nach frischem Rueckfall auf dieses Ziel (freshBrake): langes Fenster, Fuellziel x probeHeadLong
+	head, long := probeHead, l.fb.longFor(stepT)
+	if long {
+		head = probeHeadLong
+	}
+	target := max(need*head, sum+probeFillMin) + audio
 	// Gefuellt wird bis zur Zielrate auf der Leitung: Sendet das Bein gerade weniger, als die Planung mit den geglaetteten
 	// Raten seiner Schichten annimmt (sie enthalten die Schluesselbilder), fuellt die Probe die Luecke mit. Mit der
 	// Reserve 1,15 ging diese Luecke (UDP-Laeufe l -> m: gesendet 85 bis 92 % der Zielrate) im Nachweis unter; mit 1,05
@@ -265,19 +286,22 @@ func (l *Leg) probeBegin(s, fs *slot, rank int, need, sum, audio float64, now in
 		// erst; das hier greift nur, wenn die Raten seither gewandert sind.)
 		fill = probeFillMax
 		target = base + fill
-		stepT = min(stepT, (target-audio)*upHeadroom/probeHead+audio)
+		stepT = min(stepT, (target-audio)*upHeadroom/head+audio)
 	}
 	if fill <= 0 {
 		return
 	}
-	win := int64(probeWin)
+	win, wmax := int64(probeWin), int64(probeWinMax)
 	if l.ExtRTT != nil {
 		if rtt := l.ExtRTT(); rtt > 0 {
 			win = min(int64(float64(rtt)*probeRTTs), int64(probeWinMax))
 		}
 	}
+	if long {
+		win, wmax = int64(probeWinLong), int64(probeWinLong)
+	}
 	l.pr = probe{stage: 1, at: now, t0: now, s: s, owner: s.owner, layer: s.layer, rank: rank, fs: fs, fown: fs.owner, out: fs.out,
-		target: target, stepT: stepT, fill: fill, win: win}
+		target: target, stepT: stepT, fill: fill, win: win, wmax: wmax, head: head, long: long}
 	loss0 := 0.0
 	if l.ExtStat != nil {
 		loss0 = l.ExtStat().Loss
@@ -338,10 +362,10 @@ func (l *Leg) probeStep(now int64) {
 		}
 	case 2:
 		el := now - p.at
-		if p.sus > 0 && el < int64(probeWinMax+probeSusOver) {
+		if p.sus > 0 && el < p.wmax+int64(probeSusOver) {
 			break // offener Hinweis: Das Fenster laeuft weiter, bis er ausgeraeumt ist oder stehen bleibt (probeJudge)
 		}
-		if p.n >= probeMinTicks && el >= p.win || el >= int64(probeWinMax) {
+		if p.n >= probeMinTicks && el >= p.win || el >= p.wmax {
 			if p.sus > 0 { // auch nach der Verlaengerung nicht ausgeraeumt
 				if eig {
 					p.gsig = p.susWhy
@@ -437,7 +461,7 @@ func (l *Leg) probeVerdict(now int64) {
 	// Durchsatz-Nachweis: Der Bedarf des Schritts (die Zielrate ohne die Reserve, probeSentMin) wurde gesendet UND
 	// bestaetigt, und vom Gesendeten kam mindestens probeAckMin an. Ohne "bestaetigt >= Bedarf" reichten
 	// 87 % x 95 % = 83 % der Zielrate - weniger, als die Schicht braucht.
-	need := probeSentMin * p.target
+	need := p.target / p.head // probeSentMin x Zielrate (lange Probe: 1/probeHeadLong)
 	proof := r.Ns >= int64(probeProofMin) && float64(r.SentBps) >= need && float64(r.AckedBps) >= need &&
 		float64(r.AckedBps) >= probeAckMin*float64(r.SentBps)
 	switch {
@@ -565,6 +589,9 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 			e.bps = min(p.target, e.max)
 		}
 		l.pf.pass(p.stepT)
+		if p.long {
+			l.fb.passLong(p.stepT)
+		}
 		if d != nil {
 			d.next, d.ok = now+int64(probeGap), now
 		}
@@ -573,6 +600,9 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 		e.shieldOff(now, probeFloor)
 		l.pf.fail(p.stepT, now)
 		l.firstUsed = true
+		if p.long {
+			l.fb.failLong(now) // die Enge besteht fort: die Bremse bleibt (freshBrake.decay)
+		}
 		if d != nil {
 			d.ok = 0
 		}
@@ -625,15 +655,126 @@ type legFail struct {
 	n    int           // gescheiterte Proben in Folge
 }
 
-// probeFresh: Fallen Schritte, die mit einer bestandenen Probe kamen, probeFreshN Mal in Folge binnen dieser Zeit
-// zurueck, zaehlt das als echter Fehlversuch (Aufschub, Proben-Abstand; planLeg: fast). UDP-Aufbau mit
-// Token-Bucket-Policer 1450 bzw. 1500 kbit/s (Eimer 150 bzw. 100 ms): alle Proben bestanden, die Schritte fielen nach
-// 3,1 bis 13,4 s zurueck - immer wieder, ohne dass Aufschub oder Abstand wuchsen. Erst der zweite in Folge: Auf einer
-// freien Leitung mit Stoerschueben (TestProbingStoerschuebe) faellt auch mal ein Schritt bald nach der Probe, der
-// naechste haelt dann. Variable fuer Tests.
+// probeFresh: Faellt ein Schritt, der mit einer bestandenen Probe kam, binnen dieser Zeit zurueck (nach upFail und
+// ohne gescheiterte Schonfrist), ist das ein frischer Rueckfall (freshBrake): Die Leitung trug die Probe, aber nicht
+// die Schicht. UDP-Aufbau mit Token-Bucket-Policer 1450 bzw. 1500 kbit/s (Eimer 150 bzw. 100 ms): alle kurzen Proben
+// bestanden, die Schritte fielen nach 3,1 bis 13,4 s zurueck - immer wieder, ohne dass Aufschub oder Abstand wuchsen.
+// Variable fuer Tests.
 var probeFresh = 15 * time.Second
 
-const probeFreshN = 2
+// probeFreshN: so viele frische Rueckfaelle in Folge zaehlen als echter Fehlversuch (Aufschub; planLeg: fast). Der
+// erste fuehrt nur zur langen Probe (freshBrake.long) - auf einer freien Leitung mit Stoerschueben
+// (TestProbingStoerschuebe) faellt auch mal ein Schritt bald nach der Probe, der naechste haelt dann. Neben der langen
+// Probe noch noetig fuer Eimer, die auch sie nicht leert (Modell, Eimer 0,6 s, 7 % unter h: ohne die Regel 36 statt 9
+// Rueckfaelle in 10 min, Gruppe mit Sprecherwechsel 71 bzw. 98 statt 28). Variable fuer Tests.
+var probeFreshN = 2
+
+// freshBrake: Bremse nach frischen Rueckfaellen (probeFresh), je Bein und Zielrate - nicht je Platz (Stufe 3b). In
+// einer Gruppe wechselt der Sprecherplatz laufend den Besitzer; hing die Bremse am Platz (Aufschub s.dw, Zaehler der
+// frischen Rueckfaelle), begann sie mit jedem Sprecherwechsel von vorn, und die naechste kurze Probe bestand wieder
+// (Pruefer bwe3: Gruppe 3, Wechsel alle 20 s, Eimer 0,15 s - 105 Rueckfaelle in 10 min, ohne die Regel ebenso viele).
+// Wie legFail haengt sie an der Leitung des Empfaengers: Sie gilt fuer jeden Schritt ab probeNear x rate.
+//
+//   - Der erste frische Rueckfall: Die naechste Probe ab dieser Zielrate faehrt lang (probeWinLong, probeHeadLong) -
+//     sie leert den Eimer eines Policers, den die kurze nicht sieht. Bis dahin geht kein solcher Schritt ohne
+//     bestandene Probe (auch nicht der freie Versuch). Besteht die lange Probe, gilt wieder die kurze; scheitert sie,
+//     waechst der Proben-Abstand (legFail), und die naechste ist wieder lang.
+//   - Der probeFreshN-te in Folge (der Eimer ist so gross, dass auch die lange Probe ihn nicht leert): Fehlversuch -
+//     zusaetzlich zum Aufschub des Platzes ein Aufschub am Bein (8, 16, 32 ... s, die Probe danach hoechstens nach
+//     probeDwellMax), den keine bestandene Probe und kein Besitzerwechsel aufhebt.
+//   - Ein Rueckfall eines solchen Schritts nach probeFresh setzt die Folge zurueck (die lange Probe bleibt faellig).
+//     Ganz erledigt ist die Bremse nach upHold (+ Aufschub) ohne neues Zeichen der Enge (frischer Rueckfall,
+//     gescheiterte lange Probe) - wie "upHold Halten setzt zurueck" beim Aufschub.
+type freshBrake struct {
+	rate float64       // kleinste Zielrate der frisch zurueckgefallenen Schritte (Mass wie legFail: mit Reserve und Ton)
+	n    int           // frische Rueckfaelle in Folge
+	long bool          // die naechste Probe ab probeNear x rate faehrt lang
+	at   int64         // letztes Zeichen der Enge (frischer Rueckfall, gescheiterte lange Probe); 0 = keine Bremse
+	d    time.Duration // Aufschub am Bein
+	next int64         // ... vorher keine Probe ab probeNear x rate
+	// letzter Schritt des Beins mit bestandener Probe (0 = keiner offen) und die Zielrate des Beins danach
+	upAt int64
+	upT  float64
+}
+
+// stepped: Ein Platz ist mit bestandener Probe hinaufgegangen; das Bein hat jetzt die Zielrate t.
+func (b *freshBrake) stepped(t float64, now int64) { b.upAt, b.upT = now, t }
+
+// down: Ein Platz faellt wegen des Budgets zurueck. Kam der letzte geprobte Schritt des Beins binnen probeFresh davor,
+// ist das ein frischer Rueckfall (fall); sonst hielt er (held). Liefert, ob er als Fehlversuch zaehlt.
+func (b *freshBrake) down(now int64) bool {
+	if b.upAt == 0 || b.upAt == now { // im selben Takt: Umverteilung durch die Planung, kein Rueckfall der Leitung
+		return false
+	}
+	at, t := b.upAt, b.upT
+	b.upAt = 0
+	if now-at < int64(probeFresh) {
+		return b.fall(t, now)
+	}
+	b.held(t)
+	return false
+}
+
+// on: Gilt die Bremse fuer einen Schritt mit Zielrate t?
+func (b *freshBrake) on(t float64) bool { return b.at != 0 && t >= b.rate*probeNear }
+
+// capNeed: Deckel der Auswahl (Bildrate ohne Ton, bit/s), solange die lange Probe aussteht (0 = keiner): Die
+// Zielrate des Beins (Bildrate x upHeadroom + Ton) bleibt unter probeNear x rate. audio ist der Tonabzug.
+func (b *freshBrake) capNeed(audio float64) float64 {
+	if !b.long || b.at == 0 {
+		return 0
+	}
+	return max((b.rate*probeNear-audio)/upHeadroom, 1)
+}
+
+// longFor: Faehrt eine Probe mit Zielrate t lang?
+func (b *freshBrake) longFor(t float64) bool { return b.long && b.on(t) }
+
+// blocks: Ist eine Probe mit Zielrate t wegen des Aufschubs am Bein noch gesperrt?
+func (b *freshBrake) blocks(t float64, now int64) bool { return b.on(t) && now < b.next }
+
+// fall: Ein Schritt mit Zielrate t ist frisch zurueckgefallen. Liefert, ob das als Fehlversuch zaehlt.
+func (b *freshBrake) fall(t float64, now int64) bool {
+	if b.at == 0 || t < b.rate {
+		b.rate = t
+	}
+	b.n++
+	b.long, b.at = true, now
+	if b.n < probeFreshN {
+		return false
+	}
+	b.d = min(2*max(b.d, layerDwell), upDwellMax)
+	b.next = max(b.next, now+int64(min(b.d, probeDwellMax)))
+	return true
+}
+
+// held: Ein Schritt mit Zielrate t ab dieser Bremse hielt laenger als probeFresh - die Folge beginnt von vorn.
+func (b *freshBrake) held(t float64) {
+	if b.on(t) {
+		b.n = 0
+	}
+}
+
+// passLong: lange Probe mit Zielrate t bestanden - wieder die kurze.
+func (b *freshBrake) passLong(t float64) {
+	if b.on(t) {
+		b.long = false
+	}
+}
+
+// failLong: lange Probe gescheitert - die Enge besteht fort.
+func (b *freshBrake) failLong(now int64) {
+	if b.at != 0 {
+		b.at = now
+	}
+}
+
+// decay: upHold (+ Aufschub) ohne neues Zeichen der Enge - die Bremse ist erledigt (ein offener Schritt bleibt offen).
+func (b *freshBrake) decay(now int64) {
+	if b.at != 0 && now >= b.at+int64(upHold)+int64(b.d) {
+		*b = freshBrake{upAt: b.upAt, upT: b.upT}
+	}
+}
 
 // probeNear: Zielraten ab diesem Anteil einer gescheiterten gelten als "dieselbe oder hoeher".
 const probeNear = 0.9
@@ -815,8 +956,9 @@ type memKey struct{ recv, owner, class string }
 
 type memEnt struct {
 	dw    [4]dwell
-	pf    legFail // nur im Eintrag des Beins (Besitzer und Platzart leer)
-	first bool    // ... ebenso: der freie Versuch zum Anrufbeginn ist verbraucht (Leg.firstUsed)
+	pf    legFail    // nur im Eintrag des Beins (Besitzer und Platzart leer)
+	fb    freshBrake // ... ebenso
+	first bool       // ... ebenso: der freie Versuch zum Anrufbeginn ist verbraucht (Leg.firstUsed)
 	until int64
 }
 
@@ -836,8 +978,8 @@ func (r *Room) remember(l *Leg) {
 	}
 	// Der verbrauchte freie Versuch zum Anrufbeginn gehoert dazu, auch ohne gescheiterte Probe und ohne Aufschub (h
 	// haelt seit dem ersten Schritt) - sonst lebte er mit jedem Wegwechsel wieder auf
-	if (l.pf.pd > 0 || l.firstUsed) && len(r.mem) < memMax {
-		r.mem[memKey{recv: l.Peer.ID}] = memEnt{pf: l.pf, first: l.firstUsed, until: now + int64(memKeep)}
+	if (l.pf.pd > 0 || l.fb.at != 0 || l.firstUsed) && len(r.mem) < memMax {
+		r.mem[memKey{recv: l.Peer.ID}] = memEnt{pf: l.pf, fb: l.fb, first: l.firstUsed, until: now + int64(memKeep)}
 	}
 	for _, s := range l.slots {
 		if s.dwellOwner == nil || s.dw == ([4]dwell{}) || len(r.mem) >= memMax {
@@ -849,12 +991,12 @@ func (r *Room) remember(l *Leg) {
 
 // recall gibt gemerkte Eintraege an Plaetze zurueck, die fuer ihren Besitzer noch keine eigene Vorgeschichte haben.
 func (r *Room) recall(l *Leg, vslots []*slot, now int64) {
-	if l.pf.pd == 0 {
+	if l.pf.pd == 0 && l.fb.at == 0 {
 		k := memKey{recv: l.Peer.ID}
 		if e, ok := r.mem[k]; ok {
 			delete(r.mem, k)
 			if now < e.until {
-				l.pf = e.pf
+				l.pf, l.fb = e.pf, e.fb
 				// Vorgeschichte von vor dem Wegwechsel bzw. dort schon verbraucht: kein freier Versuch zum Anrufbeginn
 				l.firstUsed = l.firstUsed || e.first || e.pf.pd > 0
 			}
