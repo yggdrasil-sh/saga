@@ -267,6 +267,19 @@ Platzhalter: `horn-1.example.org`.
     Sprecherwechsel). Dafür gibt es in der engen Phase davor 0–2 statt 9–19 Fehlversuche (jeder mit Schlüsselbild,
     Rückwechsel und kurz verdecktem Ton). Mit `HORN_PROBING=0` kommt eine solche Gruppe schneller zurück, zahlt
     aber in der engen Zeit.
+  - **Probing Stufe 3 – Messzahlen (Testaufbau mit pion-Gegenstelle, 13.11.; vorher = Stand vor Stufe 3):**
+    Serie 7 Fälle × 3: Rückfälle auf freier Leitung `gcc` 12 → 10, `eigen` 0 → 0; Anteil `h` auf freier Leitung nach
+    einer Enge (engfrei/policer/mitte/knapp) `gcc` 80/65/52/59 → 94/74/90/93 %, `eigen` 78/54/64/79 → 89/62/89/84 %;
+    Proben in der Enge `gcc` 38 → 66, `eigen` 48 → 72 (keine bestanden – `gcc` ist auch mit dem kurzen Fenster
+    bewertbar); Fülldaten der Serie `gcc` 5,45 → 5,04, `eigen` 4,46 → 4,67 MB. Rückkehr nach der Freigabe (`h`
+    dauerhaft, Median): engfrei `gcc` 14,6 → 8,6 s, `eigen` 16,1 → 9,6 s; Leitung 1000/20 ms 19,6 → 15,0 bzw. 20,4 →
+    15,8 s; mitte 16,7 → 2,4 bzw. 11,0 → 3,9 s; knapp 13,5 → 2,1 bzw. 5,4 → 5,5 s. Anhaltende Enge 1450/1520/1550
+    (6 Läufe, 720 s): `eigen` 46 → 57 Proben, 2,02 → 2,10 MB (unklare 21 → 7), `m`/`l` 687/30 → 680/37 s; `gcc` 31 →
+    54 Proben, 1,13 → 1,89 MB, `m`/`l` 547/170 → 616/101 s. Knapp über `h` (1600/1700): `eigen` hält `h` 124 s statt
+    6 s (4 Läufe). Token-Bucket 1450/150 ms bzw. 1500/100 ms (180 s): vorher scheiterte jede Probe (das lange Fenster
+    leert den Eimer), jetzt bestehen sie und der Platz fällt 110–120-mal je Stunde zurück; über 600 s gedämpft durch den
+    frischen Rückfall: 10 Rückfälle, zuletzt alle ~2 min (vorher 1). **Das kurze Fenster macht Policer schlimmer**;
+    nach dem Ende des Policers kann `h` bis zum Ablauf des Aufschubs (bis 2 min) ausbleiben.
   - **Bekannte Grenze – Leitung zwischen Bedarf und Bedarf × 1,05** (vor Stufe 3: × 1,15): Die Probe prüft die
     Zielrate mit Reserve. Eine Leitung, die die höhere Schicht gerade trägt, aber nicht 5 % mehr (Modell:
     Browser-`h` mit 1250 kbit/s auf einer Leitung bis 1,34 Mbit/s), besteht die Probe nie und **erreicht die Schicht
