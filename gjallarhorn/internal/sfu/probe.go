@@ -224,12 +224,16 @@ type LegEvent struct {
 	Dur                        time.Duration // Dauer der Widerlegung (LegRefuteEnd)
 	Class, From, To            string        // Ruecknahme: Platzart, Schicht davor und danach
 	EstKbit, GccKbit, RateKbit int           // Schaetzung des Beins, GCC-Ziel, Medienrate dieses Takts (an ihr wird das Ziel gemessen)
+	// LegFresh (Art in Why): Zielrate des geprobten Schritts, Rate des Beins davor, kleinstes Budget bzw. GCC-Ziel
+	// seither, Grenze des Einbruchs (probeSlump x davor), Zielrate der Bremse danach (0 = keine) und Folge n
+	TgtKbit, PreKbit, LowKbit, SlumpKbit, BrakeKbit, N int
 }
 
 const (
 	LegRefute    = "refute"
 	LegRefuteEnd = "refute-end"
 	LegDown      = "down"
+	LegFresh     = "fresh" // Einordnung eines Rueckfalls nach geprobtem Schritt (freshBrake; nur mit Probing)
 )
 
 // ProbeStats zaehlt die Proben eines Beins.
@@ -701,13 +705,16 @@ var probeFreshN = 2
 // Plaetze zugleich; er waere auch ohne den Schritt gekommen (Pruefer bwe3b: Gruppe 3, Wechsel 20 s, freie Leitung mit
 // Schueben - jeder Schub zaehlte als frischer Rueckfall, Sprecher auf h 47 -> 12 %, Aufschub am Bein ohne Ende). Kein
 // frischer Rueckfall ist deshalb:
-//   - ein Einbruch (slump): Budget bzw. GCC-Ziel lagen zwischen dem Schritt und dem Rueckfall unter probeSlump x
-//     Zielrate vor dem Schritt (der Schub beginnt oft, bevor der Platz faellt - das GCC-Ziel ist dann schon wieder im
+//   - ein Einbruch (slump): Budget bzw. GCC-Ziel lagen zwischen dem Schritt und dem Rueckfall unter probeSlump x Rate
+//     des Beins vor dem Schritt (der Schub beginnt oft, bevor der Platz faellt - das GCC-Ziel ist dann schon wieder im
 //     Steigen). Er unterbricht auch die Folge (n): Zwischen zwei Rueckfaellen eines Policers liegt kein Verlust darunter;
-//   - ein Rueckfall auf eine andere, kleinere Zielrate (unter probeNear x rate) als die der laufenden Bremse: Ein
-//     Policer unter rate laege auch unter dieser Zielrate, die vorher hielt. Er senkt rate nicht (sonst deckelte
-//     capNeed alle Plaetze unter einer Kachel-Stufe) und frischt die Bremse nicht auf;
-//   - eine Umverteilung (der Platz faellt, weil ein anderer steigt; die Auswahl des Beins sinkt nicht, planLeg).
+//   - eine Umverteilung (der Platz faellt, weil ein anderer steigt; die Auswahl des Beins sinkt nicht, planLeg);
+//   - ein Rueckfall, nachdem das Bein ohne Probe ueber den geprobten Schritt hinaus gestiegen ist (beyond).
+//
+// Ein frischer Rueckfall auf eine kleinere Zielrate als die der laufenden Bremse senkt sie (wie in Stufe 3b): Liegt
+// ein Policer zwischen zwei Zwischenbelegungen, faellt erst die groessere, dann die kleinere (Pruefer bwe3c: Gruppe 3,
+// Policer 1580k zwischen mmm und hll - hielt die Bremse an hml fest, fiel hll alle 20 bis 40 s zurueck, und die
+// scheiternden langen Proben auf hml frischten die Bremse immer wieder auf: 77 bis 94 statt 9 bis 12 Rueckfaelle).
 type freshBrake struct {
 	rate float64       // kleinste Zielrate der frisch zurueckgefallenen Schritte (Mass wie legFail: mit Reserve und Ton)
 	n    int           // frische Rueckfaelle in Folge
@@ -724,15 +731,18 @@ type freshBrake struct {
 	upLow float64
 }
 
-// probeSlump: Liegen Budget bzw. GCC-Ziel beim Rueckfall unter diesem Anteil der Zielrate des Beins vor dem geprobten
-// Schritt, ist das ein Einbruch, kein frischer Rueckfall (freshBrake). Ein Policer ueber dem Stand vor dem Schritt
-// laesst GCC nur bis rund 0,85 x seiner Rate zurueckspringen, gemessen am Stand mit Reserve (x upHeadroom) also nicht
-// unter ~0,74 (UDP-Aufbau, Token-Bucket 1450/150 und 1500/100, 1:1: Budget 1,2 bis 1,5 Mbit/s beim Rueckfall auf m,
-// Zielrate von m rund 0,8 Mbit/s); der Stoerschub im Modell drueckt das Ziel auf 0,6 Mbit/s, unter jeden Stand ab mll.
-// Variable fuer Tests.
-var probeSlump = 0.7
+// probeSlump: Lagen Budget bzw. GCC-Ziel zwischen dem geprobten Schritt und dem Rueckfall unter diesem Anteil der Rate
+// des Beins vor dem Schritt (Bild + Ton, ohne Reserve), ist das ein Einbruch, kein frischer Rueckfall (freshBrake). Ein
+// Policer liegt ueber dieser Rate (sonst fiele schon das Laufende); springt GCC an ihm auf g x seine Rate zurueck, bleibt
+// das Verhaeltnis also ueber g - auch wenn der Policer knapp ueber einer Zwischenbelegung liegt. Gemessen: g ~0,85
+// (Modell), ~0,82 (UDP-Aufbau 1:1, Token-Bucket 1450/150 ms: Minimum 1183k). Bis Stufe 3c stand hier 0,7 x Zielrate
+// (mit Reserve, also ~0,8 x Rate): Ab g < ~0,8 galt ein solcher Policer als Einbruch (Pruefer bwe3c, Modell mit
+// g = 0,76: Gruppe mit Policer 1650-2030k 1298 statt 715 Rueckfaelle im Raster; mit 0,75 x Rate 634). Der Stoerschub
+// im Modell (GCC-Ziel 600k) bleibt ein Einbruch ab einer Rate von 800k vor dem Schritt. Variable fuer Tests.
+var probeSlump = 0.75
 
-// stepped: Ein Platz ist mit bestandener Probe hinaufgegangen; das Bein hat jetzt die Zielrate t, vorher pre.
+// stepped: Ein Platz ist mit bestandener Probe hinaufgegangen; das Bein hat jetzt die Zielrate t, die Rate vorher war
+// pre (Bild + Ton, ohne Reserve).
 func (b *freshBrake) stepped(t, pre float64, now int64) {
 	b.upAt, b.upT, b.upPre, b.upLow = now, t, pre, 0
 }
@@ -744,37 +754,64 @@ func (b *freshBrake) watch(bud float64) {
 	}
 }
 
+// Einordnung eines Rueckfalls nach einem geprobten Schritt (freshBrake, Logzeile "frisch").
+const (
+	freshCount  = "zaehlt"       // frischer Rueckfall (Muster eines Policers)
+	freshFail   = "fehlversuch"  // ... der probeFreshN-te in Folge: Aufschub am Bein
+	freshSlump  = "einbruch"     // Budget bzw. GCC-Ziel unter probeSlump x Rate vor dem Schritt
+	freshHeld   = "gehalten"     // der Schritt hielt laenger als probeFresh
+	freshSpread = "umverteilung" // ein Platz faellt, die Auswahl des Beins sinkt nicht (der Schritt bleibt offen)
+	freshBeyond = "getragen"     // das Bein stieg ohne Probe darueber hinaus (der Schritt ist erledigt)
+)
+
+// open: offener geprobter Schritt - Zielrate, Rate davor und kleinstes Budget bzw. GCC-Ziel seither samt bud (fuer
+// die Logzeile; ok = false: keiner offen bzw. aus diesem Takt).
+func (b *freshBrake) open(now int64, bud float64) (t, pre, low float64, ok bool) {
+	if b.upAt == 0 || b.upAt == now {
+		return 0, 0, 0, false
+	}
+	low = bud
+	if b.upLow > 0 {
+		low = min(low, b.upLow)
+	}
+	return b.upT, b.upPre, low, true
+}
+
 // down: Ein Platz faellt wegen des Budgets zurueck, und die Auswahl des Beins sinkt (keine Umverteilung, planLeg). Kam
 // der letzte geprobte Schritt des Beins binnen probeFresh davor, ist das ein frischer Rueckfall (fall) - ausser bei
-// einem Einbruch (watch, bud: kleineres von Budget und GCC-Ziel in diesem Takt); sonst hielt er (held). Liefert, ob
-// er als Fehlversuch zaehlt.
-func (b *freshBrake) down(now int64, bud float64) bool {
-	if b.upAt == 0 || b.upAt == now { // im selben Takt: Umverteilung durch die Planung, kein Rueckfall der Leitung
-		return false
+// einem Einbruch (watch, bud: kleineres von Budget und GCC-Ziel in diesem Takt); sonst hielt er (held). Liefert die
+// Einordnung ("" = kein offener Schritt bzw. im selben Takt: Umverteilung durch die Planung, kein Rueckfall der
+// Leitung) und ob er als Fehlversuch zaehlt.
+func (b *freshBrake) down(now int64, bud float64) (string, bool) {
+	t, pre, low, ok := b.open(now, bud)
+	if !ok {
+		return "", false
 	}
-	at, t, pre := b.upAt, b.upT, b.upPre
-	if b.upLow > 0 {
-		bud = min(bud, b.upLow)
-	}
+	at := b.upAt
 	b.upAt = 0
 	switch {
 	case now-at >= int64(probeFresh):
 		b.held(t)
-	case bud < probeSlump*pre:
+		return freshHeld, false
+	case low < probeSlump*pre:
 		b.n = 0 // Einbruch: Verlust bzw. Stau auch unter dem Stand vor dem Schritt - kein Muster eines Policers
-	default:
-		return b.fall(t, now)
+		return freshSlump, false
+	case b.fall(t, now):
+		return freshFail, true
 	}
-	return false
+	return freshCount, false
 }
 
 // beyond: Das Bein ist ohne Probe weiter gestiegen, auf die Zielrate t. Liegt sie ueber der des offenen geprobten
 // Schritts, hat die Leitung ihn getragen; ein spaeterer Rueckfall gilt dem neuen Schritt, nicht ihm (Pruefer bwe3b:
 // l -> m geprobt, dann ohne Probe bis hml, Sprecherwechsel, Stoerschub 13 s danach - zaehlte als frischer Rueckfall).
-func (b *freshBrake) beyond(t float64) {
+// Liefert, ob das einen offenen Schritt erledigt hat.
+func (b *freshBrake) beyond(t float64) bool {
 	if b.upAt != 0 && t > b.upT {
 		b.upAt = 0
+		return true
 	}
+	return false
 }
 
 // on: Gilt die Bremse fuer einen Schritt mit Zielrate t?
@@ -797,9 +834,6 @@ func (b *freshBrake) blocks(t float64, now int64) bool { return b.on(t) && now <
 
 // fall: Ein Schritt mit Zielrate t ist frisch zurueckgefallen. Liefert, ob das als Fehlversuch zaehlt.
 func (b *freshBrake) fall(t float64, now int64) bool {
-	if b.at != 0 && t < b.rate*probeNear {
-		return false // andere, kleinere Zielrate als die der laufenden Bremse: gehoert nicht zu ihr (siehe oben)
-	}
 	if b.at == 0 || t < b.rate {
 		b.rate = t
 	}

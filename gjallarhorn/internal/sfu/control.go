@@ -887,8 +887,15 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// Nur wenn die Auswahl des Beins sinkt: Faellt eine Kachel, weil der Sprecher im selben Takt steigt, ist das
 			// Umverteilung (Pruefer bwe3b: mmm -> hml nach einem geprobten l -> m galt als frischer Rueckfall auf 960k)
 			brake := false
-			if book && s.why == whyBudget && was != nil && was.peer == s.owner && sum < run {
-				brake = l.fb.down(now, low)
+			if book && s.why == whyBudget && was != nil && was.peer == s.owner {
+				t, pre, lo, open := l.fb.open(now, low)
+				art := freshSpread
+				if sum < run {
+					art, brake = l.fb.down(now, low)
+				}
+				if open {
+					l.freshEvent(art, t, pre, lo, s, st.Layer, cfg)
+				}
 			}
 			fast := own && (now-s.upAt < int64(upFail) || l.est.probeFailed(s.upAt, now) ||
 				brake && s.upProbe && now-s.upAt < int64(probeFresh))
@@ -931,9 +938,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				s.upProbe = d.ok != 0 && now-d.ok <= int64(probeGrant)
 			}
 			if book && s.upProbe {
-				l.fb.stepped(s.upT, run*upHeadroom+audioCut, now)
+				l.fb.stepped(s.upT, run+audioCut, now)
 			} else if book {
-				l.fb.beyond(s.upT)
+				if t, pre, lo, open := l.fb.open(now, low); open && l.fb.beyond(s.upT) {
+					l.freshEvent(freshBeyond, t, pre, lo, s, st.Layer, cfg)
+				}
 			}
 			s.rampRate, s.rampOwner = layerRate(st), s.owner
 		} else if s.layer == "" || s.rampOwner != s.owner {
@@ -1028,6 +1037,23 @@ func (l *Leg) downEvent(s *slot, to string, quota bool, now int64, cfg Config) {
 	}
 	l.room.levs = append(l.room.levs, LegEvent{Leg: l, Kind: LegDown, Why: why, Class: s.class, From: s.layer, To: to,
 		EstKbit: int(e.bps / 1000), GccKbit: int(e.gccLast / 1000), RateKbit: int(e.rateTick / 1000)})
+}
+
+// freshEvent: Einordnung eines Rueckfalls bzw. Schritts nach einem geprobten Schritt (freshBrake) als Logzeile "frisch"
+// (Config.OnLegEvent) - damit das Labor sieht, welche Bedingung griff. to ist die neue Schicht des Platzes.
+func (l *Leg) freshEvent(art string, t, pre, low float64, s *slot, to string, cfg Config) {
+	if cfg.OnLegEvent == nil {
+		return
+	}
+	e, b := &l.est, &l.fb
+	brake := 0
+	if b.at != 0 {
+		brake = int(b.rate / 1000)
+	}
+	l.room.levs = append(l.room.levs, LegEvent{Leg: l, Kind: LegFresh, Why: art, Class: s.class, From: s.layer, To: to,
+		EstKbit: int(e.bps / 1000), GccKbit: int(e.gccLast / 1000), RateKbit: int(e.rateTick / 1000),
+		TgtKbit: int(t / 1000), PreKbit: int(pre / 1000), LowKbit: int(low / 1000), SlumpKbit: int(probeSlump * pre / 1000),
+		BrakeKbit: brake, N: b.n})
 }
 
 // keepActive behaelt Teilnehmende, die schon einen Platz haben und weiter

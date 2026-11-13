@@ -29,11 +29,13 @@ type estRoom struct {
 	floor float64       // ... aber nicht unter den Anfangswert (der Anlauf des Anrufs ist nicht Gegenstand)
 	grow  float64       // Anstieg des Ziels ohne Stau (bit/s je Sekunde)
 	loss  bool          // Stau-Schub: Ziel faellt auf 600 kbit/s (traegt m, nicht h)
+	back  float64       // Ruecksprung des Ziels an der Leitung: Anteil der Leitungsrate (0 = 0,85)
 	over  int           // Takte ueber der Leitung
 	free  float64       // letzte Rate, die die Leitung trug
 	evs   []Slot
 	on    map[*fwd.Source]bool // Quellen des ersten Senders
 	pevs  []Slot               // Probe-Ereignisse (Probing)
+	fresh []LegEvent           // Einordnung der Rueckfaelle nach geprobtem Schritt (LegFresh, Logzeile "frisch")
 	fill  float64              // Fuellrate dieses Takts (bit/s)
 	padMB float64              // gesendete Fuelldaten
 	noPad bool                 // Fuelldaten werden eingestellt, aber nicht gesendet
@@ -72,6 +74,10 @@ func newEstCfg(t *testing.T, h, gcc float64, n int, probing bool) *estRoom {
 			} else if s.Class == "speaker" {
 				er.evs = append(er.evs, s)
 			}
+		}
+	}, OnLegEvent: func(ev LegEvent) {
+		if ev.Kind == LegFresh {
+			er.fresh = append(er.fresh, ev)
 		}
 	}})
 	t.Cleanup(nd.Close)
@@ -161,6 +167,9 @@ func (er *estRoom) tick() {
 		// Messfenster dann noch ueberwiegend die alte Rate (gemessen: erster Wert ~1,03 x alte Rate); danach holt
 		// der Verlust-Teil mit 5 % je 200 ms auf.
 		tgt := 0.85 * er.link
+		if er.back > 0 {
+			tgt = er.back * er.link
+		}
 		switch er.over++; {
 		case er.over == 2 && rate > 1.1*er.link:
 			er.gcc = min(tgt, 1.03*er.free)
