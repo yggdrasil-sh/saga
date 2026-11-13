@@ -25,8 +25,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Bremse am Bein statt am Platz:** Zählung und Aufschub gelten je Empfänger und Zielrate – in der Gruppe begannen
   sie mit jedem Sprecherwechsel von vorn. Modell (Policer 7 % unter der vollen Belegung, 10 min): 1:1 8 → 1 Rückfall,
   `h` nach dem Ende des Policers nach 15 statt 32 s; Gruppe mit Sprecherwechsel alle 20 s 90–107 → 13–28 Rückfälle.
-  Preis: auf anhaltendem Policer eine lange Probe alle ≤ 20 s (Modell ≈ 26 MB Fülldaten je Stunde), auf freier
-  Leitung mit häufigen Störschüben etwas mehr Fülldaten; freie Leitung ohne Störung unverändert.
+  Testaufbau (Token-Bucket 1450/150 und 1500/100 ms): Rückfälle je Stunde 110–120 → 40 (180 s) bzw. 54–66 → 12
+  (600 s), vom Policer verworfene Pakete 3–5-mal weniger. Preis: auf anhaltendem Policer eine lange Probe je
+  Abstand – gescheiterte lange Proben wachsen bis 40 s (kurze weiter bis 20 s): 20 statt 30 MB Fülldaten je Stunde;
+  dafür kommt `h` nach dem Ende eines Policers erst mit der nächsten langen Probe (im Mittel ~20 s, höchstens ~40 s).
+  Auf freier Leitung mit häufigen Störschüben etwas mehr Fülldaten; freie Leitung ohne Störung unverändert.
 - **Policer-Merkmal im eigenen Detektor (`HORN_BWE=eigen`):** Verlust, der der Senderate folgt bzw. in Folgen kommt,
   widerlegt einen Fall des GCC-Ziels nicht mehr (Labor: am Policer widerlegte der Detektor, weil der Verlust unter
   12 % blieb). Gleichmäßig verteilter Verlust (Zufallsverlust) bleibt unauffällig wie bisher. Logzeile

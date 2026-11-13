@@ -249,7 +249,8 @@ Platzhalter: `horn-1.example.org`.
       sich nie; die lange schiebt ≈ 400–600 kbit (beides ist nötig – mit altem Fenster, aber × 1,05 blieb der Zyklus).
       Bis dahin deckelt die Bremse die Auswahl unter 90 % dieser Zielrate (auch laufende Schichten; kein freier
       Versuch, kein Schritt ohne Probe). Besteht die lange Probe, gilt wieder die kurze; scheitert sie, wächst der
-      Proben-Abstand (3 s × 1,5 bis 20 s), und die nächste ist wieder lang.
+      Proben-Abstand (3 s × 1,5 bis **40 s** – kurze Proben weiter höchstens 20 s; `probeGapMaxLong`), und die
+      nächste ist wieder lang. Die Bremse wartet diesen Abstand ab (sonst käme nach mehr als 30 s wieder eine kurze).
     - *Zweiter in Folge* (der Eimer ist so groß, dass auch die lange Probe ihn nicht leert): Fehlversuch wie binnen
       2 s – Aufschub des Platzes und ein Aufschub am Bein (8, 16, 32 … s, die Probe danach höchstens nach 2 min), den
       weder eine bestandene Probe noch ein Sprecherwechsel aufhebt. Ohne diese Regel (Modell, Eimer 0,6 s) 36 statt 9
@@ -262,9 +263,15 @@ Platzhalter: `horn-1.example.org`.
       `h` nach dem Ende des Policers nach 15 statt 32 s (`eigen` 21 statt 34 s); Gruppe 3 mit Sprecherwechsel alle
       20 s, Eimer 0,15/0,6 s: `gcc` 107/90 → 13/28, `eigen` 87/82 → 13/27, Sprecherplatz 96–97 % auf `h`; Gruppe
       ohne Wechsel volle Belegung nach dem Ende nach 4 statt 25 s. **Preis:** auf anhaltendem Policer eine lange
-      Probe alle ≤ 20 s (1:1: 4,3 statt 0,65 MB Fülldaten in 10 min, ≈ 26 MB/h; jede leert den Eimer und kostet dort
-      kurz Verlust); auf freier Leitung mit Störschüben alle 10–30 s 3,9 statt 2,2 MB in 10 min (`h` 74 statt 76 %);
-      auf freier Leitung ohne Störung nichts. Tests: `internal/sfu/policer_test.go`.
+      Probe je Abstand (jede leert den Eimer und kostet dort kurz Verlust, auch an Bildpaketen); auf freier Leitung
+      mit Störschüben alle 10–30 s 3,9 statt 2,2 MB in 10 min (`h` 74 statt 76 %); auf freier Leitung ohne Störung
+      nichts. **Abstand der langen Probe 40 statt 20 s** (`probeGapMaxLong`): Testaufbau, Policer 1450/150 ms, 600 s:
+      20 statt 31 Proben, 20 statt 30 MB Fülldaten je Stunde, 5,5 statt 6,8 Tausend verworfene Pakete (Modell 1:1:
+      2,6 statt 4,3 MB in 10 min). Dafür kommt `h` nach dem Ende des Policers erst mit der nächsten langen Probe – im
+      Mittel nach ~20 s, höchstens ~40 s (vorher ≤ 20 s; Testaufbau 180 s Policer: in 30 s freier Zeit danach in
+      keinem der 4 Läufe, Abstand zuletzt 41 s). Engen mit Schlange (Proben scheitern kurz) und die Serie sind nicht
+      betroffen: Der Abstand überschreitet 20 s erst nach sechs gescheiterten langen Proben in Folge.
+      Tests: `internal/sfu/policer_test.go`.
     Die Probe verlängert den Aufschub nie. Aufschub und Proben-Abstand überleben einen Wegwechsel (udp → tcp → udp)
     des Geräts für 5 min, ebenso der verbrauchte freie Versuch zum Anrufbeginn (auch ohne gescheiterte Probe).
   - **Abwägung – Gruppe mit Sprecherwechsel, Leitung wird frei:** Mit Probing kommt eine solche Gruppe nach dem
@@ -287,6 +294,18 @@ Platzhalter: `horn-1.example.org`.
     leert den Eimer), jetzt bestehen sie und der Platz fällt 110–120-mal je Stunde zurück; über 600 s gedämpft durch den
     frischen Rückfall: 10 Rückfälle, zuletzt alle ~2 min (vorher 1). **Das kurze Fenster macht Policer schlimmer**;
     nach dem Ende des Policers kann `h` bis zum Ablauf des Aufschubs (bis 2 min) ausbleiben.
+  - **Probing Stufe 3b – Messzahlen (Testaufbau mit pion-Gegenstelle, 13.11.; vorher = Stufe 3):** Token-Bucket
+    1450/150 bzw. 1500/100 ms, 180 s (2 Läufe je Fall): Rückfälle je Stunde 110–120 → 40 (Beginn des Policers und
+    ein frischer nach der ersten kurzen Probe, danach nur noch lange Proben), Anteil `h` 26–33 → 6–9 % (`h` wird auf
+    dem Policer nicht mehr überschossen), vom Policer verworfene Pakete 12–15 → 4–6 Tausend; 600 s: 9–11 → 2
+    Rückfälle, 12–22 → 2 % `h`, 24–33 → 5–7 Tausend verworfen (mit 40 s Abstand 5,5 Tausend). Serie 7 Fälle × 3:
+    Rückfälle auf freier Leitung `gcc` 10 → 18 (alles Zielstürze von pion-GCC; Rückfall in beiden Ständen genau dann,
+    wenn das Ziel unter ~1405 kbit/s sinkt – die Einbrüche waren tiefer), `eigen` 0 → 0; Rückkehr nach der Freigabe
+    (Median) engfrei/Leitung 1000/20 ms/mitte/knapp `gcc` 8,6/15,0/2,4/2,1 → 8,4/15,0/3,6/5,0 s, `eigen`
+    9,6/15,8/3,9/5,5 → 10,4/15,6/5,6/6,0 s (gleicher Ablauf; Streuung, wann GCC in der Enge auf `l` fällt).
+    Knapp unter `h` (1550/1600, 120 s, 2 Durchgänge) und anhaltende Enge 1550 (600 s): Proben, Fülldaten und Zeit auf
+    `m`/`l` wie vorher, keine lange Probe. 3 % Zufallsverlust: 0 Rückfälle, kein Policer-Merkmal (pion-GCC reagiert
+    im Testaufbau auf 3 % gar nicht).
   - **Bekannte Grenze – Leitung zwischen Bedarf und Bedarf × 1,05** (vor Stufe 3: × 1,15): Die Probe prüft die
     Zielrate mit Reserve. Eine Leitung, die die höhere Schicht gerade trägt, aber nicht 5 % mehr (Modell:
     Browser-`h` mit 1250 kbit/s auf einer Leitung bis 1,34 Mbit/s), besteht die Probe nie und **erreicht die Schicht
