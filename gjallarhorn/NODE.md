@@ -267,7 +267,11 @@ Platzhalter: `horn-1.example.org`.
       fiel auf die Zielrate einer Kachel-Stufe, der Deckel hielt alle Plätze auf `l`, der Aufschub am Bein wuchs bis
       5 min. Modell (Gruppe 3, Wechsel 20 s, Schübe alle 10–30 s, 10 min): Sprecher auf `h` 12 → 47 % (`eigen` 14 →
       49 %), alle Plätze auf `l` 76 → 24 % (67 → 22 %) der Takte, volle Belegung nach dem letzten Schub nach 12,6 s
-      statt nie (`TestProbingGruppeStoerschuebe`) – wie vor Stufe 3b; Policer-Fälle unverändert. **Grenze:** GCC
+      statt nie (`TestProbingGruppeStoerschuebe`) – wie vor Stufe 3b; Policer-Fälle unverändert. Testaufbau (1:1,
+      13.11.): Token-Bucket 1450/150 und 1500/100 ms, 180 s wie Stufe 3b (40 Rückfälle je Stunde, 30–35 MB Fülldaten
+      je Stunde); 600 s 12 je Stunde, 19,8 MB je Stunde. `h` nach dem Ende des Policers (90 s frei beobachtet) im
+      Median nach 31,6 s (10,6–34,2 s, 12 Läufe) – mit der ersten langen Probe danach, Abstand 41–43 s. 3 %
+      Zufallsverlust, freie Leitung und Enge 1550/1600 wie Stufe 3b. **Grenze:** GCC
       springt an einem Policer über dem Stand vor dem Schritt auf ~0,85 × dessen Rate, mit Reserve gerechnet also
       nicht unter ~0,74 – 0,7 liegt knapp darunter (Modell: ab 0,8 zählen Policer-Rückfälle in der Gruppe als
       Einbruch). Im 1:1 sind Schub (600 kbit/s) und Policer nach einem Schritt von `m` auf `h` nicht zu trennen (Stand

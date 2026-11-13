@@ -25,7 +25,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Umverteilung zwischen Sprecher und Kacheln), und das Bein ist nicht inzwischen ohne Probe weiter gestiegen.
   Modell (Gruppe 3, Sprecherwechsel alle 20 s, Schübe alle 10–30 s): Sprecher auf `h` 12 → 47 %, alle Plätze auf
   der unteren Ebene 76 → 24 % der Zeit, volle Belegung nach dem letzten Schub nach rund 13 s statt nie – wie vor
-  Stufe 3b. Policer-Fälle unverändert.
+  Stufe 3b. Policer-Fälle unverändert (Testaufbau: Token-Bucket 180 bzw. 600 s wie Stufe 3b; nach dem Ende des
+  Policers `h` im Median nach rund 32 s, höchstens rund 43 s – mit der nächsten langen Probe).
 - **Bremse überlebt den Wegwechsel** (udp → tcp → udp) – jetzt mit Test.
 - **Logzeilen `bwe …`** (Zustandswechsel, `policer=an|aus`) stehen in der Reihenfolge ihres Entstehens im Log; zwei
   rasch folgende Zeilen konnten sich vertauschen.
