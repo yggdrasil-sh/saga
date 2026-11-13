@@ -123,9 +123,16 @@ const (
 )
 
 // Lange Probe nach frischem Rueckfall (siehe oben bei probeHead). Variablen fuer Tests.
+//
+// probeGapMaxLong: Abstand nach gescheiterten langen Proben hoechstens so viel (statt probeGapMax). In anhaltender Enge
+// hinter einem Policer scheitert jede lange Probe; mit probeGapMax kam alle 20 s eine, und jede schob 1 bis 1,5 s lang
+// Fuelldaten ueber die Policer-Rate (UDP-Aufbau, Policer 1450/150 und 1500/100 ms, 600 s: 25 bis 31 MB/h Fuelldaten,
+// 5 bis 7 Tausend verworfene Pakete - auch Bildpakete, denn der Policer verwirft, was den Eimer ueberzieht). Die
+// Bremse (freshBrake.decay) wartet den Abstand ab, sonst kaeme danach wieder eine kurze Probe.
 var (
-	probeWinLong  = 1500 * time.Millisecond
-	probeHeadLong = upHeadroom
+	probeWinLong    = 1500 * time.Millisecond
+	probeHeadLong   = upHeadroom
+	probeGapMaxLong = 40 * time.Second
 )
 
 // Ergebnis einer Probe in der Layout-Meldung (Slot.Probe).
@@ -598,11 +605,13 @@ func (l *Leg) probeEnd(res, why string, now int64) {
 	case probeFail:
 		l.pstat.Failed++
 		e.shieldOff(now, probeFloor)
-		l.pf.fail(p.stepT, now)
-		l.firstUsed = true
 		if p.long {
-			l.fb.failLong(now) // die Enge besteht fort: die Bremse bleibt (freshBrake.decay)
+			l.pf.failMax(p.stepT, now, probeGapMaxLong)
+			l.fb.failLong(now, l.pf.pd) // die Enge besteht fort: die Bremse bleibt (freshBrake.decay)
+		} else {
+			l.pf.fail(p.stepT, now)
 		}
+		l.firstUsed = true
 		if d != nil {
 			d.ok = 0
 		}
@@ -692,6 +701,7 @@ type freshBrake struct {
 	at   int64         // letztes Zeichen der Enge (frischer Rueckfall, gescheiterte lange Probe); 0 = keine Bremse
 	d    time.Duration // Aufschub am Bein
 	next int64         // ... vorher keine Probe ab probeNear x rate
+	gap  time.Duration // Abstand nach der letzten gescheiterten langen Probe (legFail.pd)
 	// letzter Schritt des Beins mit bestandener Probe (0 = keiner offen) und die Zielrate des Beins danach
 	upAt int64
 	upT  float64
@@ -739,7 +749,7 @@ func (b *freshBrake) fall(t float64, now int64) bool {
 		b.rate = t
 	}
 	b.n++
-	b.long, b.at = true, now
+	b.long, b.at, b.gap = true, now, 0
 	if b.n < probeFreshN {
 		return false
 	}
@@ -758,20 +768,21 @@ func (b *freshBrake) held(t float64) {
 // passLong: lange Probe mit Zielrate t bestanden - wieder die kurze.
 func (b *freshBrake) passLong(t float64) {
 	if b.on(t) {
-		b.long = false
+		b.long, b.gap = false, 0
 	}
 }
 
-// failLong: lange Probe gescheitert - die Enge besteht fort.
-func (b *freshBrake) failLong(now int64) {
+// failLong: lange Probe gescheitert - die Enge besteht fort; die naechste Probe kommt nach dem Abstand gap (legFail).
+func (b *freshBrake) failLong(now int64, gap time.Duration) {
 	if b.at != 0 {
-		b.at = now
+		b.at, b.gap = now, gap
 	}
 }
 
-// decay: upHold (+ Aufschub) ohne neues Zeichen der Enge - die Bremse ist erledigt (ein offener Schritt bleibt offen).
+// decay: upHold (+ Aufschub bzw. Abstand bis zur naechsten langen Probe) ohne neues Zeichen der Enge - die Bremse ist
+// erledigt (ein offener Schritt bleibt offen).
 func (b *freshBrake) decay(now int64) {
-	if b.at != 0 && now >= b.at+int64(upHold)+int64(b.d) {
+	if b.at != 0 && now >= b.at+int64(upHold)+int64(max(b.d, b.gap)) {
 		*b = freshBrake{upAt: b.upAt, upT: b.upT}
 	}
 }
@@ -801,12 +812,15 @@ func (f *legFail) blocks(t float64, now int64) bool {
 
 // fail: Probe (bzw. echter Versuch) mit Zielrate t gescheitert - Abstand mal probeGapUp; eine kleinere gescheiterte
 // Zielrate senkt die Schwelle, ohne den Abstand zurueckzusetzen.
-func (f *legFail) fail(t float64, now int64) {
+func (f *legFail) fail(t float64, now int64) { f.failMax(t, now, probeGapMax) }
+
+// failMax: wie fail, Abstand hoechstens mx (lange Probe: probeGapMaxLong).
+func (f *legFail) failMax(t float64, now int64, mx time.Duration) {
 	switch {
 	case f.pd == 0:
 		f.rate, f.pd = t, probeGap
 	case t >= f.rate*probeNear:
-		f.pd = min(time.Duration(float64(f.pd)*probeGapUp), probeGapMax)
+		f.pd = min(time.Duration(float64(f.pd)*probeGapUp), mx)
 		f.rate = min(f.rate, t)
 	default:
 		f.rate = t

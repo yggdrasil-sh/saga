@@ -218,12 +218,18 @@ func TestFreshBrake(t *testing.T) {
 	if b.down(60*s) || b.n != 0 || !b.long {
 		t.Fatalf("Rueckfall nach probeFresh setzt die Folge zurueck, die lange Probe bleibt: %+v", b)
 	}
-	b.failLong(70 * s)
+	b.failLong(70*s, 3*time.Second) // Abstand kuerzer als der Aufschub: der Aufschub zaehlt
 	b.decay(70*s + int64(upHold) + int64(b.d) - 1)
 	if b.at == 0 {
 		t.Fatal("zu frueh erledigt")
 	}
-	b.decay(70*s + int64(upHold) + int64(b.d))
+	// Abstand bis zur naechsten langen Probe laenger als der Aufschub (probeGapMaxLong): Die Bremse wartet ihn ab,
+	// sonst kaeme danach eine kurze Probe
+	b.failLong(80*s, probeGapMaxLong)
+	if b.decay(80*s + int64(upHold) + int64(probeGapMaxLong) - 1); b.at == 0 || !b.longFor(1500e3) {
+		t.Fatalf("vor der naechsten langen Probe erledigt: %+v", b)
+	}
+	b.decay(80*s + int64(upHold) + int64(probeGapMaxLong))
 	if b.at != 0 || b.long {
 		t.Fatalf("nicht erledigt: %+v", b)
 	}
