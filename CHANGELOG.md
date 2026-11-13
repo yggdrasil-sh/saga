@@ -20,13 +20,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Gruppe auf freier Leitung mit Störschüben:** Seit Stufe 3b zählte dort fast jeder Schub bald nach einem geprobten
   Schritt als frischer Rückfall. Die Bremse fiel auf die Zielrate einer Kachel-Stufe, hielt alle Plätze auf der
   unteren Ebene und löste sich nicht mehr (Aufschub am Bein bis 5 min). Jetzt zählt ein Rückfall nur, wenn er wie
-  ein Policer aussieht: Die Leitung trägt weiter, was vor dem Schritt lief (kein Einbruch des Budgets darunter), er
-  trifft dieselbe Zielrate wie die laufende Bremse (keine kleinere), die Auswahl des Beins sinkt (keine
-  Umverteilung zwischen Sprecher und Kacheln), und das Bein ist nicht inzwischen ohne Probe weiter gestiegen.
+  ein Policer aussieht: Die Leitung trägt weiter, was vor dem Schritt lief (kein Einbruch des Budgets darunter), die
+  Auswahl des Beins sinkt (keine Umverteilung zwischen Sprecher und Kacheln), und das Bein ist nicht inzwischen ohne
+  Probe weiter gestiegen.
   Modell (Gruppe 3, Sprecherwechsel alle 20 s, Schübe alle 10–30 s): Sprecher auf `h` 12 → 47 %, alle Plätze auf
   der unteren Ebene 76 → 24 % der Zeit, volle Belegung nach dem letzten Schub nach rund 13 s statt nie – wie vor
   Stufe 3b. Policer-Fälle unverändert (Testaufbau: Token-Bucket 180 bzw. 600 s wie Stufe 3b; nach dem Ende des
   Policers `h` im Median nach rund 32 s, höchstens rund 43 s – mit der nächsten langen Probe).
+- **Nachbesserung (3d):** Ein frischer Rückfall auf eine kleinere Zielrate senkt die Bremse wieder (wie in Stufe 3b)
+  – liegt ein Policer zwischen zwei Zwischenbelegungen der Gruppe, fiel sonst die kleinere immer wieder zurück
+  (Modell, Policer 1580 kbit/s: 77–94 statt 9–12 Rückfälle in 10 min). Ein Einbruch wird gegen die Rate vor dem
+  Schritt gemessen (0,75 ×, ohne Reserve), nicht mehr gegen die Zielrate: Ein Policer knapp über der laufenden
+  Belegung gilt so erst als Einbruch, wenn GCC an ihm unter 0,75 × seiner Rate zurückspringt (vorher schon unter
+  ~0,8). Neue Logzeile `frisch …` mit der Einordnung jedes Rückfalls nach geprobtem Schritt (auch bei `gcc`).
 - **Bremse überlebt den Wegwechsel** (udp → tcp → udp) – jetzt mit Test.
 - **Logzeilen `bwe …`** (Zustandswechsel, `policer=an|aus`) stehen in der Reihenfolge ihres Entstehens im Log; zwei
   rasch folgende Zeilen konnten sich vertauschen.

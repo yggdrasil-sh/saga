@@ -255,27 +255,31 @@ Platzhalter: `horn-1.example.org`.
       2 s – Aufschub des Platzes und ein Aufschub am Bein (8, 16, 32 … s, die Probe danach höchstens nach 2 min), den
       weder eine bestandene Probe noch ein Sprecherwechsel aufhebt. Ohne diese Regel (Modell, Eimer 0,6 s) 36 statt 9
       Rückfälle in 10 min, Gruppe mit Sprecherwechsel 71 statt 28.
-    - *Nur Policer-Muster (Stufe 3c):* Der Policer nimmt den Schritt zurück, die Leitung trägt aber weiter, was vor
-      ihm lief – und das immer wieder auf dieselbe Zielrate. Ein Störschub (Querverkehr) drückt das Bein dagegen unter
-      den Stand vor dem Schritt, oft alle Plätze zugleich; er wäre auch ohne den Schritt gekommen. Kein frischer
-      Rückfall ist deshalb (a) ein **Einbruch**: Budget bzw. GCC-Ziel lagen zwischen Schritt und Rückfall unter 0,7 ×
-      Zielrate vor dem Schritt (`probeSlump`; die Folge beginnt dann von vorn); (b) ein Rückfall auf eine **andere,
-      kleinere Zielrate** als die der laufenden Bremse (er senkt sie nicht und frischt sie nicht auf); (c) eine
-      **Umverteilung** (die Auswahl des Beins sinkt nicht – eine Kachel fällt, weil der Sprecher steigt); (d) ein
-      Rückfall, nachdem das Bein ohne Probe **über** den geprobten Schritt hinaus gestiegen ist (der hielt). Bis
-      dahin (Prüfer `bwe3b`, H1) zählte in der Gruppe auf freier Leitung mit Störschüben fast jeder Schub: Die Bremse
-      fiel auf die Zielrate einer Kachel-Stufe, der Deckel hielt alle Plätze auf `l`, der Aufschub am Bein wuchs bis
-      5 min. Modell (Gruppe 3, Wechsel 20 s, Schübe alle 10–30 s, 10 min): Sprecher auf `h` 12 → 47 % (`eigen` 14 →
-      49 %), alle Plätze auf `l` 76 → 24 % (67 → 22 %) der Takte, volle Belegung nach dem letzten Schub nach 12,6 s
-      statt nie (`TestProbingGruppeStoerschuebe`) – wie vor Stufe 3b; Policer-Fälle unverändert. Testaufbau (1:1,
+    - *Nur Policer-Muster (Stufe 3c, nachgebessert 3d):* Der Policer nimmt den Schritt zurück, die Leitung trägt aber
+      weiter, was vor ihm lief. Ein Störschub (Querverkehr) drückt das Bein dagegen unter den Stand vor dem Schritt,
+      oft alle Plätze zugleich; er wäre auch ohne den Schritt gekommen. Kein frischer Rückfall ist deshalb (a) ein
+      **Einbruch**: Budget bzw. GCC-Ziel lagen zwischen Schritt und Rückfall unter 0,75 × Rate des Beins vor dem
+      Schritt (Bild + Ton, ohne Reserve; `probeSlump`; die Folge beginnt dann von vorn); (b) eine **Umverteilung** (die
+      Auswahl des Beins sinkt nicht – eine Kachel fällt, weil der Sprecher steigt); (c) ein Rückfall, nachdem das Bein
+      ohne Probe **über** den geprobten Schritt hinaus gestiegen ist (der hielt). Ein frischer Rückfall auf eine
+      kleinere Zielrate als die der laufenden Bremse senkt sie (wie in Stufe 3b; 3c ließ ihn nicht zählen – Prüfer
+      `bwe3c`: Policer 1580 kbit/s zwischen `mmm` und `hll`, 77–94 statt 9–12 Rückfälle in 10 min,
+      `TestProbingPolicerZwischenbelegung`). Bis Stufe 3c (Prüfer `bwe3b`, H1) zählte in der Gruppe auf freier
+      Leitung mit Störschüben fast jeder Schub: Die Bremse fiel auf die Zielrate einer Kachel-Stufe, der Deckel hielt
+      alle Plätze auf `l`, der Aufschub am Bein wuchs bis 5 min. Modell (Gruppe 3, Wechsel 20 s, Schübe alle 10–30 s,
+      10 min): Sprecher auf `h` 12 → 47 % (`eigen` 14 → 49 %), alle Plätze auf `l` 76 → 24 % (67 → 22 %) der Takte,
+      volle Belegung nach dem letzten Schub nach 12,6 s statt nie (`TestProbingGruppeStoerschuebe`) – wie vor
+      Stufe 3b; Policer-Raster (Gruppe, Policer 1580–2200 kbit/s, Eimer 0,15/0,6 s) wie Stufe 3b. Testaufbau (1:1,
       13.11.): Token-Bucket 1450/150 und 1500/100 ms, 180 s wie Stufe 3b (40 Rückfälle je Stunde, 30–35 MB Fülldaten
       je Stunde); 600 s 12 je Stunde, 19,8 MB je Stunde. `h` nach dem Ende des Policers (90 s frei beobachtet) im
       Median nach 31,6 s (10,6–34,2 s, 12 Läufe) – mit der ersten langen Probe danach, Abstand 41–43 s. 3 %
-      Zufallsverlust, freie Leitung und Enge 1550/1600 wie Stufe 3b. **Grenze:** GCC
-      springt an einem Policer über dem Stand vor dem Schritt auf ~0,85 × dessen Rate, mit Reserve gerechnet also
-      nicht unter ~0,74 – 0,7 liegt knapp darunter (Modell: ab 0,8 zählen Policer-Rückfälle in der Gruppe als
-      Einbruch). Im 1:1 sind Schub (600 kbit/s) und Policer nach einem Schritt von `m` auf `h` nicht zu trennen (Stand
-      vor dem Schritt ~0,6 Mbit/s): Dort bleibt die lange Probe nach dem Schub (Preis wie Stufe 3b).
+      Zufallsverlust, freie Leitung und Enge 1550/1600 wie Stufe 3b. **Grenze des Einbruchs:** Ein Policer liegt über
+      der Rate vor dem Schritt; springt GCC an ihm auf g × seine Rate zurück, bleibt das Verhältnis über g. Gemessen
+      g ≈ 0,85 (Modell) bzw. ≈ 0,82 (Testaufbau 1:1). Ab g < 0,75 gilt ein Policer knapp über einer Zwischenbelegung
+      als Einbruch (Modell, Gruppe: g 0,76 wie 0,85, g 0,72 2,2 × so viele Rückfälle; `TestProbingPolicerFlacherRuecksprung`);
+      bis 3c lag die Grenze bei 0,7 × Zielrate mit Reserve, also schon bei g ≈ 0,8. Im 1:1 sind Schub (600 kbit/s) und
+      Policer nach einem Schritt von `m` auf `h` nicht zu trennen (Rate davor ~0,55 Mbit/s): Dort bleibt die lange
+      Probe nach dem Schub (Preis wie Stufe 3b). Jede Einordnung steht als Zeile `frisch` im Log (unten).
     - Ein Rückfall nach mehr als 15 s setzt die Folge zurück (die lange Probe bleibt fällig); erledigt ist die Bremse
       nach 30 s (+ Aufschub) ohne neues Zeichen (frischer Rückfall, gescheiterte lange Probe). **Grenze:** Ein Eimer,
       der sich erst nach mehr als 15 s leert (Modell: 7 % unter `h`, Eimer ≥ 1,2 s), entgeht der Regel. 30 s fingen ihn
@@ -476,7 +480,14 @@ Platzhalter: `horn-1.example.org`.
     (Anteil der Verluste in Folgen ab 3 Paketen, Korrelation Senderate/Verlust je Messfenster, verlorene Pakete und
     Fenster der letzten 10 s, Verlust an der Spitze). Die `bwe`-Zeilen eines Beins (Zustandswechsel, Policer-Merkmal)
     stehen in der Reihenfolge ihres Entstehens im Log (seit Stufe 3c; vorher konnten sich zwei rasch folgende Zeilen
-    vertauschen).
+    vertauschen). Mit Probing steht bei jeder Schalterstellung (auch `gcc`) je Rückfall bzw. Schritt nach einem
+    geprobten Schritt eine Zeile zur Einordnung durch die Bremse (Stufe 3d):
+    `frisch 5884a4 art=zaehlt platz=tile m>l ziel=2225k pre=1940k low=1650k grenze=1455k bremse=2225k n=1 est=1700k gcc=1650k`
+    – `art` zaehlt (frischer Rückfall: lange Probe), fehlversuch (der zweite in Folge: Aufschub am Bein), einbruch
+    (`low` unter `grenze` = 0,75 × `pre`), gehalten (nach mehr als 15 s), umverteilung oder getragen; `ziel` Zielrate
+    nach dem Schritt, `pre` Rate davor, `low` kleinstes Budget bzw. GCC-Ziel seither, `bremse` Zielrate der Bremse
+    danach (0 = keine), `n` frische Rückfälle in Folge. Fürs Labor: `low/pre` zeigt den Rücksprung von GCC an einem
+    Policer bzw. die Tiefe eines Schubs.
   - Zusatz in der Zeile `probe` bei `mit`: `… est=1338k gcc=721k bwe=staut bwe_schlange=140ms bwe_verlust=0.0% bwe_durchsatz=699k bwe_zustand=warnung bwe_fenster=4 bwe_sofort=staut-nicht`.
     `bwe` ist das Urteil des Detektors über die Pakete der Probe **nach dem Nachlauf** (zwei Umlaufzeiten + 200 ms,
     höchstens 1 s; ohne bekannte Umlaufzeit 500 ms), `bwe_sofort` das, was er beim Ende der Probe schon wusste – je
