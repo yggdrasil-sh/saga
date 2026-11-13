@@ -16,7 +16,21 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### Geändert – Knoten: Probing Stufe 3b – Anlauf-Regel gestrichen (experimentell)
+### Geändert – Knoten: Probing Stufe 3b – lange Probe nach frischem Rückfall, Bremse am Bein, Policer-Merkmal, Anlauf-Regel gestrichen (experimentell)
+- **Policer – lange Probe nach frischem Rückfall:** Fällt binnen 15 s nach einem Schritt mit bestandener Probe ein
+  Platz zurück, fährt die nächste Probe auf dieses Ziel wieder lang (1,5 s, Füllziel × 1,15) – die kurzen Proben von
+  Stufe 3 leerten den Eimer eines Token-Bucket-Policers nie, bestanden und der Platz fiel immer wieder zurück. Bis die
+  lange Probe besteht, bleibt die Auswahl unter diesem Ziel. Zwei frische Rückfälle in Folge zählen weiter als
+  Fehlversuch (für Eimer, die auch die lange Probe nicht leert).
+- **Bremse am Bein statt am Platz:** Zählung und Aufschub gelten je Empfänger und Zielrate – in der Gruppe begannen
+  sie mit jedem Sprecherwechsel von vorn. Modell (Policer 7 % unter der vollen Belegung, 10 min): 1:1 8 → 1 Rückfall,
+  `h` nach dem Ende des Policers nach 15 statt 32 s; Gruppe mit Sprecherwechsel alle 20 s 90–107 → 13–28 Rückfälle.
+  Preis: auf anhaltendem Policer eine lange Probe alle ≤ 20 s (Modell ≈ 26 MB Fülldaten je Stunde), auf freier
+  Leitung mit häufigen Störschüben etwas mehr Fülldaten; freie Leitung ohne Störung unverändert.
+- **Policer-Merkmal im eigenen Detektor (`HORN_BWE=eigen`):** Verlust, der der Senderate folgt bzw. in Folgen kommt,
+  widerlegt einen Fall des GCC-Ziels nicht mehr (Labor: am Policer widerlegte der Detektor, weil der Verlust unter
+  12 % blieb). Gleichmäßig verteilter Verlust (Zufallsverlust) bleibt unauffällig wie bisher. Logzeile
+  `bwe … policer=an|aus` mit Grund; Zähler je Messfenster in `GET /api/sfu/leg/{id}` fürs Labor.
 - **Anlauf-Regel gestrichen** (junge Quelle: Schritt hinauf rechnet mit der angenommenen Rate; seit Stufe 3 nur bei
   `HORN_BWE=eigen`), samt Test-Einstellung `HORN_ANLAUF`. Im Labor brachte sie weder bei `gcc` noch bei `eigen` etwas
   Messbares (`eigen`: Rückfall zum Anrufbeginn mit Regel 1 von 24 Richtungen, ohne 0 von 24), kostete aber rund 2 s bis

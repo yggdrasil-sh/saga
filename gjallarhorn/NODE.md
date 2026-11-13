@@ -237,17 +237,34 @@ Platzhalter: `horn-1.example.org`.
     Proben-Abstand (höchstens 20 s), der Aufschub zieht ihn nicht auf Minuten. Die 2 min nach einem echten Fehlversuch
     bleiben als Netz (eigene Grenze `probeDwellMax`): Mit 20 s kämen auf einer Leitung, die die Probe trägt, die
     Schicht aber nicht, Versuche alle ~20 s.
-  - **Frischer Rückfall (Stufe 3, Token-Bucket-Policer):** Fallen Schritte, die mit einer bestandenen Probe kamen,
-    **zweimal in Folge binnen 15 s** zurück (`probeFresh`, `probeFreshN`), zählt das wie ein Fehlversuch binnen 2 s
-    (Aufschub wächst, die nächste Probe erst nach ihm). Ein Rückfall nach mehr als 15 s setzt die Folge zurück; ein
-    einzelner frischer Rückfall zählt nicht (Störschub kurz nach dem Schritt – mit der ersten Fassung, die schon ihn
-    zählte, sank im Modell „frei, Schübe alle 10–30 s“ der Anteil `h` von 76 auf 32 %). Hintergrund (Labor
-    `labbwe2`; im Testaufbau mit Token-Bucket 1450 kbit/s / Eimer 150 ms und 1500 / 100 ms nachgestellt): Der Eimer
-    trägt die kurze Probe (0,4–0,6 s; er leert sich erst nach 0,5–1 s voller Füllung), aber nicht die Dauerlast – alle
-    Proben bestanden, jeder Schritt fiel nach 3–13 s zurück, nach `upFail` und bestandener Schonfrist, also ohne
-    Aufschub, und die nächste bestandene Probe setzte den Abstand zurück. Ein Nachweis im letzten Teil des Fensters
-    hilft dagegen nicht (der Eimer ist in 0,6 s nicht leer). Modell (h trägt 6 s, dann nicht): Schritte auf `h` in
-    10 min 39 → 9.
+  - **Frischer Rückfall und lange Probe (Stufe 3, seit Stufe 3b am Bein):** Fällt binnen 15 s nach einem Schritt,
+    der mit einer bestandenen Probe kam, ein Platz des Beins wegen des Budgets zurück (`probeFresh`), ist das ein
+    *frischer Rückfall* – die Leitung trug die Probe, aber nicht die Schicht (Token-Bucket-Policer: der Eimer trägt die
+    Füllung, die Dauerlast nicht). Gezählt wird je Bein und Zielrate, nicht je Platz (`freshBrake`): In der Gruppe
+    fällt nach dem geprobten Schritt des Sprechers zuerst eine Kachel, und der Sprecherplatz wechselt laufend den
+    Besitzer – bis Stufe 3 begann die Bremse damit jedes Mal von vorn (Prüfer `bwe3`, H2).
+    - *Erster frischer Rückfall:* Die nächste Probe ab 90 % dieser Zielrate fährt **lang**: Fenster fest 1,5 s, Füllziel
+      Bedarf × 1,15 (Nachweis bei `eigen` 1/1,15) – wie vor Stufe 3. Die kurze Probe schob nur (Bedarf × 1,05 −
+      Policer-Rate) × 0,4–0,6 s ≈ 80–120 kbit über die Grenze, ein Eimer von 1–2 × Rate × 100 ms (145–290 kbit) leerte
+      sich nie; die lange schiebt ≈ 400–600 kbit (beides ist nötig – mit altem Fenster, aber × 1,05 blieb der Zyklus).
+      Bis dahin deckelt die Bremse die Auswahl unter 90 % dieser Zielrate (auch laufende Schichten; kein freier
+      Versuch, kein Schritt ohne Probe). Besteht die lange Probe, gilt wieder die kurze; scheitert sie, wächst der
+      Proben-Abstand (3 s × 1,5 bis 20 s), und die nächste ist wieder lang.
+    - *Zweiter in Folge* (der Eimer ist so groß, dass auch die lange Probe ihn nicht leert): Fehlversuch wie binnen
+      2 s – Aufschub des Platzes und ein Aufschub am Bein (8, 16, 32 … s, die Probe danach höchstens nach 2 min), den
+      weder eine bestandene Probe noch ein Sprecherwechsel aufhebt. Ohne diese Regel (Modell, Eimer 0,6 s) 36 statt 9
+      Rückfälle in 10 min, Gruppe mit Sprecherwechsel 71 statt 28.
+    - Ein Rückfall nach mehr als 15 s setzt die Folge zurück (die lange Probe bleibt fällig); erledigt ist die Bremse
+      nach 30 s (+ Aufschub) ohne neues Zeichen (frischer Rückfall, gescheiterte lange Probe). **Grenze:** Ein Eimer,
+      der sich erst nach mehr als 15 s leert (Modell: 7 % unter `h`, Eimer ≥ 1,2 s), entgeht der Regel. 30 s fingen ihn
+      (Modell 27 → 8 Rückfälle), bremsten aber die freie Leitung mit Störschüben (Anteil `h` 74 → 23 %) – deshalb 15 s.
+    - Modell (Policer 7 % unter der vollen Belegung, 10 min; vorher = Stufe 3): 1:1 Eimer 0,15 s 8 → 1 Rückfall,
+      `h` nach dem Ende des Policers nach 15 statt 32 s (`eigen` 21 statt 34 s); Gruppe 3 mit Sprecherwechsel alle
+      20 s, Eimer 0,15/0,6 s: `gcc` 107/90 → 13/28, `eigen` 87/82 → 13/27, Sprecherplatz 96–97 % auf `h`; Gruppe
+      ohne Wechsel volle Belegung nach dem Ende nach 4 statt 25 s. **Preis:** auf anhaltendem Policer eine lange
+      Probe alle ≤ 20 s (1:1: 4,3 statt 0,65 MB Fülldaten in 10 min, ≈ 26 MB/h; jede leert den Eimer und kostet dort
+      kurz Verlust); auf freier Leitung mit Störschüben alle 10–30 s 3,9 statt 2,2 MB in 10 min (`h` 74 statt 76 %);
+      auf freier Leitung ohne Störung nichts. Tests: `internal/sfu/policer_test.go`.
     Die Probe verlängert den Aufschub nie. Aufschub und Proben-Abstand überleben einen Wegwechsel (udp → tcp → udp)
     des Geräts für 5 min, ebenso der verbrauchte freie Versuch zum Anrufbeginn (auch ohne gescheiterte Probe).
   - **Abwägung – Gruppe mit Sprecherwechsel, Leitung wird frei:** Mit Probing kommt eine solche Gruppe nach dem
@@ -411,7 +428,11 @@ Platzhalter: `horn-1.example.org`.
     `faellt`, `steht`, `frist` – die Schonfrist ist gescheitert; `probe`.) `rate` ist die Medienrate des Takts, an
     der das GCC-Ziel gemessen wurde (nicht die geglättete); `zustand`, `schlange` und `verlust` sind, was der Detektor
     in dem Augenblick an der Spitze sieht (Verlust der letzten 500 ms; Schlange −1 = nichts Frisches). Nur
-    Zustandswechsel, nicht je Takt; nur die Kurzkennung des Beins.
+    Zustandswechsel, nicht je Takt; nur die Kurzkennung des Beins. Zeigt der Detektor das **Policer-Merkmal**
+    (Stufe 3b), enden `schicht`- und `widerlegung`-Zeilen mit ` policer=an`; Beginn und Ende des Merkmals stehen als
+    eigene Zeile im Log: `bwe 5884a4 policer=an folgen=71% korrelation=0.47 verloren=76 fenster=95 verlust=4.2%`
+    (Anteil der Verluste in Folgen ab 3 Paketen, Korrelation Senderate/Verlust je Messfenster, verlorene Pakete und
+    Fenster der letzten 10 s, Verlust an der Spitze).
   - Zusatz in der Zeile `probe` bei `mit`: `… est=1338k gcc=721k bwe=staut bwe_schlange=140ms bwe_verlust=0.0% bwe_durchsatz=699k bwe_zustand=warnung bwe_fenster=4 bwe_sofort=staut-nicht`.
     `bwe` ist das Urteil des Detektors über die Pakete der Probe **nach dem Nachlauf** (zwei Umlaufzeiten + 200 ms,
     höchstens 1 s; ohne bekannte Umlaufzeit 500 ms), `bwe_sofort` das, was er beim Ende der Probe schon wusste – je
@@ -493,9 +514,25 @@ Platzhalter: `horn-1.example.org`.
     ersten 15 s weiter, obwohl die Leitung zu eng ist; die Schicht bleibt, bis das Ziel nicht mehr steigt (Schonfrist,
     längstens 15 s). (b) **Verlust, der länger als rund
     10 s anhält**, steht im Vergleichswert (Verlust der 10 s davor) und gilt dann nicht mehr als gestiegen – ein Stau,
-    der sich nur als gleichbleibender Verlust unter 12 % zeigt, ist danach für die Widerlegung kein Zeichen mehr.
+    der sich nur als gleichbleibender Verlust unter 12 % zeigt, ist danach für die Widerlegung kein Zeichen mehr –
+    **seit Stufe 3b** außer, er folgt der Senderate bzw. kommt in Folgen (Policer-Merkmal, unten).
     (c) **Echter Policer** (Token-Bucket ohne Puffer): Eine Lücke bleibt nur bei 10–12 % Verlust – ab 10 % senkt der
     Verlust-Regler von pion das Ziel, und erst ab 12 % gilt der Verlust dem Detektor als hoch.
+    **Policer-Merkmal (Stufe 3b):** Im Labor (`labbwe3`, `eigen`, Policer 1400 kbit/s, Eimer 200 ms) widerlegte der
+    Detektor Fälle des GCC-Ziels, obwohl der Policer verwarf – der Verlust (4,25 %) blieb unter 12 % und lag nach einigen
+    Sekunden im Vergleichswert. Unterscheiden lässt er sich vom Zufallsverlust an seiner Verteilung (Mitschnitt beim
+    Empfänger, je 1 Lauf): am Policer Korrelation Senderate/Verlust je 100 ms 0,47, 71 % der Verluste in Folgen ab 3
+    Paketen; beim Zufallsverlust 3 % 0,07 und 0 %. Der Detektor zählt deshalb je Messfenster die Verluste in Folgen ab 3
+    (nach Folgenummer) und fasst die letzten 10 s zusammen (`bwe.Tip.Pol`). **Policer** = mindestens 10 verlorene Pakete
+    und Folgen ab 30 % oder Korrelation ab 0,35 über mindestens 50 Fenster. Begründung: Bei unabhängigem Verlust p
+    liegt ein verlorenes Paket mit 1 − (1−p)² (1+2p) in einer Folge ab 3 (3 %: 0,3 %, 10 %: 2,8 %, erst 30 %: 22 %);
+    die Korrelation streut dort um 0 mit ≈ 1/√Fenster (50 Fenster: 0,14). Dann ist **jeder Verlust an der Spitze ein
+    Zeichen** (`LossUp`): keine Widerlegung, kein Halten nach der Probe, kein entschuldigtes Bündel – wie bei `gcc`;
+    gleichmäßiger Verlust bleibt unauffällig. Modell (`internal/bwe/policer_test.go`, Video mit Schlüsselbildern, je
+    3 × 120 s): Policer 1400 (Eimer 100/200 ms) Merkmal in jedem Takt, kein Takt mit Verlust an der Spitze widerlegt
+    (ohne Merkmal 2–39 von ≈ 150); Zufallsverlust 3/5/10 % nie, widerlegt wie bisher. **Grenze:** Bündelverlust ohne
+    Bezug zur Rate (z. B. Funk) zählt über die Folgen ebenfalls als Policer – dann verhält sich `eigen` dort wie `gcc`.
+    Labor: nur je ein Lauf; die Schwellen liegen deutlich unter den Laborwerten.
     **Halten nach bestandener Probe:** Eine Probe, die gegen GCC bestanden hat (Stufe 1), wäre wenig wert, wenn die
     Schicht-Entscheidung GCC gleich danach wieder gehorchte – auf einer Leitung mit 1400 kbit/s und 20 ms Puffer hielt
     von 6 Schritten `l`→`m` keiner länger als 0,2 s: Das Schlüsselbild der neuen Schicht kommt als Bündel, überläuft
@@ -569,7 +606,9 @@ Platzhalter: `horn-1.example.org`.
     Weiterleiter erwartet 0), `feedbacks`, `bad` (nicht
     entpackbar), `acked`, `lost`, `dup` (doppelt gemeldet), `recovered` (als verloren gemeldet, später doch
     angekommen), `unknown` (Folgenummer nicht im Ring), `windows`, `thin` (Fenster mit zu wenig Paketen), `late`,
-    `resets`, `to_free`, `to_warn`, `to_cong`, `to_unknown`; bei `eigen` dazu `refuted` (Fälle des GCC-Ziels unter
+    `resets`, `to_free`, `to_warn`, `to_cong`, `to_unknown`, `policer {on, run_pct, corr, lost, windows}` (Merkmal,
+    siehe oben) und `win` (Zähler je Messfenster der letzten 10 s, ältestes zuerst: `[gesendet kbit/s, Pakete,
+    verloren, davon in Folgen ab 3]` – fürs Labor); bei `eigen` dazu `refuted` (Fälle des GCC-Ziels unter
     die Rate, die der Detektor widerlegt hat), `held` (Folgen, deren Widerlegung mit dem Halten nach einer
     bestandenen Probe begann – eine als `spitze` begonnene Folge, die später nur das Halten trägt, zählt bei
     `refuted`) und `bursts` (Takte einer laufenden Widerlegung, die ein eigenes Bündel entschuldigt hat, auch wenn
