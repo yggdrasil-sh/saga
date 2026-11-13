@@ -301,6 +301,7 @@ type strecke struct {
 	// kurze Spitzen traegt und Dauerlast ueber der Rate abschneidet.
 	tbRate  atomic.Int64 // bit/s
 	tbDepth atomic.Int64 // ns
+	zv      atomic.Int64 // Zufallsverlust in Promille (unabhaengig je Paket)
 	wait    time.Duration
 	ch      chan engPkt
 	lost    atomic.Int64
@@ -323,6 +324,10 @@ func newStrecke(c net.PacketConn) *strecke {
 			}
 			now := time.Now()
 			at := now
+			if p := e.zv.Load(); p > 0 && rng.Int63n(1000) < p {
+				e.lost.Add(1)
+				continue
+			}
 			if r := e.tbRate.Load(); r > 0 {
 				depth := float64(r) * time.Duration(e.tbDepth.Load()).Seconds()
 				if tbAt.IsZero() {
@@ -695,7 +700,7 @@ func TestUDPBWEMessung(t *testing.T) {
 	eng := func(kbit int64, bufMs int64) func(*strecke) {
 		return func(s *strecke) { s.tbRate.Store(0); s.buf.Store(bufMs * 1e6); s.rate.Store(kbit * 1000) }
 	}
-	frei := func(s *strecke) { s.rate.Store(0); s.tbRate.Store(0) }
+	frei := func(s *strecke) { s.rate.Store(0); s.tbRate.Store(0); s.zv.Store(0) }
 	// tb: Token-Bucket-Policer mit kbit und Eimer depthMs lang die Rate (strecke.tbRate)
 	tb := func(kbit, depthMs int64) func(*strecke) {
 		return func(s *strecke) { s.rate.Store(0); s.tbDepth.Store(depthMs * 1e6); s.tbRate.Store(kbit * 1000) }
@@ -715,12 +720,13 @@ func TestUDPBWEMessung(t *testing.T) {
 	}
 	// Fall "plan": freier Ablauf aus HORN_BWE_PLAN = "<s>:<kbit>:<puffer-ms>[:tb],..." (kbit 0 = frei), Dauer HORN_BWE_DAUER (s) -
 	// fuer Leitungen, die die festen Faelle nicht abdecken (Policer mit kurzem Puffer, Leitung knapp unter der Rate). Mit
-	// ":tb" ist der Abschnitt ein Token-Bucket-Policer (Eimer <puffer-ms> lang die Rate, keine Schlange).
+	// ":tb" ist der Abschnitt ein Token-Bucket-Policer (Eimer <puffer-ms> lang die Rate, keine Schlange); mit ":zv" ist
+	// er Zufallsverlust - das zweite Feld dann in Promille, das dritte ohne Bedeutung (Leitung sonst frei).
 	if spec := os.Getenv("HORN_BWE_PLAN"); spec != "" {
 		var plan []schritt
 		for _, part := range strings.Split(spec, ",") {
 			f := strings.Split(part, ":")
-			if len(f) != 3 && (len(f) != 4 || f[3] != "tb") {
+			if len(f) != 3 && (len(f) != 4 || f[3] != "tb" && f[3] != "zv") {
 				t.Fatalf("HORN_BWE_PLAN: %q", part)
 			}
 			at, _ := strconv.ParseFloat(f[0], 64)
@@ -729,6 +735,9 @@ func TestUDPBWEMessung(t *testing.T) {
 			switch {
 			case kbit == 0:
 				plan = append(plan, schritt{at, "frei", frei})
+			case len(f) == 4 && f[3] == "zv":
+				p := kbit
+				plan = append(plan, schritt{at, fmt.Sprintf("zv-%dpromille", p), func(s *strecke) { frei(s); s.zv.Store(p) }})
 			case len(f) == 4:
 				plan = append(plan, schritt{at, fmt.Sprintf("tb-%d-%dms", kbit, buf), tb(kbit, buf)})
 			default:
