@@ -248,6 +248,57 @@ func TestBWELogReihenfolge(t *testing.T) {
 	}
 }
 
+// TestBWELegEventWeg (Stufe 3e, Pruefer bwe3e): Weg der Zeilen aus onLegEvent - mit Detektor gehen "frisch" und
+// "schicht" ueber logSeq des Beins (in dieser Reihenfolge, nicht direkt ins Log); ohne Detektor (gcc) kommt "frisch"
+// direkt ins Log und "schicht" gar nicht.
+func TestBWELegEventWeg(t *testing.T) {
+	logs := &logFang{t0: time.Now()}
+	old := log.Writer()
+	log.SetOutput(logs)
+	defer log.SetOutput(old)
+	var mu sync.Mutex
+	var seq []string
+	sl, sl2 := &sfu.Leg{}, &sfu.Leg{}
+	l := &leg{id: "a1b2c3d4e5f6", bwe: newBWEWrap(nil, bweMit)}
+	l.bwe.log.out = func(line string) {
+		mu.Lock()
+		seq = append(seq, line)
+		mu.Unlock()
+	}
+	l2 := &leg{id: "0f9e8d7c6b5a"}
+	s := &server{bySFU: map[*sfu.Leg]*leg{sl: l, sl2: l2}}
+	fresh := sfu.LegEvent{Kind: sfu.LegFresh, Why: "zaehlt", Class: "tile", From: "m", To: "l", TgtKbit: 960, PreKbit: 490}
+	down := sfu.LegEvent{Kind: sfu.LegDown, Why: "budget", Class: "tile", From: "m", To: "l"}
+	for _, sl := range []*sfu.Leg{sl, sl2} {
+		fresh.Leg, down.Leg = sl, sl
+		s.onLegEvent(fresh)
+		s.onLegEvent(down)
+	}
+	for end := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		mu.Lock()
+		k := len(seq)
+		mu.Unlock()
+		if k >= 2 || time.Now().After(end) {
+			break
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seq) != 2 || !strings.HasPrefix(seq[0], "frisch "+shortID(l.id)+" art=zaehlt") ||
+		!strings.HasPrefix(seq[1], "schicht "+shortID(l.id)+" platz=tile m>l grund=budget") {
+		t.Fatalf("logSeq des Beins mit Detektor: %q", seq)
+	}
+	logs.mu.Lock()
+	defer logs.mu.Unlock()
+	var direct []string
+	for _, ln := range logs.lines {
+		direct = append(direct, ln.S)
+	}
+	if len(direct) != 1 || !strings.Contains(direct[0], "frisch "+shortID(l2.id)+" art=zaehlt") {
+		t.Fatalf("direkt im Log (gcc: nur frisch): %q", direct)
+	}
+}
+
 // Zeile "probe" bei HORN_BWE=mit: Das Urteil des Detektors steht zweimal darin - bwe_sofort= (was er beim Ende der
 // Probe wusste) und bwe= (nach dem Nachlauf, wenn die Rueckmeldungen zu den letzten Paketen da sind). Probe von 0,4 s
 // in eine Enge (1600 kbit/s auf 700): Beim Ende sind erst die Pakete der ersten ~0,17 s gemeldet (die Meldung kommt
