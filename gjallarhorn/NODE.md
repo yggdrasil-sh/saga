@@ -112,22 +112,13 @@ Platzhalter: `horn-1.example.org`.
   - UDP, nach oben: nur, wenn das GCC-Ziel mindestens 1,25 × der gesendeten Rate ist. Nach einem Rücksprung steigt
     das Ziel auch bei anhaltendem Stau zunächst wieder (der Verlust-Teil holt mit 5 % je 200 ms zum
     Verzögerungs-Teil auf); erst von einem erholten Ziel aus ist ein Stau nach dem Schritt als Fall erkennbar.
-  - UDP, junge Quelle (Anrufbeginn, `srcSettle`): Für den Schritt hinauf auf eine Quelle, die noch keine 2 s ohne
-    Unterbrechung sendet, zählt mindestens die angenommene Rate (`l` 150, `m` 500, `h` 1500 kbit/s) statt der
-    Messung – die beginnt mit einem Teil-Takt, und der Kodierer fährt erst hoch (`h` stand mit 250–300 kbit/s in
-    der Rechnung). Früher ging `h` damit im ersten oder zweiten Takt des Beins durch, bevor das GCC-Ziel etwas über
-    die Leitung sagt (pion klemmt es anfangs auf das 1,5-Fache der gerade empfangenen Rate; es fällt, wenn der erste
-    Schlüsselbild-Schub aus dem Fenster läuft). Sprang die Rate dann auf `h`, lag das Ziel darunter und war gefallen:
-    Rückfall nach 0,4–2,4 s, `h` erst nach dem Aufschub (8 s) wieder – Labor (Chromium, freie Leitung): 46 von 49
-    solcher Schritte, auch ohne Probing; im Testaufbau mit Chromium 59 von 60, mit der Regel 1 von 30. Jetzt bleibt
-    der Platz zuerst auf `m`, der Deckel folgt dem Bedarf, `h` kommt nach rund 2 s und hält. Gilt mit und ohne
-    Probing; für die laufende Schicht, für Beine, die zu laufenden Quellen stoßen, und für TCP ändert sich nichts.
-    **Seit Stufe 3 nur bei `HORN_BWE=eigen`** (Labor `labbwe2`: die Regel allein, bei `gcc`, brachte nichts Messbares –
-    Rückfälle zum Anrufbeginn 5 gegen 4 von 32 –, kostete aber rund 2 s bis `h`). Bei `gcc` und `mit` plant der
-    Anrufbeginn wieder wie vor der Regel (im Modell Takt für Takt gleich dem Stand `22a5bd3`).
-    **Test-Einstellung `HORN_ANLAUF`** (nur fürs Labor): `1` = Regel auf allen UDP-Beinen mit GCC an, `0` = aus, ohne
-    Wert der Standard je `HORN_BWE`; jeder andere Wert gilt als ohne Wert (Warnzeile). Beim Start steht bei `1`/`0` eine
-    Zeile `HORN_ANLAUF=…` im Log.
+  - UDP, Anrufbeginn: `h` geht mit der ersten Messung der Quelle durch (sie beginnt mit einem Teil-Takt, der Kodierer
+    fährt erst hoch). Die zwischenzeitliche Anlauf-Regel (`srcSettle`: Schritt hinauf auf eine junge Quelle mit der
+    angenommenen Rate, `h` erst nach rund 2 s; seit Stufe 3 nur bei `eigen`, Test-Einstellung `HORN_ANLAUF`) ist
+    **seit Stufe 3b gestrichen** – im Labor brachte sie weder bei `gcc` (`labbwe2`: Rückfälle zum Anrufbeginn 5 gegen
+    4 von 32) noch bei `eigen` (`labbwe3`: mit Regel 1 von 24 Richtungen, ohne 0 von 24) etwas Messbares, kostete aber
+    rund 2 s bis `h` und nach „Kamera an“. Der Anrufbeginn plant bei `gcc` und `eigen` wieder wie am Stand `22a5bd3`
+    (im Modell ohne Probing Takt für Takt gleich).
   - UDP, gescheiterter Versuch: Endet die Schonfrist nach einem Hochschalten mit Stau, zählt der Rückfall als
     Fehlversuch (Aufschub 8/16/32 s … bis 5 min, siehe oben), auch wenn er später als 2 s kommt. Die Schätzung fällt dabei 2 s
     lang nicht unter die Rate vor dem Versuch – der erste Rücksprung des Ziels (85 % eines Messfensters, das noch
@@ -152,8 +143,7 @@ Platzhalter: `horn-1.example.org`.
       statt 8,8 s). Verbraucht mit dem Versuch, mit der ersten gescheiterten Probe und mit dem ersten Rückfall eines
       Platzes. Nicht als Rückfall zählt, wenn die Schicht beim Schritt hinauf noch nicht eingeschwungen war (sie
       sendet inzwischen mehr als das 1,3-Fache – zu Anrufbeginn die Regel: `h` geht mit 300 kbit/s durch und fällt,
-      sobald der Kodierer hochgefahren ist; seit `srcSettle`, siehe oben, geht der Schritt erst nach rund 2 s durch,
-      der Fall ist damit selten); es bleibt dann beim Aufschub wie ohne Probing.
+      sobald der Kodierer hochgefahren ist); es bleibt dann beim Aufschub wie ohne Probing.
       Bis dieser Versuch verbraucht ist (Anlauf), plant das Bein genau wie ohne Probing: Der Deckel der Schätzung
       folgt dem Bedarf der laufenden Auswahl, Schonfrist und Aufschub wie dort, keine Proben (Labor, Runde 3: mit
       Probing stand die Schätzung beim ersten Schritt auf dem Anfangswert, `h` hielt seltener – stabil ab 8,4 s statt 3,0 s).
@@ -357,8 +347,7 @@ Platzhalter: `horn-1.example.org`.
     unverändert an pion-GCC weitergibt. Daneben urteilt ein eigener Detektor (`internal/bwe`) über die Leitung. **Er
     entscheidet nichts:** Schichtwahl, Schätzung und Proben laufen wie bei `gcc`. `HORN_BWE=eigen` (Stufe 1 und 2):
     dieselbe Hülle, und der Detektor **entscheidet mit** – siehe „`eigen`“ unten. Jeder andere Wert gilt als `gcc`
-    (mit Warnzeile). Beim Start steht bei `mit` bzw. `eigen` eine Zeile `HORN_BWE=…: …` im Log. Bei `eigen` gilt
-    außerdem die Anlauf-Regel (junge Quelle, siehe oben; Test-Einstellung `HORN_ANLAUF`).
+    (mit Warnzeile). Beim Start steht bei `mit` bzw. `eigen` eine Zeile `HORN_BWE=…: …` im Log.
   - Verfahren: Pakete werden nach Sendezeit zu Fenstern gebündelt (mindestens 100 ms und 20 gemeldete Pakete,
     höchstens 500 ms). Die Schlange eines Fensters ist seine kleinste Laufzeit (Ankunft minus Sendezeit) über der
     Basis, der kleinsten Laufzeit der letzten 30 s – Jitter und kurze Pausen heben das Minimum nicht, eine stehende

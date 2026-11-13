@@ -50,7 +50,6 @@ type config struct {
 	Dev       bool   // HORN_DEV=1: Entwicklungs-Token und Testseite (nur Tests!)
 	Probing   bool   // HORN_PROBING (Standard an): Probing mit Fuelldaten, siehe internal/sfu/probe.go
 	BWE       string // HORN_BWE: gcc (Standard), mit (eigener Stau-Detektor liest und schreibt mit) oder eigen (er entscheidet mit), siehe bwe.go
-	Anlauf    int    // HORN_ANLAUF (Test-Einstellung): Anlauf-Regel an (1) bzw. aus (0); ohne Wert Standard je HORN_BWE, siehe parseAnlauf
 	Certs     netx.CertOptions
 }
 
@@ -88,9 +87,6 @@ func loadConfig(bench bool) (*config, error) {
 	}
 	var warn string
 	if c.BWE, warn = parseBWE(os.Getenv("HORN_BWE")); warn != "" {
-		log.Printf("WARNUNG: %s", warn)
-	}
-	if c.Anlauf, warn = parseAnlauf(os.Getenv("HORN_ANLAUF")); warn != "" {
 		log.Printf("WARNUNG: %s", warn)
 	}
 	c.UDPListen = env("HORN_UDP_LISTEN", c.Listen)
@@ -263,13 +259,7 @@ func newServer(cfg *config) (*server, error) {
 			log.Printf("HORN_BWE=eigen: eigener Stau-Detektor wertet auf UDP-Beinen die Proben und widerlegt grundlose Faelle des GCC-Ziels")
 		}
 		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers, OnProbe: s.onProbe, OnLegEvent: s.onLegEvent,
-			Probing: cfg.Probing, Anlauf: cfg.Anlauf}
-		switch cfg.Anlauf {
-		case sfu.AnlaufAn:
-			log.Printf("HORN_ANLAUF=1 (Test-Einstellung): Anlauf-Regel auf allen UDP-Beinen an")
-		case sfu.AnlaufAus:
-			log.Printf("HORN_ANLAUF=0 (Test-Einstellung): Anlauf-Regel aus")
-		}
+			Probing: cfg.Probing}
 		if cfg.Dev {
 			nc.Verifier = sfu.VerifierFunc(s.verifyDev)
 			log.Printf("WARNUNG: HORN_DEV=1 - Entwicklungs-Token ohne Saga, nur fuer Tests")

@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Knoten: Probing Stufe 3b – Anlauf-Regel gestrichen (experimentell)
+- **Anlauf-Regel gestrichen** (junge Quelle: Schritt hinauf rechnet mit der angenommenen Rate; seit Stufe 3 nur bei
+  `HORN_BWE=eigen`), samt Test-Einstellung `HORN_ANLAUF`. Im Labor brachte sie weder bei `gcc` noch bei `eigen` etwas
+  Messbares (`eigen`: Rückfall zum Anrufbeginn mit Regel 1 von 24 Richtungen, ohne 0 von 24), kostete aber rund 2 s bis
+  zur oberen Ebene, auch nach „Kamera an“. Der Anrufbeginn plant bei `gcc` und `eigen` wieder wie vor der Regel (im
+  Modell ohne Probing Takt für Takt gleich).
+
 ### Geändert – Knoten: Probing Stufe 3 – kürzere Proben in kürzerem Abstand, Anlauf-Regel nur bei `HORN_BWE=eigen` (experimentell)
 - **Proben-Abstand:** nach einer gescheiterten Probe 3 s, je weitere × 1,5, höchstens 20 s (vorher 10 s verdoppelnd
   bis 2 min); eine bestandene Probe setzt zurück. Eine frei gewordene Leitung ist damit schneller wieder oben (Modell:
@@ -36,7 +43,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   je Stunde zurück. Die Regel dämpft das nur (über 10 min zuletzt alle ~2 min). Messzahlen in `gjallarhorn/NODE.md`.
 - **Anlauf-Regel** (junge Quelle: Schritt hinauf rechnet mit der angenommenen Rate) gilt nur noch bei `HORN_BWE=eigen`;
   bei `gcc` und `mit` plant der Anrufbeginn wieder wie vor der Regel (im Modell Takt für Takt gleich). Für das Labor
-  die Test-Einstellung `HORN_ANLAUF` (`1` an, `0` aus, ohne Wert Standard je `HORN_BWE`).
+  die Test-Einstellung `HORN_ANLAUF` (`1` an, `0` aus, ohne Wert Standard je `HORN_BWE`). *Seit Stufe 3b ganz
+  gestrichen, siehe oben.*
 - **Nicht am Gerät geprüft:** alles mit echtem Chromium; gemessen im Testaufbau mit pion-Gegenstelle (Zahlen in
   `gjallarhorn/NODE.md`, Abschnitt „Probing Stufe 3“).
 
