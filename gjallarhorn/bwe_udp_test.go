@@ -197,11 +197,6 @@ func TestBWEZeilen(t *testing.T) {
 	}
 }
 
-// Zeile "probe" bei HORN_BWE=mit: Das Urteil des Detektors steht zweimal darin - bwe_sofort= (was er beim Ende der
-// Probe wusste) und bwe= (nach dem Nachlauf, wenn die Rueckmeldungen zu den letzten Paketen da sind). Probe von 0,4 s
-// in eine Enge (1600 kbit/s auf 700): Beim Ende sind erst die Pakete der ersten ~0,17 s gemeldet (die Meldung kommt
-// um die Schlange spaeter) - sofort "staut-nicht"; nach dem Nachlauf "staut". Die Zeile kommt erst nach dem Nachlauf,
-// genau einmal. Ohne Mitleser (gcc) kommt sie sofort und ohne Zusatz.
 // TestBWELogReihenfolge (N3): Logzeilen eines Beins erscheinen in der Reihenfolge, in der sie entstehen - auch wenn
 // die Ausgabe einzelner Zeilen dauert (vorher je Zeile "go log.Print": policer=an und policer=aus konnten sich
 // vertauschen). Die Zeile selbst entsteht erst in der Goroutine (bweAttach liest dort die Schaetzung).
@@ -247,6 +242,11 @@ func TestBWELogReihenfolge(t *testing.T) {
 	}
 }
 
+// Zeile "probe" bei HORN_BWE=mit: Das Urteil des Detektors steht zweimal darin - bwe_sofort= (was er beim Ende der
+// Probe wusste) und bwe= (nach dem Nachlauf, wenn die Rueckmeldungen zu den letzten Paketen da sind). Probe von 0,4 s
+// in eine Enge (1600 kbit/s auf 700): Beim Ende sind erst die Pakete der ersten ~0,17 s gemeldet (die Meldung kommt
+// um die Schlange spaeter) - sofort "staut-nicht"; nach dem Nachlauf "staut". Die Zeile kommt erst nach dem Nachlauf,
+// genau einmal. Ohne Mitleser (gcc) kommt sie sofort und ohne Zusatz.
 func TestBWEProbeNachlauf(t *testing.T) {
 	for bweNow() < int64(3200*time.Millisecond) { // die Sendezeiten unten liegen bis 3 s zurueck
 		time.Sleep(50 * time.Millisecond)
