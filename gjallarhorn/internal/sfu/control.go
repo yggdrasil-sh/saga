@@ -498,6 +498,12 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			EstKbit: int(l.est.bps / 1000), GccKbit: int(l.est.gccLast / 1000), RateKbit: int(l.est.rateTick / 1000)})
 	}
 	l.probeStep(now) // laufende Probe: weiter, Abbruch oder Freigabe (hebt dann die Schaetzung)
+	// Bremse nach frischem Rueckfall: kleineres von Budget und GCC-Ziel, seit dem offenen geprobten Schritt (Einbruch)
+	low := l.est.bps
+	if g := l.est.gccLast; g > 0 {
+		low = min(low, g)
+	}
+	l.fb.watch(low)
 	budget := l.est.bps
 	quotaCap := 1e12
 	if q := me.quota; q != nil { // P10: Kontingent des verbundenen Servers, gleich verteilt auf seine Teilnehmenden
@@ -573,22 +579,24 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// waehrend die Kacheln als "laufend" auf m blieben - die Summe lag in der Bremse, der Schritt des Sprechers nicht.
 	// Nie unter die laufende Auswahl: Der Deckel haelt das Bein, wo es ist, und verhindert nur das Wachsen - sonst naehme
 	// er nach einem kleinen Schritt (Kachel aus der Pause, unter 10 % der Rate) auch laufende Schichten zurueck.
+	// run: laufende Auswahl vor diesem Takt (Bildrate) - auch fuer die Bremse: Zielrate vor einem geprobten Schritt,
+	// und ob ein Rueckfall die Auswahl des Beins senkt (sonst Umverteilung, freshBrake.down)
+	run := 0.0
+	for _, c := range cs {
+		if c.s.layer == "" || c.s.paused {
+			continue
+		}
+		for _, o := range c.opts {
+			if o.Layer == c.s.layer {
+				run += layerRate(o)
+			}
+		}
+	}
 	capNeed := 0.0
 	if prb {
 		capNeed = l.fb.capNeed(audioCut)
 	}
 	if capNeed > 0 {
-		run := 0.0
-		for _, c := range cs {
-			if c.s.layer == "" || c.s.paused {
-				continue
-			}
-			for _, o := range c.opts {
-				if o.Layer == c.s.layer {
-					run += layerRate(o)
-				}
-			}
-		}
 		capNeed = max(capNeed, run)
 	}
 	// Reserve: nach oben nur mit Abstand und ausserhalb der Sperrzeit
@@ -876,9 +884,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// Rueckfall fuehrt zur langen Probe (freshBrake, probe.go). Gezaehlt wird je Bein, nicht je Platz: In der
 			// Gruppe nimmt der Rueckfall nach einem geprobten Schritt des Sprechers zuerst eine Kachel zurueck.
 			own := s.why == whyBudget && s.upAt != 0 && s.upOwner == s.owner
+			// Nur wenn die Auswahl des Beins sinkt: Faellt eine Kachel, weil der Sprecher im selben Takt steigt, ist das
+			// Umverteilung (Pruefer bwe3b: mmm -> hml nach einem geprobten l -> m galt als frischer Rueckfall auf 960k)
 			brake := false
-			if book && s.why == whyBudget && was != nil && was.peer == s.owner {
-				brake = l.fb.down(now)
+			if book && s.why == whyBudget && was != nil && was.peer == s.owner && sum < run {
+				brake = l.fb.down(now, low)
 			}
 			fast := own && (now-s.upAt < int64(upFail) || l.est.probeFailed(s.upAt, now) ||
 				brake && s.upProbe && now-s.upAt < int64(probeFresh))
@@ -921,7 +931,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				s.upProbe = d.ok != 0 && now-d.ok <= int64(probeGrant)
 			}
 			if book && s.upProbe {
-				l.fb.stepped(s.upT, now)
+				l.fb.stepped(s.upT, run*upHeadroom+audioCut, now)
+			} else if book {
+				l.fb.beyond(s.upT)
 			}
 			s.rampRate, s.rampOwner = layerRate(st), s.owner
 		} else if s.layer == "" || s.rampOwner != s.owner {

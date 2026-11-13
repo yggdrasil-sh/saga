@@ -180,7 +180,7 @@ func TestProbingPolicerFrei(t *testing.T) {
 				}
 				er.tick()
 			}
-			if er.l.fb != (freshBrake{upAt: er.l.fb.upAt, upT: er.l.fb.upT}) {
+			if er.l.fb != (freshBrake{upAt: er.l.fb.upAt, upT: er.l.fb.upT, upPre: er.l.fb.upPre, upLow: er.l.fb.upLow}) {
 				t.Fatalf("n=%d eigen=%v: Bremse auf freier Leitung: %+v", c.n, eigen, er.l.fb)
 			}
 			for _, e := range er.pevs[pev0:] {
@@ -192,15 +192,112 @@ func TestProbingPolicerFrei(t *testing.T) {
 	}
 }
 
+// stoerGruppe: Gruppe mit 3 Sendern auf freier Leitung, 10 min Stoerschuebe von 2 s (das GCC-Ziel faellt auf
+// 600 kbit/s; Abstaende gaps der Reihe nach, der erste nach first), dann 3 min ohne. Sprecherwechsel alle rot (0 =
+// keiner). Ergebnis: Anteil der Takte mit dem Sprecherplatz auf h bzw. mit allen Plaetzen auf l (in den 10 min),
+// Rueckkehr nach dem Ende des letzten Schubs (volle Belegung hmm 10 s am Stueck; -1 = nicht binnen 3 min) und der
+// laengste Aufschub am Bein (freshBrake.d).
+func stoerGruppe(t *testing.T, eigen bool, rot, first time.Duration, gaps []time.Duration) (hShare, lllShare float64, back, maxD time.Duration) {
+	t.Helper()
+	er := neuEigen(t, eigen, 1250e3, 810e3, 3)
+	er.l.firstUsed = true
+	er.grow = 400e3
+	er.tick()
+	ps := er.senders()
+	er.until("m", 2*time.Second)
+	start, next, k := er.now, first, 0
+	var lastEnd time.Duration
+	onH, lll, n, at := 0, 0, 0, int64(-1)
+	back = -1
+	for er.now-start < int64(13*time.Minute) && back < 0 {
+		el := time.Duration(er.now - start)
+		if rot > 0 {
+			er.speak(ps[int(el/rot)%len(ps)])
+		}
+		was := er.loss
+		if el >= next+2*time.Second {
+			next = el + gaps[k%len(gaps)]
+			k++
+		}
+		er.loss = el < 10*time.Minute && el >= next
+		if was && !er.loss {
+			lastEnd = el
+		}
+		er.tick()
+		maxD = max(maxD, er.l.fb.d)
+		v := er.video()
+		if el < 10*time.Minute {
+			n++
+			if v[0] == 'h' {
+				onH++
+			}
+			if v == "lll" {
+				lll++
+			}
+			continue
+		}
+		switch {
+		case v != "hmm":
+			at = -1
+		case at < 0:
+			at = er.now
+		case er.now-at >= int64(10*time.Second):
+			back = time.Duration(at-start) - lastEnd
+		}
+	}
+	return float64(onH) / float64(n), float64(lll) / float64(n), back, maxD
+}
+
+// TestProbingGruppeStoerschuebe (Stufe 3c, Pruefer bwe3b H1): Gruppe 3, freie Leitung mit Stoerschueben wie
+// TestProbingStoerschuebe. Mit der Bremse von Stufe 3b (f64544e) zaehlte jeder Schub bald nach einem geprobten Schritt
+// als frischer Rueckfall: rate fiel auf die Zielrate einer Kachel-Stufe (mll, 960k), der Deckel hielt alle Plaetze auf
+// l, und der Aufschub am Bein wuchs bis 5 min - Sprecher auf h 12 bzw. 14 %, lll 76 bzw. 67 % der Takte, hmm nach dem
+// letzten Schub nicht binnen 3 min (ohne Wechsel 30 s, Sprecher auf h 12 %). Jetzt zaehlen nur Rueckfaelle nach dem
+// Muster eines Policers (freshBrake), und die Zahlen sind wieder die von vor Stufe 3b (4660e81): Sprecher auf h 47
+// bzw. 49 % (ohne Wechsel 59 bzw. 58 %), lll 22 bis 25 %, hmm 12,4 bis 13,2 s nach dem letzten Schub - so lange haelt
+// der Aufschub der Plaetze nach dem Rueckfall im Schub (upFail), wie vorher. Zwei weitere Schub-Folgen: kein Aufschub
+// am Bein (f64544e: 1 bis 5 min, Sprecher auf h 5 bis 21 %).
+func TestProbingGruppeStoerschuebe(t *testing.T) {
+	gaps := []time.Duration{30 * time.Second, 17 * time.Second, 23 * time.Second, 10 * time.Second}
+	for _, eigen := range []bool{false, true} {
+		for _, rot := range []time.Duration{20 * time.Second, 0} {
+			h, lll, back, d := stoerGruppe(t, eigen, rot, 10*time.Second, gaps)
+			t.Logf("eigen=%v Wechsel %v: Sprecher auf h %.0f %%, lll %.0f %%, hmm %v nach dem letzten Schub, Aufschub am Bein hoechstens %v",
+				eigen, rot, 100*h, 100*lll, back, d)
+			lim := 30 * time.Second
+			if rot == 0 {
+				lim = 20 * time.Second
+			}
+			if h < 0.4 || lll > 0.3 || back < 0 || back > lim || d != 0 {
+				t.Errorf("eigen=%v Wechsel %v: h %.0f %% (soll >= 40), lll %.0f %% (<= 30), Rueckkehr %v (<= %v), Aufschub am Bein %v (soll keiner)",
+					eigen, rot, 100*h, 100*lll, back, lim, d)
+			}
+		}
+	}
+	// weitere Schub-Folgen
+	for i, g := range [][]time.Duration{
+		{12 * time.Second, 27 * time.Second, 19 * time.Second, 14 * time.Second, 29 * time.Second},
+		{21 * time.Second, 10 * time.Second, 16 * time.Second, 25 * time.Second, 11 * time.Second, 30 * time.Second},
+	} {
+		for _, eigen := range []bool{false, true} {
+			h, lll, back, d := stoerGruppe(t, eigen, 20*time.Second, time.Duration(13+4*i)*time.Second, g)
+			t.Logf("Folge %d eigen=%v: h %.0f %%, lll %.0f %%, hmm %v, Aufschub am Bein %v", i+1, eigen, 100*h, 100*lll, back, d)
+			if d != 0 || h < 0.3 {
+				t.Errorf("Folge %d eigen=%v: Aufschub am Bein %v, h %.0f %%", i+1, eigen, d, 100*h)
+			}
+		}
+	}
+}
+
 // TestFreshBrake: Buchfuehrung der Bremse.
 func TestFreshBrake(t *testing.T) {
 	var b freshBrake
 	s := int64(time.Second)
-	b.stepped(1500e3, 10*s)
-	if b.down(10*s) || b.at != 0 || b.upAt == 0 {
+	b.stepped(1500e3, 1000e3, 10*s)
+	if b.down(10*s, 1400e3) || b.at != 0 || b.upAt == 0 {
 		t.Fatalf("Rueckfall im selben Takt zaehlt: %+v", b)
 	}
-	if b.down(15*s) || !b.long || b.n != 1 || b.capNeed(40e3) == 0 {
+	if b.down(15*s, 1400e3) || !b.long || b.n != 1 || b.capNeed(40e3) == 0 {
 		t.Fatalf("erster frischer Rueckfall: %+v", b)
 	}
 	if !b.longFor(1400e3) || b.longFor(1300e3) || !b.on(1400e3) {
@@ -210,12 +307,12 @@ func TestFreshBrake(t *testing.T) {
 	if b.long || b.capNeed(40e3) != 0 {
 		t.Fatalf("lange Probe bestanden: %+v", b)
 	}
-	b.stepped(1500e3, 20*s)
-	if !b.down(25*s) || b.d != 2*layerDwell || !b.blocks(1500e3, 30*s) || b.blocks(1500e3, 34*s) {
+	b.stepped(1500e3, 1000e3, 20*s)
+	if !b.down(25*s, 1400e3) || b.d != 2*layerDwell || !b.blocks(1500e3, 30*s) || b.blocks(1500e3, 34*s) {
 		t.Fatalf("zweiter frischer Rueckfall: Aufschub am Bein %+v", b)
 	}
-	b.stepped(1500e3, 40*s)
-	if b.down(60*s) || b.n != 0 || !b.long {
+	b.stepped(1500e3, 1000e3, 40*s)
+	if b.down(60*s, 1400e3) || b.n != 0 || !b.long {
 		t.Fatalf("Rueckfall nach probeFresh setzt die Folge zurueck, die lange Probe bleibt: %+v", b)
 	}
 	b.failLong(70*s, 3*time.Second) // Abstand kuerzer als der Aufschub: der Aufschub zaehlt
@@ -232,6 +329,44 @@ func TestFreshBrake(t *testing.T) {
 	b.decay(80*s + int64(upHold) + int64(probeGapMaxLong))
 	if b.at != 0 || b.long {
 		t.Fatalf("nicht erledigt: %+v", b)
+	}
+	// Stufe 3c: nur Rueckfaelle nach dem Muster eines Policers
+	b = freshBrake{}
+	b.stepped(1500e3, 1000e3, 10*s)
+	if b.down(12*s, 650e3) || b.at != 0 || b.upAt != 0 {
+		t.Fatalf("Einbruch (Budget unter 0,7 x Stand vor dem Schritt) zaehlt: %+v", b)
+	}
+	b.stepped(1500e3, 1000e3, 20*s)
+	b.watch(600e3) // der Schub beginnt, bevor der Platz faellt
+	b.watch(1300e3)
+	if b.down(22*s, 1300e3) || b.at != 0 {
+		t.Fatalf("Einbruch zwischen Schritt und Rueckfall zaehlt: %+v", b)
+	}
+	b.stepped(1500e3, 1000e3, 30*s)
+	b.watch(1300e3)
+	if b.down(32*s, 1300e3) || b.at == 0 || b.n != 1 || b.rate != 1500e3 {
+		t.Fatalf("Rueckfall eines Policers zaehlt nicht: %+v", b)
+	}
+	at := b.at
+	b.stepped(900e3, 600e3, 40*s) // kleinere Zielrate (Kachel-Stufe): gehoert nicht zu dieser Bremse
+	if b.down(42*s, 1300e3) || b.rate != 1500e3 || b.n != 1 || b.at != at {
+		t.Fatalf("Rueckfall auf kleinere Zielrate senkt bzw. frischt die Bremse: %+v", b)
+	}
+	b.stepped(1500e3, 1000e3, 50*s)
+	if b.beyond(1400e3); b.upAt == 0 {
+		t.Fatal("Schritt darunter schliesst den geprobten")
+	}
+	if b.beyond(1700e3); b.upAt != 0 {
+		t.Fatalf("Schritt ohne Probe darueber schliesst den geprobten nicht: %+v", b)
+	}
+	if b.down(52*s, 1300e3) || b.n != 1 {
+		t.Fatalf("Rueckfall nach einem Schritt ohne Probe darueber zaehlt: %+v", b)
+	}
+	b.stepped(1500e3, 1000e3, 60*s)
+	b.n = 1
+	b.down(62*s, 500e3)
+	if b.n != 0 || !b.long {
+		t.Fatalf("Einbruch unterbricht die Folge nicht bzw. hebt die lange Probe auf: %+v", b)
 	}
 }
 
