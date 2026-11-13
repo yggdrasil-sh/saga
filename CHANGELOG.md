@@ -30,9 +30,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   dieses Ziel gescheitert, zählt sie sofort als gescheitert, statt wiederholt zu werden.
 - **Policer:** Fallen Schritte, die mit einer bestandenen Probe kamen, zweimal in Folge binnen 15 s zurück, zählt das
   als Fehlversuch (Aufschub wächst). Auf einem Token-Bucket-Policer knapp unter der Rate der oberen Ebene bestanden
-  die kurzen Proben immer (der Eimer trägt sie), die Ebene fiel nach Sekunden zurück, und das begann immer wieder von
-  vorn (Labor: 124–212 Rückfälle je Stunde). Im Testaufbau mit Token-Bucket nachgestellt; Messzahlen in
-  `gjallarhorn/NODE.md`.
+  die Proben (der Eimer trägt sie), die Ebene fiel nach Sekunden zurück, und das begann immer wieder von vorn (Labor,
+  noch vor Stufe 3: 124–212 Rückfälle je Stunde). Im Testaufbau mit Token-Bucket nachgestellt: Dort scheiterten die
+  Proben vor Stufe 3 noch; erst die kürzeren, schwächeren Proben von Stufe 3 bestehen, und der Platz fällt 110–120-mal
+  je Stunde zurück. Die Regel dämpft das nur (über 10 min zuletzt alle ~2 min). Messzahlen in `gjallarhorn/NODE.md`.
 - **Anlauf-Regel** (junge Quelle: Schritt hinauf rechnet mit der angenommenen Rate) gilt nur noch bei `HORN_BWE=eigen`;
   bei `gcc` und `mit` plant der Anrufbeginn wieder wie vor der Regel (im Modell Takt für Takt gleich). Für das Labor
   die Test-Einstellung `HORN_ANLAUF` (`1` an, `0` aus, ohne Wert Standard je `HORN_BWE`).
