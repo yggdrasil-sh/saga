@@ -228,3 +228,24 @@ func TestFreshBrake(t *testing.T) {
 		t.Fatalf("nicht erledigt: %+v", b)
 	}
 }
+
+// TestProbingBremseHaeltLaufendes: Der Deckel der Bremse verhindert nur das Wachsen. Kam der frisch gefallene Schritt
+// mit wenig Zuwachs (hier 8 % - eine Kachel aus der Pause), laege 90 % seiner Zielrate unter der laufenden Auswahl;
+// die laufenden Schichten bleiben trotzdem (bis zur Nachbesserung fiel hier eine Kachel auf l).
+func TestProbingBremseHaeltLaufendes(t *testing.T) {
+	er := neuEigen(t, false, 1250e3, 810e3, 3)
+	er.l.firstUsed = true
+	er.grow = 400e3
+	er.run(30 * time.Second)
+	if v := er.video(); v != "hmm" {
+		t.Fatalf("Ausgangslage %q", v)
+	}
+	tgt := (1250e3+2*500e3)*upHeadroom + audioRateUDP
+	er.l.fb = freshBrake{rate: 1.08 * tgt, n: 1, long: true, at: er.now}
+	for k := 0; k < 25; k++ {
+		er.tick()
+		if v := er.video(); v != "hmm" {
+			t.Fatalf("Takt %d: %q - der Deckel nimmt laufende Schichten zurueck", k, v)
+		}
+	}
+}

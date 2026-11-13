@@ -571,9 +571,25 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// Deckel nur fuer den einzelnen Schritt genuegt nicht: Geplant wird in der Reihenfolge des Vorrangs, jeder Platz
 	// beginnt auf der untersten Schicht. In der Gruppe ging nach einem Sprecherwechsel der neue Sprecher so von l auf h,
 	// waehrend die Kacheln als "laufend" auf m blieben - die Summe lag in der Bremse, der Schritt des Sprechers nicht.
+	// Nie unter die laufende Auswahl: Der Deckel haelt das Bein, wo es ist, und verhindert nur das Wachsen - sonst naehme
+	// er nach einem kleinen Schritt (Kachel aus der Pause, unter 10 % der Rate) auch laufende Schichten zurueck.
 	capNeed := 0.0
 	if prb {
 		capNeed = l.fb.capNeed(audioCut)
+	}
+	if capNeed > 0 {
+		run := 0.0
+		for _, c := range cs {
+			if c.s.layer == "" || c.s.paused {
+				continue
+			}
+			for _, o := range c.opts {
+				if o.Layer == c.s.layer {
+					run += layerRate(o)
+				}
+			}
+		}
+		capNeed = max(capNeed, run)
 	}
 	// Reserve: nach oben nur mit Abstand und ausserhalb der Sperrzeit
 	limit := budget
