@@ -260,8 +260,11 @@ Platzhalter: `horn-1.example.org`.
       oft alle Plätze zugleich; er wäre auch ohne den Schritt gekommen. Kein frischer Rückfall ist deshalb (a) ein
       **Einbruch**: Budget bzw. GCC-Ziel lagen zwischen Schritt und Rückfall unter 0,75 × Rate des Beins vor dem
       Schritt (Bild + Ton, ohne Reserve; `probeSlump`; die Folge beginnt dann von vorn); (b) eine **Umverteilung** (die
-      Auswahl des Beins sinkt nicht – eine Kachel fällt, weil der Sprecher steigt); (c) ein Rückfall, nachdem das Bein
-      ohne Probe **über** den geprobten Schritt hinaus gestiegen ist (der hielt). Ein frischer Rückfall auf eine
+      Auswahl des Beins sinkt nicht – eine Kachel fällt, weil der Sprecher steigt); (c) ein Rückfall des geprobten Schritts,
+      nachdem das Bein ohne Probe **über** ihn hinaus gestiegen ist – der Rückfall gilt dann diesem neuen Schritt, der
+      an die Stelle des offenen tritt (Stufe 3e; bis 3d war damit alles erledigt, und ein Policer knapp über `mll` mit
+      Eimer ≥ 0,6 s ließ das Bein alle ~13 s ohne Probe weitersteigen und zurückfallen: 96–109 statt 5 Rückfälle in
+      10 min, Prüfer `bwe3d`, `TestProbingPolicerGetragen`). Ein frischer Rückfall auf eine
       kleinere Zielrate als die der laufenden Bremse senkt sie (wie in Stufe 3b; 3c ließ ihn nicht zählen – Prüfer
       `bwe3c`: Policer 1580 kbit/s zwischen `mmm` und `hll`, 77–94 statt 9–12 Rückfälle in 10 min,
       `TestProbingPolicerZwischenbelegung`). Bis Stufe 3c (Prüfer `bwe3b`, H1) zählte in der Gruppe auf freier
@@ -280,7 +283,7 @@ Platzhalter: `horn-1.example.org`.
       bis 3c lag die Grenze bei 0,7 × Zielrate mit Reserve, also schon bei g ≈ 0,8. Im 1:1 sind Schub (600 kbit/s) und
       Policer nach einem Schritt von `m` auf `h` nicht zu trennen (Rate davor ~0,55 Mbit/s): Dort bleibt die lange
       Probe nach dem Schub (Preis wie Stufe 3b). Jede Einordnung steht als Zeile `frisch` im Log (unten).
-    - Ein Rückfall nach mehr als 15 s setzt die Folge zurück (die lange Probe bleibt fällig); erledigt ist die Bremse
+    - Ein Rückfall nach 15 s oder mehr setzt die Folge zurück (die lange Probe bleibt fällig); erledigt ist die Bremse
       nach 30 s (+ Aufschub) ohne neues Zeichen (frischer Rückfall, gescheiterte lange Probe). **Grenze:** Ein Eimer,
       der sich erst nach mehr als 15 s leert (Modell: 7 % unter `h`, Eimer ≥ 1,2 s), entgeht der Regel. 30 s fingen ihn
       (Modell 27 → 8 Rückfälle), bremsten aber die freie Leitung mit Störschüben (Anteil `h` 74 → 23 %) – deshalb 15 s.
@@ -478,14 +481,14 @@ Platzhalter: `horn-1.example.org`.
     (Stufe 3b), enden `schicht`- und `widerlegung`-Zeilen mit ` policer=an`; Beginn und Ende des Merkmals stehen als
     eigene Zeile im Log: `bwe 5884a4 policer=an folgen=71% korrelation=0.47 verloren=76 fenster=95 verlust=4.2%`
     (Anteil der Verluste in Folgen ab 3 Paketen, Korrelation Senderate/Verlust je Messfenster, verlorene Pakete und
-    Fenster der letzten 10 s, Verlust an der Spitze). Die `bwe`-Zeilen eines Beins (Zustandswechsel, Policer-Merkmal)
-    stehen in der Reihenfolge ihres Entstehens im Log (seit Stufe 3c; vorher konnten sich zwei rasch folgende Zeilen
-    vertauschen). Mit Probing steht bei jeder Schalterstellung (auch `gcc`) je Rückfall bzw. Schritt nach einem
+    Fenster der letzten 10 s, Verlust an der Spitze). Die `bwe`-, `schicht`- und `frisch`-Zeilen eines Beins stehen in
+    der Reihenfolge ihres Entstehens im Log (seit Stufe 3c bzw. 3e; vorher konnten sich zwei rasch folgende Zeilen
+    vertauschen; bei `gcc` gibt es nur die `frisch`-Zeilen). Mit Probing steht bei jeder Schalterstellung (auch `gcc`) je Rückfall bzw. Schritt nach einem
     geprobten Schritt eine Zeile zur Einordnung durch die Bremse (Stufe 3d):
     `frisch 5884a4 art=zaehlt platz=tile m>l ziel=2225k pre=1940k low=1650k grenze=1455k bremse=2225k n=1 est=1700k gcc=1650k`
     – `art` zaehlt (frischer Rückfall: lange Probe), fehlversuch (der zweite in Folge: Aufschub am Bein), einbruch
-    (`low` unter `grenze` = 0,75 × `pre`), gehalten (nach mehr als 15 s), umverteilung oder getragen; `ziel` Zielrate
-    nach dem Schritt, `pre` Rate davor, `low` kleinstes Budget bzw. GCC-Ziel seither, `bremse` Zielrate der Bremse
+    (`low` unter `grenze` = 0,75 × `pre`), gehalten (nach 15 s oder mehr), umverteilung oder getragen (der neue
+    Schritt ist dann der offene); `ziel` Zielrate nach dem Schritt, `pre` Rate davor, `low` kleinstes Budget bzw. GCC-Ziel seither, `bremse` Zielrate der Bremse
     danach (0 = keine), `n` frische Rückfälle in Folge. Fürs Labor: `low/pre` zeigt den Rücksprung von GCC an einem
     Policer bzw. die Tiefe eines Schubs.
   - Zusatz in der Zeile `probe` bei `mit`: `… est=1338k gcc=721k bwe=staut bwe_schlange=140ms bwe_verlust=0.0% bwe_durchsatz=699k bwe_zustand=warnung bwe_fenster=4 bwe_sofort=staut-nicht`.

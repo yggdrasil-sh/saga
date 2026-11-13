@@ -230,15 +230,21 @@ func (s *server) onLegEvent(ev sfu.LegEvent) {
 	if l == nil {
 		return
 	}
-	if ev.Kind == sfu.LegFresh { // Probing: bei jeder Schalterstellung (auch gcc)
-		log.Print(freshLine(shortID(l.id), ev))
-		return
-	}
 	b := l.bweWrap()
-	if b == nil {
+	var line string
+	switch {
+	case ev.Kind == sfu.LegFresh: // Probing: bei jeder Schalterstellung (auch gcc)
+		line = freshLine(shortID(l.id), ev)
+	case b == nil:
+		return
+	default:
+		line = legEventLine(shortID(l.id), ev, b.m.Tip(bweNow())) // Spitze des Detektors jetzt, nicht beim Schreiben
+	}
+	if b == nil { // gcc: keine bwe-Zeilen, gegen die die Reihenfolge halten muesste
+		log.Print(line)
 		return
 	}
-	log.Print(legEventLine(shortID(l.id), ev, b.m.Tip(bweNow())))
+	b.log.add(func() string { return line }) // in der Reihenfolge der bwe-Zeilen dieses Beins (logSeq)
 }
 
 // legEventLine: Zeile zu einem Ereignis der Steuerung, mit dem, was der Detektor in diesem Augenblick an der Spitze
@@ -281,9 +287,9 @@ func legEventLine(id string, ev sfu.LegEvent, tip bwe.Tip) string {
 
 // freshLine (nur mit Probing): Einordnung eines Rueckfalls nach einem Schritt mit bestandener Probe (sfu freshBrake) -
 // art zaehlt (frischer Rueckfall: lange Probe) bzw. fehlversuch (der zweite in Folge: Aufschub am Bein), einbruch
-// (low unter grenze = 0,75 x pre: Verlust bzw. Stau auch unter dem Stand vor dem Schritt), gehalten (nach mehr als
-// 15 s), umverteilung (der Platz faellt, die Auswahl des Beins sinkt nicht) oder getragen (das Bein stieg ohne Probe
-// ueber den Schritt hinaus). ziel = Zielrate des Beins nach dem Schritt, pre = Rate davor (Bild + Ton), low =
+// (low unter grenze = 0,75 x pre: Verlust bzw. Stau auch unter dem Stand vor dem Schritt), gehalten (nach 15 s
+// oder mehr), umverteilung (der Platz faellt, die Auswahl des Beins sinkt nicht) oder getragen (das Bein stieg ohne Probe
+// ueber den Schritt hinaus; der neue Schritt ist jetzt der offene). ziel = Zielrate des Beins nach dem Schritt, pre = Rate davor (Bild + Ton), low =
 // kleinstes Budget bzw. GCC-Ziel seither, bremse = Zielrate der Bremse danach (0 = keine), n = frische Rueckfaelle in
 // Folge.
 //

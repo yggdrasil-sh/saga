@@ -942,6 +942,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			} else if book {
 				if t, pre, lo, open := l.fb.open(now, low); open && l.fb.beyond(s.upT) {
 					l.freshEvent(freshBeyond, t, pre, lo, s, st.Layer, cfg)
+					l.fb.stepped(s.upT, run+audioCut, now) // ein Rueckfall gilt jetzt diesem Schritt (freshBrake, beyond)
 				}
 			}
 			s.rampRate, s.rampOwner = layerRate(st), s.owner

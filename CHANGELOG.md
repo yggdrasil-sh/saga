@@ -33,6 +33,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Schritt gemessen (0,75 ×, ohne Reserve), nicht mehr gegen die Zielrate: Ein Policer knapp über der laufenden
   Belegung gilt so erst als Einbruch, wenn GCC an ihm unter 0,75 × seiner Rate zurückspringt (vorher schon unter
   ~0,8). Neue Logzeile `frisch …` mit der Einordnung jedes Rückfalls nach geprobtem Schritt (auch bei `gcc`).
+- **Nachbesserung (3e):** Geht das Bein nach einem geprobten Schritt ohne Probe weiter, gilt ein Rückfall danach
+  diesem Schritt (er wird zum offenen) – bisher war der geprobte damit erledigt, und ein Policer knapp über einer
+  Zwischenbelegung mit großem Eimer ließ die Gruppe alle ~13 s steigen und fallen (Modell: 96–109 statt 5
+  Rückfälle in 10 min). Die Zeilen `schicht` und `frisch` eines Beins stehen in der Reihenfolge der `bwe`-Zeilen.
 - **Bremse überlebt den Wegwechsel** (udp → tcp → udp) – jetzt mit Test.
 - **Logzeilen `bwe …`** (Zustandswechsel, `policer=an|aus`) stehen in der Reihenfolge ihres Entstehens im Log; zwei
   rasch folgende Zeilen konnten sich vertauschen.

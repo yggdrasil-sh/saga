@@ -173,6 +173,23 @@ func TestProbingPolicerZwischenbelegung(t *testing.T) {
 	}
 }
 
+// TestProbingPolicerGetragen (Stufe 3e, Pruefer bwe3d H2): Gruppe 3, Policer 900k knapp ueber mll (840k mit Ton),
+// Eimer 0,6 s. Die Probe auf mll besteht, 1,6 s danach geht das Bein ohne Probe auf mml (der Eimer ist noch voll),
+// 2 s spaeter faellt alles auf lll. Bis Stufe 3d erledigte der Schritt ohne Probe den geprobten ("getragen"), der
+// Rueckfall zaehlte nie: keine Bremse, alle ~13 s von vorn - gcc 104/96, eigen 86/96 Rueckfaelle in 10 min (Wechsel
+// 20 s / ohne). Jetzt tritt der Schritt ohne Probe an die Stelle des offenen: 5.
+func TestProbingPolicerGetragen(t *testing.T) {
+	for _, eigen := range []bool{false, true} {
+		for _, rot := range []time.Duration{20 * time.Second, 0} {
+			r := policerRunAt(t, eigen, 3, rot, 900e3, 0, 0.6, 10*time.Minute, 0)
+			t.Logf("eigen=%v Wechsel %v: %+v", eigen, rot, r)
+			if r.falls > 20 {
+				t.Errorf("eigen=%v Wechsel %v: %d Rueckfaelle (soll hoechstens 20)", eigen, rot, r.falls)
+			}
+		}
+	}
+}
+
 // TestProbingPolicerFlacherRuecksprung (Stufe 3d, Pruefer bwe3c M1): Springt das GCC-Ziel am Policer tiefer zurueck
 // als im Modell (0,76 statt 0,85 x Policer-Rate), darf der Rueckfall nicht als Einbruch gelten. Mit der Grenze 0,7 x
 // Zielrate (mit Reserve, Stufe 3c) galt er bei einem Policer knapp ueber hml (1980k) als Einbruch: gcc 45/80 Rueckfaelle

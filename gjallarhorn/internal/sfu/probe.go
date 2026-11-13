@@ -709,7 +709,11 @@ var probeFreshN = 2
 //     des Beins vor dem Schritt (der Schub beginnt oft, bevor der Platz faellt - das GCC-Ziel ist dann schon wieder im
 //     Steigen). Er unterbricht auch die Folge (n): Zwischen zwei Rueckfaellen eines Policers liegt kein Verlust darunter;
 //   - eine Umverteilung (der Platz faellt, weil ein anderer steigt; die Auswahl des Beins sinkt nicht, planLeg);
-//   - ein Rueckfall, nachdem das Bein ohne Probe ueber den geprobten Schritt hinaus gestiegen ist (beyond).
+//   - ein Rueckfall des geprobten Schritts, nachdem das Bein ohne Probe darueber hinaus gestiegen ist (beyond): Der
+//     Rueckfall gilt dann dem neuen Schritt, der an die Stelle des offenen tritt (planLeg) - mit dessen Zielrate und
+//     der Rate davor. Erledigt war er damit bis Stufe 3d: Lag ein Policer knapp ueber einer Zwischenbelegung (Pruefer
+//     bwe3d: Gruppe 3, Policer 880k knapp ueber mll, Eimer 0,6 s), ging das Bein 1,6 s nach dem geprobten l -> m ohne
+//     Probe weiter (der Eimer war noch voll), fiel 2 s spaeter zurueck und zaehlte nie - 96-109 statt 5-13 Rueckfaelle.
 //
 // Ein frischer Rueckfall auf eine kleinere Zielrate als die der laufenden Bremse senkt sie (wie in Stufe 3b): Liegt
 // ein Policer zwischen zwei Zwischenbelegungen, faellt erst die groessere, dann die kleinere (Pruefer bwe3c: Gruppe 3,
@@ -759,9 +763,9 @@ const (
 	freshCount  = "zaehlt"       // frischer Rueckfall (Muster eines Policers)
 	freshFail   = "fehlversuch"  // ... der probeFreshN-te in Folge: Aufschub am Bein
 	freshSlump  = "einbruch"     // Budget bzw. GCC-Ziel unter probeSlump x Rate vor dem Schritt
-	freshHeld   = "gehalten"     // der Schritt hielt laenger als probeFresh
+	freshHeld   = "gehalten"     // der Schritt hielt probeFresh oder laenger
 	freshSpread = "umverteilung" // ein Platz faellt, die Auswahl des Beins sinkt nicht (der Schritt bleibt offen)
-	freshBeyond = "getragen"     // das Bein stieg ohne Probe darueber hinaus (der Schritt ist erledigt)
+	freshBeyond = "getragen"     // das Bein stieg ohne Probe darueber hinaus (der neue Schritt ist jetzt der offene)
 )
 
 // open: offener geprobter Schritt - Zielrate, Rate davor und kleinstes Budget bzw. GCC-Ziel seither samt bud (fuer
@@ -847,7 +851,7 @@ func (b *freshBrake) fall(t float64, now int64) bool {
 	return true
 }
 
-// held: Ein Schritt mit Zielrate t ab dieser Bremse hielt laenger als probeFresh - die Folge beginnt von vorn.
+// held: Ein Schritt mit Zielrate t ab dieser Bremse hielt probeFresh oder laenger - die Folge beginnt von vorn.
 func (b *freshBrake) held(t float64) {
 	if b.on(t) {
 		b.n = 0
