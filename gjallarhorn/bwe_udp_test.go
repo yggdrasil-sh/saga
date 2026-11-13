@@ -178,6 +178,12 @@ func TestBWEZeilen(t *testing.T) {
 			t.Fatalf("\n%s\n%s", got, c.want)
 		}
 	}
+	// Einordnung eines Rueckfalls (Stufe 3d)
+	if got := freshLine("5884a4", sfu.LegEvent{Kind: sfu.LegFresh, Why: "zaehlt", Class: "tile", From: "m", To: "l", TgtKbit: 2225, PreKbit: 1940,
+		LowKbit: 1650, SlumpKbit: 1455, BrakeKbit: 2225, N: 1, EstKbit: 1700, GccKbit: 1650}); got !=
+		"frisch 5884a4 art=zaehlt platz=tile m>l ziel=2225k pre=1940k low=1650k grenze=1455k bremse=2225k n=1 est=1700k gcc=1650k" {
+		t.Fatal(got)
+	}
 	// Policer-Merkmal (Stufe 3b): Beginn und Ende mit Grund
 	if got := policerLine("5884a4", bwe.Tip{Policer: true, Loss: 0.042, Pol: bwe.PolStat{Lost: 76, RunPct: 0.71, Corr: 0.47, Windows: 95}}); got !=
 		"bwe 5884a4 policer=an folgen=71% korrelation=0.47 verloren=76 fenster=95 verlust=4.2%" {

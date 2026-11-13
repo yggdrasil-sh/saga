@@ -220,13 +220,18 @@ func bweLine(id string, c bwe.Change, gccBps, estKbit int) string {
 
 // onLegEvent (sfu.Config.OnLegEvent): eine Zeile je Beginn und Ende einer Widerlegung (HORN_BWE=eigen) und je
 // Ruecknahme einer Schicht, mit Grund. Nur fuer Beine mit eigenem Stau-Detektor (HORN_BWE=mit bzw. eigen) - bei gcc
-// bleibt das Log, wie es war. Bein als Kurzkennung wie in "bein auf"; keine Kennungen von Personen, Geraeten oder
+// bleibt das Log, wie es war. Ausnahme: die Einordnung eines Rueckfalls nach geprobtem Schritt ("frisch", freshLine)
+// steht mit Probing bei jeder Schalterstellung im Log. Bein als Kurzkennung wie in "bein auf"; keine Kennungen von Personen, Geraeten oder
 // Raeumen, keine Adressen.
 func (s *server) onLegEvent(ev sfu.LegEvent) {
 	s.mu.Lock()
 	l := s.bySFU[ev.Leg]
 	s.mu.Unlock()
 	if l == nil {
+		return
+	}
+	if ev.Kind == sfu.LegFresh { // Probing: bei jeder Schalterstellung (auch gcc)
+		log.Print(freshLine(shortID(l.id), ev))
 		return
 	}
 	b := l.bweWrap()
@@ -272,6 +277,27 @@ func legEventLine(id string, ev sfu.LegEvent, tip bwe.Tip) string {
 	}
 	return fmt.Sprintf("schicht %s platz=%s %s>%s grund=%s est=%dk gcc=%dk rate=%dk zustand=%s schlange=%dms verlust=%.1f%%%s",
 		id, ev.Class, from, to, ev.Why, ev.EstKbit, ev.GccKbit, ev.RateKbit, tip.State, q, tip.Loss*100, pol)
+}
+
+// freshLine (nur mit Probing): Einordnung eines Rueckfalls nach einem Schritt mit bestandener Probe (sfu freshBrake) -
+// art zaehlt (frischer Rueckfall: lange Probe) bzw. fehlversuch (der zweite in Folge: Aufschub am Bein), einbruch
+// (low unter grenze = 0,75 x pre: Verlust bzw. Stau auch unter dem Stand vor dem Schritt), gehalten (nach mehr als
+// 15 s), umverteilung (der Platz faellt, die Auswahl des Beins sinkt nicht) oder getragen (das Bein stieg ohne Probe
+// ueber den Schritt hinaus). ziel = Zielrate des Beins nach dem Schritt, pre = Rate davor (Bild + Ton), low =
+// kleinstes Budget bzw. GCC-Ziel seither, bremse = Zielrate der Bremse danach (0 = keine), n = frische Rueckfaelle in
+// Folge.
+//
+//	frisch 5884a4 art=zaehlt platz=tile m>l ziel=2225k pre=1940k low=1650k grenze=1455k bremse=2225k n=1 est=1700k gcc=1650k
+func freshLine(id string, ev sfu.LegEvent) string {
+	from, to := ev.From, ev.To
+	if from == "" {
+		from = "p"
+	}
+	if to == "" {
+		to = "p"
+	}
+	return fmt.Sprintf("frisch %s art=%s platz=%s %s>%s ziel=%dk pre=%dk low=%dk grenze=%dk bremse=%dk n=%d est=%dk gcc=%dk",
+		id, ev.Why, ev.Class, from, to, ev.TgtKbit, ev.PreKbit, ev.LowKbit, ev.SlumpKbit, ev.BrakeKbit, ev.N, ev.EstKbit, ev.GccKbit)
 }
 
 // bweProbe: Zusatz zur Zeile "probe" - Urteil des Detektors ueber die Pakete der Probe nach dem Nachlauf (v) und
