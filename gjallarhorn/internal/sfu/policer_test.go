@@ -390,3 +390,72 @@ func TestProbingBremseHaeltLaufendes(t *testing.T) {
 		}
 	}
 }
+
+// TestProbingBremseWegwechsel (N2): Die Bremse nach frischem Rueckfall ueberlebt einen Wegwechsel udp -> tcp -> udp
+// (remember/recall wie Aufschub und Proben-Abstand). 1:1, Policer 7 % unter h, Eimer 0,15 s: Nach 3 min faehrt jede
+// Probe auf h lang. Nach dem Wechsel muss die erste Probe auf h wieder lang sein - holte recall die Bremse nicht
+// zurueck, kaeme eine kurze, die am vollen Eimer besteht, und der Zyklus begaenne von vorn (Gegenprobe: die Bremse im
+// gemerkten Eintrag geloescht).
+func TestProbingBremseWegwechsel(t *testing.T) {
+	run := func(gegen bool) (first int, fb freshBrake) {
+		er := neuEigen(t, false, 1250e3, 810e3, 1)
+		er.l.firstUsed = true
+		er.grow = 400e3
+		er.tick()
+		er.until("m", 2*time.Second)
+		R := 0.93 * (1250e3 + estAudio)
+		tb := &tokenBucket{R: R, B: R * 0.15, tok: R * 0.15}
+		step := func() { tb.step(er); er.tick() }
+		for end := er.now + int64(3*time.Minute); er.now < end; {
+			step()
+		}
+		old := er.l.fb
+		if old.at == 0 || !old.long {
+			t.Fatalf("keine Bremse nach 3 min Policer: %+v", old)
+		}
+		swap := func(ref string, path Path) {
+			er.r.RemoveLeg(er.l.Ref)
+			if gegen {
+				k := memKey{recv: "empf"}
+				e := er.r.mem[k]
+				e.fb = freshBrake{}
+				er.r.mem[k] = e
+			}
+			l, err := er.r.AddLeg(Grant{Room: "raumschaetzer", Peer: "empf", Leg: ref, Role: RoleBoth}, path, Want{Audio: 1, Speaker: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if path == PathUDP {
+				l.Ext = func() int { return int(er.gcc) }
+				l.ExtOver = func() bool { return er.over >= 2 }
+			}
+			er.l, er.sent = l, 0
+		}
+		swap("empf-tcp", PathTCP)
+		for k := 0; k < 10; k++ {
+			step()
+		}
+		swap("empf-udp", PathUDP)
+		pev0 := len(er.pevs)
+		for end := er.now + int64(time.Minute); er.now < end && first == 0; {
+			step()
+			for _, e := range er.pevs[pev0:] {
+				if e.Probe == probeStart && first == 0 {
+					first = e.ProbeKbit
+				}
+			}
+		}
+		return first, er.l.fb
+	}
+	longT := 1250e3*probeHeadLong + estAudio
+	first, fb := run(false)
+	t.Logf("erste Probe nach dem Wechsel %d kbit/s (lang ab %.0f), Bremse %+v", first, longT/1000, fb)
+	if float64(first)*1000 < 0.99*longT || fb.at == 0 {
+		t.Fatalf("nach dem Wegwechsel: erste Probe %d kbit/s, Bremse %+v - recall holt die Bremse nicht zurueck", first, fb)
+	}
+	first, fb = run(true)
+	t.Logf("Gegenprobe: erste Probe %d kbit/s, Bremse %+v", first, fb)
+	if first == 0 || float64(first)*1000 >= 0.99*longT {
+		t.Fatalf("Gegenprobe: erste Probe %d kbit/s - der Test erkennt die fehlende Bremse nicht", first)
+	}
+}
