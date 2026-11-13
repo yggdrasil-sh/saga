@@ -199,12 +199,20 @@ func (s *server) onLegEvent(ev sfu.LegEvent) {
 //	bwe 5884a4 widerlegung=beginn art=spitze gcc=1130k rate=1330k est=1480k zustand=frei schlange=1ms verlust=0.0%
 //	bwe 5884a4 widerlegung=ende art=spitze grund=erholt dauer=1.6s gcc=1250k rate=1330k est=1480k zustand=frei schlange=1ms verlust=0.0%
 //	schicht 5884a4 platz=speaker h>m grund=gcc-fall est=1100k gcc=900k rate=1330k zustand=frei schlange=24ms verlust=3.1%
+//
+// Zeigt der Detektor das Policer-Merkmal (bwe.Tip.Policer), endet die Zeile mit " policer=an" - Verlust an der Spitze
+// widerlegt dann keinen Fall des GCC-Ziels.
 func legEventLine(id string, ev sfu.LegEvent, tip bwe.Tip) string {
 	q := int64(-1)
 	if tip.QueueUs >= 0 {
 		q = tip.QueueUs / 1000
 	}
 	tail := fmt.Sprintf("gcc=%dk rate=%dk est=%dk zustand=%s schlange=%dms verlust=%.1f%%", ev.GccKbit, ev.RateKbit, ev.EstKbit, tip.State, q, tip.Loss*100)
+	pol := ""
+	if tip.Policer { // Verlust folgt der Senderate bzw. kommt in Folgen: der Detektor widerlegt nicht (policerLine)
+		pol = " policer=an"
+	}
+	tail += pol
 	switch ev.Kind {
 	case sfu.LegRefute:
 		return fmt.Sprintf("bwe %s widerlegung=beginn art=%s %s", id, ev.Art, tail)
@@ -218,8 +226,8 @@ func legEventLine(id string, ev sfu.LegEvent, tip bwe.Tip) string {
 	if to == "" {
 		to = "p"
 	}
-	return fmt.Sprintf("schicht %s platz=%s %s>%s grund=%s est=%dk gcc=%dk rate=%dk zustand=%s schlange=%dms verlust=%.1f%%",
-		id, ev.Class, from, to, ev.Why, ev.EstKbit, ev.GccKbit, ev.RateKbit, tip.State, q, tip.Loss*100)
+	return fmt.Sprintf("schicht %s platz=%s %s>%s grund=%s est=%dk gcc=%dk rate=%dk zustand=%s schlange=%dms verlust=%.1f%%%s",
+		id, ev.Class, from, to, ev.Why, ev.EstKbit, ev.GccKbit, ev.RateKbit, tip.State, q, tip.Loss*100, pol)
 }
 
 // bweProbe: Zusatz zur Zeile "probe" - Urteil des Detektors ueber die Pakete der Probe nach dem Nachlauf (v) und
@@ -266,19 +274,50 @@ func bweAttach(l *leg, b *bweWrap, est func() int, estKbit func() int) {
 
 // bweHooks (eigen): Der Detektor entscheidet mit - die Steuerung (internal/sfu) fragt ihn je Takt, ob die juengsten
 // Rueckmeldungen einen Stau widerlegen (ExtTip), und am Ende einer Probe nach Urteil und Raten ueber deren Pakete
-// (ExtSpan; Zeiten als Abstand zu jetzt, die Steuerung hat eine andere Uhr).
-func bweHooks(sl *sfu.Leg, b *bweWrap) {
-	sl.ExtTip = func() bwe.Tip { return b.m.Tip(bweNow()) }
+// (ExtSpan; Zeiten als Abstand zu jetzt, die Steuerung hat eine andere Uhr). Beginnt bzw. endet das Policer-Merkmal
+// (bwe.Tip.Policer: Verlust folgt der Senderate bzw. kommt in Folgen - dann widerlegt der Detektor keinen Fall des
+// GCC-Ziels, solange an der Spitze Verlust ist), steht eine Zeile im Log (policerLine).
+func bweHooks(sl *sfu.Leg, b *bweWrap, id string) {
+	pol := false // nur im Takt der Steuerung gelesen und geschrieben (ExtTip laeuft unter der Sperre des Raums)
+	sl.ExtTip = func() bwe.Tip {
+		tp := b.m.Tip(bweNow())
+		if tp.Policer != pol {
+			pol = tp.Policer
+			go log.Print(policerLine(id, tp))
+		}
+		return tp
+	}
 	sl.ExtSpan = func(from, to, rateFrom time.Duration) (bwe.Verdict, bwe.Rates) {
 		now := bweNow()
 		return b.m.Span(now-int64(from), now-int64(to)), b.m.Rates(now-int64(rateFrom), now-int64(to))
 	}
 }
 
+// policerLine: Beginn bzw. Ende des Policer-Merkmals mit Grund - Anteil der Verluste in Folgen ab 3 Paketen,
+// Korrelation Senderate/Verlust je Fenster, verlorene Pakete und Fenster der letzten 10 s.
+//
+//	bwe 5884a4 policer=an folgen=71% korrelation=0.47 verloren=76 fenster=95 verlust=4.2%
+func policerLine(id string, tp bwe.Tip) string {
+	on := "aus"
+	if tp.Policer {
+		on = "an"
+	}
+	return fmt.Sprintf("bwe %s policer=%s folgen=%.0f%% korrelation=%.2f verloren=%d fenster=%d verlust=%.1f%%",
+		id, on, tp.Pol.RunPct*100, tp.Pol.Corr, tp.Pol.Lost, tp.Pol.Windows, tp.Loss*100)
+}
+
 // bweJSON: Zaehler und Zustand fuer GET /api/sfu/leg/{id}.
 func bweJSON(b *bweWrap) map[string]any {
 	s := b.m.Snapshot(bweNow())
 	c := b.m.Counters()
+	tp := b.m.Tip(bweNow())
+	// Zaehler je Messfenster (rund 100 ms) der letzten 10 s, aeltestes zuerst: [gesendet kbit/s, Pakete, verloren,
+	// davon in Folgen ab 3] - Grundlage des Policer-Merkmals (bwe.PolStat), fuers Labor
+	ws := b.m.Wins(10e9)
+	wins := make([][4]int64, 0, len(ws))
+	for _, w := range ws {
+		wins = append(wins, [4]int64{w.SentBps / 1000, int64(w.Pkts), int64(w.Lost), int64(w.LostRuns)})
+	}
 	age := int64(-1)
 	if s.AgeNs >= 0 {
 		age = s.AgeNs / 1e6
@@ -291,5 +330,7 @@ func bweJSON(b *bweWrap) map[string]any {
 		"feedbacks":   c.Feedbacks, "bad": c.Bad, "acked": c.Acked, "lost": c.Lost, "dup": c.Dup, "recovered": c.Recovered, "unknown": c.Unknown,
 		"windows": c.Windows, "thin": c.Thin, "late": c.Late, "resets": c.Resets,
 		"to_free": c.ToFree, "to_warn": c.ToWarn, "to_cong": c.ToCong, "to_unknown": c.ToUnknown,
+		"policer": map[string]any{"on": tp.Policer, "run_pct": tp.Pol.RunPct * 100, "corr": tp.Pol.Corr, "lost": tp.Pol.Lost, "windows": tp.Pol.Windows},
+		"win":     wins,
 	}
 }

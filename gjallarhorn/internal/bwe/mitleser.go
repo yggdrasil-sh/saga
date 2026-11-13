@@ -194,6 +194,13 @@ func (m *Mitleser) Tip(nowNs int64) Tip {
 	return m.det.Tip(nowNs)
 }
 
+// Wins: die Messfenster der letzten spanNs (Detector.Wins).
+func (m *Mitleser) Wins(spanNs int64) []WinStat {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.det.Wins(spanNs)
+}
+
 // Rates: gesendete und bestaetigte Rate der Pakete, die zwischen fromNs und toNs gesendet wurden (Detector.Rates).
 func (m *Mitleser) Rates(fromNs, toNs int64) Rates {
 	m.mu.Lock()

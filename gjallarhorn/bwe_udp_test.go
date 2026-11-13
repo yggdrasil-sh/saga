@@ -171,10 +171,21 @@ func TestBWEZeilen(t *testing.T) {
 			"schicht 5884a4 platz=speaker h>m grund=gcc-fall est=1100k gcc=900k rate=1330k zustand=frei schlange=1ms verlust=3.1%"},
 		{sfu.LegEvent{Kind: sfu.LegDown, Why: "bedarf", Class: "tile", From: "l", GccKbit: 900, RateKbit: 700, EstKbit: 650}, tip,
 			"schicht 5884a4 platz=tile l>p grund=bedarf est=650k gcc=900k rate=700k zustand=frei schlange=1ms verlust=3.1%"},
+		{sfu.LegEvent{Kind: sfu.LegDown, Why: "gcc-fall", Class: "speaker", From: "h", To: "m", GccKbit: 900, RateKbit: 1330, EstKbit: 1100}, bwe.Tip{State: bwe.Free, QueueUs: 1400, Loss: 0.031, Policer: true},
+			"schicht 5884a4 platz=speaker h>m grund=gcc-fall est=1100k gcc=900k rate=1330k zustand=frei schlange=1ms verlust=3.1% policer=an"},
 	} {
 		if got := legEventLine("5884a4", c.ev, c.tip); got != c.want {
 			t.Fatalf("\n%s\n%s", got, c.want)
 		}
+	}
+	// Policer-Merkmal (Stufe 3b): Beginn und Ende mit Grund
+	if got := policerLine("5884a4", bwe.Tip{Policer: true, Loss: 0.042, Pol: bwe.PolStat{Lost: 76, RunPct: 0.71, Corr: 0.47, Windows: 95}}); got !=
+		"bwe 5884a4 policer=an folgen=71% korrelation=0.47 verloren=76 fenster=95 verlust=4.2%" {
+		t.Fatal(got)
+	}
+	if got := policerLine("5884a4", bwe.Tip{Pol: bwe.PolStat{Lost: 3, Windows: 90}}); got !=
+		"bwe 5884a4 policer=aus folgen=0% korrelation=0.00 verloren=3 fenster=90 verlust=0.0%" {
+		t.Fatal(got)
 	}
 	got = bweProbe(bwe.Verdict{Result: bwe.VerdictFree, QueueUs: 3900, Loss: 0, Bps: 1_640_000, WorstSt: bwe.Free, Windows: 15}, bwe.Verdict{Result: bwe.VerdictUnclear})
 	want = " bwe=staut-nicht bwe_schlange=3ms bwe_verlust=0.0% bwe_durchsatz=1640k bwe_zustand=frei bwe_fenster=15 bwe_sofort=unklar"

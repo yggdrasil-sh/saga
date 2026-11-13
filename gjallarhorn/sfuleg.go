@@ -251,7 +251,7 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 				l.mu.Unlock()
 				bweAttach(l, b, est.GetTargetBitrate, sl.EstimateKbit)
 				if b.mode == bweEigen {
-					bweHooks(sl, b)
+					bweHooks(sl, b, shortID(l.id))
 				}
 			}
 		}

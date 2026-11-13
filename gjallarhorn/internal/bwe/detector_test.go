@@ -18,8 +18,9 @@ type leitung struct {
 	baseMs  float64
 	jitMs   float64 // +- gleichverteilt
 	loss    float64
-	lossAt  func(t float64) float64 // falls gesetzt: Verlustanteil zur Sendezeit t (statt loss)
-	pauseEv float64                 // mittlerer Abstand von Pausen der Leitung (s), 0 = keine
+	lossAt  func(t float64) float64        // falls gesetzt: Verlustanteil zur Sendezeit t (statt loss)
+	police  func(t float64, size int) bool // falls gesetzt: false = verworfen (Token-Bucket, policer_test.go)
+	pauseEv float64                        // mittlerer Abstand von Pausen der Leitung (s), 0 = keine
 	pauseMs [2]float64
 	fbMs    float64
 	fbLoss  float64 // Anteil verlorener Rueckmeldungen
@@ -75,6 +76,9 @@ func (l *leitung) send(kind Kind, size int) {
 		loss = l.lossAt(t)
 	}
 	ok := l.rng.Float64() >= loss
+	if l.police != nil && !l.police(t, size) {
+		ok = false
+	}
 	if l.capBps > 0 {
 		if l.linkFree < t {
 			l.linkFree = t

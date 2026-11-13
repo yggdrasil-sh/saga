@@ -11,7 +11,10 @@
 // Warnung / Stau; ohne Rueckmeldung bei laufendem Senden "unbekannt".
 package bwe
 
-import "slices"
+import (
+	"math"
+	"slices"
+)
 
 // Kind: Art eines abgehenden Pakets.
 type Kind uint8
@@ -102,6 +105,12 @@ type Config struct {
 	SpanLossMin  float64
 	SpanLossSame float64 // hoechstens so viel darueber (bzw. unter SpanLossFree): Verlust unauffaellig
 	SpanLossFree float64
+	// Policer-Merkmal (Tip.Policer, Stufe 3b): Verlust, der mit der Senderate steigt bzw. in Folgen kommt
+	PolSpanNs   int64   // ueber die Fenster der letzten so viel Sendezeit
+	PolMinLost  int     // mindestens so viele verlorene Pakete darin (sonst kein Urteil)
+	PolRunShare float64 // Anteil der Verluste in Folgen ab 3 Paketen: ab hier Policer
+	PolCorr     float64 // ... oder Korrelation Senderate/Verlustanteil je Fenster ab hier,
+	PolMinWins  int     // ueber mindestens so viele Fenster
 }
 
 // Defaults liefert die Startwerte (Konzept 4.2).
@@ -115,6 +124,7 @@ func Defaults() Config {
 		GraceNs: 3e9, BaseYoungNs: 2e9,
 		TipPkts: 5, TipSpanNs: 300e6, TipQueueUs: 10_000, TipLossNs: 500e6, TipLossUp: 0.04, TipAgeNs: 400e6, TipLagNs: 600e6,
 		SpanLossUp: 0.05, SpanLossMin: 0.08, SpanLossSame: 0.02, SpanLossFree: 0.03,
+		PolSpanNs: 10e9, PolMinLost: 10, PolRunShare: 0.3, PolCorr: 0.35, PolMinWins: 50,
 	}
 }
 
@@ -195,6 +205,28 @@ type Tip struct {
 	N        int     // Pakete mit Ankunftszeit an der Spitze
 	LagNs    int64   // so lange her wurde das juengste gemeldete Paket gesendet
 	State    State
+	// Policer (Stufe 3b): Der Verlust der letzten PolSpanNs folgt der Senderate bzw. kommt in Folgen (Pol) - dann ist
+	// jeder Verlust an der Spitze ein Zeichen (LossUp), auch wenn er nicht ueber dem der Zeit davor liegt. Gleichmaessig
+	// verteilter Verlust (Zufallsverlust) bleibt unauffaellig wie bisher.
+	Policer bool
+	Pol     PolStat
+}
+
+// PolStat: Verteilung des Verlusts ueber die Fenster der letzten PolSpanNs (Detector.polStat).
+//
+// Am Token-Bucket-Policer verlieren die Fenster, in denen das Bein ueber der Policer-Rate sendet (der Eimer ist leer),
+// darunter kaum; verworfen wird alles, was ueber der Rate liegt - Paket fuer Paket hintereinander. Beim Zufallsverlust
+// ist der Verlustanteil von der Rate unabhaengig, Folgen sind selten: Bei unabhaengigem Verlust p liegt ein verlorenes
+// Paket mit 1 - (1-p)^2 x (1+2p) in einer Folge ab 3 - bei 3 % 0,3 %, bei 10 % 2,8 %, erst bei 30 % 22 %. Labor
+// labbwe3 (Mitschnitt beim Empfaenger, je 1 Lauf): Policer 1400 kbit/s, Eimer 200 ms - Korrelation 0,47, 71 % der
+// Verluste in Folgen ab 3; Zufallsverlust 3 % - 0,07 und 0 %. Schwellen: Folgen ab 30 % (zehnmal ueber dem
+// Zufallsverlust bis 10 %), Korrelation ab 0,35 ueber mindestens 50 Fenster (bei Zufallsverlust streut sie um 0 mit
+// rund 1/Wurzel(Fenster), bei 50 Fenstern 0,14 - die Schwelle liegt 2,5 Streuungen darueber, bei 100 Fenstern 3,5).
+type PolStat struct {
+	Lost    int     // verlorene Pakete
+	RunPct  float64 // Anteil davon in Folgen ab 3 Paketen
+	Corr    float64 // Korrelation Senderate/Verlustanteil je Fenster
+	Windows int     // gewertete Fenster
 }
 
 const (
@@ -207,6 +239,7 @@ const (
 type win struct {
 	startNs, endNs int64 // Sendezeit erstes/letztes Paket
 	n, lost, pad   int
+	lostRun        int   // davon in Folgen ab 3 verlorenen Paketen (eine Folge zaehlt im Fenster, in dem sie 3 erreicht)
 	bytes          int64 // empfangene Bytes
 	sbytes         int64 // gesendete Bytes (auch der verlorenen Pakete)
 	minD           int64 // kleinste Laufzeit (us), nur bei timed > 0
@@ -262,6 +295,8 @@ type Detector struct {
 	baseFrom int64 // Sendezeit des ersten Pakets in der Basis seit dem letzten Verwerfen (0 = Basis leer)
 	resetNs  int64 // letztes Verwerfen der Basis (Sendezeit-Uhr; 0 = nie)
 
+	lrun int // verlorene Pakete in Folge (Folgenummern), fuer win.lostRun
+
 	// Spitze: die zuletzt gemeldeten Pakete (Tip)
 	tip  [tipN]tipAck
 	tipI int // naechster Platz
@@ -303,7 +338,7 @@ func (d *Detector) Reset(nowNs int64) *Change {
 	d.curOpen = false
 	d.minSentNs = nowNs
 	d.resetNs = max(nowNs, 1)
-	d.qRun, d.lRun, d.clearRun = 0, 0, 0
+	d.qRun, d.lRun, d.clearRun, d.lrun = 0, 0, 0, 0
 	return d.set(nowNs, Unknown, WhyReset)
 }
 
@@ -353,8 +388,15 @@ func (d *Detector) Feedback(nowNs int64, acks []Ack, out []Change) []Change {
 		*t = tipAck{sentNs: a.SentNs, lost: a.Lost}
 		if a.Lost {
 			w.lost++
+			switch d.lrun++; {
+			case d.lrun == 3:
+				w.lostRun += 3
+			case d.lrun > 3:
+				w.lostRun++
+			}
 			continue
 		}
+		d.lrun = 0
 		w.bytes += int64(a.Size)
 		if a.NoTime {
 			continue
@@ -781,7 +823,79 @@ func (d *Detector) Tip(nowNs int64) Tip {
 	t.Fresh = d.state == Free && !d.young(newest) && t.N >= min(3, c.TipPkts) &&
 		d.lastFbNs > 0 && nowNs-d.lastFbNs <= c.TipAgeNs && t.LagNs <= c.TipLagNs
 	t.Calm = t.Fresh && t.QueueUs < c.TipQueueUs
-	t.LossUp = !(lost < 2 || t.Loss <= t.LossLong+c.TipLossUp) || t.Loss >= c.LossHi
+	t.Pol = d.polStat(newest)
+	t.Policer = d.policer(t.Pol)
+	t.LossUp = !(lost < 2 || t.Loss <= t.LossLong+c.TipLossUp) || t.Loss >= c.LossHi || t.Policer && lost > 0
 	t.Clear = t.Calm && !t.LossUp
 	return t
+}
+
+// WinStat: ein Messfenster fuer die Zaehler des Beins (Detector.Wins).
+type WinStat struct {
+	Ns       int64 // Sendezeit vom ersten bis zum letzten Paket
+	SentBps  int64 // gesendete Rate (alle gemeldeten Pakete, auch die verlorenen)
+	Pkts     int   // gemeldete Pakete
+	Lost     int   // davon verloren
+	LostRuns int   // ... in Folgen ab 3 verlorenen Paketen
+}
+
+// Wins liefert die geschlossenen Fenster der letzten spanNs Sendezeit (aeltestes zuerst) - die Zaehler je
+// Messfenster (rund 100 ms), aus denen das Policer-Merkmal entsteht.
+func (d *Detector) Wins(spanNs int64) []WinStat {
+	if d.histN == 0 {
+		return nil
+	}
+	newest := d.at(d.histN - 1).endNs
+	var out []WinStat
+	for i := d.lo(); i < d.histN; i++ {
+		w := d.at(i)
+		if w.endNs < newest-spanNs {
+			continue
+		}
+		ws := WinStat{Ns: w.endNs - w.startNs, Pkts: w.n, Lost: w.lost, LostRuns: min(w.lostRun, w.lost)}
+		if ws.Ns > 0 {
+			ws.SentBps = w.sbytes * 8 * 1e9 / ws.Ns
+		}
+		out = append(out, ws)
+	}
+	return out
+}
+
+// policer: Zeigt die Verteilung des Verlusts einen Policer (PolStat)?
+func (d *Detector) policer(p PolStat) bool {
+	c := d.cfg
+	return c.PolSpanNs > 0 && p.Lost >= c.PolMinLost && (p.RunPct >= c.PolRunShare || p.Windows >= c.PolMinWins && p.Corr >= c.PolCorr)
+}
+
+// polStat: Verteilung des Verlusts ueber die geschlossenen Fenster der letzten PolSpanNs vor newestNs (Sendezeit),
+// ohne duenne Fenster und ohne die Schonzeit nach Beinbeginn.
+func (d *Detector) polStat(newestNs int64) PolStat {
+	c := d.cfg
+	var p PolStat
+	run := 0
+	var sx, sy, sxx, syy, sxy float64
+	for i := d.histN - 1; i >= d.lo(); i-- {
+		w := d.at(i)
+		if w.endNs < newestNs-c.PolSpanNs {
+			break
+		}
+		ns := w.endNs - w.startNs
+		if w.n < c.WinMinPkts || ns <= 0 || d.firstNs != 0 && w.startNs-d.firstNs < c.GraceNs {
+			continue
+		}
+		x, y := float64(w.sbytes)*8e9/float64(ns), float64(w.lost)/float64(w.n)
+		sx, sy, sxx, syy, sxy = sx+x, sy+y, sxx+x*x, syy+y*y, sxy+x*y
+		p.Windows++
+		p.Lost += w.lost
+		run += w.lostRun
+	}
+	if p.Lost > 0 {
+		p.RunPct = min(float64(run)/float64(p.Lost), 1)
+	}
+	if n := float64(p.Windows); n >= 3 {
+		if vx, vy := n*sxx-sx*sx, n*syy-sy*sy; vx > 0 && vy > 0 {
+			p.Corr = (n*sxy - sx*sy) / math.Sqrt(vx*vy)
+		}
+	}
+	return p
 }
