@@ -950,7 +950,8 @@ func TestUDPBWEMessung(t *testing.T) {
 			}
 			a.logs.mu.Lock()
 			for _, ln := range a.logs.lines {
-				if strings.Contains(ln.S, "probe ") || strings.Contains(ln.S, "bwe ") || strings.Contains(ln.S, "schicht ") {
+				if strings.Contains(ln.S, "probe ") || strings.Contains(ln.S, "bwe ") || strings.Contains(ln.S, "schicht ") ||
+					strings.Contains(ln.S, "frisch ") {
 					_ = enc.Encode(map[string]any{"t": ln.T, "log": ln.S[strings.Index(ln.S, " ")+1:]})
 				}
 			}
