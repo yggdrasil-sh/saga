@@ -202,6 +202,51 @@ func TestBWEZeilen(t *testing.T) {
 // in eine Enge (1600 kbit/s auf 700): Beim Ende sind erst die Pakete der ersten ~0,17 s gemeldet (die Meldung kommt
 // um die Schlange spaeter) - sofort "staut-nicht"; nach dem Nachlauf "staut". Die Zeile kommt erst nach dem Nachlauf,
 // genau einmal. Ohne Mitleser (gcc) kommt sie sofort und ohne Zusatz.
+// TestBWELogReihenfolge (N3): Logzeilen eines Beins erscheinen in der Reihenfolge, in der sie entstehen - auch wenn
+// die Ausgabe einzelner Zeilen dauert (vorher je Zeile "go log.Print": policer=an und policer=aus konnten sich
+// vertauschen). Die Zeile selbst entsteht erst in der Goroutine (bweAttach liest dort die Schaetzung).
+func TestBWELogReihenfolge(t *testing.T) {
+	var mu sync.Mutex
+	var got []string
+	s := &logSeq{out: func(line string) {
+		if len(line)%3 == 0 {
+			time.Sleep(200 * time.Microsecond) // langsame Ausgabe: spaetere Zeilen stehen schon an
+		}
+		mu.Lock()
+		got = append(got, line)
+		mu.Unlock()
+	}}
+	const n = 300
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { // Erzeuger wie der Takt: wartet nie auf die Ausgabe
+		defer wg.Done()
+		for i := 0; i < n; i++ {
+			on := []string{"an", "aus"}[i%2]
+			s.add(func() string { return fmt.Sprintf("bwe x policer=%s %d", on, i) })
+		}
+	}()
+	wg.Wait()
+	for end := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		mu.Lock()
+		k := len(got)
+		mu.Unlock()
+		if k == n || time.Now().After(end) {
+			break
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != n {
+		t.Fatalf("%d von %d Zeilen", len(got), n)
+	}
+	for i, line := range got {
+		if want := fmt.Sprintf("bwe x policer=%s %d", []string{"an", "aus"}[i%2], i); line != want {
+			t.Fatalf("Zeile %d: %q, erwartet %q", i, line, want)
+		}
+	}
+}
+
 func TestBWEProbeNachlauf(t *testing.T) {
 	for bweNow() < int64(3200*time.Millisecond) { // die Sendezeiten unten liegen bis 3 s zurueck
 		time.Sleep(50 * time.Millisecond)

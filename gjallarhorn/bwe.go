@@ -69,6 +69,50 @@ type bweWrap struct {
 
 	pairMu sync.Mutex
 	pair   string // zuletzt gewaehltes Adresspaar (pairChanged)
+
+	log logSeq // Logzeilen des Beins (Zustandswechsel, Policer-Merkmal) in ihrer Reihenfolge
+}
+
+// logSeq: Logzeilen in der Reihenfolge ihres Entstehens, ohne dass der Aufrufer wartet (Sende- bzw. RTCP-Pfad, Takt
+// unter der Sperre des Raums). Ein "go log.Print" je Zeile konnte zwei rasch folgende Zeilen vertauschen - etwa
+// "policer=an" und "policer=aus" im selben Augenblick, im Log dann aus vor an. Eine Goroutine arbeitet die Zeilen der
+// Reihe nach ab, solange welche anstehen; f wird erst dort aufgerufen (darf also die Sperre des Raums nehmen).
+type logSeq struct {
+	mu   sync.Mutex
+	q    []func() string
+	busy bool
+	out  func(string) // nil = log.Print (Tests)
+}
+
+func (s *logSeq) add(f func() string) {
+	s.mu.Lock()
+	s.q = append(s.q, f)
+	if s.busy {
+		s.mu.Unlock()
+		return
+	}
+	s.busy = true
+	s.mu.Unlock()
+	go s.drain()
+}
+
+func (s *logSeq) drain() {
+	for {
+		s.mu.Lock()
+		if len(s.q) == 0 {
+			s.busy = false
+			s.mu.Unlock()
+			return
+		}
+		f, out := s.q[0], s.out
+		s.q[0] = nil
+		s.q = s.q[1:]
+		s.mu.Unlock()
+		if out == nil {
+			out = func(line string) { log.Print(line) }
+		}
+		out(f())
+	}
 }
 
 // pairChanged: Hat ICE ein anderes Adresspaar gewaehlt als zuletzt? Die erste Wahl zaehlt als Wechsel, dasselbe Paar
@@ -263,12 +307,12 @@ func bweTail(rtt time.Duration) time.Duration {
 }
 
 // bweAttach verbindet den Mitleser eines neuen UDP-Beins mit dem Bein: Logzeile je Zustandswechsel. Die Zeile
-// entsteht in einer eigenen Goroutine - der Wechsel wird im Sende- bzw. RTCP-Pfad bemerkt, und die Schaetzung des
+// entsteht in der Goroutine von logSeq - der Wechsel wird im Sende- bzw. RTCP-Pfad bemerkt, und die Schaetzung des
 // Knotens zu lesen braucht die Sperre des Raums.
 func bweAttach(l *leg, b *bweWrap, est func() int, estKbit func() int) {
 	id := shortID(l.id)
 	b.m.SetOnChange(func(c bwe.Change) {
-		go func() { log.Print(bweLine(id, c, est(), estKbit())) }()
+		b.log.add(func() string { return bweLine(id, c, est(), estKbit()) })
 	})
 }
 
@@ -283,7 +327,8 @@ func bweHooks(sl *sfu.Leg, b *bweWrap, id string) {
 		tp := b.m.Tip(bweNow())
 		if tp.Policer != pol {
 			pol = tp.Policer
-			go log.Print(policerLine(id, tp))
+			line := policerLine(id, tp)
+			b.log.add(func() string { return line })
 		}
 		return tp
 	}
