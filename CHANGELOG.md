@@ -16,6 +16,29 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Knoten: Probing Stufe 3 – kürzere Proben in kürzerem Abstand, Anlauf-Regel nur bei `HORN_BWE=eigen` (experimentell)
+- **Proben-Abstand:** nach einer gescheiterten Probe 3 s, je weitere × 1,5, höchstens 20 s (vorher 10 s verdoppelnd
+  bis 2 min); eine bestandene Probe setzt zurück. Eine frei gewordene Leitung ist damit schneller wieder oben (Modell:
+  nach 4 min Enge `h` nach 19 statt 35 s, Gruppe volle Belegung nach 20 statt 104 s). Der Aufschub nach einem echten
+  Fehlversuch bleibt als Netz (Probe danach höchstens nach 2 min). Preis: in anhaltender Enge mehr Proben (Modell
+  10 min auf 1,0 Mbit/s: 31 statt 7, 1,9–2,5 statt 0,2–0,7 MB Fülldaten).
+- **Füllziel** Bedarf × 1,05 statt × 1,15 (mindestens 200 kbit/s Füllung), gefüllt bis zur Zielrate auf der Leitung;
+  **Fenster** 0,4–0,6 s statt bis 1,5 s; Nachweis bei `eigen`: der Bedarf (95,2 % der Zielrate) gesendet und bestätigt,
+  über mindestens 200 ms. Eine Leitung, die die höhere Ebene mit 5 % Reserve trägt, erreicht sie jetzt auch mit Probing
+  (vorher erst mit 15 %).
+- **Rampen-Probe** (`eigen`): Hielt GCC die Füllung schon bei halber Füllung an und war die letzte gewertete Probe auf
+  dieses Ziel gescheitert, zählt sie sofort als gescheitert, statt wiederholt zu werden.
+- **Policer:** Fallen Schritte, die mit einer bestandenen Probe kamen, zweimal in Folge binnen 15 s zurück, zählt das
+  als Fehlversuch (Aufschub wächst). Auf einem Token-Bucket-Policer knapp unter der Rate der oberen Ebene bestanden
+  die kurzen Proben immer (der Eimer trägt sie), die Ebene fiel nach Sekunden zurück, und das begann immer wieder von
+  vorn (Labor: 124–212 Rückfälle je Stunde). Im Testaufbau mit Token-Bucket nachgestellt; Messzahlen in
+  `gjallarhorn/NODE.md`.
+- **Anlauf-Regel** (junge Quelle: Schritt hinauf rechnet mit der angenommenen Rate) gilt nur noch bei `HORN_BWE=eigen`;
+  bei `gcc` und `mit` plant der Anrufbeginn wieder wie vor der Regel (im Modell Takt für Takt gleich). Für das Labor
+  die Test-Einstellung `HORN_ANLAUF` (`1` an, `0` aus, ohne Wert Standard je `HORN_BWE`).
+- **Nicht am Gerät geprüft:** alles mit echtem Chromium; gemessen im Testaufbau mit pion-Gegenstelle (Zahlen in
+  `gjallarhorn/NODE.md`, Abschnitt „Probing Stufe 3“).
+
 ### Behoben – Knoten: Wiederholungen des Absenders gehen nicht mehr an die Empfänger
 - Ein sendender Browser wiederholt alte Pakete über RTX – als Antwort auf ein NACK, aber auch zum Füllen und Proben.
   Der Knoten bekommt sie mit der ursprünglichen Folgenummer und leitete bisher **jedes Exemplar** weiter, mit derselben
