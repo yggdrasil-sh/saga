@@ -255,14 +255,32 @@ Platzhalter: `horn-1.example.org`.
       2 s – Aufschub des Platzes und ein Aufschub am Bein (8, 16, 32 … s, die Probe danach höchstens nach 2 min), den
       weder eine bestandene Probe noch ein Sprecherwechsel aufhebt. Ohne diese Regel (Modell, Eimer 0,6 s) 36 statt 9
       Rückfälle in 10 min, Gruppe mit Sprecherwechsel 71 statt 28.
+    - *Nur Policer-Muster (Stufe 3c):* Der Policer nimmt den Schritt zurück, die Leitung trägt aber weiter, was vor
+      ihm lief – und das immer wieder auf dieselbe Zielrate. Ein Störschub (Querverkehr) drückt das Bein dagegen unter
+      den Stand vor dem Schritt, oft alle Plätze zugleich; er wäre auch ohne den Schritt gekommen. Kein frischer
+      Rückfall ist deshalb (a) ein **Einbruch**: Budget bzw. GCC-Ziel lagen zwischen Schritt und Rückfall unter 0,7 ×
+      Zielrate vor dem Schritt (`probeSlump`; die Folge beginnt dann von vorn); (b) ein Rückfall auf eine **andere,
+      kleinere Zielrate** als die der laufenden Bremse (er senkt sie nicht und frischt sie nicht auf); (c) eine
+      **Umverteilung** (die Auswahl des Beins sinkt nicht – eine Kachel fällt, weil der Sprecher steigt); (d) ein
+      Rückfall, nachdem das Bein ohne Probe **über** den geprobten Schritt hinaus gestiegen ist (der hielt). Bis
+      dahin (Prüfer `bwe3b`, H1) zählte in der Gruppe auf freier Leitung mit Störschüben fast jeder Schub: Die Bremse
+      fiel auf die Zielrate einer Kachel-Stufe, der Deckel hielt alle Plätze auf `l`, der Aufschub am Bein wuchs bis
+      5 min. Modell (Gruppe 3, Wechsel 20 s, Schübe alle 10–30 s, 10 min): Sprecher auf `h` 12 → 47 % (`eigen` 14 →
+      49 %), alle Plätze auf `l` 76 → 24 % (67 → 22 %) der Takte, volle Belegung nach dem letzten Schub nach 12,6 s
+      statt nie (`TestProbingGruppeStoerschuebe`) – wie vor Stufe 3b; Policer-Fälle unverändert. **Grenze:** GCC
+      springt an einem Policer über dem Stand vor dem Schritt auf ~0,85 × dessen Rate, mit Reserve gerechnet also
+      nicht unter ~0,74 – 0,7 liegt knapp darunter (Modell: ab 0,8 zählen Policer-Rückfälle in der Gruppe als
+      Einbruch). Im 1:1 sind Schub (600 kbit/s) und Policer nach einem Schritt von `m` auf `h` nicht zu trennen (Stand
+      vor dem Schritt ~0,6 Mbit/s): Dort bleibt die lange Probe nach dem Schub (Preis wie Stufe 3b).
     - Ein Rückfall nach mehr als 15 s setzt die Folge zurück (die lange Probe bleibt fällig); erledigt ist die Bremse
       nach 30 s (+ Aufschub) ohne neues Zeichen (frischer Rückfall, gescheiterte lange Probe). **Grenze:** Ein Eimer,
       der sich erst nach mehr als 15 s leert (Modell: 7 % unter `h`, Eimer ≥ 1,2 s), entgeht der Regel. 30 s fingen ihn
       (Modell 27 → 8 Rückfälle), bremsten aber die freie Leitung mit Störschüben (Anteil `h` 74 → 23 %) – deshalb 15 s.
-    - Modell (Policer 7 % unter der vollen Belegung, 10 min; vorher = Stufe 3): 1:1 Eimer 0,15 s 8 → 1 Rückfall,
-      `h` nach dem Ende des Policers nach 15 statt 32 s (`eigen` 21 statt 34 s); Gruppe 3 mit Sprecherwechsel alle
-      20 s, Eimer 0,15/0,6 s: `gcc` 107/90 → 13/28, `eigen` 87/82 → 13/27, Sprecherplatz 96–97 % auf `h`; Gruppe
-      ohne Wechsel volle Belegung nach dem Ende nach 4 statt 25 s. **Preis:** auf anhaltendem Policer eine lange
+    - Modell (Policer 7 % unter der vollen Belegung, 10 min; vorher = Stufe 3; Abstand der langen Probe 40 s): 1:1
+      Eimer 0,15 s 8 → 1 Rückfall, `h` nach dem Ende des Policers nach 15 statt 32 s (`eigen` 19 statt 34 s); Gruppe 3
+      mit Sprecherwechsel alle 20 s, Eimer 0,15/0,6 s: `gcc` 107/90 → 7/28, `eigen` 87/82 → 9/27, Sprecherplatz
+      96–98 % auf `h`; Gruppe ohne Wechsel, Eimer 0,15 s: volle Belegung nach dem Ende nach 20–32 s (vorher 18–28 s –
+      sie wartet auf die nächste lange Probe; mit 20 s Abstand waren es 4 s). **Preis:** auf anhaltendem Policer eine lange
       Probe je Abstand (jede leert den Eimer und kostet dort kurz Verlust, auch an Bildpaketen); auf freier Leitung
       mit Störschüben alle 10–30 s 3,9 statt 2,2 MB in 10 min (`h` 74 statt 76 %); auf freier Leitung ohne Störung
       nichts. **Abstand der langen Probe 40 statt 20 s** (`probeGapMaxLong`): Testaufbau, Policer 1450/150 ms, 600 s:
@@ -272,8 +290,9 @@ Platzhalter: `horn-1.example.org`.
       keinem der 4 Läufe, Abstand zuletzt 41 s). Engen mit Schlange (Proben scheitern kurz) und die Serie sind nicht
       betroffen: Der Abstand überschreitet 20 s erst nach sechs gescheiterten langen Proben in Folge.
       Tests: `internal/sfu/policer_test.go`.
-    Die Probe verlängert den Aufschub nie. Aufschub und Proben-Abstand überleben einen Wegwechsel (udp → tcp → udp)
-    des Geräts für 5 min, ebenso der verbrauchte freie Versuch zum Anrufbeginn (auch ohne gescheiterte Probe).
+    Die Probe verlängert den Aufschub nie. Aufschub, Proben-Abstand und die Bremse nach frischem Rückfall überleben
+    einen Wegwechsel (udp → tcp → udp) des Geräts für 5 min, ebenso der verbrauchte freie Versuch zum Anrufbeginn
+    (auch ohne gescheiterte Probe).
   - **Abwägung – Gruppe mit Sprecherwechsel, Leitung wird frei:** Mit Probing kommt eine solche Gruppe nach dem
     Freiwerden der Leitung langsamer auf die volle Belegung zurück: 2 min 15 s bis 2 min 34 s gegenüber 25–44 s
     ohne Probing (Modell mit pion-nahem Ziel-Regler, 3 min auf 1,2 Mbit/s, Sprecherwechsel alle 20 s: 104 s gegenüber
@@ -451,7 +470,9 @@ Platzhalter: `horn-1.example.org`.
     (Stufe 3b), enden `schicht`- und `widerlegung`-Zeilen mit ` policer=an`; Beginn und Ende des Merkmals stehen als
     eigene Zeile im Log: `bwe 5884a4 policer=an folgen=71% korrelation=0.47 verloren=76 fenster=95 verlust=4.2%`
     (Anteil der Verluste in Folgen ab 3 Paketen, Korrelation Senderate/Verlust je Messfenster, verlorene Pakete und
-    Fenster der letzten 10 s, Verlust an der Spitze).
+    Fenster der letzten 10 s, Verlust an der Spitze). Die `bwe`-Zeilen eines Beins (Zustandswechsel, Policer-Merkmal)
+    stehen in der Reihenfolge ihres Entstehens im Log (seit Stufe 3c; vorher konnten sich zwei rasch folgende Zeilen
+    vertauschen).
   - Zusatz in der Zeile `probe` bei `mit`: `… est=1338k gcc=721k bwe=staut bwe_schlange=140ms bwe_verlust=0.0% bwe_durchsatz=699k bwe_zustand=warnung bwe_fenster=4 bwe_sofort=staut-nicht`.
     `bwe` ist das Urteil des Detektors über die Pakete der Probe **nach dem Nachlauf** (zwei Umlaufzeiten + 200 ms,
     höchstens 1 s; ohne bekannte Umlaufzeit 500 ms), `bwe_sofort` das, was er beim Ende der Probe schon wusste – je

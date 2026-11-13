@@ -16,6 +16,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Knoten: Probing Stufe 3c – die Bremse nach frischem Rückfall greift nur noch bei Policer-Mustern (experimentell)
+- **Gruppe auf freier Leitung mit Störschüben:** Seit Stufe 3b zählte dort fast jeder Schub bald nach einem geprobten
+  Schritt als frischer Rückfall. Die Bremse fiel auf die Zielrate einer Kachel-Stufe, hielt alle Plätze auf der
+  unteren Ebene und löste sich nicht mehr (Aufschub am Bein bis 5 min). Jetzt zählt ein Rückfall nur, wenn er wie
+  ein Policer aussieht: Die Leitung trägt weiter, was vor dem Schritt lief (kein Einbruch des Budgets darunter), er
+  trifft dieselbe Zielrate wie die laufende Bremse (keine kleinere), die Auswahl des Beins sinkt (keine
+  Umverteilung zwischen Sprecher und Kacheln), und das Bein ist nicht inzwischen ohne Probe weiter gestiegen.
+  Modell (Gruppe 3, Sprecherwechsel alle 20 s, Schübe alle 10–30 s): Sprecher auf `h` 12 → 47 %, alle Plätze auf
+  der unteren Ebene 76 → 24 % der Zeit, volle Belegung nach dem letzten Schub nach rund 13 s statt nie – wie vor
+  Stufe 3b. Policer-Fälle unverändert.
+- **Bremse überlebt den Wegwechsel** (udp → tcp → udp) – jetzt mit Test.
+- **Logzeilen `bwe …`** (Zustandswechsel, `policer=an|aus`) stehen in der Reihenfolge ihres Entstehens im Log; zwei
+  rasch folgende Zeilen konnten sich vertauschen.
+
 ### Geändert – Knoten: Probing Stufe 3b – lange Probe nach frischem Rückfall, Bremse am Bein, Policer-Merkmal, Anlauf-Regel gestrichen (experimentell)
 - **Policer – lange Probe nach frischem Rückfall:** Fällt binnen 15 s nach einem Schritt mit bestandener Probe ein
   Platz zurück, fährt die nächste Probe auf dieses Ziel wieder lang (1,5 s, Füllziel × 1,15) – die kurzen Proben von
