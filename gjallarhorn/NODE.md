@@ -260,7 +260,9 @@ Platzhalter: `horn-1.example.org`.
       `gcc` 105/90 statt 7/28, `eigen` 85/82 statt 9/27 Rückfälle in 10 min, Sprecher 75–84 statt 96–98 % auf `h`;
       ohne Wechsel mit Eimer 0,6 s 63 statt 21) – real waren es mit Bremse ebenfalls 150 je Stunde. Wird das Bein zur
       Gruppe (Beitritt, jemand schaltet die Kamera ein), endet eine laufende Bremse im selben Takt samt offenem
-      Schritt; wird es wieder 1:1, beginnt sie frisch (`TestProbingBremseNurEinsZuEins`). Die Zahlen und Grenzen
+      Schritt, und der Abstand nach gescheiterten langen Proben (bis 40 s) wird auf den der kurzen gekürzt (20 s,
+      gezählt ab derselben Probe; ohne das kam `h` im Modell erst nach 19,8 statt 1,6 s); wird es wieder 1:1, beginnt
+      sie frisch (`TestProbingBremseNurEinsZuEins`). Die Zahlen und Grenzen
       unten gelten für das 1:1; die Gruppen-Modelle darin beschreiben die Mechanik (sie greift im 1:1 mit
       Bildschirmteilen genauso: zwei Plätze eines Senders).
     - *Erster frischer Rückfall:* Die nächste Probe ab 90 % dieser Zielrate fährt **lang**: Fenster fest 1,5 s, Füllziel

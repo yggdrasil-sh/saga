@@ -888,7 +888,8 @@ func (b *freshBrake) decay(now int64) {
 // Stunde). In der Gruppe gibt es deshalb keine Bremse: keine lange Probe, kein Deckel, kein Aufschub am Bein, keine
 // Zeile "frisch" - auch nicht die Regel je Platz von Stufe 3 (slot.freshN, bis vor Stufe 3b). Preis: Ein Policer laesst die
 // Gruppe pendeln (mehr Rueckfaelle, mehr Fuelldaten), dafuer kommt sie nach Stoerschueben rasch zurueck. Wird das Bein
-// zur Gruppe, endet eine laufende Bremse samt offenem Schritt; wird es wieder 1:1, beginnt sie frisch.
+// zur Gruppe, endet eine laufende Bremse samt offenem Schritt und dem langen Abstand nach gescheiterten langen
+// Proben; wird es wieder 1:1, beginnt sie frisch.
 func (l *Leg) soloCheck(others []*Peer) {
 	n := 0
 	for _, p := range others {
@@ -899,6 +900,12 @@ func (l *Leg) soloCheck(others []*Peer) {
 	l.solo = n <= 1 || freshBrakeGroup
 	if !l.solo {
 		l.fb = freshBrake{}
+		// Der Abstand nach gescheiterten langen Proben (bis probeGapMaxLong) gehoert zur Bremse: in der Gruppe
+		// hoechstens der der kurzen, gezaehlt ab derselben gescheiterten Probe
+		if l.pf.pd > probeGapMax {
+			l.pf.next -= int64(l.pf.pd - probeGapMax)
+			l.pf.pd = probeGapMax
+		}
 	}
 }
 

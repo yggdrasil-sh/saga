@@ -694,8 +694,9 @@ func TestProbingBremseUmverteilung(t *testing.T) {
 // TestProbingBremseNurEinsZuEins (Stufe 3f): Die Bremse gilt nur, solange hoechstens ein anderer Teilnehmer Bild
 // liefert (soloCheck). 1:1 mit Policer 7 % unter h, Eimer 0,15 s: nach 3 min laeuft die Bremse (lange Probe, Deckel).
 // Ein zweiter Sender mit Bild kommt dazu (Gruppe): Die Bremse endet im selben Takt samt offenem Schritt - kein Deckel,
-// keine lange Probe, kein Aufschub am Bein, keine Zeile "frisch"; der Sprecher kommt wieder auf h (am Policer pendelt
-// er, das ist der Preis). Er geht wieder (1:1): Die Bremse beginnt frisch - der naechste frische Rueckfall ist der
+// keine lange Probe, kein Aufschub am Bein, kein Abstand ueber den der kurzen Probe (20 s; ohne die Kuerzung blieben
+// 40 s, h erst nach 19,8 s), keine Zeile "frisch"; der Sprecher kommt wieder auf h (am Policer pendelt er, das ist der
+// Preis). Er geht wieder (1:1): Die Bremse beginnt frisch - der naechste frische Rueckfall ist der
 // erste einer neuen Folge (n = 1, kein Aufschub am Bein). Gegenprobe: mit der Bremse in der Gruppe (bremseGruppe)
 // bleibt sie beim Beitritt stehen.
 func TestProbingBremseNurEinsZuEins(t *testing.T) {
@@ -728,16 +729,20 @@ func TestProbingBremseNurEinsZuEins(t *testing.T) {
 		}
 		er.r.SetRemote("fern9", -1, on)
 		longT := 1250e3*probeHeadLong + estAudio
-		pev0, fr0, onH := len(er.pevs), len(er.fresh), 0
+		pev0, fr0, onH, tj := len(er.pevs), len(er.fresh), 0, er.now
+		var firstH time.Duration
 		for end := er.now + int64(2*time.Minute); er.now < end; {
 			step()
 			if gegen {
 				continue
 			}
-			if er.l.solo || er.l.fb != (freshBrake{}) {
-				t.Fatalf("Gruppe: Bremse laeuft weiter (solo %v): %+v", er.l.solo, er.l.fb)
+			if er.l.solo || er.l.fb != (freshBrake{}) || er.l.pf.pd > probeGapMax {
+				t.Fatalf("Gruppe: Bremse laeuft weiter (solo %v): %+v, Abstand %v", er.l.solo, er.l.fb, er.l.pf.pd)
 			}
 			if er.layer() == "h" {
+				if onH == 0 {
+					firstH = time.Duration(er.now - tj)
+				}
 				onH++
 			}
 		}
@@ -752,8 +757,8 @@ func TestProbingBremseNurEinsZuEins(t *testing.T) {
 				t.Fatalf("Gruppe: lange Probe %+v", e)
 			}
 		}
-		if n := len(er.fresh) - fr0; n != 0 || onH == 0 {
-			t.Fatalf("Gruppe: %d Zeilen frisch, Sprecher %d Takte auf h (soll keine Zeile, h erreichbar)", n, onH)
+		if n := len(er.fresh) - fr0; n != 0 || onH == 0 || firstH > probeGapMax {
+			t.Fatalf("Gruppe: %d Zeilen frisch, Sprecher %d Takte auf h, zuerst nach %v (soll keine Zeile, h binnen %v)", n, onH, firstH, probeGapMax)
 		}
 		// Austritt: wieder 1:1, die Bremse beginnt frisch
 		if !er.r.RemoveRemote("fern9") {
@@ -769,7 +774,7 @@ func TestProbingBremseNurEinsZuEins(t *testing.T) {
 		if fb := er.l.fb; fb.at == 0 || fb.n != 1 || fb.d != 0 || !fb.long {
 			t.Fatalf("zurueck im 1:1: Bremse %+v - soll nach dem naechsten frischen Rueckfall mit n = 1 und ohne Aufschub laufen", fb)
 		}
-		t.Logf("Gruppe: Sprecher %.1f s auf h; zurueck im 1:1: %+v", float64(onH)*0.2, er.l.fb)
+		t.Logf("Gruppe: Sprecher %.1f s auf h, zuerst %v nach dem Beitritt; zurueck im 1:1: %+v", float64(onH)*0.2, firstH, er.l.fb)
 	}
 	run(t, false)
 	t.Run("gegenprobe", func(t *testing.T) {
