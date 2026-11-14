@@ -221,6 +221,11 @@ try:
     for flt, frag in bad:
         err, txt = tool(TA, "update_database_schema", id=D, add_views=[{"type": "table", "name": "kaputt", "filters": flt}])
         ok(f"add_views ungueltig -> 400 ({frag})", err is True and txt.startswith("bad_request") and frag in txt, txt)
+    # Pruefrunde 1: Operatoren wie die Filterzeile im Web - pages.js gibt die relativen Filter nur "Erstellt am", nicht
+    # "Zuletzt bearbeitet" (OPS.edited behaelt die 6 Grund-Operatoren)
+    from saga import api_struct as AS
+    ok("Operatoren wie im Web: edited ohne relative Filter, created mit", "yesterday" not in AS.ops_of({"type": "edited"})
+       and len(AS.ops_of({"type": "edited"})) == 6 and "yesterday" in AS.ops_of({"type": "created"}) and "overdue" not in AS.ops_of({"type": "created"}))
     err, txt = tool(TA, "update_database_schema", id=D, add_views=[{"type": "table", "name": "x", "sorts": [{"property": "Nix"}]}])
     ok("sorts mit unbekannter Eigenschaft -> 400", err is True and "Unbekannte Eigenschaft" in txt, txt)
     ok("Fehler legen keine Ansicht an", len(schema(D)["views"]) == 2, [v["name"] for v in schema(D)["views"]])

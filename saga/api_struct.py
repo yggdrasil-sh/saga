@@ -145,12 +145,15 @@ _REL_MORE = ("yesterday", "tomorrow", "last_week", "next_week", "last_month", "n
              "next_days", "past_days", "on_or_before", "on_or_after")
 _OPS_TEXT = ("contains", "not_contains", "is_empty", "not_empty")
 _OPS_NUM = ("eq", "gt", "lt", "is_empty", "not_empty")
-_OPS_AUTO = ("after", "before", "eq", "today", "this_week", "this_month") + tuple(x for x in _REL_MORE if x != "overdue")
+_OPS_EDITED = ("after", "before", "eq", "today", "this_week", "this_month")
+_OPS_AUTO = _OPS_EDITED + tuple(x for x in _REL_MORE if x != "overdue")
 OPS_BY_TYPE = {
     "text": _OPS_TEXT, "url": _OPS_TEXT, "number": _OPS_NUM, "calc": _OPS_NUM,
     "select": ("is", "is_not", "is_empty", "not_empty"), "multi_select": _OPS_TEXT, "relation": _OPS_TEXT, "list": _OPS_TEXT,
     "date": ("eq", "before", "after", "today", "this_week", "this_month") + _REL_MORE + ("is_empty", "not_empty"),
-    "created": _OPS_AUTO, "edited": _OPS_AUTO, "checkbox": ("checked", "unchecked"),
+    # pages.js: OPS.created bekommt die relativen Filter, OPS.edited nicht (eigene Zuweisung) - wie dort, sonst zeigt die
+    # Filterzeile im Web bei "Zuletzt bearbeitet" keinen Operator an
+    "created": _OPS_AUTO, "edited": _OPS_EDITED, "checkbox": ("checked", "unchecked"),
     "person": ("me",) + _OPS_TEXT, "files": ("is_empty", "not_empty")}
 NOVALUE_OPS = {"is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month", "yesterday", "tomorrow",
                "last_week", "next_week", "last_month", "next_month", "this_year", "overdue", "me"}
