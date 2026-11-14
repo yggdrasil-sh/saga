@@ -27,8 +27,8 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 from db import clean_line, connect as _db
-from saga import mfa
-from saga.core import _api_guard, _bad, _body, _json_load, _tok_hash, mark_authed, t, user_info
+from saga import i18n, mfa
+from saga.core import _api_guard, _bad, _body, _json_load, _tok_hash, mark_authed, t, user_info, user_lang
 from saga.notes import note_chain
 from saga.sharing import RANK, Access
 
@@ -162,6 +162,19 @@ def lookup(raw):
     return Tok(r[0], r[1], r[2], r[3], _json_load(r[4], []), roots_load(r[5]), r[7]), None
 
 
+def use_account_lang(uid):
+    """Antworten einer Token-Anfrage (/api/v1, MCP, Webhooks) in der Sprache, die im Konto des Tokens eingestellt ist -
+    wie im Web (Konto > Cookie > Server-Standard > Accept-Language). Die Middleware kennt nur Sitzungen; ein Token hat
+    kein Cookie. Konto "automatisch": wie bisher (Server-Standard, Accept-Language). Gilt fuer den Rest der Anfrage
+    (ContextVar; LangMiddleware setzt sie danach zurueck)."""
+    try:
+        lang = user_lang(uid)
+    except Exception:  # noqa: BLE001 - Datenbank gerade weg: Sprache der Anfrage reicht
+        return
+    if lang:
+        i18n.set_lang(lang)
+
+
 def authed(request, write=False, scope=None):
     """Bearer-Token der Anfrage -> (Tok, None) oder (None, Fehlerantwort 401/403/429). scope: noetiger Bereich."""
     hdr = request.headers.get("authorization") or ""
@@ -174,6 +187,8 @@ def authed(request, write=False, scope=None):
         if not raw or len(raw) > 193:
             return None, _unauth()
     tok, code = lookup(raw)
+    if tok is not None:
+        use_account_lang(tok.uid)
     if tok is None:
         if code == "expired":
             return None, _err("expired", t("Der API-Token ist abgelaufen."), 401, {"WWW-Authenticate": 'Bearer error="invalid_token"'})

@@ -89,11 +89,13 @@ TOOLS = [
      "Überschrift). mode: replace_block (nur dieser Block; Standard bei block_id), replace_section (Überschrift + alles bis "
      "zur nächsten Überschrift gleicher oder höherer Ebene; die Überschrift bleibt, außer das Markdown beginnt mit einer "
      "eigenen Überschrift; Standard bei heading), insert_after (Markdown nach dem Block bzw. am Ende des Abschnitts "
-     "einfügen), delete (Block entfernen; per heading den ganzen Abschnitt). Ohne rev gilt der gerade gelesene Stand.",
+     "einfügen), delete (Block entfernen; per heading den ganzen Abschnitt). Leeres Markdown bei replace_section nur mit "
+     "allow_empty: true (leert den Abschnitt, die Überschrift bleibt) – sonst Fehler. Ohne rev gilt der gerade gelesene Stand.",
      {"id": _s("integer", "ID der Seite"), "block_id": _s("string", "ID des Blocks"), "heading": _s("string", "Text der Überschrift"),
       "markdown": _s("string", "Ersatz bzw. einzufügender Inhalt als Markdown"),
       "mode": _s("string", "replace_block | replace_section | insert_after | delete",
                  enum=["replace_block", "replace_section", "insert_after", "delete"]),
+      "allow_empty": _s("boolean", "true = replace_section mit leerem Markdown leert den Abschnitt"),
       "rev": _s("integer", "rev aus get_page (optional)")}, ["id"], True),
     ("set_checkbox", "write:pages", "Kästchen eines Checklisten-Punkts auf einer Seite setzen oder lösen. Ziel: block_id der "
      "Checkliste + item (Nummer, verschachtelt z. B. \"2.1\") ODER text (eindeutiger Text des Punkts; ohne block_id in allen "
@@ -111,19 +113,26 @@ TOOLS = [
      "{\"name\": \"Fällig\", \"type\": \"date\"}] – Typen: text, number, select, multi_select, status (Auswahl mit Gruppen "
      "Offen/In Arbeit/Erledigt), date, checkbox, url, created, edited, person, files, relation (target = ID einer Datenbank). "
      "Ohne properties: Status + Datum wie im Web. views: [{\"type\": \"board\", \"group_by\": \"Status\"}] – Typen table, board, "
-     "list, gallery, calendar, timeline (date_by), chart; Standard Tabelle + Board. embed_in_page: true bettet die Datenbank "
+     "list, gallery, calendar, timeline (date_by), chart; Standard Tabelle + Board. Ansichten mit Filter/Sortierung wie bei "
+     "query_database: {\"name\": \"2.5\", \"filters\": [{\"property\": \"Meilenstein\", \"op\": \"is\", \"value\": \"2.5\"}], "
+     "\"sorts\": [{\"property\": \"Fällig\", \"dir\": \"asc\"}]}. embed_in_page: true bettet die Datenbank "
      "zusätzlich als Block in die Elternseite ein. Formeln/Rollups bitte im Web anlegen.",
      {"title": _s("string", "Name der Datenbank"), "parent_id": _s("integer", "ID der Elternseite (bei Token mit Seitenbäumen Pflicht)"),
       "icon": _s("string", "Symbol (Emoji)"), "properties": _s("array", "Eigenschaften", items={"type": "object"}),
       "views": _s("array", "Ansichten", items={"type": "object"}), "title_name": _s("string", "Name der Titel-Spalte (Standard: Name)"),
       "embed_in_page": _s("boolean", "true = in die Elternseite einbetten")}, ["title"], True),
-    ("update_database_schema", "write:db", "Schema einer Datenbank ergänzen – löscht nie etwas. add_properties (wie bei "
-     "create_database), rename_properties [{\"property\": \"Alt\", \"name\": \"Neu\"}], add_options [{\"property\": \"Phase\", "
-     "\"options\": [\"Test\"]}], add_views [{\"type\": \"calendar\", \"date_by\": \"Fällig\"}], title_name.",
+    ("update_database_schema", "write:db", "Schema einer Datenbank ergänzen und Ansichten anpassen – löscht nie eine Eigenschaft, "
+     "Option oder Ansicht. add_properties (wie bei create_database), rename_properties [{\"property\": \"Alt\", \"name\": \"Neu\"}], "
+     "add_options [{\"property\": \"Phase\", \"options\": [\"Test\"]}], add_views [{\"type\": \"calendar\", \"date_by\": \"Fällig\"}] "
+     "(auch mit filters/sorts wie bei create_database), update_views [{\"view\": \"ID oder Name\", \"name\": \"neuer Name\", "
+     "\"filters\": […], \"sorts\": […], \"group_by\": \"Status\"}] – angegebene filters/sorts ERSETZEN die bisherigen ([] = keine), "
+     "title_name. Ansichten mit ihren Filtern zeigt get_database_schema.",
      {"id": _s("integer", "ID der Datenbank"), "add_properties": _s("array", "neue Eigenschaften", items={"type": "object"}),
       "rename_properties": _s("array", "Umbenennungen", items={"type": "object"}),
       "add_options": _s("array", "neue Auswahl-Optionen", items={"type": "object"}),
-      "add_views": _s("array", "neue Ansichten", items={"type": "object"}), "title_name": _s("string", "neuer Name der Titel-Spalte")},
+      "add_views": _s("array", "neue Ansichten", items={"type": "object"}),
+      "update_views": _s("array", "bestehende Ansichten ändern", items={"type": "object"}),
+      "title_name": _s("string", "neuer Name der Titel-Spalte")},
      ["id"], True),
     ("embed_database", ("write:pages", "read:db"), "Eine Datenbank als Block in eine Seite einbetten (Tabelle/Board direkt auf der Seite).",
      {"page_id": _s("integer", "ID der Seite"), "database_id": _s("integer", "ID der Datenbank"),
@@ -185,7 +194,8 @@ TOOLS = [
       "description": _s("string", "Beschreibung"), "timezone": _s("string", "Zeitzone für Zeiten ohne Zone")},
      ["calendar", "summary", "start"], True),
     ("update_event", "write:calendar", "Termin ändern – nur die angegebenen Felder (ohne end behält er seine Dauer). event aus "
-     "list_events. Serientermine: nur mit scope \"series\" und nur Titel/Ort/Beschreibung der ganzen Serie; einzelne "
+     "list_events. Wechsel: allday: true macht einen Termin ganztägig (ohne end: so viele Tage, wie er berührt); ganztägig → "
+     "mit Uhrzeit braucht start mit Uhrzeit (ohne end: 1 Stunde). Serientermine: nur mit scope \"series\" und nur Titel/Ort/Beschreibung der ganzen Serie; einzelne "
      "Vorkommen und Zeiten einer Serie gehen nur im Kalender selbst. Inzwischen woanders geändert -> Konflikt, neu laden.",
      {"event": _s("string", "Kennung aus list_events"), "summary": _s("string", "Titel"), "start": _s("string", "Beginn"),
       "end": _s("string", "Ende"), "allday": _s("boolean", "ganztägig"), "location": _s("string", "Ort"),
@@ -206,7 +216,12 @@ TOOLS = [
 ]
 BY_NAME = {x[0]: x for x in TOOLS}
 # Loeschende/ueberschreibende Werkzeuge (Annotation destructiveHint: true - Clients fragen ggf. nach)
-DESTRUCTIVE = {"replace_page_content", "update_block", "trash_page", "update_event", "delete_event"}
+# 2.5 (mcp2): update_widget (ersetzt Felder, bei anderer Art die ganzen Einstellungen), update_row (ueberschreibt Werte -
+# Eigenschaften stehen nicht im Versionsverlauf), update_database_schema (update_views ersetzt Filter/Sortierung einer
+# Ansicht, ebenfalls ohne Verlauf). Nicht: Titel, Kaestchen, Archiv, Aufgabe abhaken (ein Feld, mit einem Aufruf
+# zurueckzusetzen), Anlegen/Anfuegen/Einbetten (nur ergaenzend).
+DESTRUCTIVE = {"replace_page_content", "update_block", "trash_page", "update_event", "delete_event", "update_widget",
+               "update_row", "update_database_schema"}
 
 
 def _has(tok, scope):
@@ -401,7 +416,7 @@ def call_tool(tok, name, a):
             raise
         return json.dumps({"ok": True, "rev": d.get("rev")}, ensure_ascii=False)
     if name == "update_block":
-        b = {k: a[k] for k in ("block_id", "heading", "markdown", "mode") if a.get(k) is not None}
+        b = {k: a[k] for k in ("block_id", "heading", "markdown", "mode", "allow_empty") if a.get(k) is not None}
         b["rev"] = _rev(a, False)
         _, d = api_v1.block_update(tok, _int(a, "id"), b)
         return json.dumps({k: d.get(k) for k in ("ok", "rev", "mode", "target", "ids")}, ensure_ascii=False)

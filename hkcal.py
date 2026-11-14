@@ -331,10 +331,33 @@ def _set_texts(v, ch):
     v.add("dtstamp", datetime.now(timezone.utc))
 
 
-def patch_event(cal_url, user, password, href, etag, ch, series=False, tz=timezone.utc):
+def _is_day(v):
+    return len(str(v).strip()) <= 10
+
+
+def _patch_allday(ch, old_allday):
+    """Ganztaegig nach der Aenderung (patch_event). Ohne allday entscheidet das Format von start (sonst end) wie bei
+    create_event - aber nie mit Verlust: Uhrzeit bei einem ganztaegigen Termin -> Termin mit Uhrzeit; nur ein Datum bei
+    einem Termin mit Uhrzeit -> Fehler (die Uhrzeit fiele weg). start und end muessen zusammenpassen."""
+    if "allday" in ch:
+        allday = bool(ch["allday"])
+    else:
+        probe = ch["start"] if "start" in ch else ch["end"]
+        if not old_allday and _is_day(probe):
+            raise CalError(t("Termin mit Uhrzeit: start/end mit Uhrzeit angeben – für ganztägig allday: true."))
+        allday = old_allday and _is_day(probe)
+    for k in ("start", "end"):
+        if k in ch and _is_day(ch[k]) != allday:
+            raise CalError(t("Ganztägig: start/end als JJJJ-MM-TT angeben – für einen Termin mit Uhrzeit allday: false.") if allday
+                           else t("Termin mit Uhrzeit: start/end mit Uhrzeit angeben – für ganztägig allday: true."))
+    return allday
+
+
+def patch_event(cal_url, user, password, href, etag, ch, series=False, tz=timezone.utc, day_tz=None):
     """Termin teilweise aendern (MCP): nur die Schluessel in ch (summary, location, description, start, end, allday).
     Einzeltermin: fehlendes Ende behaelt die Dauer. Serie nur mit series=True und nur Texte (in allen VEVENTs der
-    Serie, auch Ausnahmen) - Zeiten von Serien und einzelne Vorkommen aendert Saga nicht. -> (href, neues ETag)."""
+    Serie, auch Ausnahmen) - Zeiten von Serien und einzelne Vorkommen aendert Saga nicht. -> (href, neues ETag).
+    Wechsel ganztaegig <-> mit Uhrzeit (2.5): siehe _patch_allday; day_tz = Zone fuer die Tage eines Termins (Anfrage)."""
     auth = (user, password)
     check_url(href)
     if not href.startswith(check_url(cal_url)):
@@ -353,19 +376,38 @@ def patch_event(cal_url, user, password, href, etag, ch, series=False, tz=timezo
         v = evs[0]
         old = _current(v, tz)
         new = {k: old[k] for k in ("summary", "location", "description", "allday", "start", "end")}
-        new.update({k: ch[k] for k in ch if k in new})
-        if "start" in ch and "end" not in ch and new["allday"] == old["allday"]:      # Dauer behalten
-            if new["allday"]:
-                d0 = date.fromisoformat(str(new["start"])[:10])
-                new["end"] = (d0 + (old["_e"] - old["_s"])).isoformat()
-            else:
-                try:
-                    s0 = datetime.fromisoformat(str(new["start"]))
-                except ValueError:
-                    raise CalError(t("Ungültige Zeitangabe"))
-                new["end"] = (s0 + (old["_e"].astimezone(timezone.utc) - old["_s"].astimezone(timezone.utc))).isoformat()  # echte Dauer (Sommerzeit)
-        if new["allday"] and not old["allday"] and "start" not in ch:
-            new["start"], new["end"] = old["_s"].date().isoformat(), old["_e"].date().isoformat()
+        new.update({k: ch[k] for k in ch if k in new and k not in ("allday", "start", "end")})
+        new["allday"] = allday = _patch_allday(ch, old["allday"])
+        if allday == old["allday"]:
+            new.update({k: ch[k] for k in ("start", "end") if k in ch})
+            if "start" in ch and "end" not in ch:                      # Dauer behalten
+                if allday:
+                    d0 = date.fromisoformat(str(new["start"])[:10])
+                    new["end"] = (d0 + (old["_e"] - old["_s"])).isoformat()
+                else:
+                    try:
+                        s0 = datetime.fromisoformat(str(new["start"]))
+                    except ValueError:
+                        raise CalError(t("Ungültige Zeitangabe"))
+                    new["end"] = (s0 + (old["_e"].astimezone(timezone.utc) - old["_s"].astimezone(timezone.utc))).isoformat()  # echte Dauer (Sommerzeit)
+        elif allday:
+            # Termin -> ganztaegig (2.5, mcp2): Tage, die der Termin beruehrt (in day_tz, wie im Web die Datumsfelder);
+            # ohne end so viele Tage ab dem (neuen) Beginn - nie das alte Ende mit Uhrzeit stehen lassen
+            zs, ze = old["_s"].astimezone(day_tz or tz), old["_e"].astimezone(day_tz or tz)
+            last = (ze - timedelta(microseconds=1)).date() if ze > zs else zs.date()
+            d0 = date.fromisoformat(str(ch["start"])[:10]) if "start" in ch else zs.date()
+            new["start"] = d0.isoformat()
+            new["end"] = str(ch["end"])[:10] if "end" in ch else (d0 + timedelta(days=(last - zs.date()).days + 1)).isoformat()
+        else:
+            # ganztaegig -> Termin mit Uhrzeit: Beginn mit Uhrzeit ist Pflicht (keine geratene Uhrzeit), Ende sonst +1 h
+            if "start" not in ch:
+                raise CalError(t("Ganztägig → mit Uhrzeit: start mit Uhrzeit angeben (JJJJ-MM-TTThh:mm)."))
+            try:
+                s0 = datetime.fromisoformat(str(ch["start"]))
+            except ValueError:
+                raise CalError(t("Ungültige Zeitangabe"))
+            new["start"] = ch["start"]
+            new["end"] = ch["end"] if "end" in ch else (s0 + timedelta(hours=1)).isoformat()
         _set_fields(v, new)
     body, headers = cal.to_ical(), ({"If-Match": cur} if cur else {})
     headers["Content-Type"] = "text/calendar; charset=utf-8"

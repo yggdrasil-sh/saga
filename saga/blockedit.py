@@ -274,8 +274,9 @@ def fresh_ids(new, used, keep=None):
         used.add(bid)
 
 
-def apply(blocks, new, mode, block_id=None, heading=None):
-    """Aenderung in place. new = Bloecke aus dem Markdown (fuer delete leer). -> {"mode", "target", "ids": neue IDs}."""
+def apply(blocks, new, mode, block_id=None, heading=None, allow_empty=False):
+    """Aenderung in place. new = Bloecke aus dem Markdown (fuer delete leer). -> {"mode", "target", "ids": neue IDs}.
+    replace_section mit leerem Inhalt nur mit allow_empty (2.5): ein vergessenes/leeres Markdown leert sonst still."""
     if (block_id is None) == (heading is None):
         raise EditError(400, t("Genau eines angeben: block_id oder heading."))
     if mode is None:
@@ -290,6 +291,8 @@ def apply(blocks, new, mode, block_id=None, heading=None):
     lv = heading_level(b)
     if mode in ("replace_section",) and lv is None:
         raise EditError(400, t("Der Block ist keine Überschrift – replace_section geht nur mit einer Überschrift."))
+    if mode == "replace_section" and not new and not allow_empty:
+        raise EditError(400, t("Markdown fehlt oder ist leer – zum Leeren des Abschnitts allow_empty: true, zum Entfernen samt Überschrift mode „delete“."))
     if mode == "replace_block":
         fresh_ids(new, used, keep=target)
         lst[i:i + 1] = new

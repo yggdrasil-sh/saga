@@ -177,6 +177,9 @@ def _ev_fields(a, tz, partial=False):
         out["allday"] = allday
     for k in ("start", "end"):
         if a.get(k) is not None:
+            if partial and allday is False and isinstance(a[k], str) and len(a[k].strip()) <= 10:
+                # 2.5 (mcp2): mit Uhrzeit, aber nur ein Datum - keine geratene Uhrzeit (Mitternacht)
+                raise Fail(400, t("Termin mit Uhrzeit: start/end mit Uhrzeit angeben – für ganztägig allday: true."))
             out[k] = _when(a[k], tz, bool(allday) if allday is not None else len(str(a[k]).strip()) == 10)
     if not partial:
         if not out.get("start"):
@@ -215,11 +218,12 @@ def _scope(a):
 def event_update(tok, a):
     aid, cal, href, etag = _event_ref(tok, a.get("event"))
     acc, pw, cal = _target(tok, aid, cal)
-    ch = _ev_fields(a, _tz(a.get("timezone")), partial=True)
+    tz = _tz(a.get("timezone"))
+    ch = _ev_fields(a, tz, partial=True)
     if not ch:
         raise Fail(400, t("nichts zu ändern"))
     try:
-        href, etag = hkcal.patch_event(cal["href"], acc["username"], pw, href, etag or None, ch, _scope(a), TZ)
+        href, etag = hkcal.patch_event(cal["href"], acc["username"], pw, href, etag or None, ch, _scope(a), TZ, day_tz=tz)
     except hkcal.CalError as ex:
         raise _cal_err(ex)
     C._cal_cache.clear()

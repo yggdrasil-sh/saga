@@ -331,10 +331,16 @@ def blocks_edit(tok, nid, fn, rev=None):
 
 
 def block_update(tok, nid, b):
-    """Block/Abschnitt ersetzen, einfuegen oder loeschen (saga.blockedit.apply). b: block_id | heading, markdown, mode, rev."""
+    """Block/Abschnitt ersetzen, einfuegen oder loeschen (saga.blockedit.apply). b: block_id | heading, markdown, mode, rev,
+    allow_empty (2.5: replace_section mit leerem Markdown leert den Abschnitt nur damit - sonst 400 statt still leeren)."""
     from saga import blockedit
     mode = b.get("mode")
     md = b.get("markdown")
+    allow_empty = b.get("allow_empty", False)
+    if not isinstance(allow_empty, bool):
+        raise Fail(400, t("„allow_empty“ muss true oder false sein."))
+    if md is not None and not isinstance(md, str):
+        raise Fail(400, t("ungültige Angabe"))
     if mode != "delete" and md is None and mode != "replace_section":
         raise Fail(400, t("Markdown fehlt (zum Entfernen mode „delete“)."))
     new = md_to_blocks(md) if md not in (None, "") else []
@@ -342,7 +348,7 @@ def block_update(tok, nid, b):
     head = b.get("heading")
     if bid is not None and not isinstance(bid, str) or head is not None and not isinstance(head, str):
         raise Fail(400, t("ungültige Angabe"))
-    return blocks_edit(tok, nid, lambda blocks: blockedit.apply(blocks, new, mode, bid, head), b.get("rev"))
+    return blocks_edit(tok, nid, lambda blocks: blockedit.apply(blocks, new, mode, bid, head, allow_empty), b.get("rev"))
 
 
 def checkbox_set(tok, nid, b):
@@ -389,7 +395,36 @@ def schema_out(s):
                 x[k] = p[k]
         props.append(x)
     return {"title_name": (s or {}).get("title_name") or t("Name"), "properties": props,
-            "views": [{"id": v.get("id"), "name": v.get("name"), "type": v.get("type")} for v in (s or {}).get("views") or [] if isinstance(v, dict)]}
+            "views": [_view_out(v, s) for v in (s or {}).get("views") or [] if isinstance(v, dict)]}
+
+
+def _view_out(v, s):
+    """Ansicht fuer die API: id, name, type; dazu (2.5) Gruppierung, Filter und Sortierung im Eingabeformat von
+    query_database bzw. update_views (Eigenschaft per Name, Auswahl-Werte als Optionsname)."""
+    out = {"id": v.get("id"), "name": v.get("name"), "type": v.get("type")}
+    byid = {p.get("id"): p for p in (s or {}).get("props") or [] if isinstance(p, dict)}
+
+    def pname(pid):
+        return "title" if pid == "title" else (byid.get(pid) or {}).get("name")      # "title" = Titel-Spalte (wie in Filtern)
+    for k in ("group_by", "date_by"):
+        if v.get(k) in byid:
+            out[k] = pname(v[k])
+    fl = []
+    for f in v.get("filters") or []:
+        if not isinstance(f, dict) or not (f.get("pid") == "title" or f.get("pid") in byid):
+            continue
+        val = f.get("value")
+        p = byid.get(f.get("pid")) or {}
+        if p.get("type") in ("select", "multi_select") and f.get("op") in ("is", "is_not", "contains", "not_contains"):
+            val = next((o.get("name") for o in p.get("options") or [] if isinstance(o, dict) and o.get("id") == val), val)
+        fl.append({"property": pname(f["pid"]), "op": f.get("op"), "value": val})
+    if fl:
+        out["filters"] = fl
+    so = [{"property": pname(x["pid"]), "dir": x.get("dir") or "asc"} for x in v.get("sorts") or []
+          if isinstance(x, dict) and (x.get("pid") == "title" or x.get("pid") in byid)]
+    if so:
+        out["sorts"] = so
+    return out
 
 
 def _schema_of(c, owner, dbid):
@@ -561,7 +596,8 @@ def database_query(tok, dbid, b):
                 if not p or p["id"] in hide:
                     raise Fail(400, t("Unbekannte Eigenschaft: {name}", name=str(key)[:60]))
                 f["pid"] = p["id"]
-                if kind == "filter" and p.get("type") in ("select", "multi_select") and isinstance(f.get("value"), str):
+                if kind == "filter" and p.get("type") in ("select", "multi_select") and isinstance(f.get("value"), str) \
+                        and f.get("op") in ("is", "is_not", "contains", "not_contains"):     # status_group: open/done/... bleibt
                     f["value"] = _opt_id(p, f["value"])
             elif key == "title":
                 f["pid"] = "title"
