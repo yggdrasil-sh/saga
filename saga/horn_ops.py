@@ -870,6 +870,47 @@ def _status(n, now):
     return "ready", None
 
 
+def builtin_view(out, now=None):
+    """2.5 (horn-admin): Zeile "Eingebaut" in Admin -> Anrufe -> Knoten. None = Gjallarhorn aus (keine Zeile).
+    status: off (Schalter aus) | live (Knoten verbunden - seine eigene Zeile zeigt alles) | fail (startet nicht, reason) |
+    unavail (kann hier nicht laufen, reason) | starting. Quelle: Meldung von saga-media (horn.builtin_report), bis zur
+    ersten Meldung die Pruefung der Umgebung (horn.builtin_precheck). Keine Pfade, keine Geheimnisse."""
+    if not horn.horn_on():
+        return None
+    from saga.core import MEDIA_KEY
+    now = now or time.time()
+    real = next((n for n in out if n["builtin"]), None)
+    m = horn.builtin_report(now)
+    v = {"status": "starting", "reason": "", "detail": "", "fails": 0, "next": None, "port": (m or {}).get("port") or horn.horn_port(),
+         "name": (m or {}).get("name") or "", "real": real["id"] if real else ""}
+    if not horn.builtin_on():
+        v["status"] = "off"
+    elif real and real["ctl"]:
+        v["status"] = "live"
+    elif m and m["state"] == "none":
+        v.update(status="unavail", reason=m["reason"])
+    elif m and m["state"] == "wait" and m["reason"]:
+        v.update(status="fail", reason=m["reason"], detail=m["detail"], fails=m["fails"], next=m["next"])
+    elif m and m["state"] == "run":                     # laeuft (meldet sich gleich) bzw. erneuter Versuch nach Abbruch
+        v["fails"] = m["fails"]
+    elif not m and not MEDIA_KEY:
+        v.update(status="unavail", reason="nomedia")     # ohne saga-media (Entwicklung) startet hier kein Knoten
+    elif not m and horn.builtin_precheck():
+        v.update(status="fail", reason=horn.builtin_precheck())
+    return v
+
+
+def builtin_warn():
+    """Warnung beim Speichern (Admin -> Anrufe): eingebauter Knoten an, startet aber sicher nicht ("nocert") - laut Umgebung
+    oder letzter Meldung von saga-media. Sonst ""."""
+    if not (horn.horn_on() and horn.builtin_on()):
+        return ""
+    m = horn.builtin_report()
+    if m and m["state"] == "wait" and m["reason"] in ("port", "portperm"):
+        return m["reason"]
+    return horn.builtin_precheck() or ("nocert" if m and m["reason"] == "nocert" else "")
+
+
 def busy_hint(ns, now=None):
     """Hinweis "oft ausgelastet": 7 Tage am Stueck ueber 70 % (Mehrheit der Messungen) oder zuletzt "voll"."""
     now = now or time.time()
@@ -914,7 +955,8 @@ def admin_state():
                     # P9/P10: Bruecken (Kaskade) und Kontingente verbundener Server laut letzter Lastmeldung
                     "bridges": (horn._LIVE.get(n["id"]) or {}).get("bridges") or {}, "quotas": (horn._LIVE.get(n["id"]) or {}).get("quotas") or {}})
     cf = cloudflare.conf()
-    return {"nodes": out, "pending": pend, "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()), "rekey": rekey,
+    bi = builtin_view(out, now)
+    return {"nodes": out, "pending": pend, "bi": bi, "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()), "rekey": rekey,
             "cf": {"set": bool(cf.get("token")), "mask": cloudflare.mask(cf.get("token") or ""), "zone": cf.get("zone") or "",
                    "check": cf.get("check") or {}},
             "suffix": suffix(), "image": image_ref(), "saga": saga_origin(), "saga_warn": saga_warn(), "builtin_on": horn.builtin_on(),

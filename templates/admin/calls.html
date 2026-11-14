@@ -9,6 +9,26 @@
 {% set UDP_TIP = _('UDP ist optional. Mit UDP sind bis zu 25 statt 12 Videoteilnehmende möglich und die Qualität bei Paketverlust ist besser.') %}
 {% set saga_host = hs.saga.split('://')[-1].split('/')[0] %}
 {% set saga_port = (saga_host.rsplit(':', 1)[1]|int) if (':' in saga_host and not saga_host.endswith(']')) else (80 if hs.saga.startswith('http://') else 443) %}
+{# 2.5 (horn-admin): Zeile "Eingebaut" - Zustand laut saga-media (hs.bi, saga/horn_ops.py builtin_view) #}
+{% set bi = hs.bi %}
+{% if bi %}
+{% set BI_ST = {'fail': _('Startet nicht'), 'starting': _('Startet …'), 'unavail': _('Nicht verfügbar'), 'off': ST.off, 'live': ST.ready} %}
+{% set bi_doc = {'en': 'en/GUIDE.md#built-in-node-behind-an-l4-proxy-eg-netbird-067-or-later', 'es': 'es/GUIA.md#nodo-integrado-detrás-de-un-proxy-l4-p-ej-netbird-067-o-posterior'}.get(lang(), 'ANLEITUNG.md#eingebauter-knoten-hinter-einem-l4-proxy-z-b-netbird-ab-067') %}
+{% set bi_cell %}<span class="horn-dot"></span>{{ BI_ST[bi.status] }}
+  {%- if bi.reason == 'nocert' %}<br><small class="horn-bi-why">{{ _("Kein Zertifikat: Es fehlt ein eigener Name (HORN_NAME), unter dem der Knoten von außen erreichbar ist – per TLS-Durchreiche (SNI) am Proxy oder per Portfreigabe auf {port}/TCP. Dann holt er sein Zertifikat selbst (Let’s Encrypt). UDP geht nicht durch die Durchreiche: {port}/UDP zusätzlich direkt bzw. als eigenen UDP-Dienst freigeben.", port=bi.port) }}
+    <a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/{{ bi_doc }}" target="_blank" rel="noopener">{{ _("Anleitung: eingebauter Knoten hinter einem Proxy") }}</a></small>
+  {%- elif bi.reason == 'port' %}<br><small class="horn-bi-why">{{ _("Port {port} ist belegt – läuft dort schon ein anderer Dienst? HORN_PORT ändern.", port=bi.port) }}</small>
+  {%- elif bi.reason == 'portperm' %}<br><small class="horn-bi-why">{{ _("Port {port} braucht Sonderrechte (unter 1024). HORN_PORT ab 1024 wählen und am Proxy bzw. per Portfreigabe umsetzen.", port=bi.port) }}</small>
+  {%- elif bi.reason == 'start' %}<br><small class="horn-bi-why">{{ _("Das Programm gjallarhorn lässt sich nicht starten.") }}</small>
+  {%- elif bi.reason == 'exit' %}<br><small class="horn-bi-why">{{ _("Bricht beim Start ab: {detail}", detail=bi.detail or '–') }}</small>
+  {%- elif bi.reason == 'disabled' %}<br><small class="horn-bi-why">{{ _("Abgeschaltet mit SAGA_HORN=off.") }}</small>
+  {%- elif bi.reason == 'nobin' %}<br><small class="horn-bi-why">{{ _("Das Programm gjallarhorn fehlt in dieser Installation.") }}</small>
+  {%- elif bi.reason == 'portcfg' %}<br><small class="horn-bi-why">{{ _("HORN_PORT ist ungültig.") }}</small>
+  {%- elif bi.reason == 'nomedia' %}<br><small class="horn-bi-why">{{ _("Läuft nur mit saga-media (Docker-Image) – so gestartet, startet Saga ihn nicht.") }}</small>
+  {%- endif %}
+  {%- if bi.fails and bi.status in ('fail', 'starting') %}<br><small class="horn-bi-next">{{ _("{n} {n:Fehlversuch|Fehlversuche}", n=bi.fails) }}{% if bi.next and bi.status == 'fail' %} · {{ _("nächster Versuch:") }} {{ ts(bi.next) }}{% endif %}</small>{% endif %}
+{% endset %}
+{% endif %}
 <h2>{{ _("Anrufe") }}</h2>
 
 <section class="adm-card" id="horn">
@@ -28,17 +48,28 @@
   <h4 class="horn-h">{{ _("Knoten") }}</h4>
   <table class="adm-table horn-nodes">
     <tr><th>{{ _("Name") }}</th><th>{{ _("Status") }}</th><th>{{ _("Weg") }}</th><th>{{ _("Auslastung") }}</th><th>{{ _("Teilnehmende") }}</th><th>{{ _("Version") }}</th><th>{{ _("Teilen") }}</th><th>{{ _("Aktionen") }}</th></tr>
+    {% if bi and not bi.real %}
+    <tr id="row-builtin" class="horn-st-{{ bi.status }} horn-bi"{% if bi.status in ('starting', 'fail') %} data-wait="1" data-bst="{{ bi.status }}|{{ bi.reason }}|{{ bi.fails }}"{% endif %}>
+      <td>{% if bi.name %}<b>{{ bi.name }}</b> <span class="adm-tag">{{ _("eingebaut") }}</span>{% else %}<b>{{ _("Eingebaut") }}</b>{% endif %}</td>
+      {% if bi.reason %}<td data-l="{{ _('Status') }}" class="horn-bi-st" colspan="6">{{ bi_cell }}</td>
+      {% else %}<td data-l="{{ _('Status') }}" class="horn-bi-st">{{ bi_cell }}</td>
+      <td data-l="{{ _('Weg') }}">–</td><td data-l="{{ _('Auslastung') }}">–</td><td data-l="{{ _('Teilnehmende') }}">–</td>
+      <td data-l="{{ _('Version') }}">–</td><td data-l="{{ _('Teilen') }}">–</td>{% endif %}
+      <td class="horn-acts">{% if bi.status == 'fail' %}<form method="post" class="adm-inline">{{ csrf_field() }}
+          <button class="btn" type="submit" name="action" value="builtin_retry">{{ _("Jetzt erneut versuchen") }}</button></form>{% endif %}</td>
+    </tr>
+    {% endif %}
     {% for n in hs.nodes %}
-    <tr id="row-{{ n.id }}" class="horn-st-{{ n.status }}">
+    <tr id="row-{{ n.id }}" class="horn-st-{{ bi.status if (n.builtin and bi and bi.status in ('fail', 'unavail', 'starting') and not n.ctl) else n.status }}">
       <td><b>{{ n.name }}</b>{% if n.builtin %} <span class="adm-tag">{{ _("eingebaut") }}</span>{% endif %}</td>
       {% set nport = n.port if not n.builtin else ((n.url.split(':')[2]|int) if n.url.count(':') == 2 else 443) %}
-      <td data-l="{{ _('Status') }}"><span class="horn-dot"></span>{% if n.status == 'down' %}{{ _("Nicht erreichbar seit") }} {{ ts(n.since) }}{% else %}{{ ST[n.status] }}{% endif %}
+      <td data-l="{{ _('Status') }}"{% if n.builtin and bi and bi.status in ('fail', 'unavail', 'starting') and not n.ctl %} class="horn-bi-st"{% endif %}>{% if n.builtin and bi and bi.status in ('fail', 'unavail', 'starting') and not n.ctl %}{{ bi_cell }}{% else %}<span class="horn-dot"></span>{% if n.status == 'down' %}{{ _("Nicht erreichbar seit") }} {{ ts(n.since) }}{% else %}{{ ST[n.status] }}{% endif %}
         {% if n.cert.err and n.status == 'nocert' %}<br><small title="{{ n.cert.err }}">{{ _("Zertifikat per DNS-01 noch nicht erhalten – Saga versucht es weiter.") if n.cert.err.startswith('dns01') else _("Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist {port}/TCP direkt erreichbar?", port=nport) }}</small>{% endif %}
         {% set UPD = {'nokey': _('Selbst-Update aus: Saga hat noch keinen Release-Schlüssel.'), 'nowatch': _('Selbst-Update aus: Knoten läuft ohne Wächter (gjallarhorn watch).'),
                       'sig': _('Signatur passt nicht zum Release-Schlüssel – Update abgelehnt.'), 'download': _('Update konnte nicht geladen werden – neuer Versuch später.'),
                       'wait24': _('Seit 24 Stunden keine Zeit ohne Anrufe – das Update wartet weiter.'),
                       'old': _('Dieser Knoten ist zu alt, um Testversionen selbst zu laden. Bitte einmal von Hand auf die Saga-Version aktualisieren (Docker: Image-Tag anpassen und neu starten; systemd: Binär aus dem Vorab-Release horn-testing einspielen).')} %}
-        {% if n.upd.code in UPD and n.upd.state in ('aus', 'manuell', 'fehler', 'wartet') %}<br><small title="{{ n.upd.err or '' }}">{{ _("Update:") }} {{ UPD[n.upd.code] }}</small>{% endif %}</td>
+        {% if n.upd.code in UPD and n.upd.state in ('aus', 'manuell', 'fehler', 'wartet') %}<br><small title="{{ n.upd.err or '' }}">{{ _("Update:") }} {{ UPD[n.upd.code] }}</small>{% endif %}{% endif %}</td>
       <td data-l="{{ _('Weg') }}"><span title="{{ UDP_TIP }}">TCP {{ '✓' if n.tcp else '✗' }} · UDP {{ '✓' if n.udp else '–' }}</span>
         {% if n.ctl and not n.udp and n.udp_check in ('fehlt', 'aus') %}<br><small class="horn-udp-warn">{% if n.udp_check == 'fehlt' %}{{ _("UDP nicht erreichbar – Anrufe laufen über TCP/TLS. Port {port}/udp freigeben (direkt, nicht über den Reverse Proxy).", port=n.udp_port) }}{% else %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TCP/TLS. Für UDP: HORN_UDP=1 und Port {port}/udp freigeben.", port=n.udp_port) }}{% endif %}</small>{% endif %}</td>
       <td data-l="{{ _('Auslastung') }}"><meter class="horn-bar" min="0" max="100" low="70" high="90" optimum="10" value="{{ n.util }}">{{ n.util }} %</meter><br>
@@ -61,7 +92,7 @@
       <td><form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="pair_cancel"><input type="hidden" name="id" value="{{ p.id }}">
         <button class="btn" type="submit">{{ _("Abbrechen") }}</button></form></td></tr>
     {% endfor %}
-    {% if not hs.nodes and not hs.pending %}<tr class="horn-none"{% if hs.horn_on and hs.builtin_on %} data-wait="1"{% endif %}><td colspan="8"><small>{% if not hs.horn_on %}{{ _("Noch kein Knoten verbunden. Der eingebaute Knoten erscheint, sobald Gjallarhorn an ist.") }}{% elif hs.builtin_on %}{{ _("Der eingebaute Knoten startet – die Liste aktualisiert sich gleich von selbst.") }}{% else %}{{ _("Noch kein Knoten verbunden. Weitere Knoten fügst du mit „Erweitern“ hinzu.") }}{% endif %}</small></td></tr>{% endif %}
+    {% if not hs.nodes and not hs.pending and not bi %}<tr class="horn-none"><td colspan="8"><small>{{ _("Noch kein Knoten verbunden. Der eingebaute Knoten erscheint, sobald Gjallarhorn an ist.") }}</small></td></tr>{% endif %}
   </table>
   {% if hs.horn_on %}
   <h4 class="horn-h">{{ _("Geteilte Knoten anderer Server") }}</h4>

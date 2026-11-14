@@ -883,7 +883,93 @@ def internal_conf(request: Request):
     """Fuer saga-media: soll der eingebaute Knoten laufen? (Feature-Flag calls.horn und Admin-Schalter horn_builtin)"""
     if not MEDIA_KEY or not hmac.compare_digest(request.headers.get("x-saga-media-key", "").encode(), MEDIA_KEY.encode()):
         return JSONResponse({"error": "not found"}, status_code=404)
-    return JSONResponse({"on": horn_on() and builtin_on()}, headers={"Cache-Control": "no-store"})
+    # rev (2.5, horn-admin): aendert sich bei jedem Speichern unter Admin -> Anrufe -> saga-media startet einen wartenden
+    # Knoten dann sofort (statt nach dem Backoff von bis zu 10 min)
+    rev = str((auth.settings().get("calls") or {}).get("horn_rev") or 0)
+    return JSONResponse({"on": horn_on() and builtin_on(), "rev": rev}, headers={"Cache-Control": "no-store"})
+
+
+# --- Zustand des eingebauten Knotens (2.5, horn-admin) ----------------------------------------------------------------
+# saga-media meldet per POST /internal/horn/state, ob der eingebaute Knoten laeuft bzw. warum nicht (media/horn.go):
+# state run | wait | off | none, reason nocert | port | portperm | exit | start (none: disabled | nobin | portcfg),
+# detail (nur bei exit: letzte Fehlerzeile ohne Pfade), fails, next, since, port, name. Nur dieser Prozess, kein Speicher.
+BUILTIN_STALE = 90                      # aelter = saga-media meldet sich nicht mehr (Meldung sonst alle 30 s)
+_BI = {}
+_BI_STATES = ("run", "wait", "off", "none")
+_BI_REASONS = ("nocert", "port", "portperm", "exit", "start", "disabled", "nobin", "portcfg")
+_BI_PATH = re.compile(r"(?:[A-Za-z]:)?(?:/[^\s/:,;()'\"\[\]]+)+/?")
+_BI_TOKEN = re.compile(r"[A-Za-z0-9+/_=-]{24,}")
+_BI_NAME = re.compile(r"[A-Za-z0-9.-]{1,253}")
+
+
+def clean_detail(s):
+    """Fehlerzeile fuer den Admin-Bereich: ohne Pfade, lange Kennungen und Steuerzeichen, hoechstens 160 Zeichen
+    (saga-media kuerzt schon genauso - hier noch einmal, die Zeile landet im HTML und in /api/calls/state)."""
+    s = "".join(" " if ord(ch) < 32 or ord(ch) == 127 else ch for ch in str(s or "")[:1000])
+    s = _BI_PATH.sub(lambda m: "//…" if m.group(0).startswith("//") else "…", s)
+    s = _BI_TOKEN.sub("…", s).strip()
+    return s if len(s) <= 160 else s[:159] + "…"
+
+
+def _num(v, lo, hi):
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return 0
+    return v if lo <= v <= hi else 0
+
+
+@router.post("/internal/horn/state")
+async def internal_state(request: Request):
+    """Von saga-media: Zustand des eingebauten Knotens (nur mit dem gemeinsamen Geheimnis, sonst 404)."""
+    if not MEDIA_KEY or not hmac.compare_digest(request.headers.get("x-saga-media-key", "").encode(), MEDIA_KEY.encode()):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    raw = await request.body()
+    try:
+        b = json.loads(raw) if len(raw) <= 4096 else None
+    except ValueError:
+        b = None
+    if not isinstance(b, dict) or b.get("state") not in _BI_STATES:
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    reason = b.get("reason") if b.get("reason") in _BI_REASONS else ""
+    name = str(b.get("name") or "")
+    _BI.clear()
+    _BI.update(state=b["state"], reason=reason, detail=clean_detail(b.get("detail")) if reason == "exit" else "",
+               fails=_num(b.get("fails"), 0, 10 ** 6), next=_num(b.get("next"), 0, 2 ** 40) or None,
+               since=_num(b.get("since"), 0, 2 ** 40) or None, port=_num(b.get("port"), 1, 65535) or None,
+               name=name if _BI_NAME.fullmatch(name) and name.lower() != "localhost" else "", at=time.time())
+    return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
+
+
+def builtin_report(now=None):
+    """Letzte frische Meldung von saga-media (dict) oder None (keine/zu alt)."""
+    now = now or time.time()
+    return dict(_BI) if _BI and now - _BI.get("at", 0) <= BUILTIN_STALE else None
+
+
+def horn_port():
+    """HORN_PORT des eingebauten Knotens (Standard 8443) - TCP; UDP siehe udp_port."""
+    v = os.environ.get("HORN_PORT", "")
+    return int(v) if v.isdigit() and 0 < int(v) < 65536 else 8443
+
+
+def builtin_precheck():
+    """"nocert", wenn der eingebaute Knoten mit dieser Umgebung sicher nicht startet - dieselbe Reihenfolge wie
+    gjallarhorn (internal/netx/certs.go NewCerts): Zertifikatsdateien (HORN_TLS_CERT/HORN_TLS_KEY, sonst
+    HORN_DATA/tls/fullchain.pem + privkey.pem; HORN_DATA = STATE_DIR/horn) > HORN_TLS_SELF=1 > HORN_NAME (nicht localhost,
+    ACME TLS-ALPN-01). Sonst ""."""
+    from saga.core import STATE_DIR
+    e = os.environ
+    data = (e.get("HORN_DATA") or "").strip() or os.path.join(STATE_DIR, "horn")
+    cert = (e.get("HORN_TLS_CERT") or "").strip() or os.path.join(data, "tls", "fullchain.pem")
+    key = (e.get("HORN_TLS_KEY") or "").strip() or os.path.join(data, "tls", "privkey.pem")
+    if os.path.isfile(cert) and os.path.isfile(key):
+        return ""
+    if (e.get("HORN_TLS_SELF") or "").strip() == "1":
+        return ""
+    if (e.get("HORN_NAME") or "").strip().lower() not in ("", "localhost"):
+        return ""
+    return "nocert"
 
 
 def status():

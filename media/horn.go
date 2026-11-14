@@ -71,6 +71,7 @@ type horn struct {
 	slowNote bool            // Hinweis "nur noch alle 10 min" schon geschrieben
 	sent     []byte          // zuletzt an Saga gemeldeter Zustand
 	sentAt   time.Time
+	kick     chan struct{} // Knoten beendet: Zustand gleich melden (nicht erst nach hornPoll)
 }
 
 // hornState: Meldung an Saga (POST /internal/horn/state). Keine Pfade, keine Geheimnisse.
@@ -122,7 +123,7 @@ func newHorn(m *media, key string) (*horn, string) {
 	set("HORN_DATA", filepath.Join(envStr("STATE_DIR", "/data"), "horn"))
 	env = append(env, "HORN_MODE=node", "HORN_CTL_KEY="+key,
 		"HORN_SAGA_CTL=ws://"+net.JoinHostPort("127.0.0.1", strconv.Itoa(m.c.internalPort))+"/api/horn/ctl")
-	return &horn{m: m, bin: bin, key: key, env: env, port: port, name: cleanName(os.Getenv("HORN_NAME"))}, ""
+	return &horn{m: m, bin: bin, key: key, env: env, port: port, name: cleanName(os.Getenv("HORN_NAME")), kick: make(chan struct{}, 1)}, ""
 }
 
 // loop fragt Saga nach dem Flag und startet bzw. beendet den Knoten.
@@ -142,6 +143,7 @@ func (h *horn) loop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(wait):
+		case <-h.kick:
 		}
 	}
 }
@@ -235,6 +237,10 @@ func (h *horn) startLocked() {
 		}
 		reason, detail := hornReason(lines)
 		h.failLocked(reason, detail, now)
+		select {
+		case h.kick <- struct{}{}:
+		default:
+		}
 		wait := h.next.Sub(now).Round(time.Second)
 		switch {
 		case h.same == 1:

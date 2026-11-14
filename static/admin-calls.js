@@ -75,17 +75,18 @@
     });
   });
 
-  // Gjallarhorn gerade eingeschaltet: der eingebaute Knoten meldet sich erst nach ein paar Sekunden - bis dahin alle 3 s
-  // nachsehen (hoechstens 2 min, nur bei sichtbarer Seite) und die Seite neu laden, sobald er da ist
-  var none = document.querySelector('.horn-none[data-wait]');
-  if (none) {
-    var t0 = Date.now();
+  // Eingebauter Knoten startet bzw. startet nicht (Zeile "Eingebaut", 2.5): alle 5 s nachsehen (hoechstens 15 min, nur bei
+  // sichtbarer Seite) und die Seite neu laden, sobald er sich registriert hat oder sich sein Zustand/Grund aendert
+  var biw = document.querySelector('.horn-bi[data-wait]');
+  if (biw) {
+    var t0 = Date.now(), was = biw.getAttribute('data-bst');
     (function wait() {
-      if (Date.now() - t0 > 120000) return;
-      if (document.hidden) { setTimeout(wait, 3000); return; }
+      if (Date.now() - t0 > 900000) return;
+      if (document.hidden) { setTimeout(wait, 5000); return; }
       api('GET', '/api/calls/state').then(function (st) {
-        if ((st.nodes || []).length) location.reload(); else setTimeout(wait, 3000);
-      }).catch(function () { setTimeout(wait, 10000); });
+        var b = st.bi || {};
+        if (b.real || [b.status, b.reason, b.fails].join('|') !== was) location.reload(); else setTimeout(wait, 5000);
+      }).catch(function () { setTimeout(wait, 15000); });
     })();
   }
 

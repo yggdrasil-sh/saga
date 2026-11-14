@@ -937,6 +937,17 @@ def _calls_ctx(request, me, **kw):
                  mesh_from=calls.limit("video") + 1, mesh_from_a=calls.limit("audio") + 1, **kw)
 
 
+def _builtin_warn_text(why):
+    """Warnung beim Speichern: der eingebaute Knoten startet so nicht (Grund aus horn_ops.builtin_warn)."""
+    port = horn.horn_port()
+    if why == "port":
+        return t("Achtung: Der eingebaute Knoten startet so nicht – Port {port} ist belegt. HORN_PORT ändern.", port=port)
+    if why == "portperm":
+        return t("Achtung: Der eingebaute Knoten startet so nicht – Port {port} braucht Sonderrechte. HORN_PORT ab 1024 wählen.", port=port)
+    return t("Achtung: Der eingebaute Knoten startet so nicht – es fehlt ein eigener Name (HORN_NAME) bzw. ein Zertifikat. "
+             "Was zu tun ist, steht unten bei den Knoten in der Zeile „Eingebaut“.")
+
+
 @admin.get("/calls")
 def calls_page(request: Request):
     me = _me(request)
@@ -957,11 +968,20 @@ async def calls_post(request: Request):
     nid = _s(f, "id", 40)
     cur = auth.settings(fresh=True).get("calls") or {}
     if act == "horn":
+        # horn_rev (2.5): jedes Speichern startet einen wartenden eingebauten Knoten sofort neu (saga-media, Backoff weg)
         auth.save_setting("calls", {**cur, "horn": _on(f, "horn"), "horn_builtin": _on(f, "horn_builtin"),
-                                      "horn_all": _on(f, "horn_all")})
+                                      "horn_all": _on(f, "horn_all"), "horn_rev": int(cur.get("horn_rev") or 0) + 1})
         print(f"admin: {who} Gjallarhorn {'an' if _on(f, 'horn') else 'aus'}, eingebauter Knoten {'an' if _on(f, 'horn_builtin') else 'aus'}, "
               f"alle Anrufe ueber Knoten {'an' if _on(f, 'horn_all') else 'aus'}", flush=True)
-        _flash(request, t("Gespeichert."))
+        warn = horn_ops.builtin_warn()
+        if warn:
+            _flash(request, t("Gespeichert.") + " " + _builtin_warn_text(warn), "warn")
+        else:
+            _flash(request, t("Gespeichert."))
+    elif act == "builtin_retry":
+        auth.save_setting("calls", {**cur, "horn_rev": int(cur.get("horn_rev") or 0) + 1})
+        print(f"admin: {who} startet den eingebauten Knoten neu (erneuter Versuch)", flush=True)
+        _flash(request, t("Der eingebaute Knoten startet gleich neu."))
     elif act == "limits":
         notes = []
         auth.save_setting("calls", {**cur, "horn_video": _int_noted(f, "horn_video", 2, horn.LIMITS["udp"][0], t("Video je Anruf"), notes),
