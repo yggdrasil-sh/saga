@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – MCP: Datenbanken und Widgets anlegen (Bug-DB 2021)
+- `create_database`: Datenbank mit Eigenschaften (per Name, Typen wie im Web, auch Status und Relation), Ansichten
+  (Tabelle, Board nach einer Auswahl, Kalender, Zeitleiste …) und optional gleich in die Elternseite eingebettet.
+  Formeln/Rollups bleiben dem Web vorbehalten. `update_database_schema` ergänzt Eigenschaften, Optionen und Ansichten
+  und benennt um – gelöscht wird nie.
+- `add_widget`, `update_widget`, `get_widgets`: Widgets (Fortschritt, Kennzahl, Countdown, Diagramm …) in Seiten
+  anlegen, ändern und ihre Werte lesen; Quellen nur mit passenden Bereichen und innerhalb der `roots`.
+  `embed_database` bettet eine vorhandene Datenbank in eine Seite ein.
+
 ### Neu – MCP: Seiteninhalt gezielt ändern (Bug-DB 2023)
 - `get_page` mit `blocks: true` liefert die Gliederung der Seite mit Block-IDs, Überschriften-Ebenen und
   Checklisten-Punkten (ohne den Schalter unverändert).

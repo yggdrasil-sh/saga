@@ -235,7 +235,8 @@ Saga bringt einen MCP-Server mit (Model Context Protocol, Transport „Streamabl
 Nötig ist ein Token mit dem Bereich **`mcp`** und den Datenbereichen, die die KI nutzen soll.
 
 **Werkzeuge** (es erscheinen nur die, die der Token darf): `search_pages`, `get_page`, `get_image`, `create_page`, `append_to_page`,
-`update_page_title`, `replace_page_content`, `update_block`, `set_checkbox`, `trash_page`, `archive_page`, `list_databases`,
+`update_page_title`, `replace_page_content`, `update_block`, `set_checkbox`, `trash_page`, `archive_page`, `create_database`,
+`update_database_schema`, `embed_database`, `add_widget`, `update_widget`, `get_widgets`, `list_databases`,
 `get_database_schema`, `query_database`, `create_row`, `update_row`, `list_tasks`, `create_task`, `complete_task`,
 `add_comment`. Eigenschaften gehen per Name. Ausgaben sind begrenzt (50 Einträge je
 Abfrage, Seiten bis 100.000 Zeichen – darüber gekürzt mit Hinweis). `get_page` nennt die Bilder der Seite im Feld
@@ -252,6 +253,22 @@ ohne den Schalter bleibt die Antwort wie bisher. `replace_page_content` ersetzt 
 ist Pflicht, Konflikt → „Seite wurde inzwischen geändert (rev …)“), `update_block` und `set_checkbox` arbeiten wie
 `/api/v1/pages/{id}/blocks` bzw. `/checkbox` (oben), `trash_page` legt in den Papierkorb, `archive_page` archiviert bzw.
 holt zurück (beides nur eigene Seiten). Änderungen kommen wie Web-Änderungen bei offenen Editoren an.
+**Datenbanken und Widgets anlegen:** `create_database` (Bereiche `write:db` **und** `write:pages`; `title`, `parent_id` –
+Pflicht bei Tokens mit `roots` –, `icon`, `properties: [{name, type, options?}]`, `views: [{type, name?, group_by?,
+date_by?, end_by?}]`, `title_name`, `embed_in_page`). Typen: `text`, `number` (`format`: `percent`/`euro`), `select`,
+`multi_select` (`options`: Namen oder `{name, color}`), `status` (Auswahl mit Gruppen Offen/In Arbeit/Erledigt), `date`
+(`time`, `range`), `checkbox`, `url`, `created`, `edited`, `person`, `files`, `relation` (`target` = Datenbank, die der
+Token sehen darf; `two_way`). Formel, Rollup und Rechnung → Fehler (bitte im Web). Ohne `properties` entsteht die
+Datenbank wie im Web (Status, Datum; Tabelle + Board); mit `properties` und ohne `views`: Tabelle, bei einer Auswahl
+zusätzlich ein Board danach. Fehlerhafte Angaben legen nichts an. `update_database_schema` (`write:db`) ergänzt nur –
+`add_properties`, `rename_properties: [{property, name}]`, `add_options: [{property, options}]`, `add_views`, `title_name` –
+und löscht nie (Spalten, die inzwischen jemand anderes angelegt hat, bleiben ebenfalls). `embed_database` (`write:pages`
++ `read:db`) setzt einen Datenbank-Block in eine Seite. `add_widget`/`update_widget` (`write:pages`) setzen Widget-Blöcke
+(Arten und `cfg` wie in `docs/APP-API.md` „Widgets in Seiten“; Eigenschaften und Ansichten per Name oder ID; Position
+`end`, `start` oder `after_block`); eine Datenbank als Quelle braucht `read:db` (und liegt in den `roots`), Saga-Aufgaben
+`read:tasks`. `get_widgets` (`read:pages`) liefert die berechneten Werte unter denselben Bedingungen (sonst `no_access`);
+persönliche Arten (`upcoming`, `reading`) nur für Tokens ohne `roots` mit `read:tasks`. Die Startseite des Kontos stellt
+MCP nicht um.
 **Annotationen:** Schreibende Werkzeuge haben `readOnlyHint: false`; `replace_page_content`, `update_block` und
 `trash_page` zusätzlich `destructiveHint: true` (Clients fragen dann ggf. nach).
 

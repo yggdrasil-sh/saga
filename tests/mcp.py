@@ -146,7 +146,7 @@ try:
     ok("tools/list: alle Werkzeuge mit vollen Bereichen", {"search_pages", "get_page", "create_page", "query_database", "create_row", "update_row",
                                                           "create_task", "add_comment"} <= names, names)
     rn = {x["name"] for x in rpc(TR, "tools/list")[1]["result"]["tools"]}
-    ok("tools/list: nur Lesen -> keine Schreibwerkzeuge, keine DB", rn == {"search_pages", "get_page", "get_image"}, rn)
+    ok("tools/list: nur Lesen -> keine Schreibwerkzeuge, keine DB", rn == {"search_pages", "get_page", "get_image", "get_widgets"}, rn)
     err, txt, d = tool(TR, "create_page", title="x")
     ok("Werkzeug ohne Bereich -> Fehler", d.get("error", {}).get("code") == -32602, d)
 
@@ -456,22 +456,23 @@ try:
        (("set_checkbox", {"text": "eins", "checked": True}), ("trash_page", {}), ("archive_page", {}))))
 
     # Synchronisierte Bloecke: Kopie nicht aendern, Original schon; andere Bloecke der Seite mit Kopie aenderbar, Kopie bleibt
+    SID = "McpSync" + "".join(__import__("random").choice("abcdefghijk") for _ in range(9))     # je Lauf neu (sid gilt serverweit)
     SA = call("POST", "/api/notes", A, {"title": "Sync Original", "parent_id": R})[1]["id"]
     SB = call("POST", "/api/notes", A, {"title": "Sync Kopie", "parent_id": R})[1]["id"]
-    call("PATCH", f"/api/notes/{SA}", A, {"format": "blocks", "body": json.dumps({"blocks": [{"id": "so", "type": "synced", "data": {"sid": "McpSync000000001",
+    call("PATCH", f"/api/notes/{SA}", A, {"format": "blocks", "body": json.dumps({"blocks": [{"id": "so", "type": "synced", "data": {"sid": SID,
          "blocks": [Pp("so1", "geteilt")]}}]})})
     call("PATCH", f"/api/notes/{SB}", A, {"format": "blocks", "body": json.dumps({"blocks": [Pp("sb0", "davor"), {"id": "sk", "type": "synced",
-         "data": {"sid": "McpSync000000001"}}]})})
+         "data": {"sid": SID}}]})})
     e, m, _ = meta(T, SB, blocks=True)
     ol = {x.get("id"): x for x in m.get("outline") or []}
     ok("Gliederung: Kopie als synced copy, Inhalt mit in_copy", ol.get("sk", {}).get("synced") == "copy" and ol.get("so1", {}).get("in_copy") is True, m.get("outline"))
     err, txt, _ = tool(T, "update_block", id=SB, block_id="so1", markdown="über Kopie")
-    ok("Kopie: Block darin nicht aenderbar -> Hinweis aufs Original (mit Seiten-ID)", err is True and "Original" in txt and str(SA) in txt, txt)
+    ok("Kopie: Block darin nicht aenderbar -> Hinweis aufs Original (mit Seiten-ID)", err is True and "original" in txt.lower() and str(SA) in txt, txt)
     ok("Kopie selbst nicht ersetzbar", tool(T, "update_block", id=SB, block_id="sk", markdown="x")[0] is True)
     err, txt, _ = tool(T, "update_block", id=SB, block_id="sb0", markdown="davor neu")
     raw_b = call("GET", f"/api/notes/{SB}", A)[1]
     sk = next(b for b in json.loads(raw_b["body"])["blocks"] if b["id"] == "sk")
-    ok("Seite mit Kopie: anderer Block aenderbar, Kopie bleibt verbunden", not err and sk["data"].get("sid") == "McpSync000000001"
+    ok("Seite mit Kopie: anderer Block aenderbar, Kopie bleibt verbunden", not err and sk["data"].get("sid") == SID
        and sk["data"]["blocks"][0]["data"]["text"] == "geteilt", (txt, sk))
     err, txt, _ = tool(T, "update_block", id=SA, block_id="so1", markdown="im Original")
     sk = next(b for b in json.loads(call("GET", f"/api/notes/{SB}", A)[1]["body"])["blocks"] if b["id"] == "sk")
@@ -486,6 +487,126 @@ try:
     ok("archive_page archived=false: zurueckgeholt", not err and meta(T, AR)[1].get("archived") is False, txt)
     err, txt, _ = tool(T, "trash_page", id=AR)
     ok("trash_page: in den Papierkorb (2 Seiten)", not err and "2" in txt and tool(T, "get_page", id=AR)[1].startswith("not_found"), txt)
+
+    # --- Datenbanken und Widgets anlegen (2.5, Bug-DB 2021) ---
+    def jbody(tx):
+        try:
+            return json.loads(tx.split('">\n', 1)[1].rsplit("\n</saga-data", 1)[0])
+        except (IndexError, ValueError):
+            return {}
+    DASH = call("POST", "/api/notes", A, {"title": "MCP Dashboard", "parent_id": R})[1]["id"]
+    call("PATCH", f"/api/notes/{DASH}", A, {"format": "blocks", "body": json.dumps({"blocks": [H("dh", "Überblick"), Pp("dp1", "Text")]})})
+    err, txt, _ = tool(T, "create_database", title="MCP Roadmap-DB", parent_id=DASH, icon="🗺️", embed_in_page=True, title_name="Aufgabe",
+                       properties=[{"name": "Status", "type": "status"}, {"name": "Phase", "type": "select", "options": ["Plan", {"name": "Bau", "color": "red"}]},
+                                   {"name": "Fällig", "type": "date"}, {"name": "Fertig", "type": "checkbox"}, {"name": "Aufwand", "type": "number"},
+                                   {"name": "Bezug", "type": "relation", "target": D}],
+                       views=[{"type": "table"}, {"type": "board", "name": "Nach Phase", "group_by": "phase"}, {"type": "calendar"}])
+    out = jbody(txt)
+    NDB = out.get("id")
+    ok("create_database: angelegt, Antwort mit ID und Schema (im Daten-Rahmen)", not err and NDB and "saga-data" in txt
+       and [p["name"] for p in out["schema"]["properties"]] == ["Status", "Phase", "Fällig", "Fertig", "Aufwand", "Bezug"], txt[:500])
+    wd = call("GET", f"/api/notes/{NDB}", A)[1]
+    sch = wd.get("schema") or {}
+    pby = {p["name"]: p for p in sch.get("props") or []}
+    vby = {v["type"]: v for v in sch.get("views") or []}
+    ok("create_database im Web: kind database, Symbol, Elternseite, Titel-Spalte", wd.get("kind") == "database" and wd.get("icon") == "🗺️"
+       and wd.get("parent_id") == DASH and sch.get("title_name") == "Aufgabe", {k: wd.get(k) for k in ("kind", "icon", "parent_id")})
+    ok("create_database: Typen, Status mit Gruppen, Optionen mit Farben", pby["Status"]["type"] == "select" and pby["Status"].get("status") is True
+       and [o.get("group") for o in pby["Status"]["options"]] == ["todo", "doing", "done"] and [o["name"] for o in pby["Phase"]["options"]] == ["Plan", "Bau"]
+       and pby["Phase"]["options"][1]["color"] == "red" and pby["Fällig"]["type"] == "date" and pby["Bezug"]["type"] == "relation"
+       and pby["Bezug"]["target"] == D, pby)
+    ok("create_database: Ansichten (Board nach Phase per Name, Kalender nach Datum)", vby.get("board", {}).get("group_by") == pby["Phase"]["id"]
+       and vby["board"]["name"] == "Nach Phase" and vby.get("calendar", {}).get("date_by") == pby["Fällig"]["id"] and "table" in vby, sch.get("views"))
+    dbk = [b for b in blocks_of(DASH) if b["type"] == "database"]
+    ok("create_database embed_in_page: Datenbank-Block in der Elternseite, Rest unveraendert", len(dbk) == 1 and dbk[0]["data"]["db"] == NDB
+       and [b["id"] for b in blocks_of(DASH)][:2] == ["dh", "dp1"], blocks_of(DASH))
+    err, txt, _ = tool(T, "create_database", title="MCP Standard-DB", parent_id=R)
+    sd = call("GET", f"/api/notes/{jbody(txt).get('id')}", A)[1].get("schema") or {}
+    ok("create_database ohne properties: wie im Web (Status, Datum, Tabelle + Board)", not err and [p["id"] for p in sd.get("props", [])] == ["status", "datum"]
+       and [v["type"] for v in sd.get("views", [])] == ["table", "board"], sd)
+    err, txt, _ = tool(T, "create_database", title="MCP Default-Views", parent_id=R, properties=[{"name": "Art", "type": "select", "options": ["a"]}])
+    sv = call("GET", f"/api/notes/{jbody(txt).get('id')}", A)[1].get("schema") or {}
+    ok("create_database mit Auswahl ohne views: Tabelle + Board nach der Auswahl", not err and [v["type"] for v in sv.get("views", [])] == ["table", "board"]
+       and sv["views"][1].get("group_by") == sv["props"][0]["id"], sv)
+    def db_count(title):
+        return sum(1 for x in jbody(tool(T, "list_databases", query=title)[1]) if x.get("title") == title) if True else 0
+    for bad, why in (([{"name": "F", "type": "formula"}], "Formel"), ([{"name": "X", "type": "gibtsnicht"}], "unbekannter Typ"),
+                     ([{"name": "A"}, {"name": "a"}], "doppelter Name"), ([{"name": "R", "type": "relation", "target": BP}], "Relation auf fremde DB")):
+        err, txt, _ = tool(T, "create_database", title="MCP Kaputt", parent_id=R, properties=bad)
+        ok(f"create_database {why} -> Fehler, nichts angelegt", err is True and db_count("MCP Kaputt") == 0, txt[:200])
+    err, txt, _ = tool(T, "create_database", title="MCP Kaputt", parent_id=R, properties=[{"name": "Text"}], views=[{"type": "board", "group_by": "Fehlt"}])
+    ok("create_database Board nach unbekannter Eigenschaft -> Fehler, keine halbe Datenbank", err is True and db_count("MCP Kaputt") == 0, txt[:200])
+    TDB = call("POST", "/api/account/api-tokens", A, {"name": "nur db", "scopes": ["mcp", "write:db"]})[1]["token"]
+    ok("create_database braucht write:db UND write:pages", "create_database" not in {x["name"] for x in rpc(TDB, "tools/list")[1]["result"]["tools"]}
+       and "update_database_schema" in {x["name"] for x in rpc(TDB, "tools/list")[1]["result"]["tools"]})
+    TRD = call("POST", "/api/account/api-tokens", A, {"name": "roots db", "scopes": ["mcp", "write:pages", "write:db"], "roots": [DASH]})[1]["token"]
+    ok("roots: create_database ohne parent_id -> Fehler", tool(TRD, "create_database", title="MCP R")[0] is True)
+    ok("roots: Relation auf Datenbank ausserhalb -> Fehler", tool(TRD, "create_database", title="MCP R", parent_id=DASH,
+                                                                   properties=[{"name": "B", "type": "relation", "target": D}])[1].startswith("not_found"))
+    err, txt, _ = tool(TRD, "create_database", title="MCP R", parent_id=DASH, properties=[{"name": "B", "type": "relation", "target": NDB}])
+    ok("roots: Datenbank in freigegebenem Baum mit Relation darin", not err, txt[:200])
+
+    # update_database_schema: nur ergaenzen/umbenennen, Werte bleiben
+    ZR = call("POST", "/api/notes", A, {"parent_id": NDB, "title": "Zeile 1", "props": {pby["Aufwand"]["id"]: 5, pby["Phase"]["id"]: pby["Phase"]["options"][0]["id"]}})[1]["id"]
+    call("PATCH", f"/api/notes/{NDB}", A, {"schema": dict(sch, props=sch["props"] + [{"id": "webneu", "name": "Vom Web", "type": "text"}])})
+    err, txt, _ = tool(T, "update_database_schema", id=NDB, add_properties=[{"name": "Notiz", "type": "text"}, {"name": "Team", "type": "multi_select", "options": ["A", "B"]}],
+                       rename_properties=[{"property": "Aufwand", "name": "Stunden"}], add_options=[{"property": "Phase", "options": ["Test", "plan"]}],
+                       add_views=[{"type": "timeline", "date_by": "Fällig"}])
+    s2 = call("GET", f"/api/notes/{NDB}", A)[1]["schema"]
+    p2 = {p["name"]: p for p in s2["props"]}
+    ok("update_database_schema: ergaenzt, umbenannt (ID bleibt), Optionen ohne Doppelte, Ansicht", not err and "Notiz" in p2 and "Team" in p2
+       and p2.get("Stunden", {}).get("id") == pby["Aufwand"]["id"] and [o["name"] for o in p2["Phase"]["options"]] == ["Plan", "Bau", "Test"]
+       and any(v["type"] == "timeline" for v in s2["views"]), (txt[:300], list(p2)))
+    ok("update_database_schema: nichts geloescht (Web-Spalte, Werte der Zeile)", "Vom Web" in p2 and "Status" in p2
+       and call("GET", f"/api/notes/{ZR}", A)[1]["props"].get(pby["Aufwand"]["id"]) == 5)
+    ok("update_database_schema: Name schon vergeben -> Fehler", tool(T, "update_database_schema", id=NDB, add_properties=[{"name": "notiz"}])[0] is True
+       and tool(T, "update_database_schema", id=NDB, rename_properties=[{"property": "Notiz", "name": "Stunden"}])[0] is True)
+    ok("update_database_schema: leer -> Fehler", tool(T, "update_database_schema", id=NDB)[0] is True)
+    ok("update_database_schema: Optionen bei Text -> Fehler", tool(T, "update_database_schema", id=NDB, add_options=[{"property": "Notiz", "options": ["x"]}])[0] is True)
+    ok("update_database_schema: fremde Datenbank -> not_found", tool(T, "update_database_schema", id=BP, add_properties=[{"name": "x"}])[1].startswith("not_found"))
+    cur_s = call("GET", f"/api/notes/{NDB}", A)[1]["schema"]
+    call("PATCH", f"/api/notes/{NDB}", A, {"schema": dict(cur_s, locked=True)})
+    ok("update_database_schema: gesperrte Datenbank -> Fehler", tool(T, "update_database_schema", id=NDB, add_properties=[{"name": "Gesperrt"}])[0] is True)
+    call("PATCH", f"/api/notes/{NDB}", A, {"schema": dict(call("GET", f"/api/notes/{NDB}", A)[1]["schema"], locked=False)})
+
+    # Widgets
+    for i, (fertig, std) in enumerate(((True, 2), (False, 3), (True, 4))):
+        call("POST", "/api/notes", A, {"parent_id": NDB, "title": f"W{i}", "props": {pby["Fertig"]["id"]: fertig, pby["Aufwand"]["id"]: std}})
+    err, txt, _ = tool(T, "add_widget", page_id=DASH, kind="progress", title="Roadmap-Fortschritt", accent="green",
+                       cfg={"db": NDB, "mode": "checked", "prop": "Fertig"}, after_block="dh")
+    wout = jbody(txt)
+    WB = wout.get("block_id")
+    bl = blocks_of(DASH)
+    ok("add_widget progress aus Datenbank (Eigenschaft per Name), nach Block", not err and bl[1]["id"] == WB and bl[1]["type"] == "widget"
+       and bl[1]["data"]["cfg"] == {"src": "db", "db": NDB, "view": "", "mode": "checked", "prop": pby["Fertig"]["id"]} and bl[0]["id"] == "dh", (txt[:300], bl[:2]))
+    err, txt, _ = tool(T, "add_widget", page_id=DASH, kind="metric", title="Einträge", cfg={"db": NDB, "agg": "sum", "prop": "Stunden", "view": "Nach Phase"}, position="start")
+    WM = jbody(txt).get("block_id")
+    ok("add_widget metric am Anfang, Ansicht per Name", not err and blocks_of(DASH)[0]["id"] == WM and blocks_of(DASH)[0]["data"]["cfg"]["view"] == vby["board"]["id"], txt[:300])
+    err, txt, _ = tool(T, "add_widget", page_id=DASH, kind="countdown", title="Release", cfg={"date": "2026-12-24"})
+    ok("add_widget countdown am Ende", not err and blocks_of(DASH)[-1]["data"]["kind"] == "countdown", txt[:200])
+    err, txt, _ = tool(T, "get_widgets", page_id=DASH, timezone="Europe/Berlin")
+    gw = {w["block_id"]: w for w in jbody(txt).get("widgets") or []}
+    ok("get_widgets: Fortschritt 2 von 4, Summe 14 (Zeile 1 = 5)", not err and gw.get(WB, {}).get("value", {}).get("value") == 2
+       and gw[WB]["value"].get("max") == 4 and gw.get(WM, {}).get("value", {}).get("value") == 14, txt[:600])
+    err, txt, _ = tool(T, "update_widget", page_id=DASH, block_id=WM, title="Zeilen", cfg={"agg": "count"})
+    bw = next(b for b in blocks_of(DASH) if b["id"] == WM)
+    ok("update_widget: Titel + cfg ergaenzt (Quelle bleibt), Block-ID bleibt", not err and bw["data"]["title"] == "Zeilen" and bw["data"]["cfg"]["agg"] == "count"
+       and bw["data"]["cfg"]["db"] == NDB and jbody(tool(T, "get_widgets", page_id=DASH)[1])["widgets"][0]["value"]["value"] == 4, (txt[:300], bw))
+    ok("update_widget: kein Widget-Block -> Fehler", tool(T, "update_widget", page_id=DASH, block_id="dh", title="x")[0] is True)
+    ok("add_widget: unbekannte Art -> Fehler", tool(T, "add_widget", page_id=DASH, kind="kaputt")[0] is True)
+    ok("add_widget: unbekannte Eigenschaft -> Fehler", tool(T, "add_widget", page_id=DASH, kind="metric", cfg={"db": NDB, "agg": "sum", "prop": "Gibtsnicht"})[0] is True)
+    ok("add_widget: fremde Datenbank als Quelle -> not_found", tool(T, "add_widget", page_id=DASH, kind="metric", cfg={"db": BP})[1].startswith("not_found"))
+    TWP = call("POST", "/api/account/api-tokens", A, {"name": "nur Seiten", "scopes": ["mcp", "write:pages"]})[1]["token"]
+    ok("add_widget mit Datenbank-Quelle ohne read:db -> insufficient_scope", "insufficient_scope" in tool(TWP, "add_widget", page_id=DASH, kind="metric", cfg={"db": NDB})[1])
+    ok("add_widget Aufgaben-Quelle ohne read:tasks -> insufficient_scope", "insufficient_scope" in tool(TWP, "add_widget", page_id=DASH, kind="metric", cfg={"src": "tasks"})[1])
+    gw2 = {w["block_id"]: w for w in jbody(tool(TWP, "get_widgets", page_id=DASH)[1]).get("widgets") or []}
+    ok("get_widgets ohne read:db: Datenbank-Werte no_access", gw2.get(WB, {}).get("value", {}).get("error") == "no_access", gw2)
+    err, txt, _ = tool(TRD, "add_widget", page_id=DASH, kind="metric", cfg={"db": D})
+    ok("roots: Widget-Quelle ausserhalb -> not_found", txt.startswith("not_found"), txt)
+    err, txt, _ = tool(T, "embed_database", page_id=DASH, database_id=D, after_block="dh")
+    ids = [b["id"] for b in blocks_of(DASH)]
+    ok("embed_database nach Block", not err and blocks_of(DASH)[ids.index("dh") + 1]["data"].get("db") == D, txt)
+    ok("embed_database: fremde Datenbank -> not_found", tool(T, "embed_database", page_id=DASH, database_id=BP)[1].startswith("not_found"))
 
     # Batch
     st, d, _ = call("POST", "/mcp", b=[{"jsonrpc": "2.0", "id": 1, "method": "ping"}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}], bearer=T)

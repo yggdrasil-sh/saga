@@ -27,7 +27,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from saga import api_v1, apitok, blockedit
+from saga import api_struct, api_v1, apitok, blockedit, page_widgets
 from saga.api_v1 import Fail
 from saga.core import BASE_URL, t
 from version import VERSION
@@ -106,6 +106,49 @@ TOOLS = [
     ("archive_page", "write:pages", "Seite samt Unterseiten archivieren (archived: true) oder zurückholen (false). Archivierte "
      "Seiten fehlen im Seitenbaum und in der Suche, bleiben per Link erreichbar. Nur eigene Seiten.",
      {"id": _s("integer", "ID der Seite"), "archived": _s("boolean", "true = archivieren (Standard), false = zurückholen")}, ["id"], True),
+    ("create_database", ("write:db", "write:pages"), "Neue Datenbank anlegen (wie im Web: Titel-Spalte, Ansichten). properties: "
+     "[{\"name\": \"Status\", \"type\": \"status\"}, {\"name\": \"Phase\", \"type\": \"select\", \"options\": [\"Plan\", \"Bau\"]}, "
+     "{\"name\": \"Fällig\", \"type\": \"date\"}] – Typen: text, number, select, multi_select, status (Auswahl mit Gruppen "
+     "Offen/In Arbeit/Erledigt), date, checkbox, url, created, edited, person, files, relation (target = ID einer Datenbank). "
+     "Ohne properties: Status + Datum wie im Web. views: [{\"type\": \"board\", \"group_by\": \"Status\"}] – Typen table, board, "
+     "list, gallery, calendar, timeline (date_by), chart; Standard Tabelle + Board. embed_in_page: true bettet die Datenbank "
+     "zusätzlich als Block in die Elternseite ein. Formeln/Rollups bitte im Web anlegen.",
+     {"title": _s("string", "Name der Datenbank"), "parent_id": _s("integer", "ID der Elternseite (bei Token mit Seitenbäumen Pflicht)"),
+      "icon": _s("string", "Symbol (Emoji)"), "properties": _s("array", "Eigenschaften", items={"type": "object"}),
+      "views": _s("array", "Ansichten", items={"type": "object"}), "title_name": _s("string", "Name der Titel-Spalte (Standard: Name)"),
+      "embed_in_page": _s("boolean", "true = in die Elternseite einbetten")}, ["title"], True),
+    ("update_database_schema", "write:db", "Schema einer Datenbank ergänzen – löscht nie etwas. add_properties (wie bei "
+     "create_database), rename_properties [{\"property\": \"Alt\", \"name\": \"Neu\"}], add_options [{\"property\": \"Phase\", "
+     "\"options\": [\"Test\"]}], add_views [{\"type\": \"calendar\", \"date_by\": \"Fällig\"}], title_name.",
+     {"id": _s("integer", "ID der Datenbank"), "add_properties": _s("array", "neue Eigenschaften", items={"type": "object"}),
+      "rename_properties": _s("array", "Umbenennungen", items={"type": "object"}),
+      "add_options": _s("array", "neue Auswahl-Optionen", items={"type": "object"}),
+      "add_views": _s("array", "neue Ansichten", items={"type": "object"}), "title_name": _s("string", "neuer Name der Titel-Spalte")},
+     ["id"], True),
+    ("embed_database", ("write:pages", "read:db"), "Eine Datenbank als Block in eine Seite einbetten (Tabelle/Board direkt auf der Seite).",
+     {"page_id": _s("integer", "ID der Seite"), "database_id": _s("integer", "ID der Datenbank"),
+      "position": _s("string", "end (Standard) oder start", enum=["end", "start"]), "after_block": _s("string", "Block-ID, nach der eingefügt wird")},
+     ["page_id", "database_id"], True),
+    ("add_widget", "write:pages", "Widget als Block in eine Seite einfügen (z. B. Dashboard-Seite). kind: clock (cfg tz, h24), "
+     "countdown (cfg date JJJJ-MM-TT, time, dir until|since), progress (cfg src fixed: value, max | src db: db, view, mode "
+     "checked + prop (Kontrollkästchen) oder sum + prop + goal | src tasks), metric (cfg db, view, agg count|sum|avg|min|max|"
+     "pct_checked, prop, fmt num|pct|eur, goal | src tasks: agg open|due_today|overdue|done_week), quote (cfg items [Texte] | "
+     "src db: db, prop), chart (cfg db, view, type bar|line|pie, x, y), subpages (cfg view list|gallery), habit, upcoming, "
+     "weather, reading. Eigenschaften und Ansichten per Name oder ID. size s|m|l, style card|plain, accent gray…red. "
+     "Position: end (Standard), start oder after_block.",
+     {"page_id": _s("integer", "ID der Seite"), "kind": _s("string", "Art des Widgets", enum=list(page_widgets.KINDS)),
+      "title": _s("string", "Titel"), "size": _s("string", "s, m oder l"), "style": _s("string", "card oder plain"),
+      "accent": _s("string", "Farbe (gray, brown, orange, yellow, green, blue, purple, pink, red)"),
+      "cfg": _s("object", "Einstellungen je Art"), "position": _s("string", "end oder start", enum=["end", "start"]),
+      "after_block": _s("string", "Block-ID, nach der eingefügt wird")}, ["page_id", "kind"], True),
+    ("update_widget", "write:pages", "Widget auf einer Seite ändern: angegebene Felder ersetzen, cfg wird ergänzt (gleiche Art) "
+     "bzw. neu gesetzt (andere Art). block_id aus get_page (blocks: true) oder get_widgets.",
+     {"page_id": _s("integer", "ID der Seite"), "block_id": _s("string", "ID des Widget-Blocks"), "kind": _s("string", "neue Art (optional)"),
+      "title": _s("string", "Titel"), "size": _s("string", "s, m oder l"), "style": _s("string", "card oder plain"),
+      "accent": _s("string", "Farbe"), "cfg": _s("object", "Einstellungen (werden ergänzt)")}, ["page_id", "block_id"], True),
+    ("get_widgets", "read:pages", "Widgets einer Seite mit ihren aktuellen Werten (Fortschritt, Kennzahl …).",
+     {"page_id": _s("integer", "ID der Seite"), "timezone": _s("string", "Zeitzone (IANA, z. B. Europe/Berlin) für „heute“")},
+     ["page_id"], False),
     ("list_databases", "read:db", "Datenbanken auflisten (optional nach Name filtern).",
      {"query": _s("string", "Teil des Namens")}, [], False),
     ("get_database_schema", "read:db", "Eigenschaften (Spalten) einer Datenbank mit Typ und Auswahl-Optionen.",
@@ -345,6 +388,30 @@ def call_tool(tok, name, a):
             raise Fail(400, t("„archived“ muss true oder false sein."))
         _, d = api_v1.page_archive(tok, _int(a, "id"), on)
         return (t("Archiviert ({n} Seiten).", n=d["count"]) if on else t("Zurückgeholt ({n} Seiten).", n=d["count"]))
+    if name == "create_database":
+        b = {k: a[k] for k in ("title", "icon", "properties", "views", "title_name", "embed_in_page") if a.get(k) is not None}
+        b["parent_id"] = _int(a, "parent_id", False)
+        _, d = api_struct.database_create(tok, b)
+        return _data(d, f"database:{d['id']}")
+    if name == "update_database_schema":
+        _, d = api_struct.schema_update(tok, _int(a, "id"), a)
+        return _data(d, f"database:{d['id']}")
+    if name == "embed_database":
+        b = dict(a, database_id=_int(a, "database_id"), rev=_rev(a, False))
+        _, d = api_struct.database_embed(tok, _int(a, "page_id"), b)
+        return json.dumps(d, ensure_ascii=False)
+    if name == "add_widget":
+        _, d = api_struct.widget_add(tok, _int(a, "page_id"), dict(a, rev=_rev(a, False)))
+        return _data(d, f"page:{a.get('page_id')}")
+    if name == "update_widget":
+        _, d = api_struct.widget_update(tok, _int(a, "page_id"), dict(a, rev=_rev(a, False)))
+        return _data(d, f"page:{a.get('page_id')}")
+    if name == "get_widgets":
+        tz = a.get("timezone")
+        if tz is not None and not isinstance(tz, str):
+            raise Fail(400, t("Unbekannte Zeitzone"))
+        _, d = api_struct.widgets_get(tok, _int(a, "page_id"), tz or None)
+        return _data(d, f"page:{a.get('page_id')}")
     if name == "list_databases":
         _, d = api_v1.databases(tok, a.get("query") or "", 50)
         return _data(d["databases"], "databases")
