@@ -903,7 +903,16 @@ n.Load()                                                    // Lastmeldung §2.6
   - UDP-Kandidat = öffentliche Adresse (`HORN_PUBLIC_IP` bzw. Adressen von `HORN_NAME`) + **lokaler** UDP-Port
     (`HORN_UDP_LISTEN`, sonst `HORN_PORT`). Hinter einer TLS-Durchreiche (Traefik `HostSNI`) kommt kein UDP an: den Port
     direkt mit gleicher Nummer veröffentlichen. Der Selbsttest (`udp_check` im `hello`: `ok`/`aus`/`fehlt`) steht in
-    Admin → Anrufe in der Spalte „Weg“.
+    Admin → Anrufe in der Spalte „Weg“. Der Test läuft im Hintergrund; sein Ergebnis geht zusätzlich als Meldung
+    `udp {udp, udp_check}` an Saga (2.5: vorher meldete das hello oft „unbekannt“, weil der Steuerkanal schneller stand),
+    bei `fehlt` wiederholt er sich nach 1, 5 und 15 min, dann alle 30 min.
+  - **Zertifikat (2.5):** wie bei gekoppelten Knoten – ohne eigene Dateien und ohne `HORN_TLS_SELF` wartet der eingebaute
+    Knoten (Zustand `wait`), bis Saga im `welcome` `cert: dns01` (Cloudflare-Token in Saga) oder `alpn` schickt; `acme_txt`
+    und `cert` laufen über denselben Steuerkanal. Saga bietet ihn erst an, wenn er ein gültiges Zertifikat meldet
+    (`ok`, bzw. `self` mit `HORN_TLS_SELF`). TLS-ALPN-01 klappt nur, wenn `<Name>:443` beim Knoten ankommt; hinter einer
+    TLS-Durchreiche `HORN_PUBLIC_URL` ohne Port setzen (sonst nennt der Knoten `https://<Name>:<HORN_PORT>`).
+  - **Zustand für den Admin-Bereich:** saga-media meldet per `POST /internal/horn/state`, ob der Knoten läuft bzw. warum
+    nicht (`nocert`, `port`, `portperm`, `exit` mit bereinigter Fehlerzeile), Backoff bis 10 min bei gleichem Grund.
 - **Steuerkanal `horn-ctl/1`** (`ctl.go`, Gegenstück `saga/horn.py`): ausgehende WebSocket-Verbindung. `challenge` →
   `hello` (signiert mit dem Knotenschlüssel `HORN_DATA/node.key`) → `welcome {node_id, saga_pub, origin, rooms}`, danach
   Folgenummern je Richtung. Saga → Knoten: `open`, `close`, `kick`, `ping`. Knoten → Saga: `load` (alle 5 s: cpu, mem,

@@ -40,7 +40,9 @@ import (
 // Saga -> Knoten: open {call_ref, max_peers}, close {call_ref}, kick {call_ref, peer_ref}, ping, drain {on},
 //   peers {solo}, version {want}, cert {cert: dns01|alpn}, acme_txt {rid, ok, err} (Antwort), remove {sig}.
 // Knoten -> Saga: load (alle 5 s, §2.6), closed {call_ref, why}, pong, addr {v4, v6}, cert {mode, state, not_after,
-//   err}, update {state, want, err}, acme_txt {rid, op: set|del, name, value} (DNS-01, nur fuer den eigenen Namen).
+//   err}, update {state, want, err}, acme_txt {rid, op: set|del, name, value} (DNS-01, nur fuer den eigenen Namen),
+//   udp {udp, udp_check} (2.5: Ergebnis des UDP-Selbsttests nach dem hello bzw. bei Wiederholung). cert, acme_txt und
+//   udp auch vom eingebauten Knoten (2.5).
 
 const ctlProto = "horn-ctl/1"
 
