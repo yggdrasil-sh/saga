@@ -208,7 +208,7 @@ try:
     # Web speichert das Schema zurueck (wie beim Bearbeiten im Web): Filter bleiben unveraendert
     s_web = call("GET", f"/api/notes/{D}", A)[1]["schema"]
     st, _ = call("PATCH", f"/api/notes/{D}", A, {"schema": s_web})
-    ok("Web speichert das Schema unveraendert zurueck (Filter bleiben)", st == 200 and next(v for v in schema(D)["views"] if v["id"] == v25["id"]).get("filters") == v25["filters"])
+    ok("Web speichert das Schema unveraendert zurueck (Filter bleiben)", st == 200 and next(v for v in schema(D)["views"] if v["id"] == v25["id"]).get("filters") == v25.get("filters") != None)  # noqa: E711
     # klare 400
     bad = [([{"property": "Gibtsnicht", "op": "is", "value": "2.5"}], "Unbekannte Eigenschaft"),
            ([{"property": "Meilenstein", "op": "is", "value": "9.9"}], "Option „9.9“"),
