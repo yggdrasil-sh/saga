@@ -4359,7 +4359,7 @@
     if (!k) return;
     var b = [].filter.call(p.querySelectorAll('[data-k]'), function (x) { return x.dataset.k === k; })[0];
     if (b && !b.disabled) b.focus();
-    else { var h = p.querySelector('.cl-away-h b, .cl-plist-h b'); if (h) { h.tabIndex = -1; h.focus(); } }
+    else { var h = p.querySelector('.cl-away-h b, .cl-plist-h b'); if (h) { h.tabIndex = -1; h.dataset.k = 'h'; h.focus(); } }
   }
   function awayList(R, p) {
     R = roomOf(R);
@@ -4369,7 +4369,7 @@
     rows.sort(function (a, b) { return INV_ORDER[a.st] - INV_ORDER[b.st]; });
     var box = el('div', 'cl-away'); box.setAttribute('role', 'group');
     var hd = el('div', 'cl-away-h'), n = rows.length + (R.invMore || 0);
-    var hb = el('b', null, T('Nicht dabei ({n})', { n: n })); hb.id = 'cl-away-h-' + R.id.slice(0, 8);
+    var hb = el('b', null, T('Nicht dabei ({n})', { n: n })); hb.id = 'cl-away-h-' + R.id.slice(0, 8); hb.tabIndex = -1; hb.dataset.k = 'h';
     box.setAttribute('aria-labelledby', hb.id); hd.appendChild(hb);
     var again = rows.filter(function (r) { return r.st === 'missed' || r.st === 'declined' || r.st === 'none'; });
     if (again.length > 1) {
@@ -4407,10 +4407,16 @@
     R = roomOf(R);
     if (!xs.length || R.done) return;
     var until = Date.now() + 15000, who = xs.map(function (x) { return x.who; });
+    var fk = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.k : '';
     R.invPend = R.invPend || {};
     who.forEach(function (u) { R.invPend[u] = until; });
     invDraw(R);
-    var undo = function () { who.forEach(function (u) { if (R.invPend[u] === until) delete R.invPend[u]; }); invDraw(R); };
+    var undo = function () {
+      who.forEach(function (u) { if (R.invPend[u] === until) delete R.invPend[u]; });
+      invDraw(R);
+      var a = document.activeElement, p = R.ui && R.ui.w.querySelector('.cl-plist');   // Tastatur: zurueck auf den Knopf
+      if (fk && p && (!a || a === document.body || p.contains(a))) focusBack(p, fk);
+    };
     api('POST', '/api/calls/' + R.id + '/invite', { uids: who }).then(function (d) {
       who.forEach(function (u) { if (R.invPend[u] === until) delete R.invPend[u]; });
       if (live(R) && invIn(R, d)) invDraw(R);
@@ -4568,7 +4574,15 @@
       }).catch(function () {});
     } else if (t === 'call.signal') signalIn(d);
     else if (t === 'call.invite') {                   // 2.4: Gruppenanruf klingelt (grosse Gruppen: still, nur die Leiste)
-      if (!(C && C.id === d.call_id)) ring(Object.assign({}, d, { group: true }));
+      if (C && C.id === d.call_id) { /* schon dabei */ }
+      else if (GONE[d.call_id]) {                     // 2.5 (L7): erneut geklingelt (dieses Klingeln war schon vorbei) -
+        api('GET', '/api/calls/' + d.call_id).then(function (r) {      // nur, wenn die Einladung jetzt wirklich klingelt
+          var k = r.call;
+          if (!k || k.state === 'ended' || k.invite !== 'ringing' || (k.mine || []).length || (C && C.id === d.call_id)) return;
+          delete GONE[d.call_id];
+          ring(Object.assign({}, d, { group: true, expires_in: k.invite_since && k.now ? Math.max(5, k.invite_since + (k.ring_s || 45) - k.now) : undefined }));
+        }).catch(function () {});
+      } else ring(Object.assign({}, d, { group: true }));
       runCheck();
     } else if (t === 'call.topo') {                   // Horn-Fix: Anruf ueber Knoten laeuft jetzt direkt
       if (C && C.id === d.call_id && C.horn && d.topo === 'mesh') hornToMesh(C, null);
