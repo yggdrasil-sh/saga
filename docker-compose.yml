@@ -1,7 +1,8 @@
 # Saga
 # Start:  cp .env.example .env  &&  .env ausfuellen  &&  docker compose up -d --build
 #
-# Hauptseite: Port 8080 (HOST_PORT) - hinter einen Reverse Proxy mit HTTPS stellen.
+# Hauptseite: Port 8080 (HOST_PORT) - hinter einen Reverse Proxy mit HTTPS stellen. Oder ab 2.5 "Ein Name, ein Port":
+#   Saga nimmt HTTPS auf 443 selbst an (SAGA_TLS=1, siehe unten bei ports und ANLEITUNG Abschnitt 3).
 # Admin-Bereich: Port 8081 (ADMIN_PORT) - standardmaessig NUR auf 127.0.0.1 (ADMIN_BIND),
 #   z. B. per SSH-Tunnel oeffnen: ssh -L 8081:127.0.0.1:8081 server  ->  http://localhost:8081
 # Websuche (SearXNG) ist optional: COMPOSE_PROFILES=search in der .env.
@@ -47,6 +48,13 @@ services:
       # (alle teilen sich die Fehlversuch-Bremse) - Reverse Proxy auf dem Host oder IPv6 im Docker-Netz (ANLEITUNG Abschnitt 3)
       - "${HOST_BIND:-0.0.0.0}:${HOST_PORT:-8080}:8080"
       - "${ADMIN_BIND:-127.0.0.1}:${ADMIN_HOST_PORT:-8081}:8081"
+      # 2.5 "Ein Name, ein Port" (SAGA_TLS=1 in .env, ANLEITUNG Abschnitt 3): Saga nimmt HTTPS selbst an, Anrufe laufen
+      # ueber denselben Port - ohne Proxy:
+      # - "443:443/tcp"
+      # - "443:443/udp"          # optional, schnellere Anrufe (dieselbe Nummer)
+      # hinter einem Proxy mit TLS-Durchreiche + PROXY-Kopf (TLS_PROXY_PROTOCOL=1) nur fuer den Proxy, z. B.:
+      # - "100.64.0.10:8443:443/tcp"
+      # 8080 bleibt fuer den Healthcheck und als Rueckweg; dann nicht nach aussen veroeffentlichen (HOST_BIND=127.0.0.1).
       # 2.5 Gjallarhorn (Feature-Flag calls.horn): eingebauter Knoten fuer grosse Gruppenanrufe auf HORN_PORT (8443).
       # Mit eigenem Namen (z. B. horn-0.example.org) per TLS-Durchreiche (SNI) am Reverse Proxy oder per Portfreigabe:
       # - "${HORN_BIND:-0.0.0.0}:${HORN_HOST_PORT:-8443}:8443/tcp"

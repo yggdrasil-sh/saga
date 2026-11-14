@@ -220,6 +220,126 @@ Datei-Uploads ab `ATTACH_MAX_MB` (+ etwas Formular-Rahmen), im Admin-Bereich ab 
 Proxy (wie oben, etwas über `ATTACH_MAX_MB`) ist trotzdem empfehlenswert: Dann kommen riesige Anfragen gar nicht
 erst bis zu Saga. Erhöhst du `ATTACH_MAX_MB`, die Grenze im Proxy mit anheben.
 
+### Ein Name, ein Port (443)
+
+Ab 2.5 kann Saga HTTPS **selbst** annehmen und den Port mit dem eingebauten Gjallarhorn-Knoten teilen: Webseite,
+Apps, Föderation und Anrufe (TURN über TLS, ICE-TCP) laufen dann über **einen Namen** (den aus `BASE_URL`) und
+**einen Port** (443/TCP). Ein eigener Name für den Knoten (`horn-0…`) und ein zweiter Port entfallen; Web und Apps
+brauchen nichts Neues. Im Container liest saga-media nur den Anfang jeder Verbindung: Browser und Apps (ALPN
+`http/1.1`) bedient Saga, TURN-TLS, TLS-ALPN-01 und rohes ICE-TCP bekommt der Knoten samt Socket (er sieht die echte
+Gegenstelle, seine TCP-Maßnahmen wirken wie auf eigenen Verbindungen). HTTP/2 ist in dieser Stufe aus.
+
+**Zertifikat** für den Namen aus `BASE_URL`:
+
+- **Mit Cloudflare-Token** (Admin → Anrufe → DNS): Der eingebaute Knoten holt es per **DNS-01** – das geht auch,
+  solange Port 443 noch gar nicht bei Saga ankommt. Erneuerung 30 Tage vor Ablauf.
+- **Ohne Token:** per **TLS-ALPN-01** – klappt nur, wenn `<Name>:443` bei Saga ankommt (hinter einem Proxy darf der
+  die Prüfung nicht selbst beantworten).
+- **Eigene Dateien** (z. B. certbot mit einem anderen DNS-Anbieter): `SAGA_TLS_CERT`/`SAGA_TLS_KEY`. Saga lädt sie ohne
+  Neustart neu (`SAGA_TLS_RELOAD_S`, Standard 30 s).
+
+Saga beantwortet HTTPS auf diesem Port **erst mit gültigem Zertifikat** für den Namen (Saga sendet HSTS: ein Browser,
+der Saga kennt, ließe ein falsches Zertifikat nicht einmal wegklicken). Admin → Anrufe zeigt im Kasten **„Betriebsart:
+Ein Port“** das Zertifikat (gültig bis …, Weg), den PROXY-Kopf und den Knoten.
+
+**(a) Ohne Proxy** – Saga steht direkt im Internet:
+
+```
+# .env
+BASE_URL=https://saga.example.org
+SAGA_TLS=1                  # TLS_LISTEN=:443 ist der Standard
+```
+```yaml
+# docker-compose.yml, Dienst saga -> ports
+      - "443:443/tcp"
+      - "443:443/udp"       # optional: UDP für schnellere Anrufe (dieselbe Nummer)
+```
+
+Docker erlaubt Ports unter 1024 im Container ohne Sonderrechte (seit 20.10). Geht das bei dir nicht: `TLS_LISTEN=:8443`
+und `"443:8443/tcp"` – die Kandidaten nennen trotzdem den Port aus `BASE_URL`, UDP fällt dann weg.
+
+**(b) Hinter einem Proxy mit TLS-Durchreiche + PROXY-Protokoll.** Der Proxy reicht Verbindungen für den Namen **ohne
+TLS zu beenden** an Saga weiter (L4, SNI) und schickt vorneweg den **PROXY-Kopf** (v2, nginx: v1) mit der Adresse des
+Besuchers. Ohne Kopf sähe Saga alle mit der Adresse des Proxys (Fehlversuch-Bremse, Grenzen je Adresse) – deshalb
+weist Saga mit `TLS_PROXY_PROTOCOL=1` jede Verbindung **ohne** Kopf ab.
+
+```
+# .env
+BASE_URL=https://saga.example.org
+SAGA_TLS=1
+TLS_PROXY_PROTOCOL=1
+HORN_UDP=0                  # UDP kommt durch die Durchreiche nicht
+```
+```yaml
+# docker-compose.yml: nur für den Proxy veröffentlichen, z. B. an die Tunnel-Adresse gebunden
+      - "100.64.0.10:8443:443/tcp"
+```
+
+- **NetBird (ab 0.67):** statt des HTTP-Dienstes einen **L4-Dienst vom Typ TLS** für `saga.example.org` → Saga-Host
+  Port 8443 anlegen, Option **PROXY Protocol** an (`"options": {"proxy_protocol": true}`). Auch hinter einem
+  Traefik auf dem VPS (`HostSNI(*)` → NetBird) kommt die echte Adresse des Besuchers an.
+- **Traefik** (dynamische Konfiguration):
+  ```yaml
+  tcp:
+    routers:
+      saga:
+        entryPoints: [websecure]
+        rule: "HostSNI(`saga.example.org`)"
+        service: saga
+        tls:
+          passthrough: true
+    services:
+      saga:
+        loadBalancer:
+          servers:
+            - address: "10.0.0.5:8443"
+          serversTransport: pp
+    serversTransports:
+      pp:
+        proxyProtocol:
+          version: 2
+  ```
+  (Traefik vor 3.5.2: statt `serversTransport` unter `loadBalancer` direkt `proxyProtocol: {version: 2}`.)
+- **nginx** (`stream`, nicht `http`):
+  ```nginx
+  stream {
+      map $ssl_preread_server_name $saga_up { saga.example.org 10.0.0.5:8443; default 127.0.0.1:9; }
+      server {
+          listen 443;
+          ssl_preread on;
+          proxy_pass $saga_up;
+          proxy_protocol on;      # nginx schickt v1 – Saga nimmt v1 und v2
+      }
+  }
+  ```
+- **Caddy:** nur mit dem Modul caddy-l4 (`tls` mit `sni`, Handler `proxy_protocol` + `proxy`); das normale Caddy beendet
+  TLS selbst → (c).
+- **HAProxy:** `mode tcp`, `tcp-request inspect-delay 5s`, `use_backend saga if { req.ssl_sni -i saga.example.org }`,
+  im Backend `server saga 10.0.0.5:8443 send-proxy-v2`.
+
+Auf dem Rechner mit dem Proxy außerdem `net.ipv4.tcp_notsent_lowat = 16384` setzen (`gjallarhorn/NODE.md`, „Hinter
+einer TLS-Durchreiche“). Rohes ICE-TCP kommt durch eine Durchreiche nicht – der Knoten bietet es dann nicht an, Geräte
+nehmen gleich TLS (keine Wartezeit).
+
+**(c) Proxy beendet TLS selbst** (HTTP-Dienst, Caddy/Traefik/nginx als HTTP-Proxy, Cloudflare mit orangener Wolke):
+Hier passt „Ein Port“ nicht. `SAGA_TLS` aus lassen, der Proxy spricht wie bisher Port 8080 an. Der eingebaute Knoten
+taugt dann nur intern; für große Gruppenanrufe kommt mit **Erweitern** ein Knoten mit eigenem Namen dazu (oder der
+eingebaute mit eigenem Namen, siehe unten „Eingebauter Knoten hinter einem L4-Proxy“).
+
+**Umstieg ohne Ausfall** (von einem HTTP-Proxy auf 8080):
+
+1. Saga aktualisieren, in der `.env` `SAGA_TLS=1` (und ggf. `TLS_PROXY_PROTOCOL=1`) setzen, den Port in der
+   `docker-compose.yml` ergänzen, neu starten. Alte `HORN_NAME`/`HORN_PUBLIC_URL` für den eingebauten Knoten werden in
+   dieser Betriebsart ignoriert und können raus.
+2. Zertifikat abwarten, **solange der alte Weg noch läuft**: mit Cloudflare-Token per DNS-01. Admin → Anrufe muss
+   „Gültig bis …“ zeigen.
+3. Proxy umstellen (HTTP-Dienst aus, TLS-Durchreiche mit PROXY-Kopf an bzw. Portfreigabe 443).
+4. Prüfen: Anmelden, Admin → Anrufe „PROXY-Kopf: Erkannt“, „Übernimmt TURN über TLS ✓“, Gruppenanruf.
+5. **Rückweg:** Proxy wieder als HTTP-Dienst auf Port 8080 stellen – Saga braucht nichts, `BASE_URL` bleibt gleich.
+
+Port 8080 bleibt in jeder Betriebsart (Healthcheck des Images, Rückweg), der Admin-Bereich (8081) läuft nie über den
+TLS-Eingang. Beide nicht nach außen öffnen.
+
 ### Medienpfad (saga-media)
 
 Ab 2.4 steckt im Container ein kleiner Zusatzdienst **saga-media** (Go, nur Standardbibliothek, Quelltext in `media/`).
@@ -2205,6 +2325,10 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / erzeugt | Erstes Admin-Konto |
 | `HOST_BIND` / `HOST_PORT` | `0.0.0.0` / `8080` | Wo Saga auf dem Server lauscht |
 | `ADMIN_BIND` / `ADMIN_HOST_PORT` | `127.0.0.1` / `8081` | Wo der Admin-Bereich lauscht |
+| `SAGA_TLS` / `TLS_LISTEN` | aus / `:443` | „Ein Name, ein Port“: Saga nimmt HTTPS selbst an, Anrufe über denselben Port (Abschnitt 3) |
+| `TLS_PROXY_PROTOCOL` | `0` | `1` = PROXY-Kopf (v2/v1) vor jeder Verbindung verlangen (TLS-Durchreiche am Proxy) |
+| `SAGA_TLS_CERT` / `SAGA_TLS_KEY` | – | eigene Zertifikatsdateien statt DNS-01/TLS-ALPN-01 über den eingebauten Knoten |
+| `SAGA_TLS_RELOAD_S` | `30` | so oft prüft Saga die Zertifikatsdateien (neu laden ohne Neustart) |
 | `TRUSTED_PROXIES` | `127.0.0.1` | IPs des Reverse Proxys (`*` = alle) |
 | `CANONICAL_REDIRECT` | `true` | Andere Hostnamen auf `BASE_URL` umleiten |
 | `HSTS` | `true` | Bei `https://` in `BASE_URL`: `Strict-Transport-Security: max-age=31536000` (ohne `includeSubDomains`/`preload`); `false` schaltet es ab |

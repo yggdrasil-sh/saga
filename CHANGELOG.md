@@ -16,6 +16,34 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – Ein Name, ein Port: Saga und Anrufe über 443 ohne zweiten Namen
+- **`SAGA_TLS=1`:** Saga nimmt HTTPS selbst an (`TLS_LISTEN`, Standard `:443`) und teilt den Port mit dem eingebauten
+  Gjallarhorn-Knoten. saga-media liest nur den Anfang jeder Verbindung: Browser und Apps (ALPN `http/1.1`) bedient Saga,
+  TURN-TLS, TLS-ALPN-01 und rohes ICE-TCP übergibt es samt Socket an den Knoten (`SCM_RIGHTS`; echte Gegenadresse,
+  BBR/Nachläufer wirken wie auf eigenen Sockets). Kandidaten-URL des eingebauten Knotens = Saga-Adresse; Web und Apps
+  brauchen nichts Neues. Ein eigener Name für den Knoten (`horn-0…`) und ein zweiter Port entfallen. HTTP/2 vorerst aus.
+- **Hinter einem Proxy** mit TLS-Durchreiche (NetBird L4 „TLS“, Traefik `HostSNI` + `passthrough`, nginx `stream` +
+  `ssl_preread`, HAProxy `mode tcp`, caddy-l4): `TLS_PROXY_PROTOCOL=1` – Saga verlangt dann den PROXY-Kopf (v2, nginx v1)
+  und sieht die echte Adresse der Besucher (Fehlversuch-Bremse, Grenzen je Adresse, auch am Knoten:
+  `HORN_MAX_PER_IP` zählt echte Adressen). Verbindungen ohne Kopf weist Saga ab und nennt das im Admin-Bereich.
+- **Zertifikat** für den Namen aus `BASE_URL`: per DNS-01 über den Cloudflare-Token (holt der eingebaute Knoten, geht vor
+  dem Umstieg), sonst TLS-ALPN-01, oder eigene Dateien (`SAGA_TLS_CERT`/`SAGA_TLS_KEY`). Neu laden ohne Neustart; HTTPS
+  erst mit gültigem Zertifikat für den Namen (HSTS). Der Knoten läuft in dieser Betriebsart immer (auch ohne
+  `calls.horn`, dann nur für das Zertifikat).
+- **Admin → Anrufe:** Kasten „Betriebsart: Ein Port“ mit Zertifikat (gültig bis, Weg), PROXY-Kopf (erkannt/abgewiesen)
+  und Knoten. Anleitung Abschnitt 3 „Ein Name, ein Port (443)“ (ohne Proxy, Durchreiche mit PROXY-Kopf, Proxy mit
+  eigenem TLS, Umstieg mit Rückweg). Port 8080 bleibt (Healthcheck, Rückweg).
+- **Kein ICE-TCP hinter einer Durchreiche** (`HORN_ICE_TCP` 0|1|auto, alle Knoten): Kandidat `tcp: false`, das Web nimmt
+  gleich TURN-TLS statt bis zu 4 s auf ICE-TCP zu warten; ältere Apps bekommen ein sofortiges 400 und fallen ohne
+  Wartezeit zurück. `auto`: aus, wenn `HORN_PUBLIC_URL` einen anderen Port nennt als den, auf dem der Knoten lauscht.
+
+### Behoben – Gjallarhorn: Zertifikate laufen nicht mehr unbemerkt ab
+- Knoten melden ihr Zertifikat alle 12 h und bei jeder Änderung; Saga bietet einen Knoten mit abgelaufenem Zertifikat
+  nicht mehr an (vorher „Bereit“ bis zum Neustart).
+- Cloudflare-Token entfernt, DNS-01-Zertifikat vorhanden: der Knoten behält die Datei bis 30 Tage vor Ablauf und wechselt
+  dann auf TLS-ALPN-01 – vorher wurde es nie mehr erneuert. Ein Zertifikat für einen anderen Namen gilt als fehlend und
+  wird neu ausgestellt.
+
 ### Behoben – Gjallarhorn: eingebauter Knoten sichtbar, mit Zertifikat und nur mit Zertifikat bereit
 - **Admin → Anrufe → Knoten** zeigt immer eine Zeile **„Eingebaut“** (wenn Gjallarhorn an ist): „Startet …“,
   „Startet nicht“ mit verständlichem Grund (kein eigener Name/Zertifikat, Port belegt, Port unter 1024, sonstiger Abbruch

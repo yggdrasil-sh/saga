@@ -897,7 +897,7 @@ n.Load()                                                    // Lastmeldung §2.6
 ## Saga-Steuerung (P3)
 
 - **Eingebauter Knoten:** saga-media startet `gjallarhorn node`, solange das Feature-Flag `calls.horn` an ist
-  (`media/horn.go`). Umgebung: `HORN_MODE=node`, `HORN_LISTEN=:HORN_PORT` (Standard 8443), `HORN_DATA=STATE_DIR/horn`,
+  (`media/horn.go`; mit `SAGA_TLS=1` immer, siehe „Ein Name, ein Port“). Umgebung: `HORN_MODE=node`, `HORN_LISTEN=:HORN_PORT` (Standard 8443), `HORN_DATA=STATE_DIR/horn`,
   `HORN_SAGA_CTL=ws://127.0.0.1:<intern>/api/horn/ctl` und das Geheimnis `HORN_CTL_KEY`. Weitere `HORN_*` (Name,
   `HORN_PUBLIC_URL`, `HORN_TLS_*`, `HORN_UDP` …) reicht saga-media durch. Saga selbst bekommt nie UDP.
   - UDP-Kandidat = öffentliche Adresse (`HORN_PUBLIC_IP` bzw. Adressen von `HORN_NAME`) + **lokaler** UDP-Port
@@ -930,6 +930,51 @@ n.Load()                                                    // Lastmeldung §2.6
   an (P5; bis P6 für Tests mit einem zweiten Knoten). Räume schließt dann nur der Knoten selbst (leer nach 2 min).
 - **Mitschnitt nur für Tests:** `HORN_CAPTURE=<ordner>` schreibt die ersten 3000 Pakete jeder eingehenden Spur roh
   heraus (`tests/anrufe_horn_knoten.py` prüft damit, dass nur verschlüsselte Rahmen ankommen).
+
+## Ein Name, ein Port (Saga 2.5, eingebauter Knoten unter saga-media mit `SAGA_TLS=1`)
+
+saga-media nimmt HTTPS selbst an (`TLS_LISTEN`, im Container `:443`) und teilt den Port mit dem eingebauten Knoten
+(`media/einport.go`, Konzept „Ein Name, ein Port“). Der Knoten lauscht dann auf **keinem eigenen TCP-Port**:
+
+- **Übergabe:** saga-media liest den Anfang jeder Verbindung (optional zuerst den PROXY-Kopf v2/v1,
+  `TLS_PROXY_PROTOCOL=1`; den beendet saga-media). TLS mit ALPN `h2`/`http/1.1`/`http/1.0` bedient Saga selbst (nur
+  `http/1.1`, h2 aus). TLS ohne ALPN bzw. mit `stun.turn` (TURN-TLS der Browser und Apps), `acme-tls/1` und rohes ICE-TCP
+  (erstes Byte `0x00`/`0x01`) gibt saga-media **als Socket** weiter: Socket-Paar `SOCK_SEQPACKET` (fd 3,
+  `HORN_EINPORT_FD`), je Verbindung ein Paket `[1][Länge][Adresse "ip:port"][gelesene Bytes]` + `SCM_RIGHTS`. Der Knoten
+  speist sie in seine Weiche ein (`netx.NewInjectMux`, `Mux.Inject`): gelesene Bytes zuerst, Gegenadresse = echte
+  Client-Adresse (aus dem PROXY-Kopf). `Tune` (BBR, `TCP_NOTSENT_LOWAT`), Bündeln und Nachläufer wirken wie auf selbst
+  angenommenen Sockets; die Grenze je Adresse (`HORN_MAX_PER_IP`) zählt echte Adressen statt der des Proxys. Nach dem
+  Aufbau schickt der Knoten `ready`; vorher und nach seinem Ende (EOF) übergibt saga-media nichts (TLS ohne ALPN bedient
+  es dann selbst: HTTP geht, TURN nicht).
+- **Geräte-HTTP:** `/api/sfu/*` und `/probe` leitet saga-media an das interne HTTP des Knotens weiter (Unix-Socket, fd 4,
+  `HORN_EINPORT_HTTP_FD`); die Client-Adresse steht in `X-Saga-Einport-For` und gilt nur zusammen mit
+  `X-Saga-Einport-Key` (= `HORN_CTL_KEY`). Ein HTTPS-Client **ohne ALPN** (Python `urllib`, manche Monitore) landet im
+  Knoten; der bedient Geräte-Pfade selbst und reicht alles andere an saga-media zurück (`HORN_EINPORT_BACK`, gleicher
+  Schlüssel).
+- **Umgebung von saga-media:** `HORN_NAME` = Name aus `BASE_URL`, `HORN_PUBLIC_URL` = Ursprung aus `BASE_URL`,
+  `HORN_LISTEN=:<Port aus BASE_URL>` (nur für Kandidaten und URL), `HORN_PROXY_PROTOCOL=0`, `HORN_ICE_TCP=0` mit PROXY-Kopf
+  (Durchreiche) bzw. `1` ohne, eigene Dateien `SAGA_TLS_CERT/KEY` als `HORN_TLS_CERT/KEY`. Eigene `HORN_NAME`,
+  `HORN_PUBLIC_URL`, `HORN_LISTEN`, `HORN_PROXY_PROTOCOL`, `HORN_TLS_CERT/KEY` gelten in dieser Betriebsart nicht.
+- **Immer an:** Der Knoten läuft auch ohne Feature-Flag `calls.horn` (dann nur für das Zertifikat; Saga nimmt seinen
+  Steuerkanal an, bietet ihn aber erst mit Flag für Anrufe an).
+- **Zertifikat:** für den Saga-Namen per DNS-01 (Cloudflare-Token in Saga, `acme_txt` nur für `_acme-challenge.<Name>`)
+  bzw. TLS-ALPN-01, Ablage wie sonst `HORN_DATA/tls/`. saga-media liest `fullchain.pem`/`privkey.pem` bzw. den
+  autocert-Speicher `tls/acme/<Name>` (Schlüssel und Kette in einer Datei) und lädt ohne Neustart neu; HTTPS erst mit
+  gültigem Zertifikat für den Namen. Ein vorhandenes DNS-01-Zertifikat für einen anderen Namen (früher `horn-0…`) gilt
+  als „fehlt“ und wird neu ausgestellt (`Certs.Covers`).
+
+**ICE-TCP an/aus (`HORN_ICE_TCP` 0|1|auto, 2.5, alle Knoten):** Ohne ICE-TCP baut der Knoten keinen TCP-Weg für Beine
+(`sfuTCP` = nil): ein Bein `path: tcp` wird sofort mit 400 abgelehnt, ältere Geräte fallen ohne Wartezeit auf TURN-TLS
+zurück; das `hello` meldet `ice_tcp: false`, Saga gibt dem Kandidaten `tcp: false`, und das Web nimmt gleich TURN-TLS
+(vorher bis zu 4 s Warten, `HORN_WAIT_TCP`). `auto` (Standard): aus, wenn `HORN_PUBLIC_URL` einen anderen Port nennt als
+den, auf dem der Knoten lauscht (TLS-Durchreiche bzw. Portweiterleitung 443 → 8443).
+
+**Zertifikat melden (2.5, alle Knoten):** `cert {mode, state, not_after, err}` geht bei jeder Änderung (Prüfung jede
+Minute) und spätestens alle 12 h an Saga; Saga hält einen Knoten mit abgelaufenem `not_after` nicht mehr für bereit.
+Sagt Saga `cert: alpn`, während ein DNS-01-Zertifikat (Datei mit `dns01.json`) gilt (Cloudflare-Token entfernt), bleibt
+die Datei, bis sie in 30 Tagen abläuft bzw. nicht zum Namen passt; dann wechselt der Knoten auf TLS-ALPN-01
+(`Certs.SwitchALPN`). Vorher blieb der Dateimodus stehen und das Zertifikat wurde nie erneuert. `acme-tls/1` bietet die
+Weiche deshalb auch im Dateimodus an.
 
 ## Weitere Knoten (P6/P7): Kopplung, Steuerung, Updates, Zertifikate
 

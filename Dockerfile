@@ -73,12 +73,14 @@ ENV CA_FILE=/tmp/ca-bundle.pem \
 
 USER 10001
 # 8443: eingebauter Gjallarhorn-Knoten (HORN_PORT, TCP und optional UDP) - lauscht nur mit Feature-Flag calls.horn
-EXPOSE 8080 8081 8443/tcp 8443/udp
+# 443: "Ein Name, ein Port" (SAGA_TLS=1, TLS_LISTEN): HTTPS, TURN-TLS und ICE-TCP; UDP optional. Docker erlaubt Ports unter
+# 1024 im Container ohne Sonderrechte (net.ipv4.ip_unprivileged_port_start=0, Standard seit 20.10)
+EXPOSE 8080 8081 443/tcp 443/udp 8443/tcp 8443/udp
 VOLUME ["/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8080'), timeout=3)" || exit 1
 
-# tini -> entrypoint.sh -> saga-media (PORT, Dateien) -> python run.py (intern 127.0.0.1:MEDIA_INTERNAL_PORT, Standard 8079)
-#                                        -> gjallarhorn node (HORN_PORT, nur mit Feature-Flag calls.horn)
+# tini -> entrypoint.sh -> saga-media (PORT, Dateien; mit SAGA_TLS=1 auch TLS_LISTEN) -> python run.py (intern 127.0.0.1:MEDIA_INTERNAL_PORT, Standard 8079)
+#                                        -> gjallarhorn node (HORN_PORT, nur mit Feature-Flag calls.horn; mit SAGA_TLS=1 immer, Sockets von saga-media)
 ENTRYPOINT ["/usr/bin/tini", "--", "/bin/sh", "/entrypoint.sh"]

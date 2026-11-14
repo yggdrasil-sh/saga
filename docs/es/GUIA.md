@@ -196,6 +196,131 @@ formulario) y el área de administración por encima de 1 MB. Aun así, conviene
 (como arriba, algo por encima de `ATTACH_MAX_MB`): así las peticiones enormes ni siquiera llegan a Saga. Si subes
 `ATTACH_MAX_MB`, sube también el límite del proxy.
 
+### Un nombre, un puerto (443)
+
+Desde 2.5 Saga puede aceptar HTTPS **por sí mismo** y compartir el puerto con el nodo Gjallarhorn integrado: web, apps,
+federación y llamadas (TURN sobre TLS, ICE-TCP) usan entonces **un solo nombre** (el de `BASE_URL`) y **un solo
+puerto** (443/TCP). Ya no hacen falta un nombre propio para el nodo (`horn-0…`) ni un segundo puerto; la web y las
+apps no necesitan nada nuevo. Dentro del contenedor saga-media solo lee el inicio de cada conexión: navegadores y apps
+(ALPN `http/1.1`) los atiende Saga; TURN-TLS, TLS-ALPN-01 e ICE-TCP sin cifrar pasan al nodo junto con el socket (ve la
+dirección real y sus ajustes TCP funcionan como en sus propias conexiones). HTTP/2 está desactivado en esta etapa.
+
+**Certificado** para el nombre de `BASE_URL`:
+
+- **Con token de Cloudflare** (Admin → Llamadas → DNS): el nodo integrado lo obtiene por **DNS-01**; funciona incluso
+  mientras el puerto 443 aún no llega a Saga. Renovación 30 días antes de caducar.
+- **Sin token:** por **TLS-ALPN-01**; solo funciona si `<nombre>:443` llega a Saga (detrás de un proxy, este no debe
+  responder la comprobación por sí mismo).
+- **Archivos propios** (p. ej. certbot con otro proveedor DNS): `SAGA_TLS_CERT`/`SAGA_TLS_KEY`. Saga los recarga sin
+  reiniciar (`SAGA_TLS_RELOAD_S`, 30 s por defecto).
+
+Saga responde HTTPS en este puerto **solo con un certificado válido** para el nombre (Saga envía HSTS: un navegador que
+ya conoce Saga no dejaría ni siquiera aceptar un certificado incorrecto). Admin → Llamadas muestra el cuadro **«Modo:
+un puerto»** con el certificado (válido hasta …, método), la cabecera PROXY y el nodo.
+
+**(a) Sin proxy**: Saga está directamente en Internet:
+
+```
+# .env
+BASE_URL=https://saga.example.org
+SAGA_TLS=1                  # TLS_LISTEN=:443 es el valor por defecto
+```
+```yaml
+# docker-compose.yml, servicio saga -> ports
+      - "443:443/tcp"
+      - "443:443/udp"       # opcional: UDP para llamadas más rápidas (mismo número)
+```
+
+Docker permite puertos por debajo de 1024 dentro del contenedor sin privilegios especiales (desde 20.10). Si en tu caso
+no funciona: `TLS_LISTEN=:8443` y `"443:8443/tcp"`; los candidatos siguen indicando el puerto de `BASE_URL` y UDP queda
+desactivado.
+
+**(b) Detrás de un proxy con paso directo TLS + protocolo PROXY.** El proxy deja pasar las conexiones para el nombre
+**sin terminar TLS** (L4, SNI) y envía primero la **cabecera PROXY** (v2; nginx: v1) con la dirección del visitante. Sin
+cabecera, Saga vería a todos con la dirección del proxy (freno de intentos fallidos, límites por dirección); por eso, con
+`TLS_PROXY_PROTOCOL=1` Saga rechaza toda conexión **sin** cabecera.
+
+```
+# .env
+BASE_URL=https://saga.example.org
+SAGA_TLS=1
+TLS_PROXY_PROTOCOL=1
+HORN_UDP=0                  # UDP no atraviesa el paso directo
+```
+```yaml
+# docker-compose.yml: publicar solo para el proxy, p. ej. ligado a la dirección del túnel
+      - "100.64.0.10:8443:443/tcp"
+```
+
+- **NetBird (0.67 o posterior):** en lugar del servicio HTTP, crea un **servicio L4 de tipo TLS** para
+  `saga.example.org` → host de Saga, puerto 8443, con la opción **PROXY Protocol** activada
+  (`"options": {"proxy_protocol": true}`). La dirección real del visitante llega también detrás de un Traefik en el VPS
+  (`HostSNI(*)` → NetBird).
+- **Traefik** (configuración dinámica):
+  ```yaml
+  tcp:
+    routers:
+      saga:
+        entryPoints: [websecure]
+        rule: "HostSNI(`saga.example.org`)"
+        service: saga
+        tls:
+          passthrough: true
+    services:
+      saga:
+        loadBalancer:
+          servers:
+            - address: "10.0.0.5:8443"
+          serversTransport: pp
+    serversTransports:
+      pp:
+        proxyProtocol:
+          version: 2
+  ```
+  (Traefik anterior a 3.5.2: `proxyProtocol: {version: 2}` directamente bajo `loadBalancer` en lugar de
+  `serversTransport`.)
+- **nginx** (`stream`, no `http`):
+  ```nginx
+  stream {
+      map $ssl_preread_server_name $saga_up { saga.example.org 10.0.0.5:8443; default 127.0.0.1:9; }
+      server {
+          listen 443;
+          ssl_preread on;
+          proxy_pass $saga_up;
+          proxy_protocol on;      # nginx envía v1; Saga acepta v1 y v2
+      }
+  }
+  ```
+- **Caddy:** solo con el módulo caddy-l4 (`tls` con `sni`, manejadores `proxy_protocol` + `proxy`); el Caddy normal
+  termina TLS por sí mismo → (c).
+- **HAProxy:** `mode tcp`, `tcp-request inspect-delay 5s`, `use_backend saga if { req.ssl_sni -i saga.example.org }`,
+  en el backend `server saga 10.0.0.5:8443 send-proxy-v2`.
+
+En la máquina del proxy configura además `net.ipv4.tcp_notsent_lowat = 16384` (`gjallarhorn/NODE.md`, sección
+«Hinter einer TLS-Durchreiche»). El ICE-TCP sin cifrar no atraviesa un paso directo: el nodo no lo ofrece y los dispositivos usan TLS
+de inmediato (sin esperas).
+
+**(c) El proxy termina TLS por sí mismo** (servicio HTTP, Caddy/Traefik/nginx como proxy HTTP, Cloudflare con la nube
+naranja): «un puerto» no sirve aquí. Deja `SAGA_TLS` desactivado; el proxy habla con el puerto 8080 como hasta ahora. El
+nodo integrado solo sirve entonces internamente; para llamadas de grupo grandes añade con **Ampliar** un nodo con nombre
+propio (o el integrado con nombre propio, ver abajo «Nodo integrado detrás de un proxy L4»).
+
+**Cambio sin interrupción** (desde un proxy HTTP en 8080):
+
+1. Actualiza Saga, pon `SAGA_TLS=1` (y `TLS_PROXY_PROTOCOL=1` si hace falta) en `.env`, añade el puerto en
+   `docker-compose.yml` y reinicia. Los antiguos `HORN_NAME`/`HORN_PUBLIC_URL` del nodo integrado se ignoran en este
+   modo y pueden quitarse.
+2. Espera el certificado **mientras el camino antiguo sigue funcionando**: con token de Cloudflare por DNS-01.
+   Admin → Llamadas debe mostrar «Válido hasta …».
+3. Cambia el proxy (servicio HTTP desactivado, paso directo TLS con cabecera PROXY activado o redirección de puerto 443).
+4. Comprueba: inicia sesión, Admin → Llamadas «Cabecera PROXY: Detectada», «Atiende TURN sobre TLS ✓», una llamada de
+   grupo.
+5. **Vuelta atrás:** vuelve a poner el proxy como servicio HTTP en el puerto 8080; Saga no necesita nada, `BASE_URL` no
+   cambia.
+
+El puerto 8080 se mantiene en todos los modos (comprobación de salud de la imagen, vuelta atrás); el área de
+administración (8081) nunca pasa por la entrada TLS. No abras ninguno de los dos hacia fuera.
+
 ### Ruta de medios (saga-media)
 
 Desde la 2.4 el contenedor incluye un pequeño servicio adicional, **saga-media** (Go, solo biblioteca estándar, código en
@@ -1984,6 +2109,10 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / generada | Primera cuenta de administración |
 | `HOST_BIND` / `HOST_PORT` | `0.0.0.0` / `8080` | Dónde escucha Saga en el servidor |
 | `ADMIN_BIND` / `ADMIN_HOST_PORT` | `127.0.0.1` / `8081` | Dónde escucha el área de administración |
+| `SAGA_TLS` / `TLS_LISTEN` | desactivado / `:443` | «Un nombre, un puerto»: Saga acepta HTTPS por sí mismo, llamadas por el mismo puerto (sección 3) |
+| `TLS_PROXY_PROTOCOL` | `0` | `1` = exigir cabecera PROXY (v2/v1) antes de cada conexión (paso directo TLS en el proxy) |
+| `SAGA_TLS_CERT` / `SAGA_TLS_KEY` | – | archivos de certificado propios en lugar de DNS-01/TLS-ALPN-01 mediante el nodo integrado |
+| `SAGA_TLS_RELOAD_S` | `30` | cada cuánto revisa Saga los archivos del certificado (recarga sin reiniciar) |
 | `TRUSTED_PROXIES` | `127.0.0.1` | IP del proxy inverso (`*` = todas) |
 | `CANONICAL_REDIRECT` | `true` | Redirigir otros nombres de host a `BASE_URL` |
 | `HSTS` | `true` | Con `https://` en `BASE_URL`: `Strict-Transport-Security: max-age=31536000` (sin `includeSubDomains`/`preload`); `false` lo desactiva |

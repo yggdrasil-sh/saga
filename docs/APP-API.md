@@ -2153,13 +2153,19 @@ Ohne `horn` in `caps`: 409 `join_block: "old"`; kein Knoten erreichbar: 409 `joi
 
 ```json
 "horn": {"e2e": "saga-horn/v1", "ttl": 60, "candidates": [
-  {"node": "horn-0.example.org", "url": "https://horn-0.example.org", "udp": false, "here": true, "load": 0.12,
+  {"node": "horn-0.example.org", "url": "https://horn-0.example.org", "udp": false, "tcp": true, "here": true, "load": 0.12,
    "peer": "<peer_ref>", "exp": 1760000000,
    "tokens": {"audio": "h1.…", "video": "h1.…", "both": "h1.… (nur mit udp)"}}]}
 ```
 
 - Bis zu 3 Kandidaten, beste zuerst. Ohne Kaskade (bis P9) ist es nur der Knoten, auf dem der Anruf schon läuft.
 - `dev_class`: `desktop` (Standard) oder `mobile` (Last-N: 9 bzw. 4 bewegte Kacheln).
+- `tcp` (2.5, „Ein Port“): `false` = der Knoten bietet kein rohes ICE-TCP (er steht hinter einer TLS-Durchreiche, die
+  nur TLS weiterreicht). Dann gleich den TLS-Weg (`turn`, frische Token über `/horn`) nehmen statt ICE-TCP und dessen
+  Wartezeit (Web: bis 4 s). Fehlt das Feld (ältere Saga), gilt `true`. Geräte, die es nicht auswerten, bekommen auf
+  ein Bein `path: tcp` sofort 400 vom Knoten und fallen ohne Wartezeit auf TLS zurück.
+- `url` kann der Saga-Ursprung selbst sein (Betriebsart „Ein Port“: Saga und der eingebaute Knoten teilen Name und
+  Port, `/api/sfu/*` und `/probe` leitet Saga weiter). Pfade und `turns:` wie bisher aus `url` bilden.
 - Jede Teilnehmerliste (`legs`) trägt je Endpunkt `hp` = Kennung des Geräts am Knoten (gleich `peer` im eigenen
   Kandidaten). Damit ordnet das Gerät die Plätze des Knotens (`slots[].peer`) und die CSRC der Rahmen einem Gerät zu.
 
@@ -2182,7 +2188,8 @@ exp, jti}` – zufällige Kennungen je Knoten, keine Konto- oder Gerätenamen. R
   darunter `sources[] {kind, layer, pkts, dups, too_old, late}` je laufender eingehender Spur und `late_dropped` – der Abgleich
   des Knotens auf wiederholte Pakete des Absenders, siehe `gjallarhorn/NODE.md` („Doppel und Nachzügler“).
 - Fehler: 401 Token ungültig, abgelaufen, schon benutzt, für einen anderen Knoten oder Person entfernt; 404 Raum
-  unbekannt (Anruf beendet); 429 voll.
+  unbekannt (Anruf beendet); 429 voll; 400 auch für einen Weg, den der Knoten nicht anbietet (z. B. `tcp` bei
+  `tcp: false`, `udp` ohne UDP) – das Token ist dann nicht verbraucht.
 
 **Schlüssel:** Jedes Gerät verteilt seinen Frame-Schlüssel als `fkey` über `POST /api/calls/{id}/signal` an alle
 anderen Endpunkte (`docs/HORN-E2E.md` §4); im Knoten-Anruf gibt es keine Mesh-Signale (offer/answer/ice).
