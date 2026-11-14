@@ -11,7 +11,7 @@ die ACME-Art (dns01 mit Cloudflare-Token, nach "Token entfernen" alpn), meldet s
 als bereit (Status nocert, kein Kandidat), Admin-Zeile mit Zertifikatszustand und Hinweis "TLS-ALPN-01 klappt nur ...:443";
 UDP-Selbsttest wird nach dem Handshake nachgereicht (udp_check nicht "unbekannt").
 
-  Umgebung wie die anderen Reihen (env.sh); Ports 8461 (saga-media), 18462 (intern), 8460 (Admin), 18463 (Knoten).
+  Umgebung wie die anderen Reihen (env.sh); Ports aus HK_TEST_BASE/HK_TEST_ADMIN (Standard 8461/8460), intern +10001, Knoten +10002.
   SAGA_MEDIA_BIN / GJALLARHORN_BIN, sonst go build aus media/ bzw. gjallarhorn/ (fehlt eins: FEHLER)."""
 import base64
 import hashlib
@@ -28,7 +28,10 @@ import urllib.parse
 
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, APP)
-PORT, INTERNAL, ADMIN, HORN_PORT = 8461, 18462, 8460, 18463
+# Ports aus HK_TEST_BASE/HK_TEST_ADMIN (wie die anderen Reihen), intern/Knoten = Saga-Port + 10001/10002
+PORT = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8461")).port or 8461
+ADMIN = urllib.parse.urlparse(os.environ.get("HK_TEST_ADMIN", "http://127.0.0.1:8460")).port or 8460
+INTERNAL, HORN_PORT = PORT + 10001, PORT + 10002
 STATE = os.environ.get("STATE_DIR", "/tmp/st-horn-admin")
 SECRET = os.environ.get("SESSION_SECRET") or os.environ["SECRET_KEY"]
 MODE = os.path.join(STATE, "fake-mode")
