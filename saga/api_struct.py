@@ -16,7 +16,7 @@ import secrets
 
 from db import connect as _db
 from saga import blockedit, page_widgets
-from saga.api_v1 import Fail, _guard, _relay, _schema_of, blocks_edit, page_create, schema_out
+from saga.api_v1 import Fail, _guard, _relay, _schema_of, blocks_edit, hidden_props, page_create, schema_out
 from saga.apitok import in_roots
 from saga.core import t
 from saga.notes import OPT_COLORS, STATUS_GROUPS, VIEW_TYPES
@@ -319,6 +319,18 @@ def _w_src_dbs(cfg):
     return out
 
 
+def _w_hidden(c, tok, acc, cfg, dbs):
+    """Token mit roots: nutzt das Widget eine Eigenschaft, die query_database ausblendet (hidden_props)?"""
+    refs = {cfg.get(k) for k in ("prop", "date", "x", "y", "series")} | {x for x in cfg.get("habits") or [] if isinstance(x, str)}
+    for x in dbs:
+        try:
+            if refs & hidden_props(c, tok, acc.owner(x), _schema_of(c, acc.owner(x), x)):
+                return True
+        except Fail:
+            return True
+    return False
+
+
 def _resolve_cfg(tok, kind, cfg):
     """Namen -> IDs (Ansicht, Eigenschaften) und Rechte der Quellen pruefen."""
     cfg = dict(cfg)
@@ -428,7 +440,7 @@ def widgets_get(tok, nid, tz=None):
             allowed = True
             if d.get("kind") == "upcoming":         # Aufgaben/Termine der Person: nur ohne roots und mit den Bereichen
                 allowed = not tok.roots and (cfg.get("tasks") is False or tok.has("read:tasks")) and (
-                    cfg.get("cal") is False or tok.has("read:calendar"))
+                    cfg.get("cal") is False or tok.has("read:calendar")) and (not cfg.get("dbs") or tok.has("read:db"))
             elif d.get("kind") in page_widgets.PERSONAL:
                 allowed = not tok.roots
             elif cfg.get("src") == "tasks":
@@ -438,6 +450,8 @@ def widgets_get(tok, nid, tz=None):
                 if dbs:
                     acc = Access(c, tok.uid)
                     allowed = tok.has("read:db") and all(acc.owner(x) and in_roots(c, tok, acc.owner(x), x) for x in dbs)
+                    if allowed and tok.roots:       # wie query_database: Relationen/Rollups auf fremde Baeume zeigen nichts
+                        allowed = not _w_hidden(c, tok, acc, cfg, dbs)
             if w is not None:
                 e["value"] = w if allowed else {"kind": d.get("kind"), "error": "no_access"}
             elif d.get("kind") == "progress" and cfg.get("src") == "fixed":
