@@ -880,6 +880,33 @@ func (b *freshBrake) decay(now int64) {
 	}
 }
 
+// soloCheck: Gilt die Bremse auf diesem Bein (solo: hoechstens ein anderer Teilnehmer liefert Bild - Kamera bzw.
+// Bildschirm; 1:1 mit Bildschirmteilen ist ein Sender)? Nur im 1:1 (Entscheidung nach labbwe4): Dort ist sie belegt
+// (UDP-Aufbau, Token-Bucket-Policer). In der Gruppe traf das Modell die reale Leitung nicht - nach Kachelschritten mit
+// kleiner Rate davor zaehlten tiefe Stoerschuebe als Policer (Sprecher in der Minute nach den Schueben 0 % auf h,
+// Rueckkehr 121 s), und an einem Policer zwischen den Zwischenbelegungen dampfte sie nicht (150 Rueckfaelle je
+// Stunde). In der Gruppe gibt es deshalb keine Bremse: keine lange Probe, kein Deckel, kein Aufschub am Bein, keine
+// Zeile "frisch" - auch nicht die Regel je Platz von Stufe 3 (slot.freshN, bis vor Stufe 3b). Preis: Ein Policer laesst die
+// Gruppe pendeln (mehr Rueckfaelle, mehr Fuelldaten), dafuer kommt sie nach Stoerschueben rasch zurueck. Wird das Bein
+// zur Gruppe, endet eine laufende Bremse samt offenem Schritt; wird es wieder 1:1, beginnt sie frisch.
+func (l *Leg) soloCheck(others []*Peer) {
+	n := 0
+	for _, p := range others {
+		if len(p.cam) > 0 || len(p.scr) > 0 {
+			n++
+		}
+	}
+	l.solo = n <= 1 || freshBrakeGroup
+	if !l.solo {
+		l.fb = freshBrake{}
+	}
+}
+
+// freshBrakeGroup: Bremse auch in der Gruppe (Stand bis Stufe 3e) - nur fuer Tests: Die Mechanik der Bremse
+// (Umverteilung, getragen, kleinere Zielrate, Einbruch) greift auch im 1:1 mit Bildschirmteilen (zwei Plaetze eines
+// Senders); die Modelle dafuer sind Gruppen.
+var freshBrakeGroup = false
+
 // probeNear: Zielraten ab diesem Anteil einer gescheiterten gelten als "dieselbe oder hoeher".
 const probeNear = 0.9
 

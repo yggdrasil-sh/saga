@@ -310,7 +310,8 @@ type Leg struct {
 	pr        probe
 	pstat     ProbeStats
 	pf        legFail    // Abstand nach gescheiterten Proben, je Zielrate
-	fb        freshBrake // Bremse nach frischen Rueckfaellen, je Zielrate (probe.go)
+	fb        freshBrake // Bremse nach frischen Rueckfaellen, je Zielrate (probe.go) - nur im 1:1 (soloCheck)
+	solo      bool       // hoechstens ein anderer Teilnehmer liefert Bild: die Bremse gilt (soloCheck)
 	prNext    int64      // nach einer abgebrochenen Probe: fruehestens dann die naechste auf diesem Bein
 	firstUsed bool       // der freie Versuch zum Anrufbeginn ist verbraucht (probe.go)
 	unkAt     int64      // letzte Probe ohne klares Ergebnis (0 = keine offen): Die naechste solche zaehlt als gescheitert

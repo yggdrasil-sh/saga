@@ -29,6 +29,7 @@ type estRoom struct {
 	floor float64       // ... aber nicht unter den Anfangswert (der Anlauf des Anrufs ist nicht Gegenstand)
 	grow  float64       // Anstieg des Ziels ohne Stau (bit/s je Sekunde)
 	loss  bool          // Stau-Schub: Ziel faellt auf 600 kbit/s (traegt m, nicht h)
+	schub float64       // ... bzw. auf diese Rate (0 = 600 kbit/s; flacher Schub z. B. 1500 kbit/s)
 	back  float64       // Ruecksprung des Ziels an der Leitung: Anteil der Leitungsrate (0 = 0,85)
 	over  int           // Takte ueber der Leitung
 	free  float64       // letzte Rate, die die Leitung trug
@@ -160,6 +161,8 @@ func (er *estRoom) tick() {
 	switch {
 	case er.pion:
 		er.pionGCC(rate)
+	case er.loss && er.schub > 0:
+		er.gcc = er.schub
 	case er.loss:
 		er.gcc = 600e3
 	case er.link > 0 && rate > er.link:

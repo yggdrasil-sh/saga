@@ -486,6 +486,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	if len(r.mem) > 0 {
 		r.recall(l, vslots, now)
 	}
+	l.soloCheck(others) // Bremse nach frischem Rueckfall nur im 1:1 (probe.go)
 	// Schaetzung und Verteilung
 	prb := l.probing(cfg)
 	l.est.probing = prb
@@ -937,12 +938,18 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				d := s.dw[layerRank(st.Layer)]
 				s.upProbe = d.ok != 0 && now-d.ok <= int64(probeGrant)
 			}
-			if book && s.upProbe {
+			if book && l.solo && s.upProbe {
 				l.fb.stepped(s.upT, run+audioCut, now)
-			} else if book {
+			} else if book && l.solo {
+				// Ein Rueckfall gilt jetzt diesem Schritt (freshBrake, beyond) - aber nur, wenn der getragene noch frisch
+				// war: Ein Schritt, der schon probeFresh hielt, ist erledigt, ein spaeter Schritt ohne Probe weckt ihn
+				// nicht wieder (Pruefer bwe3e; in den Modellen war er beim "getragen" hoechstens 13 s alt).
+				age := now - l.fb.upAt
 				if t, pre, lo, open := l.fb.open(now, low); open && l.fb.beyond(s.upT) {
 					l.freshEvent(freshBeyond, t, pre, lo, s, st.Layer, cfg)
-					l.fb.stepped(s.upT, run+audioCut, now) // ein Rueckfall gilt jetzt diesem Schritt (freshBrake, beyond)
+					if age < int64(probeFresh) {
+						l.fb.stepped(s.upT, run+audioCut, now)
+					}
 				}
 			}
 			s.rampRate, s.rampOwner = layerRate(st), s.owner

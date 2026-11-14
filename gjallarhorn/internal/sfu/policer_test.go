@@ -3,12 +3,23 @@ package sfu
 import (
 	"testing"
 	"time"
+
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 )
 
 // Stufe 3b: Token-Bucket-Policer im Modell (nach dem Modell des Pruefers bwe3). Die kurze Probe von Stufe 3 schiebt
 // nur (Bedarf x 1,05 - Policer-Rate) x 0,4 bis 0,6 s ueber die Grenze; den Eimer leert sie nicht, sie besteht, und die
 // Schicht faellt Sekunden spaeter zurueck - immer wieder. Nach dem ersten frischen Rueckfall faehrt die naechste Probe
 // auf dieses Ziel lang (freshBrake, probeWinLong, probeHeadLong), und die Bremse haengt am Bein, nicht am Platz.
+
+// bremseGruppe: Bremse auch in der Gruppe (freshBrakeGroup, Stand bis Stufe 3e) fuer diesen Test. Seit Stufe 3f gilt
+// sie nur im 1:1 (soloCheck); ihre Mechanik (Umverteilung, getragen, kleinere Zielrate, Einbruch, Deckel ueber mehrere
+// Plaetze) greift dort mit Bildschirmteilen (zwei Plaetze eines Senders) - die Modelle dafuer sind Gruppen.
+func bremseGruppe(t *testing.T) {
+	old := freshBrakeGroup
+	freshBrakeGroup = true
+	t.Cleanup(func() { freshBrakeGroup = old })
+}
 
 // tokenBucket: Policer mit Rate R und Eimer B (bit) vor dem Bein - leer begrenzt er auf R (er.link), sonst ist die
 // Leitung frei. R = 0: kein Policer.
@@ -139,19 +150,37 @@ func TestProbingPolicerLangeProbe(t *testing.T) {
 }
 
 // TestProbingPolicerGruppe (H2): Gruppe mit 3 Sendern, Sprecherwechsel alle 20 s, Policer 7 % unter der vollen Belegung
-// (h + 2 x m), Eimer 0,15 und 0,6 s, 10 min. Vorher hing die Bremse am Platz (Aufschub s.dw, Zaehler der frischen
+// (h + 2 x m), Eimer 0,15 und 0,6 s, 10 min. Vor Stufe 3b hing die Bremse am Platz (Aufschub s.dw, Zaehler der frischen
 // Rueckfaelle) und begann mit jedem Sprecherwechsel von vorn; die kurze Probe bestand wieder: gcc 107 bzw. 90, eigen 87
-// bzw. 82 Rueckfaelle. Jetzt am Bein: 13 bzw. 28 (eigen 13 bzw. 27), der Sprecherplatz 96 bis 97 % der Zeit auf h.
+// bzw. 82 Rueckfaelle. Mit der Bremse am Bein (bis Stufe 3e, hier mit bremseGruppe): 7 bzw. 28 (eigen 9 bzw. 27), der
+// Sprecherplatz 96 bis 98 % der Zeit auf h.
+// Seit Stufe 3f gilt die Bremse in der Gruppe nicht (soloCheck): Das ist der bewusste Preis - wieder 107/90 bzw. 87/82
+// Rueckfaelle, Sprecher 75 bis 86 % auf h, keine lange Probe. Der zweite Teil haelt diesen Stand fest (nicht schlechter
+// als vor Stufe 3b), der erste die Mechanik der Bremse.
 func TestProbingPolicerGruppe(t *testing.T) {
-	for _, eigen := range []bool{false, true} {
-		for _, bs := range []float64{0.15, 0.6} {
-			r := policerRun(t, eigen, 3, 20*time.Second, bs, 10*time.Minute, 0)
-			t.Logf("eigen=%v, Eimer %.2f s: %+v", eigen, bs, r)
-			if r.falls > 40 || r.hShare < 0.9 {
-				t.Fatalf("eigen=%v, Eimer %.2f s: %+v - soll hoechstens 40 Rueckfaelle, h mindestens 90 %%", eigen, bs, r)
+	t.Run("bremse", func(t *testing.T) {
+		bremseGruppe(t)
+		for _, eigen := range []bool{false, true} {
+			for _, bs := range []float64{0.15, 0.6} {
+				r := policerRun(t, eigen, 3, 20*time.Second, bs, 10*time.Minute, 0)
+				t.Logf("eigen=%v, Eimer %.2f s: %+v", eigen, bs, r)
+				if r.falls > 40 || r.hShare < 0.9 {
+					t.Fatalf("eigen=%v, Eimer %.2f s: %+v - soll hoechstens 40 Rueckfaelle, h mindestens 90 %%", eigen, bs, r)
+				}
 			}
 		}
-	}
+	})
+	t.Run("ohne", func(t *testing.T) {
+		for _, eigen := range []bool{false, true} {
+			for _, bs := range []float64{0.15, 0.6} {
+				r := policerRun(t, eigen, 3, 20*time.Second, bs, 10*time.Minute, 0)
+				t.Logf("eigen=%v, Eimer %.2f s: %+v", eigen, bs, r)
+				if r.falls > 120 || r.hShare < 0.7 || r.long != 0 {
+					t.Fatalf("eigen=%v, Eimer %.2f s: %+v - soll hoechstens 120 Rueckfaelle, h mindestens 70 %%, keine lange Probe", eigen, bs, r)
+				}
+			}
+		}
+	})
 }
 
 // TestProbingPolicerZwischenbelegung (Stufe 3d, Pruefer bwe3c H): Gruppe 3, Policer 1580k - knapp ueber mmm (1540k mit
@@ -160,6 +189,7 @@ func TestProbingPolicerGruppe(t *testing.T) {
 // scheiternden langen Proben auf 2225k frischten die Bremse immer wieder auf - gcc 77/89 (Eimer 0,15/0,6 s, Wechsel
 // 20 s), ohne Wechsel 35/24 Rueckfaelle in 10 min. Jetzt senkt er die Bremse wie in Stufe 3b: 9/12 bzw. 8/12.
 func TestProbingPolicerZwischenbelegung(t *testing.T) {
+	bremseGruppe(t) // Mechanik der Bremse (seit Stufe 3f nur im 1:1)
 	for _, eigen := range []bool{false, true} {
 		for _, rot := range []time.Duration{20 * time.Second, 0} {
 			for _, bs := range []float64{0.15, 0.6} {
@@ -179,6 +209,7 @@ func TestProbingPolicerZwischenbelegung(t *testing.T) {
 // Rueckfall zaehlte nie: keine Bremse, alle ~13 s von vorn - gcc 104/96, eigen 86/96 Rueckfaelle in 10 min (Wechsel
 // 20 s / ohne). Jetzt tritt der Schritt ohne Probe an die Stelle des offenen: 5.
 func TestProbingPolicerGetragen(t *testing.T) {
+	bremseGruppe(t) // Mechanik der Bremse (seit Stufe 3f nur im 1:1)
 	for _, eigen := range []bool{false, true} {
 		for _, rot := range []time.Duration{20 * time.Second, 0} {
 			r := policerRunAt(t, eigen, 3, rot, 900e3, 0, 0.6, 10*time.Minute, 0)
@@ -195,6 +226,7 @@ func TestProbingPolicerGetragen(t *testing.T) {
 // Zielrate (mit Reserve, Stufe 3c) galt er bei einem Policer knapp ueber hml (1980k) als Einbruch: gcc 45/80 Rueckfaelle
 // (Eimer 0,15/0,6 s, Wechsel 20 s), keine lange Probe. Mit 0,75 x Rate vor dem Schritt: 8/10, eigen 8/14.
 func TestProbingPolicerFlacherRuecksprung(t *testing.T) {
+	bremseGruppe(t) // Mechanik der Bremse (seit Stufe 3f nur im 1:1)
 	for _, eigen := range []bool{false, true} {
 		for _, bs := range []float64{0.15, 0.6} {
 			r := policerRunAt(t, eigen, 3, 20*time.Second, 1980e3, 0.76, bs, 10*time.Minute, 0)
@@ -261,7 +293,14 @@ func TestProbingPolicerFrei(t *testing.T) {
 // laengste Aufschub am Bein (freshBrake.d).
 func stoerGruppe(t *testing.T, eigen bool, rot, first time.Duration, gaps []time.Duration) (hShare, lllShare float64, back, maxD time.Duration) {
 	t.Helper()
+	return stoerGruppeTief(t, eigen, rot, first, gaps, 0)
+}
+
+// stoerGruppeTief: wie stoerGruppe, das GCC-Ziel faellt im Schub auf schub (0 = 600 kbit/s).
+func stoerGruppeTief(t *testing.T, eigen bool, rot, first time.Duration, gaps []time.Duration, schub float64) (hShare, lllShare float64, back, maxD time.Duration) {
+	t.Helper()
 	er := neuEigen(t, eigen, 1250e3, 810e3, 3)
+	er.schub = schub
 	er.l.firstUsed = true
 	er.grow = 400e3
 	er.tick()
@@ -318,7 +357,9 @@ func stoerGruppe(t *testing.T, eigen bool, rot, first time.Duration, gaps []time
 // Muster eines Policers (freshBrake), und die Zahlen sind wieder die von vor Stufe 3b (4660e81): Sprecher auf h 47
 // bzw. 49 % (ohne Wechsel 59 bzw. 58 %), lll 22 bis 25 %, hmm 12,4 bis 13,2 s nach dem letzten Schub - so lange haelt
 // der Aufschub der Plaetze nach dem Rueckfall im Schub (upFail), wie vorher. Zwei weitere Schub-Folgen: kein Aufschub
-// am Bein (f64544e: 1 bis 5 min, Sprecher auf h 5 bis 21 %).
+// am Bein (f64544e: 1 bis 5 min, Sprecher auf h 5 bis 21 %). Seit Stufe 3f gilt die Bremse in der Gruppe nicht
+// (soloCheck): dieselben Zahlen - bei diesem tiefen Schub (600k) griff sie seit 3c ohnehin nicht. Der Unterschied liegt
+// bei flachen Schueben (TestProbingGruppeFlacheSchuebe).
 func TestProbingGruppeStoerschuebe(t *testing.T) {
 	gaps := []time.Duration{30 * time.Second, 17 * time.Second, 23 * time.Second, 10 * time.Second}
 	for _, eigen := range []bool{false, true} {
@@ -349,6 +390,46 @@ func TestProbingGruppeStoerschuebe(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestProbingGruppeFlacheSchuebe (Stufe 3f): Gruppe 3, freie Leitung mit flachen Stoerschueben (GCC-Ziel im Schub
+// 1500 bzw. 1550 kbit/s, 2 s, drei Folgen wie TestProbingGruppeStoerschuebe), Sprecherwechsel 20 s bzw. keiner. Mit der
+// Bremse in der Gruppe (Stand bis 3e, bremseGruppe) zaehlte ein flacher Schub bald nach einem geprobten Schritt oft als
+// Policer-Muster (low/pre ueber probeSlump): Aufschub am Bein, volle Belegung erst 58 bis 99 s nach dem letzten Schub.
+// Ohne Bremse in der Gruppe (seit 3f): 2 bis 16 s. Die Gegenprobe haelt fest, dass der Test die Bremse sieht.
+func TestProbingGruppeFlacheSchuebe(t *testing.T) {
+	seqs := [][]time.Duration{
+		{30 * time.Second, 17 * time.Second, 23 * time.Second, 10 * time.Second},
+		{12 * time.Second, 27 * time.Second, 19 * time.Second, 14 * time.Second, 29 * time.Second},
+		{21 * time.Second, 10 * time.Second, 16 * time.Second, 25 * time.Second, 11 * time.Second, 30 * time.Second},
+	}
+	run := func(t *testing.T) (worst time.Duration) {
+		for _, sch := range []float64{1500e3, 1550e3} {
+			for _, eigen := range []bool{false, true} {
+				for _, rot := range []time.Duration{20 * time.Second, 0} {
+					for i, q := range seqs {
+						h, _, back, d := stoerGruppeTief(t, eigen, rot, time.Duration(10+3*i)*time.Second, q, sch)
+						t.Logf("Schub %.0fk eigen=%v Wechsel %v Folge %d: h %.0f %%, hmm %v nach dem letzten Schub, Aufschub am Bein %v",
+							sch/1e3, eigen, rot, i+1, 100*h, back, d)
+						if back < 0 {
+							back = time.Hour
+						}
+						worst = max(worst, back)
+					}
+				}
+			}
+		}
+		return worst
+	}
+	if w := run(t); w > 30*time.Second {
+		t.Errorf("ohne Bremse in der Gruppe: volle Belegung erst %v nach dem letzten Schub (soll hoechstens 30 s)", w)
+	}
+	t.Run("gegenprobe", func(t *testing.T) {
+		bremseGruppe(t)
+		if w := run(t); w <= 60*time.Second {
+			t.Errorf("Gegenprobe mit Bremse in der Gruppe: hoechstens %v - der Test erkennt die Bremse nicht", w)
+		}
+	})
 }
 
 // TestFreshBrake: Buchfuehrung der Bremse.
@@ -465,6 +546,7 @@ func TestFreshBrakeDecayOffen(t *testing.T) {
 // mit wenig Zuwachs (hier 8 % - eine Kachel aus der Pause), laege 90 % seiner Zielrate unter der laufenden Auswahl;
 // die laufenden Schichten bleiben trotzdem (bis zur Nachbesserung fiel hier eine Kachel auf l).
 func TestProbingBremseHaeltLaufendes(t *testing.T) {
+	bremseGruppe(t) // Mechanik der Bremse (seit Stufe 3f nur im 1:1)
 	er := neuEigen(t, false, 1250e3, 810e3, 3)
 	er.l.firstUsed = true
 	er.grow = 400e3
@@ -558,6 +640,7 @@ func TestProbingBremseWegwechsel(t *testing.T) {
 // hinab); ein zweiter, gleicher Lauf oeffnet davor einen geprobten Schritt, den kein Schritt ueberbietet (beyond) und
 // den kein Einbruch erklaert, und prueft: keine Bremse, der Schritt bleibt offen, Logzeile "umverteilung".
 func TestProbingBremseUmverteilung(t *testing.T) {
+	bremseGruppe(t) // Mechanik der Bremse (seit Stufe 3f nur im 1:1)
 	gaps := []time.Duration{30 * time.Second, 17 * time.Second, 23 * time.Second, 10 * time.Second}
 	run := func(stop int, inject bool) (k int, before, after string, er *estRoom) {
 		er = neuEigen(t, false, 1250e3, 810e3, 3)
@@ -605,5 +688,117 @@ func TestProbingBremseUmverteilung(t *testing.T) {
 	}
 	if n := len(er.fresh); n == 0 || er.fresh[n-1].Why != freshSpread {
 		t.Fatalf("Logzeile: %+v", er.fresh)
+	}
+}
+
+// TestProbingBremseNurEinsZuEins (Stufe 3f): Die Bremse gilt nur, solange hoechstens ein anderer Teilnehmer Bild
+// liefert (soloCheck). 1:1 mit Policer 7 % unter h, Eimer 0,15 s: nach 3 min laeuft die Bremse (lange Probe, Deckel).
+// Ein zweiter Sender mit Bild kommt dazu (Gruppe): Die Bremse endet im selben Takt samt offenem Schritt - kein Deckel,
+// keine lange Probe, kein Aufschub am Bein, keine Zeile "frisch"; der Sprecher kommt wieder auf h (am Policer pendelt
+// er, das ist der Preis). Er geht wieder (1:1): Die Bremse beginnt frisch - der naechste frische Rueckfall ist der
+// erste einer neuen Folge (n = 1, kein Aufschub am Bein). Gegenprobe: mit der Bremse in der Gruppe (bremseGruppe)
+// bleibt sie beim Beitritt stehen.
+func TestProbingBremseNurEinsZuEins(t *testing.T) {
+	run := func(t *testing.T, gegen bool) {
+		er := neuEigen(t, false, 1250e3, 810e3, 1)
+		er.l.firstUsed = true
+		er.grow = 400e3
+		er.tick()
+		er.until("m", 2*time.Second)
+		R := 0.93 * (1250e3 + estAudio)
+		tb := &tokenBucket{R: R, B: R * 0.15, tok: R * 0.15}
+		step := func() { tb.step(er); er.tick() }
+		for end := er.now + int64(3*time.Minute); er.now < end; {
+			step()
+		}
+		if fb := er.l.fb; fb.at == 0 || !fb.long || !er.l.solo {
+			t.Fatalf("1:1: keine Bremse nach 3 min Policer (solo %v): %+v", er.l.solo, fb)
+		}
+		// Beitritt eines zweiten Senders mit Bild
+		if !er.r.AddRemote("b1", "fern9", Desktop, nil) {
+			t.Fatal("aufnehmen")
+		}
+		on := map[*fwd.Source]bool{}
+		for _, k := range []string{"l", "m", "h"} {
+			s := er.r.RemoteSource("b1", "fern9", fwd.Video, k, false, 0, nil)
+			if s == nil {
+				t.Fatal("quelle " + k)
+			}
+			on[s] = true
+		}
+		er.r.SetRemote("fern9", -1, on)
+		longT := 1250e3*probeHeadLong + estAudio
+		pev0, fr0, onH := len(er.pevs), len(er.fresh), 0
+		for end := er.now + int64(2*time.Minute); er.now < end; {
+			step()
+			if gegen {
+				continue
+			}
+			if er.l.solo || er.l.fb != (freshBrake{}) {
+				t.Fatalf("Gruppe: Bremse laeuft weiter (solo %v): %+v", er.l.solo, er.l.fb)
+			}
+			if er.layer() == "h" {
+				onH++
+			}
+		}
+		if gegen {
+			if er.l.fb.at == 0 {
+				t.Fatalf("Gegenprobe: Bremse in der Gruppe endet beim Beitritt - der Test erkennt das Ende nicht")
+			}
+			return
+		}
+		for _, e := range er.pevs[pev0:] {
+			if e.Probe == probeStart && float64(e.ProbeKbit)*1000 >= 0.99*longT {
+				t.Fatalf("Gruppe: lange Probe %+v", e)
+			}
+		}
+		if n := len(er.fresh) - fr0; n != 0 || onH == 0 {
+			t.Fatalf("Gruppe: %d Zeilen frisch, Sprecher %d Takte auf h (soll keine Zeile, h erreichbar)", n, onH)
+		}
+		// Austritt: wieder 1:1, die Bremse beginnt frisch
+		if !er.r.RemoveRemote("fern9") {
+			t.Fatal("entfernen")
+		}
+		step()
+		if !er.l.solo || er.l.fb.at != 0 || er.l.fb.d != 0 || er.l.fb.n != 0 {
+			t.Fatalf("zurueck im 1:1 (solo %v): Bremse %+v - soll frisch beginnen", er.l.solo, er.l.fb)
+		}
+		for end := er.now + int64(3*time.Minute); er.now < end && er.l.fb.at == 0; {
+			step()
+		}
+		if fb := er.l.fb; fb.at == 0 || fb.n != 1 || fb.d != 0 || !fb.long {
+			t.Fatalf("zurueck im 1:1: Bremse %+v - soll nach dem naechsten frischen Rueckfall mit n = 1 und ohne Aufschub laufen", fb)
+		}
+		t.Logf("Gruppe: Sprecher %.1f s auf h; zurueck im 1:1: %+v", float64(onH)*0.2, er.l.fb)
+	}
+	run(t, false)
+	t.Run("gegenprobe", func(t *testing.T) {
+		bremseGruppe(t)
+		run(t, true)
+	})
+}
+
+// TestSoloCheck: 1:1 heisst hoechstens ein anderer Teilnehmer mit Bild (Kamera bzw. Bildschirm) - 1:1 mit
+// Bildschirmteilen ist ein Sender, ein Dritter ohne Bild zaehlt nicht. In der Gruppe ist die Bremse leer.
+func TestSoloCheck(t *testing.T) {
+	src := map[string]*source{"h": {}}
+	cam := &Peer{cam: src}
+	both := &Peer{cam: src, scr: src}
+	scr := &Peer{scr: src}
+	stumm := &Peer{}
+	for _, c := range []struct {
+		name string
+		ps   []*Peer
+		solo bool
+	}{
+		{"allein", nil, true}, {"1:1", []*Peer{cam}, true}, {"1:1 mit Bildschirm", []*Peer{both}, true},
+		{"Dritter ohne Bild", []*Peer{both, stumm}, true}, {"Gruppe", []*Peer{cam, cam}, false},
+		{"Kamera und fremder Bildschirm", []*Peer{cam, scr}, false},
+	} {
+		l := &Leg{fb: freshBrake{rate: 1e6, n: 1, long: true, at: 1, upAt: 1}}
+		l.soloCheck(c.ps)
+		if l.solo != c.solo || !c.solo && l.fb != (freshBrake{}) || c.solo && l.fb.at == 0 {
+			t.Errorf("%s: solo %v (soll %v), Bremse %+v", c.name, l.solo, c.solo, l.fb)
+		}
 	}
 }
