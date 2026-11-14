@@ -24,6 +24,9 @@ func peerAddr(r *http.Request) string {
 
 // clientIP: dieselbe Regel wie uvicorn (fuer Log und Grenzen je Adresse).
 func clientIP(r *http.Request, t trustSet) string {
+	if ip, ok := edgeIP(r); ok { // 2.5: TLS-Eingang - Adresse aus dem PROXY-Kopf bzw. der Gegenstelle, X-Forwarded-For zaehlt nie
+		return ip
+	}
 	peer := peerAddr(r)
 	if !t.has(hostOf(peer)) {
 		return peer
@@ -55,6 +58,15 @@ func clientIP(r *http.Request, t trustSet) string {
 // mit (nur fuer den Hinweis "Proxy nicht in TRUSTED_PROXIES", saga/web_auth.py). X-Forwarded-Host und Forwarded wertet
 // Saga nur fuer Umleitungen auf die feste BASE_URL aus - sie gehen wie bisher unveraendert durch.
 func setForwarded(out http.Header, in *http.Request, t trustSet) {
+	if ip, ok := edgeIP(in); ok { // 2.5: TLS-Eingang (TLS in saga-media bzw. im Knoten beendet)
+		out.Set("X-Forwarded-For", ip)
+		out.Set("X-Forwarded-Proto", "https")
+		out.Del("X-Saga-Orig-For")
+		out.Del("Forwarded")
+		out.Del("X-Forwarded-Host")
+		out.Del(keyHeader)
+		return
+	}
 	trusted := t.has(hostOf(peerAddr(in)))
 	out.Set("X-Forwarded-For", clientIP(in, t))
 	out.Del("X-Forwarded-Proto")

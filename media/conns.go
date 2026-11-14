@@ -199,7 +199,10 @@ func (l *limitListener) connState(nc net.Conn, s http.ConnState) {
 // connContext: Verbindung im Kontext jeder Anfrage (markAuth).
 func connContext(ctx context.Context, nc net.Conn) context.Context {
 	if c, ok := nc.(*trackedConn); ok {
-		return context.WithValue(ctx, connKey{}, c)
+		ctx = context.WithValue(ctx, connKey{}, c)
+		if ec, ok := c.Conn.(*edgeConn); ok { // 2.5: TLS-Eingang
+			ctx = context.WithValue(ctx, edgeKey{}, ec.ip)
+		}
 	}
 	return ctx
 }

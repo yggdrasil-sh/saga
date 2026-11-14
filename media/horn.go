@@ -84,6 +84,8 @@ type hornState struct {
 	Since  int64  `json:"since,omitempty"` // Unix-Sekunden des Starts (run)
 	Port   int    `json:"port,omitempty"`
 	Name   string `json:"name,omitempty"`
+	// 2.5 "Ein Port": Betriebsart, Zertifikat, PROXY-Kopf (einport.go)
+	Einport *einportInfo `json:"einport,omitempty"`
 }
 
 // newHorn -> nil und Grund, wenn der Knoten hier nie laufen soll (SAGA_HORN=off, kein Binaer, HORN_PORT ungueltig).
@@ -119,11 +121,39 @@ func newHorn(m *media, key string) (*horn, string) {
 			env = append(env, k+"="+v)
 		}
 	}
+	if e := m.edge; e != nil {
+		// "Ein Port": Name, Adresse und Port kommen aus BASE_URL/TLS_LISTEN - alte HORN_NAME/HORN_PUBLIC_URL (eigener Name
+		// fuer den Knoten) gelten nicht mehr; der Knoten lauscht selbst auf keinem TCP-Port (Sockets kommen aus der Weiche)
+		drop := map[string]bool{"HORN_NAME": true, "HORN_PUBLIC_URL": true, "HORN_LISTEN": true, "HORN_PROXY_PROTOCOL": true,
+			"HORN_TLS_CERT": true, "HORN_TLS_KEY": true, "HORN_EINPORT_FD": true, "HORN_EINPORT_HTTP_FD": true, "HORN_EINPORT_BACK": true}
+		kept := env[:0]
+		for _, kv := range env {
+			k, v, _ := strings.Cut(kv, "=")
+			if drop[k] {
+				if (k == "HORN_NAME" || k == "HORN_PUBLIC_URL") && v != "" {
+					logf("Gjallarhorn: %s wird in der Betriebsart \"Ein Port\" nicht gebraucht (Name aus BASE_URL) - ignoriert", k)
+				}
+				continue
+			}
+			kept = append(kept, kv)
+		}
+		env = append(kept, e.nodeEnv()...)
+		_, ps, _ := net.SplitHostPort(m.c.tlsListen)
+		port, _ = strconv.Atoi(ps)
+	}
 	set("HORN_LISTEN", ":"+strconv.Itoa(port))
 	set("HORN_DATA", filepath.Join(envStr("STATE_DIR", "/data"), "horn"))
 	env = append(env, "HORN_MODE=node", "HORN_CTL_KEY="+key,
 		"HORN_SAGA_CTL=ws://"+net.JoinHostPort("127.0.0.1", strconv.Itoa(m.c.internalPort))+"/api/horn/ctl")
-	return &horn{m: m, bin: bin, key: key, env: env, port: port, name: cleanName(os.Getenv("HORN_NAME")), kick: make(chan struct{}, 1)}, ""
+	name := cleanName(os.Getenv("HORN_NAME"))
+	if m.edge != nil {
+		name = m.c.baseHost
+	}
+	h := &horn{m: m, bin: bin, key: key, env: env, port: port, name: name, kick: make(chan struct{}, 1)}
+	if m.edge != nil {
+		m.edge.onState = h.poke
+	}
+	return h, ""
 }
 
 // loop fragt Saga nach dem Flag und startet bzw. beendet den Knoten.
@@ -160,7 +190,18 @@ func (h *horn) wanted(ctx context.Context) (bool, string, bool) {
 	return out.On, out.Rev, true
 }
 
+// poke: Zustand gleich an Saga melden (Zertifikat, Uebergabe bereit/weg).
+func (h *horn) poke() {
+	select {
+	case h.kick <- struct{}{}:
+	default:
+	}
+}
+
 func (h *horn) apply(on bool, rev string) {
+	if h.m.edge != nil {
+		on = true // "Ein Port": der Knoten laeuft immer (Zertifikat fuer den Saga-Namen, TURN-TLS), Anrufe nur mit calls.horn
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.stopped {
@@ -197,6 +238,24 @@ func (h *horn) retryLocked() {
 func (h *horn) startLocked() {
 	cmd := exec.Command(h.bin, "node")
 	cmd.Env = h.env
+	var extra []*os.File
+	if e := h.m.edge; e != nil { // "Ein Port": Socket-Paar fuer die Uebergabe (fd 3), internes HTTP (fd 4)
+		fs, err := e.nodeFiles()
+		if err != nil {
+			h.failLocked("start", "", time.Now())
+			if h.same == 1 {
+				logf("Gjallarhorn: Uebergabe an den eingebauten Knoten nicht vorbereitet: %v", err)
+			}
+			return
+		}
+		extra = fs
+		cmd.ExtraFiles = fs
+	}
+	defer func() {
+		for _, f := range extra {
+			_ = f.Close()
+		}
+	}()
 	out := newHornOut(os.Stderr, h.prev)
 	cmd.Stdout, cmd.Stderr = out, out
 	cmd.WaitDelay = 5 * time.Second // Ausgabe-Rohr haengt nicht ewig, falls ein Enkel es offen haelt
@@ -289,6 +348,9 @@ func (h *horn) state() hornState {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	s := hornState{Fails: h.fails, Port: h.port, Name: h.name}
+	if h.m.edge != nil {
+		s.Einport = h.m.edge.info()
+	}
 	switch {
 	case !h.on:
 		s.State, s.Fails = "off", 0
@@ -332,8 +394,15 @@ func postHornState(ctx context.Context, m *media, v any) bool {
 func reportNone(ctx context.Context, m *media, why string) {
 	wait := time.Second
 	for {
-		if postHornState(ctx, m, hornState{State: "none", Reason: why}) {
+		st := hornState{State: "none", Reason: why}
+		if m.edge != nil {
+			st.Einport = m.edge.info() // "Ein Port" ohne Knoten: Zertifikat nur aus SAGA_TLS_CERT/SAGA_TLS_KEY
+		}
+		if postHornState(ctx, m, st) {
 			wait = 2 * hornBeat
+			if m.edge != nil {
+				wait = hornBeat
+			}
 		}
 		select {
 		case <-ctx.Done():

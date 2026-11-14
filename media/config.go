@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,6 +29,16 @@ type config struct {
 	stall        time.Duration // kein Fortschritt beim Lesen/Schreiben so lange -> Verbindung zu (Slowloris)
 	accessLog    bool          // Zugriffszeilen wie uvicorn (LOG_LEVEL info/debug)
 	key          string        // gemeinsames Geheimnis fuer /internal/media/authz
+
+	// 2.5 "Ein Name, ein Port" (einport.go): zweiter Eingang mit TLS und Weiche
+	tlsOn      bool   // SAGA_TLS=1 (oder TLS_LISTEN gesetzt)
+	tlsListen  string // TLS_LISTEN, Standard :443
+	tlsProxy   bool   // TLS_PROXY_PROTOCOL=1: vor jeder Verbindung ein PROXY-v2-Kopf (Pflicht)
+	tlsCert    string // SAGA_TLS_CERT/SAGA_TLS_KEY: eigene Zertifikatsdateien (sonst vom eingebauten Knoten)
+	tlsKey     string
+	baseHost   string // Name aus BASE_URL (Zertifikat, Knotenname)
+	baseOrigin string // https://name[:port] aus BASE_URL (Adresse des eingebauten Knotens)
+	hornData   string // HORN_DATA bzw. STATE_DIR/horn (Zertifikat des Knotens)
 }
 
 func envStr(name, def string) string {
@@ -104,7 +116,77 @@ func loadConfig() (*config, error) {
 	c.stall = time.Duration(stall) * time.Second
 	lvl := strings.ToLower(envStr("LOG_LEVEL", "info"))
 	c.accessLog = lvl == "info" || lvl == "debug" || lvl == "trace"
+	if err := c.loadTLS(port); err != nil {
+		return nil, err
+	}
 	return c, nil
+}
+
+// loadTLS: Betriebsart "Ein Port" (2.5). SAGA_TLS=1 oder TLS_LISTEN schaltet sie ein; BASE_URL muss dann https sein
+// (der Name dort ist der Name des Zertifikats und des eingebauten Knotens).
+func (c *config) loadTLS(port int) error {
+	on := strings.TrimSpace(os.Getenv("SAGA_TLS"))
+	c.tlsListen = strings.TrimSpace(os.Getenv("TLS_LISTEN"))
+	switch strings.ToLower(on) {
+	case "", "0", "off", "false", "no":
+		c.tlsOn = c.tlsListen != "" && on == ""
+	case "1", "on", "true", "yes":
+		c.tlsOn = true
+	default:
+		return fmt.Errorf("SAGA_TLS=%q: erwartet 0 oder 1", on)
+	}
+	c.hornData = envStr("HORN_DATA", filepath.Join(envStr("STATE_DIR", "/data"), "horn"))
+	if !c.tlsOn {
+		return nil
+	}
+	if c.tlsListen == "" {
+		c.tlsListen = ":443"
+	}
+	h, p, err := net.SplitHostPort(c.tlsListen)
+	if err != nil {
+		return fmt.Errorf("TLS_LISTEN=%q: erwartet [HOST]:PORT", c.tlsListen)
+	}
+	if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 || n == port {
+		return fmt.Errorf("TLS_LISTEN=%q: Port 1 bis 65535 und ungleich PORT", c.tlsListen)
+	}
+	c.tlsListen = net.JoinHostPort(h, p)
+	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("TLS_PROXY_PROTOCOL"))); v {
+	case "", "0", "off", "false":
+	case "1", "on", "true":
+		c.tlsProxy = true
+	default:
+		return fmt.Errorf("TLS_PROXY_PROTOCOL=%q: erwartet 0 oder 1", v)
+	}
+	c.tlsCert, c.tlsKey = strings.TrimSpace(os.Getenv("SAGA_TLS_CERT")), strings.TrimSpace(os.Getenv("SAGA_TLS_KEY"))
+	if (c.tlsCert == "") != (c.tlsKey == "") {
+		return errors.New("SAGA_TLS_CERT und SAGA_TLS_KEY nur zusammen setzen")
+	}
+	host, origin, err := httpsOrigin(os.Getenv("BASE_URL"))
+	if err != nil {
+		return fmt.Errorf("SAGA_TLS=1 braucht BASE_URL=https://<Name>: %v", err)
+	}
+	c.baseHost, c.baseOrigin = host, origin
+	return nil
+}
+
+// httpsOrigin: BASE_URL -> Name (klein) und Ursprung https://name[:port] (ohne Pfad, Standardport 443 weggelassen).
+func httpsOrigin(raw string) (string, string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
+		return "", "", errors.New("keine https-Adresse")
+	}
+	host := strings.ToLower(u.Hostname())
+	if net.ParseIP(host) != nil || host == "localhost" || !reHornName.MatchString(host) || !strings.Contains(host, ".") {
+		return "", "", errors.New("braucht einen DNS-Namen (keine IP, nicht localhost)")
+	}
+	origin := "https://" + host
+	if p := u.Port(); p != "" && p != "443" {
+		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
+			return "", "", errors.New("ungueltiger Port")
+		}
+		origin += ":" + p
+	}
+	return host, origin, nil
 }
 
 // trustSet: vertrauenswuerdige Reverse Proxys - gleiche Regeln wie uvicorn (forwarded_allow_ips):

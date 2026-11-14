@@ -60,6 +60,7 @@ type media struct {
 	ups    *upLocks     // 2.4: ein PUT je Upload
 	fed    *fedCache    // 2.4: Zwischenkopien anderer Server
 	bufs   *bufPool     // 2.4: Puffer fuer Platte/Netz (256 KiB)
+	edge   *edge        // 2.5: TLS-Eingang "Ein Port" (nil = aus)
 }
 
 // fileID: "/api/chat/files/<fid>" -> fid (sonst "").

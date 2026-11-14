@@ -61,6 +61,12 @@ func (m *media) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	r.Header.Del(keyHeader)
 	r.Header.Del("X-Saga-Horn-Key") // 2.5: Geheimnis des eingebauten Knotens kommt nur ueber localhost
+	r.Header.Del(einKeyHeader)
+	r.Header.Del(einForHeader)
+	if m.edge != nil && nodePath(p) && !strings.Contains(p, "/.") { // 2.5 "Ein Port": Geraete-HTTP des eingebauten Knotens
+		m.edge.nodeProxy.ServeHTTP(w, r)
+		return
+	}
 	// Was saga-media selbst bedient (alles andere geht an Saga): Dateien lesen (Range), 2.4 Uploads schreiben
 	// (PUT/HEAD /api/chat/uploads/{id}) und Teile eigener Anhaenge fuer andere Server (/fed/v2/chat/files/{id}?range=).
 	switch r.Method {
@@ -130,6 +136,10 @@ func main() {
 		child = exec.Command(args[0], args[1:]...)
 		child.Stdin, child.Stdout, child.Stderr = os.Stdin, os.Stdout, os.Stderr
 		child.Env = append(os.Environ(), "SAGA_MEDIA_KEY="+c.key, "SAGA_INTERNAL_PORT="+strconv.Itoa(c.internalPort), "SAGA_HORN_KEY="+hornKey)
+		if c.tlsOn { // 2.5: Python weiss von der Betriebsart (Steuerkanal auch ohne calls.horn, Admin -> Anrufe)
+			child.Env = append(child.Env, "SAGA_EINPORT=1", "SAGA_EINPORT_PROXY="+map[bool]string{true: "1", false: "0"}[c.tlsProxy],
+				"SAGA_EINPORT_LISTEN="+c.tlsListen)
+		}
 		child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Signale nur ueber uns (kein doppeltes Strg+C)
 	} else {
 		c.key = os.Getenv("SAGA_MEDIA_KEY")
@@ -160,6 +170,22 @@ func main() {
 	}
 	lim := newLimitListener(ln, c)
 	srv.ConnState = lim.connState
+	if c.tlsOn { // 2.5 "Ein Name, ein Port": TLS-Eingang mit Weiche (einport.go)
+		if child == nil {
+			logf("SAGA_TLS=1 geht nur, wenn saga-media Saga selbst startet (saga-media -- python run.py)")
+			os.Exit(2)
+		}
+		e, err := newEdge(m, hornKey)
+		if err != nil {
+			logf("TLS-Eingang: kann nicht auf %s lauschen: %v", c.tlsListen, err)
+			os.Exit(1)
+		}
+		if err := e.start(); err != nil {
+			logf("TLS-Eingang: %v", err)
+			os.Exit(1)
+		}
+		m.edge = e
+	}
 	srvDone := make(chan error, 1)
 	go func() { srvDone <- srv.Serve(lim) }()
 	logf("%s lauscht auf %s, Saga intern auf %s, Dateien aus %s (Berechtigung %d s gemerkt)", version, c.listen, c.upstream,
@@ -190,6 +216,9 @@ func main() {
 		hcancel()
 		if hn != nil {
 			hn.stop(8 * time.Second)
+		}
+		if m.edge != nil {
+			m.edge.close()
 		}
 	}
 
