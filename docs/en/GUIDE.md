@@ -1111,6 +1111,43 @@ sees neither SDP nor media. Hence the limit of 4 devices with video or 6 audio o
 forwarding server (SFU) with additional content encryption – not part of Saga yet. API for apps: `docs/APP-API.md`,
 sections "Anrufe: saga-call v3", "Anrufe: Bildschirm v2" and "Anrufe: Mehrgeräte und Gruppen".
 
+#### Built-in node behind an L4 proxy (e.g. NetBird 0.67 or later)
+
+From 2.5, large group calls run through Gjallarhorn nodes (Admin → **Calls**). The **built-in node** runs inside the
+Saga container and listens on `HORN_PORT` (default 8443). It needs **its own name** with a certificate – **443/TCP** is
+enough from outside, no additional open port is needed:
+
+1. **Name:** e.g. `horn-0.example.org` (with NetBird e.g. a name under the proxy's domain); DNS points to the proxy.
+2. **TLS passthrough via SNI on 443:** the proxy forwards connections for this name **without terminating TLS** to
+   `HORN_PORT` on the Saga host – with NetBird 0.67+ an L4 service of type TLS (SNI), with Traefik `HostSNI` with
+   `passthrough`, with HAProxy `mode tcp`. In `docker-compose.yml`, publish `HORN_PORT` for the proxy only
+   (`"8443:8443/tcp"`, e.g. bound to the tunnel address).
+3. **`.env`:**
+   ```
+   HORN_NAME=horn-0.example.org
+   HORN_PUBLIC_URL=https://horn-0.example.org   # no port: devices come in via 443
+   HORN_UDP=0                                   # as long as the proxy cannot pass 443/UDP through
+   ```
+   Without `HORN_PUBLIC_URL` the node tells devices `https://<name>:<HORN_PORT>` – wrong behind a passthrough on 443.
+   `HORN_PUBLIC_PORT` only applies to paired nodes ("Extend"), not to the built-in one. `HORN_PUBLIC_IP` is not needed
+   without UDP.
+4. **Certificate:** the node gets it itself, Saga chooses the method: with a Cloudflare token under Admin → Calls →
+   **DNS** via **DNS-01** (Saga only sets `_acme-challenge.<name>`, the token never leaves Saga), otherwise via
+   **TLS-ALPN-01** – which only works if Let's Encrypt reaches `<name>:443` at the node through the passthrough (the
+   proxy must not answer the challenge for this name itself). Own certificate: `HORN_TLS_CERT`/`HORN_TLS_KEY` – the node
+   never touches it. Without a valid certificate the node is not "Ready" and gets no calls.
+5. **UDP is optional.** Without UDP, media runs over TLS on 443 (TURN-TLS inside the node) – this works behind a plain
+   TLS passthrough. UDP only helps if the proxy can pass 443/UDP to the node: the node announces its **local** UDP port
+   (`HORN_UDP_LISTEN`, otherwise `HORN_PORT`), so the outside number must match; `HORN_PUBLIC_IP` = the proxy's address.
+   The UDP self-test sends a STUN request from the node to that address and port and waits for the answer via the
+   proxy; on "missing" it repeats after 1, 5 and 15 min, then every 30 min.
+6. **Shared address:** behind a passthrough the node sees all devices with the proxy's address. It accepts at most
+   `HORN_MAX_PER_IP` connections per source address (default 12, two per device over TLS) – for more than 6 devices set
+   `HORN_MAX_PER_IP=48`, or `HORN_PROXY_PROTOCOL=1` if the proxy sends the PROXY header (v1/v2) for this service. On the
+   proxy host also set `net.ipv4.tcp_notsent_lowat = 16384` (`gjallarhorn/NODE.md`).
+7. **Check:** Admin → Calls → Nodes, row **"Built-in"**: "Not starting" with the reason, "Certificate missing" with the
+   method (DNS-01/TLS-ALPN-01) and error, otherwise "Ready". Saving or "Try again now" restarts a waiting node at once.
+
 ### Push notifications to phone and computer
 
 The bell shows everything while Saga is open. For when you're away, Saga sends **push notifications** – even when

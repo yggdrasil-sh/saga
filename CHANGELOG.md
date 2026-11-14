@@ -16,6 +16,29 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Gjallarhorn: eingebauter Knoten sichtbar, mit Zertifikat und nur mit Zertifikat bereit
+- **Admin → Anrufe → Knoten** zeigt immer eine Zeile **„Eingebaut“** (wenn Gjallarhorn an ist): „Startet …“,
+  „Startet nicht“ mit verständlichem Grund (kein eigener Name/Zertifikat, Port belegt, Port unter 1024, sonstiger Abbruch
+  mit gekürzter Fehlerzeile ohne Pfade), Zahl der Fehlversuche und nächster Versuch, „Nicht verfügbar“
+  (`SAGA_HORN=off`, Programm fehlt) bzw. „Abgeschaltet“. Bei „kein Zertifikat“ steht dort, was fehlt (eigener Name per
+  TLS-Durchreiche auf 443, `HORN_PUBLIC_URL` ohne Port, UDP optional) mit Link auf die Anleitung. Knopf „Jetzt erneut
+  versuchen“. Vorher tauchte ein nie gestarteter eingebauter Knoten gar nicht auf.
+- Saga meldet dafür intern (saga-media → `POST /internal/horn/state`, nur mit dem gemeinsamen Geheimnis), ob der Knoten
+  läuft bzw. warum nicht. **Speichern** mit eingeschaltetem eingebauten Knoten ohne Name/Zertifikat **warnt**
+  („startet so nicht“) und startet einen wartenden Knoten sofort neu.
+- **Log/Backoff:** Bricht der Knoten immer wieder mit demselben Grund ab, versucht saga-media es seltener (bis alle
+  10 min) und schreibt Grund- und Knotenzeile nur bei Änderung, statt jede Minute dieselben Zeilen.
+- **Zertifikat:** Der eingebaute Knoten bekommt jetzt wie gekoppelte Knoten den Weg von Saga – **DNS-01**, wenn ein
+  Cloudflare-Token eingetragen ist, sonst TLS-ALPN-01 (Cloudflare-Token speichern/entfernen wirkt auch auf ihn). Vorher
+  holte er sein Zertifikat nur per TLS-ALPN-01, das hinter einer Durchreiche auf einem anderen Port als 443 nie klappt.
+- **Bereitschaft:** Der eingebaute Knoten gilt nur noch mit gemeldetem, gültigem Zertifikat als bereit. Vorher bot Saga
+  ihn auch ohne Zertifikat als ersten an, und Anrufe scheiterten erst am TLS. Die Knotenzeile zeigt „Zertifikat fehlt“
+  mit dem Weg (DNS-01/TLS-ALPN-01) und dem Fehler.
+- **UDP-Selbsttest** des Knotens: Ergebnis kommt jetzt auch nach dem Verbinden bei Saga an (vorher meldete der Knoten oft
+  „unbekannt“, weil der Steuerkanal vor dem Test stand); bei „fehlt“ wiederholt er sich nach 1, 5, 15 und dann alle
+  30 min. TLS-ALPN-01-Zertifikate zählen nach einer Neuverbindung der Steuerung weiter als vorhanden.
+- Anleitung: „Eingebauter Knoten hinter einem L4-Proxy (z. B. NetBird ab 0.67)“ (Abschnitt Anrufe).
+
 ### Behoben – Web: Anrufe über Knoten brachen mit „hornProbe(c, ms).then is not a function“ ab
 - Eine Diagnose-Hilfsfunktion trug denselben Namen wie die Messung der Knoten (`hornProbe`) und überdeckte sie im selben
   Gültigkeitsbereich: Der Browser konnte vor dem Beitritt keinen Knoten messen, Gruppenanrufe (und 1:1 mit „Alle Anrufe

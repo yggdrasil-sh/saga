@@ -1340,6 +1340,48 @@ für größere Runden bräuchte es einen Weiterleitungs-Server (SFU) mit zusätz
 nicht Teil von Saga. Schnittstelle für Apps: `docs/APP-API.md`, Abschnitte „Anrufe: saga-call v3“, „Anrufe: Bildschirm
 v2“ und „Anrufe: Mehrgeräte und Gruppen“.
 
+#### Eingebauter Knoten hinter einem L4-Proxy (z. B. NetBird ab 0.67)
+
+Ab 2.5 laufen große Gruppenanrufe über Gjallarhorn-Knoten (Admin → **Anrufe**). Der **eingebaute Knoten** läuft im
+Saga-Container und lauscht dort auf `HORN_PORT` (Standard 8443). Er braucht einen **eigenen Namen** mit Zertifikat –
+nach außen genügt **443/TCP**, ein weiterer offener Port ist nicht nötig:
+
+1. **Name:** z. B. `horn-0.example.org` (bei NetBird z. B. ein Name unter der Domain des Proxys); DNS zeigt auf den Proxy.
+2. **TLS-Durchreiche per SNI auf 443:** Der Proxy reicht Verbindungen mit diesem Namen **ohne TLS zu beenden** an
+   `HORN_PORT` des Saga-Hosts weiter – bei NetBird ab 0.67 ein L4-Dienst vom Typ TLS (SNI), bei Traefik `HostSNI` mit
+   `passthrough`, bei HAProxy `mode tcp`. In der `docker-compose.yml` `HORN_PORT` nur für den Proxy veröffentlichen
+   (`"8443:8443/tcp"`, z. B. an die Tunnel-Adresse gebunden).
+3. **`.env`:**
+   ```
+   HORN_NAME=horn-0.example.org
+   HORN_PUBLIC_URL=https://horn-0.example.org   # ohne Port: die Geräte kommen über 443
+   HORN_UDP=0                                   # solange der Proxy 443/UDP nicht selbst durchreicht
+   ```
+   Ohne `HORN_PUBLIC_URL` nennt der Knoten den Geräten `https://<Name>:<HORN_PORT>` – hinter einer Durchreiche auf 443
+   ist das falsch. `HORN_PUBLIC_PORT` wirkt nur bei gekoppelten Knoten („Erweitern“), nicht beim eingebauten.
+   `HORN_PUBLIC_IP` braucht es ohne UDP nicht.
+4. **Zertifikat:** holt der Knoten selbst, den Weg legt Saga fest: Ist unter Admin → Anrufe → **DNS** ein
+   Cloudflare-Token eingetragen, per **DNS-01** (Saga setzt nur `_acme-challenge.<Name>`, der Token verlässt Saga nie),
+   sonst per **TLS-ALPN-01** – das klappt nur, wenn Let's Encrypt `<Name>:443` über die Durchreiche beim Knoten
+   erreicht (der Proxy darf die Prüfung für diesen Namen nicht selbst beantworten). Eigenes Zertifikat:
+   `HORN_TLS_CERT`/`HORN_TLS_KEY` – das fasst der Knoten nie an. Ohne gültiges Zertifikat ist der Knoten nicht
+   „Bereit“ und bekommt keine Anrufe.
+5. **UDP ist optional.** Ohne UDP laufen die Medien über TLS auf 443 (TURN-TLS im Knoten) – das geht hinter einer
+   reinen TLS-Durchreiche. UDP lohnt nur, wenn der Proxy 443/UDP selbst zum Knoten durchreichen kann: Der Knoten nennt
+   den Geräten als UDP-Port seinen **lokalen** Port (`HORN_UDP_LISTEN`, sonst `HORN_PORT`), die Nummer muss außen also
+   gleich sein; `HORN_PUBLIC_IP` = Adresse des Proxys (sonst die Adressen von `HORN_NAME`). Der UDP-Selbsttest schickt
+   vom Knoten eine STUN-Anfrage an diese Adresse und Port und wartet auf die Antwort über den Proxy; bei „fehlt“
+   wiederholt er sich nach 1, 5 und 15 min, dann alle 30 min.
+6. **Gemeinsame Adresse:** Hinter einer Durchreiche sieht der Knoten alle Geräte mit der Adresse des Proxys. Je
+   Quell-Adresse nimmt er höchstens `HORN_MAX_PER_IP` Verbindungen an (Standard 12, über TLS zwei je Gerät) – für mehr
+   als 6 Geräte `HORN_MAX_PER_IP=48` setzen, oder `HORN_PROXY_PROTOCOL=1`, wenn der Proxy für diesen Dienst den
+   PROXY-Kopf (v1/v2) schickt. Auf dem Rechner mit dem Proxy außerdem `net.ipv4.tcp_notsent_lowat = 16384` setzen
+   (`gjallarhorn/NODE.md`, „Hinter einer TLS-Durchreiche“).
+7. **Prüfen:** Admin → Anrufe → Knoten, Zeile **„Eingebaut“**: „Startet nicht“ mit Grund (z. B. kein Name/Zertifikat,
+   Port belegt), „Zertifikat fehlt“ mit dem Weg (DNS-01/TLS-ALPN-01) und ggf. dem Fehler, sonst „Bereit“. Speichern
+   oder „Jetzt erneut versuchen“ startet einen wartenden Knoten sofort; sonst versucht saga-media es mit wachsendem
+   Abstand (bis 10 min) und schreibt denselben Fehler nur einmal ins Log.
+
 ### Mitteilungen aufs Handy und den Computer
 
 Die Glocke zeigt alles, solange Saga offen ist. Für unterwegs schickt Saga **Mitteilungen** – auch wenn Saga

@@ -1161,6 +1161,37 @@ grandes haría falta un servidor de reenvío (SFU) con cifrado adicional del con
 Interfaz para apps: `docs/APP-API.md`, secciones «Anrufe: saga-call v3», «Anrufe: Bildschirm v2» y «Anrufe: Mehrgeräte
 und Gruppen».
 
+#### Nodo integrado detrás de un proxy L4 (p. ej. NetBird 0.67 o posterior)
+
+Desde la 2.5, las llamadas de grupo grandes pasan por nodos Gjallarhorn (Admin → **Llamadas**). El **nodo integrado**
+funciona dentro del contenedor de Saga y escucha en `HORN_PORT` (por defecto 8443). Necesita **un nombre propio** con
+certificado; desde fuera basta **443/TCP**, no hace falta abrir otro puerto:
+
+1. **Nombre:** p. ej. `horn-0.example.org` (con NetBird, p. ej. un nombre bajo el dominio del proxy); el DNS apunta al proxy.
+2. **Paso TLS por SNI en 443:** el proxy reenvía las conexiones para ese nombre **sin terminar TLS** a `HORN_PORT` del
+   host de Saga: con NetBird 0.67+ un servicio L4 de tipo TLS (SNI), con Traefik `HostSNI` con `passthrough`, con HAProxy
+   `mode tcp`. En `docker-compose.yml`, publica `HORN_PORT` solo para el proxy (`"8443:8443/tcp"`).
+3. **`.env`:**
+   ```
+   HORN_NAME=horn-0.example.org
+   HORN_PUBLIC_URL=https://horn-0.example.org   # sin puerto: los dispositivos entran por 443
+   HORN_UDP=0                                   # mientras el proxy no pueda pasar 443/UDP
+   ```
+   Sin `HORN_PUBLIC_URL` el nodo indica `https://<nombre>:<HORN_PORT>`, incorrecto detrás de un paso en 443.
+   `HORN_PUBLIC_PORT` solo vale para nodos emparejados, no para el integrado. Sin UDP no hace falta `HORN_PUBLIC_IP`.
+4. **Certificado:** lo obtiene el propio nodo y Saga elige el método: con un token de Cloudflare en Admin → Llamadas →
+   **DNS** por **DNS-01** (Saga solo crea `_acme-challenge.<nombre>`; el token nunca sale de Saga), si no por
+   **TLS-ALPN-01**, que solo funciona si Let's Encrypt llega a `<nombre>:443` en el nodo a través del paso. Certificado
+   propio: `HORN_TLS_CERT`/`HORN_TLS_KEY`. Sin certificado válido el nodo no está «Listo» y no recibe llamadas.
+5. **UDP es opcional.** Sin UDP, los medios van por TLS en 443 (TURN-TLS en el nodo). UDP solo ayuda si el proxy puede
+   pasar 443/UDP: el nodo anuncia su puerto UDP **local** (`HORN_UDP_LISTEN`, si no `HORN_PORT`) y `HORN_PUBLIC_IP` = la
+   dirección del proxy. La autoprueba UDP se repite tras 1, 5 y 15 min y luego cada 30 min.
+6. **Dirección compartida:** detrás del paso, el nodo ve todos los dispositivos con la dirección del proxy y acepta como
+   máximo `HORN_MAX_PER_IP` conexiones por dirección (12; dos por dispositivo por TLS): para más de 6 dispositivos
+   `HORN_MAX_PER_IP=48`, o `HORN_PROXY_PROTOCOL=1` si el proxy envía la cabecera PROXY.
+7. **Comprobar:** Admin → Llamadas → Nodos, fila **«Integrado»**: «No arranca» con el motivo, «Falta el certificado» con
+   el método, si no «Listo». Guardar o «Reintentar ahora» reinicia en el acto un nodo en espera.
+
 ### Notificaciones push al móvil y al ordenador
 
 La campana lo muestra todo mientras Saga está abierta. Para cuando no estás, Saga envía **notificaciones push**,
