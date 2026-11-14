@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – MCP: Saga-Kalender bearbeiten, Vorlage und Symbol beim Anlegen (Bug-DB 1531)
+- Neue Token-Bereiche `read:calendar` / `write:calendar` (bestehende Tokens unverändert) und Werkzeuge
+  `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event` – über dieselben CalDAV-Zugänge
+  wie im Web, ohne Zugangsdaten nach außen, mit Zeitzone. `update_event` ändert nur die angegebenen Felder.
+  Serientermine: Vorkommen erkennbar (`recurring`, `series`); ändern/löschen nur ausdrücklich für die ganze Serie
+  (`scope: series`, Ändern nur Titel/Ort/Beschreibung), einzelne Vorkommen weiterhin nur im Kalender selbst.
+- `create_page`/`create_row` mit Symbol (`icon`), `create_row` mit Eintrags-Vorlage (`template`, auch in
+  `POST /api/v1/databases/{id}/rows`); `get_database_schema` nennt die Vorlagen.
+
 ### Neu – MCP: Datenbanken und Widgets anlegen (Bug-DB 2021)
 - `create_database`: Datenbank mit Eigenschaften (per Name, Typen wie im Web, auch Status und Relation), Ansichten
   (Tabelle, Board nach einer Auswahl, Kalender, Zeitleiste …) und optional gleich in die Elternseite eingebettet.

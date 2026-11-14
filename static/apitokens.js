@@ -11,7 +11,8 @@
   var SCOPE_TXT = {
     'read:pages': T('Seiten lesen'), 'write:pages': T('Seiten schreiben'), 'read:db': T('Datenbanken lesen'), 'write:db': T('Datenbanken schreiben'),
     'read:tasks': T('Aufgaben lesen'), 'write:tasks': T('Aufgaben schreiben'), 'read:files': T('Dateien lesen'), 'write:files': T('Dateien hochladen'),
-    'read:comments': T('Kommentare lesen'), 'write:comments': T('Kommentare schreiben'), 'webhooks': T('Webhooks verwalten'), 'mcp': T('MCP-Server (KI-Werkzeuge)')
+    'read:comments': T('Kommentare lesen'), 'write:comments': T('Kommentare schreiben'),
+    'read:calendar': T('Kalender lesen'), 'write:calendar': T('Kalender schreiben'), 'webhooks': T('Webhooks verwalten'), 'mcp': T('MCP-Server (KI-Werkzeuge)')
   };
   function copyRow(value, label) {
     var row = el('div', 'hk-actions'), inp = el('input', 'hk-in hk-tokval'); inp.type = 'text'; inp.readOnly = true; inp.value = value;

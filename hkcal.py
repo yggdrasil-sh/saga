@@ -48,6 +48,10 @@ class CalError(Exception):
     """Fehler mit verstaendlicher Meldung fuer den Benutzer."""
 
 
+class Conflict(CalError):
+    """ETag passt nicht (Termin inzwischen woanders geaendert)."""
+
+
 def check_url(url):
     p = urlsplit(url)
     host = (p.hostname or "").lower()
@@ -212,8 +216,17 @@ def _vevent(ev, uid):
     return cal.to_ical()
 
 
-def _load_single(href, auth, etag):
-    """Vorhandenen Termin laden; Serien (RRULE/RDATE/Ausnahmen) werden NICHT angefasst."""
+class SeriesError(CalError):
+    """Termin ist (Teil) einer Serie - die Weboberflaeche aendert/loescht Serien nicht."""
+
+
+def _is_series(evs):
+    return len(evs) != 1 or any(evs[0].get(k) for k in ("RRULE", "RDATE", "RECURRENCE-ID"))
+
+
+def _load_single(href, auth, etag, series=False):
+    """Vorhandenen Termin laden; Serien (RRULE/RDATE/Ausnahmen) werden NICHT angefasst - ausser series=True (MCP, nur
+    ausdruecklich): dann (cal, [alle VEVENTs], etag, ist_serie)."""
     status, data, rh, _ = _req("GET", href, auth)
     if status == 404:
         raise CalError(t("Termin gibt es nicht mehr – bitte neu laden"))
@@ -221,11 +234,18 @@ def _load_single(href, auth, etag):
         raise CalError(t("Termin nicht lesbar ({status})", status=status))
     cur = (rh.get("etag") or "").strip()
     if etag and cur and cur != etag:
-        raise CalError(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
-    cal = _ical().Calendar.from_ical(data)
+        raise Conflict(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
+    try:
+        cal = _ical().Calendar.from_ical(data)
+    except ValueError:
+        raise CalError(t("Unerwartete Antwort des Kalender-Servers"))
     evs = list(cal.walk("VEVENT"))
-    if len(evs) != 1 or any(evs[0].get(k) for k in ("RRULE", "RDATE", "RECURRENCE-ID")):
-        raise CalError(t("Serientermine bitte direkt im Kalender (mailcow/Nextcloud) bearbeiten"))
+    if series:
+        if not evs:
+            raise CalError(t("Unerwartete Antwort des Kalender-Servers"))
+        return cal, evs, cur or etag, _is_series(evs)
+    if _is_series(evs):
+        raise SeriesError(t("Serientermine bitte direkt im Kalender (mailcow/Nextcloud) bearbeiten"))
     return cal, evs[0], cur or etag
 
 
@@ -271,20 +291,104 @@ def save_event(cal_url, user, password, ev, href=None, etag=None):
     headers["Content-Type"] = "text/calendar; charset=utf-8"
     status, _, rh, _ = _req("PUT", href, auth, body, headers)
     if status == 412:
-        raise CalError(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
+        raise Conflict(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
     if status not in (200, 201, 204):
         raise CalError(t("Termin nicht gespeichert ({status})", status=status))
     return href, rh.get("etag", "")
 
 
-def delete_event(cal_url, user, password, href, etag=None):
+def _current(v, tz=timezone.utc):
+    """Felder eines VEVENT wie in _set_fields (summary, location, description, allday, start, end). Zeiten ohne Zone
+    gelten wie beim Lesen (events) in tz."""
+    s = v.get("DTSTART").dt if v.get("DTSTART") else None
+    e = v.get("DTEND").dt if v.get("DTEND") else None
+    if s is None:
+        raise CalError(t("Unerwartete Antwort des Kalender-Servers"))
+    allday = not isinstance(s, datetime)
+    if e is None:
+        e = s + (v.get("DURATION").dt if v.get("DURATION") else (timedelta(days=1) if allday else timedelta(hours=1)))
+    if not allday:
+        s, e = _as_dt(s, tz), _as_dt(e, tz)
+    return {"summary": str(v.get("SUMMARY", "") or ""), "location": str(v.get("LOCATION", "") or ""),
+            "description": str(v.get("DESCRIPTION", "") or ""), "allday": allday, "start": s.isoformat(), "end": e.isoformat(),
+            "_s": s, "_e": e}
+
+
+TEXT_FIELDS = ("summary", "location", "description")
+
+
+def _set_texts(v, ch):
+    """Nur Titel/Ort/Beschreibung eines VEVENT setzen (Zeiten, Erinnerungen, Teilnehmer bleiben unberuehrt)."""
+    for k in TEXT_FIELDS:
+        if k in ch:
+            if k.upper() in v:
+                del v[k.upper()]
+            val = str(ch[k] or "")[:2000 if k == "description" else 300]
+            if val or k == "summary":
+                v.add(k, val or t("Termin"))
+    if "DTSTAMP" in v:
+        del v["DTSTAMP"]
+    v.add("dtstamp", datetime.now(timezone.utc))
+
+
+def patch_event(cal_url, user, password, href, etag, ch, series=False, tz=timezone.utc):
+    """Termin teilweise aendern (MCP): nur die Schluessel in ch (summary, location, description, start, end, allday).
+    Einzeltermin: fehlendes Ende behaelt die Dauer. Serie nur mit series=True und nur Texte (in allen VEVENTs der
+    Serie, auch Ausnahmen) - Zeiten von Serien und einzelne Vorkommen aendert Saga nicht. -> (href, neues ETag)."""
+    auth = (user, password)
     check_url(href)
     if not href.startswith(check_url(cal_url)):
         raise CalError(t("Termin gehört nicht zu diesem Kalender"))
-    _, _, cur = _load_single(href, (user, password), etag)    # Serien nicht loeschen, ETag pruefen
+    cal, evs, cur, is_series = _load_single(href, auth, etag, series=True)
+    if is_series and not series:
+        raise SeriesError(t("Serientermine bitte direkt im Kalender (mailcow/Nextcloud) bearbeiten"))
+    if is_series:
+        if any(k in ch for k in ("start", "end", "allday")):
+            raise SeriesError(t("Zeiten einer Serie bitte direkt im Kalender ändern – hier gehen nur Titel, Ort und Beschreibung."))
+        for v in evs:
+            _set_texts(v, ch)
+    elif not any(k in ch for k in ("start", "end", "allday")):
+        _set_texts(evs[0], ch)                    # nur Texte: Zeiten bleiben woertlich (auch TZID)
+    else:
+        v = evs[0]
+        old = _current(v, tz)
+        new = {k: old[k] for k in ("summary", "location", "description", "allday", "start", "end")}
+        new.update({k: ch[k] for k in ch if k in new})
+        if "start" in ch and "end" not in ch and new["allday"] == old["allday"]:      # Dauer behalten
+            if new["allday"]:
+                d0 = date.fromisoformat(str(new["start"])[:10])
+                new["end"] = (d0 + (old["_e"] - old["_s"])).isoformat()
+            else:
+                try:
+                    s0 = datetime.fromisoformat(str(new["start"]))
+                except ValueError:
+                    raise CalError(t("Ungültige Zeitangabe"))
+                new["end"] = (s0 + (old["_e"] - old["_s"])).isoformat()
+        if new["allday"] and not old["allday"] and "start" not in ch:
+            new["start"], new["end"] = old["_s"].date().isoformat(), old["_e"].date().isoformat()
+        _set_fields(v, new)
+    body, headers = cal.to_ical(), ({"If-Match": cur} if cur else {})
+    headers["Content-Type"] = "text/calendar; charset=utf-8"
+    status, _, rh, _ = _req("PUT", href, auth, body, headers)
+    if status == 412:
+        raise Conflict(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
+    if status not in (200, 201, 204):
+        raise CalError(t("Termin nicht gespeichert ({status})", status=status))
+    return href, rh.get("etag", "")
+
+
+def delete_event(cal_url, user, password, href, etag=None, series=False):
+    """Termin loeschen (ETag geprueft). Serien nur mit series=True (MCP, ausdruecklich) - dann die ganze Serie."""
+    check_url(href)
+    if not href.startswith(check_url(cal_url)):
+        raise CalError(t("Termin gehört nicht zu diesem Kalender"))
+    if series:
+        _, _, cur, _s = _load_single(href, (user, password), etag, series=True)
+    else:
+        _, _, cur = _load_single(href, (user, password), etag)    # Serien nicht loeschen, ETag pruefen
     etag = cur or etag
     status, _, _, _ = _req("DELETE", href, (user, password), None, {"If-Match": etag} if etag else {})
     if status == 412:
-        raise CalError(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
+        raise Conflict(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
     if status not in (200, 204, 404):
         raise CalError(t("Termin nicht gelöscht ({status})", status=status))

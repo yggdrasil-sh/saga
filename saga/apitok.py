@@ -2,7 +2,8 @@
 
 - Format "sga_" + 43 Zeichen (32 Byte), gespeichert nur als SHA-256 (core._tok_hash); der Klartext erscheint genau einmal
   in der Antwort beim Anlegen. Getrennt von den App-Schluesseln (app_token, "hk_"), die nie Bereiche bekommen.
-- Bereiche (SCOPES): read:/write: fuer pages, db, tasks, files, comments; dazu webhooks und mcp. write:x schliesst read:x ein.
+- Bereiche (SCOPES): read:/write: fuer pages, db, tasks, files, comments, calendar (2.5: CalDAV-Kalender, nur MCP); dazu
+  webhooks und mcp. write:x schliesst read:x ein.
 - roots (optional, P1-E6): nur diese Seitenbaeume (Seite + alles darunter). Rechte = Schnittmenge aus Bereich, roots und
   der normalen Rolle des Kontos (sharing.Access) - ein Token kann nie mehr als das Konto.
 - Ablauf Pflicht (Standard 90 Tage, Admin-Hoechstwert; "unbegrenzt" nur mit Admin-Freigabe). Ungueltig bei Widerruf,
@@ -35,7 +36,7 @@ router = APIRouter()
 
 PREFIX = "sga_"
 SCOPES = ("read:pages", "write:pages", "read:db", "write:db", "read:tasks", "write:tasks", "read:files", "write:files",
-          "read:comments", "write:comments", "webhooks", "mcp")
+          "read:comments", "write:comments", "read:calendar", "write:calendar", "webhooks", "mcp")
 ROOTS_MAX = 20
 NAME_MAX = 60
 DEFAULT_DAYS = 90

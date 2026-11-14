@@ -518,12 +518,18 @@ def databases(tok, q="", limit=LIMIT_DEFAULT):
     return 200, {"databases": out}
 
 
-def database_get(tok, dbid):
+def database_get(tok, dbid, templates=False):
     with _db() as c:
         owner, role = _guard(c, tok, dbid, "view")
         schema = _schema_of(c, owner, int(dbid))
         title = c.execute("SELECT title FROM note WHERE id=?", (int(dbid),)).fetchone()[0]
-    return 200, {"id": int(dbid), "title": title or "", "role": role, "schema": schema_out(schema)}
+        tpls = templates_of(c, owner, dbid) if templates else None
+    out = {"id": int(dbid), "title": title or "", "role": role, "schema": schema_out(schema)}
+    if templates:                                   # 2.5 (MCP): Eintrags-Vorlagen fuer create_row (template)
+        out["templates"] = tpls
+        if schema.get("default_tpl") and any(x["id"] == schema["default_tpl"] for x in tpls):
+            out["default_template"] = schema["default_tpl"]
+    return 200, out
 
 
 def database_query(tok, dbid, b):
@@ -576,13 +582,56 @@ def database_query(tok, dbid, b):
     return 200, out
 
 
+def templates_of(c, owner, dbid):
+    """Eintrags-Vorlagen einer Datenbank -> [{id, name, icon}] (wie die Vorlagen-Schaltflaeche "+ Neu" im Web)."""
+    return [{"id": r[0], "name": r[1] or "", "icon": r[2] or ""} for r in c.execute(
+        "SELECT id, title, icon FROM note WHERE uid=? AND parent_id=? AND is_template=1 AND deleted_at IS NULL ORDER BY sort NULLS FIRST, created",
+        (owner, int(dbid))).fetchall()]
+
+
+def _template_pick(tpls, v):
+    if isinstance(v, int) and not isinstance(v, bool) or isinstance(v, str) and v.strip().isdigit():
+        hit = [x for x in tpls if x["id"] == int(v)]
+    elif isinstance(v, str):
+        low = " ".join(v.split()).casefold()
+        hit = [x for x in tpls if " ".join(x["name"].split()).casefold() == low]
+    else:
+        raise Fail(400, t("ungültige Angabe"))
+    if len(hit) != 1:
+        raise Fail(400 if hit else 404, t("Vorlage ist mehrdeutig – bitte die ID angeben.") if hit else t("Vorlage nicht gefunden."),
+                   extra={"templates": tpls[:30]})
+    return hit[0]["id"]
+
+
 def row_create(tok, dbid, b):
     with _db() as c:
-        _guard(c, tok, dbid, "edit")
+        owner, _ = _guard(c, tok, dbid, "edit")
         if not c.execute("SELECT 1 FROM note WHERE id=? AND kind='database'", (int(dbid),)).fetchone():
             raise Fail(400, t("Seite ist keine Datenbank-Zeile"))
+        tpl = _template_pick(templates_of(c, owner, dbid), b["template"]) if b.get("template") not in (None, "") else None
     b = dict(b, parent_id=int(dbid))
-    return page_create(tok, b)
+    if tpl is None:
+        return page_create(tok, b)
+    # 2.5 (MCP 1531): aus einer Eintrags-Vorlage wie im Web (POST /api/notes/{vorlage}/duplicate) - Inhalt, Symbol und
+    # Eigenschaften der Vorlage; danach Titel, Eigenschaften, Symbol und angefuegtes Markdown aus der Anfrage
+    from saga.databases import note_duplicate
+    from saga.pages import note_trash
+    if b.get("properties") is not None:
+        props_in(tok, dbid, b["properties"])           # vorher pruefen: unbekannte Eigenschaft legt nichts an
+    if b.get("markdown"):
+        md_to_blocks(b["markdown"])
+    d = _relay(note_duplicate(tok.uid, tpl, {"parent_id": int(dbid), "title": b.get("title") or ""}, "api"))
+    nid = d["id"]
+    upd = {k: b[k] for k in ("properties", "icon") if b.get(k) is not None}
+    if b.get("markdown"):
+        upd["append_markdown"] = b["markdown"]
+    if upd:
+        try:
+            page_update(tok, nid, upd)
+        except Fail:
+            note_trash(tok.uid, nid, "api")
+            raise
+    return 201, {"id": nid, "updated": d.get("updated"), "template": tpl}
 
 
 def row_update(tok, rid, b):

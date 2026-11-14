@@ -21,7 +21,8 @@ Ein Token entsteht unter **Einstellungen → API** (Web). Vorher fragt Saga zur 
 angezeigt; Saga speichert nur eine Prüfsumme.
 
 - **Bereiche:** `read:pages`, `write:pages`, `read:db`, `write:db`, `read:tasks`, `write:tasks`, `read:files`,
-  `write:files`, `read:comments`, `write:comments`, `webhooks`, `mcp`. `write:x` schließt `read:x` ein.
+  `write:files`, `read:comments`, `write:comments`, `read:calendar`, `write:calendar` (2.5: CalDAV-Kalender des Kontos,
+  nur über den MCP-Server), `webhooks`, `mcp`. `write:x` schließt `read:x` ein.
 - **Seitenbäume (optional):** Mit „Nur diese Seitenbäume“ sieht der Token nur die angegebenen Seiten und alles darunter.
   Alles andere ist für ihn „nicht gefunden“ (404) – auch in der Suche.
 - **Rechte:** Ein Token kann nie mehr als das Konto. Geteilte Seiten gehen mit der Rolle, die das Konto hat (Lesen,
@@ -123,7 +124,7 @@ dieselbe Umwandlung wie beim Export. Markdown-Eingaben (`markdown`, `append_mark
 | `GET` | `/api/v1/databases?q=…` | Datenbanken, die der Token sehen darf |
 | `GET` | `/api/v1/databases/{id}` | Schema: `{properties: [{id, name, type, options?, target?, rtype?}], views, title_name}` |
 | `POST` | `/api/v1/databases/{id}/query` | Einträge abfragen |
-| `POST` | `/api/v1/databases/{id}/rows` | neuer Eintrag `{title, properties?, markdown?}` → `201 {id}` |
+| `POST` | `/api/v1/databases/{id}/rows` | neuer Eintrag `{title, properties?, markdown?, icon?, template?}` → `201 {id}` (`template`: Name oder ID einer Eintrags-Vorlage der Datenbank – Inhalt, Symbol und Eigenschaften wie „+ Neu“ im Web; `markdown` wird angefügt, `properties`/`icon` überschreiben) |
 | `PATCH` | `/api/v1/rows/{id}` | Eintrag ändern `{title?, properties?, markdown?}` → `{ok, rev, calc?}` |
 
 **Eigenschaften per Name oder ID:** `{"Status": "Erledigt", "Punkte": 3, "Fällig": "2026-12-24", "Wer": ["~abcd…"]}`.
@@ -236,7 +237,8 @@ Nötig ist ein Token mit dem Bereich **`mcp`** und den Datenbereichen, die die K
 
 **Werkzeuge** (es erscheinen nur die, die der Token darf): `search_pages`, `get_page`, `get_image`, `create_page`, `append_to_page`,
 `update_page_title`, `replace_page_content`, `update_block`, `set_checkbox`, `trash_page`, `archive_page`, `create_database`,
-`update_database_schema`, `embed_database`, `add_widget`, `update_widget`, `get_widgets`, `list_databases`,
+`update_database_schema`, `embed_database`, `add_widget`, `update_widget`, `get_widgets`, `list_calendars`, `list_events`,
+`create_event`, `update_event`, `delete_event`, `list_databases`,
 `get_database_schema`, `query_database`, `create_row`, `update_row`, `list_tasks`, `create_task`, `complete_task`,
 `add_comment`. Eigenschaften gehen per Name. Ausgaben sind begrenzt (50 Einträge je
 Abfrage, Seiten bis 100.000 Zeichen – darüber gekürzt mit Hinweis). `get_page` nennt die Bilder der Seite im Feld
@@ -269,8 +271,24 @@ und löscht nie (Spalten, die inzwischen jemand anderes angelegt hat, bleiben eb
 `read:tasks`. `get_widgets` (`read:pages`) liefert die berechneten Werte unter denselben Bedingungen (sonst `no_access`);
 persönliche Arten (`upcoming`, `reading`) nur für Tokens ohne `roots` mit `read:tasks`. Die Startseite des Kontos stellt
 MCP nicht um.
+**Kalender** (`read:calendar` / `write:calendar`; dieselben CalDAV-Zugänge und Kalender wie im Web unter Einstellungen →
+Kalender): `list_calendars` → `{calendars: [{calendar, account, account_label, name, color, writable, shown}], timezone}` –
+ohne Adresse, Benutzername oder Passwort; `calendar` ist eine Kennung. `list_events` `{start, end}` (`JJJJ-MM-TT`,
+Ende ausschließlich, höchstens 62 Tage; `calendar`, `timezone` IANA – Standard: Zeitzone des Servers –, `fresh`) →
+Termine der angezeigten Kalender mit `event` (undurchsichtige Kennung für Ändern/Löschen), `summary`, `start`, `end`,
+`allday`, `location`, `description`, `writable`; Serientermine je Vorkommen mit `recurring: true` und `series` (UID).
+`create_event` `{calendar, summary, start, end?, allday?, location?, description?, timezone?}` (Zeiten ohne Zone gelten
+in `timezone`). `update_event` `{event, …}` ändert nur die angegebenen Felder (ohne `end` bleibt die Dauer; Erinnerungen,
+Teilnehmer usw. bleiben). `delete_event` `{event}`. Inzwischen woanders geändert → `conflict` (neu laden). **Serien:**
+ohne `scope` abgelehnt (wie im Web). Mit `scope: "series"` ändert `update_event` Titel/Ort/Beschreibung der ganzen
+Serie (Zeiten nicht) und `delete_event` löscht die ganze Serie; einzelne Vorkommen ändert Saga nicht. Externe Kalender
+gehen über das Netz: dieselben Prüfungen wie im Web (nur freigegebene Hosts, Zeit- und Größenlimits).
+**Vorlage und Symbol:** `create_page` und `create_row` nehmen `icon` (Emoji), `create_row` zusätzlich `template` (Name
+oder ID); `get_database_schema` nennt die Vorlagen (`templates: [{id, name, icon}]`, `default_template`).
 **Annotationen:** Schreibende Werkzeuge haben `readOnlyHint: false`; `replace_page_content`, `update_block` und
-`trash_page` zusätzlich `destructiveHint: true` (Clients fragen dann ggf. nach).
+`trash_page`, `update_event` und `delete_event` zusätzlich `destructiveHint: true` (Clients fragen dann ggf. nach).
+Nach einem Update mit neuen Werkzeugen: im Client den Connector neu verbinden (Werkzeugliste neu laden) – neue Bereiche
+wie `read:calendar` brauchen ggf. einen neuen Token.
 
 **Claude Code:**
 

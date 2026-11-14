@@ -27,7 +27,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from saga import api_struct, api_v1, apitok, blockedit, page_widgets
+from saga import api_calendar, api_struct, api_v1, apitok, blockedit, page_widgets
 from saga.api_v1 import Fail
 from saga.core import BASE_URL, t
 from version import VERSION
@@ -71,9 +71,9 @@ TOOLS = [
     ("get_image", "read:pages", "Ein Bild aus einer Seite ansehen (z. B. Screenshot in einer Fehlermeldung). file = Datei-ID aus "
      "get_page (images) oder die /files/…-Adresse aus dem Markdown. Liefert das Bild verkleinert (höchstens 1568 px).",
      {"file": _s("string", "Datei-ID (24 Zeichen) oder Adresse …/files/<id>")}, ["file"], False),
-    ("create_page", "write:pages", "Neue Seite anlegen (Inhalt als Markdown). Mit parent_id als Unterseite.",
+    ("create_page", "write:pages", "Neue Seite anlegen (Inhalt als Markdown). Mit parent_id als Unterseite, icon = Emoji.",
      {"parent_id": _s("integer", "ID der Elternseite (leer = oberste Ebene)"), "title": _s("string", "Titel"),
-      "markdown": _s("string", "Inhalt als Markdown")}, ["title"], True),
+      "markdown": _s("string", "Inhalt als Markdown"), "icon": _s("string", "Symbol (ein Emoji, z. B. 💡)")}, ["title"], True),
     ("append_to_page", "write:pages", "Markdown am Ende einer Seite anfügen.",
      {"id": _s("integer", "ID der Seite"), "markdown": _s("string", "Anzufügender Inhalt als Markdown")}, ["id", "markdown"], True),
     ("update_page_title", "write:pages", "Titel einer Seite ändern.",
@@ -151,7 +151,8 @@ TOOLS = [
      ["page_id"], False),
     ("list_databases", "read:db", "Datenbanken auflisten (optional nach Name filtern).",
      {"query": _s("string", "Teil des Namens")}, [], False),
-    ("get_database_schema", "read:db", "Eigenschaften (Spalten) einer Datenbank mit Typ und Auswahl-Optionen.",
+    ("get_database_schema", "read:db", "Eigenschaften (Spalten) einer Datenbank mit Typ und Auswahl-Optionen, dazu die "
+     "Eintrags-Vorlagen (templates: id, name, icon) für create_row.",
      {"id": _s("integer", "ID der Datenbank")}, ["id"], False),
     ("query_database", "read:db", "Einträge einer Datenbank abfragen. Eigenschaften per Name; Filter z. B. "
      "[{\"property\": \"Status\", \"op\": \"is\", \"value\": \"Erledigt\"}], Sortierung [{\"property\": \"Datum\", \"dir\": \"desc\"}].",
@@ -160,12 +161,40 @@ TOOLS = [
       "query": _s("string", "Volltext in den Einträgen"), "limit": _s("integer", "Höchstzahl (1-50)", minimum=1, maximum=50),
       "offset": _s("integer", "Ab Eintrag Nr.", minimum=0)}, ["id"], False),
     ("create_row", "write:db", "Neuen Eintrag in einer Datenbank anlegen. properties: {\"Eigenschaftsname\": Wert} (Auswahl per Optionsname, "
-     "Datum als JJJJ-MM-TT, Personen als Handle).",
+     "Datum als JJJJ-MM-TT, Personen als Handle, Kontrollkästchen true/false). template: Name oder ID einer Eintrags-Vorlage "
+     "(get_database_schema) – der Eintrag bekommt Inhalt, Symbol und Eigenschaften der Vorlage wie im Web; markdown wird "
+     "dann angefügt, properties und icon überschreiben. icon = Emoji.",
      {"database_id": _s("integer", "ID der Datenbank"), "title": _s("string", "Titel des Eintrags"),
-      "properties": _s("object", "Werte nach Eigenschaftsname"), "markdown": _s("string", "Inhalt als Markdown")}, ["database_id", "title"], True),
+      "properties": _s("object", "Werte nach Eigenschaftsname"), "markdown": _s("string", "Inhalt als Markdown"),
+      "template": _s("string", "Name oder ID einer Eintrags-Vorlage"), "icon": _s("string", "Symbol (ein Emoji)")}, ["database_id", "title"], True),
     ("update_row", "write:db", "Eigenschaften eines Datenbank-Eintrags ändern (nur die angegebenen).",
      {"id": _s("integer", "ID des Eintrags"), "properties": _s("object", "Werte nach Eigenschaftsname"), "title": _s("string", "Neuer Titel")},
      ["id"], True),
+    ("list_calendars", "read:calendar", "Kalender der eigenen CalDAV-Zugänge (wie im Web unter Einstellungen → Kalender): "
+     "Kennung (calendar), Name, Farbe, beschreibbar, angezeigt.", {}, [], False),
+    ("list_events", "read:calendar", "Termine der angezeigten Kalender im Zeitraum [start, end) (JJJJ-MM-TT, höchstens 62 Tage). "
+     "Zeiten in timezone (IANA, Standard: Zeitzone des Servers). Serientermine erscheinen je Vorkommen mit recurring: true "
+     "und series (UID). Feld event = Kennung für update_event/delete_event.",
+     {"start": _s("string", "Erster Tag (JJJJ-MM-TT)"), "end": _s("string", "Tag nach dem letzten (JJJJ-MM-TT)"),
+      "calendar": _s("string", "nur dieser Kalender (Kennung aus list_calendars)"), "timezone": _s("string", "z. B. Europe/Berlin"),
+      "fresh": _s("boolean", "true = am Zwischenspeicher vorbei neu laden")}, ["start", "end"], False),
+    ("create_event", "write:calendar", "Termin anlegen. start/end als JJJJ-MM-TTThh:mm (ohne Zone: in timezone) oder bei "
+     "allday: true als JJJJ-MM-TT (end = Tag nach dem letzten). Ohne end: 1 Stunde bzw. 1 Tag.",
+     {"calendar": _s("string", "Kennung aus list_calendars"), "summary": _s("string", "Titel"), "start": _s("string", "Beginn"),
+      "end": _s("string", "Ende"), "allday": _s("boolean", "ganztägig"), "location": _s("string", "Ort"),
+      "description": _s("string", "Beschreibung"), "timezone": _s("string", "Zeitzone für Zeiten ohne Zone")},
+     ["calendar", "summary", "start"], True),
+    ("update_event", "write:calendar", "Termin ändern – nur die angegebenen Felder (ohne end behält er seine Dauer). event aus "
+     "list_events. Serientermine: nur mit scope \"series\" und nur Titel/Ort/Beschreibung der ganzen Serie; einzelne "
+     "Vorkommen und Zeiten einer Serie gehen nur im Kalender selbst. Inzwischen woanders geändert -> Konflikt, neu laden.",
+     {"event": _s("string", "Kennung aus list_events"), "summary": _s("string", "Titel"), "start": _s("string", "Beginn"),
+      "end": _s("string", "Ende"), "allday": _s("boolean", "ganztägig"), "location": _s("string", "Ort"),
+      "description": _s("string", "Beschreibung"), "timezone": _s("string", "Zeitzone für Zeiten ohne Zone"),
+      "scope": _s("string", "event (Standard) oder series", enum=["event", "series"])}, ["event"], True),
+    ("delete_event", "write:calendar", "Termin löschen. Serientermine nur mit scope \"series\" – dann die GANZE Serie; "
+     "einzelne Vorkommen löscht Saga nicht.",
+     {"event": _s("string", "Kennung aus list_events"), "scope": _s("string", "event (Standard) oder series", enum=["event", "series"])},
+     ["event"], True),
     ("list_tasks", "read:tasks", "Offene (oder erledigte) Aufgaben auflisten.",
      {"done": _s("boolean", "true = erledigte statt offene")}, [], False),
     ("create_task", "write:tasks", "Aufgabe anlegen.",
@@ -177,7 +206,7 @@ TOOLS = [
 ]
 BY_NAME = {x[0]: x for x in TOOLS}
 # Loeschende/ueberschreibende Werkzeuge (Annotation destructiveHint: true - Clients fragen ggf. nach)
-DESTRUCTIVE = {"replace_page_content", "update_block", "trash_page"}
+DESTRUCTIVE = {"replace_page_content", "update_block", "trash_page", "update_event", "delete_event"}
 
 
 def _has(tok, scope):
@@ -347,6 +376,8 @@ def call_tool(tok, name, a):
                 {"type": "text", "text": _data(info, "image")}]
     if name == "create_page":
         b = {"title": a.get("title"), "markdown": a.get("markdown") or ""}
+        if a.get("icon"):
+            b["icon"] = a["icon"]
         b["parent_id"] = _int(a, "parent_id", False)
         _, d = api_v1.page_create(tok, b)
         return t("Seite angelegt (ID {id}).", id=d["id"])
@@ -416,7 +447,7 @@ def call_tool(tok, name, a):
         _, d = api_v1.databases(tok, a.get("query") or "", 50)
         return _data(d["databases"], "databases")
     if name == "get_database_schema":
-        _, d = api_v1.database_get(tok, _int(a, "id"))
+        _, d = api_v1.database_get(tok, _int(a, "id"), templates=True)
         return _data(d, f"database:{d['id']}")
     if name == "query_database":
         b = {k: a[k] for k in ("filters", "sorts", "view") if a.get(k) is not None}
@@ -433,9 +464,26 @@ def call_tool(tok, name, a):
             out["more"] = t("Weitere Einträge mit offset={n} abrufen.", n=d["offset"] + len(rows))
         return _data(out, f"database:{a.get('id')}")
     if name == "create_row":
-        b = {k: a[k] for k in ("title", "properties", "markdown") if a.get(k) is not None}
+        b = {k: a[k] for k in ("title", "properties", "markdown", "template", "icon") if a.get(k) is not None}
         _, d = api_v1.row_create(tok, _int(a, "database_id"), b)
+        if d.get("template"):
+            return t("Eintrag aus Vorlage angelegt (ID {id}).", id=d["id"])
         return t("Eintrag angelegt (ID {id}).", id=d["id"])
+    if name == "list_calendars":
+        _, d = api_calendar.calendars_list(tok)
+        return _data(d, "calendars")
+    if name == "list_events":
+        _, d = api_calendar.events_list(tok, a)
+        return _data(d, "events")
+    if name == "create_event":
+        _, d = api_calendar.event_create(tok, a)
+        return json.dumps(d, ensure_ascii=False)
+    if name == "update_event":
+        _, d = api_calendar.event_update(tok, a)
+        return json.dumps(d, ensure_ascii=False)
+    if name == "delete_event":
+        api_calendar.event_delete(tok, a)
+        return t("Termin gelöscht.") if a.get("scope") != "series" else t("Serie gelöscht.")
     if name == "update_row":
         b = {k: a[k] for k in ("title", "properties") if a.get(k) is not None}
         _, d = api_v1.row_update(tok, _int(a, "id"), b)

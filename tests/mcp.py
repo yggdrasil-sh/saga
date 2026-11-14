@@ -89,6 +89,7 @@ def setting(k, v):
 
 
 res = []
+T_HEAVY = [0.0]
 
 
 def ok(n, c, info=None):
@@ -97,7 +98,13 @@ def ok(n, c, info=None):
 
 try:
     cn = db(); cn.execute("UPDATE users SET display_name='Anna Mcp' WHERE username=?", (UA,)); cn.commit()
-    setting("api", {"rate": 3000, "rate_write": 1000}); time.sleep(5.5)     # viele Schreibaufrufe in dieser Reihe (Standard 30/min)
+    # CalDAV fuer die Kalender-Werkzeuge (Radicale wie tests/kalender_schreiben.py; HK_TEST_CALDAV = eigener Port)
+    RAD = os.environ.get("HK_TEST_CALDAV", "http://127.0.0.1:5232/"); RAD_HP = urllib.parse.urlparse(RAD).netloc
+    _ah = db().execute("SELECT v FROM setting WHERE k='allowed_hosts'").fetchone()
+    OLD_AH = json.loads(_ah[0]) if _ah else None
+    if RAD_HP not in str(OLD_AH or ""):
+        setting("allowed_hosts", ((OLD_AH or "") + "," + RAD_HP).strip(","))
+    setting("api", {"rate": 3000, "rate_write": 1000, "max_tokens": 50}); time.sleep(5.5)     # viele Schreibaufrufe und Tokens in dieser Reihe
     T = call("POST", "/api/account/api-tokens", A, {"name": "MCP", "scopes": ["mcp", "write:pages", "write:db", "write:tasks", "write:comments"]})[1]["token"]
     TR = call("POST", "/api/account/api-tokens", A, {"name": "MCP lesen", "scopes": ["mcp", "read:pages"]})[1]["token"]
     TN = call("POST", "/api/account/api-tokens", A, {"name": "ohne mcp", "scopes": ["read:pages"]})[1]["token"]
@@ -608,6 +615,144 @@ try:
     ok("embed_database nach Block", not err and blocks_of(DASH)[ids.index("dh") + 1]["data"].get("db") == D, txt)
     ok("embed_database: fremde Datenbank -> not_found", tool(T, "embed_database", page_id=DASH, database_id=BP)[1].startswith("not_found"))
 
+    # --- Kalender (2.5, Bug-DB 1531) und Vorlage/Symbol beim Anlegen ---
+    err, txt, _ = tool(T, "create_page", title="MCP mit Symbol", parent_id=R, icon="💡")
+    ok("create_page mit icon", not err and call("GET", f"/api/notes/{int(txt.split('ID ')[1].split(')')[0])}", A)[1].get("icon") == "💡", txt)
+    TPL = call("POST", "/api/notes", A, {"parent_id": D, "title": "Bug-Vorlage", "icon": "🔥", "props": {"pkt": 7}})[1]["id"]
+    call("PATCH", f"/api/notes/{TPL}", A, {"format": "blocks", "body": json.dumps({"blocks": [H("t1", "Schritte"), Pp("t2", "1. …")]}), "template": True})
+    TPL2 = call("POST", "/api/notes", A, {"parent_id": D, "title": "Feature-Vorlage", "icon": "💡"})[1]["id"]
+    call("PATCH", f"/api/notes/{TPL2}", A, {"template": True})
+    err, txt, _ = tool(T, "get_database_schema", id=D)
+    tp = jbody(txt).get("templates") or []
+    ok("get_database_schema nennt Vorlagen (id, name, icon)", {"id": TPL, "name": "Bug-Vorlage", "icon": "🔥"} in tp and any(x["id"] == TPL2 for x in tp), tp)
+    err, txt, _ = tool(T, "create_row", database_id=D, title="Absturz beim Speichern", template="bug-vorlage", markdown="Ergänzung", properties={"Status": DONE})
+    RW = int(txt.split("ID ")[1].split(")")[0]) if "ID " in txt else 0
+    rw = call("GET", f"/api/notes/{RW}", A)[1] if RW else {}
+    rb = json.loads(rw.get("body") or '{"blocks": []}')["blocks"]
+    ok("create_row mit Vorlage (Name): Inhalt, Symbol, Eigenschaften der Vorlage + Titel, Status, Markdown angefuegt",
+       not err and rw.get("title") == "Absturz beim Speichern" and rw.get("icon") == "🔥" and rw["props"].get("pkt") == 7
+       and rw["props"].get("status") == "done" and [b["data"].get("text") for b in rb][:1] == ["Schritte"] and rb[-1]["data"].get("text") == "Ergänzung"
+       and not rw.get("template"), (txt, rw.get("title"), rw.get("icon"), rw.get("props")))
+    err, txt, _ = tool(T, "create_row", database_id=D, title="Idee", template=str(TPL2), icon="🚀")
+    ok("create_row mit Vorlage (ID) und eigenem icon", not err and call("GET", f"/api/notes/{int(txt.split('ID ')[1].split(')')[0])}", A)[1].get("icon") == "🚀", txt)
+    err, txt, _ = tool(T, "create_row", database_id=D, title="x", template="Gibtsnicht")
+    ok("create_row: unbekannte Vorlage -> Fehler mit Liste (im Daten-Rahmen)", err is True and "Bug-Vorlage" in txt and "saga-data" in txt, txt[:300])
+    err, txt, _ = tool(T, "create_row", database_id=D, title="x", template="Bug-Vorlage", properties={"Gibtsnicht": 1})
+    ok("create_row Vorlage + unbekannte Eigenschaft -> Fehler, nichts angelegt", err is True and
+       not any(r["title"] == "x" for r in jbody(tool(T, "query_database", id=D, query="x")[1]).get("rows", [])), txt[:200])
+    ok("create_row: Vorlage einer anderen Datenbank -> Fehler", tool(T, "create_row", database_id=NDB, title="x", template=str(TPL))[0] is True)
+    err, txt, _ = tool(T, "create_row", database_id=D, title="Mit Symbol", icon="🐞")
+    ok("create_row mit icon ohne Vorlage", not err and call("GET", f"/api/notes/{int(txt.split('ID ')[1].split(')')[0])}", A)[1].get("icon") == "🐞", txt)
+
+    try:
+        import httpx
+        cal_up = httpx.request("PROPFIND", RAD + "test/", auth=("test", "geheim-app-pw-123"), headers={"Depth": "0"}, timeout=5).status_code in (207, 200)
+    except Exception:
+        cal_up = False
+    if not cal_up:
+        print("SKIP Kalender-Werkzeuge (kein CalDAV unter", RAD, ")")
+    else:
+        AUTH = ("test", "geheim-app-pw-123")
+        MK = '<?xml version="1.0"?><c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop><d:displayname>{}</d:displayname></d:prop></d:set></c:mkcalendar>'
+        for cn_ in ("mcparbeit", "mcpprivat"):
+            httpx.request("DELETE", f"{RAD}test/{cn_}/", auth=AUTH)
+            httpx.request("MKCALENDAR", f"{RAD}test/{cn_}/", auth=AUTH, content=MK.format({"mcparbeit": "MCP Arbeit", "mcpprivat": "MCP Privat"}[cn_]))
+        found = call("POST", "/api/settings/calendars/test", A, {"base_url": RAD, "username": "test", "password": AUTH[1]})[1].get("calendars") or []
+        sel = [dict(c, show=True) for c in found if "mcp" in c["href"]]
+        aid = call("POST", "/api/settings/calendars", A, {"base_url": RAD, "username": "test", "password": AUTH[1], "label": "Testkonto", "calendars": sel})[1]["id"]
+        cn = db(); cl = json.loads(cn.execute("SELECT calendars FROM cal_account WHERE id=?", (aid,)).fetchone()[0])
+        for x in cl:
+            x["writable"] = "mcpprivat" not in x["href"]
+        cn.execute("UPDATE cal_account SET calendars=? WHERE id=?", (json.dumps(cl), aid)); cn.commit()
+        TC = call("POST", "/api/account/api-tokens", A, {"name": "MCP Kalender", "scopes": ["mcp", "write:calendar"]})[1]["token"]
+        TCR = call("POST", "/api/account/api-tokens", A, {"name": "MCP Kalender lesen", "scopes": ["mcp", "read:calendar"]})[1]["token"]
+        TCB = call("POST", "/api/account/api-tokens", X, {"name": "B Kalender", "scopes": ["mcp", "write:calendar"]})[1].get("token", "")
+        nm = {x["name"] for x in rpc(T, "tools/list")[1]["result"]["tools"]}
+        ok("Kalender-Werkzeuge nur mit read:/write:calendar", not nm & {"list_calendars", "list_events", "create_event"}, nm)
+        tc = {x["name"]: x for x in rpc(TC, "tools/list")[1]["result"]["tools"]}
+        tcr = {x["name"] for x in rpc(TCR, "tools/list")[1]["result"]["tools"]}
+        ok("write:calendar: alle 5, read:calendar: nur lesen; delete/update destructive", {"list_calendars", "list_events", "create_event", "update_event", "delete_event"} <= set(tc)
+           and tcr >= {"list_calendars", "list_events"} and not tcr & {"create_event", "update_event", "delete_event"}
+           and tc["delete_event"]["annotations"]["destructiveHint"] is True and tc["create_event"]["annotations"]["destructiveHint"] is False, tcr)
+        err, txt, _ = tool(TC, "list_calendars")
+        lc = jbody(txt).get("calendars") or []
+        KA = next((x["calendar"] for x in lc if x["name"] == "MCP Arbeit"), None); KP = next((x["calendar"] for x in lc if x["name"] == "MCP Privat"), None)
+        ok("list_calendars: Kalender mit Kennung, Name, beschreibbar", not err and KA and KP and next(x for x in lc if x["calendar"] == KP)["writable"] is False
+           and "saga-data" in txt, txt[:400])
+        ok("list_calendars: keine Adresse, kein Benutzername, kein Passwort", RAD_HP not in txt and "/test/" not in txt and "geheim" not in txt
+           and '"test"' not in txt and "username" not in txt, txt[:400])
+        err, txt, _ = tool(TC, "create_event", calendar=KA, summary="Zahnarzt", start="2026-10-14T08:30", end="2026-10-14T09:00", location="Praxis", timezone="Europe/Berlin")
+        EV = json.loads(txt).get("event") if not err else None
+        ok("create_event (Zeit ohne Zone in timezone)", not err and EV, txt)
+        ok("create_event Ereignis-ID ohne Adresse/Benutzer", EV and "test" not in base64.urlsafe_b64decode(EV + "==").decode() and RAD_HP not in base64.urlsafe_b64decode(EV + "==").decode())
+        err, txt, _ = tool(TC, "create_event", calendar=KA, summary="Herbstferien", allday=True, start="2026-10-26", end="2026-10-31")
+        ok("create_event ganztaegig", not err, txt)
+        def evs(tok=TC, **kw):
+            e_, t_, _ = tool(tok, "list_events", start=kw.pop("start", "2026-10-01"), end=kw.pop("end", "2026-11-01"), fresh=True, **kw)
+            return jbody(t_).get("events") or [], t_
+        ev, txt = evs(timezone="Europe/Berlin")
+        z = next((e for e in ev if e["summary"] == "Zahnarzt"), {})
+        ok("list_events: Termin in Ortszeit, Ort, Kalender-Kennung, als Daten", z.get("start", "").startswith("2026-10-14T08:30:00+02:00") and z.get("location") == "Praxis"
+           and z.get("calendar") == KA and "saga-data" in txt and RAD_HP not in txt, txt[:500])
+        ev2, _ = evs(timezone="America/New_York")
+        ok("list_events: andere Zeitzone", next((e for e in ev2 if e["summary"] == "Zahnarzt"), {}).get("start", "").startswith("2026-10-14T02:30:00-04:00"), ev2[:2])
+        ok("list_events: ganztaegig als Datum", any(e["summary"] == "Herbstferien" and e["start"] == "2026-10-26" and e["allday"] for e in ev))
+        ok("list_events nur ein Kalender", all(e["calendar"] == KP for e in evs(calendar=KP)[0]))
+        ok("list_events: Zeitraum > 62 Tage -> Fehler", tool(TC, "list_events", start="2026-01-01", end="2026-06-01")[0] is True)
+        ok("list_events: unbekannte Zeitzone -> Fehler", tool(TC, "list_events", start="2026-10-01", end="2026-10-02", timezone="Mars/Olymp")[0] is True)
+        ok("read:calendar darf lesen", any(e["summary"] == "Zahnarzt" for e in evs(TCR)[0]))
+        err, txt, _ = tool(TC, "update_event", event=z["event"], summary="Zahnarzt (verschoben)")
+        z2 = next((e for e in evs(timezone="Europe/Berlin")[0] if e["summary"].startswith("Zahnarzt")), {})
+        ok("update_event nur Titel: Zeit und Ort bleiben", not err and z2.get("summary") == "Zahnarzt (verschoben)" and z2.get("start", "").startswith("2026-10-14T08:30")
+           and z2.get("location") == "Praxis", {k: z2.get(k) for k in ("start", "end", "location")})
+        err, txt, _ = tool(TC, "update_event", event=z2["event"], start="2026-10-15T10:00", timezone="Europe/Berlin")
+        z3 = next((e for e in evs(timezone="Europe/Berlin")[0] if e["summary"].startswith("Zahnarzt")), {})
+        ok("update_event nur Beginn: Dauer bleibt (30 min)", not err and z3.get("start", "").startswith("2026-10-15T10:00") and z3.get("end", "").startswith("2026-10-15T10:30"), (txt, z3))
+        err, txt, _ = tool(TC, "update_event", event=z2["event"], summary="veraltet")
+        ok("update_event mit veralteter Kennung (ETag) -> conflict", err is True and txt.startswith("conflict"), txt)
+        ok("update_event ohne Aenderung -> Fehler", tool(TC, "update_event", event=z3["event"])[0] is True)
+        ok("update_event: kaputte Kennung -> Fehler", tool(TC, "update_event", event="kaputt!!", summary="x")[0] is True)
+        ok("update_event: Kennung eines anderen Kontos -> Fehler", not TCB or tool(TCB, "update_event", event=z3["event"], summary="fremd")[0] is True)
+        ok("create_event in nur lesbarem Kalender -> Fehler", tool(TC, "create_event", calendar=KP, summary="x", start="2026-10-14T08:30", timezone="Europe/Berlin")[0] is True)
+        ok("create_event unbekannter Kalender -> Fehler", tool(TC, "create_event", calendar="9-abc", summary="x", start="2026-10-14T08:30")[0] is True)
+        ok("create_event unsinnige Zeit -> Fehler", tool(TC, "create_event", calendar=KA, summary="x", start="morgen")[0] is True)
+        AR_ = next(c["href"] for c in sel if "mcparbeit" in c["href"])
+        alarm = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:t\r\nBEGIN:VEVENT\r\nUID:mcp-alarm\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20261020T070000Z\r\n"
+                 "DTEND:20261020T080000Z\r\nSUMMARY:Mit Erinnerung\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT30M\r\nDESCRIPTION:Erinnerung\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        httpx.put(f"{AR_}mcp-alarm.ics", auth=AUTH, content=alarm, headers={"Content-Type": "text/calendar"})
+        m = next(e for e in evs()[0] if e["summary"] == "Mit Erinnerung")
+        tool(TC, "update_event", event=m["event"], location="Raum 1")
+        raw_ = httpx.get(f"{AR_}mcp-alarm.ics", auth=AUTH).text
+        ok("update_event: Erinnerung bleibt, Zeit unveraendert", "TRIGGER:-PT30M" in raw_ and "Raum 1" in raw_ and "20261020T070000Z" in raw_.replace("DTSTART:", "DTSTART:"), raw_[:400])
+        serie = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:t\r\nBEGIN:VEVENT\r\nUID:mcp-serie\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20261005T080000Z\r\n"
+                 "DTEND:20261005T083000Z\r\nRRULE:FREQ=WEEKLY;COUNT=10\r\nSUMMARY:Jour fixe\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        httpx.put(f"{AR_}mcp-serie.ics", auth=AUTH, content=serie, headers={"Content-Type": "text/calendar"})
+        sv = [e for e in evs()[0] if e["summary"] == "Jour fixe"]
+        ok("list_events: Serie je Vorkommen mit recurring und series", len(sv) == 4 and all(e.get("recurring") is True and e.get("series") == "mcp-serie" for e in sv), sv[:1])
+        before_raw = httpx.get(f"{AR_}mcp-serie.ics", auth=AUTH).text
+        err, txt, _ = tool(TC, "update_event", event=sv[1]["event"], summary="kaputt")
+        ok("update_event Serie ohne scope -> abgelehnt mit Hinweis, Serie unveraendert", err is True and "series" in txt
+           and httpx.get(f"{AR_}mcp-serie.ics", auth=AUTH).text == before_raw, txt)
+        err, txt, _ = tool(TC, "delete_event", event=sv[1]["event"])
+        ok("delete_event Serie ohne scope -> abgelehnt, alle Vorkommen bleiben", err is True and len([e for e in evs()[0] if e["summary"] == "Jour fixe"]) == 4, txt)
+        err, txt, _ = tool(TC, "update_event", event=sv[0]["event"], start="2026-10-06T08:00", scope="series", timezone="Europe/Berlin")
+        ok("update_event Serie: Zeit aendern -> abgelehnt", err is True and httpx.get(f"{AR_}mcp-serie.ics", auth=AUTH).text == before_raw, txt)
+        err, txt, _ = tool(TC, "update_event", event=sv[0]["event"], summary="Jour fixe (neu)", scope="series")
+        sv2 = [e for e in evs()[0] if e["summary"] == "Jour fixe (neu)"]
+        raw_ = httpx.get(f"{AR_}mcp-serie.ics", auth=AUTH).text
+        ok("update_event scope series: Titel der ganzen Serie, RRULE und Zeiten bleiben", not err and len(sv2) == 4 and "RRULE:FREQ=WEEKLY;COUNT=10" in raw_
+           and "DTSTART:20261005T080000Z" in raw_, (txt, raw_[:300]))
+        err, txt, _ = tool(TC, "delete_event", event=sv2[0]["event"], scope="series")
+        ok("delete_event scope series: ganze Serie weg", not err and not any(e["summary"].startswith("Jour fixe") for e in evs()[0]), txt)
+        err, txt, _ = tool(TC, "delete_event", event=z3["event"])
+        ok("delete_event Einzeltermin", not err and not any(e["summary"].startswith("Zahnarzt") for e in evs()[0]), txt)
+        ok("read:calendar: create_event nicht erlaubt", rpc(TCR, "tools/call", {"name": "create_event", "arguments": {}})[1].get("error", {}).get("code") == -32602)
+        # Widget "Demnaechst" (CalDAV + Aufgaben) braucht die passenden Bereiche
+        ok("add_widget upcoming ohne read:calendar -> insufficient_scope", "read:calendar" in tool(T, "add_widget", page_id=DASH, kind="upcoming", cfg={"tasks": False})[1])
+        for cn_ in ("mcparbeit", "mcpprivat"):
+            httpx.request("DELETE", f"{RAD}test/{cn_}/", auth=AUTH)
+
+    T_HEAVY[0] = time.time()
     # Batch
     st, d, _ = call("POST", "/mcp", b=[{"jsonrpc": "2.0", "id": 1, "method": "ping"}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}], bearer=T)
     ok("Batch: zwei Antworten", st == 200 and isinstance(d, list) and len(d) == 2)
@@ -625,6 +770,17 @@ finally:
         except sqlite3.OperationalError:
             pass
     cn.execute("DELETE FROM setting WHERE k='api'")
+    try:
+        if OLD_AH is None:
+            cn.execute("DELETE FROM setting WHERE k='allowed_hosts'")
+        else:
+            cn.execute("INSERT OR REPLACE INTO setting (k, v) VALUES (?,?)", ("allowed_hosts", json.dumps(OLD_AH)))
+        cn.execute("DELETE FROM cal_account WHERE uid LIKE ?", ("hk-test-%",))
+    except (NameError, sqlite3.OperationalError):
+        pass
     cn.execute("UPDATE users SET display_name=username WHERE username=?", (UA,))
     cn.commit()
+    # Ratenbegrenzung je Konto (60 s, im Speicher): diese Reihe macht weit mehr Aufrufe als der Standard erlaubt - erst
+    # weiter, wenn das Fenster abgelaufen ist, sonst traefe es die naechste Reihe mit API-Tokens (api_v1, sec_fix1 ...)
+    time.sleep(max(0.0, 61 - (time.time() - T_HEAVY[0])))
 print(f"\nMCP {sum(res)}/{len(res)}", "- ALLES GRUEN" if res and all(res) else "- FEHLER"); sys.exit(0 if res and all(res) else 1)

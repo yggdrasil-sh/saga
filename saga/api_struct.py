@@ -9,7 +9,8 @@ Entscheidungen
 - update_database_schema ergaenzt nur (Eigenschaften, Optionen, Ansichten) und benennt um - es loescht nie etwas: ohne
   Papierkorb fuer Spalten waeren Werte aller Zeilen weg.
 - Widgets: Datenbank-Quellen brauchen read:db und muessen in den roots liegen; Aufgaben-Quellen read:tasks. Werte
-  (get_widgets) nur unter denselben Bedingungen, persoenliche Arten (upcoming, reading) nur ohne roots mit read:tasks."""
+  (get_widgets) nur unter denselben Bedingungen, persoenliche Arten (upcoming, reading) nur ohne roots; upcoming dazu mit
+  read:tasks bzw. read:calendar (je nachdem, was es zeigt)."""
 import json
 import secrets
 
@@ -323,8 +324,10 @@ def _resolve_cfg(tok, kind, cfg):
     cfg = dict(cfg)
     if cfg.get("src") == "tasks" and not tok.has("read:tasks"):
         raise Fail(403, t("Dem Token fehlt der Bereich „{s}“.", s="read:tasks"), "insufficient_scope")
-    if kind == "upcoming" and (cfg.get("tasks") is not False or cfg.get("cal") is not False) and not tok.has("read:tasks"):
-        raise Fail(403, t("Dem Token fehlt der Bereich „{s}“.", s="read:tasks"), "insufficient_scope")
+    if kind == "upcoming":                       # persoenlich: Aufgaben bzw. CalDAV-Termine der betrachtenden Person
+        for need, on in (("read:tasks", cfg.get("tasks") is not False), ("read:calendar", cfg.get("cal") is not False)):
+            if on and not tok.has(need):
+                raise Fail(403, t("Dem Token fehlt der Bereich „{s}“.", s=need), "insufficient_scope")
     srcs = []
     if kind in ("progress", "metric", "quote", "habit", "chart") and cfg.get("db") is not None:
         srcs.append(cfg)
@@ -423,8 +426,11 @@ def widgets_get(tok, nid, tz=None):
             e = {"block_id": b.get("id"), "kind": d.get("kind"), "title": d.get("title") or "", "cfg": cfg}
             w = vals.get(b.get("id"))
             allowed = True
-            if d.get("kind") in page_widgets.PERSONAL:
-                allowed = not tok.roots and tok.has("read:tasks")
+            if d.get("kind") == "upcoming":         # Aufgaben/Termine der Person: nur ohne roots und mit den Bereichen
+                allowed = not tok.roots and (cfg.get("tasks") is False or tok.has("read:tasks")) and (
+                    cfg.get("cal") is False or tok.has("read:calendar"))
+            elif d.get("kind") in page_widgets.PERSONAL:
+                allowed = not tok.roots
             elif cfg.get("src") == "tasks":
                 allowed = tok.has("read:tasks")
             else:
