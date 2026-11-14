@@ -667,9 +667,9 @@ def invites(c, call, viewer=None, legs=None, now=None):
             st, since = "none", None
         d = {"who": _pp(c, call, u, viewer), "state": st, "since": round(since, 3) if since else None}
         d.update(_who_label(c, u, nm))
+        if nm.avatar(u):
+            d["avatar"] = nm.avatar(u)                 # Profilbild wie im Chat (auch Personen anderer Server)
         if not sharing.is_remote(u):
-            if nm.avatar(u):
-                d["avatar"] = nm.avatar(u)
             if fed or v3:
                 d["handle"] = d["who"] if d["who"] != u else FED.FC.my_handle(c, u)
             if d["who"] != u:

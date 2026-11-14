@@ -39,6 +39,26 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ### Behoben – `query_database`: Filter `status_group`
 - Der Wert (`open`, `done` …) wurde auf eine gleichnamige Option abgebildet (z. B. „Done“) – der Filter wirkte dann nicht.
 
+### Neu – Anrufe: „Nicht dabei“ und Erneut klingeln im Gruppenanruf (L7)
+- In der Teilnehmerliste eines Gruppenanrufs (Web, direkt und über Knoten) steht unter den Teilnehmenden „Nicht dabei“:
+  alle Mitglieder ohne Gerät im Anruf mit Zustand (klingelt · hat abgelehnt · nicht angenommen · hat den Anruf
+  verlassen · noch nicht eingeladen · entfernt · App zu alt) und Knopf „Erneut klingeln“ bzw. „Klingeln“, bei mehreren
+  „Alle erneut klingeln“. Der Klick zeigt sofort „klingelt …“; bei Fehlern (auch „zu oft geklingelt“) zurück mit Hinweis.
+  Bedienbar per Tastatur, Fokus bleibt erhalten, Texte in allen fünf Sprachen.
+- API (docs/APP-API.md „Anrufe: Erneut klingeln und Nicht dabei“): Anruf-Objekt der Gruppe mit `invites`/`invites_more`
+  und `invite_since`, neues Live-Ereignis `call.invites` (an alle mit Gerät im Anruf, auch beim Ablauf der Klingeldauer),
+  `POST /api/calls/{id}/invite` antwortet mit dem neuen Stand. Ohne Migration, `MIN_APP` unverändert.
+- Eine Einladung meldet „klingelt“ nur noch während der Klingeldauer, danach „nicht angenommen“ – auch das eigene
+  `invite` (ältere Apps klingelten bei jeder Abfrage erneut). Gezieltes erneutes Klingeln klingelt auch in großen
+  Chats laut (bisher nur der stille Hinweis).
+
+### Behoben – Anrufe: Erneut klingeln
+- Wer aus einem Gruppenanruf entfernt wurde, kann nur noch die Gastgeberin bzw. der Gastgeber erneut klingeln lassen
+  (bisher hob jedes Mitglied die Entfernung per „Einladen“ auf); sonst 403 mit Erklärung – auch über andere Server.
+- Web: Ein erneutes Klingeln während desselben Anrufs klingelte im Browser nicht mehr, wenn das erste Klingeln schon
+  vorbei oder abgelehnt war; nachgeholtes Klingeln rechnet ab dem letzten Klingeln statt ab Anrufbeginn.
+- Mitglieder mit offener Nachrichtenanfrage klingeln auch per „Einladen“ nicht (wie schon beim Start).
+
 ### Neu – MCP: Saga-Kalender bearbeiten, Vorlage und Symbol beim Anlegen (Bug-DB 1531)
 - Neue Token-Bereiche `read:calendar` / `write:calendar` (bestehende Tokens unverändert) und Werkzeuge
   `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event` – über dieselben CalDAV-Zugänge

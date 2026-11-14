@@ -1881,9 +1881,11 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
   Ereignis nur übernehmen, wenn ihr `rv` nicht kleiner ist als das der zuletzt übernommenen – Antworten und Ereignisse
   können sich überholen. Fehlt `rv` (ältere 2.4-Testserver), wie bisher immer übernehmen.
 - Gruppe: `role: "member"`, `from` (wer begonnen hat), `invite` (eigene Einladung: `ringing` · `declined` · `joined` ·
-  `old` · `missed`), `old` (Personen ohne 2.4-Gerät, `[{who, name}]`), `members` (Mitglieder des Chats) und `silent`
+  `old` · `missed` · `removed`), `old` (Personen ohne 2.4-Gerät, `[{who, name}]`), `members` (Mitglieder des Chats) und `silent`
   (mehr als `ring_silent` Mitglieder) wie in `call.invite` – auch ein aus `GET /api/calls/active` nachgeholtes Klingeln
-  ist bei `silent: true` still (nur „Anruf läuft – beitreten“).
+  ist bei `silent: true` still (nur „Anruf läuft – beitreten“). 2.5 (L7): `invite` ist nur `ringing`, solange die
+  Klingeldauer ab `invite_since` läuft, danach `missed`; `invite_since`, `silent` pro Einladung, `invites`/`invites_more`
+  – siehe „Anrufe: Erneut klingeln und Nicht dabei“.
 - `GET /api/chats/{id}` → `chat.call`: `{"group": true|false, "group_block": "<Hinweis>"|null, "running": {id, media, kind,
   state, n, joinable, join_block, mine}|null}`. Den Gruppenanruf-Knopf nur zeigen, wenn `group` true ist (föderiert: alle
   Server melden `calls3`).
@@ -1895,7 +1897,7 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
 | `POST /api/calls` (Gruppen-, freier, Seiten-Chat) | `{id, chat_id, media, device, caps}` – **ohne** `signals` | `{ok, call}` (`kind: group`, `state: ringing`, nur der eigene Endpunkt). `409 {running}` = läuft schon → beitreten; `409` ohne `multi` bzw. Server ohne `calls3` |
 | `POST /api/calls/{id}/join` | `{device, role, replaces?, caps, signals: {geraet: versiegeltes offer}}` | `{ok, call}`. `409 {join_block, error, legs?, limit?}`; `409 {legs}` ohne `join_block` = Liste veraltet → neu anbieten; `403` fremdes Gerät; `429` |
 | `POST /api/calls/{id}/leave` | `{device, reason?: "hangup"\|"handover", by?, gen?}` | `{ok}`; nur eigene Geräte (auch ein anderes eigenes). 2.5: mit `by`/`gen` bedingt → `{ok, stale}` (Abschnitt „Geräte-Übergabe hin und her“) |
-| `POST /api/calls/{id}/invite` | `{uids: [benutzername \| Prinzipal]}` | `{ok, n}` – Gruppe: Mitglieder erneut klingeln lassen |
+| `POST /api/calls/{id}/invite` | `{uids: [benutzername \| Prinzipal \| Handle]}` | `{ok, n}` – Gruppe: Mitglieder erneut klingeln lassen. 2.5 (L7): zusätzlich `invites`, `invites_more`, `rv`, `now`; `403 {error, removed: true}` (entfernte Person, nicht Gastgeber); `429` – siehe „Anrufe: Erneut klingeln und Nicht dabei“ |
 | `POST /api/calls/{id}/end` | wie bisher, **mit `device`** | Gruppe bzw. Begleitgerät: nur dieses Gerät verlässt (`{ok, left: [...]}`); Hauptgerät im 1:1: Ende für alle |
 | `POST /api/calls/{id}/decline` | wie bisher | Gruppe: nur die eigene Einladung (alle eigenen Geräte hören auf zu klingeln) |
 | `POST /api/calls/{id}/alive` | `{device}` | zusätzlich `leg: "left"` = dieses Gerät ist nicht mehr im Anruf (z. B. übernommen) → Anruf hier beenden |
@@ -2025,6 +2027,111 @@ Bewertung für 2.5:
   Schlüssel bei jedem Verlassen, HKDF-Ratsche bei jedem Beitritt.
 - **Umgesetzt in 2.5 (P4):** `docs/HORN-E2E.md` (`saga-horn/v1`). Abweichend vom Spike ist der Trailer 14 Byte
   (IV ‖ IV-Länge `0x0C` ‖ kid, wie FrameCryptor), Zusatz also 30 Byte je Rahmen; die Ratsche ist Saga-eigen.
+## Anrufe: Erneut klingeln und „Nicht dabei“ (2.5, L7)
+
+Nur **Gruppenanrufe** (`kind: "group"` ohne `dm: true` – nicht 1:1, auch nicht 1:1 über Knoten). Jedes Mitglied sieht
+in der Teilnehmerliste einen Abschnitt **„Nicht dabei“**: Chat-Mitglieder ohne aktives Gerät im Anruf, mit Zustand und
+Knopf **„Erneut klingeln“** (`none`: „Klingeln“). Keine neue Fähigkeit/kein `MIN_APP`: Felder und Ereignis sind
+zusätzlich; fehlt `invites` (älterer Server), den Abschnitt nicht zeigen. Keine Migration.
+
+### Anruf-Objekt (Gruppe, zusätzlich)
+
+In jeder Antwort mit Anruf-Objekt (`GET /api/calls/{id}`, `GET /api/calls/active`, `POST /api/calls`, `join`, `promote` …):
+
+| Feld | Typ | Bedeutung |
+|---|---|---|
+| `invites` | Liste, höchstens 50 | Mitglieder des Chats **ohne aktives Gerät im Anruf**, ohne mich selbst, ohne Mitglieder mit offener Nachrichtenanfrage. Leer = alle sind dabei |
+| `invites_more` | Zahl | so viele weitere Einträge fehlen in der Liste („und {n} weitere“) |
+| `invite` | Text/null | eigene Einladung wie bisher – **neu:** `ringing` nur innerhalb der Klingeldauer, danach `missed` |
+| `invite_since` | Zahl/null | Beginn des (letzten) Klingelns der eigenen Einladung (Server-Uhr, Sekunden), nur wenn sie in der Tabelle klingelt |
+| `silent` | bool | jetzt je Person: `false`, wenn ich gezielt per `/invite` geklingelt wurde – auch in großen Chats |
+
+Eintrag in `invites`:
+
+| Feld | Bedeutung |
+|---|---|
+| `who` | Kennung zum Klingeln (`uids` von `/invite`): lokaler Benutzername, in Chats der Stufe 3 der **Handle** (`~x@host`), bei Personen anderer Server der Prinzipal `@~x@host` – wie `legs[].who` |
+| `name` | Anzeigename (nie der Anmeldename), wie in der Mitgliederliste |
+| `avatar` | Profilbild-Adresse wie in der Mitgliederliste (`/api/avatar/…`), fehlt = Initiale |
+| `handle`, `host` | wie in `legs`/`old`: föderiert bzw. Stufe 3; bei fremden Personen immer `host` |
+| `state` | siehe unten |
+| `since` | Server-Uhr (Sekunden): seit wann der Zustand gilt; `ringing`: Beginn des Klingelns; `missed`: Beginn + `ring_s`; `none`: `null` |
+
+Zustände (`state`) und was der Client zeigt (Reihenfolge der Liste = Reihenfolge dieser Tabelle, darin nach Name):
+
+| `state` | Text (de) | Knopf |
+|---|---|---|
+| `ringing` | „klingelt …“ (dezenter Punkt) | keiner (läuft schon) |
+| `declined` | „hat abgelehnt“ | „Erneut klingeln“ |
+| `missed` | „nicht angenommen“ – Klingeldauer vorbei (auch während der Anruf weiterläuft) | „Erneut klingeln“ |
+| `left` | „hat den Anruf verlassen“ – war dabei (auch: Verbindung verloren) | „Erneut klingeln“ |
+| `none` | „noch nicht eingeladen“ – nie geklingelt (großer Chat: Start nur still; später hinzugekommen) | „Klingeln“ |
+| `removed` | „entfernt“ (Gastgeber hat die Person entfernt) | „Erneut klingeln“ **nur beim Gastgeber** (`host: true`), sonst keiner |
+| `old` | „App zu alt“ – kein Gerät, das diesen Anruf kann | deaktiviert, Erklärung „App zu alt – braucht eine neuere Saga-Version“ |
+
+Unbekannte Zustände wie `none` behandeln. **„Alle erneut klingeln“** oben im Abschnitt, wenn mehr als eine Person
+`missed`, `declined` oder `none` hat: ein `/invite` mit genau diesen `who` (nur die angezeigten, höchstens 50).
+
+**Klingeldauer im Client:** `ringing` gilt bis `since + ring_s` (Server-Uhr; Abstand zur Geräte-Uhr über `now` aus dem
+Anruf-Objekt bzw. Ereignis). Danach selbst auf `missed` umstellen – das Ereignis vom Server kann ausbleiben (z. B. nach
+einem Neustart). Für das **eigene** Klingeln das Alter ab `invite_since` rechnen (nicht ab `created`): sonst klingelt ein
+erneutes Klingeln später im Anruf nicht (iOS `ringGroup`/`ringPoll`, Web `pending()`).
+
+### `POST /api/calls/{id}/invite`
+
+Body `{uids: [who, …]}` (bis `members_max`). Jedes Mitglied des Chats darf klingeln lassen (wie bisher, Frage E5 offen).
+
+- **Entfernte Personen** (`removed`) darf nur der Gastgeber (`call.host`, wer den Anruf begonnen hat) erneut klingeln
+  lassen. Ist eine darunter und ich bin nicht Gastgeber: `403 {"error": "Nur wer den Anruf begonnen hat, kann entfernte
+  Personen erneut klingeln lassen.", "removed": true}` – es klingelt **niemand** aus dieser Anfrage.
+- Rate wie bisher: 6 Aufrufe je Minute und Konto (egal wie viele `uids`), sonst `429 {error}` → „Gerade zu oft
+  geklingelt – bitte etwa eine Minute warten.“
+- Wer schon dabei ist, kein Mitglied ist oder eine offene Nachrichtenanfrage hat, wird übersprungen (zählt nicht in `n`).
+  Ohne passendes Gerät: Zustand `old` (kein Klingeln).
+- Gezieltes Klingeln ist **laut**, auch in großen Chats: `call.invite` mit `silent: false` + Push `call.group`.
+- Mitglieder anderer Server: Zustand sofort `ringing` (Auftrag an deren Server geht nach der Antwort raus);
+  Ablehnen/Annehmen dort meldet der andere Server wie bisher (Ablehnen dort bleibt hier `ringing` bis zum Ablauf → `missed`).
+- Antwort `200`:
+
+```json
+{"ok": true, "n": 1, "rv": 1794677400.123, "now": 1794677400.125, "invites_more": 0,
+ "invites": [{"who": "cora", "name": "Cora Beispiel", "avatar": "/api/avatar/…", "state": "ringing", "since": 1794677400.12},
+             {"who": "@~abcdefghijklmnop@peer.example", "name": "Person auf peer.example (mnop)", "host": "peer.example",
+              "handle": "~abcdefghijklmnop@peer.example", "state": "missed", "since": 1794677350.0},
+             {"who": "dora", "name": "Dora Alt", "state": "old", "since": 1794677300.0}]}
+```
+
+**Client-Ablauf:** Klick → Zeile sofort „klingelt …“ (vorläufig, ohne Knopf) → Antwort: `invites` übernehmen (mit `rv`
+wie unten) → Fehler: vorläufigen Zustand zurücknehmen, Hinweis (403 Text des Servers, 429 s. o.). Fokus bleibt auf dem
+Knopf bzw. auf der Überschrift „Nicht dabei“, wenn der Knopf verschwindet. Knöpfe mit `aria-label`
+„{Name} erneut klingeln lassen“ / „{Name} klingeln lassen“.
+
+### Ereignis `call.invites`
+
+```json
+{"call_id": "…32 hex…", "chat_id": 42, "rv": 1794677412.481, "now": 1794677412.479, "ring_s": 45, "invites_more": 0,
+ "invites": [{"who": "cora", "name": "Cora Beispiel", "state": "declined", "since": 1794677412.4}]}
+```
+
+- Geht an alle Konten **dieses Servers mit einem aktiven Gerät im Anruf** (wer nicht dabei ist, liest das Anruf-Objekt).
+  Inhalt wie `invites` im Anruf-Objekt (Empfänger stehen nie selbst in der Liste).
+- Gesendet nach: Klingeln (`/invite`, auch über andere Server), Ablehnen, Beitritt, Verlassen/Verbindung weg, Entfernen,
+  Teilnehmerliste eines anderen Servers – zusammen mit `call.roster` – und wenn die Klingeldauer einer Einladung abläuft
+  (`ringing` → `missed`, über den Takt des Servers, bis ~2 s später).
+- `rv` wie bei `call.roster` (gleiche Uhr): eine Liste nur übernehmen, wenn `rv` nicht kleiner ist als das der zuletzt
+  übernommenen **`invites`-Liste** (eigener Zähler – `call.roster` trägt keine `invites`). Antworten mit Anruf-Objekt
+  tragen `invites` und `rv` gemeinsam.
+- Ältere Clients ignorieren das Ereignis (Web: Liste der weitergereichten Ereignisse in `static/live.js`).
+
+### Erneutes Klingeln beim Angerufenen
+
+- Live: `call.invite` wie bisher (auch wenn dieses Klingeln auf dem Gerät schon vorbei/abgelehnt war). Ein Client, der
+  sich vorbeigegangene Anrufe merkt, prüft dann `GET /api/calls/{id}`: klingeln, wenn `invite == "ringing"`, kein
+  eigenes Gerät in `mine` und `state != "ended"`; Restdauer `invite_since + ring_s - now`.
+- Abfrage (`/api/calls/active`, Push `call.group`): `invite == "ringing"` und Alter ab `invite_since`.
+- Tabelle: `chat_call_invite.state` bleibt bis zum Ende `ringing` (Mitteilung „Verpasster Anruf“ wie bisher beim Ende);
+  `created` = Beginn des Zustands (Klingeln, Ablehnen, Entfernen).
+
 ## Anrufe über Gjallarhorn-Knoten (2.5, Pakete P3 und P5)
 
 Nur mit Feature-Flag `calls.horn` (Standard aus) und nur für Geräte, die `horn` in `caps` melden. Konzept:
@@ -2118,7 +2225,8 @@ hat (sonst 403), nicht für eigene Geräte (400). `mute`: Ereignis `call.mod {ca
 Person; ihr Gerät `device` schaltet das Mikrofon aus und zeigt „{by} hat dich stummgeschaltet“ (sie kann es selbst wieder
 einschalten – Ton bleibt Ende-zu-Ende verschlüsselt, der Server kann nicht selbst stummschalten). `remove`: alle Geräte
 der Person verlassen den Anruf (Grund `removed`, am Knoten sofort beendet), `call.mod` mit `action: remove` an die
-Person; Beitritt danach 409 `join_block: "removed"`, bis sie erneut eingeladen wird (`POST /invite`). Die anderen wechseln
+Person; Beitritt danach 409 `join_block: "removed"`, bis der Gastgeber sie erneut klingeln lässt (`POST /invite`, 2.5 L7: nur
+der Gastgeber, sonst 403). Die anderen wechseln
 den Frame-Schlüssel wie bei jedem Abgang.
 
 **Am Knoten (neu):**
