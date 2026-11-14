@@ -39,6 +39,7 @@ type config struct {
 	baseHost   string // Name aus BASE_URL (Zertifikat, Knotenname)
 	baseOrigin string // https://name[:port] aus BASE_URL (Adresse des eingebauten Knotens)
 	hornData   string // HORN_DATA bzw. STATE_DIR/horn (Zertifikat des Knotens)
+	tlsReload  time.Duration // SAGA_TLS_RELOAD_S: so oft Zertifikatsdateien pruefen (Standard 30 s)
 }
 
 func envStr(name, def string) string {
@@ -157,6 +158,11 @@ func (c *config) loadTLS(port int) error {
 	default:
 		return fmt.Errorf("TLS_PROXY_PROTOCOL=%q: erwartet 0 oder 1", v)
 	}
+	rl, err := envInt("SAGA_TLS_RELOAD_S", 30, 1, 3600)
+	if err != nil {
+		return err
+	}
+	c.tlsReload = time.Duration(rl) * time.Second
 	c.tlsCert, c.tlsKey = strings.TrimSpace(os.Getenv("SAGA_TLS_CERT")), strings.TrimSpace(os.Getenv("SAGA_TLS_KEY"))
 	if (c.tlsCert == "") != (c.tlsKey == "") {
 		return errors.New("SAGA_TLS_CERT und SAGA_TLS_KEY nur zusammen setzen")

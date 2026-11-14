@@ -12,7 +12,7 @@ import (
 )
 
 // Zertifikat des TLS-Eingangs (2.5 "Ein Port", Konzept §5). saga-media fordert selbst nichts an: Es liest Dateien und
-// laedt sie ohne Neustart neu (Pruefung alle edgeCertEvery). Quellen:
+// laedt sie ohne Neustart neu (Pruefung alle SAGA_TLS_RELOAD_S, Standard 30 s). Quellen:
 //   - SAGA_TLS_CERT/SAGA_TLS_KEY: eigene Dateien (z. B. certbot) - nur diese.
 //   - sonst die Dateien des eingebauten Knotens, der den Antrag fuer den Saga-Namen stellt: HORN_DATA/tls/fullchain.pem +
 //     privkey.pem (DNS-01 ueber den Cloudflare-Token in Saga) bzw. der autocert-Speicher HORN_DATA/tls/acme/<name>
@@ -20,7 +20,6 @@ import (
 // Es gilt nur ein Zertifikat, das jetzt gueltig ist und auf den Namen aus BASE_URL passt - sonst bleibt die Weiche fuer
 // HTTPS zu (HSTS: ein Browser, der Saga kennt, laesst ein falsches Zertifikat nicht einmal wegklicken).
 
-var edgeCertEvery = 30 * time.Second
 
 // certState: geladenes Zertifikat bzw. warum keins gilt.
 type certState struct {
@@ -32,6 +31,7 @@ type certState struct {
 
 type edgeCert struct {
 	name, own, ownKey, data string
+	every                   time.Duration
 	cur                     atomic.Pointer[certState]
 	mu                      sync.Mutex
 	sig                     string // Stand der Dateien beim letzten Laden (Groesse + mtime)
@@ -39,7 +39,10 @@ type edgeCert struct {
 }
 
 func newEdgeCert(c *config) *edgeCert {
-	e := &edgeCert{name: c.baseHost, own: c.tlsCert, ownKey: c.tlsKey, data: c.hornData}
+	e := &edgeCert{name: c.baseHost, own: c.tlsCert, ownKey: c.tlsKey, data: c.hornData, every: c.tlsReload}
+	if e.every <= 0 {
+		e.every = 30 * time.Second
+	}
 	e.cur.Store(&certState{state: "fehlt"})
 	return e
 }
@@ -159,7 +162,7 @@ func (e *edgeCert) reload() bool {
 }
 
 func (e *edgeCert) watch(stop <-chan struct{}) {
-	t := time.NewTicker(edgeCertEvery)
+	t := time.NewTicker(e.every)
 	defer t.Stop()
 	for {
 		select {
