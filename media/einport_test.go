@@ -608,3 +608,63 @@ func TestEinportNodeProxyAndBack(t *testing.T) {
 		t.Errorf("Rueckfall ohne Schluessel: %v %v", resp, err)
 	}
 }
+
+// TestEinportPendingPerIP (pruef-einport): halb offene Verbindungen einer Adresse (nach dem PROXY-Kopf bzw. ohne Proxy
+// der Gegenstelle) sperren andere nicht aus - vorher genuegten 512 leere Verbindungen von einer Adresse fuer alle.
+func TestEinportPendingPerIP(t *testing.T) {
+	te := newTestEdge(t, true, true)
+	te.e.firstByte.Store(int64(3 * time.Second))
+	pp := func(ip string) []byte {
+		return buildProxyV2(&net.TCPAddr{IP: net.ParseIP(ip), Port: 4711}, &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 443})
+	}
+	var idle []net.Conn
+	defer func() {
+		for _, c := range idle {
+			c.Close()
+		}
+	}()
+	for i := 0; i < edgeMaxPendIP; i++ {
+		c, err := net.Dial("tcp", te.addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = c.Write(pp("203.0.113.9"))
+		idle = append(idle, c)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for te.e.pending.Load() < int64(edgeMaxPendIP) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+	c, _ := net.Dial("tcp", te.addr)
+	_, _ = c.Write(pp("203.0.113.9"))
+	if !isClosed(c, time.Second) {
+		t.Errorf("Verbindung ueber der Grenze je Adresse nicht geschlossen")
+	}
+	c.Close()
+	tc, err := te.dialTLS(t, pp("198.51.100.3"), []string{"http/1.1"})
+	if err != nil {
+		t.Fatalf("andere Adresse ausgesperrt: %v", err)
+	}
+	if out := httpGet(t, tc, "/", ""); !strings.Contains(out, "xff=198.51.100.3") {
+		t.Errorf("andere Adresse: %q", out)
+	}
+	if te.e.st.Busy.Load() != 1 {
+		t.Errorf("busy %d", te.e.st.Busy.Load())
+	}
+	for _, c := range idle {
+		c.Close()
+	}
+	idle = nil
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		te.e.pendMu.Lock()
+		n := len(te.e.pendIP)
+		te.e.pendMu.Unlock()
+		if n == 0 && te.e.pending.Load() == 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Errorf("Zaehler nicht frei: pending %d, je Adresse %v", te.e.pending.Load(), te.e.pendIP)
+}

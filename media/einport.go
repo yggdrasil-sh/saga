@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -50,6 +51,7 @@ var (
 	edgeFirstByte  = 5 * time.Second  // PROXY-Kopf und erstes Byte bzw. ganzer ClientHello
 	edgeHandshake  = 10 * time.Second // TLS-Handshake fuer Saga
 	edgeMaxPending = int64(512)       // Verbindungen in der Zuordnung (noch ohne Ziel)
+	edgeMaxPendIP  = 32               // ... davon je Client-Adresse (nach dem PROXY-Kopf; sonst sperrt eine Adresse alle aus)
 	edgeSendWait   = 2 * time.Second  // Uebergabe an den Knoten
 )
 
@@ -71,6 +73,8 @@ type edge struct {
 	backSock  string
 	nodeProxy *httputil.ReverseProxy
 	pending   atomic.Int64
+	pendMu    sync.Mutex
+	pendIP    map[netip.Addr]int // Verbindungen in der Zuordnung je Client-Adresse
 	st        edgeStats
 	proxySeen atomic.Int64 // Unix-Millisekunden des letzten gueltigen PROXY-Kopfs
 	proxyBad  atomic.Int64 // ... des letzten abgewiesenen (fehlt bzw. ungueltig)
@@ -95,7 +99,7 @@ func newEdge(m *media, key string) (*edge, error) {
 		return nil, err
 	}
 	e := &edge{m: m, c: c, ln: ln, key: key, dir: dir, nodeSock: filepath.Join(dir, "node.sock"), backSock: filepath.Join(dir, "back.sock"),
-		httpLn: newChanListener(ln.Addr()), cert: newEdgeCert(c), stop: make(chan struct{})}
+		httpLn: newChanListener(ln.Addr()), cert: newEdgeCert(c), stop: make(chan struct{}), pendIP: map[netip.Addr]int{}}
 	e.firstByte.Store(int64(edgeFirstByte))
 	e.tlsCfg = &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}, GetCertificate: e.cert.get}
 	e.cert.onChange = func(*certState) { e.changed() }
@@ -191,12 +195,35 @@ func (p *peekBuf) need(n int) error {
 	return nil
 }
 
+// pendAdd: eine Verbindung mehr von ip in der Zuordnung (false = Grenze je Adresse erreicht); pendDel gibt sie frei.
+func (e *edge) pendAdd(ip netip.Addr) bool {
+	e.pendMu.Lock()
+	defer e.pendMu.Unlock()
+	if e.pendIP[ip] >= edgeMaxPendIP {
+		return false
+	}
+	e.pendIP[ip]++
+	return true
+}
+
+func (e *edge) pendDel(ip netip.Addr) {
+	e.pendMu.Lock()
+	defer e.pendMu.Unlock()
+	if e.pendIP[ip]--; e.pendIP[ip] <= 0 {
+		delete(e.pendIP, ip)
+	}
+}
+
 func (e *edge) handle(raw net.Conn) {
 	pending := true
+	var pip netip.Addr // gezaehlte Client-Adresse (pendIP)
 	done := func() {
 		if pending {
 			pending = false
 			e.pending.Add(-1)
+			if pip.IsValid() {
+				e.pendDel(pip)
+			}
 		}
 	}
 	defer done()
@@ -215,6 +242,16 @@ func (e *edge) handle(raw net.Conn) {
 		if a != nil {
 			remote = a
 		}
+	}
+	// Grenze je Client-Adresse fuer halb offene Verbindungen (Slowloris vor dem ClientHello bzw. im Handshake): erst nach
+	// dem PROXY-Kopf - vorher ist die Gegenstelle der Proxy selbst
+	if ip := hostOf(remote.String()); ip.IsValid() {
+		if !e.pendAdd(ip) {
+			e.st.Busy.Add(1)
+			_ = raw.Close()
+			return
+		}
+		pip = ip
 	}
 	if err := p.need(1); err != nil {
 		_ = raw.Close()
