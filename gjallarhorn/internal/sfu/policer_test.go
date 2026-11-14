@@ -730,6 +730,12 @@ func TestProbingBremseNurEinsZuEins(t *testing.T) {
 		er.r.SetRemote("fern9", -1, on)
 		longT := 1250e3*probeHeadLong + estAudio
 		pev0, fr0, onH, tj := len(er.pevs), len(er.fresh), 0, er.now
+		// Pruefer bwe3f: Vor dem Beitritt steht der lange Abstand (gescheiterte lange Proben); im ersten Takt der Gruppe
+		// gilt der der kurzen, gezaehlt ab derselben gescheiterten Probe - nicht nur pd, auch der Zeitpunkt (next)
+		pf0 := er.l.pf
+		if !gegen && pf0.pd <= probeGapMax {
+			t.Fatalf("1:1: vor dem Beitritt kein langer Abstand (%v) - der Test prueft die Kuerzung nicht", pf0.pd)
+		}
 		var firstH time.Duration
 		for end := er.now + int64(2*time.Minute); er.now < end; {
 			step()
@@ -738,6 +744,11 @@ func TestProbingBremseNurEinsZuEins(t *testing.T) {
 			}
 			if er.l.solo || er.l.fb != (freshBrake{}) || er.l.pf.pd > probeGapMax {
 				t.Fatalf("Gruppe: Bremse laeuft weiter (solo %v): %+v, Abstand %v", er.l.solo, er.l.fb, er.l.pf.pd)
+			}
+			if er.now == tj+int64(200*time.Millisecond) && er.l.pf.n == pf0.n &&
+				er.l.pf.next != pf0.next-int64(pf0.pd-probeGapMax) {
+				t.Fatalf("Gruppe: naechste Probe ab %v nach dem Beitritt (vorher Abstand %v bis %v) - soll ab derselben gescheiterten Probe %v gelten",
+					time.Duration(er.l.pf.next-tj), pf0.pd, time.Duration(pf0.next-tj), probeGapMax)
 			}
 			if er.layer() == "h" {
 				if onH == 0 {
