@@ -1,17 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 // Eingebauter Gjallarhorn-Knoten (Saga 2.5, Konzept v2 §2.1/§2.2, Paket P3): saga-media startet "gjallarhorn node" als
@@ -20,28 +25,70 @@ import (
 // verbindet sich fuer die Steuerung ueber localhost mit Saga (ws://127.0.0.1:MEDIA_INTERNAL_PORT/api/horn/ctl, Kopf
 // X-Saga-Horn-Key = HORN_CTL_KEY, Python bekommt dasselbe als SAGA_HORN_KEY). Medienbytes laufen nur durch den Knoten,
 // nie durch saga-media oder Python. Weitere HORN_*-Variablen (HORN_NAME, HORN_PUBLIC_URL, HORN_TLS_*, HORN_UDP ...)
-// reicht saga-media unveraendert durch. SAGA_HORN=off: nie starten. Bricht der Knoten ab, startet saga-media ihn mit
-// Backoff (2 ... 60 s) neu; beim Abschalten des Flags bekommt er SIGTERM.
+// reicht saga-media unveraendert durch. SAGA_HORN=off: nie starten. Beim Abschalten des Flags bekommt er SIGTERM.
+//
+// Zustand fuer den Admin-Bereich (2.5, horn-admin): saga-media meldet Saga per POST /internal/horn/state, ob der Knoten
+// laeuft bzw. warum nicht (kein Zertifikat/Name, Port belegt, sonstiger Abbruch mit gekuerzter letzter Fehlerzeile ohne
+// Pfade), mit Zahl der Fehlversuche und naechstem Versuch. Bricht der Knoten ab, startet saga-media ihn mit Backoff neu
+// (2 s ... 1 min, nach hornSlowAfter Fehlversuchen mit demselben Grund bis hornBackoffSlow). Dieselbe Fehlerzeile kommt
+// nur bei Aenderung erneut ins Log. Aendert der Admin die Einstellungen (rev in /internal/horn/conf) oder schaltet er
+// das Flag ein, startet ein wartender Knoten sofort.
 
-const hornPoll = 5 * time.Second
+const (
+	hornPoll        = 5 * time.Second
+	hornOKAfter     = time.Minute      // so lange gelaufen = gilt als gestartet (Fehlerzaehler zurueck)
+	hornBackoffMax  = time.Minute      // Backoff bei wechselnden Gruenden
+	hornBackoffSlow = 10 * time.Minute // Backoff, wenn der Knoten immer wieder mit demselben Grund abbricht
+	hornSlowAfter   = 3                // ab so vielen gleichen Fehlversuchen in Folge gilt hornBackoffSlow
+	hornBeat        = 30 * time.Second // unveraenderter Zustand: so oft trotzdem an Saga melden (Lebenszeichen)
+	hornTail        = 8                // so viele letzte Ausgabezeilen merkt sich saga-media je Lauf
+)
 
 type horn struct {
-	m       *media
-	bin     string
-	key     string
-	env     []string
+	m    *media
+	bin  string
+	key  string
+	env  []string
+	port int
+	name string // HORN_NAME (nur zur Anzeige im Admin-Bereich)
+
 	mu      sync.Mutex
 	cmd     *exec.Cmd
 	done    chan struct{}
 	stopped bool
 	fails   int
 	next    time.Time
+
+	known    bool   // Saga hat schon einmal geantwortet
+	on       bool   // letzter Stand des Flags
+	rev      string // letzter Stand der Einstellungen (Admin speichert -> neuer Wert)
+	t0       time.Time
+	ok       bool            // laufender Prozess lebt laenger als hornOKAfter
+	prev     map[string]bool // Ausgabezeilen des letzten schnellen Fehlversuchs (nicht erneut ins Log)
+	reason   string          // letzter Abbruch: nocert | port | portperm | exit | start
+	detail   string          // bei exit: letzte Fehlerzeile, gekuerzt, ohne Pfade
+	same     int             // Fehlversuche in Folge mit demselben Grund
+	slowNote bool            // Hinweis "nur noch alle 10 min" schon geschrieben
+	sent     []byte          // zuletzt an Saga gemeldeter Zustand
+	sentAt   time.Time
 }
 
-// newHorn -> nil, wenn der Knoten hier nie laufen soll (SAGA_HORN=off, kein Binaer).
-func newHorn(m *media, key string) *horn {
+// hornState: Meldung an Saga (POST /internal/horn/state). Keine Pfade, keine Geheimnisse.
+type hornState struct {
+	State  string `json:"state"`            // run | wait | off | none
+	Reason string `json:"reason,omitempty"` // nocert | port | portperm | exit | start; bei none: disabled | nobin | portcfg
+	Detail string `json:"detail,omitempty"`
+	Fails  int    `json:"fails"`
+	Next   int64  `json:"next,omitempty"`  // Unix-Sekunden des naechsten Versuchs (wait)
+	Since  int64  `json:"since,omitempty"` // Unix-Sekunden des Starts (run)
+	Port   int    `json:"port,omitempty"`
+	Name   string `json:"name,omitempty"`
+}
+
+// newHorn -> nil und Grund, wenn der Knoten hier nie laufen soll (SAGA_HORN=off, kein Binaer, HORN_PORT ungueltig).
+func newHorn(m *media, key string) (*horn, string) {
 	if strings.EqualFold(os.Getenv("SAGA_HORN"), "off") {
-		return nil
+		return nil, "disabled"
 	}
 	bin := envStr("GJALLARHORN_BIN", "")
 	if bin == "" {
@@ -50,12 +97,12 @@ func newHorn(m *media, key string) *horn {
 		}
 	}
 	if bin == "" {
-		return nil
+		return nil, "nobin"
 	}
 	port, err := envInt("HORN_PORT", 8443, 1, 65535)
 	if err != nil {
 		logf("HORN_PORT: %v - eingebauter Knoten aus", err)
-		return nil
+		return nil, "portcfg"
 	}
 	env := []string{}
 	for _, kv := range os.Environ() {
@@ -75,7 +122,7 @@ func newHorn(m *media, key string) *horn {
 	set("HORN_DATA", filepath.Join(envStr("STATE_DIR", "/data"), "horn"))
 	env = append(env, "HORN_MODE=node", "HORN_CTL_KEY="+key,
 		"HORN_SAGA_CTL=ws://"+net.JoinHostPort("127.0.0.1", strconv.Itoa(m.c.internalPort))+"/api/horn/ctl")
-	return &horn{m: m, bin: bin, key: key, env: env}
+	return &horn{m: m, bin: bin, key: key, env: env, port: port, name: cleanName(os.Getenv("HORN_NAME"))}, ""
 }
 
 // loop fragt Saga nach dem Flag und startet bzw. beendet den Knoten.
@@ -83,9 +130,10 @@ func newHorn(m *media, key string) *horn {
 func (h *horn) loop(ctx context.Context) {
 	wait := 300 * time.Millisecond
 	for {
-		on, ok := h.wanted(ctx)
+		on, rev, ok := h.wanted(ctx)
 		if ok {
-			h.apply(on)
+			h.apply(on, rev)
+			h.report(ctx)
 			wait = hornPoll
 		} else if wait < hornPoll {
 			wait = time.Second
@@ -98,26 +146,40 @@ func (h *horn) loop(ctx context.Context) {
 	}
 }
 
-func (h *horn) wanted(ctx context.Context) (bool, bool) {
+func (h *horn) wanted(ctx context.Context) (bool, string, bool) {
 	var out struct {
-		On bool `json:"on"`
+		On  bool   `json:"on"`
+		Rev string `json:"rev"`
 	}
 	st, _, err := h.m.callPython(ctx, http.MethodGet, "/internal/horn/conf", nil, &out, nil)
 	if err != nil || st != http.StatusOK {
-		return false, false // Saga startet noch bzw. kennt den Pfad nicht: nichts aendern
+		return false, "", false // Saga startet noch bzw. kennt den Pfad nicht: nichts aendern
 	}
-	return out.On, true
+	return out.On, out.Rev, true
 }
 
-func (h *horn) apply(on bool) {
+func (h *horn) apply(on bool, rev string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.stopped {
 		return
 	}
+	now := time.Now()
+	// eingeschaltet oder Einstellungen gespeichert: ein wartender Knoten startet sofort (ein laufender bleibt unberuehrt)
+	if on && h.cmd == nil && (!h.on || (h.known && rev != h.rev)) {
+		h.retryLocked()
+	}
+	h.known, h.on, h.rev = true, on, rev
 	running := h.cmd != nil
+	if running && !h.ok && now.Sub(h.t0) >= hornOKAfter {
+		h.ok = true
+		if h.fails > 0 {
+			logf("Gjallarhorn: eingebauter Knoten laeuft wieder (nach %d %s)", h.fails, plural(h.fails, "Fehlversuch", "Fehlversuchen"))
+		}
+		h.fails, h.same, h.reason, h.detail, h.prev, h.slowNote = 0, 0, "", "", nil, false
+	}
 	switch {
-	case on && !running && time.Now().After(h.next):
+	case on && !running && !now.Before(h.next):
 		h.startLocked()
 	case !on && running:
 		logf("Gjallarhorn: Feature-Flag aus - beende den eingebauten Knoten")
@@ -125,23 +187,36 @@ func (h *horn) apply(on bool) {
 	}
 }
 
+// retryLocked: Backoff vergessen (naechster Versuch sofort, Grund kommt beim naechsten Abbruch wieder ins Log).
+func (h *horn) retryLocked() {
+	h.fails, h.same, h.next, h.prev, h.slowNote = 0, 0, time.Time{}, nil, false
+}
+
 func (h *horn) startLocked() {
 	cmd := exec.Command(h.bin, "node")
 	cmd.Env = h.env
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	out := newHornOut(os.Stderr, h.prev)
+	cmd.Stdout, cmd.Stderr = out, out
+	cmd.WaitDelay = 5 * time.Second // Ausgabe-Rohr haengt nicht ewig, falls ein Enkel es offen haelt
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		h.failLocked()
-		logf("Gjallarhorn: kann %s nicht starten: %v", h.bin, err)
+		h.failLocked("start", "", time.Now())
+		if h.same == 1 {
+			logf("Gjallarhorn: kann den eingebauten Knoten nicht starten: %v - neuer Versuch in %v", err, time.Until(h.next).Round(time.Second))
+		}
 		return
 	}
 	done := make(chan struct{})
-	h.cmd, h.done = cmd, done
-	logf("Gjallarhorn: eingebauter Knoten gestartet (PID %d)", cmd.Process.Pid)
+	h.cmd, h.done, h.ok = cmd, done, false
 	t0 := time.Now()
+	h.t0 = t0
+	if h.same == 0 {
+		logf("Gjallarhorn: eingebauter Knoten gestartet (PID %d)", cmd.Process.Pid)
+	}
 	go func() {
 		err := cmd.Wait()
 		close(done)
+		lines, seen := out.finish()
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		if h.cmd != cmd {
@@ -151,21 +226,115 @@ func (h *horn) startLocked() {
 		if h.stopped {
 			return
 		}
-		if time.Since(t0) > time.Minute {
-			h.fails = 0
+		now := time.Now()
+		if now.Sub(t0) >= hornOKAfter {
+			h.fails, h.same, h.reason, h.detail, h.slowNote = 0, 0, "", "", false
+			h.prev = nil
+		} else {
+			h.prev = seen
 		}
-		h.failLocked()
-		logf("Gjallarhorn: Knoten beendet (%v) - neuer Start in %v", err, time.Until(h.next).Round(time.Second))
+		reason, detail := hornReason(lines)
+		h.failLocked(reason, detail, now)
+		wait := h.next.Sub(now).Round(time.Second)
+		switch {
+		case h.same == 1:
+			logf("Gjallarhorn: %s - neuer Start in %v", hornText(reason, detail, err, h.port), wait)
+		case h.next.Sub(now) >= hornBackoffSlow && !h.slowNote:
+			h.slowNote = true
+			logf("Gjallarhorn: eingebauter Knoten startet weiter nicht (%d Versuche, gleicher Grund) - neue Versuche alle %v, "+
+				"Meldung nur bei Aenderung; Speichern unter Admin -> Anrufe startet sofort", h.fails, hornBackoffSlow)
+		}
 	}()
 }
 
-func (h *horn) failLocked() {
-	h.fails++
-	d := 2 * time.Second << (h.fails - 1)
-	if d > time.Minute || d <= 0 {
-		d = time.Minute
+// failLocked zaehlt einen Fehlversuch und legt den naechsten Start fest.
+func (h *horn) failLocked(reason, detail string, now time.Time) {
+	if h.fails > 0 && reason == h.reason && detail == h.detail {
+		h.same++
+	} else {
+		h.same, h.slowNote = 1, false
 	}
-	h.next = time.Now().Add(d)
+	h.reason, h.detail = reason, detail
+	h.fails++
+	h.next = now.Add(hornBackoff(h.fails, h.same))
+}
+
+// hornBackoff: 2, 4, 8 ... s bis 1 min; derselbe Grund ab hornSlowAfter Mal in Folge bis 10 min.
+func hornBackoff(fails, same int) time.Duration {
+	if fails < 1 {
+		fails = 1
+	}
+	if fails > 20 {
+		fails = 20
+	}
+	d := 2 * time.Second << (fails - 1)
+	lim := hornBackoffMax
+	if same >= hornSlowAfter {
+		lim = hornBackoffSlow
+	}
+	if d > lim || d <= 0 {
+		d = lim
+	}
+	return d
+}
+
+// state: aktueller Zustand fuer Saga.
+func (h *horn) state() hornState {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := hornState{Fails: h.fails, Port: h.port, Name: h.name}
+	switch {
+	case !h.on:
+		s.State, s.Fails = "off", 0
+	case h.cmd != nil:
+		s.State, s.Since = "run", h.t0.Unix()
+		if !h.ok && h.fails > 0 { // erneuter Versuch nach einem Abbruch: letzter Grund bleibt sichtbar
+			s.Reason, s.Detail = h.reason, h.detail
+		}
+	default:
+		s.State, s.Reason, s.Detail = "wait", h.reason, h.detail
+		if !h.next.IsZero() {
+			s.Next = h.next.Unix()
+		}
+	}
+	return s
+}
+
+// report meldet den Zustand an Saga - bei Aenderung sofort, sonst alle hornBeat.
+func (h *horn) report(ctx context.Context) {
+	b, _ := json.Marshal(h.state())
+	h.mu.Lock()
+	due := !bytes.Equal(b, h.sent) || time.Since(h.sentAt) >= hornBeat
+	h.mu.Unlock()
+	if !due {
+		return
+	}
+	if postHornState(ctx, h.m, json.RawMessage(b)) {
+		h.mu.Lock()
+		h.sent, h.sentAt = b, time.Now()
+		h.mu.Unlock()
+	}
+}
+
+func postHornState(ctx context.Context, m *media, v any) bool {
+	st, _, err := m.callPython(ctx, http.MethodPost, "/internal/horn/state", v, nil, nil)
+	return err == nil && st == http.StatusOK
+}
+
+// reportNone: kein eingebauter Knoten moeglich (SAGA_HORN=off, kein Binaer, HORN_PORT ungueltig) - Saga erfaehrt den
+// Grund trotzdem (Admin -> Anrufe), bis Saga antwortet jede Sekunde, danach alle hornBeat * 2.
+func reportNone(ctx context.Context, m *media, why string) {
+	wait := time.Second
+	for {
+		if postHornState(ctx, m, hornState{State: "none", Reason: why}) {
+			wait = 2 * hornBeat
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+	}
 }
 
 // termLocked: SIGTERM, nach 10 s SIGKILL (wartet nicht unter der Sperre).
@@ -210,4 +379,163 @@ func (h *horn) running() int {
 		return 0
 	}
 	return h.cmd.Process.Pid
+}
+
+// --- Ausgabe des Knotens ---------------------------------------------------------------------------------------------
+
+// hornOut reicht die Ausgabe des Knotens zeilenweise ins eigene Log weiter und merkt sich die letzten Zeilen (Grund des
+// Abbruchs). Zeilen, die schon beim letzten schnellen Fehlversuch kamen (skip), schreibt es nicht noch einmal.
+type hornOut struct {
+	mu    sync.Mutex
+	w     interface{ Write([]byte) (int, error) }
+	skip  map[string]bool
+	part  []byte
+	tail  []string
+	seen  map[string]bool
+	ended bool
+}
+
+func newHornOut(w interface{ Write([]byte) (int, error) }, skip map[string]bool) *hornOut {
+	return &hornOut{w: w, skip: skip, seen: map[string]bool{}}
+}
+
+func (o *hornOut) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.part = append(o.part, p...)
+	for {
+		i := bytes.IndexByte(o.part, '\n')
+		if i < 0 {
+			break
+		}
+		o.line(string(o.part[:i]))
+		o.part = o.part[i+1:]
+	}
+	if len(o.part) > 16<<10 { // ueberlange Zeile ohne Umbruch: als Zeile behandeln
+		o.line(string(o.part))
+		o.part = nil
+	}
+	return len(p), nil
+}
+
+func (o *hornOut) line(s string) {
+	s = strings.TrimRight(s, "\r")
+	if len(s) > 1000 {
+		s = s[:1000]
+	}
+	if strings.TrimSpace(s) != "" {
+		o.tail = append(o.tail, s)
+		if len(o.tail) > hornTail {
+			o.tail = o.tail[len(o.tail)-hornTail:]
+		}
+		if len(o.seen) < 64 {
+			o.seen[s] = true
+		}
+	}
+	if o.skip[s] {
+		return
+	}
+	_, _ = o.w.Write([]byte(s + "\n"))
+}
+
+// finish: Rest ohne Zeilenumbruch ausgeben -> letzte Zeilen und alle gesehenen Zeilen dieses Laufs.
+func (o *hornOut) finish() ([]string, map[string]bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if !o.ended && len(o.part) > 0 {
+		o.line(string(o.part))
+		o.part = nil
+	}
+	o.ended = true
+	return append([]string(nil), o.tail...), o.seen
+}
+
+// --- Grund des Abbruchs ----------------------------------------------------------------------------------------------
+
+var (
+	reHornPath  = regexp.MustCompile(`(?:[A-Za-z]:)?(?:/[^\s/:,;()'"\[\]]+)+/?`)
+	reHornToken = regexp.MustCompile(`[A-Za-z0-9+/_=-]{24,}`)
+	reHornName  = regexp.MustCompile(`^[A-Za-z0-9.-]{1,253}$`)
+)
+
+// hornReason ordnet die letzten Ausgabezeilen eines abgebrochenen Knotens einem Grund zu:
+// nocert (kein Zertifikat, kein Name fuer ACME), port (Port belegt), portperm (Port unter 1024 ohne Recht),
+// sonst exit mit der letzten Fehlerzeile (gekuerzt, ohne Pfade und lange Kennungen).
+func hornReason(lines []string) (string, string) {
+	last := ""
+	for i := len(lines) - 1; i >= 0; i-- {
+		if s := strings.TrimSpace(lines[i]); s != "" {
+			if strings.HasPrefix(s, "fehler:") || last == "" {
+				last = s
+			}
+			if strings.HasPrefix(s, "fehler:") {
+				break
+			}
+		}
+	}
+	low := strings.ToLower(last)
+	switch {
+	case strings.Contains(low, "kein zertifikat"):
+		return "nocert", ""
+	case strings.Contains(low, "address already in use"):
+		return "port", ""
+	case strings.Contains(low, "permission denied") && (strings.Contains(low, "bind") || strings.Contains(low, "listen")):
+		return "portperm", ""
+	}
+	return "exit", hornClean(strings.TrimSpace(strings.TrimPrefix(last, "fehler:")))
+}
+
+// hornClean: Fehlerzeile fuer den Admin-Bereich - ohne Pfade, ohne lange Kennungen (Schluessel), ohne Steuerzeichen,
+// hoechstens 160 Zeichen.
+func hornClean(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, s)
+	s = reHornPath.ReplaceAllStringFunc(s, func(p string) string {
+		if strings.HasPrefix(p, "//") { // Rest einer URL (https://...)
+			return "//…"
+		}
+		return "…"
+	})
+	s = reHornToken.ReplaceAllString(s, "…")
+	s = strings.TrimSpace(s)
+	if utf8.RuneCountInString(s) > 160 {
+		r := []rune(s)
+		s = string(r[:159]) + "…"
+	}
+	return s
+}
+
+func cleanName(s string) string {
+	s = strings.TrimSpace(s)
+	if !reHornName.MatchString(s) || strings.EqualFold(s, "localhost") {
+		return ""
+	}
+	return s
+}
+
+// hornText: Log-Zeile zum Grund.
+func hornText(reason, detail string, err error, port int) string {
+	switch reason {
+	case "nocert":
+		return "eingebauter Knoten startet nicht: kein Zertifikat (HORN_NAME fuer ACME, HORN_TLS_CERT/HORN_TLS_KEY oder HORN_TLS_SELF=1 setzen)"
+	case "port":
+		return fmt.Sprintf("eingebauter Knoten startet nicht: Port %d belegt", port)
+	case "portperm":
+		return fmt.Sprintf("eingebauter Knoten startet nicht: Port %d braucht Sonderrechte (HORN_PORT ab 1024 waehlen)", port)
+	}
+	if detail != "" {
+		return fmt.Sprintf("Knoten beendet (%v): %s", err, detail)
+	}
+	return fmt.Sprintf("Knoten beendet (%v)", err)
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }

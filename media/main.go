@@ -179,8 +179,11 @@ func main() {
 	var hn *horn
 	hctx, hcancel := context.WithCancel(context.Background())
 	if child != nil {
-		if hn = newHorn(m, hornKey); hn != nil {
+		var why string
+		if hn, why = newHorn(m, hornKey); hn != nil {
 			go hn.loop(hctx)
+		} else {
+			go reportNone(hctx, m, why) // Admin -> Anrufe nennt den Grund (SAGA_HORN=off, kein Binaer ...)
 		}
 	}
 	stopHorn := func() {
