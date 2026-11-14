@@ -3494,7 +3494,7 @@
   }
   // Probe des Knotens vor einem Schritt nach oben (Slot probe/probe_kbit/probe_why, nur in der Meldung des Ereignisses
   // selbst) fuer die Diagnose: ?start,1599k | ?ok,1599k | ?fail:gcc,1599k | ?abort:unklar,1599k
-  function hornProbe(x) {
+  function hornProbeTag(x) {
     if (!x.probe || !/^[a-z]{1,8}$/.test(x.probe)) return '';
     return '?' + x.probe + (x.probe_why && /^[a-z]{1,8}$/.test(x.probe_why) ? ':' + x.probe_why : '') + ',' + Math.round(+x.probe_kbit || 0) + 'k';
   }
@@ -3514,7 +3514,7 @@
         if (m.slots) L.slots = m.slots; L.est = m.est_kbit || L.est; hornMap(R); hornDraw(R);
         if (conn === R.horn.cur) {                      // Diagnose: Schichtbelegung (nur Aenderungen)
           var lay = L.role[0] + ' est=' + (m.est_kbit || 0) + ' ' + (L.slots || []).filter(function (x) { return x.class !== 'audio'; }).map(function (x) {
-            return x.class[0] + x.i + ':' + (x.paused ? 'p' : (x.layer || '-') + (x.tid != null ? x.tid : '')) + (x.peer ? '@' + String(x.peer).slice(0, 4) : '') + hornWhy(x) + hornProbe(x);
+            return x.class[0] + x.i + ':' + (x.paused ? 'p' : (x.layer || '-') + (x.tid != null ? x.tid : '')) + (x.peer ? '@' + String(x.peer).slice(0, 4) : '') + hornWhy(x) + hornProbeTag(x);
           }).join(' ');
           if (lay !== L.layLast) { L.layLast = lay; diagEv(R, 'layers', lay); }
         }

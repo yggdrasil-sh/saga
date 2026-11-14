@@ -16,6 +16,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Web: Anrufe über Knoten brachen mit „hornProbe(c, ms).then is not a function“ ab
+- Eine Diagnose-Hilfsfunktion trug denselben Namen wie die Messung der Knoten (`hornProbe`) und überdeckte sie im selben
+  Gültigkeitsbereich: Der Browser konnte vor dem Beitritt keinen Knoten messen, Gruppenanrufe (und 1:1 mit „Alle Anrufe
+  über Knoten“) über einen Knoten scheiterten im Web mit einer Fehlermeldung. Die Diagnose-Funktion heißt jetzt
+  `hornProbeTag`.
+
 ### Neu – MCP: Saga-Kalender bearbeiten, Vorlage und Symbol beim Anlegen (Bug-DB 1531)
 - Neue Token-Bereiche `read:calendar` / `write:calendar` (bestehende Tokens unverändert) und Werkzeuge
   `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event` – über dieselben CalDAV-Zugänge
