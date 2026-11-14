@@ -275,7 +275,7 @@ func TestEinportProxyHeader(t *testing.T) {
 	if !isClosed(raw, 3*time.Second) || time.Since(t0) > 2*time.Second {
 		t.Errorf("halber Kopf: nicht nach der Frist geschlossen (%v)", time.Since(t0))
 	}
-	if te.e.st.ProxyErr.Load() != 3 || te.e.info().ProxyBad == 0 {
+	if te.e.st.ProxyErr.Load() != 3 || te.e.info().ProxyBad == 0 || !te.e.info().ProxyMiss {
 		t.Errorf("proxy_err %d, proxy_bad %d", te.e.st.ProxyErr.Load(), te.e.info().ProxyBad)
 	}
 }

@@ -920,7 +920,7 @@ def einport_view(out, now=None):
          "node_mode": cert.get("mode") or "", "cert_err": horn.clean_detail(cert.get("err") or ""), "cf": cloudflare.configured(),
          "soon": bool(ep.get("not_after") and ep["not_after"] - now < 14 * 86400)}
     # Kopf fehlt: in den letzten 10 min abgewiesen und seitdem keiner erkannt -> PROXY-Protokoll am Proxy aus?
-    v["proxy_warn"] = bool(v["proxy"] and v["proxy_bad"] and now - v["proxy_bad"] < 600 and (v["proxy_seen"] or 0) < v["proxy_bad"])
+    v["proxy_warn"] = bool(v["proxy"] and v["proxy_bad"] and now - v["proxy_bad"] < 600 and ep.get("proxy_miss"))
     return v
 
 
@@ -969,6 +969,7 @@ def admin_state():
         out.append({"id": n["id"], "name": n["name"], "builtin": bool(n["builtin"]), "status": st, "since": since,
                     "tcp": bool(ck.get("v4") or ck.get("v6")) if ck else (n["id"] in horn._CONNS),
                     "udp": bool(n["udp"]), "udp_check": (horn._LIVE.get(n["id"]) or {}).get("udp_check") or "", "udp_port": horn.udp_port(n),
+                    "ice_tcp": horn.ice_tcp(n),
                     "cpu": round(100 * float(ld.get("cpu") or 0)), "up": round(float(ld.get("up") or 0), 1),
                     "link": n.get("link_mbit"), "util": round(100 * horn.util(n)), "peers": int(ld.get("peers") or 0),
                     "legs": int(ld.get("legs") or 0), "version": n.get("version") or "", "share": bool(n["share"]),

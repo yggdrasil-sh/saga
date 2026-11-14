@@ -72,7 +72,7 @@ type edge struct {
 	nodeProxy *httputil.ReverseProxy
 	pending   atomic.Int64
 	st        edgeStats
-	proxySeen atomic.Int64 // Unix-Sekunden des letzten gueltigen PROXY-Kopfs
+	proxySeen atomic.Int64 // Unix-Millisekunden des letzten gueltigen PROXY-Kopfs
 	proxyBad  atomic.Int64 // ... des letzten abgewiesenen (fehlt bzw. ungueltig)
 	onState   func()       // Zustand geaendert (Zertifikat, Knoten) -> an Saga melden
 	firstByte atomic.Int64 // Frist fuer PROXY-Kopf und ClientHello (ns; Standard edgeFirstByte)
@@ -207,11 +207,11 @@ func (e *edge) handle(raw net.Conn) {
 		a, err := e.readProxy(p)
 		if err != nil {
 			e.st.ProxyErr.Add(1)
-			e.proxyBad.Store(time.Now().Unix())
+			e.proxyBad.Store(time.Now().UnixMilli())
 			_ = raw.Close()
 			return
 		}
-		e.proxySeen.Store(time.Now().Unix())
+		e.proxySeen.Store(time.Now().UnixMilli())
 		if a != nil {
 			remote = a
 		}
@@ -534,16 +534,15 @@ type einportInfo struct {
 	Name      string `json:"name"`
 	Port      int    `json:"port"`
 	Proxy     bool   `json:"proxy"`
-	ProxySeen int64  `json:"proxy_seen,omitempty"` // letzter gueltiger PROXY-Kopf (Unix-Sekunden, auf die Minute)
+	ProxySeen int64  `json:"proxy_seen,omitempty"` // letzter gueltiger PROXY-Kopf (Unix-Sekunden)
 	ProxyBad  int64  `json:"proxy_bad,omitempty"`  // letzte Verbindung ohne bzw. mit ungueltigem Kopf
+	ProxyMiss bool   `json:"proxy_miss,omitempty"` // die letzte Verbindung kam ohne gueltigen Kopf (danach keine gute mehr)
 	Cert      string `json:"cert"`                 // ok | fehlt | name | abgelaufen | fehler
 	CertSrc   string `json:"cert_src,omitempty"`   // own | dns01 | alpn | file
 	NotAfter  int64  `json:"not_after,omitempty"`
 	Node      bool   `json:"node"` // Uebergabe an den Knoten bereit
 	H2        bool   `json:"h2"`
 }
-
-func minute(t int64) int64 { return t - t%60 }
 
 func (e *edge) info() *einportInfo {
 	_, ps, _ := net.SplitHostPort(e.c.tlsListen)
@@ -553,12 +552,8 @@ func (e *edge) info() *einportInfo {
 	if !cs.notAfter.IsZero() {
 		in.NotAfter = cs.notAfter.Unix()
 	}
-	if t := e.proxySeen.Load(); t > 0 {
-		in.ProxySeen = minute(t)
-	}
-	if t := e.proxyBad.Load(); t > 0 {
-		in.ProxyBad = minute(t)
-	}
+	seen, bad := e.proxySeen.Load(), e.proxyBad.Load()
+	in.ProxySeen, in.ProxyBad, in.ProxyMiss = seen/1000, bad/1000, bad > seen
 	return in
 }
 

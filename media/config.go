@@ -36,9 +36,9 @@ type config struct {
 	tlsProxy   bool   // TLS_PROXY_PROTOCOL=1: vor jeder Verbindung ein PROXY-v2-Kopf (Pflicht)
 	tlsCert    string // SAGA_TLS_CERT/SAGA_TLS_KEY: eigene Zertifikatsdateien (sonst vom eingebauten Knoten)
 	tlsKey     string
-	baseHost   string // Name aus BASE_URL (Zertifikat, Knotenname)
-	baseOrigin string // https://name[:port] aus BASE_URL (Adresse des eingebauten Knotens)
-	hornData   string // HORN_DATA bzw. STATE_DIR/horn (Zertifikat des Knotens)
+	baseHost   string        // Name aus BASE_URL (Zertifikat, Knotenname)
+	baseOrigin string        // https://name[:port] aus BASE_URL (Adresse des eingebauten Knotens)
+	hornData   string        // HORN_DATA bzw. STATE_DIR/horn (Zertifikat des Knotens)
 	tlsReload  time.Duration // SAGA_TLS_RELOAD_S: so oft Zertifikatsdateien pruefen (Standard 30 s)
 }
 

@@ -1005,6 +1005,7 @@ def _clean_einport(d):
     return {"name": name if _BI_NAME.fullmatch(name) and name.lower() != "localhost" else "",
             "port": _num(d.get("port"), 1, 65535) or 443, "proxy": d.get("proxy") is True, "node": d.get("node") is True,
             "proxy_seen": _num(d.get("proxy_seen"), 0, 2 ** 40) or None, "proxy_bad": _num(d.get("proxy_bad"), 0, 2 ** 40) or None,
+            "proxy_miss": d.get("proxy_miss") is True,
             "cert": d.get("cert") if d.get("cert") in _EP_CERT else "fehlt", "cert_src": d.get("cert_src") if d.get("cert_src") in _EP_SRC else "",
             "not_after": _num(d.get("not_after"), 0, 2 ** 40) or None, "h2": d.get("h2") is True}
 

@@ -20,7 +20,6 @@ import (
 // Es gilt nur ein Zertifikat, das jetzt gueltig ist und auf den Namen aus BASE_URL passt - sonst bleibt die Weiche fuer
 // HTTPS zu (HSTS: ein Browser, der Saga kennt, laesst ein falsches Zertifikat nicht einmal wegklicken).
 
-
 // certState: geladenes Zertifikat bzw. warum keins gilt.
 type certState struct {
 	cert     *tls.Certificate
