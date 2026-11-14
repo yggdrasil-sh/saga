@@ -857,6 +857,7 @@
     }
     R.legs = legs;
     if (extra && extra.limit) R.limit = extra.limit;
+    if (extra && Array.isArray(extra.invites)) invIn(R, extra);   // 2.5 (L7): "Nicht dabei" (Anruf-Objekt)
     var mine = myLeg(R);
     if (mine) { R.inRoom = true; if (!R.ho && !R.took) R.companion = mine.role === 'companion'; if (mine.role !== 'companion') R.took = false; }
     var now = {};
@@ -1638,7 +1639,7 @@
     var p = ui.w.querySelector('.cl-plist.cl-mlist');
     if (!R.plist || R.horn) { if (p) p.remove(); ui.w.classList.remove('plist-side'); if (R.meshOn) meetSoon(R); return; }
     if (!p) { p = el('div', 'cl-plist cl-mlist'); p.setAttribute('role', 'complementary'); p.setAttribute('aria-label', T('Teilnehmende')); ui.w.appendChild(p); }
-    var c = meetCalc(R), ppl = MT.people(c.d.roster, c.d.media), mt = mtOf(R);
+    var c = meetCalc(R), ppl = MT.people(c.d.roster, c.d.media), mt = mtOf(R), fk = focusKey(p);
     p.textContent = '';
     var hd = el('div', 'cl-plist-h'); hd.appendChild(el('b', null, T('Teilnehmende ({n})', { n: ppl.length })));
     hd.appendChild(btn(icon('x'), 'cl-mini', function () { R.plist = false; meetList(R); drawCtl(R); }, T('Schließen')));
@@ -1662,6 +1663,7 @@
       ul.appendChild(li);
     });
     p.appendChild(ul);
+    awayList(R, p); focusBack(p, fk);
     var side = (ui.w.clientWidth || window.innerWidth) >= 900 && !ui.w.classList.contains('small');
     if (ui.w.classList.contains('plist-side') !== side) { ui.w.classList.toggle('plist-side', side); if (R.meshOn) meetSoon(R); }
   }
@@ -4315,6 +4317,110 @@
     p.appendChild(el('p', 'cl-rpop-s', T('Die Runen ändern sich, sobald jemand beitritt oder geht.')));
     if ((H.unverified || []).length) p.appendChild(el('p', 'cl-rpop-w', T('Nicht geprüft: {names}', { names: H.unverified.map(function (d) { return hornDevName(R, d); }).join(', ') })));
   }
+  // --- 2.5 (L7): "Nicht dabei" + Erneut klingeln (Gruppenanruf; Anruf-Objekt invites, Ereignis call.invites) -----------
+  // Mitglieder ohne Geraet im Anruf mit Zustand; "klingelt" laeuft nach since + ring_s auch ohne Ereignis ab (Server-Uhr
+  // ueber now). Klick: sofort "klingelt …" (vorlaeufig), bei Fehler zurueck + Hinweis.
+  var INV_ORDER = { ringing: 0, declined: 1, missed: 2, left: 3, none: 4, removed: 5, old: 6 };
+  function invIn(R, d) {
+    R = roomOf(R);
+    if (!Array.isArray(d.invites) || R.kind !== 'group' || (R.call && R.call.dm)) return false;
+    var rv = typeof d.rv === 'number' ? d.rv : 0;
+    if (R.invRv && rv && rv < R.invRv) return false;  // aelterer Stand (kam nach einem neueren)
+    if (rv) R.invRv = rv;
+    if (typeof d.now === 'number') R.invSkew = d.now - Date.now() / 1000;
+    if (d.ring_s) R.invRing = d.ring_s;
+    R.inv = d.invites; R.invMore = d.invites_more || 0;
+    invTimer(R);
+    return true;
+  }
+  function invNow(R) { return Date.now() / 1000 + (R.invSkew || 0); }
+  function invRingS(R) { return R.invRing || (R.call && R.call.ring_s) || 45; }
+  // Zustand je Person: vorlaeufiges Klingeln (Klick) vor dem Stand des Servers, "klingelt" nur innerhalb der Klingeldauer
+  function invState(R, x) {
+    var p = (R.invPend || {})[x.who], now = invNow(R);
+    if (p && p > Date.now()) return 'ringing';
+    if (x.state === 'ringing' && x.since && x.since + invRingS(R) <= now) return 'missed';
+    return x.state in INV_ORDER ? x.state : 'none';
+  }
+  function invTimer(R) {
+    clearTimeout(R.invT);
+    var now = invNow(R), next = Infinity;
+    (R.inv || []).forEach(function (x) { if (x.state === 'ringing' && x.since) { var t = x.since + invRingS(R) - now; if (t > 0 && t < next) next = t; } });
+    if (next < Infinity) R.invT = setTimeout(function () { if (live(R)) invDraw(R); }, Math.ceil(next * 1000) + 300);
+  }
+  function invDraw(R) { R = roomOf(R); if (R.horn) hornList(R); else if (R.plist) meetList(R); }
+  function invLabel(st) {
+    return st === 'ringing' ? T('klingelt …') : st === 'declined' ? T('hat abgelehnt') : st === 'missed' ? T('nicht angenommen')
+      : st === 'left' ? T('hat den Anruf verlassen') : st === 'old' ? T('App zu alt') : st === 'removed' ? T('entfernt') : T('noch nicht eingeladen');
+  }
+  // Fokus ueberlebt das Neuzeichnen der Liste (Tastatur): Knoepfe mit data-k
+  function focusKey(p) { var a = document.activeElement; return a && p.contains(a) && a.dataset && a.dataset.k ? a.dataset.k : ''; }
+  function focusBack(p, k) {
+    if (!k) return;
+    var b = [].filter.call(p.querySelectorAll('[data-k]'), function (x) { return x.dataset.k === k; })[0];
+    if (b && !b.disabled) b.focus();
+    else { var h = p.querySelector('.cl-away-h b, .cl-plist-h b'); if (h) { h.tabIndex = -1; h.focus(); } }
+  }
+  function awayList(R, p) {
+    R = roomOf(R);
+    if (R.kind !== 'group' || (R.call && R.call.dm) || !Array.isArray(R.inv)) return;
+    if (!R.inv.length && !R.invMore) return;          // alle Mitglieder sind dabei
+    var host = hornHost(R), rows = R.inv.slice().map(function (x) { return { x: x, st: invState(R, x) }; });
+    rows.sort(function (a, b) { return INV_ORDER[a.st] - INV_ORDER[b.st]; });
+    var box = el('div', 'cl-away'); box.setAttribute('role', 'group');
+    var hd = el('div', 'cl-away-h'), n = rows.length + (R.invMore || 0);
+    var hb = el('b', null, T('Nicht dabei ({n})', { n: n })); hb.id = 'cl-away-h-' + R.id.slice(0, 8);
+    box.setAttribute('aria-labelledby', hb.id); hd.appendChild(hb);
+    var again = rows.filter(function (r) { return r.st === 'missed' || r.st === 'declined' || r.st === 'none'; });
+    if (again.length > 1) {
+      var all = btn(T('Alle erneut klingeln'), 'cl-pill cl-away-all', function () { invRing(R, again.map(function (r) { return r.x; })); },
+        T('Alle erneut klingeln ({n})', { n: again.length }));
+      all.dataset.k = 'all'; hd.appendChild(all);
+    }
+    box.appendChild(hd);
+    var ul = el('ul', 'cl-plist-l cl-away-l');
+    rows.forEach(function (r) {
+      var x = r.x, nm = x.name || '?', li = el('li', 'cl-pl cl-pl-away ' + r.st);
+      var av = HK.avatarImg(el('span', 'cl-av cl-av-s', nm.charAt(0).toUpperCase()), x.avatar || null, 32); av.setAttribute('aria-hidden', 'true');
+      var t = el('div', 'cl-pl-t'); t.appendChild(el('b', null, shortName(nm, 18)));
+      var sub = el('span', 'cl-td cl-away-st', invLabel(r.st));
+      if (r.st === 'ringing') sub.insertBefore(el('i', 'cl-away-dot'), sub.firstChild);
+      t.appendChild(sub);
+      li.appendChild(av); li.appendChild(t);
+      var show = r.st !== 'ringing' && (r.st !== 'removed' || host);
+      if (show) {
+        var lab = r.st === 'none' ? T('Klingeln') : T('Erneut klingeln');
+        var b = btn(lab, 'cl-pill cl-pl-ring', r.st === 'old' ? null : function () { invRing(R, [x]); },
+          r.st === 'old' ? T('{name}: App zu alt – braucht eine neuere Saga-Version', { name: nm })
+            : r.st === 'none' ? T('{name} klingeln lassen', { name: nm }) : T('{name} erneut klingeln lassen', { name: nm }));
+        b.dataset.k = 'r:' + x.who;
+        if (r.st === 'old') { b.disabled = true; b.setAttribute('aria-disabled', 'true'); }
+        var bw = el('div', 'cl-pl-b'); bw.appendChild(b); li.appendChild(bw);
+      }
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    if (R.invMore) box.appendChild(el('p', 'cl-td cl-away-more', T('und {n} weitere', { n: R.invMore })));
+    p.appendChild(box);
+  }
+  function invRing(R, xs) {
+    R = roomOf(R);
+    if (!xs.length || R.done) return;
+    var until = Date.now() + 15000, who = xs.map(function (x) { return x.who; });
+    R.invPend = R.invPend || {};
+    who.forEach(function (u) { R.invPend[u] = until; });
+    invDraw(R);
+    var undo = function () { who.forEach(function (u) { if (R.invPend[u] === until) delete R.invPend[u]; }); invDraw(R); };
+    api('POST', '/api/calls/' + R.id + '/invite', { uids: who }).then(function (d) {
+      who.forEach(function (u) { if (R.invPend[u] === until) delete R.invPend[u]; });
+      if (live(R) && invIn(R, d)) invDraw(R);
+      else invDraw(R);
+      HK.toast(xs.length === 1 ? T('{name} wird angerufen …', { name: xs[0].name || '?' }) : T('{n} Personen werden angerufen …', { n: xs.length }));
+    }).catch(function (e) {
+      undo();
+      HK.toast(e.status === 429 ? T('Gerade zu oft geklingelt – bitte etwa eine Minute warten.') : (e.message || T('Klingeln hat nicht geklappt.')), null, null, 6000);
+    });
+  }
   // --- Teilnehmerliste (Gastgeber: Stummschalten, Entfernen) ------------------------------------------------------------
   function hornHost(R) { return !!(R.call && (R.call.host || (R.call.peer && R.call.peer.username === meName()))); }
   function hornList(R) {
@@ -4322,6 +4428,7 @@
     var p = w.querySelector('.cl-plist');
     if (!H.plist) { if (p) p.remove(); return; }
     if (!p) { p = el('div', 'cl-plist'); p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', T('Teilnehmende')); w.appendChild(p); }
+    var fk = focusKey(p);
     p.textContent = '';
     var legs = R.legs || [], me_ = myDev().id, host = hornHost(R);
     var hd = el('div', 'cl-plist-h'); hd.appendChild(el('b', null, T('Teilnehmende ({n})', { n: legs.length })));
@@ -4361,6 +4468,7 @@
       ul.appendChild(li);
     });
     p.appendChild(ul);
+    awayList(R, p); focusBack(p, fk);
   }
   function hornMod(R, x, action) {
     api('POST', '/api/calls/' + R.id + '/moderate', { device: myDev().id, target: x.device, action: action }).then(function () {
@@ -4484,6 +4592,9 @@
         }
       }
     } else if (t === 'call.mod') hornModIn(d);       // 2.5: Gastgeber hat stummgeschaltet bzw. entfernt
+    else if (t === 'call.invites') {                  // 2.5 (L7): "Nicht dabei" hat sich geaendert
+      if (C && C.id === d.call_id && C.ready && !C.done && invIn(C, d)) invDraw(C);
+    }
     else if (t === 'resync' || t === 'live.hello') pending();   // 2.5 (Nr. 173): auch beim ersten hello (Luecke nach dem Laden)
   });
   // Seite neu geladen/geoeffnet, waehrend es klingelt
@@ -4498,9 +4609,9 @@
           ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.peer, ring_s: x.ring_s, expires_in: x.expires_in });
         else if (x.kind === 'group' && (x.mine || []).length && RINGS[x.id] && !(C && C.id === x.id)) unring(x.id);   // eigenes Geraet ist dabei
         else if (x.kind === 'group' && x.invite === 'ringing' && !(x.mine || []).length && !RINGS[x.id] && !(C && C.id === x.id)
-                 && Date.now() / 1000 - x.created < (x.ring_s || 45))
+                 && Date.now() / 1000 - (x.invite_since || x.created) < (x.ring_s || 45))      // L7: erneut geklingelt -> ab invite_since
           ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.from, group: true, dm: !!x.dm, silent: !!x.silent, ring_s: x.ring_s,
-                 expires_in: Math.max(5, x.created + (x.ring_s || 45) - Date.now() / 1000) });
+                 expires_in: Math.max(5, (x.invite_since || x.created) + (x.ring_s || 45) - Date.now() / 1000) });
         runBar(x);
       });
       Object.keys(RUN).forEach(function (id) { if (!seen[id]) hideRun(id); });

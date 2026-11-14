@@ -398,7 +398,7 @@
      'call.state', 'call.roster', 'call.invite', 'avatar.changed', 'ai.persona.changed', 'chat.cleared', 'chat.removed',   // (2.1) Loeschen
      'chat.receipt', 'chat.presence', 'chat.privacy',                                     // (2.4) Gelesen, Online-Status
      'chat.react', 'chat.edited',                                                         // (2.5) Reaktionen, Bearbeiten
-     'call.mod'].forEach(function (n) {                                                   // (2.5) Gastgeber: stumm/entfernt
+     'call.mod', 'call.invites'].forEach(function (n) {                                   // (2.5) Gastgeber: stumm/entfernt; L7 Nicht dabei
       on(es, n, function (d) { chatEvent(n, d); });
     });
     on(es, 'avatar.changed', swapAvatar);

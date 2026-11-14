@@ -680,7 +680,7 @@ def invites(c, call, viewer=None, legs=None, now=None):
 
 
 def emit_invites(c, call, legs=None):
-    """2.5 (L7): Ereignis call.invites {call_id, chat_id, invites, invites_more, rv} an die Konten DIESES Servers mit
+    """2.5 (L7): Ereignis call.invites {call_id, chat_id, invites, invites_more, ring_s, now, rv} an die Konten DIESES Servers mit
     einem Geraet im Anruf (wer nicht dabei ist, liest das Anruf-Objekt). rv wie call.roster (erst nach dem Commit)."""
     if call["kind"] != "group" or _dmh(call) or call["state"] == "ended":
         return
@@ -689,7 +689,8 @@ def emit_invites(c, call, legs=None):
     if not to:
         return
     lst, more = invites(c, call, None, legs)
-    data = {"call_id": call["id"], "chat_id": call["chat_id"], "invites": lst, "invites_more": more}
+    data = {"call_id": call["id"], "chat_id": call["chat_id"], "invites": lst, "invites_more": more, "ring_s": ring_s(),
+            "now": round(time.time(), 3)}
     after = getattr(c, "after_commit", None)
     after(lambda: data.__setitem__("rv", _rv())) if after is not None else data.__setitem__("rv", _rv())
     _emit(c, to, "call.invites", data)
@@ -1993,7 +1994,7 @@ async def api_moderate(cid: str, request: Request):
 @router.post("/api/calls/{cid}/invite")
 async def api_invite(cid: str, request: Request):
     """Gruppenanruf: weitere Mitglieder (noch einmal) klingeln lassen {uids: [benutzername | '@~x@host']} -> {ok, n,
-    invites, invites_more} (2.5 L7: neuer Stand "Nicht dabei" fuer mich). Entfernte Personen (Gastgeber-Aktion) darf nur
+    invites, invites_more, rv, now} (2.5 L7: neuer Stand "Nicht dabei" fuer mich). Entfernte Personen (Gastgeber-Aktion) darf nur
     der Gastgeber erneut klingeln lassen (sonst 403, nichts geklingelt). Klingeln ist gewollt: auch in grossen Chats laut."""
     uid, err = _me(request)
     if err:
@@ -2013,11 +2014,12 @@ async def api_invite(cid: str, request: Request):
         if not _rate("invite", uid, CALL_RATE):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         n, remote = invite_local(c, call, who)
+        rv = _rv()
         lst, more = invites(c, call, uid)
     if remote and FED is not None:
         from starlette.concurrency import run_in_threadpool
         await run_in_threadpool(FED.invite, uid, call, remote)
-    return chat._no_store({"ok": True, "n": n + len(remote), "invites": lst, "invites_more": more})
+    return chat._no_store({"ok": True, "n": n + len(remote), "invites": lst, "invites_more": more, "rv": rv, "now": round(time.time(), 3)})
 
 
 def _inv_who(c, call, who):

@@ -266,6 +266,20 @@
 .cl-pl-b{display:flex;gap:.35rem;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
 .cl-pl-b .cl-pill{height:30px;font-size:var(--fs-sm);padding:0 .7rem}
 .cl-btn.cl-pl-rm.sure{background:var(--cl-red);border-color:var(--cl-red);color:#fff}
+/* 2.5 (L7): "Nicht dabei" unter den Teilnehmenden - gleiche Zeilen, gedaempft; Knopf "Erneut klingeln" */
+.cl-away{margin-top:.6rem;padding-top:.55rem;border-top:1px solid var(--cl-line);display:flex;flex-direction:column;min-height:0;flex:0 1 auto}
+.cl-plist>.cl-plist-l{flex:0 1 auto}
+.cl-away-h{display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
+.cl-away-h b{font-size:var(--fs-base);outline:none}
+.cl-away-h .cl-pill,.cl-pl-away .cl-pill{height:30px;font-size:var(--fs-sm);padding:0 .7rem}
+.cl-pl-away .cl-av{opacity:.7}
+.cl-pl-away .cl-pl-t b{font-weight:500;color:var(--cl-fg)}
+.cl-away-st{display:inline-flex;align-items:center;gap:.35rem}
+.cl-pl-away.ringing .cl-away-st{color:var(--cl-fg)}
+.cl-away-dot{width:7px;height:7px;border-radius:50%;background:var(--cl-ok);flex:none;animation:cl-blink 1.4s ease-in-out infinite}
+.cl-btn.cl-pl-ring[disabled]{opacity:.55;cursor:not-allowed}
+.cl-away-more{margin:.35rem 0 0 .4rem}
+@media (prefers-reduced-motion: reduce){.cl-away-dot{animation:none}}
 .cl-hint-back{position:fixed;inset:0;z-index:229;background:rgba(0,0,0,.45)}
 .cl-hint.cl-hint-page{position:fixed;z-index:230;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--card);color:var(--fg);
   border-color:var(--border);box-shadow:0 18px 60px rgba(0,0,0,.35)}
