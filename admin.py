@@ -944,8 +944,7 @@ def _builtin_warn_text(why):
         return t("Achtung: Der eingebaute Knoten startet so nicht – Port {port} ist belegt. HORN_PORT ändern.", port=port)
     if why == "portperm":
         return t("Achtung: Der eingebaute Knoten startet so nicht – Port {port} braucht Sonderrechte. HORN_PORT ab 1024 wählen.", port=port)
-    return t("Achtung: Der eingebaute Knoten startet so nicht – es fehlt ein eigener Name (HORN_NAME) bzw. ein Zertifikat. "
-             "Was zu tun ist, steht unten bei den Knoten in der Zeile „Eingebaut“.")
+    return t("Achtung: Der eingebaute Knoten startet so nicht – es fehlt ein eigener Name (HORN_NAME) bzw. ein Zertifikat. Was zu tun ist, steht unten bei den Knoten in der Zeile „Eingebaut“.")
 
 
 @admin.get("/calls")
