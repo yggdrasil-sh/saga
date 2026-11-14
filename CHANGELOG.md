@@ -22,6 +22,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   über Knoten“) über einen Knoten scheiterten im Web mit einer Fehlermeldung. Die Diagnose-Funktion heißt jetzt
   `hornProbeTag`.
 
+### Neu – MCP/API: Kontosprache, Ansichten mit Filter, sicherere Änderungen (MCP-Nachrunde)
+- Antworten, Fehlermeldungen und erzeugte Vorgaben (Status-Optionen, Ansichtsnamen) von MCP und `/api/v1` kommen in
+  der Sprache des Kontos, dem der Token gehört – nicht mehr in der Sprache der Anfrage. Konto „Automatisch“: wie bisher.
+- Ansichten mit Filter und Sortierung: `create_database` (`views`) und `update_database_schema` (`add_views`) nehmen
+  `filters`/`sorts` im Format von `query_database`; neu `update_views` ändert Name, Filter, Sortierung und Gruppierung
+  einer bestehenden Ansicht (löscht nie). Gespeichert wie im Web, ungültige Eigenschaften, Optionen und Operatoren →
+  klare Fehlermeldung. `get_database_schema` bzw. `GET /api/v1/databases/{id}` zeigen Filter und Sortierung der
+  Ansichten. So zählt z. B. ein Fortschritts-Widget nur die Einträge eines Meilensteins.
+- `update_block`: `replace_section` mit leerem Markdown leert den Abschnitt nur noch mit `allow_empty: true`
+  (sonst Fehler mit Hinweis) – auch in `POST /api/v1/pages/{id}/blocks`.
+- `update_event`: Wechsel Termin ↔ ganztägig – das alte Ende mit Uhrzeit bleibt nicht mehr stehen (mehrtägiger
+  Termin), und eine angegebene Uhrzeit wird übernommen bzw. fehlende Angaben werden gemeldet statt still verworfen.
+- `update_widget`, `update_row` und `update_database_schema` tragen jetzt `destructiveHint: true`.
+
+### Behoben – `query_database`: Filter `status_group`
+- Der Wert (`open`, `done` …) wurde auf eine gleichnamige Option abgebildet (z. B. „Done“) – der Filter wirkte dann nicht.
+
 ### Neu – MCP: Saga-Kalender bearbeiten, Vorlage und Symbol beim Anlegen (Bug-DB 1531)
 - Neue Token-Bereiche `read:calendar` / `write:calendar` (bestehende Tokens unverändert) und Werkzeuge
   `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event` – über dieselben CalDAV-Zugänge

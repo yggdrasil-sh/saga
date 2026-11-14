@@ -62,6 +62,13 @@ einstellbar). Darüber: `429` mit `Retry-After` (Sekunden).
 | 423 | `locked` | Seite ist gesperrt |
 | 429 | `rate_limited` | zu viele Anfragen (`Retry-After`) |
 
+**Sprache:** Meldungen (und beim Anlegen erzeugte Namen wie Status-Optionen „Offen/In Arbeit/Erledigt“ oder
+Ansichtsnamen) kommen in der Sprache, die im Konto des Tokens eingestellt ist (Einstellungen → Sprache) – auch bei
+anderem oder fehlendem `Accept-Language`. Steht das Konto auf „Automatisch“: Standardsprache des Servers, sonst
+`Accept-Language`, sonst Englisch (wie bisher); gespeicherte Namen folgen dann wie im Web der zuletzt in der
+Weboberfläche gesehenen Sprache. Kaputtes JSON wird vor der Token-Prüfung abgelehnt – diese eine Meldung folgt
+`Accept-Language`.
+
 ## Endpunkte
 
 Alle Antworten sind JSON. IDs sind Zahlen. **Personen** erscheinen nur als Handle (`~abcd…`, lokale Konten) bzw.
@@ -98,7 +105,8 @@ egal; mehrdeutig oder nicht gefunden → `400`/`404` mit `candidates: [{id, leve
 - `replace_block` (Standard bei `block_id`): nur dieser Block; der erste neue Block übernimmt seine ID.
 - `replace_section` (Standard bei `heading`): Überschrift + alle folgenden Blöcke bis zur nächsten Überschrift gleicher
   oder höherer Ebene. Die Überschrift bleibt – beginnt das Markdown mit einer eigenen Überschrift, ersetzt diese sie
-  (ID bleibt). Leeres Markdown leert den Abschnitt. Bei einer Toggle-Überschrift: ihr Inhalt.
+  (ID bleibt). Bei einer Toggle-Überschrift: ihr Inhalt. Leeres oder fehlendes Markdown → `400` – den Abschnitt leeren
+  (Überschrift bleibt) nur mit `allow_empty: true`; samt Überschrift entfernen mit `delete`.
 - `insert_after`: nach dem Block (`block_id`) bzw. am Ende des Abschnitts (`heading`).
 - `delete`: den Block entfernen; per `heading` den ganzen Abschnitt.
 
@@ -122,7 +130,7 @@ dieselbe Umwandlung wie beim Export. Markdown-Eingaben (`markdown`, `append_mark
 | Methode | Pfad | |
 |---|---|---|
 | `GET` | `/api/v1/databases?q=…` | Datenbanken, die der Token sehen darf |
-| `GET` | `/api/v1/databases/{id}` | Schema: `{properties: [{id, name, type, options?, target?, rtype?}], views, title_name}` |
+| `GET` | `/api/v1/databases/{id}` | Schema: `{properties: [{id, name, type, options?, target?, rtype?}], views: [{id, name, type, group_by?, date_by?, filters?, sorts?}], title_name}` (Filter/Sortierung der Ansichten im Format der Abfrage unten, Eigenschaft per Name, Titel-Spalte `title`) |
 | `POST` | `/api/v1/databases/{id}/query` | Einträge abfragen |
 | `POST` | `/api/v1/databases/{id}/rows` | neuer Eintrag `{title, properties?, markdown?, icon?, template?}` → `201 {id}` (`template`: Name oder ID einer Eintrags-Vorlage der Datenbank – Inhalt, Symbol und Eigenschaften wie „+ Neu“ im Web; `markdown` wird angefügt, `properties`/`icon` überschreiben) |
 | `PATCH` | `/api/v1/rows/{id}` | Eintrag ändern `{title?, properties?, markdown?}` → `{ok, rev, calc?}` |
@@ -146,8 +154,8 @@ gesendete Werte dafür werden ignoriert. Personen nur, wenn die Person Zugriff a
 ```
 
 Filter und Sortierung arbeiten genau wie im Web (gleiche Operatoren: `is`, `is_not`, `contains`, `not_contains`,
-`gt`, `lt`, `before`, `after`, `is_empty`, `not_empty`, `checked`, `unchecked`, `today`, `this_week`, `overdue`, `me` …). `limit` höchstens
-100. Antwort:
+`gt`, `lt`, `before`, `after`, `is_empty`, `not_empty`, `checked`, `unchecked`, `today`, `this_week`, `overdue`, `me` …;
+`status_group` mit `open`, `done`, `todo`, `doing`). `limit` höchstens 100. Antwort:
 
 ```json
 {"rows": [{"id": 12, "title": "…", "icon": "", "created": 0, "updated": 0,
@@ -257,14 +265,23 @@ ist Pflicht, Konflikt → „Seite wurde inzwischen geändert (rev …)“), `up
 holt zurück (beides nur eigene Seiten). Änderungen kommen wie Web-Änderungen bei offenen Editoren an.
 **Datenbanken und Widgets anlegen:** `create_database` (Bereiche `write:db` **und** `write:pages`; `title`, `parent_id` –
 Pflicht bei Tokens mit `roots` –, `icon`, `properties: [{name, type, options?}]`, `views: [{type, name?, group_by?,
-date_by?, end_by?}]`, `title_name`, `embed_in_page`). Typen: `text`, `number` (`format`: `percent`/`euro`), `select`,
+date_by?, end_by?, filters?, sorts?}]`, `title_name`, `embed_in_page`). Typen: `text`, `number` (`format`: `percent`/`euro`), `select`,
 `multi_select` (`options`: Namen oder `{name, color}`), `status` (Auswahl mit Gruppen Offen/In Arbeit/Erledigt), `date`
 (`time`, `range`), `checkbox`, `url`, `created`, `edited`, `person`, `files`, `relation` (`target` = Datenbank, die der
 Token sehen darf; `two_way`). Formel, Rollup und Rechnung → Fehler (bitte im Web). Ohne `properties` entsteht die
 Datenbank wie im Web (Status, Datum; Tabelle + Board); mit `properties` und ohne `views`: Tabelle, bei einer Auswahl
-zusätzlich ein Board danach. Fehlerhafte Angaben legen nichts an. `update_database_schema` (`write:db`) ergänzt nur –
-`add_properties`, `rename_properties: [{property, name}]`, `add_options: [{property, options}]`, `add_views`, `title_name` –
-und löscht nie (Spalten, die inzwischen jemand anderes angelegt hat, bleiben ebenfalls). `embed_database` (`write:pages`
+zusätzlich ein Board danach. Fehlerhafte Angaben legen nichts an. `update_database_schema` (`write:db`) ergänzt –
+`add_properties`, `rename_properties: [{property, name}]`, `add_options: [{property, options}]`, `add_views`, `title_name` –,
+ändert mit `update_views: [{view, name?, filters?, sorts?, group_by?}]` bestehende Ansichten (`view` = ID oder eindeutiger
+Name; angegebene `filters`/`sorts` **ersetzen** die bisherigen, `[]` = keine) und löscht nie eine Eigenschaft, Option
+oder Ansicht (Spalten, die inzwischen jemand anderes angelegt hat, bleiben ebenfalls). **Filter und Sortierung von
+Ansichten** im Format der Abfrage (`[{"property": "Meilenstein", "op": "is", "value": "2.5"}]`, `[{"property": "Fällig",
+"dir": "desc"}]`; Eigenschaft per Name oder ID, `title` = Titel-Spalte, Auswahl-Werte per Optionsname oder -ID,
+höchstens 10 Filter und 3 Sortierstufen). Gespeichert wird wie im Web (das Web zeigt und bearbeitet die Ansicht
+normal); erlaubt sind je Typ genau die Operatoren der Filterzeile im Web. Unbekannte Eigenschaft oder Option, ein
+Operator, der nicht zum Typ passt, oder ein fehlender/falscher Wert (Datum `JJJJ-MM-TT`, `next_days`/`past_days` 1–366,
+`on_or_before`/`on_or_after` auch `today±N`, Zahl) → `400`. Beispiel: Widget „Fortschritt“ (`cfg: {src: "db", db, view:
+"2.5", mode: "checked", prop: "Fertig"}`) auf eine Ansicht mit Filter `Meilenstein = 2.5` zählt nur deren Einträge. `embed_database` (`write:pages`
 + `read:db`) setzt einen Datenbank-Block in eine Seite. `add_widget`/`update_widget` (`write:pages`) setzen Widget-Blöcke
 (Arten und `cfg` wie in `docs/APP-API.md` „Widgets in Seiten“; Eigenschaften und Ansichten per Name oder ID; Position
 `end`, `start` oder `after_block`); eine Datenbank als Quelle braucht `read:db` (und liegt in den `roots`), Saga-Aufgaben
@@ -280,14 +297,21 @@ Termine der angezeigten Kalender mit `event` (undurchsichtige Kennung für Ände
 `allday`, `location`, `description`, `writable`; Serientermine je Vorkommen mit `recurring: true` und `series` (UID).
 `create_event` `{calendar, summary, start, end?, allday?, location?, description?, timezone?}` (Zeiten ohne Zone gelten
 in `timezone`). `update_event` `{event, …}` ändert nur die angegebenen Felder (ohne `end` bleibt die Dauer; Erinnerungen,
-Teilnehmer usw. bleiben). `delete_event` `{event}`. Inzwischen woanders geändert → `conflict` (neu laden). **Serien:**
+Teilnehmer usw. bleiben). **Ganztägig ↔ mit Uhrzeit:** `allday: true` macht aus einem Termin einen ganztägigen – ohne
+`end` so viele Tage, wie der Termin (in `timezone`) berührt, ab `start` bzw. seinem bisherigen Tag. Ganztägig → mit
+Uhrzeit: `start` mit Uhrzeit ist Pflicht (ohne `end`: 1 Stunde; Zeitzone wie bei `create_event`); `start` mit Uhrzeit
+ohne `allday` macht das ebenfalls. Nur ein Datum bei einem Termin mit Uhrzeit (ohne `allday: true`), `allday: false`
+mit einem Datum ohne Uhrzeit oder `start`/`end` in verschiedenem Format → `400` statt still verworfener Uhrzeit. `delete_event` `{event}`. Inzwischen woanders geändert → `conflict` (neu laden). **Serien:**
 ohne `scope` abgelehnt (wie im Web). Mit `scope: "series"` ändert `update_event` Titel/Ort/Beschreibung der ganzen
 Serie (Zeiten nicht) und `delete_event` löscht die ganze Serie; einzelne Vorkommen ändert Saga nicht. Externe Kalender
 gehen über das Netz: dieselben Prüfungen wie im Web (nur freigegebene Hosts, Zeit- und Größenlimits).
 **Vorlage und Symbol:** `create_page` und `create_row` nehmen `icon` (Emoji), `create_row` zusätzlich `template` (Name
 oder ID); `get_database_schema` nennt die Vorlagen (`templates: [{id, name, icon}]`, `default_template`).
-**Annotationen:** Schreibende Werkzeuge haben `readOnlyHint: false`; `replace_page_content`, `update_block` und
-`trash_page`, `update_event` und `delete_event` zusätzlich `destructiveHint: true` (Clients fragen dann ggf. nach).
+**Annotationen:** Schreibende Werkzeuge haben `readOnlyHint: false`; was Vorhandenes überschreibt oder löscht,
+zusätzlich `destructiveHint: true` (Clients fragen dann ggf. nach): `replace_page_content`, `update_block`, `trash_page`,
+`update_widget`, `update_row` (Eigenschaften stehen nicht im Versionsverlauf), `update_database_schema` (`update_views`
+ersetzt Filter/Sortierung), `update_event`, `delete_event`. Nicht: Anlegen/Anfügen/Einbetten, Titel, Kästchen,
+Archivieren, Aufgabe abhaken (ein Feld, mit einem Aufruf zurückzusetzen).
 Nach einem Update mit neuen Werkzeugen: im Client den Connector neu verbinden (Werkzeugliste neu laden) – neue Bereiche
 wie `read:calendar` brauchen ggf. einen neuen Token.
 
