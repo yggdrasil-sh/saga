@@ -1133,6 +1133,8 @@ def op_invite(c, peer, d):
         return 200, {"ok": True, "n": n}
     if call["lead"] is not None or dict(FC.members(c, call["chat_id"])).get(p_) != "ok":
         return 403, {"error": "not allowed"}
+    if p_ != call["caller"] and calls._any_removed(c, call, whos):
+        return 403, {"error": "removed"}               # 2.5 (L7): Entfernte laesst nur der Gastgeber erneut klingeln
     n, remote = calls.invite_local(c, call, whos)
     if remote:
         return 200, {"ok": True, "n": n}, (lambda: _invite_on(call, remote))

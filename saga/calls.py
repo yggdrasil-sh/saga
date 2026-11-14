@@ -598,12 +598,18 @@ def _dict(c, call, uid, nm=None, legs=None):
             d["from"]["chat"] = chat._name(c, uid, ch, mem, names(c, mem) if ch["kind"] == "dm" else {}) if ch else None
         d["host"] = me_caller                           # 2.5 P5: Gastgeber (darf stummschalten und entfernen)
         n = len(chat.members(c, call["chat_id"]))         # wie ring_group: grosse Gruppen klingeln nur still
-        d["members"], d["silent"] = n, n > RING_SILENT
-        inv = c.execute("SELECT state FROM chat_call_invite WHERE call_id=? AND who=?", (call["id"], uid)).fetchone()
-        d["invite"] = inv[0] if inv else None
+        inv = c.execute("SELECT state, created FROM chat_call_invite WHERE call_id=? AND who=?", (call["id"], uid)).fetchone()
+        # 2.5 (L7): gezielt (erneut) geklingelt (/invite, created nach dem Start) klingelt auch in grossen Chats laut
+        d["members"], d["silent"] = n, n > RING_SILENT and not (inv and inv[0] == "ringing" and inv[1] != call["created"])
+        # 2.5 (L7): "ringing" nur, solange die Klingeldauer ab dem (letzten) Klingeln laeuft, danach "missed" - aeltere Apps
+        # klingelten sonst bei jeder Abfrage erneut; invite_since: Beginn des Klingelns (erneutes Klingeln spaeter im Anruf)
+        d["invite"] = inv_state(inv[0], inv[1], now)[0] if inv else None
+        d["invite_since"] = round(inv[1], 3) if inv and inv[0] == "ringing" else None
         d["old"] = [r[0] for r in c.execute("SELECT who FROM chat_call_invite WHERE call_id=? AND state='old'", (call["id"],)).fetchall()]
         nmo = names(c, d["old"])
         d["old"] = [dict(_who_label(c, u, nmo), who=_pp(c, call, u, uid)) for u in d["old"]]
+        if not dmh:                                      # 2.5 (L7): "Nicht dabei" - Mitglieder ohne Geraet im Anruf
+            d["invites"], d["invites_more"] = invites(c, call, uid, legs, now)
     if dmh:                                              # 2.5: 1:1 ueber Knoten - peer = Gegenueber, from = anrufende Person
         d["dm"] = True
         if not me_caller:
@@ -613,6 +619,80 @@ def _dict(c, call, uid, nm=None, legs=None):
             d["from"] = {"username": _pp(c, call, call["caller"], uid), "name": nmc.get(call["caller"]) or call["caller"],
                          "avatar": nmc.avatar(call["caller"])}
     return d
+
+
+INVITES_MAX = 50                       # 2.5 (L7): so viele Eintraege "Nicht dabei" je Anruf-Objekt/Ereignis, Rest als Zahl
+INV_ORDER = {"ringing": 0, "declined": 1, "missed": 2, "left": 3, "none": 4, "removed": 5, "old": 6}
+
+
+def inv_state(st, since, now=None, rs=None):
+    """2.5 (L7): Zustand einer Einladung fuer Clients -> (zustand, seit). In der Tabelle bleibt "ringing" bis zum Ende
+    (dann "missed" + Mitteilung "Verpasster Anruf" wie bisher); nach aussen klingelt sie nur ring_s Sekunden ab created
+    (Beginn des letzten Klingelns), danach "missed" seit created + ring_s."""
+    if st != "ringing" or since is None:
+        return st, since
+    rs = ring_s() if rs is None else rs
+    return ("ringing", since) if since + rs > (now or time.time()) else ("missed", since + rs)
+
+
+def invites(c, call, viewer=None, legs=None, now=None):
+    """2.5 (L7): Mitglieder des Chats ohne aktives Geraet im Anruf (ohne viewer) -> ([{who, name, state, since, avatar?,
+    handle?, host?}], weitere). state: ringing | declined | missed | left | none | removed | old. Nur Angaben, die
+    Mitglieder ohnehin sehen (Mitgliederliste); Stufe 3 bzw. foederiert: andere als Handle wie in legs/old."""
+    if call["kind"] != "group" or _dmh(call):
+        return None, 0
+    now = now or time.time()
+    rs = ring_s()
+    legs = _legs(c, call["id"]) if legs is None else legs
+    inside = {x["who"] for x in legs}
+    rows = c.execute("SELECT uid, state FROM chat_member WHERE chat_id=? AND left_at IS NULL", (call["chat_id"],)).fetchall()
+    silent = len(rows) > RING_SILENT                   # wie ring_group: der Start klingelt in grossen Chats nur still
+    mem = [r[0] for r in rows if (r[1] or "ok") == "ok" and r[0] not in inside and r[0] != viewer]
+    if not mem:
+        return [], 0
+    inv = {r[0]: (r[1], r[2]) for r in c.execute("SELECT who, state, created FROM chat_call_invite WHERE call_id=?", (call["id"],)).fetchall()}
+    left = {r[0]: r[1] for r in c.execute("SELECT who, MAX(left_at) FROM chat_call_leg WHERE call_id=? AND state='left' GROUP BY who",
+                                          (call["id"],)).fetchall()}
+    nm = names(c, mem)
+    fed, v3 = _fedcall(c, call), _v3(c, call)
+    out = []
+    for u in mem:
+        st, since = inv.get(u, (None, None))
+        if st == "ringing" and silent and since == call["created"]:
+            st, since = None, None                     # stiller Start (grosse Gruppe): nie geklingelt
+        st, since = inv_state(st, since, now, rs)
+        if st == "joined":
+            st, since = "left", left.get(u) or since   # war dabei, hat verlassen (bzw. Verbindung weg)
+        elif st not in INV_ORDER:
+            st, since = "none", None
+        d = {"who": _pp(c, call, u, viewer), "state": st, "since": round(since, 3) if since else None}
+        d.update(_who_label(c, u, nm))
+        if not sharing.is_remote(u):
+            if nm.avatar(u):
+                d["avatar"] = nm.avatar(u)
+            if fed or v3:
+                d["handle"] = d["who"] if d["who"] != u else FED.FC.my_handle(c, u)
+            if d["who"] != u:
+                d["host"] = FED.F.SELF_HOST
+        out.append(d)
+    out.sort(key=lambda x: (INV_ORDER[x["state"]], (x.get("name") or "").casefold(), x["who"]))
+    return out[:INVITES_MAX], max(0, len(out) - INVITES_MAX)
+
+
+def emit_invites(c, call, legs=None):
+    """2.5 (L7): Ereignis call.invites {call_id, chat_id, invites, invites_more, rv} an die Konten DIESES Servers mit
+    einem Geraet im Anruf (wer nicht dabei ist, liest das Anruf-Objekt). rv wie call.roster (erst nach dem Commit)."""
+    if call["kind"] != "group" or _dmh(call) or call["state"] == "ended":
+        return
+    legs = _legs(c, call["id"]) if legs is None else legs
+    to = sorted({x["who"] for x in legs if not sharing.is_remote(x["who"])})
+    if not to:
+        return
+    lst, more = invites(c, call, None, legs)
+    data = {"call_id": call["id"], "chat_id": call["chat_id"], "invites": lst, "invites_more": more}
+    after = getattr(c, "after_commit", None)
+    after(lambda: data.__setitem__("rv", _rv())) if after is not None else data.__setitem__("rv", _rv())
+    _emit(c, to, "call.invites", data)
 
 
 def _emit(c, uids, typ, data):
@@ -743,6 +823,7 @@ def emit_roster(c, call, legs=None, fed=True):
     else:
         after(lambda: data.__setitem__("rv", _rv())) if after is not None else data.__setitem__("rv", _rv())
         _emit(c, _audience(c, call), "call.roster", data)
+    emit_invites(c, call, legs)                               # 2.5 (L7): Beitritt/Abgang aendert auch "Nicht dabei"
     if fed and FED is not None and call.get("lead") is None and _fedcall(c, call):
         FED.roster_out(c, call, legs)
 
@@ -1058,12 +1139,13 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
     return call
 
 
-def ring_group(c, call, uids):
-    """Gruppenanruf klingeln lassen (call.invite + Mitteilung Art "call.group"); in grossen Chats nur still (kein Push)."""
+def ring_group(c, call, uids, loud=False):
+    """Gruppenanruf klingeln lassen (call.invite + Mitteilung Art "call.group"); in grossen Chats nur still (kein Push).
+    2.5 (L7) loud: gezieltes (erneutes) Klingeln per /invite klingelt auch in grossen Chats (silent false, Push)."""
     if not uids:
         return
     n = len(chat.members(c, call["chat_id"]))
-    silent = n > RING_SILENT
+    silent = n > RING_SILENT and not loud
     st = call["caller"]
     nm = names(c, [st])
     frm = {"username": st, "name": nm.get(st) or st, "avatar": nm.avatar(st)}
@@ -1171,8 +1253,12 @@ async def api_decline(cid: str, request: Request):
             _finish(c, call, reason, time.time(), by=uid)
             return chat._no_store({"ok": True})
         if call["kind"] == "group":
-            c.execute("UPDATE chat_call_invite SET state='declined' WHERE call_id=? AND who=? AND state='ringing'", (call["id"], uid))
+            # 2.5 (L7): created = seit wann abgelehnt (Liste "Nicht dabei"), Ereignis an die Teilnehmenden
+            n = c.execute("UPDATE chat_call_invite SET state='declined', created=? WHERE call_id=? AND who=? AND state='ringing'",
+                          (time.time(), call["id"], uid)).rowcount
             _emit(c, [uid], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "declined", "kind": "group"})
+            if n:
+                emit_invites(c, call)
             return chat._no_store({"ok": True})
         if call["callee"] != uid or call["state"] != "ringing":
             return chat._no_store({"ok": False, "call": _dict(c, call, uid)}, 409)
@@ -1894,7 +1980,7 @@ async def api_moderate(cid: str, request: Request):
         ev = {"call_id": cid, "chat_id": call["chat_id"], "action": act, "device": tgt, "by": nm.get(uid) or local_ref(uid)}   # nie der Anmeldename
         if act == "remove":
             c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'removed',?) ON CONFLICT (call_id, who) "
-                      "DO UPDATE SET state='removed'", (cid, x["who"], time.time()))
+                      "DO UPDATE SET state='removed', created=EXCLUDED.created", (cid, x["who"], time.time()))
             for d, y in legs.items():                   # alle Geraete der Person (auch Begleitgeraete)
                 if y["who"] == x["who"]:
                     _leave(c, _load(c, cid), d, time.time(), "removed", by=uid)
@@ -1906,7 +1992,9 @@ async def api_moderate(cid: str, request: Request):
 
 @router.post("/api/calls/{cid}/invite")
 async def api_invite(cid: str, request: Request):
-    """Gruppenanruf: weitere Mitglieder (noch einmal) klingeln lassen {uids: [benutzername | '@~x@host']}."""
+    """Gruppenanruf: weitere Mitglieder (noch einmal) klingeln lassen {uids: [benutzername | '@~x@host']} -> {ok, n,
+    invites, invites_more} (2.5 L7: neuer Stand "Nicht dabei" fuer mich). Entfernte Personen (Gastgeber-Aktion) darf nur
+    der Gastgeber erneut klingeln lassen (sonst 403, nichts geklingelt). Klingeln ist gewollt: auch in grossen Chats laut."""
     uid, err = _me(request)
     if err:
         return err
@@ -1918,35 +2006,61 @@ async def api_invite(cid: str, request: Request):
             return err
         if call["kind"] != "group" or call["state"] == "ended":
             return _bad(t("ungültige Angabe"))
+        who = _inv_who(c, call, who)
+        if call["caller"] != uid and _any_removed(c, call, who):
+            return chat._no_store({"error": t("Nur wer den Anruf begonnen hat, kann entfernte Personen erneut klingeln lassen."),
+                                   "removed": True}, 403)
         if not _rate("invite", uid, CALL_RATE):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         n, remote = invite_local(c, call, who)
+        lst, more = invites(c, call, uid)
     if remote and FED is not None:
         from starlette.concurrency import run_in_threadpool
         await run_in_threadpool(FED.invite, uid, call, remote)
-    return chat._no_store({"ok": True, "n": n + len(remote)})
+    return chat._no_store({"ok": True, "n": n + len(remote), "invites": lst, "invites_more": more})
+
+
+def _inv_who(c, call, who):
+    """Kennungen aus /invite bzw. Auftrag invite -> Konten/Prinzipale (Stufe 3 nennt Mitglieder per Handle)."""
+    if _v3(c, call):
+        return [chat.who_in(c, call["caller"], u) if chat._FULL_H.fullmatch(u) else u for u in who]
+    return list(who)
+
+
+def _any_removed(c, call, who):
+    """2.5 (L7): ist unter who eine Person, die der Gastgeber aus diesem Anruf entfernt hat?"""
+    who = [u for u in set(who) if isinstance(u, str)]
+    if not who:
+        return False
+    return bool(c.execute(f"SELECT 1 FROM chat_call_invite WHERE call_id=? AND state='removed' AND who IN ({','.join('?' * len(who))}) LIMIT 1",
+                          (call["id"], *who)).fetchone())
 
 
 def invite_local(c, call, who):
-    """Mitglieder erneut klingeln lassen (nicht, wer schon dabei ist). -> (hier geklingelt, fremde Prinzipale)."""
-    mem = set(chat.members(c, call["chat_id"]))
+    """Mitglieder erneut klingeln lassen (nicht, wer schon dabei ist; who schon aufgeloest, _inv_who). -> (hier geklingelt,
+    fremde Prinzipale). 2.5 (L7): Prinzipale anderer Server bekommen hier sofort "ringing" (der Auftrag geht nach dem
+    Commit raus); Mitglieder mit offener Nachrichtenanfrage klingeln nie (wie beim Start)."""
+    mem = {r[0]: r[1] for r in c.execute("SELECT uid, state FROM chat_member WHERE chat_id=? AND left_at IS NULL", (call["chat_id"],)).fetchall()}
     inside = {x["who"] for x in _legs(c, call["id"])}
     ring, remote = [], []
-    now = time.time()
-    if _v3(c, call):                                   # 2.5: Stufe 3 nennt Mitglieder per Handle
-        who = [chat.who_in(c, call["caller"], u) if chat._FULL_H.fullmatch(u) else u for u in who]
-    for u in who:
+    now = max(time.time(), (call["created"] or 0) + 0.001)   # nie gleich created (daran erkennt invites() den stillen Start)
+    for u in dict.fromkeys(who):
         if u not in mem or u in inside:
             continue
         if sharing.is_remote(u):
             remote.append(u)
+            st = "ringing"
+        elif (mem[u] or "ok") != "ok":
             continue
-        st = "ringing" if (_can_horn(c, u) if is_horn(call) else _can_multi(c, u)) else "old"
+        else:
+            st = "ringing" if (_can_horn(c, u) if is_horn(call) else _can_multi(c, u)) else "old"
         c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,?,?) ON CONFLICT (call_id, who) DO UPDATE "
                   "SET state=EXCLUDED.state, created=EXCLUDED.created", (call["id"], u, st, now))
-        if st == "ringing":
+        if st == "ringing" and not sharing.is_remote(u):
             ring.append(u)
-    ring_group(c, call, ring)
+    ring_group(c, call, ring, loud=True)
+    if ring or remote or who:
+        emit_invites(c, call)
     return len(ring), remote
 
 
@@ -1991,6 +2105,7 @@ def tick(now=None):
             n += bool(_finish(c, call, reason, now))
             _OWN.discard(call["id"])
         n += _tick_rooms(c, now, rs)
+        _tick_invites(c, now, rs)
         c.execute("DELETE FROM chat_call WHERE state='ended' AND ended<?", (now - KEEP_S,))
         if len(_OWN) > 5000:
             _OWN.clear()
@@ -2040,6 +2155,27 @@ def _tick_rooms(c, now, rs):
         if len(_RLAST) > 2000:
             _RLAST.clear()
     return n
+
+
+_XLAST = [0.0]
+
+
+def _tick_invites(c, now, rs):
+    """2.5 (L7): Klingeldauer einer Einladung seit dem letzten Durchlauf vorbei ("ringing" -> "missed" nach aussen):
+    call.invites an die Teilnehmenden - nur Anrufe, die dieser Prozess vermittelt (Clients rechnen since + ring_s auch
+    selbst). -> Zahl der Anrufe."""
+    last = _XLAST[0] if 0 < _XLAST[0] <= now else now - 2 * TICK   # Tests rufen tick() auch mit spaeterer Uhr
+    _XLAST[0] = now
+    if not _OWN:
+        return 0
+    ids = [r[0] for r in c.execute(
+        "SELECT DISTINCT i.call_id FROM chat_call_invite i JOIN chat_call k ON k.id=i.call_id WHERE k.state<>'ended' AND k.kind='group' "
+        "AND k.callee='' AND i.state='ringing' AND i.created<=? AND i.created>?", (now - rs, last - rs)).fetchall() if r[0] in _OWN]
+    for cid in ids:
+        call = _load(c, cid)
+        if call:
+            emit_invites(c, call)
+    return len(ids)
 
 
 async def _loop():
