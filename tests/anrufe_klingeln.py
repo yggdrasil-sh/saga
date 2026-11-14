@@ -164,6 +164,7 @@ def run():
     ev = inv_ev(sA, g1, mA, lambda x: st(x["invites"]).get("ca-kc") == "left")
     ok(f"C tritt bei und verlaesst -> 'left' (war dabei) im Ereignis ({s}, {bool(ev)})", s == 200 and ev)
 
+
     # --- Entfernen: nur der Gastgeber klingelt erneut ----------------------------------------------------------------
     s, _ = R_.join(Cc, Cc.dev, g1, [(A, A.dev), (B, B.dev)])
     mA = sA.mark()
@@ -223,11 +224,23 @@ def run():
         CL.INVITES_MAX = keep
     ok(f"Begrenzung: {len(lst)} Eintraege + invites_more {more} (zuerst klingelnde)", len(lst) == 2 and more >= 3 and lst[0]["state"] == "ringing")
 
+    # --- Pruefrunde 1: wer den Chat verlassen hat (Endpunkt bis zum naechsten tick), bekommt kein call.invites mehr
+    # (am Ende, kurz: der tick des Servers entfernt B sonst aus dem Anruf)
+    with connect() as c, c:
+        c.execute("UPDATE chat_member SET left_at=? WHERE chat_id=? AND uid='ca-kb'", (time.time(), gid))
+    mA, mB = sA.mark(), sB.mark()
+    s, _ = req("POST", f"/api/calls/{g1}/decline", E.k, {"reason": "declined"})
+    ev = inv_ev(sA, g1, mA, lambda x: st(x["invites"]).get("ca-ke") == "declined")
+    ok(f"Ex-Mitglied mit Endpunkt: kein call.invites (A schon) ({s}, {bool(ev)})", s == 200 and ev and sB.none("call.invites", mB, 0.6))
+    with connect() as c, c:
+        c.execute("UPDATE chat_member SET left_at=NULL WHERE chat_id=? AND uid='ca-kb'", (gid,))
+
     # --- Ablauf live: Klingeldauer 4 s, Ereignis ueber tick des Servers ---------------------------------------------
     for p in (A, B):
         req("POST", f"/api/calls/{g1}/end", p.k, {"reason": "hangup", "device": p.dev["id"]})
     cfg(ring_s=4)
-    g2 = secrets.token_hex(16)
+    time.sleep(5.2)                                 # Server haelt Einstellungen 5 s vor (auth.settings) - sonst rechnet ein
+    g2 = secrets.token_hex(16)                      # tick noch mit 45 s und das Fenster des Ablaufs faellt aus (wackelte)
     s, d = req("POST", "/api/calls", A.k, {"id": g2, "chat_id": gid, "media": "audio", "device": A.dev["id"], "caps": CAPS})
     s2, _ = R_.join(B, B.dev, g2, [(A, A.dev)])
     mA = sA.mark()

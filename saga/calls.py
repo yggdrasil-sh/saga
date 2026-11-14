@@ -685,7 +685,9 @@ def emit_invites(c, call, legs=None):
     if call["kind"] != "group" or _dmh(call) or call["state"] == "ended":
         return
     legs = _legs(c, call["id"]) if legs is None else legs
-    to = sorted({x["who"] for x in legs if not sharing.is_remote(x["who"])})
+    # nur Mitglieder (wie call.roster): wer den Chat verlassen hat, behaelt seinen Endpunkt bis zum naechsten tick
+    aud = set(_audience(c, call))
+    to = sorted({x["who"] for x in legs if not sharing.is_remote(x["who"]) and x["who"] in aud})
     if not to:
         return
     lst, more = invites(c, call, None, legs)
