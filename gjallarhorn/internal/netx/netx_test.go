@@ -499,14 +499,16 @@ func (r *wrec) n() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.w) }
 func TestTailProbe(t *testing.T) {
 	// TURN: kein Nachlaeufer waehrend der Allokation (STUN), danach ja
 	r := &wrec{}
-	p := NewProbeConn(r, TailFrameTURN, 5*time.Millisecond, TailAlways, nil)
+	// Frist grosszuegig (50 ms): im Docker-Build unter QEMU dauern 1-ms-Pausen oft laenger als 5 ms
+	// (wackeliger Test, CI 14.11.: schreibvorgaenge 8 bzw. 11 statt 9)
+	p := NewProbeConn(r, TailFrameTURN, 50*time.Millisecond, TailAlways, nil)
 	p.Write([]byte{0x01, 0x03, 0, 0}) // Allocate-Antwort
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	if r.n() != 1 {
 		t.Fatalf("nachlaeufer vor medien: %d", r.n())
 	}
 	p.Write([]byte{0x40, 0x00, 0, 4, 1, 2, 3, 4}) // ChannelData
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	if r.n() != 3 || !bytes.Equal(r.w[2], TailFrameTURN) {
 		t.Fatalf("kein nachlaeufer nach channeldata: %d", r.n())
 	}
@@ -515,7 +517,7 @@ func TestTailProbe(t *testing.T) {
 		p.Write([]byte{0x40, 0x00, 0, 0})
 		time.Sleep(time.Millisecond)
 	}
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	if r.n() != 3+5+1 {
 		t.Fatalf("schreibvorgaenge %d", r.n())
 	}
