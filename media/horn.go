@@ -459,7 +459,7 @@ func (o *hornOut) finish() ([]string, map[string]bool) {
 // --- Grund des Abbruchs ----------------------------------------------------------------------------------------------
 
 var (
-	reHornPath  = regexp.MustCompile(`(?:[A-Za-z]:)?(?:/[^\s/:,;()'"\[\]]+)+/?`)
+	reHornPath  = regexp.MustCompile(`(^|[\s"'(=\[])(?:/[^\s/:,;()'"\[\]]+)+/?`) // Pfad am Wortanfang (URLs bleiben)
 	reHornToken = regexp.MustCompile(`[A-Za-z0-9+/_=-]{24,}`)
 	reHornName  = regexp.MustCompile(`^[A-Za-z0-9.-]{1,253}$`)
 )
@@ -500,12 +500,7 @@ func hornClean(s string) string {
 		}
 		return r
 	}, s)
-	s = reHornPath.ReplaceAllStringFunc(s, func(p string) string {
-		if strings.HasPrefix(p, "//") { // Rest einer URL (https://...)
-			return "//…"
-		}
-		return "…"
-	})
+	s = reHornPath.ReplaceAllString(s, "${1}…")
 	s = reHornToken.ReplaceAllString(s, "…")
 	s = strings.TrimSpace(s)
 	if utf8.RuneCountInString(s) > 160 {

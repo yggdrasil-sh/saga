@@ -1575,6 +1575,8 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .horn-st-starting .horn-dot{background:var(--warn)}
 .horn-bi-why{display:inline-block;max-width:52rem;line-height:1.4;margin-top:.15rem}
 .horn-bi-next{color:var(--muted)}
+.horn-nodes td[data-l]:nth-child(2){min-width:12rem}
+.horn-udp-warn{display:inline-block;max-width:20rem;white-space:normal}
 /* 2.5 Admin -> Netz (templates/admin/net.html, static/admin-net.js): Karte auf Canvas, Legende, Detailkarte, Tabellen */
 .net-head{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap}
 .net-head h3{margin:0 0 .5rem}

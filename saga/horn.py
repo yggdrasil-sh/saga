@@ -912,7 +912,7 @@ BUILTIN_STALE = 90                      # aelter = saga-media meldet sich nicht 
 _BI = {}
 _BI_STATES = ("run", "wait", "off", "none")
 _BI_REASONS = ("nocert", "port", "portperm", "exit", "start", "disabled", "nobin", "portcfg")
-_BI_PATH = re.compile(r"(?:[A-Za-z]:)?(?:/[^\s/:,;()'\"\[\]]+)+/?")
+_BI_PATH = re.compile(r"(^|[\s\"'(=\[])(?:/[^\s/:,;()'\"\[\]]+)+/?")      # Pfad am Wortanfang (URLs bleiben)
 _BI_TOKEN = re.compile(r"[A-Za-z0-9+/_=-]{24,}")
 _BI_NAME = re.compile(r"[A-Za-z0-9.-]{1,253}")
 
@@ -921,7 +921,7 @@ def clean_detail(s):
     """Fehlerzeile fuer den Admin-Bereich: ohne Pfade, lange Kennungen und Steuerzeichen, hoechstens 160 Zeichen
     (saga-media kuerzt schon genauso - hier noch einmal, die Zeile landet im HTML und in /api/calls/state)."""
     s = "".join(" " if ord(ch) < 32 or ord(ch) == 127 else ch for ch in str(s or "")[:1000])
-    s = _BI_PATH.sub(lambda m: "//…" if m.group(0).startswith("//") else "…", s)
+    s = _BI_PATH.sub(lambda m: m.group(1) + "…", s)
     s = _BI_TOKEN.sub("…", s).strip()
     return s if len(s) <= 160 else s[:159] + "…"
 

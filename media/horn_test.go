@@ -47,8 +47,8 @@ func TestHornClean(t *testing.T) {
 	if !strings.Contains(s, "fehler beim laden von") {
 		t.Fatalf("Text verloren: %q", s)
 	}
-	if u := hornClean("get https://saga.example.org/api/horn/ctl: eof"); strings.Contains(u, "/api") || !strings.Contains(u, "https:") {
-		t.Fatalf("URL: %q", u)
+	if u := hornClean(`get "https://saga.example.org/api/horn/ctl": eof (=/etc/x)`); !strings.Contains(u, "https://saga.example.org/api/horn/ctl") || strings.Contains(u, "/etc") {
+		t.Fatalf("URL bleibt, Pfad nicht: %q", u)
 	}
 	long := hornClean(strings.Repeat("ab ", 200))
 	if n := len([]rune(long)); n > 160 || !strings.HasSuffix(long, "…") {

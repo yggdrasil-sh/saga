@@ -3860,6 +3860,7 @@
  "UDP (schnellster Weg)": "UDP (schnellster Weg)",
  "UDP geht nicht durch die TLS-Durchreiche: Für UDP {uport}/udp am Saga-Container direkt freigeben, mit derselben Portnummer auf dem Host (der Knoten nennt den Geräten diesen Port), und HORN_UDP=1 lassen.": "UDP geht nicht durch die TLS-Durchreiche: Für UDP {uport}/udp am Saga-Container direkt freigeben, mit derselben Portnummer auf dem Host (der Knoten nennt den Geräten diesen Port), und HORN_UDP=1 lassen.",
  "UDP ist am Knoten aus – Anrufe laufen über TCP/TLS. Für UDP: HORN_UDP=1 und Port {port}/udp freigeben.": "UDP ist am Knoten aus – Anrufe laufen über TCP/TLS. Für UDP: HORN_UDP=1 und Port {port}/udp freigeben.",
+ "UDP ist am Knoten aus – Anrufe laufen über TLS, das genügt. UDP nur, wenn {port}/udp von außen direkt ankommt (HORN_UDP=1).": "UDP ist am Knoten aus – Anrufe laufen über TLS, das genügt. UDP nur, wenn {port}/udp von außen direkt ankommt (HORN_UDP=1).",
  "UDP ist optional. Mit UDP sind bis zu 25 statt 12 Videoteilnehmende möglich und die Qualität bei Paketverlust ist besser.": "UDP ist optional. Mit UDP sind bis zu 25 statt 12 Videoteilnehmende möglich und die Qualität bei Paketverlust ist besser.",
  "UDP nicht erreichbar – Anrufe laufen über TCP/TLS. Port {port}/udp freigeben (direkt, nicht über den Reverse Proxy).": "UDP nicht erreichbar – Anrufe laufen über TCP/TLS. Port {port}/udp freigeben (direkt, nicht über den Reverse Proxy).",
  "UDP versuchen (empfohlen)": "UDP versuchen (empfohlen)",
