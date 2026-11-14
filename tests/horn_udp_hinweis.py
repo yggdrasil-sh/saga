@@ -5,7 +5,7 @@ der freizugeben ist. Beim eingebauten Knoten ist das HORN_PORT/udp (nicht der Po
 Geprueft: _clean_hello laesst nur bekannte Zustaende durch; udp_port (eingebaut: HORN_UDP_LISTEN/HORN_LISTEN/HORN_PORT,
 Standard 8443; gekoppelt: sein Port); gekoppelter Knoten (Attrappe, eigener Schluessel) mit udp_check=fehlt -> Hinweis
 "UDP nicht erreichbar" mit 443/udp; eingebauter Knoten (X-Saga-Horn-Key, braucht SAGA_HORN_KEY und HORN_PORT im Server) mit
-udp_check=aus -> Hinweis "UDP ist am Knoten aus" mit HORN_PORT/udp und Hinweis auf tcp_notsent_lowat; mit udp_check=ok und
+udp_check=aus -> Hinweis "UDP ist am Knoten aus" ohne Portempfehlung (Port-Tabelle: HORN_PORT/udp) und Hinweis auf tcp_notsent_lowat; mit udp_check=ok und
 udp=true kein Hinweis. Wegwerf-Knoten ca-udp-*; raeumt auf.
   Server mit SAGA_HORN_KEY=<geheim> HORN_PORT=<port>; Test mit denselben Werten (HK_TEST_HORN_KEY, HK_TEST_HORN_PORT)."""
 import base64
@@ -134,8 +134,11 @@ def main():
             ok("eingebauter Knoten verbunden (welcome)", w.get("t") == "welcome", w)
             s, html = admin("/calls")
             rw = row_of(html, bname)
-            ok(f"Admin eingebaut: 'UDP ist am Knoten aus' mit {HPORT}/udp (HORN_PORT, nicht 443)",
-               s == 200 and "UDP ist am Knoten aus" in rw and f"{HPORT}/udp" in rw, rw[:400])
+            # Pruefung (pruef-horn): beim eingebauten keine Portempfehlung in der Zeile ("nach aussen nur 443"), nur die
+            # Bedingung "gleiche Portnummer" - die Port-Tabelle darunter nennt HORN_PORT/UDP weiter
+            ok("Admin eingebaut: 'UDP ist am Knoten aus' ohne Portempfehlung (gleiche Portnummer, HORN_UDP_LISTEN/HORN_PORT)",
+               s == 200 and "UDP ist am Knoten aus" in rw and "ein weiterer Port ist nicht nötig" in rw
+               and "HORN_UDP_LISTEN bzw. HORN_PORT" in rw and f"{HPORT}/udp" not in rw and "443/udp" not in rw, rw[:400])
             i = html.find(f'id="n-{w.get("node_id")}"')
             det = html[i:html.find("</details>", i)] if i >= 0 else ""
             ok(f"Port-Tabelle eingebaut: {HPORT}/UDP, Docker-Beispiel ohne 443:443/tcp, Hinweis tcp_notsent_lowat",
