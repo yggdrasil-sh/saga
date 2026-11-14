@@ -246,7 +246,11 @@ Platzhalter: `horn-1.example.org`.
     Besitzer – bis Stufe 3 begann die Bremse damit jedes Mal von vorn (Prüfer `bwe3`, H2).
     - *Nur im 1:1 (Stufe 3f, Entscheidung nach dem Labor `labbwe4`):* Die Bremse gilt nur, solange höchstens **ein
       anderer Teilnehmer Bild liefert** (Kamera bzw. Bildschirm; 1:1 mit Bildschirmteilen ist ein Sender, ein Dritter
-      ohne Bild zählt nicht; `soloCheck`). Im 1:1 ist sie belegt (Testaufbau, Token-Bucket-Policer: 110–120 → 40
+      ohne Bild zählt nicht; `soloCheck`). Gezählt wird, wer eine Bildspur hat, nicht wer gerade Bild sendet: Schaltet
+      ein Dritter nur die Kamera aus (Web/Android `replaceTrack(null)`, iOS `sender.track = nil`), bleibt seine Quelle
+      bestehen und das Bein eine Gruppe; wieder 1:1 wird es erst, wenn er den Raum verlässt oder seine Spur endet. Wer
+      ohne Kamera beitritt, zählt nicht. Ein zweites Gerät eines Teilnehmers (Übergabe, Gerät hinzufügen) zählt als
+      eigener Teilnehmer. Im 1:1 ist sie belegt (Testaufbau, Token-Bucket-Policer: 110–120 → 40
       Rückfälle je Stunde). In der Gruppe traf das Modell die reale Leitung nicht: Nach Kachelschritten mit kleiner
       Rate davor zählten tiefe Störschübe (20 % der Leitung, 2 s) als Policer-Muster – Sprecher in der Minute danach
       0 % auf `h`, `h` erst nach 121 s (ohne Probing 14,5 s) –, und an einem Policer zwischen den Zwischenbelegungen
@@ -262,7 +266,11 @@ Platzhalter: `horn-1.example.org`.
       Gruppe (Beitritt, jemand schaltet die Kamera ein), endet eine laufende Bremse im selben Takt samt offenem
       Schritt, und der Abstand nach gescheiterten langen Proben (bis 40 s) wird auf den der kurzen gekürzt (20 s,
       gezählt ab derselben Probe; ohne das kam `h` im Modell erst nach 19,8 statt 1,6 s); wird es wieder 1:1, beginnt
-      sie frisch (`TestProbingBremseNurEinsZuEins`). Die Zahlen und Grenzen
+      sie frisch (`TestProbingBremseNurEinsZuEins`). Labor `labbwe5` (je Fall 1 Lauf, echtes Chromium): 1:1
+      Token-Bucket 5/9 % unter `h` je 10 min 18 Rückfälle je Stunde (`labbwe3` vor der Bremse 63–66), dafür `h` nur 2–3 %
+      der Policer-Zeit und rund 16 MB/h Fülldaten; Gruppe mit tiefen Störschüben `h` wieder nach 14,8 s (`eigen`) bzw.
+      23,2 s (`gcc`) statt 121 s (ohne Probing 10,0 s); Gruppe am Policer ≈ 2 Mbit/s 150 Rückfälle je Stunde (der
+      Preis); freie Leitung 1:1 0 Rückfälle. Die Zahlen und Grenzen
       unten gelten für das 1:1; die Gruppen-Modelle darin beschreiben die Mechanik (sie greift im 1:1 mit
       Bildschirmteilen genauso: zwei Plätze eines Senders).
     - *Erster frischer Rückfall:* Die nächste Probe ab 90 % dieser Zielrate fährt **lang**: Fenster fest 1,5 s, Füllziel

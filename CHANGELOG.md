@@ -25,7 +25,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (Modell: keine Rückkehr über 60 s mehr, höchstens rund 50 s; vorher bis über 2 min); **bewusster Preis:** an einem
   Policer pendelt die Gruppe wieder wie vor Stufe 3b (Modell: rund 90–105 statt 7–28 Rückfälle in 10 min).
 - Wird aus dem 1:1 eine Gruppe (Beitritt, Kamera an), endet eine laufende Bremse sofort; wird es wieder ein 1:1,
-  beginnt sie frisch. Ohne Probing unverändert; im 1:1 unverändert (Modell bytegleich zu Stufe 3e).
+  beginnt sie frisch. Als Teilnehmer mit Bild zählt, wer eine Bildspur hat: Schaltet ein Dritter nur die Kamera
+  aus, bleibt das Gespräch eine Gruppe, bis er geht. Ein zweites Gerät eines Teilnehmers zählt mit. Ohne Probing unverändert; im 1:1 unverändert (Modell bytegleich zu Stufe 3e).
 - Nebenbei: Ein Schritt ohne Probe weckt einen geprobten Schritt, der schon 15 s oder länger hielt, nicht wieder auf
   (Absicherung aus der Prüfung von 3e; in den Modellen ohne Wirkung).
 
