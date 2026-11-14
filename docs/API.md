@@ -269,7 +269,8 @@ und löscht nie (Spalten, die inzwischen jemand anderes angelegt hat, bleiben eb
 (Arten und `cfg` wie in `docs/APP-API.md` „Widgets in Seiten“; Eigenschaften und Ansichten per Name oder ID; Position
 `end`, `start` oder `after_block`); eine Datenbank als Quelle braucht `read:db` (und liegt in den `roots`), Saga-Aufgaben
 `read:tasks`. `get_widgets` (`read:pages`) liefert die berechneten Werte unter denselben Bedingungen (sonst `no_access`);
-persönliche Arten (`upcoming`, `reading`) nur für Tokens ohne `roots` mit `read:tasks`. Die Startseite des Kontos stellt
+persönliche Arten (`upcoming`, `reading`) nur für Tokens ohne `roots` mit `read:tasks` (`upcoming` mit Datenbank-Quellen
+zusätzlich `read:db`); mit `roots` liefern Widgets über eine Relation auf Datenbanken außerhalb `no_access` (wie `query_database`). Die Startseite des Kontos stellt
 MCP nicht um.
 **Kalender** (`read:calendar` / `write:calendar`; dieselben CalDAV-Zugänge und Kalender wie im Web unter Einstellungen →
 Kalender): `list_calendars` → `{calendars: [{calendar, account, account_label, name, color, writable, shown}], timezone}` –
