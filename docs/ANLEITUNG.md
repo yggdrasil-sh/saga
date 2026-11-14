@@ -261,7 +261,9 @@ und `"443:8443/tcp"` – die Kandidaten nennen trotzdem den Port aus `BASE_URL`,
 **(b) Hinter einem Proxy mit TLS-Durchreiche + PROXY-Protokoll.** Der Proxy reicht Verbindungen für den Namen **ohne
 TLS zu beenden** an Saga weiter (L4, SNI) und schickt vorneweg den **PROXY-Kopf** (v2, nginx: v1) mit der Adresse des
 Besuchers. Ohne Kopf sähe Saga alle mit der Adresse des Proxys (Fehlversuch-Bremse, Grenzen je Adresse) – deshalb
-weist Saga mit `TLS_PROXY_PROTOCOL=1` jede Verbindung **ohne** Kopf ab.
+weist Saga mit `TLS_PROXY_PROTOCOL=1` jede Verbindung **ohne** Kopf ab. Umgekehrt glaubt Saga dem Kopf jeder
+Gegenstelle: Wer den Port direkt erreicht, kann darin jede Adresse angeben. Den Port deshalb **nur für den Proxy**
+erreichbar machen (an die Tunnel-Adresse binden bzw. per Firewall).
 
 ```
 # .env
@@ -276,8 +278,10 @@ HORN_UDP=0                  # UDP kommt durch die Durchreiche nicht
 ```
 
 - **NetBird (ab 0.67):** statt des HTTP-Dienstes einen **L4-Dienst vom Typ TLS** für `saga.example.org` → Saga-Host
-  Port 8443 anlegen, Option **PROXY Protocol** an (`"options": {"proxy_protocol": true}`). Auch hinter einem
-  Traefik auf dem VPS (`HostSNI(*)` → NetBird) kommt die echte Adresse des Besuchers an.
+  Port 8443 anlegen, Option **PROXY Protocol** an (`"options": {"proxy_protocol": true}`). Steht davor ein
+  Traefik auf dem VPS (`HostSNI(*)` → NetBird-Proxy), kommt die echte Adresse des Besuchers nur an, wenn auch Traefik
+  dem NetBird-Proxy einen PROXY-Kopf v2 schickt und der ihn annimmt (`NB_PROXY_PROXY_PROTOCOL=true`,
+  `NB_PROXY_TRUSTED_PROXIES` = Netz von Traefik) – sonst steht im Kopf die Adresse von Traefik.
 - **Traefik** (dynamische Konfiguration):
   ```yaml
   tcp:
@@ -334,7 +338,9 @@ eingebaute mit eigenem Namen, siehe unten „Eingebauter Knoten hinter einem L4-
 2. Zertifikat abwarten, **solange der alte Weg noch läuft**: mit Cloudflare-Token per DNS-01. Admin → Anrufe muss
    „Gültig bis …“ zeigen.
 3. Proxy umstellen (HTTP-Dienst aus, TLS-Durchreiche mit PROXY-Kopf an bzw. Portfreigabe 443).
-4. Prüfen: Anmelden, Admin → Anrufe „PROXY-Kopf: Erkannt“, „Übernimmt TURN über TLS ✓“, Gruppenanruf.
+4. Prüfen: Anmelden, Admin → Anrufe „PROXY-Kopf: Erkannt“, „Übernimmt TURN über TLS ✓“, Gruppenanruf. Hinter einem
+   Proxy außerdem `https://<Name>/api/horn/whoami` von einem Gerät außerhalb (z. B. Handy im Mobilnetz) öffnen: Dort
+   muss dessen Adresse stehen, nicht die des Proxys.
 5. **Rückweg:** Proxy wieder als HTTP-Dienst auf Port 8080 stellen – Saga braucht nichts, `BASE_URL` bleibt gleich.
 
 Port 8080 bleibt in jeder Betriebsart (Healthcheck des Images, Rückweg), der Admin-Bereich (8081) läuft nie über den

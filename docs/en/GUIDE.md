@@ -234,7 +234,9 @@ you: `TLS_LISTEN=:8443` and `"443:8443/tcp"` – the candidates still name the p
 **(b) Behind a proxy with TLS passthrough + PROXY protocol.** The proxy passes connections for the name on **without
 terminating TLS** (L4, SNI) and sends the **PROXY header** (v2, nginx: v1) with the visitor's address first. Without
 the header Saga would see everyone with the proxy's address (failed-login brake, per-address limits) – so with
-`TLS_PROXY_PROTOCOL=1` Saga rejects every connection **without** a header.
+`TLS_PROXY_PROTOCOL=1` Saga rejects every connection **without** a header. Conversely, Saga trusts the header from any
+peer: whoever reaches the port directly can put any address in it. So make the port reachable **only for the proxy**
+(bind it to the tunnel address or use a firewall).
 
 ```
 # .env
@@ -249,8 +251,10 @@ HORN_UDP=0                  # UDP does not get through the passthrough
 ```
 
 - **NetBird (0.67 or later):** instead of the HTTP service create an **L4 service of type TLS** for `saga.example.org`
-  → Saga host port 8443, option **PROXY Protocol** on (`"options": {"proxy_protocol": true}`). The visitor's real
-  address also arrives behind a Traefik on the VPS (`HostSNI(*)` → NetBird).
+  → Saga host port 8443, option **PROXY Protocol** on (`"options": {"proxy_protocol": true}`). With a Traefik on the
+  VPS in front (`HostSNI(*)` → NetBird proxy), the visitor's real address only arrives if Traefik also sends a PROXY
+  header v2 to the NetBird proxy and the proxy accepts it (`NB_PROXY_PROXY_PROTOCOL=true`, `NB_PROXY_TRUSTED_PROXIES` =
+  Traefik's network) – otherwise the header carries Traefik's address.
 - **Traefik** (dynamic configuration):
   ```yaml
   tcp:
@@ -307,7 +311,9 @@ with its own name, see “Built-in node behind an L4 proxy” below).
 2. Wait for the certificate **while the old path is still running**: with a Cloudflare token via DNS-01. Admin → Calls
    must show “Valid until …”.
 3. Switch the proxy (HTTP service off, TLS passthrough with PROXY header on, or port forwarding 443).
-4. Check: sign in, Admin → Calls “PROXY header: Detected”, “Handles TURN over TLS ✓”, a group call.
+4. Check: sign in, Admin → Calls “PROXY header: Detected”, “Handles TURN over TLS ✓”, a group call. Behind a proxy,
+   also open `https://<name>/api/horn/whoami` from a device outside (e.g. a phone on mobile data): it must show that
+   device's address, not the proxy's.
 5. **Way back:** set the proxy back to an HTTP service on port 8080 – Saga needs nothing, `BASE_URL` stays the same.
 
 Port 8080 stays in every mode (image health check, way back); the admin area (8081) never runs over the TLS entry.

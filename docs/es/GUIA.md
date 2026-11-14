@@ -238,7 +238,9 @@ desactivado.
 **(b) Detrás de un proxy con paso directo TLS + protocolo PROXY.** El proxy deja pasar las conexiones para el nombre
 **sin terminar TLS** (L4, SNI) y envía primero la **cabecera PROXY** (v2; nginx: v1) con la dirección del visitante. Sin
 cabecera, Saga vería a todos con la dirección del proxy (freno de intentos fallidos, límites por dirección); por eso, con
-`TLS_PROXY_PROTOCOL=1` Saga rechaza toda conexión **sin** cabecera.
+`TLS_PROXY_PROTOCOL=1` Saga rechaza toda conexión **sin** cabecera. A la inversa, Saga cree la cabecera de cualquier
+interlocutor: quien llegue directamente al puerto puede poner en ella cualquier dirección. Por eso el puerto debe ser
+accesible **solo para el proxy** (ligado a la dirección del túnel o con un cortafuegos).
 
 ```
 # .env
@@ -254,8 +256,10 @@ HORN_UDP=0                  # UDP no atraviesa el paso directo
 
 - **NetBird (0.67 o posterior):** en lugar del servicio HTTP, crea un **servicio L4 de tipo TLS** para
   `saga.example.org` → host de Saga, puerto 8443, con la opción **PROXY Protocol** activada
-  (`"options": {"proxy_protocol": true}`). La dirección real del visitante llega también detrás de un Traefik en el VPS
-  (`HostSNI(*)` → NetBird).
+  (`"options": {"proxy_protocol": true}`). Si delante hay un Traefik en el VPS (`HostSNI(*)` → proxy de NetBird), la
+  dirección real del visitante solo llega si Traefik también envía una cabecera PROXY v2 al proxy de NetBird y este la
+  acepta (`NB_PROXY_PROXY_PROTOCOL=true`, `NB_PROXY_TRUSTED_PROXIES` = red de Traefik); si no, la cabecera lleva la
+  dirección de Traefik.
 - **Traefik** (configuración dinámica):
   ```yaml
   tcp:
@@ -314,7 +318,8 @@ propio (o el integrado con nombre propio, ver abajo «Nodo integrado detrás de 
    Admin → Llamadas debe mostrar «Válido hasta …».
 3. Cambia el proxy (servicio HTTP desactivado, paso directo TLS con cabecera PROXY activado o redirección de puerto 443).
 4. Comprueba: inicia sesión, Admin → Llamadas «Cabecera PROXY: Detectada», «Atiende TURN sobre TLS ✓», una llamada de
-   grupo.
+   grupo. Detrás de un proxy, abre además `https://<nombre>/api/horn/whoami` desde un dispositivo de fuera (p. ej. un
+   móvil con datos): debe mostrar la dirección de ese dispositivo, no la del proxy.
 5. **Vuelta atrás:** vuelve a poner el proxy como servicio HTTP en el puerto 8080; Saga no necesita nada, `BASE_URL` no
    cambia.
 
