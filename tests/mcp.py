@@ -6,7 +6,7 @@ anlegen, anfuegen, Titel, Datenbanken auflisten/Schema/Abfrage per Name, Zeile a
 roots und Rolle (fremde Seite -> Fehler), Ausgabegrenzen (Kuerzung), Batch, Benachrichtigung -> 202, Admin-Schalter;
 get_image (per ID und Adresse, Verkleinerung, EXIF weg, PNG mit Transparenz, GIF, fremde/geteilte Datei, roots, Nicht-Bild,
 kaputte IDs) und Bild-IDs in get_page."""
-import base64, io, json, os, sqlite3, sys, time, urllib.error, urllib.parse, urllib.request
+import base64, io, json, os, re, sqlite3, sys, time, urllib.error, urllib.parse, urllib.request
 from PIL import Image
 from itsdangerous import TimestampSigner
 
@@ -610,6 +610,23 @@ try:
     ok("get_widgets ohne read:db: Datenbank-Werte no_access", gw2.get(WB, {}).get("value", {}).get("error") == "no_access", gw2)
     err, txt, _ = tool(TRD, "add_widget", page_id=DASH, kind="metric", cfg={"db": D})
     ok("roots: Widget-Quelle ausserhalb -> not_found", txt.startswith("not_found"), txt)
+    # pruef-mcp: Quelle in den roots, aber Diagramm nach einer Relation auf eine Datenbank ausserhalb -> keine fremden Titel
+    GZ = call("POST", "/api/notes", A, {"parent_id": D, "title": "MCP Geheimzeile"})[1]["id"]
+    call("POST", "/api/notes", A, {"parent_id": NDB, "title": "W-Bezug", "props": {pby["Bezug"]["id"]: [GZ]}})
+    err, txt, _ = tool(T, "add_widget", page_id=DASH, kind="chart", cfg={"db": NDB, "type": "bar", "x": "Bezug"})
+    WC = jbody(txt).get("block_id")
+    gwt = {w["block_id"]: w for w in jbody(tool(T, "get_widgets", page_id=DASH)[1]).get("widgets") or []}
+    err, txt, _ = tool(TRD, "get_widgets", page_id=DASH)
+    gwr = {w["block_id"]: w for w in jbody(txt).get("widgets") or []}
+    ok("get_widgets roots: Diagramm nach Relation nach aussen -> no_access, kein fremder Titel (ohne roots: Werte)",
+       "MCP Geheimzeile" in json.dumps(gwt.get(WC), ensure_ascii=False) and gwr.get(WC, {}).get("value", {}).get("error") == "no_access"
+       and "MCP Geheimzeile" not in txt and gwr.get(WB, {}).get("value", {}).get("value") is not None, (gwr.get(WC), gwt.get(WC)))
+    err, txt, _ = tool(T, "add_widget", page_id=DASH, kind="upcoming", cfg={"tasks": False, "cal": False, "dbs": [{"db": NDB, "date": "Fällig"}]})
+    WU = jbody(txt).get("block_id")
+    gw3 = {w["block_id"]: w for w in jbody(tool(TWP, "get_widgets", page_id=DASH)[1]).get("widgets") or []}
+    ok("get_widgets upcoming mit Datenbank-Quelle ohne read:db -> no_access", not err and gw3.get(WU, {}).get("value", {}).get("error") == "no_access", gw3.get(WU))
+    for b_ in (WC, WU):
+        tool(T, "update_block", id=DASH, block_id=b_, mode="delete")
     err, txt, _ = tool(T, "embed_database", page_id=DASH, database_id=D, after_block="dh")
     ids = [b["id"] for b in blocks_of(DASH)]
     ok("embed_database nach Block", not err and blocks_of(DASH)[ids.index("dh") + 1]["data"].get("db") == D, txt)
@@ -716,6 +733,23 @@ try:
         ok("create_event in nur lesbarem Kalender -> Fehler", tool(TC, "create_event", calendar=KP, summary="x", start="2026-10-14T08:30", timezone="Europe/Berlin")[0] is True)
         ok("create_event unbekannter Kalender -> Fehler", tool(TC, "create_event", calendar="9-abc", summary="x", start="2026-10-14T08:30")[0] is True)
         ok("create_event unsinnige Zeit -> Fehler", tool(TC, "create_event", calendar=KA, summary="x", start="morgen")[0] is True)
+        # pruef-mcp: andere Zeitzone als die des Servers -> Uhrzeit bleibt richtig (vorher TZID="UTC-04:00" ohne VTIMEZONE,
+        # beim Lesen als Server-Zeit gedeutet: 08:30 New York erschien als 02:30)
+        err, txt, _ = tool(TC, "create_event", calendar=KA, summary="MCP NY", start="2026-10-14T08:30", end="2026-10-14T09:00", timezone="America/New_York")
+        ny = next((e for e in evs(timezone="America/New_York")[0] if e["summary"] == "MCP NY"), {})
+        ok("create_event in fremder Zeitzone: Uhrzeit stimmt", not err and ny.get("start", "").startswith("2026-10-14T08:30:00-04:00")
+           and ny.get("end", "").startswith("2026-10-14T09:00:00-04:00"), (txt, ny))
+        ok("create_event: Zeiten in UTC gespeichert (kein TZID mit festem Offset)", 'TZID="UTC' not in "".join(
+            httpx.get(f"{RAD.rstrip('/')}{h}", auth=AUTH).text for h in re.findall(r"<href>([^<]+\.ics)</href>",
+            httpx.request("PROPFIND", next(c["href"] for c in sel if "mcparbeit" in c["href"]), auth=AUTH, headers={"Depth": "1"}).text)))
+        err, txt, _ = tool(TC, "create_event", calendar=KA, summary="MCP Zeitumstellung", start="2026-10-25T01:30", end="2026-10-25T04:00", timezone="Europe/Berlin")
+        zu = next((e for e in evs(timezone="Europe/Berlin")[0] if e["summary"] == "MCP Zeitumstellung"), {})
+        err, txt, _ = tool(TC, "update_event", event=zu.get("event"), start="2026-10-24T10:00", timezone="Europe/Berlin")
+        zu = next((e for e in evs(timezone="Europe/Berlin")[0] if e["summary"] == "MCP Zeitumstellung"), {})
+        ok("update_event ueber Sommerzeitgrenze: echte Dauer (3,5 h) bleibt", not err and zu.get("end", "").startswith("2026-10-24T13:30:00+02:00"), (txt, zu))
+        for e_ in evs()[0]:
+            if e_["summary"] in ("MCP NY", "MCP Zeitumstellung"):
+                tool(TC, "delete_event", event=e_["event"])
         AR_ = next(c["href"] for c in sel if "mcparbeit" in c["href"])
         alarm = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:t\r\nBEGIN:VEVENT\r\nUID:mcp-alarm\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20261020T070000Z\r\n"
                  "DTEND:20261020T080000Z\r\nSUMMARY:Mit Erinnerung\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT30M\r\nDESCRIPTION:Erinnerung\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")

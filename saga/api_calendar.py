@@ -12,7 +12,7 @@ _cal_collect, hkcal.save_event/patch_event/delete_event, Zwischenspeicher leeren
 import base64
 import hashlib
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import hkcal
@@ -99,7 +99,9 @@ def _when(v, tz, allday):
         raise Fail(400, t("Ungültige Zeitangabe"))
     if isinstance(d, datetime) and d.tzinfo is None:
         d = d.replace(tzinfo=tz)
-    return d.isoformat()
+    # in UTC weitergeben (wie das Web, toISOString): ein fester Offset wuerde als DTSTART;TZID="UTC+02:00" ohne VTIMEZONE
+    # gespeichert und beim Lesen als schwebende Zeit in der Server-Zone gedeutet (falsche Uhrzeit bei anderer timezone)
+    return d.astimezone(timezone.utc).isoformat()
 
 
 def events_list(tok, a):

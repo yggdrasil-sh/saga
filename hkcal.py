@@ -363,7 +363,7 @@ def patch_event(cal_url, user, password, href, etag, ch, series=False, tz=timezo
                     s0 = datetime.fromisoformat(str(new["start"]))
                 except ValueError:
                     raise CalError(t("Ungültige Zeitangabe"))
-                new["end"] = (s0 + (old["_e"] - old["_s"])).isoformat()
+                new["end"] = (s0 + (old["_e"].astimezone(timezone.utc) - old["_s"].astimezone(timezone.utc))).isoformat()  # echte Dauer (Sommerzeit)
         if new["allday"] and not old["allday"] and "start" not in ch:
             new["start"], new["end"] = old["_s"].date().isoformat(), old["_e"].date().isoformat()
         _set_fields(v, new)
