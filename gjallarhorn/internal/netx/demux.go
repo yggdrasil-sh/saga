@@ -168,7 +168,32 @@ type Mux struct {
 	ICEMux *ICEMux
 
 	ln              net.Listener
+	addr            *net.TCPAddr // ohne eigenen Lauscher (NewInjectMux): gemeldete Adresse
 	ICE, HTTP, TURN *ChanListener
+}
+
+// NewInjectMux: Weiche ohne eigenen Lauscher (Saga 2.5 "Ein Port"): saga-media nimmt die Verbindungen auf dem
+// gemeinsamen Port an und uebergibt sie per Inject. addr ist die Adresse nach aussen (Port fuer Kandidaten und URL).
+func NewInjectMux(addr *net.TCPAddr, cfg *tls.Config) *Mux {
+	m := &Mux{TLS: cfg, addr: addr}
+	m.ICE = newChanListener(addr)
+	m.HTTP = newChanListener(addr)
+	m.TURN = newChanListener(addr)
+	return m
+}
+
+// Inject: uebergebene Verbindung (echter TCP-Socket) mit den schon gelesenen Bytes pre und der echten Gegenadresse
+// remote (aus dem PROXY-Kopf bei saga-media; nil = RemoteAddr des Sockets) wie eine angenommene behandeln. Ein
+// PROXY-Kopf wird hier nicht mehr erwartet.
+func (m *Mux) Inject(c net.Conn, pre []byte, remote net.Addr) {
+	m.Stats.Accepted.Add(1)
+	if m.Stats.Pending.Add(1) > MaxPending {
+		m.Stats.Pending.Add(-1)
+		m.Stats.Busy.Add(1)
+		c.Close()
+		return
+	}
+	go m.handleConn(c, pre, remote, false)
 }
 
 // ProxyMode steuert das PROXY-Protokoll (v1 und v2).
@@ -207,16 +232,28 @@ func Listen(addr string, cfg *tls.Config, proxyMode ProxyMode) (*Mux, error) {
 }
 
 // Start nimmt Verbindungen an (nach dem Setzen von OnICE).
-func (m *Mux) Start() { go m.serve() }
+func (m *Mux) Start() {
+	if m.ln != nil {
+		go m.serve()
+	}
+}
 
 // Addr liefert die gebundene Adresse.
-func (m *Mux) Addr() *net.TCPAddr { return m.ln.Addr().(*net.TCPAddr) }
+func (m *Mux) Addr() *net.TCPAddr {
+	if m.ln == nil {
+		return m.addr
+	}
+	return m.ln.Addr().(*net.TCPAddr)
+}
 
 // Close schliesst Port und Unter-Listener.
 func (m *Mux) Close() error {
 	m.ICE.Close()
 	m.HTTP.Close()
 	m.TURN.Close()
+	if m.ln == nil {
+		return nil
+	}
 	return m.ln.Close()
 }
 
@@ -242,7 +279,24 @@ func (m *Mux) serve() {
 	}
 }
 
-func (m *Mux) handle(c net.Conn) {
+func (m *Mux) handle(c net.Conn) { m.handleConn(c, nil, nil, true) }
+
+// preReader: zuerst die uebergebenen Bytes, dann die Verbindung.
+type preReader struct {
+	pre []byte
+	c   net.Conn
+}
+
+func (r *preReader) Read(b []byte) (int, error) {
+	if len(r.pre) > 0 {
+		n := copy(b, r.pre)
+		r.pre = r.pre[n:]
+		return n, nil
+	}
+	return r.c.Read(b)
+}
+
+func (m *Mux) handleConn(c net.Conn, pre []byte, remote net.Addr, proxyOK bool) {
 	t0 := time.Now()
 	pending := true
 	done := func() {
@@ -256,8 +310,12 @@ func (m *Mux) handle(c net.Conn) {
 		m.Stats.BBR.Add(1)
 	}
 	_ = c.SetReadDeadline(time.Now().Add(m.firstByte()))
-	var remote net.Addr
-	br := bufio.NewReaderSize(c, 2048)
+	var br *bufio.Reader
+	if len(pre) > 0 {
+		br = bufio.NewReaderSize(&preReader{pre: pre, c: c}, 2048)
+	} else {
+		br = bufio.NewReaderSize(c, 2048)
+	}
 	first, err := br.Peek(1)
 	if err != nil {
 		c.Close()
@@ -267,7 +325,7 @@ func (m *Mux) handle(c net.Conn) {
 	// Die PROXY-Koepfe beginnen mit 0x0d (v2) bzw. 'P' (v1), beides weder
 	// TLS (0x16) noch ICE-TCP (0x00/0x01). Im Modus auto entscheidet daher
 	// das erste Byte.
-	if m.Proxy == ProxyOn || (m.Proxy == ProxyAuto && IsProxyStart(first[0])) {
+	if proxyOK && (m.Proxy == ProxyOn || (m.Proxy == ProxyAuto && IsProxyStart(first[0]))) {
 		a, err := ReadProxy(br)
 		if err != nil {
 			m.Stats.ProxyErr.Add(1)

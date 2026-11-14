@@ -194,7 +194,8 @@ func (c *ctlClient) session() error {
 		"pub": base64.StdEncoding.EncodeToString(c.sk.Public().(ed25519.PublicKey)),
 		"sig": base64.StdEncoding.EncodeToString(ed25519.Sign(c.sk, []byte(ctlProto+" hello\n"+ch.Nonce))),
 		"udp": s.sfuUDP != nil && uc.State == "ok", "udp_check": uc.State, "cores": runtime.GOMAXPROCS(0),
-		"builtin": c.key != "", "max_legs": s.cfg.MaxLegs, "cert": s.certStatus(), "upd": s.upd.status()}
+		"builtin": c.key != "", "max_legs": s.cfg.MaxLegs, "cert": s.certStatus(), "upd": s.upd.status(),
+		"ice_tcp": s.sfuTCP != nil, "einport": s.ein != nil}
 	if c.key == "" {
 		v4, v6 := s.addrs()
 		hello["v4"], hello["v6"] = v4, v6
@@ -254,6 +255,7 @@ func (c *ctlClient) session() error {
 	stop := make(chan struct{})
 	defer close(stop)
 	go c.loadLoop(stop)
+	go c.certLoop(stop, hello["cert"])
 	if c.key == "" {
 		go c.addrLoop(stop)
 	}
@@ -397,6 +399,33 @@ func (c *ctlClient) connected() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.conn != nil
+}
+
+// certReportEvery / certReportCheck (2.5, Pruefer-Fund pruef-horn): Zertifikat regelmaessig melden (Saga prueft den
+// Ablauf), Aenderungen (Erneuerung, Wechsel, Ablauf) spaetestens nach certReportCheck.
+var certReportEvery, certReportCheck = 12 * time.Hour, time.Minute
+
+func (c *ctlClient) certLoop(stop chan struct{}, first any) {
+	last, _ := json.Marshal(first)
+	at := time.Now()
+	t := time.NewTicker(certReportCheck)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+		}
+		st := c.s.certStatus()
+		b, _ := json.Marshal(st)
+		if string(b) == string(last) && time.Since(at) < certReportEvery {
+			continue
+		}
+		st["t"] = "cert"
+		if c.send(st) {
+			last, at = b, time.Now()
+		}
+	}
 }
 
 func (c *ctlClient) loadLoop(stop chan struct{}) {

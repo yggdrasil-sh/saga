@@ -321,14 +321,14 @@ type helloConn struct {
 	r io.Reader
 }
 
-func (c *helloConn) Read(b []byte) (int, error)         { return c.r.Read(b) }
-func (c *helloConn) Write(b []byte) (int, error)        { return len(b), nil }
-func (c *helloConn) Close() error                       { return nil }
-func (c *helloConn) SetDeadline(time.Time) error        { return nil }
-func (c *helloConn) SetReadDeadline(time.Time) error    { return nil }
-func (c *helloConn) SetWriteDeadline(time.Time) error   { return nil }
-func (c *helloConn) LocalAddr() net.Addr                { return &net.TCPAddr{} }
-func (c *helloConn) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
+func (c *helloConn) Read(b []byte) (int, error)       { return c.r.Read(b) }
+func (c *helloConn) Write(b []byte) (int, error)      { return len(b), nil }
+func (c *helloConn) Close() error                     { return nil }
+func (c *helloConn) SetDeadline(time.Time) error      { return nil }
+func (c *helloConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *helloConn) SetWriteDeadline(time.Time) error { return nil }
+func (c *helloConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (c *helloConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
 
 // peekHello: Server-Handshake gegen eine Kopie der ClientHello-Datensaetze; GetConfigForClient liefert ALPN und bricht ab.
 func peekHello(rec []byte) (alpn []string, ok bool) {

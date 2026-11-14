@@ -88,7 +88,16 @@ func (s *server) certStatus() map[string]any {
 		}
 	}
 	na := s.certs.NotAfter()
+	named := s.cfg.Name != "" && s.cfg.Name != "localhost"
 	switch {
+	case s.certs.ModeNow() == "file" && named && !s.certs.Covers(s.cfg.Name): // 2.5: Zertifikat fuer einen anderen Namen
+		m["state"] = "fehlt"
+		if !na.IsZero() {
+			m["not_after"] = na.Unix()
+		}
+		if e := s.certErr.Load(); e == nil || *e == "" {
+			m["err"] = "zertifikat passt nicht zum namen " + s.cfg.Name
+		}
 	case !na.IsZero() && time.Until(na) > 0:
 		m["state"], m["not_after"] = "ok", na.Unix()
 	case s.certs.ModeNow() == "self":

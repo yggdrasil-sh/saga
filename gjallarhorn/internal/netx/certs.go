@@ -41,6 +41,7 @@ type Certs struct {
 	fallback          *tls.Certificate // selbst signiert: fremde/fehlende SNI (Rueckpruefung), bis ein echtes da ist
 	rsaOnly           bool             // ACME: nur das RSA-Zertifikat ausliefern (ECDSA liess sich nicht ausstellen)
 	mode              string           // aktueller Modus (unter mu)
+	opts              CertOptions      // fuer SwitchALPN (autocert erst spaeter noetig)
 }
 
 // CertOptions steuert die Zertifikatsquelle.
@@ -58,7 +59,7 @@ type CertOptions struct {
 
 // NewCerts waehlt die Quelle nach den Optionen.
 func NewCerts(o CertOptions) (*Certs, error) {
-	c := &Certs{Name: o.Name}
+	c := &Certs{Name: o.Name, opts: o}
 	switch {
 	case o.CertFile != "" && fileExists(o.CertFile) && fileExists(o.KeyFile):
 		c.Mode, c.mode, c.certFile, c.keyFile = "file", "file", o.CertFile, o.KeyFile
@@ -79,26 +80,65 @@ func NewCerts(o CertOptions) (*Certs, error) {
 			c.Mode = "wait"
 		}
 		c.certFile, c.keyFile = o.CertFile, o.KeyFile
-		m := &autocert.Manager{
-			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist(o.Name),
-			Cache:      autocert.DirCache(o.ACMEDir),
-			Email:      o.ACMEEmail,
-		}
-		if o.ACMEURL != "" {
-			m.Client = &acme.Client{DirectoryURL: o.ACMEURL}
-		}
-		c.acme = m
-		fb, err := SelfSigned(o.Name)
-		if err != nil {
+		if err := c.initACME(); err != nil {
 			return nil, err
 		}
-		c.fallback = fb
 	default:
 		return nil, errors.New("kein Zertifikat: HORN_TLS_CERT/HORN_TLS_KEY, /data/tls/fullchain.pem, HORN_TLS_SELF=1 oder HORN_NAME fuer ACME setzen")
 	}
 	c.mode = c.Mode
 	return c, nil
+}
+
+// initACME: autocert-Manager und Rueckfall-Zertifikat (fremde SNI) anlegen (unter mu bzw. vor der ersten Nutzung).
+func (c *Certs) initACME() error {
+	o := c.opts
+	m := &autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		HostPolicy: autocert.HostWhitelist(o.Name),
+		Cache:      autocert.DirCache(o.ACMEDir),
+		Email:      o.ACMEEmail,
+	}
+	if o.ACMEURL != "" {
+		m.Client = &acme.Client{DirectoryURL: o.ACMEURL}
+	}
+	fb, err := SelfSigned(o.Name)
+	if err != nil {
+		return err
+	}
+	c.acme, c.fallback = m, fb
+	return nil
+}
+
+// SwitchALPN (2.5, Pruefer-Fund pruef-horn): vom Dateizertifikat (DNS-01) auf TLS-ALPN-01 wechseln - nach dem Entfernen
+// des Cloudflare-Tokens erst, wenn die Datei bald ablaeuft (der Aufrufer wartet bis 30 Tage vorher). false, wenn der
+// Name fehlt bzw. eigene Dateien/Testzertifikat gelten.
+func (c *Certs) SwitchALPN() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Name == "" || c.Name == "localhost" || c.mode == "self" {
+		return false
+	}
+	if c.acme == nil {
+		if err := c.initACME(); err != nil {
+			return false
+		}
+	}
+	c.mode, c.alpn, c.cur, c.sig, c.sum = "acme", true, nil, fileSig{}, [32]byte{}
+	return true
+}
+
+// Covers: das aktuelle Zertifikat gilt fuer name (Namenswechsel, z. B. eingebauter Knoten von horn-0.<domain> auf den
+// Saga-Namen im Ein-Port-Betrieb: altes DNS-01-Zertifikat neu ausstellen).
+func (c *Certs) Covers(name string) bool {
+	c.mu.RLock()
+	cur := c.cur
+	c.mu.RUnlock()
+	if cur == nil || len(cur.Certificate) == 0 {
+		return false
+	}
+	x, err := x509.ParseCertificate(cur.Certificate[0])
+	return err == nil && x.VerifyHostname(name) == nil
 }
 
 // ModeNow: aktueller Modus ("file", "self", "acme", "wait").
@@ -162,7 +202,11 @@ func ecdsaHello(h *tls.ClientHelloInfo) *tls.ClientHelloInfo {
 }
 
 // ACME liefert den autocert-Manager (nil ausser im ACME-Modus).
-func (c *Certs) ACME() *autocert.Manager { return c.acme }
+func (c *Certs) ACME() *autocert.Manager {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.acme
+}
 
 // UseFiles: nach einer Ausstellung per DNS-01 die Dateien laden und ab jetzt nutzen (auch nach Neustart).
 func (c *Certs) UseFiles(certFile, keyFile string) error {
@@ -196,14 +240,17 @@ func (c *Certs) NotAfter() time.Time {
 // Zertifikats fuer Name (ECDSA bzw. RSA) aus dem Cache lesen, ohne eine Bestellung auszuloesen. Vorher meldete der Knoten
 // nach einer Neuverbindung der Steuerung (gleicher Modus) "fehlt", obwohl autocert ein Zertifikat hatte.
 func (c *Certs) acmeNotAfter() time.Time {
-	if c.acme == nil || c.acme.Cache == nil || c.Name == "" {
+	c.mu.RLock()
+	am := c.acme
+	c.mu.RUnlock()
+	if am == nil || am.Cache == nil || c.Name == "" {
 		return time.Time{}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	var best time.Time
 	for _, k := range []string{c.Name, c.Name + "+rsa"} {
-		b, err := c.acme.Cache.Get(ctx, k)
+		b, err := am.Cache.Get(ctx, k)
 		if err != nil {
 			continue
 		}
@@ -338,18 +385,19 @@ func (c *Certs) TLSConfig() *tls.Config {
 		MinVersion: tls.VersionTLS12,
 		NextProtos: []string{"http/1.1", "stun.turn"},
 	}
-	if c.acme != nil {
+	// acme-tls/1 auch im Dateimodus anbieten: der Wechsel auf TLS-ALPN-01 (SwitchALPN) kommt spaeter ohne neue Konfiguration
+	if c.acme != nil || (c.Mode == "file" && c.Name != "" && c.Name != "localhost") {
 		cfg.NextProtos = append(cfg.NextProtos, acme.ALPNProto)
 	}
 	cfg.GetCertificate = func(h *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		c.mu.RLock()
-		mode, cur, alpn, fb, rsaOnly := c.mode, c.cur, c.alpn, c.fallback, c.rsaOnly
+		mode, cur, alpn, fb, rsaOnly, am := c.mode, c.cur, c.alpn, c.fallback, c.rsaOnly, c.acme
 		c.mu.RUnlock()
-		if c.acme != nil && (alpn || mode == "wait") && isALPNChallenge(h) && strings.EqualFold(h.ServerName, c.Name) {
+		if am != nil && (alpn || mode == "wait") && isALPNChallenge(h) && strings.EqualFold(h.ServerName, c.Name) {
 			if !alpn {
 				return nil, errors.New("tls-alpn-01 aus")
 			}
-			return c.acme.GetCertificate(h)
+			return am.GetCertificate(h)
 		}
 		if mode == "file" || mode == "self" {
 			if cur != nil || fb == nil {
@@ -360,11 +408,11 @@ func (c *Certs) TLSConfig() *tls.Config {
 		if fb != nil && !strings.EqualFold(h.ServerName, c.Name) {
 			return fb, nil
 		}
-		if mode == "acme" && alpn {
+		if mode == "acme" && alpn && am != nil {
 			if rsaOnly {
-				return c.acme.GetCertificate(rsaHello(h))
+				return am.GetCertificate(rsaHello(h))
 			}
-			return c.acme.GetCertificate(ecdsaHello(h))
+			return am.GetCertificate(ecdsaHello(h))
 		}
 		if cur != nil {
 			return cur, nil

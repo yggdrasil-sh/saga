@@ -49,6 +49,7 @@ type config struct {
 	Mode      string // "probe" (Spiegel) oder "node" (Weiterleiter)
 	Dev       bool   // HORN_DEV=1: Entwicklungs-Token und Testseite (nur Tests!)
 	Probing   bool   // HORN_PROBING (Standard an): Probing mit Fuelldaten, siehe internal/sfu/probe.go
+	ICETCP    string // HORN_ICE_TCP 0|1|auto (2.5): rohes ICE-TCP fuer Beine anbieten (auto: siehe iceTCPMode)
 	BWE       string // HORN_BWE: gcc (Standard), mit (eigener Stau-Detektor liest und schreibt mit) oder eigen (er entscheidet mit), siehe bwe.go
 	Certs     netx.CertOptions
 }
@@ -90,6 +91,10 @@ func loadConfig(bench bool) (*config, error) {
 		log.Printf("WARNUNG: %s", warn)
 	}
 	c.UDPListen = env("HORN_UDP_LISTEN", c.Listen)
+	c.ICETCP = os.Getenv("HORN_ICE_TCP")
+	if _, err := iceTCPMode(c.ICETCP, "", 0); err != nil {
+		return nil, err
+	}
 	pm, err := netx.ParseProxyMode(env("HORN_PROXY_PROTOCOL", "0"))
 	if err != nil {
 		return nil, err
@@ -158,6 +163,7 @@ type server struct {
 	draining                atomic.Bool                     // Leeren (Admin, Update oder SIGUSR1): keine neuen Beine, Geraete wechseln (P5/P6)
 	upd                     *updater                        // Selbst-Update (P6)
 	acmeRun                 atomic.Bool                     // DNS-01 laeuft
+	alpnWait                atomic.Bool                     // 2.5: Wechsel Datei -> TLS-ALPN-01 wartet (alpnLater)
 	certErr                 atomic.Pointer[string]          // letzter Zertifikatsfehler
 	certModeV               atomic.Pointer[string]          // dns01 | alpn (von Saga)
 	addrMu                  sync.Mutex                      //
@@ -173,6 +179,8 @@ type server struct {
 	brOnce                  sync.Once
 	brs                     *bridgeSet // P9: Bruecken zu anderen Knoten (bifrost.go)
 
+	ein      *einport                      // 2.5 "Ein Port": Sockets kommen von saga-media (einport.go)
+	iceTCP   bool                          // 2.5: Beine ueber rohes ICE-TCP (HORN_ICE_TCP)
 	pubIPs   []string                      // oeffentliche Adressen (Kandidaten)
 	udpCheck atomic.Pointer[netx.UDPCheck] // Ergebnis des UDP-Selbsttests
 
@@ -306,10 +314,21 @@ func newServer(cfg *config) (*server, error) {
 	}
 	s.certs = certs
 	go certs.Watch(30*time.Second, nil)
-	s.mux, err = netx.Listen(cfg.Listen, certs.TLSConfig(), cfg.Proxy)
-	if err != nil {
+	if cfg.Mode == "node" && !cfg.Bench {
+		if s.ein, err = einportFromEnv(os.Getenv("HORN_CTL_KEY")); err != nil {
+			return nil, err
+		}
+	}
+	if s.ein != nil { // "Ein Port": kein eigener TCP-Lauscher, Adresse nach aussen aus HORN_LISTEN (Port von TLS_LISTEN)
+		a, err := net.ResolveTCPAddr("tcp", cfg.Listen)
+		if err != nil || a.Port == 0 {
+			return nil, fmt.Errorf("HORN_LISTEN %q: im Ein-Port-Betrieb der aeussere Port", cfg.Listen)
+		}
+		s.mux = netx.NewInjectMux(a, certs.TLSConfig())
+	} else if s.mux, err = netx.Listen(cfg.Listen, certs.TLSConfig(), cfg.Proxy); err != nil {
 		return nil, fmt.Errorf("tcp %s: %w", cfg.Listen, err)
 	}
+	s.iceTCP, _ = iceTCPMode(cfg.ICETCP, os.Getenv("HORN_PUBLIC_URL"), s.mux.Addr().Port)
 	if cfg.UDP {
 		ua := cfg.UDPListen
 		if strings.HasSuffix(ua, ":0") || ua == cfg.Listen {
@@ -362,8 +381,18 @@ func newServer(cfg *config) (*server, error) {
 	if err := s.startTURN(); err != nil {
 		return nil, err
 	}
-	srv := &http.Server{Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second, ErrorLog: log.New(discard{}, "", 0)}
-	go func() { _ = srv.Serve(s.mux.HTTP) }()
+	rt := s.routes()
+	if s.ein != nil {
+		front := &http.Server{Handler: s.einportFront(rt), ReadHeaderTimeout: 10 * time.Second, ErrorLog: log.New(discard{}, "", 0)}
+		go func() { _ = front.Serve(s.mux.HTTP) }()
+		if s.ein.http != nil {
+			inner := &http.Server{Handler: s.einportInner(rt), ReadHeaderTimeout: 10 * time.Second, ErrorLog: log.New(discard{}, "", 0)}
+			go func() { _ = inner.Serve(s.ein.http) }()
+		}
+	} else {
+		srv := &http.Server{Handler: rt, ReadHeaderTimeout: 10 * time.Second, ErrorLog: log.New(discard{}, "", 0)}
+		go func() { _ = srv.Serve(s.mux.HTTP) }()
+	}
 	go s.reaper()
 	go s.udpSelfTestLoop()
 	if s.node != nil && !cfg.Dev {
@@ -388,7 +417,12 @@ func newServer(cfg *config) (*server, error) {
 	if s.udp != nil {
 		udpInfo = s.udp.LocalAddr().String()
 	}
-	log.Printf("gjallarhorn %s %s: name=%s tcp=%s udp=%s tls=%s proxy=%d", version, cfg.Mode, cfg.Name, s.mux.Addr(), udpInfo, certs.Mode, cfg.Proxy)
+	log.Printf("gjallarhorn %s %s: name=%s tcp=%s udp=%s tls=%s proxy=%d ice-tcp=%v", version, cfg.Mode, cfg.Name, s.mux.Addr(), udpInfo, certs.Mode, cfg.Proxy, s.iceTCP)
+	if s.ein != nil {
+		go s.einportReceive()
+		s.einportReady()
+		log.Printf("einport: sockets kommen von saga-media (port %d)", s.mux.Addr().Port)
+	}
 	return s, nil
 }
 
@@ -548,7 +582,7 @@ func (s *server) buildAPIs() error {
 			return err
 		}
 		s.apiTCP = api
-		if s.node != nil {
+		if s.node != nil && s.iceTCP { // 2.5: ohne ICE-TCP lehnt der Knoten Beine "tcp" sofort ab (Geraete nehmen TLS)
 			if s.sfuTCP, err = newSFUAPI(se, false, nil); err != nil {
 				return err
 			}

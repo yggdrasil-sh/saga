@@ -34,6 +34,9 @@ const renewBefore = 30 * 24 * time.Hour
 // alpnECDSAWait: so lange wartet das Vorwaermen auf das ECDSA-Zertifikat, bevor es das RSA-Zertifikat nimmt
 var alpnECDSAWait = 60 * time.Second
 
+// certCheckEvery: so oft prueft der Knoten hoechstens, ob ein Dateizertifikat erneuert bzw. abgeloest werden muss
+var certCheckEvery = 12 * time.Hour
+
 func (s *server) certMode(mode string) {
 	if mode != "dns01" && mode != "alpn" {
 		return
@@ -48,6 +51,11 @@ func (s *server) certMode(mode string) {
 	switch {
 	case cur == "self" || own:
 		// Testzertifikat bzw. eigenes Zertifikat: nichts tun
+	case mode == "alpn" && cur == "file":
+		// 2.5 (Pruefer-Fund pruef-horn): Token entfernt, DNS-01-Zertifikat vorhanden - die Datei gilt weiter, bis sie in
+		// 30 Tagen ablaeuft (bzw. nicht zum Namen passt), dann TLS-ALPN-01. Vorher blieb der Dateimodus stehen und das
+		// Zertifikat wurde nie mehr erneuert.
+		go s.alpnLater()
 	case mode == "alpn":
 		s.certs.UseALPN()
 		go s.alpnWarm()
@@ -55,6 +63,29 @@ func (s *server) certMode(mode string) {
 		go s.dns01Loop()
 	}
 	s.reportCert()
+}
+
+// alpnLater: Dateizertifikat (DNS-01) behalten, bis es bald ablaeuft, dann auf TLS-ALPN-01 wechseln.
+func (s *server) alpnLater() {
+	if !s.alpnWait.CompareAndSwap(false, true) {
+		return
+	}
+	defer s.alpnWait.Store(false)
+	for !s.closing.Load() {
+		if p := s.certModeV.Load(); p == nil || *p != "alpn" || s.certs.ModeNow() != "file" {
+			return
+		}
+		na := s.certs.NotAfter()
+		if !s.certs.Covers(s.cfg.Name) || time.Until(na) <= renewBefore {
+			if s.certs.SwitchALPN() {
+				log.Printf("zertifikat: datei laeuft bald ab bzw. passt nicht zum namen - wechsel auf tls-alpn-01")
+				s.reportCert()
+				s.alpnWarm()
+			}
+			return
+		}
+		time.Sleep(minDur(certCheckEvery, time.Until(na)-renewBefore))
+	}
 }
 
 // alpnWarm: Zertifikat per TLS-ALPN-01 gleich holen (nicht erst beim ersten Geraet).
@@ -126,8 +157,8 @@ func (s *server) dns01Loop() {
 			return
 		}
 		na := s.certs.NotAfter()
-		if s.certs.ModeNow() == "file" && time.Until(na) > renewBefore {
-			time.Sleep(minDur(12*time.Hour, time.Until(na)-renewBefore))
+		if s.certs.ModeNow() == "file" && time.Until(na) > renewBefore && s.certs.Covers(s.cfg.Name) {
+			time.Sleep(minDur(certCheckEvery, time.Until(na)-renewBefore))
 			continue
 		}
 		err := s.obtainDNS01()
