@@ -16,6 +16,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Knoten: Probing Stufe 3f – die Bremse nach frischem Rückfall gilt nur noch im 1:1 (experimentell)
+- Die Bremse (lange Probe, Deckel und Aufschub am Bein nach einem frischen Rückfall) wirkt nur, solange höchstens
+  ein anderer Teilnehmer Bild liefert – 1:1, auch mit Bildschirmteilen. Dort ist sie im Testaufbau belegt
+  (Token-Bucket-Policer: 40 statt 110–120 Rückfälle je Stunde). In der Gruppe ist sie aus: Im Labor zählten dort
+  tiefe Störschübe nach Kachelschritten als Policer (Sprecher erst nach rund 2 min wieder auf `h`, ohne Probing nach
+  rund 15 s), und an einem Policer dämpfte sie nicht. Ohne Bremse kommt die Gruppe nach Störschüben rasch zurück
+  (Modell: keine Rückkehr über 60 s mehr, höchstens rund 50 s; vorher bis über 2 min); **bewusster Preis:** an einem
+  Policer pendelt die Gruppe wieder wie vor Stufe 3b (Modell: rund 90–105 statt 7–28 Rückfälle in 10 min).
+- Wird aus dem 1:1 eine Gruppe (Beitritt, Kamera an), endet eine laufende Bremse sofort; wird es wieder ein 1:1,
+  beginnt sie frisch. Ohne Probing unverändert; im 1:1 unverändert (Modell bytegleich zu Stufe 3e).
+- Nebenbei: Ein Schritt ohne Probe weckt einen geprobten Schritt, der schon 15 s oder länger hielt, nicht wieder auf
+  (Absicherung aus der Prüfung von 3e; in den Modellen ohne Wirkung).
+
 ### Behoben – Knoten: Probing Stufe 3c – die Bremse nach frischem Rückfall greift nur noch bei Policer-Mustern (experimentell)
 - **Gruppe auf freier Leitung mit Störschüben:** Seit Stufe 3b zählte dort fast jeder Schub bald nach einem geprobten
   Schritt als frischer Rückfall. Die Bremse fiel auf die Zielrate einer Kachel-Stufe, hielt alle Plätze auf der

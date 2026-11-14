@@ -237,12 +237,32 @@ Platzhalter: `horn-1.example.org`.
     Proben-Abstand (höchstens 20 s), der Aufschub zieht ihn nicht auf Minuten. Die 2 min nach einem echten Fehlversuch
     bleiben als Netz (eigene Grenze `probeDwellMax`): Mit 20 s kämen auf einer Leitung, die die Probe trägt, die
     Schicht aber nicht, Versuche alle ~20 s.
-  - **Frischer Rückfall und lange Probe (Stufe 3, seit Stufe 3b am Bein):** Fällt binnen 15 s nach einem Schritt,
+  - **Frischer Rückfall und lange Probe (Stufe 3, seit Stufe 3b am Bein, seit Stufe 3f nur im 1:1):** Fällt binnen
+    15 s nach einem Schritt,
     der mit einer bestandenen Probe kam, ein Platz des Beins wegen des Budgets zurück (`probeFresh`), ist das ein
     *frischer Rückfall* – die Leitung trug die Probe, aber nicht die Schicht (Token-Bucket-Policer: der Eimer trägt die
     Füllung, die Dauerlast nicht). Gezählt wird je Bein und Zielrate, nicht je Platz (`freshBrake`): In der Gruppe
     fällt nach dem geprobten Schritt des Sprechers zuerst eine Kachel, und der Sprecherplatz wechselt laufend den
     Besitzer – bis Stufe 3 begann die Bremse damit jedes Mal von vorn (Prüfer `bwe3`, H2).
+    - *Nur im 1:1 (Stufe 3f, Entscheidung nach dem Labor `labbwe4`):* Die Bremse gilt nur, solange höchstens **ein
+      anderer Teilnehmer Bild liefert** (Kamera bzw. Bildschirm; 1:1 mit Bildschirmteilen ist ein Sender, ein Dritter
+      ohne Bild zählt nicht; `soloCheck`). Im 1:1 ist sie belegt (Testaufbau, Token-Bucket-Policer: 110–120 → 40
+      Rückfälle je Stunde). In der Gruppe traf das Modell die reale Leitung nicht: Nach Kachelschritten mit kleiner
+      Rate davor zählten tiefe Störschübe (20 % der Leitung, 2 s) als Policer-Muster – Sprecher in der Minute danach
+      0 % auf `h`, `h` erst nach 121 s (ohne Probing 14,5 s) –, und an einem Policer zwischen den Zwischenbelegungen
+      (≈ 2 Mbit/s) dämpfte sie nicht (150 Rückfälle je Stunde wie ohne). In der Gruppe gibt es deshalb **keine Bremse**:
+      keine lange Probe, kein Deckel, kein Aufschub am Bein, keine Zeile `frisch` – auch nicht die Regel je Platz von
+      Stufe 3 (zwei frische Rückfälle desselben Platzes = Fehlversuch). Sie brachte ohne Sprecherwechsel die langsamen
+      Rückkehren zurück (Modell, Gruppe 3, Schübe auf 0,6–1,8 Mbit/s, 10 Folgen: 34 von 160 Rückkehren über 60 s, bis
+      120 s; ganz ohne Bremse 0, höchstens 51 s; mit der Bremse bis 3e 8, bis 109 s; flache Schübe 1,1–1,7 Mbit/s: 39
+      bzw. 0 bzw. 22 von 168, bis 120/51/131 s; `TestProbingGruppeFlacheSchuebe`). **Preis in der Gruppe:** Am Policer
+      pendelt sie wie vor Stufe 3b (Modell, Policer 7 % unter der vollen Belegung, Wechsel 20 s, Eimer 0,15/0,6 s:
+      `gcc` 105/90 statt 7/28, `eigen` 85/82 statt 9/27 Rückfälle in 10 min, Sprecher 75–84 statt 96–98 % auf `h`;
+      ohne Wechsel mit Eimer 0,6 s 63 statt 21) – real waren es mit Bremse ebenfalls 150 je Stunde. Wird das Bein zur
+      Gruppe (Beitritt, jemand schaltet die Kamera ein), endet eine laufende Bremse im selben Takt samt offenem
+      Schritt; wird es wieder 1:1, beginnt sie frisch (`TestProbingBremseNurEinsZuEins`). Die Zahlen und Grenzen
+      unten gelten für das 1:1; die Gruppen-Modelle darin beschreiben die Mechanik (sie greift im 1:1 mit
+      Bildschirmteilen genauso: zwei Plätze eines Senders).
     - *Erster frischer Rückfall:* Die nächste Probe ab 90 % dieser Zielrate fährt **lang**: Fenster fest 1,5 s, Füllziel
       Bedarf × 1,15 (Nachweis bei `eigen` 1/1,15) – wie vor Stufe 3. Die kurze Probe schob nur (Bedarf × 1,05 −
       Policer-Rate) × 0,4–0,6 s ≈ 80–120 kbit über die Grenze, ein Eimer von 1–2 × Rate × 100 ms (145–290 kbit) leerte
@@ -262,7 +282,7 @@ Platzhalter: `horn-1.example.org`.
       Schritt (Bild + Ton, ohne Reserve; `probeSlump`; die Folge beginnt dann von vorn); (b) eine **Umverteilung** (die
       Auswahl des Beins sinkt nicht – eine Kachel fällt, weil der Sprecher steigt); (c) ein Rückfall des geprobten Schritts,
       nachdem das Bein ohne Probe **über** ihn hinaus gestiegen ist – der Rückfall gilt dann diesem neuen Schritt, der
-      an die Stelle des offenen tritt (Stufe 3e; bis 3d war damit alles erledigt, und ein Policer knapp über `mll` mit
+      an die Stelle des offenen tritt, sofern der getragene jünger als 15 s war (Stufe 3e, Altersgrenze 3f; bis 3d war damit alles erledigt, und ein Policer knapp über `mll` mit
       Eimer ≥ 0,6 s ließ das Bein alle ~13 s ohne Probe weitersteigen und zurückfallen: 96–109 statt 5 Rückfälle in
       10 min, Prüfer `bwe3d`, `TestProbingPolicerGetragen`). Ein frischer Rückfall auf eine
       kleinere Zielrate als die der laufenden Bremse senkt sie (wie in Stufe 3b; 3c ließ ihn nicht zählen – Prüfer
@@ -484,7 +504,8 @@ Platzhalter: `horn-1.example.org`.
     Fenster der letzten 10 s, Verlust an der Spitze). Die `bwe`-, `schicht`- und `frisch`-Zeilen eines Beins stehen in
     der Reihenfolge ihres Entstehens im Log (seit Stufe 3c bzw. 3e; vorher konnten sich zwei rasch folgende Zeilen
     vertauschen; bei `gcc` gibt es nur die `frisch`-Zeilen). Mit Probing steht bei jeder Schalterstellung (auch `gcc`) je Rückfall bzw. Schritt nach einem
-    geprobten Schritt eine Zeile zur Einordnung durch die Bremse (Stufe 3d):
+    geprobten Schritt eine Zeile zur Einordnung durch die Bremse (Stufe 3d; seit Stufe 3f nur im 1:1 – in der Gruppe
+    gibt es keine Bremse und keine solche Zeile):
     `frisch 5884a4 art=zaehlt platz=tile m>l ziel=2225k pre=1940k low=1650k grenze=1455k bremse=2225k n=1 est=1700k gcc=1650k`
     – `art` zaehlt (frischer Rückfall: lange Probe), fehlversuch (der zweite in Folge: Aufschub am Bein), einbruch
     (`low` unter `grenze` = 0,75 × `pre`), gehalten (nach 15 s oder mehr), umverteilung oder getragen (der neue
