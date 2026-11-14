@@ -3341,12 +3341,14 @@
       return hornTry(R, list, why, i + 1);
     });
   }
-  // Weg waehlen: UDP (wenn der Knoten udp_ok meldet und die UDP-Probe klappt), sonst ICE-TCP, dann TURN-TLS
+  // Weg waehlen: UDP (wenn der Knoten udp_ok meldet und die UDP-Probe klappt), sonst ICE-TCP, dann TURN-TLS.
+  // 2.5: cand.tcp === false (Knoten hinter einer TLS-Durchreiche, "Ein Port") - kein ICE-TCP, gleich TURN-TLS
   function hornOpen(R, cand) {
     var H = R.horn, m = H.meas[cand.node];
     var udp = !!(cand.udp && cand.tokens && cand.tokens.both && m && (m.udp != null || m.udpMaybe));
-    var p = udp ? hornConnect(R, cand, 'udp', m.udp != null ? HORN_WAIT_UDP : 1500).catch(function (e) { if (e === null) throw null; return hornConnect(R, cand, 'tcp'); })
-      : hornConnect(R, cand, 'tcp');
+    var noTcp = cand.tcp === false;
+    var p = udp ? hornConnect(R, cand, 'udp', m.udp != null ? HORN_WAIT_UDP : 1500).catch(function (e) { if (e === null || noTcp) throw e; return hornConnect(R, cand, 'tcp'); })
+      : noTcp ? Promise.reject({ tcpOff: true }) : hornConnect(R, cand, 'tcp');
     return p.catch(function (e) {
       if (e === null || (e && (e.status === 404 || e.status === 429))) throw e;      // beendet bzw. voll/Leeren: naechster Kandidat
       return hornFresh(R, cand, hornAvoid(H)).then(function (c2) { return hornConnect(R, c2, 'turn'); });
@@ -3949,6 +3951,7 @@
       if (conn === H.cur && !H.switching && !H.rcT) {
         var udpOk = conn.path !== 'udp' && conn.cand.udp && (H.meas[conn.node] || {}).udp != null;
         var x = H.sw.udp(Date.now(), loss, udpOk);
+        if (x && x.path === 'tcp' && conn.cand.tcp === false) x.path = 'turn';   // 2.5: Knoten ohne ICE-TCP (TLS-Durchreiche)
         if (x && x.path !== conn.path && (x.path !== 'udp' || conn.cand.tokens)) hornSwitch(R, x.why, { path: x.path });
       }
       drawInfo(R);

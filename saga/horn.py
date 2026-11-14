@@ -80,6 +80,18 @@ def horn_on():
     return bool(c.get("horn")) and bool(c.get("enabled", True))
 
 
+def einport():
+    """2.5 "Ein Name, ein Port" (saga-media mit SAGA_TLS=1, media/einport.go): Saga, TURN-TLS und ICE-TCP teilen sich
+    einen Port; der eingebaute Knoten laeuft dann immer (Zertifikat fuer den Saga-Namen), Anrufe nur mit calls.horn."""
+    return os.environ.get("SAGA_EINPORT") == "1"
+
+
+def einport_port():
+    """Port des TLS-Eingangs (TLS_LISTEN, Standard 443)."""
+    v = (os.environ.get("SAGA_EINPORT_LISTEN") or ":443").rsplit(":", 1)[-1]
+    return int(v) if v.isdigit() and 0 < int(v) < 65536 else 443
+
+
 def builtin_on():
     """Admin-Schalter "Eingebauten Knoten fuer Anrufe nutzen" (calls.horn_builtin, Standard an). Aus: saga-media startet
     ihn nicht, Anrufe laufen nur ueber gekoppelte Knoten (keiner bereit: Mesh 2.4)."""
@@ -263,11 +275,20 @@ def util(n):
     return 1.0 if ld.get("state") in ("voll", "draining", "update", "fehler") or n.get("drain") else u
 
 
-def cert_ok(n):
+def cert_ok(n, now=None):
     """Jeder Knoten braucht ein gemeldetes, gueltiges Zertifikat (Browser pruefen es): "ok" (Datei, DNS-01, TLS-ALPN-01)
     bzw. "self" nur mit HORN_TLS_SELF (Tests). 2.5 (horn-admin): auch der eingebaute - vorher galt er immer als bereit und
-    wurde ohne Zertifikat als erster angeboten (Anrufe scheiterten erst am TLS)."""
-    return (n.get("cert") or {}).get("state") in ("ok", "self")
+    wurde ohne Zertifikat als erster angeboten (Anrufe scheiterten erst am TLS). 2.5 (einport, Pruefer-Fund pruef-horn):
+    mit gemeldetem Ablauf (not_after) nur bis dahin - vorher blieb ein Knoten mit abgelaufenem Zertifikat "bereit"; die
+    Knoten melden ihr Zertifikat inzwischen alle 12 h und bei jeder Aenderung."""
+    ce = n.get("cert") or {}
+    if ce.get("state") not in ("ok", "self"):
+        return False
+    try:
+        na = int(ce.get("not_after") or 0)
+    except (TypeError, ValueError):
+        na = 0
+    return not na or na > (now or time.time())
 
 
 def ready(n, now=None):
@@ -276,11 +297,11 @@ def ready(n, now=None):
     now = now or time.time()
     live = _LIVE.get(n["id"])
     seen = max(n.get("seen") or 0, (live or {}).get("at") or 0)
-    if n.get("builtin") and not builtin_on():
+    if n.get("builtin") and not (builtin_on() and horn_on()):   # einport: laeuft auch ohne calls.horn (nur Zertifikat)
         return False
     win = READY_S if n["state"] == "ok" else GRACE_S       # Steuerung kurz weg: hoechstens GRACE_S seit der letzten Meldung
     return (n["state"] in ("ok", "getrennt") and now - seen < win and util(n) < FULL and bool(n.get("url")) and not n.get("drain")
-            and version_ok(n.get("version")) and cert_ok(n))
+            and version_ok(n.get("version")) and cert_ok(n, now))
 
 
 def alive(n, now=None):
@@ -290,12 +311,12 @@ def alive(n, now=None):
     now = now or time.time()
     live = _LIVE.get(n["id"])
     seen = max(n.get("seen") or 0, (live or {}).get("at") or 0)
-    if n.get("builtin") and not builtin_on():
+    if n.get("builtin") and not (builtin_on() and horn_on()):
         return False
     ld = (live or {}).get("load") or n.get("load") or {}
     win = READY_S if n["state"] == "ok" else GRACE_S
     return (n["state"] in ("ok", "getrennt") and now - seen < win and bool(n.get("url")) and not n.get("drain")
-            and ld.get("state") not in ("draining", "update", "fehler") and version_ok(n.get("version")) and cert_ok(n))
+            and ld.get("state") not in ("draining", "update", "fehler") and version_ok(n.get("version")) and cert_ok(n, now))
 
 
 def ready_nodes(c, now=None):
@@ -370,9 +391,18 @@ def candidates(c, call, dev, role="member", dev_class="desktop", now=None):
         for r in ("audio", "video") + (("both",) if udp else ()):
             pub = [x for x in PUB[r] if not (role == "companion" and x == "a")]
             toks[r] = token(n, call["id"], dev, r, udp, dev_class, pub, now=now, gen=gen)
-        out.append({"node": n["name"], "url": n["url"], "udp": udp, "here": n["id"] == cur, "load": round(util(n), 3),
+        # tcp (2.5, einport/Pruefer-Fund 5a): False = der Knoten bietet kein rohes ICE-TCP (TLS-Durchreiche) - Geraete gehen
+        # gleich auf TURN-TLS statt bis zu 4 s auf ICE-TCP zu warten; aeltere Geraete ignorieren das Feld (der Knoten lehnt
+        # ein Bein "tcp" dann sofort ab, sie fallen ohne Wartezeit auf TLS zurueck)
+        out.append({"node": n["name"], "url": n["url"], "udp": udp, "tcp": ice_tcp(n), "here": n["id"] == cur, "load": round(util(n), 3),
                     "peer": peer_ref(call["id"], n["id"], dev, gen), "gen": gen, "tokens": toks, "exp": int(now) + TOKEN_TTL})
     return out
+
+
+def ice_tcp(n):
+    """Knoten bietet rohes ICE-TCP (hello ice_tcp; aeltere Knoten ohne das Feld: ja)."""
+    v = (_LIVE.get(n["id"]) or {}).get("ice_tcp")
+    return True if v is None else bool(v)
 
 
 def node_named(c, name):
@@ -528,6 +558,9 @@ def udp_port(n):
     Docker muss deshalb derselbe Port auf dem Host freigegeben sein (8443:8443/udp). Gekoppelte Knoten: ihr Port (443)."""
     if not n.get("builtin"):
         return int(n.get("port") or 443)
+    if einport():                                      # 2.5: UDP auf dem Port des TLS-Eingangs (443), HORN_LISTEN gilt dort nicht
+        v = os.environ.get("HORN_UDP_LISTEN", "").rsplit(":", 1)[-1]
+        return int(v) if v.isdigit() and 0 < int(v) < 65536 else einport_port()
     for k in ("HORN_UDP_LISTEN", "HORN_LISTEN"):
         v = os.environ.get(k, "").rsplit(":", 1)[-1]
         if v.isdigit() and 0 < int(v) < 65536:
@@ -545,6 +578,7 @@ def _clean_hello(h):
     upd = h.get("upd") if isinstance(h.get("upd"), dict) else {}
     uc = str(h.get("udp_check") or "")
     return {"name": name, "url": url, "pub": str(h.get("pub")), "udp": bool(h.get("udp")), "version": str(h.get("version") or "")[:40],
+            "ice_tcp": h.get("ice_tcp") is not False, "einport": h.get("einport") is True,
             "udp_check": uc if uc in UDP_CHECKS else "",
             "max_legs": int(h.get("max_legs") or 0) if str(h.get("max_legs") or "0").isdigit() else 0,
             "v4": _ip(h.get("v4"), 4), "v6": _ip(h.get("v6"), 6), "cert": _clean_cert(cert), "upd": _clean_upd(upd)}
@@ -724,7 +758,9 @@ async def ctl(ws: WebSocket):
     gekoppelter Knoten (registrierter Knotenschluessel, P6)."""
     key = ws.headers.get("x-saga-horn-key", "")
     builtin = bool(key)
-    if builtin and (not HORN_KEY or not hmac.compare_digest(key.encode(), HORN_KEY.encode()) or not horn_on()):
+    # einport (2.5): der eingebaute Knoten laeuft dort immer (Zertifikat fuer den Saga-Namen per DNS-01 ueber Saga) - der
+    # Steuerkanal gilt dann auch ohne calls.horn; Anrufe bekommt er nur mit Flag (ready/alive)
+    if builtin and (not HORN_KEY or not hmac.compare_digest(key.encode(), HORN_KEY.encode()) or not (horn_on() or einport())):
         await ws.close(code=4403)
         return
     await ws.accept()
@@ -756,7 +792,7 @@ async def ctl(ws: WebSocket):
         old.q.put_nowait(None)
     stats = {} if builtin else await asyncio.to_thread(_load_stats, nid)
     _LIVE[nid] = {"load": {"max_legs": hh["max_legs"], "legs": 0, "state": "ok"}, "at": time.time(), "db": time.time(), "stats": stats,
-                  "drain_ev": False, "udp_check": hh["udp_check"]}
+                  "drain_ev": False, "udp_check": hh["udp_check"], "ice_tcp": hh["ice_tcp"]}
     welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
     if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)
         welcome["origins"] = await asyncio.to_thread(HOOKS["origins"])
@@ -949,11 +985,28 @@ async def internal_state(request: Request):
     reason = b.get("reason") if b.get("reason") in _BI_REASONS else ""
     name = str(b.get("name") or "")
     _BI.clear()
+    _BI["einport"] = _clean_einport(b.get("einport"))
     _BI.update(state=b["state"], reason=reason, detail=clean_detail(b.get("detail")) if reason == "exit" else "",
                fails=_num(b.get("fails"), 0, 10 ** 6), next=_num(b.get("next"), 0, 2 ** 40) or None,
                since=_num(b.get("since"), 0, 2 ** 40) or None, port=_num(b.get("port"), 1, 65535) or None,
                name=name if _BI_NAME.fullmatch(name) and name.lower() != "localhost" else "", at=time.time())
     return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
+
+
+_EP_CERT = ("ok", "fehlt", "name", "abgelaufen", "fehler")
+_EP_SRC = ("own", "dns01", "alpn", "file")
+
+
+def _clean_einport(d):
+    """Zustand des TLS-Eingangs von saga-media (2.5 einport) - nur bekannte Felder, keine Adressen/Pfade."""
+    if not isinstance(d, dict):
+        return None
+    name = str(d.get("name") or "")
+    return {"name": name if _BI_NAME.fullmatch(name) and name.lower() != "localhost" else "",
+            "port": _num(d.get("port"), 1, 65535) or 443, "proxy": d.get("proxy") is True, "node": d.get("node") is True,
+            "proxy_seen": _num(d.get("proxy_seen"), 0, 2 ** 40) or None, "proxy_bad": _num(d.get("proxy_bad"), 0, 2 ** 40) or None,
+            "cert": d.get("cert") if d.get("cert") in _EP_CERT else "fehlt", "cert_src": d.get("cert_src") if d.get("cert_src") in _EP_SRC else "",
+            "not_after": _num(d.get("not_after"), 0, 2 ** 40) or None, "h2": d.get("h2") is True}
 
 
 def builtin_report(now=None):
@@ -963,7 +1016,9 @@ def builtin_report(now=None):
 
 
 def horn_port():
-    """HORN_PORT des eingebauten Knotens (Standard 8443) - TCP; UDP siehe udp_port."""
+    """HORN_PORT des eingebauten Knotens (Standard 8443) - TCP; UDP siehe udp_port. einport: Port des TLS-Eingangs."""
+    if einport():
+        return einport_port()
     v = os.environ.get("HORN_PORT", "")
     return int(v) if v.isdigit() and 0 < int(v) < 65536 else 8443
 
@@ -974,6 +1029,8 @@ def builtin_precheck():
     HORN_DATA/tls/fullchain.pem + privkey.pem; HORN_DATA = STATE_DIR/horn) > HORN_TLS_SELF=1 > HORN_NAME (nicht localhost,
     ACME TLS-ALPN-01). Sonst ""."""
     from saga.core import STATE_DIR
+    if einport():                                      # Name aus BASE_URL, Zertifikat per DNS-01/TLS-ALPN-01 bzw. eigene Dateien
+        return ""
     e = os.environ
     data = (e.get("HORN_DATA") or "").strip() or os.path.join(STATE_DIR, "horn")
     cert = (e.get("HORN_TLS_CERT") or "").strip() or os.path.join(data, "tls", "fullchain.pem")

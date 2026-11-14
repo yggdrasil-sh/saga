@@ -30,6 +30,33 @@
 {% endset %}
 {% endif %}
 <h2>{{ _("Anrufe") }}</h2>
+{# 2.5 "Ein Name, ein Port" (saga-media SAGA_TLS=1, saga/horn_ops.py einport_view) #}
+{% set ep = hs.einport %}
+{% if ep %}
+{% set ep_doc = {'en': 'en/GUIDE.md#one-name-one-port-443', 'es': 'es/GUIA.md#un-nombre-un-puerto-443'}.get(lang(), 'ANLEITUNG.md#ein-name-ein-port-443') %}
+{% set EP_SRC = {'dns01': _('DNS-01 über Cloudflare'), 'alpn': _('TLS-ALPN-01'), 'own': _('eigene Dateien (SAGA_TLS_CERT)'), 'file': _('Datei')} %}
+<section class="adm-card" id="einport">
+  <h3>{{ _("Betriebsart: Ein Port") }}</h3>
+  <p class="hk-hint">{{ _("Saga, Anrufe (TURN über TLS) und ICE-TCP laufen über einen Namen und einen Port: {name}, Port {port}/TCP. Nach außen ist kein weiterer Port nötig.", name=ep.name or '–', port=ep.port) }}</p>
+  <table class="adm-table horn-ep">
+    <tr><th>{{ _("Zertifikat") }}</th><td class="ep-cert ep-{{ ep.cert }}">
+      {%- if ep.cert == 'ok' %}{{ _("Gültig bis") }} {{ ts(ep.not_after) }} · {{ EP_SRC.get(ep.cert_src, ep.cert_src) }}{% if ep.soon %}<br><small class="horn-bi-why">{{ _("Läuft bald ab – die Erneuerung hat noch nicht geklappt.") }}{% if ep.cert_err %} {{ _("Grund:") }} {{ ep.cert_err }}{% endif %}</small>{% endif %}
+      {%- elif ep.cert == 'name' %}{{ _("Passt nicht zum Namen {name} – der Knoten holt ein neues.", name=ep.name) }}
+      {%- elif ep.cert == 'abgelaufen' %}{{ _("Abgelaufen – HTTPS ist zu, bis ein neues da ist.") }}
+      {%- elif ep.cert == 'fehler' %}{{ _("Datei unlesbar (Schlüssel passt nicht zum Zertifikat?).") }}
+      {%- else %}{{ _("Fehlt – HTTPS über diesen Port bleibt zu, bis eins da ist (Saga sendet HSTS).") }}{% endif %}
+      {%- if ep.cert != 'ok' %}<br><small>{% if ep.cert_src == 'own' %}{{ _("Eigene Dateien aus SAGA_TLS_CERT/SAGA_TLS_KEY prüfen.") }}{% elif ep.cf %}{{ _("Der eingebaute Knoten holt es per DNS-01 über den Cloudflare-Token (unten unter „DNS“) – das geht auch, solange der Port noch nicht erreichbar ist.") }}{% else %}{{ _("Ohne Cloudflare-Token (unten unter „DNS“) holt der Knoten es per TLS-ALPN-01 – das klappt nur, wenn {name}:443 bei Saga ankommt. Mit Token geht es per DNS-01 auch vorher.", name=ep.name) }}{% endif %}{% if ep.cert_err %}<br>{{ _("Grund:") }} {{ ep.cert_err }}{% endif %}</small>{% endif %}</td></tr>
+    <tr><th>{{ _("PROXY-Kopf") }}</th><td class="ep-proxy">
+      {%- if ep.proxy %}{% if ep.proxy_seen %}{{ _("Erkannt ✓, zuletzt:") }} {{ ts(ep.proxy_seen) }}{% else %}{{ _("Noch keiner erkannt") }}{% endif %}
+        {%- if ep.proxy_warn %}<br><small class="horn-bi-why">{{ _("Verbindungen ohne gültigen PROXY-Kopf wurden abgewiesen. Am Proxy für diesen Dienst das PROXY-Protokoll (v2) einschalten.") }} {{ _("Zuletzt:") }} {{ ts(ep.proxy_bad) }}</small>{% endif %}
+      {%- else %}{{ _("Aus – Saga nimmt die Verbindungen direkt an (TLS_PROXY_PROTOCOL=0).") }}{% endif %}</td></tr>
+    <tr><th>{{ _("Eingebauter Knoten") }}</th><td class="ep-node">{% if ep.node %}{{ _("Übernimmt TURN und ICE-TCP ✓") }}{% elif ep.node_state == 'none' %}{{ _("Nicht verfügbar – nur HTTPS (Anrufe über diesen Port gehen nicht).") }}{% else %}{{ _("Startet … – bis dahin bedient Saga nur HTTPS.") }}{% endif %}{% if not hs.horn_on %}<br><small>{{ _("Gjallarhorn ist aus: Der Knoten kümmert sich nur um das Zertifikat.") }}</small>{% endif %}</td></tr>
+  </table>
+  <p class="hk-hint">{% if ep.proxy %}{{ _("Hinter einem Proxy: Der Proxy reicht TLS für {name} unverändert durch (L4/SNI, kein HTTP-Dienst) und schickt den PROXY-Kopf v2 – sonst sieht Saga alle Besucher mit der Adresse des Proxys. Rohes ICE-TCP kommt durch eine Durchreiche nicht; die Geräte nehmen gleich TLS.", name=ep.name) }}{% else %}{{ _("Ohne Proxy: Port {port}/TCP (Docker 443:443) direkt freigeben. Optional {port}/UDP mit derselben Nummer für schnellere Anrufe.", port=ep.port) }}{% endif %}
+    {{ _("Ein Proxy, der TLS selbst beendet (HTTP-Dienst, Cloudflare mit orangener Wolke), passt hier nicht – dann SAGA_TLS=0 und wie bisher Port 8080.") }}
+    <a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/{{ ep_doc }}" target="_blank" rel="noopener">{{ _("Anleitung: Ein Name, ein Port") }}</a></p>
+</section>
+{% endif %}
 
 <section class="adm-card" id="horn">
   <h3>{{ _("Gjallarhorn – große Gruppenanrufe") }}</h3>

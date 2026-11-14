@@ -902,6 +902,28 @@ def builtin_view(out, now=None):
     return v
 
 
+def einport_view(out, now=None):
+    """2.5 "Ein Name, ein Port": Kasten in Admin -> Anrufe (auch ohne Gjallarhorn-Flag - der TLS-Eingang traegt dann Saga
+    selbst). None = Betriebsart aus. Quelle: Meldung von saga-media (horn.builtin_report()["einport"]) und die Zeile des
+    eingebauten Knotens (Zertifikatsweg, letzter Fehler). Keine Adressen, keine Pfade."""
+    if not horn.einport():
+        return None
+    now = now or time.time()
+    m = horn.builtin_report(now) or {}
+    ep = m.get("einport") or {}
+    real = next((n for n in out if n["builtin"]), None)
+    cert = (real or {}).get("cert") or {}
+    v = {"reported": bool(ep), "name": ep.get("name") or "", "port": ep.get("port") or horn.einport_port(),
+         "proxy": ep.get("proxy", os.environ.get("SAGA_EINPORT_PROXY") == "1"), "proxy_seen": ep.get("proxy_seen"),
+         "proxy_bad": ep.get("proxy_bad"), "cert": ep.get("cert") or "fehlt", "cert_src": ep.get("cert_src") or "",
+         "not_after": ep.get("not_after"), "node": bool(ep.get("node")), "node_state": m.get("state") or "",
+         "node_mode": cert.get("mode") or "", "cert_err": horn.clean_detail(cert.get("err") or ""), "cf": cloudflare.configured(),
+         "soon": bool(ep.get("not_after") and ep["not_after"] - now < 14 * 86400)}
+    # Kopf fehlt: in den letzten 10 min abgewiesen und seitdem keiner erkannt -> PROXY-Protokoll am Proxy aus?
+    v["proxy_warn"] = bool(v["proxy"] and v["proxy_bad"] and now - v["proxy_bad"] < 600 and (v["proxy_seen"] or 0) < v["proxy_bad"])
+    return v
+
+
 def builtin_warn():
     """Warnung beim Speichern (Admin -> Anrufe): eingebauter Knoten an, startet aber sicher nicht ("nocert") - laut Umgebung
     oder letzter Meldung von saga-media. Sonst ""."""
@@ -959,7 +981,7 @@ def admin_state():
                     "bridges": (horn._LIVE.get(n["id"]) or {}).get("bridges") or {}, "quotas": (horn._LIVE.get(n["id"]) or {}).get("quotas") or {}})
     cf = cloudflare.conf()
     bi = builtin_view(out, now)
-    return {"nodes": out, "pending": pend, "bi": bi, "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()), "rekey": rekey,
+    return {"nodes": out, "pending": pend, "bi": bi, "einport": einport_view(out, now), "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()), "rekey": rekey,
             "cf": {"set": bool(cf.get("token")), "mask": cloudflare.mask(cf.get("token") or ""), "zone": cf.get("zone") or "",
                    "check": cf.get("check") or {}},
             "suffix": suffix(), "image": image_ref(), "saga": saga_origin(), "saga_warn": saga_warn(), "builtin_on": horn.builtin_on(),
