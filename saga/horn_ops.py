@@ -28,6 +28,7 @@ import ssl
 import struct
 import threading
 import time
+import urllib.parse
 from collections import OrderedDict
 from urllib.parse import urlparse
 
@@ -913,7 +914,12 @@ def einport_view(out, now=None):
     ep = m.get("einport") or {}
     real = next((n for n in out if n["builtin"]), None)
     cert = (real or {}).get("cert") or {}
-    v = {"reported": bool(ep), "name": ep.get("name") or "", "port": ep.get("port") or horn.einport_port(),
+    from saga.core import BASE_URL
+    try:
+        pub = urllib.parse.urlsplit(BASE_URL).port or 443
+    except ValueError:
+        pub = 443
+    v = {"reported": bool(ep), "name": ep.get("name") or "", "port": ep.get("port") or horn.einport_port(), "pub_port": pub,
          "proxy": ep.get("proxy", os.environ.get("SAGA_EINPORT_PROXY") == "1"), "proxy_seen": ep.get("proxy_seen"),
          "proxy_bad": ep.get("proxy_bad"), "cert": ep.get("cert") or "fehlt", "cert_src": ep.get("cert_src") or "",
          "not_after": ep.get("not_after"), "node": bool(ep.get("node")), "node_state": m.get("state") or "",
