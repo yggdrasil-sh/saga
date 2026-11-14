@@ -289,7 +289,7 @@ try:
     # --- (4) F6: update_event Termin <-> ganztaegig -----------------------------------------------------------
     try:
         import httpx
-        cal_up = httpx.request("PROPFIND", RAD + "test/", auth=("test", "x"), headers={"Depth": "0"}, timeout=5).status_code in (207, 200)
+        cal_up = httpx.request("PROPFIND", RAD + "test/", auth=("test", "geheim-app-pw-123"), headers={"Depth": "0"}, timeout=5).status_code in (207, 200)
     except Exception:
         cal_up = False
     if not cal_up:
