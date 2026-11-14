@@ -75,6 +75,7 @@ type edge struct {
 	proxySeen atomic.Int64 // Unix-Sekunden des letzten gueltigen PROXY-Kopfs
 	proxyBad  atomic.Int64 // ... des letzten abgewiesenen (fehlt bzw. ungueltig)
 	onState   func()       // Zustand geaendert (Zertifikat, Knoten) -> an Saga melden
+	firstByte atomic.Int64 // Frist fuer PROXY-Kopf und ClientHello (ns; Standard edgeFirstByte)
 	stop      chan struct{}
 	stopOnce  sync.Once
 }
@@ -95,6 +96,7 @@ func newEdge(m *media, key string) (*edge, error) {
 	}
 	e := &edge{m: m, c: c, ln: ln, key: key, dir: dir, nodeSock: filepath.Join(dir, "node.sock"), backSock: filepath.Join(dir, "back.sock"),
 		httpLn: newChanListener(ln.Addr()), cert: newEdgeCert(c), stop: make(chan struct{})}
+	e.firstByte.Store(int64(edgeFirstByte))
 	e.tlsCfg = &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}, GetCertificate: e.cert.get}
 	e.cert.onChange = func(*certState) { e.changed() }
 	e.cert.reload()
@@ -199,7 +201,7 @@ func (e *edge) handle(raw net.Conn) {
 	}
 	defer done()
 	var remote net.Addr = raw.RemoteAddr()
-	_ = raw.SetReadDeadline(time.Now().Add(edgeFirstByte))
+	_ = raw.SetReadDeadline(time.Now().Add(time.Duration(e.firstByte.Load())))
 	p := &peekBuf{c: raw, b: make([]byte, 0, 4096)}
 	if e.c.tlsProxy {
 		a, err := e.readProxy(p)
