@@ -71,7 +71,7 @@ func newTestEdge(t *testing.T, proxy, withCert bool) *testEdge {
 	dir := t.TempDir()
 	c := &config{upstream: strings.TrimPrefix(up.URL, "http://"), blobDir: t.TempDir(), trusted: parseTrust("127.0.0.1"), ttl: time.Minute,
 		stall: 5 * time.Second, key: "k", maxConns: 64, maxConnsIP: 32, maxStreams: 8, maxStreamsIP: 8, idleUnauth: 5 * time.Second,
-		tlsOn: true, tlsListen: "127.0.0.1:0", tlsProxy: proxy, baseHost: testName, baseOrigin: "https://" + testName,
+		tlsOn: true, tlsListen: "127.0.0.1:0", tlsProxy: proxy, baseHost: testName, baseOrigin: "https://" + testName, basePort: 443,
 		hornData: filepath.Join(dir, "horn"), tlsCert: filepath.Join(dir, "cert.pem"), tlsKey: filepath.Join(dir, "key.pem")}
 	te := &testEdge{dir: dir}
 	if withCert {
@@ -219,6 +219,30 @@ func TestEinportProxyV2(t *testing.T) {
 	if _, err := parseProxyV2(cmd); err == nil {
 		t.Errorf("befehl 15 angenommen")
 	}
+	// v1 (nginx stream)
+	for l, want := range map[string]string{"PROXY TCP4 203.0.113.7 10.0.0.1 4711 443\r\n": "203.0.113.7:4711",
+		"PROXY TCP6 2001:db8::5 2001:db8::1 1 443\r\n": "[2001:db8::5]:1", "PROXY UNKNOWN\r\n": "<nil>"} {
+		n, err := proxyV1Need([]byte(l + "rest"))
+		if err != nil || n != len(l) {
+			t.Fatalf("v1 need %q: %d %v", l, n, err)
+		}
+		a, err := parseProxyV1([]byte(l))
+		if err != nil || fmt.Sprint(a) != want && !(a == nil && want == "<nil>") {
+			t.Errorf("v1 %q: %v %v", l, a, err)
+		}
+	}
+	for _, l := range []string{"PROXY TCP4 2001:db8::5 10.0.0.1 1 2\r\n", "PROXY TCP4 1.2.3.4 10.0.0.1 01 2\r\n", "PROXY TCP4 1.2.3.4 10.0.0.1 1\r\n",
+		"PROXY TCP4 1.2.3.4 10.0.0.1 1 2\n", "PROXY UDP4 1.2.3.4 10.0.0.1 1 2\r\n"} {
+		if _, err := parseProxyV1([]byte(l)); err == nil {
+			t.Errorf("v1 angenommen: %q", l)
+		}
+	}
+	if _, err := proxyV1Need([]byte("PROXY " + strings.Repeat("x", 120))); err == nil {
+		t.Errorf("v1 ohne Ende angenommen")
+	}
+	if _, err := proxyV1Need([]byte("GET / ")); err == nil {
+		t.Errorf("v1: GET angenommen")
+	}
 }
 
 func TestEinportHTTPS(t *testing.T) {
@@ -255,6 +279,13 @@ func TestEinportProxyHeader(t *testing.T) {
 	}
 	if out := httpGet(t, tc, "/", "X-Forwarded-For: 6.6.6.6\r\n"); !strings.Contains(out, "xff=203.0.113.7 xfp=https") {
 		t.Errorf("Antwort: %q", out)
+	}
+	tc, err = te.dialTLS(t, []byte("PROXY TCP4 198.51.100.20 10.0.0.1 5555 443\r\n"), []string{"http/1.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out := httpGet(t, tc, "/", ""); !strings.Contains(out, "xff=198.51.100.20 xfp=https") {
+		t.Errorf("v1: %q", out)
 	}
 	if te.e.info().ProxySeen == 0 {
 		t.Errorf("proxy_seen fehlt")

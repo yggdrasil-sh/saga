@@ -38,6 +38,7 @@ type config struct {
 	tlsKey     string
 	baseHost   string        // Name aus BASE_URL (Zertifikat, Knotenname)
 	baseOrigin string        // https://name[:port] aus BASE_URL (Adresse des eingebauten Knotens)
+	basePort   int           // Port aus BASE_URL (nach aussen; Kandidaten des Knotens)
 	hornData   string        // HORN_DATA bzw. STATE_DIR/horn (Zertifikat des Knotens)
 	tlsReload  time.Duration // SAGA_TLS_RELOAD_S: so oft Zertifikatsdateien pruefen (Standard 30 s)
 }
@@ -171,7 +172,10 @@ func (c *config) loadTLS(port int) error {
 	if err != nil {
 		return fmt.Errorf("SAGA_TLS=1 braucht BASE_URL=https://<Name>: %v", err)
 	}
-	c.baseHost, c.baseOrigin = host, origin
+	c.baseHost, c.baseOrigin, c.basePort = host, origin, 443
+	if _, ps, err := net.SplitHostPort(strings.TrimPrefix(origin, "https://")); err == nil {
+		c.basePort, _ = strconv.Atoi(ps)
+	}
 	return nil
 }
 

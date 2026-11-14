@@ -5,12 +5,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
+	"strconv"
+	"strings"
 )
 
-// PROXY-Protokoll v2 (HAProxy-Spezifikation) fuer den TLS-Eingang hinter einer L4-Durchreiche (2.5 "Ein Port"). Nur v2,
-// nur mit TLS_PROXY_PROTOCOL=1, dann aber Pflicht vor jeder Verbindung: Ohne Kopf saehe Saga alle Clients mit der
-// Adresse des Proxys (Grenzen je Adresse, Anmelde-Sperren, Sitzungsliste). Gleiche Regeln wie gjallarhorn
-// internal/netx/proxyproto.go ReadProxyV2.
+// PROXY-Protokoll (HAProxy-Spezifikation) fuer den TLS-Eingang hinter einer L4-Durchreiche (2.5 "Ein Port"). Nur mit
+// TLS_PROXY_PROTOCOL=1, dann aber Pflicht vor jeder Verbindung: Ohne Kopf saehe Saga alle Clients mit der Adresse des
+// Proxys (Grenzen je Adresse, Anmelde-Sperren). v2 (binaer: NetBird, Traefik, HAProxy send-proxy-v2, caddy-l4) und v1
+// (Text: nginx stream "proxy_protocol on" kann nur v1). Gleiche Regeln wie gjallarhorn internal/netx/proxyproto.go.
 
 var ppSig = []byte("\r\n\r\n\x00\r\nQUIT\n")
 
@@ -65,6 +67,51 @@ func parseProxyV2(b []byte) (*net.TCPAddr, error) {
 		return nil, errProxyHeader
 	}
 	return nil, nil
+}
+
+// proxyV1Need: Laenge des v1-Kopfs bis einschliesslich CRLF (0 = noch nicht vollstaendig), Fehler ab 108 Byte ohne Ende.
+func proxyV1Need(b []byte) (int, error) {
+	n := len(b)
+	if n > 6 {
+		n = 6
+	}
+	if !bytes.Equal(b[:n], []byte("PROXY ")[:n]) {
+		return 0, errProxyHeader
+	}
+	if i := bytes.IndexByte(b, '\n'); i >= 0 {
+		if i > 106 {
+			return 0, errProxyHeader
+		}
+		return i + 1, nil
+	}
+	if len(b) >= 107 {
+		return 0, errProxyHeader
+	}
+	return 0, nil
+}
+
+// parseProxyV1: "PROXY TCP4|TCP6 src dst sport dport\r\n" bzw. "PROXY UNKNOWN ...\r\n" (dann nil).
+func parseProxyV1(l []byte) (*net.TCPAddr, error) {
+	if !bytes.HasSuffix(l, []byte("\r\n")) {
+		return nil, errProxyHeader
+	}
+	f := strings.Split(string(l[6:len(l)-2]), " ")
+	if len(f) >= 1 && f[0] == "UNKNOWN" {
+		return nil, nil
+	}
+	if len(f) != 5 || (f[0] != "TCP4" && f[0] != "TCP6") {
+		return nil, errProxyHeader
+	}
+	ip, dst := net.ParseIP(f[1]), net.ParseIP(f[2])
+	if ip == nil || dst == nil || (f[0] == "TCP4") != (ip.To4() != nil) {
+		return nil, errProxyHeader
+	}
+	sp, err1 := strconv.Atoi(f[3])
+	_, err2 := strconv.Atoi(f[4])
+	if err1 != nil || err2 != nil || sp < 0 || sp > 65535 || len(f[3]) > 5 || (len(f[3]) > 1 && f[3][0] == '0') {
+		return nil, errProxyHeader
+	}
+	return &net.TCPAddr{IP: ip, Port: sp}, nil
 }
 
 // buildProxyV2 erzeugt einen Kopf (Tests).

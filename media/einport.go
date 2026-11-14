@@ -252,23 +252,31 @@ func (e *edge) handle(raw net.Conn) {
 	}
 }
 
-// readProxy: PROXY-v2-Kopf (Pflicht) -> Client-Adresse (nil bei LOCAL); verbraucht genau den Kopf.
+// readProxy: PROXY-Kopf v2 bzw. v1 (Pflicht) -> Client-Adresse (nil bei LOCAL/UNKNOWN); verbraucht genau den Kopf.
 func (e *edge) readProxy(p *peekBuf) (*net.TCPAddr, error) {
+	if err := p.need(1); err != nil {
+		return nil, err
+	}
+	needF, parse := proxyNeed, parseProxyV2
+	if p.b[0] == 'P' {
+		needF, parse = proxyV1Need, parseProxyV1
+	}
 	need := 0
 	for need == 0 {
-		if err := p.need(len(p.b) + 1); err != nil {
-			return nil, err
-		}
-		n, err := proxyNeed(p.b)
+		n, err := needF(p.b)
 		if err != nil {
 			return nil, err
 		}
-		need = n
+		if need = n; need == 0 {
+			if err := p.need(len(p.b) + 1); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if err := p.need(need); err != nil {
 		return nil, err
 	}
-	a, err := parseProxyV2(p.b[:need])
+	a, err := parse(p.b[:need])
 	if err != nil {
 		return nil, err
 	}
@@ -516,7 +524,8 @@ func (e *edge) nodeFiles() ([]*os.File, error) {
 
 // nodeEnv: Umgebung des eingebauten Knotens in dieser Betriebsart.
 func (e *edge) nodeEnv() []string {
-	_, port, _ := net.SplitHostPort(e.c.tlsListen)
+	// Port nach aussen (BASE_URL): Kandidaten (ICE-TCP, UDP) nennen ihn; bei Docker "443:443" gleich TLS_LISTEN
+	port := strconv.Itoa(e.c.basePort)
 	env := []string{"HORN_EINPORT_FD=3", "HORN_EINPORT_HTTP_FD=4", "HORN_EINPORT_BACK=" + e.backSock,
 		"HORN_NAME=" + e.c.baseHost, "HORN_PUBLIC_URL=" + e.c.baseOrigin, "HORN_LISTEN=:" + port, "HORN_PROXY_PROTOCOL=0"}
 	if os.Getenv("HORN_ICE_TCP") == "" {
@@ -532,7 +541,7 @@ func (e *edge) nodeEnv() []string {
 // einportInfo: Zustand fuer Admin -> Anrufe (POST /internal/horn/state, Feld einport). Keine Adressen, keine Pfade.
 type einportInfo struct {
 	Name      string `json:"name"`
-	Port      int    `json:"port"`
+	Port      int    `json:"port"` // Port nach aussen (BASE_URL)
 	Proxy     bool   `json:"proxy"`
 	ProxySeen int64  `json:"proxy_seen,omitempty"` // letzter gueltiger PROXY-Kopf (Unix-Sekunden)
 	ProxyBad  int64  `json:"proxy_bad,omitempty"`  // letzte Verbindung ohne bzw. mit ungueltigem Kopf
@@ -545,10 +554,8 @@ type einportInfo struct {
 }
 
 func (e *edge) info() *einportInfo {
-	_, ps, _ := net.SplitHostPort(e.c.tlsListen)
-	port, _ := strconv.Atoi(ps)
 	cs := e.cert.state()
-	in := &einportInfo{Name: e.c.baseHost, Port: port, Proxy: e.c.tlsProxy, Cert: cs.state, CertSrc: cs.src, Node: e.hand.Load() != nil}
+	in := &einportInfo{Name: e.c.baseHost, Port: e.c.basePort, Proxy: e.c.tlsProxy, Cert: cs.state, CertSrc: cs.src, Node: e.hand.Load() != nil}
 	if !cs.notAfter.IsZero() {
 		in.NotAfter = cs.notAfter.Unix()
 	}

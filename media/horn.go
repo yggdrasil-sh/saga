@@ -138,8 +138,7 @@ func newHorn(m *media, key string) (*horn, string) {
 			kept = append(kept, kv)
 		}
 		env = append(kept, e.nodeEnv()...)
-		_, ps, _ := net.SplitHostPort(m.c.tlsListen)
-		port, _ = strconv.Atoi(ps)
+		port = m.c.basePort
 	}
 	set("HORN_LISTEN", ":"+strconv.Itoa(port))
 	set("HORN_DATA", filepath.Join(envStr("STATE_DIR", "/data"), "horn"))

@@ -87,9 +87,12 @@ def einport():
 
 
 def einport_port():
-    """Port des TLS-Eingangs (TLS_LISTEN, Standard 443)."""
-    v = (os.environ.get("SAGA_EINPORT_LISTEN") or ":443").rsplit(":", 1)[-1]
-    return int(v) if v.isdigit() and 0 < int(v) < 65536 else 443
+    """Port nach aussen (aus BASE_URL, Standard 443): Adresse und Kandidaten des eingebauten Knotens."""
+    from urllib.parse import urlsplit
+    try:
+        return urlsplit(os.environ.get("BASE_URL", "")).port or 443
+    except ValueError:
+        return 443
 
 
 def builtin_on():
