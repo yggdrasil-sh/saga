@@ -97,7 +97,7 @@ def ok(n, c, info=None):
 
 try:
     cn = db(); cn.execute("UPDATE users SET display_name='Anna Mcp' WHERE username=?", (UA,)); cn.commit()
-    setting("api", None)
+    setting("api", {"rate": 3000, "rate_write": 1000}); time.sleep(5.5)     # viele Schreibaufrufe in dieser Reihe (Standard 30/min)
     T = call("POST", "/api/account/api-tokens", A, {"name": "MCP", "scopes": ["mcp", "write:pages", "write:db", "write:tasks", "write:comments"]})[1]["token"]
     TR = call("POST", "/api/account/api-tokens", A, {"name": "MCP lesen", "scopes": ["mcp", "read:pages"]})[1]["token"]
     TN = call("POST", "/api/account/api-tokens", A, {"name": "ohne mcp", "scopes": ["read:pages"]})[1]["token"]
@@ -141,6 +141,7 @@ try:
     ok("ping", rpc(T, "ping")[1].get("result") == {})
     ok("Unbekannte Methode -> -32601", rpc(T, "gibtsnicht")[1].get("error", {}).get("code") == -32601)
 
+    DESTR_SET = {"replace_page_content", "update_block", "trash_page", "set_checkbox", "archive_page"}
     names = {x["name"] for x in rpc(T, "tools/list")[1]["result"]["tools"]}
     ok("tools/list: alle Werkzeuge mit vollen Bereichen", {"search_pages", "get_page", "create_page", "query_database", "create_row", "update_row",
                                                           "create_task", "add_comment"} <= names, names)
@@ -280,6 +281,211 @@ try:
     ok("roots: Bild auf Seite ausserhalb -> not_found", denied(TT, BIG))
     TP = call("POST", "/api/account/api-tokens", A, {"name": "MCP roots Bild", "scopes": ["mcp", "read:pages"], "roots": [P]})[1]["token"]
     ok("roots: Bild auf Seite innerhalb -> Bild", not img_tool(TP, PNG)[1].get("isError"))
+
+    # --- Seiteninhalt aendern (2.5, Bug-DB 2023): Gliederung, replace_page_content, update_block, set_checkbox, trash/archive ---
+    def meta(tok, nid, **kw):
+        e, tx, _ = tool(tok, "get_page", id=nid, **kw)
+        body = tx.split('">\n', 1)[1] if '">\n' in tx else ""
+        try:
+            return e, json.loads(body.split("\n\n---\n\n", 1)[0]), tx
+        except ValueError:
+            return e, {}, tx
+
+    def blocks_of(nid, who=A):
+        return json.loads(call("GET", f"/api/notes/{nid}", who)[1]["body"])["blocks"]
+
+    def H(i, txt, lv=2):
+        return {"id": i, "type": "header", "data": {"text": txt, "level": lv}}
+
+    def Pp(i, txt):
+        return {"id": i, "type": "paragraph", "data": {"text": txt}}
+
+    def CL(i, items):
+        return {"id": i, "type": "list", "data": {"style": "checklist", "meta": {}, "items": items}}
+
+    def IT(txt, on=False, sub=None):
+        return {"content": txt, "meta": {"checked": on}, "items": sub or []}
+    road = [H("h1", "Roadmap", 1), H("st", "Status"), Pp("s1", "Stand: alt"), Pp("s2", "noch alt"), H("st3", "Detail", 3), Pp("s3", "Detail alt"),
+            H("ms", "Meilensteine"), CL("cl", [IT("Planung", True), IT("Umsetzung", False, [IT("Server"), IT("Apps", True)]), IT("Test")]),
+            {"id": "tg", "type": "toggle", "data": {"title": "Mehr", "level": 2, "blocks": [Pp("tg1", "im Toggle")]}},
+            {"id": "co", "type": "columns", "data": {"cols": [{"blocks": [Pp("c1", "links")]}, {"blocks": [Pp("c2", "rechts")]}]}},
+            {"id": "lg", "type": "checklist", "data": {"items": [{"text": "Alt-Punkt", "checked": False}]}},
+            H("dp", "Doppelt"), Pp("d1", "eins"), H("dp2", "Doppelt"), Pp("d2", "zwei"), H("ende", "Ende"), Pp("e1", "Schluss")]
+    RM = call("POST", "/api/notes", A, {"title": "MCP Roadmap", "parent_id": R})[1]["id"]
+    call("PATCH", f"/api/notes/{RM}", A, {"format": "blocks", "body": json.dumps({"blocks": road})})
+    e0, m0, t0 = meta(T, RM)
+    e1, m1, t1 = meta(T, RM, blocks=False)
+    strip_rid = lambda x: x.replace(x.split('<saga-data id="', 1)[-1][:16], "R") if '<saga-data id="' in x else x
+    ok("get_page ohne blocks: keine Gliederung, Antwort wie bisher (blocks: false gleich)", not e0 and "outline" not in m0 and m0.get("rev")
+       and strip_rid(t0) == strip_rid(t1), t0[:300])
+    e, m, tx = meta(T, RM, blocks=True)
+    ol = {x.get("id"): x for x in m.get("outline") or []}
+    ok("get_page blocks: Gliederung mit IDs, Ebenen, Text", not e and ol.get("st", {}).get("level") == 2 and ol.get("st", {}).get("text") == "Status"
+       and ol.get("s1", {}).get("text") == "Stand: alt" and ol.get("st3", {}).get("level") == 3, str(m.get("outline"))[:500])
+    its = {x["index"]: x for x in ol.get("cl", {}).get("items") or []}
+    ok("get_page blocks: Checkliste mit Punkten (verschachtelt 2.1), checked", its.get("1", {}).get("checked") is True and its.get("2.1", {}).get("text") == "Server"
+       and its.get("2.2", {}).get("checked") is True and its.get("3", {}).get("checked") is False, its)
+    ok("get_page blocks: Toggle-/Spalten-Inhalt mit parent (und col)", ol.get("tg1", {}).get("parent") == "tg" and ol.get("c2", {}).get("parent") == "co"
+       and ol.get("c2", {}).get("col") == 2 and ol.get("tg", {}).get("level") == 2, ol.get("c2"))
+    ok("get_page blocks: als Daten markiert, rev dabei", "saga-data" in tx and isinstance(m.get("rev"), int))
+    REV = m["rev"]
+
+    tl = {x["name"]: x for x in rpc(T, "tools/list")[1]["result"]["tools"]}
+    ok("Annotationen: destructiveHint bei replace/update_block/trash, nicht bei set_checkbox/archive/append",
+       all(tl[n]["annotations"]["destructiveHint"] is True for n in ("replace_page_content", "update_block", "trash_page"))
+       and all(tl[n]["annotations"]["destructiveHint"] is False for n in ("set_checkbox", "archive_page", "append_to_page", "create_page"))
+       and all(tl[n]["annotations"]["readOnlyHint"] is False for n in ("set_checkbox", "update_block")), {n: tl[n]["annotations"] for n in tl if n in DESTR_SET})
+    ok("tools/list: Lesetoken ohne Schreibwerkzeuge fuer Inhalt", not {"update_block", "set_checkbox", "replace_page_content", "trash_page"}
+       & {x["name"] for x in rpc(TR, "tools/list")[1]["result"]["tools"]})
+
+    # update_block: Block per ID ersetzen - andere IDs bleiben, erster neuer Block uebernimmt die ID
+    before = [b["id"] for b in blocks_of(RM)]
+    err, txt, _ = tool(T, "update_block", id=RM, block_id="s1", markdown="Stand: **neu** (14.11.)")
+    bl = blocks_of(RM)
+    ok("update_block replace_block per block_id", not err and '"mode": "replace_block"' in txt and next(b for b in bl if b["id"] == "s1")["data"]["text"].startswith("Stand: <b>neu</b>"), txt)
+    ok("update_block: IDs aller anderen Bloecke unveraendert", [b["id"] for b in bl] == before, ([b["id"] for b in bl], before))
+    r2 = json.loads(txt)["rev"]
+    ok("update_block: neue rev in der Antwort", r2 == REV + 1, txt)
+    # Abschnitt per Ueberschrift: Ueberschrift bleibt, Unterabschnitt (Ebene 3) gehoert dazu, naechster Abschnitt nicht
+    err, txt, _ = tool(T, "update_block", id=RM, heading="status", markdown="Alles **grün**.\n\nZweiter Absatz")
+    bl = blocks_of(RM); ids = [b["id"] for b in bl]
+    sec = bl[ids.index("st") + 1: ids.index("ms")]
+    ok("update_block replace_section per heading (gross/klein egal): Ueberschrift bleibt, Abschnitt bis zur naechsten gleicher Ebene ersetzt",
+       not err and "st" in ids and "s2" not in ids and "st3" not in ids and len(sec) == 2 and "grün" in sec[0]["data"]["text"] and "ms" in ids and "cl" in ids, (txt, ids))
+    new_ids = json.loads(txt)["ids"]
+    ok("update_block: neue Bloecke mit eindeutigen neuen IDs", len(new_ids) == 2 and len(set(ids)) == len(ids) and not set(new_ids) & set(before), new_ids)
+    err, txt, _ = tool(T, "update_block", id=RM, heading="Status", markdown="## Status (aktuell)\n\nNeu geschrieben")
+    bl = blocks_of(RM); ids = [b["id"] for b in bl]
+    ok("replace_section mit eigener Ueberschrift: Ueberschrift ersetzt, ID bleibt", not err and bl[ids.index("st")]["data"]["text"] == "Status (aktuell)"
+       and bl[ids.index("st") + 1]["data"]["text"] == "Neu geschrieben" and bl[ids.index("st") + 2]["id"] == "ms", (txt, ids))
+    err, txt, _ = tool(T, "update_block", id=RM, heading="Doppelt", markdown="x")
+    ok("update_block: mehrdeutige Ueberschrift -> Fehler mit Kandidaten (im Daten-Rahmen)", err is True and "dp2" in txt and "dp" in txt
+       and txt.index("<saga-data") < txt.index("dp2"), txt)
+    err, txt, _ = tool(T, "update_block", id=RM, heading="Gibt es nicht", markdown="x")
+    ok("update_block: Ueberschrift fehlt -> not_found mit Liste", err is True and txt.startswith("not_found") and "Meilensteine" in txt, txt[:300])
+    ok("update_block: block_id und heading zugleich -> Fehler", tool(T, "update_block", id=RM, block_id="e1", heading="Ende", markdown="x")[0] is True)
+    ok("update_block: unbekannte block_id -> not_found", tool(T, "update_block", id=RM, block_id="gibtsnicht", markdown="x")[1].startswith("not_found"))
+    ok("update_block: unbekannter Modus -> Fehler", tool(T, "update_block", id=RM, block_id="e1", markdown="x", mode="kaputt")[0] is True)
+    err, txt, _ = tool(T, "update_block", id=RM, block_id="d1", markdown="- eingefügt", mode="insert_after")
+    ids = [b["id"] for b in blocks_of(RM)]
+    ok("update_block insert_after per block_id", not err and ids[ids.index("d1") + 1] == json.loads(txt)["ids"][0] and ids[ids.index("d1") + 2] == "dp2", ids)
+    err, txt, _ = tool(T, "update_block", id=RM, heading="Ende", markdown="Nachtrag", mode="insert_after")
+    bl = blocks_of(RM)
+    ok("update_block insert_after per heading: am Ende des Abschnitts", not err and bl[-1]["data"].get("text") == "Nachtrag" and bl[-2]["id"] == "e1", [b["id"] for b in bl])
+    err, txt, _ = tool(T, "update_block", id=RM, block_id="tg1", markdown="geändert im Toggle")
+    tg = next(b for b in blocks_of(RM) if b["id"] == "tg")
+    ok("update_block: Block im Toggle per ID", not err and tg["data"]["blocks"][0]["id"] == "tg1" and "geändert" in tg["data"]["blocks"][0]["data"]["text"], tg)
+    err, txt, _ = tool(T, "update_block", id=RM, block_id="c2", markdown="rechts neu")
+    co = next(b for b in blocks_of(RM) if b["id"] == "co")
+    ok("update_block: Block in Spalte per ID", not err and co["data"]["cols"][1]["blocks"][0]["data"]["text"] == "rechts neu"
+       and co["data"]["cols"][0]["blocks"][0]["id"] == "c1", co)
+    err, txt, _ = tool(T, "update_block", id=RM, block_id="d2", mode="delete")
+    ok("update_block delete per block_id", not err and "d2" not in [b["id"] for b in blocks_of(RM)], txt)
+    err, txt, _ = tool(T, "update_block", id=RM, heading="Ende", mode="delete")
+    ids = [b["id"] for b in blocks_of(RM)]
+    ok("update_block delete per heading: ganzer Abschnitt", not err and "ende" not in ids and "e1" not in ids and "dp2" in ids, ids)
+    ok("update_block ohne markdown (replace) -> Fehler", tool(T, "update_block", id=RM, block_id="d1")[0] is True)
+    # Revision: veraltete rev -> Konflikt; Aenderung aus dem Web bleibt
+    e, m, _ = meta(T, RM, blocks=True)
+    old_rev = m["rev"]
+    cur = blocks_of(RM); cur[0]["data"]["text"] = "Roadmap (Web)"
+    call("PATCH", f"/api/notes/{RM}", A, {"format": "blocks", "body": json.dumps({"blocks": cur}), "rev": old_rev})
+    err, txt, _ = tool(T, "update_block", id=RM, block_id="d1", markdown="KI", rev=old_rev)
+    ok("update_block mit veralteter rev -> conflict mit Hinweis neu lesen", err is True and txt.startswith("conflict") and str(old_rev + 1) in txt, txt)
+    ok("... Web-Aenderung nicht verloren", blocks_of(RM)[0]["data"]["text"] == "Roadmap (Web)" and next(b for b in blocks_of(RM) if b["id"] == "d1")["data"]["text"] == "eins")
+
+    # set_checkbox
+    err, txt, _ = tool(T, "set_checkbox", id=RM, block_id="cl", item="2.1", checked=True)
+    cl = next(b for b in blocks_of(RM) if b["id"] == "cl")
+    ok("set_checkbox verschachtelt (2.1)", not err and cl["data"]["items"][1]["items"][0]["meta"]["checked"] is True and '"changed": true' in txt
+       and "saga-data" in txt, txt)
+    err, txt, _ = tool(T, "set_checkbox", id=RM, block_id="cl", item=1, checked=False)
+    cl = next(b for b in blocks_of(RM) if b["id"] == "cl")
+    ok("set_checkbox per Nummer (Zahl) loesen", not err and cl["data"]["items"][0]["meta"]["checked"] is False, txt)
+    err, txt, _ = tool(T, "set_checkbox", id=RM, text="test", checked=True)
+    cl = next(b for b in blocks_of(RM) if b["id"] == "cl")
+    ok("set_checkbox per Text ohne block_id", not err and cl["data"]["items"][2]["meta"]["checked"] is True, txt)
+    r_before = meta(T, RM)[1]["rev"]
+    err, txt, _ = tool(T, "set_checkbox", id=RM, text="Test", checked=True)
+    ok("set_checkbox schon gesetzt -> unveraendert, keine neue rev", not err and '"changed": false' in txt and meta(T, RM)[1]["rev"] == r_before, txt)
+    err, txt, _ = tool(T, "set_checkbox", id=RM, text="Alt-Punkt", checked=True)
+    lg = next(b for b in blocks_of(RM) if b["id"] == "lg")
+    ok("set_checkbox: alter Checklisten-Block (type checklist)", not err and lg["data"]["items"][0]["checked"] is True, (txt, lg))
+    err, txt, _ = tool(T, "set_checkbox", id=RM, text="e", checked=True)
+    ok("set_checkbox: mehrdeutiger Text -> Fehler mit Kandidaten", err is True and "Server" in txt and "saga-data" in txt, txt[:300])
+    err, txt, _ = tool(T, "set_checkbox", id=RM, block_id="d1", item="1", checked=True)
+    ok("set_checkbox: kein Checklisten-Block -> Hinweis update_row", err is True and "update_row" in txt, txt)
+    ok("set_checkbox: Punkt fehlt -> not_found", tool(T, "set_checkbox", id=RM, block_id="cl", item="9", checked=True)[1].startswith("not_found"))
+    ok("set_checkbox: checked kein bool -> Fehler", tool(T, "set_checkbox", id=RM, block_id="cl", item="1", checked="ja")[0] is True)
+
+    # replace_page_content
+    err, txt, _ = tool(T, "replace_page_content", id=RM, markdown="# Neu")
+    ok("replace_page_content ohne rev -> Fehler", err is True, txt)
+    rv = meta(T, RM)[1]["rev"]
+    err, txt, _ = tool(T, "replace_page_content", id=RM, markdown="# Neu", rev=rv - 1)
+    ok("replace_page_content falsche rev -> conflict, Inhalt bleibt", err is True and txt.startswith("conflict") and f"rev {rv}" in txt
+       and len(blocks_of(RM)) > 5, txt)
+    err, txt, _ = tool(T, "replace_page_content", id=RM, markdown="# Neu\n\n- [ ] eins", rev=rv)
+    bl = blocks_of(RM)
+    ok("replace_page_content mit rev -> ersetzt, neue rev", not err and json.loads(txt)["rev"] == rv + 1 and len(bl) == 2 and bl[0]["data"]["text"] == "Neu", txt)
+
+    # Rechte: Ansehen/Kommentieren -> Fehler, Bearbeiten -> geht; gesperrt; roots; fremde Seite; Text-Notiz
+    BS = call("POST", "/api/notes", X, {"title": "B geteilt"})[1]["id"]
+    call("PATCH", f"/api/notes/{BS}", X, {"format": "blocks", "body": json.dumps({"blocks": [H("bh", "Kopf"), CL("bc", [IT("Punkt B")])]})})
+    ok("Fremde Seite: update_block -> not_found", tool(T, "update_block", id=BS, block_id="bh", markdown="x")[1].startswith("not_found"))
+    for role in ("view", "comment"):
+        call("PUT", f"/api/notes/{BS}/shares", X, {"type": "user", "target": UA, "role": role})
+        e1_ = tool(T, "update_block", id=BS, block_id="bh", markdown="x")
+        e2_ = tool(T, "set_checkbox", id=BS, block_id="bc", item="1", checked=True)
+        ok(f"Rolle {role}: update_block/set_checkbox -> forbidden", e1_[0] is True and e2_[0] is True and e1_[1].startswith("forbidden"), e1_[1])
+    call("PUT", f"/api/notes/{BS}/shares", X, {"type": "user", "target": UA, "role": "edit"})
+    err, txt, _ = tool(T, "set_checkbox", id=BS, block_id="bc", item="1", checked=True)
+    ok("Rolle edit: set_checkbox auf geteilter Seite", not err and blocks_of(BS, X)[1]["data"]["items"][0]["meta"]["checked"] is True, txt)
+    ok("Rolle edit: trash_page fremder Seite -> Fehler", tool(T, "trash_page", id=BS)[0] is True and call("GET", f"/api/notes/{BS}", X)[0] == 200)
+    ok("Rolle edit: archive_page fremder Seite -> Fehler", tool(T, "archive_page", id=BS)[0] is True)
+    call("PATCH", f"/api/notes/{BS}", X, {"locked": True})
+    err, txt, _ = tool(T, "update_block", id=BS, block_id="bh", markdown="x")
+    ok("Gesperrte Seite: update_block -> locked", err is True and txt.startswith("locked"), txt)
+    ok("Gesperrte Seite: replace_page_content -> locked", tool(T, "replace_page_content", id=BS, markdown="x", rev=meta(T, BS)[1]["rev"])[1].startswith("locked"))
+    TXN = call("POST", "/api/notes", A, {"title": "Text-Notiz", "parent_id": R})[1]["id"]
+    call("PATCH", f"/api/notes/{TXN}", A, {"format": "text", "body": "nur Text"})
+    ok("Text-Notiz: update_block -> Fehler mit Hinweis", "replace_page_content" in tool(T, "update_block", id=TXN, block_id="x1", markdown="x")[1])
+    TRT = call("POST", "/api/account/api-tokens", A, {"name": "MCP roots schreiben", "scopes": ["mcp", "write:pages"], "roots": [P]})[1]["token"]
+    ok("roots: update_block ausserhalb -> not_found", tool(TRT, "update_block", id=RM, block_id="x", markdown="x")[1].startswith("not_found"))
+    ok("roots: set_checkbox/trash/archive ausserhalb -> not_found", all(tool(TRT, n, id=RM, **kw)[1].startswith("not_found") for n, kw in
+       (("set_checkbox", {"text": "eins", "checked": True}), ("trash_page", {}), ("archive_page", {}))))
+
+    # Synchronisierte Bloecke: Kopie nicht aendern, Original schon; andere Bloecke der Seite mit Kopie aenderbar, Kopie bleibt
+    SA = call("POST", "/api/notes", A, {"title": "Sync Original", "parent_id": R})[1]["id"]
+    SB = call("POST", "/api/notes", A, {"title": "Sync Kopie", "parent_id": R})[1]["id"]
+    call("PATCH", f"/api/notes/{SA}", A, {"format": "blocks", "body": json.dumps({"blocks": [{"id": "so", "type": "synced", "data": {"sid": "McpSync000000001",
+         "blocks": [Pp("so1", "geteilt")]}}]})})
+    call("PATCH", f"/api/notes/{SB}", A, {"format": "blocks", "body": json.dumps({"blocks": [Pp("sb0", "davor"), {"id": "sk", "type": "synced",
+         "data": {"sid": "McpSync000000001"}}]})})
+    e, m, _ = meta(T, SB, blocks=True)
+    ol = {x.get("id"): x for x in m.get("outline") or []}
+    ok("Gliederung: Kopie als synced copy, Inhalt mit in_copy", ol.get("sk", {}).get("synced") == "copy" and ol.get("so1", {}).get("in_copy") is True, m.get("outline"))
+    err, txt, _ = tool(T, "update_block", id=SB, block_id="so1", markdown="über Kopie")
+    ok("Kopie: Block darin nicht aenderbar -> Hinweis aufs Original (mit Seiten-ID)", err is True and "Original" in txt and str(SA) in txt, txt)
+    ok("Kopie selbst nicht ersetzbar", tool(T, "update_block", id=SB, block_id="sk", markdown="x")[0] is True)
+    err, txt, _ = tool(T, "update_block", id=SB, block_id="sb0", markdown="davor neu")
+    raw_b = call("GET", f"/api/notes/{SB}", A)[1]
+    sk = next(b for b in json.loads(raw_b["body"])["blocks"] if b["id"] == "sk")
+    ok("Seite mit Kopie: anderer Block aenderbar, Kopie bleibt verbunden", not err and sk["data"].get("sid") == "McpSync000000001"
+       and sk["data"]["blocks"][0]["data"]["text"] == "geteilt", (txt, sk))
+    err, txt, _ = tool(T, "update_block", id=SA, block_id="so1", markdown="im Original")
+    sk = next(b for b in json.loads(call("GET", f"/api/notes/{SB}", A)[1]["body"])["blocks"] if b["id"] == "sk")
+    ok("Original: Block aenderbar, Kopie zeigt neuen Inhalt", not err and "im Original" in sk["data"]["blocks"][0]["data"]["text"], (txt, sk))
+
+    # archive_page / trash_page
+    AR = call("POST", "/api/notes", A, {"title": "MCP Archiv", "parent_id": R})[1]["id"]
+    call("POST", "/api/notes", A, {"title": "MCP Archiv Kind", "parent_id": AR})
+    err, txt, _ = tool(T, "archive_page", id=AR)
+    ok("archive_page: Seite + Unterseite archiviert", not err and "2" in txt and meta(T, AR)[1].get("archived") is True, txt)
+    err, txt, _ = tool(T, "archive_page", id=AR, archived=False)
+    ok("archive_page archived=false: zurueckgeholt", not err and meta(T, AR)[1].get("archived") is False, txt)
+    err, txt, _ = tool(T, "trash_page", id=AR)
+    ok("trash_page: in den Papierkorb (2 Seiten)", not err and "2" in txt and tool(T, "get_page", id=AR)[1].startswith("not_found"), txt)
 
     # Batch
     st, d, _ = call("POST", "/mcp", b=[{"jsonrpc": "2.0", "id": 1, "method": "ping"}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}], bearer=T)

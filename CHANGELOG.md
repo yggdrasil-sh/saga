@@ -16,6 +16,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – MCP: Seiteninhalt gezielt ändern (Bug-DB 2023)
+- `get_page` mit `blocks: true` liefert die Gliederung der Seite mit Block-IDs, Überschriften-Ebenen und
+  Checklisten-Punkten (ohne den Schalter unverändert).
+- Neue Werkzeuge: `replace_page_content` (ganzer Inhalt, `rev` Pflicht), `update_block` (Block oder Abschnitt per
+  Block-ID oder Überschrift ersetzen, danach einfügen, entfernen – alle anderen Blöcke behalten ihre IDs und
+  Kommentare), `set_checkbox` (Kästchen einer Checkliste, auch verschachtelt, per Nummer oder Text), `trash_page`
+  (Papierkorb) und `archive_page` (archivieren/zurückholen). Konflikte (inzwischen geändert) → verständlicher Fehler
+  statt stillem Überschreiben; gesperrte Seiten, Rollen, `roots` und synchronisierte Blöcke (Kopien nur im Original
+  änderbar) gelten wie im Web.
+- Löschende/überschreibende Werkzeuge tragen jetzt `destructiveHint: true`.
+- Dieselben Fähigkeiten in `/api/v1`: `POST /api/v1/pages/{id}/blocks`, `/checkbox`, `/archive`.
+
 ### Geändert – Knoten: Probing Stufe 3f – die Bremse nach frischem Rückfall gilt nur noch im 1:1 (experimentell)
 - Die Bremse (lange Probe, Deckel und Aufschub am Bein nach einem frischen Rückfall) wirkt nur, solange höchstens
   ein anderer Teilnehmer Bild liefert – 1:1, auch mit Bildschirmteilen. Dort ist sie im Testaufbau belegt

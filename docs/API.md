@@ -80,6 +80,9 @@ Alle Antworten sind JSON. IDs sind Zahlen. **Personen** erscheinen nur als Handl
 | `POST` | `/api/v1/pages` | neue Seite `{title, parent_id?, markdown? \| blocks?, icon?, tags?, kind?: "database"}` → `201 {id}` |
 | `PATCH` | `/api/v1/pages/{id}` | ändern: `title`, `icon`, `tags`, `markdown` bzw. `blocks` (ersetzt den Inhalt), `append_markdown` (anfügen), `rev` |
 | `DELETE` | `/api/v1/pages/{id}` | in den Papierkorb (nur der Eigentümer, mit Unterseiten) |
+| `POST` | `/api/v1/pages/{id}/blocks` | Block/Abschnitt gezielt ändern `{block_id \| heading, markdown, mode?, rev?}` (wie MCP `update_block`) → `{rev, mode, target, ids}` |
+| `POST` | `/api/v1/pages/{id}/checkbox` | Kästchen setzen `{block_id?, item \| text, checked, rev?}` (wie MCP `set_checkbox`) → `{rev, block_id, item, checked, changed}` |
+| `POST` | `/api/v1/pages/{id}/archive` | archivieren `{archived: true}` (Standard) bzw. zurückholen `{archived: false}` (nur der Eigentümer, mit Unterseiten) |
 
 Lesen liefert `{id, title, icon, kind, parent_id, created, updated, rev, tags, archived, locked, role, owner, updated_by,
 blocks | markdown}`, bei Datenbank-Einträgen zusätzlich `properties` (Werte nach Eigenschafts-ID) und bei Datenbanken
@@ -87,6 +90,25 @@ blocks | markdown}`, bei Datenbank-Einträgen zusätzlich `properties` (Werte na
 
 **Konflikte:** Wer `rev` mitschickt (aus dem letzten Lesen), überschreibt keine Änderung, die inzwischen jemand anderes
 gemacht hat – dann kommt `409`. `append_markdown` prüft das immer.
+
+**Blöcke gezielt ändern** (`/blocks`, MCP `update_block`): Ziel ist `block_id` (auch in Toggles, Spalten und
+synchronisierten Originalen) **oder** `heading` (Text einer Überschrift – ohne Formatierung, Leerraum und Groß/Klein
+egal; mehrdeutig oder nicht gefunden → `400`/`404` mit `candidates: [{id, level, text}]`). `mode`:
+- `replace_block` (Standard bei `block_id`): nur dieser Block; der erste neue Block übernimmt seine ID.
+- `replace_section` (Standard bei `heading`): Überschrift + alle folgenden Blöcke bis zur nächsten Überschrift gleicher
+  oder höherer Ebene. Die Überschrift bleibt – beginnt das Markdown mit einer eigenen Überschrift, ersetzt diese sie
+  (ID bleibt). Leeres Markdown leert den Abschnitt. Bei einer Toggle-Überschrift: ihr Inhalt.
+- `insert_after`: nach dem Block (`block_id`) bzw. am Ende des Abschnitts (`heading`).
+- `delete`: den Block entfernen; per `heading` den ganzen Abschnitt.
+
+Alle anderen Blöcke bleiben unverändert (dieselben IDs – Kommentare an Blöcken bleiben hängen); neue Blöcke bekommen
+neue IDs. Ohne `rev` gilt der eben gelesene Stand – schreibt jemand dazwischen, kommt `409` statt eines stillen
+Überschreibens. Kopien synchronisierter Blöcke lassen sich hier nicht ändern (`400` mit Hinweis auf das Original),
+gesperrte Seiten → `423`, Text-Notizen → `400` (nur ganzer Inhalt per `PATCH`).
+**Kästchen** (`/checkbox`): Checklisten (`list` mit `style: checklist`, auch verschachtelt, und ältere `checklist`-Blöcke).
+`item` = Nummer des Punkts (`"2"`, verschachtelt `"2.1"`) zusammen mit `block_id`, oder `text` (eindeutig; ohne
+`block_id` in allen Checklisten der Seite). Ist das Kästchen schon so gesetzt: `changed: false`, keine neue Revision.
+Kontrollkästchen-Eigenschaften von Datenbank-Einträgen gehen über `PATCH /api/v1/rows/{id}`.
 
 **Markdown** (rein): Überschriften, Absätze, **fett**, *kursiv*, ~~durch~~, `Code`, Links, Listen (auch verschachtelt
 und Aufgaben `- [ ]`), Zitate, Callouts (`> [!note]`), Codeblöcke, Tabellen, Trennlinien. Seitenverweise:
@@ -213,14 +235,25 @@ Saga bringt einen MCP-Server mit (Model Context Protocol, Transport „Streamabl
 Nötig ist ein Token mit dem Bereich **`mcp`** und den Datenbereichen, die die KI nutzen soll.
 
 **Werkzeuge** (es erscheinen nur die, die der Token darf): `search_pages`, `get_page`, `get_image`, `create_page`, `append_to_page`,
-`update_page_title`, `list_databases`, `get_database_schema`, `query_database`, `create_row`, `update_row`, `list_tasks`,
-`create_task`, `complete_task`, `add_comment`. Eigenschaften gehen per Name. Ausgaben sind begrenzt (50 Einträge je
+`update_page_title`, `replace_page_content`, `update_block`, `set_checkbox`, `trash_page`, `archive_page`, `list_databases`,
+`get_database_schema`, `query_database`, `create_row`, `update_row`, `list_tasks`, `create_task`, `complete_task`,
+`add_comment`. Eigenschaften gehen per Name. Ausgaben sind begrenzt (50 Einträge je
 Abfrage, Seiten bis 100.000 Zeichen – darüber gekürzt mit Hinweis). `get_page` nennt die Bilder der Seite im Feld
 `images` (`{"file": "<Datei-ID>", "alt": "…"}`); `get_image` (Bereich `read:pages`, Eingabe `file` = Datei-ID oder
 `/files/<id>`-Adresse) liefert ein Bild als MCP-Inhalt `{"type": "image", "data": <base64>, "mimeType": …}` –
 verkleinert auf höchstens 1568 px, ohne EXIF, nur PNG/JPEG/GIF/WebP. Rechte wie `/files/<id>` im Browser (eigene Datei
 oder Datei auf einer sichtbaren Seite, mit `roots` nur innerhalb der Bäume); eigene Dateien ohne Seite nur mit
 `read:files` und ohne `roots`.
+
+**Seiteninhalt ändern** (`write:pages`): `get_page` mit `blocks: true` liefert zusätzlich die Gliederung `outline:
+[{id, type, text, level?, style?, items?: [{index, text, checked?}], parent?, col?, synced?, in_copy?}]` (flach;
+verschachtelte Blöcke mit `parent` = ID des Toggles/der Spalten bzw. des synchronisierten Blocks, `col` = Spalte) –
+ohne den Schalter bleibt die Antwort wie bisher. `replace_page_content` ersetzt den ganzen Inhalt (`rev` aus `get_page`
+ist Pflicht, Konflikt → „Seite wurde inzwischen geändert (rev …)“), `update_block` und `set_checkbox` arbeiten wie
+`/api/v1/pages/{id}/blocks` bzw. `/checkbox` (oben), `trash_page` legt in den Papierkorb, `archive_page` archiviert bzw.
+holt zurück (beides nur eigene Seiten). Änderungen kommen wie Web-Änderungen bei offenen Editoren an.
+**Annotationen:** Schreibende Werkzeuge haben `readOnlyHint: false`; `replace_page_content`, `update_block` und
+`trash_page` zusätzlich `destructiveHint: true` (Clients fragen dann ggf. nach).
 
 **Claude Code:**
 

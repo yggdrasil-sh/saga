@@ -27,7 +27,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from saga import api_v1, apitok
+from saga import api_v1, apitok, blockedit
 from saga.api_v1 import Fail
 from saga.core import BASE_URL, t
 from version import VERSION
@@ -64,8 +64,10 @@ TOOLS = [
     ("search_pages", "read:pages", "Seiten und Datenbank-Einträge nach Text in Titel, Inhalt und Schlagworten suchen.",
      {"query": _s("string", "Suchbegriff"), "limit": _s("integer", "Höchstzahl Treffer (1-50)", minimum=1, maximum=50)}, ["query"], False),
     ("get_page", "read:pages", "Eine Seite als Markdown lesen (mit Eigenschaften, wenn es ein Datenbank-Eintrag ist). "
-     "Bilder stehen als Links im Markdown; das Feld images nennt ihre Datei-IDs – ansehen mit get_image.",
-     {"id": _s("integer", "ID der Seite")}, ["id"], False),
+     "Bilder stehen als Links im Markdown; das Feld images nennt ihre Datei-IDs – ansehen mit get_image. "
+     "Mit blocks: true zusätzlich die Gliederung (outline) mit Block-IDs, Überschriften-Ebenen und Checklisten-Punkten – "
+     "nötig für update_block und set_checkbox. rev = Stand der Seite (für replace_page_content/update_block).",
+     {"id": _s("integer", "ID der Seite"), "blocks": _s("boolean", "true = Gliederung mit Block-IDs mitliefern")}, ["id"], False),
     ("get_image", "read:pages", "Ein Bild aus einer Seite ansehen (z. B. Screenshot in einer Fehlermeldung). file = Datei-ID aus "
      "get_page (images) oder die /files/…-Adresse aus dem Markdown. Liefert das Bild verkleinert (höchstens 1568 px).",
      {"file": _s("string", "Datei-ID (24 Zeichen) oder Adresse …/files/<id>")}, ["file"], False),
@@ -76,6 +78,34 @@ TOOLS = [
      {"id": _s("integer", "ID der Seite"), "markdown": _s("string", "Anzufügender Inhalt als Markdown")}, ["id", "markdown"], True),
     ("update_page_title", "write:pages", "Titel einer Seite ändern.",
      {"id": _s("integer", "ID der Seite"), "title": _s("string", "Neuer Titel")}, ["id", "title"], True),
+    ("replace_page_content", "write:pages", "Den GANZEN Inhalt einer Seite durch Markdown ersetzen (Eigenschaften und Titel "
+     "bleiben). rev aus get_page ist Pflicht: wurde die Seite inzwischen geändert, kommt ein Konflikt – dann neu lesen. "
+     "Nicht darstellbare Blöcke (Widgets, eingebettete Datenbanken, synchronisierte Blöcke …) gehen dabei verloren; "
+     "für einzelne Stellen update_block nehmen. Der alte Stand bleibt als Version erhalten.",
+     {"id": _s("integer", "ID der Seite"), "markdown": _s("string", "Neuer Inhalt als Markdown"),
+      "rev": _s("integer", "rev aus get_page")}, ["id", "markdown", "rev"], True),
+    ("update_block", "write:pages", "Einen Block oder Abschnitt einer Seite gezielt ändern; alle anderen Blöcke bleiben "
+     "unverändert (samt IDs und Kommentaren). Ziel: block_id (aus get_page mit blocks: true) ODER heading (Text einer "
+     "Überschrift). mode: replace_block (nur dieser Block; Standard bei block_id), replace_section (Überschrift + alles bis "
+     "zur nächsten Überschrift gleicher oder höherer Ebene; die Überschrift bleibt, außer das Markdown beginnt mit einer "
+     "eigenen Überschrift; Standard bei heading), insert_after (Markdown nach dem Block bzw. am Ende des Abschnitts "
+     "einfügen), delete (Block entfernen; per heading den ganzen Abschnitt). Ohne rev gilt der gerade gelesene Stand.",
+     {"id": _s("integer", "ID der Seite"), "block_id": _s("string", "ID des Blocks"), "heading": _s("string", "Text der Überschrift"),
+      "markdown": _s("string", "Ersatz bzw. einzufügender Inhalt als Markdown"),
+      "mode": _s("string", "replace_block | replace_section | insert_after | delete",
+                 enum=["replace_block", "replace_section", "insert_after", "delete"]),
+      "rev": _s("integer", "rev aus get_page (optional)")}, ["id"], True),
+    ("set_checkbox", "write:pages", "Kästchen eines Checklisten-Punkts auf einer Seite setzen oder lösen. Ziel: block_id der "
+     "Checkliste + item (Nummer, verschachtelt z. B. \"2.1\") ODER text (eindeutiger Text des Punkts; ohne block_id in allen "
+     "Checklisten der Seite). Kontrollkästchen-Eigenschaften von Datenbank-Einträgen setzt update_row.",
+     {"id": _s("integer", "ID der Seite"), "block_id": _s("string", "ID der Checkliste"), "item": _s("string", "Nummer des Punkts, z. B. 2 oder 2.1"),
+      "text": _s("string", "Text des Punkts"), "checked": _s("boolean", "true = abgehakt"), "rev": _s("integer", "rev aus get_page (optional)")},
+     ["id", "checked"], True),
+    ("trash_page", "write:pages", "Seite samt Unterseiten in den Papierkorb legen (im Web wiederherstellbar). Nur eigene Seiten.",
+     {"id": _s("integer", "ID der Seite")}, ["id"], True),
+    ("archive_page", "write:pages", "Seite samt Unterseiten archivieren (archived: true) oder zurückholen (false). Archivierte "
+     "Seiten fehlen im Seitenbaum und in der Suche, bleiben per Link erreichbar. Nur eigene Seiten.",
+     {"id": _s("integer", "ID der Seite"), "archived": _s("boolean", "true = archivieren (Standard), false = zurückholen")}, ["id"], True),
     ("list_databases", "read:db", "Datenbanken auflisten (optional nach Name filtern).",
      {"query": _s("string", "Teil des Namens")}, [], False),
     ("get_database_schema", "read:db", "Eigenschaften (Spalten) einer Datenbank mit Typ und Auswahl-Optionen.",
@@ -103,15 +133,22 @@ TOOLS = [
      {"page_id": _s("integer", "ID der Seite"), "text": _s("string", "Kommentar")}, ["page_id", "text"], True),
 ]
 BY_NAME = {x[0]: x for x in TOOLS}
+# Loeschende/ueberschreibende Werkzeuge (Annotation destructiveHint: true - Clients fragen ggf. nach)
+DESTRUCTIVE = {"replace_page_content", "update_block", "trash_page"}
+
+
+def _has(tok, scope):
+    """Bereich (Text) oder alle Bereiche einer Liste (Werkzeuge, die mehrere brauchen)."""
+    return all(tok.has(s) for s in scope) if isinstance(scope, tuple) else tok.has(scope)
 
 
 def _tools_for(tok):
     out = []
     for name, scope, desc, props, req, write in TOOLS:
-        if not tok.has(scope):
+        if not _has(tok, scope):
             continue
         out.append({"name": name, "description": desc, "inputSchema": {"type": "object", "properties": props, "required": req},
-                    "annotations": {"readOnlyHint": not write, "destructiveHint": False, "openWorldHint": False}})
+                    "annotations": {"readOnlyHint": not write, "destructiveHint": name in DESTRUCTIVE, "openWorldHint": False}})
     return out
 
 
@@ -190,6 +227,18 @@ _FILE_PATH = re.compile(r"/files/([0-9a-f]{24})(?:\?[\w=&.-]{0,40})?")
 _IMG_MD = re.compile(r"!\[((?:\\.|[^\]\\]){0,300})\]\(" + r"(?:[^()\s]{0,200}?)/files/([0-9a-f]{24})\b")
 
 
+def _rev(a, need=True):
+    v = a.get("rev")
+    if v is None and not need:
+        return None
+    if isinstance(v, bool) or not isinstance(v, (int, str)):
+        raise Fail(400, t("ungültige Revision"))
+    try:
+        return int(v)
+    except (TypeError, ValueError, OverflowError):
+        raise Fail(400, t("ungültige Revision"))
+
+
 def _file_id(v):
     """Datei-ID, "/files/<id>" (auch "files/<id>", mit ?w=…) oder die volle Adresse dieses Servers -> ID. Sonst 404."""
     if not isinstance(v, str) or len(v) > 300:
@@ -236,8 +285,11 @@ def call_tool(tok, name, a):
         _, d = api_v1.search(tok, a.get("query"), min(50, max(1, int(a.get("limit") or 20))))
         return _data(d["results"], "search")
     if name == "get_page":
-        _, d = api_v1.page_read(tok, _int(a, "id"), "markdown")
+        with_blocks = a.get("blocks") is True
+        _, d = api_v1.page_read(tok, _int(a, "id"), "both" if with_blocks else "markdown")
         md = d.pop("markdown", "")
+        if with_blocks:
+            d["outline"] = blockedit.outline(d.pop("blocks", []))
         imgs = _page_images(md)
         if imgs:
             d["images"] = imgs
@@ -261,6 +313,38 @@ def call_tool(tok, name, a):
     if name == "update_page_title":
         api_v1.page_update(tok, _int(a, "id"), {"title": a.get("title")})
         return t("Titel geändert.")
+    if name == "replace_page_content":
+        nid = _int(a, "id")
+        if a.get("rev") is None:
+            raise Fail(400, t("rev fehlt – erst get_page lesen."))
+        if not isinstance(a.get("markdown"), str):
+            raise Fail(400, t("ungültige Angabe"))
+        try:
+            _, d = api_v1.page_update(tok, nid, {"markdown": a["markdown"], "rev": _rev(a)})
+        except Fail as f:
+            if f.status == 409:
+                raise Fail(409, api_v1.conflict_msg(tok, nid))
+            raise
+        return json.dumps({"ok": True, "rev": d.get("rev")}, ensure_ascii=False)
+    if name == "update_block":
+        b = {k: a[k] for k in ("block_id", "heading", "markdown", "mode") if a.get(k) is not None}
+        b["rev"] = _rev(a, False)
+        _, d = api_v1.block_update(tok, _int(a, "id"), b)
+        return json.dumps({k: d.get(k) for k in ("ok", "rev", "mode", "target", "ids")}, ensure_ascii=False)
+    if name == "set_checkbox":
+        b = {k: a.get(k) for k in ("block_id", "item", "text", "checked")}
+        b["rev"] = _rev(a, False)
+        _, d = api_v1.checkbox_set(tok, _int(a, "id"), b)
+        return _data({k: d.get(k) for k in ("ok", "rev", "block_id", "item", "text", "checked", "changed")}, f"page:{a.get('id')}")
+    if name == "trash_page":
+        _, d = api_v1.page_delete(tok, _int(a, "id"))
+        return t("In den Papierkorb gelegt ({n} Seiten, im Web wiederherstellbar).", n=d.get("trashed", 0))
+    if name == "archive_page":
+        on = a.get("archived", True)
+        if not isinstance(on, bool):
+            raise Fail(400, t("„archived“ muss true oder false sein."))
+        _, d = api_v1.page_archive(tok, _int(a, "id"), on)
+        return (t("Archiviert ({n} Seiten).", n=d["count"]) if on else t("Zurückgeholt ({n} Seiten).", n=d["count"]))
     if name == "list_databases":
         _, d = api_v1.databases(tok, a.get("query") or "", 50)
         return _data(d["databases"], "databases")
@@ -341,7 +425,7 @@ def handle(tok, msg):
     if method == "tools/call":
         name = params.get("name")
         spec = BY_NAME.get(name) if isinstance(name, str) else None
-        if not spec or not tok.has(spec[1]):
+        if not spec or not _has(tok, spec[1]):
             return _err(rid, -32602, f"Unknown tool: {str(name)[:60]}")
         if spec[5] or name == "get_image":
             # Schreibwerkzeuge zaehlen zusaetzlich als Schreibzugriff, get_image (Umrechnung) zusaetzlich als Lesezugriff
@@ -353,7 +437,10 @@ def handle(tok, msg):
             content = out if isinstance(out, list) else [{"type": "text", "text": out}]
             return _ok(rid, {"content": content, "isError": False})
         except Fail as f:
-            return _ok(rid, {"content": [{"type": "text", "text": _neutral(f"{f.code}: {f.msg}")}], "isError": True})
+            txt = _neutral(f"{f.code}: {f.msg}")
+            if f.extra:                          # Kandidaten u. a. enthalten Seitentext -> im Daten-Rahmen
+                txt += "\n" + _data(f.extra, "error")
+            return _ok(rid, {"content": [{"type": "text", "text": txt}], "isError": True})
         except (ValueError, TypeError, OverflowError, RecursionError):
             return _ok(rid, {"content": [{"type": "text", "text": "bad_request: " + t("ungültige Angabe")}], "isError": True})
     if method in ("resources/list", "prompts/list"):

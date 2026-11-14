@@ -1486,9 +1486,13 @@ async def api_note_archive(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid                              # Archivieren: nur der Eigentuemer
     b = await _body(request) or {}
-    on = bool(b.get("archived", True))
+    return await run_in_threadpool(note_archive, uid, nid, bool(b.get("archived", True)), origin_of(request))
+
+
+def note_archive(uid, nid, on=True, origin=None):
+    """Archivieren/Zurueckholen (nur der Eigentuemer) - Weboberflaeche und MCP (archive_page)."""
+    owner = uid                              # Archivieren: nur der Eigentuemer
     with _db() as c, c:
         _, _, err = access(c, uid, nid, "owner")
         if err is not None:
@@ -1505,8 +1509,8 @@ async def api_note_archive(nid: int, request: Request):
                 return JSONResponse({"ok": True, "archived": 0})
             now = time.time()
             n = sum(c.execute("UPDATE note SET archived=? WHERE id=? AND uid=? AND archived IS NULL", (now, i, owner)).rowcount for i in ids)
-            announce_tree(c, owner, nid, ids, uid, now, True, origin=origin_of(request))
-            tree_changed(c, owner, ids, "archived", origin_of(request))
+            announce_tree(c, owner, nid, ids, uid, now, True, origin=origin)
+            tree_changed(c, owner, ids, "archived", origin)
             return JSONResponse({"ok": True, "archived": n})
         if me[0] is None:
             return JSONResponse({"ok": True, "restored": 0})
@@ -1517,8 +1521,8 @@ async def api_note_archive(nid: int, request: Request):
             if par and par[0] is not None and par[1] != "database":
                 before = share_targets(c, owner, [nid])                 # Kette vorher (Live)
                 c.execute("UPDATE note SET parent_id=NULL WHERE id=? AND uid=?", (nid, owner))
-        announce_tree(c, owner, nid, ids, uid, time.time(), False, origin=origin_of(request), before=before)
-        tree_changed(c, owner, ids, "restored", origin_of(request), before=before)
+        announce_tree(c, owner, nid, ids, uid, time.time(), False, origin=origin, before=before)
+        tree_changed(c, owner, ids, "restored", origin, before=before)
         return JSONResponse({"ok": True, "restored": n})
 
 

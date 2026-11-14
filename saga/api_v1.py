@@ -42,9 +42,10 @@ _CODES = {400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_f
 class Fail(Exception):
     """Fehler mit Status - von API und MCP gleich behandelt."""
 
-    def __init__(self, status, msg, code=None):
+    def __init__(self, status, msg, code=None, extra=None):
         super().__init__(msg)
         self.status, self.msg, self.code = status, msg, code or _CODES.get(status, "error")
+        self.extra = extra or {}                 # z. B. {"candidates": [...]} - Nutzerinhalt (MCP: im Daten-Rahmen)
 
 
 def _resp(status, data):
@@ -177,10 +178,10 @@ def page_read(tok, nid, fmt="blocks"):
                 _synced_roots(c, tok, blocks)
     elif d.get("body"):
         blocks = [{"type": "paragraph", "data": {"text": d["body"]}}]
-    if fmt == "markdown":
+    if fmt in ("markdown", "both"):
         out["markdown"] = blocks_to_markdown(blocks)
-    else:
-        out["blocks"] = blocks
+    if fmt != "markdown":
+        out["blocks"] = blocks                  # both (MCP get_page mit blocks: true): fuer die Gliederung
     return 200, out
 
 
@@ -269,6 +270,101 @@ def page_delete(tok, nid):
         _guard(c, tok, nid, "view")
     d = _relay(note_trash(tok.uid, int(nid), "api"))
     return 200, {"ok": True, "trashed": d.get("deleted", 0)}
+
+
+def page_rev(tok, nid):
+    """Aktuelle Revision (fuer verstaendliche Konflikt-Meldungen)."""
+    with _db() as c:
+        _guard(c, tok, nid, "view")
+        r = c.execute("SELECT rev FROM note WHERE id=? AND deleted_at IS NULL", (int(nid),)).fetchone()
+    return r[0] if r else None
+
+
+def conflict_msg(tok, nid):
+    return t("Seite wurde inzwischen geändert (rev {rev}) – bitte neu lesen (get_page) und erneut versuchen.", rev=page_rev(tok, nid))
+
+
+def blocks_edit(tok, nid, fn, rev=None):
+    """2.5 (MCP 2023): Bloecke einer Seite gezielt aendern. fn(blocks) aendert die Liste in place (saga.blockedit) und
+    liefert ein Ergebnis-dict. Gelesen und geschrieben wird wie im Web (note_get/_note_update, Ursprung "api") mit der
+    gelesenen bzw. mitgegebenen Revision - dazwischen geaendert -> 409, nie still ueberschreiben. Kopien synchronisierter
+    Bloecke schreiben nicht ins Original durch (ohne Faehigkeit sync1)."""
+    from saga import blockedit
+    from saga.pages import CLIENT_CAPS, _Reply, _note_update, note_get
+    with _db() as c:
+        _guard(c, tok, nid, "edit")
+    cur = _relay(note_get(tok.uid, int(nid)))
+    if cur.get("locked"):
+        raise Fail(423, t("Seite ist gesperrt – erst entsperren"))
+    if cur.get("format") != "blocks":
+        raise Fail(400, t("Diese Seite ist eine Text-Notiz – nur der ganze Inhalt lässt sich ersetzen (replace_page_content)."))
+    if rev is not None:
+        try:
+            rev = int(rev)
+        except (TypeError, ValueError, OverflowError):
+            raise Fail(400, t("ungültige Revision"))
+        if rev != cur.get("rev"):
+            raise Fail(409, conflict_msg(tok, nid))
+    blocks = _json_load(cur.get("body"), {}).get("blocks") or []
+    if tok.roots and '"synced"' in (cur.get("body") or ""):
+        with _db() as c:
+            _synced_roots(c, tok, blocks)
+    try:
+        res = fn(blocks)
+    except blockedit.EditError as e:
+        raise Fail(e.status, e.msg, extra={"candidates": e.cands} if e.cands else None)
+    if res.pop("unchanged", False):
+        return 200, dict(res, ok=True, rev=cur.get("rev"))
+    blockedit.strip_view(blocks)
+    body = json.dumps({"blocks": blocks}, ensure_ascii=False)
+    try:
+        try:
+            d = _relay(_note_update(tok.uid, int(nid), {"body": body, "format": "blocks", "rev": cur.get("rev")}, "api",
+                                    caps=CLIENT_CAPS - {"sync1"}))
+        except _Reply as r:
+            _relay(r.resp)
+    except Fail as f:
+        if f.status == 409:
+            raise Fail(409, conflict_msg(tok, nid))
+        raise
+    return 200, dict(res, ok=True, rev=d.get("rev"), updated=d.get("updated"))
+
+
+def block_update(tok, nid, b):
+    """Block/Abschnitt ersetzen, einfuegen oder loeschen (saga.blockedit.apply). b: block_id | heading, markdown, mode, rev."""
+    from saga import blockedit
+    mode = b.get("mode")
+    md = b.get("markdown")
+    if mode != "delete" and md is None and mode != "replace_section":
+        raise Fail(400, t("Markdown fehlt (zum Entfernen mode „delete“)."))
+    new = md_to_blocks(md) if md not in (None, "") else []
+    bid = b.get("block_id")
+    head = b.get("heading")
+    if bid is not None and not isinstance(bid, str) or head is not None and not isinstance(head, str):
+        raise Fail(400, t("ungültige Angabe"))
+    return blocks_edit(tok, nid, lambda blocks: blockedit.apply(blocks, new, mode, bid, head), b.get("rev"))
+
+
+def checkbox_set(tok, nid, b):
+    from saga import blockedit
+    item = b.get("item")
+    if item is not None and not isinstance(item, (str, int)) or isinstance(item, bool):
+        raise Fail(400, t("ungültige Angabe"))
+
+    def fn(blocks):
+        r = blockedit.set_checkbox(blocks, b.get("checked"), b.get("block_id"), None if item is None else str(item), b.get("text"))
+        if not r["changed"]:
+            r["unchanged"] = True
+        return r
+    return blocks_edit(tok, nid, fn, b.get("rev"))
+
+
+def page_archive(tok, nid, on=True):
+    from saga.pages import note_archive
+    with _db() as c:
+        _guard(c, tok, nid, "view")
+    d = _relay(note_archive(tok.uid, int(nid), bool(on), "api"))
+    return 200, {"ok": True, "archived": bool(on), "count": d.get("archived", d.get("restored", 0))}
 
 
 def _parent_db(nid):
@@ -553,7 +649,7 @@ async def _run(request, scope, write, fn, *args):
     try:
         st, data = await run_in_threadpool(fn, tok, *args)
     except Fail as f:
-        return _resp(f.status, {"error": f.msg, "code": f.code})
+        return _resp(f.status, dict(f.extra, error=f.msg, code=f.code))
     return _resp(st, data)
 
 
@@ -604,6 +700,29 @@ async def v1_page_patch(nid: int, request: Request):
 @router.delete("/api/v1/pages/{nid}")
 async def v1_page_delete(nid: int, request: Request):
     return await _run(request, "write:pages", True, page_delete, nid)
+
+
+@router.post("/api/v1/pages/{nid}/blocks")
+async def v1_page_blocks(nid: int, request: Request):
+    """2.5: Block/Abschnitt aendern (wie MCP update_block): {block_id | heading, markdown, mode, rev}."""
+    b, err = await _json(request)
+    return err or await _run(request, "write:pages", True, block_update, nid, b)
+
+
+@router.post("/api/v1/pages/{nid}/checkbox")
+async def v1_page_checkbox(nid: int, request: Request):
+    """2.5: Kaestchen einer Checkliste (wie MCP set_checkbox): {block_id, item | text, checked, rev}."""
+    b, err = await _json(request)
+    return err or await _run(request, "write:pages", True, checkbox_set, nid, b)
+
+
+@router.post("/api/v1/pages/{nid}/archive")
+async def v1_page_archive(nid: int, request: Request):
+    """2.5: archivieren {archived: true} (Standard) bzw. zurueckholen {archived: false} - nur eigene Seiten."""
+    b, err = await _json(request)
+    if err is None and not isinstance(b.get("archived", True), bool):
+        err = _resp(400, {"error": t("ungültige Angabe"), "code": "bad_request"})
+    return err or await _run(request, "write:pages", True, page_archive, nid, b.get("archived", True))
 
 
 @router.get("/api/v1/pages/{nid}/comments")

@@ -124,6 +124,28 @@ try:
     st, d, _, _ = call("PATCH", f"/api/v1/pages/{K}", bearer=T, b={"title": "Kind neu", "rev": (rv or 1) - 1, "markdown": "x"})
     ok("PATCH mit alter rev -> 409", st == 409, d)
     ok("PATCH ohne Inhalt -> 400", call("PATCH", f"/api/v1/pages/{K}", bearer=T, b={})[0] == 400)
+    # 2.5 (MCP 2023): Bloecke gezielt aendern, Kaestchen, Archiv - dieselben Funktionen wie die MCP-Werkzeuge
+    TB = mk(["write:pages"], "Bloecke")[1].get("token", "")             # eigener Token: Ratenbegrenzung der Reihe nicht aufbrauchen
+    KB = call("POST", "/api/v1/pages", bearer=TB, b={"title": "Bloecke", "parent_id": R})[1]["id"]
+    call("PATCH", f"/api/v1/pages/{KB}", bearer=TB, b={"blocks": [{"id": "hx", "type": "header", "data": {"text": "Status", "level": 2}},
+         {"id": "px", "type": "paragraph", "data": {"text": "alt"}}, {"id": "h2", "type": "header", "data": {"text": "Liste", "level": 2}},
+         {"id": "lx", "type": "list", "data": {"style": "checklist", "meta": {}, "items": [{"content": "a", "meta": {"checked": False}, "items": []}]}}]})
+    st, d, _, _ = call("POST", f"/api/v1/pages/{KB}/blocks", bearer=TB, b={"heading": "Status", "markdown": "neu"})
+    bl = call("GET", f"/api/v1/pages/{KB}", bearer=TB)[1].get("blocks") or []
+    ok("POST /blocks: Abschnitt per Ueberschrift ersetzt, Checkliste unveraendert", st == 200 and len(bl) == 4 and d.get("mode") == "replace_section"
+       and [b["id"] for b in bl][0] == "hx" and bl[1]["data"]["text"] == "neu" and bl[3]["id"] == "lx", (d, bl))
+    st, d, _, _ = call("POST", f"/api/v1/pages/{KB}/blocks", bearer=TB, b={"heading": "Fehlt", "markdown": "x"})
+    ok("POST /blocks: Ueberschrift fehlt -> 404 mit candidates", st == 404 and d.get("candidates", [{}])[0].get("id") == "hx", d)
+    st, d, _, _ = call("POST", f"/api/v1/pages/{KB}/blocks", bearer=TB, b={"block_id": "px", "markdown": "x", "rev": 1})
+    ok("POST /blocks: alte rev -> 409", st == 409 and d.get("code") == "conflict", d)
+    st, d, _, _ = call("POST", f"/api/v1/pages/{KB}/checkbox", bearer=TB, b={"block_id": "lx", "item": "1", "checked": True})
+    ok("POST /checkbox", st == 200 and d.get("changed") is True and
+       call("GET", f"/api/v1/pages/{KB}", bearer=TB)[1]["blocks"][3]["data"]["items"][0]["meta"]["checked"] is True, d)
+    st, d, _, _ = call("POST", f"/api/v1/pages/{KB}/archive", bearer=TB, b={})
+    ok("POST /archive -> archiviert", st == 200 and d.get("archived") is True and call("GET", f"/api/v1/pages/{KB}", bearer=TB)[1].get("archived") is True, d)
+    st, d, _, _ = call("POST", f"/api/v1/pages/{KB}/archive", bearer=TB, b={"archived": False})
+    ok("POST /archive archived=false -> zurueck", st == 200 and call("GET", f"/api/v1/pages/{KB}", bearer=TB)[1].get("archived") is False, d)
+    ok("POST /archive archived kein bool -> 400", call("POST", f"/api/v1/pages/{KB}/archive", bearer=TB, b={"archived": "ja"})[0] == 400)
     ok("Markdown: javascript:-Link wird Text", "javascript" not in call("GET", f"/api/v1/pages/{call('POST', '/api/v1/pages', bearer=T, b={'title': 'js', 'parent_id': R, 'markdown': '[x](javascript:alert(1))'})[1]['id']}", bearer=T)[2])
     st, d, _, _ = call("GET", "/api/v1/search?q=kind-text", bearer=T)
     ok("Suche findet Inhalt", st == 200 and any(x["id"] == K for x in d["results"]), d)
