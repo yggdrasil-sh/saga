@@ -264,8 +264,10 @@ def util(n):
 
 
 def cert_ok(n):
-    """Gekoppelte Knoten brauchen ein Zertifikat (Browser pruefen es), "self" nur mit HORN_TLS_SELF (Tests)."""
-    return bool(n.get("builtin")) or ((n.get("cert") or {}).get("state") in ("ok", "self"))
+    """Jeder Knoten braucht ein gemeldetes, gueltiges Zertifikat (Browser pruefen es): "ok" (Datei, DNS-01, TLS-ALPN-01)
+    bzw. "self" nur mit HORN_TLS_SELF (Tests). 2.5 (horn-admin): auch der eingebaute - vorher galt er immer als bereit und
+    wurde ohne Zertifikat als erster angeboten (Anrufe scheiterten erst am TLS)."""
+    return (n.get("cert") or {}).get("state") in ("ok", "self")
 
 
 def ready(n, now=None):
@@ -557,7 +559,7 @@ def _clean_cert(d):
     except (TypeError, ValueError):
         pass
     if d.get("err"):
-        out["err"] = str(d["err"])[:300]
+        out["err"] = clean_detail(d["err"])        # 2.5: ohne Pfade/Kennungen (Admin-Bereich, /api/calls/state)
     return out
 
 
@@ -629,6 +631,11 @@ def _store_load(nid, ld, now, stats=None):
         else:
             c.execute("UPDATE horn_node SET load=CAST(? AS JSONB), seen=?, state=? WHERE id=? AND removed IS NULL",
                       (json.dumps(ld), now, st, nid))
+
+
+def _set_udp(nid, udp):
+    with _db() as c, c:
+        c.execute("UPDATE horn_node SET udp=? WHERE id=?", (bool(udp), nid))
 
 
 def _set_json(nid, col, v):
@@ -753,9 +760,12 @@ async def ctl(ws: WebSocket):
     welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
     if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)
         welcome["origins"] = await asyncio.to_thread(HOOKS["origins"])
+    # cert (2.5, horn-admin: auch der eingebaute): dns01 mit Cloudflare-Token in Saga, sonst alpn. Eigene Zertifikatsdateien
+    # und HORN_TLS_SELF fasst der Knoten dabei nie an (gjallarhorn acmedns.go certMode).
+    welcome["cert"] = await asyncio.to_thread(_acme_mode)
     if not builtin:
         drain = await asyncio.to_thread(_node_drain, nid)
-        welcome.update(want=VERSION, solo=await asyncio.to_thread(solo), drain=drain, cert=await asyncio.to_thread(_acme_mode))
+        welcome.update(want=VERSION, solo=await asyncio.to_thread(solo), drain=drain)
     await ws.send_json(welcome)
     if not builtin:
         await asyncio.to_thread(broadcast_peers)
@@ -813,16 +823,13 @@ async def ctl(ws: WebSocket):
             elif t == "bridge" and isinstance(m.get("bridge"), str):   # P9: Kaskade abgelehnt (Grund)
                 live = _LIVE.setdefault(nid, {"db": 0})
                 live.setdefault("bridges", {})[m["bridge"][:64]] = {"st": "err", "why": str(m.get("why") or "")[:200]}
-            elif builtin:
-                continue
-            elif t == "cert":
+            elif t == "udp":                           # 2.5: Ergebnis eines (wiederholten) UDP-Selbsttests
+                uc = str(m.get("udp_check") or "")
+                live = _LIVE.setdefault(nid, {"db": 0})
+                live["udp_check"] = uc if uc in UDP_CHECKS else ""
+                await asyncio.to_thread(_set_udp, nid, bool(m.get("udp")) and uc == "ok")
+            elif t == "cert":                          # 2.5: auch der eingebaute (Bereitschaft haengt am Zertifikat)
                 await asyncio.to_thread(_set_json, nid, "cert", _clean_cert(m))
-            elif t == "update":
-                await asyncio.to_thread(_set_json, nid, "upd", _clean_upd(m))
-            elif t == "addr" and HOOKS.get("addr"):
-                v4, v6 = _ip(m.get("v4"), 4), _ip(m.get("v6"), 6)
-                if v4 or v6:
-                    asyncio.get_running_loop().run_in_executor(None, HOOKS["addr"], nid, v4, v6)
             elif t == "acme_txt":
                 now = time.time()
                 acme_n[:] = [x for x in acme_n if now - x < 3600] + [now]
@@ -833,6 +840,14 @@ async def ctl(ws: WebSocket):
                     ok, err = await asyncio.to_thread(HOOKS["acme_txt"], nid, str(m.get("op") or ""), str(m.get("name") or "")[:300],
                                                       str(m.get("value") or "")[:100])
                 k.q.put_nowait({"t": "acme_txt", "rid": rid, "ok": ok, **({"err": err} if err else {})})
+            elif builtin:
+                continue
+            elif t == "update":
+                await asyncio.to_thread(_set_json, nid, "upd", _clean_upd(m))
+            elif t == "addr" and HOOKS.get("addr"):
+                v4, v6 = _ip(m.get("v4"), 4), _ip(m.get("v6"), 6)
+                if v4 or v6:
+                    asyncio.get_running_loop().run_in_executor(None, HOOKS["addr"], nid, v4, v6)
     except Exception:  # noqa: BLE001 - Verbindung weg, Zeitueberschreitung, kein JSON
         pass
     finally:

@@ -236,8 +236,17 @@ func (c *ctlClient) session() error {
 	if w.Drain != nil {
 		s.setDrain(*w.Drain)
 	}
-	if c.key == "" { // gekoppelter Knoten: Zertifikat und Updates steuert Saga
-		s.certMode(w.Cert)
+	// Zertifikat steuert Saga bei allen Knoten (2.5: auch beim eingebauten; eigene Dateien/HORN_TLS_SELF fasst certMode
+	// nie an), Updates nur bei gekoppelten (der eingebaute kommt mit dem Saga-Image)
+	cm := w.Cert
+	if cm == "" && c.key != "" {
+		cm = "alpn" // aeltere Saga schickt dem eingebauten keine Art: wie bisher TLS-ALPN-01
+	}
+	s.certMode(cm)
+	if s.UDPCheck().State != uc.State { // Selbsttest wurde waehrend des Handshakes fertig (2.5)
+		s.reportUDP()
+	}
+	if c.key == "" {
 		s.upd.target(w.Want, w.Solo != nil && *w.Solo)
 	}
 	stop := make(chan struct{})
@@ -311,9 +320,7 @@ func (c *ctlClient) session() error {
 				s.upd.target(m.Want, s.upd.isSolo())
 			}
 		case "cert":
-			if c.key == "" {
-				s.certMode(m.Cert)
-			}
+			s.certMode(m.Cert) // 2.5: auch der eingebaute (Cloudflare-Token in Saga eingetragen/entfernt)
 		case "acme_txt":
 			c.mu.Lock()
 			ch := c.wait[m.RID]

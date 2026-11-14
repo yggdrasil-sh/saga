@@ -1,6 +1,7 @@
 package netx
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
@@ -175,8 +177,11 @@ func (c *Certs) UseFiles(certFile, keyFile string) error {
 // NotAfter: Ablauf des aktuellen Zertifikats (Null-Zeit ohne Zertifikat).
 func (c *Certs) NotAfter() time.Time {
 	c.mu.RLock()
-	cur := c.cur
+	cur, mode, alpn := c.cur, c.mode, c.alpn
 	c.mu.RUnlock()
+	if (cur == nil || len(cur.Certificate) == 0) && mode == "acme" && alpn {
+		return c.acmeNotAfter()
+	}
 	if cur == nil || len(cur.Certificate) == 0 {
 		return time.Time{}
 	}
@@ -185,6 +190,38 @@ func (c *Certs) NotAfter() time.Time {
 		return time.Time{}
 	}
 	return x.NotAfter
+}
+
+// acmeNotAfter: TLS-ALPN-01 (autocert) haelt sein Zertifikat nur im Cache - Ablauf des spaetesten gueltigen
+// Zertifikats fuer Name (ECDSA bzw. RSA) aus dem Cache lesen, ohne eine Bestellung auszuloesen. Vorher meldete der Knoten
+// nach einer Neuverbindung der Steuerung (gleicher Modus) "fehlt", obwohl autocert ein Zertifikat hatte.
+func (c *Certs) acmeNotAfter() time.Time {
+	if c.acme == nil || c.acme.Cache == nil || c.Name == "" {
+		return time.Time{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var best time.Time
+	for _, k := range []string{c.Name, c.Name + "+rsa"} {
+		b, err := c.acme.Cache.Get(ctx, k)
+		if err != nil {
+			continue
+		}
+		for len(b) > 0 {
+			var blk *pem.Block
+			if blk, b = pem.Decode(b); blk == nil {
+				break
+			}
+			if blk.Type != "CERTIFICATE" {
+				continue
+			}
+			if x, err := x509.ParseCertificate(blk.Bytes); err == nil && x.NotAfter.After(best) && x.VerifyHostname(c.Name) == nil {
+				best = x.NotAfter
+			}
+			break // erstes Zertifikat = Blatt
+		}
+	}
+	return best
 }
 
 func fileExists(p string) bool {

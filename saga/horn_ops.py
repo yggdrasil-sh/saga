@@ -667,10 +667,12 @@ ACME_VAL = re.compile(r"[A-Za-z0-9_-]{43}")
 
 
 def acme_txt(nid, op, name, value):
-    """DNS-01 fuer einen Knoten: TXT _acme-challenge.<Name dieses Knotens> setzen bzw. loeschen -> (ok, Fehler)."""
+    """DNS-01 fuer einen Knoten: TXT _acme-challenge.<Name dieses Knotens> setzen bzw. loeschen -> (ok, Fehler).
+    2.5 (horn-admin): auch der eingebaute (Name aus HORN_NAME; hinter einer Durchreiche auf einem anderen Port als 443
+    geht TLS-ALPN-01 nicht)."""
     with _db() as c:
         n = _node(c, nid)
-    if not n or n["builtin"]:
+    if not n:
         return False, "knoten"
     want = "_acme-challenge." + n["name"]
     if name.lower().rstrip(".") != want:
@@ -949,6 +951,7 @@ def admin_state():
                     "link": n.get("link_mbit"), "util": round(100 * horn.util(n)), "peers": int(ld.get("peers") or 0),
                     "legs": int(ld.get("legs") or 0), "version": n.get("version") or "", "share": bool(n["share"]),
                     "drain": bool(n.get("drain")), "checks": ck, "cert": n.get("cert") or {}, "upd": upd_view(n.get("upd"), n.get("version")),
+                    "cert_err": horn.clean_detail((n.get("cert") or {}).get("err") or ""),   # auch fuer Altbestand
                     "ctl": n["id"] in horn._CONNS, "v4": n.get("v4") or "", "v6": n.get("v6") or "", "port": n.get("port") or 443,
                     "url": n.get("url") or "", "dns": [] if cloudflare.configured() or n["builtin"] else dns_needed(n),
                     "stats": n2["stats"],

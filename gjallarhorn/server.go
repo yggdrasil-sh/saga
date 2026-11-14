@@ -106,7 +106,10 @@ func loadConfig(bench bool) (*config, error) {
 	if c.MaxPerIP < 1 {
 		c.MaxPerIP = 12
 	}
-	external := c.Mode == "node" && os.Getenv("HORN_SAGA") != "" && os.Getenv("HORN_SAGA_CTL") == ""
+	// P7 + 2.5 (horn-admin): gekoppelte und eingebaute Knoten (Steuerkanal zu Saga) warten mit ACME, bis Saga im welcome
+	// DNS-01 (Cloudflare-Token in Saga) oder TLS-ALPN-01 festlegt - der eingebaute hinter einer TLS-Durchreiche auf einem
+	// anderen Port als 443 bekommt per TLS-ALPN-01 nie ein Zertifikat (Let's Encrypt prueft nur 443)
+	external := c.Mode == "node" && (os.Getenv("HORN_SAGA") != "" || os.Getenv("HORN_SAGA_CTL") != "")
 	certFile := env("HORN_TLS_CERT", filepath.Join(c.Data, "tls", "fullchain.pem"))
 	keyFile := env("HORN_TLS_KEY", filepath.Join(c.Data, "tls", "privkey.pem"))
 	c.Certs = netx.CertOptions{
@@ -115,7 +118,7 @@ func loadConfig(bench bool) (*config, error) {
 		ACMEDir:   filepath.Join(c.Data, "tls", "acme"),
 		ACMEURL:   os.Getenv("HORN_ACME_URL"),
 		ACMEEmail: os.Getenv("HORN_ACME_EMAIL"),
-		Defer:     external, // P7: gekoppelter Knoten - Saga legt DNS-01 oder TLS-ALPN-01 fest
+		Defer:     external, // P7/2.5: Saga legt DNS-01 oder TLS-ALPN-01 fest
 	}
 	if bench {
 		c.Certs.Self = true
@@ -362,7 +365,7 @@ func newServer(cfg *config) (*server, error) {
 	srv := &http.Server{Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second, ErrorLog: log.New(discard{}, "", 0)}
 	go func() { _ = srv.Serve(s.mux.HTTP) }()
 	go s.reaper()
-	go s.udpSelfTest()
+	go s.udpSelfTestLoop()
 	if s.node != nil && !cfg.Dev {
 		go s.roomReaper()
 		if u := os.Getenv("HORN_SAGA_CTL"); u != "" {
@@ -655,6 +658,37 @@ func (s *server) udpSelfTest() *netx.UDPCheck {
 	s.udpCheck.Store(res)
 	log.Printf("udp-selbsttest: %s (%s)", res.State, via)
 	return res
+}
+
+// udpSelfTestLoop (2.5, horn-admin): Selbsttest beim Start; bei "fehlt" erneut nach 1, 5 und 15 min, danach alle 30 min
+// (Portfreigabe bzw. UDP-Dienst am Proxy kommt oft erst nach dem Start dazu). Jedes neue Ergebnis geht als "udp" an
+// Saga - auch das erste: der Steuerkanal verbindet sich meist, bevor der Test fertig ist (hello: udp_check "unbekannt").
+func (s *server) udpSelfTestLoop() {
+	waits := []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute}
+	prev := ""
+	for i := 0; !s.closing.Load(); i++ {
+		r := s.udpSelfTest()
+		if r.State != prev {
+			prev = r.State
+			s.reportUDP()
+		}
+		if r.State != "fehlt" {
+			return
+		}
+		d := 30 * time.Minute
+		if i < len(waits) {
+			d = waits[i]
+		}
+		time.Sleep(d)
+	}
+}
+
+// reportUDP: Ergebnis des UDP-Selbsttests an Saga (wie im hello).
+func (s *server) reportUDP() {
+	if c := s.ctlc(); c != nil {
+		uc := s.UDPCheck()
+		c.send(map[string]any{"t": "udp", "udp": s.sfuUDP != nil && uc.State == "ok", "udp_check": uc.State})
+	}
 }
 
 // UDPCheck liefert das letzte Ergebnis des Selbsttests.

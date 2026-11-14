@@ -1007,7 +1007,7 @@ async def calls_post(request: Request):
             for n in horn_ops.admin_state()["nodes"]:
                 if not n["builtin"]:
                     await run_in_threadpool(horn_ops.dns_sync, n["id"])
-                    horn.send(n["id"], {"t": "cert", "cert": "dns01"})
+                horn.send(n["id"], {"t": "cert", "cert": "dns01"})     # 2.5: auch der eingebaute (DNS-01 statt TLS-ALPN-01)
         elif r["err"] == "zone_waehlen":
             return _calls_ctx(request, me, cf_zones=r["zones"], cf_token=tok)
         else:
@@ -1017,8 +1017,7 @@ async def calls_post(request: Request):
         cloudflare.clear()
         print(f"admin: {who} entfernt den Cloudflare-Token", flush=True)
         for n in horn_ops.admin_state()["nodes"]:
-            if not n["builtin"]:
-                horn.send(n["id"], {"t": "cert", "cert": "alpn"})
+            horn.send(n["id"], {"t": "cert", "cert": "alpn"})
         _flash(request, t("Cloudflare-Token entfernt. Vorhandene DNS-Einträge bleiben bestehen."))
         return _go("/calls#dns")
     elif act == "pair":
