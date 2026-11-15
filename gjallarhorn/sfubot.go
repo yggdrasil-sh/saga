@@ -32,6 +32,7 @@ type sfuBot struct {
 	layers []string      // gesendete Schichten, z. B. l, m
 	// bend (nur Tests, 2.5 A3 Weg "ws"): Antwort-SDP je Leitung vor dem Setzen biegen (passiver TCP-Kandidat -> Tunnel)
 	bend func(role, sdp string) string
+	toks map[string]string // nur Tests: Medien-Token von Saga je Leitung (sonst Entwicklungs-Token)
 
 	pcs     []*webrtc.PeerConnection
 	legIDs  []string
@@ -197,7 +198,9 @@ func (b *sfuBot) join(hc *http.Client, base string, api *webrtc.API, room string
 	}
 	for _, sp := range specs {
 		var tok struct{ Token string }
-		if err := postJSON(hc, base+"/api/dev/token", map[string]any{"room": room, "peer": b.peer, "role": sp.role,
+		if b.toks != nil {
+			tok.Token = b.toks[sp.role]
+		} else if err := postJSON(hc, base+"/api/dev/token", map[string]any{"room": room, "peer": b.peer, "role": sp.role,
 			"device": device, "udp": b.path == "udp"}, &tok); err != nil {
 			return err
 		}

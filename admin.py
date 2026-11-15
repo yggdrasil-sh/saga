@@ -131,7 +131,7 @@ def _update_info():
     return None
 
 
-def _page(request, name, me=None, status=200, **kw):
+def _page(request, name, me=None, status=200, connect=None, **kw):
     flash = request.session.pop("flash", None)
     if me and not flash and time.time() - hk.PROXY_WARN["at"] < 86400:
         flash = [t("Hinweis: Anfragen kommen über einen Reverse Proxy ({ip}), der nicht in TRUSTED_PROXIES steht. Dann teilen sich alle Besucher eine Adresse (Sperre nach Fehlversuchen gilt für alle). Bitte TRUSTED_PROXIES auf diese Adresse setzen.",
@@ -143,7 +143,11 @@ def _page(request, name, me=None, status=200, **kw):
                                           base_url=hk.BASE_URL, path=request.url.path, version=VERSION,
                                           version_label=VERSION_LABEL, channel=channel(),
                                           update=_update_info() if me else None, **kw)
-    return HTMLResponse(html, status_code=status, headers=HEADERS)
+    hd = HEADERS
+    if connect:                                        # 2.5 A3: Pruefung "Proxy reicht WebSocket durch?" (Saga-Adresse)
+        hd = dict(HEADERS, **{"Content-Security-Policy": HEADERS["Content-Security-Policy"].replace(
+            "default-src 'self';", "default-src 'self'; connect-src 'self' " + " ".join(connect) + ";", 1)})
+    return HTMLResponse(html, status_code=status, headers=hd)
 
 
 def _on(f, k):
@@ -933,7 +937,9 @@ def _calls_ctx(request, me, **kw):
         from saga import fed_horn
         with _db() as c:
             remote = fed_horn.remote_shared(c)
-    return _page(request, "calls.html", me, st=st, hs=horn_ops.admin_state(), limits=horn.LIMITS, suggest=sug, remote=remote,
+    hs = horn_ops.admin_state()
+    tu = horn.https_origin((hs.get("tunnel") or {}).get("url") or "")
+    return _page(request, "calls.html", me, connect=[tu, "wss" + tu[5:]] if tu else None, st=st, hs=hs, limits=horn.LIMITS, suggest=sug, remote=remote,
                  mesh_from=calls.limit("video") + 1, mesh_from_a=calls.limit("audio") + 1, **kw)
 
 

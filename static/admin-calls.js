@@ -144,7 +144,8 @@
 
 // 2.5 A3: "Proxy reicht WebSocket durch?" - vom Browser des Admins ueber denselben Weg wie die Apps (Saga-Adresse, Proxy):
 // WebSocket mit saga-tunnel.1 oeffnen (kommt "open", reicht der Proxy durch; ohne Zugang schliesst der Knoten nach 10 s,
-// hier sofort). Klappt das nicht, sagt GET ohne Upgrade, warum: 426 = Knoten erreicht, Upgrade fehlt; sonst Knoten weg.
+// hier sofort). Klappt das nicht: Hat der Knoten danach eine Anfrage ohne Upgrade gezaehlt (426), fehlt "Websockets
+// Support" am Proxy; sonst kam nichts beim Knoten an.
 (function () {
   'use strict';
   var cell = document.querySelector('.tu-check');
@@ -153,22 +154,35 @@
   var res = cell.querySelector('.tu-res');
   btn.hidden = false;
   function show(k) { res.textContent = cell.dataset[k] || k; btn.disabled = false; }
+  // Zaehler des Knotens (Lastmeldung alle 5 s): Anfragen ohne Upgrade (426) sieht er, auch wenn der Browser den Grund nicht erfaehrt
+  function noUpgrade() {
+    return fetch('/api/calls/state', { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { return r.json(); })
+      .then(function (j) { return ((j.tunnel || {}).no_upgrade) || 0; }, function () { return -1; });
+  }
   btn.addEventListener('click', function () {
     btn.disabled = true;
     res.textContent = cell.dataset.run;
-    var u = new URL(btn.dataset.url, location.href), done = false, ws;
+    var u = new URL(btn.dataset.url, location.href), done = false, ws, n0 = 0;
     u.protocol = u.protocol === 'http:' ? 'ws:' : 'wss:';
-    var http = new URL(btn.dataset.url, location.href).href;
     function fallback() {
       if (done) return;
       done = true;
-      fetch(http, { headers: { 'X-Saga': '1' }, cache: 'no-store' }).then(function (r) {
-        show(r.status === 426 ? 'no' : (r.status === 502 || r.status === 503 || r.status === 404) ? 'node' : 'err');
-      }, function () { show('err'); });
+      var t0 = Date.now();
+      (function poll() {
+        noUpgrade().then(function (n) {
+          if (n > n0) show('no');
+          else if (n < 0) show('err');
+          else if (Date.now() - t0 > 8000) show('node');
+          else setTimeout(poll, 1000);
+        });
+      })();
     }
-    var t = setTimeout(function () { try { ws.close(); } catch (e) { /* schon zu */ } fallback(); }, 8000);
-    try { ws = new WebSocket(u.href, 'saga-tunnel.1'); } catch (e) { clearTimeout(t); fallback(); return; }
-    ws.onopen = function () { if (done) return; done = true; clearTimeout(t); ws.close(1000); show('ok'); };
-    ws.onerror = ws.onclose = function () { clearTimeout(t); fallback(); };
+    noUpgrade().then(function (n) {
+      n0 = Math.max(0, n);
+      var t = setTimeout(function () { try { ws.close(); } catch (e) { /* schon zu */ } fallback(); }, 8000);
+      try { ws = new WebSocket(u.href, 'saga-tunnel.1'); } catch (e) { clearTimeout(t); fallback(); return; }
+      ws.onopen = function () { if (done) return; done = true; clearTimeout(t); ws.close(1000); show('ok'); };
+      ws.onerror = ws.onclose = function () { clearTimeout(t); fallback(); };
+    });
   });
 })();

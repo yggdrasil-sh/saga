@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -370,4 +373,109 @@ func TestTunnelEndeZuEnde(t *testing.T) {
 	if lay.Stats.Path != "ws" || lay.Stats.Tunnel == nil || lay.Stats.Tunnel.Tx == 0 || lay.Stats.Tunnel.AcksRx == 0 {
 		t.Fatalf("Bein-Diagnose: %+v %+v", lay.Stats.Path, lay.Stats.Tunnel)
 	}
+}
+
+// TestA3Kette (nur mit A3_URL, aus tests/a3_tunnel.py): zwei Geraete mit Medien-Token von Saga ueber die echte Kette
+// NPM-Nachbau (nginx, TLS) -> saga-media -> node.sock -> eingebauter Knoten im Tunnel-Betrieb, Bein-Weg ws.
+// A3_URL = Saga-Adresse (z. B. https://saga.example.org:8521), A3_DIAL = Ziel der TCP-Verbindungen (nginx),
+// A3_TOKENS = JSON-Datei [{"audio": "h1…", "video": "h1…"}, …], A3_SECS = Dauer.
+func TestA3Kette(t *testing.T) {
+	base, dial, tf := os.Getenv("A3_URL"), os.Getenv("A3_DIAL"), os.Getenv("A3_TOKENS")
+	if base == "" {
+		t.Skip("nur mit A3_URL (tests/a3_tunnel.py)")
+	}
+	var devs []map[string]string
+	b, err := os.ReadFile(tf)
+	if err != nil || json.Unmarshal(b, &devs) != nil || len(devs) < 2 {
+		t.Fatalf("A3_TOKENS: %v", err)
+	}
+	dialer := func(ctx context.Context, network, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, network, dial)
+	}
+	tlsc := &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"http/1.1"}} // nur Pruefstand (selbst signiert)
+	hc := &http.Client{Timeout: 15 * time.Second, Transport: &http.Transport{Proxy: nil, TLSClientConfig: tlsc, DialContext: dialer}}
+	wsURL := "wss" + strings.TrimPrefix(base, "https") + "/api/sfu/ws"
+	tunnel := func(user, cred, role string) int {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { ln.Close() })
+		d := websocket.Dialer{Subprotocols: []string{wstun.Subprotocol}, TLSClientConfig: tlsc, NetDialContext: dialer, HandshakeTimeout: 10 * time.Second}
+		ws, resp, err := d.Dial(wsURL, nil)
+		if err != nil {
+			t.Fatalf("WebSocket ueber den Proxy: %v %v", err, resp)
+		}
+		r, err := wstun.ClientAuth(ws, user, cred, role, 10*time.Second)
+		if err != nil {
+			t.Fatalf("auth: %v", err)
+		}
+		c := wstun.New(ws, nil, nil, wstun.Options{Ack: true, AckBytes: r.AckBytes, AckDelay: time.Duration(r.AckMs) * time.Millisecond})
+		t.Cleanup(func() { c.Close() })
+		go func() {
+			lc, err := ln.Accept()
+			ln.Close()
+			if err != nil {
+				return
+			}
+			go func() { _, _ = io.Copy(lc, c); lc.Close() }()
+			_, _ = io.Copy(c, lc)
+			c.Close()
+		}()
+		return ln.Addr().(*net.TCPAddr).Port
+	}
+	var bots sfuBots
+	defer func() { bots.close() }()
+	for i, tk := range devs[:2] {
+		var cr struct{ Username, Credential string }
+		if err := postJSON(hc, base+"/api/sfu/turn", map[string]string{"token": tk["audio"]}, &cr); err != nil {
+			t.Fatalf("TURN-Zugang: %v", err)
+		}
+		api, err := sfuBotAPI("ws")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := &sfuBot{peer: "a3-" + strconv.Itoa(i), path: "ws", video: true, layers: []string{"l", "m"}, toks: tk}
+		b.level.Store(127)
+		b.bend = func(role, sdp string) string { return bendTo(sdp, tunnel(cr.Username, cr.Credential, role)) }
+		if err := b.join(hc, base, api, "", 1, "desktop"); err != nil {
+			t.Fatalf("Beitritt %d: %v", i, err)
+		}
+		bots = append(bots, b)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) && bots[0].connected()+bots[1].connected() < 4 {
+		time.Sleep(100 * time.Millisecond)
+	}
+	for _, b := range bots {
+		if b.connected() != 2 {
+			t.Fatalf("%s: %d von 2 Leitungen", b.peer, b.connected())
+		}
+		b.start()
+	}
+	secs, _ := strconv.Atoi(os.Getenv("A3_SECS"))
+	if secs <= 0 {
+		secs = 5
+	}
+	time.Sleep(time.Duration(secs) * time.Second)
+	for _, b := range bots {
+		t.Logf("%s: %d Pakete, %d verloren", b.peer, b.rxPkts.Load(), b.rxLost.Load())
+		if b.rxPkts.Load() < uint64(50*secs) {
+			t.Fatalf("%s: nur %d Pakete", b.peer, b.rxPkts.Load())
+		}
+	}
+	var lay struct {
+		Stats legStats `json:"stats"`
+	}
+	resp, err := hc.Get(base + "/api/sfu/leg/" + bots[0].legIDs[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&lay)
+	resp.Body.Close()
+	if lay.Stats.Path != "ws" || lay.Stats.Tunnel == nil || lay.Stats.Tunnel.AcksRx == 0 {
+		t.Fatalf("Bein-Diagnose: %q %+v", lay.Stats.Path, lay.Stats.Tunnel)
+	}
+	t.Logf("Bild-Bein: Fenster %d, RTT %d us, gesendet %d", lay.Stats.Tunnel.Window, lay.Stats.Tunnel.RTTus, lay.Stats.Tunnel.Tx)
 }
