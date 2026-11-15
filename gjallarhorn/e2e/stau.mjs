@@ -57,6 +57,7 @@ function withKids(pid) { // Prozess samt direkten Kindern (nginx-Worker)
   }
   return t;
 }
+const loadAvg = () => { try { return +fs.readFileSync('/proc/loadavg', 'utf8').split(' ')[0]; } catch { return null; } };
 const cpuAll = () => { const o = { chrome: chromeCPU() }; for (const [k, p] of Object.entries(pids)) o[k] = withKids(p); o.t = Date.now(); return o; };
 
 const browser = await chromium.launch({
@@ -116,7 +117,7 @@ while (Date.now() - t0 < secs * 1000) {
   }
   const s = await rep();
   const eng = await fetch(engCtl + '/stats').then((r) => r.json()).catch(() => null);
-  samples.push({ t: Date.now() - t0, dut: s[0], peers: s.slice(1), eng });
+  samples.push({ t: Date.now() - t0, dut: s[0], peers: s.slice(1), eng, load: loadAvg() });
 }
 const r1 = await rep();
 const c1 = cpuAll();
@@ -192,12 +193,12 @@ for (const k of Object.keys(c1)) if (k !== 't' && c1[k] != null && c0[k] != null
 const legs = r1[0].legs;
 const result = { label, path, secs, peers: npeers, at: new Date().toISOString(), joinMs: tReady - tJoin,
   legs: Object.fromEntries(Object.entries(legs).map(([k, l]) => [k, { t_conn: l.t_conn, rtt: l.rtt, cand: l.cand, out: l.out, rin: l.rin }])),
-  down, up, knot, cpuPct: cpuS, eng, node: nodeT, samples: samples.map((s) => ({ t: s.t, eng: s.eng,
+  down, up, knot, cpuPct: cpuS, eng, node: nodeT, loadMax: Math.max(...samples.map((s) => s.load || 0)), samples: samples.map((s) => ({ t: s.t, eng: s.eng, load: s.load,
     dutRtt: Object.values(s.dut.legs).map((l) => l.rtt), dutState: Object.values(s.dut.legs).map((l) => l.state),
     dutRecv: s.dut.recv.filter((x) => x.kind === 'video').map((x) => x.framesDecoded), peerRecv: s.peers[0] && s.peers[0].recv.filter((x) => x.kind === 'video').map((x) => x.framesDecoded), dutOut: Object.values(s.dut.legs).map((l) => (l.out || []).map((o) => [o.rid, o.w, o.fps, o.ql, o.tgt])) })) };
 await browser.close();
 const txt = JSON.stringify(result, null, 1);
 if (out) fs.writeFileSync(out, txt);
 const brief = { label, knot: Object.fromEntries(Object.entries(knot).map(([k, v]) => [k, { est: v.est, stalls: v.stalls, drops: v.drops, maxAgeMs: v.maxAgeMs, slots: v.slots }])), joinMs: result.joinMs, tconn: Object.values(result.legs).map((l) => l.t_conn), cand: Object.values(result.legs).map((l) => l.cand),
-  rtt: Object.values(result.legs).map((l) => l.rtt), down, up, cpu: cpuS, engQ: eng && { up: eng.up.qdelay_max_ms, down: eng.down.qdelay_max_ms } };
+  rtt: Object.values(result.legs).map((l) => l.rtt), down, up, cpu: cpuS, loadMax: result.loadMax, engQ: eng && { up: eng.up.qdelay_max_ms, down: eng.down.qdelay_max_ms } };
 console.log(JSON.stringify(brief));
