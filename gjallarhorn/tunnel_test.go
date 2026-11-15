@@ -172,7 +172,7 @@ func TestTunnelZugang(t *testing.T) {
 	}
 	defer ws.Close()
 	r, err := wstun.ClientAuth(ws, user, cred, "audio", 5*time.Second)
-	if err != nil || r.AckBytes != wstun.DefAckBytes || r.AckMs != 15 || r.V != 1 {
+	if err != nil || r.AckBytes != wstun.DefAckBytes || r.AckMs != 10 || r.V != 1 {
 		t.Fatalf("%+v %v", r, err)
 	}
 }

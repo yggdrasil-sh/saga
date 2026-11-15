@@ -54,8 +54,8 @@ const (
 const (
 	DefMinWindow = 64 << 10 // 24 KiB drosselten bei gestautem Uplink (spaete Quittungen), 128 KiB staute den Downlink
 	DefMaxWindow = 1 << 20
-	DefAckBytes  = 16 << 10
-	DefAckDelay  = 15 * time.Millisecond // Ziel 10-20 ms (5 ms im Spike: doppelt so viele Quittungen)
+	DefAckBytes  = 8 << 10
+	DefAckDelay  = 10 * time.Millisecond // Messung A3: 16 KiB/15 ms liess den Knoten bei 600 kbit/s auf Schicht m (nur Zeitschichten verworfen), 8 KiB/10 ms geht auf l; 5 ms im Spike = doppelt so viele Quittungen
 )
 
 // Close-Codes nach einem Fehler (Textnachricht err vorher).

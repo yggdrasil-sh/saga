@@ -43,6 +43,8 @@ var (
 	pre    = flag.Int("pre", 0, "so viele WebSockets vorab offen halten (spart den WS-Aufbau)")
 	tlog   = flag.Bool("tlog", false, "Zeitpunkte je Verbindung protokollieren")
 	role   = flag.String("role", "", "audio | video (nur Diagnose am Knoten)")
+	ackB   = flag.Int("ackbytes", 0, "Messung: Quittung nach so vielen Bytes statt ack_bytes des Knotens")
+	ackMs  = flag.Int("ackms", 0, "Messung: Quittung nach so vielen ms statt ack_ms des Knotens")
 )
 
 var (
@@ -100,6 +102,12 @@ func dialWS() (*wstun.Conn, time.Duration, error) {
 	}
 	dt := time.Since(t0)
 	opt := wstun.Options{Ack: true, AckBytes: r.AckBytes, AckDelay: time.Duration(r.AckMs) * time.Millisecond}
+	if *ackB > 0 {
+		opt.AckBytes = *ackB
+	}
+	if *ackMs > 0 {
+		opt.AckDelay = time.Duration(*ackMs) * time.Millisecond
+	}
 	return wstun.New(ws, ws.LocalAddr(), ws.RemoteAddr(), opt), dt, nil
 }
 
