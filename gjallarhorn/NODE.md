@@ -1041,7 +1041,7 @@ Protokoll `saga-tunnel.1` v1 in `docs/APP-API.md` „Medien-Tunnel“).
 - **Endpunkt** `GET /api/sfu/ws` (alle Knoten, auch gekoppelte; am eigenen Port wie über saga-media): ohne `Upgrade`
   zuerst 426 (`websocket_required`, Zähler `no_upgrade`), ohne `saga-tunnel.1` 400, über der Grenze je Client-Adresse
   (4 × `HORN_MAX_PER_IP`; gesamt 2 × `HORN_MAX_LEGS` + 16) 429. Danach Zugang in der ersten Textnachricht
-  (TURN-Zugangsdaten aus `/api/sfu/turn`, HMAC des Knotens, Frist 10 s), Antwort `ok` mit `ack_bytes`/`ack_ms`. Erst mit
+  (TURN-Zugangsdaten aus `/api/sfu/turn`, HMAC des Knotens, Frist 10 s; jede Herkunft, weil nichts Mitgeschicktes zählt), Antwort `ok` mit `ack_bytes`/`ack_ms`. Erst mit
   dem ersten Datenbyte (Frist 30 s – die App öffnet den WebSocket vorab) geht die Verbindung per `Mux.Inject` an die
   Weiche (ufrag aus dem ersten Binding, eigener ICE-Mux, Bündeln); Gegenadresse = echte Client-Adresse mit eigenem
   Port je Tunnel (nur im Speicher). Bein-Weg `ws` = ICE-TCP-Bein (`sfuTCP`, Werte wie `tcp`), auch ohne öffentliches

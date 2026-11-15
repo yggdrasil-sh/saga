@@ -201,6 +201,9 @@ func TestTunnelFristen(t *testing.T) {
 	if _, err := wstun.ClientAuth(ws, user, cred, "", 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+	for i := 0; i < 50 && s.tun.stats().Open != 1; i++ { // ok geht vor dem Eintragen raus
+		time.Sleep(5 * time.Millisecond)
+	}
 	if n := s.tun.stats().Open; n != 1 {
 		t.Fatalf("%d offen", n)
 	}
@@ -478,4 +481,15 @@ func TestA3Kette(t *testing.T) {
 		t.Fatalf("Bein-Diagnose: %q %+v", lay.Stats.Path, lay.Stats.Tunnel)
 	}
 	t.Logf("Bild-Bein: Fenster %d, RTT %d us, gesendet %d", lay.Stats.Tunnel.Window, lay.Stats.Tunnel.RTTus, lay.Stats.Tunnel.Tx)
+}
+
+// Herkunft: jede (keine mitgeschickten Berechtigungen) - z. B. die Pruefung aus dem Admin-Bereich auf eigenem Port.
+func TestTunnelHerkunft(t *testing.T) {
+	_, _, url := tunnelServer(t)
+	d := websocket.Dialer{Subprotocols: []string{wstun.Subprotocol}}
+	ws, _, err := d.Dial(url, http.Header{"Origin": {"http://127.0.0.1:8081"}})
+	if err != nil {
+		t.Fatalf("Admin-Herkunft abgewiesen: %v", err)
+	}
+	ws.Close()
 }

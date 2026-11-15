@@ -130,7 +130,7 @@
       <td data-l="{{ _('Teilen') }}">{{ _("an") if n.share else _("aus") }}</td>
       <td class="horn-acts">
         <form method="post" class="adm-inline">{{ csrf_field() }}<input type="hidden" name="id" value="{{ n.id }}">
-          <button class="btn" type="submit" name="action" value="check" data-check="{{ n.id }}">{{ _("Port prüfen") }}</button>
+          {% if not n.tunnel %}<button class="btn" type="submit" name="action" value="check" data-check="{{ n.id }}">{{ _("Port prüfen") }}</button>{% endif %}
           <button class="btn" type="submit" name="action" value="{{ 'unshare' if n.share else 'share' }}">{{ _("Teilen aus") if n.share else _("Teilen an") }}</button>
           <button class="btn" type="submit" name="action" value="{{ 'undrain' if n.drain else 'drain' }}">{{ _("Leeren beenden") if n.drain else _("Leeren") }}</button>
           {% if not n.builtin %}<button class="btn btn-danger" type="submit" name="action" value="remove" data-confirm="{{ _('Knoten {name} entfernen? Sein Schlüssel wird gesperrt, laufende Anrufe ziehen auf andere Knoten um und die DNS-Einträge werden gelöscht.', name=n.name) }}">{{ _("Entfernen") }}</button>{% endif %}

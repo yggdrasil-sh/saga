@@ -118,12 +118,11 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 	}
 	up := websocket.Upgrader{ReadBufferSize: 16 << 10, WriteBufferSize: 16 << 10, Subprotocols: []string{wstun.Subprotocol},
 		HandshakeTimeout: 10 * time.Second, EnableCompression: false,
-		// Apps schicken keinen Origin; Seiten nur von der eigenen bzw. der Saga-Herkunft (B2). Zugang haengt ohnehin an
-		// den TURN-Zugangsdaten.
-		CheckOrigin: func(r *http.Request) bool {
-			o := r.Header.Get("Origin")
-			return o == "" || strings.TrimPrefix(o, "https://") == r.Host || s.originOK(o)
-		}}
+		// Jede Herkunft: Der Tunnel nutzt keine Cookies oder andere mitgeschickte Berechtigungen - der Zugang haengt allein
+		// an den TURN-Zugangsdaten der ersten Nachricht (eine fremde Seite erreicht ohne sie nichts, mit ihnen nicht mehr
+		// als jedes Programm). Apps schicken keinen Origin; die Pruefung im Admin-Bereich kommt von dessen Herkunft
+		// (ADMIN_PORT, oft ein anderer Name als die Saga-Seiten).
+		CheckOrigin: func(*http.Request) bool { return true }}
 	ws, err := up.Upgrade(w, r, nil)
 	if err != nil {
 		release()

@@ -408,6 +408,9 @@ def teil2(media, node):
 
 
 def main():
+    import db
+    db.wait_ready()
+    db.init_schema()
     A_.cleanup()
     prev = auth.settings(fresh=True)
     keep = {k: prev.get(k) for k in ("chat_enabled", "share_group_scope", "calls")}
