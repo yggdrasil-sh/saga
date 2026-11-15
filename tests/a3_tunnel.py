@@ -268,6 +268,13 @@ def teil0():
        (HN.ice_tcp(n1), HN.tls_ok(n1), HN.ws_ok(n1)) == (False, False, True) and HN.tls_ok(n2) and (HN.ice_tcp(n3), HN.tls_ok(n3), HN.ws_ok(n3)) == (True, True, False))
     HN._LIVE.pop("a3t")
     HN._LIVE.pop("a3o")
+    # Pruefer A3: Kaskade - der Knoten im Tunnel-Betrieb kann keine Bruecke annehmen (seine Adresse endet am Proxy), er ist
+    # Mittelpunkt nur ohne anderen eigenen Knoten im Anruf (auch nicht als bisheriger), waehlen kann er
+    from saga import horn_bridge as HB
+    pl = {"mehr": HB.plan([("a3t", 3), ("h1", 1)], None, {"a3t"}), "bisher": HB.plan([("a3t", 1), ("h1", 1)], "a3t", {"a3t"}),
+          "allein": HB.plan([("a3t", 2), ("f:7:x", 1)], None, {"a3t"}), "ohne": HB.plan([("a3t", 3), ("h1", 1)], None)}
+    ok("Kaskade: Tunnel-Knoten nicht Mittelpunkt, wenn ein anderer eigener Knoten dabei ist",
+       pl == {"mehr": ("h1", ["a3t"]), "bisher": ("h1", ["a3t"]), "allein": ("a3t", ["f:7:x"]), "ohne": ("a3t", ["h1"])}, pl)
     from saga import calldiag
     ok("calldiag: transport ws erlaubt", "ws" in calldiag.TRANSPORTS)
     js = open(os.path.join(APP, "static", "calls.js"), encoding="utf-8").read()

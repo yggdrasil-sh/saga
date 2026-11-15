@@ -56,14 +56,17 @@ def _loop():
             print(f"horn: Kaskade: {type(ex).__name__}: {ex}", flush=True)
 
 
-def plan(rows, prev_hub=None):
+def plan(rows, prev_hub=None, nohub=()):
     """Knotenverteilung eines Anrufs [(node, endpunkte)] -> (hub, [spoke]). Mittelpunkt: der eigene Knoten mit den
-    meisten Endpunkten; der bisherige bleibt, solange dort noch jemand ist (kein Pendeln)."""
+    meisten Endpunkten; der bisherige bleibt, solange dort noch jemand ist (kein Pendeln). nohub (2.5 A3, Pruefer):
+    eigene Knoten, die keine Bruecke annehmen koennen (Tunnel-Betrieb: kein eigener TLS-Eingang, ihre Adresse endet am
+    Reverse Proxy) - Mittelpunkt nur, wenn kein anderer eigener Knoten beteiligt ist; waehlen koennen sie."""
     local = [(n, k) for n, k in rows if not n.startswith("f:")]
     if not local or len(rows) < 2:
         return None, []
-    ids = {n for n, _ in local}
-    hub = prev_hub if prev_hub in ids else sorted(local, key=lambda x: (-x[1], x[0]))[0][0]
+    cand = [x for x in local if x[0] not in nohub] or local
+    ids = {n for n, _ in cand}
+    hub = prev_hub if prev_hub in ids else sorted(cand, key=lambda x: (-x[1], x[0]))[0][0]
     return hub, sorted(n for n, _ in rows if n != hub)
 
 
@@ -93,8 +96,9 @@ def reconcile(now=None):
         if rows:
             ns = horn.nodes(c)
             ok = usable({n["id"] for n in ns if horn.ready(n, now)}, {n["id"] for n in ns if horn.alive(n, now)}, now)
+            nohub = {n["id"] for n in ns if horn.tunnel_mode(n)}
         else:
-            ok = set()
+            ok, nohub = set(), set()
         for cid, node, n in rows:
             # nur laufende eigene Knoten: beim Leeren/Ausfall ziehen die Geraete ohnehin um (make-before-break) - eine
             # Bruecke zum alten Knoten wuerde sie doppelt in den neuen Raum bringen. Ein voller Knoten zaehlt weiter
@@ -103,7 +107,7 @@ def reconcile(now=None):
                 by.setdefault(cid, []).append((node, n))
         want = {}
         for cid, lst in by.items():
-            hub, spokes = plan(lst, _HUB.get(cid))
+            hub, spokes = plan(lst, _HUB.get(cid), nohub)
             if not hub:
                 _HUB.pop(cid, None)
                 continue
