@@ -44,6 +44,7 @@ Das Web sieht eine Hülle nur, wenn **beides** zutrifft:
 | `openExternal` | gibt fremde Links (`http(s)`, `mailto`) und `window.open` zu fremden Adressen an die Hülle (Systembrowser) |
 | `settings` | zeigt im Benutzermenü „App-Einstellungen“ |
 | `token` | bietet beim Anlegen eines App-Schlüssels „In dieser App verwenden“ an |
+| `tunnel` | 2.5 A3, nur Mac: Medien-Tunnel für Anrufe über `hkTunnel` (3.3) |
 
 Unbekannte Fähigkeiten verwirft das Web. Neue Fähigkeiten kommen nur mit neuem Eintrag hier dazu.
 
@@ -61,6 +62,7 @@ Unbekannte Fähigkeiten verwirft das Web. Neue Fähigkeiten kommen nur mit neuem
 | `receive(evt)` | `false` (außer `hello`, das nur mit Nachrichtenweg greift) | Einstieg für die Hülle |
 | `route(link)` | Deep-Link → Web-Pfad oder `null` (reine Funktion, Abschnitt 6) | dto. |
 | `open(linkOrPath)` | navigiert (nur eigene Origin) | dto. |
+| `tunnel()` | `null` | 2.5 A3, nur Mac mit Fähigkeit `tunnel`: `{open(role, url, user, cred) → Promise id, listen(id) → Promise port, close(id), stats(id)}` (Abschnitt 3.3) |
 
 **Wo das Web die Brücke nutzt**
 
@@ -109,6 +111,28 @@ dazukommen – unbekannte Felder und Aktionen ignorieren.
   `remote: { urls: ["https://<server>/*"] }` nur für die Server-Origin und nur für dieses Kommando; im Kommando die URL
   des aufrufenden Webviews nochmals gegen die Server-Origin prüfen. `withGlobalTauri` ist nicht nötig. **[ungeprüft:
   genaue Capability-Syntax für Remote-Origins in der eingesetzten Tauri-Version]**
+
+### 3.3 Medien-Tunnel (2.5 A3, nur Mac: Fähigkeit `tunnel`)
+
+Damit die Anrufseite der Hülle auch hinter einem TLS-beendenden Proxy (Nginx Proxy Manager) über einen Knoten im
+Tunnel-Betrieb telefoniert, öffnet die Hülle je Anruf-Leitung denselben Tunnel wie die iOS-App (`HornTunnel`,
+Protokoll `saga-tunnel.1` in `docs/APP-API.md`): WebSocket `wss://<Knoten-url>/api/sfu/ws`, Zugang nur in der ersten
+Nachricht, dazu ein Lauscher auf `127.0.0.1` für genau eine Verbindung. Eigener Nachrichtenweg mit Antwort:
+`window.webkit.messageHandlers.hkTunnel.postMessage(msg)` → Promise (`WKScriptMessageHandlerWithReply`, Fehler =
+abgelehnte Promise mit Text). Nur aus dem Hauptfenster der Server-Origin (https).
+
+| `op` | Felder | Antwort |
+|---|---|---|
+| `open` | `v:1`, `role` (`audio`/`video`), `url` (https, Kandidaten-`url`), `user`, `cred` (`POST <url>/api/sfu/turn` mit dem Ton-Token) | `{id}` sobald der WS steht und `ok` kam; Fehler z. B. `ws 426 Proxy reicht WebSocket nicht durch`, `ws abgelehnt auth`, `ws Grenze` (höchstens 8 offen) |
+| `listen` | `v:1`, `id` | `{port}` – Lauscher erst jetzt (kurz vor `setRemoteDescription`), schließt nach der ersten Verbindung |
+| `close` | `v:1`, `id` | `true` |
+| `stats` | `v:1`, `id` | Zählerzeile bzw. `null` |
+
+Das Web (`static/calls.js`) nimmt den Weg `ws` nur, wenn `sagaHost.tunnel()` etwas liefert **und** der Kandidat
+`ws:true` meldet (Wegwahl wie Vertrag S5: `ws && !tcp && !tls` → UDP ‖ Tunnel, sonst Tunnel als letzter Weg), biegt
+den passiven TCP-Kandidaten der Antwort auf `127.0.0.1:<port>` (`SagaHorn.bend`) und schickt `"path":"ws"` im Bein.
+Die Hülle schließt alle Tunnel bei Seitenwechsel/Neuladen, Absturz des Inhaltsprozesses und Abmelden. Mac-Entitlement
+dafür: `com.apple.security.network.server` (Lauscher in der Sandbox).
 
 ## 4. Ereignisse Hülle → Web
 

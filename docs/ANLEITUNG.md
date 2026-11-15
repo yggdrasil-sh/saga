@@ -247,6 +247,8 @@ unverändert an den Knoten weiter. Gjallarhorn bleibt in 2.5 experimentell.
   Tunnel (kommt). Bis dahin bietet Saga ihnen diesen Knoten nicht an: Ihre Anrufe laufen wie bisher im Mesh bzw. über
   einen gekoppelten Knoten. Tritt ein Browser einem Anruf bei, der auf dem Tunnel-Knoten läuft, schaltet Saga den
   Anruf auf direkt (bis zur Mesh-Grenze von 4 mit Video bzw. 6 nur Ton).
+- Die **Desktop-App (Mac)** telefoniert hinter dem Proxy wie die Apps: Sie öffnet für die Anrufseite denselben Tunnel
+  wie die iOS-App.
 - **Cloudflare (orangene Wolke):** reicht WebSocket durch, der Tunnel geht technisch. Dauerhafter Medienverkehr über
   Cloudflare kann aber gegen deren Nutzungsbedingungen verstoßen (vor allem im kostenlosen Tarif).
 

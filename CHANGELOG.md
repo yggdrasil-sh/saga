@@ -34,6 +34,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   schaltet Saga ihn auf direkt (Browser-Weg über den Tunnel folgt). **Einschränkung:** Apps vor dieser Version können
   einem Anruf, der schon über einen Knoten im Tunnel-Betrieb läuft, nicht beitreten („kein Anruf-Knoten erreichbar“) –
   bitte die Apps aktualisieren.
+- **Desktop-App (Mac) telefoniert auch hinter NPM:** Die Anrufseite in der Mac-Hülle nimmt den Tunnel der Hülle (Fähigkeit
+  `tunnel`, Brücke `hkTunnel`, `sagaHost.tunnel()`, meldet dann `caps` „ws“): je Leitung ein WebSocket zum Knoten und ein
+  lokaler Port auf 127.0.0.1, auf den das Web den ICE-TCP-Kandidaten biegt (Weg `ws`, Senderaten wie ICE-TCP, Diagnose
+  `transport ws`; im Tunnel-Betrieb UDP und Tunnel parallel). Frame-Verschlüsselung unverändert; Browser ohne Hülle
+  unverändert.
 - **Admin → Anrufe:** Kasten „Anrufe über die Saga-Adresse (Tunnel)“ mit Prüfung „Proxy reicht WebSocket durch?“ und
   Zählern (offene Tunnel, Fenster, RTT). Anleitung „Anrufe über die Saga-Adresse (Tunnel)“ (DE/EN/ES), Protokoll in
   `docs/APP-API.md`, Knoten in `gjallarhorn/NODE.md`.

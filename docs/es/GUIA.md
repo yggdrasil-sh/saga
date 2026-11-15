@@ -223,6 +223,8 @@ entrega sin cambios al nodo. Gjallarhorn sigue siendo experimental en la 2.5.
   por el túnel (llegará más adelante). Hasta entonces Saga no les ofrece este nodo: sus llamadas van como antes en
   malla o por un nodo acoplado. Si un navegador se une a una llamada que va por el nodo del túnel, Saga pasa la llamada
   a directa (hasta el límite de la malla: 4 con vídeo o 6 solo audio).
+- La **app de escritorio (Mac)** llama detrás del proxy como las apps: abre para la página de la llamada el mismo túnel
+  que la app de iOS.
 - **Cloudflare (nube naranja):** deja pasar WebSocket, el túnel funciona técnicamente. Sin embargo, el tráfico
   multimedia continuo a través de Cloudflare puede infringir sus condiciones de uso (sobre todo en el plan gratuito).
 

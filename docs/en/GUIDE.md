@@ -219,6 +219,8 @@ unchanged. Gjallarhorn stays experimental in 2.5.
   (coming). Until then Saga does not offer them this node: their calls run as before in the mesh or through a paired
   node. If a browser joins a call that runs on the tunnel node, Saga switches the call to direct (up to the mesh limit
   of 4 with video or 6 audio only).
+- The **desktop app (Mac)** calls behind the proxy like the apps: it opens the same tunnel for the call page as the iOS
+  app.
 - **Cloudflare (orange cloud):** passes WebSocket through, so the tunnel works technically. Continuous media traffic
   through Cloudflare may, however, violate their terms of service (especially on the free plan).
 
