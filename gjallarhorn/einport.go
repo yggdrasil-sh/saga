@@ -87,6 +87,30 @@ func einportFromEnv(key string) (*einport, error) {
 	return e, nil
 }
 
+// innerFromEnv: 2.5 A3 - internes HTTP ohne "Ein Port" (saga-media legt node.sock immer an, wenn es den Knoten
+// startet; fd aus HORN_INNER_HTTP_FD). nil ohne die Variable.
+func innerFromEnv() (net.Listener, error) {
+	v := os.Getenv("HORN_INNER_HTTP_FD")
+	if v == "" {
+		return nil, nil
+	}
+	_ = os.Unsetenv("HORN_INNER_HTTP_FD")
+	fd, err := strconv.Atoi(v)
+	if err != nil || fd < 3 {
+		return nil, errors.New("HORN_INNER_HTTP_FD ungueltig")
+	}
+	if os.Getenv("HORN_CTL_KEY") == "" {
+		return nil, errors.New("HORN_INNER_HTTP_FD ohne HORN_CTL_KEY")
+	}
+	f := os.NewFile(uintptr(fd), "inner-http")
+	ln, err := net.FileListener(f)
+	_ = f.Close()
+	if err != nil {
+		return nil, fmt.Errorf("internes http: %w", err)
+	}
+	return ln, nil
+}
+
 // receive nimmt Uebergaben an, bis saga-media das Socket-Paar schliesst (dann beendet sich der Knoten nicht von selbst:
 // saga-media beendet ihn per Signal).
 func (s *server) einportReceive() {
@@ -150,11 +174,15 @@ func (s *server) einportReady() {
 func devicePath(p string) bool { return strings.HasPrefix(p, "/api/sfu/") || p == "/probe" }
 
 // einportInner: internes HTTP (von saga-media) - nur mit Schluessel; Client-Adresse aus dem Kopf.
-func (s *server) einportInner(h http.Handler) http.Handler {
+func (s *server) einportInner(h http.Handler) http.Handler { return s.innerHandler(h, s.ein.key) }
+
+// innerHandler: internes HTTP von saga-media ("Ein Port" fd 4 bzw. 2.5 A3 ohne "Ein Port" HORN_INNER_HTTP_FD): nur
+// Geraete-Pfade, nur mit Schluessel (HORN_CTL_KEY); die echte Client-Adresse steht in X-Saga-Einport-For.
+func (s *server) innerHandler(h http.Handler, key string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		k := r.Header.Get(einKeyHeader)
 		ip, err := netip.ParseAddr(strings.TrimSpace(r.Header.Get(einForHeader)))
-		if len(k) != len(s.ein.key) || subtle.ConstantTimeCompare([]byte(k), []byte(s.ein.key)) != 1 || err != nil || !devicePath(r.URL.Path) {
+		if key == "" || len(k) != len(key) || subtle.ConstantTimeCompare([]byte(k), []byte(key)) != 1 || err != nil || !devicePath(r.URL.Path) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 			return
 		}

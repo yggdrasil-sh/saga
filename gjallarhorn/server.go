@@ -30,6 +30,7 @@ import (
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/netx"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/wstun"
 )
 
 // config sind die Einstellungen aus der Umgebung.
@@ -52,6 +53,11 @@ type config struct {
 	ICETCP    string // HORN_ICE_TCP 0|1|auto (2.5): rohes ICE-TCP fuer Beine anbieten (auto: siehe iceTCPMode)
 	BWE       string // HORN_BWE: gcc (Standard), mit (eigener Stau-Detektor liest und schreibt mit) oder eigen (er entscheidet mit), siehe bwe.go
 	Certs     netx.CertOptions
+	// 2.5 A3 "Tunnel-Betrieb" (tunnel.go): eingebauter Knoten hinter einem TLS-beendenden Proxy ohne eigenen Namen und
+	// ohne Zertifikat (sonst "kein Zertifikat"): kein eigener TCP-Lauscher, Geraete-HTTP nur ueber das interne HTTP von
+	// saga-media, Adresse fuer Geraete = TunnelURL (BASE_URL), Medien ueber den Tunnel (und UDP, wenn erreichbar)
+	TunnelURL string // HORN_TUNNEL_URL (von saga-media: Ursprung von BASE_URL)
+	Tunnel    bool
 }
 
 func env(k, def string) string {
@@ -129,7 +135,38 @@ func loadConfig(bench bool) (*config, error) {
 		c.Certs.Self = true
 		c.Certs.CertFile = ""
 	}
+	c.TunnelURL = strings.TrimRight(strings.TrimSpace(os.Getenv("HORN_TUNNEL_URL")), "/")
+	if host, ok := tunnelHost(c.TunnelURL); ok && c.Mode == "node" && !bench && os.Getenv("HORN_EINPORT_FD") == "" && !certSource(c.Certs) {
+		// Tunnel-Betrieb: Zertifikat nur intern (nie an Geraete - die TLS-Strecke endet am Proxy)
+		c.Tunnel, c.Name = true, host
+		c.Certs = netx.CertOptions{Name: host, Self: true}
+	}
 	return c, nil
+}
+
+// certSource: es gibt eine Zertifikatsquelle (wie netx.NewCerts): Dateien, HORN_TLS_SELF oder ein Name fuer ACME.
+func certSource(o netx.CertOptions) bool {
+	if o.CertFile != "" && fileExists(o.CertFile) && fileExists(o.KeyFile) {
+		return true
+	}
+	return o.Self || (o.Name != "" && o.Name != "localhost")
+}
+
+// tunnelHost: Host aus "https://host[:port]" (Ursprung, ohne Pfad) -> Name des Knotens im Tunnel-Betrieb.
+func tunnelHost(u string) (string, bool) {
+	rest, ok := strings.CutPrefix(u, "https://")
+	if !ok || rest == "" || strings.ContainsAny(rest, "/?#@ ") {
+		return "", false
+	}
+	h := rest
+	if strings.HasPrefix(h, "[") {
+		if i := strings.Index(h, "]"); i > 0 {
+			h = h[1:i]
+		}
+	} else if i := strings.LastIndex(h, ":"); i >= 0 {
+		h = h[:i]
+	}
+	return strings.ToLower(h), h != ""
 }
 
 // server ist der Probe-Knoten.
@@ -143,6 +180,8 @@ type server struct {
 
 	apiUDP, apiTCP, apiTURN *webrtc.API
 	turnSecret              string
+	tun                     *tunnels     // 2.5 A3: Medien-Tunnel ueber WebSocket (tunnel.go)
+	inner                   net.Listener // 2.5 A3: internes HTTP von saga-media ohne "Ein Port" (HORN_INNER_HTTP_FD)
 
 	// Betriebsart node
 	node                    *sfu.Node
@@ -258,7 +297,7 @@ func runNode(args []string, bench bool, mode string) error {
 }
 
 func newServer(cfg *config) (*server, error) {
-	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32),
+	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32), tun: newTunnels(),
 		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32), verifier: &sagaVerifier{}, graves: map[string]time.Time{}, kicked: map[string]time.Time{}}
 	if cfg.Mode == "node" {
 		switch cfg.BWE {
@@ -319,7 +358,15 @@ func newServer(cfg *config) (*server, error) {
 			return nil, err
 		}
 	}
-	if s.ein != nil { // "Ein Port": kein eigener TCP-Lauscher, Adresse nach aussen aus HORN_LISTEN (Port von TLS_LISTEN)
+	if cfg.Mode == "node" && !cfg.Bench && s.ein == nil {
+		if s.inner, err = innerFromEnv(); err != nil {
+			return nil, err
+		}
+	}
+	if cfg.Tunnel && s.inner == nil {
+		return nil, errors.New("HORN_TUNNEL_URL ohne internes HTTP (HORN_INNER_HTTP_FD) - nur unter saga-media")
+	}
+	if s.ein != nil || cfg.Tunnel { // "Ein Port" bzw. Tunnel-Betrieb: kein eigener TCP-Lauscher, Adresse aus HORN_LISTEN
 		a, err := net.ResolveTCPAddr("tcp", cfg.Listen)
 		if err != nil || a.Port == 0 {
 			return nil, fmt.Errorf("HORN_LISTEN %q: im Ein-Port-Betrieb der aeussere Port", cfg.Listen)
@@ -329,6 +376,9 @@ func newServer(cfg *config) (*server, error) {
 		return nil, fmt.Errorf("tcp %s: %w", cfg.Listen, err)
 	}
 	s.iceTCP, _ = iceTCPMode(cfg.ICETCP, os.Getenv("HORN_PUBLIC_URL"), s.mux.Addr().Port)
+	if cfg.Tunnel {
+		s.iceTCP = false // kein eigener Lauscher: ICE-TCP nur durch den Tunnel (Bein-Weg "ws")
+	}
 	if cfg.UDP {
 		ua := cfg.UDPListen
 		if strings.HasSuffix(ua, ":0") || ua == cfg.Listen {
@@ -392,6 +442,11 @@ func newServer(cfg *config) (*server, error) {
 	} else {
 		srv := &http.Server{Handler: rt, ReadHeaderTimeout: 10 * time.Second, ErrorLog: log.New(discard{}, "", 0)}
 		go func() { _ = srv.Serve(s.mux.HTTP) }()
+		if s.inner != nil { // 2.5 A3: Geraete-HTTP ueber saga-media (PORT hinter dem Reverse Proxy, node.sock)
+			inner := &http.Server{Handler: s.innerHandler(rt, os.Getenv("HORN_CTL_KEY")), ReadHeaderTimeout: 10 * time.Second,
+				ErrorLog: log.New(discard{}, "", 0)}
+			go func() { _ = inner.Serve(s.inner) }()
+		}
 	}
 	go s.reaper()
 	go s.udpSelfTestLoop()
@@ -418,6 +473,9 @@ func newServer(cfg *config) (*server, error) {
 		udpInfo = s.udp.LocalAddr().String()
 	}
 	log.Printf("gjallarhorn %s %s: name=%s tcp=%s udp=%s tls=%s proxy=%d ice-tcp=%v", version, cfg.Mode, cfg.Name, s.mux.Addr(), udpInfo, certs.Mode, cfg.Proxy, s.iceTCP)
+	if cfg.Tunnel {
+		log.Printf("tunnel-betrieb: kein eigener tcp-port, geraete ueber %s (medien-tunnel /api/sfu/ws, udp %s)", cfg.TunnelURL, udpInfo)
+	}
 	if s.ein != nil {
 		go s.einportReceive()
 		s.einportReady()
@@ -582,7 +640,9 @@ func (s *server) buildAPIs() error {
 			return err
 		}
 		s.apiTCP = api
-		if s.node != nil && s.iceTCP { // 2.5: ohne ICE-TCP lehnt der Knoten Beine "tcp" sofort ab (Geraete nehmen TLS)
+		// 2.5: ohne ICE-TCP lehnt der Knoten Beine "tcp" sofort ab (Geraete nehmen TLS, newSFULeg); Beine "ws" (A3,
+		// ICE-TCP durch den Tunnel) gehen immer - deshalb gibt es den Weg im Knoten immer
+		if s.node != nil {
 			if s.sfuTCP, err = newSFUAPI(se, false, nil); err != nil {
 				return err
 			}
@@ -786,6 +846,9 @@ func (s *server) onICEConn(ufrag string, c *netx.CoalesceConn) {
 	s.mu.Unlock()
 	if l != nil {
 		l.fl.SetFlusher(c)
+		if tc, ok := c.Conn.(*wstun.Conn); ok { // 2.5 A3: Bein durch den Tunnel (Zaehler in der Diagnose)
+			l.tun.Store(tc)
+		}
 	}
 }
 

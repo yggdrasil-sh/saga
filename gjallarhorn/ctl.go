@@ -195,7 +195,9 @@ func (c *ctlClient) session() error {
 		"sig": base64.StdEncoding.EncodeToString(ed25519.Sign(c.sk, []byte(ctlProto+" hello\n"+ch.Nonce))),
 		"udp": s.sfuUDP != nil && uc.State == "ok", "udp_check": uc.State, "cores": runtime.GOMAXPROCS(0),
 		"builtin": c.key != "", "max_legs": s.cfg.MaxLegs, "cert": s.certStatus(), "upd": s.upd.status(),
-		"ice_tcp": s.sfuTCP != nil, "einport": s.ein != nil}
+		"ice_tcp": s.sfuTCP != nil && s.iceTCP, "einport": s.ein != nil,
+		// 2.5 A3: Medien-Tunnel /api/sfu/ws (tunnel.go) unter url; tunnel = Tunnel-Betrieb (url = BASE_URL, kein eigenes TLS)
+		"ws": true, "tunnel": s.cfg.Tunnel}
 	if c.key == "" {
 		v4, v6 := s.addrs()
 		hello["v4"], hello["v6"] = v4, v6
@@ -489,7 +491,8 @@ func (c *ctlClient) sendLoad() {
 	c.send(map[string]any{"t": "load", "load": map[string]any{
 		"cpu": round3(cpu), "mem": readRSS(), "up": round3(up), "down": round3(down), "legs": ld.Legs, "calls": ld.Rooms,
 		"peers": ld.Peers, "udp_share": round3(ld.UDPShare), "fwd_p95_us": round3(ld.FwdP95us), "drops": round3(drops),
-		"max_legs": c.s.cfg.MaxLegs, "state": state, "bridges": c.s.bridgeStates(), "quotas": c.s.node.QuotaStats()}})
+		"max_legs": c.s.cfg.MaxLegs, "state": state, "bridges": c.s.bridgeStates(), "quotas": c.s.node.QuotaStats(),
+		"tunnels": c.s.tun.stats()}})
 }
 
 func round3(x float64) float64 { return float64(int64(x*1000+0.5)) / 1000 }
@@ -666,6 +669,9 @@ func (s *server) cors(h http.Handler) http.Handler {
 
 // publicURL: Adresse fuer Geraete (HORN_PUBLIC_URL, sonst https://NAME[:Port]).
 func (s *server) publicURL() string {
+	if s.cfg.Tunnel { // 2.5 A3: Geraete erreichen den Knoten unter der Saga-Adresse
+		return s.cfg.TunnelURL
+	}
 	if u := strings.TrimSpace(os.Getenv("HORN_PUBLIC_URL")); u != "" {
 		return strings.TrimRight(u, "/")
 	}

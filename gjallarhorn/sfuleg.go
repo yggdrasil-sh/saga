@@ -139,7 +139,7 @@ func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook) (*webrtc.API, e
 // sfuLegReq ist die Anfrage fuer ein SFU-Bein.
 type sfuLegReq struct {
 	Token   string `json:"token"`
-	Path    string `json:"path"` // udp | tcp | turn
+	Path    string `json:"path"` // udp | tcp | turn | ws (2.5 A3: ICE-TCP durch den Medien-Tunnel, tunnel.go)
 	Offer   string `json:"offer"`
 	Audio   int    `json:"audio"`   // Ton-Plaetze (hoechstens 3)
 	Speaker bool   `json:"speaker"` // Sprecherplatz
@@ -168,11 +168,18 @@ var errAuth = errors.New("token ungueltig")
 var errDraining = errors.New("knoten wird geleert")
 
 func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
-	path, err := sfu.ParsePath(req.Path)
+	pname := req.Path
+	if pname == "ws" { // 2.5 A3: fuer den Knoten ein ICE-TCP-Bein; die Verbindung kommt durch /api/sfu/ws
+		pname = "tcp"
+	}
+	path, err := sfu.ParsePath(pname)
 	if err != nil {
-		return nil, "", err
+		return nil, "", errors.New("weg: udp, tcp, turn oder ws")
 	}
 	api := s.sfuAPI(path)
+	if req.Path == "tcp" && !s.iceTCP {
+		api = nil // kein oeffentliches ICE-TCP: sofort ablehnen, aeltere Geraete nehmen ohne Wartezeit TLS (2.5 einport)
+	}
 	if api == nil {
 		return nil, "", fmt.Errorf("weg %q nicht verfuegbar", req.Path)
 	}
@@ -542,6 +549,7 @@ func (s *server) sfuRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/sfu/leg/{id}/events", s.apiSFUEvents) // P5: Ereigniskanal (events.go)
 	m.HandleFunc("DELETE /api/sfu/leg/{id}", s.apiLegDelete)
 	m.HandleFunc("GET /api/sfu/bridge", s.apiBridge) // P9: Kaskade (bifrost.go)
+	m.HandleFunc("GET /api/sfu/ws", s.apiSFUWS)      // 2.5 A3: Medien-Tunnel (tunnel.go)
 	if !s.cfg.Dev {
 		return
 	}
@@ -558,6 +566,7 @@ func (s *server) sfuRoutes(m *http.ServeMux) {
 		writeJSON(w, 200, map[string]any{"ok": true})
 	})
 	m.HandleFunc("GET /api/dev/turnpipe", s.apiTurnPipe) // Kopplung des TURN-Wegs (turnguard.go)
+	m.HandleFunc("GET /api/dev/tunnels", s.apiTunnelStats)
 	m.HandleFunc("GET /api/dev/bridges", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"bridges": s.bridgeStats()})
 	})

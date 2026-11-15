@@ -18,6 +18,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/wstun"
 )
 
 const (
@@ -170,8 +171,9 @@ type leg struct {
 	srcs      []*fwd.Source
 	srcEnd    [3]uint64 // Zaehler des Abgleichs der beendeten Spuren: Doppel, zu alt, spaet (endSrc)
 	closed    bool
-	rttNs     atomic.Int64 // Umlaufzeit aus den Empfaengerberichten (Probing: Laenge des Fensters)
-	bwe       *bweWrap     // nur HORN_BWE=mit bzw. eigen (UDP-Beine): Mitleser mit eigenem Stau-Detektor, sonst nil
+	rttNs     atomic.Int64               // Umlaufzeit aus den Empfaengerberichten (Probing: Laenge des Fensters)
+	tun       atomic.Pointer[wstun.Conn] // 2.5 A3: ICE-TCP-Verbindung durch den Medien-Tunnel (sonst nil)
+	bwe       *bweWrap                   // nur HORN_BWE=mit bzw. eigen (UDP-Beine): Mitleser mit eigenem Stau-Detektor, sonst nil
 }
 
 func (l *leg) bweWrap() *bweWrap {
@@ -532,25 +534,26 @@ func (s *server) closeLeg(l *leg, reason string) {
 
 // legStats ist die Knotensicht eines Beins (fuer die Messseite).
 type legStats struct {
-	ID        string     `json:"id"`
-	Path      string     `json:"path"`
-	Role      string     `json:"role"`
-	State     string     `json:"state"`
-	ConnectMs int64      `json:"connect_ms"`
-	PktsOut   uint64     `json:"pkts_out"`
-	BytesOut  uint64     `json:"bytes_out"`
-	PadBytes  uint64     `json:"pad_bytes,omitempty"` // Fuelldaten der Proben (in bytes_out enthalten)
-	Dropped   uint64     `json:"frames_dropped"`
-	Stalls    uint64     `json:"stalls"`
-	MaxQMs    float64    `json:"max_queue_ms"`
-	FwdP95us  float64    `json:"fwd_p95_us"`
-	Overflow  uint64     `json:"overflow"`
-	TURN      *TURNSetup `json:"turn_setup,omitempty"`
-	WriteErrs uint64     `json:"write_errs"`
-	Secs      float64    `json:"secs"`
-	LateDrop  uint64     `json:"late_dropped,omitempty"` // verspaetete Pakete, die dieses Bein nicht mehr einordnen konnte
-	Sources   []srcStats `json:"sources,omitempty"`      // laufende eingehende Spuren dieses Beins
-	ended     [3]uint64  // Summen der beendeten Spuren (Doppel, zu alt, spaet) - fuer die Zeile "bein zu"
+	ID        string          `json:"id"`
+	Path      string          `json:"path"`
+	Role      string          `json:"role"`
+	State     string          `json:"state"`
+	ConnectMs int64           `json:"connect_ms"`
+	PktsOut   uint64          `json:"pkts_out"`
+	BytesOut  uint64          `json:"bytes_out"`
+	PadBytes  uint64          `json:"pad_bytes,omitempty"` // Fuelldaten der Proben (in bytes_out enthalten)
+	Dropped   uint64          `json:"frames_dropped"`
+	Stalls    uint64          `json:"stalls"`
+	MaxQMs    float64         `json:"max_queue_ms"`
+	FwdP95us  float64         `json:"fwd_p95_us"`
+	Overflow  uint64          `json:"overflow"`
+	TURN      *TURNSetup      `json:"turn_setup,omitempty"`
+	WriteErrs uint64          `json:"write_errs"`
+	Secs      float64         `json:"secs"`
+	LateDrop  uint64          `json:"late_dropped,omitempty"` // verspaetete Pakete, die dieses Bein nicht mehr einordnen konnte
+	Sources   []srcStats      `json:"sources,omitempty"`      // laufende eingehende Spuren dieses Beins
+	Tunnel    *wstun.Snapshot `json:"tunnel,omitempty"`       // 2.5 A3: Zaehler des Medien-Tunnels (Fenster, RTT der Quittungen)
+	ended     [3]uint64       // Summen der beendeten Spuren (Doppel, zu alt, spaet) - fuer die Zeile "bein zu"
 }
 
 // srcStats: Zaehler einer eingehenden Spur (Abgleich auf Doppel im Weiterleiter, fwd.Source).
@@ -622,6 +625,10 @@ func (l *leg) stats() legStats {
 	}
 	if !con.IsZero() {
 		st.ConnectMs = con.Sub(l.created).Milliseconds()
+	}
+	if tc := l.tun.Load(); tc != nil {
+		sn := tc.Snap()
+		st.Tunnel = &sn
 	}
 	return st
 }

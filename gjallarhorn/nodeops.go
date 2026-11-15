@@ -81,6 +81,9 @@ func (s *server) removeSigned(nodeID, sig string, pub ed25519.PublicKey) bool {
 
 // certStatus fuer hello und die Meldung "cert".
 func (s *server) certStatus() map[string]any {
+	if s.cfg.Tunnel { // 2.5 A3: kein Zertifikat noetig - TLS endet am Reverse Proxy vor Saga
+		return map[string]any{"mode": "tunnel", "state": "tunnel"}
+	}
 	m := map[string]any{"mode": s.certs.ModeNow()}
 	if p := s.certModeV.Load(); p != nil && m["mode"] != "self" {
 		if *p == "dns01" && fileExists(filepath.Join(s.cfg.Data, "tls", "dns01.json")) || m["mode"] != "file" {
