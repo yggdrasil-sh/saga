@@ -53,7 +53,9 @@ func TestRahmenUndQuittungen(t *testing.T) {
 	if string(got) != string(data) {
 		t.Fatal("Strom veraendert")
 	}
-	time.Sleep(50 * time.Millisecond)
+	for i := 0; i < 100 && srv.Snap().Inflight != 0; i++ { // letzte Quittung nach ack_ms (unter Last spaeter)
+		time.Sleep(10 * time.Millisecond)
+	}
 	if srv.St.AcksRx.Load() == 0 || cli.St.AcksTx.Load() == 0 {
 		t.Fatalf("keine Quittungen: rx %d tx %d", srv.St.AcksRx.Load(), cli.St.AcksTx.Load())
 	}
