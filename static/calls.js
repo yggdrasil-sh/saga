@@ -997,6 +997,14 @@
       }
       return hornGo(R, r.call.horn);
     }, function (e) {
+      // 2.5 A3 (Vertrag S10): Anruf lief nur auf einem Tunnel-Knoten, den dieser Browser nicht erreicht - der Server hat ihn
+      // auf direkt geschaltet; mit Mesh-Angeboten erneut beitreten
+      if (e.status === 409 && e.data && e.data.topo === 'mesh' && Array.isArray(e.data.legs) && !e.data.join_block && live(R)) {
+        if (R.horn) { hornStop(R); R.horn = null; }
+        if (R.call) R.call.topo = 'mesh';
+        R.joinSent = false; R.legs = e.data.legs;
+        return offerAll(R, role, R.ho ? R.ho.rep : null, false);
+      }
       throw new Error(e.data && e.data.join_block ? (e.data.error || blockText(e.data.join_block, e.data.limit)) : e.message);
     });
   }
@@ -3352,7 +3360,7 @@
       : noTcp ? Promise.reject({ tcpOff: true }) : hornConnect(R, cand, 'tcp');
     return p.catch(function (e) {
       if (e === null || (e && (e.status === 404 || e.status === 429))) throw e;      // beendet bzw. voll/Leeren: naechster Kandidat
-      if (noTls) throw new Error(T('Dieser Anruf-Knoten ist hinter dem Proxy nur für die Apps erreichbar – im Browser braucht er UDP.'));
+      if (noTls) throw new Error(T('Dieser Anruf-Knoten ist hinter dem Proxy nur für die Apps erreichbar.'));
       return hornFresh(R, cand, hornAvoid(H)).then(function (c2) { return hornConnect(R, c2, 'turn'); });
     });
   }

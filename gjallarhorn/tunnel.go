@@ -36,12 +36,16 @@ var (
 	tunnelAuthWait  = 10 * time.Second // erste Textnachricht
 	tunnelFirstWait = 30 * time.Second // erstes Datenbyte nach ok (vorab geoeffneter WebSocket, Vertrag 7)
 	tunnelPing      = 25 * time.Second
+	tunnelMaxPend   = 32 // WebSockets ohne auth insgesamt (sonst fuellten Verbindungen ohne Zugang die Gesamtgrenze)
+	tunnelMaxPendIP = 8  // ... je Client-Adresse
 )
 
 type tunnels struct {
 	mu    sync.Mutex
 	perIP map[string]int
-	n     int // alle Tunnel-WS (auch noch ohne auth)
+	n     int            // alle Tunnel-WS (auch noch ohne auth)
+	pend  int            // davon noch ohne auth (eigene, kleinere Grenze: tunnelMaxPend, je Adresse tunnelMaxPendIP)
+	pendI map[string]int // ... je Client-Adresse
 	open  map[uint64]*tunnelInfo
 	seq   atomic.Uint64
 	vport atomic.Uint32
@@ -57,7 +61,7 @@ type tunnelInfo struct {
 }
 
 func newTunnels() *tunnels {
-	return &tunnels{perIP: map[string]int{}, open: map[uint64]*tunnelInfo{}}
+	return &tunnels{perIP: map[string]int{}, pendI: map[string]int{}, open: map[uint64]*tunnelInfo{}}
 }
 
 // tunnelUserOK: TURN-Zugangsdaten (pion turn.GenerateLongTermCredentials: user = "<Ablauf>", cred = base64(HMAC-SHA1)).
@@ -99,7 +103,7 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := ipKey(r)
 	t.mu.Lock()
-	if t.perIP[ip] >= 4*s.cfg.maxPerIP() || t.n >= 2*s.cfg.MaxLegs+16 {
+	if t.perIP[ip] >= 4*s.cfg.maxPerIP() || t.n >= 2*s.cfg.MaxLegs+16 || t.pend >= tunnelMaxPend || t.pendI[ip] >= tunnelMaxPendIP {
 		t.mu.Unlock()
 		t.limited.Add(1)
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "limit"})
@@ -107,7 +111,17 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 	}
 	t.perIP[ip]++
 	t.n++
+	t.pend++
+	t.pendI[ip]++
 	t.mu.Unlock()
+	authed := func() { // Handschlag vorbei (mit oder ohne Erfolg)
+		t.mu.Lock()
+		t.pend--
+		if t.pendI[ip]--; t.pendI[ip] <= 0 {
+			delete(t.pendI, ip)
+		}
+		t.mu.Unlock()
+	}
 	release := func() {
 		t.mu.Lock()
 		t.n--
@@ -125,6 +139,7 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 		CheckOrigin: func(*http.Request) bool { return true }}
 	ws, err := up.Upgrade(w, r, nil)
 	if err != nil {
+		authed()
 		release()
 		return
 	}
@@ -135,6 +150,7 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 	_ = ws.SetReadDeadline(time.Now().Add(tunnelAuthWait))
 	mt, b, err := ws.ReadMessage()
 	_ = ws.SetReadDeadline(time.Time{})
+	authed()
 	if err != nil {
 		code, cc := "bad", wstun.CloseBad
 		if ne, ok := err.(net.Error); ok && ne.Timeout() {

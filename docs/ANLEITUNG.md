@@ -240,12 +240,13 @@ unverändert an den Knoten weiter. Gjallarhorn bleibt in 2.5 experimentell.
   der Apps (z. B. hinter Firmen-Proxys, die TLS prüfen).
 - `TRUSTED_PROXIES` auf den Proxy setzen: Die Grenze für Tunnel je Gerät zählt die echte Adresse aus
   `X-Forwarded-For`.
-- **Mehr Qualität:** UDP. Den UDP-Port des Knotens (Standard 8443, mit `HORN_UDP_LISTEN=:443` auch 443 – NPM belegt
-  nur TCP 443) am Router direkt freigeben, am Proxy vorbei und mit derselben Nummer auf dem Host
-  (`"8443:8443/udp"`). Der Knoten prüft das selbst; klappt es, nehmen Apps und Browser UDP und der Tunnel ist nur noch
-  Rückfall. Oder gleich die Betriebsart „Ein Port“ (TLS-Durchreiche statt TLS am Proxy, unten).
-- **Browser** telefonieren über einen Knoten im Tunnel-Betrieb nur mit UDP (der Browser-Weg über den Tunnel folgt);
-  ohne UDP nennt die Anrufseite den Grund. Gruppenanrufe der Apps laufen unabhängig davon.
+- **Optional:** wie bei „Ein Port“ kann UDP 443 dazukommen (`HORN_UDP_LISTEN=:443`, `"443:443/udp"` – NPM belegt nur
+  TCP 443); der Knoten prüft das selbst. Nötig ist es nicht. Oder gleich die Betriebsart „Ein Port“ (TLS-Durchreiche
+  statt TLS am Proxy, unten).
+- **Browser und ältere Apps** telefonieren über einen Knoten im Tunnel-Betrieb erst mit dem Browser-Weg über den
+  Tunnel (kommt). Bis dahin bietet Saga ihnen diesen Knoten nicht an: Ihre Anrufe laufen wie bisher im Mesh bzw. über
+  einen gekoppelten Knoten. Tritt ein Browser einem Anruf bei, der auf dem Tunnel-Knoten läuft, schaltet Saga den
+  Anruf auf direkt (bis zur Mesh-Grenze von 4 mit Video bzw. 6 nur Ton).
 - **Cloudflare (orangene Wolke):** reicht WebSocket durch, der Tunnel geht technisch. Dauerhafter Medienverkehr über
   Cloudflare kann aber gegen deren Nutzungsbedingungen verstoßen (vor allem im kostenlosen Tarif).
 

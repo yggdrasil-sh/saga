@@ -29,7 +29,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Knoten jetzt trotzdem (bisher „kein Zertifikat“): ohne eigenen Port, Adresse = `BASE_URL`, Medien über den Tunnel und
   – wenn freigegeben – UDP. Mit eigenem Namen bzw. „Ein Port“ bleibt alles wie bisher, der Tunnel ist dort zusätzlich
   der letzte Weg der Apps. Kandidaten tragen dafür `tls` und `ws` (und wieder `tcp`, das bisher im Kandidaten der
-  Geräte fehlte). Browser nutzen einen Knoten im Tunnel-Betrieb nur über UDP (Browser-Weg folgt).
+  Geräte fehlte). Den Knoten im Tunnel-Betrieb bekommen nur Geräte, die den Tunnel können (`caps` „ws“); Browser und
+  ältere Apps telefonieren wie bisher (Mesh bzw. gekoppelter Knoten), tritt ein Browser einem solchen Anruf bei,
+  schaltet Saga ihn auf direkt (Browser-Weg über den Tunnel folgt).
 - **Admin → Anrufe:** Kasten „Anrufe über die Saga-Adresse (Tunnel)“ mit Prüfung „Proxy reicht WebSocket durch?“ und
   Zählern (offene Tunnel, Fenster, RTT). Anleitung „Anrufe über die Saga-Adresse (Tunnel)“ (DE/EN/ES), Protokoll in
   `docs/APP-API.md`, Knoten in `gjallarhorn/NODE.md`.

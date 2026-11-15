@@ -193,3 +193,27 @@ func TestParseAuth(t *testing.T) {
 		}
 	}
 }
+
+// Empfangspuffer je Verbindung gedeckelt (Pruefung F7): liest niemand, nimmt readLoop hoechstens MaxRxBuf (+ eine
+// Nachricht) an; danach Gegendruck ueber TCP.
+func TestRxPufferGrenze(t *testing.T) {
+	srv, cli := pair(t, Options{FC: true}, Options{})
+	go func() {
+		_ = cli.SetWriteDeadline(time.Now().Add(3 * time.Second))
+		_, _ = cli.Write(make([]byte, 4<<20))
+	}()
+	time.Sleep(500 * time.Millisecond)
+	if q := srv.rq.Load(); q > MaxRxBuf+MaxPayload || q < MaxRxBuf/2 {
+		t.Fatalf("%d Byte gepuffert (Grenze %d)", q, MaxRxBuf)
+	}
+	b := make([]byte, 64<<10)
+	n := 0
+	_ = srv.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for n < 1<<20 {
+		k, err := srv.Read(b)
+		if err != nil {
+			t.Fatalf("nach %d Byte: %v", n, err)
+		}
+		n += k
+	}
+}

@@ -248,7 +248,7 @@ def horn_wanted(c, ch, media, caps, why=None):
     except (TypeError, ValueError):
         frm = 0
     need = max(3, frm) if frm else limit(media) + 1
-    if len(chat.members(c, ch["id"])) < need or not horn.any_ready(c):
+    if len(chat.members(c, ch["id"])) < need or not horn.any_ready(c, ws=_has(caps, "ws")):   # S10: Tunnel-Knoten nur mit "ws"
         return False
     if chat.is_fed(ch):
         if FED is None or ch["home_peer"] is not None:
@@ -1040,7 +1040,7 @@ def _dm_horn_start(c, uid, ch, peer, cid, media, dev, caps, now, dev_class="desk
     'horn', callee = Gegenueber) oder 409 fallback (nichts angelegt)."""
     if not (_has(caps, "horn") and _has(caps, "multi")):
         return _fallback("caps")
-    if not horn.any_ready(c):
+    if not horn.any_ready(c, ws=_has(caps, "ws")):
         return _fallback("node")
     if not _can_horn(c, peer):
         return _fallback("peer")
@@ -1106,7 +1106,7 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
     node, why = None, []
     hn = lead is None and (dm_peer is not None or horn_wanted(c, ch, media, caps, why))   # 2.5: 1:1 ueber Knoten (geprueft)
     if hn and peer_id is None:
-        node = horn.ready_nodes(c)[0]
+        node = horn.ready_nodes(c, ws=_has(caps, "ws"))[0]
     c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
               "lead, peer_id) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,?,?,?) ON CONFLICT (id) DO NOTHING",
               (cid, ch["id"], starter, dm_peer or "", dev, media, now, now, now, caps, "horn" if hn else "mesh", lead, lead))
@@ -1570,7 +1570,17 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     if hn and signals:
         return _bad(t("ungültige Angabe"))             # ueber Knoten keine Mesh-Angebote
     if hn and peer_id is None:                         # 2.5: Knoten des Anrufs, sonst der beste (Geraete anderer Server
-        node = horn_web.pick(c, call["id"])           # waehlen ueber ihren Server, saga/fed_horn.py)
+        ws = _has(caps, "ws")                          # waehlen ueber ihren Server, saga/fed_horn.py)
+        node = horn_web.pick(c, call["id"], ws=ws)
+        if node is None and not ws and call.get("lead") is None and horn.tunnel_only(c, call["id"]):
+            # 2.5 A3 (Vertrag S10): Anruf nur auf Tunnel-Knoten, dieses Geraet kann den Tunnel nicht (Browser, aeltere App) -
+            # Rueckfall auf direkt wie /direct, dann tritt es mit Mesh-Angeboten erneut bei
+            act = [x for x in others if x["state"] == "active"]
+            if len(act) + 1 <= limit(call["media"]):
+                _to_mesh(c, call, dev, "tunnel")
+                call = _load(c, call["id"])
+                return chat._no_store({"error": t("Der Anruf läuft jetzt direkt – bitte erneut beitreten."), "topo": "mesh",
+                                       "legs": roster(c, call, who, _legs(c, call["id"]))}, 409)
         if node is None:
             horn.note_full(c)
             return chat._no_store({"error": t("Gerade ist kein Anruf-Knoten erreichbar – bitte gleich noch einmal."),
@@ -1720,7 +1730,7 @@ async def api_direct(cid: str, request: Request):
                   (f"dask|{cid}|{dev}", now))
         blk = horn_block(c, call, dev, leg[2], _dev_class(b), ())
         cands = {x.get("node") for x in (blk or {}).get("candidates") or []}
-        own = {n["id"]: n["name"] for n in horn.ready_nodes(c)}     # alle eigenen bereiten Knoten, nicht nur die Kandidaten
+        own = {n["id"]: n["name"] for n in horn.ready_nodes(c, ws=horn.leg_ws(c, cid, dev))}  # alle eigenen bereiten (fuer dieses Geraet, S10)
         names_ = cands | set(own.values())
         proof = c.execute("SELECT n FROM horn_rate WHERE k=? AND start > ?", (f"horn|{dev}", now - 60)).fetchone()
         if names_ and not (cands <= avoid and proof and proof[0] >= DIRECT_PROOF):
@@ -1744,15 +1754,21 @@ async def api_direct(cid: str, request: Request):
             return chat._no_store({"error": t("Der Anruf ist schon beendet."), "ended": True}, 404)
         if call.get("topo") == "mesh":
             return chat._no_store({"ok": True, "call": _dict(c, call, uid), "offer_to": _offer_to(dev, _legs(c, cid))})
-        horn.room_close(c, cid)
-        c.execute("UPDATE chat_call SET topo='mesh' WHERE id=?", (cid,))
-        c.execute("UPDATE chat_call_leg SET node=NULL WHERE call_id=?", (cid,))
+        _to_mesh(c, call, dev, "kein Knoten erreichbar")
         call = _load(c, cid)
-        _emit(c, _audience(c, call), "call.topo", {"call_id": cid, "chat_id": call["chat_id"], "topo": "mesh", "why": "node", "by": dev})
-        emit_roster(c, call)
-        n_act = len(_legs(c, cid))
-        print(f"call: {cid[:8]} direkt (kein Knoten erreichbar, {n_act} Endpunkte)", flush=True)
         return chat._no_store({"ok": True, "call": _dict(c, call, uid), "offer_to": _offer_to(dev, _legs(c, cid))})
+
+
+def _to_mesh(c, call, dev, why):
+    """Anruf ueber Knoten -> direkt (Mesh): Raum am Knoten schliessen, call.topo an alle, neue Liste."""
+    cid = call["id"]
+    horn.room_close(c, cid)
+    c.execute("UPDATE chat_call SET topo='mesh' WHERE id=?", (cid,))
+    c.execute("UPDATE chat_call_leg SET node=NULL WHERE call_id=?", (cid,))
+    call = _load(c, cid)
+    _emit(c, _audience(c, call), "call.topo", {"call_id": cid, "chat_id": call["chat_id"], "topo": "mesh", "why": "node", "by": dev})
+    emit_roster(c, call)
+    print(f"call: {cid[:8]} direkt ({why}, {len(_legs(c, cid))} Endpunkte)", flush=True)
 
 
 def _offer_to(dev, legs):

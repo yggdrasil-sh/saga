@@ -42,12 +42,14 @@ def _clean_avoid(v):
     return tuple(str(x)[:253].strip().lower() for x in v[:horn.CANDIDATES + 2] if isinstance(x, str) and x.strip())
 
 
-def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=None, only=None, quota=None):
+def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=None, only=None, quota=None, ws=None):
     """Kandidaten fuer dieses Geraet: [{node, url, udp, tcp, tls, ws, here, load, peer, tokens, exp}], beste zuerst. P10: only = nur
     diese Knoten (geteilte), quota = Kontingent des verbundenen Servers (im Token)."""
     now = now or time.time()
     gen = horn.leg_gen(c, call["id"], dev)
-    ns = [n for n in horn.ready_nodes(c, now) if n["name"] not in avoid and (only is None or n["id"] in only)]
+    if ws is None:                                      # 2.5 A3 (S10): Tunnel-Knoten nur fuer Geraete mit caps "ws"
+        ws = horn.leg_ws(c, call["id"], dev)
+    ns = [n for n in horn.ready_nodes(c, now, ws=ws) if n["name"] not in avoid and (only is None or n["id"] in only)]
     h = home(c, call["id"], ns)
     if h:
         ns = [n for n in ns if n["id"] == h or (horn.CASCADE and cascadable(h, n["id"]))]
@@ -74,9 +76,10 @@ def cascadable(a, b):
     return a in horn._CONNS and b in horn._CONNS
 
 
-def pick(c, cid):
-    """Knoten fuer einen neuen Endpunkt (Beitritt): der des Anrufs, sonst der beste bereite, sonst None."""
-    ns = horn.ready_nodes(c)
+def pick(c, cid, ws=False):
+    """Knoten fuer einen neuen Endpunkt (Beitritt): der des Anrufs, sonst der beste bereite, sonst None. ws: das Geraet
+    kann den Medien-Tunnel (Tunnel-Knoten zaehlen nur dann, S10)."""
+    ns = horn.ready_nodes(c, ws=ws)
     h = home(c, cid, ns)
     if h:
         return next(n for n in ns if n["id"] == h)
@@ -94,7 +97,7 @@ def may_use(c, cid, n, avoid=()):
 
 def nodes_for(c, cid):
     """(id, name) aller Knoten, auf denen Endpunkte dieses Anrufs sein koennen: bereite und die der Endpunkte."""
-    ids = {n["id"]: n["name"] for n in horn.ready_nodes(c)}
+    ids = {n["id"]: n["name"] for n in horn.ready_nodes(c, ws=True)}
     used = [k for k in _counts(c, cid) if k not in ids]
     for k in used:
         n = horn.node_by_id(c, k)

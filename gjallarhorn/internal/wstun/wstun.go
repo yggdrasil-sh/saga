@@ -46,8 +46,10 @@ const (
 const (
 	Subprotocol = "saga-tunnel.1"
 	Version     = 1
-	MaxPayload  = 64 << 10 // groesste Nutzlast je Daten-Nachricht
-	MaxText     = 4 << 10  // groesste Textnachricht (auth)
+	MaxPayload  = 64 << 10  // groesste Nutzlast je Daten-Nachricht
+	MaxText     = 4 << 10   // groesste Textnachricht (auth)
+	MaxRxBuf    = 256 << 10 // hoechstens so viele empfangene, noch nicht gelesene Bytes je Verbindung (dann liest readLoop
+	// nicht weiter - Gegendruck ueber TCP bis zum Absender)
 )
 
 // Standardwerte (Vertrag A3).
@@ -101,6 +103,7 @@ type Options struct {
 type Stats struct {
 	TxBytes, RxBytes, TxMsgs, RxMsgs, AcksTx, AcksRx atomic.Uint64
 	Blocked                                          atomic.Int64 // Summe der Wartezeit vor dem Fenster (ns)
+	BlockedSince                                     atomic.Int64 // wartet gerade seit (UnixNano, 0 = nicht)
 	MinRTTus, BWBps, Window, Inflight, MaxInflight   atomic.Int64
 }
 
@@ -134,6 +137,8 @@ type Conn struct {
 
 	// Empfang
 	rch    chan []byte
+	rq     atomic.Int64  // Bytes in rch
+	rxFree chan struct{} // Leser hat etwas aus rch genommen
 	rbuf   []byte
 	first  chan struct{} // zu beim ersten Datenbyte
 	fonce  sync.Once
@@ -185,7 +190,7 @@ func New(ws *websocket.Conn, local, remote net.Addr, opt Options) *Conn {
 		opt.AckDelay = DefAckDelay
 	}
 	c := &Conn{ws: ws, opt: opt, local: local, remote: remote, rch: make(chan []byte, 512), closed: make(chan struct{}),
-		rdlCh: make(chan struct{}, 1), first: make(chan struct{})}
+		rdlCh: make(chan struct{}, 1), first: make(chan struct{}), rxFree: make(chan struct{}, 1)}
 	c.fcond = sync.NewCond(&c.fmu)
 	c.St.Window.Store(int64(c.windowLocked()))
 	c.alive.Store(time.Now().UnixNano())
@@ -241,6 +246,14 @@ func (c *Conn) readLoop() {
 			c.St.RxMsgs.Add(1)
 			c.fonce.Do(func() { close(c.first) })
 			c.noteRcvd(len(p))
+			for q := c.rq.Load(); q > 0 && q+int64(len(p)) > MaxRxBuf; q = c.rq.Load() {
+				select { // Puffer voll: erst weiterlesen, wenn der Leser Platz gemacht hat
+				case <-c.rxFree:
+				case <-c.closed:
+					return
+				}
+			}
+			c.rq.Add(int64(len(p)))
 			select {
 			case c.rch <- p:
 			case <-c.closed:
@@ -391,20 +404,24 @@ func (c *Conn) reserve() error {
 	for {
 		select {
 		case <-c.closed:
+			c.St.BlockedSince.Store(0)
 			return errClosed
 		default:
 		}
 		if int(c.sent-c.acked) < c.windowLocked() {
 			if !t0.IsZero() {
 				c.St.Blocked.Add(int64(time.Since(t0)))
+				c.St.BlockedSince.Store(0)
 			}
 			return nil
 		}
 		if t0.IsZero() {
 			t0 = time.Now()
+			c.St.BlockedSince.Store(t0.UnixNano())
 		}
 		if dl := c.wdl.Load(); dl != 0 && time.Now().UnixNano() >= dl {
 			c.St.Blocked.Add(int64(time.Since(t0)))
+			c.St.BlockedSince.Store(0)
 			return os.ErrDeadlineExceeded
 		}
 		// Wecker gegen Fristen (SetWriteDeadline weckt selbst, Quittungen auch)
@@ -514,6 +531,11 @@ func (c *Conn) next() ([]byte, error) {
 				}
 				return nil, errClosed
 			}
+			c.rq.Add(-int64(len(p)))
+			select {
+			case c.rxFree <- struct{}{}:
+			default:
+			}
 			return p, nil
 		case <-tc:
 			return nil, os.ErrDeadlineExceeded
@@ -608,7 +630,16 @@ func (c *Conn) Snap() Snapshot {
 	c.fmu.Unlock()
 	return Snapshot{Window: int64(w), Inflight: c.St.Inflight.Load(), MaxInflight: c.St.MaxInflight.Load(), RTTus: c.St.MinRTTus.Load(),
 		BWBps: c.St.BWBps.Load(), Tx: c.St.TxBytes.Load(), Rx: c.St.RxBytes.Load(), AcksRx: c.St.AcksRx.Load(), AcksTx: c.St.AcksTx.Load(),
-		BlockedMs: c.St.Blocked.Load() / 1e6}
+		BlockedMs: c.blockedNs() / 1e6}
+}
+
+// blockedNs: Wartezeit vor dem Fenster insgesamt, die laufende eingerechnet.
+func (c *Conn) blockedNs() int64 {
+	n := c.St.Blocked.Load()
+	if since := c.St.BlockedSince.Load(); since != 0 {
+		n += time.Now().UnixNano() - since
+	}
+	return n
 }
 
 // --- Handschlag ----------------------------------------------------------------------------------------------------

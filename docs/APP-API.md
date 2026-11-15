@@ -2215,6 +2215,12 @@ der Leitung durch einen WebSocket unter der Saga-Adresse („A3“, Vertrag `sag
 Strom in seine ICE-TCP-Weiche; für ihn ist es ein normales TCP-Bein. Inhalte bleiben Ende-zu-Ende-verschlüsselt (DTLS-SRTP
 mit Frame-E2E wie auf allen Wegen).
 
+- **Fähigkeit `ws` (S10):** Geräte mit Tunnel melden `"ws"` in `caps` (`POST /api/calls`, `/join`,
+  `PUT /api/calls/caps`). Knoten im Tunnel-Betrieb (`tls: false`) gelten nur für Geräte mit `ws` als bereit (Start,
+  Kandidaten, `/direct`); Geräte ohne `ws` sehen sie nicht (Mesh bzw. andere Knoten wie bisher). Tritt ein Gerät ohne
+  `ws` einem Anruf bei, der nur auf Tunnel-Knoten läuft: Saga schaltet ihn auf direkt (`call.topo`, wie `/direct`) und
+  antwortet `409 {"topo": "mesh", "legs": […]}` ohne `join_block` – erneut mit Mesh-Angeboten beitreten; über der
+  Mesh-Grenze `409 join_block: "node"`.
 - **Wann:** Kandidat mit `ws: true`. `ws` und weder `tcp` noch `tls` (Tunnel-Betrieb): UDP (falls `udp`) und Tunnel
   parallel, UDP mit kurzem Vorsprung. `ws` mit `tcp`/`tls`: bisherige Reihenfolge UDP → TCP → TLS, Tunnel als letzter Weg
   (nach der TLS-Wartezeit). UDP-Verlust im Anruf → `tcp`, falls angeboten, sonst `ws`. Ohne `ws`: kein Tunnel.

@@ -324,15 +324,44 @@ def alive(n, now=None):
             and ld.get("state") not in ("draining", "update", "fehler") and version_ok(n.get("version")) and cert_ok(n, now))
 
 
-def ready_nodes(c, now=None):
-    """Bereite Knoten, beste zuerst (kleine Auslastung; ab PENALTY Abzug)."""
-    ns = [n for n in nodes(c) if ready(n, now)]
+def ready_nodes(c, now=None, ws=False):
+    """Bereite Knoten, beste zuerst (kleine Auslastung; ab PENALTY Abzug). ws (2.5 A3, Vertrag S10): das Geraet kann den
+    Medien-Tunnel (caps "ws") - nur dann zaehlen Knoten im Tunnel-Betrieb (sonst fuer Browser und aeltere Apps
+    unerreichbar: kein TURN-TLS, kein ICE-TCP; UDP aus dem Selbsttest ist fuer den Browser kein sicherer Beleg)."""
+    ns = [n for n in nodes(c) if ready(n, now) and (ws or not tunnel_mode(n))]
     ns.sort(key=lambda n: (util(n) + (0.5 if util(n) >= PENALTY else 0), not n["builtin"], n["name"]))
     return ns
 
 
-def any_ready(c):
-    return horn_on() and bool(ready_nodes(c))
+def any_ready(c, ws=False):
+    return horn_on() and bool(ready_nodes(c, ws=ws))
+
+
+def caps_ws(caps):
+    """Geraet kann den Medien-Tunnel (caps enthaelt "ws", Vertrag S10)."""
+    return isinstance(caps, (list, tuple, set)) and "ws" in caps
+
+
+def leg_ws(c, cid, dev):
+    """caps "ws" am Endpunkt dieses Geraets im Anruf (Saga merkt sich die caps je Endpunkt)."""
+    r = c.execute("SELECT caps FROM chat_call_leg WHERE call_id=? AND device=?", (cid, dev)).fetchone()
+    v = r[0] if r else None
+    if isinstance(v, str):
+        try:
+            v = json.loads(v)
+        except ValueError:
+            v = None
+    return caps_ws(v)
+
+
+def tunnel_only(c, cid, now=None):
+    """Der Anruf laeuft nur auf eigenen Knoten im Tunnel-Betrieb (aktive Endpunkte) - Geraete ohne "ws" erreichen ihn nicht."""
+    rows = c.execute("SELECT DISTINCT node FROM chat_call_leg WHERE call_id=? AND state='active' AND node IS NOT NULL "
+                     "AND node NOT LIKE 'f:%'", (cid,)).fetchall()
+    if not rows:
+        return False
+    ns = {n["id"]: n for n in nodes(c)}
+    return all(r[0] in ns and tunnel_mode(ns[r[0]]) for r in rows)
 
 
 def call_node(c, cid):

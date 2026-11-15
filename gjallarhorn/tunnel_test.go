@@ -16,6 +16,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/pion/turn/v5"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/netx"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/wstun"
 )
 
@@ -272,6 +273,11 @@ func bendTo(sdp string, port int) string {
 
 // appTunnel: lokaler Lauscher je Leitung (maxConns 1) -> WebSocket mit auth, ohne Fenster, mit Quittungen (wie die Apps).
 func appTunnel(t *testing.T, url, user, cred, role string) int {
+	return appTunnelAck(t, url, user, cred, role, true)
+}
+
+// appTunnelAck: wie appTunnel; ack=false: die App quittiert nicht (Pruefung des Fensters am Knoten).
+func appTunnelAck(t *testing.T, url, user, cred, role string, ack bool) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -287,7 +293,7 @@ func appTunnel(t *testing.T, url, user, cred, role string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := wstun.New(ws, nil, nil, wstun.Options{Ack: true, AckBytes: r.AckBytes, AckDelay: time.Duration(r.AckMs) * time.Millisecond})
+	c := wstun.New(ws, nil, nil, wstun.Options{Ack: ack, AckBytes: r.AckBytes, AckDelay: time.Duration(r.AckMs) * time.Millisecond})
 	t.Cleanup(func() { c.Close() })
 	go func() {
 		lc, err := ln.Accept()
@@ -492,4 +498,90 @@ func TestTunnelHerkunft(t *testing.T) {
 		t.Fatalf("Admin-Herkunft abgewiesen: %v", err)
 	}
 	ws.Close()
+}
+
+// Fenster am Endpunkt des Knotens (Pruefung F4): quittiert die App auf der Bild-Leitung nicht, haelt der Knoten nach dem
+// Fenster (64 KiB, plus hoechstens ein Schub der Weiche) an und wartet - Gegenprobe FC:false in tunnel.go macht das rot.
+func TestTunnelFensterAmKnoten(t *testing.T) {
+	s, hs, url := tunnelServer(t)
+	user, cred := tunnelCreds(t, s)
+	hc := httpClient()
+	room := "tunnel-fenster"
+	if err := postJSON(hc, hs.URL+"/api/dev/room", map[string]string{"room": room}, &struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+	var bots sfuBots
+	defer func() { bots.close() }()
+	for i := 0; i < 2; i++ {
+		api, err := sfuBotAPI("ws")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := &sfuBot{peer: "f" + strconv.Itoa(i), path: "ws", video: true, layers: []string{"l", "m"}}
+		b.level.Store(127)
+		quiet := i == 1
+		b.bend = func(role, sdp string) string {
+			return bendTo(sdp, appTunnelAck(t, url, user, cred, role, !(quiet && role == "video")))
+		}
+		if err := b.join(hc, hs.URL, api, room, 1, "desktop"); err != nil {
+			t.Fatal(err)
+		}
+		bots = append(bots, b)
+	}
+	for i := 0; i < 150 && bots[0].connected()+bots[1].connected() < 4; i++ {
+		time.Sleep(100 * time.Millisecond)
+	}
+	for _, b := range bots {
+		b.start()
+	}
+	time.Sleep(3 * time.Second)
+	var lay struct {
+		Stats legStats `json:"stats"`
+	}
+	resp, err := hc.Get(hs.URL + "/api/sfu/leg/" + bots[1].legIDs[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&lay)
+	resp.Body.Close()
+	tu := lay.Stats.Tunnel
+	if tu == nil {
+		t.Fatal("Bild-Bein ohne Tunnel-Zaehler")
+	}
+	// ohne Fenster (Gegenprobe) liefen in 3 s mehrere 100 KB Bild durch
+	if tu.Window != wstun.DefMinWindow || tu.MaxInflight < wstun.DefMinWindow/2 || tu.Tx > uint64(wstun.DefMinWindow+netx.CoalesceMax+4096) ||
+		tu.BlockedMs < 1000 || tu.AcksRx != 0 {
+		t.Fatalf("Fenster greift nicht: %+v", *tu)
+	}
+}
+
+// WebSockets ohne Zugang haben eine eigene, kleinere Grenze je Adresse (Pruefung F7); nach auth zaehlen sie nicht mehr.
+func TestTunnelGrenzeOhneZugang(t *testing.T) {
+	s, _, url := tunnelServer(t)
+	user, cred := tunnelCreds(t, s)
+	var open []*websocket.Conn
+	defer func() {
+		for _, w := range open {
+			w.Close()
+		}
+	}()
+	for i := 0; i < tunnelMaxPendIP; i++ {
+		ws, _, err := dialTunnel(t, url)
+		if err != nil {
+			t.Fatalf("%d: %v", i, err)
+		}
+		open = append(open, ws)
+	}
+	if _, resp, err := dialTunnel(t, url); err == nil || resp == nil || resp.StatusCode != 429 {
+		t.Fatalf("%d. ohne Zugang: %v %v", tunnelMaxPendIP+1, err, resp)
+	}
+	if _, err := wstun.ClientAuth(open[0], user, cred, "", 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	ws, _, err := dialTunnel(t, url)
+	if err != nil {
+		t.Fatalf("nach einer Anmeldung wieder Platz: %v", err)
+	}
+	open = append(open, ws)
 }

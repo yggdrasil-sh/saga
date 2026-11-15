@@ -212,12 +212,13 @@ unchanged. Gjallarhorn stays experimental in 2.5.
   or in “One port” mode, everything stays as before; there the tunnel is an extra last path for the apps (e.g. behind
   company proxies that inspect TLS).
 - Set `TRUSTED_PROXIES` to the proxy: the limit for tunnels per device counts the real address from `X-Forwarded-For`.
-- **Better quality:** UDP. Open the node's UDP port (default 8443; with `HORN_UDP_LISTEN=:443` also 443 – NPM only
-  uses TCP 443) directly on the router, bypassing the proxy and with the same number on the host (`"8443:8443/udp"`).
-  The node checks this itself; if it works, apps and browsers use UDP and the tunnel is only the fallback. Or use the
-  “One port” mode right away (TLS passthrough instead of TLS at the proxy, below).
-- **Browsers** only call through a node in tunnel mode with UDP (the browser path through the tunnel will follow);
-  without UDP the call page names the reason. Group calls of the apps work regardless.
+- **Optional:** as with “One port”, UDP 443 can be added (`HORN_UDP_LISTEN=:443`, `"443:443/udp"` – NPM only uses
+  TCP 443); the node checks this itself. It is not required. Or use the “One port” mode right away (TLS passthrough
+  instead of TLS at the proxy, below).
+- **Browsers and older apps** will call through a node in tunnel mode only with the browser path through the tunnel
+  (coming). Until then Saga does not offer them this node: their calls run as before in the mesh or through a paired
+  node. If a browser joins a call that runs on the tunnel node, Saga switches the call to direct (up to the mesh limit
+  of 4 with video or 6 audio only).
 - **Cloudflare (orange cloud):** passes WebSocket through, so the tunnel works technically. Continuous media traffic
   through Cloudflare may, however, violate their terms of service (especially on the free plan).
 

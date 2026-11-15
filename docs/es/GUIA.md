@@ -216,13 +216,13 @@ entrega sin cambios al nodo. Gjallarhorn sigue siendo experimental en la 2.5.
   detrás de proxys de empresa que inspeccionan TLS).
 - Configura `TRUSTED_PROXIES` con el proxy: el límite de túneles por dispositivo cuenta la dirección real de
   `X-Forwarded-For`.
-- **Más calidad:** UDP. Abre el puerto UDP del nodo (8443 por defecto; con `HORN_UDP_LISTEN=:443` también 443, NPM
-  solo usa TCP 443) directamente en el router, sin pasar por el proxy y con el mismo número en el host
-  (`"8443:8443/udp"`). El nodo lo comprueba solo; si funciona, apps y navegadores usan UDP y el túnel queda como
-  alternativa. O usa directamente el modo «Un puerto» (paso de TLS en lugar de TLS en el proxy, más abajo).
-- Los **navegadores** solo llaman a través de un nodo en modo túnel con UDP (el camino del navegador por el túnel
-  llegará más adelante); sin UDP, la página de la llamada indica el motivo. Las llamadas en grupo de las apps funcionan
-  igualmente.
+- **Opcional:** como en «Un puerto», se puede añadir UDP 443 (`HORN_UDP_LISTEN=:443`, `"443:443/udp"`; NPM solo usa
+  TCP 443); el nodo lo comprueba solo. No es necesario. O usa directamente el modo «Un puerto» (paso de TLS en lugar de
+  TLS en el proxy, más abajo).
+- Los **navegadores y las apps antiguas** llamarán a través de un nodo en modo túnel solo con el camino del navegador
+  por el túnel (llegará más adelante). Hasta entonces Saga no les ofrece este nodo: sus llamadas van como antes en
+  malla o por un nodo acoplado. Si un navegador se une a una llamada que va por el nodo del túnel, Saga pasa la llamada
+  a directa (hasta el límite de la malla: 4 con vídeo o 6 solo audio).
 - **Cloudflare (nube naranja):** deja pasar WebSocket, el túnel funciona técnicamente. Sin embargo, el tráfico
   multimedia continuo a través de Cloudflare puede infringir sus condiciones de uso (sobre todo en el plan gratuito).
 
