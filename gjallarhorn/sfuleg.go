@@ -557,6 +557,7 @@ func (s *server) sfuRoutes(m *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{"ok": true})
 	})
+	m.HandleFunc("GET /api/dev/turnpipe", s.apiTurnPipe) // Kopplung des TURN-Wegs (turnguard.go)
 	m.HandleFunc("GET /api/dev/bridges", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"bridges": s.bridgeStats()})
 	})

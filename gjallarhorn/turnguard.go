@@ -2,7 +2,11 @@ package main
 
 import (
 	"errors"
+	"log"
 	"net"
+	"net/http"
+	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -10,12 +14,22 @@ import (
 	"github.com/pion/transport/v5"
 	"github.com/pion/transport/v5/stdnet"
 	"github.com/pion/turn/v5"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/turnpipe"
 )
 
 // Relay-Schutz des TURN-Wegs (§3.4): eine Allocation darf nur zum Knoten selbst senden - und dort nur an die
 // UDP-Ports, die die ICE-Agenten des TURN-Wegs gebunden haben. Ohne diese Grenze erreicht ein Geraet mit gueltigen
 // Zugangsdaten jeden Dienst auf der Relay-Adresse (Standard 127.0.0.1: Dienste des Knoten-Hosts). TCP-Allocations
 // (RFC 6062, Connect) braucht WebRTC nicht; sie sind abgeschaltet.
+
+// Kopplung im Prozess (2.5, internal/turnpipe): Zwischen den ICE-Sockets des TURN-Wegs und den Relay-Sockets der
+// Allocations gehen Pakete nicht ueber Loopback-UDP, sondern durch eine kleine Warteschlange im Prozess. Staut die
+// TURN-TCP/TLS-Verbindung zum Geraet, wartet das Bein beim Schreiben - wie auf ICE-TCP (TCP_NOTSENT_LOWAT): Die
+// Schaetzung sieht das Alter der eigenen Warteschlange, H3 verwirft, Schichten gehen herunter. Ohne Kopplung lag der
+// Stau unsichtbar im Empfangspuffer des Relay-Sockets (bei 600 kbit/s rund 2,8 s). Adressen, Ports und der
+// Relay-Schutz unten bleiben gleich; ein Relay-Ende erreicht im Prozess nur ICE-Enden des TURN-Wegs.
+//   HORN_TURN_COUPLE=0  Kopplung aus (Gegenprobe: Loopback-UDP wie bis 2.4)
+//   HORN_TURN_PIPE=n    Grenze der Warteschlange je Relay-Ende in Bytes (Standard 4096)
 
 var errNoTCPRelay = errors.New("turn: tcp-relay abgeschaltet")
 
@@ -24,6 +38,7 @@ type turnPorts struct {
 	mu      sync.Mutex
 	m       map[int]*turnPort
 	dropped atomic.Uint64
+	hub     *turnpipe.Hub // nil = Kopplung aus
 }
 
 type turnPort struct {
@@ -31,7 +46,18 @@ type turnPort struct {
 	seen time.Time // letzte Pruefung "Socket noch offen"
 }
 
-func newTurnPorts() *turnPorts { return &turnPorts{m: map[int]*turnPort{}} }
+func newTurnPorts() *turnPorts {
+	p := &turnPorts{m: map[int]*turnPort{}}
+	if os.Getenv("HORN_TURN_COUPLE") != "0" {
+		p.hub = turnpipe.NewHub()
+		if n, err := strconv.Atoi(os.Getenv("HORN_TURN_PIPE")); err == nil && n > 0 {
+			p.hub.Limit = n
+		}
+	} else {
+		log.Printf("TURN-Weg: Kopplung im Prozess aus (HORN_TURN_COUPLE=0)")
+	}
+	return p
+}
 
 func (p *turnPorts) add(c *net.UDPConn) {
 	a, ok := c.LocalAddr().(*net.UDPAddr)
@@ -96,10 +122,15 @@ func (g *guardNet) ListenUDP(network string, la *net.UDPAddr) (transport.UDPConn
 	if err == nil {
 		if uc, ok := c.(*net.UDPConn); ok {
 			g.ports.add(uc)
+			if g.ports.hub != nil {
+				return g.ports.hub.Attach(uc, turnpipe.ICE, nil), nil
+			}
 		}
 	}
 	return c, err
 }
+
+var _ transport.UDPConn = (*turnpipe.Conn)(nil)
 
 // relayGen: feste Relay-Adresse, ausgehend nur zu erlaubten Zielen, kein TCP.
 type relayGen struct {
@@ -113,7 +144,12 @@ func (r *relayGen) AllocatePacketConn(c turn.AllocateListenerConfig) (net.Packet
 	if err != nil {
 		return nil, nil, err
 	}
-	return &guardPC{PacketConn: pc, ok: r.ok, p: r.p}, a, nil
+	g := &guardPC{PacketConn: pc, ok: r.ok, p: r.p}
+	if uc, ok := pc.(*net.UDPConn); ok && r.p.hub != nil {
+		// im Prozess nur zu ICE-Enden des TURN-Wegs; alles andere wie bisher durch den Schutz
+		return r.p.hub.Attach(uc, turnpipe.Relay, g.WriteTo), a, nil
+	}
+	return g, a, nil
 }
 
 func (r *relayGen) AllocateListener(turn.AllocateListenerConfig) (net.Listener, net.Addr, error) {
@@ -154,4 +190,20 @@ func (s *server) relayTargetOK(a net.Addr) bool {
 		return false
 	}
 	return s.turnPorts.live(ua.Port)
+}
+
+// apiTurnPipe: Zaehler der Kopplung (Dev, Pruefstand e2e/stau.mjs).
+func (s *server) apiTurnPipe(w http.ResponseWriter, _ *http.Request) {
+	if s.turnPorts == nil || s.turnPorts.hub == nil {
+		writeJSON(w, 200, map[string]any{"on": false, "relay_dropped": s.turnPorts.droppedN()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"on": true, "pipe": s.turnPorts.hub.View(), "relay_dropped": s.turnPorts.droppedN()})
+}
+
+func (p *turnPorts) droppedN() uint64 {
+	if p == nil {
+		return 0
+	}
+	return p.dropped.Load()
 }
