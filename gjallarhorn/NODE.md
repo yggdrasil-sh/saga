@@ -880,6 +880,11 @@ TURN-TLS verhält sich damit wie ICE-TCP direkt. Die restliche Latenz liegt auß
 Empfangsfenster der Leitung, in die TCP ohne Verlust weiterschreibt): Auf beiden TCP-Wegen pendelt der Knoten zwischen
 den Schichten, weil er den Stau erst sieht, wenn diese Puffer voll sind. Dagegen hilft nur ein Signal Ende zu Ende
 (Fenster mit Quittungen wie im WebSocket-Tunnel A3, oder die RTT aus den RTCP-Berichten des Geräts).
+Ohne Engpass bzw. mit Stau anderer Art ändert die Kopplung nichts (je n = 3, vorher/nachher gleich): sauber RTT 20
+(Latenz 164–175 ms, 30 fps), RTT 170 (240–250 ms), 1 % TCP-Verlust bei RTT 60 (184–191 ms, 0 Einfrierer), Uplink
+500 kbit/s (Gegenüber empfängt 236–239 kbit/s, 0 Einfrierer), 3 Mbit/s mit großem Download auf derselben Leitung
+(427–429 ms; nachher in 2 von 3 Läufen ein Einfrierer von 0,2 s). Vier Geräte auf TURN-TLS: Knoten-CPU 11–12 % statt
+12 % (kein Loopback-UDP mehr).
 
 ## Einfrieren auf TCP (5G-Messung, G4)
 
