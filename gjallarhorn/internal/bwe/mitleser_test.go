@@ -146,3 +146,24 @@ func TestMitleserUmlauf(t *testing.T) {
 		t.Fatalf("durchsatz %d", s.AckedBps)
 	}
 }
+
+// Recent: gesendet gegen bestaetigt der juengsten geschlossenen Fenster, auch wenn deren Pakete schon lange unterwegs
+// waren (lange Schlange): Bestaetigt bleibt hinter gesendet zurueck, weil sich die Ankunft dehnt.
+func TestMitleserRecent(t *testing.T) {
+	m := NewMitleser(Defaults())
+	if r := m.Recent(1e9); r.SentBps != 0 || r.AckedBps != 0 {
+		t.Fatalf("leer: %+v", r)
+	}
+	// 2 s lang alle 10 ms 1000 Byte (800 kbit/s); Ankunft dehnt sich auf 12,5 ms je Paket (640 kbit/s), die Schlange
+	// waechst also um 2,5 ms je Paket - nach 2 s rund 500 ms
+	var in []rep
+	for i := 0; i < 200; i++ {
+		m.Sent(int64(i)*10e6, uint16(i), 1000, KindVideo)
+		in = append(in, rep{0, StRecv, 40_000 + int64(i)*12_500})
+	}
+	m.Feedback(3e9, fbOf(0, 0, in))
+	r := m.Recent(1e9)
+	if r.Ns < 1e9 || r.SentBps < 780e3 || r.SentBps > 820e3 || r.AckedBps < 620e3 || r.AckedBps > 660e3 {
+		t.Fatalf("recent %+v", r)
+	}
+}

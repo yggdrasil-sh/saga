@@ -127,7 +127,7 @@ for (const [role, l] of Object.entries(r1[0].legs)) {
   if (!l.id) continue;
   const j = await fetch(`${base}/api/sfu/leg/${l.id}`).then((r) => r.json()).catch(() => null);
   if (j) knot[role] = { est: j.est_kbit, probes: j.probes && { started: j.probes.started, passed: j.probes.passed, failed: j.probes.failed },
-    stalls: j.stats && j.stats.stalls, drops: j.stats && j.stats.frames_dropped, maxAgeMs: j.stats && j.stats.max_age_ms, slots: (j.slots || []).map((x) => [x.cls, x.layer, x.paused]).slice(0, 4), raw: j.stats };
+    stalls: j.stats && j.stats.stalls, drops: j.stats && j.stats.frames_dropped, maxAgeMs: j.stats && j.stats.max_age_ms, slots: (j.slots || []).map((x) => [x.cls, x.layer, x.paused]).slice(0, 4), raw: j.stats, tcp: j.tcp_stau };
 }
 if (bulkProc) bulkProc.kill();
 const nodeT = await fetch(base + '/api/dev/turnpipe').then((r) => r.json()).catch(() => null);

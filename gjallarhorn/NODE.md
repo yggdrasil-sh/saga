@@ -94,6 +94,9 @@ Platzhalter: `horn-1.example.org`.
   - TCP: aus dem Alter der eigenen Warteschlange. Dank `TCP_NOTSENT_LOWAT` liegt der Stau im Knoten.
   - TURN-TLS: ebenso. Das Bein ist dafür mit dem TURN-Server im Prozess gekoppelt (2.5, siehe „TURN-TLS: Kopplung
     Bein ↔ TURN-Server“); bis 2.4 lag der Stau unsichtbar im Empfangspuffer des Relay-Sockets.
+  - TCP und TURN-TLS zusätzlich (2.5, `HORN_TCP_STAU`): die Schlange unterwegs aus den transport-cc-Rückmeldungen des
+    Geräts – der Knoten schaltet herunter, bevor die Puffer außerhalb voll sind (siehe „TCP-Wege:
+    Ende-zu-Ende-Stausignal“).
   - UDP: zusätzlich GCC (TWCC), als Stausignal. Ohne Probepakete ist GCC anwendungsbegrenzt und taugt nicht als
     Obergrenze. Stau ist ein GCC-Ziel unter 90 % der gesendeten Rate – außer es läuft der Rate nur nach
     (`estimator.lagging`, `internal/sfu/control.go`). pion-GCC senkt sein Ziel nur bei Stau (Verzögerung: auf 85 % der
@@ -882,8 +885,8 @@ hing und sekundenlang ausblieb; jetzt teilen sich Ton und das kleinere Bild die 
 
 TURN-TLS verhält sich damit wie ICE-TCP direkt. Die restliche Latenz liegt außerhalb des Knotens (Puffer und
 Empfangsfenster der Leitung, in die TCP ohne Verlust weiterschreibt): Auf beiden TCP-Wegen pendelt der Knoten zwischen
-den Schichten, weil er den Stau erst sieht, wenn diese Puffer voll sind. Dagegen hilft nur ein Signal Ende zu Ende
-(Fenster mit Quittungen wie im WebSocket-Tunnel A3, oder die RTT aus den RTCP-Berichten des Geräts).
+den Schichten, weil er den Stau erst sieht, wenn diese Puffer voll sind. Dagegen hilft nur ein Signal Ende zu Ende –
+seit 2.5 vorhanden (siehe „TCP-Wege: Ende-zu-Ende-Stausignal“); die Zahlen dieses Abschnitts sind ohne es gemessen.
 Ohne Engpass bzw. mit Stau anderer Art ändert die Kopplung nichts (je n = 3, vorher/nachher gleich): sauber RTT 20
 (Latenz 164–175 ms, 30 fps), RTT 170 (240–250 ms), 1 % TCP-Verlust bei RTT 60 (184–191 ms, 0 Einfrierer), Uplink
 500 kbit/s (Gegenüber empfängt 236–239 kbit/s, 0 Einfrierer), 3 Mbit/s mit großem Download auf derselben Leitung
