@@ -1040,7 +1040,6 @@
  "Der Anruf ist schon beendet.": "The call has already ended.",
  "Der Anruf ist voll (höchstens {n} Geräte).": "The call is full (at most {n} devices).",
  "Der Anruf läuft deshalb direkt zwischen den Geräten. Dabei können höchstens {v} Geräte mit Video bzw. {a} nur mit Ton teilnehmen.": "The call therefore runs directly between the devices. At most {v} devices with video or {a} with audio only can take part.",
- "Der Anruf läuft jetzt direkt – bitte erneut beitreten.": "The call now runs directly – please join again.",
  "Der Anruf wurde auf einem anderen Gerät angenommen.": "The call was answered on another device.",
  "Der API-Token ist abgelaufen.": "The API token has expired.",
  "Der Assistent arbeitet nur mit Seiten dieses Servers.": "The assistant only works with pages on this server.",

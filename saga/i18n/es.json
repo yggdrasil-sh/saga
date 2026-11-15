@@ -1040,7 +1040,6 @@
  "Der Anruf ist schon beendet.": "La llamada ya terminó.",
  "Der Anruf ist voll (höchstens {n} Geräte).": "La llamada está llena (como máximo {n} dispositivos).",
  "Der Anruf läuft deshalb direkt zwischen den Geräten. Dabei können höchstens {v} Geräte mit Video bzw. {a} nur mit Ton teilnehmen.": "Por eso la llamada va directamente entre los dispositivos. Pueden participar como máximo {v} dispositivos con vídeo o {a} solo con audio.",
- "Der Anruf läuft jetzt direkt – bitte erneut beitreten.": "La llamada ahora va directa: vuelve a unirte.",
  "Der Anruf wurde auf einem anderen Gerät angenommen.": "La llamada se respondió en otro dispositivo.",
  "Der API-Token ist abgelaufen.": "El token de API ha caducado.",
  "Der Assistent arbeitet nur mit Seiten dieses Servers.": "El asistente solo funciona con páginas de este servidor.",

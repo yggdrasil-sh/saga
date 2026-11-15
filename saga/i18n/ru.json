@@ -1040,7 +1040,6 @@
  "Der Anruf ist schon beendet.": "Звонок уже завершён.",
  "Der Anruf ist voll (höchstens {n} Geräte).": "Звонок заполнен (не более {n} устройств).",
  "Der Anruf läuft deshalb direkt zwischen den Geräten. Dabei können höchstens {v} Geräte mit Video bzw. {a} nur mit Ton teilnehmen.": "Поэтому звонок идёт напрямую между устройствами. Участвовать могут не более {v} устройств с видео или {a} только со звуком.",
- "Der Anruf läuft jetzt direkt – bitte erneut beitreten.": "Звонок теперь идёт напрямую – присоединитесь снова.",
  "Der Anruf wurde auf einem anderen Gerät angenommen.": "Звонок принят на другом устройстве.",
  "Der API-Token ist abgelaufen.": "Срок действия API-токена истёк.",
  "Der Assistent arbeitet nur mit Seiten dieses Servers.": "Ассистент работает только со страницами этого сервера.",

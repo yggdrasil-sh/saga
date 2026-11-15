@@ -1040,7 +1040,6 @@
  "Der Anruf ist schon beendet.": "สายสิ้นสุดแล้ว",
  "Der Anruf ist voll (höchstens {n} Geräte).": "สายเต็มแล้ว (สูงสุด {n} อุปกรณ์)",
  "Der Anruf läuft deshalb direkt zwischen den Geräten. Dabei können höchstens {v} Geräte mit Video bzw. {a} nur mit Ton teilnehmen.": "ดังนั้นการโทรจึงเชื่อมตรงระหว่างอุปกรณ์ เข้าร่วมได้สูงสุด {v} อุปกรณ์แบบมีวิดีโอ หรือ {a} อุปกรณ์แบบเสียงอย่างเดียว",
- "Der Anruf läuft jetzt direkt – bitte erneut beitreten.": "ตอนนี้การโทรเป็นแบบตรงแล้ว – โปรดเข้าร่วมอีกครั้ง",
  "Der Anruf wurde auf einem anderen Gerät angenommen.": "รับสายบนอุปกรณ์อื่นแล้ว",
  "Der API-Token ist abgelaufen.": "โทเค็น API หมดอายุแล้ว",
  "Der Assistent arbeitet nur mit Seiten dieses Servers.": "ผู้ช่วยทำงานได้เฉพาะกับหน้าบนเซิร์ฟเวอร์นี้",

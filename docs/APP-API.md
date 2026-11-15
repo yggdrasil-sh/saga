@@ -2218,9 +2218,12 @@ mit Frame-E2E wie auf allen Wegen).
 - **Fähigkeit `ws` (S10):** Geräte mit Tunnel melden `"ws"` in `caps` (`POST /api/calls`, `/join`,
   `PUT /api/calls/caps`). Knoten im Tunnel-Betrieb (`tls: false`) gelten nur für Geräte mit `ws` als bereit (Start,
   Kandidaten, `/direct`); Geräte ohne `ws` sehen sie nicht (Mesh bzw. andere Knoten wie bisher). Tritt ein Gerät ohne
-  `ws` einem Anruf bei, der nur auf Tunnel-Knoten läuft: Saga schaltet ihn auf direkt (`call.topo`, wie `/direct`) und
-  antwortet `409 {"topo": "mesh", "legs": […]}` ohne `join_block` – erneut mit Mesh-Angeboten beitreten; über der
-  Mesh-Grenze `409 join_block: "node"`.
+  `ws`, aber mit `caps` „meshjoin“ (Web) einem Anruf bei, der nur auf Tunnel-Knoten läuft (S11): Saga trägt sein Bein ein,
+  sendet zuerst die Liste, dann `call.topo` (wie `/direct`), und antwortet `200 {ok, call: {…, topo: "mesh"}, offer_to}`
+  – das Gerät bietet nur `offer_to` (größere Geräte-IDs) an und beantwortet Angebote der kleineren. Ohne „meshjoin“
+  (ältere Apps) bzw. über der Mesh-Grenze: `409 join_block: "node"`. Apps im Anruf: bei `call.topo` die Liste frisch
+  holen und wie bei `/direct` nur größeren IDs anbieten (keine Änderung gegenüber `horn_direct1`).
+  `config.horn_ready` zählt Tunnel-Knoten ohne Angabe von caps nicht; der Start entscheidet mit den caps der Anfrage.
 - **Wann:** Kandidat mit `ws: true`. `ws` und weder `tcp` noch `tls` (Tunnel-Betrieb): UDP (falls `udp`) und Tunnel
   parallel, UDP mit kurzem Vorsprung. `ws` mit `tcp`/`tls`: bisherige Reihenfolge UDP → TCP → TLS, Tunnel als letzter Weg
   (nach der TLS-Wartezeit). UDP-Verlust im Anruf → `tcp`, falls angeboten, sonst `ws`. Ohne `ws`: kein Tunnel.
