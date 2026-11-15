@@ -7,16 +7,22 @@
    Die Huelle meldet Art und Faehigkeiten vor dem Laden (window.sagaHostInfo = {kind, version, caps}) oder spaeter per
    sagaHost.receive({type:'hello', ...}). Ohne Meldung (alte native App mit Web-Ansicht): kind 'app', caps settings+token.
    Das Web schickt nur, was gemeldet ist. Nachrichten gehen nur aus dem Hauptfenster der eigenen Origin (iframes
-   derselben Origin reichen an das Hauptfenster weiter); Pfade von der Huelle muessen relativ zur eigenen Origin sein. */
+   derselben Origin reichen an das Hauptfenster weiter); Pfade von der Huelle muessen relativ zur eigenen Origin sein.
+   2.5 A3: Faehigkeit "tunnel" (nur Mac-Huelle) - Medien-Tunnel je Anruf-Leitung ueber window.webkit.messageHandlers.hkTunnel
+   (Nachricht mit Antwort, sagaHost.tunnel()). */
 (function () {
   'use strict';
   var HK = window.HK; if (!HK || HK.host) return;
-  var CAPS = ['badge', 'notify', 'widgets', 'openExternal', 'settings', 'token'];
+  var CAPS = ['badge', 'notify', 'widgets', 'openExternal', 'settings', 'token', 'tunnel'];
   var UA = /\b(?:Saga|Hlidskjalf)App\/([\w.+-]{1,40})/.exec(navigator.userAgent || '');
   var TOP = window.top === window;
 
   function wkHandler() {
     try { var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.hk; return h && typeof h.postMessage === 'function' ? h : null; }
+    catch (e) { return null; }
+  }
+  function wkTunnel() {
+    try { var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.hkTunnel; return h && typeof h.postMessage === 'function' ? h : null; }
     catch (e) { return null; }
   }
   function tauri() {
@@ -108,6 +114,32 @@
   };
   host.has = has;
   host.post = post;
+
+  // 2.5 A3: Medien-Tunnel der Mac-Huelle (docs/APP-API-HOST.md "Medien-Tunnel"): Anrufe ueber die Saga-Adresse hinter einem
+  // TLS-beendenden Proxy. Je Leitung: open(role, url, user, cred) -> Promise id (WebSocket zum Knoten steht, Zugang
+  // angenommen), listen(id) -> Promise port (Lauscher auf 127.0.0.1, eine Verbindung, kurz vor setRemoteDescription),
+  // close(id). Fehler: Promise abgelehnt, message z. B. "ws 426 Proxy reicht WebSocket nicht durch". null = keine Huelle
+  // mit Tunnel (normaler Browser, Tauri, aeltere Huelle) - dann gibt es den Weg ws im Web nicht.
+  host.tunnel = function () {
+    var u = upper(); if (u) return u.tunnel ? u.tunnel() : null;
+    var h = UA && TOP && send && host.kind === 'mac' && host.caps.indexOf('tunnel') >= 0 ? wkTunnel() : null;
+    if (!h) return null;
+    var call = function (m) {
+      try { return Promise.resolve(h.postMessage(m)); } catch (e) { return Promise.reject(e); }
+    };
+    var num = function (x, lo, hi) { return typeof x === 'number' && x === Math.floor(x) && x >= lo && x <= hi; };
+    return {
+      open: function (role, url, user, cred) {
+        return call({ op: 'open', v: 1, role: role === 'video' ? 'video' : 'audio', url: String(url || ''), user: String(user || ''), cred: String(cred || '') })
+          .then(function (r) { if (!r || !num(r.id, 1, 1e9)) throw new Error('ws Bruecke'); return r.id; });
+      },
+      listen: function (id) {
+        return call({ op: 'listen', v: 1, id: id }).then(function (r) { if (!r || !num(r.port, 1, 65535)) throw new Error('ws Lauscher'); return r.port; });
+      },
+      close: function (id) { if (num(id, 1, 1e9)) call({ op: 'close', v: 1, id: id }).catch(function () {}); },
+      stats: function (id) { return call({ op: 'stats', v: 1, id: id }); }
+    };
+  };
 
   // --- Huelle -> Web ------------------------------------------------------------------------------------------------
   host.on = function (ev, fn) {

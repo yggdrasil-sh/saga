@@ -200,7 +200,47 @@
     if (this.raw.length === 2) this.q = hyst(this.q, this.raw[0], this.raw[1]);
     return this.q;
   };
-  function pathName(p) { return p === 'udp' ? 'UDP' : p === 'turn' ? 'TLS' : p === 'tcp' ? 'TCP' : ''; }
+  function pathName(p) { return p === 'udp' ? 'UDP' : p === 'turn' ? 'TLS' : p === 'tcp' ? 'TCP' : p === 'ws' ? 'WS' : ''; }
+
+  // --- 2.5 A3: Medien-Tunnel der Mac-Huelle (Vertrag A3 Punkt 8, wie HornTunnelLogic.bend der Apps) -------------------------
+  // Passiven ICE-TCP-Kandidaten (host) des Knotens im Antwort-SDP auf 127.0.0.1:<Tunnelport> biegen - libwebrtc verbindet
+  // sich dann aktiv mit dem lokalen Lauscher der Huelle. Nur der erste passive TCP-Kandidat bleibt (gebogen), weitere fallen
+  // weg (sonst mehrere lokale Verbindungen fuer dieselbe Leitung); andere Zeilen unveraendert.
+  function bend(sdp, port) {
+    var done = false, out = [];
+    String(sdp || '').split('\r\n').forEach(function (l) {
+      if (!isPassiveTcp(l)) { out.push(l); return; }
+      if (done) return;
+      var f = l.split(' '); f[4] = '127.0.0.1'; f[5] = String(port); done = true;
+      out.push(f.join(' '));
+    });
+    return out.join('\r\n');
+  }
+  function isPassiveTcp(l) {
+    if (l.indexOf('a=candidate:') !== 0) return false;
+    var f = l.split(' '), i = f.indexOf('tcptype');
+    return f.length >= 8 && f[2].toLowerCase() === 'tcp' && f[6] === 'typ' && f[7] === 'host' && i > 0 && f[i + 1] === 'passive';
+  }
+  // Enthaelt die Antwort einen biegbaren Kandidaten? (sonst kann der Tunnel-Weg nicht gehen)
+  function bendable(sdp) { return String(sdp || '').split('\r\n').some(isPassiveTcp); }
+  // Wegwahl mit Tunnel (Vertrag S5, wie HornLogic.ways der Apps) - nur, wenn die Huelle den Tunnel anbietet (sonst bleibt
+  // calls.js beim bisherigen Weg UDP -> TCP -> TLS). race = gleichzeitig ("Happy Eyeballs": UDP zuerst, der Tunnel nach
+  // K.WS_HEAD_* ms bzw. sofort, wenn UDP vorher scheitert), then = danach der Reihe nach.
+  // - Tunnel-Betrieb (ws, ohne tcp und tls): UDP (wenn angeboten und die Probe antwortet) und Tunnel parallel
+  // - ws neben tcp/tls (Ein Port, eigener Name): bisherige Reihenfolge, der Tunnel als letzter Weg
+  function ways(c, udp) {
+    var tcp = c.tcp !== false, tls = c.tls !== false, ws = c.ws === true, u = udp ? ['udp'] : [];
+    if (ws && !tcp && !tls) return { race: u.concat(['ws']), then: [] };
+    var t = [];
+    if (tcp) t.push('tcp');
+    if (tls || (!tcp && !ws)) t.push('turn');
+    if (ws) t.push('ws');
+    return { race: u, then: t };
+  }
+  // Weg bei UDP-Verlust im Anruf: ICE-TCP, wenn angeboten, sonst der Tunnel (tun = Huelle bietet ihn an), sonst TLS
+  function streamPath(c, tun) { return c.tcp !== false ? 'tcp' : tun && c.ws === true ? 'ws' : 'turn'; }
+  K.WS_HEAD_UDP = 600;                // UDP-Vorsprung im Wettlauf: Probe beantwortet (sauberer Aufbau ~0,3 s) ...
+  K.WS_HEAD_UDP_MAYBE = 250;          // ... bzw. unklar
 
   // --- Senderate auf TCP/TLS (A1, Labor 2.11.) ------------------------------------------------------------------------------
   // Ueber TCP/TLS sieht WebRTC keinen Verlust: Neuuebertragungen kommen als Schuebe, und ein zu grosser Sendestrom staut sich
@@ -211,6 +251,7 @@
     tcp: { l: 150, m: 600, mH: 720, screen: 900, screenFps: 8, screenH: 1080 },
     turn: { l: 120, m: 450, mH: 540, screen: 600, screenFps: 5, screenH: 720 }
   };
+  K.TX.ws = K.TX.tcp;                 // 2.5 A3: Tunnel der Mac-Huelle = ICE-TCP (Vertrag 11: TX-Werte wie TCP)
   K.TX_F = [1, 0.6, 0.4, 0.25];       // Faktor je Stufe auf m und Bildschirm
   K.TX_FPS = [0, 5, 3, 2];            // Bildschirm hoechstens so viele Bilder/s je Stufe (0 = Wert des Wegs)
   K.RTT_ABS = 120;                    // Stau: RTT mindestens 120 ms ...
@@ -348,7 +389,7 @@
   }
 
   var api = { K: K, median: median, jitter: jitter, loadMs: loadMs, score: score, rank: rank, better: better, Switcher: Switcher,
-              closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName,
+              closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName, bend: bend, bendable: bendable, ways: ways, streamPath: streamPath,
               TxGov: TxGov, txPlan: txPlan, RC: RC, Reconnect: Reconnect, reconnectList: reconnectList, retryAfterMs: retryAfterMs };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SagaHorn = api;
