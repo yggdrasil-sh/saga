@@ -2266,6 +2266,8 @@ Apps (P11/P12) übernehmen dieselben Regeln. Alles Neue ist rückwärtsverträgl
 - `GET /api/calls/config` → `horn_ready` (bool, nur mit Flag): ist gerade ein Knoten bereit? Bei `false` und einer
   Gruppe über `limits.endpoints_video/_audio` vor dem Start den Hinweis zeigen, dass die Mesh-Grenze gilt
   („Kein Knoten für große Gruppenanrufe bereit … höchstens 4 Geräte mit Video bzw. 6 nur mit Ton“).
+  2.5 A3 (S10): `horn_ready_ws` – dasselbe für Geräte mit Medien-Tunnel (`caps` „ws“: Apps, Mac-Hülle); dort zählen
+  auch Knoten im Tunnel-Betrieb. Geräte mit Tunnel nehmen `horn_ready_ws`, ältere Server senden es nicht.
 - Teilnehmerliste (`legs[]`, auch in `call.roster`): `hpn: {knotenname: peer_ref}` – Kennung des Geräts auf **jedem**
   Knoten, auf dem der Anruf laufen kann (`hpn[Knoten des Anrufs] = hp`). Während eines Wechsels sind Geräte kurz auf zwei
   Knoten; je Verbindung gilt die Kennung dieses Knotens. Taucht am Knoten eine unbekannte Kennung auf, die Liste neu holen

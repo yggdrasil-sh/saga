@@ -45,11 +45,15 @@
   var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn', 'askmute', 'meshjoin'];   // meshjoin: 2.5 A3 S11
   function feat(x) { return !!(cfg && (cfg.features || []).indexOf(x) >= 0); }
   function myCaps() {
-    return CAPS_ALL.filter(function (x) {
+    var c = CAPS_ALL.filter(function (x) {
       return x === 'reneg' ? feat('reneg') : x === 'screen2' ? feat('reneg') && feat('screen2') : x === 'multi' ? feat('reneg') && feat('multi')
         : x === 'horn' ? feat('reneg') && feat('multi') && feat('horn') && hornCan()
         : x === 'meshjoin' ? feat('reneg') && feat('multi') && feat('horn') && feat('horn_direct1') : true;
     });
+    // 2.5 A3 (Vertrag S10): Medien-Tunnel nur mit der Bruecke der Mac-Huelle - dann bekommt dieses Geraet auch Knoten im
+    // Tunnel-Betrieb (Browser ohne Huelle nicht)
+    if (c.indexOf('horn') >= 0 && hornTunnel()) c.push('ws');
+    return c;
   }
   var RESTART_MAX = 3, DISC_S = 2.5, FAIL_S = 20;    // ICE-Restart: Versuche je Abbruch, Wartezeit bei disconnected, Frist bei failed
   // Bitrate-Regeln je Weg (Konzept 2.4 §1.3), kbit/s. cam/screen/mesh je Strom, H = hoechste Bildhoehe, fps = Bildrate
@@ -4626,7 +4630,8 @@
     // der Server nennt beim Mesh-Rueckfall selbst den Grund (call.horn_mesh) - hier nicht nur die eigenen Knoten befragen
     if (chat && chat.fed) return false;
     var n = chat && chat.members ? chat.members.length : 0, lim = cfg && cfg.limits ? (video ? cfg.limits.endpoints_video : cfg.limits.endpoints_audio) : 0;
-    return !!(cfg && feat('horn') && cfg.horn_ready === false && lim && n > lim);
+    var ready = cfg && (myCaps().indexOf('ws') >= 0 && cfg.horn_ready_ws != null ? cfg.horn_ready_ws : cfg.horn_ready);   // A3 S10: mit Tunnel der Huelle
+    return !!(cfg && feat('horn') && ready === false && lim && n > lim);
   }
   function hornMeshHint(chat, video) {
     if (!hornHintNeeded(chat, video) || document.querySelector('.cl-hint-page')) return Promise.resolve(!document.querySelector('.cl-hint-page'));

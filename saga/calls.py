@@ -844,7 +844,7 @@ def api_config(request: Request):
                            "turn": has_turn(), "stun": bool(urls(c.get("stun"), ("stun", "stuns"))[0]), "ring_s": ring_s(),
                            "alive_s": 15, "max_s": MAX_S, "format": "saga-call/v1",
                            # 2.4: Body-Fassung, Server-Faehigkeiten und Grenzen (E4/E5: Endpunkte je Anruf im Mesh)
-                           "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1", "horn_ready": _horn_ready(), "horn_dm": horn_dm_on(),
+                           "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1", "horn_ready": _horn_ready(), "horn_ready_ws": _horn_ready(ws=True), "horn_dm": horn_dm_on(),
                                                                                    "horn_dm_fed": FED is not None} if horn_on() else {}),
                            "limits": {"endpoints_video": limit("video"), "endpoints_audio": limit("audio"), "signals_max": SIGNALS_MAX,
                                       "signals_per_min": SIG_PER_MIN, "signals_hard": SIGNALS_HARD, "sig_rate": SIG_RATE,
@@ -852,10 +852,11 @@ def api_config(request: Request):
                                       **(_horn_limits() if horn_on() else {})}})
 
 
-def _horn_ready():
-    """2.5 P5: ist gerade ein Knoten bereit? Sonst gilt fuer neue Gruppenanrufe die Mesh-Grenze (Hinweis vor dem Start)."""
+def _horn_ready(ws=False):
+    """2.5 P5: ist gerade ein Knoten bereit? Sonst gilt fuer neue Gruppenanrufe die Mesh-Grenze (Hinweis vor dem Start).
+    ws (2.5 A3, S10): fuer Geraete mit Medien-Tunnel (caps "ws", z. B. die Mac-Huelle) zaehlen auch Knoten im Tunnel-Betrieb."""
     with _db() as c:
-        return horn.any_ready(c)
+        return horn.any_ready(c, ws=ws)
 
 
 def _horn_limits():
