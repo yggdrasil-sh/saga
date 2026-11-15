@@ -876,6 +876,10 @@ Gegenüber sendet Sprecher-Schicht m + Ton; je 60 s, n = 3, Median der Läufe):
 | TURN-TLS 2.5 | 0,7–1,0 s | 1,5/3,2 s | 22,6 | 2–3 / 0,5–1,9 s | l, 200–710, 3–6 |
 | ICE-TCP (zum Vergleich) | 0,7–0,9 s | 1,6/2,9 s | 23 | 1–3 / 0,4–1,4 s | m/l im Wechsel, 990–1320, 3–4 |
 
+Preis: Der **Ton** ist auf dem engen Downlink etwas später als vorher (Median 365–386 ms → 415–485 ms, Verdeckung
+0,17–0,34 % statt 0) – derselbe Stand wie ICE-TCP (463–490 ms). Vorher kam der Ton früher, weil das Bild im Relay-Puffer
+hing und sekundenlang ausblieb; jetzt teilen sich Ton und das kleinere Bild die enge Leitung.
+
 TURN-TLS verhält sich damit wie ICE-TCP direkt. Die restliche Latenz liegt außerhalb des Knotens (Puffer und
 Empfangsfenster der Leitung, in die TCP ohne Verlust weiterschreibt): Auf beiden TCP-Wegen pendelt der Knoten zwischen
 den Schichten, weil er den Stau erst sieht, wenn diese Puffer voll sind. Dagegen hilft nur ein Signal Ende zu Ende

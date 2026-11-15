@@ -71,6 +71,7 @@ func stauLauf(t *testing.T, s *server) (sent int, longest time.Duration, ice net
 // Kern des Befunds (Spike ws-apps §6.1): Staut die TURN-TLS-Verbindung zum Geraet, muss das Bein beim Schreiben
 // warten - wie auf ICE-TCP -, statt dass der Stau unsichtbar im Empfangspuffer des Relay-Sockets liegt.
 func TestTURNBackpressure(t *testing.T) {
+	t.Setenv("HORN_TURN_COUPLE", "")
 	s := testServer(t, netx.ProxyOff)
 	if s.turnPorts.hub == nil {
 		t.Fatal("Kopplung nicht an")
@@ -116,6 +117,7 @@ func TestTURNBackpressureOff(t *testing.T) {
 // Richtung Knoten und ICE-Pruefungen: Ein Geraet erreicht ueber seine Allocation das ICE-Ende im Prozess (nicht ueber
 // den Kernel), ein Relay-Ende erreicht kein anderes Relay-Ende (kein offenes Relais, auch nicht im Prozess).
 func TestTURNPipeDirections(t *testing.T) {
+	t.Setenv("HORN_TURN_COUPLE", "")
 	s := testServer(t, netx.ProxyOff)
 	gn, _ := newGuardNet(s.turnPorts)
 	uc, err := gn.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})

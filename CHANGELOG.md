@@ -21,7 +21,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (z. B. Mobilfunk mit schwachem Empfang): Das Bild stand sekundenlang (gemessen bei 600 kbit/s: rund 3 s Verzögerung,
   6–7 Bilder/s, über 40 s Einfrieren je Minute), statt auf eine kleinere Schicht zu wechseln. Grund war ein Puffer
   zwischen Weiterleiter und TURN-Server im Knoten. Beide sind jetzt im Prozess gekoppelt; der Knoten schaltet wie auf
-  ICE-TCP herunter (gemessen: 23 Bilder/s, 2–3 kurze Einfrierer, ~1,5 s Verzögerung wie ICE-TCP). Abschalten zur Prüfung:
+  ICE-TCP herunter (gemessen: 23 Bilder/s, 2–3 kurze Einfrierer, ~1,5 s Verzögerung wie ICE-TCP; der Ton kommt auf so
+  einer Leitung dafür rund 0,1 s später, ebenfalls wie auf ICE-TCP). Abschalten zur Prüfung:
   `HORN_TURN_COUPLE=0`. Einzelheiten: `gjallarhorn/NODE.md` („TURN-TLS: Kopplung Bein ↔ TURN-Server“).
 
 ### Geändert – Admin → Anrufe: eingebauter Knoten empfiehlt „Ein Port“
