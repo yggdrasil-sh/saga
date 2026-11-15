@@ -34,9 +34,10 @@ const (
 	// Warteschlange im Bein bleibt (dort misst die Schaetzung ihr Alter und H3 verwirft ganze Rahmen); der TURN-Server
 	// liest ohnehin sofort weiter in den Buendler der TLS-Verbindung.
 	DefaultLimit = 4 << 10
-	// DefaultMaxWait: so lange wartet ein Schreiber hoechstens, dann wird das Paket verworfen (Schutz gegen eine
-	// haengende Verbindung; das Bein wird ohnehin vorher langsam, ICE gibt nach 15 s auf).
-	DefaultMaxWait = time.Second
+	// DefaultMaxWait: so lange wartet ein Schreiber hoechstens, dann wird das Paket verworfen - Schutz gegen eine
+	// haengende Verbindung. Normal wartet er weit kuerzer (Buendler und TCP_NOTSENT_LOWAT leeren sich bei 600 kbit/s
+	// in ~0,4 s); laenger als die Rahmen-Grenze des Beins (H3, 150 ms) wartet ohnehin nur, wer schon verwirft.
+	DefaultMaxWait = 2 * time.Second
 	// Cap: Grenze jedes Endes (Ersatz fuer den Empfangspuffer des Kernels), darueber wird verworfen.
 	Cap = 256 << 10
 	// ctlExtra: so weit darf STUN ueber das Limit eines Relay-Endes hinaus, ohne zu warten.
