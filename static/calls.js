@@ -42,12 +42,13 @@
   // multi (E4/E5) = Raum: weitere Geraete/Personen (join/leave, mehrere PeerConnections) - braucht reneg und multi am Server
   // horn (2.5) = Gruppenanrufe ueber einen Gjallarhorn-Knoten mit Frame-E2E - nur mit Server-Faehigkeit horn und Encoded Transform
   // askmute (2.5, MEETING-SPEC §4.3/§11) = beachtet state.ask_mute eines eigenen Begleitgeraets (Echo-Schutz)
-  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn', 'askmute'];
+  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn', 'askmute', 'meshjoin'];   // meshjoin: 2.5 A3 S11
   function feat(x) { return !!(cfg && (cfg.features || []).indexOf(x) >= 0); }
   function myCaps() {
     return CAPS_ALL.filter(function (x) {
       return x === 'reneg' ? feat('reneg') : x === 'screen2' ? feat('reneg') && feat('screen2') : x === 'multi' ? feat('reneg') && feat('multi')
-        : x === 'horn' ? feat('reneg') && feat('multi') && feat('horn') && hornCan() : true;
+        : x === 'horn' ? feat('reneg') && feat('multi') && feat('horn') && hornCan()
+        : x === 'meshjoin' ? feat('reneg') && feat('multi') && feat('horn') && feat('horn_direct1') : true;
     });
   }
   var RESTART_MAX = 3, DISC_S = 2.5, FAIL_S = 20;    // ICE-Restart: Versuche je Abbruch, Wartezeit bei disconnected, Frist bei failed
@@ -990,6 +991,11 @@
       R.ready = true; R.inRoom = true; R.call = r.call;
       rosterIn(R, r.call.legs, r.call);
       aliveOn(R);
+      if (r.call.topo === 'mesh') {                    // 2.5 A3 (S11): Anruf lief nur auf einem Tunnel-Knoten - der Server hat
+        hornToMesh(R, r.offer_to || null);             // ihn mit diesem Beitritt auf direkt geschaltet: Angebote nur an groessere IDs
+        R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
+        return;
+      }
       R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
       if (R.ho) {                                      // Uebernahme: warten, bis der Knoten verbunden ist (hoCheck)
         R.hoT = setTimeout(function () { hoFail(R); }, HO_S * 1000);
@@ -997,14 +1003,6 @@
       }
       return hornGo(R, r.call.horn);
     }, function (e) {
-      // 2.5 A3 (Vertrag S10): Anruf lief nur auf einem Tunnel-Knoten, den dieser Browser nicht erreicht - der Server hat ihn
-      // auf direkt geschaltet; mit Mesh-Angeboten erneut beitreten
-      if (e.status === 409 && e.data && e.data.topo === 'mesh' && Array.isArray(e.data.legs) && !e.data.join_block && live(R)) {
-        if (R.horn) { hornStop(R); R.horn = null; }
-        if (R.call) R.call.topo = 'mesh';
-        R.joinSent = false; R.legs = e.data.legs;
-        return offerAll(R, role, R.ho ? R.ho.rep : null, false);
-      }
       throw new Error(e.data && e.data.join_block ? (e.data.error || blockText(e.data.join_block, e.data.limit)) : e.message);
     });
   }
@@ -3069,7 +3067,7 @@
         api('GET', '/api/calls/' + R.id).then(function (r) {
           H.meshChk = false;
           if (!live(R) || R.horn !== H) return;
-          if (r && r.call && r.call.topo === 'mesh') hornToMesh(R, null); else H.meshQ = [];
+          if (r && r.call && r.call.topo === 'mesh') { if (Array.isArray(r.call.legs)) R.legs = r.call.legs; hornToMesh(R, null); } else H.meshQ = [];
         }, function () { H.meshChk = false; H.meshQ = []; });
         return;
       }
@@ -3789,6 +3787,9 @@
   function hornToMesh(R, offerTo) {
     if (!R.horn || R.done) return;
     var pend = R.horn.meshQ || [];                    // vor der Bestaetigung eingegangene Mesh-Signale (hornSig)
+    // 2.5 A3 (S11): Signale von Geraeten, die beim Eintreffen noch nicht in der Liste standen (hornSig: H.q), z. B. das
+    // Angebot eines gerade beigetretenen Browsers - jetzt mit zustellen
+    (R.horn.q || []).forEach(function (d) { if (d && legOf(R, d.from_device) && pend.indexOf(d) < 0) pend.push(d); });
     hornStop(R); R.horn = null;
     if (R.call) R.call.topo = 'mesh';
     R.directNote = T('Anruf-Knoten nicht erreichbar – direkt verbunden');
@@ -4598,7 +4599,14 @@
       } else ring(Object.assign({}, d, { group: true }));
       runCheck();
     } else if (t === 'call.topo') {                   // Horn-Fix: Anruf ueber Knoten laeuft jetzt direkt
-      if (C && C.id === d.call_id && C.horn && d.topo === 'mesh') hornToMesh(C, null);
+      // nur im Raum (noch beim Beitreten: die Antwort von /join schaltet selbst um); vorher die Liste frisch holen, damit
+      // "Angebot nur an groessere ID" fuer alle auf derselben Liste gilt (S11)
+      if (C && C.id === d.call_id && C.horn && C.inRoom && d.topo === 'mesh') {
+        var R0 = C;
+        api('GET', '/api/calls/' + R0.id).then(function (r) {
+          if (R0.horn && r && r.call && r.call.topo === 'mesh') { if (Array.isArray(r.call.legs)) R0.legs = r.call.legs; hornToMesh(R0, null); }
+        }, function () { hornToMesh(R0, null); });
+      }
     } else if (t === 'call.roster') {                 // 2.4: Teilnehmerliste (laufender Anruf, Leiste auf anderen Geraeten)
       if (C && C.id === d.call_id && C.ready) rosterIn(C, d.legs, d);
       runCheck();

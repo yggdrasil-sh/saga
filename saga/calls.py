@@ -1531,7 +1531,10 @@ async def api_join(cid: str, request: Request):
         d = _dict(c, call, uid)
         if is_horn(call):
             d["horn"] = horn_block(c, call, dev, r["leg"]["role"], dcl)
-        return chat._no_store({"ok": True, "call": d, "gen": horn.gen_of(r["leg"]["joined"])})
+        out = {"ok": True, "call": d, "gen": horn.gen_of(r["leg"]["joined"])}
+        if "offer_to" in r:                            # S11: Beitritt hat den Anruf auf direkt geschaltet (wie /direct)
+            out["offer_to"] = r["offer_to"]
+        return chat._no_store(out)
 
 
 def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, name=""):
@@ -1566,22 +1569,20 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     if len(others) + (0 if ho else 1) > lim:          # L4/E6: das ersetzte Geraet zaehlt bei einer Uebernahme nicht mit
         return chat._no_store({"error": t("Der Anruf ist voll (höchstens {n} Geräte).", n=lim), "join_block": "full",
                                "limit": lim, "legs": roster(c, call, who, legs)}, 409)
-    node = None
+    node, to_mesh = None, False
     if hn and signals:
         return _bad(t("ungültige Angabe"))             # ueber Knoten keine Mesh-Angebote
     if hn and peer_id is None:                         # 2.5: Knoten des Anrufs, sonst der beste (Geraete anderer Server
         ws = _has(caps, "ws")                          # waehlen ueber ihren Server, saga/fed_horn.py)
         node = horn_web.pick(c, call["id"], ws=ws)
         if node is None and not ws and call.get("lead") is None and horn.tunnel_only(c, call["id"]):
-            # 2.5 A3 (Vertrag S10): Anruf nur auf Tunnel-Knoten, dieses Geraet kann den Tunnel nicht (Browser, aeltere App) -
-            # Rueckfall auf direkt wie /direct, dann tritt es mit Mesh-Angeboten erneut bei
+            # 2.5 A3 (Vertrag S10/S11): Anruf nur auf Tunnel-Knoten, dieses Geraet kann den Tunnel nicht (Browser) - Rueckfall
+            # auf direkt wie /direct. Das Bein kommt VOR call.topo in die Liste: alle wenden "Angebot nur an groessere
+            # Geraete-ID" auf dieselbe Liste an (kein Glare); das Geraet bekommt offer_to wie bei /direct. Nur fuer Geraete,
+            # die das koennen (caps "meshjoin", Web) - aeltere Apps bekommen wie bisher 409 join_block node.
             act = [x for x in others if x["state"] == "active"]
-            if len(act) + 1 <= limit(call["media"]):
-                _to_mesh(c, call, dev, "tunnel")
-                call = _load(c, call["id"])
-                return chat._no_store({"error": t("Der Anruf läuft jetzt direkt – bitte erneut beitreten."), "topo": "mesh",
-                                       "legs": roster(c, call, who, _legs(c, call["id"]))}, 409)
-        if node is None:
+            to_mesh = _has(caps, "meshjoin") and len(act) + 1 <= limit(call["media"])
+        if node is None and not to_mesh:
             horn.note_full(c)
             return chat._no_store({"error": t("Gerade ist kein Anruf-Knoten erreichbar – bitte gleich noch einmal."),
                                    "join_block": "node"}, 409)
@@ -1618,6 +1619,9 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     _leg_put(c, call["id"], dev, who, role, peer_id, caps, rep, name=name, now=now)
     if node is not None:
         horn.set_leg_node(c, call["id"], dev, node["id"])
+    if to_mesh:                                        # S11: Bein steht in der Liste, dann erst umschalten (call.topo)
+        _to_mesh(c, call, dev, "Beitritt ohne Tunnel")
+        call = _load(c, call["id"])
     if call["kind"] == "group":
         c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'joined',?) "
                   "ON CONFLICT (call_id, who) DO UPDATE SET state='joined'", (call["id"], who, now))
@@ -1631,7 +1635,10 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     fwd, n = _route(c, call, dev, sig, {x["device"]: x for x in legs}, now)
     c.execute("UPDATE chat_call SET nsig=nsig+? WHERE id=?", (len(sig), call["id"]))
     print(f"call: {call['id'][:8]} Beitritt ({role}{', wieder' if cur is not None else ''}, {len(legs)} Endpunkte)", flush=True)
-    return {"fwd": fwd, "leg": next(x for x in legs if x["device"] == dev), "n": n}
+    out = {"fwd": fwd, "leg": next(x for x in legs if x["device"] == dev), "n": n}
+    if to_mesh:
+        out["offer_to"] = _offer_to(dev, legs)
+    return out
 
 
 @router.post("/api/calls/{cid}/horn")
@@ -1766,8 +1773,8 @@ def _to_mesh(c, call, dev, why):
     c.execute("UPDATE chat_call SET topo='mesh' WHERE id=?", (cid,))
     c.execute("UPDATE chat_call_leg SET node=NULL WHERE call_id=?", (cid,))
     call = _load(c, cid)
+    emit_roster(c, call)                               # S11: zuerst die Liste (mit allen Endpunkten), dann call.topo
     _emit(c, _audience(c, call), "call.topo", {"call_id": cid, "chat_id": call["chat_id"], "topo": "mesh", "why": "node", "by": dev})
-    emit_roster(c, call)
     print(f"call: {cid[:8]} direkt ({why}, {len(_legs(c, cid))} Endpunkte)", flush=True)
 
 

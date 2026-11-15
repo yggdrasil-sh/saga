@@ -303,7 +303,7 @@ def candidates_for_call(people):
 def s10(people, cid):
     """Vertrag S10: Geraete ohne "ws" bekommen den Tunnel-Knoten nicht; gemischter Anruf faellt auf direkt zurueck."""
     A, B, Cc, D, E = people
-    for p in (Cc, D):
+    for p in (Cc, D, E):
         req("PUT", "/api/calls/caps", p.k, {"device": p.dev["id"], "caps": CAPS_WEB})
     s, d = req("POST", "/api/chats", Cc.k, {"kind": "free", "members": [p.uid for p in people if p is not Cc]})
     gid2, cid2 = d["chat"]["id"], secrets.token_hex(16)
@@ -317,10 +317,29 @@ def s10(people, cid):
     s, d = req("POST", f"/api/calls/{cid}/horn", B.k, {"device": B.dev["id"]})
     ok("App im Anruf bekommt weiter den Tunnel-Knoten (/horn)", s == 200 and len(((d.get("horn") or {}).get("candidates")) or []) == 1, s)
     s, d = req("POST", f"/api/calls/{cid}/join", D.k, {"device": D.dev["id"], "role": "member", "caps": CAPS_WEB})
-    ok("Browser tritt Anruf auf dem Tunnel-Knoten bei: 409 topo mesh mit Liste, ohne join_block", s == 409 and d.get("topo") == "mesh"
-       and isinstance(d.get("legs"), list) and not d.get("join_block"), (s, d))
+    s2, d2 = req("GET", f"/api/calls/{cid}", A.k)
+    ok("aeltere App ohne ws/meshjoin tritt bei: 409 join_block node wie bisher, Anruf bleibt auf dem Knoten",
+       s == 409 and d.get("join_block") == "node" and (d2.get("call") or {}).get("topo") == "horn", (s, d, (d2.get("call") or {}).get("topo")))
+    # S11: Browser (meshjoin) - sein Bein steht vor call.topo in der Liste, Antwort mit offer_to (nur groessere IDs)
+    st = A_.Stream(A.k)
+    time.sleep(0.5)
+    m0 = st.mark()
+    s, d = req("POST", f"/api/calls/{cid}/join", E.k, {"device": E.dev["id"], "role": "member", "caps": CAPS_WEB + ["meshjoin"]})
+    call = d.get("call") or {}
+    act = sorted(x["device"] for x in call.get("legs") or [] if x.get("state", "active") == "active")
+    ok("Browser (meshjoin) tritt Anruf auf dem Tunnel-Knoten bei: 200, Anruf direkt, offer_to = groessere Geraete-IDs",
+       s == 200 and call.get("topo") == "mesh" and d.get("offer_to") == [x for x in act if x > E.dev["id"]] and E.dev["id"] in act,
+       (s, call.get("topo"), d.get("offer_to"), act, E.dev["id"]))
+    st.wait("call.topo", since=m0, timeout=6)
+    evs = [(i, e) for i, e in enumerate(st.ev[m0:]) if e[0] in ("call.roster", "call.topo")]
+    i_topo = next((i for i, e in evs if e[0] == "call.topo"), None)
+    i_list = next((i for i, e in evs if e[0] == "call.roster" and any(x.get("device") == E.dev["id"] for x in (e[1] or {}).get("legs") or [])), None)
+    st.close()
+    ok("Liste mit dem neuen Geraet kommt vor call.topo (alle wenden \"Angebot an groessere ID\" auf dieselbe Liste an)",
+       i_topo is not None and i_list is not None and i_list < i_topo, [e[0] for _, e in evs])
     s, d = req("GET", f"/api/calls/{cid}", A.k)
-    ok("Anruf laeuft jetzt direkt (topo mesh, Knoten-Raum geschlossen)", (d.get("call") or {}).get("topo") == "mesh", (d.get("call") or {}).get("topo"))
+    ok("Anruf laeuft jetzt direkt (topo mesh), das Geraet steht in der Liste", (d.get("call") or {}).get("topo") == "mesh"
+       and any(x["device"] == E.dev["id"] for x in (d.get("call") or {}).get("legs") or []), (d.get("call") or {}).get("topo"))
     req("POST", f"/api/calls/{cid}/end", A.k, {"device": A.dev["id"]})
     # 1:1 mit horn_all: ohne ws Rueckfall direkt, mit ws ueber den Knoten
     flag(True, horn_from=3, horn_all=True)
