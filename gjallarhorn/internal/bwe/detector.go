@@ -768,6 +768,22 @@ func (d *Detector) Rates(fromNs, toNs int64) Rates {
 	return Rates{SentBps: sb * 8 * 1e9 / ns, AckedBps: d.rateOver(first, last+1), Ns: ns}
 }
 
+// Recent: gesendete und bestaetigte Rate (wie Rates) der juengsten geschlossenen Fenster, zurueck bis sie mindestens
+// spanNs Sendezeit umfassen - unabhaengig davon, wie lange ihre Pakete schon unterwegs waren (Rates misst ab einer
+// Sendezeit und saehe bei einer langen Schlange noch gar kein geschlossenes Fenster). Nur fuer die TCP-Wege
+// (HORN_TCP_STAU); der Detektor selbst nutzt es nicht.
+func (d *Detector) Recent(spanNs int64) Rates {
+	if d.histN == 0 {
+		return Rates{}
+	}
+	last := d.at(d.histN - 1)
+	from := d.histN - 1
+	for from > d.lo() && last.endNs-d.at(from).startNs < spanNs {
+		from--
+	}
+	return d.Rates(d.at(from).startNs, last.endNs)
+}
+
 // Tip: Was zeigen die zuletzt gemeldeten Pakete - widerlegt der Detektor einen Stau, den GCC gerade meldet (Clear)?
 // Die Schwellen des Zustands (Schlange ueber 50 ms in zwei Fenstern) sind fuer diese Frage zu traege: Bis sie
 // anschlagen, ist der Knoten laengst unten. Umgekehrt genuegt hier viel weniger: Staut die Leitung wirklich, haben

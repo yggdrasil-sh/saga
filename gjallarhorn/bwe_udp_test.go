@@ -51,7 +51,7 @@ func TestBWESchalter(t *testing.T) {
 		mit := mode != ""
 		hook := &gccHook{bwe: mode}
 		se := webrtc.SettingEngine{}
-		api, err := newSFUAPI(se, true, hook)
+		api, err := newSFUAPI(se, true, hook, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

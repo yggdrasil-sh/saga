@@ -218,3 +218,11 @@ func (m *Mitleser) Counters() Counters {
 	c.ToUnknown, c.ToFree, c.ToWarn, c.ToCong = d.Changes[Unknown], d.Changes[Free], d.Changes[Warn], d.Changes[Congested]
 	return c
 }
+
+// Recent: gesendete und bestaetigte Rate der juengsten geschlossenen Fenster ueber mindestens spanNs Sendezeit
+// (Detector.Recent).
+func (m *Mitleser) Recent(spanNs int64) Rates {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.det.Recent(spanNs)
+}

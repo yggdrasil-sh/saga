@@ -306,6 +306,10 @@ type Leg struct {
 	// als Abstand zu jetzt) - damit wertet die Probe (probe.go, probeVerdict); GCC haelt nur noch die Fuellung an.
 	ExtTip  func() bwe.Tip
 	ExtSpan func(from, to, rateFrom time.Duration) (bwe.Verdict, bwe.Rates)
+	// ExtQueue (optional, nur TCP-Wege ohne Ext): Ende-zu-Ende-Stausignal aus den transport-cc-Rueckmeldungen des
+	// Geraets (tcpstau.go) - die Schlange ausserhalb des Knotens, die das Alter der eigenen Warteschlange erst sieht,
+	// wenn die Puffer unterwegs voll sind.
+	ExtQueue func() TCPSig
 
 	pr        probe
 	pstat     ProbeStats

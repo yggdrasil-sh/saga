@@ -192,6 +192,7 @@ type server struct {
 	node                    *sfu.Node
 	sfuUDP, sfuTCP, sfuTURN *webrtc.API
 	gcc                     gccHook
+	tcp                     tcpHook // Ende-zu-Ende-Stausignal der TCP-Wege (tcpstau.go)
 	ttrace                  *turnTracer
 	turnPorts               *turnPorts // ICE-Ports des TURN-Wegs (einzige erlaubte Relay-Ziele)
 	iceMux                  *netx.ICEMux
@@ -313,6 +314,12 @@ func newServer(cfg *config) (*server, error) {
 		case bweEigen:
 			s.gcc.bwe = bweEigen
 			log.Printf("HORN_BWE=eigen: eigener Stau-Detektor wertet auf UDP-Beinen die Proben und widerlegt grundlose Faelle des GCC-Ziels")
+		}
+		switch s.tcp.mode = tcpStauMode(); s.tcp.mode {
+		case tcpStauOff:
+			log.Printf("HORN_TCP_STAU=0: TCP-Wege ohne Ende-zu-Ende-Stausignal (nur die eigene Warteschlange)")
+		case tcpStauMit:
+			log.Printf("HORN_TCP_STAU=mit: Ende-zu-Ende-Stausignal der TCP-Wege nur gemessen (entscheidet nichts)")
 		}
 		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers, OnProbe: s.onProbe, OnLegEvent: s.onLegEvent,
 			Probing: cfg.Probing}
@@ -630,7 +637,7 @@ func (s *server) buildAPIs() error {
 		}
 		s.apiUDP = api
 		if s.node != nil {
-			if s.sfuUDP, err = newSFUAPI(se, true, &s.gcc); err != nil {
+			if s.sfuUDP, err = newSFUAPI(se, true, &s.gcc, nil); err != nil {
 				return err
 			}
 		}
@@ -656,7 +663,7 @@ func (s *server) buildAPIs() error {
 		// 2.5: ohne ICE-TCP lehnt der Knoten Beine "tcp" sofort ab (Geraete nehmen TLS, newSFULeg); Beine "ws" (A3,
 		// ICE-TCP durch den Tunnel) gehen immer - deshalb gibt es den Weg im Knoten immer
 		if s.node != nil {
-			if s.sfuTCP, err = newSFUAPI(se, false, nil); err != nil {
+			if s.sfuTCP, err = newSFUAPI(se, false, nil, &s.tcp); err != nil {
 				return err
 			}
 		}
@@ -684,7 +691,7 @@ func (s *server) buildAPIs() error {
 		}
 		s.apiTURN = api
 		if s.node != nil {
-			if s.sfuTURN, err = newSFUAPI(se, false, nil); err != nil {
+			if s.sfuTURN, err = newSFUAPI(se, false, nil, &s.tcp); err != nil {
 				return err
 			}
 		}

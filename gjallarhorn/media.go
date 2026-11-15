@@ -16,6 +16,7 @@ import (
 	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/wstun"
@@ -174,6 +175,13 @@ type leg struct {
 	rttNs     atomic.Int64               // Umlaufzeit aus den Empfaengerberichten (Probing: Laenge des Fensters)
 	tun       atomic.Pointer[wstun.Conn] // 2.5 A3: ICE-TCP-Verbindung durch den Medien-Tunnel (sonst nil)
 	bwe       *bweWrap                   // nur HORN_BWE=mit bzw. eigen (UDP-Beine): Mitleser mit eigenem Stau-Detektor, sonst nil
+	tcpm      *bwe.Mitleser              // nur TCP-Wege (HORN_TCP_STAU nicht 0): Mitleser des Ende-zu-Ende-Stausignals, sonst nil
+}
+
+func (l *leg) tcpMeter() *bwe.Mitleser {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.tcpm
 }
 
 func (l *leg) bweWrap() *bweWrap {

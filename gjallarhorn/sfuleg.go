@@ -23,6 +23,7 @@ import (
 	"github.com/pion/sdp/v3"
 	"github.com/pion/turn/v5"
 	"github.com/pion/webrtc/v4"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 )
@@ -44,7 +45,7 @@ type gccHook struct {
 // abgehenden Paketen und GCC (H7). TCP-Wege: ohne NACK/RTX (H5), Opus mit
 // ptime 40. Beide: audio-level fuer Top-3, TWCC-Rueckmeldung fuer den
 // Uplink der Geraete.
-func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook) (*webrtc.API, error) {
+func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook, tcp *tcpHook) (*webrtc.API, error) {
 	m := &webrtc.MediaEngine{}
 	opusFmtp := "minptime=10;useinbandfec=1;usedtx=1"
 	if !udp {
@@ -130,6 +131,11 @@ func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook) (*webrtc.API, e
 		ir.Add(ccf)
 		// nach cc eintragen: der Kopf muss vor der Schaetzung gesetzt sein
 		if err := webrtc.ConfigureTWCCHeaderExtensionSender(m, ir); err != nil {
+			return nil, err
+		}
+	}
+	if !udp { // TCP-Wege: transport-cc auf dem Downlink fuer das Ende-zu-Ende-Stausignal (tcpstau.go)
+		if err := configureTCPStau(m, ir, tcp); err != nil {
 			return nil, err
 		}
 	}
@@ -261,6 +267,16 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 					bweHooks(sl, b, shortID(l.id))
 				}
 			}
+		}
+	} else if s.tcp.mode != tcpStauOff {
+		s.tcp.mu.Lock()
+		var m *bwe.Mitleser
+		s.tcp.next = func(x *bwe.Mitleser) { m = x }
+		pc, err = api.NewPeerConnection(webrtc.Configuration{})
+		s.tcp.next = nil
+		s.tcp.mu.Unlock()
+		if m != nil {
+			tcpAttach(l, sl, m, s.tcp.mode)
 		}
 	} else {
 		pc, err = api.NewPeerConnection(webrtc.Configuration{})
@@ -708,6 +724,9 @@ func (s *server) apiSFULayout(w http.ResponseWriter, r *http.Request) {
 			j["bursts"] = ps.Bursts   // Takte einer laufenden Widerlegung, die ein eigenes Buendel entschuldigt hat
 		}
 		out["bwe"] = j
+	}
+	if m := l.tcpMeter(); m != nil { // TCP-Wege: Ende-zu-Ende-Stausignal
+		out["tcp_stau"] = tcpJSON(l.sl, m)
 	}
 	writeJSON(w, 200, out)
 }

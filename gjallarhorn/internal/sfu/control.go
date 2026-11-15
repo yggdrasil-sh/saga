@@ -1201,6 +1201,14 @@ type estimator struct {
 	lagWhy  string
 	downWhy string
 	downAt  int64
+	// Ende-zu-Ende-Signal der TCP-Wege (tcpstau.go, Leg.ExtQueue)
+	e2eOn      bool         // das Bein hat es
+	e2e        TCPStauStats // Zaehler und letzter Stand
+	e2eN       int          // Takte in Folge mit Schlange ueber congAge
+	e2eHit     bool         // in diesem Takt: Stau laut Signal
+	e2eAge     bool         // ... und das Alter der Schaetzung kommt von ihm (nicht von der eigenen Warteschlange)
+	e2eHold    bool         // in diesem Takt: kein Schritt nach oben wegen des Signals
+	e2eDrainTo int64        // nach einem Stau laut Signal: bis hierhin halten, solange die Schlange steht
 }
 
 // legNote: Ereignis der Schaetzung in diesem Takt (Beginn bzw. Ende einer Widerlegung) - planLeg macht daraus ein
@@ -1500,6 +1508,11 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	age := time.Duration(st.TickAgeNs.Swap(0))
 	drops := st.TickDrops.Swap(0)
 	e.note = legNote{}
+	var e2eAck float64 // bestaetigte Rate bei Stau laut Ende-zu-Ende-Signal (0 = keiner)
+	e.e2eHit, e.e2eAge, e.e2eHold = false, false, false
+	if l.ExtQueue != nil && l.Ext == nil { // nur TCP-Wege (ohne GCC): UDP bleibt unveraendert
+		age, e2eAck = e.e2eStep(l.ExtQueue(), age, now)
+	}
 	if e.det = l.ExtTip != nil; e.det {
 		tip := l.ExtTip()
 		e.detClear, e.detCalm, e.detFresh, e.detLossUp = tip.Clear, tip.Calm, tip.Fresh, tip.LossUp
@@ -1618,11 +1631,20 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		// warum es nicht entschuldigt war (lagging)
 		if e.downAt = now; age > congAge || drops > 0 {
 			e.downWhy = "schlange"
+			if e.e2eAge && drops == 0 {
+				e.downWhy = "e2e" // Schlange unterwegs (transport-cc des Geraets), nicht im Knoten
+			}
 		} else {
 			e.downWhy = "gcc-" + e.lagWhy
 		}
 		if gccLow > 0 && gccLow < rate {
 			rate = gccLow / 0.85
+		}
+		if e2eAck > 0 && e2eAck < rate {
+			rate = e2eAck // waechst die Schlange unterwegs, kommt weniger an, als der Knoten schreibt
+		}
+		if e.e2eHit {
+			e.e2eDown(now)
 		}
 		// runter auf 85 % des tatsaechlich Durchgegangenen (nicht kumulativ)
 		t := rate * 0.85
