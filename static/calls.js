@@ -3347,10 +3347,12 @@
     var H = R.horn, m = H.meas[cand.node];
     var udp = !!(cand.udp && cand.tokens && cand.tokens.both && m && (m.udp != null || m.udpMaybe));
     var noTcp = cand.tcp === false;
+    var noTls = cand.tls === false;                     // 2.5 A3: Tunnel-Betrieb hinter einem TLS-beendenden Proxy - im Browser nur UDP
     var p = udp ? hornConnect(R, cand, 'udp', m.udp != null ? HORN_WAIT_UDP : 1500).catch(function (e) { if (e === null || noTcp) throw e; return hornConnect(R, cand, 'tcp'); })
       : noTcp ? Promise.reject({ tcpOff: true }) : hornConnect(R, cand, 'tcp');
     return p.catch(function (e) {
       if (e === null || (e && (e.status === 404 || e.status === 429))) throw e;      // beendet bzw. voll/Leeren: naechster Kandidat
+      if (noTls) throw new Error(T('Dieser Anruf-Knoten ist hinter dem Proxy nur für die Apps erreichbar – im Browser braucht er UDP.'));
       return hornFresh(R, cand, hornAvoid(H)).then(function (c2) { return hornConnect(R, c2, 'turn'); });
     });
   }

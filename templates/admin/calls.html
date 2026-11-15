@@ -73,6 +73,26 @@
   {% if hs.rekey %}<p class="adm-note" role="alert">{{ _("Knoten müssen neu gekoppelt werden: Der Signaturschlüssel von Saga hat sich geändert (SECRET_KEY gewechselt oder Wiederherstellung ohne Gjallarhorn-Einstellungen). Diese Knoten lehnen Saga deshalb ab: {names}. Knoten entfernen, auf dem Knoten HORN_DATA leeren und mit „Erweitern“ neu koppeln.", names=hs.rekey|join(', ')) }}</p>{% endif %}
   {% if hs.hint %}<p class="adm-note horn-hint" role="note">{{ _("Deine Knoten waren zuletzt oft ausgelastet. Mit <b>Erweitern</b> kommt ein weiterer dazu.")|safe }}</p>{% endif %}
 
+  {# 2.5 A3: Anrufe der Apps ueber die Saga-Adresse (Medien-Tunnel /api/sfu/ws, saga/horn_ops.py tunnel_view) #}
+  {% set tu = hs.tunnel %}
+  {% if tu %}
+  {% set rp_doc = {'en': 'en/GUIDE.md#calls-through-the-saga-address-tunnel', 'es': 'es/GUIA.md#llamadas-por-la-dirección-de-saga-túnel'}.get(lang(), 'ANLEITUNG.md#anrufe-über-die-saga-adresse-tunnel') %}
+  <div class="horn-tunnel" id="tunnel">
+    <h4 class="horn-h">{{ _("Anrufe über die Saga-Adresse (Tunnel)") }}</h4>
+    <table class="adm-table horn-tun">
+      <tr><th>{{ _("Zustand") }}</th><td class="tu-mode">{% if tu.mode == 'tunnel' %}{{ _("An ✓ – die Apps telefonieren über {url}, ohne weiteren Port und ohne eigenes Zertifikat für den Knoten.", url=tu.url) }}{% else %}{{ _("Bereit als Rückweg – die Apps nehmen den Tunnel, wenn TCP und TLS zum Knoten nicht durchkommen.") }}{% endif %}
+        {%- if tu.mode == 'tunnel' %}<br><small>{% if tu.udp %}{{ _("UDP {port} ist zusätzlich erreichbar – das bringt die beste Qualität.", port=tu.udp_port) }}{% else %}{{ _("Mehr Qualität: UDP {port}/udp direkt freigeben (am Proxy vorbei) oder die Betriebsart „Ein Port“ nutzen. Browser telefonieren über diesen Knoten nur mit UDP.", port=tu.udp_port) }}{% endif %}</small>{% endif %}</td></tr>
+      <tr><th>{{ _("Proxy reicht WebSocket durch?") }}</th><td class="tu-check" data-ok="{{ _('Ja ✓ – der Tunnel kommt beim Knoten an.') }}" data-no="{{ _('Nein ✗ – der Proxy reicht WebSocket nicht durch. Bei Nginx Proxy Manager für diesen Host „Websockets Support“ einschalten.') }}" data-node="{{ _('Knoten nicht erreichbar – läuft er gerade?') }}" data-err="{{ _('Prüfung fehlgeschlagen (Netz?).') }}" data-run="{{ _('Prüfe …') }}">
+        <span class="tu-res">{% if tu.ws_warn %}{{ _("Wohl nicht: Zuletzt kamen Anfragen ohne WebSocket an ({time}) und seitdem kein Tunnel. Bei Nginx Proxy Manager „Websockets Support“ einschalten.", time=ts(tu.last_no_upgrade)) }}{% elif tu.last_open %}{{ _("Ja ✓ – letzter Tunnel:") }} {{ ts(tu.last_open) }}{% else %}{{ _("Noch nicht geprüft") }}{% endif %}</span>
+        <button class="btn tu-btn" type="button" data-url="{{ tu.url }}/api/sfu/ws" hidden>{{ _("Jetzt prüfen") }}</button></td></tr>
+      <tr><th>{{ _("Tunnel") }}</th><td class="tu-n">{{ _("{n} offen", n=tu.open) }} · {{ _("seit dem Start {n}", n=tu.total) }}{% if tu.open %} · {{ _("Fenster bis {n} KiB", n=tu.win_kib) }}{% if tu.rtt_ms %} · {{ _("RTT {a}/{b} ms (Median/max)", a=tu.rtt_ms, b=tu.rtt_max_ms) }}{% endif %}{% endif %}
+        {%- if tu.auth_fail or tu.limited %}<br><small>{% if tu.auth_fail %}{{ _("{n} mit ungültigem Zugang abgewiesen", n=tu.auth_fail) }}{% endif %}{% if tu.auth_fail and tu.limited %} · {% endif %}{% if tu.limited %}{{ _("{n} über der Grenze je Adresse", n=tu.limited) }}{% endif %}</small>{% endif %}</td></tr>
+    </table>
+    <p class="hk-hint">{{ _("Hinter einem Reverse Proxy, der TLS selbst beendet (z. B. Nginx Proxy Manager), laufen Anrufe der Apps als WebSocket über die normale Saga-Adresse. Pflicht ist nur „Websockets Support“ – den braucht Gjallarhorn ohnehin. Cloudflare mit orangener Wolke geht technisch; Dauer-Medienverkehr kann aber gegen deren Nutzungsbedingungen verstoßen.") }}
+      <a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/{{ rp_doc }}" target="_blank" rel="noopener">{{ _("Anleitung: Reverse Proxy") }}</a></p>
+  </div>
+  {% endif %}
+
   <h4 class="horn-h">{{ _("Knoten") }}</h4>
   <table class="adm-table horn-nodes">
     <tr><th>{{ _("Name") }}</th><th>{{ _("Status") }}</th><th>{{ _("Weg") }}</th><th>{{ _("Auslastung") }}</th><th>{{ _("Teilnehmende") }}</th><th>{{ _("Version") }}</th><th>{{ _("Teilen") }}</th><th>{{ _("Aktionen") }}</th></tr>
@@ -101,8 +121,8 @@
                       'wait24': _('Seit 24 Stunden keine Zeit ohne Anrufe – das Update wartet weiter.'),
                       'old': _('Dieser Knoten ist zu alt, um Testversionen selbst zu laden. Bitte einmal von Hand auf die Saga-Version aktualisieren (Docker: Image-Tag anpassen und neu starten; systemd: Binär aus dem Vorab-Release horn-testing einspielen).')} %}
         {% if n.upd.code in UPD and n.upd.state in ('aus', 'manuell', 'fehler', 'wartet') %}<br><small title="{{ n.upd.err or '' }}">{{ _("Update:") }} {{ UPD[n.upd.code] }}</small>{% endif %}{% endif %}</td>
-      <td data-l="{{ _('Weg') }}"><span title="{{ UDP_TIP }}">TCP {{ '✓' if n.tcp else '✗' }} · UDP {{ '✓' if n.udp else '–' }}</span>
-        {% if n.ctl and not n.udp and n.udp_check in ('fehlt', 'aus') %}<br><small class="horn-udp-warn">{% if n.udp_check == 'fehlt' %}{{ _("UDP nicht erreichbar – Anrufe laufen über TCP/TLS. Port {port}/udp freigeben (direkt, nicht über den Reverse Proxy).", port=n.udp_port) }}{% elif n.builtin and hs.einport %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TLS auf Port {port}, das genügt. UDP (HORN_UDP=1) nur ohne Proxy, mit {port}/udp freigegeben.", port=n.udp_port) }}{% elif n.builtin %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TLS, das genügt; ein weiterer Port ist nicht nötig. UDP (HORN_UDP=1) nur, wenn UDP mit derselben Portnummer beim Knoten ankommt, auf der er lauscht (HORN_UDP_LISTEN bzw. HORN_PORT).") }}{% else %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TCP/TLS. Für UDP: HORN_UDP=1 und Port {port}/udp freigeben.", port=n.udp_port) }}{% endif %}</small>{% endif %}</td>
+      <td data-l="{{ _('Weg') }}"><span title="{{ UDP_TIP }}">{% if n.tunnel %}{{ _("Tunnel") }} ✓{% else %}TCP {{ '✓' if n.tcp else '✗' }}{% endif %} · UDP {{ '✓' if n.udp else '–' }}{% if n.ws and not n.tunnel %} · {{ _("Tunnel") }} ✓{% endif %}</span>
+        {% if n.ctl and not n.udp and n.udp_check in ('fehlt', 'aus') and not n.tunnel %}<br><small class="horn-udp-warn">{% if n.udp_check == 'fehlt' %}{{ _("UDP nicht erreichbar – Anrufe laufen über TCP/TLS. Port {port}/udp freigeben (direkt, nicht über den Reverse Proxy).", port=n.udp_port) }}{% elif n.builtin and hs.einport %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TLS auf Port {port}, das genügt. UDP (HORN_UDP=1) nur ohne Proxy, mit {port}/udp freigegeben.", port=n.udp_port) }}{% elif n.builtin %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TLS, das genügt; ein weiterer Port ist nicht nötig. UDP (HORN_UDP=1) nur, wenn UDP mit derselben Portnummer beim Knoten ankommt, auf der er lauscht (HORN_UDP_LISTEN bzw. HORN_PORT).") }}{% else %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TCP/TLS. Für UDP: HORN_UDP=1 und Port {port}/udp freigeben.", port=n.udp_port) }}{% endif %}</small>{% endif %}</td>
       <td data-l="{{ _('Auslastung') }}"><meter class="horn-bar" min="0" max="100" low="70" high="90" optimum="10" value="{{ n.util }}">{{ n.util }} %</meter><br>
         <small>{{ _("CPU {cpu} %", cpu=n.cpu) }} · {% if n.link %}{{ _("Upload {up}/{link} Mbit/s", up=n.up, link=n.link) }}{% else %}{{ _("Upload {up} Mbit/s", up=n.up) }}{% endif %}</small></td>
       <td data-l="{{ _('Teilnehmende') }}">{{ n.peers }}{% set br = n.bridges.values()|selectattr('st', 'equalto', 'up')|list %}{% if br %}<br><small>{{ _("Kaskaden: {n}", n=br|length) }}</small>{% endif %}</td>
@@ -133,7 +153,7 @@
   {% else %}<p class="hk-hint">{{ _("Kein verbundener Server teilt gerade Knoten mit dir.") }}</p>{% endif %}
   {% endif %}
 
-  {% for n in hs.nodes %}
+  {% for n in hs.nodes if not n.tunnel %}
   {% set port = n.port if not n.builtin else ((n.url.split(':')[2]|int) if n.url.count(':') == 2 else 443) %}
   {% set uport = n.udp_port or port %}
   <details class="horn-ports" id="n-{{ n.id }}"{% if request_open == n.id %} open{% endif %}>

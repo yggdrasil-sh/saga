@@ -285,6 +285,8 @@ def cert_ok(n, now=None):
     mit gemeldetem Ablauf (not_after) nur bis dahin - vorher blieb ein Knoten mit abgelaufenem Zertifikat "bereit"; die
     Knoten melden ihr Zertifikat inzwischen alle 12 h und bei jeder Aenderung."""
     ce = n.get("cert") or {}
+    if ce.get("state") == "tunnel":                    # 2.5 A3: Tunnel-Betrieb - TLS endet am Reverse Proxy vor Saga
+        return bool(n.get("builtin"))
     if ce.get("state") not in ("ok", "self"):
         return False
     try:
@@ -397,7 +399,10 @@ def candidates(c, call, dev, role="member", dev_class="desktop", now=None):
         # tcp (2.5, einport/Pruefer-Fund 5a): False = der Knoten bietet kein rohes ICE-TCP (TLS-Durchreiche) - Geraete gehen
         # gleich auf TURN-TLS statt bis zu 4 s auf ICE-TCP zu warten; aeltere Geraete ignorieren das Feld (der Knoten lehnt
         # ein Bein "tcp" dann sofort ab, sie fallen ohne Wartezeit auf TLS zurueck)
-        out.append({"node": n["name"], "url": n["url"], "udp": udp, "tcp": ice_tcp(n), "here": n["id"] == cur, "load": round(util(n), 3),
+        # tls/ws (2.5 A3, Vertrag S5): Tunnel-Betrieb (eingebauter Knoten hinter einem TLS-beendenden Proxy) ohne TCP/TLS,
+        # mit ws; sonst ws zusaetzlich als letzter Weg. Aeltere Apps ignorieren beide Felder.
+        out.append({"node": n["name"], "url": n["url"], "udp": udp, "tcp": ice_tcp(n), "tls": tls_ok(n), "ws": ws_ok(n),
+                    "here": n["id"] == cur, "load": round(util(n), 3),
                     "peer": peer_ref(call["id"], n["id"], dev, gen), "gen": gen, "tokens": toks, "exp": int(now) + TOKEN_TTL})
     return out
 
@@ -406,6 +411,35 @@ def ice_tcp(n):
     """Knoten bietet rohes ICE-TCP (hello ice_tcp; aeltere Knoten ohne das Feld: ja)."""
     v = (_LIVE.get(n["id"]) or {}).get("ice_tcp")
     return True if v is None else bool(v)
+
+
+def tunnel_mode(n):
+    """2.5 A3: eingebauter Knoten im Tunnel-Betrieb (hinter einem TLS-beendenden Reverse Proxy, ohne eigenen Namen und
+    ohne Zertifikat): Geraete erreichen ihn nur unter der Saga-Adresse - Medien ueber den Tunnel /api/sfu/ws bzw. UDP."""
+    return bool(n.get("builtin")) and bool((_LIVE.get(n["id"]) or {}).get("tunnel"))
+
+
+def tls_ok(n):
+    """Knoten bietet TURN-TLS (alle ausser im Tunnel-Betrieb)."""
+    return not tunnel_mode(n)
+
+
+def ws_ok(n):
+    """Knoten bietet den Medien-Tunnel /api/sfu/ws (hello ws; aeltere Knoten: nein)."""
+    return bool((_LIVE.get(n["id"]) or {}).get("ws"))
+
+
+def _clean_tunnels(d):
+    """Zaehler des Medien-Tunnels aus der Lastmeldung (gjallarhorn tunnel.go tunnelStats) - nur Zahlen."""
+    keys = ("open", "total", "auth_fail", "limited", "no_upgrade", "last_open", "last_no_upgrade", "win_kib", "rtt_ms",
+            "rtt_max_ms", "blocked_ms")
+    return {k: _num(d.get(k), 0, 2 ** 53) for k in keys}
+
+
+def tunnel_report(n):
+    """Zaehler des Medien-Tunnels (Admin -> Anrufe) oder None (aelterer Knoten / keine Lastmeldung)."""
+    t = (_LIVE.get(n["id"]) or {}).get("tunnels")
+    return dict(t) if isinstance(t, dict) else None
 
 
 def node_named(c, name):
@@ -582,6 +616,7 @@ def _clean_hello(h):
     uc = str(h.get("udp_check") or "")
     return {"name": name, "url": url, "pub": str(h.get("pub")), "udp": bool(h.get("udp")), "version": str(h.get("version") or "")[:40],
             "ice_tcp": h.get("ice_tcp") is not False, "einport": h.get("einport") is True,
+            "ws": h.get("ws") is True, "tunnel": h.get("tunnel") is True,
             "udp_check": uc if uc in UDP_CHECKS else "",
             "max_legs": int(h.get("max_legs") or 0) if str(h.get("max_legs") or "0").isdigit() else 0,
             "v4": _ip(h.get("v4"), 4), "v6": _ip(h.get("v6"), 6), "cert": _clean_cert(cert), "upd": _clean_upd(upd)}
@@ -795,7 +830,8 @@ async def ctl(ws: WebSocket):
         old.q.put_nowait(None)
     stats = {} if builtin else await asyncio.to_thread(_load_stats, nid)
     _LIVE[nid] = {"load": {"max_legs": hh["max_legs"], "legs": 0, "state": "ok"}, "at": time.time(), "db": time.time(), "stats": stats,
-                  "drain_ev": False, "udp_check": hh["udp_check"], "ice_tcp": hh["ice_tcp"]}
+                  "drain_ev": False, "udp_check": hh["udp_check"], "ice_tcp": hh["ice_tcp"],
+                  "ws": hh["ws"], "tunnel": hh["tunnel"] and builtin}
     welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
     if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)
         welcome["origins"] = await asyncio.to_thread(HOOKS["origins"])
@@ -842,6 +878,8 @@ async def ctl(ws: WebSocket):
                 live.update(load=ld, at=now)
                 if isinstance(m["load"].get("bridges"), dict):       # P9: Stand der Bruecken (nur im Speicher)
                     live["bridges"] = {str(k)[:64]: v for k, v in list(m["load"]["bridges"].items())[:200] if isinstance(v, dict)}
+                if isinstance(m["load"].get("tunnels"), dict):       # 2.5 A3: Zaehler des Medien-Tunnels (Admin)
+                    live["tunnels"] = _clean_tunnels(m["load"]["tunnels"])
                 if isinstance(m["load"].get("quotas"), dict):
                     live["quotas"] = {str(k)[:64]: v for k, v in list(m["load"]["quotas"].items())[:200] if isinstance(v, dict)}
                 if ld.get("state") == "draining" and not live.get("drain_ev"):
@@ -1027,6 +1065,23 @@ def horn_port():
     return int(v) if v.isdigit() and 0 < int(v) < 65536 else 8443
 
 
+def tunnel_possible():
+    """2.5 A3: saga-media gibt dem eingebauten Knoten die Saga-Adresse fuer den Tunnel-Betrieb (BASE_URL https mit
+    DNS-Namen, media/config.go httpsOrigin) - ohne eigenen Namen/Zertifikat startet er dann trotzdem."""
+    from urllib.parse import urlsplit
+    try:
+        u = urlsplit((os.environ.get("BASE_URL") or "").strip())
+        host = (u.hostname or "").lower()
+    except ValueError:
+        return False
+    if u.scheme != "https" or not host or host == "localhost" or "." not in host or u.username:
+        return False
+    return not _IPLIKE.fullmatch(host) and ":" not in host
+
+
+_IPLIKE = re.compile(r"[0-9.]+")
+
+
 def builtin_precheck():
     """"nocert", wenn der eingebaute Knoten mit dieser Umgebung sicher nicht startet - dieselbe Reihenfolge wie
     gjallarhorn (internal/netx/certs.go NewCerts): Zertifikatsdateien (HORN_TLS_CERT/HORN_TLS_KEY, sonst
@@ -1034,6 +1089,8 @@ def builtin_precheck():
     ACME TLS-ALPN-01). Sonst ""."""
     from saga.core import STATE_DIR
     if einport():                                      # Name aus BASE_URL, Zertifikat per DNS-01/TLS-ALPN-01 bzw. eigene Dateien
+        return ""
+    if tunnel_possible():                              # 2.5 A3: startet ohne Zertifikat im Tunnel-Betrieb
         return ""
     e = os.environ
     data = (e.get("HORN_DATA") or "").strip() or os.path.join(STATE_DIR, "horn")

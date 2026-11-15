@@ -930,6 +930,29 @@ def einport_view(out, now=None):
     return v
 
 
+def tunnel_view(out, now=None):
+    """2.5 A3: Kasten "Anrufe ueber die Saga-Adresse (Tunnel)" in Admin -> Anrufe. None = kein eingebauter Knoten mit
+    Medien-Tunnel verbunden (aelterer Knoten, Gjallarhorn aus). mode: tunnel (Tunnel-Betrieb hinter einem TLS-beendenden
+    Proxy: Apps nur ueber den Tunnel bzw. UDP) | extra (Ein Port bzw. eigener Name: Tunnel als letzter Weg der Apps).
+    Zaehler aus der Lastmeldung (offene Tunnel, groesstes Fenster, RTT der Quittungen). Keine Adressen."""
+    if not horn.horn_on():
+        return None
+    real = next((n for n in out if n["builtin"] and n["ctl"] and n.get("ws")), None)
+    if not real:
+        return None
+    now = now or time.time()
+    t = real.get("tunnels") or {}
+    from saga.core import BASE_URL
+    v = {"mode": "tunnel" if real.get("tunnel") else "extra", "url": real.get("url") or BASE_URL, "udp": bool(real.get("udp")),
+         "udp_port": real.get("udp_port"), "open": t.get("open") or 0, "total": t.get("total") or 0, "win_kib": t.get("win_kib") or 0,
+         "rtt_ms": t.get("rtt_ms") or 0, "rtt_max_ms": t.get("rtt_max_ms") or 0, "last_open": t.get("last_open") or None,
+         "no_upgrade": t.get("no_upgrade") or 0, "last_no_upgrade": t.get("last_no_upgrade") or None,
+         "auth_fail": t.get("auth_fail") or 0, "limited": t.get("limited") or 0, "reported": bool(t)}
+    # Anfragen ohne Upgrade in der letzten Stunde und seitdem kein Tunnel: der Proxy reicht WebSocket (noch) nicht durch
+    v["ws_warn"] = bool(v["last_no_upgrade"] and now - v["last_no_upgrade"] < 3600 and (v["last_open"] or 0) < v["last_no_upgrade"])
+    return v
+
+
 def builtin_warn():
     """Warnung beim Speichern (Admin -> Anrufe): eingebauter Knoten an, startet aber sicher nicht ("nocert") - laut Umgebung
     oder letzter Meldung von saga-media. Sonst ""."""
@@ -975,7 +998,7 @@ def admin_state():
         out.append({"id": n["id"], "name": n["name"], "builtin": bool(n["builtin"]), "status": st, "since": since,
                     "tcp": bool(ck.get("v4") or ck.get("v6")) if ck else (n["id"] in horn._CONNS),
                     "udp": bool(n["udp"]), "udp_check": (horn._LIVE.get(n["id"]) or {}).get("udp_check") or "", "udp_port": horn.udp_port(n),
-                    "ice_tcp": horn.ice_tcp(n),
+                    "ice_tcp": horn.ice_tcp(n), "ws": horn.ws_ok(n), "tunnel": horn.tunnel_mode(n), "tunnels": horn.tunnel_report(n),
                     "cpu": round(100 * float(ld.get("cpu") or 0)), "up": round(float(ld.get("up") or 0), 1),
                     "link": n.get("link_mbit"), "util": round(100 * horn.util(n)), "peers": int(ld.get("peers") or 0),
                     "legs": int(ld.get("legs") or 0), "version": n.get("version") or "", "share": bool(n["share"]),
@@ -988,7 +1011,7 @@ def admin_state():
                     "bridges": (horn._LIVE.get(n["id"]) or {}).get("bridges") or {}, "quotas": (horn._LIVE.get(n["id"]) or {}).get("quotas") or {}})
     cf = cloudflare.conf()
     bi = builtin_view(out, now)
-    return {"nodes": out, "pending": pend, "bi": bi, "einport": einport_view(out, now), "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()), "rekey": rekey,
+    return {"nodes": out, "pending": pend, "bi": bi, "einport": einport_view(out, now), "tunnel": tunnel_view(out, now), "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()), "rekey": rekey,
             "cf": {"set": bool(cf.get("token")), "mask": cloudflare.mask(cf.get("token") or ""), "zone": cf.get("zone") or "",
                    "check": cf.get("check") or {}},
             "suffix": suffix(), "image": image_ref(), "saga": saga_origin(), "saga_warn": saga_warn(), "builtin_on": horn.builtin_on(),

@@ -141,3 +141,34 @@
   });
   if (out.dataset.pid) { started = Date.now(); poll(); }      // ohne JS erzeugt (Formular), danach mit JS weiter
 })();
+
+// 2.5 A3: "Proxy reicht WebSocket durch?" - vom Browser des Admins ueber denselben Weg wie die Apps (Saga-Adresse, Proxy):
+// WebSocket mit saga-tunnel.1 oeffnen (kommt "open", reicht der Proxy durch; ohne Zugang schliesst der Knoten nach 10 s,
+// hier sofort). Klappt das nicht, sagt GET ohne Upgrade, warum: 426 = Knoten erreicht, Upgrade fehlt; sonst Knoten weg.
+(function () {
+  'use strict';
+  var cell = document.querySelector('.tu-check');
+  var btn = cell && cell.querySelector('.tu-btn');
+  if (!btn || !window.WebSocket) return;
+  var res = cell.querySelector('.tu-res');
+  btn.hidden = false;
+  function show(k) { res.textContent = cell.dataset[k] || k; btn.disabled = false; }
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    res.textContent = cell.dataset.run;
+    var u = new URL(btn.dataset.url, location.href), done = false, ws;
+    u.protocol = u.protocol === 'http:' ? 'ws:' : 'wss:';
+    var http = new URL(btn.dataset.url, location.href).href;
+    function fallback() {
+      if (done) return;
+      done = true;
+      fetch(http, { headers: { 'X-Saga': '1' }, cache: 'no-store' }).then(function (r) {
+        show(r.status === 426 ? 'no' : (r.status === 502 || r.status === 503 || r.status === 404) ? 'node' : 'err');
+      }, function () { show('err'); });
+    }
+    var t = setTimeout(function () { try { ws.close(); } catch (e) { /* schon zu */ } fallback(); }, 8000);
+    try { ws = new WebSocket(u.href, 'saga-tunnel.1'); } catch (e) { clearTimeout(t); fallback(); return; }
+    ws.onopen = function () { if (done) return; done = true; clearTimeout(t); ws.close(1000); show('ok'); };
+    ws.onerror = ws.onclose = function () { clearTimeout(t); fallback(); };
+  });
+})();

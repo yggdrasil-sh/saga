@@ -79,7 +79,11 @@ func (n *nodeLink) listenerFile() (*os.File, error) {
 	return f, err
 }
 
-func (n *nodeLink) close() { _ = os.RemoveAll(n.dir) }
+func (n *nodeLink) close() {
+	if n.dir != "" {
+		_ = os.RemoveAll(n.dir)
+	}
+}
 
 // nodeEnv: Umgebung des Knotens (ohne "Ein Port"). HORN_TUNNEL_URL nur mit https-BASE_URL (DNS-Name): dann darf der
 // Knoten ohne eigenen Namen und ohne Zertifikat im Tunnel-Betrieb laufen (gjallarhorn server.go).

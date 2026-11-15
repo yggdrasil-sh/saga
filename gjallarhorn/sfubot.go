@@ -30,6 +30,8 @@ type sfuBot struct {
 	video  bool
 	level  atomic.Uint32 // 127 = still
 	layers []string      // gesendete Schichten, z. B. l, m
+	// bend (nur Tests, 2.5 A3 Weg "ws"): Antwort-SDP je Leitung vor dem Setzen biegen (passiver TCP-Kandidat -> Tunnel)
+	bend func(role, sdp string) string
 
 	pcs     []*webrtc.PeerConnection
 	legIDs  []string
@@ -282,6 +284,9 @@ func (b *sfuBot) join(hc *http.Client, base string, api *webrtc.API, room string
 			return err
 		}
 		b.legIDs = append(b.legIDs, ans.ID)
+		if b.bend != nil {
+			ans.Answer = b.bend(sp.role, ans.Answer)
+		}
 		if err := pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: ans.Answer}); err != nil {
 			return err
 		}

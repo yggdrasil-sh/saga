@@ -205,6 +205,10 @@ func main() {
 			logf("Gjallarhorn: internes HTTP nicht vorbereitet: %v", err)
 			m.link = nil
 		}
+	} else if p, k := os.Getenv("MEDIA_NODE_SOCK"), os.Getenv("HORN_CTL_KEY"); child == nil && p != "" && len(k) >= 16 {
+		// nur Pruefstand ohne Saga als Kindprozess: Knoten von aussen gestartet (HORN_DEV=1, HORN_INNER_SOCK, gleicher Schluessel)
+		m.link = &nodeLink{c: c, key: k, sock: p, proxy: newNodeProxy(p, k, c)}
+		logf("Pruefstand: Geraete-HTTP an den Knoten unter MEDIA_NODE_SOCK")
 	}
 	srvDone := make(chan error, 1)
 	go func() { srvDone <- srv.Serve(lim) }()

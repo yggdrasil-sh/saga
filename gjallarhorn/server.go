@@ -362,6 +362,13 @@ func newServer(cfg *config) (*server, error) {
 		if s.inner, err = innerFromEnv(); err != nil {
 			return nil, err
 		}
+		if p := os.Getenv("HORN_INNER_SOCK"); s.inner == nil && p != "" && cfg.Dev { // nur Pruefstand (ohne saga-media als Elternprozess)
+			_ = os.Remove(p)
+			if s.inner, err = net.Listen("unix", p); err != nil {
+				return nil, fmt.Errorf("HORN_INNER_SOCK: %w", err)
+			}
+			_ = os.Chmod(p, 0o600)
+		}
 	}
 	if cfg.Tunnel && s.inner == nil {
 		return nil, errors.New("HORN_TUNNEL_URL ohne internes HTTP (HORN_INNER_HTTP_FD) - nur unter saga-media")

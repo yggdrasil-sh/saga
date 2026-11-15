@@ -404,6 +404,7 @@ func (c *Conn) reserve() error {
 			t0 = time.Now()
 		}
 		if dl := c.wdl.Load(); dl != 0 && time.Now().UnixNano() >= dl {
+			c.St.Blocked.Add(int64(time.Since(t0)))
 			return os.ErrDeadlineExceeded
 		}
 		// Wecker gegen Fristen (SetWriteDeadline weckt selbst, Quittungen auch)
