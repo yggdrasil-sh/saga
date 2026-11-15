@@ -61,6 +61,7 @@ type media struct {
 	fed    *fedCache    // 2.4: Zwischenkopien anderer Server
 	bufs   *bufPool     // 2.4: Puffer fuer Platte/Netz (256 KiB)
 	edge   *edge        // 2.5: TLS-Eingang "Ein Port" (nil = aus)
+	link   *nodeLink    // 2.5 A3: internes HTTP des eingebauten Knotens ohne "Ein Port" (nil = aus bzw. "Ein Port")
 }
 
 // fileID: "/api/chat/files/<fid>" -> fid (sonst "").

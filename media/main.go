@@ -63,9 +63,23 @@ func (m *media) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	r.Header.Del("X-Saga-Horn-Key") // 2.5: Geheimnis des eingebauten Knotens kommt nur ueber localhost
 	r.Header.Del(einKeyHeader)
 	r.Header.Del(einForHeader)
-	if m.edge != nil && nodePath(p) && !strings.Contains(p, "/.") { // 2.5 "Ein Port": Geraete-HTTP des eingebauten Knotens
-		m.edge.nodeProxy.ServeHTTP(w, r)
-		return
+	if nodePath(p) && !strings.Contains(p, "/.") { // 2.5: Geraete-HTTP des eingebauten Knotens ("Ein Port" bzw. nodews.go)
+		if e := m.edge; e != nil {
+			if isNodeWS(r) {
+				m.serveNodeWS(w, r, e.nodeSock, e.key)
+			} else {
+				e.nodeProxy.ServeHTTP(w, r)
+			}
+			return
+		}
+		if l := m.link; l != nil {
+			if isNodeWS(r) {
+				m.serveNodeWS(w, r, l.sock, l.key)
+			} else {
+				l.proxy.ServeHTTP(w, r)
+			}
+			return
+		}
 	}
 	// Was saga-media selbst bedient (alles andere geht an Saga): Dateien lesen (Range), 2.4 Uploads schreiben
 	// (PUT/HEAD /api/chat/uploads/{id}) und Teile eigener Anhaenge fuer andere Server (/fed/v2/chat/files/{id}?range=).
@@ -185,6 +199,12 @@ func main() {
 			os.Exit(1)
 		}
 		m.edge = e
+	} else if child != nil && !strings.EqualFold(os.Getenv("SAGA_HORN"), "off") {
+		// 2.5 A3: Geraete-HTTP des eingebauten Knotens auch ohne "Ein Port" ueber PORT (nodews.go)
+		if m.link, err = newNodeLink(c, hornKey); err != nil {
+			logf("Gjallarhorn: internes HTTP nicht vorbereitet: %v", err)
+			m.link = nil
+		}
 	}
 	srvDone := make(chan error, 1)
 	go func() { srvDone <- srv.Serve(lim) }()
@@ -219,6 +239,9 @@ func main() {
 		}
 		if m.edge != nil {
 			m.edge.close()
+		}
+		if m.link != nil {
+			m.link.close()
 		}
 	}
 

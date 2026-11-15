@@ -36,11 +36,14 @@ type config struct {
 	tlsProxy   bool   // TLS_PROXY_PROTOCOL=1: vor jeder Verbindung ein PROXY-v2-Kopf (Pflicht)
 	tlsCert    string // SAGA_TLS_CERT/SAGA_TLS_KEY: eigene Zertifikatsdateien (sonst vom eingebauten Knoten)
 	tlsKey     string
-	baseHost   string        // Name aus BASE_URL (Zertifikat, Knotenname)
-	baseOrigin string        // https://name[:port] aus BASE_URL (Adresse des eingebauten Knotens)
-	basePort   int           // Port aus BASE_URL (nach aussen; Kandidaten des Knotens)
-	hornData   string        // HORN_DATA bzw. STATE_DIR/horn (Zertifikat des Knotens)
-	tlsReload  time.Duration // SAGA_TLS_RELOAD_S: so oft Zertifikatsdateien pruefen (Standard 30 s)
+	baseHost   string // Name aus BASE_URL (Zertifikat, Knotenname)
+	baseOrigin string // https://name[:port] aus BASE_URL (Adresse des eingebauten Knotens)
+	basePort   int    // Port aus BASE_URL (nach aussen; Kandidaten des Knotens)
+	// 2.5 A3: ohne "Ein Port" - Ursprung von BASE_URL (https, DNS-Name) fuer den Tunnel-Betrieb des eingebauten Knotens
+	// (HORN_TUNNEL_URL); leer = kein Tunnel-Betrieb (BASE_URL http bzw. IP)
+	tunnelOrigin string
+	hornData     string        // HORN_DATA bzw. STATE_DIR/horn (Zertifikat des Knotens)
+	tlsReload    time.Duration // SAGA_TLS_RELOAD_S: so oft Zertifikatsdateien pruefen (Standard 30 s)
 }
 
 func envStr(name, def string) string {
@@ -139,6 +142,10 @@ func (c *config) loadTLS(port int) error {
 	}
 	c.hornData = envStr("HORN_DATA", filepath.Join(envStr("STATE_DIR", "/data"), "horn"))
 	if !c.tlsOn {
+		// 2.5 A3: hinter einem Reverse Proxy erreichen Geraete den eingebauten Knoten unter der Saga-Adresse (Tunnel)
+		if _, origin, err := httpsOrigin(os.Getenv("BASE_URL")); err == nil {
+			c.tunnelOrigin = origin
+		}
 		return nil
 	}
 	if c.tlsListen == "" {

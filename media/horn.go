@@ -139,6 +139,15 @@ func newHorn(m *media, key string) (*horn, string) {
 		}
 		env = append(kept, e.nodeEnv()...)
 		port = m.c.basePort
+	} else if l := m.link; l != nil {
+		// 2.5 A3: internes HTTP (fd 3) und Saga-Adresse fuer den Tunnel-Betrieb (nur ohne eigenen Namen/Zertifikat)
+		kept := env[:0]
+		for _, kv := range env {
+			if k, _, _ := strings.Cut(kv, "="); k != "HORN_INNER_HTTP_FD" && k != "HORN_TUNNEL_URL" && k != "HORN_EINPORT_FD" {
+				kept = append(kept, kv)
+			}
+		}
+		env = append(kept, l.nodeEnv()...)
 	}
 	set("HORN_LISTEN", ":"+strconv.Itoa(port))
 	set("HORN_DATA", filepath.Join(envStr("STATE_DIR", "/data"), "horn"))
@@ -249,6 +258,17 @@ func (h *horn) startLocked() {
 		}
 		extra = fs
 		cmd.ExtraFiles = fs
+	} else if l := h.m.link; l != nil { // 2.5 A3: internes HTTP (fd 3, nodews.go)
+		f, err := l.listenerFile()
+		if err != nil {
+			h.failLocked("start", "", time.Now())
+			if h.same == 1 {
+				logf("Gjallarhorn: internes HTTP fuer den eingebauten Knoten nicht vorbereitet: %v", err)
+			}
+			return
+		}
+		extra = []*os.File{f}
+		cmd.ExtraFiles = extra
 	}
 	defer func() {
 		for _, f := range extra {

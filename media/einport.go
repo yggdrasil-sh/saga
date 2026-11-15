@@ -104,7 +104,7 @@ func newEdge(m *media, key string) (*edge, error) {
 	e.tlsCfg = &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}, GetCertificate: e.cert.get}
 	e.cert.onChange = func(*certState) { e.changed() }
 	e.cert.reload()
-	e.nodeProxy = e.newNodeProxy()
+	e.nodeProxy = newNodeProxy(e.nodeSock, key, c)
 	return e, nil
 }
 
@@ -605,33 +605,6 @@ func (e *edge) info() *einportInfo {
 
 // nodePath: Pfade, die der Knoten unter dem Saga-Ursprung bedient (Saga selbst hat keine davon).
 func nodePath(p string) bool { return strings.HasPrefix(p, "/api/sfu/") || p == "/probe" }
-
-func (e *edge) newNodeProxy() *httputil.ReverseProxy {
-	tr := &http.Transport{
-		Proxy: nil,
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", e.nodeSock)
-		},
-		MaxIdleConns: 64, MaxIdleConnsPerHost: 64, IdleConnTimeout: 30 * time.Second, DisableCompression: true,
-	}
-	return &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.Out.URL.Scheme = "http"
-			pr.Out.URL.Host = "knoten"
-			pr.Out.Host = pr.In.Host
-			h := pr.Out.Header
-			h.Del(keyHeader)
-			h.Set(einKeyHeader, e.key)
-			h.Set(einForHeader, clientIP(pr.In, e.c.trusted))
-		},
-		Transport: tr,
-		ErrorLog:  log.New(io.Discard, "", 0),
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "knoten nicht bereit"})
-		},
-	}
-}
 
 func keyEq(a, b string) bool {
 	return len(a) == len(b) && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
