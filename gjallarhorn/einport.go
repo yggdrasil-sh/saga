@@ -173,6 +173,11 @@ func (s *server) einportReady() {
 // devicePath: Pfade des Knotens unter dem Saga-Ursprung (saga-media leitet genau diese weiter).
 func devicePath(p string) bool { return strings.HasPrefix(p, "/api/sfu/") || p == "/probe" }
 
+// devPagePath: Entwicklerseiten des Knotens (nur HORN_DEV=1, Pruefstand mit MEDIA_NODE_SOCK).
+func devPagePath(p string) bool {
+	return strings.HasPrefix(p, "/dev/") || strings.HasPrefix(p, "/api/dev/") || p == "/style.css"
+}
+
 // einportInner: internes HTTP (von saga-media) - nur mit Schluessel; Client-Adresse aus dem Kopf.
 func (s *server) einportInner(h http.Handler) http.Handler { return s.innerHandler(h, s.ein.key) }
 
@@ -182,7 +187,8 @@ func (s *server) innerHandler(h http.Handler, key string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		k := r.Header.Get(einKeyHeader)
 		ip, err := netip.ParseAddr(strings.TrimSpace(r.Header.Get(einForHeader)))
-		if key == "" || len(k) != len(key) || subtle.ConstantTimeCompare([]byte(k), []byte(key)) != 1 || err != nil || !devicePath(r.URL.Path) {
+		dev := s.cfg != nil && s.cfg.Dev && devPagePath(r.URL.Path) // nur Pruefstand (HORN_DEV=1): Testseite, Entwicklungs-Token
+		if key == "" || len(k) != len(key) || subtle.ConstantTimeCompare([]byte(k), []byte(key)) != 1 || err != nil || !(devicePath(r.URL.Path) || dev) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 			return
 		}

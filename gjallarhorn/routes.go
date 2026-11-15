@@ -68,7 +68,11 @@ func (s *server) routes() http.Handler {
 
 func (s *server) secHeaders(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
-	h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob: mediastream:; connect-src 'self' wss://"+r.Host)
+	cs := "'self' wss://" + r.Host
+	if s.cfg.Dev { // nur Testseite (HORN_DEV): meldet den TURN-Zugang an den lokalen Tunnel (e2e/wstunnel)
+		cs += " http://127.0.0.1:*"
+	}
+	h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob: mediastream:; connect-src "+cs)
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("Cache-Control", "no-store")

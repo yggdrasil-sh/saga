@@ -72,14 +72,14 @@ func (m *media) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		if l := m.link; l != nil {
-			if isNodeWS(r) {
-				m.serveNodeWS(w, r, l.sock, l.key)
-			} else {
-				l.proxy.ServeHTTP(w, r)
-			}
-			return
+	}
+	if l := m.link; l != nil && m.edge == nil && l.wants(p) {
+		if isNodeWS(r) {
+			m.serveNodeWS(w, r, l.sock, l.key)
+		} else {
+			l.proxy.ServeHTTP(w, r)
 		}
+		return
 	}
 	// Was saga-media selbst bedient (alles andere geht an Saga): Dateien lesen (Range), 2.4 Uploads schreiben
 	// (PUT/HEAD /api/chat/uploads/{id}) und Teile eigener Anhaenge fuer andere Server (/fed/v2/chat/files/{id}?range=).
@@ -207,7 +207,7 @@ func main() {
 		}
 	} else if p, k := os.Getenv("MEDIA_NODE_SOCK"), os.Getenv("HORN_CTL_KEY"); child == nil && p != "" && len(k) >= 16 {
 		// nur Pruefstand ohne Saga als Kindprozess: Knoten von aussen gestartet (HORN_DEV=1, HORN_INNER_SOCK, gleicher Schluessel)
-		m.link = &nodeLink{c: c, key: k, sock: p, proxy: newNodeProxy(p, k, c)}
+		m.link = &nodeLink{c: c, key: k, sock: p, proxy: newNodeProxy(p, k, c), dev: true}
 		logf("Pruefstand: Geraete-HTTP an den Knoten unter MEDIA_NODE_SOCK")
 	}
 	srvDone := make(chan error, 1)

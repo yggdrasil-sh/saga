@@ -136,12 +136,17 @@ func loadConfig(bench bool) (*config, error) {
 		c.Certs.CertFile = ""
 	}
 	c.TunnelURL = strings.TrimRight(strings.TrimSpace(os.Getenv("HORN_TUNNEL_URL")), "/")
-	if host, ok := tunnelHost(c.TunnelURL); ok && c.Mode == "node" && !bench && os.Getenv("HORN_EINPORT_FD") == "" && !certSource(c.Certs) {
-		// Tunnel-Betrieb: Zertifikat nur intern (nie an Geraete - die TLS-Strecke endet am Proxy)
+	return c, nil
+}
+
+// applyTunnel: Tunnel-Betrieb (2.5 A3), wenn saga-media die Saga-Adresse gibt und es keine Zertifikatsquelle gibt.
+// Nach dem Festlegen der Betriebsart aufrufen ("gjallarhorn node" setzt sie erst nach loadConfig).
+func (c *config) applyTunnel() {
+	if host, ok := tunnelHost(c.TunnelURL); ok && c.Mode == "node" && !c.Bench && os.Getenv("HORN_EINPORT_FD") == "" && !certSource(c.Certs) {
+		// Zertifikat nur intern (nie an Geraete - die TLS-Strecke endet am Proxy)
 		c.Tunnel, c.Name = true, host
 		c.Certs = netx.CertOptions{Name: host, Self: true}
 	}
-	return c, nil
 }
 
 // certSource: es gibt eine Zertifikatsquelle (wie netx.NewCerts): Dateien, HORN_TLS_SELF oder ein Name fuer ACME.
@@ -249,6 +254,7 @@ func runNode(args []string, bench bool, mode string) error {
 	if mode != "" {
 		cfg.Mode = mode
 	}
+	cfg.applyTunnel()
 	if pf := os.Getenv("HORN_CPUPROFILE"); pf != "" { // Entwicklung: CPU-Profil
 		f, err := os.Create(pf)
 		if err == nil {

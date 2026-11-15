@@ -9,10 +9,14 @@ const hue = +(Q.get('hue') || 0);
 const loud = Q.get('loud') === '1';
 const tiles = +(Q.get('tiles') || 3);
 const jbTarget = +(Q.get('jb') || 150);
-// Pruefstand Engpass (e2e/stau.mjs): turn mit turnhost=h:p, tcp mit candport=p (Weg ueber e2e/engpass), Messmarken mark=1
+// 2.5 A3: path=ws - ICE-TCP durch den Medien-Tunnel ueber einen lokalen Port (Stellvertreter der App, e2e/wstunnel),
+//   turn mit turnhost=h:p, tcp mit candport=p; mark=1: Messmarken (Zeitmarke im Bild, Pieps)
+const tunPort = Q.get('tunport') || '8526';
+const tunCtl = Q.get('tunctl') || '127.0.0.1:8527';
 const turnHost = Q.get('turnhost') || '';
 const candPort = Q.get('candport') || '';
 const mark = Q.get('mark') === '1';
+const legPath = path;
 const T0 = performance.timeOrigin;
 const wall = () => T0 + performance.now();
 const lat = { video: {}, audio: {} }; // je Quelle (Farbton) Liste der Ende-zu-Ende-Latenzen in ms
@@ -125,12 +129,12 @@ async function openLeg(role, turn) {
   };
   await pc.setLocalDescription(await pc.createOffer());
   leg.t0 = wall();
-  const res = await api('POST', '/api/sfu/leg', { token: tok, path, offer: pc.localDescription.sdp, audio: role === 'audio' ? 3 : 0, speaker: role === 'video', tiles: role === 'video' ? tiles : 0 });
+  const res = await api('POST', '/api/sfu/leg', { token: tok, path: legPath, offer: pc.localDescription.sdp, audio: role === 'audio' ? 3 : 0, speaker: role === 'video', tiles: role === 'video' ? tiles : 0 });
   leg.id = res.id;
   state.csrc = res.csrc;
   let ans = res.answer;
-  // candport: ICE-TCP-Kandidat des Knotens auf den Engpass biegen
-  const bend = path === 'tcp' && candPort ? candPort : '';
+  // A3: ICE-TCP-Kandidat des Knotens auf den lokalen Tunnel-Port biegen (die App macht dasselbe); candport: Engpass
+  const bend = path === 'ws' ? tunPort : (path === 'tcp' && candPort ? candPort : '');
   if (bend) ans = ans.replace(/^(a=candidate:\S+ \d+ tcp \d+ )(\S+) (\d+)( typ host tcptype passive.*)$/gim, (m, a, ip, port, b) => `${a}127.0.0.1 ${bend}${b}`);
   await pc.setRemoteDescription({ type: 'answer', sdp: ans });
   pc.addEventListener('connectionstatechange', () => { if (pc.connectionState === 'connected' && !leg.tc) leg.tc = wall(); });
@@ -274,9 +278,17 @@ async function main() {
   await unlockCandidates();
   await api('POST', '/api/dev/room', { room });
   let turn = null;
-  if (path === 'turn') {
+  if (path === 'turn' || path === 'ws') {
     const tok = (await api('POST', '/api/dev/token', { room, peer, role: 'audio' })).token;
     turn = await api('POST', '/api/sfu/turn', { token: tok });
+    if (path !== 'turn') await fetch(`http://${tunCtl}/auth`, { method: 'POST', body: turn.username + ':' + turn.credential });
+    // tunwait=N: wie die App - erst verbinden, wenn N WebSockets des Tunnels bereit sind (A3-Aufbau ohne Wartezeit in libwebrtc)
+    const tw = +(Q.get('tunwait') || 0);
+    for (let i = 0; tw > 0 && i < 100; i++) {
+      const st = await fetch(`http://${tunCtl}/stats`).then((r) => r.json()).catch(() => ({}));
+      if ((st.pool || 0) >= tw) break;
+      await new Promise((r) => setTimeout(r, 30));
+    }
   }
   await openLeg('audio', turn);
   await openLeg('video', turn);

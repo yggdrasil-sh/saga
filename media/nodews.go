@@ -51,6 +51,15 @@ type nodeLink struct {
 	dir   string
 	sock  string
 	proxy *httputil.ReverseProxy
+	dev   bool // nur Pruefstand (MEDIA_NODE_SOCK): auch die Entwicklerseiten des Knotens (HORN_DEV=1)
+}
+
+// wants: Pfad geht an den Knoten.
+func (n *nodeLink) wants(p string) bool {
+	if strings.Contains(p, "/.") {
+		return false
+	}
+	return nodePath(p) || (n.dev && (strings.HasPrefix(p, "/dev/") || strings.HasPrefix(p, "/api/dev/") || p == "/style.css"))
 }
 
 func newNodeLink(c *config, key string) (*nodeLink, error) {
