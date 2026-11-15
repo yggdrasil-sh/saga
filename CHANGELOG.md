@@ -16,6 +16,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Admin → Anrufe: eingebauter Knoten empfiehlt „Ein Port“
+- Fehlt dem eingebauten Knoten das Zertifikat, nennt die Zeile „Eingebaut“ jetzt zuerst den einfachsten Weg: Betriebsart
+  „Ein Port“ (`SAGA_TLS=1`, ein Name und Port 443, Zertifikat per Cloudflare-Token). Ein eigener Name für den Knoten steht
+  nur noch als Alternative da; ebenso im Hilfetext zu „Eingebauten Knoten für Anrufe nutzen“.
+
 ### Neu – Ein Name, ein Port: Saga und Anrufe über 443 ohne zweiten Namen
 - **`SAGA_TLS=1`:** Saga nimmt HTTPS selbst an (`TLS_LISTEN`, Standard `:443`) und teilt den Port mit dem eingebauten
   Gjallarhorn-Knoten. saga-media liest nur den Anfang jeder Verbindung: Browser und Apps (ALPN `http/1.1`) bedient Saga,
