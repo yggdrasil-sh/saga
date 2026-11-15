@@ -291,5 +291,35 @@ ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.
      && H.reconnectList([], 'a').length === 0);
 }
 
+// --- 2.5 A3: Weg ws (Tunnel der Mac-Huelle) - dieselben Faelle wie HornTunnelTests.swift / HornTunnelTest.kt -------------
+{
+  ok('Weg ws -> WS', H.pathName('ws') === 'WS');
+  ok('TX-Werte ws = TCP (Vertrag 11)', H.K.TX.ws === H.K.TX.tcp);
+  const pw = H.txPlan('ws', 0, { others: 2, h: 720, w: 1280 }), pt = H.txPlan('tcp', 0, { others: 2, h: 720, w: 1280 });
+  ok('txPlan ws wie tcp (Deckel, l bleibt an)', JSON.stringify(pw) === JSON.stringify(pt) && pw.screen && pw.cam.l.active, pw);
+  ok('TxGov regelt auf ws (nicht wie UDP)', new H.TxGov('ws').add(1000, 50) === null && new H.TxGov('ws').path === 'ws');
+  const c = (o) => Object.assign({ node: 'n', url: 'https://x.example' }, o);
+  const W = (x) => JSON.stringify(x);
+  ok('ohne ws: UDP -> TCP -> TLS', W(H.ways(c({}), true)) === W({ race: ['udp'], then: ['tcp', 'turn'] }));
+  ok('Tunnel-Betrieb mit UDP: UDP | Tunnel parallel', W(H.ways(c({ ws: true, tcp: false, tls: false }), true)) === W({ race: ['udp', 'ws'], then: [] }));
+  ok('Tunnel-Betrieb ohne UDP: nur Tunnel', W(H.ways(c({ ws: true, tcp: false, tls: false }), false)) === W({ race: ['ws'], then: [] }));
+  ok('ws neben TCP/TLS: Tunnel zuletzt', W(H.ways(c({ ws: true }), true)) === W({ race: ['udp'], then: ['tcp', 'turn', 'ws'] }));
+  ok('ws neben TLS bzw. TCP', W(H.ways(c({ ws: true, tcp: false }), false)) === W({ race: [], then: ['turn', 'ws'] })
+     && W(H.ways(c({ ws: true, tls: false }), false)) === W({ race: [], then: ['tcp', 'ws'] }));
+  ok('ws nur als Wahrheitswert', W(H.ways(c({ ws: 'ja', tcp: false, tls: false }), false)) === W({ race: [], then: ['turn'] }));
+  ok('UDP-Vorsprung kleiner als die UDP-Wartezeit', H.K.WS_HEAD_UDP > H.K.WS_HEAD_UDP_MAYBE && H.K.WS_HEAD_UDP < 2000);
+  ok('UDP-Verlust: tcp, wenn angeboten, sonst ws (nur mit Huelle), sonst TLS',
+     H.streamPath(c({ ws: true }), true) === 'tcp' && H.streamPath(c({ ws: true, tcp: false }), true) === 'ws'
+     && H.streamPath(c({ ws: true, tcp: false }), false) === 'turn' && H.streamPath(c({ tcp: false }), true) === 'turn');
+  const sdp = ['v=0', 'a=candidate:1 1 udp 2130706431 192.0.2.7 50000 typ host',
+    'a=candidate:2 1 tcp 1671430143 192.0.2.7 8443 typ host tcptype passive generation 0',
+    'a=candidate:3 1 tcp 1671430143 2001:db8::7 8443 typ host tcptype passive', 'a=candidate:4 1 tcp 1 192.0.2.7 9 typ host tcptype active', 'a=end'].join('\r\n');
+  const b = H.bend(sdp, 50123).split('\r\n');
+  ok('bend: erster passiver TCP-Kandidat -> 127.0.0.1:Port, weitere passive weg, Rest unveraendert',
+     b.length === 5 && b[2] === 'a=candidate:2 1 tcp 1671430143 127.0.0.1 50123 typ host tcptype passive generation 0'
+     && b[1] === sdp.split('\r\n')[1] && b[3].indexOf('tcptype active') > 0 && b[4] === 'a=end', b);
+  ok('bendable: mit/ohne passiven TCP-Kandidaten', H.bendable(sdp) && !H.bendable('v=0\r\na=candidate:1 1 udp 1 192.0.2.7 5 typ host') && !H.bendable(''));
+}
+
 console.log(`\nHORN-LOGIK ${res.filter(Boolean).length}/${res.length}` + (res.every(Boolean) ? ' - ALLES GRUEN' : ' - FEHLER'));
 process.exit(res.every(Boolean) ? 0 : 1);

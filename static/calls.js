@@ -3352,6 +3352,7 @@
   function hornOpen(R, cand) {
     var H = R.horn, m = H.meas[cand.node];
     var udp = !!(cand.udp && cand.tokens && cand.tokens.both && m && (m.udp != null || m.udpMaybe));
+    if (cand.ws === true && hornTunnel()) return hornOpenWays(R, cand, H.L.ways(cand, udp), m);   // 2.5 A3: Mac-Huelle mit Tunnel
     var noTcp = cand.tcp === false;
     var noTls = cand.tls === false;                     // 2.5 A3: Tunnel-Betrieb hinter einem TLS-beendenden Proxy - im Browser nur UDP
     var p = udp ? hornConnect(R, cand, 'udp', m.udp != null ? HORN_WAIT_UDP : 1500).catch(function (e) { if (e === null || noTcp) throw e; return hornConnect(R, cand, 'tcp'); })
@@ -3362,18 +3363,70 @@
       return hornFresh(R, cand, hornAvoid(H)).then(function (c2) { return hornConnect(R, c2, 'turn'); });
     });
   }
-  function hornConnect(R, cand, path, waitMs) {
+  // 2.5 A3: Medien-Tunnel der Mac-Huelle (sagaHost.tunnel, static/host.js) - null im Browser bzw. ohne Faehigkeit "tunnel"
+  function hornTunnel() { try { return window.sagaHost && window.sagaHost.tunnel ? window.sagaHost.tunnel() : null; } catch (e) { return null; } }
+  function hornFinal(e) { return e === null || !!(e && (e.status === 404 || e.status === 429)); }   // aufgelegt/beendet, voll/Leeren
+  // Wege mit Tunnel (Vertrag S5, SagaHorn.ways): Tunnel-Betrieb UDP | ws im Wettlauf, sonst UDP -> TCP -> TLS -> ws
+  function hornOpenWays(R, cand, w, m) {
+    var H = R.horn, udpWait = m && m.udp != null ? HORN_WAIT_UDP : 1500, i = 0;
+    var used = w.race.indexOf('ws') >= 0;                // Ton-/Bild-Token schon am Knoten benutzt -> danach frische
+    hornLog(H, null, 'wege ' + cand.node + ' ' + w.race.join('|') + (w.then.length ? ' > ' + w.then.join('>') : ''));
+    var first = !w.race.length ? Promise.reject({ none: true })
+      : w.race.length > 1 ? hornRace(R, cand, udpWait, m && m.udp != null ? H.L.K.WS_HEAD_UDP : H.L.K.WS_HEAD_UDP_MAYBE)
+      : hornConnect(R, cand, w.race[0], w.race[0] === 'udp' ? udpWait : 0);
+    var next = function (e) {
+      if (hornFinal(e)) throw e;
+      var p = w.then[i++];
+      if (!p) throw (e && !e.none) ? e : new Error(T('Verbindung nicht aufgebaut: {err}', { err: 'ws' }));
+      var c = p === 'turn' || used ? hornFresh(R, cand, hornAvoid(H)) : Promise.resolve(cand);
+      used = true;
+      return c.then(function (c2) { return hornConnect(R, c2, p); }).catch(next);
+    };
+    return first.catch(next);
+  }
+  // A3 "Happy Eyeballs" (wie hornRace der Apps): UDP sofort, der Tunnel nach head ms bzw. sobald UDP vorher scheitert. Die
+  // erste verbundene Verbindung gewinnt, die andere wird geschlossen (auch im Aufbau)
+  function hornRace(R, cand, udpWait, head) {
+    var H = R.horn;
+    return new Promise(function (ok, bad) {
+      var done = false, fails = [], made = [], wsOn = false, t = null;
+      var end = function (c) { done = true; clearTimeout(t); made.forEach(function (x) { if (x !== c) hornConnClose(R, x); }); };
+      var won = function (c) { if (done) { hornConnClose(R, c); return; } end(c); hornLog(H, c, 'wettlauf ' + c.path + ' gewinnt'); ok(c); };
+      var lost = function (e) {
+        fails.push(e);
+        if (done || fails.length < 2) return;
+        end(null);
+        var st = fails.filter(hornFinal);
+        bad(st.length ? st[0] : e);
+      };
+      var ws = function () {
+        if (wsOn) return;
+        wsOn = true; clearTimeout(t);
+        if (done) return;
+        hornConnect(R, cand, 'ws', 0, { side: true, made: made }).then(won, lost);
+      };
+      hornConnect(R, cand, 'udp', udpWait, { made: made }).then(won, function (e) {
+        if (hornFinal(e) && !done) { end(null); bad(e); return; }
+        ws(); lost(e);
+      });
+      t = setTimeout(ws, head);
+    });
+  }
+  function hornConnect(R, cand, path, waitMs, opt) {
     var H = R.horn;
     var conn = { key: 'c' + (++H.seq), cand: cand, node: cand.node, url: cand.url, path: path, legs: {}, peers: {}, csrc: {}, csrcKey: '',
                  created: Date.now(), up: 0, rx: 0, dead: false, audios: [], rtts: [], pingN: 0, pings: {}, state: 'ok', ws: null };
-    H.next = conn;
-    var turnP = path === 'turn' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : Promise.resolve(null);
+    opt = opt || {};
+    if (opt.side) H.side = conn; else H.next = conn;
+    if (opt.made) opt.made.push(conn);
+    // TURN-TLS und Tunnel (A3, Vertrag S2/F3): Zugangsdaten per POST /api/sfu/turn mit dem Ton-Token, ein Satz fuer beide Leitungen
+    var turnP = path === 'turn' || path === 'ws' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : Promise.resolve(null);
     var roles = path === 'udp' ? ['both'] : ['audio', 'video'];
     return turnP.then(function (turn) {
       return Promise.all(roles.map(function (role) { return hornLeg(R, conn, role, path, turn); }));
     }).then(function () {
       return new Promise(function (ok, bad) {
-        var wait = waitMs || (path === 'udp' ? HORN_WAIT_UDP : path === 'tcp' ? HORN_WAIT_TCP : HORN_WAIT_TURN);
+        var wait = waitMs || (path === 'udp' ? HORN_WAIT_UDP : path === 'tcp' || path === 'ws' ? HORN_WAIT_TCP : HORN_WAIT_TURN);   // ws: WS steht schon
         var t = setTimeout(function () { conn.onUp = null; var e = new Error('timeout'); e.timeout = true; bad(e); }, wait);
         conn.onUp = function (good) { clearTimeout(t); conn.onUp = null; if (good) ok(conn); else { var e = new Error('failed'); bad(e); } };
         hornConnState(R, conn);
@@ -3381,6 +3434,7 @@
     }).then(function (c) { if (!live(R)) { hornConnClose(R, conn); throw null; } return c; }, function (e) {
       hornConnClose(R, conn);
       if (H.next === conn) H.next = null;
+      if (H.side === conn) H.side = null;
       throw live(R) ? e : null;
     });
   }
@@ -3388,7 +3442,7 @@
   function hornLeg(R, conn, role, path, turn) {
     var H = R.horn, cand = conn.cand, cf = { bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' };
     if (H.X.mode === 'streams') cf.encodedInsertableStreams = true;
-    if (turn) {
+    if (turn && path === 'turn') {
       var u = new URL(cand.url);
       cf.iceServers = [{ urls: 'turns:' + u.hostname + ':' + (u.port || 443) + '?transport=tcp', username: turn.username, credential: turn.credential }];
       cf.iceTransportPolicy = 'relay';
@@ -3428,6 +3482,21 @@
       for (i = 0; i < HORN_TILES; i++) recv('video');  // Kacheln (Last-N)
     }
     pc.onconnectionstatechange = function () { hornConnState(R, conn); };
+    // 2.5 A3: Tunnel je Leitung - WS gleich (parallel zu Angebot und POST /api/sfu/leg, Vertrag 7), Lauscher erst vor der Antwort
+    var tun = path === 'ws' ? hornTunnel() : null, tunP = null;
+    if (path === 'ws') {
+      if (!tun || !turn) return Promise.reject(new Error(T('Verbindung nicht aufgebaut: {err}', { err: 'ws' })));
+      tunP = tun.open(role, cand.url, turn.username, turn.credential).then(function (id) {
+        if (conn.dead || conn.legs[role] !== L || !live(R)) { tun.close(id); throw null; }
+        L.tun = { id: id, close: tun.close };
+        return id;
+      }, function (e) {
+        var why = String((e && e.message) || 'ws').slice(0, 120);
+        if (live(R)) { diagEv(R, 'path', why); hornLog(H, conn, why); }
+        throw new Error(why);
+      });
+      tunP.catch(function () { /* wird unten ausgewertet */ });
+    }
     var post = function (c) {
       return hornFetch(c.url + '/api/sfu/leg', { token: c.tokens[role], path: path, offer: pc.localDescription.sdp, audio: role !== 'video' ? 3 : 0,
                                                 speaker: role !== 'audio', screen: role !== 'audio', tiles: role !== 'audio' ? HORN_TILES : 0,
@@ -3442,7 +3511,14 @@
       if (!live(R) || conn.legs[role] !== L || conn.dead) { try { pc.close(); } catch (e) { /* zu */ } throw null; }
       L.id = res.id; conn.mine = res.csrc; L.slots = res.slots || []; conn.state = res.state || 'ok';
       hornPeersIn(R, conn, res.peers || {});
-      return pc.setRemoteDescription({ type: 'answer', sdp: res.answer });
+      if (!tunP) return pc.setRemoteDescription({ type: 'answer', sdp: res.answer });
+      return tunP.then(function (id) {                   // WS steht (sonst Fehler: naechster Weg)
+        if (!live(R) || conn.legs[role] !== L || conn.dead) throw null;
+        if (!H.L.bendable(res.answer)) { hornLog(H, conn, 'ws ohne TCP-Kandidat'); throw new Error(T('Verbindung nicht aufgebaut: {err}', { err: 'ws' })); }
+        return tun.listen(id);                           // Lauscher erst jetzt (Vertrag 6)
+      }).then(function (port) {
+        return pc.setRemoteDescription({ type: 'answer', sdp: H.L.bend(res.answer, port) });
+      });
     }).then(function () {
       hornEvents(R, conn, L);
       hornAudioEls(R, conn); hornMap(R); hornDraw(R);
@@ -3461,7 +3537,7 @@
     var L;
     return p.then(function (cand) {
       cand.used = true; conn.cand = cand;
-      return conn.path === 'turn' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : null;
+      return conn.path === 'turn' || conn.path === 'ws' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : null;
     }).then(function (turn) {
       if (!live(R) || conn.dead) throw null;
       old.replaced = true;
@@ -3483,13 +3559,15 @@
       hornAudioEls(R, conn); hornMic(R); hornDraw(R);
     }, function (e) {
       // neues Bein ging nicht: altes behalten (der Knoten hat es nur ersetzt, wenn das neue angenommen wurde)
-      if (L && conn.legs[role] === L && L !== old) { try { L.pc.close(); } catch (x) { /* zu */ } if (L.ws) { try { L.ws.close(); } catch (x) { /* zu */ } } conn.legs[role] = old; }
+      if (L && conn.legs[role] === L && L !== old) { try { L.pc.close(); } catch (x) { /* zu */ } if (L.ws) { try { L.ws.close(); } catch (x) { /* zu */ } } hornTunClose(L); conn.legs[role] = old; }
       old.replaced = false;
       throw e;
     });
   }
+  function hornTunClose(L) { if (L && L.tun) { var t = L.tun; L.tun = null; try { t.close(t.id); } catch (e) { /* zu */ } } }
   function hornLegDrop(R, conn, L) {
     var H = R.horn;
+    hornTunClose(L);
     if (L.ws) { var w = L.ws; L.ws = null; if (conn.ws === w) conn.ws = null; try { w.close(); } catch (e) { /* zu */ } }
     try { L.pc.close(); } catch (e) { /* zu */ }
     (L.recv || []).forEach(function (x) { if (H) delete H.vown[x.rid]; });
@@ -3633,7 +3711,7 @@
     hornConns(R).forEach(function (c) { var r = hornMyRef(R, c); if (r && out.indexOf(r) < 0) out.push(r); });
     return out.slice(0, 4);
   }
-  function hornConns(R) { var H = R.horn; return [H.cur].concat(H.olds, [H.next]).filter(function (c) { return c && !c.dead; }); }
+  function hornConns(R) { var H = R.horn; return [H.cur].concat(H.olds, [H.next, H.side]).filter(function (c) { return c && !c.dead; }); }
   // CSRC -> Geraet je Knoten-Verbindung (CSRCs vergibt jeder Knoten selbst): aus peers (Ereigniskanal, POST /leg) und
   // aus der Belegung der Plaetze; nur Geraete aus der Teilnehmerliste
   function hornMap(R) {
@@ -3663,6 +3741,7 @@
   function hornAdopt(R, conn, why) {
     var H = R.horn, prev = H.cur, now = Date.now();
     if (H.next === conn) H.next = null;
+    if (H.side === conn) H.side = null;
     H.cur = conn;
     if (prev && prev !== conn) {
       prev.retired = now; H.olds.push(prev);
@@ -3833,12 +3912,13 @@
       if (L.ws) { try { L.ws.close(); } catch (e) { /* zu */ } L.ws = null; }
       if (L.id && del) hornFetch(conn.url + '/api/sfu/leg/' + encodeURIComponent(L.id), null, 'DELETE').catch(function () {});
       try { L.pc.close(); } catch (e) { /* zu */ }
+      hornTunClose(L);
       if (H) (L.recv || []).forEach(function (x) { delete H.vown[x.rid]; });
     });
     conn.audios.forEach(function (a) { a.srcObject = null; a.remove(); });
     conn.audios = [];
     if (H && H.X) H.X.csrcDrop(conn.key);
-    if (H) { H.olds = H.olds.filter(function (x) { return x !== conn; }); if (H.cur === conn) H.cur = null; if (H.next === conn) H.next = null; }
+    if (H) { H.olds = H.olds.filter(function (x) { return x !== conn; }); if (H.cur === conn) H.cur = null; if (H.next === conn) H.next = null; if (H.side === conn) H.side = null; }
   }
 
   // --- Laufende Beobachtung (alle 0,5 s): Verbindung, Wechsel, Ton, Sprecher, Ping, Qualitaet --------------------------
@@ -3944,7 +4024,7 @@
       conn.q = conn.qw.add(now, { rtt: rtt, lost: Math.max(0, dl), recv: Math.max(0, dr), fz: Math.max(0, fz - p.fz), dt: now - p.t });
       conn.net = conn.qw.net || { rtt: rtt == null ? null : Math.round(rtt), loss: 0, freezes: 0 };
       if (conn === H.cur) {
-        diagMeta(R, 'horn', conn.path === 'turn' ? 'tls' : conn.path === 'udp' ? 'udp' : conn.path === 'tcp' ? 'tcp' : '?', conn.node);
+        diagMeta(R, 'horn', conn.path === 'turn' ? 'tls' : conn.path === 'udp' || conn.path === 'tcp' || conn.path === 'ws' ? conn.path : '?', conn.node);
         if (q0 && q0 !== conn.q) diagEv(R, 'quality', q0 + '>' + conn.q + ' rtt=' + conn.net.rtt + ' loss=' + conn.net.loss + ' fz/min=' + conn.net.freezes + ' win=' + conn.net.win + 's');
         all.forEach(function (st, i) { diagRep(R, st, 'v' + legs[i].role[0]); });   // Bein a/v/b: Stats-IDs gelten je PeerConnection
       }
@@ -3962,7 +4042,7 @@
       if (conn === H.cur && !H.switching && !H.rcT) {
         var udpOk = conn.path !== 'udp' && conn.cand.udp && (H.meas[conn.node] || {}).udp != null;
         var x = H.sw.udp(Date.now(), loss, udpOk);
-        if (x && x.path === 'tcp' && conn.cand.tcp === false) x.path = 'turn';   // 2.5: Knoten ohne ICE-TCP (TLS-Durchreiche)
+        if (x && x.path === 'tcp' && conn.cand.tcp === false) x.path = H.L.streamPath(conn.cand, !!hornTunnel());   // 2.5: ohne ICE-TCP -> Tunnel (A3, Huelle) bzw. TLS
         if (x && x.path !== conn.path && (x.path !== 'udp' || conn.cand.tokens)) hornSwitch(R, x.why, { path: x.path });
       }
       drawInfo(R);
@@ -4524,7 +4604,7 @@
     var H = R.horn; if (!H) return;
     clearInterval(H.monT); clearInterval(H.spkT); clearInterval(H.arT); clearTimeout(H.rcT); H.rcT = null; H.monT = null; H.arT = null;
     hornConns(R).concat(H.olds).forEach(function (c) { hornConnClose(R, c); });
-    H.cur = H.next = null; H.olds = [];
+    H.cur = H.next = H.side = null; H.olds = [];
   }
   function hornStop(R) {
     var H = R.horn; if (!H) return;
