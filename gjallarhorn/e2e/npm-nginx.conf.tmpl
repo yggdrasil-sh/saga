@@ -1,0 +1,49 @@
+# NPM-Nachbau fuer A3-Pruefstand und tests/a3_tunnel.py (nur Tests): Standardwerte aus Nginx Proxy Manager
+# (docker/rootfs/etc/nginx/nginx.conf, backend/templates/proxy_host.conf), TLS am Proxy.
+# Platzhalter: {DIR} (Arbeitsordner mit cert.pem/key.pem), {NGX} ("Websockets Support" an), {NGX_OFF} (aus),
+# {UPSTREAM} (saga-media, host:port). Erzeugt von tests/a3_tunnel.py bzw. gjallarhorn/e2e/a3stand.sh.
+worker_processes 1;
+pid {DIR}/nginx.pid;
+error_log {DIR}/error.log warn;
+events { worker_connections 1024; }
+http {
+  access_log {DIR}/access.log;
+  client_body_temp_path {DIR}/tmp_body; proxy_temp_path {DIR}/tmp_proxy;
+  fastcgi_temp_path {DIR}/tmp_fcgi; uwsgi_temp_path {DIR}/tmp_uwsgi; scgi_temp_path {DIR}/tmp_scgi;
+  sendfile on; tcp_nopush on; tcp_nodelay on; keepalive_timeout 90s;
+  proxy_connect_timeout 90s; proxy_send_timeout 90s; proxy_read_timeout 90s;
+  ssl_prefer_server_ciphers on; gzip on; proxy_ignore_client_abort off;
+  client_max_body_size 2000m; server_names_hash_bucket_size 1024;
+  proxy_http_version 1.1;
+  proxy_set_header X-Forwarded-Scheme $scheme;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header Accept-Encoding "";
+  proxy_cache off;
+  server {
+    listen 127.0.0.1:{NGX} ssl;
+    server_name saga.example.org 127.0.0.1;
+    ssl_certificate {DIR}/cert.pem; ssl_certificate_key {DIR}/key.pem;
+    location / {
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $http_connection;
+      proxy_http_version 1.1;
+      add_header X-Served-By $host;
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_pass http://{UPSTREAM};
+    }
+  }
+  server {
+    listen 127.0.0.1:{NGX_OFF} ssl;
+    server_name saga.example.org 127.0.0.1;
+    ssl_certificate {DIR}/cert.pem; ssl_certificate_key {DIR}/key.pem;
+    location / {
+      add_header X-Served-By $host;
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_pass http://{UPSTREAM};
+    }
+  }
+}

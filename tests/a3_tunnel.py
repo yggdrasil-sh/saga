@@ -13,9 +13,12 @@ Medien in beide Richtungen, Zaehler im Bein und im Admin-Bereich (offene Tunnel,
 ohne TLS nur mit UDP (calls.js). Grenze je Adresse kommt aus X-Forwarded-For (TRUSTED_PROXIES).
 Teil 2: mit HORN_NAME + HORN_TLS_SELF (eigener Name) bleibt alles wie bisher (tcp/tls an), ws zusaetzlich.
 
-  Ports 8521 (nginx, Websockets an), 8524 (nginx, aus), 8522 (saga-media), 8523 (Admin), 8528 (intern), 8529 (HORN_PORT).
+S10 (Pruefung F1): Geraete ohne caps "ws" (Browser, aeltere Apps) sehen den Tunnel-Knoten nicht - Start -> Mesh, 1:1 mit
+horn_all -> fallback node; Beitritt ohne "ws" in einen Anruf auf dem Tunnel-Knoten -> Anruf direkt, 409 topo mesh.
+  Ports aus A3_BASE (Standard 8521): +0 nginx (Websockets an), +3 nginx (aus), +1 saga-media, +2 Admin, +7 intern,
+  +8 HORN_PORT. nginx aus gjallarhorn/e2e/npm-nginx.conf.tmpl (Zertifikat selbst erzeugt, Ordner im STATE).
   Umgebung wie die anderen Reihen (env.sh, eigene DB). SAGA_MEDIA_BIN / GJALLARHORN_BIN, sonst go build. A3_SHOTS=<Ordner>:
-  Bild Admin -> Anrufe (tests/a3_bilder.js). nginx-Konfiguration: A3_NGINX (Standard /tmp/a3-server/ngx/nginx.conf)."""
+  Bild Admin -> Anrufe (tests/a3_bilder.js)."""
 import base64
 import hashlib
 import http.client
@@ -32,7 +35,8 @@ import tempfile
 import time
 
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-NGX, NGX_OFF, PORT, ADMIN, INTERNAL, HORN_PORT = 8521, 8524, 8522, 8523, 8528, 8529
+_B = int(os.environ.get("A3_BASE") or 8521)
+NGX, NGX_OFF, PORT, ADMIN, INTERNAL, HORN_PORT = _B, _B + 3, _B + 1, _B + 2, _B + 7, _B + 8
 NAME = "saga.example.org"
 BASE = f"https://{NAME}:{NGX}"
 os.environ["HK_TEST_BASE"] = f"http://127.0.0.1:{PORT}"
@@ -47,8 +51,9 @@ from saga import horn as HN  # noqa: E402
 req, res = A_.req, A_.res
 SECRET = os.environ.get("SESSION_SECRET") or os.environ["SECRET_KEY"]
 STATE = tempfile.mkdtemp(prefix="a3-")
-NGINX = os.environ.get("A3_NGINX", "/tmp/a3-server/ngx/nginx.conf")
-CAPS = ["reneg", "want", "bye", "screen2", "multi", "horn"]
+NGINX = os.path.join(STATE, "ngx", "nginx.conf")
+CAPS_WEB = ["reneg", "want", "bye", "screen2", "multi", "horn"]   # Browser bzw. aeltere App: ohne Tunnel
+CAPS = CAPS_WEB + ["ws"]                                          # App mit Medien-Tunnel (Vertrag S10)
 CALLS = {"enabled": True, "stun": "", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "", "turn_password": "",
          "turn_ttl": 43200, "relay_only": False, "ring_s": 45}
 PW = "A3-Tunnel-Pass-1234"
@@ -251,7 +256,7 @@ def teil0():
     old = os.environ.get("BASE_URL")
     try:
         verdict = {}
-        for u in (BASE, "https://saga.example.org", "http://saga.example.org", "https://127.0.0.1:8521", "https://localhost", "https://[::1]"):
+        for u in (BASE, "https://saga.example.org", "http://saga.example.org", "https://127.0.0.1:8521", "https://localhost", "https://[::1]"):  # noqa: E501
             os.environ["BASE_URL"] = u
             verdict[u] = HN.tunnel_possible()
         ok("tunnel_possible nur mit https und DNS-Namen", verdict == {BASE: True, "https://saga.example.org": True, "http://saga.example.org": False,
@@ -295,6 +300,38 @@ def candidates_for_call(people):
     return cid, call.get("topo"), cands
 
 
+def s10(people, cid):
+    """Vertrag S10: Geraete ohne "ws" bekommen den Tunnel-Knoten nicht; gemischter Anruf faellt auf direkt zurueck."""
+    A, B, Cc, D, E = people
+    for p in (Cc, D):
+        req("PUT", "/api/calls/caps", p.k, {"device": p.dev["id"], "caps": CAPS_WEB})
+    s, d = req("POST", "/api/chats", Cc.k, {"kind": "free", "members": [p.uid for p in people if p is not Cc]})
+    gid2, cid2 = d["chat"]["id"], secrets.token_hex(16)
+    s, d = req("POST", "/api/calls", Cc.k, {"id": cid2, "chat_id": gid2, "media": "video", "device": Cc.dev["id"], "caps": CAPS_WEB})
+    ok("Browser (ohne ws) startet Gruppenanruf: Mesh wie c512bad (Tunnel-Knoten nicht bereit)", s == 200 and (d.get("call") or {}).get("topo") == "mesh",
+       (s, (d.get("call") or {}).get("topo")))
+    req("POST", f"/api/calls/{cid2}/end", Cc.k, {"device": Cc.dev["id"]})
+    s, d = req("GET", "/api/calls/config", Cc.k)
+    ok("config.horn_ready fuer Geraete ohne Angabe: kein bereiter Knoten", s == 200 and not d.get("horn_ready"), d.get("horn_ready"))
+    # Beitritt ohne ws in den laufenden Anruf auf dem Tunnel-Knoten -> direkt
+    s, d = req("POST", f"/api/calls/{cid}/horn", B.k, {"device": B.dev["id"]})
+    ok("App im Anruf bekommt weiter den Tunnel-Knoten (/horn)", s == 200 and len(((d.get("horn") or {}).get("candidates")) or []) == 1, s)
+    s, d = req("POST", f"/api/calls/{cid}/join", D.k, {"device": D.dev["id"], "role": "member", "caps": CAPS_WEB})
+    ok("Browser tritt Anruf auf dem Tunnel-Knoten bei: 409 topo mesh mit Liste, ohne join_block", s == 409 and d.get("topo") == "mesh"
+       and isinstance(d.get("legs"), list) and not d.get("join_block"), (s, d))
+    s, d = req("GET", f"/api/calls/{cid}", A.k)
+    ok("Anruf laeuft jetzt direkt (topo mesh, Knoten-Raum geschlossen)", (d.get("call") or {}).get("topo") == "mesh", (d.get("call") or {}).get("topo"))
+    req("POST", f"/api/calls/{cid}/end", A.k, {"device": A.dev["id"]})
+    # 1:1 mit horn_all: ohne ws Rueckfall direkt, mit ws ueber den Knoten
+    flag(True, horn_from=3, horn_all=True)
+    wait(lambda: req("GET", "/api/calls/config", Cc.k)[1].get("horn_dm"), 15)      # Einstellungen im Server zwischengespeichert
+    dm = A_.dm(Cc, D)
+    s, d = req("POST", "/api/calls", Cc.k, {"id": secrets.token_hex(16), "chat_id": dm, "media": "audio", "device": Cc.dev["id"],
+                                            "caps": CAPS_WEB, "via": "horn"})
+    ok("1:1 ueber Knoten ohne ws: 409 fallback node (direkt wie bisher)", s == 409 and d.get("horn_block") == "node", (s, d))
+    flag(True, horn_from=3)
+
+
 def teil1(media, node):
     flag(True, horn_from=3)
     t = start(media, node)
@@ -318,7 +355,7 @@ def teil1(media, node):
         req("PUT", "/api/calls/caps", p.k, {"device": p.dev["id"], "caps": CAPS})
     cid, topo, cands = candidates_for_call(people)
     ca = (cands.get(people[0].uid) or [{}])[0]
-    ok("Gruppenanruf ueber den Knoten: Kandidat url = Saga, tcp false, tls false, ws true, udp false",
+    ok("App (caps ws): Gruppenanruf ueber den Knoten, Kandidat url = Saga, tcp false, tls false, ws true, udp false",
        topo == "horn" and ca.get("url") == BASE and ca.get("tcp") is False and ca.get("tls") is False and ca.get("ws") is True and ca.get("udp") is False,
        {"topo": topo, "cand": {k: ca.get(k) for k in ("url", "tcp", "tls", "ws", "udp")}})
     # 426 ohne "Websockets Support", vor jeder Pruefung
@@ -380,7 +417,7 @@ def teil1(media, node):
     if os.environ.get("A3_SHOTS"):
         shot(ck, "nachher")
     # Grenze je echter Adresse (X-Forwarded-For vom vertrauten Proxy; nginx haengt die eigene Gegenstelle an)
-    req("POST", f"/api/calls/{cid}/end", people[0].k, {"device": people[0].dev["id"]})
+    s10(people, cid)
 
 
 def shot(ck, name):
@@ -429,6 +466,14 @@ def main():
     teil0()
     media, node = build("saga-media", "media", "SAGA_MEDIA_BIN"), build("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
     ok("saga-media und gjallarhorn gebaut", bool(media and node))
+    nd = os.path.dirname(NGINX)
+    os.makedirs(nd, exist_ok=True)
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", os.path.join(nd, "key.pem"),
+                    "-out", os.path.join(nd, "cert.pem"), "-days", "2", "-subj", "/CN=" + NAME, "-addext", f"subjectAltName=DNS:{NAME},IP:127.0.0.1"],
+                   capture_output=True)
+    tpl = open(os.path.join(APP, "gjallarhorn", "e2e", "npm-nginx.conf.tmpl"), encoding="utf-8").read()
+    open(NGINX, "w").write(tpl.replace("{DIR}", nd).replace("{NGX_OFF}", str(NGX_OFF)).replace("{NGX}", str(NGX))
+                           .replace("{UPSTREAM}", f"127.0.0.1:{PORT}"))
     started_ngx = subprocess.run(["nginx", "-c", NGINX], capture_output=True, text=True)
     P["ngx"] = started_ngx.returncode == 0
     ok("nginx (NPM-Nachbau) gestartet", P["ngx"], started_ngx.stderr[-400:])
