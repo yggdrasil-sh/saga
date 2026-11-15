@@ -92,6 +92,8 @@ Platzhalter: `horn-1.example.org`.
   `knoten beendet`, `aufbau fehlgeschlagen`); keine Adressen, kein ufrag.
 - **Schätzung je Bein:**
   - TCP: aus dem Alter der eigenen Warteschlange. Dank `TCP_NOTSENT_LOWAT` liegt der Stau im Knoten.
+  - TURN-TLS: ebenso. Das Bein ist dafür mit dem TURN-Server im Prozess gekoppelt (2.5, siehe „TURN-TLS: Kopplung
+    Bein ↔ TURN-Server“); bis 2.4 lag der Stau unsichtbar im Empfangspuffer des Relay-Sockets.
   - UDP: zusätzlich GCC (TWCC), als Stausignal. Ohne Probepakete ist GCC anwendungsbegrenzt und taugt nicht als
     Obergrenze. Stau ist ein GCC-Ziel unter 90 % der gesendeten Rate – außer es läuft der Rate nur nach
     (`estimator.lagging`, `internal/sfu/control.go`). pion-GCC senkt sein Ziel nur bei Stau (Verzögerung: auf 85 % der
@@ -840,10 +842,55 @@ Läuft der Proxy auf demselben Host wie der Knoten, reicht dieselbe Datei dort. 
 Bildschirmteilen über TLS, vorher und nachher) ist bisher nur im Labor messbar. Die Web-Clients deckeln auf TCP/TLS
 zusätzlich selbst (`static/horn.js` `K.TX`/`TxGov`).
 
+## TURN-TLS: Kopplung Bein ↔ TURN-Server (2.5)
+
+Auf dem TLS-Weg schreibt ein Bein an die Allocation seines Geräts auf dem eigenen TURN-Server. Bis 2.4 ging das über
+Loopback-UDP: Staute die TURN-TLS-Verbindung zum Gerät (Downlink enger als die gewählten Schichten), las der TURN-Server
+den Relay-Socket langsamer, und dessen Empfangspuffer (Linux-Standard ~208 KiB, bei 600 kbit/s rund 2,8 s) wurde zur
+Warteschlange. Das Bein blockierte nie: Seine eigene Warteschlange blieb jung, H3 verwarf nichts, die Schätzung sank nicht.
+Was über den Puffer ging, verwarf der Kernel still (auf TLS ohne NACK).
+
+Seit 2.5 sind ICE-Sockets des TURN-Wegs und Relay-Sockets im Prozess gekoppelt (`internal/turnpipe`, `turnguard.go`):
+
+- Sockets, Adressen und Ports bleiben echt; nur Pakete zwischen einem ICE-Ende und einem Relay-Ende gehen nicht durch den
+  Kernel, sondern in die Warteschlange des Empfängers.
+- Richtung Gerät: Die Warteschlange je Relay-Ende ist klein (4 KiB). Ist sie voll, wartet das Bein beim Schreiben, bis
+  der TURN-Server weiterliest, also bis die TLS-Verbindung Platz hat (`TCP_NOTSENT_LOWAT`, Bündler). Der Stau liegt
+  damit wie auf ICE-TCP im Bein: Schätzung, H3 (150 ms), Schicht herunter und Kacheln pausieren greifen gleich.
+  Höchstens 2 s Warten je Paket (danach verworfen, Zähler `timeouts`), STUN wartet nie.
+- Richtung Knoten wird nie gewartet (der TURN-Server liest dabei die Verbindung vom Gerät); über 256 KiB wird verworfen.
+- Relay-Schutz unverändert: Im Prozess erreicht ein Relay-Ende nur ICE-Enden des TURN-Wegs, nie ein anderes Relay-Ende;
+  alles andere geht wie bisher durch `relayTargetOK`. Ein TURN über UDP bedient der Knoten nicht.
+- `HORN_TURN_COUPLE=0` schaltet die Kopplung ab (Gegenprobe, Verhalten wie 2.4); `HORN_TURN_PIPE` stellt die Grenze je
+  Relay-Ende in Bytes. Zähler (nur `HORN_DEV=1`): `/api/dev/turnpipe`.
+- Tests: `internal/turnpipe` (Gegendruck, Fristen, Schließen, Richtungen), `TestTURNBackpressure` (Gerät liest seine
+  TURN-TLS-Verbindung nicht: das Bein wartet; ohne Kopplung verschwinden 64 MiB ohne Warten im Kernel),
+  `TestTURNPipeDirections`.
+
+Messung im Prüfstand `e2e/stau.sh` (Chromium, Userspace-Engpass: Downlink 600 kbit/s, RTT 40 ms, Warteschlange 200 ms;
+Gegenüber sendet Sprecher-Schicht m + Ton; je 60 s, n = 3, Median der Läufe):
+
+| Weg | Bild-RTT | Bild-Latenz Median/p95 | fps | Einfrierer / Dauer | Knoten: Schicht, est, Stalls |
+|---|---|---|---|---|---|
+| TURN-TLS 2.4 (bzw. `HORN_TURN_COUPLE=0`) | 2,9 s | 3,0/4,4 s | 6–7 | 8 / 43 s | m, ~1270, 0 |
+| TURN-TLS 2.5 | 0,7–1,0 s | 1,5/3,2 s | 22,6 | 2–3 / 0,5–1,9 s | l, 200–710, 3–6 |
+| ICE-TCP (zum Vergleich) | 0,7–0,9 s | 1,6/2,9 s | 23 | 1–3 / 0,4–1,4 s | m/l im Wechsel, 990–1320, 3–4 |
+
+TURN-TLS verhält sich damit wie ICE-TCP direkt. Die restliche Latenz liegt außerhalb des Knotens (Puffer und
+Empfangsfenster der Leitung, in die TCP ohne Verlust weiterschreibt): Auf beiden TCP-Wegen pendelt der Knoten zwischen
+den Schichten, weil er den Stau erst sieht, wenn diese Puffer voll sind. Dagegen hilft nur ein Signal Ende zu Ende
+(Fenster mit Quittungen wie im WebSocket-Tunnel A3, oder die RTT aus den RTCP-Berichten des Geräts).
+
 ## Einfrieren auf TCP (5G-Messung, G4)
 
 Eine Messung über TURN-TLS/5G mit dem Spiegel ergab 5,45 Einfrieren je Bildplatz und 5 min. Ursache ist
-Head-of-Line-Blocking auf dem TCP-Weg, nicht fehlende Schlüsselbilder:
+Head-of-Line-Blocking auf dem TCP-Weg, nicht fehlende Schlüsselbilder.
+
+**Berichtigung (2.5):** HoL war auf TURN-TLS nicht die einzige Ursache. Bis 2.4 erkannte der Knoten auf TURN-TLS einen
+engen Downlink gar nicht (Stau im Relay-Puffer, siehe „TURN-TLS: Kopplung Bein ↔ TURN-Server“): Bei 600 kbit/s fror
+das Bild 7–9-mal je Minute mit zusammen über 40 s ein. Ist der Downlink des Geräts enger als die gewählten Schichten
+(Mobilfunk mit schwachem Empfang), erklärt das einen Teil der Einfrierer auf TLS. Die Maßnahmen unten gegen HoL bleiben
+richtig. Wie viel davon die 5G-Messung mit dem Spiegel betraf, lässt sich nachträglich nicht trennen.
 
 - Im Regressionstest `TestFreezeLossyTCP` (80 ms RTT, 1,5 % Verlust, Nachbildung `internal/impair`, denn netem fehlt
   hier) gibt es 0 Pausen, 0 verworfene Rahmen und eine PLI-Antwort p95 von 128 ms.
@@ -1121,6 +1168,7 @@ go test ./internal/netx -run x -fuzz FuzzWeiche       # weitere: FuzzSTUN, FuzzP
 gjallarhorn bench -n 25 --video 12 --sfu              # Last mit dem echten Weiterleiter (ohne --sfu: Spiegel wie bisher)
 gjallarhorn bench -n 12 --video 12 --sfu --cascade    # zwei Knoten mit Bruecke (Kaskade, P9)
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers e2e/sfu.sh  # 4 Chromium, ICE-TCP + TURN-TLS, Schichtwechsel bei Drossel
+e2e/stau.sh start; e2e/stau.sh set 'down=600&rtt=40'; e2e/stau.sh mess --path turn  # enger Downlink (Engpass)
 ```
 
 `HORN_DEV=1` (nur Tests) schaltet die Endpunkte unter `/api/dev/` frei: Entwicklungs-Token, Räume, Drossel je Bein und

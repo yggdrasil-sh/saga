@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Anrufe über TURN-TLS: enger Downlink wird erkannt
+- Auf dem TLS-Weg (TURN-TLS) sah der Anrufknoten nicht, wenn die Leitung zum Gerät enger war als das gewählte Bild
+  (z. B. Mobilfunk mit schwachem Empfang): Das Bild stand sekundenlang (gemessen bei 600 kbit/s: rund 3 s Verzögerung,
+  6–7 Bilder/s, über 40 s Einfrieren je Minute), statt auf eine kleinere Schicht zu wechseln. Grund war ein Puffer
+  zwischen Weiterleiter und TURN-Server im Knoten. Beide sind jetzt im Prozess gekoppelt; der Knoten schaltet wie auf
+  ICE-TCP herunter (gemessen: 23 Bilder/s, 2–3 kurze Einfrierer, ~1,5 s Verzögerung wie ICE-TCP). Abschalten zur Prüfung:
+  `HORN_TURN_COUPLE=0`. Einzelheiten: `gjallarhorn/NODE.md` („TURN-TLS: Kopplung Bein ↔ TURN-Server“).
+
 ### Geändert – Admin → Anrufe: eingebauter Knoten empfiehlt „Ein Port“
 - Fehlt dem eingebauten Knoten das Zertifikat, nennt die Zeile „Eingebaut“ jetzt zuerst den einfachsten Weg: Betriebsart
   „Ein Port“ (`SAGA_TLS=1`, ein Name und Port 443, Zertifikat per Cloudflare-Token). Ein eigener Name für den Knoten steht
