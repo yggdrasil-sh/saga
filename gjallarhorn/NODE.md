@@ -1019,8 +1019,8 @@ saga-media nimmt HTTPS selbst an (`TLS_LISTEN`, im Container `:443`) und teilt d
   gültigem Zertifikat für den Namen. Ein vorhandenes DNS-01-Zertifikat für einen anderen Namen (früher `horn-0…`) gilt
   als „fehlt“ und wird neu ausgestellt (`Certs.Covers`).
 
-**ICE-TCP an/aus (`HORN_ICE_TCP` 0|1|auto, 2.5, alle Knoten):** Ohne ICE-TCP baut der Knoten keinen TCP-Weg für Beine
-(`sfuTCP` = nil): ein Bein `path: tcp` wird sofort mit 400 abgelehnt, ältere Geräte fallen ohne Wartezeit auf TURN-TLS
+**ICE-TCP an/aus (`HORN_ICE_TCP` 0|1|auto, 2.5, alle Knoten):** Ohne ICE-TCP lehnt der Knoten ein Bein `path: tcp` sofort mit 400 ab (den TCP-Weg
+selbst gibt es seit A3 immer, für Beine `path: ws` durch den Medien-Tunnel), ältere Geräte fallen ohne Wartezeit auf TURN-TLS
 zurück; das `hello` meldet `ice_tcp: false`, Saga gibt dem Kandidaten `tcp: false`, und das Web nimmt gleich TURN-TLS
 (vorher bis zu 4 s Warten, `HORN_WAIT_TCP`). `auto` (Standard): aus, wenn `HORN_PUBLIC_URL` einen anderen Port nennt als
 den, auf dem der Knoten lauscht (TLS-Durchreiche bzw. Portweiterleitung 443 → 8443).
@@ -1031,6 +1031,42 @@ Sagt Saga `cert: alpn`, während ein DNS-01-Zertifikat (Datei mit `dns01.json`) 
 die Datei, bis sie in 30 Tagen abläuft bzw. nicht zum Namen passt; dann wechselt der Knoten auf TLS-ALPN-01
 (`Certs.SwitchALPN`). Vorher blieb der Dateimodus stehen und das Zertifikat wurde nie erneuert. `acme-tls/1` bietet die
 Weiche deshalb auch im Dateimodus an.
+
+## Medien-Tunnel `/api/sfu/ws` und Tunnel-Betrieb (Saga 2.5, A3)
+
+Apps hinter einem Reverse Proxy, der TLS selbst beendet (Nginx Proxy Manager mit „Websockets Support“), erreichen den
+eingebauten Knoten unter der Saga-Adresse: ICE-TCP je Leitung als WebSocket (`tunnel.go`, `internal/wstun`,
+Protokoll `saga-tunnel.1` v1 in `docs/APP-API.md` „Medien-Tunnel“).
+
+- **Endpunkt** `GET /api/sfu/ws` (alle Knoten, auch gekoppelte; am eigenen Port wie über saga-media): ohne `Upgrade`
+  zuerst 426 (`websocket_required`, Zähler `no_upgrade`), ohne `saga-tunnel.1` 400, über der Grenze je Client-Adresse
+  (4 × `HORN_MAX_PER_IP`; gesamt 2 × `HORN_MAX_LEGS` + 16) 429. Danach Zugang in der ersten Textnachricht
+  (TURN-Zugangsdaten aus `/api/sfu/turn`, HMAC des Knotens, Frist 10 s), Antwort `ok` mit `ack_bytes`/`ack_ms`. Erst mit
+  dem ersten Datenbyte (Frist 30 s – die App öffnet den WebSocket vorab) geht die Verbindung per `Mux.Inject` an die
+  Weiche (ufrag aus dem ersten Binding, eigener ICE-Mux, Bündeln); Gegenadresse = echte Client-Adresse mit eigenem
+  Port je Tunnel (nur im Speicher). Bein-Weg `ws` = ICE-TCP-Bein (`sfuTCP`, Werte wie `tcp`), auch ohne öffentliches
+  ICE-TCP.
+- **Flusssteuerung:** Der Knoten schreibt höchstens ein Fenster unquittierter Bytes in den Tunnel (2 × Lieferrate ×
+  kleinste RTT + 16 KiB, min 64 KiB, max 1 MiB); darüber blockiert `Write` wie ein Socket mit `TCP_NOTSENT_LOWAT`. Der
+  Stau bleibt so im Bein: Schätzung „Alter der Warteschlange“, Schichtwahl und das Verwerfen nach 150 ms (H3) wirken.
+  Ohne Fenster lag er im Sendepuffer des Proxys (gemessen 15 s Bild-RTT bei 600 kbit/s Downlink). 24 KiB als kleinstes
+  Fenster drosselten bei gestautem Uplink (späte, gebündelte Quittungen), 128 KiB ließen den Downlink stauen. Die App
+  sendet ohne Fenster (ein Fenster dort ließ libwebrtc intern verwerfen). `Tune`/BBR/Nachläufer wirken auf dem Tunnel
+  nicht (kein eigener Socket) – das Fenster ersetzt `NOTSENT_LOWAT`.
+- **Zähler:** Lastmeldung `tunnels {open, total, auth_fail, limited, no_upgrade, last_open, last_no_upgrade, win_kib,
+  rtt_ms, rtt_max_ms, blocked_ms}` (Admin → Anrufe), je Bein `stats.tunnel`, im Entwicklermodus `GET /api/dev/tunnels`.
+- **Internes HTTP ohne „Ein Port“:** saga-media legt `node.sock` immer an, wenn es den eingebauten Knoten startet
+  (fd 3, `HORN_INNER_HTTP_FD`, Schlüssel `HORN_CTL_KEY` wie bei „Ein Port“), und leitet `/api/sfu/*` und `/probe` von
+  PORT dorthin; `/api/sfu/ws` mit Upgrade roh (Anfrage weiter, Antwort zurück, nach 101 nur Bytes kopieren).
+- **Tunnel-Betrieb:** Gibt saga-media `HORN_TUNNEL_URL` (Ursprung einer https-`BASE_URL` mit DNS-Namen, ohne „Ein
+  Port“) und hat der Knoten keine Zertifikatsquelle (keine Dateien, kein `HORN_TLS_SELF`, kein `HORN_NAME`), startet er
+  statt mit „kein Zertifikat“ abzubrechen: kein eigener TCP-Lauscher (`NewInjectMux`), Name und `url` = Saga-Adresse,
+  Zertifikat `{mode: tunnel, state: tunnel}` (Saga hält ihn ohne Zertifikat für bereit), `ice_tcp: false`, hello
+  `tunnel: true`. Saga gibt dem Kandidaten `tcp: false, tls: false, ws: true`, `udp` nur nach bestandenem Selbsttest.
+  Mit eigenem Namen bzw. „Ein Port“ bleibt alles wie bisher; `ws: true` kommt dort zusätzlich (letzter Weg der Apps).
+- **Prüfstand:** `HORN_INNER_SOCK=<pfad>` (nur `HORN_DEV=1`) legt das interne HTTP selbst an, dazu saga-media ohne
+  Kindprozess mit `MEDIA_NODE_SOCK` und `HORN_CTL_KEY`; Werkzeuge `e2e/wstunnel` (App-Stellvertreter), `e2e/engpass`
+  (Leitung im Userspace), `e2e/tlsproxy`, Messlauf `e2e/wsmess.mjs`, Testseite `web/dev/?path=ws`.
 
 ## Weitere Knoten (P6/P7): Kopplung, Steuerung, Updates, Zertifikate
 

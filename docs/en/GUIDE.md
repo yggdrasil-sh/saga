@@ -193,6 +193,34 @@ don't kick in.
 A limit in the reverse proxy (as above, slightly above `ATTACH_MAX_MB`) is still recommended: huge requests then
 never reach Saga. If you raise `ATTACH_MAX_MB`, raise the proxy limit too.
 
+### Calls through the Saga address (tunnel)
+
+From 2.5 on, the **apps** (iOS, Android) can call through the **built-in Gjallarhorn node** even behind a reverse proxy
+that terminates TLS itself (Nginx Proxy Manager, Caddy, Traefik, nginx): under the normal Saga address, port 443 only,
+without a shared node and without further changes to the proxy. Per line, the app passes its media (ICE-TCP, content
+end-to-end encrypted) as a WebSocket to `wss://saga.example.org/api/sfu/ws`; saga-media hands it to the node
+unchanged. Gjallarhorn stays experimental in 2.5.
+
+- **Required: the proxy passes WebSocket through.** Nginx Proxy Manager: turn on “Websockets Support” for the proxy
+  host – Gjallarhorn needs it anyway (`/probe` measurement, event channel). Caddy and Traefik: nothing to do. nginx: add
+  `proxy_http_version 1.1;`, `proxy_set_header Upgrade $http_upgrade;` and `proxy_set_header Connection $http_connection;`
+  to `location /` (like NPM). Without it the node answers `426`; Admin → Calls then shows “the proxy does not pass
+  WebSocket through” (button “Check now”), and the apps report the same.
+- `BASE_URL` is the https address with a DNS name, Gjallarhorn is on (Admin → Calls). Without `HORN_NAME` and without
+  certificate files for the node, the built-in node then runs in **tunnel mode**: no port and no certificate of its
+  own; Admin → Calls shows “Calls through the Saga address (tunnel)” with counters. With a name of its own for the node
+  or in “One port” mode, everything stays as before; there the tunnel is an extra last path for the apps (e.g. behind
+  company proxies that inspect TLS).
+- Set `TRUSTED_PROXIES` to the proxy: the limit for tunnels per device counts the real address from `X-Forwarded-For`.
+- **Better quality:** UDP. Open the node's UDP port (default 8443; with `HORN_UDP_LISTEN=:443` also 443 – NPM only
+  uses TCP 443) directly on the router, bypassing the proxy and with the same number on the host (`"8443:8443/udp"`).
+  The node checks this itself; if it works, apps and browsers use UDP and the tunnel is only the fallback. Or use the
+  “One port” mode right away (TLS passthrough instead of TLS at the proxy, below).
+- **Browsers** only call through a node in tunnel mode with UDP (the browser path through the tunnel will follow);
+  without UDP the call page names the reason. Group calls of the apps work regardless.
+- **Cloudflare (orange cloud):** passes WebSocket through, so the tunnel works technically. Continuous media traffic
+  through Cloudflare may, however, violate their terms of service (especially on the free plan).
+
 ### One name, one port (443)
 
 Since 2.5 Saga can accept HTTPS **itself** and share the port with the built-in Gjallarhorn node: web, apps,

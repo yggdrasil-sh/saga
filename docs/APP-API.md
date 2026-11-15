@@ -2153,7 +2153,8 @@ Ohne `horn` in `caps`: 409 `join_block: "old"`; kein Knoten erreichbar: 409 `joi
 
 ```json
 "horn": {"e2e": "saga-horn/v1", "ttl": 60, "candidates": [
-  {"node": "horn-0.example.org", "url": "https://horn-0.example.org", "udp": false, "tcp": true, "here": true, "load": 0.12,
+  {"node": "horn-0.example.org", "url": "https://horn-0.example.org", "udp": false, "tcp": true, "tls": true, "ws": true,
+   "here": true, "load": 0.12,
    "peer": "<peer_ref>", "exp": 1760000000,
    "tokens": {"audio": "h1.…", "video": "h1.…", "both": "h1.… (nur mit udp)"}}]}
 ```
@@ -2164,7 +2165,9 @@ Ohne `horn` in `caps`: 409 `join_block: "old"`; kein Knoten erreichbar: 409 `joi
   nur TLS weiterreicht). Dann gleich den TLS-Weg (`turn`, frische Token über `/horn`) nehmen statt ICE-TCP und dessen
   Wartezeit (Web: bis 4 s). Fehlt das Feld (ältere Saga), gilt `true`. Geräte, die es nicht auswerten, bekommen auf
   ein Bein `path: tcp` sofort 400 vom Knoten und fallen ohne Wartezeit auf TLS zurück.
-- `url` kann der Saga-Ursprung selbst sein (Betriebsart „Ein Port“: Saga und der eingebaute Knoten teilen Name und
+- `tls`, `ws` (2.5 A3): `tls: false` = kein TURN-TLS (Tunnel-Betrieb hinter einem TLS-beendenden Reverse Proxy), `ws:
+  true` = Medien-Tunnel `/api/sfu/ws` unter `url` (unten). Fehlen sie (ältere Saga/Knoten): `tls` true, `ws` false.
+- `url` kann der Saga-Ursprung selbst sein (Betriebsart „Ein Port“ bzw. Tunnel-Betrieb: Saga und der eingebaute Knoten teilen Name und
   Port, `/api/sfu/*` und `/probe` leitet Saga weiter). Pfade und `turns:` wie bisher aus `url` bilden.
 - Jede Teilnehmerliste (`legs`) trägt je Endpunkt `hp` = Kennung des Geräts am Knoten (gleich `peer` im eigenen
   Kandidaten). Damit ordnet das Gerät die Plätze des Knotens (`slots[].peer`) und die CSRC der Rahmen einem Gerät zu.
@@ -2179,7 +2182,7 @@ exp, jti}` – zufällige Kennungen je Knoten, keine Konto- oder Gerätenamen. R
 (Bild-Leitung), `both` (UDP-Weg). Begleitgeräte bekommen keine Ton-Senderechte.
 
 **Am Knoten** (HTTPS, CORS für die Saga-Herkunft):
-- `POST {url}/api/sfu/leg {token, path: tcp|turn|udp, offer, audio, speaker, screen, tiles, device}` →
+- `POST {url}/api/sfu/leg {token, path: tcp|turn|udp|ws, offer, audio, speaker, screen, tiles, device}` →
   `{id, answer, csrc, slots}`. Angebot: zuerst die eigene Sendespur (Ton bzw. Kamera mit Simulcast `l`/`m`), dann die
   Empfangsplätze in fester Reihenfolge (Ton: 3; Bild: Sprecher, Bildschirm falls angefragt, Kacheln).
 - `POST {url}/api/sfu/turn {token}` → `{username, credential}` für TURN-TLS auf demselben Port (TLS-Weg).
@@ -2204,6 +2207,45 @@ Anrufs. Ist kein Knoten bereit: 409 `join_block: "node"` (dann Mesh-Rückfall be
 
 **Knotenbetrieb (nur Server ↔ Knoten, nicht für Apps):** `GET /api/horn/whoami` → `{ip}`, `POST /api/horn/pair`
 (Kopplung), WebSocket `/api/horn/ctl` (Steuerung). Beschreibung: `gjallarhorn/NODE.md`.
+
+### Medien-Tunnel `/api/sfu/ws` (2.5)
+
+Für Apps hinter einem Reverse Proxy, der TLS selbst beendet (Nginx Proxy Manager mit „Websockets Support“): ICE-TCP
+der Leitung durch einen WebSocket unter der Saga-Adresse („A3“, Vertrag `saga-tunnel.1` v1). Der Knoten speist den
+Strom in seine ICE-TCP-Weiche; für ihn ist es ein normales TCP-Bein. Inhalte bleiben Ende-zu-Ende-verschlüsselt (DTLS-SRTP
+mit Frame-E2E wie auf allen Wegen).
+
+- **Wann:** Kandidat mit `ws: true`. `ws` und weder `tcp` noch `tls` (Tunnel-Betrieb): UDP (falls `udp`) und Tunnel
+  parallel, UDP mit kurzem Vorsprung. `ws` mit `tcp`/`tls`: bisherige Reihenfolge UDP → TCP → TLS, Tunnel als letzter Weg
+  (nach der TLS-Wartezeit). UDP-Verlust im Anruf → `tcp`, falls angeboten, sonst `ws`. Ohne `ws`: kein Tunnel.
+- **Ablauf je Leitung (Ton, Bild):** `POST {url}/api/sfu/turn {token}` (ein Satz Zugangsdaten für beide Leitungen,
+  10 min gültig) → WebSocket öffnen und anmelden, **bevor** die Antwort gesetzt wird (sonst Aufbau 1,5–3,7 s statt wie
+  ICE-TCP) → `POST {url}/api/sfu/leg {…, path: "ws"}` → im Antwort-SDP den passiven TCP-Host-Kandidaten des Knotens auf
+  `127.0.0.1:<lokaler Port>` biegen → lokaler Lauscher (nur 127.0.0.1, eine Verbindung, erst kurz vor
+  `setRemoteDescription` öffnen) reicht die Bytes 1:1 in den WebSocket. Sendeseitig wie der TCP-Weg (2 Schichten,
+  ptime 40, kein NACK). Weg heißt in Diagnose und `calldiag` `ws`.
+- **Handschlag:** `GET wss://{host von url}/api/sfu/ws` mit `Sec-WebSocket-Protocol: saga-tunnel.1` (Pflicht; keine
+  Query, keine eigenen Köpfe). Ohne `Upgrade` → **426** `{"error": "websocket_required", "text": …}` (der Proxy reicht
+  WebSocket nicht durch – „Websockets Support“), vor jeder anderen Prüfung. Ohne `saga-tunnel.1` → 400
+  `{"error": "subprotocol", "supported": ["saga-tunnel.1"]}` (`saga-frames.1` ist für den Browser-Weg reserviert). Zu
+  viele Tunnel dieser Client-Adresse (4 × `HORN_MAX_PER_IP`) → 429 `{"error": "limit"}`.
+- **Erste Nachricht** (Text, ≤ 4 KiB, spätestens 10 s nach 101):
+  `{"t": "auth", "v": 1, "mode": "ice", "user": "<username>", "cred": "<credential>", "role": "audio|video"}` (`role`
+  optional, nur Diagnose). Zugangsdaten nie in URL oder Kopf (Proxys protokollieren die Anfragezeile). Danach darf die
+  App sofort Daten schicken. Antwort: `{"t": "ok", "v": 1, "ack_bytes": 16384, "ack_ms": 15}` oder
+  `{"t": "err", "v": 1, "code": …}` mit anschließendem Close: `auth` (4401), `version` (dazu `"max": 1`, 4400), `mode`,
+  `bad` (4400), `timeout` (keine Anmeldung in 10 s bzw. kein Datenbyte 30 s nach `ok`, 4408), `unavailable` (4503).
+- **Binärnachrichten**, erstes Byte = Art, Zahlen big endian: `0x00` Daten (Rest = ICE-TCP-Bytes samt RFC-4571-Rahmen,
+  1 Byte bis 64 KiB je Nachricht), `0x01` Quittung (genau 9 Byte: Art + `uint64` Summe aller auf diesem WebSocket
+  empfangenen Datenbytes ohne Art-Byte). Andere Arten und Textnachrichten nach `ok` ignorieren.
+- **Flusssteuerung:** nur am Knoten (Downlink): er hält höchstens ein Fenster unquittierter Bytes unterwegs
+  (2 × Lieferrate × kleinste RTT + 16 KiB, mindestens 64 KiB, höchstens 1 MiB) – sonst staut sich das Bild sekundenlang
+  im Sendepuffer des Proxys. Die App **quittiert** empfangene Bytes (sobald `ack_bytes` offen sind, sonst `ack_ms` nach
+  dem ersten offenen Byte) und sendet selbst **ohne** Fenster. Der Knoten quittiert in v1 nicht.
+- **Lebenszeichen und Ende:** WebSocket-Ping des Knotens alle 25 s (Bibliotheken antworten selbst). Schließt libwebrtc
+  die lokale Verbindung, schließt die App den WebSocket (1000); ist das Bein zu, schließt der Knoten.
+- **Diagnose:** `GET {url}/api/sfu/leg/{id}` → `stats.tunnel {win, inflight, max_inflight, rtt_us, bw_Bps, tx, rx,
+  acks_rx, acks_tx, blocked_ms}` für Beine durch den Tunnel.
 
 ### Web-Client und Live-Umschalten (P5)
 

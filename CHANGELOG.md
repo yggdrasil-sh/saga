@@ -16,6 +16,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – Anrufe der Apps über die Saga-Adresse hinter jedem Reverse Proxy (Tunnel, Gjallarhorn experimentell)
+- **Medien-Tunnel `/api/sfu/ws`:** Die Apps reichen ICE-TCP je Leitung als WebSocket (Unterprotokoll `saga-tunnel.1`)
+  an die normale Saga-Adresse; saga-media gibt ihn roh an den eingebauten Knoten, der ihn in seine ICE-TCP-Weiche
+  einspeist. Damit gehen Gruppenanrufe der Apps auch hinter einem Proxy, der TLS selbst beendet (Nginx Proxy Manager):
+  eine Domain, nur 443, ohne geteilten Knoten. Pflicht am Proxy ist nur „Websockets Support“ (braucht Gjallarhorn
+  ohnehin); fehlt er, antwortet der Knoten mit 426 und Admin → Anrufe sagt „Proxy reicht WebSocket nicht durch“.
+- **Fenster am Knoten:** Der Knoten hält höchstens ein Fenster unquittierter Bytes im Tunnel (mindestens 64 KiB), die
+  App quittiert. Sonst stünde der Stau unsichtbar im Sendepuffer des Proxys; so schaltet der Knoten bei engem Downlink
+  herunter wie auf ICE-TCP.
+- **Tunnel-Betrieb:** Ohne „Ein Port“, ohne eigenen Namen und ohne Zertifikat für den Knoten startet der eingebaute
+  Knoten jetzt trotzdem (bisher „kein Zertifikat“): ohne eigenen Port, Adresse = `BASE_URL`, Medien über den Tunnel und
+  – wenn freigegeben – UDP. Mit eigenem Namen bzw. „Ein Port“ bleibt alles wie bisher, der Tunnel ist dort zusätzlich
+  der letzte Weg der Apps. Kandidaten tragen dafür `tls` und `ws` (und wieder `tcp`, das bisher im Kandidaten der
+  Geräte fehlte). Browser nutzen einen Knoten im Tunnel-Betrieb nur über UDP (Browser-Weg folgt).
+- **Admin → Anrufe:** Kasten „Anrufe über die Saga-Adresse (Tunnel)“ mit Prüfung „Proxy reicht WebSocket durch?“ und
+  Zählern (offene Tunnel, Fenster, RTT). Anleitung „Anrufe über die Saga-Adresse (Tunnel)“ (DE/EN/ES), Protokoll in
+  `docs/APP-API.md`, Knoten in `gjallarhorn/NODE.md`.
+
 ### Behoben – Anrufe über TURN-TLS: enger Downlink wird erkannt
 - Auf dem TLS-Weg (TURN-TLS) sah der Anrufknoten nicht, wenn die Leitung zum Gerät enger war als das gewählte Bild
   (z. B. Mobilfunk mit schwachem Empfang): Das Bild stand sekundenlang (gemessen bei 600 kbit/s: rund 3 s Verzögerung,

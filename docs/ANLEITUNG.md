@@ -220,6 +220,35 @@ Datei-Uploads ab `ATTACH_MAX_MB` (+ etwas Formular-Rahmen), im Admin-Bereich ab 
 Proxy (wie oben, etwas über `ATTACH_MAX_MB`) ist trotzdem empfehlenswert: Dann kommen riesige Anfragen gar nicht
 erst bis zu Saga. Erhöhst du `ATTACH_MAX_MB`, die Grenze im Proxy mit anheben.
 
+### Anrufe über die Saga-Adresse (Tunnel)
+
+Ab 2.5 telefonieren die **Apps** (iOS, Android) auch hinter einem Reverse Proxy, der TLS selbst beendet (Nginx Proxy
+Manager, Caddy, Traefik, nginx), über den **eingebauten Gjallarhorn-Knoten**: unter der normalen Saga-Adresse, nur
+Port 443, ohne geteilten Knoten und ohne weiteren Umbau am Proxy. Die App reicht ihre Medien (ICE-TCP, Inhalte
+Ende-zu-Ende-verschlüsselt) je Leitung als WebSocket an `wss://saga.example.org/api/sfu/ws`; saga-media gibt ihn
+unverändert an den Knoten weiter. Gjallarhorn bleibt in 2.5 experimentell.
+
+- **Pflicht: der Proxy reicht WebSocket durch.** Nginx Proxy Manager: beim Proxy-Host „Websockets Support“ einschalten –
+  den braucht Gjallarhorn ohnehin (Messung `/probe`, Ereigniskanal). Caddy und Traefik: nichts zu tun. nginx: im
+  `location /` zusätzlich `proxy_http_version 1.1;`, `proxy_set_header Upgrade $http_upgrade;` und
+  `proxy_set_header Connection $http_connection;` (wie NPM). Fehlt das, antwortet der Knoten mit `426`; Admin → Anrufe
+  zeigt dann „Proxy reicht WebSocket nicht durch“ (Knopf „Jetzt prüfen“), die Apps melden dasselbe.
+- `BASE_URL` ist die https-Adresse mit DNS-Namen, Gjallarhorn ist an (Admin → Anrufe). Ohne `HORN_NAME` und ohne
+  Zertifikatsdateien für den Knoten läuft der eingebaute Knoten dann im **Tunnel-Betrieb**: kein eigener Port, kein
+  eigenes Zertifikat, Admin → Anrufe zeigt „Anrufe über die Saga-Adresse (Tunnel)“ mit Zählern. Mit eigenem Namen für
+  den Knoten bzw. in der Betriebsart „Ein Port“ bleibt alles wie bisher; der Tunnel ist dort zusätzlich der letzte Weg
+  der Apps (z. B. hinter Firmen-Proxys, die TLS prüfen).
+- `TRUSTED_PROXIES` auf den Proxy setzen: Die Grenze für Tunnel je Gerät zählt die echte Adresse aus
+  `X-Forwarded-For`.
+- **Mehr Qualität:** UDP. Den UDP-Port des Knotens (Standard 8443, mit `HORN_UDP_LISTEN=:443` auch 443 – NPM belegt
+  nur TCP 443) am Router direkt freigeben, am Proxy vorbei und mit derselben Nummer auf dem Host
+  (`"8443:8443/udp"`). Der Knoten prüft das selbst; klappt es, nehmen Apps und Browser UDP und der Tunnel ist nur noch
+  Rückfall. Oder gleich die Betriebsart „Ein Port“ (TLS-Durchreiche statt TLS am Proxy, unten).
+- **Browser** telefonieren über einen Knoten im Tunnel-Betrieb nur mit UDP (der Browser-Weg über den Tunnel folgt);
+  ohne UDP nennt die Anrufseite den Grund. Gruppenanrufe der Apps laufen unabhängig davon.
+- **Cloudflare (orangene Wolke):** reicht WebSocket durch, der Tunnel geht technisch. Dauerhafter Medienverkehr über
+  Cloudflare kann aber gegen deren Nutzungsbedingungen verstoßen (vor allem im kostenlosen Tarif).
+
 ### Ein Name, ein Port (443)
 
 Ab 2.5 kann Saga HTTPS **selbst** annehmen und den Port mit dem eingebauten Gjallarhorn-Knoten teilen: Webseite,

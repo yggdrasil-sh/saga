@@ -196,6 +196,36 @@ formulario) y el área de administración por encima de 1 MB. Aun así, conviene
 (como arriba, algo por encima de `ATTACH_MAX_MB`): así las peticiones enormes ni siquiera llegan a Saga. Si subes
 `ATTACH_MAX_MB`, sube también el límite del proxy.
 
+### Llamadas por la dirección de Saga (túnel)
+
+Desde la 2.5, las **apps** (iOS, Android) llaman a través del **nodo Gjallarhorn integrado** también detrás de un
+proxy inverso que termina TLS por sí mismo (Nginx Proxy Manager, Caddy, Traefik, nginx): con la dirección normal de
+Saga, solo el puerto 443, sin nodo compartido y sin más cambios en el proxy. Por cada línea, la app pasa sus medios
+(ICE-TCP, contenido cifrado de extremo a extremo) como WebSocket a `wss://saga.example.org/api/sfu/ws`; saga-media lo
+entrega sin cambios al nodo. Gjallarhorn sigue siendo experimental en la 2.5.
+
+- **Obligatorio: el proxy deja pasar WebSocket.** Nginx Proxy Manager: activa «Websockets Support» en el host del proxy;
+  Gjallarhorn lo necesita de todos modos (medición `/probe`, canal de eventos). Caddy y Traefik: nada que hacer. nginx:
+  añade en `location /` `proxy_http_version 1.1;`, `proxy_set_header Upgrade $http_upgrade;` y
+  `proxy_set_header Connection $http_connection;` (como NPM). Sin esto el nodo responde `426`; Admin → Llamadas muestra
+  entonces «el proxy no deja pasar WebSocket» (botón «Comprobar ahora») y las apps avisan lo mismo.
+- `BASE_URL` es la dirección https con nombre DNS y Gjallarhorn está activado (Admin → Llamadas). Sin `HORN_NAME` y sin
+  archivos de certificado para el nodo, el nodo integrado funciona en **modo túnel**: sin puerto ni certificado
+  propios; Admin → Llamadas muestra «Llamadas por la dirección de Saga (túnel)» con contadores. Con un nombre propio
+  para el nodo o en el modo «Un puerto» todo sigue igual; allí el túnel es además el último camino de las apps (p. ej.
+  detrás de proxys de empresa que inspeccionan TLS).
+- Configura `TRUSTED_PROXIES` con el proxy: el límite de túneles por dispositivo cuenta la dirección real de
+  `X-Forwarded-For`.
+- **Más calidad:** UDP. Abre el puerto UDP del nodo (8443 por defecto; con `HORN_UDP_LISTEN=:443` también 443, NPM
+  solo usa TCP 443) directamente en el router, sin pasar por el proxy y con el mismo número en el host
+  (`"8443:8443/udp"`). El nodo lo comprueba solo; si funciona, apps y navegadores usan UDP y el túnel queda como
+  alternativa. O usa directamente el modo «Un puerto» (paso de TLS en lugar de TLS en el proxy, más abajo).
+- Los **navegadores** solo llaman a través de un nodo en modo túnel con UDP (el camino del navegador por el túnel
+  llegará más adelante); sin UDP, la página de la llamada indica el motivo. Las llamadas en grupo de las apps funcionan
+  igualmente.
+- **Cloudflare (nube naranja):** deja pasar WebSocket, el túnel funciona técnicamente. Sin embargo, el tráfico
+  multimedia continuo a través de Cloudflare puede infringir sus condiciones de uso (sobre todo en el plan gratuito).
+
 ### Un nombre, un puerto (443)
 
 Desde 2.5 Saga puede aceptar HTTPS **por sí mismo** y compartir el puerto con el nodo Gjallarhorn integrado: web, apps,
