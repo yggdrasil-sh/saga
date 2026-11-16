@@ -83,9 +83,19 @@ Platzhalter: `horn-1.example.org`.
     frühere Wechsel nach unten) bleibt. Das gilt, wenn die gewählte Quelle nicht live ist (vom Teilnehmenden kommt
     gerade nichts) oder wenn die bisherige weg ist (abgemeldet, anderes Peer-Objekt, nicht live) und die neue nach ihr
     angemeldet wurde (`source.added`) und nicht schon lief, als der Platz die bisherige nahm. Flattern und Budget (die
-    tiefere Schicht lief schon daneben) bleiben, wie oben – unabhängig von der Anmeldefolge der Schichten. Nicht erfasst:
-    ein anderes Gerät bzw. ein neuer Beitritt („Hierher übernehmen“, Wiedereintritt: neue Peer-Kennung) ist ein
-    Besitzerwechsel; nimmt der Platz dann zuerst `l`, gilt weiter `layerDwell`.
+    tiefere Schicht lief schon daneben) bleiben, wie oben – unabhängig von der Anmeldefolge der Schichten.
+  - Besitzerwechsel ist kein Wechsel nach unten, wenn beim neuen Besitzer die bisherige Schicht (noch) nicht nutzbar ist
+    (`slot.fresh`, 2.5): frisch beigetreten, wiederverbunden, nach der Lücke auf jemand anderem, „Hierher übernehmen“
+    (anderes Gerät, neue Peer-Kennung) – `l` zuerst, `m` wartet auf sein Schlüsselbild. Der Platz beginnt auf dem neuen
+    Besitzer neu (keine 4 s Sperre). Hat der neue Besitzer die Schicht nutzbar und das Budget wählt tiefer, bleibt es ein
+    Wechsel nach unten (`layerDwell`).
+  - Hauptsprecher über das Wiederverbinden (`Room.lost`, `backLocked`, 2.5): Endet das letzte Bein des Hauptsprechers,
+    zählt er bis zu `domKeep` (5 s) wie ein stiller Hauptsprecher – seine Aktivität klingt ab, gegen ihn gilt die
+    Hysterese (ein Einwurf kurz vorher bzw. ein kurzes Wort in der Lücke macht niemanden sofort zum Hauptsprecher). Kommt
+    dieselbe Peer-Kennung (neues Peer-Objekt) in der Frist wieder und wurde niemand Hauptsprecher, ist sie es wieder, mit
+    Beginn ihres Status, abgeklungener Aktivität und letzter Sprache. Spricht in der Lücke jemand länger als `domHold`,
+    wird er Hauptsprecher wie sonst auch. Eine andere Peer-Kennung („Hierher übernehmen“) bekommt den Status nicht (das
+    Token kennt keinen Nutzer) – sie wird es, sobald sie spricht.
   - Der Sprecherplatz zeigt nie das eigene Gerät: „für den Hauptsprecher selbst der vorige“ (`prevDom`) kann das Gerät
     selbst sein, wenn es Hauptsprecher war, dann ein anderer, und dieser verschwindet (letztes Bein zu beim
     Wiederverbinden) – dann wie ohne Hauptsprecher die zuletzt Sprechenden mit Bild.
@@ -1216,6 +1226,11 @@ kodierte, schon Frame-E2E-versiegelte Rahmen; der Knoten macht daraus RTP und um
   Hauptsprecherwechsel 5,1–5,6 s → 1,4–1,6 s (Platz direkt auf `m`, ohne Kachel), ohne 1,4–1,5 s → 1,4–1,5 s; neues
   UDP-Bein `m` 1,3/4,6/4,6 s → 0,5–1,2 s; neues TURN-TLS-Bein 0,5/1,3/4,5 s → 0,6–1,3 s (vorher schnell nur, wenn
   zwischen altem und neuem Bein ein Takt ohne Quelle lag). Modelle: `internal/sfu/wieder_test.go`.
+- **Wiederverbinden in der Gruppe (Rest aus F5):** Der Hauptsprecher verbindet neu (vier Teilnehmende, Zeit ab dem neuen
+  Beitritt, `m` des Wiederkommenden 0,4 s nach `l`). Echter Knoten mit Bots über UDP, n = 3: spricht gleich weiter: Platz
+  0,27–0,48 s, `m` 4,3–4,5 s → 0,68–0,70 s; schweigt noch 3 s: Platz 3,1 s → 0,27 s (`m` 0,69 s); „Hierher übernehmen“
+  (andere Kennung) `m` 4,3–4,5 s → 0,66–0,69 s. Modell `internal/sfu/gruppe_test.go` (TCP-Empfänger) entsprechend
+  4,2 → 0,6 s, 3,2 → 0,2 s, neu Beigetretener 4,4 → 0,6 s; ein kurzes Wort in der Lücke 1,4 → 0,2 s.
 - **Prüfstand:** `e2e/b2mess` (Knoten mit TURN-TLS für die Gegenstelle, saga-media, NPM-Nachbau, engpass;
   `b2stand.sh`, Messlauf `call.mjs`, Seite `b2.html` mit den Produkt-Dateien), Reihe `tests/b2_frames.py`.
 

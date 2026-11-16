@@ -60,6 +60,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   der kleinen Schicht, im Gespräch zu zweit stand kurz das eigene Bild (schwarz) auf dem Sprecherplatz. Jetzt ist es
   zurück, sobald sein Bild wieder da ist (gemessen 0,5–1,6 s ab dem Abbruch statt bis 5,6 s). Der Schutz gegen echte
   Rückfälle (Stau, flatternde Schichten, Aufschub nach Fehlversuchen) bleibt.
+- In der Gruppe: Verbindet der Hauptsprecher neu, bleibt er Hauptsprecher – auch wenn er danach erst einmal schweigt
+  (vorher ging der Sprecherplatz bis zu seinem nächsten Wort an den zuletzt Sprechenden) – und ist nach 0,7 s statt 4,5 s
+  wieder groß. Ebenso, wer neu dazukommt und gleich spricht oder den Anruf mit „Hierher übernehmen“ auf ein anderes
+  Gerät holt.
 
 ### Behoben – Gjallarhorn: erster Stau eines Beins kurz nach dem Start
 - Die Bitraten-Schätzung eines Beins verdoppelte in den ersten 20 s nach dem Start des Knotens die Sperrzeit schon beim
