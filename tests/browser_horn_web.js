@@ -33,8 +33,13 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Kamera/Mikrofon/Bildschirm-Attrappe: Farbe und Ton je Person; window.__hornGain(v) aendert die Lautstaerke
-const FAKE = ([hue, freq, w, h, fps, shue]) => {
+const FAKE = ([hue, freq, w, h, fps, shue, diag]) => {
   window.__fake = { hue, freq };
+  if (diag) {                                            // TON_DIAG: alle PeerConnections merken (Sendestatistik)
+    const P = window.RTCPeerConnection, all = window.__pcs = [];
+    const W = function (...a) { const pc = new P(...a); all.push(pc); return pc; };
+    W.prototype = P.prototype; Object.setPrototypeOf(W, P); window.RTCPeerConnection = W;
+  }
   try { localStorage.setItem('saga-screen-hint', '0'); } catch (e) { /* egal */ }
   const md = navigator.mediaDevices;
   let ac = null, gain = null, aStream = null, vTrack = null;
@@ -64,7 +69,7 @@ const FAKE = ([hue, freq, w, h, fps, shue]) => {
 // laufen mit Verstaerkung 1 (nicht stumm) bzw. 0 (stumm geschaltet) in einen AudioWorklet, der je Block (128 Samples)
 // den Pegel misst. Die laute Person spricht durchgehend, die anderen sind 43 dB leiser. Luecke = laengste Zeit ohne Block
 // ueber der Schwelle. Die Stummschaltung folgt dem Element alle 20 ms.
-const GAP_START = async () => {
+const GAP_START = async diag => {
   const ac = window.__gapAc || (window.__gapAc = new AudioContext());
   if (!window.__gapMod) {
     const code = `class G extends AudioWorkletProcessor {
@@ -76,14 +81,38 @@ const GAP_START = async () => {
         const rms = x ? Math.sqrt(e / x.length) : 0;
         if (rms > 0.03) { if (this.last >= 0) { const g = currentTime - this.last; if (g > this.max) { this.max = g; this.maxEnd = currentTime; } } this.last = currentTime; this.hits++; }
         return true; } }
-      registerProcessor('saga-gap', G);`;
+      registerProcessor('saga-gap', G);
+      // TON_DIAG: je Tonplatz (vor der Stummschaltung) die Abschnitte mit Ton [Anfang, Ende] in s
+      class V extends AudioWorkletProcessor {
+        constructor() { super(); this.segs = []; this.on = null;
+          this.port.onmessage = e => { if (e.data === 'get') this.port.postMessage({ segs: this.segs.concat(this.on ? [this.on] : []), now: currentTime }); }; }
+        process(ins) {
+          const x = ins[0] && ins[0][0]; let e = 0; if (x) for (let i = 0; i < x.length; i++) e += x[i] * x[i];
+          const hot = x && Math.sqrt(e / x.length) > 0.03, t = currentTime;
+          if (hot) { if (this.on && t - this.on[1] < 0.02) this.on[1] = t; else { if (this.on) this.segs.push(this.on); this.on = [t, t]; } }
+          return true; } }
+      registerProcessor('saga-lvl', V);`;
     window.__gapMod = ac.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
   }
   await window.__gapMod;
   if (ac.state === 'suspended') await ac.resume();
   const node = new AudioWorkletNode(ac, 'saga-gap');
   node.connect(ac.destination);                           // laeuft nur, wenn verbunden; Ausgabe ist still (kein Ausgang)
-  const st = window.__gap = { node, ac, gains: new Map(), stop: false, log: [], sig: '' };
+  const st = window.__gap = { node, ac, gains: new Map(), stop: false, log: [], sig: '', diag: !!diag, lv: [], tr: [], statT: 0 };
+  // TON_DIAG: je Tonplatz alle 60 ms Empfaenger-Statistik (Pakete, verdeckte Samples, Jitter-Puffer) und Alter der RTP-Quelle
+  const probe = async () => {
+    const t = Math.round(ac.currentTime * 1000), els = [...document.querySelectorAll('.cl-win audio.cl-raudio[data-conn]')];
+    const row = await Promise.all(els.map(async a => {
+      const r = a._tr && a._tr.receiver; if (!r) return null;
+      const src = r.getSynchronizationSources ? r.getSynchronizationSources()[0] : null, o = { c: a.dataset.conn, s: a.dataset.slot, w: a.dataset.owner || '-', m: a.muted ? 1 : 0 };
+      if (src) { o.age = Math.round(performance.timeOrigin + performance.now() - src.timestamp); o.lvl = src.audioLevel; }
+      const cs = r.getContributingSources ? r.getContributingSources() : [];
+      if (cs.length) { const b = cs.reduce((p, x) => (x.timestamp > p.timestamp ? x : p)); o.csrc = b.source >>> 0; o.cage = Math.round(performance.timeOrigin + performance.now() - b.timestamp); }
+      try { (await r.getStats()).forEach(x => { if (x.type === 'inbound-rtp') { o.pk = x.packetsReceived; o.ts = x.totalSamplesReceived; o.cs = x.concealedSamples; o.ce = x.concealmentEvents; o.al = x.audioLevel; o.jb = x.jitterBufferEmittedCount ? Math.round(x.jitterBufferDelay / x.jitterBufferEmittedCount * 1000) : null; o.jt = x.jitterBufferTargetDelay && x.jitterBufferEmittedCount ? Math.round(x.jitterBufferTargetDelay / x.jitterBufferEmittedCount * 1000) : null; } }); } catch (e) { /* weg */ }
+      return o;
+    }));
+    st.tr.push([t, row.filter(Boolean)]);
+  };
   const tick = () => {
     if (st.stop) return;
     // Wer spielt gerade (Verbindung, Platz, Absender, stumm)? Nur Aenderungen, mit der Uhr des AudioContext
@@ -94,9 +123,11 @@ const GAP_START = async () => {
       if (!g || g.s !== a.srcObject) {
         if (!a.srcObject) return;
         const src = ac.createMediaStreamSource(a.srcObject), gn = ac.createGain(); src.connect(gn).connect(node); g = { s: a.srcObject, gn }; st.gains.set(a, g);
+        if (st.diag) { const v = new AudioWorkletNode(ac, 'saga-lvl'); src.connect(v); v.connect(ac.destination); st.lv.push({ c: a.dataset.conn, s: a.dataset.slot, v, t0: Math.round(ac.currentTime * 1000) }); }
       }
       g.gn.gain.value = (a.muted || a.paused || !a.isConnected) ? 0 : 1;
     });
+    if (st.diag && performance.now() - st.statT >= 60) { st.statT = performance.now(); probe(); }
     setTimeout(tick, 20);
   };
   tick();
@@ -104,14 +135,43 @@ const GAP_START = async () => {
 const GAP_STOP = () => new Promise(ok => {
   const st = window.__gap; if (!st) return ok(null);
   st.stop = true;
-  setTimeout(() => ok({ maxGap: -1, hits: 0, n: 0, err: 'keine Antwort vom AudioWorklet' }), 3000);
-  st.node.port.onmessage = e => {
+  setTimeout(() => ok({ maxGap: -1, hits: 0, n: 0, err: 'keine Antwort vom AudioWorklet' }), st.diag ? 12000 : 3000);
+  st.node.port.onmessage = async e => {
     const d = e.data, end = Math.round((d.maxEnd || 0) * 1000), gap = Math.round(d.max * 1000);
-    ok({ maxGap: Math.round(Math.max(d.max, d.last >= 0 ? d.now - d.last : d.now - d.t0) * 1000), hits: d.hits, n: d.n, secs: Math.round((d.now - d.t0) * 10) / 10,
-         gapAt: [end - gap, end], route: st.log.filter(x => x[0] > end - gap - 1500 && x[0] < end + 500) });
+    // Doppelt: derselbe Absender auf zwei hoerbaren Tonplaetzen (z. B. alte und neue Verbindung zugleich) - Zeit in ms
+    const nowMs = Math.round(d.now * 1000), dup = { n: 0, ms: 0 };
+    st.log.forEach((x, i) => {
+      const seen = {}, two = x[1].split(' ').some(e => { const m = /:([0-9a-f]{8})$/.exec(e); if (!m) return false; if (seen[m[1]]) return true; seen[m[1]] = 1; return false; });
+      if (two) { dup.n++; dup.ms += ((st.log[i + 1] || [nowMs])[0]) - x[0]; }
+    });
+    const out = { maxGap: Math.round(Math.max(d.max, d.last >= 0 ? d.now - d.last : d.now - d.t0) * 1000), hits: d.hits, n: d.n, secs: Math.round((d.now - d.t0) * 10) / 10,
+         gapAt: [end - gap, end], dup, route: st.log.filter(x => x[0] > end - gap - 1500 && x[0] < end + 500) };
+    out.ep = Date.now() - Math.round(st.ac.currentTime * 1000);   // AudioContext -> Epoch (Luecken mehrerer Hoerer vergleichen)
+    out.gapEp = out.gapAt.map(x => (x + out.ep) % 100000);
+    if (st.diag) {
+      out.lv = await Promise.all(st.lv.map(x => new Promise(r => { x.v.port.onmessage = m => r({ c: x.c, s: x.s, t0: x.t0, segs: m.data.segs.map(g => [Math.round(g[0] * 1000), Math.round(g[1] * 1000)]) }); x.v.port.postMessage('get'); setTimeout(() => r({ c: x.c, s: x.s, err: 1 }), 2000); })));
+      out.tr = st.tr; out.log = st.log;
+    }
+    ok(out);
   };
   st.node.port.postMessage('get');
 });
+// TON_DIAG: Sendeseite (gesendete Tonpakete je PeerConnection alle 50 ms, Epoch-Zeit)
+const SEND_START = () => {
+  const st = window.__snd = { tr: [], stop: false };
+  const tick = async () => {
+    if (st.stop) return;
+    const t = Date.now(), row = await Promise.all((window.__pcs || []).map(async (pc, i) => {
+      if (pc.signalingState === 'closed') return null;
+      let n = 0; try { (await pc.getStats()).forEach(x => { if (x.type === 'outbound-rtp' && x.kind === 'audio') n += x.packetsSent || 0; }); } catch (e) { return null; }
+      return [i, n, pc.connectionState];
+    }));
+    st.tr.push([t, row.filter(Boolean)]);
+    setTimeout(tick, 50);
+  };
+  tick();
+};
+const SEND_STOP = () => { const st = window.__snd; if (!st) return null; st.stop = true; return st.tr; };
 // Farbton jeder Kachel (Mitte rechts unten) und des grossen Bildschirms
 const EYES = () => {
   const cv = document.createElement('canvas'); cv.width = 32; cv.height = 18;
@@ -157,7 +217,7 @@ async function session(i, shared) {
   p.__user = USERS[i]; p.__i = i; p.__br = br;
   p.on('pageerror', e => console.log('  [pageerror ' + L[i] + '] ' + e.message));
   if (E.DEBUG) p.on('console', m => console.log('  [console ' + L[i] + '] ' + m.text()));
-  await p.addInitScript(FAKE, [HUES[i], FREQ[i], 320, 180, small ? 10 : 15, SCREEN_HUE]);   // klein: 2 Kerne fuer 6+ Browser
+  await p.addInitScript(FAKE, [HUES[i], FREQ[i], 320, 180, small ? 10 : 15, SCREEN_HUE, !!E.TON_DIAG]);   // klein: 2 Kerne fuer 6+ Browser
   await p.goto(BASE + '/login');
   await p.fill('input[name=username], input#username, input[type=text]', USERS[i]);
   await p.fill('input[type=password]', E.SAGA_PASS);
@@ -463,7 +523,8 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
     await sleep(10000);
     const base = await Promise.all([0, 1, 5].map(i => ps[i].evaluate(GAP_STOP)));
     PERF.tonluecke_ohne_wechsel_ms = base.map(g => g && g.maxGap);
-    await Promise.all([0, 1, 5].map(i => ps[i].evaluate(GAP_START)));
+    await Promise.all([0, 1, 5].map(i => ps[i].evaluate(GAP_START, !!E.TON_DIAG)));
+    if (E.TON_DIAG) await ps[4].evaluate(SEND_START);
     t0 = Date.now();
     process.kill(+E.NODE_A_PID, 'SIGUSR1');
     const moved = await until(async () => {
@@ -478,6 +539,7 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
       g.audioDrops = Object.keys(a).filter(x => /^audio:/.test(x)).reduce((o, x) => { o[x] = a[x] - (b[x] || 0); return o; }, {}); } });
     const logE = ((await horn(ps[4])) || {}).log || [];
     if (gaps[0]) gaps[0].sprecherLog = logE.filter(x => /^zu|switch|ice|events/.test(x[2]));
+    if (E.TON_DIAG) { fs.writeFileSync(E.TON_DIAG, JSON.stringify({ speaker: devs[4].slice(0, 8), gaps, base, send: await ps[4].evaluate(SEND_STOP), hl: (await Promise.all(ps.map(horn))).map(h => h && { log: h.log, sw: h.switches }) })); gaps.forEach(g => { if (g) { delete g.lv; delete g.tr; delete g.log; } }); }
     PERF.tonluecke_leeren_ms = gaps.map(g => g && g.maxGap);
     ok(`Leeren: alle ${N6} wechseln auf Knoten B (${PERF.leeren_bis_alle_auf_b_ms} ms), altes Bein geschlossen`, !!moved,
        (await Promise.all(ps.map(horn))).map(h => h && [h.node, h.up, h.conns.map(c => c.node), h.note]));
@@ -492,6 +554,11 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
     // + 40 ms; die Zuordnung (route) zeigt, ob eine Luecke aus der Umschaltung kam.
     ok(`Tonluecke beim Wechsel (A, B, Handy): ${PERF.tonluecke_leeren_ms} ms, ohne Wechsel ${PERF.tonluecke_ohne_wechsel_ms} ms (Ziel 0; <= max(300, ohne + 40) ms)`,
        gaps.every((g, k) => g && g.hits > 500 && g.maxGap <= Math.max(300, ((base[k] || {}).maxGap || 0) + 40)), { gaps, base });
+    // je Absender spielt beim Wechsel genau ein Tonplatz (kein Doppel/Echo aus alter und neuer Verbindung); die Messung
+    // folgt den Elementen alle 20 ms, das Umhaengen laeuft alle 50 ms - kurze Ueberschneidungen bis 100 ms sind erlaubt
+    PERF.ton_doppelt_ms = gaps.map(g => g && g.dup && g.dup.ms);
+    ok(`Wechsel ohne doppelten Ton: je Absender hoechstens ein hoerbarer Tonplatz (doppelt ${PERF.ton_doppelt_ms} ms)`,
+       gaps.every(g => g && g.dup && g.dup.ms <= 100), gaps.map(g => g && g.dup));
     // Auf Knoten B (UDP): der Knoten verteilt nach seiner Schaetzung (GCC); reicht sie nicht, pausiert er Kacheln - die
     // zeigen dann ihr Standbild. Geprueft: jede Kachel zeigt die richtige Person (bewegt) oder ihr Standbild, nie eine
     // falsche; der Sprecher ist bei allen bewegt.
@@ -516,8 +583,10 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
     }));
     ok(`auf Knoten B: alle sehen den Sprecher bewegt, die anderen bewegt oder als Standbild (pausiert je Person ${pausedB}; ${PERF.bild_wieder_da_ms} ms)`, !!eyesB, !eyesB && await eyeInfo());
     const stA = await Promise.all(ps.map(p => stats(p)));
+    // Einordnung "nofrom" (frame-e2e.js, Zaehler nf je Art: nocsrc/nomap/gone/new); late: Zuordnung kam waehrend des Wartens
+    PERF.wechsel_zuordnung = stA.map((x, i) => x && { late: (x.late || 0) - ((stB[i] || {}).late || 0), nf: x.nf || {} });
     ok('nach dem Wechsel: keine gefaelschten Rahmen, keine ohne Absender', stA.every((x, i) => { const a = drops(x), b = drops(stB[i]); return a.auth + a.format + a.codec === 0 && a.nofrom - b.nofrom === 0; }),
-       stA.map((x, i) => [drops(stB[i]), drops(x)]));
+       stA.map((x, i) => [drops(stB[i]), drops(x), PERF.wechsel_zuordnung[i]]));
     const pB = await ps[0].evaluate(() => { const x = document.querySelector('.cl-hpath'); return x && { t: x.textContent, title: x.title }; });
     ok(`Weg-Anzeige: UDP zu Knoten B (${pB && pB.t}: ${pB && pB.title})`, pB && pB.t === 'UDP' && pB.title.indexOf(NODE_B) >= 0, pB);
     const hb = await horn(ps[0]);
