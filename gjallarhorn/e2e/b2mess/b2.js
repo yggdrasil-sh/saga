@@ -212,9 +212,14 @@ async function b2Join(role) {
   h.on((code, cc) => {
     S.ev.push([Math.round(performance.now() - S.t0), 'closed', role, code || cc]);
     if (S.stop) return;
-    const n = S.rc[role] = (S.rc[role] || 0) + 1;
-    setTimeout(() => b2Join(role).then(() => { S.rc[role] = 0; }, (e) => S.ev.push(['rejoin-err', role, String(e)])), n === 1 ? 0 : 500 * (n - 1));
+    rejoin(role);
   });
+}
+// Wiederholen bis es klappt: sofort, dann 0,5/1/2/4/8 s (die Seite hat keinen Neuaufbau ueber Saga wie calls.js)
+function rejoin(role) {
+  const n = S.rc[role] = (S.rc[role] || 0) + 1;
+  setTimeout(() => b2Join(role).then(() => { S.rc[role] = 0; S.ev.push([Math.round(performance.now() - S.t0), 'rejoin-ok', role, n]); },
+    (e) => { S.ev.push([Math.round(performance.now() - S.t0), 'rejoin-err', role, String(e)]); if (!S.stop) rejoin(role); }), n === 1 ? 0 : Math.min(8000, 250 * 2 ** (n - 1)));
 }
 S.rc = {};
 
