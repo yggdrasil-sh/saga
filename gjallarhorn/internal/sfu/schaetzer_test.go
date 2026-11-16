@@ -65,8 +65,13 @@ func newEstGroup(t *testing.T, h, gcc float64, n int) *estRoom { return newEstCf
 
 // newEstCfg: ... mit bzw. ohne Probing (Config.Probing). Mit Probing meldet das Modell Ueberlast wie pion-GCC
 // (Leg.ExtOver), sobald die Verzoegerung auffaellt.
+//
+// Die kuenstliche Uhr beginnt eine Stunde nach fwd.Now() (Knoten laeuft schon laenger): Zeitfelder mit 0 = "nie"
+// duerfen das Ergebnis nicht davon abhaengen lassen, wie lange der Testprozess schon lief. Bis Saga 2.5 begann sie bei
+// fwd.Now(); estimator.lastDown = 0 zaehlte in den ersten 20 s des Prozesses als "Stau eben erst", und zwei Tests
+// wurden rot, sobald die Reihe davor unter Last laenger als ~10 s brauchte (CI, -count).
 func newEstCfg(t *testing.T, h, gcc float64, n int, probing bool) *estRoom {
-	er := &estRoom{t: t, now: fwd.Now(), src: map[string]*fwd.Source{}, gcc: gcc, floor: gcc, capF: 1.5, grow: 50e3,
+	er := &estRoom{t: t, now: fwd.Now() + int64(time.Hour), src: map[string]*fwd.Source{}, gcc: gcc, floor: gcc, capF: 1.5, grow: 50e3,
 		rates: map[string]float64{"l": 150e3, "m": 500e3, "h": h}}
 	nd := NewNode(Config{Name: "k", Tick: time.Hour, Probing: probing, OnLayout: func(ev LayoutEvent) {
 		for _, s := range ev.Slots {
@@ -829,5 +834,37 @@ func TestSchaetzerWechselndesScheitern(t *testing.T) {
 			}
 			t.Logf("%d h-Versuche in 10 min, %v auf h", ups, onH)
 		})
+	}
+}
+
+// TestSchaetzerErsterStauUhrstart (Saga 2.5, ci-zeit): Der erste Stau eines Beins sperrt Schritte nach oben fuer 2 s,
+// gleich wie lange der Prozess schon laeuft. Bis Saga 2.5 galt estimator.lastDown = 0 (noch kein Stau) in den ersten
+// 20 s nach Programmstart als "letzter Stau eben erst": Die Sperrzeit verdoppelte sich auf 4 s, und Simulationstests
+// hingen davon ab, wie lange die Reihe davor brauchte.
+func TestSchaetzerErsterStauUhrstart(t *testing.T) {
+	for _, start := range []time.Duration{3 * time.Second, time.Hour} {
+		// Aufbau wie stoerGruppeTief: Gruppe 3 mit Probing, flacher Stoerschub (GCC-Ziel 1500k)
+		er := neuEigen(t, false, 1250e3, 810e3, 3)
+		er.now = int64(start) // kuenstliche Uhr: kurz nach Programmstart bzw. lange danach
+		er.schub = 1500e3
+		er.l.firstUsed = true
+		er.grow = 400e3
+		er.tick()
+		er.until("m", 2*time.Second)
+		for i := 0; i < 50; i++ { // freie Leitung, bis die Rate ueber dem Schub liegt
+			er.tick()
+		}
+		if er.l.est.downs != 0 {
+			t.Fatalf("uhr %v: schon %d Staus vor dem ersten", start, er.l.est.downs)
+		}
+		er.loss = true
+		for i := 0; i < 50 && er.l.est.downs == 0; i++ {
+			er.tick()
+		}
+		hold := time.Duration(er.l.est.holdUntil - er.now)
+		t.Logf("uhr %v: erster Stau nach %v, Sperrzeit %v (bis in %v)", start, time.Duration(er.now)-start, er.l.est.backoff, hold)
+		if er.l.est.downs != 1 || er.l.est.backoff != 2*time.Second || hold > 2*time.Second {
+			t.Fatalf("uhr %v: %d Staus, Sperrzeit %v (soll 2 s wie bei jedem ersten Stau)", start, er.l.est.downs, er.l.est.backoff)
+		}
 	}
 }

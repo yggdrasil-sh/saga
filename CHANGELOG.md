@@ -39,6 +39,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Bekannte Grenze:** Nach einem Wiederverbinden zeigt der Sprecherplatz die anderen erst nach rund 5 s wieder in der
   großen Schicht (vorher die kleine).
 
+### Behoben – Gjallarhorn: erster Stau eines Beins kurz nach dem Start
+- Die Bitraten-Schätzung eines Beins verdoppelte in den ersten 20 s nach dem Start des Knotens die Sperrzeit schon beim
+  ersten Stau (2 → 4 s), weil „noch kein Stau“ wie „Stau eben erst“ zählte. Jetzt gilt für jeden ersten Stau 2 s.
+- Tests (CI): Simulations- und Padding-Tests hängen nicht mehr davon ab, wie lange die Testreihe davor lief bzw. ob der
+  geteilte Runner den Prozess kurz anhält.
+
 ### Behoben – Anrufe über ICE-TCP und TURN-TLS: weniger Verzögerung auf engem Downlink
 - Auf den TCP-Wegen bemerkte der Anrufknoten eine enge Leitung zum Gerät erst, wenn die Puffer unterwegs voll waren:
   Das Bild kam dann mit rund 1,5 s Verzögerung (in Spitzen 3 s), der Knoten wechselte ständig zwischen zwei Schichten.

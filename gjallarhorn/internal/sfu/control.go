@@ -1662,7 +1662,7 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 		if now >= e.holdUntil {
 			// Stau nach freier Zeit bzw. nach einem Versuch nach oben:
 			// Sperrzeit verdoppeln, wenn der letzte Stau kurz her ist
-			if now-e.lastDown < int64(20*time.Second) {
+			if e.lastDown != 0 && now-e.lastDown < int64(20*time.Second) { // 0 = noch kein Stau (nicht: Stau bei Programmstart)
 				e.backoff *= 2
 				if e.backoff > 30*time.Second {
 					e.backoff = 30 * time.Second

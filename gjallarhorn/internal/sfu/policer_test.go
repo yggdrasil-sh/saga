@@ -188,6 +188,9 @@ func TestProbingPolicerGruppe(t *testing.T) {
 // frischer Rueckfall auf eine kleinere Zielrate als die der Bremse nicht: hll fiel alle 20 bis 40 s zurueck, und die
 // scheiternden langen Proben auf 2225k frischten die Bremse immer wieder auf - gcc 77/89 (Eimer 0,15/0,6 s, Wechsel
 // 20 s), ohne Wechsel 35/24 Rueckfaelle in 10 min. Jetzt senkt er die Bremse wie in Stufe 3b: 9/12 bzw. 8/12.
+// Diese Zahlen galten fuer die Uhr kurz nach Programmstart (estimator.lastDown = 0 verdoppelte die erste Sperrzeit).
+// Mit richtiger Buchfuehrung (Saga 2.5, ci-zeit): gcc 8/12 bzw. 8/12, eigen mit Wechsel 20/22, ohne 8/12 - Grenze
+// deshalb 30, weiter weit unter dem Stand von Stufe 3c.
 func TestProbingPolicerZwischenbelegung(t *testing.T) {
 	bremseGruppe(t) // Mechanik der Bremse (seit Stufe 3f nur im 1:1)
 	for _, eigen := range []bool{false, true} {
@@ -195,8 +198,8 @@ func TestProbingPolicerZwischenbelegung(t *testing.T) {
 			for _, bs := range []float64{0.15, 0.6} {
 				r := policerRunAt(t, eigen, 3, rot, 1580e3, 0, bs, 10*time.Minute, 0)
 				t.Logf("eigen=%v Wechsel %v Eimer %.2f s: %+v", eigen, rot, bs, r)
-				if r.falls > 20 {
-					t.Errorf("eigen=%v Wechsel %v Eimer %.2f s: %d Rueckfaelle (soll hoechstens 20)", eigen, rot, bs, r.falls)
+				if r.falls > 30 {
+					t.Errorf("eigen=%v Wechsel %v Eimer %.2f s: %d Rueckfaelle (soll hoechstens 30)", eigen, rot, bs, r.falls)
 				}
 			}
 		}
@@ -396,7 +399,10 @@ func TestProbingGruppeStoerschuebe(t *testing.T) {
 // 1500 bzw. 1550 kbit/s, 2 s, drei Folgen wie TestProbingGruppeStoerschuebe), Sprecherwechsel 20 s bzw. keiner. Mit der
 // Bremse in der Gruppe (Stand bis 3e, bremseGruppe) zaehlte ein flacher Schub bald nach einem geprobten Schritt oft als
 // Policer-Muster (low/pre ueber probeSlump): Aufschub am Bein, volle Belegung erst 58 bis 99 s nach dem letzten Schub.
-// Ohne Bremse in der Gruppe (seit 3f): 2 bis 16 s. Die Gegenprobe haelt fest, dass der Test die Bremse sieht.
+// Ohne Bremse in der Gruppe (seit 3f): 2 bis 16 s - gemessen mit der Uhr kurz nach Programmstart, als der erste Stau
+// eines Beins wegen estimator.lastDown = 0 die Sperrzeit verdoppelte. Mit richtiger Buchfuehrung (Saga 2.5, ci-zeit)
+// 2 bis 31,8 s (Schub 1500k ohne Wechsel, Folge 1: der erste Stau sperrt 2 statt 4 s, der naechste Schritt faellt
+// wieder); Grenze deshalb 40 s, die Gegenprobe liegt weiter ueber 60 s (gemessen ab 81 s).
 func TestProbingGruppeFlacheSchuebe(t *testing.T) {
 	seqs := [][]time.Duration{
 		{30 * time.Second, 17 * time.Second, 23 * time.Second, 10 * time.Second},
@@ -421,8 +427,8 @@ func TestProbingGruppeFlacheSchuebe(t *testing.T) {
 		}
 		return worst
 	}
-	if w := run(t); w > 30*time.Second {
-		t.Errorf("ohne Bremse in der Gruppe: volle Belegung erst %v nach dem letzten Schub (soll hoechstens 30 s)", w)
+	if w := run(t); w > 40*time.Second {
+		t.Errorf("ohne Bremse in der Gruppe: volle Belegung erst %v nach dem letzten Schub (soll hoechstens 40 s)", w)
 	}
 	t.Run("gegenprobe", func(t *testing.T) {
 		bremseGruppe(t)
