@@ -559,11 +559,14 @@ func (c *Conn) Write(b []byte) (int, error) {
 		if err := c.reserve(); err != nil {
 			return n, err
 		}
+		// vor dem Senden zaehlen: die Quittung kann (kurze RTT, Schreiber verdraengt) vor einem noteSent danach
+		// ankommen; onAck kappte sie dann auf das alte sent, die Bytes blieben fuer immer "unterwegs" und das Fenster
+		// schloesse sich (CI-Haenger 21bb100). Scheitert send, ist die Verbindung ohnehin zu.
+		c.noteSent(k)
 		if err := c.send(b[:k]); err != nil {
 			c.fail(err)
 			return n, err
 		}
-		c.noteSent(k)
 		n += k
 		b = b[k:]
 	}
