@@ -854,3 +854,36 @@ func TestFramesGrenzenErsetzen(t *testing.T) {
 	_ = strconv.Itoa
 	_ = strings.TrimSpace
 }
+
+// Pruefer B2: ein Rahmen ohne Marker (fehlerhafter oder boeswilliger Absender im Raum) waechst am Rahmen-Bein nicht ohne
+// Grenze - ab frMaxMsg verworfen, danach bis zum Schluesselbild nichts; das naechste Schluesselbild kommt wieder durch.
+func TestFramesZusammensetzenGrenze(t *testing.T) {
+	var a frAsm
+	pl := make([]byte, 1100)
+	pl[0], pl[1] = 0x90, 0 // S=1, pid 0, ohne Erweiterung; Nutzlast beginnt mit Schluesselbild-Bit 0
+	h := rtp.Header{SequenceNumber: 1, Timestamp: 9000}
+	broken := false
+	for i := 0; i < (frMaxMsg/1099)+10; i++ {
+		m, ev := a.push(1, false, &h, pl)
+		if m != nil {
+			t.Fatal("Rahmen ohne Marker geliefert")
+		}
+		if ev == asmBroken {
+			broken = true
+			break
+		}
+		h.SequenceNumber++
+		pl[0] = 0x00 // Folgepakete ohne S
+	}
+	if !broken || len(a.buf) != 0 || cap(a.buf) != 0 {
+		t.Fatalf("Grenze nicht gegriffen: broken=%v len=%d", broken, len(a.buf))
+	}
+	// naechstes Schluesselbild (neuer Zeitstempel, ein Paket mit Marker) geht wieder
+	h.SequenceNumber++
+	h.Timestamp += 3000
+	h.Marker = true
+	pl[0] = 0x10
+	if m, _ := a.push(1, false, &h, pl[:200]); m == nil || m[2]&frFlagKey == 0 {
+		t.Fatalf("Schluesselbild nach der Grenze: %v", m != nil)
+	}
+}

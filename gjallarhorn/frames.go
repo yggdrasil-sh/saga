@@ -877,6 +877,11 @@ func (a *frAsm) push(slot uint8, audio bool, h *rtp.Header, payload []byte) ([]b
 		}
 		return nil, asmNone
 	}
+	if len(a.buf)+len(data) > frMaxMsg { // Pruefer B2: Rahmen ohne Ende (Marker fehlt) waechst nicht ohne Grenze
+		a.inFrame, a.broken = false, true
+		a.buf = nil
+		return nil, asmBroken
+	}
 	a.buf = append(a.buf, data...)
 	if !h.Marker {
 		return nil, asmNone

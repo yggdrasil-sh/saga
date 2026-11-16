@@ -1579,7 +1579,8 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     if hn and peer_id is None:                         # 2.5: Knoten des Anrufs, sonst der beste (Geraete anderer Server
         ws = horn.caps_reach(caps)                # waehlen ueber ihren Server, saga/fed_horn.py)
         node = horn_web.pick(c, call["id"], ws=ws)
-        if node is None and not ws and call.get("lead") is None and horn.tunnel_only(c, call["id"]):
+        if node is None and ws != "ws" and call.get("lead") is None and horn.tunnel_only(c, call["id"]):
+            # (B2, Pruefer: auch ein Browser mit "frames", dessen Tunnel-Knoten den Rahmen-Weg nicht anbietet)
             # 2.5 A3 (Vertrag S10/S11): Anruf nur auf Tunnel-Knoten, dieses Geraet kann den Tunnel nicht (Browser) - Rueckfall
             # auf direkt wie /direct. Das Bein kommt VOR call.topo in die Liste: alle wenden "Angebot nur an groessere
             # Geraete-ID" auf dieselbe Liste an (kein Glare); das Geraet bekommt offer_to wie bei /direct. Nur fuer Geraete,

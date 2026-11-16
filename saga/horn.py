@@ -330,8 +330,15 @@ def ready_nodes(c, now=None, ws=False):
     Apps unerreichbar: kein TURN-TLS, kein ICE-TCP; UDP aus dem Selbsttest ist fuer den Browser kein sicherer Beleg).
     ws = "frames" (2.5 B2, Vertrag S12.5): Browser mit dem Rahmen-Weg - Tunnel-Knoten nur, wenn sie ihn anbieten."""
     ns = [n for n in nodes(c) if ready(n, now) and reachable(n, ws)]
-    ns.sort(key=lambda n: (util(n) + (0.5 if util(n) >= PENALTY else 0), not n["builtin"], n["name"]))
+    ns.sort(key=lambda n: (last_resort(n, ws), util(n) + (0.5 if util(n) >= PENALTY else 0), not n["builtin"], n["name"]))
     return ns
+
+
+def last_resort(n, ws):
+    """2.5 B2 (Pruefer): Fuer Browser mit dem Rahmen-Weg ist ein Tunnel-Knoten ohne UDP nur der letzte Weg (Rahmen ueber
+    TCP, mehr Rechenlast im Browser) - gibt es einen anderen bereiten Knoten (z. B. horn-1 mit UDP), kommt der zuerst,
+    unabhaengig von der Last. Sonst (Geraete mit "ws", Tunnel-Knoten mit UDP, nur Tunnel-Knoten) wie bisher."""
+    return ws == "frames" and tunnel_mode(n) and not n.get("udp")
 
 
 def any_ready(c, ws=False):
