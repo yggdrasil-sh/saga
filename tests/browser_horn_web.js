@@ -250,7 +250,7 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
 
     // --- Hinweis vor dem Start, wenn kein Knoten bereit ist (Antwort von /api/calls/config umgebogen) ------------------
     for (const q of [ps[0], ps[5]]) {
-      await q.route('**/api/calls/config', async route => { const r = await route.fetch(); const j = await r.json(); j.horn_ready = false; await route.fulfill({ response: r, json: j }); });
+      await q.route('**/api/calls/config', async route => { const r = await route.fetch(); const j = await r.json(); j.horn_ready = false; j.horn_ready_ws = false; j.horn_ready_frames = false;   /* B2: Browser nehmen horn_ready_frames */ await route.fulfill({ response: r, json: j }); });
       await q.goto(BASE + '/chats#c' + gid);                          // Seite kennt "kein Knoten bereit" schon beim Klick
       await until(async () => q.evaluate(() => { const v = document.getElementById('ct-call-v'); return v && !v.hidden; }), 15000);
       await q.waitForTimeout(800);

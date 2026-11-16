@@ -246,7 +246,9 @@
     var transform = function (t, o) {
       if (o.side === 'tap') { tap(t, o); return true; }
       if (o.side === 'inject') { inject(t, o); return true; }
-      if (o.side === 'sink') { t.readable.pipeTo(new WritableStream({ write: function () { bump('sink'); } })).catch(function () {}); return true; }
+      // Firefox (fwd): pcY dekodiert die eigenen Bild-Spuren - ohne Rahmen am Decoder forderte pcY dauernd Schluesselbilder an
+      // (gemessen 2,5 je s beim Empfaenger am Knoten). Nur lokal (Schleife im Tab, DTLS-SRTP), nichts verlaesst den Rechner.
+      if (o.side === 'sink') { t.readable.pipeThrough(new TransformStream({ transform: function (f, c) { bump('sink'); c.enqueue(f); } })).pipeTo(t.writable).catch(function () {}); return true; }
       return false;
     };
     var tap = function (t, o) {
@@ -255,6 +257,8 @@
       var fw = o.fwd ? t.writable.getWriter() : null, tids = new Map();
       t.readable.pipeTo(new WritableStream({ write: async function (fr) {
         var md = fr.getMetadata ? fr.getMetadata() : {}, type = fr.type, data = new Uint8Array(fr.data), r;
+        // Firefox: Rahmen unversiegelt an die lokale Schleife (pcY dekodiert ihn; Kopie vor dem Versiegeln)
+        if (fw) { data = data.slice(); fw.write(fr).catch(function () {}); }
         try {
           r = await X.H.encrypt(data, kind, kind === 'audio' ? undefined : type, md.synchronizationSource >>> 0,
                                 (md.rtpTimestamp !== undefined ? md.rtpTimestamp : fr.timestamp) >>> 0, Date.now(), md.mimeType);
@@ -272,7 +276,7 @@
         }
         // Firefox: Rahmen zusaetzlich an pcY - die Sende-Schleife bekommt Rueckmeldung (TWCC), sonst bleibt die
         // Encoder-Zielrate auf der Startrate. pcY verwirft sie (sink, kein Dekodieren).
-        if (fw) { fr.data = r.buffer.byteLength === r.length ? r.buffer : r.slice().buffer; fw.write(fr).catch(function () {}); }
+
       } })).catch(function () {});
     };
     var inject = function (t, o) {
