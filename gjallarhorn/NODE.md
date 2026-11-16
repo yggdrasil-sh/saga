@@ -301,7 +301,8 @@ Platzhalter: `horn-1.example.org`.
       Eimer ≥ 0,6 s ließ das Bein alle ~13 s ohne Probe weitersteigen und zurückfallen: 96–109 statt 5 Rückfälle in
       10 min, Prüfer `bwe3d`, `TestProbingPolicerGetragen`). Ein frischer Rückfall auf eine
       kleinere Zielrate als die der laufenden Bremse senkt sie (wie in Stufe 3b; 3c ließ ihn nicht zählen – Prüfer
-      `bwe3c`: Policer 1580 kbit/s zwischen `mmm` und `hll`, 77–94 statt 9–12 Rückfälle in 10 min,
+      `bwe3c`: Policer 1580 kbit/s zwischen `mmm` und `hll`, 77–94 statt 9–12 Rückfälle in 10 min – gezählt mit der
+      Modelluhr kurz nach Programmstart; seit Saga 2.5 richtig gezählt 8–22, `eigen` mit Sprecherwechsel 20/22,
       `TestProbingPolicerZwischenbelegung`). Bis Stufe 3c (Prüfer `bwe3b`, H1) zählte in der Gruppe auf freier
       Leitung mit Störschüben fast jeder Schub: Die Bremse fiel auf die Zielrate einer Kachel-Stufe, der Deckel hielt
       alle Plätze auf `l`, der Aufschub am Bein wuchs bis 5 min. Modell (Gruppe 3, Wechsel 20 s, Schübe alle 10–30 s,

@@ -44,6 +44,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   ersten Stau (2 → 4 s), weil „noch kein Stau“ wie „Stau eben erst“ zählte. Jetzt gilt für jeden ersten Stau 2 s.
 - Tests (CI): Simulations- und Padding-Tests hängen nicht mehr davon ab, wie lange die Testreihe davor lief bzw. ob der
   geteilte Runner den Prozess kurz anhält.
+- Modellzahlen dadurch berichtigt (sie galten für die ersten 20 s nach dem Start): Policer zwischen zwei
+  Zwischenbelegungen der Gruppe mit Bremse `eigen` mit Sprecherwechsel 20/22 statt 9/12 Rückfälle in 10 min; flache
+  Störschübe ohne Bremse volle Belegung bis 31,8 statt 16,2 s nach dem letzten Schub.
 
 ### Behoben – Anrufe über ICE-TCP und TURN-TLS: weniger Verzögerung auf engem Downlink
 - Auf den TCP-Wegen bemerkte der Anrufknoten eine enge Leitung zum Gerät erst, wenn die Puffer unterwegs voll waren:
