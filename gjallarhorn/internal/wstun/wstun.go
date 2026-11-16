@@ -121,11 +121,6 @@ type Snapshot struct {
 	BlockedMs   int64  `json:"blocked_ms"`
 }
 
-type sendMark struct {
-	off uint64
-	t   time.Time
-}
-
 // Conn: net.Conn ueber einen WebSocket (Strom).
 type Conn struct {
 	ws            *websocket.Conn
@@ -155,34 +150,13 @@ type Conn struct {
 	ackedOut uint64
 	ackTimer *time.Timer
 
-	// Flusssteuerung (eigene Sendungen)
-	fmu     sync.Mutex
-	fcond   *sync.Cond
-	sent    uint64
-	acked   uint64
-	marks   []sendMark
-	minRTT  time.Duration
-	minAt   time.Time
-	prevMin time.Duration
-	bwT0    time.Time
-	bwA0    uint64
-	bw      [4]float64 // Byte/s je 500-ms-Fach (Hoechstwert ueber 2 s)
-	bwIdx   int
-	bwAt    time.Time
-	wdl     atomic.Int64
+	// Flusssteuerung (eigene Sendungen, gemeinsam mit dem Rahmen-Bein: flow.go)
+	flow *Flow
+	wdl  atomic.Int64
 }
 
 // New: Verbindung ueber einen fertigen WebSocket (nach auth/ok); liest sofort.
 func New(ws *websocket.Conn, local, remote net.Addr, opt Options) *Conn {
-	if opt.MinWindow <= 0 {
-		opt.MinWindow = DefMinWindow
-	}
-	if opt.MaxWindow < opt.MinWindow {
-		opt.MaxWindow = DefMaxWindow
-		if opt.MaxWindow < opt.MinWindow {
-			opt.MaxWindow = opt.MinWindow
-		}
-	}
 	if opt.AckBytes <= 0 {
 		opt.AckBytes = DefAckBytes
 	}
@@ -191,8 +165,7 @@ func New(ws *websocket.Conn, local, remote net.Addr, opt Options) *Conn {
 	}
 	c := &Conn{ws: ws, opt: opt, local: local, remote: remote, rch: make(chan []byte, 512), closed: make(chan struct{}),
 		rdlCh: make(chan struct{}, 1), first: make(chan struct{}), rxFree: make(chan struct{}, 1)}
-	c.fcond = sync.NewCond(&c.fmu)
-	c.St.Window.Store(int64(c.windowLocked()))
+	c.flow = NewFlow(opt.MinWindow, opt.MaxWindow, &c.St)
 	c.alive.Store(time.Now().UnixNano())
 	ws.SetReadLimit(MaxPayload + 64)
 	ws.SetPongHandler(func(string) error { c.alive.Store(time.Now().UnixNano()); return nil })
@@ -213,9 +186,7 @@ func (c *Conn) fail(err error) {
 	c.once.Do(func() {
 		close(c.closed)
 		_ = c.ws.Close()
-		c.fmu.Lock()
-		c.fcond.Broadcast()
-		c.fmu.Unlock()
+		c.flow.Wake()
 	})
 }
 
@@ -333,142 +304,17 @@ func (c *Conn) ackNow() {
 
 // --- Flusssteuerung ------------------------------------------------------------------------------------------------
 
-func (c *Conn) onAck(a uint64) {
-	now := time.Now()
-	c.fmu.Lock()
-	defer c.fmu.Unlock()
-	if a > c.sent {
-		a = c.sent // nie mehr als gesendet (fehlerhafte Gegenseite)
-	}
-	if a <= c.acked {
-		return
-	}
-	c.acked = a
-	// RTT: juengste Marke, die jetzt quittiert ist
-	k := 0
-	var rtt time.Duration = -1
-	for k < len(c.marks) && c.marks[k].off <= a {
-		rtt = now.Sub(c.marks[k].t)
-		k++
-	}
-	if k > 0 {
-		c.marks = append(c.marks[:0], c.marks[k:]...)
-	}
-	if rtt > 0 {
-		// kleinste RTT ueber ~10 s (zwei Faecher)
-		if now.Sub(c.minAt) > 5*time.Second {
-			c.prevMin, c.minRTT, c.minAt = c.minRTT, rtt, now
-		} else if rtt < c.minRTT || c.minRTT == 0 {
-			c.minRTT = rtt
-		}
-		c.St.MinRTTus.Store(c.rttMin().Microseconds())
-	}
-	// Lieferrate (Fach 500 ms, Hoechstwert der letzten 4)
-	if c.bwT0.IsZero() {
-		c.bwT0, c.bwA0 = now, a
-	} else if d := now.Sub(c.bwT0); d >= 100*time.Millisecond {
-		r := float64(a-c.bwA0) / d.Seconds()
-		if now.Sub(c.bwAt) > 500*time.Millisecond {
-			c.bwIdx = (c.bwIdx + 1) % len(c.bw)
-			c.bw[c.bwIdx] = 0
-			c.bwAt = now
-		}
-		if r > c.bw[c.bwIdx] {
-			c.bw[c.bwIdx] = r
-		}
-		c.bwT0, c.bwA0 = now, a
-		c.St.BWBps.Store(int64(r))
-	}
-	c.St.Inflight.Store(int64(c.sent - c.acked))
-	c.St.Window.Store(int64(c.windowLocked()))
-	c.fcond.Broadcast()
-}
-
-// rttMin: kleinste RTT beider Faecher (unter fmu).
-func (c *Conn) rttMin() time.Duration {
-	m := c.minRTT
-	if c.prevMin > 0 && (m == 0 || c.prevMin < m) {
-		m = c.prevMin
-	}
-	return m
-}
+func (c *Conn) onAck(a uint64) { c.flow.OnAck(a) }
 
 // reserve wartet, bis das Fenster mindestens ein Byte frei hat (wie TCP: das ganze Stueck geht dann).
 func (c *Conn) reserve() error {
 	if !c.opt.FC {
 		return nil
 	}
-	c.fmu.Lock()
-	defer c.fmu.Unlock()
-	t0 := time.Time{}
-	for {
-		select {
-		case <-c.closed:
-			c.St.BlockedSince.Store(0)
-			return errClosed
-		default:
-		}
-		if int(c.sent-c.acked) < c.windowLocked() {
-			if !t0.IsZero() {
-				c.St.Blocked.Add(int64(time.Since(t0)))
-				c.St.BlockedSince.Store(0)
-			}
-			return nil
-		}
-		if t0.IsZero() {
-			t0 = time.Now()
-			c.St.BlockedSince.Store(t0.UnixNano())
-		}
-		if dl := c.wdl.Load(); dl != 0 && time.Now().UnixNano() >= dl {
-			c.St.Blocked.Add(int64(time.Since(t0)))
-			c.St.BlockedSince.Store(0)
-			return os.ErrDeadlineExceeded
-		}
-		// Wecker gegen Fristen (SetWriteDeadline weckt selbst, Quittungen auch)
-		tm := time.AfterFunc(20*time.Millisecond, func() { c.fmu.Lock(); c.fcond.Broadcast(); c.fmu.Unlock() })
-		c.fcond.Wait()
-		tm.Stop()
-	}
+	return c.flow.Reserve(c.closed, &c.wdl)
 }
 
-// windowLocked: 2 x Lieferrate x kleinste RTT + 16 KiB, begrenzt auf [MinWindow, MaxWindow] (unter fmu bzw. vor Start).
-func (c *Conn) windowLocked() int {
-	bw := 0.0
-	for _, v := range c.bw {
-		if v > bw {
-			bw = v
-		}
-	}
-	rtt := c.rttMin()
-	if rtt <= 0 {
-		rtt = 100 * time.Millisecond
-	}
-	w := int(2*bw*rtt.Seconds()) + 16<<10
-	if w < c.opt.MinWindow {
-		w = c.opt.MinWindow
-	}
-	if w > c.opt.MaxWindow {
-		w = c.opt.MaxWindow
-	}
-	return w
-}
-
-func (c *Conn) noteSent(n int) {
-	c.fmu.Lock()
-	c.sent += uint64(n)
-	if c.opt.FC && len(c.marks) < 4096 {
-		c.marks = append(c.marks, sendMark{off: c.sent, t: time.Now()})
-	}
-	in := int64(c.sent - c.acked)
-	c.fmu.Unlock()
-	if !c.opt.FC {
-		return
-	}
-	c.St.Inflight.Store(in)
-	if in > c.St.MaxInflight.Load() {
-		c.St.MaxInflight.Store(in)
-	}
-}
+func (c *Conn) noteSent(n int) { c.flow.Sent(n, c.opt.FC) }
 
 func (c *Conn) send(b []byte) error {
 	c.wmu.Lock()
@@ -620,29 +466,15 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 	} else {
 		c.wdl.Store(t.UnixNano())
 	}
-	c.fmu.Lock()
-	c.fcond.Broadcast()
-	c.fmu.Unlock()
+	c.flow.Wake()
 	return nil
 }
 
 // Snap: Zaehler fuer Diagnose.
 func (c *Conn) Snap() Snapshot {
-	c.fmu.Lock()
-	w := c.windowLocked()
-	c.fmu.Unlock()
-	return Snapshot{Window: int64(w), Inflight: c.St.Inflight.Load(), MaxInflight: c.St.MaxInflight.Load(), RTTus: c.St.MinRTTus.Load(),
+	return Snapshot{Window: int64(c.flow.Window()), Inflight: c.St.Inflight.Load(), MaxInflight: c.St.MaxInflight.Load(), RTTus: c.St.MinRTTus.Load(),
 		BWBps: c.St.BWBps.Load(), Tx: c.St.TxBytes.Load(), Rx: c.St.RxBytes.Load(), AcksRx: c.St.AcksRx.Load(), AcksTx: c.St.AcksTx.Load(),
-		BlockedMs: c.blockedNs() / 1e6}
-}
-
-// blockedNs: Wartezeit vor dem Fenster insgesamt, die laufende eingerechnet.
-func (c *Conn) blockedNs() int64 {
-	n := c.St.Blocked.Load()
-	if since := c.St.BlockedSince.Load(); since != 0 {
-		n += time.Now().UnixNano() - since
-	}
-	return n
+		BlockedMs: c.flow.BlockedNs() / 1e6}
 }
 
 // --- Handschlag ----------------------------------------------------------------------------------------------------
