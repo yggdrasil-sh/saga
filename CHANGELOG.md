@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Anrufe über ICE-TCP und TURN-TLS: weniger Verzögerung auf engem Downlink
+- Auf den TCP-Wegen bemerkte der Anrufknoten eine enge Leitung zum Gerät erst, wenn die Puffer unterwegs voll waren:
+  Das Bild kam dann mit rund 1,5 s Verzögerung (in Spitzen 3 s), der Knoten wechselte ständig zwischen zwei Schichten.
+  Jetzt meldet das Gerät auch auf diesen Wegen, wann jedes Paket ankam (transport-cc), und der Knoten schaltet herunter,
+  sobald unterwegs eine Schlange wächst. CHANGELOG_PLATZHALTER Abschalten zur Prüfung:
+  `HORN_TCP_STAU=0`. Einzelheiten: `gjallarhorn/NODE.md` („TCP-Wege: Ende-zu-Ende-Stausignal“).
+
 ### Neu – Anrufe der Apps über die Saga-Adresse hinter jedem Reverse Proxy (Tunnel, Gjallarhorn experimentell)
 - **Medien-Tunnel `/api/sfu/ws`:** Die Apps reichen ICE-TCP je Leitung als WebSocket (Unterprotokoll `saga-tunnel.1`)
   an die normale Saga-Adresse; saga-media gibt ihn roh an den eingebauten Knoten, der ihn in seine ICE-TCP-Weiche

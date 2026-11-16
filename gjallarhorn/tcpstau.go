@@ -154,8 +154,10 @@ func tcpAttach(l *leg, sl *sfu.Leg, m *bwe.Mitleser, mode string) {
 		s := tcpSig(m)
 		if logOn {
 			// Takt der Steuerung (unter der Sperre des Raums): nur das Signal, keine Kennungen ausser der Kurzkennung
-			go log.Printf("tcpstau %s ok=%t q=%dms sent=%dk ack=%dk fb=%dms", id, s.OK, s.Queue.Milliseconds(),
-				int(s.SentBps/1000), int(s.AckedBps/1000), s.FbAge.Milliseconds())
+			// rr: Umlaufzeit aus dem letzten Empfaengerbericht (RTCP, zum Vergleich)
+			rr := time.Duration(l.rttNs.Load())
+			go log.Printf("tcpstau %s ok=%t q=%dms sent=%dk ack=%dk fb=%dms rr=%dms", id, s.OK, s.Queue.Milliseconds(),
+				int(s.SentBps/1000), int(s.AckedBps/1000), s.FbAge.Milliseconds(), rr.Milliseconds())
 		}
 		if mode == tcpStauMit {
 			s.OK = false

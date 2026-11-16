@@ -893,6 +893,43 @@ Ohne Engpass bzw. mit Stau anderer Art ändert die Kopplung nichts (je n = 3, vo
 (427–429 ms; nachher in 2 von 3 Läufen ein Einfrierer von 0,2 s). Vier Geräte auf TURN-TLS: Knoten-CPU 11–12 % statt
 12 % (kein Loopback-UDP mehr).
 
+## TCP-Wege: Ende-zu-Ende-Stausignal (2.5)
+
+Auf ICE-TCP und TURN-TLS schätzt der Knoten aus dem Alter seiner eigenen Warteschlange. Das sieht einen engen Downlink
+erst, wenn die Puffer außerhalb des Knotens voll sind – Warteschlange der Leitung und Empfangsfenster der
+TCP-Verbindung (im Prüfstand 64 KiB, bei 600 kbit/s fast 0,9 s). Bis dahin schreibt TCP ohne Verlust weiter, und das
+Bild kommt mit 1,5 s Verzögerung (p95 ~3 s) an.
+
+Seit 2.5 (`HORN_TCP_STAU`, Standard an):
+
+- Die abgehenden Pakete der TCP-Wege tragen wie auf UDP die transport-cc-Folgenummer. Das Gerät meldet die Ankunft
+  (Chromium/libwebrtc: alle ~60 ms). Ein Mitleser (`internal/bwe`, derselbe wie bei `HORN_BWE`, hier ohne GCC) ordnet
+  die Rückmeldungen zu (`tcpstau.go`).
+- Je Takt (200 ms) liest das Bein daraus: die **Schlange unterwegs** (kleinste Laufzeit der letzten 5 gemeldeten
+  Pakete über der kleinsten der letzten 30 s) und **gesendet gegen bestätigt** derselben Pakete über rund 1 s.
+- Regel (`internal/sfu/tcpstau.go`): Stau, wenn die Schlange 2 Takte in Folge über 100 ms liegt, gesendet über
+  1,05 × bestätigt liegt und die Schlange seit dem ersten dieser Takte um mindestens 40 ms gestiegen ist. Dann senkt die
+  Schätzung wie bei der eigenen Warteschlange – auf 85 % der **bestätigten** Rate. Danach 5 s kein Schritt nach oben,
+  solange die Schlange über 40 ms steht (Abbau).
+- Eine stehende Schlange, die nicht wächst, ist kein Stau: Ein Download auf derselben Leitung hält sie voll (Prüfstand:
+  Sprung 0 → 230 ms in einem Takt, dann flach), und kein Herunterschalten leert sie. Ebenso keine Wirkung ohne frische
+  Rückmeldung (älter als 600 ms). UDP-Beine (mit GCC) werten das Signal nicht – dort bleibt alles, wie es war.
+- Warum nicht die RTT aus den RTCP-Empfängerberichten: ein Wert je Senderbericht (1 s) und je gemeldetem SR mit bis zu
+  1 s Verzug – bei 150 ms Wachstum je Sekunde zu spät und zu grob. Warum kein Fenster wie im Tunnel A3 (Bytes unterwegs
+  gegen Quittungen): Die Laufzeit aus transport-cc misst die Schlange selbst, unabhängig vom Abstand und von der
+  Verzögerung der Rückmeldungen (Uplink-Engpass); ein Fenster müsste beides als Reserve tragen. Gemessen reicht das
+  Signal allein (siehe unten).
+- Schalter: `HORN_TCP_STAU=0` aus (Gegenprobe: TCP-Wege senden ohne transport-cc, Verhalten wie vorher), `mit` nur
+  messen (Zähler, Log; die Schätzung bleibt bei der eigenen Warteschlange). `HORN_TCP_STAU_LOG=1`: je Takt und Bein eine
+  Zeile `tcpstau <bein> ok= q= sent= ack= fb=` (Messläufe). Zähler in `GET /api/sfu/leg/{id}` → `tcp_stau`
+  (`downs`, `holds`, `stale`, `queue_ms`, …).
+- Kosten: 8 Byte je Paket (Kopf-Erweiterung) und die Rückmeldungen des Geräts auf dem Uplink (~1–2 kbit/s).
+- Tests: `internal/sfu/tcpstau_test.go` (frei Takt für Takt gleich wie ohne, wachsende Schlange, Sprung durch fremden
+  Download, alte Rückmeldung, Ausschlag eines Takts, UDP unberührt), `TestTCPStauAbgriff`/`TestTCPStauAus`
+  (Interceptor-Kette), `TestMitleserRecent`.
+
+MESSUNG_PLATZHALTER
+
 ## Einfrieren auf TCP (5G-Messung, G4)
 
 Eine Messung über TURN-TLS/5G mit dem Spiegel ergab 5,45 Einfrieren je Bildplatz und 5 min. Ursache ist
