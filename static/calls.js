@@ -3723,6 +3723,7 @@
     var H = R.horn, L = conn.legs[role];
     if (!L) return;
     delete conn.legs[role];
+    L.replaced = true;                                 // Ereigniskanal (onclose) nicht neu verbinden, Meldungen nicht mehr verarbeiten
     if (L.id && !conn.closed && !R.done && !R.ending) hornFetch(conn.url + '/api/sfu/leg/' + encodeURIComponent(L.id), null, 'DELETE').catch(function () {});
     hornLegDrop(R, conn, L);
     if (H) hornLog(H, conn, 'zu ' + role);
