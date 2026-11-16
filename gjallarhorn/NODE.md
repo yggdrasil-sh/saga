@@ -927,8 +927,10 @@ Seit 2.5 (`HORN_TCP_STAU`, Standard an):
   Zeile `tcpstau <bein> ok= q= sent= ack= fb=` (Messläufe). Zähler in `GET /api/sfu/leg/{id}` → `tcp_stau`
   (`downs`, `holds`, `stale`, `queue_ms`, …).
 - Kosten: bis 8 Byte je Paket (Kopf-Erweiterung) und die Rückmeldungen des Geräts auf dem Uplink: im Prüfstand
-  ~16/s auf dem Bild-Bein und ~7/s auf dem Ton-Bein (das Ton-Bein wertet sie nicht aus – ohne Bildplätze keine
-  Schätzung), zusammen geschätzt 8–15 kbit/s; gemessen bei 500 kbit/s Uplink bekommt das Gegenüber 3–4 % weniger.
+  ~16/s auf dem Bild-Bein. Die Ton-Leitung (`role=audio`) bekommt weder Nummern noch Mitleser (`tcpWants`: nur Beine
+  mit Bild-Ausgängen – ohne Bildplätze gibt es keine Schätzung, die das Signal nutzen könnte). Gemessen bei 500 kbit/s
+  Uplink bekommt das Gegenüber 1–2 % weniger (ICE-TCP 249/253, TURN-TLS 232/238 kbit/s, n = 2; mit Nummern auch auf dem
+  Ton-Bein waren es 247 bzw. 228).
 - A3 (Weg `ws`): **Standard aus**, an mit `HORN_TCP_STAU_WS=1`. Auf dem Downlink wirkt es dort wie auf ICE-TCP (das
   Fenster des Tunnels muss dann nicht mehr greifen), aber am A3-Prüfstand mit engem **Uplink** (500 kbit/s) brach mit
   den Folgenummern auf dem Downlink der Uplink des Geräts ein: Chromiums Schätzung schaltete die Schicht m ab, das
@@ -966,10 +968,10 @@ dazu n = 3 aus der Messung der Kopplung):
 | frei, RTT 20 | 164/176 → 161/175 ms, 30 fps | 163/178 → 167/180 ms, 30 fps |
 | RTT 170 | 238/249 → 236/251 ms | 249/265 → 242/253 ms |
 | 1 % TCP-Verlust, RTT 60 | 191/203 → 182/195 ms, 0 Einfr. | 192/209 → 191/207 ms, 0 Einfr. |
-| Uplink 500 kbit/s (Gegenüber empfängt) | 254 → 247 kbit/s, 0 Einfr. | 238 → 228 kbit/s, 0 Einfr. |
+| Uplink 500 kbit/s (Gegenüber empfängt) | 254 → 250 kbit/s, 0 Einfr. | 238 → 233 kbit/s, 0 Einfr. |
 | 4 Geräte, Knoten-CPU | 8,9 → 8,4 % | 9,3 → 10,3 % |
 
-Preis: die Rückmeldungen auf dem Uplink (der Uplink des Gegenübers sinkt bei 500 kbit/s um 3–4 %) und etwas Rechenzeit
+Preis: die Rückmeldungen auf dem Uplink (das Gegenüber bekommt bei 500 kbit/s Uplink 1–2 % weniger, nur noch das Bild-Bein meldet) und etwas Rechenzeit
 im Knoten (4 Geräte auf TURN-TLS: +1 Prozentpunkt). Kacheln auf TCP in der Gruppe liefen in beiden Ständen mal mit
 15, mal mit 30 Bildern/s (vom Absender abhängig, wie schon bei der Prüfung der Kopplung). Gegenprobe
 `HORN_TCP_STAU=0` (600 kbit/s, n = 2 je Weg): wie vorher (Latenz 1,44/1,45 s, p95 2,8/3,2 s). Zum Vergleich der Kandidat RTT
