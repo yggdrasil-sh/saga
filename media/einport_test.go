@@ -441,6 +441,10 @@ func TestEinportHandover(t *testing.T) {
 	go func() { _, _ = te.dialTLS(t, pp, []string{"acme-tls/1"}) }()
 	h = n.next(t)
 	h.c.Close()
+	// Handed zaehlt saga-media erst nach dem Senden des Sockets - der Knoten kann ihn schon vorher haben (CI e047b9e)
+	for i := 0; i < 100 && te.e.st.Handed.Load() < 4; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if te.e.st.Handed.Load() != 4 || te.e.st.ACME.Load() != 1 || te.e.st.ICE.Load() != 1 {
 		t.Errorf("zaehler handed=%d acme=%d ice=%d", te.e.st.Handed.Load(), te.e.st.ACME.Load(), te.e.st.ICE.Load())
 	}
