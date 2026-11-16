@@ -64,6 +64,7 @@ func TestTCPStauWachsend(t *testing.T) {
 	if v := r.step(900e3, 5*time.Millisecond); v != before {
 		t.Fatalf("erster Takt ueber der Schwelle: %v statt %v (halten)", v, before)
 	}
+	r.set(190*time.Millisecond, 900e3, 560e3)
 	v := r.step(900e3, 5*time.Millisecond)
 	if want := 560e3 * 0.85; v < want*0.99 || v > want*1.01 {
 		t.Fatalf("stau: %v, erwartet %v", v, want)
@@ -150,5 +151,38 @@ func TestTCPStauNichtUDP(t *testing.T) {
 	}
 	if a.e.e2eOn {
 		t.Fatal("UDP-Bein wertet das Signal")
+	}
+}
+
+// Sprung der Schlange (Download beginnt auf derselben Leitung): Sie steht danach, gesendet liegt noch rund 1 s ueber
+// bestaetigt (die Spanne enthaelt den Sprung) - kein Stau, solange sie nicht weiter waechst. Waechst sie danach doch
+// (der Knoten selbst ueberlastet die Leitung), greift die Regel.
+func TestTCPStauSprung(t *testing.T) {
+	r := newTCPRig(t)
+	for i := 0; i < 20; i++ {
+		r.set(2*time.Millisecond, 640e3, 640e3)
+		r.step(640e3, 5*time.Millisecond)
+	}
+	before := r.e.bps
+	for i, q := range []int{227, 237, 237, 238, 244, 241, 237, 235, 236, 240, 246, 233} {
+		sent, ack := 632e3, 530e3
+		if i >= 5 {
+			ack = 630e3
+		}
+		r.set(time.Duration(q)*time.Millisecond, sent, ack)
+		if v := r.step(640e3, 5*time.Millisecond); v < before {
+			t.Fatalf("takt %d (q %d ms): gesenkt auf %v", i, q, v)
+		}
+	}
+	if r.e.e2e.Downs != 0 {
+		t.Fatalf("sprung: %+v", r.e.e2e)
+	}
+	// jetzt waechst sie weiter
+	for _, q := range []int{250, 280, 310} {
+		r.set(time.Duration(q)*time.Millisecond, 900e3, 600e3)
+		r.step(900e3, 5*time.Millisecond)
+	}
+	if r.e.e2e.Downs != 1 {
+		t.Fatalf("danach wachsend: %+v", r.e.e2e)
 	}
 }

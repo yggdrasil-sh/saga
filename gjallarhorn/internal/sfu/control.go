@@ -1202,13 +1202,14 @@ type estimator struct {
 	downWhy string
 	downAt  int64
 	// Ende-zu-Ende-Signal der TCP-Wege (tcpstau.go, Leg.ExtQueue)
-	e2eOn      bool         // das Bein hat es
-	e2e        TCPStauStats // Zaehler und letzter Stand
-	e2eN       int          // Takte in Folge mit Schlange ueber congAge
-	e2eHit     bool         // in diesem Takt: Stau laut Signal
-	e2eAge     bool         // ... und das Alter der Schaetzung kommt von ihm (nicht von der eigenen Warteschlange)
-	e2eHold    bool         // in diesem Takt: kein Schritt nach oben wegen des Signals
-	e2eDrainTo int64        // nach einem Stau laut Signal: bis hierhin halten, solange die Schlange steht
+	e2eOn      bool          // das Bein hat es
+	e2e        TCPStauStats  // Zaehler und letzter Stand
+	e2eN       int           // Takte in Folge mit Schlange ueber congAge
+	e2eRef     time.Duration // ... und ihr kleinster Wert darin
+	e2eHit     bool          // in diesem Takt: Stau laut Signal
+	e2eAge     bool          // ... und das Alter der Schaetzung kommt von ihm (nicht von der eigenen Warteschlange)
+	e2eHold    bool          // in diesem Takt: kein Schritt nach oben wegen des Signals
+	e2eDrainTo int64         // nach einem Stau laut Signal: bis hierhin halten, solange die Schlange steht
 }
 
 // legNote: Ereignis der Schaetzung in diesem Takt (Beginn bzw. Ende einer Widerlegung) - planLeg macht daraus ein
