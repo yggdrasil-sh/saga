@@ -75,6 +75,17 @@ Platzhalter: `horn-1.example.org`.
     30 s Stabilität beginnt sie wieder bei 3 s. Fallen alle Schichten zugleich weg (Sender, Netz, Freigabe
     pausiert), gibt es keine Wartezeit. Budget-Wechsel (Schätzung, Kontingent) bleiben bei `layerStep`. Die Brücke
     meldet `on` ungefiltert; die Hysterese wirkt am Knoten, der die Schicht wählt.
+  - Quellenwechsel ist kein Wechsel nach unten (`slot.swapped`, 2.5): Nach dem Wiederverbinden eines Geräts (Bein mit
+    derselben `leg_ref` ersetzt – dann auch ein neues Peer-Objekt derselben ID –, Übergabe UDP/TCP, „Hierher
+    übernehmen“, Netzwechsel) kommen die neuen Quellen nacheinander (`l` zuerst, `m` wartet auf sein Schlüsselbild).
+    Nimmt der Platz dabei zuerst eine tiefere Schicht, beginnt er auf ihr neu wie nach einer Pause – ohne die 4 s
+    Sperre, ohne Aufschub und ohne Rückfall für Probing/Bremse; die Vorgeschichte des Platzes (Aufschub je Schicht,
+    frühere Wechsel nach unten) bleibt. Das gilt, wenn die gewählte Quelle nicht live ist (vom Teilnehmenden kommt
+    gerade nichts) oder wenn die bisherige weg ist (abgemeldet, anderes Peer-Objekt, nicht live) und die neue nach ihr
+    angemeldet wurde (`source.added`). Flattern und Budget (die tiefere Schicht lief schon daneben) bleiben, wie oben.
+  - Der Sprecherplatz zeigt nie das eigene Gerät: „für den Hauptsprecher selbst der vorige“ (`prevDom`) kann das Gerät
+    selbst sein, wenn es Hauptsprecher war, dann ein anderer, und dieser verschwindet (letztes Bein zu beim
+    Wiederverbinden) – dann wie ohne Hauptsprecher die zuletzt Sprechenden mit Bild.
   - PLI-Bremse: höchstens eine Anforderung je Quelle und `fwd.PLIInterval` (500 ms), für alle Empfänger zusammen;
     Abo-Wechsel (`Out.Assign`, auch über die Brücke: `pli` bzw. neuer Ausgang auf der Gegenseite) laufen durch
     dieselbe Bremse (`TestPLIAbstandBeiWechsel`).
@@ -1193,9 +1204,15 @@ kodierte, schon Frame-E2E-versiegelte Rahmen; der Knoten macht daraus RTP und um
   bekommen in `static/horn.js` +30 ms (`FRAMES_ONLY_MS`, mehr als der Bonus „Anruf schon hier“ 25 ms): ein Knoten mit UDP
   gewinnt, bis er 20 ms weiter weg ist. WebKit (Safari, iOS, WKWebView) meldet vorerst kein `frames` (ungeprüft;
   `calls.js hornWebKit` nach `navigator.vendor`, Rückhalt UA) – die Mac-Hülle nimmt weiter ihren Tunnel (`ws`).
-- **Bekannte Grenze:** Nach dem Wiederverbinden (ersetztes Bein = neue Quellen) bekommt der Sprecherplatz zuerst `l`
-  der neuen Quelle; `internal/sfu/control.go` wertet das als Schritt nach unten (gleicher Besitzer) → `layerDwell` 4 s,
-  `m` erst nach rund 5 s. Offen (Fix gehört in die Schichtwahl).
+- **Wiederverbinden (Prüfer B2 F5, behoben):** Der Sprecherplatz der Gegenstelle kam erst nach rund 5 s zurück auf `m`.
+  Am Messstand (`shaper-restart`, 1:1) lag es am Besitz des Platzes: Das wiederverbindende Gerät war Hauptsprecher, mit
+  seinen Beinen verschwand es aus dem Raum, die Gegenstelle wurde Hauptsprecherin und bekam über `prevDom` sich selbst
+  auf den Sprecherplatz, das Gerät nur eine Kachel (`l`). Bei einem neuen Bein mit derselben `leg_ref` (UDP, TURN-TLS)
+  nahm der Platz zuerst `l` der neuen Quellen, das galt als Schritt nach unten (`layerDwell`). Beides behoben (siehe
+  „Schichten“ oben). Gemessen (Gegenstelle TURN-TLS, ab Schnitt bzw. neuem Bein, n = 3): Rahmen-Weg mit vorherigem
+  Hauptsprecherwechsel 5,1–5,6 s → 1,4–1,6 s (Platz direkt auf `m`, ohne Kachel), ohne 1,4–1,5 s → 1,4–1,5 s; neues
+  UDP-Bein `m` 1,3/4,6/4,6 s → 0,5–1,2 s; neues TURN-TLS-Bein 0,5/1,3/4,5 s → 0,6–1,3 s (vorher schnell nur, wenn
+  zwischen altem und neuem Bein ein Takt ohne Quelle lag). Modelle: `internal/sfu/wieder_test.go`.
 - **Prüfstand:** `e2e/b2mess` (Knoten mit TURN-TLS für die Gegenstelle, saga-media, NPM-Nachbau, engpass;
   `b2stand.sh`, Messlauf `call.mjs`, Seite `b2.html` mit den Produkt-Dateien), Reihe `tests/b2_frames.py`.
 

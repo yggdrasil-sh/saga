@@ -36,8 +36,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Knoten: Fenster des Tunnels als gemeinsamer Baustein (`wstun.Flow`), Eingangsdrossel nach `max_kbit` (nur Bild; Ton nur
   über 4× Nennrate verworfen – Schutz vor Flut), Zähler `stats.frames`, Lastmeldung `paths`. Saga: Fähigkeit `frames`
   (caps), Kandidat `frames`, `config.horn_ready_frames`.
-- **Bekannte Grenze:** Nach einem Wiederverbinden zeigt der Sprecherplatz die anderen erst nach rund 5 s wieder in der
-  großen Schicht (vorher die kleine).
+
+### Behoben – Anrufe über Gjallarhorn: Sprecherplatz nach dem Wiederverbinden sofort wieder groß
+- Verband sich ein Gerät neu (Netzwechsel, Abbruch, Wechsel zwischen UDP und TCP, „Hierher übernehmen“), zeigte der
+  Sprecherplatz der anderen es erst nach rund 5 s wieder in der großen Schicht – vorher klein auf einer Kachel bzw. in
+  der kleinen Schicht, im Gespräch zu zweit stand kurz das eigene Bild (schwarz) auf dem Sprecherplatz. Jetzt ist es
+  zurück, sobald sein Bild wieder da ist (gemessen 0,5–1,6 s ab dem Abbruch statt bis 5,6 s). Der Schutz gegen echte
+  Rückfälle (Stau, flatternde Schichten, Aufschub nach Fehlversuchen) bleibt.
 
 ### Behoben – Gjallarhorn: erster Stau eines Beins kurz nach dem Start
 - Die Bitraten-Schätzung eines Beins verdoppelte in den ersten 20 s nach dem Start des Knotens die Sperrzeit schon beim
