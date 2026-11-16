@@ -120,7 +120,13 @@ async function answer(p, id) {
     ps.push(await session(3, 'noframes'));
     const act = ps.filter(Boolean);
     for (const p of act) await chatKeys(p);
-    const devs = []; for (const p of ps) devs.push(p ? await dev(p) : null);
+    const devs = [];
+    for (let i = 0; i < ps.length; i++) {
+      if (!ps[i]) { devs.push(null); continue; }
+      const d = await until(() => ps[i].evaluate(() => window.HKChat && window.HKChat.state() && window.HKChat.state().device), 15000);
+      if (!d) console.log('  [' + L[i] + '] ohne Geraet: ' + ps[i].url() + ' ' + await ps[i].evaluate(() => typeof window.HKChat + ' ' + document.title));
+      devs.push(d);
+    }
     const members = USERS.filter((u, i) => i > 0 && ps[i]);
     const mk = await api(ps[0], 'POST', '/api/chats', { kind: 'free', members, device: devs[0] });
     ok('freie Gruppe', mk.ok, mk);
