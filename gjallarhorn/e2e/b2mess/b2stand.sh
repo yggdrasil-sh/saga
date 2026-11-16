@@ -11,7 +11,7 @@ HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../../.." && pwd)
 K=b2stand0123456789abcdef
 case "${1:-status}" in
 start)
-  mkdir -p $D/hdata $D/run $D/nginx/conf $D/nginx/logs $D/big
+  mkdir -p $D/hdata $D/run $D/runs $D/nginx/conf $D/nginx/logs $D/big
   rm -f $D/node.sock
   [ -f $D/big/blob.bin ] || head -c 100000000 /dev/urandom > $D/big/blob.bin
   [ -f $D/nginx/cert.pem ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout $D/nginx/key.pem \
