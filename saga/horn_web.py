@@ -47,7 +47,7 @@ def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=N
     diese Knoten (geteilte), quota = Kontingent des verbundenen Servers (im Token)."""
     now = now or time.time()
     gen = horn.leg_gen(c, call["id"], dev)
-    if ws is None:                                      # 2.5 A3 (S10): Tunnel-Knoten nur fuer Geraete mit caps "ws"
+    if ws is None:                                      # 2.5 A3 (S10): Tunnel-Knoten nur fuer Geraete mit caps "ws" (B2: "frames")
         ws = horn.leg_ws(c, call["id"], dev)
     ns = [n for n in horn.ready_nodes(c, now, ws=ws) if n["name"] not in avoid and (only is None or n["id"] in only)]
     h = home(c, call["id"], ns)
@@ -64,8 +64,9 @@ def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=N
         # tcp/tls/ws (2.5 einport + A3, Vertrag S5): tcp false = kein rohes ICE-TCP (TLS-Durchreiche, Tunnel-Betrieb), tls
         # false = kein TURN-TLS (Tunnel-Betrieb hinter einem TLS-beendenden Proxy), ws = Medien-Tunnel /api/sfu/ws unter url.
         # Aeltere Geraete ignorieren die Felder.
+        # frames (2.5 B2, S12.5): Rahmen-Weg der Browser ueber dieselbe Adresse (/api/sfu/ws, saga-frames.1)
         out.append({"node": n["name"], "url": n["url"], "udp": udp, "tcp": horn.ice_tcp(n), "tls": horn.tls_ok(n), "ws": horn.ws_ok(n),
-                    "here": n["id"] == h, "load": round(horn.util(n), 3),
+                    "frames": horn.frames_ok(n), "here": n["id"] == h, "load": round(horn.util(n), 3),
                     "peer": horn.peer_ref(call["id"], n["id"], dev, gen), "gen": gen, "tokens": toks, "exp": int(now) + horn.TOKEN_TTL})
     return out
 

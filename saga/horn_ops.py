@@ -947,10 +947,32 @@ def tunnel_view(out, now=None):
          "udp_port": real.get("udp_port"), "open": t.get("open") or 0, "total": t.get("total") or 0, "win_kib": t.get("win_kib") or 0,
          "rtt_ms": t.get("rtt_ms") or 0, "rtt_max_ms": t.get("rtt_max_ms") or 0, "last_open": t.get("last_open") or None,
          "no_upgrade": t.get("no_upgrade") or 0, "last_no_upgrade": t.get("last_no_upgrade") or None,
-         "auth_fail": t.get("auth_fail") or 0, "limited": t.get("limited") or 0, "reported": bool(t)}
+         "auth_fail": t.get("auth_fail") or 0, "limited": t.get("limited") or 0, "reported": bool(t),
+         # 2.5 B2: Browser ueber den Rahmen-Weg (saga-frames.1) - offene WebSockets und Beine je Weg aller eigenen Knoten
+         "frames_on": bool(real.get("frames")), "frames": t.get("frames") or 0, "frames_total": t.get("frames_total") or 0,
+         "paths": path_share(out)}
     # Anfragen ohne Upgrade in der letzten Stunde und seitdem kein Tunnel: der Proxy reicht WebSocket (noch) nicht durch
     v["ws_warn"] = bool(v["last_no_upgrade"] and now - v["last_no_upgrade"] < 3600 and (v["last_open"] or 0) < v["last_no_upgrade"])
     return v
+
+
+def path_share(out):
+    """2.5 B2: Beine je Weg aller eigenen verbundenen Knoten (Lastmeldung load.paths) -> [{path, n, pct}] in fester
+    Reihenfolge (udp, tcp, turn, ws = Tunnel der Apps, frames = WebSocket der Browser), nur Wege mit Beinen; None ohne
+    Meldung bzw. ohne Beine."""
+    tot = {k: 0 for k in horn.PATHS}
+    seen = False
+    for n in out:
+        p = n.get("paths")
+        if not n.get("ctl") or not isinstance(p, dict):
+            continue
+        seen = True
+        for k in horn.PATHS:
+            tot[k] += int(p.get(k) or 0)
+    s = sum(tot.values())
+    if not seen or not s:
+        return None
+    return [{"path": k, "n": tot[k], "pct": round(100 * tot[k] / s)} for k in horn.PATHS if tot[k]]
 
 
 def builtin_warn():
@@ -999,6 +1021,7 @@ def admin_state():
                     "tcp": bool(ck.get("v4") or ck.get("v6")) if ck else (n["id"] in horn._CONNS),
                     "udp": bool(n["udp"]), "udp_check": (horn._LIVE.get(n["id"]) or {}).get("udp_check") or "", "udp_port": horn.udp_port(n),
                     "ice_tcp": horn.ice_tcp(n), "ws": horn.ws_ok(n), "tunnel": horn.tunnel_mode(n), "tunnels": horn.tunnel_report(n),
+                    "frames": horn.frames_ok(n), "paths": horn.path_report(n),
                     "cpu": round(100 * float(ld.get("cpu") or 0)), "up": round(float(ld.get("up") or 0), 1),
                     "link": n.get("link_mbit"), "util": round(100 * horn.util(n)), "peers": int(ld.get("peers") or 0),
                     "legs": int(ld.get("legs") or 0), "version": n.get("version") or "", "share": bool(n["share"]),

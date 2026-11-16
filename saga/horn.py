@@ -326,9 +326,10 @@ def alive(n, now=None):
 
 def ready_nodes(c, now=None, ws=False):
     """Bereite Knoten, beste zuerst (kleine Auslastung; ab PENALTY Abzug). ws (2.5 A3, Vertrag S10): das Geraet kann den
-    Medien-Tunnel (caps "ws") - nur dann zaehlen Knoten im Tunnel-Betrieb (sonst fuer Browser und aeltere Apps
-    unerreichbar: kein TURN-TLS, kein ICE-TCP; UDP aus dem Selbsttest ist fuer den Browser kein sicherer Beleg)."""
-    ns = [n for n in nodes(c) if ready(n, now) and (ws or not tunnel_mode(n))]
+    Medien-Tunnel (caps "ws", True bzw. "ws") - nur dann zaehlen Knoten im Tunnel-Betrieb (sonst fuer Browser und aeltere
+    Apps unerreichbar: kein TURN-TLS, kein ICE-TCP; UDP aus dem Selbsttest ist fuer den Browser kein sicherer Beleg).
+    ws = "frames" (2.5 B2, Vertrag S12.5): Browser mit dem Rahmen-Weg - Tunnel-Knoten nur, wenn sie ihn anbieten."""
+    ns = [n for n in nodes(c) if ready(n, now) and reachable(n, ws)]
     ns.sort(key=lambda n: (util(n) + (0.5 if util(n) >= PENALTY else 0), not n["builtin"], n["name"]))
     return ns
 
@@ -337,21 +338,39 @@ def any_ready(c, ws=False):
     return horn_on() and bool(ready_nodes(c, ws=ws))
 
 
+def reachable(n, ws):
+    """Erreicht ein Geraet mit diesem Weg (caps_reach) den Knoten? Tunnel-Knoten nur mit "ws" bzw. "frames" (S10/S12.5)."""
+    if not tunnel_mode(n):
+        return True
+    return ws is True or ws == "ws" or (ws == "frames" and frames_ok(n))
+
+
+def caps_reach(caps):
+    """Weg eines Geraets zu Knoten im Tunnel-Betrieb aus seinen caps: "ws" (Medien-Tunnel der Apps/Huelle, Vertrag S10),
+    "frames" (Rahmen-Weg der Browser, B2, S12.5) oder False. caps als Liste oder JSON-Text (calls.caps_in)."""
+    if isinstance(caps, str):
+        try:
+            caps = json.loads(caps)
+        except ValueError:
+            return False
+    if not isinstance(caps, (list, tuple, set)):
+        return False
+    if "ws" in caps:
+        return "ws"
+    if "frames" in caps:
+        return "frames"
+    return False
+
+
 def caps_ws(caps):
-    """Geraet kann den Medien-Tunnel (caps enthaelt "ws", Vertrag S10)."""
-    return isinstance(caps, (list, tuple, set)) and "ws" in caps
+    """Geraet erreicht Tunnel-Knoten (caps "ws" bzw. "frames")."""
+    return bool(caps_reach(caps))
 
 
 def leg_ws(c, cid, dev):
-    """caps "ws" am Endpunkt dieses Geraets im Anruf (Saga merkt sich die caps je Endpunkt)."""
+    """Weg zu Tunnel-Knoten (caps_reach) am Endpunkt dieses Geraets im Anruf (Saga merkt sich die caps je Endpunkt)."""
     r = c.execute("SELECT caps FROM chat_call_leg WHERE call_id=? AND device=?", (cid, dev)).fetchone()
-    v = r[0] if r else None
-    if isinstance(v, str):
-        try:
-            v = json.loads(v)
-        except ValueError:
-            v = None
-    return caps_ws(v)
+    return caps_reach(r[0] if r else None)
 
 
 def tunnel_only(c, cid, now=None):
@@ -431,7 +450,7 @@ def candidates(c, call, dev, role="member", dev_class="desktop", now=None):
         # tls/ws (2.5 A3, Vertrag S5): Tunnel-Betrieb (eingebauter Knoten hinter einem TLS-beendenden Proxy) ohne TCP/TLS,
         # mit ws; sonst ws zusaetzlich als letzter Weg. Aeltere Apps ignorieren beide Felder.
         out.append({"node": n["name"], "url": n["url"], "udp": udp, "tcp": ice_tcp(n), "tls": tls_ok(n), "ws": ws_ok(n),
-                    "here": n["id"] == cur, "load": round(util(n), 3),
+                    "frames": frames_ok(n), "here": n["id"] == cur, "load": round(util(n), 3),
                     "peer": peer_ref(call["id"], n["id"], dev, gen), "gen": gen, "tokens": toks, "exp": int(now) + TOKEN_TTL})
     return out
 
@@ -458,10 +477,24 @@ def ws_ok(n):
     return bool((_LIVE.get(n["id"]) or {}).get("ws"))
 
 
+def frames_ok(n):
+    """Knoten bietet den Rahmen-Weg der Browser (saga-frames.1, hello frames; aeltere Knoten: nein)."""
+    return bool((_LIVE.get(n["id"]) or {}).get("frames"))
+
+
+PATHS = ("udp", "tcp", "turn", "ws", "frames")   # Beine je Weg in der Lastmeldung (ws = A3-Tunnel, frames = B2)
+
+
+def path_report(n):
+    """Beine je Weg des Knotens (Lastmeldung load.paths) oder None (aelterer Knoten)."""
+    p = (_LIVE.get(n["id"]) or {}).get("paths")
+    return dict(p) if isinstance(p, dict) else None
+
+
 def _clean_tunnels(d):
     """Zaehler des Medien-Tunnels aus der Lastmeldung (gjallarhorn tunnel.go tunnelStats) - nur Zahlen."""
     keys = ("open", "total", "auth_fail", "limited", "no_upgrade", "last_open", "last_no_upgrade", "win_kib", "rtt_ms",
-            "rtt_max_ms", "blocked_ms")
+            "rtt_max_ms", "blocked_ms", "frames", "frames_total")
     return {k: _num(d.get(k), 0, 2 ** 53) for k in keys}
 
 
@@ -645,7 +678,7 @@ def _clean_hello(h):
     uc = str(h.get("udp_check") or "")
     return {"name": name, "url": url, "pub": str(h.get("pub")), "udp": bool(h.get("udp")), "version": str(h.get("version") or "")[:40],
             "ice_tcp": h.get("ice_tcp") is not False, "einport": h.get("einport") is True,
-            "ws": h.get("ws") is True, "tunnel": h.get("tunnel") is True,
+            "ws": h.get("ws") is True, "tunnel": h.get("tunnel") is True, "frames": h.get("frames") is True,
             "udp_check": uc if uc in UDP_CHECKS else "",
             "max_legs": int(h.get("max_legs") or 0) if str(h.get("max_legs") or "0").isdigit() else 0,
             "v4": _ip(h.get("v4"), 4), "v6": _ip(h.get("v6"), 6), "cert": _clean_cert(cert), "upd": _clean_upd(upd)}
@@ -860,7 +893,7 @@ async def ctl(ws: WebSocket):
     stats = {} if builtin else await asyncio.to_thread(_load_stats, nid)
     _LIVE[nid] = {"load": {"max_legs": hh["max_legs"], "legs": 0, "state": "ok"}, "at": time.time(), "db": time.time(), "stats": stats,
                   "drain_ev": False, "udp_check": hh["udp_check"], "ice_tcp": hh["ice_tcp"],
-                  "ws": hh["ws"], "tunnel": hh["tunnel"] and builtin}
+                  "ws": hh["ws"], "tunnel": hh["tunnel"] and builtin, "frames": hh["frames"]}
     welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
     if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)
         welcome["origins"] = await asyncio.to_thread(HOOKS["origins"])
@@ -909,6 +942,8 @@ async def ctl(ws: WebSocket):
                     live["bridges"] = {str(k)[:64]: v for k, v in list(m["load"]["bridges"].items())[:200] if isinstance(v, dict)}
                 if isinstance(m["load"].get("tunnels"), dict):       # 2.5 A3: Zaehler des Medien-Tunnels (Admin)
                     live["tunnels"] = _clean_tunnels(m["load"]["tunnels"])
+                if isinstance(m["load"].get("paths"), dict):         # 2.5 B2: Beine je Weg (Admin, Anteil)
+                    live["paths"] = {k: _num(m["load"]["paths"].get(k), 0, 100000) for k in PATHS}
                 if isinstance(m["load"].get("quotas"), dict):
                     live["quotas"] = {str(k)[:64]: v for k, v in list(m["load"]["quotas"].items())[:200] if isinstance(v, dict)}
                 if ld.get("state") == "draining" and not live.get("drain_ev"):

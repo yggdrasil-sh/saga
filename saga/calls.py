@@ -161,7 +161,8 @@ FEATURE_HO = "handover2"                # 2.5 Anruf-Uebergabe: gen, /leave by/ge
 
 def features():
     # horn_direct1 (Horn-Fix): 429 mit Retry-After auf /horn, POST /direct (Rueckfall auf direkt), call.topo
-    return list(FEATURES) + [FEATURE_HO] + (["horn", "horn_direct1"] if horn_on() else [])
+    # frames (2.5 B2, Vertrag S12): Browser duerfen den Rahmen-Weg ueber die Saga-Adresse nutzen (caps "frames")
+    return list(FEATURES) + [FEATURE_HO] + (["horn", "horn_direct1", "frames"] if horn_on() else [])
 
 
 def ring_s():
@@ -248,7 +249,7 @@ def horn_wanted(c, ch, media, caps, why=None):
     except (TypeError, ValueError):
         frm = 0
     need = max(3, frm) if frm else limit(media) + 1
-    if len(chat.members(c, ch["id"])) < need or not horn.any_ready(c, ws=_has(caps, "ws")):   # S10: Tunnel-Knoten nur mit "ws"
+    if len(chat.members(c, ch["id"])) < need or not horn.any_ready(c, ws=horn.caps_reach(caps)):   # S10/S12.5: Tunnel-Knoten nur mit "ws"/"frames"
         return False
     if chat.is_fed(ch):
         if FED is None or ch["home_peer"] is not None:
@@ -844,7 +845,8 @@ def api_config(request: Request):
                            "turn": has_turn(), "stun": bool(urls(c.get("stun"), ("stun", "stuns"))[0]), "ring_s": ring_s(),
                            "alive_s": 15, "max_s": MAX_S, "format": "saga-call/v1",
                            # 2.4: Body-Fassung, Server-Faehigkeiten und Grenzen (E4/E5: Endpunkte je Anruf im Mesh)
-                           "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1", "horn_ready": _horn_ready(), "horn_ready_ws": _horn_ready(ws=True), "horn_dm": horn_dm_on(),
+                           "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1", "horn_ready": _horn_ready(), "horn_ready_ws": _horn_ready(ws=True),
+                                                                                   "horn_ready_frames": _horn_ready("frames"), "horn_dm": horn_dm_on(),
                                                                                    "horn_dm_fed": FED is not None} if horn_on() else {}),
                            "limits": {"endpoints_video": limit("video"), "endpoints_audio": limit("audio"), "signals_max": SIGNALS_MAX,
                                       "signals_per_min": SIG_PER_MIN, "signals_hard": SIGNALS_HARD, "sig_rate": SIG_RATE,
@@ -854,7 +856,8 @@ def api_config(request: Request):
 
 def _horn_ready(ws=False):
     """2.5 P5: ist gerade ein Knoten bereit? Sonst gilt fuer neue Gruppenanrufe die Mesh-Grenze (Hinweis vor dem Start).
-    ws (2.5 A3, S10): fuer Geraete mit Medien-Tunnel (caps "ws", z. B. die Mac-Huelle) zaehlen auch Knoten im Tunnel-Betrieb."""
+    ws (2.5 A3, S10): fuer Geraete mit Medien-Tunnel (caps "ws", z. B. die Mac-Huelle) zaehlen auch Knoten im Tunnel-Betrieb; ws = "frames"
+    (2.5 B2, S12.5): ebenso fuer Browser mit dem Rahmen-Weg (Knoten mit frames)."""
     with _db() as c:
         return horn.any_ready(c, ws=ws)
 
@@ -1041,7 +1044,7 @@ def _dm_horn_start(c, uid, ch, peer, cid, media, dev, caps, now, dev_class="desk
     'horn', callee = Gegenueber) oder 409 fallback (nichts angelegt)."""
     if not (_has(caps, "horn") and _has(caps, "multi")):
         return _fallback("caps")
-    if not horn.any_ready(c, ws=_has(caps, "ws")):
+    if not horn.any_ready(c, ws=horn.caps_reach(caps)):
         return _fallback("node")
     if not _can_horn(c, peer):
         return _fallback("peer")
@@ -1107,7 +1110,7 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
     node, why = None, []
     hn = lead is None and (dm_peer is not None or horn_wanted(c, ch, media, caps, why))   # 2.5: 1:1 ueber Knoten (geprueft)
     if hn and peer_id is None:
-        node = horn.ready_nodes(c, ws=_has(caps, "ws"))[0]
+        node = horn.ready_nodes(c, ws=horn.caps_reach(caps))[0]
     c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
               "lead, peer_id) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,?,?,?) ON CONFLICT (id) DO NOTHING",
               (cid, ch["id"], starter, dm_peer or "", dev, media, now, now, now, caps, "horn" if hn else "mesh", lead, lead))
@@ -1574,7 +1577,7 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     if hn and signals:
         return _bad(t("ungültige Angabe"))             # ueber Knoten keine Mesh-Angebote
     if hn and peer_id is None:                         # 2.5: Knoten des Anrufs, sonst der beste (Geraete anderer Server
-        ws = _has(caps, "ws")                          # waehlen ueber ihren Server, saga/fed_horn.py)
+        ws = horn.caps_reach(caps)                # waehlen ueber ihren Server, saga/fed_horn.py)
         node = horn_web.pick(c, call["id"], ws=ws)
         if node is None and not ws and call.get("lead") is None and horn.tunnel_only(c, call["id"]):
             # 2.5 A3 (Vertrag S10/S11): Anruf nur auf Tunnel-Knoten, dieses Geraet kann den Tunnel nicht (Browser) - Rueckfall

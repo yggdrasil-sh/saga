@@ -385,8 +385,12 @@ def teil1(media, node):
     st, body = https_get(NGX, "/api/sfu/ws")
     ok("GET ohne Upgrade auch ueber den richtigen Proxy: 426", st == 426, (st, body[:200]))
     # 101 mit Websockets an, Unterprotokoll, Zugang
-    st, hd, s = ws_handshake(NGX, "saga-frames.1")
-    ok("nur saga-frames.1: 400 subprotocol (reserviert)", st == 400 and "subprotocol" in (s if isinstance(s, str) else ""), (st, s if isinstance(s, str) else ""))
+    st, hd, s = ws_handshake(NGX, "saga-frames.1")             # 2.5 B2 (S12): Rahmen-Weg der Browser
+    ok("saga-frames.1: 101 bis zum Knoten (B2)", st == 101 and hd.get("sec-websocket-protocol") == "saga-frames.1", (st, hd))
+    if st == 101:
+        s.close()
+    st, hd, s = ws_handshake(NGX, "chat")
+    ok("fremdes Unterprotokoll: 400 subprotocol", st == 400 and "subprotocol" in (s if isinstance(s, str) else ""), (st, s if isinstance(s, str) else ""))
     st, hd, s = ws_handshake(NGX)
     good = st == 101 and hd.get("sec-websocket-protocol") == "saga-tunnel.1"
     ok("nginx mit \"Websockets Support\": 101 saga-tunnel.1 bis zum Knoten", good, (st, hd))

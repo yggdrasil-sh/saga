@@ -9,7 +9,7 @@ package main
 // Die echte Client-Adresse (X-Forwarded-For nur von TRUSTED_PROXIES) geht in X-Saga-Einport-For, gilt nur mit dem
 // Schluessel X-Saga-Einport-Key (= HORN_CTL_KEY).
 //
-// Medien-Tunnel /api/sfu/ws (WebSocket, saga-tunnel.1; spaeter auch saga-frames.1 fuer den Browser-Weg): roh
+// Medien-Tunnel /api/sfu/ws (WebSocket, saga-tunnel.1 der Apps und saga-frames.1 des Browser-Wegs B2): roh
 // weitergereicht - Anfrage an den Knoten, Antwort zurueck, nach 101 nur noch Bytes in beide Richtungen kopieren.
 // Bytes ja, Logik nein: kein eigener Puffer ausser dem Kopierpuffer, kein Ping, keine Rahmen. Der Knoten prueft
 // Unterprotokoll, Zugang (erste Nachricht, Frist 10 s), Grenzen je Client-Adresse und Lebenszeichen. Die Verbindung
