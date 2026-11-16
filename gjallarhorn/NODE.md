@@ -76,13 +76,16 @@ Platzhalter: `horn-1.example.org`.
     pausiert), gibt es keine Wartezeit. Budget-Wechsel (Schätzung, Kontingent) bleiben bei `layerStep`. Die Brücke
     meldet `on` ungefiltert; die Hysterese wirkt am Knoten, der die Schicht wählt.
   - Quellenwechsel ist kein Wechsel nach unten (`slot.swapped`, 2.5): Nach dem Wiederverbinden eines Geräts (Bein mit
-    derselben `leg_ref` ersetzt – dann auch ein neues Peer-Objekt derselben ID –, Übergabe UDP/TCP, „Hierher
-    übernehmen“, Netzwechsel) kommen die neuen Quellen nacheinander (`l` zuerst, `m` wartet auf sein Schlüsselbild).
-    Nimmt der Platz dabei zuerst eine tiefere Schicht, beginnt er auf ihr neu wie nach einer Pause – ohne die 4 s
+    derselben `leg_ref` ersetzt – dann auch ein neues Peer-Objekt derselben ID –, Übergabe UDP/TCP, Netzwechsel;
+    jeweils dieselbe Peer-Kennung) kommen die neuen Quellen nacheinander (`l` zuerst, `m` wartet auf sein
+    Schlüsselbild). Nimmt der Platz dabei zuerst eine tiefere Schicht, beginnt er auf ihr neu wie nach einer Pause – ohne die 4 s
     Sperre, ohne Aufschub und ohne Rückfall für Probing/Bremse; die Vorgeschichte des Platzes (Aufschub je Schicht,
     frühere Wechsel nach unten) bleibt. Das gilt, wenn die gewählte Quelle nicht live ist (vom Teilnehmenden kommt
     gerade nichts) oder wenn die bisherige weg ist (abgemeldet, anderes Peer-Objekt, nicht live) und die neue nach ihr
-    angemeldet wurde (`source.added`). Flattern und Budget (die tiefere Schicht lief schon daneben) bleiben, wie oben.
+    angemeldet wurde (`source.added`) und nicht schon lief, als der Platz die bisherige nahm. Flattern und Budget (die
+    tiefere Schicht lief schon daneben) bleiben, wie oben – unabhängig von der Anmeldefolge der Schichten. Nicht erfasst:
+    ein anderes Gerät bzw. ein neuer Beitritt („Hierher übernehmen“, Wiedereintritt: neue Peer-Kennung) ist ein
+    Besitzerwechsel; nimmt der Platz dann zuerst `l`, gilt weiter `layerDwell`.
   - Der Sprecherplatz zeigt nie das eigene Gerät: „für den Hauptsprecher selbst der vorige“ (`prevDom`) kann das Gerät
     selbst sein, wenn es Hauptsprecher war, dann ein anderer, und dieser verschwindet (letztes Bein zu beim
     Wiederverbinden) – dann wie ohne Hauptsprecher die zuletzt Sprechenden mit Bild.

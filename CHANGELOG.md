@@ -38,7 +38,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (caps), Kandidat `frames`, `config.horn_ready_frames`.
 
 ### Behoben – Anrufe über Gjallarhorn: Sprecherplatz nach dem Wiederverbinden sofort wieder groß
-- Verband sich ein Gerät neu (Netzwechsel, Abbruch, Wechsel zwischen UDP und TCP, „Hierher übernehmen“), zeigte der
+- Verband sich ein Gerät neu (Netzwechsel, Abbruch, Wechsel zwischen UDP und TCP), zeigte der
   Sprecherplatz der anderen es erst nach rund 5 s wieder in der großen Schicht – vorher klein auf einer Kachel bzw. in
   der kleinen Schicht, im Gespräch zu zweit stand kurz das eigene Bild (schwarz) auf dem Sprecherplatz. Jetzt ist es
   zurück, sobald sein Bild wieder da ist (gemessen 0,5–1,6 s ab dem Abbruch statt bis 5,6 s). Der Schutz gegen echte

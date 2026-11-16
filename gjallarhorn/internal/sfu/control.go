@@ -311,10 +311,11 @@ func layerRank(l string) int {
 //     z. B. Netzwechsel des Senders). Gezeigt wird nichts - zurueck nach unten ist das nicht (flap.go: fallen alle
 //     Schichten zugleich aus, sind sie bei der Rueckkehr sofort nutzbar).
 //   - Die bisherige Quelle ist weg und st kam nach ihr: neues Bein desselben Teilnehmenden (gleiche ID; ersetzt mit
-//     derselben leg_ref - dann auch ein neues Peer-Objekt -, Uebergabe udp/tcp, "Hierher uebernehmen"). Die Schichten
-//     kommen nacheinander (l zuerst, m wartet auf sein Schluesselbild); dass der Platz zuerst l nimmt, ist kein
-//     Rueckfall. Weg heisst: abgemeldet, anderes Peer-Objekt oder nicht mehr live. Eine Schicht, die neben der bisherigen
-//     schon lief (Flattern: m faellt aus, l laeuft weiter; Budget), ist nicht neuer - dafuer bleibt alles wie bisher.
+//     derselben leg_ref - dann auch ein neues Peer-Objekt -, Uebergabe udp/tcp; nicht "Hierher uebernehmen": anderes
+//     Geraet, andere ID). Die Schichten kommen nacheinander (l zuerst, m wartet auf sein Schluesselbild); dass der
+//     Platz zuerst l nimmt, ist kein Rueckfall. Weg heisst: abgemeldet, anderes Peer-Objekt oder nicht mehr live. Eine
+//     Schicht, die neben der bisherigen schon lief (Flattern: m faellt aus, l laeuft weiter; Budget), ist nicht neuer -
+//     dafuer bleibt alles wie bisher.
 func (s *slot) swapped(st *source, now int64) bool {
 	if !st.live(now) {
 		return true
