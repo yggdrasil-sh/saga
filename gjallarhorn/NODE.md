@@ -1127,7 +1127,7 @@ eingebauten Knoten unter der Saga-Adresse: ICE-TCP je Leitung als WebSocket (`tu
 Protokoll `saga-tunnel.1` v1 in `docs/APP-API.md` „Medien-Tunnel“).
 
 - **Endpunkt** `GET /api/sfu/ws` (alle Knoten, auch gekoppelte; am eigenen Port wie über saga-media): ohne `Upgrade`
-  zuerst 426 (`websocket_required`, Zähler `no_upgrade`), ohne `saga-tunnel.1` 400, über der Grenze je Client-Adresse
+  zuerst 426 (`websocket_required`, Zähler `no_upgrade`), ohne `saga-tunnel.1` (und ohne `saga-frames.1`, B2 unten) 400, über der Grenze je Client-Adresse
   (4 × `HORN_MAX_PER_IP`; gesamt 2 × `HORN_MAX_LEGS` + 16) 429. Danach Zugang in der ersten Textnachricht
   (TURN-Zugangsdaten aus `/api/sfu/turn`, HMAC des Knotens, Frist 10 s; jede Herkunft, weil nichts Mitgeschicktes zählt), Antwort `ok` mit `ack_bytes`/`ack_ms`. Erst mit
   dem ersten Datenbyte (Frist 30 s – die App öffnet den WebSocket vorab) geht die Verbindung per `Mux.Inject` an die
@@ -1155,6 +1155,37 @@ Protokoll `saga-tunnel.1` v1 in `docs/APP-API.md` „Medien-Tunnel“).
 - **Prüfstand:** `HORN_INNER_SOCK=<pfad>` (nur `HORN_DEV=1`) legt das interne HTTP selbst an, dazu saga-media ohne
   Kindprozess mit `MEDIA_NODE_SOCK` und `HORN_CTL_KEY`; Werkzeuge `e2e/wstunnel` (App-Stellvertreter), `e2e/engpass`
   (Leitung im Userspace), `e2e/tlsproxy`, Messlauf `e2e/wsmess.mjs`, Testseite `web/dev/?path=ws`.
+
+## Rahmen-Weg der Browser `saga-frames.1` (Saga 2.5, B2)
+
+Browser hinter demselben Proxy telefonieren über denselben Endpunkt mit dem Unterprotokoll `saga-frames.1` (`frames.go`,
+Protokoll in `docs/APP-API.md` „Rahmen-Weg der Browser“, Browser-Seite `static/horn-frames.js`). Statt ICE-TCP kommen
+kodierte, schon Frame-E2E-versiegelte Rahmen; der Knoten macht daraus RTP und umgekehrt.
+
+- **Auswahl:** `apiSFUWS` (tunnel.go) nimmt `saga-tunnel.1`, sonst `saga-frames.1`, sonst 400. 426 und die Grenzen je
+  Client-Adresse (4 × `HORN_MAX_PER_IP`, Handschläge ohne Zugang 32/8) gelten gemeinsam (`tunnels.admit`).
+- **Bein:** erste Textnachricht `join` mit dem Medien-Token wie `POST /api/sfu/leg` (Ed25519, einmalig, Ablauf, Raum aus
+  dem Token – kein offenes Relais), Grenze Beine je Adresse (`HORN_MAX_PER_IP`) und `HORN_MAX_LEGS`, dann
+  `Room.AddLeg(..., PathTCP, ...)`: für die Weiterleitung ein Stromweg (2 Schichten, Kacheln 10 fps, kein Probing). Das
+  Bein steht in der normalen Beinliste (`path` `ws`, `framesLeg`), Ereigniskanal, `GET/DELETE /api/sfu/leg/{id}` und
+  „bein auf/zu … weg=ws art=frames“ wie bei jedem Bein.
+- **Aufwärts (Rahmen → RTP):** VP8-Descriptor mit 15-Bit-PictureID (lückenlos über die weitergeleiteten Rahmen),
+  TL0PICIDX, TID und **Y** (layer sync; ohne Y verwirft libwebrtc beim Empfänger alle Rahmen mit TID > 0), Aufteilung auf
+  1100 Byte; Opus mit audio-level (Top-3-Ton). Lücke in der Rahmen-Nr. des Browsers → bis zum Schlüsselbild nichts
+  weiterleiten, `pli` an den Browser (höchstens alle 500 ms, auch auf Anforderung des Raums). **Eingangsdrossel**
+  `max_kbit` aus dem Token (Standard 4000; Eimer 1 s): darüber Bildrahmen verwerfen – nicht referenzierte der höchsten
+  Zeitschicht ohne Folgen, sonst bis zum Schlüsselbild; Ton nie.
+- **Abwärts (RTP → Rahmen):** ein `fwd.Writer` je Platz setzt VP8 aus den Paketen zusammen (Lücke → bis Schlüsselbild,
+  `KeyRequest`), Fenster über `wstun.Flow` (gemeinsam mit dem Tunnel: 2 × Lieferrate × kleinste RTT + 16 KiB, hier
+  **mindestens 16 KiB**, ganze Rahmen; meldet der Browser > 80 ms Verzögerungszunahme, gilt das Mindestfenster). Ein
+  Bildrahmen, der 400 ms nicht ins Fenster passt, fällt weg (Platz bis Schlüsselbild). Der blockierte Schreiber lässt die
+  Warteschlange des Beins altern – Schätzung, Schichtwahl und Verwerfen wirken wie auf ICE-TCP.
+- **Rückmeldung aufwärts** (alle 50 ms): empfangene Bytes, Echo der Sendezeit, Verzögerungszunahme (Minimum der letzten
+  10 s als Basis) – der Browser regelt damit seine Bildrate.
+- **Zähler:** je Bein `stats.tunnel` (Fenster) und `stats.frames`, Lastmeldung `tunnels.frames`/`frames_total` und
+  `paths {udp, tcp, turn, ws, frames}` (Beine je Weg, Admin → Anrufe), hello `frames: true` (Saga: Kandidat `frames`).
+- **Prüfstand:** `e2e/b2mess` (Knoten mit TURN-TLS für die Gegenstelle, saga-media, NPM-Nachbau, engpass;
+  `b2stand.sh`, Messlauf `call.mjs`, Seite `b2.html` mit den Produkt-Dateien), Reihe `tests/b2_frames.py`.
 
 ## Weitere Knoten (P6/P7): Kopplung, Steuerung, Updates, Zertifikate
 

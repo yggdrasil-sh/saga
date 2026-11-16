@@ -219,10 +219,16 @@ entrega sin cambios al nodo. Gjallarhorn sigue siendo experimental en la 2.5.
 - **Opcional:** como en «Un puerto», se puede añadir UDP 443 (`HORN_UDP_LISTEN=:443`, `"443:443/udp"`; NPM solo usa
   TCP 443); el nodo lo comprueba solo. No es necesario. O usa directamente el modo «Un puerto» (paso de TLS en lugar de
   TLS en el proxy, más abajo).
-- Los **navegadores y las apps antiguas** llamarán a través de un nodo en modo túnel solo con el camino del navegador
-  por el túnel (llegará más adelante). Hasta entonces Saga no les ofrece este nodo: sus llamadas van como antes en
-  malla o por un nodo acoplado. Si un navegador se une a una llamada que va por el nodo del túnel, Saga pasa la llamada
-  a directa (hasta el límite de la malla: 4 con vídeo o 6 solo audio).
+- Los **navegadores** (Chrome/Edge, Firefox, Safari) también llaman por la dirección de Saga: envían sus fotogramas de
+  vídeo y audio, codificados y cifrados de extremo a extremo, por dos WebSockets a la misma dirección (`/api/sfu/ws`);
+  la reproducción y la cancelación de eco funcionan en el navegador como siempre. En el proxy no hace falta nada más.
+  Esto cuesta en el navegador algo más de CPU (medido: aproximadamente +50 % frente a TURN-TLS, se nota en móviles y
+  ordenadores antiguos) y añade algo de retardo al audio; con UDP 443 (opcional, arriba) los navegadores prefieren UDP.
+  Admin → Llamadas muestra en el recuadro «Llamadas por la dirección de Saga» los WebSockets abiertos de los navegadores
+  y los tramos por vía.
+- A las **apps antiguas** (sin túnel) y a los navegadores sin «Encoded Transform» no se les ofrece este nodo: sus
+  llamadas van en malla o por un nodo acoplado. Si uno de esos dispositivos se une a una llamada que va por el nodo del
+  túnel, Saga pasa la llamada a directa (hasta el límite de la malla: 4 con vídeo o 6 solo audio).
 - La **app de escritorio (Mac)** llama detrás del proxy como las apps: abre para la página de la llamada el mismo túnel
   que la app de iOS.
 - **Cloudflare (nube naranja):** deja pasar WebSocket, el túnel funciona técnicamente. Sin embargo, el tráfico

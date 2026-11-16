@@ -16,6 +16,22 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – Browser telefonieren über die Saga-Adresse hinter jedem Reverse Proxy (Rahmen-Weg, Gjallarhorn experimentell)
+- **Rahmen-Weg `saga-frames.1`:** Hinter einem Proxy, der TLS selbst beendet (Nginx Proxy Manager), telefonieren jetzt
+  auch Browser über den eingebauten Knoten im Tunnel-Betrieb. Sie schicken ihre kodierten, Ende-zu-Ende-verschlüsselten
+  Rahmen über zwei WebSockets (Ton, Bild) an `/api/sfu/ws` der Saga-Adresse; Empfangenes geht über eine lokale Schleife in
+  den echten WebRTC-Empfang (Jitter-Puffer, Echo-Unterdrückung wie gewohnt). Am Proxy nichts Neues; Chrome/Edge,
+  Firefox und Safari (WebKit). Am Knoten ein normales Bein (Weg `ws`) – Apps, UDP, TURN-TLS bleiben im selben Anruf.
+- **Wegwahl:** UDP (falls frei) und der Rahmen-Weg parallel, UDP mit kurzem Vorsprung; neben TCP/TLS als letzter Weg.
+  Wiederverbinden nach Abbruch sofort mit frischem Token (gemessen ~0,15 s bis zum neuen Bein). Browser ohne „Encoded
+  Transform“ und ältere Apps nutzen den Tunnel-Knoten weiter nicht (Rückfall auf direkt wie bisher).
+- **Kosten:** im Browser mehr Rechenzeit als über TURN-TLS (zwei lokale PeerConnections, Attrappen) und etwas mehr
+  Ton-Verzögerung; bei knapper Leitung regelt der Rahmen-Weg sauber herunter statt einzufrieren.
+- **Admin → Anrufe:** Im Kasten „Anrufe über die Saga-Adresse“ stehen die offenen Browser-WebSockets und die Beine je
+  Weg (UDP, TCP, TLS, Tunnel der Apps, WebSocket der Browser).
+- Knoten: Fenster des Tunnels als gemeinsamer Baustein (`wstun.Flow`), Eingangsdrossel nach `max_kbit`, Zähler
+  `stats.frames`, Lastmeldung `paths`. Saga: Fähigkeit `frames` (caps), Kandidat `frames`, `config.horn_ready_frames`.
+
 ### Behoben – Anrufe über ICE-TCP und TURN-TLS: weniger Verzögerung auf engem Downlink
 - Auf den TCP-Wegen bemerkte der Anrufknoten eine enge Leitung zum Gerät erst, wenn die Puffer unterwegs voll waren:
   Das Bild kam dann mit rund 1,5 s Verzögerung (in Spitzen 3 s), der Knoten wechselte ständig zwischen zwei Schichten.

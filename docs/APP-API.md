@@ -2167,6 +2167,8 @@ Ohne `horn` in `caps`: 409 `join_block: "old"`; kein Knoten erreichbar: 409 `joi
   ein Bein `path: tcp` sofort 400 vom Knoten und fallen ohne Wartezeit auf TLS zurück.
 - `tls`, `ws` (2.5 A3): `tls: false` = kein TURN-TLS (Tunnel-Betrieb hinter einem TLS-beendenden Reverse Proxy), `ws:
   true` = Medien-Tunnel `/api/sfu/ws` unter `url` (unten). Fehlen sie (ältere Saga/Knoten): `tls` true, `ws` false.
+- `frames` (2.5 B2): `true` = der Knoten bietet am selben Endpunkt den Rahmen-Weg der Browser (`saga-frames.1`, unten).
+  Fehlt das Feld: `false`. Apps werten es nicht aus.
 - `url` kann der Saga-Ursprung selbst sein (Betriebsart „Ein Port“ bzw. Tunnel-Betrieb: Saga und der eingebaute Knoten teilen Name und
   Port, `/api/sfu/*` und `/probe` leitet Saga weiter). Pfade und `turns:` wie bisher aus `url` bilden.
 - Jede Teilnehmerliste (`legs`) trägt je Endpunkt `hp` = Kennung des Geräts am Knoten (gleich `peer` im eigenen
@@ -2235,9 +2237,10 @@ mit Frame-E2E wie auf allen Wegen).
   ptime 40, kein NACK). Weg heißt in Diagnose und `calldiag` `ws`.
 - **Handschlag:** `GET wss://{host von url}/api/sfu/ws` mit `Sec-WebSocket-Protocol: saga-tunnel.1` (Pflicht; keine
   Query, keine eigenen Köpfe). Ohne `Upgrade` → **426** `{"error": "websocket_required", "text": …}` (der Proxy reicht
-  WebSocket nicht durch – „Websockets Support“), vor jeder anderen Prüfung. Ohne `saga-tunnel.1` → 400
-  `{"error": "subprotocol", "supported": ["saga-tunnel.1"]}` (`saga-frames.1` ist für den Browser-Weg reserviert). Zu
-  viele Tunnel dieser Client-Adresse (4 × `HORN_MAX_PER_IP`) → 429 `{"error": "limit"}`.
+  WebSocket nicht durch – „Websockets Support“), vor jeder anderen Prüfung. Weder `saga-tunnel.1` noch `saga-frames.1`
+  (Browser-Weg, unten) → 400 `{"error": "subprotocol", "supported": ["saga-tunnel.1", "saga-frames.1"]}`; bietet der
+  Client beide an, gilt `saga-tunnel.1`. Zu viele WebSockets dieser Client-Adresse (4 × `HORN_MAX_PER_IP`, Tunnel und
+  Rahmen-Weg zusammen) → 429 `{"error": "limit"}`.
 - **Erste Nachricht** (Text, ≤ 4 KiB, spätestens 10 s nach 101):
   `{"t": "auth", "v": 1, "mode": "ice", "user": "<username>", "cred": "<credential>", "role": "audio|video"}` (`role`
   optional, nur Diagnose). Zugangsdaten nie in URL oder Kopf (Proxys protokollieren die Anfragezeile). Danach darf die
@@ -2255,6 +2258,44 @@ mit Frame-E2E wie auf allen Wegen).
   die lokale Verbindung, schließt die App den WebSocket (1000); ist das Bein zu, schließt der Knoten.
 - **Diagnose:** `GET {url}/api/sfu/leg/{id}` → `stats.tunnel {win, inflight, max_inflight, rtt_us, bw_Bps, tx, rx,
   acks_rx, acks_tx, blocked_ms}` für Beine durch den Tunnel.
+
+### Rahmen-Weg der Browser `saga-frames.1` (2.5, B2)
+
+Browser können kein ICE-TCP durch einen WebSocket tunneln. Hinter einem TLS-beendenden Proxy schicken sie deshalb ihre
+**kodierten Rahmen** (VP8/Opus aus `RTCRtpScriptTransform`, schon Frame-E2E-versiegelt) über zwei WebSockets (Ton, Bild)
+an denselben Endpunkt (Vertrag `saga-frames.1` v1, Referenz `static/horn-frames.js`, Knoten `gjallarhorn/frames.go`).
+Empfangene Rahmen speist der Browser über eine lokale Schleife (zwei PeerConnections im Tab, Attrappen-Spuren) in einen
+echten WebRTC-Empfänger ein: Jitter-Puffer, NetEq, Decoder und Echo-Unterdrückung bleiben die des Browsers. Am Knoten ist
+das ein normales Bein (Weg `ws`, für den Knoten ein Stromweg wie ICE-TCP); alle anderen Wege bleiben im selben Anruf.
+
+- **Fähigkeit:** Server-Feature `frames` (`GET /api/calls/config` → `features`; dazu `horn_ready_frames` wie
+  `horn_ready_ws`). Browser melden `"frames"` in `caps` (Stellen wie `ws`, S10). Ein Knoten im Tunnel-Betrieb gilt für
+  Geräte mit `frames` als bereit, wenn er `frames` meldet (Kandidat `frames: true`). Ein Gerät meldet nie `ws` und
+  `frames` zugleich (Web: `ws` nur mit Tunnel der Mac-Hülle, sonst `frames`); meldet es beide, gilt `ws`.
+- **Wegwahl (Browser):** wie beim Tunnel (`SagaHorn.ways`): `ws && frames` ohne `tcp`/`tls` → UDP (falls angeboten) und
+  Rahmen-Weg parallel, UDP mit kurzem Vorsprung; neben `tcp`/`tls` als letzter Weg.
+- **Handschlag:** `GET wss://{host von url}/api/sfu/ws`, `Sec-WebSocket-Protocol: saga-frames.1`. Erste Nachricht (Text,
+  ≤ 4 KiB, ≤ 10 s): `{"t": "join", "v": 1, "token": "<Ton- bzw. Bild-Token>", "audio": 3}` bzw. `{…, "speaker": true,
+  "screen": true, "tiles": n, "device": "desktop|mobile"}` – das Medien-Token wie bei `POST /api/sfu/leg` (einmalig, nie in
+  URL oder Kopf). Antwort `{"t": "ok", "v": 1, "id", "csrc", "slots", "peers", "state", "ack_bytes", "ack_ms", "fb_ms"}`
+  (wie `POST /api/sfu/leg`; Ereigniskanal und `GET/DELETE /api/sfu/leg/{id}` gelten) oder `{"t": "err", "v": 1, "code"}` +
+  Close: `bad`/`version` 4400, `auth` 4401, `room` 4404 (Anruf beendet), `timeout` 4408, `limit` 4429, `unavailable` 4503.
+  Wiederverbinden: frisches Token (`POST /api/calls/{id}/horn`), gleiche `leg_ref` → der Knoten ersetzt das Bein.
+- **Binärnachrichten** (erstes Byte = Art, big endian): `0x10` Rahmen, Kopf 16 Byte: Spur (aufwärts 0 Ton, 1 Bild `l`,
+  2 Bild `m`, 3 Bildschirm) bzw. Platz (abwärts, Index in `slots`), Flags (1 Schlüsselbild, 2 Y/„layer sync“), TID bzw.
+  audio-level (RFC 6464), RTP-Zeit, aufwärts lückenlose Rahmen-Nr. je Spur bzw. abwärts CSRC des Absenders, Sendezeit
+  (Wanduhr ms), dann der versiegelte Rahmen. `0x01` Quittung des Browsers (9 Byte wie beim Tunnel, optional +2 Byte
+  Verzögerungszunahme abwärts in ms). `0x02` Rückmeldung des Knotens (17 Byte: empfangene Bytes, Echo der Sendezeit,
+  Haltezeit, Verzögerungszunahme aufwärts). Text: Knoten → Browser `{"t": "pli", "track"}`, Browser → Knoten
+  `{"t": "key", "slot"}`.
+- **Fluss:** abwärts Fenster am Knoten wie beim Tunnel, aber mindestens 16 KiB (ganze Rahmen; ein Bildrahmen, der länger
+  als 400 ms auf Platz wartet, fällt weg, der Platz wartet dann auf ein Schlüsselbild). Aufwärts ohne Fenster: der
+  Browser regelt die Bildrate nach der Rückmeldung und seinem `bufferedAmount` und verwirft zuerst nicht referenzierte
+  Rahmen der höchsten Zeitschicht; der Knoten drosselt den Eingang nach `max_kbit` des Tokens (Ton nie).
+- **Diagnose:** Weg `ws` (Knoten-Log `weg=ws art=frames`, `calldiag` `transport: "ws"`), `GET {url}/api/sfu/leg/{id}` →
+  `stats.tunnel` (Fenster) und `stats.frames {up_frames, down_frames, up_dropped, up_gaps, down_dropped, key_req, pli,
+  q_up_ms, q_down_ms}`; Lastmeldung `load.paths` = Beine je Weg (Admin → Anrufe).
+- **Apps** nutzen den Tunnel (`saga-tunnel.1`), nicht diesen Weg.
 
 ### Web-Client und Live-Umschalten (P5)
 
