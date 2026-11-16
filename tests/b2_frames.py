@@ -10,8 +10,13 @@ Beine je Weg.
 
   Ports B2_BASE (8591): +0 nginx, +1 saga-media, +2 Admin, +7 intern, +8 HORN_PORT. Umgebung wie die anderen Reihen (env.sh,
   eigene DB). SAGA_MEDIA_BIN / GJALLARHORN_BIN, sonst go build (A3_GOMOD = eigene Mod-Datei). SHOTS=<Ordner>: Bilder."""
+import base64
+import hashlib
+import http.client
 import json
 import os
+import secrets
+import threading
 import re
 import shutil
 import subprocess
@@ -135,6 +140,43 @@ def log_text():
         return ""
 
 
+def adm(method, path):
+    from itsdangerous import TimestampSigner
+    sa = TimestampSigner(hashlib.sha256(("hk-admin|" + SECRET).encode()).hexdigest())
+    ck = sa.sign(base64.b64encode(json.dumps({"aid": "ca-b2-adm", "ep": time.time() + 5, "csrf": "x"}).encode())).decode()
+    c = http.client.HTTPConnection("127.0.0.1", ADMIN, timeout=30)
+    c.request(method, path, headers={"Cookie": "hk_admin=" + ck, "X-Saga": "1", "Accept-Language": "de-DE"})
+    r = c.getresponse()
+    d = r.read().decode("utf-8", "replace")
+    c.close()
+    return r.status, d, ck
+
+
+ADM = {"seen": None, "stop": False}
+
+
+def admin_watch():
+    """Waehrend des Anrufs: Admin -> Anrufe zeigt Browser (WebSocket) offen und Beine je Weg (Lastmeldung des Knotens)."""
+    while not ADM["stop"]:
+        try:
+            st, html, ck = adm("GET", "/calls")
+            m = re.search(r'class="tu-fr">([^<]*)', html)
+            pth = re.findall(r'data-path="(\w+)">([^<]*)<', html)
+            if st == 200 and m and re.search(r"[1-9]\d* offen", m.group(1)) and any(p == "frames" for p, _ in pth):
+                ADM["seen"] = {"frames": m.group(1).strip(), "paths": pth, "warn_old": "der Browser-Weg folgt" in html}
+                if os.environ.get("SHOTS") and not ADM.get("shot"):
+                    ADM["shot"] = True
+                    env = dict(os.environ, A3_ADMIN=f"http://127.0.0.1:{ADMIN}", A3_COOKIE=ck, NO_PROXY="*",
+                               A3_OUT=os.path.join(os.environ["SHOTS"], "b2-admin-nachher.png"), A3_HOST_RULES=f"MAP {NAME} 127.0.0.1")
+                    for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+                        env.pop(k, None)
+                    subprocess.run(["node", os.path.join(APP, "tests", "a3_bilder.js")], env=env, capture_output=True, text=True, timeout=120)
+                return
+        except OSError:
+            pass
+        time.sleep(2)
+
+
 def main():
     import db
     db.wait_ready()
@@ -148,6 +190,7 @@ def main():
     auth._settings_cache["v"] = None
     for u, nm in USERS:
         auth.create_user(u, PW, nm)
+    auth.get_user("ca-b2-adm") or auth.create_user("ca-b2-adm", secrets.token_urlsafe(12), "Admin B2", is_admin=True)
     media, node = gobuild("saga-media", "media", "SAGA_MEDIA_BIN"), gobuild("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
     ok("saga-media, gjallarhorn gebaut", bool(media and node))
     ngx = nginx_conf()
@@ -172,12 +215,19 @@ def main():
         for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
             env.pop(k, None)
         js = os.path.join(APP, "tests", "browser_b2_frames.js")
+        th = threading.Thread(target=admin_watch, daemon=True)
+        th.start()
         r = subprocess.run(["node", js], env=env, capture_output=True, text=True, timeout=900)
         for ln in r.stdout.splitlines():
             print("  [browser] " + ln, flush=True)
             if ln.startswith(("OK  ", "FAIL")):
                 res.append(ln.startswith("OK"))
         ok("Browser-Teil beendet ohne Fehler", r.returncode == 0, (r.stdout[-800:] + r.stderr[-1500:]))
+        ADM["stop"] = True
+        th.join(5)
+        sn = ADM["seen"]
+        ok("Admin -> Anrufe waehrend des Anrufs: Browser (WebSocket) offen, Beine je Weg mit WebSocket (Browser), Text ohne \"Browser-Weg folgt\"",
+           bool(sn) and not sn["warn_old"], sn)
         lt = log_text()
         ok("Knoten-Log: Rahmen-Beine (weg=ws art=frames, je Geraet Ton und Bild)", len(re.findall(r"bein auf .*weg=ws art=frames", lt)) >= 4,
            [ln for ln in lt.splitlines() if "bein auf" in ln][-8:])
