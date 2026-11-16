@@ -820,7 +820,7 @@ func TestFramesGrenzenErsetzen(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("ersetztes Bein: WebSocket offen")
 	}
-	if a2.id() == a1.id() || s.getLeg(a1.id()) != nil || s.getLeg(a2.id()) == nil {
+	if a2.id() == a1.id() || !waitFor(2*time.Second, func() bool { return s.getLeg(a1.id()) == nil }) || s.getLeg(a2.id()) == nil {
 		t.Fatal("Ersetzen")
 	}
 	// Beine je Adresse (ausserhalb von HORN_DEV)
