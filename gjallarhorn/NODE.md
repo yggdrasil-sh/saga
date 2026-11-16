@@ -926,7 +926,9 @@ Seit 2.5 (`HORN_TCP_STAU`, Standard an):
   messen (Zähler, Log; die Schätzung bleibt bei der eigenen Warteschlange). `HORN_TCP_STAU_LOG=1`: je Takt und Bein eine
   Zeile `tcpstau <bein> ok= q= sent= ack= fb=` (Messläufe). Zähler in `GET /api/sfu/leg/{id}` → `tcp_stau`
   (`downs`, `holds`, `stale`, `queue_ms`, …).
-- Kosten: 8 Byte je Paket (Kopf-Erweiterung) und die Rückmeldungen des Geräts auf dem Uplink (~1–2 kbit/s).
+- Kosten: bis 8 Byte je Paket (Kopf-Erweiterung) und die Rückmeldungen des Geräts auf dem Uplink: im Prüfstand
+  ~16/s auf dem Bild-Bein und ~7/s auf dem Ton-Bein (das Ton-Bein wertet sie nicht aus – ohne Bildplätze keine
+  Schätzung), zusammen geschätzt 8–15 kbit/s; gemessen bei 500 kbit/s Uplink bekommt das Gegenüber 3–4 % weniger.
 - A3 (Weg `ws`): **Standard aus**, an mit `HORN_TCP_STAU_WS=1`. Auf dem Downlink wirkt es dort wie auf ICE-TCP (das
   Fenster des Tunnels muss dann nicht mehr greifen), aber am A3-Prüfstand mit engem **Uplink** (500 kbit/s) brach mit
   den Folgenummern auf dem Downlink der Uplink des Geräts ein: Chromiums Schätzung schaltete die Schicht m ab, das
@@ -935,7 +937,7 @@ Seit 2.5 (`HORN_TCP_STAU`, Standard an):
   Stellvertreter `e2e/wstunnel` oder libwebrtc); vor dem Einschalten mit echten Apps prüfen.
 - Tests: `internal/sfu/tcpstau_test.go` (frei Takt für Takt gleich wie ohne, wachsende Schlange, Sprung durch fremden
   Download in einem bzw. zwei Takten, alte Rückmeldung, Ausschlag eines Takts, UDP unberührt), `TestTCPStauAbgriff`/`TestTCPStauAus`
-  (Interceptor-Kette), `TestMitleserRecent`.
+  (Interceptor-Kette), `TestTCPStauSDPGleich` (Antwort an das Gerät mit und ohne Signal gleich), `TestMitleserRecent`.
 
 Messung im Prüfstand `e2e/stau.sh` (wie oben: Chromium, Userspace-Engpass, Gegenüber sendet l/m + Ton, je 60 s;
 Median der Läufe, in Klammern die Spanne; vorher = Stand ohne Signal):
