@@ -122,7 +122,8 @@
   // mit Tunnel (normaler Browser, Tauri, aeltere Huelle) - dann gibt es den Weg ws im Web nicht.
   host.tunnel = function () {
     var u = upper(); if (u) return u.tunnel ? u.tunnel() : null;
-    var h = UA && TOP && send && host.kind === 'mac' && host.caps.indexOf('tunnel') >= 0 ? wkTunnel() : null;
+    // nur ueber https: die Huelle nimmt Tunnel nur von der https-Herkunft an (sonst meldete das Web caps ws ohne Weg)
+    var h = UA && TOP && send && host.kind === 'mac' && host.caps.indexOf('tunnel') >= 0 && location.protocol === 'https:' ? wkTunnel() : null;
     if (!h) return null;
     var call = function (m) {
       try { return Promise.resolve(h.postMessage(m)); } catch (e) { return Promise.reject(e); }

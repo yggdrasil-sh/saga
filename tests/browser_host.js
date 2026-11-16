@@ -84,6 +84,17 @@ function tauriInit(arg) {
   // Seite von A fuer Deep-Links; Konto B teilt spaeter eine Seite (Mitteilung)
   const ctxB = await ctxFor(UA_CHROME + ' Chrome/130.0'), pB = await login(ctxB, USER2, PASS2);
 
+  // --- 2a. 2.5 A3: Medien-Tunnel (Faehigkeit tunnel) nur ueber https - sonst kein sagaHost.tunnel() (kein caps ws) -----
+  {
+    const tunInit = arg => { window.webkit = { messageHandlers: { hk: { postMessage: () => {} }, hkTunnel: { postMessage: () => Promise.resolve({ id: 1 }) } } }; window.sagaHostInfo = arg.info; };
+    const ctx = await ctxFor(UA_CHROME + ' SagaApp/3.0 (macOS)', tunInit, { info: { kind: 'mac', version: '3.0', caps: CAPS.concat(['tunnel']) } });
+    const p = await login(ctx, USER, PASS);
+    await p.goto(BASE + '/notes'); await p.waitForTimeout(1500);
+    const s = await p.evaluate(() => ({ https: location.protocol === 'https:', caps: HK.host.caps, tun: !!HK.host.tunnel() }));
+    ok(s.caps.indexOf('tunnel') >= 0 && s.tun === s.https, 'Mac: Faehigkeit tunnel, sagaHost.tunnel() nur ueber https (' + (s.https ? 'https' : 'http') + ')', s);
+    await ctx.close();
+  }
+
   // --- 2. Mac-Huelle ----------------------------------------------------------------------------------------------------
   {
     const ctx = await ctxFor(UA_CHROME + ' SagaApp/3.0 (macOS)', macInit, { info: { kind: 'mac', version: '3.0', caps: CAPS.concat(['unbekannt']) } });

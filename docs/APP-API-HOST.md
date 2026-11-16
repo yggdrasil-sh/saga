@@ -62,7 +62,7 @@ Unbekannte Fähigkeiten verwirft das Web. Neue Fähigkeiten kommen nur mit neuem
 | `receive(evt)` | `false` (außer `hello`, das nur mit Nachrichtenweg greift) | Einstieg für die Hülle |
 | `route(link)` | Deep-Link → Web-Pfad oder `null` (reine Funktion, Abschnitt 6) | dto. |
 | `open(linkOrPath)` | navigiert (nur eigene Origin) | dto. |
-| `tunnel()` | `null` | 2.5 A3, nur Mac mit Fähigkeit `tunnel`: `{open(role, url, user, cred) → Promise id, listen(id) → Promise port, close(id), stats(id)}` (Abschnitt 3.3) |
+| `tunnel()` | `null` | 2.5 A3, nur Mac mit Fähigkeit `tunnel` und Seite über https: `{open(role, url, user, cred) → Promise id, listen(id) → Promise port, close(id), stats(id)}` (Abschnitt 3.3) |
 
 **Wo das Web die Brücke nutzt**
 
