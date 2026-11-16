@@ -143,6 +143,27 @@ func TestPaddingFolgenummern(t *testing.T) {
 	t.Logf("%d Fuellpakete, %d Medienpakete", pads, media)
 }
 
+// pausen fuehrt Buch ueber Pausen des Rechners waehrend eines Fuell-Tests: Das Guthaben haelt hoechstens padBurst
+// (ein verspaeteter Wecker kostet nichts, ein angehaltener Prozess schon - mit Absicht, kein Nachhol-Schub). Steht
+// das Bein laenger als padBurst ohne Gelegenheit zum Fuellen (nach jedem Bild bzw. nach padIdle Stille), geht der
+// Rest verloren. verloren zieht der Test von der Messzeit ab, damit die Fuellrate die Buchfuehrung prueft und nicht
+// die Last des Runners (16.11.: "fuellrate 717 kbit/s" unter Pausen bis 150 ms).
+type pausen struct {
+	gap      time.Duration // Bildabstand des Tests
+	last     time.Time
+	verloren time.Duration
+}
+
+func (p *pausen) mark(now time.Time) {
+	if !p.last.IsZero() {
+		// ohne Fuellen stand das Bein: der Abstand ueber dem Soll plus die Zeit bis zur naechsten Gelegenheit
+		if d := now.Sub(p.last) - p.gap + min(p.gap, padIdle) - padBurst; d > 0 {
+			p.verloren += d
+		}
+	}
+	p.last = now
+}
+
 // TestPaddingRate: Die Fuellrate wird im Mittel eingehalten (Bilder mit 30/s, Fuellen direkt hinter jedem Bild).
 func TestPaddingRate(t *testing.T) {
 	leg := NewLeg()
@@ -157,19 +178,21 @@ func TestPaddingRate(t *testing.T) {
 	const rate = 900e3
 	leg.SetPadding(o, rate)
 	start := time.Now()
+	ps := pausen{gap: 33 * time.Millisecond, last: start}
 	for i := 2; time.Since(start) < time.Second; i++ {
 		s.Inject(vp8part(uint16(i), uint32(i)*3000, true, false, true))
 		time.Sleep(33 * time.Millisecond)
+		ps.mark(time.Now())
 	}
 	leg.SetPadding(nil, 0)
-	el := time.Since(start).Seconds()
+	el := (time.Since(start) - ps.verloren).Seconds()
 	time.Sleep(20 * time.Millisecond)
 	got := float64(leg.Stats.PadBytes.Load()) * 8 / el
 	if got < 0.8*rate || got > 1.1*rate {
-		t.Fatalf("fuellrate %.0f kbit/s, eingestellt %.0f", got/1000, rate/1000)
+		t.Fatalf("fuellrate %.0f kbit/s, eingestellt %.0f (Pausen des Rechners: %v)", got/1000, rate/1000, ps.verloren)
 	}
 	checkPad(t, w)
-	t.Logf("fuellrate %.0f kbit/s (eingestellt %.0f)", got/1000, rate/1000)
+	t.Logf("fuellrate %.0f kbit/s (eingestellt %.0f; Pausen des Rechners: %v)", got/1000, rate/1000, ps.verloren)
 }
 
 // trec schreibt mit, wann welches Paket hinausging (Fuellpaket oder Medium).
@@ -259,13 +282,15 @@ func TestPaddingHaengtAmMedium(t *testing.T) {
 			const rate = 900e3
 			leg.SetPadding(o, rate)
 			start := time.Now()
+			ps := pausen{gap: c.gap, last: start}
 			for i := 2; time.Since(start) < 1200*time.Millisecond; i++ {
 				s.Inject(vp8part(uint16(i), uint32(i)*3000, true, false, true))
 				time.Sleep(c.gap)
+				ps.mark(time.Now())
 			}
 			leg.SetPadding(nil, 0)
 			end := time.Now()
-			el := end.Sub(start).Seconds()
+			el := (end.Sub(start) - ps.verloren).Seconds()
 			time.Sleep(20 * time.Millisecond)
 			w.mu.Lock()
 			defer w.mu.Unlock()
@@ -273,8 +298,8 @@ func TestPaddingHaengtAmMedium(t *testing.T) {
 			// Ruhe-Wecker zu Recht - das zaehlt nicht als eigener Takt
 			pads, media, allein, eng, takt, stille, _ := w.schuebe(c.gap, end)
 			got := float64(pads) * padWire * 8 / el
-			t.Logf("%d Bilder, %d Fuellpakete (%.0f kbit/s), %d Schuebe ohne Medienpaket davor (%d im engen Takt; %d zwischen Bildern im Raster, %d in Pausen des Rechners)",
-				media, pads, got/1000, allein, eng, takt, stille)
+			t.Logf("%d Bilder, %d Fuellpakete (%.0f kbit/s), %d Schuebe ohne Medienpaket davor (%d im engen Takt; %d zwischen Bildern im Raster, %d in Pausen des Rechners; verloren %v)",
+				media, pads, got/1000, allein, eng, takt, stille, ps.verloren)
 			if got < 0.7*rate || got > 1.1*rate {
 				t.Fatalf("fuellrate %.0f kbit/s, eingestellt %.0f", got/1000, rate/1000)
 			}
@@ -310,6 +335,7 @@ func TestPaddingReinesBildBein(t *testing.T) {
 			leg.SetPadding(o, rate)
 			start := time.Now()
 			gap := time.Second / time.Duration(fps)
+			ps := pausen{gap: gap, last: start}
 			// Bilder im festen Raster (nicht "Schlaf nach dem Senden"). Hing der Test (geteilter Rechner), faellt der
 			// verpasste Rasterplatz aus wie bei einer Kamera - kein Nachhol-Schub mehrerer Bilder binnen einer Millisekunde.
 			slot := 0
@@ -318,10 +344,11 @@ func TestPaddingReinesBildBein(t *testing.T) {
 				for slot++; time.Until(start.Add(time.Duration(slot)*gap)) < 0; slot++ { // verpasste Plaetze auslassen
 				}
 				time.Sleep(time.Until(start.Add(time.Duration(slot) * gap)))
+				ps.mark(time.Now())
 			}
 			leg.SetPadding(nil, 0)
 			end := time.Now()
-			el := end.Sub(start).Seconds()
+			el := (end.Sub(start) - ps.verloren).Seconds()
 			time.Sleep(20 * time.Millisecond)
 			w.mu.Lock()
 			defer w.mu.Unlock()
@@ -331,8 +358,8 @@ func TestPaddingReinesBildBein(t *testing.T) {
 			// gesammelt binnen 8 ms hinterher ("4 Schuebe, 6 kurz vor einem Bild").
 			pads, media, _, _, takt, stille, vorBild := w.schuebe(gap, end)
 			got := float64(pads) * padWire * 8 / el
-			t.Logf("%d Bilder, %d Fuellpakete (%.0f kbit/s), %d Schuebe im eigenen Takt, %d davon kurz vor einem Bild, %d in Pausen des Rechners",
-				media, pads, got/1000, takt, vorBild, stille)
+			t.Logf("%d Bilder, %d Fuellpakete (%.0f kbit/s), %d Schuebe im eigenen Takt, %d davon kurz vor einem Bild, %d in Pausen des Rechners (verloren %v)",
+				media, pads, got/1000, takt, vorBild, stille, ps.verloren)
 			if got < 0.8*rate || got > 1.1*rate {
 				t.Fatalf("fuellrate %.0f kbit/s, eingestellt %.0f", got/1000, rate/1000)
 			}
@@ -677,10 +704,20 @@ func TestPaddingZufall(t *testing.T) {
 
 // TestPaddingTotmann: Schaltet niemand ab (Takt haengt), hoert das Bein nach PadMax von selbst auf zu fuellen - und
 // SetPadding weckt den Schreiber, er fuellt also auch, wenn nach dem letzten Bild gerade kein Paket kommt.
+// Gewartet wird auf die Ereignisse statt fester Schlafzeiten (CI 16.11.: unter Pausen des Rechners kam der erste Schub
+// nach 160 ms noch nicht bzw. der Totmann griff erst beim naechsten Wecker nach dem Pruefzeitpunkt).
 func TestPaddingTotmann(t *testing.T) {
 	old := PadMax
 	PadMax = 250 * time.Millisecond
 	defer func() { PadMax = old }()
+	until := func(d time.Duration, f func() bool) bool {
+		for end := time.Now().Add(d); time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+			if f() {
+				return true
+			}
+		}
+		return f()
+	}
 	leg := NewLeg()
 	defer leg.Close()
 	w := &hrec{}
@@ -691,14 +728,15 @@ func TestPaddingTotmann(t *testing.T) {
 	s.Inject(vp8part(1, 0, true, true, true))
 	waitFor(t, func() bool { return w.count() == 1 })
 	time.Sleep(20 * time.Millisecond) // der Schreiber schlaeft
+	t0 := time.Now()
 	leg.SetPadding(o, 1e6)
-	time.Sleep(padIdle + 60*time.Millisecond)
-	if n := leg.Stats.PadPkts.Load(); n < 10 {
-		t.Fatalf("nur %d Fuellpakete %v nach SetPadding ohne weiteres Bild (Schreiber nicht geweckt)", n, padIdle+60*time.Millisecond)
+	// erster Schub nach padIdle Ruhe, spaetestens vor dem Totmann (ohne Wecken kaeme keiner: kein Paket mehr)
+	if !until(PadMax, func() bool { return leg.Stats.PadPkts.Load() >= 10 }) {
+		t.Fatalf("nur %d Fuellpakete %v nach SetPadding ohne weiteres Bild (Schreiber nicht geweckt)", leg.Stats.PadPkts.Load(), time.Since(t0))
 	}
-	time.Sleep(200 * time.Millisecond)
-	if leg.Padding() != 0 {
-		t.Fatalf("fuellrate nach dem Totmann noch %d", leg.Padding())
+	// der Totmann greift beim naechsten Wecker nach PadMax (padIdle)
+	if !until(PadMax+padIdle+2*time.Second, func() bool { return leg.Padding() == 0 }) {
+		t.Fatalf("fuellrate %v nach SetPadding noch %d (Totmann nach %v)", time.Since(t0), leg.Padding(), PadMax)
 	}
 	n := leg.Stats.PadPkts.Load()
 	time.Sleep(60 * time.Millisecond)
