@@ -200,9 +200,8 @@ func TestTunnelZugang(t *testing.T) {
 
 // Fristen: keine auth in tunnelAuthWait -> timeout; nach ok kein Datenbyte in tunnelFirstWait -> timeout.
 func TestTunnelFristen(t *testing.T) {
-	a, f := tunnelAuthWait, tunnelFirstWait
-	tunnelAuthWait, tunnelFirstWait = 300*time.Millisecond, 400*time.Millisecond
-	t.Cleanup(func() { tunnelAuthWait, tunnelFirstWait = a, f })
+	a, f := tunnelAuthWait.set(300*time.Millisecond), tunnelFirstWait.set(400*time.Millisecond)
+	t.Cleanup(func() { tunnelAuthWait.set(a); tunnelFirstWait.set(f) })
 	s, _, url := tunnelServer(t)
 	ws, _, err := dialTunnel(t, url)
 	if err != nil {

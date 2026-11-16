@@ -177,7 +177,7 @@ func (c *frClient) pliCount() int {
 }
 
 func (c *frClient) csrc() uint32 { v, _ := c.ok["csrc"].(float64); return uint32(v) }
-func (c *frClient) id() string    { v, _ := c.ok["id"].(string); return v }
+func (c *frClient) id() string   { v, _ := c.ok["id"].(string); return v }
 
 // vp8: Nutzlast eines kuenstlichen VP8-Rahmens (Bit 0 des ersten Bytes = P: 0 Schluesselbild), Rest = Kennung.
 func vp8(key bool, n int, tag byte) []byte {
@@ -251,9 +251,8 @@ func TestFramesUnterprotokoll(t *testing.T) {
 
 // S12.2: erste Nachricht, Fehlercodes und Close-Codes; Token einmalig.
 func TestFramesZugang(t *testing.T) {
-	a := framesAuthWait
-	framesAuthWait = 300 * time.Millisecond
-	t.Cleanup(func() { framesAuthWait = a })
+	a := framesAuthWait.set(300 * time.Millisecond)
+	t.Cleanup(func() { framesAuthWait.set(a) })
 	s, hs, url := tunnelServer(t)
 	room := "frames-zugang"
 	if err := postJSON(httpClient(), hs.URL+"/api/dev/room", map[string]string{"room": room}, &struct{}{}); err != nil {
@@ -669,9 +668,8 @@ func TestFramesInteropTunnel(t *testing.T) {
 // Abwaerts-Fenster (S12.4): ohne Quittungen haelt der Knoten hoechstens ein Fenster unterwegs und verwirft danach
 // Bildrahmen (bis Schluesselbild); mit Quittungen kommt alles. Gemeldete Warteschlange (11-Byte-Quittung) -> Mindestfenster.
 func TestFramesFenster(t *testing.T) {
-	w := framesWaitMax
-	framesWaitMax = 100 * time.Millisecond
-	t.Cleanup(func() { framesWaitMax = w })
+	w := framesWaitMax.set(100 * time.Millisecond)
+	t.Cleanup(func() { framesWaitMax.set(w) })
 	s, hs, url := tunnelServer(t)
 	room := "frames-fenster"
 	if err := postJSON(httpClient(), hs.URL+"/api/dev/room", map[string]string{"room": room}, &struct{}{}); err != nil {

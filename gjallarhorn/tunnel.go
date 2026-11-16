@@ -33,8 +33,8 @@ import (
 
 // Fristen des Tunnels (Tests aendern sie).
 var (
-	tunnelAuthWait  = 10 * time.Second // erste Textnachricht
-	tunnelFirstWait = 30 * time.Second // erstes Datenbyte nach ok (vorab geoeffneter WebSocket, Vertrag 7)
+	tunnelAuthWait  = newDurVar(10 * time.Second) // erste Textnachricht
+	tunnelFirstWait = newDurVar(30 * time.Second) // erstes Datenbyte nach ok (vorab geoeffneter WebSocket, Vertrag 7)
 	tunnelPing      = 25 * time.Second
 	tunnelMaxPend   = 32 // WebSockets ohne auth insgesamt (sonst fuellten Verbindungen ohne Zugang die Gesamtgrenze)
 	tunnelMaxPendIP = 8  // ... je Client-Adresse
@@ -53,7 +53,7 @@ type tunnels struct {
 	total, authFail, noUpgrade, limited atomic.Uint64
 	frTotal                             atomic.Uint64 // 2.5 B2: Rahmen-WebSockets (saga-frames.1) seit Start ...
 	frOpen                              atomic.Int64  // ... und offen
-	lastOpen, lastNoUpgrade             atomic.Int64 // Unix-Sekunden
+	lastOpen, lastNoUpgrade             atomic.Int64  // Unix-Sekunden
 }
 
 type tunnelInfo struct {
@@ -130,7 +130,7 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 		_ = tc.SetNoDelay(true)
 	}
 	ws.SetReadLimit(wstun.MaxPayload + 64)
-	_ = ws.SetReadDeadline(time.Now().Add(tunnelAuthWait))
+	_ = ws.SetReadDeadline(time.Now().Add(tunnelAuthWait.get()))
 	mt, b, err := ws.ReadMessage()
 	_ = ws.SetReadDeadline(time.Time{})
 	authed()
@@ -193,7 +193,7 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 	}()
 	// erst mit dem ersten Datenbyte an die Weiche (deren Frist fuer das erste Byte ist 5 s, der WebSocket darf vorab
 	// offen sein, bis libwebrtc sich lokal verbindet)
-	tm := time.NewTimer(tunnelFirstWait)
+	tm := time.NewTimer(tunnelFirstWait.get())
 	defer tm.Stop()
 	select {
 	case <-c.First():

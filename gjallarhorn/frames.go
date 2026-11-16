@@ -63,12 +63,21 @@ const (
 
 // Fristen (Tests aendern sie).
 var (
-	framesAuthWait = 10 * time.Second
+	framesAuthWait = newDurVar(10 * time.Second)
 	framesPing     = 25 * time.Second
 	framesFbEvery  = 50 * time.Millisecond
-	framesWaitMax  = 400 * time.Millisecond // laenger wartet ein Rahmen nicht auf das Fenster (dann verwerfen)
+	framesWaitMax  = newDurVar(400 * time.Millisecond) // laenger wartet ein Rahmen nicht auf das Fenster (dann verwerfen)
 	framesPLIEvery = 500 * time.Millisecond
 )
+
+// durVar: Frist, die Tests aendern (atomar - Handler laengst beendeter Tests laufen auf gekaperten Verbindungen weiter).
+type durVar struct{ v atomic.Int64 }
+
+func newDurVar(d time.Duration) *durVar { x := &durVar{}; x.v.Store(int64(d)); return x }
+func (x *durVar) get() time.Duration    { return time.Duration(x.v.Load()) }
+func (x *durVar) set(d time.Duration) time.Duration {
+	return time.Duration(x.v.Swap(int64(d)))
+}
 
 // framesJoin ist die erste Nachricht des Browsers (S12.2).
 type framesJoin struct {
@@ -143,7 +152,7 @@ func (s *server) apiSFUFrames(w http.ResponseWriter, r *http.Request) {
 		_ = tc.SetNoDelay(true)
 	}
 	ws.SetReadLimit(wstun.MaxText + 64)
-	_ = ws.SetReadDeadline(time.Now().Add(framesAuthWait))
+	_ = ws.SetReadDeadline(time.Now().Add(framesAuthWait.get()))
 	mt, b, err := ws.ReadMessage()
 	_ = ws.SetReadDeadline(time.Time{})
 	authed()
@@ -324,7 +333,7 @@ type frLeg struct {
 
 	c struct {
 		upFrames, upBytes, upDropped, upGaps, upWaitKey, downFrames, downDrop, downBroken, keyReq, pli atomic.Uint64
-		qDown                                                                                         atomic.Int64
+		qDown                                                                                          atomic.Int64
 	}
 }
 
@@ -339,7 +348,7 @@ type frUp struct {
 	pic   uint16 // PictureID (lueckenlos ueber die weitergeleiteten Rahmen)
 	last  uint32 // Rahmen-Nr. des Browsers
 	start bool
-	wait  bool // nach einer Luecke bzw. Drossel bis zum Schluesselbild
+	wait  bool         // nach einer Luecke bzw. Drossel bis zum Schluesselbild
 	pliAt atomic.Int64 // letzte Anforderung an den Browser (UnixNano)
 	buf   []byte
 	out   func([]byte) // nur Tests: statt src.Inject
@@ -703,7 +712,7 @@ func (f *frLeg) feedback() {
 
 // sendFrame schickt einen fertigen Rahmen (msg[0] = 0x10) nach dem Fenster. false: verworfen (Fenster blieb voll) bzw. zu.
 func (f *frLeg) sendFrame(msg []byte) (bool, error) {
-	f.wdl.Store(time.Now().Add(framesWaitMax).UnixNano())
+	f.wdl.Store(time.Now().Add(framesWaitMax.get()).UnixNano())
 	if err := f.flow.Reserve(f.done, &f.wdl); err != nil {
 		if f.closed() {
 			return false, errFramesClosed
