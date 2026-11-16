@@ -303,6 +303,29 @@ func layerRank(l string) int {
 	return 0
 }
 
+// swapped (Pruefer B2 F5): Der Platz geht auf st, eine tiefere Schicht als bisher - ist das ein Quellenwechsel statt
+// eines Wechsels nach unten? Dann gilt er wie ein neuer Beginn des Platzes auf st (wie nach einer Pause): kein downAt
+// (layerDwell sperrte sonst den Weg zurueck, obwohl nichts zurueckgefallen ist), kein Aufschub, kein Rueckfall fuer
+// Probing und Bremse. Die Vorgeschichte des Platzes (Aufschub je Schicht, fruehere Wechsel nach unten) bleibt.
+//   - st ist nicht live: Vom Teilnehmenden kommt gerade gar nichts (layers faellt auf eine Quelle ohne Pakete zurueck,
+//     z. B. Netzwechsel des Senders). Gezeigt wird nichts - zurueck nach unten ist das nicht (flap.go: fallen alle
+//     Schichten zugleich aus, sind sie bei der Rueckkehr sofort nutzbar).
+//   - Die bisherige Quelle ist weg und st kam nach ihr: neues Bein desselben Teilnehmenden (gleiche ID; ersetzt mit
+//     derselben leg_ref - dann auch ein neues Peer-Objekt -, Uebergabe udp/tcp, "Hierher uebernehmen"). Die Schichten
+//     kommen nacheinander (l zuerst, m wartet auf sein Schluesselbild); dass der Platz zuerst l nimmt, ist kein
+//     Rueckfall. Weg heisst: abgemeldet, anderes Peer-Objekt oder nicht mehr live. Eine Schicht, die neben der bisherigen
+//     schon lief (Flattern: m faellt aus, l laeuft weiter; Budget), ist nicht neuer - dafuer bleibt alles wie bisher.
+func (s *slot) swapped(st *source, now int64) bool {
+	if !st.live(now) {
+		return true
+	}
+	was := s.src
+	if was == nil || s.owner == nil || was.peer.ID != s.owner.ID || st.added <= was.added {
+		return false
+	}
+	return was.peer != s.owner || s.owner.srcs[was.Source] != was || !was.live(now)
+}
+
 // layerRate liefert die gemessene (sonst angenommene) Rate einer Quelle.
 func layerRate(st *source) float64 {
 	if st.bps > 1000 {
@@ -849,11 +872,13 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		st := c.opts[c.idx]
 		s.out.Assign(st.Source)
 		s.out.SetMaxTID(c.tid)
+		// Quellenwechsel statt Wechsel nach unten (slot.swapped): keine Hysterese, kein Aufschub, kein Rueckfall
+		swap := layerRank(st.Layer) < layerRank(s.layer) && s.swapped(st, now)
 		if prev := s.src; prev != nil && prev.peer == s.owner && (st != prev || s.layer == "") {
 			switch {
 			case s.layer == "": // Pause zu Ende
 				s.setWhy(whyBudget, st, now)
-			case layerRank(st.Layer) < layerRank(prev.Layer) && !prev.usable(now):
+			case swap, layerRank(st.Layer) < layerRank(prev.Layer) && !prev.usable(now):
 				s.setWhy(whyGone, prev, now)
 			case layerRank(st.Layer) > layerRank(prev.Layer) && st.fl.backAt != 0 && st.fl.backAt > s.srcAt:
 				s.setWhy(whyBack, st, now)
@@ -868,7 +893,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		if st != s.src {
 			s.src, s.srcAt = st, now
 		}
-		if layerRank(st.Layer) < layerRank(s.layer) { // nach unten: Mindestverweildauer fuer den Weg zurueck
+		if layerRank(st.Layer) < layerRank(s.layer) && !swap { // nach unten: Mindestverweildauer fuer den Weg zurueck
 			// Budget-Ruecknahme binnen upFail nach dem Hochschalten (Rate der Zielschicht unterschaetzt, z. B. nach
 			// einer Aufloesungsaenderung): Aufschub fuer diese Schicht verdoppeln (bis upDwellMax). Jede Schicht hat
 			// ihren eigenen Aufschub - ein gescheiterter m-Versuch erbt nicht die Vorgeschichte von h. Zurueckgestellt
@@ -953,8 +978,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				}
 			}
 			s.rampRate, s.rampOwner = layerRate(st), s.owner
-		} else if s.layer == "" || s.rampOwner != s.owner {
-			s.rampRate, s.rampOwner = layerRate(st), s.owner // Platz beginnt auf dieser Schicht (Anrufbeginn, neuer Besitzer)
+		} else if swap || s.layer == "" || s.rampOwner != s.owner {
+			// Platz beginnt auf dieser Schicht (Anrufbeginn, neuer Besitzer, neue Quellen nach dem Wiederverbinden)
+			s.rampRate, s.rampOwner = layerRate(st), s.owner
 		}
 		if book && layerRank(st.Layer) > layerRank(s.layer) {
 			l.est.stepAt = now // Schritt nach oben (auch aus der Pause): Die Rate springt, siehe estimator.clamped

@@ -273,7 +273,8 @@ func (r *Room) RemoteSource(via, id string, kind fwd.Kind, layer string, screen 
 	if p.quota != nil {
 		s.Gate = p.quota.allowIn
 	}
-	st := &source{Source: s, peer: p, screen: screen, remote: true, on: true}
+	r.srcSeq++
+	st := &source{Source: s, peer: p, screen: screen, remote: true, on: true, added: r.srcSeq}
 	p.srcs[s] = st
 	switch {
 	case kind == fwd.Audio:

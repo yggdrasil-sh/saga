@@ -209,6 +209,7 @@ type Room struct {
 	closed    bool
 	stop      chan struct{}
 	seq       uint64
+	srcSeq    uint64 // Reihenfolge der Anmeldung von Quellen (source.added)
 	lastTick  int64
 	peersSig  string // Teilnehmende bei der letzten OnPeers-Meldung
 	// Aufschub und Proben-Abstand entfernter Beine (probe.go, remember/recall): ueberleben einen Wegwechsel
@@ -252,10 +253,11 @@ type source struct {
 	lastTID   [4]uint32
 	fps       [4]float64
 	lastKeyRq int64
-	offAt     int64 // Bildschirm: seit wann nicht nutzbar (0 = nutzbar bzw. noch nicht gesehen)
-	remote    bool  // P9: kommt ueber eine Bruecke (fliesst nur auf Nachfrage)
-	on        bool  // P9: laut anderem Knoten aktiv
-	fl        flap  // Hysterese gegen flatternde Schichten (flap.go)
+	offAt     int64  // Bildschirm: seit wann nicht nutzbar (0 = nutzbar bzw. noch nicht gesehen)
+	remote    bool   // P9: kommt ueber eine Bruecke (fliesst nur auf Nachfrage)
+	on        bool   // P9: laut anderem Knoten aktiv
+	fl        flap   // Hysterese gegen flatternde Schichten (flap.go)
+	added     uint64 // Reihenfolge der Anmeldung im Raum (Room.srcSeq): neue Quellen nach dem Wiederverbinden (slot.swapped)
 }
 
 // live: Quelle nutzbar - eigene, wenn sie in der letzten Sekunde Pakete hatte; Quellen ueber eine Bruecke, wenn der
@@ -525,7 +527,8 @@ func (l *Leg) AddSource(kind fwd.Kind, layer string, screen bool, ssrc uint32, l
 	} else {
 		s.Clock = 90000
 	}
-	st := &source{Source: s, peer: p, screen: screen, leg: l}
+	r.srcSeq++
+	st := &source{Source: s, peer: p, screen: screen, leg: l, added: r.srcSeq}
 	p.srcs[s] = st
 	l.srcs = append(l.srcs, st)
 	switch {
