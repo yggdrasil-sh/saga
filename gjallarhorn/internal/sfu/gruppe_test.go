@@ -155,12 +155,13 @@ func (g *gruppe) vorlauf() {
 
 // gruppeFall: Ablauf ab dem Wiederkommen von wer (Zeit 0): wann spricht wer, wann ist m des Wiederkommenden live
 type gruppeFall struct {
-	name    string
-	gap     time.Duration // Luecke: a ist nicht im Raum
-	neu     string        // ID des Wiederkommenden ("a" = gleiches Geraet; sonst "Hierher uebernehmen")
-	mDelay  time.Duration // m des Wiederkommenden live so lange nach l (0: sofort)
-	aStill  time.Duration // so lange schweigt der Wiederkommende nach dem Wiederkommen
-	bLuecke bool          // b sagt in der Luecke kurz etwas (0,4 s, am Ende der Luecke)
+	name     string
+	gap      time.Duration // Luecke: a ist nicht im Raum
+	neu      string        // ID des Wiederkommenden ("a" = gleiches Geraet; sonst "Hierher uebernehmen")
+	mDelay   time.Duration // m des Wiederkommenden live so lange nach l (0: sofort)
+	aStill   time.Duration // so lange schweigt der Wiederkommende nach dem Wiederkommen
+	bSpricht time.Duration // so lange spricht b am Ende der Luecke
+	cVorher  bool          // c wirft vor dem Gehen kurz etwas ein (leiser, a bleibt Hauptsprecher; c spricht zuletzt)
 }
 
 // messen: Zeit ab dem Wiederkommen, bis der Wiederkommende auf dem Sprecherplatz ist (tOn) bzw. dort auf m (tM),
@@ -175,12 +176,17 @@ func (g *gruppe) messen(f gruppeFall) (tOn, tM time.Duration, seq string) {
 			seq += o
 		}
 	}
+	if f.cVorher {
+		g.level["c"] = 60
+		g.run(400 * time.Millisecond)
+		delete(g.level, "c")
+	}
 	o, _ := g.spk()
 	add(o)
 	g.weg("a")
 	g.level = map[string]uint32{}
 	for end := g.now + int64(f.gap); g.now < end; {
-		if f.bLuecke && end-g.now <= int64(400*time.Millisecond) {
+		if end-g.now <= int64(f.bSpricht) {
 			g.level["b"] = 40
 		}
 		g.tick()
@@ -225,6 +231,10 @@ var gruppeFaelle = []gruppeFall{
 	{name: "1 still 3 s", gap: 1200 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond, aStill: 3 * time.Second},
 	{name: "1 still 3 s", gap: 3 * time.Second, neu: "a", mDelay: 400 * time.Millisecond, aStill: 3 * time.Second},
 	{name: "1 still 3 s m sofort", gap: 600 * time.Millisecond, neu: "a", aStill: 3 * time.Second},
+	{name: "1 still, c Einwurf", gap: 600 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond, aStill: 3 * time.Second, cVorher: true},
+	// ... b sagt in der Luecke kurz etwas (zu kurz fuer einen Wechsel gegen einen stillen Hauptsprecher)
+	{name: "1 b kurz in Luecke", gap: 600 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond, bSpricht: 400 * time.Millisecond},
+	{name: "1 b kurz in Luecke", gap: 1200 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond, bSpricht: 400 * time.Millisecond},
 	// Fall 3: "Hierher uebernehmen" - anderes Geraet (andere ID) kommt und spricht
 	{name: "3 uebernehmen", gap: 200 * time.Millisecond, neu: "a2", mDelay: 400 * time.Millisecond},
 	{name: "3 uebernehmen", gap: 600 * time.Millisecond, neu: "a2", mDelay: 400 * time.Millisecond},
@@ -264,14 +274,15 @@ func TestGruppeSprecherGegenprobe(t *testing.T) {
 	if tOn < f.aStill || tOn > f.aStill+400*time.Millisecond {
 		t.Errorf("%v: auf dem Platz nach %v (erwartet erst, wenn er spricht)", f, tOn)
 	}
-	// In der Luecke spricht b: b ist Hauptsprecher, der Wiederkommende loest ihn erst nach der Hysterese ab
-	for _, gap := range []time.Duration{600 * time.Millisecond, 1200 * time.Millisecond} {
-		f = gruppeFall{name: "b in Luecke", gap: gap, neu: "a", mDelay: 400 * time.Millisecond, bLuecke: true}
+	// In der Luecke spricht b laenger als domHold: b ist Hauptsprecher, der Wiederkommende loest ihn erst nach der
+	// Hysterese ab
+	for _, gap := range []time.Duration{2 * time.Second, 3 * time.Second} {
+		f = gruppeFall{name: "b spricht in Luecke", gap: gap, neu: "a", mDelay: 400 * time.Millisecond, bSpricht: 1800 * time.Millisecond}
 		g = newGruppe(t)
 		g.vorlauf()
 		tOn, tM, seq := g.messen(f)
 		t.Logf("%v: auf dem Platz nach %v, auf m nach %v, Folge %s", f, tOn, tM, seq)
-		if !strings.Contains(seq, "b") || tOn < time.Second || tOn > 2*time.Second || tM != tOn {
+		if !strings.Contains(seq, "b") || tOn < 600*time.Millisecond || tOn > 2*time.Second || tM != tOn {
 			t.Errorf("%v: auf dem Platz nach %v, auf m nach %v, Folge %s", f, tOn, tM, seq)
 		}
 	}

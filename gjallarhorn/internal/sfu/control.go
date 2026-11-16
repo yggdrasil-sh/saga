@@ -173,7 +173,17 @@ func (r *Room) measurePeer(p *Peer, dt float64, now int64) {
 // pickDominant waehlt den Hauptsprecher mit Hysterese: Ein neuer wird es,
 // wenn er domHold lang am lautesten war, sofort, wenn er deutlich lauter
 // ist (domFactor) und der alte mindestens domHold hatte.
+// Ist der Hauptsprecher gerade beim Wiederverbinden (Room.lost, hoechstens domKeep), gilt dieselbe Hysterese gegen ihn
+// wie gegen einen stillen Hauptsprecher: Sonst wuerde jeder, dessen Aktivitaet noch ueber speakOn liegt (ein Einwurf
+// kurz vorher), in der Luecke sofort Hauptsprecher.
 func (r *Room) pickDominant(peers []*Peer, now int64) {
+	k := &r.lost
+	if k.id != "" && (r.dominant != nil || now-k.at > int64(domKeep)) {
+		k.id = ""
+	}
+	if k.id != "" {
+		k.score *= 0.8 // klingt ab wie bei einem stillen Teilnehmenden (measurePeer)
+	}
 	var best *Peer
 	for _, p := range peers {
 		if p.audio == nil {
@@ -203,6 +213,14 @@ func (r *Room) pickDominant(peers []*Peer, now int64) {
 			return
 		}
 		r.prevDom = cur
+	} else if k.id != "" {
+		held := now-k.since >= int64(domHold)
+		long := now-r.candSince >= int64(domHold)
+		loud := best.score >= k.score*domFactor || k.score < speakOn
+		if !held || !(long || loud) {
+			return
+		}
+		k.id = ""
 	}
 	r.dominant = best
 	r.domSince = now

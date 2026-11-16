@@ -217,10 +217,12 @@ type Room struct {
 	pevs []ProbeEvent // beendete Proben dieses Takts (Config.OnProbe)
 	levs []LegEvent   // Widerlegungen und Ruecknahmen dieses Takts (Config.OnLegEvent)
 	// Hauptsprecher, dessen letztes Bein eben endete (Wiederverbinden): kommt dieselbe ID binnen domKeep wieder und ist
-	// seither niemand Hauptsprecher geworden, ist sie es wieder (backLocked)
+	// seither niemand Hauptsprecher geworden, ist sie es wieder (backLocked). Bis dahin zaehlt er wie ein stiller
+	// Hauptsprecher (pickDominant, score klingt ab).
 	lost struct {
 		id               string
 		at, since, spoke int64
+		score            float64
 	}
 }
 
@@ -691,7 +693,7 @@ func (r *Room) dropPeerLocked(p *Peer) {
 	}
 	if r.dominant == p {
 		r.dominant = nil
-		r.lost.id, r.lost.at, r.lost.since, r.lost.spoke = p.ID, r.lastTick, r.domSince, p.lastSpoke
+		r.lost.id, r.lost.at, r.lost.since, r.lost.spoke, r.lost.score = p.ID, r.lastTick, r.domSince, p.lastSpoke, p.score
 	}
 	if r.prevDom == p {
 		r.prevDom = nil
@@ -705,8 +707,8 @@ func (r *Room) dropPeerLocked(p *Peer) {
 // Wiederverbinden: Bein ersetzt, Netzwechsel, Bruecke neu), ist sie es wieder - sofern seither niemand anderes
 // Hauptsprecher wurde und die Luecke hoechstens domKeep lang war. Sonst verlor sie ihren Status mit dem alten
 // Peer-Objekt: Der Sprecherplatz ging auf den zuletzt Sprechenden (byRecent; das neue Objekt hat noch keine Sprache),
-// bis sie wieder sprach. Mit ihrer letzten Sprache (Kachelfolge) und dem Beginn ihres Status (domHold): Wie bei einer
-// Pause ohne Wiederverbinden loest sie jemand, der spricht, ab, sobald sie still ist.
+// bis sie wieder sprach. Mit ihrer letzten Sprache (Kachelfolge), dem Beginn ihres Status (domHold) und ihrer in der
+// Luecke abgeklungenen Aktivitaet: wie nach einer stillen Pause ohne Wiederverbinden.
 func (r *Room) backLocked(p *Peer) {
 	k := r.lost
 	if k.id != p.ID {
@@ -716,7 +718,7 @@ func (r *Room) backLocked(p *Peer) {
 	if r.dominant != nil || r.lastTick-k.at > int64(domKeep) {
 		return
 	}
-	r.dominant, r.domSince = p, k.since
+	r.dominant, r.domSince, p.score = p, k.since, k.score
 	if k.spoke > p.lastSpoke {
 		p.lastSpoke = k.spoke
 	}
