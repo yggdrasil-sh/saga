@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,8 +25,26 @@ import (
 func tunnelServer(t *testing.T) (*server, *httptest.Server, string) {
 	t.Helper()
 	s := testNodeServer(t, true)
-	hs := httptest.NewServer(s.routes())
-	t.Cleanup(hs.Close)
+	// Ende des Tests erst, wenn alle Handler zurueck sind: httptest.Server.Close wartet nicht auf uebernommene
+	// (WebSocket-)Verbindungen, und TestTunnelFristen stellt die globalen Fristen um, die ein noch laufender Handler
+	// des vorigen Tests liest (-race)
+	var wg sync.WaitGroup
+	h := s.routes()
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wg.Add(1)
+		defer wg.Done()
+		h.ServeHTTP(w, r)
+	}))
+	t.Cleanup(func() {
+		hs.Close()
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("Tunnel-Handler nach 10 s nicht beendet")
+		}
+	})
 	return s, hs, "ws" + strings.TrimPrefix(hs.URL, "http") + "/api/sfu/ws"
 }
 
@@ -242,7 +261,10 @@ func TestTunnelGrenzeJeAdresse(t *testing.T) {
 	// andere Adresse (internes HTTP von saga-media: X-Saga-Einport-For mit Schluessel)
 	r := httptest.NewRequest("GET", "/api/sfu/ws", nil)
 	r.RemoteAddr = "203.0.113.7:1234"
-	if s.tun.perIP[ipKey(r)] != 0 {
+	s.tun.mu.Lock()
+	fremd := s.tun.perIP[ipKey(r)]
+	s.tun.mu.Unlock()
+	if fremd != 0 {
 		t.Fatal("fremde Adresse gezaehlt")
 	}
 	open[0].Close()
