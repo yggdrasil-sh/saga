@@ -45,13 +45,19 @@ func TestRahmenUndQuittungen(t *testing.T) {
 	for i := range data {
 		data[i] = byte(i * 7)
 	}
-	go func() { _, _ = srv.Write(data) }()
+	wr := make(chan error, 1)
+	go func() { _, err := srv.Write(data); wr <- err }()
 	got := make([]byte, len(data))
+	_ = cli.SetReadDeadline(time.Now().Add(10 * time.Second))
 	if _, err := io.ReadFull(cli, got); err != nil {
-		t.Fatal(err)
+		t.Fatalf("%v (%+v)", err, srv.Snap())
 	}
+	_ = cli.SetReadDeadline(time.Time{})
 	if string(got) != string(data) {
 		t.Fatal("Strom veraendert")
+	}
+	if err := <-wr; err != nil { // Write zurueck: Zaehler des Knotens fertig (Tx zaehlt nach dem Senden)
+		t.Fatal(err)
 	}
 	for i := 0; i < 100 && srv.Snap().Inflight != 0; i++ { // letzte Quittung nach ack_ms (unter Last spaeter)
 		time.Sleep(10 * time.Millisecond)
@@ -79,6 +85,25 @@ func TestRahmenUndQuittungen(t *testing.T) {
 	time.Sleep(30 * time.Millisecond)
 	if cli.St.AcksRx.Load() != 0 || srv.St.AcksTx.Load() != 0 {
 		t.Fatal("Knoten darf in v1 nicht quittieren")
+	}
+}
+
+// Quittung schneller als der Schreiber (CI-Haenger 21bb100): die App quittiert jede Nachricht sofort; kam die Quittung
+// vor dem Zaehlen der gesendeten Bytes an, wurde sie gekappt und das Fenster blieb zu. Viele Nachrichten, damit das
+// Rennen (falls es wieder auftaucht) mit hoher Rate trifft; Frist statt Haenger.
+func TestQuittungVorZaehlung(t *testing.T) {
+	srv, cli := pair(t, Options{FC: true}, Options{Ack: true, AckBytes: 1})
+	go func() { _, _ = io.Copy(io.Discard, cli) }()
+	_ = srv.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	data := make([]byte, 128*MaxPayload)
+	if n, err := srv.Write(data); err != nil {
+		t.Fatalf("nach %d Byte: %v (%+v)", n, err, srv.Snap())
+	}
+	for i := 0; i < 200 && srv.Snap().Inflight != 0; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if sn := srv.Snap(); sn.Inflight != 0 {
+		t.Fatalf("Quittungen verloren: %+v", sn)
 	}
 }
 
