@@ -136,16 +136,34 @@ func TestOhneFensterKeinHalt(t *testing.T) {
 
 // Quittungsabstand: wenige Bytes -> eine Quittung nach AckDelay; viele -> nach AckBytes.
 func TestQuittungsabstand(t *testing.T) {
-	srv, cli := pair(t, Options{FC: true}, Options{Ack: true})
+	const ad = 100 * time.Millisecond // laenger als DefAckDelay: "nicht vor ack_ms" bleibt auch unter Last pruefbar
+	srv, cli := pair(t, Options{FC: true}, Options{Ack: true, AckDelay: ad})
 	go func() { _, _ = io.Copy(io.Discard, cli) }()
+	// Unter Last (geteilter Runner) schlaeft der Test laenger als gedacht: Geprueft wird "keine Quittung vor ack_ms"
+	// nur, solange seit dem Senden wirklich weniger als ack_ms vergangen ist; auf Quittungen wird gewartet (CI-Last:
+	// "Quittung vor ack_ms", weil aus 5 ms Schlaf 15 wurden).
+	until := func(f func() bool) bool {
+		for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(2 * time.Millisecond) {
+			if f() {
+				return true
+			}
+		}
+		return f()
+	}
+	t0 := time.Now()
 	if _, err := srv.Write([]byte("x")); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(DefAckDelay / 2)
-	if cli.St.AcksTx.Load() != 0 {
-		t.Fatal("Quittung vor ack_ms")
+	time.Sleep(ad / 2)
+	if a, el := cli.St.AcksTx.Load(), time.Since(t0); el < ad && a != 0 {
+		t.Fatalf("Quittung vor ack_ms (nach %v)", el)
+	} else if el >= ad {
+		t.Logf("Test schlief %v statt %v - Pruefung \"vor ack_ms\" entfaellt in diesem Lauf", el, ad/2)
 	}
-	time.Sleep(DefAckDelay + 30*time.Millisecond)
+	if !until(func() bool { return cli.St.AcksTx.Load() >= 1 }) {
+		t.Fatal("keine Quittung nach ack_ms")
+	}
+	time.Sleep(ad + 30*time.Millisecond) // keine zweite ohne neue Daten
 	if cli.St.AcksTx.Load() != 1 {
 		t.Fatalf("%d Quittungen statt 1", cli.St.AcksTx.Load())
 	}
@@ -154,6 +172,7 @@ func TestQuittungsabstand(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	until(func() bool { return cli.St.AcksTx.Load() >= 4 })
 	time.Sleep(10 * time.Millisecond)
 	if a := cli.St.AcksTx.Load(); a < 4 || a > 6 {
 		t.Fatalf("%d Quittungen fuer 4 x ack_bytes", a)
@@ -227,7 +246,11 @@ func TestRxPufferGrenze(t *testing.T) {
 		_ = cli.SetWriteDeadline(time.Now().Add(3 * time.Second))
 		_, _ = cli.Write(make([]byte, 4<<20))
 	}()
-	time.Sleep(500 * time.Millisecond)
+	// bis readLoop mindestens die Haelfte angenommen hat (unter Last langsamer), dann noch etwas Zeit zum Ueberlaufen
+	for end := time.Now().Add(5 * time.Second); srv.rq.Load() < MaxRxBuf/2 && time.Now().Before(end); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond)
 	if q := srv.rq.Load(); q > MaxRxBuf+MaxPayload || q < MaxRxBuf/2 {
 		t.Fatalf("%d Byte gepuffert (Grenze %d)", q, MaxRxBuf)
 	}
