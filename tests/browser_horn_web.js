@@ -585,7 +585,10 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
     const stA = await Promise.all(ps.map(p => stats(p)));
     // Einordnung "nofrom" (frame-e2e.js, Zaehler nf je Art: nocsrc/nomap/gone/new); late: Zuordnung kam waehrend des Wartens
     PERF.wechsel_zuordnung = stA.map((x, i) => x && { late: (x.late || 0) - ((stB[i] || {}).late || 0), nf: x.nf || {} });
-    ok('nach dem Wechsel: keine gefaelschten Rahmen, keine ohne Absender', stA.every((x, i) => { const a = drops(x), b = drops(stB[i]); return a.auth + a.format + a.codec === 0 && a.nofrom - b.nofrom === 0; }),
+    // "gone": Rahmen eines Absenders, der den Knoten schon verlassen hat (CSRC fiel aus der Zuordnung, Rahmen war noch
+    // unterwegs) - ohne Folgen (er kommt ueber die neue Verbindung), gezaehlt, aber kein Fehler
+    const goneN = x => Object.keys((x && x.nf) || {}).filter(k => /:gone$/.test(k)).reduce((n, k) => n + x.nf[k], 0);
+    ok('nach dem Wechsel: keine gefaelschten Rahmen, keine ohne Absender (ausser Nachzuegler gegangener Absender)', stA.every((x, i) => { const a = drops(x), b = drops(stB[i]); return a.auth + a.format + a.codec === 0 && a.nofrom - b.nofrom - (goneN(x) - goneN(stB[i])) === 0; }),
        stA.map((x, i) => [drops(stB[i]), drops(x), PERF.wechsel_zuordnung[i]]));
     const pB = await ps[0].evaluate(() => { const x = document.querySelector('.cl-hpath'); return x && { t: x.textContent, title: x.title }; });
     ok(`Weg-Anzeige: UDP zu Knoten B (${pB && pB.t}: ${pB && pB.title})`, pB && pB.t === 'UDP' && pB.title.indexOf(NODE_B) >= 0, pB);
