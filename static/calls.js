@@ -3718,6 +3718,15 @@
       });
     }, n === 1 ? 0 : 500 * (n - 1));
   }
+  // Eine Leitung einer Verbindung schliessen (beim Knoten abmelden), die Verbindung bleibt
+  function hornLegClose(R, conn, role) {
+    var H = R.horn, L = conn.legs[role];
+    if (!L) return;
+    delete conn.legs[role];
+    if (L.id && !conn.closed && !R.done && !R.ending) hornFetch(conn.url + '/api/sfu/leg/' + encodeURIComponent(L.id), null, 'DELETE').catch(function () {});
+    hornLegDrop(R, conn, L);
+    if (H) hornLog(H, conn, 'zu ' + role);
+  }
   function hornLegDrop(R, conn, L) {
     var H = R.horn;
     hornTunClose(L);
@@ -3906,10 +3915,10 @@
     else H.sw.moved(now, conn.node, conn.path, why);
     if (prev) H.switches.push({ t: now, from: prev.node, to: conn.node, why: why, path: conn.path, fromPath: prev.path });
     if (prev) diagEv(R, prev.node === conn.node ? 'path' : 'switch', prev.node + '/' + prev.path + '>' + conn.node + '/' + conn.path + ' ' + why);
-    if (prev && !H.arT) H.arT = setInterval(function () {   // waehrend des Wechsels: Ton alle 100 ms umhaengen
+    if (prev && !H.arT) H.arT = setInterval(function () {   // waehrend des Wechsels: Ton alle 50 ms umhaengen (Aussetzer)
       if (!live(R) || !R.horn || !H.olds.length) { clearInterval(H.arT); H.arT = null; if (live(R) && R.horn) hornAudioRoute(R); return; }
       hornAudioRoute(R);
-    }, 100);
+    }, 50);
     if (H.rc) H.rc.adopted(now);                       // Horn-Fix: Erfolg zaehlt erst mit Daten (hornMon: rx)
     if (!R.since) { R.since = now; stopTone(); }
     R.connected = true;
@@ -4103,14 +4112,20 @@
     // Alte Verbindungen schliessen (make-before-break): 2 s nachdem die neue liefert, wenn die alte nichts Eigenes mehr
     // bringt - kein Absender, den man nur dort hoert (der neue Knoten vergibt seine Tonplaetze erst nach ein paar
     // Takten) - und man selbst nicht gerade spricht, waehrend am alten Knoten noch andere zuhoeren. Hoechstens 15 s.
-    if (H.olds.length && cur && cur.rx) hornSelfLevel(R, cur);
+    // Eigenes: ein Absender, dessen Ton dort frisch ankommt (CSRC der Rahmen, nicht die Belegung), mit Pegel (dekodiert,
+    // unbekannt = ja), den die neue Verbindung noch nicht stetig (HORN_A_STEADY) liefert.
+    var onCur = {}, pnow = performance.now();
+    if (H.olds.length && cur && cur.rx) { hornSelfLevel(R, cur); hornRecvLevels(H.olds); onCur = hornLiveOn(cur); }
     H.olds.slice().forEach(function (o) {
       if (!cur || !cur.rx) return;
-      var onCur = {};
-      cur.audios.forEach(function (a) { var d = hornAudioOwner(cur, a._i); if (d && hornAudioLive(a, d)) onCur[d] = true; });
-      var uniq = o.audios.some(function (a) {
-        var d = hornAudioOwner(o, a._i), src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null;
-        return d && !onCur[d] && src && (H.levels || {})[d] > 0.02;
+      // Eigene Bild-Leitung (TCP/TLS-Wege: Ton und Bild getrennt) nach OVERLAP_MIN zu wie bisher die ganze Verbindung -
+      // das Bild sendet sie seit der Uebernahme nicht mehr; nur der Ton bleibt fuer die Ueberlappung (spart das Dekodieren
+      // der Kacheln doppelt, waehrend die anderen Geraete noch wechseln)
+      if (o.legs.video && o.legs.audio && H.L.closeOld(now, Math.max(cur.rx, o.retired || 0), 0)) hornLegClose(R, o, 'video');
+      var uniq = '';
+      o.audios.forEach(function (a) {
+        var x = hornAudioNow(o, a), lv = typeof a._lvl === 'number' && a._lvlOf === x.dev ? a._lvl : 1, c = x.dev && onCur[x.dev];
+        if (!uniq && x.dev && !(c && pnow - (c._bad || pnow) >= HORN_A_STEADY) && x.age <= 300 && lv > 0.02) uniq = x.dev.slice(0, 8);
       });
       var mine = hornMyRef(R, o), listeners = Object.keys(o.peers || {}).filter(function (ref) { return ref !== mine; }).length;
       var need = uniq || (listeners > 0 && (H.selfLevel || 0) > 0.02);
@@ -4145,6 +4160,21 @@
         });
       }).catch(function () {});
     }
+  }
+  // Pegel des dekodierten Tons je Tonplatz (inbound-rtp audioLevel; audioLevel der RTP-Quelle fehlt hinter der Frame-E2E) -
+  // nur waehrend eines Wechsels gebraucht, fuer die alten Verbindungen
+  function hornRecvLevels(conns) {
+    conns.forEach(function (c) {
+      c.audios.forEach(function (a) {
+        if (a._lvlT) return;
+        var of = a._now ? a._now.dev : null;
+        a._lvlT = true;
+        a._tr.receiver.getStats().then(function (st) {
+          var lv = null; st.forEach(function (x) { if (x.type === 'inbound-rtp' && typeof x.audioLevel === 'number') lv = x.audioLevel; });
+          a._lvl = lv; a._lvlOf = of;
+        }).catch(function () {}).then(function () { a._lvlT = false; });
+      });
+    });
   }
   // Eigener Sprechpegel (media-source des Ton-Senders) - nur waehrend eines Wechsels gebraucht
   function hornSelfLevel(R, conn) {
@@ -4225,32 +4255,73 @@
     var L = conn.aLeg, s = L && (L.slots || []).filter(function (x) { return x.class === 'audio'; })[i];
     return s && s.csrc ? conn.csrc[s.csrc >>> 0] || null : null;
   }
-  // Liefert dieser Tonplatz seit mindestens 400 ms Rahmen? (Jitter-Puffer gefuellt - erst dann die alte Verbindung fuer
-  // diesen Absender stumm schalten, sonst entstuende eine Luecke)
-  // Je (Platz, Absender): ein Platz, der eben noch eine andere Person trug, zaehlt fuer die neue erst nach 400 ms.
-  function hornAudioLive(a, owner) {
-    var src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null, pnow = performance.now();
-    // neuer Weg zaehlt erst nach 1 s ohne Aussetzer (Ton alle 20 ms; 250 ms ohne Paket = Aussetzer, dann spielt das
-    // alte Bein wieder) - so bleibt die Luecke beim Wechsel auch auf langsamen Geraeten klein
-    if (!(src && (!src.timestamp || pnow - src.timestamp < 250))) { a._since = 0; return false; }
-    if (a._owner !== owner) { a._owner = owner; a._since = pnow; }
+  // Alter einer RTP-Quelle in ms. timestamp ist laut Spezifikation timeOrigin + now (Epoch-Zeit, so liefert es Chromium);
+  // aeltere Umsetzungen nahmen performance.now(). Ohne Zeitstempel: 0 (frisch).
+  function rtpAge(ts) {
+    if (!ts) return 0;
+    var pn = performance.now();
+    return ts > 1e11 ? (performance.timeOrigin || Date.now() - pn) + pn - ts : pn - ts;
+  }
+  // Wer ist gerade wirklich auf diesem Tonplatz, und wie alt ist sein letzter Rahmen? Absender aus der CSRC der zuletzt
+  // gespielten Rahmen (getContributingSources): die Belegung (slots) nennt beim Umbelegen am Knoten den neuen Absender
+  // schon, waehrend noch der alte Ton kommt. Ohne CSRC (Browser, lokale Schleife B2): Absender laut Belegung.
+  function hornAudioNow(conn, a) {
+    var r = a._tr.receiver, src = r.getSynchronizationSources ? r.getSynchronizationSources()[0] : null;
+    var cs = r.getContributingSources ? r.getContributingSources() : [], b = null;
+    cs.forEach(function (x) { if (!b || (x.timestamp || 0) > (b.timestamp || 0)) b = x; });
+    if (b) return { dev: conn.csrc[b.source >>> 0] || null, age: rtpAge(b.timestamp) };
+    return { dev: hornAudioOwner(conn, a._i), age: src ? rtpAge(src.timestamp) : Infinity };
+  }
+  // Wechsel (make-before-break): je Absender spielt genau EIN Tonplatz. Live ist ein Absender auf einem Platz, wenn sein
+  // Ton dort seit HORN_A_LIVE ms ohne Aussetzer (> HORN_A_STALL ms ohne Rahmen) ankommt, stetig nach HORN_A_STEADY ms ohne
+  // Stocken (> HORN_A_FRESH ms). Die neue Verbindung uebernimmt einen Absender, wenn sie ihn stetig liefert oder die alte
+  // stockt; die alte schliesst, wenn die neue jeden dort hoerbaren Absender stetig liefert.
+  var HORN_A_LIVE = 1000, HORN_A_STALL = 250, HORN_A_FRESH = 150, HORN_A_STEADY = 3000;
+  function hornAudioLive(conn, a) {
+    var x = hornAudioNow(conn, a), pnow = performance.now();
+    a._now = x;
+    if (!x.dev || x.age > HORN_A_STALL) { a._since = 0; a._bad = pnow; a._owner = x.dev; return null; }
+    if (a._owner !== x.dev) { a._owner = x.dev; a._since = pnow; a._bad = pnow; }
     if (!a._since) a._since = pnow;
-    return pnow - a._since >= 1000;
+    if (x.age > HORN_A_FRESH) a._bad = pnow;
+    return pnow - a._since >= HORN_A_LIVE ? x.dev : null;
+  }
+  // Absender -> Tonplatz (<audio>) der Verbindung, der ihn nachweislich liefert (hornAudioLive)
+  function hornLiveOn(conn) {
+    var out = {};
+    if (conn) conn.audios.forEach(function (a) { var d = hornAudioLive(conn, a); if (d && !out[d]) out[d] = a; });
+    return out;
   }
   function hornAudioRoute(R) {
-    var H = R.horn, cur = H.cur, onCur = {};
-    if (cur) cur.audios.forEach(function (a) { var d = hornAudioOwner(cur, a._i); if (d && hornAudioLive(a, d)) onCur[d] = true; });
-    hornConns(R).forEach(function (c) {
-      var seen = {};                                   // P9: derselbe Absender zweimal am Knoten (direkt und ueber eine Bruecke)
+    var H = R.horn, cur = H.cur, onCur = hornLiveOn(cur), conns = hornConns(R), pick = {}, pnow = performance.now();
+    // Je Absender ein Platz: neu und stetig (0) > zuletzt gewaehlt und frisch (0,5) > alt frisch (1) > neu live (1,5) >
+    // neu frisch (2) > neu (3) > alt (4); die uebrigen Plaetze mit demselben Absender stumm. Die alte Verbindung hat den
+    // tieferen Jitter-Puffer und spielt, bis die neue stetig liefert - der Aufbau der anderen Geraete laesst die neue
+    // anfangs oefter stocken. Ohne bekannten Absender: nicht stumm (nichts Doppeltes).
+    conns.forEach(function (c) {
       c.audios.forEach(function (a) {
-        var ow = hornAudioOwner(c, a._i), dup = (c !== cur && onCur[ow]) || (ow && seen[ow]);
-        if (ow) seen[ow] = true;
-        var m = !R.spkOut || !!dup;
-        a.dataset.owner = ow ? ow.slice(0, 8) : '';      // Diagnose (Tests)
+        if (c !== cur) hornAudioLive(c, a);            // a._now auffrischen
+        var x = a._now || { dev: null, age: Infinity }, d = x.dev, lc = d && onCur[d];
+        a.dataset.owner = d && x.age <= HORN_A_STALL ? d.slice(0, 8) : '';   // Diagnose (Tests): wer gerade wirklich kommt
+        if (!d) return;
+        var fresh = x.age <= HORN_A_FRESH, rank;
+        if (lc && lc !== a && c === cur) rank = 9;
+        else if (lc === a) rank = pnow - (a._bad || pnow) >= HORN_A_STEADY ? 0 : 1.5;
+        else rank = fresh ? (c === cur ? 2 : 1) : (c === cur ? 3 : 4);
+        if (rank > 0 && a._sel && fresh) rank = 0.5;
+        if (!pick[d] || rank < pick[d].rank) pick[d] = { a: a, rank: rank };
+      });
+    });
+    conns.forEach(function (c) {
+      c.audios.forEach(function (a) {
+        var d = a._now && a._now.dev;
+        a._sel = !!(d && pick[d] && pick[d].a === a);
+        var m = !R.spkOut || !!(d && !a._sel);
         if (a.muted !== m) a.muted = m;
         if (!m && a.paused) a.play().catch(function () {});
       });
     });
+    return onCur;
   }
   function hornSpk(R) { if (R.horn) hornAudioRoute(R); }
   function hornCam(R) {
@@ -4290,7 +4361,7 @@
   // Bildschirmplatz, Sprecher aus dem Sprecherplatz
   function hornVideoLive(tr) {
     var src = tr.receiver.getSynchronizationSources ? tr.receiver.getSynchronizationSources()[0] : null;
-    return !!(src && (!src.timestamp || performance.now() - src.timestamp < 700));
+    return !!(src && (!src.timestamp || rtpAge(src.timestamp) < 700));
   }
   function hornSources(R) {
     var H = R.horn, out = { vid: {}, scr: null, spk: null }, cur = H.cur;
@@ -4467,13 +4538,13 @@
     var H = R.horn; clearInterval(H.spkT);
     H.spkT = setInterval(function () {
       if (!live(R) || !R.horn) { clearInterval(H.spkT); return; }
-      var now = Date.now(), pnow = performance.now(), lv = {};
+      var now = Date.now(), lv = {};
       hornConns(R).forEach(function (c) {
         c.audios.forEach(function (a) {
           var d = hornAudioOwner(c, a._i), src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null;
-          // timestamp: performance.now()-Zeitbasis; aelter als 1 s = der Platz liefert gerade nichts
+          // aelter als 1 s = der Platz liefert gerade nichts (rtpAge: Epoch-Zeitstempel)
           if (src && typeof src.audioLevel === 'number') H.lvSeen = true;
-          if (d && src && typeof src.audioLevel === 'number' && !(src.timestamp && pnow - src.timestamp > 1000)) lv[d] = Math.max(lv[d] || 0, src.audioLevel);
+          if (d && src && typeof src.audioLevel === 'number' && !(src.timestamp && rtpAge(src.timestamp) > 1000)) lv[d] = Math.max(lv[d] || 0, src.audioLevel);
         });
       });
       H.levels = lv;

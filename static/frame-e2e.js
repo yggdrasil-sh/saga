@@ -352,7 +352,7 @@
     // Zuordnung CSRC -> Geraet, die das Fenster aus der Belegung der Plaetze meldet (op "csrc"). Unbekannt: verwerfen.
     // 2.5 P5: eine Zuordnung je Knoten-Verbindung (o.map; CSRCs vergibt jeder Knoten selbst - beim Wechsel zwischen Knoten
     // laufen kurz zwei Verbindungen nebeneinander)
-    var MAPS = { '': {} }, mapWait = [];
+    var MAPS = { '': {} }, SEEN = {}, mapWait = [];
     // Absender unbekannt: kurz (hoechstens 150 ms) auf die naechste Zuordnung warten - beim Wechsel zwischen Knoten kann
     // der erste Rahmen eines Geraets knapp vor dessen Meldung im Ereigniskanal ankommen
     var waitMap = function (key, csrc) {
@@ -382,7 +382,13 @@
             var csrc = ((md.contributingSources || [])[0]) >>> 0;
             from = (MAPS[o.map || ''] || {})[csrc];
             if (!from && csrc && mapWait.length < 64) { from = await waitMap(o.map || '', csrc); if (from) S.late = (S.late || 0) + 1; }
-            if (!from) { drop('nofrom', kind); if (kind === 'video') needKey = true; return; }
+            if (!from) {
+              // Diagnose (Zaehler nf): ohne CSRC / Verbindung ohne Zuordnung / CSRC war zugeordnet und fiel heraus (Absender
+              // ging, Rahmen noch unterwegs) / CSRC nie zugeordnet (Zuordnung kam > 150 ms nach dem Rahmen oder gar nicht)
+              var nf = S.nf || (S.nf = {}), cl = kind + ':' + (!csrc ? 'nocsrc' : !MAPS[o.map || ''] ? 'nomap' : (SEEN[o.map || ''] || {})[csrc] ? 'gone' : 'new');
+              nf[cl] = (nf[cl] || 0) + 1;
+              drop('nofrom', kind); if (kind === 'video') needKey = true; return;
+            }
             // 2.5 P5: tatsaechlicher Absender je Bild-Empfaenger melden - der Knoten wechselt die Quelle eines Platzes erst am
             // naechsten Schluesselbild, die Belegung nennt aber schon die neue; das Fenster ordnet die Kachel danach zu
             if (kind === 'video' && o.rid && from !== lastFrom) { lastFrom = from; root.postMessage({ ev: 'vown', rid: o.rid, from: from }); }
@@ -428,10 +434,11 @@
         else if (d.op === 'peer') out.ok = await H.peerKey(d.from, d.n, new Uint8Array(d.key), d.s, Date.now());
         else if (d.op === 'gone') H.peerGone(d.from);
         else if (d.op === 'csrc') {
-          var mm = MAPS[d.key || ''] = {}; Object.keys(d.map || {}).forEach(function (k) { mm[k >>> 0] = String(d.map[k]); });
+          var mm = MAPS[d.key || ''] = {}, seen = SEEN[d.key || ''] || (SEEN[d.key || ''] = {});
+          Object.keys(d.map || {}).forEach(function (k) { mm[k >>> 0] = String(d.map[k]); seen[k >>> 0] = 1; });
           mapWait = mapWait.filter(function (w) { if (w.key === (d.key || '') && mm[w.csrc]) { w.ok(mm[w.csrc]); return false; } return true; });
         }
-        else if (d.op === 'csrc-drop') { if (d.key) delete MAPS[d.key]; }
+        else if (d.op === 'csrc-drop') { if (d.key) { delete MAPS[d.key]; delete SEEN[d.key]; } }
         else if (d.op === 'stats') { out.stats = S; if (d.reset) S = fresh(); }
         else if (d.op === 'selftest') out.result = await selftest(d.vectors);
         else if (d.op === 'runes') out.runes = await runes(d.call_id, d.devices);

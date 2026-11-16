@@ -16,6 +16,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Web-Anrufe über Gjallarhorn: Tonlücke und Doppelton beim Wechsel des Knotens
+- **Ursache:** Beim Wechsel (make-before-break) schloss der Browser die alte Verbindung nach 2 s, auch wenn der Sprecher
+  auf der neuen noch keinen Tonplatz hatte (der neue Knoten vergibt ihn erst nach ein paar Takten) – gemessen bis 1,6 s
+  Stille. Die Prüfung „spricht dort noch jemand, den die neue nicht liefert“ griff nicht: Chromium liefert hinter der
+  Frame-E2E keinen `audioLevel` der RTP-Quelle, und deren Zeitstempel ist Epoch-Zeit (`timeOrigin + now`), nicht
+  `performance.now()` – die Aussetzer-Erkennung war damit wirkungslos (auch beim Sprechring und beim Bild während des
+  Wechsels). Als Absender galt die Belegung der Plätze, die beim Umbelegen am Knoten dem Ton vorausläuft; bis die neue
+  Verbindung übernahm, spielten beide (Doppelton).
+- **Jetzt:** Je Tonplatz zählt der echte Absender (CSRC der zuletzt gespielten Rahmen) und das Alter seines letzten
+  Rahmens. Je Absender spielt genau ein Platz: die alte Verbindung (tieferer Jitter-Puffer) spielt weiter, bis die neue
+  ihn 3 s ohne Stocken liefert; stockt die gewählte Quelle (> 150 ms), spielt die andere, sofern frisch (Umhängen alle
+  50 ms). Die alte Verbindung bleibt offen, solange dort jemand hörbar spricht (dekodierter Pegel), den die neue noch
+  nicht stetig liefert (höchstens 15 s wie bisher); ihre Bild-Leitung (TCP/TLS) schließt wie bisher nach 2 s.
+- Test `anrufe_horn_web`: neue Prüfung „kein doppelter Ton“, Lücke mit Epoch-Zeit; `TON_DIAG=<datei>` schreibt Pegel je
+  Platz, Empfänger- und Sendestatistik um den Wechsel. Frame-E2E zählt verworfene Rahmen ohne Absender nach Art
+  (`nf`: ohne CSRC, ohne Zuordnung, CSRC fiel heraus, CSRC nie zugeordnet) – zur Einordnung seltener „nofrom“.
+
 ### Neu – Browser telefonieren über die Saga-Adresse hinter jedem Reverse Proxy (Rahmen-Weg, Gjallarhorn experimentell)
 - **Rahmen-Weg `saga-frames.1`:** Hinter einem Proxy, der TLS selbst beendet (Nginx Proxy Manager), telefonieren jetzt
   auch Browser über den eingebauten Knoten im Tunnel-Betrieb. Sie schicken ihre kodierten, Ende-zu-Ende-verschlüsselten
