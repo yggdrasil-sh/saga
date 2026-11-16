@@ -907,12 +907,14 @@ Seit 2.5 (`HORN_TCP_STAU`, Standard an):
   die Rückmeldungen zu (`tcpstau.go`).
 - Je Takt (200 ms) liest das Bein daraus: die **Schlange unterwegs** (kleinste Laufzeit der letzten 5 gemeldeten
   Pakete über der kleinsten der letzten 30 s) und **gesendet gegen bestätigt** derselben Pakete über rund 1 s.
-- Regel (`internal/sfu/tcpstau.go`): Stau, wenn die Schlange 2 Takte in Folge über 100 ms liegt, gesendet über
-  1,05 × bestätigt liegt und die Schlange seit dem ersten dieser Takte um mindestens 40 ms gestiegen ist. Dann senkt die
+- Regel (`internal/sfu/tcpstau.go`): Stau, wenn die Schlange 3 Takte in Folge über 100 ms liegt, gesendet über
+  1,05 × bestätigt liegt und die Schlange gegen ihr Minimum ab dem zweiten dieser Takte um mindestens 40 ms gestiegen
+  ist (ein Sprung durch fremde Last, auch über zwei Takte verteilt, zählt nicht; eine selbst gemachte Schlange wächst
+  Takt für Takt weiter, im Prüfstand ~30 ms je Takt). Dann senkt die
   Schätzung wie bei der eigenen Warteschlange – auf 85 % der **bestätigten** Rate. Danach 5 s kein Schritt nach oben,
   solange die Schlange über 40 ms steht (Abbau).
 - Eine stehende Schlange, die nicht wächst, ist kein Stau: Ein Download auf derselben Leitung hält sie voll (Prüfstand:
-  Sprung 0 → 230 ms in einem Takt, dann flach), und kein Herunterschalten leert sie. Ebenso keine Wirkung ohne frische
+  Sprung 0 → 230 ms in ein bis zwei Takten, dann flach), und kein Herunterschalten leert sie. Ebenso keine Wirkung ohne frische
   Rückmeldung (älter als 600 ms). UDP-Beine (mit GCC) werten das Signal nicht – dort bleibt alles, wie es war.
 - Warum nicht die RTT aus den RTCP-Empfängerberichten: ein Wert je Senderbericht (1 s) und je gemeldetem SR mit bis zu
   1 s Verzug – bei 150 ms Wachstum je Sekunde zu spät und zu grob. Warum kein Fenster wie im Tunnel A3 (Bytes unterwegs
@@ -924,8 +926,10 @@ Seit 2.5 (`HORN_TCP_STAU`, Standard an):
   Zeile `tcpstau <bein> ok= q= sent= ack= fb=` (Messläufe). Zähler in `GET /api/sfu/leg/{id}` → `tcp_stau`
   (`downs`, `holds`, `stale`, `queue_ms`, …).
 - Kosten: 8 Byte je Paket (Kopf-Erweiterung) und die Rückmeldungen des Geräts auf dem Uplink (~1–2 kbit/s).
+- A3 (Weg `ws`): Tunnel-Beine sind ICE-TCP-Beine des Knotens und haben das Signal ebenso – zusätzlich zum Fenster des
+  Tunnels, das damit auf engem Downlink nicht mehr greifen muss (siehe Messung).
 - Tests: `internal/sfu/tcpstau_test.go` (frei Takt für Takt gleich wie ohne, wachsende Schlange, Sprung durch fremden
-  Download, alte Rückmeldung, Ausschlag eines Takts, UDP unberührt), `TestTCPStauAbgriff`/`TestTCPStauAus`
+  Download in einem bzw. zwei Takten, alte Rückmeldung, Ausschlag eines Takts, UDP unberührt), `TestTCPStauAbgriff`/`TestTCPStauAus`
   (Interceptor-Kette), `TestMitleserRecent`.
 
 MESSUNG_PLATZHALTER
