@@ -187,6 +187,55 @@ func (r *trec) WriteRTP(h *rtp.Header, p []byte) (int, error) {
 	return len(p), nil
 }
 
+// schuebe ordnet die Mitschrift (unter w.mu) nach Fuell-Schueben, die nicht direkt (binnen 8 ms) hinter einem Paket
+// hinausgingen (eigene Schuebe), fuer Bilder im Abstand gap bis end (Ende des Fuellens):
+//   - allein: alle eigenen Schuebe; eng: davon die, die weniger als padIdle/2 nach dem letzten Paket begannen
+//   - takt: eigene Schuebe zwischen zwei Bildern, die im Raster kamen (Abstand unter 2*gap) - den eigenen Takt darf es
+//     bei gap < padIdle nicht geben (der Fehler von Pruefung 2: Wecker kurz vor jedem Bild). Einzelne auch, wenn der
+//     Schreiber zwischen Bild und Fuellen verdraengt wurde.
+//   - stille: eigene Schuebe in einer Luecke von mindestens 2*gap zwischen zwei Bildern - der Rechner hielt Test oder
+//     Schreiber an (geteilter CI-Runner, Steal-Time), mindestens ein Bild fiel aus, das Bein schwieg wirklich. Dann
+//     fuellt der Ruhe-Wecker zu Recht. Bis Saga 2.5 (CI 16.11.) zaehlten die als eigener Takt; nach der Pause kamen
+//     zudem die nachgeholten Bilder gesammelt binnen 8 ms hinterher ("4 Schuebe, 6 kurz vor einem Bild").
+//     Die Grenze haengt am Bildabstand, nicht an padIdle: Ein Wecker unter dem Bildabstand faellt immer unter takt.
+//   - vorBild: Bilder, denen ein takt-Schub binnen 8 ms vorausging (das Gruppenmuster, das GCC stoert)
+func (r *trec) schuebe(gap time.Duration, end time.Time) (pads, media, allein, eng, takt, stille, vorBild int) {
+	var lastTakt, prevMedia time.Time
+	for i, pd := range r.pad {
+		if !pd {
+			media++
+			if !lastTakt.IsZero() && r.at[i].Sub(lastTakt) < 8*time.Millisecond {
+				vorBild++
+			}
+			prevMedia = r.at[i]
+			continue
+		}
+		pads++
+		d := r.at[i].Sub(r.at[i-1])
+		if d <= 8*time.Millisecond {
+			continue
+		}
+		allein++
+		if d < padIdle/2 {
+			eng++
+		}
+		next := end // naechstes Bild nach dem Schub
+		for j := i + 1; j < len(r.pad); j++ {
+			if !r.pad[j] {
+				next = r.at[j]
+				break
+			}
+		}
+		if next.Sub(prevMedia) >= 2*gap {
+			stille++
+		} else {
+			takt++
+			lastTakt = r.at[i]
+		}
+	}
+	return
+}
+
 // TestPaddingHaengtAmMedium: Solange das Bein Pakete sendet, gehen Fuellpakete nur direkt hinter einem Paket hinaus,
 // nie in einem eigenen Takt dazwischen. pion-GCC fasst zusammen, was binnen 5 ms nach dem ersten Paket einer Gruppe
 // gesendet wurde, und misst vom ersten Senden bis zur letzten Ankunft: Ein Fuell-Schub kurz vor einem Medienpaket
@@ -215,35 +264,23 @@ func TestPaddingHaengtAmMedium(t *testing.T) {
 				time.Sleep(c.gap)
 			}
 			leg.SetPadding(nil, 0)
-			el := time.Since(start).Seconds()
+			end := time.Now()
+			el := end.Sub(start).Seconds()
 			time.Sleep(20 * time.Millisecond)
 			w.mu.Lock()
 			defer w.mu.Unlock()
-			// allein: Fuell-Schuebe, die nicht an einem Medienpaket haengen (mehr als 8 ms nach dem letzten Paket begonnen);
-			// eng: solche, die weniger als padIdle/2 nach dem letzten Paket begannen (ein dichter eigener Takt)
-			pads, media, allein, eng := 0, 0, 0, 0
-			for i, pd := range w.pad {
-				if !pd {
-					media++
-					continue
-				}
-				pads++
-				if d := w.at[i].Sub(w.at[i-1]); d > 8*time.Millisecond {
-					allein++
-					if d < padIdle/2 {
-						eng++
-					}
-				}
-			}
+			// siehe trec.schuebe: Schweigt das Bein, weil der Rechner den Test anhielt (Bild ausgefallen), fuellt der
+			// Ruhe-Wecker zu Recht - das zaehlt nicht als eigener Takt
+			pads, media, allein, eng, takt, stille, _ := w.schuebe(c.gap, end)
 			got := float64(pads) * padWire * 8 / el
-			t.Logf("%d Bilder, %d Fuellpakete (%.0f kbit/s), %d Schuebe ohne Medienpaket davor, davon %d im engen Takt", media, pads,
-				got/1000, allein, eng)
+			t.Logf("%d Bilder, %d Fuellpakete (%.0f kbit/s), %d Schuebe ohne Medienpaket davor (%d im engen Takt; %d zwischen Bildern im Raster, %d in Pausen des Rechners)",
+				media, pads, got/1000, allein, eng, takt, stille)
 			if got < 0.7*rate || got > 1.1*rate {
 				t.Fatalf("fuellrate %.0f kbit/s, eingestellt %.0f", got/1000, rate/1000)
 			}
-			// (ein, zwei Ausreisser, wenn der Test selbst haengt und das Bein so lange wirklich schweigt)
-			if c.gap < padIdle && allein > 2 {
-				t.Fatalf("%d Fuell-Schuebe ohne Medienpaket davor bei %d Bildern im Abstand %v", allein, media, c.gap)
+			// (ein, zwei Ausreisser: Schreiber zwischen Bild und Fuellen verdraengt)
+			if c.gap < padIdle && takt > 2 {
+				t.Fatalf("%d Fuell-Schuebe ohne Medienpaket davor bei %d Bildern im Abstand %v", takt, media, c.gap)
 			}
 			if c.gap > padIdle && (allein < media || eng > 2) {
 				t.Fatalf("stilles Bein: %d eigene Schuebe bei %d Bildern, %d davon im engen Takt", allein, media, eng)
@@ -273,42 +310,35 @@ func TestPaddingReinesBildBein(t *testing.T) {
 			leg.SetPadding(o, rate)
 			start := time.Now()
 			gap := time.Second / time.Duration(fps)
-			for i := 2; time.Since(start) < 1200*time.Millisecond; i++ { // Bilder im festen Raster (nicht "Schlaf nach dem Senden")
+			// Bilder im festen Raster (nicht "Schlaf nach dem Senden"). Hing der Test (geteilter Rechner), faellt der
+			// verpasste Rasterplatz aus wie bei einer Kamera - kein Nachhol-Schub mehrerer Bilder binnen einer Millisekunde.
+			slot := 0
+			for i := 2; time.Since(start) < 1200*time.Millisecond; i++ {
 				s.Inject(vp8part(uint16(i), uint32(i)*3000, true, false, true))
-				time.Sleep(time.Until(start.Add(time.Duration(i-1) * gap)))
+				for slot++; time.Until(start.Add(time.Duration(slot)*gap)) < 0; slot++ { // verpasste Plaetze auslassen
+				}
+				time.Sleep(time.Until(start.Add(time.Duration(slot) * gap)))
 			}
 			leg.SetPadding(nil, 0)
-			el := time.Since(start).Seconds()
+			end := time.Now()
+			el := end.Sub(start).Seconds()
 			time.Sleep(20 * time.Millisecond)
 			w.mu.Lock()
 			defer w.mu.Unlock()
-			// allein: Fuell-Schub, der mehr als 8 ms nach dem letzten Paket beginnt (eigener Takt);
-			// vorBild: Bild, dem weniger als 8 ms zuvor ein solcher Schub vorausging
-			pads, media, allein, vorBild := 0, 0, 0, 0
-			var lastAllein time.Time
-			for i, pd := range w.pad {
-				if !pd {
-					media++
-					if !lastAllein.IsZero() && w.at[i].Sub(lastAllein) < 8*time.Millisecond {
-						vorBild++
-					}
-					continue
-				}
-				pads++
-				if w.at[i].Sub(w.at[i-1]) > 8*time.Millisecond {
-					allein++
-					lastAllein = w.at[i]
-				}
-			}
+			// fruehe: Schub im eigenen Takt vor Ablauf von padIdle; vorBild: Bild binnen 8 ms nach so einem Schub;
+			// ruhe: Wecker nach echter Stille des Beins (Rechner hielt Test oder Schreiber an) - richtig, kein Takt.
+			// Bis Saga 2.5 (CI 16.11.) zaehlte der Test die mit; nach einer Pause kamen dazu die nachgeholten Bilder
+			// gesammelt binnen 8 ms hinterher ("4 Schuebe, 6 kurz vor einem Bild").
+			pads, media, _, _, takt, stille, vorBild := w.schuebe(gap, end)
 			got := float64(pads) * padWire * 8 / el
-			t.Logf("%d Bilder, %d Fuellpakete (%.0f kbit/s), %d Schuebe im eigenen Takt, %d davon kurz vor einem Bild", media, pads,
-				got/1000, allein, vorBild)
+			t.Logf("%d Bilder, %d Fuellpakete (%.0f kbit/s), %d Schuebe im eigenen Takt, %d davon kurz vor einem Bild, %d in Pausen des Rechners",
+				media, pads, got/1000, takt, vorBild, stille)
 			if got < 0.8*rate || got > 1.1*rate {
 				t.Fatalf("fuellrate %.0f kbit/s, eingestellt %.0f", got/1000, rate/1000)
 			}
-			// (ein, zwei Ausreisser, wenn der Test selbst haengt und das Bein so lange wirklich schweigt)
-			if allein > 2 || vorBild > 1 {
-				t.Fatalf("%d Fuell-Schuebe im eigenen Takt, %d kurz vor einem Bild (%d Bilder mit %d/s)", allein, vorBild, media, fps)
+			// (ein, zwei Ausreisser: Schreiber zwischen Bild und Fuellen verdraengt)
+			if takt > 2 || vorBild > 1 {
+				t.Fatalf("%d Fuell-Schuebe im eigenen Takt, %d kurz vor einem Bild (%d Bilder mit %d/s)", takt, vorBild, media, fps)
 			}
 		})
 	}
