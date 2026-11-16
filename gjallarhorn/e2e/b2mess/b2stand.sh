@@ -2,7 +2,7 @@
 # B2-Messstand (nur Tests): Knoten (HORN_DEV, eigener TLS-Port fuer die Gegenstelle per TURN-TLS, internes HTTP node.sock)
 # <- saga-media (MEDIA_NODE_SOCK, roher WS-Weg wie im Produkt) <- nginx (NPM-Nachbau, Websockets an; dazu /b2mess/ und
 # /static/ des Repos) <- engpass (Leitung im Userspace, eine FIFO je Richtung fuer alle Verbindungen des Messgeraets).
-#   B2M_DIR=/tmp/b2/stand B2M_BASE=8590 B2M_BIN=<Ordner mit gjallarhorn, saga-media, engpass> b2stand.sh start|stop|status
+#   B2M_DIR=/tmp/b2/stand B2M_BASE=8590 B2M_BIN=<Ordner mit gjallarhorn, saga-media, engpass> b2stand.sh start|stop|status|shaper-restart [werte]
 # Ports: +1 nginx (WS an) | +2 nginx (WS aus) | +3 saga-media | +4 Knoten (TLS, TURN-TLS) | +6 engpass -> nginx |
 #        +7 engpass -> Knoten (TURN-TLS) | +8 engpass-Steuerung | +9 saga-media intern. Schluessel nur fuer den Pruefstand.
 set -u
@@ -28,6 +28,11 @@ start)
     -ctl 127.0.0.1:$((B+8)) > $D/run/shaper.log 2>&1 & echo $! > $D/run/shaper.pid
   sleep 1; "$0" status
   curl -sk -o /dev/null -w "ohne Upgrade: %{http_code} (erwartet 426)\n" https://127.0.0.1:$((B+1))/api/sfu/ws ;;
+shaper-restart)   # nur Messungen: alle Verbindungen ueber den engpass hart trennen (Wiederverbinden), Werte $2 neu setzen
+  [ -f $D/run/shaper.pid ] && kill "$(cat $D/run/shaper.pid)" 2>/dev/null; sleep 0.3
+  nohup $BIN/engpass -map 127.0.0.1:$((B+6))=127.0.0.1:$((B+1)),127.0.0.1:$((B+7))=127.0.0.1:$((B+4)) -up 0 -down 0 -rtt 0 -qms 300 \
+    -ctl 127.0.0.1:$((B+8)) >> $D/run/shaper.log 2>&1 & echo $! > $D/run/shaper.pid
+  sleep 0.3; [ -n "${2:-}" ] && curl -s "http://127.0.0.1:$((B+8))/set?$2" ;;
 stop)
   for p in node media shaper; do [ -f $D/run/$p.pid ] && kill "$(cat $D/run/$p.pid)" 2>/dev/null; rm -f $D/run/$p.pid; done
   [ -f $D/nginx/nginx.pid ] && kill "$(cat $D/nginx/nginx.pid)" 2>/dev/null; true ;;
