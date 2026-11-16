@@ -118,10 +118,11 @@ func TestTunnel426OhneUpgrade(t *testing.T) {
 	}
 }
 
-// saga-frames.1 (Browser-Weg B2) ist reserviert: sauber 400, kein 101.
+// Unbekanntes Unterprotokoll: sauber 400, kein 101 (saga-frames.1 ist seit B2 der Rahmen-Weg, frames_test.go); bietet
+// der Client beide an, gilt saga-tunnel.1.
 func TestTunnelUnterprotokoll(t *testing.T) {
 	_, _, url := tunnelServer(t)
-	for _, p := range [][]string{{"saga-frames.1"}, {"chat"}, {}} {
+	for _, p := range [][]string{{"chat"}, {}} {
 		ws, resp, err := dialTunnel(t, url, p...)
 		if err == nil {
 			ws.Close()
