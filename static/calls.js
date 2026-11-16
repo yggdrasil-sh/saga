@@ -42,13 +42,16 @@
   // multi (E4/E5) = Raum: weitere Geraete/Personen (join/leave, mehrere PeerConnections) - braucht reneg und multi am Server
   // horn (2.5) = Gruppenanrufe ueber einen Gjallarhorn-Knoten mit Frame-E2E - nur mit Server-Faehigkeit horn und Encoded Transform
   // askmute (2.5, MEETING-SPEC §4.3/§11) = beachtet state.ask_mute eines eigenen Begleitgeraets (Echo-Schutz)
-  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn', 'askmute', 'meshjoin'];   // meshjoin: 2.5 A3 S11
+  // frames (2.5 B2, Vertrag S12): Browser-Weg ueber WebSocket an die Saga-Adresse (static/horn-frames.js) - erreicht auch
+  // Knoten im Tunnel-Betrieb hinter einem TLS-beendenden Proxy; nur mit Server-Faehigkeit frames und ohne Huellen-Tunnel
+  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn', 'askmute', 'meshjoin', 'frames'];   // meshjoin: 2.5 A3 S11
   function feat(x) { return !!(cfg && (cfg.features || []).indexOf(x) >= 0); }
   function myCaps() {
     var c = CAPS_ALL.filter(function (x) {
       return x === 'reneg' ? feat('reneg') : x === 'screen2' ? feat('reneg') && feat('screen2') : x === 'multi' ? feat('reneg') && feat('multi')
         : x === 'horn' ? feat('reneg') && feat('multi') && feat('horn') && hornCan()
-        : x === 'meshjoin' ? feat('reneg') && feat('multi') && feat('horn') && feat('horn_direct1') : true;
+        : x === 'meshjoin' ? feat('reneg') && feat('multi') && feat('horn') && feat('horn_direct1')
+        : x === 'frames' ? feat('reneg') && feat('multi') && feat('horn') && feat('frames') && hornCan() && hornFramesCan() && !hornTunnel() : true;
     });
     // 2.5 A3 (Vertrag S10): Medien-Tunnel nur mit der Bruecke der Mac-Huelle - dann bekommt dieses Geraet auch Knoten im
     // Tunnel-Betrieb (Browser ohne Huelle nicht)
@@ -2946,7 +2949,7 @@
     var s = (document.currentScript && document.currentScript.src) || '', m = /[?&]v=([^&#]+)/.exec(s);
     return m ? '?v=' + m[1] : '';
   })();
-  var HORN_SRC = '/static/frame-e2e.js' + HORN_V, HORN_LOGIC = '/static/horn.js' + HORN_V;
+  var HORN_SRC = '/static/frame-e2e.js' + HORN_V, HORN_LOGIC = '/static/horn.js' + HORN_V, HORN_FRAMES = '/static/horn-frames.js' + HORN_V;
   var hornLibP = null;
   function hornScript(src, ready) {
     if (ready()) return Promise.resolve();
@@ -3357,6 +3360,7 @@
     var H = R.horn, m = H.meas[cand.node];
     var udp = !!(cand.udp && cand.tokens && cand.tokens.both && m && (m.udp != null || m.udpMaybe));
     if (cand.ws === true && hornTunnel()) return hornOpenWays(R, cand, H.L.ways(cand, udp), m);   // 2.5 A3: Mac-Huelle mit Tunnel
+    if (hornFrames(H, cand)) return hornOpenWays(R, cand, H.L.ways(cand, udp), m);   // 2.5 B2: Browser, Rahmen-Weg (Vertrag S12.5)
     var noTcp = cand.tcp === false;
     var noTls = cand.tls === false;                     // 2.5 A3: Tunnel-Betrieb hinter einem TLS-beendenden Proxy - im Browser nur UDP
     var p = udp ? hornConnect(R, cand, 'udp', m.udp != null ? HORN_WAIT_UDP : 1500).catch(function (e) { if (e === null || noTcp) throw e; return hornConnect(R, cand, 'tcp'); })
@@ -3369,6 +3373,15 @@
   }
   // 2.5 A3: Medien-Tunnel der Mac-Huelle (sagaHost.tunnel, static/host.js) - null im Browser bzw. ohne Faehigkeit "tunnel"
   function hornTunnel() { try { return window.sagaHost && window.sagaHost.tunnel ? window.sagaHost.tunnel() : null; } catch (e) { return null; } }
+  // 2.5 B2 (Vertrag S12): Rahmen-Weg im Browser - Encoded Transform (Script), WebSocket, Canvas-Erfassung, AudioContext
+  function hornFramesCan() {
+    return typeof RTCRtpScriptTransform === 'function' && typeof WebSocket === 'function' && !!(window.AudioContext || window.webkitAudioContext) &&
+      !!(window.HTMLCanvasElement && HTMLCanvasElement.prototype.captureStream);
+  }
+  // Weg ws ueber den Rahmen-Weg fuer diesen Kandidaten? (Knoten bietet ws + frames, Server-Faehigkeit, kein Huellen-Tunnel)
+  function hornFrames(H, cand) {
+    return !!(cand && cand.ws === true && cand.frames === true && !hornTunnel() && feat('frames') && hornFramesCan() && H && H.X && H.X.mode === 'script');
+  }
   function hornFinal(e) { return e === null || !!(e && (e.status === 404 || e.status === 429)); }   // aufgelegt/beendet, voll/Leeren
   // Wege mit Tunnel (Vertrag S5, SagaHorn.ways): Tunnel-Betrieb UDP | ws im Wettlauf, sonst UDP -> TCP -> TLS -> ws
   function hornOpenWays(R, cand, w, m) {
@@ -3424,7 +3437,9 @@
     if (opt.side) H.side = conn; else H.next = conn;
     if (opt.made) opt.made.push(conn);
     // TURN-TLS und Tunnel (A3, Vertrag S2/F3): Zugangsdaten per POST /api/sfu/turn mit dem Ton-Token, ein Satz fuer beide Leitungen
-    var turnP = path === 'turn' || path === 'ws' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : Promise.resolve(null);
+    // 2.5 B2: Weg ws ohne Huellen-Tunnel = Rahmen-Weg; statt Zugangsdaten zuerst die lokale Schleife (Medien-Token im join)
+    var turnP = path === 'ws' && !hornTunnel() ? hornFramesLoop(R, conn)
+      : path === 'turn' || path === 'ws' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : Promise.resolve(null);
     var roles = path === 'udp' ? ['both'] : ['audio', 'video'];
     return turnP.then(function (turn) {
       return Promise.all(roles.map(function (role) { return hornLeg(R, conn, role, path, turn); }));
@@ -3444,6 +3459,7 @@
   }
   function hornAudioTrack(R) { return R.mix ? R.mix.out : (R.local ? R.local.getAudioTracks()[0] : null) || null; }
   function hornLeg(R, conn, role, path, turn) {
+    if (path === 'ws' && !hornTunnel()) return hornLegFrames(R, conn, role);   // 2.5 B2
     var H = R.horn, cand = conn.cand, cf = { bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' };
     if (H.X.mode === 'streams') cf.encodedInsertableStreams = true;
     if (turn && path === 'turn') {
@@ -3569,6 +3585,122 @@
     });
   }
   function hornTunClose(L) { if (L && L.tun) { var t = L.tun; L.tun = null; try { t.close(t.id); } catch (e) { /* zu */ } } }
+
+  // --- 2.5 B2: Rahmen-Weg (Vertrag S12, static/horn-frames.js) ---------------------------------------------------------------
+  // Je Knoten-Verbindung eine lokale Schleife (zwei PeerConnections im Tab) fuer Senden und Empfangen, zwei WebSockets (Ton,
+  // Bild) an /api/sfu/ws der Saga-Adresse. Die Beine sehen fuer den Rest von calls.js aus wie gewohnt: L.tr/L.scr sind echte
+  // Sender der Schleife, L.cam fasst die Schichten l/m wie einen Simulcast-Sender, L.recv sind die Empfaenger der Schleife
+  // (Reihenfolge = Plaetze am Knoten), L.pc gibt Zustand und Statistik (RTT des WebSockets als candidate-pair).
+  function hornFramesLoop(R, conn) {
+    var H = R.horn;
+    return hornScript(HORN_FRAMES, function () { return !!window.SagaHornFrames; }).then(function () {
+      if (!live(R) || conn.dead) throw null;
+      var tx = H.L.K.TX.ws || H.L.K.TX.tcp;
+      conn.fr = window.SagaHornFrames.create(H.X, { key: conn.key, url: HORN_FRAMES, tiles: HORN_TILES, audioTrack: hornAudioTrack(R),
+                                                    camTrack: R.cam || null, screenTrack: R.screen || null, tx: tx, jb: 150,
+                                                    rseq: function () { return ++H.rseq; } });
+      conn.fr.cfg(tx.m, 150);
+      conn.fr.onRate = function (k) { if (conn.fr) { conn.fr.applyRate(); if (conn === H.cur) diagEv(R, 'tx', 'ws m=' + k + 'k'); } };
+      conn.fr.ready.catch(function (e) { hornLog(H, conn, 'schleife ' + ((e && e.message) || '?')); hornConnState(R, conn); });
+      return null;
+    });
+  }
+  function hornFramesPC(R, conn, L) {
+    var pc = {
+      onconnectionstatechange: null,
+      get connectionState() {
+        var F = conn.fr;
+        if (L.mine || !F) return 'closed';
+        if (F.state === 'failed' || L.st === 'failed') return 'failed';
+        if (L.st === 'connected' && F.state === 'up') return 'connected';
+        return L.st === 'new' ? 'new' : 'disconnected';
+      },
+      fire: function () { if (pc.onconnectionstatechange) { try { pc.onconnectionstatechange(); } catch (e) { /* weiter */ } } },
+      close: function () { L.mine = true; if (L.wsH) L.wsH.close(); },
+      // Statistik wie eine PeerConnection: Empfaenger dieses Beins (pcY), eigene Sender (pcX), RTT des WebSockets
+      getStats: function () {
+        var F = conn.fr, m = new Map();
+        if (!F) return Promise.resolve(m);
+        var snd = L.role === 'audio' ? [F.tx.audio] : [F.tx.l, F.tx.m, F.tx.screen];
+        var all = L.recv.map(function (x) { return x.receiver.getStats().then(function (r) { r.forEach(function (v, k) { m.set('y' + k, v); }); }); })
+          .concat(snd.map(function (x) { return x.sender.getStats().then(function (r) { r.forEach(function (v, k) { m.set('x' + k, v); }); }); }));
+        return Promise.all(all).catch(function () { /* Teilstatistik */ }).then(function () {
+          var st = F.st[L.role];
+          if (st && st.rtt != null) m.set('ws-cp', { id: 'ws-cp', type: 'candidate-pair', nominated: true, state: 'succeeded', currentRoundTripTime: st.rtt / 1000 });
+          return m;
+        });
+      }
+    };
+    return pc;
+  }
+  function hornFramesJoin(R, conn, L, cand) {
+    var H = R.horn, F = conn.fr;
+    var post = function (c) {
+      var j = L.role === 'audio' ? { t: 'join', v: 1, token: c.tokens.audio, audio: 3, device: mobile ? 'mobile' : 'desktop' }
+        : { t: 'join', v: 1, token: c.tokens.video, speaker: true, screen: true, tiles: HORN_TILES, device: mobile ? 'mobile' : 'desktop' };
+      var h = F.open(L.role, c.url.replace(/^http/, 'ws') + '/api/sfu/ws', j);
+      return h.ok.then(function (ok) { return { h: h, ok: ok }; }, function (e) {
+        // Fehlercodes (S12.2) wie die Antworten von POST /api/sfu/leg: beendet -> 404, voll -> 429, Zugang -> 401
+        var code = (e && e.code) || '', x = new Error(T('Verbindung nicht aufgebaut: {err}', { err: 'ws ' + (code || e.close || '?') }));
+        x.status = code === 'room' ? 404 : code === 'limit' ? 429 : code === 'auth' ? 401 : 0;
+        if (live(R)) { diagEv(R, 'path', 'ws ' + (code || e.close || '?')); hornLog(H, conn, 'ws ' + L.role + ' ' + (code || e.close)); }
+        throw x;
+      });
+    };
+    return post(cand).catch(function (e) {                // 401 (Token abgelaufen/benutzt): einmal mit frischem Token
+      if (!e || e.status !== 401 || !live(R)) throw e;
+      return hornFresh(R, cand, hornAvoid(H)).then(post);
+    }).then(function (r) {
+      if (!live(R) || conn.legs[L.role] !== L || conn.dead || L.mine) { r.h.close(); throw null; }
+      L.wsH = r.h; L.id = r.ok.id; conn.mine = r.ok.csrc; L.slots = r.ok.slots || []; conn.state = r.ok.state || 'ok';
+      L.st = 'connected'; L.pc.fire();
+      hornPeersIn(R, conn, r.ok.peers || {});
+      r.h.on(function (code, cc) { hornFramesLost(R, conn, L, code, cc); });
+    });
+  }
+  function hornLegFrames(R, conn, role) {
+    var H = R.horn, F = conn.fr;
+    if (!F) return Promise.reject(new Error(T('Verbindung nicht aufgebaut: {err}', { err: 'ws' })));
+    var L = { role: role, id: null, recv: [], aud: [], vid: [], slots: [], est: 0, frames: true, st: 'new', wsH: null };
+    L.pc = hornFramesPC(R, conn, L);
+    L.pc.onconnectionstatechange = function () { hornConnState(R, conn); };
+    if (role === 'audio') L.tr = F.tx.audio; else { L.cam = F.cam; L.scr = F.tx.screen; }
+    conn.legs[role] = L;
+    return F.ready.then(function () {
+      if (!live(R) || conn.dead || conn.legs[role] !== L) throw null;
+      if (role === 'audio') { L.aud = F.rx.audio.slice(); L.recv = L.aud.slice(); } else { L.vid = F.rx.video.slice(); L.recv = L.vid.slice(); }
+      return hornFramesJoin(R, conn, L, conn.cand);
+    }).then(function () {
+      hornEvents(R, conn, L);
+      hornAudioEls(R, conn); hornMap(R); hornDraw(R);
+    });
+  }
+  // WebSocket einer Leitung unerwartet zu (Netzwechsel, Proxy-Neustart): sofort mit frischem Token neu (gleiche leg_ref ->
+  // der Knoten ersetzt das Bein), dann nach 0,5/1 s; scheitert das, gilt das Bein als weg (hornMon baut neu auf)
+  function hornFramesLost(R, conn, L, code, cc) {
+    var H = R.horn;
+    if (!live(R) || conn.dead || conn.legs[L.role] !== L || L.mine || L.replaced) return;
+    diagEv(R, 'path', 'ws zu ' + L.role + ' ' + (code || cc || '?'));
+    hornLog(H, conn, 'ws zu ' + L.role + ' ' + (code || cc));
+    if (L.ws) { var w = L.ws; L.ws = null; w.onclose = null; w.onmessage = null; if (conn.ws === w) conn.ws = null; try { w.close(); } catch (e) { /* zu */ } }
+    if (code === 'room' || code === 'auth' || cc === 4404 || cc === 4401 || (L.rc || 0) >= 3) { L.st = 'failed'; L.pc.fire(); return; }
+    L.st = 'disconnected'; L.pc.fire();
+    var n = L.rc = (L.rc || 0) + 1;
+    setTimeout(function () {
+      if (!live(R) || conn.dead || conn.legs[L.role] !== L || L.mine) return;
+      hornFresh(R, conn.cand, hornAvoid(H)).then(function (c2) {
+        if (!live(R) || conn.dead || conn.legs[L.role] !== L) throw null;
+        c2.used = true; conn.cand = c2;
+        return hornFramesJoin(R, conn, L, c2);
+      }).then(function () {
+        L.rc = 0; hornLog(H, conn, 'ws wieder ' + L.role); diagEv(R, 'path', 'ws wieder ' + L.role);
+        hornEvents(R, conn, L);
+      }, function (e) {
+        if (e === null || !live(R) || conn.legs[L.role] !== L) return;
+        hornFramesLost(R, conn, L, (e && e.status === 404) ? 'room' : '', 0);
+      });
+    }, n === 1 ? 0 : 500 * (n - 1));
+  }
   function hornLegDrop(R, conn, L) {
     var H = R.horn;
     hornTunClose(L);
@@ -3919,6 +4051,7 @@
       hornTunClose(L);
       if (H) (L.recv || []).forEach(function (x) { delete H.vown[x.rid]; });
     });
+    if (conn.fr) { conn.fr.close(); conn.fr = null; }   // 2.5 B2: lokale Schleife, Attrappen, Rahmen-WebSockets
     conn.audios.forEach(function (a) { a.srcObject = null; a.remove(); });
     conn.audios = [];
     if (H && H.X) H.X.csrcDrop(conn.key);
@@ -4046,7 +4179,7 @@
       if (conn === H.cur && !H.switching && !H.rcT) {
         var udpOk = conn.path !== 'udp' && conn.cand.udp && (H.meas[conn.node] || {}).udp != null;
         var x = H.sw.udp(Date.now(), loss, udpOk);
-        if (x && x.path === 'tcp' && conn.cand.tcp === false) x.path = H.L.streamPath(conn.cand, !!hornTunnel());   // 2.5: ohne ICE-TCP -> Tunnel (A3, Huelle) bzw. TLS
+        if (x && x.path === 'tcp' && conn.cand.tcp === false) x.path = H.L.streamPath(conn.cand, !!hornTunnel() || hornFrames(H, conn.cand));   // 2.5: ohne ICE-TCP -> Tunnel (A3 Huelle, B2 Browser) bzw. TLS
         if (x && x.path !== conn.path && (x.path !== 'udp' || conn.cand.tokens)) hornSwitch(R, x.why, { path: x.path });
       }
       drawInfo(R);
@@ -4112,7 +4245,10 @@
   function hornMic(R) {
     if (!R.horn) return;
     var t = hornAudioTrack(R);
-    hornConns(R).forEach(function (c) { Object.keys(c.legs).forEach(function (k) { var L = c.legs[k]; if (L.tr && L.tr.sender.track !== t) L.tr.sender.replaceTrack(t).catch(function () {}); }); });
+    hornConns(R).forEach(function (c) {
+      Object.keys(c.legs).forEach(function (k) { var L = c.legs[k]; if (L.tr && L.tr.sender.track !== t) L.tr.sender.replaceTrack(t).catch(function () {}); });
+      if (c.fr) c.fr.mic(t);                           // 2.5 B2: Pegel fuer audio-level der Ton-Rahmen
+    });
     hornStateOut(R); hornList(R);
   }
   // Bildschirm ueber den Knoten: eigener Sender je Bild-Leitung (Platz "screen" bei den anderen)
@@ -4364,7 +4500,7 @@
       var pth = el('span', 'cl-path cl-hpath cl-q cl-q-' + q_, pn);
       var qt = q_ === 'good' ? T('gute Verbindung') : q_ === 'mid' ? T('mittlere Verbindung') : T('schwache Verbindung');
       var port = '443'; try { port = new URL(cur.url).port || '443'; } catch (e) { /* ohne Adresse: Standard */ }   // tatsaechlicher Port des Knotens
-      pth.title = T('Weg zum Knoten {node}: {path}', { node: cur.node, path: cur.path === 'udp' ? T('UDP (schnellster Weg)') : cur.path === 'turn' ? T('TLS über Port {port} (Rückfall)', { port: port }) : T('TCP über Port {port}', { port: port }) })
+      pth.title = T('Weg zum Knoten {node}: {path}', { node: cur.node, path: cur.path === 'udp' ? T('UDP (schnellster Weg)') : cur.path === 'turn' ? T('TLS über Port {port} (Rückfall)', { port: port }) : cur.path === 'ws' ? T('WebSocket über die Saga-Adresse') : T('TCP über Port {port}', { port: port }) })
         + ' · ' + T('Empfangsqualität') + ': ' + qt + (net.win ? ' (' + T('über {s} s', { s: net.win }) + ')' : '')
         + (net.rtt != null ? ' · RTT ' + net.rtt + ' ms' : '') + (net.loss ? ' · ' + T('Verlust {p} %', { p: Math.round(net.loss * 1000) / 10 }) : '')
         + (net.freezes ? ' · ' + T('Standbilder {n}/min', { n: net.freezes }) : '');
@@ -4630,7 +4766,9 @@
     // der Server nennt beim Mesh-Rueckfall selbst den Grund (call.horn_mesh) - hier nicht nur die eigenen Knoten befragen
     if (chat && chat.fed) return false;
     var n = chat && chat.members ? chat.members.length : 0, lim = cfg && cfg.limits ? (video ? cfg.limits.endpoints_video : cfg.limits.endpoints_audio) : 0;
-    var ready = cfg && (myCaps().indexOf('ws') >= 0 && cfg.horn_ready_ws != null ? cfg.horn_ready_ws : cfg.horn_ready);   // A3 S10: mit Tunnel der Huelle
+    var mc = myCaps();                                 // A3 S10: mit Tunnel der Huelle; B2: Browser mit Rahmen-Weg
+    var ready = cfg && (mc.indexOf('ws') >= 0 && cfg.horn_ready_ws != null ? cfg.horn_ready_ws
+      : mc.indexOf('frames') >= 0 && cfg.horn_ready_frames != null ? cfg.horn_ready_frames : cfg.horn_ready);
     return !!(cfg && feat('horn') && ready === false && lim && n > lim);
   }
   function hornMeshHint(chat, video) {

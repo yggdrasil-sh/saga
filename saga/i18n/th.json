@@ -4266,6 +4266,7 @@
  "Webhooks sind auf diesem Server abgeschaltet.": "Webhook ถูกปิดบนเซิร์ฟเวอร์นี้",
  "Webhooks verwalten": "จัดการ Webhook",
  "WebSocket (Browser)": "WebSocket (เบราว์เซอร์)",
+ "WebSocket über die Saga-Adresse": "WebSocket ผ่านที่อยู่ของ Saga",
  "Websuche erlauben": "อนุญาตการค้นหาเว็บ",
  "Websuche ist nicht eingerichtet": "ยังไม่ได้ตั้งค่าการค้นหาเว็บ",
  "wechselt den Knoten …": "กำลังสลับโหนด …",

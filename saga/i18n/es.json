@@ -4266,6 +4266,7 @@
  "Webhooks sind auf diesem Server abgeschaltet.": "Los webhooks están desactivados en este servidor.",
  "Webhooks verwalten": "Gestionar webhooks",
  "WebSocket (Browser)": "WebSocket (navegadores)",
+ "WebSocket über die Saga-Adresse": "WebSocket por la dirección de Saga",
  "Websuche erlauben": "Permitir búsqueda web",
  "Websuche ist nicht eingerichtet": "La búsqueda web no está configurada",
  "wechselt den Knoten …": "cambiando de nodo …",
