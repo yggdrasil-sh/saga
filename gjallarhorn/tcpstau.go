@@ -17,6 +17,7 @@ import (
 	"github.com/pion/webrtc/v4"
 
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 )
 
@@ -200,3 +201,14 @@ func tcpJSON(sl *sfu.Leg, m *bwe.Mitleser) map[string]any {
 }
 
 func toDur(ns int64) time.Duration { return time.Duration(ns) }
+
+// tcpWants: Braucht ein Bein mit diesen Ausgaengen das Signal? Nur, wenn es Bild sendet - die Schaetzung waehlt nur
+// fuer Bildplaetze Schichten (planLeg).
+func tcpWants(outs []*fwd.Out) bool {
+	for _, o := range outs {
+		if o.Kind == fwd.Video {
+			return true
+		}
+	}
+	return false
+}

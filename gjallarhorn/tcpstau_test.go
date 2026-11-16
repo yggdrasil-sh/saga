@@ -166,3 +166,53 @@ func TestTCPStauBeinAus(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Auflage Pruefung: Nur Beine mit Bild-Ausgaengen bekommen Folgenummern und Mitleser. Die Ton-Leitung eines TCP-Geraets
+// (role=audio) wertet das Signal nie aus; Nummern und Rueckmeldungen waeren dort nur Last auf dem Uplink.
+func TestTCPStauNurBildBein(t *testing.T) {
+	s := testNodeServer(t, true)
+	base := "https://" + s.mux.Addr().String()
+	startBots(t, base, "stau", []string{"tcp", "tcp"}, 4, "l", "m")
+	var au, vi []*leg
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		au, vi = nil, nil
+		s.mu.Lock()
+		for _, l := range s.legs {
+			switch l.role {
+			case "audio":
+				au = append(au, l)
+			case "video":
+				vi = append(vi, l)
+			}
+		}
+		s.mu.Unlock()
+		fed := len(vi) == 2
+		for _, l := range vi {
+			if m := l.tcpMeter(); m == nil || m.Counters().Feedbacks == 0 {
+				fed = false
+			}
+		}
+		if fed || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if len(au) != 2 || len(vi) != 2 {
+		t.Fatalf("beine: %d Ton, %d Bild", len(au), len(vi))
+	}
+	for _, l := range au {
+		if l.tcpMeter() != nil {
+			t.Fatalf("Ton-Bein %s hat das Signal", l.id)
+		}
+	}
+	for _, l := range vi {
+		m := l.tcpMeter()
+		if m == nil {
+			t.Fatalf("Bild-Bein %s ohne Signal", l.id)
+		}
+		if c := m.Counters(); c.Feedbacks == 0 || c.Acked == 0 {
+			t.Fatalf("Bild-Bein %s: keine Rueckmeldungen %+v", l.id, c)
+		}
+	}
+}

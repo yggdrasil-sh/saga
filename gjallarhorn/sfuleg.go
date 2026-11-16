@@ -272,7 +272,10 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		s.tcp.mu.Lock()
 		var m *bwe.Mitleser
 		s.tcp.next = func(x *bwe.Mitleser) { m = x }
-		s.tcp.on = req.Path != "ws" || s.tcp.ws // Tunnel-Weg (A3) nur mit HORN_TCP_STAU_WS=1
+		// Nur Beine mit Bild-Ausgaengen: Die Ton-Leitung (role=audio) wertet das Signal nie aus (planLeg plant dort keine
+		// Bildplaetze) - Nummern und Rueckmeldungen waeren dort nur Last auf dem Uplink. Tunnel-Weg (A3) nur mit
+		// HORN_TCP_STAU_WS=1.
+		s.tcp.on = tcpWants(sl.Outs()) && (req.Path != "ws" || s.tcp.ws)
 		pc, err = api.NewPeerConnection(webrtc.Configuration{})
 		s.tcp.next, s.tcp.on = nil, false
 		s.tcp.mu.Unlock()
