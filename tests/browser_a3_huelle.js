@@ -197,9 +197,7 @@ async function tunStats() { return fetch('http://' + TUN_CTL + '/stats').then(r 
       const r = await Promise.all(ps.map(room));
       return r.every(x => x && x.links.filter(l => !l.me && l.connected).length >= 2) && r;
     }, 30000, 500);
-    // Befund (Bericht huelle-a3): der Rueckfall auf direkt beim Beitritt ohne ws (S10, calls.js 409 topo mesh + call.topo)
-    // verbindet nicht immer alle drei (Wettlauf hornToMesh/offerAll) - zaehlt nur mit A3H_STRICT=1
-    (E.A3H_STRICT === '1' ? ok : (n, c, i) => console.log((c ? 'OK  ' : 'BEFUND') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i).slice(0, 1500))))('direkt: alle drei verbunden', !!connd, connd ? null : { links: (await Promise.all(ps.map(room))).map(x => x && x.links.map(l => [l.name, l.connected, l.established])),
+    ok('direkt: alle drei verbunden', !!connd, connd ? null : { links: (await Promise.all(ps.map(room))).map(x => x && x.links.map(l => [l.name, l.connected, l.established])),
       c: await ps[2].evaluate(() => ({ st: window.HKCalls.state(), room: (({ topo, direct, horn, legs }) => ({ topo, direct, horn, legs }))(window.HKCalls.room() || {}), status: (document.querySelector('.cl-status') || {}).textContent })),
       logA: ps[0].__log.map(m => m.op + ':' + (m.id || m.role)) });
     await until(async () => ps[0].__log.filter(m => m.op === 'close').length >= closesBefore + 2, 10000);
