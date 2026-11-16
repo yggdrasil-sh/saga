@@ -8,7 +8,8 @@ Knoten, Diagnose transport ws, Bild/Ton in beide Richtungen, Frame-E2E ohne Verw
 je Leitung, caps ws nur mit Bruecke; C ohne Bruecke (normaler Browser, ohne ws) tritt bei -> Saga schaltet den Anruf auf
 direkt (Vertrag S10), alle drei verbunden, A schliesst seine Tunnel.
 
-  Ports 8551 (nginx), 8552 (saga-media), 8553 (Admin), 8555/8556 (wstunnel lokal/Steuerung), 8558 (intern), 8559 (HORN_PORT).
+  Ports 8551 (nginx), 8552 (saga-media), 8553 (Admin), 8555/8556 (wstunnel lokal/Steuerung), 8558 (intern), 8559 (HORN_PORT);
+  andere Lage mit A3H_BASE (z. B. 8601 -> 8601..8609).
   Umgebung wie die anderen Reihen (env.sh, eigene DB). SAGA_MEDIA_BIN / GJALLARHORN_BIN / WSTUNNEL_BIN, sonst go build
   (A3_GOMOD = eigene Mod-Datei fuer gjallarhorn). SHOTS=<Ordner>: Bilder des Anruffensters."""
 import json
@@ -21,7 +22,8 @@ import tempfile
 import time
 
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-NGX, PORT, ADMIN, TUN, TUNCTL, INTERNAL, HORN_PORT = 8551, 8552, 8553, 8555, 8556, 8558, 8559
+_B = int(os.environ.get("A3H_BASE") or 8551)            # Ports der Reihe: A3H_BASE + 0..8 (Standard 8551)
+NGX, PORT, ADMIN, TUN, TUNCTL, INTERNAL, HORN_PORT = _B, _B + 1, _B + 2, _B + 4, _B + 5, _B + 7, _B + 8
 NAME = "saga.example.org"
 BASE = f"https://{NAME}:{NGX}"
 os.environ["HK_TEST_BASE"] = f"http://127.0.0.1:{PORT}"
