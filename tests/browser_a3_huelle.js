@@ -188,10 +188,10 @@ async function tunStats() { return fetch('http://' + TUN_CTL + '/stats').then(r 
     const capsA = await ps[0].evaluate(() => window.HKCalls.caps());
     // F6 (B2-Nacharbeit): die echte Mac-Huelle ist WKWebView (WebKit, vendor Apple, UA ohne "Chrome/") - sie meldet weiter ws
     // (A3 ueber die Bruecke) und kein frames
-    const capsWk = await ps[0].evaluate(() => {
+    const capsWk = await ps[0].evaluate(async () => {
       Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) SagaApp/2.5.0 (mac-shell)', configurable: true });
       Object.defineProperty(navigator, 'vendor', { get: () => 'Apple Computer, Inc.', configurable: true });
-      const c = window.HKCalls.caps();
+      const c = await window.HKCalls.caps();
       delete navigator.userAgent; delete navigator.vendor;
       return c;
     });

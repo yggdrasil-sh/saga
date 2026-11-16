@@ -149,17 +149,17 @@ async function answer(p, id) {
        caps[0].includes('frames') && caps[1].includes('frames') && !caps[0].includes('ws') && !caps[3].includes('frames') && (!ff || caps[2].includes('frames')), caps);
     // F6 (Pruefer): WebKit meldet vorerst kein frames - Safari-UA bzw. navigator.vendor von Apple auf A (calls.js liest beides
     // bei jedem caps() neu); danach zurueck auf Chromium. Gegenprobe: A selbst meldet frames (oben).
-    const wk = await ps[0].evaluate(() => {
+    const wk = await ps[0].evaluate(async () => {
       const set = (ua, v) => { Object.defineProperty(navigator, 'userAgent', { get: () => ua, configurable: true }); Object.defineProperty(navigator, 'vendor', { get: () => v, configurable: true }); };
       const cr = navigator.userAgent, out = {};
       set('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15', 'Apple Computer, Inc.');
-      out.safari = window.HKCalls.caps();
-      set(cr, 'Apple Computer, Inc.'); out.vendor = window.HKCalls.caps();
-      set('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15', ''); out.ua = window.HKCalls.caps();
+      out.safari = await window.HKCalls.caps();
+      set(cr, 'Apple Computer, Inc.'); out.vendor = await window.HKCalls.caps();
+      set('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15', ''); out.ua = await window.HKCalls.caps();
       set('Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/140.0 Mobile/15E148 Safari/604.1', 'Google Inc.');
-      out.crios = window.HKCalls.caps();
+      out.crios = await window.HKCalls.caps();
       delete navigator.userAgent; delete navigator.vendor;
-      out.back = window.HKCalls.caps();
+      out.back = await window.HKCalls.caps();
       return out;
     });
     ok('F6: WebKit (Safari-UA + Apple-vendor, nur vendor, nur UA, Chrome auf iOS) meldet horn, aber kein frames; zurueck auf Chromium: frames',
