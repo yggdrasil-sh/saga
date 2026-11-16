@@ -512,14 +512,20 @@ func TestTailProbe(t *testing.T) {
 	if r.n() != 3 || !bytes.Equal(r.w[2], TailFrameTURN) {
 		t.Fatalf("kein nachlaeufer nach channeldata: %d", r.n())
 	}
-	// Folgedaten innerhalb der Frist: kein Nachlaeufer
+	// Folgedaten innerhalb der Frist: kein Nachlaeufer. Hielt der Rechner den Test zwischen zwei Schreibvorgaengen
+	// laenger als die Frist an (geteilter Runner), darf dort einer kommen - nur dort (lang zaehlt die Luecken).
+	lang, last := 0, time.Now()
 	for i := 0; i < 5; i++ {
 		p.Write([]byte{0x40, 0x00, 0, 0})
+		if now := time.Now(); i > 0 && now.Sub(last) > 40*time.Millisecond {
+			lang++
+		}
+		last = time.Now()
 		time.Sleep(time.Millisecond)
 	}
 	time.Sleep(200 * time.Millisecond)
-	if r.n() != 3+5+1 {
-		t.Fatalf("schreibvorgaenge %d", r.n())
+	if n := r.n(); n < 3+5+1 || n > 3+5+1+lang {
+		t.Fatalf("schreibvorgaenge %d (soll %d, Luecken ueber der Frist: %d)", n, 3+5+1, lang)
 	}
 	// STUN-Nachlaeufer ist gueltig (FINGERPRINT, Indication)
 	if !IsSTUN(stunIndication) || stunIndication[0] != 0 || stunIndication[1] != 0x11 || len(TailFrameICE) != 30 {
