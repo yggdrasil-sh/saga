@@ -719,6 +719,10 @@ func (f *frLeg) sendFrame(msg []byte) (bool, error) {
 		}
 		return false, nil
 	}
+	// vor dem Senden zaehlen (wie wstun.Conn.Write seit 322f289): die Quittung kann vor einem Zaehlen danach ankommen,
+	// OnAck kappte sie dann auf das alte sent und das Fenster schloesse sich dauerhaft. Scheitert das Senden, ist der
+	// WebSocket ohnehin zu.
+	f.flow.Sent(len(msg)-1, true)
 	f.wmu.Lock()
 	_ = f.ws.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	err := f.ws.WriteMessage(websocket.BinaryMessage, msg)
@@ -727,7 +731,6 @@ func (f *frLeg) sendFrame(msg []byte) (bool, error) {
 		go f.close("schreiben: " + err.Error())
 		return false, err
 	}
-	f.flow.Sent(len(msg)-1, true)
 	f.st.TxBytes.Add(uint64(len(msg)))
 	f.st.TxMsgs.Add(1)
 	f.c.downFrames.Add(1)
