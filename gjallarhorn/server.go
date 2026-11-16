@@ -315,7 +315,7 @@ func newServer(cfg *config) (*server, error) {
 			s.gcc.bwe = bweEigen
 			log.Printf("HORN_BWE=eigen: eigener Stau-Detektor wertet auf UDP-Beinen die Proben und widerlegt grundlose Faelle des GCC-Ziels")
 		}
-		s.tcp.ws = os.Getenv("HORN_TCP_STAU_WS") == "1"
+		s.tcp.ws = tcpStauWS()
 		switch s.tcp.mode = tcpStauMode(); s.tcp.mode {
 		case tcpStauOff:
 			log.Printf("HORN_TCP_STAU=0: TCP-Wege ohne Ende-zu-Ende-Stausignal (nur die eigene Warteschlange)")

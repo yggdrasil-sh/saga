@@ -142,7 +142,7 @@ func TestTCPStauAus(t *testing.T) {
 	}
 }
 
-// Bein ohne Signal (Tunnel-Weg ws ohne HORN_TCP_STAU_WS): Abgriff in der Kette, aber keine Nummer, kein Mitleser.
+// Bein ohne Signal (z. B. Tunnel-Weg ws mit HORN_TCP_STAU_WS=0): Abgriff in der Kette, aber keine Nummer, kein Mitleser.
 func TestTCPStauBeinAus(t *testing.T) {
 	called := false
 	hook := &tcpHook{next: func(*bwe.Mitleser) { called = true }}

@@ -19,6 +19,7 @@ import (
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/wstun"
 )
 
 // Ende-zu-Ende-Stausignal fuer die TCP-Wege (ICE-TCP, TURN-TLS; Saga 2.5).
@@ -26,8 +27,9 @@ import (
 //	HORN_TCP_STAU     Standard an; "0" = aus (Gegenprobe: TCP-Wege wie bis 2.5 ohne transport-cc auf dem Downlink);
 //	                  "mit" = nur messen (Zaehler, Log), die Schaetzung bleibt bei der eigenen Warteschlange
 //	HORN_TCP_STAU_LOG "1" = je Takt und Bein eine Zeile "tcpstau ..." (Messlaeufe)
-//	HORN_TCP_STAU_WS  "1" = auch auf dem Tunnel-Weg ws (A3); Standard aus - dort bremste transport-cc auf dem Downlink
-//	                  im Pruefstand bei engem Uplink den Uplink des Geraets (NODE.md), der Tunnel hat sein Fenster
+//	HORN_TCP_STAU_WS  Standard an: auch auf dem Tunnel-Weg ws (A3); "0" = dort aus (nur das Fenster des Tunnels wie
+//	                  bis 2.5). Mit Signal quittiert die App seltener (tunnelAckSig): Die Rueckmeldungen des Geraets
+//	                  kosten auf dem Uplink rund 5-6 kbit/s, seltenere Quittungen sparen mehr (NODE.md, a3-stau)
 //
 // Auf TCP-Wegen traegt jedes abgehende Paket die transport-cc-Folgenummer (wie auf UDP), das Geraet meldet die
 // Ankunft. Ein Mitleser (internal/bwe, ohne GCC) ordnet die Rueckmeldungen zu; daraus liest das Bein je Takt die
@@ -36,6 +38,15 @@ const (
 	tcpStauOff = "0"
 	tcpStauMit = "mit"
 )
+
+// tcpStauWS: Signal auch auf dem Tunnel-Weg ws? Standard an, HORN_TCP_STAU_WS=0 aus.
+func tcpStauWS() bool { return strings.TrimSpace(os.Getenv("HORN_TCP_STAU_WS")) != "0" }
+
+// tunnelAckSig: Quittungsabstand der Tunnel (ack_ms der Antwort ok), wenn ihre Beine das Signal bekommen. Gemessen
+// (Pruefstand A3, Uplink 500 kbit/s): mit 10 ms quittiert die App rund 64-mal je Sekunde (Ton- und Bild-Tunnel, je
+// Quittung ~37 Byte mit WS-Kopf und TLS-Satz, zusammen ~19 kbit/s) - mehr als die transport-cc-Rueckmeldungen kosten.
+// Das Fenster (mindestens 64 KiB) bleibt weit offen; den Stau sieht das Signal, nicht der Quittungstakt.
+const tunnelAckSig = 50 * time.Millisecond
 
 func tcpStauMode() string {
 	switch v := strings.TrimSpace(os.Getenv("HORN_TCP_STAU")); v {
@@ -57,6 +68,15 @@ type tcpHook struct {
 
 // tcpCCFactory baut je PeerConnection einen Abgriff mit eigenem Mitleser.
 type tcpCCFactory struct{ hook *tcpHook }
+
+// tunnelAckDelay: ack_ms fuer neue Tunnel - seltener, wenn Beine "ws" Folgenummern bekommen (auch HORN_TCP_STAU=mit:
+// die Rueckmeldungen kosten dort ebenso), sonst wie bis 2.5.
+func (s *server) tunnelAckDelay() time.Duration {
+	if s.tcp.ws && s.tcp.mode != tcpStauOff {
+		return tunnelAckSig
+	}
+	return wstun.DefAckDelay
+}
 
 func (f tcpCCFactory) NewInterceptor(_ string) (interceptor.Interceptor, error) {
 	if f.hook == nil || !f.hook.on { // f.hook.mu haelt newSFULeg

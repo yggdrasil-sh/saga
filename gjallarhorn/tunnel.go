@@ -160,7 +160,7 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 		release()
 		return
 	}
-	ok, _ := json.Marshal(wstun.Reply{T: "ok", V: wstun.Version, AckBytes: wstun.DefAckBytes, AckMs: int(wstun.DefAckDelay / time.Millisecond)})
+	ok, _ := json.Marshal(wstun.Reply{T: "ok", V: wstun.Version, AckBytes: wstun.DefAckBytes, AckMs: int(s.tunnelAckDelay() / time.Millisecond)})
 	_ = ws.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	if err := ws.WriteMessage(websocket.TextMessage, ok); err != nil {
 		_ = ws.Close()

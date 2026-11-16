@@ -193,8 +193,37 @@ func TestTunnelZugang(t *testing.T) {
 	}
 	defer ws.Close()
 	r, err := wstun.ClientAuth(ws, user, cred, "audio", 5*time.Second)
-	if err != nil || r.AckBytes != wstun.DefAckBytes || r.AckMs != 10 || r.V != 1 {
+	// Standard: Beine "ws" mit Stausignal -> seltener quittieren (tunnelAckSig)
+	if err != nil || r.AckBytes != wstun.DefAckBytes || r.AckMs != 50 || r.V != 1 {
 		t.Fatalf("%+v %v", r, err)
+	}
+}
+
+// a3-stau: ack_ms der Antwort ok folgt dem Stausignal auf dem Weg ws - ohne Signal (HORN_TCP_STAU_WS=0 bzw.
+// HORN_TCP_STAU=0) wie bis 2.5 (10 ms), mit Signal (auch nur messend) 50 ms.
+func TestTunnelAckMsSignal(t *testing.T) {
+	for _, c := range []struct {
+		ws, mode string
+		want     int
+	}{{"", "", 50}, {"0", "", 10}, {"", "0", 10}, {"1", "mit", 50}, {"0", "mit", 10}} {
+		t.Run("ws="+c.ws+",stau="+c.mode, func(t *testing.T) {
+			t.Setenv("HORN_TCP_STAU_WS", c.ws)
+			t.Setenv("HORN_TCP_STAU", c.mode)
+			s, _, url := tunnelServer(t)
+			user, cred := tunnelCreds(t, s)
+			ws, _, err := dialTunnel(t, url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ws.Close()
+			r, err := wstun.ClientAuth(ws, user, cred, "video", 5*time.Second)
+			if err != nil || r.AckMs != c.want || r.AckBytes != wstun.DefAckBytes {
+				t.Fatalf("ack_ms %d (erwartet %d) %+v %v", r.AckMs, c.want, r, err)
+			}
+			if s.tcp.ws != (c.ws != "0") {
+				t.Fatalf("tcp.ws = %v", s.tcp.ws)
+			}
+		})
 	}
 }
 
