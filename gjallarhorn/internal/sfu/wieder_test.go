@@ -371,3 +371,108 @@ func TestSprecherWiederBein(t *testing.T) {
 		n.Close()
 	}
 }
+
+// TestSprecherWiederHauptsprecher (F5, Messstand B2): Im 1:1 war der Hauptsprecher das Geraet, das wiederverbindet. Mit
+// seinem letzten Bein verschwindet es aus dem Raum; in der Luecke wird sofort die Gegenstelle Hauptsprecherin. War sie
+// es schon einmal (prevDom), stand fuer sie "der vorige" - sie selbst - auf dem Sprecherplatz (mit E2E ein schwarzer
+// Platz), das wiederverbundene Geraet nur auf einer Kachel (TCP: l), bis es nach domHold und Hysterese wieder
+// Hauptsprecher war. Jetzt: nie das eigene Geraet auf dem Sprecherplatz; das wiederverbundene kommt sofort darauf und
+// binnen 1,5 s auf m.
+func TestSprecherWiederHauptsprecher(t *testing.T) {
+	n := NewNode(Config{Name: "k", Tick: time.Hour, Probing: true})
+	defer n.Close()
+	r, err := n.CreateRoom("raumdom", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	me, err := r.AddLeg(Grant{Room: "raumdom", Peer: "gegen", Leg: "gegen-b", Role: RoleBoth, Pub: PubAudio | PubVideo}, PathTCP,
+		Want{Audio: 1, Speaker: true, Tiles: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type spr struct {
+		s   *fwd.Source
+		lvl uint32
+	}
+	var talk []spr
+	var vid []*fwd.Source
+	mine := func(kind fwd.Kind, k string) *fwd.Source {
+		s, err := me.AddSource(kind, k, false, uint32(len(vid)+len(talk)+1), 1, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.mu.Lock()
+		st := me.Peer.srcs[s]
+		st.remote, st.on = true, true
+		r.mu.Unlock()
+		return s
+	}
+	talk = append(talk, spr{mine(fwd.Audio, "a"), 60})
+	vid = append(vid, mine(fwd.Video, "l"), mine(fwd.Video, "m"))
+	now := fwd.Now()
+	tick := func() {
+		now += int64(200 * time.Millisecond)
+		for _, x := range talk {
+			x.s.VoicePkts.Add(5)
+			x.s.LevelSum.Add(5 * (127 - x.lvl))
+		}
+		for _, s := range vid {
+			s.Bytes.Add(uint64(300e3 * 0.2 / 8))
+		}
+		me.fl.Stats.BytesOut.Add(uint64(700e3 * 0.2 / 8))
+		r.tickAt(now)
+	}
+	run := func(d time.Duration) {
+		for end := now + int64(d); now < end; {
+			tick()
+		}
+	}
+	spk := func() (owner, layer string) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		for _, s := range me.slots {
+			if s.class == "speaker" && s.owner != nil {
+				return s.owner.ID, s.layer
+			}
+		}
+		return "", ""
+	}
+	var fernM *fwd.Source
+	fern := func(mLive bool) {
+		if !r.AddRemote("b1", "fern", Desktop, nil) {
+			t.Fatal("fern")
+		}
+		talk = append(talk, spr{r.RemoteSource("b1", "fern", fwd.Audio, "a", false, 1, nil), 30})
+		l := r.RemoteSource("b1", "fern", fwd.Video, "l", false, 0, nil)
+		fernM = r.RemoteSource("b1", "fern", fwd.Video, "m", false, 0, nil)
+		vid = append(vid, l, fernM)
+		r.SetRemote("fern", -1, map[*fwd.Source]bool{fernM: mLive})
+	}
+	run(3 * time.Second) // die Gegenstelle spricht allein: Hauptsprecherin
+	fern(true)
+	run(10 * time.Second) // das Geraet spricht lauter: Hauptsprecher, die Gegenstelle ist prevDom
+	if o, l := spk(); o != "fern" || l != "m" {
+		t.Fatalf("vorher: Sprecherplatz %q/%q", o, l)
+	}
+	// Wiederverbinden: letztes Bein zu, 0,6 s spaeter ein neues (neues Peer-Objekt), m 0,4 s nach l
+	r.RemoveRemote("fern")
+	talk, vid = talk[:1], vid[:2]
+	run(600 * time.Millisecond)
+	fern(false)
+	start, self, tm := now, false, time.Duration(-1)
+	for now-start < int64(10*time.Second) {
+		if now-start >= int64(400*time.Millisecond) {
+			r.SetRemote("fern", -1, map[*fwd.Source]bool{fernM: true})
+		}
+		tick()
+		o, l := spk()
+		self = self || o == "gegen"
+		if tm < 0 && o == "fern" && l == "m" {
+			tm = time.Duration(now - start)
+		}
+	}
+	t.Logf("Sprecherplatz nach dem Wiederverbinden: fern auf m nach %v, eigenes Geraet darauf: %v", tm, self)
+	if self || tm < 0 || tm > 1500*time.Millisecond {
+		t.Fatalf("Sprecherplatz: fern auf m nach %v, eigenes Geraet darauf: %v", tm, self)
+	}
+}

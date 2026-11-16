@@ -469,7 +469,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		if spk == me {
 			spk = r.prevDom
 		}
-		if spk != nil && len(spk.cam) == 0 {
+		// Nie das eigene Geraet: prevDom kann es selbst sein - war es Hauptsprecher, dann ein anderer, und verschwindet
+		// dieser (Wiederverbinden: letztes Bein zu), wird es ohne Wechsel wieder Hauptsprecher (pickDominant ohne cur),
+		// prevDom bleibt (Pruefer B2 F5: im 1:1 stand die Gegenstelle selbst auf ihrem Sprecherplatz, das
+		// wiederverbundene Geraet auf einer Kachel, bis es wieder Hauptsprecher war)
+		if spk == me || spk != nil && len(spk.cam) == 0 {
 			spk = nil
 		}
 		if spk == nil {
