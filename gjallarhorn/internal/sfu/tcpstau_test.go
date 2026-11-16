@@ -65,6 +65,10 @@ func TestTCPStauWachsend(t *testing.T) {
 		t.Fatalf("erster Takt ueber der Schwelle: %v statt %v (halten)", v, before)
 	}
 	r.set(190*time.Millisecond, 900e3, 560e3)
+	if v := r.step(900e3, 5*time.Millisecond); v != before {
+		t.Fatalf("zweiter Takt ueber der Schwelle: %v statt %v (halten)", v, before)
+	}
+	r.set(235*time.Millisecond, 900e3, 560e3)
 	v := r.step(900e3, 5*time.Millisecond)
 	if want := 560e3 * 0.85; v < want*0.99 || v > want*1.01 {
 		t.Fatalf("stau: %v, erwartet %v", v, want)
@@ -184,5 +188,25 @@ func TestTCPStauSprung(t *testing.T) {
 	}
 	if r.e.e2e.Downs != 1 {
 		t.Fatalf("danach wachsend: %+v", r.e.e2e)
+	}
+}
+
+// Sprung ueber zwei Takte verteilt (Download in TCP-Slow-Start): ebenso kein Stau.
+func TestTCPStauSprungZweiTakte(t *testing.T) {
+	r := newTCPRig(t)
+	for i := 0; i < 20; i++ {
+		r.set(2*time.Millisecond, 640e3, 640e3)
+		r.step(640e3, 5*time.Millisecond)
+	}
+	for i, q := range []int{125, 231, 238, 236, 244, 240, 235} {
+		ack := 520e3
+		if i >= 5 {
+			ack = 630e3
+		}
+		r.set(time.Duration(q)*time.Millisecond, 632e3, ack)
+		r.step(640e3, 5*time.Millisecond)
+	}
+	if r.e.e2e.Downs != 0 {
+		t.Fatalf("sprung ueber zwei Takte: %+v", r.e.e2e)
 	}
 }

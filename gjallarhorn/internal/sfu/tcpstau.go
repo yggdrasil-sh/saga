@@ -13,12 +13,13 @@ import "time"
 //
 // Regel (TCPSig, e2eStep):
 //   - Stau: Schlange ueber congAge in e2eRun Takten in Folge, sie waechst (gesendet > e2eGrow x bestaetigt) UND sie
-//     ist seit dem ersten dieser Takte um mindestens e2eRise gestiegen (gegen ihren kleinsten Wert darin). Dann wie
+//     ist seit dem zweiten dieser Takte um mindestens e2eRise gestiegen (gegen ihren kleinsten Wert ab dort). Dann wie
 //     bei der eigenen Warteschlange herunter - auf 85 % der bestaetigten Rate (die gesendete liegt bei wachsender
 //     Schlange ueber dem, was die Leitung durchlaesst).
 //   - Warum e2eRise: Beginnt ein grosser Download auf derselben Leitung, springt die Schlange in einem Takt auf die
-//     volle Leitungs-Warteschlange (Pruefstand: 0 -> 230 ms) und steht dann; gesendet gegen bestaetigt zeigt den Sprung
-//     noch rund 1 s lang (die Spanne enthaelt ihn). Eine Schlange, die der Knoten selbst aufbaut, waechst dagegen Takt
+//     volle Leitungs-Warteschlange (Pruefstand: 0 -> 230 ms, manchmal ueber zwei Takte verteilt - daher zaehlt der
+//     Anstieg erst ab dem zweiten Takt) und steht dann; gesendet gegen bestaetigt zeigt den Sprung noch rund 1 s lang
+//     (die Spanne enthaelt ihn). Eine Schlange, die der Knoten selbst aufbaut, waechst dagegen Takt
 //     fuer Takt weiter (Pruefstand 600 kbit/s, Schritt l -> m: rund 30 ms je Takt).
 //   - Abbau: nach einem solchen Stau geht es e2eDrain lang nicht nach oben, solange die Schlange noch ueber clearAge
 //     liegt (sonst stiege die Schaetzung, waehrend die Leitung noch abbaut).
@@ -38,8 +39,8 @@ type TCPSig struct {
 }
 
 const (
-	e2eRun   = 2                      // Takte in Folge mit Schlange ueber congAge
-	e2eRise  = 40 * time.Millisecond  // ... und so weit ueber ihrem kleinsten Wert in diesen Takten
+	e2eRun   = 3                      // Takte in Folge mit Schlange ueber congAge
+	e2eRise  = 40 * time.Millisecond  // ... und so weit ueber ihrem kleinsten Wert ab dem zweiten dieser Takte
 	e2eGrow  = 1.05                   // gesendet ueber so viel mal bestaetigt: die Schlange waechst
 	e2eDrain = 5 * time.Second        // nach einem Stau: so lange kein Schritt nach oben, solange die Schlange steht
 	e2eStale = 600 * time.Millisecond // Rueckmeldung aelter: kein Signal
@@ -71,10 +72,9 @@ func (e *estimator) e2eStep(s TCPSig, age time.Duration, now int64) (time.Durati
 	st.SentKbit, st.AckKbit = s.SentBps/1000, s.AckedBps/1000
 	grow := s.AckedBps > 0 && s.SentBps > s.AckedBps*e2eGrow
 	if s.Queue > congAge {
-		if e.e2eN == 0 || s.Queue < e.e2eRef {
+		if e.e2eN++; e.e2eN == 2 || e.e2eN > 2 && s.Queue < e.e2eRef {
 			e.e2eRef = s.Queue
 		}
-		e.e2eN++
 	} else {
 		e.e2eN = 0
 	}
