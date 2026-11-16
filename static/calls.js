@@ -3327,8 +3327,9 @@
     if (one && !cands[0].udp) hornMeasure(R, cands);
     return m.then(function (mm) {
       if (!live(R)) throw null;
-      var list = one ? cands : H.L.rank(cands, mm, true).map(function (x) { return x.cand; });
-      H.ranked = list.map(function (c) { return { node: c.node, score: one ? null : H.L.score(mm[c.node], c, true) }; });
+      var fd = hornFramesDev(H);                       // B2 (F1b): nur ueber den Rahmen-Weg erreichbare Knoten hinten an
+      var list = one ? cands : H.L.rank(cands, mm, true, fd).map(function (x) { return x.cand; });
+      H.ranked = list.map(function (c) { return { node: c.node, score: one ? null : H.L.score(mm[c.node], c, true, fd) }; });
       return hornTry(R, list, why, 0);
     });
   }
@@ -3373,14 +3374,30 @@
   }
   // 2.5 A3: Medien-Tunnel der Mac-Huelle (sagaHost.tunnel, static/host.js) - null im Browser bzw. ohne Faehigkeit "tunnel"
   function hornTunnel() { try { return window.sagaHost && window.sagaHost.tunnel ? window.sagaHost.tunnel() : null; } catch (e) { return null; } }
+  // 2.5 B2 (Pruefer F6): WebKit (Safari, jeder Browser auf iPhone/iPad, WKWebView) meldet vorerst kein frames - der Rahmen-Weg
+  // ist dort ungeprueft; WebKit telefoniert wie vor B2 (direkt bzw. Knoten ueber UDP/TURN-TLS, die Mac-Huelle ueber ihre
+  // Bruecke mit ws). Eine Faehigkeitsprobe trennt WebKit nicht (RTCRtpScriptTransform, captureStream und AudioContext gibt es
+  // dort auch) - deshalb navigator.vendor ("Apple Computer, Inc." in Safari, iOS-Browsern und WKWebView), als Rueckhalt der UA:
+  // iOS-Kennungen bzw. AppleWebKit ohne Chrome/Chromium/Edge/Opera (Blink nennt immer "Chrome/", Gecko nie "AppleWebKit/").
+  // Bei jedem Aufruf neu gelesen (keine Zwischenspeicherung - tests/browser_b2_frames.js stellt UA/vendor im Lauf um).
+  function hornWebKit() {
+    var n = window.navigator || {}, ua = String(n.userAgent || '');
+    if (n.vendor === 'Apple Computer, Inc.') return true;
+    if (/\b(?:CriOS|FxiOS|EdgiOS|OPiOS)\//.test(ua) || /\b(?:iPhone|iPad|iPod)\b/.test(ua)) return true;
+    return /AppleWebKit\//.test(ua) && !/(?:Chrome|Chromium|Edg|OPR)\//.test(ua);
+  }
   // 2.5 B2 (Vertrag S12): Rahmen-Weg im Browser - Encoded Transform (Script), WebSocket, Canvas-Erfassung, AudioContext
   function hornFramesCan() {
-    return typeof RTCRtpScriptTransform === 'function' && typeof WebSocket === 'function' && !!(window.AudioContext || window.webkitAudioContext) &&
+    return !hornWebKit() && typeof RTCRtpScriptTransform === 'function' && typeof WebSocket === 'function' && !!(window.AudioContext || window.webkitAudioContext) &&
       !!(window.HTMLCanvasElement && HTMLCanvasElement.prototype.captureStream);
   }
-  // Weg ws ueber den Rahmen-Weg fuer diesen Kandidaten? (Knoten bietet ws + frames, Server-Faehigkeit, kein Huellen-Tunnel)
+  // Nimmt dieses Geraet fuer den Weg ws den Rahmen-Weg? (Server-Faehigkeit, kein Huellen-Tunnel, Encoded Transform als Script)
+  function hornFramesDev(H) {
+    return !!(!hornTunnel() && feat('frames') && hornFramesCan() && H && H.X && H.X.mode === 'script');
+  }
+  // Weg ws ueber den Rahmen-Weg fuer diesen Kandidaten? (Knoten bietet ws + frames, Geraet wie oben)
   function hornFrames(H, cand) {
-    return !!(cand && cand.ws === true && cand.frames === true && !hornTunnel() && feat('frames') && hornFramesCan() && H && H.X && H.X.mode === 'script');
+    return !!(cand && cand.ws === true && cand.frames === true && hornFramesDev(H));
   }
   function hornFinal(e) { return e === null || !!(e && (e.status === 404 || e.status === 429)); }   // aufgelegt/beendet, voll/Leeren
   // Wege mit Tunnel (Vertrag S5, SagaHorn.ways): Tunnel-Betrieb UDP | ws im Wettlauf, sonst UDP -> TCP -> TLS -> ws
@@ -4119,9 +4136,11 @@
         var others = list.filter(function (c) { return c.node !== cur.node; });
         if (!others.length || !live(R)) return;
         return hornMeasure(R, list).then(function (m) {
+          var fd = hornFramesDev(H), cc = cur.cand || {};
           var curScore = H.L.score({ ok: true, rtts: cur.rtts.length ? cur.rtts : (m[cur.node] || {}).rtts, udp: cur.path === 'udp' ? 1 : null },
-                                   { here: true, udp: cur.path === 'udp', load: (list.filter(function (c) { return c.node === cur.node; })[0] || {}).load });
-          var x = H.sw.observe(Date.now(), curScore, others.map(function (c) { return { node: c.node, score: H.L.score(m[c.node], c, true) }; }));
+                                   { here: true, udp: cur.path === 'udp', load: (list.filter(function (c) { return c.node === cur.node; })[0] || {}).load,
+                                     tcp: cc.tcp, tls: cc.tls, ws: cc.ws, frames: cc.frames }, true, fd);
+          var x = H.sw.observe(Date.now(), curScore, others.map(function (c) { return { node: c.node, score: H.L.score(m[c.node], c, true, fd) }; }));
           if (x) hornSwitch(R, 'better', { to: x.to });
         });
       }).catch(function () {});

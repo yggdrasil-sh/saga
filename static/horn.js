@@ -3,6 +3,7 @@
 // bei Bedarf (window.SagaHorn) und fuehrt Messung, Beine, Live-Umschalten und Kachelansicht damit aus.
 //
 // - Punktzahl je Kandidat (kleiner = besser): rtt_p50 + 2*jitter + Lastabzug + (UDP fehlt ? 15 : 0) - (Anruf schon hier ? 25 : 0)
+//   + (fuer dieses Geraet nur ueber den Rahmen-Weg erreichbar ? 30 : 0)
 // - Umschalter mit Hysterese: Verbindung weg / Knoten leert sich -> sofort; anderer Knoten besser -> nur wenn >= 25 % UND
 //   >= 30 ms besser, 20 s am Stueck, Mindestverweildauer 60 s, hoechstens 3 Wechsel je 10 min; UDP-Verlust > 20 % fuer 3 s
 //   -> TCP am selben Knoten; UDP wieder ok fuer 30 s -> zurueck, hoechstens 1x je 5 min
@@ -15,6 +16,13 @@
     PINGS: 5,               // WSS-Pings je Kandidat
     NO_UDP_MS: 15,          // Abzug, wenn der Kandidat (oder das Geraet) kein UDP hat
     HERE_MS: 25,            // Bonus "Anruf laeuft schon auf diesem Knoten"
+    // 2.5 B2 (Pruefer F1b): Abzug, wenn der Kandidat fuer dieses Geraet NUR ueber den Rahmen-Weg (saga-frames.1, TCP/WebSocket)
+    // erreichbar ist - Tunnel-Knoten ohne UDP, ohne ICE-TCP und ohne TURN-TLS. 30 > HERE_MS: der Bonus "Anruf schon hier"
+    // allein holt einen Browser nicht vom UDP-Knoten (horn-1) auf den Rahmen-Weg; zusammen mit NO_UDP_MS liegt der
+    // Tunnel-Knoten 20 ms hinter einem gleich weit entfernten UDP-Knoten. Grund: Rahmen ueber TCP (Kopfblockade bei Verlust)
+    // und mehr Rechenlast im Browser (Messung B2: 71-80 % gegen 57-64 % CPU ueber TURN). Gibt es nur Tunnel-Knoten, trifft
+    // der Abzug alle gleich - dann bleibt es beim Rahmen-Weg.
+    FRAMES_ONLY_MS: 30,
     LOAD_FROM: 0.7,         // ab 70 % Auslastung Abzug ...
     LOAD_MS: 200,           // ... (load - 0,7) * 200 ms, also bis 40 ms bei 90 %
     FULL: 0.9,              // ab 90 % voll: nur, wenn nichts anderes geht
@@ -50,20 +58,26 @@
     if (load >= K.FULL) return K.FULL_MS;
     return load > K.LOAD_FROM ? (load - K.LOAD_FROM) * K.LOAD_MS : 0;
   }
-  // m = {ok, rtts:[ms], tls:ms, udp:ms|null}; cand = {here, udp, load}
-  function score(m, cand, devUdp) {
+  // Kandidat fuer dieses Geraet nur ueber den Rahmen-Weg erreichbar? devFrames = Geraet nimmt fuer "ws" den Rahmen-Weg (Browser
+  // ohne Huellen-Tunnel, calls.js hornFramesDev); udp = UDP fuer diesen Kandidaten nutzbar
+  function framesOnly(cand, udp, devFrames) {
+    return !!(devFrames && !udp && cand && cand.ws === true && cand.frames === true && cand.tcp === false && cand.tls === false);
+  }
+  // m = {ok, rtts:[ms], tls:ms, udp:ms|null}; cand = {here, udp, load, tcp, tls, ws, frames}
+  function score(m, cand, devUdp, devFrames) {
     if (!m || !m.ok || !m.rtts || !m.rtts.length) return Infinity;
     var r = m.rtts, s = median(r) + 2 * jitter(r) + loadMs(cand && cand.load);
     var udp = !!(cand && cand.udp && devUdp !== false && m.udp != null);
     if (!udp) s += K.NO_UDP_MS;
     if (cand && cand.here) s -= K.HERE_MS;
+    if (framesOnly(cand, udp, devFrames)) s += K.FRAMES_ONLY_MS;
     return Math.round(s * 10) / 10;
   }
   // Kandidaten nach Punktzahl (unerreichbare zuletzt, bei Gleichstand die Reihenfolge des Servers)
-  function rank(cands, meas, devUdp) {
+  function rank(cands, meas, devUdp, devFrames) {
     return cands.map(function (c, i) {
       var m = meas[c.node];
-      return { cand: c, m: m || null, score: score(m, c, devUdp), i: i };
+      return { cand: c, m: m || null, score: score(m, c, devUdp, devFrames), i: i };
     }).sort(function (a, b) { return a.score === b.score ? a.i - b.i : a.score - b.score; });
   }
   function better(cur, other) {

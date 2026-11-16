@@ -23,6 +23,28 @@ const r = H.rank([{ node: 'a', here: true }, { node: 'b' }, { node: 'c' }], { a:
 ok('Rangfolge: b (35) vor a (60+15-25=50) vor c (unerreichbar)', r.map(x => x.cand.node).join() === 'b,a,c', r.map(x => [x.cand.node, x.score]));
 const r2 = H.rank([{ node: 'a', here: true }, { node: 'b' }], { a: m([40, 40]), b: m([20, 20]) });
 ok('Bonus haelt den Anruf auf einem Knoten: a (40+15-25=30) vor b (35)', r2[0].cand.node === 'a', r2.map(x => [x.cand.node, x.score]));
+// 2.5 B2 (Pruefer F1b): Kandidat nur ueber den Rahmen-Weg erreichbar (Tunnel-Knoten: kein UDP/ICE-TCP/TURN-TLS, ws + frames)
+{
+  const tun = { node: 'saga', here: true, udp: false, tcp: false, tls: false, ws: true, frames: true, load: 0 };
+  const h1 = { node: 'horn-1', here: false, udp: true, tcp: true, tls: true, ws: true, frames: true, load: 0 };
+  const mm = { saga: m([20, 20, 20]), 'horn-1': m([20, 20, 20], 18) };
+  const sT = H.score(mm.saga, tun, true, true), sT0 = H.score(mm.saga, tun, true, false);
+  ok('Rahmen-Weg allein: 20 + 15 - 25 + 30 = 40 (ohne Rahmen-Geraet 10 wie bisher)', sT === 40 && sT0 === 10 && H.K.FRAMES_ONLY_MS === 30, [sT, sT0]);
+  const rf = H.rank([tun, h1], mm, true, true), r0 = H.rank([tun, h1], mm, true, false);
+  ok('Browser mit Rahmen-Weg tritt bei (Anruf schon auf dem Tunnel-Knoten): horn-1 mit UDP (20) vor dem Tunnel-Knoten (40)',
+     rf[0].cand.node === 'horn-1', rf.map(x => [x.cand.node, x.score]));
+  ok('Gegenprobe ohne Abzug (altes Verhalten, F1b): der Bonus zieht auf den Tunnel-Knoten (10 vor 20)', r0[0].cand.node === 'saga', r0.map(x => [x.cand.node, x.score]));
+  const far = H.rank([tun, h1], { saga: m([20, 20, 20]), 'horn-1': m([45, 45, 45], 40) }, true, true);
+  ok('horn-1 ueber 20 ms weiter weg: der nahe Tunnel-Knoten bleibt vorn (40 vor 45)', far[0].cand.node === 'saga', far.map(x => [x.cand.node, x.score]));
+  const only = H.rank([tun, Object.assign({}, tun, { node: 'saga-2', here: false })], { saga: m([20, 20, 20]), 'saga-2': m([15, 15, 15]) }, true, true);
+  ok('nur Tunnel-Knoten (Kollege hinter NPM): Abzug trifft alle gleich, Reihenfolge wie ohne Abzug, erreichbar',
+     only[0].cand.node === 'saga' && only.every(x => isFinite(x.score)), only.map(x => [x.cand.node, x.score]));
+  ok('kein Abzug: Tunnel-Knoten mit UDP, mit ICE-TCP oder ohne frames; Geraet ohne Rahmen-Weg (Huelle mit ws)',
+     H.score(m([20, 20, 20], 18), Object.assign({}, tun, { udp: true }), true, true) === -5
+     && H.score(mm.saga, Object.assign({}, tun, { tcp: true }), true, true) === 10
+     && H.score(mm.saga, Object.assign({}, tun, { frames: false }), true, true) === 10
+     && H.score(mm.saga, tun, true, false) === 10);
+}
 ok('besser: 100 -> 70 ja (30 ms, 30 %), 100 -> 80 nein, 40 -> 9 ja, 40 -> 15 nein (< 30 ms)',
    H.better(100, 70) && !H.better(100, 80) && H.better(40, 9) && !H.better(40, 15) && H.better(Infinity, 50) && !H.better(50, Infinity));
 
