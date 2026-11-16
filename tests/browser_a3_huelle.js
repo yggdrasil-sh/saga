@@ -3,7 +3,9 @@
 // Die Attrappe spielt die Huelle: UA "SagaApp/…", window.sagaHostInfo mit Faehigkeit "tunnel", window.webkit.messageHandlers
 // hk (Aufzeichner) und hkTunnel (Nachricht mit Antwort wie WKScriptMessageHandlerWithReply): open -> Zugang an wstunnel
 // (POST /auth, statt HornTunnel.connect) und {id}, listen -> {port} des wstunnel-Lauschers, close, stats.
-// A, B: mit Bruecke (caps ws, Weg ws); C: normaler Browser ohne ws (Gegenprobe S10: Saga schaltet auf direkt, kein Tunnel).
+// A, B: mit Bruecke (caps ws, Weg ws); C: Browser ohne ws (Gegenprobe S10: Saga schaltet auf direkt, kein Tunnel). Seit B2
+// (Rahmen-Weg, caps frames) erreicht ein normaler Chromium den Tunnel-Knoten selbst - C ist deshalb ein Browser ohne
+// RTCRtpScriptTransform (kein frames; tests/b2_frames.py prueft den Rahmen-Weg).
 //   SAGA_BASE=… SAGA_USERS=a,b,c SAGA_PASS=… TUN_PORT=… TUN_CTL=h:p HOST_RULES='MAP name 127.0.0.1' node tests/browser_a3_huelle.js
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
@@ -91,6 +93,7 @@ async function session(i, withShell) {
   p.__br = br; p.__i = i; p.__log = [];
   p.on('pageerror', e => console.log('  [pageerror ' + L[i] + '] ' + e.message));
   if (E.DEBUG) p.on('console', m => console.log('  [console ' + L[i] + '] ' + m.text()));
+  if (!withShell) await p.addInitScript(() => { try { delete window.RTCRtpScriptTransform; } catch (e) { window.RTCRtpScriptTransform = undefined; } });
   if (withShell) {
     const br_ = bridge(p, p.__log);
     await p.exposeBinding('__hkTunnelNative', (src, txt) => br_(txt, src));
@@ -183,7 +186,8 @@ async function tunStats() { return fetch('http://' + TUN_CTL + '/stats').then(r 
     // --- C ohne Bruecke (S10): meldet kein ws -> Saga schaltet den Anruf auf direkt, kein Tunnel bei C ---------------------
     const capsC = await ps[2].evaluate(() => window.HKCalls.caps());
     const capsA = await ps[0].evaluate(() => window.HKCalls.caps());
-    ok('caps: A (Huelle mit Tunnel) meldet ws, C (Browser) nicht', capsA.includes('ws') && capsA.includes('horn') && !capsC.includes('ws'), { capsA, capsC });
+    ok('caps: A (Huelle mit Tunnel) meldet ws und nicht frames (B2), C (Browser ohne Encoded Transform) weder ws noch frames',
+       capsA.includes('ws') && capsA.includes('horn') && !capsA.includes('frames') && !capsC.includes('ws') && !capsC.includes('frames'), { capsA, capsC });
     const closesBefore = ps[0].__log.filter(m => m.op === 'close').length;
     const rc2 = await ps[2].waitForSelector('.cl-ring', { timeout: 20000 }).then(() => true, () => false);
     if (rc2) await ps[2].click('.cl-ring .cl-big'); else await ps[2].evaluate(id => window.HKCalls.join(id, 'member', true), ha.id);
