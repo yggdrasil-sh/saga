@@ -476,3 +476,51 @@ func TestSprecherWiederHauptsprecher(t *testing.T) {
 		t.Fatalf("Sprecherplatz: fern auf m nach %v, eigenes Geraet darauf: %v", tm, self)
 	}
 }
+
+// TestSprecherWiederFlatternFolge (Pruefer, Gegenprobe zu slot.swapped): Echtes Flattern im selben Bein (m und h fallen
+// aus, l laeuft weiter) ist kein Quellenwechsel - unabhaengig davon, in welcher Folge sich die Schichten angemeldet
+// haben (pion: OnTrack beim ersten Paket, Rahmen-Weg: erster Rahmen). Vorher galt es bei der Folge h,m,l als
+// Neubeginn (st.added > was.added, die bisherige nicht live): ohne Rueckfall-Buchfuehrung, UDP h nach 6,6 statt 5,2 s.
+func TestSprecherWiederFlatternFolge(t *testing.T) {
+	run := func(tcp bool, folge string, aus time.Duration) string {
+		w := newWieder(t, tcp)
+		w.live = map[*fwd.Source]bool{}
+		for _, k := range strings.Split(folge, "") { // Quellen in dieser Folge neu anmelden (ersetzt je Schicht)
+			s := w.r.RemoteSource("b1", "fern", fwd.Video, k, false, 0, nil)
+			w.srcs[k] = s
+			w.live[s] = true
+		}
+		w.eingeschwungen()
+		w.live[w.srcs["m"]], w.live[w.srcs["h"]] = false, false
+		w.sync()
+		seq, start, back := w.layer(), w.now, int64(-1)
+		tm, tf := time.Duration(-1), time.Duration(-1)
+		for w.now-start < int64(30*time.Second) {
+			if back < 0 && w.now-start >= int64(aus) {
+				w.live[w.srcs["m"]], w.live[w.srcs["h"]] = true, true
+				w.sync()
+				back = w.now
+			}
+			w.step()
+			if l := w.layer(); !strings.HasSuffix(seq, l) {
+				seq += l
+			}
+			if back >= 0 && tm < 0 && w.layer() == "m" {
+				tm = time.Duration(w.now - back)
+			}
+			if back >= 0 && tf < 0 && w.layer() == w.top() {
+				tf = time.Duration(w.now - back)
+			}
+		}
+		return fmt.Sprintf("m nach %v, %s nach %v, Folge %s", tm, w.top(), tf, seq)
+	}
+	for _, tcp := range []bool{false, true} {
+		for _, aus := range []time.Duration{200 * time.Millisecond, 1200 * time.Millisecond} {
+			a, b := run(tcp, "lmh", aus), run(tcp, "hml", aus)
+			t.Logf("tcp=%-5v aus %v: Folge l,m,h: %s; Folge h,m,l: %s", tcp, aus, a, b)
+			if a != b {
+				t.Errorf("tcp=%v aus %v: Anmeldefolge h,m,l verhaelt sich anders (%s) als l,m,h (%s)", tcp, aus, b, a)
+			}
+		}
+	}
+}

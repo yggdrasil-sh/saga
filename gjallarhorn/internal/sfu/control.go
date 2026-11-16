@@ -323,6 +323,11 @@ func (s *slot) swapped(st *source, now int64) bool {
 	if was == nil || s.owner == nil || was.peer.ID != s.owner.ID || st.added <= was.added {
 		return false
 	}
+	// lief st schon, als der Platz die bisherige nahm, ist sie nicht neuer - auch wenn sie spaeter angemeldet wurde
+	// (Reihenfolge der ersten Pakete bzw. Rahmen eines Beins ist nicht fest; Pruefer: Flattern bei Folge h,m,l)
+	if st.fl.liveAt != 0 && st.fl.liveAt <= s.srcAt {
+		return false
+	}
 	return was.peer != s.owner || s.owner.srcs[was.Source] != was || !was.live(now)
 }
 
