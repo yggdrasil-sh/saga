@@ -174,6 +174,8 @@ type leg struct {
 	closed    bool
 	rttNs     atomic.Int64               // Umlaufzeit aus den Empfaengerberichten (Probing: Laenge des Fensters)
 	tun       atomic.Pointer[wstun.Conn] // 2.5 A3: ICE-TCP-Verbindung durch den Medien-Tunnel (sonst nil)
+	framesLeg bool                       // 2.5 B2: Rahmen-Bein ueber WebSocket (frames.go), ohne PeerConnection
+	fr        *frLeg                     // ... dessen WebSocket-Seite (unter mu; nil bis zum ok)
 	bwe       *bweWrap                   // nur HORN_BWE=mit bzw. eigen (UDP-Beine): Mitleser mit eigenem Stau-Detektor, sonst nil
 	tcpm      *bwe.Mitleser              // nur TCP-Wege (HORN_TCP_STAU nicht 0): Mitleser des Ende-zu-Ende-Stausignals, sonst nil
 }
@@ -507,8 +509,21 @@ func (s *server) closeLeg(l *leg, reason string) {
 	for _, x := range st.Sources {
 		dups, old, late = dups+x.Dups, old+x.TooOld, late+x.Late
 	}
-	log.Printf("bein zu %s modus=%s weg=%s dauer=%s doppel=%d alt=%d spaet=%d spaet_verworfen=%d grund=%s", shortID(l.id), mode, l.path,
+	art := ""
+	l.mu.Lock()
+	fr := l.fr
+	l.mu.Unlock()
+	if l.framesLeg {
+		art = " art=frames"
+		if fr != nil {
+			art += " " + fr.String()
+		}
+	}
+	log.Printf("bein zu %s modus=%s weg=%s%s dauer=%s doppel=%d alt=%d spaet=%d spaet_verworfen=%d grund=%s", shortID(l.id), mode, l.path, art,
 		time.Since(l.created).Round(time.Second), dups, old, late, st.LateDrop, reason)
+	if fr != nil {
+		fr.close(reason)
+	}
 	s.mu.Lock()
 	delete(s.legs, l.id)
 	if l.ufrag != "" && s.ufrags[l.ufrag] == l {
@@ -561,6 +576,7 @@ type legStats struct {
 	LateDrop  uint64          `json:"late_dropped,omitempty"` // verspaetete Pakete, die dieses Bein nicht mehr einordnen konnte
 	Sources   []srcStats      `json:"sources,omitempty"`      // laufende eingehende Spuren dieses Beins
 	Tunnel    *wstun.Snapshot `json:"tunnel,omitempty"`       // 2.5 A3: Zaehler des Medien-Tunnels (Fenster, RTT der Quittungen)
+	Frames    *frStats        `json:"frames,omitempty"`       // 2.5 B2: Zaehler des Rahmen-Beins (frames.go)
 	ended     [3]uint64       // Summen der beendeten Spuren (Doppel, zu alt, spaet) - fuer die Zeile "bein zu"
 }
 
@@ -583,8 +599,17 @@ func (l *leg) setPC(pc *webrtc.PeerConnection) {
 // state liefert den Verbindungszustand (new, solange das Bein entsteht).
 func (l *leg) state() webrtc.PeerConnectionState {
 	l.mu.Lock()
-	pc := l.pc
+	pc, frames, fr := l.pc, l.framesLeg, l.fr
 	l.mu.Unlock()
+	if frames { // B2: Zustand der WebSocket-Seite
+		switch {
+		case fr == nil:
+			return webrtc.PeerConnectionStateNew
+		case fr.closed():
+			return webrtc.PeerConnectionStateClosed
+		}
+		return webrtc.PeerConnectionStateConnected
+	}
 	if pc == nil {
 		return webrtc.PeerConnectionStateNew
 	}
@@ -637,6 +662,13 @@ func (l *leg) stats() legStats {
 	if tc := l.tun.Load(); tc != nil {
 		sn := tc.Snap()
 		st.Tunnel = &sn
+	}
+	l.mu.Lock()
+	fr := l.fr
+	l.mu.Unlock()
+	if fr != nil {
+		sn, fs := fr.stats()
+		st.Tunnel, st.Frames = &sn, &fs
 	}
 	return st
 }

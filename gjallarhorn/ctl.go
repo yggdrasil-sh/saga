@@ -197,7 +197,9 @@ func (c *ctlClient) session() error {
 		"builtin": c.key != "", "max_legs": s.cfg.MaxLegs, "cert": s.certStatus(), "upd": s.upd.status(),
 		"ice_tcp": s.sfuTCP != nil && s.iceTCP, "einport": s.ein != nil,
 		// 2.5 A3: Medien-Tunnel /api/sfu/ws (tunnel.go) unter url; tunnel = Tunnel-Betrieb (url = BASE_URL, kein eigenes TLS)
-		"ws": true, "tunnel": s.cfg.Tunnel}
+		"ws": true, "tunnel": s.cfg.Tunnel,
+		// 2.5 B2: Rahmen-Weg der Browser (saga-frames.1, frames.go) am selben Endpunkt
+		"frames": true}
 	if c.key == "" {
 		v4, v6 := s.addrs()
 		hello["v4"], hello["v6"] = v4, v6
@@ -492,7 +494,7 @@ func (c *ctlClient) sendLoad() {
 		"cpu": round3(cpu), "mem": readRSS(), "up": round3(up), "down": round3(down), "legs": ld.Legs, "calls": ld.Rooms,
 		"peers": ld.Peers, "udp_share": round3(ld.UDPShare), "fwd_p95_us": round3(ld.FwdP95us), "drops": round3(drops),
 		"max_legs": c.s.cfg.MaxLegs, "state": state, "bridges": c.s.bridgeStates(), "quotas": c.s.node.QuotaStats(),
-		"tunnels": c.s.tun.stats()}})
+		"tunnels": c.s.tun.stats(), "paths": c.s.legPaths()}})
 }
 
 func round3(x float64) float64 { return float64(int64(x*1000+0.5)) / 1000 }

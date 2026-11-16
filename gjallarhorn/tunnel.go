@@ -51,6 +51,8 @@ type tunnels struct {
 	vport atomic.Uint32
 
 	total, authFail, noUpgrade, limited atomic.Uint64
+	frTotal                             atomic.Uint64 // 2.5 B2: Rahmen-WebSockets (saga-frames.1) seit Start ...
+	frOpen                              atomic.Int64  // ... und offen
 	lastOpen, lastNoUpgrade             atomic.Int64 // Unix-Sekunden
 }
 
@@ -97,38 +99,19 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUpgradeRequired, map[string]string{"error": "websocket_required", "text": tunnelNoUpgradeText})
 		return
 	}
-	if !hasSubprotocol(r, wstun.Subprotocol) { // saga-frames.1 (B2) kommt spaeter
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "subprotocol", "supported": []string{wstun.Subprotocol}})
+	if !hasSubprotocol(r, wstun.Subprotocol) {
+		if hasSubprotocol(r, framesSubprotocol) { // 2.5 B2: Browser-Weg (frames.go, Vertrag S12)
+			s.apiSFUFrames(w, r)
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "subprotocol", "supported": []string{wstun.Subprotocol, framesSubprotocol}})
 		return
 	}
 	ip := ipKey(r)
-	t.mu.Lock()
-	if t.perIP[ip] >= 4*s.cfg.maxPerIP() || t.n >= 2*s.cfg.MaxLegs+16 || t.pend >= tunnelMaxPend || t.pendI[ip] >= tunnelMaxPendIP {
-		t.mu.Unlock()
-		t.limited.Add(1)
+	authed, release, okLim := t.admit(ip, s.cfg)
+	if !okLim {
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "limit"})
 		return
-	}
-	t.perIP[ip]++
-	t.n++
-	t.pend++
-	t.pendI[ip]++
-	t.mu.Unlock()
-	authed := func() { // Handschlag vorbei (mit oder ohne Erfolg)
-		t.mu.Lock()
-		t.pend--
-		if t.pendI[ip]--; t.pendI[ip] <= 0 {
-			delete(t.pendI, ip)
-		}
-		t.mu.Unlock()
-	}
-	release := func() {
-		t.mu.Lock()
-		t.n--
-		if t.perIP[ip]--; t.perIP[ip] <= 0 {
-			delete(t.perIP, ip)
-		}
-		t.mu.Unlock()
 	}
 	up := websocket.Upgrader{ReadBufferSize: 16 << 10, WriteBufferSize: 16 << 10, Subprotocols: []string{wstun.Subprotocol},
 		HandshakeTimeout: 10 * time.Second, EnableCompression: false,
@@ -221,6 +204,45 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// admit: Grenzen fuer einen neuen WebSocket am Medien-Endpunkt (Tunnel und Rahmen-Bein gemeinsam, Vertrag S1/S12.1):
+// je Client-Adresse 4 x HORN_MAX_PER_IP, gesamt 2 x HORN_MAX_LEGS + 16, ohne Zugang 32 bzw. 8 je Adresse. authed: der
+// Handschlag ist vorbei (mit oder ohne Erfolg); release: der WebSocket ist zu. false: Grenze erreicht (429).
+func (t *tunnels) admit(ip string, cfg *config) (authed, release func(), ok bool) {
+	t.mu.Lock()
+	if t.perIP[ip] >= 4*cfg.maxPerIP() || t.n >= 2*cfg.MaxLegs+16 || t.pend >= tunnelMaxPend || t.pendI[ip] >= tunnelMaxPendIP {
+		t.mu.Unlock()
+		t.limited.Add(1)
+		return nil, nil, false
+	}
+	t.perIP[ip]++
+	t.n++
+	t.pend++
+	t.pendI[ip]++
+	t.mu.Unlock()
+	var ao, ro sync.Once
+	authed = func() {
+		ao.Do(func() {
+			t.mu.Lock()
+			t.pend--
+			if t.pendI[ip]--; t.pendI[ip] <= 0 {
+				delete(t.pendI, ip)
+			}
+			t.mu.Unlock()
+		})
+	}
+	release = func() {
+		ro.Do(func() {
+			t.mu.Lock()
+			t.n--
+			if t.perIP[ip]--; t.perIP[ip] <= 0 {
+				delete(t.perIP, ip)
+			}
+			t.mu.Unlock()
+		})
+	}
+	return authed, release, true
+}
+
 // tunnelStats: Zaehler fuer Admin -> Anrufe (Lastmeldung an Saga) und Diagnose. Keine Adressen.
 type tunnelStats struct {
 	Open          int    `json:"open"`
@@ -234,11 +256,13 @@ type tunnelStats struct {
 	RTTms         int64  `json:"rtt_ms,omitempty"`     // Median der kleinsten RTT (Quittungen) der offenen Tunnel
 	RTTMaxms      int64  `json:"rtt_max_ms,omitempty"` // groesste davon
 	BlockedMs     int64  `json:"blocked_ms,omitempty"` // Summe Wartezeit vor dem Fenster (offene Tunnel)
+	Frames        int64  `json:"frames"`               // 2.5 B2: offene Rahmen-WebSockets (Browser, saga-frames.1)
+	FramesTotal   uint64 `json:"frames_total"`         // ... seit Start
 }
 
 func (t *tunnels) stats() tunnelStats {
 	st := tunnelStats{Total: t.total.Load(), AuthFail: t.authFail.Load(), Limited: t.limited.Load(), NoUpgrade: t.noUpgrade.Load(),
-		LastOpen: t.lastOpen.Load(), LastNoUpgrade: t.lastNoUpgrade.Load()}
+		LastOpen: t.lastOpen.Load(), LastNoUpgrade: t.lastNoUpgrade.Load(), Frames: t.frOpen.Load(), FramesTotal: t.frTotal.Load()}
 	t.mu.Lock()
 	cs := make([]*wstun.Conn, 0, len(t.open))
 	for _, ti := range t.open {
