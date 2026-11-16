@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/pion/interceptor"
-	"github.com/pion/interceptor/pkg/twcc"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
@@ -14,7 +13,7 @@ import (
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 )
 
-// tcpChain: Abgriff und transport-cc-Kopf wie in newSFUAPI (Abgriff innen), ein Strom mit Kopf-Erweiterung 5.
+// tcpChain: Abgriff wie in newSFUAPI (er setzt die transport-cc-Nummer selbst), ein Strom mit Kopf-Erweiterung 5.
 type tcpChain struct {
 	m    *bwe.Mitleser
 	w    interceptor.RTPWriter
@@ -31,14 +30,9 @@ type sentPkt struct {
 func newTCPChain(t *testing.T) *tcpChain {
 	t.Helper()
 	c := &tcpChain{}
-	hook := &tcpHook{next: func(m *bwe.Mitleser) { c.m = m }}
+	hook := &tcpHook{next: func(m *bwe.Mitleser) { c.m = m }, on: true}
 	ir := &interceptor.Registry{}
 	ir.Add(tcpCCFactory{hook})
-	hx, err := twcc.NewHeaderExtensionInterceptor()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ir.Add(hx)
 	ch, err := ir.Build("")
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +134,31 @@ func TestTCPStauAus(t *testing.T) {
 	w := ch.BindLocalStream(info, interceptor.RTPWriterFunc(func(h *rtp.Header, pl []byte, _ interceptor.Attributes) (int, error) {
 		if h.Extension {
 			t.Fatal("Kopf-Erweiterung trotz Schalter aus")
+		}
+		return len(pl), nil
+	}))
+	if _, err := w.Write(&rtp.Header{Version: 2, SSRC: 1}, []byte{1}, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Bein ohne Signal (Tunnel-Weg ws ohne HORN_TCP_STAU_WS): Abgriff in der Kette, aber keine Nummer, kein Mitleser.
+func TestTCPStauBeinAus(t *testing.T) {
+	called := false
+	hook := &tcpHook{next: func(*bwe.Mitleser) { called = true }}
+	ir := &interceptor.Registry{}
+	ir.Add(tcpCCFactory{hook})
+	ch, err := ir.Build("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("Mitleser fuer ein Bein ohne Signal")
+	}
+	info := &interceptor.StreamInfo{SSRC: 1, RTPHeaderExtensions: []interceptor.RTPHeaderExtension{{URI: sdp.TransportCCURI, ID: 5}}}
+	w := ch.BindLocalStream(info, interceptor.RTPWriterFunc(func(h *rtp.Header, pl []byte, _ interceptor.Attributes) (int, error) {
+		if h.Extension {
+			t.Fatal("Kopf-Erweiterung auf einem Bein ohne Signal")
 		}
 		return len(pl), nil
 	}))

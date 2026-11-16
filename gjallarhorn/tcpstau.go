@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/interceptor"
@@ -24,6 +25,8 @@ import (
 //	HORN_TCP_STAU     Standard an; "0" = aus (Gegenprobe: TCP-Wege wie bis 2.5 ohne transport-cc auf dem Downlink);
 //	                  "mit" = nur messen (Zaehler, Log), die Schaetzung bleibt bei der eigenen Warteschlange
 //	HORN_TCP_STAU_LOG "1" = je Takt und Bein eine Zeile "tcpstau ..." (Messlaeufe)
+//	HORN_TCP_STAU_WS  "1" = auch auf dem Tunnel-Weg ws (A3); Standard aus - dort bremste transport-cc auf dem Downlink
+//	                  im Pruefstand bei engem Uplink den Uplink des Geraets (NODE.md), der Tunnel hat sein Fenster
 //
 // Auf TCP-Wegen traegt jedes abgehende Paket die transport-cc-Folgenummer (wie auf UDP), das Geraet meldet die
 // Ankunft. Ein Mitleser (internal/bwe, ohne GCC) ordnet die Rueckmeldungen zu; daraus liest das Bein je Takt die
@@ -46,26 +49,32 @@ func tcpStauMode() string {
 type tcpHook struct {
 	mu   sync.Mutex
 	next func(*bwe.Mitleser)
+	on   bool   // fuer die naechste PeerConnection: Folgenummern und Mitleser (sonst reicht der Abgriff nur durch)
 	mode string // tcpStauMode beim Start
+	ws   bool   // HORN_TCP_STAU_WS=1: auch Beine "ws" (A3)
 }
 
 // tcpCCFactory baut je PeerConnection einen Abgriff mit eigenem Mitleser.
 type tcpCCFactory struct{ hook *tcpHook }
 
 func (f tcpCCFactory) NewInterceptor(_ string) (interceptor.Interceptor, error) {
+	if f.hook == nil || !f.hook.on { // f.hook.mu haelt newSFULeg
+		return &tcpCC{}, nil
+	}
 	m := bwe.NewMitleser(bwe.Defaults())
-	if f.hook != nil && f.hook.next != nil { // f.hook.mu haelt newSFULeg
+	if f.hook.next != nil {
 		f.hook.next(m)
 	}
 	return &tcpCC{m: m}, nil
 }
 
-// tcpCC: merkt sich jedes abgehende Paket mit transport-cc-Folgenummer (die Kopf-Erweiterung liegt in der Kette
-// aussen, die Nummer steht beim Durchlauf schon im Kopf) und reicht jede transport-cc-Rueckmeldung an den Mitleser.
-// Aendert nichts an Paketen oder Rueckmeldungen.
+// tcpCC: setzt auf jedes abgehende Paket die transport-cc-Folgenummer (eine Folge je PeerConnection, wie auf UDP),
+// merkt sich Nummer, Sendezeit und Groesse und reicht jede transport-cc-Rueckmeldung an den Mitleser. Ohne Mitleser
+// (Bein ohne Signal) reicht er alles unveraendert durch - die Pakete gehen dann ohne Nummer hinaus wie bis 2.5.
 type tcpCC struct {
 	interceptor.NoOp
-	m *bwe.Mitleser
+	m   *bwe.Mitleser
+	seq atomic.Uint32
 }
 
 func (t *tcpCC) BindLocalStream(info *interceptor.StreamInfo, w interceptor.RTPWriter) interceptor.RTPWriter {
@@ -76,22 +85,29 @@ func (t *tcpCC) BindLocalStream(info *interceptor.StreamInfo, w interceptor.RTPW
 			break
 		}
 	}
-	if ext == 0 {
+	if ext == 0 || t.m == nil {
 		return w
 	}
 	kind := bwe.KindVideo
 	if strings.HasPrefix(strings.ToLower(info.MimeType), "audio/") {
 		kind = bwe.KindAudio
 	}
+	var buf [2]byte // je Strom; die Kette schreibt ein Paket nach dem anderen (der Kopf haelt den Verweis nur bis dahin)
 	return interceptor.RTPWriterFunc(func(h *rtp.Header, pl []byte, a interceptor.Attributes) (int, error) {
-		if raw := h.GetExtension(ext); len(raw) >= 2 {
-			t.m.Sent(bweNow(), binary.BigEndian.Uint16(raw), h.MarshalSize()+len(pl), kind)
+		n := uint16(t.seq.Add(1) - 1)
+		binary.BigEndian.PutUint16(buf[:], n)
+		if err := h.SetExtension(ext, buf[:]); err != nil {
+			return 0, err
 		}
+		t.m.Sent(bweNow(), n, h.MarshalSize()+len(pl), kind)
 		return w.Write(h, pl, a)
 	})
 }
 
 func (t *tcpCC) BindRTCPReader(r interceptor.RTCPReader) interceptor.RTCPReader {
+	if t.m == nil {
+		return r
+	}
 	return interceptor.RTCPReaderFunc(func(b []byte, a interceptor.Attributes) (int, interceptor.Attributes, error) {
 		n, a, err := r.Read(b, a)
 		if err != nil {
@@ -113,14 +129,21 @@ func (t *tcpCC) BindRTCPReader(r interceptor.RTCPReader) interceptor.RTCPReader 
 	})
 }
 
-// configureTCPStau: transport-cc-Folgenummern auf den abgehenden Paketen der TCP-Wege und der Abgriff davor (innen),
-// damit er die Nummer sieht. Bei HORN_TCP_STAU=0 nichts davon (die TCP-Wege senden wie bis 2.5 ohne Nummer).
+// configureTCPStau: der Abgriff, der auf den TCP-Wegen die transport-cc-Folgenummern setzt (die Kopf-Erweiterung ist
+// schon ausgehandelt: ConfigureTWCCSender meldet sie fuer die Rueckmeldungen an den Uplink an). Bei HORN_TCP_STAU=0
+// nichts davon (die TCP-Wege senden wie bis 2.5 ohne Nummer).
 func configureTCPStau(m *webrtc.MediaEngine, ir *interceptor.Registry, hook *tcpHook) error {
 	if hook == nil || hook.mode == tcpStauOff {
 		return nil
 	}
+	if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: sdp.TransportCCURI}, webrtc.RTPCodecTypeVideo); err != nil {
+		return err
+	}
+	if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: sdp.TransportCCURI}, webrtc.RTPCodecTypeAudio); err != nil {
+		return err
+	}
 	ir.Add(tcpCCFactory{hook})
-	return webrtc.ConfigureTWCCHeaderExtensionSender(m, ir)
+	return nil
 }
 
 // tcpSpan: Spanne (Sendezeit) fuer gesendete gegen bestaetigte Rate.

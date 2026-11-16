@@ -272,8 +272,9 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		s.tcp.mu.Lock()
 		var m *bwe.Mitleser
 		s.tcp.next = func(x *bwe.Mitleser) { m = x }
+		s.tcp.on = req.Path != "ws" || s.tcp.ws // Tunnel-Weg (A3) nur mit HORN_TCP_STAU_WS=1
 		pc, err = api.NewPeerConnection(webrtc.Configuration{})
-		s.tcp.next = nil
+		s.tcp.next, s.tcp.on = nil, false
 		s.tcp.mu.Unlock()
 		if m != nil {
 			tcpAttach(l, sl, m, s.tcp.mode)
