@@ -72,8 +72,7 @@
       var w = { id: d.id, key: d.key, role: d.role, ws: ws, ok: null, rx: 0, acked: 0, ackT: null, ackBytes: 8192, ackMs: 10,
                 dMin: null, dMinAt: 0, qDown: 0, qUp: 0, rtt: null, tx: 0, fno: {}, t0: performance.now(), done: false, stT: null, keyAt: {} };
       WS[d.id] = w;
-      c.ws[d.role] = w;                // neue Leitung gilt sofort (Wiederverbinden: der Knoten ersetzt das alte Bein)
-      if (old && old !== w) closeW(old, 1000);
+      if (!old || old.done) c.ws[d.role] = w;          // sonst erst mit ok (L3/Wiederverbinden: die alte Leitung traegt bis dahin)
       ws.onopen = function () { try { ws.send(JSON.stringify(d.join)); } catch (e) { /* zu */ } };
       ws.onclose = function (e) {
         if (w.done) return;
@@ -96,6 +95,9 @@
       var j; try { j = JSON.parse(s); } catch (e) { return; }
       if (j.t === 'ok' && !w.ok) {
         w.ok = j;
+        var c = conn(w.key), prev = c.ws[w.role];
+        c.ws[w.role] = w;                                // der Knoten hat das alte Bein (gleiche leg_ref) ersetzt
+        if (prev && prev !== w) closeW(prev, 1000);
         if (j.ack_bytes > 0 && j.ack_bytes <= 1 << 20) w.ackBytes = j.ack_bytes;
         if (j.ack_ms > 0 && j.ack_ms <= 1000) w.ackMs = j.ack_ms;
         w.stT = setInterval(function () { stats(w); }, K.ST_EVERY);
@@ -195,6 +197,7 @@
       fr.data = f.data.byteOffset || f.data.byteLength !== f.data.buffer.byteLength ? f.data.slice().buffer : f.data.buffer;
       S.skip = opusTicks(f.data) - 1;
       writer.write(fr);
+      bump('inj-a');
     };
 
     // Aufwaerts-Regelung (Bild m): Verzoegerungszunahme laut Knoten und eigener Sendepuffer
@@ -235,6 +238,7 @@
       new Uint8Array(m, HDR).set(data);
       try { w.ws.send(m); } catch (e) { return false; }
       w.tx += m.byteLength;
+      bump(role === 'audio' ? 'tx-a' : 'tx-v');
       return true;
     };
 
@@ -285,6 +289,7 @@
         var f = S.q.shift();
         fr.data = f.data.byteOffset || f.data.byteLength !== f.data.buffer.byteLength ? f.data.slice().buffer : f.data.buffer;
         writer.write(fr);
+        bump('inj-v');
         // Nach einem Schub fasst captureStream schnelle requestFrame zusammen: weiter anfordern, bis die Warteschlange leer ist
         if (S.q.length) post({ t: 'dummy', key: o.key, slot: o.slot });
       } })).catch(function () {});
@@ -294,6 +299,10 @@
       if (d.a === 'open') open(d);
       else if (d.a === 'close') { var w = WS[d.id]; if (w) closeW(w, 1000); }
       else if (d.a === 'level') level = d.v & 0xff;
+      else if (d.a === 'kill') {                       // nur Tests: Leitungen wie bei einem Netzabbruch verlieren
+        var ck = C[d.key];
+        if (ck) Object.keys(ck.ws).forEach(function (r) { try { ck.ws[r].ws.close(4000, 'test'); } catch (e) { /* zu */ } });
+      }
       else if (d.a === 'cfg') { var u = conn(d.key).up; u.max = d.maxKbps || u.max; u.min = d.minKbps || u.min; u.target = Math.min(u.target, u.max); }
       else if (d.a === 'drop') {
         var c = C[d.key];

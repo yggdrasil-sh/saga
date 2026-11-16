@@ -5124,6 +5124,22 @@
   hornSwitch: function (why) { if (C && C.horn) hornSwitch(C, why || 'lost'); },
   caps: function () { return config().then(function () { return myCaps(); }); },
   hornStats: function (reset) { return C && C.horn && C.horn.X ? C.horn.X.stats(reset) : Promise.resolve(null); },
+  // 2.5 B2 (Tests, Diagnose): Rahmen-Weg der aktuellen Verbindung - Zustand der Schleife, Zaehler der WebSockets, Rate;
+  // op "kill" laesst die WebSockets wie bei einem Netzabbruch fallen (Wiederverbinden pruefen)
+  hornFrames: function (op) {
+    var H = C && C.horn, cur = H && H.cur;
+    if (!cur || !cur.fr) return Promise.resolve(null);
+    if (op === 'kill') { H.X.worker.postMessage({ op: 'fr', a: 'kill', key: cur.key }); return Promise.resolve(true); }
+    var f = cur.fr, legs = {};
+    Object.keys(cur.legs).forEach(function (k) { legs[k] = { id: cur.legs[k].id, state: cur.legs[k].pc.connectionState, rc: cur.legs[k].rc || 0 }; });
+    return new Promise(function (ok) {
+      var id = 'st' + Date.now(), done = function (d) { if (d.id === id) { H.X.worker.removeEventListener('message', ln); ok(d.stats); } };
+      var ln = function (m) { done(m.data || {}); };
+      H.X.worker.addEventListener('message', ln);
+      H.X.worker.postMessage({ op: 'fr', a: 'stats', id: id });
+      setTimeout(function () { H.X.worker.removeEventListener('message', ln); ok(null); }, 2000);
+    }).then(function (w) { return { state: f.state, rate: f.rate, st: f.st, legs: legs, worker: w }; });
+  },
   // 2.4: fuer Tests und die Diagnose - ICE neu aushandeln (wie bei einem Netzwechsel), Bild-im-Bild, Regeltabelle
   restartIce: function () { return restartIce(C); }, pip: function (on) { if (!C) return Promise.resolve(false); return on === false ? (pipClose(C), Promise.resolve(true)) : pipOpen(C); },
   rules: rules, limits: { restartMax: RESTART_MAX, discS: DISC_S, failS: FAIL_S } };
