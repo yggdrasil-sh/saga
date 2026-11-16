@@ -402,11 +402,26 @@
         }
       })).pipeTo(writable).catch(function () {});
     };
-    root.onrtctransform = function (ev) { var t = ev.transformer; pipe(t.readable, t.writable, t.options || {}, t); };
+    // 2.5 B2 (Browser-Weg ueber WebSocket, static/horn-frames.js): Transforms tap/inject/sink gehoeren dem Rahmen-Weg,
+    // der in diesem Worker laeuft (Schluessel bleiben hier). Bis zum Laden (op "frames") vorgemerkt.
+    var FR = null, frPend = [], FR_SIDES = { tap: 1, inject: 1, sink: 1 };
+    root.onrtctransform = function (ev) {
+      var t = ev.transformer, o = t.options || {};
+      if (FR_SIDES[o.side]) { if (FR) FR.transform(t, o); else frPend.push([t, o]); return; }
+      pipe(t.readable, t.writable, o, t);
+    };
     root.onmessage = async function (m) {
       var d = m.data || {}, out = { id: d.id };
       try {
-        if (d.op === 'stream') pipe(d.readable, d.writable, d.o || {});
+        if (d.op === 'fr') { if (FR) FR.msg(d); return; }
+        if (d.op === 'frames') {
+          if (!FR) {
+            if (!/^\/static\/horn-frames\.js(\?v=[\w.-]{1,40})?$/.test(String(d.url || ''))) throw new Error('frames: url');
+            root.importScripts(d.url);
+            FR = root.SagaHornFrames.init({ H: H, maps: MAPS, waitMap: waitMap, drop: drop, post: function (m) { root.postMessage(m); } });
+            frPend.splice(0).forEach(function (x) { FR.transform(x[0], x[1]); });
+          }
+        } else if (d.op === 'stream') pipe(d.readable, d.writable, d.o || {});
         else if (d.op === 'own') out.key = await H.own(d.mode, Date.now(), d.key ? new Uint8Array(d.key) : undefined);
         else if (d.op === 'own-keys') out.keys = H.ownKeys();
         else if (d.op === 'switch') H.switchNow();
@@ -466,6 +481,7 @@
       selftest: function (v) { return call('selftest', { vectors: v }).then(function (d) { return d.result; }); },
       runes: function (callId, devices) { return call('runes', { call_id: callId, devices: devices }).then(function (d) { return d.runes; }); },
       on: function (ev, fn) { (subs[ev] = subs[ev] || []).push(fn); },
+      off: function (ev, fn) { subs[ev] = (subs[ev] || []).filter(function (x) { return x !== fn; }); },
       close: function () { w.terminate(); }
     };
   }
