@@ -902,7 +902,8 @@ Bild kommt mit 1,5 s Verzögerung (p95 ~3 s) an.
 
 Seit 2.5 (`HORN_TCP_STAU`, Standard an):
 
-- Die abgehenden Pakete der TCP-Wege tragen wie auf UDP die transport-cc-Folgenummer. Das Gerät meldet die Ankunft
+- Die abgehenden Pakete der TCP-Wege tragen wie auf UDP die transport-cc-Folgenummer (gesetzt vom Abgriff selbst, je
+  PeerConnection eine Folge; die Kopf-Erweiterung war schon ausgehandelt). Das Gerät meldet die Ankunft
   (Chromium/libwebrtc: alle ~60 ms). Ein Mitleser (`internal/bwe`, derselbe wie bei `HORN_BWE`, hier ohne GCC) ordnet
   die Rückmeldungen zu (`tcpstau.go`).
 - Je Takt (200 ms) liest das Bein daraus: die **Schlange unterwegs** (kleinste Laufzeit der letzten 5 gemeldeten
@@ -926,13 +927,52 @@ Seit 2.5 (`HORN_TCP_STAU`, Standard an):
   Zeile `tcpstau <bein> ok= q= sent= ack= fb=` (Messläufe). Zähler in `GET /api/sfu/leg/{id}` → `tcp_stau`
   (`downs`, `holds`, `stale`, `queue_ms`, …).
 - Kosten: 8 Byte je Paket (Kopf-Erweiterung) und die Rückmeldungen des Geräts auf dem Uplink (~1–2 kbit/s).
-- A3 (Weg `ws`): Tunnel-Beine sind ICE-TCP-Beine des Knotens und haben das Signal ebenso – zusätzlich zum Fenster des
-  Tunnels, das damit auf engem Downlink nicht mehr greifen muss (siehe Messung).
+- A3 (Weg `ws`): **Standard aus**, an mit `HORN_TCP_STAU_WS=1`. Auf dem Downlink wirkt es dort wie auf ICE-TCP (das
+  Fenster des Tunnels muss dann nicht mehr greifen), aber am A3-Prüfstand mit engem **Uplink** (500 kbit/s) brach mit
+  den Folgenummern auf dem Downlink der Uplink des Geräts ein: Chromiums Schätzung schaltete die Schicht m ab, das
+  Gegenüber bekam 74–164 statt 202–212 kbit/s mit 2–9 Einfrierern (5 von 5 Läufen, auch im Modus `mit` – also durch die
+  Nummern selbst, nicht durch die Regel). Auf ICE-TCP/TURN-TLS direkt nicht (siehe Messung). Ursache offen (Tunnel-
+  Stellvertreter `e2e/wstunnel` oder libwebrtc); vor dem Einschalten mit echten Apps prüfen.
 - Tests: `internal/sfu/tcpstau_test.go` (frei Takt für Takt gleich wie ohne, wachsende Schlange, Sprung durch fremden
   Download in einem bzw. zwei Takten, alte Rückmeldung, Ausschlag eines Takts, UDP unberührt), `TestTCPStauAbgriff`/`TestTCPStauAus`
   (Interceptor-Kette), `TestMitleserRecent`.
 
-MESSUNG_PLATZHALTER
+Messung im Prüfstand `e2e/stau.sh` (wie oben: Chromium, Userspace-Engpass, Gegenüber sendet l/m + Ton, je 60 s;
+Median der Läufe, in Klammern die Spanne; vorher = Stand ohne Signal):
+
+| Bedingung, Weg | n | Bild-RTT | Bild-Latenz Median/p95 | fps, Höhe, kbit/s | Einfrierer | Ton-Latenz | Senkungen (Signal) |
+|---|---|---|---|---|---|---|---|
+| 600 kbit/s, ICE-TCP vorher | 3 | 516 ms | 1260/2861 ms | 22,9, 360p, 397 | 3 / 0,9 s | 449 ms | – |
+| 600 kbit/s, ICE-TCP nachher | 3 | 46 ms | 167/207 ms | 20,5, 90p, 172 | 0 | 304 ms | 4 |
+| 600 kbit/s, TURN-TLS vorher | 3 | 606 ms | 1558/3123 ms | 22,5, 360p, 401 | 3 / 2,0 s | 466 ms | – |
+| 600 kbit/s, TURN-TLS nachher | 3 | 46 ms | 167/215 ms | 20,5, 90p, 170 | 0 | 324 ms | 4 |
+| 600 kbit/s, A3 `ws` vorher (Fenster) | 3 | 48 ms | 170/968 ms | 22,3, 90–360p, 279 | 0 | 346 ms | – |
+| 600 kbit/s, A3 `ws` mit `HORN_TCP_STAU_WS=1` | 3 | 46 ms | 172/205 ms | 20,5, 90p, 171 | 0 | 314 ms | 4 |
+| 1000 kbit/s, ICE-TCP / TURN-TLS vorher | 3+3 | 53/60 ms | 198/205, 203/211 ms | 30, 360p, 630 | 0 | 147/153 ms | – |
+| 1000 kbit/s, ICE-TCP / TURN-TLS nachher¹ | 3+3 | 54/52 ms | 202/219, 203/215 ms | 30, 360p, 630 | 0 | 144/154 ms | 0 |
+| 3 Mbit/s + Download, ICE-TCP vorher/nachher | 3+3 | 285/283 ms | 422/439, 422/438 ms | 29,8, 360p, 626/623 | 0 | 404/391 ms | 0 |
+| 3 Mbit/s + Download, TURN-TLS vorher/nachher | 3+3 | 284/285 ms | 426/444, 422/438 ms | 29,7/29,8, 360p, 621/624 | 0 | 404/402 ms | 0 |
+
+Auf 600 kbit/s wählt der Knoten jetzt Schicht l (90p, ~170 kbit/s) und bleibt dort; Versuche auf m (nach 8/16/32 s
+Aufschub) erkennt das Signal nach 3 Takten, die Schlange erreicht dabei rund 200–250 ms. Vorher lief m (360p) mit
+1,3–1,6 s Verzögerung und Einfrierern. Ohne Engpass bzw. mit Störungen anderer Art (nachher¹ mit dem Stand vor der
+3-Takt-Regel; das Signal senkte dort nie, die strengere Regel kann daran nichts ändern; n = 2–3 je Weg, TURN-TLS vorher
+dazu n = 3 aus der Messung der Kopplung):
+
+| Bedingung | ICE-TCP vorher → nachher | TURN-TLS vorher → nachher |
+|---|---|---|
+| frei, RTT 20 | 164/176 → 161/175 ms, 30 fps | 163/178 → 167/180 ms, 30 fps |
+| RTT 170 | 238/249 → 236/251 ms | 249/265 → 242/253 ms |
+| 1 % TCP-Verlust, RTT 60 | 191/203 → 182/195 ms, 0 Einfr. | 192/209 → 191/207 ms, 0 Einfr. |
+| Uplink 500 kbit/s (Gegenüber empfängt) | 254 → 247 kbit/s, 0 Einfr. | 238 → 228 kbit/s, 0 Einfr. |
+| 4 Geräte, Knoten-CPU | 8,9 → 8,4 % | 9,3 → 10,3 % |
+
+Preis: die Rückmeldungen auf dem Uplink (der Uplink des Gegenübers sinkt bei 500 kbit/s um 3–4 %) und etwas Rechenzeit
+im Knoten (4 Geräte auf TURN-TLS: +1 Prozentpunkt). Kacheln auf TCP in der Gruppe liefen in beiden Ständen mal mit
+15, mal mit 30 Bildern/s (vom Absender abhängig, wie schon bei der Prüfung der Kopplung). Gegenprobe
+`HORN_TCP_STAU=0` (600 kbit/s, n = 2 je Weg): wie vorher (Latenz 1,44/1,45 s, p95 2,8/3,2 s). Zum Vergleich der Kandidat RTT
+aus den Empfängerberichten (Modus `mit`, gleiche Leitung): Sie zeigte den Anstieg ~1 s nach der Schlange und hing beim
+Abbau 1–2 s nach.
 
 ## Einfrieren auf TCP (5G-Messung, G4)
 
