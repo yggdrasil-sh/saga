@@ -18,8 +18,11 @@ import (
 //   - Fall 1, er schweigt nach dem Wiederkommen noch 3 s: erst nach 3,2 s wieder auf dem Platz (mit dem alten
 //     Peer-Objekt war sein Status weg); ohne Wiederverbinden bliebe der stille Hauptsprecher darauf. Jetzt: backLocked,
 //     nach 0,2 s auf dem Platz, nach 0,6 s auf m.
-//   - unveraendert: Spricht in der Luecke jemand anderes, wird er Hauptsprecher; der Wiederkommende loest ihn mit der
-//     Hysterese von pickDominant ab (1,4 s) - wie bei einer stillen Pause ohne Wiederverbinden.
+//   - Fall 1, jemand sagt in der Luecke kurz etwas (bzw. hat kurz vorher etwas eingeworfen): Ohne Hauptsprecher wurde
+//     er sofort Hauptsprecher, der Wiederkommende kam erst nach der Hysterese zurueck (1,4 s) bzw. erst, wenn er
+//     wieder sprach (3,2 s). Jetzt gilt in der Luecke die Hysterese gegen einen stillen Hauptsprecher: 0,2 s.
+//   - unveraendert: Spricht in der Luecke jemand laenger als domHold, wird er Hauptsprecher; der Wiederkommende loest
+//     ihn mit der Hysterese von pickDominant ab - wie bei einer stillen Pause ohne Wiederverbinden.
 //
 // Modell: ein Empfaenger (eigenes Bein, TCP: Sprecherplatz bis m, zwei Kacheln auf l) und drei Teilnehmende ueber eine
 // Bruecke (so laesst sich steuern, wann ihre Quellen live sind und wer spricht). Gemessen wird am Sprecherplatz des
