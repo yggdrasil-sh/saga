@@ -1174,7 +1174,11 @@ kodierte, schon Frame-E2E-versiegelte Rahmen; der Knoten macht daraus RTP und um
   1100 Byte; Opus mit audio-level (Top-3-Ton). Lücke in der Rahmen-Nr. des Browsers → bis zum Schlüsselbild nichts
   weiterleiten, `pli` an den Browser (höchstens alle 500 ms, auch auf Anforderung des Raums). **Eingangsdrossel**
   `max_kbit` aus dem Token (Standard 4000; Eimer 1 s): darüber Bildrahmen verwerfen – nicht referenzierte der höchsten
-  Zeitschicht ohne Folgen, sonst bis zum Schlüsselbild; Ton nie.
+  Zeitschicht ohne Folgen, sonst bis zum Schlüsselbild; Ton nie. **Grenze für Ton** (eigener Eimer, 1 s): 4 × Nennrate,
+  also 256 kbit/s und 200 Rahmen/s je Ton-Bein (Nennrate 64 kbit/s und 50 Rahmen/s auf der Leitung: Opus im Browser
+  ≤ 32 kbit/s plus Kopf, Siegel und WebSocket, doppelte Reserve). Darüber ist es kein Opus-Strom, sondern Flut: der
+  Überschuss fällt weg (`up_audio_dropped`). Ein echter Strom und das Nachliefern nach einem TCP-Stau (bis ~4 s Ton)
+  bleiben unberührt – „Ton nie verwerfen“ gilt für sie weiter.
 - **Abwärts (RTP → Rahmen):** ein `fwd.Writer` je Platz setzt VP8 aus den Paketen zusammen (Lücke → bis Schlüsselbild,
   `KeyRequest`), Fenster über `wstun.Flow` (gemeinsam mit dem Tunnel: 2 × Lieferrate × kleinste RTT + 16 KiB, hier
   **mindestens 16 KiB**, ganze Rahmen; meldet der Browser > 80 ms Verzögerungszunahme, gilt das Mindestfenster). Ein
@@ -1184,6 +1188,13 @@ kodierte, schon Frame-E2E-versiegelte Rahmen; der Knoten macht daraus RTP und um
   10 s als Basis) – der Browser regelt damit seine Bildrate.
 - **Zähler:** je Bein `stats.tunnel` (Fenster) und `stats.frames`, Lastmeldung `tunnels.frames`/`frames_total` und
   `paths {udp, tcp, turn, ws, frames}` (Beine je Weg, Admin → Anrufe), hello `frames: true` (Saga: Kandidat `frames`).
+- **Wahl im Browser:** Kandidaten, die das Gerät nur über den Rahmen-Weg erreicht (kein UDP, kein ICE-TCP, kein TURN-TLS),
+  bekommen in `static/horn.js` +30 ms (`FRAMES_ONLY_MS`, mehr als der Bonus „Anruf schon hier“ 25 ms): ein Knoten mit UDP
+  gewinnt, bis er 20 ms weiter weg ist. WebKit (Safari, iOS, WKWebView) meldet vorerst kein `frames` (ungeprüft;
+  `calls.js hornWebKit` nach `navigator.vendor`, Rückhalt UA) – die Mac-Hülle nimmt weiter ihren Tunnel (`ws`).
+- **Bekannte Grenze:** Nach dem Wiederverbinden (ersetztes Bein = neue Quellen) bekommt der Sprecherplatz zuerst `l`
+  der neuen Quelle; `internal/sfu/control.go` wertet das als Schritt nach unten (gleicher Besitzer) → `layerDwell` 4 s,
+  `m` erst nach rund 5 s. Offen (Fix gehört in die Schichtwahl).
 - **Prüfstand:** `e2e/b2mess` (Knoten mit TURN-TLS für die Gegenstelle, saga-media, NPM-Nachbau, engpass;
   `b2stand.sh`, Messlauf `call.mjs`, Seite `b2.html` mit den Produkt-Dateien), Reihe `tests/b2_frames.py`.
 

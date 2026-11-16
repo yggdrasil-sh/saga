@@ -219,13 +219,14 @@ entrega sin cambios al nodo. Gjallarhorn sigue siendo experimental en la 2.5.
 - **Opcional:** como en «Un puerto», se puede añadir UDP 443 (`HORN_UDP_LISTEN=:443`, `"443:443/udp"`; NPM solo usa
   TCP 443); el nodo lo comprueba solo. No es necesario. O usa directamente el modo «Un puerto» (paso de TLS en lugar de
   TLS en el proxy, más abajo).
-- Los **navegadores** (Chrome/Edge, Firefox, Safari) también llaman por la dirección de Saga: envían sus fotogramas de
+- Los **navegadores** (Chrome/Edge, Firefox) también llaman por la dirección de Saga: envían sus fotogramas de
   vídeo y audio, codificados y cifrados de extremo a extremo, por dos WebSockets a la misma dirección (`/api/sfu/ws`);
   la reproducción y la cancelación de eco funcionan en el navegador como siempre. En el proxy no hace falta nada más.
   Esto cuesta en el navegador algo más de CPU (medido: aproximadamente +50 % frente a TURN-TLS, se nota en móviles y
   ordenadores antiguos) y añade algo de retardo al audio; con UDP 443 (opcional, arriba) los navegadores prefieren UDP.
   Admin → Llamadas muestra en el recuadro «Llamadas por la dirección de Saga» los WebSockets abiertos de los navegadores
-  y los tramos por vía.
+  y los tramos por vía. **Safari** (y cualquier navegador en iPhone/iPad) **todavía no usa la vía de fotogramas**: llama
+  como hasta ahora, directamente o a través de un nodo con UDP o TURN-TLS; la app de Mac sigue usando su túnel.
 - A las **apps antiguas** (sin túnel) y a los navegadores sin «Encoded Transform» no se les ofrece este nodo: sus
   llamadas van en malla o por un nodo acoplado. Si uno de esos dispositivos se une a una llamada que va por el nodo del
   túnel, Saga pasa la llamada a directa (hasta el límite de la malla: 4 con vídeo o 6 solo audio).

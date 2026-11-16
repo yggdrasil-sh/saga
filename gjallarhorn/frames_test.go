@@ -743,6 +743,55 @@ func TestFramesDrossel(t *testing.T) {
 	}
 }
 
+// Ton aufwaerts (Pruefer F4): echter Strom (50 Rahmen/s) und Nachliefern nach einem Stau (3 s Ton auf einmal) gehen ganz
+// durch; eine Flut (2000 Rahmen zu 600 Byte ohne Pause) wird ueber 4x Nennrate verworfen und gezaehlt.
+func TestFramesTonGrenze(t *testing.T) {
+	s, hs, url := tunnelServer(t)
+	room := "frames-ton"
+	if err := postJSON(httpClient(), hs.URL+"/api/dev/room", map[string]string{"room": room}, &struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+	A := joinFramesDev(t, hs.URL, url, room, "laut", 0)
+	F := joinFramesDev(t, hs.URL, url, room, "flut", 0)
+	run := func(d time.Duration) { // echter Strom (der Sender ist nicht nebenlaeufig nutzbar: nacheinander)
+		stop := make(chan struct{})
+		done := make(chan struct{})
+		go func() { A.a.sender(stop, false, 0); close(done) }()
+		time.Sleep(d)
+		close(stop)
+		<-done
+	}
+	run(1500 * time.Millisecond)
+	ts := uint32(1 << 30)
+	for i := 0; i < 150; i++ { // Nachliefern: 3 s Ton (Opus ~120 Byte) auf einmal
+		ts += 960
+		A.a.send(frTrackAudio, 0, 0x80|30, ts, make([]byte, 120), false)
+	}
+	for i := 0; i < 2000; i++ {
+		ts += 960
+		F.a.send(frTrackAudio, 0, 0x80|30, ts, make([]byte, 600), false)
+	}
+	run(1500 * time.Millisecond)
+	ok := func(id string, want func(frStats) bool) frStats {
+		var st frStats
+		for i := 0; i < 40; i++ {
+			if st = *s.getLeg(id).stats().Frames; want(st) {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		return st
+	}
+	la := ok(A.a.id(), func(st frStats) bool { return st.UpFrames >= 150+100 })
+	if la.UpADropped != 0 || la.UpDropped != 0 || la.UpFrames < 150+100 {
+		t.Fatalf("echter Ton verworfen: %+v", la)
+	}
+	lf := ok(F.a.id(), func(st frStats) bool { return st.UpFrames+st.UpADropped >= 2000 })
+	if lf.UpFrames+lf.UpADropped != 2000 || lf.UpADropped < 1000 || lf.UpFrames > 2*frAudioFps {
+		t.Fatalf("Flut nicht begrenzt: %+v", lf)
+	}
+}
+
 // Luecke in der Rahmen-Nr. des Browsers: bis zum Schluesselbild nichts weiterleiten, pli an den Browser; danach weiter.
 func TestFramesLueckePLI(t *testing.T) {
 	s, hs, url := tunnelServer(t)

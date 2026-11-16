@@ -2271,9 +2271,12 @@ das ein normales Bein (Weg `ws`, für den Knoten ein Stromweg wie ICE-TCP); alle
 - **Fähigkeit:** Server-Feature `frames` (`GET /api/calls/config` → `features`; dazu `horn_ready_frames` wie
   `horn_ready_ws`). Browser melden `"frames"` in `caps` (Stellen wie `ws`, S10). Ein Knoten im Tunnel-Betrieb gilt für
   Geräte mit `frames` als bereit, wenn er `frames` meldet (Kandidat `frames: true`). Ein Gerät meldet nie `ws` und
-  `frames` zugleich (Web: `ws` nur mit Tunnel der Mac-Hülle, sonst `frames`); meldet es beide, gilt `ws`.
+  `frames` zugleich (Web: `ws` nur mit Tunnel der Mac-Hülle, sonst `frames`); meldet es beide, gilt `ws`. WebKit (Safari,
+  Browser auf iPhone/iPad, WKWebView) meldet vorerst kein `frames` (ungeprüft) und telefoniert wie vor B2.
 - **Wegwahl (Browser):** wie beim Tunnel (`SagaHorn.ways`): `ws && frames` ohne `tcp`/`tls` → UDP (falls angeboten) und
-  Rahmen-Weg parallel, UDP mit kurzem Vorsprung; neben `tcp`/`tls` als letzter Weg.
+  Rahmen-Weg parallel, UDP mit kurzem Vorsprung; neben `tcp`/`tls` als letzter Weg. In der Punktzahl der Kandidaten
+  (`SagaHorn.score`) bekommt ein Knoten, den das Gerät nur über den Rahmen-Weg erreicht, +30 ms (mehr als der Bonus
+  „Anruf schon hier“) – ein Knoten mit UDP geht vor.
 - **Handschlag:** `GET wss://{host von url}/api/sfu/ws`, `Sec-WebSocket-Protocol: saga-frames.1`. Erste Nachricht (Text,
   ≤ 4 KiB, ≤ 10 s): `{"t": "join", "v": 1, "token": "<Ton- bzw. Bild-Token>", "audio": 3}` bzw. `{…, "speaker": true,
   "screen": true, "tiles": n, "device": "desktop|mobile"}` – das Medien-Token wie bei `POST /api/sfu/leg` (einmalig, nie in
@@ -2291,9 +2294,10 @@ das ein normales Bein (Weg `ws`, für den Knoten ein Stromweg wie ICE-TCP); alle
 - **Fluss:** abwärts Fenster am Knoten wie beim Tunnel, aber mindestens 16 KiB (ganze Rahmen; ein Bildrahmen, der länger
   als 400 ms auf Platz wartet, fällt weg, der Platz wartet dann auf ein Schlüsselbild). Aufwärts ohne Fenster: der
   Browser regelt die Bildrate nach der Rückmeldung und seinem `bufferedAmount` und verwirft zuerst nicht referenzierte
-  Rahmen der höchsten Zeitschicht; der Knoten drosselt den Eingang nach `max_kbit` des Tokens (Ton nie).
+  Rahmen der höchsten Zeitschicht; der Knoten drosselt den Eingang nach `max_kbit` des Tokens (Ton nie; Ton nur als
+  Flut über 4 × Nennrate – 256 kbit/s bzw. 200 Rahmen/s je Ton-Bein, Eimer 1 s – fällt der Überschuss weg).
 - **Diagnose:** Weg `ws` (Knoten-Log `weg=ws art=frames`, `calldiag` `transport: "ws"`), `GET {url}/api/sfu/leg/{id}` →
-  `stats.tunnel` (Fenster) und `stats.frames {up_frames, down_frames, up_dropped, up_gaps, down_dropped, key_req, pli,
+  `stats.tunnel` (Fenster) und `stats.frames {up_frames, down_frames, up_dropped, up_audio_dropped, up_gaps, down_dropped, key_req, pli,
   q_up_ms, q_down_ms}`; Lastmeldung `load.paths` = Beine je Weg (Admin → Anrufe).
 - **Apps** nutzen den Tunnel (`saga-tunnel.1`), nicht diesen Weg.
 

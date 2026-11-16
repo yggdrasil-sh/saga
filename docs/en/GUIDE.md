@@ -215,12 +215,14 @@ unchanged. Gjallarhorn stays experimental in 2.5.
 - **Optional:** as with “One port”, UDP 443 can be added (`HORN_UDP_LISTEN=:443`, `"443:443/udp"` – NPM only uses
   TCP 443); the node checks this itself. It is not required. Or use the “One port” mode right away (TLS passthrough
   instead of TLS at the proxy, below).
-- **Browsers** (Chrome/Edge, Firefox, Safari) also call through the Saga address: they send their encoded, end-to-end
+- **Browsers** (Chrome/Edge, Firefox) also call through the Saga address: they send their encoded, end-to-end
   encrypted video and audio frames over two WebSockets to the same address (`/api/sfu/ws`); playback and echo
   cancellation work in the browser as usual. Nothing else is needed at the proxy. This costs the browser somewhat more
   CPU time (measured about +50 % compared with TURN-TLS, noticeable on phones and older computers) and adds a little
   audio delay; with UDP 443 (optional, above) browsers prefer UDP. Admin → Calls shows the open browser WebSockets and
-  the legs per path in the “Calls through the Saga address” box.
+  the legs per path in the “Calls through the Saga address” box. **Safari** (and every browser on iPhone/iPad) does
+  **not use the frame path yet** – it calls as before, directly or through a node with UDP or TURN-TLS; the Mac app keeps
+  using its tunnel.
 - **Older apps** (without the tunnel) and browsers without “Encoded Transform” are not offered this node: their calls
   run in the mesh or through a paired node. If such a device joins a call that runs on the tunnel node, Saga switches
   the call to direct (up to the mesh limit of 4 with video or 6 audio only).

@@ -20,17 +20,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Rahmen-Weg `saga-frames.1`:** Hinter einem Proxy, der TLS selbst beendet (Nginx Proxy Manager), telefonieren jetzt
   auch Browser über den eingebauten Knoten im Tunnel-Betrieb. Sie schicken ihre kodierten, Ende-zu-Ende-verschlüsselten
   Rahmen über zwei WebSockets (Ton, Bild) an `/api/sfu/ws` der Saga-Adresse; Empfangenes geht über eine lokale Schleife in
-  den echten WebRTC-Empfang (Jitter-Puffer, Echo-Unterdrückung wie gewohnt). Am Proxy nichts Neues; Chrome/Edge,
-  Firefox und Safari (WebKit). Am Knoten ein normales Bein (Weg `ws`) – Apps, UDP, TURN-TLS bleiben im selben Anruf.
+  den echten WebRTC-Empfang (Jitter-Puffer, Echo-Unterdrückung wie gewohnt). Am Proxy nichts Neues; Chrome/Edge und
+  Firefox. Safari (WebKit, auch jeder Browser auf iPhone/iPad) telefoniert **noch nicht über den Rahmen-Weg** (ungeprüft) –
+  dort wie bisher direkt bzw. über einen Knoten mit UDP/TURN-TLS; die Mac-App weiter über ihren Tunnel. Am Knoten ein
+  normales Bein (Weg `ws`) – Apps, UDP, TURN-TLS bleiben im selben Anruf.
 - **Wegwahl:** UDP (falls frei) und der Rahmen-Weg parallel, UDP mit kurzem Vorsprung; neben TCP/TLS als letzter Weg.
   Wiederverbinden nach Abbruch sofort mit frischem Token (gemessen ~0,15 s bis zum neuen Bein). Browser ohne „Encoded
-  Transform“ und ältere Apps nutzen den Tunnel-Knoten weiter nicht (Rückfall auf direkt wie bisher).
+  Transform“ und ältere Apps nutzen den Tunnel-Knoten weiter nicht (Rückfall auf direkt wie bisher). Gibt es neben dem
+  Tunnel-Knoten einen Knoten mit UDP (z. B. ein gekoppelter), nimmt der Browser den – auch beim Beitritt in einen Anruf,
+  der schon auf dem Tunnel-Knoten läuft (Abzug +30 ms für „nur über den Rahmen-Weg“).
 - **Kosten:** im Browser mehr Rechenzeit als über TURN-TLS (zwei lokale PeerConnections, Attrappen) und etwas mehr
   Ton-Verzögerung; bei knapper Leitung regelt der Rahmen-Weg sauber herunter statt einzufrieren.
 - **Admin → Anrufe:** Im Kasten „Anrufe über die Saga-Adresse“ stehen die offenen Browser-WebSockets und die Beine je
   Weg (UDP, TCP, TLS, Tunnel der Apps, WebSocket der Browser).
-- Knoten: Fenster des Tunnels als gemeinsamer Baustein (`wstun.Flow`), Eingangsdrossel nach `max_kbit`, Zähler
-  `stats.frames`, Lastmeldung `paths`. Saga: Fähigkeit `frames` (caps), Kandidat `frames`, `config.horn_ready_frames`.
+- Knoten: Fenster des Tunnels als gemeinsamer Baustein (`wstun.Flow`), Eingangsdrossel nach `max_kbit` (nur Bild; Ton nur
+  über 4× Nennrate verworfen – Schutz vor Flut), Zähler `stats.frames`, Lastmeldung `paths`. Saga: Fähigkeit `frames`
+  (caps), Kandidat `frames`, `config.horn_ready_frames`.
+- **Bekannte Grenze:** Nach einem Wiederverbinden zeigt der Sprecherplatz die anderen erst nach rund 5 s wieder in der
+  großen Schicht (vorher die kleine).
 
 ### Behoben – Anrufe über ICE-TCP und TURN-TLS: weniger Verzögerung auf engem Downlink
 - Auf den TCP-Wegen bemerkte der Anrufknoten eine enge Leitung zum Gerät erst, wenn die Puffer unterwegs voll waren:

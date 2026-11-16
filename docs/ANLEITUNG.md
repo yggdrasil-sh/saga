@@ -243,12 +243,14 @@ unverändert an den Knoten weiter. Gjallarhorn bleibt in 2.5 experimentell.
 - **Optional:** wie bei „Ein Port“ kann UDP 443 dazukommen (`HORN_UDP_LISTEN=:443`, `"443:443/udp"` – NPM belegt nur
   TCP 443); der Knoten prüft das selbst. Nötig ist es nicht. Oder gleich die Betriebsart „Ein Port“ (TLS-Durchreiche
   statt TLS am Proxy, unten).
-- **Browser** (Chrome/Edge, Firefox, Safari) telefonieren ebenfalls über die Saga-Adresse: Sie schicken ihre kodierten,
+- **Browser** (Chrome/Edge, Firefox) telefonieren ebenfalls über die Saga-Adresse: Sie schicken ihre kodierten,
   Ende-zu-Ende-verschlüsselten Bild- und Tonrahmen über zwei WebSockets an dieselbe Adresse (`/api/sfu/ws`); Wiedergabe
   und Echo-Unterdrückung laufen wie gewohnt im Browser. Am Proxy ist dafür nichts weiter nötig. Das kostet im Browser
   etwas mehr Rechenzeit (gemessen etwa +50 % gegenüber TURN-TLS, auf Handys und älteren Rechnern spürbar) und beim Ton
   etwas Verzögerung; mit UDP 443 (optional, oben) nehmen Browser lieber UDP. Admin → Anrufe zeigt im Kasten „Anrufe über
-  die Saga-Adresse“ die offenen Browser-WebSockets und die Beine je Weg.
+  die Saga-Adresse“ die offenen Browser-WebSockets und die Beine je Weg. **Safari** (und jeder Browser auf iPhone/iPad)
+  telefoniert **noch nicht über den Rahmen-Weg** – dort wie bisher direkt bzw. über einen Knoten mit UDP oder TURN-TLS;
+  die Mac-App nutzt weiter ihren Tunnel.
 - **Ältere Apps** (ohne Tunnel) und Browser ohne „Encoded Transform“ bekommen diesen Knoten nicht angeboten: Ihre Anrufe
   laufen im Mesh bzw. über einen gekoppelten Knoten. Tritt ein solches Gerät einem Anruf bei, der auf dem Tunnel-Knoten
   läuft, schaltet Saga den Anruf auf direkt (bis zur Mesh-Grenze von 4 mit Video bzw. 6 nur Ton).

@@ -59,6 +59,15 @@ const (
 	frPayload   = 1100     // Nutzlast je RTP-Paket (Platz fuer Kopf/CSRC/SRTP der anderen Wege)
 	frClampMs   = 80       // gemeldete Verzoegerungszunahme abwaerts, ab der das Mindestfenster gilt
 	frDefKbit   = 4000     // Eingangsdrossel ohne max_kbit im Token (wie saga/horn.py MAX_KBIT)
+
+	// Grenze fuer Ton aufwaerts (Pruefer F4): 4x Nennrate. Nennrate = 64 kbit/s und 50 Rahmen/s je Ton-Spur auf der Leitung
+	// (Opus im Browser hoechstens 32 kbit/s, static/calls.js RATES; dazu 16 Byte Kopf, E2E-Siegel und WebSocket-Rahmen je
+	// 20-ms-Rahmen; mit doppelter Reserve fuer andere Absender). Darueber ist es kein Opus-Strom mehr, sondern Flut - der
+	// Ueberschuss wird verworfen und gezaehlt (up_audio_dropped). "Ton nie verwerfen" (H3) bleibt fuer jeden echten Strom
+	// wahr: Bild-Drossel (max_kbit), Fenster und 150-ms-Regel treffen Ton weiter nie; 1 s Guthaben der Grenze (= 4 s Ton
+	// mit Nennrate) faengt das Nachliefern nach einem TCP-Stau auf.
+	frAudioBps = 4 * 64000 / 8 // Byte/s
+	frAudioFps = 4 * 50        // Rahmen/s
 )
 
 // Fristen (Tests aendern sie).
@@ -290,9 +299,10 @@ func (l *leg) attachFrames(f *frLeg) bool {
 type frStats struct {
 	UpFrames   uint64 `json:"up_frames"`
 	UpBytes    uint64 `json:"up_bytes"`
-	UpDropped  uint64 `json:"up_dropped,omitempty"` // Eingangsdrossel (max_kbit)
-	UpGaps     uint64 `json:"up_gaps,omitempty"`    // Luecken in der Rahmen-Nr. des Browsers
-	UpWaitKey  uint64 `json:"up_waitkey,omitempty"` // verworfen, weil die Spur auf ein Schluesselbild wartet
+	UpDropped  uint64 `json:"up_dropped,omitempty"`       // Eingangsdrossel (max_kbit)
+	UpADropped uint64 `json:"up_audio_dropped,omitempty"` // Ton ueber 4x Nennrate (frAudioBps/frAudioFps)
+	UpGaps     uint64 `json:"up_gaps,omitempty"`          // Luecken in der Rahmen-Nr. des Browsers
+	UpWaitKey  uint64 `json:"up_waitkey,omitempty"`       // verworfen, weil die Spur auf ein Schluesselbild wartet
 	DownFrames uint64 `json:"down_frames"`
 	DownDrop   uint64 `json:"down_dropped,omitempty"` // Fenster blieb voll (> 400 ms)
 	DownBroken uint64 `json:"down_broken,omitempty"`  // Rahmen nach Paketluecke verworfen (bis Schluesselbild)
@@ -330,10 +340,13 @@ type frLeg struct {
 	tok    float64 // Eingangsdrossel: Guthaben in Byte
 	tokAt  time.Time
 	rate   float64 // Byte/s
+	aTok   float64 // Grenze fuer Ton (frAudioBps/frAudioFps): Guthaben in Byte bzw. Rahmen
+	aCnt   float64
+	aTokAt time.Time
 
 	c struct {
-		upFrames, upBytes, upDropped, upGaps, upWaitKey, downFrames, downDrop, downBroken, keyReq, pli atomic.Uint64
-		qDown                                                                                          atomic.Int64
+		upFrames, upBytes, upDropped, upAudioDropped, upGaps, upWaitKey, downFrames, downDrop, downBroken, keyReq, pli atomic.Uint64
+		qDown                                                                                                          atomic.Int64
 	}
 }
 
@@ -361,6 +374,7 @@ func newFrLeg(s *server, l *leg, ws *websocket.Conn) *frLeg {
 	}
 	f := &frLeg{s: s, l: l, ws: ws, sl: l.sl, g: l.sl.Grant, done: make(chan struct{}), tracks: map[uint8]*frUp{}, rate: float64(kbit) * 125}
 	f.tok, f.tokAt = f.rate, time.Now()
+	f.aTok, f.aCnt, f.aTokAt = frAudioBps, frAudioFps, f.tokAt
 	f.flow = wstun.NewFlow(frMinWindow, wstun.DefMaxWindow, &f.st)
 	f.alive.Store(time.Now().UnixNano())
 	ws.SetReadLimit(frMaxMsg)
@@ -514,6 +528,20 @@ func (f *frLeg) throttle(n int, now time.Time) bool {
 	return true
 }
 
+// audioOk: Grenze fuer Ton aufwaerts (frAudioBps, frAudioFps; je 1 s Guthaben); true = Rahmen darf passieren.
+func (f *frLeg) audioOk(n int, now time.Time) bool {
+	dt := now.Sub(f.aTokAt).Seconds()
+	f.aTokAt = now
+	f.aTok = min(f.aTok+dt*frAudioBps, frAudioBps)
+	f.aCnt = min(f.aCnt+dt*frAudioFps, frAudioFps)
+	if f.aTok < float64(n) || f.aCnt < 1 {
+		return false
+	}
+	f.aTok -= float64(n)
+	f.aCnt--
+	return true
+}
+
 // upFrame packt einen Rahmen in RTP und speist ihn ein (S12.3/S12.4).
 func (f *frLeg) upFrame(b []byte) {
 	tr, fl, x := b[1], b[2], b[3]
@@ -544,7 +572,11 @@ func (f *frLeg) upFrame(b []byte) {
 		return
 	}
 	if t.kind == fwd.Audio {
-		f.throttle(len(b), now) // Ton zaehlt mit, wird aber nie verworfen
+		f.throttle(len(b), now)      // Ton zaehlt in der Bild-Drossel mit, wird von ihr aber nie verworfen
+		if !f.audioOk(len(b), now) { // ... nur ueber 4x Nennrate (Flut, F4)
+			f.c.upAudioDropped.Add(1)
+			return
+		}
 		f.c.upFrames.Add(1)
 		t.rtp(ts, true, nil, data, x)
 		return
@@ -908,7 +940,7 @@ func (f *frLeg) stats() (wstun.Snapshot, frStats) {
 	f.umu.Lock()
 	q := f.upQ
 	f.umu.Unlock()
-	return sn, frStats{UpFrames: f.c.upFrames.Load(), UpBytes: f.c.upBytes.Load(), UpDropped: f.c.upDropped.Load(), UpGaps: f.c.upGaps.Load(),
+	return sn, frStats{UpFrames: f.c.upFrames.Load(), UpBytes: f.c.upBytes.Load(), UpDropped: f.c.upDropped.Load(), UpADropped: f.c.upAudioDropped.Load(), UpGaps: f.c.upGaps.Load(),
 		UpWaitKey: f.c.upWaitKey.Load(), DownFrames: f.c.downFrames.Load(), DownDrop: f.c.downDrop.Load(), DownBroken: f.c.downBroken.Load(),
 		KeyReq: f.c.keyReq.Load(), PLI: f.c.pli.Load(), QUpMs: q, QDownMs: f.c.qDown.Load()}
 }
@@ -936,6 +968,6 @@ func (s *server) legPaths() map[string]int {
 // String fuer Logs (keine Adressen).
 func (f *frLeg) String() string {
 	st := &f.c
-	return fmt.Sprintf("auf=%d ab=%d ab_verworfen=%d drossel=%d luecken=%d", st.upFrames.Load(), st.downFrames.Load(), st.downDrop.Load(),
-		st.upDropped.Load(), st.upGaps.Load())
+	return fmt.Sprintf("auf=%d ab=%d ab_verworfen=%d drossel=%d ton_flut=%d luecken=%d", st.upFrames.Load(), st.downFrames.Load(), st.downDrop.Load(),
+		st.upDropped.Load(), st.upAudioDropped.Load(), st.upGaps.Load())
 }

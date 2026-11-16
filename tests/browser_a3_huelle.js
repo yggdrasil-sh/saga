@@ -186,6 +186,16 @@ async function tunStats() { return fetch('http://' + TUN_CTL + '/stats').then(r 
     // --- C ohne Bruecke (S10): meldet kein ws -> Saga schaltet den Anruf auf direkt, kein Tunnel bei C ---------------------
     const capsC = await ps[2].evaluate(() => window.HKCalls.caps());
     const capsA = await ps[0].evaluate(() => window.HKCalls.caps());
+    // F6 (B2-Nacharbeit): die echte Mac-Huelle ist WKWebView (WebKit, vendor Apple, UA ohne "Chrome/") - sie meldet weiter ws
+    // (A3 ueber die Bruecke) und kein frames
+    const capsWk = await ps[0].evaluate(() => {
+      Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) SagaApp/2.5.0 (mac-shell)', configurable: true });
+      Object.defineProperty(navigator, 'vendor', { get: () => 'Apple Computer, Inc.', configurable: true });
+      const c = window.HKCalls.caps();
+      delete navigator.userAgent; delete navigator.vendor;
+      return c;
+    });
+    ok('caps: A mit WKWebView-Kennung (WebKit) meldet weiter ws und horn, kein frames', capsWk.includes('ws') && capsWk.includes('horn') && !capsWk.includes('frames'), capsWk);
     ok('caps: A (Huelle mit Tunnel) meldet ws und nicht frames (B2), C (Browser ohne Encoded Transform) weder ws noch frames',
        capsA.includes('ws') && capsA.includes('horn') && !capsA.includes('frames') && !capsC.includes('ws') && !capsC.includes('frames'), { capsA, capsC });
     const closesBefore = ps[0].__log.filter(m => m.op === 'close').length;
