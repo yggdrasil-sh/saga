@@ -2,28 +2,31 @@
 
 # saga-media (2.4, media/): Go nur mit Standardbibliothek, statisch gelinkt. Auf der Build-Plattform fuer die
 # Zielarchitektur uebersetzt (amd64/arm64 ohne Emulation).
+# Tests stehen VOR "ARG TARGETOS TARGETARCH": so haengt der Schritt nicht von der Zielplattform ab und BuildKit fuehrt
+# ihn bei --platform linux/amd64,linux/arm64 nur einmal aus (vorher je Zielplattform, gleichzeitig - Last in der CI).
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS media
-ARG TARGETOS TARGETARCH
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath
 WORKDIR /src
 COPY media/ ./
+RUN go vet ./... && go test ./...
 COPY VERSION /VERSION
-RUN go vet ./... && go test ./... \
- && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=$(cat /VERSION)" -o /out/saga-media .
+ARG TARGETOS TARGETARCH
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=$(cat /VERSION)" -o /out/saga-media .
 
 # gjallarhorn (2.5, gjallarhorn/): eingebauter Knoten fuer grosse Gruppenanrufe, startet saga-media als zweiten Kindprozess
 # (nur mit Feature-Flag calls.horn). Statisch (CGO aus), wie saga-media ohne Emulation fuer amd64/arm64 uebersetzt.
+# Tests wie bei saga-media vor "ARG TARGETOS TARGETARCH" (nur einmal je Bau, nicht je Zielplattform).
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS horn
-ARG TARGETOS TARGETARCH
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath
 WORKDIR /src
 COPY gjallarhorn/go.mod gjallarhorn/go.sum ./
 RUN go mod download
 COPY gjallarhorn/ ./
-COPY VERSION /VERSION
 # -short: zeitkritische Tests mit echten WebRTC-Verbindungen laufen nur im vollen Testlauf, nicht im Image-Build
-RUN go vet ./... && go test -short ./internal/... \
- && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=$(cat /VERSION)" -o /out/gjallarhorn .
+RUN go vet ./... && go test -short ./internal/...
+COPY VERSION /VERSION
+ARG TARGETOS TARGETARCH
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=$(cat /VERSION)" -o /out/gjallarhorn .
 
 FROM python:3.13-slim
 

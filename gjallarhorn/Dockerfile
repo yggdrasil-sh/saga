@@ -4,16 +4,17 @@
 #   docker build -t gjallarhorn:probe gjallarhorn/
 #   docker buildx build --platform linux/amd64,linux/arm64 -t ... gjallarhorn/
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS build
-ARG TARGETOS TARGETARCH
-ARG VERSION=2.5.0-probe
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# -short: zeitkritische Tests mit echten WebRTC-Verbindungen nur im vollen Testlauf
-RUN go vet ./... && go test -short ./internal/... \
- && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=${VERSION}" -o /out/gjallarhorn . \
+# -short: zeitkritische Tests mit echten WebRTC-Verbindungen nur im vollen Testlauf.
+# Tests vor "ARG TARGETOS TARGETARCH"/VERSION: BuildKit fuehrt sie bei mehreren Zielplattformen nur einmal aus.
+RUN go vet ./... && go test -short ./internal/...
+ARG TARGETOS TARGETARCH
+ARG VERSION=2.5.0-probe
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=${VERSION}" -o /out/gjallarhorn . \
  && mkdir -p /out/data/results /out/data/tls
 
 FROM gcr.io/distroless/static-debian12:nonroot
