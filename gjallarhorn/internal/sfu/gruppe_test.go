@@ -9,7 +9,17 @@ import (
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 )
 
-// Saga 2.5 (Rest aus F5, gruppe-sprecher): Hauptsprecher in der Gruppe nach dem Wiederverbinden.
+// Saga 2.5 (Rest aus F5, gruppe-sprecher): Hauptsprecher in der Gruppe nach dem Wiederverbinden. Vorher (testing
+// 619656c), Zeit ab dem Wiederkommen:
+//   - Fall 1, er spricht gleich weiter: nach 0,2 s wieder auf dem Platz, aber erst nach 4,2 s auf m - der Platz ging in
+//     der Luecke auf den zuletzt Sprechenden (byRecent), zurueck ist das ein Besitzerwechsel; beim Wiederkommenden war
+//     erst l live, das galt als Wechsel nach unten (downAt, layerDwell). Ebenso Fall 2 (jemand Neues spricht gleich:
+//     m nach 4,4 s) und Fall 3 ("Hierher uebernehmen", andere ID: m nach 4,2 s). Jetzt: slot.fresh, m nach 0,6 s.
+//   - Fall 1, er schweigt nach dem Wiederkommen noch 3 s: erst nach 3,2 s wieder auf dem Platz (mit dem alten
+//     Peer-Objekt war sein Status weg); ohne Wiederverbinden bliebe der stille Hauptsprecher darauf. Jetzt: backLocked,
+//     nach 0,2 s auf dem Platz, nach 0,6 s auf m.
+//   - unveraendert: Spricht in der Luecke jemand anderes, wird er Hauptsprecher; der Wiederkommende loest ihn mit der
+//     Hysterese von pickDominant ab (1,4 s) - wie bei einer stillen Pause ohne Wiederverbinden.
 //
 // Modell: ein Empfaenger (eigenes Bein, TCP: Sprecherplatz bis m, zwei Kacheln auf l) und drei Teilnehmende ueber eine
 // Bruecke (so laesst sich steuern, wann ihre Quellen live sind und wer spricht). Gemessen wird am Sprecherplatz des
@@ -97,7 +107,11 @@ func (g *gruppe) tick() {
 		}
 		for k, s := range g.vid[id] {
 			if g.live[s] {
-				s.Bytes.Add(uint64(g.rate[k] * 0.2 / 8))
+				r := g.rate[k]
+				if x, ok := g.rate[id+k]; ok { // eigene Rate eines Teilnehmenden
+					r = x
+				}
+				s.Bytes.Add(uint64(r * 0.2 / 8))
 			}
 		}
 	}
@@ -141,12 +155,12 @@ func (g *gruppe) vorlauf() {
 
 // gruppeFall: Ablauf ab dem Wiederkommen von wer (Zeit 0): wann spricht wer, wann ist m des Wiederkommenden live
 type gruppeFall struct {
-	name   string
-	gap    time.Duration // Luecke: a ist nicht im Raum
-	neu    string        // ID des Wiederkommenden ("a" = gleiches Geraet; sonst "Hierher uebernehmen")
-	mDelay time.Duration // m des Wiederkommenden live so lange nach l (0: sofort)
-	aStill time.Duration // so lange schweigt der Wiederkommende nach dem Wiederkommen
-	bLuecke bool         // b sagt in der Luecke kurz etwas (0,4 s, am Ende der Luecke)
+	name    string
+	gap     time.Duration // Luecke: a ist nicht im Raum
+	neu     string        // ID des Wiederkommenden ("a" = gleiches Geraet; sonst "Hierher uebernehmen")
+	mDelay  time.Duration // m des Wiederkommenden live so lange nach l (0: sofort)
+	aStill  time.Duration // so lange schweigt der Wiederkommende nach dem Wiederkommen
+	bLuecke bool          // b sagt in der Luecke kurz etwas (0,4 s, am Ende der Luecke)
 }
 
 // messen: Zeit ab dem Wiederkommen, bis der Wiederkommende auf dem Sprecherplatz ist (tOn) bzw. dort auf m (tM),
@@ -204,14 +218,12 @@ var gruppeFaelle = []gruppeFall{
 	{name: "1 weiter", gap: 200 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond},
 	{name: "1 weiter", gap: 600 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond},
 	{name: "1 weiter", gap: 1200 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond},
+	{name: "1 weiter m spaet", gap: 600 * time.Millisecond, neu: "a", mDelay: time.Second},
 	{name: "1 weiter m sofort", gap: 600 * time.Millisecond, neu: "a"},
-	// ... b sagt in der Luecke kurz etwas
-	{name: "1 b in Luecke", gap: 600 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond, bLuecke: true},
-	{name: "1 b in Luecke", gap: 1200 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond, bLuecke: true},
-	{name: "1 b in Luecke m sofort", gap: 1200 * time.Millisecond, neu: "a", bLuecke: true},
-	// ... schweigt nach dem Wiederkommen noch 3 s (vorher blieb der stille Hauptsprecher auf dem Platz)
+	// ... schweigt nach dem Wiederkommen noch 3 s (ohne Wiederverbinden bliebe der stille Hauptsprecher auf dem Platz)
 	{name: "1 still 3 s", gap: 600 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond, aStill: 3 * time.Second},
 	{name: "1 still 3 s", gap: 1200 * time.Millisecond, neu: "a", mDelay: 400 * time.Millisecond, aStill: 3 * time.Second},
+	{name: "1 still 3 s", gap: 3 * time.Second, neu: "a", mDelay: 400 * time.Millisecond, aStill: 3 * time.Second},
 	{name: "1 still 3 s m sofort", gap: 600 * time.Millisecond, neu: "a", aStill: 3 * time.Second},
 	// Fall 3: "Hierher uebernehmen" - anderes Geraet (andere ID) kommt und spricht
 	{name: "3 uebernehmen", gap: 200 * time.Millisecond, neu: "a2", mDelay: 400 * time.Millisecond},
@@ -220,20 +232,106 @@ var gruppeFaelle = []gruppeFall{
 }
 
 func (f gruppeFall) String() string {
-	return fmt.Sprintf("%-24s Luecke %4.1f s, m nach %3.1f s", f.name, f.gap.Seconds(), f.mDelay.Seconds())
+	return fmt.Sprintf("%-20s Luecke %3.1f s, m nach %3.1f s", f.name, f.gap.Seconds(), f.mDelay.Seconds())
 }
 
-// TestGruppeSprecherMessung: Messung (Ausgabe mit -v)
-func TestGruppeSprecherMessung(t *testing.T) {
+// TestGruppeSprecher: Nach dem Wiederverbinden ist der Hauptsprecher binnen 0,4 s wieder auf dem Sprecherplatz und
+// binnen 0,4 s nach seiner m auf m (Fall 1 und 3), ohne Pendeln (Folge l, m).
+func TestGruppeSprecher(t *testing.T) {
 	for _, f := range gruppeFaelle {
 		g := newGruppe(t)
 		g.vorlauf()
 		tOn, tM, seq := g.messen(f)
-		t.Logf("%v: auf dem Platz nach %5.1f s, auf m nach %5.1f s, Folge %s", f, tOn.Seconds(), tM.Seconds(), seq)
+		t.Logf("%v: auf dem Platz nach %3.1f s, auf m nach %3.1f s, Folge %s", f, tOn.Seconds(), tM.Seconds(), seq)
+		if tOn < 0 || tOn > 400*time.Millisecond || tM < 0 || tM > f.mDelay+400*time.Millisecond {
+			t.Errorf("%v: auf dem Platz nach %v, auf m nach %v", f, tOn, tM)
+		}
+		if want := map[bool]string{true: "/m", false: "/l" + f.neu + "/m"}[f.mDelay == 0]; !strings.HasSuffix(seq, f.neu+want) {
+			t.Errorf("%v: Folge %s", f, seq)
+		}
 	}
 }
 
-// Fall 2: Besitzerwechsel ohne Wiederverbinden auf einen frischen Teilnehmenden (kommt dazu und spricht gleich)
+// TestGruppeSprecherGegenprobe: Der Status gilt nur ueber eine kurze Luecke und nur, solange niemand anderes
+// Hauptsprecher wurde; ein echter Wechsel nach unten bleibt einer.
+func TestGruppeSprecherGegenprobe(t *testing.T) {
+	// Luecke laenger als domKeep: Der Platz bleibt beim zuletzt Sprechenden, bis der Wiederkommende spricht
+	f := gruppeFall{name: "lang", gap: domKeep + time.Second, neu: "a", aStill: 3 * time.Second}
+	g := newGruppe(t)
+	g.vorlauf()
+	tOn, _, seq := g.messen(f)
+	t.Logf("%v: auf dem Platz nach %v, Folge %s", f, tOn, seq)
+	if tOn < f.aStill || tOn > f.aStill+400*time.Millisecond {
+		t.Errorf("%v: auf dem Platz nach %v (erwartet erst, wenn er spricht)", f, tOn)
+	}
+	// In der Luecke spricht b: b ist Hauptsprecher, der Wiederkommende loest ihn erst nach der Hysterese ab
+	for _, gap := range []time.Duration{600 * time.Millisecond, 1200 * time.Millisecond} {
+		f = gruppeFall{name: "b in Luecke", gap: gap, neu: "a", mDelay: 400 * time.Millisecond, bLuecke: true}
+		g = newGruppe(t)
+		g.vorlauf()
+		tOn, tM, seq := g.messen(f)
+		t.Logf("%v: auf dem Platz nach %v, auf m nach %v, Folge %s", f, tOn, tM, seq)
+		if !strings.Contains(seq, "b") || tOn < time.Second || tOn > 2*time.Second || tM != tOn {
+			t.Errorf("%v: auf dem Platz nach %v, auf m nach %v, Folge %s", f, tOn, tM, seq)
+		}
+	}
+	// Besitzerwechsel mit nutzbarer m, das Budget waehlt l: Wechsel nach unten wie bisher (layerDwell)
+	g = newGruppe(t)
+	g.vorlauf()
+	g.rate["dm"] = 3000e3
+	g.dazu("d", true)
+	g.level = map[string]uint32{"d": 30}
+	g.run(2 * time.Second)
+	if o, l := g.spk(); o != "d" || l != "l" {
+		t.Fatalf("budget: Sprecherplatz %q/%q", o, l)
+	}
+	down := int64(0)
+	g.r.mu.Lock()
+	for _, s := range g.me.slots {
+		if s.class == "speaker" && s.downOwner == s.owner {
+			down = s.downAt
+		}
+	}
+	g.r.mu.Unlock()
+	g.rate["dm"] = 500e3
+	start := g.now
+	for i := 0; i < 100; i++ {
+		if _, l := g.spk(); l == "m" {
+			break
+		}
+		g.tick()
+	}
+	t.Logf("budget: d auf m %v nach der kleineren Rate, downAt %v", time.Duration(g.now-start), down > 0)
+	if _, l := g.spk(); l != "m" || down <= 0 || g.now-down < int64(layerDwell) {
+		t.Errorf("budget: m nach %v (downAt %v), erwartet fruehestens layerDwell nach dem Wechsel nach unten", time.Duration(g.now-start), down)
+	}
+	// Flattern der m nach dem Neubeginn (gleicher Besitzer): herunter, zurueck erst nach layerDwell
+	g = newGruppe(t)
+	g.vorlauf()
+	g.messen(gruppeFaelle[1])
+	g.live[g.vid["a"]["m"]] = false
+	g.sync("a")
+	g.tick()
+	if _, l := g.spk(); l != "l" {
+		t.Fatalf("flattern: %q", l)
+	}
+	g.live[g.vid["a"]["m"]] = true
+	g.sync("a")
+	start = g.now
+	for i := 0; i < 100; i++ {
+		if _, l := g.spk(); l == "m" {
+			break
+		}
+		g.tick()
+	}
+	t.Logf("flattern: wieder m nach %v", time.Duration(g.now-start))
+	if _, l := g.spk(); l != "m" || g.now-start < int64(layerDwell-200*time.Millisecond) {
+		t.Errorf("flattern: wieder m nach %v, erwartet fruehestens layerDwell", time.Duration(g.now-start))
+	}
+}
+
+// TestGruppeSprecherNeu (Fall 2): Besitzerwechsel ohne Wiederverbinden auf einen frischen Teilnehmenden (kommt dazu und
+// spricht gleich, seine m ist spaeter live als l): m binnen 0,4 s nach ihrer Quelle (vorher 4,4 s ab dem Beitritt).
 func TestGruppeSprecherNeu(t *testing.T) {
 	for _, md := range []time.Duration{0, 200 * time.Millisecond, 400 * time.Millisecond, 1000 * time.Millisecond} {
 		g := newGruppe(t)
@@ -261,6 +359,9 @@ func TestGruppeSprecherNeu(t *testing.T) {
 				tM = el
 			}
 		}
-		t.Logf("2 neu, m nach %3.1f s: auf dem Platz nach %5.1f s, auf m nach %5.1f s, Folge%s", md.Seconds(), tOn.Seconds(), tM.Seconds(), seq)
+		t.Logf("2 neu, m nach %3.1f s: auf dem Platz nach %3.1f s, auf m nach %3.1f s, Folge%s", md.Seconds(), tOn.Seconds(), tM.Seconds(), seq)
+		if tOn < 0 || tOn > 600*time.Millisecond || tM < 0 || tM > max(md, tOn)+400*time.Millisecond {
+			t.Errorf("2 neu, m nach %v: auf dem Platz nach %v, auf m nach %v (Folge%s)", md, tOn, tM, seq)
+		}
 	}
 }

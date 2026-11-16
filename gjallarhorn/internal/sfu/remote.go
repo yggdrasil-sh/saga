@@ -210,6 +210,7 @@ func (r *Room) AddRemote(via, id string, dev Device, q *Quota) bool {
 	p := &Peer{ID: id, CSRC: r.newCSRC(), Device: dev, Via: via, joined: r.seq, legs: map[*Leg]struct{}{},
 		srcs: map[*fwd.Source]*source{}, cam: map[string]*source{}, scr: map[string]*source{}, quota: q}
 	r.peers[id] = p
+	r.backLocked(p)
 	notify := r.peersChangedLocked()
 	cfg := r.cfg
 	r.mu.Unlock()

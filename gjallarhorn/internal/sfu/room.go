@@ -216,6 +216,12 @@ type Room struct {
 	mem  map[memKey]memEnt
 	pevs []ProbeEvent // beendete Proben dieses Takts (Config.OnProbe)
 	levs []LegEvent   // Widerlegungen und Ruecknahmen dieses Takts (Config.OnLegEvent)
+	// Hauptsprecher, dessen letztes Bein eben endete (Wiederverbinden): kommt dieselbe ID binnen domKeep wieder und ist
+	// seither niemand Hauptsprecher geworden, ist sie es wieder (backLocked)
+	lost struct {
+		id               string
+		at, since, spoke int64
+	}
 }
 
 // Ref liefert die Raumkennung.
@@ -449,6 +455,7 @@ func (r *Room) AddLeg(g Grant, path Path, want Want) (*Leg, error) {
 		}
 		r.peers[g.Peer] = p
 		newPeer = true
+		r.backLocked(p)
 	}
 	l := &Leg{Ref: g.Leg, Peer: p, Path: path, Role: g.Role, Grant: g, room: r, fl: fwd.NewLeg()}
 	cfg := r.cfg
@@ -684,12 +691,34 @@ func (r *Room) dropPeerLocked(p *Peer) {
 	}
 	if r.dominant == p {
 		r.dominant = nil
+		r.lost.id, r.lost.at, r.lost.since, r.lost.spoke = p.ID, r.lastTick, r.domSince, p.lastSpoke
 	}
 	if r.prevDom == p {
 		r.prevDom = nil
 	}
 	if r.cand == p {
 		r.cand = nil
+	}
+}
+
+// backLocked (gruppe-sprecher): p ist neu im Raum. War dieselbe ID eben noch Hauptsprecher (ihr letztes Bein endete,
+// Wiederverbinden: Bein ersetzt, Netzwechsel, Bruecke neu), ist sie es wieder - sofern seither niemand anderes
+// Hauptsprecher wurde und die Luecke hoechstens domKeep lang war. Sonst verlor sie ihren Status mit dem alten
+// Peer-Objekt: Der Sprecherplatz ging auf den zuletzt Sprechenden (byRecent; das neue Objekt hat noch keine Sprache),
+// bis sie wieder sprach. Mit ihrer letzten Sprache (Kachelfolge) und dem Beginn ihres Status (domHold): Wie bei einer
+// Pause ohne Wiederverbinden loest sie jemand, der spricht, ab, sobald sie still ist.
+func (r *Room) backLocked(p *Peer) {
+	k := r.lost
+	if k.id != p.ID {
+		return
+	}
+	r.lost.id = ""
+	if r.dominant != nil || r.lastTick-k.at > int64(domKeep) {
+		return
+	}
+	r.dominant, r.domSince = p, k.since
+	if k.spoke > p.lastSpoke {
+		p.lastSpoke = k.spoke
 	}
 }
 

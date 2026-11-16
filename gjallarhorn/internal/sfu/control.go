@@ -17,6 +17,7 @@ const (
 	speakOn       = 0.04                    // Aktivitaet, ab der jemand als sprechend gilt
 	domHold       = 1500 * time.Millisecond // Mindestdauer des Hauptsprechers
 	domFactor     = 1.4                     // so viel lauter muss ein neuer Hauptsprecher sein
+	domKeep       = 5 * time.Second         // so lange behaelt ein Hauptsprecher seinen Status ueber ein Wiederverbinden
 	upHeadroom    = 1.15                    // Reserve vor einem Wechsel nach oben
 	keepSlack     = 1.1                     // ohne Stau bleibt die laufende Schicht bis 10 % ueber der Schaetzung
 	layerDwell    = 4 * time.Second         // nach einem Wechsel nach unten so lange nicht wieder hoch (gleiche Quelle)
@@ -330,6 +331,19 @@ func (s *slot) swapped(st *source, now int64) bool {
 		return false
 	}
 	return was.peer != s.owner || s.owner.srcs[was.Source] != was || !was.live(now)
+}
+
+// fresh (gruppe-sprecher): Der Platz wechselt den Besitzer, und beim neuen ist die Schicht des bisherigen (noch) nicht
+// nutzbar - seine hoechste nutzbare liegt darunter. Das ist ein Beginn des Platzes auf dem neuen Besitzer, kein Wechsel
+// nach unten: Gewaehlt hat nicht das Budget, sondern was gerade da ist (frisch beigetreten bzw. wiederverbunden: l
+// zuerst, m wartet auf sein Schluesselbild; "Hierher uebernehmen": anderes Geraet, andere ID). Sonst sperrte downAt den
+// Weg hinauf layerDwell lang, sobald m live ist. Hat der neue Besitzer die Schicht (oder eine hoehere) nutzbar und das
+// Budget waehlt tiefer, bleibt es ein Wechsel nach unten wie bisher; gleicher Besitzer: slot.swapped.
+func (s *slot) fresh(opts []*source) bool {
+	if s.owner == nil || len(opts) == 0 || s.src != nil && s.src.peer == s.owner {
+		return false
+	}
+	return layerRank(opts[len(opts)-1].Layer) < layerRank(s.layer)
 }
 
 // layerRate liefert die gemessene (sonst angenommene) Rate einer Quelle.
@@ -882,8 +896,8 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		st := c.opts[c.idx]
 		s.out.Assign(st.Source)
 		s.out.SetMaxTID(c.tid)
-		// Quellenwechsel statt Wechsel nach unten (slot.swapped): keine Hysterese, kein Aufschub, kein Rueckfall
-		swap := layerRank(st.Layer) < layerRank(s.layer) && s.swapped(st, now)
+		// Quellenwechsel statt Wechsel nach unten (slot.swapped, slot.fresh): keine Hysterese, kein Aufschub, kein Rueckfall
+		swap := layerRank(st.Layer) < layerRank(s.layer) && (s.swapped(st, now) || s.fresh(c.opts))
 		if prev := s.src; prev != nil && prev.peer == s.owner && (st != prev || s.layer == "") {
 			switch {
 			case s.layer == "": // Pause zu Ende
