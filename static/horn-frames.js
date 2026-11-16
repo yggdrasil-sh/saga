@@ -182,12 +182,13 @@
       } else S.q.push(f);
     };
     // Ton: die Attrappe tickt alle 20 ms; jeder Takt wird durch den naechsten echten Rahmen ersetzt. Leer -> Takt entfaellt
-    // (NetEq verdeckt), zu lang -> aelteste verwerfen. Ziel 1 Rahmen; nach Unterlaeufen hoechstens 3, nach 8 s ruhig wieder 1.
+    // (NetEq verdeckt), zu lang -> aelteste verwerfen: nach dem Takt wartet hoechstens das Ziel (1 Rahmen; nach Unterlaeufen
+    // bis 3, nach 8 s ruhig wieder 1). Gemessen: ein stehender Rahmen mehr kostete +40 ms Ton bei freier Leitung.
     var audioTick = function (S, fr, writer) {
       var q = S.q, now = performance.now();
       if (S.skip > 0) { S.skip--; return; }
       if (q.length) S.lastIn = now;
-      while (q.length > S.max + 1) { q.shift(); bump('a-trim'); }
+      while (q.length > S.max) { q.shift(); bump('a-trim'); }
       if (!q.length) {
         if (now - (S.lastIn || 0) < 1000) { bump('a-under'); if (now - S.under > 200) S.max = Math.min(S.max + 1, K.AQ_MAX); S.under = now; }
         return;
