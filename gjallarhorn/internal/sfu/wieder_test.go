@@ -262,3 +262,112 @@ func TestSprecherWiederRueckfall(t *testing.T) {
 		t.Fatalf("flattern: wieder %q nach %v, erwartet fruehestens layerDwell", w.layer(), d)
 	}
 }
+
+// TestSprecherWiederBein (F5) ueber den Weg des Knotens: Das Bein des Senders wird mit derselben leg_ref ersetzt
+// (Room.AddLeg - ein neues Peer-Objekt) bzw. auf einen anderen Weg uebergeben (zweites Bein, das alte endet). Die
+// neuen Spuren melden sich mit dem ersten Rahmen an (Rahmen-Weg) und sind live, sobald ihr Schluesselbild da ist - l
+// sofort, m 0,4 s spaeter. Empfaenger ueber TCP (Sprecherplatz bis m). Live ist eine Quelle des Beins hier wie eine
+// ueber eine Bruecke (source.on), damit der Takt mit kuenstlicher Zeit laufen kann.
+func TestSprecherWiederBein(t *testing.T) {
+	for _, art := range []string{"ersetzt", "uebergabe"} {
+		n := NewNode(Config{Name: "k", Tick: time.Hour, Probing: true})
+		r, err := n.CreateRoom("raumwieder", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recv, err := r.AddLeg(Grant{Room: "raumwieder", Peer: "empf", Leg: "empf-b", Role: RoleBoth}, PathTCP, Want{Audio: 1, Speaker: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		g := Grant{Room: "raumwieder", Peer: "fern", Leg: "fern-b", Role: RoleBoth, Pub: PubAudio | PubVideo}
+		rates := map[string]float64{"l": 150e3, "m": 500e3}
+		var srcs []*fwd.Source
+		var srate []float64
+		bein := func(g Grant) *Leg {
+			l, err := r.AddLeg(g, PathUDP, Want{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return l
+		}
+		spur := func(l *Leg, k string, live bool) *fwd.Source {
+			s, err := l.AddSource(fwd.Video, k, false, uint32(len(srcs)+1), 0, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.mu.Lock()
+			st := l.Peer.srcs[s]
+			st.remote, st.on = true, live
+			r.mu.Unlock()
+			srcs, srate = append(srcs, s), append(srate, rates[k])
+			return s
+		}
+		on := func(s *fwd.Source) {
+			r.mu.Lock()
+			for _, p := range r.peers {
+				if st := p.srcs[s]; st != nil {
+					st.on = true
+				}
+			}
+			r.mu.Unlock()
+		}
+		now := fwd.Now()
+		tick := func() {
+			now += int64(200 * time.Millisecond)
+			for i, s := range srcs {
+				s.Bytes.Add(uint64(srate[i] * 0.2 / 8))
+			}
+			recv.fl.Stats.BytesOut.Add(uint64(700e3 * 0.2 / 8))
+			r.tickAt(now)
+		}
+		layer := func() string {
+			for _, s := range recv.Layout() {
+				if s.Class == "speaker" {
+					return s.Layer
+				}
+			}
+			return ""
+		}
+		alt := bein(g)
+		spur(alt, "l", true)
+		spur(alt, "m", true)
+		for i := 0; i < 100; i++ {
+			tick()
+		}
+		if layer() != "m" {
+			t.Fatalf("%s: vorher %q", art, layer())
+		}
+		var neu *Leg
+		switch art {
+		case "ersetzt":
+			neu = bein(g)
+		case "uebergabe":
+			g2 := g
+			g2.Leg = "fern-t"
+			neu = bein(g2)
+			alt.Close()
+		}
+		srcs, srate = nil, nil
+		spur(neu, "l", true)
+		m := spur(neu, "m", false)
+		seq, tm := "", time.Duration(-1)
+		start := now
+		for now-start < int64(10*time.Second) {
+			if now-start >= int64(400*time.Millisecond) {
+				on(m)
+			}
+			tick()
+			if l := layer(); !strings.HasSuffix(seq, l) {
+				seq += l
+			}
+			if tm < 0 && layer() == "m" {
+				tm = time.Duration(now - start)
+			}
+		}
+		t.Logf("%s: m nach %v, Folge %s", art, tm, seq)
+		if tm < 0 || tm > 1500*time.Millisecond || seq != "lm" {
+			t.Errorf("%s: m nach %v, Folge %s (erwartet lm binnen 1,5 s)", art, tm, seq)
+		}
+		n.Close()
+	}
+}
