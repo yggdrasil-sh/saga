@@ -248,6 +248,7 @@
  "an": "on",
  "An = auch Anrufe zu zweit laufen über einen Knoten: Die Geräte sehen gegenseitig keine IP-Adressen, und es gibt weniger NAT-Probleme. Ohne bereiten Knoten bzw. wenn das Gegenüber es nicht kann, läuft der Anruf wie bisher direkt.": "On = calls between two people also run via a node: the devices do not see each other's IP addresses, and there are fewer NAT problems. Without a ready node, or if the other person cannot do it, the call runs directly as before.",
  "An bestehende Seite anhängen": "Append to an existing page",
+ "An ✓ – Apps und Browser telefonieren über {url}, ohne weiteren Port und ohne eigenes Zertifikat für den Knoten.": "On ✓ – apps and browsers call via {url}, without another port and without a separate certificate for the node.",
  "An ✓ – die Apps telefonieren über {url}, ohne weiteren Port und ohne eigenes Zertifikat für den Knoten.": "On ✓ – the apps call through {url}, without another port and without a certificate of its own for the node.",
  "Analog": "Analog",
  "Anbieter": "Provider",

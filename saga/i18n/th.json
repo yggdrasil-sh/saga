@@ -248,6 +248,7 @@
  "an": "เปิด",
  "An = auch Anrufe zu zweit laufen über einen Knoten: Die Geräte sehen gegenseitig keine IP-Adressen, und es gibt weniger NAT-Probleme. Ohne bereiten Knoten bzw. wenn das Gegenüber es nicht kann, läuft der Anruf wie bisher direkt.": "เปิด = การโทรสองคนก็ผ่านโหนดด้วย: อุปกรณ์จะไม่เห็นที่อยู่ IP ของกันและกัน และมีปัญหา NAT น้อยลง หากไม่มีโหนดที่พร้อม หรืออีกฝ่ายไม่รองรับ การโทรจะเชื่อมต่อโดยตรงเหมือนเดิม",
  "An bestehende Seite anhängen": "ต่อท้ายหน้าที่มีอยู่",
+ "An ✓ – Apps und Browser telefonieren über {url}, ohne weiteren Port und ohne eigenes Zertifikat für den Knoten.": "เปิด ✓ – แอปและเบราว์เซอร์โทรผ่าน {url} โดยไม่ต้องใช้พอร์ตเพิ่มและไม่ต้องมีใบรับรองแยกสำหรับโหนด",
  "An ✓ – die Apps telefonieren über {url}, ohne weiteren Port und ohne eigenes Zertifikat für den Knoten.": "เปิด ✓ – แอปโทรผ่าน {url} โดยไม่ต้องใช้พอร์ตเพิ่มและไม่ต้องมีใบรับรองของโหนดเอง",
  "Analog": "แบบเข็ม",
  "Anbieter": "ผู้ให้บริการ",
