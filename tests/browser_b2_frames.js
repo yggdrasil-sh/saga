@@ -16,8 +16,10 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
 const HUES = [0, 120, 240, 60], FREQ = [300, 540, 780, 420], L = 'ABFG';
 
 // Kamera/Mikrofon-Attrappe (Farbe und Ton je Person), wie browser_horn_web.js
-const FAKE = ([hue, freq]) => {
+const FAKE = ([hue, freq, real]) => {
   const md = navigator.mediaDevices;
+  // Firefox sammelt ICE-Kandidaten der lokalen Schleife erst mit einer echten Medienfreigabe (wie im Anruf): einmal holen
+  if (real) { const g = md.getUserMedia.bind(md); md.__real = g({ audio: true, video: true }).then(s => { s.getTracks().forEach(t => t.stop()); return true; }, () => false); }
   let ac = null, aStream = null, vTrack = null;
   const video = () => {
     if (vTrack && vTrack.readyState === 'live') return vTrack.clone();
@@ -71,8 +73,11 @@ const ARGS = ['--use-fake-ui-for-media-stream', '--ignore-certificate-errors', '
 async function session(i, kind) {
   let br;
   if (kind === 'ff') {
-    br = await pw.firefox.launch({ executablePath: E.B2_FF, headless: true, firefoxUserPrefs: {
-      'network.dns.localDomains': E.SAGA_NAME || 'saga.example.org', 'media.navigator.permission.disabled': true, 'media.autoplay.default': 0,
+    // Firefox headless ohne Audio-Ausgabe: der AudioContext laeuft nicht (Attrappe, Mikrofon) - B2_PULSE = PulseAudio-Server
+    const env = Object.assign({}, process.env); if (E.B2_PULSE) env.PULSE_SERVER = E.B2_PULSE;
+    br = await pw.firefox.launch({ executablePath: E.B2_FF, headless: true, env, firefoxUserPrefs: {
+      // forceResolve statt localDomains: mit localDomains gilt der Name als localhost - Firefox sammelt dann keine ICE-Kandidaten
+      'network.dns.forceResolve': '127.0.0.1', 'media.navigator.permission.disabled': true, 'media.autoplay.default': 0,
       'media.navigator.streams.fake': true, 'network.proxy.type': 0 } });
   } else br = await pw.chromium.launch({ channel: E.PW_CHANNEL || 'chromium', headless: true, args: ARGS });
   const ctx = await br.newContext({ viewport: { width: 1100, height: 700 }, locale: 'de-DE', ignoreHTTPSErrors: true, bypassCSP: true });
@@ -80,9 +85,9 @@ async function session(i, kind) {
   const p = await ctx.newPage();
   p.__br = br; p.__i = i;
   p.on('pageerror', e => console.log('  [pageerror ' + L[i] + '] ' + e.message));
-  if (E.DEBUG) p.on('console', m => console.log('  [console ' + L[i] + '] ' + m.text()));
+  if (E.DEBUG || (E.DEBUG_F && kind === 'ff')) p.on('console', m => console.log('  [console ' + L[i] + '] ' + m.text()));
   if (kind === 'noframes') await p.addInitScript(NO_FRAMES);
-  await p.addInitScript(FAKE, [HUES[i], FREQ[i]]);
+  await p.addInitScript(FAKE, [HUES[i], FREQ[i], kind === 'ff']);
   await p.goto(BASE + '/login');
   await p.fill('input[name=username], input#username, input[type=text]', USERS[i]);
   await p.fill('input[type=password]', E.SAGA_PASS);
@@ -201,7 +206,7 @@ async function answer(p, id) {
       t0 = Date.now();
       await answer(ps[2], ha.id);
       const hf = await until(async () => { const h = await horn(ps[2]); return legsUp(h) && h; }, 40000);
-      ok(`F (Firefox): beigetreten ueber ws (${Date.now() - t0} ms)`, !!hf, hf || await horn(ps[2]));
+      ok(`F (Firefox): beigetreten ueber ws (${Date.now() - t0} ms)`, !!hf, hf || await horn(ps[2]).then(h => h && { errs: h.errs, log: h.log, note: h.note, conns: h.conns, path: h.path }));
       const seen3 = await until(async () => {
         const e = await Promise.all([0, 1, 2].map(i => ps[i].evaluate(EYES)));
         return hueOk(e[2][devs[0]], HUES[0]) && hueOk(e[2][devs[1]], HUES[1]) && hueOk(e[0][devs[2]], HUES[2]) && hueOk(e[1][devs[2]], HUES[2]) && e;

@@ -5,7 +5,7 @@ Firefox) mit der echten Saga-Oberflaeche. Browser-Teil: tests/browser_b2_frames.
 Geprueft: Kandidat tcp/tls false, ws/frames true; caps frames (Browser), Feature frames; A und B telefonieren ueber den Weg ws
 (je zwei Rahmen-WebSockets, Bein-Weg ws art=frames am Knoten), Bild/Ton in beide Richtungen (Farbe/Tonhoehe je Person),
 Frame-E2E ohne Verwerfen, Diagnose transport ws; Wiederverbinden nach Abbruch der WebSockets; Firefox als drittes ws-Geraet
-(B2_FF=<firefox>); Geraet ohne frames (Gegenprobe) -> Saga schaltet auf direkt (S11). Admin -> Anrufe: Browser (WebSocket),
+(B2_FF=<firefox>, B2_PULSE=<PulseAudio-Server fuer den Ton in Firefox headless>); Geraet ohne frames (Gegenprobe) -> Saga schaltet auf direkt (S11). Admin -> Anrufe: Browser (WebSocket),
 Beine je Weg.
 
   Ports B2_BASE (8591): +0 nginx, +1 saga-media, +2 Admin, +7 intern, +8 HORN_PORT. Umgebung wie die anderen Reihen (env.sh,
