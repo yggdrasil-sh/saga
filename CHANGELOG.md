@@ -31,7 +31,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   der letzte Weg der Apps. Kandidaten tragen dafür `tls` und `ws` (und wieder `tcp`, das bisher im Kandidaten der
   Geräte fehlte). Den Knoten im Tunnel-Betrieb bekommen nur Geräte, die den Tunnel können (`caps` „ws“); Browser und
   ältere Apps telefonieren wie bisher (Mesh bzw. gekoppelter Knoten), tritt ein Browser einem solchen Anruf bei,
-  schaltet Saga ihn auf direkt (Browser-Weg über den Tunnel folgt).
+  schaltet Saga ihn auf direkt (Browser-Weg über den Tunnel folgt). **Einschränkung:** Apps vor dieser Version können
+  einem Anruf, der schon über einen Knoten im Tunnel-Betrieb läuft, nicht beitreten („kein Anruf-Knoten erreichbar“) –
+  bitte die Apps aktualisieren.
 - **Admin → Anrufe:** Kasten „Anrufe über die Saga-Adresse (Tunnel)“ mit Prüfung „Proxy reicht WebSocket durch?“ und
   Zählern (offene Tunnel, Fenster, RTT). Anleitung „Anrufe über die Saga-Adresse (Tunnel)“ (DE/EN/ES), Protokoll in
   `docs/APP-API.md`, Knoten in `gjallarhorn/NODE.md`.
