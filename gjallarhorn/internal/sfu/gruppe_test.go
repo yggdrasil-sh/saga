@@ -379,3 +379,39 @@ func TestGruppeSprecherNeu(t *testing.T) {
 		}
 	}
 }
+
+// TestGruppeSprecherAuflegen (Pruefer): Der Hauptsprecher legt endgueltig auf, waehrend er spricht, und b spricht sofort
+// danach. Room.lost haelt den Status hoechstens per Hysterese zurueck - auf dem Sprecherplatz steht b trotzdem binnen
+// 0,4 s (byRecent, wie vorher), und spaetestens nach domKeep ist b Hauptsprecher; a kommt nicht zurueck.
+func TestGruppeSprecherAuflegen(t *testing.T) {
+	for _, pause := range []time.Duration{0, 600 * time.Millisecond, 2 * time.Second} {
+		g := newGruppe(t)
+		g.vorlauf()
+		g.level = map[string]uint32{"a": 30}
+		g.run(3 * time.Second)
+		g.weg("a")
+		g.level = map[string]uint32{}
+		g.run(pause)
+		g.level = map[string]uint32{"b": 30}
+		start, tOn, tDom := g.now, time.Duration(-1), time.Duration(-1)
+		for g.now-start < int64(domKeep+time.Second) {
+			g.tick()
+			el := time.Duration(g.now - start)
+			if o, _ := g.spk(); tOn < 0 && o == "b" {
+				tOn = el
+			}
+			g.r.mu.Lock()
+			if tDom < 0 && g.r.dominant != nil && g.r.dominant.ID == "b" {
+				tDom = el
+			}
+			g.r.mu.Unlock()
+		}
+		t.Logf("auflegen, Pause %v: b auf dem Platz nach %v, Hauptsprecher nach %v", pause, tOn, tDom)
+		if tOn < 0 || tOn > 400*time.Millisecond || tDom < 0 || tDom > domKeep {
+			t.Errorf("auflegen, Pause %v: b auf dem Platz nach %v, Hauptsprecher nach %v", pause, tOn, tDom)
+		}
+		if o, _ := g.spk(); o != "b" {
+			t.Errorf("auflegen, Pause %v: zuletzt Sprecherplatz %q", pause, o)
+		}
+	}
+}
