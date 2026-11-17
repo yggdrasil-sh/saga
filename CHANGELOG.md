@@ -24,6 +24,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - `covers.json` kennt `source` jetzt auch je Bild (vor der Angabe für die ganze Datei); „Über dieses Bild“ zeigt bei den
   Saga-Bildern „KI-generiert für Saga“ ohne Link. Hinweis unter der Galerie und im Admin-Bereich angepasst (5 Sprachen).
 
+### Geändert – Anrufe: Person eines anderen Servers im Seiten-Chat hinzufügen – Hinweis und „Nicht dabei“
+- Holt man im Seiten-Chat eine Person eines anderen Servers in den laufenden Anruf, kommt sie erst dazu, wenn ihr Server
+  die Freigabe bestätigt hat – geklingelt wird dann **nicht von selbst**. Der Hinweis sagt das jetzt („… danach unter
+  „Nicht dabei“ klingeln lassen.“), und „Nicht dabei“ zeigt sie, sobald sie Mitglied ist (neu: `call.invites` auch beim
+  Abgleich der Mitglieder). Vertrag in `docs/APP-API.md` berichtigt (Prüfer pruef-add F3).
+
 ### Behoben – Anrufe: „Person hinzufügen“ meldet zu viele neue Personen auf einmal
 - `POST /api/calls/{id}/add` nimmt je Anfrage höchstens 10 neue Mitglieder; weitere wurden bisher stillschweigend
   weggelassen. Jetzt kommen sie in `failed` mit `kind` `max` und dem Hinweis „Höchstens 10 neue Personen auf einmal – die

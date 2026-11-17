@@ -4732,7 +4732,7 @@
  "{name} kann dir keine Direktnachrichten mehr schicken und dich nicht anrufen. In Gruppen werden die Nachrichten eingeklappt. {name} erfährt davon nichts.": "{name} จะส่งข้อความโดยตรงหรือโทรหาคุณไม่ได้อีก ในกลุ่มข้อความของเขาจะถูกย่อไว้ {name} จะไม่ทราบเรื่องนี้",
  "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.": "{name} เปลี่ยนแปลงอะไรไม่ได้: คุณเป็นผู้นำคำแนะนำไปใช้เอง {name} อ่านแชทเฉพาะเมื่อคุณถามในแชทด้วย @{name} และอ่านงานกับปฏิทินเฉพาะเมื่อคุณเปิดใช้",
  "{name} klingeln lassen": "เรียก {name}",
- "{name} kommt dazu, sobald der andere Server zugestimmt hat.": "{name} จะเข้าร่วมเมื่อเซิร์ฟเวอร์อีกฝั่งยืนยันแล้ว",
+ "{name} kommt dazu, sobald der andere Server zugestimmt hat – danach unter „Nicht dabei“ klingeln lassen.": "{name} จะเข้าร่วมทันทีที่เซิร์ฟเวอร์อีกฝั่งยืนยัน – จากนั้นโทรหาได้ที่ “ไม่ได้อยู่ในสาย”",
  "{name} konnte nicht antworten: {err}": "{name} ตอบไม่ได้: {err}",
  "{name} nach oben": "เลื่อน {name} ขึ้น",
  "{name} nach unten": "เลื่อน {name} ลง",

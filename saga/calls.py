@@ -2191,6 +2191,15 @@ def invite_local(c, call, who):
     return len(ring), remote
 
 
+def members_synced(c, ch):
+    """2.5 (L8, Pruefer pruef-add F3): Mitglieder eines Gruppen-/Seiten-Chats wurden angeglichen (chat.sync) - laeuft dort
+    ein Gruppenanruf, bekommen die Teilnehmenden "Nicht dabei" neu (call.invites). So erscheint eine Person eines anderen
+    Servers, die im Seiten-Chat hinzugefuegt wurde, dort, sobald ihr Server bestaetigt hat, und laesst sich klingeln
+    (von selbst klingelt es in diesem Fall nicht)."""
+    for r in c.execute(f"SELECT {C_COLS} FROM chat_call WHERE chat_id=? AND kind='group' AND state<>'ended'", (ch["id"],)).fetchall():
+        emit_invites(c, _row(r))
+
+
 ADD_ACCEPT_S = 600                      # 2.5 (L8): so lange nach der Einladung klingelt es noch beim Annehmen der Chat-Anfrage
 
 

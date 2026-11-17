@@ -4916,7 +4916,7 @@
       if (live(R) && invIn(R, d)) invDraw(R);
       var f = (d.failed || [])[0];
       if (f) HK.toast(f.error, null, null, 6000);
-      else if ((d.pending || []).length) HK.toast(T('{name} kommt dazu, sobald der andere Server zugestimmt hat.', { name: nm }), null, null, 6000);
+      else if ((d.pending || []).length) HK.toast(T('{name} kommt dazu, sobald der andere Server zugestimmt hat – danach unter „Nicht dabei“ klingeln lassen.', { name: nm }), null, null, 6000);
       else if ((d.request || []).length) HK.toast(T('{name} ist eingeladen – es klingelt, sobald die Einladung in den Chat angenommen ist.', { name: nm }), null, null, 6000);
       else if (!d.n) HK.toast(T('{name} ist schon im Anruf oder klingelt gerade.', { name: nm }));
       else HK.toast(T('{name} wird angerufen …', { name: nm }));

@@ -2119,7 +2119,8 @@ Knopf bzw. auf der Überschrift „Nicht dabei“, wenn der Knopf verschwindet. 
   Inhalt wie `invites` im Anruf-Objekt (Empfänger stehen nie selbst in der Liste).
 - Gesendet nach: Klingeln (`/invite`, auch über andere Server), Ablehnen, Beitritt, Verlassen/Verbindung weg, Entfernen,
   Teilnehmerliste eines anderen Servers – zusammen mit `call.roster` – und wenn die Klingeldauer einer Einladung abläuft
-  (`ringing` → `missed`, über den Takt des Servers, bis ~2 s später).
+  (`ringing` → `missed`, über den Takt des Servers, bis ~2 s später); seit 2.5 L8 auch, wenn sich die Mitglieder einer
+  Gruppe bzw. eines Seiten-Chats durch den Abgleich ändern (Freigabe der Seite, Bestätigung des Servers einer Person).
 - `rv` wie bei `call.roster` (gleiche Uhr): eine Liste nur übernehmen, wenn `rv` nicht kleiner ist als das der zuletzt
   übernommenen **`invites`-Liste** (eigener Zähler – `call.roster` trägt keine `invites`). Antworten mit Anruf-Objekt
   tragen `invites` und `rv` gemeinsam.
@@ -2178,7 +2179,7 @@ Antwort `200`:
 | `n` | so viele klingeln jetzt (hier bzw. Auftrag an andere Server) |
 | `added` | Eingaben, die neu Mitglied wurden (wie gesendet) |
 | `failed` | `[{who, error, kind}]` – nicht hinzugefügt (`kind`: `rights` 403, `unreachable` 404 – Konto unbekannt, gesperrt bzw. kein Chat möglich, `conflict` 409, `server` 502, `invalid` 400, `max` – mehr als 10 neue in einer Anfrage, nicht versucht: „Höchstens 10 neue Personen auf einmal – die übrigen bitte noch einmal hinzufügen.“); die übrigen gingen trotzdem |
-| `pending` | Personen anderer Server im **Seiten-Chat**: kommen dazu, sobald ihr Server die Freigabe bestätigt (dann erst klingeln) |
+| `pending` | Personen anderer Server im **Seiten-Chat**: kommen dazu, sobald ihr Server die Freigabe bestätigt. Es klingelt dann **nicht von selbst** – sie erscheinen unter „Nicht dabei“ (`call.invites` beim Abgleich der Mitglieder, Zustand `none`) und lassen sich dort klingeln (`/invite`). Hinweis „{Name} kommt dazu, sobald der andere Server zugestimmt hat – danach unter „Nicht dabei“ klingeln lassen.“ |
 | `request` | neue Mitglieder, die den Chat als **Nachrichtenanfrage** bekommen (Personen anderer Server bzw. auf einer Kopie): es klingelt bei ihnen, sobald sie die Anfrage annehmen (bis 10 min nach der Einladung) – Hinweis „{Name} ist eingeladen – es klingelt, sobald die Einladung in den Chat angenommen ist.“ |
 | `invites`, `invites_more`, `rv`, `now` | wie `/invite` (L7) |
 | `seats` | Plätze nach dem Hinzufügen |

@@ -8,7 +8,7 @@ klingelt (call.invite, invites "ringing"), sieht den Anruf (joinable) und tritt 
 failed; entfernte Person (Gastgeber-Aktion) nur durch den Gastgeber (403 removed); Rate im selben Topf wie /invite (429);
 direkter 1:1 -> 409 dm (move_block direct, L9); voll (Video, 4 Geraete, Zweitgeraet zaehlt) -> 409 full mit seats und Text, nichts geaendert; Seiten-Chat
 ohne Bestaetigung 409 page_confirm (Titel, Name, nichts geteilt), mit confirm_page geteilt (Rolle Lesen) + Mitglied +
-klingelt, Nicht-Eigentuemer 403; mehr als ADD_MAX neue -> Rest als failed kind max; beendeter Anruf -> 409 ended.
+klingelt, Nicht-Eigentuemer 403; neue Freigabe -> call.invites (none); mehr als ADD_MAX neue -> Rest als failed kind max; beendeter Anruf -> 409 ended.
 Keine Anmeldenamen anderer in Texten.
 Wegwerf-Konten ca-a*; raeumt auf."""
 import os
@@ -250,6 +250,15 @@ def run():
        s == 403 and "Seite gehört" in (d.get("error") or ""))
     s, d = add(G, g4, ["ca-ab"])
     ok(f"Seiten-Chat, nur Mitglied klingeln: keine Bestaetigung noetig ({s})", s == 200)
+    # Pruefer pruef-add F3: kommt jemand ausserhalb von /add in den Seiten-Chat (Freigabe; so auch die Person eines anderen
+    # Servers, sobald dieser bestaetigt), bekommen die Teilnehmenden "Nicht dabei" neu (call.invites, Zustand none)
+    sG = A_.Stream(G.k)
+    mG = sG.mark()
+    req("PUT", f"/api/notes/{nid}/shares", G.k, {"type": "user", "target": "ca-af", "role": "view"})
+    req("GET", f"/api/chats/{pid}", G.k)                 # Abgleich Seite -> Chat (chat.sync)
+    ev = sG.wait("call.invites", lambda x: x["call_id"] == g4 and "ca-af" in st(x.get("invites")), mG)
+    ok(f"Seiten-Chat: neue Freigabe -> call.invites mit der Person (none, nicht von selbst geklingelt) ({st((ev or {}).get('invites'))})",
+       bool(ev) and member(pid, "ca-af") and st(ev["invites"]).get("ca-af") == "none")
 
     # --- Pruefer pruef-add F5: mehr als ADD_MAX neue Personen - der Rest kommt als failed {kind: "max"} zurueck -------------
     many = [f"ca-zz-viele{i}" for i in range(CA.ADD_MAX + 2)]

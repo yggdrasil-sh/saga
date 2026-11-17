@@ -4732,7 +4732,7 @@
  "{name} kann dir keine Direktnachrichten mehr schicken und dich nicht anrufen. In Gruppen werden die Nachrichten eingeklappt. {name} erfährt davon nichts.": "{name} ya no podrá enviarte mensajes directos ni llamarte. En los grupos, sus mensajes se contraen. {name} no se enterará.",
  "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.": "{name} no puede cambiar nada: tú aplicas las sugerencias. {name} solo lee los chats cuando preguntas con @{name} en el chat; tareas y calendario solo si los activas.",
  "{name} klingeln lassen": "Llamar a {name}",
- "{name} kommt dazu, sobald der andere Server zugestimmt hat.": "{name} se unirá en cuanto el otro servidor lo confirme.",
+ "{name} kommt dazu, sobald der andere Server zugestimmt hat – danach unter „Nicht dabei“ klingeln lassen.": "{name} se unirá en cuanto el otro servidor lo confirme; después, llámale desde «No están».",
  "{name} konnte nicht antworten: {err}": "{name} no pudo responder: {err}",
  "{name} nach oben": "Subir {name}",
  "{name} nach unten": "Bajar {name}",

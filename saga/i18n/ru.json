@@ -4732,7 +4732,7 @@
  "{name} kann dir keine Direktnachrichten mehr schicken und dich nicht anrufen. In Gruppen werden die Nachrichten eingeklappt. {name} erfährt davon nichts.": "{name} больше не сможет писать вам напрямую и звонить. В группах его сообщения будут свёрнуты. {name} об этом не узнает.",
  "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.": "{name} ничего не может изменить: предложения применяешь ты сам. Чаты {name} читает, только когда ты спрашиваешь в чате через @{name}; задачи и календарь – только если ты их включишь.",
  "{name} klingeln lassen": "Позвонить: {name}",
- "{name} kommt dazu, sobald der andere Server zugestimmt hat.": "{name} присоединится, как только другой сервер подтвердит.",
+ "{name} kommt dazu, sobald der andere Server zugestimmt hat – danach unter „Nicht dabei“ klingeln lassen.": "{name} присоединится, как только другой сервер подтвердит, – затем позвоните в разделе «Не в звонке».",
  "{name} konnte nicht antworten: {err}": "{name} не смог ответить: {err}",
  "{name} nach oben": "Переместить {name} вверх",
  "{name} nach unten": "Переместить {name} вниз",

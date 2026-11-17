@@ -4732,7 +4732,7 @@
  "{name} kann dir keine Direktnachrichten mehr schicken und dich nicht anrufen. In Gruppen werden die Nachrichten eingeklappt. {name} erfährt davon nichts.": "{name} can no longer send you direct messages or call you. In groups, their messages are collapsed. {name} won't be told.",
  "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.": "{name} can't change anything: you apply suggestions yourself. {name} only reads chats when you ask with @{name} in the chat; tasks and calendar only when you turn them on.",
  "{name} klingeln lassen": "Ring {name}",
- "{name} kommt dazu, sobald der andere Server zugestimmt hat.": "{name} will join as soon as the other server has confirmed.",
+ "{name} kommt dazu, sobald der andere Server zugestimmt hat – danach unter „Nicht dabei“ klingeln lassen.": "{name} will join as soon as the other server has confirmed – then ring them under “Not in the call”.",
  "{name} konnte nicht antworten: {err}": "{name} couldn't reply: {err}",
  "{name} nach oben": "Move {name} up",
  "{name} nach unten": "Move {name} down",

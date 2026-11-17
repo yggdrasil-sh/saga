@@ -577,6 +577,8 @@ def sync(c, ch):
         _changed(c, ch["id"], set(cur) | want)
         if is_fed(ch):                                 # 2.3: Heim meldet die neuen Mitglieder den anderen Servern
             FED.members_changed(c, ch, added, gone)
+        if CALLS is not None:                          # 2.5 (L8): laufender Gruppenanruf - "Nicht dabei" neu
+            CALLS.members_synced(c, ch)
     return sorted(want, key=lambda u: (u not in cur, u))
 
 

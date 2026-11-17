@@ -4732,7 +4732,7 @@
  "{name} kann dir keine Direktnachrichten mehr schicken und dich nicht anrufen. In Gruppen werden die Nachrichten eingeklappt. {name} erfährt davon nichts.": "{name} kann dir keine Direktnachrichten mehr schicken und dich nicht anrufen. In Gruppen werden die Nachrichten eingeklappt. {name} erfährt davon nichts.",
  "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.": "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.",
  "{name} klingeln lassen": "{name} klingeln lassen",
- "{name} kommt dazu, sobald der andere Server zugestimmt hat.": "{name} kommt dazu, sobald der andere Server zugestimmt hat.",
+ "{name} kommt dazu, sobald der andere Server zugestimmt hat – danach unter „Nicht dabei“ klingeln lassen.": "{name} kommt dazu, sobald der andere Server zugestimmt hat – danach unter „Nicht dabei“ klingeln lassen.",
  "{name} konnte nicht antworten: {err}": "{name} konnte nicht antworten: {err}",
  "{name} nach oben": "{name} nach oben",
  "{name} nach unten": "{name} nach unten",
