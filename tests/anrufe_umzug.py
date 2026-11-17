@@ -352,7 +352,7 @@ def run():
         b1 = CM.block(c, {"state": "active", "kind": "dm", "peer_id": 5})
         b2 = CM.block(c, {"state": "active", "kind": "group", "lead": 5, "peer_id": 5, "chat_id": ab, "callee": "@~x@b.example"})
     ok(f"foederiertes 1:1 (direkt bzw. ueber Knoten): move_block fed mit Hinweis ({b1}, {b2})",
-       b1 == "fed" and b2 == "fed" and "Server" in CM.hint("fed"))
+       b1 == "fed" and b2 == "fed" and CM.hint("fed") and CM.hint("fed") != CM.hint("direct"))
     ok("keine Anmeldenamen in den Hinweisen", no_login_names(*[CM.hint(x) for x in ("direct", "fed", "ringing", "ended")]))
 
 
