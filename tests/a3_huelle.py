@@ -7,6 +7,8 @@ Geprueft: Kandidat tcp/tls false, ws true; A und B (mit Bruecke) telefonieren ue
 Knoten, Diagnose transport ws, Bild/Ton in beide Richtungen, Frame-E2E ohne Verwerfen), Bruecken-Aufrufe open/listen/close
 je Leitung, caps ws nur mit Bruecke; C ohne Bruecke (normaler Browser, ohne ws) tritt bei -> Saga schaltet den Anruf auf
 direkt (Vertrag S10), alle drei verbunden, A schliesst seine Tunnel.
+Die Pruefung "direkt: alle drei verbunden" zaehlt immer (seit S11, Commit "zaehlt wieder"); die fruehere Umgebungsvariable
+A3H_STRICT (damals: nur mit =1 zaehlen, sonst nur Befund) gibt es nicht mehr und wirkt nicht - nicht mehr setzen.
 
   Ports 8551 (nginx), 8552 (saga-media), 8553 (Admin), 8555/8556 (wstunnel lokal/Steuerung), 8558 (intern), 8559 (HORN_PORT);
   andere Lage mit A3H_BASE (z. B. 8601 -> 8601..8609).
