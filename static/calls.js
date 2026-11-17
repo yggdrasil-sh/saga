@@ -3284,7 +3284,15 @@
     D.s = []; D.e = []; D.last = now; D.sent++;
     try {
       fetch('/api/calls/diag', { method: 'POST', keepalive: true, credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: body })
-        .then(function (r) { D.st = r.status; }).catch(function () { D.st = -1; });
+        .then(function (r) {
+          D.st = r.status;
+          // 2.5 (Pruefer uebergabe-p2p): der Server zaehlt je Konto und Anruf - bei einer Uebernahme meldet das alte Geraet
+          // (gleiches Konto) im selben Takt. Abgewiesene Meldung (z. B. mit ho-fail) einmal nach der Sperrfrist wiederholen
+          if (r.status === 429 && !D.retry && !unloading) {
+            D.retry = 1; D.e = b.events.concat(D.e).slice(-100); D.s = b.samples.concat(D.s).slice(-200); D.last = Date.now();
+            clearTimeout(D.fT); D.fT = setTimeout(function () { diagFlush(R, true); }, DIAG_GAP);
+          } else if (r.ok) D.retry = 0;
+        }).catch(function () { D.st = -1; });
     } catch (e) { /* Seite wird geschlossen */ }
   }
   function diagSnap(R) {
