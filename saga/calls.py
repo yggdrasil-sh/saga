@@ -65,7 +65,7 @@ Annehmen = POST /join, Ablehnen beendet den Anruf ("declined"), Besetzt/Klingeld
 (Eintrag ohne group/n, from/to wie 1:1). Geht es nicht (Einstellung aus, kein Knoten bereit, Geraet ohne horn/multi,
 Gegenueber mit einem Geraet ohne "horn" (Grundsatz Y: jedes Geraet muss es koennen) bzw. ein Geraet erreicht den
 Tunnel-Knoten nicht ("reach"), anderer Server ohne horn_dm), antwortet der Server 409 {fallback: "direct", horn_block:
-off|caps|node|peer|reach|fed} - es ist nichts angelegt, der Client ruft mit derselben id wie bisher direkt an. Aeltere Clients
+off|caps|node|peer|reach|none|web|fed} - es ist nichts angelegt, der Client ruft mit derselben id wie bisher direkt an. Aeltere Clients
 schicken kein via und rufen weiter direkt an; ankommende Knoten-Anrufe sehen 2.4-Geraete als Gruppenanruf (Beitritt:
 "braucht Saga 2.5"). Foederierte Direkt-Chats (Faehigkeit horn_dm bei beiden Servern): Auftrag dmhorn - der Server der
 anrufenden Person fuehrt den Anruf, der andere legt eine Kopie an und klingelt (saga/fed_calls.py dm_horn_start,
@@ -423,27 +423,61 @@ def _can_multi(c, uid):
 
 
 def _can_horn(c, uid):
-    """2.5: Hat uid ein aktives Chat-Geraet, das Anrufe ueber Knoten kann (caps "horn")?"""
-    return bool(c.execute("SELECT 1 FROM chat_device WHERE uid=? AND revoked_at IS NULL AND caps LIKE '%\"horn\"%' LIMIT 1",
-                          (uid,)).fetchone())
+    """2.5: Hat uid ein aktives Chat-Geraet, das Anrufe ueber Knoten kann (caps "horn", bzw. "horn_ring": klingelt und tritt
+    ueber den Browser bei - Linux-App)?"""
+    return bool(c.execute("SELECT 1 FROM chat_device WHERE uid=? AND revoked_at IS NULL AND (caps LIKE '%\"horn\"%' "
+                          "OR caps LIKE '%\"horn_ring\"%') LIMIT 1", (uid,)).fetchone())
+
+
+DM_ACTIVE_S = chat.ACTIVE_S          # Grundsatz Y (Entscheidung 17.11.): nur Geraete mit Lebenszeichen in 30 Tagen zaehlen
+
+
+def _horn_dev(caps):
+    """Kann ein Geraet mit diesen (zuletzt gemeldeten) caps einen 1:1 ueber Knoten annehmen? Selbst ("horn" und "multi")
+    oder ueber den Browser ("horn_ring", Linux-App: klingelt, das Gespraech laeuft im Browser mit dessen eigenen caps)."""
+    return (_has(caps, "horn") and _has(caps, "multi")) or _has(caps, "horn_ring")
+
+
+def dm_peer_check(c, peer, caps=None, now=None):
+    """2.5 Grundsatz Y (1:1 ueber Knoten ist Standard): kann JEDES aktive Chat-Geraet des Gegenuebers den 1:1-Anruf ueber
+    den Knoten annehmen? -> (horn_block, Knoten): (None, Knoten) ja bzw. (None, None) ohne caps; sonst Grund fuer 409
+    fallback direct:
+    "none" - das Gegenueber hat gar kein Chat-Geraet (direkt meldet dann den Grund; ohne Hinweis "veraltet"),
+    "peer" - ein aktives App-Geraet ohne "horn"+"multi" bzw. "horn_ring" (Hinweis "Gegenstelle veraltet" - stimmt dann),
+    "web" - nur Browser-Geraete koennen es nicht (Browser ohne die noetigen Funktionen - nicht veraltet, ohne Hinweis),
+    "node" - kein Knoten bereit, "reach" - mit caps des anrufenden Geraets (lokal): kein bereiter Knoten, den ALLE
+    aktiven Geraete erreichen (Tunnel-Knoten nur mit "ws" bzw. "frames", horn.reachable - alte App ohne "ws", Safari ohne
+    "frames"; ohne Hinweis). Gibt es mehrere, nimmt der Anruf den ersten in der Reihenfolge fuer das anrufende Geraet, den
+    alle erreichen (Pruefer F4: Tunnel-Knoten + normaler Knoten). "horn_ring" zaehlt ohne Erreichbarkeitspruefung (der
+    Browser tritt mit eigenen caps bei; er waehlt den Knoten selbst bzw. faellt auf direkt zurueck).
+    Aktiv = Lebenszeichen (last_seen, sonst angelegt) in den letzten 30 Tagen (DM_ACTIVE_S, wie chat.blocking_devices);
+    aeltere Geraete halten nicht auf - es klingelt zwar auch dort (Ereignis/Push an das Konto), eine alte App scheitert
+    beim Annehmen aber sauber (409 join_block old "braucht Saga 2.5"), die anderen Geraete klingeln weiter. Hat das
+    Gegenueber nur alte Geraete, laeuft der Anruf ueber den Knoten (ein direkter Anruf erreichte sie ebenso wenig sicher)."""
+    now = time.time() if now is None else now
+    rows = c.execute("SELECT caps, name, COALESCE(last_seen, created) FROM chat_device WHERE uid=? AND revoked_at IS NULL",
+                     (peer,)).fetchall()
+    if not rows:
+        return "none", None
+    act = [r for r in rows if (r[2] or 0) > now - DM_ACTIVE_S]
+    bad = [r for r in act if not _horn_dev(r[0])]
+    if bad:
+        return ("web" if all(chat._WEB_DEV.match((r[1] or "").strip()) for r in bad) else "peer"), None
+    if caps is None:
+        return None, None
+    ns = horn.ready_nodes(c, ws=horn.caps_reach(caps))
+    if not ns:
+        return "node", None
+    own = [horn.caps_reach(r[0]) for r in act if _has(r[0], "horn") and _has(r[0], "multi")]     # horn_ring: ohne Pruefung
+    for n in ns:
+        if all(horn.reachable(n, w) for w in own):
+            return None, n
+    return "reach", None
 
 
 def dm_peer_block(c, peer, caps=None):
-    """2.5 Grundsatz Y (1:1 ueber Knoten ist Standard): kann JEDES aktive Chat-Geraet des Gegenuebers den 1:1-Anruf ueber
-    den Knoten annehmen? -> None (ja) bzw. horn_block fuer 409 fallback direct:
-    "peer" - ein Geraet ohne "horn"/"multi" laut zuletzt gemeldeten caps (Linux-App, 2.4; Hinweis "Gegenstelle veraltet"),
-    "reach" - mit caps des anrufenden Geraets (lokal): ein Geraet erreicht den Knoten nicht, den der Anruf bekaeme
-    (Tunnel-Knoten nur mit "ws" bzw. "frames", horn.reachable - alte App ohne "ws", Safari ohne "frames"; ohne Hinweis).
-    Sonst klingelte ein Geraet, das nicht beitreten kann - dann sofort direkt, wie ein direkter 1:1 alle Geraete erreicht."""
-    rows = c.execute("SELECT caps FROM chat_device WHERE uid=? AND revoked_at IS NULL", (peer,)).fetchall()
-    if not rows or not all(_has(r[0], "horn") and _has(r[0], "multi") for r in rows):
-        return "peer"
-    if caps is None:
-        return None
-    ns = horn.ready_nodes(c, ws=horn.caps_reach(caps))
-    if not ns:
-        return "node"
-    return None if all(horn.reachable(ns[0], horn.caps_reach(r[0])) for r in rows) else "reach"
+    """Nur der Grund aus dm_peer_check (None = Knoten moeglich)."""
+    return dm_peer_check(c, peer, caps)[0]
 
 
 def _audience(c, call):
@@ -928,6 +962,8 @@ async def api_caps(request: Request):
         if not _my_device(c, uid, dev):
             return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
         note_caps(c, uid, dev, caps_in(b.get("caps")))
+        now = time.time()                              # 2.5 Grundsatz Y: Lebenszeichen (30-Tage-Regel, dm_peer_check)
+        c.execute("UPDATE chat_device SET last_seen=? WHERE id=? AND uid=? AND COALESCE(last_seen, 0)<?", (now, dev, uid, now - 60))
     return chat._no_store({"ok": True})
 
 
@@ -1082,6 +1118,8 @@ def _fallback(why):
            "peer": t("Das Gegenüber hat kein Gerät, das Anrufe über Knoten kann."),
            "fed": t("Anrufe mit anderen Servern laufen direkt."),
            "reach": t("Gerade ist kein Knoten bereit."),
+           "none": t("Das Gegenüber hat kein Gerät, das Anrufe über Knoten kann."),
+           "web": t("Das Gegenüber hat kein Gerät, das Anrufe über Knoten kann."),
            "old": t("Gegenstelle veraltet – direkt verbunden")}.get(why, "")
     return chat._no_store({"error": msg, "fallback": "direct", "horn_block": why}, 409)
 
@@ -1095,7 +1133,7 @@ def _dm_horn_start(c, uid, ch, peer, cid, media, dev, caps, now, dev_class="desk
         # Grundsatz Y: bereite Knoten gibt es, nur nicht fuer dieses Geraet (Tunnel-Knoten, Browser ohne "frames" bzw. App
         # ohne "ws") - kein Ausfall, also ohne Hinweis direkt ("reach"); sonst kein Knoten bereit ("node", mit Hinweis)
         return _fallback("reach" if horn.any_ready(c, ws="ws") else "node")
-    why = dm_peer_block(c, peer, caps)                 # Grundsatz Y: jedes Geraet des Gegenuebers muss es koennen
+    why, node = dm_peer_check(c, peer, caps, now)      # Grundsatz Y: jedes aktive Geraet des Gegenuebers muss es koennen
     if why:
         return _fallback(why)
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
@@ -1110,7 +1148,7 @@ def _dm_horn_start(c, uid, ch, peer, cid, media, dev, caps, now, dev_class="desk
         return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
     note_caps(c, uid, dev, caps)
     busy = _busy_other(c, peer, cid)
-    call = group_create(c, ch, cid, media, uid, dev, caps, now, name=_dev_name(c, dev), dm_peer=peer, ring=not busy)
+    call = group_create(c, ch, cid, media, uid, dev, caps, now, name=_dev_name(c, dev), dm_peer=peer, ring=not busy, node=node)
     if busy:
         _finish(c, call, "busy", now)
         return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.",
@@ -1152,14 +1190,17 @@ def _group_start(c, uid, ch, m, cid, media, dev, caps, now, dev_class="desktop")
     return chat._no_store({"ok": True, "call": d})
 
 
-def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name="", lead=None, dm_peer=None, ring=True):
+def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name="", lead=None, dm_peer=None, ring=True, node=None):
     """Gruppenanruf anlegen (dieser Server fuehrt ihn, bzw. lead = fuehrender Server bei einer Kopie): Endpunkt der
     anrufenden Person, Einladungen (wer kein Geraet mit "multi" hat: 'old', "braucht Saga 2.4"), Klingeln hier, Liste an
     alle. -> Anruf. 2.5: ueber einen Knoten (topo 'horn'), wenn horn_wanted - der Endpunkt der anrufenden Person kommt auf
-    den besten bereiten Knoten, Einladungen nur an Personen mit einem Geraet, das "horn" kann (sonst 'old')."""
-    node, why = None, []
+    den besten bereiten Knoten (bzw. node: im 1:1 der erste, den alle Geraete des Gegenuebers erreichen, dm_peer_check),
+    Einladungen nur an Personen mit einem Geraet, das "horn" bzw. "horn_ring" kann (sonst 'old')."""
+    why = []
     hn = lead is None and (dm_peer is not None or horn_wanted(c, ch, media, caps, why))   # 2.5: 1:1 ueber Knoten (geprueft)
-    if hn and peer_id is None:
+    if not hn or peer_id is not None:
+        node = None
+    elif node is None:
         node = horn.ready_nodes(c, ws=horn.caps_reach(caps))[0]
     c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
               "lead, peer_id) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,?,?,?) ON CONFLICT (id) DO NOTHING",

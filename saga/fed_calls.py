@@ -362,7 +362,7 @@ def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop"):
         return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)
     if st == 409 and d.get("error") == "request":
         return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
-    if st == 409 and d.get("horn_block") in ("peer", "off", "node"):
+    if st == 409 and d.get("horn_block") in ("peer", "off", "node", "web", "none"):
         return calls._fallback(d["horn_block"])
     if st == 429:
         return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
@@ -436,7 +436,7 @@ def dm_horn_lead_start(uid, ch, cid, media, dev, caps, p):
         return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)
     if st == 409 and d.get("error") == "request":
         return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
-    if st == 409 and d.get("horn_block") in ("peer", "off", "node"):
+    if st == 409 and d.get("horn_block") in ("peer", "off", "node", "web", "none"):
         return calls._fallback(d["horn_block"])
     if st == 429:
         return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
@@ -1231,7 +1231,7 @@ def op_dmhorn(c, peer, d):
     """2.5: 1:1 ueber Knoten aus einem foederierten Direkt-Chat - die anfragende Instanz fuehrt den Anruf (wie 2.3), wir
     legen die Kopie an (kind 'group', topo 'horn', callee = unser Konto, lead = anfragende Instanz) und lassen klingeln
     (call.invite dm: true, Push call.group). Danach wie ein foederierter Gruppenanruf ueber Knoten: Annehmen = join beim
-    fuehrenden Server, Ablehnen = end an ihn (dm_ended). 409 horn_block peer|off: nichts angelegt, dort ruft man direkt an."""
+    fuehrenden Server, Ablehnen = end an ihn (dm_ended). 409 horn_block peer|web|none|off: nichts angelegt, dort ruft man direkt an."""
     cid, media, dev = d.get("id"), d.get("media"), d.get("from_device")
     if not (isinstance(cid, str) and FC._HEX32.fullmatch(cid) and media in calls.MEDIA and isinstance(dev, str) and FC._HEX32.fullmatch(dev)):
         return 400, {"error": "bad request"}
@@ -1254,8 +1254,9 @@ def op_dmhorn(c, peer, d):
         return 403, {"error": "calls disabled"}
     if not calls.horn_on():
         return 409, {"horn_block": "off"}
-    if calls.dm_peer_block(c, callee):                # Grundsatz Y: jedes Geraet hier muss es koennen, sonst direkt
-        return 409, {"horn_block": "peer"}
+    why = calls.dm_peer_block(c, callee)               # Grundsatz Y: jedes aktive Geraet hier muss es koennen, sonst direkt
+    if why:
+        return 409, {"horn_block": why}               # peer|web|none (aeltere Server dort: nur peer mit Hinweis, sonst fed)
     if not F._rate.allow("cring:" + h, calls.CALL_RATE) or not F._rate.allow("cringp:" + peer["host"], calls.CALL_RATE * 20):
         return 429, {"error": "too many calls"}
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
@@ -1283,7 +1284,7 @@ def op_dmhorn_lead(c, peer, d):
     """Horn-Fix ("Horn-Besitzer bestimmt"): der Server des Gegenuebers bittet uns, einen 1:1-Anruf aus dem foederierten
     Direkt-Chat zu FUEHREN, weil wir auf Knoten bestehen (horn_req, calls.horn_all) - auch wenn dort horn_all aus ist. Wir
     legen den Raum-Anruf ueber Knoten an (Endpunkt der anrufenden Person auf deren Server, callee = unser Konto) und
-    klingeln. Kandidaten fuer die anrufende Person: unsere geteilten Knoten (Auftrag horn). 409 horn_block off|node|peer:
+    klingeln. Kandidaten fuer die anrufende Person: unsere geteilten Knoten (Auftrag horn). 409 horn_block off|node|peer|web|none:
     nichts angelegt, dort ruft man direkt an."""
     h, p_ = _actor3(c, peer, d)
     cid, media, dev = d.get("id"), d.get("media"), d.get("device")
@@ -1307,8 +1308,9 @@ def op_dmhorn_lead(c, peer, d):
     caps = calls.caps_in(d.get("caps"))
     if not (calls._has(caps, "horn") and calls._has(caps, "multi")):
         return 409, {"horn_block": "peer"}
-    if calls.dm_peer_block(c, callee):
-        return 409, {"horn_block": "peer"}
+    why = calls.dm_peer_block(c, callee)
+    if why:
+        return 409, {"horn_block": why}
     if not F._rate.allow("cring:" + h, calls.CALL_RATE) or not F._rate.allow("cringp:" + peer["host"], calls.CALL_RATE * 20):
         return 429, {"error": "too many calls"}
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
