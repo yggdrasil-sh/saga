@@ -342,13 +342,28 @@ def s10(people, cid):
        and any(x["device"] == E.dev["id"] for x in (d.get("call") or {}).get("legs") or []), (d.get("call") or {}).get("topo"))
     req("POST", f"/api/calls/{cid}/end", A.k, {"device": A.dev["id"]})
     # 1:1 mit horn_all: ohne ws Rueckfall direkt, mit ws ueber den Knoten
-    flag(True, horn_from=3, horn_all=True)
+    flag(True, horn_from=3, horn_all=True, horn_all_y=True)
     wait(lambda: req("GET", "/api/calls/config", Cc.k)[1].get("horn_dm"), 15)      # Einstellungen im Server zwischengespeichert
     dm = A_.dm(Cc, D)
     s, d = req("POST", "/api/calls", Cc.k, {"id": secrets.token_hex(16), "chat_id": dm, "media": "audio", "device": Cc.dev["id"],
                                             "caps": CAPS_WEB, "via": "horn"})
     ok("1:1 ueber Knoten ohne ws: 409 fallback node (direkt wie bisher)", s == 409 and d.get("horn_block") == "node", (s, d))
-    flag(True, horn_from=3)
+    # Grundsatz Y: anrufendes Geraet mit ws, Geraet des Gegenuebers ohne ws (aeltere App rc.637 bzw. Browser ohne frames)
+    # -> sofort 409 fallback reach (nichts angelegt, kein Klingeln), statt spaeter 409 join_block node beim Annehmen
+    req("PUT", "/api/calls/caps", Cc.k, {"device": Cc.dev["id"], "caps": CAPS})
+    cy = secrets.token_hex(16)
+    s, d = req("POST", "/api/calls", Cc.k, {"id": cy, "chat_id": dm, "media": "audio", "device": Cc.dev["id"], "caps": CAPS, "via": "horn"})
+    s2, _ = req("GET", f"/api/calls/{cy}", Cc.k)
+    ok("Y: Gegenueber-Geraet ohne ws beim Tunnel-Knoten: sofort 409 fallback reach, nichts angelegt",
+       s == 409 and d.get("fallback") == "direct" and d.get("horn_block") == "reach" and s2 == 404, (s, d, s2))
+    req("PUT", "/api/calls/caps", D.k, {"device": D.dev["id"], "caps": CAPS})
+    s, d = req("POST", "/api/calls", Cc.k, {"id": cy, "chat_id": dm, "media": "audio", "device": Cc.dev["id"], "caps": CAPS, "via": "horn"})
+    ok("Y: beide Seiten mit ws: 1:1 ueber den Tunnel-Knoten (topo horn, dm)", s == 200 and (d.get("call") or {}).get("topo") == "horn"
+       and (d.get("call") or {}).get("dm") is True, (s, (d.get("call") or {}).get("topo")))
+    req("POST", f"/api/calls/{cy}/end", Cc.k, {"device": Cc.dev["id"]})
+    for p in (Cc, D):
+        req("PUT", "/api/calls/caps", p.k, {"device": p.dev["id"], "caps": CAPS_WEB})
+    flag(True, horn_from=3, horn_all=False, horn_all_y=True)                     # wie vor Y: 1:1 direkt (bewusst aus)
 
 
 def teil1(media, node):

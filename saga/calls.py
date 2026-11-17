@@ -63,8 +63,9 @@ Server legt einen Raum-Anruf an (kind 'group', topo 'horn', callee = Gegenueber 
 _dmh) und klingelt per call.invite {dm: true} + Push "call.group" mit dm: true (1:1-Texte, Name der anrufenden Person).
 Annehmen = POST /join, Ablehnen beendet den Anruf ("declined"), Besetzt/Klingeldauer/Ende/Eintrag im Chat wie 1:1
 (Eintrag ohne group/n, from/to wie 1:1). Geht es nicht (Einstellung aus, kein Knoten bereit, Geraet ohne horn/multi,
-Gegenueber ohne Geraet mit "horn", anderer Server ohne horn_dm), antwortet der Server 409 {fallback: "direct", horn_block:
-off|caps|node|peer|fed} - es ist nichts angelegt, der Client ruft mit derselben id wie bisher direkt an. Aeltere Clients
+Gegenueber mit einem Geraet ohne "horn" (Grundsatz Y: jedes Geraet muss es koennen) bzw. ein Geraet erreicht den
+Tunnel-Knoten nicht ("reach"), anderer Server ohne horn_dm), antwortet der Server 409 {fallback: "direct", horn_block:
+off|caps|node|peer|reach|fed} - es ist nichts angelegt, der Client ruft mit derselben id wie bisher direkt an. Aeltere Clients
 schicken kein via und rufen weiter direkt an; ankommende Knoten-Anrufe sehen 2.4-Geraete als Gruppenanruf (Beitritt:
 "braucht Saga 2.5"). Foederierte Direkt-Chats (Faehigkeit horn_dm bei beiden Servern): Auftrag dmhorn - der Server der
 anrufenden Person fuehrt den Anruf, der andere legt eine Kopie an und klingelt (saga/fed_calls.py dm_horn_start,
@@ -423,6 +424,24 @@ def _can_horn(c, uid):
     """2.5: Hat uid ein aktives Chat-Geraet, das Anrufe ueber Knoten kann (caps "horn")?"""
     return bool(c.execute("SELECT 1 FROM chat_device WHERE uid=? AND revoked_at IS NULL AND caps LIKE '%\"horn\"%' LIMIT 1",
                           (uid,)).fetchone())
+
+
+def dm_peer_block(c, peer, caps=None):
+    """2.5 Grundsatz Y (1:1 ueber Knoten ist Standard): kann JEDES aktive Chat-Geraet des Gegenuebers den 1:1-Anruf ueber
+    den Knoten annehmen? -> None (ja) bzw. horn_block fuer 409 fallback direct:
+    "peer" - ein Geraet ohne "horn"/"multi" laut zuletzt gemeldeten caps (Linux-App, 2.4; Hinweis "Gegenstelle veraltet"),
+    "reach" - mit caps des anrufenden Geraets (lokal): ein Geraet erreicht den Knoten nicht, den der Anruf bekaeme
+    (Tunnel-Knoten nur mit "ws" bzw. "frames", horn.reachable - alte App ohne "ws", Safari ohne "frames"; ohne Hinweis).
+    Sonst klingelte ein Geraet, das nicht beitreten kann - dann sofort direkt, wie ein direkter 1:1 alle Geraete erreicht."""
+    rows = c.execute("SELECT caps FROM chat_device WHERE uid=? AND revoked_at IS NULL", (peer,)).fetchall()
+    if not rows or not all(_has(r[0], "horn") and _has(r[0], "multi") for r in rows):
+        return "peer"
+    if caps is None:
+        return None
+    ns = horn.ready_nodes(c, ws=horn.caps_reach(caps))
+    if not ns:
+        return "node"
+    return None if all(horn.reachable(ns[0], horn.caps_reach(r[0])) for r in rows) else "reach"
 
 
 def _audience(c, call):
@@ -1057,6 +1076,7 @@ def _fallback(why):
            "node": t("Gerade ist kein Knoten bereit."),
            "peer": t("Das Gegenüber hat kein Gerät, das Anrufe über Knoten kann."),
            "fed": t("Anrufe mit anderen Servern laufen direkt."),
+           "reach": t("Gerade ist kein Knoten bereit."),
            "old": t("Gegenstelle veraltet – direkt verbunden")}.get(why, "")
     return chat._no_store({"error": msg, "fallback": "direct", "horn_block": why}, 409)
 
@@ -1068,8 +1088,9 @@ def _dm_horn_start(c, uid, ch, peer, cid, media, dev, caps, now, dev_class="desk
         return _fallback("caps")
     if not horn.any_ready(c, ws=horn.caps_reach(caps)):
         return _fallback("node")
-    if not _can_horn(c, peer):
-        return _fallback("peer")
+    why = dm_peer_block(c, peer, caps)                 # Grundsatz Y: jedes Geraet des Gegenuebers muss es koennen
+    if why:
+        return _fallback(why)
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
         return _bad(t("Diesen Anruf gibt es schon."), 409)
     inc = c.execute("SELECT id FROM chat_call WHERE state='ringing' AND caller=? AND callee=? LIMIT 1", (peer, uid)).fetchone()

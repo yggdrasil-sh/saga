@@ -3,12 +3,12 @@ als Raum-Anruf ueber einen Knoten, mit Rueckfall auf direkt.
 
 Ohne echten Knoten: ein gekoppelter Knoten als Registereintrag (Lastmeldung frisch, Zertifikat "self") gilt als bereit -
 geprueft wird die Steuerung in Saga (Entscheidung, Rueckfall, Klingeln, Zustaende, Chat-Eintrag, Push), nicht die Medien.
-Geprueft: config.horn_dm nur mit Einstellung; 409 fallback (off, caps, node, peer) ohne angelegten Anruf, danach direkter
+Geprueft: config.horn_dm (Grundsatz Y: ohne Einstellung und mit Altwert ohne Merker an, mit Merker aus, nur mit horn); 409 fallback (off, caps, node, peer) ohne angelegten Anruf, danach direkter
 Anruf mit derselben id; Erfolg: kind group, topo horn, dm, Kandidaten, Gegenueber als peer; call.invite mit dm; Anruf-
 liste beim Gegenueber; Push-Text wie 1:1 mit dm; besetzt (direkter Anruf an die angerufene Person); Annehmen per join ->
 call.state active mit dm; Auflegen -> Ende, Chat-Eintrag wie 1:1 mit Dauer; Ablehnen -> Ende "declined"; Abbrechen ->
 verpasst + Benachrichtigung; besetzt beim Start; 2.4-Geraet des Gegenuebers: Beitritt 409 old; alter Client ohne via:
-direkter Anruf wie bisher. Wegwerf-Konten ca-hd*."""
+direkter Anruf wie bisher; Grundsatz Y: Gegenueber mit einem Geraet ohne horn -> sofort fallback peer. Wegwerf-Konten ca-hd*."""
 import json
 import os
 import secrets
@@ -107,13 +107,23 @@ def run():
     node(False)
 
     # --- Einstellung und Rueckfaelle --------------------------------------------------------------------------------
+    # Grundsatz Y: ohne Einstellung bzw. mit Altwert von vor Y (horn_all false ohne Merker) an; erst mit Merker aus
+    setting()
+    s, cf = req("GET", "/api/calls/config", A.k)
+    ok(f"Y: config horn_dm an ohne Einstellung ({cf.get('horn_dm')})", s == 200 and cf.get("horn_dm") is True)
     setting(horn_all=False)
     s, cf = req("GET", "/api/calls/config", A.k)
-    ok(f"config: horn_dm aus ohne Einstellung ({cf.get('horn_dm')})", s == 200 and cf.get("horn_dm") is False)
+    ok(f"Y: Altwert horn_all false ohne Merker gilt als an ({cf.get('horn_dm')})", s == 200 and cf.get("horn_dm") is True)
+    setting(horn_all=False, horn_all_y=True)
+    s, cf = req("GET", "/api/calls/config", A.k)
+    ok(f"config: horn_dm aus, wenn bewusst ausgeschaltet ({cf.get('horn_dm')})", s == 200 and cf.get("horn_dm") is False)
     cid, s, d = hcall(A, ab)
-    ok(f"via horn ohne Einstellung: 409 fallback direct, horn_block off ({s}, {d.get('horn_block')})",
+    ok(f"via horn bewusst aus: 409 fallback direct, horn_block off ({s}, {d.get('horn_block')})",
        s == 409 and d.get("fallback") == "direct" and d.get("horn_block") == "off" and row(cid) is None)
-    setting(horn_all=True)
+    setting(horn=False)
+    s, cf = req("GET", "/api/calls/config", A.k)
+    ok(f"Y: Gjallarhorn aus (ab Werk) -> kein horn_dm ({cf.get('horn_dm')})", s == 200 and not cf.get("horn_dm"))
+    setting(horn_all=True, horn_all_y=True)
     s, cf = req("GET", "/api/calls/config", A.k)
     ok(f"config: horn_dm mit Einstellung ({cf.get('horn_dm')})", cf.get("horn_dm") is True)
     cid, s, d = hcall(A, ab)
@@ -126,6 +136,12 @@ def run():
     cid2, s, d = A_.call(A, H, ah, cid=cid)
     ok(f"... danach direkter Anruf mit derselben id ({s}, kind {(d.get('call') or {}).get('kind')})", s == 200 and d["call"]["kind"] == "dm")
     req("POST", f"/api/calls/{cid}/end", A.k, {"reason": "hangup"})
+    # Grundsatz Y: JEDES Geraet des Gegenuebers muss es koennen - Hans bekommt ein Zweitgeraet mit horn, das alte bleibt 2.4
+    h2 = H.add_device()
+    caps(H, CAPS, dev=h2)
+    cid, s, d = hcall(A, ah)
+    ok(f"Y: Gegenueber mit einem Geraet ohne horn (neben einem mit horn): sofort fallback peer, nichts angelegt ({s}, {d.get('horn_block')})",
+       s == 409 and d.get("fallback") == "direct" and d.get("horn_block") == "peer" and row(cid) is None)
 
     # --- Anruf ueber den Knoten -------------------------------------------------------------------------------------
     sb, sa = A_.Stream(B.k), A_.Stream(A.k)

@@ -1249,7 +1249,7 @@ def op_dmhorn(c, peer, d):
         return 403, {"error": "calls disabled"}
     if not calls.horn_on():
         return 409, {"horn_block": "off"}
-    if not calls._can_horn(c, callee):
+    if calls.dm_peer_block(c, callee):                # Grundsatz Y: jedes Geraet hier muss es koennen, sonst direkt
         return 409, {"horn_block": "peer"}
     if not F._rate.allow("cring:" + h, calls.CALL_RATE) or not F._rate.allow("cringp:" + peer["host"], calls.CALL_RATE * 20):
         return 429, {"error": "too many calls"}
@@ -1302,7 +1302,7 @@ def op_dmhorn_lead(c, peer, d):
     caps = calls.caps_in(d.get("caps"))
     if not (calls._has(caps, "horn") and calls._has(caps, "multi")):
         return 409, {"horn_block": "peer"}
-    if not calls._can_horn(c, callee):
+    if calls.dm_peer_block(c, callee):
         return 409, {"horn_block": "peer"}
     if not F._rate.allow("cring:" + h, calls.CALL_RATE) or not F._rate.allow("cringp:" + peer["host"], calls.CALL_RATE * 20):
         return 429, {"error": "too many calls"}
