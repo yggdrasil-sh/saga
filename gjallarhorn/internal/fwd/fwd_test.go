@@ -2,6 +2,7 @@ package fwd
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -750,5 +751,57 @@ func BenchmarkForwardTon(b *testing.B) {
 				e.p.release()
 			}
 		})
+	}
+}
+
+// csW merkt sich je Paket CSRC und audio-level (id 3) des Empfaengers.
+type csW struct{ got []string }
+
+func (w *csW) WriteRTP(h *rtp.Header, p []byte) (int, error) {
+	var c uint32
+	if len(h.CSRC) > 0 {
+		c = h.CSRC[0]
+	}
+	w.got = append(w.got, fmt.Sprintf("%d:%x", c, h.GetExtension(3)))
+	return len(p), nil
+}
+
+// TestPegelQuellwechsel (Pruefer pruef-pegel): Wechselt der Tonplatz die Quelle (Top-3), traegt jedes Paket den Pegel
+// seiner eigenen Quelle - gelesen mit deren id (Absender handeln verschiedene ids aus), geschrieben mit der id des
+// Empfaengers. Bis zum Wechsel laeuft die alte Quelle mit ihrem Pegel weiter, danach kommt von ihr nichts mehr.
+func TestPegelQuellwechsel(t *testing.T) {
+	leg := &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}
+	o := leg.NewOut("a", "p", Audio, ClassAudio)
+	o.SetAudioLevel(3)
+	w := &csW{}
+	o.Bind(w, 1, 111)
+	s1 := &Source{Owner: "x", Layer: "a", Kind: Audio, CSRC: 11, LevelExt: 1}
+	s2 := &Source{Owner: "y", Layer: "a", Kind: Audio, CSRC: 22, LevelExt: 4}
+	pkt := func(seq uint16, id, level byte) []byte {
+		b := lvpkt(seq, uint32(seq)*960, level)
+		b[19] = id << 4 // Ein-Byte-Kopf: id, Laenge 1
+		return b
+	}
+	run := func(s *Source, b []byte) {
+		s.Inject(b)
+		for {
+			e, ok := leg.pop()
+			if !ok {
+				break
+			}
+			leg.process(e.p, e.o)
+			e.p.release()
+		}
+	}
+	o.Assign(s1)
+	run(s1, pkt(1, 1, 20))
+	o.Assign(s2) // Wechsel angemeldet: s1 laeuft bis zum ersten Paket von s2
+	run(s1, pkt(2, 1, 21))
+	run(s2, pkt(100, 4, 0x80|60))
+	run(s1, pkt(3, 1, 22)) // alte Quelle nach dem Wechsel: verworfen
+	run(s2, pkt(101, 4, 61))
+	want := "[11:14 11:15 22:bc 22:3d]"
+	if got := fmt.Sprint(w.got); got != want {
+		t.Fatalf("csrc:pegel %s statt %s", got, want)
 	}
 }
