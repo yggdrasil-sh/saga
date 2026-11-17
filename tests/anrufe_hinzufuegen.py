@@ -6,7 +6,7 @@ Aussenstehende: einfaches Mitglied -> 403 rights (nichts geaendert), Admin -> Mi
 klingelt (call.invite, invites "ringing"), sieht den Anruf (joinable) und tritt bei (Angebote an alle Geraete); Handle
 '~x@host' eines Kontos hier wie ein Benutzername; unbekannt bzw. gesperrt (block2) -> 404 mit Text, Mischung -> 200 mit
 failed; entfernte Person (Gastgeber-Aktion) nur durch den Gastgeber (403 removed); Rate im selben Topf wie /invite (429);
-1:1 -> 409 dm; voll (Video, 4 Geraete, Zweitgeraet zaehlt) -> 409 full mit seats und Text, nichts geaendert; Seiten-Chat
+direkter 1:1 -> 409 dm (move_block direct, L9); voll (Video, 4 Geraete, Zweitgeraet zaehlt) -> 409 full mit seats und Text, nichts geaendert; Seiten-Chat
 ohne Bestaetigung 409 page_confirm (Titel, Name, nichts geteilt), mit confirm_page geteilt (Rolle Lesen) + Mitglied +
 klingelt, Nicht-Eigentuemer 403; beendeter Anruf -> 409 ended. Keine Anmeldenamen anderer in Texten.
 Wegwerf-Konten ca-a*; raeumt auf."""
@@ -199,7 +199,9 @@ def run():
     dmc = A_.dm(F, Rr)
     c1, s, d = A_.call(F, Rr, dmc)
     s2, d2 = add(F, c1, ["ca-ac"])
-    ok(f"1:1-Anruf: 409 dm mit Text ({s}, {s2}, {d2.get('error')})", s == 200 and s2 == 409 and d2.get("dm") is True and "1:1" in (d2.get("error") or ""))
+    # 2.5 (L9): ein direkter 1:1 zieht nicht in eine Gruppe um (move_block direct, Hinweis) - Umzug ueber Knoten: anrufe_umzug
+    ok(f"direkter 1:1-Anruf: 409 dm, move_block direct mit Text ({s}, {s2}, {d2.get('error')})",
+       s == 200 and s2 == 409 and d2.get("dm") is True and d2.get("move_block") == "direct" and "Knoten" in (d2.get("error") or ""))
     req("POST", f"/api/calls/{c1}/end", F.k, {"device": F.dev["id"]})
 
     # --- Voll (Video: 4 Geraete, Annas Zweitgeraet zaehlt) -----------------------------------------------------------------
