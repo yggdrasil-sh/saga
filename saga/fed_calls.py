@@ -1105,6 +1105,10 @@ def op_roster(c, peer, d):
         go = []
         for u in ring:
             if mem.get(u) != "ok":
+                if mem.get(u) == "request":            # 2.5 (L8): klingelt beim Annehmen der Anfrage (calls.ring_accepted)
+                    c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'pending',?) ON CONFLICT (call_id, who) "
+                              "DO UPDATE SET state='pending', created=EXCLUDED.created WHERE chat_call_invite.state NOT IN ('removed','joined')",
+                              (cid, u, now))
                 continue
             st = "ringing" if calls._can_multi(c, u) else "old"
             c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,?,?) ON CONFLICT (call_id, who) DO UPDATE "

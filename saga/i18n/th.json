@@ -4708,6 +4708,7 @@
  "{name} in diesem Chat erlauben?": "อนุญาต {name} ในแชทนี้หรือไม่",
  "{name} ist auch hier": "{name} อยู่ที่นี่ด้วย",
  "{name} ist auf {host} – die Nummer gehört zu diesem Server-übergreifenden Chat.": "{name} อยู่บน {host} – หมายเลขนี้เป็นของแชทข้ามเซิร์ฟเวอร์นี้",
+ "{name} ist eingeladen – es klingelt, sobald die Einladung in den Chat angenommen ist.": "เชิญ {name} แล้ว – จะมีสายเรียกเข้าเมื่อตอบรับคำเชิญเข้าแชท",
  "{name} ist gerade nicht erreichbar.": "ขณะนี้ติดต่อ {name} ไม่ได้",
  "{name} ist gesperrt.": "บล็อก {name} แล้ว",
  "{name} ist hier nicht mehr erlaubt.": "ไม่อนุญาต {name} ที่นี่แล้ว",

@@ -2099,6 +2099,9 @@ def invite_local(c, call, who):
             remote.append(u)
             st = "ringing"
         elif (mem[u] or "ok") != "ok":
+            if mem[u] == "request":                    # 2.5 (L8): klingelt erst, wenn die Person die Anfrage annimmt (ring_accepted)
+                c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'pending',?) ON CONFLICT (call_id, who) "
+                          "DO UPDATE SET state='pending', created=EXCLUDED.created WHERE chat_call_invite.state<>'removed'", (call["id"], u, now))
             continue
         else:
             st = "ringing" if (_can_horn(c, u) if is_horn(call) else _can_multi(c, u)) else "old"
@@ -2110,6 +2113,27 @@ def invite_local(c, call, who):
     if ring or remote or who:
         emit_invites(c, call)
     return len(ring), remote
+
+
+ADD_ACCEPT_S = 600                      # 2.5 (L8): so lange nach der Einladung klingelt es noch beim Annehmen der Chat-Anfrage
+
+
+def ring_accepted(c, ch, uid):
+    """2.5 (L8): uid nimmt die Nachrichtenanfrage eines Gruppenchats an, in dem gerade ein Gruppenanruf laeuft, zu dem sie
+    eingeladen wurde (hinzugefuegt bzw. geklingelt, solange die Anfrage offen war: 'pending' hier, 'ringing' vom
+    fuehrenden Server) - jetzt klingeln (laut, wie /invite). Nur bis ADD_ACCEPT_S nach der Einladung."""
+    r = c.execute("SELECT k.id FROM chat_call k JOIN chat_call_invite i ON i.call_id=k.id WHERE k.chat_id=? AND k.kind='group' AND k.callee='' "
+                  "AND k.state<>'ended' AND i.who=? AND i.state IN ('pending','ringing') AND i.created>? ORDER BY k.created DESC LIMIT 1",
+                  (ch["id"], uid, time.time() - ADD_ACCEPT_S)).fetchone()
+    call = _load(c, r[0]) if r else None
+    if not call or any(x["who"] == uid for x in _legs(c, call["id"])):
+        return
+    st = "ringing" if (_can_horn(c, uid) if is_horn(call) else _can_multi(c, uid)) else "old"
+    c.execute("UPDATE chat_call_invite SET state=?, created=? WHERE call_id=? AND who=?", (st, max(time.time(), call["created"] + 0.001), call["id"], uid))
+    if st == "ringing":
+        ring_group(c, _load(c, call["id"]), [uid], loud=True)
+    emit_invites(c, call)
+    print(f"call: {call['id'][:8]} Chat-Anfrage angenommen - klingelt ({st})", flush=True)
 
 
 # --- Hintergrund: Klingeldauer, verlorene Verbindungen, Aufraeumen -------------------------------------------------

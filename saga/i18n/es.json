@@ -4708,6 +4708,7 @@
  "{name} in diesem Chat erlauben?": "¿Permitir a {name} en este chat?",
  "{name} ist auch hier": "{name} también está aquí",
  "{name} ist auf {host} – die Nummer gehört zu diesem Server-übergreifenden Chat.": "{name} está en {host}: el número pertenece a este chat entre servidores.",
+ "{name} ist eingeladen – es klingelt, sobald die Einladung in den Chat angenommen ist.": "{name} está invitado/a: sonará en cuanto se acepte la invitación al chat.",
  "{name} ist gerade nicht erreichbar.": "{name} no está disponible ahora mismo.",
  "{name} ist gesperrt.": "{name} está bloqueado.",
  "{name} ist hier nicht mehr erlaubt.": "{name} ya no está permitida aquí.",

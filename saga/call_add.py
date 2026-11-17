@@ -17,7 +17,7 @@ import time
 from fastapi import APIRouter, Request
 
 from db import connect as _db
-from saga import calls, chat
+from saga import calls, chat, sharing
 from saga.core import _bad, _body, t
 from saga.sharing import names
 
@@ -92,7 +92,8 @@ def full_msg(s):
 @router.post("/api/calls/{cid}/add")
 async def api_add(cid: str, request: Request):
     """Personen in den laufenden Gruppenanruf holen {uids: [benutzername | Handle | Prinzipal], confirm_page?, role?} ->
-    {ok, n, added, failed, pending, invites, invites_more, seats, rv, now}. Mitglieder klingeln (wie /invite), andere werden
+    {ok, n, added, failed, pending, request, invites, invites_more, seats, rv, now} (request: bekommen den Chat als
+    Nachrichtenanfrage und klingeln, sobald sie annehmen). Mitglieder klingeln (wie /invite), andere werden
     zuerst Mitglied (chat.member_add). Fehler ohne jede Aenderung: 403 (keine Rechte bzw. entfernte Person ohne Gastgeber),
     409 page_confirm (Seiten-Chat ohne Bestaetigung) | full | dm | ended, 429 (Rate wie /invite). Scheitern alle Neuen,
     kommt der Fehler der ersten (Status und Text wie POST /api/chats/{id}/members)."""
@@ -176,6 +177,11 @@ async def api_add(cid: str, request: Request):
                 pending.append(x)          # Person anderer Server (Seiten-Chat): kommt dazu, sobald ihr Server bestaetigt
         who = list(dict.fromkeys(known + fresh))
         n, remote = calls.invite_local(c, call, who)
+        # Nachrichtenanfrage: Personen anderer Server (Gruppe ueber Servergrenzen) bzw. hier auf einer Kopie bekommen den Chat
+        # als Anfrage - es klingelt, sobald sie sie annehmen (calls.ring_accepted)
+        st_of = {r[0]: r[1] for r in c.execute("SELECT uid, state FROM chat_member WHERE chat_id=? AND left_at IS NULL", (call["chat_id"],))}
+        request = [x for x, u in zip(added, [chat.member_target(c, uid, mem, x) for x in added])
+                   if (u and (sharing.is_remote(u) or st_of.get(u) == "request")) or (not u and _local(c, uid, x) in via_lead)]
         new_remote = [u for u in remote if u in fresh]
         if new_remote and not lead and calls._fedcall(c, call):
             calls.FED.add_ring(c, call, new_remote)           # neue Server bekommen die Liste (Kopie des Anrufs) und klingeln
@@ -190,5 +196,5 @@ async def api_add(cid: str, request: Request):
         await run_in_threadpool(calls.FED.add_invite, uid, call, remote, via_lead)
     n += len(remote) + len(via_lead) + len(new_remote)
     print(f"call: {cid[:8]} hinzufuegen ({len(known)} klingeln, {len(added)} neu, {len(failed)} nicht, {len(pending)} warten)", flush=True)
-    return chat._no_store({"ok": True, "n": n, "added": added, "failed": failed, "pending": pending, "invites": lst,
+    return chat._no_store({"ok": True, "n": n, "added": added, "failed": failed, "pending": pending, "request": request, "invites": lst,
                            "invites_more": more, "seats": st, "rv": rv, "now": round(time.time(), 3)})

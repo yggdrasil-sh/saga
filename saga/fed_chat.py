@@ -2060,7 +2060,10 @@ def request_action(uid, cid, action, scope="person"):
             other = inv if inv and sharing.is_remote(inv) else None
         mh = my_handle(c, uid)
         if action == "accept":
-            return _reopen(c, uid, ch)
+            out = _reopen(c, uid, ch)
+            if chat.CALLS is not None and ch["kind"] == "free":
+                chat.CALLS.ring_accepted(c, ch, uid)     # 2.5 (L8): laufender Gruppenanruf, zu dem uid eingeladen wurde
+            return out
         targets = [handle_of(other)] if other else []
         if action == "block" and other:
             tg = handle_of(other) if scope == "person" else split_handle(handle_of(other))[1]

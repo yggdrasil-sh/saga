@@ -4854,6 +4854,7 @@
       var f = (d.failed || [])[0];
       if (f) HK.toast(f.error, null, null, 6000);
       else if ((d.pending || []).length) HK.toast(T('{name} kommt dazu, sobald der andere Server zugestimmt hat.', { name: nm }), null, null, 6000);
+      else if ((d.request || []).length) HK.toast(T('{name} ist eingeladen – es klingelt, sobald die Einladung in den Chat angenommen ist.', { name: nm }), null, null, 6000);
       else if (!d.n) HK.toast(T('{name} ist schon im Anruf oder klingelt gerade.', { name: nm }));
       else HK.toast(T('{name} wird angerufen …', { name: nm }));
       if ((d.added || []).length) { var br = bridge(); if (br && br.added && R.call) br.added(R.call.chat_id); }
