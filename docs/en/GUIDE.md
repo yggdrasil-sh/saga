@@ -1132,6 +1132,11 @@ up the call over the regular web port (live channel + normal requests).
   then don't see each other's IP addresses and there are fewer NAT problems; it stays end-to-end encrypted. Saga only
   connects directly as a fallback: if no node is ready, one of the other person's devices can't do it (e.g. the Linux
   app, an older app, Safari with the tunnel node) or the node can't be reached for 30 s during the call.
+- **A one-to-one call becomes a conference (from 2.5):** In a one-to-one call through a node, choose "Add person" in the
+  participant list – a **new group** with both of you and the added people is created, and the call continues there
+  **without interruption** (both of you are admins of the group); the new people's devices ring. The one-to-one chat then
+  shows "Moved to a group call" with "Go to group". With a direct one-to-one call or with someone on another Saga server
+  this isn't possible (yet) – a hint explains why.
 - **Not answered:** after the ring duration (default 45 s) the call counts as **missed**. The chat then shows "Missed
   call" (with "Call back") and there is a notification "Missed call from Name" (can be turned off under notifications or
   push → "Calls"). Ended, declined and busy calls also appear in the chat.

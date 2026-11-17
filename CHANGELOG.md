@@ -16,6 +16,21 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – Anrufe: aus einem 1:1 wird eine Konferenz, ohne Unterbrechung (L9)
+- **Im 1:1 „Person hinzufügen“** (Teilnehmerliste, wie im Gruppenanruf): Es entsteht eine **neue Gruppe** mit euch beiden
+  und den Hinzugefügten, der Anruf **zieht nahtlos um** – niemand verbindet sich neu, die Dauer läuft weiter (gemessen:
+  keine hörbare Lücke, 3 von 3 Umzügen über den Knoten). Die Hinzugefügten klingeln wie bei jedem Gruppenanruf.
+- Beide Personen dürfen das und sind in der neuen Gruppe Admin (können danach weitere Personen holen). Das 1:1 bekommt den
+  Eintrag „In Gruppenanruf verschoben“ mit „Zur Gruppe“; ist es offen, springt die Ansicht zur neuen Gruppe.
+- Geht über den Anruf-Knoten (Grundsatz Y, Gjallarhorn an). Läuft ein 1:1 **direkt** (kein Knoten möglich) oder mit
+  einer Person eines **anderen Servers**, erklärt ein Hinweis, warum es nicht geht – nichts wird halb umgezogen.
+- Ende-zu-Ende: Neue bekommen beim Beitritt einen geratschten Frame-Schlüssel und können nichts Vorheriges entschlüsseln.
+- API (docs/APP-API.md „1:1 → Konferenz“): Feature `call_move`, `POST /api/calls/{id}/add` im 1:1 mit `moved`/`call`,
+  Anruf-Objekt `can_move`/`move_block`/`move_hint`, Ereignis `call.move`, Chat-Eintrag mit `moved`. Ältere Apps bleiben
+  im Anruf verbunden (Anzeige weiter 1:1). Keine Migration. Web zeigt im Gruppenanruf einer freien Gruppe ohne Namen
+  jetzt die Namen der Mitglieder statt „Gruppenanruf“.
+- Tests: `anrufe_umzug` (neu), `browser_anruf_umzug.js` (neu, mit Messung der Tonlücke und Gegenprobe).
+
 ### Behoben – Web: schneller Rückwechsel bei der Geräte-Übergabe
 - Nach „Hierher übernehmen“ bleibt das Fenster des abgegebenen Geräts 3,5 s mit „Anruf auf … übernommen“ stehen und
   lag über der Leiste „Hierher übernehmen“ – wer gleich zurückwechseln wollte, traf das Fenster; die Übernahme ging erst
@@ -53,7 +68,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Seiten-Chat: wem die Seite gehört). **Seiten-Chat:** Rückfrage „<Name> bekommt Zugriff auf die Seite „<Titel>““ – erst
   danach wird die Seite geteilt (Lesen) und es klingelt.
 - Verständliche Meldungen: Anruf voll (jedes Gerät zählt, auch ein zweites zum Teilen; ein laufender direkter Anruf zieht
-  nicht auf einen Knoten um), keine Rechte, Person nicht erreichbar/gesperrt, 1:1-Anruf (kommt mit „1:1 → Konferenz“).
+  nicht auf einen Knoten um), keine Rechte, Person nicht erreichbar/gesperrt.
 - **Über Servergrenzen:** Personen anderer Saga-Server bekommen den Chat wie bisher als Nachrichtenanfrage; es klingelt,
   sobald sie annehmen (bis 10 min). Server, die bisher nicht im Anruf waren, bekommen seine Kopie automatisch.
 - API (docs/APP-API.md „Anrufe: Personen hinzufügen“): Feature `call_add`, `POST /api/calls/{id}/add`, Anruf-Objekt

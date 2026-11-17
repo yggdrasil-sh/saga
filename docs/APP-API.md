@@ -2186,7 +2186,7 @@ Fehler (immer mit `error` = fertiger Text in der Sprache des Kontos; **nichts ge
 
 | Status | Feld | Wann |
 |---|---|---|
-| `409` | `dm: true` | 1:1-Anruf (auch über Knoten) – „In einem 1:1-Anruf kann man noch niemanden dazuholen …“ (1:1 → Konferenz kommt mit L9) |
+| `409` | `dm: true`, `move_block` | 1:1-Anruf, der nicht in eine Gruppe umziehen kann (siehe „1:1 → Konferenz“ unten) |
 | `409` | `ended: true` | Anruf beendet |
 | `409` | `full: true`, `seats` | alle Plätze belegt (jedes Gerät zählt, auch ein zweites zum Teilen); nur wenn wirklich jemand Neues dazukäme |
 | `403` | `rights: true` | neue Personen, aber ich darf im Chat niemanden hinzufügen (Text wie in der Gruppeninfo) |
@@ -2207,6 +2207,87 @@ Neue ihn lesen können. Der Knopf/Hinweis-Ablauf im Web: `static/calls.js` (`add
 **Über Servergrenzen** (Gruppe mit Heim auf einem anderen Server): Mitglied wird man über das Heim (wie
 `POST /members`), geklingelt wird über den führenden Server (APP-API-FED §7.2, „Personen hinzufügen“). Server, die bisher
 weder im Chat noch im Anruf waren, bekommen die Kopie des Anrufs mit der Teilnehmerliste.
+
+### 1:1 → Konferenz (2.5, L9)
+
+Feature **`call_move`** in `GET /api/calls/config` → `features`. Im laufenden **1:1 über Knoten** (Grundsatz Y: Raum-
+Anruf `kind: "group"`, `dm: true`) heißt „Person hinzufügen“: es entsteht ein **neuer freier Gruppen-Chat** (`kind:
+"free"`) mit beiden Personen und den Hinzugefügten, und der Anruf **zieht nahtlos um** – derselbe Anruf (gleiche `id`,
+gleicher Raum am Knoten, gleiche Beine und Frame-Schlüssel, Beginn `answered` und Gastgeber bleiben), er hängt nur am
+neuen Chat und ist danach ein normaler Gruppenanruf (`dm` fehlt). Niemand verbindet sich neu; gemessen keine hörbare Lücke
+(`tests/browser_anruf_umzug.js`). Das alte 1:1 bekommt den Eintrag „In Gruppenanruf verschoben“. Kein Ad-hoc-Anruf ohne
+Chat (Entscheidung E1). Keine Migration, kein `MIN_APP`: ältere Clients bleiben verbunden (siehe unten).
+
+**Anruf-Objekt (1:1, zusätzlich):**
+
+| Feld | Typ | Bedeutung |
+|---|---|---|
+| `can_move` | bool | „Person hinzufügen“ zieht jetzt in eine neue Gruppe um (beide Personen dürfen, E5) |
+| `move_block` | Text | nur ohne `can_move`: `ringing` (noch nicht angenommen – das Objekt vom Anrufen trägt das, der Server prüft beim Hinzufügen frisch), `direct` (1:1 direkt, `kind: "dm"`), `fed` (Gegenüber auf einem anderen Server), `ended` |
+| `move_hint` | Text | fertiger Hinweis zu `move_block` in der Sprache des Kontos (z. B. „Dieser Anruf läuft direkt zwischen euren Geräten – jemanden dazuholen geht nur über einen Anruf-Knoten …“) |
+
+**Wo:** wie in Gruppen in der Teilnehmerliste der Knopf „Person hinzufügen“ (mit `call_move` und `can_move` bzw.
+`move_block: "ringing"`), dasselbe Feld wie oben; Hinweis im Feld „Es entsteht eine neue Gruppe mit euch beiden – der
+Anruf läuft ohne Unterbrechung weiter.“ Im **direkten 1:1** zeigt der Knopf nur `move_hint` (Web: Nebenknopf neben
+„Teilnehmende“, Toast).
+
+**Aufruf:** `POST /api/calls/{id}/add {uids: [...]}` wie oben (bis 10 neue Personen; `confirm_page`/`role` ohne
+Bedeutung). Antwort `200` wie oben **plus**:
+
+```json
+{"ok": true, "n": 1, "added": ["~x4bq…"], "failed": [], "invites": [...], "seats": {...}, "rv": 1794904205.12,
+ "moved": {"from_chat": 12, "chat_id": 37}, "call": {"id": "…", "chat_id": 37, "kind": "group", "can_add": true, "…": "…"}}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `moved` | `{from_chat, chat_id}` – der Anruf hängt jetzt am neuen Chat `chat_id` |
+| `call` | Anruf-Objekt nach dem Umzug (für das anfragende Konto; `can_add` – beide sind Admin des neuen Chats) |
+| `failed` | wie oben, dazu `kind: "fed"` (Person eines anderen Servers: kann nicht in ein 1:1 geholt werden – erst danach in der neuen Gruppe hinzufügen) und `kind: "old"` (Stufe 3: Person ohne Handle-Zertifikat, braucht eine neuere App) |
+
+**Atomar:** Chat anlegen, Mitglieder, Anruf umhängen, Eintrag im alten Chat und Klingeln laufen in **einer**
+Transaktion (Anruf gesperrt). Jeder Fehler vorher ändert nichts (kein Chat, Anruf bleibt 1:1). Klicken beide Personen
+gleichzeitig, zieht der Anruf einmal um; die zweite Anfrage läuft dann wie L8 im neuen Chat (beide sind dort Admin).
+
+**Neuer Chat:** `kind: "free"`, ohne Namen (Clients zeigen die Namen der Mitglieder; ein Name lässt sich wie immer
+verschlüsselt setzen). Beide Personen des 1:1 sind **Admin**, die Neuen Mitglied, alle gegenseitig Kontakte. Gleiche
+**Stufe wie das 1:1** (Stufe 3 bleibt Stufe 3, v1 bleibt v1) – das Format des Anrufs (`v`, Handles) ändert sich mitten im
+Gespräch nicht.
+
+**Ereignisse:**
+- `call.move {call_id, from_chat, chat_id, kind: "group", media, by}` an **alle Geräte beider Personen** (auch
+  Begleitgeräte und Geräte nur mit der Leiste); `by` = wer hinzugefügt hat (Stufe 3 als Handle). Danach `call.roster`
+  (mit `chat_id` des neuen Chats, ohne `dm`), `chat.changed` für den neuen und den alten Chat, `call.invites`.
+- Die Neuen: `call.invite` (Gruppenanruf, laut), Push `call.group` (ohne `dm`), `chat.changed` – wie bei L8; sie treten
+  mit `POST /join` bei. **Schlüssel:** Beim Beitritt ratschen alle Geräte ihren Frame-Schlüssel (HORN-E2E §4, `fkey` nur
+  an den Neuen, `K' = R(K)`) – Neue können nichts Vorheriges entschlüsseln. Der Umzug selbst wechselt keinen Schlüssel.
+- Client: bei `call.move` (bzw. der Antwort mit `moved`) dasselbe Anruffenster als Gruppenanruf weiterführen (Titel =
+  Name der neuen Gruppe, Teilnehmerzahl, „Nicht dabei“), Medien **nicht** neu aufbauen; ist das alte 1:1 offen, den
+  neuen Chat öffnen; kurzer Hinweis „Neue Gruppe – der Anruf läuft dort ohne Unterbrechung weiter.“ Web:
+  `static/calls.js` `moveIn`, `static/chat.js` `callApi.moved`.
+
+**Chat-Einträge:** Im alten 1:1 ein Anruf-Eintrag wie beim Auflegen (`status: "ended"`, `dur` bis zum Umzug, kein
+`group`) **plus** `moved: <chat_id>` – Clients mit L9 zeigen „In Gruppenanruf verschoben · 0:42“ und „Zur Gruppe“,
+ältere „Anruf · 0:42“. Im neuen Chat erscheint beim Ende der normale Gruppen-Eintrag (`group`, `n`, `dur` ab dem Beginn
+des 1:1 – die Dauer läuft weiter). Besetzt: die beiden gelten weiter als besetzt (Gruppenanruf mit eigenem Gerät); Neue,
+die gerade telefonieren, klingeln wie bei jedem Gruppenanruf (Leiste).
+
+**Fehler** (`error` = fertiger Text; nichts geändert): `409 {dm: true, move_block}` für `ringing`/`direct`/`fed`
+(`ended` zusätzlich `ended: true`); `409 already` (nur Personen, die schon im Anruf sind); `404`/`409 fed`/`409` mit
+`failed`, wenn keine einzige Person hinzukommen kann (unbekannt/gesperrt `404`, nur andere Server `fed`, nur ohne
+Handle-Zertifikat `409`); `409 full` mit `seats`; `429` (Rate gemeinsam mit `/invite` und `/add`, dazu höchstens 60 neue
+Chats je Stunde); `404` für Personen außerhalb des 1:1.
+
+**Nicht umgezogen wird** (Hinweis statt Übergang mit Lücke):
+- **direktes 1:1** (`kind: "dm"`) – ein Umzug ginge nur mit Neuaufbau der Medien. Unter Grundsatz Y läuft ein 1:1 nur
+  direkt, wenn ein Gerät keinen Knoten kann bzw. erreicht oder keiner bereit ist; dann gäbe es auch keinen Weg auf einen
+  Knoten. Ein **Mesh-Raum** (1:1 über Knoten nach dem Rückfall `call.topo` → `topo: "mesh"`, weiter `kind: "group"`)
+  zieht dagegen wie oben um (bis zur Mesh-Grenze).
+- **föderiertes 1:1** (Gegenüber auf einem anderen Server) – `move_block: "fed"`; siehe `docs/APP-API-FED.md` §7.2.
+
+**Ältere Clients** (ohne `call_move`): bleiben verbunden – sie kennen `call.move` nicht, übernehmen aber `call.roster`
+(gleiche `call_id`) mit den neuen Teilnehmenden und ratschen ihren Schlüssel für Neue wie in jedem Knoten-Anruf; die
+Anzeige bleibt beim Namen des Gegenübers (1:1-Ansicht), bis der Anruf endet. Selbst hinzufügen können sie im 1:1 nicht.
 
 ## Anrufe über Gjallarhorn-Knoten (2.5, Pakete P3 und P5)
 

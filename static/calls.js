@@ -822,8 +822,8 @@
   // Name des Chats zum Anruf - auch wenn gerade ein anderer Chat offen ist (Nr. 106: Kopf zeigte sonst "Gruppenanruf")
   function titleOf(cid) {
     var b = bridge(), c = b && b.cur();
-    if (c && c.id === cid) return c.title || c.name || '';
-    return (b && b.chatName && b.chatName(cid)) || '';
+    if (c && c.id === cid && (c.title || c.name)) return c.title || c.name;
+    return (b && b.chatName && b.chatName(cid)) || '';   // auch freie Gruppe ohne Namen: Namen der Mitglieder wie in der Liste
   }
   function blockText(b, n) {
     return b === 'old' ? T('Dafür braucht jemand im Anruf Saga 2.4.') : b === 'full' ? T('Der Anruf ist voll (höchstens {n} Geräte).', { n: n || '?' })

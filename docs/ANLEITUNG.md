@@ -1359,6 +1359,11 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   sehen sich dann gegenseitig keine IP-Adressen, und es gibt weniger NAT-Probleme; Ende-zu-Ende verschlüsselt bleibt es.
   Direkt verbindet Saga nur als Rückfall: wenn kein Knoten bereit ist, ein Gerät des Gegenübers es nicht kann (z. B.
   Linux-App, ältere App, Safari beim Tunnel-Knoten) oder der Knoten im Anruf 30 s nicht erreichbar ist.
+- **Aus einem 1:1 wird eine Konferenz (ab 2.5):** Im 1:1 über einen Knoten in der Teilnehmerliste „Person hinzufügen“
+  wählen – es entsteht eine **neue Gruppe** mit euch beiden und den Hinzugefügten, der Anruf läuft dort **ohne
+  Unterbrechung** weiter (beide sind Admin der Gruppe), die Neuen klingeln. Im 1:1 steht danach „In Gruppenanruf
+  verschoben“ mit „Zur Gruppe“. Bei einem direkten 1:1 bzw. mit einer Person eines anderen Saga-Servers geht das (noch)
+  nicht – dann sagt ein Hinweis, warum.
 - **Nicht angenommen:** Nach der Klingeldauer (Standard 45 s) gilt der Anruf als **verpasst**. Im Chat steht dann ein
   Eintrag „Verpasster Anruf“ (mit „Zurückrufen“), dazu eine Benachrichtigung „Verpasster Anruf von Name“ (abschaltbar
   unter Benachrichtigungen bzw. Mitteilungen → „Anrufe“). Auch beendete, abgelehnte und besetzte Anrufe stehen im Chat.

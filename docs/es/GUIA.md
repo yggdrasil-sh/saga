@@ -1183,6 +1183,11 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
   otro y hay menos problemas de NAT; sigue cifrado de extremo a extremo. Saga solo conecta directamente como reserva: si
   no hay ningún nodo listo, uno de los dispositivos de la otra persona no puede (p. ej. la app de Linux, una app antigua,
   Safari con el nodo de túnel) o el nodo no es accesible durante 30 s en la llamada.
+- **Una llamada individual se convierte en conferencia (desde 2.5):** en una llamada individual a través de un nodo, elige
+  «Añadir persona» en la lista de participantes: se crea un **grupo nuevo** con vosotros dos y las personas añadidas, y la
+  llamada continúa allí **sin interrupción** (ambos sois administradores del grupo); a las personas nuevas les suena. En el
+  chat individual aparece «Movida a una llamada de grupo» con «Ir al grupo». Con una llamada individual directa o con una
+  persona de otro servidor Saga todavía no es posible; un aviso explica por qué.
 - **Sin respuesta:** tras la duración del tono (por defecto 45 s) la llamada cuenta como **perdida**. En el chat
   aparece «Llamada perdida» (con «Devolver llamada») y una notificación «Llamada perdida de Nombre» (desactivable en
   notificaciones o push → «Llamadas»). Las llamadas finalizadas, rechazadas y ocupadas también aparecen en el chat.

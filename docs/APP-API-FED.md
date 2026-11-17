@@ -376,6 +376,13 @@ Tests: `tests/foederation_anrufe_raum.py` (drei Server, B und C nur mit A verbun
 - Test: `tests/foederation_anrufe_hinzufuegen.py` (drei Server; Person auf B mit Kopie, Person auf C ohne Kopie, Admin auf
   einer Kopie holt eine Person seines Servers).
 
+**1:1 → Konferenz (2.5, L9, Feature `call_move`):** bisher nur zwischen Personen **eines** Servers. Ein föderiertes 1:1
+(direkt oder über Knoten, `peer_id`/`lead` gesetzt) zieht nicht um: das Anruf-Objekt meldet `can_move: false`,
+`move_block: "fed"` mit Hinweis, `/add` antwortet `409` (nichts geändert). Personen anderer Server lassen sich auch
+nicht in ein lokales 1:1 holen (`failed` mit `kind: "fed"`) – der neue Chat bliebe sonst nicht in der Stufe des 1:1
+(saga-call/v2 mitten im Gespräch); sie kommen danach über L8 in die neue Gruppe. Kein Auftrag, keine neue Fähigkeit.
+Für einen späteren föderierten Umzug wäre eine Fähigkeit nötig (alle beteiligten Server), die der führende Server prüft.
+
 ### 7.3 Frame-Schlüssel über Servergrenzen (2.5, Gjallarhorn P4, Cap `horn`)
 
 `horn` in `CAPS2` (Admin-Schalter „Anrufe“, nur solange `calls.horn` an ist). Die Frame-Schlüssel der Geräte (`fkey`,
