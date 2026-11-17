@@ -451,6 +451,15 @@ def part_dm(adm, anna, bert):
     ok("dm: aktiv auf A und B", wait(lambda: (rows("a", cid) or [[0] * 6])[0][4] == "active" and (rows("b", cid) or [[0] * 6])[0][4] == "active", 10))
     ok("dm: Einladung von Bert auf B 'joined' (kein 'verpasst')", (sql("b", "SELECT state FROM chat_call_invite WHERE call_id=? AND who='fb-bert'", (cid,))
                                                                     or [[None]])[0][0] == "joined")
+    # 2.5 (L9): ein foederiertes 1:1 zieht nicht in eine Gruppe um - Hinweis, nichts geaendert (beide Seiten)
+    s1, m1 = api("a", "fa-anna", "POST", f"/api/calls/{cid}/add", {"uids": [bert.handle]})
+    s2, m2 = api("b", "fb-bert", "POST", f"/api/calls/{cid}/add", {"uids": [anna.handle]})
+    s3, g3 = api("a", "fa-anna", "GET", f"/api/calls/{cid}")
+    ok(f"dm (L9): /add im foederierten 1:1 -> 409 move_block fed mit Hinweis auf A und B, Anruf unveraendert ({s1}, {s2}, "
+       f"{m1.get('move_block')}, {m2.get('move_block')})",
+       s1 == 409 and s2 == 409 and m1.get("move_block") == "fed" and m2.get("move_block") == "fed" and m1.get("error")
+       and ((g3 or {}).get("call") or {}).get("move_block") == "fed" and ((g3 or {}).get("call") or {}).get("can_move") is False
+       and (rows("a", cid) or [[0] * 6])[0][2].startswith("@") and (rows("b", cid) or [[0] * 6])[0][2] == "fb-bert")
     ok("dm: Auflegen beendet auf beiden Seiten", end_call(cid, bert))
     logs = sql("a", "SELECT body_ct FROM chat_msg WHERE chat_id=? AND kind='call'", (ach["id"],))
     ok("dm: Eintrag im Chat wie 1:1 (ohne group)", bool(logs) and all('"group"' not in (r[0] or "") for r in logs))
