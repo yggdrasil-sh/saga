@@ -496,7 +496,9 @@ func (s *Source) gate(p *Packet, n int) bool {
 }
 
 // RawWriter schreibt ein fertiges RTP-Paket unveraendert (Kaskade: Bruecke zu einem anderen Knoten, die Kopf-
-// erweiterungen wie audio-level bleiben erhalten). Nur die Folgenummer setzt der Ausgang lueckenlos.
+// erweiterungen wie audio-level bleiben erhalten). Nur die Folgenummer setzt der Ausgang lueckenlos. Ein Writer
+// bekommt dagegen einen neuen Kopf: playout-delay (SetPlayoutDelay) und audio-level (SetAudioLevel) mit den ids des
+// Empfaengers, alle anderen Erweiterungen der Quelle fallen weg.
 type RawWriter interface {
 	WriteRaw(b []byte) error
 }
@@ -542,6 +544,8 @@ type Out struct {
 	pdFrame    bool    // P9: aktueller Rahmen ist ein Schluesselbild (playout-delay setzen)
 	pdID       uint8   // Kopferweiterung playout-delay (0 = aus; nur TCP-/TLS-Beine)
 	pd         [3]byte // min/max in 10 ms (12 + 12 Bit)
+	lvID       uint8   // Kopferweiterung ssrc-audio-level des Empfaenger-Beins (0 = aus; nur Ton)
+	lv         [1]byte // Pegel des aktuellen Pakets (V-Bit + -dBov), Nutzlast der Erweiterung
 	tidCur     uint8
 	seqDelta   uint16
 	tsDelta    uint32
@@ -640,6 +644,17 @@ func (o *Out) SetPlayoutDelay(id uint8, minMs, maxMs int) {
 	}
 	o.pd = [3]byte{byte(a >> 4), byte(a<<4) | byte(b>>8), byte(b)}
 	o.pdID = id
+}
+
+// SetAudioLevel: Kopferweiterung ssrc-audio-level (RFC 6464) mit der ausgehandelten id des Empfaenger-Beins auf jedes
+// Tonpaket dieses Ausgangs setzen, Wert aus dem Paket der Quelle (Source.LevelExt; ohne Pegel dort keine Erweiterung).
+// Browser und Apps lesen ihn per getSynchronizationSources (Sprechring). id 0 schaltet ab, ebenso ids ueber 14 (nur im
+// Zwei-Byte-Kopf moeglich; Browser und libwebrtc vergeben fuer audio-level eine kleine). Vor Bind aufrufen.
+func (o *Out) SetAudioLevel(id uint8) {
+	if id > 14 {
+		id = 0
+	}
+	o.lvID = id
 }
 
 // Unbind loest das Schreibziel.
@@ -1311,6 +1326,14 @@ func (l *Leg) process(p *Packet, o *Out) {
 		// playout-delay nur auf Schluesselbildern (der Empfaenger behaelt den Wert bis zum naechsten); ohne Allokation:
 		// Extensions wird je Paket wiederverwendet, die Nutzlast liegt im Ausgang
 		_ = h.SetExtension(o.pdID, o.pd[:])
+	}
+	if o.lvID != 0 && src.LevelExt != 0 && o.Kind == Audio {
+		// Pegel der Quelle mit der id des Empfaengers (die anderen Erweiterungen der Quelle bleiben weg); ohne
+		// Allokation wie oben
+		if e := rtpx.Extension(p.buf[:p.n], &p.h, src.LevelExt); len(e) > 0 {
+			o.lv[0] = e[0]
+			_ = h.SetExtension(o.lvID, o.lv[:])
+		}
 	}
 	h.Marker = p.h.Marker
 	h.PayloadType = b.pt

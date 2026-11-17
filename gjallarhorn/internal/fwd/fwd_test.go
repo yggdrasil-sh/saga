@@ -644,3 +644,85 @@ func TestDoppelDerQuelleFolgen(t *testing.T) {
 		t.Fatalf("erwartet: Bild C auf der naechsten freien Nummer, 1 Doppel verworfen; Folgenummern %v, doppel %d", s2, c.Dups.Load())
 	}
 }
+
+// lvW merkt sich je Paket die Erweiterung mit der id 3 (audio-level am Empfaenger) und ob eine andere mitkam.
+type lvW struct {
+	ext   [][]byte
+	other int
+}
+
+func (w *lvW) WriteRTP(h *rtp.Header, p []byte) (int, error) {
+	w.ext = append(w.ext, append([]byte(nil), h.GetExtension(3)...))
+	for _, id := range h.GetExtensionIDs() {
+		if id != 3 {
+			w.other++
+		}
+	}
+	return len(p), nil
+}
+
+// lvpkt baut ein Opus-Paket mit ssrc-audio-level (Ein-Byte-Kopf, id 1) und davor einer fremden Erweiterung (id 2).
+func lvpkt(seq uint16, ts uint32, level byte) []byte {
+	b := make([]byte, 12, 64)
+	b[0] = 0x90 // V=2, X=1
+	b[1] = 111
+	binary.BigEndian.PutUint16(b[2:], seq)
+	binary.BigEndian.PutUint32(b[4:], ts)
+	binary.BigEndian.PutUint32(b[8:], 1)
+	b = append(b, 0xbe, 0xde, 0, 2, 0x21, 0xaa, 0xbb, 0x10, level, 0, 0, 0)
+	return append(b, 0xfc, 1, 2, 3)
+}
+
+// TestPegelWeiter (Befund klein-web P6): Der Pegel (ssrc-audio-level) der Quelle geht mit der id des Empfaenger-Beins
+// an jeden Ton-Ausgang - sonst bleibt im Browser der Sprechring der Geraete ohne Bild leer. Andere Erweiterungen der
+// Quelle gehen nicht mit; ohne Pegel an der Quelle bzw. ohne Aushandlung am Ausgang keine Erweiterung. Ohne Allokation.
+func TestPegelWeiter(t *testing.T) {
+	leg := &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}
+	o := leg.NewOut("a", "p", Audio, ClassAudio)
+	o.SetAudioLevel(3)
+	w := &lvW{}
+	o.Bind(w, 1, 111)
+	s := &Source{Owner: "p", Layer: "a", Kind: Audio, LevelExt: 1}
+	o.cur.Store(s)
+	s.subscribe(o)
+	run := func(b []byte) {
+		s.Inject(b)
+		for {
+			e, ok := leg.pop()
+			if !ok {
+				break
+			}
+			leg.process(e.p, e.o)
+			e.p.release()
+		}
+	}
+	run(lvpkt(1, 0, 0x80|30))
+	run(lvpkt(2, 960, 90))
+	run(audpkt(3, 1920)) // Quelle ohne Pegel in diesem Paket
+	if len(w.ext) != 3 || string(w.ext[0]) != "\x9e" || string(w.ext[1]) != "\x5a" || len(w.ext[2]) != 0 || w.other != 0 {
+		t.Fatalf("pegel am empfaenger %x, fremde erweiterungen %d", w.ext, w.other)
+	}
+	// Ausgang ohne ausgehandelte Erweiterung: nichts
+	o2 := leg.NewOut("a2", "p", Audio, ClassAudio)
+	w2 := &lvW{}
+	o2.Bind(w2, 2, 111)
+	o2.cur.Store(s)
+	s.subscribe(o2)
+	o.Unbind()
+	run(lvpkt(4, 2880, 40))
+	if len(w2.ext) != 1 || len(w2.ext[0]) != 0 || w2.other != 0 {
+		t.Fatalf("ohne aushandlung %x, fremde %d", w2.ext, w2.other)
+	}
+	o2.Unbind()
+	o.Bind(nopW{}, 1, 111)
+	pk := lvpkt(5, 3840, 50)
+	seq := uint16(5)
+	n := testing.AllocsPerRun(1000, func() {
+		binary.BigEndian.PutUint16(pk[2:], seq)
+		seq++
+		run(pk)
+	})
+	if n != 0 {
+		t.Fatalf("allokationen je paket: %v", n)
+	}
+}

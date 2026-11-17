@@ -15,6 +15,7 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/rtcp"
+	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
@@ -120,6 +121,14 @@ func (t *trackOut) Bind(ctx webrtc.TrackLocalContext) (webrtc.RTPCodecParameters
 				for _, h := range ctx.HeaderExtensions() {
 					if h.URI == playoutDelayURI {
 						t.o.SetPlayoutDelay(uint8(h.ID), playoutMin, playoutMax)
+					}
+				}
+			}
+			if t.kind == webrtc.RTPCodecTypeAudio {
+				// Pegel an den Empfaenger (Sprechring auch fuer Geraete ohne Bild), id aus der Aushandlung dieses Beins
+				for _, h := range ctx.HeaderExtensions() {
+					if h.URI == sdp.AudioLevelURI {
+						t.o.SetAudioLevel(uint8(h.ID))
 					}
 				}
 			}
