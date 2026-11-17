@@ -1647,7 +1647,12 @@ async def api_member_add(cid: int, request: Request):
     uid, err = _me(request)
     if err:
         return err
-    b = await _body(request) or {}
+    return await member_add(uid, cid, await _body(request) or {})
+
+
+async def member_add(uid, cid, b):
+    """POST /api/chats/{cid}/members ohne Anfrage-Huelle (2.5 L8: auch "Person zum Anruf hinzufuegen", POST
+    /api/calls/{id}/add) -> Antwort wie der Endpunkt (200 {chat} bzw. Fehler)."""
     with _db() as c:
         pch = _load(c, cid)
     if pch and pch["kind"] == "page" and pch.get("home_peer") is None:
@@ -1689,6 +1694,24 @@ async def api_member_add(cid: int, request: Request):
         _changed(c, ch["id"], set(mem) | {who})
         mem = members(c, ch["id"])
         return _no_store({"chat": _chat_dict(c, uid, ch, mem, m, None, full=True)})
+
+
+def add_right(c, uid, ch, m):
+    """2.5 (L8): Darf uid in diesem Chat Personen hinzufuegen (dieselbe Regel wie POST .../members)? -> (ja, text).
+    Freie Gruppe: Admin (Gruppe ueber Servergrenzen: die vom Heim gespiegelte Rolle, das Heim prueft noch einmal);
+    Seiten-Chat: wem die Seite gehoert (Hinzufuegen teilt die Seite); Gruppen- und Direkt-Chats: nie."""
+    k = (ch or {}).get("kind")
+    if k == "page":
+        if page_manager(c, uid, ch):
+            return True, None
+        return False, t("Personen hinzufügen kann nur, wem die Seite gehört (Hinzufügen teilt die Seite).")
+    if k == "free":
+        if (m or {}).get("role") == "admin":
+            return True, None
+        return False, t("Personen hinzufügen können in dieser Gruppe nur Admins.")
+    if k == "group":
+        return False, not_free_msg()
+    return False, t("Im Direkt-Chat kann man niemanden hinzufügen.")
 
 
 # --- Seiten-Chats (2.5, pagechatmembers1): Hinzufuegen/Entfernen = Seite teilen/Freigabe entziehen ------------------

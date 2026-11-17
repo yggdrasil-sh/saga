@@ -34,6 +34,7 @@ from saga import chat_x3                         # 2.5: Reaktionen, Bearbeiten, 
 from saga import chat_grp                        # 2.5: Gruppenbild/-rechte, Admin-Loeschen, Anheften, Blockieren, Melden (Chat-Standard B)
 from saga import chat_unfurl                     # 2.5 (Chat-Alltag): Linkvorschau fuer den Absender (netguard)
 from saga import calldiag                      # 2.5: Anruf-Diagnose POST /api/calls/diag (nur Server-Log)
+from saga import call_add                      # 2.5 (L8): Personen zum laufenden Gruppenanruf holen
 from saga import pmdiag                        # 2.5 (T6): Editor-Diagnose POST /api/diag (Round-Trip-Abweichungen, nur Server-Log)
 from saga import clientlog                     # 2.5: Fehlerberichte/Diagnose POST /api/client/log|diag (Server-Log + diag_event)
 from saga import diagstore                     # 2.5: Diagnose-Meldungen in der DB (Admin -> Diagnose), Puffer + Aufraeumen
@@ -336,6 +337,7 @@ app.include_router(clientlog.router)        # 2.5: Fehlerberichte und "Diagnose 
 app.include_router(calldiag.router)         # vor calls.router: /api/calls/diag ist kein Anruf {cid}
 app.include_router(pmdiag.router)           # Editor-Diagnose (T6): POST /api/diag
 app.include_router(calls.router)            # Anrufe (WebRTC, Signalisierung ueber den Live-Kanal): /api/calls...
+app.include_router(call_add.router)         # 2.5 (L8): POST /api/calls/{id}/add - Personen zum Gruppenanruf holen
 app.include_router(horn.router)             # Gjallarhorn (2.5): Steuerkanal /api/horn/ctl, /internal/horn/conf (saga-media)
 app.include_router(horn_ops.router)         # Gjallarhorn (2.5 P6): Kopplung /api/horn/whoami, /api/horn/pair
 app.include_router(fed_dir.router)          # Adressbuch (2.3): /fed/v2/directory, /api/fed/people, /api/account/federation

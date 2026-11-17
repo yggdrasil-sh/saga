@@ -157,12 +157,13 @@ def _dmf(call):
 
 
 FEATURE_HO = "handover2"                # 2.5 Anruf-Uebergabe: gen, /leave by/gen (stale), handover_busy, promote, Wiedereintritt
+FEATURE_ADD = "call_add"                # 2.5 (L8): POST /api/calls/{id}/add, Anruf-Objekt can_add/add_page (saga/call_add.py)
 
 
 def features():
     # horn_direct1 (Horn-Fix): 429 mit Retry-After auf /horn, POST /direct (Rueckfall auf direkt), call.topo
     # frames (2.5 B2, Vertrag S12): Browser duerfen den Rahmen-Weg ueber die Saga-Adresse nutzen (caps "frames")
-    return list(FEATURES) + [FEATURE_HO] + (["horn", "horn_direct1", "frames"] if horn_on() else [])
+    return list(FEATURES) + [FEATURE_HO, FEATURE_ADD] + (["horn", "horn_direct1", "frames"] if horn_on() else [])
 
 
 def ring_s():
@@ -611,6 +612,7 @@ def _dict(c, call, uid, nm=None, legs=None):
         d["old"] = [dict(_who_label(c, u, nmo), who=_pp(c, call, u, uid)) for u in d["old"]]
         if not dmh:                                      # 2.5 (L7): "Nicht dabei" - Mitglieder ohne Geraet im Anruf
             d["invites"], d["invites_more"] = invites(c, call, uid, legs, now)
+            add_fields(c, call, uid, d)
     if dmh:                                              # 2.5: 1:1 ueber Knoten - peer = Gegenueber, from = anrufende Person
         d["dm"] = True
         if not me_caller:
@@ -620,6 +622,17 @@ def _dict(c, call, uid, nm=None, legs=None):
             d["from"] = {"username": _pp(c, call, call["caller"], uid), "name": nmc.get(call["caller"]) or call["caller"],
                          "avatar": nmc.avatar(call["caller"])}
     return d
+
+
+def add_fields(c, call, uid, d):
+    """2.5 (L8): darf ich Personen ausserhalb des Chats dazuholen (POST /add mit neuen Mitgliedern)? can_add wie die
+    Gruppeninfo (chat.add_right); im Seiten-Chat add_page = Titel der Seite (Hinzufuegen teilt sie, der Client fragt)."""
+    ch = chat._load(c, call["chat_id"])
+    can = bool(ch) and chat.add_right(c, uid, ch, chat._member(c, ch["id"], uid))[0]
+    d["can_add"] = can
+    if can and ch["kind"] == "page":
+        r = c.execute("SELECT title FROM note WHERE id=?", (ch["note_id"],)).fetchone()
+        d["add_page"] = (r[0] if r else "") or t("Unbenannt")
 
 
 INVITES_MAX = 50                       # 2.5 (L7): so viele Eintraege "Nicht dabei" je Anruf-Objekt/Ereignis, Rest als Zahl

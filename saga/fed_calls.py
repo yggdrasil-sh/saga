@@ -601,9 +601,10 @@ def forward(call, who, dev, fwd, leg):
     return good
 
 
-def roster_out(c, call, legs, ring=None):
+def roster_out(c, call, legs, ring=None, retry=0):
     """Fuehrender Server: Teilnehmerliste an die anderen Server (nach dem Commit, verwerfbar). ring: Prinzipale, deren
-    Server sie klingeln lassen soll (Gruppenstart, invite) - die Antwort meldet, wer Saga 2.4 braucht."""
+    Server sie klingeln lassen soll (Gruppenstart, invite) - die Antwort meldet, wer Saga 2.4 braucht. retry (2.5 L8):
+    so oft erneut, wenn der andere Server den Chat noch nicht kennt (404 - Person gerade erst hinzugefuegt)."""
     peers = _peers_of(c, call)
     if not peers:
         return
@@ -629,22 +630,28 @@ def roster_out(c, call, legs, ring=None):
         mine = [FC.handle_of(u) for u in (ring or []) if FC.split_handle(FC.handle_of(u) or "")[1] == p["host"]]
         body = dict(base, ring=mine, invites={FC.handle_of(u): st for u, st in inv.items()
                                               if sharing.is_remote(u) and FC.split_handle(FC.handle_of(u) or "")[1] == p["host"]})
-        c.after_commit(lambda p=p, body=body: F.peer_submit(p["id"], _roster_send, p["id"], body))
+        if retry and not mine:
+            continue                                   # 2.5 L8: nur die Server der neuen Personen (die anderen haben die Liste)
+        c.after_commit(lambda p=p, body=body: F.peer_submit(p["id"], _roster_send, p["id"], body, retry))
 
 
 _RUNG = set()
 _RV = {}                                # Anruf -> Stand der zuletzt uebernommenen Teilnehmerliste (op_roster)
 
 
-def _roster_send(pid, body):
+def _roster_send(pid, body, retry=0):
     with _db() as c:
         p = F.peer_by(c, "id", pid)
     if not peer3(p):
         return
-    try:
-        st, d = F.call_json(p, "POST", "/fed/v2/call", body=body, timeout=max(1.0, F.EXPRESS_TIMEOUT / 3))
-    except F.FedError:
-        return
+    for i in range(retry + 1):
+        try:
+            st, d = F.call_json(p, "POST", "/fed/v2/call", body=body, timeout=max(1.0, F.EXPRESS_TIMEOUT / 3))
+        except F.FedError:
+            return
+        if st != 404 or i == retry:
+            break
+        time.sleep(0.5 * (i + 1))                      # 2.5 L8: Chat dort noch unbekannt (Mitgliederliste unterwegs)
     old = [h for h in (d or {}).get("old") or [] if isinstance(h, str)][:chat.MEMBERS_MAX] if st == 200 and isinstance(d, dict) else []
     if old:                                            # Personen dort ohne Geraet mit "multi": "braucht Saga 2.4"
         with _db() as c, c:
@@ -1386,6 +1393,29 @@ def horn_prefetch(chat_id):
 
 def horn_block(uid, call, dev, role, dev_class="desktop", avoid=(), node=None):
     return FH.block(uid, call, dev, role, dev_class, avoid, node)
+
+
+# --- 2.5 (L8): Personen zum laufenden Gruppenanruf hinzufuegen (saga/call_add.py) ------------------------------------
+ADD_RETRY = 4
+
+
+def add_ring(c, call, whos):
+    """Fuehrender Server: gerade ins Chat aufgenommene Personen anderer Server klingeln lassen. Ihr Server kennt den
+    Anruf womoeglich noch nicht (war bisher nicht dabei) - die Teilnehmerliste mit ring legt dort die Kopie an und klingelt
+    (op_roster); kennt er den Chat noch nicht, versucht der Versand es kurz darauf erneut."""
+    roster_out(c, call, calls._legs(c, call["id"]), ring=list(whos), retry=ADD_RETRY)
+
+
+def add_invite(uid, call, remote, local):
+    """Wie invite: fuehren wir den Anruf, an die Server der Personen; sonst an den fuehrenden Server - dann auch eigene
+    Konten (local), die das Heim gerade aufgenommen hat, deren Mitgliedschaft hier aber noch nicht angekommen ist (der
+    fuehrende Server klingelt sie ueber diesen Server zurueck, op_invite)."""
+    if call.get("lead") is None or not local:
+        return invite(uid, call, remote)
+    with _db() as c:
+        hs = [FC.handle_of(u) for u in remote if FC.handle_of(u)] + [FC.my_handle(c, u) for u in local]
+        mh = FC.my_handle(c, uid)
+    FC._volatile(call["lead"], {"op": "invite", "id": call["id"], "actor": mh, "who": hs}, path="/fed/v2/call", drop=False)
 
 
 calls.FED = __import__("sys").modules[__name__]
