@@ -85,8 +85,8 @@ def seats(c, call, legs=None):
 
 
 def full_msg(s):
-    return t("Der Anruf ist voll – alle {n} Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen). "
-             "Erst wenn jemand auflegt, kann noch jemand dazukommen.", n=s["limit"])
+    return t("Der Anruf ist voll – alle {n} Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen). Erst wenn jemand auflegt, kann noch jemand dazukommen.",
+             n=s["limit"])
 
 
 @router.post("/api/calls/{cid}/add")
@@ -110,8 +110,8 @@ async def api_add(cid: str, request: Request):
         if err:
             return err
         if call["kind"] != "group" or calls._dmh(call):
-            return chat._no_store({"error": t("In einem 1:1-Anruf kann man noch niemanden dazuholen – beginnt dafür einen Gruppenanruf "
-                                              "in einer Gruppe."), "dm": True}, 409)
+            msg = t("In einem 1:1-Anruf kann man noch niemanden dazuholen – beginnt dafür einen Gruppenanruf in einer Gruppe.")
+            return chat._no_store({"error": msg, "dm": True}, 409)
         if call["state"] == "ended":
             return chat._no_store({"error": t("Der Anruf ist schon beendet."), "ended": True}, 409)
         ch, m, mem, err = chat._chat_for(c, uid, call["chat_id"], do_sync=False)
