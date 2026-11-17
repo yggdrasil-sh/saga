@@ -5352,7 +5352,7 @@
   // 2.4 E4/E5: Raum - Verbindungen je Geraet, Liste, Ansicht, Begleitgeraet, Sprecher (Tests, Diagnose)
   room: function () {
     var R = C; if (!R) return null;
-    return { id: R.id, kind: R.kind, companion: !!R.companion, ho: !!R.ho, inRoom: !!R.inRoom, mic: R.mic, spkOut: R.spkOut, mesh: meshView(R),
+    return { id: R.id, kind: R.kind, dm: !!R.dm, chat_id: R.chat_id || null, title: R.title || '', companion: !!R.companion, ho: !!R.ho, inRoom: !!R.inRoom, mic: R.mic, spkOut: R.spkOut, mesh: meshView(R),
              cam: !!(R.cam && R.cam.readyState === 'live'),
              // 2.5: Kacheln anderer (ohne die eigene) - in der Meeting-Ansicht die Kacheln je Person/Bildschirm
              tiles: R.ui ? (R.meshOn && R.mt ? Object.keys(R.mt.els).filter(function (k) { return !R.mt.els[k].t.me; }).length : R.ui.grid.children.length) : 0,
