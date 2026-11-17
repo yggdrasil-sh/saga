@@ -1357,8 +1357,9 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   ab 2.5 **alle** Anrufe über einen Knoten – auch die zu zweit (Einstellung „Alle Anrufe über Knoten (auch 1:1)“, ab
   Werk an; eine vor 2.5 gespeicherte „aus“-Einstellung gilt einmal als an, danach bleibt eine bewusste Wahl). Die Geräte
   sehen sich dann gegenseitig keine IP-Adressen, und es gibt weniger NAT-Probleme; Ende-zu-Ende verschlüsselt bleibt es.
-  Direkt verbindet Saga nur als Rückfall: wenn kein Knoten bereit ist, ein Gerät des Gegenübers es nicht kann (z. B.
-  Linux-App, ältere App, Safari beim Tunnel-Knoten) oder der Knoten im Anruf 30 s nicht erreichbar ist.
+  Direkt verbindet Saga nur als Rückfall: wenn kein Knoten bereit ist, ein in den letzten 30 Tagen genutztes Gerät des
+  Gegenübers es nicht kann (z. B. ältere App, Safari beim Tunnel-Knoten) oder der Knoten im Anruf 30 s nicht erreichbar
+  ist. Die Linux-App kann es (sie klingelt, das Gespräch läuft im Browser); länger nicht genutzte Geräte zählen nicht.
 - **Aus einem 1:1 wird eine Konferenz (ab 2.5):** Im 1:1 über einen Knoten in der Teilnehmerliste „Person hinzufügen“
   wählen – es entsteht eine **neue Gruppe** mit euch beiden und den Hinzugefügten, der Anruf läuft dort **ohne
   Unterbrechung** weiter (beide sind Admin der Gruppe), die Neuen klingeln. Im 1:1 steht danach „In Gruppenanruf
