@@ -877,7 +877,13 @@ func TestFramesGrenzenErsetzen(t *testing.T) {
 	if _, code := dialFrames(t, url, framesJoin{Token: frToken(t, hs.URL, room, "y", "audio", 0), Audio: 3}, true); code != "limit" {
 		t.Fatalf("zweites Bein derselben Adresse: %q", code)
 	}
-	// WebSockets je Adresse: 4 x 1, gemeinsam mit dem Tunnel (a2 ist offen)
+	// WebSockets je Adresse: 4 x 1, gemeinsam mit dem Tunnel (a2 ist offen). Der Knoten zaehlt einen WebSocket, bis
+	// sein Handler zurueck ist; das kommt nach dem Schliessen, das der Client schon sieht (ersetztes a1: erst Close,
+	// dann Ende des Lesens, closeLeg, release; abgewiesenes y: err, Close, release). Unter Last zaehlten beide hier
+	// noch mit -> 429 beim dritten WebSocket ("bad handshake", klein-knoten). Erst warten, bis nur a2 zaehlt.
+	if !waitFor(3*time.Second, func() bool { return wsPerIP(s) == 1 }) {
+		t.Fatalf("WebSockets je Adresse nach Ersetzen/Abweisen: %d (erwartet 1)", wsPerIP(s))
+	}
 	var open []*websocket.Conn
 	defer func() {
 		for _, w := range open {
@@ -902,6 +908,17 @@ func TestFramesGrenzenErsetzen(t *testing.T) {
 	}
 	_ = strconv.Itoa
 	_ = strings.TrimSpace
+}
+
+// wsPerIP: gezaehlte WebSockets am Medien-Endpunkt (alle Adressen; Tests laufen nur ueber 127.0.0.1).
+func wsPerIP(s *server) int {
+	s.tun.mu.Lock()
+	defer s.tun.mu.Unlock()
+	n := 0
+	for _, v := range s.tun.perIP {
+		n += v
+	}
+	return n
 }
 
 // Pruefer B2: ein Rahmen ohne Marker (fehlerhafter oder boeswilliger Absender im Raum) waechst am Rahmen-Bein nicht ohne
