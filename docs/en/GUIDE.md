@@ -1126,6 +1126,12 @@ up the call over the regular web port (live channel + normal requests).
   (your extra devices count; the admin can only lower these limits under General → "Calls"). Everyone appears as a tile, the current speaker gets a green frame; screen sharing works as
   in direct chats. End-to-end encrypted as before (each connection separately, the server sees nothing). People with an
   older app see "needs Saga 2.4"; across servers it only works when all involved Saga servers run 2.4.
+- **Through a node (from 2.5, Gjallarhorn experimental):** If Gjallarhorn is on (Admin → Calls, off by default), from 2.5
+  **all** calls go through a node – including calls between two people (setting "All calls via nodes (including
+  1:1)", on by default; an "off" saved before 2.5 counts as on once, after that a deliberate choice stays). The devices
+  then don't see each other's IP addresses and there are fewer NAT problems; it stays end-to-end encrypted. Saga only
+  connects directly as a fallback: if no node is ready, one of the other person's devices can't do it (e.g. the Linux
+  app, an older app, Safari with the tunnel node) or the node can't be reached for 30 s during the call.
 - **Not answered:** after the ring duration (default 45 s) the call counts as **missed**. The chat then shows "Missed
   call" (with "Call back") and there is a notification "Missed call from Name" (can be turned off under notifications or
   push → "Calls"). Ended, declined and busy calls also appear in the chat.

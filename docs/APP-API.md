@@ -2507,14 +2507,21 @@ Verbindung.
 
 ### 1:1 über Knoten (2.5, „Alle Anrufe über Knoten“)
 
-Admin-Einstellung `calls.horn_all` (Standard aus, Anrufe → Gjallarhorn). Ist sie an (und `calls.horn`), meldet
-`GET /api/calls/config` `horn_dm: true`. Die Geräte sehen sich dann gegenseitig keine IP-Adressen.
+Admin-Einstellung `calls.horn_all` (Anrufe → Gjallarhorn). **Grundsatz Y (2.5): Standard an** – alle Anrufe laufen über
+den Knoten, auch 1:1; direkt nur als Rückfall. Ein gespeichertes `horn_all: false` von vor Y gilt als nicht gesetzt (an);
+erst ein Speichern im Admin bzw. `python run.py einstellen calls.horn_all=0|1` setzt den Wert bewusst (Merker
+`horn_all_y`). Wirkt nur bei eingeschaltetem Gjallarhorn (`calls.horn`, ab Werk aus, experimentell). Dann meldet
+`GET /api/calls/config` `horn_dm: true`. Die Geräte sehen sich dann gegenseitig keine IP-Adressen. Clients brauchen
+dafür nichts Neues: sie folgen `horn_dm` wie bisher.
 
 - **Anrufen:** Gerät mit `horn` + `multi` schickt im Direkt-Chat `POST /api/calls {id, chat_id, media, device, caps,
   via: "horn", dev_class?}` **ohne** `signals`. Erfolg: 200 `{call}` wie ein Gruppenanruf über Knoten (`kind: "group"`,
   `topo: "horn"`, `dm: true`, `horn.candidates`); weiter wie in diesem Abschnitt (Knoten verbinden, `fkey`).
 - **Rückfall:** 409 `{fallback: "direct", horn_block, error}` – es ist nichts angelegt. `horn_block`: `off` (Einstellung
-  aus), `caps` (Gerät ohne horn/multi), `node` (kein Knoten bereit), `peer` (Gegenüber ohne Gerät mit `horn`), `fed`
+  aus), `caps` (Gerät ohne horn/multi), `node` (kein Knoten bereit), `peer` (Grundsatz Y: **ein** aktives Chat-Gerät des
+Gegenübers meldet kein `horn`/`multi`, z. B. Linux-App oder 2.4 – Hinweis „Gegenstelle veraltet“), `reach` (ein Gerät des
+Gegenübers erreicht den Knoten nicht, den der Anruf bekäme: Tunnel-Knoten ohne `ws` bzw. `frames`, z. B. ältere App oder
+Safari – ohne Hinweis; unbekannte Werte wie `reach` behandeln Clients wie jeden Rückfall), `fed`
   (föderierter Direkt-Chat, dessen Server kein `horn_dm` kann bzw. den Auftrag ablehnt – sonst gehen föderierte
   Direkt-Chats sonst auch über Knoten, siehe `APP-API-FED.md` 7.5). Der Client ruft sofort mit **derselben id** wie bisher direkt an
   (Angebote je Gerät). Andere 409 wie beim direkten Anruf: `busy` (der Anruf ist angelegt und als „besetzt“ beendet),
@@ -2527,9 +2534,10 @@ Admin-Einstellung `calls.horn_all` (Standard aus, Anrufe → Gjallarhorn). Ist s
 - **Zustände:** `call.state active {kind: "group", dm: true}` (andere eigene Geräte hören auf zu klingeln), Ende wie
   Gruppe (`leave`/`end`; unter zwei Personen endet der Anruf). Chat-Eintrag wie 1:1 (`from`/`to`, ohne `group`/`n`).
   Besetzt-Prüfung, Klingeldauer und „verpasst“ wie 1:1.
-- **Ältere Clients:** rufen weiter direkt an. 2.4-Geräte des Gegenübers sehen den Anruf als Gruppenanruf; Beitreten
-  scheitert mit `join_block: "old"` („braucht Saga 2.5“). Klingeln wird nur, wenn das Gegenüber mindestens ein Gerät
-  mit `horn` hat.
+- **Ältere Clients:** rufen weiter direkt an. Über den Knoten klingelt es nur, wenn **jedes** aktive Chat-Gerät des
+  Gegenübers `horn` + `multi` meldet und (lokal) den Knoten erreicht – sonst sofort Rückfall (`peer`/`reach`), damit kein
+  Gerät klingelt, das nicht annehmen kann. Meldet ein Gerät beim Beitritt trotzdem nur 2.4-Fähigkeiten: `join_block:
+  "old"` („braucht Saga 2.5“). Die Fähigkeiten stammen aus dem letzten `PUT /api/calls/caps` bzw. Anruf des Geräts.
 
 ### Wiederaufbau und Rückfall auf direkt (2.5 Horn-Fix, `horn_direct1`)
 

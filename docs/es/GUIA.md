@@ -1176,6 +1176,13 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
   aparece como mosaico y quien habla tiene un marco verde; compartir pantalla funciona como en los chats directos. Cifrado
   de extremo a extremo como siempre (cada conexión por separado, el servidor no ve nada). Quien aún tenga una app antigua
   ve «necesita Saga 2.4»; entre servidores solo funciona si todos los servidores Saga implicados tienen 2.4.
+- **A través de un nodo (desde 2.5, Gjallarhorn experimental):** si Gjallarhorn está activado (Admin → Llamadas,
+  desactivado por defecto), desde 2.5 **todas** las llamadas pasan por un nodo, también las de dos personas (ajuste
+  «Todas las llamadas a través de nodos (también 1:1)», activado por defecto; un «desactivado» guardado antes de 2.5 cuenta una
+  vez como activado, después se mantiene una elección consciente). Los dispositivos no ven entonces las direcciones IP del
+  otro y hay menos problemas de NAT; sigue cifrado de extremo a extremo. Saga solo conecta directamente como reserva: si
+  no hay ningún nodo listo, uno de los dispositivos de la otra persona no puede (p. ej. la app de Linux, una app antigua,
+  Safari con el nodo de túnel) o el nodo no es accesible durante 30 s en la llamada.
 - **Sin respuesta:** tras la duración del tono (por defecto 45 s) la llamada cuenta como **perdida**. En el chat
   aparece «Llamada perdida» (con «Devolver llamada») y una notificación «Llamada perdida de Nombre» (desactivable en
   notificaciones o push → «Llamadas»). Las llamadas finalizadas, rechazadas y ocupadas también aparecen en el chat.

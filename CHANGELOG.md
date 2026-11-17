@@ -16,6 +16,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Anrufe: Grundsatz Y – alle Anrufe über den Knoten, auch 1:1 (Gjallarhorn experimentell)
+- **Standard:** „Alle Anrufe über Knoten (auch 1:1)“ (Admin → Anrufe → Gjallarhorn, `calls.horn_all`) ist jetzt **ab
+  Werk an**. Direkt verbindet Saga nur noch als Rückfall (kein Knoten bereit, Gegenüber kann es nicht, Knoten im Anruf
+  30 s nicht erreichbar – Horn-Regeln wie bisher). Gjallarhorn selbst (`calls.horn`) bleibt ab Werk **aus**; Y greift,
+  sobald es an ist.
+- **Hinweis für bestehende Server:** Das Admin-Formular hat bisher bei jedem Speichern „aus“ mitgeschrieben. Diese
+  gespeicherte Einstellung von vor Y gilt deshalb **einmal als nicht gesetzt, also an**. Wer 1:1 weiter direkt will,
+  schaltet den Haken unter Admin → Anrufe bewusst aus und speichert – das bleibt dann aus (Merker `horn_all_y`, auch
+  per `python run.py einstellen calls.horn_all=0`). Keine Datenbank-Änderung.
+- **Sofort direkt statt Klingeln ins Leere:** Über den Knoten klingelt ein 1:1 nur, wenn **jedes** aktive Chat-Gerät
+  des Gegenübers es kann (`horn` + `multi`) und den Knoten erreicht (Tunnel-Knoten nur mit `ws` bzw. `frames`). Sonst
+  antwortet der Server sofort 409 `fallback: "direct"` mit `horn_block: "peer"` (z. B. Linux-App, 2.4; Hinweis
+  „Gegenstelle veraltet“) bzw. neu `"reach"` (z. B. ältere App ohne Tunnel, Safari ohne Rahmen-Weg; ohne Hinweis) –
+  bisher klingelte das Gerät und konnte nicht annehmen (`join_block node`/`old`). Föderiert ebenso (`dmhorn`,
+  `dmhorn_lead`). Apps brauchen nichts Neues (`horn_dm` wie bisher, unbekannte `horn_block` = Rückfall).
+- Admin-Seite zeigt den wirksamen Wert und einen neuen Hilfetext (5 Sprachen); Föderation: `horn_req` folgt dem
+  wirksamen Wert. Vertrag `docs/APP-API.md` „1:1 über Knoten“, `docs/APP-API-FED.md` 7.5/7.6, Anleitung „Anrufe“.
+  Tests `anrufe_horn_y` (neu), `anrufe_horn_dm`, `a3_tunnel`.
+
 ### Neu – Anrufe: Personen in den laufenden Gruppenanruf holen, auch von außerhalb des Chats (L8)
 - **Im Anruf „Person hinzufügen“** (Teilnehmerliste, Web; direkt und über Knoten): Auswahl aus Kontakten bzw. Suche wie in
   der Gruppeninfo. Mitglieder klingeln (wie „Erneut klingeln“), andere Personen werden **Mitglied des Chats** – mit

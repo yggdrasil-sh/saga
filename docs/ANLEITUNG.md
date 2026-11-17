@@ -1353,6 +1353,12 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   umrandet; Bildschirm teilen geht wie im Direkt-Chat. Ende-zu-Ende verschlüsselt wie bisher (jede Verbindung einzeln,
   der Server sieht nichts). Wer noch eine ältere App hat, sieht „braucht Saga 2.4“; über Servergrenzen geht es nur, wenn
   alle beteiligten Saga-Server 2.4 haben.
+- **Über einen Knoten (ab 2.5, Gjallarhorn experimentell):** Ist Gjallarhorn an (Admin → Anrufe, ab Werk aus), laufen
+  ab 2.5 **alle** Anrufe über einen Knoten – auch die zu zweit (Einstellung „Alle Anrufe über Knoten (auch 1:1)“, ab
+  Werk an; eine vor 2.5 gespeicherte „aus“-Einstellung gilt einmal als an, danach bleibt eine bewusste Wahl). Die Geräte
+  sehen sich dann gegenseitig keine IP-Adressen, und es gibt weniger NAT-Probleme; Ende-zu-Ende verschlüsselt bleibt es.
+  Direkt verbindet Saga nur als Rückfall: wenn kein Knoten bereit ist, ein Gerät des Gegenübers es nicht kann (z. B.
+  Linux-App, ältere App, Safari beim Tunnel-Knoten) oder der Knoten im Anruf 30 s nicht erreichbar ist.
 - **Nicht angenommen:** Nach der Klingeldauer (Standard 45 s) gilt der Anruf als **verpasst**. Im Chat steht dann ein
   Eintrag „Verpasster Anruf“ (mit „Zurückrufen“), dazu eine Benachrichtigung „Verpasster Anruf von Name“ (abschaltbar
   unter Benachrichtigungen bzw. Mitteilungen → „Anrufe“). Auch beendete, abgelehnte und besetzte Anrufe stehen im Chat.
