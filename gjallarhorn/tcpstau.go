@@ -63,7 +63,7 @@ type tcpHook struct {
 	next func(*bwe.Mitleser)
 	on   bool   // fuer die naechste PeerConnection: Folgenummern und Mitleser (sonst reicht der Abgriff nur durch)
 	mode string // tcpStauMode beim Start
-	ws   bool   // HORN_TCP_STAU_WS=1: auch Beine "ws" (A3)
+	ws   bool   // auch Beine "ws" (A3); Standard an, HORN_TCP_STAU_WS=0 aus
 }
 
 // tcpCCFactory baut je PeerConnection einen Abgriff mit eigenem Mitleser.

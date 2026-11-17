@@ -1020,7 +1020,9 @@ Schätzung des Bild-Beins im Chromium-Protokoll ab 20 s:
 | 500, ohne Signal (`ack_ms` 10) | 9 | 1 | 208 kbit/s | 390k | 42k + 25k |
 | 500, Signal, `ack_ms` 10 (bisheriges `_WS=1`) | 9 | 5 | 201 kbit/s | 378k | 45k + 28k |
 | 500, Signal, `ack_ms` 50 (jetzt) | 8 | 1 | 214 kbit/s | 400k | 35k + 28k |
-| 485, ohne Signal / Signal mit `ack_ms` 50 | 6+6 | 2 / 4 | 199/203 kbit/s | 382k/366k | – |
+| 485, ohne Signal (`ack_ms` 10) | 18 | 12 | 197 kbit/s | 358k | – |
+| 485, Signal, `ack_ms` 50 (jetzt) | 18 | 9 | 204 kbit/s | 372k | – |
+| 485, ohne Signal, App quittiert mit 50 ms (Stellvertreter) | 4 | 0 | 209 kbit/s | 395k | – |
 | 470, ohne Signal | 3 | 3 | – | 323k | – |
 | 500, ICE-TCP direkt ohne/mit Signal | 2+2 | 0 | 253/251 kbit/s | 439k/435k | 2k + 26k/29k |
 
@@ -1028,8 +1030,9 @@ Downlink 600 kbit/s über `ws`: ohne Signal Bild-Latenz 429/1017 ms (Median/p95,
 `ack_ms` 50 161/229 ms (n = 5, 20,6 fps 90p, 0 Einfrierer, ~5 Senkungen). `ack_ms` 100 (Stellvertreter, n = 4+3+2)
 sparte nur ~4 kbit/s mehr und änderte an den Einbrüchen nichts. Die Klippe ist bistabil: Fällt Schicht m einmal aus,
 kosten Proben und Schlüsselbilder weiteren Uplink (RTP-Kopf/RTCP 77–135k statt 28k), Chromium bleibt unten. Direkt an
-der Klippe (485 kbit/s) bricht es mit Signal noch etwas öfter ein als ohne – die Rückmeldungen wirken dort über ihre
-Bytes hinaus (sie gehen ungetaktet zwischen die Medienpakete); bei 500 kbit/s ist es gleich.
+der Klippe (485 kbit/s) streut es stark (Prüfer-Nachmessung, abwechselnd: ohne Signal 10 von 12, mit Signal
+5 von 12 Einbrüchen; Fachmessung davor 2 von 6 bzw. 4 von 6) – zusammen kein Nachteil durch das Signal. Am meisten
+hilft dort die seltenere Quittung selbst: ohne Signal, aber mit 50 ms quittiert, 0 von 4 (n klein).
 
 ## Einfrieren auf TCP (5G-Messung, G4)
 
