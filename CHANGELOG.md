@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Anrufe – Diagnose: woran eine Übernahme scheitert
+- **„Hierher übernehmen“ im direkten Anruf:** Kommt eine Verbindung nicht innerhalb der Frist zustande, meldet die
+  Anruf-Diagnose (calldiag) jetzt je Verbindung den Zustand (`ho-fail`: Antwort gesetzt, Signal-/ICE-/DTLS-Zustand,
+  Kandidaten je Typ eigene/erhaltene, Weg) – ohne Adressen. Hintergrund: Feldfall mit Gegenüber auf einem anderen Server,
+  bei dem der Signalweg vollständig lief, die Verbindung zum Gegenüber aber nie stand.
+- Neue Testreihe `tests/foederation_uebergabe_p2p.py` (Browser über zwei Server: Übernahme über die Leiste; Gegenprobe
+  ohne Verbindung zum Gegenüber).
+
 ### Neu – Titelbild-Galerie: 100 Bilder der Saga-Elfe
 - **Acht neue Gruppen** nach den Kunstwerken: Saga · Stube, Schreibstube, Garten & Küche, Natur, Winter & Nordlicht,
   Kriegerin, Magie, Gefährten (KI-generiert, 1600 px, IDs `saga-*`). Sie stehen in „Galerie …“ zur Auswahl und kommen

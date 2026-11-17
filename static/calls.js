@@ -425,6 +425,7 @@
     var pc = new RTCPeerConnection({ iceServers: cfg.ice_servers || [], iceTransportPolicy: cfg.relay_only ? 'relay' : 'all', bundlePolicy: 'max-bundle' });
     pc.onicecandidate = function (e) {
       if (!e.candidate || !e.candidate.candidate) return;
+      iceCount(c, 'iceOut', e.candidate.candidate);
       c.outIce.push(e.candidate.toJSON ? e.candidate.toJSON() : { candidate: e.candidate.candidate, sdpMid: e.candidate.sdpMid, sdpMLineIndex: e.candidate.sdpMLineIndex });
       if (!c.outT) c.outT = setTimeout(function () { flushIce(c); }, 120);
     };
@@ -551,7 +552,7 @@
     if (!b) { securityFail(c); return; }
     if (b.t === 'state' && b.ready && b.replaces === myDev().id && c.peer && c.peer.me) { handoverOut(roomOf(c), b._from); return; }
     if (b.pc && c.peerDevice && b.pc !== pcId(c)) return;            // andere PeerConnection (Mehrgeraete/Mesh ab E4)
-    if (b.t === 'ice') { (Array.isArray(b.c) ? b.c : []).slice(0, 60).forEach(function (x) { if (x && x.candidate) c.remoteIce.push(x); }); applyRemoteIce(c); }
+    if (b.t === 'ice') { (Array.isArray(b.c) ? b.c : []).slice(0, 60).forEach(function (x) { if (x && x.candidate) { c.remoteIce.push(x); iceCount(c, 'iceIn', x.candidate); } }); applyRemoteIce(c); }
     else if (b.t === 'answer' && c.role === 'caller' && !c.pc.remoteDescription) {
       if (c.peerDevice && b._from !== c.peerDevice) return;
       if (!fpOk(b)) { securityFail(c); return; }
@@ -1090,6 +1091,10 @@
   }
   function hoFail(R) {
     if (!R.ho || R.ho.done || !live(R)) return;
+    // 2.5 (Feldfall 17.11.): woran es hing - Zustand je Verbindung in die Anruf-Diagnose (calldiag), z. B. Antwort da,
+    // ICE "checking", Kandidaten je Typ hin/zurueck
+    if (!R.horn) each(R, function (L) { diagEv(R, 'ho-fail', linkDiag(L)); });
+    else diagEv(R, 'ho-fail', 'horn ' + (R.horn.cur ? 'cur' : 'kein Knoten verbunden'));
     R.ho = null; clearInterval(R.hoI);
     api('POST', '/api/calls/' + R.id + '/leave', leaveBody(R, myDev().id)).catch(function () {});
     R.ending = true;
@@ -3199,6 +3204,22 @@
     }
     if (!R.dg) R.dg = { t0: Date.now(), s: [], e: [], hs: [], he: [], prev: {}, at: {}, last: Date.now(), sent: 0, st: 0, path: 'p2p', transport: '?', node: '' };
     return R.dg;
+  }
+  // 2.5: Kandidaten einer Verbindung je Typ zaehlen (h/s/p/r = host/srflx/prflx/relay; "6" = IPv6, "m" = mDNS-Name) - nur Zahlen
+  function iceCount(c, k, cand) {
+    var m = / typ (host|srflx|prflx|relay)/.exec(String(cand || '')), a = String(cand || '').split(' ')[4] || '';
+    var key = (m ? m[1].charAt(0) : '?') + (/\.local$/i.test(a) ? 'm' : a.indexOf(':') >= 0 ? '6' : '');
+    var o = c[k] = c[k] || {}; o[key] = (o[key] || 0) + 1;
+  }
+  function iceStr(o) { return Object.keys(o || {}).sort().map(function (k) { return k + o[k]; }).join(',') || '-'; }
+  // Kurzbefund einer Mesh-Verbindung fuer die Diagnose (ohne Adressen): Geraet (6 Zeichen), Signal-/ICE-/DTLS-Zustand,
+  // Antwort gesetzt, Kandidaten eigene (l) und erhaltene (r)
+  function linkDiag(L) {
+    var pc = L.pc;
+    return String(L.peerDevice || '').slice(0, 6) + (L.peer && L.peer.me ? ' eigen' : '') + ' est' + (L.established ? 1 : 0) +
+      ' con' + (L.connected ? 1 : 0) + (pc ? ' s=' + pc.signalingState + ' i=' + pc.iceConnectionState + ' d=' + pc.connectionState +
+      ' g=' + pc.iceGatheringState + ' rd' + (pc.remoteDescription ? 1 : 0) : ' ohne-pc') +
+      ' l=' + iceStr(L.iceOut) + ' r=' + iceStr(L.iceIn) + ' w' + (L.remoteIce || []).length + (L.net ? ' n=' + L.net : '');
   }
   function diagT(D) { return Math.max(0, Date.now() - D.t0); }
   function diagEv(R, k, d) {

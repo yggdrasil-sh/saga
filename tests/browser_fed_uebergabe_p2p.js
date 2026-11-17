@@ -105,19 +105,27 @@ const brief = r => r && { id: (r.id || '').slice(0, 8), ho: r.ho, companion: r.c
     await pb.goto(B + '/chats'); await pa2.goto(A + '/chats'); await liveOk(pa, pb, pa2);
     const diag = [];
     pa2.on('request', r => { if (r.url().endsWith('/api/calls/diag') && r.method() === 'POST') diag.push(r.postData() || ''); });
+    await pa.waitForTimeout(61000);                   // Grenze neue Anrufe je Konto und Minute (Knoten-Versuch + direkt zaehlen)
     await until(() => pa.isVisible('#ct-call-v'), 8000);
     await pa.click('#ct-call-v');
-    await pb.waitForSelector('.cl-ring', { timeout: 20000 }); await pb.click('.cl-ring .cl-big');
+    if (!(await pb.waitForSelector('.cl-ring', { timeout: 20000 }).catch(() => null))) {
+      console.log('  [kein Klingeln bei B] ' + JSON.stringify([brief(await room(pa)), TOASTS.A1.slice(-3), await api(pb, 'GET', '/api/calls/active')]).slice(0, 2500));
+      throw new Error('Gegenprobe: kein Klingeln bei B');
+    }
+    await pb.click('.cl-ring .cl-big');
     ok('Gegenprobe: 1:1 wieder verbunden', await until(async () => allConn(await room(pa), 1), 25000), brief(await room(pa)));
     for (const p of [pb, pa2]) await p.evaluate(() => { RTCPeerConnection.prototype.addIceCandidate = function () { return Promise.resolve(); }; });
     await until(async () => pa2.evaluate(() => !!document.querySelector('.cl-run .cl-run-go')), 15000);
     TOASTS.A2.length = 0;
     await pa2.click('.cl-run .cl-run-go');
-    const failed = await until(async () => TOASTS.A2.some(t => /nicht geklappt/.test(t)), 25000, 300);
-    ok('Gegenprobe: "Übernahme hat nicht geklappt" nach der Frist', failed, TOASTS.A2);
+    const tf = Date.now();
+    await until(async () => { const r = await room(pa2); return r && r.ho; }, 8000, 100);
+    const failed = await until(async () => !(await room(pa2)), 25000, 300);
+    ok(`Gegenprobe: Uebernahme nach der Frist abgebrochen (${Math.round((Date.now() - tf) / 1000)} s)`, failed && Date.now() - tf > 12000, brief(await room(pa2)));
     ok('Gegenprobe: A1 laeuft weiter mit Bert', allConn(await room(pa), 1) && !(await room(pa2)), [brief(await room(pa)), brief(await room(pa2))]);
     const ev = await until(() => { for (const d of diag) { try { const e = JSON.parse(d).events || []; const x = e.filter(y => y.k === 'ho-fail'); if (x.length) return x; } catch (e) { /* */ } } return null; }, 8000, 300);
     const toB = (ev || []).find(x => x.d.startsWith(dB.slice(0, 6))), toA1 = (ev || []).find(x => x.d.startsWith(dA.slice(0, 6)));
+    console.log('  [ho-fail] ' + JSON.stringify(ev));
     ok('Diagnose (calldiag) von A2: ho-fail je Verbindung - zu Bert nicht verbunden, Antwort gesetzt, Kandidaten gezaehlt',
        toB && / est1 con0 /.test(toB.d) && / rd1 /.test(toB.d) && / l=h/.test(toB.d) && / r=h/.test(toB.d), [ev, diag.length]);
     ok('Diagnose: Verbindung zum eigenen alten Geraet verbunden (eigen, con1)', toA1 && / eigen est1 con1 /.test(toA1.d), ev);
