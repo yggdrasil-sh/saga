@@ -193,6 +193,8 @@ async function answer(p, id) {
       return hzOk(e[0], FREQ[1]) && hzOk(e[1], FREQ[0]) && e;
     }, 20000, 500);
     ok('A hoert B, B hoert A (Tonhoehe = Person) - Ton ueber die Attrappen-Schleife (WebRTC-Empfang)', !!heard, heard || await Promise.all([ps[0].evaluate(EARS), ps[1].evaluate(EARS)]));
+    // nur Ausgabe (Befund knoten-pegel): was der Sprechring auf dem Rahmen-Weg sieht (Pegel der Attrappen-Schleife)
+    console.log('DIAG Pegel B2 ' + JSON.stringify(await Promise.all([0, 1].map(async i => { const h = await horn(ps[i]); return h && { lvSeen: h.lvSeen, levels: h.levels, speaking: h.speaking }; }))));
     const st = await Promise.all([0, 1].map(i => ps[i].evaluate(() => window.HKCalls.hornStats())));
     const drop = s => { const d = (s && s.drop) || {}; return (d.auth || 0) + (d.format || 0) + (d.codec || 0) + (d.nokey || 0) + (d.nofrom || 0); };
     const fw = await Promise.all([frames(ps[0]), frames(ps[1])]);

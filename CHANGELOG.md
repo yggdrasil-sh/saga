@@ -24,6 +24,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Neue Testreihe `tests/foederation_uebergabe_p2p.py` (Browser über zwei Server: Übernahme über die Leiste; Gegenprobe
   ohne Verbindung zum Gegenüber).
 
+### Behoben – Gruppenanrufe über den Knoten: Sprechring auch für Personen ohne Bild
+- Der Knoten (gjallarhorn) reicht den Pegel der Sprechenden (RTP-Kopferweiterung `ssrc-audio-level`) jetzt an jeden
+  Empfänger weiter – mit der ID, die dessen Verbindung ausgehandelt hat. Bisher fiel er beim Weiterleiten weg; der
+  Browser kannte dann nur den Sprecher-Bildplatz des Knotens, und der Sprechring blieb bei Personen ohne Kamera leer
+  (bzw. leuchtete bei der zuletzt sprechenden Person mit Bild). Gilt für UDP, ICE-TCP, TURN-TLS, den Medien-Tunnel und
+  über die Kaskade; der Rahmen-Weg (B2) trägt den Pegel abwärts im Byte 3 des Ton-Rahmens (wie im Vertrag). iOS liest ihn
+  ebenso (`RTCRtpReceiver.sources`). Kosten: +4 Byte je Tonpaket auf UDP, +8 auf TCP-Wegen, rund 10 ns je Paket und
+  Empfänger. Test `tests/browser_horn_pegel.js` (aus `anrufe_horn_knoten`).
+
 ### Neu – Titelbild-Galerie: 100 Bilder der Saga-Elfe
 - **Acht neue Gruppen** nach den Kunstwerken: Saga · Stube, Schreibstube, Garten & Küche, Natur, Winter & Nordlicht,
   Kriegerin, Magie, Gefährten (KI-generiert, 1600 px, IDs `saga-*`). Sie stehen in „Galerie …“ zur Auswahl und kommen
