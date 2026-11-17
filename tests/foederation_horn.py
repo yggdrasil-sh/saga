@@ -692,7 +692,8 @@ def part_owner(adm, anna, bert, ach, bch):
         time.sleep(10)
     ra, rb = rows("a", cid2), rows("b", cid2)
     ok(f"Y: Anna (A) ruft Bert an -> B teilt keinen Knoten mit A, also fuehrt A ueber seinen Knoten ({s}, {ra}, {rb})",
-       s == 200 and (d.get("call") or {}).get("topo") == "horn" and ra and ra[0][4] is None and ra[0][3] == "fb-bert" and rb and rb[0][4] is not None)
+       s == 200 and (d.get("call") or {}).get("topo") == "horn" and ra and ra[0][4] is None and str(ra[0][3]).endswith("@" + HB)
+       and rb and rb[0][3] == "fb-bert" and rb[0][4] is not None)
     end_call(cid2, anna)
     calls_cfg("a", horn_all=True)
     calls_cfg("b")
