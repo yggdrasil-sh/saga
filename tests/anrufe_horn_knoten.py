@@ -61,6 +61,7 @@ PW = "Horn-Knoten-Pass-1234"
 USERS = [("ca-k1", "Anna Knoten"), ("ca-k2", "Bert Knoten"), ("ca-k3", "Cora Knoten"), ("ca-k4", "Dora Knoten"), ("ca-k5", "Emil Knoten"),
          ("ca-k6", "Fritz Alt")]
 BUSERS = [("ca-kb1", "Ada Browser"), ("ca-kb2", "Ben Browser"), ("ca-kb3", "Cleo Browser"), ("ca-kb4", "Dirk Browser"), ("ca-kb5", "Eva Browser")]
+PGUSERS = [("ca-kp1", "Pia Pegel"), ("ca-kp2", "Paul Pegel"), ("ca-kp3", "Cleo Pegel")]   # eigene: neue Browser ohne Chat-Geraet
 PERF = {}
 P = {"proc": None, "log": None}
 
@@ -376,7 +377,7 @@ def main():
     auth.save_setting("chat_enabled", True)
     auth.save_setting("share_group_scope", False)
     flag(False)
-    for u, n in USERS + BUSERS:
+    for u, n in USERS + BUSERS + PGUSERS:
         auth.create_user(u, PW, n)
     media, node = build("saga-media", "media", "SAGA_MEDIA_BIN"), build("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
     ok(f"saga-media und gjallarhorn gebaut ({bool(media)}, {bool(node)})", media and node)
@@ -679,7 +680,7 @@ def browser_pegel():
     if os.environ.get("HORN_BROWSER") == "0" or not shutil.which("node"):
         print("SKIP Browser-Test Pegel")
         return
-    env = dict(os.environ, SAGA_BASE=f"http://127.0.0.1:{PORT}", SAGA_USERS=",".join(u for u, _ in BUSERS[:3]), SAGA_PASS=PW, PLAYWRIGHT=pw,
+    env = dict(os.environ, SAGA_BASE=f"http://127.0.0.1:{PORT}", SAGA_USERS=",".join(u for u, _ in PGUSERS), SAGA_PASS=PW, PLAYWRIGHT=pw,
                PLAYWRIGHT_BROWSERS_PATH=os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"), PW_CHANNEL="chromium")
     for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
         env.pop(k, None)
