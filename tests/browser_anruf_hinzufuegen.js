@@ -163,6 +163,8 @@ const pickRow = (a, name) => a.evaluate(nm => { const b = [...document.querySele
       await until(() => a.$('.cl-plist .cl-add-go'), 5000); await a.click('.cl-plist .cl-add-go');
       const hint = await until(() => a.evaluate(() => { const h = document.querySelector('.cl-add-hint'); return h && h.textContent; }), 3000);
       ok(`Hinweis im Feld: Hinzufuegen teilt die Seite (${hint})`, /teilt die Seite „Projektplan Sommer“/.test(hint || ''), hint);
+      const rows = await until(() => a.evaluate(() => { const r = [...document.querySelectorAll('.cl-addp .cl-add-p b')].map(x => x.textContent); return r.length && r; }), 5000);
+      ok(`Auswahl ohne Personen, die schon im Anruf sind (${rows})`, rows && rows.includes(ND) && !rows.includes(E.SAGA_NAME2 || 'Bert Browser'), rows);
       await search(a, ND); await pickRow(a, ND);
       const q1 = await until(() => a.evaluate(() => { const x = document.querySelector('.cl-add-ask'); return x && x.textContent; }), 5000);
       ok(`Rueckfrage: "${ND} bekommt Zugriff auf die Seite „Projektplan Sommer“" (${q1})`, q1 && q1.includes(ND + ' bekommt Zugriff auf die Seite „Projektplan Sommer“'), q1);

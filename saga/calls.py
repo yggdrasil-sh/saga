@@ -460,6 +460,8 @@ def roster(c, call, uid=None, legs=None):
         d = {"who": who, "device": x["device"], "dev_name": x["name"] or "", "role": x["role"], "state": x["state"],
              "caps": caps_out(x["caps"]), "joined": x["joined"], "gen": gen, "me": x["who"] == uid}
         d.update(_who_label(c, x["who"], nm))
+        if not sharing.is_remote(x["who"]):
+            d["ref"] = local_ref(x["who"])                  # 2.5 (L8): wie /api/chat/contacts (Auswahl "Person hinzufuegen")
         if (fed or v3) and not sharing.is_remote(x["who"]):
             d["handle"] = who if who != x["who"] else FED.FC.my_handle(c, x["who"])
         if who != x["who"]:                            # 2.5: andere als Handle (Schluessel nur ueber v2)
@@ -684,6 +686,7 @@ def invites(c, call, viewer=None, legs=None, now=None):
         if nm.avatar(u):
             d["avatar"] = nm.avatar(u)                 # Profilbild wie im Chat (auch Personen anderer Server)
         if not sharing.is_remote(u):
+            d["ref"] = local_ref(u)                         # 2.5 (L8): wie /api/chat/contacts (Auswahl "Person hinzufuegen")
             if fed or v3:
                 d["handle"] = d["who"] if d["who"] != u else FED.FC.my_handle(c, u)
             if d["who"] != u:

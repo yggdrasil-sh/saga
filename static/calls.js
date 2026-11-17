@@ -4798,9 +4798,15 @@
       hint.textContent = st.left <= 0 ? T('Der Anruf ist voll – erst wenn jemand auflegt, kann noch jemand dazukommen.')
         : R.call && R.call.add_page ? T('Hinzufügen teilt die Seite „{title}“ (Lesen).', { title: R.call.add_page })
         : T('Mitglieder klingeln, andere Personen kommen dazu und klingeln dann.');
-      if (head) ul.appendChild(el('li', 'cl-add-h', head));
+      // wer schon im Anruf ist, fehlt; Mitglieder ohne Geraet im Anruf: "klingelt erneut" (ref bzw. Handle wie im Roster)
+      var inCall = {}, away = {};
+      (R.legs || []).forEach(function (x) { inCall[x.ref || x.handle || x.who] = 1; });
+      (R.inv || []).forEach(function (x) { away[x.ref || x.handle || x.who] = 1; });
+      items = items.filter(function (u) { return !inCall[u.ref]; });
+      if (head && items.length) ul.appendChild(el('li', 'cl-add-h', head));
       if (!items.length) { ul.appendChild(el('li', 'cl-td cl-add-none', inp.value.trim() ? T('Niemand gefunden.') : T('Noch keine Kontakte – suche nach einem Namen.'))); return; }
       items.forEach(function (u) {
+        if (away[u.ref]) u = Object.assign({}, u, { sub: T('im Chat – klingelt erneut') });
         var li = el('li'), b = el('button', 'cl-pl cl-add-p'); b.type = 'button';
         var av = HK.avatarImg(el('span', 'cl-av cl-av-s', (u.name || '?').charAt(0).toUpperCase()), u.avatar || null, 32); av.setAttribute('aria-hidden', 'true');
         var t = el('span', 'cl-pl-t'); t.appendChild(el('b', null, shortName(u.name || '?', 22)));
