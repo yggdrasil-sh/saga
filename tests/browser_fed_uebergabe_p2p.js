@@ -131,7 +131,9 @@ const brief = r => r && { id: (r.id || '').slice(0, 8), ho: r.ho, companion: r.c
     await until(async () => { const r = await room(pa2); return r && r.ho; }, 8000, 100);
     const failed = await until(async () => !(await room(pa2)), 25000, 300);
     ok(`Gegenprobe: Uebernahme nach der Frist abgebrochen (${Math.round((Date.now() - tf) / 1000)} s)`, failed && Date.now() - tf > 12000, brief(await room(pa2)));
-    ok('Gegenprobe: A1 laeuft weiter mit Bert', allConn(await room(pa), 1) && !(await room(pa2)), [brief(await room(pa)), brief(await room(pa2))]);
+    // A1 baut die Verbindung zu A2 erst ab, wenn dessen Abmeldung angekommen ist (Rennen) - daher mit Frist
+    ok('Gegenprobe: A1 laeuft weiter mit Bert', await until(async () => allConn(await room(pa), 1) && !(await room(pa2)), 10000, 200),
+       [brief(await room(pa)), brief(await room(pa2))]);
     const ev = await until(() => { for (const d of diag) { try { const e = JSON.parse(d).events || []; const x = e.filter(y => y.k === 'ho-fail'); if (x.length) return x; } catch (e) { /* */ } } return null; }, 8000, 300);
     const toB = (ev || []).find(x => x.d.startsWith(dB.slice(0, 6))), toA1 = (ev || []).find(x => x.d.startsWith(dA.slice(0, 6)));
     console.log('  [ho-fail] ' + JSON.stringify(ev));
@@ -140,7 +142,7 @@ const brief = r => r && { id: (r.id || '').slice(0, 8), ho: r.ho, companion: r.c
     ok('Diagnose: Verbindung zum eigenen alten Geraet verbunden (eigen, con1)', toA1 && / eigen est1 con1 /.test(toA1.d), ev);
     ok('Diagnose ohne Adressen (keine IP, kein .local-Name)', ev && !ev.some(x => /\d+\.\d+\.\d+\.\d+|\.local/.test(x.d)), ev);
     const hoIdx = () => diag.map((d, i) => /"k":"ho-fail"/.test(d) ? i : -1).filter(i => i >= 0);
-    const got = await until(() => hoIdx().some(i => diagSt[i] === 200), 22000, 300);
+    const got = await until(() => hoIdx().some(i => diagSt[i] === 200), 40000, 300);   // A1 meldet auch (30-s-Takt): ggf. 2. Wiederholung
     ok('Diagnose mit ho-fail: nach 429 wiederholt und vom Server angenommen (200)', got && ho429 && diagSt[hoIdx()[0]] === 429, [hoIdx(), diagSt, ho429]);
     await pb.click('.cl-ctl .cl-red').catch(() => {});
     ok('Gegenprobe: Ende', await until(async () => !(await room(pa)), 15000));
