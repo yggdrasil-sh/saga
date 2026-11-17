@@ -193,6 +193,8 @@ body:has(.cl-win.cl-done) .cl-run{z-index:205}  /* Rang 2: ueber dem beendeten A
 /* Handy */
 @media (max-width: 640px){
   .cl-run{top:auto;bottom:calc(.6rem + env(safe-area-inset-bottom));left:.6rem;right:.6rem;transform:none;max-width:none}
+  /* Rang 2 (Pruefer): ueber dem beendeten Fenster oben - unten laegen sonst dessen Meldung und "Schliessen" darunter */
+  body:has(.cl-win.cl-done) .cl-run{bottom:auto;top:calc(.6rem + env(safe-area-inset-top))}
   .cl-win.mesh.tiles .cl-grid{inset:5.2rem .4rem 6rem;gap:.35rem}
   .cl-grid[data-n="3"],.cl-grid[data-n="4"],.cl-grid[data-n="5"],.cl-grid[data-n="6"]{grid-template-columns:repeat(2,minmax(0,1fr))}
   .cl-ring{left:.6rem;right:.6rem;top:auto;bottom:calc(.6rem + env(safe-area-inset-bottom));max-width:none;flex-wrap:wrap}

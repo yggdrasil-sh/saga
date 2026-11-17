@@ -20,7 +20,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Nach „Hierher übernehmen“ bleibt das Fenster des abgegebenen Geräts 3,5 s mit „Anruf auf … übernommen“ stehen und
   lag über der Leiste „Hierher übernehmen“ – wer gleich zurückwechseln wollte, traf das Fenster; die Übernahme ging erst
   nach dem Schließen (gemessen 3,7–4,2 s statt unter 3 s). Jetzt liegt die Leiste darüber (1:1 über Knoten: 10/10
-  Übernahmen 1,4–1,9 s, schneller Rückwechsel 1,5–1,7 s, `browser_horn_pingpong`).
+  Übernahmen 1,4–1,9 s, schneller Rückwechsel 1,5–1,7 s, `browser_horn_pingpong`). Auf dem Handy steht die Leiste
+  dann oben, damit Meldung und „Schließen“ frei bleiben (ein Fenster mit Fehler bleibt stehen; `css_cl_run_done`).
 - Test `browser_horn_pingpong`: ein Begleitgerät ohne Kamera wird nach „Hierher übernehmen“ jetzt am dekodierten Ton
   gemessen (Chromium meldet hinter der Frame-E2E keinen Pegel im RTP-Kopf, der Sprecherplatz ist ein Bildplatz).
 
