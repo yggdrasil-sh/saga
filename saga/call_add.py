@@ -72,6 +72,18 @@ def _local(c, uid, x):
     return chat.who_in(c, uid, sp.get("handle") or sp["user"].lower()) or ""
 
 
+def _target(c, uid, x):
+    """Fuer die Pruefung 'entfernt' (L7): Konto dieses Servers bzw. Prinzipal '@~x@host' einer Person anderer Server
+    (wie chat.member_target) hinter der Eingabe oder ''."""
+    sp = _spec(x)
+    if "handle" in sp and chat.FED is not None:
+        m = chat._FULL_H.fullmatch(sp["handle"])
+        a = chat.FED.fedsig.authority(m.group(2)) if m else None
+        if m and a != chat.FED.F.SELF_HOST:
+            return "@" + m.group(1) + "@" + a
+    return _local(c, uid, x)
+
+
 def _page_title(c, ch):
     r = c.execute("SELECT title FROM note WHERE id=?", (ch.get("note_id"),)).fetchone()
     return (r[0] if r else "") or t("Unbenannt")
@@ -101,7 +113,9 @@ async def api_add(cid: str, request: Request):
     if err:
         return err
     b = await _body(request) or {}
-    raw = [u.strip() for u in (b.get("uids") or []) if isinstance(u, str) and 0 < len(u.strip()) < 300][:chat.MEMBERS_MAX]
+    if not isinstance(b.get("uids"), list):             # ein Text wuerde sonst Zeichen fuer Zeichen als Personen gelesen
+        return _bad(t("ungültige Angabe"))
+    raw = [u.strip() for u in b["uids"] if isinstance(u, str) and 0 < len(u.strip()) < 300][:chat.MEMBERS_MAX]
     raw = list(dict.fromkeys(raw))
     role = b.get("role") or "view"
     if not raw or role not in chat.PAGE_ADD_ROLES:
@@ -132,7 +146,7 @@ async def api_add(cid: str, request: Request):
             can, why = chat.add_right(c, uid, ch, m)
             if not can:
                 return chat._no_store({"error": why, "rights": True}, 403)
-        if uid != call["caller"] and calls._any_removed(c, call, known + [u for u in (_local(c, uid, x) for x in new) if u]):
+        if uid != call["caller"] and calls._any_removed(c, call, known + [u for u in (_target(c, uid, x) for x in new) if u]):
             return chat._no_store({"error": t("Nur wer den Anruf begonnen hat, kann entfernte Personen erneut klingeln lassen."),
                                    "removed": True}, 403)
         if new and ch["kind"] == "page" and b.get("confirm_page") is not True:

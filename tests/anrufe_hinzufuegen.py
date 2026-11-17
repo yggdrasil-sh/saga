@@ -171,6 +171,18 @@ def run():
        s == 200 and s2 == 200 and s3 == 403 and d.get("removed") is True)
     s, d = add(A, g1, ["ca-ac"])
     ok(f"... die Gastgeberin darf es (200, 'ringing') ({s}, {st(d.get('invites')).get('ca-ac')})", s == 200 and st(d.get("invites")).get("ca-ac") == "ringing")
+    # Pruefung: Person eines anderen Servers, vom Gastgeber entfernt und nicht (mehr) im Chat - ein anderer Admin holt sie
+    # per Handle zurueck: wie bei Konten hier 403 removed (vorher ging das an der L7-Regel vorbei)
+    req("PATCH", f"/api/chats/{gid}/members/ca-ab", A.k, {"admin": True})
+    fx = "@~" + "a" * 16 + "@fremd.example"
+    with connect() as c, c:
+        c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'removed',?)", (g1, fx, time.time()))
+    s, d = add(B, g1, [fx[1:]])
+    with connect() as c, c:
+        c.execute("DELETE FROM chat_call_invite WHERE call_id=? AND who=?", (g1, fx))
+    ok(f"entfernte Person eines anderen Servers (nicht im Chat), Admin Bert holt sie per Handle: 403 removed ({s}, {d.get('error')})",
+       s == 403 and d.get("removed") is True)
+    req("PATCH", f"/api/chats/{gid}/members/ca-ab", A.k, {"admin": False})
 
     # --- Rate (selber Topf wie /invite) -----------------------------------------------------------------------------------
     s, d = req("POST", "/api/chats", Rr.k, {"kind": "free", "members": ["ca-ab"]})
@@ -247,6 +259,8 @@ def run():
     ok(f"fremder Anruf (nicht Mitglied): 404 ({s})", s == 404)
     s, d = add(A, g3, [])
     ok(f"ohne uids: 400 ({s})", s == 400)
+    s, d = add(A, g3, "ca-ab")
+    ok(f"uids als Text statt Liste: 400 ({s})", s == 400)
 
 
 if __name__ == "__main__":
