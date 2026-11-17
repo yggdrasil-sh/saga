@@ -25,6 +25,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   an, und auch der Rückfall auf den Sprecherplatz des Knotens griff nicht. Der Knoten sagt den Pegel mit `level: true` in
   der `ok`-Antwort zu; ohne das Zeichen (ältere Knoten senden in Byte 3 eine 0) bleibt es beim Sprecherplatz. Test
   `tests/b2_frames.py` (A und B sprechen abwechselnd, dann beide leise).
+- **Sprechring beim Umhängen eines Tonplatzes:** Der Pegel eines Tonplatzes zählt jetzt für den Absender laut CSRC der
+  zuletzt gespielten Rahmen, nicht laut Platzbelegung – sonst leuchtete kurz der neue Besitzer mit dem Ton des alten.
 - **Doku Titelbild-Galerie (`docs/APP-API.md`):** 122 Bilder (22 Kunstwerke der Met, 100 KI-Bilder der Saga-Elfe in
   8 Gruppen), Felder von `GET /api/covers` als Tabelle (`source`/`source_url` je Bild, leer = kein Link). Ungenutztes
   `covers.info()` entfernt.

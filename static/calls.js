@@ -4598,7 +4598,7 @@
     if (H.view === 'grid') H.pin = null;
     hornDraw(R); drawCtl(R);
   }
-  // Sprechring: Pegel der Tonplaetze (RTP-Quelle), Absender ueber die CSRC des Platzes - 3x je Sekunde
+  // Sprechring: Pegel der Tonplaetze (RTP-Quelle bzw. Byte 3 auf dem Rahmen-Weg), Absender per CSRC - 3x je Sekunde
   function hornSpeakers(R) {
     var H = R.horn; clearInterval(H.spkT);
     H.spkT = setInterval(function () {
@@ -4615,7 +4615,9 @@
             if (fd && now - x.at < 1000) lv[fd] = Math.max(lv[fd] || 0, x.v);
             return;
           }
-          var d = hornAudioOwner(c, a._i), src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null;
+          // Absender per CSRC der zuletzt gespielten Rahmen (hornAudioNow), nicht laut Belegung: beim Umhaengen eines Tonplatzes
+          // nennt die Belegung schon den neuen Absender, waehrend noch Ton (und Pegel) des alten kommt
+          var d = hornAudioNow(c, a).dev, src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null;
           // aelter als 1 s = der Platz liefert gerade nichts (rtpAge: Epoch-Zeitstempel)
           if (src && typeof src.audioLevel === 'number') H.lvSeen = true;
           if (d && src && typeof src.audioLevel === 'number' && !(src.timestamp && rtpAge(src.timestamp) > 1000)) lv[d] = Math.max(lv[d] || 0, src.audioLevel);
