@@ -363,6 +363,19 @@ v2-Schlüssel). Für Server-Entwickler:
 Tests: `tests/foederation_anrufe_raum.py` (drei Server, B und C nur mit A verbunden; Laufzeit eines Signals B → A → C;
 `FED_B_23=1` mit 2.3-Server B), Browser über drei Server mit `BJS=1`.
 
+**Personen hinzufügen (2.5, L8, `POST /api/calls/{id}/add`):** kein neuer Auftrag, keine neue Fähigkeit.
+- Mitglied wird man wie mit `POST /api/chats/{id}/members` (Gruppenauftrag `members` an das Heim bzw. beim Heim direkt).
+  Neue Mitglieder auf anderen Servern bekommen die Gruppe wie bisher als **Nachrichtenanfrage**.
+- Klingeln: führt dieser Server den Anruf, geht an Server, die schon eine Kopie haben, `invite`; an Server neu
+  aufgenommener Personen `roster` mit `ring` – der Server legt die Kopie an (wie beim Gruppenstart) und versucht es bei
+  `404` (Chat dort noch nicht angekommen) kurz darauf erneut (bis 4-mal). Führt ein anderer Server den Anruf, geht
+  `invite` an ihn – auch mit Handles eigener Konten, die das Heim gerade aufgenommen hat (er klingelt sie per `invite`
+  über ihren Server zurück).
+- Personen mit **offener Nachrichtenanfrage** klingeln nie ungefragt: ihr Server merkt die Einladung (`pending`) und lässt
+  es klingeln, sobald die Person die Anfrage annimmt (`calls.ring_accepted`, bis 10 min nach der Einladung).
+- Test: `tests/foederation_anrufe_hinzufuegen.py` (drei Server; Person auf B mit Kopie, Person auf C ohne Kopie, Admin auf
+  einer Kopie holt eine Person seines Servers).
+
 ### 7.3 Frame-Schlüssel über Servergrenzen (2.5, Gjallarhorn P4, Cap `horn`)
 
 `horn` in `CAPS2` (Admin-Schalter „Anrufe“, nur solange `calls.horn` an ist). Die Frame-Schlüssel der Geräte (`fkey`,

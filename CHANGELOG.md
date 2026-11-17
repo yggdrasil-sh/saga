@@ -16,6 +16,22 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – Anrufe: Personen in den laufenden Gruppenanruf holen, auch von außerhalb des Chats (L8)
+- **Im Anruf „Person hinzufügen“** (Teilnehmerliste, Web; direkt und über Knoten): Auswahl aus Kontakten bzw. Suche wie in
+  der Gruppeninfo. Mitglieder klingeln (wie „Erneut klingeln“), andere Personen werden **Mitglied des Chats** – mit
+  denselben Rechten und Schlüsseln wie beim Hinzufügen in der Gruppeninfo – und klingeln dann. Keine Anruf-Gäste ohne Chat.
+- Wer darf: klingeln lassen alle Mitglieder, neue Personen nur, wer im Chat hinzufügen darf (freie Gruppe: Admins;
+  Seiten-Chat: wem die Seite gehört). **Seiten-Chat:** Rückfrage „<Name> bekommt Zugriff auf die Seite „<Titel>““ – erst
+  danach wird die Seite geteilt (Lesen) und es klingelt.
+- Verständliche Meldungen: Anruf voll (jedes Gerät zählt, auch ein zweites zum Teilen; ein laufender direkter Anruf zieht
+  nicht auf einen Knoten um), keine Rechte, Person nicht erreichbar/gesperrt, 1:1-Anruf (kommt mit „1:1 → Konferenz“).
+- **Über Servergrenzen:** Personen anderer Saga-Server bekommen den Chat wie bisher als Nachrichtenanfrage; es klingelt,
+  sobald sie annehmen (bis 10 min). Server, die bisher nicht im Anruf waren, bekommen seine Kopie automatisch.
+- API (docs/APP-API.md „Anrufe: Personen hinzufügen“): Feature `call_add`, `POST /api/calls/{id}/add`, Anruf-Objekt
+  `can_add`/`add_page`, `ref` in `legs`/`invites`. Föderation ohne neuen Auftrag (APP-API-FED §7.2). Keine Migration.
+- Tests: `anrufe_hinzufuegen` (neu), `foederation_anrufe_hinzufuegen` (neu, drei Server), `browser_anruf_hinzufuegen.js`
+  (neu, direkt und mit `KNOTEN=1` über den eingebauten Knoten).
+
 ### Behoben – Web-Anrufe über Gjallarhorn: Tonlücke und Doppelton beim Wechsel des Knotens
 - **Ursache:** Beim Wechsel (make-before-break) schloss der Browser die alte Verbindung nach 2 s, auch wenn der Sprecher
   auf der neuen noch keinen Tonplatz hatte (der neue Knoten vergibt ihn erst nach ein paar Takten) – gemessen bis 1,6 s

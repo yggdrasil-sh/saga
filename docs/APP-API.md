@@ -1898,6 +1898,7 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
 | `POST /api/calls/{id}/join` | `{device, role, replaces?, caps, signals: {geraet: versiegeltes offer}}` | `{ok, call}`. `409 {join_block, error, legs?, limit?}`; `409 {legs}` ohne `join_block` = Liste veraltet → neu anbieten; `403` fremdes Gerät; `429` |
 | `POST /api/calls/{id}/leave` | `{device, reason?: "hangup"\|"handover", by?, gen?}` | `{ok}`; nur eigene Geräte (auch ein anderes eigenes). 2.5: mit `by`/`gen` bedingt → `{ok, stale}` (Abschnitt „Geräte-Übergabe hin und her“) |
 | `POST /api/calls/{id}/invite` | `{uids: [benutzername \| Prinzipal \| Handle]}` | `{ok, n}` – Gruppe: Mitglieder erneut klingeln lassen. 2.5 (L7): zusätzlich `invites`, `invites_more`, `rv`, `now`; `403 {error, removed: true}` (entfernte Person, nicht Gastgeber); `429` – siehe „Anrufe: Erneut klingeln und Nicht dabei“ |
+| `POST /api/calls/{id}/add` | `{uids, confirm_page?, role?}` | 2.5 (L8, Feature `call_add`): Mitglieder klingeln, andere werden Chat-Mitglied und klingeln – siehe „Anrufe: Personen hinzufügen“ |
 | `POST /api/calls/{id}/end` | wie bisher, **mit `device`** | Gruppe bzw. Begleitgerät: nur dieses Gerät verlässt (`{ok, left: [...]}`); Hauptgerät im 1:1: Ende für alle |
 | `POST /api/calls/{id}/decline` | wie bisher | Gruppe: nur die eigene Einladung (alle eigenen Geräte hören auf zu klingeln) |
 | `POST /api/calls/{id}/alive` | `{device}` | zusätzlich `leg: "left"` = dieses Gerät ist nicht mehr im Anruf (z. B. übernommen) → Anruf hier beenden |
@@ -2131,6 +2132,81 @@ Knopf bzw. auf der Überschrift „Nicht dabei“, wenn der Knopf verschwindet. 
 - Abfrage (`/api/calls/active`, Push `call.group`): `invite == "ringing"` und Alter ab `invite_since`.
 - Tabelle: `chat_call_invite.state` bleibt bis zum Ende `ringing` (Mitteilung „Verpasster Anruf“ wie bisher beim Ende);
   `created` = Beginn des Zustands (Klingeln, Ablehnen, Entfernen).
+
+## Anrufe: Personen hinzufügen (2.5, L8)
+
+Feature **`call_add`** in `GET /api/calls/config` → `features`. Nur **Gruppenanrufe** (`kind: "group"` ohne `dm: true`).
+Wer im laufenden Anruf jemanden dazuholt, wählt aus Kontakten bzw. der Personensuche (wie „Person hinzufügen“ in der
+Gruppeninfo). Mitglieder des Chats klingeln (wie `/invite`); **Personen außerhalb des Chats werden Chat-Mitglied** – über
+dieselbe Funktion wie `POST /api/chats/{id}/members` (gleiche Rechte, Schlüssel, Personen anderer Server,
+Seitenfreigabe) – und klingeln dann. Keine Anruf-Gäste ohne Chat (Entscheidung E2). Keine Migration, kein `MIN_APP`:
+alle Felder sind zusätzlich; ohne `call_add` den Knopf nicht zeigen.
+
+### Anruf-Objekt (Gruppe, zusätzlich)
+
+| Feld | Typ | Bedeutung |
+|---|---|---|
+| `can_add` | bool | ich darf Personen **außerhalb** des Chats dazuholen (freie Gruppe: Admin; Seiten-Chat: wem die Seite gehört; Gruppen aus Benutzergruppen und 1:1: nie). Mitglieder klingeln darf jedes Mitglied („Nicht dabei“, L7) |
+| `add_page` | Text | nur im Seiten-Chat mit `can_add`: Titel der Seite – Hinweis „Hinzufügen teilt die Seite „{Titel}“ (Lesen)“ |
+| `limit` | Zahl | wie bisher: Plätze (Geräte) des Anrufs – belegt = Zahl der `legs` (auch Begleitgeräte, z. B. ein zweites Gerät zum Teilen) |
+| `legs[].ref`, `invites[].ref` | Text | Personen dieses Servers: Kennung wie `ref` in `GET /api/chat/contacts` (`~x`) – zum Ausblenden in der Auswahl, wer schon im Anruf ist |
+
+**Wo:** in der Teilnehmerliste oben ein Knopf „Person hinzufügen“ (Symbol Person mit Plus, `aria-label`), nur mit
+`can_add`. Er öffnet eine Auswahl: Suchfeld (Fokus), ohne Eingabe die Kontakte (`GET /api/chat/contacts?limit=30`), mit
+Eingabe die Personensuche (`GET /api/chat/people?q=` – `users[].username`, `remote[].handle`); wer schon im Anruf ist
+(`legs[].ref`/`handle`), fehlt; Mitglieder ohne Gerät im Anruf („im Chat – klingelt erneut“). Zeilen ≥ 44 px mit
+`aria-label` „{Name} hinzufügen und anrufen“. Voll (`legs` ≥ `limit`): Hinweis „Der Anruf ist voll – erst wenn jemand
+auflegt, kann noch jemand dazukommen.“, Zeilen deaktiviert. Escape schließt, Fokus zurück auf den Knopf.
+
+### `POST /api/calls/{id}/add`
+
+Body `{uids: [benutzername | Handle "~x@host" | Prinzipal "@~x@host" | ref "~x"], confirm_page?: true, role?: "view"}`
+(bis 50 Kennungen, davon höchstens 10 neue Mitglieder). `role` nur im Seiten-Chat (`view` | `comment` | `edit`, Standard
+`view`, eine höhere vorhandene Freigabe bleibt).
+
+Antwort `200`:
+
+```json
+{"ok": true, "n": 1, "added": ["~x4bq…"], "failed": [], "pending": [], "request": [],
+ "invites": [{"who": "~x4bq…@saga.example", "name": "Dora Neu", "state": "ringing", "since": 1794904205.1}], "invites_more": 0,
+ "seats": {"used": 2, "limit": 6, "left": 4, "topo": "mesh"}, "rv": 1794904205.12, "now": 1794904205.13}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `n` | so viele klingeln jetzt (hier bzw. Auftrag an andere Server) |
+| `added` | Eingaben, die neu Mitglied wurden (wie gesendet) |
+| `failed` | `[{who, error, kind}]` – nicht hinzugefügt (`kind`: `rights` 403, `unreachable` 404 – Konto unbekannt, gesperrt bzw. kein Chat möglich, `conflict` 409, `server` 502, `invalid` 400); die übrigen gingen trotzdem |
+| `pending` | Personen anderer Server im **Seiten-Chat**: kommen dazu, sobald ihr Server die Freigabe bestätigt (dann erst klingeln) |
+| `request` | neue Mitglieder, die den Chat als **Nachrichtenanfrage** bekommen (Personen anderer Server bzw. auf einer Kopie): es klingelt bei ihnen, sobald sie die Anfrage annehmen (bis 10 min nach der Einladung) – Hinweis „{Name} ist eingeladen – es klingelt, sobald die Einladung in den Chat angenommen ist.“ |
+| `invites`, `invites_more`, `rv`, `now` | wie `/invite` (L7) |
+| `seats` | Plätze nach dem Hinzufügen |
+
+Fehler (immer mit `error` = fertiger Text in der Sprache des Kontos; **nichts geändert**):
+
+| Status | Feld | Wann |
+|---|---|---|
+| `409` | `dm: true` | 1:1-Anruf (auch über Knoten) – „In einem 1:1-Anruf kann man noch niemanden dazuholen …“ (1:1 → Konferenz kommt mit L9) |
+| `409` | `ended: true` | Anruf beendet |
+| `409` | `full: true`, `seats` | alle Plätze belegt (jedes Gerät zählt, auch ein zweites zum Teilen); nur wenn wirklich jemand Neues dazukäme |
+| `403` | `rights: true` | neue Personen, aber ich darf im Chat niemanden hinzufügen (Text wie in der Gruppeninfo) |
+| `403` | `removed: true` | unter den Personen ist jemand, den der Gastgeber entfernt hat, und ich bin nicht Gastgeber (wie `/invite`) |
+| `409` | `page_confirm: true`, `title`, `names` | Seiten-Chat ohne `confirm_page`: „{Name} bekommt Zugriff auf die Seite „{Titel}“.“ – der Client fragt nach (**„Seite teilen?“** mit diesem Text und „Die Seite wird dafür mit Leserecht geteilt.“, Knöpfe „Abbrechen“ / „Teilen und anrufen“) und sendet dann dieselbe Anfrage mit `confirm_page: true` |
+| `429` | | Rate: 6 Aufrufe je Minute und Konto, **gemeinsam mit `/invite`** |
+| `403`/`404`/`409`/`502` | `failed` | alle neuen Personen gescheitert und keine Mitglieder dabei: Status und Text der ersten (wie `POST /api/chats/{id}/members`, z. B. 404 „Mit diesem Konto ist kein Chat möglich.“) |
+
+**Mesh und Knoten:** Es gibt keinen Umzug eines laufenden direkten Anrufs (Mesh) auf einen Knoten. Läuft der Anruf
+direkt, gelten die Mesh-Plätze (Video 4, nur Ton 6); über einen Knoten die Knoten-Grenzen. Neue Mitglieder sehen den
+Anruf wie alle anderen (Liste `GET /api/calls/active`, `call.invite`, Push `call.group`, `chat.changed`) und treten mit
+`POST /join` bei – Schlüssel wie bei jedem Beitritt: im Mesh holen die anderen die Geräte der neuen Person frisch
+(`/api/chat/keys` bzw. v2-Schlüssel), über einen Knoten bekommt sie die geratschten Frame-Schlüssel (HORN-E2E §4).
+
+**Nach dem Hinzufügen** (wie die Gruppeninfo): den Gruppennamen erneut verschlüsselt senden (`type: "title"`), damit
+Neue ihn lesen können. Der Knopf/Hinweis-Ablauf im Web: `static/calls.js` (`addOpen`, `addPick`, `addAsk`).
+
+**Über Servergrenzen** (Gruppe mit Heim auf einem anderen Server): Mitglied wird man über das Heim (wie
+`POST /members`), geklingelt wird über den führenden Server (APP-API-FED §7.2, „Personen hinzufügen“). Server, die bisher
+weder im Chat noch im Anruf waren, bekommen die Kopie des Anrufs mit der Teilnehmerliste.
 
 ## Anrufe über Gjallarhorn-Knoten (2.5, Pakete P3 und P5)
 
