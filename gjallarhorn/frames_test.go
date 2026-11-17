@@ -655,11 +655,23 @@ func TestFramesInteropTunnel(t *testing.T) {
 				fv++
 			}
 		}
-		return au[A.a.csrc()] > 20 && vi[A.a.csrc()] > 20 && fa > 20 && fv > 10
+		// Pegel beider Richtungen: Web -> App per audio-level (30 aus dem Rahmenkopf), App -> Web im Byte 3 des Ton-Rahmens
+		lx := 0
+		for _, f := range A.a.frames() {
+			if f.csrc != 0 && f.csrc != A.a.csrc() && f.x&0x7f == 100 { // mit V-Bit des Absenders
+				lx++
+			}
+		}
+		return au[A.a.csrc()] > 20 && vi[A.a.csrc()] > 20 && fa > 20 && fv > 10 && b.levels()[A.a.csrc()] == 30 && lx > 20
 	})
 	if !ok {
 		au, vi := b.seen()
-		t.Fatalf("App<-Web Ton %d Bild %d, Web<-App Ton %d Bild %d", au[A.a.csrc()], vi[A.a.csrc()], len(A.a.frames()), len(A.v.frames()))
+		var xs []byte
+		for _, f := range A.a.frames() {
+			xs = append(xs, f.x)
+		}
+		t.Fatalf("App<-Web Ton %d Bild %d, Web<-App Ton %d Bild %d, pegel app %v web %v", au[A.a.csrc()], vi[A.a.csrc()], len(A.a.frames()),
+			len(A.v.frames()), b.levels(), xs[:min(len(xs), 8)])
 	}
 }
 

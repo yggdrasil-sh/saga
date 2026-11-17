@@ -387,7 +387,7 @@ func TestTunnelEndeZuEnde(t *testing.T) {
 			t.Fatal(err)
 		}
 		b := &sfuBot{peer: "ws" + strconv.Itoa(i), path: "ws", video: true, layers: []string{"l", "m"}}
-		b.level.Store(127)
+		b.level.Store(uint32(50 + i))
 		b.bend = func(role, sdp string) string { return bendTo(sdp, appTunnel(t, url, user, cred, role)) }
 		if err := b.join(hc, hs.URL, api, room, 1, "desktop"); err != nil {
 			t.Fatal(err)
@@ -412,9 +412,19 @@ func TestTunnelEndeZuEnde(t *testing.T) {
 		b.start()
 	}
 	time.Sleep(2 * time.Second)
-	for _, b := range bots {
+	for i, b := range bots {
 		if b.rxPkts.Load() < 50 {
 			t.Fatalf("%s: nur %d Pakete empfangen", b.peer, b.rxPkts.Load())
+		}
+		// Pegel des anderen kommt durch den Tunnel (Sprechring ohne Bild)
+		lv, want := b.levels(), uint8(50+1-i)
+		for _, v := range lv {
+			if v != want {
+				lv = nil
+			}
+		}
+		if len(lv) != 1 {
+			t.Fatalf("%s: pegel %v statt %d", b.peer, b.levels(), want)
 		}
 	}
 	st := s.tun.stats()

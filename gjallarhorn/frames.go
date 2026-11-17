@@ -55,6 +55,7 @@ const (
 	frTrackM      = 2
 	frTrackScreen = 3
 
+	frLevelID   = 1        // id von audio-level zwischen fwd.Out und frOut (nur intern, kein SDP)
 	frMinWindow = 16 << 10 // ganze Rahmen (S12.4); 64 KiB des Tunnels hielten bei 600 kbit/s fast 1 s Warteschlange
 	frPayload   = 1100     // Nutzlast je RTP-Paket (Platz fuer Kopf/CSRC/SRTP der anderen Wege)
 	frClampMs   = 80       // gemeldete Verzoegerungszunahme abwaerts, ab der das Mindestfenster gilt
@@ -385,6 +386,9 @@ func newFrLeg(s *server, l *leg, ws *websocket.Conn) *frLeg {
 // bind: Ausgaenge des Beins an die WebSocket-Seite (je Platz ein Schreiber).
 func (f *frLeg) bind() {
 	for i, o := range f.sl.Outs() {
+		if o.Kind == fwd.Audio {
+			o.SetAudioLevel(frLevelID) // Pegel der Quelle -> Byte 3 des Ton-Rahmens (S12.3)
+		}
 		o.Bind(&frOut{f: f, slot: uint8(i), o: o, kind: o.Kind}, rand.Uint32(), 96)
 	}
 }
@@ -850,8 +854,12 @@ func (a *frAsm) push(slot uint8, audio bool, h *rtp.Header, payload []byte) ([]b
 		return nil, asmNone // Fuellpaket (Probe): kein Rahmen
 	}
 	if audio {
+		lv := byte(127) // ohne Pegel der Quelle: still (RFC 6464)
+		if e := h.GetExtension(frLevelID); len(e) > 0 {
+			lv = e[0]
+		}
 		msg := make([]byte, frHdr+len(payload))
-		frHeader(msg, slot, h.Timestamp, csrc, 0, 0)
+		frHeader(msg, slot, h.Timestamp, csrc, 0, lv)
 		copy(msg[frHdr:], payload)
 		return msg, asmNone
 	}

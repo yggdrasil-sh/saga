@@ -104,6 +104,13 @@ func TestKaskade(t *testing.T) {
 			if au[ids[x.peer]] != 0 || vi[ids[x.peer]] != 0 {
 				err = fmt.Errorf("%s bekommt sich selbst", x.peer)
 			}
+			// Pegel auch ueber die Bruecke (roh weitergereicht, am Zielknoten mit der id des Empfaengers)
+			lv := x.levels()
+			for _, o := range all {
+				if want := uint8(o.level.Load()); err == nil && o != x && lv[ids[o.peer]] != want {
+					err = fmt.Errorf("%s: pegel von %s %d statt %d", x.peer, o.peer, lv[ids[o.peer]], want)
+				}
+			}
 		}
 		if err == nil {
 			break
