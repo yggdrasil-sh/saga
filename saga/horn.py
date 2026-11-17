@@ -101,8 +101,23 @@ def builtin_on():
     return bool((auth.settings().get("calls") or {}).get("horn_builtin", True))
 
 
+HORN_ALL_Y = "horn_all_y"               # Merker: calls.horn_all wurde unter Grundsatz Y bewusst gesetzt (Admin/einstellen)
+
+
+def horn_all_on(cfg=None):
+    """2.5 Grundsatz Y: "Alle Anrufe ueber Knoten (auch 1:1)" (calls.horn_all) ist ab Werk AN. Ein gespeichertes horn_all
+    von vor Y (ohne Merker horn_all_y - das alte Admin-Formular schrieb bei jedem Speichern horn_all: false mit) gilt als
+    nicht gesetzt, also an. Erst ein Speichern unter Y (Admin-Formular, run.py einstellen) setzt den Merker - dann gilt der
+    gespeicherte Wert, auch aus. Wirkt nur bei eingeschaltetem Gjallarhorn (calls.horn, siehe calls.horn_dm_on).
+    cfg: das calls-Dict (Standard: aktuelle Einstellungen)."""
+    c = (auth.settings().get("calls") or {}) if cfg is None else cfg
+    if not c.get(HORN_ALL_Y):
+        return True
+    return bool(c.get("horn_all", True))
+
+
 def version_ok(v):
-    """horn-ctl/1: Knoten der eigenen und der vorigen Minor-Version (neuere auch - sie folgen der Zielversion)."""
+    """horn-ctl/1:Knoten der eigenen und der vorigen Minor-Version (neuere auch - sie folgen der Zielversion)."""
     a, b = _vparse(v), _vparse(VERSION)
     return a[0] == b[0] and a[1] >= b[1] - 1
 

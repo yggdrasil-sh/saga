@@ -56,7 +56,7 @@ Knoten (topo 'horn'), wenn das Flag an ist, das anrufende Geraet "horn" meldet u
 UDP am Knoten. Die Teilnehmerliste traegt je Endpunkt hp (Kennung des Geraets am Knoten, fuer die Zuordnung der Spuren).
 Verlassen/Ende: der Knoten beendet die Beine (kick/close ueber den Steuerkanal). Foederierte Gruppen bleiben bis P10 Mesh.
 
-2.5 ("Alle Anrufe ueber Knoten", Admin-Einstellung calls.horn_all, Standard aus; Vertrag docs/APP-API.md "1:1 ueber Knoten"): Auch
+2.5 ("Alle Anrufe ueber Knoten", Admin-Einstellung calls.horn_all, Grundsatz Y: Standard an, wirkt mit calls.horn; Vertrag docs/APP-API.md "1:1 ueber Knoten"): Auch
 1:1-Anrufe koennen ueber einen Knoten laufen - die Geraete sehen gegenseitig keine IP-Adressen. GET /api/calls/config
 meldet dann horn_dm: true. Ein Client mit "horn" + "multi" ruft im Direkt-Chat mit {via: "horn"} OHNE signals an; der
 Server legt einen Raum-Anruf an (kind 'group', topo 'horn', callee = Gegenueber - daran erkennt man den 1:1-Knoten-Anruf,
@@ -142,9 +142,15 @@ def horn_on():
     return bool(cfg().get("horn"))
 
 
+def horn_all_on():
+    """2.5 Grundsatz Y: Admin-Einstellung "Alle Anrufe ueber Knoten (auch 1:1)" (calls.horn_all), ab Werk an - ein Altwert
+    von vor Y ohne Merker gilt als an (saga/horn.py horn_all_on). Nie roh calls.horn_all lesen, immer hierueber."""
+    return horn.horn_all_on(cfg())
+
+
 def horn_dm_on():
-    """2.5: Admin-Einstellung "Alle Anrufe ueber Knoten (auch 1:1)" (calls.horn_all) bei eingeschaltetem Gjallarhorn."""
-    return horn_on() and bool(cfg().get("horn_all"))
+    """2.5: "Alle Anrufe ueber Knoten (auch 1:1)" (horn_all_on) bei eingeschaltetem Gjallarhorn."""
+    return horn_on() and horn_all_on()
 
 
 def _dmh(call):

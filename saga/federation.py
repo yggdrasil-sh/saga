@@ -144,17 +144,23 @@ CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "li
 # horn (2.5, Gjallarhorn, docs/HORN-E2E.md) = Gruppenanrufe ueber Knoten mit Frame-E2E: Signale fkey/fkey-ack laufen
 # versiegelt wie alle Anruf-Signale (Auftrag signal). Nur gemeldet, solange das Feature-Flag calls.horn an ist (caps2()).
 # horn_dm (2.5) = 1:1 aus foederierten Direkt-Chats ueber Knoten (Auftrag dmhorn, saga/fed_calls.py) - gemeldet, solange
-# horn an ist; ob ein Anruf so laeuft, entscheidet der Server der anrufenden Person (calls.horn_all).
+# horn an ist; ob ein Anruf so laeuft, entscheidet der Server der anrufenden Person (calls.horn_all, Grundsatz Y: ab Werk an).
 # horn_req (2.5 Horn-Fix) = dieser Server fuehrt 1:1-Anrufe mit seinen Partnern ueber seine geteilten Knoten (calls.horn_all) -
 # auch wenn ein Partner anruft: der Partner bittet dann per Auftrag dmhorn_lead, den Anruf zu fuehren (saga/fed_calls.py).
 # chat3 (2.5, saga/chat_x3.py) = Reaktionen/Bearbeiten ueber Servergrenzen - nur mit der Einstellung chat_v3 (Standard an);
 # aus: nicht gemeldet, eingehende x3-Auftraege 403 bzw. Ereignisse "ignored" (F.feature ist dann fuer alle Instanzen falsch).
+def _horn_all_on():
+    """calls.horn_all wie saga.calls.horn_all_on() (Grundsatz Y: fehlend bzw. Altwert ohne Merker = an)."""
+    from saga import horn as _horn                    # spaet: saga.horn kennt die Foederation nicht (keine Zyklen)
+    return _horn.horn_all_on()
+
+
 CAPS2_FLAG = {"horn": lambda: bool((auth.settings().get("calls") or {}).get("horn")),   # wie saga.calls.horn_on()
               "horn_dm": lambda: bool((auth.settings().get("calls") or {}).get("horn")),
               "chat3": lambda: bool(auth.settings().get("chat_v3")),                    # wie saga.chat.v3_new()
               # Horn-Fix: "Horn-Besitzer bestimmt" - dieser Server will 1:1-Anrufe ueber seine (geteilten) Knoten, auch wenn
               # der Partner anruft (calls.horn_all an). Einseitig: der Partner prueft es mit has_cap (nicht feature).
-              "horn_req": lambda: bool((auth.settings().get("calls") or {}).get("horn")) and bool((auth.settings().get("calls") or {}).get("horn_all"))}
+              "horn_req": lambda: bool((auth.settings().get("calls") or {}).get("horn")) and _horn_all_on()}
 
 
 def caps2():

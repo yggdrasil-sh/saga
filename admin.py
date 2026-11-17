@@ -975,7 +975,8 @@ async def calls_post(request: Request):
     if act == "horn":
         # horn_rev (2.5): jedes Speichern startet einen wartenden eingebauten Knoten sofort neu (saga-media, Backoff weg)
         auth.save_setting("calls", {**cur, "horn": _on(f, "horn"), "horn_builtin": _on(f, "horn_builtin"),
-                                      "horn_all": _on(f, "horn_all"), "horn_rev": int(cur.get("horn_rev") or 0) + 1})
+                                      # Grundsatz Y: Merker horn_all_y - ab jetzt gilt der gespeicherte Wert (auch aus)
+                                      "horn_all": _on(f, "horn_all"), horn.HORN_ALL_Y: True, "horn_rev": int(cur.get("horn_rev") or 0) + 1})
         print(f"admin: {who} Gjallarhorn {'an' if _on(f, 'horn') else 'aus'}, eingebauter Knoten {'an' if _on(f, 'horn_builtin') else 'aus'}, "
               f"alle Anrufe ueber Knoten {'an' if _on(f, 'horn_all') else 'aus'}", flush=True)
         warn = horn_ops.builtin_warn()
