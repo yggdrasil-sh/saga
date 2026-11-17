@@ -6,7 +6,8 @@
 //    1 s: jede Uebernahme <= 3 s (Ton an, mit dem Knoten verbunden), das alte Geraet legt auf, B bleibt verbunden und hoert
 //    das neue Geraet (Pegel), nie zwei eigene Geraete mit offenem Mikrofon, kein 401 "entfernt" (Sperre der alten Kennung).
 //  - Schneller Rueckwechsel (< 3 s nach der Uebernahme): das zurueckkehrende Geraet bleibt (Rueckfall {by, gen} -> stale).
-//  - Begleitgeraet -> "Hierher uebernehmen" im Anruffenster (promote, Ton-Bein neu): B hoert danach das Begleitgeraet.
+//  - Begleitgeraet -> "Hierher uebernehmen" im Anruffenster (promote, Ton-Bein neu): B hoert danach das Begleitgeraet
+//    (Pegel des Knotens bzw. - ohne Bild des Geraets - dekodierter Pegel seines Tonplatzes).
 //  - Am Ende genau zwei Endpunkte, das alte Geraet ohne Bein.
 // MESH=1: derselbe Ablauf ohne Knoten (1:1 direkt, Mesh-Rueckfall nach handover_s/2) - laeuft auch im Container.
 //   SAGA_BASE=... SAGA_USER=a SAGA_PASS=... SAGA_USER2=b SAGA_PASS2=... [RUNDEN=10] [MESH=1] node tests/browser_horn_pingpong.js
@@ -63,7 +64,26 @@ async function up(p) {
 // B hoert das Geraet d (Pegel ueber den Knoten) innerhalb von ms
 async function hears(b, d, ms = 4000) {
   if (MESH) return until(async () => { const r = await room(b); const l = r && r.links.find(x => x.device === d); return l && l.connected && l.playing && !l.muted; }, ms, 200);
-  return until(async () => { const h = await horn(b); return h && h.up && (h.levels || {})[d] > 0.01; }, ms, 200);
+  return until(async () => { const h = await horn(b); return h && h.up && ((h.levels || {})[d] > 0.01 || await heardRaw(b, h, d)); }, ms, 200);
+}
+// Ohne Pegel im RTP-Kopf (Chromium hinter der Frame-E2E) kommen die Pegel vom Sprecherplatz des Knotens - der ist ein
+// Bildplatz und bleibt leer, wenn das Geraet kein Bild sendet (Begleitgeraet nach promote). Dann direkt messen: Tonplatz
+// mit der CSRC von d (Belegung + csrc), dekodierter Pegel des Wiedergabe-Elements (WebAudio), ~250 ms.
+async function heardRaw(b, h, d) {
+  const slots = Object.values(h.legs || {}).flatMap(l => (l.slots || []).filter(x => x.class === 'audio'));
+  const i = slots.findIndex(x => x.csrc && (h.csrc || {})[x.csrc >>> 0] === d);
+  if (i < 0) return false;
+  return b.evaluate(async (i) => {
+    const a = [...document.querySelectorAll('audio.cl-raudio')].find(x => x.dataset.slot === String(i) && x.srcObject);
+    const tr = a && a.srcObject.getAudioTracks()[0];
+    if (!tr || tr.readyState !== 'live') return false;
+    const ac = new AudioContext(), an = ac.createAnalyser(); an.fftSize = 1024;
+    ac.createMediaStreamSource(new MediaStream([tr])).connect(an);
+    const buf = new Float32Array(1024); let m = 0;
+    for (let k = 0; k < 12; k++) { await new Promise(r => setTimeout(r, 25)); an.getFloatTimeDomainData(buf); for (const x of buf) m = Math.max(m, Math.abs(x)); }
+    ac.close();
+    return m > 0.01;
+  }, i);
 }
 // Uebernahme von "from" nach "to" aus der Leiste; -> ms bis Ton an und verbunden (oder null)
 async function takeOver(to) {
@@ -138,7 +158,8 @@ async function takeOver(to) {
     await comp.click('.cl-take');
     const rt = await until(async () => { const x = await room(comp); return x && !x.ho && !x.companion && x.mic && x; }, 15000, 100);
     ok(`Begleitgerät übernimmt (${Date.now() - t0} ms)`, rt, await room(comp));
-    ok('... B hört das frühere Begleitgerät (Ton-Bein mit neuen Token)', await hears(b, D[nxt], 6000), (await horn(b) || {}).levels);
+    const heardC = await hears(b, D[nxt], 6000);
+    ok(`... B hört das frühere Begleitgerät (Ton-Bein mit neuen Token, ${Date.now() - t0} ms nach dem Klick)`, heardC, (await horn(b) || {}).levels);
     ok('... das bisherige Hauptgerät hat aufgelegt', await until(async () => !(await room(P[cur])), 8000, 200));
     const fin = await until(async () => { const r = await room(b); return r && r.legs.length === 2 && r; }, 6000, 200) || await room(b);
     ok(`am Ende genau zwei Endpunkte (${fin && fin.legs.length})`, fin && fin.legs.length === 2);
