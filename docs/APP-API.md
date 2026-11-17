@@ -2614,7 +2614,7 @@ Chat-Gerät; der direkte Anruf nennt dann den Grund – ohne Hinweis), `reach` (
   (`last_seen` – gesetzt bei Chat-Abrufen mit `?device=`, `GET /api/chat/me?device=` und `PUT /api/calls/caps` –, sonst das Anlegedatum; wie die
   Chat-Umstellung auf Stufe 3). Ältere Geräte halten den Anruf über Knoten nicht auf; es klingelt zwar auch dort (Ereignis
   und Push gehen an das Konto), eine App ohne `horn` bekommt beim Annehmen aber sauber 409 `join_block: "old"`, die
-  anderen Geräte klingeln weiter. Hat das Gegenüber nur alte Geräte, läuft der Anruf über den Knoten. Die Fähigkeit
+  anderen Geräte klingeln weiter. Hat das Gegenüber nur alte Geräte, zählen diese (sonst klingelte dort nichts – eingeladen wird nur, wer ein Gerät mit `horn` bzw. `horn_ring` hat). Die Fähigkeit
   **`horn_ring`** (`PUT /api/calls/caps`, Linux-App) heißt: das Gerät klingelt bei Anrufen über Knoten und lässt den
   Browser beitreten (der tritt mit seinen eigenen caps bei) – es zählt als fähig, ohne Erreichbarkeitsprüfung, und wird
   auch zu Gruppenanrufen über Knoten eingeladen. Gibt es mehrere bereite Knoten, nimmt der Anruf den ersten (Reihenfolge

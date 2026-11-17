@@ -21,7 +21,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   einem Lebenszeichen in den **letzten 30 Tagen** (wie bei der Chat-Umstellung auf Stufe 3). Ein lange nicht benutztes
   altes Handy zwingt den Anruf nicht mehr auf direkt. Klingelt es dort trotzdem und jemand nimmt mit einer alten App an,
   scheitert das sauber („braucht Saga 2.5“), die anderen Geräte klingeln weiter. App-Start (`GET /api/chat/me?device=`) und
-  `PUT /api/calls/caps` zählen jetzt auch als Lebenszeichen.
+  `PUT /api/calls/caps` zählen jetzt auch als Lebenszeichen. Hat das Gegenüber nur lange nicht benutzte Geräte, zählen
+  diese (sonst klingelte dort nichts).
 - **Linux-App zählt als fähig:** Sie meldet neu `horn_ring` (klingelt, das Gespräch läuft im Browser) – 1:1 zu
   Linux-Nutzern läuft damit über den Knoten statt direkt mit dem falschen Hinweis „Gegenstelle veraltet“; zu
   Gruppenanrufen über Knoten werden reine Linux-Nutzer eingeladen.

@@ -9,7 +9,7 @@ Geprueft (Server mit Registereintrag-Knoten wie anrufe_horn_dm, Wegwerf-Konten c
 - Linux-App mit caps ["multi","horn_ring"] -> faehig ohne Erreichbarkeitspruefung: Anruf ueber Knoten, call.invite mit dm.
 - nur ein Browser-Geraet ohne horn -> fallback web (ohne Hinweis); Gegenueber ohne jedes Geraet -> fallback none, danach
   direkt mit dem eigentlichen Grund ("noch auf keinem Geraet eingerichtet").
-- nur alte Geraete (> 30 Tage) -> ueber Knoten.
+- nur alte Geraete (> 30 Tage) -> diese zaehlen (2.4: fallback peer; mit horn: ueber Knoten, es klingelt dort).
 - PUT /api/calls/caps und GET /api/chat/me?device= merken ein Lebenszeichen (last_seen).
 - horn_ring zaehlt fuer Einladungen zu Gruppenanrufen ueber Knoten (_can_horn).
 - im Prozess (ohne Server): F4 - Tunnel-Knoten + normaler Knoten, Anrufer mit "ws", Gegenueber-Browser ohne "frames":
@@ -223,11 +223,27 @@ def run():
     ok(f"... direkt danach: eigentlicher Grund ({s2}, {d2_.get('error')})", s2 == 409 and "keinem Gerät" in (d2_.get("error") or ""))
 
     # --- nur alte Geraete --------------------------------------------------------------------------------------------
+    # Pruefer pruef-yg: hat das Gegenueber NUR alte Geraete, zaehlen diese - sonst klingelte bei ihm gar nichts (Einladung
+    # 'old': kein Geraet mit horn), ein direkter Anruf erreicht die alte App aber
     caps(F, CAPS24)
     age(F.dev, 60)
     cid, s, d = hcall(H, af)
-    ok(f"nur ein Geraet, vor 60 Tagen gesehen: ueber Knoten ({s}, {(d.get('call') or {}).get('topo')})", s == 200 and d["call"]["topo"] == "horn")
+    ok(f"nur ein 2.4-Geraet, vor 60 Tagen gesehen: fallback peer, nichts angelegt ({s}, {d.get('horn_block')})",
+       s == 409 and d.get("fallback") == "direct" and d.get("horn_block") == "peer" and row(cid) is None)
+    caps(F, CAPS)
+    age(F.dev, 60)
+    sf = A_.Stream(F.k)
+    time.sleep(0.8)
+    mf = sf.mark()
+    cid, s, d = hcall(H, af)
+    ok(f"nur ein Geraet mit horn, vor 60 Tagen gesehen: ueber Knoten ({s}, {(d.get('call') or {}).get('topo')})",
+       s == 200 and d["call"]["topo"] == "horn")
+    inv = sf.wait("call.invite", lambda x: x.get("call_id") == cid, since=mf)
+    with connect() as c:
+        ist = c.execute("SELECT state FROM chat_call_invite WHERE call_id=? AND who=?", (cid, F.uid)).fetchone()
+    ok(f"... es klingelt dort (Einladung {ist and ist[0]}, call.invite {bool(inv)})", bool(inv) and ist and ist[0] == "ringing")
     end(H, cid)
+    sf.close()
 
     # --- Gruppenanruf ueber Knoten: horn_ring wird eingeladen --------------------------------------------------------
     with connect() as c:

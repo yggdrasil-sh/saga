@@ -453,13 +453,14 @@ def dm_peer_check(c, peer, caps=None, now=None):
     Aktiv = Lebenszeichen (last_seen, sonst angelegt) in den letzten 30 Tagen (DM_ACTIVE_S, wie chat.blocking_devices);
     aeltere Geraete halten nicht auf - es klingelt zwar auch dort (Ereignis/Push an das Konto), eine alte App scheitert
     beim Annehmen aber sauber (409 join_block old "braucht Saga 2.5"), die anderen Geraete klingeln weiter. Hat das
-    Gegenueber nur alte Geraete, laeuft der Anruf ueber den Knoten (ein direkter Anruf erreichte sie ebenso wenig sicher)."""
+    Gegenueber nur alte Geraete, zaehlen diese (Pruefer pruef-yg: sonst klingelte dort gar nichts - eingeladen wird nur, wer
+    ein Geraet mit horn/horn_ring hat, _can_horn -, ein direkter Anruf erreicht die alte App aber)."""
     now = time.time() if now is None else now
     rows = c.execute("SELECT caps, name, COALESCE(last_seen, created) FROM chat_device WHERE uid=? AND revoked_at IS NULL",
                      (peer,)).fetchall()
     if not rows:
         return "none", None
-    act = [r for r in rows if (r[2] or 0) > now - DM_ACTIVE_S]
+    act = [r for r in rows if (r[2] or 0) > now - DM_ACTIVE_S] or rows      # nur alte Geraete: dann zaehlen alle
     bad = [r for r in act if not _horn_dev(r[0])]
     if bad:
         return ("web" if all(chat._WEB_DEV.match((r[1] or "").strip()) for r in bad) else "peer"), None
