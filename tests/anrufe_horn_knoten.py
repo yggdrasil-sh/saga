@@ -13,7 +13,9 @@ Wiederverwendung (TURN und Bein), abgelaufen, anderer Knoten, veraenderte Nutzla
 entfernte Person (kick nach Verlassen), beendeter Anruf (close); POST /horn (frische Token, falscher Knoten, fremdes
 Geraet); Grenze vom Admin gesenkt; Flag aus -> Knoten beendet, neue Gruppen wieder Mesh; Neustart mit Flag: Startzeit.
 Danach der Browser-Test tests/browser_horn_knoten.js (5 Personen ueber den Knoten, Frame-E2E) und die Pruefung des
-Mitschnitts am Knoten: jeder Rahmen traegt den E2E-Trailer, ffmpeg kann das Video nicht dekodieren.
+Mitschnitts am Knoten: jeder Rahmen traegt den E2E-Trailer, ffmpeg kann das Video nicht dekodieren. Dann
+tests/browser_horn_pegel.js (calls.horn_from 3: Gruppe 3, eine Person ohne Kamera - Sprechring aus dem Pegel des Knotens);
+HORN_BROWSER=pegel laesst den Test mit 5 Personen aus.
 Messwerte (PERF): Startzeiten, Beitritt, Token, CPU/RSS von saga-media, Python und Knoten. Wegwerf-Konten ca-k*."""
 import base64
 import glob
@@ -569,7 +571,14 @@ def run(media, node):
     req("POST", f"/api/calls/{cid2}/end", A.k, {"device": A.dev["id"]})
 
     # --- Browser: 5 Personen ueber den Knoten -------------------------------------------------------------------------
-    browser(people, gid)
+    if os.environ.get("HORN_BROWSER") != "pegel":
+        browser(people, gid)
+
+    # --- Browser: Sprechring ohne Bild (Gruppe 3 ueber den Knoten, eine Person ohne Kamera) ----------------------------
+    flag(True, horn_from=3)
+    time.sleep(A_.WAIT)
+    browser_pegel()
+    flag(True)
 
     # --- Flag aus: Knoten weg -----------------------------------------------------------------------------------------
     t0 = time.time()
@@ -661,6 +670,27 @@ def browser(people, gid):
     ok(f"Browser-Test lief durch (rc {r.returncode})", r.returncode == 0)
     PERF["browser_lauf_cpu_pct"] = {k: round((b[k] - a[k]) / hz / secs * 100, 1) for k in ps if a.get(k) is not None and b.get(k) is not None}
     capture_check()
+
+
+def browser_pegel():
+    """tests/browser_horn_pegel.js: Pegel (audio-level) vom Knoten bis zum Sprechring, auch fuer ein Geraet ohne Bild."""
+    js = os.path.join(APP, "tests", "browser_horn_pegel.js")
+    pw = os.environ.get("PLAYWRIGHT") or "/opt/npm-tools/node_modules/playwright"
+    if os.environ.get("HORN_BROWSER") == "0" or not shutil.which("node"):
+        print("SKIP Browser-Test Pegel")
+        return
+    env = dict(os.environ, SAGA_BASE=f"http://127.0.0.1:{PORT}", SAGA_USERS=",".join(u for u, _ in BUSERS[:3]), SAGA_PASS=PW, PLAYWRIGHT=pw,
+               PLAYWRIGHT_BROWSERS_PATH=os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"), PW_CHANNEL="chromium")
+    for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        env.pop(k, None)
+    r = subprocess.run(["node", js], env=env, capture_output=True, text=True, timeout=600)
+    print(r.stdout[-6000:], flush=True)
+    if r.returncode:
+        print(r.stderr[-3000:], flush=True)
+    for ln in r.stdout.splitlines():
+        if ln.startswith("OK  ") or ln.startswith("FAIL"):
+            res.append(ln.startswith("OK"))
+    ok(f"Browser-Test Pegel lief durch (rc {r.returncode})", r.returncode == 0)
 
 
 if __name__ == "__main__":
