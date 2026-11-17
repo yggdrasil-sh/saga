@@ -726,3 +726,29 @@ func TestPegelWeiter(t *testing.T) {
 		t.Fatalf("allokationen je paket: %v", n)
 	}
 }
+
+// BenchmarkForwardTon: ein Ton-Ausgang mit Pegel der Quelle, ohne bzw. mit audio-level am Empfaenger (SetAudioLevel) -
+// Kosten des Pegel-Weiterreichens je Paket.
+func BenchmarkForwardTon(b *testing.B) {
+	for _, id := range []uint8{0, 3} {
+		b.Run(map[uint8]string{0: "ohne", 3: "mit"}[id], func(b *testing.B) {
+			s := &Source{Owner: "p", Layer: "a", Kind: Audio, LevelExt: 1}
+			l := &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}
+			o := l.NewOut("a", "p", Audio, ClassAudio)
+			o.SetAudioLevel(id)
+			o.Bind(nopW{}, 1, 111)
+			o.cur.Store(s)
+			s.subscribe(o)
+			pk := append(lvpkt(1, 0, 40), make([]byte, 60)...)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				binary.BigEndian.PutUint16(pk[2:], uint16(i))
+				s.Inject(pk)
+				e, _ := l.pop()
+				l.process(e.p, e.o)
+				e.p.release()
+			}
+		})
+	}
+}
