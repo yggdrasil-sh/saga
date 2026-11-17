@@ -1087,7 +1087,9 @@ def _dm_horn_start(c, uid, ch, peer, cid, media, dev, caps, now, dev_class="desk
     if not (_has(caps, "horn") and _has(caps, "multi")):
         return _fallback("caps")
     if not horn.any_ready(c, ws=horn.caps_reach(caps)):
-        return _fallback("node")
+        # Grundsatz Y: bereite Knoten gibt es, nur nicht fuer dieses Geraet (Tunnel-Knoten, Browser ohne "frames" bzw. App
+        # ohne "ws") - kein Ausfall, also ohne Hinweis direkt ("reach"); sonst kein Knoten bereit ("node", mit Hinweis)
+        return _fallback("reach" if horn.any_ready(c, ws="ws") else "node")
     why = dm_peer_block(c, peer, caps)                 # Grundsatz Y: jedes Geraet des Gegenuebers muss es koennen
     if why:
         return _fallback(why)

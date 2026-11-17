@@ -2519,9 +2519,9 @@ dafür nichts Neues: sie folgen `horn_dm` wie bisher.
   `topo: "horn"`, `dm: true`, `horn.candidates`); weiter wie in diesem Abschnitt (Knoten verbinden, `fkey`).
 - **Rückfall:** 409 `{fallback: "direct", horn_block, error}` – es ist nichts angelegt. `horn_block`: `off` (Einstellung
   aus), `caps` (Gerät ohne horn/multi), `node` (kein Knoten bereit), `peer` (Grundsatz Y: **ein** aktives Chat-Gerät des
-Gegenübers meldet kein `horn`/`multi`, z. B. Linux-App oder 2.4 – Hinweis „Gegenstelle veraltet“), `reach` (ein Gerät des
-Gegenübers erreicht den Knoten nicht, den der Anruf bekäme: Tunnel-Knoten ohne `ws` bzw. `frames`, z. B. ältere App oder
-Safari – ohne Hinweis; unbekannte Werte wie `reach` behandeln Clients wie jeden Rückfall), `fed`
+Gegenübers meldet kein `horn`/`multi`, z. B. Linux-App oder 2.4 – Hinweis „Gegenstelle veraltet“), `reach` (das eigene Gerät bzw. ein
+Gerät des Gegenübers erreicht keinen bereiten Knoten bzw. nicht den, den der Anruf bekäme: Tunnel-Knoten ohne `ws` bzw.
+`frames`, z. B. ältere App oder Safari – kein Ausfall, ohne Hinweis; unbekannte Werte wie `reach` behandeln Clients wie jeden Rückfall), `fed`
   (föderierter Direkt-Chat, dessen Server kein `horn_dm` kann bzw. den Auftrag ablehnt – sonst gehen föderierte
   Direkt-Chats sonst auch über Knoten, siehe `APP-API-FED.md` 7.5). Der Client ruft sofort mit **derselben id** wie bisher direkt an
   (Angebote je Gerät). Andere 409 wie beim direkten Anruf: `busy` (der Anruf ist angelegt und als „besetzt“ beendet),

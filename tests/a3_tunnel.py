@@ -347,7 +347,9 @@ def s10(people, cid):
     dm = A_.dm(Cc, D)
     s, d = req("POST", "/api/calls", Cc.k, {"id": secrets.token_hex(16), "chat_id": dm, "media": "audio", "device": Cc.dev["id"],
                                             "caps": CAPS_WEB, "via": "horn"})
-    ok("1:1 ueber Knoten ohne ws: 409 fallback node (direkt wie bisher)", s == 409 and d.get("horn_block") == "node", (s, d))
+    # Grundsatz Y: der Knoten ist bereit, nur nicht fuer dieses Geraet -> kein Ausfall-Hinweis ("reach" statt "node")
+    ok("1:1 ueber Knoten ohne ws: 409 fallback reach (direkt, ohne Hinweis \"Knoten nicht erreichbar\")",
+       s == 409 and d.get("fallback") == "direct" and d.get("horn_block") == "reach", (s, d))
     # Grundsatz Y: anrufendes Geraet mit ws, Geraet des Gegenuebers ohne ws (aeltere App rc.637 bzw. Browser ohne frames)
     # -> sofort 409 fallback reach (nichts angelegt, kein Klingeln), statt spaeter 409 join_block node beim Annehmen
     req("PUT", "/api/calls/caps", Cc.k, {"device": Cc.dev["id"], "caps": CAPS})

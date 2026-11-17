@@ -28,7 +28,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Sofort direkt statt Klingeln ins Leere:** Über den Knoten klingelt ein 1:1 nur, wenn **jedes** aktive Chat-Gerät
   des Gegenübers es kann (`horn` + `multi`) und den Knoten erreicht (Tunnel-Knoten nur mit `ws` bzw. `frames`). Sonst
   antwortet der Server sofort 409 `fallback: "direct"` mit `horn_block: "peer"` (z. B. Linux-App, 2.4; Hinweis
-  „Gegenstelle veraltet“) bzw. neu `"reach"` (z. B. ältere App ohne Tunnel, Safari ohne Rahmen-Weg; ohne Hinweis) –
+  „Gegenstelle veraltet“) bzw. neu `"reach"` (z. B. ältere App ohne Tunnel, Safari ohne Rahmen-Weg – auch für das anrufende Gerät, statt
+  `node` mit dem Hinweis „Anruf-Knoten nicht erreichbar“; ohne Hinweis) –
   bisher klingelte das Gerät und konnte nicht annehmen (`join_block node`/`old`). Föderiert ebenso (`dmhorn`,
   `dmhorn_lead`). Apps brauchen nichts Neues (`horn_dm` wie bisher, unbekannte `horn_block` = Rückfall).
 - Admin-Seite zeigt den wirksamen Wert und einen neuen Hilfetext (5 Sprachen); Föderation: `horn_req` folgt dem
