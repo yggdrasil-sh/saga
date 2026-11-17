@@ -722,7 +722,11 @@ def api_me(request: Request, device: str = ""):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    with _db() as c:
+    with _db() as c, c:
+        if device and _HEX32.fullmatch(device):        # 2.5: Lebenszeichen beim App-Start (30-Tage-Regel, calls.dm_peer_check)
+            now = time.time()
+            c.execute("UPDATE chat_device SET last_seen=? WHERE id=? AND uid=? AND revoked_at IS NULL AND COALESCE(last_seen, 0)<?",
+                      (now, device, uid, now - 60))
         ident = _identity(c, uid)
         devs = _devices(c, [uid], active=False).get(uid, [])
         n_link = c.execute("SELECT COUNT(*) FROM chat_link WHERE uid=? AND approved IS NULL AND error IS NULL AND expires>?", (uid, time.time())).fetchone()[0]

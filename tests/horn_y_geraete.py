@@ -10,7 +10,7 @@ Geprueft (Server mit Registereintrag-Knoten wie anrufe_horn_dm, Wegwerf-Konten c
 - nur ein Browser-Geraet ohne horn -> fallback web (ohne Hinweis); Gegenueber ohne jedes Geraet -> fallback none, danach
   direkt mit dem eigentlichen Grund ("noch auf keinem Geraet eingerichtet").
 - nur alte Geraete (> 30 Tage) -> ueber Knoten.
-- PUT /api/calls/caps merkt ein Lebenszeichen (last_seen).
+- PUT /api/calls/caps und GET /api/chat/me?device= merken ein Lebenszeichen (last_seen).
 - horn_ring zaehlt fuer Einladungen zu Gruppenanrufen ueber Knoten (_can_horn).
 - im Prozess (ohne Server): F4 - Tunnel-Knoten + normaler Knoten, Anrufer mit "ws", Gegenueber-Browser ohne "frames":
   dm_peer_check nimmt den normalen Knoten statt "reach"; nur Tunnel-Knoten -> "reach"; Gruende fuer foederierte Pfade
@@ -140,6 +140,10 @@ def run():
     caps(B, CAPS)
     ok(f"PUT /api/calls/caps merkt ein Lebenszeichen ({round((time.time() - (seen(B.dev) or 0)) / DAY, 1)} Tage)",
        (seen(B.dev) or 0) > time.time() - 60)
+
+    age(B.dev, 40)
+    s, _ = req("GET", f"/api/chat/me?device={B.dev['id']}", B.k)
+    ok(f"GET /api/chat/me?device= merkt ein Lebenszeichen ({s})", s == 200 and (seen(B.dev) or 0) > time.time() - 60)
 
     # --- 30-Tage-Grenze: altes 2.4-Geraet ----------------------------------------------------------------------------
     b2 = B.add_device()

@@ -2611,7 +2611,7 @@ Chat-Gerät; der direkte Anruf nennt dann den Grund – ohne Hinweis), `reach` (
   (Angebote je Gerät). Andere 409 wie beim direkten Anruf: `busy` (der Anruf ist angelegt und als „besetzt“ beendet),
   `incoming` (Gegenüber ruft gerade an).
 - **Geräteregel (Grundsatz Y, 2.5):** Es zählen nur Chat-Geräte mit einem **Lebenszeichen in den letzten 30 Tagen**
-  (`last_seen` – gesetzt bei Chat-Abrufen mit `?device=` und bei `PUT /api/calls/caps` –, sonst das Anlegedatum; wie die
+  (`last_seen` – gesetzt bei Chat-Abrufen mit `?device=`, `GET /api/chat/me?device=` und `PUT /api/calls/caps` –, sonst das Anlegedatum; wie die
   Chat-Umstellung auf Stufe 3). Ältere Geräte halten den Anruf über Knoten nicht auf; es klingelt zwar auch dort (Ereignis
   und Push gehen an das Konto), eine App ohne `horn` bekommt beim Annehmen aber sauber 409 `join_block: "old"`, die
   anderen Geräte klingeln weiter. Hat das Gegenüber nur alte Geräte, läuft der Anruf über den Knoten. Die Fähigkeit
