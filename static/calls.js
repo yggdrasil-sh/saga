@@ -2407,6 +2407,9 @@
       c.ui.w.classList.remove('mesh'); c.ui.grid.textContent = '';
       c.ui.ctl.textContent = '';
       c.ui.ctl.appendChild(btn(T('Schließen'), 'cl-pill', function () { closeWin(c); }));
+      // Rang 2 (T1): das beendete Fenster bleibt 3,5 s stehen - die Leiste "Hierher übernehmen" liegt dann darueber
+      // (calls.css .cl-done), sonst ging der schnelle Rueckwechsel erst nach dem Schliessen (gemessen ~2,4 s spaeter)
+      c.ui.w.classList.add('cl-done');
       if (kind !== 'error') setTimeout(function () { closeWin(c); }, 3500);
     } else if (msg) HK.toast(msg);
     if (location.hash.indexOf('#call-') === 0) history.replaceState(null, '', location.pathname);

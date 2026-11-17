@@ -184,6 +184,7 @@
 .cl-run{position:fixed;top:4.6rem;left:50%;transform:translateX(-50%);z-index:78;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;
   max-width:min(640px,calc(100vw - 2rem));padding:.45rem .55rem .45rem .9rem;border-radius:16px;background:var(--card);color:var(--fg);
   border:1px solid var(--border);box-shadow:0 10px 32px rgba(0,0,0,.28);font-size:var(--fs-base)}
+body:has(.cl-win.cl-done) .cl-run{z-index:205}  /* Rang 2: ueber dem beendeten Anruffenster (schneller Rueckwechsel) */
 .cl-run-t{flex:1;min-width:10rem}
 .cl-run-s{color:var(--muted);font-size:var(--fs-base)}
 .cl-run .cl-pill{height:34px;font-size:var(--fs-base);background:var(--card-h);border-color:var(--border);color:var(--fg)}
