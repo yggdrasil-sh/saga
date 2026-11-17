@@ -193,19 +193,19 @@ func TestTunnelZugang(t *testing.T) {
 	}
 	defer ws.Close()
 	r, err := wstun.ClientAuth(ws, user, cred, "audio", 5*time.Second)
-	// Standard: Beine "ws" mit Stausignal -> seltener quittieren (tunnelAckSig)
+	// seltener quittieren als der Rahmen-Weg (tunnelAck)
 	if err != nil || r.AckBytes != wstun.DefAckBytes || r.AckMs != 50 || r.V != 1 {
 		t.Fatalf("%+v %v", r, err)
 	}
 }
 
-// a3-stau: ack_ms der Antwort ok folgt dem Stausignal auf dem Weg ws - ohne Signal (HORN_TCP_STAU_WS=0 bzw.
-// HORN_TCP_STAU=0) wie bis 2.5 (10 ms), mit Signal (auch nur messend) 50 ms.
+// a3-stau/klein-knoten: ack_ms der Antwort ok ist 50 ms, mit und ohne Stausignal auf dem Weg ws (HORN_TCP_STAU_WS=0
+// bzw. HORN_TCP_STAU=0 aendern nur das Signal).
 func TestTunnelAckMsSignal(t *testing.T) {
 	for _, c := range []struct {
 		ws, mode string
 		want     int
-	}{{"", "", 50}, {"0", "", 10}, {"", "0", 10}, {"1", "mit", 50}, {"0", "mit", 10}} {
+	}{{"", "", 50}, {"0", "", 50}, {"", "0", 50}, {"1", "mit", 50}, {"0", "mit", 50}} {
 		t.Run("ws="+c.ws+",stau="+c.mode, func(t *testing.T) {
 			t.Setenv("HORN_TCP_STAU_WS", c.ws)
 			t.Setenv("HORN_TCP_STAU", c.mode)

@@ -40,6 +40,15 @@ var (
 	tunnelMaxPendIP = 8  // ... je Client-Adresse
 )
 
+// tunnelAck: Quittungsabstand der Tunnel (ack_ms der Antwort ok; Geraete-Apps lesen 1..1000), mit und ohne Stausignal.
+// Gemessen (Pruefstand A3): mit 10 ms quittiert die App rund 64-mal je Sekunde (Ton- und Bild-Tunnel, je Quittung
+// ~37 Byte mit WS-Kopf und TLS-Satz, zusammen ~19 kbit/s) - mehr als die transport-cc-Rueckmeldungen kosten. Ohne
+// Signal (HORN_TCP_STAU_WS=0, n = 6 je Zelle): Uplink 485 kbit/s 4 von 6 Einbruechen mit 10 ms, 1 von 6 mit 50 ms;
+// Downlink 600 kbit/s gleich (Bild-Latenz 193/970 gegen 200/954 ms, Fenster gleich voll). Das Fenster (mindestens
+// 64 KiB) bleibt weit offen; den Stau sieht das Signal bzw. das Fenster, nicht der Quittungstakt. Der Rahmen-Weg der
+// Browser (frames.go) bleibt bei wstun.DefAckDelay.
+const tunnelAck = 50 * time.Millisecond
+
 type tunnels struct {
 	mu    sync.Mutex
 	perIP map[string]int
@@ -160,7 +169,7 @@ func (s *server) apiSFUWS(w http.ResponseWriter, r *http.Request) {
 		release()
 		return
 	}
-	ok, _ := json.Marshal(wstun.Reply{T: "ok", V: wstun.Version, AckBytes: wstun.DefAckBytes, AckMs: int(s.tunnelAckDelay() / time.Millisecond)})
+	ok, _ := json.Marshal(wstun.Reply{T: "ok", V: wstun.Version, AckBytes: wstun.DefAckBytes, AckMs: int(tunnelAck / time.Millisecond)})
 	_ = ws.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	if err := ws.WriteMessage(websocket.TextMessage, ok); err != nil {
 		_ = ws.Close()

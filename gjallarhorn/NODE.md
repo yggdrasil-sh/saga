@@ -957,8 +957,9 @@ Seit 2.5 (`HORN_TCP_STAU`, Standard an):
   Uplink bekommt das Gegenüber 1–2 % weniger (ICE-TCP 249/253, TURN-TLS 232/238 kbit/s, n = 2; mit Nummern auch auf dem
   Ton-Bein waren es 247 bzw. 228).
 - A3 (Weg `ws`): **Standard an**, aus mit `HORN_TCP_STAU_WS=0`. Auf dem Downlink wirkt es wie auf
-  ICE-TCP (das Fenster des Tunnels muss nicht mehr greifen). Mit Signal verlangt der Knoten in der Antwort `ok`
-  `ack_ms` **50** statt 10 (`tunnelAckSig`; ohne Signal bzw. bei `HORN_TCP_STAU=0` bleibt es bei 10).
+  ICE-TCP (das Fenster des Tunnels muss nicht mehr greifen). Der Knoten verlangt in der Antwort `ok` `ack_ms`
+  **50** statt 10 (`tunnelAck`, mit und ohne Signal – auch bei `HORN_TCP_STAU_WS=0` bzw. `HORN_TCP_STAU=0`, siehe
+  Messung unten; der Rahmen-Weg der Browser bleibt bei 10).
   Warum: Am A3-Prüfstand mit engem **Uplink** (500 kbit/s) brach mit den Folgenummern der Uplink des Geräts ein
   (Chromium schaltet Schicht m ab bzw. auf wenige fps, das Gegenüber hängt auf m: 53–161 kbit/s, 3–11 Einfrierer,
   2 von 3 Läufen). Gemessen (Uplink-Bytes am Engpass, GoogCC aus dem Chromium-Protokoll): Die Rückmeldungen kosten
@@ -1023,6 +1024,8 @@ Schätzung des Bild-Beins im Chromium-Protokoll ab 20 s:
 | 485, ohne Signal (`ack_ms` 10) | 18 | 12 | 197 kbit/s | 358k | – |
 | 485, Signal, `ack_ms` 50 (jetzt) | 18 | 9 | 204 kbit/s | 372k | – |
 | 485, ohne Signal, App quittiert mit 50 ms (Stellvertreter) | 4 | 0 | 209 kbit/s | 395k | – |
+| 485, ohne Signal, `ack_ms` 10 / 50 (Knoten, klein-knoten) | 6+6 | 4 / 1 | 191/209 kbit/s | – | – |
+| 500, ohne Signal, `ack_ms` 10 / 50 (Knoten, klein-knoten) | 6+6 | 1 / 0 | 211/224 kbit/s | – | – |
 | 470, ohne Signal | 3 | 3 | – | 323k | – |
 | 500, ICE-TCP direkt ohne/mit Signal | 2+2 | 0 | 253/251 kbit/s | 439k/435k | 2k + 26k/29k |
 
@@ -1033,6 +1036,13 @@ kosten Proben und Schlüsselbilder weiteren Uplink (RTP-Kopf/RTCP 77–135k stat
 der Klippe (485 kbit/s) streut es stark (Prüfer-Nachmessung, abwechselnd: ohne Signal 10 von 12, mit Signal
 5 von 12 Einbrüchen; Fachmessung davor 2 von 6 bzw. 4 von 6) – zusammen kein Nachteil durch das Signal. Am meisten
 hilft dort die seltenere Quittung selbst: ohne Signal, aber mit 50 ms quittiert, 0 von 4 (n klein).
+
+Nachmessung (klein-knoten, `HORN_TCP_STAU_WS=0`, Knoten mit `ack_ms` 10 gegen 50, n = 6 je Zelle, abwechselnd):
+Uplink 485 kbit/s 4 von 6 gegen 1 von 6 Einbrüchen, 500 kbit/s 1 von 6 gegen 0 von 6 (Tabelle); Quittungen je
+Tunnel 32/s → 15/s. Downlink 600 kbit/s ohne Signal bleibt gleich: Bild-Latenz 193/970 gegen 200/954 ms
+(Median/p95, Mediane der Läufe; Einzelläufe 170–447 gegen 160–248 ms), 22,5 gegen 22,8 fps, Fenster gleich voll
+(`blocked_ms` 5,7 gegen 5,5 s je Lauf, höchstens 72 KiB unterwegs), RTT 52 gegen 60 ms. Seitdem gilt `ack_ms` 50
+für jeden Tunnel, auch ohne Signal (die Apps lesen den Wert aus `ok`, 1..1000 – kein App-Update nötig).
 
 ## Einfrieren auf TCP (5G-Messung, G4)
 

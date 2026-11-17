@@ -2403,8 +2403,8 @@ mit Frame-E2E wie auf allen Wegen).
 - **Erste Nachricht** (Text, ≤ 4 KiB, spätestens 10 s nach 101):
   `{"t": "auth", "v": 1, "mode": "ice", "user": "<username>", "cred": "<credential>", "role": "audio|video"}` (`role`
   optional, nur Diagnose). Zugangsdaten nie in URL oder Kopf (Proxys protokollieren die Anfragezeile). Danach darf die
-  App sofort Daten schicken. Antwort: `{"t": "ok", "v": 1, "ack_bytes": 8192, "ack_ms": 50}` (Werte immer aus der Antwort nehmen: 50 ms, wenn
-  der Knoten auf diesem Weg das Stausignal per transport-cc nutzt, sonst 10 ms) oder
+  App sofort Daten schicken. Antwort: `{"t": "ok", "v": 1, "ack_bytes": 8192, "ack_ms": 50}` (Werte immer aus der Antwort nehmen: Knoten
+  ab 2.5 verlangen 50 ms, ältere 10 ms) oder
   `{"t": "err", "v": 1, "code": …}` mit anschließendem Close: `auth` (4401), `version` (dazu `"max": 1`, 4400), `mode`,
   `bad` (4400), `timeout` (keine Anmeldung in 10 s bzw. kein Datenbyte 30 s nach `ok`, 4408), `unavailable` (4503).
 - **Binärnachrichten**, erstes Byte = Art, Zahlen big endian: `0x00` Daten (Rest = ICE-TCP-Bytes samt RFC-4571-Rahmen,

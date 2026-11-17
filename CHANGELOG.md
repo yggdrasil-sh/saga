@@ -190,10 +190,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Jetzt meldet das Gerät auch auf diesen Wegen, wann jedes Paket ankam (transport-cc), und der Knoten schaltet herunter,
   sobald unterwegs eine Schlange wächst. Gemessen bei 600 kbit/s: Verzögerung 0,17 s statt 1,3–1,6 s (Spitzen 0,2 s
   statt 3 s), keine Einfrierer, dafür die kleinere Bildschicht; ohne Engpass, mit Verlust, langer Laufzeit oder einem
-  Download auf derselben Leitung unverändert. Auch über den Medien-Tunnel der Apps (A3): Dort quittiert die App dann
-  seltener (`ack_ms` 50 statt 10), damit der enge Uplink eines Geräts nicht leidet – gemessen bei 500 kbit/s Uplink
-  bekommt das Gegenüber so etwas mehr als vorher statt Einbrüchen. Abschalten zur Prüfung: `HORN_TCP_STAU=0`, nur
-  für den Tunnel `HORN_TCP_STAU_WS=0`. Einzelheiten: `gjallarhorn/NODE.md` („TCP-Wege: Ende-zu-Ende-Stausignal“).
+  Download auf derselben Leitung unverändert. Auch über den Medien-Tunnel der Apps (A3): Dort quittiert die App
+  seltener (`ack_ms` 50 statt 10, auch mit abgeschaltetem Signal), damit der enge Uplink eines Geräts nicht leidet –
+  gemessen bei 500 kbit/s Uplink bekommt das Gegenüber so etwas mehr als vorher statt Einbrüchen. Abschalten zur
+  Prüfung: `HORN_TCP_STAU=0`, nur für den Tunnel `HORN_TCP_STAU_WS=0`. Einzelheiten: `gjallarhorn/NODE.md` („TCP-Wege: Ende-zu-Ende-Stausignal“).
 
 ### Neu – Anrufe der Apps über die Saga-Adresse hinter jedem Reverse Proxy (Tunnel, Gjallarhorn experimentell)
 - **Medien-Tunnel `/api/sfu/ws`:** Die Apps reichen ICE-TCP je Leitung als WebSocket (Unterprotokoll `saga-tunnel.1`)
