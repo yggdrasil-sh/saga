@@ -178,7 +178,7 @@ const openList = async p => {
       ok(`R${i + 1}: keine Neuverbindung zum Knoten (gleiche Kennungen, eine Verbindung, verbunden), Dauer läuft weiter`,
          hA1.up && JSON.stringify(hA1.hp) === hpA && hA1.conns.length === connsA && rA1.since === s0 && rA1.legs.length === 2, [hA1.hp, hpA, rA1.since, s0]);
       const cur = await until(() => a.evaluate(id => { const s = window.HKChat.state(); return s.cur === id && s.cur; }, mv.chat_id), 5000);
-      ok(`R${i + 1}: A: Chat-Ansicht springt auf den neuen Chat (${cur})`, cur === mv.chat_id);
+      ok(`R${i + 1}: A: Chat-Ansicht springt auf den neuen Chat (${cur})`, cur === mv.chat_id, [await a.evaluate(() => window.HKChat.state()), dmId, mv.chat_id, await a.evaluate(() => location.href)]);
       const toast = await until(() => other.evaluate(() => [...document.querySelectorAll('.hk-toast, .toast, [role=status]')].map(x => x.textContent).join(' | ')), 3000);
       ok(`R${i + 1}: Hinweis „Neue Gruppe – der Anruf läuft dort … weiter“ (${(toast || '').slice(0, 120)})`, /Neue Gruppe/.test(toast || ''));
       // C klingelt und tritt bei - Schluesselwechsel (Ratsche) beim Beitritt

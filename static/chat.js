@@ -1188,7 +1188,12 @@
   function openChat(cid) {
     if (!S.ready) return Promise.resolve();
     var same = S.cur && S.cur.id === cid;
+    // 2.5 (L9): nur die zuletzt angeforderte Antwort zaehlt - sonst konnte ein spaet beantwortetes Auffrischen des alten
+    // Chats (chat.changed) die gerade geoeffnete neue Gruppe wieder ueberdecken (1:1 -> Konferenz)
+    var tok = S.openTok = (S.openTok || 0) + 1; S.opening = cid;
     return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r) {
+      if (tok !== S.openTok) return;
+      S.opening = null;
       var c = r.chat; freeTitle(c); h2uNote([c]);
       if (!same) { draftSave(); selEnd(true); vplDrop(); recCancel(); S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; S.rcpts = {}; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; S.people = {}; unfReset(); }
       if (same && S.cur && S.cur._title && !c._title) c._title = S.cur._title;   // bis der (neue) Name entschluesselt ist: kein Flackern
@@ -1203,6 +1208,8 @@
       presenceSoon();
       return loadMsgs(false).then(function () { loadReceipts(c); });
     }).catch(function (e) {
+      if (tok !== S.openTok) return;
+      S.opening = null;
       if (e.status === 404) { HK.toast(T('Diesen Chat gibt es nicht (mehr) oder du gehörst nicht mehr dazu.')); closeChat(); loadList(); }
       else HK.toast(e.message);
     });
@@ -4723,7 +4730,7 @@
       else { if (S.cur && S.cur.id === d.chat_id) { if (S.cur.kind === 'dm') { closeChat(); history.replaceState(null, '', location.pathname); } else wipeView(); } listSoon(); }
     }
     else if (t === 'chat.read') listSoon();
-    else if (t === 'chat.changed') { listSoon(); if (S.cur && S.cur.id === d.chat_id) { S.rc = null; openChat(d.chat_id); } }
+    else if (t === 'chat.changed') { listSoon(); if (S.cur && S.cur.id === d.chat_id && !(S.opening && S.opening !== d.chat_id)) { S.rc = null; openChat(d.chat_id); } }
     else if (t === 'avatar.changed') listSoon();      // neues Profilbild (Bilder tauscht live.js; Liste fuer neue Adressen)
     else if (t === 'ai.persona.changed') loadAI();     // Name/Bild/Schalter der KI geaendert
     else if (t === 'chat.receipt' && S.cur && S.cur.id === d.chat_id && K) {          // (2.4) viele auf einmal: nur Hinweis -> abrufen
