@@ -16,6 +16,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Gruppenanrufe über den Knoten: Restpunkte
+- **Steuerkanal:** Bricht ein Knoten die Verbindung gleich nach seiner Anmeldung ab (vor oder während `welcome`), endet
+  das jetzt wie jede andere Trennung (Knoten getrennt, kein hängender Eintrag) statt mit einem Serverfehler im Log. Test
+  `tests/horn_ctl_abbruch.py`.
+
 ### Anrufe – Diagnose: woran eine Übernahme scheitert
 - **„Hierher übernehmen“ im direkten Anruf:** Kommt eine Verbindung nicht innerhalb der Frist zustande, meldet die
   Anruf-Diagnose (calldiag) jetzt je Verbindung den Zustand (`ho-fail`: Antwort gesetzt, Signal-/ICE-/DTLS-Zustand,

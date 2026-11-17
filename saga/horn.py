@@ -874,6 +874,46 @@ def _node_drain(nid):
     return bool(r and r[0])
 
 
+async def _welcome(ws, k, nid, hh, builtin):
+    """Register-Eintrag (Last, Wege) und welcome (n=0) fuer eine neue Steuerverbindung; danach Peers/Bruecken anstossen."""
+    pub = await asyncio.to_thread(saga_pub)
+    rooms = await asyncio.to_thread(_active_rooms, nid)
+    stats = {} if builtin else await asyncio.to_thread(_load_stats, nid)
+    _LIVE[nid] = {"load": {"max_legs": hh["max_legs"], "legs": 0, "state": "ok"}, "at": time.time(), "db": time.time(), "stats": stats,
+                  "drain_ev": False, "udp_check": hh["udp_check"], "ice_tcp": hh["ice_tcp"],
+                  "ws": hh["ws"], "tunnel": hh["tunnel"] and builtin, "frames": hh["frames"]}
+    welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
+    if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)
+        welcome["origins"] = await asyncio.to_thread(HOOKS["origins"])
+    # cert (2.5, horn-admin: auch der eingebaute): dns01 mit Cloudflare-Token in Saga, sonst alpn. Eigene Zertifikatsdateien
+    # und HORN_TLS_SELF fasst der Knoten dabei nie an (gjallarhorn acmedns.go certMode).
+    welcome["cert"] = await asyncio.to_thread(_acme_mode)
+    if not builtin:
+        drain = await asyncio.to_thread(_node_drain, nid)
+        welcome.update(want=VERSION, solo=await asyncio.to_thread(solo), drain=drain)
+    await ws.send_json(welcome)
+    if not builtin:
+        await asyncio.to_thread(broadcast_peers)
+    if HOOKS.get("connected"):
+        HOOKS["connected"]()                           # P9: Abgleich der Bruecken starten (saga/horn_bridge.py)
+
+
+async def _writer(ws, k):
+    while True:
+        m = await k.q.get()
+        if m is None:
+            return
+        k.n += 1
+        m["n"] = k.n
+        await ws.send_json(m)
+
+
+async def _pinger(k):
+    while True:
+        await asyncio.sleep(20)
+        k.q.put_nowait({"t": "ping"})
+
+
 @router.websocket("/api/horn/ctl")
 async def ctl(ws: WebSocket):
     """Steuerverbindung eines Knotens: eingebauter Knoten (X-Saga-Horn-Key von saga-media, nur mit Feature-Flag) oder
@@ -904,51 +944,20 @@ async def ctl(ws: WebSocket):
     if nid is None:
         await _close(ws, code)
         return
-    pub = await asyncio.to_thread(saga_pub)
-    rooms = await asyncio.to_thread(_active_rooms, nid)
     k = _Conn(ws, nid)
     k.builtin, k.name = builtin, hh["name"]
     old = _CONNS.get(nid)
     _CONNS[nid] = k
     if old is not None:
         old.q.put_nowait(None)
-    stats = {} if builtin else await asyncio.to_thread(_load_stats, nid)
-    _LIVE[nid] = {"load": {"max_legs": hh["max_legs"], "legs": 0, "state": "ok"}, "at": time.time(), "db": time.time(), "stats": stats,
-                  "drain_ev": False, "udp_check": hh["udp_check"], "ice_tcp": hh["ice_tcp"],
-                  "ws": hh["ws"], "tunnel": hh["tunnel"] and builtin, "frames": hh["frames"]}
-    welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
-    if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)
-        welcome["origins"] = await asyncio.to_thread(HOOKS["origins"])
-    # cert (2.5, horn-admin: auch der eingebaute): dns01 mit Cloudflare-Token in Saga, sonst alpn. Eigene Zertifikatsdateien
-    # und HORN_TLS_SELF fasst der Knoten dabei nie an (gjallarhorn acmedns.go certMode).
-    welcome["cert"] = await asyncio.to_thread(_acme_mode)
-    if not builtin:
-        drain = await asyncio.to_thread(_node_drain, nid)
-        welcome.update(want=VERSION, solo=await asyncio.to_thread(solo), drain=drain)
-    await ws.send_json(welcome)
-    if not builtin:
-        await asyncio.to_thread(broadcast_peers)
-    if HOOKS.get("connected"):
-        HOOKS["connected"]()                           # P9: Abgleich der Bruecken starten (saga/horn_bridge.py)
-
-    async def writer():
-        while True:
-            m = await k.q.get()
-            if m is None:
-                return
-            k.n += 1
-            m["n"] = k.n
-            await ws.send_json(m)
-
-    async def pinger():
-        while True:
-            await asyncio.sleep(20)
-            k.q.put_nowait({"t": "ping"})
-
-    wt, pt = asyncio.create_task(writer()), asyncio.create_task(pinger())
+    wt = pt = None
     last = 0
     acme_n = []
+    # ab hier gehoert die Verbindung ins Register: jeder Abbruch (auch beim welcome, Knoten nach hello weg -> ClientDisconnected)
+    # endet im finally unten (Abmelden, getrennt) statt in einem Traceback mit haengendem _CONNS-Eintrag
     try:
+        await _welcome(ws, k, nid, hh, builtin)
+        wt, pt = asyncio.create_task(_writer(ws, k)), asyncio.create_task(_pinger(k))
         while not wt.done():
             m = await asyncio.wait_for(ws.receive_json(), 60)
             if not isinstance(m, dict) or m.get("n") != last + 1:
@@ -1014,8 +1023,9 @@ async def ctl(ws: WebSocket):
     except Exception:  # noqa: BLE001 - Verbindung weg, Zeitueberschreitung, kein JSON
         pass
     finally:
-        wt.cancel()
-        pt.cancel()
+        for x in (wt, pt):
+            if x is not None:
+                x.cancel()
         if _CONNS.get(nid) is k:
             _CONNS.pop(nid, None)
             # _LIVE bleibt: ein kurzer Abriss der Steuerung (Neuverbindung nach 1 s) macht den Knoten nicht sofort
