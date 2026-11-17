@@ -952,16 +952,23 @@ Seit 2.5 (`HORN_TCP_STAU`, Standard an):
   Zeile `tcpstau <bein> ok= q= sent= ack= fb=` (Messläufe). Zähler in `GET /api/sfu/leg/{id}` → `tcp_stau`
   (`downs`, `holds`, `stale`, `queue_ms`, …).
 - Kosten: bis 8 Byte je Paket (Kopf-Erweiterung) und die Rückmeldungen des Geräts auf dem Uplink: im Prüfstand
-  ~16/s auf dem Bild-Bein. Die Ton-Leitung (`role=audio`) bekommt weder Nummern noch Mitleser (`tcpWants`: nur Beine
+  ~16/s auf dem Bild-Bein (libwebrtc meldet alle 50–250 ms, ~5 % seiner Uplink-Schätzung). Die Ton-Leitung (`role=audio`) bekommt weder Nummern noch Mitleser (`tcpWants`: nur Beine
   mit Bild-Ausgängen – ohne Bildplätze gibt es keine Schätzung, die das Signal nutzen könnte). Gemessen bei 500 kbit/s
   Uplink bekommt das Gegenüber 1–2 % weniger (ICE-TCP 249/253, TURN-TLS 232/238 kbit/s, n = 2; mit Nummern auch auf dem
   Ton-Bein waren es 247 bzw. 228).
-- A3 (Weg `ws`): **Standard aus**, an mit `HORN_TCP_STAU_WS=1`. Auf dem Downlink wirkt es dort wie auf ICE-TCP (das
-  Fenster des Tunnels muss dann nicht mehr greifen), aber am A3-Prüfstand mit engem **Uplink** (500 kbit/s) brach mit
-  den Folgenummern auf dem Downlink der Uplink des Geräts ein: Chromiums Schätzung schaltete die Schicht m ab, das
-  Gegenüber bekam 74–164 statt 202–212 kbit/s mit 2–9 Einfrierern (5 von 5 Läufen, auch im Modus `mit` – also durch die
-  Nummern selbst, nicht durch die Regel). Auf ICE-TCP/TURN-TLS direkt nicht (siehe Messung). Ursache offen (Tunnel-
-  Stellvertreter `e2e/wstunnel` oder libwebrtc); vor dem Einschalten mit echten Apps prüfen.
+- A3 (Weg `ws`): **Standard an**, aus mit `HORN_TCP_STAU_WS=0`. Auf dem Downlink wirkt es wie auf
+  ICE-TCP (das Fenster des Tunnels muss nicht mehr greifen). Mit Signal verlangt der Knoten in der Antwort `ok`
+  `ack_ms` **50** statt 10 (`tunnelAckSig`; ohne Signal bzw. bei `HORN_TCP_STAU=0` bleibt es bei 10).
+  Warum: Am A3-Prüfstand mit engem **Uplink** (500 kbit/s) brach mit den Folgenummern der Uplink des Geräts ein
+  (Chromium schaltet Schicht m ab bzw. auf wenige fps, das Gegenüber hängt auf m: 53–161 kbit/s, 3–11 Einfrierer,
+  2 von 3 Läufen). Gemessen (Uplink-Bytes am Engpass, GoogCC aus dem Chromium-Protokoll): Die Rückmeldungen kosten
+  auf `ws` nur ~5–6 kbit/s (~16/s), der Tunnel selbst aber ~40 kbit/s mehr als ICE-TCP (WS-Kopf mit Maske und
+  TLS-Satz je Nachricht, dazu ~64 Quittungen/s bei `ack_ms` 10 – Ton- und Bild-Tunnel, ~19 kbit/s). Damit sitzt
+  GoogCC auf `ws` bei 500 kbit/s genau an der libwebrtc-Schwelle für Schicht m: Auch **ohne** Nummern bricht der
+  Uplink bei 470 kbit/s 3 von 3 Mal ein (485: 0 von 3), mit Nummern bei 530 nicht (0 von 3). Fenster und Quittungen
+  bremsen dabei nicht (`blocked_ms` 0, höchstens 14 von 64 KiB unterwegs), Verluste gibt es keine. Mit `ack_ms` 50
+  quittiert die App ~29-mal je Sekunde statt ~64 – das spart mehr, als die Rückmeldungen kosten (Messung unten).
+  Das Fenster bleibt dabei weit offen (Mindestfenster 64 KiB, unterwegs ≤ Rate × (RTT + 50 ms) + 8 KiB).
 - Tests: `internal/sfu/tcpstau_test.go` (frei Takt für Takt gleich wie ohne, wachsende Schlange, Sprung durch fremden
   Download in einem bzw. zwei Takten, alte Rückmeldung, Ausschlag eines Takts, UDP unberührt), `TestTCPStauAbgriff`/`TestTCPStauAus`
   (Interceptor-Kette), `TestTCPStauSDPGleich` (Antwort an das Gerät mit und ohne Signal gleich), `TestMitleserRecent`.
