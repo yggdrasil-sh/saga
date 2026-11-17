@@ -42,6 +42,7 @@ type sfuBot struct {
 
 	mu      sync.Mutex
 	rxAudio map[uint32]uint64 // CSRC -> Pakete
+	rxLevel map[uint32]uint8  // CSRC -> zuletzt empfangener Pegel (audio-level, -dBov)
 	rxVideo map[uint32]uint64
 	rxPkts  atomic.Uint64
 	rxLost  atomic.Uint64
@@ -186,6 +187,7 @@ func postJSON(hc *http.Client, url string, in, out any) error {
 func (b *sfuBot) join(hc *http.Client, base string, api *webrtc.API, room string, tiles int, device string) error {
 	b.stop = make(chan struct{})
 	b.rxAudio, b.rxVideo, b.frames = map[uint32]uint64{}, map[uint32]uint64{}, map[*webrtc.TrackRemote]*frameClock{}
+	b.rxLevel = map[uint32]uint8{}
 	type spec struct {
 		role         string
 		sendA, sendV bool
@@ -307,8 +309,16 @@ func (b *sfuBot) join(hc *http.Client, base string, api *webrtc.API, room string
 	return nil
 }
 
-func (b *sfuBot) onTrack(tr *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+func (b *sfuBot) onTrack(tr *webrtc.TrackRemote, rc *webrtc.RTPReceiver) {
 	video := tr.Kind() == webrtc.RTPCodecTypeVideo
+	var lvID uint8 // audio-level wie bei Browser und Apps (getSynchronizationSources)
+	if !video && rc != nil {
+		for _, h := range rc.GetParameters().HeaderExtensions {
+			if h.URI == sdp.AudioLevelURI {
+				lvID = uint8(h.ID)
+			}
+		}
+	}
 	fc := &frameClock{}
 	if id := tr.ID(); id != "" {
 		fc.class = id[0]
@@ -348,6 +358,9 @@ func (b *sfuBot) onTrack(tr *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 			}
 		} else {
 			b.rxAudio[c]++
+			if e := h.GetExtension(lvID); lvID != 0 && len(e) > 0 {
+				b.rxLevel[c] = e[0] & 0x7f
+			}
 		}
 		b.mu.Unlock()
 	}
@@ -415,6 +428,17 @@ func (b *sfuBot) seen() (audio, video map[uint32]uint64) {
 		video[k] = v
 	}
 	return
+}
+
+// levels: zuletzt empfangener Pegel je Absender (CSRC); fehlt, wer ohne Pegel ankam.
+func (b *sfuBot) levels() map[uint32]uint8 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	m := map[uint32]uint8{}
+	for k, v := range b.rxLevel {
+		m[k] = v
+	}
+	return m
 }
 
 func (b *sfuBot) connected() int {

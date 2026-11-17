@@ -88,7 +88,8 @@ func roomCSRCs(t *testing.T, base, room string) map[string]uint32 {
 }
 
 // TestSFUMixed: drei Geraete (2x ICE-TCP mit Ton- und Bild-Leitung, 1x UDP
-// mit BUNDLE) im selben Raum. Jedes hoert und sieht die anderen beiden.
+// mit BUNDLE) im selben Raum. Jedes hoert und sieht die anderen beiden und
+// bekommt ihren Pegel (audio-level).
 func TestSFUMixed(t *testing.T) {
 	s := testNodeServer(t, true)
 	base := "https://" + s.mux.Addr().String()
@@ -117,6 +118,13 @@ func TestSFUMixed(t *testing.T) {
 			}
 			if au[ids[b.peer]] != 0 || vi[ids[b.peer]] != 0 {
 				return fmt.Errorf("%s bekommt sich selbst", b.peer)
+			}
+			// Pegel der Absender kommt an (Sprechring auch ohne Bild), auf ICE-TCP wie auf UDP
+			lv := b.levels()
+			for _, o := range bs {
+				if want := uint8(o.level.Load()); o != b && lv[ids[o.peer]] != want {
+					return fmt.Errorf("%s: pegel von %s %d statt %d (%v)", b.peer, o.peer, lv[ids[o.peer]], want, lv)
+				}
 			}
 		}
 		return nil
