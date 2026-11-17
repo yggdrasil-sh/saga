@@ -1010,6 +1010,27 @@ im Knoten (4 Geräte auf TURN-TLS: +1 Prozentpunkt). Kacheln auf TCP in der Grup
 aus den Empfängerberichten (Modus `mit`, gleiche Leitung): Sie zeigte den Anstieg ~1 s nach der Schlange und hing beim
 Abbau 1–2 s nach.
 
+A3-Weg `ws` am Prüfstand `e2e/a3stand.sh` + `e2e/wsmess.mjs` (Chromium → `e2e/wstunnel` → Engpass → nginx mit
+„Websockets Support“ → saga-media → Knoten; Gegenüber per TURN-TLS direkt, RTT 40 ms, Schlange 200 ms, je 60 s).
+Einbruch = Gegenüber unter 180 kbit/s bzw. ≥ 2 Einfrierer; kbit/s Median der Läufe ohne Einbruch; GoogCC = Mittel der
+Schätzung des Bild-Beins im Chromium-Protokoll ab 20 s:
+
+| Uplink, Stand | n | Einbrüche | Gegenüber | GoogCC | Uplink: Tunnel/Rahmen + RTP-Kopf/RTCP |
+|---|---|---|---|---|---|
+| 500, ohne Signal (`ack_ms` 10) | 9 | 1 | 208 kbit/s | 390k | 42k + 25k |
+| 500, Signal, `ack_ms` 10 (bisheriges `_WS=1`) | 9 | 5 | 201 kbit/s | 378k | 45k + 28k |
+| 500, Signal, `ack_ms` 50 (jetzt) | 8 | 1 | 214 kbit/s | 400k | 35k + 28k |
+| 485, ohne Signal / Signal mit `ack_ms` 50 | 6+6 | 2 / 4 | 199/203 kbit/s | 382k/366k | – |
+| 470, ohne Signal | 3 | 3 | – | 323k | – |
+| 500, ICE-TCP direkt ohne/mit Signal | 2+2 | 0 | 253/251 kbit/s | 439k/435k | 2k + 26k/29k |
+
+Downlink 600 kbit/s über `ws`: ohne Signal Bild-Latenz 429/1017 ms (Median/p95, n = 2, 22,9 fps), mit Signal und
+`ack_ms` 50 161/229 ms (n = 5, 20,6 fps 90p, 0 Einfrierer, ~5 Senkungen). `ack_ms` 100 (Stellvertreter, n = 4+3+2)
+sparte nur ~4 kbit/s mehr und änderte an den Einbrüchen nichts. Die Klippe ist bistabil: Fällt Schicht m einmal aus,
+kosten Proben und Schlüsselbilder weiteren Uplink (RTP-Kopf/RTCP 77–135k statt 28k), Chromium bleibt unten. Direkt an
+der Klippe (485 kbit/s) bricht es mit Signal noch etwas öfter ein als ohne – die Rückmeldungen wirken dort über ihre
+Bytes hinaus (sie gehen ungetaktet zwischen die Medienpakete); bei 500 kbit/s ist es gleich.
+
 ## Einfrieren auf TCP (5G-Messung, G4)
 
 Eine Messung über TURN-TLS/5G mit dem Spiegel ergab 5,45 Einfrieren je Bildplatz und 5 min. Ursache ist
