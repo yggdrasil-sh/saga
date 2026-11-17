@@ -125,6 +125,7 @@ _S = {"task": None}
 _OWN = set()                           # Anrufe, die DIESER Prozess vermittelt (Live-Ereignisse gehen an seine Verbindungen)
 ORPHAN = 30                            # fremde/verwaiste Anrufe erst so viel spaeter beenden (Neustart, zweiter Prozess)
 FED = None                             # 2.3: saga.fed_calls (Anrufe ueber Servergrenzen) setzt sich hier ein
+MOVE = None                            # 2.5 (L9): saga.call_move (1:1 -> Konferenz) setzt sich hier ein (Anruf-Objekt can_move)
 KASKADE = horn_bridge                  # 2.5 P9: Bruecken zwischen Knoten (Abgleich startet mit dem ersten verbundenen Knoten)
 
 
@@ -165,12 +166,13 @@ def _dmf(call):
 
 FEATURE_HO = "handover2"                # 2.5 Anruf-Uebergabe: gen, /leave by/gen (stale), handover_busy, promote, Wiedereintritt
 FEATURE_ADD = "call_add"                # 2.5 (L8): POST /api/calls/{id}/add, Anruf-Objekt can_add/add_page (saga/call_add.py)
+FEATURE_MOVE = "call_move"              # 2.5 (L9): /add im 1:1 -> neuer freier Gruppen-Chat, Anruf zieht um (saga/call_move.py)
 
 
 def features():
     # horn_direct1 (Horn-Fix): 429 mit Retry-After auf /horn, POST /direct (Rueckfall auf direkt), call.topo
     # frames (2.5 B2, Vertrag S12): Browser duerfen den Rahmen-Weg ueber die Saga-Adresse nutzen (caps "frames")
-    return list(FEATURES) + [FEATURE_HO, FEATURE_ADD] + (["horn", "horn_direct1", "frames"] if horn_on() else [])
+    return list(FEATURES) + [FEATURE_HO, FEATURE_ADD, FEATURE_MOVE] + (["horn", "horn_direct1", "frames"] if horn_on() else [])
 
 
 def ring_s():
@@ -648,6 +650,8 @@ def _dict(c, call, uid, nm=None, legs=None):
             nmc = names(c, [call["caller"]])
             d["from"] = {"username": _pp(c, call, call["caller"], uid), "name": nmc.get(call["caller"]) or call["caller"],
                          "avatar": nmc.avatar(call["caller"])}
+    if MOVE is not None and (dmh or not group):          # 2.5 (L9): 1:1 -> Konferenz (can_move bzw. move_block/move_hint)
+        MOVE.fields(c, call, uid, d)
     return d
 
 
@@ -756,10 +760,10 @@ def _in_group(c, uid, cid=""):
                           "AND l.role<>'companion' AND k.state<>'ended' AND k.kind='group' AND k.id<>? LIMIT 1", (uid, cid)).fetchone())
 
 
-def _log(c, call, status, now, end=None):
+def _log(c, call, status, now, end=None, extra=None):
     """Eintrag im Chat (chat_msg kind='call'): nur Metadaten, die der Server ohnehin kennt. end: Gespraechsende fuer die
     Dauer (verlorene Verbindung: letztes Lebenszeichen statt Zeitpunkt der Erkennung). 2.4 Gruppe: group und n (Zahl der
-    Personen, die dabei waren)."""
+    Personen, die dabei waren). 2.5 (L9) extra: weitere Felder (moved = Chat, in den der Anruf umgezogen ist)."""
     ch = chat._load(c, call["chat_id"])
     if not ch:
         return None
@@ -770,6 +774,7 @@ def _log(c, call, status, now, end=None):
         d.update({k: FED.FC.my_handle(c, d[k]) if d[k] and not sharing.is_remote(d[k]) else d[k] for k in ("from", "to")})
     if call["kind"] == "group" and not _dmh(call):     # 2.5: 1:1 ueber Knoten -> Eintrag wie 1:1
         d.update(group=True, n=c.execute("SELECT COUNT(DISTINCT who) FROM chat_call_leg WHERE call_id=?", (call["id"],)).fetchone()[0])
+    d.update(extra or {})
     body = json.dumps(d, separators=(",", ":"))
     eff, mx = ch["retention_s"], chat.retention_max()
     eff = min(eff, mx) if eff and mx else (eff or mx)

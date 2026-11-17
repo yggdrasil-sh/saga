@@ -5,7 +5,7 @@ ist, wird es zuerst - ueber dieselbe Funktion wie "Person hinzufuegen" in der Gr
 denselben Rechten, Schluesseln, Personen anderer Server und Seitenfreigaben) - und klingelt danach. Keine Anruf-Gaeste
 ohne Chat. Klingeln duerfen alle Mitglieder; neue Mitglieder hinzufuegen nur, wer es im Chat darf (chat.add_right).
 Seiten-Chats: Hinzufuegen teilt die Seite - nur mit confirm_page (sonst 409 page_confirm mit Titel, der Client fragt).
-1:1-Anrufe: 409 {dm: true} (L9 "1:1 -> Konferenz" kommt eigens). Voll (alle Plaetze belegt, jedes Geraet zaehlt, auch ein
+1:1-Anrufe (2.5, L9): Umzug in einen neuen freien Gruppen-Chat (saga/call_move.py), sonst 409 {dm: true, move_block}. Voll (alle Plaetze belegt, jedes Geraet zaehlt, auch ein
 zweites zum Teilen): 409 {full: true} - es gibt keinen Umzug eines laufenden direkten Anrufs auf einen Knoten.
 Ueber Servergrenzen: Mitglied wird man ueber das Heim des Chats (chat.member_add -> fed_chat), geklingelt wird ueber den
 fuehrenden Server (wie /invite, saga/fed_calls.py add_ring).
@@ -17,7 +17,7 @@ import time
 from fastapi import APIRouter, Request
 
 from db import connect as _db
-from saga import calls, chat, sharing
+from saga import call_move, calls, chat, sharing
 from saga.core import _bad, _body, t
 from saga.sharing import names
 
@@ -124,9 +124,14 @@ async def api_add(cid: str, request: Request):
         call, err = calls._mine(c, uid, cid)
         if err:
             return err
-        if call["kind"] != "group" or calls._dmh(call):
-            msg = t("In einem 1:1-Anruf kann man noch niemanden dazuholen – beginnt dafür einen Gruppenanruf in einer Gruppe.")
-            return chat._no_store({"error": msg, "dm": True}, 409)
+    if call["kind"] != "group" or calls._dmh(call):      # 2.5 (L9): 1:1 -> Konferenz (neuer Chat, der Anruf zieht um)
+        r = await call_move.move(uid, cid, raw)
+        if r is not None:
+            return r
+    with _db() as c:
+        call, err = calls._mine(c, uid, cid)            # inzwischen ein Gruppenanruf (die andere Person war schneller)
+        if err:
+            return err
         if call["state"] == "ended":
             return chat._no_store({"error": t("Der Anruf ist schon beendet."), "ended": True}, 409)
         ch, m, mem, err = chat._chat_for(c, uid, call["chat_id"], do_sync=False)
