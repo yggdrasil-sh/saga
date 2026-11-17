@@ -4777,6 +4777,12 @@
                chatName: function (id) { var c = (S.chats || []).filter(function (x) { return x.id === id; })[0]; return c ? chatName(c) : ''; },
                peerKeysV2: callPeerV2, myHandle: function () { return S.myHandle || (S.cur && S.cur.my_handle) || null; },
                // Anruf vorbei: offenen Chat auffrischen - ist keiner offen (angenommen von einer anderen Seite), den des Anrufs oeffnen
-               refresh: function (cid) { if (S.cur && S.cur.id === cid) loadMsgs(false); else if (!S.cur && S.ready && cid) openChat(cid); } } };
+               refresh: function (cid) { if (S.cur && S.cur.id === cid) loadMsgs(false); else if (!S.cur && S.ready && cid) openChat(cid); },
+               // 2.5 (L8): im Anruf wurde jemand ins Chat aufgenommen - Namen der Gruppe fuer Neue lesbar (wie die Gruppeninfo)
+               added: function (cid) {
+                 var c = S.cur && S.cur.id === cid ? S.cur : (S.chats || []).filter(function (x) { return x.id === cid; })[0];
+                 if (c && c._title) sendBody(cid, { v: 1, type: 'title', title: c._title }, 'title').catch(function () {});
+                 listSoon();
+               } } };
   start();
 })();

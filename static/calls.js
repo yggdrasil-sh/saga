@@ -123,7 +123,9 @@
     // 2.5 Meeting-Ansicht: Vollbild, Anheften, Kachelmenue
     full: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
     pin: ['M12 17v5', 'M9 10.8V4h6v6.8l2.5 3.2h-11z'],
-    more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01']
+    more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
+    // 2.5 (L8): Person hinzufuegen
+    userPlus: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M19 8v6', 'M22 11h-6']
   };
   function icon(name) {
     var NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg');
@@ -1650,12 +1652,13 @@
   function meetList(R) {
     R = roomOf(R); var ui = R.ui; if (!ui) return;
     var p = ui.w.querySelector('.cl-plist.cl-mlist');
-    if (!R.plist || R.horn) { if (p) p.remove(); ui.w.classList.remove('plist-side'); if (R.meshOn) meetSoon(R); return; }
+    if (!R.plist || R.horn) { if (p) p.remove(); if (!R.horn) addClose(R); ui.w.classList.remove('plist-side'); if (R.meshOn) meetSoon(R); return; }
     if (!p) { p = el('div', 'cl-plist cl-mlist'); p.setAttribute('role', 'complementary'); p.setAttribute('aria-label', T('Teilnehmende')); ui.w.appendChild(p); }
     var c = meetCalc(R), ppl = MT.people(c.d.roster, c.d.media), mt = mtOf(R), fk = focusKey(p);
     p.textContent = '';
     var hd = el('div', 'cl-plist-h'); hd.appendChild(el('b', null, T('Teilnehmende ({n})', { n: ppl.length })));
-    hd.appendChild(btn(icon('x'), 'cl-mini', function () { R.plist = false; meetList(R); drawCtl(R); }, T('Schließen')));
+    addHead(R, hd);
+    hd.appendChild(btn(icon('x'), 'cl-mini', function () { R.plist = false; addClose(R); meetList(R); drawCtl(R); }, T('Schließen')));
     p.appendChild(hd);
     var ul = el('ul', 'cl-plist-l');
     ppl.forEach(function (P) {
@@ -4752,18 +4755,143 @@
       HK.toast(e.status === 429 ? T('Gerade zu oft geklingelt – bitte etwa eine Minute warten.') : (e.message || T('Klingeln hat nicht geklappt.')), null, null, 6000);
     });
   }
+  // --- 2.5 (L8): Person hinzufuegen (Gruppenanruf, Anruf-Objekt can_add, POST /api/calls/{id}/add) ---------------------
+  // Eigenes Feld ueber der Teilnehmerliste (die Liste zeichnet sich beim Sprechen oft neu - Eingabe und Fokus bleiben so
+  // erhalten). Auswahl aus Kontakten bzw. Personensuche wie in der Gruppeninfo; Mitglieder klingeln, andere werden
+  // Mitglied des Chats und klingeln. Seiten-Chat: Rueckfrage "<Name> bekommt Zugriff auf die Seite" (409 page_confirm).
+  function addOk(R) {
+    R = roomOf(R);
+    return R.kind === 'group' && !(R.call && R.call.dm) && !!(R.call && R.call.can_add) && !!(cfg && (cfg.features || []).indexOf('call_add') >= 0);
+  }
+  function addSeats(R) {
+    R = roomOf(R);
+    var lim = (R.call && R.call.limit) || 0, used = (R.legs || []).length;
+    return { used: used, limit: lim, left: lim ? Math.max(0, lim - used) : 99 };
+  }
+  function addHead(R, hd) {
+    if (!addOk(R)) return;
+    var b = btn(icon('userPlus'), 'cl-mini cl-add-go', function () { addOpen(R); }, T('Person hinzufügen'));
+    b.dataset.k = 'add'; hd.appendChild(b);
+  }
+  function addClose(R, back) {
+    R = roomOf(R);
+    clearTimeout(R.addT);
+    if (R.addEl) { R.addEl.remove(); R.addEl = null; }
+    if (back) { var g = R.ui && R.ui.w.querySelector('.cl-plist .cl-add-go'); if (g) g.focus(); }
+  }
+  function addOpen(R) {
+    R = roomOf(R); var w = R.ui && R.ui.w; if (!w || !addOk(R)) return;
+    addClose(R);
+    var p = el('div', 'cl-plist cl-addp'); p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', T('Person hinzufügen'));
+    var hd = el('div', 'cl-plist-h'); hd.appendChild(el('b', null, T('Person hinzufügen')));
+    hd.appendChild(btn(icon('x'), 'cl-mini', function () { addClose(R, true); }, T('Schließen')));
+    p.appendChild(hd);
+    var hint = el('p', 'cl-td cl-add-hint'); hint.setAttribute('aria-live', 'polite'); p.appendChild(hint);
+    var inp = el('input', 'cl-add-q'); inp.type = 'search'; inp.placeholder = T('Name suchen'); inp.setAttribute('aria-label', T('Person suchen'));
+    inp.autocomplete = 'off'; p.appendChild(inp);
+    var ul = el('ul', 'cl-plist-l cl-add-l'); p.appendChild(ul);
+    p.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); addClose(R, true); } });
+    R.addEl = p; w.appendChild(p);
+    var draw = function (items, head) {
+      ul.textContent = '';
+      var st = addSeats(R);
+      hint.textContent = st.left <= 0 ? T('Der Anruf ist voll – erst wenn jemand auflegt, kann noch jemand dazukommen.')
+        : R.call && R.call.add_page ? T('Hinzufügen teilt die Seite „{title}“ (Lesen).', { title: R.call.add_page })
+        : T('Mitglieder klingeln, andere Personen kommen dazu und klingeln dann.');
+      if (head) ul.appendChild(el('li', 'cl-add-h', head));
+      if (!items.length) { ul.appendChild(el('li', 'cl-td cl-add-none', inp.value.trim() ? T('Niemand gefunden.') : T('Noch keine Kontakte – suche nach einem Namen.'))); return; }
+      items.forEach(function (u) {
+        var li = el('li'), b = el('button', 'cl-pl cl-add-p'); b.type = 'button';
+        var av = HK.avatarImg(el('span', 'cl-av cl-av-s', (u.name || '?').charAt(0).toUpperCase()), u.avatar || null, 32); av.setAttribute('aria-hidden', 'true');
+        var t = el('span', 'cl-pl-t'); t.appendChild(el('b', null, shortName(u.name || '?', 22)));
+        if (u.sub) t.appendChild(el('span', 'cl-td', u.sub));
+        b.appendChild(av); b.appendChild(t);
+        b.setAttribute('aria-label', T('{name} hinzufügen und anrufen', { name: u.name || '?' }));
+        if (st.left <= 0 || u.gone) b.disabled = true;
+        b.addEventListener('click', function () { addPick(R, u, false, b); });
+        li.appendChild(b); ul.appendChild(li);
+      });
+    };
+    var contacts = function () {
+      api('GET', '/api/chat/contacts?limit=30').then(function (r) {
+        if (R.addEl !== p || inp.value.trim()) return;
+        draw((r.contacts || []).map(function (k) {
+          return { ref: k.ref, name: k.name, avatar: k.avatar, gone: !!k.gone, sub: k.remote ? T('Person auf {host}', { host: k.host || k.sub || '' }) : (k.sub || '') };
+        }), T('Kontakte'));
+      }).catch(function () { if (R.addEl === p) draw([], ''); });
+    };
+    inp.addEventListener('input', function () {
+      clearTimeout(R.addT);
+      R.addT = setTimeout(function () {
+        var v = inp.value.trim();
+        if (!v) { contacts(); return; }
+        api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
+          if (R.addEl !== p || inp.value.trim() !== v) return;
+          draw((r.users || []).map(function (u) { return { ref: u.username, name: u.name, sub: u.sub, avatar: u.avatar }; })
+            .concat((r.remote || []).map(function (u) { return { ref: u.handle, name: u.label || u.name, avatar: u.avatar, sub: T('Person auf {host}', { host: u.host }) }; })), '');
+        }).catch(function () {});
+      }, 250);
+    });
+    draw([], ''); contacts();
+    inp.focus();
+  }
+  function addPick(R, u, confirm, b) {
+    R = roomOf(R);
+    if (R.done || (b && b.disabled)) return;
+    var body = { uids: [u.ref] }, nm = u.name || '?';
+    if (confirm) body.confirm_page = true;
+    if (b) { b.disabled = true; b.classList.add('busy'); }
+    var again = function () { if (b) { b.disabled = false; b.classList.remove('busy'); } };
+    api('POST', '/api/calls/' + R.id + '/add', body).then(function (d) {
+      again();
+      if (live(R) && invIn(R, d)) invDraw(R);
+      var f = (d.failed || [])[0];
+      if (f) HK.toast(f.error, null, null, 6000);
+      else if ((d.pending || []).length) HK.toast(T('{name} kommt dazu, sobald der andere Server zugestimmt hat.', { name: nm }), null, null, 6000);
+      else if (!d.n) HK.toast(T('{name} ist schon im Anruf oder klingelt gerade.', { name: nm }));
+      else HK.toast(T('{name} wird angerufen …', { name: nm }));
+      if ((d.added || []).length) { var br = bridge(); if (br && br.added && R.call) br.added(R.call.chat_id); }
+      if (R.addEl) { var i = R.addEl.querySelector('.cl-add-q'); if (i) { if (i.value) { i.value = ''; i.dispatchEvent(new Event('input')); } i.focus(); } }
+    }).catch(function (e) {
+      again();
+      if (e.status === 409 && e.data && e.data.page_confirm && !confirm) {
+        return addAsk(e.data.error).then(function (y) { if (y) addPick(R, u, true, b); else if (b && document.contains(b)) b.focus(); });
+      }
+      HK.toast(e.status === 429 ? T('Gerade zu oft geklingelt – bitte etwa eine Minute warten.') : (e.message || T('Hinzufügen hat nicht geklappt.')), null, null, 6000);
+    });
+  }
+  // Rueckfrage im Seiten-Chat - wie der Hinweis vor dem Start (cl-hint-page) ueber dem Anruffenster (HK.ask liegt darunter)
+  function addAsk(text) {
+    return new Promise(function (ok) {
+      var back = el('div', 'cl-hint-back'), box = el('div', 'cl-hint cl-hint-page cl-add-ask'); box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-modal', 'true');
+      var h = el('b', null, T('Seite teilen?')); h.id = 'cl-add-ask-h'; box.setAttribute('aria-labelledby', h.id); box.appendChild(h);
+      var p = el('p', null, text); p.id = 'cl-add-ask-d'; box.setAttribute('aria-describedby', p.id); box.appendChild(p);
+      box.appendChild(el('p', 'cl-hint-s', T('Die Seite wird dafür mit Leserecht geteilt.')));
+      var row = el('div', 'cl-hint-b'), done = function (v) { box.remove(); back.remove(); ok(v); };
+      var no = btn(T('Abbrechen'), 'cl-pill cl-hint-no', function () { done(false); }), go = btn(T('Teilen und anrufen'), 'cl-pill cl-hint-go', function () { done(true); });
+      row.appendChild(no); row.appendChild(go); box.appendChild(row);
+      back.addEventListener('click', function () { done(false); });
+      box.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); }
+        else if (e.key === 'Tab') { e.preventDefault(); (document.activeElement === no ? go : no).focus(); }
+      });
+      document.body.appendChild(back); document.body.appendChild(box);
+      go.focus({ preventScroll: true });
+    });
+  }
   // --- Teilnehmerliste (Gastgeber: Stummschalten, Entfernen) ------------------------------------------------------------
   function hornHost(R) { return !!(R.call && (R.call.host || (R.call.peer && R.call.peer.username === meName()))); }
   function hornList(R) {
     var H = R.horn, w = R.ui && R.ui.w; if (!H || !w) return;
     var p = w.querySelector('.cl-plist');
-    if (!H.plist) { if (p) p.remove(); return; }
+    if (!H.plist) { if (p) p.remove(); addClose(R); return; }
     if (!p) { p = el('div', 'cl-plist'); p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', T('Teilnehmende')); w.appendChild(p); }
     var fk = focusKey(p);
     p.textContent = '';
     var legs = R.legs || [], me_ = myDev().id, host = hornHost(R);
     var hd = el('div', 'cl-plist-h'); hd.appendChild(el('b', null, T('Teilnehmende ({n})', { n: legs.length })));
-    hd.appendChild(btn(icon('x'), 'cl-mini', function () { H.plist = false; hornList(R); drawCtl(R); }, T('Schließen')));
+    addHead(R, hd);
+    hd.appendChild(btn(icon('x'), 'cl-mini', function () { H.plist = false; addClose(R); hornList(R); drawCtl(R); }, T('Schließen')));
     p.appendChild(hd);
     var ul = el('ul', 'cl-plist-l');
     legs.forEach(function (x) {
