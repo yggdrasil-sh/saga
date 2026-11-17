@@ -830,8 +830,9 @@ Galerie-Endpunkte 404 `{"error": "not found"}` (nie 403).
 
 ## Titelbild-Galerie (2.5)
 
-Saga bringt 22 gemeinfreie Bilder mit (The Met Open Access, CC0; Liste: `static/covers/README.md`), der Admin kann
-eigene hinzufügen sowie Bilder ausblenden. **Für die Anzeige brauchen die Apps nichts Neues:** ein Galerie-Titelbild ist
+Saga bringt 122 Bilder mit (Liste: `static/covers/README.md`): 22 gemeinfreie Kunstwerke (The Met Open Access, CC0;
+4 Gruppen) und 100 KI-generierte Bilder der Saga-Elfe (IDs `saga-*`, 8 Gruppen „Saga · …“). Der Admin kann eigene
+hinzufügen sowie Bilder ausblenden. **Für die Anzeige brauchen die Apps nichts Neues:** ein Galerie-Titelbild ist
 ein normaler Wert in `cover`, nur eben ein anderer Pfad.
 
 **Pfad:** `cover` = `/covers/<id>.jpg` (`<id>`: `[a-z0-9][a-z0-9-]{0,63}`, Uploads des Admins `u-<hash>`). Laden wie
@@ -859,13 +860,31 @@ schicken `"cover": null` mit (ältere Server ignorieren das Feld).
 {"covers": [{"id": "hokusai-welle", "url": "/covers/hokusai-welle.jpg", "thumb": "/covers/hokusai-welle.jpg?w=384",
   "title": "Die große Welle vor Kanagawa", "artist": "Katsushika Hokusai", "date": "ca. 1830–32",
   "source_url": "https://www.metmuseum.org/art/collection/search/45434", "source": "The Metropolitan Museum of Art, Open Access (CC0 1.0)",
-  "group": "holzschnitt", "pos": 45, "builtin": true}],
+  "group": "holzschnitt", "pos": 45.0, "builtin": true},
+             {"id": "saga-am-kaminfeuer", "url": "/covers/saga-am-kaminfeuer.jpg", "thumb": "/covers/saga-am-kaminfeuer.jpg?w=384",
+  "title": "Am Kaminfeuer", "artist": "", "date": "", "source_url": "", "source": "KI-generiert für Saga",
+  "group": "saga-stube", "pos": 20.0, "builtin": true}],
  "groups": [{"id": "nordisch", "label": "Nordisch"}, {"id": "romantik", "label": "Romantik"}, {"id": "holzschnitt", "label": "Holzschnitt"},
-            {"id": "landschaft", "label": "Landschaft"}],
- "license": "CC0-1.0", "source": "…", "random_cover": true}
+            {"id": "landschaft", "label": "Landschaft"}, {"id": "saga-stube", "label": "Saga · Stube"}, …,
+            {"id": "saga-gefaehrten", "label": "Saga · Gefährten"}],
+ "license": "CC0-1.0", "source": "The Metropolitan Museum of Art, Open Access (CC0 1.0)", "random_cover": true}
 ```
-`title` und `label` in der Sprache der Anfrage. `group` kann auch eine Gruppe des Admins sein (dann `label` = Name). Auswahl
-setzt `cover` = `url` und `cover_pos` = `pos`. Ausgeblendete/entfernte Bilder fehlen hier und im Zufall, Seiten mit
+| Feld | Bedeutung |
+|---|---|
+| `id`, `url`, `thumb` | ID, Pfad für `cover`, Vorschau (`?w=384`) |
+| `title` | Titel in der Sprache der Anfrage (Deutsch bei `de`, sonst Englisch); ein vom Admin gesetzter Titel gilt in jeder Sprache |
+| `artist`, `date` | Künstler und Datierung; leer bei den KI-Bildern und wenn der Admin nichts angibt |
+| `source` | Herkunft **je Bild** (Text aus `covers.json` bzw. vom Admin, nicht übersetzt): Met-Bilder „The Metropolitan Museum of Art, Open Access (CC0 1.0)“, Saga-Bilder „KI-generiert für Saga“ |
+| `source_url` | Link zur Quelle (Met-Objektseite) oder leer – leer: keinen Link anbieten |
+| `group`, `pos` | Gruppe (ID aus `groups`, leer = „Weitere“), empfohlene senkrechte Bildposition 0–100 (Zahl, auch mit Nachkommastelle) |
+| `builtin` | mitgeliefert (auf jedem Saga-Server gleich) oder Upload des Admins |
+
+`covers` kommt in Anzeige-Reihenfolge (nach Gruppen), `groups` in Reihenfolge der Streifen, nur Gruppen mit sichtbaren
+Bildern; `label` in der Sprache der Anfrage, bei einer Gruppe des Admins ihr Name. `license`/`source` oben gelten nur
+für die Kunstwerke (Angabe der ganzen Datei, Hinweistext unter der Galerie) – je Bild zählt `source`. Ein Feature-Kennzeichen
+in `/api/version` gibt es nicht. Auswahl setzt `cover` = `url` und `cover_pos` = `pos` (ein `PATCH`, siehe **Setzen**;
+`cover_pos` wird auf 0–100 begrenzt). „Über dieses Bild“: Eintrag aus dieser Liste; fehlt er (ausgeblendet/entfernt), nur
+ein allgemeiner Hinweis. Ausgeblendete/entfernte Bilder fehlen hier und im Zufall, Seiten mit
 ihnen zeigen sie weiter. Ältere Server: 404 → keine Galerie anbieten.
 
 **Einstellung:** `GET /api/account/pages` → `{"random_cover": true}`, `PUT /api/account/pages` `{"random_cover": false}`

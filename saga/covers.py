@@ -289,15 +289,6 @@ def listing(uid=None):
     return out
 
 
-def info(url):
-    """Nachweis zu einem Titelbild der Galerie (auch ausgeblendete) - fuer 'Ueber dieses Bild'."""
-    e = get(cover_id(url) or "")
-    if not e:
-        return None
-    return {"id": e["id"], "title": title_of(e), "artist": e["artist"], "date": e["date"], "source_url": e["url"],
-            "source": e["source"], "group": e["group"], "pos": e["pos"]}
-
-
 @router.get("/api/covers")
 def api_covers(request: Request):
     uid = _api_guard(request)

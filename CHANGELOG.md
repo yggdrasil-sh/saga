@@ -20,6 +20,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Steuerkanal:** Bricht ein Knoten die Verbindung gleich nach seiner Anmeldung ab (vor oder während `welcome`), endet
   das jetzt wie jede andere Trennung (Knoten getrennt, kein hängender Eintrag) statt mit einem Serverfehler im Log. Test
   `tests/horn_ctl_abbruch.py`.
+- **Doku Titelbild-Galerie (`docs/APP-API.md`):** 122 Bilder (22 Kunstwerke der Met, 100 KI-Bilder der Saga-Elfe in
+  8 Gruppen), Felder von `GET /api/covers` als Tabelle (`source`/`source_url` je Bild, leer = kein Link). Ungenutztes
+  `covers.info()` entfernt.
 
 ### Anrufe – Diagnose: woran eine Übernahme scheitert
 - **„Hierher übernehmen“ im direkten Anruf:** Kommt eine Verbindung nicht innerhalb der Frist zustande, meldet die
