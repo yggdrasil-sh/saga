@@ -343,5 +343,14 @@ ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.
   ok('bendable: mit/ohne passiven TCP-Kandidaten', H.bendable(sdp) && !H.bendable('v=0\r\na=candidate:1 1 udp 1 192.0.2.7 5 typ host') && !H.bendable(''));
 }
 
+// --- 2.5 Y (Pruefer pruef-yg F2): Probe des schnellen UDP-Beitritts je Knoten -------------------------------------
+{
+  const pA = Promise.resolve({ a: { udp: 3 } }), f = { node: 'a', p: pA };
+  ok('fastProbe: Probe des Beitritts gilt fuer ihren Knoten', H.fastProbe(f, 'a') === pA);
+  ok('fastProbe: Wiederaufbau zu einem anderen Knoten binnen der Probezeit nimmt sie nicht (sonst UDP-Frist 0)',
+     H.fastProbe(f, 'b') === null);
+  ok('fastProbe: ohne laufende Probe nichts', H.fastProbe(null, 'a') === null && H.fastProbe(undefined, 'a') === null);
+}
+
 console.log(`\nHORN-LOGIK ${res.filter(Boolean).length}/${res.length}` + (res.every(Boolean) ? ' - ALLES GRUEN' : ' - FEHLER'));
 process.exit(res.every(Boolean) ? 0 : 1);

@@ -402,9 +402,15 @@
     return Math.max(1, Math.min(300, s || 5)) * 1000;
   }
 
+  // 2.5 Y (Pruefer pruef-yg F2): die Probe des schnellen UDP-Beitritts (hornStart "join", UDP sofort, Probe parallel)
+  // gehoert zu genau einem Knoten. Ein Wiederaufbau binnen der Probezeit (anderer Knoten, noch ohne eigene Messung) nimmt
+  // sie nicht - sonst setzte die fremde Probe die UDP-Frist auf 0 (UDP sofort aufgegeben) bzw. liesse auf sie warten.
+  function fastProbe(f, node) { return f && f.node === node ? f.p : null; }
+
   var api = { K: K, median: median, jitter: jitter, loadMs: loadMs, score: score, rank: rank, better: better, Switcher: Switcher,
               closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName, bend: bend, bendable: bendable, ways: ways, streamPath: streamPath,
-              TxGov: TxGov, txPlan: txPlan, RC: RC, Reconnect: Reconnect, reconnectList: reconnectList, retryAfterMs: retryAfterMs };
+              TxGov: TxGov, txPlan: txPlan, RC: RC, Reconnect: Reconnect, reconnectList: reconnectList, retryAfterMs: retryAfterMs,
+              fastProbe: fastProbe };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SagaHorn = api;
 })(typeof self !== 'undefined' ? self : this);

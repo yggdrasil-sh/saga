@@ -3342,11 +3342,11 @@
     var fast = why === 'join' && one && !!(c0.udp && c0.tokens && c0.tokens.both);
     var m = (one && !c0.udp) || fast ? Promise.resolve(null) : hornMeasure(R, cands);
     if (one && !c0.udp) hornMeasure(R, cands);
-    if (fast) {
-      var fp = H.fastP = hornMeasure(R, cands);
-      var clr = function () { if (H.fastP === fp) H.fastP = null; };
+    if (fast) {                                         // Probe je Knoten (Pruefer pruef-yg F2, SagaHorn.fastProbe)
+      var fp = hornMeasure(R, cands), fo = H.fastP = { node: c0.node, p: fp };
+      var clr = function () { if (H.fastP === fo) H.fastP = null; };
       fp.then(clr, clr);
-    }
+    } else H.fastP = null;                              // Wiederaufbau/Wechsel: die Probe des Beitritts gilt nicht mehr
     return m.then(function (mm) {
       if (!live(R)) throw null;
       var fd = hornFramesDev(H);                       // B2 (F1b): nur ueber den Rahmen-Weg erreichbare Knoten hinten an
@@ -3380,7 +3380,7 @@
   // Weg waehlen: UDP (wenn der Knoten udp_ok meldet und die UDP-Probe klappt), sonst ICE-TCP, dann TURN-TLS.
   // 2.5: cand.tcp === false (Knoten hinter einer TLS-Durchreiche, "Ein Port") - kein ICE-TCP, gleich TURN-TLS
   function hornOpen(R, cand) {
-    var H = R.horn, m = H.meas[cand.node], fp = !m && H.fastP;
+    var H = R.horn, m = H.meas[cand.node], fp = !m && H.L.fastProbe(H.fastP, cand.node);
     var wait = function () { return fp.then(function () { if (!live(R)) throw null; return hornOpen(R, cand); }); };   // mit Messung
     var fast = !!(fp && cand.udp && cand.tokens && cand.tokens.both);   // 2.5 Y: UDP sofort, Probe parallel (hornStart)
     if (fp && !fast) return wait();

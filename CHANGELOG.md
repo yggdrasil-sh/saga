@@ -24,6 +24,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - `covers.json` kennt `source` jetzt auch je Bild (vor der Angabe für die ganze Datei); „Über dieses Bild“ zeigt bei den
   Saga-Bildern „KI-generiert für Saga“ ohne Link. Hinweis unter der Galerie und im Admin-Bereich angepasst (5 Sprachen).
 
+### Behoben – Web-Anrufe über Gjallarhorn: Wiederaufbau kurz nach dem Beitritt verliert UDP nicht mehr
+- Begann ein Wiederaufbau bzw. Wechsel innerhalb der ersten 0,8 s (UDP-Probe des schnellen Beitritts lief noch), nahm
+  der Browser deren Ergebnis auch für einen anderen Knoten: UDP wurde dort sofort aufgegeben (gleich TCP) bzw. auf die
+  fremde Probe gewartet. Die Probe gilt jetzt nur für ihren Knoten; ein Wiederaufbau misst selbst (Prüfer pruef-yg F2).
+
 ### Geändert – Anrufe: Grundsatz Y – Geräteregel „30 Tage + Linux-Fähigkeit“
 - **Nur aktive Geräte zählen:** Ob ein 1:1 über den Knoten läuft, hängt nur noch an Chat-Geräten des Gegenübers mit
   einem Lebenszeichen in den **letzten 30 Tagen** (wie bei der Chat-Umstellung auf Stufe 3). Ein lange nicht benutztes
