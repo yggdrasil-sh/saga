@@ -37,13 +37,19 @@ def _status(r):
     return r.status_code, d if isinstance(d, dict) else {}
 
 
-def _spec(x):
-    """Eingabe (Benutzername | Handle '~x@host' | Prinzipal '@~x@host') -> Angabe fuer chat.member_add."""
+def _spec(x, c=None, uid=None):
+    """Eingabe (Benutzername | Handle '~x@host' | Prinzipal '@~x@host') -> Angabe fuer chat.member_add. Mit c: Handle
+    eines Kontos dieses Servers als {user} (wie die Gruppeninfo; {handle} meint dort Personen anderer Server)."""
     v = x.strip()
     w = v.lower()
     if w.startswith("@~"):
         w = w[1:]
-    if chat._FULL_H.fullmatch(w):
+    m = chat._FULL_H.fullmatch(w)
+    if m:
+        if c is not None and (chat.FED is None or chat.FED.fedsig.authority(m.group(2)) == chat.FED.F.SELF_HOST):
+            u = chat.who_in(c, uid, w)
+            if u:
+                return {"user": u}
         return {"handle": w}
     return {"user": v}
 
@@ -136,9 +142,11 @@ async def api_add(cid: str, request: Request):
             return chat._no_store({"error": msg, "page_confirm": True, "title": title, "names": nm}, 409)
     if not calls._rate("invite", uid, calls.CALL_RATE):        # derselbe Topf wie /invite
         return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+    with _db() as c:
+        specs = {x: _spec(x, c, uid) for x in new}
     added, failed, first = [], [], None
     for x in new:
-        sp = _spec(x)
+        sp = specs[x]
         if ch["kind"] == "page":
             sp["role"] = role
         s, d = _status(await chat.member_add(uid, ch["id"], sp))
