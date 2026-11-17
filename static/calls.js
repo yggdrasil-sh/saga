@@ -3333,10 +3333,20 @@
     var H = R.horn;
     cands = cands.filter(function (c) { return !hornBad(H, c.node) || cands.length === 1 || c.node === H.rcKeep; });
     if (!cands.length) return Promise.reject(hornNoNode());
-    var one = cands.length === 1;
-    // einziger Kandidat ohne UDP: gleich verbinden, Messung nur fuer die Anzeige; mit UDP erst messen (UDP-Probe, <= 800 ms)
-    var m = one && !cands[0].udp ? Promise.resolve(null) : hornMeasure(R, cands);
-    if (one && !cands[0].udp) hornMeasure(R, cands);
+    var one = cands.length === 1, c0 = cands[0];
+    // einziger Kandidat ohne UDP: gleich verbinden, Messung nur fuer die Anzeige; mit UDP erst messen (UDP-Probe, <= 800 ms).
+    // 2.5 Grundsatz Y (Pruefer, ~0,8 s Aufpreis): einziger Kandidat mit UDP beim Beitritt - UDP sofort versuchen, die Probe
+    // laeuft parallel und setzt nur die Frist (hornOpen/hornConnect gate): eindeutig kein UDP -> gleich TCP wie bisher nach
+    // der Probe, UDP bzw. "unklar" -> dieselbe Frist wie bisher ab Probe-Ende. Nie spaeter als vorher, mit UDP ohne Warten.
+    // Nicht fuer Tunnel (Huelle) und Rahmen-Weg (eigene Wegwahl mit der Messung) und nicht beim Wiederaufbau.
+    var fast = why === 'join' && one && !!(c0.udp && c0.tokens && c0.tokens.both) && !(c0.ws === true && hornTunnel()) && !hornFrames(H, c0);
+    var m = (one && !c0.udp) || fast ? Promise.resolve(null) : hornMeasure(R, cands);
+    if (one && !c0.udp) hornMeasure(R, cands);
+    if (fast) {
+      var fp = H.fastP = hornMeasure(R, cands);
+      var clr = function () { if (H.fastP === fp) H.fastP = null; };
+      fp.then(clr, clr);
+    }
     return m.then(function (mm) {
       if (!live(R)) throw null;
       var fd = hornFramesDev(H);                       // B2 (F1b): nur ueber den Rahmen-Weg erreichbare Knoten hinten an
@@ -3370,13 +3380,19 @@
   // Weg waehlen: UDP (wenn der Knoten udp_ok meldet und die UDP-Probe klappt), sonst ICE-TCP, dann TURN-TLS.
   // 2.5: cand.tcp === false (Knoten hinter einer TLS-Durchreiche, "Ein Port") - kein ICE-TCP, gleich TURN-TLS
   function hornOpen(R, cand) {
-    var H = R.horn, m = H.meas[cand.node];
-    var udp = !!(cand.udp && cand.tokens && cand.tokens.both && m && (m.udp != null || m.udpMaybe));
-    if (cand.ws === true && hornTunnel()) return hornOpenWays(R, cand, H.L.ways(cand, udp), m);   // 2.5 A3: Mac-Huelle mit Tunnel
-    if (hornFrames(H, cand)) return hornOpenWays(R, cand, H.L.ways(cand, udp), m);   // 2.5 B2: Browser, Rahmen-Weg (Vertrag S12.5)
+    var H = R.horn, m = H.meas[cand.node], fp = !m && H.fastP;
+    var tun = cand.ws === true && hornTunnel(), frm = hornFrames(H, cand);
+    if (fp && (tun || frm)) return fp.then(function () { if (!live(R)) throw null; return hornOpen(R, cand); });   // Wegwahl braucht die Messung
+    var fast = !!(fp && cand.udp && cand.tokens && cand.tokens.both);   // 2.5 Y: UDP sofort, Probe parallel (hornStart)
+    var udp = fast || !!(cand.udp && cand.tokens && cand.tokens.both && m && (m.udp != null || m.udpMaybe));
+    if (tun) return hornOpenWays(R, cand, H.L.ways(cand, udp), m);   // 2.5 A3: Mac-Huelle mit Tunnel
+    if (frm) return hornOpenWays(R, cand, H.L.ways(cand, udp), m);   // 2.5 B2: Browser, Rahmen-Weg (Vertrag S12.5)
     var noTcp = cand.tcp === false;
     var noTls = cand.tls === false;                     // 2.5 A3: Tunnel-Betrieb hinter einem TLS-beendenden Proxy - im Browser nur UDP
-    var p = udp ? hornConnect(R, cand, 'udp', m.udp != null ? HORN_WAIT_UDP : 1500).catch(function (e) { if (e === null || noTcp) throw e; return hornConnect(R, cand, 'tcp'); })
+    // Frist fuer UDP nach der Probe (wie bisher): Antwort -> HORN_WAIT_UDP, unklar -> 1500 ms, eindeutig nein -> sofort TCP
+    var gate = fast ? fp.then(function (mm) { var x = mm && mm[cand.node]; return !x ? 0 : x.udp != null ? HORN_WAIT_UDP : x.udpMaybe ? 1500 : 0; }) : null;
+    var p = udp ? hornConnect(R, cand, 'udp', fast ? window.SagaHorn.K.PROBE_MS + HORN_WAIT_UDP : m.udp != null ? HORN_WAIT_UDP : 1500, fast ? { gate: gate } : null)
+      .catch(function (e) { if (e === null || noTcp) throw e; return hornConnect(R, cand, 'tcp'); })
       : noTcp ? Promise.reject({ tcpOff: true }) : hornConnect(R, cand, 'tcp');
     return p.catch(function (e) {
       if (e === null || (e && (e.status === 404 || e.status === 429))) throw e;      // beendet bzw. voll/Leeren: naechster Kandidat
@@ -3475,8 +3491,10 @@
     }).then(function () {
       return new Promise(function (ok, bad) {
         var wait = waitMs || (path === 'udp' ? HORN_WAIT_UDP : path === 'tcp' || path === 'ws' ? HORN_WAIT_TCP : HORN_WAIT_TURN);   // ws: WS steht schon
-        var t = setTimeout(function () { conn.onUp = null; var e = new Error('timeout'); e.timeout = true; bad(e); }, wait);
+        var late = function () { conn.onUp = null; var e = new Error('timeout'); e.timeout = true; bad(e); }, t = setTimeout(late, wait);
         conn.onUp = function (good) { clearTimeout(t); conn.onUp = null; if (good) ok(conn); else { var e = new Error('failed'); bad(e); } };
+        // 2.5 Y: Frist erst mit dem Ergebnis der parallelen Probe (ms ab jetzt, 0 = gleich aufgeben -> naechster Weg)
+        if (opt.gate) opt.gate.then(function (ms) { if (!conn.onUp) return; clearTimeout(t); if (ms > 0) t = setTimeout(late, ms); else late(); });
         hornConnState(R, conn);
       });
     }).then(function (c) { if (!live(R)) { hornConnClose(R, conn); throw null; } return c; }, function (e) {
