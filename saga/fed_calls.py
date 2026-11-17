@@ -337,6 +337,8 @@ def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop"):
             return calls._fallback("old")              # Horn-Fix: Gegenstelle kann kein 1:1 ueber Knoten - direkt mit Hinweis
         if not calls.horn.any_ready(c) or not FH.fed_ok(c, ch)[0]:
             return calls._fallback("node")
+        if not calls.horn.any_ready(c, ws=calls.horn.caps_reach(caps)):
+            return calls._fallback("reach")           # Grundsatz Y: Knoten bereit, nur nicht fuer dieses Geraet (Tunnel)
         if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
             return _bad(t("Diesen Anruf gibt es schon."), 409)
         if calls._busy(c, uid):
