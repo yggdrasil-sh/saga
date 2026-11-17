@@ -32,6 +32,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Geräte erreichen (vorher nur den besten für den Anrufer – Safari ohne Rahmen-Weg beim Gegenüber erzwang direkt).
 - **Admin-Hilfetext (Prüfer F3):** „Aus“ heißt jetzt richtig: 1:1 auf diesem Server direkt – ein anderer Server, der
   auf Knoten besteht, führt den Anruf über seinen Knoten (5 Sprachen).
+- **Schnellerer Aufbau über den Knoten (Web):** Bei nur einem Knoten mit UDP versucht der Browser UDP sofort; die
+  UDP-Probe läuft parallel und setzt nur noch die Frist (wie bisher ab ihrem Ende: Antwort 2 s, unklar 1,5 s,
+  eindeutig kein UDP → gleich TCP). Ohne NAT wartete der Beitritt bisher die volle Probe von 0,8 s ab. Gemessen (1:1
+  Video, Median, ab Annehmen bis Bild/Ton beidseitig): UDP 1,65/1,54 s → 0,74/0,84 s; TCP und UDP-gesperrt
+  (Rückfall auf TCP 3,3 s) unverändert. Nicht beim Wiederaufbau und nicht für den Wettlauf UDP/Tunnel.
 - Vertrag `docs/APP-API.md` „1:1 über Knoten“ (Geräteregel, `horn_ring`, `web`/`none`). Test `horn_y_geraete` (neu).
   Keine Datenbank-Änderung.
 
