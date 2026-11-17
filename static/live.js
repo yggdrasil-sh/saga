@@ -399,7 +399,8 @@
      'chat.receipt', 'chat.presence', 'chat.privacy',                                     // (2.4) Gelesen, Online-Status
      'chat.react', 'chat.edited',                                                         // (2.5) Reaktionen, Bearbeiten
      'call.mod', 'call.invites',                                                          // (2.5) Gastgeber: stumm/entfernt; L7 Nicht dabei
-     'call.topo'].forEach(function (n) {                                                  // (2.5) Horn-Fix/A3: Anruf laeuft jetzt direkt
+     'call.topo',                                                                         // (2.5) Horn-Fix/A3: Anruf laeuft jetzt direkt
+     'call.move'].forEach(function (n) {                                                  // (2.5) L9: 1:1 ist in eine neue Gruppe umgezogen
       on(es, n, function (d) { chatEvent(n, d); });
     });
     on(es, 'avatar.changed', swapAvatar);

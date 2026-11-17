@@ -39,6 +39,7 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   call.invite      {call_id, chat_id, kind, media, from, from_device, ring_s, silent, members}   2.4: Gruppenanruf klingelt
   call.mod         {call_id, chat_id, action: mute|remove, device, by}   2.5: Gastgeber hat stummgeschaltet bzw. entfernt (an die Person)
   call.topo        {call_id, chat_id, topo: mesh, why: node, by?}   2.5 Horn-Fix: Anruf ueber Knoten laeuft jetzt direkt (POST /direct)
+  call.move        {call_id, from_chat, chat_id, kind: group, media, by}   2.5 (L9): 1:1 ist in einen neuen Gruppen-Chat umgezogen (an beide)
   chat.receipt     {chat_id, receipts:[{from, handle?, sealed}], more?}   (2.4, saga.chat_status) Gelesen-Bestaetigungen (more: GET holen)
   chat.presence    {username, online, last}            (2.4) Online-Status - nur an Konten, die die Person gerade abonniert haben
   chat.privacy     {receipts, online}                  (2.4) eigene Einstellung geaendert (andere Tabs/Geraete)
