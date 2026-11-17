@@ -117,7 +117,7 @@ def horn_all_on(cfg=None):
 
 
 def version_ok(v):
-    """horn-ctl/1:Knoten der eigenen und der vorigen Minor-Version (neuere auch - sie folgen der Zielversion)."""
+    """horn-ctl/1: Knoten der eigenen und der vorigen Minor-Version (neuere auch - sie folgen der Zielversion)."""
     a, b = _vparse(v), _vparse(VERSION)
     return a[0] == b[0] and a[1] >= b[1] - 1
 
