@@ -287,7 +287,8 @@
 .cl-plist-h .cl-add-go{margin-left:auto}
 .cl-add-hint.cl-td{margin:.35rem 0 .55rem;line-height:1.4;white-space:normal;overflow:visible}
 @media (max-width: 640px){.cl-plist.cl-addp{height:62vh}}
-.cl-add-q{width:100%;height:40px;flex:none;border-radius:var(--r-md);border:1px solid var(--cl-line);background:var(--cl-pop);color:var(--cl-fg);padding:0 .7rem;font:inherit;font-size:var(--fs-base)}
+/* .cl-plist davor: style.css gibt input[type=search] schmal flex:1 (sonst waechst das Feld in die Hoehe) */
+.cl-plist .cl-add-q{width:100%;min-width:0;height:40px;flex:none;border-radius:var(--r-md);border:1px solid var(--cl-line);background:var(--cl-pop);color:var(--cl-fg);padding:0 .7rem;font:inherit;font-size:var(--fs-base)}
 .cl-add-q:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .cl-add-h{font-size:var(--fs-sm);color:var(--muted);margin:.35rem .4rem 0;font-weight:600}
 .cl-add-p{width:100%;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:44px;flex-wrap:nowrap}
