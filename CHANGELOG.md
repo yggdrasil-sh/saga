@@ -24,6 +24,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - `covers.json` kennt `source` jetzt auch je Bild (vor der Angabe für die ganze Datei); „Über dieses Bild“ zeigt bei den
   Saga-Bildern „KI-generiert für Saga“ ohne Link. Hinweis unter der Galerie und im Admin-Bereich angepasst (5 Sprachen).
 
+### Behoben – Anrufe: „Person hinzufügen“ meldet zu viele neue Personen auf einmal
+- `POST /api/calls/{id}/add` nimmt je Anfrage höchstens 10 neue Mitglieder; weitere wurden bisher stillschweigend
+  weggelassen. Jetzt kommen sie in `failed` mit `kind` `max` und dem Hinweis „Höchstens 10 neue Personen auf einmal – die
+  übrigen bitte noch einmal hinzufügen.“ zurück (Prüfer pruef-add F5). Die Föderations-Reihe dazu legt ihren
+  Server-Zustand unter `STATE_DIR` statt in einem festen Ordner ab.
+
 ### Behoben – Web-Anrufe über Gjallarhorn: Wiederaufbau kurz nach dem Beitritt verliert UDP nicht mehr
 - Begann ein Wiederaufbau bzw. Wechsel innerhalb der ersten 0,8 s (UDP-Probe des schnellen Beitritts lief noch), nahm
   der Browser deren Ergebnis auch für einen anderen Knoten: UDP wurde dort sofort aufgegeben (gleich TCP) bzw. auf die

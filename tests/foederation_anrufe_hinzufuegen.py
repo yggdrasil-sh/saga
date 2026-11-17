@@ -11,8 +11,8 @@ Geprueft: Gruppe Anna (A) + Bert (B), Anna ruft an, Bert tritt bei (B). Anna hol
   (Teilnehmerliste mit ring), Dora sieht den Anruf und tritt nach Annahme bei (Angebote ueber A an Anna und Bert).
 Kopie: Bert (B) wird Admin und holt Bodo (Konto auf B) - Mitglied ueber das Heim (A), Klingeln ueber den fuehrenden
 Server; nimmt Bodo die Anfrage an, klingelt es und er tritt bei (5 Endpunkte). Bert (ohne Admin) vorher: 403. Keine Serverfehler. Ports ANRUF_ADD_FED_PORT (Standard 8743-8748).
-Raeumt auf (Datenbanken geloescht)."""
-import json, os, sys, time
+Server-Zustand unter $STATE_DIR/fed-add-{a,b,c} (ohne STATE_DIR im Temp-Ordner). Raeumt auf (Datenbanken geloescht)."""
+import json, os, sys, tempfile, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation as T  # noqa: E402
@@ -21,12 +21,13 @@ import foederation_chat as FC  # noqa: E402  (App-Client User)
 import chatlib as C  # noqa: E402
 
 P0 = int(os.environ.get("ANRUF_ADD_FED_PORT", "8743"))
-T.I["a"].update(port=P0, admin=P0 + 1, db="saga_fadd_a", url=f"http://127.0.0.1:{P0}", host=f"127.0.0.1:{P0}", state="/tmp/st-anruf-add/fed-a",
+ST = os.path.join(os.environ.get("STATE_DIR") or tempfile.gettempdir(), "fed-add")   # je Umgebung (Pruefer pruef-add F5)
+T.I["a"].update(port=P0, admin=P0 + 1, db="saga_fadd_a", url=f"http://127.0.0.1:{P0}", host=f"127.0.0.1:{P0}", state=ST + "-a",
                 allow=f"localhost:{P0 + 2}, localhost:{P0 + 4}")
 T.I["b"].update(port=P0 + 2, admin=P0 + 3, db="saga_fadd_b", url=f"http://localhost:{P0 + 2}", host=f"localhost:{P0 + 2}",
-                state="/tmp/st-anruf-add/fed-b", allow=f"127.0.0.1:{P0}")
+                state=ST + "-b", allow=f"127.0.0.1:{P0}")
 T.I["c"] = dict(T.I["b"], port=P0 + 4, admin=P0 + 5, db="saga_fadd_c", url=f"http://localhost:{P0 + 4}", host=f"localhost:{P0 + 4}",
-                state="/tmp/st-anruf-add/fed-c", allow=f"127.0.0.1:{P0}", secret=T.I["b"]["secret"][::-1])
+                state=ST + "-c", allow=f"127.0.0.1:{P0}", secret=T.I["b"]["secret"][::-1])
 HA, HB, HC = T.I["a"]["host"], T.I["b"]["host"], T.I["c"]["host"]
 ok, wait, sql = T.ok, T.wait, T.sql
 api, User = FC.api, FC.User

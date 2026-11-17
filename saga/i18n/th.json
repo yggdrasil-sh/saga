@@ -2083,6 +2083,7 @@
  "Höchstens {n} Mitglieder je Chat.": "สมาชิกสูงสุด {n} คนต่อแชท",
  "Höchstens {n} Nachrichten auf einmal weiterleiten.": "ส่งต่อได้สูงสุดครั้งละ {n} ข้อความ",
  "Höchstens {n} Nachrichten auf einmal.": "ได้สูงสุดครั้งละ {n} ข้อความ",
+ "Höchstens {n} neue Personen auf einmal – die übrigen bitte noch einmal hinzufügen.": "เพิ่มคนใหม่ได้ครั้งละไม่เกิน {n} คน – โปรดเพิ่มคนที่เหลืออีกครั้ง",
  "Höchstens {n} Nextcloud-Dateien je Seite.": "ไฟล์ Nextcloud ได้สูงสุด {n} ไฟล์ต่อหน้า",
  "Höchstens {n} Optionen je Eigenschaft.": "ไม่เกิน {n} ตัวเลือกต่อคุณสมบัติ",
  "Höchstens {n} Passkeys je Konto – bitte zuerst einen alten löschen.": "พาสคีย์สูงสุด {n} รายการต่อบัญชี – โปรดลบอันเก่าก่อน",

@@ -2083,6 +2083,7 @@
  "Höchstens {n} Mitglieder je Chat.": "At most {n} members per chat.",
  "Höchstens {n} Nachrichten auf einmal weiterleiten.": "Forward at most {n} messages at once.",
  "Höchstens {n} Nachrichten auf einmal.": "At most {n} messages at once.",
+ "Höchstens {n} neue Personen auf einmal – die übrigen bitte noch einmal hinzufügen.": "At most {n} new people at once – please add the others again.",
  "Höchstens {n} Nextcloud-Dateien je Seite.": "At most {n} Nextcloud files per page.",
  "Höchstens {n} Optionen je Eigenschaft.": "At most {n} options per property.",
  "Höchstens {n} Passkeys je Konto – bitte zuerst einen alten löschen.": "At most {n} passkeys per account – please delete an old one first.",

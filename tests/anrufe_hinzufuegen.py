@@ -8,7 +8,8 @@ klingelt (call.invite, invites "ringing"), sieht den Anruf (joinable) und tritt 
 failed; entfernte Person (Gastgeber-Aktion) nur durch den Gastgeber (403 removed); Rate im selben Topf wie /invite (429);
 direkter 1:1 -> 409 dm (move_block direct, L9); voll (Video, 4 Geraete, Zweitgeraet zaehlt) -> 409 full mit seats und Text, nichts geaendert; Seiten-Chat
 ohne Bestaetigung 409 page_confirm (Titel, Name, nichts geteilt), mit confirm_page geteilt (Rolle Lesen) + Mitglied +
-klingelt, Nicht-Eigentuemer 403; beendeter Anruf -> 409 ended. Keine Anmeldenamen anderer in Texten.
+klingelt, Nicht-Eigentuemer 403; mehr als ADD_MAX neue -> Rest als failed kind max; beendeter Anruf -> 409 ended.
+Keine Anmeldenamen anderer in Texten.
 Wegwerf-Konten ca-a*; raeumt auf."""
 import os
 import secrets
@@ -249,6 +250,15 @@ def run():
        s == 403 and "Seite gehört" in (d.get("error") or ""))
     s, d = add(G, g4, ["ca-ab"])
     ok(f"Seiten-Chat, nur Mitglied klingeln: keine Bestaetigung noetig ({s})", s == 200)
+
+    # --- Pruefer pruef-add F5: mehr als ADD_MAX neue Personen - der Rest kommt als failed {kind: "max"} zurueck -------------
+    many = [f"ca-zz-viele{i}" for i in range(CA.ADD_MAX + 2)]
+    s, d = add(G, g4, ["ca-ab"] + many, confirm_page=True)
+    fl = d.get("failed") or []
+    mx = [x for x in fl if x.get("kind") == "max"]
+    ok(f"mehr als {CA.ADD_MAX} neue: 200, die ersten {CA.ADD_MAX} versucht, der Rest failed kind max mit Text ({s}, {len(fl)}, {mx[:1]})",
+       s == 200 and len(fl) == len(many) and [x["who"] for x in mx] == many[CA.ADD_MAX:]
+       and all(str(CA.ADD_MAX) in (x.get("error") or "") for x in mx) and all(x.get("kind") != "max" for x in fl[:CA.ADD_MAX]))
 
     # --- beendet ---------------------------------------------------------------------------------------------------------
     req("POST", f"/api/calls/{g4}/end", G.k, {"device": G.dev["id"]})

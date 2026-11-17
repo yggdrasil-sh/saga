@@ -141,7 +141,7 @@ async def api_add(cid: str, request: Request):
         for x in raw:
             u = chat.member_target(c, uid, mem, x)
             (known.append(u) if u else new.append(x))
-        new = new[:ADD_MAX]
+        new, over = new[:ADD_MAX], new[ADD_MAX:]         # Pruefer pruef-add F5: der Rest als failed {kind: "max"}
         legs = calls._legs(c, call["id"])
         st = seats(c, call, legs)
         inside = {y["who"] for y in legs}
@@ -175,6 +175,8 @@ async def api_add(cid: str, request: Request):
         else:
             failed.append({"who": x, "error": d.get("error") or t("Hinzufügen hat nicht geklappt."), "kind": KIND.get(s, "conflict")})
             first = first or (s, d)
+    failed += [{"who": x, "error": t("Höchstens {n} neue Personen auf einmal – die übrigen bitte noch einmal hinzufügen.", n=ADD_MAX), "kind": "max"}
+               for x in over]
     if new and not added and not known:
         s, d = first
         return chat._no_store(dict(d, failed=failed), s)

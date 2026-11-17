@@ -2162,7 +2162,7 @@ auflegt, kann noch jemand dazukommen.“, Zeilen deaktiviert. Escape schließt, 
 ### `POST /api/calls/{id}/add`
 
 Body `{uids: [benutzername | Handle "~x@host" | Prinzipal "@~x@host" | ref "~x"], confirm_page?: true, role?: "view"}`
-(bis 50 Kennungen, davon höchstens 10 neue Mitglieder). `role` nur im Seiten-Chat (`view` | `comment` | `edit`, Standard
+(bis 50 Kennungen, davon höchstens 10 neue Mitglieder – weitere neue kommen als `failed` mit `kind` `max` zurück, ohne Änderung). `role` nur im Seiten-Chat (`view` | `comment` | `edit`, Standard
 `view`, eine höhere vorhandene Freigabe bleibt).
 
 Antwort `200`:
@@ -2177,7 +2177,7 @@ Antwort `200`:
 |---|---|
 | `n` | so viele klingeln jetzt (hier bzw. Auftrag an andere Server) |
 | `added` | Eingaben, die neu Mitglied wurden (wie gesendet) |
-| `failed` | `[{who, error, kind}]` – nicht hinzugefügt (`kind`: `rights` 403, `unreachable` 404 – Konto unbekannt, gesperrt bzw. kein Chat möglich, `conflict` 409, `server` 502, `invalid` 400); die übrigen gingen trotzdem |
+| `failed` | `[{who, error, kind}]` – nicht hinzugefügt (`kind`: `rights` 403, `unreachable` 404 – Konto unbekannt, gesperrt bzw. kein Chat möglich, `conflict` 409, `server` 502, `invalid` 400, `max` – mehr als 10 neue in einer Anfrage, nicht versucht: „Höchstens 10 neue Personen auf einmal – die übrigen bitte noch einmal hinzufügen.“); die übrigen gingen trotzdem |
 | `pending` | Personen anderer Server im **Seiten-Chat**: kommen dazu, sobald ihr Server die Freigabe bestätigt (dann erst klingeln) |
 | `request` | neue Mitglieder, die den Chat als **Nachrichtenanfrage** bekommen (Personen anderer Server bzw. auf einer Kopie): es klingelt bei ihnen, sobald sie die Anfrage annehmen (bis 10 min nach der Einladung) – Hinweis „{Name} ist eingeladen – es klingelt, sobald die Einladung in den Chat angenommen ist.“ |
 | `invites`, `invites_more`, `rv`, `now` | wie `/invite` (L7) |

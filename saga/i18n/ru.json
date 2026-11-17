@@ -2083,6 +2083,7 @@
  "Höchstens {n} Mitglieder je Chat.": "Не более {n} {n:участника|участников|участников} в чате.",
  "Höchstens {n} Nachrichten auf einmal weiterleiten.": "Пересылайте не более {n} сообщений за раз.",
  "Höchstens {n} Nachrichten auf einmal.": "Не более {n} сообщений за раз.",
+ "Höchstens {n} neue Personen auf einmal – die übrigen bitte noch einmal hinzufügen.": "Не больше {n} новых людей за раз – остальных добавьте ещё раз.",
  "Höchstens {n} Nextcloud-Dateien je Seite.": "Не более {n} файлов Nextcloud на странице.",
  "Höchstens {n} Optionen je Eigenschaft.": "Не более {n} вариантов на свойство.",
  "Höchstens {n} Passkeys je Konto – bitte zuerst einen alten löschen.": "Не более {n} {n:ключа|ключей|ключей} доступа на аккаунт – сначала удали старый.",
