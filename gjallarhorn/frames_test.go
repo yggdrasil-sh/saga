@@ -481,6 +481,15 @@ func TestFramesZusammensetzenLuecke(t *testing.T) {
 	if m == nil || m[1] != 2 || binary.BigEndian.Uint32(m[8:]) != 9 || !bytes.Equal(m[frHdr:], []byte{0x78, 1, 2}) {
 		t.Fatalf("Ton: %v", m)
 	}
+	// Byte 3 abwaerts (Pruefer pruef-pegel): ohne Pegel der Quelle 127 (still), sonst der Pegel mit V-Bit
+	if m[3] != 127 {
+		t.Fatalf("Ton ohne Pegel: Byte 3 %d statt 127", m[3])
+	}
+	h := &rtp.Header{SequenceNumber: 3, Timestamp: 1920, CSRC: []uint32{9}}
+	_ = h.SetExtension(frLevelID, []byte{0x80 | 42})
+	if m, _ = b.push(2, true, h, []byte{0x78, 4}); m == nil || m[3] != 0x80|42 {
+		t.Fatalf("Ton mit Pegel: %v", m)
+	}
 }
 
 // --- Ende zu Ende am Knoten ------------------------------------------------------------------------------------------
