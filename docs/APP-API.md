@@ -2446,7 +2446,7 @@ das ein normales Bein (Weg `ws`, für den Knoten ein Stromweg wie ICE-TCP); alle
   Wiederverbinden: frisches Token (`POST /api/calls/{id}/horn`), gleiche `leg_ref` → der Knoten ersetzt das Bein.
 - **Binärnachrichten** (erstes Byte = Art, big endian): `0x10` Rahmen, Kopf 16 Byte: Spur (aufwärts 0 Ton, 1 Bild `l`,
   2 Bild `m`, 3 Bildschirm) bzw. Platz (abwärts, Index in `slots`), Flags (1 Schlüsselbild, 2 Y/„layer sync“), TID bzw.
-  audio-level (RFC 6464), RTP-Zeit, aufwärts lückenlose Rahmen-Nr. je Spur bzw. abwärts CSRC des Absenders, Sendezeit
+  audio-level (RFC 6464; abwärts der Pegel der Quelle, 127 ohne Pegel – ältere Knoten senden 0), RTP-Zeit, aufwärts lückenlose Rahmen-Nr. je Spur bzw. abwärts CSRC des Absenders, Sendezeit
   (Wanduhr ms), dann der versiegelte Rahmen. `0x01` Quittung des Browsers (9 Byte wie beim Tunnel, optional +2 Byte
   Verzögerungszunahme abwärts in ms). `0x02` Rückmeldung des Knotens (17 Byte: empfangene Bytes, Echo der Sendezeit,
   Haltezeit, Verzögerungszunahme aufwärts). Text: Knoten → Browser `{"t": "pli", "track"}`, Browser → Knoten

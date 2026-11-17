@@ -40,6 +40,10 @@ Platzhalter: `horn-1.example.org`.
   Steuerung (`Room.Peers`, `Config.OnLayout`).
 - **Top-3-Ton** per `ssrc-audio-level`. Der Hauptsprecher wird mit Hysterese gewählt (mindestens 1,5 s, ein Neuer
   muss 1,5 s am lautesten oder 1,4-mal lauter sein). Kacheln sind nach letzter Sprache geordnet, die Plätze bleiben fest.
+- **Pegel an die Empfänger:** Jeder Ton-Ausgang setzt `ssrc-audio-level` mit der ID, die das Bein des Empfängers
+  ausgehandelt hat, Wert aus dem Paket der Quelle (sonst fallen alle Kopferweiterungen der Quelle weg; nur die Kaskade
+  reicht Pakete roh weiter). Browser und iOS lesen ihn per `getSynchronizationSources()` bzw. `RTCRtpReceiver.sources`
+  für den Sprechring – auch bei Personen ohne Bild. Rahmen-Weg: Byte 3 des Ton-Rahmens abwärts (ohne Pegel 127).
 - **Schichten:**
   - UDP: bis zu 3 Schichten (`l`/`m`/`h`).
   - TCP: höchstens 2.
