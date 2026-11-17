@@ -170,8 +170,10 @@ def run():
     # --- Anrufende: auch nach dem Auflegen darf die letzte Meldung kommen ----------------------------------------------
     req("POST", f"/api/calls/{cid}/end", A.k, {"reason": "hangup"})
     cid2, s, d = A_.call(B, A, ab)
-    s, _ = req("POST", "/api/calls/diag", B.k, body(cid2))
-    ok(f"anderer Anruf: eigene Ratenbegrenzung (200) ({s})", s == 200)
+    # 2.5: Ereignis ho-fail (Web, gescheiterte Uebernahme) wird angenommen - sonst verwirft der Server die ganze Meldung
+    s, _ = req("POST", "/api/calls/diag", B.k, body(cid2, events=[{"t": 15000, "k": "ho-fail",
+               "d": "51dfb0 est1 con0 s=stable i=checking d=connecting g=complete rd1 l=h1,hm1,s1 r=h1,s1 w0"}]))
+    ok(f"anderer Anruf: eigene Ratenbegrenzung (200), Ereignis ho-fail angenommen ({s})", s == 200)
     s, _ = req("POST", "/api/calls/diag", Cc.k, body(cid2))
     ok(f"Unbeteiligte auch im zweiten Anruf: 404 ({s})", s == 404)
     req("POST", f"/api/calls/{cid2}/end", B.k, {"reason": "hangup"})

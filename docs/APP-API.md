@@ -2780,7 +2780,7 @@ Kopf `X-Saga: 1`), Body JSON ≤ 32 KB, **alle 30 s** während des Anrufs und **
  "samples": [{"t": 33000, "dir": "in|out", "src": "<kurze Kennung der Quelle, nie Name>", "rid": "l|m|h|''",
               "fps": 24, "h": 540, "kbps": 812, "lost": 3, "nack": 4, "pli": 1, "freeze": 1, "kf": 1, "rtt": 38,
               "qlr": "none|cpu|bandwidth|other|''", "enc": "<encoderImplementation|''>"}],
- "events": [{"t": 31000, "k": "layers|thermal|switch|quality|path|tx", "d": "<kurzer Text ≤ 120 Zeichen>"}]}
+ "events": [{"t": 31000, "k": "layers|thermal|switch|quality|path|tx|ho-fail", "d": "<kurzer Text ≤ 120 Zeichen>"}]}
 ```
 
 | Feld | Regel |
@@ -2809,7 +2809,7 @@ Slot-Feldern `why`/`src_kbit`/`live_ms`/`hold_ms`, z. B. `s0:l3@ab12!gone,31k,12
 = Schicht nicht mehr live, `back` = Rückkehr nach der Hysterese, siehe `gjallarhorn/NODE.md`; beim Platz, für den der
 Knoten gerade eine Probe mit Fülldaten begonnen oder beendet hat, `?Ergebnis[:Grund],Zielrate` aus den Slot-Feldern
 `probe`/`probe_why`/`probe_kbit`, z. B. `s3:m3@ab12?fail:gcc,1599k`), `switch`/`path` (Knoten- bzw. Wegwechsel), `quality` (Wechsel der Anzeigefarbe mit
-RTT/Verlust/Freezes im Fenster), `tx` (Sendestufe auf TCP/TLS, siehe „Senderate auf TCP/TLS“). Apps zusätzlich `thermal` (z. B. `serious`). **Auswerten:** Stottern bei kleiner RTT
+RTT/Verlust/Freezes im Fenster), `tx` (Sendestufe auf TCP/TLS, siehe „Senderate auf TCP/TLS“), `ho-fail` (2.5: „Hierher übernehmen“ im direkten Anruf an der Frist gescheitert – je Verbindung Gerätepräfix, `eigen`, `est`/`con`, Signal-/ICE-/DTLS-/Sammelzustand `s=`/`i=`/`d=`/`g=`, `rd` = Antwort gesetzt, Kandidaten je Typ eigene `l=` und erhaltene `r=` als Zahlen (`h`/`s`/`p`/`r`, Zusatz `6` IPv6, `m` mDNS), `w` = wartende Kandidaten, `n=` Weg; ohne Adressen; über einen Knoten `horn cur|kein Knoten verbunden`). Apps zusätzlich `thermal` (z. B. `serious`). **Auswerten:** Stottern bei kleiner RTT
 und ohne Verlust, aber mit `qcpu` > 0, steigendem `encms`/`decms` oder `fdrop` > 0 = Geräte-CPU, nicht Netz oder Knoten. Der Verlauf steht im Web außerdem im
 Debug-Snapshot (`HKCalls.horn().diag`, `HKCalls.room().diag`).
 

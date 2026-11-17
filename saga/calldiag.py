@@ -34,7 +34,8 @@ TRANSPORTS = ("udp", "tcp", "tls", "ws", "?")   # ws: 2.5 A3 Medien-Tunnel (ICE-
 DIRS = ("in", "out")
 RIDS = ("l", "m", "h", "")
 QLRS = ("none", "cpu", "bandwidth", "other", "")
-KINDS = ("layers", "thermal", "switch", "quality", "path", "tx")   # tx: Sendestufe auf TCP/TLS (A1)
+KINDS = ("layers", "thermal", "switch", "quality", "path", "tx",   # tx: Sendestufe auf TCP/TLS (A1)
+         "ho-fail")                   # 2.5: Uebernahme gescheitert - Zustand je Verbindung (Web, static/calls.js linkDiag)
 NUMS = ("fps", "h", "kbps", "lost", "nack", "pli", "freeze", "kf", "rtt",
         # 2.5 (Labor 2.11., Stottern durch Geraete-CPU): out - qcpu/qbw = ms, die der Kodierer seit der letzten Probe durch
         # CPU bzw. Bandbreite begrenzt war (qualityLimitationDurations), encms = mittlere Kodierzeit je Rahmen, fdrop = Rahmen
