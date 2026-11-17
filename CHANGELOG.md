@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Web: schneller Rückwechsel bei der Geräte-Übergabe
+- Nach „Hierher übernehmen“ bleibt das Fenster des abgegebenen Geräts 3,5 s mit „Anruf auf … übernommen“ stehen und
+  lag über der Leiste „Hierher übernehmen“ – wer gleich zurückwechseln wollte, traf das Fenster; die Übernahme ging erst
+  nach dem Schließen (gemessen 3,7–4,2 s statt unter 3 s). Jetzt liegt die Leiste darüber (1:1 über Knoten: 10/10
+  Übernahmen 1,4–1,9 s, schneller Rückwechsel 1,5–1,7 s, `browser_horn_pingpong`).
+- Test `browser_horn_pingpong`: ein Begleitgerät ohne Kamera wird nach „Hierher übernehmen“ jetzt am dekodierten Ton
+  gemessen (Chromium meldet hinter der Frame-E2E keinen Pegel im RTP-Kopf, der Sprecherplatz ist ein Bildplatz).
+
 ### Geändert – Anrufe: Grundsatz Y – alle Anrufe über den Knoten, auch 1:1 (Gjallarhorn experimentell)
 - **Standard:** „Alle Anrufe über Knoten (auch 1:1)“ (Admin → Anrufe → Gjallarhorn, `calls.horn_all`) ist jetzt **ab
   Werk an**. Direkt verbindet Saga nur noch als Rückfall (kein Knoten bereit, Gegenüber kann es nicht, Knoten im Anruf
