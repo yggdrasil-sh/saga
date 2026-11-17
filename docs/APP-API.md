@@ -1856,6 +1856,7 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
 - **Fähigkeiten melden:** `PUT /api/calls/caps` `{"device": "<id>", "caps": ["reneg","want","bye","screen2","multi"]}` →
   `{"ok": true}` – beim Start bzw. sobald die Chat-Schlüssel bereit sind (und nach einem Update). Zu Gruppenanrufen
   eingeladen wird nur, wer ein Gerät mit `multi` hat; die anderen sehen nur den Chat-Eintrag („braucht Saga 2.4“).
+  2.5: `horn_ring` = klingelt bei Anrufen über Knoten und lässt den Browser beitreten (Linux-App; „1:1 über Knoten“).
 - Beitreten geht nur, wenn **alle** Endpunkte `multi` melden (eine 2.1/2.3/E0-Gegenstelle bleibt 1:1) und – föderiert –
   alle beteiligten Server `calls3` melden. Sonst `409` mit `join_block: "old"`.
 - Grenze: Endpunkte = Geräte, eigene Zusatzgeräte zählen mit. Video 4, nur Ton 6 → `409` mit `join_block: "full"`.
@@ -2599,14 +2600,26 @@ dafür nichts Neues: sie folgen `horn_dm` wie bisher.
   via: "horn", dev_class?}` **ohne** `signals`. Erfolg: 200 `{call}` wie ein Gruppenanruf über Knoten (`kind: "group"`,
   `topo: "horn"`, `dm: true`, `horn.candidates`); weiter wie in diesem Abschnitt (Knoten verbinden, `fkey`).
 - **Rückfall:** 409 `{fallback: "direct", horn_block, error}` – es ist nichts angelegt. `horn_block`: `off` (Einstellung
-  aus), `caps` (Gerät ohne horn/multi), `node` (kein Knoten bereit), `peer` (Grundsatz Y: **ein** aktives Chat-Gerät des
-Gegenübers meldet kein `horn`/`multi`, z. B. Linux-App oder 2.4 – Hinweis „Gegenstelle veraltet“), `reach` (das eigene Gerät bzw. ein
-Gerät des Gegenübers erreicht keinen bereiten Knoten bzw. nicht den, den der Anruf bekäme: Tunnel-Knoten ohne `ws` bzw.
+  aus), `caps` (Gerät ohne horn/multi), `node` (kein Knoten bereit), `peer` (Grundsatz Y: **ein** aktives App-Gerät des
+Gegenübers kann es nicht – meldet weder `horn` + `multi` noch `horn_ring`, z. B. App 2.4 – Hinweis „Gegenstelle veraltet“),
+`web` (nur Browser-Geräte des Gegenübers ohne `horn` – nicht veraltet, ohne Hinweis), `none` (Gegenüber hat kein
+Chat-Gerät; der direkte Anruf nennt dann den Grund – ohne Hinweis), `reach` (kein bereiter Knoten, den das eigene Gerät
+**und** alle aktiven Geräte des Gegenübers erreichen: Tunnel-Knoten ohne `ws` bzw.
 `frames`, z. B. ältere App oder Safari – kein Ausfall, ohne Hinweis; unbekannte Werte wie `reach` behandeln Clients wie jeden Rückfall), `fed`
   (föderierter Direkt-Chat, dessen Server kein `horn_dm` kann bzw. den Auftrag ablehnt – sonst gehen föderierte
   Direkt-Chats sonst auch über Knoten, siehe `APP-API-FED.md` 7.5). Der Client ruft sofort mit **derselben id** wie bisher direkt an
   (Angebote je Gerät). Andere 409 wie beim direkten Anruf: `busy` (der Anruf ist angelegt und als „besetzt“ beendet),
   `incoming` (Gegenüber ruft gerade an).
+- **Geräteregel (Grundsatz Y, 2.5):** Es zählen nur Chat-Geräte mit einem **Lebenszeichen in den letzten 30 Tagen**
+  (`last_seen` – gesetzt bei Chat-Abrufen mit `?device=` und bei `PUT /api/calls/caps` –, sonst das Anlegedatum; wie die
+  Chat-Umstellung auf Stufe 3). Ältere Geräte halten den Anruf über Knoten nicht auf; es klingelt zwar auch dort (Ereignis
+  und Push gehen an das Konto), eine App ohne `horn` bekommt beim Annehmen aber sauber 409 `join_block: "old"`, die
+  anderen Geräte klingeln weiter. Hat das Gegenüber nur alte Geräte, läuft der Anruf über den Knoten. Die Fähigkeit
+  **`horn_ring`** (`PUT /api/calls/caps`, Linux-App) heißt: das Gerät klingelt bei Anrufen über Knoten und lässt den
+  Browser beitreten (der tritt mit seinen eigenen caps bei) – es zählt als fähig, ohne Erreichbarkeitsprüfung, und wird
+  auch zu Gruppenanrufen über Knoten eingeladen. Gibt es mehrere bereite Knoten, nimmt der Anruf den ersten (Reihenfolge
+  für das anrufende Gerät), den alle aktiven Geräte erreichen (z. B. den normalen Knoten statt des Tunnel-Knotens, wenn
+  beim Gegenüber Safari ohne `frames` aktiv ist).
 - **Ankommend:** `call.invite {…, kind: "group", dm: true}`, Push `call.group` mit `dm: true` (Text wie 1:1, `caller` =
   Name der anrufenden Person). Anzeige wie 1:1: Name/Avatar aus `from` (Anrufobjekt: `peer` = Gegenüber, `from` =
   anrufende Person). Annehmen = `POST /api/calls/{id}/join {device, role: "member", caps, dev_class}` ohne `signals`.
@@ -2616,8 +2629,8 @@ Gerät des Gegenübers erreicht keinen bereiten Knoten bzw. nicht den, den der A
   Gruppe (`leave`/`end`; unter zwei Personen endet der Anruf). Chat-Eintrag wie 1:1 (`from`/`to`, ohne `group`/`n`).
   Besetzt-Prüfung, Klingeldauer und „verpasst“ wie 1:1.
 - **Ältere Clients:** rufen weiter direkt an. Über den Knoten klingelt es nur, wenn **jedes** aktive Chat-Gerät des
-  Gegenübers `horn` + `multi` meldet und (lokal) den Knoten erreicht – sonst sofort Rückfall (`peer`/`reach`), damit kein
-  Gerät klingelt, das nicht annehmen kann. Meldet ein Gerät beim Beitritt trotzdem nur 2.4-Fähigkeiten: `join_block:
+  Gegenübers (Lebenszeichen in 30 Tagen, siehe Geräteregel) `horn` + `multi` bzw. `horn_ring` meldet und (lokal) den
+  Knoten erreicht – sonst sofort Rückfall (`peer`/`web`/`reach`), damit kein aktives Gerät klingelt, das nicht annehmen kann. Meldet ein Gerät beim Beitritt trotzdem nur 2.4-Fähigkeiten: `join_block:
   "old"` („braucht Saga 2.5“). Die Fähigkeiten stammen aus dem letzten `PUT /api/calls/caps` bzw. Anruf des Geräts.
 
 ### Wiederaufbau und Rückfall auf direkt (2.5 Horn-Fix, `horn_direct1`)

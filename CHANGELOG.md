@@ -16,6 +16,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Anrufe: Grundsatz Y – Geräteregel „30 Tage + Linux-Fähigkeit“
+- **Nur aktive Geräte zählen:** Ob ein 1:1 über den Knoten läuft, hängt nur noch an Chat-Geräten des Gegenübers mit
+  einem Lebenszeichen in den **letzten 30 Tagen** (wie bei der Chat-Umstellung auf Stufe 3). Ein lange nicht benutztes
+  altes Handy zwingt den Anruf nicht mehr auf direkt. Klingelt es dort trotzdem und jemand nimmt mit einer alten App an,
+  scheitert das sauber („braucht Saga 2.5“), die anderen Geräte klingeln weiter. `PUT /api/calls/caps` zählt jetzt
+  auch als Lebenszeichen.
+- **Linux-App zählt als fähig:** Sie meldet neu `horn_ring` (klingelt, das Gespräch läuft im Browser) – 1:1 zu
+  Linux-Nutzern läuft damit über den Knoten statt direkt mit dem falschen Hinweis „Gegenstelle veraltet“; zu
+  Gruppenanrufen über Knoten werden reine Linux-Nutzer eingeladen.
+- **Hinweis nur, wenn er stimmt:** „Gegenstelle veraltet“ (`horn_block: "peer"`) nur noch, wenn ein aktives App-Gerät
+  wirklich zu alt ist; neu `web` (Browser ohne Knoten-Funktionen) und `none` (Gegenüber ohne Chat-Gerät) – beide ohne
+  Hinweis direkt. Föderiert gibt der Server den Grund weiter.
+- **Knotenwahl (Prüfer F4):** Mit Tunnel-Knoten und normalem Knoten nimmt der 1:1 den ersten Knoten, den alle aktiven
+  Geräte erreichen (vorher nur den besten für den Anrufer – Safari ohne Rahmen-Weg beim Gegenüber erzwang direkt).
+- **Admin-Hilfetext (Prüfer F3):** „Aus“ heißt jetzt richtig: 1:1 auf diesem Server direkt – ein anderer Server, der
+  auf Knoten besteht, führt den Anruf über seinen Knoten (5 Sprachen).
+- Vertrag `docs/APP-API.md` „1:1 über Knoten“ (Geräteregel, `horn_ring`, `web`/`none`). Test `horn_y_geraete` (neu).
+  Keine Datenbank-Änderung.
+
 ### Neu – Anrufe: aus einem 1:1 wird eine Konferenz, ohne Unterbrechung (L9)
 - **Im 1:1 „Person hinzufügen“** (Teilnehmerliste, wie im Gruppenanruf): Es entsteht eine **neue Gruppe** mit euch beiden
   und den Hinzugefügten, der Anruf **zieht nahtlos um** – niemand verbindet sich neu, die Dauer läuft weiter (gemessen:
