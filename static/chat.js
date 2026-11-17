@@ -1801,7 +1801,7 @@
       row.appendChild(btn(T('Zurückrufen'), 'small ct-call-back', function () { window.HKCalls.start(S.cur, k.media === 'video'); }));
     // 2.5 (L9): Anruf ist in eine neue Gruppe umgezogen - Verweis auf den neuen Chat (nur Zahl, Mitglieder sehen ihn)
     if (k.moved && /^[1-9][0-9]{0,17}$/.test(String(k.moved)))
-      row.appendChild(btn(T('Zur Gruppe'), 'small ct-call-back ct-call-moved', function () { openChat(+k.moved); }));
+      row.appendChild(btn(T('Zur Gruppe'), 'small ct-call-back ct-call-moved', function () { history.replaceState(null, '', '#c' + (+k.moved)); openChat(+k.moved); }));
     return row;
   }
   function msgMenu(anchor, m) {
@@ -4791,7 +4791,7 @@
                refresh: function (cid) { if (S.cur && S.cur.id === cid) loadMsgs(false); else if (!S.cur && S.ready && cid) openChat(cid); },
                // 2.5 (L9): 1:1-Anruf ist in eine neue Gruppe umgezogen - ist das 1:1 offen, die neue Gruppe oeffnen
                moved: function (from, to) {
-                 if (S.cur && S.cur.id === from && to) openChat(to); else if (S.cur && S.cur.id === to) loadMsgs(false);
+                 if (S.cur && S.cur.id === from && to) { if (location.hash === '#c' + from) history.replaceState(null, '', '#c' + to); openChat(to); } else if (S.cur && S.cur.id === to) loadMsgs(false);
                  listSoon();
                },
                // 2.5 (L8): im Anruf wurde jemand ins Chat aufgenommen - Namen der Gruppe fuer Neue lesbar (wie die Gruppeninfo)
