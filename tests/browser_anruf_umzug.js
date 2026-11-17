@@ -11,13 +11,15 @@
 // dekodierten Ton der Gegenseite, Fenster 0,5 s vor dem Klick bis 2 s nach dem Umzug) < GAP_MS, Vergleich ohne Umzug;
 // C klingelt, nimmt an, ist verbunden, hoert A und B, A ratscht den Frame-Schluessel beim Beitritt (key_n steigt - C kann
 // Frueheres nicht lesen). Nach dem Auflegen: im 1:1 der Eintrag "In Gruppenanruf verschoben" mit "Zur Gruppe".
+// Gegenprobe der Messung: A schaltet vor dem Umzug 0,7 s stumm - die Messung bei B muss diese Stille sehen (>= 400 ms).
 // Bilder (SHOTS): vorher (1:1 mit Teilnehmerliste), Feld mit Hinweis, nachher (Gruppe mit drei), Eintrag im 1:1.
+// VORHER=1 (Stand ohne L9): nur das Bild der Teilnehmerliste im 1:1 (kein "Person hinzufuegen"), dann Ende.
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
 const E = process.env, BASE = E.SAGA_BASE, RUNDEN = +(E.RUNDEN || 3), GAP = +(E.GAP_MS || 300), N3 = E.SAGA_NAME3 || 'Cora Neu';
 if (!BASE || !E.SAGA_USER || !E.SAGA_USER2 || !E.SAGA_USER3) { console.error('SAGA_BASE, SAGA_USER/PASS, SAGA_USER2/PASS2, SAGA_USER3/PASS3 setzen'); process.exit(2); }
-const res = [], PERF = { gapB: [], gapA: [], base: [], moveMs: [] }, SHOTS = E.SHOTS || '';
+const res = [], PERF = { gapB: [], gapA: [], base: [], probe: [], moveMs: [] }, SHOTS = E.SHOTS || '', OLD = E.VORHER === '1';
 function ok(name, cond, info) { res.push(!!cond); console.log((cond ? 'OK  ' : 'FAIL') + ' ' + name + (cond || info === undefined ? '' : ' -> ' + JSON.stringify(info).slice(0, 1500))); }
 async function until(fn, ms = 20000, step = 150) { const end = Date.now() + ms; let v; while (Date.now() < end) { v = await fn(); if (v) return v; await new Promise(r => setTimeout(r, step)); } return v; }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -119,7 +121,7 @@ const openList = async p => {
     const D = { a: await dev(a), b: await dev(b), c: await dev(c) };
     ok('drei Personen mit Chat-Schlüsseln', D.a && D.b && D.c);
     const cf = await a.evaluate(() => fetch('/api/calls/config', { headers: { 'X-Saga': '1' } }).then(r => r.json()));
-    ok('Server meldet call_move und horn_dm', (cf.features || []).includes('call_move') && cf.horn_dm, cf.features);
+    ok('Server meldet ' + (OLD ? 'horn_dm (Stand ohne L9)' : 'call_move und horn_dm'), (OLD || (cf.features || []).includes('call_move')) && cf.horn_dm, cf.features);
     for (let i = 0; i < RUNDEN; i++) {
       console.log('--- Runde ' + (i + 1));
       await chatKeys(a, U1, BASE + '/chats?r=' + i + '#u' + encodeURIComponent(U2));
@@ -130,11 +132,18 @@ const openList = async p => {
       await b.waitForSelector('.cl-ring', { timeout: 20000 }); await b.click('.cl-ring .cl-big');
       const h1 = await until(async () => await up(a) && await up(b), 30000);
       const rA0 = await room(a);
-      ok(`R${i + 1}: 1:1 A <-> B über den Knoten (dm, Direkt-Chat)`, h1 && rA0 && rA0.dm && rA0.chat_id === dmId, [rA0 && rA0.dm, rA0 && rA0.chat_id, dmId]);
+      ok(`R${i + 1}: 1:1 A <-> B über den Knoten (dm, Direkt-Chat)`, h1 && rA0 && (OLD || (rA0.dm && rA0.chat_id === dmId)), [rA0 && rA0.dm, rA0 && rA0.chat_id, dmId]);
       ok(`R${i + 1}: B hört A, A hört B`, await hears(b, D.a, 10000) && await hears(a, D.b, 6000), [(await horn(b) || {}).levels]);
       const adder = i === 0 ? b : a, other = i === 0 ? a : b;
+      if (OLD) {
+        if (!(await b.$('.cl-plist:not(.cl-addp)'))) await b.click('.cl-people');
+        await until(() => b.$('.cl-plist:not(.cl-addp)'), 5000); await sleep(800);
+        ok('vorher: Teilnehmerliste im 1:1 ohne „Person hinzufügen“', !(await b.$('.cl-add-go')));
+        await shot(b, 'vorher-alt-1zu1-liste-b');
+        break;
+      }
       ok(`R${i + 1}: Teilnehmerliste mit „Person hinzufügen“ (${i === 0 ? 'angerufene Person' : 'anrufende Person'})`, await openList(adder));
-      if (i === 0) { await shot(a, 'vorher-1zu1-liste-a'); }
+      if (i === 0) { await sleep(800); await shot(adder, 'nachher-1zu1-liste-b'); }
       await adder.click('.cl-plist .cl-add-go');
       const hint = await until(() => adder.evaluate(() => { const h = document.querySelector('.cl-add-hint'); return h && h.textContent; }), 4000);
       ok(`R${i + 1}: Feld mit Hinweis „neue Gruppe“ (${hint})`, /neue Gruppe/.test(hint || ''));
@@ -144,7 +153,13 @@ const openList = async p => {
       if (i === 0) await shot(adder, 'umzug-feld-b');
       const k0 = (await horn(a)).key_n, s0 = (await room(a)).since, hpA = JSON.stringify((await horn(a)).hp), connsA = (await horn(a)).conns.length;
       await gapOn(a); await gapOn(b);
-      await sleep(3500);                                  // Vergleichsfenster ohne Umzug
+      await sleep(1200);
+      const tm0 = Date.now();                             // Gegenprobe: A 0,7 s stumm - B muss die Stille messen
+      await a.evaluate(() => { const x = [...document.querySelectorAll('.cl-ctl button')].find(y => y.getAttribute('aria-label') === 'Stummschalten'); if (x) x.click(); });
+      await sleep(700);
+      await a.evaluate(() => { const x = [...document.querySelectorAll('.cl-ctl button')].find(y => y.getAttribute('aria-label') === 'Mikrofon einschalten'); if (x) x.click(); });
+      const tm1 = Date.now();
+      await sleep(2500);                                  // Vergleichsfenster ohne Umzug
       const tClick = Date.now();
       await adder.evaluate(nm => { const x = [...document.querySelectorAll('.cl-addp .cl-add-p')].find(y => y.querySelector('b').textContent === nm); if (x) x.click(); }, N3);
       const mv = await until(async () => { const ra = await room(a), rb = await room(b); return ra && rb && !ra.dm && !rb.dm && ra.chat_id !== dmId && ra.chat_id === rb.chat_id && ra; }, 10000, 50);
@@ -152,8 +167,10 @@ const openList = async p => {
       await sleep(2200);
       const gA = await gapOff(a), gB = await gapOff(b);
       const wB = longest(gB, tClick - 500, tMoved + 2000), wA = longest(gA, tClick - 500, tMoved + 2000);
-      const base = Math.max(longest(gB, tClick - 3200, tClick - 700).gap, longest(gA, tClick - 3200, tClick - 700).gap);
-      PERF.gapB.push(wB.gap); PERF.gapA.push(wA.gap); PERF.base.push(base); PERF.moveMs.push(tMoved - tClick);
+      const base = Math.max(longest(gB, tm1 + 800, tClick - 100).gap, longest(gA, tm1 + 800, tClick - 100).gap);
+      const probe = longest(gB, tm0 - 300, tm1 + 800).gap;
+      PERF.gapB.push(wB.gap); PERF.gapA.push(wA.gap); PERF.base.push(base); PERF.probe.push(probe); PERF.moveMs.push(tMoved - tClick);
+      ok(`R${i + 1}: Gegenprobe der Messung: 0,7 s stumm bei A -> B misst ${probe} ms Stille`, probe >= 400);
       ok(`R${i + 1}: Umzug in ${tMoved - tClick} ms: beide im Gruppenanruf im neuen Chat`, mv && mv.kind === 'group', await room(a));
       ok(`R${i + 1}: Tonlücke beim Umzug B←A ${wB.gap} ms, A←B ${wA.gap} ms (< ${GAP}; ohne Umzug ${base} ms; Abtastung ≤ ${Math.max(wA.step, wB.step)} ms, n ${wA.n}/${wB.n})`,
          wB.gap < GAP && wA.gap < GAP && wA.n > 50 && wB.n > 50);
@@ -189,7 +206,7 @@ const openList = async p => {
     }
     const med = x => [...x].sort((p, q) => p - q)[Math.floor(x.length / 2)];
     console.log('PERF ' + JSON.stringify(PERF));
-    ok(`Tonlücke über ${RUNDEN} Umzüge: B←A Median ${med(PERF.gapB)} ms / max ${Math.max(...PERF.gapB)}, A←B Median ${med(PERF.gapA)} / max ${Math.max(...PERF.gapA)} (ohne Umzug max ${Math.max(...PERF.base)} ms)`,
+    if (!OLD) ok(`Tonlücke über ${RUNDEN} Umzüge: B←A Median ${med(PERF.gapB)} ms / max ${Math.max(...PERF.gapB)}, A←B Median ${med(PERF.gapA)} / max ${Math.max(...PERF.gapA)} (ohne Umzug max ${Math.max(...PERF.base)} ms)`,
        Math.max(...PERF.gapB, ...PERF.gapA) < GAP);
   } catch (e) {
     ok('Ablauf', false, String(e && e.stack || e));

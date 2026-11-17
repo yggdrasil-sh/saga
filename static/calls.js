@@ -4794,7 +4794,9 @@
       var br = bridge(); if (br && br.moved) br.moved(from, nid);
       HK.toast(T('Neue Gruppe – der Anruf läuft dort ohne Unterbrechung weiter.'), null, null, 5000);
       drawInfo(R); drawCtl(R); drawTiles(R); if (R.horn) hornList(R); else meetList(R);
-      setTimeout(function () { if (live(R) && R.chat_id === nid && !R.title) { R.title = titleOf(nid); drawInfo(R); } }, 1500);
+      [1500, 4000].forEach(function (ms) {           // Name der neuen Gruppe aus der Chatliste, sobald sie geladen ist
+        setTimeout(function () { if (live(R) && R.chat_id === nid && !R.title) { R.title = titleOf(nid); if (R.title) drawInfo(R); } }, ms);
+      });
     };
     if (k) go(k);
     else api('GET', '/api/calls/' + R.id).then(function (r) { go(r.call); }, function () { go(null); });
