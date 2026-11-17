@@ -463,7 +463,7 @@ eigener bereiter Knoten, je Server ein nutzbarer Knoten wie bei Gruppen) und sch
 
 | Auftrag | Richtung | Inhalt |
 |---|---|---|
-| `dmhorn` | A → B | `{id, ref, from, from_device, media, caps, name, horn_nodes?}`: B legt die Kopie an (`kind: group`, `topo: horn`, `callee` = eigenes Konto, `lead` = A) und lässt klingeln (`call.invite` mit `dm: true`). Antworten: 200; 409 `{busy}`, `{horn_block: "peer"\|"off"}` (`peer`: Grundsatz Y – nicht **jedes** aktive Chat-Gerät der angerufenen Person meldet `horn` + `multi`), `{error: "request"}` – dann ist bei B nichts angelegt |
+| `dmhorn` | A → B | `{id, ref, from, from_device, media, caps, name, horn_nodes?}`: B legt die Kopie an (`kind: group`, `topo: horn`, `callee` = eigenes Konto, `lead` = A) und lässt klingeln (`call.invite` mit `dm: true`). Antworten: 200; 409 `{busy}`, `{horn_block: "peer"\|"web"\|"none"\|"off"}` (`peer`: Grundsatz Y – nicht **jedes** aktive Chat-Gerät der angerufenen Person – Lebenszeichen in 30 Tagen – meldet `horn` + `multi` bzw. `horn_ring`; `web`: nur Browser-Geräte ohne `horn`; `none`: kein Chat-Gerät; A gibt den Grund an seinen Client weiter, ältere Server A behandeln `web`/`none` wie `fed`), `{error: "request"}` – dann ist bei B nichts angelegt |
 
 Erst nach 200 legt A seinen Anruf an. Danach wie 7.4: Annehmen = `join` an A, Kandidaten über `horn`, Teilnehmerliste
 `roster` (die Kopie wechselt mit `state: active` und meldet `call.state active` an die eigenen Geräte), Auflegen über
@@ -487,7 +487,7 @@ Ein Server ohne Y (älter) verhält sich wie bisher (`horn_req` nur mit gespeich
 
 | Auftrag | Richtung | Inhalt |
 |---|---|---|
-| `dmhorn_lead` | Partner → Mutter | `{id, ref, actor, device, media, caps, name, horn_nodes?}`: die Mutter legt den Raum-Anruf an (`kind: group`, `topo: horn`, `callee` = ihr Konto, Endpunkt der anrufenden Person mit `peer_id` = Partner) und lässt klingeln. Antworten: 200 `{legs, topo}`; 409 `{horn_block: "off"\|"node"\|"peer"}` (horn_all aus, kein geteilter Knoten für den Partner bzw. Notaus, Gerät ohne `horn` bzw. nicht jedes Gerät des Gegenübers mit `horn` + `multi`), `{busy}`, `{error: "request"}` – dann ist nichts angelegt und der Partner antwortet seinem Client mit `fallback: "direct"` |
+| `dmhorn_lead` | Partner → Mutter | `{id, ref, actor, device, media, caps, name, horn_nodes?}`: die Mutter legt den Raum-Anruf an (`kind: group`, `topo: horn`, `callee` = ihr Konto, Endpunkt der anrufenden Person mit `peer_id` = Partner) und lässt klingeln. Antworten: 200 `{legs, topo}`; 409 `{horn_block: "off"\|"node"\|"peer"\|"web"\|"none"}` (horn_all aus, kein geteilter Knoten für den Partner bzw. Notaus, Gerät ohne `horn` bzw. nicht jedes aktive Gerät des Gegenübers mit `horn` + `multi` bzw. `horn_ring` – Gründe wie bei `dmhorn`), `{busy}`, `{error: "request"}` – dann ist nichts angelegt und der Partner antwortet seinem Client mit `fallback: "direct"` |
 
   Erst nach 200 legt der Partner seine Kopie an (`lead` = Mutter). Kandidaten der anrufenden Person kommen von der
   Mutter (Auftrag `horn`, geteilte Knoten, Kontingent wie 7.4).
