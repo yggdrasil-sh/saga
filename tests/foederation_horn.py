@@ -43,9 +43,14 @@ NODES = {}                               # name -> {"proc", "dir", "id", "k", "p
 PERF = {}
 
 
-def calls_cfg(k, horn=True, **kw):
+def calls_cfg(k, horn=True, y=False, **kw):
+    """Anruf-Einstellungen einer Instanz. Grundsatz Y: ohne horn_all ausdruecklich aus (horn_all false + Merker horn_all_y,
+    wie ein Server vor Y bzw. bewusst ausgeschaltet); y=True = ab Werk unter Y (nichts gespeichert, also an)."""
     cfg = {"enabled": True, "stun": "stun:stun.example.org:3478", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "",
            "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": horn, "horn_builtin": False, "horn_from": 3}
+    if not y:
+        kw.setdefault("horn_all", False)
+        kw.setdefault("horn_all_y", True)
     cfg.update(kw)
     F2.py(k, f"import auth\nauth.save_setting('calls', {cfg!r})\nprint(1)")
 
@@ -577,7 +582,8 @@ def part_owner(adm, anna, bert, ach, bch):
     """Horn-Fix "Horn-Besitzer bestimmt": A (calls.horn_all, teilt seinen Knoten mit B) meldet horn_req. Ruft Bert (B, dort
     horn_all aus) Anna an, fuehrt A den 1:1-Anruf ueber seinen geteilten Knoten (Auftrag dmhorn_lead); ruft Anna an, wie
     bisher (A fuehrt). horn_all aus -> bisheriges Verhalten (Bert: fallback off, direkt). B ohne horn (zu alt bzw. aus) ->
-    Anna: fallback old (direkt mit Hinweis "Gegenstelle veraltet")."""
+    Anna: fallback old (direkt mit Hinweis "Gegenstelle veraltet"). Grundsatz Y: beide Server ab Werk -> beide horn_req,
+    es fuehrt der Server der angerufenen Person (bzw. der anrufenden, wenn der andere keinen Knoten mit ihm teilt)."""
     HA = T.I["a"]["host"]
     na = node_of(adm["a"], "horn-a.test")
     calls_post(adm["a"], {"action": "share", "id": na["id"]})
@@ -656,6 +662,43 @@ def part_owner(adm, anna, bert, ach, bch):
         time.sleep(10)
     ok(f"own: Anna ruft Bert an -> ueber Knoten ({s}, {(d.get('call') or {}).get('topo')})", s == 200 and (d.get("call") or {}).get("topo") == "horn")
     end_call(cid2, anna)
+    # Grundsatz Y: beide Server ab Werk (nichts gespeichert = an) -> beide melden horn_req; es fuehrt der Server der
+    # angerufenen Person - teilt er keinen Knoten mit dem Server der anrufenden Person (B teilt nicht), fuehrt dieser selbst
+    HB = T.I["b"]["host"]
+    calls_cfg("a", y=True)
+    calls_cfg("b", y=True)
+    time.sleep(6)
+    calls_post(adm["a"], {"action": "caps"})
+    calls_post(adm["b"], {"action": "caps"})
+    ok("Y: beide Server melden horn_req (ab Werk, nichts gespeichert)", wait(lambda: has_cap("b", HA, "horn_req") and has_cap("a", HB, "horn_req"), 15))
+    s, cf = api("b", "fb-bert", "GET", "/api/calls/config")
+    ok(f"Y: B config horn_dm an ({cf.get('horn_dm')})", cf.get("horn_dm") is True)
+    for _ in range(8):
+        cid, s, d = bdial()
+        if s != 429:
+            break
+        time.sleep(10)
+    ra, rb = rows("a", cid), rows("b", cid)
+    ok(f"Y: Bert (B) ruft Anna an -> A (Server der angerufenen Person) fuehrt ueber den geteilten Knoten ({s}, {ra}, {rb}, {[c['node'] for c in cands(d)]})",
+       s == 200 and ra and ra[0][:2] == ("group", "horn") and ra[0][3] == "fa-anna" and ra[0][4] is None and rb and rb[0][4] is not None
+       and [c["node"] for c in cands(d)] == ["horn-a.test"])
+    end_call(cid, bert)
+    for _ in range(8):
+        cid2 = C.hexid()
+        s, d = api("a", "fa-anna", "POST", "/api/calls", {"id": cid2, "chat_id": ach["id"], "media": "audio", "device": anna.dev["id"], "caps": CAPS,
+                                                          "via": "horn", "dev_class": "desktop"})
+        if s != 429:
+            break
+        time.sleep(10)
+    ra, rb = rows("a", cid2), rows("b", cid2)
+    ok(f"Y: Anna (A) ruft Bert an -> B teilt keinen Knoten mit A, also fuehrt A ueber seinen Knoten ({s}, {ra}, {rb})",
+       s == 200 and (d.get("call") or {}).get("topo") == "horn" and ra and ra[0][4] is None and ra[0][3] == "fb-bert" and rb and rb[0][4] is not None)
+    end_call(cid2, anna)
+    calls_cfg("a", horn_all=True)
+    calls_cfg("b")
+    time.sleep(6)
+    calls_post(adm["b"], {"action": "caps"})
+    ok("Y: B wieder ausdruecklich aus -> A kennt kein horn_req von B", wait(lambda: not has_cap("a", HB, "horn_req"), 15))
     # horn_all aus: bisheriges Verhalten
     calls_cfg("a", horn_all=False)
     time.sleep(6)
