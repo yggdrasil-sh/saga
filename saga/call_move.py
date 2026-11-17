@@ -51,10 +51,8 @@ def block(c, call):
 
 
 def hint(why):
-    return {"direct": t("Dieser Anruf läuft direkt zwischen euren Geräten – jemanden dazuholen geht nur über einen Anruf-Knoten. "
-                        "Legt dafür auf und startet einen Gruppenanruf in einer neuen Gruppe."),
-            "fed": t("In einem 1:1-Anruf mit einer Person eines anderen Saga-Servers kann man noch niemanden dazuholen – startet "
-                     "dafür einen Gruppenanruf in einer Gruppe."),
+    return {"direct": t("Dieser Anruf läuft direkt zwischen euren Geräten – jemanden dazuholen geht nur über einen Anruf-Knoten. Legt dafür auf und startet einen Gruppenanruf in einer neuen Gruppe."),
+            "fed": t("In einem 1:1-Anruf mit einer Person eines anderen Saga-Servers kann man noch niemanden dazuholen – startet dafür einen Gruppenanruf in einer Gruppe."),
             "ringing": t("Erst wenn das Gegenüber angenommen hat, kann man jemanden dazuholen."),
             "ended": t("Der Anruf ist schon beendet.")}.get(why, "")
 
@@ -103,8 +101,8 @@ async def move(uid, cid, raw):
             w, lw = _norm(x)
             m = chat._FULL_H.fullmatch(lw)
             if m and fed and chat.FED.fedsig.authority(m.group(2)) != chat.FED.F.SELF_HOST:
-                failed.append({"who": w, "kind": "fed", "error": t("Personen anderer Saga-Server kann man nicht in einen 1:1-Anruf holen – "
-                                                                    "erst in der neuen Gruppe hinzufügen.")})
+                failed.append({"who": w, "kind": "fed",
+                               "error": t("Personen anderer Saga-Server kann man nicht in einen 1:1-Anruf holen – erst in der neuen Gruppe hinzufügen.")})
                 continue
             u = chat.who_in(c, uid, lw if m else w)
             if u in (uid, peer):

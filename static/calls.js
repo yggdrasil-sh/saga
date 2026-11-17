@@ -2800,6 +2800,12 @@
       }, T('Teilnehmende'));
       pb.setAttribute('aria-pressed', String(!!H.plist)); pb.classList.add('cl-sec'); x.appendChild(pb);
     }
+    // 2.5 (L9): direkter 1:1 (kein Raum) kann nicht in eine Gruppe umziehen - der Knopf sagt warum (Text vom Server)
+    if (c.kind !== 'group' && !c.horn && c.connected && !c.companion && feat('call_move')) {
+      x.appendChild(btn(icon('userPlus'), 'cl-round cl-add-dm cl-sec', function () {
+        HK.toast((c.call && c.call.move_hint) || T('Dieser Anruf läuft direkt zwischen euren Geräten – jemanden dazuholen geht nur über einen Anruf-Knoten. Legt dafür auf und startet einen Gruppenanruf in einer neuen Gruppe.'), null, null, 9000);
+      }, T('Person hinzufügen')));
+    }
     moreCtl(c, x);
     x.appendChild(btn(icon('phone'), 'cl-round cl-red', function () { hangup(c); }, T('Auflegen')));
     pipBtn(c, c.ui.w.classList.contains('has-video'));
@@ -4764,7 +4770,34 @@
   // Mitglied des Chats und klingeln. Seiten-Chat: Rueckfrage "<Name> bekommt Zugriff auf die Seite" (409 page_confirm).
   function addOk(R) {
     R = roomOf(R);
+    if (R.kind === 'group' && R.call && R.call.dm) return moveOk(R);   // 2.5 (L9): 1:1 -> Konferenz
     return R.kind === 'group' && !(R.call && R.call.dm) && !!(R.call && R.call.can_add) && !!(cfg && (cfg.features || []).indexOf('call_add') >= 0);
+  }
+  // 2.5 (L9): im 1:1 ueber Knoten (Raum, dm) zieht "Person hinzufuegen" in eine neue Gruppe um. Das Anruf-Objekt kann noch
+  // vom Klingeln stammen (move_block ringing) - der Server prueft beim Hinzufuegen frisch und antwortet mit einem Text
+  function moveOk(R) {
+    var k = R.call || {};
+    return feat('call_move') && !!k.dm && (k.can_move === true || k.move_block === 'ringing');
+  }
+  // Anruf ist in einen neuen Gruppen-Chat umgezogen (Antwort von /add oder call.move): gleiche Verbindungen, neuer Chat
+  function moveIn(R, from, nid, k) {
+    R = roomOf(R);
+    if (R.done || !nid) return;
+    var go = function (k) {
+      if (!live(R) || R.movedTo === nid) return;
+      R.movedTo = nid; R.dm = false; R.chat_id = nid; R.kind = 'group';
+      if (k && k.id === R.id) R.call = k;
+      else if (R.call) { R.call = Object.assign({}, R.call, { chat_id: nid }); delete R.call.dm; }
+      if (R.call && Array.isArray(R.call.invites)) invIn(R, R.call);
+      R.title = (R.call && R.call.from && R.call.from.chat) || titleOf(nid) || '';
+      if (R.horn && !mtOf(R).force) R.horn.view = hornView();
+      var br = bridge(); if (br && br.moved) br.moved(from, nid);
+      HK.toast(T('Neue Gruppe – der Anruf läuft dort ohne Unterbrechung weiter.'), null, null, 5000);
+      drawInfo(R); drawCtl(R); drawTiles(R); if (R.horn) hornList(R); else meetList(R);
+      setTimeout(function () { if (live(R) && R.chat_id === nid && !R.title) { R.title = titleOf(nid); drawInfo(R); } }, 1500);
+    };
+    if (k) go(k);
+    else api('GET', '/api/calls/' + R.id).then(function (r) { go(r.call); }, function () { go(null); });
   }
   function addSeats(R) {
     R = roomOf(R);
@@ -4799,6 +4832,7 @@
       ul.textContent = '';
       var st = addSeats(R);
       hint.textContent = st.left <= 0 ? T('Der Anruf ist voll – erst wenn jemand auflegt, kann noch jemand dazukommen.')
+        : R.call && R.call.dm ? T('Es entsteht eine neue Gruppe mit euch beiden – der Anruf läuft ohne Unterbrechung weiter.')
         : R.call && R.call.add_page ? T('Hinzufügen teilt die Seite „{title}“ (Lesen).', { title: R.call.add_page })
         : T('Mitglieder klingeln, andere Personen kommen dazu und klingeln dann.');
       // wer schon im Anruf ist, fehlt; Mitglieder ohne Geraet im Anruf: "klingelt erneut" (ref bzw. Handle wie im Roster)
@@ -4853,6 +4887,7 @@
     var again = function () { if (b) { b.disabled = false; b.classList.remove('busy'); } };
     api('POST', '/api/calls/' + R.id + '/add', body).then(function (d) {
       again();
+      if (d.moved && live(R)) moveIn(R, d.moved.from_chat, d.moved.chat_id, d.call);   // 2.5 (L9): 1:1 -> neue Gruppe
       if (live(R) && invIn(R, d)) invDraw(R);
       var f = (d.failed || [])[0];
       if (f) HK.toast(f.error, null, null, 6000);
@@ -5078,6 +5113,10 @@
           finish(c, T('Der Anruf wurde auf einem anderen Gerät angenommen.'), 'info');
         }
       }
+    } else if (t === 'call.move') {                   // 2.5 (L9): 1:1 ist in eine neue Gruppe umgezogen (gleicher Anruf)
+      if (C && C.id === d.call_id && !C.done) moveIn(C, d.from_chat, d.chat_id, null);
+      else { var br0 = bridge(); if (br0 && br0.moved) br0.moved(d.from_chat, d.chat_id); }
+      runCheck();
     } else if (t === 'call.mod') hornModIn(d);       // 2.5: Gastgeber hat stummgeschaltet bzw. entfernt
     else if (t === 'call.invites') {                  // 2.5 (L7): "Nicht dabei" hat sich geaendert
       if (C && C.id === d.call_id && C.ready && !C.done && invIn(C, d)) invDraw(C);

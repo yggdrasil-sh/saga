@@ -1589,6 +1589,7 @@
     var what = k.group ? (v ? T('Gruppen-Videoanruf') : T('Gruppenanruf')) : v ? T('Videoanruf') : T('Anruf');   // 2.4: Gruppe
     if (k.status === 'ended') {
       var sec = Math.max(0, k.dur | 0), h = Math.floor(sec / 3600), mi = Math.floor(sec % 3600 / 60), p2 = function (x) { return (x < 10 ? '0' : '') + x; };
+      if (k.moved) return T('In Gruppenanruf verschoben') + ' · ' + (h ? h + ':' + p2(mi) : mi) + ':' + p2(sec % 60);   // 2.5 (L9)
       return what + ' · ' + (h ? h + ':' + p2(mi) : mi) + ':' + p2(sec % 60) + (k.group && k.n ? ' · ' + T('{n} Personen', { n: k.n }) : '');
     }
     if (k.group) return out ? T('{what} – niemand ist beigetreten', { what: what }) : (v ? T('Verpasster Gruppen-Videoanruf') : T('Verpasster Gruppenanruf'));
@@ -1791,6 +1792,9 @@
     var tm = el('time', null, fTime.format(d)); tm.dateTime = d.toISOString(); row.appendChild(tm);
     if (missed && S.cur && S.cur.kind === 'dm' && window.HKCalls && !$('ct-call-a').hidden)
       row.appendChild(btn(T('Zurückrufen'), 'small ct-call-back', function () { window.HKCalls.start(S.cur, k.media === 'video'); }));
+    // 2.5 (L9): Anruf ist in eine neue Gruppe umgezogen - Verweis auf den neuen Chat (nur Zahl, Mitglieder sehen ihn)
+    if (k.moved && /^[1-9][0-9]{0,17}$/.test(String(k.moved)))
+      row.appendChild(btn(T('Zur Gruppe'), 'small ct-call-back ct-call-moved', function () { openChat(+k.moved); }));
     return row;
   }
   function msgMenu(anchor, m) {
@@ -4778,6 +4782,11 @@
                peerKeysV2: callPeerV2, myHandle: function () { return S.myHandle || (S.cur && S.cur.my_handle) || null; },
                // Anruf vorbei: offenen Chat auffrischen - ist keiner offen (angenommen von einer anderen Seite), den des Anrufs oeffnen
                refresh: function (cid) { if (S.cur && S.cur.id === cid) loadMsgs(false); else if (!S.cur && S.ready && cid) openChat(cid); },
+               // 2.5 (L9): 1:1-Anruf ist in eine neue Gruppe umgezogen - ist das 1:1 offen, die neue Gruppe oeffnen
+               moved: function (from, to) {
+                 if (S.cur && S.cur.id === from && to) openChat(to); else if (S.cur && S.cur.id === to) loadMsgs(false);
+                 listSoon();
+               },
                // 2.5 (L8): im Anruf wurde jemand ins Chat aufgenommen - Namen der Gruppe fuer Neue lesbar (wie die Gruppeninfo)
                added: function (cid) {
                  var c = S.cur && S.cur.id === cid ? S.cur : (S.chats || []).filter(function (x) { return x.id === cid; })[0];
