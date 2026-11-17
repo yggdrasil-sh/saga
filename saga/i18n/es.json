@@ -700,7 +700,7 @@
  "Bilder lassen sich nicht zwischen verschiedenen Saga-Servern kopieren.": "No se pueden copiar imágenes entre distintos servidores Saga.",
  "Bilder mit get_image ansehen (file = Datei-ID).": "Ver las imágenes con get_image (file = ID del archivo).",
  "Bilder und Dateien im synchronisierten Block müssen dem Eigentümer des Originals gehören.": "Las imágenes y archivos de un bloque sincronizado deben pertenecer al propietario del original.",
- "Bilder, aus denen Benutzer ein Titelbild wählen – und aus denen neue Seiten ein zufälliges bekommen (Konto-Einstellung, Standard an). Mitgelieferte Bilder sind gemeinfreie Werke (Met Open Access, CC0); sie lassen sich ausblenden, aber nicht löschen. Ausgeblendete oder entfernte Bilder verschwinden aus Auswahl und Zufall, Seiten, die sie schon nutzen, zeigen sie weiter.": "Imágenes entre las que los usuarios eligen una portada; las páginas nuevas reciben una al azar (ajuste de la cuenta, activado por defecto). Las imágenes incluidas son obras de dominio público (Met Open Access, CC0); se pueden ocultar, pero no eliminar. Las imágenes ocultas o eliminadas ya no se ofrecen ni se eligen al azar; las páginas que ya las usan las siguen mostrando.",
+ "Bilder, aus denen Benutzer ein Titelbild wählen – und aus denen neue Seiten ein zufälliges bekommen (Konto-Einstellung, Standard an). Mitgeliefert sind gemeinfreie Kunstwerke (Met Open Access, CC0) und KI-generierte Saga-Bilder; sie lassen sich ausblenden, aber nicht löschen. Ausgeblendete oder entfernte Bilder verschwinden aus Auswahl und Zufall, Seiten, die sie schon nutzen, zeigen sie weiter.": "Imágenes entre las que los usuarios eligen una portada; las páginas nuevas reciben una al azar (ajuste de la cuenta, activado por defecto). Se incluyen obras de dominio público (Met Open Access, CC0) e imágenes de Saga generadas por IA; se pueden ocultar, pero no eliminar. Las imágenes ocultas o eliminadas ya no se ofrecen ni se eligen al azar; las páginas que ya las usan las siguen mostrando.",
  "Bildschirm teilen": "Compartir pantalla",
  "Bildschirm teilen nicht möglich: {err}": "No se puede compartir la pantalla: {err}",
  "Bildschirm teilen/beenden": "Compartir pantalla/detener",
@@ -2729,7 +2729,7 @@
  "Mit {name} entwerfen …": "Redactar con {name} …",
  "mit {sub}": "con {sub}",
  "mitgeliefert": "incluida",
- "Mitgelieferte Bilder: gemeinfreie Werke, {src}": "Imágenes incluidas: obras de dominio público, {src}",
+ "Mitgelieferte Kunstwerke: gemeinfrei, {src}. Die Saga-Bilder sind KI-generiert.": "Obras incluidas: dominio público, {src}. Las imágenes de Saga están generadas por IA.",
  "Mitgelieferte Vorlagen (Aufgaben, Leseliste, Wiki …) im Menü „Neue Seite“, auf dem leeren Start und in der Befehlspalette. Angelegt wird eine Kopie im Konto der Person. Aus: die Galerie fehlt in Web und Apps; schon angelegte Seiten bleiben.": "Plantillas incluidas (tareas, lista de lectura, wiki…) en el menú «Nueva página», en el inicio vacío y en la paleta de comandos. Se crea una copia en la cuenta de la persona. Desactivado: la galería no aparece en la web ni en las apps; las páginas ya creadas se mantienen.",
  "Mitgeschickter Text": "Texto adjunto",
  "Mitglied hinzufügen": "Añadir miembro",
@@ -5075,5 +5075,13 @@
  "🔓 Seite entsperrt": "🔓 Página desbloqueada",
  "🔗 Link zur Datenbank kopieren": "🔗 Copiar enlace a la base de datos",
  "🖼 Eigenes Bild hochladen …": "🖼 Subir una imagen propia …",
- "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:"
+ "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:",
+ "Saga · Stube": "Saga · Hogar",
+ "Saga · Schreibstube": "Saga · Estudio",
+ "Saga · Garten & Küche": "Saga · Jardín y cocina",
+ "Saga · Natur": "Saga · Naturaleza",
+ "Saga · Winter & Nordlicht": "Saga · Invierno y aurora",
+ "Saga · Kriegerin": "Saga · Guerrera",
+ "Saga · Magie": "Saga · Magia",
+ "Saga · Gefährten": "Saga · Compañeros"
 }

@@ -194,6 +194,13 @@ def run():
     ok("Eintrag: url, thumb, Titel (de), Kuenstler, Quelle, pos", w.get("url") == "/covers/hokusai-welle.jpg" and w.get("thumb", "").startswith(w["url"] + "?w=")
        and w.get("title") == BUILTIN["hokusai-welle"]["title_de"] and w.get("artist") == "Katsushika Hokusai"
        and w.get("source_url", "").startswith("https://www.metmuseum.org/") and w.get("pos") == BUILTIN["hokusai-welle"]["pos"], w)
+    sg = [c for c in L.get("covers", []) if c["id"].startswith("saga-")]
+    gl = {g["id"]: g["label"] for g in L.get("groups", [])}
+    ok(f"KI-Bilder (saga-*): {len(sg)} mitgeliefert, eigene Quelle je Bild, Gruppen mit Namen nach den Kunstwerken",
+       len(sg) >= 100 and all(c["source"] == "KI-generiert für Saga" and not c["source_url"] and c["group"].startswith("saga-") for c in sg)
+       and w.get("source", "").startswith("The Metropolitan Museum of Art") and gl.get("saga-stube") == "Saga · Stube"
+       and [g["id"] for g in L["groups"]].index("saga-stube") > [g["id"] for g in L["groups"]].index("landschaft"),
+       [(c["id"], c["source"], c["group"]) for c in sg[:3]] + [gl])
     s, _, Le = req("GET", "/api/covers", A, hdr={"Accept-Language": "en"})
     ok("Titel englisch bei Accept-Language en", any(c["id"] == "hokusai-welle" and c["title"] == BUILTIN["hokusai-welle"]["title_en"]
                                                     for c in Le.get("covers", [])))

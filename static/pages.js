@@ -6441,7 +6441,7 @@
           });
           sec.appendChild(strip); body.appendChild(sec);
         });
-        if (d.source) body.appendChild(el('p', 'hk-hint cg-src', T('Mitgelieferte Bilder: gemeinfreie Werke, {src}', { src: d.source })));
+        if (d.source) body.appendChild(el('p', 'hk-hint cg-src', T('Mitgelieferte Kunstwerke: gemeinfrei, {src}. Die Saga-Bilder sind KI-generiert.', { src: d.source })));
       });
     }).catch(function (err) { HK.toast(err.message); });
   }

@@ -1,6 +1,7 @@
 # Titelbild-Galerie
 
-Standard-Galerie fuer Seiten-Titelbilder. Alle Bilder sind gemeinfreie Werke aus der
+Standard-Galerie fuer Seiten-Titelbilder: gemeinfreie Kunstwerke (Tabelle unten) und KI-generierte Bilder der
+Saga-Elfe (IDs `saga-*`, Abschnitt am Ende). Die Kunstwerke sind gemeinfreie Werke aus der
 [Open-Access-Sammlung des Metropolitan Museum of Art](https://www.metmuseum.org/about-the-met/policies-and-documents/open-access)
 und dort unter [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) freigegeben.
 Fuer Saga wurden sie auf 1600 px Breite verkleinert (JPEG).
@@ -33,3 +34,20 @@ der Met, Gruppe, `pos` = empfohlene senkrechte Bildposition 0–100). Saga liefe
 | Landschaft | `cole-oxbow` | The Oxbow | Thomas Cole | 1836 | [10497](https://www.metmuseum.org/art/collection/search/10497) |
 | Landschaft | `church-anden` | Herz der Anden | Frederic Edwin Church | 1859 | [10481](https://www.metmuseum.org/art/collection/search/10481) |
 | Landschaft | `vangogh-zypressen` | Weizenfeld mit Zypressen | Vincent van Gogh | 1889 | [436535](https://www.metmuseum.org/art/collection/search/436535) |
+
+## Saga-Bilder (KI-generiert)
+
+Bilder der Saga-Elfe, fuer Saga mit einem Bildgenerator erstellt (Angabe `source` je Bild: „KI-generiert fuer Saga“,
+ohne Kuenstler und Link). Auf 1600 px Breite verkleinert (JPEG). Admins koennen einzelne Bilder oder ganze Gruppen unter
+Admin → Titelbilder ausblenden.
+
+| Gruppe | Anzahl | IDs |
+|---|---|---|
+| Saga · Stube (`saga-stube`) | 8 | `saga-am-kaminfeuer`, `saga-warme-decke-heisser-tee`, `saga-muede-am-abend`, `saga-gemuetliche-nacht`, `saga-ruhiger-abend`, `saga-erinnerungen-am-kamin`, `saga-morgentee`, `saga-harfe-am-abend` |
+| Saga · Schreibstube (`saga-schreibstube`) | 18 | `saga-schreiben-unter-dem-nordlicht`, `saga-lesen-am-kamin`, `saga-einen-brief-siegeln`, `saga-bei-kerzenlicht`, `saga-das-kassenbuch`, `saga-planen-und-messen`, `saga-am-rechner`, `saga-nachdenken-in-der-schreibstube`, `saga-wochenplan`, `saga-lesen-am-fenster`, `saga-zeichnen`, `saga-die-erinnerungswand`, `saga-ueber-der-karte`, `saga-der-brief`, `saga-abend-in-der-bibliothek`, `saga-pause-beim-lernen`, `saga-ein-gutes-buch`, `saga-nachtschicht` |
+| Saga · Garten & Küche (`saga-garten`) | 10 | `saga-im-gewaechshaus`, `saga-pflanzen-setzen`, `saga-in-der-kueche`, `saga-eintopf-kochen`, `saga-kraeutergarten`, `saga-kraeuter-binden`, `saga-lavendel-pfluecken`, `saga-kraeuter-am-bach`, `saga-blumen-im-gewaechshaus`, `saga-giessen` |
+| Saga · Natur (`saga-natur`) | 16 | `saga-sonnenuntergang-am-see`, `saga-am-hafen`, `saga-kirschbluete`, `saga-am-wasserfall`, `saga-der-wegweiser`, `saga-auf-dem-gipfel`, `saga-herbst-im-tal`, `saga-auf-dem-langschiff`, `saga-herbstwind`, `saga-morgennebel-am-see`, `saga-die-haengebruecke`, `saga-regen-am-fjord`, `saga-ein-brief-im-regen`, `saga-lichtung-mit-wasserfall`, `saga-blick-ueber-den-fjord`, `saga-sonnenaufgang-ueber-den-wolken` |
+| Saga · Winter & Nordlicht (`saga-winter`) | 12 | `saga-mondnacht-am-weltenbaum`, `saga-nordlicht-ueber-der-kueste`, `saga-der-weltenbaum-im-schnee`, `saga-nebel-am-fjord`, `saga-klarer-wintertag`, `saga-nordlicht-im-fruehling`, `saga-aufbruch-im-schnee`, `saga-abend-vor-dem-haus`, `saga-wintermorgen-am-see`, `saga-abendrot-im-winter`, `saga-sehnsucht-am-hafen`, `saga-nordlicht-ueber-yggdrasil` |
+| Saga · Kriegerin (`saga-kriegerin`) | 21 | `saga-im-schneesturm`, `saga-gewitter-ueber-dem-fjord`, `saga-sturm-am-fjord`, `saga-ueber-der-festung`, `saga-ruf-des-donners`, `saga-mit-der-axt`, `saga-wache-im-schnee`, `saga-kampfbereit`, `saga-die-burg-im-schnee`, `saga-ueber-den-wolken`, `saga-durch-den-sturm`, `saga-der-drache`, `saga-mit-der-schar`, `saga-dunkle-wolken`, `saga-vor-der-festung`, `saga-nachtwache`, `saga-nach-der-schlacht`, `saga-auf-dem-uebungsplatz`, `saga-schwert-im-wind`, `saga-schwertuebung`, `saga-die-gefaehrtinnen` |
+| Saga · Magie (`saga-magie`) | 5 | `saga-herrin-des-gewitters`, `saga-nordlichtzauber`, `saga-runen-der-daemmerung`, `saga-der-runenkreis`, `saga-rauchzauber` |
+| Saga · Gefährten (`saga-gefaehrten`) | 10 | `saga-der-hund-mit-dem-wikingerhelm`, `saga-lesen-mit-dem-wolf`, `saga-auf-dem-markt`, `saga-umarmung-mit-dem-wolf`, `saga-bootsfahrt-auf-dem-fjord`, `saga-ein-arm-voll-blumen`, `saga-gang-ueber-den-markt`, `saga-schlaf-mit-dem-wolf`, `saga-blumen-fuer-dich`, `saga-trost-beim-wolf` |

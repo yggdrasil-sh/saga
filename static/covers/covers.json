@@ -243,6 +243,1006 @@
    "url": "https://www.metmuseum.org/art/collection/search/436535",
    "group": "landschaft",
    "pos": 40
+  },
+  {
+   "id": "saga-am-kaminfeuer",
+   "title_de": "Am Kaminfeuer",
+   "title_en": "By the fireside",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-stube",
+   "pos": 20
+  },
+  {
+   "id": "saga-warme-decke-heisser-tee",
+   "title_de": "Warme Decke, heißer Tee",
+   "title_en": "Warm blanket, hot tea",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-stube",
+   "pos": 20
+  },
+  {
+   "id": "saga-muede-am-abend",
+   "title_de": "Müde am Abend",
+   "title_en": "Sleepy evening",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-stube",
+   "pos": 20
+  },
+  {
+   "id": "saga-gemuetliche-nacht",
+   "title_de": "Gemütliche Nacht",
+   "title_en": "Cosy night",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-stube",
+   "pos": 20
+  },
+  {
+   "id": "saga-ruhiger-abend",
+   "title_de": "Ruhiger Abend",
+   "title_en": "Quiet evening",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-stube",
+   "pos": 20
+  },
+  {
+   "id": "saga-erinnerungen-am-kamin",
+   "title_de": "Erinnerungen am Kamin",
+   "title_en": "Memories by the hearth",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-stube",
+   "pos": 20
+  },
+  {
+   "id": "saga-morgentee",
+   "title_de": "Morgentee",
+   "title_en": "Morning tea",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-stube",
+   "pos": 20
+  },
+  {
+   "id": "saga-harfe-am-abend",
+   "title_de": "Harfe am Abend",
+   "title_en": "Harp in the evening",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-stube",
+   "pos": 20
+  },
+  {
+   "id": "saga-schreiben-unter-dem-nordlicht",
+   "title_de": "Schreiben unter dem Nordlicht",
+   "title_en": "Writing under the northern lights",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-lesen-am-kamin",
+   "title_de": "Lesen am Kamin",
+   "title_en": "Reading by the fire",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-einen-brief-siegeln",
+   "title_de": "Einen Brief siegeln",
+   "title_en": "Sealing a letter",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-bei-kerzenlicht",
+   "title_de": "Bei Kerzenlicht",
+   "title_en": "By candlelight",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-das-kassenbuch",
+   "title_de": "Das Kassenbuch",
+   "title_en": "The ledger",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-planen-und-messen",
+   "title_de": "Planen und Messen",
+   "title_en": "Plans and charts",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-am-rechner",
+   "title_de": "Am Rechner",
+   "title_en": "At the computer",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-nachdenken-in-der-schreibstube",
+   "title_de": "Nachdenken in der Schreibstube",
+   "title_en": "Musing in the study",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-wochenplan",
+   "title_de": "Wochenplan",
+   "title_en": "Weekly planning",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-lesen-am-fenster",
+   "title_de": "Lesen am Fenster",
+   "title_en": "Reading by the window",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-zeichnen",
+   "title_de": "Zeichnen",
+   "title_en": "Sketching",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-die-erinnerungswand",
+   "title_de": "Die Erinnerungswand",
+   "title_en": "The memory wall",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-ueber-der-karte",
+   "title_de": "Über der Karte",
+   "title_en": "Studying the map",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 30
+  },
+  {
+   "id": "saga-der-brief",
+   "title_de": "Der Brief",
+   "title_en": "The letter",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-abend-in-der-bibliothek",
+   "title_de": "Abend in der Bibliothek",
+   "title_en": "Evening in the library",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-pause-beim-lernen",
+   "title_de": "Pause beim Lernen",
+   "title_en": "Study break",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-ein-gutes-buch",
+   "title_de": "Ein gutes Buch",
+   "title_en": "A good book",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-nachtschicht",
+   "title_de": "Nachtschicht",
+   "title_en": "Night shift",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-schreibstube",
+   "pos": 20
+  },
+  {
+   "id": "saga-im-gewaechshaus",
+   "title_de": "Im Gewächshaus",
+   "title_en": "In the greenhouse",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 20
+  },
+  {
+   "id": "saga-pflanzen-setzen",
+   "title_de": "Pflanzen setzen",
+   "title_en": "Potting plants",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 20
+  },
+  {
+   "id": "saga-in-der-kueche",
+   "title_de": "In der Küche",
+   "title_en": "In the kitchen",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 20
+  },
+  {
+   "id": "saga-eintopf-kochen",
+   "title_de": "Eintopf kochen",
+   "title_en": "Cooking stew",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 20
+  },
+  {
+   "id": "saga-kraeutergarten",
+   "title_de": "Kräutergarten",
+   "title_en": "Herb garden",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 30
+  },
+  {
+   "id": "saga-kraeuter-binden",
+   "title_de": "Kräuter binden",
+   "title_en": "Binding herbs",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 20
+  },
+  {
+   "id": "saga-lavendel-pfluecken",
+   "title_de": "Lavendel pflücken",
+   "title_en": "Picking lavender",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 30
+  },
+  {
+   "id": "saga-kraeuter-am-bach",
+   "title_de": "Kräuter am Bach",
+   "title_en": "Herbs by the stream",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 30
+  },
+  {
+   "id": "saga-blumen-im-gewaechshaus",
+   "title_de": "Blumen im Gewächshaus",
+   "title_en": "Greenhouse flowers",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 20
+  },
+  {
+   "id": "saga-giessen",
+   "title_de": "Gießen",
+   "title_en": "Watering",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-garten",
+   "pos": 20
+  },
+  {
+   "id": "saga-sonnenuntergang-am-see",
+   "title_de": "Sonnenuntergang am See",
+   "title_en": "Sunset by the lake",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 20
+  },
+  {
+   "id": "saga-am-hafen",
+   "title_de": "Am Hafen",
+   "title_en": "At the harbour",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 30
+  },
+  {
+   "id": "saga-kirschbluete",
+   "title_de": "Kirschblüte",
+   "title_en": "Cherry blossom",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 30
+  },
+  {
+   "id": "saga-am-wasserfall",
+   "title_de": "Am Wasserfall",
+   "title_en": "By the waterfall",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 30
+  },
+  {
+   "id": "saga-der-wegweiser",
+   "title_de": "Der Wegweiser",
+   "title_en": "The signpost",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 30
+  },
+  {
+   "id": "saga-auf-dem-gipfel",
+   "title_de": "Auf dem Gipfel",
+   "title_en": "On the summit",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 30
+  },
+  {
+   "id": "saga-herbst-im-tal",
+   "title_de": "Herbst im Tal",
+   "title_en": "Autumn in the valley",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 30
+  },
+  {
+   "id": "saga-auf-dem-langschiff",
+   "title_de": "Auf dem Langschiff",
+   "title_en": "On the longship",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 20
+  },
+  {
+   "id": "saga-herbstwind",
+   "title_de": "Herbstwind",
+   "title_en": "Autumn wind",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 20
+  },
+  {
+   "id": "saga-morgennebel-am-see",
+   "title_de": "Morgennebel am See",
+   "title_en": "Morning mist on the lake",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 20
+  },
+  {
+   "id": "saga-die-haengebruecke",
+   "title_de": "Die Hängebrücke",
+   "title_en": "The rope bridge",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 40
+  },
+  {
+   "id": "saga-regen-am-fjord",
+   "title_de": "Regen am Fjord",
+   "title_en": "Rain on the fjord",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 20
+  },
+  {
+   "id": "saga-ein-brief-im-regen",
+   "title_de": "Ein Brief im Regen",
+   "title_en": "A letter in the rain",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 20
+  },
+  {
+   "id": "saga-lichtung-mit-wasserfall",
+   "title_de": "Lichtung mit Wasserfall",
+   "title_en": "Glade with waterfall",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 20
+  },
+  {
+   "id": "saga-blick-ueber-den-fjord",
+   "title_de": "Blick über den Fjord",
+   "title_en": "View over the fjord",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 20
+  },
+  {
+   "id": "saga-sonnenaufgang-ueber-den-wolken",
+   "title_de": "Sonnenaufgang über den Wolken",
+   "title_en": "Sunrise above the clouds",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-natur",
+   "pos": 40
+  },
+  {
+   "id": "saga-mondnacht-am-weltenbaum",
+   "title_de": "Mondnacht am Weltenbaum",
+   "title_en": "Moonlit night at the world tree",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-nordlicht-ueber-der-kueste",
+   "title_de": "Nordlicht über der Küste",
+   "title_en": "Northern lights over the coast",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-der-weltenbaum-im-schnee",
+   "title_de": "Der Weltenbaum im Schnee",
+   "title_en": "The world tree in snow",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-nebel-am-fjord",
+   "title_de": "Nebel am Fjord",
+   "title_en": "Mist on the fjord",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-klarer-wintertag",
+   "title_de": "Klarer Wintertag",
+   "title_en": "Clear winter day",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-nordlicht-im-fruehling",
+   "title_de": "Nordlicht im Frühling",
+   "title_en": "Spring aurora",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-aufbruch-im-schnee",
+   "title_de": "Aufbruch im Schnee",
+   "title_en": "Setting out in the snow",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-abend-vor-dem-haus",
+   "title_de": "Abend vor dem Haus",
+   "title_en": "Evening at the door",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-wintermorgen-am-see",
+   "title_de": "Wintermorgen am See",
+   "title_en": "Winter morning at the lake",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-abendrot-im-winter",
+   "title_de": "Abendrot im Winter",
+   "title_en": "Winter sunset",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-sehnsucht-am-hafen",
+   "title_de": "Sehnsucht am Hafen",
+   "title_en": "Longing at the harbour",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-nordlicht-ueber-yggdrasil",
+   "title_de": "Nordlicht über Yggdrasil",
+   "title_en": "Aurora over Yggdrasil",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-winter",
+   "pos": 20
+  },
+  {
+   "id": "saga-im-schneesturm",
+   "title_de": "Im Schneesturm",
+   "title_en": "In the blizzard",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-gewitter-ueber-dem-fjord",
+   "title_de": "Gewitter über dem Fjord",
+   "title_en": "Thunderstorm over the fjord",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-sturm-am-fjord",
+   "title_de": "Sturm am Fjord",
+   "title_en": "Storm at the fjord",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-ueber-der-festung",
+   "title_de": "Über der Festung",
+   "title_en": "Above the fortress",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-ruf-des-donners",
+   "title_de": "Ruf des Donners",
+   "title_en": "Call of thunder",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-mit-der-axt",
+   "title_de": "Mit der Axt",
+   "title_en": "With the axe",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-wache-im-schnee",
+   "title_de": "Wache im Schnee",
+   "title_en": "On guard in the snow",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-kampfbereit",
+   "title_de": "Kampfbereit",
+   "title_en": "Ready to fight",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-die-burg-im-schnee",
+   "title_de": "Die Burg im Schnee",
+   "title_en": "The castle in the snow",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-ueber-den-wolken",
+   "title_de": "Über den Wolken",
+   "title_en": "Above the clouds",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 40
+  },
+  {
+   "id": "saga-durch-den-sturm",
+   "title_de": "Durch den Sturm",
+   "title_en": "Through the storm",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-der-drache",
+   "title_de": "Der Drache",
+   "title_en": "The dragon",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 40
+  },
+  {
+   "id": "saga-mit-der-schar",
+   "title_de": "Mit der Schar",
+   "title_en": "With the warband",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-dunkle-wolken",
+   "title_de": "Dunkle Wolken",
+   "title_en": "Dark clouds",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-vor-der-festung",
+   "title_de": "Vor der Festung",
+   "title_en": "Before the fortress",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-nachtwache",
+   "title_de": "Nachtwache",
+   "title_en": "Night watch",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-nach-der-schlacht",
+   "title_de": "Nach der Schlacht",
+   "title_en": "After the battle",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-auf-dem-uebungsplatz",
+   "title_de": "Auf dem Übungsplatz",
+   "title_en": "On the training ground",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-schwert-im-wind",
+   "title_de": "Schwert im Wind",
+   "title_en": "Sword in the wind",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-schwertuebung",
+   "title_de": "Schwertübung",
+   "title_en": "Sword practice",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-die-gefaehrtinnen",
+   "title_de": "Die Gefährtinnen",
+   "title_en": "The companions",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-kriegerin",
+   "pos": 20
+  },
+  {
+   "id": "saga-herrin-des-gewitters",
+   "title_de": "Herrin des Gewitters",
+   "title_en": "Mistress of the storm",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-magie",
+   "pos": 20
+  },
+  {
+   "id": "saga-nordlichtzauber",
+   "title_de": "Nordlichtzauber",
+   "title_en": "Aurora magic",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-magie",
+   "pos": 20
+  },
+  {
+   "id": "saga-runen-der-daemmerung",
+   "title_de": "Runen der Dämmerung",
+   "title_en": "Runes at dusk",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-magie",
+   "pos": 20
+  },
+  {
+   "id": "saga-der-runenkreis",
+   "title_de": "Der Runenkreis",
+   "title_en": "The rune circle",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-magie",
+   "pos": 20
+  },
+  {
+   "id": "saga-rauchzauber",
+   "title_de": "Rauchzauber",
+   "title_en": "Smoke magic",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-magie",
+   "pos": 20
+  },
+  {
+   "id": "saga-der-hund-mit-dem-wikingerhelm",
+   "title_de": "Der Hund mit dem Wikingerhelm",
+   "title_en": "The dog in the Viking helmet",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 30
+  },
+  {
+   "id": "saga-lesen-mit-dem-wolf",
+   "title_de": "Lesen mit dem Wolf",
+   "title_en": "Reading with the wolf",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 30
+  },
+  {
+   "id": "saga-auf-dem-markt",
+   "title_de": "Auf dem Markt",
+   "title_en": "At the market",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 20
+  },
+  {
+   "id": "saga-umarmung-mit-dem-wolf",
+   "title_de": "Umarmung mit dem Wolf",
+   "title_en": "Hugging the wolf",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 20
+  },
+  {
+   "id": "saga-bootsfahrt-auf-dem-fjord",
+   "title_de": "Bootsfahrt auf dem Fjord",
+   "title_en": "Boat trip on the fjord",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 30
+  },
+  {
+   "id": "saga-ein-arm-voll-blumen",
+   "title_de": "Ein Arm voll Blumen",
+   "title_en": "An armful of flowers",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 20
+  },
+  {
+   "id": "saga-gang-ueber-den-markt",
+   "title_de": "Gang über den Markt",
+   "title_en": "Through the market",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 20
+  },
+  {
+   "id": "saga-schlaf-mit-dem-wolf",
+   "title_de": "Schlaf mit dem Wolf",
+   "title_en": "Asleep with the wolf",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 30
+  },
+  {
+   "id": "saga-blumen-fuer-dich",
+   "title_de": "Blumen für dich",
+   "title_en": "Flowers for you",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 20
+  },
+  {
+   "id": "saga-trost-beim-wolf",
+   "title_de": "Trost beim Wolf",
+   "title_en": "Comfort from the wolf",
+   "artist": "",
+   "date": "",
+   "source": "KI-generiert für Saga",
+   "group": "saga-gefaehrten",
+   "pos": 20
   }
  ]
 }

@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – Titelbild-Galerie: 100 Bilder der Saga-Elfe
+- **Acht neue Gruppen** nach den Kunstwerken: Saga · Stube, Schreibstube, Garten & Küche, Natur, Winter & Nordlicht,
+  Kriegerin, Magie, Gefährten (KI-generiert, 1600 px, IDs `saga-*`). Sie stehen in „Galerie …“ zur Auswahl und kommen
+  wie alle sichtbaren Bilder für das Zufallsbild neuer Seiten in Frage (empfohlene Position je Bild, damit das Gesicht im
+  Streifen bleibt). Ausblenden einzeln unter Admin → Titelbilder.
+- `covers.json` kennt `source` jetzt auch je Bild (vor der Angabe für die ganze Datei); „Über dieses Bild“ zeigt bei den
+  Saga-Bildern „KI-generiert für Saga“ ohne Link. Hinweis unter der Galerie und im Admin-Bereich angepasst (5 Sprachen).
+
 ### Geändert – Anrufe: Grundsatz Y – Geräteregel „30 Tage + Linux-Fähigkeit“
 - **Nur aktive Geräte zählen:** Ob ein 1:1 über den Knoten läuft, hängt nur noch an Chat-Geräten des Gegenübers mit
   einem Lebenszeichen in den **letzten 30 Tagen** (wie bei der Chat-Umstellung auf Stufe 3). Ein lange nicht benutztes

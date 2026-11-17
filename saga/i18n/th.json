@@ -700,7 +700,7 @@
  "Bilder lassen sich nicht zwischen verschiedenen Saga-Servern kopieren.": "ไม่สามารถคัดลอกรูปภาพระหว่างเซิร์ฟเวอร์ Saga ที่ต่างกันได้",
  "Bilder mit get_image ansehen (file = Datei-ID).": "ดูรูปภาพด้วย get_image (file = รหัสไฟล์)",
  "Bilder und Dateien im synchronisierten Block müssen dem Eigentümer des Originals gehören.": "รูปภาพและไฟล์ในบล็อกที่ซิงค์ต้องเป็นของเจ้าของต้นฉบับ",
- "Bilder, aus denen Benutzer ein Titelbild wählen – und aus denen neue Seiten ein zufälliges bekommen (Konto-Einstellung, Standard an). Mitgelieferte Bilder sind gemeinfreie Werke (Met Open Access, CC0); sie lassen sich ausblenden, aber nicht löschen. Ausgeblendete oder entfernte Bilder verschwinden aus Auswahl und Zufall, Seiten, die sie schon nutzen, zeigen sie weiter.": "รูปภาพที่ผู้ใช้เลือกเป็นภาพปกได้ – หน้าใหม่จะได้รับภาพแบบสุ่ม (ตั้งค่าบัญชี เปิดเป็นค่าเริ่มต้น) รูปที่มาพร้อมระบบเป็นงานสาธารณสมบัติ (Met Open Access, CC0) ซ่อนได้แต่ลบไม่ได้ รูปที่ซ่อนหรือนำออกจะไม่ให้เลือกและไม่สุ่มอีก หน้าที่ใช้อยู่แล้วยังแสดงต่อ",
+ "Bilder, aus denen Benutzer ein Titelbild wählen – und aus denen neue Seiten ein zufälliges bekommen (Konto-Einstellung, Standard an). Mitgeliefert sind gemeinfreie Kunstwerke (Met Open Access, CC0) und KI-generierte Saga-Bilder; sie lassen sich ausblenden, aber nicht löschen. Ausgeblendete oder entfernte Bilder verschwinden aus Auswahl und Zufall, Seiten, die sie schon nutzen, zeigen sie weiter.": "รูปภาพที่ผู้ใช้เลือกเป็นภาพปกได้ – หน้าใหม่จะได้รับภาพแบบสุ่ม (ตั้งค่าบัญชี เปิดเป็นค่าเริ่มต้น) มาพร้อมระบบ: งานศิลปะสาธารณสมบัติ (Met Open Access, CC0) และภาพ Saga ที่สร้างด้วย AI ซ่อนได้แต่ลบไม่ได้ รูปที่ซ่อนหรือนำออกจะไม่ให้เลือกและไม่สุ่มอีก หน้าที่ใช้อยู่แล้วยังแสดงต่อ",
  "Bildschirm teilen": "แชร์หน้าจอ",
  "Bildschirm teilen nicht möglich: {err}": "แชร์หน้าจอไม่ได้: {err}",
  "Bildschirm teilen/beenden": "แชร์หน้าจอ/หยุด",
@@ -2729,7 +2729,7 @@
  "Mit {name} entwerfen …": "ร่างกับ {name} …",
  "mit {sub}": "พร้อม {sub}",
  "mitgeliefert": "มาพร้อมระบบ",
- "Mitgelieferte Bilder: gemeinfreie Werke, {src}": "รูปที่มาพร้อมระบบ: งานสาธารณสมบัติ, {src}",
+ "Mitgelieferte Kunstwerke: gemeinfrei, {src}. Die Saga-Bilder sind KI-generiert.": "งานศิลปะที่มาพร้อมระบบ: สาธารณสมบัติ, {src} ภาพ Saga สร้างด้วย AI",
  "Mitgelieferte Vorlagen (Aufgaben, Leseliste, Wiki …) im Menü „Neue Seite“, auf dem leeren Start und in der Befehlspalette. Angelegt wird eine Kopie im Konto der Person. Aus: die Galerie fehlt in Web und Apps; schon angelegte Seiten bleiben.": "เทมเพลตที่มาพร้อมระบบ (งาน รายการหนังสือ วิกิ …) ในเมนู “หน้าใหม่” บนหน้าเริ่มต้นที่ว่างเปล่า และในชุดคำสั่ง ระบบจะสร้างสำเนาในบัญชีของผู้ใช้ ปิด: แกลเลอรีจะไม่แสดงในเว็บและแอป หน้าที่สร้างไว้แล้วยังคงอยู่",
  "Mitgeschickter Text": "ข้อความที่แนบมา",
  "Mitglied hinzufügen": "เพิ่มสมาชิก",
@@ -5075,5 +5075,13 @@
  "🔓 Seite entsperrt": "🔓 ปลดล็อกหน้าแล้ว",
  "🔗 Link zur Datenbank kopieren": "🔗 คัดลอกลิงก์ไปยังฐานข้อมูล",
  "🖼 Eigenes Bild hochladen …": "🖼 อัปโหลดรูปภาพของตัวเอง …",
- "🗃️ Datenbank einbetten:": "🗃️ ฝังฐานข้อมูล:"
+ "🗃️ Datenbank einbetten:": "🗃️ ฝังฐานข้อมูล:",
+ "Saga · Stube": "Saga · ข้างเตาผิง",
+ "Saga · Schreibstube": "Saga · ห้องหนังสือ",
+ "Saga · Garten & Küche": "Saga · สวนและครัว",
+ "Saga · Natur": "Saga · ธรรมชาติ",
+ "Saga · Winter & Nordlicht": "Saga · ฤดูหนาวและแสงเหนือ",
+ "Saga · Kriegerin": "Saga · นักรบหญิง",
+ "Saga · Magie": "Saga · เวทมนตร์",
+ "Saga · Gefährten": "Saga · เพื่อนร่วมทาง"
 }

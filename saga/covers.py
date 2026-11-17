@@ -1,4 +1,5 @@
-"""Titelbild-Galerie (2.5): mitgelieferte gemeinfreie Bilder (static/covers, covers.json) plus Bilder, die der Admin
+"""Titelbild-Galerie (2.5): mitgelieferte Bilder (static/covers, covers.json: gemeinfreie Kunstwerke der Met und
+KI-generierte Saga-Bilder, Angabe "source" je Bild vor der Angabe fuer die ganze Datei) plus Bilder, die der Admin
 hochlaedt (STATE_DIR/covers, Metadaten in Tabelle cover_gallery, Migration 34).
 
 Ausgeliefert unter /covers/<id>.jpg - oeffentlich (auch fuer veroeffentlichte Seiten und eigene Domains), lange
@@ -31,7 +32,9 @@ BUILTIN_DIR = os.path.join(HERE, "static", "covers")
 UP_DIR = os.path.join(STATE_DIR, "covers")
 ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 PATH_RE = re.compile(r"/covers/([a-z0-9][a-z0-9-]{0,63})\.jpg")
-GROUPS = ("nordisch", "romantik", "holzschnitt", "landschaft")      # Reihenfolge in der Auswahl
+GROUPS = ("nordisch", "romantik", "holzschnitt", "landschaft",     # Reihenfolge in der Auswahl
+          "saga-stube", "saga-schreibstube", "saga-garten", "saga-natur", "saga-winter", "saga-kriegerin", "saga-magie",
+          "saga-gefaehrten")
 UPLOAD_MAX = 20 * 1024 * 1024        # Eingabe je Bild
 UPLOAD_FILES = 10                    # Bilder je Formular
 WIDTH = 1600                         # gespeicherte Breite (wie die mitgelieferten)
@@ -43,7 +46,10 @@ SETTING = "random_cover"             # user_kv: '0' = aus, sonst an
 
 def _group_label(g):
     return {"nordisch": t("Nordisch"), "romantik": t("Romantik"), "holzschnitt": t("Holzschnitt"),
-            "landschaft": t("Landschaft")}.get(g, g)
+            "landschaft": t("Landschaft"), "saga-stube": t("Saga · Stube"), "saga-schreibstube": t("Saga · Schreibstube"),
+            "saga-garten": t("Saga · Garten & Küche"), "saga-natur": t("Saga · Natur"),
+            "saga-winter": t("Saga · Winter & Nordlicht"), "saga-kriegerin": t("Saga · Kriegerin"),
+            "saga-magie": t("Saga · Magie"), "saga-gefaehrten": t("Saga · Gefährten")}.get(g, g)
 
 
 def _load_builtin():
@@ -60,7 +66,7 @@ def _load_builtin():
             continue
         out.append({"id": cid, "builtin": True, "title_de": c.get("title_de") or "", "title_en": c.get("title_en") or "",
                     "artist": c.get("artist") or "", "date": c.get("date") or "", "url": c.get("url") or "",
-                    "source": d.get("source") or "", "group": c.get("group") or "", "pos": _pos(c.get("pos"))})
+                    "source": c.get("source") or d.get("source") or "", "group": c.get("group") or "", "pos": _pos(c.get("pos"))})
     return out, {"source": d.get("source") or "", "license": d.get("license") or ""}
 
 
