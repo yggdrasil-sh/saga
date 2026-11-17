@@ -3338,8 +3338,8 @@
     // 2.5 Grundsatz Y (Pruefer, ~0,8 s Aufpreis): einziger Kandidat mit UDP beim Beitritt - UDP sofort versuchen, die Probe
     // laeuft parallel und setzt nur die Frist (hornOpen/hornConnect gate): eindeutig kein UDP -> gleich TCP wie bisher nach
     // der Probe, UDP bzw. "unklar" -> dieselbe Frist wie bisher ab Probe-Ende. Nie spaeter als vorher, mit UDP ohne Warten.
-    // Nicht fuer Tunnel (Huelle) und Rahmen-Weg (eigene Wegwahl mit der Messung) und nicht beim Wiederaufbau.
-    var fast = why === 'join' && one && !!(c0.udp && c0.tokens && c0.tokens.both) && !(c0.ws === true && hornTunnel()) && !hornFrames(H, c0);
+    // Nicht beim Wiederaufbau und nicht fuer den Wettlauf UDP|Tunnel (Knoten im Tunnel-Betrieb: Vorsprung aus der Messung).
+    var fast = why === 'join' && one && !!(c0.udp && c0.tokens && c0.tokens.both);
     var m = (one && !c0.udp) || fast ? Promise.resolve(null) : hornMeasure(R, cands);
     if (one && !c0.udp) hornMeasure(R, cands);
     if (fast) {
@@ -3381,16 +3381,20 @@
   // 2.5: cand.tcp === false (Knoten hinter einer TLS-Durchreiche, "Ein Port") - kein ICE-TCP, gleich TURN-TLS
   function hornOpen(R, cand) {
     var H = R.horn, m = H.meas[cand.node], fp = !m && H.fastP;
-    var tun = cand.ws === true && hornTunnel(), frm = hornFrames(H, cand);
-    if (fp && (tun || frm)) return fp.then(function () { if (!live(R)) throw null; return hornOpen(R, cand); });   // Wegwahl braucht die Messung
+    var wait = function () { return fp.then(function () { if (!live(R)) throw null; return hornOpen(R, cand); }); };   // mit Messung
     var fast = !!(fp && cand.udp && cand.tokens && cand.tokens.both);   // 2.5 Y: UDP sofort, Probe parallel (hornStart)
+    if (fp && !fast) return wait();
     var udp = fast || !!(cand.udp && cand.tokens && cand.tokens.both && m && (m.udp != null || m.udpMaybe));
-    if (tun) return hornOpenWays(R, cand, H.L.ways(cand, udp), m);   // 2.5 A3: Mac-Huelle mit Tunnel
-    if (frm) return hornOpenWays(R, cand, H.L.ways(cand, udp), m);   // 2.5 B2: Browser, Rahmen-Weg (Vertrag S12.5)
+    // Frist fuer UDP nach der Probe (wie bisher): Antwort -> HORN_WAIT_UDP, unklar -> 1500 ms, eindeutig nein -> naechster Weg
+    var gate = fast ? fp.then(function (mm) { var x = mm && mm[cand.node]; return !x ? 0 : x.udp != null ? HORN_WAIT_UDP : x.udpMaybe ? 1500 : 0; }) : null;
+    var tun = cand.ws === true && hornTunnel(), frm = !tun && hornFrames(H, cand);
+    if (tun || frm) {                                   // 2.5 A3: Mac-Huelle mit Tunnel bzw. B2: Browser, Rahmen-Weg (Vertrag S12.5)
+      var w = H.L.ways(cand, udp);
+      if (gate && !(w.race.length === 1 && w.race[0] === 'udp')) return wait();   // Wettlauf UDP|Tunnel: Vorsprung aus der Messung
+      return hornOpenWays(R, cand, w, m, gate);
+    }
     var noTcp = cand.tcp === false;
     var noTls = cand.tls === false;                     // 2.5 A3: Tunnel-Betrieb hinter einem TLS-beendenden Proxy - im Browser nur UDP
-    // Frist fuer UDP nach der Probe (wie bisher): Antwort -> HORN_WAIT_UDP, unklar -> 1500 ms, eindeutig nein -> sofort TCP
-    var gate = fast ? fp.then(function (mm) { var x = mm && mm[cand.node]; return !x ? 0 : x.udp != null ? HORN_WAIT_UDP : x.udpMaybe ? 1500 : 0; }) : null;
     var p = udp ? hornConnect(R, cand, 'udp', fast ? window.SagaHorn.K.PROBE_MS + HORN_WAIT_UDP : m.udp != null ? HORN_WAIT_UDP : 1500, fast ? { gate: gate } : null)
       .catch(function (e) { if (e === null || noTcp) throw e; return hornConnect(R, cand, 'tcp'); })
       : noTcp ? Promise.reject({ tcpOff: true }) : hornConnect(R, cand, 'tcp');
@@ -3429,12 +3433,13 @@
   }
   function hornFinal(e) { return e === null || !!(e && (e.status === 404 || e.status === 429)); }   // aufgelegt/beendet, voll/Leeren
   // Wege mit Tunnel (Vertrag S5, SagaHorn.ways): Tunnel-Betrieb UDP | ws im Wettlauf, sonst UDP -> TCP -> TLS -> ws
-  function hornOpenWays(R, cand, w, m) {
+  function hornOpenWays(R, cand, w, m, gate) {
     var H = R.horn, udpWait = m && m.udp != null ? HORN_WAIT_UDP : 1500, i = 0;
     var used = w.race.indexOf('ws') >= 0;                // Ton-/Bild-Token schon am Knoten benutzt -> danach frische
     hornLog(H, null, 'wege ' + cand.node + ' ' + w.race.join('|') + (w.then.length ? ' > ' + w.then.join('>') : ''));
     var first = !w.race.length ? Promise.reject({ none: true })
       : w.race.length > 1 ? hornRace(R, cand, udpWait, m && m.udp != null ? H.L.K.WS_HEAD_UDP : H.L.K.WS_HEAD_UDP_MAYBE)
+      : gate ? hornConnect(R, cand, 'udp', window.SagaHorn.K.PROBE_MS + HORN_WAIT_UDP, { gate: gate })   // 2.5 Y: Probe parallel (hornOpen)
       : hornConnect(R, cand, w.race[0], w.race[0] === 'udp' ? udpWait : 0);
     var next = function (e) {
       if (hornFinal(e)) throw e;
