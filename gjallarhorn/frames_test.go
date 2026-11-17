@@ -301,7 +301,7 @@ func TestFramesZugang(t *testing.T) {
 		t.Fatalf("ok erwartet: %s", code)
 	}
 	if c.id() == "" || c.csrc() == 0 || c.ok["ack_bytes"].(float64) != 8192 || c.ok["ack_ms"].(float64) != 10 || c.ok["fb_ms"].(float64) != 50 ||
-		len(c.ok["slots"].([]any)) != 3 || c.ok["state"] != "ok" {
+		len(c.ok["slots"].([]any)) != 3 || c.ok["state"] != "ok" || c.ok["level"] != true {
 		t.Fatalf("ok: %v", c.ok)
 	}
 	if st := s.tun.stats(); st.AuthFail < 1 || st.Frames != 1 || st.FramesTotal != 1 || st.Open != 0 {

@@ -206,7 +206,7 @@ func (s *server) apiSFUFrames(w http.ResponseWriter, r *http.Request) {
 	}
 	okMsg, _ := json.Marshal(map[string]any{"t": "ok", "v": framesVersion, "id": l.id, "csrc": l.sl.Peer.CSRC, "slots": l.sl.Layout(),
 		"peers": peers, "state": s.nodeState(), "ack_bytes": wstun.DefAckBytes, "ack_ms": int(wstun.DefAckDelay / time.Millisecond),
-		"fb_ms": int(framesFbEvery / time.Millisecond)})
+		"fb_ms": int(framesFbEvery / time.Millisecond), "level": true}) // level (2.5): Byte 3 abwaerts = Pegel der Quelle
 	f.wmu.Lock()
 	_ = ws.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	err = ws.WriteMessage(websocket.TextMessage, okMsg)

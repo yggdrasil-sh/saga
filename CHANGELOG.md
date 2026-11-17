@@ -20,6 +20,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Steuerkanal:** Bricht ein Knoten die Verbindung gleich nach seiner Anmeldung ab (vor oder während `welcome`), endet
   das jetzt wie jede andere Trennung (Knoten getrennt, kein hängender Eintrag) statt mit einem Serverfehler im Log. Test
   `tests/horn_ctl_abbruch.py`.
+- **Sprechring im Browser auf dem Rahmen-Weg (B2):** Der Browser wertet jetzt den Pegel in Byte 3 der Ton-Rahmen aus
+  (Absender per CSRC des Rahmens). Bisher las er den Pegel der lokalen Attrappen-Schleife (stiller Ton): der Ring ging nie
+  an, und auch der Rückfall auf den Sprecherplatz des Knotens griff nicht. Der Knoten sagt den Pegel mit `level: true` in
+  der `ok`-Antwort zu; ohne das Zeichen (ältere Knoten senden in Byte 3 eine 0) bleibt es beim Sprecherplatz. Test
+  `tests/b2_frames.py` (A und B sprechen abwechselnd, dann beide leise).
 - **Doku Titelbild-Galerie (`docs/APP-API.md`):** 122 Bilder (22 Kunstwerke der Met, 100 KI-Bilder der Saga-Elfe in
   8 Gruppen), Felder von `GET /api/covers` als Tabelle (`source`/`source_url` je Bild, leer = kein Link). Ungenutztes
   `covers.info()` entfernt.

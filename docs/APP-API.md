@@ -2459,13 +2459,15 @@ das ein normales Bein (Weg `ws`, für den Knoten ein Stromweg wie ICE-TCP); alle
 - **Handschlag:** `GET wss://{host von url}/api/sfu/ws`, `Sec-WebSocket-Protocol: saga-frames.1`. Erste Nachricht (Text,
   ≤ 4 KiB, ≤ 10 s): `{"t": "join", "v": 1, "token": "<Ton- bzw. Bild-Token>", "audio": 3}` bzw. `{…, "speaker": true,
   "screen": true, "tiles": n, "device": "desktop|mobile"}` – das Medien-Token wie bei `POST /api/sfu/leg` (einmalig, nie in
-  URL oder Kopf). Antwort `{"t": "ok", "v": 1, "id", "csrc", "slots", "peers", "state", "ack_bytes", "ack_ms", "fb_ms"}`
-  (wie `POST /api/sfu/leg`; Ereigniskanal und `GET/DELETE /api/sfu/leg/{id}` gelten) oder `{"t": "err", "v": 1, "code"}` +
+  URL oder Kopf). Antwort `{"t": "ok", "v": 1, "id", "csrc", "slots", "peers", "state", "ack_bytes", "ack_ms", "fb_ms", "level"}`
+  (wie `POST /api/sfu/leg`; Ereigniskanal und `GET/DELETE /api/sfu/leg/{id}` gelten; `level: true` (2.5) = Byte 3 der
+  Ton-Rahmen abwärts trägt den Pegel der Quelle, fehlt es, Byte 3 abwärts nicht werten) oder `{"t": "err", "v": 1, "code"}` +
   Close: `bad`/`version` 4400, `auth` 4401, `room` 4404 (Anruf beendet), `timeout` 4408, `limit` 4429, `unavailable` 4503.
   Wiederverbinden: frisches Token (`POST /api/calls/{id}/horn`), gleiche `leg_ref` → der Knoten ersetzt das Bein.
 - **Binärnachrichten** (erstes Byte = Art, big endian): `0x10` Rahmen, Kopf 16 Byte: Spur (aufwärts 0 Ton, 1 Bild `l`,
   2 Bild `m`, 3 Bildschirm) bzw. Platz (abwärts, Index in `slots`), Flags (1 Schlüsselbild, 2 Y/„layer sync“), TID bzw.
-  audio-level (RFC 6464; abwärts der Pegel der Quelle, 127 ohne Pegel – ältere Knoten senden 0), RTP-Zeit, aufwärts lückenlose Rahmen-Nr. je Spur bzw. abwärts CSRC des Absenders, Sendezeit
+  audio-level (RFC 6464, V-Bit + -dBov; abwärts der Pegel der Quelle, 127 ohne Pegel – nur mit `level` im `ok`, ältere
+  Knoten senden 0; Web: Sprechring, Absender per CSRC des Rahmens), RTP-Zeit, aufwärts lückenlose Rahmen-Nr. je Spur bzw. abwärts CSRC des Absenders, Sendezeit
   (Wanduhr ms), dann der versiegelte Rahmen. `0x01` Quittung des Browsers (9 Byte wie beim Tunnel, optional +2 Byte
   Verzögerungszunahme abwärts in ms). `0x02` Rückmeldung des Knotens (17 Byte: empfangene Bytes, Echo der Sendezeit,
   Haltezeit, Verzögerungszunahme aufwärts). Text: Knoten → Browser `{"t": "pli", "track"}`, Browser → Knoten

@@ -20,7 +20,7 @@ const FAKE = ([hue, freq, real]) => {
   const md = navigator.mediaDevices;
   // Firefox sammelt ICE-Kandidaten der lokalen Schleife erst mit einer echten Medienfreigabe (wie im Anruf): einmal holen
   if (real) { const g = md.getUserMedia.bind(md); md.__real = g({ audio: true, video: true }).then(s => { s.getTracks().forEach(t => t.stop()); return true; }, () => false); }
-  let ac = null, aStream = null, vTrack = null;
+  let ac = null, gain = null, aStream = null, vTrack = null;
   const video = () => {
     if (vTrack && vTrack.readyState === 'live') return vTrack.clone();
     const cv = document.createElement('canvas'); cv.width = 320; cv.height = 180;
@@ -29,9 +29,10 @@ const FAKE = ([hue, freq, real]) => {
     vTrack = cv.captureStream(15).getVideoTracks()[0]; return vTrack;
   };
   const audio = () => {
-    if (!ac) { ac = new AudioContext(); const o = ac.createOscillator(); o.frequency.value = freq; const gn = ac.createGain(); gn.gain.value = 0.3; const d = ac.createMediaStreamDestination(); o.connect(gn).connect(d); o.start(); aStream = d.stream; }
+    if (!ac) { ac = new AudioContext(); const o = ac.createOscillator(); o.frequency.value = freq; gain = ac.createGain(); gain.gain.value = 0.3; const d = ac.createMediaStreamDestination(); o.connect(gain).connect(d); o.start(); aStream = d.stream; }
     return aStream.getAudioTracks()[0].clone();
   };
+  window.__hornGain = v => { if (gain) gain.gain.value = v; };
   md.getUserMedia = async c => { const s = new MediaStream(); if (c && c.audio) s.addTrack(audio()); if (c && c.video) s.addTrack(video()); return s; };
 };
 const NO_FRAMES = () => { try { delete window.RTCRtpScriptTransform; } catch (e) { window.RTCRtpScriptTransform = undefined; } };
@@ -193,8 +194,34 @@ async function answer(p, id) {
       return hzOk(e[0], FREQ[1]) && hzOk(e[1], FREQ[0]) && e;
     }, 20000, 500);
     ok('A hoert B, B hoert A (Tonhoehe = Person) - Ton ueber die Attrappen-Schleife (WebRTC-Empfang)', !!heard, heard || await Promise.all([ps[0].evaluate(EARS), ps[1].evaluate(EARS)]));
-    // nur Ausgabe (Befund knoten-pegel): was der Sprechring auf dem Rahmen-Weg sieht (Pegel der Attrappen-Schleife)
-    console.log('DIAG Pegel B2 ' + JSON.stringify(await Promise.all([0, 1].map(async i => { const h = await horn(ps[i]); return h && { lvSeen: h.lvSeen, levels: h.levels, speaking: h.speaking }; }))));
+    // --- Sprechring auf dem Rahmen-Weg (pruef-pegel F2): Pegel aus Byte 3 der Ton-Rahmen (Knoten sagt ihn mit ok.level zu),
+    // Absender per CSRC des Rahmens. Frueher: Pegel der Attrappen-Schleife (stiller Ton) -> lvSeen, Pegel 0, nie ein Ring
+    const lvd = () => Promise.all([0, 1].map(async i => { const h = await horn(ps[i]); return h && { lvSeen: h.lvSeen, spk: h.spk && devs.indexOf(h.spk),
+      speaking: h.speaking.map(x => devs.indexOf(x)), levels: Object.fromEntries(Object.entries(h.levels || {}).map(([d, v]) => [devs.indexOf(d), Math.round(v * 1000) / 1000])) }; }));
+    const flv = await Promise.all([frames(ps[0]), frames(ps[1])]);
+    ok('A/B: Knoten traegt den Pegel abwaerts (ok.level der Ton-Leitung)', flv.every(f => f && f.lvOn === true), flv.map(f => f && { lvOn: f.lvOn, lv: f.lv }));
+    // erst beide leise (ohne Pegel stuende der Ring dauernd am Sprecherplatz des Knotens), dann abwechselnd: Ring nur beim
+    // Gegenueber am Sprechenden, beim Sprechenden selbst keiner (das Gegenueber ist leise)
+    const quietAll = async () => {
+      for (let i = 0; i < 2; i++) await ps[i].evaluate(() => window.__hornGain(0.004));
+      return until(async () => { const hs = await Promise.all([horn(ps[0]), horn(ps[1])]); return hs.every(h => h && h.lvSeen && h.speaking.length === 0) && hs; }, 8000, 300);
+    };
+    t0 = Date.now();
+    const q0 = await quietAll();
+    ok(`beide leise: kein Sprechring (${Date.now() - t0} ms)`, !!q0, await lvd());
+    for (const s of [1, 0]) {
+      const o = 1 - s;
+      await ps[s].evaluate(() => window.__hornGain(0.6));
+      t0 = Date.now();
+      const got = await until(async () => {
+        const h = await horn(ps[o]), hs = await horn(ps[s]);
+        return h && h.lvSeen && h.speaking.length === 1 && h.speaking[0] === devs[s] && (h.levels[devs[s]] || 0) > 0.1
+          && h.tiles.some(t => t.dev === devs[s] && t.speaking) && hs && hs.speaking.length === 0 && h;
+      }, 12000, 300);
+      ok(`${L[s]} spricht: Sprechring bei ${L[o]} an ${L[s]}, bei ${L[s]} keiner - Pegel aus Byte 3 (${Date.now() - t0} ms)`, !!got, await lvd());
+      ok(`... danach wieder leise`, !!(await quietAll()), await lvd());
+    }
+    for (let i = 0; i < 2; i++) await ps[i].evaluate(() => window.__hornGain(0.3));
     const st = await Promise.all([0, 1].map(i => ps[i].evaluate(() => window.HKCalls.hornStats())));
     const drop = s => { const d = (s && s.drop) || {}; return (d.auth || 0) + (d.format || 0) + (d.codec || 0) + (d.nokey || 0) + (d.nofrom || 0); };
     const fw = await Promise.all([frames(ps[0]), frames(ps[1])]);

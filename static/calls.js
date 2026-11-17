@@ -4605,7 +4605,16 @@
       if (!live(R) || !R.horn) { clearInterval(H.spkT); return; }
       var now = Date.now(), lv = {};
       hornConns(R).forEach(function (c) {
+        var F = c.fr;
+        if (F && F.lvOn) H.lvSeen = true;
         c.audios.forEach(function (a) {
+          // 2.5 B2 (Rahmen-Weg): Pegel aus Byte 3 der Ton-Rahmen (horn-frames.js, Absender per CSRC des Rahmens) - die
+          // Attrappen-Schleife hat nur den Pegel des stillen Tons; ohne ok.level (aelterer Knoten) bleibt der Sprecherplatz
+          if (F) {
+            var x = F.lvOn && F.lv[a._i], fd = x && c.csrc[x.csrc];
+            if (fd && now - x.at < 1000) lv[fd] = Math.max(lv[fd] || 0, x.v);
+            return;
+          }
           var d = hornAudioOwner(c, a._i), src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null;
           // aelter als 1 s = der Platz liefert gerade nichts (rtpAge: Epoch-Zeitstempel)
           if (src && typeof src.audioLevel === 'number') H.lvSeen = true;
@@ -5460,7 +5469,7 @@
       H.X.worker.addEventListener('message', ln);
       H.X.worker.postMessage({ op: 'fr', a: 'stats', id: id });
       setTimeout(function () { H.X.worker.removeEventListener('message', ln); ok(null); }, 2000);
-    }).then(function (w) { return { state: f.state, rate: f.rate, st: f.st, legs: legs, worker: w }; });
+    }).then(function (w) { return { state: f.state, rate: f.rate, st: f.st, legs: legs, worker: w, lvOn: f.lvOn, lv: f.lv }; });
   },
   // 2.4: fuer Tests und die Diagnose - ICE neu aushandeln (wie bei einem Netzwechsel), Bild-im-Bild, Regeltabelle
   restartIce: function () { return restartIce(C); }, pip: function (on) { if (!C) return Promise.resolve(false); return on === false ? (pipClose(C), Promise.resolve(true)) : pipOpen(C); },

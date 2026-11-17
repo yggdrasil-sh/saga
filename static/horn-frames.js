@@ -22,7 +22,8 @@
     UP_Q_HIGH: 60, UP_Q_LOW: 25,     // Aufwaerts-Regelung: Verzoegerungszunahme laut Knoten (ms)
     UP_BUF_HIGH: 64 << 10, UP_BUF_LOW: 16 << 10,
     UP_DOWN: 0.85, UP_HOLD: 2000, UP_STEP: 200, UP_INC: 1.06,
-    KEY_EVERY: 1000, KF_MIN: 300, ST_EVERY: 1000
+    KEY_EVERY: 1000, KF_MIN: 300, ST_EVERY: 1000,
+    LV_EVERY: 250                    // Pegel der Ton-Plaetze (Byte 3 abwaerts) ans Fenster, je Verbindung
   };
   function nowMs() { return Math.floor(performance.timeOrigin + performance.now()) >>> 0; }   // Wanduhr (ms, mod 2^32)
   // Dauer eines Opus-Pakets aus dem TOC-Byte (bleibt bei der E2E-Versiegelung unverschluesselt) in 20-ms-Takten: ein
@@ -47,7 +48,7 @@
     var cnt = {};
     var bump = function (k) { cnt[k] = (cnt[k] || 0) + 1; };
     var conn = function (key) {
-      return C[key] || (C[key] = { ws: {}, inj: { audio: [], video: [] }, taps: {}, need: {}, kfAt: {},
+      return C[key] || (C[key] = { ws: {}, inj: { audio: [], video: [] }, taps: {}, need: {}, kfAt: {}, lv: {},
                                     up: { max: 600, min: 150, target: 600, last: 0, sentB: 0, holdUntil: 0 } });
     };
     var post = function (m) { if (X) X.post(Object.assign({ ev: 'fr' }, m)); };
@@ -76,7 +77,7 @@
       ws.onopen = function () { try { ws.send(JSON.stringify(d.join)); } catch (e) { /* zu */ } };
       ws.onclose = function (e) {
         if (w.done) return;
-        w.done = true; clearTimeout(w.ackT); clearInterval(w.stT); delete WS[w.id];
+        w.done = true; clearTimeout(w.ackT); clearInterval(w.stT); clearInterval(w.lvT); delete WS[w.id];
         if (C[w.key] && C[w.key].ws[w.role] === w) delete C[w.key].ws[w.role];
         post({ t: 'closed', id: w.id, key: w.key, role: w.role, code: e.code, ok: !!w.ok });
       };
@@ -87,7 +88,7 @@
     };
     var closeW = function (w, code) {
       if (w.done) return;
-      w.done = true; clearTimeout(w.ackT); clearInterval(w.stT); delete WS[w.id];
+      w.done = true; clearTimeout(w.ackT); clearInterval(w.stT); clearInterval(w.lvT); delete WS[w.id];
       if (C[w.key] && C[w.key].ws[w.role] === w) delete C[w.key].ws[w.role];
       try { w.ws.close(code || 1000); } catch (e) { /* zu */ }
     };
@@ -101,6 +102,8 @@
         if (j.ack_bytes > 0 && j.ack_bytes <= 1 << 20) w.ackBytes = j.ack_bytes;
         if (j.ack_ms > 0 && j.ack_ms <= 1000) w.ackMs = j.ack_ms;
         w.stT = setInterval(function () { stats(w); }, K.ST_EVERY);
+        // Pegel abwaerts nur, wenn der Knoten ihn zusagt (ok.level, 2.5): aeltere Knoten senden in Byte 3 eine 0 (= laut)
+        if (w.role === 'audio' && j.level === true) w.lvT = setInterval(function () { levels(w); }, K.LV_EVERY);
         post({ t: 'ok', id: w.id, key: w.key, role: w.role, ok: j, ms: Math.round(performance.now() - w.t0) });
         // erste Rahmen jeder Bild-Spur sollen Schluesselbilder sein (alles davor ging nirgends hin)
         if (w.role === 'video') [1, 2, 3].forEach(function (tr) { conn(w.key).need[tr] = true; keyframe(w.key, tr); });
@@ -110,6 +113,18 @@
     var stats = function (w) {
       post({ t: 'st', id: w.id, key: w.key, role: w.role, rtt: w.rtt, qUp: w.qUp, qDown: w.qDown, buf: w.ws.bufferedAmount, tx: w.tx, rx: w.rx,
              up: w.role === 'video' ? Math.round(conn(w.key).up.target) : null });
+    };
+    // Lautester Rahmen je Ton-Platz seit dem letzten Takt (RFC 6464: -dBov 0..127, V-Bit ignoriert) mit seinem Absender
+    // (CSRC) -> Fenster als linearer Pegel 0..1 wie audioLevel von getSynchronizationSources
+    var levels = function (w) {
+      var c = C[w.key]; if (!c || C[w.key].ws.audio !== w) return;
+      var out = {}, any = false;
+      Object.keys(c.lv).forEach(function (i) {
+        var x = c.lv[i]; if (!x.n) return;
+        out[i] = [x.min >= 127 ? 0 : Math.pow(10, -x.min / 20), x.csrc];
+        x.n = 0; x.min = 127; any = true;
+      });
+      if (any) post({ t: 'lv', key: w.key, lv: out });
     };
     var ackNow = function (w) {
       clearTimeout(w.ackT); w.ackT = null;
@@ -139,6 +154,11 @@
       var d = (nowMs() - sent) | 0, pn = performance.now();
       if (w.dMin === null || d < w.dMin || pn - w.dMinAt > 10000) { w.dMin = d; w.dMinAt = pn; }
       w.qDown = Math.max(0, d - w.dMin);
+      if (w.lvT && w.role === 'audio') {
+        var lv = conn(w.key).lv, x3 = dv.getUint8(3) & 0x7f, P = lv[slot] || (lv[slot] = { n: 0, min: 127, csrc: 0 });
+        P.n++;
+        if (x3 <= P.min) { P.min = x3; P.csrc = csrc; }
+      }
       var S = conn(w.key).inj[w.role][slot];
       if (!S) { bump('noslot'); return; }
       openThenPush(w, S, slot, { data: new Uint8Array(b, HDR), key: (fl & FL_KEY) !== 0, ts: ts, csrc: csrc, at: pn });
@@ -363,7 +383,7 @@
     var pcX = new RTCPeerConnection(), pcY = new RTCPeerConnection();
     X.worker.postMessage({ op: 'frames', url: o.url || '/static/horn-frames.js' });
     var F = { key: key, pcX: pcX, pcY: pcY, tx: {}, rx: { audio: [], video: [] }, state: 'new', rate: null, dummies: [], st: {}, onRate: null,
-              onKf: null };
+              onKf: null, lvOn: false, lv: {} };
     var tf = function (x, opt) { x.transform = new RTCRtpScriptTransform(X.worker, Object.assign({ key: key }, opt)); };
     // --- eigene Spuren (tap) ---
     var tracks = { audio: o.audioTrack || null, cam: o.camTrack || null, screen: o.screenTrack || null };
@@ -450,6 +470,9 @@
       if (d.t === 'dummy') { var x = dummyV[d.slot]; if (x) { x.n++; x.g.fillStyle = x.n & 1 ? '#111' : '#222'; x.g.fillRect(0, 0, 16, 16); x.req(); } return; }
       if (d.t === 'kf') { if (F.onKf) F.onKf(d.track); else F.kick(d.track); return; }
       if (d.t === 'rate') { F.rate = d.kbps; if (F.onRate) F.onRate(d.kbps); return; }
+      // Pegel je Ton-Platz (Byte 3 abwaerts): {platz: {v (0..1), csrc, at}}; lvOn = der Knoten traegt ihn (ok.level)
+      if (d.t === 'lv') { var now = Date.now(); Object.keys(d.lv).forEach(function (i) { F.lv[i] = { v: d.lv[i][0], csrc: d.lv[i][1] >>> 0, at: now }; }); return; }
+      if (d.t === 'ok' && d.role === 'audio') F.lvOn = !!(d.ok && d.ok.level === true);
       var w = waits[d.id];
       if (d.t === 'st') { F.st[d.role] = d; return; }
       if (d.t === 'ok' && w) { w.okd = true; w.ok(d.ok); return; }
