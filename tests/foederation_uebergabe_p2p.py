@@ -2,7 +2,9 @@
 Saga-Instanzen A (Anna, fuehrt den Anruf) und B (Bert), verbunden; Einstellungen wie tests/foederation_anrufe_raum.py.
 
 Browser-Lauf (BJS=1, tests/browser_fed_uebergabe_p2p.js): Anna ruft mit A1 Bert an, Bert nimmt an, Annas zweites Geraet
-A2 uebernimmt ueber die Leiste. Ports 8881-8884, Datenbanken saga_uep2p_a/_b. Raeumt auf."""
+A2 uebernimmt ueber die Leiste. Gegenprobe wie im Feld: Bert und A2 wenden keine Kandidaten an (die Verbindung
+zum Gegenueber kommt nie zustande) -> nach handover_s "Übernahme hat nicht geklappt", A1 laeuft weiter, und die
+Anruf-Diagnose von A2 meldet je Verbindung den Zustand (ho-fail: Antwort, ICE-Zustand, Kandidaten je Typ). Ports 8881-8884, Datenbanken saga_uep2p_a/_b. Raeumt auf."""
 import json, os, subprocess, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -29,7 +31,7 @@ def setup():
     R.F2.py("b", T.SETUP.format(allow=T.I["b"]["allow"], users=[("fb-bert", "Bert Gast", "bert")], groups=[]))
     for k in T.I:
         R.F2.py(k, "import auth\nauth.save_setting('calls', {'enabled': True, 'stun': '', 'turn_urls': '', 'turn_mode': 'rest', "
-                   "'turn_secret': '', 'turn_user': '', 'turn_password': '', 'turn_ttl': 43200, 'relay_only': False, 'ring_s': 45, 'horn': True})\nprint(1)")
+                   "'turn_secret': '', 'turn_user': '', 'turn_password': '', 'turn_ttl': 43200, 'relay_only': False, 'ring_s': 45, 'horn': True, 'diag': True})\nprint(1)")
     for k in T.I:
         R.F2.start(k)
     adm = {k: T.Admin(k) for k in T.I}

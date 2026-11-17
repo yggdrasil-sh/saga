@@ -97,6 +97,33 @@ const brief = r => r && { id: (r.id || '').slice(0, 8), ho: r.ho, companion: r.c
     ok('A2: keine Meldung "Übernahme hat nicht geklappt"', !bad.length, TOASTS.A2);
     await pb.click('.cl-ctl .cl-red').catch(() => {});
     ok('Ende auch auf A2', await until(async () => !(await room(pa2)), 15000));
+
+    // --- Gegenprobe wie im Feld: die Verbindung zum Gegenueber kommt nicht zustande (B und A2 wenden keine Kandidaten an)
+    // -> nach handover_s "Übernahme hat nicht geklappt", A1 laeuft weiter; die Diagnose von A2 sagt, woran es hing
+    await until(async () => !(await room(pa)) && !(await room(pb)), 10000);
+    await pa.goto(A + '/chats#c' + dm.r.chat.id); await pa.waitForSelector('#ct-chat:not([hidden])');
+    await pb.goto(B + '/chats'); await pa2.goto(A + '/chats'); await liveOk(pa, pb, pa2);
+    const diag = [];
+    pa2.on('request', r => { if (r.url().endsWith('/api/calls/diag') && r.method() === 'POST') diag.push(r.postData() || ''); });
+    await until(() => pa.isVisible('#ct-call-v'), 8000);
+    await pa.click('#ct-call-v');
+    await pb.waitForSelector('.cl-ring', { timeout: 20000 }); await pb.click('.cl-ring .cl-big');
+    ok('Gegenprobe: 1:1 wieder verbunden', await until(async () => allConn(await room(pa), 1), 25000), brief(await room(pa)));
+    for (const p of [pb, pa2]) await p.evaluate(() => { RTCPeerConnection.prototype.addIceCandidate = function () { return Promise.resolve(); }; });
+    await until(async () => pa2.evaluate(() => !!document.querySelector('.cl-run .cl-run-go')), 15000);
+    TOASTS.A2.length = 0;
+    await pa2.click('.cl-run .cl-run-go');
+    const failed = await until(async () => TOASTS.A2.some(t => /nicht geklappt/.test(t)), 25000, 300);
+    ok('Gegenprobe: "Übernahme hat nicht geklappt" nach der Frist', failed, TOASTS.A2);
+    ok('Gegenprobe: A1 laeuft weiter mit Bert', allConn(await room(pa), 1) && !(await room(pa2)), [brief(await room(pa)), brief(await room(pa2))]);
+    const ev = await until(() => { for (const d of diag) { try { const e = JSON.parse(d).events || []; const x = e.filter(y => y.k === 'ho-fail'); if (x.length) return x; } catch (e) { /* */ } } return null; }, 8000, 300);
+    const toB = (ev || []).find(x => x.d.startsWith(dB.slice(0, 6))), toA1 = (ev || []).find(x => x.d.startsWith(dA.slice(0, 6)));
+    ok('Diagnose (calldiag) von A2: ho-fail je Verbindung - zu Bert nicht verbunden, Antwort gesetzt, Kandidaten gezaehlt',
+       toB && / est1 con0 /.test(toB.d) && / rd1 /.test(toB.d) && / l=h/.test(toB.d) && / r=h/.test(toB.d), [ev, diag.length]);
+    ok('Diagnose: Verbindung zum eigenen alten Geraet verbunden (eigen, con1)', toA1 && / eigen est1 con1 /.test(toA1.d), ev);
+    ok('Diagnose ohne Adressen (keine IP, kein .local-Name)', ev && !ev.some(x => /\d+\.\d+\.\d+\.\d+|\.local/.test(x.d)), ev);
+    await pb.click('.cl-ctl .cl-red').catch(() => {});
+    ok('Gegenprobe: Ende', await until(async () => !(await room(pa)), 15000));
   } catch (e) {
     ok('Ablauf ohne Ausnahme', false, String(e && e.stack || e));
   } finally {
