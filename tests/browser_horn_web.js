@@ -688,6 +688,24 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
     process.kill(+E.NODE_A_PID, 'SIGSTOP');
     STOPPED.a = true;
     const notYet = await until(async () => { const r = await ps[0].evaluate(() => window.HKCalls.room()); return r && r.horn && r; }, 1000, 200);
+    // 2157 (Pruefung): meldet der Browser das Netz zurueck ('online'), waehrend ein Retry-After des Servers (429) laeuft,
+    // zieht er den geplanten Versuch nicht vor - Retry-After hat Vorrang
+    {
+      const q = ps[3], pat = '**/api/calls/*/horn';
+      let n429 = 0, early = 0, armed = false;
+      await q.route(pat, async route => {
+        if (armed) early++;
+        n429++;
+        await route.fulfill({ status: 429, headers: { 'Retry-After': '6' }, json: { error: 'zu viele Abrufe', retry_after: 6 } });
+      });
+      const hit = await until(async () => n429 > 0, 25000, 200);
+      await q.waitForTimeout(400);
+      armed = true;
+      await q.evaluate(() => window.dispatchEvent(new Event('online')));
+      await q.waitForTimeout(3000);
+      await q.unroute(pat);
+      ok(`Retry-After (429) gilt auch beim Netzwechsel: ${early} vorgezogene /horn-Abrufe in 3 s (429 gesehen: ${!!hit})`, !!hit && early === 0);
+    }
     const mesh = await until(async () => {
       const rs = await Promise.all(ps.slice(0, 4).map(p => p.evaluate(() => window.HKCalls.room())));
       return rs.every(r => r && !r.horn && r.topo === 'mesh' && r.links.length === 3 && r.links.every(x => x.connected)) && rs;

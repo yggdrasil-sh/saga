@@ -658,8 +658,9 @@
   var netT = null;
   function netChanged() {
     // 2157: Knoten-Anruf im Wiederaufbau - das Netz ist wieder da: geplanten Versuch sofort statt nach dem Backoff
+    // (nicht vor Ablauf eines Retry-After des Servers: 429 hat Vorrang, auch vor dem Netzwechsel)
     var R = C, H = R && R.horn;
-    if (H && H.rcT && !H.switching && live(R) && !R.done) {
+    if (H && H.rcT && !H.switching && !((H.raUntil || 0) > Date.now()) && live(R) && !R.done) {
       clearTimeout(H.rcT); H.rcT = null;
       hornLog(H, null, 'netz da');
       hornAttempt(R, 'lost');
