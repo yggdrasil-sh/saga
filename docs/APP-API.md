@@ -641,7 +641,7 @@ W = {"kind": "subpages", "value": 6, "max": null, "text": null, "fmt": null, "as
 - `items`: nur **aktive** Unterseiten (nicht im Papierkorb, nicht archiviert, keine Vorlagen), die die Person sehen darf
   (eigene: alle; geteilte Seite: was ihr Seitenbaum zeigt), **Reihenfolge wie im Seitenbaum** (`sort`, dann angelegt).
   Höchstens **200** Einträge; `total` = alle sichtbaren, `more` = nicht mitgelieferte („+ n weitere“). `value` = `total`.
-- `title` Klartext (≤ 200, leer = „Unbenannt“ zeigen), `icon` wie im Seitenbaum (Emoji oder `/files/<id>`, leer = Standardsymbol),
+- `title` Klartext (≤ 200, leer = „Unbenannt“ zeigen), `icon` wie im Seitenbaum (Emoji, `/files/<id>` oder Saga-Siegel `/siegel/…`, leer = Standardsymbol),
   `kind` `page` | `database` (Datenbank-Symbol als Rückfall).
 - `img`: je `cfg.image` `/files/<id>` (laden wie andere Dateien, mit Schlüssel bzw. Sitzung; `?w=` für Vorschaubilder),
   `/covers/<id>.jpg` (Titelbild-Galerie, öffentlich) oder `null` (kein Bild / `none`). Fehlt das Bild: ruhige Fläche mit
@@ -945,6 +945,47 @@ ihnen zeigen sie weiter. Ältere Server: 404 → keine Galerie anbieten.
 **Föderation:** mitgelieferte Bilder (gibt es auf jedem Saga-Server gleich) gehen in beide Richtungen durch, Uploads des
 Admins nicht (die Seite zeigt dann kein Titelbild). Persönliche Sicherung: der Pfad bleibt erhalten und gilt beim
 Wiederherstellen, wenn der Zielserver das Bild kennt.
+
+## Saga-Siegel als Seitensymbol (2.5)
+
+Saga bringt **36 Siegel-Motive in drei Farben** mit (`weinrot`, `smaragd`, `elfenbein`; runde Siegel mit goldenem Rand,
+Liste: `static/siegel/README.md`), auf jedem Saga-Server dieselben Dateien. Ein Siegel ist ein normaler Wert in `icon`
+(Seite, Datenbank, Datenbank-Zeile, Vorlage) – wie ein eigenes Bild `/files/<id>`, nur ein anderer Pfad.
+Feature-Kennzeichen in `/api/version`: **`siegel1`**.
+
+**Pfad:** `icon` = `/siegel/<farbe>/<motiv>.svg` (genau so, kleingeschrieben, ohne Anhang). Öffentlich (ohne Anmeldung, auch
+für veröffentlichte Seiten und eigene Domains), `Cache-Control: public, max-age=2592000`, `ETag` / `If-None-Match` → 304.
+| Abruf | Antwort |
+|---|---|
+| `/siegel/<farbe>/<motiv>.svg` | SVG (viewBox 64, nur Formen/Verläufe, `Content-Security-Policy: default-src 'none'; …; sandbox`) – Web |
+| `/siegel/<farbe>/<motiv>.svg?w=<px>` | **PNG** (RGBA, durchsichtige Ecken) in der nächstgrößeren Stufe 64 / 128 / 256 px (darüber 256) |
+| `/siegel/<farbe>/<motiv>.png[?w=<px>]` | dasselbe PNG (ohne `w`: 256 px) |
+
+**Apps (Anzeige):** Pfade mit `/siegel/` wie `/files/` als Bild behandeln und **mit `?w=`** laden – genau wie heute bei eigenen
+Bildern (Android/iOS `?w=160`, Linux `?w=160`/`?w=320`); der Server liefert dann PNG, das UIImage/Coil/GdkPixbuf ohne SVG-Decoder
+anzeigen. Ohne `?w=` kommt SVG (nur für Web). Kein Platzhalter-Hintergrund nötig: die Ecken sind durchsichtig, rund
+zuschneiden schadet nicht. Widgets: `GET /api/app/page-image/{id}/icon` liefert bei einem Siegel ebenfalls das PNG
+(`?w=` wie dort). Bis eine App das kann, steht der Pfad bei ihr als Text da (heute: alles mit `/` außer `/files/` ist kein
+Emoji) – die Apps-Runde sollte mindestens „`/siegel/` = Bild“ übernehmen.
+
+**Setzen:** `PATCH /api/notes/{id}` bzw. `POST /api/notes` `{"icon": "/siegel/smaragd/rabe.svg"}`; ebenso `/api/v1/pages`,
+`/api/v1/databases/{id}/rows` und MCP (`create_page`, `create_database`, `create_row`). Leerzeichen am Rand fallen weg;
+unbekannte Farbe/Motiv, andere Endung, `?…`/`#…` → `400`. Ältere Server kürzen den Pfad als „Emoji“ auf 8 Zeichen
+(`/siegel/`) – Apps bieten die Auswahl nur mit `siegel1` an.
+
+**Fremde Seiten (Föderation):** Fähigkeit `siegel1` (in `remote.caps`). Mit ihr zeigt die eigene Instanz das Siegel einer
+fremden Seite unverändert (die Datei gibt es hier genauso, kein Proxy) und reicht ein gewähltes Siegel weiter. Ohne `siegel1`
+beim Eigentümer: `PATCH` mit Siegel → `409` („kennt die Saga-Siegel noch nicht“), Auswahl dort ausblenden; ältere eigene
+Server zeigen das Siegel einer fremden Seite gar nicht (leeres Symbol).
+
+`GET /api/siegel` (Sitzung, `X-Saga: 1`; ältere Server: 404) – Liste für eine Auswahl, Namen in der Sprache der Anfrage:
+```json
+{"colors": [{"id": "weinrot", "label": "Weinrot"}, {"id": "smaragd", "label": "Smaragd"}, {"id": "elfenbein", "label": "Elfenbein"}],
+ "motifs": [{"id": "yggdrasil", "label": "Yggdrasil"}, {"id": "rabe", "label": "Rabe"}, …, {"id": "teetasse", "label": "Teetasse"}],
+ "path": "/siegel/{color}/{motif}.svg", "sizes": [64, 128, 256]}
+```
+`motifs` in Anzeige-Reihenfolge (36). Name im Web: „Rabe (Weinrot)“ (Tooltip/`aria-label` „Siegel Rabe (Weinrot)“). Das Web
+merkt sich die zuletzt gewählte Farbe je Browser; ist das aktuelle Symbol ein Siegel, ist dessen Farbe vorgewählt.
 
 ## Kachel-Symbole: `icon_url` (2.5)
 

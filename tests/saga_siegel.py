@@ -107,6 +107,9 @@ try:
     ok("Unbekannte Farbe/Motiv/Endung/Pfad -> 404", all(v == 404 for v in st.values()), st)
     ok("/siegel/README.md (Verzeichnis ohne Farbe) -> 404", req("GET", "/siegel/README.md")[0] == 404)
 
+    s, _, d = req("GET", "/api/version")
+    ok(f"/api/version meldet siegel1 ({s})", s == 200 and "siegel1" in (d.get("features") or []))
+
     # --- Dateien vollstaendig und sauber ------------------------------------------------------------------------
     s, _, L = req("GET", "/api/siegel")
     ok(f"/api/siegel ohne Anmeldung -> 401 ({s})", s == 401)

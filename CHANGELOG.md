@@ -16,6 +16,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu – Saga-Siegel als Seitensymbole (Bugs-DB 2156)
+- Saga bringt 36 Siegel-Motive in drei Farben (Weinrot, Smaragd, Elfenbein) als Seitensymbole mit – wie die
+  Titelbild-Galerie auf jedem Server gleich. Im Web unter den Emoji im Symbol-Menü: Farbwahl, Suche nach Namen (fünf
+  Sprachen), Raster mit Tastatur (Pfeile, Pos1/Ende); gilt für Seiten, Datenbanken und Datenbank-Zeilen. Angezeigt überall,
+  wo eigene Bild-Symbole erscheinen (Seitenkopf, Baum, Unterseiten-Block, Datenbank-Zeilen, Kalender, Startseite,
+  veröffentlichte Seiten).
+- Wert `/siegel/<farbe>/<motiv>.svg` in `icon` (Web-API, `/api/v1`, MCP); unbekannte Siegel → 400. Öffentlich ausgeliefert
+  als SVG, mit `?w=` als PNG 64/128/256 px für die Apps (`docs/APP-API.md` „Saga-Siegel“), `GET /api/siegel`,
+  Feature `siegel1`. Föderation: Fähigkeit `siegel1`; Eigentümer ohne sie → 409 statt eines abgeschnittenen Symbols.
+- Dateien und Herkunft: `static/siegel/` (README), Pflege mit `tools/siegel.py`. Tests: `tests/saga_siegel.py`,
+  `tests/browser_siegel.js`, `tests/foederation_siegel.py`.
+
 ### Geändert – Gruppen zu dritt und zu viert über den Knoten (Grundsatz Y, L1)
 - Mit Gjallarhorn an und „Alle Anrufe über Knoten“ (ab Werk an) laufen jetzt **alle** Gruppenanrufe über einen Knoten,
   auch mit 3 und 4 Mitgliedern. Direkt zwischen den Geräten (Mesh) nur noch als Rückfall wie beim 1:1: kein Knoten
