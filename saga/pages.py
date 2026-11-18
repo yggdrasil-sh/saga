@@ -1377,8 +1377,9 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
         # meta: weder Inhalt noch Titel (Eigenschaften, Symbol, Ort ...) - rev bleibt, Web zieht still nach
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=by_, updated=now, origin=origin,
                  meta=not content)
-        if "props" in b or "title" in b or "icon" in b:
-            announce_row(c, owner, nid, uid, now, origin)     # Datenbank-Zeile: auch an Betrachter der Tabelle (BUG-049)
+        if any(k in b for k in ("props", "title", "icon", "cover", "cover_pos")):
+            # Datenbank-Zeile: auch an Betrachter der Tabelle (BUG-049); Titelbild = Kartenbild der Galerie (Bug 2122)
+            announce_row(c, owner, nid, uid, now, origin)
         if "body" in b:                     # 2.5: Webhooks page.updated / row.updated (Inhalt; Autosave fasst saga.webhooks zusammen)
             bus.fire("page.content", c, owner=owner, note_id=nid, by=by_)
         if row_changed or ("title" in b and _title_in(b["title"]) != old[0]):      # 2.5: Webhooks row.updated (geaenderte Eigenschaften)
