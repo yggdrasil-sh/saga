@@ -2385,6 +2385,7 @@
  "KI-Antworten lassen sich nicht bearbeiten.": "ไม่สามารถแก้ไขคำตอบของ AI ได้",
  "KI-Assistent": "ผู้ช่วย AI",
  "KI-Assistent einschalten": "เปิดผู้ช่วย AI",
+ "KI-generiert für Saga": "สร้างด้วย AI สำหรับ Saga",
  "KI-Werkzeuge (z. B. Claude) lesen und schreiben mit einem API-Token. Inhalte geteilter Seiten können Anweisungen an das KI-Modell enthalten – Personen sollten Tokens auf Seitenbäume beschränken.": "เครื่องมือ AI (เช่น Claude) อ่านและเขียนด้วยโทเค็น API เนื้อหาของหน้าที่แชร์อาจมีคำสั่งถึงโมเดล AI – ควรจำกัดโทเค็นไว้ที่แผนผังหน้า",
  "Klar": "ท้องฟ้าแจ่มใส",
  "Klassisch (Editor.js)": "แบบเดิม (Editor.js)",

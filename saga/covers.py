@@ -267,13 +267,23 @@ def covers_file(name: str, request: Request):
     return serve(name, request)
 
 
+AI_SOURCE = "KI-generiert für Saga"   # Herkunft der Saga-KI-Bilder in covers.json (zugleich Schluessel fuer t())
+
+
+def source_of(e):
+    """Herkunftsangabe in der Kontosprache: die der mitgelieferten Saga-KI-Bilder uebersetzt, alles andere (Met, vom Admin
+    hochgeladene Bilder) wie angegeben."""
+    src = e.get("source") or ""
+    return t("KI-generiert für Saga") if e.get("builtin") and src == AI_SOURCE else src
+
+
 def listing(uid=None):
     """Inhalt von GET /api/covers: sichtbare Bilder in Anzeige-Reihenfolge, gruppiert nach group."""
     lang = i18n.get_lang()
     items = []
     for e in visible():
         items.append({"id": e["id"], "url": path_of(e["id"]), "thumb": path_of(e["id"]) + "?w=384", "title": title_of(e, lang),
-                      "artist": e["artist"], "date": e["date"], "source_url": e["url"], "source": e["source"],
+                      "artist": e["artist"], "date": e["date"], "source_url": e["url"], "source": source_of(e),
                       "group": e["group"], "pos": e["pos"], "builtin": e["builtin"]})
     seen = []
     for g in list(GROUPS) + [x["group"] for x in items]:

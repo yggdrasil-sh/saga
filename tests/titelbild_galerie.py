@@ -204,6 +204,20 @@ def run():
     s, _, Le = req("GET", "/api/covers", A, hdr={"Accept-Language": "en"})
     ok("Titel englisch bei Accept-Language en", any(c["id"] == "hokusai-welle" and c["title"] == BUILTIN["hokusai-welle"]["title_en"]
                                                     for c in Le.get("covers", [])))
+    # Bug 2126 (pruef-klein-web2 Hinweis 3): Herkunft der Saga-KI-Bilder in der Sprache (Browser bzw. Konto), Met unveraendert
+    ki = {"en": "AI-generated for Saga", "es": "Generada por IA para Saga", "ru": "Создано ИИ для Saga", "th": "สร้างด้วย AI สำหรับ Saga"}
+
+    def srcs(Lx):
+        cs = Lx.get("covers", [])
+        return {c["source"] for c in cs if c["id"].startswith("saga-")}, next((c["source"] for c in cs if c["id"] == "hokusai-welle"), None)
+    ok(f"Accept-Language en: Herkunft der KI-Bilder englisch, Met unveraendert {srcs(Le)}", srcs(Le) == ({ki["en"]}, w.get("source")))
+    for lg in ("es", "ru", "th"):
+        s1, _, _ = req("PUT", "/api/account/lang", A, {"lang": lg})
+        s, _, Lx = req("GET", "/api/covers", A)
+        ok(f"Kontosprache {lg}: Herkunft der KI-Bilder uebersetzt, Met unveraendert {srcs(Lx)}", s1 == 200 and srcs(Lx) == ({ki[lg]}, w.get("source")))
+    req("PUT", "/api/account/lang", A, {"lang": ""})
+    s, _, Lx = req("GET", "/api/covers", A)
+    ok("Kontosprache automatisch (de): wieder 'KI-generiert für Saga'", srcs(Lx)[0] == {"KI-generiert für Saga"}, srcs(Lx))
 
     # --- Anlegen: zufaellig ------------------------------------------------------------------------------------------
     p1 = new(A, title="Seite eins")

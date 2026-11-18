@@ -2385,6 +2385,7 @@
  "KI-Antworten lassen sich nicht bearbeiten.": "Ответы ИИ нельзя редактировать.",
  "KI-Assistent": "ИИ-ассистент",
  "KI-Assistent einschalten": "Включить ИИ-ассистента",
+ "KI-generiert für Saga": "Создано ИИ для Saga",
  "KI-Werkzeuge (z. B. Claude) lesen und schreiben mit einem API-Token. Inhalte geteilter Seiten können Anweisungen an das KI-Modell enthalten – Personen sollten Tokens auf Seitenbäume beschränken.": "Инструменты ИИ (например, Claude) читают и пишут с API-токеном. Содержимое общих страниц может содержать инструкции для модели ИИ — токены стоит ограничивать деревьями страниц.",
  "Klar": "Ясно",
  "Klassisch (Editor.js)": "Классический (Editor.js)",

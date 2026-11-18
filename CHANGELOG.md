@@ -26,6 +26,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Sprechring über den Knoten (Web):** Ob der Knoten den Pegel liefert, merkt sich der Browser jetzt je Verbindung bzw.
   Leitung statt für den ganzen Anruf. Nach einem Wechsel auf einen Knoten ohne Pegel steht der Ring wieder am
   Sprecherplatz des Knotens, statt ganz zu fehlen.
+- **Titelbild-Galerie:** Die Herkunftsangabe der Saga-KI-Bilder („KI-generiert für Saga“) kommt in der Sprache des Kontos
+  (`GET /api/covers`, alle fünf Sprachen); die Angabe der Met-Bilder bleibt, wie sie ist.
 
 ### Behoben – Seiten-Sperre und Live-Abgleich im Browser (Feldfehler)
 - **Sperre kommt an:** Sperrt ein anderes Gerät oder ein anderer Tab die offene Seite, zeigt der Browser jetzt sofort das

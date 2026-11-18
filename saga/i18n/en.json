@@ -2385,6 +2385,7 @@
  "KI-Antworten lassen sich nicht bearbeiten.": "AI replies cannot be edited.",
  "KI-Assistent": "AI assistant",
  "KI-Assistent einschalten": "Turn on AI assistant",
+ "KI-generiert für Saga": "AI-generated for Saga",
  "KI-Werkzeuge (z. B. Claude) lesen und schreiben mit einem API-Token. Inhalte geteilter Seiten können Anweisungen an das KI-Modell enthalten – Personen sollten Tokens auf Seitenbäume beschränken.": "AI tools (e.g. Claude) read and write with an API token. Content of shared pages may contain instructions to the AI model – people should restrict tokens to page trees.",
  "Klar": "Clear",
  "Klassisch (Editor.js)": "Classic (Editor.js)",
