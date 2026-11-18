@@ -40,6 +40,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   die anderen unverändert 20 fps.
   Tests: `internal/sfu/sprecher_test.go`.
 
+### Behoben – Web-Anrufe über den Knoten: Netzwechsel (WLAN ↔ LTE) schneller überbrückt (Bug 2157)
+- Nach einem Netzwechsel mit neuer Adresse dauerte es im Labor je Wechsel rund 10 s, bis die Bilder wieder frisch waren.
+  Ursache: Der Wiederaufbau scheiterte zuerst am noch fehlenden Netz des Geräts und wartete dann nach dem Backoff 1/2/4 s.
+- Jetzt: Scheitert ein Versuch schon am Netz (keine Antwort, kein Status), kommt der nächste nach höchstens 1 s, ohne die
+  Backoff-Stufe zu erhöhen; meldet der Browser das Netz zurück (`online`, Netzwechsel), sofort. 2-min-Frist und
+  Rückfall unverändert. Messung im Container (1:1 über den Knoten, Adresse des Geräts gewechselt, Fälle
+  `r3-adresswechsel`/`-lang`): bis alle Bilder wieder frisch sind vorher 3,2 s (1,3–3,7 s, n = 9 Wechsel), jetzt 1,6 s
+  (1,3–2,0 s); Leitung 4 s weg: vorher 4,7 s (0,8–5,8 s), jetzt 1,7 s (1,1–2,8 s).
+  Tests: `tests/horn_logik.js`. Apps unverändert (eigene Wiederaufbau-Logik).
+
 ### Neu – Saga-Siegel als Seitensymbole (Bugs-DB 2156)
 - Saga bringt 36 Siegel-Motive in drei Farben (Weinrot, Smaragd, Elfenbein) als Seitensymbole mit – wie die
   Titelbild-Galerie auf jedem Server gleich. Im Web unter den Emoji im Symbol-Menü: Farbwahl, Suche nach Namen (fünf

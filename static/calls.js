@@ -657,6 +657,13 @@
   }
   var netT = null;
   function netChanged() {
+    // 2157: Knoten-Anruf im Wiederaufbau - das Netz ist wieder da: geplanten Versuch sofort statt nach dem Backoff
+    var R = C, H = R && R.horn;
+    if (H && H.rcT && !H.switching && live(R) && !R.done) {
+      clearTimeout(H.rcT); H.rcT = null;
+      hornLog(H, null, 'netz da');
+      hornAttempt(R, 'lost');
+    }
     clearTimeout(netT);
     netT = setTimeout(function () { var c = C; if (c && !c.done) each(c, function (L) { if (L.connected) restartIce(L); }); }, 800);
   }
@@ -4076,16 +4083,18 @@
     var H = R.horn; if (!H || !live(R) || H.rcT) return;
     H.rc = H.rc || new H.L.Reconnect();
     var now = Date.now(), ra = Math.max(H.L.retryAfterMs(e), (H.raUntil || 0) - now, 0);
-    var d = H.rc.fail(now, ra, Math.random());
+    // 2157: fetch ohne Antwort (TypeError, kein Status) - das Netz des Geraets fehlt gerade, nicht der Server
+    var net = !!(e && e.status == null && e.name === 'TypeError');
+    var d = H.rc.fail(now, ra, Math.random(), net);
     if (d.direct && feat('horn_direct1') && R.id) { hornDirect(R, why); return; }   // 30 s ohne Knoten: direkt (Server prueft)
-    if (d.direct) d = H.rc.fail(now, ra, Math.random());   // alter Server: kein Direkt-Wechsel
+    if (d.direct) d = H.rc.fail(now, ra, Math.random(), net);   // alter Server: kein Direkt-Wechsel
     if (d.giveUp) { fail(R, T('Die Verbindung zum Anruf-Knoten ließ sich nicht wiederherstellen.')); return; }
     // Nr. 119: Notaus bzw. erschoepftes Kontingent beim anderen Server - Wiederholen hilft nicht (Notaus) bzw. selten
     // (Kontingent: hoechstens drei Versuche), statt bis zu 2 min "neuer Versuch" zu zeigen
     if (H.fedErr && (H.fedWhy === 'off' || H.fedWhy === 'local_off' || (H.fedWhy === 'quota' && d.n > 3))) { fail(R, H.fedErr); return; }
     hornNote(R, (H.fedErr ? H.fedErr + ' ' : '') + (H.cur || why === 'lost' ? T('Verbindung wird wiederhergestellt …')
       : T('Kein Knoten erreichbar – neuer Versuch in {s} s …', { s: Math.max(1, Math.round(d.wait / 1000)) })));
-    hornLog(H, null, 'retry ' + d.n + ' in ' + d.wait + 'ms');
+    hornLog(H, null, 'retry ' + d.n + (net ? ' netz' : '') + ' in ' + d.wait + 'ms');
     H.rcT = setTimeout(function () { H.rcT = null; hornAttempt(R, why); }, d.wait);
   }
   // Horn-Fix: 30 s ohne Knoten - den Server um den Wechsel auf direkt bitten (er prueft, dass wirklich keiner geht)

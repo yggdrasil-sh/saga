@@ -305,6 +305,17 @@ ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.
   ok('... und der Backoff laeuft weiter (3. Stufe 4 s)', W6.fail(9000, 0, 0.5).wait === 4000);
   W6.adopted(20000); W6.rx(20500);
   ok('Verlust >= 10 s nach dem Uebernehmen mit Daten: neue Folge, sofort', W6.lost(31000) === true && W6.fail(31000, 0, 0.5).wait === 1000);
+  // 2157: Versuch scheitert schon am Netz des Geraets (Netzwechsel) - hoechstens 1 s bis zum naechsten
+  const W9 = new H.Reconnect(); W9.lost(0);
+  const nw = [0, 1, 2, 3].map(i => W9.fail(1000 * i, 0, 0.5, true).wait);
+  ok(`Netz fehlt: hoechstens 1 s zwischen den Versuchen (${nw})`, nw.join() === '1000,1000,1000,1000');
+  ok('... danach antwortet der Server mit Fehler: Backoff beginnt bei 1 s (Netzfehler zaehlen keine Stufe)', W9.fail(4000, 0, 0.5).wait === 1000
+     && W9.fail(5000, 0, 0.5).wait === 2000);
+  const W10 = new H.Reconnect(); W10.lost(0);
+  ok('Netz fehlt, aber Retry-After vom Server: Retry-After gilt', W10.fail(0, 7000, 0.5, true).wait === 7000);
+  const W11 = new H.Reconnect(); W11.lost(0); let t11 = 0, d11, n11 = 0;
+  while (!(d11 = W11.fail(t11, 0, 0.5, true)).giveUp && n11 < 500) { if (d11.direct) { W11.directRefused('limit'); continue; } t11 += d11.wait; n11++; }
+  ok(`Netz fehlt dauerhaft: Aufgabe weiter nach 120 s (${n11} Versuche)`, d11.giveUp && t11 === 120000);
   const W7 = new H.Reconnect(); W7.lost(0); W7.adopted(1000);
   ok('uebernommen, aber nie Daten: Verlust nach 30 s ist Fehlversuch', W7.lost(31000) === false);
   const L = [{ node: 'a' }, { node: 'b' }];

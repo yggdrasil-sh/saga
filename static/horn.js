@@ -355,7 +355,12 @@
   // Horn-Fix: Wiederaufbau nach Knotenverlust (Web; iOS/Android gleiche Regeln). Nie Rueckfall auf direkt.
   // Backoff 1/2/4/8/15 s (+-20 % Zufall), Retry-After (429) hat Vorrang, Aufgabe nach 120 s ohne Erfolg. Erfolg zaehlt erst,
   // wenn Daten kommen (rx); ein Verlust < 10 s nach dem Uebernehmen ist ein Fehlversuch derselben Folge.
-  var RC = { STEPS: [1000, 2000, 4000, 8000, 15000], JITTER: 0.2, MAX_MS: 120000, EARLY_MS: 10000, DIRECT_MS: 30000, DIRECT_AGAIN_MS: 15000 };
+  // NET_MS (2.5, Bug 2157): Scheitert ein Versuch schon am Netz des Geraets (fetch ohne Antwort, z. B. waehrend eines
+  // Netzwechsels WLAN <-> LTE), wartet der naechste hoechstens so lange - der Backoff schont den Server, der hier gar nicht
+  // gefragt wurde. Bis 2.5 lagen nach einem Netzwechsel so 1 + 2 + 4 s Backoff zwischen den Versuchen (Labor: je Wechsel
+  // 9,9-10,9 s bis die Bilder wieder frisch waren). Die 2-min-Frist und der Rueckfall nach 30 s gelten unveraendert.
+  var RC = { STEPS: [1000, 2000, 4000, 8000, 15000], JITTER: 0.2, MAX_MS: 120000, EARLY_MS: 10000, DIRECT_MS: 30000, DIRECT_AGAIN_MS: 15000,
+             NET_MS: 1000 };
   function Reconnect() { this.t0 = null; this.n = 0; this.adoptAt = 0; this.rxOk = true; }
   // Verbindung weg -> true: neue Folge, sofort versuchen; false: Fehlversuch der laufenden Folge (fail() plant).
   // Stabil war die Verbindung, wenn Daten kamen und sie mindestens EARLY_MS hielt (bzw. nie ueber hier aufgebaut wurde).
@@ -366,8 +371,9 @@
     if (this.t0 === null) this.t0 = now;
     return false;
   };
-  // Versuch gescheitert -> { wait, n } bzw. { giveUp }. retryMs: Retry-After des Servers (ms, 0 = keiner), rnd in [0, 1)
-  Reconnect.prototype.fail = function (now, retryMs, rnd) {
+  // Versuch gescheitert -> { wait, n } bzw. { giveUp }. retryMs: Retry-After des Servers (ms, 0 = keiner), rnd in [0, 1),
+  // net: der Versuch kam nicht bis zum Server (Netz des Geraets) - hoechstens NET_MS bis zum naechsten
+  Reconnect.prototype.fail = function (now, retryMs, rnd, net) {
     this.rxOk = false;
     if (this.t0 === null) this.t0 = now;
     if (now - this.t0 >= RC.MAX_MS) return { giveUp: true };
@@ -377,7 +383,8 @@
       return { direct: true, n: this.n };
     }
     var base = RC.STEPS[Math.min(this.n, RC.STEPS.length - 1)];
-    this.n++;
+    if (net && base > RC.NET_MS) base = RC.NET_MS;
+    if (!net) this.n++;                                // am Netz gescheitert: keine Stufe weiter
     var r = typeof rnd === 'number' ? rnd : Math.random();
     var w = Math.round(base * (1 - RC.JITTER + 2 * RC.JITTER * r));
     if (retryMs > w) w = retryMs;
