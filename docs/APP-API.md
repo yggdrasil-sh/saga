@@ -581,7 +581,9 @@ ein leerer Absatz am Ende, kommt der Verweis davor.
   Fließtext bleiben). Nur umsortieren ändert nichts.
 - **Kein Verweis:** Elternseite ist eine Datenbank (Zeilen bleiben Zeilen), gesperrt, archiviert oder eine Text-Notiz;
   die neue Seite ist eine Vorlage (`template`); in der Elternseite steht schon ein Verweis auf die Seite (irgendwo, auch in
-  Spalten/Toggles) oder ein eingebetteter Datenbank-Block mit ihr; fehlendes „Bearbeiten“ an der (alten) Elternseite. Die
+  Spalten/Toggles) oder ein eingebetteter Datenbank-Block mit ihr; die Elternseite hat einen **Unterseiten-Block** (Widget
+  `subpages`, auch in Spalten) – dort erscheint die Seite ohnehin (gilt auch beim Verschieben hinein; aus der alten
+  Elternseite fällt der reine Verweis-Absatz trotzdem weg); fehlendes „Bearbeiten“ an der (alten) Elternseite. Die
   Unterseite entsteht bzw. wandert in jedem Fall wie bisher. BookOrbit-Seiten (`/api/bookorbit/notes`) bekommen keinen.
 - **`"link": false`** in der Anfrage (alle oben genannten Wege außer Import und MCP, auch `/api/v1/pages`) schaltet es ab – für Clients, die den
   Verweis selbst an der Schreibmarke einfügen (Web: „Neue Seite“ aus der Verweis-Auswahl) oder die neue Datenbank als Block

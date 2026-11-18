@@ -50,8 +50,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Verschieben in eine andere Seite nimmt den Verweis mit: neu am Ende der Zielseite, in der alten Elternseite fallen
   Absätze weg, die nur aus diesem Verweis bestehen (Verweise im Fließtext bleiben).
 - Nicht bei Datenbanken (Zeilen bleiben Zeilen), gesperrten, archivierten Seiten und Text-Notizen, nicht für Vorlagen,
-  nicht doppelt (steht die Seite schon verlinkt oder eingebettet, passiert nichts). Wo der Verweis ohnehin an der
-  Schreibmarke entsteht („Neue Seite“ aus der Verweis-Auswahl, neue eingebettete Datenbank) und im Unterseiten-Block
+  nicht doppelt (steht die Seite schon verlinkt oder eingebettet, passiert nichts). Hat die Elternseite einen
+  Unterseiten-Block, kommt kein Verweis dazu – die Seite erscheint dort ohnehin (auch beim Verschieben hinein). Wo der
+  Verweis ohnehin an der Schreibmarke entsteht („Neue Seite“ aus der Verweis-Auswahl, neue eingebettete Datenbank),
   bleibt es beim bisherigen Verhalten. BookOrbit-Seiten führen ihre Listen weiter selbst.
 - Offene Editoren der Elternseite bekommen den Verweis sofort (Stufe 1 führt mit ungespeicherten Eingaben zusammen,
   live über den Live-Raum); nichts wird überschrieben. Apps/API: `"link": false` schaltet es je Anfrage ab

@@ -10,7 +10,8 @@ Regeln (link):
   'Bearbeiten'. Datenbanken (Zeilen bleiben Zeilen), Text-Notizen und gesperrte Seiten: nur Seitenbaum, wie bisher.
 - Unterseite: direktes Kind der Elternseite, keine Vorlage, nicht im Papierkorb/Archiv.
 - Nicht doppelt: steht schon ein Verweis /notes#ID (irgendwo, auch in Spalten/Toggles) oder ein eingebetteter
-  Datenbank-Block auf die Unterseite in der Elternseite, passiert nichts.
+  Datenbank-Block auf die Unterseite in der Elternseite, passiert nichts. Ebenso, wenn die Elternseite einen
+  Unterseiten-Block (Widget subpages) hat - dort erscheint die neue Seite ohnehin (auch beim Verschieben hinein).
 - Position: ans Ende (vor einen leeren Schluss-Absatz); after=ID (Duplizieren): direkt hinter den Block mit dem Verweis
   auf das Original, wenn es ihn gibt.
 - Gespeichert wie jede serverseitige Inhaltsaenderung (page_blocks.move als Vorbild): rev+1, Version (gedrosselt),
@@ -75,6 +76,12 @@ def _has_ref(body, blocks, child):
                for b in _iter_blocks(blocks))
 
 
+def _has_subpages(blocks):
+    """Unterseiten-Block (Widget subpages) in der Seite? Dann erscheint die neue Seite dort ohnehin (Entscheidung 18.11.)."""
+    return any(b.get("type") == "widget" and isinstance(b.get("data"), dict) and b["data"].get("kind") == "subpages"
+               for b in _iter_blocks(blocks))
+
+
 def _top_with(blocks, nid):
     """Index des obersten Blocks, der einen Verweis auf nid enthaelt (auch in Spalten/Toggles), oder -1."""
     r = _ref(nid)
@@ -132,7 +139,7 @@ def _link(c, uid, parent, child, after, origin, acc):
     if not isinstance(doc, dict) or not isinstance(doc.get("blocks"), list):
         return False
     blocks = doc["blocks"]
-    if _has_ref(row[3], blocks, child):
+    if _has_ref(row[3], blocks, child) or _has_subpages(blocks):
         return False
     icon = ch[1] if isinstance(ch[1], str) and _TEXT_ICON.fullmatch(ch[1] or "") else ""
     label = (ch[0] or "").strip() or t_lang(account_lang(row[0]), "Unbenannt")

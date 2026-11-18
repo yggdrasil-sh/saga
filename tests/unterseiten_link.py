@@ -10,6 +10,8 @@ Geprueft (je mit Gegenprobe):
   aus einer eigenen Vorlage -> ans Ende (nicht hinter die Vorlage); Duplikat als Vorlage -> nichts.
 - Galerie (wiki) unter einer Seite: genau EIN Verweis (auf die Startseite), Innenleben der Vorlage unveraendert
   (gleicher Inhalt wie auf oberster Ebene angelegt).
+- Unterseiten-Block (Widget subpages) in der Elternseite (auch in Spalten): kein Verweis - Anlegen, Duplizieren, Galerie,
+  Verschieben hinein (aus der alten Seite faellt der reine Verweis-Absatz trotzdem weg); Gegenprobe ohne Block.
 - Verschieben (POST /move und PATCH parent_id): neuer Verweis in der neuen Elternseite, reiner Verweis-Absatz in der alten
   entfernt, Verweis im Fliesstext bleibt; nur umsortieren -> nichts; nach oben -> nur entfernt; gesperrte alte Elternseite
   bleibt unveraendert.
@@ -229,6 +231,39 @@ def t_not():
     ok("Lesen: 403, Inhalt unveraendert", st == 403 and [b["data"]["text"] for b in blocks(ro)] == ["lies"], (st, blocks(ro)))
 
 
+def W(bid="sp1"):
+    return {"id": bid, "type": "widget", "data": {"v": 1, "kind": "subpages", "cfg": {}}}
+
+
+def t_widget():
+    print("--- Unterseiten-Block (Entscheidung 18.11.) ---")
+    par = page("Mit Block", [P("oben"), W()])
+    rv = get(par)["rev"]
+    st, d = new_sub(par, "Im Block sichtbar")
+    ok("Elternseite mit Unterseiten-Block: kein Verweis, rev unveraendert", st == 200 and not links_to(blocks(par), d["id"]) and get(par)["rev"] == rv,
+       blocks(par))
+    st, d2 = req("POST", f"/api/notes/{d['id']}/duplicate", {"parent_id": par})
+    st3, d3 = req("POST", "/api/gallery/wiki/use?lang=de", {"parent_id": par, "examples": False})
+    ok("Duplizieren und Galerie unter Seite mit Block: kein Verweis", get(par)["rev"] == rv and len(blocks(par)) == 2, blocks(par))
+    # Block in Spalten: zaehlt auch
+    nested = page("Block in Spalte", [{"id": "c1", "type": "columns", "data": {"cols": [{"w": 0.5, "blocks": [W("sp2")]}, {"w": 0.5, "blocks": [P("x")]}]}}])
+    rv2 = get(nested)["rev"]
+    new_sub(nested, "Spaltenkind")
+    ok("Unterseiten-Block in einer Spalte zaehlt auch", get(nested)["rev"] == rv2)
+    # Verschieben hinein: kein neuer Verweis; aus der alten Seite der reine Verweis-Absatz weg
+    alt = page("Alt ohne Block", [P("a")])
+    st, d = new_sub(alt, "Wandert in Block")
+    w = d["id"]
+    ok("(Ausgangslage) Verweis in alter Seite", links_to(blocks(alt), w) == [1])
+    req("POST", f"/api/notes/{w}/move", {"parent_id": par, "index": 0})
+    ok("Verschieben in Seite mit Block: dort kein Verweis, alter Verweis-Absatz entfernt",
+       not links_to(blocks(par), w) and get(par)["rev"] == rv and not links_to(blocks(alt), w), (blocks(par), blocks(alt)))
+    # Gegenprobe: Block entfernt -> wieder Verweis
+    req("PATCH", f"/api/notes/{par}", {"body": json.dumps({"blocks": [P("oben")]}), "format": "blocks"})
+    st, d = new_sub(par, "Nach dem Block")
+    ok("Gegenprobe: ohne Unterseiten-Block wieder Verweis", links_to(blocks(par), d["id"]) == [1], blocks(par))
+
+
 def t_dup():
     print("--- Duplizieren ---")
     par = page("Dup-Eltern", [P("Kopf"), P("Ende")])
@@ -429,7 +464,7 @@ try:
     setup()
     cleanup()
     setup()
-    for fn in (t_create, t_not, t_dup, t_gallery, t_move, t_conflict, t_api, t_import, t_live):
+    for fn in (t_create, t_not, t_widget, t_dup, t_gallery, t_move, t_conflict, t_api, t_import, t_live):
         if fn is t_live and os.environ.get("ULINK_NO_LIVE") == "1":
             continue
         try:                             # jeder Abschnitt fuer sich (Gegenprobe gegen alten Stand: alle Abschnitte melden)
