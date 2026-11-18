@@ -711,7 +711,8 @@ def main():
        and next(x for x in vl if x["id"] == top[0]).get("author", {}).get("name") == "Bert Liest"
        and all(x.get("author") is None or x["author"]["name"] != "Anna Teilt" for x in vl))
     # Angelegt von / zuletzt geaendert von
-    s, d = req("POST", "/api/notes", Bk, {"title": "Von B angelegt", "parent_id": root})
+    # "link": false (Bug 2151): sonst traegt der Verweis in root B als "zuletzt geaendert" ein - hier geht es um created_by
+    s, d = req("POST", "/api/notes", Bk, {"title": "Von B angelegt", "parent_id": root, "link": False})
     bnew = d.get("id") if s == 200 else 0
     na_ = req("GET", f"/api/notes/{bnew}", A)[1]
     ok(f"A sieht 'Angelegt von Bert' ({s})", (na_.get("created_by") or {}).get("name") == "Bert Liest"
@@ -779,7 +780,7 @@ def main():
     many = " ".join([lnk_p] * 2500)
     base = blocks(P(many, "L1"), P("x", "L2"))
     pad = 199_000 - len(base)
-    lang = nid(req("POST", "/api/notes", A, {"title": "Lange Seite", "parent_id": root})[1])
+    lang = nid(req("POST", "/api/notes", A, {"title": "Lange Seite", "parent_id": root, "link": False})[1])
     s = st("PATCH", f"/api/notes/{lang}", A, {"body": blocks(P(many, "L1"), P("x" * pad, "L2")), "format": "blocks"})
     n = req("GET", f"/api/notes/{lang}", Bk)[1]
     ok(f"Lange Seite: A speichert, B bekommt die maskierte (laengere) Fassung ({s}: {len(n['body'])})", s == 200 and len(n["body"]) > 200_000)
@@ -808,7 +809,7 @@ def main():
     st("PATCH", f"/api/notes/{root}", Bk, {"body": blocks(P("zauberwort-sh steht hier", "blk1")), "format": "blocks"})   # zuletzt geaendert: B
 
     # --- 7e. Versionsflut: erzwungene Sicherungen von Bearbeitern gedrosselt, Fassungen des Eigentuemers bleiben ----------
-    flut = nid(req("POST", "/api/notes", A, {"title": "Flut", "parent_id": root})[1])
+    flut = nid(req("POST", "/api/notes", A, {"title": "Flut", "parent_id": root, "link": False})[1])
     st("PATCH", f"/api/notes/{flut}", A, {"body": blocks(P("Stand von A " + "a" * 500, "f1")), "format": "blocks"})
     now = time.time()
     with connect() as c, c:
