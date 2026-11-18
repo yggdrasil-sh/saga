@@ -112,6 +112,24 @@ const lockDb = (id, on) => execFileSync('psql', [DBURL, '-qc', `UPDATE note SET 
      n4.title === 'Fremd4' || conflictShown || /überschrieben|Konflikt|geändert/i.test(s4.state), { n: n4.title, s: s4.state, conflictShown, before });
   ok('Fremder Titel: keine 423-Schleife', p.c423 - c423 <= 1, p.c423 - c423);
 
+  // --- 4b. Vormerkung + Wechsel auf eine andere Seite: die Vormerkung wandert nicht in die neue Seite (kein PATCH dort)
+  const pgB = (await api('POST', '/api/notes', { title: 'Andere ' + RUN })).id;
+  await api('PATCH', '/api/notes/' + pgB, { format: 'blocks', body: JSON.stringify({ blocks: [{ id: 'b1', type: 'paragraph', data: { text: 'Bleibt' } }] }) });
+  await api('PATCH', '/api/notes/' + pg, { locked: false });
+  await open(pg);
+  await titleTo423('Weg5');
+  const revB = (await api('GET', '/api/notes/' + pgB)).rev, tB = Date.now();
+  await p.evaluate((id) => { location.hash = '#' + id; }, pgB);
+  await until(async () => p.evaluate((id) => !!(HKPages.k.cur() && HKPages.k.cur().id === id), pgB), 6000);
+  await sleep(1200);
+  await p.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await sleep(1500);
+  await p.evaluate(() => { delete document.hidden; });
+  const patB = p.reqs.filter((r) => r.t >= tB && r.m === 'PATCH' && r.u.endsWith('/api/notes/' + pgB));
+  const nB = await api('GET', '/api/notes/' + pgB);
+  ok('Seitenwechsel: Vormerkung der gesperrten Seite schreibt nicht in die neue Seite', patB.length === 0 && nB.rev === revB,
+     { patches: patB.map((r) => r.b && r.b.slice(0, 80)), rev: [revB, nB.rev] });
+
   // --- 5. Peek: Anwesenheit an/ab, Ereignisse einmal ------------------------------------------------------------
   const db = (await api('POST', '/api/notes', { title: 'Vormerk DB ' + RUN, kind: 'database' })).id;
   const row = (await api('POST', '/api/notes', { title: 'Zeile', parent_id: db })).id;
@@ -146,7 +164,7 @@ const lockDb = (id, on) => execFileSync('psql', [DBURL, '-qc', `UPDATE note SET 
   ok('Peek zu: kein Nachmelden aus dem verdeckten Rahmen (22 s)', late.length === 0, late.map((r) => r.b));
 
   ok('Keine Seitenfehler', !p.errs.length && !other.errs.length, p.errs.concat(other.errs));
-  for (const id of [row, db, pg]) { lockDb(id, false); await api('DELETE', '/api/notes/' + id).catch(() => {}); }
+  for (const id of [row, db, pg, pgB]) { lockDb(id, false); await api('DELETE', '/api/notes/' + id).catch(() => {}); }
   await br.close();
   const bad = res.filter((x) => !x).length;
   console.log(bad ? `${bad} FEHLER` : 'ALLES GRUEN');
