@@ -6,7 +6,9 @@ Aussenstehende: einfaches Mitglied -> 403 rights (nichts geaendert), Admin -> Mi
 klingelt (call.invite, invites "ringing"), sieht den Anruf (joinable) und tritt bei (Angebote an alle Geraete); Handle
 '~x@host' eines Kontos hier wie ein Benutzername; unbekannt bzw. gesperrt (block2) -> 404 mit Text, Mischung -> 200 mit
 failed; entfernte Person (Gastgeber-Aktion) nur durch den Gastgeber (403 removed); Rate im selben Topf wie /invite (429);
-direkter 1:1 -> 409 dm (move_block direct, L9); voll (Video, 4 Geraete, Zweitgeraet zaehlt) -> 409 full mit seats und Text, nichts geaendert; Seiten-Chat
+direkter 1:1 -> 409 dm (move_block direct, L9); voll (Video, 4 Geraete, Zweitgeraet zaehlt) -> 409 full mit seats und Text, nichts geaendert;
+Bugs-DB 2154: POST /invite bei vollem Anruf ebenso 409 full (kein call.invite, Einladung unveraendert, Text in en/es/ru/th
+uebersetzt), bei 3 von 4 klingelt es noch, Uebernahme (E6) bleibt erlaubt; Seiten-Chat
 ohne Bestaetigung 409 page_confirm (Titel, Name, nichts geteilt), mit confirm_page geteilt (Rolle Lesen) + Mitglied +
 klingelt, Nicht-Eigentuemer 403; neue Freigabe -> call.invites (none); mehr als ADD_MAX neue -> Rest als failed kind max; beendeter Anruf -> 409 ended.
 Keine Anmeldenamen anderer in Texten.
@@ -207,19 +209,52 @@ def run():
 
     # --- Voll (Video: 4 Geraete, Annas Zweitgeraet zaehlt) -----------------------------------------------------------------
     req("POST", f"/api/calls/{g1}/end", A.k, {"device": A.dev["id"]})
-    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ca-ab", "ca-ac"]})
+    # Bugs-DB 2154: Vera ist Mitglied, aber nicht im Anruf - POST /invite darf sie bei vollem Anruf nicht klingeln lassen
+    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ca-ab", "ca-ac", "ca-av"]})
+    sV = A_.Stream(V.k)
     vid, g3 = d["chat"]["id"], secrets.token_hex(16)
     s, d = req("POST", "/api/calls", A.k, {"id": g3, "chat_id": vid, "media": "video", "device": A.dev["id"], "caps": CAPS})
     ends = [(A, A.dev)]
-    for p, dv, role in ((B, B.dev, "member"), (Cc, Cc.dev, "member"), (A, A2, "companion")):
+    for p, dv, role in ((B, B.dev, "member"), (Cc, Cc.dev, "member")):
         s, _ = R_.join(p, dv, g3, list(ends), role=role)
         ends.append((p, dv))
-    s, d = add(A, g3, ["ca-av"])
+    s, d = req("POST", f"/api/calls/{g3}/invite", Cc.k, {"uids": ["ca-av"]})
+    ok(f"/invite bei 3 von 4 Geraeten: klingelt noch ({s}, {d.get('n')}, {st(d.get('invites')).get('ca-av')})",
+       s == 200 and d.get("n") == 1 and st(d.get("invites")).get("ca-av") == "ringing")
+    s, _ = R_.join(A, A2, g3, list(ends), role="companion")
+    ends.append((A, A2))
+
+    def inv_row():
+        with connect() as c:
+            return tuple(c.execute("SELECT state, created FROM chat_call_invite WHERE call_id=? AND who='ca-av'", (g3,)).fetchone() or ())
+    before = inv_row()
+    mV = sV.mark()
+    res_inv = [req("POST", f"/api/calls/{g3}/invite", p.k, {"uids": ["ca-av"]}) for p in (A, Cc)]
+    quiet = sV.none("call.invite", mV)
+    ok(f"/invite bei vollem Anruf (4 von 4, Zweitgeraet zum Teilen zaehlt): 409 full mit seats und Text, niemand klingelt "
+       f"({[x[0] for x in res_inv]}, {res_inv[0][1].get('seats')}, {res_inv[0][1].get('error')})",
+       all(x[0] == 409 and x[1].get("full") is True and x[1].get("seats", {}).get("used") == 4 and x[1].get("seats", {}).get("left") == 0
+           and "Plätze sind belegt" in (x[1].get("error") or "") and "Gerät" in (x[1].get("error") or "") for x in res_inv)
+       and quiet and inv_row() == before and no_login_names(*[x[1].get("error") for x in res_inv]))
+    s, d = req("POST", f"/api/calls/{g3}/invite", Cc.k, {"uids": ["ca-ab"]})
+    ok(f"... /invite fuer jemanden, der schon dabei ist: kein 409 ({s}, {d.get('n')})", s == 200 and d.get("n") == 0)
+    texts = {}
+    for lg in ("en", "es", "ru", "th"):
+        s, d = req("POST", f"/api/calls/{g3}/invite", A.k, {"uids": ["ca-av"]}, hdr={"Accept-Language": lg})
+        texts[lg] = (s, d.get("error") or "")
+    ok(f"... Text uebersetzt (en/es/ru/th: {texts})",
+       all(v[0] == 409 and v[1] and "Plätze" not in v[1] and "4" in v[1] for v in texts.values()) and len({v[1] for v in texts.values()}) == 4)
+    s, d = add(A, g3, ["ca-ad"])
     ok(f"Voll (4 von 4 Geraeten, Zweitgeraet zaehlt): 409 full, seats, Text ({s}, {d.get('seats')}, {d.get('error')})",
        s == 409 and d.get("full") is True and d.get("seats", {}).get("used") == 4 and d.get("seats", {}).get("limit") == 4
-       and "Gerät" in (d.get("error") or "") and not member(vid, "ca-av"))
+       and "Gerät" in (d.get("error") or "") and not member(vid, "ca-ad"))
     s, d = add(Cc, g3, ["ca-ab"])
     ok(f"... jemanden holen, der schon dabei ist: kein 409 ({s})", s == 200 and d.get("n") == 0)
+    # E6: "Hierher uebernehmen" bleibt bei vollem Anruf erlaubt (das ersetzte Geraet zaehlt nicht)
+    A3 = A.add_device()
+    R_.caps_put(A, A3)
+    s, d = R_.join(A, A3, g3, [e for e in ends if e[1] is not A2], role="handover", replaces=A2)
+    ok(f"... Uebernahme eines eigenen Geraets bei vollem Anruf weiter erlaubt ({s}, {d.get('error')})", s == 200)
 
     # --- Seiten-Chat: Bestaetigung "teilt die Seite" ----------------------------------------------------------------------
     s, d = req("POST", "/api/notes", G.k, {"title": "ca-Projektplan"})

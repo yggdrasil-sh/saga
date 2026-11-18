@@ -248,6 +248,19 @@ def climit(c, call):
     return limit(call["media"])
 
 
+def seats(c, call, legs=None):
+    """Belegte und moegliche Plaetze (Endpunkte = Geraete, auch Begleitgeraete) -> {used, limit, left, topo}. Dieselbe
+    Zaehlung wie beim Beitreten (join_local: "voll")."""
+    legs = _legs(c, call["id"]) if legs is None else legs
+    lim = climit(c, call)
+    return {"used": len(legs), "limit": lim, "left": max(0, lim - len(legs)), "topo": call.get("topo") or "mesh"}
+
+
+def full_msg(s):
+    return t("Der Anruf ist voll – alle {n} Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen). Erst wenn jemand auflegt, kann noch jemand dazukommen.",
+             n=s["limit"])
+
+
 def _old_members(c, ch, starter=None, now=None):
     """L1-Nacharbeit (Regel "Gegenstelle zu alt -> direkt mit Hinweis", wie dm_peer_check im 1:1): Mitglieder dieses
     Servers (ohne die anrufende Person, nur angenommene Mitgliedschaft), deren aktive Chat-Geraete (Lebenszeichen in 30
@@ -2152,7 +2165,10 @@ async def api_moderate(cid: str, request: Request):
 async def api_invite(cid: str, request: Request):
     """Gruppenanruf: weitere Mitglieder (noch einmal) klingeln lassen {uids: [benutzername | '@~x@host']} -> {ok, n,
     invites, invites_more, rv, now} (2.5 L7: neuer Stand "Nicht dabei" fuer mich). Entfernte Personen (Gastgeber-Aktion) darf nur
-    der Gastgeber erneut klingeln lassen (sonst 403, nichts geklingelt). Klingeln ist gewollt: auch in grossen Chats laut."""
+    der Gastgeber erneut klingeln lassen (sonst 403, nichts geklingelt). Klingeln ist gewollt: auch in grossen Chats laut.
+    Voll (alle Plaetze belegt, jedes Geraet zaehlt, auch ein zweites zum Teilen; Bugs-DB 2154): 409 {error, full: true,
+    seats} wie POST /add - nichts geklingelt (sonst nimmt jemand an und kann nicht beitreten). Uebernehmen (E6) ist ein
+    Beitritt (POST /join role handover) und davon nicht betroffen."""
     uid, err = _me(request)
     if err:
         return err
@@ -2165,6 +2181,11 @@ async def api_invite(cid: str, request: Request):
         if call["kind"] != "group" or call["state"] == "ended":
             return _bad(t("ungültige Angabe"))
         who = _inv_who(c, call, who)
+        legs = _legs(c, call["id"])
+        st = seats(c, call, legs)
+        inside = {x["who"] for x in legs}
+        if st["left"] <= 0 and any(u not in inside for u in who):
+            return chat._no_store({"error": full_msg(st), "full": True, "seats": st}, 409)
         if call["caller"] != uid and _any_removed(c, call, who):
             return chat._no_store({"error": t("Nur wer den Anruf begonnen hat, kann entfernte Personen erneut klingeln lassen."),
                                    "removed": True}, 403)

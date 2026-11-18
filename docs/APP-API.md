@@ -2010,7 +2010,7 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
 | `POST /api/calls` (Gruppen-, freier, Seiten-Chat) | `{id, chat_id, media, device, caps}` – **ohne** `signals` | `{ok, call}` (`kind: group`, `state: ringing`, nur der eigene Endpunkt). `409 {running}` = läuft schon → beitreten; `409` ohne `multi` bzw. Server ohne `calls3` |
 | `POST /api/calls/{id}/join` | `{device, role, replaces?, caps, signals: {geraet: versiegeltes offer}}` | `{ok, call}`. `409 {join_block, error, legs?, limit?}`; `409 {legs}` ohne `join_block` = Liste veraltet → neu anbieten; `403` fremdes Gerät; `429` |
 | `POST /api/calls/{id}/leave` | `{device, reason?: "hangup"\|"handover", by?, gen?}` | `{ok}`; nur eigene Geräte (auch ein anderes eigenes). 2.5: mit `by`/`gen` bedingt → `{ok, stale}` (Abschnitt „Geräte-Übergabe hin und her“) |
-| `POST /api/calls/{id}/invite` | `{uids: [benutzername \| Prinzipal \| Handle]}` | `{ok, n}` – Gruppe: Mitglieder erneut klingeln lassen. 2.5 (L7): zusätzlich `invites`, `invites_more`, `rv`, `now`; `403 {error, removed: true}` (entfernte Person, nicht Gastgeber); `429` – siehe „Anrufe: Erneut klingeln und Nicht dabei“ |
+| `POST /api/calls/{id}/invite` | `{uids: [benutzername \| Prinzipal \| Handle]}` | `{ok, n}` – Gruppe: Mitglieder erneut klingeln lassen. 2.5 (L7): zusätzlich `invites`, `invites_more`, `rv`, `now`; `403 {error, removed: true}` (entfernte Person, nicht Gastgeber); `409 {error, full: true, seats}` (voll, Bugs-DB 2154); `429` – siehe „Anrufe: Erneut klingeln und Nicht dabei“ |
 | `POST /api/calls/{id}/add` | `{uids, confirm_page?, role?}` | 2.5 (L8, Feature `call_add`): Mitglieder klingeln, andere werden Chat-Mitglied und klingeln – siehe „Anrufe: Personen hinzufügen“ |
 | `POST /api/calls/{id}/end` | wie bisher, **mit `device`** | Gruppe bzw. Begleitgerät: nur dieses Gerät verlässt (`{ok, left: [...]}`); Hauptgerät im 1:1: Ende für alle |
 | `POST /api/calls/{id}/decline` | wie bisher | Gruppe: nur die eigene Einladung (alle eigenen Geräte hören auf zu klingeln) |
@@ -2198,8 +2198,14 @@ Body `{uids: [who, …]}` (bis `members_max`). Jedes Mitglied des Chats darf kli
 - **Entfernte Personen** (`removed`) darf nur der Gastgeber (`call.host`, wer den Anruf begonnen hat) erneut klingeln
   lassen. Ist eine darunter und ich bin nicht Gastgeber: `403 {"error": "Nur wer den Anruf begonnen hat, kann entfernte
   Personen erneut klingeln lassen.", "removed": true}` – es klingelt **niemand** aus dieser Anfrage.
+- **Voll** (2.5, Bugs-DB 2154): sind alle Plätze belegt (`seats.left` 0 – jedes Gerät zählt, auch ein Begleitgerät zum
+  Teilen; dieselbe Zählung wie `join_block: "full"` beim Beitreten) und ist unter `uids` jemand, der noch nicht dabei ist:
+  `409 {"error": "Der Anruf ist voll – alle 4 Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen). Erst
+  wenn jemand auflegt, kann noch jemand dazukommen.", "full": true, "seats": {used, limit, left, topo}}` wie bei `/add` –
+  es klingelt **niemand** (sonst nähme jemand an und könnte nicht beitreten). Der Text ist übersetzt (`Accept-Language`);
+  Apps zeigen `error` wie bei `403`. „Hierher übernehmen“ (`/join` mit `role: "handover"`) bleibt bei vollem Anruf erlaubt.
 - Rate wie bisher: 6 Aufrufe je Minute und Konto (egal wie viele `uids`), sonst `429 {error}` → „Gerade zu oft
-  geklingelt – bitte etwa eine Minute warten.“
+  geklingelt – bitte etwa eine Minute warten.“ Ein `403`/`409` zählt nicht.
 - Wer schon dabei ist, kein Mitglied ist oder eine offene Nachrichtenanfrage hat, wird übersprungen (zählt nicht in `n`).
   Ohne passendes Gerät: Zustand `old` (kein Klingeln).
 - Gezieltes Klingeln ist **laut**, auch in großen Chats: `call.invite` mit `silent: false` + Push `call.group`.

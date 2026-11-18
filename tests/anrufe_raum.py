@@ -11,7 +11,7 @@ fremdes Geraet, Unbeteiligte, ein Endpunkt ohne multi (2.3/E0-Client) -> 409 "br
 group): klingelt bei Mitgliedern mit 2.4-Geraet (call.invite, Push "call.group"), wer keins hat: "braucht Saga 2.4"
 (nicht eingeladen), /active und Chat zeigen den laufenden Anruf, Beitreten (ab zwei Personen aktiv), Mesh-Angebote an
 alle, Grenze 4 Endpunkte mit Video (eigene Zusatzgeraete zaehlen mit) bzw. 6 nur Ton, Ablehnen (nur die eigene
-Einladung), Einladen, Verlassen (laeuft weiter, solange >= 2 Personen dabei sind), Ende mit Chat-Eintrag (group, n),
+Einladung), Einladen (bei vollem Anruf 409 full, Bugs-DB 2154), Verlassen (laeuft weiter, solange >= 2 Personen dabei sind), Ende mit Chat-Eintrag (group, n),
 verpasst fuer Eingeladene, besetzt im Gruppenanruf, kein Beitritt nach dem Ende, Nicht-Mitglied 404, ein Gruppenanruf je
 Chat. Hintergrund: Endpunkt ohne Lebenszeichen verlaesst den Anruf, Gruppenanruf ohne Beitritt endet nach der
 Klingeldauer, Mitglied entfernt -> raus. Messung: Signalisierung eines 4er-Mesh (Aufbau aller Angebote/Antworten/ICE)
@@ -345,13 +345,14 @@ def run():
     s, d = req("POST", "/api/calls", B.k, {"id": cid3, "chat_id": bc, "media": "audio", "device": B.dev["id"], "caps": CAPS,
                                             "signals": {x["id"]: seal(B, B.dev, cid3, Cc, x, body("offer", 1, pc(B.dev, x))) for x in Cc.devs}})
     ok(f"Im Gruppenanruf: eigener 1:1-Anruf -> 409 'telefonierst schon' ({s})", s == 409)
-    # Einladen (erneut klingeln)
-    mE = sE.mark()
+    # Einladen (erneut klingeln) - Bugs-DB 2154: bei vollem Anruf (4 von 4) lehnt der Server ab, niemand klingelt
     s, d = req("POST", f"/api/calls/{g1}/invite", A.k, {"uids": ["ca-rf", "ca-re", "ca-rb"]})
-    ok(f"Erneut einladen: F klingelt wieder, E nicht (alte App), B ist schon dabei ({s}, n={d.get('n')})", s == 200 and d.get("n") == 1)
+    ok(f"Erneut einladen bei vollem Anruf: 409 full ({s}, {d.get('seats')})", s == 409 and d.get("full") is True and (d.get("seats") or {}).get("left") == 0)
     # Verlassen
     s, d = req("POST", f"/api/calls/{g1}/leave", D.k, {"device": D.dev["id"]})
     ok(f"D verlaesst: Anruf laeuft weiter (3) ({s})", s == 200 and len(legs(A, g1)) == 3)
+    s, d = req("POST", f"/api/calls/{g1}/invite", A.k, {"uids": ["ca-rf", "ca-re", "ca-rb"]})
+    ok(f"Erneut einladen: F klingelt wieder, E nicht (alte App), B ist schon dabei ({s}, n={d.get('n')})", s == 200 and d.get("n") == 1)
     s, d = join(F, F.dev, g1, [(A, A.dev), (B, B.dev), (Cc, Cc.dev)])
     ok(f"F tritt nach Ablehnen doch noch bei (jederzeit) ({s})", s == 200)
     req("POST", f"/api/calls/{g1}/end", F.k, {"device": F.dev["id"]})

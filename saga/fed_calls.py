@@ -1151,6 +1151,9 @@ def op_invite(c, peer, d):
         return 403, {"error": "not allowed"}
     if p_ != call["caller"] and calls._any_removed(c, call, whos):
         return 403, {"error": "removed"}               # 2.5 (L7): Entfernte laesst nur der Gastgeber erneut klingeln
+    legs = calls._legs(c, call["id"])                  # Bugs-DB 2154: voll -> niemand klingelt (wie POST /invite hier)
+    if calls.seats(c, call, legs)["left"] <= 0 and any(u not in {x["who"] for x in legs} for u in whos):
+        return 409, {"error": "full", "join_block": "full", "limit": calls.climit(c, call)}
     n, remote = calls.invite_local(c, call, whos)
     if remote:
         return 200, {"ok": True, "n": n}, (lambda: _invite_on(call, remote))

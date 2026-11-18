@@ -89,16 +89,8 @@ def _page_title(c, ch):
     return (r[0] if r else "") or t("Unbenannt")
 
 
-def seats(c, call, legs=None):
-    """Belegte und moegliche Plaetze (Endpunkte = Geraete, auch Begleitgeraete) -> {used, limit, left, topo}."""
-    legs = calls._legs(c, call["id"]) if legs is None else legs
-    lim = calls.climit(c, call)
-    return {"used": len(legs), "limit": lim, "left": max(0, lim - len(legs)), "topo": call.get("topo") or "mesh"}
-
-
-def full_msg(s):
-    return t("Der Anruf ist voll – alle {n} Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen). Erst wenn jemand auflegt, kann noch jemand dazukommen.",
-             n=s["limit"])
+seats = calls.seats                     # Bugs-DB 2154: gemeinsam mit POST /invite (saga/calls.py)
+full_msg = calls.full_msg
 
 
 @router.post("/api/calls/{cid}/add")

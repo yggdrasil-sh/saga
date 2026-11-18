@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Gruppenanrufe: „Erneut klingeln“ bei vollem Anruf (Bugs-DB 2154)
+- `POST /api/calls/{id}/invite` ließ auch bei vollem Anruf klingeln – wer annahm, konnte dann nicht beitreten. Das Web
+  sperrt den Knopf schon, die Apps nicht. Jetzt lehnt der Server selbst ab: `409 {error, full: true, seats}` wie
+  `POST /add`, mit derselben Zählung wie beim Beitreten (jedes Gerät zählt, auch ein Begleitgerät zum Teilen) und dem
+  übersetzten „voll“-Text, den die Apps anzeigen. Auch der führende Server lässt bei Aufträgen anderer Server dann niemanden
+  klingeln. „Hierher übernehmen“ geht bei vollem Anruf weiter. Tests: `tests/anrufe_hinzufuegen.py`, `tests/anrufe_raum.py`.
+
 ### Behoben – Gruppenanrufe über den Knoten: enge Leitung ohne lange Bildpausen (Bug 2152)
 - Bei einer Person mit enger Leitung (Labor: 1 Mbit/s im 4er) kamen einzelne Bilder 15–83 s lang gar nicht an, obwohl die
   Leitung nichts verwarf. Ursache (Spur des Knotens, `HORN_SPUR`): Fiel das GCC-Ziel, pausierte der Knoten eine Kachel; in
