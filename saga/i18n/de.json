@@ -4670,6 +4670,7 @@
  "{names} bekommen Zugriff auf die Seite „{title}“.": "{names} bekommen Zugriff auf die Seite „{title}“.",
  "{names} hat Chats noch nicht eingerichtet und kann diese Nachricht nicht lesen.": "{names} hat Chats noch nicht eingerichtet und kann diese Nachricht nicht lesen.",
  "{names} hat die Gruppe verlassen.": "{names} hat die Gruppe verlassen.",
+ "{names} hat nur eine ältere Saga-Version ohne Anrufe über Knoten. Der Anruf läuft deshalb direkt zwischen den Geräten (höchstens {v} mit Video bzw. {a} nur mit Ton).": "{names} hat nur eine ältere Saga-Version ohne Anrufe über Knoten. Der Anruf läuft deshalb direkt zwischen den Geräten (höchstens {v} mit Video bzw. {a} nur mit Ton).",
  "{names} ist jetzt dabei.": "{names} ist jetzt dabei.",
  "{names} ist nicht mehr dabei (Konto gelöscht).": "{names} ist nicht mehr dabei (Konto gelöscht).",
  "{names} ist nicht mehr dabei – die Verbindung zu diesem Saga-Server wurde getrennt.": "{names} ist nicht mehr dabei – die Verbindung zu diesem Saga-Server wurde getrennt.",

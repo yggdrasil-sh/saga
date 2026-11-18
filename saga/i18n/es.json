@@ -4670,6 +4670,7 @@
  "{names} bekommen Zugriff auf die Seite „{title}“.": "{names} tendrán acceso a la página «{title}».",
  "{names} hat Chats noch nicht eingerichtet und kann diese Nachricht nicht lesen.": "{names} aún no ha configurado los chats y no puede leer este mensaje.",
  "{names} hat die Gruppe verlassen.": "{names} ha salido del grupo.",
+ "{names} hat nur eine ältere Saga-Version ohne Anrufe über Knoten. Der Anruf läuft deshalb direkt zwischen den Geräten (höchstens {v} mit Video bzw. {a} nur mit Ton).": "{names} solo tiene una versión antigua de Saga sin llamadas por nodo. Por eso la llamada va directamente entre los dispositivos (como máximo {v} con vídeo o {a} solo con audio).",
  "{names} ist jetzt dabei.": "{names} se ha unido.",
  "{names} ist nicht mehr dabei (Konto gelöscht).": "{names} ya no está (cuenta eliminada).",
  "{names} ist nicht mehr dabei – die Verbindung zu diesem Saga-Server wurde getrennt.": "{names} ya no está – se eliminó la conexión con este servidor Saga.",

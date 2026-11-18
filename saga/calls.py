@@ -248,13 +248,36 @@ def climit(c, call):
     return limit(call["media"])
 
 
-def horn_wanted(c, ch, media, caps, why=None):
+def _old_members(c, ch, starter=None, now=None):
+    """L1-Nacharbeit (Regel "Gegenstelle zu alt -> direkt mit Hinweis", wie dm_peer_check im 1:1): Mitglieder dieses
+    Servers (ohne die anrufende Person, nur angenommene Mitgliedschaft), deren aktive Chat-Geraete (Lebenszeichen in 30
+    Tagen, sonst alle) alle weder "horn"+"multi" noch "horn_ring" koennen. Mitglieder ohne Geraet und anderer Server
+    (Faehigkeiten hier unbekannt) zaehlen nicht."""
+    now = time.time() if now is None else now
+    out = []
+    for u in chat.members(c, ch["id"]):
+        if u == starter or sharing.is_remote(u):
+            continue
+        if ((chat._member(c, ch["id"], u) or {}).get("state", "ok")) != "ok":
+            continue
+        rows = c.execute("SELECT caps, COALESCE(last_seen, created) FROM chat_device WHERE uid=? AND revoked_at IS NULL", (u,)).fetchall()
+        if not rows:
+            continue
+        act = [r for r in rows if (r[1] or 0) > now - DM_ACTIVE_S] or rows
+        if not any(_horn_dev(r[0]) for r in act):
+            out.append(u)
+    return out
+
+
+def horn_wanted(c, ch, media, caps, why=None, starter=None):
     """2.5: neuen Gruppenanruf ueber einen Knoten fuehren? Flag an, Geraet meldet "horn", ein Knoten ist bereit und der Chat
     ist gross genug: mit "Alle Anrufe ueber Knoten" (horn_all_on, Grundsatz Y; Entscheidung L1 vom 18.11.) jede
     Gruppe - direkt (Mesh) nur als Rueckfall wie im 1:1 -, sonst erst ab mehr Mitgliedern als die Mesh-Grenze (bzw. ab
     calls.horn_from, mindestens 3). P10: im foederierten Chat (wir sind das
     Heim) zusaetzlich alle beteiligten Server mit "horn" und je Server ein nutzbarer Knoten (geteilt oder eigener) -
-    sonst Mesh; why (Liste) bekommt dann den Hinweis fuer die Clients."""
+    sonst Mesh; why (Liste) bekommt dann den Hinweis fuer die Clients. L1-Nacharbeit: mit horn_all und hoechstens so
+    vielen Mitgliedern wie die Mesh-Grenze direkt (mit Hinweis), wenn ein Mitglied nur Geraete ohne Knoten-Faehigkeit hat
+    (_old_members) - ueber der Mesh-Grenze bleibt es beim Knoten, die Person bekommt "old"."""
     if not horn_on() or not _has(caps, "horn"):
         return False
     try:
@@ -262,8 +285,17 @@ def horn_wanted(c, ch, media, caps, why=None):
     except (TypeError, ValueError):
         frm = 0
     need = 2 if horn_all_on() else (max(3, frm) if frm else limit(media) + 1)   # L1: horn_from nur noch ohne horn_all
-    if len(chat.members(c, ch["id"])) < need or not horn.any_ready(c, ws=horn.caps_reach(caps)):   # S10/S12.5: Tunnel-Knoten nur mit "ws"/"frames"
+    mem = chat.members(c, ch["id"])
+    if len(mem) < need or not horn.any_ready(c, ws=horn.caps_reach(caps)):   # S10/S12.5: Tunnel-Knoten nur mit "ws"/"frames"
         return False
+    if horn_all_on() and len(mem) <= limit(media):
+        old = _old_members(c, ch, starter)
+        if old:
+            if why is not None:
+                nm = names(c, old)
+                why.append(t("{names} hat nur eine ältere Saga-Version ohne Anrufe über Knoten. Der Anruf läuft deshalb direkt zwischen den Geräten (höchstens {v} mit Video bzw. {a} nur mit Ton).",
+                             names=", ".join(sorted(nm.get(u) or u for u in old)), v=limit("video"), a=limit("audio")))
+            return False
     if chat.is_fed(ch):
         if FED is None or ch["home_peer"] is not None:
             return False
@@ -1201,7 +1233,7 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
     den besten bereiten Knoten (bzw. node: im 1:1 der erste, den alle Geraete des Gegenuebers erreichen, dm_peer_check),
     Einladungen nur an Personen mit einem Geraet, das "horn" bzw. "horn_ring" kann (sonst 'old')."""
     why = []
-    hn = lead is None and (dm_peer is not None or horn_wanted(c, ch, media, caps, why))   # 2.5: 1:1 ueber Knoten (geprueft)
+    hn = lead is None and (dm_peer is not None or horn_wanted(c, ch, media, caps, why, starter))   # 2.5: 1:1 ueber Knoten (geprueft)
     if not hn or peer_id is not None:
         node = None
     elif node is None:

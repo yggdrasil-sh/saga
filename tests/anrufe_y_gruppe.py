@@ -7,7 +7,10 @@ Ohne echten Knoten: ein gekoppelter Knoten als Registereintrag (Lastmeldung fris
 geprueft wird die Wegwahl in Saga (POST /api/calls in freien Gruppen mit 2, 3 und 4 Mitgliedern). Faelle: horn_all an
 (Standard ohne Merker und mit Merker) -> topo horn mit Kandidaten, auch mit horn_from 10 (wirkt nicht); horn_all bewusst
 aus -> 3er/4er Mesh, 5er (ueber der Mesh-Grenze) Knoten; horn_all aus + horn_from 3 -> 3er Knoten; Rueckfaelle bei horn_all
-an: Geraet ohne horn, kein Knoten bereit -> Mesh; Gjallarhorn aus -> Mesh. Gegenprobe: vor L1 (bb9fc69) liefen die
+an: Geraet ohne horn, kein Knoten bereit -> Mesh; Gjallarhorn aus -> Mesh. L1-Nacharbeit (Regel "Gegenstelle zu alt ->
+direkt mit Hinweis" wie im 1:1): ein Mitglied nur mit 2.4-Geraet (multi ohne horn) -> 3er Mesh mit Hinweis (horn_mesh nennt
+die Person), Einladung ringing; 5er (ueber der Mesh-Grenze) bleibt Knoten, die Person 'old'; altes Geraet ohne
+Lebenszeichen seit 40 Tagen neben einem aktiven horn-Geraet zaehlt nicht -> Knoten; nur alte Geraete zaehlen alle. Gegenprobe: vor L1 (bb9fc69) liefen die
 3er/4er-Faelle mit horn_all an als Mesh (Meldung FAIL in den ersten Pruefungen).
 Gegen die laufende Instanz (HK_TEST_BASE, env.sh), Wegwerf-Konten ca-yg*:
     PYTHONPATH=tests/pgshim:. python tests/anrufe_y_gruppe.py"""
@@ -28,19 +31,20 @@ req, res = A_.req, A_.res
 
 def ok(n, c, info=None):
     res.append(bool(c))
-    print(("OK  " if c else "FAIL"), n + ("" if c or info is None else " -> " + json.dumps(info, default=str)[:600]), flush=True)
+    print(("OK  " if c else "FAIL"), n + ("" if c or info is None else " -> " + json.dumps(info, default=str)[:3000]), flush=True)
 CAPS = ["reneg", "want", "bye", "screen2", "multi", "horn"]
 CAPS24 = ["reneg", "want", "bye", "screen2", "multi"]
 CALLS = {"enabled": True, "stun": "stun:stun.example.org:3478", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "",
          "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": True}
 NODE = "yg-knoten.example.org"
-USERS = [("ca-yga", "Anna Eins"), ("ca-ygb", "Bert Zwei"), ("ca-ygc", "Cora Drei"), ("ca-ygd", "Dora Vier"), ("ca-yge", "Emil Fuenf")]
+USERS = [("ca-yga", "Anna Eins"), ("ca-ygb", "Bert Zwei"), ("ca-ygc", "Cora Drei"), ("ca-ygd", "Dora Vier"), ("ca-yge", "Emil Fuenf"),
+         ("ca-ygf", "Fritz Alt")]
 
 
 def setting(**kw):
     auth.save_setting("calls", dict(CALLS, **kw))
     auth._settings_cache["v"] = None
-    time.sleep(5.5)                                   # Einstellungen im Server-Prozess (Zwischenspeicher 5 s)
+    time.sleep(6.5)                                   # Einstellungen im Server-Prozess (Zwischenspeicher 5 s, mit Reserve)
 
 
 def node(on=True):
@@ -62,17 +66,30 @@ def start(a, chat, cs=CAPS, media="video"):
     wechseln sich ab (Grenze CALL_RATE je Konto und Minute)."""
     i = ROT[chat] = ROT.get(chat, -1) + 1
     a = a[i % len(a)]
-    with connect() as c, c:
-        c.execute("UPDATE horn_node SET seen=? WHERE name=?", (time.time(), NODE))
     cid = secrets.token_hex(16)
     for _ in range(6):                              # 429: Grenze je Konto und Minute - kurz warten
+        with connect() as c, c:                     # Lastmeldung frisch (auch nach dem Warten)
+            c.execute("UPDATE horn_node SET seen=? WHERE name=?", (time.time(), NODE))
         s, d = req("POST", "/api/calls", a.k, {"id": cid, "chat_id": chat, "media": media, "device": a.dev["id"], "caps": cs})
         if s != 429:
             break
         time.sleep(12)
     call = (d or {}).get("call") or {} if s == 200 else {}
     req("POST", f"/api/calls/{cid}/end", a.k, {"device": a.dev["id"]})
+    LAST[0] = call
     return (call.get("topo"), bool((call.get("horn") or {}).get("candidates"))) if s == 200 else (f"HTTP {s}", False)
+
+
+LAST = [None]
+
+
+def age(dev, days):
+    with connect() as c, c:
+        c.execute("UPDATE chat_device SET last_seen=? WHERE id=?", (time.time() - days * 86400, dev["id"]))
+
+
+def inv(call, who):
+    return next((x.get("state") for x in (call or {}).get("invites") or [] if x.get("who") == who or x.get("ref") == who), None)
 
 
 def main():
@@ -100,8 +117,10 @@ def main():
 
 def run():
     P = [A_.Person(u) for u, _ in USERS]
+    Fz = P.pop()                                       # Fritz: nur ein 2.4-Geraet (multi ohne horn)
     for p in P:
         req("PUT", "/api/calls/caps", p.k, {"device": p.dev["id"], "caps": CAPS})
+    req("PUT", "/api/calls/caps", Fz.k, {"device": Fz.dev["id"], "caps": CAPS24})
     A = P[0]
     g, M = {}, {}
     for n in (2, 3, 4, 5):
@@ -136,6 +155,39 @@ def run():
     setting(horn_all=False, horn_all_y=True, horn_from=3)
     r = {n: start(M[g[n]], g[n]) for n in (2, 3)}
     ok(f"horn_all aus + horn_from 3: 3er ueber den Knoten, 2er Mesh ({r})", r[3] == H and r[2] == ("mesh", False), r)
+
+    # --- L1-Nacharbeit: Mitglied nur mit alter App -------------------------------------------------------------------
+    setting()
+    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ca-ygb", "ca-ygf"]})
+    g3a = d["chat"]["id"]
+    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ca-ygb", "ca-ygc", "ca-ygd", "ca-ygf"]})
+    g5a = d["chat"]["id"]
+    M[g3a], M[g5a] = P[:2], P[:4]
+    r = start(M[g3a], g3a)
+    hm = (LAST[0] or {}).get("horn_mesh") or ""
+    ok(f"3er mit Fritz (nur 2.4-Geraet): direkt mit Hinweis, Fritz klingelt ({r}, {hm[:90]}, {inv(LAST[0], 'ca-ygf')})",
+       r == ("mesh", False) and "Fritz Alt" in hm and "ältere Saga-Version" in hm and inv(LAST[0], "ca-ygf") == "ringing", LAST[0])
+    r = start(M[g5a], g5a)
+    ok(f"5er mit Fritz (ueber der Mesh-Grenze): Knoten, Fritz 'old' ({r}, {inv(LAST[0], 'ca-ygf')})",
+       r == H and inv(LAST[0], "ca-ygf") == "old" and not (LAST[0] or {}).get("horn_mesh"), LAST[0])
+    f2 = Fz.add_device()
+    req("PUT", "/api/calls/caps", Fz.k, {"device": f2["id"], "caps": CAPS})
+    age(Fz.dev, 40)
+    r = start(M[g3a], g3a)
+    ok(f"Fritz mit aktivem horn-Geraet, altes seit 40 Tagen still: 3er ueber den Knoten ({r})", r == H, LAST[0])
+    age(Fz.dev, 2)
+    r = start(M[g3a], g3a)
+    ok(f"altes Geraet wieder aktiv (2 Tage) neben dem neuen: Fritz kann es (ein Geraet reicht) -> Knoten ({r})", r == H, LAST[0])
+    age(Fz.dev, 40)
+    age(f2, 50)
+    req("PUT", "/api/calls/caps", Fz.k, {"device": f2["id"], "caps": CAPS24})
+    age(f2, 50)
+    r = start(M[g3a], g3a)
+    ok(f"nur alte Geraete ohne Lebenszeichen (alle 2.4): zaehlen alle -> direkt ({r})", r == ("mesh", False), LAST[0])
+    setting(horn_all=False, horn_all_y=True, horn_from=3)
+    r = start(M[g3a], g3a)
+    ok(f"horn_all aus + horn_from 3: 3er mit Fritz ueber den Knoten wie bisher, Fritz 'old' ({r}, {inv(LAST[0], 'ca-ygf')})",
+       r == H and inv(LAST[0], "ca-ygf") == "old", LAST[0])
 
     # --- ohne Gjallarhorn (ab Werk): alles Mesh --------------------------------------------------------------------------
     setting(horn=False)

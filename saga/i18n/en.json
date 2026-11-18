@@ -4670,6 +4670,7 @@
  "{names} bekommen Zugriff auf die Seite „{title}“.": "{names} will get access to the page “{title}”.",
  "{names} hat Chats noch nicht eingerichtet und kann diese Nachricht nicht lesen.": "{names} hasn't set up chats yet and can't read this message.",
  "{names} hat die Gruppe verlassen.": "{names} left the group.",
+ "{names} hat nur eine ältere Saga-Version ohne Anrufe über Knoten. Der Anruf läuft deshalb direkt zwischen den Geräten (höchstens {v} mit Video bzw. {a} nur mit Ton).": "{names} only has an older Saga version without calls through a node. The call therefore runs directly between the devices (at most {v} with video or {a} audio only).",
  "{names} ist jetzt dabei.": "{names} joined.",
  "{names} ist nicht mehr dabei (Konto gelöscht).": "{names} is no longer here (account deleted).",
  "{names} ist nicht mehr dabei – die Verbindung zu diesem Saga-Server wurde getrennt.": "{names} is no longer here – the connection to this Saga server was removed.",

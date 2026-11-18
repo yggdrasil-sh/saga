@@ -2328,7 +2328,10 @@ Nur mit Feature-Flag `calls.horn` (Standard aus) und nur für Geräte, die `horn
 **Wann:** Ein Gruppenanruf läuft über einen Knoten (`topo: "horn"` im Anruf-Objekt, in `call.roster` und in
 `/api/chats/{id}` → `call.running`), wenn das anrufende Gerät `horn` meldet, ein Knoten bereit ist und der Chat groß genug
 ist: mit „Alle Anrufe über Knoten“ (`calls.horn_all`, Grundsatz Y, ab Werk an; `GET /api/calls/config` → `horn_dm`)
-**jede Gruppe**, auch mit 3 und 4 Mitgliedern (L1, 18.11.) – direkt nur als Rückfall wie im 1:1; ist `horn_all` aus,
+**jede Gruppe**, auch mit 3 und 4 Mitgliedern (L1, 18.11.) – direkt nur als Rückfall wie im 1:1 (kein Knoten bereit,
+anrufendes Gerät ohne `horn`; bei höchstens so vielen Mitgliedern wie die Mesh-Grenze auch, wenn ein Mitglied dieses
+Servers nur Geräte ohne `horn`+`multi` bzw. `horn_ring` hat – aktive der letzten 30 Tage, sonst alle –, dann mit
+Hinweis in `call.horn_mesh`; darüber bleibt der Anruf am Knoten und die Person bekommt `old`); ist `horn_all` aus,
 erst ab mehr Mitgliedern als die Mesh-Grenze (`limits.endpoints_video` bzw. `_audio`; Admin: `calls.horn_from`).
 Föderierte Chats: zusätzlich P10. Sonst Mesh wie 2.4 (`topo: "mesh"`). Clients entscheiden das nicht selbst, sie folgen `topo`. Einladungen gehen nur an Personen mit einem
 Gerät mit `horn`; die anderen sehen `old` („braucht Saga 2.5“).

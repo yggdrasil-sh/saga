@@ -20,6 +20,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Mit Gjallarhorn an und „Alle Anrufe über Knoten“ (ab Werk an) laufen jetzt **alle** Gruppenanrufe über einen Knoten,
   auch mit 3 und 4 Mitgliedern. Direkt zwischen den Geräten (Mesh) nur noch als Rückfall wie beim 1:1: kein Knoten
   bereit, Gerät ohne Knoten-Fähigkeit, anderer Server ohne Knoten. Bisher liefen 3er- und 4er-Gruppen ab Werk direkt.
+- **Mitglied mit älterer App:** Hat in einer Gruppe bis 4 Mitglieder jemand nur Geräte ohne Anrufe über Knoten (aktive
+  der letzten 30 Tage, wie beim 1:1), läuft der Anruf direkt – mit Hinweis, wer die ältere Version hat. So klingelt es
+  bei dieser Person und sie kann beitreten. Größere Gruppen bleiben am Knoten, die Person sieht „braucht Saga 2.5“.
 - „Über Knoten ab“ (`calls.horn_from`) gilt nur noch, wenn „Alle Anrufe über Knoten“ aus ist. Ohne Gjallarhorn bleibt
   alles direkt bis zur Grenze von 4 Geräten mit Video. Admin-Hilfetexte und `docs/APP-API.md` nachgezogen.
 - Test: `tests/anrufe_y_gruppe.py`, `tests/anrufe_horn_knoten.py` (kleine Gruppe nur noch mit `horn_all` aus direkt).

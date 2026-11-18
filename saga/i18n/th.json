@@ -4670,6 +4670,7 @@
  "{names} bekommen Zugriff auf die Seite „{title}“.": "{names} จะได้รับสิทธิ์เข้าถึงหน้า „{title}“",
  "{names} hat Chats noch nicht eingerichtet und kann diese Nachricht nicht lesen.": "{names} ยังไม่ได้ตั้งค่าแชทและอ่านข้อความนี้ไม่ได้",
  "{names} hat die Gruppe verlassen.": "{names} ออกจากกลุ่มแล้ว",
+ "{names} hat nur eine ältere Saga-Version ohne Anrufe über Knoten. Der Anruf läuft deshalb direkt zwischen den Geräten (höchstens {v} mit Video bzw. {a} nur mit Ton).": "{names} มีเพียง Saga รุ่นเก่าที่ไม่รองรับการโทรผ่านโหนด การโทรจึงเชื่อมต่อตรงระหว่างอุปกรณ์ (สูงสุด {v} เครื่องพร้อมวิดีโอ หรือ {a} เครื่องเฉพาะเสียง)",
  "{names} ist jetzt dabei.": "{names} เข้าร่วมแล้ว",
  "{names} ist nicht mehr dabei (Konto gelöscht).": "{names} ไม่อยู่แล้ว (ลบบัญชีแล้ว)",
  "{names} ist nicht mehr dabei – die Verbindung zu diesem Saga-Server wurde getrennt.": "{names} ไม่อยู่แล้ว – การเชื่อมต่อกับเซิร์ฟเวอร์ Saga นี้ถูกยกเลิก",
