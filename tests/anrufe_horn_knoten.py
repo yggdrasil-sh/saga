@@ -35,7 +35,9 @@ import tempfile
 import time
 
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORT, INTERNAL, HORN_PORT = 8061, 8062, 8463
+# Standard 8061/8062/8463; HORN_TEST_PORT bzw. HORN_TEST_HORN verschieben die Instanz (parallele Pruefstaende)
+PORT = int(os.environ.get("HORN_TEST_PORT", "8061"))
+INTERNAL, HORN_PORT = PORT + 1, int(os.environ.get("HORN_TEST_HORN", "8463"))
 os.environ["HK_TEST_BASE"] = f"http://127.0.0.1:{PORT}"          # alle Anfragen der Helfer an die eigene Instanz
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(APP, "tools"))

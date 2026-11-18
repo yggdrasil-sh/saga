@@ -78,6 +78,7 @@ func (r *Room) tickAt(now int64) {
 	var events []LayoutEvent
 	for _, l := range r.legs {
 		r.planLeg(l, peers, dt, now, cfg)
+		l.spur(now)
 		if ev, ok := l.layoutChanged(); ok {
 			events = append(events, ev)
 		}

@@ -36,7 +36,7 @@ PORT = int(os.environ.get("R345_PORT", "8881"))
 INTERNAL = PORT + 1
 HORN_PORT = int(os.environ.get("R345_HORN", "18881"))
 TURN_PORT = HORN_PORT + 2
-CTL0 = HORN_PORT + 10                     # Steuerung der Leitungen (je Namensraum +i)
+CTL0 = int(os.environ.get("R345_CTL0", str(HORN_PORT + 10)))  # Steuerung der Leitungen (je Namensraum +i)
 BIN = os.environ.get("R345_BIN", "/tmp/r345/bin")
 WORK = os.environ.get("R345_WORK", "/tmp/r345")
 RES = os.environ.get("R345_RES", os.path.join(WORK, "res"))
@@ -73,6 +73,12 @@ FAELLE = [
     F("r3-verlust3", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 40, "loss": 0.03, "qms": 300}),
     F("r3-rtt150", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 150, "loss": 0, "qms": 300}),
     F("r3-netzwechsel", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 30, "loss": 0, "qms": 300}, {"type": "flap", "at": 15, "ms": 3000}, 50),
+    # 2157: Netzwechsel mit neuer Adresse des Geraets (Leitung 1,5 s weg, Adresse im Namensraum gewechselt), 3 Wechsel je Lauf
+    F("r3-adresswechsel", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 30, "loss": 0, "qms": 300},
+      {"type": "addr", "at": 12, "ms": 1500, "n": 3, "every": 20}, 75, "neue Adresse"),
+    # ... Leitung 4 s weg (das Netz kommt langsamer zurueck, z. B. Mobilfunk-Anmeldung): Wiederaufbau-Takt sichtbar
+    F("r3-adresswechsel-lang", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 30, "loss": 0, "qms": 300},
+      {"type": "addr", "at": 12, "ms": 4000, "n": 3, "every": 20}, 75, "neue Adresse, 4 s weg"),
     F("r3-lang", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 30, "loss": 0, "qms": 300}, None, 600, "10 min"),
     F("r3-frei-720", "dm", 2, HORN, 0, None, None, 45, "720p", HD),
     F("r3-1mbit-720", "dm", 2, HORN, 0, ENG1, None, 45, "720p", HD),
@@ -123,7 +129,8 @@ def start():
     if P["proc"] and P["proc"].poll() is None:
         return True
     os.makedirs(STATE, exist_ok=True)
-    keep = ("PATH", "HOME", "DATABASE_URL", "SECRET_KEY", "SESSION_SECRET", "LANG", "TZ", "POSTGRES_HOST")
+    # HORN_BWE=mit: Diagnose-Zeilen "schicht" je Ruecknahme (entscheidet nichts), HORN_PROBING: Gegenprobe
+    keep = ("PATH", "HOME", "DATABASE_URL", "SECRET_KEY", "SESSION_SECRET", "LANG", "TZ", "POSTGRES_HOST", "HORN_BWE", "HORN_PROBING", "HORN_SPUR")
     env = {k: v for k, v in os.environ.items() if k in keep}
     env.update(PORT=str(PORT), MEDIA_INTERNAL_PORT=str(INTERNAL), ADMIN_PORT="0", HOST="127.0.0.1", STATE_DIR=STATE,
                BASE_URL=f"http://127.0.0.1:{PORT}", CANONICAL_REDIRECT="false", SAGA_SKIP_BACKUP="1", SAGA_UPDATE_CHECK="0",
@@ -230,6 +237,9 @@ def netns(i):
                     ["ip", "-n", name, "addr", "add", addr + "/24", "dev", "va"], ["ip", "-n", name, "link", "set", "va", "up"],
                     ["ip", "-n", name, "link", "set", "vb", "up"]):
             subprocess.run(cmd, check=True)
+    # Adresswechsel (Fall r3-adresswechsel) kann die zweite Adresse hinterlassen: Ausgangsadresse sicherstellen
+    subprocess.run(["ip", "-n", name, "addr", "replace", addr + "/24", "dev", "va"], capture_output=True)
+    subprocess.run(["ip", "-n", name, "addr", "del", addr[:-1] + "3/24", "dev", "va"], capture_output=True)
     ctl = CTL0 + i
     x = P["nsl"].get(name)
     if not (x and x.poll() is None):

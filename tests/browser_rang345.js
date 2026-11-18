@@ -231,6 +231,9 @@ function evalPage(s, expect) {
     }
     if (since != null && b.t - since >= 1500) vpause.push([Math.round((since - a.t) / 100) / 10, Math.round((b.t - since) / 100) / 10, o.k, 'bis Ende']);
   });
+  // Pakete je Bildstrom und Sekunde (Diagnose: Pausen des Knotens gegen Spur HORN_SPUR legen); Startzeit als Uhrzeit
+  const vser = {};
+  vs.forEach(o => { const r = []; for (let i = o.fi + 2; i <= o.li; i += 2) { const p = s[i - 2].v[o.k], q = s[i].v[o.k]; r.push(p && q ? q[0] - p[0] : -1); } vser[o.k] = { t0: s[o.fi].t, n: r }; });
   // Bildrate je Strom und 5-s-Fenster (kbit/s aus den Paketen geht nicht - nur Pakete/s)
   const pathSet = new Set(); s.forEach(x => (x.cp || []).forEach(c => pathSet.add(c[1] + '>' + c[2])));
   const rtt = med(s.map(x => med((x.cp || []).map(c => c[3]))));
@@ -239,7 +242,7 @@ function evalPage(s, expect) {
     fps: med(fps), fpsMin: fps.length ? Math.min(...fps) : null,
     freeze: vmin ? fz / vmin : null, freeze_s: vmin ? fzs / vmin : null, layer: vmin ? lay / vmin : null, vgap,
     astreams: as.length, conceal: tot ? con / tot * 100 : null, gaps: amin ? gaps / amin : null, gap_s: gapS,
-    pairs: [...pathSet], rtt, mins, vpause,
+    pairs: [...pathSet], rtt, mins, vpause, vser,
   };
 }
 // erster Zeitpunkt nach t, ab dem alle erwarteten Bilder wieder frisch sind (Zeitcode < 1 s alt)
@@ -332,6 +335,27 @@ function recovery(s, t, expect) {
         await getJ(S.eng.ctl + '/flap?ms=' + (evt.ms || 3000));
         evInfo.end = evInfo.t + (evt.ms || 3000);
         await ev(ps[S.eng.i], () => window.dispatchEvent(new Event('online')));   // wie ein Netzwechsel am Geraet
+      } else if (evt.type === 'addr' && S.eng) {
+        // Netzwechsel mit neuer Adresse (WLAN <-> LTE, Labor 2157): Leitung weg, die Adresse des Geraets wechselt (der
+        // Browser sieht seine Schnittstelle neu, alte Kandidaten sind tot), nach ms wieder frei; je Wechsel eine Messung
+        const cp = require('child_process'), base = '10.77.' + (S.eng.i + 1) + '.';
+        const n = evt.n || 1; evInfo.recs = [];
+        for (let k = 0; k < n; k++) {
+          const t0 = Date.now(), from = base + (k % 2 ? 3 : 2), to = base + (k % 2 ? 2 : 3);
+          await getJ(S.eng.ctl + '/flap?ms=' + (evt.ms || 1500));
+          // sonst nimmt das Loeschen der ersten Adresse eines Netzes die zweite mit
+          cp.execFileSync('ip', ['netns', 'exec', S.eng.ns, 'sysctl', '-q', '-w', 'net.ipv4.conf.va.promote_secondaries=1']);
+          cp.execFileSync('ip', ['-n', S.eng.ns, 'addr', 'add', to + '/24', 'dev', 'va']);
+          cp.execFileSync('ip', ['-n', S.eng.ns, 'addr', 'del', from + '/24', 'dev', 'va']);
+          await sleep(evt.ms || 1500);
+          await ev(ps[S.eng.i], () => window.dispatchEvent(new Event('online')));
+          evInfo.recs.push(Date.now());
+          if (k === 0) { evInfo.t = t0; evInfo.end = Date.now(); }
+          if (k + 1 < n) await sleep((evt.every || 30) * 1000 - (Date.now() - t0));
+        }
+        if (n % 2) {    // Ausgangsadresse wiederherstellen (naechster Lauf)
+          try { cp.execFileSync('ip', ['-n', S.eng.ns, 'addr', 'add', base + '2/24', 'dev', 'va']); cp.execFileSync('ip', ['-n', S.eng.ns, 'addr', 'del', base + '3/24', 'dev', 'va']); } catch (e) { /* schon da */ }
+        }
       } else if (evt.type === 'handover') {
         const who = ps[evt.who];
         p2 = await person(evt.who, '#2', null); await caps(p2);
@@ -418,6 +442,7 @@ function recovery(s, t, expect) {
       const expect = n - 1;
       const pe = Array.isArray(s) ? evalPage(s, expect) : null;
       if (pe && evInfo.end) pe.recover = recovery(s, evInfo.end, expect);
+      if (pe && evInfo.recs) pe.recovers = evInfo.recs.map(t => recovery(s, t, expect));
       if (pe && evt && evt.type === 'handover') {          // Bild der wechselnden Person bei den anderen: laengste Luecke
         const hue = HUES[evt.who]; let last = null, gap = 0;
         s.forEach(x => { const fresh = x.vid.some(v => v.lag != null && v.lag < 1000 && v.hue >= 0 && Math.min(Math.abs(v.hue - hue), 360 - Math.abs(v.hue - hue)) < 25); if (fresh) { if (last != null && x.t - last > gap) gap = x.t - last; last = x.t; } });
@@ -427,7 +452,8 @@ function recovery(s, t, expect) {
       R.pages[nm] = Object.assign({ eng: p.__eng }, pe || { err: 'keine Messwerte' }, {
         topo: r && r.topo, direct: r && r.direct, links: r && r.links ? r.links.length : null,
         horn: h && !h.err ? { path: h.path, node: h.node && String(h.node).slice(0, 8), switches: h.switches, errs: (h.errs || []).slice(-5), note: h.note, view: h.view, host: h.host,
-          tiles: (h.tiles || []).map(t => (t.big ? 'B' : '') + (t.still ? 'S' : '') + (t.video ? 'v' : '-')).join(' ') } : null,
+          tiles: (h.tiles || []).map(t => (t.big ? 'B' : '') + (t.still ? 'S' : '') + (t.video ? 'v' : '-')).join(' '),
+          log: evt && evt.type === 'addr' ? h.log : undefined } : null,   // Ablauf je Wechsel (hornLog: Zeit % 100 s)
       });
     }
     R.event = evInfo;
@@ -447,6 +473,8 @@ function recovery(s, t, expect) {
       recover: evInfo.end ? (Math.max(...pv.map(x => x.recover == null ? 1e9 : x.recover)) >= 1e9 ? null : Math.max(...pv.map(x => x.recover))) : null,
       missing_setup: sv.filter(x => x == null).length,
     };
+    // je Adresswechsel: Erholung, bis bei allen wieder alle Bilder frisch sind (null = nie)
+    if (evInfo.recs) R.sum.recovers = evInfo.recs.map((t, k) => pv.some(x => !x.recovers || x.recovers[k] == null) ? null : Math.max(...pv.map(x => x.recovers[k])));
     if (S.eng) { const e = R.pages[L[S.eng.i]]; R.sum.eng = e && { lag: e.lag, fps: e.fps, freeze: e.freeze, conceal: e.conceal, gaps: e.gaps }; }
     if (evt && evt.type === 'handover') R.sum.recover = evInfo.ready_ms, R.sum.who_gap = med(Object.values(R.pages).map(x => x.who_gap).filter(x => x != null && x > 0));
     if (evt && evt.type === 'share') {                // Bildschirm bei den anderen Personen (ohne die teilende selbst)

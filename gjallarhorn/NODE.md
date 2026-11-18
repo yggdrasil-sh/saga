@@ -1427,5 +1427,12 @@ PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers e2e/sfu.sh  # 4 Chromium, ICE-TCP + TU
 e2e/stau.sh start; e2e/stau.sh set 'down=600&rtt=40'; e2e/stau.sh mess --path turn  # enger Downlink (Engpass)
 ```
 
+`HORN_SPUR=1` (nur Diagnose, Prüfstand und Labor): je Bein und Sekunde eine Zeile `spur` mit Schätzung, GCC-Ziel,
+Medienrate, Rest der Sperrzeit, Aufschub, Schonfrist/ready, Probe-Stufe und je Bild-Platz Schicht, Zeitschicht,
+Besitzer (16-Bit-Hash der Peer-Kennung), Pakete des Ausgangs in der Sekunde und ob er wartet (`x` = nichts weitergeleitet,
+`w<schicht>` = Wechsel wartet auf ein Schlüsselbild), z. B. `spur 3fa2 est=538k gcc=961k rate=477k sperre=8.6s
+backoff=16s lag=false ready=true probe=0 sp:l3@91c0/23 ti:l3@0d7e/24 ti:p3@b415/0x`; bei `HORN_BWE=mit|eigen` dazu je
+Wechsel des ICE-Paars `spurpaar <bein> lokal=<typ> fern=<typ>` (ohne Adressen). Damit wurde 2152 eingegrenzt.
+
 `HORN_DEV=1` (nur Tests) schaltet die Endpunkte unter `/api/dev/` frei: Entwicklungs-Token, Räume, Drossel je Bein und
 Lastzahlen. Dazu kommt die Testseite `/dev/`. Auf keinen Fall produktiv setzen.

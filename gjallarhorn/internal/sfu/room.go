@@ -298,6 +298,8 @@ type Leg struct {
 	est    estimator
 	closed bool
 	sig    string // letzte Layout-Meldung
+	spurAt int64  // HORN_SPUR (spur.go)
+	spurPk map[*fwd.Out]uint64
 	srcs   []*source
 
 	// Ext liefert eine externe Schaetzung in bit/s (GCC auf UDP), 0 = keine.

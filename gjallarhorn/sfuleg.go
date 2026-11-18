@@ -328,6 +328,9 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 				tr.ICETransport().OnSelectedCandidatePairChange(func(cp *webrtc.ICECandidatePair) {
 					if b.pairChanged(cp) {
 						b.m.Reset(bweNow())
+						if sfu.SpurOn && cp != nil && cp.Local != nil && cp.Remote != nil { // Diagnose (HORN_SPUR)
+							log.Printf("spurpaar %s lokal=%s fern=%s", shortID(l.id), cp.Local.Typ, cp.Remote.Typ) // ohne Adressen
+						}
 					}
 				})
 			}

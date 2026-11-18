@@ -35,7 +35,7 @@ from saga import horn as HN  # noqa: E402
 
 req, res, ok = A_.req, K.res, K.ok
 APP = K.APP
-B_PORT, B_NAME = 8464, "127.0.0.1"     # Adresse statt Name: STUN (UDP-Probe) loest .localhost nicht auf; 127.0.0.2 antwortet ueber UDP von 127.0.0.1
+B_PORT, B_NAME = int(os.environ.get("HORN_TEST_B", "8464")), "127.0.0.1"     # Adresse statt Name: STUN (UDP-Probe) loest .localhost nicht auf; 127.0.0.2 antwortet ueber UDP von 127.0.0.1
 B_STATE = tempfile.mkdtemp(prefix="horn-b-")
 PW = K.PW
 USERS = [("ca-w1", "Wanda Gastgeberin"), ("ca-w2", "Wim Zwei"), ("ca-w3", "Wera Drei"), ("ca-w4", "Wolf Vier"), ("ca-w5", "Wiebke Fuenf")]
