@@ -3,8 +3,10 @@
 // Fokus/Schreibmarke bleiben (Weitertippen landet im selben Block), fremde Aenderung kommt an, kein "Neu laden"-/
 // Konflikt-Hinweis, keine Seitenfehler. Faelle: anderer Block 16x, neue Bloecke, Block geloescht, gleicher Block (ohne
 // und mit Ueberschneidung), Unterseiten-Verweis mit Titel in Etappen, Fremdaenderung am Block mit der Schreibmarke ohne
-// Eingabe, viele schnelle Aenderungen. Laeuft mit notes.live an und aus (Admin-Schalter; der Test meldet den Stand).
+// Eingabe, Spalten (in und neben einer Spalte tippen), viele schnelle Aenderungen. Laeuft mit notes.live an und aus (Admin-Schalter; der Test meldet den Stand).
 // Voraussetzung: Admin editor.engine = choice (Konto-Wahl Editor.js). FAELLE=a,b,... nur diese Faelle.
+// SAGA_EDITOR=tiptap nur zum Vergleich: Tiptap ohne live laesst die Schreibmarke bei fremdem Text vor ihr im selben
+// Block noch stehen ("gleich", "ruhend": 3 FAIL, auf 86aab10 genauso); mit live gilt Yjs.
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Cookie hk-test-a> node tests/browser_editorjs_fremd.js
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
@@ -40,7 +42,13 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     const out = fn(bl) || bl;
     return b.api('PATCH', '/api/notes/' + id, { body: J({ blocks: out }), format: 'blocks', rev: g.rev, merge: 1 });
   }
-  const activeBlock = () => a.evaluate(() => { const e = document.activeElement; const x = e && e.closest && e.closest('#pg-editor [data-block-id]'); return x ? x.getAttribute('data-block-id') : null; });
+  // Block mit Fokus und Schreibmarke (Tiptap: ein Eingabefeld fuer alles - daher ueber die Auswahl)
+  const activeBlock = () => a.evaluate(() => {
+    const e = document.activeElement, s = window.getSelection(), n = s && s.rangeCount ? s.anchorNode : null;
+    if (!e || !e.isContentEditable || !n || !e.contains(n)) return null;
+    const x = (n.nodeType === 1 ? n : n.parentElement).closest('#pg-editor [data-block-id]');
+    return x ? x.getAttribute('data-block-id') : null;
+  });
   const domText = (id) => a.evaluate((s) => (document.querySelector(s) || {}).textContent || '', D.block(id));
   async function openA(title, blocks) {
     const id = (await a.api('POST', '/api/notes', { title, cover: null })).id;
@@ -74,7 +82,7 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     a.errs.length = 0; b.errs.length = 0;
     return id;
   }
-  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,schnell').split(',');
+  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,spalten,schnell').split(',');
   const base3 = () => [P('t1', 'Start'), P('t2', 'Ende'), P('f0', 'fremd 0')];
   const agree = async (id, bl) => {   // Editor (A) zeigt dieselben Bloecke wie der Server
     const ids = (await D.blocks(a)).filter((x) => x.parent == null).map((x) => x.id);
@@ -164,6 +172,38 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     const bl = await blocksOf(id);
     ok('ruhend: Weitertippen landet im Block und wird gespeichert', bl.some((x) => x.id === 't2' && x.data.text === 'Neu: Ende!'), bl);
     ok('ruhend: kein Hinweis, keine Seitenfehler', !(await a.evaluate(() => !!document.querySelector('#pg-conflict, #pg-remote'))) && a.errs.length === 0, a.errs);
+    a.errs.length = 0;
+  }
+
+  // Spalten (verschachtelte Editoren): fremde Aenderung in einer Spalte und neuer Spaltenblock, waehrend A in t1 tippt;
+  // dann umgekehrt: A tippt IN einer Spalte, B aendert t2 und fuegt einen Block an
+  const COLS = (k1, k2) => ({ id: 'c1', type: 'columns', data: { cols: [{ blocks: [P('k1', k1)] }, { blocks: [P('k2', k2)] }] } });
+  const colText = (bl, kid) => { const c = bl.find((x) => x.id === 'c1'); const all = c ? c.data.cols.flatMap((x) => x.blocks) : []; const k = all.find((x) => x.id === kid); return k ? k.data.text : null; };
+  if (want.includes('spalten')) await typingCase('Spalten', [P('t1', 'Start'), P('t2', 'Ende'), COLS('links', 'rechts')], async (id) => {
+    await remote(id, (bl) => { bl.find((x) => x.id === 'c1').data.cols[1].blocks[0].data.text = 'rechts fremd'; });
+    await sleep(500);
+    await remote(id, (bl) => { bl.push({ id: 'c2', type: 'columns', data: { cols: [{ blocks: [P('m1', 'neu links')] }, { blocks: [P('m2', 'neu rechts')] }] } }); });
+  }, async (id, bl) => {
+    ok('Spalten: fremde Aenderung in der Spalte gespeichert', colText(bl, 'k2') === 'rechts fremd' && colText(bl, 'k1') === 'links', bl);
+    ok('Spalten: Editor zeigt sie und den neuen Spaltenblock', await until(async () => (await domText('k2')) === 'rechts fremd' && (await domText('m2')) === 'neu rechts', 4000), [await domText('k2'), await domText('m2')]);
+  });
+  if (want.includes('spalten')) {
+    console.log('--- in einer Spalte tippen ---');
+    const id = await openA('Fremd Spalte tippen', [P('t1', 'Start'), P('t2', 'Ende'), COLS('links', 'rechts')]);
+    await D.focus(a, 'k1', 'end');
+    const typing = a.keyboard.type(TXT, { delay: 60 });
+    await sleep(300);
+    for (let i = 1; i <= 4; i++) { await remote(id, (bl) => { bl.find((x) => x.id === 't2').data.text = 'Ende ' + i; if (i === 2) bl.splice(0, 0, P('v2', 'oben neu')); }); await sleep(400); }
+    await typing; await sleep(400);
+    const fb = await activeBlock();
+    await a.keyboard.type(TAIL, { delay: 40 });
+    await sleep(3500);
+    const bl = await blocksOf(id);
+    ok('Spalte tippen: Eingabe in der Spalte vollstaendig gespeichert', colText(bl, 'k1') === 'links' + TXT + TAIL, bl);
+    ok('Spalte tippen: Fokus blieb in der Spalte', fb === 'k1' && (await domText('k1')) === 'links' + TXT + TAIL, [fb, await domText('k1')]);
+    ok('Spalte tippen: fremde Aenderungen da (Server und Editor)', bl.some((x) => x.id === 't2' && x.data.text === 'Ende 4') && bl.some((x) => x.id === 'v2')
+       && await until(async () => (await domText('t2')) === 'Ende 4' && (await domText('v2')) === 'oben neu', 4000), bl);
+    ok('Spalte tippen: kein Hinweis, keine Seitenfehler', !(await a.evaluate(() => !!document.querySelector('#pg-conflict, #pg-remote'))) && a.errs.length === 0, a.errs);
     a.errs.length = 0;
   }
 

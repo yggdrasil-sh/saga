@@ -16,3 +16,6 @@ editorjs.umd.js: Saga-Patch (Bughunt P01, Speicherleck): BlockManager.unbindBloc
   (keydown/keyup/dragover/dragleave am Block) beim Entfernen, Ersetzen (insert replace, update) - vorher blieben sie samt
   abgehaengtem Block in listeners.allListeners; verspaetetes bindBlockEvents (requestIdleCallback) entfaellt fuer schon
   entfernte Bloecke; Listeners.offById entfernt den Eintrag auch aus allListeners.
+editorjs.umd.js: Saga-Patch (Bug 2155): BlockSelection.toggleReadOnly() (laeuft bei jedem Editor-Start) loescht die
+  Auswahl nur noch, wenn sie in diesem Editor liegt - ein verschachtelter Editor (Spalten, Ausklappbar), der beim
+  Einarbeiten fremder Aenderungen neu entsteht, nahm sonst der laufenden Eingabe in einem anderen Block die Schreibmarke.

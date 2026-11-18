@@ -972,7 +972,11 @@
   // die veraltete Revision mitschicken -> falscher Konflikt "mit sich selbst" (z. B. bei langsamer Verbindung)
   // Bug 2155: waehrend applyDoc fremde Bloecke einarbeitet, nicht lesen/senden (halb angewandter Stand liesse den Server
   // die fremden Bloecke als "von mir geloescht" werten) - erst danach
-  function applied() { return S.applyP || null; }
+  // (hoechstens 5 s - ein haengender Editor darf das Speichern nicht dauerhaft aufhalten)
+  function applied() {
+    var p = S.applyP; if (!p) return null;
+    return Promise.race([p, new Promise(function (r) { setTimeout(r, 5000); })]).then(function () { if (S.applyP === p) S.applyP = null; });
+  }
   function save() {
     S.saveChain = (S.saveChain || Promise.resolve()).then(applied, applied).then(saveNow, saveNow);
     return S.saveChain;
@@ -1310,7 +1314,7 @@
   // Nur speichern, wenn sich der Inhalt wirklich geaendert hat (Editor.js meldet beim Laden teils "Aenderungen")
   var _origSave = save;
   save = function () {
-    if (S.applyP) return S.applyP.then(function () { return save(); });   // Bug 2155: erst nach dem Einarbeiten vergleichen
+    if (S.applyP) return applied().then(function () { return save(); });   // Bug 2155: erst nach dem Einarbeiten vergleichen
     if (S.dirtyBody && S.editor && !S.dirtyTitle) {
       return S.editor.save().then(function (o) {
         if (JSON.stringify(o.blocks) === S.lastBlocks) { S.dirtyBody = false; clearTimeout(S.timer); state(T('Gespeichert ✓'), 'ok quiet'); return; }
@@ -9941,7 +9945,22 @@
       if (by && by.name && !liveBody()) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');   // live (E9): still
     });
   }
-  function blkSig(b) { return JSON.stringify([b.type, b.data, b.tunes || null]); }
+  // Vergleichsschluessel eines Blocks - Schluessel sortiert, leere tunes wie keine (Editor.js schreibt "tunes": {} auch in
+  // verschachtelte Bloecke, der Server laesst es weg und fuehrt Felder in anderer Reihenfolge zusammen; sonst galt ein
+  // unveraenderter Block als geaendert und wurde ersetzt - Spalten samt Fokus darin, Bug 2155)
+  function canonJ(x) {
+    if (Array.isArray(x)) return x.map(canonJ);
+    if (!x || typeof x !== 'object') return x;
+    var o = {};
+    Object.keys(x).sort().forEach(function (k) {
+      if (x[k] === undefined) return;                  // wie JSON: fehlt
+      var v = canonJ(x[k]);
+      if (k === 'tunes' && v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length) return;
+      o[k] = v;
+    });
+    return o;
+  }
+  function blkSig(b) { return JSON.stringify(canonJ({ type: b.type, data: b.data, tunes: b.tunes })); }
   function typedSince(bid, seq) { return ((S.inAt && S.inAt[bid]) || 0) > seq; }
   function jclone(x) { return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); }
   // Bug 2155: Plan fuer das Einarbeiten eines fremden Stands (oberste Ebene) in den offenen Editor.js-Editor.
@@ -10036,7 +10055,9 @@
         ed.blocks.delete(i);
       }
     });
-    return chain.then(function () {
+    return chain.then(function () { return restore; });
+    // Schreibmarke/Lage - erst, wenn auch neue verschachtelte Editoren fertig sind (die nehmen beim Start die Auswahl weg)
+    function restore() {
       if (!caret) return;
       var el = topBlockEl(caret.id); if (!el) return;
       var sel = window.getSelection(), inside = !!(sel && sel.rangeCount && el.contains(sel.getRangeAt(0).startContainer));
@@ -10048,7 +10069,7 @@
         else setCaretIn(el, caret.ce, off);
       }
       if (top0 !== null) { var dy = el.getBoundingClientRect().top - top0; if (Math.abs(dy) > 1) sc.scrollTop += dy; }   // Lage halten
-    });
+    }
   }
   function ceText(blk, ce) { var eds = blk.querySelectorAll('[contenteditable="true"]'), t = eds[ce] || eds[0]; return t ? t.textContent : null; }
   // Schreibmarke (Zeichen off in a) auf den neuen Text b abbilden: Aenderung davor verschiebt sie, Aenderung dahinter
@@ -10096,9 +10117,12 @@
       S.loading = true;
       var run = plan.bad ? renderKeep(ed, plan.local ? { blocks: plan.want } : doc)
         : applySteps(ed, plan, seq0, kept).catch(function () { return renderKeep(ed, { blocks: plan.want }); });
-      return run.then(function () {
-        return Promise.all((S.eds || []).filter(function (x) { return x.holder.isConnected; }).map(function (x) { return x.ed.isReady; }));
-      }).then(function () { return ed.save(); }).then(function (out) {
+      var fin = null;
+      return run.then(function (f) {
+        fin = typeof f === 'function' ? f : null;
+        return Promise.race([Promise.all((S.eds || []).filter(function (x) { return x.holder.isConnected; }).map(function (x) { return x.ed.isReady; })),
+                             new Promise(function (r) { setTimeout(r, 3000); })]);
+      }).then(function () { if (fin) fin(); return ed.save(); }).then(function (out) {
         var kn = plan.local || Object.keys(kept).length;
         S.lastBlocks = kn ? null : JSON.stringify(out.blocks); decorateLinks();
         document.dispatchEvent(new CustomEvent('hk-page-ready', { detail: { id: id } }));

@@ -78,6 +78,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   live über den Live-Raum); nichts wird überschrieben. Apps/API: `"link": false` schaltet es je Anfrage ab
   (`docs/APP-API.md`).
 
+### Behoben – Editor.js: Tippen, während ein anderer Tab dieselbe Seite ändert (Bug 2155)
+- Kam eine fremde Änderung an (anderer Tab/anderes Gerät, auch der automatische Unterseiten-Verweis samt nachgezogenem
+  Titel), zeichnete Editor.js bei neuen oder entfernten Blöcken die ganze Seite neu: weitere Eingabe ging verloren, der
+  Fokus war weg. Bei mehrfachen Änderungen konnte Getipptes durch den Serverstand ersetzt werden.
+- Jetzt werden fremde Blöcke einzeln eingefügt, entfernt, verschoben oder ersetzt – ohne Neuzeichnen. Blöcke mit eigener,
+  noch nicht gespeicherter Eingabe bleiben stehen und gehen mit ihrer Basis (`bases`) beim nächsten Speichern an den
+  Server, der wie bisher zusammenführt (Überschneidung → Konfliktblock). Schreibmarke und Lage bleiben; ändert die
+  fremde Fassung den Block mit der Schreibmarke, rückt sie mit. Kein „Neu laden“-Hinweis mehr bei schnell
+  aufeinanderfolgenden Änderungen. Tiptap unverändert. Neue Browser-Reihe `tests/browser_editorjs_fremd.js`.
+
 ### Behoben – kleine Reste Server/Web (Prüfungen 17./18.11.)
 - **Knoten-Steuerkanal:** Verbindet ein Knoten neu, während seine alte Steuerverbindung noch abgebaut wird, steht er
   nicht mehr kurz als „getrennt“ im Register (bis zur nächsten Lastmeldung). Jede Anmeldung zieht eine Generation; der
