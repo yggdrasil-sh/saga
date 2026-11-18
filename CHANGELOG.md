@@ -20,6 +20,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Knoten-Steuerkanal:** Verbindet ein Knoten neu, während seine alte Steuerverbindung noch abgebaut wird, steht er
   nicht mehr kurz als „getrennt“ im Register (bis zur nächsten Lastmeldung). Jede Anmeldung zieht eine Generation; der
   Abbau einer älteren Verbindung schreibt nichts mehr.
+- **Anruf-Diagnose `ho-fail` (Web):** Auch „Hierher übernehmen“ vom Begleitgerät aufs Hauptgerät (Frist bzw.
+  Beförderung gescheitert) und eine Verbindung, die während der Übernahme abbricht, stehen jetzt mit Zustand je
+  Verbindung in der Diagnose (Präfix `take-to`, `take-promo`, `drop`) – bisher nur ein Hinweis auf dem Bildschirm.
 
 ### Behoben – Seiten-Sperre und Live-Abgleich im Browser (Feldfehler)
 - **Sperre kommt an:** Sperrt ein anderes Gerät oder ein anderer Tab die offene Seite, zeigt der Browser jetzt sofort das

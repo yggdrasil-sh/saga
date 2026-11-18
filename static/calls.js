@@ -889,6 +889,7 @@
   // Verbindung zu einem Geraet trennen (hat den Anruf verlassen bzw. Fehler nur auf dieser Verbindung)
   function dropLink(L, msg) {
     var R = roomOf(L);
+    if (R.ho && !R.ho.done && live(R)) hoDiag(R, 'drop', L);   // 2.5 (Bug 2126): waehrend einer Uebernahme (z. B. connT)
     clearTimeout(L.outT); clearTimeout(L.connT); clearTimeout(L.failT); clearTimeout(L.discT);
     try { if (L.pc) L.pc.close(); } catch (e) { /* schon zu */ }
     if (L.tile) { L.tile.box.remove(); L.tile = null; }
@@ -1089,12 +1090,20 @@
     R.ho = null;
     drawCtl(R); drawInfo(R);
   }
+  // Diagnose ho-fail (calldiag): Zustand je Verbindung bzw. des Knotens. why (2.5, Bug 2126) sagt, welcher Weg scheiterte:
+  // '' neues Geraet (Frist, hoFail), 'take-to' Begleitgeraet -> Hauptgeraet (Frist), 'take-promo' Befoerderung/Ton-Bein,
+  // 'drop' Verbindung waehrend der Uebernahme abgebrochen (L: nur diese)
+  function hoDiag(R, why, L) {
+    var p = why ? why + ' ' : '';
+    if (L) diagEv(R, 'ho-fail', p + linkDiag(L));
+    else if (!R.horn) each(R, function (x) { diagEv(R, 'ho-fail', p + linkDiag(x)); });
+    else diagEv(R, 'ho-fail', p + 'horn ' + (R.horn.cur ? 'cur' : 'kein Knoten verbunden'));
+  }
   function hoFail(R) {
     if (!R.ho || R.ho.done || !live(R)) return;
     // 2.5 (Feldfall 17.11.): woran es hing - Zustand je Verbindung in die Anruf-Diagnose (calldiag), z. B. Antwort da,
     // ICE "checking", Kandidaten je Typ hin/zurueck
-    if (!R.horn) each(R, function (L) { diagEv(R, 'ho-fail', linkDiag(L)); });
-    else diagEv(R, 'ho-fail', 'horn ' + (R.horn.cur ? 'cur' : 'kein Knoten verbunden'));
+    hoDiag(R, '');
     R.ho = null; clearInterval(R.hoI);
     api('POST', '/api/calls/' + R.id + '/leave', leaveBody(R, myDev().id)).catch(function () {});
     R.ending = true;
@@ -1126,12 +1135,13 @@
         ho.promo = false; hoCheck(R);
       }).catch(function (e) {
         if (!live(R) || R.ho !== ho) return;
+        hoDiag(R, 'take-promo');
         clearTimeout(R.hoT); R.ho = null; undo();
         HK.toast((e && e.message ? e.message + ' – ' : '') + T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.'));
       });
     } else hoCheck(R);
     if (R.ho) R.hoT = setTimeout(function () {
-      if (R.ho === ho && !ho.done) { R.ho = null; undo(); HK.toast(T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.')); }
+      if (R.ho === ho && !ho.done) { hoDiag(R, 'take-to'); R.ho = null; undo(); HK.toast(T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.')); }
     }, HO_S * 1000);
   }
   // Dieses Geraet wurde von einem anderen eigenen Geraet uebernommen: still schalten, Bescheid geben, verlassen

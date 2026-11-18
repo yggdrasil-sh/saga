@@ -152,6 +152,39 @@ const statusLine = p => p.evaluate(() => { const s = document.querySelector('.cl
     ok('M1: ... Audioanruf: Kamera bleibt aus', r4 && !r4.cam, r4);
     ok('... A ist danach nicht mehr im Anruf, B weiter verbunden', await until(async () => !(await room(a)), 15000) && allConn(await room(b), 1));
     await b.click('.cl-ctl .cl-red').catch(() => {});
+    await until(async () => !(await room(a2)) && !(await room(b)), 10000);
+
+    // --- Bug 2126 (pruef-uebergabe-p2p F4): Begleitgeraet -> Hauptgeraet scheitert -> Diagnose ho-fail -----------------
+    // A2 kommt als Begleitgeraet dazu; A2 und B wenden keine Kandidaten an (Verbindung A2 <-> B kommt nie zustande, A2 <->
+    // A schon). "Hierher übernehmen" ~22 s nach dem Beitritt: waehrend der Uebernahme laeuft connT (30 s) der Verbindung zu
+    // B ab (dropLink -> ho-fail "drop"), danach die Frist (15 s, ho-fail "take-to"). Vorher nur ein Toast.
+    await a.goto(BASE + '/chats#u' + encodeURIComponent(U2)); await a.waitForSelector('#ct-chat:not([hidden])'); await liveOk(a);
+    await a.click('#ct-call-a');
+    await b.waitForSelector('.cl-ring', { timeout: 15000 }); await b.click('.cl-ring .cl-big');
+    ok('F4: Anruf A <-> B wieder verbunden', await until(async () => allConn(await room(a), 1), 20000), await room(a));
+    for (const p of [b, a2]) await p.evaluate(() => { RTCPeerConnection.prototype.addIceCandidate = function () { return Promise.resolve(); }; });
+    await until(async () => a2.evaluate(() => !!document.querySelector('.cl-run .cl-pill:not(.cl-run-go)')), 15000);
+    const tj = Date.now();
+    await a2.click('.cl-run .cl-pill:not(.cl-run-go)');
+    const rc = await until(async () => { const r = await room(a2); return r && r.companion && r.links.length === 2 && r.links.some(l => l.connected) && r; }, 20000, 200);
+    ok('F4: A2 Begleitgeraet, nur mit A verbunden (zu B keine Kandidaten)', rc && rc.links.some(l => l.device === dB && !l.connected), await room(a2));
+    const take = await until(() => a2.$('.cl-take'), 10000, 200);
+    await a2.waitForTimeout(Math.max(0, 22000 - (Date.now() - tj)));
+    if (take) await a2.click('.cl-take');
+    const th = Date.now();
+    const evs = async () => { const r = await room(a2); return ((r && r.diag && r.diag.events) || []).filter(x => x.k === 'ho-fail'); };
+    const hf = await until(async () => { const e = await evs(); return e.some(x => /^take-to /.test(x.d)) && e; }, 25000, 300);
+    console.log('  [ho-fail A2] ' + JSON.stringify(hf || await evs()));
+    // die Verbindung zu B ist zur Frist schon weg (drop) - "take-to" nennt die verbliebenen (eigenes Geraet A, verbunden)
+    ok(`F4: Frist der Uebernahme (Begleitgeraet -> Hauptgeraet) -> ho-fail "take-to" je Verbindung (${Math.round((Date.now() - th) / 1000)} s)`,
+       (hf || []).some(x => x.d.startsWith('take-to ' + dA.slice(0, 6) + ' eigen est1 con1 ')), hf);
+    ok('F4: Verbindung zu B waehrend der Uebernahme abgebrochen (connT/dropLink) -> ho-fail "drop" mit ihrem Zustand',
+       (hf || []).some(x => x.d.startsWith('drop ' + dB.slice(0, 6) + ' est1 con0 ') && / rd1 /.test(x.d)), hf);
+    ok('F4: Diagnose ohne Adressen', hf && !hf.some(x => /\d+\.\d+\.\d+\.\d+|\.local/.test(x.d)), hf);
+    const ra = await room(a2);
+    const rA = await room(a);
+    ok('F4: A2 bleibt Begleitgeraet (keine Uebernahme mehr offen), A fuehrt den Anruf weiter', ra && ra.companion && !ra.ho && !!rA, [ra && { c: ra.companion, ho: ra.ho }, !!rA]);
+    await b.click('.cl-ctl .cl-red').catch(() => {});
   } catch (e) {
     ok('Ablauf ohne Ausnahme', false, String(e && e.stack || e));
     for (const br of BROWSERS) for (const ctx of br.contexts()) for (const p of ctx.pages()) {
