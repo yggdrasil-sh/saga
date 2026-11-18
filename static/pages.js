@@ -10000,6 +10000,7 @@
     var want = plan.want, ids = want.map(function (x) { return x.id; }), touched = false;
     var caret = caretBlock(), sc = document.scrollingElement || document.documentElement;
     var anchor = caret && topBlockEl(caret.id), top0 = anchor ? anchor.getBoundingClientRect().top : null;
+    var text0 = anchor ? ceText(anchor, caret.ce) : null, caretUpd = false;
     function skip(bid) { if (typedSince(bid, seq0)) kept[bid] = 1; return !!kept[bid]; }
     function idAt(i) { var b = ed.blocks.getBlockByIndex(i); return b ? b.id : null; }
     function idx(bid) { for (var i = 0, n = ed.blocks.getBlocksCount(); i < n; i++) if (idAt(i) === bid) return i; return -1; }
@@ -10021,7 +10022,7 @@
         if (k < 0) { touched = true; return insert(x, pos); }
         if (k !== pos) { ed.blocks.move(k < pos ? pos - 1 : pos, k); touched = true; }
         if (plan.isLocal[x.id] || !had || blkSig(had) === blkSig(x) || skip(x.id)) return;
-        touched = true;
+        touched = true; if (caret && x.id === caret.id) caretUpd = true;
         if (had.type === x.type) return ed.blocks.update(x.id, jclone(x.data), jclone(x.tunes || {}));
         var at = idx(x.id); ed.blocks.delete(at); return insert(x, at);
       });
@@ -10042,11 +10043,24 @@
       if (inside && (!touched || !caret.flat || !sel.isCollapsed)) { /* Schreibmarke steht noch: nichts anfassen */ }
       else {
         var now = inside ? caretBlock() : null, off = now && now.id === caret.id ? now.off : caret.off;
+        if (caretUpd && !inside && text0 !== null) off = mapOffset(text0, ceText(el, caret.ce), caret.off);   // fremder Text im Block
         if (caret.flat) { try { ed.caret.setToBlock(idx(caret.id), 'default', off); } catch (e) { setCaretIn(el, caret.ce, off); } }
         else setCaretIn(el, caret.ce, off);
       }
       if (top0 !== null) { var dy = el.getBoundingClientRect().top - top0; if (Math.abs(dy) > 1) sc.scrollTop += dy; }   // Lage halten
     });
+  }
+  function ceText(blk, ce) { var eds = blk.querySelectorAll('[contenteditable="true"]'), t = eds[ce] || eds[0]; return t ? t.textContent : null; }
+  // Schreibmarke (Zeichen off in a) auf den neuen Text b abbilden: Aenderung davor verschiebt sie, Aenderung dahinter
+  // nicht; liegt sie in der geaenderten Stelle, ans Ende der Aenderung
+  function mapOffset(a, b, off) {
+    var p = 0, n = Math.min(a.length, b.length);
+    while (p < n && a.charCodeAt(p) === b.charCodeAt(p)) p++;
+    var q = 0;
+    while (q < n - p && a.charCodeAt(a.length - 1 - q) === b.charCodeAt(b.length - 1 - q)) q++;
+    if (off <= p) return off;
+    if (off >= a.length - q) return b.length - (a.length - off);
+    return b.length - q;
   }
   // Editor.js, Rueckfall (Plan nicht schrittweise ausfuehrbar): neu zeichnen, Schreibmarke im selben Block wiederherstellen
   function renderKeep(ed, doc) {
