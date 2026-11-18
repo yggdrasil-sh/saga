@@ -50,6 +50,7 @@ P = {"proc": None, "log": None, "turn": None, "nsl": {}}
 CALLS = {"enabled": True, "stun": "", "turn_urls": f"turn:127.0.0.1:{TURN_PORT}?transport=udp", "turn_mode": "rest",
          "turn_secret": TURN_SECRET, "turn_ttl": 43200, "relay_only": False, "ring_s": 45}
 HORN = dict(horn=True, horn_builtin=True, horn_all=True, horn_all_y=True, horn_from=3)
+HORN_Y = dict(horn=True, horn_builtin=True)          # ab Werk mit Gjallarhorn: horn_all ohne Merker = an, ohne horn_from (L1)
 MESH = dict(horn=False)
 
 ENG1 = {"up": 1000, "down": 1000, "rtt": 40, "loss": 0, "qms": 300}       # "eng": 1 Mbit/s je Richtung
@@ -83,6 +84,9 @@ FAELLE = [
     F("r4-wechsel", "group", 4, HORN, None, None, {"type": "handover", "at": 15, "who": 3}, 50),
     F("r4-teilen", "group", 3, HORN, None, None, {"type": "share", "at": 12, "who": 2}, 45),
     F("r4-voll", "group", 4, dict(HORN, horn_video=4), None, None, {"type": "full", "at": 10, "who": 3}, 35, "horn_video 4"),
+    F("r4y-3-frei", "group", 3, HORN_Y, None, None, None, 45, "L1 ohne horn_from"),
+    F("r4y-4-frei", "group", 4, HORN_Y, None, None, None, 45, "L1 ohne horn_from"),
+    F("r4y-4-eng", "group", 4, HORN_Y, 3, ENG1, None, 45, "L1 ohne horn_from"),
     F("r5-2-frei", "dm", 2, MESH),
     F("r5-3-frei", "group", 3, MESH),
     F("r5-4-frei", "group", 4, MESH),
