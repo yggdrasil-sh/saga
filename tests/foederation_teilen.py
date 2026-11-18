@@ -210,9 +210,17 @@ def part_subpages(A, B, pa, pb, P, C, Q, D, D2, k1, rows):
     ok(f"B: Unterseite unter Projekt angelegt ({s})", s == 200 and sub and sub < 0)
     s, d = api("b", "fb-bert", "GET", f"/api/notes/{sub}")
     ok(f"B: Unterseite oeffnen ({s}, parent {d.get('parent_id')})", s == 200 and d.get("parent_id") == rP and d.get("role") == "edit")
+    # 2.5 (Bug 2151): Verweis am Ende der Elternseite beim Eigentuemer; "link": false reicht B durch; Verschieben nimmt ihn mit
+    sa = sql("a", "SELECT id FROM note WHERE title='Unterseite von B'")[0][0]
+    body = lambda nid: sql("a", f"SELECT body FROM note WHERE id={int(nid)}")[0][0] or ""
+    ok("A: Verweis auf die Unterseite von B am Ende von Projekt", f'/notes#{sa}\\"' in body(P))
+    s, d = api("b", "fb-bert", "POST", "/api/notes", {"title": "Ohne Verweis von B", "parent_id": rP, "link": False})
+    so = sql("a", "SELECT id FROM note WHERE title='Ohne Verweis von B'")
+    ok(f"B: link false -> kein Verweis bei A ({s})", s == 200 and so and f'/notes#{so[0][0]}\\"' not in body(P))
     s, d = api("b", "fb-bert", "POST", f"/api/notes/{sub}/move", {"parent_id": rC, "index": 0})
     ok(f"B: Unterseite in Kapitel verschoben (gleiche Freigaben) ({s})", s == 200 and d.get("parent_id") == rC)
     ok("A: Elternseite jetzt Kapitel", sql("a", "SELECT parent_id FROM note WHERE title='Unterseite von B'")[0][0] == C)
+    ok("A: Verweis wandert mit (Kapitel hat ihn, Projekt nicht mehr)", f'/notes#{sa}\\"' in body(C) and f'/notes#{sa}\\"' not in body(P))
     s, d = api("b", "fb-bert", "POST", f"/api/notes/{sub}/move", {"parent_id": rQ, "index": 0})
     ok(f"B: in Bereich mit anderen Freigaben verschieben -> 403 ({s})", s == 403)
     s, d = api("b", "fb-bert", "POST", f"/api/notes/{sub}/move", {"parent_id": None, "index": 0})
