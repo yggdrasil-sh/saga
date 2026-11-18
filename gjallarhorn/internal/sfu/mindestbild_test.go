@@ -129,7 +129,7 @@ func mbRunStop(t *testing.T, link float64, stoerAlle time.Duration, stoerTakte i
 }
 
 // TestMindestbildEng: 1 Mbit/s mit grundlosen Zielstuerzen alle 6 s (je ein Takt) - keine Kachel laenger als 5 s ohne
-// Bild, Kacheln hoechstens 10 % der Zeit in Pause. Vorher (Stand 1276701): laengste Pause 32,2 s, 50 % Pause.
+// Bild, Kacheln hoechstens 10 % der Zeit in Pause. Vorher (Stand 1276701): laengste Pause 2 min 30 s, 86 % Pause.
 func TestMindestbildEng(t *testing.T) {
 	r := mbRun(t, 1000e3, 6*time.Second, 1, 3*time.Minute)
 	t.Logf("eng+stoer: laengste Pause %v, Pause %.0f %%, Mindestbild %.0f %%, ueber l %.0f %%, Sprecher m+ %.0f %%",
