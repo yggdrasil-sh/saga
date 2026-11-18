@@ -1,4 +1,4 @@
-"""2.5 Grundsatz Y fuer Gruppen (Svens Entscheidung L1, 18.11.): Mit Gjallarhorn an und "Alle Anrufe ueber Knoten"
+"""2.5 Grundsatz Y fuer Gruppen (Entscheidung L1, 18.11.): Mit Gjallarhorn an und "Alle Anrufe ueber Knoten"
 (calls.horn_all, ab Werk an) laufen auch Gruppenanrufe mit 3 und 4 Mitgliedern ueber den Knoten - direkt (Mesh) nur als
 Rueckfall wie im 1:1. calls.horn_from bleibt die Schwelle fuer den Fall horn_all aus; ohne Gjallarhorn (ab Werk) bleibt
 alles Mesh bis zur Mesh-Grenze.

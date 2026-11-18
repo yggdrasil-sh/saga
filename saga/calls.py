@@ -250,7 +250,7 @@ def climit(c, call):
 
 def horn_wanted(c, ch, media, caps, why=None):
     """2.5: neuen Gruppenanruf ueber einen Knoten fuehren? Flag an, Geraet meldet "horn", ein Knoten ist bereit und der Chat
-    ist gross genug: mit "Alle Anrufe ueber Knoten" (horn_all_on, Grundsatz Y; Svens Entscheidung L1 vom 18.11.) jede
+    ist gross genug: mit "Alle Anrufe ueber Knoten" (horn_all_on, Grundsatz Y; Entscheidung L1 vom 18.11.) jede
     Gruppe - direkt (Mesh) nur als Rueckfall wie im 1:1 -, sonst erst ab mehr Mitgliedern als die Mesh-Grenze (bzw. ab
     calls.horn_from, mindestens 3). P10: im foederierten Chat (wir sind das
     Heim) zusaetzlich alle beteiligten Server mit "horn" und je Server ein nutzbarer Knoten (geteilt oder eigener) -
