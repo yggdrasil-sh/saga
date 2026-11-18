@@ -4,7 +4,8 @@
 // die Datei (window.SagaMeeting) und zeichnet damit Buehne, Streifen und Galerie.
 //
 // - meetingTiles: Personen ueber `who` zusammenfassen (eine Person = eine Kachel), Bildschirm je teilendem Geraet eine
-//   eigene Kachel ohne Kamera-Bild-im-Bild, eigene Begleitgeraete nie als Kachel, eigener Bildschirm nie auf der Buehne
+//   eigene Kachel ohne Kamera-Bild-im-Bild, eigene Begleitgeraete nie als Personenkachel, der Bildschirm eines anderen
+//   eigenen Geraets als Bildschirmkachel (§4.2, beide Richtungen), der Bildschirm dieses Geraets nie
 // - pickLayout / arrange: Auto (Praesentation, 1:1, Galerie, Sprecher), Galerie, Sprecher, Praesentation; Anheften
 // - galleryGrid / pages: Spalten und Seiten je Fensterklasse (§2.2), Video-Hoechstzahl (§8)
 // - SpeakerPick: Sprechring (> 0,03 fuer >= 300 ms, Nachlauf 600 ms) und Buehnenwechsel mit Hysterese (>= 1,5 s am
@@ -51,8 +52,7 @@
     return out;
   }
 
-  // Kacheln (§1). prefs: {showNoVideo (Standard an), spokeAt: {who: ms}, now: ms, self: dieses Geraet, ownScreens (Standard
-  // aus: Bildschirm eines anderen eigenen Geraets als Kachel)}
+  // Kacheln (§1). prefs: {showNoVideo (Standard an), spokeAt: {who: ms}, now: ms, self: dieses Geraet}
   //  {id: who,               kind: 'person', who, name, me, dev (Videoquelle bzw. Hauptgeraet), video, mic, level}
   //  {id: who|dev:cam,       kind: 'cam',    ... devName}  - Begleitgeraet mit eigener Kamera neben der Kamera des Hauptgeraets
   //  {id: who|dev:scr,       kind: 'screen', ... devName (nur bei mehreren Geraeten der Person), screenAt}
@@ -62,19 +62,18 @@
     var now = +prefs.now || 0, spoke = prefs.spokeAt || {}, show = prefs.showNoVideo !== false;
     var scr = [], per = [], mine = null;
     people(roster, media).forEach(function (P) {
-      if (P.me) {        // eigene Person: nur "Du" - eigene Begleitgeraete und der eigene Bildschirm erscheinen nie (§1.5, §4.2)
+      if (P.me) {        // eigene Person: nur "Du" - andere eigene Geraete nie als Personen- oder Kamerakachel (§1.5, §4.2)
         var self = P.devices.filter(function (d) { return d.device === prefs.self; })[0] || P.main;
         mine = { id: P.who, kind: 'person', who: P.who, name: P.name, avatar: P.avatar, me: true, dev: self.device, devName: '',
                  video: self.cam, mic: self.mic, level: self.mic ? self.level : 0 };
-        // prefs.ownScreens (Web, Bugs-DB 2154): teilt ein ANDERES eigenes Geraet (Begleitgeraet) den Bildschirm, kommt er
-        // als Bildschirmkachel wie ueber den Knoten (hornSources) - nie der Bildschirm dieses Geraets, nie eine Personenkachel
-        if (prefs.ownScreens) {
-          P.devices.forEach(function (d) {
-            if (d.screen && d.device !== prefs.self)
-              scr.push({ id: P.who + '|' + d.device + ':scr', kind: 'screen', who: P.who, name: P.name, avatar: P.avatar, me: false, dev: d.device,
-                         devName: d.dev_name, video: true, mic: false, level: 0, screenAt: d.screenAt });
-          });
-        }
+        // §4.2 (Bugs-DB 2154/2160): teilt ein ANDERES eigenes Geraet den Bildschirm, kommt er als Bildschirmkachel mit
+        // Geraetename (Praesentation) - in beiden Richtungen (Begleitgeraet -> Hauptgeraet und Hauptgeraet -> Begleitgeraet),
+        // wie ueber den Knoten (hornSources). Den Bildschirm DIESES Geraets nie (die eigene Freigabe zeigt die rote Leiste).
+        P.devices.forEach(function (d) {
+          if (d.screen && d.device !== self.device)
+            scr.push({ id: P.who + '|' + d.device + ':scr', kind: 'screen', who: P.who, name: P.name, avatar: P.avatar, me: false, dev: d.device,
+                       devName: d.dev_name, video: true, mic: false, level: 0, screenAt: d.screenAt });
+        });
         return;
       }
       var many = P.devices.length > 1;

@@ -1230,7 +1230,8 @@
   }
   // --- 2.5 Meeting-Ansicht (MEETING-SPEC.md) ---------------------------------------------------------------------------
   // Mesh (Gruppe bzw. 1:1 mit mehr als einer Kachel): eine Person = eine Kachel (alle Geraete mit gleichem `who`), je
-  // teilendem Geraet eine Bildschirmkachel (ohne Kamera-Bild-im-Bild), eigene Begleitgeraete nie als Kachel. Layouts Auto,
+  // teilendem Geraet eine Bildschirmkachel (ohne Kamera-Bild-im-Bild), auch fuer ein anderes eigenes Geraet (§4.2, beide
+  // Richtungen); eigene Begleitgeraete nie als Personenkachel, der Bildschirm dieses Geraets nie. Layouts Auto,
   // Galerie (Seiten), Sprecher (Hysterese), Praesentation; Buehne + Streifen bzw. Raster. Die Entscheidungen trifft
   // static/meeting.js (window.SagaMeeting, gemeinsame Testvektoren). Jede Verbindung behaelt fuer den Ton einen
   // unsichtbaren Halter (L.tile.holder: nur <audio>); die sichtbaren Kacheln gehoeren zum Raum (R.mt.els).
@@ -1278,9 +1279,7 @@
   }
   function meetCalc(R) {
     var mt = mtOf(R), d = meetData(R), now = Date.now();
-    // ownScreens (Bugs-DB 2154): teilt das eigene Begleitgeraet, sieht das Hauptgeraet den Bildschirm wie ueber den Knoten
-    var tiles = MT.meetingTiles(d.roster, d.media, { self: d.here, showNoVideo: mtPref('saga-call-novideo', '1') !== '0', spokeAt: mt.pick.spokeAt(), now: now,
-                                                     ownScreens: true })
+    var tiles = MT.meetingTiles(d.roster, d.media, { self: d.here, showNoVideo: mtPref('saga-call-novideo', '1') !== '0', spokeAt: mt.pick.spokeAt(), now: now })
       .filter(function (t) { return !mt.hidden[t.id]; });
     return { d: d, tiles: tiles, lay: MT.pickLayout(tiles, mt.force || layoutChoice(), { reduced: reducedMotion() }), now: now };
   }

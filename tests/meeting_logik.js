@@ -27,19 +27,14 @@ V.meetingTiles.forEach(c => {
     { a: { mic: false, level: 0.5 }, a2: { mic: true, level: 0.2 }, m: {} }, { self: 'm' });
   ok('Person: Mikro an, wenn irgendein Geraet an ist; Pegel nur von Geraeten mit Mikro (0,2)', t[0].mic === true && t[0].level === 0.2, t[0]);
 }
-// Web (Bugs-DB 2154, prefs.ownScreens): teilt das eigene Begleitgeraet den Bildschirm, sieht das Hauptgeraet ihn wie ueber den
-// Knoten als Bildschirmkachel (Praesentation) - weiter ohne Personenkachel des Begleitgeraets; den Bildschirm DIESES Geraets nie
+// §4.2 (Bugs-DB 2160): der Bildschirm eines anderen eigenen Geraets ist eine Regel fuer alle (Vektoren "§4.2 ..."), keine
+// Option mehr - auch ohne prefs.self kommt der Bildschirm des Hauptgeraets (Ersatz fuer "dieses Geraet") nie
 {
   const c = V.meetingTiles.find(x => /^§4\.2 auf dem eigenen Hauptgeraet/.test(x.name));
-  const t = M.meetingTiles(c.roster, c.media, Object.assign({}, c.prefs, { ownScreens: true }));
-  ok('ownScreens: Hauptgeraet sieht den Bildschirm des eigenen Begleitgeraets (Kachel "Anna|dA2:scr" mit Geraetename), Praesentation',
-     eq(t.map(pick), [{ id: 'anna|dA2:scr', kind: 'screen', dev: 'dA2', video: true, devName: 'iPhone' }, { id: 'ben', kind: 'person', dev: 'dB', video: true, devName: '' },
-                      { id: 'anna', kind: 'person', dev: 'dA', video: true, devName: '' }]) && M.pickLayout(t, 'auto') === 'presentation', t.map(pick));
-  const t2 = M.meetingTiles(c.roster, Object.assign({}, c.media, { dA: { mic: true, cam: true, screen: true, screenAt: 1 }, dA2: { cam: true } }),
-    Object.assign({}, c.prefs, { ownScreens: true }));
-  ok('ownScreens: der Bildschirm dieses Geraets erscheint nie (eigene Freigabe)', !t2.some(x => x.kind === 'screen'), t2.map(pick));
-  const t3 = M.meetingTiles(c.roster, c.media, c.prefs);
-  ok('ohne ownScreens (Vertrag der Apps, §4.2): wie bisher kein Bildschirm des Begleitgeraets', !t3.some(x => x.kind === 'screen'), t3.map(pick));
+  const t = M.meetingTiles(c.roster, c.media, Object.assign({}, c.prefs, { ownScreens: false }));
+  ok('§4.2: alte Option ownScreens ohne Wirkung (Bildschirm des Begleitgeraets bleibt)', t.some(x => x.id === 'anna|dA2:scr'), t.map(pick));
+  const t2 = M.meetingTiles(c.roster, Object.assign({}, c.media, { dA: { mic: true, cam: true, screen: true, screenAt: 1 }, dA2: { cam: true } }), {});
+  ok('§4.2: ohne prefs.self erscheint der Bildschirm des Hauptgeraets nicht', !t2.some(x => x.kind === 'screen'), t2.map(pick));
 }
 
 // --- pickLayout ---------------------------------------------------------------------------------------------------

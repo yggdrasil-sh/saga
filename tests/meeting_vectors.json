@@ -118,7 +118,7 @@
    "arrange": {"stage": null, "strip": [], "grid": ["anna", "anna|dA2:cam", "ben"], "float": false}
   },
   {
-   "name": "§4.2 auf dem eigenen Hauptgeraet: eigene Begleitgeraete nie als Kachel, auch nicht mit Bildschirm",
+   "name": "§4.2 auf dem eigenen Hauptgeraet: teilt das eigene Begleitgeraet, kommt sein Bildschirm als Praesentation (Geraetename), keine Personen- oder Kamerakachel des Begleitgeraets",
    "roster": [
     {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": true},
     {"device": "dA2", "who": "anna", "name": "Anna", "dev_name": "iPhone", "role": "companion", "me": true},
@@ -127,11 +127,12 @@
    "media": {"dA": {"mic": true, "cam": true}, "dA2": {"cam": true, "screen": true, "screenAt": 3}, "dB": {"mic": true, "cam": true}},
    "prefs": {"self": "dA"},
    "expect": [
+    {"id": "anna|dA2:scr", "kind": "screen", "dev": "dA2", "video": true, "devName": "iPhone"},
     {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""},
     {"id": "anna", "kind": "person", "dev": "dA", "video": true, "devName": ""}
    ],
-   "layout": "one",
-   "arrange": {"stage": "ben", "strip": [], "grid": [], "float": true}
+   "layout": "presentation",
+   "arrange": {"stage": "anna|dA2:scr", "strip": ["ben", "anna"], "grid": [], "float": false}
   },
   {
    "name": "§4.2 auf dem Begleitgeraet: das eigene Hauptgeraet erscheint nicht, eigene Kachel = dieses Geraet",
@@ -141,6 +142,55 @@
     {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": false}
    ],
    "media": {"dA": {"mic": true, "cam": true}, "dA2": {"mic": false, "cam": false}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dA2"},
+   "expect": [
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""},
+    {"id": "anna", "kind": "person", "dev": "dA2", "video": false, "devName": ""}
+   ],
+   "layout": "one",
+   "arrange": {"stage": "ben", "strip": [], "grid": [], "float": true}
+  },
+  {
+   "name": "§4.2 Gegenrichtung auf dem Begleitgeraet: teilt das eigene Hauptgeraet, kommt sein Bildschirm als Praesentation (Geraetename), keine Personenkachel des Hauptgeraets",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": true},
+    {"device": "dA2", "who": "anna", "name": "Anna", "dev_name": "iPhone", "role": "companion", "me": true},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": false}
+   ],
+   "media": {"dA": {"mic": true, "cam": true, "screen": true, "screenAt": 3}, "dA2": {"mic": false, "cam": false}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dA2"},
+   "expect": [
+    {"id": "anna|dA:scr", "kind": "screen", "dev": "dA", "video": true, "devName": "MacBook"},
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""},
+    {"id": "anna", "kind": "person", "dev": "dA2", "video": false, "devName": ""}
+   ],
+   "layout": "presentation",
+   "arrange": {"stage": "anna|dA:scr", "strip": ["ben", "anna"], "grid": [], "float": false}
+  },
+  {
+   "name": "§4.2 eigene Freigabe auf dem Hauptgeraet: der Bildschirm dieses Geraets erscheint nie, das Begleitgeraet mit Kamera auch nicht",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": true},
+    {"device": "dA2", "who": "anna", "name": "Anna", "dev_name": "iPhone", "role": "companion", "me": true},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": false}
+   ],
+   "media": {"dA": {"mic": true, "cam": true, "screen": true, "screenAt": 1}, "dA2": {"cam": true}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dA"},
+   "expect": [
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""},
+    {"id": "anna", "kind": "person", "dev": "dA", "video": true, "devName": ""}
+   ],
+   "layout": "one",
+   "arrange": {"stage": "ben", "strip": [], "grid": [], "float": true}
+  },
+  {
+   "name": "§4.2 eigene Freigabe auf dem Begleitgeraet: der Bildschirm dieses Geraets erscheint nie, das Hauptgeraet nicht als Person",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": true},
+    {"device": "dA2", "who": "anna", "name": "Anna", "dev_name": "iPhone", "role": "companion", "me": true},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": false}
+   ],
+   "media": {"dA": {"mic": true, "cam": true}, "dA2": {"cam": false, "screen": true, "screenAt": 1}, "dB": {"mic": true, "cam": true}},
    "prefs": {"self": "dA2"},
    "expect": [
     {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""},

@@ -13,7 +13,8 @@
 // - Layout-Knopf (Menue, Galerie/Auto, gespeichert in saga-call-layout), Anheften (Antippen im Streifen, Esc loest),
 //   Zoom Strg +/0, Kuerzel M, Kuerzel-Liste ?, Vollbild-Knopf vorhanden
 // - S1: eigenes Bild schwebend im Seitenverhaeltnis der Kamera (Einzelansicht), in der Praesentation als Kachel im Streifen
-// - Bugs-DB 2154: auch Anna (A, Hauptgeraet) sieht den Bildschirm ihres Begleitgeraets (Praesentation, wie ueber den Knoten)
+// - §4.2 (Bugs-DB 2154/2160): auch Anna (A, Hauptgeraet) sieht den Bildschirm ihres Begleitgeraets (Praesentation, wie ueber
+//   den Knoten); Gegenrichtung: teilt A, sieht A2 den Bildschirm von A (Praesentation, ohne Personenkachel von A), A selbst nie
 // - Ende des Teilens -> zurueck zur Einzelansicht; A3: Handy-Breite ohne waagrechtes Scrollen
 // - Screenshots hell und dunkel, Desktop und Handy (SHOTS)
 'use strict';
@@ -110,6 +111,11 @@ const selfBox = p => p.evaluate(() => { const v = document.querySelector('.cl-lo
 // Geprueft: Ben sieht EINE Kachel Anna (Personen ueber who), Anna sieht A2 nur als Chip, Bildschirm gross mit Hinweis-Chip
 // unten links (x) statt Banner, Leisten blenden aus, Echo-Blatt auf A2.
 const horn = p => p.evaluate(() => window.HKCalls && window.HKCalls.horn && window.HKCalls.horn());
+// Bildschirm gross ueber den Knoten: Bild wirklich da (Rahmen dekodiert, Zeit laeuft), nicht nur die Spur "live"
+const hscr = p => p.evaluate(() => { const w = document.querySelector('.cl-win'), v = document.querySelector('.cl-win.horn-scr video.cl-hscreen');
+  return { big: !!w && /horn-scr/.test(w.className), w: v ? v.videoWidth : 0, h: v ? v.videoHeight : 0, t: v ? Math.round(v.currentTime * 10) / 10 : 0 }; });
+async function hscrLive(p, ms) { const t0 = await until(async () => { const x = await hscr(p); return x.big && x.w > 0 && x; }, ms);
+  if (!t0) return null; await sleep(800); const t1 = await hscr(p); return t1.w > 0 && t1.t > t0.t ? t1 : null; }
 async function hornFlow(a, a2, b, o) {
   INFO_HORN = true;
   await a.goto(BASE + '/chats#u' + encodeURIComponent(o.U2)); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1000);
@@ -148,6 +154,8 @@ async function hornFlow(a, a2, b, o) {
   // Gegenprobe zu Bugs-DB 2154 (Mesh): ueber den Knoten sieht Anna (Hauptgeraet) den Bildschirm ihres Begleitgeraets schon
   const shA = await until(async () => { const x = await horn(a); return x && x.shared && x.shared.dev === o.dA2 && x.shared.live && x; }, 20000);
   ok('S3 (Knoten): Anna (Hauptgeraet) sieht den Bildschirm ihres Begleitgeraets', shA, await horn(a));
+  const vA = await hscrLive(a, 15000);
+  ok(`... Bild gross und laufend (${vA && vA.w}x${vA && vA.h})`, vA, [await hscr(a), await horn(a)]);
   await shot(a, 'knoten-2c-hauptgeraet-bildschirm-begleitgeraet-dunkel');
   const cap = await b.evaluate(() => { const s = document.querySelector('.cl-share'); return s && !s.hidden ? { t: s.textContent, cls: s.className, x: !!s.querySelector('.cl-mchip-x') } : null; });
   ok('S3 (Knoten): Hinweis-Chip "… teilt den Bildschirm (Geraet)" mit x, keine eigene Kachel fuer A2', cap && /teilt den Bildschirm \(/.test(cap.t) && /cap/.test(cap.cls) && cap.x
@@ -174,6 +182,17 @@ async function hornFlow(a, a2, b, o) {
   ok('Knoten Handy: Leiste einzeilig im Fenster, Auflegen ganz sichtbar, Streifen endet ueber der Leiste', cfh.inside && cfh.oneRow && cfh.red && above, [cfh, above]);
   await shot(b, 'knoten-4-handy-dunkel');
   await b.setViewportSize({ width: 1280, height: 720 });
+  // §4.2 Gegenrichtung (Bugs-DB 2160): A2 hoert auf, A (Hauptgeraet) teilt -> A2 (Begleitgeraet) zeigt den Bildschirm von A
+  await a2.mouse.move(300, 300); await a2.click('.cl-share-stop');
+  await until(async () => { const x = await horn(b); return x && !(x.shared && x.shared.dev === o.dA2); }, 15000);
+  await a.mouse.move(300, 300); await a.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]');
+  const shG = await until(async () => { const x = await horn(a2); return x && x.shared && x.shared.dev === o.dA && x.shared.live && x; }, 30000);
+  ok('§4.2 Gegenrichtung (Knoten): A2 (Begleitgeraet) sieht den Bildschirm des Hauptgeraets', shG, await horn(a2));
+  const vG = await hscrLive(a2, 15000);
+  ok(`... Bild gross und laufend (${vG && vG.w}x${vG && vG.h})`, vG, [await hscr(a2), await horn(a2)]);
+  await shot(a2, 'knoten-5-begleitgeraet-bildschirm-hauptgeraet-dunkel');
+  const shGb = await until(async () => { const x = await horn(b); return x && x.shared && x.shared.dev === o.dA && x.shared.live && x; }, 20000);
+  ok('... und Ben ebenso', shGb, await horn(b));
   await b.mouse.move(600, 300);
   await b.click('.cl-ctl .cl-red');
   ok('Knoten: Auflegen beendet den Anruf', await until(async () => !(await room(a)) && !(await room(a2)), 15000));
@@ -379,6 +398,26 @@ let INFO_HORN = false;
     ok('Teilen beendet: Ben wieder in der Einzelansicht (eine Person)', end, await room(b));
     const sbE = await until(async () => selfBox(b), 4000);
     ok('... eigenes Bild wieder schwebend', !!sbE, sbE);
+
+    // --- §4.2 Gegenrichtung (Bugs-DB 2160): das Hauptgeraet teilt -> das Begleitgeraet zeigt den Bildschirm ------------
+    await a.mouse.move(300, 300);
+    await a.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]');
+    const rg = await until(async () => { const r = await room(a2); return r && r.mesh && r.meet && r.meet.layout === 'presentation' && String(r.meet.stage).endsWith('|' + dA + ':scr')
+      && r.meet.els.some(x => x.id === r.meet.stage && x.video) && r; }, 20000);
+    const stG = rg && rg.meet.els.find(x => x.id === rg.meet.stage), lG = await until(async () => { const x = await look(a2); return x.rect && x; }, 8000) || await look(a2);
+    ok(`§4.2 Gegenrichtung: A2 (Begleitgeraet) sieht den Bildschirm des Hauptgeraets ("${stG && stG.label}"), Bild in der Buehne`,
+       rg && /^Bildschirm von .+ \(.+\)/.test(stG.label) && lG.stageVideos === 1 && lG.rect && lG.rect[2] >= 640, [await room(a2), lG]);
+    ok('... ohne Personenkachel des Hauptgeraets (Personen: Ben + Du)', rg && rg.meet.els.filter(x => x.kind !== 'screen').length === 2
+       && rg.meet.els.some(x => x.me) && !rg.meet.els.some(x => x.kind === 'cam'), rg && rg.meet.els);
+    await shot(a2, '3d-begleitgeraet-bildschirm-hauptgeraet-dunkel');
+    const rbG = await until(async () => { const r = await room(b); return r && r.meet && String(r.meet.stage).endsWith('|' + dA + ':scr') && r; }, 15000);
+    ok('... Ben sieht denselben Bildschirm auf der Buehne', rbG, await room(b));
+    const raG = await room(a);
+    ok('... A (teilt selbst) zeigt den eigenen Bildschirm nie als Kachel', raG && !(raG.meet && raG.meet.els.some(x => x.kind === 'screen')), raG && raG.meet);
+    await a.click('.cl-share-stop');
+    ok('Teilen am Hauptgeraet beendet: A2 wieder ohne Bildschirmkachel', await until(async () => { const r = await room(a2); return r && !(r.meet && r.meet.els.some(x => x.kind === 'screen')); }, 12000),
+       await room(a2));
+    await b.mouse.move(600, 300);
     await b.click('.cl-ctl .cl-red');
     ok('Auflegen beendet den Anruf auf allen Geraeten', await until(async () => !(await room(a)) && !(await room(a2)), 12000));
     ok('A4: Layout-Wahl bleibt nach dem Auflegen gespeichert (Auto)', (await b.evaluate(() => localStorage.getItem('saga-call-layout'))) === 'auto');

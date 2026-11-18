@@ -23,12 +23,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   übersetzten „voll“-Text, den die Apps anzeigen. Auch der führende Server lässt bei Aufträgen anderer Server dann niemanden
   klingeln. „Hierher übernehmen“ geht bei vollem Anruf weiter. Tests: `tests/anrufe_hinzufuegen.py`, `tests/anrufe_raum.py`.
 
-### Behoben – Web, Anruf ohne Knoten: Bildschirm vom eigenen Begleitgerät (Bugs-DB 2154)
-- Teilte man über das Begleitgerät den Bildschirm, sah man ihn am eigenen Hauptgerät nicht (über den Knoten schon): die
-  Meeting-Ansicht warf alle Bildschirme der eigenen Person weg. Jetzt zeigt das Web den Bildschirm eines **anderen**
-  eigenen Geräts wie über den Knoten als Bildschirmkachel (Präsentation); den Bildschirm dieses Geräts weiterhin nie, das
-  Begleitgerät weiterhin ohne eigene Personenkachel (`static/meeting.js` Option `ownScreens`, die gemeinsamen Testvektoren
-  der Apps bleiben unverändert). Tests: `tests/meeting_logik.js`, `tests/browser_meeting.js`.
+### Geändert – Anrufe: Bildschirm eines anderen eigenen Geräts immer als Präsentation (Bugs-DB 2154, 2160)
+- Teilte man über das Begleitgerät den Bildschirm, sah man ihn am eigenen Hauptgerät ohne Knoten nicht (über den Knoten
+  schon): die Meeting-Ansicht warf alle Bildschirme der eigenen Person weg. Jetzt gilt eine Regel für alle (§4.2): der
+  Bildschirm eines **anderen** eigenen Geräts erscheint als Bildschirmkachel mit Gerätename (Präsentation) – **in beiden
+  Richtungen** (Begleitgerät teilt → Hauptgerät zeigt ihn, Hauptgerät teilt → Begleitgerät zeigt ihn), im Mesh wie über
+  den Knoten. Unverändert: den Bildschirm dieses Geräts zeigt es nie, eigene Begleitgeräte bekommen keine Personenkachel,
+  das eigene Hauptgerät erscheint auf dem Begleitgerät nicht als Person. Die Web-Option `ownScreens` entfällt.
+- Gemeinsame Testvektoren `tests/meeting_vectors.json` (für iOS und Android zu übernehmen): Fall „§4.2 auf dem eigenen
+  Hauptgeraet …“ geändert, neu „§4.2 Gegenrichtung auf dem Begleitgeraet …“ und zwei Fälle „§4.2 eigene Freigabe …“.
+  Tests: `tests/meeting_logik.js`, `tests/browser_meeting.js` (Mesh und Knoten, beide Richtungen).
 
 ### Behoben – Gruppenanrufe über den Knoten: enge Leitung ohne lange Bildpausen (Bug 2152)
 - Bei einer Person mit enger Leitung (Labor: 1 Mbit/s im 4er) kamen einzelne Bilder 15–83 s lang gar nicht an, obwohl die

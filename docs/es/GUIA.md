@@ -1167,7 +1167,8 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
   curso en <dispositivo>». **Añadir** suma el portátil como **dispositivo acompañante**, sin micrófono ni sonido (sin eco
   en la misma sala), p. ej. para compartir la pantalla desde ahí. **Pasar aquí** lleva la llamada a este dispositivo sin
   interrupción: el nuevo se conecta, asume sonido y micrófono y el anterior se silencia. El acompañante tiene el mismo
-  botón. Los dispositivos acompañantes son visibles para todos en la llamada.
+  botón. Los dispositivos acompañantes son visibles para todos en la llamada. Si uno de tus dispositivos comparte la
+  pantalla, tus otros dispositivos la muestran como presentación (en ambos sentidos, desde 2.5); solo el que comparte no.
 - **Llamadas en grupo (desde 2.4):** en chats de grupo, libres y de página, 📞/🎥 inician una **llamada en grupo**.
   Suena para todos los miembros con Saga 2.4 (en chats de más de 8 miembros solo un aviso silencioso «Llamada en grupo en
   curso – Unirse»); se puede entrar y salir en cualquier momento y la llamada sigue mientras haya al menos dos personas.

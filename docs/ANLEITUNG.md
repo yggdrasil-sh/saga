@@ -1344,7 +1344,8 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   <Gerät>“. **Hinzufügen** holt den Laptop als **Begleitgerät** dazu – ohne Mikrofon und Ton (kein Echo im selben Raum),
   z. B. um von dort den Bildschirm zu teilen. **Hierher übernehmen** holt das Gespräch ohne Unterbrechung auf dieses Gerät:
   das neue Gerät verbindet sich, übernimmt Ton und Mikrofon, das alte legt sich still. Im Begleitgerät gibt es denselben
-  Knopf. Begleitgeräte sind für alle im Anruf sichtbar.
+  Knopf. Begleitgeräte sind für alle im Anruf sichtbar. Teilt eines deiner Geräte den Bildschirm, siehst du ihn auf
+  deinen anderen Geräten als Präsentation (in beide Richtungen, ab 2.5) – nur auf dem teilenden Gerät selbst nicht.
 - **Gruppenanrufe (ab 2.4):** In Gruppen-, freien und Seiten-Chats beginnen 📞/🎥 einen **Gruppenanruf**. Alle Mitglieder
   mit Saga 2.4 klingeln (in Chats mit mehr als 8 Mitgliedern nur still „Gruppenanruf läuft – Beitreten“), man kann
   jederzeit beitreten und gehen; der Anruf läuft, solange mindestens zwei dabei sind. Höchstens **4 Geräte mit Video**

@@ -1119,7 +1119,8 @@ up the call over the regular web port (live channel + normal requests).
   <device>". **Add** brings the laptop in as a **companion device** – without microphone and sound (no echo in the same
   room), e.g. to share the screen from there. **Move here** moves the call to this device without interruption: the new
   device connects, takes over sound and microphone, the old one goes quiet. The companion device has the same button.
-  Companion devices are visible to everyone in the call.
+  Companion devices are visible to everyone in the call. When one of your devices shares its screen, your other devices
+  show it as a presentation (both ways, 2.5 and later) – only the sharing device itself does not.
 - **Group calls (2.4 and later):** in group, free and page chats 📞/🎥 start a **group call**. All members with Saga 2.4
   ring (in chats with more than 8 members only a silent "Group call in progress – Join"); you can join and leave at any
   time, the call runs as long as at least two people are in it. At most **4 devices with video** or **6 audio only**

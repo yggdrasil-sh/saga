@@ -2087,7 +2087,11 @@ mich erst mit `call.state ended` bzw. `alive` → `ended`/`leg: "left"`.
 **Ansicht und Bitrate:** ab drei Endpunkten Mesh-Werte je Strom (Tabelle „Bitrate je Weg“: 600/500/350 kbit/s, ≤ 540p bzw.
 360p15). Kacheln je Verbindung, Sprecher hervorheben (Pegel der empfangenen Tonspur, z. B. `getSynchronizationSources()`
 bzw. `audioLevel`). Ein 1:1 mit stillem Begleitgerät (ohne Ton, Kamera, Bildschirm) bleibt Einzelansicht. Ton eigener
-Geräte nie abspielen. Bildschirm teilen gilt für alle Verbindungen (je Verbindung Betriebsart A/B nach deren `caps`;
+Geräte nie abspielen. **Eigene Geräte (2.5, §4.2):** ein anderes eigenes Gerät erscheint nie als Personen- oder
+Kamerakachel (das eigene Hauptgerät auf dem Begleitgerät ebenso wenig); **teilt** es den Bildschirm, kommt dieser als
+Bildschirmkachel mit Gerätename (Auto → Präsentation) – in beiden Richtungen (Begleitgerät → Hauptgerät und Hauptgerät →
+Begleitgerät), im Mesh wie über den Knoten. Den Bildschirm des eigenen Geräts zeigt man nie. Gemeinsame Testvektoren:
+`tests/meeting_vectors.json` (Fälle „§4.2 …“). Bildschirm teilen gilt für alle Verbindungen (je Verbindung Betriebsart A/B nach deren `caps`;
 eine später hinzukommende Verbindung bekommt den laufenden Bildschirm).
 
 ### Beispiele
