@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 import psycopg
 import auth
 from db import connect as _db
-from saga import avatars, bus, covers, dbcalc, i18n, mathml, nextcloud, page_widgets
+from saga import avatars, bus, covers, dbcalc, i18n, mathml, nextcloud, page_widgets, siegel
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
@@ -1166,6 +1166,8 @@ def _icon_html(ctx, icon, cls, default=""):
     if icon.startswith("/files/"):
         src = ctx.img(icon, 160)
         return f'<img class="{cls}" src="{escape(src, quote=True)}" alt="">' if src else ""
+    if siegel.is_siegel(icon):                   # 2.5: Saga-Siegel - mitgeliefert, oeffentlich (/siegel/ auch auf eigenen Domains)
+        return f'<img class="{cls}" src="{escape(icon, quote=True)}" alt="">'
     return f'<span class="{cls}" aria-hidden="true">{escape(icon)}</span>' if icon and _EMOJI_OK.fullmatch(icon) else ""
 
 

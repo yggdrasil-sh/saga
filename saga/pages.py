@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, covers, dbcalc, dbvals, mentions, merge, nextcloud, page_widgets, sublink, synced, treesync
+from saga import bus, covers, dbcalc, siegel, dbvals, mentions, merge, nextcloud, page_widgets, sublink, synced, treesync
 from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, local_ref, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -590,12 +590,17 @@ def _own_image(c, uid, url):
 
 
 def _icon(v, c=None, uid=None):
-    """Emoji (max. 8 Zeichen) oder eigenes hochgeladenes Bild (/files/<id>)."""
+    """Emoji (max. 8 Zeichen), eigenes hochgeladenes Bild (/files/<id>) oder Saga-Siegel (2.5: /siegel/<farbe>/<motiv>.svg)."""
     s = str(v or "").strip()
     if s.startswith("/files/"):
         if c is None or not _own_image(c, uid, s):
             raise ValueError(t("Icon-Bild muss ein eigenes hochgeladenes Bild sein"))
         return s
+    if s.startswith("/siegel/"):
+        p = siegel.parse(s)
+        if not p:
+            raise ValueError(t("Unbekanntes Saga-Siegel"))
+        return siegel.path_of(*p)
     s = s[:NOTE_ICON_MAX]
     if any(ch in s for ch in "<>&\"'"):
         raise ValueError

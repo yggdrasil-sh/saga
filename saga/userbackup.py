@@ -1321,7 +1321,7 @@ def _pages(uid):
         rows = c.execute("SELECT n.id, n.title, n.icon, n.parent_id, n.kind FROM note n LEFT JOIN note p ON p.id=n.parent_id AND p.uid=n.uid "
                          "WHERE n.uid=? AND n.deleted_at IS NULL AND (p.id IS NULL OR p.kind<>'database') ORDER BY n.sort, n.id LIMIT 3000",
                          (uid,)).fetchall()
-    return [{"id": r[0], "title": r[1] or "", "icon": r[2] if r[2] and not str(r[2]).startswith("/files/") else "", "parent": r[3],
+    return [{"id": r[0], "title": r[1] or "", "icon": r[2] if r[2] and not str(r[2]).startswith("/") else "", "parent": r[3],
              "db": r[4] == "database"} for r in rows]
 
 

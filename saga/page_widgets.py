@@ -47,7 +47,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from db import clean_line, connect as _db
-from saga import dbcalc, dbquery, people
+from saga import dbcalc, dbquery, people, siegel
 from saga.core import TZ, _api_guard, _bad, _body, _json_load, t
 from saga.notes import PALETTE, _iter_blocks, ensure_ids, fix_block_ids
 from saga.sharing import Access, access, is_remote
@@ -583,10 +583,12 @@ _ICON_BAD = re.compile(r"[<>&\"'\x00-\x1f]")
 
 
 def _sp_icon(v):
-    """Symbol einer Unterseite: Emoji (hoechstens 8 Zeichen) oder eigenes Bild (/files/<id>) - sonst ""."""
+    """Symbol einer Unterseite: Emoji (hoechstens 8 Zeichen), eigenes Bild (/files/<id>) oder Saga-Siegel - sonst ""."""
     s = v.strip() if isinstance(v, str) else ""
     if s.startswith("/files/"):
         return s if _IMG_OK.fullmatch(s) else ""
+    if s.startswith("/siegel/"):                   # 2.5: mitgeliefert, oeffentlich (auch auf veroeffentlichten Seiten)
+        return s if siegel.is_siegel(s) else ""
     return s[:8] if s and not _ICON_BAD.search(s) else ""
 
 
@@ -1246,7 +1248,7 @@ def clean_remote_data(kind, d, peer_id=None):
                 continue
             ref = F.ref(peer_id, x["id"])
             ic = x.get("icon") if isinstance(x.get("icon"), str) else ""
-            ic = (fimg(ic, ref) or "") if ic.startswith("/") else _sp_icon(ic)
+            ic = (fimg(ic, ref) or "") if ic.startswith("/") and not ic.startswith("/siegel/") else _sp_icon(ic)     # Siegel: wie hier
             items.append({"id": ref, "title": _fstr(x.get("title"), 200), "icon": ic, "img": fimg(x.get("img"), ref),
                           "kind": "database" if x.get("kind") == "database" else "page"})
         total = _fint(d.get("total"), 0, 10 ** 7)

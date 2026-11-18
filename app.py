@@ -46,6 +46,7 @@ from saga.notes import FILE_MAX
 from saga import backups, graph, nextcloud, pageindex, siteicons, userbackup
 from saga import gallery                       # 2.5: Vorlagengalerie (/api/gallery...)
 from saga import covers                        # 2.5: Titelbild-Galerie (/covers/<id>.jpg, /api/covers, /api/account/pages)
+from saga import siegel                        # 2.5: Saga-Siegel als Seitensymbole (/siegel/<farbe>/<motiv>.svg, /api/siegel)
 from saga import page_blocks                   # 2.5 (P6-4): Bloecke auf eine andere Seite verschieben
 from saga import import_common, importer      # 2.5 (Paket 2): Importe (/api/import/...)
 from saga import people                        # 2.5 (Paket 1): Personen-Auswahl (/api/notes/{nid}/people)
@@ -196,8 +197,9 @@ def _public_path(path):
     # /api/avatar/: Profilbilder auf veroeffentlichten Seiten (nur, wenn die Person es erlaubt hat - prueft saga.avatars)
     # /lang: Sprachumschalter der oeffentlichen 404-Seite (setzt nur das Sprach-Cookie dieser Domain)
     # /covers/: Titelbild-Galerie (2.5, gemeinfreie bzw. vom Admin freigegebene Bilder - Titelbilder veroeffentlichter Seiten)
+    # /siegel/: Saga-Siegel (2.5, mitgelieferte Seitensymbole - auch auf veroeffentlichten Seiten)
     return (path in ("/", "/lang") or path.startswith("/@") or path.startswith("/static/")
-            or path.startswith("/api/avatar/") or path.startswith("/covers/"))
+            or path.startswith("/api/avatar/") or path.startswith("/covers/") or path.startswith("/siegel/"))
 
 
 @app.middleware("http")
@@ -353,6 +355,7 @@ app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/
 app.include_router(importer.router)          # Importe (2.5, Paket 2): /api/import/...
 app.include_router(gallery.router)           # Vorlagengalerie (2.5): /api/gallery, /api/gallery/{id}, /api/gallery/{id}/use
 app.include_router(covers.router)            # Titelbild-Galerie (2.5): /covers/<id>.jpg (oeffentlich), /api/covers, /api/account/pages
+app.include_router(siegel.router)            # Saga-Siegel (2.5): /siegel/<farbe>/<motiv>.svg|.png (oeffentlich), /api/siegel
 app.include_router(people.router)            # Personen (2.5, Paket 1): GET /api/notes/{nid}/people (Auswahl erwaehnbar/zuweisbar)
 app.include_router(apitok.router)            # 2.5 (Paket 1 E5): /api/account/api-tokens (Sitzung, Bestaetigung)
 app.include_router(api_v1.router)            # 2.5 (Paket 1 E5): oeffentliche API /api/v1/... (nur Bearer-Token sga_)

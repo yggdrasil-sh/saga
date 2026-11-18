@@ -33,7 +33,7 @@ from starlette.convertors import Convertor, register_url_convertor
 
 import auth
 from db import clean_line, connect as _db
-from saga import avatars, bus, comments, covers, fed_dbx, fedsig, i18n, netguard, notify, pages, people, sharing
+from saga import avatars, bus, comments, covers, fed_dbx, fedsig, i18n, netguard, notify, pages, people, sharing, siegel
 from saga.core import BASE_URL, E, HANDLE_RE, RESTORE_TEST, SECRET, STATE_DIR, _api_guard, _bad, _body, _session_user, local_ref, parse_json, resolve_ref, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import BLOCK_ID_RE, FILE_MAX, FILES_DIR, _disposition, _iter_blocks
@@ -82,7 +82,10 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
          "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1",
-         "wsubpages1", "chatadm1", "groupinfo2", "moddel1", "msgpin1", "block2", "report1", "chatmention1"]
+         "wsubpages1", "chatadm1", "groupinfo2", "moddel1", "msgpin1", "block2", "report1", "chatmention1", "siegel1"]
+# siegel1 (2.5, saga.siegel) = kennt die Saga-Siegel: Seitensymbol '/siegel/<farbe>/<motiv>.svg' (auf jedem Server dieselben
+# Dateien) - fremde Seiten zeigen es, Bearbeiten setzt es. Ohne siegel1 beim Eigentuemer: PATCH mit Siegel -> 409 (aeltere
+# Server wuerden den Pfad als 8-Zeichen-"Emoji" abschneiden), das Web blendet die Auswahl dort aus.
 # 2.5 (Chat-Standard B, saga.chat_grp): groupinfo2 = Beschreibung/Bild freier Gruppen (kind desc/avatar wie title) und
 # Gruppenrechte (Auftrag 'perm' an das Heim, Ereignis 'chat.perm', perm_info/perm_send in chat.members; das Heim setzt
 # sie beim Senden durch); moddel1 = Admins loeschen fremde Nachrichten (Auftrag 'del' mit mod, Ereignis chat.msg.del mit
@@ -2548,6 +2551,8 @@ def _safe_pic(v, icon):
         return s
     if not icon and covers.builtin_path(s) == s and s:      # 2.5: mitgeliefertes Galerie-Bild - gibt es hier genauso
         return s
+    if icon and siegel.is_siegel(s):                        # 2.5: Saga-Siegel - gibt es hier genauso
+        return s
     if icon and len(s) <= 8 and not any(ch in s for ch in "<>&\"'/\\:") and not re.search(r"[\x00-\x1f\x7f]", s):
         return s
     return ""
@@ -2761,7 +2766,7 @@ def _note_in(c, peer, d, uid):
 
 
 PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl", "csv",
-             "formula1", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1")
+             "formula1", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1", "siegel1")
 
 
 COLLAB_CAP = None            # 2.5 (saga.fed_collab): Faehigkeit "collab1-<schema>" - in caps der Seite als "collab1"
@@ -2980,6 +2985,8 @@ def _pic_out(v, pid):
         return f"/files/{m.group(2)}" if p == pid else ""
     if covers.builtin_path(v.strip()) == v.strip() and v.strip():        # 2.5: mitgeliefertes Galerie-Bild bleibt
         return v.strip()
+    if siegel.is_siegel(v.strip()):                                        # 2.5: Saga-Siegel bleibt (siegel1, _w_note_patch)
+        return v.strip()
     return "" if v.strip().startswith("/") else v
 
 
@@ -3000,6 +3007,10 @@ def _w_note_patch(uid, nid, b):
             with _db() as c:
                 hp = _home_peer(c, pid)
                 b["body"] = mentions.home_out(c, b["body"], lambda u: (lambda pub: f"@{pub}@{SELF_HOST}" if pub else None)(fed_name(c, u, hp)))
+    if isinstance(b.get("icon"), str) and siegel.is_siegel(b["icon"].strip()):
+        with _db() as c:
+            if not feature(_home_peer(c, pid), "siegel1"):    # 2.5: aelterer Server kennt die Siegel nicht
+                return _bad(t("Die Saga-Instanz dieser Seite kennt die Saga-Siegel noch nicht."), 409)
     for k in ("icon", "cover"):
         if k in b and b[k]:
             b[k] = _pic_out(b[k], pid)

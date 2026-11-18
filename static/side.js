@@ -8,7 +8,7 @@
   var body = document.body, $ = function (id) { return document.getElementById(id); };
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function store(k, v) { try { return HK.store(k, v); } catch (e) { return null; } }
-  function isImg(i) { return typeof i === 'string' && (i.indexOf('/files/') === 0 || i.indexOf('/api/fed/files/') === 0); }
+  function isImg(i) { return typeof i === 'string' && (i.indexOf('/files/') === 0 || i.indexOf('/api/fed/files/') === 0 || /^\/siegel\/(weinrot|smaragd|elfenbein)\/[a-z]{2,20}\.svg$/.test(i)); }   // 2.5: Saga-Siegel
   function ico(icon) {
     if (isImg(icon)) { var im = el('img', 'pg-ic ic-img'); im.alt = ''; im.decoding = 'async'; im.src = /^\/files\/[0-9a-f]{24}$/.test(icon) ? icon + '?w=160' : icon; return im; }
     return el('span', 'pg-ic', icon || '📄');

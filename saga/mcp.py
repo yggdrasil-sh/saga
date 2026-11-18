@@ -27,7 +27,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from saga import api_calendar, api_struct, api_v1, apitok, blockedit, page_widgets
+from saga import api_calendar, api_struct, api_v1, apitok, blockedit, page_widgets, siegel
 from saga.api_v1 import Fail
 from saga.core import BASE_URL, t
 from version import VERSION
@@ -59,6 +59,11 @@ def _s(typ, desc, **kw):
     return dict({"type": typ, "description": desc}, **kw)
 
 
+# 2.5 (Bug 2156): Seitensymbol = Emoji oder Saga-Siegel (saga.siegel, auf jedem Server dieselben Dateien)
+_ICON_DESC = ("Symbol: ein Emoji (z. B. 💡) oder ein Saga-Siegel als Pfad /siegel/<farbe>/<motiv>.svg – Farben: "
+              + ", ".join(siegel.FARBEN) + "; Motive: " + ", ".join(siegel.MOTIV_IDS))
+
+
 # Werkzeug: (name, noetiger Bereich, Beschreibung, Eingabeschema, schreibend)
 TOOLS = [
     ("search_pages", "read:pages", "Seiten und Datenbank-Einträge nach Text in Titel, Inhalt und Schlagworten suchen.",
@@ -71,9 +76,9 @@ TOOLS = [
     ("get_image", "read:pages", "Ein Bild aus einer Seite ansehen (z. B. Screenshot in einer Fehlermeldung). file = Datei-ID aus "
      "get_page (images) oder die /files/…-Adresse aus dem Markdown. Liefert das Bild verkleinert (höchstens 1568 px).",
      {"file": _s("string", "Datei-ID (24 Zeichen) oder Adresse …/files/<id>")}, ["file"], False),
-    ("create_page", "write:pages", "Neue Seite anlegen (Inhalt als Markdown). Mit parent_id als Unterseite, icon = Emoji.",
+    ("create_page", "write:pages", "Neue Seite anlegen (Inhalt als Markdown). Mit parent_id als Unterseite, icon = Emoji oder Saga-Siegel.",
      {"parent_id": _s("integer", "ID der Elternseite (leer = oberste Ebene)"), "title": _s("string", "Titel"),
-      "markdown": _s("string", "Inhalt als Markdown"), "icon": _s("string", "Symbol (ein Emoji, z. B. 💡)")}, ["title"], True),
+      "markdown": _s("string", "Inhalt als Markdown"), "icon": _s("string", _ICON_DESC)}, ["title"], True),
     ("append_to_page", "write:pages", "Markdown am Ende einer Seite anfügen.",
      {"id": _s("integer", "ID der Seite"), "markdown": _s("string", "Anzufügender Inhalt als Markdown")}, ["id", "markdown"], True),
     ("update_page_title", "write:pages", "Titel einer Seite ändern.",
@@ -118,7 +123,7 @@ TOOLS = [
      "\"sorts\": [{\"property\": \"Fällig\", \"dir\": \"asc\"}]}. embed_in_page: true bettet die Datenbank "
      "zusätzlich als Block in die Elternseite ein. Formeln/Rollups bitte im Web anlegen.",
      {"title": _s("string", "Name der Datenbank"), "parent_id": _s("integer", "ID der Elternseite (bei Token mit Seitenbäumen Pflicht)"),
-      "icon": _s("string", "Symbol (Emoji)"), "properties": _s("array", "Eigenschaften", items={"type": "object"}),
+      "icon": _s("string", _ICON_DESC), "properties": _s("array", "Eigenschaften", items={"type": "object"}),
       "views": _s("array", "Ansichten", items={"type": "object"}), "title_name": _s("string", "Name der Titel-Spalte (Standard: Name)"),
       "embed_in_page": _s("boolean", "true = in die Elternseite einbetten")}, ["title"], True),
     ("update_database_schema", "write:db", "Schema einer Datenbank ergänzen und Ansichten anpassen – löscht nie eine Eigenschaft, "
@@ -172,10 +177,10 @@ TOOLS = [
     ("create_row", "write:db", "Neuen Eintrag in einer Datenbank anlegen. properties: {\"Eigenschaftsname\": Wert} (Auswahl per Optionsname, "
      "Datum als JJJJ-MM-TT, Personen als Handle, Kontrollkästchen true/false). template: Name oder ID einer Eintrags-Vorlage "
      "(get_database_schema) – der Eintrag bekommt Inhalt, Symbol und Eigenschaften der Vorlage wie im Web; markdown wird "
-     "dann angefügt, properties und icon überschreiben. icon = Emoji.",
+     "dann angefügt, properties und icon überschreiben. icon = Emoji oder Saga-Siegel.",
      {"database_id": _s("integer", "ID der Datenbank"), "title": _s("string", "Titel des Eintrags"),
       "properties": _s("object", "Werte nach Eigenschaftsname"), "markdown": _s("string", "Inhalt als Markdown"),
-      "template": _s("string", "Name oder ID einer Eintrags-Vorlage"), "icon": _s("string", "Symbol (ein Emoji)")}, ["database_id", "title"], True),
+      "template": _s("string", "Name oder ID einer Eintrags-Vorlage"), "icon": _s("string", _ICON_DESC)}, ["database_id", "title"], True),
     ("update_row", "write:db", "Eigenschaften eines Datenbank-Eintrags ändern (nur die angegebenen).",
      {"id": _s("integer", "ID des Eintrags"), "properties": _s("object", "Werte nach Eigenschaftsname"), "title": _s("string", "Neuer Titel")},
      ["id"], True),

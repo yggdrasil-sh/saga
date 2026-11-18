@@ -73,7 +73,7 @@
 
   // --- Weitermachen: zuletzt geoeffnete Seiten (wie bisher "Zuletzt" in der Seitenleiste: localStorage hk-pg-recent,
   //     gepflegt von static/pages.js, abgeglichen mit /api/notes) ---------------------------------------------------
-  function isImg(i) { return typeof i === 'string' && (i.indexOf('/files/') === 0 || i.indexOf('/api/fed/files/') === 0); }
+  function isImg(i) { return typeof i === 'string' && (i.indexOf('/files/') === 0 || i.indexOf('/api/fed/files/') === 0 || /^\/siegel\/(weinrot|smaragd|elfenbein)\/[a-z]{2,20}\.svg$/.test(i)); }   // 2.5: Saga-Siegel
   function recent() {
     var box = $('hz-cards'); if (!box || !HK) return;
     var ids = [];

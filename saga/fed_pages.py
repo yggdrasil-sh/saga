@@ -36,7 +36,7 @@ from starlette.concurrency import run_in_threadpool
 from db import connect as _db
 from saga import app_api, avatars, bus, csv_export, databases, dbcalc, files, live, nextcloud, notify, page_tools, page_widgets, pages, sharing
 from saga import federation as F
-from saga import fed_dbx, people
+from saga import fed_dbx, people, siegel
 from saga.comments import counts as comment_counts
 from saga.core import E, _bad, _body, t
 from saga.files import FILE_MAX, _sniff_image
@@ -206,7 +206,8 @@ async def _owner_req(request, nid, rest):
         b = fed_dbx.dbx_in(inp, {k: v for k, v in b.items() if k in ("title", "icon", "tags", "kind", "props")}, db_id=nid)
         if not link:
             b["link"] = False
-        if isinstance(b.get("icon"), str) and b["icon"].startswith("/") and not re.fullmatch(r"/files/[0-9a-f]{24}", b["icon"]):
+        if (isinstance(b.get("icon"), str) and b["icon"].startswith("/") and not re.fullmatch(r"/files/[0-9a-f]{24}", b["icon"])
+                and not siegel.is_siegel(b["icon"])):          # 2.5: Saga-Siegel gibt es auf jedem Server
             b.pop("icon")
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_create, dict(b, parent_id=nid)))
     if m == "POST" and rest == "duplicate":

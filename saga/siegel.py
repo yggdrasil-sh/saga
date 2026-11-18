@@ -45,7 +45,7 @@ def _namen():
     return {"yggdrasil": t("Yggdrasil"), "rabe": t("Rabe"), "drachenboot": t("Drachenboot"), "horn": t("Horn"), "rune": t("Rune"),
             "buch": t("Buch"), "feder": t("Feder"), "schriftrolle": t("Schriftrolle"), "kerze": t("Kerze"), "laterne": t("Laterne"),
             "mond": t("Mond"), "sonne": t("Sonne"), "nordlicht": t("Nordlicht"), "berg": t("Berg"), "wald": t("Wald"),
-            "welle": t("Welle"), "kompass": t("Kompass"), "karte": t("Karte"), "schluessel": t("Schlüssel"), "schild": t("Schild"),
+            "welle": t("Welle"), "kompass": t("Kompass"), "karte": t("Karte##Siegel"), "schluessel": t("Schlüssel##Siegel"), "schild": t("Schild"),
             "hammer": t("Hammer"), "axt": t("Axt"), "krone": t("Krone"), "kristall": t("Kristall"), "trank": t("Trank"),
             "feuer": t("Feuer"), "stern": t("Stern"), "herz": t("Herz"), "brief": t("Brief"), "sanduhr": t("Sanduhr"),
             "zahnrad": t("Zahnrad"), "truhe": t("Truhe"), "server": t("Server"), "terminal": t("Terminal"), "katze": t("Katze"),

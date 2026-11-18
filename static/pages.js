@@ -1338,6 +1338,7 @@
         g.appendChild(b);
       });
       m.appendChild(g);
+      if (remCap(S.cur, 'siegel1')) siegelSection(m);       // 2.5 (Bug 2156); fremde Server erst, wenn sie die Siegel kennen
       m.appendChild(HK.menuItem(T('🖼 Eigenes Bild hochladen …'), function () { pickImage('icon'); }));
       if (HK.immichPick && !foreign()) m.appendChild(HK.menuItem(T('📷 Aus Immich …'), function () {
         var id = S.cur.id;
@@ -1346,6 +1347,76 @@
       if (S.cur && S.cur.icon) m.appendChild(HK.menuItem(T('Icon entfernen'), function () { setIcon(''); }));
     });
   });
+  // 2.5 (Bug 2156): Saga-Siegel im Symbol-Menue - Farbe (Radiogruppe, gemerkt), Suche nach Namen, Raster der Motive
+  // (Pfeiltasten, Pos1/Ende; nur ein Knopf in der Tab-Reihenfolge). Liste von /api/siegel (Namen in der Kontosprache).
+  var SIEGEL = null;
+  function siegelList() { return SIEGEL ? Promise.resolve(SIEGEL) : api('GET', '/api/siegel').then(function (d) { SIEGEL = d; return d; }); }
+  function siegelSection(m) {
+    m.appendChild(HK.menuLabel(T('Saga-Siegel')));
+    var box = el('div', 'sgl-box'); m.appendChild(box);
+    siegelList().then(function (d) { if (box.isConnected) siegelBuild(box, d); })
+      .catch(function () { box.appendChild(el('div', 'menu-hint', T('Saga-Siegel nicht geladen.'))); });
+  }
+  function siegelBuild(box, d) {
+    var cur = S.cur && isSiegel(S.cur.icon) ? S.cur.icon.split('/') : null;     // ['', 'siegel', farbe, motiv.svg]
+    var ids = d.colors.map(function (c) { return c.id; });
+    var farbe = cur ? cur[2] : HK.store('hk-siegel-farbe');
+    if (ids.indexOf(farbe) < 0) farbe = ids[0];
+    var path = function (mo) { return d.path.replace('{color}', farbe).replace('{motif}', mo); };
+    var rg = el('div', 'sgl-colors'); rg.setAttribute('role', 'radiogroup'); rg.setAttribute('aria-label', T('Farbe der Siegel'));
+    var q = el('input', 'sgl-q'); q.type = 'search'; q.placeholder = T('Siegel suchen …'); q.setAttribute('aria-label', T('Siegel suchen …'));
+    var grid = el('div', 'sgl-grid'); grid.setAttribute('role', 'group'); grid.setAttribute('aria-label', T('Saga-Siegel'));
+    var none = el('div', 'menu-hint sgl-none', T('Kein Siegel gefunden.')); none.hidden = true;
+    var cbs = d.colors.map(function (c) {
+      var b = el('button', 'sgl-c sgl-c-' + c.id, c.label); b.type = 'button'; b.setAttribute('role', 'radio');
+      b.addEventListener('click', function () { pick(c.id); b.focus(); });
+      b.addEventListener('keydown', function (e) {
+        var k = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]; if (!k) return;
+        e.preventDefault(); var n = cbs[(cbs.indexOf(b) + k + cbs.length) % cbs.length]; n.click();
+      });
+      rg.appendChild(b); return b;
+    });
+    var btns = d.motifs.map(function (mo) {
+      var b = el('button', 'sgl-m'); b.type = 'button'; b.dataset.m = mo.id; b.dataset.q = (mo.label + ' ' + mo.id).toLowerCase();
+      var im = el('img'); im.alt = ''; im.decoding = 'async'; im.width = 40; im.height = 40; b.appendChild(im);
+      b.addEventListener('click', function () { HK.store('hk-siegel-farbe', farbe); HK.closeMenu(); setIcon(path(mo.id)); });
+      b.addEventListener('keydown', nav);
+      grid.appendChild(b); return b;
+    });
+    function label(b) { var mo = d.motifs.filter(function (x) { return x.id === b.dataset.m; })[0]; return mo ? mo.label : b.dataset.m; }
+    function pick(f) {
+      farbe = f; HK.store('hk-siegel-farbe', f);
+      var fl = d.colors.filter(function (c) { return c.id === f; })[0].label;
+      cbs.forEach(function (b, i) { var on = ids[i] === f; b.setAttribute('aria-checked', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; });
+      btns.forEach(function (b) {
+        var p = path(b.dataset.m), on = !!(S.cur && S.cur.icon === p);
+        b.querySelector('img').src = p; b.title = label(b) + ' (' + fl + ')';
+        b.setAttribute('aria-label', T('Siegel {name}', { name: b.title })); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.classList.toggle('on', on);
+      });
+    }
+    function shown() { return btns.filter(function (b) { return !b.hidden; }); }
+    function roving(t) { btns.forEach(function (b) { b.tabIndex = b === t ? 0 : -1; }); }
+    function nav(e) {
+      var v = shown(), i = v.indexOf(e.currentTarget); if (i < 0) return;
+      var cols = Math.max(1, Math.round(grid.clientWidth / (e.currentTarget.offsetWidth || 1)));
+      var n = { ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + cols, ArrowUp: i - cols, Home: 0, End: v.length - 1 }[e.key];
+      if (n === undefined) return;
+      e.preventDefault(); e.stopPropagation();
+      var t = v[Math.max(0, Math.min(v.length - 1, n))]; roving(t); t.focus();
+    }
+    q.addEventListener('input', function () {
+      var s = q.value.trim().toLowerCase();
+      btns.forEach(function (b) { b.hidden = !!s && b.dataset.q.indexOf(s) < 0; });
+      var v = shown(); none.hidden = v.length > 0; roving(v.filter(function (b) { return b.classList.contains('on'); })[0] || v[0]);
+    });
+    q.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === 'ArrowDown') { var f = shown()[0]; if (f) { e.preventDefault(); if (e.key === 'Enter') f.click(); else { roving(f); f.focus(); } } }
+    });
+    box.appendChild(rg); box.appendChild(q); box.appendChild(grid); box.appendChild(none);
+    pick(farbe);
+    roving(btns.filter(function (b) { return b.classList.contains('on'); })[0] || btns[0]);
+  }
   function setIcon(e) {
     if (!S.cur) return;
     api('PATCH', '/api/notes/' + S.cur.id, { icon: e }).then(function () {
@@ -6372,7 +6443,9 @@
 
 
   // --- Bild-Icons und Titelbilder ------------------------------------------------
-  function isImg(icon) { return typeof icon === 'string' && (icon.indexOf('/files/') === 0 || icon.indexOf('/api/fed/files/') === 0); }
+  function isImg(icon) { return typeof icon === 'string' && (icon.indexOf('/files/') === 0 || icon.indexOf('/api/fed/files/') === 0 || isSiegel(icon)); }
+  // 2.5 (Bug 2156): Saga-Siegel - mitgelieferte SVGs (/siegel/<farbe>/<motiv>.svg), ohne ?w= geladen (Vektor)
+  function isSiegel(icon) { return typeof icon === 'string' && /^\/siegel\/(weinrot|smaragd|elfenbein)\/[a-z]{2,20}\.svg$/.test(icon); }
   // eigene Bilder verkleinert laden (Server erzeugt WebP-Vorschau einmal und merkt sie sich)
   function thumb(u, w) { return typeof u === 'string' && /^(\/files|\/api\/fed\/files\/-[0-9]+)\/[0-9a-f]{24}$/.test(u) ? u + '?w=' + w : u; }
   function ti(icon) { return isImg(icon) ? '' : (icon || ''); }          // Icon fuer reine Textstellen
