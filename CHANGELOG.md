@@ -27,6 +27,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Sperre und Titel kommen jetzt auch im Peek an. Der Rahmen meldet seine Seite als offen, das Hauptfenster reicht die
   Ereignisse weiter. Bisher bekam der Peek nur Inhaltsänderungen über die Live-Bearbeitung.
 - Server: Sperren/Entsperren einer Seite steht mit Seiten-ID und Herkunft (Web/App/API) im Protokoll, ohne Inhalte.
+- **Live-Bearbeitung: verpasste Sperre verwirft nichts mehr** (Bug 2123): Mit „Gleichzeitig bearbeiten“ (notes.live) zeigt
+  der Browser beim ersten abgelehnten Tippen auf einer anderswo gesperrten Seite das Schloss und den Hinweis; der getippte
+  Inhalt bleibt stehen, ist vorgemerkt und geht nach dem Entsperren mit (wie beim Titel). Bisher baute der Editor den
+  Server-Stand neu auf und die Eingabe war weg. Sind dagegen die Rechte entzogen, merkt der Browser nichts vor und sagt
+  „nur noch lesen“. Der Server nennt dafür im `reject` den Grund (`why`: `locked` | `role`, `docs/APP-API-COLLAB.md`).
 - **Titelbild eines Datenbank-Eintrags kommt live an** (Bug 2122): Ändert ein anderes Gerät oder eine andere Person das
   Titelbild (oder seine Position) eines Eintrags, zeigen Galerie-Ansichten der Datenbank das neue Kartenbild ohne Neuladen –
   auch bei Freigabe „Lesen“ (Person oder Gruppe). Eingebettete Datenbank-Blöcke auf anderen Seiten laden jetzt im Browser

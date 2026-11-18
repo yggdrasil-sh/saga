@@ -9935,6 +9935,22 @@
            $('pg-title').readOnly = true;
            lostAccess(404);
          },
+         // pm-live.js (Bug 2123): Sperre ueber den Live-Kanal - on: gesperrt (held: abgelehnte Live-Eingabe ist vorgemerkt,
+         // wie beim Titel nach 423: Schloss, Hinweis, Nachfrage beim Verlassen); !on: entsperrt (vorgemerkte Live-Eingabe
+         // sendet pm-live selbst, ein vorgemerkter Titel geht hier mit)
+         liveLock: function (id, on, held) {
+           if (!S.cur || S.cur.id !== id) return;
+           var lp = byId(id);
+           if (on) {
+             if (held) { S.held = id; S.dirtyBody = true; }          // dirtyBody: nur fuer beforeunload/schedule (live: kein PATCH)
+             if (!S.cur.locked) { S.cur.locked = true; if (lp) lp.locked = true; applyLock(); }
+             if (held) { state(T('Nicht gespeichert: {err}', { err: T('Seite ist gesperrt – erst entsperren') }), 'err'); lockHint(); }
+             return;
+           }
+           if (S.cur.locked) { S.cur.locked = false; if (lp) lp.locked = false; applyLock(); }
+           if (S.held === id && liveBody()) { S.dirtyBody = false; if (!S.dirtyTitle) { S.held = null; state('', 'quiet'); } }
+           if (S.dirtyTitle || S.dirtyBody) save();
+         },
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
          reloadList: function () { return loadList(); }, remote: remoteChange,
          focusBlock: function () {                              // 2.5 (P3): Block mit der Schreibmarke (fuer die Anwesenheit)

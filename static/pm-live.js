@@ -10,6 +10,9 @@
 // - Schema-Handshake (R1): Pruefsumme HKPmSchema.hash() beim sub; weicht sie ab (oder schreibt y-tiptap beim Laden
 //   etwas um, z. B. unbekannte Knoten loeschen) -> nur lesen + Hinweis "Neu laden", dieser Client sendet NICHTS.
 // - Rollen Lesen/Kommentieren, gesperrte Seite: nicht bearbeitbar, keine Updates (Awareness ja).
+// - Sperre verpasst (Bug 2123): reject readonly mit why "locked" -> Seite als gesperrt zeigen (HKPages.k.liveLock), die
+//   eigene Eingabe bleibt im Editor und vorgemerkt (PG.vorm, nicht gesendet) und geht mit dem hello ro:false nach dem
+//   Entsperren hinaus. why "role" (Rechte entzogen): nichts vormerken, Hinweis "nur noch lesen", Rolle neu pruefen.
 // - Fremde Cursor: CollaborationCaret mit eigener render-Funktion (CSP style-src 'self': nur Klassen hk-caret
 //   hk-c-<palette>), Name/Farbe setzt der Server (Anzeigename, nie Anmeldename).
 // - Undo: y-undo der Collaboration-Erweiterung (nur eigene Aenderungen; fremde kommen mit Herkunft REMOTE).
@@ -192,7 +195,7 @@
     return d;
   }
   function startPage(nid) {
-    PG = { nid: nid, want: true, doc: null, info: null, live: false, ro: true, lock: false, unacked: [], held: [], seq: 0, rej: [],
+    PG = { nid: nid, want: true, doc: null, info: null, live: false, ro: true, lock: false, unacked: [], held: [], vorm: null, seq: 0, rej: [],
            synced: false, aw: new Map(), prov: null, loading: false };
     var mine = PG;
     features().then(function (on) {                 // Live-Bundle nur laden, wenn live ueberhaupt an ist
@@ -224,9 +227,20 @@
   }
   function onHello(h) {
     if (h.update) {                                     // Rolle/Sperre waehrend des Abos geaendert
-      var ro = !!h.ro || !(h.role === 'owner' || h.role === 'edit');
+      var ro = !!h.ro || !(h.role === 'owner' || h.role === 'edit'), k = K();
       if (PG.info) { PG.info.role = h.role; PG.info.ro = h.ro; PG.info.why = h.why; }
-      if (ro !== PG.ro) { PG.ro = ro; if (PG.live) rebind(null, false); }
+      if (ro !== PG.ro) {
+        PG.ro = ro;
+        // Sperre/Entsperren auch der Seite melden (kam note.changed nicht an, stand sonst das Schloss falsch) - vor dem
+        // Neuaufbau, damit der Editor danach mit dem richtigen Schreibschutz gebunden wird
+        if (k && k.liveLock && (!ro || h.why === 'locked')) k.liveLock(PG.nid, ro, false);
+        if (PG.live) rebind(null, false);
+      }
+      if (!PG.ro && PG.vorm && PG.live) {               // entsperrt: vorgemerkte Eingabe jetzt senden (steht schon im Doc)
+        var u = PG.vorm; PG.vorm = null;
+        if (unfinished()) PG.held.push(u); else sendUpdate(PG, u);
+        log('vorm gesendet');
+      }
       return;
     }
     PG.info = h;
@@ -454,7 +468,7 @@
   }
   function rebind(full, keep) {                       // Zustand des Servers uebernehmen (reject, Rolle), Editor neu
     var pg = PG, c = caret();
-    var rest = keep ? pg.unacked.slice().concat(pg.held.map(function (u) { return { u: u }; })) : [];
+    var rest = keep ? (pg.vorm ? [{ u: pg.vorm }] : []).concat(pg.unacked, pg.held.map(function (u) { return { u: u }; })) : [];
     pg.held = [];
     var nd = newDoc();
     if (full) Y.applyUpdate(nd, full, REMOTE); else Y.applyUpdate(nd, Y.encodeStateAsUpdate(pg.doc), REMOTE);
@@ -468,10 +482,11 @@
     var oldDoc = pg.doc; pg.doc = nd; pg.unacked = [];
     try { oldDoc.destroy(); } catch (e) { /* egal */ }
     bind(c);
-    if (rest.length && !lost && PG === pg && !pg.ro && !pg.lock) {
+    if (rest.length && !lost && PG === pg && !pg.lock) {
       var u = Y.mergeUpdates(rest.map(function (x) { return x.u; }));
-      if (unfinished()) pg.held = [u]; else sendUpdate(pg, u);
-    }
+      if (pg.ro) pg.vorm = u;                          // nur lesen (gesperrt): vorgemerkt, s. onHello
+      else { pg.vorm = null; if (unfinished()) pg.held = [u]; else sendUpdate(pg, u); }
+    } else if (keep) pg.vorm = null;
     return !lost;
   }
   // Rueckfall auf Stufe 1: derselbe Stand ohne Collaboration; nicht bestaetigte Aenderungen speichert pages.js (PATCH merge)
@@ -490,8 +505,8 @@
     X.build(json);
     X.unmarkInvalid(json.blocks);
     restore(c);
-    if (pg.held.length) pend = true;
-    pg.unacked = []; pg.held = [];
+    if (pg.held.length || pg.vorm) pend = true;       // vorgemerkt (gesperrt): pages.js speichert nach dem Entsperren (PATCH)
+    pg.unacked = []; pg.held = []; pg.vorm = null;
     if (pend) { var k = K(); if (k && k.dirty) k.dirty(); }
     log('stufe1', why, pend);
   }
@@ -580,8 +595,19 @@
     }
     if (code === 'readonly') {
       pg.ro = true;
+      var k = K();
+      if (r.why === 'locked' && pg.live) {             // gesperrt, Ereignis verpasst: zeigen und vormerken statt verwerfen
+        var kept = rebind(full, true);
+        if (k && k.liveLock) k.liveLock(pg.nid, true, kept && !!pg.vorm);
+        if (!kept) HK.toast(T('Änderung nicht übernommen – deine letzten Eingaben ließen sich nicht behalten.'));
+        return;
+      }
+      pg.vorm = null;
       if (pg.live) rebind(full, false);
-      HK.toast(T('Änderung nicht übernommen – du kannst diese Seite gerade nicht bearbeiten.'));
+      if (r.why === 'role') {                          // Rechte entzogen: nichts vormerken, klar sagen, Rolle neu holen
+        HK.toast(T('Änderung nicht übernommen – du darfst diese Seite nur noch lesen.'));
+        if (k && k.recheck) k.recheck();
+      } else HK.toast(T('Änderung nicht übernommen – du kannst diese Seite gerade nicht bearbeiten.'));
       return;
     }
     // Inhalt abgelehnt (type/sanitize/signature/forbidden/size/title/invalid/client): Server-Stand, eigene unabhaengige
@@ -724,7 +750,7 @@
     debug: false, disabled: false,
     state: function () {
       return { mode: PG ? (PG.lock ? 'lock' : PG.live ? 'live' : 'stufe1') : 'aus', nid: PG && PG.nid, ro: !!(PG && PG.ro), live: !!(PG && PG.live),
-               lock: !!(PG && PG.lock), unacked: PG ? PG.unacked.length : 0, held: PG ? PG.held.length : 0, ws: !!(W.ws && W.open), off: W.off,
+               lock: !!(PG && PG.lock), unacked: PG ? PG.unacked.length : 0, held: PG ? PG.held.length : 0, vorm: !!(PG && PG.vorm), ws: !!(W.ws && W.open), off: W.off,
                role: PG && PG.info ? PG.info.role : null, me: PG && PG.info ? liveName(PG.info.name) : null, stats: Object.assign({}, ST) };
     },
     doc: function () { return PG && PG.doc; },
