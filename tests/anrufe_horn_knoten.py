@@ -8,7 +8,7 @@ Geprueft: ohne Flag kein Knoten-Prozess; Flag an -> saga-media startet ihn, Steu
 Adresse, bereit), /internal/horn/conf und /api/horn/ctl von aussen gesperrt; config.limits.horn (12/50, 25/100);
 Gruppenanruf in einer Gruppe ueber der Mesh-Grenze -> topo horn mit Kandidat und Medien-Token (Ton/Bild, ohne UDP kein
 "both"), Token ohne Konto-/Geraetenamen, kurze Lebensdauer; Einladung ohne horn-Geraet 'old'; Beitritt ohne Mesh-Angebote
-(mit Angeboten 400), ohne horn 409 old; Teilnehmerliste mit hp; kleine Gruppe bleibt Mesh. Token am Knoten: gueltig,
+(mit Angeboten 400), ohne horn 409 old; Teilnehmerliste mit hp; kleine Gruppe Mesh nur mit horn_all aus (L1). Token am Knoten: gueltig,
 Wiederverwendung (TURN und Bein), abgelaufen, anderer Knoten, veraenderte Nutzlast (anderer Anruf), fremder Schluessel,
 entfernte Person (kick nach Verlassen), beendeter Anruf (close); POST /horn (frische Token, falscher Knoten, fremdes
 Geraet); Grenze vom Admin gesenkt; Flag aus -> Knoten beendet, neue Gruppen wieder Mesh; Neustart mit Flag: Startzeit.
@@ -563,13 +563,22 @@ def run(media, node):
     s, d = turn(HN.token(hn, cid, D.dev["id"], "audio"))
     ok(f"Raum am Knoten geschlossen: neues Token fuer den beendeten Anruf -> abgewiesen ({s}, {d})", s in (401, 404))
 
-    # --- kleine Gruppe bleibt Mesh ------------------------------------------------------------------------------------
+    # --- kleine Gruppe: Mesh nur ohne "Alle Anrufe ueber Knoten" (L1, 18.11.: mit horn_all jede Gruppe ueber den Knoten) --
     s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ca-k2", "ca-k3"]})
+    small = d["chat"]["id"]
+    flag(True, horn_all=False, horn_all_y=True)
+    time.sleep(5.5)                                   # Einstellungen im Server-Prozess (Zwischenspeicher 5 s)
     cid2 = secrets.token_hex(16)
-    s, d = req("POST", "/api/calls", A.k, {"id": cid2, "chat_id": d["chat"]["id"], "media": "video", "device": A.dev["id"], "caps": CAPS})
-    ok(f"Gruppe mit 3 Mitgliedern: Mesh wie 2.4 ({d.get('call', {}).get('topo')}, keine Kandidaten)", s == 200 and d["call"]["topo"] == "mesh"
+    s, d = req("POST", "/api/calls", A.k, {"id": cid2, "chat_id": small, "media": "video", "device": A.dev["id"], "caps": CAPS})
+    ok(f"horn_all aus: Gruppe mit 3 Mitgliedern Mesh wie 2.4 ({d.get('call', {}).get('topo')}, keine Kandidaten)", s == 200 and d["call"]["topo"] == "mesh"
        and "horn" not in d["call"])
     req("POST", f"/api/calls/{cid2}/end", A.k, {"device": A.dev["id"]})
+    flag(True)
+    time.sleep(5.5)
+    cid2 = secrets.token_hex(16)
+    s, d = req("POST", "/api/calls", B.k, {"id": cid2, "chat_id": small, "media": "video", "device": B.dev["id"], "caps": CAPS})
+    ok(f"L1: mit horn_all (ab Werk) dieselbe 3er-Gruppe ueber den Knoten ({d.get('call', {}).get('topo')})", s == 200 and d["call"]["topo"] == "horn")
+    req("POST", f"/api/calls/{cid2}/end", B.k, {"device": B.dev["id"]})
 
     # --- Browser: 5 Personen ueber den Knoten -------------------------------------------------------------------------
     if os.environ.get("HORN_BROWSER") != "pegel":

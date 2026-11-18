@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Gruppen zu dritt und zu viert über den Knoten (Grundsatz Y, L1)
+- Mit Gjallarhorn an und „Alle Anrufe über Knoten“ (ab Werk an) laufen jetzt **alle** Gruppenanrufe über einen Knoten,
+  auch mit 3 und 4 Mitgliedern. Direkt zwischen den Geräten (Mesh) nur noch als Rückfall wie beim 1:1: kein Knoten
+  bereit, Gerät ohne Knoten-Fähigkeit, anderer Server ohne Knoten. Bisher liefen 3er- und 4er-Gruppen ab Werk direkt.
+- „Über Knoten ab“ (`calls.horn_from`) gilt nur noch, wenn „Alle Anrufe über Knoten“ aus ist. Ohne Gjallarhorn bleibt
+  alles direkt bis zur Grenze von 4 Geräten mit Video. Admin-Hilfetexte und `docs/APP-API.md` nachgezogen.
+- Test: `tests/anrufe_y_gruppe.py`, `tests/anrufe_horn_knoten.py` (kleine Gruppe nur noch mit `horn_all` aus direkt).
+
 ### Verbessert – Volle Anrufe verständlich melden (Rang 4)
 - **Ein Text für „voll“:** Beitritt, Leiste „Anruf läuft“ und Schnittstelle (409 `full`) sagen jetzt dasselbe wie
   „Person hinzufügen“: alle Plätze belegt, jedes Gerät zählt – auch ein zweites zum Teilen –, erst nach einem Auflegen

@@ -51,7 +51,8 @@ Feature-Flag calls.horn (Standard aus): features + "horn", GET /api/calls/config
 
 2.5 (Gjallarhorn P3, saga/horn.py): Gruppenanrufe in Chats mit mehr Mitgliedern als die Mesh-Grenze laufen ueber einen
 Knoten (topo 'horn'), wenn das Flag an ist, das anrufende Geraet "horn" meldet und ein Knoten bereit ist - sonst Mesh wie
-2.4. Beitritt ohne Mesh-Angebote; Antworten von POST /api/calls, /join und POST /api/calls/{id}/horn tragen horn.candidates
+2.4. Mit "Alle Anrufe ueber Knoten" (calls.horn_all, Grundsatz Y, L1 18.11.) gilt das fuer jede Gruppe (auch 3 und 4
+Mitglieder), calls.horn_from wirkt dann nicht. Beitritt ohne Mesh-Angebote; Antworten von POST /api/calls, /join und POST /api/calls/{id}/horn tragen horn.candidates
 (bis 3 Knoten mit je eigenen, 60 s gueltigen Medien-Token). Grenzen nach Weg: 12 Video / 50 Ton ueber TCP, 25 / 100 mit
 UDP am Knoten. Die Teilnehmerliste traegt je Endpunkt hp (Kennung des Geraets am Knoten, fuer die Zuordnung der Spuren).
 Verlassen/Ende: der Knoten beendet die Beine (kick/close ueber den Steuerkanal). Foederierte Gruppen bleiben bis P10 Mesh.
@@ -248,8 +249,10 @@ def climit(c, call):
 
 
 def horn_wanted(c, ch, media, caps, why=None):
-    """2.5: neuen Gruppenanruf ueber einen Knoten fuehren? Flag an, Geraet meldet "horn", Chat hat mehr Mitglieder als die
-    Mesh-Grenze (bzw. calls.horn_from, mindestens 3) und ein Knoten ist bereit. P10: im foederierten Chat (wir sind das
+    """2.5: neuen Gruppenanruf ueber einen Knoten fuehren? Flag an, Geraet meldet "horn", ein Knoten ist bereit und der Chat
+    ist gross genug: mit "Alle Anrufe ueber Knoten" (horn_all_on, Grundsatz Y; Svens Entscheidung L1 vom 18.11.) jede
+    Gruppe - direkt (Mesh) nur als Rueckfall wie im 1:1 -, sonst erst ab mehr Mitgliedern als die Mesh-Grenze (bzw. ab
+    calls.horn_from, mindestens 3). P10: im foederierten Chat (wir sind das
     Heim) zusaetzlich alle beteiligten Server mit "horn" und je Server ein nutzbarer Knoten (geteilt oder eigener) -
     sonst Mesh; why (Liste) bekommt dann den Hinweis fuer die Clients."""
     if not horn_on() or not _has(caps, "horn"):
@@ -258,7 +261,7 @@ def horn_wanted(c, ch, media, caps, why=None):
         frm = int(cfg().get("horn_from") or 0)
     except (TypeError, ValueError):
         frm = 0
-    need = max(3, frm) if frm else limit(media) + 1
+    need = 2 if horn_all_on() else (max(3, frm) if frm else limit(media) + 1)   # L1: horn_from nur noch ohne horn_all
     if len(chat.members(c, ch["id"])) < need or not horn.any_ready(c, ws=horn.caps_reach(caps)):   # S10/S12.5: Tunnel-Knoten nur mit "ws"/"frames"
         return False
     if chat.is_fed(ch):
