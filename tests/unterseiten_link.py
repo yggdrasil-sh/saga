@@ -4,7 +4,7 @@ Geprueft (je mit Gegenprobe):
 - POST /api/notes mit parent_id: Absatz <a href="/notes#ID">Titel</a> am Ende (vor einem leeren Schluss-Absatz), rev+1,
   bisheriger Inhalt unveraendert; "link": false -> nichts; ohne parent_id -> nichts.
 - Nicht verlinkt: Elternseite Datenbank (Zeile), gesperrt (423-frei: Seite entsteht, Inhalt bleibt), Text-Notiz,
-  archiviert; neue Vorlage (template); schon vorhandener Verweis (Verschieben zurueck) -> kein zweiter.
+  archiviert; neue Vorlage (template, auch per PATCH template: true); schon vorhandener Verweis (Verschieben zurueck) -> kein zweiter.
 - Geteilte Seite mit "Bearbeiten": Verweis kommt in die Seite des Eigentuemers; "Lesen" -> 403, Inhalt bleibt.
 - Erster Titel: unbenannt angelegt -> Titel (auch in Etappen, mit Symbol) zieht den automatischen Absatz nach;
   Gegenproben: mit Titel angelegt, von Hand geaendert, nach 10 Minuten, gesperrte Elternseite, spaetere Umbenennung.
@@ -224,6 +224,14 @@ def t_not():
     ok("(Ausgangslage) normale Unterseite verlinkt", links_to(blocks(tp), vid) == [1])
     st, d = req("POST", f"/api/notes/{vid}/duplicate", {"parent_id": tp, "template": True})
     ok("Duplikat als Vorlage: kein Verweis", st == 200 and not links_to(blocks(tp), d["id"]), d)
+    # Seite wird per PATCH zur Vorlage (Koordinator ab6ebe2, pruef-siegel): automatischer Verweis faellt weg - auch, wenn
+    # der Client die unveraenderte parent_id mitschickt
+    st, d = req("PATCH", f"/api/notes/{vid}", {"template": True})
+    ok("PATCH template: true -> automatischer Verweis weg", st == 200 and not links_to(blocks(tp), vid), (st, blocks(tp)))
+    st, d = new_sub(tp, "Vorlage 2")
+    v2 = d["id"]
+    st, d = req("PATCH", f"/api/notes/{v2}", {"template": True, "parent_id": tp})
+    ok("PATCH template: true mit gleicher parent_id -> Verweis weg", st == 200 and not links_to(blocks(tp), v2), (st, blocks(tp)))
     # Geteilt: b mit Bearbeiten
     sh = page("Geteilt", [P("Team")])
     st, d = req("PUT", f"/api/notes/{sh}/shares", {"type": "user", "target": UB, "role": "edit"})
