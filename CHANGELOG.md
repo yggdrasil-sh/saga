@@ -23,6 +23,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   übersetzten „voll“-Text, den die Apps anzeigen. Auch der führende Server lässt bei Aufträgen anderer Server dann niemanden
   klingeln. „Hierher übernehmen“ geht bei vollem Anruf weiter. Tests: `tests/anrufe_hinzufuegen.py`, `tests/anrufe_raum.py`.
 
+### Behoben – Web, Anruf ohne Knoten: Bildschirm vom eigenen Begleitgerät (Bugs-DB 2154)
+- Teilte man über das Begleitgerät den Bildschirm, sah man ihn am eigenen Hauptgerät nicht (über den Knoten schon): die
+  Meeting-Ansicht warf alle Bildschirme der eigenen Person weg. Jetzt zeigt das Web den Bildschirm eines **anderen**
+  eigenen Geräts wie über den Knoten als Bildschirmkachel (Präsentation); den Bildschirm dieses Geräts weiterhin nie, das
+  Begleitgerät weiterhin ohne eigene Personenkachel (`static/meeting.js` Option `ownScreens`, die gemeinsamen Testvektoren
+  der Apps bleiben unverändert). Tests: `tests/meeting_logik.js`, `tests/browser_meeting.js`.
+
 ### Behoben – Gruppenanrufe über den Knoten: enge Leitung ohne lange Bildpausen (Bug 2152)
 - Bei einer Person mit enger Leitung (Labor: 1 Mbit/s im 4er) kamen einzelne Bilder 15–83 s lang gar nicht an, obwohl die
   Leitung nichts verwarf. Ursache (Spur des Knotens, `HORN_SPUR`): Fiel das GCC-Ziel, pausierte der Knoten eine Kachel; in

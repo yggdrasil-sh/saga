@@ -51,7 +51,8 @@
     return out;
   }
 
-  // Kacheln (§1). prefs: {showNoVideo (Standard an), spokeAt: {who: ms}, now: ms}
+  // Kacheln (§1). prefs: {showNoVideo (Standard an), spokeAt: {who: ms}, now: ms, self: dieses Geraet, ownScreens (Standard
+  // aus: Bildschirm eines anderen eigenen Geraets als Kachel)}
   //  {id: who,               kind: 'person', who, name, me, dev (Videoquelle bzw. Hauptgeraet), video, mic, level}
   //  {id: who|dev:cam,       kind: 'cam',    ... devName}  - Begleitgeraet mit eigener Kamera neben der Kamera des Hauptgeraets
   //  {id: who|dev:scr,       kind: 'screen', ... devName (nur bei mehreren Geraeten der Person), screenAt}
@@ -65,6 +66,15 @@
         var self = P.devices.filter(function (d) { return d.device === prefs.self; })[0] || P.main;
         mine = { id: P.who, kind: 'person', who: P.who, name: P.name, avatar: P.avatar, me: true, dev: self.device, devName: '',
                  video: self.cam, mic: self.mic, level: self.mic ? self.level : 0 };
+        // prefs.ownScreens (Web, Bugs-DB 2154): teilt ein ANDERES eigenes Geraet (Begleitgeraet) den Bildschirm, kommt er
+        // als Bildschirmkachel wie ueber den Knoten (hornSources) - nie der Bildschirm dieses Geraets, nie eine Personenkachel
+        if (prefs.ownScreens) {
+          P.devices.forEach(function (d) {
+            if (d.screen && d.device !== prefs.self)
+              scr.push({ id: P.who + '|' + d.device + ':scr', kind: 'screen', who: P.who, name: P.name, avatar: P.avatar, me: false, dev: d.device,
+                         devName: d.dev_name, video: true, mic: false, level: 0, screenAt: d.screenAt });
+          });
+        }
         return;
       }
       var many = P.devices.length > 1;

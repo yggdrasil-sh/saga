@@ -13,6 +13,7 @@
 // - Layout-Knopf (Menue, Galerie/Auto, gespeichert in saga-call-layout), Anheften (Antippen im Streifen, Esc loest),
 //   Zoom Strg +/0, Kuerzel M, Kuerzel-Liste ?, Vollbild-Knopf vorhanden
 // - S1: eigenes Bild schwebend im Seitenverhaeltnis der Kamera (Einzelansicht), in der Praesentation als Kachel im Streifen
+// - Bugs-DB 2154: auch Anna (A, Hauptgeraet) sieht den Bildschirm ihres Begleitgeraets (Praesentation, wie ueber den Knoten)
 // - Ende des Teilens -> zurueck zur Einzelansicht; A3: Handy-Breite ohne waagrechtes Scrollen
 // - Screenshots hell und dunkel, Desktop und Handy (SHOTS)
 'use strict';
@@ -144,6 +145,10 @@ async function hornFlow(a, a2, b, o) {
   await a2.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]');
   const sh = await until(async () => { const x = await horn(b), w = await b.evaluate(() => document.querySelector('.cl-win').className); return x.shared && x.shared.dev === o.dA2 && x.shared.live && /horn-scr/.test(w) && x; }, 30000);
   ok('S3 (Knoten): Bildschirm des Begleitgeraets gross bei Ben', sh, await horn(b));
+  // Gegenprobe zu Bugs-DB 2154 (Mesh): ueber den Knoten sieht Anna (Hauptgeraet) den Bildschirm ihres Begleitgeraets schon
+  const shA = await until(async () => { const x = await horn(a); return x && x.shared && x.shared.dev === o.dA2 && x.shared.live && x; }, 20000);
+  ok('S3 (Knoten): Anna (Hauptgeraet) sieht den Bildschirm ihres Begleitgeraets', shA, await horn(a));
+  await shot(a, 'knoten-2c-hauptgeraet-bildschirm-begleitgeraet-dunkel');
   const cap = await b.evaluate(() => { const s = document.querySelector('.cl-share'); return s && !s.hidden ? { t: s.textContent, cls: s.className, x: !!s.querySelector('.cl-mchip-x') } : null; });
   ok('S3 (Knoten): Hinweis-Chip "… teilt den Bildschirm (Geraet)" mit x, keine eigene Kachel fuer A2', cap && /teilt den Bildschirm \(/.test(cap.t) && /cap/.test(cap.cls) && cap.x
      && (await horn(b)).tiles.length === 1, [cap, (await horn(b)).tiles]);
@@ -268,6 +273,16 @@ let INFO_HORN = false;
     const sc3 = await scr(b);
     ok('HKCalls.screen(): gross = Bildschirm, klein = Kamera, Leiste = Chip', sc3 && sc3.big === 'screen' && sc3.small === 'cam' && /teilt den Bildschirm/.test(sc3.bar), sc3);
     await shot(b, '3-praesentation-leisten-dunkel');
+    // Bugs-DB 2154: Anna (A, Hauptgeraet) sieht den Bildschirm ihres Begleitgeraets wie ueber den Knoten (Praesentation,
+    // Buehne = Bildschirm mit Bild und Geraetename), A2 weiter ohne Personenkachel, kein Ton eigener Geraete
+    const ra3 = await until(async () => { const r = await room(a); return r && r.mesh && r.meet && r.meet.layout === 'presentation' && String(r.meet.stage).endsWith('|' + dA2 + ':scr')
+      && r.meet.els.some(x => x.id === r.meet.stage && x.video) && r; }, 20000);
+    const stA = ra3 && ra3.meet.els.find(x => x.id === ra3.meet.stage), lA3 = await look(a);
+    ok(`S3 (Bugs-DB 2154): Anna (Hauptgeraet) sieht den Bildschirm ihres Begleitgeraets ("${stA && stA.label}"), Bild in der Buehne`,
+       ra3 && /^Bildschirm von .+ \(.+\)/.test(stA.label) && lA3.stageVideos === 1 && lA3.rect && lA3.rect[2] >= 640, [await room(a), lA3]);
+    ok('... ohne Personenkachel des Begleitgeraets (Personen: Ben + Du)', ra3 && ra3.meet.els.filter(x => x.kind !== 'screen').length === 2
+       && ra3.meet.els.some(x => x.me) && !ra3.meet.els.some(x => x.kind === 'cam'), ra3 && ra3.meet.els);
+    await shot(a, '3c-hauptgeraet-bildschirm-begleitgeraet-dunkel');
     // §9 Teilnehmerliste im Mesh: ab 900 px Seitenleiste, je Person eine Zeile, Anna mit beiden Geraeten
     await b.click('.cl-ctl .cl-people');
     const pl = await until(() => b.evaluate(() => { const p = document.querySelector('.cl-mlist'); const w = document.querySelector('.cl-win');

@@ -1278,7 +1278,9 @@
   }
   function meetCalc(R) {
     var mt = mtOf(R), d = meetData(R), now = Date.now();
-    var tiles = MT.meetingTiles(d.roster, d.media, { self: d.here, showNoVideo: mtPref('saga-call-novideo', '1') !== '0', spokeAt: mt.pick.spokeAt(), now: now })
+    // ownScreens (Bugs-DB 2154): teilt das eigene Begleitgeraet, sieht das Hauptgeraet den Bildschirm wie ueber den Knoten
+    var tiles = MT.meetingTiles(d.roster, d.media, { self: d.here, showNoVideo: mtPref('saga-call-novideo', '1') !== '0', spokeAt: mt.pick.spokeAt(), now: now,
+                                                     ownScreens: true })
       .filter(function (t) { return !mt.hidden[t.id]; });
     return { d: d, tiles: tiles, lay: MT.pickLayout(tiles, mt.force || layoutChoice(), { reduced: reducedMotion() }), now: now };
   }
