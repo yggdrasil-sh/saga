@@ -258,7 +258,8 @@ def run_case(fc, rep):
 # --- Auswertung --------------------------------------------------------------------------------------------------------
 KEYS = [("setup_v", "Aufbau Bild ms"), ("setup_a", "Aufbau Ton ms"), ("lag", "Latenz ms"), ("fps", "fps"), ("freeze", "Einfrierer/min"),
         ("freeze_s", "Standbild s/min"), ("layer", "Schichtwechsel/min"), ("conceal", "Ton verdeckt %"), ("gaps", "Tonluecken/min"),
-        ("cpu", "CPU % je Browser"), ("fall", "Rueckfaelle"), ("recover", "Erholung ms")]
+        ("vgap", "Bildluecke max ms"), ("cpu", "CPU % je Browser"), ("sw", "Knotenwechsel"), ("fall", "Rueckfall direkt"),
+        ("recover", "Erholung ms")]
 
 
 def agg(vals):

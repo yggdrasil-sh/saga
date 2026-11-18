@@ -149,7 +149,13 @@ async function liveOk(ps) { for (const p of ps) await until(() => ev(p, () => !!
 async function caps(p) { const c = await ev(p, () => window.HKCalls.caps()); await api(p, 'PUT', '/api/calls/caps', { device: await dev(p), caps: c }); }
 const room = p => ev(p, () => window.HKCalls && window.HKCalls.room());
 const hornS = p => ev(p, () => window.HKCalls && window.HKCalls.horn());
-async function txt(p, sel) { return ev(p, s => [...document.querySelectorAll(s)].filter(x => !x.hidden && x.offsetParent !== null).map(x => x.textContent.trim()).join(' | '), sel); }
+async function openList(p) {
+  if (await p.$('.cl-plist:not(.cl-addp)')) return true;
+  if (await p.$('.cl-ctl .cl-people')) await p.click('.cl-ctl .cl-people');
+  else if (await p.$('.cl-ctl .cl-more')) { await p.click('.cl-ctl .cl-more'); await p.waitForSelector('.cl-moremenu .cl-people', { timeout: 3000 }).catch(() => {}); await p.click('.cl-moremenu .cl-people').catch(() => {}); }
+  return !!(await until(() => p.$('.cl-plist:not(.cl-addp)'), 4000));
+}
+async function txt(p, sel) { return ev(p, s => [...document.querySelectorAll(s)].filter(x => !x.hidden && x.getClientRects().length > 0).map(x => x.textContent.trim()).join(' | '), sel); }
 
 // --- /proc: CPU je Browser ----------------------------------------------------------------------------------------------
 function procAll() {
@@ -184,33 +190,45 @@ function evalPage(s, expect) {
   if (!s || s.length < 3) return null;
   const a = s[0], b = s[s.length - 1], dt = (b.t - a.t) / 1000, mins = dt / 60;
   const lags = []; s.forEach(x => x.vid.forEach(v => { if (v.lag != null && v.lag < 30000) lags.push(v.lag); }));
-  const vs = Object.keys(b.v).filter(k => a.v[k] && b.v[k][0] - a.v[k][0] > 50);
-  const fps = vs.map(k => (b.v[k][1] - a.v[k][1]) / dt);
-  const frz = vs.map(k => b.v[k][2] - a.v[k][2]), frzS = vs.map(k => b.v[k][3] - a.v[k][3]);
-  const layer = vs.map(k => { let n = 0, last = null; s.forEach(x => { const r = x.v[k]; if (r && r[4]) { if (last != null && r[4] !== last) n++; last = r[4]; } }); return n; });
-  // Bildstroeme, die nur einen Teil der Zeit liefen (Wechsel), zaehlen fuer Einfrierer nicht doppelt
-  const as = Object.keys(b.a).filter(k => a.a[k] && b.a[k][1] - a.a[k][1] > 48000 * 2);
-  let tot = 0, con = 0, gaps = 0, gapS = 0;
-  as.forEach(k => {
-    tot += b.a[k][1] - a.a[k][1]; con += b.a[k][2] - a.a[k][2];
+  // je Strom (PeerConnection + SSRC) von seinem ersten bis zu seinem letzten Auftreten - auch Stroeme, die nach einem
+  // Wechsel (neue Verbindung) neu beginnen; nur Stroeme mit mindestens 10 s Laufzeit und laufenden Paketen
+  const life = (kind) => {
+    const first = {}, last = {};
+    s.forEach((x, i) => Object.keys(x[kind]).forEach(k => { if (first[k] == null) first[k] = i; last[k] = i; }));
+    return Object.keys(first).map(k => ({ k, f: s[first[k]], l: s[last[k]], fi: first[k], li: last[k] }))
+      .filter(o => (o.l.t - o.f.t) >= 10000 && o.l[kind][o.k][0] - o.f[kind][o.k][0] > 50);
+  };
+  const vs = life('v'), as = life('a');
+  let vmin = 0, fz = 0, fzs = 0, lay = 0;
+  const fps = vs.map(o => {
+    const d = (o.l.t - o.f.t) / 1000, A0 = o.f.v[o.k], B0 = o.l.v[o.k];
+    vmin += d / 60; fz += B0[2] - A0[2]; fzs += B0[3] - A0[3];
+    let last = null; for (let i = o.fi; i <= o.li; i++) { const r = s[i].v[o.k]; if (r && r[4]) { if (last != null && r[4] !== last) lay++; last = r[4]; } }
+    return (B0[1] - A0[1]) / d;
+  });
+  let tot = 0, con = 0, gaps = 0, gapS = 0, amin = 0;
+  as.forEach(o => {
+    const A0 = o.f.a[o.k], B0 = o.l.a[o.k]; tot += B0[1] - A0[1]; con += B0[2] - A0[2]; amin += (o.l.t - o.f.t) / 60000;
     let inGap = false;
-    for (let i = 1; i < s.length; i++) {
-      const p = s[i - 1].a[k], q = s[i].a[k];
+    for (let i = o.fi + 1; i <= o.li; i++) {
+      const p = s[i - 1].a[o.k], q = s[i].a[o.k];
       if (!p || !q) continue;
       const dtot = q[1] - p[1], dcon = q[2] - p[2], bad = dtot <= 0 || dcon / dtot > 0.5;
       if (bad) { gapS += (s[i].t - s[i - 1].t) / 1000; if (!inGap) gaps++; }
       inGap = bad;
     }
   });
+  // Bildluecke: laengste Zeit, in der nicht alle erwarteten Bilder frisch sind (Zeitcode < 1 s)
+  let vgap = 0, since = null;
+  s.forEach(x => { const fresh = x.vid.filter(v => v.lag != null && v.lag < 1000).length >= expect; if (!fresh) { if (since == null) since = x.t; vgap = Math.max(vgap, x.t - since + 500); } else since = null; });
   const pathSet = new Set(); s.forEach(x => (x.cp || []).forEach(c => pathSet.add(c[1] + '>' + c[2])));
   const rtt = med(s.map(x => med((x.cp || []).map(c => c[3]))));
   return {
     secs: Math.round(dt), lag: med(lags), lag95: pct(lags, 0.95), nlag: lags.length, vstreams: vs.length, expect,
     fps: med(fps), fpsMin: fps.length ? Math.min(...fps) : null,
-    freeze: vs.length ? frz.reduce((x, y) => x + y, 0) / vs.length / mins : null, freeze_s: vs.length ? frzS.reduce((x, y) => x + y, 0) / vs.length / mins : null,
-    layer: vs.length ? layer.reduce((x, y) => x + y, 0) / vs.length / mins : null,
-    astreams: as.length, conceal: tot ? con / tot * 100 : null, gaps: as.length ? gaps / as.length / mins : null, gap_s: gapS,
-    pairs: [...pathSet], rtt,
+    freeze: vmin ? fz / vmin : null, freeze_s: vmin ? fzs / vmin : null, layer: vmin ? lay / vmin : null, vgap,
+    astreams: as.length, conceal: tot ? con / tot * 100 : null, gaps: amin ? gaps / amin : null, gap_s: gapS,
+    pairs: [...pathSet], rtt, mins,
   };
 }
 // erster Zeitpunkt nach t, ab dem alle erwarteten Bilder wieder frisch sind (Zeitcode < 1 s alt)
@@ -291,6 +309,7 @@ function recovery(s, t, expect) {
     for (const p of ps) await ev(p, () => window.__m.start());
     const tS = Date.now();
     const cpu0 = cpuGroups(procAll(), ps);
+    if (S.eng) R.shaper0 = await getJ(S.eng.ctl + '/stats');   // Zaehler laufen ueber Laeufe weiter - Differenz bilden
     const evt = S.event; let p2 = null; const evInfo = {};
     if (evt) {
       await sleep(evt.at * 1000);
@@ -320,11 +339,22 @@ function recovery(s, t, expect) {
         await p2.click('.cl-run .cl-pill:not(.cl-run-go)').catch(e => R.notes.push('companion: ' + e.message));   // "Hinzufügen"
         await until(() => ev(p2, () => { const r = window.HKCalls.room(); return r && r.inRoom; }), 20000);
         evInfo.joined_ms = Date.now() - evInfo.click;
+        // erst, wenn die Verbindung steht (vorher tut der Knopf nichts - toggleScreen ohne horn.cur bzw. ohne Verbindung)
+        evInfo.up_ms = await until(() => ev(p2, () => { const h = window.HKCalls.horn(), r = window.HKCalls.room(); return (h ? h.up : r && r.links.length && r.links.every(l => l.connected)) && true; }), 20000, 100) ? Date.now() - evInfo.click : null;
         const sb = await p2.waitForSelector('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]', { timeout: 15000 }).then(() => true, () => false);
         evInfo.tShare = Date.now();
-        if (sb) await p2.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]');
+        for (let k = 0; sb && k < 3; k++) {
+          await p2.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]').catch(() => {});
+          if (await p2.waitForSelector('.cl-hint .cl-hint-go', { timeout: 1000 }).then(() => true, () => false)) { R.texts.share_hint = await txt(p2, '.cl-hint'); await p2.click('.cl-hint .cl-hint-go'); }
+          if (await until(() => ev(p2, () => { const x = window.HKCalls.screen(); return x && x.sharing; }), 2500, 100)) break;
+          evInfo.share_retry = k + 1;
+        }
+        evInfo.share_btn = sb;
         const seen = await Promise.all(ps.map(async p => { const t = await until(async () => { const q = await ev(p, () => window.__m.quick()); return q && q.hues && q.hues.some(h => h >= 0 && Math.abs(h - 270) < 25) && Date.now(); }, 20000, 200); return [p.__name, t ? t - evInfo.tShare : null]; }));
         evInfo.screen_ms = Object.fromEntries(seen);
+        evInfo.p2 = await ev(p2, () => { const x = window.HKCalls.screen(), h = window.HKCalls.horn(); return { sharing: x && x.sharing, mode: x && x.mode, horn_screen: h && h.screen }; });
+        evInfo.a_seen = await ev(A, () => { const h = window.HKCalls.horn(); return { shared: h && h.shared, tiles: h && h.tiles.length, hues: [...document.querySelectorAll('video')].length }; });
+        R.shots.push(await shot(A, 'teilen-a'));
         const c = await api(A, 'GET', '/api/calls/' + (await room(A)).id);
         evInfo.seats = c && c.ok ? { legs: (c.r.call.legs || []).length, limit: c.r.call.limit, joinable: c.r.call.joinable, block: c.r.call.join_block } : c;
         evInfo.end = evInfo.tShare;
@@ -342,7 +372,8 @@ function recovery(s, t, expect) {
         R.texts.second_bar = await until(() => txt(p2, '.cl-run'), 15000);
         R.shots.push(await shot(p2, 'voll-zweitgeraet'));
         // (3) Gastgeberin: "Person hinzufügen"
-        const addB = await A.$('.cl-add-go');
+        await openList(A); await sleep(600);
+        const addB = await A.$('.cl-plist .cl-add-go');
         if (addB) { await addB.click(); await sleep(1200); R.texts.add_hint = await txt(A, '.cl-add-hint'); R.shots.push(await shot(A, 'voll-hinzufuegen')); await A.keyboard.press('Escape'); }
         else R.texts.add_hint = '(kein Knopf Person hinzufügen)';
         const c = await api(A, 'GET', '/api/calls/' + (await room(A)).id);
@@ -380,19 +411,23 @@ function recovery(s, t, expect) {
     const pv = Object.values(R.pages).filter(x => x.secs);
     const cpuB = Object.keys(R.cpu).filter(k => !k.startsWith('_') && !k.includes('#')).map(k => R.cpu[k]);
     const sv = Object.values(setup).map(x => x.v), sa = Object.values(setup).map(x => x.a);
-    const falls = Object.values(R.pages).reduce((t, x) => t + ((x.horn && Array.isArray(x.horn.switches) ? x.horn.switches.length : (x.horn && +x.horn.switches)) || 0) + (x.direct ? 1 : 0), 0);
+    const falls = Object.values(R.pages).reduce((t, x) => t + (x.direct ? 1 : 0) + (S.horn && x.topo && x.topo !== 'horn' ? 1 : 0), 0);
+    const sw = Object.values(R.pages).reduce((t, x) => t + ((x.horn && Array.isArray(x.horn.switches) ? x.horn.switches.length : 0) || 0), 0);
     R.sum = {
       path: S.horn ? [...new Set(Object.values(R.pages).map(x => (x.horn && x.horn.path) || x.topo || '?'))].join('/') : 'mesh',
       setup_v: sv.some(x => x == null) ? null : Math.max(...sv), setup_a: sa.some(x => x == null) ? null : Math.max(...sa),
       lag: med(pv.map(x => x.lag)), lag_max: Math.max(...pv.map(x => x.lag95 || 0)), fps: med(pv.map(x => x.fps)), fps_min: Math.min(...pv.map(x => x.fpsMin == null ? 99 : x.fpsMin)),
       freeze: med(pv.map(x => x.freeze)), freeze_s: med(pv.map(x => x.freeze_s)), layer: med(pv.map(x => x.layer)), conceal: med(pv.map(x => x.conceal)),
-      gaps: med(pv.map(x => x.gaps)), cpu: med(cpuB), cpu_max: cpuB.length ? Math.max(...cpuB) : null, node_cpu: R.cpu._node, fall: falls,
+      gaps: med(pv.map(x => x.gaps)), cpu: med(cpuB), cpu_max: cpuB.length ? Math.max(...cpuB) : null, node_cpu: R.cpu._node, fall: falls, sw, vgap: Math.max(...pv.map(x => x.vgap || 0)), gap_s: Math.max(...pv.map(x => x.gap_s || 0)),
       recover: evInfo.end ? (Math.max(...pv.map(x => x.recover == null ? 1e9 : x.recover)) >= 1e9 ? null : Math.max(...pv.map(x => x.recover))) : null,
       missing_setup: sv.filter(x => x == null).length,
     };
     if (S.eng) { const e = R.pages[L[S.eng.i]]; R.sum.eng = e && { lag: e.lag, fps: e.fps, freeze: e.freeze, conceal: e.conceal, gaps: e.gaps }; }
     if (evt && evt.type === 'handover') R.sum.recover = evInfo.ready_ms, R.sum.who_gap = med(Object.values(R.pages).map(x => x.who_gap).filter(x => x != null && x > 0));
-    if (evt && evt.type === 'share') R.sum.recover = Math.max(...Object.values(evInfo.screen_ms || {}).map(x => x == null ? 1e9 : x));
+    if (evt && evt.type === 'share') {                // Bildschirm bei den anderen Personen (ohne die teilende selbst)
+      const o = Object.keys(evInfo.screen_ms || {}).filter(k => k !== L[evt.who]).map(k => evInfo.screen_ms[k]);
+      R.sum.recover = o.some(x => x == null) ? null : Math.max(...o); R.sum.screen_missing = o.filter(x => x == null).length;
+    }
     log('SUM', JSON.stringify(R.sum));
     rc = 0;
   } catch (e) {
