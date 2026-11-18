@@ -1400,6 +1400,10 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
                 sublink.link(c, uid, relink[1], nid, acc=acc)
             if relink[0] is not None:
                 sublink.unlink(c, uid, relink[0], nid, acc=acc)
+        if b.get("template") and "parent_id" not in b:      # 2.5 (Bug 2151): wird eine Seite zur Vorlage, faellt ihr automatischer
+            par = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()    # Verweis aus der Elternseite
+            if par and par[0]:
+                sublink.unlink(c, uid, par[0], nid, acc=acc)
         if ("parent_id" in b or any(k in b for k in ("icon", "cover", "tags", "pinned", "template", "locked"))
                 or ("title" in b and _title_in(b["title"]) != old[0])):
             tree_changed(c, owner, [nid], "moved" if "parent_id" in b else "updated", origin, before=moved_from)
