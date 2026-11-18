@@ -34,6 +34,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Hauptgeraet …“ geändert, neu „§4.2 Gegenrichtung auf dem Begleitgeraet …“ und zwei Fälle „§4.2 eigene Freigabe …“.
   Tests: `tests/meeting_logik.js`, `tests/browser_meeting.js` (Mesh und Knoten, beide Richtungen).
 
+### Behoben – Gruppenanrufe über den Knoten: sehr enge Leitung – Ton geht vor Bild, gedämpftes Pendeln (Bug 2159)
+- Nebenwirkung von 2152: Trug die Leitung den Sprecher, aber nicht zusätzlich die Mindestbilder der Kacheln (rund
+  260–480 kbit/s), kam eine Kachel alle paar Sekunden aus der Pause zurück, löste Stau und ein Schlüsselbild aus und
+  pausierte wieder; der Sprecher lief dabei meist mit halber Bildrate.
+- Jetzt (UDP): Scheitert eine Rückkehr (Stau mit Überlast laut GCC binnen 1,5 s), nimmt der Platz, der zurückkam,
+  zuerst zurück, und der nächste Versuch wartet doppelt so lange (2 s bis 30 s; wieder 2 s, wenn eine Rückkehr 30 s
+  hält). Der Sprecher bekommt seine volle Form vor dem Mindestbild der Kacheln.
+- **Ton geht vor Bild:** Staut die Leitung (GCC meldet anhaltend Überlast oder die Umlaufzeit liegt 100 ms über ihrem
+  Boden), nimmt der Knoten je Sekunde eine Stufe zurück – erst Kacheln, zuletzt den Sprecher ins Mindestbild –, bis
+  die Schlange abgebaut ist; zurück erst nach 4 s ohne Stau, mit Aufschub.
+- Container (Reihe `tests/anrufe_rang345.py --eng`, 4er, eine Person eng, n = 3, Median vorher → jetzt):
+  400 kbit/s Ton verdeckt 1,6 → 0 %, RTT 94 → 92 ms (Spanne vorher bis 406 ms, jetzt ≤ 94 ms), Sprecher 12 → 15 fps;
+  die Kacheln bleiben dort meist pausiert (an 40 → 12 %, in 2 von 3 Läufen ohne Kachelbild) – die Leitung trägt Ton und
+  Sprecher, mehr nicht. 600 kbit/s Sprecher 14 → 17 fps, Kacheln an 81 → 90 %, Wechsel an/aus je Kachel 4 → 3 je
+  Minute, längste Pause 9 → 6 s, Ton verdeckt 0,6 → 0,1 %. 1 Mbit/s und frei unverändert (20 fps, keine Pause).
+  Reihe: neue Fälle `r4d-4-400k`, `r4d-4-600k`, Auswertung `--eng`, `R345_NS` (eigene Namensräume).
+
 ### Behoben – Gruppenanrufe über den Knoten: enge Leitung ohne lange Bildpausen (Bug 2152)
 - Bei einer Person mit enger Leitung (Labor: 1 Mbit/s im 4er) kamen einzelne Bilder 15–83 s lang gar nicht an, obwohl die
   Leitung nichts verwarf. Ursache (Spur des Knotens, `HORN_SPUR`): Fiel das GCC-Ziel, pausierte der Knoten eine Kachel; in

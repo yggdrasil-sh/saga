@@ -76,6 +76,51 @@ Platzhalter: `horn-1.example.org`.
     `TestMindestbildFrei`). Container (`tests/anrufe_rang345.py`, Fall `r4d-4-eng`, 4er, eine Person mit 1 Mbit/s):
     längste Pause bei ihr vorher 10 s (5–19 s, n = 5), jetzt 0 s (n = 5; nur dieser Fix: 0 s, n = 3); 2 Mbit/s vorher
     22 s (4–31 s, n = 3), jetzt 0 s.
+  - **Gedämpfte Rückkehr der Mindestform, Sprecher geht vor (UDP, 2.5, Bug 2159):** Trägt die Leitung den Sprecher,
+    aber nicht zusätzlich die Mindestbilder der Kacheln (Prüfung von 2152, ~260–480 kbit/s), kam eine pausierte Kachel
+    alle ~6 s als Mindestbild zurück (nach dem GCC-Ziel, das ohne Probepakete über die Leitung hinauswächst) und löste
+    jedes Mal Stau und eine Schlüsselbild-Anforderung aus; der Sprecher fiel dabei vor den Kachel-Pausen ins
+    Mindestbild, und die vorgemerkte Reserve der Kachel blockierte seinen Weg zurück – er lief dauerhaft mit halber
+    Bildrate. Jetzt:
+    - Jede Rückkehr der Mindestform (Pause → Mindestbild, Mindestbild → volle unterste Schicht; auch Pause → volle
+      Schicht) ist der letzte solche Schritt des Beins (`Leg.mbStep`). Fällt die Auswahl binnen `mbFailWin` (1,5 s)
+      und meldet GCC dabei Überlast (`ExtOver`), ist sie gescheitert: Der Platz, der zurückkam, nimmt zuerst zurück
+      (wieder in die Pause bzw. ins Mindestbild), und der Aufschub dieser Stufe verdoppelt sich – 2 → 4 → … bzw.
+      4 → 8 → … bis `mbBackMax` (30 s), für alle Kacheln des Beins ab dem Fehlschlag (gescheitert ist die Rate des
+      Beins, nicht die Quelle). Hält eine Rückkehr `upHold` (30 s), gilt wieder der Grundwert. Je Takt kommt höchstens
+      eine Kachel aus der Pause zurück, und erst, wenn die letzte Rückkehr bestätigt ist.
+    - Ein grundloser Sturz des Ziels ohne Überlast (Container, Fund B der Prüfung) zählt nicht als Scheitern. Im Modell
+      trifft so ein Sturz alle Ströme anteilig (Ziel 85 % der Rate): Lägen die Kacheln dann schon im Mindestbild,
+      träfe der nächste Sturz den Sprecher. Das Pendeln `l` ↔ `l*` bei grundlosen Stürzen (560k–1M) bleibt deshalb wie
+      vorher; gedämpft ist es, wo die Rückkehr selbst den Stau auslöst (320–480k).
+    - **Sprecher geht vor:** Stau kurz nach einer Rückkehr (mit Überlast) pausiert erst Kacheln, dann geht der Sprecher
+      ins Mindestbild (sonst, bei grundlosen Stürzen, wie bisher: Sprecher-Mindestbild vor einer Pause). Sein Schritt
+      Mindestbild → volle Schicht zählt die Reserve pausierter Kacheln nicht mit. Ins Mindestbild geht er nur, solange
+      dafür noch eine Kachel Bild zeigt (oder die Leitung staut, siehe „Ton geht vor Bild“) – läuft keine mehr, bleibt er wie vor 2152 auf der vollen untersten Schicht
+      (Container 400k, Spur: sonst fiel er bei jedem Sturz des Ziels unter seine Rate für Sekunden auf halbe Bildrate,
+      ohne dass eine Kachel davon etwas hatte). Solange er im Mindestbild läuft, kommt
+      keine Kachel zurück und keine geht höher; solange eine Kachel eben (binnen `upHold`) pausiert hat, geht keine
+      andere über das Mindestbild (lieber beide im Mindestbild als eine voll und eine ohne Bild).
+    - **Ton geht vor Bild (Stau):** Die Leitung trägt weniger als die gerechnete Rate (Kopfdaten, drei Tonströme): Im
+      Container lief bei 400 kbit/s mit dem Sprecher auf `l` die Schlange voll (RTT ~400 ms, Ton verdeckt 7,5 %),
+      obwohl Schätzung und GCC-Ziel ihn zuließen. Stau heißt: GCC meldet `jamTicks` (3) Takte in Folge Überlast, oder
+      die Umlaufzeit (`ExtRTT`) liegt `rttJamFor` (600 ms) lang `rttJam` (100 ms) über ihrem Boden (kleinste gesehene,
+      steigt um `rttDrift` je Sekunde) – nur mit Zeitschichten und nicht während einer Probe. Dann nimmt das Bein je
+      `jamStep` (1 s) eine Stufe zurück (Kachel tiefer, ins Mindestbild, in die Pause, zuletzt der Sprecher ins
+      Mindestbild), solange die Umlaufzeit nicht fällt. Zurück kommt die Mindestform erst nach `jamCalm` (4 s) ohne
+      Stau, einzeln und mit Aufschub (kam ein Platz binnen `upHold` zurück, verdoppelt er sich, `mbJam`); `jamHold`
+      (60 s) nach einem Stau keine Schritte nach der Schätzung (sie wächst anwendungsbegrenzt weit über die Leitung).
+    Modell (`engleitung_test.go`, Prüfermodell: echte Leitung, pion-GCC-Regeln, Schlange 300 ms, 4 min): Sprecher in
+    voller Form 260k/400k vorher 9 %, jetzt 100 %; Zustandswechsel je Kachel und Minute 260k/400k/480k vorher
+    20,7/13,6/26,2, jetzt unter 5 (ein gescheiterter Versuch je ~30 s, `TestEngLeitungAufschub`). 600k, 1M und 1M mit
+    Stürzen unverändert (`TestEngLeitungTraegt`, `TestMindestbild*`). Leitung, die weniger trägt als gerechnet
+    (`engRunOH`, `TestEngLeitungStau`, 220k ×1,25 / 300k ×1,7): Schlange im Mittel < 100 ms, ≤ 3 % der Takte voll
+    (vorher 300 ms, 100 %). Übersicht: `go test ./internal/sfu -run TestEngLeitungZahlen -v`, Spur je Takt
+    `ENG_SPUR=<kbit/s>[,<Sturz-Abstand s>]` mit `-run TestEngSpur`. Container (`tests/anrufe_rang345.py --eng`, 4er,
+    eine Person eng, n = 3, Median vorher → jetzt): `r4d-4-400k` Ton verdeckt 1,6 → 0 %, RTT 94 (82–406) → 92
+    (72–94) ms, Sprecher 12 → 15 fps, Kacheln meist pausiert (an 40 → 12 %, in 2 von 3 Läufen ohne Kachelbild);
+    `r4d-4-600k` Sprecher 14 → 17 fps, Kacheln an 81 → 90 %, Wechsel an/aus je Kachel 4 → 3/min, längste Pause
+    9 → 6 s, Ton 0,6 → 0,1 %; `r4d-4-eng` (1 Mbit/s) und `r4y-4-frei` unverändert.
   - Hysterese gegen Pendeln (Horn-Fix, `layerStep`): Ohne Stau bleibt die laufende Schicht bis 10 % über der Schätzung
     (kurze Ratenspitzen, z. B. Schlüsselbilder, schalten nicht herunter); bei Stau (Sperrzeit) sofort herunter – so
     weit, wie die Schätzung es verlangt (von `h` auf `m`, wenn sie `m` trägt; früher immer bis `l`). Nach
@@ -1467,9 +1512,11 @@ e2e/stau.sh start; e2e/stau.sh set 'down=600&rtt=40'; e2e/stau.sh mess --path tu
 `HORN_SPUR=1` (nur Diagnose, Prüfstand und Labor): je Bein und Sekunde eine Zeile `spur` mit Schätzung, GCC-Ziel,
 Medienrate, Rest der Sperrzeit, Aufschub, Schonfrist/ready, Probe-Stufe und je Bild-Platz Schicht, Zeitschicht,
 Besitzer (16-Bit-Hash der Peer-Kennung), Pakete des Ausgangs in der Sekunde und ob er wartet (`x` = nichts weitergeleitet,
-`w<schicht>` = Wechsel wartet auf ein Schlüsselbild), z. B. `spur 3fa2 est=538k gcc=961k rate=477k sperre=8.6s
-backoff=16s lag=false ready=true probe=0 sp:l3@91c0/23 ti:l3@0d7e/24 ti:p3@b415/0x`; bei `HORN_BWE=mit|eigen` dazu je
-Wechsel des ICE-Paars `spurpaar <bein> lokal=<typ> fern=<typ>` (ohne Adressen). Damit wurde 2152 eingegrenzt.
+`w<schicht>` = Wechsel wartet auf ein Schlüsselbild, `~<a>/<b>` = Aufschub der Rückkehr der Mindestform in s,
+Pause → Mindestbild / Mindestbild → voll, nur wenn gesetzt; 2159), dazu `over=` (Überlast laut GCC), `rtt=<jetzt>/<Boden>ms` und `jam=` (Stau in der letzten Sekunde), z. B.
+`spur 3fa2 est=538k gcc=961k rate=477k sperre=8.6s backoff=16s lag=false ready=true probe=0 over=false rtt=81/62ms jam=false
+sp:l3@91c0/23 ti:l3@0d7e/24 ti:p3@b415/0x~8/0`; bei `HORN_BWE=mit|eigen` dazu je Wechsel des ICE-Paars
+`spurpaar <bein> lokal=<typ> fern=<typ>` (ohne Adressen). Damit wurden 2152 und 2159 eingegrenzt.
 
 `HORN_DEV=1` (nur Tests) schaltet die Endpunkte unter `/api/dev/` frei: Entwicklungs-Token, Räume, Drossel je Bein und
 Lastzahlen. Dazu kommt die Testseite `/dev/`. Auf keinen Fall produktiv setzen.
