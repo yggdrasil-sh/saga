@@ -202,7 +202,10 @@ async def _owner_req(request, nid, rest):
     if m == "POST" and rest == "children":
         if _need(inp, "subpages"):
             return _need(inp, "subpages")
+        link = b.get("link") is not False         # 2.5 (Bug 2151): "link": false - Verweis setzt der Client selbst
         b = fed_dbx.dbx_in(inp, {k: v for k, v in b.items() if k in ("title", "icon", "tags", "kind", "props")}, db_id=nid)
+        if not link:
+            b["link"] = False
         if isinstance(b.get("icon"), str) and b["icon"].startswith("/") and not re.fullmatch(r"/files/[0-9a-f]{24}", b["icon"]):
             b.pop("icon")
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_create, dict(b, parent_id=nid)))
@@ -235,7 +238,8 @@ async def _owner_req(request, nid, rest):
         par = b.get("parent_id")
         if not (isinstance(par, int) and not isinstance(par, bool) and 0 < par < 2 ** 63):
             return F._signed(inp, 403, {"error": t("Dafür fehlt dir die Berechtigung.")})
-        return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_move, nid, {"parent_id": par, "index": b.get("index", 0)}))
+        return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_move, nid, {"parent_id": par, "index": b.get("index", 0)},
+                                                             None, True))
     if m == "GET" and rest == "rows":
         return _need(inp, "db") or _signed_resp(inp, fed_dbx.dbx_out(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, app_api.db_rows, nid, q))))
     if m == "POST" and rest == "formula/check":      # 2.5 (formula1): Formel-Editor fuer eine hier liegende Datenbank
@@ -932,6 +936,8 @@ def create(uid, b, origin=None):
     if nid >= 0:
         return _bad(t("ungültige Angabe"))
     out = {k: b[k] for k in ("title", "tags", "kind") if k in b}
+    if b.get("link") is False:                         # 2.5 (Bug 2151): kein Verweis in der Elternseite (Gegenstellen ohne: ignoriert)
+        out["link"] = False
     if "props" in b:
         out["props"] = fed_dbx.props_out(p["id"], F.props_out(p["id"], b["props"]))
     if isinstance(b.get("icon"), str) and b["icon"]:

@@ -20,7 +20,7 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 from db import connect as _db
-from saga import covers, gallery_format as gf, page_widgets as pw
+from saga import covers, gallery_format as gf, page_widgets as pw, sublink
 from saga.core import E, HERE, _api_guard, _bad, _body, origin_of, t
 from saga.databases import sign_buttons
 from saga.i18n import get_lang, norm
@@ -279,6 +279,8 @@ def use(uid, gid, b, lang, origin=None):
             if it["kind"] == "database" and it["ref"] in keep and isinstance(it.get("schema"), dict) and it["schema"].get("tasks"):
                 tasksrc.auto_subscribe(c, uid, owner, ids[it["ref"]], _db_schema(c, owner, ids[it["ref"]]))
         tree_changed(c, owner, order, "created", origin)
+        if pid is not None and sublink.wanted(b):     # 2.5 (Bug 2151): nur die oberste neue Seite verlinkt in die Elternseite
+            sublink.link(c, uid, pid, ids[bundle["root"]], acc=acc)
         if pid is not None and owner != uid:          # unter einer geteilten Seite: wer sie offen hat, sieht die neuen Seiten
             from saga.notes import announce_shared
             announce_shared(c, owner, ids[bundle["root"]], order)

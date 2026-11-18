@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from db import connect as _db
 from fastapi import APIRouter
-from saga import covers, nextcloud
+from saga import covers, nextcloud, sublink
 from saga.core import SECRET, _api_guard, _bad, _body, _json_load, origin_of, t
 from saga.files import FILE_QUOTA, FILES_DIR, QuotaFull, copy_owned
 from saga.sharing import access, is_remote
@@ -143,6 +143,10 @@ def note_duplicate(uid, nid, b, origin=None):
             if parent:
                 announce_row(c, dst, cur.lastrowid, uid, now, origin)
         tree_changed(c, dst, [cur.lastrowid], "created", origin)
+        if parent and not tpl and sublink.wanted(b):
+            # 2.5 (Bug 2151): Verweis in der Elternseite - Duplikat neben dem Original (wie Notion: direkt hinter dessen
+            # Verweis), neue Seite aus einer Vorlage ans Ende (saga.sublink; Datenbanken/gesperrte Seiten: nichts)
+            sublink.link(c, uid, parent, cur.lastrowid, after=nid if parent == r[11] and dst == owner and not r[14] else None)
         out = {"id": cur.lastrowid, "updated": now}
         if entry:
             out.update(fresh=_fresh_mark(c, dst, uid, cur.lastrowid, now), placeholder=r[0] or "")

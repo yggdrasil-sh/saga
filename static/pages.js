@@ -1257,9 +1257,12 @@
         : T('Die Unterseite gehört der Person, die die Seite geteilt hat.')));
     });
   }
-  function newPage(parentId, typed) {
-    var stop = titleBuffer(typed);
-    return save().then(function () { return api('POST', '/api/notes', { parent_id: parentId || null }); })
+  // noLink (Bug 2151): der Server setzt sonst einen Verweis ans Ende der Elternseite - nicht, wo die neue Seite schon
+  // sichtbar ist (Unterseiten-Block)
+  function newPage(parentId, typed, noLink) {
+    var stop = titleBuffer(typed), req = { parent_id: parentId || null };
+    if (noLink) req.link = false;
+    return save().then(function () { return api('POST', '/api/notes', req); })
       .then(function (d) { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList().then(function () { return openPage(d.id); }); })
       .then(function () { focusTitle(stop()); })
       .catch(function (err) { stop(); HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
@@ -2070,7 +2073,8 @@
       list.appendChild(el('div', 'menu-label', T('Neu')));
       item(T('+ Neue Seite „{name}“', { name: $('pg-picker-q').value.trim() }), '', function () {
         var title = $('pg-picker-q').value.trim();
-        api('POST', '/api/notes', { title: title, parent_id: S.cur ? S.cur.id : null }).then(function (d) {
+        // link: false - der Verweis kommt hier an die Schreibmarke (sonst setzte der Server einen zweiten ans Ende, Bug 2151)
+        api('POST', '/api/notes', { title: title, parent_id: S.cur ? S.cur.id : null, link: false }).then(function (d) {
           if (S.cur) { S.open[S.cur.id] = true; saveOpen(); }
           return loadList().then(function () { insertLink('/notes#' + d.id, '📄 ' + title, 'note-link'); });
         }).catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
@@ -6695,7 +6699,7 @@
       sel.addEventListener('change', function () { if (!sel.value) return; self.data.db = +sel.value; self.data.view = null; self.mark(); self.draw(); });
       var nb = el('button', 'btn', T('+ Neue Datenbank hier')); nb.type = 'button';
       nb.addEventListener('click', function () {
-        api('POST', '/api/notes', { kind: 'database', title: T('Neue Datenbank'), icon: '🗃️', parent_id: S.cur ? S.cur.id : null })
+        api('POST', '/api/notes', { kind: 'database', title: T('Neue Datenbank'), icon: '🗃️', parent_id: S.cur ? S.cur.id : null, link: false })
           .then(function (d) { return loadList().then(function () { self.data.db = d.id; self.mark(); self.draw(); }); })
           .catch(function (err) { HK.toast(T('Datenbank nicht angelegt: {err}', { err: err.message })); });
       });
@@ -7533,7 +7537,7 @@
       e0.appendChild(el('div', 'wg-empty-a', T('Noch keine Unterseiten')));
       if (data.can_add && !readOnly() && S.cur) {
         var nb = el('button', 'btn btn-sm sp-new', T('Unterseite anlegen')); nb.type = 'button';
-        nb.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); newPage(S.cur.id); });
+        nb.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); newPage(S.cur.id, undefined, true); });
         e0.appendChild(nb);
       } else e0.appendChild(el('div', 'wg-empty-h', T('Hier erscheinen die Seiten, die unter dieser Seite liegen.')));
       body.appendChild(e0);
@@ -10056,7 +10060,7 @@
   function usDatabase() {
     var page = S.cur, ed = usPm();
     if (!ed || !US.X.nodeOf || !ed.schema.nodes.database) return newDatabase(page.id);
-    api('POST', '/api/notes', { kind: 'database', title: T('Neue Datenbank'), icon: '🗃️', parent_id: page.id })
+    api('POST', '/api/notes', { kind: 'database', title: T('Neue Datenbank'), icon: '🗃️', parent_id: page.id, link: false })
       .then(function (d) { return loadList().then(function () { return d; }); })
       .then(function (d) {
         var e2 = usPm(); if (!e2 || S.cur !== page || !usEmpty(e2)) return;

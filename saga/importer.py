@@ -27,6 +27,7 @@ from db import connect as _db
 from saga import i18n
 from saga import import_common as ic
 from saga import import_csv
+from saga import sublink
 from saga.core import TZ, _api_guard, _bad, _body, _json_load, t
 from saga.notes import _clean_schema, _schema_stamp, tree_changed
 
@@ -276,10 +277,26 @@ def _wrap(u, work):
             root, parent = work(run, src)
         finally:
             src.close()
+        if parent is not None and run.created:
+            _link_top(run, parent)
         if run.report.items and run.report.page is None:     # Trilium legt den Bericht selbst unter die Sammelseite
             _report_page(run, parent)
         return root
     return go
+
+
+LINK_TOP_MAX = 50              # so viele oberste Seiten eines Imports bekommen einen Verweis in der Zielseite
+
+
+def _link_top(run, parent):
+    """2.5 (Bug 2151): oberste neue Seiten des Imports (direkt unter der Zielseite) am Ende der Zielseite verlinken - wie
+    "Neue Unterseite". Seiten innerhalb des Imports nicht: deren Verweise kommen aus den Daten. CSV an eine bestehende
+    Datenbank legt keine neue oberste Seite an (nur Zeilen) - nichts."""
+    with _db() as c, c:
+        top = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND parent_id=? AND id = ANY(?) AND deleted_at IS NULL "
+                                       "ORDER BY sort NULLS FIRST, id LIMIT ?", (run.uid, parent, run.created, LINK_TOP_MAX)).fetchall()]
+        for nid in top:
+            sublink.link(c, run.uid, parent, nid)
 
 
 def _csv_work(tok, b, parent, target):

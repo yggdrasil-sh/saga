@@ -1068,7 +1068,8 @@
     }
     if (it.neu) {
       var cur = K.cur();
-      HK.api('POST', '/api/notes', { title: it.neu, parent_id: cur ? cur.id : null }).then(function (d) {
+      // link: false - der Verweis kommt an die Schreibmarke, nicht zusaetzlich ans Seitenende (Bug 2151)
+      HK.api('POST', '/api/notes', { title: it.neu, parent_id: cur ? cur.id : null, link: false }).then(function (d) {
         return K.reloadList().then(function () { insertInline(editor, range, s.nodes.page.create({ id: d.id })); });
       }).catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
     }

@@ -217,6 +217,8 @@ def page_create(tok, b):
     req["parent_id"] = parent
     if b.get("kind") == "database":
         req["kind"] = "database"
+    if b.get("link") is False:                          # 2.5 (Bug 2151): kein Verweis am Ende der Elternseite
+        req["link"] = False
     if b.get("properties") is not None:
         req["props"] = props_in(tok, parent, b["properties"])
     d = _relay(note_create(tok.uid, req, "api"))

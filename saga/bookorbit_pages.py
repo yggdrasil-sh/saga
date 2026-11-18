@@ -823,7 +823,8 @@ def _create(uid, title, icon, parent):
     from saga.api_v1 import Fail as ApiFail
     from saga.pages import note_create
     try:
-        return _relay(note_create(uid, {"title": title[:200], "icon": icon, "parent_id": parent, "cover": None}))["id"]
+        # link False (Bug 2151): Sammel- und Buchseiten fuehren ihre Listen selbst - kein zusaetzlicher Verweis am Ende
+        return _relay(note_create(uid, {"title": title[:200], "icon": icon, "parent_id": parent, "cover": None, "link": False}))["id"]
     except ApiFail as f:
         raise Fail(f.status if f.status < 500 else 502, str(f))
 

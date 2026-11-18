@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, covers, dbcalc, dbvals, mentions, merge, nextcloud, page_widgets, synced, treesync
+from saga import bus, covers, dbcalc, dbvals, mentions, merge, nextcloud, page_widgets, sublink, synced, treesync
 from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, local_ref, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -900,6 +900,8 @@ def note_create(uid, b, origin=None):
         if parent:
             announce_row(c, owner, cur.lastrowid, uid, now, origin)      # neue Zeile (BUG-049)
         tree_changed(c, owner, [cur.lastrowid], "created", origin)
+        if parent and sublink.wanted(b):     # 2.5 (Bug 2151): Verweis am Ende der Elternseite (nur Seiten, siehe saga.sublink)
+            sublink.link(c, uid, parent, cur.lastrowid, acc=acc)
         return JSONResponse({"id": cur.lastrowid, "updated": now})
 
 
@@ -1118,7 +1120,7 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
                 b, merged = mg
         foreign = content and not check_rev and bool(old[5]) and old[5] != uid
         atomic = check_rev or (content and bool(b.get("overwrite"))) or foreign
-        shrink, srev, moved_from = False, None, None
+        shrink, srev, moved_from, relink = False, None, None, None
         try:
             if "pinned" in b:
                 sets.append("pinned=?"); args.append(1 if b["pinned"] else 0)
@@ -1335,6 +1337,7 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
                         raise ValueError(t("Seiten können nicht in eine Datenbank verschoben werden"))
                 if cur_par != newpar:           # Kette VOR dem Verschieben: wer bisher Zugriff hatte (Live)
                     moved_from = share_targets(c, owner, [nid])
+                    relink = (cur_par, newpar) if sublink.wanted(b) else None
                 sets.append("parent_id=?"); args.append(newpar)
         except LookupError:
             raise _Reply(_bad("not found", 404))
@@ -1388,6 +1391,11 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
         # Seitenbaum (notes.tree): nur Felder, die /api/notes zeigt (bzw. Titelbild) - Titel nur, wenn er sich aendert
         if moved_from is not None:          # andere Elternseite: geerbte Freigaben aendern sich (alte UND neue Kette)
             announce_shared(c, owner, nid, [nid], moved_from)
+        if relink:                          # 2.5 (Bug 2151): wie POST /move - Verweis wandert mit (saga.sublink)
+            if relink[1] is not None:
+                sublink.link(c, uid, relink[1], nid, acc=acc)
+            if relink[0] is not None:
+                sublink.unlink(c, uid, relink[0], nid, acc=acc)
         if ("parent_id" in b or any(k in b for k in ("icon", "cover", "tags", "pinned", "template", "locked"))
                 or ("title" in b and _title_in(b["title"]) != old[0])):
             tree_changed(c, owner, [nid], "moved" if "parent_id" in b else "updated", origin, before=moved_from)
@@ -1417,7 +1425,7 @@ async def api_note_move(nid: int, request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     b = await _body(request) or {}
-    return await run_in_threadpool(note_move, uid, nid, b, origin_of(request))
+    return await run_in_threadpool(note_move, uid, nid, b, origin_of(request), sublink.wanted(b))
 
 
 def _chain_shares(c, owner, nid):
@@ -1438,10 +1446,12 @@ def _chain_pubs(c, owner, nid):
                                     f"({','.join('?' * len(chain))})", (owner, *chain)).fetchall()}
 
 
-def note_move(uid, nid, b, origin=None):
+def note_move(uid, nid, b, origin=None, relink=False):
     """Verschieben fuer die Weboberflaeche und die Foederation. Eigentuemer: frei. Wer 'Bearbeiten' hat (2.3), darf
     innerhalb eines geteilten Baums verschieben: Seite und neue Elternseite bearbeitbar, und die Freigaben ueber der
-    alten und der neuen Stelle sind genau dieselben - so bekommt niemand Zugriff dazu und niemand verliert ihn."""
+    alten und der neuen Stelle sind genau dieselben - so bekommt niemand Zugriff dazu und niemand verliert ihn.
+    relink (2.5, Bug 2151; Web, Apps, Foederation - nicht BookOrbit): andere Elternseite -> Verweis dort am Ende, reine
+    Verweis-Absaetze in der alten Elternseite fallen weg (saga.sublink, wie Notion)."""
     try:
         index = max(0, int(b.get("index", 0)))
     except (TypeError, ValueError):
@@ -1483,6 +1493,11 @@ def note_move(uid, nid, b, origin=None):
         if me[0] != parent:                  # andere Elternseite: geerbte Freigaben aendern sich - alte UND neue Kette (BUG-033)
             announce_tree(c, owner, nid, [nid], uid, time.time(), False, origin=origin, before=before)
         tree_changed(c, owner, [nid], "moved", origin, before=before)       # auch nur umsortiert
+        if relink and me[0] != parent:       # 2.5 (Bug 2151): Verweis wandert mit
+            if parent is not None:
+                sublink.link(c, uid, parent, nid, acc=acc)
+            if me[0] is not None:
+                sublink.unlink(c, uid, me[0], nid, acc=acc)
     return JSONResponse({"ok": True, "parent_id": parent, "index": sib.index(nid)})
 
 
