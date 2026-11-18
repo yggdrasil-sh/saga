@@ -851,13 +851,18 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	}
 	jam, rtt := false, time.Duration(0)
 	if jamOn {
-		if l.ExtOver != nil && l.ExtOver() {
+		if l.ExtRTT != nil {
+			rtt = l.ExtRTT()
+		}
+		// Ueberlast erst, wenn die Umlaufzeit bekannt ist (erster Empfaengerbericht): pion-GCC meldet bis zur ersten
+		// Laufzeit-Auswertung "overuse" (Nullwert der Statistik) - sonst staute jeder Anrufbeginn (Pruefung 2159)
+		if l.ExtOver != nil && (l.ExtRTT == nil || rtt > 0) && l.ExtOver() {
 			l.overN++
 		} else {
 			l.overN = 0
 		}
 		if l.ExtRTT != nil {
-			if rtt = l.ExtRTT(); rtt > 0 {
+			if rtt > 0 {
 				if l.rttFloor == 0 || rtt < l.rttFloor {
 					l.rttFloor = rtt
 				} else {

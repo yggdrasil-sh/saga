@@ -105,7 +105,9 @@ Platzhalter: `horn-1.example.org`.
       Container lief bei 400 kbit/s mit dem Sprecher auf `l` die Schlange voll (RTT ~400 ms, Ton verdeckt 7,5 %),
       obwohl Schätzung und GCC-Ziel ihn zuließen. Stau heißt: GCC meldet `jamTicks` (3) Takte in Folge Überlast, oder
       die Umlaufzeit (`ExtRTT`) liegt `rttJamFor` (600 ms) lang `rttJam` (100 ms) über ihrem Boden (kleinste gesehene,
-      steigt um `rttDrift` je Sekunde) – nur mit Zeitschichten und nicht während einer Probe. Dann nimmt das Bein je
+      steigt um `rttDrift` je Sekunde) – nur mit Zeitschichten und nicht während einer Probe; Überlast zählt erst, wenn
+      die Umlaufzeit bekannt ist (pion-GCC meldet bis zur ersten Laufzeit-Auswertung „overuse“, sonst staute jeder
+      Anrufbeginn, `TestEngLeitungAnlauf`). Dann nimmt das Bein je
       `jamStep` (1 s) eine Stufe zurück (Kachel tiefer, ins Mindestbild, in die Pause, zuletzt der Sprecher ins
       Mindestbild), solange die Umlaufzeit nicht fällt. Zurück kommt die Mindestform erst nach `jamCalm` (4 s) ohne
       Stau, einzeln und mit Aufschub (kam ein Platz binnen `upHold` zurück, verdoppelt er sich, `mbJam`); `jamHold`

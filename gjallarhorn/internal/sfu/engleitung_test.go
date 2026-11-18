@@ -366,3 +366,47 @@ func TestEngSpur(t *testing.T) {
 }
 
 var engSpur func(er *estRoom, rate, q float64)
+
+// TestEngLeitungAnlauf (Pruefung 2159): pion-GCC meldet bis zur ersten Laufzeit-Auswertung "overuse" (Nullwert der
+// Statistik), die Umlaufzeit ist bis zum ersten Empfaengerbericht unbekannt. Das ist kein Stau - sonst ging zu Beginn
+// jedes Anrufs eine Stufe zurueck, und 60 s lang (jamHold) gab es keinen Schritt nach der Schaetzung (Container,
+// Spur: freie Beine mit jam=true bei rtt=0; Modell: Sprecher erst nach 62 s auf h statt nach 12 s).
+func TestEngLeitungAnlauf(t *testing.T) {
+	er := newEstCfg(t, 1250e3, 600e3, 3, true)
+	er.pion = true
+	er.link = 4e6
+	er.grow = 0
+	var ls []int
+	for i, s := range er.all {
+		if s.Layer == "l" {
+			ls = append(ls, i)
+			s.HasTID.Store(true)
+		}
+	}
+	start := er.now
+	orig := er.l.ExtOver
+	er.l.ExtOver = func() bool { return er.now-start < int64(1500*time.Millisecond) || orig() }
+	er.l.ExtRTT = func() time.Duration {
+		if er.now-start < int64(2*time.Second) {
+			return 0
+		}
+		return 40 * time.Millisecond
+	}
+	firstH := time.Duration(0)
+	for er.now-start < int64(40*time.Second) && firstH == 0 {
+		for _, i := range ls {
+			er.all[i].TIDFrames[0].Add(2)
+			er.all[i].TIDFrames[1].Add(2)
+		}
+		er.tick()
+		if er.l.jamAt != 0 {
+			t.Fatalf("Stau nach %v (GCC-Nullwert, Umlaufzeit unbekannt)", time.Duration(er.l.jamAt-start))
+		}
+		if er.layer() == "h" {
+			firstH = time.Duration(er.now - start)
+		}
+	}
+	if firstH == 0 || firstH > 20*time.Second {
+		t.Errorf("Sprecher erst nach %v auf h (Ziel <= 20 s, frei ~12 s)", firstH)
+	}
+}
