@@ -3007,6 +3007,8 @@ def _w_note_patch(uid, nid, b):
             with _db() as c:
                 hp = _home_peer(c, pid)
                 b["body"] = mentions.home_out(c, b["body"], lambda u: (lambda pub: f"@{pub}@{SELF_HOST}" if pub else None)(fed_name(c, u, hp)))
+    if isinstance(b.get("icon"), str) and b["icon"].strip().startswith("/siegel/") and not siegel.is_siegel(b["icon"].strip()):
+        return _bad(t("Unbekanntes Saga-Siegel"))         # wie lokal - nicht still zum leeren Symbol machen (_pic_out)
     if isinstance(b.get("icon"), str) and siegel.is_siegel(b["icon"].strip()):
         with _db() as c:
             if not feature(_home_peer(c, pid), "siegel1"):    # 2.5: aelterer Server kennt die Siegel nicht
