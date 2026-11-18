@@ -46,6 +46,7 @@ const lockDb = (id, on) => execFileSync('psql', [DBURL, '-qc', `UPDATE note SET 
   });
   async function until(fn, ms = 6000) { const t0 = Date.now(); let v; while (Date.now() - t0 < ms) { v = await fn(); if (v) return v; await sleep(200); } return v; }
   async function open(id) {
+    lockDb(id, false);                                  // jeder Fall beginnt entsperrt
     await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id);
     for (let i = 0; i < 60; i++) { if (await p.evaluate((id) => !!(HKPages.k.cur() && HKPages.k.cur().id === id && document.querySelector('#pg-editor [contenteditable="true"]')), id)) break; await sleep(100); }
     for (let i = 0; i < 40; i++) { if (await p.evaluate(() => !!window.__hello)) break; await sleep(250); }
@@ -58,8 +59,11 @@ const lockDb = (id, on) => execFileSync('psql', [DBURL, '-qc', `UPDATE note SET 
   }
   const unlockClick = async () => { if ((await st()).icon) await p.click('#pg-lock', { timeout: 3000 }); };
 
-  // --- 1. Inhalt nach 423 -------------------------------------------------------------------------------------
+  // --- 1. Inhalt nach 423 (nicht live: mit notes.live geht der Inhalt ueber Yjs, pm-live verwirft ihn mit Hinweis) --
   await open(pg);
+  const live = await p.evaluate(() => !!(HKPages.k.liveBound && HKPages.k.liveBound()));
+  console.log('     live gebunden: ' + live);
+  if (!live) {
   lockDb(pg, true); p.c423 = 0;
   await p.click('#pg-editor [contenteditable="true"] p, #pg-editor .ce-paragraph');
   await p.keyboard.press('End'); await p.keyboard.type(' Inhalt01', { delay: 30 });
@@ -71,6 +75,7 @@ const lockDb = (id, on) => execFileSync('psql', [DBURL, '-qc', `UPDATE note SET 
   await unlockClick();
   const n1 = await until(async () => { const n = await api('GET', '/api/notes/' + pg); return /Inhalt01/.test(n.body || '') && !n.locked ? n : null; }, 6000);
   ok('Inhalt: nach dem Entsperren gespeichert', !!n1, (await api('GET', '/api/notes/' + pg)).body);
+  }
 
   // --- 2. Vormerkung + Baustein meldet Aenderung ----------------------------------------------------------------
   await open(pg);
