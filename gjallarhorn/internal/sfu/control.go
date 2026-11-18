@@ -31,6 +31,11 @@ const (
 	defaultRateH  = 1500e3
 	audioRateUDP  = 40e3 // Ton je Strom auf einem UDP-Bein (BUNDLE)
 	tileFPSMargin = 1.25
+	// Mindestbild (UDP, Bug 2152): Bevor eine Kachel pausiert, laeuft sie auf der untersten Schicht mit nur so vielen
+	// Bildern/s (Basis-Zeitschicht, bei L1T2 mit 20 fps die Haelfte, rund 60 % der Rate) - lieber weniger Bilder als
+	// gar kein Bild. Eine pausierte Kachel kommt in dieser Form fruehestens minBack nach der Pause zurueck.
+	minFPS  = 10
+	minBack = 2 * time.Second
 )
 
 // screenResume: Kommt eine Bildschirmquelle nach mindestens so langer Stille (zusaetzlich zur Sekunde bis „nicht
@@ -592,6 +597,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		tid    uint8
 		rate   float64
 		wasOff bool
+		min    bool // Mindestbild: unterste Schicht, nur die Basis-Zeitschicht (minFPS)
 	}
 	var cs []*choice
 	order := make([]*slot, 0, len(vslots))
@@ -623,7 +629,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		st := c.opts[c.idx]
 		c.tid = 3
 		f := 1.0
-		if stream {
+		if c.min && c.idx == 0 && !stream {
+			c.tid, f = tidFor(st, minFPS)
+		} else if stream {
 			fps := cfg.TCPSpeakerFPS
 			if c.s.class == "tile" {
 				fps = cfg.TCPTileFPS
@@ -634,8 +642,27 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		return layerRate(st) * f
 	}
+	// Mindestbild (Bug 2152, nur UDP mit GCC): mb. Ein Platz, der im letzten Takt in der Mindestform lief, beginnt in ihr.
+	mb := l.Ext != nil && !stream
+	canMin := func(c *choice) bool {
+		if !mb || c.idx != 0 || len(c.opts) == 0 {
+			return false
+		}
+		t, f := tidFor(c.opts[0], minFPS)
+		return t < 3 && f < 0.9
+	}
+	canMinAt := func(c *choice) bool { // wie canMin, fuer eine pausierte Kachel
+		i := c.idx
+		c.idx = 0
+		ok := canMin(c)
+		c.idx = i
+		return ok
+	}
 	sum := 0.0
 	for _, c := range cs {
+		if mb && c.s.min && c.s.layer != "" && !c.s.paused && len(c.opts) > 0 && c.s.layer == c.opts[0].Layer && canMin(c) {
+			c.min = true
+		}
 		c.rate = rateOf(c)
 		sum += c.rate
 	}
@@ -684,6 +711,18 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// Stau danach liesse sich keinem Schritt zuordnen. Ob der Schritt traegt, zeigt erst der naechste Takt (Schonfrist
 	// bzw. ready). Kacheln, die aus der Pause dazukommen (unterste Schicht), zaehlen nicht mit: Jemanden zu zeigen geht
 	// vor. TCP bleibt wie bisher.
+	// Mindestbild halten (keep) bzw. aus der Pause zurueckholen (keepUp): nicht nur nach der Schaetzung, sondern auch nach
+	// dem GCC-Ziel. Die Schaetzung haengt nach einem Stau in der Sperrzeit (bis 30 s) an der Rate fest, waehrend das Ziel
+	// laengst wieder darueber liegt - im Labor blieben Kacheln so 15-83 s ohne Bild (2152). Das Ziel zaehlt nur, wenn es
+	// gerade nicht entschuldigt nachlaeuft (lag), keine Probe laeuft bzw. eben gescheitert ist (Fuelldaten im Ziel) und
+	// die eigene Warteschlange des Knotens nicht eben Stau zeigte (dann zaehlt allein die Schaetzung).
+	keep, keepUp := budget, (budget+audioCut)/upHeadroom-audioCut
+	ownQ := l.est.downAt != 0 && now-l.est.downAt < int64(lagFloor) && l.est.downWhy == "schlange"
+	gccKeep := mb && l.est.gccLast > 0 && !l.est.lag && !ownQ && !l.est.prOn && (l.est.prUntil == 0 || now >= l.est.prUntil)
+	if gccKeep {
+		g := min(l.est.gccLast, quotaCap)/upHeadroom - audioCut
+		keep, keepUp = max(keep, g), max(keepUp, g)
+	}
 	oneUp := l.Ext != nil
 	var stepper *choice
 	// wish: kleinster Bedarf eines Schritts nach oben, der in diesem Takt nicht ging (fuer den Deckel der Schaetzung)
@@ -718,16 +757,89 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			c.wasOff = true
 		}
 	}
-	// zu wenig: laufende Kacheln von hinten pausieren (Bild mit Sprechring)
-	for i := len(cs) - 1; i >= 0 && sum > budget; i-- {
+	// zu wenig (UDP): erst laufende Kacheln von hinten ins Mindestbild, dann - passt auch das nicht ins GCC-Ziel - der
+	// Sprecher
+	toMin := func(c *choice) {
+		if c.min || !canMin(c) {
+			return
+		}
+		sum -= c.rate
+		c.min = true
+		c.rate = rateOf(c)
+		sum += c.rate
+	}
+	if mb {
+		for i := len(cs) - 1; i >= 0 && sum > budget; i-- {
+			if cs[i].s.class == "tile" {
+				toMin(cs[i])
+			}
+		}
+		for _, c := range cs {
+			if c.s.class == "speaker" && sum > keep {
+				toMin(c)
+			}
+		}
+	}
+	// zu wenig: laufende Kacheln von hinten pausieren (Bild mit Sprechring) - auf UDP erst, wenn auch das Mindestbild
+	// nicht ins GCC-Ziel passt
+	pauseAt := budget
+	if mb {
+		pauseAt = keep
+	}
+	for i := len(cs) - 1; i >= 0 && sum > pauseAt; i-- {
 		c := cs[i]
 		if c.s.class != "tile" || c.idx < 0 {
 			continue
 		}
 		sum -= c.rate
-		c.idx, c.rate = -1, 0
+		c.idx, c.rate, c.min = -1, 0, false
+	}
+	// Mindestbild zurueck: pausierte Kacheln (Budget) gehen dem Schritt des Sprechers nach oben vor - der Bedarf ihres
+	// Mindestbilds ist vorgemerkt (resv), solange der Sprecher plant
+	resv := 0.0
+	minNr := func(c *choice) float64 {
+		c.idx, c.min = 0, true
+		nr := rateOf(c)
+		c.idx, c.min = -1, false
+		return nr
+	}
+	backOK := func(c *choice) bool {
+		return c.wasOff && len(c.opts) > 0 && c.s.owner != nil && canMinAt(c) && now-c.s.pauseAt >= int64(minBack)
+	}
+	if mb {
+		for _, c := range cs {
+			if c.s.class == "tile" && c.s.pauseAt != 0 && backOK(c) {
+				if nr := minNr(c); sum+resv+nr <= keepUp {
+					resv += nr
+				}
+			}
+		}
 	}
 	up := func(c *choice, maxIdx int) {
+		if c.min && c.idx == 0 {
+			// Mindestbild -> volle unterste Schicht: ein Schritt nach oben wie jeder andere (Reserve, Sperrzeit, Schonfrist,
+			// auf UDP hoechstens einer je Takt)
+			old := c.rate
+			c.min = false
+			nr := rateOf(c)
+			need := sum - old + nr
+			lim := upLimit
+			other := oneUp && stepper != nil && stepper != c
+			if other {
+				lim = 0
+			}
+			// ... oder, auch in der Sperrzeit, nach dem GCC-Ziel (keepUp), wenn das Mindestbild schon layerDwell lief: die
+			// volle unterste Schicht gehoert zum Bild, das die Sperrzeit nicht zurueckhalten soll - hoehere Schichten schon
+			byKeep := gccKeep && !other && need <= keepUp && now-c.s.minAt >= int64(layerDwell)
+			if !byKeep && (lim <= 0 || need*upHeadroom > lim) || capNeed > 0 && need > capNeed {
+				c.min = true
+				c.rate = rateOf(c)
+				deny(need)
+				return
+			}
+			sum, c.rate = need, nr
+			stepper = c
+		}
 		for c.idx >= 0 && c.idx+1 < len(c.opts) && c.idx+1 <= maxIdx {
 			old := c.rate
 			c.idx++
@@ -837,11 +949,13 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	}
 	// Vorrang: Bildschirm, Sprecher, dann weitere Kacheln, dann (UDP)
 	// hoehere Kachelschichten
+	sum += resv
 	for _, c := range cs {
 		if c.s.class == "screen" || c.s.class == "speaker" {
 			up(c, 2)
 		}
 	}
+	sum -= resv
 	for _, c := range cs {
 		if !c.wasOff || len(c.opts) == 0 {
 			continue
@@ -860,6 +974,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		if (sum+nr)*upHeadroom <= upLimit && !blocked && !(capNeed > 0 && sum+nr > capNeed) {
 			sum, c.rate = sum+nr, nr
+		} else if mb && backOK(c) && sum+minNr(c) <= keepUp {
+			// Mindestbild statt Pause - auch in der Sperrzeit, solange das GCC-Ziel es traegt (keepUp)
+			c.idx, c.min = 0, true
+			c.rate = rateOf(c)
+			sum += c.rate
 		} else {
 			deny(sum + nr)
 			if prb && cand.s == nil && stepper == nil && upLimit > 0 && c.s.owner != nil && now >= d.next && !l.pf.blocks(tgt, now) &&
@@ -899,7 +1018,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		if c.idx >= 0 {
 			to = c.opts[c.idx].Layer
 		}
-		moved = moved || to != c.s.layer
+		moved = moved || to != c.s.layer || c.idx >= 0 && c.min != c.s.min
 	}
 	for _, c := range cs {
 		s := c.s
@@ -907,9 +1026,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			if s.layer != "" && s.owner != nil && s.src != nil && s.src.peer == s.owner {
 				s.setWhy(whyBudget, s.src, now) // laufendes Bild pausiert
 				l.downEvent(s, "", budget+audioCut >= quotaCap, now, cfg)
+				s.pauseAt = now // Mindestbild fruehestens minBack spaeter zurueck
 			}
 			s.out.Assign(nil)
-			s.paused, s.layer = s.owner != nil, ""
+			s.paused, s.layer, s.min = s.owner != nil, "", false
 			continue
 		}
 		st := c.opts[c.idx]
@@ -1025,10 +1145,16 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// Platz beginnt auf dieser Schicht (Anrufbeginn, neuer Besitzer, neue Quellen nach dem Wiederverbinden)
 			s.rampRate, s.rampOwner = layerRate(st), s.owner
 		}
-		if book && layerRank(st.Layer) > layerRank(s.layer) {
-			l.est.stepAt = now // Schritt nach oben (auch aus der Pause): Die Rate springt, siehe estimator.clamped
+		if book && (layerRank(st.Layer) > layerRank(s.layer) || s.min && !c.min && st.Layer == s.layer) {
+			l.est.stepAt = now // Schritt nach oben (auch aus der Pause, aus dem Mindestbild): Die Rate springt, siehe estimator.clamped
 		}
-		s.paused, s.layer, s.tid = false, st.Layer, c.tid
+		if c.min && !s.min && st.Layer == s.layer { // Mindestbild statt Pause: im Log wie eine Ruecknahme ("l>l*")
+			l.downEvent(s, st.Layer+"*", budget+audioCut >= quotaCap, now, cfg)
+		}
+		if c.min && !s.min {
+			s.minAt = now
+		}
+		s.paused, s.layer, s.tid, s.min = false, st.Layer, c.tid, c.min
 		// gehalten: Die Schicht laeuft seit upHold - ihr Aufschub und der aller tieferen ist erledigt
 		if s.dwellOwner != s.owner {
 			s.dw = [4]dwell{}

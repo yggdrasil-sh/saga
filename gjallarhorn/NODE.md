@@ -52,6 +52,30 @@ Platzhalter: `horn-1.example.org`.
   - Der Sprecher bekommt mehr, wenn die Schätzung reicht.
   - Ist zu wenig Rate da, werden Kacheln von hinten pausiert. Nach oben geht es nur mit 15 % Reserve und nach einer
     Sperrzeit, die sich bei Fehlversuchen verdoppelt (2 bis 30 s).
+  - **Mindestbild statt Pause (UDP, 2.5, Bug 2152):** Bevor eine Kachel pausiert, läuft sie auf der untersten Schicht
+    nur mit der Basis-Zeitschicht (`minFPS` 10: bei `l` mit 20 fps `L1T2` die Hälfte der Bilder, rund 60 % der Rate) –
+    erst die Kacheln von hinten, dann, wenn auch das nicht reicht, der Sprecher. Pausiert wird erst, wenn auch das
+    Mindestbild nicht ins **GCC-Ziel** passt (`keep` = max(Schätzung, Ziel / 1,15 − Ton)). Eine pausierte Kachel kommt
+    als Mindestbild frühestens `minBack` (2 s) nach der Pause zurück, sobald es ins Ziel passt (`keepUp`) – **auch in
+    der Sperrzeit** und vor dem nächsten Schritt des Sprechers nach oben (der Bedarf ihres Mindestbilds ist vorgemerkt,
+    solange der Sprecher plant). Vom Mindestbild auf die volle unterste Schicht geht es wie jeder Schritt nach oben
+    (Reserve, Sperrzeit, Schonfrist, einer je Takt) oder – auch in der Sperrzeit – nach dem Ziel, wenn das Mindestbild
+    schon `layerDwell` (4 s) lief; die Sperrzeit hält damit nur noch die höheren Schichten zurück. Das Ziel zählt
+    nicht, solange es entschuldigt nachläuft (Schonfrist), während einer Probe bzw. kurz nach einer gescheiterten und
+    2 s nach einem Stau der eigenen Warteschlange. Log: Rücknahme ins Mindestbild als `schicht … l>l*`. TCP unverändert
+    (Kacheln dort ohnehin mit 10 fps), 1:1 unverändert (keine Kacheln; `TestProbingZahlen` gleich).
+    Anlass (Labor 18.11., Container-Spur `HORN_SPUR`): Bei 1 Mbit/s fiel das GCC-Ziel wiederholt – im Container
+    grundlos, der eigene Detektor sah keine Schlange, die Leitung verwarf nichts –, eine Kachel passte mit der vollen
+    untersten Schicht nicht mehr hinein und pausierte. In der Sperrzeit danach (4–30 s) wuchs die Schätzung nur bis
+    zur Rate, die ohne die Kachel kleiner war, während das Ziel längst wieder weit darüber lag; die Kachel kam erst
+    nach der Sperrzeit zurück, und der Sprecher ging vorher noch auf `m` – Bildpausen von 15–83 s (Labor) bzw. bis
+    41 s (Container). Modell (`mindestbild_test.go`, 1 Mbit/s, pion-GCC-Regeln, grundloser Zielsturz alle 6 s):
+    längste Pause einer Kachel vorher 2 min 30 s (86 % der Kachel-Zeit in Pause), jetzt 0 s (`TestMindestbildEng`);
+    Stürze 60 s, dann ruhig: volle unterste Schicht vorher nach 13 s (längste Pause 42,8 s), jetzt sofort
+    (`TestMindestbildErholung`); ohne Stürze bzw. auf 3 Mbit/s keine Pausen (`TestMindestbildEngOhneStoerung`,
+    `TestMindestbildFrei`). Container (`tests/anrufe_rang345.py`, Fall `r4d-4-eng`, 4er, eine Person mit 1 Mbit/s):
+    längste Pause bei ihr vorher 10 s (5–19 s, n = 5), jetzt 0 s (n = 5; nur dieser Fix: 0 s, n = 3); 2 Mbit/s vorher
+    22 s (4–31 s, n = 3), jetzt 0 s.
   - Hysterese gegen Pendeln (Horn-Fix, `layerStep`): Ohne Stau bleibt die laufende Schicht bis 10 % über der Schätzung
     (kurze Ratenspitzen, z. B. Schlüsselbilder, schalten nicht herunter); bei Stau (Sperrzeit) sofort herunter – so
     weit, wie die Schätzung es verlangt (von `h` auf `m`, wenn sie `m` trägt; früher immer bis `l`). Nach

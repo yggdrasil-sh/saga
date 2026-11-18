@@ -16,6 +16,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Gruppenanrufe über den Knoten: enge Leitung ohne lange Bildpausen (Bug 2152)
+- Bei einer Person mit enger Leitung (Labor: 1 Mbit/s im 4er) kamen einzelne Bilder 15–83 s lang gar nicht an, obwohl die
+  Leitung nichts verwarf. Ursache (Spur des Knotens, `HORN_SPUR`): Fiel das GCC-Ziel, pausierte der Knoten eine Kachel; in
+  der Sperrzeit danach (bis 30 s) wuchs die Schätzung nicht über die Rate ohne die Kachel, auch wenn das Ziel längst wieder
+  darüber lag, und der Sprecher ging vorher auf eine höhere Schicht.
+- Jetzt (UDP): **Mindestbild statt Pause** – vor dem Pausieren läuft eine Kachel (zuletzt auch der Sprecher) auf der
+  untersten Schicht mit halber Bildrate; pausiert wird erst, wenn auch das nicht ins GCC-Ziel passt. Eine pausierte Kachel
+  kommt nach 2 s als Mindestbild zurück, sobald das Ziel es trägt – auch in der Sperrzeit und vor dem nächsten Schritt des
+  Sprechers nach oben; die Sperrzeit hält nur noch höhere Schichten zurück. TCP und 1:1 unverändert.
+- Messung im Container (Reihe `tests/anrufe_rang345.py`, 4er über den Knoten, eine Person mit 1 Mbit/s): längste
+  Bildpause bei ihr vorher 10 s (5–19 s, n = 5), Pausenzeit 18 s/min; jetzt 0 s (n = 5, auch mit nur diesem Fix, n = 3).
+  Mit 2 Mbit/s vorher 22 s (4–31 s, n = 3), jetzt 0 s (n = 3). Tests: `internal/sfu/mindestbild_test.go`. Neu zur Diagnose: `HORN_SPUR=1` (NODE.md, Testen).
+
 ### Neu – Saga-Siegel als Seitensymbole (Bugs-DB 2156)
 - Saga bringt 36 Siegel-Motive in drei Farben (Weinrot, Smaragd, Elfenbein) als Seitensymbole mit – wie die
   Titelbild-Galerie auf jedem Server gleich. Im Web unter den Emoji im Symbol-Menü: Farbwahl, Suche nach Namen (fünf

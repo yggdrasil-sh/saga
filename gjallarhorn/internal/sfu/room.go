@@ -362,6 +362,11 @@ type slot struct {
 	layer  string
 	paused bool
 	tid    uint8
+	// Mindestbild (Bug 2152): laeuft auf der untersten Schicht nur mit der Basis-Zeitschicht; pauseAt: letzte Pause
+	// wegen des Budgets (Rueckkehr im Mindestbild fruehestens minBack danach)
+	min     bool
+	minAt   int64 // seit wann im Mindestbild
+	pauseAt int64
 	// Hysterese (layerStep): letzter Wechsel nach unten und fuer wen
 	downAt    int64
 	downOwner *Peer
