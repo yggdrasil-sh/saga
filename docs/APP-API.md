@@ -564,6 +564,34 @@ Android Compose-`Canvas`, Linux Cairo (P4-E2). Werte zusätzlich als Tabelle (Ba
 - **Föderation:** Fähigkeit `widgets2` (siehe `APP-API-FED.md`). Ohne sie fehlen die neuen Arten in der Antwort und das Heim
   meldet `"unsupported2": true` – Clients zeigen „Widget nur auf dem Ursprungsserver“.
 
+## Neue Unterseiten: Verweis in der Elternseite (2.5, Bug 2151)
+
+Wie Notion: Entsteht unter einer Seite eine neue Unterseite, hängt der **Server** am Ende der Elternseite einen Absatz mit
+einem Seitenverweis an – dieselbe Form, die die Editoren für „Verweis“/`[[` speichern:
+`{"id": "<neu>", "type": "paragraph", "data": {"text": "<a href=\"/notes#<id>\">🚀 Titel</a>"}}` (Text = Text-Symbol + Titel
+beim Anlegen bzw. „Unbenannt“; anzeigen wie jeden Seitenverweis: aktueller Titel und Symbol aus der Seitenliste). Steht
+ein leerer Absatz am Ende, kommt der Verweis davor.
+- **Wege:** `POST /api/notes` mit `parent_id`, `POST /api/notes/{id}/duplicate` (die Kopie steht direkt **hinter dem
+  Verweis auf das Original**, sonst am Ende), `POST /api/gallery/{id}/use` (nur die Startseite `root`; die Seiten der
+  Vorlage untereinander wie in der Vorlage), Import mit `parent_id` (oberste importierte Seiten, höchstens 50; Verweise
+  innerhalb des Imports kommen aus den Daten), `POST /api/v1/pages` und MCP `create_page` mit `parent_id`, Föderation
+  (Unterseite in einer Seite eines anderen Servers – der Server der Elternseite legt den Verweis an).
+- **Verschieben** (`POST /api/notes/{id}/move`, `PATCH /api/notes/{id}` mit `parent_id`) in eine andere Elternseite: Verweis
+  am Ende der neuen; aus der alten fallen Absätze weg, die **nur** aus dem Verweis auf diese Seite bestehen (Verweise im
+  Fließtext bleiben). Nur umsortieren ändert nichts.
+- **Kein Verweis:** Elternseite ist eine Datenbank (Zeilen bleiben Zeilen), gesperrt, archiviert oder eine Text-Notiz;
+  die neue Seite ist eine Vorlage (`template`); in der Elternseite steht schon ein Verweis auf die Seite (irgendwo, auch in
+  Spalten/Toggles) oder ein eingebetteter Datenbank-Block mit ihr; fehlendes „Bearbeiten“ an der (alten) Elternseite. Die
+  Unterseite entsteht bzw. wandert in jedem Fall wie bisher. BookOrbit-Seiten (`/api/bookorbit/notes`) bekommen keinen.
+- **`"link": false`** in der Anfrage (alle oben genannten Wege außer Import und MCP, auch `/api/v1/pages`) schaltet es ab – für Clients, die den
+  Verweis selbst an der Schreibmarke einfügen (Web: „Neue Seite“ aus der Verweis-Auswahl) oder die neue Datenbank als Block
+  einbetten. Ältere Server ignorieren den Schlüssel.
+- **Elternseite offen:** die Änderung ist eine normale Inhaltsänderung (rev+1, Version, Basisstand für das Zusammenführen,
+  Ereignis `note.changed` – auch an das Gerät bzw. den Tab, der die Unterseite angelegt hat). Clients mit `merge: 1`
+  führen ungespeicherte Eingaben wie bei jeder fremden Änderung zusammen; ohne `merge` gibt es den bekannten `409`.
+  Live-Räume (`/api/collab`) bekommen den Verweis als Update. Apps, die nach dem Anlegen die Elternseite zeigen, laden sie
+  neu (bzw. nutzen `note.changed`).
+
 ## Unterseiten als Liste oder Galerie (2.5, `subpages1`)
 
 Neue Widget-Art **`subpages`** (Block `widget`, wie Notions Unterseiten-/Galerie-Ansicht): die **direkten Unterseiten der

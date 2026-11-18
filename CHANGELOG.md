@@ -41,6 +41,22 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Tests: `tests/anrufe_rang345.py` (Messreihe Rang 3–5 mit enger Leitung je Gerät über `gjallarhorn/e2e/nsleitung`,
   `--check` prüft die Texte bei vollem Anruf über Knoten und direkt).
 
+### Neu – Unterseiten erscheinen in der Elternseite (wie Notion, Bug 2151)
+- Entsteht unter einer Seite eine neue Unterseite, hängt Saga am Ende der Elternseite einen Verweis darauf an
+  (derselbe Seitenverweis wie „Verweis“/`[[`, beide Editoren zeigen Symbol und aktuellen Titel). Gilt für alle Wege:
+  Seitenbaum „+“ und Menü „Neue Unterseite“, Vorlagen (eingebaute, eigene, Galerie – nur die oberste neue Seite),
+  Duplizieren (die Kopie steht direkt hinter dem Verweis auf das Original), Import mit Zielseite (oberste importierte
+  Seiten), API v1/MCP `create_page`, Apps (`POST /api/notes`) und Seiten anderer Saga-Server.
+- Verschieben in eine andere Seite nimmt den Verweis mit: neu am Ende der Zielseite, in der alten Elternseite fallen
+  Absätze weg, die nur aus diesem Verweis bestehen (Verweise im Fließtext bleiben).
+- Nicht bei Datenbanken (Zeilen bleiben Zeilen), gesperrten, archivierten Seiten und Text-Notizen, nicht für Vorlagen,
+  nicht doppelt (steht die Seite schon verlinkt oder eingebettet, passiert nichts). Wo der Verweis ohnehin an der
+  Schreibmarke entsteht („Neue Seite“ aus der Verweis-Auswahl, neue eingebettete Datenbank) und im Unterseiten-Block
+  bleibt es beim bisherigen Verhalten. BookOrbit-Seiten führen ihre Listen weiter selbst.
+- Offene Editoren der Elternseite bekommen den Verweis sofort (Stufe 1 führt mit ungespeicherten Eingaben zusammen,
+  live über den Live-Raum); nichts wird überschrieben. Apps/API: `"link": false` schaltet es je Anfrage ab
+  (`docs/APP-API.md`).
+
 ### Behoben – kleine Reste Server/Web (Prüfungen 17./18.11.)
 - **Knoten-Steuerkanal:** Verbindet ein Knoten neu, während seine alte Steuerverbindung noch abgebaut wird, steht er
   nicht mehr kurz als „getrennt“ im Register (bis zur nächsten Lastmeldung). Jede Anmeldung zieht eine Generation; der

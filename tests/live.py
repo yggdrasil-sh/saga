@@ -357,6 +357,7 @@ def main():
     s, d = req("POST", "/api/presence", Bk, {"note_id": pg})
     ok(f"Zu schnelle Anwesenheitsmeldung (zweiter Tab): uebersprungen, kein Fehler ({s}, {d})", s == 200 and d == {"skipped": True})
     mb = sb.mark()
+    rev = req("GET", f"/api/notes/{pg}", A)[1]["rev"]     # 2.5 (Bug 2151): Unterseiten oben setzten Verweise in pg (rev+1)
     s, d = req("PATCH", f"/api/notes/{pg}", A, {"body": blocks("Dritter Stand"), "format": "blocks", "rev": rev}); rev = d.get("rev")
     nc = sb.wait("note.changed", lambda d: d["id"] == pg, since=mb)
     ok(f"B (anwesend): note.changed {{id, rev, by}} ({nc})", nc and nc["rev"] == rev and nc["by"]["name"] == "Anna Live" and UN(nc["by"]["username"]) == "lv-a"
