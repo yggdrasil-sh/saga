@@ -141,6 +141,12 @@ def _js(p):
 # =====================================================================================================================
 # Raeume
 # =====================================================================================================================
+def _ro_reject(sub, ref):
+    """reject readonly mit Grund why (2.5, Bug 2123; aeltere Clients ignorieren das Feld)."""
+    why = getattr(sub, "why", None) or ("schema" if sub.ro == "schema" else None)
+    return {"code": "readonly", "ref": ref, **({"why": why} if why else {})}
+
+
 class Rejected(Exception):
     def __init__(self, code, msg=""):
         super().__init__(code)
@@ -589,8 +595,10 @@ def _apply_update(room, sub, update):
         lk = c.execute("SELECT locked FROM note WHERE id=? AND deleted_at IS NULL", (room.nid,)).fetchone()
         if not role or not lk:
             raise Rejected("gone")
-        if RANK.get(role, 0) < RANK["edit"] or lk[0]:
-            raise Rejected("readonly")
+        if RANK.get(role, 0) < RANK["edit"]:
+            raise Rejected("readonly", "role")       # Grund geht im reject mit (why) - Client: nichts vormerken
+        if lk[0]:
+            raise Rejected("readonly", "locked")     # gesperrt (Ereignis verpasst?): Client merkt die Eingabe vor
         body, _title, fix = _check(c, room, tmp, sub.uid, acc, sub.caps)
         corr = None
         if fix is not None:                 # Server-Felder selbst schreiben (eigenes Update, an alle)
@@ -725,11 +733,24 @@ def ingest(nid, rev=None):
 # =====================================================================================================================
 # Verbindungen
 # =====================================================================================================================
+def _ro_why(role, ro, locked=None):
+    """Grund, warum ein Abo nur lesen darf: "schema" (anderes Schema), "role" (Rolle unter Bearbeiten), "locked" (Seite
+    gesperrt, Rolle reicht) - None, wenn es schreiben darf."""
+    if not ro:
+        return None
+    if isinstance(ro, str):
+        return ro
+    if RANK.get(role, 0) < RANK["edit"]:
+        return "role"
+    return "locked" if locked is not False else "role"
+
+
 class _Sub:
-    __slots__ = ("conn", "nid", "uid", "role", "ro", "aw", "aw_at", "caps", "name", "color", "n", "n_at")
+    __slots__ = ("conn", "nid", "uid", "role", "ro", "why", "aw", "aw_at", "caps", "name", "color", "n", "n_at")
 
     def __init__(self, conn, nid, role, ro, caps):
         self.conn, self.nid, self.uid, self.role, self.ro = conn, nid, conn.uid, role, ro
+        self.why = _ro_why(role, ro)          # Grund fuer ro im reject: locked | role | schema (Bug 2123)
         self.aw, self.aw_at, self.caps = None, 0.0, caps
         self.name, self.color = "", ""
         self.n, self.n_at = 0, 0.0
@@ -1067,7 +1088,7 @@ async def _handle(conn, kind, nid, parts):
         if not upd or len(upd) <= 2:
             return
         if sub.ro:
-            conn.send(frame(T_REJECT, nid, {"code": "readonly", "ref": ref.decode("ascii", "replace")[:40]}, await _snap(room)))
+            conn.send(frame(T_REJECT, nid, _ro_reject(sub, ref.decode("ascii", "replace")[:40]), await _snap(room)))
             return
         now = time.monotonic()
         if now - sub.n_at >= 1:
@@ -1086,9 +1107,11 @@ async def _handle(conn, kind, nid, parts):
                 conn.send(frame(T_BYE, nid, {"reason": "gone"}))
                 _drop_sub(sub)
                 return
-            conn.send(frame(T_REJECT, nid, {"code": ex.code, "ref": ref.decode("ascii", "replace")[:40]}, await _snap(room)))
             if ex.code == "readonly":
-                sub.ro = True
+                sub.ro, sub.why = True, ex.msg or "role"
+                conn.send(frame(T_REJECT, nid, _ro_reject(sub, ref.decode("ascii", "replace")[:40]), await _snap(room)))
+                return
+            conn.send(frame(T_REJECT, nid, {"code": ex.code, "ref": ref.decode("ascii", "replace")[:40]}, await _snap(room)))
             return
         except Exception as ex:  # noqa: BLE001 - Datenbank weg o. ae.: nicht angenommen, Client wiederholt nach Neuaufbau
             print(f"collab: Update {nid}: {type(ex).__name__}: {ex}", flush=True)
@@ -1174,6 +1197,7 @@ async def recheck(uids=None, nid=None):
         ro = RANK.get(role, 0) < RANK["edit"] or locked
         if s.ro == "schema":
             continue
+        s.why = _ro_why(role, ro, locked)
         if bool(ro) != bool(s.ro) or role != s.role:
             s.ro, s.role = ro, role
             s.conn.send(frame(T_HELLO, nid_, {"proto": PROTO, "gen": _rooms[nid_].gen if nid_ in _rooms else "", "role": role,

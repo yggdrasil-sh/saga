@@ -139,7 +139,7 @@ Updates zusammen schicken (`Y.mergeUpdates`). Gegenrichtung: Erkennt ein Client 
 `applyUpdate` ausstehende Einträge, `doc.store.pendingStructs`), sendet er `sync1` mit seinem Zustandsvektor; der
 Server antwortet mit `sync2`.
 
-**`reject`** – `{code, ref}` + Vollzustand des Servers. Der Server hat das Update **nicht** übernommen und an niemanden
+**`reject`** – `{code, ref}` (bei `readonly` zusätzlich `why`, siehe unten) + Vollzustand des Servers. Der Server hat das Update **nicht** übernommen und an niemanden
 verteilt. Client: lokales Doc durch den Vollzustand ersetzen (neues `Y.Doc`, `applyUpdate(voll)`; Editor-Bindung neu
 aufbauen, Cursor über relative Positionen wiederherstellen), eigenes Undo für die verworfene Änderung leeren, bei
 `forbidden`/`signature`/`sanitize`/`type`/`size` kurz „Änderung nicht übernommen“ zeigen.
@@ -154,7 +154,7 @@ aufbauen, Cursor über relative Positionen wiederherstellen), eigenes Undo für 
 | `title` | Titel zu lang bzw. mit Steuerzeichen |
 | `client` | das Update schreibt unter einer Yjs-`clientID`, die schon einer anderen Person gehört (oder 1, der Anfangszustand) – neue `clientID` wählen (`doc.clientID` beim Neuaufbau zufällig neu) |
 | `pending` | Lücke, siehe oben |
-| `readonly` | Rolle `view`/`comment`, Seite gesperrt oder anderes Schema |
+| `readonly` | Rolle `view`/`comment`, Seite gesperrt oder anderes Schema. Seit 2.5 (Bug 2123) mit Grund `why`: `locked` (gesperrt, die Rolle reicht – das `hello` mit der Sperre kam nicht an: Schloss zeigen, eigene Eingabe **vormerken** statt verwerfen und nach dem `hello` mit `ro: false` senden), `role` (Rolle unter Bearbeiten – nichts vormerken, „nur lesen“ melden), `schema`. Ältere Server senden kein `why`; über die Föderation fehlt es ebenfalls |
 | `invalid` | kaputtes Update |
 | `retry` | Server kurz gestört (Datenbank) – Vollzustand übernehmen, eigene Änderung in 1–5 s erneut |
 
