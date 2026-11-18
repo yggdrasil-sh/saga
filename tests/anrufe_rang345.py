@@ -287,7 +287,11 @@ def summary():
             d = json.load(open(fpath))
         except ValueError:
             continue
-        s = d.get("sum") or {}
+        s = dict(d.get("sum") or {})
+        ev = (d.get("spec") or {}).get("event") or {}
+        if ev.get("type") == "handover":           # Bildluecke nur bei den anderen (altes Geraet endet, neues wartet erst)
+            who = "ABCDE"[ev.get("who", 3)]
+            s["vgap"] = max([v.get("vgap") or 0 for k, v in d["pages"].items() if not k.startswith(who)] or [0])
         r = rows.setdefault(d["id"], {k: [] for k, _ in KEYS})
         r.setdefault("_runs", 0)
         r["_runs"] += 1

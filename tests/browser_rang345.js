@@ -413,7 +413,8 @@ function recovery(s, t, expect) {
       const r = await room(p), h = S.horn ? await hornS(p) : null;
       R.pages[nm] = Object.assign({ eng: p.__eng }, pe || { err: 'keine Messwerte' }, {
         topo: r && r.topo, direct: r && r.direct, links: r && r.links ? r.links.length : null,
-        horn: h && !h.err ? { path: h.path, node: h.node && String(h.node).slice(0, 8), switches: h.switches, errs: (h.errs || []).slice(-5), note: h.note } : null,
+        horn: h && !h.err ? { path: h.path, node: h.node && String(h.node).slice(0, 8), switches: h.switches, errs: (h.errs || []).slice(-5), note: h.note, view: h.view, host: h.host,
+          tiles: (h.tiles || []).map(t => (t.big ? 'B' : '') + (t.still ? 'S' : '') + (t.video ? 'v' : '-')).join(' ') } : null,
       });
     }
     R.event = evInfo;
