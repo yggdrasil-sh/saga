@@ -300,7 +300,10 @@ type Leg struct {
 	sig    string // letzte Layout-Meldung
 	spurAt int64  // HORN_SPUR (spur.go)
 	spurPk map[*fwd.Out]uint64
-	srcs   []*source
+	// Sprecherplatz ohne Hauptsprecher bzw. vorigen (spkFallback): Anwaerter und seit wann
+	spkCand   *Peer
+	spkCandAt int64
+	srcs      []*source
 
 	// Ext liefert eine externe Schaetzung in bit/s (GCC auf UDP), 0 = keine.
 	Ext func() int

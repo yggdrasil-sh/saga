@@ -29,6 +29,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Bildpause bei ihr vorher 10 s (5–19 s, n = 5), Pausenzeit 18 s/min; jetzt 0 s (n = 5, auch mit nur diesem Fix, n = 3).
   Mit 2 Mbit/s vorher 22 s (4–31 s, n = 3), jetzt 0 s (n = 3). Tests: `internal/sfu/mindestbild_test.go`. Neu zur Diagnose: `HORN_SPUR=1` (NODE.md, Testen).
 
+### Behoben – Gruppenanrufe über den Knoten: ruhiges Bild bei der Anrufenden (Bug 2153)
+- Die Anrufende (wer zuerst spricht und Hauptsprecherin bleibt) sah im 4er 17–19 Schichtwechsel je Minute, mit nur einer
+  Schicht 14 statt 20 fps und viele Einfrierer – die anderen nicht. Ursache: Für sie selbst gab es keinen „vorigen“
+  Hauptsprecher, ihr Sprecherplatz nahm deshalb jeden Takt den zuletzt Sprechenden; sprechen mehrere, wechselten
+  Sprecherplatz und Kacheln alle paar Sekunden den Besitzer (jedes Mal Schlüsselbild, Beginn auf der kleinsten Schicht).
+- Jetzt behält der Platz bei der Hauptsprecherin seinen Besitzer, bis jemand anderes deutlich (Regel des Hauptsprechers)
+  spricht. Ohne Hauptsprecher bleibt es beim zuletzt Sprechenden. Messung im Container (4er über den Knoten, freie
+  Leitung): Anrufende vorher 13 fps (13–16) und 17 Einfrierer/min (13–18), n = 3; jetzt 20 fps und 0 Einfrierer (n = 3),
+  die anderen unverändert 20 fps.
+  Tests: `internal/sfu/sprecher_test.go`.
+
 ### Neu – Saga-Siegel als Seitensymbole (Bugs-DB 2156)
 - Saga bringt 36 Siegel-Motive in drei Farben (Weinrot, Smaragd, Elfenbein) als Seitensymbole mit – wie die
   Titelbild-Galerie auf jedem Server gleich. Im Web unter den Emoji im Symbol-Menü: Farbwahl, Suche nach Namen (fünf

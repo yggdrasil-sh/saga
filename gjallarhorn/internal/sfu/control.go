@@ -233,6 +233,55 @@ func (r *Room) pickDominant(peers []*Peer, now int64) {
 	r.cand = nil
 }
 
+// spkFallback: Besitzer des Sprecherplatzes, wenn weder der Hauptsprecher noch (fuer ihn selbst) der vorige in Frage
+// kommt - vor allem beim Hauptsprecher selbst, wenn vor ihm niemand Hauptsprecher war (wer zuerst spricht bzw. anruft).
+// Bis 2.5 war das jeden Takt der zuletzt Sprechende mit Bild (byRecent): Senden mehrere zugleich Ton (Gespraech,
+// Hintergrund), wechselte der Platz bei ihm alle paar Takte den Besitzer, mit ihm die Kacheln - jedes Mal neue
+// Schluesselbilder, Beginn auf l (Bug 2153: 17-19 Schichtwechsel/min und bis 21 Einfrierer/min nur bei der
+// Anrufenden). Jetzt bleibt beim Hauptsprecher selbst (self) der bisherige Besitzer, solange er dabei ist und Bild hat.
+// Ohne Hauptsprecher (Luecke nach dem Auflegen bzw. Wiederverbinden) bleibt es beim zuletzt Sprechenden - dort soll
+// wer jetzt spricht sofort auf den Platz (TestGruppeSprecherAuflegen). Ein anderer bekommt den Platz,
+// wenn er domHold lang der lauteste der anderen ist und spricht, waehrend der bisherige schweigt bzw. er domFactor-mal
+// lauter ist - die Regel des Hauptsprechers, auf die anderen beschraenkt.
+func (l *Leg) spkFallback(cur *Peer, others []*Peer, self bool, now int64) *Peer {
+	ok := false
+	var best *Peer
+	for _, p := range others {
+		if len(p.cam) == 0 {
+			continue
+		}
+		if p == cur {
+			ok = true
+		}
+		if p.audio != nil && (best == nil || p.score > best.score) {
+			best = p
+		}
+	}
+	if !ok || !self {
+		l.spkCand = nil
+		rec := append([]*Peer(nil), others...)
+		byRecent(rec)
+		for _, p := range rec {
+			if len(p.cam) > 0 {
+				return p
+			}
+		}
+		return nil
+	}
+	if best == nil || best == cur || best.score < speakOn || !(cur.score < speakOn || best.score >= cur.score*domFactor) {
+		l.spkCand = nil
+		return cur
+	}
+	if l.spkCand != best {
+		l.spkCand, l.spkCandAt = best, now
+	}
+	if now-l.spkCandAt < int64(domHold) {
+		return cur
+	}
+	l.spkCand = nil
+	return best
+}
+
 // byActivity sortiert nach Sprechaktivitaet, dann letzter Sprache, dann
 // Beitritt.
 func byActivity(ps []*Peer) {
@@ -521,14 +570,8 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			spk = nil
 		}
 		if spk == nil {
-			rec := append([]*Peer(nil), others...)
-			byRecent(rec)
-			for _, p := range rec {
-				if len(p.cam) > 0 {
-					spk = p
-					break
-				}
-			}
+			// beim Hauptsprecher selbst stabil (spkFallback), sonst (niemand ist Hauptsprecher) der zuletzt Sprechende
+			spk = l.spkFallback(speaker.owner, others, r.dominant == me, now)
 		}
 		speaker.owner = spk
 	}

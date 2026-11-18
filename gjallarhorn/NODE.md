@@ -127,6 +127,19 @@ Platzhalter: `horn-1.example.org`.
   - Der Sprecherplatz zeigt nie das eigene Gerät: „für den Hauptsprecher selbst der vorige“ (`prevDom`) kann das Gerät
     selbst sein, wenn es Hauptsprecher war, dann ein anderer, und dieser verschwindet (letztes Bein zu beim
     Wiederverbinden) – dann wie ohne Hauptsprecher die zuletzt Sprechenden mit Bild.
+  - Beim Hauptsprecher selbst ohne vorigen (`spkFallback`, 2.5, Bug 2153) – wenn vor ihm niemand Hauptsprecher war
+    (wer zuerst spricht, meist die Anrufende) bzw. der vorige weg ist: Der Platz behält seinen bisherigen Besitzer,
+    solange dieser dabei ist und Bild hat. Ein anderer bekommt ihn erst, wenn er `domHold` lang der lauteste der
+    anderen ist und spricht, während der bisherige schweigt bzw. er `domFactor`-mal lauter ist (die Regel des
+    Hauptsprechers, auf die anderen beschränkt); ohne gültigen Besitzer der zuletzt Sprechende mit Bild. Ohne
+    Hauptsprecher (Lücke nach dem Auflegen bzw. Wiederverbinden) bleibt es beim zuletzt Sprechenden – dort soll, wer
+    jetzt spricht, sofort auf den Platz. Bis
+    dahin war es jeden Takt der zuletzt Sprechende (`byRecent`): Senden mehrere zugleich Ton, wechselten bei der
+    Anrufenden Sprecherplatz und Kacheln alle paar Sekunden den Besitzer, jedes Mal mit Schlüsselbild und Beginn auf
+    `l` (Labor: 17–19 Schichtwechsel/min, mit nur einer Schicht 14 statt 20 fps und bis 21 Einfrierer/min – nur bei
+    der Anrufenden). `TestSprecherplatzHauptsprecherOhneVorigen` (vorher 299 Wechsel in 60 s, jetzt 0),
+    `TestSprecherplatzVorigerBleibt`. Container (Fall `r4y-4-frei`): Anrufende vorher 13 fps und 17 Einfrierer/min
+    (n = 3), jetzt 20 fps und 0.
   - PLI-Bremse: höchstens eine Anforderung je Quelle und `fwd.PLIInterval` (500 ms), für alle Empfänger zusammen;
     Abo-Wechsel (`Out.Assign`, auch über die Brücke: `pli` bzw. neuer Ausgang auf der Gegenseite) laufen durch
     dieselbe Bremse (`TestPLIAbstandBeiWechsel`).
