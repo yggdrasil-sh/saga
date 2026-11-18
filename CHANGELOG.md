@@ -27,6 +27,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Sperre und Titel kommen jetzt auch im Peek an. Der Rahmen meldet seine Seite als offen, das Hauptfenster reicht die
   Ereignisse weiter. Bisher bekam der Peek nur Inhaltsänderungen über die Live-Bearbeitung.
 - Server: Sperren/Entsperren einer Seite steht mit Seiten-ID und Herkunft (Web/App/API) im Protokoll, ohne Inhalte.
+- **Titelbild eines Datenbank-Eintrags kommt live an** (Bug 2122): Ändert ein anderes Gerät oder eine andere Person das
+  Titelbild (oder seine Position) eines Eintrags, zeigen Galerie-Ansichten der Datenbank das neue Kartenbild ohne Neuladen –
+  auch bei Freigabe „Lesen“ (Person oder Gruppe). Eingebettete Datenbank-Blöcke auf anderen Seiten laden jetzt im Browser
+  bei jeder Eintragsänderung live nach (Ereignis `db.rows`, bisher nur in den Apps), ebenso Widgets mit dieser Datenbank
+  als Quelle.
 - **Gesperrte Seite schützt auch Titelbild, Symbol und Tags** (Bug 2124): Der Server lehnt Änderungen an `cover`,
   `cover_pos`, `icon` und `tags` auf gesperrten Seiten jetzt wie Titel und Inhalt mit 423 ab – auch über Apps, `/api/v1`
   und MCP. Bisher sperrte nur das Web diese Felder (per Oberfläche). Eigenschaften von Datenbank-Einträgen, Entsperren,

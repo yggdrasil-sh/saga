@@ -6315,6 +6315,16 @@
     var d = e.detail || {};
     if (d.id && !d.gone && LIVE_DBS.some(function (v) { return v.DB.id === d.id; })) dbLiveReload(d.id);
   });
+  // db.rows (docs/APP-API-LIVE.md): Eintraege geaendert - kommt an alle mit Zugriff, auch ohne Anwesenheit auf der Datenbank.
+  // Eingebettete Datenbank-Bloecke anderer Seiten (Bug 2122: Titelbild = Kartenbild der Galerie) und Widgets mit dieser
+  // Quelle laden nach; die Datenbank-Seite selbst bekommt daneben note.changed mit row (dbLiveReload buendelt beides)
+  document.addEventListener('hk-db-rows', function (e) {
+    var id = (e.detail || {}).db;
+    if (!id) return;
+    if (LIVE_DBS.some(function (v) { return v.DB.id === id && v.boxEl && v.boxEl.isConnected; })) { dbLiveReload(id); return; }
+    var wg = false; WG.forEach(function (x) { if (x.w && x.w.isConnected && x.data && x.data.cfg && x.data.cfg.db === id) wg = true; });
+    if (wg) wgSoon();
+  });
 
   function renderProps(parent) {
     var box = $('pg-props'); box.textContent = ''; box.hidden = false;

@@ -386,6 +386,8 @@
       var k = K(); if (k) k.remote(d);
       try { document.dispatchEvent(new CustomEvent('hk-note-changed', { detail: d })); } catch (e) { /* alter Browser */ }
     });
+    // db.rows (3.11.): Eintraege einer Datenbank geaendert - pages.js laedt eingebettete Bloecke/Widgets nach (Bug 2122)
+    on(es, 'db.rows', function (d) { try { document.dispatchEvent(new CustomEvent('hk-db-rows', { detail: d })); } catch (e) { /* alter Browser */ } });
     on(es, 'comments.changed', onComments);
     on(es, 'shared.changed', onShared);
     // (2.2) Seitenbaum anderswo geaendert (anderer Tab/Geraet, Freigabe durch andere): Baum nachladen (entprellt)
