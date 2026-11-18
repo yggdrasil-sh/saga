@@ -221,6 +221,17 @@ function evalPage(s, expect) {
   // Bildluecke: laengste Zeit, in der nicht alle erwarteten Bilder frisch sind (Zeitcode < 1 s)
   let vgap = 0, since = null;
   s.forEach(x => { const fresh = x.vid.filter(v => v.lag != null && v.lag < 1000).length >= expect; if (!fresh) { if (since == null) since = x.t; vgap = Math.max(vgap, x.t - since + 500); } else since = null; });
+  // Pausen je Bildstrom: keine neuen Pakete fuer >= 1,5 s (der Knoten pausiert Kacheln bei zu wenig Rate, NODE.md)
+  const vpause = [];
+  vs.forEach(o => {
+    let since = null;
+    for (let i = o.fi + 1; i <= o.li; i++) {
+      const p = s[i - 1].v[o.k], q = s[i].v[o.k]; if (!p || !q) continue;
+      if (q[0] === p[0]) { if (since == null) since = s[i - 1].t; } else if (since != null) { if (s[i].t - since >= 1500) vpause.push([Math.round((since - a.t) / 100) / 10, Math.round((s[i].t - since) / 100) / 10, o.k]); since = null; }
+    }
+    if (since != null && b.t - since >= 1500) vpause.push([Math.round((since - a.t) / 100) / 10, Math.round((b.t - since) / 100) / 10, o.k, 'bis Ende']);
+  });
+  // Bildrate je Strom und 5-s-Fenster (kbit/s aus den Paketen geht nicht - nur Pakete/s)
   const pathSet = new Set(); s.forEach(x => (x.cp || []).forEach(c => pathSet.add(c[1] + '>' + c[2])));
   const rtt = med(s.map(x => med((x.cp || []).map(c => c[3]))));
   return {
@@ -228,7 +239,7 @@ function evalPage(s, expect) {
     fps: med(fps), fpsMin: fps.length ? Math.min(...fps) : null,
     freeze: vmin ? fz / vmin : null, freeze_s: vmin ? fzs / vmin : null, layer: vmin ? lay / vmin : null, vgap,
     astreams: as.length, conceal: tot ? con / tot * 100 : null, gaps: amin ? gaps / amin : null, gap_s: gapS,
-    pairs: [...pathSet], rtt, mins,
+    pairs: [...pathSet], rtt, mins, vpause,
   };
 }
 // erster Zeitpunkt nach t, ab dem alle erwarteten Bilder wieder frisch sind (Zeitcode < 1 s alt)

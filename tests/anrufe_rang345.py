@@ -87,6 +87,10 @@ FAELLE = [
     F("r4y-3-frei", "group", 3, HORN_Y, None, None, None, 45, "L1 ohne horn_from"),
     F("r4y-4-frei", "group", 4, HORN_Y, None, None, None, 45, "L1 ohne horn_from"),
     F("r4y-4-eng", "group", 4, HORN_Y, 3, ENG1, None, 45, "L1 ohne horn_from"),
+    # Eingrenzung Bildluecke beim engen Teilnehmer (r4-4-eng): gleiche Leitung, Warteschlange 300 ms bzw. 60 ms, und 2 Mbit/s
+    F("r4d-4-eng", "group", 4, HORN_Y, 3, ENG1, None, 60, "Diagnose q300"),
+    F("r4d-4-eng-q60", "group", 4, HORN_Y, 3, dict(ENG1, qms=60), None, 60, "Diagnose q60"),
+    F("r4d-4-eng-2m", "group", 4, HORN_Y, 3, dict(ENG1, up=2000, down=2000), None, 60, "Diagnose 2 Mbit/s"),
     F("r5-2-frei", "dm", 2, MESH),
     F("r5-3-frei", "group", 3, MESH),
     F("r5-4-frei", "group", 4, MESH),
