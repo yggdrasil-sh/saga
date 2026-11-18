@@ -315,6 +315,8 @@ function recovery(s, t, expect) {
       }
     }));
     R.setup = setup;
+    // Anruf kam gar nicht zustande (z. B. Grenze CALL_RATE_H je Konto und Stunde) - kein Messwert, Lauf als Fehler
+    if (Object.values(setup).every(x => x.v == null && x.a == null)) throw new Error('kein Anruf zustande gekommen: ' + R.notes.join('; ') + ' | ' + (await txt(A, '.cl-win, .toast')));
     log('Aufbau', JSON.stringify(setup));
     await sleep(1500);
     // Dauerphase

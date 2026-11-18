@@ -241,6 +241,12 @@ def run_case(fc, rep):
     out = os.path.join(RES, f"{fc['id']}-{rep}.json")
     if os.path.exists(out):
         return "da"
+    # Saga begrenzt neue Anrufe je Konto auf CALL_RATE_H (40) je Stunde, im Speicher des Prozesses - die Anrufende ist
+    # fast immer dieselbe Person: nach 25 Laeufen die Instanz neu starten
+    P["runs"] = P.get("runs", 0) + 1
+    if P["runs"] > 25:
+        stop()
+        P["runs"] = 1
     if not start():
         return "instanz"
     if not settings(fc["cfg"]):
