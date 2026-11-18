@@ -72,6 +72,11 @@ const lockDb = (id, on) => psql(`UPDATE note SET locked=${on ? 1 : 0} WHERE id=$
   await open(p, pg1);
   const s0 = await st(p);
   console.log('     live gebunden: ' + s0.live);
+  if (!s0.live && !(((await api('GET', '/api/version')).features || []).includes('live1'))) {
+    console.log('     Hinweis: notes.live ist aus - diese Reihe braucht den Schalter an (ohne live: tests/browser_sperre_vormerk.js)');
+    for (const id of [pg1, pg2, pg3]) await api('DELETE', '/api/notes/' + id).catch(() => {});
+    await br.close(); console.log('ALLES GRUEN (uebersprungen)'); process.exit(0);
+  }
   ok('Ausgang: live gebunden, nicht gesperrt', s0.live && !s0.locked && !s0.pmRo, s0);
   lockDb(pg1, true);
   await typeEnd(p, ' Vorgemerkt01', true);
