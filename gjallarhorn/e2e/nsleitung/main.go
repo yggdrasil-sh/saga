@@ -1,3 +1,5 @@
+//go:build linux && amd64
+
 // nsleitung: Zugangsleitung EINES Geraets (Browser in eigenem Netz-Namensraum) im Userspace - fuer Messreihen ohne
 // tc/netem (tests/browser_rang345.js). Der Browser laeuft per "ip netns exec <ns>" ohne Weg nach draussen; nsleitung
 // lauscht IM Namensraum auf 127.0.0.1:<port> (TCP und UDP) und reicht alles an 127.0.0.1:<port> im Host-Namensraum
@@ -8,7 +10,7 @@
 //
 // Steuerung (Host): GET /set?up=&down=&rtt=&loss=&qms= (kbit/s, ms, Anteil) | GET /flap?ms=3000 (Netzwechsel: alle
 // Verbindungen weg, so lange nichts durch, danach neue Quell-Ports am Host - wie eine neue Adresse) | GET /stats
-// Nur fuer Tests, keine Abhaengigkeiten ausser der Standardbibliothek.
+// Nur fuer Tests, keine Abhaengigkeiten ausser der Standardbibliothek. Nur linux/amd64 (Nummer von setns, CLONE_NEWNET).
 package main
 
 import (
