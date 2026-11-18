@@ -5,6 +5,8 @@
 // mit Freigabe auf Datenbank und Seite: andere Seite mit eingebettetem Datenbank-Block (Galerie) - eigenes Konto, damit
 // die Anwesenheit von P/V (je Konto) das Ereignis nicht mitbringt. Ein viertes "Geraet" setzt Titelbild (Galerie-Bild, anderes Bild,
 // entfernen) per API -> alle drei Karten zeigen das neue Bild bzw. den Platzhalter, ohne Neuladen.
+// Dazu (Pruefer): Widget "Zahl" neben dem eingebetteten Block und Widget "Demnaechst" (Quellen cfg.dbs) auf einer
+// eigenen Seite laden ihre Werte nach db.rows neu.
 // Lokal: HK_TEST_BASE=... CK=<Cookie A> CK2=<Cookie B> U2=<Konto B> CK3=<Cookie C> U3=<Konto C> [SHOTS=<Ordner> SHOT=vorher|nachher]
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
@@ -23,22 +25,29 @@ const SHOTS = process.env.SHOTS, SHOT = process.env.SHOT || 'nachher';
     const p = await ctx.newPage(); p.errs = []; p.nav = 0;
     p.on('pageerror', (e) => p.errs.push(e.message));
     p.on('framenavigated', (f) => { if (f === p.mainFrame()) p.nav++; });
+    p.wreq = 0; p.on('request', (r) => { if (/\/api\/notes\/\d+\/widgets/.test(r.url())) p.wreq++; });   // Widget-Werte geladen
     await p.addInitScript(() => { document.addEventListener('hk-live', (e) => { if (e.detail && e.detail.type === 'live.hello') window.__hello = true; }); });
     await p.goto(BASE + '/notes'); await sleep(300);
     p.api = (m, u, b) => p.evaluate(([m, u, b]) => HK.api(m, u, b), [m, u, b]);
     return p;
   }
-  const P = await session(CK), E = await session(CK3), V = await session(CK2), dev = await session(CK);
+  const P = await session(CK), E = await session(CK3), V = await session(CK2), dev = await session(CK), E2 = await session(CK3);
   const api = dev.api;
   const covers = ((await api('GET', '/api/covers')).covers || []).filter((c) => c.builtin).map((c) => c.url);
   const db = (await api('POST', '/api/notes', { title: 'Galerie ' + RUN, kind: 'database', cover: null })).id;
-  await api('PATCH', '/api/notes/' + db, { schema: { props: [], views: [{ id: 'gal', name: 'Galerie', type: 'gallery' }] } });
+  await api('PATCH', '/api/notes/' + db, { schema: { props: [{ id: 'dt', name: 'Datum', type: 'date' }], views: [{ id: 'gal', name: 'Galerie', type: 'gallery' }] } });
   const row = (await api('POST', '/api/notes', { title: 'Karte A', parent_id: db })).id;
   await api('POST', '/api/notes', { title: 'Karte B', parent_id: db });
   await api('PATCH', '/api/notes/' + row, { cover: covers[0] });
   const host = (await api('POST', '/api/notes', { title: 'Mit Galerie ' + RUN, cover: null })).id;
   await api('PATCH', '/api/notes/' + host, { format: 'blocks', body: JSON.stringify({ blocks: [
-    { id: 'h0', type: 'paragraph', data: { text: 'Eingebettet:' } }, { id: 'h1', type: 'database', data: { db: db, view: null, views: null } }] }) });
+    { id: 'h0', type: 'paragraph', data: { text: 'Eingebettet:' } }, { id: 'h1', type: 'database', data: { db: db, view: null, views: null } },
+    { id: 'h2', type: 'widget', data: { v: 1, kind: 'metric', cfg: { db: db, view: '', agg: 'count', prop: '', fmt: 'num' } } }] }) });
+  // Widget "Demnaechst" mit mehreren Quellen (cfg.dbs) auf einer Seite ohne eingebetteten Block (Pruefer)
+  const host2 = (await api('POST', '/api/notes', { title: 'Mit Demnaechst ' + RUN, cover: null })).id;
+  await api('PATCH', '/api/notes/' + host2, { format: 'blocks', body: JSON.stringify({ blocks: [
+    { id: 'u1', type: 'widget', data: { v: 1, kind: 'upcoming', cfg: { days: 7, cal: false, tasks: false, overdue: true, limit: 10, dbs: [{ db: db, view: '', date: 'dt' }] } } }] }) });
+  await api('PUT', '/api/notes/' + host2 + '/shares', { type: 'user', target: U3, role: 'view' });
   await api('PUT', '/api/notes/' + db + '/shares', { type: 'user', target: U2, role: 'view' });
   await api('PUT', '/api/notes/' + db + '/shares', { type: 'user', target: U3, role: 'view' });
   await api('PUT', '/api/notes/' + host + '/shares', { type: 'user', target: U3, role: 'view' });
@@ -55,6 +64,9 @@ const SHOTS = process.env.SHOTS, SHOT = process.env.SHOT || 'nachher';
   }
   async function until(fn, ms = 9000) { const t0 = Date.now(); let v; while (Date.now() - t0 < ms) { v = await fn(); if (v) return v; await sleep(200); } return v; }
   await open(P, db); await open(E, host); await open(V, db);
+  await E2.goto(BASE + '/notes?t=' + Date.now() + '#' + host2);
+  for (let i = 0; i < 40; i++) { if (await E2.evaluate(() => !!window.__hello && !!document.querySelector('#pg-editor .wg, #pg-editor [data-type="widget"]'))) break; await sleep(250); }
+  await sleep(1500);
   const views = [['Datenbank-Seite', P], ['eingebetteter Block', E], ['Freigabe Lesen', V]];
   for (const [n, p] of views) { const c = await card(p); ok(n + ': Karte zeigt das erste Titelbild', c && c.img === covers[0], c); }
   async function shot(p, name) {
@@ -67,7 +79,12 @@ const SHOTS = process.env.SHOTS, SHOT = process.env.SHOT || 'nachher';
   for (const [step, body, want] of [['anderes Galerie-Bild', { cover: covers[1], cover_pos: 30 }, covers[1]],
                                     ['drittes Bild', { cover: covers[2] }, covers[2]],
                                     ['Titelbild entfernt', { cover: null }, null]]) {
+    const w0 = [E.wreq, E2.wreq];
     await api('PATCH', '/api/notes/' + row, body);
+    if (step === 'anderes Galerie-Bild') {           // db.rows: Widgets mit dieser Datenbank als Quelle laden ihre Werte neu
+      ok('Widget neben eingebettetem Block (gleiche Datenbank) laedt nach', !!await until(async () => E.wreq > w0[0], 6000), { w0, now: E.wreq });
+      ok('Widget "Demnaechst" (cfg.dbs) laedt nach', !!await until(async () => E2.wreq > w0[1], 6000), { w0, now: E2.wreq });
+    }
     for (const [n, p] of views) {
       const c = await until(async () => { const c = await card(p); return c && (want ? c.img === want : !c.img && c.ph) ? c : null; }) || await card(p);
       ok(n + ': ' + step + ' kommt ohne Neuladen an', c && (want ? c.img === want : !c.img && c.ph) && p.nav === 0, { c, want, nav: p.nav });
@@ -75,8 +92,8 @@ const SHOTS = process.env.SHOTS, SHOT = process.env.SHOT || 'nachher';
     if (step === 'anderes Galerie-Bild') await shot(V, '2122-karte-nach-aenderung');
   }
 
-  ok('Keine Seitenfehler', ![P, E, V, dev].some((p) => p.errs.length), [P, E, V, dev].map((p) => p.errs));
-  for (const id of [host, db]) await api('DELETE', '/api/notes/' + id).catch(() => {});
+  ok('Keine Seitenfehler', ![P, E, V, dev, E2].some((p) => p.errs.length), [P, E, V, dev, E2].map((p) => p.errs));
+  for (const id of [host, host2, db]) await api('DELETE', '/api/notes/' + id).catch(() => {});
   await br.close();
   const bad = res.filter((x) => !x).length;
   console.log(bad ? `${bad} FEHLER` : 'ALLES GRUEN');

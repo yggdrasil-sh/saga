@@ -6322,7 +6322,10 @@
     var id = (e.detail || {}).db;
     if (!id) return;
     if (LIVE_DBS.some(function (v) { return v.DB.id === id && v.boxEl && v.boxEl.isConnected; })) { dbLiveReload(id); return; }
-    var wg = false; WG.forEach(function (x) { if (x.w && x.w.isConnected && x.data && x.data.cfg && x.data.cfg.db === id) wg = true; });
+    var wg = false; WG.forEach(function (x) {         // eine Quelle (cfg.db) oder mehrere ("Demnaechst": cfg.dbs)
+      var c = x.w && x.w.isConnected && x.data && x.data.cfg;
+      if (c && (c.db === id || (Array.isArray(c.dbs) && c.dbs.some(function (s) { return s && s.db === id; })))) wg = true;
+    });
     if (wg) wgSoon();
   });
 
