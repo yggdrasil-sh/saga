@@ -7,6 +7,8 @@
 // 2) Wie 1, aber ein anderes Geraet entsperrt -> Text gespeichert, Schloss weg.
 // 3) Rechte entzogen (Freigabe Bearbeiten -> Lesen, ebenfalls ohne Ereignis): nichts vormerken, kein Schloss, klarer
 //    Hinweis "nur noch lesen", Seite danach schreibgeschuetzt.
+// 4) Wettlauf: Sperre kommt an (hello ro:true), das eigene Update war aber noch unterwegs (reject danach) -> ebenfalls
+//    vorgemerkt statt still verworfen.
 // Lokal: HK_TEST_BASE=... CK=<Cookie A> CK2=<Cookie B> U2=<Konto B> DATABASE_URL=... [SHOTS=<Ordner> SHOT=vorher|nachher]
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
@@ -28,6 +30,11 @@ const lockDb = (id, on) => psql(`UPDATE note SET locked=${on ? 1 : 0} WHERE id=$
     const p = await ctx.newPage(); p.errs = [];
     p.on('pageerror', (e) => p.errs.push(e.message));
     await p.addInitScript(() => { document.addEventListener('hk-live', (e) => { if (e.detail && e.detail.type === 'live.hello') window.__hello = true; }); });
+    await p.addInitScript(() => {               // 4.: ausgehende Live-Frames kurz zurueckhalten (eigenes Update unterwegs)
+      const send = WebSocket.prototype.send; window.__hold = false; window.__q = [];
+      WebSocket.prototype.send = function (d) { if (window.__hold) { window.__q.push([this, d]); return; } return send.call(this, d); };
+      window.__flush = () => { window.__hold = false; const q = window.__q; window.__q = []; q.forEach((x) => send.call(x[0], x[1])); return q.length; };
+    });
     await p.goto(BASE + '/notes'); await sleep(300);
     p.api = (m, u, b) => p.evaluate(([m, u, b]) => HK.api(m, u, b), [m, u, b]);
     return p;
@@ -39,7 +46,7 @@ const lockDb = (id, on) => psql(`UPDATE note SET locked=${on ? 1 : 0} WHERE id=$
     await api('PATCH', '/api/notes/' + id, { format: 'blocks', body: JSON.stringify({ blocks: [{ id: 'a1', type: 'paragraph', data: { text: 'Start' } }] }) });
     return id;
   };
-  const pg1 = await mk('Vormerk live'), pg2 = await mk('Vormerk fremd'), pg3 = await mk('Rechte');
+  const pg1 = await mk('Vormerk live'), pg2 = await mk('Vormerk fremd'), pg3 = await mk('Rechte'), pg4 = await mk('Wettlauf');
   await api('PUT', '/api/notes/' + pg3 + '/shares', { type: 'user', target: U2, role: 'edit' });
 
   const st = (q) => q.evaluate(() => {
@@ -74,7 +81,7 @@ const lockDb = (id, on) => psql(`UPDATE note SET locked=${on ? 1 : 0} WHERE id=$
   console.log('     live gebunden: ' + s0.live);
   if (!s0.live && !(((await api('GET', '/api/version')).features || []).includes('live1'))) {
     console.log('     Hinweis: notes.live ist aus - diese Reihe braucht den Schalter an (ohne live: tests/browser_sperre_vormerk.js)');
-    for (const id of [pg1, pg2, pg3]) await api('DELETE', '/api/notes/' + id).catch(() => {});
+    for (const id of [pg1, pg2, pg3, pg4]) await api('DELETE', '/api/notes/' + id).catch(() => {});
     await br.close(); console.log('ALLES GRUEN (uebersprungen)'); process.exit(0);
   }
   ok('Ausgang: live gebunden, nicht gesperrt', s0.live && !s0.locked && !s0.pmRo, s0);
@@ -131,8 +138,23 @@ const lockDb = (id, on) => psql(`UPDATE note SET locked=${on ? 1 : 0} WHERE id=$
   await sleep(1500);
   ok('Rechte entzogen: Server hat den Text nicht', !/Rolle03/.test(await srv(pg3)), await srv(pg3));
 
+  // --- 4. Sperre NICHT verpasst, eigenes Update aber unterwegs: hello ro:true kommt vor dem reject (Pruefer) ---------
+  await open(p, pg4);
+  await p.click('#pg-editor [contenteditable="true"] p', { timeout: 4000 }).catch(() => {}); await p.keyboard.press('End');
+  await p.evaluate(() => { window.__hold = true; });
+  await p.keyboard.insertText(' Wettlauf04'); await sleep(300);
+  await other.api('PATCH', '/api/notes/' + pg4, { locked: true });              // mit Ereignis (hello ro:true, note.changed)
+  await until(async () => { const s = await st(p); return s.pmRo && s.locked ? s : null; });
+  await sleep(400);
+  await p.evaluate(() => window.__flush());                                    // jetzt erst beim Server -> reject readonly/locked
+  await sleep(1500);
+  const s4 = await st(p);
+  ok('Wettlauf: Text bleibt sichtbar und vorgemerkt', /Wettlauf04/.test(s4.body) && s4.vorm && s4.locked, s4);
+  await other.api('PATCH', '/api/notes/' + pg4, { locked: false });
+  ok('Wettlauf: nach dem Entsperren gespeichert', !!await until(async () => /Wettlauf04/.test(await srv(pg4)), 12000), await srv(pg4));
+
   ok('Keine Seitenfehler', ![p, other, p2].some((q) => q.errs.length), [p, other, p2].map((q) => q.errs));
-  for (const id of [pg1, pg2, pg3]) { lockDb(id, false); await api('DELETE', '/api/notes/' + id).catch(() => {}); }
+  for (const id of [pg1, pg2, pg3, pg4]) { lockDb(id, false); await api('DELETE', '/api/notes/' + id).catch(() => {}); }
   await br.close();
   const bad = res.filter((x) => !x).length;
   console.log(bad ? `${bad} FEHLER` : 'ALLES GRUEN');

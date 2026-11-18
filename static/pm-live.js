@@ -234,7 +234,8 @@
         // Sperre/Entsperren auch der Seite melden (kam note.changed nicht an, stand sonst das Schloss falsch) - vor dem
         // Neuaufbau, damit der Editor danach mit dem richtigen Schreibschutz gebunden wird
         if (k && k.liveLock && (!ro || h.why === 'locked')) k.liveLock(PG.nid, ro, false);
-        if (PG.live) rebind(null, false);
+        // gesperrt: eigene Updates, die noch unterwegs sind, kommen gleich als reject zurueck - vormerken statt verwerfen
+        if (PG.live) rebind(null, ro && h.why === 'locked');
       }
       if (!PG.ro && PG.vorm && PG.live) {               // entsperrt: vorgemerkte Eingabe jetzt senden (steht schon im Doc)
         var u = PG.vorm; PG.vorm = null;
