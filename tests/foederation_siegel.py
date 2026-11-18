@@ -60,7 +60,7 @@ def part(pa, pb):
        sql("a", "SELECT icon FROM note WHERE id=?", (seite,)))
     s, d = api("b", bb, "PATCH", f"/api/notes/{rS}", {"icon": "/siegel/smaragd/nix.svg"})
     ok(f"B: unbekanntes Siegel -> 400, A unveraendert ({s})", s == 400 and sql("a", "SELECT icon FROM note WHERE id=?", (seite,))[0][0] == R2, d)
-    s, d = api("b", bb, "POST", f"/api/notes", {"title": "Von Bert", "parent_id": rS, "icon": R3})
+    s, d = api("b", bb, "POST", "/api/notes", {"title": "Von Bert", "parent_id": rS, "icon": R3})
     nid = d.get("id") if isinstance(d, dict) else None
     row = sql("a", "SELECT icon FROM note WHERE parent_id=? AND title='Von Bert'", (seite,))
     ok(f"B: Unterseite mit Siegel bei A angelegt ({s})", s == 200 and nid and row and row[0][0] == R3, (d, row))
