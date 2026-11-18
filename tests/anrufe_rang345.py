@@ -156,6 +156,18 @@ def stop():
             x.terminate()
 
 
+def ns_clean():
+    """Zum Schluss: die Netz-Namensraeume dieses Laufs wieder loeschen (stop() beendet nur die Prozesse)."""
+    stop()
+    for name in list(P["nsl"]):
+        x = P["nsl"].pop(name)
+        try:
+            x.wait(5)
+        except subprocess.TimeoutExpired:
+            x.kill()
+        subprocess.run(["ip", "netns", "del", name], capture_output=True)
+
+
 def node_ready(after=0):
     from db import connect
     with connect() as c:
@@ -365,7 +377,7 @@ def check():
             else:
                 ok("r4-voll: ueber Knoten kein Mesh-Hinweis beim Start", "höchstens 4 Geräte möglich" not in (tx.get("start_toast") or ""), tx.get("start_toast"))
     finally:
-        stop()
+        ns_clean()
     errs = open(os.path.join(STATE, "server.log"), errors="replace").read().count("Traceback")
     ok(f"Serverfehler: {errs}", errs == 0)
     print(f"\nRANG4-VOLL {sum(res)}/{len(res)}", "- ALLES GRUEN" if all(res) else "- FEHLER")
@@ -404,7 +416,7 @@ def main():
                     log(f"{fc['id']}-{rep}: {st}")
     finally:
         if not a.keep:
-            stop()
+            ns_clean()
     summary()
 
 
