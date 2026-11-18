@@ -928,7 +928,9 @@
   }, true);
   function schedule() {
     if (S.lost) return;                                                               // Zugriff verloren: Dialog zeigt den Text
-    if (readOnly()) { S.dirtyBody = S.dirtyTitle = false; return; }                    // gesperrt / nur Lesen: nichts speichern
+    // gesperrt / nur Lesen: nichts speichern - ausser einer beim Sperren (423) abgelehnten Eingabe, die beim Entsperren
+    // mitgeht (S.held): eine spaetere Bausteinmeldung (k.dirty, Datenbank-Block ...) darf sie nicht still verwerfen
+    if (readOnly()) { if (!(S.held && S.cur && S.held === S.cur.id && S.cur.locked)) S.dirtyBody = S.dirtyTitle = false; return; }
     if (!TIPTAP) state(T('Ungespeichert …'), 'quiet');          // Tiptap (E9): beim Tippen kein Status, nur Fehler/Konflikt/offline
     clearTimeout(S.timer); S.timer = setTimeout(save, 900);
   }
@@ -971,6 +973,7 @@
       var req = api('PATCH', '/api/notes/' + id, body); req.then(done, done);
       return req.then(function (d) {
         if (S.cur && S.cur.id === id && d.rev != null) S.cur.rev = d.rev;
+        if (S.held === id) S.held = null;
         if (d.merged && S.cur && S.cur.id === id) mergedReply(id, d, sentStr, sentTitle);
         if (d.merged) slog('merged');
         if (window.HKMention) HKMention.saved(d);                       // 2.5 (P6-6): Durchschreiben, neue Kopien nachladen
@@ -993,6 +996,7 @@
       // 423: anderswo gesperrt (Ereignis verpasst) - Sperre zeigen (Schloss, Titel/Inhalt schreibgeschuetzt); die Eingabe
       // bleibt ungespeichert vorgemerkt und geht beim Entsperren (Schloss) mit, statt bei jeder Taste erneut abgelehnt zu werden
       if (err.status === 423 && S.cur && S.cur.id === id) {
+        S.held = id;
         if (!S.cur.locked) { S.cur.locked = true; var lp = byId(id); if (lp) lp.locked = true; applyLock(); }
         state(T('Nicht gespeichert: {err}', { err: err.message }), 'err'); lockHint(); return;
       }
@@ -1575,6 +1579,8 @@
   // keepalive, die Anfrage ueberlebt das Entladen. Laeuft gerade noch ein Speichern (die naechste Anfrage muss darauf warten)
   // oder ist der Inhalt zu gross fuer keepalive, fragt der Browser vor dem Verlassen nach.
   window.addEventListener('beforeunload', function (e) {
+    // beim Sperren (423) abgelehnte Eingabe: Speichern geht nicht (gesperrt) - vor dem Verlassen nachfragen statt still verwerfen
+    if (S.cur && S.held === S.cur.id && S.cur.locked && (S.dirtyBody || S.dirtyTitle) && !S.conflict && !S.lost) { e.preventDefault(); e.returnValue = ''; return; }
     if (!S.cur || S.conflict || S.lost || readOnly() || (!S.dirtyBody && !S.dirtyTitle)) return;
     var busy = (S.inflight || 0) > 0;
     save();
@@ -9850,6 +9856,9 @@
   }
   function clearRemote() { var b = $('pg-remote'); if (b) b.remove(); }
   document.addEventListener('hk-page-open', clearRemote);
+  // andere Seite geoeffnet: eine beim Sperren (423) abgelehnte Eingabe der vorigen Seite gehoert nicht zur neuen
+  // (sonst ginge sie beim naechsten Speichern als Titel/Inhalt der neuen Seite mit)
+  document.addEventListener('hk-page-open', function () { if (S.held) { S.held = null; S.dirtyBody = S.dirtyTitle = false; } });
   // Position der Schreibmarke: Index des obersten Blocks + Zeichen-Abstand im bearbeitbaren Teil
   function caretPos() {
     var sel = window.getSelection(), box = $('pg-editor');
