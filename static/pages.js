@@ -789,8 +789,13 @@
     }
     function noteAll(doc) { ((doc && doc.blocks) || []).forEach(function (b) { if (b) note(b.id, b.type, b.data); }); }
     noteAll(data);
-    var render = ed.render.bind(ed), save = ed.save.bind(ed), upd = ed.blocks.update.bind(ed.blocks);
+    var render = ed.render.bind(ed), save = ed.save.bind(ed), upd = ed.blocks.update.bind(ed.blocks), ins = ed.blocks.insert.bind(ed.blocks);
     ed.render = function (doc) { Object.keys(memo).forEach(function (k) { delete memo[k]; }); noteAll(doc); return render(doc); };
+    // fremder Block eingefuegt (applyDoc, Bug 2155): mit ID und Daten - ebenso merken
+    ed.blocks.insert = function (type, d, cfg, index, focus, replace, id) {
+      if (id && d) note(id, type, d);
+      return ins.apply(null, arguments);
+    };
     ed.blocks.update = function (id, d, tunes) {
       if (d) { var b = ed.blocks.getById && ed.blocks.getById(id); note(id, b ? b.name : (memo[id] || {}).t, d); }
       return upd.apply(null, arguments);
@@ -922,10 +927,34 @@
   document.addEventListener('input', function (e) {
     var box = $('pg-editor'), tg = e.target;
     if (!box || !tg || !tg.isContentEditable || !box.contains(tg) || !S.cur) return;
+    if (!TIPTAP) noteInput(tg);
     if (S.loading || S.baseId !== S.cur.id) { S.typed = true; return; }
     if (TIPTAP) return;                              // Tiptap meldet Aenderungen als Transaktion (ttChanged)
     S.dirtyBody = true; schedule();
   }, true);
+  // Bug 2155 (Editor.js): Enter/Entf/Ruecktaste/Tab aendern Bloecke teils ohne input-Ereignis (Editor.js teilt/verbindet
+  // selbst) - fuer applyDoc trotzdem als Eingabe im Block zaehlen, waehrend des Anwendens als "getippt" merken
+  document.addEventListener('keydown', function (e) {
+    if (TIPTAP || !/^(Enter|Backspace|Delete|Tab)$/.test(e.key)) return;
+    var box = $('pg-editor'), tg = e.target;
+    if (!box || !tg || !tg.isContentEditable || !box.contains(tg) || !S.cur) return;
+    noteInput(tg);
+    if (S.loading) S.typed = true;
+  }, true);
+  // Block der obersten Ebene (Editor.js) zu einem Knoten im Editor - auch aus Spalten/Ausklappbar heraus
+  function topBlockId(node) {
+    var box = $('pg-editor'), red = box && box.querySelector('.codex-editor__redactor');
+    var blk = node && (node.nodeType === 1 ? node : node.parentElement);
+    blk = blk && blk.closest && blk.closest('.ce-block');
+    while (blk && blk.parentElement !== red) blk = blk.parentElement ? blk.parentElement.closest('.ce-block') : null;
+    return (blk && blk.dataset.id) || null;
+  }
+  // Eingabe zaehlen und je Block die Nummer der letzten Eingabe merken: applyDoc laesst Bloecke, in die seit dem Lesen
+  // des Editors getippt wurde, unangetastet (fremde Aenderung ueberschreibt sonst die laufende Eingabe)
+  function noteInput(tg) {
+    S.inSeq = (S.inSeq || 0) + 1;
+    var b = topBlockId(tg); if (b) (S.inAt = S.inAt || {})[b] = S.inSeq;
+  }
   function schedule() {
     if (S.lost) return;                                                               // Zugriff verloren: Dialog zeigt den Text
     // gesperrt / nur Lesen: nichts speichern - ausser einer beim Sperren (423) abgelehnten Eingabe, die beim Entsperren
@@ -941,14 +970,17 @@
   }
   // Speichern nacheinander (Warteschlange): ein zweites Speichern waehrend das erste noch laeuft, wuerde sonst
   // die veraltete Revision mitschicken -> falscher Konflikt "mit sich selbst" (z. B. bei langsamer Verbindung)
+  // Bug 2155: waehrend applyDoc fremde Bloecke einarbeitet, nicht lesen/senden (halb angewandter Stand liesse den Server
+  // die fremden Bloecke als "von mir geloescht" werten) - erst danach
+  function applied() { return S.applyP || null; }
   function save() {
-    S.saveChain = (S.saveChain || Promise.resolve()).then(saveNow, saveNow);
+    S.saveChain = (S.saveChain || Promise.resolve()).then(applied, applied).then(saveNow, saveNow);
     return S.saveChain;
   }
   function saveNow() {
     if (!S.cur || S.conflict || S.lost || (!S.dirtyBody && !S.dirtyTitle)) return Promise.resolve();
     clearTimeout(S.timer);
-    var id = S.cur.id, body = {};
+    var id = S.cur.id, body = {}, pb = null;
     if (S.dirtyTitle) { body.title = $('pg-title').value; S.dirtyTitle = false; }
     if (S.dirtyBody && liveBody()) S.dirtyBody = false;
     var wantBody = !!(S.dirtyBody && S.editor), getBody = wantBody ? S.editor.save() : Promise.resolve(null);
@@ -965,6 +997,10 @@
       // waehrend die vorige Antwort unterwegs war)
       var sentStr = out ? JSON.stringify(out.blocks) : null, sentTitle = 'title' in body ? body.title : null;
       if (body.rev != null && mergeable()) { body.merge = 1; if (S.baseSent && S.baseSent.id === id && S.baseSent.rev === body.rev) body.base = 'sent'; }
+      // Bug 2155: Bloecke, die applyDoc beim Einarbeiten fremder Aenderungen lokal behalten hat, beruhen auf einer anderen
+      // Basis als der Rest (APP-API "Rebase" 4: bases {Block-ID: rev})
+      pb = S.pendBases && S.pendBases.id === id ? S.pendBases : null; S.pendBases = null;
+      if (pb && body.merge && body.body) body.bases = pb.m;
       S.baseSent = null;
       S.force = false;
       if (S.overwrite) { body.overwrite = true; S.overwrite = false; }       // "Meine Version behalten": andere Fassung als Version sichern
@@ -974,7 +1010,7 @@
       return req.then(function (d) {
         if (S.cur && S.cur.id === id && d.rev != null) S.cur.rev = d.rev;
         if (S.held === id) S.held = null;
-        if (d.merged && S.cur && S.cur.id === id) mergedReply(id, d, sentStr, sentTitle);
+        var wait = d.merged && S.cur && S.cur.id === id ? mergedReply(id, d, sentStr, sentTitle) : null;   // Warteschlange wartet (Bug 2155)
         if (d.merged) slog('merged');
         if (window.HKMention) HKMention.saved(d);                       // 2.5 (P6-6): Durchschreiben, neue Kopien nachladen
         if (S.cur && S.cur.id === id && d.updated) S.cur.updated = d.updated;
@@ -984,9 +1020,12 @@
         if (!S.dirtyBody && !S.dirtyTitle) state(T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(d.updated * 1000)) }), 'ok quiet');
         if (!remoteId(id)) { S.ckId = id; clearTimeout(S.ckTimer); S.ckTimer = setTimeout(function () { checkpoint('pause'); }, CK_PAUSE); }
         if ('title' in body) { if (S.cur && S.cur.id === id) S.cur.title = d.merged && typeof d.title === 'string' ? d.title : body.title.trim(); renderTree(); renderCrumbs(); setLocation(); }
-        if (S.remoteAfter && S.cur && S.cur.id === id && S.remoteAfter > (d.rev || 0)) setTimeout(function () { liveApply(null); }, 0);   // fremde Aenderung nach diesem Stand
+        return Promise.resolve(wait).then(function () {
+          if (S.remoteAfter && S.cur && S.cur.id === id && S.remoteAfter > (d.rev || 0)) setTimeout(function () { liveApply(null); }, 0);   // fremde Aenderung nach diesem Stand
+        });
       });
     }).catch(function (err) {
+      if (pb && body.bases && !S.pendBases) S.pendBases = pb;          // nicht angekommen: Basen fuer den naechsten Versuch
       S.dirtyBody = S.dirtyBody || !!body.body || (wantBody && !body.body); S.dirtyTitle = S.dirtyTitle || 'title' in body;
       if (body.body) S.lastBlocks = null;      // nicht angekommen: der naechste Versuch darf nicht als "unveraendert" entfallen (offline -> online)
       if (!err.status && err.message !== 'conflict' && navigator.onLine !== false) slog('error', 0);   // ohne Anfrage (Editor-Inhalt nicht lesbar); Antworten erfasst clientlog.js
@@ -1271,6 +1310,7 @@
   // Nur speichern, wenn sich der Inhalt wirklich geaendert hat (Editor.js meldet beim Laden teils "Aenderungen")
   var _origSave = save;
   save = function () {
+    if (S.applyP) return S.applyP.then(function () { return save(); });   // Bug 2155: erst nach dem Einarbeiten vergleichen
     if (S.dirtyBody && S.editor && !S.dirtyTitle) {
       return S.editor.save().then(function (o) {
         if (JSON.stringify(o.blocks) === S.lastBlocks) { S.dirtyBody = false; clearTimeout(S.timer); state(T('Gespeichert ✓'), 'ok quiet'); return; }
@@ -1288,10 +1328,11 @@
     // Vergleich der alten Seite laeuft noch (Aenderung gemeldet, aber noch nicht markiert): sicherheitshalber markieren -
     // save() in _origOpen vergleicht ohnehin mit dem gespeicherten Stand und speichert nur bei echtem Unterschied
     if (S.checking && S.cur && S.baseId === S.cur.id) S.dirtyBody = true;
-    S.baseId = null; S.typed = false;
+    S.baseId = null; S.typed = false; S.inAt = {};
     $('pg-trash').hidden = true; hideView();
     if (PK.id) closePeek();
     return _origOpen(id).then(function () {
+      S.pendBases = null;                     // gehoerte zur vorigen Seite bzw. zum vorigen Laden (dort schon gespeichert)
       if (S.cur) { S.loading = true; decorateLinks(); S.loading = false; renderTags(); loadBacklinks(S.cur.id); rememberRecent(S.cur.id); archiveBar(); applyLock(); applyPublic(); applyShare(); applyMeta(); }
       var bm = location.hash.match(/^#(-?\d+):(.+)$/); if (bm && S.cur && +bm[1] === S.cur.id) setTimeout(function () { showBlock(decodeURIComponent(bm[2])); }, 150);
       if (EMBED && S.cur && !S.cur.title) $('pg-title').focus();      // neue Karte im Peek: gleich den Namen tippen
@@ -9769,6 +9810,8 @@
     var a = document.activeElement, inEditor = a && $('pg-editor').contains(a) && a.isContentEditable;
     var typingElsewhere = a && $('page').contains(a) && !inEditor && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
     if (typingElsewhere || PK.id || document.body.classList.contains('side-open') || !$('pg-modal').hidden) { remoteHint(ev.by); return; }
+    // Bug 2155: fremder Stand wird gerade eingearbeitet (Editor.js) - danach nachholen (applyDoc), kein "Neu laden"
+    if (mergeable() && !S.lost && S.applying && !TIPTAP) { S.remoteAfter = Math.max(S.remoteAfter || 0, ev.rev || ((S.cur.rev || 0) + 1)); return; }
     if (mergeable() && !S.lost && !S.loading) {
       // 2.5 (P3 Stufe 1): kein "Neu laden" mehr - ungespeichert: gleich speichern (der Server fuehrt zusammen, die
       // Antwort bringt die fremden Bloecke mit); sonst nur die geaenderten Bloecke uebernehmen (Schreibmarke bleibt)
@@ -9814,20 +9857,40 @@
     if (m.conflicts && m.conflicts.length) HK.toast(T('Gleichzeitig geändert – beide Fassungen stehen untereinander.'));
     else if (m.lost && m.lost.length) HK.toast(T('Gleichzeitig geändert – die andere Fassung liegt in den Versionen.'));
     if (typeof d.title === 'string' && sentTitle !== null && !S.dirtyTitle && document.activeElement !== $('pg-title')) $('pg-title').value = d.title;
-    if (typeof d.body !== 'string' || !S.editor || sentStr === null) {
-      if (typeof d.body === 'string' && S.editor && !S.dirtyBody) applyBody(id, d.body);
-      return;
+    if (TIPTAP) {
+      if (typeof d.body !== 'string' || !S.editor || sentStr === null) {
+        if (typeof d.body === 'string' && S.editor && !S.dirtyBody) applyBody(id, d.body);
+        return null;
+      }
+      S.editor.save().then(function (now) {
+        if (!S.cur || S.cur.id !== id) return;
+        if (now && JSON.stringify(now.blocks) === sentStr && !S.dirtyBody) return applyBody(id, d.body);
+        S.baseSent = { id: id, rev: d.rev }; S.dirtyBody = true; schedule();       // weitergeschrieben: Rebase beim naechsten Speichern
+      });
+      return null;
     }
-    S.editor.save().then(function (now) {
-      if (!S.cur || S.cur.id !== id) return;
-      if (now && JSON.stringify(now.blocks) === sentStr && !S.dirtyBody) return applyBody(id, d.body);
-      S.baseSent = { id: id, rev: d.rev }; S.dirtyBody = true; schedule();       // weitergeschrieben: Rebase beim naechsten Speichern
+    if (typeof d.body !== 'string' || !S.editor) return null;
+    // Editor.js (Bug 2155): den zusammengefuehrten Stand blockweise einarbeiten - auch waehrend weitergeschrieben wird;
+    // seit dem Senden bearbeitete Bloecke bleiben (Basis: die eingereichte Fassung, als bases beim naechsten Speichern)
+    if (sentStr === null) {                          // nur der Titel ging mit: der Inhalt im Editor beruht auf merged.from
+      return applyBody(id, d.body, { mode: 'live', baseRev: m.from }).then(function (r) { if (r === 'local') rebaseLater(id, m.from, d.rev); });
+    }
+    return applyBody(id, d.body, { base: sentStr, mode: 'merged', baseRev: d.rev }).then(function (r) {
+      if (r === 'keep') { S.baseSent = { id: id, rev: d.rev }; S.lastBlocks = null; S.dirtyBody = true; schedule(); }   // lokal verschoben: Server fuehrt zusammen
     });
   }
-  function applyBody(id, body) {
+  function applyBody(id, body, opt) {
     var doc; try { doc = JSON.parse(body); } catch (e) { return Promise.resolve(); }
     if (!doc || !Array.isArray(doc.blocks)) return Promise.resolve();
-    return applyDoc(id, doc);
+    return applyDoc(id, doc, opt);
+  }
+  // Bug 2155: beim Einarbeiten eine ungespeicherte lokale Aenderung gefunden -> nichts uebernommen. Basis bleibt die alte
+  // rev; gleich mit merge speichern - der Server fuehrt zusammen, die Antwort bringt die fremden Bloecke
+  function rebaseLater(id, oldRev, newRev) {
+    if (!S.cur || S.cur.id !== id) return;
+    if (oldRev != null && S.cur.rev === newRev) S.cur.rev = oldRev;
+    S.remoteAfter = Math.max(S.remoteAfter || 0, newRev || 0);
+    S.lastBlocks = null; S.dirtyBody = true; clearTimeout(S.timer); save();
   }
   // Fremden Stand einer Seite holen und blockweise uebernehmen (statt die ganze Seite neu zu laden)
   function liveApply(by) {
@@ -9869,17 +9932,135 @@
   function liveTake(id, n, by) {
     if (!S.cur || S.cur.id !== id || n.format !== 'blocks' || S.loading || typeof n.body !== 'string') return;
     if (S.dirtyBody || S.dirtyTitle || S.inflight) { S.remoteAfter = n.rev; if (S.dirtyBody || S.dirtyTitle) save(); return; }
+    var old = S.cur.rev;
     S.cur.rev = n.rev; S.cur.updated = n.updated; S.cur.updated_by = n.updated_by;
     if (window.HKMention) HKMention.setPeople(n.people);
     if (n.title !== S.cur.title && document.activeElement !== $('pg-title')) { S.cur.title = n.title; $('pg-title').value = n.title || ''; var p = byId(id); if (p) p.title = n.title; renderTree(); renderCrumbs(); setLocation(); }
-    return applyBody(id, n.body).then(function () {
+    return applyBody(id, n.body, { mode: 'live', baseRev: old }).then(function (r) {
+      if (r === 'local') { rebaseLater(id, old, n.rev); return; }           // inzwischen getippt (Bug 2155)
       if (by && by.name && !liveBody()) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');   // live (E9): still
     });
   }
   function blkSig(b) { return JSON.stringify([b.type, b.data, b.tunes || null]); }
-  // Dokument in den offenen Editor bringen: gleiche Bloecke in gleicher Reihenfolge -> nur geaenderte Bloecke ersetzen
-  // (Editor.js blocks.update); sonst neu zeichnen und die Schreibmarke im selben Block wiederherstellen
-  function applyDoc(id, doc) {
+  function typedSince(bid, seq) { return ((S.inAt && S.inAt[bid]) || 0) > seq; }
+  function jclone(x) { return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); }
+  // Bug 2155: Plan fuer das Einarbeiten eines fremden Stands (oberste Ebene) in den offenen Editor.js-Editor.
+  // mine = Editor jetzt, theirs = fremder Stand, baseStr = Stand, auf dem mine beruht (eingereichte Fassung bzw. zuletzt
+  // gespeichert/uebernommen, JSON der Bloecke; null = unbekannt). Lokal geaendert = anders als die Basis (auch neu bzw.
+  // geloescht) oder seit dem Lesen getippt - solche Bloecke bleiben wie im Editor, alle anderen wie im fremden Stand.
+  // -> {want: Zielfolge, local: Anzahl, isLocal, localIds, moved: lokal umgestellt (dann nichts anfassen), mine, bad}
+  function applyPlan(mine, theirs, baseStr, seq0) {
+    var base = null; try { base = typeof baseStr === 'string' ? JSON.parse(baseStr) : null; } catch (e) { base = null; }
+    if (!Array.isArray(base)) base = null;
+    var mBy = Object.create(null), tBy = Object.create(null), bSig = null, local = Object.create(null), gone = Object.create(null), n = 0;
+    var bad = theirs.some(function (x) { return !x || !x.id || !x.type; }) || mine.some(function (x) { return !x || !x.id; });
+    mine.forEach(function (x) { if (x && x.id) mBy[x.id] = x; });
+    theirs.forEach(function (x) { if (x && x.id) tBy[x.id] = x; });
+    if (base) { bSig = Object.create(null); base.forEach(function (x) { if (x && x.id) bSig[x.id] = blkSig(x); }); }
+    mine.forEach(function (x) {
+      if (!x || !x.id) return;
+      if ((bSig && bSig[x.id] !== blkSig(x)) || typedSince(x.id, seq0)) { local[x.id] = 1; n++; }
+    });
+    if (bSig) Object.keys(bSig).forEach(function (bid) { if (!mBy[bid]) { gone[bid] = 1; n++; } });
+    var moved = false;
+    if (n && base) {
+      var bo = base.filter(function (x) { return x && mBy[x.id]; }).map(function (x) { return x.id; });
+      var co = mine.filter(function (x) { return x && x.id && bSig[x.id] !== undefined; }).map(function (x) { return x.id; });
+      moved = bo.join('\n') !== co.join('\n');
+    }
+    var order = [];
+    theirs.forEach(function (x) { if (x && x.id && !gone[x.id] && order.indexOf(x.id) < 0) order.push(x.id); });
+    mine.forEach(function (x, i) {                   // lokal neue bzw. fremd geloeschte, hier geaenderte: hinter ihren Vorgaenger
+      if (!x || !x.id || !local[x.id] || order.indexOf(x.id) >= 0) return;
+      var j = i - 1; while (j >= 0 && order.indexOf(mine[j].id) < 0) j--;
+      order.splice(j < 0 ? 0 : order.indexOf(mine[j].id) + 1, 0, x.id);
+    });
+    return { want: order.map(function (bid) { return local[bid] ? mBy[bid] : tBy[bid]; }), local: n, isLocal: local,
+             localIds: Object.keys(local), moved: moved, mine: mBy, bad: bad };
+  }
+  function topBlockEl(bid) {
+    var red = $('pg-editor').querySelector('.codex-editor__redactor');
+    if (!red) return null;
+    for (var i = 0; i < red.children.length; i++) if (red.children[i].dataset && red.children[i].dataset.id === bid) return red.children[i];
+    return null;
+  }
+  // Schreibmarke im n-ten Eingabefeld eines Blocks auf Zeichen off setzen (verschachtelte Editoren; sonst Editor.js caret)
+  function setCaretIn(blk, ce, off) {
+    var eds = blk.querySelectorAll('[contenteditable="true"]'), t = eds[ce] || eds[0]; if (!t) return;
+    try { t.focus({ preventScroll: true }); } catch (e) { /* alt */ }
+    var w = document.createTreeWalker(t, NodeFilter.SHOW_TEXT), nd, left = off || 0, r = document.createRange(), done = false;
+    while ((nd = w.nextNode())) { if (left <= nd.length) { r.setStart(nd, left); done = true; break; } left -= nd.length; }
+    if (!done) r.selectNodeContents(t);
+    r.collapse(!done ? false : true);
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+  // Editor.js: Plan schrittweise ausfuehren (loeschen, einfuegen, verschieben, geaenderte Bloecke ersetzen) - ohne neu zu
+  // zeichnen; Bloecke, in die waehrenddessen getippt wird, bleiben unangetastet (kept). Schreibmarke und Lage bleiben.
+  function applySteps(ed, plan, seq0, kept) {
+    var want = plan.want, ids = want.map(function (x) { return x.id; }), touched = false;
+    var caret = caretBlock(), sc = document.scrollingElement || document.documentElement;
+    var anchor = caret && topBlockEl(caret.id), top0 = anchor ? anchor.getBoundingClientRect().top : null;
+    function skip(bid) { if (typedSince(bid, seq0)) kept[bid] = 1; return !!kept[bid]; }
+    function idAt(i) { var b = ed.blocks.getBlockByIndex(i); return b ? b.id : null; }
+    function idx(bid) { for (var i = 0, n = ed.blocks.getBlocksCount(); i < n; i++) if (idAt(i) === bid) return i; return -1; }
+    function inWant(bid) { return ids.indexOf(bid) >= 0; }
+    function insert(x, at) {
+      ed.blocks.insert(x.type, jclone(x.data), {}, at, false, false, x.id);
+      if (x.tunes && Object.keys(x.tunes).length) return ed.blocks.update(x.id, jclone(x.data), jclone(x.tunes));
+    }
+    var chain = Promise.resolve();
+    Object.keys(plan.mine).forEach(function (bid) {  // 1. fremd geloescht (hier unveraendert)
+      if (inWant(bid)) return;
+      chain = chain.then(function () { if (skip(bid)) return; var k = idx(bid); if (k >= 0) { ed.blocks.delete(k); touched = true; } });
+    });
+    want.forEach(function (x, wi) {                  // 2. Reihenfolge, neue und geaenderte Bloecke
+      chain = chain.then(function () {
+        var pos = wi ? idx(ids[wi - 1]) + 1 : 0, n = ed.blocks.getBlocksCount();
+        while (pos < n && !inWant(idAt(pos))) pos++;   // stehen gebliebene (waehrenddessen bearbeitete) Bloecke ueberspringen
+        var k = idx(x.id), had = plan.mine[x.id];
+        if (k < 0) { touched = true; return insert(x, pos); }
+        if (k !== pos) { ed.blocks.move(k < pos ? pos - 1 : pos, k); touched = true; }
+        if (plan.isLocal[x.id] || !had || blkSig(had) === blkSig(x) || skip(x.id)) return;
+        touched = true;
+        if (had.type === x.type) return ed.blocks.update(x.id, jclone(x.data), jclone(x.tunes || {}));
+        var at = idx(x.id); ed.blocks.delete(at); return insert(x, at);
+      });
+    });
+    chain = chain.then(function () {                 // 3. leerer Ersatzblock (Editor.js nach dem Loeschen des letzten Blocks)
+      for (var i = ed.blocks.getBlocksCount() - 1; i >= 0 && ed.blocks.getBlocksCount() > 1; i--) {
+        var bid = idAt(i), b = ed.blocks.getBlockByIndex(i);
+        if (inWant(bid) || plan.mine[bid] || skip(bid) || !b || (b.holder.textContent || '').trim()) continue;
+        var sel = window.getSelection();
+        if (sel && sel.rangeCount && b.holder.contains(sel.getRangeAt(0).startContainer)) continue;
+        ed.blocks.delete(i);
+      }
+    });
+    return chain.then(function () {
+      if (!caret) return;
+      var el = topBlockEl(caret.id); if (!el) return;
+      var sel = window.getSelection(), inside = !!(sel && sel.rangeCount && el.contains(sel.getRangeAt(0).startContainer));
+      if (inside && (!touched || !caret.flat || !sel.isCollapsed)) { /* Schreibmarke steht noch: nichts anfassen */ }
+      else {
+        var now = inside ? caretBlock() : null, off = now && now.id === caret.id ? now.off : caret.off;
+        if (caret.flat) { try { ed.caret.setToBlock(idx(caret.id), 'default', off); } catch (e) { setCaretIn(el, caret.ce, off); } }
+        else setCaretIn(el, caret.ce, off);
+      }
+      if (top0 !== null) { var dy = el.getBoundingClientRect().top - top0; if (Math.abs(dy) > 1) sc.scrollTop += dy; }   // Lage halten
+    });
+  }
+  // Editor.js, Rueckfall (Plan nicht schrittweise ausfuehrbar): neu zeichnen, Schreibmarke im selben Block wiederherstellen
+  function renderKeep(ed, doc) {
+    var sc = document.scrollingElement || document.documentElement, y = sc.scrollTop, caret = caretBlock();
+    return ed.render(doc).then(function () {
+      sc.scrollTop = y;
+      if (caret) { var i = ed.blocks.getBlockIndex(caret.id); if (i >= 0) try { ed.caret.setToBlock(i, 'default', caret.off); sc.scrollTop = y; } catch (e) { /* weg */ } }
+    });
+  }
+  // Dokument in den offenen Editor bringen. Tiptap: blockweise in einer Transaktion. Editor.js (Bug 2155): schrittweise
+  // (applyPlan/applySteps), ungespeicherte eigene Bloecke bleiben. opt: base (JSON der Bloecke, auf denen der Editor
+  // beruht; Standard S.lastBlocks), mode 'live' (lokale Aenderung -> nichts anfassen, 'local') bzw. 'merged' (lokale
+  // Bloecke behalten, Basis baseRev als bases), baseRev. -> Promise: 'ok' | 'kept' | 'local' | 'keep' | 'gone' | 'err'
+  function applyDoc(id, doc, opt) {
     var ed = S.editor; if (!ed || !S.cur || S.cur.id !== id) return Promise.resolve();
     if (TIPTAP) {                                     // blockweise in einer Transaktion (ohne Undo-Schritt, Schreibmarke bleibt)
       S.applying = true; S.loading = true;
@@ -9891,41 +10072,51 @@
         if (S.typed) { S.typed = false; S.dirtyBody = true; schedule(); }
       });
     }
+    var o = opt || {}, seq0 = S.inSeq || 0, kept = Object.create(null), plan = null;
     S.applying = true;
-    return ed.save().then(function (cur) {
-      if (!S.cur || S.cur.id !== id) return;
-      var a = (cur.blocks || []).map(function (b) { return b.id + '|' + b.type; }), b = doc.blocks.map(function (x) { return x.id + '|' + x.type; });
-      var curBy = {}; (cur.blocks || []).forEach(function (x) { curBy[x.id] = blkSig(x); });
+    var p = ed.save().then(function (cur) {
+      if (!S.cur || S.cur.id !== id) return 'gone';
+      plan = applyPlan(cur.blocks || [], doc.blocks, o.base === undefined ? S.lastBlocks : o.base, seq0);
+      if (plan.local && o.mode === 'live') return 'local';
+      if (plan.moved) return 'keep';
       S.loading = true;
-      var p;
-      if (a.join('\n') === b.join('\n')) {
-        p = doc.blocks.reduce(function (pr, x) {
-          if (curBy[x.id] === blkSig(x)) return pr;
-          return pr.then(function () { return ed.blocks.update(x.id, x.data, x.tunes || {}); }).catch(function () { /* naechster Block */ });
-        }, Promise.resolve());
-      } else {
-        var sc = document.scrollingElement || document.documentElement, y = sc.scrollTop, caret = caretBlock();
-        p = ed.render(doc).then(function () {
-          sc.scrollTop = y;
-          if (caret) { var i = ed.blocks.getBlockIndex(caret.id); if (i >= 0) try { ed.caret.setToBlock(i, 'default', caret.off); sc.scrollTop = y; } catch (e) { /* weg */ } }
-        });
-      }
-      return p.then(function () {
+      var run = plan.bad ? renderKeep(ed, plan.local ? { blocks: plan.want } : doc)
+        : applySteps(ed, plan, seq0, kept).catch(function () { return renderKeep(ed, { blocks: plan.want }); });
+      return run.then(function () {
         return Promise.all((S.eds || []).filter(function (x) { return x.holder.isConnected; }).map(function (x) { return x.ed.isReady; }));
-      }).then(function () { return ed.save(); }).then(function (o) {
-        S.lastBlocks = JSON.stringify(o.blocks); decorateLinks();
+      }).then(function () { return ed.save(); }).then(function (out) {
+        var kn = plan.local || Object.keys(kept).length;
+        S.lastBlocks = kn ? null : JSON.stringify(out.blocks); decorateLinks();
         document.dispatchEvent(new CustomEvent('hk-page-ready', { detail: { id: id } }));
+        return kn ? 'kept' : 'ok';
       });
-    }).catch(function () { /* Editor beschaeftigt: naechstes Speichern gleicht ab */ }).then(function () {
+    }).catch(function () { return 'err'; /* Editor beschaeftigt: naechstes Speichern gleicht ab */ }).then(function (r) {
       S.loading = false; S.applying = false;
+      if (S.applyP === p) S.applyP = null;
+      if (r === 'kept' && S.cur && S.cur.id === id) {
+        // behaltene Bloecke beruhen auf der Basis (eingereichte Fassung zu baseRev) - beim naechsten Speichern als bases
+        var bm = {};                                   // (Server nimmt nur IDs, die es in jener Fassung gab)
+        plan.localIds.concat(Object.keys(kept)).forEach(function (bid) { if (o.baseRev != null && plan.mine[bid]) bm[bid] = o.baseRev; });
+        var prev = S.pendBases && S.pendBases.id === id ? S.pendBases.m : {};
+        Object.keys(prev).forEach(function (bid) { bm[bid] = prev[bid]; });    // aeltere Basis eines noch nicht gesendeten Blocks gilt
+        S.pendBases = Object.keys(bm).length ? { id: id, m: bm } : null;
+        S.dirtyBody = true; schedule();
+      }
       if (S.typed) { S.typed = false; S.dirtyBody = true; schedule(); }
+      if (r !== 'local' && r !== 'keep' && S.remoteAfter && S.cur && S.cur.id === id && S.remoteAfter > (S.cur.rev || 0)) {
+        if (S.dirtyBody || S.dirtyTitle) { clearTimeout(S.timer); save(); }       // waehrenddessen gemeldete fremde Aenderung
+        else if (!S.inflight) setTimeout(function () { liveApply(null); }, 0);
+      }
+      return r;
     });
+    S.applyP = p;
+    return p;
   }
   // Block (oberste Ebene) mit der Schreibmarke + Abstand darin
   function caretBlock() {
     var pos = caretPos(); if (!pos) return null;
     var red = $('pg-editor').querySelector('.codex-editor__redactor'), blk = red && red.children[pos.idx];
-    return blk && blk.dataset.id ? { id: blk.dataset.id, off: pos.off } : null;
+    return blk && blk.dataset.id ? { id: blk.dataset.id, off: pos.off, flat: pos.flat, ce: pos.ce } : null;
   }
   function remoteHint(by) {
     var bar = $('pg-remote');
@@ -9961,7 +10152,9 @@
     var ed = elx.closest('[contenteditable="true"]');
     if (!blk || !ed || !blk.contains(ed)) return null;
     var pre = document.createRange(); pre.selectNodeContents(ed); pre.setEnd(r.startContainer, r.startOffset);
-    return { idx: [].indexOf.call(red.children, blk), off: pre.toString().length };
+    // flat: Eingabefeld gehoert direkt zum Block (nicht zu Spalten/Ausklappbar darin); ce: Nummer des Eingabefelds im Block
+    return { idx: [].indexOf.call(red.children, blk), off: pre.toString().length, flat: ed.closest('.ce-block') === blk,
+             ce: [].indexOf.call(blk.querySelectorAll('[contenteditable="true"]'), ed) };
   }
   function silentReload(by) {
     var sc = document.scrollingElement || document.documentElement, y = sc.scrollTop, pos = caretPos(), id = S.cur.id;
