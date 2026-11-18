@@ -23,6 +23,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Anruf-Diagnose `ho-fail` (Web):** Auch „Hierher übernehmen“ vom Begleitgerät aufs Hauptgerät (Frist bzw.
   Beförderung gescheitert) und eine Verbindung, die während der Übernahme abbricht, stehen jetzt mit Zustand je
   Verbindung in der Diagnose (Präfix `take-to`, `take-promo`, `drop`) – bisher nur ein Hinweis auf dem Bildschirm.
+- **Sprechring über den Knoten (Web):** Ob der Knoten den Pegel liefert, merkt sich der Browser jetzt je Verbindung bzw.
+  Leitung statt für den ganzen Anruf. Nach einem Wechsel auf einen Knoten ohne Pegel steht der Ring wieder am
+  Sprecherplatz des Knotens, statt ganz zu fehlen.
 
 ### Behoben – Seiten-Sperre und Live-Abgleich im Browser (Feldfehler)
 - **Sperre kommt an:** Sperrt ein anderes Gerät oder ein anderer Tab die offene Seite, zeigt der Browser jetzt sofort das

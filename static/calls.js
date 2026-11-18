@@ -4613,10 +4613,12 @@
     var H = R.horn; clearInterval(H.spkT);
     H.spkT = setInterval(function () {
       if (!live(R) || !R.horn) { clearInterval(H.spkT); return; }
-      var now = Date.now(), lv = {};
+      // lvSeen (Bug 2126): je Verbindung bzw. Leitung, nicht je Anruf - nach einem Knotenwechsel auf einen Knoten ohne Pegel
+      // (Rahmen-Weg ohne ok.level) bzw. eine neue Leitung ohne ok.level zurueck auf den Ring am Sprecherplatz
+      var now = Date.now(), lv = {}, seen = false;
       hornConns(R).forEach(function (c) {
         var F = c.fr;
-        if (F && F.lvOn) H.lvSeen = true;
+        if (F && F.lvOn) seen = true;                  // Rahmen-Weg: gilt fuer die aktuelle Leitung (ok.level der Ton-Leitung)
         c.audios.forEach(function (a) {
           // 2.5 B2 (Rahmen-Weg): Pegel aus Byte 3 der Ton-Rahmen (horn-frames.js, Absender per CSRC des Rahmens) - die
           // Attrappen-Schleife hat nur den Pegel des stillen Tons; ohne ok.level (aelterer Knoten) bleibt der Sprecherplatz
@@ -4629,10 +4631,12 @@
           // nennt die Belegung schon den neuen Absender, waehrend noch Ton (und Pegel) des alten kommt
           var d = hornAudioNow(c, a).dev, src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null;
           // aelter als 1 s = der Platz liefert gerade nichts (rtpAge: Epoch-Zeitstempel)
-          if (src && typeof src.audioLevel === 'number') H.lvSeen = true;
+          if (src && typeof src.audioLevel === 'number') c.lvSeen = true;   // RTP: einmal gesehen gilt fuer diese Verbindung
           if (d && src && typeof src.audioLevel === 'number' && !(src.timestamp && rtpAge(src.timestamp) > 1000)) lv[d] = Math.max(lv[d] || 0, src.audioLevel);
         });
+        if (!F && c.lvSeen) seen = true;
       });
+      H.lvSeen = seen;
       H.levels = lv;
       if (!H.lvSeen && H.spk) lv[H.spk] = 1;           // Browser ohne Pegel: Sprechring am Sprecherplatz des Knotens
       var ch = false;

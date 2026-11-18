@@ -80,5 +80,33 @@ ok('... unbekannte CSRC: niemand', !Object.keys(H.levels).length, H.levels);
 H = run([frConn({ lvOn: false, lv: {} })], B);
 ok('Rahmen-Weg ohne ok.level: Rueckfall auf den Sprecherplatz (B)', !H.lvSeen && H.levels[B] === 1 && H.speaking[B], { lvSeen: H.lvSeen, levels: H.levels });
 
+// 6. Bug 2126 (pruef-klein-web2 Fund 2): lvSeen gilt je Verbindung bzw. Leitung, nicht fuer den ganzen Anruf
+function room(conns, spk) {
+  const R = { _conns: conns, horn: { tiles: { [A]: tile(), [B]: tile() }, st: {}, speaking: {}, spk: spk || null, plist: false } };
+  hornSpeakers(R);
+  return R;
+}
+let R = room([frConn({ lvOn: true, lv: { 0: { v: 0.4, csrc: 1, at: Date.now() } } })], B);
+tick();
+ok('Knotenwechsel: zuerst Knoten mit ok.level (lvSeen)', R.horn.lvSeen === true && R.horn.levels[A] === 0.4, R.horn.levels);
+R._conns = [frConn({ lvOn: false, lv: {} })];          // neue Verbindung zu einem Knoten ohne Pegel (Rahmen-Weg alt)
+tick();
+ok('... auf Knoten ohne ok.level: lvSeen zurueck, Ring am Sprecherplatz (B)', !R.horn.lvSeen && R.horn.levels[B] === 1 && R.horn.speaking[B],
+   { lvSeen: R.horn.lvSeen, levels: R.horn.levels });
+const c7 = frConn({ lvOn: true, lv: {} });
+R = room([c7], B); tick();
+c7.fr = { lvOn: false, lv: {} };                         // neue Leitung derselben Verbindung ohne ok.level
+tick();
+ok('neue Leitung ohne ok.level (gleiche Verbindung): lvSeen zurueck, Ring am Sprecherplatz', !R.horn.lvSeen && R.horn.speaking[B], { lvSeen: R.horn.lvSeen });
+const c8 = rtcConn(1, 0.5, [[1, 5]]);
+R = room([c8], B); tick();
+c8.audios[0]._tr.receiver.getSynchronizationSources = () => [];   // RTP: kurz keine Quelle - bleibt fuer diese Verbindung
+tick();
+ok('RTP: einmal Pegel gesehen, dann kurz keine Quelle -> lvSeen bleibt (je Verbindung), kein Ring am Sprecherplatz',
+   R.horn.lvSeen === true && !R.horn.speaking[B], { lvSeen: R.horn.lvSeen, levels: R.horn.levels });
+R._conns = [frConn({ lvOn: false, lv: {} })];
+tick();
+ok('... Wechsel von RTP mit Pegel auf Knoten ohne Pegel: lvSeen zurueck', !R.horn.lvSeen && R.horn.speaking[B], { lvSeen: R.horn.lvSeen });
+
 console.log(`\nHORN-SPRECHER ${pass}/${pass + fail}` + (fail ? ' - FEHLER' : ' - ALLES GRUEN'));
 process.exit(fail ? 1 : 0);
