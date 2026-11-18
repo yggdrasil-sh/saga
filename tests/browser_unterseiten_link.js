@@ -14,7 +14,7 @@ const D = require('./lib/editor_dom');
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK;
 const SHOT = process.env.SHOT_DIR || '', TAG = process.env.SHOT_TAG || 'nachher';
 const ONLY = process.env.ULINK_EDITORS ? process.env.ULINK_EDITORS.split(',') : ['editorjs', 'tiptap'];
-const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i).slice(0, 600))); }
+const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + String(JSON.stringify(i)).slice(0, 600))); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const RUN = Date.now().toString(36).slice(-5);
 const J = (x) => JSON.stringify(x);

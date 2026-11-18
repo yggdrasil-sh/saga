@@ -429,16 +429,15 @@ try:
     setup()
     cleanup()
     setup()
-    t_create()
-    t_not()
-    t_dup()
-    t_gallery()
-    t_move()
-    t_conflict()
-    t_api()
-    t_import()
-    if os.environ.get("ULINK_NO_LIVE") != "1":
-        t_live()
+    for fn in (t_create, t_not, t_dup, t_gallery, t_move, t_conflict, t_api, t_import, t_live):
+        if fn is t_live and os.environ.get("ULINK_NO_LIVE") == "1":
+            continue
+        try:                             # jeder Abschnitt fuer sich (Gegenprobe gegen alten Stand: alle Abschnitte melden)
+            fn()
+        except Exception as ex:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            ok(f"{fn.__name__}: Ablauf ohne Ausnahme", False, ex)
 except Exception as ex:  # noqa: BLE001
     import traceback
     traceback.print_exc()
