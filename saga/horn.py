@@ -68,6 +68,8 @@ _LOCK = threading.Lock()
 _LIVE = {}                              # node_id -> {"load": {...}, "at": t, "db": t}  (nur dieser Prozess)
 _CONNS = {}                             # node_id -> _Conn (Steuerverbindung in diesem Prozess)
 HOOKS = {}                              # saga/horn_ops.py: acme_txt, addr (gekoppelte Knoten, P6/P7)
+_GEN = {}                               # node_id -> Generation der juengsten Steuerverbindung (Abbau vs. Neuverbindung)
+_GEN_LOCK = threading.Lock()
 
 
 def _b64u(b):
@@ -624,7 +626,7 @@ class _Conn:
         self.loop = asyncio.get_running_loop()
         self.q = asyncio.Queue(maxsize=10000)
         self.n = 0
-        self.builtin, self.name, self.close_code = True, "", 0
+        self.builtin, self.name, self.close_code, self.gen = True, "", 0, None
 
 
 def _origin():
@@ -769,9 +771,28 @@ def register_paired(h, now=None):
     return r[0], None
 
 
-def _gone(nid):
-    with _db() as c, c:
-        c.execute("UPDATE horn_node SET state='getrennt' WHERE id=? AND removed IS NULL AND state<>'getrennt'", (nid,))
+def _claim(fn, h):
+    """Anmelden (register_builtin/register_paired) und bei Erfolg eine neue Generation fuer den Knoten ziehen ->
+    (Ergebnis von fn, Generation oder None). Eintrag in die DB und Generation unter einer Sperre: ein Abbau (_gone) der
+    alten Verbindung schreibt danach nicht mehr 'getrennt' ueber die neue (Rennen finally <-> Neuverbindung)."""
+    with _GEN_LOCK:
+        r = fn(h)
+        nid = r[0] if isinstance(r, tuple) else r
+        if nid is None:
+            return r, None
+        g = _GEN[nid] = _GEN.get(nid, 0) + 1
+        return r, g
+
+
+def _gone(nid, gen=None):
+    """Knoten als getrennt eintragen - mit gen nur, wenn das noch die juengste Steuerverbindung ist (False: eine neuere
+    hat sich inzwischen angemeldet, Zustand bleibt)."""
+    with _GEN_LOCK:
+        if gen is not None and _GEN.get(nid) != gen:
+            return False
+        with _db() as c, c:
+            c.execute("UPDATE horn_node SET state='getrennt' WHERE id=? AND removed IS NULL AND state<>'getrennt'", (nid,))
+        return True
 
 
 def _day(now):
@@ -938,14 +959,14 @@ async def ctl(ws: WebSocket):
         await _close(ws, 4401)
         return
     if builtin:
-        nid, code = await asyncio.to_thread(register_builtin, hh), 4409
+        (nid, gen), code = await asyncio.to_thread(_claim, register_builtin, hh), 4409
     else:
-        nid, code = await asyncio.to_thread(register_paired, hh)
+        (nid, code), gen = await asyncio.to_thread(_claim, register_paired, hh)
     if nid is None:
         await _close(ws, code)
         return
     k = _Conn(ws, nid)
-    k.builtin, k.name = builtin, hh["name"]
+    k.builtin, k.name, k.gen = builtin, hh["name"], gen
     old = _CONNS.get(nid)
     _CONNS[nid] = k
     if old is not None:
@@ -1030,8 +1051,10 @@ async def ctl(ws: WebSocket):
             _CONNS.pop(nid, None)
             # _LIVE bleibt: ein kurzer Abriss der Steuerung (Neuverbindung nach 1 s) macht den Knoten nicht sofort
             # unbereit - Medien laufen ohne Steuerung weiter, Token prueft er selbst. ready() laesst READY_S Kulanz.
-            await asyncio.to_thread(_gone, nid)
-            print(f"horn: Knoten {hh['name']} getrennt", flush=True)
+            # Generation: hat sich der Knoten inzwischen neu angemeldet (register in einem Thread, _CONNS noch nicht
+            # umgestellt), bleibt sein Zustand 'ok' (pruef-klein-web2 Fund 1)
+            if await asyncio.to_thread(_gone, nid, k.gen):
+                print(f"horn: Knoten {hh['name']} getrennt", flush=True)
             if not builtin:
                 await asyncio.to_thread(broadcast_peers)
         await _close(ws, k.close_code or 1000)

@@ -128,10 +128,9 @@ def wieder(sk, nid, sk2):
         b.close()
         time.sleep(0.3)
     ok(f"{RUNDEN}x Abbruch nach hello + sofort neu: neue Verbindung bleibt verbunden {bad}", not bad)
-    # bekanntes Rennen (vorbestehend, niedrig): _gone des alten finally (Thread) kann nach register_paired der neuen
-    # Verbindung schreiben -> Zustand 'getrennt' trotz Verbindung bis zur naechsten Lastmeldung in der DB (SEEN_EVERY);
-    # ready() bleibt dank Lastmeldung (GRACE_S) bereit. Nur Ausgabe.
-    print(f"DIAG Zustand 'getrennt' trotz neuer Verbindung in Runden {diag} von {RUNDEN}", flush=True)
+    # Rennen _gone des alten finally <-> register_paired der neuen Verbindung (Bug 2126): seit der Generation je Knoten
+    # schreibt der alte Abbau nicht mehr 'getrennt' ueber die neue Anmeldung (gezielt erzwungen: tests/horn_ctl_rennen.py)
+    ok(f"... Zustand dabei immer ok (Runden mit 'getrennt': {diag})", not diag)
 
 
 def main():

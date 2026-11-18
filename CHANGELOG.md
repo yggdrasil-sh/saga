@@ -16,6 +16,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – kleine Reste Server/Web (Prüfungen 17./18.11.)
+- **Knoten-Steuerkanal:** Verbindet ein Knoten neu, während seine alte Steuerverbindung noch abgebaut wird, steht er
+  nicht mehr kurz als „getrennt“ im Register (bis zur nächsten Lastmeldung). Jede Anmeldung zieht eine Generation; der
+  Abbau einer älteren Verbindung schreibt nichts mehr.
+
 ### Behoben – Seiten-Sperre und Live-Abgleich im Browser (Feldfehler)
 - **Sperre kommt an:** Sperrt ein anderes Gerät oder ein anderer Tab die offene Seite, zeigt der Browser jetzt sofort das
   Schloss und schützt Titel und Inhalt. Bisher blieb der Titel bearbeitbar und jedes Speichern endete mit „Nicht
