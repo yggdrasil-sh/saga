@@ -276,6 +276,7 @@ def _clean_hkstyle(typ, tunes):
 # 2.5 (P6-0): Mathe-Block {tex}, Mermaid = Code-Block mit language "mermaid" und view, Vorschaubild render (vom Web erzeugt)
 MATH_MAX = 4000
 CODE_VIEWS = ("code", "preview", "split")
+LOCKED_FIELDS = ("body", "title", "cover", "cover_pos", "icon", "tags")   # gesperrte Seite: 423 (Bug 2124)
 _SID = re.compile(r"[A-Za-z0-9]{16}")
 _HASH16 = re.compile(r"[0-9a-f]{16}")
 
@@ -1087,8 +1088,9 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
                         (nid, owner)).fetchone()
         if not old:
             return _bad("not found", 404)
-        # gesperrt: Inhalt/Titel bleiben unveraendert (trusted: live angenommen, bevor die Sperre kam - saga.collab)
-        if old[4] and not trusted and b.get("locked") is not False and ("body" in b or "title" in b):
+        # gesperrt: Inhalt/Titel bleiben unveraendert (trusted: live angenommen, bevor die Sperre kam - saga.collab);
+        # Bug 2124: ebenso Titelbild, Symbol und Tags (Web sperrte sie nur per CSS). Eigenschaften (props) bleiben frei
+        if old[4] and not trusted and b.get("locked") is not False and any(k in b for k in LOCKED_FIELDS):
             return JSONResponse({"error": t("Seite ist gesperrt – erst entsperren")}, status_code=423)
         # Konflikterkennung: wer Titel/Inhalt speichert und die gekannte Revision mitschickt, ueberschreibt
         # keine zwischenzeitliche Aenderung (anderer Tab, Peek, andere Person). Ohne 'rev' wie bisher.

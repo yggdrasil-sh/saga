@@ -1659,6 +1659,7 @@
   }
   function setTags(tags) {
     if (!S.cur) return;
+    if (readOnly()) { lockHint(); renderTags(); return; }      // gesperrt: Server lehnt Tags mit 423 ab (Bug 2124)
     var id = S.cur.id;
     api('PATCH', '/api/notes/' + id, { tags: tags }).then(function () {
       return api('GET', '/api/notes/' + id);       // Server normalisiert (Dubletten, #, Leerzeichen)

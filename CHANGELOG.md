@@ -27,6 +27,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Sperre und Titel kommen jetzt auch im Peek an. Der Rahmen meldet seine Seite als offen, das Hauptfenster reicht die
   Ereignisse weiter. Bisher bekam der Peek nur Inhaltsänderungen über die Live-Bearbeitung.
 - Server: Sperren/Entsperren einer Seite steht mit Seiten-ID und Herkunft (Web/App/API) im Protokoll, ohne Inhalte.
+- **Gesperrte Seite schützt auch Titelbild, Symbol und Tags** (Bug 2124): Der Server lehnt Änderungen an `cover`,
+  `cover_pos`, `icon` und `tags` auf gesperrten Seiten jetzt wie Titel und Inhalt mit 423 ab – auch über Apps, `/api/v1`
+  und MCP. Bisher sperrte nur das Web diese Felder (per Oberfläche). Eigenschaften von Datenbank-Einträgen, Entsperren,
+  Anheften, Verschieben, Archivieren und Kommentare bleiben möglich. Im Web ist das Entfernen eines Tags auf gesperrten
+  Seiten jetzt ebenfalls ausgeblendet (`docs/APP-API.md`, „Gesperrte Seiten“).
 
 ### Behoben – Gruppenanrufe über den Knoten: Restpunkte
 - **Steuerkanal:** Bricht ein Knoten die Verbindung gleich nach seiner Anmeldung ab (vor oder während `welcome`), endet

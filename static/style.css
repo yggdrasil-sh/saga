@@ -1416,7 +1416,7 @@ time.hk-date::before{content:"@";opacity:.55}
 .page-bar #pg-lock:not(.own):hover{background:transparent;color:var(--muted)}
 @media (min-width:761px){.page-bar #pg-lock{padding:.3rem;min-width:28px;min-height:28px;justify-content:center}}
 .pg-locked #pg-editor .ce-toolbar,.pg-locked #pg-editor .ce-inline-toolbar,.pg-locked .ce-popover,.pg-locked #pg-editor .hk-code-head,
-.pg-locked #pg-editor .hk-embed-bar,.pg-locked .cover-btns,.pg-locked #pg-addcover,.pg-locked #pg-tags .tag-add{display:none!important}
+.pg-locked #pg-editor .hk-embed-bar,.pg-locked .cover-btns,.pg-locked #pg-addcover,.pg-locked #pg-tags .tag-add,.pg-locked #pg-tags .tag button{display:none!important}
 .pg-locked #pg-icon{pointer-events:none}
 .pg-locked #pg-editor [contenteditable="true"]{caret-color:transparent}
 

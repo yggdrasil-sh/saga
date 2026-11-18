@@ -36,6 +36,7 @@ const RUN = Date.now().toString(36).slice(-5);
   const db = (await api('POST', '/api/notes', { title: 'Sperre DB ' + RUN, kind: 'database' })).id;
   const row = (await api('POST', '/api/notes', { title: '', parent_id: db })).id;
   await api('PATCH', '/api/notes/' + row, { format: 'blocks', body: JSON.stringify({ blocks: [{ id: 'a1', type: 'paragraph', data: { text: 'Inhalt' } }] }) });
+  await api('PATCH', '/api/notes/' + row, { tags: ['sperrtag'], icon: '📄' });
 
   const st = () => p.evaluate(() => {
     const c = HKPages.k.cur(), b = document.getElementById('pg-lock'), t = document.getElementById('pg-title'), s = document.getElementById('pg-state');
@@ -59,6 +60,17 @@ const RUN = Date.now().toString(36).slice(-5);
   await other.api('PATCH', '/api/notes/' + row, { locked: true });
   const s1 = await until(async () => { const s = await st(); return s.locked && s.icon && s.ro ? s : null; }) || await st();
   ok('Sperre vom anderen Geraet kommt an: Schloss sichtbar, Titel schreibgeschuetzt', s1.locked && s1.icon && s1.ro, s1);
+  // Bug 2124: Server lehnt Titelbild/Symbol/Tags auf gesperrten Seiten ab (423) - das Web bietet sie gar nicht an und sendet nichts
+  const meta = [];
+  const onReq = (r) => { if (r.method() === 'PATCH' && /"(icon|cover|cover_pos|tags)"/.test(r.postData() || '')) meta.push(r.postData()); };
+  p.on('request', onReq);
+  const vis = await p.evaluate(() => { const v = (q) => { const e = document.querySelector(q); return !!e && e.offsetParent !== null; };
+    return { tagX: v('#pg-tags .tag button'), tagAdd: v('#pg-tags .tag-add'), addCover: v('#pg-addcover'), coverBtns: v('.cover-btns') }; });
+  ok('Gesperrt: Tag entfernen/hinzufuegen und Titelbild-Knoepfe ausgeblendet', !vis.tagX && !vis.tagAdd && !vis.addCover && !vis.coverBtns, vis);
+  await p.evaluate(() => { const b = document.querySelector('#pg-tags .tag button'); if (b) b.click(); const i = document.getElementById('pg-icon'); if (i) i.click(); });
+  await sleep(800); await p.keyboard.press('Escape').catch(() => {});
+  p.off('request', onReq);
+  ok('Gesperrt: Klick auf Tag-x/Symbol schickt kein PATCH mit Symbol/Titelbild/Tags', meta.length === 0, meta);
   await other.api('PATCH', '/api/notes/' + row, { locked: false });
   const s2 = await until(async () => { const s = await st(); return !s.locked && !s.icon && !s.ro ? s : null; }) || await st();
   ok('Entsperren vom anderen Geraet kommt an: Schloss weg, Titel bearbeitbar', !s2.locked && !s2.icon && !s2.ro, s2);

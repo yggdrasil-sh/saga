@@ -40,6 +40,15 @@ Beispiel:
 klein = 0,875 × Grundgröße; gilt für Titel, Inhalt und Eigenschaften, Code-Blöcke bleiben Mono. Föderierte Seiten laufen
 über denselben Handler (Fähigkeit `db`, siehe `APP-API-FED.md`); ältere Server liefern die Felder nicht → Standard.
 
+**Gesperrte Seiten** (`locked: true`): `PATCH /api/notes/{id}` mit `title`, `body`, **`cover`, `cover_pos`, `icon` oder
+`tags`** → `423` `{"error": "Seite ist gesperrt – erst entsperren"}`, nichts geändert (Bug 2124; bis 2.5-rc nur Titel und
+Inhalt, Titelbild/Symbol/Tags sperrte nur das Web). Gilt für jeden Schreibweg über diesen Handler: Web, Apps, `/api/v1`
+(`PATCH /api/v1/pages/{id}`, `/rows/{id}`) und MCP (`update_page_title`; `update_row`: Titel `423`, Eigenschaften frei – ein Werkzeug, das Symbol oder Titelbild einer bestehenden Seite ändert, hat MCP nicht). Weiter erlaubt: `props`
+(Eigenschaften einer Datenbank-Zeile), `locked: false` (Entsperren – in derselben Anfrage dürfen dann auch die anderen
+Felder mit), `pinned`, `wide`, `font`, `small`, `template`, Verschieben (`parent_id`, `POST /api/notes/{id}/move`),
+Archivieren, Papierkorb und Kommentare. Neue Seiten/Zeilen sind nie gesperrt (`POST /api/notes`, `create_row` mit `icon`).
+Apps: bei `423` Schloss zeigen und die Eingabe vormerken, nach dem Entsperren nachspeichern (wie beim Titel).
+
 ## Inline-Vertrag und neue Blocktypen (2.5, P6-0)
 
 Grundlage für Inline-Farben, Personen-Erwähnungen, Mathe, Mermaid, synchronisierte Blöcke und 5–6 Spalten. Das Web
