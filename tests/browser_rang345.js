@@ -19,7 +19,7 @@ const S = JSON.parse(process.env.R345_SPEC || '{}');
 if (!S.base || !S.users || !S.out) { console.error('R345_SPEC fehlt'); process.exit(2); }
 const BASE = S.base, L = 'ABCDE';
 const HUES = [0, 120, 220, 50, 300], FREQ = [330, 440, 550, 660, 770], SCREEN_HUE = 270;
-const W = +(process.env.R345_W || 480), H = +(process.env.R345_H || 270), FPS = +(process.env.R345_FPS || 20);
+const MED = S.media || {}, W = +(MED.w || process.env.R345_W || 480), H = +(MED.h || process.env.R345_H || 270), FPS = +(MED.fps || process.env.R345_FPS || 20);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 23), ...a);
 const capped = (pr, ms = 15000) => { let t; return Promise.race([Promise.resolve(pr).finally(() => clearTimeout(t)), new Promise(r => { t = setTimeout(() => r(undefined), ms); })]); };

@@ -56,8 +56,12 @@ ENG1 = {"up": 1000, "down": 1000, "rtt": 40, "loss": 0, "qms": 300}       # "eng
 FREI = {"up": 0, "down": 0, "rtt": 0, "loss": 0, "qms": 300}
 
 
-def F(fid, kind, n, cfg, eng=None, shape=None, event=None, secs=45, note=""):
-    return {"id": fid, "kind": kind, "n": n, "cfg": cfg, "eng": eng, "shape": shape or FREI, "event": event, "secs": secs, "note": note}
+def F(fid, kind, n, cfg, eng=None, shape=None, event=None, secs=45, note="", media=None):
+    return {"id": fid, "kind": kind, "n": n, "cfg": cfg, "eng": eng, "shape": shape or FREI, "event": event, "secs": secs, "note": note,
+            "media": media}
+
+
+HD = {"w": 1280, "h": 720, "fps": 24}     # Kamera 720p: will mehr als 1 Mbit/s (Standard 480x270 @ 20 fps bleibt darunter)
 
 
 # eng: Index der Person mit eigener Leitung (Namensraum). Im 1:1 laeuft A immer ueber die Leitung (frei = ohne Grenzen),
@@ -69,6 +73,10 @@ FAELLE = [
     F("r3-rtt150", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 150, "loss": 0, "qms": 300}),
     F("r3-netzwechsel", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 30, "loss": 0, "qms": 300}, {"type": "flap", "at": 15, "ms": 3000}, 50),
     F("r3-lang", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 30, "loss": 0, "qms": 300}, None, 600, "10 min"),
+    F("r3-frei-720", "dm", 2, HORN, 0, None, None, 45, "720p", HD),
+    F("r3-1mbit-720", "dm", 2, HORN, 0, ENG1, None, 45, "720p", HD),
+    F("r3-verlust3-720", "dm", 2, HORN, 0, {"up": 0, "down": 0, "rtt": 40, "loss": 0.03, "qms": 300}, None, 45, "720p", HD),
+    F("r5-2-1mbit-720", "dm", 2, MESH, 1, ENG1, None, 45, "720p", HD),
     F("r4-3-frei", "group", 3, HORN),
     F("r4-4-frei", "group", 4, HORN),
     F("r4-4-eng", "group", 4, HORN, 3, ENG1),
@@ -232,7 +240,7 @@ def run_case(fc, rep):
     turn()
     spec = {"id": fc["id"], "rep": rep, "kind": fc["kind"], "n": fc["n"], "secs": fc["secs"], "event": fc["event"], "out": out,
             "users": [u for u, _ in USERS], "pass": PW, "base": f"http://127.0.0.1:{PORT}", "prof": os.path.join(WORK, "prof"),
-            "horn": bool(fc["cfg"].get("horn")), "shape": fc["shape"], "note": fc["note"]}
+            "horn": bool(fc["cfg"].get("horn")), "shape": fc["shape"], "note": fc["note"], "media": fc.get("media")}
     if fc["eng"] is not None:
         ns = netns(fc["eng"])
         if not shape(ns, fc["shape"]):
