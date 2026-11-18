@@ -275,6 +275,7 @@ function recovery(s, t, expect) {
     await A.click('#ct-call-v');
     const hint = await A.waitForSelector('.cl-hint-page', { timeout: 1500 }).then(() => true, () => false);
     if (hint) { R.texts.hint_start = await txt(A, '.cl-hint-page'); await A.click('.cl-hint-page .cl-hint-go'); }
+    R.texts.start_toast = await until(() => txt(A, '.toast'), full ? 2500 : 300, 100) || '';
     const tAcc = {}; tAcc[A.__name] = tClick;
     await Promise.all(ps.slice(1).map(async p => {
       const r = await p.waitForSelector('.cl-ring', { timeout: 30000 }).then(() => true, () => false);
@@ -359,13 +360,20 @@ function recovery(s, t, expect) {
         evInfo.seats = c && c.ok ? { legs: (c.r.call.legs || []).length, limit: c.r.call.limit, joinable: c.r.call.joinable, block: c.r.call.join_block } : c;
         evInfo.end = evInfo.tShare;
       } else if (evt.type === 'full') {
-        // (1) 5. Person nimmt an (klingelt seit dem Start, sonst Leiste "Beitreten")
+        // (1) 5. Person: lehnt das Klingeln ab (Stand "hat abgelehnt" fuer Erneut klingeln), sieht dann die Leiste mit dem
+        // Grund und versucht trotzdem beizutreten (bzw. ohne Klingeln gleich ueber die Leiste)
         const rang = await extra.$('.cl-ring');
         R.texts.extra_ring = rang ? await txt(extra, '.cl-ring') : '';
-        if (rang) await extra.click('.cl-ring .cl-big'); else { R.texts.extra_bar = await until(() => txt(extra, '.cl-run'), 10000); await extra.click('.cl-run .cl-run-go').catch(() => {}); }
-        await sleep(4000);
-        R.texts.extra_win = await txt(extra, '.cl-win .cl-st, .cl-win [role=status], .toast');
-        R.shots.push(await shot(extra, 'voll-5-person'));
+        if (rang) await extra.click('.cl-ring .cl-red').catch(() => {});
+        R.texts.extra_bar = await until(() => txt(extra, '.cl-run'), 10000) || '';
+        R.texts.extra_bar_join = !!(await extra.$('.cl-run .cl-run-go'));
+        R.shots.push(await shot(extra, 'voll-5-leiste'));
+        const go = await extra.$('.cl-run .cl-run-go');
+        if (go) { await go.click(); await sleep(4000); R.texts.extra_win = await txt(extra, '.cl-win .cl-st, .cl-win [role=status], .toast'); R.shots.push(await shot(extra, 'voll-5-person')); }
+        // Beitritt direkt ueber die Schnittstelle (wie eine App): Text des Servers
+        const ec = await api(extra, 'POST', '/api/calls/' + (await room(A)).id + '/join', { device: await dev(extra), role: 'member', caps: await ev(extra, () => window.HKCalls.caps()), dev_class: 'desktop' });
+        R.texts.join_api = ec && !ec.ok ? { status: ec.status, block: ec.data && ec.data.join_block, error: ec.data && ec.data.error } : ec;
+        if (ec && ec.ok) await api(extra, 'POST', '/api/calls/' + (await room(A)).id + '/leave', { device: await dev(extra) });
         // (2) zweites Geraet einer Person im Anruf (Teilen) sieht die Leiste
         p2 = await person(evt.who, '#2', null); await caps(p2);
         await p2.goto(BASE + '/chats#c' + R.gid); await liveOk([p2]);
@@ -374,6 +382,9 @@ function recovery(s, t, expect) {
         // (3) Gastgeberin: "Person hinzufügen"
         await openList(A); await sleep(600);
         const addB = await A.$('.cl-plist .cl-add-go');
+        await until(() => ev(A, () => !!document.querySelector('.cl-away .cl-pl-ring')), 8000);
+        R.texts.ring_again = await ev(A, () => [...document.querySelectorAll('.cl-away .cl-pl-ring')].map(b => ({ t: b.textContent, disabled: b.disabled, title: b.title })));
+        R.shots.push(await shot(A, 'voll-liste'));
         if (addB) { await addB.click(); await sleep(1200); R.texts.add_hint = await txt(A, '.cl-add-hint'); R.shots.push(await shot(A, 'voll-hinzufuegen')); await A.keyboard.press('Escape'); }
         else R.texts.add_hint = '(kein Knopf Person hinzufügen)';
         const c = await api(A, 'GET', '/api/calls/' + (await room(A)).id);

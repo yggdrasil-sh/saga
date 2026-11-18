@@ -16,6 +16,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Verbessert – Volle Anrufe verständlich melden (Rang 4)
+- **Ein Text für „voll“:** Beitritt, Leiste „Anruf läuft“ und Schnittstelle (409 `full`) sagen jetzt dasselbe wie
+  „Person hinzufügen“: alle Plätze belegt, jedes Gerät zählt – auch ein zweites zum Teilen –, erst nach einem Auflegen
+  kommt jemand dazu. Bisher stand dort nur „Der Anruf ist voll (höchstens 4 Geräte).“
+- **Zweites eigenes Gerät:** Die Leiste sagt, dass ein weiteres eigenes Gerät (z. B. zum Teilen) erst nach einem Auflegen
+  dazukommt und „Hierher übernehmen“ trotzdem geht.
+- **Erneut klingeln** ist bei vollem Anruf gesperrt (mit Grund). Vorher klingelte es, und die Person konnte nicht beitreten.
+- **Ohne Gjallarhorn** (ab Werk): Beginnt jemand einen Gruppenanruf in einem Chat mit mehr Mitgliedern als Plätzen, kommt
+  ein Hinweis auf die Grenze. Bisher kam „voll“ erst, wenn die fünfte Person beitreten wollte.
+- **Bildschirm teilen direkt nach dem Beitritt:** Steht die Verbindung noch nicht, kommt ein Hinweis, statt dass der
+  Knopf still nichts tut.
+- Tests: `tests/anrufe_rang345.py` (Messreihe Rang 3–5 mit enger Leitung je Gerät über `gjallarhorn/e2e/nsleitung`,
+  `--check` prüft die Texte bei vollem Anruf über Knoten und direkt).
+
 ### Behoben – kleine Reste Server/Web (Prüfungen 17./18.11.)
 - **Knoten-Steuerkanal:** Verbindet ein Knoten neu, während seine alte Steuerverbindung noch abgebaut wird, steht er
   nicht mehr kurz als „getrennt“ im Register (bis zur nächsten Lastmeldung). Jede Anmeldung zieht eine Generation; der

@@ -1663,7 +1663,7 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     lim = climit(c, call)
     ho = role == "handover" and any(x["device"] == rep and x["who"] == who for x in others)
     if len(others) + (0 if ho else 1) > lim:          # L4/E6: das ersetzte Geraet zaehlt bei einer Uebernahme nicht mit
-        return chat._no_store({"error": t("Der Anruf ist voll (höchstens {n} Geräte).", n=lim), "join_block": "full",
+        return chat._no_store({"error": t("Der Anruf ist voll – alle {n} Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen). Erst wenn jemand auflegt, kann noch jemand dazukommen.", n=lim), "join_block": "full",
                                "limit": lim, "legs": roster(c, call, who, legs)}, 409)
     node, to_mesh = None, False
     if hn and signals:

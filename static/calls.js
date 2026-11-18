@@ -826,8 +826,11 @@
     if (c && c.id === cid && (c.title || c.name)) return c.title || c.name;
     return (b && b.chatName && b.chatName(cid)) || '';   // auch freie Gruppe ohne Namen: Namen der Mitglieder wie in der Liste
   }
-  function blockText(b, n) {
-    return b === 'old' ? T('Dafür braucht jemand im Anruf Saga 2.4.') : b === 'full' ? T('Der Anruf ist voll (höchstens {n} Geräte).', { n: n || '?' })
+  // Rang 4 (volle Plaetze verstaendlich melden): jedes Geraet zaehlt, auch ein zweites zum Teilen; mine = ein weiteres
+  // eigenes Geraet (Leiste "Anruf laeuft", Begleitgeraet) - Uebernehmen geht auch bei vollem Anruf (L4/E6)
+  function blockText(b, n, mine) {
+    return b === 'old' ? T('Dafür braucht jemand im Anruf Saga 2.4.')
+      : b === 'full' ? (mine ? T('Alle {n} Plätze sind belegt – ein weiteres eigenes Gerät (z. B. zum Teilen) kann erst dazukommen, wenn jemand auflegt. „Hierher übernehmen“ geht trotzdem.', { n: n || '?' }) : T('Der Anruf ist voll – alle {n} Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen). Erst wenn jemand auflegt, kann noch jemand dazukommen.', { n: n || '?' }))
       : b === 'ended' ? T('Der Anruf ist schon beendet.') : b === 'none' ? T('Der Anruf ist noch nicht angenommen.')
       : b === 'handover_busy' ? T('Ein anderes eigenes Gerät übernimmt den Anruf gerade – bitte kurz warten.') : T('Beitreten geht gerade nicht.');
   }
@@ -965,7 +968,7 @@
       if (k.dm) { R.dm = true; R.title = (k.peer && k.peer.name) || R.title; }   // 2.5: 1:1 ueber Knoten
       (r.signals || []).forEach(function (s) { R.seen[s.seq] = true; });
       if (k.state === 'ended') throw new Error(T('Der Anruf ist schon beendet.'));
-      if (!k.joinable && !(role === 'handover' && k.takeover)) throw new Error(blockText(k.join_block, k.limit));   // L4: auch bei vollem Anruf
+      if (!k.joinable && !(role === 'handover' && k.takeover)) throw new Error(blockText(k.join_block, k.limit, role !== 'member'));   // L4: auch bei vollem Anruf
       R.legs = k.legs || [];
       if (role === 'handover') {
         var mine = R.legs.filter(function (x) { return x.who === meName() && x.device !== dev; });
@@ -1173,6 +1176,9 @@
         .then(function (go) { if (go && !C) startGroup(chat, video, true); });
       return;
     }
+    // Rang 4: ohne Gjallarhorn (calls.horn aus, ab Werk) laeuft jeder Gruppenanruf direkt - vorher kam erst beim Beitritt der
+    // fuenften Person "voll". Kein Dialog (die Bedienung fuer Kamera/Mikrofon bleibt), nur ein Hinweis
+    if (!dm && big && !feat('horn')) HK.toast(T('Direkt zwischen den Geräten sind höchstens {n} Geräte möglich (jedes zählt, auch ein zweites zum Teilen) – dieser Chat hat mehr Mitglieder.', { n: video ? cfg.limits.endpoints_video : cfg.limits.endpoints_audio }), null, null, 8000);
     var R = C = newCall({ chat_id: chat.id, role: 'caller', kind: 'group', media: video ? 'video' : 'audio', v2: (chat.v === 2 || chat.v === 3) });
     R.title = chat.title || chat.name || '';
     if (dm) { R.dm = true; R.peer = chat.peer || {}; R.title = R.peer.name || R.title; }
@@ -1808,7 +1814,7 @@
     else txt.textContent = T('Gruppenanruf läuft') + ' · ' + T('{n} Geräte', { n: (x.legs || []).length });
     b.appendChild(txt);
     if (!x.joinable) {
-      b.appendChild(el('span', 'cl-run-s', blockText(x.join_block, x.limit)));
+      b.appendChild(el('span', 'cl-run-s', blockText(x.join_block, x.limit, mine.length > 0)));
       // 2.5 (L4/E6): voller Anruf - Hinzufuegen nicht, Hierher uebernehmen schon (das ersetzte Geraet zaehlt nicht)
       if (x.takeover && mine.length) b.appendChild(btn(T('Hierher übernehmen'), 'cl-pill cl-run-go', function () { joinHere(x.id, 'handover', video); }, T('Anruf ohne Unterbrechung auf dieses Gerät holen')));
       return;
@@ -2186,8 +2192,10 @@
   function hintOff() { try { return localStorage.getItem('saga-screen-hint') === '0'; } catch (e) { return false; } }
   function toggleScreen(c) {
     c = roomOf(c);
-    if (!c.horn && !links(c).some(function (L) { return L.pc && videoSender(L); })) return;
-    if (c.horn && !c.horn.cur) return;
+    // Messreihe rang345: in den ersten ~1-2 s nach dem Beitritt tat der Knopf still nichts - jetzt mit Hinweis
+    if ((!c.horn && !links(c).some(function (L) { return L.pc && videoSender(L); })) || (c.horn && !c.horn.cur)) {
+      HK.toast(T('Die Verbindung steht noch nicht – bitte gleich noch einmal versuchen.')); return;
+    }
     if (c.screen) { stopScreen(c); return; }
     if (hintOff()) { pickScreen(c); return; }
     screenHint(c);
@@ -4786,7 +4794,8 @@
     var hb = el('b', null, T('Nicht dabei ({n})', { n: n })); hb.id = 'cl-away-h-' + R.id.slice(0, 8); hb.tabIndex = -1; hb.dataset.k = 'h';
     box.setAttribute('aria-labelledby', hb.id); hd.appendChild(hb);
     var again = rows.filter(function (r) { return r.st === 'missed' || r.st === 'declined' || r.st === 'none'; });
-    if (again.length > 1) {
+    var full = R.kind === 'group' && addSeats(R).left <= 0;   // Rang 4: voll - Klingeln hilft niemandem (Beitritt ginge nicht)
+    if (again.length > 1 && !full) {
       var all = btn(T('Alle erneut klingeln'), 'cl-pill cl-away-all', function () { invRing(R, again.map(function (r) { return r.x; })); },
         T('Alle erneut klingeln ({n})', { n: again.length }));
       all.dataset.k = 'all'; hd.appendChild(all);
@@ -4808,7 +4817,8 @@
           r.st === 'old' ? T('{name}: App zu alt – braucht eine neuere Saga-Version', { name: nm })
             : r.st === 'none' ? T('{name} klingeln lassen', { name: nm }) : T('{name} erneut klingeln lassen', { name: nm }));
         b.dataset.k = 'r:' + x.who;
-        if (r.st === 'old') { b.disabled = true; b.setAttribute('aria-disabled', 'true'); }
+        if (r.st === 'old' || full) { b.disabled = true; b.setAttribute('aria-disabled', 'true'); }
+        if (full && r.st !== 'old') b.title = T('Der Anruf ist voll – erst wenn jemand auflegt, kann noch jemand dazukommen.');
         var bw = el('div', 'cl-pl-b'); bw.appendChild(b); li.appendChild(bw);
       }
       ul.appendChild(li);

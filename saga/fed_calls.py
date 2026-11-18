@@ -269,7 +269,7 @@ def _err(st, d, host):
     if st is None:
         return _bad(t("Der Server {host} ist gerade nicht erreichbar.", host=host), 502)
     if isinstance(d, dict) and d.get("join_block") == "full":
-        return chat._no_store({"error": t("Der Anruf ist voll (höchstens {n} Geräte).", n=d.get("limit") or "?"), "join_block": "full",
+        return chat._no_store({"error": t("Der Anruf ist voll – alle {n} Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen). Erst wenn jemand auflegt, kann noch jemand dazukommen.", n=d.get("limit") or "?"), "join_block": "full",
                                "limit": d.get("limit")}, 409)
     if isinstance(d, dict) and d.get("join_block") == "old":
         return chat._no_store({"error": t("Beitreten geht nicht: Ein Gerät im Anruf braucht Saga 2.4."), "join_block": "old"}, 409)

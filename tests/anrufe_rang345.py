@@ -4,6 +4,7 @@
 Start (eigene Instanz, eigene Datenbank, Ports frei waehlbar):
     source <env mit DATABASE_URL, SESSION_SECRET, STATE_DIR>;  R345_PORT=8881 R345_HORN=18881 \\
     PYTHONPATH=tests/pgshim:. python tests/anrufe_rang345.py [--cases r3-frei,r5-4-eng] [--reps 3] [--list] [--sum]
+    ... --check   Rang 4: zwei Laeufe (r4-voll, r5-voll) und Pruefung der Texte bei vollem Anruf -> ALLES GRUEN / FEHLER
 Braucht: Go-Binaries gjallarhorn + saga-media (R345_BIN, Standard /tmp/r345/bin; CGO_ENABLED=0 -trimpath), nsleitung
 (gjallarhorn/e2e/nsleitung), iproute2 (ip netns), coturn (turnserver, nur fuer Mesh mit enger Leitung), node + Playwright
 (Chromium). Laeuft als root (Netz-Namensraum). Jeder Lauf schreibt sofort R345_RES/<fall>-<n>.json; vorhandene Laeufe
@@ -294,8 +295,57 @@ def summary():
         print(f"| {fid} | {r['_runs']} | {','.join(sorted(r['_path']))} | " + " | ".join(agg(r[k]) for k, _ in KEYS) + " |")
 
 
+FULL_TXT = "alle 4 Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen)"
+
+
+def check():
+    """--check: Rang 4 "volle Plaetze verstaendlich melden" - r4-voll (Knoten, horn_video 4) und r5-voll (Mesh) einmal
+    laufen lassen und die Texte der Web-Anzeige pruefen. -> ALLES GRUEN / FEHLER"""
+    global RES
+    RES = os.path.join(WORK, "check")
+    shutil.rmtree(RES, ignore_errors=True)
+    os.makedirs(RES)
+    users()
+    res = []
+
+    def ok(n, c, info=None):
+        res.append(bool(c))
+        print(("OK  " if c else "FAIL"), n + ("" if c or info is None else " -> " + json.dumps(info, ensure_ascii=False)[:900]), flush=True)
+    try:
+        for fid in ("r5-voll", "r4-voll"):
+            fc = next(x for x in FAELLE if x["id"] == fid)
+            st = run_case(fc, 1)
+            ok(f"{fid}: Lauf mit Ergebnis ({st})", st == "ok")
+            if st != "ok":
+                continue
+            d = json.load(open(os.path.join(RES, f"{fid}-1.json")))
+            tx, seats = d.get("texts") or {}, (d.get("event") or {}).get("seats") or {}
+            ok(f"{fid}: 4 von 4 Plaetzen belegt", seats.get("legs") == 4 and seats.get("limit") == 4, seats)
+            ok(f"{fid}: 5. Person - Leiste nennt den Grund (jedes Geraet zaehlt), kein Beitreten-Knopf",
+               FULL_TXT in (tx.get("extra_bar") or "") and not tx.get("extra_bar_join"), tx)
+            ja = tx.get("join_api") or {}
+            ok(f"{fid}: Beitritt ueber die Schnittstelle 409 full mit verstaendlichem Text", ja.get("status") == 409 and ja.get("block") == "full"
+               and FULL_TXT in (ja.get("error") or ""), ja)
+            ok(f"{fid}: zweites Geraet - Leiste: weiteres eigenes Geraet erst, wenn jemand auflegt; Uebernehmen geht",
+               "ein weiteres eigenes Gerät" in (tx.get("second_bar") or "") and "Hierher übernehmen" in (tx.get("second_bar") or ""), tx.get("second_bar"))
+            rg = tx.get("ring_again") or []
+            ok(f"{fid}: Erneut klingeln bei vollem Anruf gesperrt (mit Grund)", rg and all(x["disabled"] and "voll" in x["title"] for x in rg), rg)
+            ok(f"{fid}: Person hinzufuegen meldet voll", "Der Anruf ist voll" in (tx.get("add_hint") or ""), tx.get("add_hint"))
+            if fid == "r5-voll":
+                ok("r5-voll: ohne Knoten Hinweis beim Start (Chat hat mehr Mitglieder als Plaetze)", "höchstens 4 Geräte möglich" in (tx.get("start_toast") or ""), tx.get("start_toast"))
+            else:
+                ok("r4-voll: ueber Knoten kein Mesh-Hinweis beim Start", "höchstens 4 Geräte möglich" not in (tx.get("start_toast") or ""), tx.get("start_toast"))
+    finally:
+        stop()
+    errs = open(os.path.join(STATE, "server.log"), errors="replace").read().count("Traceback")
+    ok(f"Serverfehler: {errs}", errs == 0)
+    print(f"\nRANG4-VOLL {sum(res)}/{len(res)}", "- ALLES GRUEN" if all(res) else "- FEHLER")
+    sys.exit(0 if all(res) else 1)
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--check", action="store_true", help="Rang 4: Texte bei vollem Anruf pruefen (2 Laeufe)")
     ap.add_argument("--cases", default="")
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--list", action="store_true")
@@ -309,6 +359,8 @@ def main():
     if a.sum:
         summary()
         return
+    if a.check:
+        check()
     os.makedirs(RES, exist_ok=True)
     want = [x for x in a.cases.split(",") if x]
     users()
