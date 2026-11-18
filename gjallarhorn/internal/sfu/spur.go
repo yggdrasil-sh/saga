@@ -53,6 +53,9 @@ func (l *Leg) spur(now int64) {
 				st += "w" + p.Layer
 			}
 		}
+		if s.mbOwner == s.owner && s.owner != nil && (s.mbDw[mbBack] > 0 || s.mbDw[mbFull] > 0) { // Aufschub Mindestform (2159)
+			st += fmt.Sprintf("~%.0f/%.0f", s.mbDw[mbBack].Seconds(), s.mbDw[mbFull].Seconds())
+		}
 		fmt.Fprintf(&b, " %s:%s%d@%s/%d%s", s.class[:2], lay, s.tid, own, pk, st)
 	}
 	hold := float64(e.holdUntil-now) / 1e9
@@ -63,8 +66,9 @@ func (l *Leg) spur(now int64) {
 	if l.Peer != nil {
 		me = spurID(l.Peer.ID)
 	}
-	log.Printf("spur %s est=%dk gcc=%dk rate=%dk sperre=%.1fs backoff=%.0fs lag=%v ready=%v probe=%d%s",
-		me, int(e.bps/1000), int(e.gccLast/1000), int(e.rateTick/1000), hold, e.backoff.Seconds(), e.lag, e.ready, l.pr.stage, b.String())
+	over := l.ExtOver != nil && l.ExtOver()
+	log.Printf("spur %s est=%dk gcc=%dk rate=%dk sperre=%.1fs backoff=%.0fs lag=%v ready=%v probe=%d over=%v%s",
+		me, int(e.bps/1000), int(e.gccLast/1000), int(e.rateTick/1000), hold, e.backoff.Seconds(), e.lag, e.ready, l.pr.stage, over, b.String())
 }
 
 // spurID: 16-Bit-Hash der Peer-Kennung (nicht umkehrbar, nur zum Zuordnen der Zeilen)
