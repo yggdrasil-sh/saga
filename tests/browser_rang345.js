@@ -206,6 +206,8 @@ function evalPage(s, expect) {
     let last = null; for (let i = o.fi; i <= o.li; i++) { const r = s[i].v[o.k]; if (r && r[4]) { if (last != null && r[4] !== last) lay++; last = r[4]; } }
     return (B0[1] - A0[1]) / d;
   });
+  const vfps = {}; // fps je Bildstrom (Auswertung --eng: Sprecher gegen Kacheln)
+  vs.forEach((o, i) => { vfps[o.k] = Math.round(fps[i] * 10) / 10; });
   let tot = 0, con = 0, gaps = 0, gapS = 0, amin = 0;
   as.forEach(o => {
     const A0 = o.f.a[o.k], B0 = o.l.a[o.k]; tot += B0[1] - A0[1]; con += B0[2] - A0[2]; amin += (o.l.t - o.f.t) / 60000;
@@ -242,7 +244,7 @@ function evalPage(s, expect) {
     fps: med(fps), fpsMin: fps.length ? Math.min(...fps) : null,
     freeze: vmin ? fz / vmin : null, freeze_s: vmin ? fzs / vmin : null, layer: vmin ? lay / vmin : null, vgap,
     astreams: as.length, conceal: tot ? con / tot * 100 : null, gaps: amin ? gaps / amin : null, gap_s: gapS,
-    pairs: [...pathSet], rtt, mins, vpause, vser,
+    pairs: [...pathSet], rtt, mins, vpause, vser, vfps,
   };
 }
 // erster Zeitpunkt nach t, ab dem alle erwarteten Bilder wieder frisch sind (Zeitcode < 1 s alt)

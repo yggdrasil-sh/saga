@@ -45,6 +45,7 @@ PW = "Rang345-Mess-Pass-2468"
 USERS = [("r345-a", "Alma Mess"), ("r345-b", "Bodo Mess"), ("r345-c", "Cleo Mess"), ("r345-d", "Dina Mess"), ("r345-e", "Emil Mess")]
 TURN_SECRET = "r345-nur-test-turn"
 CHROME = os.environ.get("R345_CHROME", "")
+NSP = os.environ.get("R345_NS", "r345e")  # Namensraeume NSP1, NSP2, ... (eigener Name: Laeufe nebeneinander auf einer Maschine)
 P = {"proc": None, "log": None, "turn": None, "nsl": {}}
 
 CALLS = {"enabled": True, "stun": "", "turn_urls": f"turn:127.0.0.1:{TURN_PORT}?transport=udp", "turn_mode": "rest",
@@ -98,6 +99,9 @@ FAELLE = [
     # Eingrenzung Bildluecke beim engen Teilnehmer (r4-4-eng): gleiche Leitung, Warteschlange 300 ms bzw. 60 ms, und 2 Mbit/s
     F("r4d-4-eng", "group", 4, HORN_Y, 3, ENG1, None, 60, "Diagnose q300"),
     F("r4d-4-eng-q60", "group", 4, HORN_Y, 3, dict(ENG1, qms=60), None, 60, "Diagnose q60"),
+    # 2159: sehr enge Leitung - traegt den Sprecher, aber nicht Sprecher + zwei Mindestbilder (400k) bzw. knapp (600k)
+    F("r4d-4-400k", "group", 4, HORN_Y, 3, dict(ENG1, up=400, down=400), None, 60, "Diagnose 400 kbit/s"),
+    F("r4d-4-600k", "group", 4, HORN_Y, 3, dict(ENG1, up=600, down=600), None, 60, "Diagnose 600 kbit/s"),
     F("r4d-4-eng-2m", "group", 4, HORN_Y, 3, dict(ENG1, up=2000, down=2000), None, 60, "Diagnose 2 Mbit/s"),
     F("r4d-4-eng-2m-klein", "group", 4, HORN_Y, 3, dict(ENG1, up=2000, down=2000), None, 60, "Diagnose 2 Mbit/s, wenig CPU",
       {"w": 320, "h": 180, "fps": 12}),
@@ -231,7 +235,7 @@ def turn():
 
 
 def netns(i):
-    name, addr = f"r345e{i + 1}", f"10.77.{i + 1}.2"
+    name, addr = f"{NSP}{i + 1}", f"10.77.{i + 1}.2"
     have = subprocess.run(["ip", "netns", "list"], capture_output=True, text=True).stdout.split()
     if name not in have:
         for cmd in (["ip", "netns", "add", name], ["ip", "-n", name, "link", "set", "lo", "up"],
@@ -348,6 +352,62 @@ def summary():
         print(f"| {fid} | {r['_runs']} | {','.join(sorted(r['_path']))} | " + " | ".join(agg(r[k]) for k, _ in KEYS) + " |")
 
 
+def eng_sum():
+    """--eng: Bildstroeme bei der Person mit eigener Leitung (Fall mit eng), je Lauf und je Fall: fps des Sprechers
+    (Strom mit den meisten Bildern/s) und der Kacheln, Anteil der Zeit, in der Kacheln Pakete bekommen, Wechsel an/aus
+    je Kachel und Minute (aus = mindestens 2 s ohne Pakete; hoechster Wert der Kacheln), laengste Pause, Ton verdeckt."""
+    cases = {}
+    for fpath in sorted(glob.glob(os.path.join(RES, "*.json"))):
+        try:
+            d = json.load(open(fpath))
+        except ValueError:
+            continue
+        eng = (d.get("spec") or {}).get("eng")
+        if not eng:
+            continue
+        who = "ABCDE"[eng["i"]]
+        pg = next((v for k, v in (d.get("pages") or {}).items() if k.startswith(who)), None)
+        if not pg or not pg.get("vser"):
+            continue
+        vf = pg.get("vfps") or {}
+        spk = max(pg["vser"], key=lambda k: (vf.get(k, 0), sum(x for x in pg["vser"][k]["n"] if x > 0)))
+        t_on, t_chg, t_fps, mp = [], [], [], 0
+        for k, v in pg["vser"].items():
+            n = [x for x in v["n"] if x >= 0]
+            runs, cur, ln = [], None, 0
+            for x in n:
+                on = x > 0
+                if on == cur:
+                    ln += 1
+                else:
+                    if cur is not None:
+                        runs.append((cur, ln))
+                    cur, ln = on, 1
+            if cur is not None:
+                runs.append((cur, ln))
+            offs = [ln for on, ln in runs if not on and ln >= 2]
+            mp = max([mp] + offs)
+            if k == spk:
+                continue
+            mins = max(len(n), 1) / 60
+            chg = sum(2 for on, ln in runs[1:-1] if not on and ln >= 2) + sum(1 for on, ln in runs[-1:] if not on and ln >= 2 and len(runs) > 1)
+            t_on.append(100 * sum(1 for x in n if x > 0) / max(len(n), 1))
+            t_chg.append(chg / mins)
+            t_fps.append(vf.get(k, 0))
+        r = {"spk_fps": vf.get(spk), "tile_fps": statistics.mean(t_fps) if t_fps else None, "tile_on": statistics.mean(t_on) if t_on else None,
+             "tile_chg": max(t_chg) if t_chg else None, "maxpause": mp, "conceal": pg.get("conceal"), "rtt": pg.get("rtt")}
+        print(f"{d['id']}-{(d.get('spec') or {}).get('rep')}: " + " ".join(f"{k}={'-' if v is None else round(v, 1)}" for k, v in r.items()))
+        c = cases.setdefault(d["id"], {k: [] for k in r})
+        for k, v in r.items():
+            c[k].append(v)
+    names = [("spk_fps", "Sprecher fps"), ("tile_fps", "Kacheln fps"), ("tile_on", "Kacheln an %"), ("tile_chg", "Wechsel an/aus je Kachel/min"),
+             ("maxpause", "laengste Pause s"), ("conceal", "Ton verdeckt %"), ("rtt", "RTT ms")]
+    print("| Fall | " + " | ".join(n for _, n in names) + " |")
+    print("|" + "---|" * (len(names) + 1))
+    for fid, c in cases.items():
+        print(f"| {fid} | " + " | ".join(agg(c[k]) for k, _ in names) + " |")
+
+
 FULL_TXT = "alle 4 Plätze sind belegt (jedes Gerät zählt, auch ein zweites zum Teilen)"
 
 
@@ -403,6 +463,7 @@ def main():
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--sum", action="store_true")
+    ap.add_argument("--eng", action="store_true", help="Bildstroeme bei der Person mit eigener Leitung (2159)")
     ap.add_argument("--keep", action="store_true", help="Instanz nach dem Lauf weiterlaufen lassen")
     a = ap.parse_args()
     if a.list:
@@ -411,6 +472,9 @@ def main():
         return
     if a.sum:
         summary()
+        return
+    if a.eng:
+        eng_sum()
         return
     if a.check:
         check()
