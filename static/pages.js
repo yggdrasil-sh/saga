@@ -1332,11 +1332,13 @@
     // Vergleich der alten Seite laeuft noch (Aenderung gemeldet, aber noch nicht markiert): sicherheitshalber markieren -
     // save() in _origOpen vergleicht ohnehin mit dem gespeicherten Stand und speichert nur bei echtem Unterschied
     if (S.checking && S.cur && S.baseId === S.cur.id) S.dirtyBody = true;
-    S.baseId = null; S.typed = false; S.inAt = {};
+    S.baseId = null; S.typed = false;
     $('pg-trash').hidden = true; hideView();
     if (PK.id) closePeek();
     return _origOpen(id).then(function () {
       S.pendBases = null;                     // gehoerte zur vorigen Seite bzw. zum vorigen Laden (dort schon gespeichert)
+      // erst jetzt: ein noch laufendes applyDoc der vorigen Seite braucht die Eingabe-Marken bis zum Speichern (Pruefung 2155)
+      S.inAt = {};
       if (S.cur) { S.loading = true; decorateLinks(); S.loading = false; renderTags(); loadBacklinks(S.cur.id); rememberRecent(S.cur.id); archiveBar(); applyLock(); applyPublic(); applyShare(); applyMeta(); }
       var bm = location.hash.match(/^#(-?\d+):(.+)$/); if (bm && S.cur && +bm[1] === S.cur.id) setTimeout(function () { showBlock(decodeURIComponent(bm[2])); }, 150);
       if (EMBED && S.cur && !S.cur.title) $('pg-title').focus();      // neue Karte im Peek: gleich den Namen tippen
@@ -1700,8 +1702,11 @@
   window.addEventListener('beforeunload', function (e) {
     // beim Sperren (423) abgelehnte Eingabe: Speichern geht nicht (gesperrt) - vor dem Verlassen nachfragen statt still verwerfen
     if (S.cur && S.held === S.cur.id && S.cur.locked && (S.dirtyBody || S.dirtyTitle) && !S.conflict && !S.lost) { e.preventDefault(); e.returnValue = ''; return; }
-    if (!S.cur || S.conflict || S.lost || readOnly() || (!S.dirtyBody && !S.dirtyTitle)) return;
-    var busy = (S.inflight || 0) > 0;
+    // Bug 2155 (Pruefung): waehrend applyDoc fremde Bloecke einarbeitet, wartet save() darauf (S.applyP) - die Anfrage ginge
+    // erst nach dem Entladen raus; waehrenddessen Getipptes steht nur in S.typed. Dann ebenfalls nachfragen.
+    var applying = !!S.applyP;
+    if (!S.cur || S.conflict || S.lost || readOnly() || (!S.dirtyBody && !S.dirtyTitle && !(applying && S.typed))) return;
+    var busy = (S.inflight || 0) > 0 || applying;
     save();
     var txt = $('pg-editor').textContent, big = (window.TextEncoder ? new TextEncoder().encode(txt).length : txt.length * 3) > 40000;   // Bytes (CJK/Emoji)
     // offline geht das Speichern nicht durch - der (still gestellte) Status zeigt es nicht mehr dauerhaft: nachfragen
@@ -10140,7 +10145,9 @@
         S.pendBases = Object.keys(bm).length ? { id: id, m: bm } : null;
         S.dirtyBody = true; schedule();
       }
-      if (S.typed) { S.typed = false; S.dirtyBody = true; schedule(); }
+      // waehrenddessen getippt: steckt schon im eben gelesenen Vergleichsstand (S.lastBlocks), ist aber nicht gespeichert -
+      // sonst hielte save() es fuer "unveraendert" und liesse es fallen (wie beim Laden, openPage; Pruefung 2155)
+      if (S.typed) { S.typed = false; S.lastBlocks = null; S.dirtyBody = true; schedule(); }
       if (r !== 'local' && r !== 'keep' && S.remoteAfter && S.cur && S.cur.id === id && S.remoteAfter > (S.cur.rev || 0)) {
         if (S.dirtyBody || S.dirtyTitle) { clearTimeout(S.timer); save(); }       // waehrenddessen gemeldete fremde Aenderung
         else if (!S.inflight) setTimeout(function () { liveApply(null); }, 0);

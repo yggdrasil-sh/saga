@@ -87,6 +87,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Server, der wie bisher zusammenführt (Überschneidung → Konfliktblock). Schreibmarke und Lage bleiben; ändert die
   fremde Fassung den Block mit der Schreibmarke, rückt sie mit. Kein „Neu laden“-Hinweis mehr bei schnell
   aufeinanderfolgenden Änderungen. Tiptap unverändert. Neue Browser-Reihe `tests/browser_editorjs_fremd.js`.
+- Getipptes, während eine fremde Änderung eingearbeitet wird, gilt nicht mehr als „schon gespeichert“ (ging sonst ohne
+  weitere Eingabe verloren); Verlassen der Seite in diesem Moment fragt nach.
 
 ### Behoben – kleine Reste Server/Web (Prüfungen 17./18.11.)
 - **Knoten-Steuerkanal:** Verbindet ein Knoten neu, während seine alte Steuerverbindung noch abgebaut wird, steht er

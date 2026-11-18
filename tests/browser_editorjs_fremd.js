@@ -3,7 +3,7 @@
 // Fokus/Schreibmarke bleiben (Weitertippen landet im selben Block), fremde Aenderung kommt an, kein "Neu laden"-/
 // Konflikt-Hinweis, keine Seitenfehler. Faelle: anderer Block 16x, neue Bloecke, Block geloescht, gleicher Block (ohne
 // und mit Ueberschneidung), Unterseiten-Verweis mit Titel in Etappen, Fremdaenderung am Block mit der Schreibmarke ohne
-// Eingabe, Spalten (in und neben einer Spalte tippen), viele schnelle Aenderungen. Laeuft mit notes.live an und aus (Admin-Schalter; der Test meldet den Stand).
+// Eingabe, Spalten (in und neben einer Spalte tippen), viele schnelle Aenderungen, langsames Einarbeiten (Eingabe nur waehrenddessen). Laeuft mit notes.live an und aus (Admin-Schalter; der Test meldet den Stand).
 // Voraussetzung: Admin editor.engine = choice (Konto-Wahl Editor.js). FAELLE=a,b,... nur diese Faelle.
 // SAGA_EDITOR=tiptap nur zum Vergleich: Tiptap ohne live laesst die Schreibmarke bei fremdem Text vor ihr im selben
 // Block noch stehen ("gleich", "ruhend": 3 FAIL, auf 86aab10 genauso); mit live gilt Yjs.
@@ -82,7 +82,7 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     a.errs.length = 0; b.errs.length = 0;
     return id;
   }
-  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,spalten,schnell').split(',');
+  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,spalten,schnell,langsam').split(',');
   const base3 = () => [P('t1', 'Start'), P('t2', 'Ende'), P('f0', 'fremd 0')];
   const agree = async (id, bl) => {   // Editor (A) zeigt dieselben Bloecke wie der Server
     const ids = (await D.blocks(a)).filter((x) => x.parent == null).map((x) => x.id);
@@ -222,6 +222,26 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     ok('schnell: Editor stimmt mit dem Server ueberein', await until(() => agree(id, bl), 5000), (await D.blocks(a)).map((x) => x.id));
     ok('schnell: "Ende" unveraendert', bl.some((x) => x.id === 't2' && x.data.text === 'Ende'), bl);
   });
+
+  // Pruefung: langsames Einarbeiten (Editor.js blocks.update kuenstlich 2,5 s) - Eingabe NUR waehrenddessen, danach nichts
+  // mehr: muss trotzdem gespeichert werden (stand schon im Vergleichsstand S.lastBlocks); Verlassen fragt in der Zeit nach
+  if (want.includes('langsam') && KIND === 'editorjs') {
+    console.log('--- langsames Einarbeiten ---');
+    const id = await openA('Fremd langsam', base3());
+    await D.focus(a, 't1', 'end');
+    await a.evaluate(() => {
+      const e = HKPages.k.editor(), u = e.blocks.update; window.__upd = 0;
+      e.blocks.update = function () { const args = arguments; window.__upd++; return new Promise((r) => setTimeout(r, 2500)).then(() => u.apply(null, args)); };
+    });
+    await remote(id, (bl) => { bl.find((x) => x.id === 'f0').data.text = 'fremd 1'; });
+    await until(() => a.evaluate(() => window.__upd > 0), 8000);
+    await a.keyboard.type(' abc', { delay: 30 });
+    const asked = await a.evaluate(() => { const ev = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(ev); return ev.defaultPrevented; });
+    ok('langsam: Verlassen waehrend des Einarbeitens fragt nach', asked === true, asked);
+    ok('langsam: Eingabe gespeichert, fremde Aenderung da', await until(async () => { const bl = await blocksOf(id); return bl.some((x) => x.id === 't1' && x.data.text === 'Start abc') && bl.some((x) => x.id === 'f0' && x.data.text === 'fremd 1'); }, 9000), await blocksOf(id));
+    ok('langsam: keine Seitenfehler', a.errs.length === 0, a.errs);
+    a.errs.length = 0;
+  }
 
   await br.close();
   const n = res.filter(Boolean).length;
