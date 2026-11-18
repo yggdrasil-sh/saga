@@ -365,6 +365,14 @@ def t_apps():
     bl[0]["data"]["text"] = "oben geaendert"
     req("PATCH", f"/api/notes/{par3}", {"body": json.dumps({"blocks": bl}), "format": "blocks"})
     ok("Gegenprobe: normales Speichern ohne zweiten Verweis -> automatischer Absatz bleibt", links_to(blocks(par3), k3) == [1])
+    # pruef-ulink: Verweis im Fliesstext gleich nach dem Anlegen (innerhalb 10 Minuten) ist kein App-Verweis -> beide bleiben
+    bl = blocks(par3) + [P('Siehe <a href="/notes#%d">Normal</a> fuer Details.' % k3), P('Siehe <a href="/notes#%d">Normal</a>' % k3)]
+    req("PATCH", f"/api/notes/{par3}", {"body": json.dumps({"blocks": bl}), "format": "blocks", "rev": get(par3)["rev"]})
+    bl = blocks(par3)
+    ok("Gegenprobe: Verweis im Fliesstext gleich nach dem Anlegen -> automatischer Absatz bleibt", len(links_to(bl, k3)) == 3
+       and any(str(b.get("id", "")).startswith("sub-") for b in bl), bl)
+    bl = [b for b in bl if not (b.get("data") or {}).get("text", "").startswith("Siehe")]
+    req("PATCH", f"/api/notes/{par3}", {"body": json.dumps({"blocks": bl}), "format": "blocks"})
     with connect() as c, c:
         c.execute("UPDATE note SET created=created-700 WHERE id=?", (k3,))
     bl = blocks(par3) + [P('Siehe <a href="/notes#%d">Normal</a>' % k3)]
@@ -447,6 +455,14 @@ def t_move():
     rv = get(b_)["rev"]
     st, d = req("POST", f"/api/notes/{w}/move", {"parent_id": b_, "index": 0})
     ok("Nur umsortieren: nichts", get(b_)["rev"] == rv)
+    # pruef-ulink: von Hand gesetzter reiner Verweis-Absatz (eigene ID) bleibt beim Verschieben in der alten Elternseite
+    h1, h2 = page("AltH", [P("oben")]), page("NeuH", [P("Ziel")])
+    hk = page("KindH", None, parent=h1)
+    man = {"id": "manuell1", "type": "paragraph", "data": {"text": '<a href="/notes#%d" class="note-link">📄 KindH</a>' % hk}}
+    req("PATCH", f"/api/notes/{h1}", {"body": json.dumps({"blocks": [P("oben"), man]}), "format": "blocks"})
+    req("POST", f"/api/notes/{hk}/move", {"parent_id": h2, "index": 0})
+    ok("Von Hand gesetzter Verweis-Absatz bleibt in der alten Elternseite", any(x.get("id") == "manuell1" for x in blocks(h1)), blocks(h1))
+    ok("... neue Elternseite bekommt trotzdem den automatischen Verweis", links_to(blocks(h2), hk) == [1], blocks(h2))
     # zurueck nach a (dort steht schon ein Fliesstext-Verweis) -> kein zweiter
     st, d = req("POST", f"/api/notes/{w}/move", {"parent_id": a, "index": 0})
     ok("Zurueck: vorhandener Verweis zaehlt -> kein neuer; aus Neu entfernt",

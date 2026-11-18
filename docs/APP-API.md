@@ -582,8 +582,8 @@ angelegt) – Clients behalten Block-IDs wie immer.
   innerhalb des Imports kommen aus den Daten), `POST /api/v1/pages` und MCP `create_page` mit `parent_id`, Föderation
   (Unterseite in einer Seite eines anderen Servers – der Server der Elternseite legt den Verweis an).
 - **Verschieben** (`POST /api/notes/{id}/move`, `PATCH /api/notes/{id}` mit `parent_id`) in eine andere Elternseite: Verweis
-  am Ende der neuen; aus der alten fallen Absätze weg, die **nur** aus dem Verweis auf diese Seite bestehen (Verweise im
-  Fließtext bleiben). Nur umsortieren ändert nichts.
+  am Ende der neuen; aus der alten fällt nur der **automatische** Absatz (`sub-…`/`subu-…`, nur der Verweis) weg – von Hand
+  gesetzte Verweise und Verweise im Fließtext bleiben (wie Notion). Nur umsortieren ändert nichts.
 - **Kein Verweis:** Elternseite ist eine Datenbank (Zeilen bleiben Zeilen), gesperrt, archiviert oder eine Text-Notiz;
   die neue Seite ist eine Vorlage (`template`); in der Elternseite steht schon ein Verweis auf die Seite (irgendwo, auch in
   Spalten/Toggles) oder ein eingebetteter Datenbank-Block mit ihr; die Elternseite hat einen **Unterseiten-Block** (Widget
@@ -595,8 +595,9 @@ angelegt) – Clients behalten Block-IDs wie immer.
   einbetten. Ältere Server ignorieren den Schlüssel.
 - **Clients, die den Verweis selbst setzen** (Apps bis 2.5-rc: „/Seite“ legt an und schreibt `📄 <a href="/notes#ID">…</a>`
   bzw. „/Datenbank“ einen Datenbank-Block): beim Speichern der Elternseite (`PATCH`, auch zusammengeführt) entfernt der
-  Server den automatischen Absatz (`sub-…`/`subu-…`), wenn in diesem Speichern ein anderer Verweis bzw. Datenbank-Block
-  auf dieselbe Seite neu dazukommt (bis 10 Minuten nach dem Anlegen) oder ein veralteter Client den schon entfernten
+  Server den automatischen Absatz (`sub-…`/`subu-…`), wenn in diesem Speichern ein anderer Absatz **nur aus dem Verweis**
+  (davor höchstens ein Symbol wie `📄`) bzw. ein Datenbank-Block auf dieselbe Seite neu dazukommt (bis 10 Minuten nach dem
+  Anlegen; ein Verweis im Fließtext zählt nicht) oder ein veralteter Client den schon entfernten
   Absatz wieder mitschickt. Neue Clients schicken bei solchen Einfügungen besser gleich `"link": false`. Live-Räume
   (`/api/collab`) laufen nicht über diese Bereinigung.
 - **Elternseite offen:** die Änderung ist eine normale Inhaltsänderung (rev+1, Version, Basisstand für das Zusammenführen,

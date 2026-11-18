@@ -52,9 +52,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   auch Veröffentlichen, Export und Suche. Spätere Umbenennungen ändern ihn nicht; Editoren und Apps zeigen ohnehin den
   aktuellen Titel.
 - Ältere Apps (iOS, Android, Linux bis 2.5-rc), die bei „/Seite“ bzw. „/Datenbank“ den Verweis oder Datenbank-Block
-  selbst einfügen, bekommen keinen doppelten Eintrag: beim Speichern der Elternseite fällt der automatische Absatz weg.
-- Verschieben in eine andere Seite nimmt den Verweis mit: neu am Ende der Zielseite, in der alten Elternseite fallen
-  Absätze weg, die nur aus diesem Verweis bestehen (Verweise im Fließtext bleiben).
+  selbst einfügen, bekommen keinen doppelten Eintrag: beim Speichern der Elternseite fällt der automatische Absatz weg
+  (nur bei einem eigenen Verweis-Absatz bzw. Datenbank-Block, nicht bei einer Erwähnung im Fließtext; im Live-Modus der
+  Linux-App bleibt es vorerst bei zwei Verweisen).
+- Verschieben in eine andere Seite nimmt den Verweis mit: neu am Ende der Zielseite, in der alten Elternseite fällt nur
+  der automatisch gesetzte Verweis-Absatz weg (von Hand gesetzte Verweise und Verweise im Fließtext bleiben).
 - Nicht bei Datenbanken (Zeilen bleiben Zeilen), gesperrten, archivierten Seiten und Text-Notizen, nicht für Vorlagen,
   nicht doppelt (steht die Seite schon verlinkt oder eingebettet, passiert nichts). Hat die Elternseite einen
   Unterseiten-Block, kommt kein Verweis dazu – die Seite erscheint dort ohnehin (auch beim Verschieben hinein). Wo der

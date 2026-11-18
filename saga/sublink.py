@@ -25,8 +25,9 @@ zieht ihr erster Titel den automatischen Absatz einmal nach (nur unveraendert, n
 speichert den Titel beim Tippen in Etappen); spaetere Umbenennungen nicht (Editoren und Apps zeigen ohnehin den aktuellen
 Titel, der gespeicherte Text zaehlt fuer Veroeffentlichen, Export und Suche).
 
-unlink (Verschieben in eine andere Elternseite): aus der alten Elternseite fallen nur Absaetze weg, die ausschliesslich
-aus dem Verweis auf die verschobene Seite bestehen (Verweise im Fliesstext bleiben) - gleiche Bedingungen fuer die alte
+unlink (Verschieben in eine andere Elternseite): aus der alten Elternseite faellt nur der automatische Absatz weg (ID
+sub-/subu-, ausschliesslich der Verweis auf die verschobene Seite); von Hand gesetzte Verweise und Verweise im Fliesstext
+bleiben (wie Notion: nur der Seiten-Block wandert, "Link to page" bleibt) - gleiche Bedingungen fuer die alte
 Elternseite (Seite, Block-Format, nicht gesperrt, 'Bearbeiten').
 
 Nicht hier: Bundle-Seiten einer Vorlage untereinander (gallery: nur die oberste neue Seite), Seiten innerhalb eines Imports
@@ -236,12 +237,32 @@ def _refs(blocks, child, skip_id):
     return n
 
 
+_APP_LINK = r'^(?:\s|&nbsp;|\u00a0|<br\s*/?>)*(?:[^\w\s<>/"&]{1,8}\s)?<a href="/notes#%d"[^>]*>[^<]*</a>(?:\s|&nbsp;|\u00a0|<br\s*/?>)*$'
+
+
+def _app_refs(blocks, child, skip_id):
+    """Wie _refs, aber nur so, wie aeltere Apps den Verweis selbst setzen: eigener Absatz nur aus dem Verweis (davor
+    hoechstens ein Symbol ohne Buchstaben, z. B. "📄 ") bzw. Datenbank-Block. Ein Verweis im Fliesstext zaehlt nicht (pruef-ulink:
+    sonst fiele der automatische Absatz weg, sobald man die Seite in den ersten 10 Minuten im Text erwaehnt)."""
+    only, n = re.compile(_APP_LINK % int(child)), 0
+    for b in _iter_blocks(blocks):
+        if b.get("id") == skip_id:
+            continue
+        d = b.get("data") if isinstance(b.get("data"), dict) else {}
+        if b.get("type") == "database" and d.get("db") == child:
+            n += 1
+        elif b.get("type") == "paragraph" and only.match(str(d.get("text") or "")):
+            n += 1
+    return n
+
+
 def dedupe(c, old_body, body):
     """Aeltere Apps (iOS/Android/Linux "/Seite" und "/Datenbank", Stand 2.5-rc) legen die Unterseite an und setzen danach
     SELBST einen Verweis bzw. Datenbank-Block in die Elternseite - zusammen mit dem automatischen Absatz stuende sie doppelt
     da. Beim Speichern der Elternseite (Stufe 1, auch zusammengefuehrt) faellt der automatische Absatz deshalb weg, wenn
-    - er schon gespeichert war und in diesem Speichern ein anderer Verweis auf dieselbe Seite neu dazukommt (nur in den
-      ersten RETITLE_S Sekunden nach dem Anlegen der Unterseite), oder
+    - er schon gespeichert war und in diesem Speichern ein anderer Verweis-Absatz (nur der Verweis, wie die Apps ihn
+      setzen) bzw. Datenbank-Block auf dieselbe Seite neu dazukommt (nur in den ersten RETITLE_S Sekunden nach dem
+      Anlegen der Unterseite; ein Verweis im Fliesstext zaehlt nicht), oder
     - er im gespeicherten Stand fehlt (veralteter Client schickt ihn noch einmal mit) und die Seite anderswo verlinkt ist.
     -> body (unveraendert oder ohne diese Absaetze). Live-Raeume (collab, trusted) laufen nicht hierueber."""
     if AUTO_ID not in body and AUTO_UNTITLED not in body:
@@ -264,7 +285,7 @@ def dedupe(c, old_body, body):
         if b.get("id") not in old_ids:
             drop.add(b.get("id"))
             continue
-        if _refs(blocks, child, b.get("id")) > _refs(oblocks, child, b.get("id")):
+        if _app_refs(blocks, child, b.get("id")) > _app_refs(oblocks, child, b.get("id")):
             r = c.execute("SELECT created FROM note WHERE id=?", (child,)).fetchone()
             if r and time.time() - (r[0] or 0) <= RETITLE_S:
                 drop.add(b.get("id"))
@@ -292,7 +313,8 @@ _ONLY = r'^(?:\s|&nbsp;| |<br\s*/?>)*<a href="/notes#{id}"(?:\s[^>]*)?>[^<]*</a
 
 
 def unlink(c, uid, parent, child, origin=None, acc=None):
-    """Verschieben: Absaetze, die nur aus dem Verweis auf child bestehen, aus parent entfernen. -> Anzahl entfernter."""
+    """Verschieben: automatische Absaetze (ID sub-/subu-), die nur aus dem Verweis auf child bestehen, aus parent
+    entfernen - von Hand gesetzte Verweis-Absaetze bleiben. -> Anzahl entfernter."""
     if not parent or not child or (isinstance(parent, int) and parent < 0):
         return 0
     sp = getattr(c, "savepoint", None)
@@ -318,8 +340,9 @@ def _unlink(c, uid, parent, child, origin, acc):
 
     def keep(b):
         nonlocal gone
+        # nur der automatische Absatz (ID sub-/subu-): von Hand gesetzte Verweise bleiben wie in Notion stehen (pruef-ulink)
         if isinstance(b, dict) and b.get("type") == "paragraph" and isinstance(b.get("data"), dict) \
-                and only.match(str(b["data"].get("text") or "")):
+                and str(b.get("id") or "").startswith((AUTO_ID, AUTO_UNTITLED)) and only.match(str(b["data"].get("text") or "")):
             gone += 1
             return False
         return True
