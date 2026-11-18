@@ -839,8 +839,9 @@ Galerie-Endpunkte 404 `{"error": "not found"}` (nie 403).
 
 ## Titelbild-Galerie (2.5)
 
-Saga bringt 122 Bilder mit (Liste: `static/covers/README.md`): 22 gemeinfreie Kunstwerke (The Met Open Access, CC0;
-4 Gruppen) und 100 KI-generierte Bilder der Saga-Elfe (IDs `saga-*`, 8 Gruppen „Saga · …“). Der Admin kann eigene
+Saga bringt 122 Bilder in 12 Gruppen mit (Liste: `static/covers/README.md`): 22 gemeinfreie Kunstwerke (The Met Open
+Access, CC0; 4 Gruppen) und 100 KI-generierte Bilder der Saga-Elfe (IDs `saga-*`, 8 Gruppen „Saga · …“), Herkunft
+(`source`) je Bild. Der Admin kann eigene
 hinzufügen sowie Bilder ausblenden. **Für die Anzeige brauchen die Apps nichts Neues:** ein Galerie-Titelbild ist
 ein normaler Wert in `cover`, nur eben ein anderer Pfad.
 
@@ -883,7 +884,7 @@ schicken `"cover": null` mit (ältere Server ignorieren das Feld).
 | `id`, `url`, `thumb` | ID, Pfad für `cover`, Vorschau (`?w=384`) |
 | `title` | Titel in der Sprache der Anfrage (Deutsch bei `de`, sonst Englisch); ein vom Admin gesetzter Titel gilt in jeder Sprache |
 | `artist`, `date` | Künstler und Datierung; leer bei den KI-Bildern und wenn der Admin nichts angibt |
-| `source` | Herkunft **je Bild** (Text aus `covers.json` bzw. vom Admin, nicht übersetzt): Met-Bilder „The Metropolitan Museum of Art, Open Access (CC0 1.0)“, Saga-Bilder „KI-generiert für Saga“ |
+| `source` | Herkunft **je Bild** (Text aus `covers.json` bzw. vom Admin): Met-Bilder „The Metropolitan Museum of Art, Open Access (CC0 1.0)“ (nicht übersetzt), Saga-Bilder „KI-generiert für Saga“ – ab Bug 2126 in der Sprache der Anfrage (z. B. `en` „AI-generated for Saga“); Angaben des Admins wie eingegeben |
 | `source_url` | Link zur Quelle (Met-Objektseite) oder leer – leer: keinen Link anbieten |
 | `group`, `pos` | Gruppe (ID aus `groups`, leer = „Weitere“), empfohlene senkrechte Bildposition 0–100 (Zahl, auch mit Nachkommastelle) |
 | `builtin` | mitgeliefert (auf jedem Saga-Server gleich) oder Upload des Admins |

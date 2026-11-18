@@ -28,6 +28,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Sprecherplatz des Knotens, statt ganz zu fehlen.
 - **Titelbild-Galerie:** Die Herkunftsangabe der Saga-KI-Bilder („KI-generiert für Saga“) kommt in der Sprache des Kontos
   (`GET /api/covers`, alle fünf Sprachen); die Angabe der Met-Bilder bleibt, wie sie ist.
+- Doku: Galerie mit 122 Bildern in 12 Gruppen (22 Met, 100 KI), `source` je Bild (APP-API, Anleitung).
 
 ### Behoben – Seiten-Sperre und Live-Abgleich im Browser (Feldfehler)
 - **Sperre kommt an:** Sperrt ein anderes Gerät oder ein anderer Tab die offene Seite, zeigt der Browser jetzt sofort das
