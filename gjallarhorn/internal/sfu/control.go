@@ -36,7 +36,69 @@ const (
 	// gar kein Bild. Eine pausierte Kachel kommt in dieser Form fruehestens minBack nach der Pause zurueck.
 	minFPS  = 10
 	minBack = 2 * time.Second
+	// Daempfung (Bug 2159): Faellt die Auswahl des Beins binnen mbFailWin nach einer Rueckkehr der Mindestform (Pause ->
+	// Mindestbild bzw. Mindestbild -> volle unterste Schicht), ist die Rueckkehr gescheitert - ihr Aufschub verdoppelt
+	// sich (2 -> 4 -> ... bzw. 4 -> 8 -> ...) bis mbBackMax. Zurueck auf den Grundwert, wenn sie upHold gehalten hat.
+	mbBackMax = 30 * time.Second
+	mbFailWin = 1500 * time.Millisecond
 )
+
+// Stufen der Rueckkehr der Mindestform (slot.mbDw, slot.mbUpAt)
+const (
+	mbBack = 0 // Pause -> Mindestbild (Grundwert minBack)
+	mbFull = 1 // Mindestbild -> volle unterste Schicht (Grundwert layerDwell)
+)
+
+// mbReady: Darf Platz s auf Stufe k der Mindestform zurueck (Bug 2159)? since: seit wann er in der Form davor ist
+// (Pause bzw. Mindestbild); der Aufschub (mindestens base) zaehlt ab dann bzw. ab der letzten gescheiterten Rueckkehr
+// dieser Stufe auf dem Bein.
+func (s *slot) mbReady(k int, since int64, base time.Duration, now int64) bool {
+	if s.mbOwner == s.owner {
+		since, base = max(since, s.mbFailAt[k]), max(base, s.mbDw[k])
+	}
+	return now-since >= int64(base)
+}
+
+// mbReturn merkt die Rueckkehr der Mindestform (Stufe k) von Platz s als letzten solchen Schritt des Beins.
+func (l *Leg) mbReturn(s *slot, k int, now int64) {
+	s.mbOwn()
+	s.mbUpAt[k] = now
+	l.mbStep.s, l.mbStep.stage, l.mbStep.at, l.mbStep.owner = s, k, now, s.owner
+}
+
+// mbFail: Die Auswahl des Beins ist gefallen. War die letzte Rueckkehr der Mindestform juenger als mbFailWin und meldet
+// GCC dabei Ueberlast (over), ist sie gescheitert: Ihr Aufschub verdoppelt sich - beim Platz, der zurueckkam, auch wenn
+// der Stau einen anderen trifft (faellt der Sprecher, weil eine Kachel zurueckkam, wartet die Kachel laenger, nicht der
+// Sprecher). War es eine Kachel, gilt der Aufschub dieser Stufe fuer alle Kacheln des Beins: Gescheitert ist die Rate
+// des Beins, nicht die Quelle - sonst versuchte es die naechste Kachel gleich danach.
+func (l *Leg) mbFail(now int64, tiles []*slot, over bool) {
+	st := &l.mbStep
+	if s := st.s; over && s != nil && s.owner == st.owner && s.mbOwner == s.owner && now-st.at < int64(mbFailWin) {
+		base := minBack
+		if st.stage == mbFull {
+			base = layerDwell
+		}
+		d := min(2*max(s.mbDw[st.stage], base), mbBackMax)
+		s.mbDw[st.stage], s.mbFailAt[st.stage] = d, now
+		if s.class == "tile" {
+			for _, t := range tiles {
+				if t.owner == nil {
+					continue
+				}
+				t.mbOwn()
+				t.mbDw[st.stage], t.mbFailAt[st.stage] = max(t.mbDw[st.stage], d), now
+			}
+		}
+	}
+	st.s = nil
+}
+
+// mbOwn: Daempfung der Mindestform fuer den aktuellen Besitzer (bei anderem Besitzer zurueck auf den Grundwert).
+func (s *slot) mbOwn() {
+	if s.mbOwner != s.owner {
+		s.mbDw, s.mbUpAt, s.mbFailAt, s.mbOwner = [2]time.Duration{}, [2]int64{}, [2]int64{}, s.owner
+	}
+}
 
 // screenResume: Kommt eine Bildschirmquelle nach mindestens so langer Stille (zusaetzlich zur Sekunde bis „nicht
 // aktiv“) wieder, zaehlt das als neuer Beginn der Freigabe (Apps und Web beenden das Teilen mit replaceTrack(null),
@@ -800,8 +862,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			c.wasOff = true
 		}
 	}
+	prev := sum // Bildrate der Auswahl vor diesem Takt (mit Mindestbild) - faellt sie, scheitert eine Rueckkehr (mbFail)
 	// zu wenig (UDP): erst laufende Kacheln von hinten ins Mindestbild, dann - passt auch das nicht ins GCC-Ziel - der
-	// Sprecher
+	// Sprecher. Faellt die Rate kurz nach einer Rueckkehr der Mindestform (mbStep, binnen mbFailWin), nimmt zuerst der
+	// Platz zurueck, der zurueckkam (Bug 2159): Er hat den Stau ausgeloest - eine Kachel, die aus der Pause kam, geht
+	// wieder in die Pause, eine, die eben voll wurde, zurueck ins Mindestbild.
 	toMin := func(c *choice) {
 		if c.min || !canMin(c) {
 			return
@@ -810,6 +875,24 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		c.min = true
 		c.rate = rateOf(c)
 		sum += c.rate
+	}
+	// Nur mit Ueberlast laut GCC (ExtOver: Verzoegerung steigt bzw. Ziel im Abstieg): Ein grundloser Sturz des Ziels
+	// (Container, Fund B) kurz nach einer Rueckkehr ist kein Scheitern - sonst wartete der Platz ohne Grund im
+	// Mindestbild, und der naechste Sturz traefe den Sprecher.
+	over := mb && l.mbStep.s != nil && now-l.mbStep.at < int64(mbFailWin) && (l.ExtOver == nil || l.ExtOver())
+	if st := l.mbStep; mb && over && st.s != nil && st.s.owner == st.owner && now-st.at < int64(mbFailWin) {
+		for _, c := range cs {
+			if c.s != st.s || c.idx != 0 {
+				continue
+			}
+			if sum > budget && (st.stage == mbFull || c.s.class == "tile") {
+				toMin(c)
+			}
+			if st.stage == mbBack && c.s.class == "tile" && sum > keep {
+				sum -= c.rate
+				c.idx, c.rate, c.min = -1, 0, false
+			}
+		}
 	}
 	if mb {
 		for i := len(cs) - 1; i >= 0 && sum > budget; i-- {
@@ -846,8 +929,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		c.idx, c.min = -1, false
 		return nr
 	}
+	// Rueckkehr der Mindestform erst, wenn die letzte auf diesem Bein bestaetigt ist (mbFailWin ohne Fall): sonst
+	// liesse sich ein Stau keinem Platz zuordnen (Bug 2159)
+	mbCalm := l.mbStep.s == nil || now-l.mbStep.at >= int64(mbFailWin)
 	backOK := func(c *choice) bool {
-		return c.wasOff && len(c.opts) > 0 && c.s.owner != nil && canMinAt(c) && now-c.s.pauseAt >= int64(minBack)
+		return mbCalm && c.wasOff && len(c.opts) > 0 && c.s.owner != nil && canMinAt(c) && c.s.mbReady(mbBack, c.s.pauseAt, minBack, now)
 	}
 	if mb {
 		for _, c := range cs {
@@ -859,9 +945,13 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 	}
 	up := func(c *choice, maxIdx int) {
+		if c.min && c.idx == 0 && c.wasOff {
+			return // eben erst aus der Pause ins Mindestbild: in diesem Takt nicht weiter (minAt gilt noch nicht)
+		}
 		if c.min && c.idx == 0 {
 			// Mindestbild -> volle unterste Schicht: ein Schritt nach oben wie jeder andere (Reserve, Sperrzeit, Schonfrist,
-			// auf UDP hoechstens einer je Takt)
+			// auf UDP hoechstens einer je Takt). Nach einer gescheiterten Rueckkehr wartet der Platz laenger (mbReady,
+			// Bug 2159).
 			old := c.rate
 			c.min = false
 			nr := rateOf(c)
@@ -873,8 +963,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			}
 			// ... oder, auch in der Sperrzeit, nach dem GCC-Ziel (keepUp), wenn das Mindestbild schon layerDwell lief: die
 			// volle unterste Schicht gehoert zum Bild, das die Sperrzeit nicht zurueckhalten soll - hoehere Schichten schon
-			byKeep := gccKeep && !other && need <= keepUp && now-c.s.minAt >= int64(layerDwell)
-			if !byKeep && (lim <= 0 || need*upHeadroom > lim) || capNeed > 0 && need > capNeed {
+			byKeep := gccKeep && !other && need <= keepUp && c.s.mbReady(mbFull, c.s.minAt, layerDwell, now)
+			wait := !c.s.mbReady(mbFull, c.s.minAt, 0, now)
+			if wait || !byKeep && (lim <= 0 || need*upHeadroom > lim) || capNeed > 0 && need > capNeed {
 				c.min = true
 				c.rate = rateOf(c)
 				deny(need)
@@ -999,6 +1090,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 	}
 	sum -= resv
+	mbOne := false
 	for _, c := range cs {
 		if !c.wasOff || len(c.opts) == 0 {
 			continue
@@ -1017,8 +1109,10 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		if (sum+nr)*upHeadroom <= upLimit && !blocked && !(capNeed > 0 && sum+nr > capNeed) {
 			sum, c.rate = sum+nr, nr
-		} else if mb && backOK(c) && sum+minNr(c) <= keepUp {
-			// Mindestbild statt Pause - auch in der Sperrzeit, solange das GCC-Ziel es traegt (keepUp)
+		} else if mb && !mbOne && backOK(c) && sum+minNr(c) <= keepUp {
+			// Mindestbild statt Pause - auch in der Sperrzeit, solange das GCC-Ziel es traegt (keepUp); je Takt hoechstens
+			// eine Kachel (Bug 2159: ein Stau danach gehoert dann genau ihr)
+			mbOne = true
 			c.idx, c.min = 0, true
 			c.rate = rateOf(c)
 			sum += c.rate
@@ -1063,10 +1157,12 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		moved = moved || to != c.s.layer || c.idx >= 0 && c.min != c.s.min
 	}
+	fell := false // faellt in diesem Takt ein Platz (Pause, tiefere Schicht, Mindestbild)? Dann ggf. mbFail
 	for _, c := range cs {
 		s := c.s
 		if c.idx < 0 {
 			if s.layer != "" && s.owner != nil && s.src != nil && s.src.peer == s.owner {
+				fell = true
 				s.setWhy(whyBudget, s.src, now) // laufendes Bild pausiert
 				l.downEvent(s, "", budget+audioCut >= quotaCap, now, cfg)
 				s.pauseAt = now // Mindestbild fruehestens minBack spaeter zurueck
@@ -1100,6 +1196,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			s.src, s.srcAt = st, now
 		}
 		if layerRank(st.Layer) < layerRank(s.layer) && !swap { // nach unten: Mindestverweildauer fuer den Weg zurueck
+			fell = true
 			// Budget-Ruecknahme binnen upFail nach dem Hochschalten (Rate der Zielschicht unterschaetzt, z. B. nach
 			// einer Aufloesungsaenderung): Aufschub fuer diese Schicht verdoppeln (bis upDwellMax). Jede Schicht hat
 			// ihren eigenen Aufschub - ein gescheiterter m-Versuch erbt nicht die Vorgeschichte von h. Zurueckgestellt
@@ -1192,10 +1289,25 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			l.est.stepAt = now // Schritt nach oben (auch aus der Pause, aus dem Mindestbild): Die Rate springt, siehe estimator.clamped
 		}
 		if c.min && !s.min && st.Layer == s.layer { // Mindestbild statt Pause: im Log wie eine Ruecknahme ("l>l*")
+			fell = true
 			l.downEvent(s, st.Layer+"*", budget+audioCut >= quotaCap, now, cfg)
 		}
 		if c.min && !s.min {
 			s.minAt = now
+		}
+		// Rueckkehr der Mindestform (Bug 2159): aus der Pause ins Mindestbild, aus dem Mindestbild auf die volle Schicht
+		switch {
+		case s.layer == "" && s.paused: // auch gleich auf die volle Schicht: Rueckkehr aus der Pause
+			l.mbReturn(s, mbBack, now)
+		case !c.min && s.min && st.Layer == s.layer:
+			l.mbReturn(s, mbFull, now)
+		}
+		if s.mbOwner == s.owner { // gehalten: Aufschub zurueck
+			for k := range s.mbUpAt {
+				if s.mbUpAt[k] != 0 && now-s.mbUpAt[k] >= int64(upHold) && (k == mbBack || !c.min) {
+					s.mbDw[k], s.mbUpAt[k] = 0, 0
+				}
+			}
 		}
 		s.paused, s.layer, s.tid, s.min = false, st.Layer, c.tid, c.min
 		// gehalten: Die Schicht laeuft seit upHold - ihr Aufschub und der aller tieferen ist erledigt
@@ -1212,6 +1324,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			s.out.Assign(nil)
 			s.paused, s.layer = false, ""
 		}
+	}
+	if fell && sum < prev {
+		l.mbFail(now, tiles, over)
 	}
 	// Probe fuer den abgelehnten Schritt: nur, wenn sich die Auswahl seit probeQuiet nicht bewegt hat (nach einem Wechsel
 	// bzw. zu Beginn des Beins sind Rate und GCC-Ziel noch in Bewegung), keine andere laeuft, die Zielrate ins

@@ -337,6 +337,14 @@ type Leg struct {
 	unkN      int        // eigen: Proben ohne klares Ergebnis in Folge (probeUnkMax)
 	unkRamp   bool       // ... die letzte davon endete schon in der Rampe (Stausignal von GCC bei halber Fuellung)
 	movedAt   int64      // letzte Aenderung der Bild-Auswahl (Schicht, Pause) dieses Beins
+	// letzte Rueckkehr der Mindestform auf diesem Bein (Bug 2159): Platz, Stufe, Zeit, Besitzer - faellt danach binnen
+	// mbFailWin die Auswahl des Beins, ist sie gescheitert (control.go, mbFail)
+	mbStep struct {
+		s     *slot
+		stage int
+		at    int64
+		owner *Peer
+	}
 
 	// eigen: die letzte gewertete Probe (bestanden oder gescheitert) - Zielrate, Ergebnis, Zeit. Eine Rampen-Probe wird
 	// nur wiederholt, wenn diese auf dasselbe Ziel nicht gescheitert war (probeVerdict).
@@ -370,6 +378,13 @@ type slot struct {
 	min     bool
 	minAt   int64 // seit wann im Mindestbild
 	pauseAt int64
+	// Daempfung der Mindestform (Bug 2159), je Stufe (mbBack: Pause -> Mindestbild, mbFull: Mindestbild -> volle
+	// unterste Schicht): Aufschub nach gescheiterter Rueckkehr (0 = Grundwert minBack bzw. layerDwell) und letzte
+	// Rueckkehr, fuer mbOwner
+	mbDw     [2]time.Duration
+	mbUpAt   [2]int64
+	mbFailAt [2]int64 // letzte gescheiterte Rueckkehr dieser Stufe auf dem Bein (der Aufschub zaehlt ab dann)
+	mbOwner  *Peer
 	// Hysterese (layerStep): letzter Wechsel nach unten und fuer wen
 	downAt    int64
 	downOwner *Peer
