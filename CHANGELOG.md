@@ -16,6 +16,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Seiten-Sperre und Live-Abgleich im Browser (Feldfehler)
+- **Sperre kommt an:** Sperrt ein anderes Gerät oder ein anderer Tab die offene Seite, zeigt der Browser jetzt sofort das
+  Schloss und schützt Titel und Inhalt. Bisher blieb der Titel bearbeitbar und jedes Speichern endete mit „Nicht
+  gespeichert: Seite ist gesperrt“, ohne dass die Seite gesperrt aussah.
+- **Abgelehntes Speichern (423):** Kam die Sperre trotzdem nicht an, zeigt der Browser beim ersten abgelehnten Speichern
+  die Sperre mit Hinweis. Der getippte Titel bzw. Inhalt bleibt vorgemerkt und wird nach dem Entsperren (Klick aufs
+  Schloss) gespeichert, statt still verloren zu gehen.
+- **Peek (Eintrag einer Datenbank im Seitenfenster):** Änderungen anderer Geräte an Titelbild, Symbol, Eigenschaften,
+  Sperre und Titel kommen jetzt auch im Peek an. Der Rahmen meldet seine Seite als offen, das Hauptfenster reicht die
+  Ereignisse weiter. Bisher bekam der Peek nur Inhaltsänderungen über die Live-Bearbeitung.
+- Server: Sperren/Entsperren einer Seite steht mit Seiten-ID und Herkunft (Web/App/API) im Protokoll, ohne Inhalte.
+
 ### Behoben – Gruppenanrufe über den Knoten: Restpunkte
 - **Steuerkanal:** Bricht ein Knoten die Verbindung gleich nach seiner Anmeldung ab (vor oder während `welcome`), endet
   das jetzt wie jede andere Trennung (Knoten getrennt, kein hängender Eintrag) statt mit einem Serverfehler im Log. Test

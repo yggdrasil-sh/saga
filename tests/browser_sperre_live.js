@@ -24,6 +24,7 @@ const RUN = Date.now().toString(36).slice(-5);
     const p = await ctx.newPage(); p.errs = []; p.c423 = 0;
     p.on('pageerror', (e) => p.errs.push(e.message));
     p.on('response', (r) => { if (r.request().method() === 'PATCH' && r.status() === 423) p.c423++; });
+    await p.addInitScript(() => { document.addEventListener('hk-live', (e) => { if (e.detail && e.detail.type === 'live.hello') window.__hello = true; }); });
     await p.goto(BASE + '/notes'); await sleep(400);
     p.api = (m, u, b) => p.evaluate(([m, u, b]) => HK.api(m, u, b), [m, u, b]);
     return { ctx, p };
@@ -45,6 +46,7 @@ const RUN = Date.now().toString(36).slice(-5);
     await p.goto(BASE + '/notes?t=' + Date.now() + '#' + row);
     for (let i = 0; i < 60; i++) { if (await p.evaluate((id) => !!(HKPages.k.cur() && HKPages.k.cur().id === id && document.querySelector('#pg-editor .pm-doc')), row)) break; await sleep(100); }
     for (let i = 0; i < 20; i++) { if ((await st()).live) break; await sleep(250); }
+    for (let i = 0; i < 40; i++) { if (await p.evaluate(() => !!window.__hello)) break; await sleep(250); }   // Ereigniskanal steht
     await sleep(500);
   }
   async function until(fn, ms = 6000) { const t0 = Date.now(); let v; while (Date.now() - t0 < ms) { v = await fn(); if (v) return v; await sleep(200); } return v; }
@@ -78,6 +80,32 @@ const RUN = Date.now().toString(36).slice(-5);
   ok('Nach dem Entsperren ist der Titel gespeichert (nicht still verloren)', !!saved, await api('GET', '/api/notes/' + row));
   const s4 = await st();
   ok('Nach dem Entsperren: Schloss weg, Titel bearbeitbar', !s4.locked && !s4.icon && !s4.ro, s4);
+
+  // --- 3. Peek (Zeile aus der Datenbank-Ansicht im Rahmen /notes?embed=1, wie im Feld): Titelbild und Sperre eines
+  //        anderen Geraets kommen im Rahmen an (vorher: kein Ereigniskanal im Rahmen, keine Anwesenheit fuer die Zeile)
+  await p.goto(BASE + '/notes?t=' + Date.now() + '#' + db);
+  await p.waitForSelector('.db-row .db-open', { timeout: 15000 }).catch(() => null);
+  for (let i = 0; i < 40; i++) { if (await p.evaluate(() => !!window.__hello)) break; await sleep(250); }
+  await p.evaluate(() => { const b = document.querySelector('.db-row .db-open'); if (b) b.click(); });
+  const fr = async () => p.frames().find((x) => /embed=1/.test(x.url()));
+  let f = null;
+  for (let i = 0; i < 60; i++) {
+    f = await fr();
+    if (f && await f.evaluate((id) => !!(window.HKPages && HKPages.k.cur() && HKPages.k.cur().id === id), row).catch(() => false)) break;
+    await sleep(250);
+  }
+  ok('Peek offen mit der Zeile', !!f && await f.evaluate((id) => HKPages.k.cur().id === id, row).catch(() => false));
+  await sleep(1500);                                   // Rahmen meldet sich als anwesend
+  await other.api('PATCH', '/api/notes/' + row, { locked: true });
+  const pl = await until(async () => f && await f.evaluate(() => { const c = HKPages.k.cur(), b = document.getElementById('pg-lock');
+    return !!c && c.locked && !!b && !b.hidden && document.getElementById('pg-title').readOnly; }).catch(() => false), 8000);
+  ok('Peek: Sperre vom anderen Geraet kommt an (Schloss, Titel schreibgeschuetzt)', !!pl);
+  await other.api('PATCH', '/api/notes/' + row, { locked: false });
+  const cv = (await api('GET', '/api/covers')).covers[0].url;
+  await other.api('PATCH', '/api/notes/' + row, { cover: cv, cover_pos: 40 });
+  const pc = await until(async () => f && await f.evaluate((u) => { const c = HKPages.k.cur(); return !!c && c.cover === u; }, cv).catch(() => false), 8000);
+  ok('Peek: Titelbild vom anderen Geraet kommt an', !!pc, f && await f.evaluate(() => HKPages.k.cur().cover).catch(() => null));
+  await p.keyboard.press('Escape').catch(() => {}); await sleep(800);
 
   ok('Keine Seitenfehler', !p.errs.length && !other.errs.length, p.errs.concat(other.errs));
   await api('DELETE', '/api/notes/' + row).catch(() => {});

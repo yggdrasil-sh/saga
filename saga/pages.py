@@ -1367,6 +1367,9 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
                 sync_res = synced.after_save(c, sync_plan, uid, old[3] + 1, now, origin)
             except ValueError as ex:
                 raise _Reply(_bad(user_error(ex, t("ungültige Angabe"))))
+        if "locked" in b and bool(b["locked"]) != bool(old[4]):   # 2.5: Feldfaelle "Seite gesperrt" - wann und von wo (ohne Inhalt)
+            src = "App" if isinstance(origin, str) and origin.startswith("d") else ("API" if origin in (None, "api") else "Web")
+            print(f"notes: Seite {nid} {'gesperrt' if b['locked'] else 'entsperrt'} ({src})", flush=True)
         # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
         # meta: weder Inhalt noch Titel (Eigenschaften, Symbol, Ort ...) - rev bleibt, Web zieht still nach
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=by_, updated=now, origin=origin,

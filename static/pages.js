@@ -990,6 +990,12 @@
       if (err.message === 'conflict') { S.conflict = true; showConflict(err.data && err.data.by); state(T('Nicht gespeichert – Seite wurde zwischenzeitlich geändert'), 'err'); return; }
       // Freigabe entzogen, Teilen abgeschaltet (404) oder Rolle auf Lesen gefallen (403): verstaendlich melden, Text retten
       if ((err.status === 404 || err.status === 403) && S.cur && S.cur.id === id && foreign()) { lostAccess(err.status); return; }
+      // 423: anderswo gesperrt (Ereignis verpasst) - Sperre zeigen (Schloss, Titel/Inhalt schreibgeschuetzt); die Eingabe
+      // bleibt ungespeichert vorgemerkt und geht beim Entsperren (Schloss) mit, statt bei jeder Taste erneut abgelehnt zu werden
+      if (err.status === 423 && S.cur && S.cur.id === id) {
+        if (!S.cur.locked) { S.cur.locked = true; var lp = byId(id); if (lp) lp.locked = true; applyLock(); }
+        state(T('Nicht gespeichert: {err}', { err: err.message }), 'err'); lockHint(); return;
+      }
       if (navigator.onLine === false) { state(T('Gespeichert ✓'), 'quiet'); return; }      // zeigt den Offline-Hinweis (s. state)
       state(T('Nicht gespeichert: {err}', { err: err.message }), 'err');
     });
@@ -8770,7 +8776,9 @@
     var i = PK.ctx.ids.indexOf(id); $('peek-prev').disabled = i <= 0; $('peek-next').disabled = i < 0 || i >= PK.ctx.ids.length - 1;
     var f = $('peek-frame');
     peekFocus();
-    if (f.dataset.loaded) { try { f.contentWindow.location.hash = '#' + id; return Promise.resolve(); } catch (x) { /* neu laden */ } }
+    if (f.dataset.loaded) {
+      try { f.contentWindow.location.hash = '#' + id; f.contentWindow.postMessage({ hk: 'peek-shown' }, location.origin); return Promise.resolve(); } catch (x) { /* neu laden */ }
+    }
     f.dataset.loaded = '1'; f.src = '/notes?embed=1#' + id;
     return Promise.resolve();
   }
@@ -8780,6 +8788,7 @@
   $('peek-frame').addEventListener('load', function () { if (PK.id && !$('pg-peek').contains(document.activeElement)) peekFocus(); });
   function peekGone() {                        // Peek zu: Fokus zurueck zum Ausloeser (sofern noch da und sichtbar)
     var r = PK.ret, sel = PK.retSel; PK.ret = PK.retSel = null; PK.id = null; $('pg-peek').hidden = true;
+    try { $('peek-frame').contentWindow.postMessage({ hk: 'peek-hidden' }, location.origin); } catch (x) { /* Rahmen weg */ }
     function free() { var a = document.activeElement; return !a || a === document.body || a === $('peek-frame') || $('pg-peek').contains(a); }
     function back(x) { if (x && x.isConnected && x.getClientRects().length && free()) { try { x.focus({ preventScroll: true }); } catch (e) { /* egal */ } return true; } return false; }
     back(r); if (!sel) return;
@@ -8855,6 +8864,42 @@
       });
     }
   });
+  // Peek-Rahmen und Live (2.5, Feldfehler: Titelbild/Sperre eines anderen Geraets kam im Peek nie an): static/live.js laeuft
+  // im Rahmen nicht (kein zweiter Ereigniskanal je Fenster). Der Rahmen meldet seine Seite selbst als offen (Anwesenheit -
+  // nur dann schickt der Server note.changed), das Hauptfenster reicht die Ereignisse dieser Seite herein (peek-remote).
+  function peekRemote(ev) {
+    try { var w = $('peek-frame').contentWindow; if (w) w.postMessage({ hk: 'peek-remote', ev: ev }, location.origin); } catch (x) { /* Rahmen weg */ }
+  }
+  if (EMBED) {
+    var EP = { id: null, timer: null };
+    var epShown = function () { try { var f = window.frameElement; return !f || !f.closest('[hidden]'); } catch (x) { return true; } };
+    var epPing = function () {
+      var id = EP.id; if (!id || id < 0 || document.hidden || !epShown()) return;
+      api('POST', '/api/presence', { note_id: id, editing: false }).then(function (d) {
+        var c = S.cur;                                          // ohne Ereignis (Kanal des Hauptfensters weg): wie live.js
+        if (d && c && c.id === id && d.rev != null && c.rev != null && d.rev > c.rev) remoteChange({ id: id, rev: d.rev, updated: d.updated, by: d.by });
+      }).catch(function () { /* naechster Versuch */ });
+    };
+    var epLeave = function () {
+      var id = EP.id; if (!id || id < 0) return;
+      try {
+        fetch('/api/presence', { method: 'POST', keepalive: true, credentials: 'same-origin',
+                                 headers: { 'X-Saga': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ note_id: id, leave: true }) });
+      } catch (x) { /* egal */ }
+    };
+    document.addEventListener('hk-page-open', function (e) {
+      var id = e.detail && e.detail.id;
+      if (EP.id && EP.id !== id) epLeave();
+      EP.id = id || null; epPing(); clearInterval(EP.timer); EP.timer = setInterval(epPing, 20000);
+    });
+    window.addEventListener('pagehide', epLeave);
+    window.addEventListener('message', function (e) {
+      if (e.origin !== location.origin || e.source !== window.parent || !e.data) return;
+      if (e.data.hk === 'peek-remote') remoteChange(e.data.ev);
+      else if (e.data.hk === 'peek-hidden') epLeave();
+      else if (e.data.hk === 'peek-shown') epPing();
+    });
+  }
   if (EMBED) {                                                  // ICH bin der Rahmen: Esc an das Peek-Fenster melden
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -8896,6 +8941,7 @@
       if (S.cur && S.cur.id === id) { S.cur.locked = on; applyLock(); }
       var p = byId(id); if (p) p.locked = on;
       HK.toast(on ? T('🔒 Seite gesperrt') : T('🔓 Seite entsperrt'));
+      if (!on && S.cur && S.cur.id === id && (S.dirtyTitle || S.dirtyBody)) save();     // beim Sperren (423) abgelehnte Eingabe
     }).catch(function (err) { HK.toast(T('Nicht geändert: {err}', { err: err.message })); });
   }
   // --- Veroeffentlichen: Dialog aus dem Seitenmenue, Hinweis "Oeffentlich" im Seitenkopf ------------------------
@@ -9605,7 +9651,8 @@
   // Der vorhandene Konfliktweg (409 beim Speichern) bleibt die Absicherung.
   function busy() { return !!(S.dirtyBody || S.dirtyTitle || S.conflict || S.lost || S.checking || S.loading || S.inflight); }
   function remoteChange(ev) {
-    if (!S.cur || !ev || ev.id !== S.cur.id || EMBED) return;
+    if (!EMBED && PK.id && ev && ev.id === PK.id) peekRemote(ev);    // Eintrag im Peek: der Rahmen hat keinen eigenen Kanal
+    if (!S.cur || !ev || ev.id !== S.cur.id) return;
     if (!ev.gone && S.cur.kind === 'database') return;            // Datenbank: die Ansicht laedt selbst neu (hk-note-changed)
     if (ev.gone) { if (busy() && foreign()) lostAccess(404); else if (!busy()) openPage(ev.id); return; }
     var newer = ev.rev != null && S.cur.rev != null ? ev.rev > S.cur.rev : false;
@@ -9651,6 +9698,11 @@
       }
       if (!!n.wide !== !!S.cur.wide) { S.cur.wide = !!n.wide; $('page').classList.toggle('wide', S.cur.wide); }
       if (fontKnown(n)) { S.cur.font = n.font || null; S.cur.small = !!n.small; applyFont(S.cur); }
+      // Sperre (anderes Geraet/Tab, ebenfalls ein meta-Ereignis): Schloss und Schreibschutz still nachziehen
+      if (!!n.locked !== !!S.cur.locked) {
+        S.cur.locked = !!n.locked; var lp = byId(id); if (lp) lp.locked = S.cur.locked; applyLock();
+        if (!S.cur.locked && (S.dirtyTitle || S.dirtyBody)) save();
+      }
       var p = byId(id); if (p && p.icon !== n.icon) { p.icon = n.icon; renderTree(); renderCrumbs(); }
       var b = document.activeElement; if (!(b && $('pg-props').contains(b))) applyKind();
     }).catch(function () { /* naechstes Ereignis bzw. Oeffnen holt es nach */ });
