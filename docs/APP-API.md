@@ -570,7 +570,12 @@ Wie Notion: Entsteht unter einer Seite eine neue Unterseite, hängt der **Server
 einem Seitenverweis an – dieselbe Form, die die Editoren für „Verweis“/`[[` speichern:
 `{"id": "<neu>", "type": "paragraph", "data": {"text": "<a href=\"/notes#<id>\">🚀 Titel</a>"}}` (Text = Text-Symbol + Titel
 beim Anlegen bzw. „Unbenannt“; anzeigen wie jeden Seitenverweis: aktueller Titel und Symbol aus der Seitenliste). Steht
-ein leerer Absatz am Ende, kommt der Verweis davor.
+ein leerer Absatz am Ende, kommt der Verweis davor. Block-ID des automatischen Absatzes: `sub-…` bzw. `subu-…` (unbenannt
+angelegt) – Clients behalten Block-IDs wie immer.
+- **Erster Titel:** Bekommt eine unbenannt angelegte Seite (`subu-…`) ihren Titel (`PATCH` mit `title`, auch in Etappen
+  beim Tippen), schreibt der Server den Text des Absatzes in der Elternseite auf „Symbol Titel“ um (gleicher Schreibweg,
+  rev+1) – nur in den ersten **10 Minuten** nach dem Anlegen und nur, solange der Absatz genau der automatische Text zum
+  bisherigen Titel ist. Spätere Umbenennungen ändern den gespeicherten Text nicht.
 - **Wege:** `POST /api/notes` mit `parent_id`, `POST /api/notes/{id}/duplicate` (die Kopie steht direkt **hinter dem
   Verweis auf das Original**, sonst am Ende), `POST /api/gallery/{id}/use` (nur die Startseite `root`; die Seiten der
   Vorlage untereinander wie in der Vorlage), Import mit `parent_id` (oberste importierte Seiten, höchstens 50; Verweise

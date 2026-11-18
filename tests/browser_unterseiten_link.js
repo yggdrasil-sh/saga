@@ -78,6 +78,9 @@ const J = (x) => JSON.stringify(x);
     const bl = await get(par);
     ok(kind + ': Server - Verweis am Ende, Einleitung unveraendert', bl.length === 2 && bl[0].data.text === 'Einleitung zu den Projekten'
        && linksIn(bl, kid).length === 1 && J(bl[1]).indexOf('/notes#' + kid) >= 0, bl);
+    await until(async () => ((await get(par))[1] || { data: {} }).data.text.indexOf('Neues Projekt ' + kind) >= 0, 6000);
+    const blT = await get(par);
+    ok(kind + ': erster Titel -> gespeicherter Verweistext nachgezogen', blT[1] && blT[1].data.text === '<a href="/notes#' + kid + '">Neues Projekt ' + kind + '</a>', blT);
     await a.locator('.pg-row .pg-name', { hasText: T1 }).first().click();
     await until(async () => (await domLinks(a, kid)).length === 1);
     const dl = await domLinks(a, kid);
@@ -140,6 +143,8 @@ const J = (x) => JSON.stringify(x);
     const b5 = await get(p5);
     ok(kind + ': Eingabe UND Verweis gespeichert (nichts ueberschrieben)', b5.some((x) => x.data && x.data.text === 'Erster Satz und mehr')
        && linksIn(b5, sub).length === 1 && b5.some((x) => x.data && x.data.text === 'Zweiter'), b5);
+    ok(kind + ': automatischer Absatz behaelt seine ID beim Speichern durch den Editor (sub-...)', linksIn(b5, sub).length === 1
+       && /^subu?-/.test(linksIn(b5, sub)[0].id || ''), linksIn(b5, sub));
     const txt = await a.evaluate(() => (document.querySelector('#pg-editor [data-block-id="o1"]') || {}).textContent || '');
     ok(kind + ': Editor zeigt die eigene Eingabe weiter', /Erster Satz und mehr/.test(txt), txt);
     ok(kind + ': kein Konflikt-/Neu-laden-Hinweis', !(await a.evaluate(() => !!document.querySelector('#pg-conflict, #pg-remote'))));

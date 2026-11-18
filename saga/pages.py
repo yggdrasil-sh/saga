@@ -1391,6 +1391,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
         # Seitenbaum (notes.tree): nur Felder, die /api/notes zeigt (bzw. Titelbild) - Titel nur, wenn er sich aendert
         if moved_from is not None:          # andere Elternseite: geerbte Freigaben aendern sich (alte UND neue Kette)
             announce_shared(c, owner, nid, [nid], moved_from)
+        if "title" in b and _title_in(b["title"]) and _title_in(b["title"]) != (old[0] or ""):
+            sublink.retitle(c, uid, nid, old[0] or "", _title_in(b["title"]))     # 2.5 (Bug 2151): erster Titel -> Verweistext
         if relink:                          # 2.5 (Bug 2151): wie POST /move - Verweis wandert mit (saga.sublink)
             if relink[1] is not None:
                 sublink.link(c, uid, relink[1], nid, acc=acc)

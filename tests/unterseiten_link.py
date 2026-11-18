@@ -6,6 +6,8 @@ Geprueft (je mit Gegenprobe):
 - Nicht verlinkt: Elternseite Datenbank (Zeile), gesperrt (423-frei: Seite entsteht, Inhalt bleibt), Text-Notiz,
   archiviert; neue Vorlage (template); schon vorhandener Verweis (Verschieben zurueck) -> kein zweiter.
 - Geteilte Seite mit "Bearbeiten": Verweis kommt in die Seite des Eigentuemers; "Lesen" -> 403, Inhalt bleibt.
+- Erster Titel: unbenannt angelegt -> Titel (auch in Etappen, mit Symbol) zieht den automatischen Absatz nach;
+  Gegenproben: mit Titel angelegt, von Hand geaendert, nach 10 Minuten, gesperrte Elternseite, spaetere Umbenennung.
 - Duplizieren: Kopie direkt hinter dem Verweis auf das Original; ohne Verweis auf das Original -> ans Ende;
   aus einer eigenen Vorlage -> ans Ende (nicht hinter die Vorlage); Duplikat als Vorlage -> nichts.
 - Galerie (wiki) unter einer Seite: genau EIN Verweis (auf die Startseite), Innenleben der Vorlage unveraendert
@@ -264,6 +266,68 @@ def t_widget():
     ok("Gegenprobe: ohne Unterseiten-Block wieder Verweis", links_to(blocks(par), d["id"]) == [1], blocks(par))
 
 
+def t_retitle():
+    print("--- Erster Titel zieht den Verweistext nach (Entscheidung 18.11.) ---")
+    par = page("Titel-Eltern", [P("oben")])
+    st, d = new_sub(par, "")
+    kid = d["id"]
+    bl = blocks(par)
+    ok("Unbenannt angelegt: automatischer Absatz mit ID subu-...", is_link_para(bl[1], kid) and bl[1]["id"].startswith("subu-")
+       and "Unbenannt" in bl[1]["data"]["text"], bl)
+    rv = get(par)["rev"]
+    req("PATCH", f"/api/notes/{kid}", {"title": "Neu"})
+    req("PATCH", f"/api/notes/{kid}", {"title": "Neues Projekt"})        # Web speichert beim Tippen in Etappen
+    bl = blocks(par)
+    ok("Erster Titel (in Etappen): Verweistext = Titel, ID bleibt", bl[1]["data"]["text"] == '<a href="/notes#%d">Neues Projekt</a>' % kid
+       and bl[1]["id"].startswith("subu-") and get(par)["rev"] == rv + 2, (bl, get(par)["rev"], rv))
+    req("PATCH", f"/api/notes/{kid}", {"title": "Neues Projekt"})
+    ok("Gleicher Titel noch einmal: nichts", get(par)["rev"] == rv + 2)
+    # Symbol vor dem ersten Titel gesetzt
+    st, d = new_sub(par, "")
+    k2 = d["id"]
+    req("PATCH", f"/api/notes/{k2}", {"icon": "🚀"})
+    req("PATCH", f"/api/notes/{k2}", {"title": "Rakete"})
+    ok("Mit Symbol: 'Symbol Titel'", blocks(par)[links_to(blocks(par), k2)[0]]["data"]["text"] == '<a href="/notes#%d">🚀 Rakete</a>' % k2,
+       blocks(par))
+    # Gegenproben
+    st, d = new_sub(par, "Fest")
+    k3 = d["id"]
+    ok("(Ausgangslage) mit Titel angelegt: ID sub-...", blocks(par)[links_to(blocks(par), k3)[0]]["id"].startswith("sub-"))
+    rv = get(par)["rev"]
+    req("PATCH", f"/api/notes/{k3}", {"title": "Umbenannt"})
+    ok("Mit Titel angelegt, dann umbenannt: Verweistext bleibt", get(par)["rev"] == rv and "Fest" in blocks(par)[links_to(blocks(par), k3)[0]]["data"]["text"])
+    st, d = new_sub(par, "")
+    k4 = d["id"]
+    bl = blocks(par)
+    i = links_to(bl, k4)[0]
+    bl[i]["data"]["text"] = 'Siehe <a href="/notes#%d">Unbenannt</a>' % k4                   # von Hand geaendert
+    req("PATCH", f"/api/notes/{par}", {"body": json.dumps({"blocks": bl}), "format": "blocks"})
+    rv = get(par)["rev"]
+    req("PATCH", f"/api/notes/{k4}", {"title": "Hand"})
+    ok("Von Hand geaenderter Absatz: bleibt", get(par)["rev"] == rv and blocks(par)[i]["data"]["text"].startswith("Siehe "))
+    st, d = new_sub(par, "")
+    k5 = d["id"]
+    with connect() as c, c:
+        c.execute("UPDATE note SET created=created-700 WHERE id=?", (k5,))
+    rv = get(par)["rev"]
+    req("PATCH", f"/api/notes/{k5}", {"title": "Spaet"})
+    ok("Nach 10 Minuten benannt: bleibt 'Unbenannt' (nur Anzeige zieht nach)", get(par)["rev"] == rv
+       and "Unbenannt" in blocks(par)[links_to(blocks(par), k5)[0]]["data"]["text"])
+    st, d = new_sub(par, "")
+    k6 = d["id"]
+    req("PATCH", f"/api/notes/{par}", {"locked": True})
+    rv = get(par)["rev"]
+    req("PATCH", f"/api/notes/{k6}", {"title": "Hinter Schloss"})
+    ok("Gesperrte Elternseite: bleibt", get(par)["rev"] == rv)
+    req("PATCH", f"/api/notes/{par}", {"locked": False})
+    # spaetere Umbenennung nach dem ersten Titel innerhalb des Fensters zieht weiter nach (Etappen), danach nicht
+    with connect() as c, c:
+        c.execute("UPDATE note SET created=created-700 WHERE id=?", (kid,))
+    rv = get(par)["rev"]
+    req("PATCH", f"/api/notes/{kid}", {"title": "Ganz anders"})
+    ok("Spaetere Umbenennung (nach dem Fenster): Verweistext bleibt", get(par)["rev"] == rv and "Neues Projekt" in blocks(par)[1]["data"]["text"])
+
+
 def t_dup():
     print("--- Duplizieren ---")
     par = page("Dup-Eltern", [P("Kopf"), P("Ende")])
@@ -464,7 +528,7 @@ try:
     setup()
     cleanup()
     setup()
-    for fn in (t_create, t_not, t_widget, t_dup, t_gallery, t_move, t_conflict, t_api, t_import, t_live):
+    for fn in (t_create, t_not, t_widget, t_retitle, t_dup, t_gallery, t_move, t_conflict, t_api, t_import, t_live):
         if fn is t_live and os.environ.get("ULINK_NO_LIVE") == "1":
             continue
         try:                             # jeder Abschnitt fuer sich (Gegenprobe gegen alten Stand: alle Abschnitte melden)

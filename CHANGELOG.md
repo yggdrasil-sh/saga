@@ -47,6 +47,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Seitenbaum „+“ und Menü „Neue Unterseite“, Vorlagen (eingebaute, eigene, Galerie – nur die oberste neue Seite),
   Duplizieren (die Kopie steht direkt hinter dem Verweis auf das Original), Import mit Zielseite (oberste importierte
   Seiten), API v1/MCP `create_page`, Apps (`POST /api/notes`) und Seiten anderer Saga-Server.
+- Wird eine unbenannt angelegte Unterseite benannt, zieht ihr erster Titel den gespeicherten Verweistext einmal nach
+  („Symbol Titel“, in den ersten 10 Minuten nach dem Anlegen und nur, solange der Absatz unverändert ist) – so stimmen
+  auch Veröffentlichen, Export und Suche. Spätere Umbenennungen ändern ihn nicht; Editoren und Apps zeigen ohnehin den
+  aktuellen Titel.
 - Verschieben in eine andere Seite nimmt den Verweis mit: neu am Ende der Zielseite, in der alten Elternseite fallen
   Absätze weg, die nur aus diesem Verweis bestehen (Verweise im Fließtext bleiben).
 - Nicht bei Datenbanken (Zeilen bleiben Zeilen), gesperrten, archivierten Seiten und Text-Notizen, nicht für Vorlagen,

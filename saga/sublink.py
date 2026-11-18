@@ -20,6 +20,11 @@ Regeln (link):
 - Herkunft des Ereignisses: ORIGIN (keine Sitzung) - auch der Tab, der die Unterseite angelegt hat, bekommt die Aenderung
   an der Elternseite (seine eigene Herkunft wuerde ihn auslassen).
 
+retitle (erster Titel, Entscheidung 18.11.): wurde die Unterseite unbenannt angelegt ("Unbenannt", Block-ID "subu-..."),
+zieht ihr erster Titel den automatischen Absatz einmal nach (nur unveraendert, nur RETITLE_S nach dem Anlegen - das Web
+speichert den Titel beim Tippen in Etappen); spaetere Umbenennungen nicht (Editoren und Apps zeigen ohnehin den aktuellen
+Titel, der gespeicherte Text zaehlt fuer Veroeffentlichen, Export und Suche).
+
 unlink (Verschieben in eine andere Elternseite): aus der alten Elternseite fallen nur Absaetze weg, die ausschliesslich
 aus dem Verweis auf die verschobene Seite bestehen (Verweise im Fliesstext bleiben) - gleiche Bedingungen fuer die alte
 Elternseite (Seite, Block-Format, nicht gesperrt, 'Bearbeiten').
@@ -39,6 +44,8 @@ from saga.sharing import RANK, Access
 
 NOTE_BLOCKS_MAX = 200_000                  # wie saga.pages (Zeichen JSON je Seite)
 ORIGIN = "sublink"                         # Herkunft der Ereignisse (keine Sitzung/kein Tab, siehe oben)
+AUTO_ID, AUTO_UNTITLED = "sub-", "subu-"   # Block-ID des automatischen Absatzes (zufaellige IDs haben nie "-"); subu = unbenannt angelegt
+RETITLE_S = 600.0                          # so lange nach dem Anlegen zieht der erste Titel den Verweistext nach
 _TEXT_ICON = re.compile(r"[^/<>\"]{1,16}")
 
 
@@ -141,19 +148,67 @@ def _link(c, uid, parent, child, after, origin, acc):
     blocks = doc["blocks"]
     if _has_ref(row[3], blocks, child) or _has_subpages(blocks):
         return False
-    icon = ch[1] if isinstance(ch[1], str) and _TEXT_ICON.fullmatch(ch[1] or "") else ""
-    label = (ch[0] or "").strip() or t_lang(account_lang(row[0]), "Unbenannt")
-    text = f'<a href="/notes#{int(child)}">{escape((icon + " " if icon else "") + label, quote=False)}</a>'
+    text = auto_text(child, ch[1], ch[0], row[0])
     ids = {b.get("id") for b in _iter_blocks(blocks)}
-    bid = _new_block_id()
+    pre = AUTO_UNTITLED if not (ch[0] or "").strip() else AUTO_ID
+    bid = pre + _new_block_id()[:8]
     while bid in ids:
-        bid = _new_block_id()
+        bid = pre + _new_block_id()[:8]
     new = {"id": bid, "type": "paragraph", "data": {"text": text}}
     at = _top_with(blocks, after) + 1 if after else 0
     if at <= 0:                            # ans Ende - vor einen leeren Schluss-Absatz (bleibt zum Weiterschreiben)
         at = len(blocks) - 1 if blocks and _empty_para(blocks[-1]) else len(blocks)
     blocks.insert(at, new)
     return _write(c, uid, parent, row, doc, time.time(), origin)
+
+
+def auto_text(child, icon, title, owner):
+    """Text des automatischen Verweis-Absatzes: <a href="/notes#ID">Symbol Titel</a> (Text-Symbol, leer = "Unbenannt"
+    in der Sprache des Eigentuemers)."""
+    icon = icon if isinstance(icon, str) and _TEXT_ICON.fullmatch(icon or "") else ""
+    label = (title or "").strip() or t_lang(account_lang(owner), "Unbenannt")
+    return f'<a href="/notes#{int(child)}">{escape((icon + " " if icon else "") + label, quote=False)}</a>'
+
+
+def retitle(c, uid, child, old_title, new_title, origin=None):
+    """Erster Titel (Entscheidung 18.11.): eine unbenannt angelegte Unterseite bekommt ihren Titel -> der automatische
+    Verweis-Absatz in der Elternseite (ID "subu-...") wird auf "Symbol Titel" nachgezogen - nur, solange er noch genau
+    der automatische Text zum bisherigen Titel ist (also unveraendert) und nur in den ersten RETITLE_S Sekunden nach dem
+    Anlegen (das Web speichert den Titel beim Tippen in Etappen; spaetere Umbenennungen bleiben unberuehrt).
+    In der Transaktion von c; Fehler werden nicht weitergereicht. -> True, wenn geschrieben."""
+    if not (new_title or "").strip() or (new_title or "").strip() == (old_title or "").strip():
+        return False
+    sp = getattr(c, "savepoint", None)
+    try:
+        if sp is None:
+            return _retitle(c, uid, child, old_title, new_title, origin)
+        with sp():
+            return _retitle(c, uid, child, old_title, new_title, origin)
+    except Exception as ex:  # noqa: BLE001
+        print(f"sublink: Titel nachziehen {child}: {type(ex).__name__}: {ex}", flush=True)
+        return False
+
+
+def _retitle(c, uid, child, old_title, new_title, origin):
+    ch = c.execute("SELECT parent_id, icon, created, uid FROM note WHERE id=? AND deleted_at IS NULL", (child,)).fetchone()
+    if not ch or not ch[0] or time.time() - (ch[2] or 0) > RETITLE_S:
+        return False
+    parent = ch[0]
+    row = _row(c, parent)
+    if not _may(c, uid, parent, row) or AUTO_UNTITLED not in (row[3] or "") or _ref(child) not in (row[3] or ""):
+        return False
+    doc = json.loads(ensure_ids(row[3], "blocks", parent) or '{"blocks": []}')
+    if not isinstance(doc, dict) or not isinstance(doc.get("blocks"), list):
+        return False
+    before = {auto_text(child, ic, old_title, row[0]) for ic in (ch[1], "")}
+    hit = 0
+    for b in _iter_blocks(doc["blocks"]):
+        d = b.get("data") if isinstance(b.get("data"), dict) else None
+        if (b.get("type") == "paragraph" and d is not None and str(b.get("id") or "").startswith(AUTO_UNTITLED)
+                and d.get("text") in before):
+            d["text"] = auto_text(child, ch[1], new_title, row[0])
+            hit += 1
+    return bool(hit) and _write(c, uid, parent, row, doc, time.time(), origin)
 
 
 _ONLY = r'^(?:\s|&nbsp;| |<br\s*/?>)*<a href="/notes#{id}"(?:\s[^>]*)?>[^<]*</a>(?:\s|&nbsp;| |<br\s*/?>)*$'
