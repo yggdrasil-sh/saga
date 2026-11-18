@@ -345,6 +345,16 @@ type Leg struct {
 		at    int64
 		owner *Peer
 	}
+	// Stau auf der Leitung (Bug 2159, control.go jamTicks): Takte mit Ueberlast in Folge, Boden der Umlaufzeit,
+	// letzter Stau, letzter Schritt zurueck und Umlaufzeit dabei
+	overN     int
+	rttFloor  time.Duration
+	jamAt     int64
+	jamStepAt int64
+	jamRTT    time.Duration
+	rttPrev   time.Duration // Umlaufzeit im letzten Takt
+	rttHighAt int64         // seit wann die Umlaufzeit rttJam ueber dem Boden liegt (0 = nicht)
+	cutAt     int64         // letzte Ruecknahme der Auswahl des Beins
 
 	// eigen: die letzte gewertete Probe (bestanden oder gescheitert) - Zielrate, Ergebnis, Zeit. Eine Rampen-Probe wird
 	// nur wiederholt, wenn diese auf dasselbe Ziel nicht gescheitert war (probeVerdict).

@@ -36,6 +36,8 @@ type engRes struct {
 	minFlips  int             // Wechsel l <-> l* (alle Plaetze)
 	pauseBack int             // Wechsel Pause <-> Mindestbild (Kacheln)
 	backs     []time.Duration // Zeitpunkte (ab Beginn) der Rueckkehr einer Kachel aus der Pause
+	ticks     int             // gezaehlte Takte (nach dem Anlauf)
+	maxFull   time.Duration   // laengste Zeit am Stueck mit (fast) voller Schlange (>= 250 ms)
 	trans     map[string]int
 }
 
@@ -55,6 +57,14 @@ func (r engRes) String() string {
 
 // engRun: Leitung link (bit/s), Dauer d (die ersten 20 s zaehlen nicht), grundloser Zielsturz alle falsch (0 = nie).
 func engRun(t *testing.T, link float64, d, falsch time.Duration) engRes {
+	t.Helper()
+	return engRunOH(t, link, d, falsch, 1)
+}
+
+// engRunOH: ... die Leitung traegt oh x die gerechnete Rate (Kopfdaten, RTCP, weitere Tonstroeme, die der Knoten nicht
+// einrechnet - Container 400k: Sprecher auf l und drei Tonstroeme fuellten die Leitung). Die Umlaufzeit (ExtRTT) ist
+// 40 ms plus Schlange.
+func engRunOH(t *testing.T, link float64, d, falsch time.Duration, oh float64) engRes {
 	t.Helper()
 	er := newEstCfg(t, 1250e3, 600e3, 3, true)
 	er.pion = true
@@ -76,6 +86,8 @@ func engRun(t *testing.T, link float64, d, falsch time.Duration) engRes {
 	const dt = 0.2
 	r := engRes{link: link, falsch: falsch, trans: map[string]int{}}
 	q, sumQ := 0.0, 0.0
+	er.l.ExtRTT = func() time.Duration { return 40*time.Millisecond + time.Duration(q*float64(time.Second)) }
+	var fullRun int
 	var n, over, tileT, pauseT, minT, spkT, spkFull int
 	last := map[string]string{}
 	chg := map[string]int{}
@@ -99,6 +111,7 @@ func engRun(t *testing.T, link float64, d, falsch time.Duration) engRes {
 				er.sent += er.rates[s.Layer] * tidOf(s)
 			}
 		}
+		er.sent = (estAudio+er.sent)*oh - estAudio // auf der Leitung (auch fuer das GCC-Modell im naechsten Takt)
 		rate := estAudio + er.sent + er.fill
 		q += (rate - link) / link * dt
 		lost := false
@@ -123,6 +136,12 @@ func engRun(t *testing.T, link float64, d, falsch time.Duration) engRes {
 		}
 		if lost {
 			r.lossT++
+		}
+		if q >= 0.25 {
+			fullRun++
+			r.maxFull = max(r.maxFull, time.Duration(fullRun)*200*time.Millisecond)
+		} else {
+			fullRun = 0
 		}
 		sumQ += q
 		r.qMax = max(r.qMax, time.Duration(q*float64(time.Second)))
@@ -183,6 +202,7 @@ func engRun(t *testing.T, link float64, d, falsch time.Duration) engRes {
 		}
 	}
 	r.over = float64(over) / float64(max(n, 1))
+	r.ticks = n
 	r.qMean = time.Duration(sumQ / float64(max(n, 1)) * float64(time.Second))
 	r.pause = float64(pauseT) / float64(max(tileT, 1))
 	r.tileMin = float64(minT) / float64(max(tileT, 1))
@@ -229,14 +249,36 @@ func TestEngLeitungTraegtNicht(t *testing.T) {
 		if r.spkChg > 1 {
 			t.Errorf("%.0fk: Sprecher wechselt %.1f Mal je Minute (Ziel <= 1)", link/1000, r.spkChg)
 		}
-		if r.tileChg > 5 {
-			t.Errorf("%.0fk: Kachel wechselt %.1f Mal je Minute (Ziel <= 5)", link/1000, r.tileChg)
+		if r.tileChg > 6 {
+			t.Errorf("%.0fk: Kachel wechselt %.1f Mal je Minute (Ziel <= 6: ein gescheiterter Versuch je ~30 s)", link/1000, r.tileChg)
 		}
-		if r.lossT > 0 {
-			t.Errorf("%.0fk: %d Takte mit voller Schlange", link/1000, r.lossT)
+		if r.lossT*100 > r.ticks || r.maxFull > 2*time.Second {
+			t.Errorf("%.0fk: %d Takte mit voller Schlange, am Stueck bis %v (Ziel <= 1 %%, <= 2 s)", link/1000, r.lossT, r.maxFull)
 		}
 		if link >= 400e3 && r.pause > 0.02 {
 			t.Errorf("%.0fk: Kacheln %.0f %% der Zeit in Pause (Ziel: Mindestbild)", link/1000, 100*r.pause)
+		}
+	}
+}
+
+// TestEngLeitungStau: Die Leitung traegt nicht einmal den Sprecher auf voller unterster Schicht samt Ton (Kopfdaten,
+// weitere Tonstroeme: Faktor oh). Ton geht vor Bild (Container 400k: vorher RTT ~400 ms, Ton verdeckt 7,5 %): Die
+// Schlange bleibt im Mittel klein, laeuft nicht voll, der Sprecher laeuft im Mindestbild (so viel Bild, wie die Leitung
+// traegt), und er versucht die volle Schicht hoechstens etwa alle 30 s (jeder Versuch staut kurz, kein Dauerstau).
+// Vorher (58802e6 und Ziel 1/2 ohne Stau-Schritt): Schlange im Mittel 300 ms, voll in 100 % der Takte.
+func TestEngLeitungStau(t *testing.T) {
+	for _, c := range []struct{ link, oh float64 }{{220e3, 1.25}, {300e3, 1.7}} {
+		r := engRunOH(t, c.link, 4*time.Minute, 0, c.oh)
+		t.Log(r)
+		if r.qMean > 100*time.Millisecond {
+			t.Errorf("%.0fk x%.2f: Schlange im Mittel %v (Ziel < 100 ms)", c.link/1000, c.oh, r.qMean)
+		}
+		if r.lossT*100 > 3*r.ticks || r.maxFull > 2*time.Second {
+			t.Errorf("%.0fk x%.2f: %d von %d Takten mit voller Schlange, am Stueck bis %v (Ziel <= 3 %%, <= 2 s: kein Dauerstau)",
+				c.link/1000, c.oh, r.lossT, r.ticks, r.maxFull)
+		}
+		if r.spkChg > 6 {
+			t.Errorf("%.0fk x%.2f: Sprecher wechselt %.1f Mal je Minute (Ziel <= 6: ein Versuch je ~30 s und Anlauf)", c.link/1000, c.oh, r.spkChg)
 		}
 	}
 }
@@ -301,14 +343,14 @@ func TestEngLeitungTraegt(t *testing.T) {
 	}
 }
 
-// TestEngSpur: Spur je Takt fuer die Fehlersuche (ENG_SPUR=<kbit/s>[,falsch-s]), sonst uebersprungen.
+// TestEngSpur: Spur je Takt fuer die Fehlersuche (ENG_SPUR=<kbit/s>[,falsch-s[,oh[,Dauer-s]]]), sonst uebersprungen.
 func TestEngSpur(t *testing.T) {
 	v := os.Getenv("ENG_SPUR")
 	if v == "" {
 		t.Skip("ENG_SPUR nicht gesetzt")
 	}
-	var k, f float64
-	fmt.Sscanf(strings.ReplaceAll(v, ",", " "), "%g %g", &k, &f)
+	k, f, oh, sec := 0.0, 0.0, 1.0, 90.0
+	fmt.Sscanf(strings.ReplaceAll(v, ",", " "), "%g %g %g %g", &k, &f, &oh, &sec)
 	engSpur = func(er *estRoom, rate, q float64) {
 		st := ""
 		for _, s := range er.l.Layout() {
@@ -320,7 +362,7 @@ func TestEngSpur(t *testing.T) {
 			er.gcc/1000, er.l.EstimateKbit(), q*1000, er.fill > 0)
 	}
 	defer func() { engSpur = nil }()
-	t.Log(engRun(t, k*1000, 90*time.Second, time.Duration(f*float64(time.Second))))
+	t.Log(engRunOH(t, k*1000, time.Duration(sec*float64(time.Second)), time.Duration(f*float64(time.Second)), oh))
 }
 
 var engSpur func(er *estRoom, rate, q float64)

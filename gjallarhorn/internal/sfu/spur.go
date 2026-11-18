@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 )
@@ -67,8 +68,10 @@ func (l *Leg) spur(now int64) {
 		me = spurID(l.Peer.ID)
 	}
 	over := l.ExtOver != nil && l.ExtOver()
-	log.Printf("spur %s est=%dk gcc=%dk rate=%dk sperre=%.1fs backoff=%.0fs lag=%v ready=%v probe=%d over=%v%s",
-		me, int(e.bps/1000), int(e.gccLast/1000), int(e.rateTick/1000), hold, e.backoff.Seconds(), e.lag, e.ready, l.pr.stage, over, b.String())
+	jam := l.jamAt != 0 && now-l.jamAt < int64(time.Second)
+	log.Printf("spur %s est=%dk gcc=%dk rate=%dk sperre=%.1fs backoff=%.0fs lag=%v ready=%v probe=%d over=%v rtt=%d/%dms jam=%v%s",
+		me, int(e.bps/1000), int(e.gccLast/1000), int(e.rateTick/1000), hold, e.backoff.Seconds(), e.lag, e.ready, l.pr.stage, over,
+		l.rttPrev.Milliseconds(), l.rttFloor.Milliseconds(), jam, b.String())
 }
 
 // spurID: 16-Bit-Hash der Peer-Kennung (nicht umkehrbar, nur zum Zuordnen der Zeilen)
