@@ -208,6 +208,8 @@ try:
     ok(f"App-Widget: Symbolbild = PNG 256 ({s}, {h.get('content-type')})", s == 200 and h.get("content-type") == "image/png" and png_size(d)[0] == (256, 256))
     s, h, d = req("GET", f"/api/app/page-image/{pg}/icon?w=64", bearer=T)
     ok("App-Widget ?w=64 -> 64 px", s == 200 and png_size(d)[0] == (64, 64))
+    # Adresse je Seite/Konto: nicht 30 Tage oeffentlich zwischenspeichern (sonst bleibt das alte Symbol im Widget, pruef-siegel)
+    ok("App-Widget: Cache privat, kurz", h.get("cache-control") == "private, max-age=3600", h.get("cache-control"))
     s, _, d = req("POST", "/api/account/api-tokens", A, {"name": "Siegel-API", "scopes": ["write:pages", "write:db", "mcp"]})
     V = d.get("token") if isinstance(d, dict) else None
     s, _, d = req("POST", "/api/v1/pages", bearer=V, body={"title": "API-Siegel", "icon": "/siegel/smaragd/horn.svg"})

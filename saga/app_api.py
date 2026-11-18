@@ -216,6 +216,12 @@ def api_app_pages(request: Request):
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
+def _private(resp):
+    if resp.status_code in (200, 304):
+        resp.headers["Cache-Control"] = "private, max-age=3600"     # wie eigene Bilder unten
+    return resp
+
+
 @router.get("/api/app/page-image/{nid}/{which}")
 def api_app_page_image(nid: int, which: str, request: Request):
     """Widget "Seite": NUR Titelbild bzw. Symbol-Bild einer eigenen Seite (kein Zugriff auf andere Dateien).
@@ -228,11 +234,13 @@ def api_app_page_image(nid: int, which: str, request: Request):
     with _db() as c:
         r = c.execute("SELECT cover, icon, body, format FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, uid)).fetchone()
         url = "" if not r else (r[1] if which == "icon" else (r[0] or _first_image(r[2], r[3])))
+        # Galerie-Bild/Siegel: Datei oeffentlich, die Adresse hier aber je Seite und Konto - nicht 30 Tage oeffentlich
+        # zwischenspeichern (sonst zeigt das Widget nach einem Symbolwechsel lange das alte, pruef-siegel)
         if which == "cover" and covers.is_cover(url):     # 2.5: Bild der Titelbild-Galerie
-            return covers.serve(url.rsplit("/", 1)[1], request)
+            return _private(covers.serve(url.rsplit("/", 1)[1], request))
         sg = siegel.parse(url) if which == "icon" else None
         if sg:                                             # 2.5: Saga-Siegel - immer als PNG (Widgets zeigen kein SVG)
-            return siegel.serve(sg[0], sg[1] + ".png", request)
+            return _private(siegel.serve(sg[0], sg[1] + ".png", request))
         m = _FILE_URL.fullmatch(str(url or ""))
         f = m and c.execute("SELECT mime FROM file WHERE id=? AND uid=? AND is_image=1", (m.group(1), uid)).fetchone()
     path = os.path.join(FILES_DIR, m.group(1)) if f else ""
