@@ -213,6 +213,34 @@ func TestEngLeitungZahlen(t *testing.T) {
 	}
 }
 
+// TestEngLeitungTraegtNicht: Die Leitung traegt den Sprecher auf l, aber nicht zusaetzlich zwei Kacheln auf voller
+// unterster Schicht (400k, 480k) bzw. nicht einmal ein bzw. zwei Mindestbilder dazu (260k, 320k). Ziel 2159: Der
+// Sprecher laeuft in voller Form (vorher 9 / 31 / 9 / 100 % der Zeit; nur mit der Daempfung, ohne "Sprecher geht vor",
+// bei 320k 89 %), kein Pendeln (Zustandswechsel je Kachel und Minute vorher 20,7 / 20,7 / 13,6 / 26,2; jetzt ein
+// gescheiterter Versuch je 30 s, mbBackMax), keine volle Schlange; bei 400k zeigen beide Kacheln ein Mindestbild statt
+// einer Pause.
+func TestEngLeitungTraegtNicht(t *testing.T) {
+	for _, link := range []float64{260e3, 320e3, 400e3, 480e3} {
+		r := engRun(t, link, 4*time.Minute, 0)
+		t.Log(r)
+		if r.spkFull < 0.95 {
+			t.Errorf("%.0fk: Sprecher nur %.0f %% der Zeit in voller Form (Ziel >= 95 %%)", link/1000, 100*r.spkFull)
+		}
+		if r.spkChg > 1 {
+			t.Errorf("%.0fk: Sprecher wechselt %.1f Mal je Minute (Ziel <= 1)", link/1000, r.spkChg)
+		}
+		if r.tileChg > 5 {
+			t.Errorf("%.0fk: Kachel wechselt %.1f Mal je Minute (Ziel <= 5)", link/1000, r.tileChg)
+		}
+		if r.lossT > 0 {
+			t.Errorf("%.0fk: %d Takte mit voller Schlange", link/1000, r.lossT)
+		}
+		if link >= 400e3 && r.pause > 0.02 {
+			t.Errorf("%.0fk: Kacheln %.0f %% der Zeit in Pause (Ziel: Mindestbild)", link/1000, 100*r.pause)
+		}
+	}
+}
+
 // TestEngLeitungAufschub: 260k - jede Rueckkehr einer Kachel aus der Pause scheitert (Stau binnen 1 s). Der Abstand
 // der Versuche verdoppelt sich bis mbBackMax (30 s) und bleibt dort; vorher kam die Kachel alle ~6 s zurueck.
 func TestEngLeitungAufschub(t *testing.T) {

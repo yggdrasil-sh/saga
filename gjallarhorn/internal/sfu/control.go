@@ -876,11 +876,27 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		c.rate = rateOf(c)
 		sum += c.rate
 	}
+	// cause: Die Rate faellt kurz nach einer Rueckkehr - echter Stau, nicht ein grundloser Sturz des GCC-Ziels. Dann
+	// pausieren die Kacheln, bevor der Sprecher ins Mindestbild geht (der Sprecher geht vor; sonst lief er auf einer
+	// Leitung, die ihn und das Mindestbild einer Kachel nicht traegt, dauerhaft mit halber Bildrate).
 	// Nur mit Ueberlast laut GCC (ExtOver: Verzoegerung steigt bzw. Ziel im Abstieg): Ein grundloser Sturz des Ziels
 	// (Container, Fund B) kurz nach einer Rueckkehr ist kein Scheitern - sonst wartete der Platz ohne Grund im
 	// Mindestbild, und der naechste Sturz traefe den Sprecher.
+	// Der Sprecher geht nur ins Mindestbild, solange dafuer noch eine Kachel Bild zeigt (Bug 2159): Laeuft keine mehr,
+	// gewaenne sein Mindestbild nichts - er bleibt auf der vollen untersten Schicht wie vor 2152 (Labor/Container 400k:
+	// sonst lief er bei jedem Sturz des Ziels unter seine Rate wieder Sekunden lang mit halber Bildrate)
+	tileRun := func() bool {
+		for _, c := range cs {
+			if c.s.class == "tile" && c.idx >= 0 {
+				return true
+			}
+		}
+		return false
+	}
 	over := mb && l.mbStep.s != nil && now-l.mbStep.at < int64(mbFailWin) && (l.ExtOver == nil || l.ExtOver())
+	cause := false
 	if st := l.mbStep; mb && over && st.s != nil && st.s.owner == st.owner && now-st.at < int64(mbFailWin) {
+		cause = sum > keep
 		for _, c := range cs {
 			if c.s != st.s || c.idx != 0 {
 				continue
@@ -901,7 +917,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			}
 		}
 		for _, c := range cs {
-			if c.s.class == "speaker" && sum > keep {
+			if c.s.class == "speaker" && sum > keep && !cause && tileRun() {
 				toMin(c)
 			}
 		}
@@ -919,6 +935,23 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		sum -= c.rate
 		c.idx, c.rate, c.min = -1, 0, false
+	}
+	if cause {
+		for _, c := range cs {
+			if c.s.class == "speaker" && sum > keep && tileRun() {
+				toMin(c)
+			}
+		}
+	}
+	if mb && !tileRun() { // ... auch nicht, wenn die Kacheln erst danach pausierten (Anrufbeginn: Sprecher sonst 20 s halbiert)
+		for _, c := range cs {
+			if c.s.class == "speaker" && c.idx == 0 && c.min {
+				sum -= c.rate
+				c.min = false
+				c.rate = rateOf(c)
+				sum += c.rate
+			}
+		}
 	}
 	// Mindestbild zurueck: pausierte Kacheln (Budget) gehen dem Schritt des Sprechers nach oben vor - der Bedarf ihres
 	// Mindestbilds ist vorgemerkt (resv), solange der Sprecher plant
@@ -944,18 +977,20 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			}
 		}
 	}
+	held := 0.0 // vorgemerkte Reserve der Kacheln (resv), solange Sprecher bzw. Bildschirm planen
 	up := func(c *choice, maxIdx int) {
 		if c.min && c.idx == 0 && c.wasOff {
 			return // eben erst aus der Pause ins Mindestbild: in diesem Takt nicht weiter (minAt gilt noch nicht)
 		}
 		if c.min && c.idx == 0 {
 			// Mindestbild -> volle unterste Schicht: ein Schritt nach oben wie jeder andere (Reserve, Sperrzeit, Schonfrist,
-			// auf UDP hoechstens einer je Takt). Nach einer gescheiterten Rueckkehr wartet der Platz laenger (mbReady,
-			// Bug 2159).
+			// auf UDP hoechstens einer je Takt). Die Reserve pausierter Kacheln (held) zaehlt dabei nicht: Der Sprecher
+			// bekommt seine volle Form vor dem Mindestbild einer Kachel zurueck (Bug 2159). Nach einer gescheiterten
+			// Rueckkehr wartet der Platz laenger (mbReady).
 			old := c.rate
 			c.min = false
 			nr := rateOf(c)
-			need := sum - old + nr
+			need := sum - held - old + nr
 			lim := upLimit
 			other := oneUp && stepper != nil && stepper != c
 			if other {
@@ -971,7 +1006,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				deny(need)
 				return
 			}
-			sum, c.rate = need, nr
+			sum, c.rate = need+held, nr
 			stepper = c
 		}
 		for c.idx >= 0 && c.idx+1 < len(c.opts) && c.idx+1 <= maxIdx {
@@ -1084,15 +1119,27 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// Vorrang: Bildschirm, Sprecher, dann weitere Kacheln, dann (UDP)
 	// hoehere Kachelschichten
 	sum += resv
+	held = resv
 	for _, c := range cs {
 		if c.s.class == "screen" || c.s.class == "speaker" {
 			up(c, 2)
 		}
 	}
 	sum -= resv
+	held = 0
+	// Sprecher geht vor (Bug 2159): Laeuft er noch im Mindestbild (Aufschub, Sperrzeit), kommt keine Kachel dazu und
+	// keine geht hoeher - sonst naehme sie ihm die Rate, die er fuer seine volle Form braucht
+	spkMin := false
+	for _, c := range cs {
+		spkMin = spkMin || c.s.class == "speaker" && c.idx == 0 && c.min
+	}
 	mbOne := false
 	for _, c := range cs {
 		if !c.wasOff || len(c.opts) == 0 {
+			continue
+		}
+		if spkMin {
+			c.idx = -1
 			continue
 		}
 		c.idx = 0
@@ -1125,9 +1172,17 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			c.idx = -1
 		}
 	}
+	// ... ebenso keine Kachel ueber das Mindestbild, solange eine andere (mit Besitzer) eben erst pausiert hat (binnen
+	// upHold): lieber alle im Mindestbild als eine voll und eine ohne Bild. Nicht laenger - kommt die pausierte nicht
+	// zurueck (traegt die Leitung nicht), haelt sie die anderen nicht auf.
+	tileOff := false
+	for _, c := range cs {
+		tileOff = tileOff || mb && c.s.class == "tile" && c.idx < 0 && c.s.owner != nil && len(c.opts) > 0 &&
+			c.s.pauseAt != 0 && now-c.s.pauseAt < int64(upHold)
+	}
 	if !stream { // UDP-Kacheln duerfen bis zur mittleren Schicht
 		for _, c := range cs {
-			if c.s.class == "tile" {
+			if c.s.class == "tile" && !spkMin && !(tileOff && c.min) {
 				up(c, 1)
 			}
 		}
