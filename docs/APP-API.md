@@ -593,6 +593,12 @@ angelegt) – Clients behalten Block-IDs wie immer.
 - **`"link": false`** in der Anfrage (alle oben genannten Wege außer Import und MCP, auch `/api/v1/pages`) schaltet es ab – für Clients, die den
   Verweis selbst an der Schreibmarke einfügen (Web: „Neue Seite“ aus der Verweis-Auswahl) oder die neue Datenbank als Block
   einbetten. Ältere Server ignorieren den Schlüssel.
+- **Clients, die den Verweis selbst setzen** (Apps bis 2.5-rc: „/Seite“ legt an und schreibt `📄 <a href="/notes#ID">…</a>`
+  bzw. „/Datenbank“ einen Datenbank-Block): beim Speichern der Elternseite (`PATCH`, auch zusammengeführt) entfernt der
+  Server den automatischen Absatz (`sub-…`/`subu-…`), wenn in diesem Speichern ein anderer Verweis bzw. Datenbank-Block
+  auf dieselbe Seite neu dazukommt (bis 10 Minuten nach dem Anlegen) oder ein veralteter Client den schon entfernten
+  Absatz wieder mitschickt. Neue Clients schicken bei solchen Einfügungen besser gleich `"link": false`. Live-Räume
+  (`/api/collab`) laufen nicht über diese Bereinigung.
 - **Elternseite offen:** die Änderung ist eine normale Inhaltsänderung (rev+1, Version, Basisstand für das Zusammenführen,
   Ereignis `note.changed` – auch an das Gerät bzw. den Tab, der die Unterseite angelegt hat). Clients mit `merge: 1`
   führen ungespeicherte Eingaben wie bei jeder fremden Änderung zusammen; ohne `merge` gibt es den bekannten `409`.

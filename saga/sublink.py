@@ -211,6 +211,83 @@ def _retitle(c, uid, child, old_title, new_title, origin):
     return bool(hit) and _write(c, uid, parent, row, doc, time.time(), origin)
 
 
+_AUTO_TEXT = re.compile(r'^(?:\s|&nbsp;|\u00a0|<br\s*/?>)*<a href="/notes#([1-9][0-9]{0,17})">[^<]*</a>(?:\s|&nbsp;|\u00a0|<br\s*/?>)*$')
+
+
+def _auto_of(b):
+    """Automatischer Verweis-Absatz? -> Seiten-ID oder None (ID sub-/subu-, Absatz nur aus dem Verweis)."""
+    if not isinstance(b, dict) or b.get("type") != "paragraph" or not str(b.get("id") or "").startswith(("sub-", "subu-")):
+        return None
+    m = _AUTO_TEXT.match(str((b.get("data") or {}).get("text") or "") if isinstance(b.get("data"), dict) else "")
+    return int(m.group(1)) if m else None
+
+
+def _refs(blocks, child, skip_id):
+    """Verweise/Datenbank-Bloecke auf child ausserhalb des Blocks skip_id (Anzahl Bloecke)."""
+    r, n = _ref(child), 0
+    for b in _iter_blocks(blocks):
+        if b.get("id") == skip_id:
+            continue
+        d = b.get("data") if isinstance(b.get("data"), dict) else {}
+        if b.get("type") == "database" and d.get("db") == child:
+            n += 1
+        elif b.get("type") not in ("columns", "toggle", "synced") and r in json.dumps(d, ensure_ascii=False):
+            n += 1
+    return n
+
+
+def dedupe(c, old_body, body):
+    """Aeltere Apps (iOS/Android/Linux "/Seite" und "/Datenbank", Stand 2.5-rc) legen die Unterseite an und setzen danach
+    SELBST einen Verweis bzw. Datenbank-Block in die Elternseite - zusammen mit dem automatischen Absatz stuende sie doppelt
+    da. Beim Speichern der Elternseite (Stufe 1, auch zusammengefuehrt) faellt der automatische Absatz deshalb weg, wenn
+    - er schon gespeichert war und in diesem Speichern ein anderer Verweis auf dieselbe Seite neu dazukommt (nur in den
+      ersten RETITLE_S Sekunden nach dem Anlegen der Unterseite), oder
+    - er im gespeicherten Stand fehlt (veralteter Client schickt ihn noch einmal mit) und die Seite anderswo verlinkt ist.
+    -> body (unveraendert oder ohne diese Absaetze). Live-Raeume (collab, trusted) laufen nicht hierueber."""
+    if AUTO_ID not in body and AUTO_UNTITLED not in body:
+        return body
+    try:
+        doc = json.loads(body)
+        old = json.loads(old_body) if old_body else {}
+    except ValueError:
+        return body
+    blocks = doc.get("blocks") if isinstance(doc, dict) else None
+    if not isinstance(blocks, list):
+        return body
+    oblocks = old.get("blocks") if isinstance(old, dict) and isinstance(old.get("blocks"), list) else []
+    old_ids = {b.get("id") for b in _iter_blocks(oblocks)}
+    drop = set()
+    for b in _iter_blocks(blocks):
+        child = _auto_of(b)
+        if child is None or not _refs(blocks, child, b.get("id")):
+            continue
+        if b.get("id") not in old_ids:
+            drop.add(b.get("id"))
+            continue
+        if _refs(blocks, child, b.get("id")) > _refs(oblocks, child, b.get("id")):
+            r = c.execute("SELECT created FROM note WHERE id=?", (child,)).fetchone()
+            if r and time.time() - (r[0] or 0) <= RETITLE_S:
+                drop.add(b.get("id"))
+    if not drop:
+        return body
+
+    def walk(lst, depth=0):
+        if depth > 8 or not isinstance(lst, list):
+            return lst
+        out = [x for x in lst if not (isinstance(x, dict) and x.get("id") in drop)]
+        for x in out:
+            d = x.get("data") if isinstance(x, dict) and isinstance(x.get("data"), dict) else {}
+            if x.get("type") == "columns" and isinstance(d.get("cols"), list):
+                for col in d["cols"]:
+                    if isinstance(col, dict) and isinstance(col.get("blocks"), list):
+                        col["blocks"] = walk(col["blocks"], depth + 1)
+            elif x.get("type") in ("toggle", "synced") and isinstance(d.get("blocks"), list):
+                d["blocks"] = walk(d["blocks"], depth + 1)
+        return out
+    doc["blocks"] = walk(blocks)
+    return json.dumps(doc, ensure_ascii=False)
+
+
 _ONLY = r'^(?:\s|&nbsp;| |<br\s*/?>)*<a href="/notes#{id}"(?:\s[^>]*)?>[^<]*</a>(?:\s|&nbsp;| |<br\s*/?>)*$'
 
 

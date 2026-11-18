@@ -1321,6 +1321,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
                         body, sync_plan = body_checks(c, owner, nid, uid, old[1], old[2], body, caps, acc, trusted)
                     except nextcloud.Rejected as ex:
                         raise _Reply(_bad(str(ex), ex.status))
+                    if not trusted and old[2] == "blocks":     # 2.5 (Bug 2151): aeltere Apps setzen den Verweis selbst
+                        body = sublink.dedupe(c, old[1], body)
                 elif fmt == "text":
                     body = str(b["body"])
                     if len(body) > NOTE_BODY_MAX:

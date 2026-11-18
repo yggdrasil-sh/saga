@@ -8,6 +8,9 @@ Geprueft (je mit Gegenprobe):
 - Geteilte Seite mit "Bearbeiten": Verweis kommt in die Seite des Eigentuemers; "Lesen" -> 403, Inhalt bleibt.
 - Erster Titel: unbenannt angelegt -> Titel (auch in Etappen, mit Symbol) zieht den automatischen Absatz nach;
   Gegenproben: mit Titel angelegt, von Hand geaendert, nach 10 Minuten, gesperrte Elternseite, spaetere Umbenennung.
+- Aeltere Apps ("/Seite", "/Datenbank": legen an und setzen den Verweis bzw. Datenbank-Block selbst): automatischer Absatz
+  faellt beim Speichern weg (zusammengefuehrt und mit aktueller rev, auch wenn ein veralteter Client ihn wieder mitschickt);
+  Gegenproben: normales Speichern, spaeterer Verweis im Text.
 - Duplizieren: Kopie direkt hinter dem Verweis auf das Original; ohne Verweis auf das Original -> ans Ende;
   aus einer eigenen Vorlage -> ans Ende (nicht hinter die Vorlage); Duplikat als Vorlage -> nichts.
 - Galerie (wiki) unter einer Seite: genau EIN Verweis (auf die Startseite), Innenleben der Vorlage unveraendert
@@ -328,6 +331,47 @@ def t_retitle():
     ok("Spaetere Umbenennung (nach dem Fenster): Verweistext bleibt", get(par)["rev"] == rv and "Neues Projekt" in blocks(par)[1]["data"]["text"])
 
 
+def t_apps():
+    print("--- Aeltere Apps setzen den Verweis selbst (iOS/Android/Linux \"/Seite\") ---")
+    par = page("App-Eltern", [{"id": "a1", "type": "paragraph", "data": {"text": "oben"}}, {"id": "x1", "type": "paragraph", "data": {"text": ""}},
+                              {"id": "x2", "type": "paragraph", "data": {"text": ""}}])
+    g = get(par)
+    rev, mine = g["rev"], json.loads(g["body"])["blocks"]
+    kid = new_sub(par, "")[1]["id"]
+    dbid = new_sub(par, "Neue Datenbank", kind="database", icon="🗃️")[1]["id"]
+    ok("(Ausgangslage) Server setzte zwei automatische Absaetze", len(links_to(blocks(par), kid)) == 1 and len(links_to(blocks(par), dbid)) == 1)
+    mine[1] = {"id": "x1", "type": "paragraph", "data": {"text": '📄 <a href="/notes#%d">Unbenannt</a>' % kid}}      # wie iOS/Android/Linux
+    mine[2] = {"id": "x2", "type": "database", "data": {"db": dbid}}
+    st, d = req("PATCH", f"/api/notes/{par}", {"body": json.dumps({"blocks": mine}), "format": "blocks", "rev": rev, "merge": 1})
+    bl = blocks(par)
+    ok("App (alte rev, merge): nur der eigene Verweis und der eigene Datenbank-Block bleiben", st == 200 and [b["id"] for b in bl] == ["a1", "x1", "x2"]
+       and len(links_to(bl, kid)) == 1 and not any(b["id"].startswith("sub") for b in bl), (st, bl))
+    ok("Antwort (zusammengefuehrt) ohne den automatischen Absatz", "subu-" not in (d.get("body") or "") and "sub-" not in (d.get("body") or ""), d)
+    # Client hatte den automatischen Absatz schon (aktuelle rev, ohne merge) und setzt seinen eigenen dazu
+    par2 = page("App-Eltern 2", [P("oben")])
+    k2 = new_sub(par2, "")[1]["id"]
+    g = get(par2)
+    cur = json.loads(g["body"])["blocks"]
+    st, d = req("PATCH", f"/api/notes/{par2}", {"body": json.dumps({"blocks": cur + [{"id": "y1", "type": "paragraph", "data": {
+        "text": '📄 <a href="/notes#%d">Unbenannt</a>' % k2}}]}), "format": "blocks", "rev": g["rev"]})
+    ok("App (aktuelle rev): automatischer Absatz faellt weg", st == 200 and len(links_to(blocks(par2), k2)) == 1 and links_to(blocks(par2), k2) == [1], blocks(par2))
+    st, d = req("PATCH", f"/api/notes/{par2}", {"body": json.dumps({"blocks": cur + [{"id": "y1", "type": "paragraph", "data": {
+        "text": '📄 <a href="/notes#%d">Unbenannt</a> mehr' % k2}}]}), "format": "blocks"})
+    ok("Veralteter Client schickt ihn noch einmal mit: bleibt weg", st == 200 and len(links_to(blocks(par2), k2)) == 1, blocks(par2))
+    # Gegenproben
+    par3 = page("App-Eltern 3", [P("oben")])
+    k3 = new_sub(par3, "Normal")[1]["id"]
+    bl = blocks(par3)
+    bl[0]["data"]["text"] = "oben geaendert"
+    req("PATCH", f"/api/notes/{par3}", {"body": json.dumps({"blocks": bl}), "format": "blocks"})
+    ok("Gegenprobe: normales Speichern ohne zweiten Verweis -> automatischer Absatz bleibt", links_to(blocks(par3), k3) == [1])
+    with connect() as c, c:
+        c.execute("UPDATE note SET created=created-700 WHERE id=?", (k3,))
+    bl = blocks(par3) + [P('Siehe <a href="/notes#%d">Normal</a>' % k3)]
+    req("PATCH", f"/api/notes/{par3}", {"body": json.dumps({"blocks": bl}), "format": "blocks"})
+    ok("Gegenprobe: spaeter (nach 10 Minuten) ein Verweis im Text dazu -> beide bleiben", len(links_to(blocks(par3), k3)) == 2, blocks(par3))
+
+
 def t_dup():
     print("--- Duplizieren ---")
     par = page("Dup-Eltern", [P("Kopf"), P("Ende")])
@@ -528,7 +572,7 @@ try:
     setup()
     cleanup()
     setup()
-    for fn in (t_create, t_not, t_widget, t_retitle, t_dup, t_gallery, t_move, t_conflict, t_api, t_import, t_live):
+    for fn in (t_create, t_not, t_widget, t_retitle, t_apps, t_dup, t_gallery, t_move, t_conflict, t_api, t_import, t_live):
         if fn is t_live and os.environ.get("ULINK_NO_LIVE") == "1":
             continue
         try:                             # jeder Abschnitt fuer sich (Gegenprobe gegen alten Stand: alle Abschnitte melden)
