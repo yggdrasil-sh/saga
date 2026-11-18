@@ -89,6 +89,8 @@ FAELLE = [
     F("r4-4-eng", "group", 4, HORN, 3, ENG1),
     F("r4-wechsel", "group", 4, HORN, None, None, {"type": "handover", "at": 15, "who": 3}, 50),
     F("r4-teilen", "group", 3, HORN, None, None, {"type": "share", "at": 12, "who": 2}, 45),
+    # 2158: wie im Labor 4 Personen + Zweitgeraet, das teilt (5 Beine)
+    F("r4-teilen4", "group", 4, HORN, None, None, {"type": "share", "at": 12, "who": 3}, 45, "4er + Zweitgeraet teilt"),
     F("r4-voll", "group", 4, dict(HORN, horn_video=4), None, None, {"type": "full", "at": 10, "who": 3}, 35, "horn_video 4"),
     F("r4y-3-frei", "group", 3, HORN_Y, None, None, None, 45, "L1 ohne horn_from"),
     F("r4y-4-frei", "group", 4, HORN_Y, None, None, None, 45, "L1 ohne horn_from"),
