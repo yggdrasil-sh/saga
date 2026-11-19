@@ -16,6 +16,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Föderation: Ereignisse aus Werkzeug/CLI-Prozessen kommen sofort an statt nach ~46 s (Bugs-DB 2164)
+- Ein Namenswechsel, eine Kontolöschung oder `fed_dir.refresh_local` aus einem kurzlebigen Prozess (Werkzeug, CLI)
+  erreichte die andere Instanz erst nach rund 46 s. Ursache: Die Express-Zustellung lief nach dem Ende des Hauptthreads;
+  dann nimmt `concurrent.futures` keine Aufträge mehr an, die DNS-Auflösung in `saga/netguard.py` scheiterte mit
+  „cannot schedule new futures after interpreter shutdown“, und die schon gesperrte Ausgangskorb-Zeile blieb
+  3·`FED_EXPRESS_TIMEOUT`+30 s gesperrt, bis der Arbeiter des Servers sie zustellte. Jetzt löst netguard in diesem Fall in
+  einem eigenen Thread mit demselben Zeitlimit auf (das Ereignis geht noch im Werkzeug-Prozess raus), und scheitert die
+  Express-Zustellung an einem Fehler bei uns, gibt `_express_one` die Zeile sofort frei (kein Fehlversuch) – der Arbeiter
+  stellt dann beim nächsten Durchlauf zu, die Gegenseite verwirft eine Wiederholung über die Ereignis-Kennung.
+  Der Server-Prozess ist unverändert. Tests: `tests/foederation.py` (neu: Ausgangskorb direkt nach dem Werkzeug-Prozess
+  leer; erzwungener Fehlschlag → Zeile frei, genau einmal angekommen), `tests/foederation2.py`.
+
+### Behoben – BookOrbit verbinden: Ziel, das nach der Antwort sofort zurücksetzt, ergab 500 statt 400 (Bugs-DB 2166)
+- Beim Prüfen der tatsächlichen Verbindungs-IP (`saga/bookorbit.py`, `get_extra_info("server_addr")`) warf
+  `getpeername` `OSError ENOTCONN`, wenn die Gegenseite schon zurückgesetzt hatte (Wettlauf, z. B. bei einer Weiterleitung,
+  deren Anfragekörper das Ziel nicht liest). Jetzt gilt das wie ein Verbindungsfehler („nicht erreichbar“, 400).
+  Tests: `tests/bookorbit.py` erzwingt `ENOTCONN` und lässt ein Fake-Ziel, das nach der Antwort zurücksetzt, 40× direkt
+  und 3× über `POST /api/bookorbit/connect` laufen; `pg_dump` wird über `PATH` gesucht (auch `tests/import_trilium.py`).
+
 ### Behoben – Editor.js: BookOrbit-Kapitel-Liste wird nach dem Bearbeiten weiter nachgezogen (Bugs-DB 2162)
 - Mit Editor.js verlor die Kapitel-Liste der Buchseite (aus BookOrbit übernommen) beim ersten Speichern ihre
   Saga-Kennung (`data.bo`) – „Aus BookOrbit aktualisieren“ zählte neue Markierungen danach nicht mehr in der Liste
