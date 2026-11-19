@@ -30,7 +30,9 @@ tools/testumgebung/umgebung.sh stop 2                           # Reste beenden 
   (`UMG_GOBIN`), Python-Playwright (`UMG_PWLIB`) und `pg_trgm` (Paket `postgresql16-contrib`).
 - Ergebnis je Lauf: `$UMG/log/<reihe>[.<tag>].log`, Zeile in `$UMG/ergebnis.tsv`, Server-Log/Bilder unter `$UMG/run/<slot>/`.
 - Variablen: `UMG` (Standard `/srv/saga-test/tmp/umgebung`), `UMG_BIN`, `UMG_GOBIN`, `UMG_PWLIB`, `UMG_NS` (`um`),
-  `UMG_DB` (`saga_umg`), `UMG_LIMIT`, `UMG_SENV` (Server), `UMG_PYX` (PYTHONPATH der Reihe); alles andere geht an die Reihe.
+  `UMG_DB` (`saga_umg`), `UMG_LIMIT`, `UMG_SENV` (Server), `UMG_PYX` (PYTHONPATH der Reihe), `UMG_MESH_MAX` (Mesh-Grenze
+  senken, z. B. `3` für `browser_meeting_gruppe.js` über `knoten` – sonst fällt die Vierer-Gruppe oft auf Mesh zurück, solange
+  die Chat-Geräte ihre Fähigkeiten noch nicht gemeldet haben); alles andere geht an die Reihe.
 - Abbrechen: den Aufruf beenden, dann `umgebung.sh stop <slot>` – beendet nur die Prozesse im Namensraum
   (auch `timeout`/Chromium in eigenen Prozessgruppen); ein neuer Lauf auf demselben Slot räumt ebenso vorher auf.
 - Weitere Reihen mit den Werkzeugen von saga-test: `backup_extern.py`/`backup_persoenlich.py` (`age` aus `UMG_GOBIN`

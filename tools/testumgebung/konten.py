@@ -1,6 +1,7 @@
 """Testumgebung: Schema, Testkonten und Test-Einstellungen in der DB des Laufs; schreibt export-Zeilen nach <datei>.
 hk-test-a/b ohne Passwort (wie tools/stack-remote.sh), um-anna/um-ben/um-cora/um-dora mit Passwort UMG_PW.
-UMG_ALLOWED = "Freigegebene interne Hosts" (Attrappen). Aufruf: PYTHONPATH=. python tools/testumgebung/konten.py <datei>"""
+UMG_ALLOWED = "Freigegebene interne Hosts" (Attrappen). UMG_MESH_MAX=3 senkt die
+Mesh-Grenze (z. B. browser_meeting_gruppe ueber den Knoten: vier Personen > 3 -> Knoten statt Mesh-Rueckfall). Aufruf: PYTHONPATH=. python tools/testumgebung/konten.py <datei>"""
 import base64, json, os, shlex, sys
 from itsdangerous import TimestampSigner
 import auth, db
@@ -17,6 +18,11 @@ auth.save_setting("allowed_hosts", os.environ.get("UMG_ALLOWED", "127.0.0.1:5232
 if os.environ.get("UMG_HORN") == "1":          # Knoten-Laeufe: alle Anrufe ueber den eingebauten Knoten (calls.horn + horn_all)
     c = dict(auth.settings(fresh=True).get("calls") or {})
     c.update(enabled=True, horn=True, horn_all=True)
+    auth.save_setting("calls", c)
+if os.environ.get("UMG_MESH_MAX"):          # niedrigere Mesh-Grenze (calls.endpoints_video/audio): Gruppen ueber der Grenze laufen ueber
+    c = dict(auth.settings(fresh=True).get("calls") or {})   # den Knoten, auch wenn Geraete-caps noch fehlen (_old_members)
+    n = int(os.environ["UMG_MESH_MAX"])
+    c.update(endpoints_video=n, endpoints_audio=n)
     auth.save_setting("calls", c)
 
 
