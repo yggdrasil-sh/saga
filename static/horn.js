@@ -7,6 +7,8 @@
 // - Umschalter mit Hysterese: Verbindung weg / Knoten leert sich -> sofort; anderer Knoten besser -> nur wenn >= 25 % UND
 //   >= 30 ms besser, 20 s am Stueck, Mindestverweildauer 60 s, hoechstens 3 Wechsel je 10 min; UDP-Verlust > 20 % fuer 3 s
 //   -> TCP am selben Knoten; UDP wieder ok fuer 30 s -> zurueck, hoechstens 1x je 5 min
+// - Rueckweg (Bugs-DB 2201): vom Knoten ohne UDP (Tunnel-Knoten, Rahmen-Weg) zu einem Knoten, dessen UDP-Probe antwortet,
+//   reicht "um BACK_MS besser" - Dauer, Verweildauer und Wechselgrenze wie oben
 // - Kachelansicht bis 25: Spalten je Breite, Last-N (Desktop 9, Handy 4 bewegt, die uebrigen als Standbild mit Sprechring)
 // - Qualitaetspunkt (Empfangsqualitaet) aus RTT, Verlust und Einfrieren ueber 30 s mit Hysterese; Anzeige des Wegs UDP / TCP / TLS
 (function (root) {
@@ -30,6 +32,11 @@
     BETTER_REL: 0.25,       // anderer Knoten besser: mindestens 25 % ...
     BETTER_MS: 30,          // ... und mindestens 30 ms
     BETTER_FOR: 20000,      // ... fuer 20 s am Stueck
+    // Rueckweg (Bugs-DB 2201): Abzuege fuer fehlendes UDP und den Rahmen-Weg (zusammen 45 ms, mit dem Bonus "hier" des eigenen
+    // Knotens 20 ms) sind kein Messrauschen - mit 25 %/30 ms kam ein Geraet, das auf den Tunnel-Knoten ausgewichen war, von
+    // dort nie zum gleich weit entfernten Knoten mit UDP zurueck (der Beitritt haette diesen gewaehlt). Fuer diesen Weg
+    // genuegen 10 ms; Dauer, Verweildauer und Wechselgrenze bleiben, die Gegenrichtung (UDP -> Tunnel) bleibt bei 25 %/30 ms.
+    BACK_MS: 10,
     DWELL: 60000,           // Mindestverweildauer auf einem Knoten
     WINDOW: 600000,         // Fenster fuer die Wechselgrenze
     MAX_SWITCH: 3,          // hoechstens 3 Wechsel (wegen "besser") je 10 min
@@ -85,6 +92,15 @@
     if (!isFinite(cur)) return true;
     return cur - other >= K.BETTER_MS && other <= cur * (1 - K.BETTER_REL);
   }
+  // Rueckweg auf UDP? curPath = Weg der laufenden Verbindung, curCand = ihr Kandidat, c = anderer Kandidat, m = dessen Messung,
+  // devUdp = Geraet kann UDP. Nur vom Knoten ohne UDP fuer dieses Geraet (Tunnel-Knoten, TCP-Knoten) zu einem mit UDP-Antwort.
+  function back(curPath, curCand, c, m, devUdp) {
+    return !!(curPath !== 'udp' && !(curCand && curCand.udp) && devUdp !== false && c && c.udp && m && m.ok && m.udp != null);
+  }
+  function backBetter(cur, other) {
+    if (!isFinite(other)) return false;
+    return !isFinite(cur) || cur - other >= K.BACK_MS;
+  }
 
   // Umschalter mit Hysterese. now in ms. Zustand nur hier; der Aufrufer fuehrt den Wechsel aus und meldet ihn mit moved().
   function Switcher(o) {
@@ -120,10 +136,12 @@
   };
   // Knoten meldet Leeren bzw. wurde entfernt
   Switcher.prototype.draining = function () { return { act: 'switch', why: 'draining' }; };
-  // Laufende Beobachtung: cur = Punktzahl des aktuellen Knotens, others = [{node, score}]
+  // Laufende Beobachtung: cur = Punktzahl des aktuellen Knotens, others = [{node, score, back?}] (back: Rueckweg auf UDP, s. back())
   Switcher.prototype.observe = function (now, cur, others) {
     var best = null;
-    (others || []).forEach(function (x) { if (x.node !== this.node && better(cur, x.score) && (!best || x.score < best.score)) best = x; }, this);
+    (others || []).forEach(function (x) {
+      if (x.node !== this.node && (x.back ? backBetter(cur, x.score) : better(cur, x.score)) && (!best || x.score < best.score)) best = x;
+    }, this);
     if (!best) { this.cand = null; this.candSince = 0; return null; }
     if (!this.cand || this.cand !== best.node) { this.cand = best.node; this.candSince = now; return null; }
     if (now - this.candSince < K.BETTER_FOR) return null;
@@ -414,7 +432,7 @@
   // sie nicht - sonst setzte die fremde Probe die UDP-Frist auf 0 (UDP sofort aufgegeben) bzw. liesse auf sie warten.
   function fastProbe(f, node) { return f && f.node === node ? f.p : null; }
 
-  var api = { K: K, median: median, jitter: jitter, loadMs: loadMs, score: score, rank: rank, better: better, Switcher: Switcher,
+  var api = { K: K, median: median, jitter: jitter, loadMs: loadMs, score: score, rank: rank, better: better, back: back, backBetter: backBetter, Switcher: Switcher,
               closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName, bend: bend, bendable: bendable, ways: ways, streamPath: streamPath,
               TxGov: TxGov, txPlan: txPlan, RC: RC, Reconnect: Reconnect, reconnectList: reconnectList, retryAfterMs: retryAfterMs,
               fastProbe: fastProbe };

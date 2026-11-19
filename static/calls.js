@@ -4314,7 +4314,10 @@
           var curScore = H.L.score({ ok: true, rtts: cur.rtts.length ? cur.rtts : (m[cur.node] || {}).rtts, udp: cur.path === 'udp' ? 1 : null },
                                    { here: true, udp: cur.path === 'udp', load: (list.filter(function (c) { return c.node === cur.node; })[0] || {}).load,
                                      tcp: cc.tcp, tls: cc.tls, ws: cc.ws, frames: cc.frames }, true, fd);
-          var x = H.sw.observe(Date.now(), curScore, others.map(function (c) { return { node: c.node, score: H.L.score(m[c.node], c, true, fd) }; }));
+          // Bugs-DB 2201: Rueckweg vom Knoten ohne UDP (Tunnel/Rahmen-Weg) zu einem Knoten mit UDP-Antwort (horn.js back)
+          var x = H.sw.observe(Date.now(), curScore, others.map(function (c) {
+            return { node: c.node, score: H.L.score(m[c.node], c, true, fd), back: !!(H.L.back && H.L.back(cur.path, cc, c, m[c.node], true)) };
+          }));
           if (x) hornSwitch(R, 'better', { to: x.to });
         });
       }).catch(function () {});

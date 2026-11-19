@@ -363,5 +363,60 @@ ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.
   ok('fastProbe: ohne laufende Probe nichts', H.fastProbe(null, 'a') === null && H.fastProbe(undefined, 'a') === null);
 }
 
+// --- Bugs-DB 2201: Rueckweg vom Tunnel-Knoten (Rahmen-Weg, kein UDP) zum Knoten mit UDP ------------------------------
+// Wie calls.js hornMon: Punktzahl der laufenden Verbindung mit here:true und Weg ws, andere aus der frischen Probe; Beobachtung
+// alle 30 s (HORN_CANDS_EVERY), Switcher.moved wie hornAdopt. back = H.back(Weg, Kandidat der Verbindung, anderer, Messung, true).
+{
+  const tun = { node: 'saga', udp: false, tcp: false, tls: false, ws: true, frames: true, load: 0 };
+  const h1 = { node: 'horn-1', here: false, udp: true, tcp: true, tls: true, ws: true, frames: true, load: 0 };
+  const curS = (rtts, frames) => H.score({ ok: true, rtts, udp: null }, Object.assign({}, tun, { here: true }), true, frames);
+  const sT = curS([20, 20, 20], true), sH = H.score(m([20, 20, 20], 18), h1, true, true);
+  ok('2201: auf dem Tunnel-Knoten (Rahmen-Weg) 20 + 15 + 30 - 25 = 40, horn-1 gleich weit mit UDP 20', sT === 40 && sH === 20, [sT, sH]);
+  ok('2201: 25 %/30 ms verlangen mehr als die 20 ms Unterschied (Ursache: nie zurueck)', !H.better(sT, sH));
+  const bk = typeof H.back === 'function' && H.back('ws', tun, h1, m([20, 20, 20], 18), true);
+  ok('2201: Rueckweg erkannt (laufend ohne UDP, horn-1 mit UDP-Antwort)', bk === true, bk);
+  ok('2201: kein Rueckweg, wenn die UDP-Probe nicht antwortet, das Geraet kein UDP kann, der Kandidat kein UDP hat oder schon UDP laeuft',
+     typeof H.back === 'function' && !H.back('ws', tun, h1, m([20, 20, 20], null), true) && !H.back('ws', tun, h1, m([20, 20, 20], 18), false)
+     && !H.back('ws', tun, Object.assign({}, h1, { udp: false }), m([20, 20, 20], 18), true) && !H.back('udp', h1, tun, m([20, 20, 20], 18), true)
+     && !H.back('tcp', h1, Object.assign({}, h1, { node: 'horn-2' }), m([20, 20, 20], 18), true) && !H.back('ws', tun, h1, { ok: false }, true));
+  // Ablauf: Rueckfall auf den Tunnel-Knoten (lost) bei T0, UDP zu horn-1 bis T0+15 s gesperrt, dann frei
+  const run = (useBack, freeAt, frames, rttT, rttH) => {
+    const S = new H.Switcher({ node: 'horn-1', path: 'udp', now: 0 }), T0 = 100000, moves = [];
+    S.moved(T0, 'saga', 'ws', 'lost');
+    let node = 'saga';
+    for (let t = T0 + 30000; t <= T0 + 600000; t += 30000) {
+      const udpOk = t >= T0 + freeAt, onT = node === 'saga';
+      const mH = m([rttH, rttH, rttH], udpOk ? 3 : null), mT = m([rttT, rttT, rttT]);
+      const cur = onT ? curS([rttT, rttT, rttT], frames) : H.score({ ok: true, rtts: [rttH, rttH, rttH], udp: 1 }, Object.assign({}, h1, { here: true }), true, frames);
+      const oc = onT ? h1 : Object.assign({}, tun, { here: false }), om = onT ? mH : mT;
+      const x = S.observe(t, cur, [{ node: oc.node, score: H.score(om, oc, true, frames),
+                                     back: useBack && typeof H.back === 'function' && H.back(onT ? 'ws' : 'udp', onT ? tun : h1, oc, om, true) }]);
+      if (x) { moves.push({ t: t - T0, to: x.to }); node = x.to; S.moved(t, node, x.to === 'saga' ? 'ws' : 'udp', 'better'); }
+    }
+    return moves;
+  };
+  const mv = run(true, 15000, true, 20, 20);
+  ok(`2201: UDP frei nach 15 s -> zurueck auf horn-1 binnen 90 s (nach ${mv.length ? (mv[0].t - 15000) / 1000 : '-'} s; danach kein Flattern in 10 min)`,
+     mv.length === 1 && mv[0].to === 'horn-1' && mv[0].t - 15000 <= 90000, mv);
+  const mv0 = run(false, 15000, true, 20, 20);
+  ok('2201 Gegenprobe (Regel wie vor dem Fix): bleibt 10 min auf dem Tunnel-Knoten', mv0.length === 0, mv0);
+  ok('2201: UDP bleibt gesperrt -> bleibt auf dem Tunnel-Knoten (35 gegen 40)', run(true, 1e9, true, 20, 20).length === 0);
+  const far = run(true, 15000, true, 20, 45);
+  ok('2201: horn-1 deutlich weiter weg (45 gegen 20 ms) -> bleibt (wie beim Beitritt)', far.length === 0, far);
+  const hul = run(true, 15000, false, 20, 20);
+  ok('2201: Huelle mit Tunnel (kein Rahmen-Weg, 10 gegen 20) -> bleibt wie bisher', hul.length === 0, hul);
+  const fld = run(true, 15000, true, 83, 25);
+  ok('2201: Feldwerte (ws 83 ms, horn-1 25 ms) -> zurueck, einmal', fld.length === 1 && fld[0].to === 'horn-1', fld);
+  // Gegenrichtung: auf horn-1 mit UDP nie per Rueckweg-Regel weg (Tunnel-Kandidat bekommt kein back)
+  const S2 = new H.Switcher({ node: 'horn-1', path: 'udp', now: 0 });
+  let away = null;
+  for (let t2 = 0; t2 < 600000 && !away; t2 += 30000) {
+    const b2 = typeof H.back === 'function' && H.back('udp', h1, tun, m([5, 5, 5]), true);
+    away = S2.observe(t2, H.score({ ok: true, rtts: [20, 20, 20], udp: 1 }, Object.assign({}, h1, { here: true }), true, true),
+                      [{ node: 'saga', score: H.score(m([5, 5, 5]), tun, true, true), back: b2 }]);
+  }
+  ok('2201: auf horn-1 (UDP) zieht ein naeherer Tunnel-Knoten (5 ms) nicht weg', away === null, away);
+}
+
 console.log(`\nHORN-LOGIK ${res.filter(Boolean).length}/${res.length}` + (res.every(Boolean) ? ' - ALLES GRUEN' : ' - FEHLER'));
 process.exit(res.every(Boolean) ? 0 : 1);

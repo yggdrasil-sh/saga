@@ -26,6 +26,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   rechts frei ist (844×390 in Galerie und beim Teilen, 1000×497, zurück auf 1280×720; Knoten auch Sprecher).
   Testumgebung: `UMG_MESH_MAX` senkt die Mesh-Grenze, damit die Vierer-Gruppe zuverlässig über den Knoten läuft.
 
+### Behoben – Anruf über den Knoten: Rückkehr vom Tunnel-Knoten zum Knoten mit UDP (Bugs-DB 2201)
+- Ein Browser, der auf den eingebauten Knoten im Tunnel-Betrieb (Weg `ws`, Rahmen-Weg, kein UDP) ausgewichen war, kam
+  von dort zu einem gleich weit entfernten Knoten mit UDP (z. B. horn-1) nicht mehr zurück: die festen Abzüge für fehlendes
+  UDP und den Rahmen-Weg (mit dem Bonus „Anruf hier“ 20 ms) blieben unter der Wechselschwelle (25 % und 30 ms). Der Anruf
+  blieb als Kaskade über beide Knoten. Jetzt genügen für diesen Rückweg 10 ms, wenn die UDP-Probe des anderen Knotens
+  antwortet; 20 s am Stück, 60 s Verweildauer und höchstens 3 Wechsel je 10 min gelten weiter, die Gegenrichtung bleibt
+  unverändert. Feld 19.11.: der Abgang auf den Tunnel-Knoten kam von einem „besser“-Wechsel unter CPU-Last
+  (aufgeblähte Ping-Zeiten).
+- Tests: `tests/horn_logik.js` (Rückweg nach UDP-Sperre binnen 45 s, Gegenprobe, kein Flattern, Hülle und ferner Knoten
+  wie bisher).
+
 ### Behoben – Anruf: nach der Übernahme iPhone → Mac (Safari/WebKit, Mac-App) kein Ton (Bugs-DB 2198)
 - Das übernehmende Gerät tritt erst stumm bei; die Web-Oberfläche meldete das per Media Session
   `setMicrophoneActive(false)` – WebKit schaltet damit die Aufnahme selbst stumm und lehnt das Wiedereinschalten ohne
