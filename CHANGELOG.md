@@ -35,6 +35,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Tests: `tests/bookorbit.py` erzwingt `ENOTCONN` und lässt ein Fake-Ziel, das nach der Antwort zurücksetzt, 40× direkt
   und 3× über `POST /api/bookorbit/connect` laufen; `pg_dump` wird über `PATH` gesucht (auch `tests/import_trilium.py`).
 
+### Geändert – Editor.js: Test „fremde Änderung im selben Absatz“ geschärft (Bugs-DB 2165)
+- Der Suite-Fund „eigene Zeichen landen um den fremden Text versetzt“ betraf nicht Editor.js: Der Suite-Runner startet
+  Browser-Reihen mit `SAGA_EDITOR=tiptap`, `tests/browser_editorjs_fremd.js` lief dort als Tiptap-Gegenprobe ohne
+  `notes.live` – deren rote Fälle („gleich“, „ruhend“) sind dort bekannt. Mit Editor.js ist die Reihe grün (Admin
+  `editor.engine` `choice` und `editorjs`, `notes.live` an und aus). Neu in der Reihe: Fall „mitte“ (Schreibmarke mitten
+  im Absatz, fremder Text davor – Weitertippen muss an derselben Textstelle landen); bei Tiptap ohne `notes.live` meldet
+  die Reihe selbst, dass sie nur als Vergleich läuft.
+
 ### Behoben – Editor.js: BookOrbit-Kapitel-Liste wird nach dem Bearbeiten weiter nachgezogen (Bugs-DB 2162)
 - Mit Editor.js verlor die Kapitel-Liste der Buchseite (aus BookOrbit übernommen) beim ersten Speichern ihre
   Saga-Kennung (`data.bo`) – „Aus BookOrbit aktualisieren“ zählte neue Markierungen danach nicht mehr in der Liste
