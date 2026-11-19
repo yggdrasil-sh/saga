@@ -709,7 +709,10 @@ def ingest(nid, rev=None):
                     live, live_title = model.read(room.doc, _Resolver(c, room.owner, room.base), _mask_doc(room.base))
                     _unmask(c, live)
                     _restore_links(c, room, live)
-                target, _ = merge.merge_doc(room.base, live, theirs, None, {"by": "", "name": ""}, time.time())
+                ed = room.editor              # Bugs-DB 2176: Konfliktblock = Live-Fassung -> Urheber, wer zuletzt live schrieb
+                with _db() as c:
+                    by = {"by": (ed if is_remote(ed) else local_ref(ed)) if ed else "", "name": (names(c, [ed]).get(ed) or "") if ed else ""}
+                target, _ = merge.merge_doc(room.base, live, theirs, None, by, time.time())
                 # Bug 2173: wie gespeichert bereinigen (Konfliktblock-Stempel by "", at) - sonst passte das Doc nicht zu
                 # clean_blocks, _read_body lehnte jedes folgende Update ab (sanitize) und der Raum materialisierte nicht mehr
                 from saga import pages

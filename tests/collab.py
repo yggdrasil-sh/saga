@@ -405,6 +405,13 @@ try:
         return len(bl) == 3 and len(cf) == 1 and any(x["data"]["text"].endswith(" weiter") for x in bl) \
             and json.loads(clean_blocks(json.dumps({"blocks": bl}))[0])["blocks"] == bl
     ok("2173: materialisiert (Konfliktblock, Weitergetipptes, clean_blocks-fest)", wait_for(k_ok, 8.0))
+    # Bugs-DB 2176: der Konfliktblock behaelt Zeitpunkt (at, Unix-Sekunden ~1,8e9 - vorher von _num_ok < 1e9 verworfen) und
+    # Urheber (by/name: wer live geschrieben hat - vorher by "")
+    cf = next((x["tunes"]["hkconflict"] for x in body_of(kn)[0] if (x.get("tunes") or {}).get("hkconflict")), {})
+    cl = next((x.get("tunes", {}).get("hkconflict") for x in k1.blocks(kn)[0]["blocks"] if (x.get("tunes") or {}).get("hkconflict")), {})
+    ok(f"2176: Konfliktblock mit at (jetzt) und Urheber (by = Handle von A, name) ({cf})",
+       abs((cf.get("at") or 0) - time.time()) < 60 and cf.get("by") == local_ref(A) and bool(cf.get("name")))
+    ok(f"2176: ... ebenso live im Doc ({cl})", cl.get("by") == local_ref(A) and abs((cl.get("at") or 0) - time.time()) < 60)
     k1.close()
     # Pruefung 2173: Konfliktblock macht das Merge-Ergebnis zu gross fuer clean_blocks (TooLarge) -> die noch nicht
     # materialisierte Live-Eingabe darf NICHT durch den Rueckfall auf den fremden Stand aus dem Doc verschwinden.

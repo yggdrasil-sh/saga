@@ -59,6 +59,11 @@ doc = {"blocks": [
     {"id": "s2", "type": "synced", "data": {"sid": "kurz", "blocks": "nein"}},
     {"id": "k6", "type": "columns", "data": {"cols": [{"w": 1, "blocks": [P(f"k6{i}", str(i))]} for i in range(6)]}},
     {"id": "k7", "type": "columns", "data": {"cols": [{"w": 1, "blocks": []} for _ in range(7)]}},
+    {"id": "ht", "type": "paragraph", "data": {"text": "Zeit"}, "tunes": {"hkconflict": {"by": "~abcdefghijklmnop", "at": 1795600000.1234}}},
+    {"id": "hu", "type": "paragraph", "data": {"text": "Zeit"}, "tunes": {"hkconflict": {"at": 1e12}}},
+    {"id": "hv", "type": "paragraph", "data": {"text": "Zeit"}, "tunes": {"hkconflict": {"at": -5}}},
+    {"id": "hw", "type": "paragraph", "data": {"text": "Zeit"}, "tunes": {"hkconflict": {"at": True}}},
+    {"id": "iw", "type": "image", "data": {"file": {"url": "/files/" + "a" * 24}, "width": 1.5e9}},
     {"id": "hc", "type": "paragraph", "data": {"text": "Fassung"}, "tunes": {"hkconflict": {"by": "~abcdefghijklmnop", "name": "<b>Anna</b>", "at": 1.5, "of": "hc0", "x": 1}, "evil": {}}},
 ]}
 out = {b["id"]: b for b in json.loads(clean_blocks(json.dumps(doc))[0])["blocks"]}
@@ -76,6 +81,13 @@ ok("6 Spalten mit Breiten", len(out["k6"]["data"]["cols"]) == 6 and all(c.get("w
 ok("7 Spalten: keine Breiten (ueber COLS_MAX)", not any("w" in c for c in out["k7"]["data"]["cols"]))
 ok(f"hkconflict bleibt bereinigt, fremde Tunes weg ({out['hc'].get('tunes')})",
    out["hc"].get("tunes") == {"hkconflict": {"by": "~abcdefghijklmnop", "name": "bAnna/b", "at": 1.5, "of": "hc0"}})
+
+ok(f"2176: hkconflict.at als Unix-Zeitstempel bleibt (gerundet), by bleibt ({out['ht'].get('tunes')})",
+   out["ht"].get("tunes") == {"hkconflict": {"by": "~abcdefghijklmnop", "at": 1795600000.123}})
+ok(f"2176: at zu gross / negativ / bool faellt weg ({[out[k].get('tunes') for k in ('hu', 'hv', 'hw')]})",
+   all(out[k].get("tunes") == {"hkconflict": {}} for k in ("hu", "hv", "hw")))
+ok(f"2176: andere Zahlen bleiben streng (_num_ok < 1e9: Bildbreite 1,5e9 faellt weg) ({out['iw']['data'].get('width')})",
+   "width" not in out["iw"]["data"])
 
 # --- P6-1: Vorschaubild (render.h/stale), MathML-Positivliste, Veroeffentlichen -----------------------------------------
 ok("src_hash: SHA-256 des Quelltexts, 16 Zeichen", src_hash("x^2") == __import__("hashlib").sha256(b"x^2").hexdigest()[:16])

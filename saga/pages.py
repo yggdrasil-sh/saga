@@ -244,6 +244,14 @@ def _num_ok(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e9
 
 
+TS_MAX = 1e11                             # Bugs-DB 2176: Unix-Zeitstempel (Sekunden, ~1,8e9) - bis ins Jahr 5138
+
+
+def _ts_ok(v):
+    """Zeitpunkt in Sekunden (hkconflict.at): Zahl > 0 und < TS_MAX (eigene Grenze - _num_ok bleibt fuer Masse < 1e9)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and 0 < v < TS_MAX
+
+
 _CONFLICT_BY = re.compile(r"~[a-z2-7]{16}|@(?:[a-z0-9][a-z0-9_-]{1,31}|~[a-z2-7]{16})@[a-z0-9.:-]{1,260}|[a-z0-9][a-z0-9_.@-]{0,63}")
 
 
@@ -265,7 +273,7 @@ def _clean_hkstyle(typ, tunes):
             x["by"] = cf["by"]
         if isinstance(cf.get("name"), str):
             x["name"] = re.sub(r"[<>&\x00-\x1f]", "", cf["name"])[:80]
-        if _num_ok(cf.get("at")):
+        if _ts_ok(cf.get("at")):
             x["at"] = round(float(cf["at"]), 3)
         if isinstance(cf.get("of"), str) and BLOCK_ID_RE.fullmatch(cf["of"]):
             x["of"] = cf["of"]                    # ID des Originals (Fassung "uebernehmen" ersetzt es)

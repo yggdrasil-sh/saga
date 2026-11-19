@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Gleichzeitig bearbeiten: Konfliktblöcke behalten Zeitpunkt und Urheber (Bugs-DB 2176)
+- Die Bereinigung (`clean_blocks`) ließ bei `hkconflict.at` nur Zahlen unter 10⁹ zu – heutige Unix-Zeitstempel
+  (~1,8·10⁹) fielen weg. `at` hat jetzt eine eigene Prüfung (`_ts_ok`, 0 < at < 10¹¹); alle anderen Zahlen bleiben
+  bei der strengen Grenze. Beim Übernehmen während einer Live-Sitzung (`collab.ingest`) trägt der Konfliktblock jetzt
+  als Urheber, wer zuletzt live geschrieben hat (vorher leer).
+- Tests: `tests/editor_inline.py` 114/114 (ohne den Fix 112/114), `tests/collab.py` 79/79 (77/79); unverändert grün
+  `crdt_modell` 526/526, `merge` 95/95, `pm_vectors` 2391/2391, `synced_blocks` 52/52, `markenerhalt` 34/34,
+  `collab_sperre_grund` 13/13.
+
 ### Behoben – Gruppenanrufe: ein gerade verbundenes Gerät klingelt auch, wenn es seine Fähigkeiten erst nach dem Start meldet (Bugs-DB 2174)
 - Eingeladen wird nur, wer ein Gerät mit „multi“ (über den Knoten: „horn“/„horn_ring“) gemeldet hat; sonst steht die
   Einladung auf „braucht Saga 2.4“. Ein frisch verbundener Browser oder eine App meldet das erst Sekunden nach dem
