@@ -115,7 +115,10 @@ function installHelpers() {
   const reg = await p.evaluate(() => window.HKTools.types().sort().join(','));
   ok('HKTools: database, tasks, calendar, widget, buttons registriert', reg === 'buttons,calendar,database,tasks,widget', reg);
   const sl = await p.evaluate(() => window.HKTools.slash().map((x) => x.type + ':' + x.title));
-  ok(`Slash-Eintraege aus den Werkzeugen (${sl.length})`, sl.length === 13 && sl.some((x) => x === 'widget:Widget: Uhr') && sl.indexOf('database:Datenbank') >= 0, sl);
+  // 15 = Datenbank, Aufgaben, Kalender, Knoepfe + 11 Widget-Arten; seit 2.5 dazu "Widget: Lesen" (BookOrbit) und
+  // "Unterseiten" (static/pages.js:7225 WG_KINDS, Titel :7288)
+  ok(`Slash-Eintraege aus den Werkzeugen (${sl.length})`, sl.length === 15 && sl.some((x) => x === 'widget:Widget: Uhr') && sl.indexOf('database:Datenbank') >= 0
+    && sl.indexOf('widget:Widget: Lesen') >= 0 && sl.indexOf('widget:Unterseiten') >= 0, sl);
   await p.evaluate(installHelpers);
 
   // Regel 0: unbekannte Felder zusaetzlich im Dokument (der Server kennt sie nicht, ein neuerer Client schon)
