@@ -16,7 +16,7 @@ Geprueft:
 - Widget "reading": Varianten, geteilte Seite = jede Person ihre eigenen Daten, Veroeffentlichen/Foederation ohne
   Persoenliches, Bereinigung, Markdown-Text.
 Wegwerf-Konten bo-a/bo-b, raeumt auf. Umgebung wie tests/widgets2.py (HK_TEST_BASE, BASE_URL, SESSION_SECRET, DATABASE_URL)."""
-import base64, http.client, json, os, secrets, shutil, subprocess, sys, threading, time, urllib.parse
+import base64, errno, http.client, json, os, secrets, shutil, socket, struct, subprocess, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itsdangerous import TimestampSigner
 import auth
@@ -140,6 +140,12 @@ class FH(BaseHTTPRequestHandler):
         if p.startswith("/target"):
             F.redirect_target_hit += 1
             return self.send(200, {})
+        if p.startswith("/rst/"):                          # Antwort, dann sofort zuruecksetzen (RST statt FIN, Koerper ungelesen)
+            self.send(200, {})
+            self.wfile.flush()
+            self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            self.connection.close()
+            return None
         d = self.body()
         if p == "/api/v1/auth/login":
             if not F.password_login:
@@ -290,6 +296,38 @@ def part_ssrf(A):
     ok("dabei kein Aufruf beim Fake", not F.seen_bodies, len(F.seen_bodies))
 
 
+def part_reset(Bk):
+    """Bugs-DB 2166: Ziel schliesst direkt nach der Antwort (RST) -> getpeername ENOTCONN beim Pruefen der Verbindungs-IP.
+    Erzwungen (get_extra_info wirft OSError) und echt (Fake setzt zurueck, Wettlauf) - immer Verbindungsfehler, nie 500."""
+    import httpcore._backends.sync as hs
+    orig = hs.SyncStream.get_extra_info
+
+    def boom(self, info):
+        if info == "server_addr":
+            raise OSError(errno.ENOTCONN, "Transport endpoint is not connected")
+        return orig(self, info)
+    hs.SyncStream.get_extra_info = boom
+    try:
+        st = bookorbit._call(FAKE, "POST", "/auth/login", {"username": "anna", "password": "x", "clientKind": "native"})[0]
+    except Exception as ex:  # noqa: BLE001
+        st = f"{type(ex).__name__}: {ex}"
+    finally:
+        hs.SyncStream.get_extra_info = orig
+    ok(f"getpeername ENOTCONN erzwungen -> Verbindungsfehler statt Ausnahme ({st})", st == bookorbit.NETERR, st)
+    seen, bad = set(), []
+    for _ in range(40):
+        try:
+            seen.add(bookorbit._call(FAKE + "/rst", "POST", "/auth/login", {"username": "anna", "password": "x"})[0])
+        except Exception as ex:  # noqa: BLE001
+            bad.append(f"{type(ex).__name__}: {ex}")
+    ok(f"Ziel setzt nach der Antwort zurueck: 40 Aufrufe ohne Ausnahme (Status {sorted(seen)})", not bad and seen <= {200, bookorbit.NETERR},
+       (bad[:2], seen))
+    for i in range(3):
+        n0 = n500[0]
+        s, r = req("POST", "/api/bookorbit/connect", Bk, {"url": FAKE + "/rst", "username": "bert", "password": PW_B})
+        ok(f"Verbinden mit zuruecksetzendem Ziel -> 400 ({i + 1}/3: {s})", s == 400 and n500[0] == n0 and "error" in r, r)
+
+
 def main():
     cleanup()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), FH); threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -312,6 +350,7 @@ def main():
         time.sleep(5.3)                                          # Einstellungen sind im Server 5 s zwischengespeichert
         s, r = req("POST", "/api/bookorbit/connect", A, {"url": FAKE + "/redir", "username": "anna", "password": PW_A})
         ok(f"Weiterleitung abgelehnt ({s}), Ziel nie erreicht", s == 400 and F.redirect_target_hit == 0, (r, F.redirect_target_hit))
+        part_reset(Bk)
         s, r = req("POST", "/api/bookorbit/connect", A, {"url": FAKE, "username": "anna", "password": "falsch"})
         ok(f"falsches Passwort -> 400 ({s})", s == 400 and "lehnt" in str(r), r)
         F.password_login = False

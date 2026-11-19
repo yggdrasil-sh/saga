@@ -61,10 +61,35 @@ def _pool():
         return _dns_pool
 
 
+def _submit(fn, *args, **kw):
+    """Auftrag in den DNS-Pool -> Future. Beim Ende des Interpreters (kurzlebiger Prozess: Werkzeug/CLI, die letzte
+    Foederations-Zustellung laeuft nach dem Hauptthread) nimmt concurrent.futures keine neuen Auftraege mehr an
+    ("cannot schedule new futures after interpreter shutdown") - dann ein eigener Daemon-Thread mit demselben
+    Zeitlimit beim Warten, notfalls direkt (Bugs-DB 2164)."""
+    try:
+        return _pool().submit(fn, *args, **kw)
+    except RuntimeError:
+        pass
+    fut = concurrent.futures.Future()
+
+    def run():
+        if not fut.set_running_or_notify_cancel():       # schon abgebrochen (Zeitlimit)
+            return
+        try:
+            fut.set_result(fn(*args, **kw))
+        except BaseException as ex:  # noqa: BLE001 - wie im Pool: Ausnahme gehoert dem Wartenden
+            fut.set_exception(ex)
+    try:
+        threading.Thread(target=run, name="netguard-dns-x", daemon=True).start()
+    except RuntimeError:                                  # keine neuen Threads mehr: ohne eigenes Zeitlimit
+        run()
+    return fut
+
+
 def resolve(host, port, timeout=DNS_TIMEOUT):
     """getaddrinfo(host, port, SOCK_STREAM) mit Zeitlimit -> Liste wie getaddrinfo.
     OSError/UnicodeError wie getaddrinfo; Zeitueberschreitung: httpcore.ConnectTimeout."""
-    fut = _pool().submit(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM)
+    fut = _submit(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM)
     try:
         return fut.result(timeout=timeout)
     except concurrent.futures.TimeoutError:
@@ -77,7 +102,7 @@ def lookup(host, port=None, timeout=None, **kw):
     EAI_AGAIN - die Aufrufer fangen OSError bzw. gaierror wie bei "nicht aufloesbar"). Bughunt 3: ai, immich, calendars,
     push, nextcloud, fed_chat, fed_horn und horn_ops loesten ohne Zeitlimit auf."""
     timeout = DNS_TIMEOUT if timeout is None else timeout
-    fut = _pool().submit(socket.getaddrinfo, host, port, **kw)
+    fut = _submit(socket.getaddrinfo, host, port, **kw)
     try:
         return fut.result(timeout=timeout)
     except concurrent.futures.TimeoutError:

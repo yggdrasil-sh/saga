@@ -1931,7 +1931,16 @@ def _express_one(peer_id, oid):
     if not r:                                # schon zugestellt, gesperrt oder eine fruehere Zeile der Kette wartet
         _wake.set()
         return False
-    err = _post_events(p, [json.loads(r[0])], timeout=max(1.0, EXPRESS_TIMEOUT / 3))
+    try:
+        err = _post_events(p, [json.loads(r[0])], timeout=max(1.0, EXPRESS_TIMEOUT / 3))
+    except Exception as ex:  # noqa: BLE001 - Fehler bei uns (z. B. Interpreter-Ende im kurzlebigen Prozess), nicht der Gegenseite
+        # Zeile sofort freigeben statt 3*EXPRESS_TIMEOUT+30 s gesperrt zu lassen: der Arbeiter stellt beim naechsten Durchlauf
+        # zu (kein Fehlversuch, next_try bleibt). Kam das Ereignis doch an, verwirft die Gegenseite die Wiederholung (ev_id). 2164
+        print(f"federation: Express-Zustellung: {type(ex).__name__}: {ex}", flush=True)
+        with _db() as c, c:
+            c.execute("UPDATE fed_outbox SET locked_until=0 WHERE id=?", (oid,))
+        _wake.set()
+        return False
     with _db() as c, c:
         if err is None:
             _backoff.pop(peer_id, None)

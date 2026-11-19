@@ -156,7 +156,11 @@ def _call(base, method, path, body=None, token=None, max_bytes=1024 * 1024):
     try:
         with cl.stream(method, base + "/api/v1" + path, json=body, headers=h) as r:
             ns = r.extensions.get("network_stream")    # 3) NACH dem Verbinden: IP der tatsaechlichen Verbindung
-            peer = ns.get_extra_info("server_addr") if ns else None
+            try:
+                peer = ns.get_extra_info("server_addr") if ns else None
+            except OSError:                        # Gegenseite hat schon geschlossen/zurueckgesetzt (getpeername: ENOTCONN):
+                _local.client = None               # nicht pruefbar -> wie Verbindungsfehler (400 statt 500, Bugs-DB 2166)
+                return NETERR, "", b""
             if not peer or not _ip_ok(peer[0], netloc):
                 _local.client = None
                 return BLOCKED, "", b""
@@ -171,6 +175,9 @@ def _call(base, method, path, body=None, token=None, max_bytes=1024 * 1024):
     except httpx.HTTPError as ex:
         _local.client = None
         return (BLOCKED if isinstance(ex.__cause__, Blocked) else NETERR), "", b""
+    except OSError:                                # Socket-Fehler ausserhalb von httpx (z. B. beim Schliessen nach RST)
+        _local.client = None
+        return NETERR, "", b""
     finally:                                       # Client ist thread-lokal und wird ueber Konten geteilt: nie Cookies
         if cl is not None:                         # einer Person (z. B. Refresh-Cookie) an die naechste weiterreichen
             cl.cookies.clear()
