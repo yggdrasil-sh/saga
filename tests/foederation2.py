@@ -9,7 +9,11 @@ Schluesselverzeichnis + Krypto v2 (Zertifikate hochladen/pruefen, fremde Schlues
 Zwischenspeicher, chat.keys.changed, Ende-zu-Ende mit den geholten Schluesseln, Sicherheitsnummer v2).
 
 Kompatibilitaet: FED_B_APP=<Verzeichnis mit Saga 2.1/2.2> startet B aus diesem Stand -> Protokoll 1 laeuft weiter (Teilen,
-Benachrichtigung), A erkennt Protokoll 1, keine Zusatzfunktionen, keine Serverfehler. Raeumt auf (Datenbanken geloescht)."""
+Benachrichtigung), A erkennt Protokoll 1, keine Zusatzfunktionen, keine Serverfehler. Raeumt auf (Datenbanken geloescht).
+
+FED_A_MEDIA=<saga-media>: A laeuft hinter saga-media wie im Image (auch fuer tests/foederation_chat.py) - signierte GETs mit
+mehreren Query-Parametern (Adressbuch since&cfg, Chat-Luecke ref&after) gehen dann durch dessen Weiterleitung, die die Query
+byte-gleich lassen muss (Bugs-DB 2182). FED_DB_SUFFIX: Anhang an Datenbank- und Zustandsnamen (parallele Laeufe)."""
 import io, json, os, re, sys, time
 from urllib.parse import quote
 
@@ -21,8 +25,10 @@ from saga import chat_v2 as SV, fedsig  # noqa: E402
 APP = T.APP
 B_APP = os.environ.get("FED_B_APP") or APP
 COMPAT = B_APP != APP
-T.I["a"].update(port=8195, admin=8194, db="saga_f2a", url="http://127.0.0.1:8195", host="127.0.0.1:8195", state="/tmp/fed2test-a", allow="localhost:8197")
-T.I["b"].update(port=8197, admin=8196, db="saga_f2b", url="http://localhost:8197", host="localhost:8197", state="/tmp/fed2test-b", allow="127.0.0.1:8195")
+SFX = os.environ.get("FED_DB_SUFFIX", "")
+MEDIA_A = os.environ.get("FED_A_MEDIA", "")
+T.I["a"].update(port=8195, admin=8194, db="saga_f2a" + SFX, url="http://127.0.0.1:8195", host="127.0.0.1:8195", state="/tmp/fed2test-a" + SFX, allow="localhost:8197")
+T.I["b"].update(port=8197, admin=8196, db="saga_f2b" + SFX, url="http://localhost:8197", host="localhost:8197", state="/tmp/fed2test-b" + SFX, allow="127.0.0.1:8195")
 HA, HB = T.I["a"]["host"], T.I["b"]["host"]
 ok, hreq, api, sql, wait, jd = T.ok, T.hreq, T.api, None, T.wait, T.jd
 _env0 = T.env_of
@@ -32,6 +38,8 @@ def env_of(k):
     e = _env0(k)
     e["PYTHONPATH"] = B_APP if k == "b" else APP
     e["FED_EXPRESS_TIMEOUT"] = "3"
+    if k == "a" and MEDIA_A:
+        e["MEDIA_INTERNAL_PORT"] = str(T.I["a"]["port"] - 2)   # uvicorn hinter saga-media (PORT = saga-media)
     return e
 
 
@@ -51,8 +59,23 @@ def start(k):
     i = T.I[k]
     os.makedirs(i["state"], exist_ok=True)
     log = open(os.path.join(i["state"], "server.log"), "a")
-    T.procs[k] = subprocess.Popen([sys.executable, "run.py"], env=env_of(k), cwd=B_APP if k == "b" else APP, stdout=log, stderr=subprocess.STDOUT)
-    ok(f"{k.upper()}: gestartet", wait(lambda: T._health(k), 40))
+    cmd = [sys.executable, "run.py"]
+    if k == "a" and MEDIA_A:
+        cmd = [MEDIA_A, "--"] + cmd
+    T.procs[k] = subprocess.Popen(cmd, env=env_of(k), cwd=B_APP if k == "b" else APP, stdout=log, stderr=subprocess.STDOUT)
+    ok(f"{k.upper()}: gestartet" + (" (saga-media)" if k == "a" and MEDIA_A else ""), wait(lambda: T._health(k), 40))
+
+
+def fed_get_ok(k, path, first):
+    """Zugriffszeilen (uvicorn hinter saga-media: so, wie die Anfrage dort ankam) fuer GET path?... -> (ok, Anzahl):
+    mindestens eine 200, keine 401, Query in gesendeter Reihenfolge (beginnt mit first=)."""
+    try:
+        txt = open(os.path.join(T.I[k]["state"], "server.log"), errors="replace").read()
+    except OSError:
+        return False, 0
+    L = [x for x in txt.splitlines() if f'"GET {path}?' in x]
+    return (any('" 200 ' in x for x in L) and not any('" 401 ' in x for x in L)
+            and all(f"{path}?{first}=" in x for x in L)), len(L)
 
 
 T.env_of, T.py, T.start = env_of, py, start
@@ -269,6 +292,9 @@ def part_directory(A, B, pa, pb):
     s, h, d, _, _ = T.signed("b", priva, T.I["a"]["url"], "GET", "/fed/v2/directory", f"since={nxt}&cfg={cfg}")
     ok("inkrementell: seit Stand X nichts Neues", s == 200 and jd(d)["full"] is False and jd(d)["entries"] == [])
     ok("unsigniert -> 401", hreq("b", "GET", "/fed/v2/directory")[0] == 401)
+    if MEDIA_A:   # Bugs-DB 2182: saga-media sortierte die Query (cfg vor since) -> Signatur ungueltig, 401
+        good, n = fed_get_ok("a", "/fed/v2/directory", "since")
+        ok(f"A hinter saga-media: Adressbuch-Abrufe kommen mit since&cfg an -> 200, keiner 401 ({n} Zeilen)", good)
     n = py("a", f"""
 import time
 from saga import federation as F, fed_dir as D

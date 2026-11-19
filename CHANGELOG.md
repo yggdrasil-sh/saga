@@ -16,6 +16,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Föderation hinter saga-media: Adressbuch/Chat-Verlauf verbundener Server kam nicht an (Bugs-DB 2182)
+- saga-media (und der Rückweg des Knotens bei „Ein Port“) gibt Anfragen über `httputil.ReverseProxy` weiter, das die
+  Query vorher neu kodiert (`cleanQueryParams`: sortiert, `;`-Teile und ungültige `%` fallen weg). In neueren
+  Go-Versionen (geprüft: 1.27.4) geschieht das wegen `media/go.mod` `go 1.23` (implizit `urlmaxqueryparams=0`) bei
+  jeder Query – signierte Abrufe mit mehreren Parametern (`/fed/v2/directory?since&cfg`, `/fed/v2/chat/msgs?ref&after`,
+  Signatur über `@query`) scheiterten mit 401. Jetzt geht die Query byte-gleich weiter (`keepQuery` in
+  `media/proxy.go`, auch `newNodeProxy`, `gjallarhorn/einport.go`); go.mod unverändert. Das Image (go1.24.13) war
+  für diese Abrufe nicht betroffen, nur bei `;`/ungültigem `%` in der Query.
+- Tests: neu `media/query_test.go` (Reihenfolge, doppelte Schlüssel, `;`, Prozent-Kodierung, leere Werte, auch mit
+  `GODEBUG=urlmaxqueryparams`) und `TestEinportFrontKeepsQuery` (ohne den Fix rot); `tests/foederation2.py` und
+  `foederation_chat.py` mit `FED_A_MEDIA=<saga-media>` (A hinter saga-media, prüft die ankommende Query) 117/117 bzw.
+  157/157 (ohne den Fix mit Go 1.27: 113/117 bzw. 149/157, mit go1.24.13 grün); `browser_fed.js` 22/22 und
+  `browser_fed_horn_dm.js` 14/14 hinter saga-media mit Knoten, 0× 401 (ohne den Fix 3× bzw. 4× 401).
+
 ### Geändert – Server-Log: abgebrochene Browser-Anfragen ohne Stacktrace
 - Brach der Browser eine Anfrage ab, bevor die Antwort begann (z. B. Ereignis-Stream beim Seitenwechsel), schrieb
   der Server `RuntimeError: No response returned.` mit Stacktrace ins Log (`app.py`, `canonical_host`). Das bleibt jetzt

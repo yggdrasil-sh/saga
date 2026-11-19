@@ -18,8 +18,9 @@ import foederation2 as F2  # noqa: E402  (Start mit Kompat-Stand, Admin-Helfer, 
 import chatlib as C  # noqa: E402
 from saga import fedsig  # noqa: E402
 
-T.I["a"].update(port=8295, admin=8294, db="saga_fca", url="http://127.0.0.1:8295", host="127.0.0.1:8295", state="/tmp/fedchat-a", allow="localhost:8297")
-T.I["b"].update(port=8297, admin=8296, db="saga_fcb", url="http://localhost:8297", host="localhost:8297", state="/tmp/fedchat-b", allow="127.0.0.1:8295")
+# FED_A_MEDIA / FED_DB_SUFFIX wie tests/foederation2.py (A hinter saga-media: Chat-Luecke ref&after durch dessen Weiterleitung)
+T.I["a"].update(port=8295, admin=8294, db="saga_fca" + F2.SFX, url="http://127.0.0.1:8295", host="127.0.0.1:8295", state="/tmp/fedchat-a" + F2.SFX, allow="localhost:8297")
+T.I["b"].update(port=8297, admin=8296, db="saga_fcb" + F2.SFX, url="http://localhost:8297", host="localhost:8297", state="/tmp/fedchat-b" + F2.SFX, allow="127.0.0.1:8295")
 HA, HB = T.I["a"]["host"], T.I["b"]["host"]
 ok, hreq, wait, jd, sql, py = T.ok, T.hreq, T.wait, T.jd, T.sql, T.py
 # FED_B_23=1 (mit FED_B_APP = Saga 2.3): B kann Chats/Anrufe (calls2), kennt aber saga-call v3 auf dem Server nicht ->
@@ -331,6 +332,9 @@ with connect() as c, c:
 print(json.dumps(True))""")
     s, d, mg = anna.send(ch, "nach der Luecke")
     ok("B: Luecke erkannt, beim Heim nachgeholt, dann zugestellt", wait(lambda: bert.texts(bc)[-1:] == ["nach der Luecke"], 60) and fed_log("b", "chat.gap"))
+    if F2.MEDIA_A:   # Bugs-DB 2182: saga-media sortierte ref&after -> Signatur ungueltig, 401
+        good, n = F2.fed_get_ok("a", "/fed/v2/chat/msgs", "ref")
+        ok(f"A hinter saga-media: Nachholen kommt mit ref&after an -> 200, keiner 401 ({n} Zeilen)", good)
     # --- Ketten-Epoche: A spielt ein "Backup" zurueck (Kette und fseq springen zurueck) -----------------------------------
     T.procs["a"].terminate(); T.procs["a"].wait(10)
     n0 = sql("b", "SELECT fseq FROM chat WHERE id=?", (bc["id"],))[0][0]
