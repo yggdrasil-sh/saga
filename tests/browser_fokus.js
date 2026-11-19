@@ -1,7 +1,9 @@
 // Saga 2.5 (Design-Runde, Barrierefreiheit 2) - Fokusfuehrung: Schnellsuche mit Fokusfalle und Rueckgabe, Menue schliesst
 // beim Hinaus-Tabben, Board-Karte per Leertaste, Fokus nach dem Peek zurueck an die Karte, Inhaltsverzeichnis per Tastatur,
 // Schublade am Handy modal (inert), Ansage-Region fuer Meldungen, DB-Zellen und -Reiter mit Zustand.
-//   SAGA_BASE=… SAGA_USER=… SAGA_PASS=… node tests/browser_fokus.js   (Konto mit der Galerie-Vorlage "Aufgaben & Projekte")
+//   SAGA_BASE=… SAGA_USER=… SAGA_PASS=… node tests/browser_fokus.js
+// Fehlt dem Konto die Galerie-Vorlage "Aufgaben & Projekte" (Seite + Board-Datenbank), legt die Reihe sie selbst an und
+// raeumt sie danach weg - ohne Seite stand sie auf /notes#undefined, #pg-more war unsichtbar und bekam keinen Fokus.
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.SAGA_BASE, USER = process.env.SAGA_USER, PASS = process.env.SAGA_PASS;
 if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
@@ -14,8 +16,15 @@ if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS se
   await Promise.all([p.waitForNavigation(), p.press('input[name=password]', 'Enter')]);
   const ae = () => p.evaluate(() => { const a = document.activeElement; return a ? (a.id || a.className || a.tagName) + '' : ''; });
   // Seiten-ID der Board-Datenbank suchen
-  const ids = await p.evaluate(async () => { const r = await fetch('/api/notes', { headers: { 'X-Saga': '1' } }); const d = await r.json(); const l = Array.isArray(d) ? d : d.notes;
+  const find = () => p.evaluate(async () => { const r = await fetch('/api/notes', { headers: { 'X-Saga': '1' } }); const d = await r.json(); const l = Array.isArray(d) ? d : d.notes;
     const page = l.find(x => x.kind !== 'database'); const db = l.find(x => x.kind === 'database' && /^(Tasks|Aufgaben)$/.test(x.title)); return { page: page && page.id, db: db && db.id }; });
+  let ids = await find(), made = null;
+  if (!ids.page || !ids.db) {
+    made = await p.evaluate(async () => { const r = await fetch('/api/gallery/aufgaben-projekte/use', { method: 'POST', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ examples: true }) }); return r.ok ? (await r.json()).root : null; });
+    ids = await find();
+    ok(!!made && ids.page && ids.db, 'Vorbereitung: Galerie-Vorlage "Aufgaben & Projekte" angelegt ' + JSON.stringify(ids));
+  }
   await p.goto(BASE + '/notes#' + ids.page); await p.waitForTimeout(1800);
   // --- Schnellsuche
   await p.focus('#pg-more'); await p.keyboard.press('Control+k'); await p.waitForTimeout(300);
@@ -58,6 +67,7 @@ if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS se
   await m.keyboard.press('Escape'); await m.waitForTimeout(300);
   ok(await m.evaluate(() => document.getElementById('page').inert === false), 'Handy: geschlossen wieder bedienbar');
   ok(!errs.length, 'keine Skriptfehler ' + errs.join(' | '));
+  if (made) await p.evaluate(async (id) => { await fetch('/api/notes/' + id, { method: 'DELETE', headers: { 'X-Saga': '1' } }); }, made);
   await b.close();
   const bad = res.filter(r => !r[0]).length; console.log('\n' + (res.length - bad) + '/' + res.length + ' ok'); process.exit(bad ? 1 : 0);
 })();
