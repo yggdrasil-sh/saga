@@ -29,6 +29,10 @@ async function session(user, pass, name) {
   await ctx.grantPermissions(['camera', 'microphone'], { origin: BASE });
   const p = await ctx.newPage();
   p.__name = name;
+  // Faehigkeiten des Geraets (PUT /api/calls/caps, static/calls.js:5321 capsReport, wiederholt alle 1,5 s bis die Chat-
+  // Schluessel bereit sind): erst danach laedt der Server die Person zum Gruppenanruf ein (sonst Einladung 'old')
+  p.__caps = false;
+  p.on('response', r => { if (r.request().method() === 'PUT' && /\/api\/calls\/caps$/.test(r.url()) && r.ok()) p.__caps = true; });
   p.on('pageerror', e => console.log('  [pageerror ' + name + '] ' + e.message));
   if (E.DEBUG) p.on('console', m => console.log('  [console ' + name + '] ' + m.text()));
   await p.goto(BASE + '/login');
@@ -99,6 +103,9 @@ async function shots(a, tag) {
     for (const p of [a, b, c]) await p.goto(BASE + '/chats#c' + gid);
     await a.waitForSelector('#ct-chat:not([hidden])'); await liveOk(a, b, c);
     await until(() => a.evaluate(() => { const v = document.getElementById('ct-call-a'); return v && !v.hidden && /Gruppen/.test(v.title) && v; }), 10000);
+    // saga/calls.py group_create: wer beim Start noch kein Geraet mit "multi" gemeldet hat, klingelt nicht ('old') -
+    // C (zuletzt eingerichtet) meldete das in der Suite erst nach dem Klick von A
+    ok('B und C haben ihre Anruf-Faehigkeiten gemeldet', await until(() => b.__caps && c.__caps, 20000, 200), [b.__caps, c.__caps]);
     await a.click('#ct-call-a');
     await b.waitForSelector('.cl-ring', { timeout: 15000 }); await c.waitForSelector('.cl-ring', { timeout: 15000 });
     await b.click('.cl-ring .cl-big');
