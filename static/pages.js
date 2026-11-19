@@ -777,7 +777,10 @@
   // beim Zeichnen bzw. Aktualisieren gemerkt und beim Speichern unveraendert ergaenzt (nur, was das Werkzeug selbst nicht
   // liefert; der Server bereinigt wie immer). Den Absatz stellt Editor.js intern bereit - daher hier statt einer Huelle wie
   // hkImage. Neue Bloecke (Duplizieren, Umwandeln) haben eine neue ID und damit keine gemerkten Felder.
-  var KEEP_KNOWN = { paragraph: { text: 1 }, header: { text: 1, level: 1 }, quote: { text: 1, caption: 1, alignment: 1 } };
+  // Liste (rot-web): @editorjs/list speichert nur style/meta/items - ohne den Eintrag verlor die Kapitel-Liste der
+  // Buchseite (data.bo.x = "chl") beim ersten Speichern ihre Kennung und wurde nicht mehr nachgezogen.
+  var KEEP_KNOWN = { paragraph: { text: 1 }, header: { text: 1, level: 1 }, quote: { text: 1, caption: 1, alignment: 1 },
+    list: { style: 1, meta: 1, items: 1 } };
   function keepExtras(ed, data) {
     if (!ed || ed.hkKeep) return;
     var memo = ed.hkKeep = {};
