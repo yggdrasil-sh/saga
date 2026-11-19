@@ -30,7 +30,7 @@ async function until(p, fn, arg, ms = 15000) {
     const db = (await api('POST', '/api/notes', { kind: 'database', title: 'Bugs Vorlagentest' })).id; made.push(db);
     await api('POST', '/api/notes', { parent_id: db, title: 'Erster Bug' });
     const tp = (await api('POST', '/api/notes', { parent_id: db, title: 'Bugmeldung' })).id;
-    await api('PATCH', '/api/notes/' + tp, { template: true });
+    await api('PATCH', '/api/notes/' + tp, { template: true, icon: '🐞' });   // Symbol erkennt Eintraege aus der Vorlage
     const pg = (await api('POST', '/api/notes', { title: 'Seite mit Bugs' })).id; made.push(pg);
     await api('PATCH', '/api/notes/' + pg, { format: 'blocks', body: JSON.stringify({ blocks: [{ id: 'd1', type: 'database', data: { db: db } }] }) });
     const open = async (id) => { await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id); await p.waitForSelector('.embed-db .db-bar, .db-bar'); await p.waitForTimeout(500); };
@@ -40,10 +40,13 @@ async function until(p, fn, arg, ms = 15000) {
     ok('Titel und Reiter sichtbar', await p.$('.embed-db .embed-title') && await p.$('.embed-db .db-tabs'));
     await p.click('.embed-db .db-gear');
     await p.waitForSelector('.vs-check');
-    const boxes = await p.$$('.vs-check input');
-    ok('Ansicht-Menue: zwei Schalter "Dieser Block"', boxes.length === 2);
-    await boxes[0].click(); await p.waitForTimeout(200);
-    await (await p.$$('.vs-check input'))[1].click();
+    // Abschnitt "Dieser Block" (static/pages.js:5270); seit 2.5 hat die Tabellenansicht weitere Schalter
+    // (.vs-check "Zeilenumbruch in allen Spalten", :5330) -> die beiden Kopf-Schalter ueber ihre Beschriftung finden
+    const HEADS = ['Datenbanktitel anzeigen', 'Ansichts-Reiter anzeigen'];
+    const headBox = (i) => p.locator('label.vs-check').filter({ hasText: HEADS[i] }).locator('input');
+    ok('Ansicht-Menue: zwei Schalter "Dieser Block"', (await headBox(0).count()) === 1 && (await headBox(1).count()) === 1);
+    await headBox(0).click(); await p.waitForTimeout(200);
+    await headBox(1).click();
     await p.keyboard.press('Escape');
     ok('Titel und Reiter ausgeblendet', await until(p, () => !document.querySelector('.embed-db .embed-title') && !document.querySelector('.embed-db .db-tabs')));
     ok('Rest der Leiste bleibt (Suche, ⚙, + Neu)', await p.$('.embed-db .db-search') && await p.$('.embed-db .db-gear') && await p.$('.embed-db .db-new-top'));
@@ -89,7 +92,11 @@ async function until(p, fn, arg, ms = 15000) {
     await p.click('.db-new-row').catch(async () => { await p.click('.db-gear'); });
     await p.waitForTimeout(1500);
     const r2 = await api('GET', '/api/notes/' + db + '/rows');
-    ok('"+ Neu" unten nimmt die Standardvorlage', r2.rows.filter((r) => r.title === 'Bugmeldung neu').length === 1, r2.rows.map((r) => r.title));
+    // fix27 E4 (saga/databases.py note_duplicate, CHANGELOG "Neue Eintraege aus Vorlagen"): Eintrag aus einer Vorlage
+    // beginnt mit leerem Titel (Name der Vorlage nur als Platzhalter) -> am Symbol der Vorlage erkennen
+    const fromTpl = r2.rows.filter((r) => r.icon === '🐞');
+    ok('"+ Neu" unten nimmt die Standardvorlage', r2.rows.length === r1.rows.length + 1 && fromTpl.length === 1 && fromTpl[0].title === '',
+      r2.rows.map((r) => [r.title, r.icon]));
     // Seitenvorlagen
     const sp = (await api('POST', '/api/notes', { title: 'Meine Seitenvorlage' })).id; made.push(sp);
     await api('PATCH', '/api/notes/' + sp, { template: true });
