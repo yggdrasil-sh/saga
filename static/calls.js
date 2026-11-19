@@ -2115,7 +2115,7 @@
   });
   // 2.5 (Bugs-DB 2198): Aufnahme haengt stumm (Spur muted, z. B. WebKit nach setMicrophoneActive(false)) -> der Klick gibt sie
   // frei statt stummzuschalten
-  function toggleMic(c) { var R = roomOf(c); if (micStuck(R)) micFree(R); else if (R.mic) setMic(R, false); else echoGuard(R, function () { setMic(R, true); }); }
+  function toggleMic(c) { var R = roomOf(c); if (micHint(R)) micFree(R); else if (R.mic) setMic(R, false); else echoGuard(R, function () { setMic(R, true); }); }
   // 2.5 Echo-Schutz (MEETING-SPEC §4.3): schaltet man auf einem Begleitgeraet Mikrofon oder Ton ein, waehrend ein anderes
   // eigenes Geraet im Anruf Mikrofon oder Ton an hat -> Blatt "Ist das MacBook im selben Raum?". "Hier einschalten, … stumm"
   // schickt dem anderen Geraet state.ask_mute (nur zwischen eigenen Geraeten, Ende-zu-Ende versiegelt wie jedes Signal).
@@ -2186,6 +2186,14 @@
     var a = c && c.mic && !c.companion && c.local ? c.local.getAudioTracks()[0] : null;
     return !!(a && a.readyState === 'live' && a.enabled && a.muted);
   }
+  // Pruefer pruef-mic (Auflage 1): Freigeben per Klick wirkt nur in WebKit (setMicrophoneActive) bzw. in der Mac-Huelle
+  // (Faehigkeit mic). Anderswo (Chrome/Firefox: Spur muted durch System, Geraetewechsel, Unterbrechung) zeigt der Knopf
+  // ehrlich "stumm", schaltet beim Klick aber wie gewohnt - kein Hinweis, der nichts bewirkt.
+  function micFreeable() {
+    var ms = navigator.mediaSession;
+    return !!(ms && typeof ms.setMicrophoneActive === 'function') || !!(HK.host && HK.host.has && HK.host.has('mic'));
+  }
+  function micHint(c) { return micStuck(c) && micFreeable(); }
   // Was wirklich gesendet wird - fuer Anzeige und Zustand ans Gegenueber (ehrlich: haengt die Aufnahme, "stumm")
   function micOn(c) { c = roomOf(c); return !!(c && c.mic) && !micStuck(c); }
   // Stumm/Frei der eigenen Mikrofon-Spur beobachten (einmal je Spur)
@@ -2196,7 +2204,8 @@
       var upd = function () {
         if (!live(R) || !R.local || R.local.getAudioTracks().indexOf(t) < 0) return;
         if (micStuck(R)) { diagEv(R, 'mic-stuck', ''); msMic(true); }
-        drawCtl(R); drawInfo(R); stateAll(R);
+        drawCtl(R); drawInfo(R);
+        clearTimeout(R.micT); R.micT = setTimeout(function () { if (live(R)) stateAll(R); }, 400);   // entprellt (Bluetooth-Wechsel)
       };
       t.addEventListener('mute', upd); t.addEventListener('unmute', upd);
     });
@@ -2843,7 +2852,7 @@
     var x = c.ui.ctl; x.textContent = '';
     // 2.5: Kuerzel im Tooltip ("Mikrofon (M)"), der Vorlesetext bleibt ohne (Tests und Screenreader)
     var kb = function (b, k) { if (!mobile) b.title = b.getAttribute('aria-label') + ' (' + k + ')'; return b; };
-    var on = micOn(c), stuck = micStuck(c);            // 2198: haengt die Aufnahme, zeigt der Knopf "aus" und gibt beim Klick frei
+    var on = micOn(c), stuck = micHint(c);            // 2198: haengt die Aufnahme, zeigt der Knopf "aus" und gibt beim Klick frei
     micWatch(c);
     var m = kb(btn(icon(on ? 'mic' : 'micOff'), 'cl-round' + (on ? '' : ' off'), function () { toggleMic(c); },
       stuck ? T('Mikrofon antippen, um es freizugeben') : on ? T('Stummschalten') : T('Mikrofon einschalten')), 'M');
@@ -2997,7 +3006,7 @@
     u.ctl.textContent = '';
     var on = micOn(c);
     var m = btn(icon(on ? 'mic' : 'micOff'), 'cl-round' + (on ? '' : ' off'), function () { toggleMic(c); },
-      micStuck(c) ? T('Mikrofon antippen, um es freizugeben') : on ? T('Stummschalten') : T('Mikrofon einschalten'));
+      micHint(c) ? T('Mikrofon antippen, um es freizugeben') : on ? T('Stummschalten') : T('Mikrofon einschalten'));
     m.setAttribute('aria-pressed', String(!on));
     u.ctl.appendChild(u.d.adoptNode(m));
     u.ctl.appendChild(u.d.adoptNode(btn(icon('back'), 'cl-round', function () { pipClose(c); try { window.focus(); } catch (e) { /* egal */ } }, T('Zurück zum Anruffenster'))));
