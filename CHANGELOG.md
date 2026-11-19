@@ -16,14 +16,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### Behoben – Föderation hinter saga-media: Adressbuch/Chat-Verlauf verbundener Server kam nicht an (Bugs-DB 2182)
+### Behoben – saga-media reicht die Query byte-gleich weiter: Föderation hinter saga-media mit neuerem Go (Bugs-DB 2182)
+- Veröffentlichte Images (gebaut mit Go 1.24, go1.24.13) waren praktisch nicht betroffen – dort traf es nur Anfragen mit
+  `;` oder ungültigem `%` in der Query. Der Fix schützt Builds mit neuerem Go (z. B. 1.27),
+  bei denen Adressbuch und Chat-Verlauf verbundener Server hinter saga-media mit 401 ausblieben.
 - saga-media (und der Rückweg des Knotens bei „Ein Port“) gibt Anfragen über `httputil.ReverseProxy` weiter, das die
   Query vorher neu kodiert (`cleanQueryParams`: sortiert, `;`-Teile und ungültige `%` fallen weg). In neueren
   Go-Versionen (geprüft: 1.27.4) geschieht das wegen `media/go.mod` `go 1.23` (implizit `urlmaxqueryparams=0`) bei
   jeder Query – signierte Abrufe mit mehreren Parametern (`/fed/v2/directory?since&cfg`, `/fed/v2/chat/msgs?ref&after`,
   Signatur über `@query`) scheiterten mit 401. Jetzt geht die Query byte-gleich weiter (`keepQuery` in
-  `media/proxy.go`, auch `newNodeProxy`, `gjallarhorn/einport.go`); go.mod unverändert. Das Image (go1.24.13) war
-  für diese Abrufe nicht betroffen, nur bei `;`/ungültigem `%` in der Query.
+  `media/proxy.go`, auch `newNodeProxy`, `gjallarhorn/einport.go`); go.mod unverändert.
 - Tests: neu `media/query_test.go` (Reihenfolge, doppelte Schlüssel, `;`, Prozent-Kodierung, leere Werte, auch mit
   `GODEBUG=urlmaxqueryparams`) und `TestEinportFrontKeepsQuery` (ohne den Fix rot); `tests/foederation2.py` und
   `foederation_chat.py` mit `FED_A_MEDIA=<saga-media>` (A hinter saga-media, prüft die ankommende Query) 117/117 bzw.
