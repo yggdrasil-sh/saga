@@ -21,6 +21,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (absolut positioniertes Grid-Kind in der leeren Zeile 4) – Auflegen, Stumm und Teilen waren nicht anklickbar.
   Die Leiste reicht jetzt über die ganze Höhe (`grid-row: 1/-1`). Das war auch die Ursache, warum im Labor labr345
   das Teilen über das Zweitgerät nie zustande kam (Chromium mit `--window-size=1000,640` hat innen 1000×497 px).
+  Die Knöpfe oben rechts (Bild-im-Bild, Vollbild, Kleiner/größer) rücken links neben die Leiste, ab 900 px Breite auch
+  geteilter Bildschirm und Streifen über den Knoten – sonst lag „Kleiner/größer“ unter der Leiste.
 - Tests: `tests/browser_meeting.js` prüft Handy quer (844×390, alle Knöpfe treffen sich selbst);
   `tests/anrufe_rang345.py` verwirft Chat-Schlüssel der Testkonten ohne `.rk` im Profil (alte DB, neues `R345_WORK`
   liefen sonst nach 20 s in einen Timeout an `#ct-chat`), `tests/browser_rang345.js` meldet Klick-Fehler beim Teilen,

@@ -531,6 +531,8 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
   .cl-mchip{bottom:12px}
   .cl-pager{inset:2.8rem 72px .5rem 0}
   .cl-win:not(.small):not(.self-c0):not(.self-c2) .cl-local{right:84px}
+  /* Knoepfe oben rechts links von der Leiste - sonst lag "Kleiner/groesser" unter der 72-px-Leiste (Pruefung 2158) */
+  .cl-win:not(.small):not(.plist-side) .cl-tb{right:84px}
 }
 /* 2.5 (§9) Teilnehmerliste im Mesh: ab 900 px Seitenleiste rechts (320 px, >= 1920: 360 px), schiebt die Buehne zusammen */
 .cl-pl-pin{height:30px;font-size:var(--fs-sm);padding:0 .7rem;margin-left:auto}
@@ -553,6 +555,11 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
   .cl-win.horn.horn-scr:not(.small) .cl-stage{background:#000}
 }
 @media (min-width:1440px){.cl-win.horn.horn-scr:not(.small){--hs:200px}}
+/* Handy quer/flaches Fenster ab 900 px: Bildschirm und Streifen links von der senkrechten Leiste (72 px, Pruefung 2158) */
+@media (max-height:500px) and (orientation:landscape) and (min-width:900px){
+  .cl-win.horn.horn-strip.horn-scr.mesh.tiles:not(.small) .cl-grid{right:80px}
+  .cl-win.horn.horn-scr:not(.small) .cl-hscreen{width:calc(100% - var(--hs) - 88px)}
+}
 /* 2.5 (Design-Check): schmale Fenster < 600 px - Leiste in einer Zeile (48 px, 6 px Abstand), Nebenknoepfe im Menue "Mehr",
    Auflegen immer ganz sichtbar; der Knoten-Streifen endet ueber der Leiste */
 .cl-win:not(.small) .cl-ctl.narrow{flex-wrap:nowrap;gap:6px;padding-left:.5rem;padding-right:.5rem}

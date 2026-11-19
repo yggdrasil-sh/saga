@@ -186,8 +186,11 @@ async function hornFlow(a, a2, b, o) {
   const quer = await b.evaluate(() => { const c = document.querySelector('.cl-win .cl-ctl'), q = c.getBoundingClientRect();
     const bs = [...c.querySelectorAll('.cl-round')].filter(x => x.getClientRects().length).map(x => { x.scrollIntoView({ block: 'nearest' }); const r = x.getBoundingClientRect();
       const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && (e === x || x.contains(e)); });
-    return { ctl: [q.top, q.height, innerHeight].map(Math.round), n: bs.length, hit: bs.filter(Boolean).length }; });
-  ok('Knoten Handy quer: Leiste ueber die ganze Hoehe, alle Knoepfe anklickbar', quer.ctl[1] >= quer.ctl[2] * 0.9 && quer.n >= 3 && quer.hit === quer.n, quer);
+    const tb = [...document.querySelectorAll('.cl-win .cl-tb .cl-btn')].filter(x => x.getClientRects().length).map(x => { const r = x.getBoundingClientRect();
+      const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && (e === x || x.contains(e)); });
+    return { ctl: [q.top, q.height, innerHeight].map(Math.round), n: bs.length, hit: bs.filter(Boolean).length, tb: tb.length, tbHit: tb.filter(Boolean).length }; });
+  ok('Knoten Handy quer: Leiste ueber die ganze Hoehe, alle Knoepfe anklickbar (auch oben rechts)', quer.ctl[1] >= quer.ctl[2] * 0.9 && quer.n >= 3 && quer.hit === quer.n
+     && quer.tb >= 2 && quer.tbHit === quer.tb, quer);
   await shot(b, 'knoten-4b-handy-quer-dunkel');
   await b.setViewportSize({ width: 1280, height: 720 });
   // §4.2 Gegenrichtung (Bugs-DB 2160): A2 hoert auf, A (Hauptgeraet) teilt -> A2 (Begleitgeraet) zeigt den Bildschirm von A
