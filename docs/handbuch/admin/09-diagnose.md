@@ -91,11 +91,11 @@ Aus heißt: Browser und Apps schicken nichts mehr, es wird nichts gespeichert, u
 ### 6. Für Fortgeschrittene: im Server-Log suchen
 
 Dieselben Meldungen stehen im Log des Saga-Containers – praktisch, wenn der Admin-Bereich gerade nicht erreichbar ist
-oder du ältere Zeilen brauchst:
+oder du ältere Zeilen brauchst (auf dem Server im Ordner mit der `docker-compose.yml`):
 
 ```sh
-docker logs saga 2>&1 | grep 'clientdiag {"id":"D-7K3FM"'     # eine bestimmte Diagnose
-docker logs saga 2>&1 | grep '^clientlog ' | tail -50          # die letzten automatischen Fehlerberichte
+docker compose logs --no-log-prefix saga | grep 'clientdiag {"id":"D-7K3FM"'  # eine bestimmte Diagnose
+docker compose logs --no-log-prefix saga | grep '^clientlog ' | tail -50  # die letzten automatischen Fehlerberichte
 ```
 
 ![Terminal mit erfundenen Log-Zeilen: die Diagnose D-7K3FM wird gefunden, das Konto steht nur als Hash da](../bilder/a09-01-log-ausschnitt.png)

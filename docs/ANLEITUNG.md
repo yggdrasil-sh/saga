@@ -2274,8 +2274,8 @@ einen Hinweis am Textfeld). Das Konto erscheint nur als kurzer Hash (`acct`, sta
 Zeilenarten):
 
 ```bash
-docker logs saga 2>&1 | grep 'clientdiag {"id":"D-7K3FM"'     # eine bestimmte Diagnose
-docker logs saga 2>&1 | grep '^clientlog ' | tail -50          # die letzten automatischen Fehlerberichte
+docker compose logs --no-log-prefix saga | grep 'clientdiag {"id":"D-7K3FM"'  # eine bestimmte Diagnose
+docker compose logs --no-log-prefix saga | grep '^clientlog ' | tail -50  # die letzten automatischen Fehlerberichte
 ```
 
 Bequemer: Admin-Bereich → **Diagnose**. Dort stehen alle Meldungen – Fehlerberichte (`clientlog`), „Diagnose senden“

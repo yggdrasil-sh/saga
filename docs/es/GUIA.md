@@ -2073,7 +2073,7 @@ cada hora, ambos valores se ajustan en la misma página. El diagnóstico de llam
 participante, así que con muchas llamadas se alcanza antes el límite.
 
 ```bash
-docker logs saga 2>&1 | grep 'clientdiag {"id":"D-7K3FM"'     # un diagnóstico concreto
+docker compose logs --no-log-prefix saga | grep 'clientdiag {"id":"D-7K3FM"'  # un diagnóstico concreto
 ```
 
 Interruptores: área de administración → **General → Diagnóstico** (informes de error y «Enviar diagnóstico»),

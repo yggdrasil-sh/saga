@@ -146,6 +146,8 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
 - **Veraltet gegenüber 2.5 (neu aufnehmen):** a06-02 zeigt noch den alten Hinweis „eigener Name per TLS-Durchreiche
   (SNI)“ beim eingebauten Knoten, „Alle Anrufe über Knoten“ ohne Haken (ab Werk an) und eine leere Knoten-Liste;
   a05-01 zeigt den Editor noch als „Neu (Tiptap, Test)“ statt „Standard (Tiptap)“.
+  a09-01 zeigt `docker logs saga` und vereinfachte Zeilen; echt sind die Zeilen JSON (`clientdiag {"id":…}`), und
+  der Befehl lautet `docker compose logs --no-log-prefix saga` (der Container heißt unter compose nicht `saga`).
 - b09-03 (Konflikt): aufgenommen mit kurz abgeschaltetem „Gleichzeitig bearbeiten live“ (danach wieder an). Weil Saga 2.5
   ohne live die Änderung des anderen nachlädt bzw. blockweise zusammenführt, ist der Konflikt nachgestellt: Annas Speichern
   schickt den alten Stand ohne Zusammenführen (wie ein älterer Client) → echte Server-Antwort 409 und echte Leiste.

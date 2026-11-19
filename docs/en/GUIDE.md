@@ -1989,7 +1989,7 @@ at most 50,000 reports – older ones are removed hourly; both can be set on the
 report every 30 seconds per participant, so with many calls the row limit applies sooner.
 
 ```bash
-docker logs saga 2>&1 | grep 'clientdiag {"id":"D-7K3FM"'     # one specific diagnostics report
+docker compose logs --no-log-prefix saga | grep 'clientdiag {"id":"D-7K3FM"'  # one specific diagnostics report
 ```
 
 Switches: admin area → **General → Diagnostics** (error reports and "Send diagnostics"), **General → Pages** (editor
