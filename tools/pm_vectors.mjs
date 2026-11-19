@@ -9,7 +9,7 @@
 // byte-gleich (JSON- und echte Knoten), Schema-Validitaet (Node.fromJSON + check), html_norm, Altformat-Toggle (upgrade);
 // dazu Schema-Pruefsumme = Server und eine Bearbeitung im echten EditorState (nur der geaenderte Block neu).
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,7 +29,12 @@ const ctxOf = (x) => ({ resolve, time: 1, version: 'v' });
 if (process.argv.includes('--dump')) {
   const out = {};
   for (const c of V.cases) out[c.name] = A.blocksFromDoc(A.docFromBlocks({ blocks: c.blocks }), ctxOf(c)).blocks;
-  process.stdout.write(JSON.stringify(out));
+  // Synchron und vollstaendig schreiben: an einer Pipe (subprocess in tests/pm_vectors.py) geht process.stdout.write
+  // ab ~64 KiB asynchron weiter - process.exit() schnitt die Ausgabe dort ab (JSONDecodeError im Test)
+  const buf = Buffer.from(JSON.stringify(out));
+  for (let off = 0; off < buf.length;) {
+    try { off += writeSync(1, buf, off); } catch (e) { if (e.code !== 'EAGAIN') throw e; }
+  }
   process.exit(0);
 }
 
