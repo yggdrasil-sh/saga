@@ -244,6 +244,10 @@ body:has(.cl-win.cl-done) .cl-run{z-index:205}  /* Rang 2: ueber dem beendeten A
 .cl-hpath.cl-q{color:var(--cl-fg);border:1px solid var(--cl-line);border-radius:var(--r-pill);padding:0 .5rem;font-weight:600;font-size:var(--fs-sm)}
 .cl-hpath.cl-q-good::before{background:var(--cl-ok)}.cl-hpath.cl-q-mid::before{background:var(--cl-warn)}.cl-hpath.cl-q-bad::before{background:var(--cl-err)}
 .cl-hmove{color:var(--cl-warn)}
+/* 2.5: Gjallarhorn experimentell - ruhige Marke im Kopf (nicht als Banner), Satz unten in der Teilnehmerliste */
+.cl-chip.cl-exp{color:#e6ebf2cc;font-weight:500;cursor:help}
+.cl-pl-exp{flex:none;margin:.6rem 0 0;padding-top:.5rem;border-top:1px solid var(--cl-edge);font-size:var(--fs-sm);line-height:1.4;color:#e6ebf2cc}
+.cl-pl-exp .cl-exp{display:inline-block;margin-right:.15rem;font-size:var(--fs-xs)}
 .cl-btn.cl-runes{min-width:0;height:28px;padding:0 .55rem;font-size:var(--fs-md);letter-spacing:.14em;background:var(--cl-pop);border-color:var(--cl-line);color:var(--cl-fg);position:relative}
 /* Bughunt D14: Trefferflaeche 44 px hoch, ohne den Kopf hoeher zu machen */
 .cl-btn.cl-runes::before{content:"";position:absolute;inset:-8px -2px}

@@ -60,13 +60,15 @@
 {% endif %}
 
 <section class="adm-card" id="horn">
-  <h3>{{ _("Gjallarhorn – große Gruppenanrufe") }}</h3>
+  {# 2.5 (Vorgabe 10.11.): Gjallarhorn experimentell - Marke an den Ueberschriften, ein ruhiger Hinweis (keine Warnung) #}
+  <h3>{{ _("Gjallarhorn – große Gruppenanrufe") }} <span class="adm-tag exp">{{ _("Experimentell") }}</span></h3>
+  <p class="horn-exp" role="note">{{ _("Gjallarhorn ist in Saga 2.5 experimentell – getestet mit bis zu 4 Personen bzw. Geräten je Anruf. Probleme bitte über „Diagnose senden“ melden.") }} {{ _("Größere Anrufe folgen nach 2.5.") }}</p>
   <p class="hk-hint">{{ _("Gruppenanrufe mit mehr als 4 Personen laufen über Gjallarhorn-Knoten. Ein Knoten ist eingebaut. Reicht die Leistung nicht, fügst du mit <b>Erweitern</b> weitere hinzu, z. B. auf einem kleinen Server mit guter Anbindung. Inhalte bleiben Ende-zu-Ende-verschlüsselt, Knoten leiten nur weiter.")|safe }}</p>
   <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="horn">
     {{ check(_('Große Gruppenanrufe über Gjallarhorn'), 'horn', hs.horn_on, _('Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).')) }}
     {{ check(_('Eingebauten Knoten für Anrufe nutzen'), 'horn_builtin', hs.builtin_on, (_('Aus = nur weitere Knoten (Erweitern) tragen Anrufe. Ist keiner bereit, laufen Gruppenanrufe im Mesh (bis 4 mit Video / 6 nur Ton). Der eingebaute Knoten läuft unter dem Namen und Port von Saga (Betriebsart „Ein Port“).') if hs.einport else _('Aus = nur weitere Knoten (Erweitern) tragen Anrufe. Ist keiner bereit, laufen Gruppenanrufe im Mesh (bis 4 mit Video / 6 nur Ton). Am einfachsten läuft der eingebaute Knoten in der Betriebsart „Ein Port“ (SAGA_TLS=1) unter dem Namen und Port von Saga.'))) }}
     {# Grundsatz Y: hs.horn_all ist der wirksame Wert (saga/horn.py horn_all_on - ab Werk an, Altwert von vor Y = an) #}
-    {{ check(_('Alle Anrufe über Knoten (auch 1:1)'), 'horn_all', hs.horn_all, _('Standard an: Auch Anrufe zu zweit laufen über einen Knoten – die Geräte sehen gegenseitig keine IP-Adressen, und es gibt weniger NAT-Probleme. Wirkt nur, solange Gjallarhorn an ist (in 2.5 experimentell). Ist kein Knoten bereit oder kann ein in den letzten 30 Tagen genutztes Gerät des Gegenübers es nicht, läuft der Anruf direkt. Aus = Anrufe zu zweit auf diesem Server laufen direkt; mit einem anderen Server, der auf Knoten besteht, führt dieser den Anruf über seinen Knoten. Gruppenanrufe laufen damit ebenfalls immer über einen Knoten, auch zu dritt und zu viert („Über Knoten ab“ gilt nur, wenn diese Einstellung aus ist).')) }}
+    {{ check(_('Alle Anrufe über Knoten (auch 1:1)'), 'horn_all', hs.horn_all, _('Standard an: Auch Anrufe zu zweit laufen über einen Knoten – die Geräte sehen gegenseitig keine IP-Adressen, und es gibt weniger NAT-Probleme. Wirkt nur, solange Gjallarhorn an ist. Ist kein Knoten bereit oder kann ein in den letzten 30 Tagen genutztes Gerät des Gegenübers es nicht, läuft der Anruf direkt. Aus = Anrufe zu zweit auf diesem Server laufen direkt; mit einem anderen Server, der auf Knoten besteht, führt dieser den Anruf über seinen Knoten. Gruppenanrufe laufen damit ebenfalls immer über einen Knoten, auch zu dritt und zu viert („Über Knoten ab“ gilt nur, wenn diese Einstellung aus ist).')) }}
     <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
   </form>
   {% set ready_n = hs.nodes|selectattr('status', 'equalto', 'ready')|list|length %}
@@ -97,7 +99,7 @@
   </div>
   {% endif %}
 
-  <h4 class="horn-h">{{ _("Knoten") }}</h4>
+  <h4 class="horn-h">{{ _("Knoten") }} <span class="adm-tag exp">{{ _("Experimentell") }}</span></h4>
   <table class="adm-table horn-nodes">
     <tr><th>{{ _("Name") }}</th><th>{{ _("Status") }}</th><th>{{ _("Weg") }}</th><th>{{ _("Auslastung") }}</th><th>{{ _("Teilnehmende") }}</th><th>{{ _("Version") }}</th><th>{{ _("Teilen") }}</th><th>{{ _("Aktionen") }}</th></tr>
     {% if bi and not bi.real %}

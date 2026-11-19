@@ -4709,6 +4709,10 @@
       i.appendChild(pth);
       if (H.next || H.olds.length) i.appendChild(el('span', 'cl-path cl-hmove', T('wechselt den Knoten …')));
     }
+    // 2.5 (Vorgabe 10.11.): Gjallarhorn experimentell - kleine Marke am Weg, Erklaerung im Tooltip und in der Teilnehmerliste
+    var xp = el('span', 'cl-chip cl-exp', T('Experimentell'));
+    xp.title = T('Gjallarhorn ist in Saga 2.5 experimentell – getestet mit bis zu 4 Personen bzw. Geräten je Anruf. Probleme bitte über „Diagnose senden“ melden.');
+    i.appendChild(xp);
     if (H.runes) {
       var rb = btn(H.runes.runes, 'cl-runes', function () {
         H.rpop = !H.rpop; rb.setAttribute('aria-expanded', String(H.rpop));
@@ -5074,7 +5078,11 @@
       ul.appendChild(li);
     });
     p.appendChild(ul);
-    awayList(R, p); focusBack(p, fk);
+    awayList(R, p);
+    var xp = el('p', 'cl-pl-exp'); xp.appendChild(el('span', 'cl-chip cl-exp', T('Experimentell')));
+    xp.appendChild(document.createTextNode(' ' + T('Gjallarhorn ist in Saga 2.5 experimentell – getestet mit bis zu 4 Personen bzw. Geräten je Anruf. Probleme bitte über „Diagnose senden“ melden.')));
+    p.appendChild(xp);
+    focusBack(p, fk);
   }
   function hornMod(R, x, action) {
     api('POST', '/api/calls/' + R.id + '/moderate', { device: myDev().id, target: x.device, action: action }).then(function () {

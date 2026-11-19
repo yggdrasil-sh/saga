@@ -1361,6 +1361,8 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   Direkt verbindet Saga nur als Rückfall: wenn kein Knoten bereit ist, ein in den letzten 30 Tagen genutztes Gerät des
   Gegenübers es nicht kann (z. B. ältere App, Safari beim Tunnel-Knoten) oder der Knoten im Anruf 30 s nicht erreichbar
   ist. Die Linux-App kann es (sie klingelt, das Gespräch läuft im Browser); länger nicht genutzte Geräte zählen nicht.
+  Gjallarhorn ist in 2.5 **experimentell** – getestet mit bis zu 4 Personen bzw. Geräten je Anruf; Web und Admin
+  zeigen dazu eine kleine Marke „Experimentell“. Probleme bitte über **Einstellungen → Hilfe → Diagnose senden** melden.
 - **Aus einem 1:1 wird eine Konferenz (ab 2.5):** Im 1:1 über einen Knoten in der Teilnehmerliste „Person hinzufügen“
   wählen – es entsteht eine **neue Gruppe** mit euch beiden und den Hinzugefügten, der Anruf läuft dort **ohne
   Unterbrechung** weiter (beide sind Admin der Gruppe), die Neuen klingeln. Im 1:1 steht danach „In Gruppenanruf

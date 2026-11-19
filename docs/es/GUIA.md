@@ -1184,6 +1184,9 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
   otro y hay menos problemas de NAT; sigue cifrado de extremo a extremo. Saga solo conecta directamente como reserva: si
   no hay ningún nodo listo, uno de los dispositivos de la otra persona no puede (p. ej. la app de Linux, una app antigua,
   Safari con el nodo de túnel) o el nodo no es accesible durante 30 s en la llamada.
+  Gjallarhorn es **experimental** en la 2.5: probado con hasta 4 personas o dispositivos por llamada; la web y la
+  administración lo indican con una pequeña etiqueta «Experimental». Informa de los problemas con **Ajustes → Ayuda →
+  Enviar diagnóstico**.
 - **Una llamada individual se convierte en conferencia (desde 2.5):** en una llamada individual a través de un nodo, elige
   «Añadir persona» en la lista de participantes: se crea un **grupo nuevo** con vosotros dos y las personas añadidas, y la
   llamada continúa allí **sin interrupción** (ambos sois administradores del grupo); a las personas nuevas les suena. En el

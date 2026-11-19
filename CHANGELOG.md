@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Gjallarhorn in Web und Admin als „Experimentell“ gekennzeichnet (Vorgabe 10.11.)
+- Admin → Anrufe: Marke „Experimentell“ an „Gjallarhorn“ und „Knoten“, darunter ein ruhiger Hinweis-Kasten (getestet
+  mit bis zu 4 Personen bzw. Geräten je Anruf, Probleme über „Diagnose senden“, größere Anrufe nach 2.5); der Hilfetext
+  „Alle Anrufe über Knoten“ verzichtet auf das eigene „(in 2.5 experimentell)“. Marke auch in der Legende der Netz-Karte,
+  bei „Gjallarhorn-Knoten für …“ (Föderation) und beim Verweis auf die Seite Anrufe (Allgemein).
+- Web-Anruf über einen Knoten: kleine Marke im Kopf neben dem Weg (Satz im Tooltip), der Satz unten in der
+  Teilnehmerliste – kein Banner, keine Warnung je Anruf. Anleitung (de/en/es) Abschnitt Anrufe: ein Satz. API unverändert.
+- Tests: neu `tests/horn_experimentell.py` mit `tests/browser_horn_experimentell.js` (Testumgebung `knoten`).
+
 ### Doku – Upgrade-Anleitung 2.3/2.4 → 2.5
 - Neu `docs/UPGRADE-2.5.md` (kurz auf Englisch `docs/en/UPGRADE-2.5.md`) für Admins hinter einem Proxy, der TLS selbst
   beendet (Nginx Proxy Manager): Backup und kein Rückweg nach den Migrationen (Schema-Stand 35), Kanal `testing` mit
