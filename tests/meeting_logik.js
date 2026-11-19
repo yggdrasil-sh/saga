@@ -14,8 +14,8 @@ V.meetingTiles.forEach(c => {
   const tiles = M.meetingTiles(c.roster, c.media, c.prefs);
   const got = tiles.map(pick);
   ok(`Kacheln: ${c.name}`, eq(got, c.expect), got);
-  const lay = M.pickLayout(tiles, 'auto');
-  ok(`  Layout Auto = ${c.layout}`, lay === c.layout, lay);
+  const lay = M.pickLayout(tiles, c.choice || 'auto');
+  ok(`  Layout ${c.choice || 'auto'} = ${c.layout}`, lay === c.layout, lay);
   const a = M.arrange(tiles, lay, { pin: c.pin || null, speaker: c.speaker || null, spokeAt: (c.prefs || {}).spokeAt, now: (c.prefs || {}).now });
   const ga = { stage: a.stage, strip: a.strip, grid: a.grid, float: a.float };
   ok(`  Buehne/Streifen/Raster`, eq(ga, c.arrange), ga);
@@ -109,6 +109,13 @@ V.selfPipSize.forEach(c => {
   const s = M.selfPipSize(c.w, c.h, c.ar, c.size);
   ok(`eigenes Bild ${c.w}x${c.h}, Verhaeltnis ${c.ar}, ${c.size}: ${c.expect.join('x')}`, s.w === c.expect[0] && s.h === c.expect[1], s);
 });
+// Bugs-DB 2161: Breitenregel nach der Kamera, nicht nach der Buehne; ohne bekanntes Verhaeltnis der Rueckfall des Aufrufers
+{
+  const q = M.selfPipSize(390, 844, 16 / 9, 'M'), h = M.selfPipSize(1280, 720, 9 / 16, 'M');
+  ok('eigenes Bild: Handy hochkant mit querer Kamera ist breiter als hoch, Desktop mit Handy-Kamera hoeher als breit', q.w > q.h && h.h > h.w && h.w === 160, [q, h]);
+  const f = M.selfPipSize(390, 844, 0, 'M', 16 / 9);
+  ok('eigenes Bild: Verhaeltnis unbekannt -> Breite nach der Buehne (hochkant 26 %), Verhaeltnis vom Aufrufer (16:9)', f.w === 101 && f.h === 57, f);
+}
 ok('Layout-Wahl: gespeichert, Uebernahme aus saga-horn-view (grid -> gallery), sonst Auto',
    M.layoutPref('speaker') === 'speaker' && M.layoutPref(null, 'grid') === 'gallery' && M.layoutPref(null, 'speaker') === 'speaker' && M.layoutPref('x', null) === 'auto');
 ok('Fensterklassen: Handy hochkant, Handy quer, Tablet, Desktop, gross',
