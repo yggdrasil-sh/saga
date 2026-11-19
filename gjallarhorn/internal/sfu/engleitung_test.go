@@ -577,3 +577,23 @@ func TestEngLeitungSprecherwechsel(t *testing.T) {
 		}
 	}
 }
+
+// TestEngLeitungKeinNetzwechsel (Pruefung 2159, 2. Pruefung): Ein echter Stau ist kein Netzwechsel - auch wenn der
+// erste Schritt zurueck noch in den Anstieg der Schlange faellt und die Umlaufzeit beim Abbau wieder durch die beim
+// ersten Schritt laeuft (Leitung 2M -> 500k bzw. 600k, Kopfdaten 1,3 bzw. 1,5, Umlaufzeit je Takt wie bei mehreren
+// Bildstroemen mit eigenen Empfaengerberichten). Vorher: 5 Netzwechsel, Sperre und Daempfung jeweils aufgehoben, die
+// Schlange lief alle ~40 s wieder voll.
+func TestEngLeitungKeinNetzwechsel(t *testing.T) {
+	for _, c := range []struct{ link, oh float64 }{{500e3, 1.3}, {600e3, 1.5}} {
+		r := engRunX(t, engOpt{d: 240 * time.Second, oh: c.oh, linkAt: func(el time.Duration) float64 {
+			if el >= 60*time.Second {
+				return c.link
+			}
+			return 2e6
+		}})
+		t.Log(r, "Staus", r.jams, "Netzwechsel", r.pathN)
+		if r.pathN != 0 {
+			t.Errorf("%.0fk oh %.1f: %d Netzwechsel bei echtem Stau (Ziel 0)", c.link/1000, c.oh, r.pathN)
+		}
+	}
+}

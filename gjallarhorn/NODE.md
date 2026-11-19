@@ -122,7 +122,10 @@ Platzhalter: `horn-1.example.org`.
       mehr (`jamBad`, Spur `halt=<s>b`). Vorher sperrte `jamHold` auch die Proben: Nach einem kurzen Stau auf wieder
       freier Leitung blieb alles 60 s unten (`TestUDPProbing`, Prüfung 2159; Modell `TestEngLeitungNachStau`).
     - **Netzwechsel:** Hat das Bein `jamPathN` (2) Stufen zurückgenommen und liegt die Umlaufzeit noch so hoch wie beim
-      ersten Schritt (−20/+40 ms) – ohne Überlast laut GCC und mit Verlust unter `jamPathLoss` (2 %) –, ist es nicht
+      ersten Schritt (−20/+40 ms) und höchstens 20 ms unter der Spitze seitdem (`jamRTTMax`: fällt der erste Schritt
+      noch in den Anstieg der eigenen Schlange, läuft die Umlaufzeit beim Abbau wieder durch die beim ersten Schritt –
+      sonst galt ein echter Stau als Netzwechsel, 2. Prüfung, `TestEngLeitungKeinNetzwechsel`) – ohne Überlast laut
+      GCC und mit Verlust unter `jamPathLoss` (2 %) –, ist es nicht
       die eigene Schlange (anderer Pfad, Grund-Umlaufzeit gestiegen): Boden neu, Sperre und Aufschub wie vor dem Stau.
       Ohne Verlustangabe (`ExtStat`) nicht – eine volle Schlange hält die Umlaufzeit ebenso flach. Vorher nahm das Bein
       im Dauerstau alles zurück, bis der Boden nachgezogen war (0,5 ms/s). Modell `TestEngLeitungNetzwechsel`.

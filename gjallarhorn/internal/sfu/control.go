@@ -926,7 +926,13 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		// (anderer Pfad, Grund-Umlaufzeit gestiegen): Boden neu, der Stau war keiner (Sperre und Aufschub wie davor).
 		// Sonst nahm das Bein im Dauerstau alles zurueck, bis der Boden nachgezogen war (0,5 ms/s: Minuten).
 		// Ohne Verlustangabe (ExtStat) nicht: Eine volle Schlange haelt die Umlaufzeit ebenso flach.
-		if jam && l.jamN >= jamPathN && now-l.jamStepAt >= int64(jamStep) && rtt > 0 && rtt+20*time.Millisecond >= l.jamRTT0 && rtt <= l.jamRTT0+40*time.Millisecond &&
+		// Verglichen wird auch mit der Spitze seit dem ersten Schritt (jamRTTMax): Der erste Schritt faellt oft noch in
+		// den Anstieg der eigenen Schlange - baut sie sich danach ab, laeuft die Umlaufzeit wieder durch die beim ersten
+		// Schritt, gefallen ist sie trotzdem (Pruefung 2159: sonst galt ein echter Stau als Netzwechsel).
+		if l.jamN > 0 && rtt > l.jamRTTMax {
+			l.jamRTTMax = rtt
+		}
+		if jam && l.jamN >= jamPathN && now-l.jamStepAt >= int64(jamStep) && rtt > 0 && rtt+20*time.Millisecond >= max(l.jamRTT0, l.jamRTTMax) && rtt <= l.jamRTT0+40*time.Millisecond &&
 			l.overN == 0 && l.ExtStat != nil && l.ExtStat().Loss < jamPathLoss {
 			l.rttFloor, l.rttHighAt, l.rttHighN = rtt, 0, 0
 			l.jamAt, l.mb, l.jamN, l.jamRTT = l.jamPre, l.jamMB, 0, 0
@@ -1137,7 +1143,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	if jam && sum >= prev && now-l.cutAt >= int64(jamStep) && now-l.jamStepAt >= int64(jamStep) && rttUp &&
 		(l.jamRTT == 0 || rtt == 0 || rtt+20*time.Millisecond >= l.jamRTT) {
 		if l.jamN == 0 { // erster Schritt dieses Staus: Stand fuer den Netzwechsel
-			l.jamRTT0, l.jamMB = rtt, l.mb
+			l.jamRTT0, l.jamRTTMax, l.jamMB = rtt, rtt, l.mb
 		}
 		l.jamN++
 		done := false

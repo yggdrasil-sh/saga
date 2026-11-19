@@ -360,6 +360,7 @@ type Leg struct {
 	jamPre    int64         // jamAt vor dem laufenden Stau (Netzwechsel: zurueck dorthin)
 	jamN      int           // Schritte zurueck im laufenden Stau
 	jamRTT0   time.Duration // Umlaufzeit beim ersten davon
+	jamRTTMax time.Duration // ... und die hoechste seitdem
 	jamMB     [2][2]mbDamp  // Daempfung vor dem ersten davon
 	pathN     int           // erkannte Netzwechsel (Spur, Tests)
 	rttWaitAt int64         // Anrufbeginn: erster Takt ohne Umlaufzeit (rttWaitMax)
