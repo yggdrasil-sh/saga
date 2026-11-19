@@ -277,6 +277,70 @@ for k in range(120):
         print("     write-Fehler", json.dumps(strip_texts(b, R), ensure_ascii=False)[:300], "\n     ->", json.dumps(gg["blocks"], ensure_ascii=False)[:300])
 ok(f"write: 120 zufaellige Zielstaende exakt erreicht ({okc})", okc == 120)
 
+# Pruefung 2173 (unabhaengig): Zufall ueber einen Absatz mit Mehrbyte-Zeichen (Umlaute, Emoji, Astralzeichen) und Marken -
+# write(cur -> tgt) ergibt genau tgt (Text und Marken), auch wenn ein zweiter Client gleichzeitig irgendwo tippt: beide
+# Docs gleich, dessen Eingabe vollstaendig enthalten; dasselbe fuer den Titel (_sync_plain)
+from html import escape as _hesc  # noqa: E402
+_ALPH = list("ab c.") + ["\u00e4", "\u00df", "\u20ac", "\U0001F600", "\U0001D11E", "e\u0301", "<", "&"]
+_MK = (("b", "b"), ("i", "i"), ("s", "s"), ("u", "u"))
+
+
+def _fz_html(r):
+    out = []
+    for _ in range(r.randint(0, 5)):
+        txt = _hesc("".join(r.choice(_ALPH) for _ in range(r.randint(1, 6))), quote=False)
+        for _n, tag in [m for m in _MK if r.random() < 0.3]:
+            txt = f"<{tag}>{txt}</{tag}>"
+        out.append(txt)
+    return "".join(out)
+
+
+def _fz_plain(h):
+    from html import unescape
+    return unescape(__import__("re").sub(r"<[^>]*>", "", h))
+
+
+from pycrdt import Text as _YText  # noqa: E402
+_fr = random.Random(2173)
+_fz = {"exakt": 0, "konv": 0, "titel": 0}
+_FZN = 400
+for _k in range(_FZN):
+    _c0 = canon({"blocks": [{"id": "z1", "type": "paragraph", "data": {"text": _fz_html(_fr)}}]})
+    _t0 = canon({"blocks": [{"id": "z1", "type": "paragraph", "data": {"text": _fz_html(_fr)}}]})
+    _s = Doc(client_id=_fr.randint(1, 2**31)); _s.apply_update(M.build({"blocks": _c0}, "T" + _fz_plain(_c0[0]["data"]["text"])[:20]))
+    _cl = Doc(client_id=_fr.randint(1, 2**31)); _cl.apply_update(_s.get_update())
+    _tt = "T" + _fz_plain(_t0[0]["data"]["text"])[:20]
+    M.write(_s, {"blocks": _t0}, _tt)
+    _g = M.read(_s, R)[0]["blocks"]
+    _rd = Doc(); _rd.apply_update(M.build({"blocks": _t0}))     # Normalform des Modells (Marken-Reihenfolge, Laeufe)
+    if same(_g, M.read(_rd, R)[0]["blocks"]) and M.read(_s)[1] == _tt:
+        _fz["exakt"] += 1
+    else:
+        print("     fuzz-exakt", json.dumps(_c0, ensure_ascii=False)[:200], "->", json.dumps(_t0, ensure_ascii=False)[:200], "=", json.dumps(_g, ensure_ascii=False)[:200])
+    # gleichzeitig: Client tippt an zufaelliger Stelle (Zeichengrenze in UTF-8) im alten Text und im alten Titel
+    _ct = list(list(_cl.get("prosemirror", type=XmlFragment).children)[0].children)
+    _ins = "X\u00fc"
+    _cp = _fz_plain(_c0[0]["data"]["text"])
+    _at = _fr.randint(0, len(_cp))
+    if _ct and isinstance(_ct[0], XmlText):
+        _ct[0].insert(len(_cp[:_at].encode("utf-8")), _ins)
+    else:
+        _ins = ""
+    _ut = _cl.get("title", type=_YText); _ttl0 = str(_ut); _ta = _fr.randint(0, len(_ttl0))
+    _ut.insert(len(_ttl0[:_ta].encode("utf-8")), "!")
+    _s.apply_update(_cl.get_update(_s.get_state())); _cl.apply_update(_s.get_update(_cl.get_state()))
+    _a, _b = M.read(_s, R), M.read(_cl, R)
+    if _a == _b and _ins in _fz_plain(_a[0]["blocks"][0]["data"]["text"] if _a[0]["blocks"] else ""):
+        _fz["konv"] += 1
+    else:
+        print("     fuzz-konv", repr(_cp), _at, "->", json.dumps(_a, ensure_ascii=False)[:200], "|", json.dumps(_b, ensure_ascii=False)[:200])
+    if _a[1] == _b[1] and _a[1].count("!") == _tt.count("!") + 1 and len(_a[1]) == len(_tt) + 1:
+        _fz["titel"] += 1
+    else:
+        print("     fuzz-titel", repr(_ttl0), repr(_tt), "->", repr(_a[1]), repr(_b[1]))
+ok(f"write: {_FZN} Zufallspaare Mehrbyte/Marken exakt, mit gleichzeitigem Tippen konvergent ({_fz})",
+   _fz == {"exakt": _FZN, "konv": _FZN, "titel": _FZN})
+
 # Schema 2: alte Inline-Code-Marke "code" (Schema 1) wird gelesen und beim Schreiben auch wieder entfernt
 _d = M.new_doc()
 with _d.transaction():
