@@ -500,6 +500,33 @@ try:
     ok("Altschema ohne offene Aenderungen: Neubau aus note.body",
        [x["data"]["text"] for x in r2.blocks(on2)[0]["blocks"]] == ["Ruhig"] and body_of(on2)[1]["rev"] == d2["rev"])
     r2.close()
+    # Bugs-DB 2181: anderes Schema mit offenen Live-Aenderungen UND seither geaendertem body (drei Wege) - derselbe Block
+    # live und im body geaendert -> Konfliktblock (Live-Fassung) mit Urheber = letzter Live-Schreiber laut Log (vorher by "")
+    from saga.core import local_ref as _lr
+    on3 = page([P("a", "Eins"), P("b", "Zwei")], "Altschema3")
+    st3, d3 = body_of(on3)
+    st_, _ = req("PATCH", f"/api/notes/{on3}", A, {"body": json.dumps({"blocks": [P("a", "Eins"), P("b", "Zwei fremd")]}),
+                                                  "format": "blocks", "rev": d3["rev"]})
+    o3 = Doc(); o3.apply_update(M.build({"blocks": st3}, "Altschema3"))
+    with o3.transaction():
+        o3.get("meta", type=pycrdt.Map)["schema_ver"] = 1
+    sv3 = o3.get_state()
+    text_of(o3, 1).insert(4, " live")
+    with connect() as c, c:
+        c.execute("INSERT INTO note_crdt (note_id, model, schema_ver, gen, state, sv, rev, base, base_title, updated, mat, used, owners) "
+                  "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (on3, M.MODEL, 1, "altgen3", o3.get_update(), o3.get_state(), d3["rev"], json.dumps({"blocks": st3}), "Altschema3",
+                   now_, 0, now_, "{}"))
+        c.execute("INSERT INTO note_crdt_log (note_id, seq, upd, uid, at) VALUES (?,?,?,?,?)", (on3, 1, o3.get_update(sv3), BB, now_))
+        c.execute("INSERT INTO note_crdt_log (note_id, seq, upd, uid, at) VALUES (?,?,?,?,?)", (on3, 2, o3.get_update(o3.get_state()), "", now_))   # Server-Korrektur ohne uid
+    r3 = client(A); subscribe(r3, on3)
+    b3 = body_of(on3)[0]
+    cf3 = next((x["tunes"]["hkconflict"] for x in b3 if (x.get("tunes") or {}).get("hkconflict")), {})
+    ok(f"2181: Altschema + body geaendert: Konfliktblock aus der Live-Fassung ({st_}, {[x['data']['text'] for x in b3]})",
+       st_ == 200 and any(x["data"]["text"] == "Zwei live" for x in b3) and any(x["data"]["text"] == "Zwei fremd" for x in b3))
+    ok(f"2181: ... mit Urheber = letzter Live-Schreiber (by = Handle von B, name) und at ({cf3})",
+       cf3.get("by") == _lr(BB) and bool(cf3.get("name")) and abs((cf3.get("at") or 0) - time.time()) < 60)
+    r3.close()
 
     # --- Formel mit Vorschaubild live bearbeiten: render.stale setzt nur clean_blocks - kein reject sanitize ------------
     fid = secrets.token_hex(12)

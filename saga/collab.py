@@ -292,6 +292,14 @@ class _Room:
         self.closed = False
 
 
+def _conflict_by(c, ed):
+    """Urheber eines Konfliktblocks (merge_doc by): wer die Live-Fassung zuletzt geschrieben hat - lokal als Handle
+    (local_ref), fremd wie gespeichert; ohne bekannten Schreiber leer."""
+    if not ed:
+        return {"by": "", "name": ""}
+    return {"by": ed if is_remote(ed) else local_ref(ed), "name": names(c, [ed]).get(ed) or ""}
+
+
 def _rescue_old(nid):
     """Im Thread, vor _load_room: gespeicherter Zustand eines ANDEREN Modells bzw. einer anderen Schema-Version mit
     Live-Aenderungen, die noch nicht in note.body stehen (updated > mat, z. B. Server-Update mitten in einer Sitzung).
@@ -325,7 +333,9 @@ def _rescue_old(nid):
         from saga.notes import ensure_ids
         theirs = json.loads(ensure_ids(body, "blocks", nid) or '{"blocks": []}')
         if rev != st[4] and tmp.base is not None:          # body seit dem letzten Abgleich anders: drei Wege
-            target, _ = merge.merge_doc(tmp.base, live, theirs, None, {"by": "", "name": ""}, time.time())
+            with _db() as c:                               # Bugs-DB 2181: Konfliktblock = Live-Fassung -> Urheber wie in ingest
+                by = _conflict_by(c, editor)
+            target, _ = merge.merge_doc(tmp.base, live, theirs, None, by, time.time())
             new_title = merge.merge_title(st[6] or "", live_title, title or "")[0]
         else:
             target, new_title = live, live_title
@@ -709,9 +719,8 @@ def ingest(nid, rev=None):
                     live, live_title = model.read(room.doc, _Resolver(c, room.owner, room.base), _mask_doc(room.base))
                     _unmask(c, live)
                     _restore_links(c, room, live)
-                ed = room.editor              # Bugs-DB 2176: Konfliktblock = Live-Fassung -> Urheber, wer zuletzt live schrieb
-                with _db() as c:
-                    by = {"by": (ed if is_remote(ed) else local_ref(ed)) if ed else "", "name": (names(c, [ed]).get(ed) or "") if ed else ""}
+                with _db() as c:              # Bugs-DB 2176: Konfliktblock = Live-Fassung -> Urheber, wer zuletzt live schrieb
+                    by = _conflict_by(c, room.editor)
                 target, _ = merge.merge_doc(room.base, live, theirs, None, by, time.time())
                 # Bug 2173: wie gespeichert bereinigen (Konfliktblock-Stempel by "", at) - sonst passte das Doc nicht zu
                 # clean_blocks, _read_body lehnte jedes folgende Update ab (sanitize) und der Raum materialisierte nicht mehr
