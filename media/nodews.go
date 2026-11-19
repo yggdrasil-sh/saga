@@ -119,6 +119,7 @@ func newNodeProxy(sock, key string, c *config) *httputil.ReverseProxy {
 			pr.Out.URL.Scheme = "http"
 			pr.Out.URL.Host = "knoten"
 			pr.Out.Host = pr.In.Host
+			keepQuery(pr) // Query byte-gleich (Horn-Token, signierte Anfragen; siehe proxy.go)
 			h := pr.Out.Header
 			h.Del(keyHeader)
 			h.Set(einKeyHeader, key)

@@ -206,3 +206,35 @@ func TestCertDNS01ZuALPN(t *testing.T) {
 		t.Errorf("Dateimodus: acme-tls/1 fehlt in %v", tc.NextProtos)
 	}
 }
+
+// TestEinportFrontKeepsQuery (Bugs-DB 2182): Rueckfall an saga-media reicht die Query byte-gleich durch - ReverseProxy
+// kodierte sie bei ';', ungueltigem '%' bzw. gesetztem GODEBUG urlmaxqueryparams neu (sortiert), signierte
+// Foederations-Anfragen (@query) schlugen dahinter mit 401 fehl.
+func TestEinportFrontKeepsQuery(t *testing.T) {
+	back := t.TempDir() + "/back.sock"
+	bl, err := net.Listen("unix", back)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bl.Close()
+	go http.Serve(bl, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, r.RequestURI) }))
+	s := &server{ein: &einport{key: "geheim-0123456789", back: back}}
+	front := s.einportFront(http.NotFoundHandler())
+	targets := []string{"/fed/v2/chat/msgs?ref=abc&after=0", "/fed/v2/directory?since=0&cfg=", "/api/x?b=2&a=1&a=0&b=1",
+		"/api/x?a=1;b=2&c=3", "/api/x?q=%7e%2F%20x+y&z=%C3%A4", "/api/x?bad=%zz&a=1", "/api/x?leer=&=w&nur&&x=1", "/api/x?",
+		"/fed/v2/x/a%2Fb%20c:d@e?ref=r%2Fx&after=0"}
+	for _, gd := range []string{"", "urlmaxqueryparams=10000"} {
+		if gd != "" {
+			t.Setenv("GODEBUG", gd)
+		}
+		for _, want := range targets {
+			r := httptest.NewRequest("GET", want, nil)
+			r.RemoteAddr = "203.0.113.9:5000"
+			w := httptest.NewRecorder()
+			front.ServeHTTP(w, r)
+			if got := w.Body.String(); got != want {
+				t.Errorf("GODEBUG=%s: saga-media sah %q statt %q", gd, got, want)
+			}
+		}
+	}
+}

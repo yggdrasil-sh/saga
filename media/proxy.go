@@ -120,6 +120,7 @@ func newProxy(c *config, tr http.RoundTripper) *httputil.ReverseProxy {
 			pr.Out.URL.Scheme = "http"
 			pr.Out.URL.Host = c.upstream
 			pr.Out.Host = pr.In.Host
+			keepQuery(pr)
 			setForwarded(pr.Out.Header, pr.In, c.trusted)
 		},
 		ModifyResponse: func(resp *http.Response) error {
@@ -150,6 +151,17 @@ func newProxy(c *config, tr http.RoundTripper) *httputil.ReverseProxy {
 			_, _ = io.WriteString(w, "Saga startet gerade oder ist nicht erreichbar.\n")
 		},
 	}
+}
+
+// keepQuery: Query byte-gleich weiterreichen. ReverseProxy kodiert sie vor Rewrite neu (cleanQueryParams: url.ParseQuery
+// + Encode, Schluessel sortiert) - bei ';' und ungueltigem '%', in neueren Go-Versionen (z. B. 1.27) zusaetzlich immer,
+// wenn GODEBUG urlmaxqueryparams gesetzt ist (go.mod "go 1.23" setzt es implizit auf 0). Signierte Foederations-Anfragen
+// decken "@query" ab (saga/fedsig.py): umsortiert -> 401 (Adressbuch/Chat-Verlauf verbundener Server, Bugs-DB 2182).
+// Der Pfad bleibt ohnehin gleich (Rewrite aendert URL.Path/RawPath nicht, EscapedPath liefert die Rohform).
+// saga-media selbst wertet die Query der weitergeleiteten Anfragen nicht aus - das Durchreichen oeffnet nichts.
+func keepQuery(pr *httputil.ProxyRequest) {
+	pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+	pr.Out.URL.ForceQuery = pr.In.URL.ForceQuery
 }
 
 // stallBody: Upload-Koerper (Slowloris): je Lesevorgang hoechstens c.stall warten. Am Ende die Frist wieder

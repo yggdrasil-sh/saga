@@ -205,6 +205,10 @@ func (s *server) einportFront(h http.Handler) http.Handler {
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.Out.URL.Scheme, pr.Out.URL.Host = "http", "saga"
 			pr.Out.Host = pr.In.Host
+			// Query byte-gleich weiterreichen: ReverseProxy kodiert sie sonst bei ';', ungueltigem '%' oder gesetztem
+			// GODEBUG urlmaxqueryparams neu (sortiert) - signierte Foederations-Anfragen (@query) schluegen dahinter fehl
+			// (Bugs-DB 2182, wie saga-media proxy.go keepQuery).
+			pr.Out.URL.RawQuery, pr.Out.URL.ForceQuery = pr.In.URL.RawQuery, pr.In.URL.ForceQuery
 			pr.Out.Header.Set(einKeyHeader, s.ein.key)
 			pr.Out.Header.Set(einForHeader, ipKey(pr.In))
 		},
