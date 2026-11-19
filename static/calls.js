@@ -1089,11 +1089,11 @@
       // (aeltere App) dessen Platz kurz danach beim Server abmelden
       // 2.5 (L2): Rueckfall nur fuer genau dieses Bein (gen) und solange dieses Geraet noch dabei ist (by) - ein schneller
       // Rueckwechsel (< 3 s) wirft sonst das zurueckkehrende Geraet hinaus
-      var o = {}; o[rep] = JSON.stringify({ t: 'state', ready: true, replaces: rep, mic: true, cam: !!R.cam, screen: !!R.screen });
+      var o = {}; o[rep] = JSON.stringify({ t: 'state', ready: true, replaces: rep, mic: micOn(R), cam: !!R.cam, screen: !!R.screen });
       var id0 = R.id, lb = leaveBody(R, rep, 'handover', myDev().id);
       hornSend(R, o).then(function () { setTimeout(function () { api('POST', '/api/calls/' + id0 + '/leave', lb).catch(function () {}); }, 3000); });
     } else if (A && A.established) {
-      sendSignal(A, { t: 'state', ready: true, replaces: rep, mic: true, cam: camWas === null ? !!R.cam : camWas, screen: !!R.screen });
+      sendSignal(A, { t: 'state', ready: true, replaces: rep, mic: micOn(R), cam: camWas === null ? !!R.cam : camWas, screen: !!R.screen });
       // L2 (B5): auch im Mesh ein Rueckfall, falls state.ready verloren geht (nach handover_s/2, bedingt wie oben)
       var id1 = R.id, lb1 = leaveBody(R, rep, 'handover', myDev().id);
       setTimeout(function () { api('POST', '/api/calls/' + id1 + '/leave', lb1).catch(function () {}); }, HO_S * 500);
@@ -1272,7 +1272,7 @@
     if (here) {
       if (!seen[here]) roster.push({ device: here, who: meName() || here, name: meName(), dev_name: '', role: R.companion ? 'companion' : 'member', me: true });
       var mc = R.cam && R.cam.readyState === 'live' && R.cam.enabled ? R.cam : null;
-      media[here] = { mic: !!R.mic, cam: !!mc, screen: false, level: 0 };
+      media[here] = { mic: micOn(R), cam: !!mc, screen: false, level: 0 };
       src[here] = { cam: mc, scr: null, L: null };
     }
     return { here: here, roster: roster, media: media, src: src };
@@ -1750,7 +1750,7 @@
     var phase = R.done ? 'ended' : R.horn ? (R.horn.cur ? 'connected' : 'connecting') : links(R).some(function (L) { return L.connected; }) ? 'connected' : 'connecting';
     var video = w.classList.contains('has-video') || w.classList.contains('horn-scr') || !!w.querySelector('.cl-meet .cl-tile.has-video, .cl-grid .cl-tile.has-video');
     var menu = !!(ui.hint || w.querySelector('.cl-plist, .cl-rpop, .cl-tmenu, .cl-lmenu, .cl-keys, .cl-mhint, .cl-hint'));
-    var notice = (!ui.st.hidden && ui.st.classList.contains('err')) || (ui.un && !ui.un.hidden);
+    var notice = (!ui.st.hidden && ui.st.classList.contains('err')) || (ui.un && !ui.un.hidden) || (ui.mf && !ui.mf.hidden);
     var over = !!ui.over || !!(ae && ae !== document.body && (ui.top.contains(ae) || ui.ctl.contains(ae)));
     var hide = MT.hideControls(ui.idle, phase, video, false, menu, notice, over) && !w.classList.contains('small');
     if (w.classList.contains('idle') !== hide) w.classList.toggle('idle', hide);
@@ -2095,7 +2095,7 @@
   function stateOut(c) {
     if (!c.ready || !c.pc && !c.peerDevice) return;
     c.wantSent = wantNow(c);
-    var o = { t: 'state', mic: c.mic, cam: !!(c.cam && c.cam.readyState === 'live' && c.cam.enabled), screen: !!c.screen,
+    var o = { t: 'state', mic: micOn(c), cam: !!(c.cam && c.cam.readyState === 'live' && c.cam.enabled), screen: !!c.screen,
               pip: !!c.pip, want: { video: c.wantSent }, path: c.net || undefined };
     // 2.5 (§4.3): Ton an/aus fuer den Echo-Schutz der eigenen Geraete; ask_mute nur an ein eigenes Geraet und nur einmal
     if (c.peer && c.peer.me) { o.spk = !!roomOf(c).spkOut; if (c.askMute) { o.ask_mute = true; c.askMute = false; } }
@@ -2113,7 +2113,9 @@
     clearTimeout(visT);
     visT = setTimeout(function () { var c = C; if (c && !c.done && links(c).some(function (L) { return L.connected; }) && wantNow(c) !== c.wantSent) stateAll(c); }, 600);
   });
-  function toggleMic(c) { var R = roomOf(c); if (R.mic) setMic(R, false); else echoGuard(R, function () { setMic(R, true); }); }
+  // 2.5 (Bugs-DB 2198): Aufnahme haengt stumm (Spur muted, z. B. WebKit nach setMicrophoneActive(false)) -> der Klick gibt sie
+  // frei statt stummzuschalten
+  function toggleMic(c) { var R = roomOf(c); if (micStuck(R)) micFree(R); else if (R.mic) setMic(R, false); else echoGuard(R, function () { setMic(R, true); }); }
   // 2.5 Echo-Schutz (MEETING-SPEC §4.3): schaltet man auf einem Begleitgeraet Mikrofon oder Ton ein, waehrend ein anderes
   // eigenes Geraet im Anruf Mikrofon oder Ton an hat -> Blatt "Ist das MacBook im selben Raum?". "Hier einschalten, … stumm"
   // schickt dem anderen Geraet state.ask_mute (nur zwischen eigenen Geraeten, Ende-zu-Ende versiegelt wie jedes Signal).
@@ -2164,8 +2166,49 @@
     }
     c.mic = !!on;
     (c.local ? c.local.getAudioTracks() : []).forEach(function (t) { t.enabled = c.mic; });
-    try { if (navigator.mediaSession && navigator.mediaSession.setMicrophoneActive) navigator.mediaSession.setMicrophoneActive(c.mic); } catch (e) { /* egal */ }
-    drawCtl(c); stateAll(c);
+    msMic(c.mic);
+    micWatch(c); drawCtl(c); stateAll(c);
+  }
+  // 2.5 (Bugs-DB 2198): Media Session setMicrophoneActive nur aus einer Nutzergeste. WebKit (Safari, Mac-Huelle) schaltet
+  // mit false die Aufnahme der Seite selbst stumm (Spur muted) und lehnt true ohne Geste ab (Promise mit InvalidStateError) -
+  // eine Uebernahme per Timer (hoCheck) bliebe sonst stumm. Chrome nutzt den Wert nur fuer die Anzeige (Bild-im-Bild).
+  // Mac-Huelle (Faehigkeit mic): beim Einschalten zusaetzlich nativ freigeben (WKWebView, ohne Geste).
+  function gesture() { var u = navigator.userActivation; return !!(u && u.isActive); }
+  function msMic(on) {
+    if (on && HK.host && HK.host.micActive) HK.host.micActive();
+    var ms = navigator.mediaSession;
+    if (!ms || typeof ms.setMicrophoneActive !== 'function' || !gesture()) return;
+    try { var p = ms.setMicrophoneActive(!!on); if (p && typeof p.catch === 'function') p.catch(function () {}); } catch (e) { /* egal */ }
+  }
+  // Mikrofon soll an sein, die Aufnahme liefert aber nichts (Spur muted: Browser/System hat sie stummgeschaltet)
+  function micStuck(c) {
+    c = roomOf(c);
+    var a = c && c.mic && !c.companion && c.local ? c.local.getAudioTracks()[0] : null;
+    return !!(a && a.readyState === 'live' && a.enabled && a.muted);
+  }
+  // Was wirklich gesendet wird - fuer Anzeige und Zustand ans Gegenueber (ehrlich: haengt die Aufnahme, "stumm")
+  function micOn(c) { c = roomOf(c); return !!(c && c.mic) && !micStuck(c); }
+  // Stumm/Frei der eigenen Mikrofon-Spur beobachten (einmal je Spur)
+  function micWatch(c) {
+    var R = roomOf(c);
+    (R && R.local ? R.local.getAudioTracks() : []).forEach(function (t) {
+      if (t._mw) return; t._mw = true;
+      var upd = function () {
+        if (!live(R) || !R.local || R.local.getAudioTracks().indexOf(t) < 0) return;
+        if (micStuck(R)) { diagEv(R, 'mic-stuck', ''); msMic(true); }
+        drawCtl(R); drawInfo(R); stateAll(R);
+      };
+      t.addEventListener('mute', upd); t.addEventListener('unmute', upd);
+    });
+  }
+  // Klick auf "Mikrofon antippen, um es freizugeben" bzw. den Mikrofon-Knopf (Nutzergeste): Aufnahme wieder aktiv
+  function micFree(c) {
+    var R = roomOf(c), ms = navigator.mediaSession;
+    if (HK.host && HK.host.micActive) HK.host.micActive();
+    if (ms && typeof ms.setMicrophoneActive === 'function') {
+      try { var p = ms.setMicrophoneActive(true); if (p && typeof p.catch === 'function') p.catch(function () {}); } catch (e) { /* egal */ }
+    }
+    drawCtl(R);
   }
   // Wiedergabe an/aus (Begleitgeraet: aus, damit es im selben Raum nicht rueckkoppelt)
   function setSpk(c, on) {
@@ -2624,12 +2667,15 @@
     var ctl = el('div', 'cl-ctl');
     var un = btn(T('Ton einschalten'), 'cl-pill cl-unmute', function () { playAudio(c); }, T('Der Browser hat den Ton blockiert – tippen, um ihn einzuschalten'));
     un.hidden = true;
+    // 2.5 (Bugs-DB 2198): Aufnahme haengt stumm (WebKit ohne Nutzergeste) - ein Klick gibt sie frei
+    var mf = btn(T('Mikrofon antippen, um es freizugeben'), 'cl-pill cl-micfree', function () { micFree(c); });
+    mf.hidden = true;
     // E3: Leiste "Du teilst deinen Bildschirm" (rot) bzw. "… teilt den Bildschirm" (Empfaenger) - immer sichtbar beim Teilen
     var share = el('div', 'cl-share'); share.setAttribute('role', 'status'); share.hidden = true;
     var say = el('div', 'cl-say'); say.setAttribute('aria-live', 'polite'); say.setAttribute('role', 'status');   // Ansagen (§10)
-    w.appendChild(stage); w.appendChild(top); w.appendChild(share); w.appendChild(un); w.appendChild(st); w.appendChild(ctl); w.appendChild(say);
+    w.appendChild(stage); w.appendChild(top); w.appendChild(share); w.appendChild(un); w.appendChild(mf); w.appendChild(st); w.appendChild(ctl); w.appendChild(say);
     document.body.appendChild(w);
-    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, sv: sv, slb: slb, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null, grid: grid, tb: tb,
+    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, sv: sv, slb: slb, who: who, info: info, st: st, ctl: ctl, un: un, mf: mf, pipB: pipB, share: share, hint: null, grid: grid, tb: tb,
              top: top, stage: stage, meet: meet, mbig: mbig, mstrip: mstrip, mgrid: mgrid, pager: pager, pgT: pgT, pgPrev: pgPrev, pgNext: pgNext,
              mchip: mchip, mchipT: mchipT, zchip: zchip, zchipT: zchipT, mnov: mnov, say: say, idle: false, over: false };
     idleInit(c); meetZoomInit(c);
@@ -2797,8 +2843,12 @@
     var x = c.ui.ctl; x.textContent = '';
     // 2.5: Kuerzel im Tooltip ("Mikrofon (M)"), der Vorlesetext bleibt ohne (Tests und Screenreader)
     var kb = function (b, k) { if (!mobile) b.title = b.getAttribute('aria-label') + ' (' + k + ')'; return b; };
-    var m = kb(btn(icon(c.mic ? 'mic' : 'micOff'), 'cl-round' + (c.mic ? '' : ' off'), function () { toggleMic(c); }, c.mic ? T('Stummschalten') : T('Mikrofon einschalten')), 'M');
-    m.setAttribute('aria-pressed', String(!c.mic)); x.appendChild(m);
+    var on = micOn(c), stuck = micStuck(c);            // 2198: haengt die Aufnahme, zeigt der Knopf "aus" und gibt beim Klick frei
+    micWatch(c);
+    var m = kb(btn(icon(on ? 'mic' : 'micOff'), 'cl-round' + (on ? '' : ' off'), function () { toggleMic(c); },
+      stuck ? T('Mikrofon antippen, um es freizugeben') : on ? T('Stummschalten') : T('Mikrofon einschalten')), 'M');
+    m.setAttribute('aria-pressed', String(!on)); x.appendChild(m);
+    if (c.ui.mf && c.ui.mf.hidden === stuck) { c.ui.mf.hidden = !stuck; idleCheck(c); }
     var v = kb(btn(icon(c.cam ? 'cam' : 'camOff'), 'cl-round' + (c.cam ? '' : ' off'), function () { if (c.local) toggleCam(c); }, c.cam ? T('Kamera aus') : T('Kamera an')), 'V');
     v.setAttribute('aria-pressed', String(!c.cam)); x.appendChild(v);
     if (c.cam && mtPref('saga-call-selfshow', '1') === '0') v.classList.add('cl-camdot');   // Kamera sendet, eigenes Bild ausgeblendet
@@ -2945,8 +2995,10 @@
     if (u.v.srcObject !== src) { u.v.srcObject = src; if (src) u.v.play().catch(function () {}); }
     u.stage.classList.toggle('has-video', vid);
     u.ctl.textContent = '';
-    var m = btn(icon(c.mic ? 'mic' : 'micOff'), 'cl-round' + (c.mic ? '' : ' off'), function () { toggleMic(c); }, c.mic ? T('Stummschalten') : T('Mikrofon einschalten'));
-    m.setAttribute('aria-pressed', String(!c.mic));
+    var on = micOn(c);
+    var m = btn(icon(on ? 'mic' : 'micOff'), 'cl-round' + (on ? '' : ' off'), function () { toggleMic(c); },
+      micStuck(c) ? T('Mikrofon antippen, um es freizugeben') : on ? T('Stummschalten') : T('Mikrofon einschalten'));
+    m.setAttribute('aria-pressed', String(!on));
     u.ctl.appendChild(u.d.adoptNode(m));
     u.ctl.appendChild(u.d.adoptNode(btn(icon('back'), 'cl-round', function () { pipClose(c); try { window.focus(); } catch (e) { /* egal */ } }, T('Zurück zum Anruffenster'))));
     u.ctl.appendChild(u.d.adoptNode(btn(icon('phone'), 'cl-round cl-red', function () { hangup(c); }, T('Auflegen'))));
@@ -2967,7 +3019,7 @@
     set('togglemicrophone', c ? function () { if (live(c)) toggleMic(c); } : null);
     set('hangup', c ? function () { if (live(c)) hangup(c); } : null);
     set('enterpictureinpicture', c ? function () { if (live(c) && !c.pip) pipOpen(c); } : null);
-    try { if (c && ms.setMicrophoneActive) ms.setMicrophoneActive(c.mic); } catch (e) { /* egal */ }
+    if (c && c.mic) msMic(true);                     // 2198: nie false ohne Geste (WebKit schaltet sonst die Aufnahme stumm)
   }
 
   // --- 2.5 Gjallarhorn (P3 Web-Minimum, P5 voller Web-Client): Gruppenanruf ueber Knoten ------------------------------
@@ -3152,7 +3204,7 @@
   function hornStateOut(R, only) {
     var H = R.horn; if (!H || !H.X || !live(R)) return;
     var send = function (devs) {
-      var body = JSON.stringify({ t: 'state', mic: !!R.mic && !R.companion, cam: !!(R.cam && R.cam.readyState === 'live'), screen: !!R.screen,
+      var body = JSON.stringify({ t: 'state', mic: micOn(R) && !R.companion, cam: !!(R.cam && R.cam.readyState === 'live'), screen: !!R.screen,
                                   hp: hornMyRefs(R) }), b = {};
       devs.forEach(function (d) { if (H.known[d]) b[d] = body; });
       return hornSend(R, b);
@@ -4571,9 +4623,9 @@
       }
       if ((ST.v.srcObject && ST.v.srcObject.getVideoTracks()[0]) !== mineV) { ST.v.srcObject = mineV ? new MediaStream([mineV]) : null; if (mineV) ST.v.play().catch(function () {}); }
       ST.box.classList.toggle('has-video', !!mineV);
-      ST.box.classList.toggle('muted', !R.mic);
-      ST.box.classList.toggle('speaking', !!R.mic && (H.selfLevel || 0) > 0.03);
-      ST.box.setAttribute('aria-label', T('Du') + (!R.mic ? ' – ' + T('stumm') : ''));
+      ST.box.classList.toggle('muted', !micOn(R));
+      ST.box.classList.toggle('speaking', micOn(R) && (H.selfLevel || 0) > 0.03);
+      ST.box.setAttribute('aria-label', T('Du') + (!micOn(R) ? ' – ' + T('stumm') : ''));
       if (R.ui.grid.children[pos] !== ST.box) R.ui.grid.insertBefore(ST.box, R.ui.grid.children[pos] || null);
       pos++;
     } else if (H.self) { H.self.v.srcObject = null; H.self.box.remove(); H.self = null; }
@@ -5047,7 +5099,7 @@
     var ul = el('ul', 'cl-plist-l');
     legs.forEach(function (x) {
       var li = el('li', 'cl-pl' + (H.speaking[x.device] ? ' speaking' : '')); li.dataset.dev = x.device;
-      var mine = x.device === me_, s = mine ? { mic: R.mic } : (H.st[x.device] || {});
+      var mine = x.device === me_, s = mine ? { mic: micOn(R) } : (H.st[x.device] || {});
       var av = HK.avatarImg(el('span', 'cl-av cl-av-s', (x.name || '?').charAt(0).toUpperCase()), x.avatar || null, 32); av.setAttribute('aria-hidden', 'true');
       var t = el('div', 'cl-pl-t');
       t.appendChild(el('b', null, shortName(x.name || '?', 15) + (mine ? ' (' + T('du') + ')' : '')));
@@ -5462,7 +5514,7 @@
   // 2.4 E4/E5: Raum - Verbindungen je Geraet, Liste, Ansicht, Begleitgeraet, Sprecher (Tests, Diagnose)
   room: function () {
     var R = C; if (!R) return null;
-    return { id: R.id, kind: R.kind, dm: !!R.dm, chat_id: R.chat_id || null, title: R.title || '', companion: !!R.companion, ho: !!R.ho, inRoom: !!R.inRoom, mic: R.mic, spkOut: R.spkOut, mesh: meshView(R),
+    return { id: R.id, kind: R.kind, dm: !!R.dm, chat_id: R.chat_id || null, title: R.title || '', companion: !!R.companion, ho: !!R.ho, inRoom: !!R.inRoom, mic: R.mic, micOn: micOn(R), micStuck: micStuck(R), spkOut: R.spkOut, mesh: meshView(R),
              cam: !!(R.cam && R.cam.readyState === 'live'),
              // 2.5: Kacheln anderer (ohne die eigene) - in der Meeting-Ansicht die Kacheln je Person/Bildschirm
              tiles: R.ui ? (R.meshOn && R.mt ? Object.keys(R.mt.els).filter(function (k) { return !R.mt.els[k].t.me; }).length : R.ui.grid.children.length) : 0,

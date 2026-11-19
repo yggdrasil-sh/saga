@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Anruf: nach der Übernahme iPhone → Mac (Safari/WebKit, Mac-App) kein Ton (Bugs-DB 2198)
+- Das übernehmende Gerät tritt erst stumm bei; die Web-Oberfläche meldete das per Media Session
+  `setMicrophoneActive(false)` – WebKit schaltet damit die Aufnahme selbst stumm und lehnt das Wiedereinschalten ohne
+  Klick ab. Nach der Übernahme stand „Mikrofon an“, gesendet wurde Stille. Jetzt nur noch aus einer Nutzergeste
+  (Ablehnung abgefangen); hängt die Aufnahme trotzdem stumm (Spur `muted`), zeigen Knopf und Gegenüber ehrlich „stumm“
+  und ein Hinweis „Mikrofon antippen, um es freizugeben“ erscheint. Die Mac-App gibt die Aufnahme nativ frei
+  (Fähigkeit `mic`, `docs/APP-API-HOST.md`).
+- Tests: `tests/browser_horn_uebernahme.js` mit WebKit-Attrappe für `setMicrophoneActive` (Chromium und Firefox).
+
 ### Behoben – Anruf: erster 1:1 an ein frisch gekoppeltes Gerät läuft über den Knoten (Bugs-DB 2194)
 - Ein frisch gekoppeltes Gerät, das seine Anruf-Fähigkeiten noch nicht gemeldet hatte, galt bei „Alle Anrufe über
   Knoten“ als veraltet: der erste 1:1 lief direkt (mit „Gegenstelle veraltet“). Fragt ein Gerät mit Chat-Stufe 3

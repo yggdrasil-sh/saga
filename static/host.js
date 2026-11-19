@@ -13,7 +13,7 @@
 (function () {
   'use strict';
   var HK = window.HK; if (!HK || HK.host) return;
-  var CAPS = ['badge', 'notify', 'widgets', 'openExternal', 'settings', 'token', 'tunnel'];
+  var CAPS = ['badge', 'notify', 'widgets', 'openExternal', 'settings', 'token', 'tunnel', 'mic'];
   var UA = /\b(?:Saga|Hlidskjalf)App\/([\w.+-]{1,40})/.exec(navigator.userAgent || '');
   var TOP = window.top === window;
 
@@ -112,6 +112,9 @@
     nativeOpen(f, '_blank', 'noopener');             // ohne Huelle: wie bisher ein neues Fenster
     return false;
   };
+  // 2.5 (Bugs-DB 2198): Mac-Huelle gibt eine von WebKit stummgeschaltete Aufnahme nativ frei (ohne Nutzergeste;
+  // WKWebView.setMicrophoneCaptureState(.active), nur wenn sie gerade "muted" ist)
+  host.micActive = function () { return has('mic') ? post({ action: 'mic.active', v: 1 }) : false; };
   host.has = has;
   host.post = post;
 

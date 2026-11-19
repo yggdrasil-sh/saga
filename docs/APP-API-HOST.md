@@ -45,6 +45,7 @@ Das Web sieht eine Hülle nur, wenn **beides** zutrifft:
 | `settings` | zeigt im Benutzermenü „App-Einstellungen“ |
 | `token` | bietet beim Anlegen eines App-Schlüssels „In dieser App verwenden“ an |
 | `tunnel` | 2.5 A3, nur Mac: Medien-Tunnel für Anrufe über `hkTunnel` (3.3) |
+| `mic` | 2.5 (Bugs-DB 2198), nur Mac: beim Einschalten des Mikrofons bzw. wenn die Aufnahme stumm hängt (Spur `muted`) `mic.active` schicken – die Hülle gibt sie nativ frei (ohne Nutzergeste) |
 
 Unbekannte Fähigkeiten verwirft das Web. Neue Fähigkeiten kommen nur mit neuem Eintrag hier dazu.
 
@@ -63,6 +64,7 @@ Unbekannte Fähigkeiten verwirft das Web. Neue Fähigkeiten kommen nur mit neuem
 | `route(link)` | Deep-Link → Web-Pfad oder `null` (reine Funktion, Abschnitt 6) | dto. |
 | `open(linkOrPath)` | navigiert (nur eigene Origin) | dto. |
 | `tunnel()` | `null` | 2.5 A3, nur Mac mit Fähigkeit `tunnel` und Seite über https: `{open(role, url, user, cred) → Promise id, listen(id) → Promise port, close(id), stats(id)}` (Abschnitt 3.3) |
+| `micActive()` | `false` | 2.5, nur mit Fähigkeit `mic`: `{action:'mic.active'}` |
 
 **Wo das Web die Brücke nutzt**
 
@@ -98,6 +100,7 @@ dazukommen – unbekannte Felder und Aktionen ignorieren.
 | `openExternal` | `url` (`http(s)`/`mailto`, ≤4000) | Systembrowser (`NSWorkspace.open`, Tauri `opener`); Schema in der Hülle erneut prüfen |
 | `settings` (alt) | – | eigene Einstellungen der Hülle (Server, Konto, Updates) |
 | `token` (alt) | `token` (`hk_…`) | als Widget-/App-Schlüssel ablegen (Mac: Schlüsselbund der App-Group) |
+| `mic.active` | – | 2.5 (Bugs-DB 2198), nur Mac: ist die Aufnahme der Seite stumm (`WKWebView.microphoneCaptureState == .muted`, z. B. nach Media Session `setMicrophoneActive(false)`), `setMicrophoneCaptureState(.active)`; startet nie eine neue Aufnahme |
 | `retry` | – | nur von der Offline-Seite: Server-Adresse neu laden (5) |
 
 ### 3.2 Transport
