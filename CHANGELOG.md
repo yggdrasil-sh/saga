@@ -16,6 +16,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Anruf: Knöpfe bei flachem Fenster bzw. Handy quer wieder bedienbar (Bugs-DB 2158)
+- Bei Fensterhöhe ≤ 500 px im Querformat lag die senkrechte Knopfleiste rechts nur 13 px hoch am unteren Rand
+  (absolut positioniertes Grid-Kind in der leeren Zeile 4) – Auflegen, Stumm und Teilen waren nicht anklickbar.
+  Die Leiste reicht jetzt über die ganze Höhe (`grid-row: 1/-1`). Das war auch die Ursache, warum im Labor labr345
+  das Teilen über das Zweitgerät nie zustande kam (Chromium mit `--window-size=1000,640` hat innen 1000×497 px).
+- Tests: `tests/browser_meeting.js` prüft Handy quer (844×390, alle Knöpfe treffen sich selbst);
+  `tests/anrufe_rang345.py` verwirft Chat-Schlüssel der Testkonten ohne `.rk` im Profil (alte DB, neues `R345_WORK`
+  liefen sonst nach 20 s in einen Timeout an `#ct-chat`), `tests/browser_rang345.js` meldet Klick-Fehler beim Teilen,
+  Fensterhöhe `R345_VH` und Labor-Nachbildung `R345_CDP_PORT0` (Browser mit den Schaltern von `br.sh`, per CDP).
+
 ### Geändert – Gjallarhorn in Web und Admin als „Experimentell“ gekennzeichnet (Vorgabe 10.11.)
 - Admin → Anrufe: Marke „Experimentell“ an „Gjallarhorn“ und „Knoten“, darunter ein ruhiger Hinweis-Kasten (getestet
   mit bis zu 4 Personen bzw. Geräten je Anruf, Probleme über „Diagnose senden“, größere Anrufe nach 2.5); der Hilfetext
