@@ -5,6 +5,7 @@ Meldung (volle Klingeldauer wie am Geraet; grosse stille Gruppe: bleibt der Begi
 call.invites an die Teilnehmenden. Kein Doppelklingeln (gleiche Meldung erneut, zweites Geraet),
 echte Alt-Geraete (Meldung ohne "multi") bleiben 'old', nach der Klingeldauer bzw. nach dem Ende nichts mehr; Anruf ueber
 Knoten (topo horn): nur "horn"/"horn_ring" hebt die Einladung (nur "multi" reicht nicht).
+Bugs-DB 2185: ein Fehler beim Nachklingeln gibt kein 500, die naechste gleiche Meldung holt das Klingeln nach.
 Wegwerf-Konten ca-n*; raeumt auf."""
 import os
 import secrets
@@ -12,11 +13,13 @@ import sys
 import threading
 import time
 
+import psycopg
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import anrufe as A_  # noqa: E402
 import anrufe_raum as R_  # noqa: E402
 import auth  # noqa: E402
-from db import connect  # noqa: E402
+from db import DATABASE_URL, connect  # noqa: E402
 
 ok, req, res = A_.ok, A_.req, A_.res
 CAPS = R_.CAPS
@@ -239,6 +242,41 @@ def run():
             ok(f"2179: F meldet nach, waehrend der Anruf gesperrt ist ({out.get('s')}, wartete {waited}) -> klingelt nach der "
                "Freigabe", out.get("s") == 200 and ev is not None and raw(g7, "ca-nf")[0] == "ringing")
             end(B, g7)
+
+    # --- Bugs-DB 2185: Fehler beim Nachklingeln (hier per Trigger erzwungen). Vorher: PUT /api/calls/caps -> 500 und die
+    # gleiche Meldung danach aenderte nichts mehr (Faehigkeiten schon gespeichert) - es klang nie. Jetzt: 200, die Meldung
+    # bleibt gespeichert, die naechste (gleiche) Meldung holt das Klingeln nach ------------------------------------------------
+    with connect() as c, c:
+        c.execute("UPDATE chat_device SET caps='' WHERE uid='ca-nf'")
+    with psycopg.connect(DATABASE_URL, autocommit=True) as pg:      # DDL direkt (db.translate laesst CREATE aus)
+        pg.execute("CREATE OR REPLACE FUNCTION t2185_fehler() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 't2185'; END $$ "
+                   "LANGUAGE plpgsql")
+        pg.execute("DROP TRIGGER IF EXISTS t2185_fehler ON chat_call_invite")
+        pg.execute("CREATE TRIGGER t2185_fehler BEFORE UPDATE ON chat_call_invite FOR EACH ROW "
+                   "WHEN (NEW.who = 'ca-nf' AND NEW.state = 'ringing') EXECUTE FUNCTION t2185_fehler()")
+    try:
+        mF = sF.mark()
+        g8, s, call = start(B, gid3)
+        ok(f"2185: Anruf von B, F 'old' ({s}, {st(call.get('invites')).get('ca-nf')})", s == 200 and st(call.get("invites")).get("ca-nf") == "old")
+        s = R_.caps_put(F, F.dev, CAPS)
+        with connect() as c:
+            kept = c.execute("SELECT caps FROM chat_device WHERE id=?", (F.dev["id"],)).fetchone()[0]
+        r8, quiet = raw(g8, "ca-nf")[0], sF.none("call.invite", mF, 0.8)
+        ok(f"2185: Fehler beim Nachklingeln -> Meldung trotzdem {s} (vorher 500), Faehigkeiten gespeichert, bleibt 'old' "
+           f"({kept}, {r8}, still {quiet})", s == 200 and '"multi"' in (kept or "") and r8 == "old" and quiet)
+        with psycopg.connect(DATABASE_URL, autocommit=True) as pg:
+            pg.execute("DROP TRIGGER IF EXISTS t2185_fehler ON chat_call_invite")
+        s = R_.caps_put(F, F.dev, CAPS)
+        ev = sF.wait("call.invite", lambda x: x["call_id"] == g8, mF)
+        ok(f"2185: gleiche Meldung erneut ({s}) -> klingelt jetzt", s == 200 and ev is not None and raw(g8, "ca-nf")[0] == "ringing")
+        mF = sF.mark()
+        s = R_.caps_put(F, F.dev, CAPS)
+        ok(f"2185: dritte gleiche Meldung ({s}) -> kein zweites call.invite", s == 200 and sF.none("call.invite", mF, 1.0))
+        end(B, g8)
+    finally:
+        with psycopg.connect(DATABASE_URL, autocommit=True) as pg:
+            pg.execute("DROP TRIGGER IF EXISTS t2185_fehler ON chat_call_invite")
+            pg.execute("DROP FUNCTION IF EXISTS t2185_fehler()")
 
 
 if __name__ == "__main__":

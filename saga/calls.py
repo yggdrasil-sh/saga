@@ -1048,12 +1048,19 @@ async def api_caps(request: Request):
         with c:
             if not _my_device(c, uid, dev):
                 return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
-            late = note_caps(c, uid, dev, caps_in(b.get("caps")))
+            caps = caps_in(b.get("caps"))
+            late = note_caps(c, uid, dev, caps)
             now = time.time()                          # 2.5 Grundsatz Y: Lebenszeichen (30-Tage-Regel, dm_peer_check)
             c.execute("UPDATE chat_device SET last_seen=? WHERE id=? AND uid=? AND COALESCE(last_seen, 0)<?", (now, dev, uid, now - 60))
-        if late:                                       # Bugs-DB 2174: Einladung 'old' wegen spaeter Meldung -> klingeln
-            with c:                                    # Bugs-DB 2179: eigene Transaktion, chat_device schon freigegeben
-                ring_late(c, uid)
+        # Bugs-DB 2174: Einladung 'old' wegen spaeter Meldung -> klingeln. Bugs-DB 2185: auch bei unveraenderter Meldung eines
+        # anruffaehigen Geraets (ging ein frueherer Versuch schief, holt die naechste Meldung das Klingeln nach - doppelt
+        # klingelt nichts, ring_late hebt nur 'old'); ein Fehler dabei kostet die schon gespeicherte Meldung nicht (kein 500).
+        if late or any(_has(caps, x) for x in ("multi", "horn", "horn_ring")):
+            try:
+                with c:                                # Bugs-DB 2179: eigene Transaktion, chat_device schon freigegeben
+                    ring_late(c, uid)
+            except Exception as e:                     # noqa: BLE001 - Meldung ist gespeichert, naechste versucht es erneut
+                print(f"call: Nachklingeln nach Faehigkeiten-Meldung fehlgeschlagen ({type(e).__name__}: {str(e)[:120]})", flush=True)
     return chat._no_store({"ok": True})
 
 
