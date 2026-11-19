@@ -23,7 +23,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   bei „Gjallarhorn-Knoten für …“ (Föderation) und beim Verweis auf die Seite Anrufe (Allgemein).
 - Web-Anruf über einen Knoten: kleine Marke im Kopf neben dem Weg (Satz im Tooltip), der Satz unten in der
   Teilnehmerliste – kein Banner, keine Warnung je Anruf. Anleitung (de/en/es) Abschnitt Anrufe: ein Satz. API unverändert.
-- Tests: neu `tests/horn_experimentell.py` mit `tests/browser_horn_experimentell.js` (Testumgebung `knoten`).
+- Tests: neu `tests/horn_experimentell.py` 10/10 mit `tests/browser_horn_experimentell.js` 9/9 (Testumgebung `knoten`);
+  `anrufe_horn_y` 21/21 (erwartet „experimentell“ jetzt im Kasten), `horn_erweitern` 139/139, `anrufe_horn_web` 109/109.
 
 ### Doku – Upgrade-Anleitung 2.3/2.4 → 2.5
 - Neu `docs/UPGRADE-2.5.md` (kurz auf Englisch `docs/en/UPGRADE-2.5.md`) für Admins hinter einem Proxy, der TLS selbst
