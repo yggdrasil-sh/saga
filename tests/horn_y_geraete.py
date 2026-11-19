@@ -12,6 +12,10 @@ Geprueft (Server mit Registereintrag-Knoten wie anrufe_horn_dm, Wegwerf-Konten c
 - nur alte Geraete (> 30 Tage) -> diese zaehlen (2.4: fallback peer; mit horn: ueber Knoten, es klingelt dort).
 - PUT /api/calls/caps und GET /api/chat/me?device= merken ein Lebenszeichen (last_seen).
 - horn_ring zaehlt fuer Einladungen zu Gruppenanrufen ueber Knoten (_can_horn).
+- Bugs-DB 2194: frisch gekoppeltes Geraet einer 2.5-App, das noch keine Anruf-Faehigkeiten gemeldet hat (nur GET
+  /api/chat/me?device= mit X-Saga-Chat: 3 -> caps ["chat3"]): 1:1 ueber Knoten, es klingelt dort (Einladung 'ringing'),
+  kein Hinweis "veraltet"; ohne Chat-Stufe 3 (App vor 2.5, caps leer) weiter fallback peer; Browser ohne Meldung weiter
+  web; meldet das Geraet danach Faehigkeiten ohne horn, gilt wieder die Meldung (peer).
 - im Prozess (ohne Server): F4 - Tunnel-Knoten + normaler Knoten, Anrufer mit "ws", Gegenueber-Browser ohne "frames":
   dm_peer_check nimmt den normalen Knoten statt "reach"; nur Tunnel-Knoten -> "reach"; Gruende fuer foederierte Pfade
   (dm_peer_block ohne caps: web/none/peer/None)."""
@@ -36,7 +40,10 @@ CALLS = {"enabled": True, "stun": "stun:stun.example.org:3478", "turn_urls": "",
 NODE = "hg-knoten.example.org"
 DAY = 86400
 USERS = [("ca-hga", "Anna Geraet"), ("ca-hgb", "Bert Alt"), ("ca-hgc", "Cora Linux"), ("ca-hgd", "Dora Web"), ("ca-hge", "Emil Ohne"),
-         ("ca-hgf", "Fritz Lange"), ("ca-hgg", "Gabi Anlage"), ("ca-hgh", "Hans Gruppe"), ("ca-hgi", "Ida Gruppe")]
+         ("ca-hgf", "Fritz Lange"), ("ca-hgg", "Gabi Anlage"), ("ca-hgh", "Hans Gruppe"), ("ca-hgi", "Ida Gruppe"),
+         ("ca-hgj", "Jana Neu"), ("ca-hgk", "Kai Leer"), ("ca-hgl", "Lena Browser")]
+NOCAPS = ("ca-hge", "ca-hgj", "ca-hgk", "ca-hgl")    # melden keine Faehigkeiten (Emil: kein Geraet; 2194: frisch gekoppelt)
+CHAT3 = {"X-Saga-Chat": "3"}                        # Chat-Stufe 3 = App/Web 2.5
 
 
 def node(on=True, name=NODE, builtin=0):
@@ -126,12 +133,13 @@ def main():
 
 def run():
     P = {u: A_.Person(u) for u, _ in USERS}
-    A, B, Cc, D, E, F, G, H, I_ = (P[u] for u, _ in USERS)
+    A, B, Cc, D, E, F, G, H, I_, J, K, L = (P[u] for u, _ in USERS)
     for u, p in P.items():
-        if u != "ca-hge":
+        if u not in NOCAPS:
             caps(p, CAPS)
     node(True)
     ab, ac, ad, ae, af, ag = A_.dm(A, B), A_.dm(H, Cc), A_.dm(A, D), A_.dm(A, E), A_.dm(H, F), A_.dm(A, G)
+    aj, ak, al = A_.dm(A, J), A_.dm(A, K), A_.dm(A, L)
     with connect() as c, c:                            # Emil: gar kein Chat-Geraet
         c.execute("DELETE FROM chat_device WHERE uid=?", (E.uid,))
 
@@ -252,6 +260,54 @@ def run():
         ok(f"_can_horn: horn_ring zaehlt ({CL._can_horn(c, I_.uid)}), nur multi nicht ({CL._can_horn(c, D.uid)})",
            CL._can_horn(c, I_.uid) and not CL._can_horn(c, D.uid))
 
+    fresh2194(A, J, K, L, aj, ak, al)
+
+
+def dcaps(dev):
+    with connect() as c:
+        r = c.execute("SELECT caps FROM chat_device WHERE id=?", (dev["id"],)).fetchone()
+    return json.loads(r[0]) if r else None
+
+
+def fresh2194(A, J, K, L, aj, ak, al):
+    """Bugs-DB 2194: erster 1:1 an ein frisch gekoppeltes 2.5-Geraet ohne gemeldete Faehigkeiten."""
+    s, _ = req("GET", f"/api/chat/me?device={J.dev['id']}", J.k, hdr=CHAT3)
+    ok(f"2194: GET /api/chat/me?device= mit Chat-Stufe 3 merkt \"chat3\" ({s}, {dcaps(J.dev)})", s == 200 and dcaps(J.dev) == ["chat3"])
+    sj = A_.Stream(J.k)
+    time.sleep(0.8)
+    mj = sj.mark()
+    cid, s, d = hcall(A, aj)
+    k = d.get("call") or {}
+    ok(f"2194: frisch gekoppelt, noch ohne Meldung: ueber Knoten statt fallback peer ({s}, {k.get('topo')}, {d.get('horn_block')})",
+       s == 200 and k.get("topo") == "horn" and k.get("dm") is True)
+    inv = sj.wait("call.invite", lambda x: x.get("call_id") == cid, since=mj)
+    with connect() as c:
+        ist = c.execute("SELECT state FROM chat_call_invite WHERE call_id=? AND who=?", (cid, J.uid)).fetchone()
+    ok(f"2194: ... es klingelt dort (Einladung {ist and ist[0]}, call.invite {bool(inv)})", bool(inv) and ist and ist[0] == "ringing")
+    fresh()
+    s, d = req("POST", f"/api/calls/{cid}/join", J.k, {"device": J.dev["id"], "role": "member", "caps": CAPS})
+    ok(f"2194: ... das Geraet nimmt mit seinen caps an ({s}, {(d.get('call') or {}).get('state')})",
+       s == 200 and (d.get("call") or {}).get("state") == "active")
+    end(J, cid)
+    sj.close()
+    ok(f"2194: ... caps danach die gemeldeten (+chat3) ({dcaps(J.dev)})", "horn" in (dcaps(J.dev) or []) and "chat3" in (dcaps(J.dev) or []))
+    # Gegenprobe: App vor 2.5 (ohne Chat-Stufe 3) - caps bleiben leer, Hinweis "veraltet" stimmt
+    s, _ = req("GET", f"/api/chat/me?device={K.dev['id']}", K.k, hdr={"X-Saga-Chat": "2"})
+    cid, s, d = hcall(A, ak)
+    ok(f"2194: App vor 2.5 ohne Meldung (caps {dcaps(K.dev)}): weiter fallback peer ({s}, {d.get('horn_block')})",
+       s == 409 and d.get("horn_block") == "peer" and row(cid) is None)
+    # Browser ohne Meldung: ob er es kann, haengt am Browser - weiter web (ohne Hinweis)
+    age(L.dev, 0, name="Chrome · Mac")
+    s, _ = req("GET", f"/api/chat/me?device={L.dev['id']}", L.k, hdr=CHAT3)
+    cid, s, d = hcall(A, al)
+    ok(f"2194: Browser mit chat3 ohne Meldung ({dcaps(L.dev)}): weiter fallback web ({s}, {d.get('horn_block')})",
+       s == 409 and d.get("horn_block") == "web")
+    # meldet ein Geraet Faehigkeiten (ohne horn), gilt die Meldung
+    caps(J, CAPS24)
+    cid, s, d = hcall(A, aj)
+    ok(f"2194: danach Meldung ohne horn ({dcaps(J.dev)}): fallback peer ({s}, {d.get('horn_block')})",
+       s == 409 and d.get("horn_block") == "peer")
+
 
 def inproc():
     """F4 und Gruende ohne Server (Knotenzustand _LIVE dieses Prozesses)."""
@@ -307,6 +363,10 @@ def inproc():
                 c.execute("DELETE FROM chat_device WHERE uid=?", (uid,))
             ok(f"foederiert: kein Geraet -> none ({CL.dm_peer_block(c, uid)})", CL.dm_peer_block(c, uid) == "none")
             ok(f"DM_ACTIVE_S = chat.ACTIVE_S = 30 Tage ({CL.DM_ACTIVE_S // DAY})", CL.DM_ACTIVE_S == CH.ACTIVE_S == 30 * DAY)
+            pend = [CL._caps_pending('["chat3"]', "Pixel 9"), CL._caps_pending(["chat3"], ""), CL._caps_pending("[]", "Pixel 9"),
+                    CL._caps_pending('["chat3","multi"]', "Pixel 9"), CL._caps_pending('["chat3"]', "Firefox · Linux"),
+                    CL._caps_pending(None, "x")]
+            ok(f"2194: _caps_pending nur fuer caps = [chat3] und kein Browser ({pend})", pend == [True, True, False, False, False, False])
     finally:
         HN._LIVE.pop(tun, None)
         node(False, name="hg-tunnel.example.org")
