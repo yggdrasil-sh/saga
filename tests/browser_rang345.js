@@ -105,14 +105,42 @@ const INIT = ([hue, freq, w, h, fps, shue]) => {
 // --- Browser, Anmeldung, Schluessel -----------------------------------------------------------------------------------
 const ALL = [];
 function argsFor() { return ['--use-fake-ui-for-media-stream', '--unsafely-treat-insecure-origin-as-secure=' + new URL(BASE).origin, '--ignore-certificate-errors', '--autoplay-policy=no-user-gesture-required', '--no-proxy-server', '--disable-features=WebRtcHideLocalIpsWithMdns', '--auto-select-desktop-capture-source=Entire screen']; }
+// Labor-Nachbildung (Bugs-DB 2158): R345_CDP_PORT0=<port> startet jeden Browser (ohne Leitung) wie das Labor (br.sh) selbst
+// mit dessen Schaltern und verbindet per connectOverCDP (Standard-Kontext, kein Playwright-Viewport); Ports PORT0, PORT0+1, ...
+const CDP0 = +(process.env.R345_CDP_PORT0 || 0), KIDS = [];
+const LABARGS = ['--headless=new', '--no-sandbox', '--remote-allow-origins=*', '--no-first-run', '--no-default-browser-check',
+  '--disable-background-networking', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows',
+  '--disable-renderer-backgrounding', '--disable-ipc-flooding-protection', '--disable-hang-monitor', '--disable-popup-blocking',
+  '--disable-prompt-on-repost', '--disable-component-update', '--disable-default-apps', '--disable-extensions', '--disable-dev-shm-usage',
+  '--disable-breakpad', '--password-store=basic', '--use-mock-keychain', '--metrics-recording-only', '--force-color-profile=srgb',
+  '--hide-scrollbars', '--mute-audio', '--use-fake-ui-for-media-stream', '--ignore-certificate-errors', '--autoplay-policy=no-user-gesture-required',
+  '--no-proxy-server', '--disable-features=WebRtcHideLocalIpsWithMdns,Translate,MediaRouter,OptimizationHints',
+  '--auto-select-desktop-capture-source=Entire screen', '--window-size=1000,640', '--lang=de-DE', '--accept-lang=de-DE'];
+async function cdpContext(dir, name) {
+  const port = CDP0 + KIDS.length;
+  for (const f of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) { try { fs.unlinkSync(path.join(dir, f)); } catch (e) { /* fehlt */ } }
+  const kid = require('child_process').spawn(process.env.R345_CDP_EXE || chromium.executablePath(), LABARGS.concat(['--remote-debugging-port=' + port,
+    '--user-data-dir=' + dir, '--unsafely-treat-insecure-origin-as-secure=' + BASE, 'about:blank']), { stdio: 'ignore' });
+  KIDS.push(kid);
+  for (let k = 0; k < 80; k++) {
+    const v = await getJ('http://127.0.0.1:' + port + '/json/version');
+    if (v && v.webSocketDebuggerUrl) { const b = await chromium.connectOverCDP(v.webSocketDebuggerUrl, { timeout: 20000 }); return b.contexts()[0]; }
+    await sleep(250);
+  }
+  throw new Error('CDP ' + name + ' (Port ' + port + ') nicht erreichbar');
+}
 async function person(i, tag, eng) {
   const user = S.users[i], name = L[i] + (tag || ''), dir = path.join(S.prof, user + (tag || ''));
   fs.mkdirSync(dir, { recursive: true });
-  const o = { channel: process.env.PW_CHANNEL || 'chromium', headless: true, args: argsFor(), viewport: { width: 1000, height: 640 }, locale: 'de-DE', ignoreHTTPSErrors: true, bypassCSP: true, colorScheme: 'dark' };
+  const o = { channel: process.env.PW_CHANNEL || 'chromium', headless: true, args: argsFor(), viewport: { width: 1000, height: +(process.env.R345_VH || 640) }, locale: 'de-DE', ignoreHTTPSErrors: true, bypassCSP: true, colorScheme: 'dark' };
   if (eng) { o.executablePath = eng.exe; delete o.channel; }
-  const ctx = await chromium.launchPersistentContext(dir, o);
+  const ctx = CDP0 && !eng ? await cdpContext(dir, name) : await chromium.launchPersistentContext(dir, o);
   await ctx.grantPermissions(['camera', 'microphone'], { origin: BASE });
   const p = ctx.pages()[0] || await ctx.newPage();
+  if (CDP0 && !eng) {
+    await p.emulateMedia({ colorScheme: 'dark' }).catch(() => {});
+    try { const cs = await ctx.newCDPSession(p); await cs.send('Page.setBypassCSP', { enabled: true }); } catch (e) { /* egal */ }
+  }
   Object.assign(p, { __user: user, __i: i, __name: name, __ctx: ctx, __dir: dir, __eng: !!eng });
   p.on('pageerror', e => log('[pageerror ' + name + '] ' + e.message));
   if (process.env.DEBUG) p.on('console', m => log('[console ' + name + '] ' + m.text()));
@@ -387,12 +415,23 @@ function recovery(s, t, expect) {
         const sb = await p2.waitForSelector('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]', { timeout: 15000 }).then(() => true, () => false);
         evInfo.tShare = Date.now();
         for (let k = 0; sb && k < 3; k++) {
-          await p2.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]').catch(() => {});
+          await p2.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]', { timeout: 5000 }).catch(e => R.notes.push('teilen-klick ' + (k + 1) + ': ' + String(e.message).split('\n').filter(x => /intercepts|waiting|outside|not visible|not stable|Timeout/.test(x)).slice(-3).join(' | ').slice(0, 400)));
           if (await p2.waitForSelector('.cl-hint .cl-hint-go', { timeout: 1000 }).then(() => true, () => false)) { R.texts.share_hint = await txt(p2, '.cl-hint'); await p2.click('.cl-hint .cl-hint-go'); }
           if (await until(() => ev(p2, () => { const x = window.HKCalls.screen(); return x && x.sharing; }), 2500, 100)) break;
           evInfo.share_retry = k + 1;
         }
         evInfo.share_btn = sb;
+        if (!(await ev(p2, () => { const x = window.HKCalls.screen(); return x && x.sharing; }))) {   // Bugs-DB 2158: Bild und Fenstergroesse
+          R.shots.push(await shot(p2, 'teilen-p2'));
+          evInfo.p2_view = await ev(p2, () => {
+            const b = document.querySelector('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]'), c = document.querySelector('.cl-ctl');
+            const r = b && b.getBoundingClientRect(), q = c && c.getBoundingClientRect(), at = r && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            const rr = x => x && [x.x, x.y, x.width, x.height].map(Math.round);
+            return { w: innerWidth, h: innerHeight, dpr: devicePixelRatio, toast: [...document.querySelectorAll('.toast')].map(x => x.textContent).join(' | '),
+                     btn: rr(r), ctl: rr(q), ctlScroll: c && [c.scrollTop, c.scrollHeight, c.clientHeight], n: c && c.querySelectorAll('.cl-round').length,
+                     at: at && (at.className || at.tagName), win: (document.querySelector('.cl-win') || {}).className };
+          });
+        }
         const seen = await Promise.all(ps.map(async p => { const t = await until(async () => { const q = await ev(p, () => window.__m.quick()); return q && q.hues && q.hues.some(h => h >= 0 && Math.abs(h - 270) < 25) && Date.now(); }, 20000, 200); return [p.__name, t ? t - evInfo.tShare : null]; }));
         evInfo.screen_ms = Object.fromEntries(seen);
         evInfo.p2 = await ev(p2, () => { const x = window.HKCalls.screen(), h = window.HKCalls.horn(); return { sharing: x && x.sharing, mode: x && x.mode, horn_screen: h && h.screen }; });
@@ -496,6 +535,7 @@ function recovery(s, t, expect) {
     for (const p of ALL) { try { await capped(p.evaluate(() => { const b = document.querySelector('.cl-ctl .cl-red'); if (b) b.click(); }), 3000); } catch (e) { /* egal */ } }
     await sleep(1500);
     for (const p of ALL) { try { await capped(p.__ctx.close(), 10000); } catch (e) { /* egal */ } }
+    for (const k of KIDS) { try { k.kill('SIGTERM'); } catch (e) { /* egal */ } }
     if (rc === 0) { fs.mkdirSync(path.dirname(S.out), { recursive: true }); fs.writeFileSync(S.out + '.tmp', JSON.stringify(R)); fs.renameSync(S.out + '.tmp', S.out); }
     else fs.writeFileSync(S.out.replace(/\.json$/, '.fehler.json'), JSON.stringify(R));
     process.exit(rc);
