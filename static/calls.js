@@ -5541,7 +5541,7 @@
     if (cur) legs = legsOf(cur);
     var up = !!cur && Object.keys(cur.legs).length > 0 && Object.keys(cur.legs).every(function (k) { return cur.legs[k].pc.connectionState === 'connected'; });
     return { id: R.id, node: cur && cur.node, url: cur && cur.url, path: cur ? cur.path : '', mode: H.X && H.X.mode, up: up, since: R.since || 0,
-             csrc: cur ? cur.csrc : {}, mine: cur && cur.mine, key_n: H.key ? H.key.n : null, known: Object.keys(H.known), legs: legs, sent: H.sent || 0,
+             csrc: cur ? cur.csrc : {}, mine: cur && cur.mine, key_n: H.key ? H.key.n : null, known: Object.keys(H.known), legs: legs, sent: H.sent || 0, st: H.st,
              hp: (R.legs || []).reduce(function (o, x) { var r = cur ? hornRef(x, cur) : x.hp; if (r) o[x.device] = r; return o; }, {}),
              conns: hornConns(R).map(function (c) { return { key: c.key, node: c.node, path: c.path, cur: c === cur, up: c.up, rx: c.rx, peers: Object.keys(c.peers).length, legs: legsOf(c) }; }),
              diag: diagSnap(R), switches: H.switches, switching: !!H.switching, meas: H.meas, ranked: H.ranked || null, note: H.note, view: H.view, net: cur && cur.net, q: cur && cur.q,
