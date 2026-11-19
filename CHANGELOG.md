@@ -26,7 +26,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Express-Zustellung an einem Fehler bei uns, gibt `_express_one` die Zeile sofort frei (kein Fehlversuch) – der Arbeiter
   stellt dann beim nächsten Durchlauf zu, die Gegenseite verwirft eine Wiederholung über die Ereignis-Kennung.
   Der Server-Prozess ist unverändert. Tests: `tests/foederation.py` (neu: Ausgangskorb direkt nach dem Werkzeug-Prozess
-  leer; erzwungener Fehlschlag → Zeile frei, genau einmal angekommen), `tests/foederation2.py`.
+  leer; erzwungener Fehlschlag → Zeile frei, genau einmal angekommen), `tests/foederation2.py`,
+  `tests/dns_zeitlimit.py` (Rückfall-Thread mit Zeitlimit und gleicher Adressprüfung, Weg ohne Threads, echtes
+  Interpreter-Ende im Kindprozess).
 
 ### Behoben – BookOrbit verbinden: Ziel, das nach der Antwort sofort zurücksetzt, ergab 500 statt 400 (Bugs-DB 2166)
 - Beim Prüfen der tatsächlichen Verbindungs-IP (`saga/bookorbit.py`, `get_extra_info("server_addr")`) warf
