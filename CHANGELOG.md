@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Tiptap: Schreibmarke bleibt an ihrer Textstelle, wenn jemand davor im selben Absatz schreibt (Bugs-DB 2172)
+- Ohne „Gleichzeitig bearbeiten“ (`notes.live` aus) übernimmt Tiptap fremde Änderungen blockweise. Kam fremder Text
+  vor der Schreibmarke in denselben Absatz, blieb die Marke beim alten Abstand stehen – eigene Zeichen landeten
+  versetzt („NeXu: Ende“ statt „Neu: EnXde“). Ursache: `applyBlocks` (`static/pm-editor.js`) setzte den Abstand
+  unverändert; jetzt wandert er wie bei Editor.js (`mapOffset`) mit, über ProseMirrors `findDiffStart`/`findDiffEnd`
+  (auch in Listen und mit Formatierung). Tests: `tests/browser_editorjs_fremd.js` mit Tiptap ohne `notes.live` 3× 61/61 (vorher 58/61), mit dem Fall „mitte“ (Bugs-DB 2165) 3× 65/65; Editor.js unverändert 64/64 bzw. 68/68.
+
 ### Behoben – Föderation: Ereignisse aus Werkzeug/CLI-Prozessen kommen sofort an statt nach ~46 s (Bugs-DB 2164)
 - Ein Namenswechsel, eine Kontolöschung oder `fed_dir.refresh_local` aus einem kurzlebigen Prozess (Werkzeug, CLI)
   erreichte die andere Instanz erst nach rund 46 s. Ursache: Die Express-Zustellung lief nach dem Ende des Hauptthreads;

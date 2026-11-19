@@ -1619,6 +1619,19 @@
   // =================================================================================================================
   // Fremde Bloecke blockweise uebernehmen (Rebase/Live, Stufe 1): unveraenderte Bloecke bleiben dieselben Knoten,
   // ersetzt wird nur der Bereich zwischen gleichem Anfang und gleichem Ende (Schreibmarke bleibt meist, kein Undo-Schritt)
+  // Abstand o im Inhalt von Block a auf Block b uebertragen (wie mapOffset in pages.js, aber auf ProseMirror-Positionen,
+  // also auch fuer Listen/Marken): vor der Aenderung bleibt o, dahinter wandert er mit, in ihr landet er an ihrem Ende
+  function mapInBlock(a, b, o) {
+    if (a === b || o < 0) return o;
+    var st = a.content.findDiffStart(b.content);
+    if (st == null || o <= st) return o;
+    var en = a.content.findDiffEnd(b.content); if (!en) return o;
+    var ea = en.a, eb = en.b;
+    if (ea < st) { eb += st - ea; ea = st; }           // Ueberlappung bei Wiederholungen (vgl. prosemirror-view)
+    if (eb < st) { ea += st - eb; eb = st; }
+    if (o >= ea) return eb + (o - ea);
+    return eb;
+  }
   function applyBlocks(list) {
     if (!ed || broken || LIVE) return;               // live: fremde Aenderungen kommen ueber Yjs
     markOrig(list);                                   // Stand vom Server: gilt als unveraendert (prune)
@@ -1641,7 +1654,9 @@
     tr.setMeta('addToHistory', false); tr.setMeta('hkRemote', true); tr.setMeta('hkAllow', true);
     if (keep && sel.empty) {
       var nx = findId(keep.id, tr.doc);
-      if (nx) { try { tr.setSelection(P.pm.state.TextSelection.near(tr.doc.resolve(Math.min(nx.pos + keep.off, nx.pos + nx.node.nodeSize - 1)))); } catch (e) { /* Auswahl bleibt gemappt */ } }
+      if (nx) {
+        var off = 1 + mapInBlock(hb.node, nx.node, keep.off - 1);   // Bug 2172: fremder Text vor der Marke verschiebt sie
+        try { tr.setSelection(P.pm.state.TextSelection.near(tr.doc.resolve(Math.min(nx.pos + off, nx.pos + nx.node.nodeSize - 1)))); } catch (e) { /* Auswahl bleibt gemappt */ } }
     }
     ed.view.dispatch(tr);
     if (window.HKPmEditor) HKPmEditor.applied = (HKPmEditor.applied || 0) + 1;      // Diagnose/Tests
