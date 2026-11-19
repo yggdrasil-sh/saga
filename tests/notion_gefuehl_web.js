@@ -52,9 +52,15 @@ const P = (t) => ({ type: 'paragraph', data: { text: t } });
       const para = TT ? blk : document.activeElement;
       const c = pop && (pop.matches(U.popoverContainer) ? pop : pop.querySelector(':scope > ' + U.popoverContainer)), s = pop && pop.querySelector(U.search);
       return pop && c && para && { inl: TT || pop.classList.contains('pg-slash-inline'), search: s ? s.getClientRects().length : 0, inPara: !!blk && blk.getAttribute('data-block-type') === 'paragraph',
-        top: Math.round(c.getBoundingClientRect().top), line: Math.round(para.getBoundingClientRect().bottom) }; }, [D.UI, D.EDITOR === 'tiptap']);
+        top: Math.round(c.getBoundingClientRect().top), line: Math.round(para.getBoundingClientRect().bottom),
+        bot: Math.round(c.getBoundingClientRect().bottom), ltop: Math.round(para.getBoundingClientRect().top), vh: window.innerHeight }; }, [D.UI, D.EDITOR === 'tiptap']);
     ok(`${tag}: Menue ohne Suchfeld, Cursor im Text`, m && m.inl && !m.search && m.inPara, m);
-    ok(`${tag}: Menue unter der Zeile (${m && m.top} >= ${m && m.line})`, m && m.top >= m.line, m);
+    // Unter der Zeile, wenn das Menue (bis 340 px hoch, static/pm-editor.css:77) darunter Platz hat; sonst klappt es wie in
+    // Notion nach oben, ohne die Zeile zu verdecken (static/pm-editor.js:839 place). Bei 900 px Fenster und der
+    // Schreibmarke in der 7. Zeile ist unten zu wenig Platz -> beide Faelle gelten als richtig.
+    const fitsBelow = m && m.line + 6 + (m.bot - m.top) <= m.vh - 8;
+    ok(`${tag}: Menue an der Zeile (${fitsBelow ? 'unten' : 'oben'}: ${m && m.top}/${m && m.bot}, Zeile ${m && m.ltop}-${m && m.line})`,
+      m && (fitsBelow ? m.top >= m.line : m.bot <= m.ltop), m);
     await p.keyboard.type('zit'); await sleep(300);
     const vis = await p.evaluate((s) => [...document.querySelectorAll(s)].filter((x) => x.getClientRects().length).map((x) => x.textContent.trim()), `${D.UI.popover} ${D.UI.item}`);
     ok(`${tag}: Weitertippen filtert (${vis.join(', ')})`, vis.length >= 1 && vis.every((v) => /zit/i.test(v)), vis);
@@ -93,6 +99,13 @@ const P = (t) => ({ type: 'paragraph', data: { text: t } });
     const g = await p.evaluate(([U, PS]) => { const pl = document.querySelector(U.plusBtn), b = document.querySelector(PS);
       if (!pl) return null; const a = pl.getBoundingClientRect(), c = b.getBoundingClientRect(); return { plus: Math.round(a.top + a.height / 2), line: Math.round(c.top + c.height / 2) }; }, [D.UI, D.textOf('paragraph')]);
     ok(`${tag}: "+" auf Hoehe der ersten Zeile`, g && Math.abs(g.plus - g.line) <= 12, g);
+    // Erste Zeile der leeren Seite: unten ist Platz -> Menue klappt unter der Zeile auf
+    await p.locator(D.textOf('paragraph')).first().click(); await p.keyboard.type('/'); await sleep(500);
+    const m2 = await p.evaluate(([U, PS]) => { const pop = document.querySelector(U.popover), b = document.querySelector(PS);
+      const c = pop && (pop.matches(U.popoverContainer) ? pop : pop.querySelector(':scope > ' + U.popoverContainer));
+      return c && b && { top: Math.round(c.getBoundingClientRect().top), line: Math.round(b.getBoundingClientRect().bottom) }; }, [D.UI, D.textOf('paragraph')]);
+    ok(`${tag}: leere Seite - Menue unter der Zeile (${m2 && m2.top} >= ${m2 && m2.line})`, m2 && m2.top >= m2.line, m2);
+    await p.keyboard.press('Escape'); await sleep(200); if (D.EDITOR === 'tiptap') await p.keyboard.press('Backspace');
     await api('DELETE', '/api/notes/' + full); await api('DELETE', '/api/notes/' + empty);
     await ctx.close();
   }
