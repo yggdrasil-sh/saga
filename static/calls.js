@@ -1761,8 +1761,10 @@
     R = roomOf(R); if (!R || !R.ui || !MT) return;
     var lv = R.ui.lv, sv = R.ui.sv, st = R.ui.stage, p = selfPrefs();
     if (p.hidden) { sv.style.width = ''; sv.style.height = ''; return; }   // Blase (44 px) aus dem CSS
-    var ar = lv.videoWidth && lv.videoHeight ? lv.videoWidth / lv.videoHeight : (mobile ? 9 / 16 : 16 / 9);
-    var s = MT.selfPipSize(st.clientWidth || window.innerWidth, st.clientHeight || window.innerHeight, ar, p.size || 'M');
+    // Bugs-DB 2161: Seitenverhaeltnis des eigenen Video-Tracks (nach Drehung) bestimmt Rahmen UND Breitenregel; ohne
+    // bekanntes Verhaeltnis (0) entscheidet die Lage der Buehne mit 9:16 (Handy) bzw. 16:9 - wie bisher
+    var ar = lv.videoWidth && lv.videoHeight ? lv.videoWidth / lv.videoHeight : 0;
+    var s = MT.selfPipSize(st.clientWidth || window.innerWidth, st.clientHeight || window.innerHeight, ar, p.size || 'M', mobile ? 9 / 16 : 16 / 9);
     if (R.ui.w.classList.contains('small')) { sv.style.width = ''; sv.style.height = ''; return; }
     sv.style.width = s.w + 'px'; sv.style.height = s.h + 'px';
   }

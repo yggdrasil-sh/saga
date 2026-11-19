@@ -11,7 +11,7 @@
 // - SpeakerPick: Sprechring (> 0,03 fuer >= 300 ms, Nachlauf 600 ms) und Buehnenwechsel mit Hysterese (>= 1,5 s am
 //   Stueck lauter und >= 3 s seit dem letzten Wechsel; eigene Stimme bewegt die Buehne nie)
 // - hideControls: Leisten nach 4 s ausblenden, mit Ausnahmen (§6.1)
-// - selfPipSize: eigenes Bild im Seitenverhaeltnis der Kamera, S/M/L (§7)
+// - selfPipSize: eigenes Bild im Seitenverhaeltnis der Kamera, Breite nach der Ausrichtung der Kamera, S/M/L (§7)
 (function (root) {
   'use strict';
   var K = {
@@ -265,14 +265,20 @@
     return !!idle && phase === 'connected' && !!video && !screenReader && !menuOpen && !notice && !pointerOverBar;
   }
 
-  // Eigenes Bild schwebend (§7): Breite 22 % der Buehne (quer, 120-280 px) bzw. 26 % (hoch, 90-160 px), Faktor S/M/L,
-  // Seitenverhaeltnis der Kamera (0,5-2,0); passt es nicht zweimal uebereinander, verkleinern (bis zur Haelfte)
+  // Eigenes Bild schwebend (§7): Breite 22 % der Buehne (Kamera quer, 120-280 px) bzw. 26 % (Kamera hochkant, 90-160 px),
+  // Faktor S/M/L, Seitenverhaeltnis der Kamera (0,5-2,0); passt es nicht zweimal uebereinander, verkleinern (bis zur
+  // Haelfte). Die Breitenregel richtet sich nach der Ausrichtung der KAMERA (Bugs-DB 2161, auf allen Plattformen gleich:
+  // Handy gedreht, Handy-Kamera am Desktop), nicht nach der Buehne. ar unbekannt (0/fehlt): Lage der Buehne entscheidet,
+  // Verhaeltnis = fallback bzw. 16:9 (quer) / 9:16 (hoch) - wie bisher
   var SIZES = { S: 0.7, M: 1, L: 1.4 };
-  function selfPipSize(stageW, stageH, ar, size) {
-    var land = stageW >= stageH;
+  function selfPipSize(stageW, stageH, ar, size, fallback) {
+    ar = +ar;
+    var known = ar > 0 && isFinite(ar);
+    var land = known ? ar >= 1 : stageW >= stageH;
+    if (!known) ar = +fallback > 0 && isFinite(+fallback) ? +fallback : (land ? 16 / 9 : 9 / 16);
+    ar = clamp(ar, 0.5, 2);
     var w = land ? clamp(stageW * 0.22, 120, 280) : clamp(stageW * 0.26, 90, 160);
     w *= SIZES[size] || 1;
-    ar = clamp(+ar || (land ? 16 / 9 : 9 / 16), 0.5, 2);
     var h = w / ar;
     if (stageH > 0 && 2 * h > stageH) {
       var w2 = Math.max(w / 2, (stageH / 2) * ar);
