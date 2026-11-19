@@ -148,6 +148,27 @@ def run():
        and sE.none("call.invite", mE, 0.8))
     end(A, g2)
 
+    # --- keine Rechteausweitung: wer den Chat verlassen hat bzw. Anruf, den ein anderer Server fuehrt (lead): nichts ----
+    g6, s, call = start(A, gid2)
+    with connect() as c, c:
+        c.execute("UPDATE chat_device SET caps='' WHERE uid='ca-ne'")
+        c.execute("UPDATE chat_call_invite SET state='old' WHERE call_id=? AND who='ca-ne'", (g6,))
+        c.execute("UPDATE chat_member SET left_at=? WHERE chat_id=? AND uid='ca-ne'", (time.time(), gid2))
+    mE = sE.mark()
+    s = R_.caps_put(E, E.dev)
+    ok(f"Chat verlassen: E meldet nach ({s}) -> bleibt 'old', klingelt nicht", raw(g6, "ca-ne")[0] == "old" and sE.none("call.invite", mE, 0.8))
+    with connect() as c, c:
+        c.execute("UPDATE chat_member SET left_at=NULL WHERE chat_id=? AND uid='ca-ne'", (gid2,))
+        c.execute("UPDATE chat_device SET caps='' WHERE uid='ca-ne'")
+        c.execute("UPDATE chat_call SET lead=999999 WHERE id=?", (g6,))
+    mE = sE.mark()
+    s = R_.caps_put(E, E.dev)
+    ok(f"Anruf eines anderen Servers (lead): E meldet nach ({s}) -> bleibt 'old', klingelt nicht",
+       s == 200 and raw(g6, "ca-ne")[0] == "old" and sE.none("call.invite", mE, 0.8))
+    with connect() as c, c:
+        c.execute("UPDATE chat_call SET lead=NULL WHERE id=?", (g6,))
+    end(A, g6)
+
     gid3 = group(A, ["ca-nb", "ca-nf"])
     g3, s, call = start(A, gid3)
     end(A, g3)
