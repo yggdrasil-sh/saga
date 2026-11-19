@@ -139,6 +139,9 @@ async function chatKeys(q) {
   } else if (await q.$('.ct-rk-go') && fs.existsSync(RKF(q))) {
     await q.click('.ct-rk-go'); await q.fill('.ct-rk-in', fs.readFileSync(RKF(q), 'utf8').trim());
     await q.click('.ct-rk-ok'); await q.waitForSelector('.ct-rk-ok', { state: 'detached', timeout: 90000 });
+  } else if (await q.$('.ct-rk-go')) {
+    // Bugs-DB 2158: Konto hat Chat-Schluessel, das Profil keinen Wiederherstellungsschluessel -> nie ein Chat-Geraet
+    throw new Error(q.__name + ': Chat-Schluessel ohne ' + RKF(q) + ' (alte DB, neues R345_WORK?)');
   }
   await q.waitForTimeout(500);
 }

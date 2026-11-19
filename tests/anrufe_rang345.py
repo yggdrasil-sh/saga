@@ -216,6 +216,16 @@ def users():
     for u, n in USERS:
         if not auth.get_user(u):
             auth.create_user(u, PW, n)
+    # Bugs-DB 2158: alte DB mit neuem R345_WORK -> die Konten haben schon Chat-Schluessel, die Profile aber keinen
+    # Wiederherstellungsschluessel (<prof>/<konto>.rk). Dann bliebe der Dialog "Chats auf diesem Geraet" stehen, kein
+    # Chat-Geraet, und die Reihe scheiterte erst an #ct-chat. Ohne .rk die Chat-Schluessel des Testkontos verwerfen.
+    with db.connect() as c, c:
+        for u, _ in USERS:
+            if not os.path.exists(os.path.join(WORK, "prof", u + ".rk")) and \
+                    c.execute("SELECT 1 FROM chat_identity WHERE uid=?", (u,)).fetchone():
+                for tbl in ("chat_identity", "chat_device", "chat_link"):
+                    c.execute(f"DELETE FROM {tbl} WHERE uid=?", (u,))
+                log(f"{u}: Chat-Schluessel ohne {u}.rk in {WORK}/prof - verworfen (neue Einrichtung)")
 
 
 # --- TURN und Leitungen ------------------------------------------------------------------------------------------------
