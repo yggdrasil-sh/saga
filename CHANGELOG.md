@@ -23,6 +23,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   unverändert; jetzt wandert er wie bei Editor.js (`mapOffset`) mit, über ProseMirrors `findDiffStart`/`findDiffEnd`
   (auch in Listen und mit Formatierung). Tests: `tests/browser_editorjs_fremd.js` mit Tiptap ohne `notes.live` 3× 61/61 (vorher 58/61), mit dem Fall „mitte“ (Bugs-DB 2165) 3× 65/65; Editor.js unverändert 64/64 bzw. 68/68.
 
+### Behoben – Gleichzeitig bearbeiten: nach einem Konflikt mit einer fremden Änderung gehen keine Eingaben verloren (Bugs-DB 2173)
+- Änderte eine App oder ein zweiter Tab (Speichern über die Schnittstelle) denselben Absatz, in dem gerade live
+  getippt wurde, legte der Server wie gewohnt einen Konfliktblock an – schrieb ihn aber unbereinigt ins Live-Dokument
+  (Konflikt-Stempel mit leerem Namen und Zeitpunkt). Danach lehnte er jede weitere Eingabe ab („sanitize“), die
+  nächsten Zeichen gingen verloren, der Editor fiel auf Stufe 1 zurück, und der Live-Stand ließ sich nicht mehr
+  speichern. Jetzt wird das Ergebnis vor dem Übernehmen wie beim Speichern bereinigt (`saga/collab.py`, `ingest`).
+- Zweiter Teil: Beim Ersetzen von Text im Live-Dokument fügt der Server den neuen Text jetzt vor dem alten ein und
+  löscht diesen danach (`saga/collab_model.py`). Vorher mischte sich gleichzeitiges Tippen je nach Kennung der
+  Gegenstelle mitten in den fremden Text („Start fre|r fünf…|md“).
+- Tests: `tests/collab.py` (neu: Konflikt beim Übernehmen, danach weiter live) 74/74 (ohne die Bereinigung 72/74, „sanitize“), `tests/crdt_modell.py` (neu:
+  Ersetzen + gleichzeitiges Tippen für vier Kennungspaare, Titel) 525/525 (vorher 524/525), `tests/browser_editorjs_fremd.js` mit
+  Tiptap und `notes.live` 3× 61/61 (vorher 60/61).
+
 ### Behoben – Föderation: Ereignisse aus Werkzeug/CLI-Prozessen kommen sofort an statt nach ~46 s (Bugs-DB 2164)
 - Ein Namenswechsel, eine Kontolöschung oder `fed_dir.refresh_local` aus einem kurzlebigen Prozess (Werkzeug, CLI)
   erreichte die andere Instanz erst nach rund 46 s. Ursache: Die Express-Zustellung lief nach dem Ende des Hauptthreads;

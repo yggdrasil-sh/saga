@@ -710,6 +710,10 @@ def ingest(nid, rev=None):
                     _unmask(c, live)
                     _restore_links(c, room, live)
                 target, _ = merge.merge_doc(room.base, live, theirs, None, {"by": "", "name": ""}, time.time())
+                # Bug 2173: wie gespeichert bereinigen (Konfliktblock-Stempel by "", at) - sonst passte das Doc nicht zu
+                # clean_blocks, _read_body lehnte jedes folgende Update ab (sanitize) und der Raum materialisierte nicht mehr
+                from saga import pages
+                target = json.loads(pages.clean_blocks(json.dumps(target, ensure_ascii=False))[0])
                 title = merge.merge_title(room.base_title, live_title, title)[0]
             except Exception as ex:  # noqa: BLE001
                 print(f"collab: Seite {nid}: Zusammenfuehren beim Uebernehmen: {type(ex).__name__}: {ex}", flush=True)

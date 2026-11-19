@@ -383,6 +383,29 @@ try:
     ok("... Live-Text und Merge-Text beide erhalten (CRDT und body)",
        wait_for(lambda: all([x["data"]["text"] for x in c.blocks(jn)[0]["blocks"]] == want for c in (j1, j2)))
        and wait_for(lambda: [x["data"]["text"] for x in body_of(jn)[0]] == want))
+    # Bug 2173: JSON-Schreiber aendert denselben Block wie eine noch nicht materialisierte Live-Eingabe -> Konfliktblock
+    # beim Uebernehmen (ingest). Danach muessen Live-Updates weiter angenommen werden (vorher: jedes folgende Update
+    # "sanitize" abgelehnt, weil der Konflikt-Stempel nicht bereinigt im Doc stand; Raum materialisierte nicht mehr)
+    kn = page([P("a", "Start"), P("b", "Zwei")], "Konflikt live")
+    k1 = client(A); subscribe(k1, kn)
+    rk = body_of(kn)[1]["rev"]
+    k1.edit(kn, lambda d: text_of(d, 0).insert(5, " eins"), "k1")
+    mk = k1.wait(("ACK", "REJECT"), kn)
+    st, _ = req("PATCH", f"/api/notes/{kn}", A, {"body": json.dumps({"blocks": [P("a", "Start fremd"), P("b", "Zwei")]}),
+                                                 "format": "blocks", "rev": rk, "merge": 1})
+    ok(f"2173: Live-Eingabe angenommen, PATCH mit merge am selben Block: {st}", mk and mk[0] == "ACK" and st == 200)
+    ok("2173: Konfliktblock kommt live an", wait_for(lambda: len(k1.blocks(kn)[0]["blocks"]) == 3))
+    k1.edit(kn, lambda d: text_of(d, 0).insert(len(str(text_of(d, 0))), " weiter"), "k2")
+    mk = k1.wait(("ACK", "REJECT"), kn)
+    ok(f"2173: Update nach dem Konflikt angenommen ({mk[0] if mk else None} {mk[2][0][:60] if mk and mk[0] == 'REJECT' else ''})",
+       mk and mk[0] == "ACK")
+    def k_ok():
+        bl = body_of(kn)[0]
+        cf = [x for x in bl if (x.get("tunes") or {}).get("hkconflict")]
+        return len(bl) == 3 and len(cf) == 1 and any(x["data"]["text"].endswith(" weiter") for x in bl) \
+            and json.loads(clean_blocks(json.dumps({"blocks": bl}))[0])["blocks"] == bl
+    ok("2173: materialisiert (Konfliktblock, Weitergetipptes, clean_blocks-fest)", wait_for(k_ok, 8.0))
+    k1.close()
     # Version wiederherstellen: eine Version des jetzigen Stands anlegen (wie der Editor nach einer Pause), weiterschreiben,
     # dann diese Version zurueckholen
     with connect() as c, c:

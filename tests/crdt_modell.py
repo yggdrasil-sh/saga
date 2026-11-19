@@ -236,6 +236,28 @@ sv1 = srv.get_state()
 M.write(srv, {"blocks": g1["blocks"]}, "T2")
 ok("write: gleicher Stand -> keine Aenderung", srv.get_update(sv1) in (b"\x00\x00",))
 
+# Bug 2173: write ersetzt den Text eines Blocks (Konflikt beim Uebernehmen: Original = fremde Fassung), waehrend der
+# Client am Ende des alten Textes weitertippt -> das Getippte steht hinter dem neuen Text, nicht mitten darin
+# (unabhaengig davon, welche client_id kleiner ist)
+_mix = []
+for _sc, _cc in ((5, 900000), (900000, 5), (77, 78), (78, 77)):
+    _s = Doc(client_id=_sc); _s.apply_update(M.build({"blocks": [{"id": "t1", "type": "paragraph", "data": {"text": "Start eins zwei drei vie"}}]}))
+    _c = Doc(client_id=_cc); _c.apply_update(_s.get_update())
+    M.write(_s, {"blocks": [{"id": "t1", "type": "paragraph", "data": {"text": "Start fremd"}}]})
+    _ct = list(list(_c.get("prosemirror", type=XmlFragment).children)[0].children)[0]
+    _ct.insert(len(str(_ct).encode()), "r f")
+    _s.apply_update(_c.get_update(_s.get_state())); _c.apply_update(_s.get_update(_c.get_state()))
+    _mix.append((M.read(_s)[0]["blocks"][0]["data"]["text"], M.read(_c)[0]["blocks"][0]["data"]["text"]))
+ok(f"write: Ersetzen + gleichzeitiges Tippen am Ende -> neuer Text, dann Getipptes ({_mix})",
+   all(x == ("Start fremdr f", "Start fremdr f") for x in _mix))
+_t = Doc(client_id=5); _t.apply_update(M.build({"blocks": []}, "Alter Titel"))
+_u = Doc(client_id=900000); _u.apply_update(_t.get_update())
+M.write(_t, {"blocks": []}, "Neuer Name")
+_ut = _u.get("title", type=__import__("pycrdt").Text); _ut.insert(len(str(_ut)), "!")
+_t.apply_update(_u.get_update(_t.get_state())); _u.apply_update(_t.get_update(_u.get_state()))
+ok(f"write: Titel ersetzen + gleichzeitiges Tippen am Ende ({str(_t.get('title', type=__import__('pycrdt').Text))!r})",
+   M.read(_t)[1] == M.read(_u)[1] and M.read(_t)[1].endswith("!") and "Neu" in M.read(_t)[1])
+
 # Zufall: write auf beliebige Ziele (aus den Vektoren) muss genau den Zielstand ergeben
 rnd = random.Random(7)
 pool = [canon({"blocks": b}) for _, b in docs]
