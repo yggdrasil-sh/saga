@@ -16,6 +16,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Anruf: Teilnehmerliste bei Handy quer verdeckt die Knöpfe nicht mehr (Bugs-DB 2196)
+- Im Querformat (Höhe ≤ 500 px) lag die Teilnehmerliste rechts über der senkrechten Leiste (Kamera, Teilen, Ton,
+  Layout nicht antippbar) und zeigte nur gut einen Eintrag. Jetzt ist sie dort ein Blatt links neben der Leiste, unter
+  den Knöpfen oben rechts bis zum unteren Rand und rollbar – auch „Person hinzufügen“, in Galerie, Sprecher und
+  Präsentation, Mesh und Knoten. Ab 900 px Breite quer (z. B. 1000×497) keine Seitenleiste mehr über der Leiste;
+  beim Drehen wechselt die offene Liste zwischen Blatt und Seitenleiste. Hochformat und Desktop unverändert.
+- Tests: `tests/browser_meeting_gruppe.js` prüft bei offener Liste per Treffer-Test, dass jeder Knopf der Leiste und oben
+  rechts frei ist (844×390 in Galerie und beim Teilen, 1000×497, zurück auf 1280×720; Knoten auch Sprecher).
+  Testumgebung: `UMG_MESH_MAX` senkt die Mesh-Grenze, damit die Vierer-Gruppe zuverlässig über den Knoten läuft.
+
 ### Behoben – Anruf: nach der Übernahme iPhone → Mac (Safari/WebKit, Mac-App) kein Ton (Bugs-DB 2198)
 - Das übernehmende Gerät tritt erst stumm bei; die Web-Oberfläche meldete das per Media Session
   `setMicrophoneActive(false)` – WebKit schaltet damit die Aufnahme selbst stumm und lehnt das Wiedereinschalten ohne

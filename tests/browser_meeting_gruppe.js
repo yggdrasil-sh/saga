@@ -70,6 +70,24 @@ const CTLFIT = () => { const bs = [...document.querySelectorAll('.cl-win .cl-ctl
   const red = document.querySelector('.cl-win .cl-ctl .cl-red'), rr = red && red.getBoundingClientRect();
   return { n: bs.length, inside: bs.every(r => r.left >= 0 && r.right <= innerWidth + 0.5), oneRow: bs.every(r => Math.abs(r.top - bs[0].top) < 2),
            red: !!rr && rr.left >= 0 && rr.right <= innerWidth && rr.width >= 44, more: !!document.querySelector('.cl-win .cl-ctl .cl-more') }; };
+// Bugs-DB 2196: Handy quer (Hoehe <= 500) - Teilnehmerliste als Blatt links der senkrechten Leiste. Treffer-Test: an der Mitte jedes
+// sichtbaren Knopfs der Leiste (und oben rechts) liegt bei offener Liste der Knopf selbst (elementFromPoint); ganz sichtbare Eintraege
+// (Knoten: der Hinweis "Experimentell" unter der Liste kostet eine Zeile, der vierte Eintrag ist dann per Rollen erreichbar)
+const PLHIT = () => {
+  const R = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); };
+  const w = document.querySelector('.cl-win'), c = document.querySelector('.cl-win .cl-ctl'), p = document.querySelector('.cl-win .cl-plist');
+  if (!c) return null;
+  const bs = [...document.querySelectorAll('.cl-win .cl-ctl .cl-btn, .cl-win .cl-tb .cl-btn')]
+    .filter(b => !b.hidden && b.getClientRects().length && getComputedStyle(b).display !== 'none' && getComputedStyle(b).visibility !== 'hidden');
+  const hit = bs.map(b => { const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, e = document.elementFromPoint(x, y);
+    return { k: b.getAttribute('aria-label') || b.className, ok: !!e && (e === b || b.contains(e)), y }; }).filter(h => h.y >= 0 && h.y <= innerHeight);
+  let n = 0, all = 0;
+  const ul = p && p.querySelector('.cl-plist-l:not(.cl-away-l)');
+  if (ul) { const ur = ul.getBoundingClientRect(), lis = [...ul.children].filter(li => li.getClientRects().length); all = lis.length;
+    n = lis.filter(li => { const r = li.getBoundingClientRect(); return r.top >= ur.top - 1 && r.bottom <= ur.bottom + 1; }).length; }
+  return { vw: innerWidth, vh: innerHeight, ctl: R(c), plist: p ? R(p) : null, side: !!w && w.classList.contains('plist-side'), btns: hit.length,
+           blocked: hit.filter(h => !h.ok).map(h => h.k), items: n, all, scroll: ul ? getComputedStyle(ul).overflowY : '' };
+};
 const st = p => p.evaluate(() => {
   const r = window.HKCalls && window.HKCalls.room(), h = window.HKCalls && window.HKCalls.horn && window.HKCalls.horn();
   const w = document.querySelector('.cl-win'), op = s => { const x = w && w.querySelector(s); return x ? +getComputedStyle(x).opacity : -1; };
@@ -149,6 +167,31 @@ const st = p => p.evaluate(() => {
       await ps[2].setViewportSize({ width: 1280, height: 720 }); await sleep(600);
     }
 
+    // Bugs-DB 2196: Teilnehmerliste quer 844x390 (Galerie) - zu/offen, hell/dunkel; danach 1000x497 (Labor-Fenster, >= 900 px breit:
+    // quer trotzdem Blatt statt Seitenleiste ueber der Leiste) und zurueck auf 1280x720 (Mesh: Seitenleiste wie bisher)
+    const plQuer = async (tag, shots) => {
+      const q = ps[2];
+      await q.setViewportSize({ width: 844, height: 390 }); await sleep(800); await q.mouse.move(300, 200); await sleep(300);
+      if (shots) { await shot(q, tag + '-quer-844x390-zu-dunkel'); await q.emulateMedia({ colorScheme: 'light' }); await shot(q, tag + '-quer-844x390-zu-hell'); await q.emulateMedia({ colorScheme: 'dark' }); }
+      await q.click('.cl-ctl .cl-people'); await sleep(700); await q.mouse.move(310, 210); await sleep(200);
+      const a = await q.evaluate(PLHIT); console.log('  Lage Teilnehmerliste quer (' + tag + '): ' + JSON.stringify(a));
+      ok('Bugs-DB 2196 (' + tag + '): Liste quer 844x390 links der Leiste, kein Leisten-Knopf verdeckt, >= 3 Eintraege ganz sichtbar, rollbar',
+         a && a.plist && a.btns >= 4 && a.blocked.length === 0 && a.plist[0] + a.plist[2] <= a.ctl[0] + 1 && a.plist[1] >= 0 && a.plist[1] + a.plist[3] <= a.vh
+         && a.all >= 3 && a.items >= Math.min(a.all, 3) && a.plist[3] >= a.vh * 0.7 && a.scroll === 'auto', a);
+      if (shots) { await shot(q, tag + '-quer-844x390-offen-dunkel'); await q.emulateMedia({ colorScheme: 'light' }); await shot(q, tag + '-quer-844x390-offen-hell'); await q.emulateMedia({ colorScheme: 'dark' }); }
+      await q.setViewportSize({ width: 1000, height: 497 }); await sleep(800); await q.mouse.move(320, 220); await sleep(300);
+      const b = await q.evaluate(PLHIT);
+      ok('Bugs-DB 2196 (' + tag + '): quer 1000x497 Blatt statt Seitenleiste, kein Leisten-Knopf verdeckt', b && b.plist && !b.side && b.blocked.length === 0
+         && b.plist[0] + b.plist[2] <= b.ctl[0] + 1, b);
+      if (shots) await shot(q, tag + '-quer-1000x497-offen-dunkel');
+      await q.setViewportSize({ width: 1280, height: 720 }); await sleep(900); await q.mouse.move(600, 300); await sleep(300);
+      const d = await q.evaluate(PLHIT);
+      ok('Bugs-DB 2196 (' + tag + '): 1280x720 wieder wie bisher (Mesh Seitenleiste, Knoten Liste rechts), Leiste frei',
+         d && d.plist && d.side === !horn && d.blocked.length === 0, d);
+      await q.click('.cl-ctl .cl-people'); await sleep(400);
+    };
+    await plQuer('2c-galerie', true);
+
     // Person 2 teilt den Bildschirm
     await ps[1].mouse.move(500, 300);
     await ps[1].click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]');
@@ -171,6 +214,7 @@ const st = p => p.evaluate(() => {
     await shot(ps[3], '7-bildschirm-handy-dunkel');
     await ps[3].emulateMedia({ colorScheme: 'light' }); await shot(ps[3], '7-bildschirm-handy-hell');
     ok('S10: Handy beim Teilen ohne waagrechtes Scrollen', !(await st(ps[3])).scrollX);
+    await plQuer('7b-' + (horn ? 'bildschirm' : 'praesentation'), true);
     // Sprecher per Kuerzel P
     await ps[2].keyboard.press('p'); await sleep(800);
     const sp = await st(ps[2]);
@@ -202,7 +246,11 @@ const st = p => p.evaluate(() => {
       const q3 = await QG('.cl-win .cl-plist'); console.log('  Lage Teilnehmerliste quer: ' + JSON.stringify(q3));
       ok('Pruefung 2192: Teilnehmerliste quer 844x390 sichtbar und im Fenster', q3.plist && q3.plist[3] >= 120 && q3.plist[1] >= 0
          && q3.plist[1] + q3.plist[3] <= q3.vh, q3);
+      const q4 = await ps[2].evaluate(PLHIT); console.log('  Treffer Teilnehmerliste Sprecher quer: ' + JSON.stringify(q4));
+      ok('Bugs-DB 2196: Knoten-Sprecher quer 844x390 - Liste links der Leiste, kein Leisten-Knopf verdeckt, >= 3 Eintraege ganz sichtbar',
+         q4 && q4.plist && q4.btns >= 4 && q4.blocked.length === 0 && q4.plist[0] + q4.plist[2] <= q4.ctl[0] + 1 && q4.all >= 3 && q4.items >= 3, q4);
       await shot(ps[2], '9c-teilnehmer-quer-844x390-dunkel');
+      await ps[2].emulateMedia({ colorScheme: 'light' }); await shot(ps[2], '9c-teilnehmer-quer-844x390-hell'); await ps[2].emulateMedia({ colorScheme: 'dark' });
       await ps[2].click('.cl-ctl .cl-people').catch(() => {}); await sleep(300);
       await ps[2].setViewportSize({ width: 1280, height: 720 }); await sleep(600);
     }

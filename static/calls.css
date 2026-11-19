@@ -538,6 +538,10 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
   .cl-win:not(.small):not(.self-c0):not(.self-c2) .cl-local{right:84px}
   /* Knoepfe oben rechts links von der Leiste - sonst lag "Kleiner/groesser" unter der 72-px-Leiste (Pruefung 2158) */
   .cl-win:not(.small):not(.plist-side) .cl-tb{right:84px}
+  /* Teilnehmerliste (auch "Person hinzufuegen") als Blatt links neben der senkrechten Leiste (72 px + 8 px), unter den Knoepfen
+     oben rechts bis zum unteren Rand, rollbar - vorher right:.8rem/bottom:6.4rem: ueber Kamera/Teilen/Ton/Layout, nur ~1,5
+     Eintraege sichtbar (Bugs-DB 2196). Die Seitenleiste ab 900 px gibt es quer nicht (calls.js plistSide) */
+  .cl-win:not(.small) .cl-plist{top:3.6rem;bottom:.5rem;right:80px;left:auto;width:min(22rem,calc(100% - 96px));height:auto;max-height:none}
 }
 /* 2.5 (§9) Teilnehmerliste im Mesh: ab 900 px Seitenleiste rechts (320 px, >= 1920: 360 px), schiebt die Buehne zusammen */
 .cl-pl-pin{height:30px;font-size:var(--fs-sm);padding:0 .7rem;margin-left:auto}

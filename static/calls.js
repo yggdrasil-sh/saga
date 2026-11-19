@@ -1710,7 +1710,7 @@
     });
     p.appendChild(ul);
     awayList(R, p); focusBack(p, fk);
-    var side = (ui.w.clientWidth || window.innerWidth) >= 900 && !ui.w.classList.contains('small');
+    var side = plistSide(ui.w);
     if (ui.w.classList.contains('plist-side') !== side) { ui.w.classList.toggle('plist-side', side); if (R.meshOn) meetSoon(R); }
   }
 
@@ -2939,6 +2939,8 @@
   window.addEventListener('resize', function () {
     var R = C; if (!R || !R.ui || R.done) return;
     if (R.ui.ctl.classList.contains('narrow') !== ctlNarrow(R)) drawCtl(R);
+    var Q = roomOf(R);   // Drehen: Seitenleiste <-> Blatt
+    if (Q.plist && !Q.horn && Q.ui && Q.ui.w.classList.contains('plist-side') !== plistSide(Q.ui.w)) meetList(Q);
   });
 
   // --- 2.4: Bild-im-Bild -----------------------------------------------------------------------------------------------
@@ -5092,6 +5094,12 @@
     });
   }
   // --- Teilnehmerliste (Gastgeber: Stummschalten, Entfernen) ------------------------------------------------------------
+  // Seitenleiste fuer die Teilnehmerliste ab 900 px - nicht quer (Hoehe <= 500): dort steht die Leiste rechts senkrecht und die
+  // Liste ist ein Blatt links daneben (calls.css, Bugs-DB 2196)
+  function plistSide(w) {
+    var quer = !!(window.matchMedia && window.matchMedia('(max-height:500px) and (orientation:landscape)').matches);
+    return (w.clientWidth || window.innerWidth) >= 900 && !w.classList.contains('small') && !quer;
+  }
   function hornHost(R) { return !!(R.call && (R.call.host || (R.call.peer && R.call.peer.username === meName()))); }
   function hornList(R) {
     var H = R.horn, w = R.ui && R.ui.w; if (!H || !w) return;
