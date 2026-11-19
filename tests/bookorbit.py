@@ -16,7 +16,7 @@ Geprueft:
 - Widget "reading": Varianten, geteilte Seite = jede Person ihre eigenen Daten, Veroeffentlichen/Foederation ohne
   Persoenliches, Bereinigung, Markdown-Text.
 Wegwerf-Konten bo-a/bo-b, raeumt auf. Umgebung wie tests/widgets2.py (HK_TEST_BASE, BASE_URL, SESSION_SECRET, DATABASE_URL)."""
-import base64, http.client, json, os, secrets, subprocess, sys, threading, time, urllib.parse
+import base64, http.client, json, os, secrets, shutil, subprocess, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itsdangerous import TimestampSigner
 import auth
@@ -501,7 +501,7 @@ def part_expired(A):
 
 
 def part_password():
-    dump = subprocess.run(["/usr/lib/postgresql/16/bin/pg_dump", os.environ["DATABASE_URL"]], capture_output=True, timeout=120)
+    dump = subprocess.run([shutil.which("pg_dump") or "/usr/lib/postgresql/16/bin/pg_dump", os.environ["DATABASE_URL"]], capture_output=True, timeout=120)
     ok("Datenbank-Abzug lesbar", dump.returncode == 0 and len(dump.stdout) > 1000, dump.stderr[-300:])
     ok("Passwort nirgends in der Datenbank", PW_A.encode() not in dump.stdout and PW_B.encode() not in dump.stdout)
     toks = [s["token"] for s in F.sessions.values() if s["token"]]

@@ -13,6 +13,7 @@ import base64
 import http.client
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -357,7 +358,7 @@ def main():
                "Traceback" not in log and not any(ln.startswith("import ") for ln in log.splitlines()), log[-3000:])
             ok("Server-Log: keine 5xx", " 500 " not in log and " 502 " not in log, log[-2000:])
         ok("Antworten: Passwort taucht nirgends auf", not any(F.PW in x for x in seen_text))
-        dump = subprocess.run(["/usr/lib/postgresql/16/bin/pg_dump", os.environ["DATABASE_URL"]], capture_output=True, text=True)
+        dump = subprocess.run([shutil.which("pg_dump") or "/usr/lib/postgresql/16/bin/pg_dump", os.environ["DATABASE_URL"]], capture_output=True, text=True)
         ok("Datenbank (pg_dump): Passwort taucht nicht auf", dump.returncode == 0 and F.PW not in dump.stdout, dump.stderr[:300])
         ok("Datenbank: Revisionen/geloeschte/System-Notizen nicht uebernommen", dump.returncode == 0 and "REVISION-ALT" not in dump.stdout
            and "GELOESCHT-INHALT" not in dump.stdout and "SYSTEM-NOTIZ" not in dump.stdout)
