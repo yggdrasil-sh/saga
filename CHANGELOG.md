@@ -16,6 +16,33 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Gruppenanrufe: Nachmelden der Fähigkeiten klingelt nicht mehr für einen gerade beendeten Anruf (Bugs-DB 2179)
+- `ring_late` (aus `PUT /api/calls/caps`) las den Anrufzustand ohne Sperre; wurde der Anruf genau dazwischen beendet,
+  klingelte das Gerät bis zum Ende der Klingeldauer für einen beendeten Anruf. Jetzt läuft `ring_late` nach dem Commit der Meldung in
+  eigener Transaktion und sperrt je Anruf zuerst die Anrufzeile (Reihenfolge wie Beitreten/Annehmen: Anruf → Gerät,
+  keine Verklemmung) und liest Zustand und `lead` neu.
+- Tests: `tests/anrufe_nachmelden.py` 24/24 (neu: Meldung, während eine Transaktion den Anruf gesperrt hält – ohne und
+  mit gleichzeitigem Ende; ohne den Fix 23/24: klingelt für den beendeten Anruf); `anrufe_klingeln` 40/40,
+  `anrufe_raum` 84/84, `anrufe_hinzufuegen` 43/43, `browser_erneut_klingeln.js` 16/16.
+
+### Behoben – Schreibmarke: ein zufällig gleiches Zeichen im ersetzten Text hält sie nicht mehr fest (Bugs-DB 2180)
+- Ersetzte jemand das Wort mit der Schreibmarke („wo|rld“ → „there“), blieb sie an einem einzelnen gleichen Zeichen
+  hängen („the|re“) statt am Ende der Änderung. `mapOffset` (`static/pages.js`, Tiptap über `mapInBlock`) nimmt einen
+  Anker um die Marke erst ab drei gleichen Zeichen (links und rechts zusammen) – ein kürzeres Mittelstück nur, wenn es
+  ganz erhalten ist. Mit „Gleichzeitig bearbeiten“ (Tiptap/Yjs) behielt der Server-Abgleich (`saga/collab_model.py`)
+  ebenso das einzelne „r“; dort werden kurze gleiche Inseln zwischen zwei Ersetzungen jetzt mit ersetzt.
+- Tests: neu `tests/schreibmarke_vektoren.js` (Node, 16/16; ohne den Fix 10/16), `tests/browser_editorjs_fremd.js` neuer
+  Fall „ersetzt“: Editor.js mit und ohne `notes.live` 88/88, Tiptap ohne 85/85, mit 2× 85/85 (ohne den Fix alle vier im Fall 3/5;
+  nur mit dem `mapOffset`-Teil Tiptap live 83/85).
+
+### Behoben – Gleichzeitig bearbeiten: Konfliktblöcke beim Übernehmen eines alten Live-Zustands tragen den Urheber (Bugs-DB 2181)
+- Wurden Live-Änderungen aus einem Zustand eines anderen Schemas übernommen und hatte sich die Seite seither geändert
+  (drei Wege), stand am Konfliktblock kein Urheber, obwohl der letzte Live-Schreiber bekannt ist. Jetzt wie beim
+  Übernehmen während einer Sitzung (gemeinsam `_conflict_by` in `saga/collab.py`).
+- Tests: `tests/collab.py` 81/81 (neu: Altschema mit seither geändertem body; ohne den Fix 80/81, `by` fehlt); unverändert
+  grün `editor_inline` 114/114, `crdt_modell` 526/526, `markenerhalt` 34/34, `merge` 95/95, `pm_vectors` 2391/2391,
+  `synced_blocks` 52/52, `collab_sperre_grund` 13/13.
+
 ### Behoben – saga-media reicht die Query byte-gleich weiter: Föderation hinter saga-media mit neuerem Go (Bugs-DB 2182)
 - Veröffentlichte Images (gebaut mit Go 1.24, go1.24.13) waren praktisch nicht betroffen – dort traf es nur Anfragen mit
   `;` oder ungültigem `%` in der Query. Der Fix schützt Builds mit neuerem Go (z. B. 1.27),
