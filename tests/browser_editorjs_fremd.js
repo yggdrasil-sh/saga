@@ -6,7 +6,8 @@
 // Eingabe, Spalten (in und neben einer Spalte tippen), viele schnelle Aenderungen, langsames Einarbeiten (Eingabe nur waehrenddessen). Laeuft mit notes.live an und aus (Admin-Schalter; der Test meldet den Stand).
 // Voraussetzung: Admin editor.engine = choice (Konto-Wahl Editor.js). FAELLE=a,b,... nur diese Faelle.
 // SAGA_EDITOR=tiptap nur zum Vergleich: Tiptap ohne live laesst die Schreibmarke bei fremdem Text vor ihr im selben
-// Block noch stehen ("gleich", "ruhend": 3 FAIL, auf 86aab10 genauso); mit live gilt Yjs.
+// Block noch stehen ("gleich", "ruhend", "mitte": 4 FAIL, auf 86aab10 genauso); mit live gilt Yjs. Bugs-DB 2165: die
+// Suite (tools/suite/innen.sh, SAGA_EDITOR Standard tiptap) lief so - der Test meldet den Fall jetzt selbst (Hinweis).
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Cookie hk-test-a> node tests/browser_editorjs_fremd.js
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
@@ -33,6 +34,7 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
   const ver = await a.api('GET', '/api/version');
   const LIVE = (ver.features || []).includes('live1');
   console.log('     notes.live: ' + (LIVE ? 'an' : 'aus') + ', Editor: ' + KIND);
+  if (KIND === 'tiptap' && !LIVE) console.log('     Hinweis: Tiptap ohne notes.live = nur Vergleich; "gleich", "ruhend", "mitte" sind dort bekannt rot (Schreibmarke wandert nicht mit)');
   async function until(fn, ms = 8000) { const end = Date.now() + ms; while (Date.now() < end) { try { if (await fn()) return true; } catch (e) { /* */ } await sleep(120); } return false; }
   const getN = async (id) => JSON.parse(J(await b.api('GET', '/api/notes/' + id)));
   const blocksOf = async (id) => JSON.parse((await getN(id)).body || '{}').blocks || [];
@@ -82,7 +84,7 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     a.errs.length = 0; b.errs.length = 0;
     return id;
   }
-  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,spalten,schnell,langsam').split(',');
+  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,mitte,spalten,schnell,langsam').split(',');
   const base3 = () => [P('t1', 'Start'), P('t2', 'Ende'), P('f0', 'fremd 0')];
   const agree = async (id, bl) => {   // Editor (A) zeigt dieselben Bloecke wie der Server
     const ids = (await D.blocks(a)).filter((x) => x.parent == null).map((x) => x.id);
@@ -172,6 +174,24 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     const bl = await blocksOf(id);
     ok('ruhend: Weitertippen landet im Block und wird gespeichert', bl.some((x) => x.id === 't2' && x.data.text === 'Neu: Ende!'), bl);
     ok('ruhend: kein Hinweis, keine Seitenfehler', !(await a.evaluate(() => !!document.querySelector('#pg-conflict, #pg-remote'))) && a.errs.length === 0, a.errs);
+    a.errs.length = 0;
+  }
+  // Bugs-DB 2165: Schreibmarke MITTEN im Block, fremder Text davor (Praefix) - die Marke muss um dessen Laenge mitwandern
+  // (am Blockende wie bei "ruhend" faellt ein ungemappter Offset nicht immer auf)
+  if (want.includes('mitte')) {
+    console.log('--- Schreibmarke mitten im Block, fremder Text davor ---');
+    const id = await openA('Fremd mitte', base3());
+    await D.focus(a, 't2', 'end');
+    await a.keyboard.press('ArrowLeft'); await a.keyboard.press('ArrowLeft');   // "En|de"
+    await sleep(300);
+    await remote(id, (bl) => { bl.find((x) => x.id === 't2').data.text = 'Neu: Ende'; });
+    ok('mitte: Editor zeigt die fremde Aenderung', await until(async () => (await domText('t2')) === 'Neu: Ende', 5000), await domText('t2'));
+    ok('mitte: Fokus bleibt im Block', (await activeBlock()) === 't2', await activeBlock());
+    await a.keyboard.type('X', { delay: 40 });
+    await sleep(3000);
+    const bl = await blocksOf(id);
+    ok('mitte: Weitertippen landet an derselben Textstelle', bl.some((x) => x.id === 't2' && x.data.text === 'Neu: EnXde'), bl);
+    ok('mitte: kein Hinweis, keine Seitenfehler', !(await a.evaluate(() => !!document.querySelector('#pg-conflict, #pg-remote'))) && a.errs.length === 0, a.errs);
     a.errs.length = 0;
   }
 
