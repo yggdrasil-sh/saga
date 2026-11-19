@@ -16,6 +16,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Gruppenanrufe: ein gerade verbundenes Gerät klingelt auch, wenn es seine Fähigkeiten erst nach dem Start meldet (Bugs-DB 2174)
+- Eingeladen wird nur, wer ein Gerät mit „multi“ (über den Knoten: „horn“/„horn_ring“) gemeldet hat; sonst steht die
+  Einladung auf „braucht Saga 2.4“. Ein frisch verbundener Browser oder eine App meldet das erst Sekunden nach dem
+  Laden – begann der Anruf dazwischen, klingelte es dort nie. Jetzt hebt die Meldung (`PUT /api/calls/caps`) eine
+  solche Einladung auf „klingelt“, solange die Klingeldauer läuft, und es klingelt wie beim Start (`ring_late` in
+  `saga/calls.py`, große Gruppen weiter still). Nur einmal je Einladung, echte Alt-Geräte (ohne „multi“) unverändert;
+  Anrufe, die ein anderer Server führt, noch nicht.
+- Tests: neu `tests/anrufe_nachmelden.py` 18/18 (ohne den Fix 10/18), `tests/browser_erneut_klingeln.js` hält die
+  Meldung von C jetzt bis nach dem Anrufstart zurück 2× 16/16 (ohne den Fix: C klingelt nie); `anrufe_klingeln` 40/40,
+  `anrufe_raum` 84/84, `anrufe_hinzufuegen` 43/43.
+
 ### Behoben – Tiptap: Schreibmarke bleibt an ihrer Textstelle, wenn jemand davor im selben Absatz schreibt (Bugs-DB 2172)
 - Ohne „Gleichzeitig bearbeiten“ (`notes.live` aus) übernimmt Tiptap fremde Änderungen blockweise. Kam fremder Text
   vor der Schreibmarke in denselben Absatz, blieb die Marke beim alten Abstand stehen – eigene Zeichen landeten

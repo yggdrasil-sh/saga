@@ -461,7 +461,39 @@ def note_caps(c, uid, dev, caps):
         r = c.execute("SELECT caps FROM chat_device WHERE id=? AND uid=?", (dev, uid)).fetchone()
         if r and "chat3" in caps_out(r[0]) and "chat3" not in caps_out(caps):    # 2.5: Chat-Stufe meldet saga.chat (bleibt)
             caps = json.dumps(caps_out(caps) + ["chat3"], separators=(",", ":"))
-        c.execute("UPDATE chat_device SET caps=? WHERE id=? AND uid=? AND caps<>?", (caps, dev, uid, caps))
+        return c.execute("UPDATE chat_device SET caps=? WHERE id=? AND uid=? AND caps<>?", (caps, dev, uid, caps)).rowcount > 0
+    return False
+
+
+def ring_late(c, uid, now=None):
+    """Bugs-DB 2174: uid hat (mit einem Geraet) Anruf-Faehigkeiten nachgemeldet (PUT /api/calls/caps). Laeuft ein
+    Gruppenanruf, den dieser Server fuehrt, in dem uid beim Klingeln 'old' bekam (das frisch verbundene Geraet hatte "multi"
+    bzw. "horn"/"horn_ring" noch nicht gemeldet), und klingelt er noch (Einladung + ring_s), wird die Einladung 'ringing'
+    und es klingelt wie beim Start (ring_group, ueber Knoten: _can_horn). created = jetzt (das Geraet klingelt ring_s ab
+    call.invite - so passt "klingelt"/"nicht angenommen" bei den anderen dazu); in grossen Gruppen (stiller Start) bleibt
+    created, die Liste zeigt sie wie beim Start nicht als klingelnd. Nur einmal je Einladung (UPDATE ... WHERE
+    state='old'); echte Alt-Geraete melden nichts davon - fuer sie aendert sich nichts. -> Anzahl."""
+    now = now or time.time()
+    rs = ring_s()
+    n = 0
+    for r in c.execute(f"SELECT {', '.join('k.' + x.strip() for x in C_COLS.split(','))}, i.created FROM chat_call k JOIN chat_call_invite i "
+                       "ON i.call_id=k.id JOIN chat_member m ON m.chat_id=k.chat_id AND m.uid=i.who AND m.left_at IS NULL "
+                       "WHERE i.who=? AND i.state='old' AND i.created>? AND k.kind='group' AND k.state<>'ended' AND k.lead IS NULL "
+                       "AND COALESCE(m.state, 'ok')='ok' ORDER BY k.created", (uid, now - rs)).fetchall():
+        call, since = _row(r[:-1]), r[-1]
+        if not (_can_horn(c, uid) if is_horn(call) else _can_multi(c, uid)):
+            continue                                   # z. B. Knoten-Anruf, das Geraet kann nur "multi"
+        if any(x["who"] == uid for x in _legs(c, call["id"])):
+            continue
+        silent = len(chat.members(c, call["chat_id"])) > RING_SILENT
+        if not c.execute("UPDATE chat_call_invite SET state='ringing', created=? WHERE call_id=? AND who=? AND state='old'",
+                         (since if silent else max(now, call["created"] + 0.001), call["id"], uid)).rowcount:
+            continue                                   # gleichzeitige Meldung eines anderen Geraets: klingelt schon
+        ring_group(c, call, [uid])
+        emit_invites(c, call)
+        n += 1
+        print(f"call: {call['id'][:8]} Faehigkeiten nachgemeldet - klingelt jetzt", flush=True)
+    return n
 
 
 def _can_multi(c, uid):
@@ -1010,7 +1042,8 @@ async def api_caps(request: Request):
     with _db() as c, c:
         if not _my_device(c, uid, dev):
             return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
-        note_caps(c, uid, dev, caps_in(b.get("caps")))
+        if note_caps(c, uid, dev, caps_in(b.get("caps"))):
+            ring_late(c, uid)                          # Bugs-DB 2174: Einladung 'old' wegen spaeter Meldung -> klingeln
         now = time.time()                              # 2.5 Grundsatz Y: Lebenszeichen (30-Tage-Regel, dm_peer_check)
         c.execute("UPDATE chat_device SET last_seen=? WHERE id=? AND uid=? AND COALESCE(last_seen, 0)<?", (now, dev, uid, now - 60))
     return chat._no_store({"ok": True})

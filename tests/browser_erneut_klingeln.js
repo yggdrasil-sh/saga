@@ -9,12 +9,17 @@
 // C lehnt ab -> bei A "hat abgelehnt" (Ereignis call.invites), Fehler 429 (nachgestellt): Zustand zurueck + verstaendlicher
 // Hinweis, Fokus bleibt auf dem Knopf. Bilder: Teilnehmerliste Desktop dunkel/hell und schmal (390 px) hell.
 // VORHER=1: nur die Bilder (Stand ohne L7 - kein Abschnitt "Nicht dabei").
+// Bugs-DB 2174 (Standard, NACHMELDEN=0 schaltet ab): C meldet seine Anruf-Faehigkeiten erst NACH dem Start (PUT
+// /api/calls/caps wird bis nach dem Klick von A zurueckgehalten) - C bekommt beim Start 'old' und muss nach der Meldung
+// trotzdem klingeln (saga/calls.py ring_late). Gegenprobe ohne den Fix: C klingelt nie.
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
 const E = process.env, BASE = E.SAGA_BASE;
 if (!BASE || !E.SAGA_USER || !E.SAGA_USER2 || !E.SAGA_USER3) { console.error('SAGA_BASE, SAGA_USER/PASS, SAGA_USER2/PASS2, SAGA_USER3/PASS3 setzen'); process.exit(2); }
-const SHOTS = E.SHOTS || '', PRE = E.SHOT_PREFIX || 'nachher', OLD = !!E.VORHER;
+const SHOTS = E.SHOTS || '', PRE = E.SHOT_PREFIX || 'nachher', OLD = !!E.VORHER, LATE = E.NACHMELDEN !== '0';
+const HELD = [];                                   // zurueckgehaltene Meldungen von C (Bugs-DB 2174)
+let holdCaps = LATE;
 const res = [];
 function ok(name, cond, info) { res.push(!!cond); console.log((cond ? 'OK  ' : 'FAIL') + ' ' + name + (cond || info === undefined ? '' : ' -> ' + JSON.stringify(info).slice(0, 1500))); }
 async function shot(p, name) { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await p.screenshot({ path: path.join(SHOTS, PRE + '-' + name + '.png') }); } }
@@ -33,6 +38,10 @@ async function session(user, pass, name) {
   // Schluessel bereit sind): erst danach laedt der Server die Person zum Gruppenanruf ein (sonst Einladung 'old')
   p.__caps = false;
   p.on('response', r => { if (r.request().method() === 'PUT' && /\/api\/calls\/caps$/.test(r.url()) && r.ok()) p.__caps = true; });
+  if (name === 'C' && LATE) {
+    p.__held = 0;
+    await p.route('**/api/calls/caps', r => { if (holdCaps && r.request().method() === 'PUT') { p.__held++; HELD.push(r); } else r.continue(); });
+  }
   p.on('pageerror', e => console.log('  [pageerror ' + name + '] ' + e.message));
   if (E.DEBUG) p.on('console', m => console.log('  [console ' + name + '] ' + m.text()));
   await p.goto(BASE + '/login');
@@ -105,9 +114,23 @@ async function shots(a, tag) {
     await until(() => a.evaluate(() => { const v = document.getElementById('ct-call-a'); return v && !v.hidden && /Gruppen/.test(v.title) && v; }), 10000);
     // saga/calls.py group_create: wer beim Start noch kein Geraet mit "multi" gemeldet hat, klingelt nicht ('old') -
     // C (zuletzt eingerichtet) meldete das in der Suite erst nach dem Klick von A
-    ok('B und C haben ihre Anruf-Faehigkeiten gemeldet', await until(() => b.__caps && c.__caps, 20000, 200), [b.__caps, c.__caps]);
+    if (!LATE) ok('B und C haben ihre Anruf-Faehigkeiten gemeldet', await until(() => b.__caps && c.__caps, 20000, 200), [b.__caps, c.__caps]);
+    else ok('B hat gemeldet, die Meldung von C wird zurueckgehalten (Bugs-DB 2174)', await until(() => b.__caps && c.__held > 0 && !c.__caps, 20000, 200),
+            [b.__caps, c.__held, c.__caps]);
     await a.click('#ct-call-a');
-    await b.waitForSelector('.cl-ring', { timeout: 15000 }); await c.waitForSelector('.cl-ring', { timeout: 15000 });
+    await b.waitForSelector('.cl-ring', { timeout: 15000 });
+    if (LATE) {
+      const ra = await until(async () => { const r = await room(a); return r && r.id && r; }, 10000);
+      const inv0 = ra && (await api(c, 'GET', '/api/calls/' + ra.id)).r.call.invite;
+      if (inv0 === 'old') ok('C beim Start ohne Meldung: Einladung "old", keine Klingel-Leiste', !(await c.$('.cl-ring')));
+      else console.log('  Hinweis: C hat schon ein Geraet mit "multi" (Einladung ' + inv0 + ') - Nachmelde-Fall hier nicht geprueft');
+      await c.waitForTimeout(1500);
+      holdCaps = false;
+      for (const r of HELD.splice(0)) await r.continue().catch(() => {});
+      ok('C meldet nach -> C klingelt (Leiste)', await until(() => c.$('.cl-ring'), 10000, 100), { caps: c.__caps });
+      ok('... Meldung angenommen', await until(() => c.__caps, 5000, 100));
+    }
+    await c.waitForSelector('.cl-ring', { timeout: 15000 });
     await b.click('.cl-ring .cl-big');
     const rb = await until(async () => { const r = await room(b); return r && r.inRoom && r; }, 15000);
     ok('B tritt bei, C klingelt noch (nicht angenommen)', rb && !(await room(c)), rb);
