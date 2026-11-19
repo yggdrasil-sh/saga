@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Doku – Upgrade-Anleitung 2.3/2.4 → 2.5
+- Neu `docs/UPGRADE-2.5.md` (kurz auf Englisch `docs/en/UPGRADE-2.5.md`) für Admins hinter einem Proxy, der TLS selbst
+  beendet (Nginx Proxy Manager): Backup und kein Rückweg nach den Migrationen (Schema-Stand 35), Kanal `testing` mit
+  `tools/saga-testing-einrichten.sh`, eine Domain/Port 443/„Websockets Support“ (sonst 426 an `/api/sfu/ws`), was danach
+  im Admin-Bereich zu prüfen ist, Apps 2.5 und alte Apps, Fehlersuche (426, 401 bei der Föderation, Anrufe). Verweise
+  in Anleitung (de/en/es) und README.
+
 ### Behoben – Gruppenanrufe: ein Fehler beim Nachklingeln nach der Fähigkeiten-Meldung verhindert das Klingeln nicht mehr dauerhaft (Bugs-DB 2185)
 - `PUT /api/calls/caps`: scheiterte `ring_late` nach dem Speichern der Meldung, kam 500 zurück, und jede weitere (gleiche)
   Meldung änderte nichts mehr – es klingelte nie. Jetzt wird der Fehler abgefangen und protokolliert (ohne persönliche

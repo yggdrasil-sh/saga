@@ -1930,6 +1930,11 @@ for:
    features; group calls show “needs Saga 2.4” there, large videos appear as an attachment “Open with Saga 2.4”.
    Connected servers on 2.3 stay connected; group calls, read/online and large videos only work between servers on 2.4.
 
+**From 2.3/2.4 to 2.5:** see the separate guide [UPGRADE-2.5.md](UPGRADE-2.5.md) – backup and no way back after
+the migrations (schema 35), reverse proxy (one domain, port 443, "Websockets Support" in Nginx Proxy Manager), what
+to check in the admin area afterwards (Gjallarhorn, "All calls via nodes", chat level 3, Tiptap, diagnostics), apps
+2.5 and troubleshooting (426, 401 in federation, calls).
+
 **Way back 2.4 → 2.3:** only via the backup from before the update (`…-vor-schema-14.dump`), restored **with 2.4**,
 then `SAGA_VERSION=2.3` – see below. 2.3 doesn't start on schema version 14.
 

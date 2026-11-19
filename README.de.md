@@ -113,7 +113,7 @@ docker compose pull && docker compose up -d
 **Update:** `git pull && docker compose pull && docker compose up -d` – vor Datenbank-Änderungen legt Saga
 automatisch ein Backup an. Von 1.x auf 2.x: vorher `SAGA_VERSION=2` in der `.env` setzen. 2.4 baut die Datenbank um (Schema-Stand 14; zurück auf
 2.3 nur über das automatische Backup) und schaltet Gravatar für alle Konten aus – was beim Update von 2.3 zu beachten
-ist, steht in der Anleitung, Abschnitt 11 „Von 2.3 auf 2.4“. Was neu ist, steht im **[Changelog](CHANGELOG.md)**. Neugierig auf das Neueste?
+ist, steht in der Anleitung, Abschnitt 11 „Von 2.3 auf 2.4“. Für 2.5 (Schema-Stand 35, Reverse Proxy mit WebSocket) gibt es eine eigene [Upgrade-Anleitung](docs/UPGRADE-2.5.md). Was neu ist, steht im **[Changelog](CHANGELOG.md)**. Neugierig auf das Neueste?
 `SAGA_VERSION=testing` in der `.env` holt die Testversion aus dem Branch `testing`. Bilder und Dateien der Seiten
 stecken nicht im Datenbank-Backup: das Volume `saga-data` sichern oder
 `docker compose exec saga python run.py backup --dateien`.

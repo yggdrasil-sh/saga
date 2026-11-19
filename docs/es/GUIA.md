@@ -2011,6 +2011,11 @@ atención:
    aparecen como adjunto «Abrir con Saga 2.4». Los servidores conectados con 2.3 siguen conectados; llamadas en grupo,
    leído/en línea y vídeos grandes solo funcionan entre servidores con 2.4.
 
+**De 2.3/2.4 a 2.5:** ver la guía aparte [UPGRADE-2.5.md](../en/UPGRADE-2.5.md) (en inglés; versión completa en
+alemán: [../UPGRADE-2.5.md](../UPGRADE-2.5.md)) – copia de seguridad y sin vuelta atrás tras las migraciones (esquema
+35), proxy inverso (un dominio, puerto 443, «Websockets Support» en Nginx Proxy Manager), qué revisar después en el
+área de administración, apps 2.5 y solución de problemas (426, 401 en la federación, llamadas).
+
 **Volver de 2.4 a 2.3:** solo con la copia de antes de la actualización (`…-vor-schema-14.dump`), restaurada **con la
 2.4**, y después `SAGA_VERSION=2.3`; ver abajo. La 2.3 no arranca sobre la versión de esquema 14.
 

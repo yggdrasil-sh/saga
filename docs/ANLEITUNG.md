@@ -2219,6 +2219,11 @@ solltest:
    Verbundene Server mit 2.3 bleiben verbunden; Gruppenanrufe, Gelesen/Online und große Videos gehen nur zwischen
    Servern mit 2.4.
 
+**Von 2.3/2.4 auf 2.5:** eigene Anleitung [UPGRADE-2.5.md](UPGRADE-2.5.md) – Backup und kein Rückweg nach den
+Migrationen (Schema-Stand 35), Reverse Proxy (eine Domain, Port 443, „Websockets Support“ in Nginx Proxy Manager),
+was danach im Admin-Bereich zu prüfen ist (Gjallarhorn, „Alle Anrufe über Knoten“, Chat-Stufe 3, Tiptap, Diagnose),
+Apps 2.5 und Fehlersuche (426, 401 bei der Föderation, Anrufe).
+
 **Rückweg 2.4 → 2.3:** nur über das Backup von vor dem Update (`…-vor-schema-14.dump`), zurückgespielt **mit 2.4**,
 danach `SAGA_VERSION=2.3` – siehe unten. 2.3 startet auf Schema-Stand 14 nicht.
 

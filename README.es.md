@@ -118,7 +118,7 @@ docker compose pull && docker compose up -d
 **Actualizar:** `git pull && docker compose pull && docker compose up -d`. Antes de cualquier cambio en la base
 de datos, Saga crea automáticamente una copia de seguridad. De 1.x a 2.x: antes pon `SAGA_VERSION=2` en el `.env`. La 2.4 actualiza la base de datos (esquema 14; volver a 2.3
 solo con la copia automática) y desactiva Gravatar para todas las cuentas; qué tener en cuenta al actualizar desde la 2.3
-está en la guía, sección 11 «De 2.3 a 2.4». Las novedades están en el
+está en la guía, sección 11 «De 2.3 a 2.4». Para la 2.5 (esquema 35, proxy inverso con WebSocket) hay una [guía de actualización](docs/en/UPGRADE-2.5.md) (en inglés). Las novedades están en el
 **[registro de cambios](CHANGELOG.md)** (en alemán) y en las
 [versiones publicadas](https://github.com/yggdrasil-sh/saga/releases). ¿Quieres lo último?
 `SAGA_VERSION=testing` en el `.env` descarga la versión de pruebas de la rama `testing`. Las imágenes y archivos
