@@ -634,7 +634,7 @@ def part3(privb, kid, pa, Pid, S, X, rP):
     # die Zeile nach "cannot schedule new futures after interpreter shutdown" 45 s gesperrt (erst der Arbeiter stellte zu)
     rest = sql("b", "SELECT payload::jsonb->>'type', round((locked_until - extract(epoch from now()))::numeric, 1), last_error FROM fed_outbox "
                     "WHERE payload::jsonb->>'type' LIKE 'person.%'")
-    ok("B: Ereignisse des Namenswechsels schon im Werkzeug-Prozess zugestellt (Ausgangskorb leer)", not rest, rest)
+    ok(f"B: Ereignisse des Namenswechsels schon im Werkzeug-Prozess zugestellt (Ausgangskorb leer: {rest})", not rest)
     ok("A: Freigabe an den alten Namen endet (person.gone)", wait(lambda: not sql("a", "SELECT 1 FROM note_share WHERE target=%r" % f"@eve@{HB}")))
     r = py("b", "from saga import publish\nprint(json.dumps(publish.set_name('fb-dora', 'eve')))")
     ok("B: alter Name ist fuer andere Konten gesperrt", r[0] is None)
@@ -644,7 +644,7 @@ def part3(privb, kid, pa, Pid, S, X, rP):
     ok("B: die eigene Person darf zurueck auf den alten Namen", r[0] == "eve")
     py("b", "from saga.userdata import delete_user_data\ndelete_user_data('fb-cleo')\nprint(json.dumps(True))")
     rest = sql("b", "SELECT payload::jsonb->>'type', last_error FROM fed_outbox WHERE payload::jsonb->>'type' LIKE 'person.%'")
-    ok("B: person.gone der Kontoloeschung schon im Werkzeug-Prozess zugestellt", not rest, rest)
+    ok(f"B: person.gone der Kontoloeschung schon im Werkzeug-Prozess zugestellt ({rest})", not rest)
     ok("A: Kontoloeschung auf B -> Gruppen-Freigabe bleibt, Person weg", wait(lambda: not sql("a", "SELECT 1 FROM fed_person WHERE principal=%r" % f"@cleo@{HB}")))
     ok("B: Name des geloeschten Kontos gesperrt (ohne Eigentuemer)", sql("b", "SELECT uid FROM fed_name_retired WHERE name='cleo'") == [[None]])
 
