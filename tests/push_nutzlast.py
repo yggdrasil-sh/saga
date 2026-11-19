@@ -221,6 +221,9 @@ def main():
         auth.save_setting("chat_enabled", True)
         auth.save_setting("push", {"enabled": True, "webpush": True, "ntfy": True, "unifiedpush": True})
         auth.save_setting("allowed_hosts", ", ".join(x for x in (prev.get("allowed_hosts") or "", f"127.0.0.1:{FP}") if x))
+        # Der Server haelt Einstellungen bis 5 s zwischengespeichert (auth.settings): ist Teil A schneller, lehnt sein
+        # Push-Arbeiter die erste Zustellung an den Fake noch ab ("Ziel nicht freigegeben", Neuversuch erst nach 10 s)
+        time.sleep(5.5)
         for u, n in (("pn-a", "Anna Nutzlast"), ("pn-b", "Bert Nutzlast"), ("pn-l", "L" * 200)):
             auth.create_user(u, PW, n)
         with connect() as c, c:
