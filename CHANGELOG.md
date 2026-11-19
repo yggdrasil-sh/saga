@@ -16,13 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### Behoben – Editor.js: BookOrbit-Kapitel-Liste wird nach dem Bearbeiten weiter nachgezogen
+### Behoben – Editor.js: BookOrbit-Kapitel-Liste wird nach dem Bearbeiten weiter nachgezogen (Bugs-DB 2162)
 - Mit Editor.js verlor die Kapitel-Liste der Buchseite (aus BookOrbit übernommen) beim ersten Speichern ihre
   Saga-Kennung (`data.bo`) – „Aus BookOrbit aktualisieren“ zählte neue Markierungen danach nicht mehr in der Liste
   (blieb z. B. bei „1 Markierung“). Ursache: Das Merken fremder Blockfelder beim Speichern (`static/pages.js`,
   `keepExtras`) kannte die Liste nicht. Tiptap war nicht betroffen. Tests: `tests/browser_bookorbit_seiten.js` mit
   Editor.js 28/28 (vorher 26/28); `tests/browser_widgets2.js` sucht die Kompakt-Ansicht der Diagramme jetzt bis 770 px
-  (mit Editor.js bleiben 4 Spalten in der Textspalte und werden erst dort schmal genug, vorher 28/29).
+  (mit Editor.js bleiben 4 Spalten in der Textspalte und werden erst dort schmal genug, vorher 28/29). Neu: `tests/browser_liste_bo.js` (Listen mit/ohne `data.bo` speichern, duplizieren,
+  neu laden – ohne BookOrbit).
 
 ### Behoben – Gruppenanrufe: „Erneut klingeln“ bei vollem Anruf (Bugs-DB 2154)
 - `POST /api/calls/{id}/invite` ließ auch bei vollem Anruf klingeln – wer annahm, konnte dann nicht beitreten. Das Web
