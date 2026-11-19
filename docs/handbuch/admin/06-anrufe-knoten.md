@@ -112,7 +112,11 @@ Wie du einen bestehenden Server auf 2.5 bringst und was du dabei am Proxy und hi
 
 ### 4. Die Knoten-Liste
 
-![Gjallarhorn: eingebauter Knoten in der Liste mit Status, Weg, Auslastung und den Knöpfen Port prüfen, Teilen und Leeren; darunter Erweitern](../bilder/a06-02-knoten-liste.png)
+![Abschnitt Gjallarhorn bei ausgeschaltetem Gjallarhorn: Schalter, noch leere Knoten-Liste, darunter Erweitern und „Fähigkeiten jetzt abgleichen“](../bilder/a06-02-knoten-liste.png)
+
+> **Hinweis:** Das Bild stammt von vor der Umstellung auf den Tunnel-Betrieb. Der Satz zum eigenen Namen per
+> TLS-Durchreiche (SNI) gilt hinter Nginx Proxy Manager nicht mehr, und „Alle Anrufe über Knoten (auch 1:1)“ ist
+> inzwischen ab Werk an (siehe oben).
 
 Je Knoten siehst du:
 

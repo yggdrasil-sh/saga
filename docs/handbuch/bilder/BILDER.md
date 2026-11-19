@@ -1,7 +1,8 @@
 # Handbuch-Bilder
 
-Erzeugt von `tools/screens-handbuch.py` (Start: `tools/handbuch-stack.sh alles --kapitel …`). Demo-Inhalte aus
-`tools/handbuch-demo.py`; Hosts `saga.example` (Familie Sommer) und `verein.example` (Gartenverein). Desktop 1440×900
+Aufgenommen (Stand 3.11.2026) mit eigenen Aufnahme-Werkzeugen (`screens-handbuch.py`, `handbuch-stack.sh`,
+`handbuch-demo.py`, `handbuch-fakes/`). **Diese Werkzeuge liegen nicht im Repository** (nicht übernommen, Neuaufbau
+offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erzeugen. Hosts `saga.example` (Familie Sommer) und `verein.example` (Gartenverein). Desktop 1440×900
 (Faktor 2), Handy 390×844 (Faktor 3). Nummern im Bild = Legende rechts. Abweichungen von der Gliederung stehen unten.
 
 | Datei | Kapitel | Plattform | hell/dunkel | was zu sehen ist | Nummern-Legende |
@@ -142,6 +143,9 @@ Erzeugt von `tools/screens-handbuch.py` (Start: `tools/handbuch-stack.sh alles -
   sind unverständlich. Demo blendet sie aus und zeigt „75 Min.“ als Formel-Text. Saga bietet keine Beschriftungen auf
   Galerie-Karten – Vorschlag: Option „Eigenschaftsnamen zeigen“.
 - b01-02/b01-03: Passkeys brauchen https – Aufnahme in einer TLS-Phase (handbuch-stack.sh), Faktoren danach entfernt.
+- **Veraltet gegenüber 2.5 (neu aufnehmen):** a06-02 zeigt noch den alten Hinweis „eigener Name per TLS-Durchreiche
+  (SNI)“ beim eingebauten Knoten, „Alle Anrufe über Knoten“ ohne Haken (ab Werk an) und eine leere Knoten-Liste;
+  a05-01 zeigt den Editor noch als „Neu (Tiptap, Test)“ statt „Standard (Tiptap)“.
 - b09-03 (Konflikt): aufgenommen mit kurz abgeschaltetem „Gleichzeitig bearbeiten live“ (danach wieder an). Weil Saga 2.5
   ohne live die Änderung des anderen nachlädt bzw. blockweise zusammenführt, ist der Konflikt nachgestellt: Annas Speichern
   schickt den alten Stand ohne Zusammenführen (wie ein älterer Client) → echte Server-Antwort 409 und echte Leiste.
@@ -156,7 +160,7 @@ Erzeugt von `tools/screens-handbuch.py` (Start: `tools/handbuch-stack.sh alles -
   läuft über http; auf einem echten Server steht dort der Schalter.
 - b15-02: Websuche über eine SearXNG-Attrappe (Treffer wetter.example.org / kueste.example.org); b15-03 KI im Chat zeigt
   die Antwort mit rohen ** (siehe Design-Fund).
-- b16-02: Immich-Attrappe (tools/handbuch-fakes/fakes.py, Album „Ostsee 2026“, gezeichnete Bilder) unter fotos.saga.example.
+- b16-02: Immich-Attrappe (handbuch-fakes/fakes.py, nicht im Repository, Album „Ostsee 2026“, gezeichnete Bilder) unter fotos.saga.example.
 - b16-03 (Nextcloud-Datei) fehlt: Die Nextcloud-Anmeldung (Login Flow v2) speichert die Server-Adresse, die die Attrappe
   meldet; die Test-Attrappe tests/fakedav.py meldet 127.0.0.1:<port>, das stünde im Datei-Block. Bräuchte eine eigene
   Attrappe unter einem Anzeige-Host – zweiter Durchgang.

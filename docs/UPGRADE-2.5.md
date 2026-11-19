@@ -256,7 +256,8 @@ läuft eine ältere Version auf einer schon umgebauten Datenbank – `SAGA_VERSI
 ## 7. Zurück auf 2.4
 
 Nur über das Backup von vor dem Update, **mit 2.5 zurückgespielt** (sie spielt in einer Transaktion ein und entfernt
-Tabellen, die 2.4 nicht kennt), erst danach `SAGA_VERSION` umstellen:
+vorher die neuen Tabellen, die das Einspielen sonst blockieren würden; weitere neue Tabellen aus 2.5 bleiben stehen,
+2.4 beachtet sie nicht), erst danach `SAGA_VERSION` umstellen:
 
 ```sh
 docker compose stop saga
