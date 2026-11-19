@@ -148,7 +148,7 @@ Platzhalter: `horn-1.example.org`.
     9 → 6 s, Ton 0,6 → 0,1 %; `r4d-4-eng` (1 Mbit/s) und `r4y-4-frei` unverändert.
     Nachbesserung nach der Prüfung (Modell): `TestEngLeitungNachStau` (4 Mbit/s, 8 s Stau auf 250 kbit/s) Sprecher
     nach 66 s wieder auf `h` (vorher frühestens nach Ablauf der Sperre, ~108 s); `TestEngLeitungNetzwechsel` (2 Mbit/s,
-    Grund-RTT 40 → 200 ms) ein erkannter Netzwechsel, Sprecher bleibt auf `h`, Kacheln 0,4 % in Pause (Prüfer, Stand
+    Grund-RTT 40 → 200 ms) ein erkannter Netzwechsel, Sprecher bleibt auf `h`, Kacheln nicht in Pause (Prüfer, Stand
     vorher: Sprecher ~145 s im Mindestbild, beide Kacheln pausiert), einzelne Spitze kein Stau;
     `TestEngLeitungSprecherwechsel` (alle 10 s) 400k 3,8 Wechsel je Kachel und Minute wie ohne Wechsel (vorher 16,6).
     Container (n = 3, Median und Spanne; vorher = Stand der Prüfung fccc6dd, in Klammern eng-neu6 = a22f0c2 vor dem
@@ -163,6 +163,10 @@ Platzhalter: `horn-1.example.org`.
     45 s Grund-RTT 40 → 200 ms, n = 2): Sprecher 20 fps, Kacheln an 99 (98–100) %, längste Pause 1 (0–2) s (a22f0c2:
     14 fps, 36 %, 39 s; vor 2159: 20 fps, 100 %, 0 s). `r4d-4-eng` und `r4y-4-frei` (n = 2) unverändert (20 fps, keine
     Pause, Bild-Aufbau 2088 bzw. 1076 ms).
+    Endstand nach der 2. Prüfung (mit `jamRTTMax`, n = 3, gegenüber testing vor 2159): `r4d-4-400k` Sprecher 12 → 17 fps,
+    Ton verdeckt 1,6 → 0,6 %, RTT 94 → 93 (84–94) ms; `r4d-4-600k` Kacheln an 81 → 84 (83–92) %, Wechsel 4 → 4 (4–9)/min,
+    längste Pause 9 → 6 (5–7) s, Ton 0,6 → 0 %; RTT-Stufe 20 fps, Kacheln an 99 %. Im Modell (`TestEngLeitungKeinNetzwechsel`,
+    Sweep 2M → 350–900k) 0 falsche Netzwechsel (vorher bis 17 von 212 Staus).
   - Hysterese gegen Pendeln (Horn-Fix, `layerStep`): Ohne Stau bleibt die laufende Schicht bis 10 % über der Schätzung
     (kurze Ratenspitzen, z. B. Schlüsselbilder, schalten nicht herunter); bei Stau (Sperrzeit) sofort herunter – so
     weit, wie die Schätzung es verlangt (von `h` auf `m`, wenn sie `m` trägt; früher immer bis `l`). Nach
