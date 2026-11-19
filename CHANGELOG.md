@@ -38,7 +38,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   solche Einladung auf „klingelt“, solange die Klingeldauer läuft, und es klingelt wie beim Start (`ring_late` in
   `saga/calls.py`, große Gruppen weiter still). Nur einmal je Einladung, echte Alt-Geräte (ohne „multi“) unverändert;
   Anrufe, die ein anderer Server führt, noch nicht.
-- Tests: neu `tests/anrufe_nachmelden.py` 18/18 (ohne den Fix 10/18), `tests/browser_erneut_klingeln.js` hält die
+- Tests: neu `tests/anrufe_nachmelden.py` 20/20 (ohne den Fix 10/18; Prüfung ergänzt Chat verlassen und fremd geführte Anrufe), `tests/browser_erneut_klingeln.js` hält die
   Meldung von C jetzt bis nach dem Anrufstart zurück 2× 16/16 (ohne den Fix: C klingelt nie); `anrufe_klingeln` 40/40,
   `anrufe_raum` 84/84, `anrufe_hinzufuegen` 43/43.
 
