@@ -273,11 +273,12 @@ def _old_members(c, ch, starter=None, now=None):
             continue
         if ((chat._member(c, ch["id"], u) or {}).get("state", "ok")) != "ok":
             continue
-        rows = c.execute("SELECT caps, COALESCE(last_seen, created) FROM chat_device WHERE uid=? AND revoked_at IS NULL", (u,)).fetchall()
+        rows = c.execute("SELECT caps, COALESCE(last_seen, created), name FROM chat_device WHERE uid=? AND revoked_at IS NULL",
+                         (u,)).fetchall()
         if not rows:
             continue
         act = [r for r in rows if (r[1] or 0) > now - DM_ACTIVE_S] or rows
-        if not any(_horn_dev(r[0]) for r in act):
+        if not any(_horn_dev(r[0], r[2]) for r in act):
             out.append(u)
     return out
 
@@ -509,18 +510,32 @@ def _can_multi(c, uid):
 
 def _can_horn(c, uid):
     """2.5: Hat uid ein aktives Chat-Geraet, das Anrufe ueber Knoten kann (caps "horn", bzw. "horn_ring": klingelt und tritt
-    ueber den Browser bei - Linux-App)?"""
-    return bool(c.execute("SELECT 1 FROM chat_device WHERE uid=? AND revoked_at IS NULL AND (caps LIKE '%\"horn\"%' "
-                          "OR caps LIKE '%\"horn_ring\"%') LIMIT 1", (uid,)).fetchone())
+    ueber den Browser bei - Linux-App)? Bugs-DB 2194: auch ein Geraet einer aktuellen App, das seine Faehigkeiten noch
+    nicht gemeldet hat (_caps_pending) - sonst bekaeme das Konto beim 1:1 ueber Knoten die Einladung 'old' (kein Klingeln)."""
+    return any(_has(r[0], "horn") or _has(r[0], "horn_ring") or _caps_pending(r[0], r[1])
+               for r in c.execute("SELECT caps, name FROM chat_device WHERE uid=? AND revoked_at IS NULL", (uid,)).fetchall())
 
 
 DM_ACTIVE_S = chat.ACTIVE_S          # Grundsatz Y (Entscheidung 17.11.): nur Geraete mit Lebenszeichen in 30 Tagen zaehlen
 
 
-def _horn_dev(caps):
+def _caps_pending(caps, name=""):
+    """Bugs-DB 2194: Geraet einer aktuellen App, das noch keine Anruf-Faehigkeiten gemeldet hat (frisch gekoppelt, die
+    Meldung kommt beim Start bzw. beim ersten Anruf). Erkennbar an caps = nur "chat3": das merkt der Server, sobald das
+    Geraet mit Chat-Stufe 3 (X-Saga-Chat: 3, Saga 2.5) anfragt (chat._my_device, GET /api/chat/me?device=) - Apps vor 2.5
+    bekommen es nie. Jede 2.5-App kann Anrufe ueber Knoten (Android/iOS/Mac-Huelle "horn"+"multi"+"ws", Linux "horn_ring"),
+    sobald der Server "horn" meldet. Browser zaehlen nicht (ob einer es kann, haengt am Browser - ohne Meldung bleibt es
+    bei "web"). Echte Alt-Geraete (caps leer oder ohne horn) aendern sich nicht: dort stimmt "Gegenstelle veraltet"."""
+    cs = caps_out(caps) if isinstance(caps, str) else list(caps or [])
+    return "chat3" in cs and all(x == "chat3" for x in cs) and not chat._WEB_DEV.match((name or "").strip())
+
+
+def _horn_dev(caps, name=""):
     """Kann ein Geraet mit diesen (zuletzt gemeldeten) caps einen 1:1 ueber Knoten annehmen? Selbst ("horn" und "multi")
-    oder ueber den Browser ("horn_ring", Linux-App: klingelt, das Gespraech laeuft im Browser mit dessen eigenen caps)."""
-    return (_has(caps, "horn") and _has(caps, "multi")) or _has(caps, "horn_ring")
+    oder ueber den Browser ("horn_ring", Linux-App: klingelt, das Gespraech laeuft im Browser mit dessen eigenen caps).
+    Bugs-DB 2194: ebenso eine aktuelle App ohne Meldung (_caps_pending; wie horn_ring ohne Erreichbarkeitspruefung - sie
+    tritt mit ihren eigenen caps bei)."""
+    return (_has(caps, "horn") and _has(caps, "multi")) or _has(caps, "horn_ring") or _caps_pending(caps, name)
 
 
 def dm_peer_check(c, peer, caps=None, now=None):
@@ -546,7 +561,7 @@ def dm_peer_check(c, peer, caps=None, now=None):
     if not rows:
         return "none", None
     act = [r for r in rows if (r[2] or 0) > now - DM_ACTIVE_S] or rows      # nur alte Geraete: dann zaehlen alle
-    bad = [r for r in act if not _horn_dev(r[0])]
+    bad = [r for r in act if not _horn_dev(r[0], r[1])]
     if bad:
         return ("web" if all(chat._WEB_DEV.match((r[1] or "").strip()) for r in bad) else "peer"), None
     if caps is None:

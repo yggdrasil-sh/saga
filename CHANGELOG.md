@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Anruf: erster 1:1 an ein frisch gekoppeltes Gerät läuft über den Knoten (Bugs-DB 2194)
+- Ein frisch gekoppeltes Gerät, das seine Anruf-Fähigkeiten noch nicht gemeldet hatte, galt bei „Alle Anrufe über
+  Knoten“ als veraltet: der erste 1:1 lief direkt (mit „Gegenstelle veraltet“). Fragt ein Gerät mit Chat-Stufe 3
+  (Saga 2.5) an – jetzt auch beim App-Start über `GET /api/chat/me?device=` –, zählt es bis zu seiner Meldung als
+  aktuelle App (über Knoten, klingelt dort); Apps vor 2.5 und Browser ohne Meldung bleiben wie bisher.
+  Die Android-App meldet ihre Fähigkeiten jetzt schon, sobald die Chat-Schlüssel bereit sind (nach Koppeln/Start).
+- Tests: `tests/horn_y_geraete.py` (frisches Gerät, App vor 2.5, Browser, spätere Meldung ohne `horn`).
+
 ### Behoben – Anruf: Knöpfe bei flachem Fenster bzw. Handy quer wieder bedienbar (Bugs-DB 2158)
 - Bei Fensterhöhe ≤ 500 px im Querformat lag die senkrechte Knopfleiste rechts nur 13 px hoch am unteren Rand
   (absolut positioniertes Grid-Kind in der leeren Zeile 4) – Auflegen, Stumm und Teilen waren nicht anklickbar.
