@@ -4,6 +4,8 @@
 // Konflikt-Hinweis, keine Seitenfehler. Faelle: anderer Block 16x, neue Bloecke, Block geloescht, gleicher Block (ohne
 // und mit Ueberschneidung), Unterseiten-Verweis mit Titel in Etappen, Fremdaenderung am Block mit der Schreibmarke ohne
 // Eingabe, Spalten (in und neben einer Spalte tippen), viele schnelle Aenderungen, langsames Einarbeiten (Eingabe nur waehrenddessen). Laeuft mit notes.live an und aus (Admin-Schalter; der Test meldet den Stand).
+// Bugs-DB 2177: Schreibmarke mitten im Block, B formatiert nur ihr Wort (formatiert) bzw. aendert davor UND dahinter
+// (beidseits, gemischt) - die Marke bleibt an derselben Textstelle.
 // Voraussetzung: Admin editor.engine = choice (Konto-Wahl Editor.js). FAELLE=a,b,... nur diese Faelle.
 // SAGA_EDITOR=tiptap: dieselben Faelle mit Tiptap (ohne live blockweise Uebernahme, Schreibmarke wandert mit seit
 // Bugs-DB 2172; mit live gilt Yjs, Konflikt beim Uebernehmen seit 2173). Bugs-DB 2165: die Suite (tools/suite/innen.sh,
@@ -83,7 +85,7 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     a.errs.length = 0; b.errs.length = 0;
     return id;
   }
-  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,mitte,spalten,schnell,langsam').split(',');
+  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,mitte,formatiert,beidseits,gemischt,spalten,schnell,langsam').split(',');
   const base3 = () => [P('t1', 'Start'), P('t2', 'Ende'), P('f0', 'fremd 0')];
   const agree = async (id, bl) => {   // Editor (A) zeigt dieselben Bloecke wie der Server
     const ids = (await D.blocks(a)).filter((x) => x.parent == null).map((x) => x.id);
@@ -193,6 +195,38 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     ok('mitte: kein Hinweis, keine Seitenfehler', !(await a.evaluate(() => !!document.querySelector('#pg-conflict, #pg-remote'))) && a.errs.length === 0, a.errs);
     a.errs.length = 0;
   }
+  // Bugs-DB 2177: Schreibmarke mitten im Block, B aendert denselben Block an mehreren Stellen bzw. nur die Formatierung.
+  // Marke per Pfeiltasten (lefts von hinten), B setzt den Text auf neu; A tippt "X" - erwartet: Klartext want (Marke an
+  // derselben Textstelle, vorher Tiptap Wortende bzw. beide Editoren Ende des geaenderten Bereichs), Formatierung html
+  async function caretCase(name, start, lefts, neu, want, html) {
+    console.log('--- ' + name + ' ---');
+    const id = await openA('Fremd ' + name, [P('t1', 'Start'), P('t2', start), P('f0', 'fremd 0')]);
+    await D.focus(a, 't2', 'end');
+    for (let i = 0; i < lefts; i++) await a.keyboard.press('ArrowLeft');
+    await sleep(300);
+    await remote(id, (bl) => { bl.find((x) => x.id === 't2').data.text = neu; });
+    const plainNeu = neu.replace(/<[^>]*>/g, '');
+    const fmt = (s) => [' b', ' strong', ' i', ' em'].map((x) => s + x).join(', ');
+    ok(name + ': Editor zeigt die fremde Aenderung', await until(async () => (await domText('t2')) === plainNeu
+       && (!/</.test(neu) || await a.evaluate((s) => !!document.querySelector(s), fmt(D.block('t2')))), 5000), await domText('t2'));
+    ok(name + ': Fokus bleibt im Block', (await activeBlock()) === 't2', await activeBlock());
+    await a.keyboard.type('X', { delay: 40 });
+    await sleep(3000);
+    const bl = await blocksOf(id), t2 = bl.find((x) => x.id === 't2') || { data: { text: '' } };
+    ok(name + ': Weitertippen landet an derselben Textstelle', t2.data.text.replace(/<[^>]*>/g, '') === want, t2.data.text);
+    ok(name + ': Formatierung erhalten', t2.data.text === html, t2.data.text);
+    ok(name + ': kein Hinweis, keine Seitenfehler', !(await a.evaluate(() => !!document.querySelector('#pg-conflict, #pg-remote'))) && a.errs.length === 0, a.errs);
+    a.errs.length = 0;
+  }
+  // (a) nur Formatierung: B macht das Wort fett, in dem A's Marke steht ("scho|ene"; Emoji davor: UTF-16-Abstaende)
+  if (want.includes('formatiert')) await caretCase('formatiert', 'Gruss 😀 schoene Welt', 8, 'Gruss 😀 <b>schoene</b> Welt',
+    'Gruss 😀 schoXene Welt', 'Gruss 😀 <b>schoXene</b> Welt');
+  // (b) Aenderung vor UND hinter der Marke ("Mit|te"): Marke wandert um die Laenge der Aenderung davor
+  if (want.includes('beidseits')) await caretCase('beidseits', 'Anfang Mitte Schluss', 10, 'Vorne 😀 Anfang Mitte Schluss hinten',
+    'Vorne 😀 Anfang MitXte Schluss hinten', 'Vorne 😀 Anfang MitXte Schluss hinten');
+  // (a)+(b): davor, dahinter und das Wort der Marke kursiv
+  if (want.includes('gemischt')) await caretCase('gemischt', 'Anfang Mitte Schluss', 10, 'Vorne Anfang <i>Mitte</i> Schluss 😀 hinten',
+    'Vorne Anfang MitXte Schluss 😀 hinten', 'Vorne Anfang <i>MitXte</i> Schluss 😀 hinten');
 
   // Spalten (verschachtelte Editoren): fremde Aenderung in einer Spalte und neuer Spaltenblock, waehrend A in t1 tippt;
   // dann umgekehrt: A tippt IN einer Spalte, B aendert t2 und fuegt einen Block an
