@@ -68,6 +68,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   ohne `notes.live` je 3× 83/83, Tiptap mit und ohne je 3× 80/80. Ohne den Fix: Editor.js 20/24 (beidseits, gemischt),
   Tiptap ohne `notes.live` 18/24 (alle drei); Tiptap live (Yjs) war schon richtig.
 
+### Geändert – Tests: Testumgebung für LDAP/SSO, zwei verbundene Instanzen und Knoten mit Zertifikat (`tools/testumgebung/`)
+- `umgebung.sh einrichten|lauf|stop` für die Testmaschine: jede Reihe in eigenem Netz-Namensraum mit eigener DB; LDAP-
+  (StartTLS) und OIDC-Attrappe statt der Docker-Testbilder, zwei verbundene Instanzen für `tests/browser_fed*.js`,
+  eingebauter Knoten mit Zertifikat einer Test-CA, alte Anruf-Clients für `tests/browser_screen2.js`. Damit laufen
+  `sso_ldap`, `avatare`, `browser_fed`/`_chat`/`_share`/`_horn_dm`, `browser_horn_uebernahme`, `browser_anruf_umzug`,
+  `browser_horn_pingpong` (über den Knoten) und `browser_screen2` auch ohne Docker/Testlabor.
+
 ### Behoben – Tiptap: Schreibmarke bleibt an ihrer Textstelle, wenn jemand davor im selben Absatz schreibt (Bugs-DB 2172)
 - Ohne „Gleichzeitig bearbeiten“ (`notes.live` aus) übernimmt Tiptap fremde Änderungen blockweise. Kam fremder Text
   vor der Schreibmarke in denselben Absatz, blieb die Marke beim alten Abstand stehen – eigene Zeichen landeten
