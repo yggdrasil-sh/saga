@@ -189,11 +189,14 @@ const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, 
   await api('PATCH', '/api/notes/' + cid, { wide: false });
   await p.goto(BASE + '/notes?t=' + Date.now() + '#' + cid);
   await until(() => p.evaluate(() => document.querySelectorAll('.wg[data-kind="chart"] .ch-svg').length === 4), 10000); await sleep(400);
-  // Spalten brechen bei ~200 px je Spalte um - Breite suchen, bei der die Diagramme schmaler als 180 px werden
+  // Spalten brechen bei ~200 px je Spalte um - Breite suchen, bei der die Diagramme schmaler als 180 px werden.
+  // Bis 770 px (ueber dem Handy-Umbruch bei 760): Tiptap zeigt 4 Spalten breiter als die Textspalte (pm-cols-wide) und
+  // wird schon bei ~1390 px schmal; Editor.js bleibt in der Textspalte, bricht unter 880 px Blockbreite auf 2x2 um und
+  // erreicht < 180 px erst bei ~790 px (vorher Suche nur bis 900 -> mit Editor.js nie gefunden).
   const tinyM = () => p.evaluate(() => [...document.querySelectorAll('.wg[data-kind="chart"] .chart')].map((c) => ({ w: c.clientWidth, tiny: c.classList.contains('ch-tiny'),
     num: !!c.querySelector(':scope > .ch-num'), ticks: c.querySelectorAll('text.ch-t').length })));
   let tiny = await tinyM();
-  for (let vw = 1400; vw >= 900 && !tiny.some((x) => x.w < 180); vw -= 10) { await p.setViewportSize({ width: vw, height: 900 }); await sleep(250); tiny = await tinyM(); }
+  for (let vw = 1400; vw >= 770 && !tiny.some((x) => x.w < 180); vw -= 10) { await p.setViewportSize({ width: vw, height: 900 }); await sleep(250); tiny = await tinyM(); }
   ok(`unter 180 px: kompakt (Gesamtwert + Balken, keine Achsen) (${JSON.stringify(tiny[0])})`, tiny.length === 4 && tiny.every((x) => x.w >= 180 || (x.tiny && x.ticks === 0)) && tiny.some((x) => x.tiny && x.num), tiny);
   await api('DELETE', '/api/notes/' + cid); await api('DELETE', '/api/notes/' + rdb);
 
