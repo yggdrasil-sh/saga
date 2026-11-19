@@ -8,7 +8,9 @@ Es gibt zwei Handbücher:
 - **Admin-Handbuch** – für die Person, die Saga betreibt und für andere einrichtet.
 
 Wie du Saga **installierst, sicherst und aktualisierst**, steht nicht hier, sondern in der
-[Anleitung](../ANLEITUNG.md).
+[Anleitung](../ANLEITUNG.md); für den Umstieg auf Saga 2.5 gibt es die [Upgrade-Anleitung](../UPGRADE-2.5.md).
+
+Dieses Handbuch beschreibt **Saga 2.5**. Zu einigen neuen Funktionen fehlen noch Bilder; sie kommen nach.
 
 > **So liest du das Handbuch:** Jedes Kapitel beginnt mit „Das kannst du damit machen“ – ein paar Ideen aus
 > dem Alltag. Dann folgen eine kurze Erklärung, die Schritte mit Bildern, ein ausführliches Beispiel, Tipps,
@@ -46,8 +48,6 @@ Nicht jede Funktion gibt es überall. Was abweicht, steht im letzten Abschnitt j
 
 ## Benutzer-Handbuch
 
-Kapitel mit „“ entstehen gerade; der Link funktioniert, sobald sie fertig sind.
-
 | Nr. | Kapitel | Stand |
 |---|---|---|
 | B00 | [Ideen für deinen Alltag](benutzer/00-ideen.md) – 20 fertige Anwendungsfälle zum Nachmachen | fertig |
@@ -83,5 +83,5 @@ Kapitel mit „“ entstehen gerade; der Link funktioniert, sobald sie fertig si
 | A06 | [Anrufe und Knoten](admin/06-anrufe-knoten.md) | fertig |
 | A07 | [Föderation – Server verbinden](admin/07-foederation.md) | fertig |
 | A08 | [Inhalte und Meldungen](admin/08-inhalte-meldungen.md) | fertig |
-| A09 | [Fehler finden: Logs und Diagnose](admin/09-diagnose.md) | folgt |
+| A09 | [Fehler finden: Logs und Diagnose](admin/09-diagnose.md) | fertig |
 | A10 | [Updates und Release-Kanal](admin/10-updates.md) | fertig |

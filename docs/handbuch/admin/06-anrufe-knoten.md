@@ -24,8 +24,9 @@ Auf der Seite **Anrufe** im Admin-Bereich stellst du ein, was dafür nötig ist:
 
 - **1:1-Anrufe (TURN, optional):** Hilfsserver, damit Anrufe auch durch strenge Firewalls und Mobilfunknetze kommen.
 - **Gruppenanrufe ohne Knoten (Mesh):** Grenzen, wie viele Geräte direkt miteinander telefonieren.
-- **Gjallarhorn – große Gruppenanrufe:** Knoten, die Gruppenanrufe mit vielen Personen weiterleiten. Inhalte bleiben
-  Ende-zu-Ende verschlüsselt; die Knoten leiten nur weiter.
+- **Gjallarhorn – große Gruppenanrufe:** Knoten, die Gruppenanrufe mit vielen Personen weiterleiten – und in Saga 2.5
+  auf Wunsch **alle** Anrufe, auch die zu zweit. Inhalte bleiben Ende-zu-Ende verschlüsselt; die Knoten leiten nur
+  weiter. Gjallarhorn ist in Saga 2.5 noch **experimentell** und ab Werk aus.
 
 Wie Anrufe für eure Leute aussehen, steht im Benutzer-Handbuch, [B13 Anrufe](../benutzer/13-anrufe.md).
 
@@ -74,16 +75,40 @@ Ganz oben auf der Seite steht **Gjallarhorn – große Gruppenanrufe**.
 
 1. Setz den Haken bei **Große Gruppenanrufe über Gjallarhorn**.
 2. Lass **Eingebauten Knoten für Anrufe nutzen** an – er steckt schon in Saga.
-3. Optional: **Alle Anrufe über Knoten (auch 1:1)**. Dann sehen sich die Geräte auch zu zweit gegenseitig keine
-   IP-Adressen, und es gibt weniger Netzwerkprobleme.
+3. **Alle Anrufe über Knoten (auch 1:1)** ist ab Werk an. Dann laufen auch Anrufe zu zweit und Gruppen zu dritt und
+   zu viert über den Knoten: Die Geräte sehen sich gegenseitig keine IP-Adressen, und es gibt weniger
+   Netzwerkprobleme. Direkt verbindet Saga nur noch als Rückfall – wenn kein Knoten bereit ist oder ein Gerät des
+   Gegenübers, das in den letzten 30 Tagen benutzt wurde, es nicht kann (zum Beispiel eine ältere App). Willst du
+   Anrufe zu zweit lieber direkt, nimm den Haken heraus und speichere.
 4. Klick auf **Speichern**.
 
-> **Hinweis:** Der eingebaute Knoten braucht einen **eigenen Namen** (zum Beispiel `horn.verein.example`), den dein
-> Reverse Proxy per TLS-Durchreiche (SNI) an Saga weitergibt – ähnlich wie beim TURN-Server über 443. UDP ist
-> optional, aber empfohlen; dafür gibst du den UDP-Port des Knotens direkt am Server frei. Die Seite zeigt dir, welche
-> Ports nötig sind.
+**Hinter einem Reverse Proxy (zum Beispiel Nginx Proxy Manager):** Du brauchst nur **eine Domain** (die von Saga),
+**Port 443** und im Proxy **„Websockets Support“**. Kein eigener Name für den Knoten, keine TLS-Durchreiche, keine
+weiteren Ports. Der eingebaute Knoten läuft dann im **Tunnel-Betrieb**: Apps und Browser schicken ihre (weiter
+verschlüsselten) Anrufdaten als WebSocket an die normale Saga-Adresse.
 
-Aus: Gruppenanrufe laufen wie bisher direkt zwischen den Geräten (bis 4 mit Video / 6 nur mit Ton).
+Auf der Seite erscheint dafür der Kasten **Anrufe über die Saga-Adresse (Tunnel)**:
+
+- **Zustand** – „An ✓ – Apps und Browser telefonieren über …“.
+- **Proxy reicht WebSocket durch?** – mit dem Knopf **Jetzt prüfen**. „Ja ✓ – der Tunnel kommt beim Knoten an.“
+  ist richtig. Steht dort „Nein ✗“, schalte im Proxy „Websockets Support“ ein.
+- **Tunnel** und **Browser (WebSocket)** – wie viele Verbindungen gerade offen sind, und **Beine je Weg** – wie die
+  Geräte gerade verbunden sind (UDP, TCP, TLS, Tunnel der Apps, WebSocket der Browser).
+
+<!-- Bild folgt: Kasten „Anrufe über die Saga-Adresse (Tunnel)“ mit „Proxy reicht WebSocket durch? Ja ✓“ -->
+
+Optional kann UDP 443 dazukommen – das bringt etwas bessere Qualität, ist aber ein zusätzlich geöffneter Port. Wer
+Saga ohne Proxy direkt ins Internet stellt oder den Proxy TLS nur durchreichen lässt, kann stattdessen die
+Betriebsart **„Ein Port“** nutzen; ein Knoten mit **eigenem Namen** geht weiterhin. Beides beschreibt die
+[Anleitung, Abschnitt 3](../../ANLEITUNG.md#ein-name-ein-port-443).
+
+> **Cloudflare (orangene Wolke):** Das geht technisch. Dauerhafter Anrufverkehr über Cloudflare kann aber gegen deren
+> Nutzungsbedingungen verstoßen – vor allem im kostenlosen Tarif.
+
+Aus: Anrufe laufen wie bisher direkt zwischen den Geräten (Gruppen bis 4 mit Video / 6 nur mit Ton).
+
+Wie du einen bestehenden Server auf 2.5 bringst und was du dabei am Proxy und hier prüfst, steht in der
+[Upgrade-Anleitung 2.5](../../UPGRADE-2.5.md).
 
 ### 4. Die Knoten-Liste
 
@@ -105,7 +130,7 @@ Knöpfe je Knoten:
 - **Leeren** – der Knoten nimmt keine neuen Anrufe mehr an; laufende Anrufe dürfen zu Ende gehen. Gut vor Wartungen.
 
 Unter **Grenzen** legst du fest, ab wie vielen Mitgliedern ein Gruppenanruf über einen Knoten läuft (**Über Knoten
-ab**), wie viele Personen mit Video bzw. nur mit Ton in einen Anruf dürfen, und das **Kontingent je verbundenem
+ab** – gilt nur, wenn „Alle Anrufe über Knoten“ aus ist), wie viele Personen mit Video bzw. nur mit Ton in einen Anruf dürfen, und das **Kontingent je verbundenem
 Server**.
 
 ### 5. Einen weiteren Knoten koppeln (Erweitern)
@@ -188,12 +213,31 @@ Dann laufen Gruppenanrufe wie ohne Gjallarhorn direkt zwischen den Geräten – 
 
 **Ein Knoten zeigt „Zertifikat fehlt“.**
 Meist fehlt der DNS-Eintrag oder der Port ist nicht erreichbar. **Port prüfen** und die DNS-Prüfung zeigen, was fehlt.
+Den eingebauten Knoten im Tunnel-Betrieb betrifft das nicht – er braucht kein eigenes Zertifikat.
+
+**„Proxy reicht WebSocket nicht durch“.**
+Der Reverse Proxy lässt die WebSocket-Verbindung nicht durch; der Knoten antwortet dann mit dem Fehler 426. Bei Nginx
+Proxy Manager im Proxy-Host „Websockets Support“ einschalten und speichern, dann **Jetzt prüfen**.
+
+**Eine Person sieht „Gegenstelle veraltet – direkt verbunden“.**
+Das Gegenüber hat auf einem kürzlich benutzten Gerät noch eine App vor 2.5. Der Anruf läuft dann direkt. Mit der
+App 2.5 läuft er über den Knoten.
+
+**Anrufe aus Safari oder vom iPhone im Browser laufen direkt.**
+Safari (und jeder Browser auf iPhone und iPad) nutzt in Saga 2.5 den Tunnel-Weg der Browser noch nicht. Mit UDP 443
+oder einem Knoten mit UDP bzw. TURN über TLS geht es über den Knoten, sonst direkt.
+
+**Nach dem Update auf 2.5 sind Anrufe zu zweit plötzlich über den Knoten.**
+Das ist gewollt: „Alle Anrufe über Knoten“ ist ab Werk an, und eine früher gespeicherte Einstellung gilt nach dem
+Update einmal als an. Willst du es nicht, nimm den Haken heraus und speichere – das bleibt dann so.
 
 ---
 
 ## Auf dem Handy und in den Apps
 
 Die Einstellungen gibt es nur im Admin-Bereich. Die Apps nutzen dieselben TURN-Server und Knoten wie der Browser.
+Für Anrufe über den Knoten hinter einem Proxy brauchen eure Leute die Apps ab 2.5. Die Linux-App klingelt; das
+Gespräch läuft im Browser.
 Damit iPhone und iPad bei Anrufen klingeln, braucht es außerdem Apple Push (siehe [A05](05-allgemein.md)).
 
 ---

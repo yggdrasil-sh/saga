@@ -72,6 +72,11 @@ zusätzliches Backup machst und worauf du bei größeren Sprüngen achten musst,
 > **Tipp:** Aktualisiere, wenn gerade niemand telefoniert – zum Beispiel morgens am Wochenende. Saga ist nach dem
 > Neustart in wenigen Sekunden wieder da.
 
+**Von 2.3 oder 2.4 auf 2.5:** Dafür gibt es eine eigene [Upgrade-Anleitung](../../UPGRADE-2.5.md). Das Wichtigste:
+vorher ein Backup, danach gibt es keinen Weg zurück außer über dieses Backup; hinter einem Reverse Proxy brauchst du
+nur eine Domain, Port 443 und „Websockets Support“; danach im Admin-Bereich Gjallarhorn, „Alle Anrufe über Knoten“,
+moderne Chats und den Seiten-Editor prüfen.
+
 ### 3. Der Release-Kanal
 
 Welche Versionen dein Server bekommt, bestimmt die Einstellung `SAGA_VERSION` in der `.env`:
@@ -88,6 +93,9 @@ Candidate**. Ein Release Candidate kann Fehler haben. Für einen Server, auf den
 nimm den Standard `2`.
 
 Zurück vom Testkanal und alle Einzelheiten: Anleitung, Abschnitt 11, „Updates“ (Absatz „Release Candidates“).
+Willst du den Testkanal automatisch aktuell halten, richtet das Skript `tools/saga-testing-einrichten.sh` einen
+Timer ein, der alle 15 Minuten nach einem neuen Stand schaut (siehe [Upgrade-Anleitung 2.5](../../UPGRADE-2.5.md),
+Abschnitt 2).
 
 ### 4. Apps und Versionen
 

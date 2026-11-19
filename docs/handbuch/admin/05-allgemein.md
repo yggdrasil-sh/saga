@@ -58,9 +58,10 @@ und am Ende steht eine Tabelle mit allen Schaltern und ihrem Standardwert.
 - **Seiten-Editor** – **Klassisch (Editor.js)**, **Standard (Tiptap)** oder **Jede Person wählt selbst** (dann unter
   Einstellungen → Seiten). Gespeichert wird in beiden Fällen dasselbe; du kannst also jederzeit wechseln.
 - **Editor-Diagnose** – der neue Editor meldet beim Speichern Stellen, die er noch nicht sauber kann. Gespeichert wird
-  nur eine Zeile im Server-Log.
+  eine Zeile im Server-Log und derselbe Inhalt unter **Diagnose** (siehe [A09](09-diagnose.md)).
 - **Gleichzeitig bearbeiten live** – mehrere Personen schreiben in derselben Seite und sehen Eingaben und Cursor der
-  anderen sofort. Standard: aus.
+  anderen sofort. Standard: aus. Das läuft über eine WebSocket-Verbindung – hinter Nginx Proxy Manager muss beim
+  Proxy-Host „Websockets Support“ an sein.
 - **Wetter-Widget anbieten** – Standard: aus. Die Daten holt der Saga-Server bei Open-Meteo; Browser und Apps fragen
   dort nie selbst. Der freie Zugang ist nur für **nicht-kommerzielle** Nutzung. Optional eigene Open-Meteo-Adressen
   oder ein API-Schlüssel.
@@ -112,8 +113,8 @@ Admins können Chats nicht lesen – sie sind Ende-zu-Ende verschlüsselt.
 - **Live-Kanal** – zeigt nur, wie viele Browser und Apps gerade live verbunden sind. Damit das klappt, muss der
   Reverse Proxy mitspielen (Anleitung, Abschnitt 3).
 - **Diagnose: Fehlerberichte und „Diagnose senden“** – Browser und Apps melden Programmfehler, und Personen können
-  eine Diagnose schicken (Benutzer-Handbuch, [B19](../benutzer/19-hilfe.md)). Gespeichert wird nur eine Zeile im
-  Server-Log, ohne Inhalte und Namen.
+  eine Diagnose schicken (Benutzer-Handbuch, [B19](../benutzer/19-hilfe.md)). Gespeichert wird eine Zeile im
+  Server-Log und derselbe Inhalt unter **Diagnose**, ohne Inhalte und Namen (siehe [A09](09-diagnose.md)).
 
 ![Allgemein → Diagnose mit dem Schalter „Fehlerberichte und Diagnose senden“](../bilder/a05-06-diagnose.png)
 

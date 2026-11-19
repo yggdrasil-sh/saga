@@ -65,6 +65,7 @@ Die Bereiche im Überblick:
 - **Aufgaben lesen** / **Aufgaben schreiben**
 - **Dateien lesen** / **Dateien hochladen**
 - **Kommentare lesen** / **Kommentare schreiben**
+- **Kalender lesen** / **Kalender schreiben** – deine verbundenen Kalender (siehe [B16](16-verbindungen.md))
 - **Webhooks verwalten**
 - **MCP-Server (KI-Werkzeuge)**
 
@@ -162,6 +163,30 @@ Beispiel für eine Konfigurationsdatei (zum Beispiel `.mcp.json`):
 
 Die KI bekommt dann nur die Werkzeuge, die der Token erlaubt – zum Beispiel Seiten suchen und lesen, Einträge in
 Datenbanken anlegen, Aufgaben anlegen oder abhaken, Kommentare schreiben.
+
+**Was eine KI mit Schreib-Bereichen in Saga 2.5 kann:**
+
+- **Seiten gezielt ändern** – einen einzelnen Abschnitt oder Block ersetzen, etwas darunter einfügen oder
+  entfernen, ein Kästchen einer Checkliste abhaken; alle anderen Blöcke und ihre Kommentare bleiben, wie sie sind.
+  Hat jemand die Seite inzwischen geändert, bekommt die KI einen verständlichen Fehler statt still zu überschreiben.
+  Seiten archivieren oder in den Papierkorb legen geht ebenfalls.
+- **Datenbanken anlegen** – mit Eigenschaften und Ansichten (Tabelle, Board, Kalender, Zeitleiste …), auch mit Filter
+  und Sortierung, und gleich in eine Seite eingebettet. Eigenschaften und Ansichten ergänzen und umbenennen geht;
+  **gelöscht wird nie**. Formeln und Rollups richtest du weiter im Browser ein.
+- **Widgets** – Fortschritt, Kennzahl, Countdown, Diagramm und andere in Seiten anlegen, ändern und ihre Werte lesen.
+- **Neue Seiten und Einträge** – mit Symbol, Einträge auch aus einer Eintrags-Vorlage.
+- **Kalender** (mit **Kalender lesen**/**schreiben**) – Termine auflisten, anlegen, ändern und löschen, in deinen
+  verbundenen Kalendern. Serientermine ändert oder löscht die KI nur als ganze Serie und nur, wenn sie das
+  ausdrücklich so angibt.
+
+Alles gilt mit denselben Rechten wie im Browser: gesperrte Seiten, deine Rolle auf geteilten Seiten und die
+Beschränkung **Nur diese Seitenbäume** gelten auch für die KI. Antworten und Fehlermeldungen kommen in der Sprache
+deines Kontos. Werkzeuge, die etwas löschen oder überschreiben, sind als solche gekennzeichnet – viele KI-Programme
+fragen dann vorher nach.
+
+**Beispiel:** Clara sagt zu Claude: „Hak in meinem Lernplan ‚Kapitel 3 Analysis‘ ab und leg einen Countdown bis zur
+Matheklausur an.“ Claude ändert genau dieses Kästchen und fügt ein Widget hinzu – der Rest der Seite bleibt
+unverändert.
 
 > **Vorsicht:** Seiten können Text enthalten, den jemand anderes geschrieben hat – auf geteilten Seiten, in
 > Kommentaren oder Importen. Eine KI könnte solchen Text als Anweisung missverstehen („Lösche alle Aufgaben“). Gib
