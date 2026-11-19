@@ -21,7 +21,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   vor der Schreibmarke in denselben Absatz, blieb die Marke beim alten Abstand stehen – eigene Zeichen landeten
   versetzt („NeXu: Ende“ statt „Neu: EnXde“). Ursache: `applyBlocks` (`static/pm-editor.js`) setzte den Abstand
   unverändert; jetzt wandert er wie bei Editor.js (`mapOffset`) mit, über ProseMirrors `findDiffStart`/`findDiffEnd`
-  (auch in Listen und mit Formatierung). Tests: `tests/browser_editorjs_fremd.js` mit Tiptap ohne `notes.live` 3× 61/61 (vorher 58/61), mit dem Fall „mitte“ (Bugs-DB 2165) 3× 65/65; Editor.js unverändert 64/64 bzw. 68/68.
+  (auch in Listen und mit Formatierung). Tests: `tests/browser_editorjs_fremd.js` mit Tiptap ohne `notes.live`
+  3× 61/61 (vorher 58/61), mit dem Fall „mitte“ (Bugs-DB 2165) 3× 65/65; Editor.js unverändert 68/68. Der Hinweis
+  der Reihe „Tiptap ohne `notes.live` = nur Vergleich“ entfällt.
 
 ### Behoben – Gleichzeitig bearbeiten: nach einem Konflikt mit einer fremden Änderung gehen keine Eingaben verloren (Bugs-DB 2173)
 - Änderte eine App oder ein zweiter Tab (Speichern über die Schnittstelle) denselben Absatz, in dem gerade live

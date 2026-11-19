@@ -5,9 +5,9 @@
 // und mit Ueberschneidung), Unterseiten-Verweis mit Titel in Etappen, Fremdaenderung am Block mit der Schreibmarke ohne
 // Eingabe, Spalten (in und neben einer Spalte tippen), viele schnelle Aenderungen, langsames Einarbeiten (Eingabe nur waehrenddessen). Laeuft mit notes.live an und aus (Admin-Schalter; der Test meldet den Stand).
 // Voraussetzung: Admin editor.engine = choice (Konto-Wahl Editor.js). FAELLE=a,b,... nur diese Faelle.
-// SAGA_EDITOR=tiptap nur zum Vergleich: Tiptap ohne live laesst die Schreibmarke bei fremdem Text vor ihr im selben
-// Block noch stehen ("gleich", "ruhend", "mitte": 4 FAIL, auf 86aab10 genauso); mit live gilt Yjs. Bugs-DB 2165: die
-// Suite (tools/suite/innen.sh, SAGA_EDITOR Standard tiptap) lief so - der Test meldet den Fall jetzt selbst (Hinweis).
+// SAGA_EDITOR=tiptap: dieselben Faelle mit Tiptap (ohne live blockweise Uebernahme, Schreibmarke wandert mit seit
+// Bugs-DB 2172; mit live gilt Yjs, Konflikt beim Uebernehmen seit 2173). Bugs-DB 2165: die Suite (tools/suite/innen.sh,
+// SAGA_EDITOR Standard tiptap) laeuft so - die erste Zeile meldet Editor und notes.live.
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Cookie hk-test-a> node tests/browser_editorjs_fremd.js
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
@@ -34,7 +34,6 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
   const ver = await a.api('GET', '/api/version');
   const LIVE = (ver.features || []).includes('live1');
   console.log('     notes.live: ' + (LIVE ? 'an' : 'aus') + ', Editor: ' + KIND);
-  if (KIND === 'tiptap' && !LIVE) console.log('     Hinweis: Tiptap ohne notes.live = nur Vergleich; "gleich", "ruhend", "mitte" sind dort bekannt rot (Schreibmarke wandert nicht mit)');
   async function until(fn, ms = 8000) { const end = Date.now() + ms; while (Date.now() < end) { try { if (await fn()) return true; } catch (e) { /* */ } await sleep(120); } return false; }
   const getN = async (id) => JSON.parse(J(await b.api('GET', '/api/notes/' + id)));
   const blocksOf = async (id) => JSON.parse((await getN(id)).body || '{}').blocks || [];
