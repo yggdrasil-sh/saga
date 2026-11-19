@@ -214,7 +214,15 @@ async def canonical_host(request: Request, call_next):
         if host and host != _BASE_HOST and not (host in PUBLIC_HOSTS and _public_path(request.url.path)):
             q = ("?" + request.url.query) if request.url.query else ""
             return RedirectResponse(BASE_URL + request.url.path + q, status_code=308)
-    return await call_next(request)
+    try:
+        return await call_next(request)
+    except RuntimeError as ex:
+        # Browser bricht die Anfrage ab, bevor die Antwort beginnt (z. B. Streaming/Ereignisse beim Seitenwechsel):
+        # Starlette meldet dann "No response returned." - leise, ohne Stacktrace (die Antwort erreicht ohnehin niemanden).
+        # Ist die Verbindung noch offen, bleibt es beim Fehler wie bisher.
+        if str(ex) != "No response returned." or not await request.is_disconnected():
+            raise
+        return Response(status_code=204)
 
 
 # 2.5 Gjallarhorn: connect-src der HTML-Seiten um die Adressen der Knoten ergaenzen (nur mit Feature-Flag calls.horn)

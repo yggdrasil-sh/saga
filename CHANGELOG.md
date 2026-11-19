@@ -16,6 +16,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Server-Log: abgebrochene Browser-Anfragen ohne Stacktrace
+- Brach der Browser eine Anfrage ab, bevor die Antwort begann (z. B. Ereignis-Stream beim Seitenwechsel), schrieb
+  der Server `RuntimeError: No response returned.` mit Stacktrace ins Log (`app.py`, `canonical_host`). Das bleibt jetzt
+  leise; antwortet die App bei offener Verbindung nicht, bleibt es beim Fehler wie bisher. Test: neu
+  `tests/abbruch_leise.py` 5/5 (mit `CANONICAL_REDIRECT=true` 6/6; ohne die Änderung 4/5).
+
 ### Behoben – Gleichzeitig bearbeiten: Konfliktblöcke behalten Zeitpunkt und Urheber (Bugs-DB 2176)
 - Die Bereinigung (`clean_blocks`) ließ bei `hkconflict.at` nur Zahlen unter 10⁹ zu – heutige Unix-Zeitstempel
   (~1,8·10⁹) fielen weg. `at` hat jetzt eine eigene Prüfung (`_ts_ok`, 0 < at < 10¹¹); alle anderen Zahlen bleiben
