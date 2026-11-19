@@ -114,7 +114,7 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
 | b14-01-glocke.png | B14 | Web | hell | Glocke: geteilte Seiten, Kommentare, Erwähnungen, Aufgaben – „Alle gelesen“ | 1 = Glocke mit Zahl; 2 = Alle gelesen |
 | b14-02-mitteilungen-einstellungen.png | B14 | Web | hell | Einstellungen → Mitteilungen: dieser Browser, Geräte, ntfy, Kategorien, Ruhezeiten | – |
 | b14-03-glocke-handy.png | B14 | Handy | dunkel | Glocke auf dem Handy (dunkel) | – |
-| b15-01-ki-seite.png | B15 | Web | hell | Frag Saga KI: Antwort zur Seite „Sommerfest“ mit Quelle [1] | 1 = Bereiche: Frag deine Seiten · Diese Seite; 2 = Verweis auf die Quelle; 3 = Quellen |
+| b15-01-ki-seite.png | B15 | Web | hell | Frage Saga KI: Antwort zur Seite „Sommerfest“ mit Quelle [1] | 1 = Bereiche: Frag deine Seiten · Diese Seite; 2 = Verweis auf die Quelle; 3 = Quellen |
 | b15-02-ki-websuche.png | B15 | Web | hell | KI mit Websuche: Wetter am Wochenende, Quellen aus dem Web (Attrappe) | 1 = Im Web suchen; 2 = Web-Quelle |
 | b15-03-ki-chat.png | B15 | Web | hell | KI im Familienchat auf Zuruf (`@Saga KI`) – Antwort für alle sichtbar | – |
 | b16-01-kalender-verbinden.png | B16 | Web | hell | Einstellungen → Kalender: Familienkalender verbunden, zweiten Kalender (CalDAV) hinzufügen | 1 = verbundener Kalender „Familie“; 2 = Adresse des CalDAV-Servers (Passwort: App-Passwort, hier leer) |

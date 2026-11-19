@@ -22,6 +22,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `tools/saga-testing-einrichten.sh`, eine Domain/Port 443/„Websockets Support“ (sonst 426 an `/api/sfu/ws`), was danach
   im Admin-Bereich zu prüfen ist, Apps 2.5 und alte Apps, Fehlersuche (426, 401 bei der Föderation, Anrufe). Verweise
   in Anleitung (de/en/es) und README.
+- Neu `docs/handbuch/`: Benutzer- und Admin-Handbuch (Du-Form, Demo „Familie Sommer“ / „Gartenverein Lindenhof“,
+  118 Bilder, Stand 3.11.) mit den 2.5-Kapiteln zu Anrufen, Editor, Widgets, BookOrbit, Diagnose und App-Versionen.
+- `docker-compose.yml` (nur Kommentare): hinter einem TLS-beendenden Proxy kein weiterer Port für den Knoten
+  (Tunnel-Betrieb); 8443/SNI/eigener Name nur noch als Sonderfall. Log-Befehle der Diagnose über
+  `docker compose logs --no-log-prefix saga`.
 
 ### Behoben – Gruppenanrufe: ein Fehler beim Nachklingeln nach der Fähigkeiten-Meldung verhindert das Klingeln nicht mehr dauerhaft (Bugs-DB 2185)
 - `PUT /api/calls/caps`: scheiterte `ring_late` nach dem Speichern der Meldung, kam 500 zurück, und jede weitere (gleiche)

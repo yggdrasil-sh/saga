@@ -27,7 +27,7 @@ Der Assistent sieht nur, was **du** sehen darfst: deine eigenen Seiten und die, 
 selbst nichts ändern – alles, was er vorschlägt, übernimmst du nur, wenn du willst.
 
 > **Hinweis:** Den Assistenten gibt es nur, wenn dein Admin ihn eingeschaltet hat. Vielleicht hat er auch einen
-> eigenen Namen, zum Beispiel „Frag Marin“ statt „Frag Saga KI“. In diesem Kapitel heißt er einfach „Saga KI“.
+> eigenen Namen, zum Beispiel „Frage Marin“ statt „Frage Saga KI“. In diesem Kapitel heißt er einfach „Saga KI“.
 
 > **Wichtig:** Was du dem Assistenten gibst – deine Frage und die passenden Ausschnitte aus deinen Seiten –, geht an
 > das Sprachmodell, das dein Admin eingetragen hat. Die Adresse steht unten in der Seitenleiste des Assistenten.
@@ -39,7 +39,7 @@ selbst nichts ändern – alles, was er vorschlägt, übernimmst du nur, wenn du
 ### 1. Den Assistenten öffnen
 
 1. Öffne eine Seite.
-2. Klick oben auf **Frag Saga KI** (mit dem Bild des Assistenten).
+2. Klick oben auf **Frage Saga KI** (mit dem Bild des Assistenten).
 3. Rechts öffnet sich die Seitenleiste des Assistenten. Oben wählst du den Bereich ①: **Frag deine Seiten** oder
    **Diese Seite**.
 
@@ -140,7 +140,7 @@ Am Anfang ist der Verlauf **aus**.
 **Anna plant das Sommerfest.** Anna hat in den letzten Wochen mehrere Seiten zum Sommerfest geschrieben und will
 wissen, was noch fehlt.
 
-1. Anna öffnet die Seite „Sommerfest“ und klickt auf **Frag Saga KI**.
+1. Anna öffnet die Seite „Sommerfest“ und klickt auf **Frage Saga KI**.
 2. Sie bleibt bei **Frag deine Seiten** und schaltet **Aufgaben einbeziehen** ein.
 3. Sie fragt: „Was brauchen wir noch für das Sommerfest?“
 4. Die KI antwortet: Getränke, Pavillon und Grillkohle fehlen noch [1]. Die Zahl führt zur Seite „Sommerfest“.
@@ -150,7 +150,7 @@ wissen, was noch fehlt.
 **Clara verbessert ihren Aufsatz.** Clara hat einen englischen Text auf ihrer Seite „Englisch – Essay“.
 
 1. Clara markiert die drei Absätze.
-2. Sie öffnet **Frag Saga KI → Diese Seite** und klickt auf **Markierten Text verbessern**.
+2. Sie öffnet **Frage Saga KI → Diese Seite** und klickt auf **Markierten Text verbessern**.
 3. Sie liest den Vorschlag und wählt **Darunter einfügen**, um beide Fassungen zu vergleichen.
 4. Was ihr gefällt, übernimmt sie von Hand.
 
@@ -167,7 +167,7 @@ wissen, was noch fehlt.
 
 ## Häufige Fragen
 
-**Ich sehe keinen Knopf „Frag Saga KI“.**
+**Ich sehe keinen Knopf „Frage Saga KI“.**
 Dann hat dein Admin den Assistenten nicht eingeschaltet – oder nur für bestimmte Gruppen.
 
 **Kann die KI meine Seiten ändern?**
