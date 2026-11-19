@@ -43,6 +43,11 @@ Die fertigen Pakete findest du bei den [Saga-Apps auf GitHub](https://github.com
 - **iPhone und iPad:** Eine Version im App Store gibt es noch nicht. Frag deinen Admin – oft verteilt er die App
   selbst.
 
+**Passt die App zum Server?** Für Saga 2.5 nimm die Apps ab 2.5 – vor allem für Anrufe über den Anruf-Knoten und die
+modernen Chats. Ältere Apps melden sich weiter an und zeigen Seiten und Chats, manche neuen Funktionen fehlen dort
+aber (zum Beispiel sagt ein Anruf dann „braucht Saga 2.5“). Bis zum offiziellen Release stehen die Apps 2.5 als
+**Vorabversion** (Pre-release) bei den [Saga-Apps auf GitHub](https://github.com/yggdrasil-sh/saga-apps/releases).
+
 > **Tipp:** Wenn dir das zu technisch ist: Lass es deinen Admin einmal mit dir zusammen machen. Danach musst du nie
 > wieder etwas einrichten – Updates kommen über denselben Weg.
 
