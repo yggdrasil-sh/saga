@@ -555,10 +555,20 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
   .cl-win.horn.horn-scr:not(.small) .cl-stage{background:#000}
 }
 @media (min-width:1440px){.cl-win.horn.horn-scr:not(.small){--hs:200px}}
-/* Handy quer/flaches Fenster ab 900 px: Bildschirm und Streifen links von der senkrechten Leiste (72 px, Pruefung 2158) */
-@media (max-height:500px) and (orientation:landscape) and (min-width:900px){
-  .cl-win.horn.horn-strip.horn-scr.mesh.tiles:not(.small) .cl-grid{right:80px}
-  .cl-win.horn.horn-scr:not(.small) .cl-hscreen{width:calc(100% - var(--hs) - 88px)}
+/* Handy quer/flaches Fenster (Hoehe <= 500, MEETING-SPEC §8) ueber den Knoten wie im Mesh: Bildschirm bzw. Sprecher randlos ueber
+   die ganze Hoehe, Streifen rechts 120 px links von der senkrechten Leiste (72 px), Raster endet vor der Leiste. Vorher galten unter
+   900 px die Abstaende fuer Leiste und Streifen unten - Bildschirm nur 40-70 px hoch, Streifen unter der Leiste (Bugs-DB 2192).
+   Streifen und Raster beginnen unter der zweiten Kopfzeile (Verschluesselung, Weg) wie ab 900 px (4.4rem) */
+@media (max-height:500px) and (orientation:landscape){
+  .cl-win.horn.horn-strip:not(.small),.cl-win.horn.horn-scr:not(.small){--hs:120px}
+  .cl-win.horn.horn-scr:not(.small) .cl-hscreen,.cl-win.horn.horn-strip:not(.horn-scr):not(.small) .cl-hbig{top:0;left:0;right:auto;bottom:auto;
+    width:calc(100% - var(--hs) - 88px);height:100%;border-radius:0}
+  .cl-win.horn.horn-strip.mesh.tiles:not(.small) .cl-grid,.cl-win.horn.horn-strip.horn-scr.mesh.tiles:not(.small) .cl-grid{top:4.4rem;bottom:.5rem;
+    left:auto;right:80px;width:var(--hs);height:auto;flex-direction:column;justify-content:flex-start;overflow-y:auto;overflow-x:hidden}
+  .cl-win.horn.horn-strip:not(.small) .cl-grid .cl-tile{flex:0 0 auto;width:100%;height:auto;aspect-ratio:16/9}
+  .cl-win.horn.horn-scr:not(.small) .cl-share.cap{left:12px;bottom:12px;max-width:calc(100% - var(--hs) - 112px)}
+  .cl-win.horn.horn-strip:not(.small) .cl-stage{background:#000}
+  .cl-win.horn.mesh.tiles:not(.horn-strip):not(.small) .cl-grid{inset:4.4rem 80px .5rem .5rem}
 }
 /* 2.5 (Design-Check): schmale Fenster < 600 px - Leiste in einer Zeile (48 px, 6 px Abstand), Nebenknoepfe im Menue "Mehr",
    Auflegen immer ganz sichtbar; der Knoten-Streifen endet ueber der Leiste */

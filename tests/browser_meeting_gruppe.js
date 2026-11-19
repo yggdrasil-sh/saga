@@ -136,6 +136,17 @@ const st = p => p.evaluate(() => {
       const above = await ps[3].evaluate(() => { const g = document.querySelector('.cl-win.horn-strip .cl-grid'), c = document.querySelector('.cl-win .cl-ctl > .cl-btn');
         return !g || !c || g.getBoundingClientRect().bottom <= c.getBoundingClientRect().top + 1; });
       ok('Knoten Handy: Streifen endet ueber der Leiste', above);
+      // Bugs-DB 2192: Handy quer - Raster der Knoten-Galerie endet links der senkrechten Leiste (72 px) und nutzt die Hoehe
+      await ps[2].setViewportSize({ width: 844, height: 390 }); await sleep(800); await ps[2].mouse.move(300, 200); await sleep(300);
+      const gq = await ps[2].evaluate(() => { const g = document.querySelector('.cl-win.horn.tiles .cl-grid'), c = document.querySelector('.cl-win .cl-ctl');
+        if (!g || !c) return null; const gr = g.getBoundingClientRect(), cr = c.getBoundingClientRect();
+        const ts = [...g.querySelectorAll('.cl-tile')].filter(x => x.getClientRects().length).map(x => x.getBoundingClientRect());
+        return { grid: [gr.left, gr.top, gr.width, gr.height].map(Math.round), ctlL: Math.round(cr.left), ctlW: Math.round(cr.width), vh: innerHeight, n: ts.length,
+                 free: ts.filter(r => r.right <= cr.left + 1).length }; });
+      ok('Knoten Handy quer 844x390: Galerie links der Leiste, Hoehe genutzt', gq && gq.ctlW <= 80 && gq.grid[0] + gq.grid[2] <= gq.ctlL + 1 && gq.n >= 3
+         && gq.free === gq.n && gq.grid[3] >= gq.vh * 0.7, gq);
+      await shot(ps[2], '2b-gruppe-handy-quer-dunkel');
+      await ps[2].setViewportSize({ width: 1280, height: 720 }); await sleep(600);
     }
 
     // Person 2 teilt den Bildschirm

@@ -24,6 +24,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Die Android-App meldet ihre Fähigkeiten jetzt schon, sobald die Chat-Schlüssel bereit sind (nach Koppeln/Start).
 - Tests: `tests/horn_y_geraete.py` (frisches Gerät, App vor 2.5, Browser, spätere Meldung ohne `horn`).
 
+### Behoben – Anruf über den Knoten: Präsentation bei Handy quer (Bugs-DB 2192)
+- Unter 900 px Breite im Querformat (Höhe ≤ 500 px) galten über den Knoten noch die Abstände für Leiste und Streifen
+  unten – der geteilte Bildschirm war nur 40–70 px hoch, Streifen und Kacheln reichten unter die senkrechte Leiste.
+  Jetzt wie im Mesh (MEETING-SPEC §8): Bildschirm bzw. Sprecher über die ganze Höhe, Streifen rechts 120 px links der
+  Leiste (auch ab 900 px Breite statt 160 px), Galerie endet vor der Leiste, Hinweis-Chip unten links.
+- Tests: `tests/browser_meeting.js` prüft 740×360, 844×390, 896×414 und 1000×497 (Bildschirm ≥ 70 % der Höhe,
+  nichts unter der Leiste, Knöpfe treffbar), die Einzelansicht bei 740×360 und als Gegenprobe Hochformat und Desktop;
+  `tests/browser_meeting_gruppe.js` die Knoten-Galerie bei 844×390 (nur wenn die Gruppe über den Knoten läuft).
+
 ### Behoben – Anruf: Knöpfe bei flachem Fenster bzw. Handy quer wieder bedienbar (Bugs-DB 2158)
 - Bei Fensterhöhe ≤ 500 px im Querformat lag die senkrechte Knopfleiste rechts nur 13 px hoch am unteren Rand
   (absolut positioniertes Grid-Kind in der leeren Zeile 4) – Auflegen, Stumm und Teilen waren nicht anklickbar.

@@ -116,6 +116,20 @@ const hscr = p => p.evaluate(() => { const w = document.querySelector('.cl-win')
   return { big: !!w && /horn-scr/.test(w.className), w: v ? v.videoWidth : 0, h: v ? v.videoHeight : 0, t: v ? Math.round(v.currentTime * 10) / 10 : 0 }; });
 async function hscrLive(p, ms) { const t0 = await until(async () => { const x = await hscr(p); return x.big && x.w > 0 && x; }, ms);
   if (!t0) return null; await sleep(800); const t1 = await hscr(p); return t1.w > 0 && t1.t > t0.t ? t1 : null; }
+// Lage im Knoten-Fenster: Leiste, Bildschirm, Streifen, Kacheln, Chip als [x, y, b, h]; Knoepfe der Leiste und oben rechts treffen sich selbst
+const HSGEO = () => { const R = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); };
+  const hit = x => { const r = x.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && (e === x || x.contains(e)); };
+  const c = document.querySelector('.cl-win .cl-ctl'), v = document.querySelector('.cl-win.horn-scr video.cl-hscreen'), g = document.querySelector('.cl-win.horn-strip .cl-grid');
+  const cap = document.querySelector('.cl-win.horn-scr .cl-share.cap'), cr = c && c.getBoundingClientRect();
+  const bs = c ? [...c.querySelectorAll('.cl-round')].filter(x => x.getClientRects().length).map(x => { x.scrollIntoView({ block: 'nearest' }); return hit(x); }) : [];
+  const tb = [...document.querySelectorAll('.cl-win .cl-tb .cl-btn')].filter(x => x.getClientRects().length).map(hit);
+  const ts = g ? [...g.querySelectorAll('.cl-tile')].filter(x => x.getClientRects().length) : [];
+  let scrVis = false;
+  if (v) { const r = v.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); scrVis = e === v; }
+  const btop = c ? Math.min(...[...c.querySelectorAll(':scope > .cl-btn')].filter(x => x.getClientRects().length).map(x => x.getBoundingClientRect().top)) : 0;
+  return { vw: innerWidth, vh: innerHeight, ctl: c ? R(c) : null, btop: Math.round(btop), scr: v ? R(v) : null, scrVis, grid: g ? R(g) : null, cap: cap && !cap.hidden && cap.getClientRects().length ? R(cap) : null,
+           n: bs.length, hit: bs.filter(Boolean).length, tb: tb.length, tbHit: tb.filter(Boolean).length,
+           tiles: ts.length, tilesFree: ts.filter(t => { const r = t.getBoundingClientRect(); return !cr || cr.width > 100 || r.right <= cr.left + 1; }).length }; };
 async function hornFlow(a, a2, b, o) {
   INFO_HORN = true;
   await a.goto(BASE + '/chats#u' + encodeURIComponent(o.U2)); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1000);
@@ -143,6 +157,18 @@ async function hornFlow(a, a2, b, o) {
   const left = await Promise.all([a, b].map(p => p.evaluate(() => document.querySelectorAll('.cl-mtile').length + (document.querySelector('.cl-win.meet') ? 100 : 0))));
   ok('Knoten: keine Kacheln der Mesh-Ansicht ueber der Knoten-Ansicht', left.every(n => n === 0), left);
   await shot(b, 'knoten-1-einzel-dunkel');
+  // Bugs-DB 2192: Handy quer - Kachel-Raster ueber den Knoten endet links der senkrechten Leiste und nutzt die Hoehe
+  await b.setViewportSize({ width: 740, height: 360 }); await sleep(800); await b.mouse.move(250, 180); await sleep(300);
+  const eq = await b.evaluate(() => { const g = document.querySelector('.cl-win.horn.tiles:not(.horn-strip) .cl-grid'), c = document.querySelector('.cl-win .cl-ctl');
+    if (!g || !c) return null; const gr = g.getBoundingClientRect(), cr = c.getBoundingClientRect();
+    const ts = [...g.querySelectorAll('.cl-tile')].filter(x => x.getClientRects().length).map(x => x.getBoundingClientRect());
+    return { grid: [gr.left, gr.top, gr.width, gr.height].map(Math.round), ctl: [cr.left, cr.width].map(Math.round), vh: innerHeight, n: ts.length,
+             free: ts.filter(r => r.right <= cr.left + 1).length }; });
+  console.log('  Lage Einzel 740x360: ' + JSON.stringify(eq));
+  ok('Knoten Handy quer 740x360: Kachel links der Leiste, Hoehe genutzt (>= 70 %)', eq && eq.ctl[1] <= 80 && eq.grid[0] + eq.grid[2] <= eq.ctl[0] + 1 && eq.n >= 1
+     && eq.free === eq.n && eq.grid[3] >= eq.vh * 0.7, eq);
+  await shot(b, 'knoten-1b-einzel-handy-quer-740x360-dunkel');
+  await b.setViewportSize({ width: 1280, height: 720 }); await sleep(600);
   await a2.mouse.move(300, 300);
   await a2.click('.cl-ctl .cl-round[aria-label="Mikrofon einschalten"]');
   const sheet = await until(() => a2.evaluate(() => { const d = document.querySelector('.cl-echo'); return d && d.textContent; }), 4000);
@@ -181,17 +207,29 @@ async function hornFlow(a, a2, b, o) {
     return !g || !c || g.getBoundingClientRect().bottom <= c.getBoundingClientRect().top + 1; });
   ok('Knoten Handy: Leiste einzeilig im Fenster, Auflegen ganz sichtbar, Streifen endet ueber der Leiste', cfh.inside && cfh.oneRow && cfh.red && above, [cfh, above]);
   await shot(b, 'knoten-4-handy-dunkel');
-  // Bugs-DB 2158: Handy quer (Hoehe < 500) - Knoepfe rechts senkrecht ueber die ganze Hoehe, jeder Knopf trifft sich selbst
-  await b.setViewportSize({ width: 844, height: 390 }); await sleep(800); await b.mouse.move(400, 200); await sleep(300);
-  const quer = await b.evaluate(() => { const c = document.querySelector('.cl-win .cl-ctl'), q = c.getBoundingClientRect();
-    const bs = [...c.querySelectorAll('.cl-round')].filter(x => x.getClientRects().length).map(x => { x.scrollIntoView({ block: 'nearest' }); const r = x.getBoundingClientRect();
-      const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && (e === x || x.contains(e)); });
-    const tb = [...document.querySelectorAll('.cl-win .cl-tb .cl-btn')].filter(x => x.getClientRects().length).map(x => { const r = x.getBoundingClientRect();
-      const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && (e === x || x.contains(e)); });
-    return { ctl: [q.top, q.height, innerHeight].map(Math.round), n: bs.length, hit: bs.filter(Boolean).length, tb: tb.length, tbHit: tb.filter(Boolean).length }; });
-  ok('Knoten Handy quer: Leiste ueber die ganze Hoehe, alle Knoepfe anklickbar (auch oben rechts)', quer.ctl[1] >= quer.ctl[2] * 0.9 && quer.n >= 3 && quer.hit === quer.n
-     && quer.tb >= 2 && quer.tbHit === quer.tb, quer);
-  await shot(b, 'knoten-4b-handy-quer-dunkel');
+  // Bugs-DB 2158/2192: Handy quer (Hoehe < 500) - Knoepfe rechts senkrecht ueber die ganze Hoehe, jeder Knopf trifft sich selbst;
+  // Praesentation ueber den Knoten wie im Mesh (MEETING-SPEC §8): Bildschirm ueber die Hoehe (>= 70 %), Streifen rechts 120 px links
+  // der Leiste, nichts unter der Leiste. Gegenprobe Hochformat und Desktop: dort bleibt die bisherige Anordnung.
+  for (const [vw, vh] of [[740, 360], [844, 390], [896, 414], [1000, 497]]) {
+    await b.setViewportSize({ width: vw, height: vh }); await sleep(800); await b.mouse.move(Math.round(vw / 3), Math.round(vh / 2)); await sleep(300);
+    const quer = await b.evaluate(HSGEO); console.log(`  Lage ${vw}x${vh}: ` + JSON.stringify({ ctl: quer.ctl, scr: quer.scr, grid: quer.grid, cap: quer.cap }));
+    ok(`Knoten Handy quer ${vw}x${vh}: Leiste ueber die ganze Hoehe, alle Knoepfe anklickbar (auch oben rechts)`, quer.ctl[3] >= quer.vh * 0.9 && quer.n >= 3
+       && quer.hit === quer.n && quer.tb >= 2 && quer.tbHit === quer.tb, quer);
+    ok(`Knoten Handy quer ${vw}x${vh}: Bildschirm ${quer.scr && quer.scr[3]} px hoch (>= 70 %), Streifen rechts ${quer.grid && quer.grid[2]} px, nichts unter der Leiste`,
+       quer.scr && quer.scr[3] >= quer.vh * 0.7 && quer.scr[0] + quer.scr[2] <= quer.ctl[0] + 1 && quer.scrVis && quer.grid && quer.grid[2] === 120
+       && quer.grid[3] > quer.grid[2] && quer.grid[0] + quer.grid[2] <= quer.ctl[0] + 1 && quer.grid[0] >= quer.scr[0] + quer.scr[2] - 1
+       && quer.tiles >= 1 && quer.tilesFree === quer.tiles && (!quer.cap || quer.cap[0] + quer.cap[2] <= quer.scr[0] + quer.scr[2] + 1), quer);
+    await shot(b, `knoten-4b-handy-quer-${vw}x${vh}-dunkel`);
+  }
+  for (const [vw, vh] of [[390, 844], [1280, 720]]) {
+    await b.setViewportSize({ width: vw, height: vh }); await sleep(800); await b.mouse.move(Math.round(vw / 3), Math.round(vh / 3)); await sleep(300);
+    const g = await b.evaluate(HSGEO); console.log(`  Lage ${vw}x${vh}: ` + JSON.stringify({ ctl: g.ctl, scr: g.scr, grid: g.grid, cap: g.cap }));
+    const okG = vw < 900
+      ? g.scr && g.grid && g.grid[2] > g.grid[3] && g.grid[1] >= g.scr[1] + g.scr[3] - 1 && g.grid[1] + g.grid[3] <= g.btop + 1 && g.scr[2] >= vw - 16
+      : g.scr && g.grid && g.scr[1] === 0 && g.scr[3] === vh && g.grid[2] === 160 && g.grid[0] + g.grid[2] === vw - 8 && g.scr[2] === vw - 176;
+    ok(`Gegenprobe ${vw}x${vh}: Knoten-Praesentation wie bisher (${vw < 900 ? 'Streifen unten ueber der Leiste' : 'Streifen rechts 160 px, Bildschirm volle Hoehe'})`, okG, g);
+    await shot(b, `knoten-4c-gegenprobe-${vw}x${vh}-dunkel`);
+  }
   await b.setViewportSize({ width: 1280, height: 720 });
   // §4.2 Gegenrichtung (Bugs-DB 2160): A2 hoert auf, A (Hauptgeraet) teilt -> A2 (Begleitgeraet) zeigt den Bildschirm von A
   await a2.mouse.move(300, 300); await a2.click('.cl-share-stop');
