@@ -1,6 +1,6 @@
 // Gjallarhorn P5: Entscheidungen des Web-Clients (static/horn.js) ohne Browser - Punktzahl der Kandidaten (§2.6),
 // Umschalter mit Hysterese (sofort bei Abbruch und Leeren, "besser" nur >= 25 % und >= 30 ms fuer 20 s, Verweildauer 60 s,
-// hoechstens 3 Wechsel je 10 min), UDP -> TCP bei Verlust, Rueckkehr auf UDP, Schliessen des alten Beins
+// hoechstens 3 Wechsel je 10 min), UDP -> TCP bei Verlust, Rueckkehr auf UDP, Rueckweg vom Tunnel-Knoten (Bugs-DB 2201), Schliessen des alten Beins
 // (make-before-break), Kachelansicht (Spalten, Last-N, Sprecheransicht, hoechstens 25), Qualitaetspunkt (30-s-Fenster, Hysterese) und Wegnamen.
 //   node tests/horn_logik.js
 'use strict';
