@@ -3,7 +3,7 @@ mock-oauth2-server mit interactiveLogin (tools/stack-remote.sh): Issuer http://<
 "username" (wird sub) und "claims" (JSON, kommt in ID-Token und userinfo), PKCE S256, RS256-Schluessel je Start.
 Nur fuer Tests, nur auf 127.0.0.1 bzw. im Netz-Namensraum. Aufruf:
   python oidc_attrappe.py --host mockoidc --port 8080 --name default [--bind 127.0.0.1]"""
-import argparse, base64, hashlib, html, json, secrets, threading, time, urllib.parse
+import argparse, base64, hashlib, json, secrets, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from authlib.jose import JsonWebKey, jwt
