@@ -25,6 +25,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Teilnehmerliste – kein Banner, keine Warnung je Anruf. Anleitung (de/en/es) Abschnitt Anrufe: ein Satz. API unverändert.
 - Tests: neu `tests/horn_experimentell.py` 10/10 mit `tests/browser_horn_experimentell.js` 9/9 (Testumgebung `knoten`);
   `anrufe_horn_y` 21/21 (erwartet „experimentell“ jetzt im Kasten), `horn_erweitern` 139/139, `anrufe_horn_web` 109/109.
+- Admin → Anrufe: Der Hinweis bei „Eingebauten Knoten für Anrufe nutzen“ empfahl noch die Betriebsart „Ein Port“
+  (`SAGA_TLS=1`); jetzt: ab Werk Tunnel-Betrieb über die normale Saga-Adresse, nur Port 443, „Websockets Support“ am
+  Proxy (Bugs-DB 2190).
 
 ### Doku – Upgrade-Anleitung 2.3/2.4 → 2.5
 - Neu `docs/UPGRADE-2.5.md` (kurz auf Englisch `docs/en/UPGRADE-2.5.md`) für Admins hinter einem Proxy, der TLS selbst
