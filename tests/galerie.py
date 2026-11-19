@@ -4,7 +4,10 @@ Alles-oder-nichts, Rechte (fremd, nur Lesen, Bearbeiten, Datenbank, foederiert),
 
 Server mit SAGA_GALLERY_DIR=tests/gallery_fixtures und SAGA_GALLERY_TEST_FAIL=crash (Abbruch-Vorlage), GALLERY_RATE
 wie beim Server (Standard 10). Gegen gallery/ (echte Vorlagen): jede Vorlage wird zusaetzlich angelegt (de mit, en ohne
-Beispiele, Rest nur Liste/Vorschau)."""
+Beispiele, Rest nur Liste/Vorschau).
+Takt: "Verwenden" ist je Konto auf GALLERY_RATE je Minute begrenzt (saga/gallery.py _rate_ok); die Reihe braucht fuer
+Konto A mehr und wartet deshalb vor jedem Aufruf, bis wieder Platz im Fenster ist (mit dem Standard 10 rund 2 min
+laenger). Schneller: GALLERY_RATE=30 am Server UND im Test."""
 import base64
 import json
 import os
@@ -102,8 +105,25 @@ def count(u):
     return sql("SELECT COUNT(*) FROM note WHERE uid=?", (u,))[0][0]
 
 
-def use(gid, lang="de", u="hk-test-a", **b):
-    return call("POST", f"/api/gallery/{gid}/use?lang={lang}", b, u=u)
+_used = {}                                  # Konto -> Zeitpunkte eigener "Verwenden"-Aufrufe (Takt wie der Server)
+
+
+def pace(u, free=1):
+    """Warten, bis im 60-s-Fenster des Servers fuer u mindestens `free` Aufrufe frei sind (sonst 429)."""
+    while True:
+        now = time.time()
+        h = _used[u] = [x for x in _used.get(u, []) if now - x < 60.5]
+        if len(h) <= RATE - free:
+            return
+        time.sleep(h[len(h) - (RATE - free) - 1] + 60.6 - now)
+
+
+def use(gid, lang="de", u="hk-test-a", _pace=True, **b):
+    if _pace:
+        pace(u)
+    r = call("POST", f"/api/gallery/{gid}/use?lang={lang}", b, u=u)
+    _used.setdefault(u, []).append(time.time())
+    return r
 
 
 def home_dash(d6):
@@ -341,7 +361,8 @@ try:
            and not sql("SELECT 1 FROM note WHERE uid='hk-test-a' AND title='Abbruch'"))
 
     # --- Ratenbegrenzung (Konto B, ungueltige Anfragen zaehlen mit) -------------------------------------------------
-    codes = [use(ids[0], u="hk-test-b", parent_id="x")[0] for _ in range(RATE + 1)]
+    pace("hk-test-b", free=RATE)            # leeres Fenster, dann ohne Takt bis zur Grenze
+    codes = [use(ids[0], u="hk-test-b", _pace=False, parent_id="x")[0] for _ in range(RATE + 1)]
     ok(f"Ratenbegrenzung nach {RATE} je Minute: {codes[-2:]}", codes[-1] == 429 and 429 not in codes[:RATE - 2])
 
     # --- echte Vorlagen (gallery/): jede einmal anlegen --------------------------------------------------------
