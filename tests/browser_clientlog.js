@@ -60,7 +60,9 @@ async function main() {
     const p = await session(browser);
     const nid = (await p.api('POST', '/api/notes', { title: TITLE })).id;
     await p.goto(BASE + '/notes#' + nid); await p.waitForTimeout(1500);
-    ok('Logger geladen (window.HKLog) vor den anderen Skripten', await p.evaluate(() => !!window.HKLog && [...document.scripts].findIndex((s) => /clientlog\.js/.test(s.src)) === 0));
+    // theme-boot.js laedt seit Design-Runde 3 synchron im <head> vor den Stylesheets (templates/notes.html:11, kein
+    // App-Code); der Logger muss vor allen uebrigen Skripten stehen
+    ok('Logger geladen (window.HKLog) vor den anderen Skripten', await p.evaluate(() => !!window.HKLog && [...document.scripts].filter((s) => !/\/static\/theme-boot\.js/.test(s.src)).findIndex((s) => /clientlog\.js/.test(s.src)) === 0));
     await throwBoth(p); await p.waitForTimeout(150); await throwBoth(p);         // zweimal derselbe Fehler -> n = 2
     await p.waitForTimeout(3500);
     ok('genau ein Bericht nach Fehler + Ablehnung (' + p.posts.length + ')', p.posts.length === 1, p.posts.map((x) => x.body.slice(0, 200)));
