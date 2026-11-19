@@ -323,7 +323,10 @@ def main():
         bad = [p for p, r in out.items() if r[0] != 200 or html_lang(r[2]) != lang]
         ok(f"Admin-Seiten in {lang} ({len(pages)})", not bad or print("      ", bad))
     # 2.5 (Testrunde Web Nr. 007): Schalter fuer Chat-Stufe 3 mit Erklaerung in allen Sprachen, speichert chat_v3
-    lbl = {"de": "Chat-Stufe 3", "en": "Chat level 3", "es": "Nivel de chat 3", "ru": "Уровень чатов 3", "th": "แชทระดับ 3"}
+    # Beschriftung seit 2.5 "Moderne Chats (Stufe 3) - Standard an" (templates/admin/settings.html:116)
+    lbl = {"de": "Moderne Chats (Stufe 3) – Standard an", "en": "Modern chats (level 3) – on by default",
+           "es": "Chats modernos (nivel 3): activados por defecto", "ru": "Современные чаты (уровень 3) – включены по умолчанию",
+           "th": "แชทแบบใหม่ (ระดับ 3) – เปิดเป็นค่าเริ่มต้น"}
     for lg, w in lbl.items():
         adm.lang = lg
         h = adm.req("GET", "/settings")[2]
