@@ -1620,17 +1620,23 @@
   // Fremde Bloecke blockweise uebernehmen (Rebase/Live, Stufe 1): unveraenderte Bloecke bleiben dieselben Knoten,
   // ersetzt wird nur der Bereich zwischen gleichem Anfang und gleichem Ende (Schreibmarke bleibt meist, kein Undo-Schritt)
   // Abstand o im Inhalt von Block a auf Block b uebertragen (wie mapOffset in pages.js, aber auf ProseMirror-Positionen,
-  // also auch fuer Listen/Marken): vor der Aenderung bleibt o, dahinter wandert er mit, in ihr landet er an ihrem Ende
+  // also auch fuer Listen): vor der Aenderung bleibt o, dahinter wandert er mit. Bugs-DB 2177: verglichen wird eine Folge
+  // mit einem Eintrag je Position OHNE Marken (Zeichen als UTF-16-Einheit, Knoten auf/zu, Inline-Atom) - nur
+  // Formatierung geaendert = nichts geaendert; Aenderungen vor und hinter o loest mapOffset ueber den Anker um o auf
+  function seqOf(frag) {
+    var out = [];
+    (function walk(f) {
+      f.forEach(function (n) {
+        if (n.isText) { for (var i = 0; i < n.text.length; i++) out.push(n.text[i]); }
+        else if (n.isLeaf) out.push('\u0000' + n.type.name + JSON.stringify(n.attrs));
+        else { out.push('\u0000<' + n.type.name); walk(n.content); out.push('\u0000>' + n.type.name); }
+      });
+    })(frag);
+    return out;
+  }
   function mapInBlock(a, b, o) {
     if (a === b || o < 0) return o;
-    var st = a.content.findDiffStart(b.content);
-    if (st == null || o <= st) return o;
-    var en = a.content.findDiffEnd(b.content); if (!en) return o;
-    var ea = en.a, eb = en.b;
-    if (ea < st) { eb += st - ea; ea = st; }           // Ueberlappung bei Wiederholungen (vgl. prosemirror-view)
-    if (eb < st) { ea += st - eb; eb = st; }
-    if (o >= ea) return eb + (o - ea);
-    return eb;
+    return K.mapOffset(seqOf(a.content), seqOf(b.content), o);
   }
   function applyBlocks(list) {
     if (!ed || broken || LIVE) return;               // live: fremde Aenderungen kommen ueber Yjs

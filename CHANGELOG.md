@@ -42,6 +42,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Meldung von C jetzt bis nach dem Anrufstart zurück 2× 16/16 (ohne den Fix: C klingelt nie); `anrufe_klingeln` 40/40,
   `anrufe_raum` 84/84, `anrufe_hinzufuegen` 43/43.
 
+### Behoben – Schreibmarke springt nicht mehr ans Ende, wenn jemand ihren Absatz formatiert oder davor und dahinter ändert (Bugs-DB 2177)
+- Ohne „Gleichzeitig bearbeiten“ kannten Tiptap (`mapInBlock`, `static/pm-editor.js`) und Editor.js (`mapOffset`,
+  `static/pages.js`) nur einen zusammenhängenden geänderten Bereich je Block. Formatierte jemand das Wort mit der
+  Schreibmarke (Tiptap), landete sie am Wortende; änderte jemand vor UND hinter ihr (beide Editoren), am Ende des
+  Absatzes. Jetzt vergleichen beide den Klartext (Tiptap: Positionen ohne Marken, auch in Listen) und halten die Marke
+  zwischen den Zeichen, die links und rechts von ihr gleich geblieben sind; Emoji/Ersatzzeichenpaare werden nicht geteilt.
+- Tests: `tests/browser_editorjs_fremd.js` neue Fälle „formatiert“, „beidseits“, „gemischt“ (mit Emoji): Editor.js mit und
+  ohne `notes.live` je 3× 83/83, Tiptap mit und ohne je 3× 80/80. Ohne den Fix: Editor.js 20/24 (beidseits, gemischt),
+  Tiptap ohne `notes.live` 18/24 (alle drei); Tiptap live (Yjs) war schon richtig.
+
 ### Behoben – Tiptap: Schreibmarke bleibt an ihrer Textstelle, wenn jemand davor im selben Absatz schreibt (Bugs-DB 2172)
 - Ohne „Gleichzeitig bearbeiten“ (`notes.live` aus) übernimmt Tiptap fremde Änderungen blockweise. Kam fremder Text
   vor der Schreibmarke in denselben Absatz, blieb die Marke beim alten Abstand stehen – eigene Zeichen landeten

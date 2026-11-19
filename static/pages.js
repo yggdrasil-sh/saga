@@ -10080,17 +10080,32 @@
     }
   }
   function ceText(blk, ce) { var eds = blk.querySelectorAll('[contenteditable="true"]'), t = eds[ce] || eds[0]; return t ? t.textContent : null; }
-  // Schreibmarke (Zeichen off in a) auf den neuen Text b abbilden: Aenderung davor verschiebt sie, Aenderung dahinter
-  // nicht; liegt sie in der geaenderten Stelle, ans Ende der Aenderung
+  // Schreibmarke (Abstand off in a) auf die neue Folge b abbilden. a/b: Text (Editor.js, UTF-16-Einheiten) oder Feld mit
+  // einem Eintrag je Position (Tiptap, static/pm-editor.js mapInBlock). Aenderung davor verschiebt sie, Aenderung
+  // dahinter nicht. Bugs-DB 2177: aendert sich der Block vor UND hinter ihr (ein Mittelstueck um die Marke), bleibt sie
+  // zwischen den Zeichen, die links und rechts von ihr am laengsten gleich geblieben sind (Anker); ohne Anker (Text um
+  // die Marke ersetzt/geloescht) wie bisher ans Ende der Aenderung. Nie zwischen die Haelften eines Ersatzzeichenpaars
   function mapOffset(a, b, off) {
     var p = 0, n = Math.min(a.length, b.length);
-    while (p < n && a.charCodeAt(p) === b.charCodeAt(p)) p++;
+    while (p < n && a[p] === b[p]) p++;
+    if (p > 0 && p < a.length && surLo(a[p])) p--;
     var q = 0;
-    while (q < n - p && a.charCodeAt(a.length - 1 - q) === b.charCodeAt(b.length - 1 - q)) q++;
+    while (q < n - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+    if (q > 0 && q < a.length - p && surLo(a[a.length - q])) q--;
     if (off <= p) return off;
     if (off >= a.length - q) return b.length - (a.length - off);
-    return b.length - q;
+    var ea = a.length - q, eb = b.length - q, best = eb, sc = 0, W = 200;
+    if (eb - p > 50000) return eb;
+    for (var s = eb; s >= p; s--) {                   // von hinten: bei Gleichstand gewinnt die spaetere Stelle
+      if (s < eb && s > p && surLo(b[s])) continue;
+      var l = 0, r = 0;
+      while (l < W && off - 1 - l >= p && s - 1 - l >= p && a[off - 1 - l] === b[s - 1 - l]) l++;
+      while (r < W && off + r < ea && s + r < eb && a[off + r] === b[s + r]) r++;
+      if (l + r > sc) { sc = l + r; best = s; }
+    }
+    return best;
   }
+  function surLo(x) { var c = typeof x === 'string' && x.length === 1 ? x.charCodeAt(0) : 0; return c >= 0xDC00 && c <= 0xDFFF; }
   // Editor.js, Rueckfall (Plan nicht schrittweise ausfuehrbar): neu zeichnen, Schreibmarke im selben Block wiederherstellen
   function renderKeep(ed, doc) {
     var sc = document.scrollingElement || document.documentElement, y = sc.scrollTop, caret = caretBlock();
@@ -10219,7 +10234,7 @@
     // Bausteine fuer static/keys.js (Tastenkuerzel, Block-Aktionen, Inhaltsverzeichnis)
     k: { cur: function () { return S.cur; }, editor: function () { return S.editor; },
          eds: function () { return (S.eds || []).filter(function (x) { return x.holder.isConnected; }); },
-         open: function (id) { return openPage(id); }, byId: byId, goParent: goParent, copyLink: copyLink, showBlock: showBlock,
+         open: function (id) { return openPage(id); }, mapOffset: mapOffset, byId: byId, goParent: goParent, copyLink: copyLink, showBlock: showBlock,
          readOnly: function () { return readOnly(); }, deltaUsed: function () { return S.deltaUsed || 0; },
          calcNum: calcNum,                                      // Widgets/Fusszeile (tests/seiten_widgets.js: gemeinsame Testvektoren)
          chartTicks: chartTicks,                                // 2.5 Paket 4: Achsen (tests/browser_widgets2.js, tests/chart_ticks.json)
