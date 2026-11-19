@@ -19,14 +19,15 @@ async function until(fn, ms = 20000, step = 150) { const end = Date.now() + ms; 
 let br;
 const FF = E.BR === 'firefox';
 // WebKit-Verhalten von setMicrophoneActive (MediaSession::updateCaptureState): false -> Seitenaufnahme stumm (Spuren muted +
-// Ereignis mute), true ohne Geste -> abgelehnt. "Geste" = vertrauenswuerdiger Klick/Taste vor < 1 s (WebKit ist enger als
-// die 5 s von navigator.userActivation in Chromium).
+// Ereignis mute), true ohne Geste -> abgelehnt. "Geste" wie processingUserGestureForMedia: nur synchron in einem
+// vertrauenswuerdigen Klick/Tasten-Ereignis (nicht aus Timern - enger als die 5 s von navigator.userActivation).
 const WK_MIC = () => {
   const W = window.__wk = { muted: false, calls: [], tracks: [] };
   window.__wkErr = [];
   window.addEventListener('unhandledrejection', e => { const m = String(e.reason && e.reason.message || e.reason); if (/setMicrophoneActive/.test(m)) window.__wkErr.push(m); });
-  let last = -1e9;
-  ['pointerdown', 'mousedown', 'click', 'keydown'].forEach(k => window.addEventListener(k, e => { if (e.isTrusted) last = performance.now(); }, true));
+  let inG = false;
+  ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'keydown'].forEach(k => window.addEventListener(k, e => {
+    if (e.isTrusted) { inG = true; setTimeout(() => { inG = false; }, 0); } }, true));
   const d = Object.getOwnPropertyDescriptor(MediaStreamTrack.prototype, 'muted');
   Object.defineProperty(MediaStreamTrack.prototype, 'muted', { configurable: true, get() { return (this.kind === 'audio' && this.__wk && W.muted) || d.get.call(this); } });
   const setAll = m => { if (W.muted === m) return; W.muted = m; W.tracks.forEach(t => { if (t.readyState === 'live') t.dispatchEvent(new Event(m ? 'mute' : 'unmute')); }); };
@@ -34,7 +35,7 @@ const WK_MIC = () => {
   navigator.mediaDevices.getUserMedia = c => gum(c).then(s => { s.getAudioTracks().forEach(t => { t.__wk = true; W.tracks.push(t); }); return s; });
   if (!navigator.mediaSession) return;
   navigator.mediaSession.setMicrophoneActive = function (on) {
-    const g = performance.now() - last < 1000;
+    const g = inG;
     W.calls.push((on ? 'true' : 'false') + (on && !g ? '!' : ''));
     if (!on) { setAll(true); return Promise.resolve(); }
     if (!g) return Promise.reject(new DOMException('setMicrophoneActive must be called from a user gesture', 'InvalidStateError'));
@@ -111,7 +112,7 @@ const dev = p => p.evaluate(() => window.HKChat.state().device);
     // 2198: Aufnahme von A2 wirklich aktiv (WebKit-Attrappe), B sieht A2 mit Mikrofon an
     const wk = () => a2.evaluate(() => { const C = window.__wk, r = window.HKCalls.room(), mf = document.querySelector('.cl-micfree');
       return { calls: C.calls, pageMuted: C.muted, tracks: C.tracks.filter(t => t.readyState === 'live').map(t => ({ muted: t.muted, enabled: t.enabled })),
-               mic: r && r.mic, micOn: r && r.micOn, stuck: r && r.micStuck, pill: !!(mf && !mf.hidden && mf.offsetParent),
+               mic: r && r.mic, micOn: r && (r.micOn === undefined ? r.mic : r.micOn), stuck: r && !!r.micStuck, pill: !!(mf && !mf.hidden && mf.offsetParent),
                btn: (document.querySelector('.cl-ctl .cl-round') || {}).getAttribute ? document.querySelector('.cl-ctl .cl-round').getAttribute('aria-label') : '' }; });
     const bMic = () => horn(b).then(h => h && h.st && h.st[dA2] ? h.st[dA2].mic : null);
     const w1 = await until(async () => { const w = await wk(); return w.tracks.length && !w.pageMuted && w.tracks.every(t => !t.muted && t.enabled) && w.micOn && w; }, 8000, 200);
