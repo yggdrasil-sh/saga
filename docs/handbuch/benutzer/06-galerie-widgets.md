@@ -107,21 +107,30 @@ Damit Saga gleich mit dieser Seite startet: Seitenmenü **⋯** → **Als Starts
 
 1. Tipp in einer leeren Zeile `/widget` – oder gleich den Namen, etwa `/countdown`, `/uhr`,
    `/fortschritt` oder `/kennzahl`.
-2. Wähl das Widget aus. Es erscheint als Karte mit „Widget noch nicht fertig eingerichtet“.
+2. Wähl das Widget aus. Es erscheint als ruhige Karte mit dem Hinweis „… einrichten“.
 3. Klick auf die Karte. Rechts öffnet sich **Widget einrichten**.
-4. Stell alles ein – jede Änderung siehst du sofort in der Vorschau.
-5. Klick auf **Fertig**.
+4. Stell alles ein – jede Änderung siehst du sofort in der Vorschau. Für jedes Widget wählst du **Größe** (Klein,
+   Mittel, Groß), **Rahmen** (Karte oder Ohne Rahmen) und **Farbe**; beim Diagramm wählst du dazu die
+   **Diagrammart**.
+5. Klick auf **Fertig** (oben im Fenster, es scrollt mit).
 
 ![Widget „Countdown“ einrichten: Datum Sommerferien, Richtung „Bis zum Datum“, Einheit Tage, daneben die Vorschau](../bilder/b06-06-widget-einrichten.png)
 
 ① Die Einstellungen – jede Änderung erscheint sofort in der Vorschau.
 
-Mehrere Widgets nebeneinander bekommst du, indem du sie in **Spalten** setzt (`/3 Spalten`).
+Mehrere Widgets nebeneinander bekommst du, indem du sie in **Spalten** setzt (`/3 Spalten`). Widgets einer Reihe
+sind gleich hoch. Wird es zu eng, rücken die Spalten von selbst zusammen – aus vier werden zwei mal zwei, im schmalen
+Fenster und am Handy stehen sie untereinander. Spalten mit drei bis sechs Widgets dürfen etwas breiter sein als der
+Text.
+
+<!-- Bild folgt: Widgets im neuen Aussehen – vier Karten in einer Reihe (Countdown, Fortschritt, Kennzahl, Gewohnheiten) -->
 
 ### 5. Die Widgets im Überblick
 
 - **Uhr** – analog oder digital, auch für eine andere Zeitzone (etwa die Uhrzeit bei der Tante in Bangkok).
-- **Countdown** – Tage, Stunden oder Minuten **bis zum Datum** oder **seit dem Datum**.
+- **Countdown** – Tage, Stunden oder Minuten **bis zum Datum** oder **seit dem Datum**, groß als „42 Tage“ mit dem
+  Zieldatum darunter. Ist das Datum vorbei, steht dort **„Ziel erreicht“**; zählst du „seit“ einem Datum, das noch
+  kommt, steht **„Noch nicht erreicht“**. Mit Uhrzeit zählt auch die Uhrzeit.
 - **Fortschritt** – ein Balken. Entweder mit festen Zahlen („12 von 20 Kapiteln“), aus einer Datenbank (zum
   Beispiel Anteil angehakter Einträge) oder aus deinen Saga-Aufgaben.
 - **Kennzahl** – eine einzelne Zahl aus einer Datenbank: Anzahl, Summe, Durchschnitt, Minimum, Maximum oder
@@ -134,7 +143,16 @@ Mehrere Widgets nebeneinander bekommst du, indem du sie in **Spalten** setzt (`/
 - **Anstehendes** – deine Termine aus verbundenen Kalendern, deine fälligen Aufgaben und Einträge mit Datum
   aus gewählten Datenbanken für die nächsten Tage.
 - **Diagramm** – Balken, Linie, Fläche, Kreis, Ring oder eine große Zahl aus einer Datenbank (siehe auch
-  [B07, Diagramm-Ansicht](07-datenbanken.md)).
+  [B07, Diagramm-Ansicht](07-datenbanken.md)). In kleinen Karten zeigt es kompakt Gesamtwert und Balken;
+  **Werte als Tabelle** zeigt die Zahlen dahinter.
+- **Lesen** – **Gerade am Lesen**, dein **Leseziel** oder deine **Lesesträhne** aus BookOrbit. Dafür verbindest du
+  zuerst BookOrbit (siehe [B16](16-verbindungen.md)). Jede Person sieht ihre eigenen Bücher.
+- **Unterseiten** – kein Widget im engeren Sinn, aber ein Block in derselben Art: zeigt die Unterseiten als Liste
+  oder Galerie (siehe [B04](04-seiten-editor.md)).
+
+**Das Aussehen:** Alle Widgets haben denselben Aufbau – oben Symbol und Titel, darunter groß der Wert, klein darunter
+eine Zeile, woher er kommt (zum Beispiel „Summe · 36 Einträge“ oder „12 von 20“). Die gewählte Farbe färbt Balken,
+Ringe und Punkte. Liegt ein Fortschritt über 100 %, zeigt die Karte das in der Akzentfarbe.
 
 **Wer sieht was?**
 
@@ -142,8 +160,8 @@ Mehrere Widgets nebeneinander bekommst du, indem du sie in **Spalten** setzt (`/
   sieht jede Person ihre **eigenen**.
 - Werte aus einer **Datenbank** sieht nur, wer die Datenbank selbst sehen darf. Alle anderen sehen „Kein Zugriff
   auf die Datenquelle“.
-- Auf einer **veröffentlichten** Seite fehlt „Anstehendes“, und Werte erscheinen nur aus deinen eigenen
-  Datenbanken.
+- Auf einer **veröffentlichten** Seite fehlen „Anstehendes“ und „Lesen“, und Werte erscheinen nur aus deinen
+  eigenen Datenbanken.
 
 ### 6. Schaltflächen
 

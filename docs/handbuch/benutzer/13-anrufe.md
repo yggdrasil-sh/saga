@@ -16,6 +16,10 @@
   hat, kommt dazu.
 - **Vom Handy an den Laptop wechseln.** Ben hat auf dem Handy angenommen und holt das Gespräch mit einem Klick an
   den Laptop, ohne aufzulegen.
+- **Aus dem Gespräch wird eine Runde.** Anna telefoniert mit Ben und holt Clara dazu – ohne aufzulegen, das Gespräch
+  läuft einfach weiter.
+- **Vom Handy aus den Laptop-Bildschirm zeigen.** Lena telefoniert am Handy weiter und teilt die Fotos vom Laptop,
+  der als zweites Gerät dazukommt.
 
 ## Wofür ist das?
 
@@ -89,6 +93,20 @@ verbindet von selbst neu.
 Dein Gegenüber sieht den Bildschirm groß und deine Kamera klein. Antippen tauscht die beiden. Nichts davon wird
 aufgezeichnet oder auf dem Server gespeichert.
 
+**Über ein zweites Gerät teilen.** Telefonierst du am Handy, kannst du den Bildschirm trotzdem vom Laptop zeigen:
+
+1. Öffne Saga am Laptop. Oben steht die Leiste „Anruf läuft auf …“ mit deinem Handy.
+2. Klick auf **Hinzufügen**. Der Laptop kommt als **Begleitgerät** dazu – ohne Mikrofon und Ton, damit es im selben
+   Raum kein Echo gibt. Gesprochen wird weiter am Handy.
+3. Klick am Laptop auf **Bildschirm teilen**.
+
+Alle im Anruf sehen den Bildschirm groß, mit dem Namen des Geräts. Auch du siehst ihn auf dem Handy als
+Präsentation – das klappt in beide Richtungen: Teilst du am Handy, zeigt der Laptop deinen Bildschirm.
+
+<!-- Bild folgt: Begleitgerät – Laptop über „Hinzufügen“ dazugeholt, teilt den Bildschirm; Handy zeigt die Präsentation -->
+
+Ein Begleitgerät zählt als eigener Platz im Anruf. Ist der Anruf voll, kommt es erst dazu, wenn jemand auflegt.
+
 ### 5. Gruppenanrufe
 
 In einem Gruppen-Chat, einer freien Gruppe oder einem Seiten-Chat starten **📞** und **🎥** einen **Gruppenanruf**.
@@ -99,11 +117,50 @@ In einem Gruppen-Chat, einer freien Gruppe oder einem Seiten-Chat starten **📞
 3. Jede Person erscheint als Kachel. Wer gerade spricht, ist grün umrandet.
 4. Jeder kann jederzeit dazukommen und wieder gehen. Der Anruf läuft, solange mindestens zwei dabei sind.
 
+**Wer fehlt noch? – „Nicht dabei“.** In der Liste **Teilnehmende** stehen unter den Personen im Anruf alle
+Mitglieder, die gerade nicht dabei sind, mit ihrem Zustand: klingelt, hat abgelehnt, nicht angenommen, hat den Anruf
+verlassen, noch nicht eingeladen oder App zu alt. Mit **Erneut klingeln** (bzw. **Klingeln**) lässt du es bei einer
+Person noch einmal klingeln, mit **Alle erneut klingeln** bei allen. Das geht auch in großen Chats, in denen es sonst
+nur still „Gruppenanruf läuft“ heißt.
+
+**Jemanden dazuholen – „Person hinzufügen“.** In der Teilnehmerliste wählst du **Person hinzufügen** und suchst die
+Person aus deinen Kontakten. Ist sie schon im Chat, klingelt es bei ihr. Ist sie es noch nicht, wird sie Mitglied des
+Chats und klingelt dann – das darf, wer in diesem Chat Personen hinzufügen darf (in einer freien Gruppe die Admins).
+Im **Seiten-Chat** fragt Saga vorher nach: Die Person bekommt dann Lesezugriff auf die Seite. Eine Person von einem
+anderen Saga-Server kommt erst dazu, wenn ihr Server zugestimmt hat; danach lässt du sie unter „Nicht dabei“
+klingeln. Höchstens 10 neue Personen auf einmal.
+
+<!-- Bild folgt: Teilnehmerliste im Gruppenanruf mit „Nicht dabei“, „Erneut klingeln“ und „Person hinzufügen“ -->
+
+**Der Anruf ist voll.** Jedes Gerät belegt einen Platz – auch ein zweites Gerät zum Teilen. Ist alles belegt, sagt
+Saga das beim Beitreten und bei „Person hinzufügen“; erneut klingeln geht dann nicht. Erst wenn jemand auflegt, kommt
+die nächste Person dazu. **Hierher übernehmen** geht trotzdem.
+
 ![Gruppen-Videoanruf im Familienchat mit vier Kacheln im dunklen Modus](../bilder/b13-03-gruppenanruf.png)
 
 Ohne weitere Einrichtung passen **4 Personen mit Video** oder **6 nur mit Ton** in einen Gruppenanruf.
 
-> **Große Gruppenanrufe:** Dein Admin kann einen Anruf-Knoten einrichten, damit große Gruppenanrufe flüssig laufen.
+> **Große Gruppenanrufe:** Dein Admin kann einen Anruf-Knoten einschalten (Gjallarhorn, in Saga 2.5 noch
+> experimentell). Dann passen deutlich mehr Personen in einen Anruf, und **alle** Anrufe laufen über den Knoten –
+> auch die zu zweit. Die Geräte sehen dann gegenseitig ihre IP-Adressen nicht; Ende-zu-Ende verschlüsselt bleibt es.
+> Das geht auch, wenn Saga hinter einem Reverse Proxy steht – du merkst davon nichts.
+
+### 5a. Aus einem Gespräch zu zweit wird eine Runde
+
+Läuft dein Anruf zu zweit über den Anruf-Knoten, kannst du weitere Personen dazuholen, ohne aufzulegen:
+
+1. Öffne im Anruf die Liste **Teilnehmende** und wähl **Person hinzufügen**.
+2. Such die Person aus und bestätige.
+3. Saga legt eine **neue Gruppe** mit euch beiden und den Neuen an. Das Gespräch zieht dorthin um – niemand muss sich
+   neu verbinden, die Dauer läuft weiter. Bei den Neuen klingelt es.
+
+Ihr beide seid Admin der neuen Gruppe und könnt weitere Personen holen. Im bisherigen Chat steht „In Gruppenanruf
+verschoben“ mit dem Knopf **Zur Gruppe**. Die Neuen hören nichts von dem, was vorher gesagt wurde.
+
+Läuft das Gespräch direkt (ohne Knoten) oder mit einer Person von einem anderen Saga-Server, geht das noch nicht –
+ein Hinweis sagt dir dann, warum.
+
+<!-- Bild folgt: 1:1-Anruf, „Person hinzufügen“ – danach Gruppenanruf mit drei Kacheln und Eintrag „In Gruppenanruf verschoben“ -->
 
 ### 6. Den Anruf auf ein anderes Gerät holen
 
@@ -120,7 +177,11 @@ Was die Nummern bedeuten:
 
 - ① **Hierher übernehmen** – holt das Gespräch auf dieses Gerät.
 
-Das geht auch wieder zurück: Auf dem Handy erscheint jetzt dieselbe Leiste.
+Das geht auch wieder zurück: Auf dem Handy erscheint jetzt dieselbe Leiste. Hin und her wechseln geht schnell –
+meist in unter zwei Sekunden.
+
+Neben **Hierher übernehmen** steht **Hinzufügen**: Damit kommt das Gerät *zusätzlich* in den Anruf, als
+Begleitgerät ohne Mikrofon und Ton – praktisch, um von dort den Bildschirm zu teilen (siehe Schritt 4).
 
 ### 7. Verpasst, besetzt, abgelehnt
 
@@ -171,6 +232,11 @@ die du gesperrt hast, können dich nicht anrufen. Ist ein Chat stummgeschaltet, 
 Manche Firmennetze oder Mobilfunknetze lassen direkte Verbindungen nicht zu. Dein Admin kann dafür einen
 Vermittlungsserver (TURN) eintragen. Sag ihm Bescheid.
 
+**Es steht „Gegenstelle veraltet – direkt verbunden“.**
+Dein Gegenüber hat auf einem Gerät, das es in den letzten 30 Tagen benutzt hat, noch eine ältere Saga-App. Der Anruf
+läuft dann direkt statt über den Anruf-Knoten – das klappt trotzdem. Mit der App ab 2.5 läuft er wieder über den
+Knoten.
+
 **Kann der Server mithören?**
 Nein. Bild und Ton sind Ende-zu-Ende verschlüsselt. Der Server sieht nur, dass ein Anruf stattfindet, und wie lange.
 
@@ -180,7 +246,8 @@ Prüf, ob der Chat stummgeschaltet ist und ob Mitteilungen eingeschaltet sind (s
 Verbindung (`https`).
 
 **Wie viele können an einem Gruppenanruf teilnehmen?**
-Ohne Anruf-Knoten 4 mit Video oder 6 nur mit Ton. Mit einem Anruf-Knoten deines Admins deutlich mehr.
+Ohne Anruf-Knoten 4 mit Video oder 6 nur mit Ton. Mit einem Anruf-Knoten deines Admins deutlich mehr. Jedes Gerät
+zählt mit, auch ein zweites zum Teilen.
 
 **Wird der Anruf aufgezeichnet?**
 Nein. Saga zeichnet weder Gespräche noch geteilte Bildschirme auf.
@@ -191,7 +258,9 @@ Nein. Saga zeichnet weder Gespräche noch geteilte Bildschirme auf.
 
 **Handy-Browser**
 
-Anrufe gehen auch im Handy-Browser. Bildschirm teilen gibt es dort nicht – das geht nur am Computer.
+Anrufe gehen auch im Handy-Browser. Bildschirm teilen gibt es dort nicht – das geht nur am Computer (oder über ein
+zweites Gerät, siehe Schritt 4). Safari und alle Browser auf iPhone und iPad nutzen den Anruf-Knoten in Saga 2.5 nur
+eingeschränkt; dort läuft ein Anruf manchmal direkt.
 
 **iPhone, iPad und Mac**
 

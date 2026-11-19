@@ -63,6 +63,19 @@ Was die Nummern bedeuten:
 - Fahr im Seitenbaum mit der Maus über eine Seite und klick auf das kleine **+** daneben, oder
 - öffne die Seite, klick oben rechts auf **⋯** (Seitenmenü) und wähle **Unterseite hinzufügen**.
 
+Am Ende der Elternseite erscheint dann von selbst ein **Verweis** auf die neue Unterseite – mit Symbol und Titel, wie
+bei Notion. So findest du sie auch beim Lesen, nicht nur im Seitenbaum. Benennst du die Unterseite gleich nach dem
+Anlegen, zieht der Verweis den Titel mit. Verschiebst du sie später in eine andere Seite, wandert der Verweis mit.
+Das gilt auch für Unterseiten aus Vorlagen, beim Duplizieren und beim Import – nicht für Einträge einer Datenbank.
+
+**Alle Unterseiten auf einen Blick – Block „Unterseiten“.** Tipp in der Elternseite `/Unterseiten` (auch
+`/Galerie`). Der Block zeigt die Unterseiten als **Liste** (Symbol und Titel) oder als **Galerie** mit Karten in S, M
+oder L. Als Kartenbild wählst du das Titelbild der Seite, das erste Bild im Inhalt (gut für Buchcover) oder keins.
+Neue, umbenannte und gelöschte Unterseiten erscheinen sofort, in der Reihenfolge des Seitenbaums. Jede Person sieht
+nur die Unterseiten, die sie öffnen darf.
+
+<!-- Bild folgt: Block „Unterseiten“ als Galerie mit Titelbildern (Familien-Wiki der Sommers) -->
+
 **Seiten ordnen**
 
 - **Ziehen:** Zieh eine Seite im Seitenbaum an eine andere Stelle oder auf eine andere Seite, um sie dort
@@ -97,8 +110,8 @@ Das Menü ist in Gruppen geordnet:
 - **Medien:** Bild, Datei, Bild aus Immich, Nextcloud-Datei, Einbetten (YouTube, Link)
 - **Datenbank:** Datenbank, Aufgaben, Kalender
 - **Saga:** Person erwähnen, Seitenverweis, Datum oder Erinnerung, Formel im Text, Formel (Mathe),
-  Synchronisierter Block, Schaltflächen und Widgets (Uhr, Countdown, Fortschritt und weitere – siehe
-  [B06](06-galerie-widgets.md))
+  Synchronisierter Block, Unterseiten (Liste oder Galerie, siehe Abschnitt 1), Schaltflächen und Widgets (Uhr,
+  Countdown, Fortschritt und weitere – siehe [B06](06-galerie-widgets.md))
 
 Links neben jedem Block erscheinen beim Überfahren zwei kleine Griffe: **+** fügt darunter einen neuen Block ein,
 **⋮⋮** öffnet das Block-Menü (Abschnitt 4).
@@ -127,6 +140,10 @@ Was die Nummern bedeuten:
 
 Daneben findest du Unterstrichen, Durchgestrichen, Code, Markieren und **Link**. Für einen Link fügst du die
 Adresse in das Feld ein, das sich öffnet.
+
+**Links öffnen:** Ein einfacher Klick auf einen Link öffnet ihn – Adressen im Internet in einem neuen Tab,
+Seitenverweise direkt. Willst du nur die Schreibmarke in den Link setzen, klick mit gedrückter `Alt`- oder
+`⇧`-Taste; Doppelklick oder Ziehen markiert Text wie gewohnt.
 
 **Farbe per Slash:** Tipp `/rot`, `/blau` oder `/grün hintergrund` – das färbt den ganzen Block. Mit
 `Strg` + `⇧` + `H` (Mac: `⌘` + `⇧` + `H`) färbst du markierten Text in der zuletzt benutzten Farbe.
@@ -362,7 +379,9 @@ Tage lang, mit allen Unterseiten.
 **Versionsverlauf**.
 
 **Warum sieht mein Editor anders aus als in diesem Handbuch?**
-Euer Saga nutzt dann noch den klassischen Editor. Frag deinen Admin, ob er den neuen Editor einschalten kann.
+Seit Saga 2.5 ist der neue Editor (Tiptap) Standard. Sieht deiner anders aus, nutzt euer Saga noch den klassischen
+Editor (Editor.js) – entweder hat dein Admin ihn gewählt, oder du darfst selbst wählen: **Einstellungen → Seiten**.
+Der klassische Editor wird in einer späteren Version entfernt. Gespeichert wird in beiden dasselbe.
 
 **Kann ich eine Seite als Vorlage benutzen?**
 Ja: Seitenmenü **⋯** → **Als Vorlage markieren**. Sie erscheint dann unter **+ Neue Seite**. Fertige

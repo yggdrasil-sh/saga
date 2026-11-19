@@ -1,4 +1,4 @@
-# B16 Verbindungen: Kalender, Immich, Nextcloud
+# B16 Verbindungen: Kalender, Immich, Nextcloud, BookOrbit
 
 **Gilt für:** Web (verbinden) · Handy-Browser · iOS/iPadOS/Mac · Android · Linux (anzeigen)
 
@@ -16,11 +16,14 @@
   Reiseseite ein. Die Datei bleibt in der Nextcloud, alle auf der Seite können sie öffnen.
 - **Wochenplan mit echten Terminen.** Clara setzt einen Kalender-Block in ihren „Lernplan Abi“ und sieht dort ihre
   Klausurtermine aus dem Schulkalender.
+- **Lesen mit Notizen.** Ben liest E-Books mit BookOrbit. Seine Markierungen holt er als Seite nach Saga – je Kapitel
+  eine Unterseite mit den Zitaten und seinen Notizen.
 
 ## Wofür ist das?
 
 Viele Familien und Vereine haben ihre Termine, Fotos und Dateien schon woanders: Termine in einem Kalender (zum
-Beispiel Nextcloud oder mailcow), Fotos in [Immich](https://immich.app), Dateien in Nextcloud. Saga holt diese Dinge
+Beispiel Nextcloud oder mailcow), Fotos in [Immich](https://immich.app), Dateien in Nextcloud, Bücher und
+Markierungen in BookOrbit. Saga holt diese Dinge
 auf deine Seiten und ins Dashboard – ohne dass du sie doppelt pflegen musst.
 
 Jede Verbindung gehört nur zu **deinem** Konto. Du verbindest deine eigenen Dienste; andere sehen davon nur, was du
@@ -129,6 +132,37 @@ Unter einem Nextcloud-Block, den du eingefügt hast, stehen zwei Schalter (am An
 **Trennen** in **Einstellungen → Nextcloud** widerruft Sagas App-Passwort. Eingefügte Verweise zeigen danach keinen
 Inhalt mehr; Kopien bleiben.
 
+### 4. BookOrbit verbinden: Leseliste und Markierungen
+
+**BookOrbit** ist eine Leseplattform für E-Books, die man selbst betreiben kann. Saga **liest
+nur** – es schreibt nie etwas zu BookOrbit zurück.
+
+1. Öffne **Einstellungen → Verbindungen → BookOrbit**.
+2. Trag die **BookOrbit-Adresse** (zum Beispiel `https://bookorbit.example`), deinen **Benutzernamen** und dein
+   **Passwort** ein und klick auf **Anmelden**. Saga meldet sich einmal an und merkt sich nur ein Sitzungs-Token
+   (verschlüsselt) – dein Passwort speichert es nicht.
+3. Saga zeigt „✅ Verbunden“.
+
+<!-- Bild folgt: Einstellungen → Verbindungen → BookOrbit, verbunden, mit „Markierungen als Seite übernehmen“ -->
+
+Danach gibt es:
+
+- **Unter „Heute“** die Karte **Lesen**: was du gerade liest (mit Cover und Fortschritt) und deine Lesesträhne.
+- **Das Widget „Lesen“** für Seiten: **Gerade am Lesen**, **Leseziel** oder **Lesesträhne** (siehe
+  [B06](06-galerie-widgets.md)). Es zeigt immer die Daten der Person, die die Seite ansieht – auf einer geteilten
+  Seite sieht also jede Person ihre eigenen Bücher, auf veröffentlichten Seiten erscheint nichts.
+- **Markierungen als Seite übernehmen:** In den BookOrbit-Einstellungen, unter „Heute“ oder im Widget „Lesen“ ein Buch
+  antippen. Saga legt unter der Seite **„Bücher“** (📚) eine Seite für das Buch an – mit Cover, Autor:in, deiner
+  Notiz zum Buch, den Lesezeichen und **je Kapitel einer Unterseite** (📑) mit deinen Markierungen als Zitate und
+  deinen Notizen darunter.
+- **Aus BookOrbit aktualisieren** (Seitenmenü **⋯** der Buchseite) holt neue Markierungen dazu. Was du selbst
+  ergänzt oder geändert hast, bleibt; was du in Saga gelöscht hast, kommt nicht wieder.
+
+<!-- Bild folgt: Buchseite unter „Bücher“ mit Kapitel-Unterseiten und Zitaten -->
+
+**Trennen** in **Einstellungen → Verbindungen → BookOrbit** meldet Saga auch bei BookOrbit ab. Übernommene
+Buchseiten bleiben als normale Seiten stehen.
+
 ---
 
 ## Beispiel aus dem Alltag
@@ -175,6 +209,10 @@ Seite nicht mehr bearbeiten.
 
 **Gibt es Nextcloud-Dateien bei mir gar nicht?**
 Dann hat dein Admin die Funktion abgeschaltet.
+
+**Bei BookOrbit steht „Anmeldung abgelaufen – bitte neu anmelden“.**
+Die Anmeldung bei BookOrbit ist abgelaufen. Melde dich unter **Einstellungen → Verbindungen → BookOrbit** einfach
+neu an.
 
 ---
 
