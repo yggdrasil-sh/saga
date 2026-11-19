@@ -1584,7 +1584,7 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .horn-h{margin:1rem 0 .4rem;font-size:var(--fs-base);color:var(--muted);font-weight:500}
 /* 2.5: Gjallarhorn experimentell - ruhige Marke (keine Warnfarbe) und ein Hinweis-Kasten oben im Abschnitt */
 .adm-tag.exp{border-color:var(--muted);color:var(--muted);font-weight:500;white-space:nowrap}
-.horn-exp{margin:.2rem 0 .8rem;padding:.5rem .75rem;border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--r-md);font-size:var(--fs-sm);line-height:1.45}
+.horn-exp-note{margin:.2rem 0 .8rem;padding:.5rem .75rem;border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--r-md);font-size:var(--fs-sm);line-height:1.45}
 .horn-nodes td b{overflow-wrap:anywhere}
 @media (min-width:721px){.horn-nodes td:nth-child(3),.horn-nodes td:nth-child(1) b{white-space:nowrap}}
 .horn-cf-edit>summary.btn,.adm-actions form .btn{font-size:var(--fs-base)}

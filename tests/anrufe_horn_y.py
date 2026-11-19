@@ -128,7 +128,7 @@ def run():
     found, on, hint = box(html)
     # 2.5 (horn-exp-web): "experimentell" steht jetzt als Marke an der Ueberschrift und im Hinweis-Kasten, nicht mehr im Hilfetext
     ok(f"Admin-Seite: Haken gesetzt (wirksamer Wert), Hilfetext 'Standard an', Hinweis 'experimentell' im Kasten ({s}, {found}, {on})",
-       s == 200 and found and on and hint.startswith("Standard an") and 'class="horn-exp"' in html and "experimentell" in html, )
+       s == 200 and found and on and hint.startswith("Standard an") and 'class="horn-exp-note"' in html and "experimentell" in html, )
     ok("Admin-Zustand: horn_all an", state_all() is True)
     ok("Foederation: horn_req auch beim Altwert", "horn_req" in F.caps2())
 

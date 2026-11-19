@@ -57,12 +57,12 @@ def main():
     if not VORHER:
         s, h = adm("/calls")
         ok(f"Admin 'Anrufe' (de): Marke an 'Gjallarhorn' und 'Knoten', Hinweis-Kasten mit Admin-Satz ({s})",
-           s == 200 and h.count(TAG) >= 2 and 'class="horn-exp"' in h and SATZ in h and "Größere Anrufe folgen nach 2.5." in h)
+           s == 200 and h.count(TAG) >= 2 and 'class="horn-exp-note"' in h and SATZ in h and "Größere Anrufe folgen nach 2.5." in h)
         ok("Hilfetext 'Alle Anrufe über Knoten' ohne eigenes '(in 2.5 experimentell)'",
            "(in 2.5 experimentell)" not in h and "Wirkt nur, solange Gjallarhorn an ist. Ist kein" in h)
         for lg, w in (("en", ">Experimental<"), ("es", ">Experimental<"), ("ru", ">Экспериментально<"), ("th", ">ทดลอง<")):
             s, h = adm("/calls", lg)
-            ok(f"Admin 'Anrufe' ({lg}): Marke {w} und Hinweis-Kasten ({s})", s == 200 and w in h and 'class="horn-exp"' in h and SATZ not in h)
+            ok(f"Admin 'Anrufe' ({lg}): Marke {w} und Hinweis-Kasten ({s})", s == 200 and w in h and 'class="horn-exp-note"' in h and SATZ not in h)
         s, h = adm("/net")
         ok(f"Netz-Karte: Marke in der Legende bei 'Gjallarhorn-Knoten' ({s})",
            s == 200 and 'Gjallarhorn-Knoten <span class="adm-tag exp">Experimentell</span>' in h)

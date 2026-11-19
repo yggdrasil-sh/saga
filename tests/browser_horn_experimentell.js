@@ -73,7 +73,7 @@ async function adminPage(scheme, phone) {
       const p = await adminPage(scheme, phone), tag = (phone ? '390' : '1280') + '-' + (scheme === 'dark' ? 'dunkel' : 'hell');
       const st = await p.evaluate(() => {
         const h = document.querySelector('#horn h3'), n = [...document.querySelectorAll('#horn h4.horn-h')].find(x => /^Knoten/.test(x.textContent.trim()));
-        const box = document.querySelector('#horn .horn-exp');
+        const box = document.querySelector('#horn .horn-exp-note');
         return { h: h && !!h.querySelector('.adm-tag.exp'), n: n && !!n.querySelector('.adm-tag.exp'), box: box ? box.textContent : '',
                  ow: document.documentElement.scrollWidth - window.innerWidth, tags: document.querySelectorAll('.adm-tag.exp').length };
       });

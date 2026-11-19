@@ -62,7 +62,7 @@
 <section class="adm-card" id="horn">
   {# 2.5 (Vorgabe 10.11.): Gjallarhorn experimentell - Marke an den Ueberschriften, ein ruhiger Hinweis (keine Warnung) #}
   <h3>{{ _("Gjallarhorn – große Gruppenanrufe") }} <span class="adm-tag exp">{{ _("Experimentell") }}</span></h3>
-  <p class="horn-exp" role="note">{{ _("Gjallarhorn ist in Saga 2.5 experimentell – getestet mit bis zu 4 Personen bzw. Geräten je Anruf. Probleme bitte über „Diagnose senden“ melden.") }} {{ _("Größere Anrufe folgen nach 2.5.") }}</p>
+  <p class="horn-exp-note" role="note">{{ _("Gjallarhorn ist in Saga 2.5 experimentell – getestet mit bis zu 4 Personen bzw. Geräten je Anruf. Probleme bitte über „Diagnose senden“ melden.") }} {{ _("Größere Anrufe folgen nach 2.5.") }}</p>
   <p class="hk-hint">{{ _("Gruppenanrufe mit mehr als 4 Personen laufen über Gjallarhorn-Knoten. Ein Knoten ist eingebaut. Reicht die Leistung nicht, fügst du mit <b>Erweitern</b> weitere hinzu, z. B. auf einem kleinen Server mit guter Anbindung. Inhalte bleiben Ende-zu-Ende-verschlüsselt, Knoten leiten nur weiter.")|safe }}</p>
   <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="horn">
     {{ check(_('Große Gruppenanrufe über Gjallarhorn'), 'horn', hs.horn_on, _('Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).')) }}
