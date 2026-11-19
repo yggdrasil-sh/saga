@@ -126,8 +126,9 @@ def run():
     ok("Altwert horn_all false ohne Merker -> horn_dm an", wait_dm(A, True) is True)
     s, html = adm("GET", "/calls")
     found, on, hint = box(html)
-    ok(f"Admin-Seite: Haken gesetzt (wirksamer Wert), Hilfetext 'Standard an' mit 'experimentell' ({s}, {found}, {on})",
-       s == 200 and found and on and hint.startswith("Standard an") and "experimentell" in hint, )
+    # 2.5 (horn-exp-web): "experimentell" steht jetzt als Marke an der Ueberschrift und im Hinweis-Kasten, nicht mehr im Hilfetext
+    ok(f"Admin-Seite: Haken gesetzt (wirksamer Wert), Hilfetext 'Standard an', Hinweis 'experimentell' im Kasten ({s}, {found}, {on})",
+       s == 200 and found and on and hint.startswith("Standard an") and 'class="horn-exp"' in html and "experimentell" in html, )
     ok("Admin-Zustand: horn_all an", state_all() is True)
     ok("Foederation: horn_req auch beim Altwert", "horn_req" in F.caps2())
 
