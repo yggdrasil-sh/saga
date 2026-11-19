@@ -16,6 +16,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Meeting-Ansicht: eigenes Bild nach der Kamera, eine Wahrheit für Web, iOS und Android (Bugs-DB 2161)
+- Das schwebende eigene Bild richtet seine Breite jetzt auf allen Plattformen nach der Ausrichtung der **Kamera**
+  (quer: 22 % der Bühne, 120–280 px; hochkant: 26 %, 90–160 px), nicht mehr nach der Bühne – Handy gedreht oder
+  Handy-Kamera am Desktop ergeben ein passendes Bild statt eines zu großen bzw. zu kleinen Rahmens. Ohne bekanntes
+  Seitenverhältnis (vor dem ersten Bild) entscheidet wie bisher die Lage der Bühne (`selfPipSize`, `selfFit`).
+- `tests/meeting_vectors.json` ist die eine Wahrheit, die iOS und Android unverändert und ohne Abweichungen einlesen:
+  neu `choice` je Kachelfall, Fälle für Galerie mit zwei Kacheln, Sprecher bis zwei Personen (eigenes Bild schwebt),
+  Bildschirm in der Galerie vorn, Kacheln ohne Video mit 5 s Nachlauf auch außerhalb der Galerie, Streifen 1439/1440 px
+  und eigenes Bild hochkant/quer.
+- Tests: `tests/meeting_logik.js` (ohne den Fix 6 rot), neu `tests/browser_meeting_eigenbild.js` (Kamera-Attrappe
+  hochkant/quer, Desktop und Handy; Galerie mit zwei Kacheln, Bildschirm vorn).
+
 ### Behoben – Gruppenanrufe: Nachmelden der Fähigkeiten klingelt nicht mehr für einen gerade beendeten Anruf (Bugs-DB 2179)
 - `ring_late` (aus `PUT /api/calls/caps`) las den Anrufzustand ohne Sperre; wurde der Anruf genau dazwischen beendet,
   klingelte das Gerät bis zum Ende der Klingeldauer für einen beendeten Anruf. Jetzt läuft `ring_late` nach dem Commit der Meldung in
