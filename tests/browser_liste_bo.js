@@ -81,9 +81,8 @@ const shape = (xs) => (xs || []).map((x) => [String(x.content || '').replace(/<[
   const lists3 = b3.filter((x) => x.type === 'list');
   ok('Kopie der Kapitel-Liste gespeichert', lists3.length === 6, b3.map((b) => b.id + ':' + b.type));
   const one = lists3.filter((x) => x.data.bo).map((x) => x.id).join() === 'lb1';
-  // Tiptap kopiert beim Duplizieren auch data.bo (Attribut extra) - vorbestehend, nicht Teil von rot-web: nur melden
-  if (kind === 'tiptap' && !one) console.log('INFO Tiptap: Kopie der Kapitel-Liste traegt data.bo mit -> ' + J(lists3.map((x) => [x.id, !!x.data.bo])));
-  else ok('nur eine Liste traegt data.bo (das Original)', one, lists3.map((x) => [x.id, !!x.data.bo]));
+  // Bug 2163: auch Tiptap (fremde Felder im Attribut extra) laesst data.bo in der Kopie weg
+  ok('nur eine Liste traegt data.bo (das Original)', one, lists3.map((x) => [x.id, !!x.data.bo]));
 
   // 4. neu laden: Editor zeigt, was der Server hat; ein weiteres Speichern aendert keine Liste
   await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id);

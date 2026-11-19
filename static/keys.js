@@ -67,12 +67,20 @@
       K.doc.replace([c.id], [{ type: r[0], data: r[1], tunes: st ? { hkstyle: st } : undefined }], { focus: 'end' });
     });
   }
+  // Bug 2163: Kopie ohne Saga-Kennung data.bo (BookOrbit-Buchseite: sonst zoege der Server zwei Bloecke nach). Tiptap
+  // liefert fremde Felder mit (Attribut extra), Editor.js nicht; auch in Toggle-Inhalt (data.blocks)
+  function noKey(d) {
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return d;
+    var o = {}; Object.keys(d).forEach(function (k) { if (k !== 'bo') o[k] = d[k]; });
+    if (Array.isArray(o.blocks)) o.blocks = o.blocks.map(function (b) { return b && typeof b === 'object' ? Object.assign({}, b, { data: noKey(b.data) }) : b; });
+    return o;
+  }
   function duplicate(c) {
     if (!COPYABLE[c.type]) { HK.toast(T('Diesen Block bitte über das Block-Menü kopieren')); return; }
     c.json().then(function (s) {                   // samt Farbe (tunes)
       if (!s) return;
       var st = s.tunes && s.tunes.hkstyle;
-      K.doc.insertAfter(c.id, [{ type: s.type, data: s.data, tunes: st ? { hkstyle: st } : undefined }], { focus: 'end' });
+      K.doc.insertAfter(c.id, [{ type: s.type, data: noKey(s.data), tunes: st ? { hkstyle: st } : undefined }], { focus: 'end' });
     });
   }
   function move(c, d) {

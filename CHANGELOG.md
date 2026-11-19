@@ -36,6 +36,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Ersetzen + gleichzeitiges Tippen für vier Kennungspaare, Titel) 525/525 (vorher 524/525), `tests/browser_editorjs_fremd.js` mit
   Tiptap und `notes.live` 3× 61/61 (vorher 60/61).
 
+### Behoben – Tiptap: Duplizieren (Strg/Cmd+D) kopiert keine Saga-Kennung mehr (Bugs-DB 2163)
+- Die Kopie eines Blocks trug unter Tiptap die BookOrbit-Kennung `data.bo` mit – der Server hätte danach zwei
+  Kapitel-Listen nachgezogen. `static/keys.js` lässt `data.bo` beim Duplizieren weg (auch in Toggle-Inhalten), für
+  beide Editoren. Test: `tests/browser_liste_bo.js` prüft das jetzt auch mit Tiptap (vorher nur Hinweis) – Tiptap, Tiptap mit `notes.live` und Editor.js je 17/17.
+
 ### Behoben – Föderation: Ereignisse aus Werkzeug/CLI-Prozessen kommen sofort an statt nach ~46 s (Bugs-DB 2164)
 - Ein Namenswechsel, eine Kontolöschung oder `fed_dir.refresh_local` aus einem kurzlebigen Prozess (Werkzeug, CLI)
   erreichte die andere Instanz erst nach rund 46 s. Ursache: Die Express-Zustellung lief nach dem Ende des Hauptthreads;
