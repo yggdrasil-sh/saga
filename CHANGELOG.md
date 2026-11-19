@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Gruppenanrufe: ein Fehler beim Nachklingeln nach der Fähigkeiten-Meldung verhindert das Klingeln nicht mehr dauerhaft (Bugs-DB 2185)
+- `PUT /api/calls/caps`: scheiterte `ring_late` nach dem Speichern der Meldung, kam 500 zurück, und jede weitere (gleiche)
+  Meldung änderte nichts mehr – es klingelte nie. Jetzt wird der Fehler abgefangen und protokolliert (ohne persönliche
+  Daten), die Antwort ist 200, und `ring_late` läuft bei jeder Meldung eines Geräts mit `multi`/`horn`/`horn_ring` –
+  die nächste Meldung holt das Klingeln nach (doppelt klingelt nichts, gehoben wird nur `old`).
+- Tests: `tests/anrufe_nachmelden.py` 28/28 (neu: Fehler per Trigger erzwungen; ohne den Fix 26/28); `anrufe_klingeln` 40/40,
+  `anrufe_raum` 84/84, `anrufe_hinzufuegen` 43/43, `browser_erneut_klingeln.js` 16/16, `foederation_anrufe_hinzufuegen` 48/48.
+
 ### Geändert – Meeting-Ansicht: eigenes Bild nach der Kamera, eine Wahrheit für Web, iOS und Android (Bugs-DB 2161)
 - Das schwebende eigene Bild richtet seine Breite jetzt auf allen Plattformen nach der Ausrichtung der **Kamera**
   (quer: 22 % der Bühne, 120–280 px; hochkant: 26 %, 90–160 px), nicht mehr nach der Bühne – Handy gedreht oder
