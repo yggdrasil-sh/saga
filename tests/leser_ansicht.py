@@ -54,8 +54,16 @@ const PW = require('playwright');
   p.on('pageerror', (e) => errs.push(e.message));
   await p.goto(base + '/notes?t=' + Date.now() + '#' + id);
   await p.waitForSelector('.nbtn'); await p.waitForTimeout(700);
-  const r = await p.evaluate(() => ({ cfg: document.querySelectorAll('.nbtn-cfg').length, add: document.querySelectorAll('.nbtn-add').length,
-    btn: document.querySelectorAll('.nbtn').length, tgl: (document.querySelector('.tgl-title') || {}).contentEditable }));
+  // Toggle-Titel: Editor.js .tgl-title, Tiptap (Standard seit 2.5) der Teil ttitle im Toggle (static/pm-struktur.js:356,
+  // Bearbeitbarkeit erbt er vom Editor: static/pm-editor.js:1413). Dazu wirklich hineintippen.
+  const TT = '.tgl-title, .tgl [data-pm-part="ttitle"]';
+  const r = await p.evaluate((TT) => { const t = document.querySelector(TT);
+    return { cfg: document.querySelectorAll('.nbtn-cfg').length, add: document.querySelectorAll('.nbtn-add').length,
+      btn: document.querySelectorAll('.nbtn').length, pm: !!document.querySelector('#pg-editor .ProseMirror'),
+      tgl: t ? String(t.isContentEditable) : null, txt0: t ? t.textContent : null }; }, TT);
+  const t = await p.$(TT);
+  if (t) { await t.click(); await p.keyboard.press('End'); await p.keyboard.type('ZZ'); await p.waitForTimeout(400); }
+  r.txt1 = await p.evaluate((TT) => (document.querySelector(TT) || {}).textContent || null, TT);
   r.errs = errs; console.log(JSON.stringify(r)); await br.close();
 })().catch((e) => { console.log(JSON.stringify({ fail: e.message })); process.exit(1); });
 """
@@ -68,6 +76,11 @@ def browse(cookie, nid):
         return json.loads(out.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         return {"fail": out.stdout[-300:] + out.stderr[-300:]}
+
+
+def body_of(nid, cookie):
+    s, d = req("GET", f"/api/notes/{nid}", cookie)
+    return d.get("body", "") if s == 200 and isinstance(d, dict) else ""
 
 
 def main():
@@ -88,11 +101,15 @@ def main():
         ok("Leser: Schaltflaeche sichtbar", r.get("btn") == 1, r)
         ok("Leser: kein Zahnrad, kein +", r.get("cfg") == 0 and r.get("add") == 0, r)
         ok("Leser: Toggle-Titel nicht bearbeitbar", r.get("tgl") == "false", r)
+        ok("Leser: Tippen aendert den Toggle-Titel nicht", r.get("txt0") == "Klapp" and r.get("txt1") == "Klapp", r)
+        time.sleep(1.5)
+        ok("Leser: Toggle-Titel auf dem Server unveraendert", "Klapp" in body_of(seite, A) and "ZZ" not in body_of(seite, A))
         ok("Leser: keine Seitenfehler", not r.get("errs"), r)
         req("PUT", f"/api/notes/{seite}/shares", A, {"type": "user", "target": "lv-b", "role": "edit"})
         r = browse(Bk, seite)
         ok("Bearbeiter: Zahnrad und + da", r.get("cfg") == 1 and r.get("add") == 1, r)
         ok("Bearbeiter: Toggle-Titel bearbeitbar", r.get("tgl") == "true", r)
+        ok("Bearbeiter: Tippen landet im Toggle-Titel", r.get("txt1") == "KlappZZ", r)
         r = browse(A, seite)
         ok("Eigentuemer: Zahnrad und + da", r.get("cfg") == 1 and r.get("add") == 1, r)
     finally:
