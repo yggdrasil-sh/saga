@@ -149,7 +149,8 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await p.keyboard.press('Escape');
     const proj = all.find((x) => x.title === 'Website überarbeiten' && !x.template);
     await p.open(proj.id);
-    await p.click('button.val-btn[aria-label="Aufgaben"]'); await sleep(300);
+    // A11Y-19: zugaenglicher Name nennt Spalte UND Wert ("Aufgaben: …", static/pages.js:4470 valName)
+    await p.click('button.val-btn[aria-label^="Aufgaben: "]'); await sleep(300);
     const opts = await p.evaluate(() => [...document.querySelectorAll('.menu .opt-item')].map((x) => x.textContent.replace('✓', '').trim()));
     ok(`#6: Relations-Auswahl ohne Eintrags-Vorlage (${opts.length} Eintraege)`, opts.length > 3 && !opts.some((t) => t.endsWith('Neue Aufgabe')), opts);
     await p.keyboard.press('Escape');
@@ -174,10 +175,13 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await until(p, () => document.querySelectorAll('.wg-v').length >= 3 && ![...document.querySelectorAll('.wg-v')].some((x) => x.textContent === '…'));
     const nb = (t) => t.replace(/\u00a0|\u202f/g, ' ').trim();
     const wv = (await p.evaluate(() => [...document.querySelectorAll('.wg')].map((x) => [x.querySelector('.wg-v') && x.querySelector('.wg-v').textContent, (x.querySelector('.wg-sub') || {}).textContent || '', x.querySelector('.wg-fill') ? x.querySelector('.wg-fill').style.width : '']))).map((x) => x.map(nb));
-    ok(`#10: Fortschritt ueber 100 % echt (${wv[0][0]}), Balken voll (${wv[0][2]})`, wv[0][0] === '119 %' && parseFloat(wv[0][2]) === 100, wv[0]);
-    ok(`#10: Fortschritt in Euro (${wv[0][1]})`, wv[0][1] === '1.430,50 € / 1.200,00 €', wv[0]);
-    ok(`#10: Kennzahl Euro mit 2 Nachkommastellen (${wv[1][0]})`, wv[1][0] === '1.430,50 €', wv[1]);
-    ok(`#10: Kennzahl Prozent ganzzahlig (${wv[2][0]})`, wv[2][0] === '41 %', wv[2]);
+    // Widget-Design-Runde: die Einheit steht in einem eigenen <small> (static/pages.js:7324 wgVal, Leerraum davor faellt
+    // weg -> Wert ohne Leerzeichen vergleichen), Fortschritt "{a} von {b}" statt "a / b" (:7454)
+    const sp = (t) => t.replace(/\s/g, '');
+    ok(`#10: Fortschritt ueber 100 % echt (${wv[0][0]}), Balken voll (${wv[0][2]})`, sp(wv[0][0]) === '119%' && parseFloat(wv[0][2]) === 100, wv[0]);
+    ok(`#10: Fortschritt in Euro (${wv[0][1]})`, wv[0][1] === '1.430,50 € von 1.200,00 €', wv[0]);
+    ok(`#10: Kennzahl Euro mit 2 Nachkommastellen (${wv[1][0]})`, sp(wv[1][0]) === '1.430,50€', wv[1]);
+    ok(`#10: Kennzahl Prozent ganzzahlig (${wv[2][0]})`, sp(wv[2][0]) === '41%', wv[2]);
     await until(p, () => !!document.querySelector('.embed-db .db-row'));
     const cells = (await p.evaluate(() => [...document.querySelectorAll('.embed-db .nfmt-t')].map((x) => x.textContent))).map(nb);
     ok(`#10: Tabelle Prozent ganzzahlig, Euro ,00 (${cells.join(' | ')})`, cells.includes('41 %') && cells.includes('1.000,50 €') && cells.includes('430,00 €') && !cells.some((c) => /41,04/.test(c)), cells);
@@ -187,7 +191,7 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await e.open(W.id);
     await until(e, () => document.querySelectorAll('.wg-v').length >= 3 && ![...document.querySelectorAll('.wg-v')].some((x) => x.textContent === '…'));
     const ev = (await e.evaluate(() => [...document.querySelectorAll('.wg-v, .wg-sub')].map((x) => x.textContent))).map(nb);
-    ok(`#10: englisch (${ev.join(' | ')})`, ev.includes('119%') && ev.includes('€1,430.50 / €1,200.00') && ev.includes('€1,430.50') && ev.includes('41%'), ev);
+    ok(`#10: englisch (${ev.join(' | ')})`, ev.includes('119%') && ev.includes('€1,430.50 of €1,200.00') && ev.includes('€1,430.50') && ev.includes('41%'), ev);
     await e.context().close();
   }
 
