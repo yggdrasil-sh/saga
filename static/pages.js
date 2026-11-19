@@ -10084,7 +10084,11 @@
   // einem Eintrag je Position (Tiptap, static/pm-editor.js mapInBlock). Aenderung davor verschiebt sie, Aenderung
   // dahinter nicht. Bugs-DB 2177: aendert sich der Block vor UND hinter ihr (ein Mittelstueck um die Marke), bleibt sie
   // zwischen den Zeichen, die links und rechts von ihr am laengsten gleich geblieben sind (Anker); ohne Anker (Text um
-  // die Marke ersetzt/geloescht) wie bisher ans Ende der Aenderung. Nie zwischen die Haelften eines Ersatzzeichenpaars
+  // die Marke ersetzt/geloescht) wie bisher ans Ende der Aenderung. Nie zwischen die Haelften eines Ersatzzeichenpaars.
+  // Bugs-DB 2180: ein Anker braucht mindestens ANCHOR_MIN gleiche Eintraege (links + rechts zusammen) - ein einzelnes
+  // gleiches Zeichen ist bei ersetztem Text meist Zufall ("wo|rld" -> "there": nicht "the|re"); ein kuerzeres Mittelstueck
+  // zaehlt nur, wenn es ganz erhalten ist (dann ist die Stelle eindeutig belegt)
+  var ANCHOR_MIN = 3;
   function mapOffset(a, b, off) {
     var p = 0, n = Math.min(a.length, b.length);
     while (p < n && a[p] === b[p]) p++;
@@ -10103,7 +10107,7 @@
       while (r < W && off + r < ea && s + r < eb && a[off + r] === b[s + r]) r++;
       if (l + r > sc) { sc = l + r; best = s; }
     }
-    return best;
+    return sc >= Math.min(ANCHOR_MIN, ea - p) ? best : eb;
   }
   function surLo(x) { var c = typeof x === 'string' && x.length === 1 ? x.charCodeAt(0) : 0; return c >= 0xDC00 && c <= 0xDFFF; }
   // Editor.js, Rueckfall (Plan nicht schrittweise ausfuehrbar): neu zeichnen, Schreibmarke im selben Block wiederherstellen

@@ -5,7 +5,8 @@
 // und mit Ueberschneidung), Unterseiten-Verweis mit Titel in Etappen, Fremdaenderung am Block mit der Schreibmarke ohne
 // Eingabe, Spalten (in und neben einer Spalte tippen), viele schnelle Aenderungen, langsames Einarbeiten (Eingabe nur waehrenddessen). Laeuft mit notes.live an und aus (Admin-Schalter; der Test meldet den Stand).
 // Bugs-DB 2177: Schreibmarke mitten im Block, B formatiert nur ihr Wort (formatiert) bzw. aendert davor UND dahinter
-// (beidseits, gemischt) - die Marke bleibt an derselben Textstelle.
+// (beidseits, gemischt) - die Marke bleibt an derselben Textstelle. Bugs-DB 2180: B ersetzt das Wort der Marke (ersetzt)
+// - die Marke steht am Ende der Aenderung.
 // Voraussetzung: Admin editor.engine = choice (Konto-Wahl Editor.js). FAELLE=a,b,... nur diese Faelle.
 // SAGA_EDITOR=tiptap: dieselben Faelle mit Tiptap (ohne live blockweise Uebernahme, Schreibmarke wandert mit seit
 // Bugs-DB 2172; mit live gilt Yjs, Konflikt beim Uebernehmen seit 2173). Bugs-DB 2165: die Suite (tools/suite/innen.sh,
@@ -85,7 +86,7 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
     a.errs.length = 0; b.errs.length = 0;
     return id;
   }
-  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,mitte,formatiert,beidseits,gemischt,spalten,schnell,langsam').split(',');
+  const want = (process.env.FAELLE || 'andere16,neu,loeschen,gleich,ueberlappend,unterseite,ruhend,mitte,formatiert,beidseits,gemischt,ersetzt,spalten,schnell,langsam').split(',');
   const base3 = () => [P('t1', 'Start'), P('t2', 'Ende'), P('f0', 'fremd 0')];
   const agree = async (id, bl) => {   // Editor (A) zeigt dieselben Bloecke wie der Server
     const ids = (await D.blocks(a)).filter((x) => x.parent == null).map((x) => x.id);
@@ -227,6 +228,9 @@ const TXT = ' eins zwei drei vier fuenf sechs sieben acht neun zehn', TAIL = ' S
   // (a)+(b): davor, dahinter und das Wort der Marke kursiv
   if (want.includes('gemischt')) await caretCase('gemischt', 'Anfang Mitte Schluss', 10, 'Vorne Anfang <i>Mitte</i> Schluss 😀 hinten',
     'Vorne Anfang MitXte Schluss 😀 hinten', 'Vorne Anfang <i>MitXte</i> Schluss 😀 hinten');
+  // Bugs-DB 2180: B ersetzt das Wort der Marke ("wo|rld" -> "there") - ein zufaellig gleiches Zeichen ("r") ist kein
+  // Anker, die Marke steht am Ende der Aenderung (vorher "theXre")
+  if (want.includes('ersetzt')) await caretCase('ersetzt', 'Hallo world!', 4, 'Hallo there!', 'Hallo thereX!', 'Hallo thereX!');
 
   // Spalten (verschachtelte Editoren): fremde Aenderung in einer Spalte und neuer Spaltenblock, waehrend A in t1 tippt;
   // dann umgekehrt: A tippt IN einer Spalte, B aendert t2 und fuegt einen Block an
