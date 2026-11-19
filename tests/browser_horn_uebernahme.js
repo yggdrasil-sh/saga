@@ -7,6 +7,8 @@
 // einer frischen Nutzergeste (sonst Promise mit InvalidStateError). Geprueft: nach der Uebernahme ist die Aufnahme aktiv
 // und B sieht A2 mit Mikrofon an; haengt die Aufnahme trotzdem stumm, zeigen A2 und B ehrlich "stumm", A2 den Hinweis
 // "Mikrofon antippen, um es freizugeben" - ein Klick gibt frei. Echtes WebKit fehlt auf der Testmaschine (nur Attrappe).
+// BR=firefox: Firefox findet in der Testumgebung (Art knoten) noch keinen Weg zum Knoten (ICE-TCP/TURN-TLS mit Test-CA) -
+// bis dahin nur Chromium.
 //   SAGA_BASE=... SAGA_USER=a SAGA_PASS=... SAGA_USER2=b SAGA_PASS2=... [BR=firefox] node tests/browser_horn_uebernahme.js
 'use strict';
 const pw = require(process.env.PLAYWRIGHT || 'playwright-core');
@@ -77,7 +79,8 @@ const dev = p => p.evaluate(() => window.HKChat.state().device);
 (async () => {
   const U1 = E.SAGA_USER, U2 = E.SAGA_USER2;
   br = FF ? await pw.firefox.launch({ headless: true, firefoxUserPrefs: { 'media.navigator.permission.disabled': true,
-      'media.navigator.streams.fake': true, 'media.autoplay.default': 0, 'network.proxy.type': 0 } })
+      'media.navigator.streams.fake': true, 'media.autoplay.default': 0, 'network.proxy.type': 0,
+      'media.peerconnection.ice.loopback': true, 'media.peerconnection.ice.obfuscate_host_addresses': false } })   // Knoten der Testumgebung auf 127.0.0.1: Firefox sammelt sonst keine Loopback-Kandidaten
     : await pw.chromium.launch({ channel: E.PW_CHANNEL || 'chrome', headless: true,
       args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
   console.log('Browser: ' + (FF ? 'Firefox' : 'Chromium') + ' ' + br.version());
