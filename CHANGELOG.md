@@ -50,6 +50,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Sprecher, mehr nicht. 600 kbit/s Sprecher 14 → 17 fps, Kacheln an 81 → 90 %, Wechsel an/aus je Kachel 4 → 3 je
   Minute, längste Pause 9 → 6 s, Ton verdeckt 0,6 → 0,1 %. 1 Mbit/s und frei unverändert (20 fps, keine Pause).
   Reihe: neue Fälle `r4d-4-400k`, `r4d-4-600k`, Auswertung `--eng`, `R345_NS` (eigene Namensräume).
+- Nachbesserung nach der Prüfung: Nach einem Stau sperrt der Knoten 60 s lang nur noch Schritte nach der Schätzung –
+  höher geht es mit bestandener Probe (vorher blieb nach einem kurzen Stau auf wieder freier Leitung alles eine Minute
+  unten). Steigt die Grund-Umlaufzeit ohne eigene Schlange (anderer Netzweg), erkennt der Knoten das nach zwei
+  Schritten zurück und gibt die Stufen frei (vorher blieben die Kacheln bis zu Minuten aus). Eine einzelne verspätete
+  Antwort ist kein Stau mehr; die Dämpfung gilt je Leitung, nicht je Sprecher; bis zum ersten Empfängerbericht geht zu
+  Anrufbeginn nichts nach oben (vorher wich der Browser bei 400 kbit/s gelegentlich nach Sekunden auf TCP aus).
+  Stau nimmt erst alle Kacheln ins Mindestbild, bevor eine pausiert.
+  Container (n = 3, Median; Stand der Prüfung → jetzt): 400 kbit/s Ton verdeckt 0,2 → 0,7 %, RTT 82 → 92 ms (Spanne
+  vorher bis 426 ms mit TCP-Ausweichen, jetzt ≤ 93 ms); 600 kbit/s Kacheln an 71 → 78 %, längste Pause 15 → 8 s, Ton
+  0,9 → 0,2 %; Grund-RTT 40 → 200 ms bei 2 Mbit/s: Kacheln an 99 % statt bis Laufende aus (wie vor 2159); 1 Mbit/s und
+  frei unverändert. Gegenüber dem ersten Stand von 2159 (vor dem Prüferfix) liegen die Kacheln bei 600 kbit/s noch
+  unter 90 % – der damalige Schutz am Anrufbeginn war ein Fehler (60 s ohne Schritt nach oben in jedem Anruf).
 
 ### Behoben – Gruppenanrufe über den Knoten: enge Leitung ohne lange Bildpausen (Bug 2152)
 - Bei einer Person mit enger Leitung (Labor: 1 Mbit/s im 4er) kamen einzelne Bilder 15–83 s lang gar nicht an, obwohl die

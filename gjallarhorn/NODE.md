@@ -104,14 +104,34 @@ Platzhalter: `horn-1.example.org`.
     - **Ton geht vor Bild (Stau):** Die Leitung trägt weniger als die gerechnete Rate (Kopfdaten, drei Tonströme): Im
       Container lief bei 400 kbit/s mit dem Sprecher auf `l` die Schlange voll (RTT ~400 ms, Ton verdeckt 7,5 %),
       obwohl Schätzung und GCC-Ziel ihn zuließen. Stau heißt: GCC meldet `jamTicks` (3) Takte in Folge Überlast, oder
-      die Umlaufzeit (`ExtRTT`) liegt `rttJamFor` (600 ms) lang `rttJam` (100 ms) über ihrem Boden (kleinste gesehene,
-      steigt um `rttDrift` je Sekunde) – nur mit Zeitschichten und nicht während einer Probe; Überlast zählt erst, wenn
-      die Umlaufzeit bekannt ist (pion-GCC meldet bis zur ersten Laufzeit-Auswertung „overuse“, sonst staute jeder
-      Anrufbeginn, `TestEngLeitungAnlauf`). Dann nimmt das Bein je
+      die Umlaufzeit (`ExtRTT`) liegt `rttJamFor` (600 ms) lang und über `rttJamN` (2) Empfängerberichte `rttJam`
+      (100 ms) über ihrem Boden (kleinste gesehene, steigt um `rttDrift` je Sekunde; eine einzelne verspätete Antwort
+      ist kein Stau) – nur mit Zeitschichten und nicht während einer Probe; Überlast zählt erst, wenn die Umlaufzeit
+      bekannt ist (pion-GCC meldet bis zur ersten Laufzeit-Auswertung „overuse“, sonst staute jeder Anrufbeginn,
+      `TestEngLeitungAnlauf`), davor nur mit mindestens `jamLossStart` (5 %) Verlust. Dann nimmt das Bein je
       `jamStep` (1 s) eine Stufe zurück (Kachel tiefer, ins Mindestbild, in die Pause, zuletzt der Sprecher ins
-      Mindestbild), solange die Umlaufzeit nicht fällt. Zurück kommt die Mindestform erst nach `jamCalm` (4 s) ohne
-      Stau, einzeln und mit Aufschub (kam ein Platz binnen `upHold` zurück, verdoppelt er sich, `mbJam`); `jamHold`
-      (60 s) nach einem Stau keine Schritte nach der Schätzung (sie wächst anwendungsbegrenzt weit über die Leitung).
+      Mindestbild), solange die Umlaufzeit nicht fällt – erst die tiefere Schicht aller Kacheln, dann das Mindestbild
+      aller, erst dann eine Pause (sonst pausierte der Stau die Kachel im Mindestbild, während die eben voll gewordene
+      weiterlief). Zurück kommt die Mindestform erst nach `jamCalm` (4 s) ohne Stau, einzeln und mit Aufschub (kam ein
+      Platz dieser Art binnen `upHold` zurück, verdoppelt er sich, `mbJam`).
+    - **Sperre nach Stau (`jamHold`, 60 s):** keine Schritte nach der Schätzung (sie wächst anwendungsbegrenzt weit
+      über die Leitung) und kein freier Versuch – höher geht es nur mit bestandener Probe, die genau ihren Schritt
+      freigibt. Proben erst nach `jamCalm` ohne Stau und mit der Umlaufzeit wieder nahe am Boden (≤ Boden + 50 ms);
+      steigt sie während einer Probe 100 ms über den Boden, scheitert die Probe („rtt“). Staut es kurz (binnen
+      `upHold`) nach einer bestandenen Probe oder scheitert die zweite Probe in der Sperre, gibt es in ihr keine Probe
+      mehr (`jamBad`, Spur `halt=<s>b`). Vorher sperrte `jamHold` auch die Proben: Nach einem kurzen Stau auf wieder
+      freier Leitung blieb alles 60 s unten (`TestUDPProbing`, Prüfung 2159; Modell `TestEngLeitungNachStau`).
+    - **Netzwechsel:** Hat das Bein `jamPathN` (2) Stufen zurückgenommen und liegt die Umlaufzeit noch so hoch wie beim
+      ersten Schritt (−20/+40 ms) – ohne Überlast laut GCC und mit Verlust unter `jamPathLoss` (2 %) –, ist es nicht
+      die eigene Schlange (anderer Pfad, Grund-Umlaufzeit gestiegen): Boden neu, Sperre und Aufschub wie vor dem Stau.
+      Ohne Verlustangabe (`ExtStat`) nicht – eine volle Schlange hält die Umlaufzeit ebenso flach. Vorher nahm das Bein
+      im Dauerstau alles zurück, bis der Boden nachgezogen war (0,5 ms/s). Modell `TestEngLeitungNetzwechsel`.
+    - **Anrufbeginn:** Bis zum ersten Empfängerbericht (höchstens `rttWaitMax`, 3 s) geht nichts nach oben – Schätzung
+      und GCC-Ziel sind dann noch Startwerte (Container 400k: 755 kbit/s vor dem ersten Bericht, 67 % Verlust, der
+      Browser wich nach 3 s auf TCP aus).
+    - Die Dämpfung der Mindestform hängt am Bein und an der Art des Platzes (Kacheln bzw. Sprecher/Bildschirm,
+      `Leg.mb`), nicht am Besitzer: Mit dem Besitzer (Sprecherwechsel) fing sie sonst jedes Mal von vorn an
+      (Prüfmodell, Wechsel alle 10 s, 400k: 16,6 statt 3,8 Wechsel je Kachel und Minute; `TestEngLeitungSprecherwechsel`).
     Modell (`engleitung_test.go`, Prüfermodell: echte Leitung, pion-GCC-Regeln, Schlange 300 ms, 4 min): Sprecher in
     voller Form 260k/400k vorher 9 %, jetzt 100 %; Zustandswechsel je Kachel und Minute 260k/400k/480k vorher
     20,7/13,6/26,2, jetzt unter 5 (ein gescheiterter Versuch je ~30 s, `TestEngLeitungAufschub`). 600k, 1M und 1M mit
@@ -123,6 +143,23 @@ Platzhalter: `horn-1.example.org`.
     (72–94) ms, Sprecher 12 → 15 fps, Kacheln meist pausiert (an 40 → 12 %, in 2 von 3 Läufen ohne Kachelbild);
     `r4d-4-600k` Sprecher 14 → 17 fps, Kacheln an 81 → 90 %, Wechsel an/aus je Kachel 4 → 3/min, längste Pause
     9 → 6 s, Ton 0,6 → 0,1 %; `r4d-4-eng` (1 Mbit/s) und `r4y-4-frei` unverändert.
+    Nachbesserung nach der Prüfung (Modell): `TestEngLeitungNachStau` (4 Mbit/s, 8 s Stau auf 250 kbit/s) Sprecher
+    nach 66 s wieder auf `h` (vorher frühestens nach Ablauf der Sperre, ~108 s); `TestEngLeitungNetzwechsel` (2 Mbit/s,
+    Grund-RTT 40 → 200 ms) ein erkannter Netzwechsel, Sprecher bleibt auf `h`, Kacheln 0,4 % in Pause (Prüfer, Stand
+    vorher: Sprecher ~145 s im Mindestbild, beide Kacheln pausiert), einzelne Spitze kein Stau;
+    `TestEngLeitungSprecherwechsel` (alle 10 s) 400k 3,8 Wechsel je Kachel und Minute wie ohne Wechsel (vorher 16,6).
+    Container (n = 3, Median und Spanne; vorher = Stand der Prüfung fccc6dd, in Klammern eng-neu6 = a22f0c2 vor dem
+    Prüferfix): `r4d-4-400k` Sprecher 14 (12–20) → 15 (14–15) fps (15), Ton verdeckt 0,2 (0–4,3) → 0,7 (0,5–1,1) % (0
+    (0–0,2)), RTT 82 (81–426) → 92 (79–93) ms (92 (72–94)) – vorher wich der Browser in 1 von 3 Läufen nach dem
+    Anrufbeginn auf TCP aus (Dauerstau, RTT 426 ms), jetzt in keinem von 6 Läufen dieses Stands (dazu 3 eines
+    Zwischenstands); `r4d-4-600k` Sprecher 18 → 17 fps (17), Kacheln an 71 (62–72) → 78 (71–79) % (90 (86–92)),
+    Wechsel an/aus je Kachel 7 (6–7) → 7 (5–9)/min (3 (3–7)), längste Pause 15 (14–16) → 8 (8–8) s (6 (5–7)), Ton
+    0,9 → 0,2 % (0,1). Der Abstand zu a22f0c2 kommt vom Anrufbeginn: Dort hielt der fälschlich gemeldete Stau (GCC-Nullwert)
+    jeden Anruf 60 s lang unten – auf enger Leitung zufällig ruhiger, auf freier Leitung 60 s ohne `h`. 600k streut
+    stark (derselbe Stand in einer anderen Reihe: Kacheln an 87/89 %, Wechsel 4/7). RTT-Stufe (`r4d-4-eng-2m`, nach
+    45 s Grund-RTT 40 → 200 ms, n = 2): Sprecher 20 fps, Kacheln an 99 (98–100) %, längste Pause 1 (0–2) s (a22f0c2:
+    14 fps, 36 %, 39 s; vor 2159: 20 fps, 100 %, 0 s). `r4d-4-eng` und `r4y-4-frei` (n = 2) unverändert (20 fps, keine
+    Pause, Bild-Aufbau 2088 bzw. 1076 ms).
   - Hysterese gegen Pendeln (Horn-Fix, `layerStep`): Ohne Stau bleibt die laufende Schicht bis 10 % über der Schätzung
     (kurze Ratenspitzen, z. B. Schlüsselbilder, schalten nicht herunter); bei Stau (Sperrzeit) sofort herunter – so
     weit, wie die Schätzung es verlangt (von `h` auf `m`, wenn sie `m` trägt; früher immer bis `l`). Nach
@@ -1515,7 +1552,9 @@ e2e/stau.sh start; e2e/stau.sh set 'down=600&rtt=40'; e2e/stau.sh mess --path tu
 Medienrate, Rest der Sperrzeit, Aufschub, Schonfrist/ready, Probe-Stufe und je Bild-Platz Schicht, Zeitschicht,
 Besitzer (16-Bit-Hash der Peer-Kennung), Pakete des Ausgangs in der Sekunde und ob er wartet (`x` = nichts weitergeleitet,
 `w<schicht>` = Wechsel wartet auf ein Schlüsselbild, `~<a>/<b>` = Aufschub der Rückkehr der Mindestform in s,
-Pause → Mindestbild / Mindestbild → voll, nur wenn gesetzt; 2159), dazu `over=` (Überlast laut GCC), `rtt=<jetzt>/<Boden>ms` und `jam=` (Stau in der letzten Sekunde), z. B.
+Pause → Mindestbild / Mindestbild → voll, nur wenn gesetzt; 2159), dazu `over=` (Überlast laut GCC), `rtt=<jetzt>/<Boden>ms`, `jam=` (Stau in der letzten Sekunde) und, wenn gesetzt,
+`halt=<s>` (Rest der Sperre nach Stau, `b` = keine Proben mehr), `netz=<n>` (erkannte Netzwechsel), `loss=` (Verlust laut
+GCC) und `stufen=<n>/<ms>` (Schritte zurück im laufenden Stau, Umlaufzeit beim ersten), z. B.
 `spur 3fa2 est=538k gcc=961k rate=477k sperre=8.6s backoff=16s lag=false ready=true probe=0 over=false rtt=81/62ms jam=false
 sp:l3@91c0/23 ti:l3@0d7e/24 ti:p3@b415/0x~8/0`; bei `HORN_BWE=mit|eigen` dazu je Wechsel des ICE-Paars
 `spurpaar <bein> lokal=<typ> fern=<typ>` (ohne Adressen). Damit wurden 2152 und 2159 eingegrenzt.
