@@ -31,6 +31,7 @@ const CAM_HOOK = cam => {
     if (!cam || !c || !c.video) return s;
     s.getVideoTracks().forEach(t => { s.removeTrack(t); t.stop(); });
     const cv = document.createElement('canvas'); cv.width = cam.w; cv.height = cam.h;
+    window.__camSet = (w, h) => { cam.w = w; cam.h = h; cv.width = w; cv.height = h; };   // Kamera drehen mitten im Anruf
     const g = cv.getContext('2d'); let n = 0;
     setInterval(() => {
       g.fillStyle = '#3a6b8c'; g.fillRect(0, 0, cv.width, cv.height);
@@ -90,9 +91,15 @@ const selfBox = p => p.evaluate(() => {
   const v = document.querySelector('.cl-local'), st = document.querySelector('.cl-win .cl-stage');
   if (!v || v.hidden || getComputedStyle(v).display === 'none') return null;
   const r = v.getBoundingClientRect(), vv = v.querySelector('video') || v;
-  const want = st && vv.videoWidth && window.SagaMeeting ? window.SagaMeeting.selfPipSize(st.clientWidth, st.clientHeight, vv.videoWidth / vv.videoHeight, 'M') : null;
-  return { w: Math.round(r.width), h: Math.round(r.height), vw: vv.videoWidth, vh: vv.videoHeight, stage: st ? [st.clientWidth, st.clientHeight] : null, want };
+  let size = 'M'; try { size = (JSON.parse(localStorage.getItem('saga-call-self') || '{}') || {}).size || 'M'; } catch (e) { /* egal */ }
+  const want = st && vv.videoWidth && window.SagaMeeting ? window.SagaMeeting.selfPipSize(st.clientWidth, st.clientHeight, vv.videoWidth / vv.videoHeight, size) : null;
+  return { w: Math.round(r.width), h: Math.round(r.height), vw: vv.videoWidth, vh: vv.videoHeight, stage: st ? [st.clientWidth, st.clientHeight] : null, size, want };
 });
+const fits = s => s && s.want && Math.abs(s.w - s.want.w) <= 2 && Math.abs(s.h - s.want.h) <= 2;
+// Rahmengroessen je Bild mitschreiben (Flackern/Springen beim Drehen: nur alte und neue Groesse erlaubt)
+const sizesStart = p => p.evaluate(() => { window.__sz = []; window.__szOn = true; const f = () => { const v = document.querySelector('.cl-local'); if (v) { const r = v.getBoundingClientRect(); const k = Math.round(r.width) + 'x' + Math.round(r.height); if (window.__sz[window.__sz.length - 1] !== k) window.__sz.push(k); } if (window.__szOn) requestAnimationFrame(f); }; f(); });
+const sizesStop = p => p.evaluate(() => { window.__szOn = false; return window.__sz; });
+const near = (k, s) => { const [w, h] = k.split('x').map(Number); return Math.abs(w - s.w) <= 2 && Math.abs(h - s.h) <= 2; };
 async function call(a, b, U2) {
   await a.goto(BASE + '/chats#u' + encodeURIComponent(U2)); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1000);
   await b.goto(BASE + '/chats'); await liveOk(a, b);
@@ -115,12 +122,52 @@ async function hangup(a, b) {
 
     // --- Desktop, Kamera hochkant ------------------------------------------------------------------------------------
     ok('1:1 A <-> B verbunden (B: Desktop 1280x720, Kamera hochkant)', await call(a, b, U2), await room(b));
-    const s1 = await until(async () => { const s = await selfBox(b); return s && s.vw && s.w > 0 && s; }, 10000);
+    const s1 = await until(async () => { const s = await selfBox(b); return s && s.vw && s.w > 0 && fits(s) && s; }, 10000) || await selfBox(b);   // Pruefer 2161: auf das Anpassen warten (sonst Wettlauf mit 'resize')
     ok(`Desktop, Kamera hochkant (${s1 && s1.vw}x${s1 && s1.vh}): eigenes Bild hochkant (${s1 && s1.w}x${s1 && s1.h})`, s1 && s1.vh > s1.vw && s1.h > s1.w, s1);
     ok('... Breitenregel nach der Kamera (hochkant: hoechstens 160 px breit, nicht 22 % der queren Buehne)', s1 && s1.w <= 161, s1);
     ok('... Rahmen = SagaMeeting.selfPipSize (+-2 px)', s1 && s1.want && Math.abs(s1.w - s1.want.w) <= 2 && Math.abs(s1.h - s1.want.h) <= 2, s1);
     await b.mouse.move(640, 360); await sleep(300);
     await shot(b, 'desktop-kamera-hochkant');
+
+    // --- Pruefer 2161: Kamera mitten im Anruf drehen (hochkant -> quer -> hochkant), Groesse folgt ohne Zwischenstufen --
+    for (const [cw, ch, quer] of [[640, 360, true], [360, 640, false]]) {
+      const vor = await selfBox(b);
+      await sizesStart(b);
+      await b.evaluate(([w, h]) => window.__camSet(w, h), [cw, ch]);
+      const s = await until(async () => { const x = await selfBox(b); return x && (quer ? x.vw > x.vh : x.vh > x.vw) && fits(x) && x; }, 10000);
+      await sleep(600);
+      const seen = await sizesStop(b);
+      ok(`Kamera gedreht auf ${cw}x${ch}: eigenes Bild folgt (${s && s.w}x${s && s.h}, ${quer ? 'quer' : 'hochkant'}) = selfPipSize`, s && (quer ? s.w > s.h : s.h > s.w), s || await selfBox(b));
+      ok('... ohne Zwischengroessen (nur alt -> neu)', s && seen.length <= 2 && seen.every(k => near(k, vor) || near(k, s)), { vor, seen, s });
+    }
+    // --- Pruefer 2161: S/M/L per Doppelklick (L -> S -> M), jeweils = selfPipSize mit der Kamera hochkant ----------------
+    for (const sz of ['L', 'S', 'M']) {
+      await b.dblclick('.cl-local'); await sleep(400);
+      const s = await until(async () => { const x = await selfBox(b); return x && x.size === sz && fits(x) && x; }, 4000);
+      ok(`Groesse ${sz} per Doppelklick: Rahmen = selfPipSize (${s && s.w}x${s && s.h})`, s && !(await b.evaluate(() => document.querySelector('.cl-win').classList.contains('self-min'))), s || await selfBox(b));
+    }
+    // --- Pruefer 2161: sehr schmales und sehr breites Fenster -----------------------------------------------------------
+    for (const vp of [{ width: 360, height: 720 }, { width: 2400, height: 600 }, { width: 1280, height: 720 }]) {
+      await b.setViewportSize(vp); await sleep(500);
+      const s = await until(async () => { const x = await selfBox(b); return fits(x) && x; }, 4000);
+      ok(`Fenster ${vp.width}x${vp.height}, Kamera hochkant: Rahmen = selfPipSize (${s && s.w}x${s && s.h}), passt in die Buehne`,
+        s && s.h * 2 <= s.stage[1] + 2 && s.w <= s.stage[0], s || await selfBox(b));
+    }
+    // --- Pruefer 2161: Kamera aus und wieder an - Platzhalter bleibt sichtbar, danach wieder nach der Kamera -------------
+    await b.mouse.move(640, 600);
+    await b.click('.cl-ctl .cl-round >> nth=1');
+    const off = await until(async () => b.evaluate(() => { const v = document.querySelector('.cl-local'); const r = v && v.getBoundingClientRect(); return v && !v.hidden && !v.classList.contains('live') && r.width >= 60 && r.height >= 40 && [Math.round(r.width), Math.round(r.height)]; }), 6000);
+    ok('Kamera aus: eigenes Bild bleibt als Platzhalter mit sinnvoller Groesse', off, await selfBox(b));
+    await b.click('.cl-ctl .cl-round >> nth=1');
+    const on = await until(async () => { const x = await selfBox(b); return x && x.vh > x.vw && fits(x) && x; }, 10000);
+    ok(`Kamera wieder an: eigenes Bild wieder hochkant nach der Kamera (${on && on.w}x${on && on.h})`, on, await selfBox(b));
+    // --- Pruefer 2161: eigener Bildschirm geteilt - das eigene Bild bleibt die Kamera (§1.5), Groesse nach der Kamera ----
+    await b.mouse.move(640, 600);
+    await b.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]');
+    const sh = await until(async () => { const r = await b.evaluate(() => document.querySelector('.cl-win').classList.contains('screen')); const x = await selfBox(b); return r && x && x.vh > x.vw && fits(x) && x; }, 10000);
+    ok(`Eigener Bildschirm geteilt: eigenes Bild bleibt Kamera hochkant (${sh && sh.w}x${sh && sh.h}) = selfPipSize`, sh, await selfBox(b));
+    await b.click('.cl-share-stop').catch(() => {});
+    await sleep(800);
 
     ok('Auflegen beendet den Anruf', await hangup(a, b));
 
@@ -149,7 +196,7 @@ async function hangup(a, b) {
     await chatKeys(m, U2);
     await m.evaluate(() => { try { localStorage.removeItem('saga-call-layout'); localStorage.removeItem('saga-call-self'); } catch (e) { /* egal */ } });
     ok('1:1 A <-> B verbunden (B: Handy 390x844, Kamera quer)', await call(a, m, U2), await room(m));
-    const s2 = await until(async () => { const s = await selfBox(m); return s && s.vw && s.w > 0 && s; }, 10000);
+    const s2 = await until(async () => { const s = await selfBox(m); return s && s.vw && s.w > 0 && fits(s) && s; }, 10000) || await selfBox(m);   // Pruefer 2161: auf das Anpassen warten (sonst Wettlauf mit 'resize')
     ok(`Handy hochkant, Kamera quer (${s2 && s2.vw}x${s2 && s2.vh}): eigenes Bild quer (${s2 && s2.w}x${s2 && s2.h})`, s2 && s2.vw > s2.vh && s2.w > s2.h, s2);
     ok('... Breitenregel nach der Kamera (quer: mindestens 120 px breit, nicht 26 % der hochkanten Buehne)', s2 && s2.w >= 119, s2);
     ok('... Rahmen = SagaMeeting.selfPipSize (+-2 px)', s2 && s2.want && Math.abs(s2.w - s2.want.w) <= 2 && Math.abs(s2.h - s2.want.h) <= 2, s2);
