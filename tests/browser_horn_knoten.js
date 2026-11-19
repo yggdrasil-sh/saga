@@ -13,6 +13,11 @@
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
+// Erlaubte Wege zum Knoten: Standard nur ICE-TCP (eingebauter Knoten mit HORN_UDP=0, anrufe_horn_knoten.py). Kann der Knoten
+// UDP (horn_erweitern.py: horn-2), gewinnt je nach Lauf UDP mit EINER Leitung "both" fuer Ton und Bild (static/calls.js:3549)
+// -> SAGA_HORN_PATHS=tcp,udp. Tonplaetze stehen dann an legs.both statt legs.audio.
+const PATHS = (process.env.SAGA_HORN_PATHS || 'tcp').split(',');
+const aLeg = (h) => h && h.legs && (h.legs.audio || h.legs.both);
 const E = process.env, BASE = E.SAGA_BASE;
 const USERS = (E.SAGA_USERS || '').split(',').filter(Boolean);
 if (!BASE || USERS.length < 5 || !E.SAGA_PASS) { console.error('SAGA_BASE, SAGA_USERS (5), SAGA_PASS setzen'); process.exit(2); }
@@ -151,8 +156,8 @@ async function liveOk(ps) { for (const p of ps) await until(() => p.evaluate(() 
     await ps[0].click('#ct-call-v');
     const ha = await until(async () => { const h = await horn(ps[0]); return h && h.up && h; }, 20000);
     PERF.start_klick_bis_verbunden_ms = Date.now() - t0;
-    ok('A: Anruf ueber den Knoten, Ton- und Bild-Leitung verbunden (ICE-TCP)', ha && ha.node === (E.SAGA_NODE || 'localhost') && ha.path === 'tcp'
-       && ha.legs.audio.state === 'connected' && ha.legs.video.state === 'connected', ha || await horn(ps[0]));
+    ok('A: Anruf ueber den Knoten, Ton- und Bild-Leitung verbunden (' + PATHS.join('/') + ')', ha && ha.node === (E.SAGA_NODE || 'localhost') && PATHS.includes(ha.path)
+       && (ha.path === 'udp' ? ha.legs.both.state === 'connected' : ha.legs.audio.state === 'connected' && ha.legs.video.state === 'connected'), ha || await horn(ps[0]));
     ok('A: Frame-E2E-Worker mit Encoded Transform (' + (ha && ha.mode) + ')', ha && (ha.mode === 'script' || ha.mode === 'streams'));
     const joinMs = [];
     for (let i = 1; i < 5; i++) {
@@ -163,7 +168,7 @@ async function liveOk(ps) { for (const p of ps) await until(() => p.evaluate(() 
       else { console.log('  (' + 'ABCDE'[i] + ': kein Klingeln - tritt ueber HKCalls.join bei)'); await p.evaluate(id => window.HKCalls.join(id, 'member', true), ha.id); }
       const h = await until(async () => { const x = await horn(p); return x && x.up && x; }, 25000);
       joinMs.push(Date.now() - t0);
-      ok(`${'ABCDE'[i]}: beigetreten, beide Leitungen zum Knoten verbunden`, h && h.path === 'tcp', h || await horn(p));
+      ok(`${'ABCDE'[i]}: beigetreten, Leitungen zum Knoten verbunden (${h && h.path})`, h && PATHS.includes(h.path), h || await horn(p));
     }
     PERF.beitritt_klick_bis_verbunden_ms = joinMs;
     const all = await until(async () => {
@@ -194,7 +199,7 @@ async function liveOk(ps) { for (const p of ps) await until(() => p.evaluate(() 
           const ears = await p.evaluate(EAR), h = await horn(p);
           const e = ears.find(x => Math.abs(x.hz - FREQ[s]) < 15 && x.db > -75);
           if (!e) return false;
-          const slot = ((h.legs.audio || {}).slots || [])[e.slot] || {};
+          const slot = ((aLeg(h) || {}).slots || [])[e.slot] || {};
           return slot.peer && slot.peer === h.hp[devs[s]];
         }));
         return r.every(Boolean) && r;
@@ -202,7 +207,7 @@ async function liveOk(ps) { for (const p of ps) await until(() => p.evaluate(() 
       heard.push(!!got);
       ok(`${'ABCDE'[s]} spricht: alle vier anderen hoeren ${FREQ[s]} Hz, der Tonplatz gehoert laut Knoten ${'ABCDE'[s]}`, !!got,
          await Promise.all(ps.map(async p => { const h = await horn(p); return { ears: await p.evaluate(EAR),
-           slots: ((h.legs.audio || {}).slots || []).map(x => Object.keys(h.hp).find(d => h.hp[d] === x.peer) || x.peer).map(d => devs.indexOf(d)) }; })));
+           slots: ((aLeg(h) || {}).slots || []).map(x => Object.keys(h.hp).find(d => h.hp[d] === x.peer) || x.peer).map(d => devs.indexOf(d)) }; })));
     }
     for (const p of ps) await p.evaluate(() => window.__hornGain(0.05));
     // Ruhiger Lauf fuer die CPU-Messung (5 Personen, alle mit Bild und Ton): Zeitfenster fuer tests/anrufe_horn_knoten.py

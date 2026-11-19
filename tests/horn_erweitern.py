@@ -45,8 +45,10 @@ import time
 import urllib.parse
 
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORT, INTERNAL, ADMIN, HORN0, HORN2 = 8071, 8072, 8073, 8473, 8474
-CFP, RELP = 18310, 18311
+# Ports wie bisher; fuer Laeufe neben anderen (zugeteilte Bereiche) alle sieben per HORN_ERW_PORTS="saga,intern,admin,
+# horn0,horn2,cloudflare,release" ueberschreibbar
+PORT, INTERNAL, ADMIN, HORN0, HORN2, CFP, RELP = [int(x) for x in os.environ.get("HORN_ERW_PORTS", "").split(",") if x.strip()] \
+    or [8071, 8072, 8073, 8473, 8474, 18310, 18311]
 os.environ["HK_TEST_BASE"] = f"http://127.0.0.1:{PORT}"
 os.environ["SAGA_CF_API"] = f"http://127.0.0.1:{CFP}/client/v4"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -492,8 +494,15 @@ def pairing_api():
            and "Digest unbekannt" not in HO.deploy("horn-x.example.org", "hkh_x")["script_docker"])
     finally:
         os.environ.pop("SAGA_HORN_IMAGE_DIGEST", None)
-    s, html = adm("GET", "/calls")
-    ok("009: Warnung auch im Dialog Erweitern", s == 200 and "Achtung: Die Saga-Adresse" in html)
+    # Den Dialog "Erweitern" gibt es nur mit eingeschaltetem calls.horn (templates/admin/calls.html:195, sonst gesperrter
+    # Knopf mit Hinweis); die Reihe laeuft hier noch mit horn=False -> fuer diese Pruefung kurz einschalten (Einstellungen
+    # sind im Server bis 5 s zwischengespeichert)
+    auth.save_setting("calls", dict(CALLS))
+    page = wait(lambda: (lambda r: r if r[0] == 200 and "horn-pair-out" in str(r[1]) else None)(adm("GET", "/calls")), 10, 0.5)
+    auth.save_setting("calls", dict(CALLS, horn=False))
+    s, html = page or adm("GET", "/calls")
+    ok("009: Warnung auch im Dialog Erweitern", s == 200 and "Achtung: Die Saga-Adresse" in str(html), (s, bool(page)))
+    wait(lambda: "horn-pair-out" not in str(adm("GET", "/calls")[1]), 10, 0.5)
     s, d = pair_post(pair_body("hkh_" + "A" * 43, "horn-7.example.org")[0])
     ok(f"unbekannter Code -> 403 ({s}, {d.get('code') if isinstance(d, dict) else d})", s == 403 and d.get("code") == "token")
     b, _ = pair_body(tok, "horn-7.example.org")
@@ -701,7 +710,11 @@ def e2e(node0, alt, acme_bin):
             k, v = ln.split("=", 1)
             env[k] = v
     data = os.path.join(root, "var/lib/gjallarhorn")
-    env.update(HORN_DATA=data, HORN_LISTEN=f":{HORN2}", HORN_ICE_IPS="127.0.0.1", HORN_ACME_URL=f"http://127.0.0.1:{aport}/dir",
+    # HORN_PUBLIC_IP: der Knoten verwirft fuer die Kopplung interne Adressen (VPN-Schutz, gjallarhorn/nodeops.go:160
+    # globalIP; Saga sieht hier nur 127.0.0.1) und nimmt sonst eine oeffentliche IPv6 der Schnittstellen - auf dem
+    # Testhost gibt es keine verlaessliche. Wie im Betrieb hinter VPN/NAT die Adresse ausdruecklich setzen.
+    env.update(HORN_DATA=data, HORN_LISTEN=f":{HORN2}", HORN_ICE_IPS="127.0.0.1", HORN_PUBLIC_IP="127.0.0.1",
+               HORN_ACME_URL=f"http://127.0.0.1:{aport}/dir",
                HORN_ACME_DNS_WAIT="0", HORN_ACCESSLOG="1", HORN_UPDATE_BASE=f"http://127.0.0.1:{RELP}/upd", HORN_UPDATE_RETRY="2s", HORN_MAX_LEGS="48")
     nlog = open(os.path.join(STATE, "horn2.log"), "w")
     wp = subprocess.Popen([root + exe.group(1), exe.group(2)], env=env, stdout=nlog, stderr=subprocess.STDOUT)
@@ -849,7 +862,7 @@ def browser(n):
         ok("Browser-Test: node und Playwright vorhanden", False)
         return
     env = dict(os.environ, SAGA_BASE=f"http://127.0.0.1:{PORT}", SAGA_USERS=",".join(u for u, _ in BUSERS), SAGA_PASS=PW,
-               SAGA_NODE=NAME, SAGA_HOST_RULES=f"MAP {NAME} 127.0.0.1", PLAYWRIGHT=pw, DEBUG=os.environ.get("HORN_DEBUG_BROWSER", ""),
+               SAGA_NODE=NAME, SAGA_HOST_RULES=f"MAP {NAME} 127.0.0.1", SAGA_HORN_PATHS="tcp,udp", PLAYWRIGHT=pw, DEBUG=os.environ.get("HORN_DEBUG_BROWSER", ""),
                PLAYWRIGHT_BROWSERS_PATH=os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"), PW_CHANNEL="chromium")
     for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
         env.pop(k, None)
