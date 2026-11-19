@@ -177,6 +177,35 @@ const st = p => p.evaluate(() => {
     ok('Kuerzel P: Sprecher gewaehlt', (await ps[2].evaluate(() => localStorage.getItem('saga-call-layout'))) === 'speaker'
        && (horn ? /horn-strip/.test(sp.cls) : sp.meet && sp.meet.layout === 'speaker'), sp);
     await shot(ps[2], '8-sprecher-dunkel');
+    if (horn) {
+      // Pruefung 2192: Handy quer ueber den Knoten - Bildschirm, danach Sprecher (ohne Teilen) und Teilnehmerliste; nichts unter der Leiste
+      const QG = sel => ps[2].evaluate(s => { const R = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); };
+        const c = document.querySelector('.cl-win .cl-ctl'), b = document.querySelector(s), g = document.querySelector('.cl-win.horn-strip .cl-grid');
+        const l = document.querySelector('.cl-win .cl-local'), lv = !!l && !l.hidden && getComputedStyle(l).display !== 'none' && l.getClientRects().length > 0;
+        const p = document.querySelector('.cl-win .cl-plist');
+        return { vh: innerHeight, vw: innerWidth, ctl: c ? R(c) : null, big: b ? R(b) : null, grid: g ? R(g) : null, local: lv ? R(l) : null, plist: p ? R(p) : null,
+                 cls: (document.querySelector('.cl-win') || {}).className }; }, sel);
+      await ps[2].setViewportSize({ width: 844, height: 390 }); await sleep(800); await ps[2].mouse.move(300, 200); await sleep(300);
+      const q1 = await QG('.cl-win.horn-scr video.cl-hscreen'); console.log('  Lage Bildschirm quer: ' + JSON.stringify(q1));
+      ok('Pruefung 2192: Knoten-Gruppe Bildschirm quer 844x390 - Bildschirm hoch, links der Leiste, Streifen 120', q1.big && q1.big[3] >= q1.vh * 0.7
+         && q1.big[0] + q1.big[2] <= q1.ctl[0] + 1 && q1.grid && q1.grid[2] === 120 && q1.grid[0] + q1.grid[2] <= q1.ctl[0] + 1, q1);
+      await shot(ps[2], '9a-bildschirm-quer-844x390-dunkel');
+      await ps[1].mouse.move(500, 300); await ps[1].click('.cl-share-stop').catch(() => {});
+      await until(async () => !/horn-scr/.test((await st(ps[2])).cls) && /horn-strip/.test((await st(ps[2])).cls), 10000);
+      await ps[2].mouse.move(320, 210); await sleep(800);
+      const q2 = await QG('.cl-win.horn-strip:not(.horn-scr) .cl-hbig'); console.log('  Lage Sprecher quer: ' + JSON.stringify(q2));
+      ok('Pruefung 2192: Knoten-Gruppe Sprecher quer 844x390 - Sprecher hoch, links der Leiste, Streifen 120, eigenes Bild nicht ueber dem Sprecher',
+         q2.big && q2.big[3] >= q2.vh * 0.7 && q2.big[0] + q2.big[2] <= q2.ctl[0] + 1 && q2.grid && q2.grid[2] === 120
+         && q2.grid[0] + q2.grid[2] <= q2.ctl[0] + 1 && (!q2.local || q2.local[2] * q2.local[3] < q2.big[2] * q2.big[3] * 0.25), q2);
+      await shot(ps[2], '9b-sprecher-quer-844x390-dunkel');
+      await ps[2].click('.cl-ctl .cl-people').catch(() => {}); await sleep(600);
+      const q3 = await QG('.cl-win .cl-plist'); console.log('  Lage Teilnehmerliste quer: ' + JSON.stringify(q3));
+      ok('Pruefung 2192: Teilnehmerliste quer 844x390 sichtbar und im Fenster', q3.plist && q3.plist[3] >= 120 && q3.plist[1] >= 0
+         && q3.plist[1] + q3.plist[3] <= q3.vh, q3);
+      await shot(ps[2], '9c-teilnehmer-quer-844x390-dunkel');
+      await ps[2].click('.cl-ctl .cl-people').catch(() => {}); await sleep(300);
+      await ps[2].setViewportSize({ width: 1280, height: 720 }); await sleep(600);
+    }
     await ps[2].keyboard.press('a');
     await ps[0].click('.cl-ctl .cl-red').catch(() => {});
     for (let i = 1; i < 4; i++) await ps[i].click('.cl-ctl .cl-red').catch(() => {});
