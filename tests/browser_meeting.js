@@ -181,6 +181,14 @@ async function hornFlow(a, a2, b, o) {
     return !g || !c || g.getBoundingClientRect().bottom <= c.getBoundingClientRect().top + 1; });
   ok('Knoten Handy: Leiste einzeilig im Fenster, Auflegen ganz sichtbar, Streifen endet ueber der Leiste', cfh.inside && cfh.oneRow && cfh.red && above, [cfh, above]);
   await shot(b, 'knoten-4-handy-dunkel');
+  // Bugs-DB 2158: Handy quer (Hoehe < 500) - Knoepfe rechts senkrecht ueber die ganze Hoehe, jeder Knopf trifft sich selbst
+  await b.setViewportSize({ width: 844, height: 390 }); await sleep(800); await b.mouse.move(400, 200); await sleep(300);
+  const quer = await b.evaluate(() => { const c = document.querySelector('.cl-win .cl-ctl'), q = c.getBoundingClientRect();
+    const bs = [...c.querySelectorAll('.cl-round')].filter(x => x.getClientRects().length).map(x => { x.scrollIntoView({ block: 'nearest' }); const r = x.getBoundingClientRect();
+      const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!e && (e === x || x.contains(e)); });
+    return { ctl: [q.top, q.height, innerHeight].map(Math.round), n: bs.length, hit: bs.filter(Boolean).length }; });
+  ok('Knoten Handy quer: Leiste ueber die ganze Hoehe, alle Knoepfe anklickbar', quer.ctl[1] >= quer.ctl[2] * 0.9 && quer.n >= 3 && quer.hit === quer.n, quer);
+  await shot(b, 'knoten-4b-handy-quer-dunkel');
   await b.setViewportSize({ width: 1280, height: 720 });
   // §4.2 Gegenrichtung (Bugs-DB 2160): A2 hoert auf, A (Hauptgeraet) teilt -> A2 (Begleitgeraet) zeigt den Bildschirm von A
   await a2.mouse.move(300, 300); await a2.click('.cl-share-stop');

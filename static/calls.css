@@ -517,7 +517,9 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
 }
 /* Handy quer (Hoehe < 500): Knoepfe rechts senkrecht, Streifen rechts links davon, Kopf einzeilig */
 @media (max-height:500px) and (orientation:landscape){
-  .cl-win:not(.small) .cl-ctl{position:absolute;top:0;right:0;bottom:0;width:72px;flex-direction:column;justify-content:center;align-items:center;flex-wrap:nowrap;
+  /* grid-row: Bezugsblock eines absolut positionierten Grid-Kinds ist sein Grid-Bereich - mit Zeile 4 (leer, 0 px) lag die Leiste
+     13 px hoch am unteren Rand, Knoepfe nicht bedienbar (Bugs-DB 2158) */
+  .cl-win:not(.small) .cl-ctl{grid-row:1/-1;position:absolute;top:0;right:0;bottom:0;width:72px;flex-direction:column;justify-content:center;align-items:center;flex-wrap:nowrap;
     gap:.4rem;padding:.4rem .3rem calc(.4rem + env(safe-area-inset-bottom));background:linear-gradient(90deg,transparent,#0b0f15dd);overflow-y:auto}
   .cl-win:not(.small) .cl-round{width:48px;height:48px;min-width:48px}
   .cl-win:not(.small) .cl-ctl .cl-pill{display:none}
