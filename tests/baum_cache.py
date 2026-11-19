@@ -13,7 +13,7 @@ import base64, http.client, json, os, random, time, urllib.parse
 from itsdangerous import TimestampSigner
 import auth
 from db import connect
-from saga import sharing
+from saga import i18n, sharing
 from saga.notes import NOTE_META_COLS
 from saga.sharing import Access, _best
 
@@ -24,6 +24,9 @@ A, BU, CU, DU = "bc-a", "bc-b", "bc-c", "bc-d"
 GRP, EXT = "bc-team", "bc-extern"
 res, fails = [], []
 n500 = [0]
+# Vergleich mit /api/shared (Accept-Language de): Ersatznamen ohne Anzeigename ("Unbekannte Person (f5g7)", D01,
+# saga/core.py:1119) kommen in der Sprache der Anfrage - ohne Anfrage waere der Testprozess Englisch
+i18n.set_lang("de")
 
 
 def ok(n, c, detail=None):
