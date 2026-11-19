@@ -25,6 +25,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Teilnehmerliste – kein Banner, keine Warnung je Anruf. Anleitung (de/en/es) Abschnitt Anrufe: ein Satz. API unverändert.
 - Tests: neu `tests/horn_experimentell.py` 10/10 mit `tests/browser_horn_experimentell.js` 9/9 (Testumgebung `knoten`);
   `anrufe_horn_y` 21/21 (erwartet „experimentell“ jetzt im Kasten), `horn_erweitern` 139/139, `anrufe_horn_web` 109/109.
+  Prüfung: neu `tests/browser_horn_exp_fed.js` (Föderation mit verbundenem Server: Marke nur am Block
+  „Gjallarhorn-Knoten für …“, ohne Gjallarhorn keine) – Art `fedknoten` 6/6, Art `fed` 6/6.
 - Admin → Anrufe: Der Hinweis bei „Eingebauten Knoten für Anrufe nutzen“ empfahl noch die Betriebsart „Ein Port“
   (`SAGA_TLS=1`); jetzt: ab Werk Tunnel-Betrieb über die normale Saga-Adresse, nur Port 443, „Websockets Support“ am
   Proxy (Bugs-DB 2190).
