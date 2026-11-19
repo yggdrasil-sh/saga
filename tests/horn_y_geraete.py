@@ -367,6 +367,19 @@ def inproc():
                     CL._caps_pending('["chat3","multi"]', "Pixel 9"), CL._caps_pending('["chat3"]', "Firefox · Linux"),
                     CL._caps_pending(None, "x")]
             ok(f"2194: _caps_pending nur fuer caps = [chat3] und kein Browser ({pend})", pend == [True, True, False, False, False, False])
+            with c:                                    # Pruefer 2194: nur ein frisch gekoppeltes 2.5-Geraet (caps [chat3])
+                c.execute("INSERT INTO chat_device (id, uid, name, enc_pub, sign_pub, sig, created, last_seen, caps) VALUES (?,?,?,?,?,?,?,?,?)",
+                          (secrets.token_hex(16), uid, "Pixel 9", "x", "x", "x", now, now, '["chat3"]'))
+            why, n = CL.dm_peer_check(c, uid, CAPS + ["ws"])
+            ok(f"2194: nur [chat3]: Knoten-Einladung (_can_horn {CL._can_horn(c, uid)}), keine Mesh-Gruppe (_can_multi {CL._can_multi(c, uid)}), "
+               f"wie horn_ring ohne Erreichbarkeitspruefung ({why}, {n and n['name']}), foederiert None ({CL.dm_peer_block(c, uid)})",
+               CL._can_horn(c, uid) and not CL._can_multi(c, uid) and why is None and n and n["id"] == tun and CL.dm_peer_block(c, uid) is None)
+            with c:
+                c.execute("UPDATE chat_device SET name='Chrome · Linux' WHERE uid=?", (uid,))
+            ok(f"2194: Browser mit [chat3] zaehlt nicht (_can_horn {CL._can_horn(c, uid)}, {CL.dm_peer_block(c, uid)})",
+               not CL._can_horn(c, uid) and CL.dm_peer_block(c, uid) == "web")
+            with c:
+                c.execute("DELETE FROM chat_device WHERE uid=?", (uid,))
     finally:
         HN._LIVE.pop(tun, None)
         node(False, name="hg-tunnel.example.org")
