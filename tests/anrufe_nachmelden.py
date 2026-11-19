@@ -9,6 +9,7 @@ Wegwerf-Konten ca-n*; raeumt auf."""
 import os
 import secrets
 import sys
+import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -210,6 +211,34 @@ def run():
        ev and ev.get("silent") is True and rs == "ringing" and abs((rc or 0) - call["created"]) < 0.01)
     ok("... Liste bei A: G 'none' (stiller Start, nie laut geklingelt)", st(get(A, g5).get("invites")).get("ca-ns0") == "none")
     end(A, g5)
+
+    # --- Bugs-DB 2179: Wettlauf mit dem Anrufende. Eine Transaktion haelt die Anruf-Zeile gesperrt (wie _finish bzw.
+    # Beitreten/Annehmen), die Meldung kommt genau dazwischen. Ohne Ende: klingelt nach der Freigabe; mit Ende: nichts -------
+    for ended in (False, True):                         # B ruft an (A hat schon 6 Anrufe je Minute, CALL_RATE)
+        with connect() as c, c:                         # F ohne Meldung: beim Start 'old', kein call.invite
+            c.execute("UPDATE chat_device SET caps='' WHERE uid='ca-nf'")
+        mF, out = sF.mark(), {}
+        g7, s, call = start(B, gid3)
+        ok(f"2179: Anruf von B, F 'old' ({s}, {st(call.get('invites')).get('ca-nf')})", s == 200 and st(call.get("invites")).get("ca-nf") == "old")
+        th = threading.Thread(target=lambda: out.update(s=R_.caps_put(F, F.dev, CAPS)))
+        with connect() as c:
+            c.execute("SELECT id FROM chat_call WHERE id=? FOR UPDATE", (g7,))
+            if ended:                                   # wie _finish: Zustand, klingelnde Einladungen verpasst
+                c.execute("UPDATE chat_call SET state='ended', reason='hangup', ended=? WHERE id=?", (time.time(), g7))
+                c.execute("UPDATE chat_call_invite SET state='missed' WHERE call_id=? AND state='ringing'", (g7,))
+            th.start()
+            th.join(1.0)
+            waited = th.is_alive()                     # neu: die Meldung wartet auf die Sperre des Anrufs
+            c.commit()
+        th.join(15)
+        if ended:
+            ok(f"2179: F meldet nach, waehrend der Anruf beendet wird ({out.get('s')}, wartete {waited}) -> bleibt 'old', "
+               "klingelt nicht", out.get("s") == 200 and raw(g7, "ca-nf")[0] == "old" and sF.none("call.invite", mF, 1.2))
+        else:
+            ev = sF.wait("call.invite", lambda x: x["call_id"] == g7, mF)
+            ok(f"2179: F meldet nach, waehrend der Anruf gesperrt ist ({out.get('s')}, wartete {waited}) -> klingelt nach der "
+               "Freigabe", out.get("s") == 200 and ev is not None and raw(g7, "ca-nf")[0] == "ringing")
+            end(B, g7)
 
 
 if __name__ == "__main__":

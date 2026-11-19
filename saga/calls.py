@@ -472,15 +472,20 @@ def ring_late(c, uid, now=None):
     und es klingelt wie beim Start (ring_group, ueber Knoten: _can_horn). created = jetzt (das Geraet klingelt ring_s ab
     call.invite - so passt "klingelt"/"nicht angenommen" bei den anderen dazu); in grossen Gruppen (stiller Start) bleibt
     created, die Liste zeigt sie wie beim Start nicht als klingelnd. Nur einmal je Einladung (UPDATE ... WHERE
-    state='old'); echte Alt-Geraete melden nichts davon - fuer sie aendert sich nichts. -> Anzahl."""
+    state='old'); echte Alt-Geraete melden nichts davon - fuer sie aendert sich nichts. -> Anzahl.
+    Bugs-DB 2179: eigene Transaktion NACH dem Commit der Meldung (haelt keine chat_device-Sperre); je Anruf zuerst die
+    Anruf-Zeile sperren (gleiche Reihenfolge wie Beitreten/Annehmen: Anruf -> chat_device) und Zustand neu lesen - beendet
+    _finish den Anruf gleichzeitig, klingelt hier nichts mehr."""
     now = now or time.time()
     rs = ring_s()
     n = 0
-    for r in c.execute(f"SELECT {', '.join('k.' + x.strip() for x in C_COLS.split(','))}, i.created FROM chat_call k JOIN chat_call_invite i "
+    for r in c.execute("SELECT k.id, i.created FROM chat_call k JOIN chat_call_invite i "
                        "ON i.call_id=k.id JOIN chat_member m ON m.chat_id=k.chat_id AND m.uid=i.who AND m.left_at IS NULL "
                        "WHERE i.who=? AND i.state='old' AND i.created>? AND k.kind='group' AND k.state<>'ended' AND k.lead IS NULL "
                        "AND COALESCE(m.state, 'ok')='ok' ORDER BY k.created", (uid, now - rs)).fetchall():
-        call, since = _row(r[:-1]), r[-1]
+        call, since = _load(c, r[0], lock=True), r[1]
+        if not call or call["state"] == "ended" or call["lead"] is not None:
+            continue                                   # inzwischen beendet bzw. von einem anderen Server gefuehrt
         if not (_can_horn(c, uid) if is_horn(call) else _can_multi(c, uid)):
             continue                                   # z. B. Knoten-Anruf, das Geraet kann nur "multi"
         if any(x["who"] == uid for x in _legs(c, call["id"])):
@@ -1039,13 +1044,16 @@ async def api_caps(request: Request):
         return err
     b = await _body(request) or {}
     dev = str(b.get("device") or "")
-    with _db() as c, c:
-        if not _my_device(c, uid, dev):
-            return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
-        if note_caps(c, uid, dev, caps_in(b.get("caps"))):
-            ring_late(c, uid)                          # Bugs-DB 2174: Einladung 'old' wegen spaeter Meldung -> klingeln
-        now = time.time()                              # 2.5 Grundsatz Y: Lebenszeichen (30-Tage-Regel, dm_peer_check)
-        c.execute("UPDATE chat_device SET last_seen=? WHERE id=? AND uid=? AND COALESCE(last_seen, 0)<?", (now, dev, uid, now - 60))
+    with _db() as c:
+        with c:
+            if not _my_device(c, uid, dev):
+                return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
+            late = note_caps(c, uid, dev, caps_in(b.get("caps")))
+            now = time.time()                          # 2.5 Grundsatz Y: Lebenszeichen (30-Tage-Regel, dm_peer_check)
+            c.execute("UPDATE chat_device SET last_seen=? WHERE id=? AND uid=? AND COALESCE(last_seen, 0)<?", (now, dev, uid, now - 60))
+        if late:                                       # Bugs-DB 2174: Einladung 'old' wegen spaeter Meldung -> klingeln
+            with c:                                    # Bugs-DB 2179: eigene Transaktion, chat_device schon freigegeben
+                ring_late(c, uid)
     return chat._no_store({"ok": True})
 
 
