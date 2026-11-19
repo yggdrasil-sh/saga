@@ -51,10 +51,10 @@ function tauriInit(arg) {
       await p.goto(BASE + u); await p.waitForTimeout(1500);
       const s = await p.evaluate(() => ({ h: !!window.HK && !!HK.host, same: window.sagaHost === (window.HK && HK.host), kind: HK.host && HK.host.kind,
         caps: HK.host && HK.host.caps.length, badge: HK.host.badge(3), notify: HK.host.notify('a', 'b', '/'), w: HK.host.widgetsReload(),
-        post: HK.host.post({ action: 'badge', n: 1 }), hello: HK.host.receive({ type: 'hello', kind: 'mac', caps: ['badge'] }),
+        post: HK.host.post({ action: 'badge', n: 1 }), mic: HK.host.micActive(), hello: HK.host.receive({ type: 'hello', kind: 'mac', caps: ['badge'] }),
         open: HK.host.receive({ type: 'open', link: 'saga://tasks' }), wo: window.open === window.open }));
       ok(s.h && s.same && s.kind === null && s.caps === 0, u + ': HK.host = window.sagaHost, keine Huelle', s);
-      ok(s.badge === false && s.notify === false && s.w === false && s.post === false && s.hello === false && s.open === false, u + ': alle Aufrufe No-ops', s);
+      ok(s.badge === false && s.notify === false && s.w === false && s.post === false && s.mic === false && s.hello === false && s.open === false, u + ': alle Aufrufe No-ops', s);
     }
     // openExternal ohne Huelle: neues Fenster wie bisher
     const [pop] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), p.evaluate(() => HK.host.openExternal('https://example.invalid/x'))]);
@@ -93,6 +93,26 @@ function tauriInit(arg) {
     const s = await p.evaluate(() => ({ https: location.protocol === 'https:', caps: HK.host.caps, tun: !!HK.host.tunnel() }));
     ok(s.caps.indexOf('tunnel') >= 0 && s.tun === s.https, 'Mac: Faehigkeit tunnel, sagaHost.tunnel() nur ueber https (' + (s.https ? 'https' : 'http') + ')', s);
     await ctx.close();
+  }
+
+  // --- 2b. 2.5 (Bugs-DB 2198): Faehigkeit mic - micActive() schickt mic.active nur mit gemeldeter Faehigkeit -----------
+  {
+    const ctx = await ctxFor(UA_CHROME + ' SagaApp/3.0 (macOS)', macInit, { info: { kind: 'mac', version: '3.0', caps: CAPS.concat(['mic']) } });
+    const p = await login(ctx, USER, PASS);
+    await p.goto(BASE + '/notes'); await p.waitForTimeout(1500);
+    await clear(p);
+    const s = await p.evaluate(() => ({ caps: HK.host.caps.slice(), r: HK.host.micActive() }));
+    const m = (await msgs(p)).filter(x => x.action === 'mic.active');
+    ok(s.caps.indexOf('mic') >= 0 && s.r === true && m.length === 1 && m[0].v === 1, 'Mac: Faehigkeit mic, micActive() schickt mic.active', { s, m });
+    await ctx.close();
+    const ctx2 = await ctxFor(UA_CHROME + ' SagaApp/3.0 (macOS)', macInit, { info: { kind: 'mac', version: '3.0', caps: CAPS } });
+    const p2 = await login(ctx2, USER, PASS);
+    await p2.goto(BASE + '/notes'); await p2.waitForTimeout(1500);
+    await clear(p2);
+    const r2 = await p2.evaluate(() => HK.host.micActive());
+    const m2 = (await msgs(p2)).filter(x => x.action === 'mic.active');
+    ok(r2 === false && m2.length === 0, 'Mac ohne Faehigkeit mic (aeltere Huelle): micActive() No-op', { r2, m2 });
+    await ctx2.close();
   }
 
   // --- 2. Mac-Huelle ----------------------------------------------------------------------------------------------------
