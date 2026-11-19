@@ -645,6 +645,23 @@ def part3(privb, kid, pa, Pid, S, X, rP):
     py("b", "from saga.userdata import delete_user_data\ndelete_user_data('fb-cleo')\nprint(json.dumps(True))")
     rest = sql("b", "SELECT payload::jsonb->>'type', last_error FROM fed_outbox WHERE payload::jsonb->>'type' LIKE 'person.%'")
     ok(f"B: person.gone der Kontoloeschung schon im Werkzeug-Prozess zugestellt ({rest})", not rest)
+    # Rueckfall (2164): scheitert die Express-Zustellung bei uns (Ausnahme statt Netzfehler), ist die Zeile sofort wieder frei
+    # (kein Fehlversuch) und der Arbeiter von B stellt sie ohne 45-s-Sperre zu - genau einmal
+    r = py("b", """from saga import federation as F
+from db import connect
+def boom(*a, **k):
+    raise RuntimeError("cannot schedule new futures after interpreter shutdown")
+F._post_events = boom
+with connect() as c, c:
+    pid = c.execute("SELECT id FROM fed_peer WHERE status='active'").fetchone()[0]
+    oid = F._enqueue(c, pid, {"type": "test.noop"}, express=False)
+res = F._express_one(pid, oid)
+with connect() as c:
+    row = c.execute("SELECT locked_until, attempts, payload FROM fed_outbox WHERE id=?", (oid,)).fetchone()
+print(json.dumps([res, oid] + ([row[0], row[1], json.loads(row[2])["id"]] if row else [None, None, None])))""")
+    ok(f"B: Express scheitert bei uns -> Zeile sofort frei, kein Fehlversuch ({r[:4]})", r[0] is False and r[2] == 0 and r[3] == 0)
+    ok("B: Arbeiter stellt die Zeile ohne 45-s-Sperre zu", wait(lambda: not sql("b", "SELECT 1 FROM fed_outbox WHERE id=%d" % r[1]), 15))
+    ok("A: dieses Ereignis genau einmal angekommen", r[4] and sql("a", "SELECT count(*) FROM fed_event_seen WHERE ev_id=%r" % r[4]) == [[1]])
     ok("A: Kontoloeschung auf B -> Gruppen-Freigabe bleibt, Person weg", wait(lambda: not sql("a", "SELECT 1 FROM fed_person WHERE principal=%r" % f"@cleo@{HB}")))
     ok("B: Name des geloeschten Kontos gesperrt (ohne Eigentuemer)", sql("b", "SELECT uid FROM fed_name_retired WHERE name='cleo'") == [[None]])
 
