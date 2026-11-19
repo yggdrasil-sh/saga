@@ -713,7 +713,11 @@ def ingest(nid, rev=None):
                 # Bug 2173: wie gespeichert bereinigen (Konfliktblock-Stempel by "", at) - sonst passte das Doc nicht zu
                 # clean_blocks, _read_body lehnte jedes folgende Update ab (sanitize) und der Raum materialisierte nicht mehr
                 from saga import pages
-                target = json.loads(pages.clean_blocks(json.dumps(target, ensure_ascii=False))[0])
+                try:
+                    target = json.loads(pages.clean_blocks(json.dumps(target, ensure_ascii=False))[0])
+                except ValueError as ex:      # z. B. zu gross: unbereinigt weiter wie vor 2173 - nicht unten auf
+                    # "theirs" zurueckfallen, das loeschte die noch nicht materialisierte Live-Eingabe aus dem Doc
+                    print(f"collab: Seite {nid}: Bereinigen beim Uebernehmen: {type(ex).__name__}: {ex}", flush=True)
                 title = merge.merge_title(room.base_title, live_title, title)[0]
             except Exception as ex:  # noqa: BLE001
                 print(f"collab: Seite {nid}: Zusammenfuehren beim Uebernehmen: {type(ex).__name__}: {ex}", flush=True)

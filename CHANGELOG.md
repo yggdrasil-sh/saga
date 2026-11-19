@@ -37,6 +37,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Tests: `tests/collab.py` (neu: Konflikt beim Übernehmen, danach weiter live) 74/74 (ohne die Bereinigung 72/74, „sanitize“), `tests/crdt_modell.py` (neu:
   Ersetzen + gleichzeitiges Tippen für vier Kennungspaare, Titel) 525/525 (vorher 524/525), `tests/browser_editorjs_fremd.js` mit
   Tiptap und `notes.live` 3× 61/61 (vorher 60/61).
+- Prüfung: Wird das Zusammengeführte durch den Konfliktblock zu groß zum Bereinigen (über 200 000 Zeichen), übernimmt
+  der Server es unbereinigt wie bisher, statt auf den fremden Stand zurückzufallen – das hätte die noch nicht
+  gespeicherte Live-Eingabe gelöscht. Tests: `tests/collab.py` (neu: große Tabelle, 77/77; ohne diese Änderung 76/77),
+  `tests/crdt_modell.py` (neu: 400 Zufallspaare mit Mehrbyte-Zeichen, Marken und gleichzeitigem Tippen, 526/526).
 
 ### Behoben – Tiptap: Duplizieren (Strg/Cmd+D) kopiert keine Saga-Kennung mehr (Bugs-DB 2163)
 - Die Kopie eines Blocks trug unter Tiptap die BookOrbit-Kennung `data.bo` mit – der Server hätte danach zwei

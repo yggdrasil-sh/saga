@@ -406,6 +406,25 @@ try:
             and json.loads(clean_blocks(json.dumps({"blocks": bl}))[0])["blocks"] == bl
     ok("2173: materialisiert (Konfliktblock, Weitergetipptes, clean_blocks-fest)", wait_for(k_ok, 8.0))
     k1.close()
+    # Pruefung 2173: Konfliktblock macht das Merge-Ergebnis zu gross fuer clean_blocks (TooLarge) -> die noch nicht
+    # materialisierte Live-Eingabe darf NICHT durch den Rueckfall auf den fremden Stand aus dem Doc verschwinden.
+    # Tabelle (~100k Zeichen, je Seite < 200k): Zelle [0][0] live und per PATCH geaendert -> Konfliktkopie > 200k
+    def tab(extra):
+        rows = [[f"z{r}a " + " ".join(f"q{r}x{k}" for k in range(25)), f"z{r}b"] for r in range(500)]
+        rows[0][0] += extra
+        return {"id": "g", "type": "table", "data": {"withHeadings": False, "content": rows}}
+    gn = page([P("a", "Kopf"), tab("")], "Konflikt gross")
+    g1 = client(A); subscribe(g1, gn)
+    rg = body_of(gn)[1]["rev"]
+    g1.edit(gn, lambda d: M.write(d, {"blocks": [P("a", "Kopf"), tab(" LIVE")]}), "g1")
+    mg = g1.wait(("ACK", "REJECT"), gn)
+    st, _ = req("PATCH", f"/api/notes/{gn}", A, {"body": json.dumps({"blocks": [P("a", "Kopf"), tab(" fremd")]}),
+                                                 "format": "blocks", "rev": rg, "merge": 1})
+    ok(f"2173/gross: Live-Eingabe angenommen, PATCH mit merge: {mg and mg[0]} {st}", mg and mg[0] == "ACK" and st == 200)
+    gj = lambda: json.dumps(g1.blocks(gn)[0]["blocks"], ensure_ascii=False)
+    ok("2173/gross: fremde Aenderung kommt live an", wait_for(lambda: "fremd" in gj(), 8.0))
+    ok("2173/gross: Live-Eingabe bleibt im Doc (kein Rueckfall auf den fremden Stand)", "LIVE" in gj())
+    g1.close()
     # Version wiederherstellen: eine Version des jetzigen Stands anlegen (wie der Editor nach einer Pause), weiterschreiben,
     # dann diese Version zurueckholen
     with connect() as c, c:
