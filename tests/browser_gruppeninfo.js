@@ -226,8 +226,13 @@ async function closeInfo(p) { await p.keyboard.press('Escape'); await until(asyn
     await h.goto(BASE + '/chats#c' + gid); await h.waitForSelector('#ct-chat:not([hidden])'); await h.waitForTimeout(1200);
     await h.tap('#ct-chat .ct-head-t');
     const gh = await until(() => gi(h), 5000);
-    const box = await h.evaluate(() => { const r = document.querySelector('.ct-gi').getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom, t: r.top, w: innerWidth, h: innerHeight,
-      sw: document.documentElement.scrollWidth }; });
+    // Das Blatt (.hk-dialog) oeffnet mit sg-pop (static/style.css:3130/3133: scale(.985) + translateY(-4px), 0,18 s) -
+    // direkt nach dem Oeffnen gemessen stand es 2,9 px eingerueckt und 9 px ueber dem Rand. Erst nach der Animation messen.
+    const geo = () => h.evaluate(() => { const r = document.querySelector('.ct-gi').getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom, t: r.top, w: innerWidth, h: innerHeight,
+      sw: document.documentElement.scrollWidth, anim: document.getAnimations().filter((x) => x.playState === 'running').map((x) => x.animationName || x.constructor.name) }; });
+    const box0 = await geo();
+    await until(() => h.evaluate(() => !document.getAnimations().some((x) => x.playState === 'running' && x.animationName === 'sg-pop')), 3000);
+    const box = await geo(); box.vorher = box0;
     ok('Handy: Tippen auf den Kopf oeffnet die Gruppeninfo als Blatt von unten (volle Breite, ohne Querscrollen)', !!gh
        && Math.abs(box.b - box.h) < 2 && box.l <= 1 && box.r >= box.w - 1 && box.sw <= box.w, box);
     await shot(h, 'handy-hell');
