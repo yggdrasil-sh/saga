@@ -34,7 +34,15 @@ def cfg(**kw):
     auth._settings_cache["v"] = None
 
 
+def t2185_weg():
+    """Erzwungenen Fehler (Trigger) entfernen - auch Reste eines abgebrochenen frueheren Laufs (SIGTERM/SIGKILL)."""
+    with psycopg.connect(DATABASE_URL, autocommit=True) as pg:
+        pg.execute("DROP TRIGGER IF EXISTS t2185_fehler ON chat_call_invite")
+        pg.execute("DROP FUNCTION IF EXISTS t2185_fehler()")
+
+
 def main():
+    t2185_weg()
     A_.cleanup()
     prev = auth.settings(fresh=True)
     keep = {k: prev.get(k) for k in ("chat_enabled", "share_group_scope", "calls")}
@@ -248,13 +256,13 @@ def run():
     # bleibt gespeichert, die naechste (gleiche) Meldung holt das Klingeln nach ------------------------------------------------
     with connect() as c, c:
         c.execute("UPDATE chat_device SET caps='' WHERE uid='ca-nf'")
-    with psycopg.connect(DATABASE_URL, autocommit=True) as pg:      # DDL direkt (db.translate laesst CREATE aus)
-        pg.execute("CREATE OR REPLACE FUNCTION t2185_fehler() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 't2185'; END $$ "
-                   "LANGUAGE plpgsql")
-        pg.execute("DROP TRIGGER IF EXISTS t2185_fehler ON chat_call_invite")
-        pg.execute("CREATE TRIGGER t2185_fehler BEFORE UPDATE ON chat_call_invite FOR EACH ROW "
-                   "WHEN (NEW.who = 'ca-nf' AND NEW.state = 'ringing') EXECUTE FUNCTION t2185_fehler()")
     try:
+        with psycopg.connect(DATABASE_URL, autocommit=True) as pg:  # DDL direkt (db.translate laesst CREATE aus)
+            pg.execute("CREATE OR REPLACE FUNCTION t2185_fehler() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 't2185'; END $$ "
+                       "LANGUAGE plpgsql")
+            pg.execute("DROP TRIGGER IF EXISTS t2185_fehler ON chat_call_invite")
+            pg.execute("CREATE TRIGGER t2185_fehler BEFORE UPDATE ON chat_call_invite FOR EACH ROW "
+                       "WHEN (NEW.who = 'ca-nf' AND NEW.state = 'ringing') EXECUTE FUNCTION t2185_fehler()")
         mF = sF.mark()
         g8, s, call = start(B, gid3)
         ok(f"2185: Anruf von B, F 'old' ({s}, {st(call.get('invites')).get('ca-nf')})", s == 200 and st(call.get("invites")).get("ca-nf") == "old")
@@ -274,9 +282,7 @@ def run():
         ok(f"2185: dritte gleiche Meldung ({s}) -> kein zweites call.invite", s == 200 and sF.none("call.invite", mF, 1.0))
         end(B, g8)
     finally:
-        with psycopg.connect(DATABASE_URL, autocommit=True) as pg:
-            pg.execute("DROP TRIGGER IF EXISTS t2185_fehler ON chat_call_invite")
-            pg.execute("DROP FUNCTION IF EXISTS t2185_fehler()")
+        t2185_weg()
 
 
 if __name__ == "__main__":

@@ -1060,7 +1060,8 @@ async def api_caps(request: Request):
                 with c:                                # Bugs-DB 2179: eigene Transaktion, chat_device schon freigegeben
                     ring_late(c, uid)
             except Exception as e:                     # noqa: BLE001 - Meldung ist gespeichert, naechste versucht es erneut
-                print(f"call: Nachklingeln nach Faehigkeiten-Meldung fehlgeschlagen ({type(e).__name__}: {str(e)[:120]})", flush=True)
+                msg = (str(e).splitlines() or [""])[0][:120]   # nur die erste Zeile: DETAIL von Postgres kann Werte (Konten) nennen
+                print(f"call: Nachklingeln nach Faehigkeiten-Meldung fehlgeschlagen ({type(e).__name__}: {msg})", flush=True)
     return chat._no_store({"ok": True})
 
 
