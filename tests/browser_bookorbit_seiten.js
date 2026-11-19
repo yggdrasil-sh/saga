@@ -157,6 +157,11 @@ const fake = http.createServer((q, r) => {
   ok('Kapitel-Liste nach Editor-Speichern weiter nachgezogen (2 Markierungen)', /2 Markierungen/.test(bk.body || '') && /Gedanke zum ganzen Buch/.test(bk.body || ''), (bk.body || '').slice(0, 600));
   const tm = await until(async () => { const t = await p.locator('.hk-toast, .toast').last().textContent().catch(() => ''); return t || null; }, 2000);
   ok('Meldung nennt das Ergebnis', !!tm, tm);
+  if (SHOTS) {                                     // Buchseite nach dem Aktualisieren (Editor.js: Kapitel-Liste mit 2 Markierungen)
+    await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id);
+    await until(async () => /Drittes Kapitel/.test(await p.locator('#pg-editor').textContent().catch(() => '')), 8000); await sleep(500);
+    await p.screenshot({ path: SHOTS + '/buchseite-nachgezogen.png' });
+  }
 
   // --- Heute: Buch antippen -> Menue -> Markierungen als Seite -----------------------------------------------------------
   await p.goto(BASE + '/dashboard');
