@@ -79,7 +79,10 @@ function view(p, D, vid) { return p.evaluate(([D, vid]) => { localStorage.setIte
     await p.api('PATCH', '/api/notes/' + D, { schema: sch });
     await p.open(D);
     const heads = await p.$$('th');
-    for (const h of heads) { if (/ƒ/.test(await h.textContent())) { await h.click(); break; } }
+    // Spaltenkoepfe zeigen den Typ seit Design-Runde VD-18 als SVG-Symbol (static/pages.js:3837 typeIcEl, :5049) statt
+    // "ƒ" im Text -> Formelspalte ueber ihren Namen aus dem Schema finden
+    const fname = (fp && fp.name) || '';
+    for (const h of heads) { if (fname && (await h.textContent()).trim() === fname) { await h.click(); break; } }
     const edit = await p.waitForSelector('.menu:not([hidden]) .menu-item:has-text("Formel bearbeiten")', { timeout: 5000 }).catch(() => null);
     ok('Spaltenkopf: „Formel bearbeiten …“', !!edit);
     if (edit) await edit.click();
