@@ -345,6 +345,7 @@ type Leg struct {
 		at    int64
 		owner *Peer
 	}
+	mb [2][2]mbDamp // Daempfung der Mindestform je Art der Plaetze (mbCls) und Stufe (control.go, mbDamp)
 	// Stau auf der Leitung (Bug 2159, control.go jamTicks): Takte mit Ueberlast in Folge, Boden der Umlaufzeit,
 	// letzter Stau, letzter Schritt zurueck und Umlaufzeit dabei
 	overN     int
@@ -354,6 +355,18 @@ type Leg struct {
 	jamRTT    time.Duration
 	rttPrev   time.Duration // Umlaufzeit im letzten Takt
 	rttHighAt int64         // seit wann die Umlaufzeit rttJam ueber dem Boden liegt (0 = nicht)
+	rttHighN  int           // ... ueber so viele Empfaengerberichte (rttJamN)
+	jamLast   bool          // Stau im letzten Takt
+	jamPre    int64         // jamAt vor dem laufenden Stau (Netzwechsel: zurueck dorthin)
+	jamN      int           // Schritte zurueck im laufenden Stau
+	jamRTT0   time.Duration // Umlaufzeit beim ersten davon
+	jamMB     [2][2]mbDamp  // Daempfung vor dem ersten davon
+	pathN     int           // erkannte Netzwechsel (Spur, Tests)
+	rttWaitAt int64         // Anrufbeginn: erster Takt ohne Umlaufzeit (rttWaitMax)
+	rttSeen   bool          // ... die Umlaufzeit war schon bekannt
+	jamBad    bool          // in dieser Sperre (jamHold) keine Proben mehr
+	jamFailN  int           // gescheiterte Proben in dieser Sperre
+	jamFailAt int64         // ... die letzte gezaehlte
 	cutAt     int64         // letzte Ruecknahme der Auswahl des Beins
 
 	// eigen: die letzte gewertete Probe (bestanden oder gescheitert) - Zielrate, Ergebnis, Zeit. Eine Rampen-Probe wird
@@ -388,13 +401,6 @@ type slot struct {
 	min     bool
 	minAt   int64 // seit wann im Mindestbild
 	pauseAt int64
-	// Daempfung der Mindestform (Bug 2159), je Stufe (mbBack: Pause -> Mindestbild, mbFull: Mindestbild -> volle
-	// unterste Schicht): Aufschub nach gescheiterter Rueckkehr (0 = Grundwert minBack bzw. layerDwell) und letzte
-	// Rueckkehr, fuer mbOwner
-	mbDw     [2]time.Duration
-	mbUpAt   [2]int64
-	mbFailAt [2]int64 // letzte gescheiterte Rueckkehr dieser Stufe auf dem Bein (der Aufschub zaehlt ab dann)
-	mbOwner  *Peer
 	// Hysterese (layerStep): letzter Wechsel nach unten und fuer wen
 	downAt    int64
 	downOwner *Peer

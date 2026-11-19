@@ -54,8 +54,8 @@ func (l *Leg) spur(now int64) {
 				st += "w" + p.Layer
 			}
 		}
-		if s.mbOwner == s.owner && s.owner != nil && (s.mbDw[mbBack] > 0 || s.mbDw[mbFull] > 0) { // Aufschub Mindestform (2159)
-			st += fmt.Sprintf("~%.0f/%.0f", s.mbDw[mbBack].Seconds(), s.mbDw[mbFull].Seconds())
+		if m := l.mb[mbCls(s)]; s.owner != nil && (m[mbBack].dw > 0 || m[mbFull].dw > 0) { // Aufschub Mindestform (2159)
+			st += fmt.Sprintf("~%.0f/%.0f", m[mbBack].dw.Seconds(), m[mbFull].dw.Seconds())
 		}
 		fmt.Fprintf(&b, " %s:%s%d@%s/%d%s", s.class[:2], lay, s.tid, own, pk, st)
 	}
@@ -69,9 +69,25 @@ func (l *Leg) spur(now int64) {
 	}
 	over := l.ExtOver != nil && l.ExtOver()
 	jam := l.jamAt != 0 && now-l.jamAt < int64(time.Second)
-	log.Printf("spur %s est=%dk gcc=%dk rate=%dk sperre=%.1fs backoff=%.0fs lag=%v ready=%v probe=%d over=%v rtt=%d/%dms jam=%v%s",
+	jh := ""
+	if l.jamAt != 0 && now-l.jamAt < int64(jamHold) { // Sperre nach Stau: Restzeit, b = keine Proben mehr
+		jh = fmt.Sprintf(" halt=%.0fs", float64(l.jamAt+int64(jamHold)-now)/1e9)
+		if l.jamBad {
+			jh += "b"
+		}
+	}
+	if l.pathN > 0 {
+		jh += fmt.Sprintf(" netz=%d", l.pathN)
+	}
+	if l.ExtStat != nil {
+		jh += fmt.Sprintf(" loss=%.1f%%", 100*l.ExtStat().Loss)
+	}
+	if l.jamN > 0 {
+		jh += fmt.Sprintf(" stufen=%d/%dms", l.jamN, l.jamRTT0.Milliseconds())
+	}
+	log.Printf("spur %s est=%dk gcc=%dk rate=%dk sperre=%.1fs backoff=%.0fs lag=%v ready=%v probe=%d over=%v rtt=%d/%dms jam=%v%s%s",
 		me, int(e.bps/1000), int(e.gccLast/1000), int(e.rateTick/1000), hold, e.backoff.Seconds(), e.lag, e.ready, l.pr.stage, over,
-		l.rttPrev.Milliseconds(), l.rttFloor.Milliseconds(), jam, b.String())
+		l.rttPrev.Milliseconds(), l.rttFloor.Milliseconds(), jam, jh, b.String())
 }
 
 // spurID: 16-Bit-Hash der Peer-Kennung (nicht umkehrbar, nur zum Zuordnen der Zeilen)

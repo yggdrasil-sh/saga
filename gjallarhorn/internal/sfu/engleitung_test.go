@@ -39,6 +39,12 @@ type engRes struct {
 	ticks     int             // gezaehlte Takte (nach dem Anlauf)
 	maxFull   time.Duration   // laengste Zeit am Stueck mit (fast) voller Schlange (>= 250 ms)
 	trans     map[string]int
+	spkTop    float64       // Anteil Sprecher-Zeit auf h
+	tileTop   float64       // Anteil Kachel-Zeit auf m (hoechste Schicht fuer Kacheln)
+	lastNoTop time.Duration // letzter Zeitpunkt (ab Beginn), an dem der Sprecher nicht auf h lief
+	jams      int           // Stau-Beginne (nach mindestens 1 s ohne)
+	lastJam   int64
+	pathN     int // erkannte Netzwechsel
 }
 
 func (r engRes) String() string {
@@ -66,6 +72,33 @@ func engRun(t *testing.T, link float64, d, falsch time.Duration) engRes {
 // 40 ms plus Schlange.
 func engRunOH(t *testing.T, link float64, d, falsch time.Duration, oh float64) engRes {
 	t.Helper()
+	return engRunX(t, engOpt{link: link, d: d, falsch: falsch, oh: oh})
+}
+
+// engOpt: Ablauf fuer engRunX - Leitung (fest bzw. linkAt je Zeit ab Beginn), Dauer, grundlose Zielstuerze, Faktor der
+// Kopfdaten (0 = 1), Grund-Umlaufzeit je Zeit (baseAt, sonst 40 ms; die Umlaufzeit ist sie plus Schlange; ein
+// Empfaengerbericht je Sekunde - dazwischen bleibt der Wert stehen wie ExtRTT), Sprecherwechsel alle rot (0 = nie).
+// ExtStat meldet Ueberlast wie ExtOver und den Verlust an der vollen Schlange (geglaettet).
+type engOpt struct {
+	link    float64
+	linkAt  func(el time.Duration) float64
+	d       time.Duration
+	falsch  time.Duration
+	oh      float64
+	baseAt  func(el time.Duration) time.Duration
+	rot     time.Duration
+	reports bool // Umlaufzeit nur je Empfaengerbericht (sonst je Takt, wie bisher)
+}
+
+func engRunX(t *testing.T, o engOpt) engRes {
+	t.Helper()
+	link, d, falsch, oh := o.link, o.d, o.falsch, o.oh
+	if oh == 0 {
+		oh = 1
+	}
+	if o.linkAt != nil {
+		link = o.linkAt(0)
+	}
 	er := newEstCfg(t, 1250e3, 600e3, 3, true)
 	er.pion = true
 	er.link = link
@@ -85,17 +118,48 @@ func engRunOH(t *testing.T, link float64, d, falsch time.Duration, oh float64) e
 	}
 	const dt = 0.2
 	r := engRes{link: link, falsch: falsch, trans: map[string]int{}}
-	q, sumQ := 0.0, 0.0
-	er.l.ExtRTT = func() time.Duration { return 40*time.Millisecond + time.Duration(q*float64(time.Second)) }
+	q, sumQ, loss := 0.0, 0.0, 0.0
+	start := er.now
+	base := func() time.Duration {
+		if o.baseAt != nil {
+			return o.baseAt(time.Duration(er.now - start))
+		}
+		return 40 * time.Millisecond
+	}
+	rttNow := func() time.Duration { return base() + time.Duration(q*float64(time.Second)) }
+	rep, repAt := time.Duration(0), int64(0)
+	er.l.ExtRTT = func() time.Duration {
+		if !o.reports {
+			return rttNow()
+		}
+		if repAt == 0 || er.now-repAt >= int64(time.Second) {
+			rep, repAt = rttNow(), er.now
+		}
+		return rep
+	}
+	extOver := er.l.ExtOver
+	er.l.ExtStat = func() ExtStat { return ExtStat{Over: extOver(), Loss: loss} }
+	var ps []*Peer
 	var fullRun int
 	var n, over, tileT, pauseT, minT, spkT, spkFull int
 	last := map[string]string{}
 	chg := map[string]int{}
 	pauseFrom := map[int]int64{}
-	start := er.now
 	warm := int64(20 * time.Second)
 	next := start + int64(falsch)
+	var spkTop, tileTop int
 	for er.now-start < int64(d) {
+		el := time.Duration(er.now - start)
+		if o.linkAt != nil {
+			link = o.linkAt(el)
+			er.link = link
+		}
+		if o.rot > 0 {
+			if ps == nil {
+				ps = er.senders()
+			}
+			er.speak(ps[int(el/o.rot)%len(ps)])
+		}
 		for _, i := range ls { // 20 fps: je Takt 2 Basis- und 2 obere Rahmen
 			er.all[i].TIDFrames[0].Add(2)
 			er.all[i].TIDFrames[1].Add(2)
@@ -115,10 +179,19 @@ func engRunOH(t *testing.T, link float64, d, falsch time.Duration, oh float64) e
 		rate := estAudio + er.sent + er.fill
 		q += (rate - link) / link * dt
 		lost := false
+		lf := 0.0
 		if q > 0.3 {
+			lf = (q - 0.3) / dt * link / rate // Anteil, der an der vollen Schlange verloren geht
 			q, lost = 0.3, true
 		}
 		q = max(q, 0)
+		loss = 0.7*loss + 0.3*lf
+		if ja := er.l.jamAt; ja == er.now {
+			if r.lastJam == 0 || ja-r.lastJam > int64(time.Second) {
+				r.jams++
+			}
+			r.lastJam = ja
+		}
 		if engSpur != nil {
 			engSpur(er, rate, q)
 		}
@@ -178,6 +251,9 @@ func engRunOH(t *testing.T, link float64, d, falsch time.Duration, oh float64) e
 				if st == "l*" {
 					minT++
 				}
+				if st == "m" {
+					tileTop++
+				}
 				if p0, ok := pauseFrom[s.Index]; ok {
 					r.maxPause = max(r.maxPause, time.Duration(er.now-p0))
 					delete(pauseFrom, s.Index)
@@ -186,6 +262,11 @@ func engRunOH(t *testing.T, link float64, d, falsch time.Duration, oh float64) e
 				spkT++
 				if st != "p" && st != "l*" {
 					spkFull++
+				}
+				if st == "h" {
+					spkTop++
+				} else {
+					r.lastNoTop = el
 				}
 			}
 		}
@@ -207,6 +288,9 @@ func engRunOH(t *testing.T, link float64, d, falsch time.Duration, oh float64) e
 	r.pause = float64(pauseT) / float64(max(tileT, 1))
 	r.tileMin = float64(minT) / float64(max(tileT, 1))
 	r.spkFull = float64(spkFull) / float64(max(spkT, 1))
+	r.spkTop = float64(spkTop) / float64(max(spkT, 1))
+	r.tileTop = float64(tileTop) / float64(max(tileT, 1))
+	r.pathN = er.l.pathN
 	return r
 }
 
@@ -351,6 +435,15 @@ func TestEngSpur(t *testing.T) {
 	}
 	k, f, oh, sec := 0.0, 0.0, 1.0, 90.0
 	fmt.Sscanf(strings.ReplaceAll(v, ",", " "), "%g %g %g %g", &k, &f, &oh, &sec)
+	engSpurLog(t)
+	defer func() { engSpur = nil }()
+	t.Log(engRunOH(t, k*1000, time.Duration(sec*float64(time.Second)), time.Duration(f*float64(time.Second)), oh))
+}
+
+var engSpur func(er *estRoom, rate, q float64)
+
+// engSpurLog: Spur je Takt ins Testlog (engSpur), bis zum Ende des Tests.
+func engSpurLog(t *testing.T) {
 	engSpur = func(er *estRoom, rate, q float64) {
 		st := ""
 		for _, s := range er.l.Layout() {
@@ -358,14 +451,13 @@ func TestEngSpur(t *testing.T) {
 				st += fmt.Sprintf("%-3s", engState(s))
 			}
 		}
-		t.Logf("%6.1f %s rate %4.0f gcc %4.0f est %4d q %3.0f pr %v", float64(er.now%int64(time.Hour))/1e9, st, rate/1000,
-			er.gcc/1000, er.l.EstimateKbit(), q*1000, er.fill > 0)
+		l := er.l
+		t.Logf("%6.1f %s rate %4.0f gcc %4.0f est %4d q %3.0f pr %v/%d jam %v halt %v bad %v rtt %d/%d", float64(er.now%int64(time.Hour))/1e9, st,
+			rate/1000, er.gcc/1000, l.EstimateKbit(), q*1000, er.fill > 0, l.pr.stage, l.jamLast, l.jamAt != 0 && er.now-l.jamAt < int64(jamHold),
+			l.jamBad, l.rttPrev.Milliseconds(), l.rttFloor.Milliseconds())
 	}
-	defer func() { engSpur = nil }()
-	t.Log(engRunOH(t, k*1000, time.Duration(sec*float64(time.Second)), time.Duration(f*float64(time.Second)), oh))
+	t.Cleanup(func() { engSpur = nil })
 }
-
-var engSpur func(er *estRoom, rate, q float64)
 
 // TestEngLeitungAnlauf (Pruefung 2159): pion-GCC meldet bis zur ersten Laufzeit-Auswertung "overuse" (Nullwert der
 // Statistik), die Umlaufzeit ist bis zum ersten Empfaengerbericht unbekannt. Das ist kein Stau - sonst ging zu Beginn
@@ -408,5 +500,80 @@ func TestEngLeitungAnlauf(t *testing.T) {
 	}
 	if firstH == 0 || firstH > 20*time.Second {
 		t.Errorf("Sprecher erst nach %v auf h (Ziel <= 20 s, frei ~12 s)", firstH)
+	}
+}
+
+// TestEngLeitungNachStau (Pruefung 2159, TestUDPProbing rot): Freie Leitung, 8 s Stau (250 kbit/s), danach wieder frei.
+// Nach dem Stau gibt es jamHold lang keine Schritte nach der Schaetzung - aber Proben: Der Sprecher kommt mit
+// bestandener Probe zurueck auf h, lange vor dem Ende der Sperre (vorher erst nach ~60 s), und es staut nicht wieder.
+func TestEngLeitungNachStau(t *testing.T) {
+	if os.Getenv("ENG_TL") != "" {
+		engSpurLog(t)
+	}
+	r := engRunX(t, engOpt{d: 150 * time.Second, reports: true, linkAt: func(el time.Duration) float64 {
+		if el >= 40*time.Second && el < 48*time.Second {
+			return 250e3
+		}
+		return 4e6
+	}})
+	t.Log(r, "Sprecher zuletzt nicht h", r.lastNoTop, "Staus", r.jams)
+	if r.jams == 0 {
+		t.Fatal("kein Stau erkannt - der Fall prueft die Sperre nicht")
+	}
+	if r.lastNoTop > 90*time.Second {
+		t.Errorf("Sprecher erst nach %v wieder auf h (Stau bis 48 s, Sperre bis ~110 s; Ziel: mit Probe vor 90 s)", r.lastNoTop)
+	}
+	if r.jams > 2 {
+		t.Errorf("%d Staus (Ziel: der eine echte, hoechstens ein weiterer)", r.jams)
+	}
+}
+
+// TestEngLeitungNetzwechsel (Pruefung 2159): Die Grund-Umlaufzeit steigt bei freier Leitung (2 Mbit/s) von 40 auf
+// 200 ms (anderer Pfad). Das ist keine eigene Schlange: Nach jamPathN Schritten ohne Fall der Umlaufzeit setzt das Bein
+// den Boden neu und gibt die Stufen frei - der Sprecher ist binnen ~15 s wieder auf h, die Kacheln laufen weiter
+// (vorher: Kacheln bis Laufende aus, der Boden zog mit 0,5 ms/s nach). Dazu eine einzelne verspaetete Antwort
+// (+160 ms, ein Bericht): kein Stau.
+func TestEngLeitungNetzwechsel(t *testing.T) {
+	r := engRunX(t, engOpt{link: 2e6, d: 150 * time.Second, reports: true, baseAt: func(el time.Duration) time.Duration {
+		if el >= 60*time.Second {
+			return 200 * time.Millisecond
+		}
+		return 40 * time.Millisecond
+	}})
+	t.Log("netzwechsel", r, "Sprecher zuletzt nicht h", r.lastNoTop, "Staus", r.jams, "Netzwechsel", r.pathN)
+	if r.pathN != 1 {
+		t.Errorf("%d Netzwechsel erkannt (Ziel 1)", r.pathN)
+	}
+	if r.lastNoTop > 75*time.Second {
+		t.Errorf("Sprecher erst nach %v wieder auf h (Wechsel bei 60 s, Ziel <= 75 s)", r.lastNoTop)
+	}
+	if r.pause > 0.05 || r.maxPause > 10*time.Second {
+		t.Errorf("Kacheln %.0f %% in Pause, laengste %v (Ziel <= 5 %%, <= 10 s)", 100*r.pause, r.maxPause)
+	}
+	r = engRunX(t, engOpt{link: 2e6, d: 120 * time.Second, reports: true, baseAt: func(el time.Duration) time.Duration {
+		if el >= 60*time.Second && el < 61*time.Second {
+			return 200 * time.Millisecond
+		}
+		return 40 * time.Millisecond
+	}})
+	t.Log("spitze", r, "Staus", r.jams)
+	if r.jams != 0 || r.trans["tile:m>l"] > 0 || r.trans["speaker:h>m"] > 0 {
+		t.Errorf("einzelne Spitze: %d Staus, Wechsel %v (Ziel: keiner)", r.jams, r.trans)
+	}
+}
+
+// TestEngLeitungSprecherwechsel (Pruefung 2159): Die Daempfung der Mindestform haengt am Bein, nicht am Besitzer des
+// Platzes - mit Sprecherwechsel alle 10 s pendeln die Kacheln nicht oefter als ohne (vorher 400k: 16,6 statt 3,8
+// Wechsel je Kachel und Minute, 25 % Pause).
+func TestEngLeitungSprecherwechsel(t *testing.T) {
+	for _, link := range []float64{260e3, 400e3} {
+		r := engRunX(t, engOpt{link: link, d: 4 * time.Minute, rot: 10 * time.Second})
+		t.Log(r)
+		if r.tileChg > 6 {
+			t.Errorf("%.0fk: Kachel wechselt %.1f Mal je Minute (Ziel <= 6)", link/1000, r.tileChg)
+		}
+		if r.spkFull < 0.9 {
+			t.Errorf("%.0fk: Sprecher nur %.0f %% in voller Form", link/1000, 100*r.spkFull)
+		}
 	}
 }

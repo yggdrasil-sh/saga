@@ -42,90 +42,115 @@ const (
 	mbBackMax = 30 * time.Second
 	mbFailWin = 1500 * time.Millisecond
 	// Stau auf der Leitung (Bug 2159, Ton geht vor Bild): GCC meldet jamTicks Takte in Folge Ueberlast, oder die
-	// Umlaufzeit liegt rttJamFor lang rttJam ueber ihrem Boden (kleinste gesehene, steigt um rttDrift je Sekunde). Dann
-	// nimmt das Bein je jamStep eine Stufe zurueck (Kachel tiefer, ins Mindestbild, in die Pause, zuletzt der
-	// Sprecher), solange die Umlaufzeit nicht faellt. Zurueck kommt die Mindestform erst nach jamCalm ohne Stau (mit
-	// Aufschub); Schritte nach der Schaetzung erst nach jamHold.
-	jamTicks  = 3
-	rttJam    = 100 * time.Millisecond
-	rttJamFor = 600 * time.Millisecond
-	rttDrift  = 500 * time.Microsecond
-	jamStep   = time.Second
-	jamCalm   = 4 * time.Second
-	jamHold   = time.Minute
+	// Umlaufzeit liegt rttJamFor lang und ueber rttJamN Empfaengerberichte rttJam ueber ihrem Boden (kleinste gesehene,
+	// steigt um rttDrift je Sekunde). Dann nimmt das Bein je jamStep eine Stufe zurueck (Kachel tiefer, ins Mindestbild,
+	// in die Pause, zuletzt der Sprecher), solange die Umlaufzeit nicht faellt - faellt sie nach jamPathN Schritten
+	// nicht (ohne Ueberlast und Verlust), ist es ein Netzwechsel, keine eigene Schlange. Zurueck kommt die Mindestform
+	// erst nach jamCalm ohne Stau (mit Aufschub); Schritte nach der Schaetzung erst nach jamHold, davor nur mit
+	// bestandener Probe.
+	jamTicks    = 3
+	rttJam      = 100 * time.Millisecond
+	rttJamFor   = 600 * time.Millisecond
+	rttJamN     = 2 // ... ueber so viele Empfaengerberichte (Pruefung 2159: eine einzelne Spitze ist kein Stau)
+	rttDrift    = 500 * time.Microsecond
+	jamStep     = time.Second
+	jamCalm     = 4 * time.Second
+	jamHold     = time.Minute
+	jamPathN    = 2    // Netzwechsel: nach so vielen Schritten zurueck ohne Fall der Umlaufzeit (planLeg)
+	jamPathLoss = 0.02 // ... und Verlust darunter
+	// Ueberlast laut GCC zaehlt vor dem ersten Empfaengerbericht nur mit so viel Verlust (planLeg)
+	jamLossStart = 0.05
+	rttWaitMax   = 3 * time.Second // Anrufbeginn: so lange hoechstens auf den ersten Empfaengerbericht warten
 )
 
-// Stufen der Rueckkehr der Mindestform (slot.mbDw, slot.mbUpAt)
+// Stufen der Rueckkehr der Mindestform (Leg.mb, Index k)
 const (
 	mbBack = 0 // Pause -> Mindestbild (Grundwert minBack)
 	mbFull = 1 // Mindestbild -> volle unterste Schicht (Grundwert layerDwell)
 )
 
+// mbDamp: Daempfung der Mindestform auf einem Bein, je Art der Plaetze (mbCls) und Stufe: Aufschub nach gescheiterter
+// Rueckkehr (0 = Grundwert minBack bzw. layerDwell), letzte Rueckkehr und letzte gescheiterte Rueckkehr (der Aufschub
+// zaehlt ab dann). Je Bein, nicht je Platz und Besitzer (Pruefung 2159): Gescheitert ist die Rate des Beins - mit dem
+// Besitzer (Sprecherwechsel alle 10 s) fing die Daempfung sonst jedes Mal von vorn an (Modell 400k: 16,6 statt 3,8
+// Wechsel je Kachel und Minute).
+type mbDamp struct {
+	dw     time.Duration
+	upAt   int64
+	failAt int64
+}
+
+// mbCls: Art des Platzes fuer die Daempfung - Kacheln teilen sich eine, Sprecher und Bildschirm die andere.
+func mbCls(s *slot) int {
+	if s.class == "tile" {
+		return 0
+	}
+	return 1
+}
+
+func mbBase(k int) time.Duration {
+	if k == mbFull {
+		return layerDwell
+	}
+	return minBack
+}
+
 // mbReady: Darf Platz s auf Stufe k der Mindestform zurueck (Bug 2159)? since: seit wann er in der Form davor ist
 // (Pause bzw. Mindestbild); der Aufschub (mindestens base) zaehlt ab dann bzw. ab der letzten gescheiterten Rueckkehr
 // dieser Stufe auf dem Bein.
-func (s *slot) mbReady(k int, since int64, base time.Duration, now int64) bool {
-	if s.mbOwner == s.owner {
-		since, base = max(since, s.mbFailAt[k]), max(base, s.mbDw[k])
-	}
+func (l *Leg) mbReady(s *slot, k int, since int64, base time.Duration, now int64) bool {
+	m := &l.mb[mbCls(s)][k]
+	since, base = max(since, m.failAt), max(base, m.dw)
 	return now-since >= int64(base)
 }
 
 // mbReturn merkt die Rueckkehr der Mindestform (Stufe k) von Platz s als letzten solchen Schritt des Beins.
 func (l *Leg) mbReturn(s *slot, k int, now int64) {
-	s.mbOwn()
-	s.mbUpAt[k] = now
+	l.mb[mbCls(s)][k].upAt = now
 	l.mbStep.s, l.mbStep.stage, l.mbStep.at, l.mbStep.owner = s, k, now, s.owner
 }
 
+// mbDouble: Rueckkehr der Art c auf Stufe k gescheitert - Aufschub verdoppeln (bis mbBackMax), ab jetzt.
+func (l *Leg) mbDouble(c, k int, now int64) {
+	m := &l.mb[c][k]
+	m.dw, m.failAt = min(2*max(m.dw, mbBase(k)), mbBackMax), now
+}
+
 // mbFail: Die Auswahl des Beins ist gefallen. War die letzte Rueckkehr der Mindestform juenger als mbFailWin und meldet
-// GCC dabei Ueberlast (over), ist sie gescheitert: Ihr Aufschub verdoppelt sich - beim Platz, der zurueckkam, auch wenn
-// der Stau einen anderen trifft (faellt der Sprecher, weil eine Kachel zurueckkam, wartet die Kachel laenger, nicht der
-// Sprecher). War es eine Kachel, gilt der Aufschub dieser Stufe fuer alle Kacheln des Beins: Gescheitert ist die Rate
-// des Beins, nicht die Quelle - sonst versuchte es die naechste Kachel gleich danach.
-func (l *Leg) mbFail(now int64, tiles []*slot, over, jamOn bool) {
+// GCC dabei Ueberlast (over), ist sie gescheitert: Ihr Aufschub verdoppelt sich - bei der Art des Platzes, der
+// zurueckkam, auch wenn der Stau einen anderen trifft (faellt der Sprecher, weil eine Kachel zurueckkam, warten die
+// Kacheln laenger, nicht der Sprecher). Der Aufschub einer Kachel gilt fuer alle Kacheln des Beins: Gescheitert ist die
+// Rate des Beins, nicht die Quelle - sonst versuchte es die naechste Kachel gleich danach.
+func (l *Leg) mbFail(now int64, over, jamOn bool) {
 	st := &l.mbStep
-	if s := st.s; over && s != nil && s.owner == st.owner && s.mbOwner == s.owner && now-st.at < int64(mbFailWin) {
-		base := minBack
-		if st.stage == mbFull {
-			base = layerDwell
-		}
-		d := min(2*max(s.mbDw[st.stage], base), mbBackMax)
-		s.mbDw[st.stage], s.mbFailAt[st.stage] = d, now
+	if s := st.s; over && s != nil && s.owner == st.owner && now-st.at < int64(mbFailWin) {
+		l.mbDouble(mbCls(s), st.stage, now)
 		if jamOn {
 			l.jamAt = now // gescheiterte Rueckkehr mit Ueberlast: auch ein Stau (jamHold: keine Schritte nach der Schaetzung)
-		}
-		if s.class == "tile" {
-			for _, t := range tiles {
-				if t.owner == nil {
-					continue
-				}
-				t.mbOwn()
-				t.mbDw[st.stage], t.mbFailAt[st.stage] = max(t.mbDw[st.stage], d), now
-			}
 		}
 	}
 	st.s = nil
 }
 
-// mbJam: Stau hat Platz s auf Stufe k zurueckgenommen (Bug 2159). Kam er binnen upHold auf diese Stufe zurueck, war
-// die Rueckkehr zu viel fuer die Leitung: Aufschub verdoppeln wie bei mbFail.
+// mbJam: Stau hat Platz s auf Stufe k zurueckgenommen (Bug 2159). Kam ein Platz dieser Art binnen upHold auf diese
+// Stufe zurueck, war die Rueckkehr zu viel fuer die Leitung: Aufschub verdoppeln wie bei mbFail.
 func (l *Leg) mbJam(s *slot, k int, now int64) {
-	s.mbOwn()
-	if s.mbUpAt[k] == 0 || now-s.mbUpAt[k] >= int64(upHold) {
+	c := mbCls(s)
+	if m := l.mb[c][k]; m.upAt == 0 || now-m.upAt >= int64(upHold) {
 		return
 	}
-	base := minBack
-	if k == mbFull {
-		base = layerDwell
-	}
-	s.mbDw[k], s.mbFailAt[k] = min(2*max(s.mbDw[k], base), mbBackMax), now
+	l.mbDouble(c, k, now)
 }
 
-// mbOwn: Daempfung der Mindestform fuer den aktuellen Besitzer (bei anderem Besitzer zurueck auf den Grundwert).
-func (s *slot) mbOwn() {
-	if s.mbOwner != s.owner {
-		s.mbDw, s.mbUpAt, s.mbFailAt, s.mbOwner = [2]time.Duration{}, [2]int64{}, [2]int64{}, s.owner
+// mbHeld: Hat die letzte Rueckkehr upHold ohne Scheitern gehalten, ist der Aufschub erledigt (zurueck auf den Grundwert).
+func (l *Leg) mbHeld(now int64) {
+	for c := range l.mb {
+		for k := range l.mb[c] {
+			m := &l.mb[c][k]
+			if m.upAt != 0 && m.failAt < m.upAt && now-m.upAt >= int64(upHold) {
+				*m = mbDamp{}
+			}
+		}
 	}
 }
 
@@ -855,8 +880,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			rtt = l.ExtRTT()
 		}
 		// Ueberlast erst, wenn die Umlaufzeit bekannt ist (erster Empfaengerbericht): pion-GCC meldet bis zur ersten
-		// Laufzeit-Auswertung "overuse" (Nullwert der Statistik) - sonst staute jeder Anrufbeginn (Pruefung 2159)
-		if l.ExtOver != nil && (l.ExtRTT == nil || rtt > 0) && l.ExtOver() {
+		// Laufzeit-Auswertung "overuse" (Nullwert der Statistik) - sonst staute jeder Anrufbeginn (Pruefung 2159).
+		// Oder mit Verlust ab jamLossStart: Den Nullwert begleitet keiner, eine Leitung, die der Anrufbeginn (Schaetzung
+		// vom Start) ueberfaehrt, schon (Container 400k: 67 % Verlust vor dem ersten Bericht, der Browser wich auf TCP aus)
+		known := l.ExtRTT == nil || rtt > 0 || l.ExtStat != nil && l.ExtStat().Loss >= jamLossStart
+		if l.ExtOver != nil && known && l.ExtOver() {
 			l.overN++
 		} else {
 			l.overN = 0
@@ -870,28 +898,93 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				}
 			}
 		}
+		// Hohe Umlaufzeit erst ueber mehrere Empfaengerberichte (rttJamN, Pruefung 2159): Eine einzelne verspaetete
+		// Antwort (+160 ms) nahm sonst eine Kachel fuer jamHold zurueck. ExtRTT ist die Umlaufzeit des letzten Berichts -
+		// ein neuer Wert ist ein neuer Bericht.
 		if rtt > 0 && rtt > l.rttFloor+rttJam {
 			if l.rttHighAt == 0 {
-				l.rttHighAt = now
+				l.rttHighAt, l.rttHighN = now, 0
+			}
+			if rtt != l.rttPrev {
+				l.rttHighN++
 			}
 		} else {
-			l.rttHighAt = 0
+			l.rttHighAt, l.rttHighN = 0, 0
 		}
-		jam = l.overN >= jamTicks || l.rttHighAt != 0 && now-l.rttHighAt >= int64(rttJamFor)
-		// Eine Probe staut mit Absicht (Fuelldaten) und wertet das selbst aus (probe.go): kein Stau fuer die Auswahl
+		jam = l.overN >= jamTicks || l.rttHighN >= rttJamN && now-l.rttHighAt >= int64(rttJamFor)
+		// Eine Probe staut mit Absicht (Fuelldaten) und wertet das selbst aus (probe.go): kein Stau fuer die Auswahl.
+		// Steigt dabei aber die Umlaufzeit um rttJam ueber den Boden, hat die Probe die Schlange gefuellt, die der Stau
+		// misst: gescheitert (sonst bestand sie auf GCC-Zeichen allein, und der Schritt danach staute, Pruefung 2159).
+		if l.pr.stage != 0 && rtt > 0 && rtt > l.rttFloor+rttJam {
+			l.probeEnd(probeFail, "rtt", now)
+		}
 		if l.pr.stage != 0 || l.est.prOn || l.est.prUntil != 0 && now < l.est.prUntil {
 			jam = false
 		}
+		// Netzwechsel (Pruefung 2159): Hat das Bein jamPathN Stufen zurueckgenommen und liegt die Umlaufzeit noch immer
+		// so hoch wie beim ersten Schritt - ohne Ueberlast laut GCC und ohne Verlust -, ist es nicht die eigene Schlange
+		// (anderer Pfad, Grund-Umlaufzeit gestiegen): Boden neu, der Stau war keiner (Sperre und Aufschub wie davor).
+		// Sonst nahm das Bein im Dauerstau alles zurueck, bis der Boden nachgezogen war (0,5 ms/s: Minuten).
+		// Ohne Verlustangabe (ExtStat) nicht: Eine volle Schlange haelt die Umlaufzeit ebenso flach.
+		if jam && l.jamN >= jamPathN && now-l.jamStepAt >= int64(jamStep) && rtt > 0 && rtt+20*time.Millisecond >= l.jamRTT0 && rtt <= l.jamRTT0+40*time.Millisecond &&
+			l.overN == 0 && l.ExtStat != nil && l.ExtStat().Loss < jamPathLoss {
+			l.rttFloor, l.rttHighAt, l.rttHighN = rtt, 0, 0
+			l.jamAt, l.mb, l.jamN, l.jamRTT = l.jamPre, l.jamMB, 0, 0
+			l.pathN++
+			jam = false
+		}
 		if jam {
+			if !l.jamLast {
+				l.jamPre = l.jamAt // Stand vor diesem Stau (fuer den Netzwechsel: zurueck dorthin)
+				// Staut es kurz nach einer bestandenen Probe, traegt die Leitung nicht, was die Probe zeigte: in dieser
+				// Sperre keine Proben mehr
+				if lj := l.lastJ; lj.at != 0 && !lj.failed && now-lj.at < int64(upHold) {
+					l.jamBad = true
+				}
+			}
 			l.jamAt = now
 		}
 	}
+	l.jamLast = jam
+	// Anrufbeginn: bis zum ersten Empfaengerbericht (hoechstens rttWaitMax) nichts nach oben. Schaetzung und GCC-Ziel
+	// sind dann noch die Startwerte - eine enge Leitung bekam sofort alles (Container 400k: 755k vor dem ersten
+	// Bericht, 67 % Verlust, der Browser wich nach 3 s auf TCP aus). Vor fccc6dd hielt das zufaellig der GCC-Nullwert
+	// (Stau zu Beginn, jamHold).
+	startHold := false
+	if rtt > 0 {
+		l.rttSeen = true
+	} else if jamOn && l.ExtRTT != nil && !l.rttSeen {
+		if l.rttWaitAt == 0 {
+			l.rttWaitAt = now
+		}
+		startHold = now-l.rttWaitAt < int64(rttWaitMax)
+	}
 	calm := l.jamAt == 0 || now-l.jamAt >= int64(jamCalm)
-	if l.jamAt != 0 && now-l.jamAt < int64(jamHold) {
-		// nichts Neues nach der Schaetzung, solange es eben gestaut hat: Sie waechst, waehrend der Stau die Auswahl
-		// unten haelt, anwendungsbegrenzt weit ueber die Leitung (Modell: bis 1200k bei 300k). Zurueck kommt nur die
-		// Mindestform, einzeln und mit Aufschub (mbReady).
+	// jamHeld (jamHold): nichts Neues nach der Schaetzung, solange es eben gestaut hat: Sie waechst, waehrend der Stau die
+	// Auswahl unten haelt, anwendungsbegrenzt weit ueber die Leitung (Modell: bis 1200k bei 300k). Zurueck kommt die
+	// Mindestform, einzeln und mit Aufschub (mbReady) - und hoeher geht es nur mit bestandener Probe (Pruefung 2159:
+	// sonst blieb nach einem kurzen Stau auf wieder freier Leitung alles jamHold lang unten, TestUDPProbing). Proben
+	// erst nach jamCalm ohne Stau und mit der Umlaufzeit wieder nahe am Boden (die Schlange ist abgebaut); nach einem
+	// Stau trotz bestandener Probe bzw. nach der zweiten gescheiterten Probe in der Sperre keine mehr (jamBad). Eine
+	// bestandene Probe gibt nur ihren Schritt frei (upFree), nicht die Schaetzung.
+	jamHeld := l.jamAt != 0 && now-l.jamAt < int64(jamHold)
+	upFree, probeLim := upLimit, upLimit
+	if jamHeld {
 		upLimit = 0
+		if lj := l.lastJ; lj.failed && lj.at > l.jamFailAt { // gescheiterte Probe in dieser Sperre
+			l.jamFailAt = lj.at
+			if l.jamFailN++; l.jamFailN >= 2 {
+				l.jamBad = true
+			}
+		}
+		if !calm || l.jamBad || rtt > 0 && rtt > l.rttFloor+rttJam/2 {
+			probeLim = 0
+		}
+	} else {
+		l.jamBad, l.jamFailN, l.jamFailAt = false, 0, now
+	}
+	if startHold {
+		upLimit, upFree, probeLim = 0, 0, 0
 	}
 	// Auf UDP geht je Takt hoechstens ein Platz eine Schicht hoeher (derselbe Platz darf mehrere Schichten nehmen): Jeder
 	// Schritt ist eine Probe der Leitung - gingen mehrere Plaetze im selben Takt, springt die Rate um die Summe, und ein
@@ -1043,35 +1136,44 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	rttUp := rtt == 0 || l.rttPrev == 0 || rtt >= l.rttPrev
 	if jam && sum >= prev && now-l.cutAt >= int64(jamStep) && now-l.jamStepAt >= int64(jamStep) && rttUp &&
 		(l.jamRTT == 0 || rtt == 0 || rtt+20*time.Millisecond >= l.jamRTT) {
+		if l.jamN == 0 { // erster Schritt dieses Staus: Stand fuer den Netzwechsel
+			l.jamRTT0, l.jamMB = rtt, l.mb
+		}
+		l.jamN++
 		done := false
+		// Je Art erst die tieferen Schritte aller Plaetze, dann die naechste Stufe (Pruefung 2159: lieber alle Kacheln im
+		// Mindestbild als eine voll und eine ohne Bild - sonst pausierte der Stau die Kachel im Mindestbild, waehrend die
+		// eben voll gewordene weiterlief)
 		for pass := 0; pass < 2 && !done; pass++ {
-			for i := len(cs) - 1; i >= 0 && !done; i-- {
-				c := cs[i]
-				if c.idx < 0 || (pass == 0) != (c.s.class == "tile") {
-					continue
-				}
-				switch {
-				case c.idx > 0:
-					sum -= c.rate
-					c.idx--
-					c.rate = rateOf(c)
-					sum += c.rate
-					done = true
-				case !c.min && canMin(c):
-					toMin(c)
-					l.mbJam(c.s, mbFull, now)
-					done = true
-				case c.s.class == "tile":
-					sum -= c.rate
-					c.idx, c.rate, c.min = -1, 0, false
-					l.mbJam(c.s, mbBack, now)
-					done = true
+			for step := 0; step < 3 && !done; step++ {
+				for i := len(cs) - 1; i >= 0 && !done; i-- {
+					c := cs[i]
+					if c.idx < 0 || (pass == 0) != (c.s.class == "tile") {
+						continue
+					}
+					switch {
+					case step == 0 && c.idx > 0:
+						sum -= c.rate
+						c.idx--
+						c.rate = rateOf(c)
+						sum += c.rate
+						done = true
+					case step == 1 && c.idx == 0 && !c.min && canMin(c):
+						toMin(c)
+						l.mbJam(c.s, mbFull, now)
+						done = true
+					case step == 2 && c.idx == 0 && c.s.class == "tile":
+						sum -= c.rate
+						c.idx, c.rate, c.min = -1, 0, false
+						l.mbJam(c.s, mbBack, now)
+						done = true
+					}
 				}
 			}
 		}
 		l.jamStepAt, l.jamRTT = now, rtt
 	} else if !jam {
-		l.jamRTT = 0
+		l.jamRTT, l.jamN = 0, 0
 	}
 	// Mindestbild zurueck: pausierte Kacheln (Budget) gehen dem Schritt des Sprechers nach oben vor - der Bedarf ihres
 	// Mindestbilds ist vorgemerkt (resv), solange der Sprecher plant
@@ -1086,7 +1188,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	// liesse sich ein Stau keinem Platz zuordnen (Bug 2159)
 	mbCalm := calm && (l.mbStep.s == nil || now-l.mbStep.at >= int64(mbFailWin))
 	backOK := func(c *choice) bool {
-		return mbCalm && c.wasOff && len(c.opts) > 0 && c.s.owner != nil && canMinAt(c) && c.s.mbReady(mbBack, c.s.pauseAt, minBack, now)
+		return mbCalm && c.wasOff && len(c.opts) > 0 && c.s.owner != nil && canMinAt(c) && l.mbReady(c.s, mbBack, c.s.pauseAt, minBack, now)
 	}
 	if mb {
 		for _, c := range cs {
@@ -1118,8 +1220,8 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			}
 			// ... oder, auch in der Sperrzeit, nach dem GCC-Ziel (keepUp), wenn das Mindestbild schon layerDwell lief: die
 			// volle unterste Schicht gehoert zum Bild, das die Sperrzeit nicht zurueckhalten soll - hoehere Schichten schon
-			byKeep := gccKeep && calm && !other && need <= keepUp && c.s.mbReady(mbFull, c.s.minAt, layerDwell, now)
-			wait := !c.s.mbReady(mbFull, c.s.minAt, 0, now)
+			byKeep := gccKeep && calm && !other && need <= keepUp && l.mbReady(c.s, mbFull, c.s.minAt, layerDwell, now)
+			wait := !l.mbReady(c.s, mbFull, c.s.minAt, 0, now)
 			if wait || !byKeep && (lim <= 0 || need*upHeadroom > lim) || capNeed > 0 && need > capNeed {
 				c.min = true
 				c.rate = rateOf(c)
@@ -1166,7 +1268,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			// wenn er ohnehin nicht gehen kann (Kontingent, Obergrenze der Schaetzung) oder sein Aufschub schon ueber
 			// den ersten hinaus gewachsen ist: Ein freier Versuch, der lange aussteht, hielte alle Proben des Beins auf.
 			// Nach einem frischen Rueckfall auf diese Zielrate (freshBrake) kein freier Versuch und kein Schritt ohne Probe.
-			free := prb && !cur && !passed && tgt <= quotaCap && tgt <= l.est.max && d.d <= 2*layerDwell && l.freeStep(c.s, rank) && !brake
+			free := prb && !cur && !passed && tgt <= quotaCap && tgt <= l.est.max && d.d <= 2*layerDwell && l.freeStep(c.s, rank) && !brake && !jamHeld
 			switch {
 			case prb && !cur && !free && (d.d > layerDwell || l.pf.covers(tgt) || brake):
 				// Probing: Nach einem gescheiterten Versuch bzw. einer gescheiterten Probe gibt nur eine bestandene
@@ -1181,6 +1283,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			lim := limit
 			if !cur {
 				lim = upLimit
+				if jamHeld && passed {
+					lim = upFree // Sperre nach Stau: nur mit bestandener Probe
+				}
 				if oneUp && stepper != nil && stepper != c {
 					lim = 0
 				}
@@ -1228,7 +1333,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 				if free && (wishFree == 0 || need < wishFree) {
 					wishFree = need
 				}
-				if prb && !free && cand.s == nil && stepper == nil && upLimit > 0 && sinceDown >= int64(layerDwell) && now >= d.next &&
+				if prb && !free && cand.s == nil && stepper == nil && probeLim > 0 && sinceDown >= int64(layerDwell) && now >= d.next &&
 					!l.pf.blocks(tgt, now) && !l.fb.blocks(tgt, now) && (blocked || capped || need*upHeadroom > upLimit) {
 					cand.s, cand.rank, cand.need = c.s, rank, need
 				}
@@ -1278,7 +1383,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		// nach einem Stau (binnen upHold) zaehlt auch die Rueckkehr aus der Pause als Schritt (einer je Takt, Bug 2159)
 		jamRecent := l.jamAt != 0 && now-l.jamAt < int64(upHold)
-		if (sum+nr)*upHeadroom <= upLimit && !blocked && !(capNeed > 0 && sum+nr > capNeed) && !(jamRecent && stepper != nil) {
+		tlim := upLimit
+		if jamHeld && prb && d.ok != 0 && now-d.ok <= int64(probeGrant) {
+			tlim = upFree // Sperre nach Stau: mit bestandener Probe
+		}
+		if (sum+nr)*upHeadroom <= tlim && !blocked && !(capNeed > 0 && sum+nr > capNeed) && !(jamRecent && stepper != nil) {
 			sum, c.rate = sum+nr, nr
 			if jamRecent {
 				stepper = c
@@ -1292,7 +1401,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			sum += c.rate
 		} else {
 			deny(sum + nr)
-			if prb && cand.s == nil && stepper == nil && upLimit > 0 && c.s.owner != nil && now >= d.next && !l.pf.blocks(tgt, now) &&
+			if prb && cand.s == nil && stepper == nil && probeLim > 0 && c.s.owner != nil && now >= d.next && !l.pf.blocks(tgt, now) &&
 				!l.fb.blocks(tgt, now) {
 				cand.s, cand.rank, cand.need = c.s, layerRank(c.opts[0].Layer), sum+nr
 			}
@@ -1484,13 +1593,6 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		case !c.min && s.min && st.Layer == s.layer:
 			l.mbReturn(s, mbFull, now)
 		}
-		if s.mbOwner == s.owner { // gehalten: Aufschub zurueck
-			for k := range s.mbUpAt {
-				if s.mbUpAt[k] != 0 && now-s.mbUpAt[k] >= int64(upHold) && (k == mbBack || !c.min) {
-					s.mbDw[k], s.mbUpAt[k] = 0, 0
-				}
-			}
-		}
 		s.paused, s.layer, s.tid, s.min = false, st.Layer, c.tid, c.min
 		// gehalten: Die Schicht laeuft seit upHold - ihr Aufschub und der aller tieferen ist erledigt
 		if s.dwellOwner != s.owner {
@@ -1507,8 +1609,9 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			s.paused, s.layer = false, ""
 		}
 	}
+	l.mbHeld(now)
 	if fell && sum < prev {
-		l.mbFail(now, tiles, over, jamOn)
+		l.mbFail(now, over, jamOn)
 		l.cutAt = now
 	}
 	l.rttPrev = rtt
