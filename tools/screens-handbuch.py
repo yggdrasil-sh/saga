@@ -13,7 +13,8 @@ tools/handbuch-fakes/fakes.py leitet Port 80 weiter. In der Welt familie startet
 Server (eigene DB, wird am Ende geloescht) fuer die Foederations-Bilder. Nicht im Skript: b01-01/b01-06 (Passkey-Knopf nur
 ueber https), b04-03/b04-09, b06-06, b07-07/b07-08/b07-10/b07-11, b09-01/b09-03, b12-06, b15-02/b15-03, b16-02 (BILDER.md).
 Desktop 1440x900 Faktor 2, Handy 390x844 Faktor 3; Nummern im Bild (①②③) = Legende in BILDER.md. Nur erfundene Inhalte,
-gezeichnete Bilder, Kamera als gezeichnetes Ersatzbild; keine Wiederherstellungsschluessel/-codes im Bild."""
+gezeichnete Bilder, Kamera als gezeichnetes Ersatzbild; keine Wiederherstellungsschluessel/-codes im Bild.
+Szenen w-* = Bilder der Projektseite (ohne Nummern, --nur w-), danach tools/website-bilder.py <HB_OUT>."""
 import importlib.util
 import json
 import os
@@ -119,6 +120,8 @@ class Run:
         self.out = os.environ.get("HB_OUT") or os.path.join(os.environ.get("SHOTS", "/tmp"), "handbuch")
         os.makedirs(self.out, exist_ok=True)
         self.made = []
+        self.rename = None      # Projektseite (Szenen w-*): {Handbuch-Name: Website-Name}; andere Bilder nur nach .skip/
+        self.nomark = False     # Projektseite: keine Nummern im Bild
         self.open = []          # offene Browser-Kontexte (bei Fehler: Bild zur Fehlersuche, dann auflegen und schliessen)
 
     # --- Aufbau ----------------------------------------------------------------------------------------------------
@@ -188,7 +191,14 @@ class Run:
     # --- Bilder ----------------------------------------------------------------------------------------------------
     def shot(self, page, name, el=None, full=False, wait=600, pad=0):
         page.wait_for_timeout(wait)
-        path = os.path.join(self.out, name + ".png")
+        out = self.out
+        if self.rename is not None:
+            if name in self.rename:
+                name = self.rename[name]
+            elif not name.startswith("w-"):
+                out = os.path.join(self.out, ".skip")
+                os.makedirs(out, exist_ok=True)
+        path = os.path.join(out, name + ".png")
         if el is not None:
             bb = el.bounding_box() if hasattr(el, "bounding_box") else el
             vp = page.viewport_size
@@ -204,15 +214,17 @@ class Run:
                 clip = {"x": max(0, bb["x"] - pad), "y": max(0, bb["y"] - pad), "width": bb["width"] + 2 * pad, "height": bb["height"] + 2 * pad}
                 page.screenshot(path=path, clip=clip)
                 page.set_viewport_size(vp)
-                self.made.append(name)
-                print("BILD", name, flush=True)
+                if out == self.out:
+                    self.made.append(name)
+                    print("BILD", name, flush=True)
                 return path
             clip = {"x": max(0, bb["x"] - pad), "y": max(0, bb["y"] - pad), "width": bb["width"] + 2 * pad, "height": bb["height"] + 2 * pad}
             page.screenshot(path=path, clip=clip)
         else:
             page.screenshot(path=path, full_page=full)
-        self.made.append(name)
-        print("BILD", name, flush=True)
+        if out == self.out:
+            self.made.append(name)
+            print("BILD", name, flush=True)
         return path
 
 
@@ -243,6 +255,8 @@ class Who:
 
     def mark(self, items):
         """items: [(locator|bbox, Nummer|None[, Abstand])]"""
+        if self.run.nomark:
+            return
         rects = []
         for it in items:
             loc, n = it[0], it[1]
@@ -2091,6 +2105,116 @@ def b13_07(run):
     hangup(lap, b, ph)
     ph.p.wait_for_timeout(1500)
     for w in (ph, lap, b):
+        w.close()
+
+
+# =====================================================================================================
+# Projektseite (docs/index.html und Sprachfassungen): Bilder w-* ohne Nummern, tools/website-bilder.py macht daraus
+# WebP unter docs/bilder/ (und das Poster docs/video/saga-promo.jpg). Aufnehmen: tools/handbuch-stack.sh --nur w-
+# =====================================================================================================
+def site(name, welt, art, fn, rename):
+    """Website-Bild aus einer Handbuch-Szene: gleiche Schritte, ohne Nummern, nur die genannten Bilder."""
+    def run_site(run):
+        run.rename, run.nomark = dict(rename), True
+        try:
+            fn(run)
+        finally:
+            run.rename, run.nomark = None, False
+    SCENES.append((name, welt, art, run_site))
+
+
+site("w-unterseiten", "familie", "server", b04_14, {"b04-14-unterseiten-galerie": "w-unterseiten"})
+site("w-widgets", "familie", "server", b06_05, {"b06-05-home-dashboard-dunkel": "w-widgets"})
+site("w-board", "familie", "server", b07_02, {"b07-02-board-status": "w-board"})
+site("w-kalender", "familie", "server", b07_03, {"b07-03-kalender-woche": "w-kalender"})
+site("w-ki", "familie", "server", b15_01, {"b15-01-ki-seite": "w-ki"})
+site("w-foederation", "familie", "server", b11_all, {"b11-02-fremde-seite": "w-foederation"})
+site("w-tunnel", "verein", "knoten", a06_04, {"a06-04-tunnel-kasten": "w-tunnel"})
+
+
+@scene("w-heute", "familie")
+def w_heute(run):
+    """Heute hell und dunkel (Startbereich, auch Poster des Videos) und auf dem Handy."""
+    for dark, n in ((False, "hell"), (True, "dunkel")):
+        a = heute(run, dark=dark)
+        run.shot(a.p, "w-heute-" + n)
+        a.close()
+    a = heute(run, form=PHONE)
+    run.shot(a.p, "w-handy-heute")
+    a.close()
+
+
+@scene("w-editor-live", "familie")
+def w_editor_live(run):
+    """Anna und Ben gleichzeitig in "Sommerfest" (Tiptap, live), hell und dunkel."""
+    notes = dict(run.dm.auth.settings().get("notes") or {}, live=True)
+    run.dm.setting("notes", notes)
+    time.sleep(6)
+    try:
+        for dark, n in ((False, "hell"), (True, "dunkel")):
+            a, b = run.who("anna", dark=dark), run.who("ben", dark=dark)
+            a.page(run.ids["sommerfest"], 3000)
+            b.page(run.ids["sommerfest"], 3000)
+            b.p.locator(".pm-doc p", has_text="Grillgut").first.evaluate("""(el) => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
+              while ((n = w.nextNode())) { const i = n.nodeValue.indexOf('Grillgut'); if (i >= 0) { const r = document.createRange();
+                r.setStart(n, i); r.setEnd(n, i + 8); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return; } } }""")
+            b.p.wait_for_timeout(2500)
+            a.p.wait_for_timeout(1500)
+            run.shot(a.p, "w-editor-live-" + n)
+            a.close()
+            b.close()
+    finally:
+        run.dm.setting("notes", dict(notes, live=False))
+
+
+@scene("w-chat", "familie")
+def w_chat(run):
+    """Familienchat (Antwort, Reaktion, Bild, angeheftet) hell und dunkel, dazu Bens Handy (dunkel)."""
+    ws = chat_world(run)
+    gid = run.chats["gruppe"]
+    for u in ("ben", "clara", "lena"):
+        ws[u].close()
+    a = ws["anna"]
+    a.go(f"/chats#c{gid}", 3000)
+    no_toasts(a)
+    run.shot(a.p, "w-chat-hell")
+    a.close()
+    a = run.who("anna", dark=True)
+    keys(run, a)
+    a.go(f"/chats#c{gid}", 3000)
+    no_toasts(a)
+    run.shot(a.p, "w-chat-dunkel")
+    a.close()
+    b = run.who("ben", dark=True, form=PHONE)
+    keys(run, b)
+    b.go(f"/chats#c{gid}", 3000)
+    no_toasts(b)
+    run.shot(b.p, "w-handy-chat")
+    b.close()
+
+
+@scene("w-anruf", "familie", "knoten")
+def w_anruf(run):
+    """Gruppenanruf zu viert ueber den eingebauten Knoten: Annas Sicht mit Teilnehmerliste, Oma Lena am Handy."""
+    ws = [caller(run, u) for u in ("anna", "ben", "clara")] + [caller(run, "lena", form=dict(PHONE, user_agent=ANDROID_UA))]
+    a, ph = ws[0], ws[3]
+    cid = japi(a, "POST", "/api/chats", {"kind": "free", "members": ["ben", "clara", "lena"], "device": device(a)})["chat"]["id"]
+    for w in ws[1:]:
+        w.go("/chats", 1500)
+    call_from_chat(a, cid)
+    for w in ws[1:]:
+        accept(w)
+    until(lambda: len(set((room(a) or {}).get("legs") or [])) >= 4, 30000)
+    a.p.wait_for_timeout(6000)
+    no_toasts(ph)
+    run.shot(ph.p, "w-handy-anruf")
+    open_list(a)
+    a.p.wait_for_timeout(1500)
+    no_toasts(a)
+    run.shot(a.p, "w-anruf-gruppe")
+    hangup(*reversed(ws))
+    a.p.wait_for_timeout(2000)
+    for w in ws:
         w.close()
 
 
