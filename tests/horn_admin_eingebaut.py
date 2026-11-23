@@ -3,7 +3,8 @@
 Teil 1 (Attrappe statt gjallarhorn, Verhalten per Datei): saga-media meldet Zustand und Grund (POST /internal/horn/state,
 von aussen 404), Admin -> Anrufe zeigt die Zeile "Eingebaut" mit "Startet nicht" und Grund (kein Zertifikat mit Hinweis
 und Link auf die Anleitung; Port belegt; sonstiger Abbruch mit bereinigter Fehlerzeile ohne Pfade/Kennungen), keine
-Pfade/Geheimnisse in /api/calls/state; Log: Grund- und Knotenzeile nur einmal trotz mehrerer Fehlversuche; Speichern warnt
+Pfade/Geheimnisse in /api/calls/state; Rat bei "kein Zertifikat" (Bugs-DB 2246): zuerst BASE_URL auf https -> Tunnel-Betrieb
+ueber die normale Saga-Adresse (nur 443, am Proxy WebSocket), "Ein Port"/eigener Name nur als Zusatz; Log: Grund- und Knotenzeile nur einmal trotz mehrerer Fehlversuche; Speichern warnt
 ("startet so nicht") und startet trotz Backoff sofort neu; "Jetzt erneut versuchen"; laufender Knoten -> "Startet";
 Schalter aus -> "Abgeschaltet". Teil 2: SAGA_HORN=off -> "Nicht verfuegbar" mit Grund.
 Teil 3 (echtes gjallarhorn, HORN_NAME ohne Zertifikatsdateien, ACME nicht erreichbar): der eingebaute bekommt im welcome
@@ -184,6 +185,13 @@ def section(html):
     return html[i:html.find("</section>", i)] if i >= 0 else ""
 
 
+def why(sec):
+    """Hinweis (small.horn-bi-why) in der Zeile Eingebaut."""
+    i = sec.find('id="row-builtin"')
+    j = sec.find('class="horn-bi-why"', i) if i >= 0 else -1
+    return sec[j:sec.find("</small>", j)] if j >= 0 else ""
+
+
 def builtin_node(st):
     return next((n for n in st.get("nodes") or [] if n.get("builtin")), None)
 
@@ -208,10 +216,19 @@ def teil1(media):
     ok("/api/calls/state ohne Pfade/Geheimnisse", not re.search(r"fullchain|/data/|/tmp/|privkey|" + re.escape(SECRET[:12]), raw), raw[:300])
     s, html, _ = adm("GET", "/calls")
     sec = section(html)
-    ok("Seite: Zeile Eingebaut (oben) mit Startet nicht, Hinweis HORN_NAME/Durchreiche/UDP und Anleitung",
+    ok("Seite: Zeile Eingebaut (oben) mit Startet nicht und Knopf, ohne Pfade",
        s == 200 and 'id="row-builtin"' in sec and sec.find('id="row-builtin"') < sec.find("</table>") and "Startet nicht" in sec
-       and "HORN_NAME" in sec and "auf 443 an Port" in sec and "HORN_UDP=0" in sec and "ANLEITUNG.md#eingebauter-knoten-hinter-einem-l4-proxy" in sec
        and 'value="builtin_retry"' in sec and "fullchain" not in sec, sec[:600])
+    # Bugs-DB 2246: Standardweg zuerst (BASE_URL https -> Tunnel-Betrieb, nur 443, Proxy mit WebSocket), Ein Port/eigener
+    # Name nur als Zusatz danach; Link auf den Tunnel-Abschnitt der Anleitung
+    w = why(sec)
+    tun, ep = w.find("Tunnel-Betrieb"), w.find("Ein Port")
+    ok("Rat bei 'kein Zertifikat': zuerst BASE_URL auf https (gerade http://...) -> Tunnel-Betrieb, 443, Websockets Support",
+       "BASE_URL" in w and f"http://127.0.0.1:{PORT}" in w and tun >= 0 and "443" in w and "Websockets Support" in w
+       and "ANLEITUNG.md#anrufe-über-die-saga-adresse-tunnel" in w and "Einfachster Weg" not in w, w[:900])
+    ok("Rat: 'Ein Port' (SAGA_TLS=1) und eigener Name (HORN_NAME) nur als Zusatz danach",
+       0 <= tun < ep and w.find("SAGA_TLS=1") > tun and w.find("HORN_NAME") > tun and "ANLEITUNG.md#ein-name-ein-port-443" in w
+       and w.find("ANLEITUNG.md#anrufe-über") < w.find("ANLEITUNG.md#ein-name"), w[:900])
     # Backoff waechst (2, 4, 8, 16 s ...); Log nur einmal
     t0 = time.time()
     while starts() < 4 and time.time() - t0 < 40:
@@ -233,7 +250,7 @@ def teil1(media):
     ok(f"Speichern startet sofort neu ({dt:.1f} s, Backoff waere noch {wait_s:.0f} s)", starts() > n0 and dt < 7 and wait_s > dt + 3,
        (starts(), n0, wait_s))
     s, html, _ = adm("GET", "/calls")
-    ok("Speichern ohne Name/Zertifikat: Warnung 'startet so nicht' (HORN_NAME)", s == 200 and "startet so nicht – es fehlt ein eigener Name (HORN_NAME)" in html,
+    ok("Speichern ohne Tunnel/Zertifikat: Warnung 'startet so nicht' (BASE_URL https)", s == 200 and "startet so nicht – BASE_URL ist keine https-Adresse" in html,
        html[html.find("flash"):][:300])
     time.sleep(1.5)
     lg = log_text()
