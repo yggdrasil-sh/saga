@@ -47,9 +47,10 @@ const srv = http.createServer((q, r) => {
           p.on('response', r => { if (r.status() >= 400) bad.push(r.status() + ' ' + r.url()); });
           p.on('request', r => reqs.push(r.url()));
           await p.goto(url, { waitUntil: 'load' });
-          // alle Bilder laden (loading=lazy): einmal durchscrollen
-          await p.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 500) { window.scrollTo(0, y); await new Promise(r => setTimeout(r, 40)); } window.scrollTo(0, 0); });
-          await p.waitForTimeout(800);
+          // alle Bilder laden (loading=lazy sofort laden, dann auf jedes Bild warten)
+          await p.evaluate(async () => { const im = [...document.images]; im.forEach(i => { i.loading = 'eager'; });
+            await Promise.all(im.map(i => i.complete && i.naturalWidth ? 0 : new Promise(r => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }); setTimeout(r, 8000); }))); });
+          await p.waitForTimeout(300);
           if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `${lang}-${bn}-${w}-${scheme === 'light' ? 'hell' : 'dunkel'}.jpg`), fullPage: true, type: 'jpeg', quality: 80 });
           if (!NUR) {
             ok(!errs.length, tag + ': Konsolenfehler', errs);
