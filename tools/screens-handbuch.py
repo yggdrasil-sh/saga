@@ -194,7 +194,11 @@ class Run:
             vp = page.viewport_size
             if bb and bb["y"] + bb["height"] + pad > vp["height"] and hasattr(el, "bounding_box"):
                 # hoeher als das Fenster: Fenster kurz verlaengern (Screenshot-Ausschnitt nur im sichtbaren Bereich)
-                page.set_viewport_size({"width": vp["width"], "height": int(bb["y"] + bb["height"] + pad + 20)})
+                # Oberkante ins Bild holen (nach scroll_into_view_if_needed kann sie ueber dem Fenster liegen - sonst
+                # fehlt oben ein Stueck, z. B. a06-01 ohne Ueberschrift)
+                page.set_viewport_size({"width": vp["width"], "height": int(max(bb["y"], 0) + bb["height"] + 2 * pad + 40)})
+                page.wait_for_timeout(300)
+                el.evaluate("(e, p) => { e.scrollIntoView({block: 'start'}); window.scrollBy(0, -p); }", pad)
                 page.wait_for_timeout(500)
                 bb = el.bounding_box()
                 clip = {"x": max(0, bb["x"] - pad), "y": max(0, bb["y"] - pad), "width": bb["width"] + 2 * pad, "height": bb["height"] + 2 * pad}
