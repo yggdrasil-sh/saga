@@ -147,10 +147,10 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b15-03-ki-chat.png | B15 | Web | hell | KI im Familienchat auf Zuruf (`@Saga KI`) – Antwort für alle sichtbar | – |
 | b16-01-kalender-verbinden.png | B16 | Web | hell | Einstellungen → Kalender: Familienkalender verbunden, zweiten Kalender (CalDAV) hinzufügen | 1 = verbundener Kalender „Familie“; 2 = Adresse des CalDAV-Servers (Passwort: App-Passwort, hier leer) |
 | b16-02-immich.png | B16 | Web | hell | Bild aus Immich: Album „Ostsee 2026“ (Attrappe), Foto wählen → wird in die Seite kopiert | 1 = Alben; 2 = gewähltes Album; 3 = Foto anklicken |
-| b16-03-nextcloud-datei.png | B16 | Web | hell | Nextcloud-Datei als Verweis in „Ferienwohnung Möwe“: Karte mit Vorschau, Herunterladen, In Nextcloud öffnen, Schalter (Attrappe cloud.saga.example) | – |
+| b16-03-nextcloud-datei.png | B16 | Web | hell | Nextcloud-Datei als Verweis in „Ferienwohnung Möwe“: Karte mit Vorschau, Herunterladen, In Nextcloud öffnen (Attrappe cloud.saga.example) | – |
 | b16-04-bookorbit-verbunden.png | B16 | Web | hell | Einstellungen → BookOrbit: verbunden (Attrappe bookorbit.example), „Markierungen als Seite übernehmen“ mit drei Büchern | – |
 | b16-05-bookorbit-buchseite.png | B16 | Web | hell | Buchseite „Das Leuchtfeuer von Hiddensee“ unter „Bücher“: Cover, Autorin, Notiz, Kapitel-Unterseiten mit Zahl der Markierungen | – |
-| b16-06-bookorbit-kapitel.png | B16 | Web | hell | Kapitelseite „3 Sturmflut“: Markierungen als Zitate, Notizen darunter | – |
+| b16-06-bookorbit-kapitel.png | B16 | Web | hell | Kapitelseite „3 Sturmflut“: Markierungen als Zitate, Notiz zur Markierung darunter | – |
 | b17-01-qr-kopplung.png | B17 | Web | hell | Apps & Geräte: App per QR-Code anmelden (Code gilt 2 Minuten, nur einmal) | 1 = QR-Code mit der App scannen |
 | b18-01-api-token-neu.png | B18 | Web | hell | Neuer API-Token „Home Assistant“: Bereiche wählen (Token selbst wird nicht gezeigt) | 1 = Name; 2 = Bereiche (nie mehr Rechte als dein Konto) |
 | b18-02-webhook.png | B18 | Web | hell | Webhook anlegen: Adresse und Ereignisse (Signatur mit eigenem Geheimnis) | 1 = Adresse des Empfängers; 2 = Webhook anlegen |

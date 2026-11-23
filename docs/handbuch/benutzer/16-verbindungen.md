@@ -160,7 +160,7 @@ Danach gibt es:
 
 ![Buchseite „Das Leuchtfeuer von Hiddensee“ unter „Bücher“: Cover, Autorin, „Notiz zum Buch“ und die Kapitel als Unterseiten mit der Zahl der Markierungen; im Seitenbaum links die Kapitelseiten](../bilder/b16-05-bookorbit-buchseite.png)
 
-![Kapitelseite „3 Sturmflut“: die Markierungen aus BookOrbit als Zitate, darunter die eigenen Notizen](../bilder/b16-06-bookorbit-kapitel.png)
+![Kapitelseite „3 Sturmflut“: die Markierungen aus BookOrbit als Zitate, unter der ersten Annas Notiz dazu](../bilder/b16-06-bookorbit-kapitel.png)
 
 **Trennen** in **Einstellungen → Verbindungen → BookOrbit** meldet Saga auch bei BookOrbit ab. Übernommene
 Buchseiten bleiben als normale Seiten stehen.

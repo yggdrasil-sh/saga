@@ -836,7 +836,6 @@ def b13_09(run):
 
 @scene("b13-07-begleitgeraet-teilt", "familie", "knoten")
 def b13_07(run):
-    import io
     from PIL import Image
     ph = run.who("anna", dark=True, form=dict(PHONE, user_agent=ANDROID_UA), media=MEDIA["anna"])
     keys(run, ph)

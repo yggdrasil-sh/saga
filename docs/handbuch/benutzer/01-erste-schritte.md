@@ -265,7 +265,7 @@ Saga meldet dich in **diesem** Browser ab. Andere Geräte bleiben angemeldet.
    **Anmelden**.
 3. Sie tippt auf ihr Profilbild-Kürzel → **⚙ Einstellungen** → **Profil & Sprache** und trägt als
    Anzeigenamen „Oma Lena“ ein und tippt auf **Speichern**.
-4. Unter **Passwort ändern** ersetzt sie das Startpasswort durch ein eigenes.
+4. Unter **Sicherheit** → **Passwort ändern** ersetzt sie das Startpasswort durch ein eigenes.
 5. Weiter unten bei **Anmeldung & Sicherheit** schreibt sie in das Namensfeld „Lenas Handy“ und tippt auf
    **+ Passkey hinzufügen**. Das Handy fragt nach ihrem Fingerabdruck – fertig.
 6. Saga zeigt ihr jetzt 10 Wiederherstellungscodes. Anna hilft ihr, sie mit **Als Datei speichern**
@@ -284,7 +284,7 @@ Saga meldet dich in **diesem** Browser ab. Andere Geräte bleiben angemeldet.
    Passwort-Manager) und klickt auf **Bestätigen**.
 3. Sie öffnet **⚙ Einstellungen → Apps & Geräte** und klickt bei ihrem alten Handy auf **Abmelden**. Die App
    auf dem verlorenen Gerät kommt jetzt nicht mehr in ihr Konto.
-4. Unter **Konto → Anmeldung & Sicherheit** löscht sie den alten Passkey „Claras Handy“ und entfernt die
+4. Unter **Sicherheit → Anmeldung & Sicherheit** löscht sie den alten Passkey „Claras Handy“ und entfernt die
    Authenticator-App. Saga fragt dabei zur Sicherheit noch einmal nach ihrem Passwort.
 5. Sobald das neue Handy da ist, legt sie dort einen neuen Passkey an und erzeugt mit **Neue Codes erzeugen**
    einen frischen Satz Wiederherstellungscodes – der benutzte Code gilt ja nicht mehr.
