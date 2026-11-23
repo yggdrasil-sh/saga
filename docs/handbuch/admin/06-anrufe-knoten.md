@@ -97,8 +97,9 @@ Auf der Seite erscheint dafür der Kasten **Anrufe über die Saga-Adresse (Tunne
 
 ![Kasten „Anrufe über die Saga-Adresse (Tunnel)“: Zustand, „Proxy reicht WebSocket durch? Ja ✓ – der Tunnel kommt beim Knoten an.“ mit dem Knopf „Jetzt prüfen“, darunter die offenen Tunnel und Browser-Verbindungen](../bilder/a06-04-tunnel-kasten.png)
 
-Im Bild hat der Knoten einen eigenen Namen – dann ist der Tunnel nur der Rückweg der Apps („Bereit als Rückweg“). Im
-Tunnel-Betrieb hinter Nginx Proxy Manager steht bei **Zustand** „An ✓ …“.
+Im Bild hat der eingebaute Knoten einen eigenen Namen (`knoten.verein.example`, nicht die Saga-Adresse
+`verein.example`) – dann ist der Tunnel nur der Rückweg der Apps: **Zustand** „Bereit als Rückweg“. Im
+Tunnel-Betrieb hinter Nginx Proxy Manager (Knoten ohne eigenen Namen) steht dort „An ✓ …“.
 
 Optional kann UDP 443 dazukommen – das bringt etwas bessere Qualität, ist aber ein zusätzlich geöffneter Port. Wer
 Saga ohne Proxy direkt ins Internet stellt oder den Proxy TLS nur durchreichen lässt, kann stattdessen die

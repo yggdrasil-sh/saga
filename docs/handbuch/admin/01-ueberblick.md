@@ -88,16 +88,20 @@ Oben erscheinen außerdem **Hinweise**, wenn etwas zu tun ist – etwa eine neue
 | Gruppen | Gruppen anlegen und ansehen | [A02](02-benutzer-gruppen.md) |
 | Dienste | Kacheln für eure Dienste | [A03](03-dienste.md) |
 | Veröffentlicht | öffentliche Seiten im Blick, zurückziehen | [A08](08-inhalte-meldungen.md) |
+| Titelbilder | Bilder, aus denen eure Leute ein Titelbild wählen; eigene hochladen, ausblenden | – |
 | Meldungen | gemeldete Chat-Nachrichten | [A08](08-inhalte-meldungen.md) |
+| Diagnose | Fehlerberichte und „Diagnose senden“ eurer Leute | [A09](09-diagnose.md) |
 | Föderation | mit anderen Saga-Servern verbinden | [A07](07-foederation.md) |
 | Anrufe | TURN, große Gruppenanrufe, Knoten | [A06](06-anrufe-knoten.md) |
+| Netz | Karte der Verbindungen: verbundene Server, Knoten, Clients (nur Anzahlen), laufende Anrufe | – |
 | Backups | Server-Backups und persönliche Backups | Anleitung, Abschnitt 11 |
 | Allgemein | fast alle Schalter | [A05](05-allgemein.md) |
 | Mitteilungen | Web Push, ntfy, UnifiedPush, Apple Push | [A05](05-allgemein.md) |
 | KI-Assistent | Sprachmodell, Persona, Websuche | [A05](05-allgemein.md) |
 | SSO / OIDC, LDAP / AD | Anmeldung über einen Anmeldedienst | [A04](04-anmeldung.md) |
 
-Oben rechts kommst du mit **Zum Dashboard** in die normale Saga-Oberfläche und mit **Abmelden** hinaus. Unten auf
+Ist das Menü breiter als das Fenster, schiebst du es seitlich weiter. Oben rechts kommst du mit **Zum Dashboard ↗**
+in die normale Saga-Oberfläche („Heute“, in einem neuen Tab) und mit **Abmelden** hinaus. Unten auf
 jeder Seite steht die installierte Version.
 
 ### 5. Hell oder dunkel, Sprache

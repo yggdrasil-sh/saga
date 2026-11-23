@@ -36,7 +36,7 @@ und am Ende steht eine Tabelle mit allen Schaltern und ihrem Standardwert.
 
 ### 1. Anmeldung & Konten, Dienste, Verbindungen
 
-- **Titel** – der Name oben im Dashboard und auf der Anmeldeseite, zum Beispiel „Gartenverein Lindenhof“.
+- **Titel** – der Name oben in der Seitenleiste und auf der Anmeldeseite, zum Beispiel „Gartenverein Lindenhof“.
 - **Registrierung erlauben**, **Anmeldung mit lokalen Konten**, **Standardgruppen** – siehe
   [A02](02-benutzer-gruppen.md) und [A04](04-anmeldung.md).
 - **Standardsprache** – für Anmeldeseite, Admin-Bereich und alle Konten mit „Automatisch“.

@@ -10,7 +10,7 @@
 
 - **Das Vereinswiki nur für Berechtigte.** Frieda legt die Kachel „Vereinswiki“ an. Sie erscheint nur bei Leuten in
   der Gruppe `s_wiki`.
-- **Etwas für alle.** Der „Vereinskalender“ soll bei jedem Mitglied auf dem Dashboard stehen – Haken **Für alle
+- **Etwas für alle.** Der „Vereinskalender“ soll bei jedem Mitglied auf „Heute“ stehen – Haken **Für alle
   angemeldeten Benutzer**.
 - **Ordnung schaffen.** Anna sortiert die Familiendienste in Kategorien: „Medien“ (Jellyfin), „Haus“ (Home Assistant),
   „Dateien“ (Nextcloud).
@@ -18,7 +18,7 @@
 
 ## Wofür ist das?
 
-**Dienste** sind die Kacheln auf dem Dashboard eurer Leute – Links zu den Programmen, die ihr selbst betreibt. Anders
+**Dienste** sind die Kacheln auf „Heute“ bei euren Leuten – Links zu den Programmen, die ihr selbst betreibt. Anders
 als Lesezeichen (die jede Person für sich anlegt) richtest du Dienste für alle ein und bestimmst, wer welchen sieht.
 
 Das Prinzip ist einfach: Ein Dienst hat einen **Kurznamen**, zum Beispiel `wiki`. Wer in der Gruppe **`s_wiki`** ist,
@@ -81,7 +81,7 @@ Symbol oder das Bildchen der Webseite.
 ## Beispiel aus dem Alltag
 
 **Frieda richtet das Vereinswiki ein.** Der Verein betreibt ein Wiki unter `wiki.verein.example`. Nur der Vorstand
-und die Wiki-Redaktion sollen es auf dem Dashboard sehen.
+und die Wiki-Redaktion sollen es auf „Heute“ sehen.
 
 1. Frieda öffnet **Dienste** und füllt **Dienst anlegen** aus: Name „Vereinswiki“, Adresse
    `https://wiki.verein.example`, Kurzname `wiki`, Symbol `bookstack`, Kategorie „Verein“.
@@ -116,7 +116,7 @@ Ja, unter **Allgemein → Dienste → Gruppen-Kennung**. Bestehende Gruppen werd
 
 ## Auf dem Handy und in den Apps
 
-Dienste legst du nur im Admin-Bereich an. Angezeigt werden sie überall: auf dem Dashboard im Browser und in allen
+Dienste legst du nur im Admin-Bereich an. Angezeigt werden sie überall: auf „Heute“ im Browser und in allen
 Apps unter **Dienste**.
 
 ---
