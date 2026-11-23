@@ -45,5 +45,5 @@ while read -r WELT ART NAMES; do
   L=${UMG:-/srv/saga-test/tmp/umgebung}/log/screens-handbuch.py.$WELT-$ART.log
   grep -E '^(OK|FAIL|BILD|Bilder:|FEHLER|PNG )|bereit=' "$L" | sed 's/^/  /'
 done <<< "$GRUPPEN"
-ls -la "$HB_OUT" | tail -n +2 | wc -l | sed 's/^/Bilder im Ordner: /'
+find "$HB_OUT" -maxdepth 1 -name '*.png' | wc -l | sed 's/^/Bilder im Ordner: /'
 exit $RC
