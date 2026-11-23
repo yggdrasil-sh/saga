@@ -13,7 +13,7 @@
 # 9001+10*slot ... +9 und Hilfsports 19001+10*slot ... +9 (feste Ports der Reihen wie 8080/389/8094-8097 nur im Namensraum).
 # Variablen: UMG (Arbeitsordner), UMG_BIN (gjallarhorn/saga-media), UMG_GOBIN (age), UMG_PWLIB (Python-Playwright),
 #   UMG_NS (Praefix Namensraum, Standard um), UMG_DB (Praefix DB, Standard saga_umg), UMG_LIMIT (s), UMG_SENV ("K=V ..." fuer
-#   den Server), UMG_PYX (zusaetzlicher PYTHONPATH der Reihe). Weitere Variablen (z. B. MESH=1) gehen an die Reihe durch.
+#   den Server), UMG_PYX (zusaetzlicher PYTHONPATH der Reihe), UMG_HOSTS (weitere Zeilen fuer /etc/hosts des Laufs). Weitere Variablen (z. B. MESH=1) gehen an die Reihe durch.
 set -u
 D=$(cd "$(dirname "$0")" && pwd)
 WT=${WT:-$(cd "$D/../.." && pwd)}
@@ -97,6 +97,7 @@ lauf() {
     ip -n $NS link add um0 type dummy && ip -n $NS addr add 10.78.$SLOT.1/24 dev um0 && ip -n $NS link set um0 up && \
       ip -n $NS route add unreachable default || echo "Attrappe fehlgeschlagen"
     printf '127.0.0.1 localhost ldap.test mockoidc\n::1 localhost\n' > $RUN/hosts
+    [ -n "${UMG_HOSTS:-}" ] && printf '%s\n' "$UMG_HOSTS" >> $RUN/hosts      # weitere Namen (z. B. Anzeige-Hosts der Handbuch-Bilder)
     ART=$ART SLOT=$SLOT F=$F RUN=$RUN WT=$WT D=$D DBN=${UMG_DB}_$SLOT PGSOCK=$PGSOCK \
       ip netns exec $NS unshare -m --propagation private bash $D/innen.sh
     echo "== innen rc=$?"
