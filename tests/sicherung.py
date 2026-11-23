@@ -182,8 +182,14 @@ try:
 
     # Backup von 2.4 (vor Migration 15): ohne chat_reaction (Fremdschluessel auf chat_msg) und push_stream_msg
     # (Fremdschluessel auf push_sub) - einspielbar auf einer 2.5-Datenbank mit Zeilen darin (sonst bricht DROP chat_msg
-    # bzw. push_sub ab); Reaktionen und abgelegte Mitteilungen der aktuellen Datenbank sind danach weg
-    q("DROP TABLE chat_reaction, push_stream_msg")
+    # bzw. push_sub ab); Reaktionen und abgelegte Mitteilungen der aktuellen Datenbank sind danach weg.
+    # Pruefung gesamt-srv: ein echtes 2.4-Backup kennt auch die uebrigen 2.5-Tabellen mit Fremdschluessel auf 2.4-Tabellen
+    # nicht (note_fresh, row_person, row_done, note_mention, synced_ref -> note; chat_hidden, chat_pin -> chat/chat_msg) -
+    # fehlten sie hier nicht, raeumte pg_restore --clean sie selbst weg und der Rueckweg aus docs/UPGRADE-2.5.md (7.) bliebe
+    # ungeprueft (dort brach er an "note_pkey ... andere Objekte haengen davon ab" ab)
+    NEW25 = ("chat_reaction", "push_stream_msg", "note_fresh", "row_person", "row_done", "note_mention", "synced_ref",
+             "chat_hidden", "chat_pin")
+    q("DROP TABLE " + ", ".join(NEW25))
     old25 = db.backup("sicherung-vor-2-5")
     made.append(old25)
     db.init_schema()
@@ -198,11 +204,11 @@ try:
         okr = True
     except RuntimeError as ex:
         okr, _ = False, print(str(ex)[:300])
-    gone = q("SELECT to_regclass('public.chat_reaction'), to_regclass('public.push_stream_msg')")[0]
+    gone = q("SELECT " + ", ".join(f"to_regclass('public.{t}')" for t in NEW25))[0]
     db.init_schema()
-    ok(f"Backup von 2.4 ohne chat_reaction/push_stream_msg einspielbar (vorher weg {gone}), naechster Start legt sie leer an",
-       okr and gone == (None, None) and q("SELECT count(*) FROM chat_reaction")[0][0] == 0
-       and q("SELECT count(*) FROM push_stream_msg")[0][0] == 0)
+    ok(f"Backup von 2.4 ohne die neuen 2.5-Tabellen mit Fremdschluessel einspielbar (vorher weg {gone}), naechster Start legt sie leer an",
+       okr and all(x is None for x in gone) and q("SELECT count(*) FROM chat_reaction")[0][0] == 0
+       and q("SELECT count(*) FROM push_stream_msg")[0][0] == 0 and q("SELECT count(*) FROM note_fresh")[0][0] == 0)
 
     # Kommandozeile wie in der Anleitung (python run.py restore <datei>)
     import subprocess
