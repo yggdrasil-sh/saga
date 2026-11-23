@@ -156,8 +156,8 @@ und Absatz „IPv6 und Docker“).
 **Frieda verlangt 2FA für alle Admins.** Im Gartenverein haben Frieda und ihr Stellvertreter Admin-Rechte. Frieda
 will die Admin-Konten besser schützen.
 
-1. Frieda richtet sich selbst zuerst einen Passkey und eine Authenticator-App ein (Einstellungen → Konto →
-   Anmeldung & Sicherheit).
+1. Frieda richtet sich selbst zuerst einen Passkey und eine Authenticator-App ein (Einstellungen →
+   Sicherheit).
 2. Im Admin-Bereich öffnet sie **Allgemein → Zweiter Faktor**.
 3. Bei **2FA verlangen für** wählt sie **Admins** und speichert.
 4. Ihr Stellvertreter meldet sich am Abend an. Saga führt ihn nach dem Passwort zur Einrichtung. Er scannt den

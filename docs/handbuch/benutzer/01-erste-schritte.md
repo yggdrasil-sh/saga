@@ -84,10 +84,10 @@ Was die Nummern bedeuten:
 ### 3. Konto absichern: Passkey, Authenticator-App, Wiederherstellungscodes
 
 Ein Passwort allein kann erraten oder gestohlen werden. Deshalb kannst du dein Konto zusätzlich schützen.
-Du findest alles unter **Einstellungen → Konto → Anmeldung & Sicherheit**:
+Du findest alles unter **Einstellungen → Sicherheit**:
 
-1. Klick oben rechts auf deinen Namen (das Benutzermenü) und dann auf **⚙ Einstellungen**.
-2. Bleib auf dem Reiter **Konto** und scroll nach unten bis **Anmeldung & Sicherheit**.
+1. Klick unten links in der Seitenleiste auf deinen Namen (das Benutzermenü) und dann auf **⚙ Einstellungen**.
+2. Wähl links unter **Konto** den Bereich **Sicherheit**.
 
 ![Bereich „Anmeldung & Sicherheit“: ein Passkey „Annas MacBook“, eine eingerichtete Authenticator-App und 10 übrige Wiederherstellungscodes](../bilder/b01-03-sicherheit.png)
 
@@ -139,7 +139,7 @@ weiter. Das schützt dich, falls jemand an deinem offenen Laptop sitzt.
 
 ### 5. Profil: Name und Profilbild
 
-Unter **Einstellungen → Konto** stellst du ein, wie andere dich sehen.
+Unter **Einstellungen → Profil & Sprache** stellst du ein, wie andere dich sehen.
 
 **Anzeigename und E-Mail**
 
@@ -153,7 +153,8 @@ Unter **Einstellungen → Konto** stellst du ein, wie andere dich sehen.
 
 **Passwort ändern**
 
-1. Gib unter **Passwort ändern** dein bisheriges Passwort ein, dann zweimal das neue (mindestens 10 Zeichen).
+1. Gib unter **Einstellungen → Sicherheit** bei **Passwort ändern** dein bisheriges Passwort ein, dann zweimal das
+   neue (mindestens 10 Zeichen).
 2. Klick auf **Passwort ändern**.
 
 Danach werden alle **anderen** Browser und angemeldeten Apps abgemeldet – nur der Browser, in dem du gerade
@@ -167,7 +168,7 @@ bist, bleibt angemeldet. Die Apps melden sich einmal neu an.
 2. Zieh das Bild bei ① an die richtige Stelle und vergrößere es mit dem Regler ② **Zoom**.
 3. Klick auf **Übernehmen**.
 
-Dein Bild erscheint jetzt überall, wo du auftauchst: oben rechts, bei Kommentaren, im Chat und in der Liste
+Dein Bild erscheint jetzt überall, wo du auftauchst: in der Seitenleiste, bei Kommentaren, im Chat und in der Liste
 „Wer gerade hier ist“. Saga entfernt dabei versteckte Angaben aus dem Foto, etwa den Aufnahmeort. Mit
 **Eigenes Bild entfernen** kommen wieder deine Initialen.
 
@@ -188,10 +189,10 @@ dazu in [B10 Teilen, Rechte, Kommentare, Veröffentlichen](10-teilen.md#5-eine-s
 
 Saga spricht Deutsch, Englisch, Spanisch, Russisch und Thai.
 
-![Einstellungen, Reiter Konto, Abschnitt „Sprache“ mit der Auswahlliste „Oberfläche“](../bilder/b01-05-sprache.png)
+![Einstellungen, Bereich „Profil & Sprache“, Abschnitt „Sprache“ mit der Auswahlliste „Oberfläche“](../bilder/b01-05-sprache.png)
 
-1. Öffne **Einstellungen → Konto**. Schneller geht es über das Benutzermenü oben rechts → **🌐 Sprache** – das
-   öffnet direkt diese Stelle.
+1. Öffne **Einstellungen → Profil & Sprache**. Schneller geht es über das Benutzermenü (dein Name unten links) →
+   **🌐 Sprache**: Dort wählst du die Sprache direkt, **Mehr zur Sprache …** öffnet diese Stelle.
 2. Wähle bei ① in der Liste **Oberfläche** deine Sprache: **Automatisch**, Deutsch, English, Español, Русский
    oder ไทย.
 3. Die Sprache gilt sofort, und zwar für dein Konto auf **allen** Geräten.
@@ -205,7 +206,11 @@ Browsers.
 
 ### 7. Hell oder dunkel
 
-Saga hat **keinen eigenen Schalter** für hell und dunkel. Es richtet sich nach der Einstellung deines Geräts:
+Unter **Einstellungen → Profil & Sprache → Darstellung** (direkt unter der Sprache) wählst du **Automatisch
+(System)**, **Hell** oder **Dunkel**. Schneller geht es über das Benutzermenü oder mit `Strg`+`Umschalt`+`L`
+(Mac: `⌘`+`⇧`+`L`). Die Wahl gilt nur für **diesen Browser**.
+
+„Automatisch“ richtet sich nach der Einstellung deines Geräts:
 
 - **Windows:** Einstellungen → Personalisierung → Farben → „Modus auswählen“.
 - **Mac:** Systemeinstellungen → Erscheinungsbild.
@@ -216,29 +221,30 @@ Stellst du dein Gerät auf „automatisch“, wird Saga abends von selbst dunkel
 
 ### 8. Die Einstellungen im Überblick
 
-Alle persönlichen Einstellungen liegen in einem Fenster mit Reitern. Du öffnest es über dein Benutzermenü oben
-rechts → **⚙ Einstellungen**.
+Alle persönlichen Einstellungen liegen in einem Fenster. Du öffnest es über dein Benutzermenü (dein Name unten
+links in der Seitenleiste) → **⚙ Einstellungen**. Links stehen die Bereiche, rechts der gewählte Bereich.
 
-![Fenster „Einstellungen“ im dunklen Modus mit allen Reitern von „Konto“ bis „Hilfe“](../bilder/b01-07-einstellungen-reiter.png)
+![Fenster „Einstellungen“ im dunklen Modus: links die Bereiche in den Gruppen Konto, Arbeitsbereich, Verbindungen, Daten und Hilfe, rechts „Profil & Sprache“](../bilder/b01-07-einstellungen-reiter.png)
 
-Die Reiter bei ①:
+Die Bereiche bei ①:
 
-- **Konto** – Sprache, Profilbild, Name, Passwort, Anmeldung & Sicherheit, öffentlicher Name
-- **Mitteilungen** – was dich wann benachrichtigt (siehe [B14](14-benachrichtigungen.md))
-- **Lesezeichen** – deine eigenen Kacheln (siehe [B03 Lesezeichen](03-lesezeichen.md))
-- **Kalender**, **Immich**, **Nextcloud** – eigene Dienste verbinden (siehe [B16](16-verbindungen.md))
-- **Mein Backup** – deine eigenen Daten sichern (siehe [B19](19-hilfe.md))
-- **Apps & Geräte** – angemeldete Apps, App per QR-Code anmelden (siehe [B17](17-apps.md))
-- **Seiten** – Einstellungen zum Seiten-Editor
-- **API** – für Fortgeschrittene: Zugänge für eigene Skripte (siehe [B18](18-api-webhooks-mcp.md))
+- **Konto** – **Profil & Sprache** (Sprache, Darstellung, Profilbild, Name, öffentlicher Name), **Sicherheit**
+  (Passwort, Passkeys, Authenticator-App) und **Mitteilungen** (was dich wann benachrichtigt, siehe
+  [B14](14-benachrichtigungen.md))
+- **Arbeitsbereich** – **Seiten** (Einstellungen zum Seiten-Editor), **Kalender** und **Lesezeichen** (siehe
+  [B16](16-verbindungen.md) und [B03 Lesezeichen](03-lesezeichen.md))
+- **Verbindungen** – **Immich**, **BookOrbit**, **Nextcloud** (siehe [B16](16-verbindungen.md)), **Apps & Geräte**
+  (angemeldete Apps, App per QR-Code anmelden, siehe [B17](17-apps.md)) und **API** (für Fortgeschrittene, siehe
+  [B18](18-api-webhooks-mcp.md))
+- **Daten** – **Mein Backup**: deine eigenen Daten sichern (siehe [B19](19-hilfe.md))
 - **Hilfe** – Saga-Version und „Diagnose senden“, wenn etwas hakt (siehe [B19](19-hilfe.md))
 
-Welche Reiter du siehst, hängt davon ab, was dein Admin eingeschaltet hat. Auf dem Handy wischst du die
-Reiterleiste seitlich. Mit **✕** oder der Taste `Esc` schließt du das Fenster.
+Welche Bereiche du siehst, hängt davon ab, was dein Admin eingeschaltet hat. Mit den Pfeiltasten wechselst du
+zwischen den Bereichen. Mit **✕** oder der Taste `Esc` schließt du das Fenster.
 
 ### 9. Abmelden
 
-1. Klick oben rechts auf deinen Namen.
+1. Klick unten links in der Seitenleiste auf deinen Namen.
 2. Klick auf **↪ Abmelden**.
 
 Saga meldet dich in **diesem** Browser ab. Andere Geräte bleiben angemeldet.
@@ -257,7 +263,7 @@ Saga meldet dich in **diesem** Browser ab. Andere Geräte bleiben angemeldet.
 1. Anna schickt Lena die Adresse `https://saga.example`, den Benutzernamen `lena` und ein Startpasswort.
 2. Lena öffnet die Adresse im Handy-Browser, tippt `lena` und das Startpasswort ein und tippt auf
    **Anmelden**.
-3. Sie tippt oben auf ihr Profilbild-Kürzel → **⚙ Einstellungen**. Auf dem Reiter **Konto** trägt sie als
+3. Sie tippt auf ihr Profilbild-Kürzel → **⚙ Einstellungen** → **Profil & Sprache** und trägt als
    Anzeigenamen „Oma Lena“ ein und tippt auf **Speichern**.
 4. Unter **Passwort ändern** ersetzt sie das Startpasswort durch ein eigenes.
 5. Weiter unten bei **Anmeldung & Sicherheit** schreibt sie in das Namensfeld „Lenas Handy“ und tippt auf
@@ -294,7 +300,7 @@ Saga meldet dich in **diesem** Browser ab. Andere Geräte bleiben angemeldet.
 - **Codes nicht nur digital:** Bewahr mindestens einen Satz Wiederherstellungscodes außerhalb deines Handys
   auf – sonst sind beim Verlust des Handys Passkey **und** Codes weg.
 - **`Esc`** schließt die Einstellungen.
-- **Benutzermenü → 🌐 Sprache** springt direkt zur Sprachauswahl.
+- **Benutzermenü → 🌐 Sprache** wechselt die Sprache direkt.
 
 ---
 
@@ -331,7 +337,7 @@ Die Anmeldeseite sieht auf dem Handy genauso aus, nur schmaler. Die Nummern bede
 <img src="../bilder/b01-06-login-handy.png" width="320" alt="Anmeldeseite im Handy-Browser im dunklen Modus mit Benutzername, Passwort, „Mit Passkey anmelden“ und Sprachauswahl">
 
 - Passkeys anlegen und benutzen klappt auf dem Handy wie am Computer – mit Fingerabdruck oder Gesicht.
-- In den Einstellungen wischst du die Reiterleiste seitlich, um alle Reiter zu sehen.
+- Die Einstellungen zeigen am Handy zuerst die Liste der Bereiche; **‹ Einstellungen** führt zurück zur Liste.
 - Über das Browser-Menü **Zum Home-Bildschirm** startest du Saga wie eine App.
 
 **Apps (iOS/iPadOS/Mac, Android, Linux)**

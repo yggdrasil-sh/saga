@@ -54,8 +54,6 @@ und am Ende steht eine Tabelle mit allen Schaltern und ihrem Standardwert.
 
 ![Allgemein → Seiten: Vorlagengalerie, Seiten-Editor, Editor-Diagnose, gleichzeitig bearbeiten live und Wetter-Widget](../bilder/a05-01-allgemein-seiten.png)
 
-> **Hinweis:** Im Bild heißt der Editor noch „Neu (Tiptap, Test)“; in Saga 2.5 steht dort „Standard (Tiptap)“.
-
 - **Vorlagengalerie anbieten** – die fertigen Vorlagen beim Anlegen einer Seite.
 - **Seiten-Editor** – **Klassisch (Editor.js)**, **Standard (Tiptap)** oder **Jede Person wählt selbst** (dann unter
   Einstellungen → Seiten). Gespeichert wird in beiden Fällen dasselbe; du kannst also jederzeit wechseln.

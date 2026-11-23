@@ -60,7 +60,7 @@ Gut zu wissen:
 
 ### 2. Worüber die Glocke Bescheid sagt
 
-Unter **Einstellungen → Konto → Benachrichtigungen** schaltest du jede Art einzeln an oder ab:
+Unter **Einstellungen → Mitteilungen → Worüber?** schaltest du jede Art einzeln an oder ab:
 
 - Jemand teilt eine Seite mit mir / meine Rolle ändert sich
 - Neue Kommentare auf meinen Seiten und Antworten in Unterhaltungen, an denen ich beteiligt bin

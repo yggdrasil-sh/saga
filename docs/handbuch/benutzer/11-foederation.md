@@ -43,7 +43,7 @@ und im Chat – steht deshalb der Server dabei, zum Beispiel „Frieda Linde (fr
 
 Auch Gruppen auf dem anderen Server lassen sich so ansprechen: `vorstand@verein.example`.
 
-> **Tipp:** Ob andere dich über deinen Anzeigenamen finden dürfen, stellst du unter **Einstellungen → Konto →
+> **Tipp:** Ob andere dich über deinen Anzeigenamen finden dürfen, stellst du unter **Einstellungen → Profil & Sprache →
 > „In Adressbüchern verbundener Server erscheinen“** ein. Ist der Haken aus, findet man dich dort nur noch, wenn man
 > dein Handle genau kennt.
 
@@ -129,7 +129,7 @@ ein Konto bei Familie Sommer auf `saga.example`. Die Admins der beiden Server ha
 
 ## Tipps und Tastenkürzel
 
-- Dein eigenes Handle besteht aus deinem **öffentlichen Namen** (Einstellungen → Konto) und der Adresse deines
+- Dein eigenes Handle besteht aus deinem **öffentlichen Namen** (Einstellungen → Profil & Sprache) und der Adresse deines
   Saga – bei Anna also `anna-sommer@saga.example`. So kannst du es anderen weitergeben.
 - Seiten anderer Server erkennst du im Seitenbaum immer am Server-Namen dahinter.
 - Es gibt keine eigenen Tastenkürzel für Föderation – alles geht wie bei deinen eigenen Seiten.

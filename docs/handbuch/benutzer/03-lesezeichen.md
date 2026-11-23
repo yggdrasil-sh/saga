@@ -31,11 +31,11 @@ So erkennst du auf einen Blick, was von dir stammt.
 ### 1. Ein Lesezeichen anlegen
 
 1. Klick auf dem Dashboard unten rechts auf **+ Lesezeichen**.
-   (Oder: Benutzermenü oben rechts → **⚙ Einstellungen** → Reiter **Lesezeichen** → **+ Lesezeichen**.)
-2. Das Fenster **Einstellungen** öffnet sich auf dem Reiter **Lesezeichen**, darunter ein leeres Formular. Der
+   (Oder: Benutzermenü → **⚙ Einstellungen** → **Lesezeichen** → **+ Lesezeichen**.)
+2. Das Fenster **Einstellungen** öffnet sich im Bereich **Lesezeichen**, darunter ein leeres Formular. Der
    Cursor steht schon im Feld **Adresse**.
 
-![Einstellungen, Reiter Lesezeichen: oben zwei vorhandene Lesezeichen „Vertretungsplan“ und „Mensa“, darunter das Formular mit Adresse, Name, Symbol und Kategorie](../bilder/b03-01-lesezeichen-dialog.png)
+![Einstellungen, Bereich Lesezeichen: oben zwei vorhandene Lesezeichen „Vertretungsplan“ und „Mensa“, darunter das Formular mit Adresse, Name, Symbol und Kategorie](../bilder/b03-01-lesezeichen-dialog.png)
 
 3. Trag bei ① **Adresse** die Internetadresse ein, zum Beispiel `https://schule.example.org/vertretungsplan`.
    Das ist das einzige Pflichtfeld. Lässt du `https://` weg, ergänzt Saga es selbst.
@@ -95,12 +95,12 @@ Namen, keine Adresse.
 2. Klick darauf. Die Einstellungen öffnen sich mit dem ausgefüllten Formular.
 3. Ändere Adresse, Name, Symbol oder Kategorie und klick auf **Speichern**.
 
-**Oder in den Einstellungen:** Benutzermenü → **⚙ Einstellungen** → Reiter **Lesezeichen**. Dort stehen alle
+**Oder in den Einstellungen:** Benutzermenü → **⚙ Einstellungen** → **Lesezeichen**. Dort stehen alle
 deine Lesezeichen mit Kategorie und Adresse. Klick bei einem auf **Bearbeiten**.
 
 ### 5. Ein Lesezeichen löschen
 
-1. Öffne **⚙ Einstellungen** → Reiter **Lesezeichen**.
+1. Öffne **⚙ Einstellungen** → **Lesezeichen**.
 2. Klick beim gewünschten Lesezeichen auf **Löschen**.
 3. Bestätige die Rückfrage „Lesezeichen „…“ löschen?“.
 
