@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert – Admin → Anrufe: Rat bei „kein Zertifikat“ nennt zuerst den Tunnel-Betrieb (Bugs-DB 2246)
+- Startet der eingebaute Knoten mangels Zertifikat nicht (nur ohne https-`BASE_URL` mit DNS-Namen), empfahl die Zeile
+  „Eingebaut“ als einfachsten Weg die Betriebsart „Ein Port“. Jetzt steht dort der Standardweg: `BASE_URL` auf die
+  https-Adresse setzen – dann läuft der Knoten im Tunnel-Betrieb über die normale Saga-Adresse (nur 443, am Proxy nur
+  WebSocket bzw. „Websockets Support“), mit der aktuellen Adresse und Link auf den Tunnel-Abschnitt der Anleitung;
+  „Ein Port“ und ein eigener Name nur noch als Zusatz für Fortgeschrittene. Die Warnung beim Speichern sagt dasselbe.
+- Tests: `tests/horn_admin_eingebaut.py` prüft Wortlaut, Reihenfolge und Links des Rats.
+
 ### Behoben – Zurück auf 2.4: Backup von vor dem Update lässt sich mit 2.5 wieder einspielen (Bugs-DB 2245)
 - `python run.py restore <…-vor-schema-35.dump>` (Rückweg aus `docs/UPGRADE-2.5.md`, Abschnitt 7) brach mit
   „kann Constraint note_pkey … nicht löschen, weil andere Objekte davon abhängen“ ab (nichts geändert): neue Tabellen
