@@ -68,9 +68,9 @@ Das Symbol erscheint auch im Seitenbaum, in der Suche und in Verweisen.
 
 ### 2. Schrift, Breite und Textgröße
 
-Diese Einstellungen findest du im Seitenmenü **⋯** oben rechts.
+Diese Einstellungen findest du im Seitenmenü **⋯** oben rechts unter **Darstellung ›**.
 
-![Geöffnetes Seitenmenü mit „Volle Breite“, „Schrift“ und „Titelbild“](../bilder/b05-02-seitenmenue-gestalten.png)
+![Geöffnetes Seitenmenü, daneben das Untermenü „Darstellung“ mit „Volle Breite“, „Schrift“ und „Titelbild“](../bilder/b05-02-seitenmenue-gestalten.png)
 
 Was die Nummern bedeuten:
 

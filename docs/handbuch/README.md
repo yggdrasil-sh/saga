@@ -52,7 +52,7 @@ Nicht jede Funktion gibt es überall. Was abweicht, steht im letzten Abschnitt j
 |---|---|---|
 | B00 | [Ideen für deinen Alltag](benutzer/00-ideen.md) – 20 fertige Anwendungsfälle zum Nachmachen | fertig |
 | B01 | [Erste Schritte](benutzer/01-erste-schritte.md) – anmelden, absichern, einrichten | fertig |
-| B02 | [Dashboard und Startseite](benutzer/02-startseite.md) – der tägliche Einstieg | fertig |
+| B02 | [Heute und Startseite](benutzer/02-startseite.md) – der tägliche Einstieg | fertig |
 | B03 | [Lesezeichen](benutzer/03-lesezeichen.md) – eigene Links als Kacheln | fertig |
 | B04 | [Seiten und Editor](benutzer/04-seiten-editor.md) – Notizen, Wikis und Dokumente schreiben | fertig |
 | B05 | [Seiten gestalten](benutzer/05-gestalten.md) – Titelbild, Symbol, Schrift, Breite | fertig |

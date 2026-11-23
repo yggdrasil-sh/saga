@@ -35,8 +35,10 @@ Beides ist schnell erklärt und schnell erledigt.
 
 ### 1. Chats zum ersten Mal einrichten
 
-Den Knopf **Chats** findest du oben im Dashboard und auf jeder Seite. Die Zahl daneben zeigt ungelesene Nachrichten.
-Die Chats öffnen sich in einem eigenen Tab.
+**Chats** findest du links in der Seitenleiste – auf „Heute“ und auf jeder Seite. Die Zahl daneben zeigt ungelesene
+Nachrichten. In den Chats stehen deine Unterhaltungen ebenfalls in der Seitenleiste (unter „Chats“, mit Suche und
+**+ Neu**), rechts daneben die geöffnete Unterhaltung. Die Sprechblase unten rechts auf „Heute“ und in den Seiten
+öffnet die Chats in einem kleinen Fenster, ohne die Seite zu verlassen.
 
 Beim allerersten Öffnen richtet Saga deine Schlüssel ein und zeigt dir deinen **Wiederherstellungsschlüssel**.
 Das ist eine Reihe aus 32 Buchstaben und Ziffern, zum Beispiel `ABCD-EFGH-…`.
@@ -99,7 +101,7 @@ Zur Sicherheit fragt Saga vorher noch einmal nach deinem Passwort.
 
 ### 3. Eine Unterhaltung beginnen
 
-![Chatliste mit dem Familienchat „Sommers 🏡“ und einem Direkt-Chat mit Ben; rechts ist noch kein Chat geöffnet](../bilder/b12-01-chatliste.png)
+![Chats: in der Seitenleiste unter „Chats“ der Direkt-Chat mit Ben und der Familienchat „Sommers 🏡“, darüber Suche und „+ Neu“; rechts ist noch kein Chat geöffnet](../bilder/b12-01-chatliste.png)
 
 1. Klick in der Chatliste auf **+ Neu**.
 2. Ohne Eingabe siehst du deine ① **Kontakte** – alle, mit denen du schon geschrieben hast, die neuesten zuerst.
@@ -129,7 +131,7 @@ annehmen, ablehnen oder sperren. Bis du annimmst, klingelt und piept nichts.
 
 ### 4. Schreiben, antworten, reagieren
 
-![Familienchat: Claras Antwort mit Zitat, darunter Reaktionen, Bens Foto und eine Linkvorschau](../bilder/b12-02-familienchat.png)
+![Familienchat „Sommers 🏡“: oben die angeheftete Einladung, Bens Frage, Claras Antwort mit Zitat und Herz-Reaktion, Bens Foto vom Garten und Oma Lenas Nachricht](../bilder/b12-02-familienchat.png)
 
 Was die Nummern bedeuten:
 

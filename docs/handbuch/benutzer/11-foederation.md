@@ -77,7 +77,7 @@ Hat dir jemand von einem anderen Server eine Seite geteilt, bekommst du eine Ben
 3. Klick darauf. Die Seite öffnet sich in deinem normalen Editor.
 4. Oben steht bei ②, von wem die Seite kommt und was du darfst.
 
-![Anna hat den „Parzellenplan 2027“ in ihrem eigenen Saga geöffnet; oben steht „Geteilt von Frieda Linde (frieda-linde@verein.example) · Du kannst bearbeiten“](../bilder/b11-02-fremde-seite.png)
+![Anna hat den „Parzellenplan 2027“ in ihrem eigenen Saga geöffnet; oben steht „Geteilt von Frieda Linde (verein.example) · Du kannst bearbeiten“](../bilder/b11-02-fremde-seite.png)
 
 Was die Nummern bedeuten:
 

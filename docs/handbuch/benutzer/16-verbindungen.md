@@ -8,7 +8,7 @@
 
 ## Das kannst du damit machen
 
-- **Familientermine im Blick.** Anna verbindet den Familienkalender aus ihrer Nextcloud. Auf dem Dashboard steht
+- **Familientermine im Blick.** Anna verbindet den Familienkalender aus ihrer Nextcloud. Auf „Heute“ steht
   jetzt „Zahnarzt Clara“ direkt neben ihren Aufgaben.
 - **Urlaubsfotos in die Reiseseite.** Ben holt das schönste Strandfoto aus dem Immich-Album „Ostsee 2026“ als
   Titelbild auf die Seite „Urlaub Ostsee 2027“.
@@ -24,7 +24,7 @@
 Viele Familien und Vereine haben ihre Termine, Fotos und Dateien schon woanders: Termine in einem Kalender (zum
 Beispiel Nextcloud oder mailcow), Fotos in [Immich](https://immich.app), Dateien in Nextcloud, Bücher und
 Markierungen in BookOrbit. Saga holt diese Dinge
-auf deine Seiten und ins Dashboard – ohne dass du sie doppelt pflegen musst.
+auf deine Seiten und auf „Heute“ – ohne dass du sie doppelt pflegen musst.
 
 Jede Verbindung gehört nur zu **deinem** Konto. Du verbindest deine eigenen Dienste; andere sehen davon nur, was du
 bewusst auf einer Seite einfügst.
@@ -61,7 +61,7 @@ Was die Nummern bedeuten:
 
 **Wo erscheinen die Termine?**
 
-- Auf dem **Dashboard** rechts neben den Aufgaben.
+- Auf **Heute** rechts über den Aufgaben – und in der Seitenleiste unter **Termine**.
 - Im **Kalender-Block**: Tipp auf einer Seite `/Kalender`. Jede Person sieht dort ihre **eigenen** Termine – auch
   auf geteilten Seiten.
 - In Datenbanken mit Kalender-Ansicht kannst du **Termine aus verbundenen Kalendern einblenden**.
@@ -176,7 +176,7 @@ Nextcloud-Kalender „Familie“ und ihre Fotos in Immich.
 2. In Saga öffnet sie **Einstellungen → Kalender → + Kalender verbinden**, wählt **Nextcloud** und trägt Adresse,
    Benutzernamen und das App-Passwort ein.
 3. Saga findet drei Kalender. Anna kreuzt „Familie“ an und speichert die Auswahl.
-4. Auf dem Dashboard steht jetzt rechts „Zahnarzt Clara“.
+4. Auf „Heute“ steht jetzt rechts „Zahnarzt Clara“.
 5. Danach öffnet sie die Seite „Urlaub Ostsee 2027“, tippt `/Immich` und wählt aus dem Album „Ostsee 2026“ das Foto
    vom Leuchtturm.
 6. Darunter fügt sie mit **Nextcloud-Datei** die Buchungsbestätigung der Ferienwohnung **als Verweis** ein. Ben,

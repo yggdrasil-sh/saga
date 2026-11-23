@@ -35,6 +35,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Werkzeuge: `tools/handbuch-stack.sh` (Testumgebung, auch Art `knoten`), `tools/handbuch-demo.py` (Demo-Welt),
   `tools/screens-handbuch.py` (Bilder per Name, `--nur`), `tools/handbuch-fakes/` (Anzeige-Hosts, Nextcloud- und
   BookOrbit-Attrappe). `tools/testumgebung/umgebung.sh`: neue Variable `UMG_HOSTS`.
+- Fast alle übrigen Web-Bilder und die Texte zeigen jetzt die Seitenleiste „Heute · Chats · Aufgaben · Termine“ mit
+  Benutzermenü unten links statt der alten Kopfleiste (B02 heißt „Heute und Startseite“, Admin-Menü mit Titelbilder,
+  Diagnose und Netz); der eingebaute Knoten heißt in den Bildern `knoten.verein.example`, die Werkzeuge haben dazu
+  Wetter- und KI-Attrappe, einen zweiten Server für die Föderation und eigene Logs je Lauf (Bugs-DB 2244).
 
 ### Behoben – Anruf: Teilnehmerliste bei Handy quer verdeckt die Knöpfe nicht mehr (Bugs-DB 2196)
 - Im Querformat (Höhe ≤ 500 px) lag die Teilnehmerliste rechts über der senkrechten Leiste (Kamera, Teilen, Ton,

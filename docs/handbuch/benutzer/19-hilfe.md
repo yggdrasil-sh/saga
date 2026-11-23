@@ -131,7 +131,7 @@ unverändert. Verweise zwischen den Seiten, Datenbanken und Bilder zeigen danach
 
 **Ben meldet ein Problem.** Ben will in der Seite „Urlaub Ostsee 2027“ ein Foto einfügen, aber es passiert nichts.
 
-1. Ben lässt das Fenster offen und öffnet über das Benutzermenü **Einstellungen → Hilfe**.
+1. Ben lässt das Fenster offen und öffnet über das Benutzermenü unten links **Einstellungen → Hilfe**.
 2. Er schreibt: „Bild lässt sich nicht einfügen, Urlaubsseite“.
 3. Er klickt auf **Diagnose senden** und bekommt die Kennung `D-7K3FM`.
 4. Im Familienchat schreibt er Anna: „Bild geht nicht, Diagnose D-7K3FM“.

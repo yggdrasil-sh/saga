@@ -36,7 +36,7 @@ rechnet Saga sogar die Summe aus.
 
 Bad, Küche, Fenster: Jede Aufgabe ist ein Eintrag mit Raum, zuständiger Person und Status. Auf dem Board
 schiebst du Karten von „Offen“ über „Dabei“ nach „Erledigt“. Machst du die Liste zur Aufgabenquelle, sieht
-jeder seine eigenen Putzaufgaben direkt auf dem Dashboard.
+jeder seine eigenen Putzaufgaben direkt auf „Heute“.
 
 - Funktionen: [Board-Ansicht](07-datenbanken.md) · [Datenbank als Aufgabenquelle](08-aufgaben.md)
 
@@ -46,10 +46,10 @@ jeder seine eigenen Putzaufgaben direkt auf dem Dashboard.
 
 Zahnarzt, Elternabend, Training: Alle Termine stehen in einer gemeinsamen Datenbank mit Datum. In der
 Wochenansicht siehst du, wer wann wo ist. Hast du schon einen Kalender in Nextcloud, verbindest du ihn
-einfach, und seine Termine erscheinen auch rechts auf dem Dashboard.
+einfach, und seine Termine erscheinen auch rechts auf „Heute“.
 
 - Funktionen: [Kalender-Ansicht](07-datenbanken.md) · [Kalender verbinden](16-verbindungen.md) ·
-  [Dashboard](02-startseite.md)
+  [Heute](02-startseite.md)
 
 ![Familienkalender in der Wochenansicht mit Terminen der Familie](../bilder/b07-03-kalender-woche.png)
 

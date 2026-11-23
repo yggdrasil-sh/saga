@@ -9,10 +9,10 @@
 ## Das kannst du damit machen
 
 - **Schnell etwas notieren:** „Milch kaufen“ – `t`, tippen, `Enter`, fertig. Die Aufgabe steht sofort rechts
-  auf deinem Dashboard.
+  auf „Heute“.
 - **Wiederkehrendes nicht vergessen:** „Müll rausbringen“ jeden Dienstag, „Pflanzen gießen“ werktags,
   „Kfz-Versicherung prüfen“ jährlich. Nach dem Abhaken steht die nächste schon da.
-- **Den Hausputzplan auf dem Dashboard:** Die Datenbank „Hausputz“ ist Aufgabenquelle. Ben sieht unter seinen
+- **Den Hausputzplan auf „Heute“:** Die Datenbank „Hausputz“ ist Aufgabenquelle. Ben sieht unter seinen
   Aufgaben genau die Räume, die ihm zugewiesen sind.
 - **Wichtiges zuerst:** Mit Priorität ⚑ und Fälligkeitsdatum sortiert Saga alles: überfällig, heute, später.
 - **Morgens eine Zusammenfassung:** Eine Mitteilung sagt dir, wie viele Aufgaben heute fällig oder überfällig
@@ -20,8 +20,8 @@
 
 ## Wofür ist das?
 
-Saga hat eine einfache **Aufgabenliste** für alles, was du erledigen willst. Du findest sie rechts auf dem
-Dashboard, als Block `/aufgaben` in jeder Seite und in den Apps.
+Saga hat eine einfache **Aufgabenliste** für alles, was du erledigen willst. Du findest sie rechts auf **Heute**,
+in der Seitenleiste unter **Aufgaben**, als Block `/aufgaben` in jeder Seite und in den Apps.
 
 Dazu kommen **Datenbanken als Aufgabenquelle**: Offene Einträge aus Datenbanken wie „Hausputz“ oder „Aufgaben
 & Projekte“ erscheinen in derselben Liste. So hast du alles, was zu tun ist, an einem Ort – egal, wo es
@@ -33,15 +33,16 @@ eigentlich herkommt.
 
 ### 1. Eine Aufgabe schnell anlegen
 
-![Aufgabenleiste auf dem Dashboard mit fälligen, überfälligen und wiederkehrenden Aufgaben](../bilder/b08-01-aufgabenleiste.png)
+![Aufgabenleiste rechts auf „Heute“ mit dem Eingabefeld „Aufgabe …“, fälligen und überfälligen Aufgaben und „Alle Aufgaben …“](../bilder/b08-01-aufgabenleiste.png)
 
 Was die Nummern bedeuten:
 
-- ① **Schnell hinzufügen …** – hier tippst du eine neue Aufgabe ein
+- ① **Aufgabe …** – hier tippst du eine neue Aufgabe ein
 - ② deine **Aufgaben** – der Kreis davor hakt ab
-- ③ **Alle Aufgaben …** – öffnet die ganze Liste mit allen Möglichkeiten
+- ③ **Alle Aufgaben …** – öffnet die ganze Liste mit allen Möglichkeiten (dasselbe wie **Aufgaben** in der
+  Seitenleiste)
 
-1. Klick in ① **Schnell hinzufügen …** – oder drück auf dem Dashboard die Taste `t`.
+1. Klick in ① **Aufgabe …** – oder drück auf „Heute“ die Taste `t`.
 2. Tipp die Aufgabe ein, zum Beispiel „Fähre buchen“.
 3. Drück `Enter`.
 
@@ -91,7 +92,7 @@ Haken öffnet eine Aufgabe wieder, **×** löscht sie. **Erledigte löschen** r�
 
 ### 4. Aufgaben in Seiten
 
-Tipp in einer Seite `/aufgaben`. Der Block zeigt dieselbe Aufgabenliste wie das Dashboard – du kannst dort
+Tipp in einer Seite `/aufgaben`. Der Block zeigt dieselbe Aufgabenliste wie „Heute“ – du kannst dort
 anlegen, abhaken und Daten setzen.
 
 - Der Block zeigt immer **deine eigenen** Aufgaben. Auf einer geteilten Seite sehen andere statt deiner Liste
@@ -149,14 +150,14 @@ Wie Mitteilungen aufs Handy kommen, steht in [B14 Benachrichtigungen und Mitteil
 
 **Clara bringt jeden Dienstag den Müll raus.**
 
-1. Anna öffnet auf dem Dashboard **Alle Aufgaben …**.
+1. Anna öffnet in der Seitenleiste **Aufgaben**.
 2. Sie tippt „Müll rausbringen (Clara)“, wählt bei ② **Wiederholung** → **wöchentlich** und bei ③ den
    nächsten Dienstag.
 3. Sie drückt `Enter`. Die Aufgabe steht in der Liste.
 4. Am Dienstagabend hakt Anna sie ab. Saga meldet „Erledigt. Nächstes Mal: …“ mit dem Dienstag der nächsten
    Woche.
 
-> **Tipp:** Saga-Aufgaben gehören immer einer Person. Soll Clara die Aufgabe auf **ihrem** Dashboard sehen,
+> **Tipp:** Saga-Aufgaben gehören immer einer Person. Soll Clara die Aufgabe auf **ihrem** „Heute“ sehen,
 > nimm eine gemeinsame Datenbank als Aufgabenquelle – wie im nächsten Beispiel.
 
 **Der Hausputz verteilt sich von selbst.**
@@ -167,14 +168,14 @@ Wie Mitteilungen aufs Handy kommen, steht in [B14 Benachrichtigungen und Mitteil
    vorgeschlagene Zuordnung.
 3. Weil die Datenbank Anna gehört, sieht Ben nur **die ihm zugewiesenen** Einträge – „Bad putzen“ und „Fenster
    Küche“.
-4. Am Samstag hakt Ben „Bad putzen“ auf seinem Dashboard ab. In der Datenbank springt der Status auf
+4. Am Samstag hakt Ben „Bad putzen“ auf seinem „Heute“ ab. In der Datenbank springt der Status auf
    „Erledigt“, und Anna sieht es auf ihrem Board.
 
 ---
 
 ## Tipps und Tastenkürzel
 
-- `t` auf dem Dashboard springt in **Schnell hinzufügen …**.
+- `t` auf „Heute“ springt in **Aufgabe …**.
 - `Enter` legt die Aufgabe an.
 - **Sortierung:** Saga sortiert von selbst – überfällig, heute, nach Datum, nach Priorität.
 - **Zahlen im Widget:** Mit den Widgets **Kennzahl** und **Fortschritt** zeigst du „heute fällig“, „überfällig“
@@ -207,7 +208,7 @@ Wurde dir die Datenbank nicht mehr geteilt, entfernt Saga die Quelle von selbst.
 
 **Handy-Browser**
 
-- Die Aufgaben stehen als Kasten auf dem Dashboard, mit Priorität, Wiederholung und Datum gleich im
+- Die Aufgaben stehen als Kasten auf „Heute“, mit Priorität, Wiederholung und Datum gleich im
   Eingabefeld.
 - Nach dem Abhaken erscheint „Rückgängig“ unten am Bildschirm.
 

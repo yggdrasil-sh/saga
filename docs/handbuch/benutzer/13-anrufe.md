@@ -46,7 +46,7 @@ Saga-Servern (siehe [Föderation](11-foederation.md)).
 
 ### 2. Angerufen werden
 
-Ruft dich jemand an, erscheint auf **jeder** Saga-Seite „Name ruft an“ – egal ob du gerade im Dashboard, auf einer
+Ruft dich jemand an, erscheint auf **jeder** Saga-Seite „Name ruft an“ – egal ob du gerade auf „Heute“, auf einer
 Seite oder in den Chats bist. Dazu klingelt es, und auf dem Handy oder Computer kommt eine Mitteilung.
 
 <img src="../bilder/b13-05-klingeln-handy.png" width="320" alt="Ben wird auf dem Handy angerufen: Knöpfe zum Ablehnen, nur mit Ton annehmen und mit Video annehmen">

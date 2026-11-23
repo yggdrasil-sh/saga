@@ -2,7 +2,7 @@
 
 **Gilt für:** Web · Handy-Browser · iOS/iPadOS/Mac · Android · Linux
 
-[← B00 Ideen](00-ideen.md) · [Übersicht](../README.md) · [Weiter: B02 Dashboard und Startseite →](02-startseite.md)
+[← B00 Ideen](00-ideen.md) · [Übersicht](../README.md) · [Weiter: B02 Heute und Startseite →](02-startseite.md)
 
 ---
 
@@ -361,4 +361,4 @@ Die Anmeldeseite sieht auf dem Handy genauso aus, nur schmaler. Die Nummern bede
 
 ---
 
-[← B00 Ideen](00-ideen.md) · [Übersicht](../README.md) · [Weiter: B02 Dashboard und Startseite →](02-startseite.md)
+[← B00 Ideen](00-ideen.md) · [Übersicht](../README.md) · [Weiter: B02 Heute und Startseite →](02-startseite.md)

@@ -37,23 +37,24 @@ speichert von selbst, du musst nie auf „Speichern“ klicken.
 
 ### 1. Der Seitenbaum
 
-Klick auf dem Dashboard oben auf **Seiten**. Die Seiten öffnen sich in einem eigenen Browser-Tab. Links steht
-die Seitenleiste mit deinem Seitenbaum.
+Deine Seiten stehen links in der **Seitenleiste** – auf „Heute“, in den Chats und auf jeder Seite. Unter
+**Heute · Chats · Aufgaben · Termine** folgt dein Seitenbaum; ein Klick auf eine Seite öffnet sie.
 
-![Seitenleiste mit dem Seitenbaum „Familie Sommer“, darüber Suche und „Neue Seite“, darunter „Mit mir geteilt“, Archiv und Papierkorb](../bilder/b04-01-seitenbaum.png)
+![Seitenleiste: oben Suche, dann Heute, Chats, Aufgaben, Termine, der Seitenbaum mit Familien-Wiki, Haushalt, Sommerfest und weiteren Seiten, „Neue Seite“, „Mit mir geteilt“ und unten die Knöpfe Schnellsuche, Graph, Archiv und Papierkorb](../bilder/b04-01-seitenbaum.png)
 
 Was die Nummern bedeuten:
 
 - ① **Seiten durchsuchen** – filtert den Baum nach Titeln
 - ② **+ Neue Seite** – legt eine Seite an (oder öffnet das Menü mit weiteren Möglichkeiten)
 - ③ **Mit mir geteilt** – Seiten, die andere mit dir geteilt haben (siehe [B10](10-teilen.md))
-- ④ **Schnellsuche** (`Strg` + `K`, Mac: `⌘` + `K`) – sucht in Titeln und Inhalten
-- ⑤ **Archiv** – Seiten, die du aus dem Weg geräumt, aber nicht gelöscht hast
-- ⑥ **Papierkorb** – gelöschte Seiten bleiben hier 30 Tage
+- ④ **Schnellsuche** (Lupe; `Strg` + `K`, Mac: `⌘` + `K`) – sucht in Titeln und Inhalten. Daneben öffnet das
+  Netz-Symbol den **Graph**.
+- ⑤ **Archiv** (Kasten) – Seiten, die du aus dem Weg geräumt, aber nicht gelöscht hast
+- ⑥ **Papierkorb** (Mülleimer) – gelöschte Seiten bleiben hier 30 Tage
 
 **Eine neue Seite anlegen**
 
-1. Klick auf ② **+ Neue Seite**. Im Menü wählst du **Leere Seite**, eine **Datenbank** (siehe
+1. Klick auf ② **+ Neue Seite** (oder auf „Heute“ `n`). Im Menü wählst du **Leere Seite**, eine **Datenbank** (siehe
    [B07](07-datenbanken.md)), **Importieren …** oder **Aus der Galerie …** (siehe [B06](06-galerie-widgets.md)).
 2. Tipp oben einen **Titel** ein, zum Beispiel „Urlaub Ostsee 2027“.
 3. Drück `Enter` – die Schreibmarke springt in den Text darunter.

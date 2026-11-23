@@ -20,7 +20,7 @@
 
 Saga sagt dir auf zwei Arten Bescheid:
 
-- **Benachrichtigungen** siehst du in der **Glocke** oben rechts, solange Saga offen ist. Dort steht alles, was dich
+- **Benachrichtigungen** siehst du in der **Glocke** oben in der Seitenleiste, solange Saga offen ist. Dort steht alles, was dich
   betrifft: geteilte Seiten, Kommentare, Erwähnungen, Aufgaben und mehr.
 - **Mitteilungen** kommen aufs Handy oder den Computer – auch wenn Saga geschlossen ist. Das ist wie bei einer
   Nachricht im Messenger.
@@ -34,10 +34,10 @@ einen kurzen Satz wie „Neue Nachricht von Anna“ und einen Link.
 
 ### 1. Die Glocke
 
-Oben rechts im Dashboard und auf jeder Seite steht die Glocke ①. Die Zahl darauf nennt, wie viele Benachrichtigungen
+Oben in der Seitenleiste – neben dem Namen eures Saga, auf „Heute“ und auf jeder Seite – steht die Glocke ①. Die Zahl darauf nennt, wie viele Benachrichtigungen
 ungelesen sind.
 
-![Geöffnete Glocke mit Einträgen zu einer geteilten Seite, Kommentaren, einer Erwähnung und Aufgaben; oben rechts „Alle gelesen“](../bilder/b14-01-glocke.png)
+![Geöffnete Glocke oben in der Seitenleiste mit Einträgen zu einer geteilten Seite und neuen Kommentaren; oben „Alle gelesen“](../bilder/b14-01-glocke.png)
 
 Was die Nummern bedeuten:
 

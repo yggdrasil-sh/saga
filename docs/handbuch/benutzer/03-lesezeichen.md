@@ -2,7 +2,7 @@
 
 **Gilt für:** Web · Handy-Browser · iOS/iPadOS/Mac · Android · Linux (nur anzeigen)
 
-[← B02 Dashboard und Startseite](02-startseite.md) · [Übersicht](../README.md) · [Weiter: B04 Seiten und Editor →](04-seiten-editor.md)
+[← B02 Heute und Startseite](02-startseite.md) · [Übersicht](../README.md) · [Weiter: B04 Seiten und Editor →](04-seiten-editor.md)
 
 ---
 
@@ -17,7 +17,7 @@
 
 ## Wofür ist das?
 
-Mit **Lesezeichen** legst du dir eigene Kacheln auf das Dashboard – für jede Webseite, die du oft brauchst:
+Mit **Lesezeichen** legst du dir eigene Kacheln auf **Heute** – für jede Webseite, die du oft brauchst:
 das Schulportal, den Router, den Lieblings-Shop. Lesezeichen sind **nur für dich sichtbar**, auch in den Apps.
 Dein Admin sieht nur, wie viele du hast, nicht welche.
 
@@ -30,8 +30,8 @@ So erkennst du auf einen Blick, was von dir stammt.
 
 ### 1. Ein Lesezeichen anlegen
 
-1. Klick auf dem Dashboard unten rechts auf **+ Lesezeichen**.
-   (Oder: Benutzermenü → **⚙ Einstellungen** → **Lesezeichen** → **+ Lesezeichen**.)
+1. Klick auf „Heute“ unter den Kacheln auf **+ Lesezeichen**.
+   (Oder: Benutzermenü unten links → **⚙ Einstellungen** → **Lesezeichen** → **+ Lesezeichen**.)
 2. Das Fenster **Einstellungen** öffnet sich im Bereich **Lesezeichen**, darunter ein leeres Formular. Der
    Cursor steht schon im Feld **Adresse**.
 
@@ -43,14 +43,14 @@ So erkennst du auf einen Blick, was von dir stammt.
    Adresse – im Beispiel `schule.example.org`. Den Vorschlag siehst du schon beim Tippen grau im Feld.
 5. **Symbol** (optional): Lass das Feld leer – Saga sucht dann selbst ein passendes Bild (mehr dazu in
    Abschnitt 3).
-6. **Kategorie**: Unter dieser Überschrift erscheint die Kachel auf dem Dashboard. Vorgegeben ist
+6. **Kategorie**: Unter dieser Überschrift erscheint die Kachel auf „Heute“. Vorgegeben ist
    „Lesezeichen“. Du kannst jeden Namen eintragen, zum Beispiel „Schule“.
 7. Klick auf **Hinzufügen** (oder drück `Enter`).
 
 Saga meldet „Lesezeichen hinzugefügt“. Wenn du das Einstellungsfenster schließt, steht die neue Kachel auf
-deinem Dashboard.
+„Heute“.
 
-![Claras Dashboard: in der Kategorie „Schule“ die eigenen Lesezeichen „Mensa“ und „Vertretungsplan“ mit gestricheltem Rahmen, darunter der Knopf „+ Lesezeichen“](../bilder/b03-02-kacheln.png)
+![Claras „Heute“: in der Kategorie „Schule“ die eigenen Lesezeichen „Mensa“ und „Vertretungsplan“ mit gestricheltem Rahmen, darunter der Knopf „+ Lesezeichen“](../bilder/b03-02-kacheln.png)
 
 - ① ein eigenes Lesezeichen (gestrichelter Rahmen)
 - ② **+ Lesezeichen** – noch eins anlegen
@@ -59,10 +59,10 @@ deinem Dashboard.
 
 Die **Kategorie** entscheidet, unter welcher Überschrift eine Kachel steht.
 
-- Gibst du einer neuen Kategorie einen Namen, entsteht auf dem Dashboard eine neue Spalte – zum Beispiel
+- Gibst du einer neuen Kategorie einen Namen, entsteht auf „Heute“ eine neue Kategorie – zum Beispiel
   „Schule“.
 - Heißt deine Kategorie genauso wie eine Kategorie der Dienste (etwa „Familie“), steht dein Lesezeichen
-  **zusammen** mit diesen Diensten in derselben Spalte. So hat Anna ihr „Elternportal“ direkt neben „Fotos“ und
+  **zusammen** mit diesen Diensten in derselben Kategorie. So hat Anna ihr „Elternportal“ direkt neben „Fotos“ und
   „Nextcloud“ unter „Familie“.
 - Achte auf die genaue Schreibweise: „Schule“ und „schule“ wären zwei verschiedene Kategorien.
 
@@ -88,14 +88,14 @@ Namen, keine Adresse.
 
 ### 4. Ein Lesezeichen bearbeiten
 
-**Direkt auf dem Dashboard:**
+**Direkt auf „Heute“:**
 
 1. Fahr mit der Maus über deine Lesezeichen-Kachel. Unten rechts erscheint ein Stift **✎**
    („Lesezeichen bearbeiten“).
 2. Klick darauf. Die Einstellungen öffnen sich mit dem ausgefüllten Formular.
 3. Ändere Adresse, Name, Symbol oder Kategorie und klick auf **Speichern**.
 
-**Oder in den Einstellungen:** Benutzermenü → **⚙ Einstellungen** → **Lesezeichen**. Dort stehen alle
+**Oder in den Einstellungen:** Benutzermenü unten links → **⚙ Einstellungen** → **Lesezeichen**. Dort stehen alle
 deine Lesezeichen mit Kategorie und Adresse. Klick bei einem auf **Bearbeiten**.
 
 ### 5. Ein Lesezeichen löschen
@@ -109,7 +109,7 @@ Saga löscht nur das Lesezeichen in Saga – die Webseite selbst bleibt natürli
 ### 6. Lesezeichen als Favorit
 
 Auch Lesezeichen kannst du mit dem Stern **★** oben rechts auf der Kachel zu den **Favoriten** ganz oben auf
-dem Dashboard holen – genau wie Dienste. Mehr dazu in
+„Heute“ holen – genau wie Dienste. Mehr dazu in
 [B02, Abschnitt 3](02-startseite.md#3-favoriten-).
 
 ---
@@ -119,26 +119,24 @@ dem Dashboard holen – genau wie Dienste. Mehr dazu in
 **Clara legt sich den Vertretungsplan ihrer Schule ab.** Clara schaut jeden Morgen nach, ob Stunden ausfallen.
 Bisher hat sie die Adresse jedes Mal im Browser gesucht.
 
-1. Clara klickt auf ihrem Dashboard auf **+ Lesezeichen**.
+1. Clara klickt auf „Heute“ auf **+ Lesezeichen**.
 2. Bei **Adresse** fügt sie `https://schule.example.org/vertretungsplan` ein.
 3. Bei **Name** schreibt sie „Vertretungsplan“.
 4. **Symbol** lässt sie leer.
 5. Bei **Kategorie** ersetzt sie „Lesezeichen“ durch „Schule“ und klickt auf **Hinzufügen**.
 6. Gleich danach legt sie auf dieselbe Weise „Mensa“ mit `https://schule.example.org/mensa` und ebenfalls der
    Kategorie „Schule“ an.
-7. Sie schließt die Einstellungen. Auf ihrem Dashboard gibt es jetzt die Spalte **Schule** mit beiden Kacheln.
+7. Sie schließt die Einstellungen. Auf „Heute“ gibt es jetzt die Kategorie **Schule** mit beiden Kacheln.
 8. Damit es morgens noch schneller geht, klickt sie beim Vertretungsplan auf **★**. Jetzt ist er die Nummer 1 –
    Clara öffnet Saga, drückt `1`, und der Vertretungsplan ist da.
 
-Weil Lesezeichen nur für Clara sichtbar sind, sehen Anna und Ben diese Kacheln nicht auf ihren Dashboards.
+Weil Lesezeichen nur für Clara sichtbar sind, sehen Anna und Ben diese Kacheln nicht auf ihrem „Heute“.
 
 ---
 
 ## Tipps und Tastenkürzel
 
 - **Schnell anlegen:** Adresse einfügen und `Enter` – mehr braucht es nicht. Name und Symbol ergänzt Saga.
-- **Suchen statt scrollen:** Auf dem Dashboard `/` drücken und ein Stück vom Namen, der Adresse oder der
-  Kategorie tippen – deine Lesezeichen werden mit gefunden. `Enter` öffnet den ersten Treffer.
 - **Nummern nutzen:** `1` bis `9` öffnet die Kachel mit dieser Nummer, auch ein Lesezeichen.
 - **Eigene Ordnung:** Gib Lesezeichen, die zusammengehören, dieselbe Kategorie. Für Spontanes reicht die
   vorgegebene Kategorie „Lesezeichen“.
@@ -207,4 +205,4 @@ Im Handy-Browser funktioniert alles wie am Computer. Stern ★ und Stift ✎ sin
 
 ---
 
-[← B02 Dashboard und Startseite](02-startseite.md) · [Übersicht](../README.md) · [Weiter: B04 Seiten und Editor →](04-seiten-editor.md)
+[← B02 Heute und Startseite](02-startseite.md) · [Übersicht](../README.md) · [Weiter: B04 Seiten und Editor →](04-seiten-editor.md)

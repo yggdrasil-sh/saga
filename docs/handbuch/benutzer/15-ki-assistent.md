@@ -39,7 +39,8 @@ selbst nichts ändern – alles, was er vorschlägt, übernimmst du nur, wenn du
 ### 1. Den Assistenten öffnen
 
 1. Öffne eine Seite.
-2. Klick oben auf **Frage Saga KI** (mit dem Bild des Assistenten).
+2. Klick unten rechts auf den runden Knopf mit dem Bild des Assistenten (**Frage Saga KI**). Auf „Heute“ gibt es
+   dafür auch die Schnellaktion **Frage Saga KI** (`m`), in einer Seite das Seitenmenü **⋯ → Frage Saga KI**.
 3. Rechts öffnet sich die Seitenleiste des Assistenten. Oben wählst du den Bereich ①: **Frag deine Seiten** oder
    **Diese Seite**.
 
@@ -85,7 +86,7 @@ nicht deine Seiten. Jede Websuche zählt als weitere Anfrage.
 
 ### 4. Diese Seite: zusammenfassen, Aufgaben, verbessern, übersetzen
 
-Wähl oben den Bereich **Diese Seite**. Du findest ihn auch im Seitenmenü **⋯ → KI-Assistent**.
+Wähl oben den Bereich **Diese Seite**. Du findest ihn auch im Seitenmenü **⋯ → Frage Saga KI**.
 
 - **Zusammenfassen** – eine kurze Fassung der ganzen Seite.
 - **Aufgaben vorschlagen** – die KI sucht mögliche Aufgaben heraus. Kreuz an, was du willst, und wähl
