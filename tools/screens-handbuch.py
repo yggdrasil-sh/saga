@@ -623,6 +623,7 @@ def b07_09(run):
     a = db_page(run, "rezepte", view="Galerie")
     a.p.locator(".dbg-card", has_text="Apfelkuchen").first.click()
     a.p.wait_for_timeout(2500)
+    a.mark([(a.p.locator("#peek-mode"), 1), (a.p.locator("#peek-full"), 2)])      # Text B07 Abschnitt 7: (1) rechts/mittig, (2) als Seite
     run.shot(a.p, "b07-09-peek")
     a.close()
 

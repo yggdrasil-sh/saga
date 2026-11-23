@@ -189,7 +189,7 @@ Nachrichten. Die Nachrichten sind Ende-zu-Ende verschlüsselt: Nicht einmal dein
 
 - Funktionen: [Chats](12-chats.md)
 
-![Familienchat mit einer Antwort mit Zitat, Reaktionen, einem Foto und einer Linkvorschau](../bilder/b12-02-familienchat.png)
+![Familienchat mit einer Antwort mit Zitat, einer Reaktion und einem Foto](../bilder/b12-02-familienchat.png)
 
 **Videoanruf mit Oma**
 

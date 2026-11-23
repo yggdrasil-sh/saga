@@ -198,7 +198,7 @@ Spaltenmenü durch eine echte Formel.
 
 Ein Eintrag öffnet sich ohne die Datenbank zu verlassen in der Seitenansicht („Peek“).
 
-![Rezept „Apfelkuchen nach Oma Lena“ in der Seitenansicht rechts, mit einem Kommentar von Oma Lena](../bilder/b07-09-peek.png)
+![Rezept „Apfelkuchen nach Oma Lena“ in der Seitenansicht rechts; oben rechts die Knöpfe für rechts/mittig und „Als ganze Seite öffnen“](../bilder/b07-09-peek.png)
 
 - ① Umschalten zwischen **rechts** und **mittig**
 - ② **Als Seite öffnen** – öffnet den Eintrag als ganze Seite

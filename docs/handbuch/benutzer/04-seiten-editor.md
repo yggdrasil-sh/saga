@@ -259,7 +259,7 @@ Am Ende einer Seite siehst du unter **Verlinkt von**, welche anderen Seiten auf 
 Mit `Strg` + `K` (Mac: `⌘` + `K`) öffnest du die Befehlspalette. Sie sucht in Titeln **und** Inhalten deiner
 Seiten und kennt viele Befehle.
 
-![Befehlspalette im dunklen Modus mit Treffern aus Seiten und Befehlen](../bilder/b04-10-befehlspalette.png)
+![Schnellsuche im dunklen Modus mit „Re“: Treffer nach Seitentitel und darunter „Im Inhalt gefunden“](../bilder/b04-10-befehlspalette.png)
 
 1. Drück `Strg` + `K`.
 2. Tipp ein Stichwort, etwa „Apfelkuchen“ – oder einen Befehl wie „Versionsverlauf“, „Vorlagengalerie“,

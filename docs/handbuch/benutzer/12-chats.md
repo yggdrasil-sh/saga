@@ -138,7 +138,6 @@ Was die Nummern bedeuten:
 - ① Antwort mit Zitat – so sieht man, worauf sich die Nachricht bezieht.
 - ② Reaktion mit einem Emoji.
 - ③ Ein Bild im Verlauf.
-- ④ Eine Linkvorschau.
 
 So geht's:
 
