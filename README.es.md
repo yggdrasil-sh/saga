@@ -26,7 +26,7 @@
   <a href="#capturas">Capturas</a>
 </p>
 
-![Panel de Saga](docs/screenshots/dashboard.png)
+![Panel de Saga](docs/bilder/heute-hell.webp)
 
 Saga es una página de inicio y una base de conocimiento autoalojada para familias, equipos y homelabs: un panel
 con todos tus servicios, páginas y bases de datos al estilo Notion, tareas, calendarios y marcadores. Cada
@@ -139,7 +139,7 @@ actualizaciones) está en la **[guía](docs/es/GUIA.md)**.
 
 | | |
 |---|---|
-| ![Página](docs/screenshots/seite.png) | ![Base de datos como tablero](docs/screenshots/board.png) |
+| ![Página](docs/bilder/editor-live-hell.webp) | ![Base de datos como tablero](docs/bilder/board.webp) |
 | **Páginas** con bloques, listas de verificación, tablas | **Bases de datos** como tabla, tablero, calendario… |
 | ![Administración: servicios](docs/screenshots/admin-dienste.png) | ![Administración: SSO](docs/screenshots/admin-sso.png) |
 | **Administración:** servicios con acceso por grupos | **Administración:** SSO/OIDC con prueba de conexión |

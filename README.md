@@ -26,7 +26,7 @@
   <a href="#screenshots">Screenshots</a>
 </p>
 
-![Saga dashboard](docs/screenshots/dashboard.png)
+![Saga dashboard](docs/bilder/heute-hell.webp)
 
 Saga is a self-hosted start page and personal knowledge base for families, teams and homelabs: a dashboard for
 all your services, Notion-style pages and databases, tasks, calendars and bookmarks. Everyone gets their own
@@ -134,7 +134,7 @@ Everything else – reverse proxy, users, services, LDAP, SSO, calendars, backup
 
 | | |
 |---|---|
-| ![Page](docs/screenshots/seite.png) | ![Database as a board](docs/screenshots/board.png) |
+| ![Page](docs/bilder/editor-live-hell.webp) | ![Database as a board](docs/bilder/board.webp) |
 | **Pages** with blocks, checklists, tables | **Databases** as table, board, calendar … |
 | ![Admin: services](docs/screenshots/admin-dienste.png) | ![Admin: SSO](docs/screenshots/admin-sso.png) |
 | **Admin:** services with access via groups | **Admin:** SSO/OIDC with connection test |

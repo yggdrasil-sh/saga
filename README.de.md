@@ -26,7 +26,7 @@
   <a href="#screenshots">Screenshots</a>
 </p>
 
-![Saga Dashboard](docs/screenshots/dashboard.png)
+![Saga Dashboard](docs/bilder/heute-hell.webp)
 
 > **Neu in Saga 2.4:** **Videos im Chat** mit Vorschaubild, Streaming und fortsetzbarem Upload (standardmäßig bis 500 MB,
 > Ende-zu-Ende-verschlüsselt), **Gruppenanrufe** (bis 4 Geräte mit Video bzw. 6 nur mit Ton), **Bildschirm teilen mit
@@ -132,7 +132,7 @@ Alles Weitere – Reverse Proxy, Benutzer, Dienste, LDAP, SSO, Kalender, Sicheru
 
 | | |
 |---|---|
-| ![Seite](docs/screenshots/seite.png) | ![Datenbank als Board](docs/screenshots/board.png) |
+| ![Seite](docs/bilder/editor-live-hell.webp) | ![Datenbank als Board](docs/bilder/board.webp) |
 | **Seiten** mit Blöcken, Checklisten, Tabellen | **Datenbanken** als Tabelle, Board, Kalender … |
 | ![Admin: Dienste](docs/screenshots/admin-dienste.png) | ![Admin: SSO](docs/screenshots/admin-sso.png) |
 | **Admin:** Dienste mit Zugang über Gruppen | **Admin:** SSO/OIDC mit Verbindungstest |

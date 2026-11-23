@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Doku – Projektseite neu gestaltet (alle Sprachen)
+- `docs/index.html` und `docs/en|es|ru|th/index.html` neu für Selbsthoster: Startbereich („Eine Domain, nur Port 443“,
+  Platz für das Promovideo mit Poster `docs/video/saga-promo.jpg` und Musik-Angabe), Neu in 2.5 (Anrufe über
+  Gjallarhorn – experimentell, bis 4 Teilnehmende –, Editor live, Chats), Installieren, Funktionen, Apps, Sicherheit.
+  `docs/site.css` neu (hell/dunkel, mobil, keine externen Schriften). Bilder frisch aus der Demo-Welt als WebP unter
+  `docs/bilder/` (Szenen `w-*` in `tools/screens-handbuch.py`, Umwandlung `tools/website-bilder.py`), 41 ungenutzte alte
+  Bilder aus `docs/screenshots/` entfernt; README-Bilder oben und in der Tabelle nachgezogen.
+- Tests: `tests/browser_projektseite.js` (fünf Sprachen, Chromium und Firefox, 1440/390, hell/dunkel).
+
 ### Geändert – Admin → Anrufe: Rat bei „kein Zertifikat“ nennt zuerst den Tunnel-Betrieb (Bugs-DB 2246)
 - Startet der eingebaute Knoten mangels Zertifikat nicht (nur ohne https-`BASE_URL` mit DNS-Namen), empfahl die Zeile
   „Eingebaut“ als einfachsten Weg die Betriebsart „Ein Port“. Jetzt steht dort der Standardweg: `BASE_URL` auf die
