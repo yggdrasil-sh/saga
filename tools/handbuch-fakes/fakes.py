@@ -9,6 +9,7 @@
 - BookOrbit: kleine Attrappe der REST-API /api/v1 (Anmeldung, Leseliste, Markierungen, Inhaltsverzeichnis, Cover) mit
   erfundenen Buechern.
 Alle Bilder sind gezeichnet (Pillow), alle Inhalte erfunden."""
+import math
 import io
 import json
 import os
@@ -115,6 +116,18 @@ def cover_art(motif, c1, c2, w=1600, h=600):
         for i in range(-4, 14):
             x = i * 140
             d.polygon([(x, h), (x + 70, h), (x + 70 + h * 0.6, 0), (x + h * 0.6, 0)], fill=lt(c1, 0.18))
+    elif motif == "teller":                                          # Gericht von oben (Rezepte)
+        cx, cy, r = w // 2, h // 2, int(h * 0.42)
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(250, 248, 242))
+        d.ellipse([cx - r + 26, cy - r + 26, cx + r - 26, cy + r - 26], fill=c2)
+        for i in range(14):
+            a, rr = i * 2.4, (r - 70) * (0.25 + 0.75 * ((i * 37) % 10) / 10)
+            x, y = cx + int(rr * math.cos(a)), cy + int(rr * math.sin(a))
+            d.ellipse([x - 18, y - 18, x + 18, y + 18], fill=lt(c1, 0.15))
+    elif motif == "balken":                                          # bunte senkrechte Streifen (Lernplan)
+        cols = [(236, 214, 170), (214, 92, 80), (240, 170, 90), (90, 150, 210), (110, 170, 110), (240, 200, 70), (150, 100, 190)]
+        for i in range(16):
+            d.rectangle([i * w // 16, 0, (i + 1) * w // 16, h], fill=cols[(i * 3) % len(cols)])
     elif motif == "haus":
         d.rectangle([0, int(h * 0.75), w, h], fill=dk(c2, 0.2))
         x0 = int(w * 0.42)
@@ -432,6 +445,93 @@ class _BOH(BaseHTTPRequestHandler):
 def bookorbit_start(port, user, pw, name):
     _BO.users[user] = {"pw": pw, "name": name}
     srv = ThreadingHTTPServer(("127.0.0.1", port), _BOH)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+# --- Wetter-Attrappe (Open-Meteo-Format: /v1/forecast, /v1/search) - Werte erfunden, gleichbleibend ---------------------
+class _WXH(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        from datetime import date, timedelta
+        u = urllib.parse.urlsplit(self.path)
+        if u.path.endswith("/search"):
+            d = {"results": [{"name": "Lübeck", "admin1": "Schleswig-Holstein", "country": "Deutschland", "latitude": 53.87, "longitude": 10.69},
+                             {"name": "Lübeck", "admin1": "Brandenburg", "country": "Deutschland", "latitude": 51.93, "longitude": 13.93}]}
+        else:
+            t0 = date.today()
+            d = {"current": {"temperature_2m": 21.4, "weather_code": 2, "wind_speed_10m": 12},
+                 "daily": {"time": [(t0 + timedelta(days=i)).isoformat() for i in range(8)],
+                           "temperature_2m_max": [24, 25, 20, 18, 21, 22, 23, 21], "temperature_2m_min": [14, 15, 13, 12, 12, 13, 14, 13],
+                           "weather_code": [1, 0, 3, 61, 2, 1, 0, 2], "precipitation_probability_max": [10, 0, 30, 80, 20, 10, 0, 10]}}
+        b = json.dumps(d).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+
+def weather_start(port):
+    srv = ThreadingHTTPServer(("127.0.0.1", port), _WXH)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+# --- KI-Attrappe (OpenAI-kompatibel: /v1/models, /v1/chat/completions mit stream) - feste, erfundene Antworten ------------
+KI_ANSWERS = [
+    ("sommerfest", "Für das Sommerfest fehlen laut der Seite „Sommerfest“ noch **Getränke**, **Grillkohle** und **zwei "
+                   "Biertischgarnituren** [1]. Oma Lena bringt den Apfelkuchen mit, Ben kümmert sich ums Grillgut [1]. "
+                   "Soll ich daraus Aufgaben anlegen?"),
+    ("", "Dazu finde ich in deinen Seiten nichts Genaues."),
+]
+
+
+class _KIH(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def _json(self, d):
+        b = json.dumps(d).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def do_GET(self):
+        self._json({"object": "list", "data": [{"id": "familie-ki", "object": "model"}]})
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            body = {}
+        q = " ".join(str(m.get("content") or "") for m in body.get("messages") or [] if m.get("role") == "user").lower()
+        text = next(a for k, a in KI_ANSWERS if k in q)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        for i in range(0, len(text), 12):
+            ch = {"choices": [{"index": 0, "delta": {"content": text[i:i + 12]}, "finish_reason": None}]}
+            self.wfile.write(("data: " + json.dumps(ch, ensure_ascii=False) + "\n\n").encode())
+            self.wfile.flush()
+            time.sleep(0.02)
+        self.wfile.write(b'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+        self.wfile.flush()
+        self.close_connection = True
+
+
+def ki_start(port):
+    srv = ThreadingHTTPServer(("127.0.0.1", port), _KIH)
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv

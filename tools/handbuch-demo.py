@@ -38,7 +38,7 @@ WELTEN = {
         ("greta", "Greta Ufer", False, ["mitglieder"], "GU", ((80, 150, 190), (50, 100, 150)))]},
 }
 # Anzeige-Hosts der Attrappen (UMG_HOSTS in tools/handbuch-stack.sh zeigt sie auf 127.0.1.x)
-NC_HOST, BO_HOST = "cloud.saga.example", "bookorbit.example"
+NC_HOST, BO_HOST, WX_HOST = "cloud.saga.example", "bookorbit.example", "wetter.saga.example"
 
 
 def ymd(d):
@@ -63,7 +63,7 @@ class Demo:
         return TimestampSigner(self.auth.SECRET).sign(base64.b64encode(json.dumps(d).encode())).decode()
 
     def api(self, u, method, path, body=None, raw=None, ctype=None, ok=(200, 201, 204)):
-        hd = {"X-Saga": "1", "Cookie": "saga=" + self.ck(u)}
+        hd = {"X-Saga": "1", "Cookie": "saga=" + self.ck(u), "Accept-Language": "de-DE,de;q=0.9"}
         data = None
         if raw is not None:
             data, hd["Content-Type"] = raw, ctype
@@ -88,11 +88,20 @@ class Demo:
         self.db.wait_ready()
         self.db.init_schema()
         self.auth.save_setting("title", self.W["title"])
+        # Konten der Testumgebung (tools/testumgebung/konten.py) gehoeren nicht in die Demo-Welt (Benutzerliste, Zahlen)
+        from saga import userdata
+        with self.db.connect() as c:
+            extra = [r[0] for r in c.execute("SELECT username FROM users WHERE username LIKE 'um-%' OR username LIKE 'hk-test-%'").fetchall()]
+        for u in extra:
+            userdata.delete_user_data(u, drop_user=True)
         for u, name, adm, groups, *_ in self.W["users"]:
             if not self.auth.get_user(u):
                 self.auth.create_user(u, self.pw, name, email=f"{u}@{self.W['host']}", is_admin=adm, groups=groups)
             else:
                 self.auth.set_password(u, self.pw)
+        from saga import covers
+        for u, *_ in self.W["users"]:
+            covers.set_random(u, False)            # keine zufaelligen Titelbilder: Demo-Seiten haben gezeichnete oder keine
         for u, name, adm, groups, ini, col in self.W["users"]:
             if u != "admin":
                 self.api(u, "PUT", "/api/account/avatar", raw=fakes.avatar(ini, *col), ctype="image/png")
@@ -125,23 +134,35 @@ class Demo:
             self._covers = [c["url"] for c in (self.api(u, "GET", "/api/covers").get("covers") or [])]
         return next((c for c in self._covers if name and name in c), None)
 
-    def service(self, slug, name, url, sort):
+    def service(self, slug, name, url, sort, everyone=True, check=False, cat=None, members=()):
         import auth
         with self.db.connect() as c, c:
             if c.execute("SELECT 1 FROM service WHERE slug=?", (slug,)).fetchone():
                 return
             c.execute("INSERT INTO service (slug, name, url, icon, category, extra_groups, everyone, check_status, sort, created) "
-                      "VALUES (?,?,?,?,?,?,?,?,?,?)", (slug, name, url, "", self.W["title"].split()[0], "", 1, 0, sort, time.time()))
+                      "VALUES (?,?,?,?,?,?,?,?,?,?)", (slug, name, url, "", cat or self.W["title"].split()[0], "", 1 if everyone else 0,
+                                                       1 if check else 0, sort, time.time()))
             auth.ensure_group(c, "s_" + slug, f"Zugang zu {name}")
+        for u in members:                                   # Mitglied der Zugangsgruppe s_<slug>
+            i = self.auth.get_user(u)
+            if i:
+                self.auth.set_user_groups(i["id"], sorted(self.auth.groups_of(i["id"])[0] | {"s_" + slug}))
 
     # --- Welt Familie --------------------------------------------------------------------------------------------------
     def familie(self, nc_login=None, nc_pw=None, nc_uid=None, nc_ids=None):
         today = date.today()
         self.users()
-        self.setting("allowed_hosts", ", ".join([NC_HOST, BO_HOST]))   # nur die Anzeige-Hosts der Attrappen (steht in Bildern)
+        self.setting("allowed_hosts", ", ".join([NC_HOST, BO_HOST, WX_HOST]))   # nur die Anzeige-Hosts der Attrappen (steht in Bildern)
+        # KI-Assistent: Attrappe im Namensraum (http nur mit festgehaltener interner Adresse, wie im Admin-Bereich)
+        self.setting("ai", {"enabled": True, "provider": "openai", "url": "http://ki.saga.example/v1", "model": "familie-ki",
+                            "api_key": "", "groups": [], "timeout": 60, "pinned": ["127.0.1.6"], "chat": True})
+        self.setting("weather", {"enabled": True, "base_url": f"http://{WX_HOST}/v1/forecast", "geo_url": f"http://{WX_HOST}/v1/search", "api_key": ""})
         self.service("eltern", "Elternportal", "https://eltern.example.org", 1)
         self.service("fotos", "Fotos", "https://fotos.saga.example", 2)
         self.service("cloud", "Nextcloud", "https://cloud.saga.example", 3)
+        self.service("filme", "Filmabend", "https://filme.saga.example", 4, cat="Freizeit")
+        self.service("zuhause", "Zuhause", "https://zuhause.saga.example", 5, cat="Haus", check=True)
+        self.service("wetter", "Wetter Ostsee", "https://wetter.example.org", 6, cat="Urlaub")
         for text, days, prio in (("Fähre buchen", 1, 3), ("Geburtstagskarte für Oma Lena", 0, 2), ("Blumen gießen", 0, 1),
                                  ("Elternabend vorbereiten", 3, 2), ("Fahrräder zur Inspektion", 6, 1), ("Steuererklärung abgeben", -2, 3)):
             self.api("anna", "POST", "/api/tasks", {"text": text, "due": ymd(today + timedelta(days=days)), "prio": prio})
@@ -202,7 +223,187 @@ class Demo:
                 P("f4", "Restzahlung bis <b>15. Juni</b> überweisen.")], parent_id=self.ids.get("wiki:Urlaub Ostsee 2027"), icon="🏠",
                cover=self.art("anna", "meer", (170, 210, 240), (110, 165, 220), "moewe"))
             self.ids["ferienwohnung"] = fw
+        self.familie_welt(today)
         return self.ids
+
+    # --- Familie: Haushalt, Feste, Urlaub, Schule (Kapitel B02-B15) ------------------------------------------------------
+    def share(self, owner, nid, target, role, typ="user"):
+        return self.api(owner, "PUT", f"/api/notes/{nid}/shares", {"type": typ, "target": target, "role": role})
+
+    def body(self, u, nid, blocks):
+        return self.api(u, "PATCH", f"/api/notes/{nid}", {"format": "blocks", "body": json.dumps({"blocks": blocks}, ensure_ascii=False)})
+
+    def mkdb(self, u, title, icon, props, views, parent=None, cover=None, rows=(), **kw):
+        nid = self.note(u, title, kind="database", icon=icon, cover=cover, parent_id=parent, **kw)
+        self.api(u, "PATCH", f"/api/notes/{nid}", {"schema": {"props": props, "views": views}})
+        out = {}
+        for r in rows:
+            r = dict(r)
+            who = r.pop("_u", u)
+            d = self.api(who, "POST", "/api/notes", dict(r, parent_id=nid))
+            out[r["title"]] = d.get("id") or (d.get("note") or {}).get("id")
+        return nid, out
+
+    def versions(self, owner, nid, steps):
+        """Versionsverlauf wie nach einem Tag Arbeit: frühere Stände (die ersten n Blöcke der Seite) mit Autor und Zeit
+        (vor x Stunden) - so legt Saga sie beim Speichern an (Tabelle note_version); hier direkt, damit die Zeiten stimmen."""
+        with self.db.connect() as c, c:
+            title, body = c.execute("SELECT title, body FROM note WHERE id=?", (nid,)).fetchone()
+            blocks = json.loads(body or "{}").get("blocks") or []
+            for hours, who, n in steps:
+                c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
+                          (nid, owner, title, json.dumps({"blocks": blocks[:n]}, ensure_ascii=False), "blocks",
+                           time.time() - hours * 3600, who))
+
+    def familie_welt(self, today):
+        P = lambda i, t: {"id": i, "type": "paragraph", "data": {"text": t}}  # noqa: E731
+        H = lambda i, t, lv=2: {"id": i, "type": "header", "data": {"text": t, "level": lv}}  # noqa: E731
+        CL = lambda i, e, t: {"id": i, "type": "callout", "data": {"emoji": e, "text": t}}  # noqa: E731
+        CHK = lambda i, items: {"id": i, "type": "list", "data": {"style": "checklist", "meta": {}, "items": [  # noqa: E731
+            {"content": t, "meta": {"checked": c}, "items": []} for t, c in items]}}
+        from saga import core
+        REF = core.local_ref                                                          # Handle '~…' eines Kontos dieser Instanz
+        M = lambda u, n: f'<span class="hk-mention" data-u="{REF(u)}">{n}</span>'  # noqa: E731
+        D = lambda d, lab: f'<time datetime="{d}" class="hk-date">{lab}</time>'  # noqa: E731
+        ymd_ = lambda k: ymd(today + timedelta(days=k))  # noqa: E731
+        year = today.year + (1 if today.month >= 8 else 0)
+        # Haushalt: vier Datenbanken (geteilt mit der Gruppe familie)
+        haus = self.note("anna", "Haushalt", [P("h1", "Alles rund ums Haus: Einkauf, Rezepte, Termine und Putzplan.")], icon="🏠")
+        self.share("anna", haus, "familie", "edit", "group")
+        ein, _ = self.mkdb("anna", "Einkaufsliste", "🛒", [
+            {"id": "menge", "name": "Menge", "type": "number"},
+            {"id": "preis", "name": "Preis", "type": "number", "fmt": "euro"},
+            {"id": "summe", "name": "Summe", "type": "formula", "expr": 'prop("menge") * prop("preis")', "fmt": "euro"},
+            {"id": "abt", "name": "Abteilung", "type": "select", "options": [
+                {"id": "obst", "name": "Obst & Gemüse", "color": "green"}, {"id": "kuehl", "name": "Kühlregal", "color": "blue"},
+                {"id": "vorrat", "name": "Vorrat", "color": "orange"}, {"id": "drog", "name": "Drogerie", "color": "pink"}]},
+            {"id": "erledigt", "name": "Erledigt", "type": "checkbox"}],
+            [{"id": "liste", "name": "Liste", "type": "table", "calcs": {"summe": "sum"}},
+             {"id": "abteilung", "name": "Nach Abteilung", "type": "table", "group": "abt"}],
+            parent=haus, rows=[{"title": t, "props": dict(menge=m, preis=pr, abt=a, erledigt=e)} for t, m, pr, a, e in (
+                ("Äpfel", 6, 0.45, "obst", False), ("Tomaten", 4, 0.6, "obst", True), ("Milch", 2, 1.19, "kuehl", False),
+                ("Butter", 1, 2.29, "kuehl", False), ("Zimt", 1, 1.49, "vorrat", False), ("Mehl", 1, 0.99, "vorrat", True),
+                ("Zahnpasta", 2, 1.95, "drog", False))])
+        rez, rr = self.mkdb("anna", "Rezepte", "🍲", [
+            {"id": "tags", "name": "Tags", "type": "multi_select", "options": [
+                {"id": "kuchen", "name": "Kuchen", "color": "orange"}, {"id": "kind", "name": "Kinderliebling", "color": "pink"},
+                {"id": "veg", "name": "vegetarisch", "color": "green"}, {"id": "schnell", "name": "schnell", "color": "blue"}]},
+            {"id": "vorb", "name": "Vorbereitung (min)", "type": "number"}, {"id": "koch", "name": "Kochen (min)", "type": "number"},
+            {"id": "zeit", "name": "Zeit gesamt", "type": "formula", "expr": 'format(prop("vorb") + prop("koch")) + " Min."'},
+            {"id": "zutaten", "name": "Zutaten", "type": "multi_select", "options": [
+                {"id": i, "name": z, "color": "gray"} for i, z in (("aepfel", "Äpfel"), ("butter", "Butter"), ("zimt", "Zimt"), ("mehl", "Mehl"),
+                                                                    ("tomaten", "Tomaten"), ("gurke", "Gurke"), ("feta", "Feta"))]},
+            {"id": "von", "name": "Von", "type": "person"}],
+            [{"id": "galerie", "name": "Galerie", "type": "gallery", "card": "m", "hidden": ["vorb", "koch", "zutaten"]},
+             {"id": "tabelle", "name": "Tabelle", "type": "table"}],
+            parent=haus, cover=self.art("anna", "teller", (230, 90, 80), (110, 170, 90), "rezepte-titel"),
+            rows=[{"title": t, "cover": self.art("anna", "teller", c1, c2, "rezept-%d" % i),
+                   "props": dict(tags=tg, vorb=v, koch=k, zutaten=z, von=[REF(w)])}
+                  for i, (t, c1, c2, tg, v, k, z, w) in enumerate((
+                      ("Apfelkuchen nach Oma Lena", (200, 40, 40), (200, 110, 40), ["kuchen", "kind"], 30, 45, ["aepfel", "butter", "zimt", "mehl"], "lena"),
+                      ("Tomatensuppe", (250, 240, 220), (230, 130, 50), ["veg", "schnell"], 10, 25, ["tomaten"], "anna"),
+                      ("Sommersalat", (230, 60, 70), (90, 160, 80), ["veg", "schnell"], 15, 0, ["tomaten", "gurke", "feta"], "ben"),
+                      ("Pfannkuchen", (250, 220, 120), (240, 180, 90), ["kind", "schnell"], 10, 15, ["mehl", "butter"], "clara")))])
+        self.ids.update(haushalt=haus, einkauf=ein, rezepte=rez, apfelkuchen=rr.get("Apfelkuchen nach Oma Lena"))
+        self.share("anna", rez, "lena", "comment")
+        kal, _ = self.mkdb("anna", "Familienkalender", "📅", [
+            {"id": "wann", "name": "Wann", "type": "date"}, {"id": "wer", "name": "Wer", "type": "person"},
+            {"id": "art", "name": "Art", "type": "select", "options": [
+                {"id": "schule", "name": "Schule", "color": "blue"}, {"id": "familie", "name": "Familie", "color": "pink"},
+                {"id": "arzt", "name": "Arzt", "color": "red"}, {"id": "urlaub", "name": "Urlaub", "color": "green"}]}],
+            [{"id": "kalender", "name": "Kalender", "type": "calendar", "date_by": "wann", "range": "week"},
+             {"id": "zeitleiste", "name": "Zeitleiste", "type": "timeline", "date_by": "wann"},
+             {"id": "tabelle", "name": "Tabelle", "type": "table", "sorts": [{"pid": "wann", "dir": "asc"}]}],
+            parent=haus, rows=[{"title": t, "props": dict(wann=w, wer=[REF(u) for u in us], art=a)} for t, w, us, a in (
+                ("Elternabend 7b", ymd_(1), ["anna"], "schule"), ("Zahnarzt Clara", ymd_(2), ["clara"], "arzt"),
+                ("Oma Lena zu Besuch", f"{ymd_(5)}/{ymd_(7)}", ["lena"], "familie"), ("Sommerfest", ymd_(19), ["anna", "ben"], "familie"),
+                ("Klassenfahrt Clara", f"{ymd_(22)}/{ymd_(26)}", ["clara"], "schule"),
+                ("Ostsee-Urlaub", f"{year}-07-17/{year}-07-31", ["anna", "ben", "clara"], "urlaub"))])
+        hp, _ = self.mkdb("anna", "Hausputz", "🧹", [
+            {"id": "status", "name": "Status", "type": "select", "status": True, "options": [
+                {"id": "offen", "name": "Offen", "color": "gray", "group": "todo"}, {"id": "dabei", "name": "Dabei", "color": "blue", "group": "doing"},
+                {"id": "fertig", "name": "Erledigt", "color": "green", "group": "done"}]},
+            {"id": "wer", "name": "Wer", "type": "person"}, {"id": "faellig", "name": "Fällig", "type": "date"},
+            {"id": "raum", "name": "Raum", "type": "select", "options": [
+                {"id": "kueche", "name": "Küche", "color": "orange"}, {"id": "bad", "name": "Bad", "color": "blue"},
+                {"id": "wohn", "name": "Wohnzimmer", "color": "yellow"}, {"id": "garten", "name": "Garten", "color": "green"}]},
+            {"id": "aufwand", "name": "Aufwand (min)", "type": "number"}],
+            [{"id": "board", "name": "Board", "type": "board", "group_by": "status"},
+             {"id": "tabelle", "name": "Tabelle", "type": "table"},
+             {"id": "aufwand", "name": "Aufwand je Raum", "type": "chart", "chart": {"type": "bar", "x": "raum", "agg": "sum", "y": "aufwand"}}],
+            parent=haus, rows=[{"title": t, "props": dict(status=st, wer=[REF(u)], faellig=ymd_(k), raum=r, aufwand=a)} for t, st, u, k, r, a in (
+                ("Bad putzen", "offen", "ben", 1, "bad", 40), ("Kühlschrank auswischen", "offen", "clara", 2, "kueche", 20),
+                ("Backofen reinigen", "offen", "anna", 4, "kueche", 50), ("Fenster Wohnzimmer", "dabei", "anna", 0, "wohn", 60),
+                ("Rasen mähen", "fertig", "ben", -1, "garten", 45), ("Staubsaugen", "fertig", "clara", -1, "wohn", 25))])
+        self.ids.update(kalender=kal, hausputz=hp)
+        # Sommerfest (mit Ben bearbeiten) + veroeffentlichte Einladung
+        fest = self.note("anna", "Sommerfest", icon="🎉")
+        self.body("anna", fest, [
+            H("s1", "Sommerfest im Garten"),
+            P("s2", f"Samstag ab 14 Uhr. {M('ben', 'Ben Sommer')} kümmert sich ums Grillgut, Oma Lena bringt den Apfelkuchen."),
+            CHK("s3", [("Lampions aufhängen", True), ("Getränke kaufen", False), ("Grillkohle", False), ("Zwei Biertischgarnituren leihen", False)]),
+            CL("s4", "☀️", "Bei Regen feiern wir in der Garage.")])
+        self.share("anna", fest, "familie", "edit", "group")
+        inv = self.note("anna", "Sommerfest-Einladung", parent_id=fest, icon="💌",
+                        cover=self.art("anna", "blumen", (170, 210, 245), (215, 235, 250), "einladung"))
+        self.body("anna", inv, [
+            H("e1", "Ihr seid eingeladen!"),
+            P("e2", "Liebe Nachbarn und Freunde, wir feiern am <b>Samstag ab 14 Uhr</b> unser Sommerfest im Garten."),
+            P("e3", "Bringt gern einen Salat mit – für Grillgut und Getränke ist gesorgt.")])
+        self.api("anna", "PUT", f"/api/notes/{inv}/publish", {"slug": "sommerfest", "name": "anna-sommer"})
+        self.ids.update(sommerfest=fest, einladung=inv)
+        # Urlaub Ostsee 2027 (aus dem Wiki): ausfuehrliche Seite fuer Editor-, Teilen- und Kommentarbilder
+        ur = self.ids.get("wiki:Urlaub Ostsee 2027")
+        if ur:
+            wiki = self.ids["wiki"]
+            self.body("anna", ur, [
+                H("u1", "Der Plan"),
+                P("u2", f"Wir fahren am {D(f'{year}-07-17', '17. Juli ' + str(year))} los. {M('ben', 'Ben Sommer')} bucht die Fähre, "
+                        f'die Nummern stehen im <a href="/notes#{wiki}">Familien-Wiki</a>. Fahrzeit grob: <code class="hk-math">t = s / v</code>.'),
+                CL("u3", "💡", "Ferienwohnung ist angezahlt – Rest bis <b>15. Juni</b> überweisen."),
+                H("u4", "Packliste", 3),
+                CHK("u5", [("Badesachen und Handtücher", True), ("Sonnencreme", True), ("Drachen für den Strand", False),
+                           ("Ladekabel und Powerbank", False), ("Fahrradschloss", False)]),
+                H("u6", "Unterkünfte", 3),
+                {"id": "u7", "type": "columns", "data": {"cols": [
+                    {"blocks": [H("u7a", "Ferienwohnung Möwe", 4), P("u7b", "3 Zimmer, Balkon mit Meerblick, 5 Minuten zum Strand.")]},
+                    {"blocks": [H("u7c", "Pension Seestern", 4), P("u7d", "Frühstück inklusive, Fahrradverleih im Haus.")]}]}},
+                H("u8", "Ausflüge", 3),
+                {"id": "u9", "type": "table", "data": {"withHeadings": True, "content": [
+                    ["Tag", "Ausflug", "Wer"], ["Montag", "Radtour zum Leuchtturm 🚲", "alle"], ["Mittwoch", "Seehundstation", "Clara, Oma"],
+                    ["Freitag", "Kutterfahrt", "Ben, Anna"]]}},
+                H("u10", "Budget", 3),
+                {"id": "u11", "type": "math", "data": {"tex": r"K = 7 \cdot 95\,€ + 2 \cdot 60\,€ = 785\,€"}},
+                {"id": "u12", "type": "code", "data": {"language": "mermaid", "view": "preview",
+                                                       "code": "flowchart LR\n  A[Packen] --> B[Fähre] --> C[Ferienwohnung] --> D[Strand!]"}},
+                P("u13", "")])
+            self.versions("anna", ur, [(7.5, "anna", 2), (6.2, "anna", 4), (4.1, "ben", 6), (2.3, "anna", 9), (0.6, "ben", 12)])
+            self.share("anna", ur, "ben", "edit")
+            self.share("anna", ur, "clara", "comment")
+            self.api("anna", "POST", f"/api/notes/{ur}/versions/checkpoint", {})
+            r = self.api("ben", "POST", f"/api/notes/{ur}/comments", {"block_id": "u3", "body": "Restzahlung ist überwiesen ✓"})
+            if r.get("thread_id"):
+                self.api("anna", "POST", f"/api/notes/{ur}/comments", {"thread_id": r["thread_id"], "body": "Super, danke dir!"})
+            self.api("clara", "POST", f"/api/notes/{ur}/comments", {"block_id": "u9", "body": "Darf ich bei der Kutterfahrt mit? 🐟"})
+            self.ids["urlaub"] = ur
+        # Notizen (Editor-Bilder) und Claras Lernplan
+        self.ids["elternabend"] = self.note("anna", "Notizen Elternabend", [
+            H("n1", "Elternabend 7b"), P("n2", "Themen: Klassenfahrt, neue Mathelehrerin, Handyregeln."),
+            P("n3", "Bitte bis Freitag die Einverständniserklärung abgeben."), P("n4", "")], icon="📝")
+        lp = self.note("clara", "Lernplan Abi", icon="📚", cover=self.art("clara", "balken", (236, 214, 170), (214, 92, 80), "lernplan"))
+        self.body("clara", lp, [H("l1", "Bis zu den Prüfungen"), CHK("l2", [("Mathe: Analysis wiederholen", True),
+                  ("Deutsch: Gedichtanalyse üben", False), ("Bio: Genetik-Karteikarten", False)]),
+                  {"id": "l3", "type": "toggle", "data": {"title": "Formeln", "open": False, "blocks": [P("l3a", "Ableitung, Integral, Kettenregel")]}}])
+        self.api("clara", "PATCH", f"/api/notes/{lp}", {"font": "serif", "wide": True})
+        self.ids["lernplan"] = lp
+        # Home-Dashboard aus der Vorlagen-Galerie (Wetter: Lübeck, Attrappe wetter.saga.example)
+        d = self.api("anna", "POST", "/api/gallery/home-dashboard/use?lang=de",
+                     {"examples": True, "weather_place": {"place": "Lübeck", "lat": 53.87, "lon": 10.69}})
+        self.ids["home"] = d.get("root")
+        # Ben teilt seine Radtour-Planung mit Anna ("Mit mir geteilt")
+        rad = self.note("ben", "Radtour an die Schlei", [H("r1", "Route"), P("r2", "Start am Bahnhof, 42 km, Mittag in Kappeln.")], icon="🚲")
+        self.share("ben", rad, "anna", "edit")
+        self.ids["radtour"] = rad
 
 
     def calendar(self, on=True):
@@ -225,8 +426,21 @@ class Demo:
     def verein(self):
         self.users()
         P = lambda i, t: {"id": i, "type": "paragraph", "data": {"text": t}}  # noqa: E731
-        self.ids["parzellen"] = self.note("frieda", "Parzellenplan 2027", [P("p1", "Wer bekommt welche Parzelle?")], icon="🌱", cover=None)
-        self.service("wiki", "Vereinswiki", "https://wiki.verein.example", 1)
+        H = lambda i, t, lv=2: {"id": i, "type": "header", "data": {"text": t, "level": lv}}  # noqa: E731
+        self.ids["parzellen"] = self.note("frieda", "Parzellenplan 2027", [
+            H("p0", "Parzellen und Pächter"), P("p1", "Wer bekommt welche Parzelle? Bitte bis Ende Januar eintragen."),
+            {"id": "p2", "type": "table", "data": {"withHeadings": True, "content": [
+                ["Parzelle", "Pächter", "Größe", "Bemerkung"], ["1", "Familie Rose", "320 m²", "Obstbäume"],
+                ["2", "Paul Brandt", "280 m²", "Gemüse"], ["3", "frei", "300 m²", "ab April"], ["4", "Anna Sommer", "250 m²", "neu ab 2027"]]}}],
+            icon="🌱", cover=None)
+        # Foederation (Bilder B11/A07): Instanz darf sich mit saga.example verbinden (im Namensraum per http)
+        self.setting("fed_enabled", True)
+        self.setting("allowed_hosts", "saga.example")
+        self.service("wiki", "Vereinswiki", "https://wiki.verein.example", 1, everyone=False, cat="Verein", members=("frieda",))
+        self.service("kalender", "Vereinskalender", "https://kalender.verein.example", 2, everyone=True, check=True, cat="Verein")
+        # KI-Assistent (Admin-Bild a05-04): OpenAI-kompatibler Dienst im Vereinsnetz, Adresse festgehalten (Beispieladresse)
+        self.setting("ai", {"enabled": True, "provider": "openai", "url": "http://ki.verein.example/v1", "model": "verein-demo",
+                            "api_key": "", "groups": [], "timeout": 60, "pinned": ["192.0.2.10"]})
         return self.ids
 
     def save(self):
