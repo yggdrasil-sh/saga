@@ -1445,6 +1445,10 @@ def backup(label="manuell"):
 # auf push_sub) - ein Backup von 2.4 kennt sie nicht (sonst bricht DROP chat_msg bzw. push_sub ab); Reaktionen und
 # abgelegte Mitteilungen gehoeren zu den Nachrichten bzw. Abos der alten Datenbank. Die Gjallarhorn-Tabellen (horn_*) haben
 # keine Fremdschluessel und bleiben bei einem 2.4-Backup stehen (Knotenregister, gesperrte Schluessel).
+# 2.5, weitere Tabellen mit Fremdschluessel auf Tabellen von 2.4 (sonst bricht ein 2.4-Backup an "note_pkey ... andere
+# Objekte haengen davon ab" ab - Rueckweg in docs/UPGRADE-2.5.md Abschnitt 7): auf note note_fresh, row_person, row_done
+# (abgeleitet bzw. nur Zaehler), note_mention, synced_ref; auf chat/chat_msg chat_hidden, chat_pin. Alle gehoeren zu den
+# Zeilen der alten Datenbank (ON DELETE CASCADE); ein Backup von 2.5 bringt sie mit, sonst legt der naechste Start sie an.
 _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
                  b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
                  b"DROP TABLE IF EXISTS public.chat_invite;\n"
@@ -1452,7 +1456,9 @@ _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, pub
                  b"DROP TABLE IF EXISTS public.chat_upload;\n"
                  b"DROP TABLE IF EXISTS public.chat_receipt, public.chat_seen;\n"
                  b"DROP TABLE IF EXISTS public.login_lock;\n"
-                 b"DROP TABLE IF EXISTS public.chat_reaction, public.push_stream_msg;\n")
+                 b"DROP TABLE IF EXISTS public.chat_reaction, public.push_stream_msg;\n"
+                 b"DROP TABLE IF EXISTS public.note_fresh, public.row_person, public.row_done, public.note_mention, public.synced_ref;\n"
+                 b"DROP TABLE IF EXISTS public.chat_hidden, public.chat_pin;\n")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
 
 

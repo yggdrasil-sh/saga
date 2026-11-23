@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben – Zurück auf 2.4: Backup von vor dem Update lässt sich mit 2.5 wieder einspielen (Bugs-DB 2245)
+- `python run.py restore <…-vor-schema-35.dump>` (Rückweg aus `docs/UPGRADE-2.5.md`, Abschnitt 7) brach mit
+  „kann Constraint note_pkey … nicht löschen, weil andere Objekte davon abhängen“ ab (nichts geändert): neue Tabellen
+  aus 2.5 mit Fremdschlüssel auf Seiten bzw. Chats (`note_fresh`, `row_person`, `row_done`, `note_mention`,
+  `synced_ref`, `chat_hidden`, `chat_pin`) kennt ein 2.4-Backup nicht. Sie werden jetzt vor dem Einspielen entfernt wie
+  schon `chat_reaction`/`push_stream_msg`; ein Backup von 2.5 bringt sie mit, sonst legt der nächste Start sie an.
+- Tests: `tests/sicherung.py` stellt das 2.4-Backup ohne alle diese Tabellen nach; Upgrade 2.4 → 2.5 → zurück → 2.5 mit
+  zwei verbundenen Instanzen auf der Testmaschine durchgespielt.
+
 ### Doku – Handbuch: Bilder aktualisiert, Aufnahme-Werkzeuge im Repo (Bugs-DB 2189)
 - Neu aufgenommen, was die Oberfläche von 2.5 nicht mehr zeigte: alle Einstellungs-Bilder (Navigation links statt
   Reiterleiste), Admin → Allgemein → Seiten („Standard (Tiptap)“), Admin → Anrufe mit Knoten-Liste und Log-Ausschnitt
