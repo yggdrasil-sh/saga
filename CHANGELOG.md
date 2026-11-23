@@ -16,6 +16,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Doku – Handbuch: Bilder aktualisiert, Aufnahme-Werkzeuge im Repo (Bugs-DB 2189)
+- Neu aufgenommen, was die Oberfläche von 2.5 nicht mehr zeigte: alle Einstellungs-Bilder (Navigation links statt
+  Reiterleiste), Admin → Allgemein → Seiten („Standard (Tiptap)“), Admin → Anrufe mit Knoten-Liste und Log-Ausschnitt
+  (`docker compose logs`, echtes Zeilenformat). Die zehn Web-Platzhalter sind gefüllt: Diagnose-Liste, Tunnel-Kasten,
+  Widget-Reihe, Unterseiten-Galerie, Nextcloud-Datei, BookOrbit (Einstellungen, Buch- und Kapitelseite) und Anrufe
+  (Begleitgerät teilt, „Nicht dabei“/„Erneut klingeln“, 1:1 → Gruppe). Texte in B01/B03 an die neue Navigation
+  angepasst.
+- Werkzeuge: `tools/handbuch-stack.sh` (Testumgebung, auch Art `knoten`), `tools/handbuch-demo.py` (Demo-Welt),
+  `tools/screens-handbuch.py` (Bilder per Name, `--nur`), `tools/handbuch-fakes/` (Anzeige-Hosts, Nextcloud- und
+  BookOrbit-Attrappe). `tools/testumgebung/umgebung.sh`: neue Variable `UMG_HOSTS`.
+
 ### Behoben – Anruf: Teilnehmerliste bei Handy quer verdeckt die Knöpfe nicht mehr (Bugs-DB 2196)
 - Im Querformat (Höhe ≤ 500 px) lag die Teilnehmerliste rechts über der senkrechten Leiste (Kamera, Teilen, Ton,
   Layout nicht antippbar) und zeigte nur gut einen Eintrag. Jetzt ist sie dort ein Blatt links neben der Leiste, unter

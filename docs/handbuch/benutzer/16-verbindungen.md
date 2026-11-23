@@ -113,7 +113,7 @@ Danach gibt es im `/`-Menü den Block **Nextcloud-Datei**:
    - **Als Kopie übernehmen** – die Datei wird zu einer normalen Saga-Datei. Sie folgt dann den Rechten der Seite
      und ist auch im Backup und Export.
 
-<!-- Bild folgt: b16-03-nextcloud-datei.png -->
+![Seite „Ferienwohnung Möwe“ mit einer Nextcloud-Datei als Verweis: Karte „Mietvertrag Ferienwohnung Möwe.pdf“ mit Größe, Datum, „Herunterladen“, „In Nextcloud öffnen“ und Vorschau der ersten Seite](../bilder/b16-03-nextcloud-datei.png)
 
 > **Wichtig:** Bei **Als Verweis einfügen** sehen **alle, die die Seite sehen, auch diese Datei** – auch Personen
 > ohne eigene Nextcloud. Saga holt die Datei dafür über dein Konto. Füg also nur Dateien ein, die alle auf der Seite
@@ -143,7 +143,7 @@ nur** – es schreibt nie etwas zu BookOrbit zurück.
    (verschlüsselt) – dein Passwort speichert es nicht.
 3. Saga zeigt „✅ Verbunden“.
 
-<!-- Bild folgt: Einstellungen → Verbindungen → BookOrbit, verbunden, mit „Markierungen als Seite übernehmen“ -->
+![Einstellungen → BookOrbit: „Verbunden als Anna (bookorbit.example)“, darunter „Markierungen als Seite übernehmen“ mit Suche, den Filtern „Mit Markierungen“ und „Gelesen“ und drei Büchern mit „Als Seite“](../bilder/b16-04-bookorbit-verbunden.png)
 
 Danach gibt es:
 
@@ -158,7 +158,9 @@ Danach gibt es:
 - **Aus BookOrbit aktualisieren** (Seitenmenü **⋯** der Buchseite) holt neue Markierungen dazu. Was du selbst
   ergänzt oder geändert hast, bleibt; was du in Saga gelöscht hast, kommt nicht wieder.
 
-<!-- Bild folgt: Buchseite unter „Bücher“ mit Kapitel-Unterseiten und Zitaten -->
+![Buchseite „Das Leuchtfeuer von Hiddensee“ unter „Bücher“: Cover, Autorin, „Notiz zum Buch“ und die Kapitel als Unterseiten mit der Zahl der Markierungen; im Seitenbaum links die Kapitelseiten](../bilder/b16-05-bookorbit-buchseite.png)
+
+![Kapitelseite „3 Sturmflut“: die Markierungen aus BookOrbit als Zitate, darunter die eigenen Notizen](../bilder/b16-06-bookorbit-kapitel.png)
 
 **Trennen** in **Einstellungen → Verbindungen → BookOrbit** meldet Saga auch bei BookOrbit ab. Übernommene
 Buchseiten bleiben als normale Seiten stehen.

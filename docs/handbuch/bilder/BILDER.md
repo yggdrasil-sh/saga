@@ -1,9 +1,29 @@
 # Handbuch-Bilder
 
-Aufgenommen (Stand 3.11.2026) mit eigenen Aufnahme-Werkzeugen (`screens-handbuch.py`, `handbuch-stack.sh`,
-`handbuch-demo.py`, `handbuch-fakes/`). **Diese Werkzeuge liegen nicht im Repository** (nicht übernommen, Neuaufbau
-offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erzeugen. Hosts `saga.example` (Familie Sommer) und `verein.example` (Gartenverein). Desktop 1440×900
-(Faktor 2), Handy 390×844 (Faktor 3). Nummern im Bild = Legende rechts. Abweichungen von der Gliederung stehen unten.
+Aufgenommen am 3.11.2026, einzelne Bilder am 23.11.2026 neu (Saga 2.5, Bugs-DB 2189). Hosts `saga.example` (Familie
+Sommer) und `verein.example` (Gartenverein). Desktop 1440×900 (Faktor 2), Handy 390×844 (Faktor 3). Nummern im Bild =
+Legende rechts. Abweichungen von der Gliederung stehen unten.
+
+**Neu aufnehmen** – die Werkzeuge liegen im Repository und laufen auf der Testmaschine (root, Testumgebung
+`tools/testumgebung`, eigener Netz-Namensraum und eigene Datenbank je Lauf):
+
+```sh
+source /srv/saga-test/env.sh
+tools/handbuch-stack.sh --liste                      # welche Bilder die Skripte kennen (Welt familie|verein, Art server|knoten)
+tools/handbuch-stack.sh --nur a06-02,b13-08          # einzelne Bilder (auch Vorsilben wie b18 oder a)
+tools/handbuch-stack.sh                              # alle bekannten Bilder
+```
+
+- `tools/handbuch-stack.sh` startet je Welt und Art einen Lauf der Testumgebung (Art `knoten`: Server hinter
+  saga-media mit eingebautem Knoten, Binaries aus `UMG_BIN`) und darin `tools/screens-handbuch.py`.
+- `tools/handbuch-demo.py` legt die Demo-Welt an (Konten, Profilbilder, Seiten, Datenbanken, Aufgaben, Dienste,
+  Verbindungen) – per DB und HTTP-API wie ein Browser.
+- `tools/handbuch-fakes/fakes.py`: Weiterleitung der Anzeige-Hosts (`saga.example`, `admin.saga.example`,
+  `verein.example`, `cloud.saga.example`, `bookorbit.example` → 127.0.1.x:80, nur im Namensraum), Nextcloud- und
+  BookOrbit-Attrappe, gezeichnete Bilder (Profilbilder, Buchcover, Dokument-Vorschau).
+- `tools/screens-handbuch.py` nimmt die Bilder mit Playwright/Chromium auf (Ordner `HB_OUT`); Kamera und Bildschirm
+  sind gezeichnete Ersatzbilder, das Runensiegel braucht Noto Sans Runic (lädt `handbuch-stack.sh` nach `HB_FONTS`).
+- Die übrigen Bilder (Durchgänge 1 und 2, 3.11.) haben noch keine Szene im Skript; `--liste` zeigt, welche es gibt.
 
 | Datei | Kapitel | Plattform | hell/dunkel | was zu sehen ist | Nummern-Legende |
 |---|---|---|---|---|---|
@@ -26,27 +46,29 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
 | a05-05-mitteilungen.png | A05 | Web | hell | Mitteilungen: Web Push, ntfy, UnifiedPush, Apple Push (Felder leer) | – |
 | a05-06-diagnose.png | A05 | Web | hell | Allgemein → Diagnose: „Diagnose senden“ der Benutzer (clientlog) | – |
 | a06-01-anrufe.png | A06 | Web | hell | Anrufe → 1:1-Anrufe: STUN/TURN (Geheimnis leer), nur über TURN, Klingeldauer | – |
-| a06-02-knoten-liste.png | A06 | Web | hell | Gjallarhorn: eingebauter Knoten, Liste der Knoten (Port prüfen, Teilen, Leeren), Erweitern | – |
+| a06-02-knoten-liste.png | A06 | Web | hell | Gjallarhorn: drei Schalter (alle an, auch „Alle Anrufe über Knoten“), Tunnel-Kasten, Knoten-Liste mit dem eingebauten Knoten (bereit), Erweitern | – |
 | a06-03-knoten-koppeln.png | A06 | Web | hell | Erweitern: weiteren Knoten koppeln – Name, Optionen, Kopplungs-Skript erzeugen | 1 = Name des neuen Knotens; 2 = Skript erzeugen (auf dem neuen Server ausführen) |
+| a06-04-tunnel-kasten.png | A06 | Web | hell | Kasten „Anrufe über die Saga-Adresse (Tunnel)“ nach „Jetzt prüfen“: „Proxy reicht WebSocket durch? Ja ✓“, Tunnel, Browser (WebSocket) | – |
 | a07-01-foederation.png | A07 | Web | hell | Föderation: diese Instanz (verein.example), Fingerprint, verbundene Instanz saga.example | – |
 | a07-02-einladung.png | A07 | Web | hell | Einladungscode erzeugen (gilt einmal; Code hier erfunden) – die andere Instanz trägt ihn ein | – |
 | a07-03-funktionen-je-instanz.png | A07 | Web | hell | Funktionen je Instanz: Chat, Anrufe, Adressbuch, gemeinsame Gruppen | – |
 | a08-01-veroeffentlicht.png | A08 | Web | hell | Veröffentlicht (Familie): „Sommerfest-Einladung“ von Anna – zurückziehen | 1 = Zurückziehen |
 | a08-02-meldungen.png | A08 | Web | hell | Meldungen aus Chats: Grund, Text der meldenden Person, Zeit und Absender – keine Inhalte | – |
-| a09-01-log-ausschnitt.png | A09 | Terminal | hell | docker logs: Diagnose D-7K3FM finden (clientdiag) – erfundene Zeilen, Konto nur als Hash | – |
+| a09-01-log-ausschnitt.png | A09 | Terminal | dunkel | `docker compose logs --no-log-prefix saga`: echte Zeilen `clientdiag {"id":…}` und `clientlog` aus dem Demo-Lauf (gekürzt), Konto nur als Hash | – |
+| a09-02-diagnose-liste.png | A09 | Web | hell | Admin → Diagnose (Gartenverein): Kennung, Art, Zeitraum, Filtern, Als Datei herunterladen; Meldungen von Browser, iOS und Android; Aufbewahrung | – |
 | a10-01-update-hinweis.png | A10 | Web | hell | Update-Hinweis im Admin-Bereich (nachgestellt: 2.5.1 verfügbar) | 1 = Hinweis mit „Was ist neu?“ und Befehl |
 | b01-01-login.png | B01 | Web | hell | Anmeldeseite von saga.example mit Passwort und „Mit Passkey anmelden“ | 1 = Benutzername; 2 = Passwort; 3 = Mit Passkey anmelden; 4 = Sprache vor der Anmeldung |
 | b01-02-login-2fa.png | B01 | Web | hell | Zweiter Schritt der Anmeldung: Code aus der Authenticator-App oder Passkey | 1 = Code aus der App (oder Wiederherstellungscode); 2 = stattdessen mit Passkey bestätigen |
 | b01-03-sicherheit.png | B01 | Web | hell | Anmeldung & Sicherheit: Passkey „Annas MacBook“, Authenticator-App, Wiederherstellungscodes | 1 = Passkeys; 2 = Authenticator-App; 3 = Wiederherstellungscodes / Bestätigen |
 | b01-04-profilbild-zuschneiden.png | B01 | Web | hell | Profilbild zuschneiden: Ausschnitt verschieben und zoomen | 1 = Ausschnitt (ziehen); 2 = Zoom |
-| b01-05-sprache.png | B01 | Web | hell | Einstellungen → Konto → Sprache (Automatisch, Deutsch, English, Español, Русский, ไทย) | 1 = Sprache (Automatisch folgt dem Browser) |
+| b01-05-sprache.png | B01 | Web | hell | Einstellungen → Profil & Sprache → Sprache (Automatisch, Deutsch, English, Español, Русский, ไทย), darunter Darstellung | 1 = Sprache (Automatisch folgt dem Browser) |
 | b01-06-login-handy.png | B01 | Handy | dunkel | Anmeldeseite von saga.example mit Passwort und „Mit Passkey anmelden“ | 1 = Benutzername; 2 = Passwort; 3 = Mit Passkey anmelden; 4 = Sprache vor der Anmeldung |
-| b01-07-einstellungen-reiter.png | B01 | Web | dunkel | Einstellungen mit allen Reitern (Konto bis Hilfe) | 1 = Reiter: Konto · Mitteilungen · Lesezeichen · Kalender · Immich · Nextcloud · Mein Backup · Apps & Geräte · Seiten · API · Hilfe |
+| b01-07-einstellungen-reiter.png | B01 | Web | dunkel | Einstellungen mit der Navigation links (Konto bis Hilfe), rechts „Profil & Sprache“ | 1 = Bereiche: Konto (Profil & Sprache · Sicherheit · Mitteilungen) · Arbeitsbereich (Seiten · Kalender · Lesezeichen) · Verbindungen (Immich · BookOrbit · Nextcloud · Apps & Geräte · API) · Daten (Mein Backup) · Hilfe |
 | b02-01-dashboard.png | B02 | Web | hell | Dashboard von Anna: Dienste, Lesezeichen, rechts Aufgaben und Termine | 1 = Suche (Dienste, Lesezeichen, Seiten); 2 = Kacheln der Dienste; 3 = Aufgaben und Termine; 4 = Leiste einklappen |
 | b02-02-dashboard-dunkel.png | B02 | Web | dunkel | Dashboard dunkel | – |
 | b02-03-dashboard-handy.png | B02 | Handy | hell | Dashboard auf dem Handy | – |
 | b02-04-startseite-festlegen.png | B02 | Web | hell | Seitenmenü ⋯ einer Seite mit „Als Startseite festlegen“ | 1 = Als Startseite festlegen |
-| b03-01-lesezeichen-dialog.png | B03 | Web | hell | Neues Lesezeichen: Adresse schule.example.org, Name und Symbol optional | 1 = Adresse (Pflicht) |
+| b03-01-lesezeichen-dialog.png | B03 | Web | hell | Einstellungen → Lesezeichen (Clara): Vertretungsplan und Mensa, neues Lesezeichen mit Adresse schule.example.org | 1 = Adresse (Pflicht) |
 | b03-02-kacheln.png | B03 | Web | hell | Claras Dashboard mit eigenen Lesezeichen (Vertretungsplan, Mensa) | 1 = eigenes Lesezeichen; 2 = + Lesezeichen |
 | b04-01-seitenbaum.png | B04 | Web | hell | Seitenbaum „Familie Sommer“ mit Unterseiten und „Mit mir geteilt“ | 1 = Seiten durchsuchen; 2 = + Neue Seite; 3 = Mit mir geteilt; 4 = Schnellsuche Strg/⌘+K; 5 = Archiv; 6 = Papierkorb (30 Tage) |
 | b04-02-slash-menu.png | B04 | Web | hell | Slash-Menü in einer leeren Zeile – Weitertippen filtert, Esc schließt | – |
@@ -60,6 +82,7 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
 | b04-10-befehlspalette.png | B04 | Web | dunkel | Befehlspalette (Strg/⌘+K): Seiten und Befehle suchen | – |
 | b04-11-editor-handy.png | B04 | Handy | hell | Seite „Urlaub Ostsee 2027“ im Handy-Browser | – |
 | b04-12-versionen.png | B04 | Web | hell | Versionsverlauf von „Urlaub Ostsee 2027“ mit Autor und Zeit | – |
+| b04-14-unterseiten-galerie.png | B04 | Web | hell | „Familien-Wiki“ mit dem Block „Unterseiten“ als Galerie (Kartengröße M, Kartenbild = Titelbild) | – |
 | b05-01-titelbild-symbol.png | B05 | Web | hell | Datenbank „Rezepte“ mit Titelbild und Symbol 🍲 | 1 = Titelbild ändern/verschieben; 2 = Symbol (Emoji) |
 | b05-02-seitenmenue-gestalten.png | B05 | Web | hell | Seitenmenü ⋯: Volle Breite, Schrift (Standard/Serif/Mono), Titelbild | 1 = Volle Breite; 2 = Schrift; 3 = Titelbild hinzufügen |
 | b05-03-gestaltet-dunkel.png | B05 | Web | dunkel | Claras „Lernplan Abi“: Titelbild, Serif-Schrift, volle Breite (dunkel) | – |
@@ -70,6 +93,7 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
 | b06-05-home-dashboard-dunkel.png | B06 | Web | dunkel | Home-Dashboard dunkel | – |
 | b06-06-widget-einrichten.png | B06 | Web | hell | Widget „Countdown“ einrichten: Datum, Richtung, Einheit, Vorschau | 1 = Einstellungen (jede Änderung sofort in der Vorschau) |
 | b06-07-home-dashboard-handy.png | B06 | Handy | hell | Home-Dashboard im Handy-Browser | – |
+| b06-09-widget-reihe.png | B06 | Web | hell | Vier Widgets in Spalten, gleich hoch: Countdown, Fortschritt, Kennzahl (offene Aufgaben), Gewohnheiten (7 Tage) | – |
 | b07-01-tabelle-einkauf.png | B07 | Web | hell | Einkaufsliste als Tabelle mit Abteilung, Formel „Summe“ und Summenzeile | 1 = Ansichten (Reiter); 2 = Filter; 3 = Ansicht-Einstellungen; 4 = + Neu |
 | b07-02-board-status.png | B07 | Web | hell | Hausputz als Board nach Status (Offen · Dabei · Erledigt) | – |
 | b07-03-kalender-woche.png | B07 | Web | hell | Familienkalender in der Wochenansicht | – |
@@ -111,6 +135,10 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
 | b13-03-gruppenanruf.png | B13 | Web | dunkel | Gruppen-Videoanruf im Familienchat mit vier Personen (Mesh, dunkel) | – |
 | b13-04-hierher-uebernehmen.png | B13 | Web | hell | Bens Laptop: „Anruf läuft auf …“ – Hierher übernehmen oder als Begleitgerät hinzufügen | 1 = Hierher übernehmen |
 | b13-05-klingeln-handy.png | B13 | Handy | dunkel | Ben wird angerufen (Handy-Browser, dunkel): Ablehnen, nur Ton, mit Video | 1 = Ablehnen; 2 = Mit Video annehmen |
+| b13-07-begleitgeraet-teilt.png | B13 | Web + Handy | dunkel | Zusammengesetzt: Annas Laptop (Begleitgerät, teilt den Bildschirm) und ihr Handy (zeigt die Präsentation), 1:1 mit Ben über den Knoten | – |
+| b13-08-teilnehmer-nicht-dabei.png | B13 | Web | dunkel | Gruppenanruf, Teilnehmerliste: Anna, Ben; „Nicht dabei (2)“ Clara und Oma Lena (nicht angenommen) | 1 = Nicht dabei; 2 = Erneut klingeln; 3 = Person hinzufügen |
+| b13-09-einzel-zu-gruppe.png | B13 | Web | dunkel | 1:1 Anna ↔ Ben, „Person hinzufügen“ Clara → Gruppenanruf mit drei Kacheln (neue Gruppe „Ben Sommer, Clara Sommer“) | – |
+| b13-10-in-gruppenanruf-verschoben.png | B13 | Web | dunkel | Bens 1:1 mit Anna danach: Eintrag „In Gruppenanruf verschoben“ mit Dauer | 1 = Zur Gruppe |
 | b14-01-glocke.png | B14 | Web | hell | Glocke: geteilte Seiten, Kommentare, Erwähnungen, Aufgaben – „Alle gelesen“ | 1 = Glocke mit Zahl; 2 = Alle gelesen |
 | b14-02-mitteilungen-einstellungen.png | B14 | Web | hell | Einstellungen → Mitteilungen: dieser Browser, Geräte, ntfy, Kategorien, Ruhezeiten | – |
 | b14-03-glocke-handy.png | B14 | Handy | dunkel | Glocke auf dem Handy (dunkel) | – |
@@ -119,6 +147,10 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
 | b15-03-ki-chat.png | B15 | Web | hell | KI im Familienchat auf Zuruf (`@Saga KI`) – Antwort für alle sichtbar | – |
 | b16-01-kalender-verbinden.png | B16 | Web | hell | Einstellungen → Kalender: Familienkalender verbunden, zweiten Kalender (CalDAV) hinzufügen | 1 = verbundener Kalender „Familie“; 2 = Adresse des CalDAV-Servers (Passwort: App-Passwort, hier leer) |
 | b16-02-immich.png | B16 | Web | hell | Bild aus Immich: Album „Ostsee 2026“ (Attrappe), Foto wählen → wird in die Seite kopiert | 1 = Alben; 2 = gewähltes Album; 3 = Foto anklicken |
+| b16-03-nextcloud-datei.png | B16 | Web | hell | Nextcloud-Datei als Verweis in „Ferienwohnung Möwe“: Karte mit Vorschau, Herunterladen, In Nextcloud öffnen, Schalter (Attrappe cloud.saga.example) | – |
+| b16-04-bookorbit-verbunden.png | B16 | Web | hell | Einstellungen → BookOrbit: verbunden (Attrappe bookorbit.example), „Markierungen als Seite übernehmen“ mit drei Büchern | – |
+| b16-05-bookorbit-buchseite.png | B16 | Web | hell | Buchseite „Das Leuchtfeuer von Hiddensee“ unter „Bücher“: Cover, Autorin, Notiz, Kapitel-Unterseiten mit Zahl der Markierungen | – |
+| b16-06-bookorbit-kapitel.png | B16 | Web | hell | Kapitelseite „3 Sturmflut“: Markierungen als Zitate, Notizen darunter | – |
 | b17-01-qr-kopplung.png | B17 | Web | hell | Apps & Geräte: App per QR-Code anmelden (Code gilt 2 Minuten, nur einmal) | 1 = QR-Code mit der App scannen |
 | b18-01-api-token-neu.png | B18 | Web | hell | Neuer API-Token „Home Assistant“: Bereiche wählen (Token selbst wird nicht gezeigt) | 1 = Name; 2 = Bereiche (nie mehr Rechte als dein Konto) |
 | b18-02-webhook.png | B18 | Web | hell | Webhook anlegen: Adresse und Ereignisse (Signatur mit eigenem Geheimnis) | 1 = Adresse des Empfängers; 2 = Webhook anlegen |
@@ -143,11 +175,6 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
   sind unverständlich. Demo blendet sie aus und zeigt „75 Min.“ als Formel-Text. Saga bietet keine Beschriftungen auf
   Galerie-Karten – Vorschlag: Option „Eigenschaftsnamen zeigen“.
 - b01-02/b01-03: Passkeys brauchen https – Aufnahme in einer TLS-Phase (handbuch-stack.sh), Faktoren danach entfernt.
-- **Veraltet gegenüber 2.5 (neu aufnehmen):** a06-02 zeigt noch den alten Hinweis „eigener Name per TLS-Durchreiche
-  (SNI)“ beim eingebauten Knoten, „Alle Anrufe über Knoten“ ohne Haken (ab Werk an) und eine leere Knoten-Liste;
-  a05-01 zeigt den Editor noch als „Neu (Tiptap, Test)“ statt „Standard (Tiptap)“.
-  a09-01 zeigt `docker logs saga` und vereinfachte Zeilen; echt sind die Zeilen JSON (`clientdiag {"id":…}`), und
-  der Befehl lautet `docker compose logs --no-log-prefix saga` (der Container heißt unter compose nicht `saga`).
 - b09-03 (Konflikt): aufgenommen mit kurz abgeschaltetem „Gleichzeitig bearbeiten live“ (danach wieder an). Weil Saga 2.5
   ohne live die Änderung des anderen nachlädt bzw. blockweise zusammenführt, ist der Konflikt nachgestellt: Annas Speichern
   schickt den alten Stand ohne Zusammenführen (wie ein älterer Client) → echte Server-Antwort 409 und echte Leiste.
@@ -162,10 +189,8 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
   läuft über http; auf einem echten Server steht dort der Schalter.
 - b15-02: Websuche über eine SearXNG-Attrappe (Treffer wetter.example.org / kueste.example.org); b15-03 KI im Chat zeigt
   die Antwort mit rohen ** (siehe Design-Fund).
-- b16-02: Immich-Attrappe (handbuch-fakes/fakes.py, nicht im Repository, Album „Ostsee 2026“, gezeichnete Bilder) unter fotos.saga.example.
-- b16-03 (Nextcloud-Datei) fehlt: Die Nextcloud-Anmeldung (Login Flow v2) speichert die Server-Adresse, die die Attrappe
-  meldet; die Test-Attrappe tests/fakedav.py meldet 127.0.0.1:<port>, das stünde im Datei-Block. Bräuchte eine eigene
-  Attrappe unter einem Anzeige-Host – zweiter Durchgang.
+- b16-02: Immich-Attrappe des ersten Durchgangs (Album „Ostsee 2026“, gezeichnete Bilder) unter fotos.saga.example – im neuen
+  `tools/handbuch-fakes/fakes.py` noch nicht nachgebaut.
 - b12-08/b12-09: neuer Browser von Clara ohne Chat-Schlüssel; Schlüssel in b12-09 ist erfunden.
 - b18-01: nur das Formular (Name, Bereiche) – der erzeugte Token wird nicht gezeigt.
 - Admin: a08-01/a08-02 auf saga.example (Familie, Admin anna), weil nur dort veröffentlicht/gemeldet wird; Meldung in a08-02
@@ -173,7 +198,8 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
   nachgestellt (gleiche Stelle/Klasse wie im Server; lokal nicht auslösbar). a06-03: „Erweitern“ erscheint nur mit
   Gjallarhorn an – für das Bild kurz eingeschaltet, danach wieder aus; Kopplungs-Skript nicht erzeugt. a07-02: Code
   ersetzt durch DEMO-EINLADUNG-…. a05-04: festgehaltene Adressen der lokalen Attrappe durch 192.0.2.10 ersetzt.
-  a09-01: Terminal-Bild mit erfundenen Log-Zeilen (HTML), kein echtes Log.
+  a09-01: Terminal-Bild (HTML) aus echten Log-Zeilen des Demo-Laufs; Kennung auf D-7K3FM gesetzt (wie im Text), lange
+  Zeilen gekürzt.
 - a01-02: Admin-Anmeldung ohne zweiten Faktor (Demo verlangt keinen); 2FA-Abfrage selbst siehe b01-03.
 - b10-04: öffentliche Adresse ist `saga.example/@anna-sommer/sommerfest` (öffentlicher Name der Demo), nicht `@sommer`.
 
@@ -188,3 +214,29 @@ offen) – neue oder geänderte Bilder lassen sich derzeit nicht per Skript erze
 - Hinweis: Ein nicht aufgelegter Anruf blockiert den nächsten („Du telefonierst gerade schon“) – das Skript legt jetzt
   nach jedem Anrufbild auf.
 - Design: b14-02 – auf http fehlt jeder Hinweis, wie man Mitteilungen doch bekommt (ntfy/App); Text nennt nur https.
+
+## Durchgang 3 (23.11.2026, Werkzeuge im Repository)
+
+- Neu aufgenommen, weil die Oberfläche sich geändert hat: alle Einstellungs-Bilder mit der alten Reiterleiste (jetzt
+  Navigation links): b01-04, b01-05, b01-07, b03-01, b14-02, b16-01, b17-01, b18-01, b18-02, b19-01, b19-02; dazu
+  a05-01 („Standard (Tiptap)“), a06-02 (Tunnel-Betrieb, „Alle Anrufe über Knoten“ an, Knoten-Liste), a09-01.
+- Anzeige-Hosts: Der Server läuft mit `BASE_URL=http://saga.example` bzw. `http://verein.example`; im Namensraum zeigen
+  die Namen per `/etc/hosts` auf 127.0.1.x, Port 80 leitet `fakes.forward` weiter. Deshalb http, nicht https.
+- a06-02/a06-04 (Art `knoten`): Die Testumgebung nennt den eingebauten Knoten `localhost` (Zertifikat der Test-CA), das
+  Test-Binary meldet `2.5.0-probe` – im Bild durch `verein.example` bzw. `2.5.0` ersetzt, sonst unverändert. Der Knoten hat
+  einen eigenen Namen, daher „Bereit als Rückweg“; den Tunnel-Betrieb („An ✓ …“) gibt es nur mit https-`BASE_URL` hinter
+  einem Proxy (nicht in der Testumgebung).
+- B13 (Art `knoten`, „Alle Anrufe über Knoten“ an): Kamera = gezeichnete Initialen, Bildschirm = gezeichnete Urlaubsfotos
+  (Skript im Browser), stiller Ton; WebRTC läuft echt über den Knoten. Das eigene Bild ist gespiegelt (wie in Saga). Gerätename
+  „Chrome · Linux“ bzw. „Chrome · Android“ (Handy mit Android-Kennung) kommt vom Test-Browser. Hinweise (Toasts) sind vor dem
+  Bild entfernt. b13-07 ist aus zwei Bildern zusammengesetzt (Laptop links, Handy rechts).
+- b13-08: Clara und Oma Lena haben je ein Gerät mit Chat-Schlüssel, nehmen aber nicht ab („nicht angenommen“).
+- b16-01: Der Kalender-Zugang „Familie“ steht nur für dieses Bild in der DB (kein CalDAV-Server; sonst zeigt „Termine“
+  einen Fehler).
+- b16-03/b16-04/b16-05: Nextcloud- und BookOrbit-Attrappe aus `tools/handbuch-fakes/fakes.py` (erfundene Dateien, Bücher,
+  Markierungen; gezeichnete Cover und Vorschau).
+- a09-02: Pauls Meldung kommt echt aus dem Browser („Diagnose senden“); die Meldungen von iOS und Android sind dieselbe
+  Meldung, über dieselbe API mit anderem Client geschickt, dazu ein Fehlerbericht der Android-App.
+- Neue Nummern: b04-13, b06-08 und b13-06 sind für App-Bilder vergeben, die neuen Web-Bilder heißen daher b04-14, b06-09
+  und b13-07 … b13-10.
+

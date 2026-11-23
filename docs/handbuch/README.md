@@ -10,7 +10,7 @@ Es gibt zwei Handbücher:
 Wie du Saga **installierst, sicherst und aktualisierst**, steht nicht hier, sondern in der
 [Anleitung](../ANLEITUNG.md); für den Umstieg auf Saga 2.5 gibt es die [Upgrade-Anleitung](../UPGRADE-2.5.md).
 
-Dieses Handbuch beschreibt **Saga 2.5**. Zu einigen neuen Funktionen fehlen noch Bilder; sie kommen nach.
+Dieses Handbuch beschreibt **Saga 2.5**. Zu einigen Funktionen fehlen noch Bilder aus den Apps; sie kommen nach.
 
 > **So liest du das Handbuch:** Jedes Kapitel beginnt mit „Das kannst du damit machen“ – ein paar Ideen aus
 > dem Alltag. Dann folgen eine kurze Erklärung, die Schritte mit Bildern, ein ausführliches Beispiel, Tipps,

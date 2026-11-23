@@ -95,7 +95,10 @@ Auf der Seite erscheint dafür der Kasten **Anrufe über die Saga-Adresse (Tunne
 - **Tunnel** und **Browser (WebSocket)** – wie viele Verbindungen gerade offen sind, und **Beine je Weg** – wie die
   Geräte gerade verbunden sind (UDP, TCP, TLS, Tunnel der Apps, WebSocket der Browser).
 
-<!-- Bild folgt: Kasten „Anrufe über die Saga-Adresse (Tunnel)“ mit „Proxy reicht WebSocket durch? Ja ✓“ -->
+![Kasten „Anrufe über die Saga-Adresse (Tunnel)“: Zustand, „Proxy reicht WebSocket durch? Ja ✓ – der Tunnel kommt beim Knoten an.“ mit dem Knopf „Jetzt prüfen“, darunter die offenen Tunnel und Browser-Verbindungen](../bilder/a06-04-tunnel-kasten.png)
+
+Im Bild hat der Knoten einen eigenen Namen – dann ist der Tunnel nur der Rückweg der Apps („Bereit als Rückweg“). Im
+Tunnel-Betrieb hinter Nginx Proxy Manager steht bei **Zustand** „An ✓ …“.
 
 Optional kann UDP 443 dazukommen – das bringt etwas bessere Qualität, ist aber ein zusätzlich geöffneter Port. Wer
 Saga ohne Proxy direkt ins Internet stellt oder den Proxy TLS nur durchreichen lässt, kann stattdessen die
@@ -112,11 +115,7 @@ Wie du einen bestehenden Server auf 2.5 bringst und was du dabei am Proxy und hi
 
 ### 4. Die Knoten-Liste
 
-![Abschnitt Gjallarhorn bei ausgeschaltetem Gjallarhorn: Schalter, noch leere Knoten-Liste, darunter Erweitern und „Fähigkeiten jetzt abgleichen“](../bilder/a06-02-knoten-liste.png)
-
-> **Hinweis:** Das Bild stammt von vor der Umstellung auf den Tunnel-Betrieb. Der Satz zum eigenen Namen per
-> TLS-Durchreiche (SNI) gilt hinter Nginx Proxy Manager nicht mehr, und „Alle Anrufe über Knoten (auch 1:1)“ ist
-> inzwischen ab Werk an (siehe oben).
+![Abschnitt Gjallarhorn: die drei Schalter (alle an), der Kasten zum Tunnel, die Knoten-Liste mit dem eingebauten Knoten „Bereit“ (Weg, Auslastung, Teilnehmende, Version, Teilen, Aktionen), darunter Erweitern und „Fähigkeiten jetzt abgleichen“](../bilder/a06-02-knoten-liste.png)
 
 Je Knoten siehst du:
 

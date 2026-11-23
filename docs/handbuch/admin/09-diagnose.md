@@ -47,7 +47,7 @@ gemacht). Sehen können die Meldungen nur Admins. Weil sie in der Datenbank lieg
 **Diagnose-Meldungen**, die neuesten zuerst, 100 je Seite: **Zeit**, **Art**, **Kennung**, **Client** (App oder
 Browser mit Version) und **Kurzfassung**.
 
-<!-- Bild folgt: Admin → Diagnose mit Suchfeld, Filtern und der Liste der Meldungen (Demo „Gartenverein“) -->
+![Admin → Diagnose im Gartenverein: Suchfeld „Kennung“, Auswahl „Art“ und „Zeitraum“, „Filtern“ und „Als Datei herunterladen“; darunter die Meldungen mit Zeit, Art, Kennung, Client und Kurzfassung, unten „Aufbewahrung“](../bilder/a09-02-diagnose-liste.png)
 
 ### 2. Eine bestimmte Diagnose finden
 

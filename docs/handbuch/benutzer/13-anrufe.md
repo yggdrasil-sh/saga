@@ -103,7 +103,7 @@ aufgezeichnet oder auf dem Server gespeichert.
 Alle im Anruf sehen den Bildschirm groß, mit dem Namen des Geräts. Auch du siehst ihn auf dem Handy als
 Präsentation – das klappt in beide Richtungen: Teilst du am Handy, zeigt der Laptop deinen Bildschirm.
 
-<!-- Bild folgt: Begleitgerät – Laptop über „Hinzufügen“ dazugeholt, teilt den Bildschirm; Handy zeigt die Präsentation -->
+![Links Annas Laptop als Begleitgerät, der den Bildschirm teilt; rechts ihr Handy im selben Anruf, das die Präsentation groß zeigt](../bilder/b13-07-begleitgeraet-teilt.png)
 
 Ein Begleitgerät zählt als eigener Platz im Anruf. Ist der Anruf voll, kommt es erst dazu, wenn jemand auflegt.
 
@@ -130,7 +130,9 @@ Im **Seiten-Chat** fragt Saga vorher nach: Die Person bekommt dann Lesezugriff a
 anderen Saga-Server kommt erst dazu, wenn ihr Server zugestimmt hat; danach lässt du sie unter „Nicht dabei“
 klingeln. Höchstens 10 neue Personen auf einmal.
 
-<!-- Bild folgt: Teilnehmerliste im Gruppenanruf mit „Nicht dabei“, „Erneut klingeln“ und „Person hinzufügen“ -->
+![Gruppenanruf mit geöffneter Teilnehmerliste: Anna und Ben sind dabei, unter „Nicht dabei (2)“ stehen Clara und Oma Lena („nicht angenommen“) mit „Erneut klingeln“, oben der Knopf „Person hinzufügen“](../bilder/b13-08-teilnehmer-nicht-dabei.png)
+
+① Wer (noch) nicht im Anruf ist · ② bei einer Person erneut klingeln (oder „Alle erneut klingeln“) · ③ Person hinzufügen
 
 **Der Anruf ist voll.** Jedes Gerät belegt einen Platz – auch ein zweites Gerät zum Teilen. Ist alles belegt, sagt
 Saga das beim Beitreten und bei „Person hinzufügen“; erneut klingeln geht dann nicht. Erst wenn jemand auflegt, kommt
@@ -160,7 +162,11 @@ verschoben“ mit dem Knopf **Zur Gruppe**. Die Neuen hören nichts von dem, was
 Läuft das Gespräch direkt (ohne Knoten) oder mit einer Person von einem anderen Saga-Server, geht das noch nicht –
 ein Hinweis sagt dir dann, warum.
 
-<!-- Bild folgt: 1:1-Anruf, „Person hinzufügen“ – danach Gruppenanruf mit drei Kacheln und Eintrag „In Gruppenanruf verschoben“ -->
+![Aus dem 1:1-Anruf von Anna und Ben ist mit „Person hinzufügen“ ein Gruppenanruf mit Clara geworden: drei Kacheln, oben der Name der neuen Gruppe](../bilder/b13-09-einzel-zu-gruppe.png)
+
+![Bens bisheriger Chat mit Anna: der Eintrag „In Gruppenanruf verschoben“ mit Dauer und dem Knopf „Zur Gruppe“](../bilder/b13-10-in-gruppenanruf-verschoben.png)
+
+① **Zur Gruppe** öffnet den neuen Gruppen-Chat.
 
 ### 6. Den Anruf auf ein anderes Gerät holen
 

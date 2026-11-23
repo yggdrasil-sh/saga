@@ -74,7 +74,7 @@ oder L. Als Kartenbild wählst du das Titelbild der Seite, das erste Bild im Inh
 Neue, umbenannte und gelöschte Unterseiten erscheinen sofort, in der Reihenfolge des Seitenbaums. Jede Person sieht
 nur die Unterseiten, die sie öffnen darf.
 
-<!-- Bild folgt: Block „Unterseiten“ als Galerie mit Titelbildern (Familien-Wiki der Sommers) -->
+![Seite „Familien-Wiki“ mit dem Block „Unterseiten“ als Galerie: sechs Karten mit Titelbild, Symbol und Titel, von „Wichtige Nummern“ bis „Garten“](../bilder/b04-14-unterseiten-galerie.png)
 
 **Seiten ordnen**
 

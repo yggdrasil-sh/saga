@@ -123,7 +123,7 @@ sind gleich hoch. Wird es zu eng, rücken die Spalten von selbst zusammen – au
 Fenster und am Handy stehen sie untereinander. Spalten mit drei bis sechs Widgets dürfen etwas breiter sein als der
 Text.
 
-<!-- Bild folgt: Widgets im neuen Aussehen – vier Karten in einer Reihe (Countdown, Fortschritt, Kennzahl, Gewohnheiten) -->
+![Vier Widgets in einer Reihe, gleich hoch: Countdown „Bis zum Urlaub“, Fortschritt „Urlaubskasse“ (68 %), Kennzahl „Offene Aufgaben“ und „Gewohnheiten“ der letzten sieben Tage](../bilder/b06-09-widget-reihe.png)
 
 ### 5. Die Widgets im Überblick
 
