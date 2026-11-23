@@ -56,7 +56,7 @@ const srv = http.createServer((q, r) => {
             ok(!errs.length, tag + ': Konsolenfehler', errs);
             ok(!bad.length, tag + ': fehlgeschlagene Anfragen', bad);
             ok(!reqs.some(u => /\.mp4/.test(u)), tag + ': Video vor dem Klick geladen');
-            const r = await p.evaluate(() => {
+            const r = await p.evaluate((W) => {
               const imgs = [...document.images];
               const hs = [...document.querySelectorAll('h1,h2,h3,h4')].map(e => +e.tagName[1]);
               let skip = null; hs.reduce((a, b) => { if (b > a + 1 && !skip) skip = a + '->' + b; return b; }, 1);
@@ -64,7 +64,7 @@ const srv = http.createServer((q, r) => {
                 lang: document.documentElement.lang,
                 broken: imgs.filter(i => !i.complete || !i.naturalWidth).map(i => i.currentSrc || i.src),
                 noalt: imgs.filter(i => !i.hasAttribute('alt')).map(i => i.src),
-                over: document.documentElement.scrollWidth - window.innerWidth,
+                over: document.documentElement.scrollWidth - W,  // gegen die eingestellte Breite (Chromium mit isMobile vergroessert sonst innerWidth)
                 anchors: [...document.querySelectorAll('a[href^="#"]')].map(a => a.getAttribute('href')).filter(hr => hr.length > 1 && !document.getElementById(hr.slice(1))),
                 rel: [...new Set([...document.querySelectorAll('a[href]')].map(a => a.getAttribute('href')).filter(hr => !/^(https?:|#|mailto:)/.test(hr)))],
                 h1: document.querySelectorAll('h1').length, skip,
@@ -73,7 +73,7 @@ const srv = http.createServer((q, r) => {
                 poster: !!document.querySelector('.promo video[poster][preload=none] source[src$=".mp4"]'),
                 credit: (document.querySelector('.credit') || {}).textContent || '',
               };
-            });
+            }, w);
             ok(r.lang === lang, tag + ': lang', r.lang);
             ok(!r.broken.length, tag + ': Bilder nicht geladen', r.broken);
             ok(!r.noalt.length, tag + ': Bilder ohne alt', r.noalt);

@@ -84,7 +84,7 @@ html:lang(th) .tag,html:lang(ru) .tag{text-transform:none;letter-spacing:0}
 .shot{margin:0}
 .shot img{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--border);box-shadow:var(--shadow);background:var(--card)}
 .shot figcaption{color:var(--muted);font-size:14px;margin-top:10px;text-align:center}
-@media (max-width:880px){.feature,.feature.rev{grid-template-columns:1fr;gap:24px;margin-bottom:56px}.feature.rev .txt{order:0}}
+@media (max-width:880px){.feature,.feature.rev{grid-template-columns:minmax(0,1fr);gap:24px;margin-bottom:56px}.feature.rev .txt{order:0}}
 
 /* Karten */
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
@@ -94,16 +94,16 @@ html:lang(th) .tag,html:lang(ru) .tag{text-transform:none;letter-spacing:0}
 .ic{display:inline-grid;place-items:center;width:34px;height:34px;flex:none;border-radius:9px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--gold)}
 .ic svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 @media (max-width:960px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:620px){.grid{grid-template-columns:1fr}}
+@media (max-width:620px){.grid{grid-template-columns:minmax(0,1fr)}}
 .more{margin-top:40px}
 
 /* Bildreihe */
 .gallery{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin-top:44px}
-@media (max-width:880px){.gallery{grid-template-columns:1fr}}
+@media (max-width:880px){.gallery{grid-template-columns:minmax(0,1fr)}}
 
 /* Installieren */
 .install{display:grid;grid-template-columns:minmax(0,6fr) minmax(0,5fr);gap:40px;align-items:start}
-@media (max-width:880px){.install{grid-template-columns:1fr}}
+@media (max-width:880px){.install{grid-template-columns:minmax(0,1fr)}}
 pre{margin:0;background:var(--code-bg);color:var(--code-fg);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px;overflow:auto;
   font:14px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}
 pre .c{color:var(--code-c)}
@@ -124,7 +124,7 @@ pre:focus-visible{outline-offset:2px}
   .phones figure{scroll-snap-align:center;min-width:62vw}}
 .plat{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
 @media (max-width:960px){.plat{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:520px){.plat{grid-template-columns:1fr}}
+@media (max-width:520px){.plat{grid-template-columns:minmax(0,1fr)}}
 .plat .card p{font-size:15px}
 .center{text-align:center}
 .fine{color:var(--muted);font-size:14px}
