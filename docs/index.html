@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Saga – selbst gehostetes Dashboard, Notizen und Aufgaben</title>
-<meta name="description" content="Saga ist dein selbst gehostetes Zuhause für Dienste, Seiten im Notion-Stil, Datenbanken, Aufgaben, Kalender und Lesezeichen – mehrbenutzerfähig, mit LDAP und SSO, per Docker Compose.">
+<title>Saga – selbst gehostet: Seiten, Datenbanken, Chat, Anrufe und Kalender</title>
+<meta name="description" content="Saga ist dein selbst gehosteter Ort für Seiten, Datenbanken, Chat, Anrufe, Kalender und Aufgaben – mit Apps, Föderation und verschlüsselten Backups. Eine Domain, nur Port 443, Docker Compose.">
+<meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://yggdrasil-sh.github.io/saga/">
 <link rel="alternate" hreflang="de" href="https://yggdrasil-sh.github.io/saga/">
 <link rel="alternate" hreflang="en" href="https://yggdrasil-sh.github.io/saga/en/">
@@ -14,10 +15,10 @@
 <link rel="alternate" hreflang="x-default" href="https://yggdrasil-sh.github.io/saga/en/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Saga">
-<meta property="og:title" content="Saga – dein selbst gehostetes Zuhause für Dienste, Notizen und Aufgaben">
-<meta property="og:description" content="Selbst gehostetes Dashboard mit Notizen, Datenbanken, Aufgaben, Kalender und Lesezeichen.">
+<meta property="og:title" content="Saga – dein eigener Server für Seiten, Chat und Anrufe">
+<meta property="og:description" content="Selbst gehostet: Seiten, Datenbanken, Chat, Anrufe, Kalender und Apps. Eine Domain, nur Port 443.">
 <meta property="og:url" content="https://yggdrasil-sh.github.io/saga/">
-<meta property="og:image" content="https://yggdrasil-sh.github.io/saga/screenshots/dashboard.png">
+<meta property="og:image" content="https://yggdrasil-sh.github.io/saga/video/saga-promo.jpg">
 <meta property="og:locale" content="de_DE">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:locale:alternate" content="es_ES">
@@ -35,224 +36,243 @@ location.replace("en/")}catch(e){}})();
 </script>
 </head>
 <body>
-<div class="wrap">
-  <nav>
-    <a class="brand" href="#"><img src="icon.svg" alt="">Saga</a>
-    <span class="sp"></span>
-    <a class="l hide" href="#neu">Neu in 2.4</a>
-    <a class="l hide" href="#funktionen">Funktionen</a>
-    <a class="l hide" href="#screenshots">Screenshots</a>
-    <a class="l hide" href="#apps">Apps</a>
-    <a class="l" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">Anleitung</a>
-    <a class="l gh" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
+<a class="skip" href="#inhalt">Zum Inhalt springen</a>
+<header class="top">
+  <nav class="wrap" aria-label="Hauptnavigation">
+    <a class="brand" href="#"><img src="icon.svg" alt="" width="30" height="30">Saga</a>
+    <a class="l" href="#neu">Neu in 2.5</a>
+    <a class="l" href="#installieren">Installieren</a>
+    <a class="l opt" href="#funktionen">Funktionen</a>
+    <a class="l opt" href="#apps">Apps</a>
+    <a class="l opt" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
     <span class="lang" role="group" aria-label="Sprache"><a href="./" lang="de" hreflang="de" data-l="de" title="Deutsch" aria-label="Deutsch" aria-current="page">DE</a><a href="en/" lang="en" hreflang="en" data-l="en" title="English" aria-label="English">EN</a><a href="es/" lang="es" hreflang="es" data-l="es" title="Español" aria-label="Español">ES</a><a href="ru/" lang="ru" hreflang="ru" data-l="ru" title="Русский" aria-label="Русский">RU</a><a href="th/" lang="th" hreflang="th" data-l="th" title="ไทย" aria-label="ไทย">TH</a></span>
   </nav>
+</header>
 
-  <header class="hero">
-    <img class="logo" src="icon.svg" alt="Saga-Logo">
-    <h1>Dein Zuhause für<br><span>Dienste, Notizen &amp; Aufgaben</span></h1>
-    <p class="lead">Saga ist eine selbst gehostete Startseite und Wissenssammlung für Familien, Teams und Homelabs –
-      mit Seiten und Datenbanken im Notion-Stil, Kalender, Aufgaben und Lesezeichen. Jede Person hat ihren eigenen, privaten Bereich.</p>
+<main id="inhalt">
+<div class="hero">
+  <div class="wrap">
+    <span class="kicker"><b>Saga 2.5</b> · selbst gehostet · quelloffen</span>
+    <h1>Dein eigener Server für Seiten, Chat und Anrufe</h1>
+    <p class="lead">Saga bringt Seiten, Datenbanken, Chat, Anrufe, Kalender und Aufgaben auf deinen eigenen Server – für Familie,
+      Verein oder Team, mit Apps fürs Handy und den Schreibtisch.</p>
+    <ul class="promise">
+      <li class="main">Eine Domain, nur Port 443</li>
+      <li>Docker Compose</li>
+      <li>Ende-zu-Ende-verschlüsselte Chats und Anrufe</li>
+    </ul>
     <div class="btns">
-      <a class="btn primary" href="#schnellstart">🚀 In 5 Minuten starten</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">📖 Anleitung</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ Auf GitHub</a>
+      <a class="btn primary" href="#installieren">Installieren</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/handbuch/README.md">Handbuch</a>
     </div>
-    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>Nextcloud</span><span>S3</span><span>iOS · macOS · Linux · Android</span><span>Deutsch · English · Español · Русский · ไทย</span></div>
-    <div class="shot"><img src="screenshots/dashboard.png" alt="Saga Dashboard" width="2880" height="1800"></div>
-  </header>
+    <figure class="promo" data-soon="Video folgt">
+      <div class="frame">
+        <video controls playsinline preload="none" poster="video/saga-promo.jpg" aria-label="Saga im Video">
+          <source src="video/saga-promo.mp4" type="video/mp4">
+        </video>
+      </div>
+      <figcaption class="credit">Music: “Surrender” by Unheard – Free To Use (<a href="https://freetouse.com/music">freetouse.com/music</a>)</figcaption>
+    </figure>
+  </div>
 </div>
 
 <section id="neu" class="alt">
   <div class="wrap">
-    <h2>Neu in Saga 2.4</h2>
-    <p class="sub">Videos im Chat, Gruppenanrufe und ein Medienpfad, der Python entlastet – dazu mehr Schutz für Anmeldung und Privatsphäre.</p>
-    <div class="stats">
-      <div class="stat"><b>0,22 s</b><small>statt 0,67 s</small><span>für 20 Chat-Anhänge à 10 MB gleichzeitig</span></div>
-      <div class="stat"><b>0,06 %</b><small>eines CPU-Kerns</small><span>braucht Python, während ein 1-GB-Video hochlädt</span></div>
-      <div class="stat"><b>1,6 ms</b><small>statt 8,8 ms</small><span>bis beim Spulen das erste Byte kommt (p95)</span></div>
-      <div class="stat"><b>≤ 1,8 s</b><small>4 Geräte</small><span>bis ein Gruppenanruf aufgebaut ist</span></div>
+    <p class="eyebrow">Neu in Saga 2.5</p>
+    <h2>Telefonieren über deine eigene Adresse</h2>
+    <p class="sub">Anrufe laufen jetzt über einen eingebauten Knoten, der Editor schreibt live mit, und Chats können mehr –
+      dazu Unterseiten, Siegel, Titelbilder und Widgets für deine Seiten.</p>
+
+    <div class="feature">
+      <div class="txt">
+        <h3>Anrufe über Gjallarhorn<span class="tag">Experimentell</span></h3>
+        <p>Saga bringt seinen eigenen Medienknoten mit. Er läuft hinter jedem Reverse Proxy mit WebSocket-Unterstützung über
+          die normale Saga-Adresse – ohne zweiten Namen und ohne weiteren Port.</p>
+        <ul>
+          <li><b>1:1 und Gruppen</b> mit Video, Ton und Bildschirm – zum Start mit bis zu 4 Teilnehmenden bzw. Geräten</li>
+          <li><b>Aus 1:1 wird eine Gruppe</b>, ohne dass das Gespräch abbricht</li>
+          <li><b>Personen dazuholen</b>, auch von außerhalb des Chats; wer nicht abnimmt, steht unter „Nicht dabei“ mit „Erneut klingeln“</li>
+          <li><b>Gerät wechseln oder hinzufügen:</b> den Anruf vom Handy an den Laptop holen oder den Laptop zum Teilen dazunehmen</li>
+          <li><b>Ende-zu-Ende verschlüsselt</b> – auch über den Knoten</li>
+        </ul>
+        <p class="fine">Gjallarhorn ist in 2.5 experimentell. Safari und Browser auf iPhone/iPad telefonieren noch direkt
+          oder über TURN; die Apps und die Mac-App nutzen den Tunnel über die Saga-Adresse.</p>
+      </div>
+      <figure class="shot"><img src="bilder/anruf-gruppe.webp" width="2000" height="1250" loading="lazy" alt="Gruppenanruf zu viert mit Kacheln der Teilnehmenden, Hinweisen „Ende-zu-Ende verschlüsselt“ und „Experimentell“ und geöffneter Teilnehmerliste"></figure>
     </div>
-    <p class="stat-note">Gemessen mit <code>tools/perf</code> (2 CPU-Kerne, Median aus drei Läufen) und den Browser-Tests der Anrufe.</p>
-    <div class="grid two">
-      <div class="card"><div class="ic" aria-hidden="true">🎬</div><h3>Videos im Chat</h3><p>Videos mit Vorschaubild und Dauer spielen sofort und lassen sich spulen, ohne alles zu laden – Ende-zu-Ende-verschlüsselt in Blöcken, entschlüsselt erst auf deinem Gerät. Große Videos (standardmäßig bis 500 MB) laden fortsetzbar hoch, auch über Servergrenzen.</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">👥</div><h3>Gruppenanrufe</h3><p>In Gruppen-, freien und Seiten-Chats mit bis zu 4 Geräten mit Video oder 6 nur mit Ton – jederzeit beitreten und gehen, Kacheln mit hervorgehobenem Sprecher. Jedes Gerätepaar verbindet sich direkt und verschlüsselt, der Server sieht keine Medien.</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">🖥️</div><h3>Bildschirm, Bild-im-Bild, Gerätewechsel</h3><p>Bildschirm teilen, während die Kamera klein weiterläuft. Bild-im-Bild hält das Gespräch über anderen Fenstern. Ein laufender Anruf wandert ohne Unterbrechung vom Handy an den Laptop – oder der Laptop kommt als Begleitgerät zum Teilen dazu.</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">✓✓</div><h3>Gelesen &amp; online</h3><p>Haken für zugestellt und gelesen, in Gruppen „Gelesen von“, dazu „online“ bzw. „zuletzt online“ – nur für Personen, mit denen du chattest. Beides lässt sich getrennt abschalten, gegenseitig: Wer nichts zeigt, sieht auch nichts.</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">📦</div><h3>Medienpfad saga-media</h3><p>Ein kleiner Go-Dienst im Container liefert Chat-Anhänge und Videos direkt von der Platte – kein neuer Port, nichts einzurichten. Wer was sehen darf, entscheidet weiterhin Saga. Ohne Container übernehmen nginx oder Caddy.</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">🛡️</div><h3>Mehr Schutz</h3><p>Wer Passwörter rät, wird gebremst, nicht dein Konto. So kann dich niemand aus deinem eigenen Konto aussperren. Anmeldenamen bleiben privat, zweite Faktoren ändern sich nur mit Bestätigung, und Gravatar gibt es nur mit Einwilligung.</p></div>
+
+    <div class="feature rev">
+      <div class="txt">
+        <h3>Gemeinsam schreiben, live</h3>
+        <p>Der neue Standard-Editor (Tiptap) zeigt Eingaben und Cursor der anderen sofort, wenn der Admin „Gleichzeitig
+          bearbeiten live“ einschaltet – auch mit Personen auf verbundenen Servern.</p>
+        <ul>
+          <li><b>Erwähnungen</b> von Personen, Daten und Erinnerungen mit @</li>
+          <li><b>Synchronisierte Blöcke</b>: ein Inhalt, an mehreren Stellen</li>
+          <li><b>Tabellen, Code, Mathe, Mermaid</b>, Spalten und Medien direkt im Text</li>
+        </ul>
+      </div>
+      <figure class="shot"><picture><source srcset="bilder/editor-live-dunkel.webp" media="(prefers-color-scheme: dark)"><img src="bilder/editor-live-hell.webp" width="2000" height="1250" loading="lazy" alt="Seite „Sommerfest“: Anna sieht, dass Ben gerade das Wort „Grillgut“ markiert – sein Name steht als Fähnchen am Cursor"></picture></figure>
     </div>
-    <h3 class="more-h">Gut zu wissen</h3>
-    <div class="steps">
-      <div class="card"><b>Update von 2.3</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code> – vorher legt Saga automatisch ein Backup an. Gravatar ist danach für alle aus und lässt sich in den Einstellungen wieder einschalten.</p></div>
-      <div class="card"><b>Anrufe</b><p>Für Gruppenanrufe lohnt sich ein eigener TURN-Server über Port 443 – die Anleitung zeigt, wie das ohne neuen Port geht. Ohne Container: saga-media selbst bauen oder <code>MEDIA_ACCEL</code> setzen.</p></div>
-      <div class="card"><b>Apps</b><p>Die <a href="https://github.com/yggdrasil-sh/saga-apps/releases">Apps 2.4</a> erscheinen gleichzeitig – mit Videos, Gruppenanrufen und Gelesen-Haken. Apps 2.3 und 2.1 laufen weiter, nur ohne diese Funktionen.</p></div>
+
+    <div class="feature">
+      <div class="txt">
+        <h3>Chats, die mehr können</h3>
+        <p>Moderne Chats (Stufe 3) sind jetzt Standard: weiterhin Ende-zu-Ende-verschlüsselt, mit allem, was man im Alltag braucht.</p>
+        <ul>
+          <li><b>Reaktionen, Antworten und Bearbeiten</b>, Formatierung und @-Erwähnungen</li>
+          <li><b>Sprachnachrichten</b> bis 15 Minuten</li>
+          <li><b>Nachrichten und Chats anheften</b>, stummschalten mit Dauer, als ungelesen markieren</li>
+          <li><b>Gruppen mit Admins</b>, Bild und Beschreibung, Kontakte und Melden an die Admins</li>
+        </ul>
+      </div>
+      <figure class="shot"><picture><source srcset="bilder/chat-dunkel.webp" media="(prefers-color-scheme: dark)"><img src="bilder/chat-hell.webp" width="2000" height="1250" loading="lazy" alt="Familienchat „Sommers“ mit angehefteter Nachricht, Antwort mit Zitat, Herz-Reaktion und Foto"></picture></figure>
     </div>
-    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Alle Änderungen und Hinweise zum Update</a></p>
+
+    <div class="grid more">
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>Unterseiten in der Seite</h3><p>Unterseiten erscheinen in der Elternseite – als Liste oder als Galerie mit Titelbildern.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v10M8 10l4-3 4 3"/></svg></span>Siegel als Seitensymbole</h3><p>36 Saga-Siegel in drei Farben neben den Emoji – für Seiten, Datenbanken und Zeilen.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg></span>Titelbild-Galerie</h3><p>100 Bilder der Saga-Elfe in acht Gruppen, dazu Zufallsbild für neue Seiten.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>Widgets und Diagramme</h3><p>Neu gestaltete Widgets – Countdown, Fortschritt, Kennzahl, Gewohnheiten, Wetter – und Diagramme aus Datenbanken.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></span>Umziehen leicht gemacht</h3><p>Import aus Notion, Trilium, Markdown/Obsidian und CSV, Export als CSV und Markdown.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>Mac-App als Hülle</h3><p>Die Desktop-App für den Mac zeigt die Web-Oberfläche deines Servers – mit Mitteilungen, Widgets und Tunnel für Anrufe.</p></div>
+    </div>
+    <p class="links"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">Alle Änderungen</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/UPGRADE-2.5.md">Update von 2.3/2.4</a></p>
   </div>
 </section>
 
-<section id="neu-2-3">
+<section id="installieren">
   <div class="wrap">
-    <h2>Neu in Saga 2.3</h2>
-    <p class="sub">Schneller mit vielen Daten, Föderation ohne Abstriche – und Backups, um die du dich nicht mehr kümmern musst.</p>
-    <div class="stats">
-      <div class="stat"><b>0,6 s</b><small>statt 12 s</small><span>bis eine Datenbank mit 2.000 Zeilen bedienbar ist</span></div>
-      <div class="stat"><b>0,05 s</b><small>statt 1,0 s</small><span>Seitenbaum neu laden bei 60.000 Seiten und Einträgen</span></div>
-      <div class="stat"><b>1,3 s</b><small>statt 3,1 s</small><span>bis der Seitenbaum bei 25.000 Notizen steht</span></div>
-      <div class="stat"><b>−89 %</b><small>2,5 → 0,28 GB</small><span>Daten der App in 8 Stunden im Vordergrund</span></div>
+    <p class="eyebrow">In wenigen Minuten startklar</p>
+    <h2>Ein Server mit Docker genügt</h2>
+    <p class="sub">Saga läuft mit Docker Compose. Von außen brauchst du nur eine Domain und Port 443 an deinem Reverse Proxy –
+      Anrufe nehmen denselben Weg.</p>
+    <div class="install">
+      <div>
+<pre tabindex="0" aria-label="Befehle zum Installieren"><span class="c"># herunterladen und einrichten</span>
+git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
+cp .env.example .env
+<span class="c"># in der .env: BASE_URL, SECRET_KEY, POSTGRES_PASSWORD</span>
+
+docker compose pull &amp;&amp; docker compose up -d
+<span class="c"># erstes Admin-Passwort</span>
+docker compose logs saga | grep Admin-Konto
+
+<span class="c"># später aktualisieren (Saga legt vorher ein Backup an)</span>
+docker compose pull &amp;&amp; docker compose up -d</pre>
+        <figure class="shot"><img src="bilder/tunnel.webp" width="1600" height="375" loading="lazy" alt="Admin → Anrufe: Kasten „Anrufe über die Saga-Adresse (Tunnel)“ meldet „Proxy reicht WebSocket durch? Ja“"></figure>
+      </div>
+      <ol class="steps">
+        <li><b>Starten</b><span>Image ziehen und starten – Saga lauscht auf Port 8080, der Admin-Bereich auf 8081 (nur lokal).</span></li>
+        <li><b>Proxy davor</b><span>Eine Domain mit HTTPS auf Port 443 zeigt auf Saga. Im Nginx Proxy Manager „Websockets Support“ einschalten; Caddy und Traefik können das von selbst.</span></li>
+        <li><b>Einrichten</b><span>Im Admin-Bereich Konten, Gruppen und Dienste anlegen, optional LDAP oder SSO. Unter „Anrufe“ prüft „Jetzt prüfen“ den Weg über den Proxy.</span></li>
+        <li><b>Apps verbinden</b><span>In „Apps &amp; Geräte“ per QR-Code anmelden – fertig.</span></li>
+      </ol>
     </div>
-    <p class="stat-note">Gemessen mit der wiederholbaren Lastmessung <code>tools/perf</code> auf Testdaten.</p>
-    <div class="grid two">
-      <div class="card"><div class="ic" aria-hidden="true">⚡</div><h3>Spürbar schneller</h3><p>Antworten kommen komprimiert, der Seitenbaum gleicht nur noch Änderungen ab, lange Tabellen zeigen nur die sichtbaren Zeilen. Suche, Freigaben und Rückverweise rechnet der Server über vorbereitete Daten – gleiche Ergebnisse, nur schneller.</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">🌐</div><h3>Föderation komplett</h3><p>Personen verbundener Server über ihren Namen finden, Ende-zu-Ende-verschlüsselt chatten – direkt, in Gruppen und im Seiten-Chat – und telefonieren. Geteilte Seiten samt Datenbanken, Unterseiten, Uploads und Versionen gemeinsam bearbeiten. Nachrichtenanfragen und Sperren halten Unerwünschtes fern, jeder Server prüft alles selbst.</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">🗄️</div><h3>Verschlüsselte Backups</h3><p>Jeden Tag Datenbank, Dateien und Schlüssel nach S3, in einen Ordner oder auf Nextcloud/WebDAV – verschlüsselt mit age und deinem öffentlichen Schlüssel. Aufbewahrung 7/4/6, Prüfsummen, Benachrichtigung bei Fehlern, Testwiederherstellung und ein offenes Format, das sich auch ohne Saga entschlüsseln lässt.</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">☁️</div><h3>Nextcloud-Dateien &amp; persönliche Backups</h3><p>Die eigene Nextcloud verknüpfen und Bilder, Dateien und Ordner als Block einfügen – wer die Seite sieht, sieht auch die Datei, ganz ohne eigenes Nextcloud-Konto. Und jede Person sichert ihren eigenen Workspace in ihre eigene Nextcloud, mit eigenem Schlüssel.</p></div>
-    </div>
-    <h3 class="more-h">Gut zu wissen</h3>
-    <div class="steps">
-      <div class="card"><b>Update von 2.1</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code> – vorher legt Saga automatisch ein Backup an. Eine Version 2.2 gibt es nicht.</p></div>
-      <div class="card"><b>Datenschutz</b><p>Adressbuch, Chat und Anrufe lassen sich je verbundenem Server abschalten, und jede Person kann dem Adressbuch widersprechen.</p></div>
-      <div class="card"><b>Apps</b><p>Die Apps 2.3 erscheinen gleichzeitig – mit Föderation, Backups und Nextcloud-Dateien. Apps 2.1 laufen weiter, nur ohne diese Funktionen.</p></div>
-    </div>
-    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Alle Änderungen und Hinweise zum Update</a></p>
+    <p class="links"><a class="btn primary" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">Ausführliche Anleitung</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">Releases</a></p>
   </div>
 </section>
 
 <section id="funktionen" class="alt">
   <div class="wrap">
-    <h2>Alles an einem Ort</h2>
-    <p class="sub">Saga verbindet ein Dashboard für deine Dienste mit einem persönlichen Notizbuch – ohne Cloud, ohne Abo, auf deinem eigenen Server.</p>
+    <p class="eyebrow">Alles an einem Ort</p>
+    <h2>Notizbuch, Startseite und Familienchat in einem</h2>
+    <p class="sub">Ohne Cloud und ohne Abo: Jede Person hat ihren eigenen, privaten Bereich – und teilt, was sie teilen möchte.</p>
+    <div class="feature">
+      <div class="txt">
+        <h3>Heute</h3>
+        <p>Die Startseite begrüßt dich mit dem, was ansteht: fällige Aufgaben, Termine, zuletzt geöffnete Seiten und Kacheln für
+          deine Dienste – sichtbar je nach Gruppe.</p>
+      </div>
+      <figure class="shot"><picture><source srcset="bilder/heute-dunkel.webp" media="(prefers-color-scheme: dark)"><img src="bilder/heute-hell.webp" width="2000" height="1250" loading="lazy" alt="„Heute“ mit Begrüßung, Schnellaktionen, Weitermachen, Kacheln der Dienste und offenen Aufgaben rechts"></picture></figure>
+    </div>
     <div class="grid">
-      <div class="card"><div class="ic">🧭</div><h3>Dashboard</h3><p>Kacheln für alle Dienste mit Status-Punkten, Favoriten, Suche und Tastenkürzeln – optional mit eigener Websuche über SearXNG.</p></div>
-      <div class="card"><div class="ic">🔑</div><h3>Zugang per Gruppe</h3><p>Wer in <code>s_nextcloud</code> ist, sieht Nextcloud. Funktioniert mit lokalen Gruppen, LDAP und SSO gleichermaßen.</p></div>
-      <div class="card"><div class="ic">📝</div><h3>Seiten im Notion-Stil</h3><p>Blöcke, Unterseiten, Checklisten, Tabellen, Code, Bilder, Spalten, Vorlagen, Versionen und Markdown-Export.</p></div>
-      <div class="card"><div class="ic">🗂️</div><h3>Datenbanken</h3><p>Tabelle, Board, Liste, Galerie und Kalender – mit Filtern, Relationen, Berechnungen und Summen.</p></div>
-      <div class="card"><div class="ic">🌐</div><h3>Seiten veröffentlichen</h3><p>Seiten teilen, die jeder ohne Konto lesen kann – schlicht, hell oder dunkel, ohne JavaScript, auf Wunsch unter eigener Domain.</p></div>
-      <div class="card"><div class="ic">💬</div><h3>Teilen &amp; Kommentare</h3><p>Seiten und Datenbanken mit Personen oder Gruppen teilen – Lesen, Kommentieren oder Bearbeiten, mit dezenten Kommentaren am Block.</p></div>
-      <div class="card"><div class="ic">📅</div><h3>Kalender &amp; Aufgaben</h3><p>CalDAV-Kalender (Nextcloud, mailcow, Radicale, iCloud) anzeigen und bearbeiten, Aufgaben mit Priorität und Wiederholung.</p></div>
-      <div class="card"><div class="ic">🔖</div><h3>Eigene Lesezeichen</h3><p>Jede Person legt ihre eigenen Kacheln an – privat, auch in den Apps sichtbar.</p></div>
-      <div class="card"><div class="ic">📷</div><h3>Immich</h3><p>Fotos aus der eigenen Immich-Bibliothek als Bilder und Titelbilder in Seiten verwenden.</p></div>
-      <div class="card"><div class="ic">👥</div><h3>Mehrbenutzerfähig</h3><p>Lokale Konten mit Registrierung, LDAP/Active Directory und Single Sign-On – Inhalte strikt getrennt.</p></div>
-      <div class="card"><div class="ic">🛡️</div><h3>Admin-Bereich</h3><p>Auf eigenem Port: Benutzer, Gruppen, Dienste, Registrierung, LDAP und SSO mit Verbindungstests.</p></div>
-      <div class="card"><div class="ic">📱</div><h3>Native Apps</h3><p>iPhone, iPad, Mac, Linux und Android – Seiten, Datenbanken und Aufgaben nativ bearbeiten, anmelden per QR-Code.</p></div>
-      <div class="card"><div class="ic">🌍</div><h3>Fünf Sprachen</h3><p>Web, Admin-Bereich und Apps auf Deutsch, Englisch, Spanisch, Russisch und Thai – je Konto und schon auf der Anmeldeseite wählbar. Nur die Anleitung gibt es auf Deutsch, Englisch und Spanisch.</p></div>
-      <div class="card"><div class="ic">🔒</div><h3>Sicher von Haus aus</h3><p>Strenge CSP, Größen-Grenzen, Fehlversuche bremsen statt aussperren, private Anmeldenamen, gehashte Schlüssel, Abmelden aller Geräte beim Passwortwechsel.</p></div>
-      <div class="card"><div class="ic">🗄️</div><h3>Backups &amp; Nextcloud</h3><p>Tägliche, mit age verschlüsselte Backups nach S3, in einen Ordner oder auf Nextcloud – dazu persönliche Backups je Person und Nextcloud-Dateien direkt in Seiten.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg></span>Seiten</h3><p>Blöcke, Unterseiten, Vorlagen, Versionen, Kommentare und Markdown-Export – mit Schnellsuche und Seitenbaum.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg></span>Datenbanken</h3><p>Tabelle, Board, Liste, Galerie, Kalender, Zeitleiste und Diagramm – mit Formeln, Rollups, Relationen und Filtern.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 15l2 2 4-4"/></svg></span>Kalender &amp; Aufgaben</h3><p>CalDAV-Kalender (z. B. Nextcloud, Radicale) und Aufgaben aus Datenbanken – mit Priorität und Wiederholung.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>KI-Assistent</h3><p>Optional mit einem OpenAI-kompatiblen Dienst deiner Wahl: fragt deine Seiten, nennt Quellen und hilft beim Schreiben.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4"/></svg></span>Föderation</h3><p>Saga-Server verbinden sich: Seiten über Servergrenzen teilen und bearbeiten, chatten und telefonieren.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>Teilen &amp; Veröffentlichen</h3><p>Mit Personen und Gruppen teilen (lesen, kommentieren, bearbeiten) oder öffentlich ohne Konto lesbar machen.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 18a5 5 0 0 1-.5-10 6 6 0 0 1 11.5 2A4 4 0 0 1 17 18z"/><path d="M12 11v6M9.5 14.5L12 17l2.5-2.5"/></svg></span>Backups &amp; Nextcloud</h3><p>Täglich verschlüsselte Backups nach S3, in einen Ordner oder auf Nextcloud – und Nextcloud-Dateien direkt in Seiten.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/></svg></span>LDAP &amp; SSO</h3><p>Lokale Konten, LDAP/Active Directory und OpenID Connect – Zugang zu Diensten über Gruppen.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>Fünf Sprachen</h3><p>Oberfläche und Apps auf Deutsch, Englisch, Spanisch, Russisch und Thai – je Konto wählbar.</p></div>
     </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap split">
-    <div class="txt">
-      <h2>Schreiben, planen, sammeln</h2>
-      <p class="sub">Ein Notizbuch, das mitwächst – von der Einkaufsliste bis zur Projektplanung.</p>
-      <ul>
-        <li><b>„/“-Menü</b> für neue Blöcke, Verweise auf Seiten und Termine</li>
-        <li><b>Seitenbaum</b> mit Unterseiten, Favoriten, Archiv und Papierkorb</li>
-        <li><b>Versionen</b> – frühere Stände ansehen und wiederherstellen</li>
-        <li><b>Export</b> als Markdown, auch mit allen Unterseiten</li>
-      </ul>
-    </div>
-    <div class="shot"><img src="screenshots/seite.png" alt="Eine Seite in Saga" loading="lazy"></div>
-  </div>
-</section>
-
-<section class="alt">
-  <div class="wrap split rev">
-    <div class="txt">
-      <h2>Datenbanken wie du sie brauchst</h2>
-      <p class="sub">Eigenschaften anlegen, Ansicht wählen, fertig.</p>
-      <ul>
-        <li><b>Ansichten:</b> Tabelle, Board, Liste, Galerie, Kalender</li>
-        <li><b>Eigenschaften:</b> Status, Auswahl, Datum, Zahl, Häkchen, Link, Relation, Berechnung</li>
-        <li><b>Filter, Sortierung und Summen</b> je Ansicht</li>
-      </ul>
-    </div>
-    <div class="shot"><img src="screenshots/board.png" alt="Datenbank als Board" loading="lazy"></div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap split">
-    <div class="txt">
-      <h2>Für Admins gemacht</h2>
-      <p class="sub">Eigener Admin-Bereich auf separatem Port – standardmäßig nur lokal erreichbar.</p>
-      <ul>
-        <li><b>Benutzer</b> anlegen, sperren, überall abmelden, Passwort setzen</li>
-        <li><b>Dienste</b> mit Symbol, Kategorie und automatischer Zuweisung über die Gruppen-Kennung</li>
-        <li><b>LDAP/AD</b> mit Vorlagen für FreeIPA, Active Directory und OpenLDAP</li>
-        <li><b>SSO/OIDC</b> für Keycloak, Authentik, Authelia, Zitadel, Entra ID …</li>
-        <li><b>Backups</b> verschlüsselt nach S3, in einen Ordner oder auf Nextcloud – mit Testwiederherstellung</li>
-      </ul>
-    </div>
-    <div class="shot"><img src="screenshots/admin-dienste.png" alt="Admin-Bereich: Dienste" loading="lazy"></div>
-  </div>
-</section>
-
-<section id="screenshots" class="alt">
-  <div class="wrap">
-    <h2>Screenshots</h2>
-    <p class="sub">Dunkles und helles Design folgen automatisch dem System.</p>
     <div class="gallery">
-      <figure><div class="shot"><img src="screenshots/dashboard-hell.png" alt="" loading="lazy"></div><figcaption>Helles Design</figcaption></figure>
-      <figure><div class="shot"><img src="screenshots/datenbank.png" alt="" loading="lazy"></div><figcaption>Datenbank als Tabelle</figcaption></figure>
-      <figure><div class="shot"><img src="screenshots/einstellungen.png" alt="" loading="lazy"></div><figcaption>Eigene Einstellungen: Konto, Lesezeichen, Kalender</figcaption></figure>
-      <figure><div class="shot"><img src="screenshots/admin-sso.png" alt="" loading="lazy"></div><figcaption>Admin: SSO mit Verbindungstest</figcaption></figure>
-      <figure><div class="shot"><img src="screenshots/admin-ldap.png" alt="" loading="lazy"></div><figcaption>Admin: LDAP / Active Directory</figcaption></figure>
-      <figure><div class="shot"><img src="screenshots/login.png" alt="" loading="lazy"></div><figcaption>Anmeldung</figcaption></figure>
+      <figure class="shot"><img src="bilder/board.webp" width="2000" height="1250" loading="lazy" alt="Datenbank „Hausputz“ als Board mit den Spalten Offen, Dabei und Erledigt"><figcaption>Datenbank als Board</figcaption></figure>
+      <figure class="shot"><img src="bilder/widgets.webp" width="2000" height="1250" loading="lazy" alt="Seite „Home“ im dunklen Design mit Uhr, Gedanke für heute, Wetter und Schnellknöpfen"><figcaption>Widgets auf einer Seite</figcaption></figure>
+      <figure class="shot"><img src="bilder/unterseiten.webp" width="2000" height="1250" loading="lazy" alt="„Familien-Wiki“ mit Titelbild und Unterseiten als Galerie"><figcaption>Unterseiten als Galerie</figcaption></figure>
+      <figure class="shot"><img src="bilder/kalender.webp" width="2000" height="1250" loading="lazy" alt="Familienkalender in der Wochenansicht"><figcaption>Kalender-Ansicht</figcaption></figure>
+      <figure class="shot"><img src="bilder/ki.webp" width="2000" height="1250" loading="lazy" alt="KI-Assistent neben der Seite „Sommerfest“ mit Antwort und Quellen"><figcaption>KI-Assistent mit Quellen</figcaption></figure>
+      <figure class="shot"><img src="bilder/foederation.webp" width="2000" height="1250" loading="lazy" alt="Seite eines anderen Saga-Servers, geteilt vom Gartenverein und bei Familie Sommer bearbeitbar"><figcaption>Seite von einem anderen Server</figcaption></figure>
     </div>
   </div>
 </section>
 
 <section id="apps">
   <div class="wrap">
-    <h2>Apps für unterwegs und den Schreibtisch</h2>
-    <p class="sub">Native Apps für iPhone, iPad, Mac, Linux (GNOME) und Android – keine eingebettete Webseite.
-      Seiten, Datenbanken, Aufgaben und Termine werden direkt in der App angezeigt und bearbeitet.
-      Anmelden geht mit der Serveradresse oder bequem per QR-Code aus „Apps &amp; Geräte“.
-      Mit Saga 2.1 auch Anrufe und Profilbilder, dazu Chats, Benachrichtigungen, Mitteilungen, KI-Assistent und Föderation.</p>
+    <p class="eyebrow">Apps</p>
+    <h2>Für unterwegs und den Schreibtisch</h2>
+    <p class="sub">Saga läuft in jedem aktuellen Browser – auch auf dem Handy. Dazu gibt es Apps, die du per QR-Code anmeldest.</p>
     <div class="phones">
-      <figure><img src="screenshots/app-ios-start.png" alt="iPhone: Startseite mit Aufgaben und zuletzt geöffneten Seiten" loading="lazy" width="660" height="1434"><figcaption>iPhone: Start</figcaption></figure>
-      <figure><img src="screenshots/app-ios-dunkel-board.png" alt="iPhone: Datenbank als Board im dunklen Design" loading="lazy" width="660" height="1434"><figcaption>iPhone: Board, dunkel</figcaption></figure>
-      <figure><img src="screenshots/app-android-heute.png" alt="Android: Heute mit Terminen und Aufgaben" loading="lazy" width="660" height="1467"><figcaption>Android: Heute</figcaption></figure>
-      <figure><img src="screenshots/app-android-dienste.png" alt="Android: Dienste nach Gruppen" loading="lazy" width="660" height="1467"><figcaption>Android: Dienste</figcaption></figure>
+      <figure><img src="bilder/handy-heute.webp" width="780" height="1688" loading="lazy" alt="Handy: „Heute“ mit Begrüßung, Schnellaktionen und Aufgaben"><figcaption>Heute</figcaption></figure>
+      <figure><img src="bilder/handy-chat.webp" width="780" height="1688" loading="lazy" alt="Handy im dunklen Design: Familienchat mit Antworten und Foto"><figcaption>Chat</figcaption></figure>
+      <figure><img src="bilder/handy-anruf.webp" width="780" height="1688" loading="lazy" alt="Handy im Gruppenanruf zu viert"><figcaption>Gruppenanruf</figcaption></figure>
     </div>
-    <figure class="tablet"><img src="screenshots/app-ipad-projekte.png" alt="iPad: Seitenleiste und Datenbank als Board" loading="lazy" width="1600" height="1200"><figcaption>iPad: Seitenleiste und Board</figcaption></figure>
-    <p class="dl"><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">⬇️ Downloads: macOS · Linux (RPM, Flatpak) · Android</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/blob/main/README.de.md">📱 App-Quellcode &amp; Anleitung</a></p>
+    <div class="plat">
+      <div class="card"><h3>iPhone &amp; iPad</h3><p>Native App mit Widgets und Teilen. Noch nicht im App Store – zum Selbstbauen.</p></div>
+      <div class="card"><h3>Android</h3><p>Native App als APK über die GitHub-Releases, ab Android 8.</p></div>
+      <div class="card"><h3>Mac</h3><p>Desktop-App als Hülle der Web-Oberfläche, signiert und beglaubigt (macOS 26 oder neuer).</p></div>
+      <div class="card"><h3>Linux</h3><p>GNOME-App als RPM (Fedora, RHEL 10) und als Flatpak für jede Distribution.</p></div>
+    </div>
+    <p class="links center"><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">Apps herunterladen</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/blob/main/README.de.md">App-Quellcode &amp; Anleitung</a></p>
   </div>
 </section>
 
-<section id="schnellstart" class="alt">
+<section id="sicherheit" class="alt">
   <div class="wrap">
-    <h2>In 5 Minuten starten</h2>
-    <p class="sub">Du brauchst nur einen Server mit Docker.</p>
-<pre><span class="c"># herunterladen</span>
-git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
-cp .env.example .env
-<span class="c"># BASE_URL, SECRET_KEY und POSTGRES_PASSWORD in der .env setzen</span>
-docker compose pull &amp;&amp; docker compose up -d
-<span class="c"># erstes Admin-Passwort anzeigen</span>
-docker compose logs saga | grep Admin-Konto
-
-<span class="c"># später aktualisieren (vorher legt Saga automatisch ein Backup an)</span>
-git pull &amp;&amp; docker compose pull &amp;&amp; docker compose up -d</pre>
-    <div class="steps">
-      <div class="card"><b>1 · Starten</b><p>Saga läuft auf Port 8080, der Admin-Bereich auf 8081 (nur lokal).</p></div>
-      <div class="card"><b>2 · Einrichten</b><p>Im Admin-Bereich Benutzer und Dienste anlegen, optional LDAP oder SSO verbinden.</p></div>
-      <div class="card"><b>3 · Loslegen</b><p>Mit HTTPS-Proxy davor freigeben – fertig ist dein eigenes Zuhause im Netz.</p></div>
+    <p class="eyebrow">Sicherheit &amp; Datenschutz</p>
+    <h2>Deine Daten bleiben bei dir</h2>
+    <p class="sub">Saga läuft auf deinem Server. Kein Tracking, keine Telemetrie – nach außen spricht Saga nur mit Diensten, die du
+      einrichtest (und auf Wunsch mit GitHub, um nach Updates zu fragen).</p>
+    <div class="grid">
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>Ende-zu-Ende verschlüsselt</h3><p>Chats und Anrufe sind Ende-zu-Ende-verschlüsselt – auch über verbundene Server und über den Knoten.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>Sichere Anmeldung</h3><p>Passkeys und Authenticator-App, 2FA als Pflicht für Admins oder alle. Fehlversuche werden gebremst, Konten nicht ausgesperrt.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></span>Backups mit Plan</h3><p>Täglich, mit age verschlüsselt, Aufbewahrung 7/4/6, Testwiederherstellung – dazu ein Backup vor jedem Update und persönliche Backups je Person.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 21h10M7 9h4M7 13h7"/></svg></span>Admin-Bereich getrennt</h3><p>Eigener Port, ab Werk nur lokal erreichbar – mit eigener Anmeldung und Diagnose.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></svg></span>Du entscheidest</h3><p>Föderation, Chat, Anrufe und Adressbuch je verbundenem Server abschaltbar; Lesebestätigungen und „online“ je Person.</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3H5v18h3M16 3h3v18h-3"/><path d="M10 9l-2 3 2 3M14 9l2 3-2 3"/></svg></span>Quelloffen</h3><p>AGPL-3.0, alles auf GitHub – Server, Apps und die Werkzeuge für diese Bilder.</p></div>
     </div>
-    <p style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">📖 Zur ausführlichen Anleitung</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">🏷️ Versionen &amp; Änderungen</a></p>
   </div>
 </section>
+</main>
 
 <footer>
-  <div class="wrap">Saga · selbst gehostet, privat, quelloffen (AGPL-3.0) · <a href="https://github.com/yggdrasil-sh/saga">github.com/yggdrasil-sh/saga</a><br>
-  Dienst-Symbole von <a href="https://selfh.st/icons">selfh.st/icons</a></div>
+  <div class="wrap cols">
+    <div>
+      <p><b>Saga</b> · selbst gehostet, privat, quelloffen (AGPL-3.0)</p>
+      <ul>
+        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/handbuch/README.md">Handbuch</a></li>
+        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">Anleitung</a></li>
+        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/UPGRADE-2.5.md">Update auf 2.5</a></li>
+        <li><a href="https://github.com/yggdrasil-sh/saga/releases">Releases</a></li>
+        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">Änderungen</a></li>
+        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/LICENSE">Lizenz</a></li>
+      </ul>
+    </div>
+    <span class="lang" role="group" aria-label="Sprache"><a href="./" lang="de" hreflang="de" data-l="de" title="Deutsch" aria-label="Deutsch" aria-current="page">DE</a><a href="en/" lang="en" hreflang="en" data-l="en" title="English" aria-label="English">EN</a><a href="es/" lang="es" hreflang="es" data-l="es" title="Español" aria-label="Español">ES</a><a href="ru/" lang="ru" hreflang="ru" data-l="ru" title="Русский" aria-label="Русский">RU</a><a href="th/" lang="th" hreflang="th" data-l="th" title="ไทย" aria-label="ไทย">TH</a></span>
+  </div>
 </footer>
-<script>document.querySelectorAll(".lang a").forEach(function(a){a.addEventListener("click",function(){try{localStorage.setItem("saga-lang",a.dataset.l)}catch(e){}})})</script>
+<script>
+document.querySelectorAll(".lang a").forEach(function(a){a.addEventListener("click",function(){try{localStorage.setItem("saga-lang",a.dataset.l)}catch(e){}})});
+/* Promovideo: fehlt die Datei, bleibt das Poster als Bild stehen (kein kaputter Player). Ohne Klick wird nichts geladen. */
+(function(){var v=document.querySelector(".promo video");if(!v)return;var s=v.querySelector("source");
+function fall(){if(!v.parentNode)return;var i=document.createElement("img");i.src=v.getAttribute("poster");i.alt=v.getAttribute("aria-label")||"";
+i.width=1920;i.height=1080;var f=v.parentNode;f.replaceChild(i,v);var m=document.createElement("span");m.className="soon";m.textContent=f.closest(".promo").dataset.soon||"";if(m.textContent)f.appendChild(m)}
+if(s)s.addEventListener("error",fall);v.addEventListener("error",fall)})();
+</script>
 </body>
 </html>
