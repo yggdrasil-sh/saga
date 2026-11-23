@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Saga – แดชบอร์ด โน้ต และงาน แบบโฮสต์เอง</title>
-<meta name="description" content="Saga คือศูนย์รวมแบบโฮสต์เองสำหรับบริการ หน้าแบบ Notion ฐานข้อมูล งาน ปฏิทิน และบุ๊กมาร์ก รองรับหลายผู้ใช้ พร้อม LDAP และ SSO ทำงานบน Docker Compose">
+<title>Saga – โฮสต์เอง: หน้า ฐานข้อมูล แชท การโทร และปฏิทิน</title>
+<meta name="description" content="Saga คือพื้นที่แบบโฮสต์เองของคุณสำหรับหน้า ฐานข้อมูล แชท การโทร ปฏิทิน และงาน พร้อมแอป การเชื่อมต่อระหว่างเซิร์ฟเวอร์ และการสำรองข้อมูลแบบเข้ารหัส ใช้โดเมนเดียว พอร์ต 443 เท่านั้น ด้วย Docker Compose">
+<meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://yggdrasil-sh.github.io/saga/th/">
 <link rel="alternate" hreflang="de" href="https://yggdrasil-sh.github.io/saga/">
 <link rel="alternate" hreflang="en" href="https://yggdrasil-sh.github.io/saga/en/">
@@ -14,10 +15,10 @@
 <link rel="alternate" hreflang="x-default" href="https://yggdrasil-sh.github.io/saga/en/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Saga">
-<meta property="og:title" content="Saga – ศูนย์รวมแบบโฮสต์เองสำหรับบริการ โน้ต และงานของคุณ">
-<meta property="og:description" content="แดชบอร์ดแบบโฮสต์เอง พร้อมโน้ต ฐานข้อมูล งาน ปฏิทิน และบุ๊กมาร์ก">
+<meta property="og:title" content="Saga – เซิร์ฟเวอร์ของคุณเองสำหรับหน้า แชท และการโทร">
+<meta property="og:description" content="โฮสต์เอง: หน้า ฐานข้อมูล แชท การโทร ปฏิทิน และแอป ใช้โดเมนเดียว พอร์ต 443 เท่านั้น">
 <meta property="og:url" content="https://yggdrasil-sh.github.io/saga/th/">
-<meta property="og:image" content="https://yggdrasil-sh.github.io/saga/screenshots/dashboard.png">
+<meta property="og:image" content="https://yggdrasil-sh.github.io/saga/video/saga-promo.jpg">
 <meta property="og:locale" content="th_TH">
 <meta property="og:locale:alternate" content="de_DE">
 <meta property="og:locale:alternate" content="en_US">
@@ -27,224 +28,243 @@
 <link rel="stylesheet" href="../site.css">
 </head>
 <body>
-<div class="wrap">
-  <nav>
-    <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
-    <span class="sp"></span>
-    <a class="l hide" href="#new">ใหม่ใน 2.4</a>
-    <a class="l hide" href="#features">ฟีเจอร์</a>
-    <a class="l hide" href="#screenshots">ภาพหน้าจอ</a>
-    <a class="l hide" href="#apps">แอป</a>
-    <a class="l" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en" title="คู่มือ (ภาษาอังกฤษ)">คู่มือ <small>(EN)</small></a>
-    <a class="l gh" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
+<a class="skip" href="#content">ข้ามไปยังเนื้อหา</a>
+<header class="top">
+  <nav class="wrap" aria-label="เมนูหลัก">
+    <a class="brand" href="#"><img src="../icon.svg" alt="" width="30" height="30">Saga</a>
+    <a class="l" href="#new">ใหม่ใน 2.5</a>
+    <a class="l" href="#install">ติดตั้ง</a>
+    <a class="l opt" href="#features">ความสามารถ</a>
+    <a class="l opt" href="#apps">แอป</a>
+    <a class="l opt" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
     <span class="lang" role="group" aria-label="ภาษา"><a href="../" lang="de" hreflang="de" data-l="de" title="Deutsch" aria-label="Deutsch">DE</a><a href="../en/" lang="en" hreflang="en" data-l="en" title="English" aria-label="English">EN</a><a href="../es/" lang="es" hreflang="es" data-l="es" title="Español" aria-label="Español">ES</a><a href="../ru/" lang="ru" hreflang="ru" data-l="ru" title="Русский" aria-label="Русский">RU</a><a href="./" lang="th" hreflang="th" data-l="th" title="ไทย" aria-label="ไทย" aria-current="page">TH</a></span>
   </nav>
+</header>
 
-  <header class="hero">
-    <img class="logo" src="../icon.svg" alt="โลโก้ Saga">
-    <h1>ศูนย์รวมของคุณสำหรับ<br><span>บริการ โน้ต และงาน</span></h1>
-    <p class="lead">Saga คือหน้าเริ่มต้นและคลังความรู้แบบโฮสต์เองสำหรับครอบครัว ทีม และโฮมแล็บ
-      มีหน้าและฐานข้อมูลแบบ Notion ปฏิทิน งาน และบุ๊กมาร์ก ทุกคนมีพื้นที่ส่วนตัวของตัวเอง</p>
+<main id="content">
+<div class="hero">
+  <div class="wrap">
+    <span class="kicker"><b>Saga 2.5</b> · โฮสต์เอง · โอเพนซอร์ส</span>
+    <h1>เซิร์ฟเวอร์ของคุณเองสำหรับหน้า แชท และการโทร</h1>
+    <p class="lead">Saga รวมหน้า ฐานข้อมูล แชท การโทร ปฏิทิน และงานไว้บนเซิร์ฟเวอร์ของคุณเอง สำหรับครอบครัว ชมรม หรือทีม
+      พร้อมแอปสำหรับมือถือและคอมพิวเตอร์</p>
+    <ul class="promise">
+      <li class="main">โดเมนเดียว พอร์ต 443 เท่านั้น</li>
+      <li>Docker Compose</li>
+      <li>แชทและการโทรเข้ารหัสแบบต้นทางถึงปลายทาง</li>
+    </ul>
     <div class="btns">
-      <a class="btn primary" href="#quick-start">🚀 พร้อมใช้งานใน 5 นาที</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">📖 คู่มือ (ภาษาอังกฤษ)</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ ให้ดาวบน GitHub</a>
+      <a class="btn primary" href="#install">ติดตั้ง</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">คู่มือ (ภาษาอังกฤษ)</a>
     </div>
-    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>Nextcloud</span><span>S3</span><span>iOS · macOS · Linux · Android</span><span>ไทย · English · Deutsch · Español · Русский</span></div>
-    <div class="shot"><img src="../screenshots/dashboard.png" alt="แดชบอร์ดของ Saga (อินเทอร์เฟซภาษาเยอรมัน)" width="2880" height="1800"></div>
-  </header>
+    <figure class="promo" data-soon="วิดีโอจะมาเร็ว ๆ นี้">
+      <div class="frame">
+        <video controls playsinline preload="none" poster="../video/saga-promo.jpg" aria-label="วิดีโอแนะนำ Saga">
+          <source src="../video/saga-promo.mp4" type="video/mp4">
+        </video>
+      </div>
+      <figcaption class="credit">Music: “Surrender” by Unheard – Free To Use (<a href="https://freetouse.com/music">freetouse.com/music</a>)</figcaption>
+    </figure>
+  </div>
 </div>
 
 <section id="new" class="alt">
   <div class="wrap">
-    <h2>ใหม่ใน Saga 2.4</h2>
-    <p class="sub">วิดีโอในแชต การโทรแบบกลุ่ม และเส้นทางสื่อที่ช่วยลดภาระของ Python พร้อมการป้องกันการเข้าสู่ระบบและความเป็นส่วนตัวที่มากขึ้น</p>
-    <div class="stats">
-      <div class="stat"><b>0.22 วินาที</b><small>แทน 0.67 วินาที</small><span>สำหรับไฟล์แนบในแชตขนาด 10 MB จำนวน 20 ไฟล์พร้อมกัน</span></div>
-      <div class="stat"><b>0.06 %</b><small>ของหนึ่งคอร์</small><span>ที่ Python ใช้ระหว่างอัปโหลดวิดีโอขนาด 1 GB</span></div>
-      <div class="stat"><b>1.6 มิลลิวินาที</b><small>แทน 8.8 มิลลิวินาที</small><span>จนได้ไบต์แรกเมื่อเลื่อนดูวิดีโอ (p95)</span></div>
-      <div class="stat"><b>≤ 1.8 วินาที</b><small>4 อุปกรณ์</small><span>จนการโทรแบบกลุ่มเชื่อมต่อเสร็จ</span></div>
+    <p class="eyebrow">ใหม่ใน Saga 2.5</p>
+    <h2>โทรผ่านที่อยู่ของคุณเอง</h2>
+    <p class="sub">ตอนนี้การโทรวิ่งผ่านโหนดในตัว ตัวแก้ไขทำงานร่วมกับคนอื่นได้แบบสด และแชททำได้มากขึ้นอีกเยอะ
+      รวมถึงหน้าย่อย ตราประทับ ภาพปก และวิดเจ็ตสำหรับหน้าของคุณ</p>
+
+    <div class="feature">
+      <div class="txt">
+        <h3>โทรผ่าน Gjallarhorn<span class="tag">ทดลอง</span></h3>
+        <p>Saga มีโหนดสื่อของตัวเองมาให้ ทำงานหลัง reverse proxy ใดก็ได้ที่รองรับ WebSocket ผ่านที่อยู่ Saga ตามปกติ
+          ไม่ต้องมีชื่อที่สองและไม่ต้องเปิดพอร์ตเพิ่ม</p>
+        <ul>
+          <li><b>โทรแบบตัวต่อตัวและแบบกลุ่ม</b> ทั้งวิดีโอ เสียง และแชร์หน้าจอ ในรุ่นแรกรองรับได้ถึง 4 คนหรือ 4 อุปกรณ์</li>
+          <li><b>เปลี่ยนสายตัวต่อตัวเป็นสายกลุ่ม</b> ได้โดยไม่ต้องวางสาย</li>
+          <li><b>ดึงคนเข้าสาย</b> ได้แม้ไม่ได้อยู่ในแชท ใครที่ไม่รับสายจะแสดงใน “ไม่ได้อยู่ในสาย” พร้อมปุ่ม “เรียกอีกครั้ง”</li>
+          <li><b>สลับหรือเพิ่มอุปกรณ์:</b> ย้ายสายจากมือถือไปยังแล็ปท็อป หรือเพิ่มแล็ปท็อปเข้ามาเพื่อแชร์หน้าจออย่างเดียว</li>
+          <li><b>เข้ารหัสแบบต้นทางถึงปลายทาง</b> แม้จะผ่านโหนด</li>
+        </ul>
+        <p class="fine">Gjallarhorn ยังเป็นฟีเจอร์ทดลองใน 2.5 ส่วน Safari และเบราว์เซอร์บน iPhone/iPad ยังโทรแบบตรงหรือผ่าน TURN
+          ขณะที่แอปมือถือและแอป Mac ใช้อุโมงค์ผ่านที่อยู่ Saga</p>
+      </div>
+      <figure class="shot"><img src="../bilder/anruf-gruppe.webp" width="2000" height="1250" loading="lazy" alt="การโทรกลุ่มสี่คนแสดงเป็นช่อง มีป้ายเข้ารหัสแบบต้นทางถึงปลายทางและป้ายทดลอง และเปิดรายชื่อผู้ร่วมสายไว้"></figure>
     </div>
-    <p class="stat-note">วัดด้วย <code>tools/perf</code> (2 คอร์ ค่ามัธยฐานจากสามรอบ) และการทดสอบการโทรในเบราว์เซอร์</p>
-    <div class="grid two">
-      <div class="card"><div class="ic" aria-hidden="true">🎬</div><h3>วิดีโอในแชต</h3><p>วิดีโอพร้อมภาพตัวอย่างและความยาวเล่นได้ทันทีและเลื่อนดูได้โดยไม่ต้องโหลดทั้งไฟล์ เข้ารหัสต้นทางถึงปลายทางเป็นบล็อก และถอดรหัสบนอุปกรณ์ของคุณเท่านั้น วิดีโอขนาดใหญ่ (ค่าเริ่มต้นสูงสุด 500 MB) อัปโหลดต่อจากเดิมได้ แม้ข้ามเซิร์ฟเวอร์</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">👥</div><h3>การโทรแบบกลุ่ม</h3><p>ในแชตกลุ่ม แชตอิสระ และแชตของหน้า สูงสุด 4 อุปกรณ์แบบมีวิดีโอ หรือ 6 อุปกรณ์แบบเสียงอย่างเดียว เข้าและออกได้ทุกเมื่อ แสดงเป็นไทล์และไฮไลต์ผู้ที่กำลังพูด อุปกรณ์แต่ละคู่เชื่อมต่อกันโดยตรงแบบเข้ารหัส เซิร์ฟเวอร์ไม่เห็นสื่อ</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">🖥️</div><h3>หน้าจอ ภาพซ้อนภาพ และการย้ายอุปกรณ์</h3><p>แชร์หน้าจอได้ขณะที่กล้องยังทำงานในหน้าต่างเล็ก ภาพซ้อนภาพทำให้การโทรอยู่เหนือหน้าต่างอื่น การโทรที่กำลังดำเนินอยู่ย้ายจากโทรศัพท์ไปยังแล็ปท็อปได้โดยไม่สะดุด หรือให้แล็ปท็อปเข้าร่วมเป็นอุปกรณ์เสริมเพื่อแชร์หน้าจอ</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">✓✓</div><h3>อ่านแล้วและออนไลน์</h3><p>เครื่องหมายส่งถึงและอ่านแล้ว ในกลุ่มมี “อ่านโดย” พร้อมสถานะ “ออนไลน์” หรือ “ออนไลน์ล่าสุด” เฉพาะคนที่คุณแชตด้วย ปิดแยกกันได้และมีผลทั้งสองฝ่าย ใครไม่แสดงก็จะไม่เห็นของผู้อื่น</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">📦</div><h3>เส้นทางสื่อ saga-media</h3><p>บริการ Go ขนาดเล็กในคอนเทนเนอร์ส่งไฟล์แนบในแชตและวิดีโอจากดิสก์โดยตรง ไม่มีพอร์ตใหม่ ไม่ต้องตั้งค่าอะไร Saga ยังเป็นผู้ตัดสินว่าใครเห็นอะไรได้ หากไม่ใช้คอนเทนเนอร์ nginx หรือ Caddy จะทำหน้าที่แทน</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">🛡️</div><h3>การป้องกันที่มากขึ้น</h3><p>รหัสผ่านผิดจะชะลอเฉพาะที่อยู่ที่ส่งมาเท่านั้น ไม่มีใครล็อกผู้อื่นออกได้ ชื่อเข้าสู่ระบบเป็นความลับ การเปลี่ยนปัจจัยที่สองต้องยืนยันก่อน และใช้ Gravatar เฉพาะเมื่อยินยอม</p></div>
+
+    <div class="feature rev">
+      <div class="txt">
+        <h3>เขียนร่วมกันแบบสด</h3>
+        <p>ตัวแก้ไขเริ่มต้นตัวใหม่ (Tiptap) แสดงสิ่งที่คนอื่นกำลังพิมพ์และเคอร์เซอร์ของพวกเขาทันที เมื่อผู้ดูแลระบบเปิด
+          การแก้ไขพร้อมกันแบบสด ใช้ได้แม้กับคนบนเซิร์ฟเวอร์ที่เชื่อมต่อกัน</p>
+        <ul>
+          <li><b>กล่าวถึง</b> บุคคล วันที่ และการเตือนด้วย @</li>
+          <li><b>บล็อกซิงค์</b>: เนื้อหาเดียวกันแสดงได้หลายที่</li>
+          <li><b>ตาราง โค้ด สูตรคณิตศาสตร์ Mermaid</b> คอลัมน์ และสื่อ ได้ในเนื้อหาโดยตรง</li>
+        </ul>
+      </div>
+      <figure class="shot"><picture><source srcset="../bilder/editor-live-dunkel.webp" media="(prefers-color-scheme: dark)"><img src="../bilder/editor-live-hell.webp" width="2000" height="1250" loading="lazy" alt="หน้าหนึ่งใน Saga: แอนนาเห็นเบนกำลังเลือกคำอยู่ ชื่อของเขาแสดงเป็นป้ายที่เคอร์เซอร์"></picture></figure>
     </div>
-    <h3 class="more-h">ควรรู้</h3>
-    <div class="steps">
-      <div class="card"><b>อัปเดตจาก 2.3</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code> ก่อนหน้านั้น Saga จะสร้างข้อมูลสำรองให้อัตโนมัติ หลังอัปเดต Gravatar จะปิดสำหรับทุกคน และเปิดใหม่ได้ในการตั้งค่า</p></div>
-      <div class="card"><b>การโทร</b><p>สำหรับการโทรแบบกลุ่ม ควรมีเซิร์ฟเวอร์ TURN ของตัวเองผ่านพอร์ต 443 คู่มือแสดงวิธีทำโดยไม่ต้องเปิดพอร์ตใหม่ หากไม่ใช้คอนเทนเนอร์ ให้สร้าง saga-media เองหรือตั้งค่า <code>MEDIA_ACCEL</code></p></div>
-      <div class="card"><b>แอป</b><p><a href="https://github.com/yggdrasil-sh/saga-apps/releases">แอป 2.4</a> ออกพร้อมกัน พร้อมวิดีโอ การโทรแบบกลุ่ม และเครื่องหมายอ่านแล้ว แอป 2.3 และ 2.1 ยังใช้งานได้ แต่ไม่มีฟีเจอร์เหล่านี้</p></div>
+
+    <div class="feature">
+      <div class="txt">
+        <h3>แชทที่ทำได้มากกว่า</h3>
+        <p>แชทแบบใหม่ (ระดับ 3) เปิดเป็นค่าเริ่มต้นแล้ว ยังคงเข้ารหัสแบบต้นทางถึงปลายทาง และมีทุกอย่างที่ใช้ในชีวิตประจำวัน</p>
+        <ul>
+          <li><b>รีแอ็กชัน ตอบกลับ และแก้ไขข้อความ</b> จัดรูปแบบ และ @กล่าวถึง</li>
+          <li><b>ข้อความเสียง</b> ยาวได้ถึง 15 นาที</li>
+          <li><b>ปักหมุดข้อความและแชท</b> ปิดเสียงตามเวลาที่กำหนด ทำเครื่องหมายว่ายังไม่อ่าน</li>
+          <li><b>กลุ่มที่มีผู้ดูแล</b> รูปและคำอธิบายกลุ่ม รายชื่อติดต่อ และการรายงานถึงผู้ดูแลระบบ</li>
+        </ul>
+      </div>
+      <figure class="shot"><picture><source srcset="../bilder/chat-dunkel.webp" media="(prefers-color-scheme: dark)"><img src="../bilder/chat-hell.webp" width="2000" height="1250" loading="lazy" alt="แชทกลุ่มครอบครัวที่มีข้อความปักหมุด การตอบกลับแบบอ้างอิง รีแอ็กชันรูปหัวใจ และรูปภาพ"></picture></figure>
     </div>
-    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 การเปลี่ยนแปลงทั้งหมดและหมายเหตุการอัปเดต (ภาษาเยอรมัน)</a></p>
+
+    <div class="grid more">
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>หน้าย่อยในหน้า</h3><p>หน้าย่อยแสดงอยู่ในหน้าหลักของมัน เป็นรายการหรือแกลเลอรีพร้อมภาพปก</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v10M8 10l4-3 4 3"/></svg></span>ตราประทับเป็นไอคอน</h3><p>ตราประทับ Saga 36 แบบ 3 สี ให้เลือกคู่กับอีโมจิ ใช้กับหน้า ฐานข้อมูล และแถว</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg></span>แกลเลอรีภาพปก</h3><p>ภาพเอลฟ์ของ Saga 100 ภาพใน 8 กลุ่ม และภาพปกแบบสุ่มสำหรับหน้าใหม่</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>วิดเจ็ตและแผนภูมิ</h3><p>วิดเจ็ตโฉมใหม่ ทั้งนับถอยหลัง ความคืบหน้า ตัวเลขสำคัญ นิสัย และสภาพอากาศ พร้อมแผนภูมิจากฐานข้อมูล</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></span>ย้ายมาง่าย</h3><p>นำเข้าจาก Notion, Trilium, Markdown/Obsidian และ CSV ส่งออกเป็น CSV และ Markdown</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>แอป Mac ครอบเว็บ</h3><p>แอปเดสก์ท็อปสำหรับ Mac แสดงหน้าเว็บของเซิร์ฟเวอร์คุณ พร้อมการแจ้งเตือน วิดเจ็ต และอุโมงค์สำหรับการโทร</p></div>
+    </div>
+    <p class="links"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md" hreflang="de">การเปลี่ยนแปลงทั้งหมด (ภาษาเยอรมัน)</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/UPGRADE-2.5.md" hreflang="en">อัปเกรดจาก 2.3/2.4 (ภาษาอังกฤษ)</a></p>
   </div>
 </section>
 
-<section id="new-2-3">
+<section id="install">
   <div class="wrap">
-    <h2>ใหม่ใน Saga 2.3</h2>
-    <p class="sub">เร็วขึ้นแม้มีข้อมูลมาก เฟเดอเรชันครบทุกความสามารถ และการสำรองข้อมูลที่คุณไม่ต้องกังวลอีกต่อไป</p>
-    <div class="stats">
-      <div class="stat"><b>0.6 วินาที</b><small>แทน 12 วินาที</small><span>จนฐานข้อมูล 2,000 แถวพร้อมใช้งาน</span></div>
-      <div class="stat"><b>0.05 วินาที</b><small>แทน 1.0 วินาที</small><span>โหลดแผนผังหน้าใหม่เมื่อมีหน้าและรายการ 60,000 รายการ</span></div>
-      <div class="stat"><b>1.3 วินาที</b><small>แทน 3.1 วินาที</small><span>จนแผนผังหน้าแสดงครบเมื่อมีโน้ต 25,000 รายการ</span></div>
-      <div class="stat"><b>−89 %</b><small>2.5 → 0.28 GB</small><span>ข้อมูลของแอปตลอด 8 ชั่วโมงที่เปิดใช้งานอยู่</span></div>
+    <p class="eyebrow">พร้อมใช้งานในไม่กี่นาที</p>
+    <h2>มีเซิร์ฟเวอร์ที่ใช้ Docker ได้ก็พอ</h2>
+    <p class="sub">Saga ทำงานด้วย Docker Compose จากภายนอกคุณต้องการเพียงโดเมนเดียวและพอร์ต 443 บน reverse proxy ของคุณ
+      การโทรก็ใช้เส้นทางเดียวกัน</p>
+    <div class="install">
+      <div>
+<pre tabindex="0" aria-label="คำสั่งสำหรับติดตั้ง"><span class="c"># ดาวน์โหลดและตั้งค่า</span>
+git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
+cp .env.example .env
+<span class="c"># ใน .env: BASE_URL, SECRET_KEY, POSTGRES_PASSWORD</span>
+
+docker compose pull &amp;&amp; docker compose up -d
+<span class="c"># รหัสผ่านผู้ดูแลระบบครั้งแรก</span>
+docker compose logs saga | grep Admin-Konto
+
+<span class="c"># อัปเดตภายหลัง (Saga สำรองข้อมูลให้ก่อน)</span>
+docker compose pull &amp;&amp; docker compose up -d</pre>
+        <figure class="shot"><img src="../bilder/tunnel.webp" width="2000" height="468" loading="lazy" alt="ผู้ดูแลระบบ → การโทร: กล่องการโทรผ่านที่อยู่ Saga (อุโมงค์) แจ้งว่า proxy ส่งต่อ WebSocket ได้"></figure>
+      </div>
+      <ol class="steps">
+        <li><b>เริ่มต้น</b><span>ดึงอิมเมจแล้วเริ่มทำงาน Saga รับที่พอร์ต 8080 ส่วนผู้ดูแลระบบอยู่ที่ 8081 (เฉพาะในเครื่อง)</span></li>
+        <li><b>วาง proxy ไว้ด้านหน้า</b><span>โดเมนเดียวที่ใช้ HTTPS บนพอร์ต 443 ชี้มาที่ Saga ใน Nginx Proxy Manager ให้เปิด “Websockets Support” ส่วน Caddy และ Traefik ทำให้เอง</span></li>
+        <li><b>ตั้งค่า</b><span>สร้างบัญชี กลุ่ม และบริการในส่วนผู้ดูแลระบบ จะเชื่อม LDAP หรือ SSO ด้วยก็ได้ ในหัวข้อ “การโทร” ปุ่ม “ตรวจสอบตอนนี้” จะทดสอบเส้นทางผ่าน proxy</span></li>
+        <li><b>เชื่อมต่อแอป</b><span>เข้าสู่ระบบด้วย QR โค้ดจาก “แอปและอุปกรณ์” เท่านี้ก็เสร็จ</span></li>
+      </ol>
     </div>
-    <p class="stat-note">วัดด้วยการทดสอบโหลดที่ทำซ้ำได้ <code>tools/perf</code> บนข้อมูลทดสอบ</p>
-    <div class="grid two">
-      <div class="card"><div class="ic" aria-hidden="true">⚡</div><h3>เร็วขึ้นอย่างเห็นได้ชัด</h3><p>การตอบกลับถูกบีบอัด แผนผังหน้าซิงก์เฉพาะส่วนที่เปลี่ยน ตารางยาวแสดงเฉพาะแถวที่มองเห็น เซิร์ฟเวอร์คำนวณการค้นหา การแชร์ และลิงก์ย้อนกลับจากข้อมูลที่เตรียมไว้ ผลลัพธ์เหมือนเดิม แต่เร็วกว่า</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">🌐</div><h3>เฟเดอเรชันครบถ้วน</h3><p>ค้นหาผู้คนบนเซิร์ฟเวอร์ที่เชื่อมต่อด้วยชื่อ แชตแบบเข้ารหัสต้นทางถึงปลายทาง ทั้งแบบตัวต่อตัว ในกลุ่ม และในแชตของหน้า รวมถึงโทรหากัน แก้ไขหน้าที่แชร์ร่วมกันได้ทั้งฐานข้อมูล หน้าย่อย ไฟล์ที่อัปโหลด และเวอร์ชัน คำขอส่งข้อความและการบล็อกช่วยกันสิ่งที่ไม่ต้องการ และทุกเซิร์ฟเวอร์ตรวจสอบทุกอย่างด้วยตัวเอง</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">🗄️</div><h3>สำรองข้อมูลแบบเข้ารหัส</h3><p>ทุกวัน ฐานข้อมูล ไฟล์ และกุญแจจะถูกส่งไปยัง S3 โฟลเดอร์ หรือ Nextcloud/WebDAV โดยเข้ารหัสด้วย age และกุญแจสาธารณะของคุณ เก็บรักษาแบบ 7/4/6 มีผลรวมตรวจสอบ แจ้งเตือนเมื่อผิดพลาด ทดสอบการกู้คืน และใช้รูปแบบเปิดที่ถอดรหัสได้แม้ไม่มี Saga</p></div>
-      <div class="card"><div class="ic" aria-hidden="true">☁️</div><h3>ไฟล์ Nextcloud และการสำรองข้อมูลส่วนตัว</h3><p>เชื่อมต่อ Nextcloud ของคุณเอง แล้วแทรกรูปภาพ ไฟล์ และโฟลเดอร์เป็นบล็อก ใครเห็นหน้าก็เห็นไฟล์ด้วย โดยไม่ต้องมีบัญชี Nextcloud ของตัวเอง และทุกคนสำรองพื้นที่ทำงานของตัวเองไปยัง Nextcloud ของตัวเองด้วยกุญแจของตัวเอง</p></div>
-    </div>
-    <h3 class="more-h">ควรรู้</h3>
-    <div class="steps">
-      <div class="card"><b>อัปเดตจาก 2.1</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code> ก่อนหน้านั้น Saga จะสร้างข้อมูลสำรองให้อัตโนมัติ ไม่มีเวอร์ชัน 2.2</p></div>
-      <div class="card"><b>ความเป็นส่วนตัว</b><p>สมุดที่อยู่ แชต และการโทร ปิดได้แยกตามเซิร์ฟเวอร์ที่เชื่อมต่อ และทุกคนเลือกไม่ปรากฏในสมุดที่อยู่ได้</p></div>
-      <div class="card"><b>แอป</b><p>แอป 2.3 ออกพร้อมกัน พร้อมเฟเดอเรชัน การสำรองข้อมูล และไฟล์ Nextcloud แอป 2.1 ยังใช้งานได้ แต่ไม่มีฟีเจอร์เหล่านี้</p></div>
-    </div>
-    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 การเปลี่ยนแปลงทั้งหมดและหมายเหตุการอัปเดต (ภาษาเยอรมัน)</a></p>
+    <p class="links"><a class="btn primary" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">คู่มือฉบับเต็ม (ภาษาอังกฤษ)</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">รุ่นที่เผยแพร่</a></p>
   </div>
 </section>
 
 <section id="features" class="alt">
   <div class="wrap">
-    <h2>ทุกอย่างในที่เดียว</h2>
-    <p class="sub">Saga รวมแดชบอร์ดสำหรับบริการต่าง ๆ ของคุณเข้ากับสมุดบันทึกส่วนตัว ไม่ต้องใช้คลาวด์ ไม่มีค่าสมาชิก และทำงานบนเซิร์ฟเวอร์ของคุณเอง</p>
+    <p class="eyebrow">ทุกอย่างในที่เดียว</p>
+    <h2>สมุดบันทึก หน้าเริ่มต้น และแชทครอบครัวในที่เดียว</h2>
+    <p class="sub">ไม่ต้องใช้คลาวด์ ไม่ต้องสมัครสมาชิก ทุกคนมีพื้นที่ส่วนตัวของตัวเอง และแชร์เฉพาะสิ่งที่อยากแชร์</p>
+    <div class="feature">
+      <div class="txt">
+        <h3>วันนี้</h3>
+        <p>หน้าเริ่มต้นต้อนรับคุณด้วยสิ่งที่กำลังจะมาถึง งานที่ถึงกำหนด นัดหมาย หน้าที่เพิ่งเปิด และไทล์ของบริการต่าง ๆ
+          ซึ่งแสดงตามกลุ่มของคุณ</p>
+      </div>
+      <figure class="shot"><picture><source srcset="../bilder/heute-dunkel.webp" media="(prefers-color-scheme: dark)"><img src="../bilder/heute-hell.webp" width="2000" height="1250" loading="lazy" alt="หน้า “วันนี้” มีคำทักทาย ปุ่มลัด หน้าที่เพิ่งเปิด ไทล์บริการ และงานที่ค้างอยู่ทางขวา"></picture></figure>
+    </div>
     <div class="grid">
-      <div class="card"><div class="ic">🧭</div><h3>แดชบอร์ด</h3><p>ไทล์สำหรับทุกบริการของคุณ พร้อมจุดแสดงสถานะ รายการโปรด การค้นหา และคีย์ลัด รวมถึงการค้นหาเว็บแบบส่วนตัวผ่าน SearXNG (ไม่บังคับ)</p></div>
-      <div class="card"><div class="ic">🔑</div><h3>สิทธิ์เข้าถึงตามกลุ่ม</h3><p>สมาชิกของ <code>s_nextcloud</code> จะเห็น Nextcloud ใช้ได้เหมือนกันทั้งกับกลุ่มภายใน LDAP และ SSO</p></div>
-      <div class="card"><div class="ic">📝</div><h3>หน้าแบบ Notion</h3><p>บล็อก หน้าย่อย เช็กลิสต์ ตาราง โค้ด รูปภาพ คอลัมน์ เทมเพลต ประวัติเวอร์ชัน และการส่งออกเป็น Markdown</p></div>
-      <div class="card"><div class="ic">🗂️</div><h3>ฐานข้อมูล</h3><p>มุมมองแบบตาราง บอร์ด รายการ แกลเลอรี และปฏิทิน พร้อมตัวกรอง ความสัมพันธ์ สูตร และผลรวม</p></div>
-      <div class="card"><div class="ic">🌐</div><h3>เผยแพร่หน้า</h3><p>แชร์หน้าที่ใครก็อ่านได้โดยไม่ต้องมีบัญชี ดูสะอาดตา ทั้งธีมสว่างและมืด ไม่ใช้ JavaScript และใช้กับโดเมนของคุณเองได้</p></div>
-      <div class="card"><div class="ic">💬</div><h3>การแชร์และความคิดเห็น</h3><p>แชร์หน้าและฐานข้อมูลกับบุคคลหรือกลุ่ม ให้ดู แสดงความคิดเห็น หรือแก้ไขได้ พร้อมความคิดเห็นบนบล็อกที่ไม่รบกวนสายตา</p></div>
-      <div class="card"><div class="ic">📅</div><h3>ปฏิทินและงาน</h3><p>ดูและแก้ไขปฏิทิน CalDAV (Nextcloud, mailcow, Radicale, iCloud) และงานที่มีลำดับความสำคัญและการทำซ้ำ</p></div>
-      <div class="card"><div class="ic">🔖</div><h3>บุ๊กมาร์กส่วนตัว</h3><p>ทุกคนเพิ่มไทล์ของตัวเองได้ เป็นส่วนตัว และใช้งานในแอปได้ด้วย</p></div>
-      <div class="card"><div class="ic">📷</div><h3>Immich</h3><p>ใช้รูปจากคลัง Immich ของคุณเป็นรูปภาพและภาพปกในหน้า</p></div>
-      <div class="card"><div class="ic">👥</div><h3>หลายผู้ใช้</h3><p>บัญชีภายในพร้อมการลงทะเบียนด้วยตนเอง LDAP/Active Directory และการลงชื่อเข้าใช้ครั้งเดียว (SSO) โดยแยกเนื้อหาของแต่ละคนอย่างเคร่งครัด</p></div>
-      <div class="card"><div class="ic">🛡️</div><h3>ส่วนผู้ดูแลระบบ</h3><p>อยู่บนพอร์ตของตัวเอง: ผู้ใช้ กลุ่ม บริการ การลงทะเบียน LDAP และ SSO พร้อมการทดสอบการเชื่อมต่อในตัว</p></div>
-      <div class="card"><div class="ic">📱</div><h3>แอปเนทีฟ</h3><p>iPhone, iPad, Mac, Linux และ Android แก้ไขหน้า ฐานข้อมูล และงานได้แบบเนทีฟ และเข้าสู่ระบบด้วย QR โค้ด</p></div>
-      <div class="card"><div class="ic">🌍</div><h3>ห้าภาษา</h3><p>เว็บอินเทอร์เฟซ ส่วนผู้ดูแลระบบ และแอป มีภาษาอังกฤษ เยอรมัน สเปน รัสเซีย และไทย เลือกได้ต่อบัญชีหรือที่หน้าเข้าสู่ระบบ ส่วนคู่มือมีเฉพาะภาษาอังกฤษ เยอรมัน และสเปน</p></div>
-      <div class="card"><div class="ic">🔒</div><h3>ปลอดภัยตั้งแต่ค่าเริ่มต้น</h3><p>CSP แบบเข้มงวด จำกัดจำนวนคำขอ รหัสผ่านผิดถูกชะลอแทนการล็อกบัญชี ชื่อเข้าสู่ระบบเป็นความลับ เก็บคีย์แบบแฮช และออกจากระบบทุกอุปกรณ์เมื่อเปลี่ยนรหัสผ่าน</p></div>
-      <div class="card"><div class="ic">🗄️</div><h3>สำรองข้อมูลและ Nextcloud</h3><p>สำรองข้อมูลรายวันที่เข้ารหัสด้วย age ไปยัง S3 โฟลเดอร์ หรือ Nextcloud พร้อมการสำรองข้อมูลส่วนตัวสำหรับทุกคน และไฟล์ Nextcloud ในหน้าโดยตรง</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg></span>หน้า</h3><p>บล็อก หน้าย่อย เทมเพลต เวอร์ชัน ความคิดเห็น และส่งออกเป็น Markdown พร้อมค้นหาด่วนและแผนผังหน้า</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg></span>ฐานข้อมูล</h3><p>ตาราง บอร์ด รายการ แกลเลอรี ปฏิทิน ไทม์ไลน์ และแผนภูมิ พร้อมสูตร การสรุปค่า ความสัมพันธ์ และตัวกรอง</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 15l2 2 4-4"/></svg></span>ปฏิทินและงาน</h3><p>ปฏิทิน CalDAV (เช่น Nextcloud, Radicale) และงานจากฐานข้อมูล พร้อมลำดับความสำคัญและการทำซ้ำ</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>ผู้ช่วย AI</h3><p>ใช้หรือไม่ก็ได้ เชื่อมกับบริการที่รองรับ OpenAI ตามที่คุณเลือก ตอบคำถามจากหน้าของคุณ บอกแหล่งที่มา และช่วยเขียน</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4"/></svg></span>การเชื่อมต่อระหว่างเซิร์ฟเวอร์</h3><p>เซิร์ฟเวอร์ Saga เชื่อมต่อกันได้ (เฟเดอเรชัน) แชร์และแก้ไขหน้าข้ามเซิร์ฟเวอร์ แชท และโทรหากันได้</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>แชร์และเผยแพร่</h3><p>แชร์ให้บุคคลและกลุ่ม (อ่าน แสดงความคิดเห็น แก้ไข) หรือเผยแพร่หน้าให้ทุกคนอ่านได้โดยไม่ต้องมีบัญชี</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 18a5 5 0 0 1-.5-10 6 6 0 0 1 11.5 2A4 4 0 0 1 17 18z"/><path d="M12 11v6M9.5 14.5L12 17l2.5-2.5"/></svg></span>สำรองข้อมูลและ Nextcloud</h3><p>สำรองข้อมูลแบบเข้ารหัสทุกวันไปยัง S3 โฟลเดอร์ หรือ Nextcloud และใส่ไฟล์จาก Nextcloud ลงในหน้าได้โดยตรง</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/></svg></span>LDAP และ SSO</h3><p>บัญชีภายใน LDAP/Active Directory และ OpenID Connect กำหนดสิทธิ์เข้าถึงบริการผ่านกลุ่ม</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>ห้าภาษา</h3><p>หน้าจอและแอปมีภาษาเยอรมัน อังกฤษ สเปน รัสเซีย และไทย เลือกได้ตามบัญชี</p></div>
     </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap split">
-    <div class="txt">
-      <h2>เขียน วางแผน รวบรวม</h2>
-      <p class="sub">สมุดบันทึกที่เติบโตไปพร้อมกับคุณ ตั้งแต่รายการซื้อของไปจนถึงแผนโครงการ</p>
-      <ul>
-        <li><b>เมนูสแลช</b> สำหรับบล็อกใหม่ ลิงก์ไปยังหน้า และกิจกรรม</li>
-        <li><b>แผนผังหน้า</b> พร้อมหน้าย่อย รายการโปรด คลังเก็บ และถังขยะ</li>
-        <li><b>ประวัติเวอร์ชัน</b> ดูและกู้คืนเวอร์ชันก่อนหน้า</li>
-        <li><b>ส่งออก</b> เป็น Markdown รวมทุกหน้าย่อย</li>
-      </ul>
-    </div>
-    <div class="shot"><img src="../screenshots/seite.png" alt="หน้าหนึ่งใน Saga (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy"></div>
-  </div>
-</section>
-
-<section class="alt">
-  <div class="wrap split rev">
-    <div class="txt">
-      <h2>ฐานข้อมูลที่ปรับให้เข้ากับคุณ</h2>
-      <p class="sub">เพิ่มคุณสมบัติ เลือกมุมมอง เสร็จเรียบร้อย</p>
-      <ul>
-        <li><b>มุมมอง:</b> ตาราง บอร์ด รายการ แกลเลอรี ปฏิทิน</li>
-        <li><b>คุณสมบัติ:</b> สถานะ ตัวเลือก วันที่ ตัวเลข ช่องทำเครื่องหมาย ลิงก์ ความสัมพันธ์ สูตร</li>
-        <li><b>ตัวกรอง การเรียงลำดับ และผลรวม</b> แยกตามแต่ละมุมมอง</li>
-      </ul>
-    </div>
-    <div class="shot"><img src="../screenshots/board.png" alt="ฐานข้อมูลในมุมมองบอร์ด (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy"></div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap split">
-    <div class="txt">
-      <h2>สร้างมาเพื่อผู้ดูแลระบบ</h2>
-      <p class="sub">ส่วนผู้ดูแลระบบแยกต่างหากบนพอร์ตของตัวเอง โดยค่าเริ่มต้นเข้าถึงได้เฉพาะภายในเครื่อง</p>
-      <ul>
-        <li><b>ผู้ใช้:</b> สร้าง ล็อก ออกจากระบบทุกที่ และตั้งรหัสผ่าน</li>
-        <li><b>บริการ</b> พร้อมไอคอน หมวดหมู่ และการกำหนดอัตโนมัติตามคำนำหน้าชื่อกลุ่ม</li>
-        <li><b>LDAP/AD</b> พร้อมเทมเพลตสำหรับ FreeIPA, Active Directory และ OpenLDAP</li>
-        <li><b>SSO/OIDC</b> สำหรับ Keycloak, Authentik, Authelia, Zitadel, Entra ID …</li>
-        <li><b>สำรองข้อมูล</b> แบบเข้ารหัสไปยัง S3 โฟลเดอร์ หรือ Nextcloud พร้อมการทดสอบกู้คืน</li>
-      </ul>
-    </div>
-    <div class="shot"><img src="../screenshots/admin-dienste.png" alt="ส่วนผู้ดูแลระบบ: บริการ (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy"></div>
-  </div>
-</section>
-
-<section id="screenshots" class="alt">
-  <div class="wrap">
-    <h2>ภาพหน้าจอ</h2>
-    <p class="sub">ธีมมืดและธีมสว่างจะเปลี่ยนตามระบบของคุณโดยอัตโนมัติ</p>
     <div class="gallery">
-      <figure><div class="shot"><img src="../screenshots/dashboard-hell.png" alt="" loading="lazy"></div><figcaption>ธีมสว่าง</figcaption></figure>
-      <figure><div class="shot"><img src="../screenshots/datenbank.png" alt="" loading="lazy"></div><figcaption>ฐานข้อมูลในมุมมองตาราง</figcaption></figure>
-      <figure><div class="shot"><img src="../screenshots/einstellungen.png" alt="" loading="lazy"></div><figcaption>การตั้งค่าส่วนตัว: บัญชี บุ๊กมาร์ก ปฏิทิน</figcaption></figure>
-      <figure><div class="shot"><img src="../screenshots/admin-sso.png" alt="" loading="lazy"></div><figcaption>ผู้ดูแลระบบ: SSO พร้อมการทดสอบการเชื่อมต่อ</figcaption></figure>
-      <figure><div class="shot"><img src="../screenshots/admin-ldap.png" alt="" loading="lazy"></div><figcaption>ผู้ดูแลระบบ: LDAP / Active Directory</figcaption></figure>
-      <figure><div class="shot"><img src="../screenshots/login.png" alt="" loading="lazy"></div><figcaption>เข้าสู่ระบบ</figcaption></figure>
+      <figure class="shot"><img src="../bilder/board.webp" width="2000" height="1250" loading="lazy" alt="ฐานข้อมูลงานทำความสะอาดแบบบอร์ด มีคอลัมน์ ยังไม่ทำ กำลังทำ และเสร็จแล้ว"><figcaption>ฐานข้อมูลแบบบอร์ด</figcaption></figure>
+      <figure class="shot"><img src="../bilder/widgets.webp" width="2000" height="1250" loading="lazy" alt="หน้าโฮมในธีมมืด มีนาฬิกา ข้อคิดประจำวัน สภาพอากาศ และปุ่มลัด"><figcaption>วิดเจ็ตบนหน้า</figcaption></figure>
+      <figure class="shot"><img src="../bilder/unterseiten.webp" width="2000" height="1250" loading="lazy" alt="วิกิครอบครัวที่มีภาพปก และหน้าย่อยแสดงเป็นแกลเลอรี"><figcaption>หน้าย่อยแบบแกลเลอรี</figcaption></figure>
+      <figure class="shot"><img src="../bilder/kalender.webp" width="2000" height="1250" loading="lazy" alt="ปฏิทินครอบครัวในมุมมองรายสัปดาห์"><figcaption>มุมมองปฏิทิน</figcaption></figure>
+      <figure class="shot"><img src="../bilder/ki.webp" width="2000" height="1250" loading="lazy" alt="ผู้ช่วย AI ข้างหน้าหนึ่ง พร้อมคำตอบและแหล่งที่มา"><figcaption>ผู้ช่วย AI พร้อมแหล่งที่มา</figcaption></figure>
+      <figure class="shot"><img src="../bilder/foederation.webp" width="2000" height="1250" loading="lazy" alt="หน้าจากเซิร์ฟเวอร์ Saga อื่น ชมรมสวนแชร์มาให้ และแก้ไขได้บนเซิร์ฟเวอร์ของครอบครัว"><figcaption>หน้าจากเซิร์ฟเวอร์อื่น</figcaption></figure>
     </div>
+    <p class="fine center">ภาพหน้าจอเป็นหน้าจอภาษาเยอรมันของเซิร์ฟเวอร์สาธิต</p>
   </div>
 </section>
 
 <section id="apps">
   <div class="wrap">
-    <h2>แอปสำหรับพกพาและสำหรับโต๊ะทำงาน</h2>
-    <p class="sub">แอปเนทีฟสำหรับ iPhone, iPad, Mac, Linux (GNOME) และ Android ไม่ใช่เว็บไซต์ที่ห่อไว้
-      หน้า ฐานข้อมูล งาน และกิจกรรมจะแสดงและแก้ไขได้ในแอปโดยตรง
-      เข้าสู่ระบบด้วยที่อยู่เซิร์ฟเวอร์ของคุณ หรือสแกน QR โค้ดจาก “แอปและอุปกรณ์” ได้เลย
-      ตั้งแต่ Saga 2.1 มีการโทรและรูปโปรไฟล์ด้วย นอกเหนือจากแชท การแจ้งเตือน พุช ผู้ช่วย AI และเฟเดอเรชัน</p>
+    <p class="eyebrow">แอป</p>
+    <h2>ใช้ได้ทั้งนอกบ้านและที่โต๊ะทำงาน</h2>
+    <p class="sub">Saga ใช้งานได้บนเบราว์เซอร์รุ่นปัจจุบันทุกตัว รวมถึงบนมือถือ และยังมีแอปที่เข้าสู่ระบบได้ด้วย QR โค้ด</p>
     <div class="phones">
-      <figure><img src="../screenshots/app-ios-start.png" alt="iPhone: หน้าแรกพร้อมงานและหน้าที่เปิดล่าสุด" loading="lazy" width="660" height="1434"><figcaption>iPhone: หน้าแรก</figcaption></figure>
-      <figure><img src="../screenshots/app-ios-dunkel-board.png" alt="iPhone: ฐานข้อมูลในมุมมองบอร์ด ธีมมืด" loading="lazy" width="660" height="1434"><figcaption>iPhone: บอร์ด ธีมมืด</figcaption></figure>
-      <figure><img src="../screenshots/app-android-heute.png" alt="Android: วันนี้ พร้อมกิจกรรมและงาน" loading="lazy" width="660" height="1467"><figcaption>Android: วันนี้</figcaption></figure>
-      <figure><img src="../screenshots/app-android-dienste.png" alt="Android: บริการตามกลุ่ม" loading="lazy" width="660" height="1467"><figcaption>Android: บริการ</figcaption></figure>
+      <figure><img src="../bilder/handy-heute.webp" width="780" height="1688" loading="lazy" alt="มือถือ: หน้า “วันนี้” มีคำทักทาย ปุ่มลัด และงาน"><figcaption>วันนี้</figcaption></figure>
+      <figure><img src="../bilder/handy-chat.webp" width="780" height="1688" loading="lazy" alt="มือถือในธีมมืด: แชทครอบครัวที่มีการตอบกลับและรูปภาพ"><figcaption>แชท</figcaption></figure>
+      <figure><img src="../bilder/handy-anruf.webp" width="780" height="1688" loading="lazy" alt="มือถือระหว่างการโทรกลุ่มสี่คน"><figcaption>การโทรกลุ่ม</figcaption></figure>
     </div>
-    <figure class="tablet"><img src="../screenshots/app-ipad-projekte.png" alt="iPad: แถบด้านข้างและฐานข้อมูลในมุมมองบอร์ด" loading="lazy" width="1600" height="1200"><figcaption>iPad: แถบด้านข้างและบอร์ด</figcaption></figure>
-    <p class="dl"><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">⬇️ ดาวน์โหลด: macOS · Linux (RPM, Flatpak) · Android</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga-apps">📱 ซอร์สโค้ดและคำแนะนำของแอป</a></p>
+    <div class="plat">
+      <div class="card"><h3>iPhone &amp; iPad</h3><p>แอปเนทีฟพร้อมวิดเจ็ต ยังไม่มีใน App Store ต้องบิลด์เอง</p></div>
+      <div class="card"><h3>Android</h3><p>แอปเนทีฟเป็นไฟล์ APK จากหน้า Releases บน GitHub สำหรับ Android 8 ขึ้นไป</p></div>
+      <div class="card"><h3>Mac</h3><p>แอปเดสก์ท็อปที่ครอบหน้าเว็บ ลงนามและผ่านการรับรองจาก Apple (macOS 26 ขึ้นไป)</p></div>
+      <div class="card"><h3>Linux</h3><p>แอป GNOME แบบ RPM (Fedora, RHEL 10) และแบบ Flatpak สำหรับทุกดิสโทร</p></div>
+    </div>
+    <p class="links center"><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">ดาวน์โหลดแอป</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/blob/main/README.md" hreflang="en">ซอร์สโค้ดและคู่มือแอป (ภาษาอังกฤษ)</a></p>
   </div>
 </section>
 
-<section id="quick-start" class="alt">
+<section id="security" class="alt">
   <div class="wrap">
-    <h2>พร้อมใช้งานใน 5 นาที</h2>
-    <p class="sub">สิ่งที่ต้องมีคือเซิร์ฟเวอร์ที่ติดตั้ง Docker เท่านั้น</p>
-<pre><span class="c"># ดาวน์โหลด</span>
-git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
-cp .env.example .env
-<span class="c"># ตั้งค่า BASE_URL, SECRET_KEY และ POSTGRES_PASSWORD ใน .env</span>
-docker compose pull &amp;&amp; docker compose up -d
-<span class="c"># แสดงรหัสผ่านผู้ดูแลระบบครั้งแรก</span>
-docker compose logs saga | grep Admin-Konto
-
-<span class="c"># อัปเดตภายหลัง (Saga จะสำรองข้อมูลให้อัตโนมัติก่อน)</span>
-git pull &amp;&amp; docker compose pull &amp;&amp; docker compose up -d</pre>
-    <div class="steps">
-      <div class="card"><b>1 · เริ่มต้น</b><p>Saga ทำงานบนพอร์ต 8080 ส่วนผู้ดูแลระบบอยู่บนพอร์ต 8081 (เฉพาะภายในเครื่อง)</p></div>
-      <div class="card"><b>2 · ตั้งค่า</b><p>เพิ่มผู้ใช้และบริการในส่วนผู้ดูแลระบบ และเชื่อมต่อ LDAP หรือ SSO ได้ตามต้องการ</p></div>
-      <div class="card"><b>3 · ใช้งาน</b><p>วาง HTTPS proxy ไว้ด้านหน้า แล้วบ้านของคุณบนเว็บก็พร้อมใช้งาน</p></div>
+    <p class="eyebrow">ความปลอดภัยและความเป็นส่วนตัว</p>
+    <h2>ข้อมูลของคุณอยู่กับคุณ</h2>
+    <p class="sub">Saga ทำงานบนเซิร์ฟเวอร์ของคุณ ไม่มีการติดตามและไม่มีการส่งข้อมูลการใช้งาน Saga ติดต่อเฉพาะบริการที่คุณตั้งค่าไว้
+      (และติดต่อ GitHub เพื่อตรวจหาอัปเดต หากคุณต้องการ)</p>
+    <div class="grid">
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>เข้ารหัสแบบต้นทางถึงปลายทาง</h3><p>แชทและการโทรเข้ารหัสแบบต้นทางถึงปลายทาง ทั้งข้ามเซิร์ฟเวอร์ที่เชื่อมต่อกันและเมื่อผ่านโหนด</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>เข้าสู่ระบบอย่างปลอดภัย</h3><p>พาสคีย์และแอปยืนยันตัวตน บังคับ 2FA สำหรับผู้ดูแลหรือทุกคนได้ การลองผิดจะถูกหน่วงเวลา แต่บัญชีไม่ถูกล็อก</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></span>สำรองข้อมูลอย่างมีแผน</h3><p>ทุกวัน เข้ารหัสด้วย age เก็บแบบ 7/4/6 พร้อมทดสอบการกู้คืน และสำรองก่อนอัปเดตทุกครั้ง รวมถึงข้อมูลสำรองส่วนตัวของแต่ละคน</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 21h10M7 9h4M7 13h7"/></svg></span>ส่วนผู้ดูแลระบบแยกต่างหาก</h3><p>ใช้พอร์ตของตัวเอง ค่าเริ่มต้นเข้าถึงได้เฉพาะในเครื่อง พร้อมการเข้าสู่ระบบและการวินิจฉัยของตัวเอง</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></svg></span>คุณเป็นคนตัดสินใจ</h3><p>ปิดการเชื่อมต่อ แชท การโทร และสมุดที่อยู่ได้แยกตามเซิร์ฟเวอร์ ส่วนสถานะการอ่านและ “ออนไลน์” ตั้งได้รายบุคคล</p></div>
+      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3H5v18h3M16 3h3v18h-3"/><path d="M10 9l-2 3 2 3M14 9l2 3-2 3"/></svg></span>โอเพนซอร์ส</h3><p>AGPL-3.0 ทุกอย่างอยู่บน GitHub ทั้งเซิร์ฟเวอร์ แอป และเครื่องมือที่ใช้สร้างภาพหน้าจอเหล่านี้</p></div>
     </div>
-    <p style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">📖 อ่านคู่มือฉบับเต็ม (ภาษาอังกฤษ)</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">🏷️ รุ่นที่เผยแพร่และการเปลี่ยนแปลง</a></p>
   </div>
 </section>
+</main>
 
 <footer>
-  <div class="wrap">Saga · โฮสต์เอง เป็นส่วนตัว โอเพนซอร์ส (AGPL-3.0) · <a href="https://github.com/yggdrasil-sh/saga">github.com/yggdrasil-sh/saga</a><br>
-  ไอคอนบริการจาก <a href="https://selfh.st/icons">selfh.st/icons</a> · หน้านี้แปลด้วยเครื่อง</div>
+  <div class="wrap cols">
+    <div>
+      <p><b>Saga</b> · โฮสต์เอง เป็นส่วนตัว โอเพนซอร์ส (AGPL-3.0)</p>
+      <ul>
+        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">คู่มือ (ภาษาอังกฤษ)</a></li>
+        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/UPGRADE-2.5.md" hreflang="en">อัปเกรดเป็น 2.5 (ภาษาอังกฤษ)</a></li>
+        <li><a href="https://github.com/yggdrasil-sh/saga/releases">รุ่นที่เผยแพร่</a></li>
+        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/handbuch/README.md" hreflang="de">คู่มือผู้ใช้ (ภาษาเยอรมัน)</a></li>
+        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/LICENSE">สัญญาอนุญาต</a></li>
+      </ul>
+    </div>
+    <span class="lang" role="group" aria-label="ภาษา"><a href="../" lang="de" hreflang="de" data-l="de" title="Deutsch" aria-label="Deutsch">DE</a><a href="../en/" lang="en" hreflang="en" data-l="en" title="English" aria-label="English">EN</a><a href="../es/" lang="es" hreflang="es" data-l="es" title="Español" aria-label="Español">ES</a><a href="../ru/" lang="ru" hreflang="ru" data-l="ru" title="Русский" aria-label="Русский">RU</a><a href="./" lang="th" hreflang="th" data-l="th" title="ไทย" aria-label="ไทย" aria-current="page">TH</a></span>
+  </div>
 </footer>
-<script>document.querySelectorAll(".lang a").forEach(function(a){a.addEventListener("click",function(){try{localStorage.setItem("saga-lang",a.dataset.l)}catch(e){}})})</script>
+<script>
+document.querySelectorAll(".lang a").forEach(function(a){a.addEventListener("click",function(){try{localStorage.setItem("saga-lang",a.dataset.l)}catch(e){}})});
+/* Promo video: if the file is missing, the poster stays as an image (no broken player). Nothing loads before a click. */
+(function(){var v=document.querySelector(".promo video");if(!v)return;var s=v.querySelector("source");
+function fall(){if(!v.parentNode)return;var i=document.createElement("img");i.src=v.getAttribute("poster");i.alt=v.getAttribute("aria-label")||"";
+i.width=1920;i.height=1080;var f=v.parentNode;f.replaceChild(i,v);var m=document.createElement("span");m.className="soon";m.textContent=f.closest(".promo").dataset.soon||"";if(m.textContent)f.appendChild(m)}
+if(s)s.addEventListener("error",fall);v.addEventListener("error",fall)})();
+</script>
 </body>
 </html>
