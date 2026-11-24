@@ -38,6 +38,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Tests: `tests/browser_projektseite.js` (fünf Sprachen, Chromium und Firefox, 1440/390, hell/dunkel, Bewegung an/aus,
   Schalter, reduced-motion, Schriften, nur eigene Anfragen, Animationen nur transform/opacity).
 
+### Behoben – Konflikt-Leiste nicht mehr unter der Kopfleiste verdeckt (Bugs-DB 2256)
+- Schlug das Speichern mit einem Konflikt fehl, lag die Leiste „… wurde inzwischen geändert“ am Rechner oben auf der Seite
+  hinter der klebenden Kopfleiste (Pfad, Teilen) – Text und Knöpfe waren verdeckt. Die Leiste (ebenso „… hat diese Seite
+  geändert“ und der Editor-Versions-Hinweis) steht jetzt unter der Kopfleiste und klebt beim Scrollen direkt darunter.
+  Test `tests/browser_konflikt_leiste.js` (Tiptap und Editor.js, Rechner/Handy, hell/dunkel; Text und beide Knöpfe per
+  `elementFromPoint`, Klick auf „Meine Version behalten“).
+
 ### Behoben – Seitentitel überlappt das Titelbild ohne Icon nicht mehr (Seite und Peek, Bugs-DB 2253)
 - Seite bzw. Datenbank-Zeile mit Titelbild, aber ohne Icon (Seitenansicht und Peek, seitlich wie mittig): der Titel lag
   ~13 px im Bild (der Kopf rückt für das Icon 2,6 rem ins Titelbild). Ohne Icon rückt er nur noch 1 rem hinein, der Titel

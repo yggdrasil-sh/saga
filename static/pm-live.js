@@ -537,7 +537,9 @@
     bar.appendChild(HK.el('span', 'pgc-t', T('Diese Seite nutzt eine andere Editor-Version – bitte neu laden. Bis dahin nur lesen.')));
     var b = HK.el('button', 'btn btn-primary', T('Neu laden')); b.type = 'button';
     b.addEventListener('click', function () { location.reload(); });
-    bar.appendChild(b); page.insertBefore(bar, page.firstChild);
+    bar.appendChild(b);
+    var pb = page.querySelector(':scope > .page-bar');            // Bugs-DB 2256: unter die Kopfleiste (wie pages.js topNote)
+    page.insertBefore(bar, pb ? pb.nextSibling : page.firstChild);
   }
 
   // =================================================================================================================
