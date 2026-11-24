@@ -824,7 +824,7 @@
     var fid = box.contains(document.activeElement) && document.activeElement.dataset ? document.activeElement.dataset.id : null;
     box.textContent = '';
     var ic = el('p', 'ct-none-ic', S.ready ? '💬' : '🔒'); ic.setAttribute('aria-hidden', 'true'); box.appendChild(ic);
-    var bar = el('div', 'hk-actions ct-none-act');
+    var bar = el('div', 'ct-none-act');             // nicht hk-actions: das bleibt den Dialogen (Tests suchen dort)
     if (!S.ready) {
       box.appendChild(el('h2', 'ct-none-h', T('Chats auf diesem Gerät einrichten')));
       box.appendChild(el('p', null, T('Deine Chats sind Ende-zu-Ende-verschlüsselt. Damit du sie hier lesen und schreiben kannst, braucht dieses Gerät einmal eigene Schlüssel.')));
