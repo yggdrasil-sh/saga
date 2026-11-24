@@ -66,7 +66,10 @@ const srv = http.createServer((q, r) => {
               rv: document.querySelectorAll('.rv').length }));
             ok(pre.motion === (mot === 'an') && pre.pressed === (mot === 'an' ? 'true' : 'false'), tag + ': Bewegung/Schalter', pre);
             ok(pre.rv > 30 && (mot === 'an' ? pre.hidden > 5 : pre.hidden === 0), tag + ': Hereinwachsen (unten noch verborgen nur mit Bewegung)', pre);
-            await p.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += innerHeight * 0.6) { scrollTo({ top: y, behavior: 'instant' }); await new Promise(r => setTimeout(r, 80)); } scrollTo({ top: 0, behavior: 'instant' }); });
+            // mit dem Mausrad wie ein Mensch (scrollTo allein loest in Headless-Chromium keine IntersectionObserver-Runde aus)
+            await p.mouse.move(w / 2, h / 2);
+            for (let i = 0, H = await p.evaluate(() => document.documentElement.scrollHeight); i * h * 0.6 < H + h; i++) { await p.mouse.wheel(0, Math.round(h * 0.6)); await p.waitForTimeout(90); }
+            await p.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
             await p.waitForTimeout(1500);
             const post = await p.evaluate(() => [...document.querySelectorAll('.rv')].filter(e => !e.classList.contains('in') || parseFloat(getComputedStyle(e).opacity) < 0.99).map(e => e.className + ' ' + getComputedStyle(e).opacity));
             ok(!post.length, tag + ': nach dem Scrollen alles sichtbar', post);

@@ -283,7 +283,7 @@ if(m?m==="an":!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)"
 <section class="finale stage fxs">
   <div class="wrap">
     <div class="box gb rv">
-      <div class="inr" aria-hidden="true"><div class="aur a1" style="left:-10%;top:-30%;width:70%;height:80%"></div><div class="aur a2" style="left:35%;top:30%;width:70%;height:80%"></div><div class="rings"><svg class="r2" viewBox="0 0 760 760" fill="none"><circle cx="380" cy="380" r="340" stroke="#c9a45c" stroke-opacity=".25" stroke-width="8" stroke-dasharray="2 20"/></svg><svg class="r1" viewBox="0 0 760 760" fill="none"><circle cx="380" cy="380" r="270" stroke="#c9a45c" stroke-opacity=".16" stroke-dasharray="80 12 4 12"/></svg></div></div>
+      <div class="inr" aria-hidden="true"><div class="aw"><div class="aur a1" style="left:-10%;top:-30%;width:70%;height:80%"></div><div class="aur a2" style="left:35%;top:30%;width:70%;height:80%"></div></div><div class="rings"><svg class="r2" viewBox="0 0 760 760" fill="none"><circle cx="380" cy="380" r="340" stroke="#c9a45c" stroke-opacity=".25" stroke-width="8" stroke-dasharray="2 20"/></svg><svg class="r1" viewBox="0 0 760 760" fill="none"><circle cx="380" cy="380" r="270" stroke="#c9a45c" stroke-opacity=".16" stroke-dasharray="80 12 4 12"/></svg></div></div>
       <h2>¿Todo listo para tu propia <span class="shim">saga?</span></h2>
       <p>Software libre bajo la AGPL-3.0. Descárgalo, alójalo tú mismo y hazlo tuyo.</p>
       <div class="btns"><a class="btn primary" href="#instalar">Instalar</a><a class="btn" href="https://github.com/yggdrasil-sh/saga">GitHub</a><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">Descargar las apps</a></div>
@@ -329,7 +329,7 @@ if(b)b.addEventListener("click",function(){var on=!d.classList.contains("motion"
 var rv=document.querySelectorAll(".rv"),fx=document.querySelectorAll(".fxs");
 if("IntersectionObserver" in window){
 var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target)}})},{rootMargin:"0px 0px -6% 0px",threshold:.06});
-rv.forEach(function(e){io.observe(e)});
+rv.forEach(function(e){var r=e.getBoundingClientRect();if(r.top<innerHeight&&r.bottom>0)e.classList.add("in");else io.observe(e)});
 var io2=new IntersectionObserver(function(es){es.forEach(function(e){e.target.classList.toggle("vis",e.isIntersecting)})},{rootMargin:"100px 0px"});
 fx.forEach(function(e){io2.observe(e)})}
 else{rv.forEach(function(e){e.classList.add("in")});fx.forEach(function(e){e.classList.add("vis")})}
