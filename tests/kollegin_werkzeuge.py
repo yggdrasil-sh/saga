@@ -364,6 +364,40 @@ def part_event():
     offen("create_event 2x gegen echtes CalDAV (Radicale) - auf saga-test ohne Radicale (Bugs-DB 2347); hier im Prozess nachgestellt")
 
 
+def part_angriff():
+    """Pruefer K-A3: Tor in tools.call und roots-Umstellung von der Angreiferseite."""
+    ok("roots_load: gespeichert nie [] (leer/NULL/Unsinn -> None = alles wie bisher, Liste bleibt)",
+       apitok.roots_load(None) is None and apitok.roots_load("[]") is None and apitok.roots_load('["5", true]') is None
+       and apitok.roots_load("[5, 6]") == [5, 6])
+    p = page(FULL_A, "KW Angriff Ziel")
+    secret = page(FULL_A, "KW Angriff geheim", md="Zugangscode 4711")
+    # direkt gebauter JobTok mit gesperrtem Werkzeug im Plan: das Tor fragt die Registry, nicht tok.tools allein
+    raw = apitok.JobTok(990001, A, ["read:pages", "write:pages"], [p, secret], tools=["trash_page", "get_page", "replace_page_content"])
+    ok("JobTok mit trash_page/replace_page_content in tools -> trotzdem 404",
+       status(tools.call, raw, "trash_page", {"id": secret})[0] == 404
+       and status(tools.call, raw, "replace_page_content", {"id": secret, "markdown": "x", "rev": 1})[0] == 404
+       and pg("SELECT deleted_at FROM note WHERE id=?", (secret,))[0][0] is None)
+    nos = apitok.JobTok(990002, A, [], [p], tools=["get_page"])
+    ok("JobTok: Werkzeug im Plan, aber Bereich fehlt -> 404", status(tools.call, nos, "get_page", {"id": p})[0] == 404)
+    ro = apitok.Tok(10 ** 9 + 7, A, "lesen", "sga_ro", ["mcp", "read:pages"], None, None)
+    ok("sga_-Token nur lesend: tools.call auf Schreibwerkzeug -> 404 (unbekannt)",
+       status(tools.call, ro, "append_to_page", {"id": p, "markdown": "x"})[0] == 404)
+    t = jt(["get_page", "update_row", "complete_task", "get_widgets"], [p])
+    ok("update_row ausserhalb roots (mit rev) -> 404", status(tools.call, t, "update_row", {"id": secret, "rev": 1, "title": "x"})[0] == 404)
+    ok("update_row mit Unsinn statt Angaben -> 400", status(tools.call, t, "update_row", "kaputt")[0] == 400)
+    bt = api_v1.task_create(FULL_B, {"text": "KW Bert Aufgabe"})[1]["id"]
+    ok("complete_task: Aufgabe einer anderen Person -> 404", status(tools.call, t, "complete_task", {"id": bt})[0] == 404
+       and pg("SELECT done FROM task WHERE id=?", (bt,))[0][0] == 0)
+    api_v1.task_create(FULL_A, {"text": "KW Anna Arzttermin privat"})
+    api_struct.widget_add(FULL_A, p, {"kind": "upcoming", "cfg": {"cal": False}})
+    full = tools.call(FULL_A, "get_widgets", {"page_id": p})
+    st, out = status(tools.call, t, "get_widgets", {"page_id": p})
+    ok("get_widgets: persoenliches Widget (upcoming) zeigt dem JobTok nichts (roots nie None)",
+       "KW Anna Arzttermin privat" in full and st == 200 and "KW Anna Arzttermin privat" not in out and "no_access" in out, (st, out[-300:]))
+    huge = tools.check_plan(A, 990003, [{"tool": "get_page", "args": {"id": 10 ** 30}}, {"tool": "get_page", "args": {"id": 1e400}}], [])[1]
+    ok("check_plan: riesige/unendliche ID -> 404/400 statt Absturz", sorted(x["status"] for x in huge) == [400, 404], huge)
+
+
 def cleanup():
     for u in (A, B):
         if auth.get_user(u):
@@ -381,6 +415,7 @@ def main():
         part_registry()
         part_tok()
         a_root, _ = part_rt27()
+        part_angriff()
         part_event()
         part_rt07(a_root)
     finally:
