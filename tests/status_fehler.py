@@ -10,7 +10,7 @@ reserviert, unbekannte Person, fremde Gruppe) · Fokus beendet keinen selbst ges
 status.changed nur an die eigenen Verbindungen · Ablauf-Schleife (until <= jetzt sofort available, Schleife setzt
 binnen 35 s zurueck und meldet) · /api/version userstatus1 (status1 bleibt der Datenbank-Status), /api/chat/me status1 ·
 GET /api/status bleibt der Dienst-Status des Dashboards · keine Serverfehler.
-OFFEN (2029-3): Sammelmeldung nach Nicht stoeren - hier nur als OFFEN gemeldet, nicht gezaehlt.
+2029-3: Sammelmeldung status.digest live nur an die eigenen Verbindungen, ohne Namen/Text, genau einmal, nicht bei Ruhezeit.
 Wegwerf-Konten sf-*, Gruppe sf-team."""
 import json
 import os
@@ -217,7 +217,37 @@ def run():
     ok(f"/api/chat/me: features userstatus1 ({s})", s == 200 and "userstatus1" in (d.get("features") or []))
     s, d = req("GET", "/api/status", ka)
     ok(f"GET /api/status bleibt der Dienst-Status des Dashboards ({s})", s == 200 and isinstance(d, dict) and "effective" not in d)
-    print("OFFEN Sammelmeldung nach Nicht stoeren / Ruhezeit (2029-3, push) - nicht Teil von 2029-1", flush=True)
+
+    # --- 2029-3: Sammelmeldung live (status.digest nur an die eigenen Verbindungen, ohne Namen, genau einmal) ------------
+    from saga import bus, push  # noqa: F401 - push haengt sich an push.send und status.dnd_end
+    s, v = put(ka, {"state": "dnd", "text": "Konzentration"})
+    with connect() as c, c:
+        for _ in range(2):
+            bus.fire("push.send", c, uid=A, kind="chat.message", actor=B, data={"chat": "sf-1"})
+        bus.fire("push.send", c, uid=A, kind="chat.mention", actor=B, data={"chat": "sf-1"})
+    ma, mb = sa.mark(), sb.mark()
+    s, v = put(ka, {"state": "available"})
+    e = sa.wait("status.digest", since=ma)
+    ok(f"Live: status.digest an die eigene Verbindung ({e})", s == 200 and e is not None and e.get("messages") == 3
+       and e.get("calls") == 0 and e.get("other") == 0 and e.get("since") and e.get("until") >= e.get("since"))
+    ok("Live: Sammelmeldung ohne Namen und ohne Text", e is not None and B not in json.dumps(e) and "Bert" not in json.dumps(e)
+       and "Konzentration" not in json.dumps(e))
+    time.sleep(0.5)
+    ok("Live: andere Konten bekommen keine Sammelmeldung", "status.digest" not in sb.types(mb))
+    ma = sa.mark()
+    put(ka, {"state": "dnd"})
+    put(ka, {"state": "available"})
+    time.sleep(1.0)
+    ok("Nicht stoeren ohne Zurueckgehaltenes: keine Sammelmeldung, auch keine zweite", "status.digest" not in sa.types(ma))
+    fr, to = time.strftime("%H:%M", time.gmtime(time.time() - 3600)), time.strftime("%H:%M", time.gmtime(time.time() + 3600))
+    s, _ = req("PUT", "/api/push/settings", ka, {"quiet": {"on": True, "from": fr, "to": to, "tz": "UTC"}})
+    s2, v = req("GET", "/api/account/status", ka)
+    with connect() as c, c:
+        n = push.enqueue(c, A, "chat.message", actor=B, data={"chat": "sf-2"})
+        hk = c.execute("SELECT COUNT(*) FROM user_kv WHERE uid=? AND k='status_held'", (A,)).fetchone()[0]
+    ok(f"Ruhezeit (why quiet): keine Mitteilung, nichts fuer eine Sammelmeldung gezaehlt ({s}, {v.get('why')}, {n}, {hk})",
+       s == 200 and v["why"] == "quiet" and n == 0 and hk == 0)
+    req("PUT", "/api/push/settings", ka, {"quiet": {"on": False}})
 
 
 def main():

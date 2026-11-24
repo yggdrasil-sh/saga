@@ -3742,6 +3742,8 @@ Server-Satz zu zerlegen, und passen eine schon gezeigte Chat-Mitteilung an, wenn
 | `n` | Anzahl: Chat = ungelesene Nachrichten dieses Chats in der Glocke (mindestens 1), Kommentare/Eintragungen = Bündel-Zähler, verpasste Anrufe = ungelesene des Chats, Anruf = 1. Fehlt bei der Testmitteilung. |
 | `group_key` | Gesprächseinheit wie in der Glocke: `chat:<id>`, `call:<chat-id>`, `page:<seite>` bzw. `page:<instanz>:<seite>`; fehlt, wo die Glocke nicht bündelt (`chat.mention`, `share.*`, Anrufe, …) |
 | `chat` | Chat-Kennung (Zahl) bei `chat.message`, `chat.mention`, `call.missed` (Anrufe hatten sie schon) |
+| `silent` | 2.6 (2029-3): `true` = ohne Ton anzeigen (Beschäftigt „ohne Ton“); fehlt sonst |
+| `digest` | 2.6 (2029-3): nur bei `kind: "status.digest"` – `{messages, calls, other}` (Sammelmeldung nach Nicht stören) |
 
 Kein Seitentitel, kein Chat-Name, keine Inhalte – gegenüber bisher kommt **keine** neue personenbezogene Angabe dazu (`actor`
 steht genau dann in der Nutzlast, wenn er schon im Satz stand). ntfy (Klartext-Weg ohne App) bekommt die Felder nicht; er
@@ -3828,7 +3830,8 @@ Geräte des Kontos (Server), die Frage kommt also nur einmal. Später unter Eins
 Je Konto ein Status mit optionalem Ende und kurzem Text. Erkennbar an `userstatus1` in `/api/version` (`status1` dort ist
 weiterhin der Datenbank-Status aus 2.5 Paket 5) bzw. `userstatus1` in `GET /api/chat/me` → `features`. Additiv, `MIN_APP`
 unverändert. Die Wirkung auf Anrufe (Anklopfen, zurückgehaltene Anrufe), Mitteilungen und die Anzeige bei anderen kommt
-in den Schritten 2029-2 bis 2029-4; 2029-1 liefert Speicher, API, Ablauf und die Entscheidungsstelle im Server.
+in den Schritten 2029-2 bis 2029-4; 2029-1 liefert Speicher, API, Ablauf und die Entscheidungsstelle im Server,
+2029-3 die Wirkung auf Mitteilungen und die Sammelmeldung (unten).
 
 | Aufruf | Antwort |
 |---|---|
@@ -3866,3 +3869,31 @@ ohne Wiederholung der Eingabe.
 `{type: "group", name}` – eine der **eigenen** Gruppen. `contact` und `e164` sind reserviert (400).
 
 **Live:** `status.changed` mit der Ansicht – nur an die eigenen Verbindungen (andere Geräte gleichen ab).
+
+### Wirkung auf Mitteilungen und Sammelmeldung (2029-3)
+
+Ab 2029-3 entscheidet der Status, ob eine Mitteilung aufs Gerät geht (Push-Weiche im Server, keine App-Änderung nötig):
+
+| Art | Verfügbar / Beschäftigt | Nicht stören (auch Ruhezeit mit `quiet_dnd`) |
+|---|---|---|
+| `chat.message`, `chat.mention`, `comment.mention`, `page.mention` | Mitteilung | keine Mitteilung, Glocke bleibt; Ausnahmen kommen durch, Erwähnungen nur mit `mention_break` |
+| andere (`share.*`, `comment.*`, `call.missed`, Admin, Aufgaben, …) | Mitteilung | keine Mitteilung, Glocke bleibt; Ausnahmen kommen durch |
+| `call`, `call.group` (klingeln) | wie bisher | entscheidet die Anruf-Weiche; ein zurückgehaltener Anruf (`chat_call.hold`) kommt **nie** als Mitteilung oder VoIP-Push |
+
+- Der Server prüft beim Zustellen erneut: wird eine wartende Mitteilung erst nach dem Einschalten von Nicht stören
+  zugestellt, entfällt sie.
+- Beschäftigt mit `prefs.busy: "silent"`: Mitteilung ohne Ton – neues Feld `silent: true` in der Nutzlast (Web Push:
+  `showNotification` mit `silent`, APNs ohne `sound`, ntfy Priorität 2). Fehlt das Feld, wie bisher mit Ton.
+- Ruhezeit mit `quiet_dnd: false`: wie vor 2.6 – in der Ruhezeit keine Mitteilungen, ohne Ausnahmen.
+
+**Sammelmeldung `status.digest`:** endet ein Nicht stören (selbst beendet, anderer Zustand, Ende eines Fokus-Status oder Ablauf
+von `until`) und wurden währenddessen Mitteilungen zurückgehalten, kommt **genau eine** Sammelmeldung – auch wenn zwei Geräte
+gleichzeitig beenden. Nach einer Ruhezeit (`why: "quiet"`) gibt es keine. Inhalt nur Zahlen, **nie Namen**:
+
+- Live an die eigenen Verbindungen: `status.digest` `{messages, calls, other, since, until}` (`messages` = Chat-Nachrichten und
+  -Erwähnungen, `calls` = verpasste Anrufe, `other` = übrige Mitteilungen; `since`/`until` = Zeitraum von Nicht stören).
+- Mitteilung an die eigenen Geräte (nicht in einer Ruhezeit): `kind: "status.digest"`, `tag: "status-digest"`, `url: "/"`,
+  `n` = Summe, `digest: {messages, calls, other}`, kein `actor`; `body` in der Sprache des Abos, z. B.
+  „Während „Nicht stören“: 4 Nachrichten, 1 verpasster Anruf“ (en: “While “Do not disturb” was on: 4 messages, 1 missed
+  call”). Apps können den Satz aus `digest` selbst bauen. Die Sammelmeldung ist kein abschaltbarer Bereich in
+  `/api/push/settings` und erscheint nicht in der Glocke (die einzelnen Einträge stehen dort schon).

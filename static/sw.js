@@ -56,6 +56,7 @@ self.addEventListener('push', function (e) {
     timestamp: d.ts ? d.ts * 1000 : Date.now(),
     data: { url: sameOrigin(d.url) }
   };
+  if (d.silent) opts.silent = true;   // 2.6 (Bugs-DB 2029-3): Beschaeftigt "ohne Ton"
   if (d.kind === 'call' || d.kind === 'call.group') { // Anruf (2.1; 2.4 Gruppe): bleibt stehen, bis man reagiert; vibriert wie ein Anruf
     opts.requireInteraction = true; opts.vibrate = [400, 200, 400, 200, 400];
   }

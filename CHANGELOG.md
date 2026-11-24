@@ -29,6 +29,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Ausnahmen). Noch ohne Wirkung auf Anrufe und Mitteilungen und ohne Oberfläche. Fähigkeit `userstatus1` in
   `/api/version`, `userstatus1` in `/api/chat/me`; Vertrag in `docs/APP-API.md` („Eigener Status“). Tests:
   `tests/reachability.py`, `tests/status_fehler.py`; Perf „Status: reachability“ (`limits.json`).
+- **Eigener Status wirkt auf Mitteilungen, Sammelmeldung nach „Nicht stören“** (Bugs-DB 2029, Schritt 2029-3, Server):
+  Ob eine Mitteilung aufs Gerät geht, entscheidet jetzt `reachability()` (Haken `push.REACH`, Art → Kanal) statt der
+  eigenen Ruhezeit-Prüfung: bei Nicht stören (und Ruhezeit als geplantes Nicht stören) keine Mitteilung, die Glocke bleibt;
+  Ausnahmen kommen durch; beim Zustellen wird erneut geprüft. Zurückgehaltene Anrufe (`chat_call.hold`) gehen nie als
+  Anruf- oder VoIP-Mitteilung raus (iOS/CallKit). Beschäftigt „ohne Ton“ setzt `silent` (Web Push, APNs ohne Ton, ntfy
+  leise). Ruhezeiten mit `quiet_dnd: false` wirken wie bisher. Endet Nicht stören (nicht die Ruhezeit), kommt genau
+  einmal die Sammelmeldung `status.digest` ohne Namen („Während „Nicht stören“: 4 Nachrichten, 1 verpasster Anruf“) – live
+  an die eigenen Verbindungen und als Mitteilung an die eigenen Geräte, in allen fünf Sprachen; auch bei zwei Geräten
+  gleichzeitig, mehreren Prozessen oder Absturz mitten im Wechsel. Zähler in `user_kv` (`status_held`, nur Zahlen), keine
+  Migration. Vertrag in `docs/APP-API.md` („Wirkung auf Mitteilungen und Sammelmeldung“, Nutzlast-Felder `silent`,
+  `digest`). Tests: `tests/push.py`, `tests/status_fehler.py`.
 - **Runner `ai.task` für die Kollegin** (Bugs-DB 2266 K-A6, Server, Gerüst ohne Planer und ohne Oberfläche):
   `saga/ai_task.py` führt einen freigegebenen Plan Schritt für Schritt über die Werkzeug-Registry aus – je Schritt ein
   Werkzeugaufruf mit dem internen Tok des Auftrags, in der Hintergrund-Spur und mit KI-Einheiten im Pool „Aufträge“.

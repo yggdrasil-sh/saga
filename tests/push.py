@@ -8,7 +8,11 @@ freigegeben), Zustellung bei Teilen/Kommentar, Text ohne Seitentitel/Inhalte, nt
 Bereiche, Ruhezeiten, 410 -> Abo weg, 503 -> Wiederholung, harte Fehler -> Abo weg, Testmitteilung + Grenze,
 Isolation, Grenzen, App-Abos (Geraete-Schluessel, enden mit der Geraete-Anmeldung), Chat-Schnittstelle (ohne Inhalt),
 Abmelden im Browser, "ueberall abmelden", Zugriff beim Zustellen, Admin-Seite (Wege, APNs-Schluessel), APNs-Zustellung,
-Kontoloeschung, keine Texte im Server-Log. Wegwerf-Konten ps-*; raeumt auf."""
+Kontoloeschung, keine Texte im Server-Log. 2.6 (Bugs-DB 2029-3): Push-Weiche - Nicht stoeren = keine Mitteilung, Glocke ja,
+Nachpruefung beim Zustellen, zurueckgehaltener Anruf (chat_call.hold) nie als Anruf-/VoIP-Mitteilung, Ausnahme, Beschaeftigt
+ohne Ton, Ruhezeit (nicht gezaehlt; quiet_dnd aus = alte Regel); Sammelmeldung status.digest de/en/th, ohne Namen, genau
+einmal (zwei Geraete gleichzeitig, kill -9 vor/nach dem Commit im Unterprozess --worker, Ablauf mit zwei Prozessen).
+Wegwerf-Konten ps-*; raeumt auf."""
 import base64, hashlib, http.client, http.server, json, os, re, secrets, struct, sys, threading, time, urllib.parse
 from itsdangerous import TimestampSigner
 from cryptography.hazmat.primitives import hashes, serialization
@@ -202,7 +206,7 @@ def cleanup():
     for u in users:
         delete_user_data(u)
     with connect() as c, c:
-        for t in ("note", "note_version", "user_kv", "notification", "device_login", "push_sub", "push_queue"):
+        for t in ("note", "note_version", "user_kv", "notification", "device_login", "push_sub", "push_queue", "user_status"):
             c.execute(f"DELETE FROM {t} WHERE uid LIKE 'ps-%'")
         c.execute("DELETE FROM notification WHERE actor_uid LIKE 'ps-%'")
         c.execute("DELETE FROM note_share WHERE owner_uid LIKE 'ps-%' OR target LIKE 'ps-%'")
@@ -239,6 +243,220 @@ def vector_test():
     ok(f"VAPID: Signatur gueltig, aud = Ursprung, exp <= 24 h, sub gesetzt ({j and j[1]})",
        j and j[0]["alg"] == "ES256" and j[1]["aud"] == "https://push.example.org" and time.time() < j[1]["exp"] <= time.time() + 86400 and j[1]["sub"])
     return m.group(2) if m else None
+
+
+# =====================================================================================================
+# 2.6 (Bugs-DB 2029-3): Push-Weiche (REACH) und Sammelmeldung status.digest
+# =====================================================================================================
+DIG_DE = "Während „Nicht stören“: 4 Nachrichten, 2 verpasste Anrufe, 1 weitere Mitteilung"
+DIG_EN = "While “Do not disturb” was on: 4 messages, 2 missed calls, 1 other notification"
+DIG_TH = "ระหว่างโหมด “ห้ามรบกวน”: 4 ข้อความ สายที่ไม่ได้รับ 2 สาย การแจ้งเตือนอื่น 1 รายการ"
+
+
+def held(uid):
+    with connect() as c:
+        r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k='status_held'", (uid,)).fetchone()
+    return json.loads(r[0]) if r else None
+
+
+def digests(uas, since):
+    """Pfad -> [entschluesselte Sammelmeldungen] seit since."""
+    with LOCK:
+        got = list(GOT[since:])
+    out = {}
+    for path, u in uas.items():
+        out[path] = [m for m in (u.decrypt(g[3]) for g in got if g[1] == path) if m.get("kind") == "status.digest"]
+    return out
+
+
+def wait_digests(uas, since, timeout=9.0, settle=2.5):
+    """Warten, bis jedes Abo mindestens eine Sammelmeldung hat, dann settle Sekunden auf weitere (doppelte) warten."""
+    end = time.time() + timeout
+    while time.time() < end and not all(digests(uas, since).values()):
+        time.sleep(0.2)
+    time.sleep(settle)
+    return digests(uas, since)
+
+
+def worker(mode):
+    """Unterprozess (diese Datei mit --worker <mode>): beendet Nicht stoeren von ps-a in einer Transaktion und stirbt per
+    SIGKILL - rollback: vor dem Commit, commit: direkt danach (vor jeder Zustellung). -> Rueckgabecode."""
+    import subprocess
+    p = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", mode], env=dict(os.environ), capture_output=True,
+                       text=True, timeout=120)
+    if p.returncode != -9:
+        print((p.stdout + p.stderr)[-800:], flush=True)
+    return p.returncode
+
+
+def worker_main(mode):
+    import signal
+    from saga import user_status
+    with connect() as c, c:
+        user_status.set_status(c, "ps-a", {"state": "available"})
+        if mode == "rollback":
+            os.kill(os.getpid(), signal.SIGKILL)
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+def digest_part(A, Bk, ua, pgA, nn):
+    from saga import notify
+    ue, ut = UA(), UA()
+    s1, d1 = req("POST", "/api/push/subscriptions", A, {"type": "webpush", "endpoint": f"{FAKE}/wp/dg-en", "keys": ue.keys(), "lang": "en"})
+    s2, d2 = req("POST", "/api/push/subscriptions", A, {"type": "webpush", "endpoint": f"{FAKE}/wp/dg-th", "keys": ut.keys(), "lang": "th"})
+    ok(f"2029-3: zwei weitere Geraete von A (Sprache en, th) ({s1}, {s2})", s1 == 201 and s2 == 201)
+    UAS = {"/wp/a1": ua, "/wp/dg-en": ue, "/wp/dg-th": ut}
+    is_dig = lambda g: g[1] in UAS and UAS[g[1]].decrypt(g[3]).get("kind") == "status.digest"     # noqa: E731
+    t0 = time.time()
+    with connect() as c, c:
+        chat = c.execute("INSERT INTO chat (kind, created_by, created) VALUES ('free', 'ps-b', ?) RETURNING id", (t0,)).fetchone()[0]
+    try:
+        s, v = req("PUT", "/api/account/status", A, {"state": "dnd"})
+        ok(f"A: Nicht stoeren ({s}, {v.get('effective')})", s == 200 and v["effective"] == "dnd")
+        m0 = mark()
+        cid_ring, cid_held = secrets.token_hex(16), secrets.token_hex(16)
+        with connect() as c, c:
+            for _ in range(3):
+                bus.fire("push.send", c, uid="ps-a", kind="chat.message", actor="ps-b", data={"chat": str(chat)})
+            bus.fire("push.send", c, uid="ps-a", kind="chat.mention", actor="ps-b", data={"chat": str(chat)})
+            notify.create(c, "ps-a", "call.missed", "ps-b", data={"chat": chat, "call": "ab" * 16})
+            c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, hold) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)", (cid_held, chat, "ps-b", "ps-a", "dev-b", "audio", "ended", time.time(), "dnd"))
+            c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, hold) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)", (cid_ring, chat, "ps-b", "ps-a", "dev-b", "audio", "ringing", time.time(), "dnd"))
+        req("POST", f"/api/notes/{pgA}/comments", Bk, {"block_id": "dg1", "body": "waehrend Nicht stoeren"})     # Server: comment.new
+        with connect() as c:
+            q = c.execute("SELECT COUNT(*) FROM push_queue WHERE uid='ps-a'").fetchone()[0]
+            bell = c.execute("SELECT COUNT(*) FROM notification WHERE uid='ps-a' AND kind IN ('comment.new', 'call.missed') AND created>=?",
+                             (t0,)).fetchone()[0]
+            late = push.message(c, "ps-a", "share.added", ref=nn)
+            vo = push.message(c, "ps-a", "call", actor="ps-b", data={"call": cid_ring}, created=time.time())
+        h = held("ps-a")
+        ok(f"route hold: keine Mitteilung (Warteschlange {q}), Glocke ja ({bell}), gezaehlt ohne Namen ({h})",
+           q == 0 and bell == 2 and h and (h.get("m"), h.get("c"), h.get("o")) == (4, 1, 1) and "ps-b" not in json.dumps(h))
+        ok("Nachpruefung beim Zustellen: waehrend Nicht stoeren keine Mitteilung (auch fuer aeltere Auftraege)", late is None)
+        with connect() as c, c:
+            n_call = push.enqueue(c, "ps-a", "call", actor="ps-b", data={"call": cid_ring})
+        ok(f"zurueckgehaltener Anruf (hold dnd): kein Auftrag, beim Zustellen nichts - nie VoIP ({n_call}, {vo})", n_call == 0 and vo is None)
+        with connect() as c, c:
+            c.execute("UPDATE chat_call SET hold=NULL WHERE id=?", (cid_ring,))
+        with connect() as c:
+            vo = push.message(c, "ps-a", "call", actor="ps-b", data={"call": cid_ring}, created=time.time())
+        ok("... gleicher Anruf ohne hold: Anruf-Mitteilung (die Weiche ist calls.ring_gate)", vo and vo["kind"] == "call" and vo["call"] == cid_ring)
+        with connect() as c, c:
+            c.execute("UPDATE chat_call SET state='ended', hold='knock' WHERE id=?", (cid_ring,))
+        ok("waehrend Nicht stoeren nichts an die Geraete von A",
+           none_got(lambda g: g[1] in UAS or (g[1] == "/" and b"ps-topic-a" in g[3]), m0, 1.5))
+
+        # zwei Geraete beenden gleichzeitig -> genau eine Sammelmeldung je Abo
+        m1 = mark()
+        out = []
+        ths = [threading.Thread(target=lambda: out.append(req("PUT", "/api/account/status", A, {"state": "available"})[0])) for _ in range(2)]
+        [x.start() for x in ths]
+        [x.join() for x in ths]
+        dg = wait_digests(UAS, m1)
+        de_, en_, th_ = dg["/wp/a1"], dg["/wp/dg-en"], dg["/wp/dg-th"]
+        ok(f"zwei Geraete beenden gleichzeitig ({sorted(out)}): je Abo genau EINE Sammelmeldung ({[len(x) for x in dg.values()]})",
+           sorted(out) == [200, 200] and all(len(x) == 1 for x in dg.values()))
+        ok(f"Sammelmeldung de ({de_ and de_[0]['body']})", de_ and de_[0]["body"] == DIG_DE and de_[0]["lang"] == "de")
+        ok(f"Sammelmeldung en ({en_ and en_[0]['body']})", en_ and en_[0]["body"] == DIG_EN and en_[0]["lang"] == "en")
+        ok(f"Sammelmeldung th ({th_ and th_[0]['body']})", th_ and th_[0]["body"] == DIG_TH and th_[0]["lang"] == "th")
+        allm = [x for v in dg.values() for x in v]
+        blob = json.dumps(allm, ensure_ascii=False)
+        ok(f"Nutzlast ohne Namen: kein actor/caller, Zahlen in digest, tag status-digest ({de_ and {k: de_[0][k] for k in ('digest', 'n', 'tag', 'url')}})",
+           allm and all(not ({"actor", "caller", "chat", "call"} & set(x)) for x in allm) and "Bert" not in blob and "ps-b" not in blob
+           and de_[0]["digest"] == {"messages": 4, "calls": 2, "other": 1} and de_[0]["n"] == 7 and de_[0]["tag"] == "status-digest"
+           and de_[0]["url"] == "/")
+        gn = wait_got(lambda g: g[1] == "/" and json.loads(g[3]).get("topic") == "ps-topic-a" and "Nicht stören" in json.loads(g[3]).get("message", ""), m1, 3)
+        ok(f"ntfy: Sammelmeldung im Klartext, ohne Namen ({gn and json.loads(gn[3]).get('message')})",
+           gn and json.loads(gn[3])["message"] == DIG_DE and b"Bert" not in gn[3])
+        ok("Zaehler mit der Sammelmeldung geloescht", held("ps-a") is None)
+        with connect() as c:
+            back = push.message(c, "ps-a", "share.added", ref=nn)
+        ok("nach Nicht stoeren: Mitteilungen wieder (Nachpruefung laesst durch)", back is not None and "silent" not in back)
+        m2 = mark()
+        req("PUT", "/api/account/status", A, {"state": "available"})
+        req("PUT", "/api/account/status", A, {"state": "dnd"})
+        req("PUT", "/api/account/status", A, {"state": "busy"})
+        ok("noch einmal beendet / Nicht stoeren ohne Zurueckgehaltenes: keine Sammelmeldung", none_got(is_dig, m2, 3))
+
+        # Beschaeftigt "ohne Ton", Ausnahme
+        req("PUT", "/api/account/status/prefs", A, {"busy": "silent"})
+        with connect() as c:
+            sil = push.message(c, "ps-a", "share.added", ref=nn)
+        ok(f"Beschaeftigt + busy silent: Mitteilung ohne Ton (silent {sil and sil.get('silent')})", sil and sil.get("silent") is True)
+        req("PUT", "/api/account/status/prefs", A, {"busy": "show", "exceptions": [{"type": "user", "ref": auth_ref("ps-b")}]})
+        req("PUT", "/api/account/status", A, {"state": "dnd"})
+        with connect() as c, c:
+            n_exc = push.enqueue(c, "ps-a", "chat.message", actor="ps-b", data={"chat": "dg-x"})
+            n_oth = push.enqueue(c, "ps-a", "chat.message", actor="ps-adm", data={"chat": "dg-y"})
+            c.execute("DELETE FROM push_queue WHERE uid='ps-a'")
+        ok(f"Nicht stoeren mit Ausnahme: Ausnahme kommt durch, andere nicht ({n_exc}, {n_oth})", n_exc >= 1 and n_oth == 0)
+        req("PUT", "/api/account/status/prefs", A, {"exceptions": []})
+
+        # kill -9 mitten im Beenden (vor dem Commit) -> nichts; danach genau einmal
+        rc = worker("rollback")
+        with connect() as c:
+            st = c.execute("SELECT state FROM user_status WHERE uid='ps-a'").fetchone()[0]
+            qd = c.execute("SELECT COUNT(*) FROM push_queue WHERE uid='ps-a' AND kind='status.digest'").fetchone()[0]
+        h = held("ps-a") or {}
+        ok(f"kill -9 vor dem Commit: Nicht stoeren bleibt, Zaehler bleibt, keine Sammelmeldung (rc {rc}, {st}, {h}, {qd})",
+           rc == -9 and st == "dnd" and h.get("m") == 1 and not h.get("o") and not h.get("c") and qd == 0)
+        m3 = mark()
+        rc = worker("commit")
+        dg = wait_digests(UAS, m3)
+        ok(f"kill -9 direkt nach dem Commit: genau eine Sammelmeldung je Abo ({rc}, {[len(x) for x in dg.values()]}, "
+           f"{dg['/wp/a1'] and dg['/wp/a1'][0]['body']})",
+           rc == -9 and all(len(x) == 1 for x in dg.values()) and dg["/wp/a1"][0]["body"] == "Während „Nicht stören“: 1 Nachricht")
+        m4 = mark()
+        req("PUT", "/api/account/status", A, {"state": "available"})
+        ok("... danach (Neustart, weiterer Wechsel) keine zweite", none_got(is_dig, m4, 3) and held("ps-a") is None)
+
+        # Ablauf (until <= jetzt): Schleife des Servers und ein zweiter Prozess gleichzeitig -> genau einmal
+        from saga import user_status
+        req("PUT", "/api/account/status", A, {"state": "dnd", "dur": 600})
+        with connect() as c, c:
+            push.enqueue(c, "ps-a", "comment.reply", actor="ps-b", ref=nn)
+        with connect() as c, c:
+            c.execute("UPDATE user_status SET until=? WHERE uid='ps-a'", (time.time() - 1,))
+        m5 = mark()
+        n_exp = user_status.expire_once()
+        dg = wait_digests(UAS, m5)
+        ok(f"Ablauf von Nicht stoeren: genau eine Sammelmeldung je Abo ({n_exp}, {[len(x) for x in dg.values()]}, "
+           f"{dg['/wp/a1'] and dg['/wp/a1'][0]['body']})",
+           all(len(x) == 1 for x in dg.values()) and dg["/wp/a1"][0]["body"] == "Während „Nicht stören“: 1 weitere Mitteilung")
+
+        # Ruhezeit: keine Sammelmeldung, nichts gezaehlt; quiet_dnd aus: alte Regel
+        fr, to = time.strftime("%H:%M", time.gmtime(time.time() - 3600)), time.strftime("%H:%M", time.gmtime(time.time() + 3600))
+        req("PUT", "/api/push/settings", A, {"quiet": {"on": True, "from": fr, "to": to, "tz": "UTC"}})
+        with connect() as c, c:
+            n_q = push.enqueue(c, "ps-a", "chat.message", actor="ps-b", data={"chat": "dg-q"})
+        ok(f"Ruhezeit: keine Mitteilung, nicht fuer eine Sammelmeldung gezaehlt ({n_q}, {held('ps-a')})", n_q == 0 and held("ps-a") is None)
+        m6 = mark()
+        req("PUT", "/api/account/status", A, {"state": "dnd"})
+        with connect() as c, c:
+            push.enqueue(c, "ps-a", "chat.message", actor="ps-b", data={"chat": "dg-q"})
+        req("PUT", "/api/account/status", A, {"state": "available"})
+        ok("Nicht stoeren endet in der Ruhezeit: keine Mitteilung (nur Live), Zaehler weg", none_got(is_dig, m6, 3) and held("ps-a") is None)
+        req("PUT", "/api/account/status/prefs", A, {"quiet_dnd": False, "exceptions": [{"type": "user", "ref": auth_ref("ps-b")}]})
+        with connect() as c, c:
+            n_plain = push.enqueue(c, "ps-a", "chat.message", actor="ps-b", data={"chat": "dg-p"})
+        ok(f"quiet_dnd aus: Ruhezeit wie bisher (keine Mitteilung, auch nicht fuer Ausnahmen) ({n_plain})", n_plain == 0)
+        req("PUT", "/api/account/status/prefs", A, {"quiet_dnd": True, "exceptions": []})
+        req("PUT", "/api/push/settings", A, {"quiet": {"on": False}})
+    finally:
+        with connect() as c, c:
+            c.execute("DELETE FROM chat WHERE id=?", (chat,))
+            c.execute("DELETE FROM push_queue WHERE uid='ps-a' AND kind='status.digest'")
+        req("PUT", "/api/account/status", A, {"state": "available"})
+        for d in (d1, d2):
+            if isinstance(d, dict) and d.get("id"):
+                req("DELETE", f"/api/push/subscriptions/{d['id']}", A)
+
+
+def auth_ref(uid):
+    from saga.core import local_ref
+    return local_ref(uid)
 
 
 def main():
@@ -556,6 +774,9 @@ def run(A, Bk, vpub):
         gone = push.message(c, "ps-a", "share.added", ref=nx)
     ok("nach Entzug (bzw. nie Zugriff) keine Mitteilung; mit Zugriff schon", own and gone is None)
 
+    # --- 2.6 (Bugs-DB 2029-3): Push-Weiche und Sammelmeldung -------------------------------------------------------
+    digest_part(A, Bk, ua, pgA, nn)
+
     # --- Abmelden im Browser, "ueberall abmelden" ---------------------------------------------------------------
     ok("Anmelde-Antwort setzt die Sitzung (Abo gehoert zu diesem Browser)", bool(web_cookie))
     s, _, r = req("POST", "/logout", None, hdr={"Cookie": "saga=" + web_cookie, "X-Saga": "1"}, raw_resp=True)
@@ -664,6 +885,9 @@ def run(A, Bk, vpub):
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--worker"]:
+        worker_main(sys.argv[2])
+        sys.exit(3)
     try:
         main()
     except Exception:

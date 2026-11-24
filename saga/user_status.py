@@ -19,6 +19,9 @@ reachability(c, uid, caller, kanal) ist die EINE Entscheidungsstelle fuer die na
 calls/fed_calls: route knock/busy/hold, chat_call.hold='dnd'), 2029-3 (Mitteilungen, push: push/sound, why 'quiet' =
 ohne Sammelmeldung) und 2029-4 (Anzeige/Foederation: shown()). Sie rufen nur noch auf.
 
+2029-3: saga.push fragt reachability() vor jeder Mitteilung (Haken push.REACH); das Ende eines Nicht stoeren meldet
+bus "status.dnd_end" (set_status/expire_once, gleiche Transaktion) - daraus macht saga.push die Sammelmeldung status.digest.
+
 Standards (Antworten des Maintainers stehen noch aus - je Punkt eine Konstante, je Konto ueber prefs umstellbar):
 QUIET_DND, QUIET_DIGEST, IN_CALL_DEFAULT, SHOW_CALL, BUSY_MODE, REPEAT_ON, REPEAT_S, MENTION_BREAKS."""
 import json
@@ -240,6 +243,20 @@ def reachability(c, uid, caller, kanal, now=None, call=None):
     return Reach("normal", True, True, "available")
 
 
+def quiet_plain(c, uid, now=None):
+    """Ruhezeit jetzt, die NICHT als Nicht stoeren zaehlt (prefs.quiet_dnd aus) - fuer saga.push: dann gilt die alte
+    Ruhezeit-Regel der Mitteilungen (keine Mitteilung, ohne Ausnahmen). Mit quiet_dnd entscheidet reachability()."""
+    now = testclock.now() if now is None else now
+    _, parsed = _load(c, uid)
+    return not parsed["prefs"]["quiet_dnd"] and quiet_now(parsed["quiet"], now)
+
+
+def _dnd_end(c, uid, since, end):
+    """2029-3: ein Nicht stoeren (manuell/Fokus, nie Ruhezeit) ist zu Ende - in der Transaktion, die den Zustand aendert
+    (Zeile per FOR UPDATE gesperrt, daher genau einmal). saga.push haengt sich an (Sammelmeldung status.digest)."""
+    bus.fire("status.dnd_end", c, uid=uid, since=since, end=end)
+
+
 def shown(c, uid, now=None):
     """Was andere sehen (Haken fuer 2029-4): {state: available|busy|in_call|dnd, until}. Ruhezeiten und Text nicht."""
     now = testclock.now() if now is None else now
@@ -350,6 +367,8 @@ def set_status(c, uid, b, now=None):
         since = cur[4] if m == st and cur[0] == st else now
         c.execute("UPDATE user_status SET state=?, until=?, text=?, source=?, since=?, updated=?, ver=ver+1 WHERE uid=?",
                   (st, until, text, src, since, now, uid))
+        if cur[0] == "dnd" and (m != "dnd" or st != "dnd"):    # Nicht stoeren endet jetzt (bzw. war schon abgelaufen)
+            _dnd_end(c, uid, cur[4], now if m == "dnd" else cur[1])
     else:
         c.execute("INSERT INTO user_status (uid, state, until, text, source, since, updated, ver) VALUES (?,?,?,?,?,?,?,1) "
                   "ON CONFLICT (uid) DO UPDATE SET state=EXCLUDED.state, until=EXCLUDED.until, text=EXCLUDED.text, "
@@ -432,11 +451,13 @@ def expire_once(now=None):
     """Abgelaufene Status (until <= jetzt) auf available setzen und melden -> Anzahl."""
     now = testclock.now() if now is None else now
     with _db() as c, c:
-        rows = c.execute("SELECT uid FROM user_status WHERE until IS NOT NULL AND until<=? AND state<>'available' "
+        rows = c.execute("SELECT uid, state, since, until FROM user_status WHERE until IS NOT NULL AND until<=? AND state<>'available' "
                          "ORDER BY until LIMIT 500 FOR UPDATE SKIP LOCKED", (now,)).fetchall()
-        for (u,) in rows:
+        for u, st, since, until in rows:
             c.execute("UPDATE user_status SET state='available', until=NULL, text=NULL, source='system', since=until, updated=?, "
                       "ver=ver+1 WHERE uid=?", (now, u))
+            if st == "dnd":
+                _dnd_end(c, u, since, until)
             _changed(c, u)
     return len(rows)
 

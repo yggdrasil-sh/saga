@@ -21,6 +21,10 @@ Nur AUSGEHEND vom Server - kein eigener Port, kein eingehender Dienst.
 - 2.5: Abo-Art "stream" - eigene Verbindung der App zum Server (saga.push_stream), wenn auf dem Geraet kein
   UnifiedPush-Verteiler installiert ist. Zustellung wie Web Push (gleiche verschluesselte Nutzlast, TTL, Topic), nur
   dass der "Push-Dienst" Saga selbst ist: Ablage in push_stream_msg, sofort hinaus, wenn die App verbunden ist.
+- 2.6 (Bugs-DB 2029-3): Push-Weiche - ob eine Mitteilung rausgeht, entscheidet saga.user_status.reachability() (Haken
+  REACH, Art -> Kanal ueber KANAL): Nicht stoeren / Ruhezeit = route hold (Glocke ja, Mitteilung nein), beim Zustellen
+  erneut geprueft; zurueckgehaltene Anrufe (chat_call.hold) nie als (VoIP-)Push. Endet Nicht stoeren (nicht die
+  Ruhezeit), kommt genau eine Sammelmeldung status.digest ohne Namen (Zaehler user_kv 'status_held').
 - Ziele: Web Push / ntfy / UnifiedPush ueber saga.netguard (SSRF-Schutz: interne Ziele nur mit Admin-Freigabe,
   http nur fuer freigegebene Hosts). APNs: feste Apple-Adressen, HTTP/2 (httpx + h2), Token-Anmeldung (ES256 mit .p8)."""
 import base64
@@ -46,7 +50,7 @@ from fastapi.responses import JSONResponse, Response
 
 import auth
 from db import connect as _db
-from saga import bus, i18n, netguard, notify, push_stream
+from saga import bus, i18n, netguard, notify, push_stream, testclock, user_status
 from saga.core import ASSET_V, BASE_URL, HERE, RESTORE_TEST, TZ, _api_guard, _bad, _body, _json_load, _tok_hash, account_lang, t, title
 from saga.netguard import Blocked, guarded_client, is_public
 
@@ -84,6 +88,29 @@ def _ring_late(created):
 
 
 KIND_CAT = {k: cat for cat, ks in CATS.items() for k in ks}
+# 2.6 (Bugs-DB 2029-3): Sammelmeldung nach "Nicht stoeren" (status.digest) - an sich selbst, ohne Namen, kein abschaltbarer
+# Bereich (Kategorie "status" gibt es in CATS nicht -> immer an); K-C traegt spaeter job.* in CATS ein (Kanal notify)
+DIGEST_KIND = "status.digest"
+KIND_CAT[DIGEST_KIND] = "status"
+# Art -> Kanal fuer user_status.reachability(): call (klingelnde Anrufe), chat, mention, sonst notify (auch call.missed,
+# Admin, Aufgaben, Auftraege)
+KANAL = {"call": "call", "call.group": "call", "chat.message": "chat", "chat.mention": "mention",
+         "comment.mention": "mention", "page.mention": "mention"}
+HELD_K = "status_held"               # user_kv: waehrend Nicht stoeren zurueckgehaltene Mitteilungen (Zaehler, nur Zahlen)
+
+
+def kanal_of(kind):
+    return KANAL.get(kind, "notify")
+
+
+def _reach(c, uid, actor, kind, call=None):
+    """Standard fuer REACH: die eine Entscheidungsstelle saga.user_status.reachability() (Ruhezeit steckt dort)."""
+    return user_status.reachability(c, uid, actor, kanal_of(kind), call=call)
+
+
+# Haken (2029-3): REACH(c, uid, actor, kind, call=None) -> Reach(route, push, sound, why). Ersetzt die Ruhezeit-Pruefung in
+# enqueue (push.quiet_now gilt nur noch, wenn Ruhezeiten NICHT als Nicht stoeren zaehlen - user_status.quiet_plain).
+REACH = _reach
 SUB_MAX = 20                         # Abos je Konto
 QUEUE_MAX = 300                      # offene Auftraege je Konto (darueber: keine neuen, die Glocke hat alles)
 RATE_MIN = 30                        # Mitteilungen je Konto und Minute (Rest nur in der Glocke)
@@ -388,6 +415,9 @@ def _route(c, sids, kind):
     - calls.ring_group schickt "call.group" nur an Eingeladene mit Einladung 'ringing' (nicht 'old'/'joined'/'declined'),
       nie an die anrufende Person, nie in grossen Chats (silent) oder stummgeschalteten Chats; Ruhezeiten und
       abgeschaltete Bereiche filtert enqueue.
+    - 2.6 (Bugs-DB 2029-3): zurueckgehaltene Anrufe (chat_call.hold gesetzt: dnd/knock/again) gehen NIE als VoIP raus -
+      enqueue und message() verlangen hold IS NULL (iOS muss jeden VoIP-Push in CallKit melden). Ob es klingelt,
+      entscheidet calls.ring_gate (user_status.reachability); Gruppen-Einladungen (ohne hold je Person) prueft REACH.
     - message() prueft beim Zustellen erneut: "call" nur, solange der Anruf klingelt; "call.group" nur, solange die
       eigene Einladung 'ringing' ist (eigenes anderes Geraet beigetreten -> 'joined', abgelehnt, verpasst -> nichts),
       bei dm (1:1 ueber Knoten) zusaetzlich nur, solange der Anruf klingelt; beide nur innerhalb der Klingeldauer
@@ -404,10 +434,40 @@ def _route(c, sids, kind):
     return [r[0] for r in rows if not (r[1] == "apns" and r[2] in voip_dev)]
 
 
+def _call_id(data):
+    return re.sub(r"[^0-9a-f]", "", str((data or {}).get("call") or ""))[:32]
+
+
+def _held_key(since):
+    return repr(float(since))
+
+
+def _held(c, uid, kind, actor, ref, data):
+    """2029-3: Mitteilung wegen Nicht stoeren zurueckgehalten (route hold, why dnd) -> fuer die Sammelmeldung zaehlen (nur
+    Zahlen, nie Namen/Inhalte; user_kv 'status_held' {s: Beginn, m: Nachrichten, c: verpasste Anrufe, o: sonstige}).
+    Die Zeile user_status wird geteilt gesperrt (FOR SHARE): das Ende von Nicht stoeren (FOR UPDATE, gleiche Transaktion wie
+    die Sammelmeldung) wartet auf diese Transaktion - nichts geht zwischen Zaehlen und Melden verloren. War Nicht stoeren
+    inzwischen zu Ende (wir haben auf die Sperre gewartet) -> None: neu entscheiden. Sonst True."""
+    now = testclock.now()
+    r = c.execute("SELECT since FROM user_status WHERE uid=? AND state='dnd' AND (until IS NULL OR until>?) FOR SHARE",
+                  (uid, now)).fetchone()
+    if not r:
+        return None
+    col = "m" if kind in ("chat.message", "chat.mention") else "c" if kind == "call.missed" else "o"
+    s = _held_key(r[0])
+    c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?, ?, ?) ON CONFLICT (uid, k) DO UPDATE SET v = CASE "
+              "WHEN user_kv.v::jsonb->>'s' = ? THEN jsonb_set(user_kv.v::jsonb, ARRAY[?], "
+              "to_jsonb(COALESCE((user_kv.v::jsonb->>?)::int, 0) + 1))::text ELSE EXCLUDED.v END",
+              (uid, HELD_K, json.dumps({"s": s, col: 1}), s, col, col))
+    return True
+
+
 def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
     """Mitteilung fuer uid vormerken (eine Zeile je Abo) -> Anzahl. Nichts bei: an sich selbst, Bereich abgeschaltet,
-    Ruhezeit, kein Abo, Grenze erreicht. replaces: gebuendelte Benachrichtigung ersetzt eine noch nicht zugestellte -
-    dann wird der vorhandene Auftrag umgehaengt (keine zweite Mitteilung).
+    nicht erreichbar (REACH: Nicht stoeren / Ruhezeit - route hold: Glocke ja, Mitteilung nein; bei Nicht stoeren fuer die
+    Sammelmeldung gezaehlt), Ruhezeit ohne Nicht stoeren (quiet_dnd aus), zurueckgehaltener Anruf (chat_call.hold), kein
+    Abo, Grenze erreicht. replaces: gebuendelte Benachrichtigung ersetzt eine noch nicht zugestellte - dann wird der
+    vorhandene Auftrag umgehaengt (keine zweite Mitteilung).
     Fuer den Chat: kind='chat.message', data={'chat': <kennung>} - NIE Inhalte."""
     if kind not in KIND_CAT or not uid or uid == actor:
         return 0
@@ -421,8 +481,26 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
             c.after_commit(wake)
             return n
     p = prefs(c, uid)
-    if not p["cats"].get(KIND_CAT[kind], True) or quiet_now(p["quiet"]):
+    if not p["cats"].get(KIND_CAT[kind], True):
         return 0
+    if quiet_now(p["quiet"], testclock.now()) and user_status.quiet_plain(c, uid):
+        return 0                          # Ruhezeit zaehlt nicht als Nicht stoeren (quiet_dnd aus): alte Regel, ohne Ausnahmen
+    if kind in RING_KINDS:
+        # Klingelnder Anruf: entschieden hat calls.ring_gate (chat_call.hold) - zurueckgehalten = nie ein (VoIP-)Push
+        cid = _call_id(data)
+        k = c.execute("SELECT hold, callee FROM chat_call WHERE id=?", (cid,)).fetchone() if cid else None
+        if k and k[0] is not None:
+            return 0
+        if kind == "call.group" and k and k[1] != uid and not REACH(c, uid, actor, kind, call=cid).push:
+            return 0                      # Gruppen-Einladung (kein hold je Person): Nicht stoeren -> still, kein Push
+    elif kind != DIGEST_KIND:
+        r = REACH(c, uid, actor, kind)
+        if not r.push and r.why == "dnd" and _held(c, uid, kind, actor, ref, data) is None:
+            r = REACH(c, uid, actor, kind)          # Nicht stoeren endete, waehrend wir auf die Sperre warteten
+        if not r.push:
+            return 0                      # route hold: zustellen (Glocke), aber keine Mitteilung
+    elif not REACH(c, uid, None, kind).push:
+        return 0                          # Sammelmeldung in einer Ruhezeit / neuem Nicht stoeren: nur Live, nie mitgezaehlt
     info = auth.user_info(uid)
     if info is None:
         return 0
@@ -432,7 +510,8 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
     if not _rate_ok(_rate, uid, RATE_MIN):
         return 0
     now = time.time()
-    d = json.dumps({k: v for k, v in (data or {}).items() if k in ("chat", "call")})        # nur Kennungen, nie Inhalte
+    d = json.dumps({k: v for k, v in (data or {}).items() if k in ("chat", "call")}         # nur Kennungen, nie Inhalte
+                   | ({"digest": _digest_counts(data.get("digest"))} if kind == DIGEST_KIND and data else {}))
     if kind in ("chat.message", "chat.mention") and c.execute("SELECT 1 FROM push_queue WHERE uid=? AND kind=? AND data=? AND tries=0 LIMIT 1",
                                             (uid, kind, d)).fetchone():
         return 0                          # fuer diesen Chat wartet schon eine Mitteilung (wie das Buendeln der Glocke)
@@ -453,8 +532,46 @@ def _on_send(c, uid, kind, actor=None, data=None, **_):
     enqueue(c, uid, kind, actor=actor, data=data)
 
 
+def _digest_counts(d):
+    """{messages, calls, other} - nur ganze Zahlen 0..9999 (sonst 0)."""
+    d = d if isinstance(d, dict) else {}
+    return {k: max(0, min(9999, d[k])) if isinstance(d.get(k), int) and not isinstance(d.get(k), bool) else 0
+            for k in ("messages", "calls", "other")}
+
+
+def _missed_held_calls(c, uid, since, end):
+    """1:1-Anrufe, die waehrend Nicht stoeren zurueckgehalten wurden (chat_call.hold='dnd', calls.ring_gate) und schon zu
+    Ende sind, ohne eigenen Glocken-Eintrag call.missed (die mit Eintrag zaehlt _held, sofern er zurueckgehalten wurde;
+    kam der Eintrag erst nach dem Ende von Nicht stoeren, ging er als eigene Mitteilung raus)."""
+    return c.execute("SELECT COUNT(*) FROM chat_call k WHERE k.callee=? AND k.hold='dnd' AND k.state='ended' AND k.created>=? "
+                     "AND k.created<=? AND NOT EXISTS (SELECT 1 FROM notification n WHERE n.uid=k.callee AND n.kind='call.missed' "
+                     "AND n.data LIKE '%\"call\": \"' || k.id || '\"%')", (uid, since, end)).fetchone()[0]
+
+
+def _on_dnd_end(c, uid, since, end, **_):
+    """2029-3: Nicht stoeren (nicht Ruhezeit) ist zu Ende -> EINE Sammelmeldung status.digest ohne Namen ("Waehrend Nicht
+    stoeren: 4 Nachrichten, 1 verpasster Anruf"), in derselben Transaktion wie die Zustandsaenderung: der Zaehler wird
+    dabei geloescht (DELETE ... RETURNING) - genau einmal, auch bei zwei Geraeten gleichzeitig, mehreren Prozessen oder
+    Absturz (dann gar nicht festgeschrieben, die Ablauf-Schleife bzw. der naechste Wechsel holt es nach). Nichts
+    zurueckgehalten -> keine Meldung. Live status.digest an die eigenen Verbindungen; Mitteilung an die eigenen Geraete
+    (REACH gilt: in einer Ruhezeit keine Mitteilung)."""
+    r = c.execute("DELETE FROM user_kv WHERE uid=? AND k=? RETURNING v", (uid, HELD_K)).fetchone()
+    h = _json_load(r[0], {}) if r else {}
+    if h.get("s") != _held_key(since):
+        h = {}                            # Rest eines frueheren Zeitraums (sollte es nicht geben): nicht mitzaehlen
+    end = end if isinstance(end, (int, float)) else testclock.now()
+    dg = _digest_counts({"messages": h.get("m"), "calls": (h.get("c") if isinstance(h.get("c"), int) else 0)
+                         + _missed_held_calls(c, uid, since, end), "other": h.get("o")})
+    if not any(dg.values()):
+        return
+    bus.emit_after(c, "direct", {"uids": [uid], "typ": "status.digest",
+                                 "data": dict(dg, since=round(since, 3), until=round(end, 3))})
+    enqueue(c, uid, DIGEST_KIND, data={"digest": dg})
+
+
 bus.on("notification.created", _on_notification)
 bus.on("push.send", _on_send)
+bus.on("status.dnd_end", _on_dnd_end)
 
 
 def _has_cap(caps, cap):
@@ -556,14 +673,48 @@ def _chat_body(kind, nm):
     return t("Neue Nachricht von {name}", name=nm) if nm else t("Neue Nachricht")
 
 
+# 2029-3: Texte der Sammelmeldung (Kataloge saga/i18n, alle Sprachen; Pluralformen {n:...}). Nie Namen, nie Inhalte.
+DIGEST_TEXT = {
+    "messages": lambda n: t("{n} {n:Nachricht|Nachrichten}", n=n),
+    "calls": lambda n: t("{n} {n:verpasster Anruf|verpasste Anrufe}", n=n),
+    "other": lambda n: t("{n} {n:weitere Mitteilung|weitere Mitteilungen}", n=n),
+    "join": lambda a, b: t("{a}, {b}##Aufzählung", a=a, b=b),
+    "body": lambda items: t("Während „Nicht stören“: {items}", items=items),
+}
+
+
+def digest_text(dg):
+    """{messages, calls, other} -> "Waehrend „Nicht stoeren“: 4 Nachrichten, 1 verpasster Anruf" (Sprache der Anfrage)."""
+    parts = [DIGEST_TEXT[k](dg[k]) for k in ("messages", "calls", "other") if dg.get(k)]
+    out = parts[0] if parts else ""
+    for p in parts[1:]:
+        out = DIGEST_TEXT["join"](out, p)
+    return DIGEST_TEXT["body"](out)
+
+
 def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", has_keys=True, created=None, lang=None):
-    """-> {title, body, url, tag, kind, ts, v, lang, ...} oder None (Benachrichtigung weg / kein Zugriff mehr).
-    lang: Sprache des Abos (2.5, beim Anlegen von der App gemeldet) - sonst die des Kontos."""
+    """-> {title, body, url, tag, kind, ts, v, lang, ...} oder None (Benachrichtigung weg / kein Zugriff mehr / jetzt nicht
+    erreichbar). lang: Sprache des Abos (2.5, beim Anlegen von der App gemeldet) - sonst die des Kontos.
+    2029-3: Nachpruefung beim Zustellen - REACH erneut (inzwischen Nicht stoeren/Ruhezeit -> None; ohne Ton -> silent),
+    Anrufe nur mit chat_call.hold IS NULL."""
     names = with_names(prefs(c, uid), sub_kind, has_keys)
     lang = lang if lang in i18n.LANGS else account_lang(uid)
+    silent = None
+    if kind not in (UPDATE_KIND, "test", DIGEST_KIND) and kind not in RING_KINDS:
+        rc = REACH(c, uid, actor, kind)
+        if not rc.push:
+            return None
+        silent = True if not rc.sound else None
     tok = i18n.set_lang(lang)
     thread = None
     try:
+        if kind == DIGEST_KIND:
+            dg = _digest_counts((data or {}).get("digest"))
+            if not any(dg.values()):
+                return None
+            msg = {"title": title(), "body": digest_text(dg), "url": "/", "tag": "status-digest", "kind": kind,
+                   "ts": int(created or time.time())}
+            return _fields(msg, lang, None, sum(dg.values()), None, digest=dg)
         if kind == UPDATE_KIND:
             # 2.5: Glocken-Eintrag eines Chats geaendert (Nachricht geloescht) - aktueller Stand; n 0 = Eintrag weg (removed)
             of = (data or {}).get("of") if (data or {}).get("of") in ("chat.message", "chat.mention") else "chat.message"
@@ -574,6 +725,8 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             n, who = notify.chat_unread(c, uid, of, int(chat))
             if n and not CHAT_PUSH_OK(c, int(chat), uid, of):
                 return None               # inzwischen stumm/ausgeblendet: nichts mehr anzeigen (Entfernen geht immer)
+            if n and not REACH(c, uid, who, of).push:
+                return None               # 2029-3: Nicht stoeren/Ruhezeit - auch keine stille Anzeige (Entfernen geht immer)
             nm = notify.names(c, [who]).get(who) if who and names and n else None
             msg = {"title": title(), "body": _chat_body(of, nm) if n else "", "url": "/chats#c" + chat, "tag": "chat-" + chat,
                    "kind": of, "ts": int(created or time.time())}
@@ -594,13 +747,13 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             n = (notify.chat_unread(c, uid, kind, int(chat))[0] or 1) if chat.isdigit() else 1
             return _fields({"title": title(), "body": body, "url": url, "tag": tag, "kind": kind, "ts": int(created or time.time())},
                            lang, nm, n, notify.group_key(kind, None, {"chat": int(chat)}) if chat.isdigit() else None,
-                           chat=int(chat) if chat.isdigit() else None)
+                           chat=int(chat) if chat.isdigit() else None, silent=silent)
         elif kind == "call":
             # Klingelnder Anruf (saga.calls): nur solange er klingelt; Kennungen fuer die Apps (CallKit/ConnectionService)
-            cid = re.sub(r"[^0-9a-f]", "", str((data or {}).get("call") or ""))[:32]
-            r = c.execute("SELECT state, media, chat_id, created FROM chat_call WHERE id=? AND callee=?", (cid, uid)).fetchone()
-            if not r or r[0] != "ringing" or _ring_late(created):
-                return None
+            cid = _call_id(data)
+            r = c.execute("SELECT state, media, chat_id, created, hold FROM chat_call WHERE id=? AND callee=?", (cid, uid)).fetchone()
+            if not r or r[0] != "ringing" or r[4] is not None or _ring_late(created):
+                return None               # 2029-3: zurueckgehalten (hold) -> nie ein (VoIP-)Push
             nm = notify.names(c, [actor]).get(actor) if actor and names else None
             video = r[1] == "video"
             body = (t("Videoanruf von {name}", name=nm) if video else t("Anruf von {name}", name=nm)) if nm else \
@@ -611,12 +764,14 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
         elif kind == "call.group":
             # 2.4: Gruppenanruf (saga.calls) - nur solange die Einladung klingelt; aeltere Apps zeigen es als normale
             # Mitteilung (url oeffnet den Chat), 2.4-Apps lassen es klingeln (call, chat, media, group)
-            cid = re.sub(r"[^0-9a-f]", "", str((data or {}).get("call") or ""))[:32]
+            cid = _call_id(data)
             # 2.5: 1:1 ueber einen Knoten (callee gesetzt): Texte wie 1:1, dm: true (Apps zeigen den Namen der anrufenden Person)
             r = c.execute("SELECT k.state, k.media, k.chat_id, k.created, k.callee FROM chat_call k JOIN chat_call_invite i ON i.call_id=k.id "
-                          "WHERE k.id=? AND i.who=? AND i.state='ringing'", (cid, uid)).fetchone()
+                          "WHERE k.id=? AND i.who=? AND i.state='ringing' AND k.hold IS NULL", (cid, uid)).fetchone()
             if not r or r[0] == "ended" or (r[4] == uid and r[0] != "ringing") or _ring_late(created):
                 return None               # 1:1 ueber Knoten: schon angenommen (anderes eigenes Geraet) - nicht mehr klingeln
+            if r[4] != uid and not REACH(c, uid, actor, kind, call=cid).push:
+                return None               # 2029-3: Gruppen-Einladung, inzwischen Nicht stoeren - kein Push (still)
             nm = notify.names(c, [actor]).get(actor) if actor and names else None
             video, dm = r[1] == "video", r[4] == uid
             if dm:
@@ -649,7 +804,7 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
         msg = {"title": title(), "body": body, "url": url, "tag": tag, "kind": kind, "ts": int(created or time.time())}
         if thread:
             msg["thread"] = thread        # Design-Runde: APNs thread-id (Gruppe je Seite; tag ersetzt weiter je Unterhaltung)
-        return _fields(msg, lang, nm, n, it.get("group_key"),
+        return _fields(msg, lang, nm, n, it.get("group_key"), silent=silent,
                        chat=((it.get("chat") or {}).get("id") if kind == "call.missed" and isinstance(it.get("chat"), dict) else None))
     finally:
         i18n._cur.reset(tok)
@@ -724,7 +879,7 @@ def send(sub, msg):
             call = msg["kind"] in ("call", "call.group")              # Anruf: hoechste Prioritaet (ntfy 5), kurze Lebensdauer
             r = _client().post(base + "/", headers=h, content=json.dumps(
                 {"topic": topic, "title": msg["title"], "message": msg["body"], "click": BASE_URL + msg["url"],
-                 "tags": ["telephone_receiver" if call else "bell"], "priority": 5 if call else 3},
+                 "tags": ["telephone_receiver" if call else "bell"], "priority": 5 if call else 2 if msg.get("silent") else 3},
                 ensure_ascii=False).encode())
         else:
             return "gone", "unbekannt"
@@ -749,7 +904,7 @@ def _send_apns(endpoint, msg, voip=False):
     _, env, tok = (endpoint.split(":", 2) + ["", ""])[:3]
     base = (cfg.get("url") or APNS_HOSTS.get(env) or APNS_HOSTS["production"]).rstrip("/")
     ids = {k: msg[k] for k in ("call", "chat", "media", "caller", "group", "dm", "v", "lang", "actor", "n", "group_key",
-                               "update", "removed") if msg.get(k) is not None}
+                               "update", "removed", "silent", "digest") if msg.get(k) is not None}
     update = bool(msg.get("update")) and not voip
     if voip:
         body = dict({"aps": {}, "url": msg["url"], "kind": msg["kind"], "title": msg["title"], "body": msg["body"]}, **ids)
@@ -761,6 +916,8 @@ def _send_apns(endpoint, msg, voip=False):
     else:
         body = dict({"aps": {"alert": {"title": msg["title"], "body": msg["body"]}, "sound": "default", "thread-id": msg.get("thread") or msg["tag"]},
                      "url": msg["url"], "kind": msg["kind"]}, **ids)
+        if msg.get("silent"):
+            body["aps"].pop("sound")      # 2029-3: Beschaeftigt "ohne Ton" (user_status prefs.busy silent)
         if msg["kind"] in ("call", "call.group"):
             body["aps"]["interruption-level"] = "time-sensitive"
     ttl = int(msg.get("ttl") or TTL)
