@@ -345,6 +345,27 @@ def digest_part(A, Bk, ua, pgA, nn):
         ok("... gleicher Anruf ohne hold: Anruf-Mitteilung (die Weiche ist calls.ring_gate)", vo and vo["kind"] == "call" and vo["call"] == cid_ring)
         with connect() as c, c:
             c.execute("UPDATE chat_call SET state='ended', hold='knock' WHERE id=?", (cid_ring,))
+        # Pruefer: Gruppen-Einladung (kein hold je Person) waehrend Nicht stoeren - kein Auftrag, beim Zustellen nichts, nicht gezaehlt.
+        # Anrufer ps-adm: ps-b gilt hier als Wiederholungsanruf (cid_held oben, hold dnd) und kaeme durch (Matrix: 2. Anruf klingelt)
+        cid_grp = secrets.token_hex(16)
+        with connect() as c, c:
+            c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, kind) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)", (cid_grp, chat, "ps-adm", "", "dev-adm", "audio", "ringing", time.time(), "group"))
+            for w in ("ps-a", "ps-b"):
+                c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?, ?, 'ringing', ?)", (cid_grp, w, time.time()))
+        with connect() as c, c:
+            n_grp = push.enqueue(c, "ps-a", "call.group", actor="ps-adm", data={"chat": chat, "call": cid_grp})
+        with connect() as c:
+            vg = push.message(c, "ps-a", "call.group", actor="ps-adm", data={"call": cid_grp}, created=time.time())
+            vg_sub = push.message(c, "ps-a", "call.group", actor="ps-adm", data={"call": cid_grp}, sub_kind="apns-voip", created=time.time())
+            vg_adm = push.message(c, "ps-b", "call.group", actor="ps-adm", data={"call": cid_grp}, sub_kind="apns-voip", created=time.time())
+        hg = held("ps-a") or {}
+        ok(f"Gruppen-Einladung waehrend Nicht stoeren: kein Auftrag, nie (VoIP-)Mitteilung, nicht gezaehlt ({n_grp}, {vg}, {vg_sub}, {hg})",
+           n_grp == 0 and vg is None and vg_sub is None and (hg.get("m"), hg.get("c"), hg.get("o")) == (4, 1, 1))
+        ok(f"... gleiche Einladung fuer ein Konto ohne Nicht stoeren: Anruf-Mitteilung ({vg_adm and vg_adm.get('kind')})",
+           vg_adm is not None and vg_adm.get("kind") == "call.group" and vg_adm.get("call") == cid_grp)
+        with connect() as c, c:
+            c.execute("UPDATE chat_call SET state='ended' WHERE id=?", (cid_grp,))
         ok("waehrend Nicht stoeren nichts an die Geraete von A",
            none_got(lambda g: g[1] in UAS or (g[1] == "/" and b"ps-topic-a" in g[3]), m0, 1.5))
 
