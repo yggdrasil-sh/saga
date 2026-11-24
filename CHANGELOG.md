@@ -70,6 +70,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Aufgabe im Widget/in der App abgehakt** (`POST /api/app/tasks/{id}/done`): löst jetzt wie im Web das Ereignis
+  `task.completed` aus – Webhooks „task.completed“ kamen auf diesem Weg bisher nicht an (gefunden bei K-A2, Bugs-DB 2266).
 - **Release-Push zeigt nicht mehr „rc“** (Bugs-DB 2335): Beim Release-Commit schiebt nur noch `release.yml` die Images
   `:latest`, `:2`, `:testing` und `:rc` (alle mit der Release-Version); `testing.yml` erkennt den Release-Commit an
   derselben Regel und baut dann nur `:testing-<commit>`. Vorher gewann je nach Laufzeit das rc-Label.

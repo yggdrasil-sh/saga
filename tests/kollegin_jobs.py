@@ -259,6 +259,18 @@ def part_event():
     ok("danach erledigt, Index leer", jobs.state_of(jid)["state"] == "erledigt" and not KT.q("SELECT 1 FROM job_wait WHERE job_id=?", (jid,)),
        (jobs.state_of(jid), jobs.steps_of(jid)))
     ok(f"Warten + Ereignis: 0 Modellaufrufe (Fake-KI /_count {KT.fake('GET', '/_count')})", KT.fake("GET", "/_count")["n"] == 0)
+    # Widget/App (/api/app/tasks/{tid}/done) nutzt nur tasks._task_done - auch dort muss task.completed kommen
+    tid = json.loads(tasks.task_add(A, {"text": "Widget"}).body)["id"]
+    jid = mk(kind="test.wait", steps=[{"tool": "wait", "args": {"on": "task_done", "ref": f"task:{tid}", "until": T0 + 7 * 86400}}])
+    go(jid)
+    jobs.run_once()
+    src = open(os.path.join(os.path.dirname(tasks.__file__), "app_api.py"), encoding="utf-8").read()
+    with connect() as c, c:
+        r = c.execute("SELECT text, done, due, prio, repeat, rep_anchor, next_id FROM task WHERE id=?", (tid,)).fetchone()
+        tasks._task_done(c, A, tid, True, r[1], r[0], r[2], r[3], r[4], r[5], r[6], datetime.now().date())
+    jobs.run_once()
+    ok("Abhaken ueber den gemeinsamen Weg (Widget/App) weckt ebenfalls (task.completed in _task_done)",
+       "_task_done(c, uid, tid" in src and jobs.state_of(jid)["state"] == "erledigt")
     # note.saved
     jid = mk(kind="test.wait", steps=[{"tool": "wait", "args": {"on": "note_saved", "ref": "note:424242", "until": T0 + 86400}}])
     go(jid)

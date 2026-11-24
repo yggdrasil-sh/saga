@@ -179,6 +179,7 @@ def _task_done(c, uid, tid, want, done, text, due, prio, rep, anchor, next_id, t
             next_id = c.execute("INSERT INTO task (uid, text, due, prio, repeat, rep_anchor, created) VALUES (?,?,?,?,?,?,?)",
                                 (uid, text, nd, prio, rep, anchor, time.time())).lastrowid
         c.execute("UPDATE task SET done=1, done_at=? WHERE id=? AND uid=?", (time.time(), tid, uid))
+        bus.fire("task.completed", c, uid=uid, task_id=tid)      # Webhooks, wartende Auftraege (saga.jobs) - auch Widget (2.6)
     else:
         if next_id:  # Haken zurueckgenommen: noch offene, automatisch erzeugte Folgeaufgabe entfernen
             c.execute("DELETE FROM task WHERE id=? AND uid=? AND done=0", (next_id, uid))
@@ -235,8 +236,6 @@ def task_update(uid, tid, b):
             next_id, nd = _task_done(c, uid, tid, b["done"], done, text, due, prio, rep, anchor, next_id, _client_today(b))
             if nd:
                 out["next_due"] = nd
-            if b["done"] and not done:
-                bus.fire("task.completed", c, uid=uid, task_id=tid)      # 2.5: Webhooks (saga.webhooks)
 
         c.execute("UPDATE task SET text=?, due=?, prio=?, repeat=?, rep_anchor=?, next_id=? WHERE id=? AND uid=?",
                   (text, due, prio, rep, anchor, next_id, tid, uid))
