@@ -4304,14 +4304,17 @@
       hornProbe(cur.cand, window.SagaHorn.K.PROBE_MS).then(function (m) { if (live(R) && H.cur === cur) H.meas[cur.node] = m; });
     }
     // Andere Kandidaten (mit Kaskade, P9): alle 30 s frische Liste, messen, Hysterese entscheidet
-    if (cur && !H.switching && !H.rcT && now - (H.candT || cur.created) >= HORN_CANDS_EVERY) {
+    // Bugs-DB 2202: unter CPU-Grenze des Kodierers (hornStats setzt cur.cpuAt) keine Wechsel wegen "besser"
+    var cpuHold = cur && H.L.cpuHold && H.L.cpuHold(cur.cpuAt, Date.now());
+    if (cur && !H.switching && !H.rcT && !cpuHold && now - (H.candT || cur.created) >= HORN_CANDS_EVERY) {
       H.candT = now;
       hornCands(R, null, []).then(function (list) {
         var others = list.filter(function (c) { return c.node !== cur.node; });
         if (!others.length || !live(R)) return;
         return hornMeasure(R, list).then(function (m) {
           var fd = hornFramesDev(H), cc = cur.cand || {};
-          var curScore = H.L.score({ ok: true, rtts: cur.rtts.length ? cur.rtts : (m[cur.node] || {}).rtts, udp: cur.path === 'udp' ? 1 : null },
+          // Bugs-DB 2202: der aktuelle Knoten mit derselben frischen Probe wie die anderen (eigene WS-Pings nur als Rueckfall)
+          var curScore = H.L.score({ ok: true, rtts: H.L.curRtts ? H.L.curRtts(m[cur.node], cur.rtts) : (cur.rtts.length ? cur.rtts : (m[cur.node] || {}).rtts), udp: cur.path === 'udp' ? 1 : null },
                                    { here: true, udp: cur.path === 'udp', load: (list.filter(function (c) { return c.node === cur.node; })[0] || {}).load,
                                      tcp: cc.tcp, tls: cc.tls, ws: cc.ws, frames: cc.frames }, true, fd);
           // Bugs-DB 2201: Rueckweg vom Knoten ohne UDP (Tunnel/Rahmen-Weg) zu einem Knoten mit UDP-Antwort (horn.js back)
@@ -4359,6 +4362,7 @@
         st.forEach(function (s) {
           if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded' && typeof s.currentRoundTripTime === 'number') rtt = Math.max(rtt || 0, s.currentRoundTripTime * 1000);
           if (s.type === 'inbound-rtp') { lost += s.packetsLost || 0; recv += s.packetsReceived || 0; if (s.kind === 'video') fz += s.freezeCount || 0; }
+          if (s.type === 'outbound-rtp' && s.qualityLimitationReason === 'cpu') conn.cpuAt = Date.now();   // Bugs-DB 2202
         });
       });
       var now = Date.now(), p = conn.q5 || { lost: lost, recv: recv, fz: fz, t: now };

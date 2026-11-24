@@ -8,6 +8,21 @@ const H = require('../static/horn.js');
 const res = [];
 function ok(name, cond, info) { res.push(!!cond); console.log((cond ? 'OK  ' : 'FAIL') + ' ' + name + (cond || info === undefined ? '' : ' -> ' + JSON.stringify(info))); }
 
+// --- Bugs-DB 2202: Flattern unter CPU-Last ----------------------------------------------------------------------------
+{
+  const fresh = { ok: true, rtts: [20, 21, 20, 22, 20] }, own = [20, 90, 25, 140, 30, 95, 20, 130, 22, 100];
+  ok('2202: aktueller Knoten mit derselben frischen Probe wie die anderen', H.curRtts(fresh, own) === fresh.rtts);
+  ok('2202: ohne frische Probe die eigenen Pings (Rueckfall)', H.curRtts(null, own) === own && H.curRtts({ ok: false, rtts: [] }, own) === own);
+  ok('2202: ohne beides leer', Array.isArray(H.curRtts(null, null)) && H.curRtts(null, null).length === 0);
+  // Gleiches Mass: aufgeblaehte eigene Pings haetten einen Wechsel ausgeloest, die frische Probe nicht
+  const other = H.score({ ok: true, rtts: [24, 25, 24, 26, 24] }, { udp: false, here: false, load: 0 });
+  const curOwn = H.score({ ok: true, rtts: own }, { udp: true, here: true, load: 0 }), curFresh = H.score({ ok: true, rtts: H.curRtts(fresh, own) }, { udp: true, here: true, load: 0 });
+  ok('2202: mit eigenen WS-Pings saehe der andere Knoten besser aus', H.better(curOwn, other), [curOwn, other]);
+  ok('2202: mit frischer Probe nicht', !H.better(curFresh, other), [curFresh, other]);
+  ok('2202: CPU-Grenze haelt "besser"-Wechsel an (bis CPU_HOLD danach)', H.cpuHold(1000, 1000 + H.K.CPU_HOLD - 1) && !H.cpuHold(1000, 1000 + H.K.CPU_HOLD)
+     && !H.cpuHold(0, 5000) && !H.cpuHold(undefined, 5000));
+}
+
 // --- Punktzahl -----------------------------------------------------------------------------------------------------
 const m = (rtts, udp) => ({ ok: true, rtts, udp: udp === undefined ? null : udp });
 ok('Median und Jitter', H.median([5, 1, 3]) === 3 && H.median([1, 2, 3, 4]) === 2.5 && H.jitter([10, 20, 10]) === 10 && H.jitter([7]) === 0);

@@ -47,7 +47,10 @@
     UDP_BACK_EVERY: 300000, // hoechstens 1x je 5 min
     OVERLAP_MIN: 2000,      // make-before-break: altes Bein nach 2 s schliessen ...
     OVERLAP_MAX: 15000,     // ... solange dort noch andere sind, die noch nicht gewechselt haben, hoechstens 15 s
-    LASTN_DESKTOP: 9, LASTN_MOBILE: 4, MAX_TILES: 25
+    LASTN_DESKTOP: 9, LASTN_MOBILE: 4, MAX_TILES: 25,
+    // Bugs-DB 2202: meldet der Kodierer CPU-Grenze (qualityLimitationReason "cpu"), sind Messungen im Browser verzerrt (die
+    // Hauptschleife verzoegert die Pings) - so lange und CPU_HOLD danach kein Wechsel wegen "besser" (Abbruch/Leeren weiter sofort)
+    CPU_HOLD: 30000
   };
 
   function median(a) {
@@ -432,10 +435,19 @@
   // sie nicht - sonst setzte die fremde Probe die UDP-Frist auf 0 (UDP sofort aufgegeben) bzw. liesse auf sie warten.
   function fastProbe(f, node) { return f && f.node === node ? f.p : null; }
 
+  // Bugs-DB 2202 (Flattern unter CPU-Last): gleiches Mass fuer alle Kandidaten - der aktuelle Knoten zaehlt mit derselben
+  // frischen Probe wie die anderen (fresh = Messung dieser Runde), nur ohne sie mit den eigenen WebSocket-Pings (own).
+  // Vorher: eigene 10 WS-Pings (unter CPU-Last aufgeblaeht) gegen frische 5-Ping-Proben der anderen.
+  function curRtts(fresh, own) {
+    return fresh && fresh.ok && fresh.rtts && fresh.rtts.length ? fresh.rtts : own || [];
+  }
+  // Kein "besser"-Wechsel, solange die CPU-Grenze gilt bzw. bis CPU_HOLD nach der letzten Meldung (cpuAt in ms, now in ms)
+  function cpuHold(cpuAt, now) { return !!cpuAt && now - cpuAt < K.CPU_HOLD; }
+
   var api = { K: K, median: median, jitter: jitter, loadMs: loadMs, score: score, rank: rank, better: better, back: back, backBetter: backBetter, Switcher: Switcher,
               closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName, bend: bend, bendable: bendable, ways: ways, streamPath: streamPath,
               TxGov: TxGov, txPlan: txPlan, RC: RC, Reconnect: Reconnect, reconnectList: reconnectList, retryAfterMs: retryAfterMs,
-              fastProbe: fastProbe };
+              fastProbe: fastProbe, curRtts: curRtts, cpuHold: cpuHold };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SagaHorn = api;
 })(typeof self !== 'undefined' ? self : this);

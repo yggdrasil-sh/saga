@@ -17,6 +17,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Anrufe über Knoten flattern unter CPU-Last nicht mehr zwischen zwei Knoten** (Bugs-DB 2202, Start): Der Browser
+  misst den aktuellen Knoten mit derselben frischen Probe wie die anderen (vorher eigene, unter Last aufgeblähte Pings)
+  und wechselt nicht wegen „besser“, solange der Kodierer eine CPU-Grenze meldet (und 30 s danach). Abbruch und Leeren
+  wechseln weiter sofort. Die Zwei-Knoten-Messreihe mit CPU-Drossel folgt.
 - **Knoten erst nach der Anmeldung bereit** (Bugs-DB 2254): Ein Knoten nimmt neue Anrufe erst an, wenn Saga seine Wege
   (Tunnel, WebSocket, ICE-TCP) aus der Anmeldung kennt – vorher konnte ein Anruf in den ersten Millisekunden nach dem
   Verbinden falsche Kandidaten bekommen. Laufende Anrufe sind davon nicht betroffen. Test `tests/horn_bereit.py`.
