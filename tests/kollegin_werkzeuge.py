@@ -230,6 +230,11 @@ def part_rt27():
     ok("update_row mit veraltetem rev -> 409", status(tools.call, t, "update_row", {"id": row, "rev": rev - 1, "properties": {"Erledigt": True}})[0] == 409)
     st, out = status(tools.call, t, "update_row", {"id": row, "rev": rev, "properties": {"Erledigt": True}})
     ok("update_row mit aktuellem rev: erlaubt", st == 200, out)
+    rev = api_v1.page_read(FULL_A, row)[1]["rev"]
+    api_v1.page_update(FULL_A, row, {"title": "Grillkohle (2 Saecke)"})          # Person aendert dazwischen den Titel
+    ok("update_row: Person hat dazwischen den Titel geaendert -> 409",
+       status(tools.call, t, "update_row", {"id": row, "rev": rev, "properties": {"Erledigt": False}})[0] == 409)
+    offen("update_row: dazwischen nur Eigenschaften geaendert erhoeht rev nicht - erkennt erst der Vorher-Stand (K-B)")
     ok("MCP update_row (API-Token) weiter ohne rev", status(tools.call, FULL_A, "update_row", {"id": row, "properties": {"Erledigt": False}})[0] == 200)
 
     # Akteur: Schreiben ueber den JobTok traegt svc:kollegin (K-A1-Spalten), MCP nicht

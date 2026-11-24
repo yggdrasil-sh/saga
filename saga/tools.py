@@ -31,6 +31,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Callable
 
+from db import connect as _db
 from saga import actor, ai_frame, api_calendar, api_struct, api_v1, apitok, blockedit, page_widgets, siegel
 from saga.api_v1 import Fail
 from saga.core import BASE_URL, t
@@ -609,8 +610,16 @@ def _dispatch(tok, name, a):
         return t("Termin gelöscht.") if a.get("scope") != "series" else t("Serie gelöscht.")
     if name == "update_row":
         b = {k: a[k] for k in ("title", "properties") if a.get(k) is not None}
-        if isinstance(tok, apitok.JobTok):           # Kollegin: nur auf den gelesenen Stand (dazwischen geaendert -> 409)
-            b["rev"] = _rev(a)
+        if isinstance(tok, apitok.JobTok):
+            # Kollegin: nur auf den gelesenen Stand (dazwischen geaendert -> 409). _note_update prueft rev nur bei
+            # Titel/Inhalt - Eigenschaften allein erhoehen rev nicht; daher hier vorab (Rest: Vorher-Stand mit K-B)
+            rid, want = _int(a, "id"), _rev(a)
+            with _db() as c:
+                api_v1._guard(c, tok, rid, "edit")
+                cur = c.execute("SELECT rev FROM note WHERE id=? AND deleted_at IS NULL", (rid,)).fetchone()
+            if not cur or cur[0] != want:
+                raise Fail(409, api_v1.conflict_msg(tok, rid))
+            b["rev"] = want
         _, d = api_v1.row_update(tok, _int(a, "id"), b)
         out = {"ok": True}
         if d.get("calc"):                        # Formel-/Rollup-Werte koennen Text anderer Eintraege enthalten
@@ -769,9 +778,8 @@ def check_plan(uid, job_id, steps, reads=()):
     if tok is None:
         bad(None, 401, "invalid_token", t("API-Token fehlt oder ist ungültig."))
         return None, probs
-    from db import connect
     from saga.sharing import Access
-    with connect() as c:
+    with _db() as c:
         acc = Access(c, uid)
         for n, x, refs in parsed:
             for r in refs:
