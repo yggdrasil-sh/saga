@@ -40,6 +40,7 @@ jobs:
           echo "version=${FULL%%+*}" >> "$GITHUB_OUTPUT"
           echo "full=$FULL" >> "$GITHUB_OUTPUT"
           echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          case "${FULL%%.*}" in ''|*[!0-9]*) echo "::error::Hauptversion aus '$FULL' unlesbar (VERSION pruefen)"; exit 1;; esac
           echo "major=${FULL%%.*}" >> "$GITHUB_OUTPUT"
 
       # Gjallarhorn vorab pruefen: Fehler erscheinen als Annotationen (lesbar ohne Log-Zugriff)
@@ -115,7 +116,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=horn-testing
 
       # Knoten auf testing aktualisieren sich selbst (update.go releaseURL): signierte Binaerdateien dieser Version im
-      # rollenden Vorab-Release "horn-testing" - erst die neuen hochladen, dann die alten entfernen (keine Luecke).
+      # rollenden Vorab-Release "horn-testing" - erst die neuen hochladen, dann aufraeumen (keine Luecke). Seit dem
+      # einen Kanal (2328) fahren auch Standard-Server (:2) Testversionen und sind oft ein paar Pushes zurueck: deshalb
+      # bleiben die letzten 20 Versionen liegen, sonst bekaemen ihre Knoten beim Selbst-Update 404.
       - name: Gjallarhorn-Binaerdateien bauen und signieren (Selbst-Update)
         id: horn
         env:
@@ -142,9 +145,17 @@ jobs:
         run: |
           R=horn-testing
           gh release view "$R" >/dev/null 2>&1 || gh release create "$R" --prerelease --target "$GITHUB_SHA" --title "Gjallarhorn testing" \
-            --notes "Signierte Knoten-Binaerdateien der Testversionen (Branch main) fuer das Selbst-Update gekoppelter Knoten. Wird bei jedem Push auf main ersetzt - nicht fuer den Betrieb."
+            --notes "Signierte Knoten-Binaerdateien der Testversionen (Branch main) fuer das Selbst-Update gekoppelter Knoten. Haelt die Dateien der letzten 20 Testversionen von main."
           gh release upload "$R" horn-up/* --clobber
-          gh release view "$R" --json assets -q '.assets[].name' | grep -v -- "-$V-linux-" | while read -r n; do gh release delete-asset "$R" "$n" -y; done
+          # aufraeumen: alles ausser den 20 neuesten Versionen (und der eigenen); Unbekanntes faellt wie bisher weg
+          gh release view "$R" --json assets -q '.assets[].name' > horn-assets.txt
+          ver() { sed -n 's/^gjallarhorn-\(.*\)-linux-[a-z0-9]*\(\.sig\)\{0,1\}$/\1/p'; }
+          { ver < horn-assets.txt | sort -uV | tail -n 20; echo "$V"; } > horn-keep.txt
+          while read -r n; do
+            v=$(printf '%s\n' "$n" | ver)
+            if [ -n "$v" ] && grep -qxF -- "$v" horn-keep.txt; then continue; fi
+            gh release delete-asset "$R" "$n" -y
+          done < horn-assets.txt
           echo "Knoten-Update: \`$R\` enthaelt jetzt $V" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Zusammenfassung
