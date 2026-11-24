@@ -671,6 +671,7 @@
  "Beschriftung": "Подпись",
  "Besetzt": "Занято",
  "Besetzt – {name} telefoniert gerade.": "Занято – {name} сейчас разговаривает.",
+ "{name} telefoniert noch – du hast schon angeklopft.": "{name} всё ещё разговаривает – вы уже звонили на второй линии.",
  "Bestehende Chats spätestens umstellen nach (Tagen)": "Перевести существующие чаты не позднее чем через (дней)",
  "Bestätige nur, wenn auf dem neuen Gerät genau dieser Code steht:": "Подтверждай, только если на новом устройстве показан именно этот код:",
  "Bestätigen": "Подтвердить",

@@ -671,6 +671,7 @@
  "Beschriftung": "ป้ายกำกับ",
  "Besetzt": "สายไม่ว่าง",
  "Besetzt – {name} telefoniert gerade.": "สายไม่ว่าง – {name} กำลังคุยสายอื่นอยู่",
+ "{name} telefoniert noch – du hast schon angeklopft.": "{name} ยังคุยสายอยู่ – คุณเคาะสายรอไปแล้ว",
  "Bestehende Chats spätestens umstellen nach (Tagen)": "แปลงแชทที่มีอยู่ภายใน (วัน)",
  "Bestätige nur, wenn auf dem neuen Gerät genau dieser Code steht:": "ยืนยันเฉพาะเมื่ออุปกรณ์ใหม่แสดงรหัสนี้ตรงกันทุกตัว:",
  "Bestätigen": "ยืนยัน",

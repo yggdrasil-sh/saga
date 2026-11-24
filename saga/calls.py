@@ -70,7 +70,17 @@ off|caps|node|peer|reach|none|web|fed} - es ist nichts angelegt, der Client ruft
 schicken kein via und rufen weiter direkt an; ankommende Knoten-Anrufe sehen 2.4-Geraete als Gruppenanruf (Beitritt:
 "braucht Saga 2.5"). Foederierte Direkt-Chats (Faehigkeit horn_dm bei beiden Servern): Auftrag dmhorn - der Server der
 anrufenden Person fuehrt den Anruf, der andere legt eine Kopie an und klingelt (saga/fed_calls.py dm_horn_start,
-op_dmhorn); Ablehnen dort -> end an den fuehrenden Server (dm_ended)."""
+op_dmhorn); Ablehnen dort -> end an den fuehrenden Server (dm_ended).
+
+2.6 (Bugs-DB 2029-2, Anruf-Weiche, Vertrag docs/APP-API.md "Eigener Status" -> "Anrufe"): ob und wie es bei der
+angerufenen Person klingelt, entscheidet allein ring_gate() ueber user_status.reachability() - lokal und in fed_calls,
+vor call.ring/call.invite/Push. Nicht stoeren: Anruf angelegt (chat_call.hold 'dnd'), kein Klingeln, kein Push, nur
+call.quiet an die eigenen Geraete; die anrufende Seite hoert das Freizeichen bis ring_s (auch ueber Servergrenzen ohne
+neues Protokoll). Im Anruf: Anklopfen (hold 'knock', call.ring/call.invite mit waiting:true, kein Push), wenn alle aktiven
+Geraete "waiting1" melden, sonst besetzt wie bisher; je Anrufer ein Klopfen je Gespraech, weitere Versuche sofort besetzt
+(hold 'again', again: true), Glocke ohne Push und nach dem Gespraech ein Push je Anrufer (knock_summary). Gruppen: stille
+Einladung (quiet) bei Nicht stoeren. "Im Anruf" fuer Dritte: user_status.call_changed (changed()); als "im Anruf" zaehlt
+dort und in reachability nur ein angenommener Anruf (_talking) - "besetzt" zaehlt wie bisher auch klingelnde (_busy_other)."""
 import asyncio
 import base64
 import hashlib
@@ -79,6 +89,8 @@ import json
 import re
 import secrets
 import time
+from collections import namedtuple
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -168,12 +180,15 @@ def _dmf(call):
 FEATURE_HO = "handover2"                # 2.5 Anruf-Uebergabe: gen, /leave by/gen (stale), handover_busy, promote, Wiedereintritt
 FEATURE_ADD = "call_add"                # 2.5 (L8): POST /api/calls/{id}/add, Anruf-Objekt can_add/add_page (saga/call_add.py)
 FEATURE_MOVE = "call_move"              # 2.5 (L9): /add im 1:1 -> neuer freier Gruppen-Chat, Anruf zieht um (saga/call_move.py)
+FEATURE_WAIT = "waiting1"               # 2.6 (Bugs-DB 2029-2): Anklopfen (ring_gate) - Server und Geraete (caps) gleich benannt
 
 
 def features():
     # horn_direct1 (Horn-Fix): 429 mit Retry-After auf /horn, POST /direct (Rueckfall auf direkt), call.topo
     # frames (2.5 B2, Vertrag S12): Browser duerfen den Rahmen-Weg ueber die Saga-Adresse nutzen (caps "frames")
-    return list(FEATURES) + [FEATURE_HO, FEATURE_ADD, FEATURE_MOVE] + (["horn", "horn_direct1", "frames"] if horn_on() else [])
+    # waiting1 (2.6, Bugs-DB 2029-2): Anklopfen - call.ring/call.invite mit waiting:true, sobald alle aktiven Geraete der
+    # angerufenen Person "waiting1" melden (PUT /api/calls/caps), sonst besetzt wie bisher
+    return list(FEATURES) + [FEATURE_HO, FEATURE_ADD, FEATURE_MOVE, FEATURE_WAIT] + (["horn", "horn_direct1", "frames"] if horn_on() else [])
 
 
 def ring_s():
@@ -437,7 +452,7 @@ def _me(request):
 
 
 C_COLS = ("id, chat_id, caller, callee, caller_device, callee_device, media, state, reason, created, answered, ended, seen_a, seen_b, nsig, "
-          "peer_id, caps_a, caps_b, kind, v, lead, topo")
+          "peer_id, caps_a, caps_b, kind, v, lead, topo, hold")
 
 
 def _row(r):
@@ -794,6 +809,11 @@ def _dict(c, call, uid, nm=None, legs=None):
          "now": round(now, 3)}                           # 2.5: Server-Uhr (Dauer ab answered, gleich fuer alle)
     # 2.5 Uebergabe (L4, E6): "Hierher uebernehmen" geht auch bei vollem Anruf (das ersetzte Geraet zaehlt nicht)
     d["takeover"] = bool(d["mine"]) and (can or why == "full")
+    hold = call.get("hold")                             # 2.6 (Bugs-DB 2029-2): Anruf-Weiche
+    if hold == "knock" and call["state"] == "ringing":
+        d["waiting"] = True                              # Anklopfen (die angerufene Person telefoniert gerade)
+    if hold == "dnd" and uid != call["caller"]:
+        d["quiet"] = True                                # zurueckgehalten (Nicht stoeren): klingelt nicht
     if group and FED is not None and FED.HORN_MESH.get(call["id"]):
         d["horn_mesh"] = FED.HORN_MESH[call["id"]]      # 2.5 P10: warum ohne Knoten (anderer Server kann keinen nutzen)
     if group:
@@ -807,6 +827,11 @@ def _dict(c, call, uid, nm=None, legs=None):
         inv = c.execute("SELECT state, created FROM chat_call_invite WHERE call_id=? AND who=?", (call["id"], uid)).fetchone()
         # 2.5 (L7): gezielt (erneut) geklingelt (/invite, created nach dem Start) klingelt auch in grossen Chats laut
         d["members"], d["silent"] = n, n > RING_SILENT and not (inv and inv[0] == "ringing" and inv[1] != call["created"])
+        if not dmh and inv and inv[0] == "ringing" and call["state"] != "ended" and uid != call["caller"] \
+                and ring_gate(c, uid, call["caller"], call["id"], "group").route == "silent":
+            d["silent"] = d["quiet"] = True              # 2.6: Nicht stoeren - Einladung still (wie call.invite quiet)
+        if dmh and d.get("quiet"):
+            d["silent"] = True
         # 2.5 (L7): "ringing" nur, solange die Klingeldauer ab dem (letzten) Klingeln laeuft, danach "missed" - aeltere Apps
         # klingelten sonst bei jeder Abfrage erneut; invite_since: Beginn des Klingelns (erneutes Klingeln spaeter im Anruf)
         d["invite"] = inv_state(inv[0], inv[1], now)[0] if inv else None
@@ -925,9 +950,11 @@ def _emit(c, uids, typ, data):
 
 def _busy(c, uid):
     """Laeuft fuer uid gerade ein Anruf (klingelt oder Gespraech)? 2.4: auch ein Gruppenanruf, in dem uid mit einem Geraet
-    ausser einem Begleitgeraet ist (Gruppenanrufe sind gegenueber eigenen Begleitgeraeten nicht exklusiv)."""
-    return bool(c.execute("SELECT 1 FROM chat_call WHERE state IN ('ringing','active') AND (kind='dm' OR callee<>'') AND (caller=? OR callee=?) "
-                          "LIMIT 1", (uid, uid)).fetchone()) or _in_group(c, uid)
+    ausser einem Begleitgeraet ist (Gruppenanrufe sind gegenueber eigenen Begleitgeraeten nicht exklusiv). 2.6 (Bugs-DB
+    2029-2): ein eingehender, wegen Nicht stoeren zurueckgehaltener Anruf (hold 'dnd') zaehlt fuer die angerufene Person
+    nicht, solange er klingelt - bei ihr klingelt nichts; angenommen (active) zaehlt er wie jeder andere (Pruefer)."""
+    return bool(c.execute("SELECT 1 FROM chat_call WHERE state IN ('ringing','active') AND (kind='dm' OR callee<>'') "
+                          "AND (caller=? OR (callee=? AND (hold IS DISTINCT FROM 'dnd' OR state='active'))) LIMIT 1", (uid, uid)).fetchone()) or _in_group(c, uid)
 
 
 def _in_group(c, uid, cid=""):
@@ -973,6 +1000,7 @@ def _finish(c, call, reason, now, by=None, remote=False):
         return False
     was = call["state"]
     group = call["kind"] == "group"
+    inside = {call["caller"], call["callee"]} | {x["who"] for x in _legs(c, call["id"])}     # 2.6: "im Anruf" fuer diese
     if was == "ringing":
         status = "missed" if group and not _dmh(call) else {"declined": "declined", "busy": "busy"}.get(reason, "missed")
     else:
@@ -984,10 +1012,10 @@ def _finish(c, call, reason, now, by=None, remote=False):
             c.execute("UPDATE chat_call_invite SET state='declined' WHERE call_id=? AND state='ringing'", (call["id"],))
         for (u,) in c.execute("SELECT who FROM chat_call_invite WHERE call_id=? AND state='ringing'", (call["id"],)).fetchall():
             if not sharing.is_remote(u):
-                notify.create(c, u, "call.missed", call["caller"], data={"chat": call["chat_id"], "call": call["id"]})
+                missed_bell(c, u, call)                # 2.6: Anklopfen (1:1 ueber Knoten) ohne Push, Sammel-Push danach
         c.execute("UPDATE chat_call_invite SET state='missed' WHERE call_id=? AND state='ringing'", (call["id"],))
     elif status in ("missed", "busy") and not call["callee"].startswith("@"):
-        notify.create(c, call["callee"], "call.missed", call["caller"], data={"chat": call["chat_id"], "call": call["id"]})
+        missed_bell(c, call["callee"], call)
     c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason=COALESCE(reason, ?) WHERE call_id=? AND state='active'",
               (now, reason, call["id"]))
     if is_horn(call):
@@ -1007,6 +1035,7 @@ def _finish(c, call, reason, now, by=None, remote=False):
     else:
         _emit(c, _audience(c, call), "call.state", data)
     _OWN.discard(call["id"])
+    changed(c, inside, done=True)                      # 2.6: status.call-Haken, Sammel-Push zum Anklopfen
     print(f"call: {call['id'][:8]} beendet ({was} -> {reason}/{status})", flush=True)
     return True
 
@@ -1134,6 +1163,9 @@ def api_active(request: Request):
             "ORDER BY created DESC LIMIT 8", (uid, uid, uid)).fetchall()]
         now = time.time()
         rows = [r for r in rows if not (r["state"] == "ringing" and r["kind"] == "dm" and r["created"] + ring_s() < now)]
+        # 2.6 (Bugs-DB 2029-2): wegen Nicht stoeren zurueckgehaltene Anrufe fehlen hier fuer die angerufene Person - aeltere
+        # Apps klingelten sonst beim Laden (neuere erfahren davon ueber call.quiet bzw. GET /api/calls/{id}, quiet: true)
+        rows = [r for r in rows if not (r.get("hold") == "dnd" and r["callee"] == uid and r["state"] == "ringing")]
         nm = names(c, [r["caller"] for r in rows] + [r["callee"] for r in rows])
         return chat._no_store({"calls": [_dict(c, r, uid, nm) for r in rows]})
 
@@ -1243,10 +1275,11 @@ async def api_call(request: Request):
         note_caps(c, uid, dev, caps)
         _OWN.add(cid)
         call = _load(c, cid)
-        if _busy_other(c, peer, cid):
+        g = ring_gate(c, peer, uid, cid, "dm", now)       # 2.6 (Bugs-DB 2029-2): klingeln, still, anklopfen oder besetzt
+        set_hold(c, call, g)
+        if g.route == "busy":
             _finish(c, call, "busy", now)
-            return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.",
-                                                                         name=names(c, [peer]).get(peer) or _pp(c, call, peer, uid))}, 409)
+            return busy_body(c, call, peer, uid, g)
         c.executemany("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?)",
                       [(cid, dev, k, v, now) for k, v in sorted(sig.items())])
         c.execute("UPDATE chat_call SET nsig=? WHERE id=?", (len(sig), cid))
@@ -1254,12 +1287,18 @@ async def api_call(request: Request):
         frm = {"username": uid, "name": nm.get(uid) or uid, "avatar": nm.avatar(uid)}
         if _v3(c, call):                               # 2.5: Stufe 3 - anrufende Person als Handle (saga-call/v2)
             frm.update(username=FED.FC.my_handle(c, uid), handle=FED.FC.my_handle(c, uid), host=FED.F.SELF_HOST)
-        _emit(c, [peer], "call.ring", {"call_id": cid, "chat_id": ch["id"], "media": media, "from_device": dev, "ring_s": ring_s(),
-                                       "from": frm, **({"v": 2} if _v3(c, call) else {})})
-        # Handy/Desktop: Art "call" (hohe Prioritaet, kurze Lebensdauer) - nie Inhalt; ohne Namen, wenn so eingestellt
-        if not chat.CP.muted_now(c, ch["id"], peer):     # 2.5: Stummschalten mit Dauer (saga.chat_prefs)
+        if g.route == "silent":                        # Nicht stoeren: angelegt, nur call.quiet an die eigenen Geraete
+            quiet(c, call, peer, g, frm)
+        else:
+            _emit(c, [peer], "call.ring", {"call_id": cid, "chat_id": ch["id"], "media": media, "from_device": dev, "ring_s": ring_s(),
+                                           "from": frm, **({"v": 2} if _v3(c, call) else {}), **({"waiting": True} if g.route == "knock" else {})})
+        # Handy/Desktop: Art "call" (hohe Prioritaet, kurze Lebensdauer) - nie Inhalt; ohne Namen, wenn so eingestellt.
+        # 2.6: nur, wenn es wirklich klingelt (nicht still, nicht beim Anklopfen)
+        if g.route == "ring" and not chat.CP.muted_now(c, ch["id"], peer):     # 2.5: Stummschalten mit Dauer (saga.chat_prefs)
             bus.fire("push.send", c, uid=peer, kind="call", actor=uid, data={"chat": ch["id"], "call": cid})
-        print(f"call: {cid[:8]} klingelt ({media}, Chat {ch['id']}, {len(sig)} Geraet(e))", flush=True)
+        changed(c, [uid])
+        print(f"call: {cid[:8]} {'klingelt' if g.route == 'ring' else 'klopft an' if g.route == 'knock' else 'still'} "
+              f"({media}, Chat {ch['id']}, {len(sig)} Geraet(e))", flush=True)
         return chat._no_store({"ok": True, "call": _dict(c, call, uid)})
 
 
@@ -1300,12 +1339,12 @@ def _dm_horn_start(c, uid, ch, peer, cid, media, dev, caps, now, dev_class="desk
     if not rate_call(uid, peer):
         return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
     note_caps(c, uid, dev, caps)
-    busy = _busy_other(c, peer, cid)
-    call = group_create(c, ch, cid, media, uid, dev, caps, now, name=_dev_name(c, dev), dm_peer=peer, ring=not busy, node=node)
-    if busy:
+    g = ring_gate(c, peer, uid, cid, "dmh", now)       # 2.6 (Bugs-DB 2029-2)
+    call = group_create(c, ch, cid, media, uid, dev, caps, now, name=_dev_name(c, dev), dm_peer=peer, ring=g.route != "busy", node=node,
+                        gate=g)
+    if g.route == "busy":
         _finish(c, call, "busy", now)
-        return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.",
-                                                                     name=names(c, [peer]).get(peer) or _pp(c, call, peer, uid))}, 409)
+        return busy_body(c, call, peer, uid, g)
     d = _dict(c, call, uid)
     d["horn"] = horn_block(c, call, dev, "member", dev_class)
     return chat._no_store({"ok": True, "call": d})
@@ -1343,12 +1382,15 @@ def _group_start(c, uid, ch, m, cid, media, dev, caps, now, dev_class="desktop")
     return chat._no_store({"ok": True, "call": d})
 
 
-def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name="", lead=None, dm_peer=None, ring=True, node=None):
+def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name="", lead=None, dm_peer=None, ring=True, node=None,
+                 gate=None):
     """Gruppenanruf anlegen (dieser Server fuehrt ihn, bzw. lead = fuehrender Server bei einer Kopie): Endpunkt der
     anrufenden Person, Einladungen (wer kein Geraet mit "multi" hat: 'old', "braucht Saga 2.4"), Klingeln hier, Liste an
     alle. -> Anruf. 2.5: ueber einen Knoten (topo 'horn'), wenn horn_wanted - der Endpunkt der anrufenden Person kommt auf
     den besten bereiten Knoten (bzw. node: im 1:1 der erste, den alle Geraete des Gegenuebers erreichen, dm_peer_check),
-    Einladungen nur an Personen mit einem Geraet, das "horn" bzw. "horn_ring" kann (sonst 'old')."""
+    Einladungen nur an Personen mit einem Geraet, das "horn" bzw. "horn_ring" kann (sonst 'old').
+    2.6 (Bugs-DB 2029-2): gate = Entscheidung der Weiche fuer das Gegenueber eines 1:1 ueber Knoten (ring_gate "dmh", hold
+    in chat_call.hold); in Gruppen entscheidet ring_group je Mitglied."""
     why = []
     hn = lead is None and (dm_peer is not None or horn_wanted(c, ch, media, caps, why, starter))   # 2.5: 1:1 ueber Knoten (geprueft)
     if not hn or peer_id is not None:
@@ -1356,8 +1398,9 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
     elif node is None:
         node = horn.ready_nodes(c, ws=horn.caps_reach(caps))[0]
     c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
-              "lead, peer_id) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,?,?,?) ON CONFLICT (id) DO NOTHING",
-              (cid, ch["id"], starter, dm_peer or "", dev, media, now, now, now, caps, "horn" if hn else "mesh", lead, lead))
+              "lead, peer_id, hold) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,?,?,?,?) ON CONFLICT (id) DO NOTHING",
+              (cid, ch["id"], starter, dm_peer or "", dev, media, now, now, now, caps, "horn" if hn else "mesh", lead, lead,
+               gate.hold if gate is not None and dm_peer else None))
     _leg_put(c, cid, dev, starter, "member", peer_id, caps, name=name, now=now)
     if why and FED is not None:
         if len(FED.HORN_MESH) > 5000:
@@ -1383,34 +1426,42 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
                 rung.append(u)
         c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,?,?) ON CONFLICT (call_id, who) DO NOTHING",
                   (cid, u, st, now))
-    ring_group(c, call, rung)
+    ring_group(c, call, rung, gate=gate if dm_peer else None)
     emit_roster(c, call)
+    changed(c, [starter])
     print(f"call: {cid[:8]} {'1:1 ueber Knoten' if dm_peer else 'Gruppenanruf'} ({media}, Chat {ch['id']}, {len(rung)} klingeln hier{', Knoten ' + node['name'] if node else ''}"
           f"{', ueber Knoten' if hn and not node else ''})", flush=True)
     return call
 
 
-def ring_group(c, call, uids, loud=False):
+def ring_group(c, call, uids, loud=False, gate=None):
     """Gruppenanruf klingeln lassen (call.invite + Mitteilung Art "call.group"); in grossen Chats nur still (kein Push).
-    2.5 (L7) loud: gezieltes (erneutes) Klingeln per /invite klingelt auch in grossen Chats (silent false, Push)."""
+    2.5 (L7) loud: gezieltes (erneutes) Klingeln per /invite klingelt auch in grossen Chats (silent false, Push).
+    2.6 (Bugs-DB 2029-2): je Person die Weiche (ring_gate "group": Nicht stoeren -> stille Einladung mit quiet, kein Push);
+    gate: schon entschiedene Weiche des Gegenuebers eines 1:1 ueber Knoten ("dmh": still -> nur call.quiet, Anklopfen ->
+    call.invite mit waiting:true, beides ohne Push)."""
     if not uids:
         return
     n = len(chat.members(c, call["chat_id"]))
     silent = n > RING_SILENT and not loud
     st = call["caller"]
-    nm = names(c, [st])
-    frm = {"username": st, "name": nm.get(st) or st, "avatar": nm.avatar(st)}
-    if sharing.is_remote(st) and FED is not None:
-        frm.update(handle=FED.FC.handle_of(st), name=FED.FC.label_of(c, st)["name"])
-    elif _v3(c, call):                                 # 2.5: Format v2 - als Handle
-        frm.update(username=FED.FC.my_handle(c, st), handle=FED.FC.my_handle(c, st), host=FED.F.SELF_HOST)
+    frm = _frm(c, call)
     ch = chat._load(c, call["chat_id"])
     frm["chat"] = chat._name(c, uids[0], ch, chat.members(c, ch["id"]), names(c, chat.members(c, ch["id"]))) if ch else None
     for u in uids:
+        g = gate if gate is not None else ring_gate(c, u, st, call["id"], "group")     # jetzt (auch spaeteres Klingeln)
+        if g.route == "busy":
+            continue
+        if g.route == "silent" and _dmh(call):
+            if u == call.get("callee"):
+                set_hold(c, call, g)                   # auch beim spaeten Klingeln (ring_late): Wiederholungsanruf zaehlt
+            quiet(c, call, u, g, {k: v for k, v in frm.items() if k != "chat"})
+            continue
         _emit(c, [u], "call.invite", {"call_id": call["id"], "chat_id": call["chat_id"], "kind": "group", "media": call["media"],
-                                      "from": frm, "from_device": call["caller_device"], "ring_s": ring_s(), "silent": silent, "members": n,
-                                      **_dmf(call)})
-        if silent:
+                                      "from": frm, "from_device": call["caller_device"], "ring_s": ring_s(),
+                                      "silent": silent or g.route == "silent", "members": n, **_dmf(call),
+                                      **({"quiet": True} if g.route == "silent" else {}), **({"waiting": True} if g.route == "knock" else {})})
+        if silent or g.route != "ring":
             continue
         if not chat.CP.muted_now(c, call["chat_id"], u):
             # actor auch bei fremden Anrufenden (wie 1:1 in fed_calls): die Mitteilung nennt den Namen (caller fuer CallKit)
@@ -1418,9 +1469,185 @@ def ring_group(c, call, uids, loud=False):
 
 
 def _busy_other(c, uid, cid):
-    return bool(c.execute("SELECT 1 FROM chat_call WHERE state IN ('ringing','active') AND (kind='dm' OR callee<>'') AND (caller=? OR callee=?) "
-                          "AND id<>? LIMIT 1",
+    """Ist uid gerade besetzt (klingelt oder Gespraech, ohne den Anruf cid)? Wie _busy. "Im Anruf" (nur angenommen): _talking."""
+    return bool(c.execute("SELECT 1 FROM chat_call WHERE state IN ('ringing','active') AND (kind='dm' OR callee<>'') "
+                          "AND (caller=? OR (callee=? AND (hold IS DISTINCT FROM 'dnd' OR state='active'))) AND id<>? LIMIT 1",
                           (uid, uid, cid)).fetchone()) or _in_group(c, uid, cid)
+
+
+# --- 2.6 (Bugs-DB 2029-2): Anruf-Weiche -----------------------------------------------------------------------------
+Gate = namedtuple("Gate", "route hold why")
+"""route: ring (wie bisher: klingeln + Push) | silent (Nicht stoeren: angelegt, kein Klingeln, kein Push, call.quiet an die
+eigenen Geraete) | knock (Anklopfen: call.ring/call.invite mit waiting:true, kein Push) | busy (sofort besetzt).
+hold: Wert fuer chat_call.hold (None | dnd | knock | again). why: Grund aus reachability() bzw. caps | again | remote."""
+GATE_KINDS = ("dm", "dmh", "group")
+
+
+def ring_gate(c, callee, caller, cid, kind, now=None):
+    """EINZIGE Entscheidungsstelle, ob und wie ein Anruf bei callee klingelt (1:1 direkt "dm", 1:1 ueber Knoten "dmh",
+    Einladung in einen Gruppenanruf "group"; lokal und ueber Servergrenzen). Die Entscheidung trifft
+    user_status.reachability(c, callee, caller, "call", now, call=cid) - der Anruf selbst zaehlt weder als "im Anruf" noch
+    als frueherer Anruf. Uhr: now = chat_call.created des Anrufs (time.time) - dieselbe Uhr wie die frueheren Anrufe, die
+    reachability fuer den Wiederholungsanruf (chat_call.hold='dnd') liest.
+    - Nicht stoeren / Ruhezeit (route hold): silent, hold 'dnd' (Gruppe: stille Einladung).
+    - Gruppe sonst: klingeln wie bisher (Gruppenanrufe sind nicht exklusiv).
+    - 1:1 im Anruf (route knock, bzw. Ausnahme/Wiederholung waehrend Nicht stoeren, die gerade telefoniert): Anklopfen nur,
+      wenn alle aktiven Geraete "waiting1" melden, sonst besetzt wie bisher; "Nicht nerven": je Anrufer ein Klopfen je
+      Gespraech, jeder weitere Versuch sofort besetzt (hold 'again').
+    - route busy (Einstellung in_call: busy): besetzt wie bisher."""
+    if kind not in GATE_KINDS:
+        raise ValueError(f"calls: unbekannte Art {kind!r}")
+    if not callee or sharing.is_remote(callee):
+        return Gate("ring", None, "remote")              # Personen anderer Server entscheidet deren Server
+    now = time.time() if now is None else now
+    r = user_status.reachability(c, callee, caller, "call", now, call=cid)
+    if r.route == "hold":
+        return Gate("silent", "dnd", r.why)
+    if kind == "group":
+        return Gate("ring", None, r.why)
+    if r.route == "busy":
+        return Gate("busy", None, r.why)
+    if r.route == "normal":
+        if not _busy_other(c, callee, cid):
+            return Gate("ring", None, r.why)
+        if not _talking(c, callee, cid):
+            return Gate("busy", None, "ringing")         # es klingelt gerade (ein- oder ausgehend): besetzt wie bisher
+        # Ausnahme bzw. Wiederholungsanruf waehrend Nicht stoeren - die Person telefoniert aber: wie "im Anruf"
+        if user_status.call_prefs(c, callee).get("in_call") == "busy":
+            return Gate("busy", None, r.why)
+    if not _can_wait(c, callee, now):
+        return Gate("busy", None, "caps")                # ein aktives Geraet kann kein Anklopfen: besetzt wie bisher
+    if _knocked(c, callee, caller, cid):
+        return Gate("busy", "again", "again")            # "Nicht nerven": schon einmal angeklopft in diesem Gespraech
+    return Gate("knock", "knock", r.why)
+
+
+def _talking(c, uid, cid=""):
+    """Spricht uid gerade (angenommener Anruf ohne cid: 1:1 aktiv bzw. eigenes Geraet - kein Begleitgeraet - in einem
+    laufenden Gruppenanruf)? Haken user_status.IN_CALL: "im Anruf" fuer reachability (Anklopfen) und die Anzeige bei
+    anderen. Klingelnde Anrufe zaehlen hier nicht (anders als _busy_other: besetzt)."""
+    return bool(c.execute("SELECT 1 FROM chat_call WHERE state='active' AND (kind='dm' OR callee<>'') AND (caller=? OR callee=?) "
+                          "AND id<>? LIMIT 1", (uid, uid, cid)).fetchone()) or bool(c.execute(
+        "SELECT 1 FROM chat_call_leg l JOIN chat_call k ON k.id=l.call_id WHERE l.who=? AND l.state='active' AND l.role<>'companion' "
+        "AND k.state='active' AND k.kind='group' AND k.id<>? LIMIT 1", (uid, cid)).fetchone())
+
+
+def _can_wait(c, uid, now=None):
+    """Melden ALLE aktiven Chat-Geraete von uid "waiting1" (PUT /api/calls/caps)? Aktiv wie dm_peer_check (Lebenszeichen
+    in 30 Tagen; nur alte Geraete: dann alle). Ohne Geraet: nein."""
+    now = time.time() if now is None else now
+    rows = c.execute("SELECT caps, COALESCE(last_seen, created) FROM chat_device WHERE uid=? AND revoked_at IS NULL", (uid,)).fetchall()
+    act = [r for r in rows if (r[1] or 0) > now - DM_ACTIVE_S] or rows
+    return bool(act) and all(_has(r[0], FEATURE_WAIT) for r in act)
+
+
+def _talk_since(c, uid, cid=""):
+    """Seit wann telefoniert uid (laufendes Gespraech, ohne den Anruf cid)? -> Zeit oder None."""
+    a = c.execute("SELECT MIN(COALESCE(answered, created)) FROM chat_call WHERE state IN ('ringing','active') AND (kind='dm' OR callee<>'') "
+                  "AND (caller=? OR (callee=? AND (hold IS DISTINCT FROM 'dnd' OR state='active'))) AND id<>?", (uid, uid, cid)).fetchone()[0]
+    b = c.execute("SELECT MIN(l.joined) FROM chat_call_leg l JOIN chat_call k ON k.id=l.call_id WHERE l.who=? AND l.state='active' "
+                  "AND l.role<>'companion' AND k.state<>'ended' AND k.kind='group' AND k.id<>?", (uid, cid)).fetchone()[0]
+    return min([x for x in (a, b) if x is not None], default=None)
+
+
+def _knocked(c, callee, caller, cid):
+    """Hat caller in diesem Gespraech von callee schon angeklopft (bzw. war danach besetzt)? Aus chat_call.hold und - fuer
+    lange Gespraeche (beendete Anrufe verschwinden nach KEEP_S) - der Glocke (call.missed mit hold)."""
+    since = _talk_since(c, callee, cid)
+    if since is None or not caller:
+        return False
+    if c.execute("SELECT 1 FROM chat_call WHERE callee=? AND caller=? AND hold IN ('knock','again') AND created>=? AND id<>? LIMIT 1",
+                 (callee, caller, since, cid)).fetchone():
+        return True
+    return any((json.loads(r[0] or "{}") or {}).get("hold") in ("knock", "again") for r in c.execute(
+        "SELECT data FROM notification WHERE uid=? AND kind='call.missed' AND actor_uid=? AND created>=? ORDER BY id DESC LIMIT 20",
+        (callee, caller, since)).fetchall())
+
+
+def _frm(c, call):
+    """Anrufende Person fuer call.invite/call.quiet: {username, name, avatar, handle?, host?} (Stufe 3/foederiert als Handle)."""
+    st = call["caller"]
+    nm = names(c, [st])
+    frm = {"username": st, "name": nm.get(st) or st, "avatar": nm.avatar(st)}
+    if sharing.is_remote(st) and FED is not None:
+        frm.update(handle=FED.FC.handle_of(st), name=FED.FC.label_of(c, st)["name"])
+    elif _v3(c, call):                                 # 2.5: Format v2 - als Handle
+        frm.update(username=FED.FC.my_handle(c, st), handle=FED.FC.my_handle(c, st), host=FED.F.SELF_HOST)
+    return frm
+
+
+def set_hold(c, call, g):
+    """chat_call.hold aus der Weiche merken (Anruf-Zeile schon angelegt)."""
+    if g.hold and call.get("hold") != g.hold:
+        c.execute("UPDATE chat_call SET hold=? WHERE id=?", (g.hold, call["id"]))
+        call["hold"] = g.hold
+
+
+def quiet(c, call, uid, g, frm=None):
+    """Zurueckgehaltener Anruf (Nicht stoeren): Ereignis call.quiet NUR an die eigenen Geraete der angerufenen Person - kein
+    call.ring/call.invite, kein Push. Die anrufende Seite hoert das Freizeichen bis ring_s, dann "verpasst"."""
+    _emit(c, [uid], "call.quiet", {"call_id": call["id"], "chat_id": call["chat_id"], "kind": call["kind"],
+                                   "media": call["media"], "from": frm or _frm(c, call), "from_device": call["caller_device"],
+                                   "ring_s": ring_s(), "why": "quiet" if g.why == "quiet" else "dnd", **_dmf(call)})
+    print(f"call: {call['id'][:8]} zurueckgehalten (Nicht stoeren)", flush=True)
+
+
+def busy_body(c, call, peer, viewer, g):
+    """409-Antwort "besetzt" an die anrufende Person (Name des Gegenuebers wie bisher)."""
+    return busy_resp(names(c, [peer]).get(peer) or _pp(c, call, peer, viewer), g is not None and g.hold == "again")
+
+
+def busy_resp(name, again=False):
+    """409 besetzt; nach "Nicht nerven" (schon angeklopft) mit again: true und eigenem Text."""
+    if again:
+        return chat._no_store({"ok": False, "busy": True, "again": True,
+                               "error": t("{name} telefoniert noch – du hast schon angeklopft.", name=name)}, 409)
+    return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)
+
+
+def missed_bell(c, uid, call):
+    """Glocke "Verpasster Anruf" fuer uid. Anklopfen (hold knock/again): ohne Push - der kommt einmal je Anrufer nach dem
+    Gespraech (knock_summary). Die Glocke merkt sich hold (Zaehlung aus chat_call.hold, auch wenn der Anruf schon weg ist)."""
+    hold = call.get("hold") if call.get("hold") in ("knock", "again") else None
+    nid = notify.create(c, uid, "call.missed", call["caller"], data={"chat": call["chat_id"], "call": call["id"], **({"hold": hold} if hold else {})})
+    if nid and hold:
+        c.execute("DELETE FROM push_queue WHERE uid=? AND kind='call.missed' AND ref=? AND tries=0", (uid, nid))
+    return nid
+
+
+def knock_summary(c, uid):
+    """Nach dem Gespraech (uid telefoniert nicht mehr): je anrufender Person EIN Push zu den Anklopf-Versuchen, die noch
+    ungelesen in der Glocke stehen ("3 verpasste Anrufe von Ben" - Text und Zahl macht saga.push aus der Glocke). Jeder
+    Versuch zaehlt genau einmal (Merker sum in der Glocke). -> Zahl der Pushes."""
+    if not uid or sharing.is_remote(uid) or _busy_other(c, uid, ""):
+        return 0
+    rows = []
+    for nid, actor, raw in c.execute("SELECT id, actor_uid, data FROM notification WHERE uid=? AND kind='call.missed' AND read_at IS NULL "
+                                     "AND data LIKE '%\"hold\"%' ORDER BY id", (uid,)).fetchall():
+        d = json.loads(raw or "{}") or {}
+        if d.get("hold") in ("knock", "again") and not d.get("sum"):
+            rows.append((nid, actor, d))
+    if not rows:
+        return 0
+    last = {}
+    for nid, actor, d in rows:
+        c.execute("UPDATE notification SET data=? WHERE id=?", (json.dumps(dict(d, sum=True)), nid))
+        last[actor] = nid
+    for actor, nid in sorted(last.items(), key=lambda x: x[1]):
+        bus.fire("notification.created", c, uid=uid, id=nid, kind="call.missed", actor=actor, replaces=None)   # saga.push
+    print(f"call: Anklopfen - {len(rows)} Versuch(e), {len(last)} Mitteilung(en) nach dem Gespraech", flush=True)
+    return len(last)
+
+
+def changed(c, uids, done=False):
+    """"Im Anruf" kann sich fuer uids geaendert haben: user_status.call_changed je Konto (status.call, 2029-4); done
+    (Anruf beendet bzw. verlassen): Sammel-Push zum Anklopfen fuer alle, die jetzt nicht mehr telefonieren."""
+    uids = sorted({u for u in uids if u and not sharing.is_remote(u)})
+    for u in uids:
+        user_status.call_changed(c, u)                 # 2029-4: Anzeige "im Anruf" bei Chat-Partnern (nach dem Commit)
+    if done:
+        for u in uids:
+            knock_summary(c, u)
 
 
 @router.get("/api/calls/{cid}")
@@ -1481,6 +1708,7 @@ async def api_answer(cid: str, request: Request):
             cur = _load(c, call["id"])
             if cur["v"] == 3:
                 emit_roster(c, cur)                        # 2.4: andere eigene Geraete zeigen "Anruf laeuft auf …"
+            changed(c, [call["caller"], call["callee"]])    # 2.6: status.call-Haken
             print(f"call: {call['id'][:8]} angenommen", flush=True)
             return chat._no_store({"ok": True, "call": _dict(c, cur, uid)})
     from starlette.concurrency import run_in_threadpool         # 2.3: der Server des Anrufers fuehrt den Zustand
@@ -1883,6 +2111,7 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     emit_roster(c, call, legs)                         # zuerst die Liste, dann die Angebote (Clients pruefen das neue Geraet)
     fwd, n = _route(c, call, dev, sig, {x["device"]: x for x in legs}, now)
     c.execute("UPDATE chat_call SET nsig=nsig+? WHERE id=?", (len(sig), call["id"]))
+    changed(c, [who] + ([call["caller"]] if call["state"] == "active" else []))   # 2.6: status.call-Haken
     print(f"call: {call['id'][:8]} Beitritt ({role}{', wieder' if cur is not None else ''}, {len(legs)} Endpunkte)", flush=True)
     out = {"fwd": fwd, "leg": next(x for x in legs if x["device"] == dev), "n": n}
     if to_mesh:
@@ -2131,6 +2360,8 @@ def _leave(c, call, dev, now, reason="hangup", by=None):
     if _ho_leftover(c, call, leg["who"], dev, promoted, legs):
         legs = _legs(c, call["id"])
     emit_roster(c, call, legs)
+    if not any(x["who"] == leg["who"] for x in legs):
+        changed(c, [leg["who"]], done=True)            # 2.6: letztes Geraet der Person weg - status.call, Sammel-Push
     print(f"call: {call['id'][:8]} Endpunkt weg ({reason}, {len(legs)} uebrig)", flush=True)
     return True
 
@@ -2537,7 +2768,7 @@ def chat_extra(c, uid, ch, d):
 
 
 chat.CALLS = __import__("sys").modules[__name__]
-user_status.IN_CALL = _busy_other                   # 2.6 (Bugs-DB 2029): "im Anruf" fuer reachability (ohne den Anruf selbst)
+user_status.IN_CALL = _talking                      # 2.6 (Bugs-DB 2029): "im Anruf" (nur angenommen) fuer reachability und Anzeige
 
 # Benachrichtigung "Verpasster Anruf": Titel/Link wie bei Chat-Nachrichten (nur fuer aktuelle Mitglieder); Design-Runde
 # (UX-30): dazu media (audio/video) - die Glocke buendelt "5 verpasste Videoanrufe" und bietet "Zurueckrufen" an

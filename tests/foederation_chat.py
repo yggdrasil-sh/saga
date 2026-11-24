@@ -596,6 +596,8 @@ def part_calls(A, B, pa, pb, anna, bert, ch, bc):
     ok(f"B: Bert ruft Anna an (Gegenrichtung) ({s})", s == 200)
     ok("A: Anna lehnt ab", wait(lambda: api("a", "fa-anna", "POST", f"/api/calls/{cid2}/decline", {})[0] == 200, 5))
     ok("B: abgelehnt", wait(lambda: api("b", "fb-bert", "GET", f"/api/calls/{cid2}")[1]["call"]["reason"] == "declined", 10))
+    if not B23:
+        part_calls_dnd(anna, bert, ch, bc)
     # falsche Geraete -> 409 mit Geraeten
     s, d = api("a", "fa-anna", "POST", "/api/calls", {"id": C.hexid(), "chat_id": ch["id"], "media": "audio", "device": anna.dev["id"],
                                                      "signals": {C.hexid(): C.b64(os.urandom(90))}})
@@ -607,6 +609,31 @@ def part_calls(A, B, pa, pb, anna, bert, ch, bc):
     b3 = ring_body(anna, anna.keys([bert.handle], fresh=True)[bert.handle])
     s, d = api("a", "fa-anna", "POST", "/api/calls", b3)
     return b3["id"]
+
+
+def part_calls_dnd(anna, bert, ch, bc):
+    """2.6 (Bugs-DB 2029-2, Pruefer): Anna (Server A) mit Nicht stoeren - foederierter Anruf von Bert (B) ohne neues
+    Protokoll: bei B "klingelt", bei A zurueckgehalten (hold dnd, quiet, fehlt in /api/calls/active); Bert bricht ab ->
+    auf beiden Seiten beendet (nichts bleibt haengen). Gegenrichtung, damit die Paar-Grenze Anna -> Bert (3/min) reicht."""
+    s, v = api("a", "fa-anna", "PUT", "/api/account/status", {"state": "dnd"})
+    ok(f"A: Anna Nicht stoeren ({s})", s == 200 and v.get("state") == "dnd")
+    ea = bert.keys([anna.handle], fresh=True)[anna.handle]
+    cid = C.hexid()
+    sig = {d["id"]: C.seal_signal_v2(cid, bert.handle, bert.dev, anna.handle, d["id"], C.unb64(d["enc_pub"], 32), json.dumps({"t": "offer"}))
+           for d in ea["devices"] if not d["revoked"]}
+    s, d = api("b", "fb-bert", "POST", "/api/calls", {"id": cid, "chat_id": bc["id"], "media": "audio", "device": bert.dev["id"], "signals": sig})
+    ok(f"B: Anruf an Anna mit Nicht stoeren - Bert sieht klingelt, ohne quiet ({s})",
+       s == 200 and d["call"]["state"] == "ringing" and not d["call"].get("quiet"))
+    hold = wait(lambda: (sql("a", "SELECT hold FROM chat_call WHERE id=?", (cid,)) or [[None]])[0][0], 10)
+    ok(f"A: zurueckgehalten (hold {hold})", hold == "dnd")
+    s, d = api("a", "fa-anna", "GET", "/api/calls/active")
+    ok("A: fehlt in Annas /api/calls/active", s == 200 and cid not in [x["id"] for x in d.get("calls", [])])
+    s, d = api("a", "fa-anna", "GET", f"/api/calls/{cid}?device={anna.dev['id']}")
+    ok(f"A: Anruf-Objekt quiet ({s})", s == 200 and d["call"].get("quiet") is True and d["call"]["state"] == "ringing")
+    ok("B: Bert bricht ab", api("b", "fb-bert", "POST", f"/api/calls/{cid}/end", {"reason": "cancelled"})[0] == 200)
+    ok("A: auch dort beendet (nichts haengt)", wait(lambda: api("a", "fa-anna", "GET", f"/api/calls/{cid}")[1]["call"]["state"] == "ended", 10))
+    s, v = api("a", "fa-anna", "PUT", "/api/account/status", {"state": "available"})
+    ok(f"A: Anna wieder verfuegbar ({s})", s == 200)
 
 
 def part_gone(A, B, pa, pb, anna, bert, ch, bc, carl, olga, ringing):

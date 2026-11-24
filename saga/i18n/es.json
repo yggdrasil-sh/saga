@@ -671,6 +671,7 @@
  "Beschriftung": "Etiqueta",
  "Besetzt": "Ocupado",
  "Besetzt – {name} telefoniert gerade.": "Ocupado: {name} está en otra llamada.",
+ "{name} telefoniert noch – du hast schon angeklopft.": "{name} sigue en otra llamada: ya llamaste en espera.",
  "Bestehende Chats spätestens umstellen nach (Tagen)": "Convertir los chats existentes como muy tarde tras (días)",
  "Bestätige nur, wenn auf dem neuen Gerät genau dieser Code steht:": "Confirma solo si el dispositivo nuevo muestra exactamente este código:",
  "Bestätigen": "Confirmar",

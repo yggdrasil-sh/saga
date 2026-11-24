@@ -13,7 +13,7 @@ RT-29 (strukturell): Es gibt KEINE Spalte fuer den Namen eines Fokus der Apps (z
 ein mitgeschickter Text verworfen; der Text steht nie im Log und nie in Fehlermeldungen.
 
 Wirksamer Zustand: dnd (manuell) > Ruhezeit (geplantes Nicht stoeren, aus den Mitteilungs-Ruhezeiten user_kv 'push')
-> in_call (Haken IN_CALL, Standard calls._busy_other - verdrahtet saga.calls beim Import) > busy > available.
+> in_call (Haken IN_CALL, calls._talking - nur angenommene Anrufe, verdrahtet saga.calls beim Import) > busy > available.
 
 reachability(c, uid, caller, kanal) ist die EINE Entscheidungsstelle fuer die naechsten Schritte: 2029-2 (Anrufe,
 calls/fed_calls: route knock/busy/hold, chat_call.hold='dnd'), 2029-3 (Mitteilungen, push: push/sound, why 'quiet' =
@@ -75,7 +75,7 @@ _PREF_OK = {"quiet_dnd": lambda v: isinstance(v, bool), "quiet_digest": lambda v
             "repeat_s": lambda v: isinstance(v, int) and not isinstance(v, bool) and REPEAT_MIN <= v <= REPEAT_MAX,
             "mention_break": lambda v: isinstance(v, bool)}
 
-# Haken (keine Zyklen): IN_CALL(c, uid, call_id) -> bool. saga.calls setzt beim Import calls._busy_other ein.
+# Haken (keine Zyklen): IN_CALL(c, uid, call_id) -> bool. saga.calls setzt beim Import calls._talking ein (nur angenommene Anrufe).
 IN_CALL = None
 # 2029-4 (saga.chat_status): fn(c, uid) nach jeder Aenderung des eigenen Status (in der Transaktion von c; die Zuhoerer
 # rechnen die Anzeige bei anderen nach dem Commit neu) und bei Beginn/Ende eines Anrufs (call_changed, ruft 2029-2).
@@ -288,6 +288,12 @@ def call_changed(c, uid, in_call=None):
     in_call ist nur ein Hinweis - massgeblich ist IN_CALL nach dem Commit. Personen anderer Server: nichts (deren Server)."""
     if uid and not sharing.is_remote(uid):
         _hooks(c, uid)
+
+
+def call_prefs(c, uid):
+    """Einstellungen (geparst, mit Standards) fuer die Anruf-Weiche (calls.ring_gate) - z. B. in_call bei einer Ausnahme
+    waehrend Nicht stoeren, die gerade telefoniert."""
+    return dict(_load(c, uid)[1]["prefs"])
 
 
 def shown(c, uid, now=None):

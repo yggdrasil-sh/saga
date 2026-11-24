@@ -48,6 +48,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `userstatus1` (beide Seiten): Feld `st {s, until?, call?}` in `online`/`online.ev` – nie Text, Fokus oder Ausnahmen,
   eingehend weitere Felder verworfen. Verträge: `docs/APP-API.md` („Anzeige bei anderen“), `docs/APP-API-FED.md`
   (Abschnitt 11). Tests: `tests/chat_gelesen.py`, `tests/foederation_gelesen.py`.
+- **Eigener Status wirkt auf Anrufe** (Bugs-DB 2029, Schritt 2029-2, Server): eine Anruf-Weiche (`calls.ring_gate`
+  über `reachability()`) für 1:1 direkt, 1:1 über Knoten und Gruppen-Einladungen, lokal und über Servergrenzen. Nicht
+  stören: der Anruf klingelt nicht und schickt keinen Push, die eigenen Geräte bekommen `call.quiet`, die anrufende Seite
+  hört das Freizeichen bis zur Klingeldauer; Wiederholungsanruf binnen 180 s und Ausnahmen klingeln; Gruppen laden still
+  ein (`quiet`). Im Anruf: Anklopfen (`waiting: true`, ohne Push), wenn alle aktiven Geräte `waiting1` melden, sonst
+  besetzt wie bisher; „Nicht nerven“ – je Person ein Anklopfen je Gespräch, weitere Versuche sofort besetzt (`again`),
+  Glocke ohne Push und nach dem Gespräch ein Push je Person. Haken für „Im Anruf“ bei anderen (`status.call`, 2029-4).
+  Keine Migration (`chat_call.hold`). Vertrag in `docs/APP-API.md` („Anrufe und eigener Status“). Test:
+  `tests/anrufe_status.py`.
 - **Runner `ai.task` für die Kollegin** (Bugs-DB 2266 K-A6, Server, Gerüst ohne Planer und ohne Oberfläche):
   `saga/ai_task.py` führt einen freigegebenen Plan Schritt für Schritt über die Werkzeug-Registry aus – je Schritt ein
   Werkzeugaufruf mit dem internen Tok des Auftrags, in der Hintergrund-Spur und mit KI-Einheiten im Pool „Aufträge“.

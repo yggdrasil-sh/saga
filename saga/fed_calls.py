@@ -102,7 +102,7 @@ def start(uid, ch, cid, media, dev, sig, caps="[]"):
             c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, peer_id) "
                       "VALUES (?,?,?,?,?,?,'ringing',?,?,?)", (cid, ch["id"], uid, other, dev, media, now, now, p["id"]))
             calls._finish(c, calls._load(c, cid), "busy", now, remote=True)
-        return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)
+        return _busy(d, name)
     if st == 409 and isinstance(d, dict) and d.get("error") == "request":
         return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
     if st != 200:
@@ -116,6 +116,11 @@ def start(uid, ch, cid, media, dev, sig, caps="[]"):
         call = calls._load(c, cid)
         print(f"call: {cid[:8]} klingelt bei {p['host']} ({media}, Chat {ch['id']}, {len(sig)} Geraet(e))", flush=True)
         return chat._no_store({"ok": True, "call": calls._dict(c, call, uid)})
+
+
+def _busy(d, name):
+    """409 besetzt an die anrufende Person (2.6: again = dort schon angeklopft, "Nicht nerven")."""
+    return calls.busy_resp(name, isinstance(d, dict) and d.get("again") is True)
 
 
 def _send(call, body):
@@ -151,6 +156,7 @@ def answer(uid, call, dev, sig, caps="[]"):
         calls._emit(c, [uid], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active", "device": dev})
         if call["v"] == 3:
             calls.emit_roster(c, calls._load(c, call["id"]), fed=False)
+        calls.changed(c, [uid])                        # 2.6: status.call-Haken
         print(f"call: {call['id'][:8]} angenommen (foederiert)", flush=True)
         return chat._no_store({"ok": True, "call": calls._dict(c, calls._load(c, call["id"]), uid)})
 
@@ -361,7 +367,7 @@ def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop", bill=None
         FC._volatile(p["id"], {"op": "end", "id": cid, "actor": mh, "reason": "cancelled"}, path="/fed/v2/call", drop=False)
         return _bad(t("Der Server {host} ist gerade nicht erreichbar.", host=p["host"]), 502)
     if st == 409 and d.get("busy"):
-        return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)
+        return _busy(d, name)
     if st == 409 and d.get("error") == "request":
         return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
     if st == 409 and d.get("horn_block") in ("peer", "off", "node", "web", "none"):
@@ -475,7 +481,7 @@ def dm_horn_lead_start(uid, ch, cid, media, dev, caps, p, bill=None):
         FC._volatile(p["id"], {"op": "end", "id": cid, "actor": mh, "reason": "cancelled"}, path="/fed/v2/call", drop=False)
         return _bad(t("Der Server {host} ist gerade nicht erreichbar.", host=p["host"]), 502)
     if st == 409 and d.get("busy"):
-        return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)
+        return _busy(d, name)
     if st == 409 and d.get("error") == "request":
         return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
     if st == 409 and d.get("horn_block") in ("peer", "off", "node", "web", "none"):
@@ -830,19 +836,28 @@ def op_ring(c, peer, d):
     calls._leg_put(c, cid, dev, p_, "member", peer["id"], caps, name=_name(d), now=now)
     calls._OWN.add(cid)
     call = calls._load(c, cid)
-    if calls._busy_other(c, callee, cid):
+    g = calls.ring_gate(c, callee, p_, cid, "dm", now)      # 2.6 (Bugs-DB 2029-2): dieselbe Weiche wie lokal
+    calls.set_hold(c, call, g)
+    if g.route == "busy":
         calls._finish(c, call, "busy", now, remote=True)
-        return 409, {"busy": True}
+        return 409, {"busy": True, **({"again": True} if g.hold == "again" else {})}   # again: additiv (aeltere Server: besetzt)
     c.executemany("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?)",
                   [(cid, dev, k, v, now) for k, v in sorted(sig.items())])
     c.execute("UPDATE chat_call SET nsig=? WHERE id=?", (len(sig), cid))
     lab = FC.label_of(c, p_)
     av = sharing.names(c, [p_]).avatar(p_)
-    calls._emit(c, [callee], "call.ring", {"call_id": cid, "chat_id": ch["id"], "media": media, "from_device": dev, "ring_s": calls.ring_s(),
-                                           "from": {"username": p_, "handle": h, "name": lab["name"], "avatar": av}})
-    if not chat.CP.muted_now(c, ch["id"], callee):
+    frm = {"username": p_, "handle": h, "name": lab["name"], "avatar": av}
+    if g.route == "silent":
+        # Nicht stoeren: ohne neues Protokoll - der Server der anrufenden Person sieht "klingelt" (Freizeichen bis ring_s),
+        # hier klingelt nichts (nur call.quiet an die eigenen Geraete), danach verpasst wie immer
+        calls.quiet(c, call, callee, g, frm)
+    else:
+        calls._emit(c, [callee], "call.ring", {"call_id": cid, "chat_id": ch["id"], "media": media, "from_device": dev, "ring_s": calls.ring_s(),
+                                               "from": frm, **({"waiting": True} if g.route == "knock" else {})})
+    if g.route == "ring" and not chat.CP.muted_now(c, ch["id"], callee):
         bus.fire("push.send", c, uid=callee, kind="call", actor=p_, data={"chat": ch["id"], "call": cid})
-    print(f"call: {cid[:8]} klingelt (von {peer['host']}, {media})", flush=True)
+    print(f"call: {cid[:8]} {'klingelt' if g.route == 'ring' else 'klopft an' if g.route == 'knock' else 'still'} (von {peer['host']}, {media})",
+          flush=True)
     return 200, {"ok": True}
 
 
@@ -882,6 +897,7 @@ def op_answer(c, peer, d):
     calls._emit(c, [call["caller"]], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active", "device": dev})
     if call["v"] == 3:
         calls.emit_roster(c, calls._load(c, call["id"]))
+    calls.changed(c, [call["caller"]])                 # 2.6: status.call-Haken
     return 200, {"ok": True}
 
 
@@ -1306,22 +1322,27 @@ def op_dmhorn(c, peer, d):
         return 429, {"error": "too many calls"}
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
         return 409, {"error": "duplicate id"}
-    if calls._busy_other(c, callee, cid):
-        return 409, {"busy": True}
     now = time.time()
+    g = calls.ring_gate(c, callee, p_, cid, "dmh", now)     # 2.6 (Bugs-DB 2029-2): dieselbe Weiche wie lokal
+    if g.route == "busy" and g.hold != "again":
+        return 409, {"busy": True}                     # wie bisher: nichts angelegt
     caps = calls.caps_in(d.get("caps"))
     FH.note_nodes(peer["id"], d)                       # hat der Server der anrufenden Person eigene Knoten?
     c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
-              "lead, peer_id) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,'horn',?,?)",
-              (cid, ch["id"], p_, callee, dev, media, now, now, now, caps, peer["id"], peer["id"]))
+              "lead, peer_id, hold) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,'horn',?,?,?)",
+              (cid, ch["id"], p_, callee, dev, media, now, now, now, caps, peer["id"], peer["id"], g.hold))
     calls._leg_put(c, cid, dev, p_, "member", peer["id"], caps, name=_name(d), now=now)
     c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'ringing',?) ON CONFLICT (call_id, who) DO NOTHING",
               (cid, callee, now))
     calls._OWN.add(cid)
     call = calls._load(c, cid)
-    calls.ring_group(c, call, [callee])
+    if g.route == "busy":                              # "Nicht nerven": Eintrag im Chat und Glocke (ohne Push) hier, dort besetzt
+        calls._finish(c, call, "busy", now, remote=True)
+        return 409, {"busy": True, "again": True}
+    calls.ring_group(c, call, [callee], gate=g)
     calls.emit_roster(c, call, fed=False)
-    print(f"call: {cid[:8]} 1:1 ueber Knoten klingelt (von {peer['host']}, {media})", flush=True)
+    print(f"call: {cid[:8]} 1:1 ueber Knoten {'klingelt' if g.route == 'ring' else 'klopft an' if g.route == 'knock' else 'still'} "
+          f"(von {peer['host']}, {media})", flush=True)
     return 200, {"ok": True}
 
 
@@ -1360,11 +1381,16 @@ def op_dmhorn_lead(c, peer, d):
         return 429, {"error": "too many calls"}
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
         return 409, {"error": "duplicate id"}
-    if calls._busy_other(c, callee, cid):
-        return 409, {"busy": True}
     now = time.time()
+    g = calls.ring_gate(c, callee, p_, cid, "dmh", now)     # 2.6 (Bugs-DB 2029-2)
+    if g.route == "busy" and g.hold != "again":
+        return 409, {"busy": True}
     FH.note_nodes(peer["id"], d)
-    call = calls.group_create(c, ch, cid, media, p_, dev, caps, now, peer_id=peer["id"], name=_name(d), dm_peer=callee)
+    call = calls.group_create(c, ch, cid, media, p_, dev, caps, now, peer_id=peer["id"], name=_name(d), dm_peer=callee,
+                              ring=g.route != "busy", gate=g)
+    if g.route == "busy":                              # "Nicht nerven": hier Eintrag + Glocke ohne Push, dort besetzt
+        calls._finish(c, call, "busy", now, remote=True)
+        return 409, {"busy": True, "again": True}
     print(f"call: {cid[:8]} 1:1 ueber Knoten, wir fuehren (Anruf von {peer['host']}, {media})", flush=True)
     return 200, {"ok": True, "role": "member", "legs": [_leg_out(c, x) for x in calls._legs(c, cid)], "topo": call.get("topo") or "horn"}
 

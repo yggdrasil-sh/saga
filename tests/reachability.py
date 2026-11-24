@@ -477,7 +477,7 @@ def main():
         auth.set_user_groups(auth.get_user(u)["id"], [GRP])
     auth.set_user_groups(auth.get_user(D)["id"], [])
     bus.set_sink(lambda kind, payload: EVENTS.append((kind, payload)))
-    ok("Haken IN_CALL verdrahtet (calls._busy_other)", US.IN_CALL is calls._busy_other)
+    ok("Haken IN_CALL verdrahtet (calls._talking: nur angenommene Anrufe, 2029-2)", US.IN_CALL is calls._talking)
     try:
         for part in (part_matrix, part_rank_and_misc, part_expiry, part_repeat, part_exceptions, part_quiet, part_cache,
                      part_account, part_perf):

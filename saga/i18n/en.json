@@ -671,6 +671,7 @@
  "Beschriftung": "Label",
  "Besetzt": "Busy",
  "Besetzt – {name} telefoniert gerade.": "Busy – {name} is on another call.",
+ "{name} telefoniert noch – du hast schon angeklopft.": "{name} is still on a call – you already knocked.",
  "Bestehende Chats spätestens umstellen nach (Tagen)": "Convert existing chats at the latest after (days)",
  "Bestätige nur, wenn auf dem neuen Gerät genau dieser Code steht:": "Only confirm if the new device shows exactly this code:",
  "Bestätigen": "Confirm",

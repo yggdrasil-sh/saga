@@ -3925,3 +3925,40 @@ Online-Status aus) und auch für Personen, die ihren Online-Status nicht zeigen:
   Änderung (setzen, Ablauf, `show_call`, Anruf beginnt/endet, Online-Status ein/aus). `null` = nicht mehr bekannt →
   entfernen. `chat.presence` bleibt unverändert (ohne Status).
 - Ausnahmelisten (`exceptions`) sieht nie jemand anderes und sie verlassen den Server nie.
+
+### Anrufe und eigener Status (2.6, Bugs-DB 2029-2, `waiting1`)
+
+Ob und wie ein Anruf bei der angerufenen Person klingelt, entscheidet der Server an einer Stelle (Anruf-Weiche) – für
+1:1 direkt, 1:1 über Knoten und Einladungen in Gruppenanrufe, lokal und über Servergrenzen. Additiv, `MIN_APP`
+unverändert; erkennbar an `waiting1` in `GET /api/calls/config` → `features`.
+
+- **Nicht stören / Ruhezeit** (ohne Ausnahme): der Anruf wird angelegt, klingelt aber nicht – kein `call.ring` bzw.
+  `call.invite`, kein Push. Die eigenen Geräte bekommen **`call.quiet`** `{call_id, chat_id, kind, media, from,
+  from_device, ring_s, why: dnd|quiet, dm?}` (nur Anzeige, z. B. „Anruf von Ben – stumm“; annehmen geht weiter wie
+  sonst). Die anrufende Seite sieht „klingelt“ bis `ring_s`, danach „verpasst“ (über Servergrenzen ohne neues
+  Protokoll). Im Anruf-Objekt der angerufenen Person steht **`quiet: true`**; in `GET /api/calls/active` fehlt der
+  Anruf für sie (ältere Apps klingelten sonst beim Laden). Ruft dieselbe Person binnen `repeat_s` (180 s) erneut an,
+  klingelt es normal (Wiederholungsanruf); Ausnahmen klingeln immer.
+- **Gruppenanruf und Nicht stören:** stille Einladung – `call.invite` mit `silent: true` und **`quiet: true`**, kein Push;
+  das Anruf-Objekt trägt für diese Person `silent: true, quiet: true`. Sonst wie bisher (Gruppenanrufe sind nicht exklusiv).
+- **Im Anruf – Anklopfen:** ein Gerät meldet mit `PUT /api/calls/caps` die Fähigkeit **`waiting1`**, wenn es einen
+  zweiten Anruf während eines Gesprächs anzeigen kann (ohne zu klingeln, mit Annehmen/Ablehnen). Nur wenn **alle aktiven
+  Chat-Geräte** (Lebenszeichen in 30 Tagen) `waiting1` melden, klopft ein weiterer Anruf an: `call.ring` (1:1 direkt)
+  bzw. `call.invite` (1:1 über Knoten) mit **`waiting: true`**, kein Push; das Anruf-Objekt trägt `waiting: true` (auch
+  für die anrufende Seite: „klopft an“). Sonst – oder mit der Einstellung `in_call: "busy"` – besetzt wie bisher.
+- **„Nicht nerven“:** je anrufender Person ein Anklopfen je Gespräch. Jeder weitere Versuch endet sofort besetzt:
+  `409 {ok: false, busy: true, again: true, error: "{name} telefoniert noch – du hast schon angeklopft."}` (über
+  Servergrenzen im Auftrag `ring`/`dmhorn` als `{busy: true, again: true}`, ältere Server sehen nur `busy`). Jeder Versuch
+  steht als Eintrag im Chat und in der Glocke (`call.missed`), ohne Push. Nach dem Gespräch kommt **ein** Push je
+  anrufender Person zu ihren Versuchen (`call.missed`, `n` = Zahl der ungelesenen verpassten Anrufe dieses Chats, z. B.
+  „3 verpasste Anrufe von Ben“).
+- Ausnahme bzw. Wiederholungsanruf während Nicht stören, wenn die Person gerade telefoniert: klopft an (bzw. besetzt mit
+  `in_call: "busy"`).
+
+| Ereignis / Feld | Bedeutung |
+|---|---|
+| `waiting1` (caps, `features`) | Gerät kann Anklopfen anzeigen / Server kann Anklopfen |
+| `call.quiet` | zurückgehaltener Anruf (Nicht stören), nur an die eigenen Geräte |
+| `waiting: true` (`call.ring`, `call.invite`, Anruf-Objekt) | Anklopfen – nicht klingeln, Hinweis im laufenden Gespräch |
+| `quiet: true` (`call.invite`, Anruf-Objekt) | zurückgehalten bzw. stille Einladung |
+| `again: true` (409 beim Anrufen) | schon angeklopft – besetzt bis zum Ende des Gesprächs |
