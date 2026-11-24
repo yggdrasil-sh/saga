@@ -6,6 +6,7 @@
 <title>Saga – на своём сервере: страницы, базы данных, чат, звонки и календарь</title>
 <meta name="description" content="Saga – твоё место на собственном сервере для страниц, баз данных, чата, звонков, календарей и задач: с приложениями, федерацией и зашифрованными резервными копиями. Один домен, только порт 443, Docker Compose.">
 <meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0c1219">
 <link rel="canonical" href="https://yggdrasil-sh.github.io/saga/ru/">
 <link rel="alternate" hreflang="de" href="https://yggdrasil-sh.github.io/saga/">
 <link rel="alternate" hreflang="en" href="https://yggdrasil-sh.github.io/saga/en/">
@@ -25,246 +26,314 @@
 <meta property="og:locale:alternate" content="es_ES">
 <meta property="og:locale:alternate" content="th_TH">
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="preload" href="../fonts/fraunces-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../site.css">
+<script>
+/* Bewegung: gespeicherte Wahl (Schalter im Kopf), sonst wie das System (prefers-reduced-motion). */
+(function(){var d=document.documentElement,m=null;d.classList.add("js");try{m=localStorage.getItem("saga-motion")}catch(e){}
+if(m?m==="an":!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches))d.classList.add("motion")})();
+</script>
 </head>
 <body>
 <a class="skip" href="#content">Перейти к содержимому</a>
 <header class="top">
   <nav class="wrap" aria-label="Основная навигация">
-    <a class="brand" href="#"><img src="../icon.svg" alt="" width="30" height="30">Saga</a>
-    <a class="l" href="#new">Новое в 2.5</a>
-    <a class="l" href="#install">Установка</a>
+    <a class="brand" href="#"><img src="../icon.svg" alt="" width="32" height="32">Saga</a>
+    <a class="l hi" href="#new">Новое в 2.5</a>
+    <a class="l" href="#chats">Чаты и звонки</a>
+    <a class="l opt" href="#federation">Федерация</a>
     <a class="l opt" href="#features">Возможности</a>
     <a class="l opt" href="#apps">Приложения</a>
-    <a class="l opt" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
-    <span class="lang" role="group" aria-label="Язык"><a href="../" lang="de" hreflang="de" data-l="de" title="Deutsch" aria-label="Deutsch">DE</a><a href="../en/" lang="en" hreflang="en" data-l="en" title="English" aria-label="English">EN</a><a href="../es/" lang="es" hreflang="es" data-l="es" title="Español" aria-label="Español">ES</a><a href="./" lang="ru" hreflang="ru" data-l="ru" title="Русский" aria-label="Русский" aria-current="page">RU</a><a href="../th/" lang="th" hreflang="th" data-l="th" title="ไทย" aria-label="ไทย">TH</a></span>
+    <a class="l" href="#install">Установка</a>
+    <button class="mot" type="button" aria-pressed="false" title="Включить или выключить анимацию"><span class="sw" aria-hidden="true"></span><span class="t">Анимация</span></button>
+    <span aria-label="Язык" class="lang" role="group"><a aria-label="Deutsch" data-l="de" href="../" hreflang="de" lang="de" title="Deutsch">DE</a><a aria-label="English" data-l="en" href="../en/" hreflang="en" lang="en" title="English">EN</a><a aria-label="Español" data-l="es" href="../es/" hreflang="es" lang="es" title="Español">ES</a><a aria-current="page" aria-label="Русский" data-l="ru" href="./" hreflang="ru" lang="ru" title="Русский">RU</a><a aria-label="ไทย" data-l="th" href="../th/" hreflang="th" lang="th" title="ไทย">TH</a></span>
   </nav>
 </header>
 
 <main id="content">
-<div class="hero">
+<div class="hero stage fxs">
+  <div class="fx" aria-hidden="true">
+    <div class="aur a1"></div><div class="aur a2"></div><div class="aur a3"></div>
+    <span class="star g" style="left:8%;top:14%;animation-delay:0s"></span><span class="star" style="left:35%;top:8%;animation-delay:-2.2s"></span><span class="star" style="left:63%;top:12%;animation-delay:-3s"></span><span class="star g" style="left:78%;top:6%;animation-delay:-1.7s"></span><span class="star" style="left:91%;top:40%;animation-delay:-2.7s"></span><span class="star" style="left:4%;top:52%;animation-delay:-3.4s"></span><span class="star g" style="left:14%;top:34%;animation-delay:-2.5s"></span><span class="star" style="left:48%;top:24%;animation-delay:-0.8s"></span><span class="star" style="left:56%;top:44%;animation-delay:-1.4s"></span><span class="star g" style="left:86%;top:22%;animation-delay:-2.1s"></span><span class="star" style="left:24%;top:62%;animation-delay:-0.4s"></span><span class="star" style="left:70%;top:58%;animation-delay:-1.9s"></span>
+    <span class="emb" style="left:75.2%;bottom:-8px;width:6px;height:6px;animation-duration:7.2s;animation-delay:-7.8s"></span><span class="emb" style="left:7.0%;bottom:40px;width:6px;height:6px;animation-duration:6.4s;animation-delay:-5.1s"></span><span class="emb" style="left:58.3%;bottom:-8px;width:3px;height:3px;animation-duration:9.0s;animation-delay:-6.6s"></span><span class="emb" style="left:51.2%;bottom:120px;width:4px;height:4px;animation-duration:7.7s;animation-delay:-8.3s"></span><span class="emb" style="left:51.3%;bottom:120px;width:5px;height:5px;animation-duration:6.7s;animation-delay:-8.8s"></span><span class="emb" style="left:59.5%;bottom:40px;width:3px;height:3px;animation-duration:8.2s;animation-delay:-1.7s"></span><span class="emb" style="left:61.2%;bottom:-8px;width:4px;height:4px;animation-duration:6.5s;animation-delay:-5.1s"></span><span class="emb" style="left:71.6%;bottom:-8px;width:4px;height:4px;animation-duration:8.8s;animation-delay:-0.7s"></span><span class="emb" style="left:75.6%;bottom:120px;width:4px;height:4px;animation-duration:8.3s;animation-delay:-7.2s"></span><span class="emb" style="left:44.6%;bottom:40px;width:6px;height:6px;animation-duration:7.6s;animation-delay:-0.4s"></span><span class="emb" style="left:81.0%;bottom:40px;width:6px;height:6px;animation-duration:9.2s;animation-delay:-4.1s"></span><span class="emb" style="left:91.1%;bottom:40px;width:6px;height:6px;animation-duration:9.2s;animation-delay:-3.2s"></span><span class="emb" style="left:81.9%;bottom:-8px;width:3px;height:3px;animation-duration:6.6s;animation-delay:-6.2s"></span><span class="emb" style="left:23.6%;bottom:-8px;width:4px;height:4px;animation-duration:10.4s;animation-delay:-6.8s"></span><span class="emb" style="left:18.7%;bottom:120px;width:4px;height:4px;animation-duration:10.5s;animation-delay:-7.1s"></span><span class="emb" style="left:37.7%;bottom:40px;width:6px;height:6px;animation-duration:8.6s;animation-delay:-4.1s"></span><span class="emb" style="left:45.1%;bottom:40px;width:6px;height:6px;animation-duration:8.6s;animation-delay:-8.3s"></span><span class="emb" style="left:42.2%;bottom:-8px;width:5px;height:5px;animation-duration:9.6s;animation-delay:-5.1s"></span><span class="emb" style="left:56.8%;bottom:-8px;width:4px;height:4px;animation-duration:9.8s;animation-delay:-2.3s"></span><span class="emb" style="left:72.7%;bottom:40px;width:3px;height:3px;animation-duration:9.0s;animation-delay:-0.3s"></span>
+    <div class="runes"><svg class="r1" viewBox="0 0 900 900" fill="none"><defs><path id="rp" d="M450,450 m-338,0 a338,338 0 1,1 676,0 a338,338 0 1,1 -676,0"/></defs><circle cx="450" cy="450" r="400" stroke="#c9a45c" stroke-opacity=".22"/><circle cx="450" cy="450" r="380" stroke="#c9a45c" stroke-opacity=".35" stroke-width="10" stroke-dasharray="2 22"/><text fill="#c9a45c" fill-opacity=".55" font-size="28" letter-spacing="9"><textPath href="#rp">ᚠᚢᚦᚨᚱᚲᚷᚹ᛫ᚺᚾᛁᛃᛇᛈᛉᛊ᛫ᛏᛒᛖᛗᛚᛜᛞᛟ᛫ᚠᚢᚦᚨᚱᚲᚷᚹ᛫ᚺᚾᛁᛃᛇᛈᛉᛊ᛫ᛏᛒᛖᛗᛚᛜᛞᛟ᛫ᚠᚢᚦᚨᚱᚲᚷᚹ᛫ᚺᚾᛁᛃᛇᛈᛉᛊ᛫ᛏᛒᛖᛗᛚᛜᛞᛟ᛫</textPath></text><circle cx="450" cy="450" r="300" stroke="#c9a45c" stroke-opacity=".25"/></svg><svg class="r2" viewBox="0 0 900 900" fill="none"><circle cx="450" cy="450" r="270" stroke="#c9a45c" stroke-opacity=".2" stroke-dasharray="60 14 6 14"/><path d="M450 180v540M180 450h540M259 259l382 382M641 259L259 641" stroke="#c9a45c" stroke-opacity=".1"/><circle cx="450" cy="450" r="210" stroke="#c9a45c" stroke-opacity=".35" stroke-width="1.2"/></svg></div>
+  </div>
   <div class="wrap">
-    <span class="kicker"><b>Saga 2.5</b> · на своём сервере · открытый код</span>
-    <h1>Твой собственный сервер для страниц, чата и звонков</h1>
-    <p class="lead">Saga переносит страницы, базы данных, чат, звонки, календари и задачи на твой собственный сервер – для семьи,
+    <div class="grid2">
+      <div class="txt">
+        <span class="kicker rv"><span class="lamp" aria-hidden="true"></span><span><b>Saga 2.5</b> · на своём сервере · открытый код</span></span>
+        <h1 class="rv d1">Напиши свою <span class="shim">сагу.</span></h1>
+        <p class="claim rv d1">Твой собственный сервер для страниц, чата и звонков</p>
+        <p class="lead rv d2">Saga переносит страницы, базы данных, чат, звонки, календари и задачи на твой собственный сервер – для семьи,
       клуба или команды, с приложениями для телефона и компьютера.</p>
-    <ul class="promise">
-      <li class="main">Один домен, только порт 443</li>
-      <li>Docker Compose</li>
-      <li>Чаты и звонки со сквозным шифрованием</li>
-    </ul>
-    <div class="btns">
-      <a class="btn primary" href="#install">Установить</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">Руководство (на английском)</a>
-    </div>
-    <figure class="promo" data-soon="Видео скоро появится">
-      <div class="frame">
-        <video controls playsinline preload="none" poster="../video/saga-promo.jpg" aria-label="Saga на видео">
-          <source src="../video/saga-promo.mp4" type="video/mp4">
-        </video>
+        <ul class="promise rv d2">
+<li class="main">Один домен, только порт 443</li>
+<li>Docker Compose</li>
+<li>Чаты и звонки со сквозным шифрованием</li>
+</ul>
+        <div class="btns rv d3">
+<a class="btn primary" href="#install">Установить</a>
+<a class="btn" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
+<a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">Руководство (на английском)</a>
+</div>
       </div>
-      <figcaption class="credit">Music: “Surrender” by Unheard – Free To Use (<a href="https://freetouse.com/music">freetouse.com/music</a>)</figcaption>
-    </figure>
+      <div class="win rv d2">
+        <div class="halo" aria-hidden="true"></div>
+        <div class="tilt"><div class="bar" aria-hidden="true"><i></i><i></i><i></i><span class="u">saga.example</span><span class="lamp"></span></div>
+          <img src="../bilder/editor-live-dunkel.webp" width="2000" height="1250" alt="" fetchpriority="high"></div>
+      </div>
+    </div>
+    <figure class="promo rv" data-soon="Видео скоро появится">
+<div class="frame">
+<video aria-label="Saga на видео" controls playsinline poster="../video/saga-promo.jpg" preload="none">
+<source src="../video/saga-promo.mp4" type="video/mp4">
+</video>
+</div>
+<figcaption class="credit">Music: “Surrender” by Unheard – Free To Use (<a href="https://freetouse.com/music">freetouse.com/music</a>)</figcaption>
+</figure>
   </div>
 </div>
 
-<section id="new" class="alt">
+<div class="band fxs"><div class="mq"><ul aria-label="Saga коротко"><li>Страницы</li><li>Базы данных</li><li>Чаты со сквозным шифрованием</li><li>Групповые звонки</li><li>Федерация</li><li>Совместный редактор</li><li>Виджеты</li><li>ИИ-ассистент</li><li>Календари</li><li>Зашифрованные копии</li><li>Web · iPhone · iPad · Android · Mac · Linux</li><li>AGPL-3.0</li></ul><ul aria-hidden="true"><li>Страницы</li><li>Базы данных</li><li>Чаты со сквозным шифрованием</li><li>Групповые звонки</li><li>Федерация</li><li>Совместный редактор</li><li>Виджеты</li><li>ИИ-ассистент</li><li>Календари</li><li>Зашифрованные копии</li><li>Web · iPhone · iPad · Android · Mac · Linux</li><li>AGPL-3.0</li></ul></div></div>
+
+<section id="new" class="fxs">
   <div class="wrap">
-    <p class="eyebrow">Новое в Saga 2.5</p>
-    <h2>Звонки через твой собственный адрес</h2>
+    <div class="head rv"><p class="eyebrow">Новое в Saga 2.5</p>
+    <h2>Самая большая глава на сегодня.</h2>
     <p class="sub">Звонки теперь идут через встроенный узел, в редакторе можно работать вместе в реальном времени, а чаты умеют
-      гораздо больше. Плюс подстраницы, печати, обложки и виджеты для твоих страниц.</p>
-
-    <div class="feature">
-      <div class="txt">
-        <h3>Звонки через Gjallarhorn<span class="tag">Экспериментально</span></h3>
-        <p>В Saga есть собственный медиаузел. Он работает за любым обратным прокси с поддержкой WebSocket, через обычный
-          адрес Saga – без второго имени и без дополнительного порта.</p>
-        <ul>
-          <li><b>Один на один и в группе</b> – с видео, звуком и показом экрана; на старте до 4 участников или устройств</li>
-          <li><b>Из разговора один на один – в групповой звонок</b>, не прерывая беседу</li>
-          <li><b>Добавляй людей</b>, даже не из этого чата; кто не ответил, виден в списке «Не в звонке» с кнопкой «Позвонить снова»</li>
-          <li><b>Меняй и добавляй устройства:</b> перенеси звонок с телефона на ноутбук или подключи ноутбук только для показа экрана</li>
-          <li><b>Сквозное шифрование</b> – в том числе через узел</li>
-        </ul>
-        <p class="fine">В версии 2.5 Gjallarhorn экспериментальный. Safari и браузеры на iPhone/iPad пока звонят напрямую или через
-          TURN; приложения и приложение для Mac используют туннель через адрес Saga.</p>
-      </div>
-      <figure class="shot"><img src="../bilder/anruf-gruppe.webp" width="2000" height="1250" loading="lazy" alt="Групповой звонок: четыре участника плитками, метки сквозного шифрования и «Экспериментально», открыт список участников"></figure>
-    </div>
-
-    <div class="feature rev">
-      <div class="txt">
-        <h3>Пишем вместе в реальном времени</h3>
-        <p>Новый редактор по умолчанию (Tiptap) сразу показывает, что печатают другие, и их курсоры – как только
+      гораздо больше. Плюс подстраницы, печати, обложки и виджеты для твоих страниц.</p></div>
+    <div class="feature rv">
+<div class="txt">
+<h3>Пишем вместе в реальном времени</h3>
+<p>Новый редактор по умолчанию (Tiptap) сразу показывает, что печатают другие, и их курсоры – как только
           администратор включит совместное редактирование, даже с людьми на подключённых серверах.</p>
-        <ul>
-          <li><b>Упоминания</b> людей, дат и напоминаний через @</li>
-          <li><b>Синхронизированные блоки</b>: одно содержимое в нескольких местах</li>
-          <li><b>Таблицы, код, формулы, Mermaid</b>, колонки и медиа прямо в тексте</li>
-        </ul>
-      </div>
-      <figure class="shot"><picture><source srcset="../bilder/editor-live-dunkel.webp" media="(prefers-color-scheme: dark)"><img src="../bilder/editor-live-hell.webp" width="2000" height="1250" loading="lazy" alt="Страница в Saga: Анна видит, как Бен прямо сейчас выделяет слово – его имя показано флажком у курсора"></picture></figure>
-    </div>
-
-    <div class="feature">
-      <div class="txt">
-        <h3>Чаты, которые умеют больше</h3>
-        <p>Современные чаты (уровень 3) теперь включены по умолчанию: по-прежнему со сквозным шифрованием и со всем, что нужно каждый день.</p>
-        <ul>
-          <li><b>Реакции, ответы и редактирование</b>, форматирование и @упоминания</li>
-          <li><b>Голосовые сообщения</b> до 15 минут</li>
-          <li><b>Закрепление сообщений и чатов</b>, отключение звука на время, отметка «непрочитано»</li>
-          <li><b>Группы с администраторами</b>, фото и описанием, контакты и жалобы администраторам</li>
-        </ul>
-      </div>
-      <figure class="shot"><picture><source srcset="../bilder/chat-dunkel.webp" media="(prefers-color-scheme: dark)"><img src="../bilder/chat-hell.webp" width="2000" height="1250" loading="lazy" alt="Семейный чат с закреплённым сообщением, ответом с цитатой, реакцией-сердечком и фотографией"></picture></figure>
-    </div>
-
+<ul>
+<li><b>Упоминания</b> людей, дат и напоминаний через @</li>
+<li><b>Синхронизированные блоки</b>: одно содержимое в нескольких местах</li>
+<li><b>Таблицы, код, формулы, Mermaid</b>, колонки и медиа прямо в тексте</li>
+</ul>
+</div>
+<figure class="shot gb"><picture><source media="(prefers-color-scheme: dark)" srcset="../bilder/editor-live-dunkel.webp"><img alt="Страница в Saga: Анна видит, как Бен прямо сейчас выделяет слово – его имя показано флажком у курсора" height="1250" loading="lazy" src="../bilder/editor-live-hell.webp" width="2000"></picture></figure>
+</div>
     <div class="grid more">
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>Подстраницы на странице</h3><p>Подстраницы видны прямо на родительской странице – списком или галереей с обложками.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v10M8 10l4-3 4 3"/></svg></span>Печати как значки</h3><p>36 печатей Saga в трёх цветах рядом с эмодзи – для страниц, баз данных и строк.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg></span>Галерея обложек</h3><p>100 изображений эльфийки Saga в восьми группах и случайная обложка для новых страниц.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>Виджеты и диаграммы</h3><p>Обновлённые виджеты – обратный отсчёт, прогресс, показатель, привычки, погода – и диаграммы из баз данных.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></span>Лёгкий переезд</h3><p>Импорт из Notion, Trilium, Markdown/Obsidian и CSV, экспорт в CSV и Markdown.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>Приложение для Mac</h3><p>Настольное приложение для Mac показывает веб-интерфейс твоего сервера – с уведомлениями, виджетами и туннелем для звонков.</p></div>
-    </div>
+<div class="card gbh rv"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><rect height="7" rx="1" width="7" x="3" y="3"></rect><rect height="7" rx="1" width="7" x="14" y="3"></rect><rect height="7" rx="1" width="7" x="3" y="14"></rect><rect height="7" rx="1" width="7" x="14" y="14"></rect></svg></span>Подстраницы на странице</h3><p>Подстраницы видны прямо на родительской странице – списком или галереей с обложками.</p></div>
+<div class="card gbh rv d1"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M12 7v10M8 10l4-3 4 3"></path></svg></span>Печати как значки</h3><p>36 печатей Saga в трёх цветах рядом с эмодзи – для страниц, баз данных и строк.</p></div>
+<div class="card gbh rv d2"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><rect height="14" rx="2" width="18" x="3" y="5"></rect><path d="M3 15l5-5 4 4 3-3 6 6"></path></svg></span>Галерея обложек</h3><p>100 изображений эльфийки Saga в восьми группах и случайная обложка для новых страниц.</p></div>
+<div class="card gbh rv"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg></span>Виджеты и диаграммы</h3><p>Обновлённые виджеты – обратный отсчёт, прогресс, показатель, привычки, погода – и диаграммы из баз данных.</p></div>
+<div class="card gbh rv d1"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"></path></svg></span>Лёгкий переезд</h3><p>Импорт из Notion, Trilium, Markdown/Obsidian и CSV, экспорт в CSV и Markdown.</p></div>
+<div class="card gbh rv d2"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><rect height="13" rx="2" width="20" x="2" y="4"></rect><path d="M8 21h8M12 17v4"></path></svg></span>Приложение для Mac</h3><p>Настольное приложение для Mac показывает веб-интерфейс твоего сервера – с уведомлениями, виджетами и туннелем для звонков.</p></div>
+</div>
     <p class="links"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md" hreflang="de">Все изменения (на немецком)</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/UPGRADE-2.5.md" hreflang="en">Обновление с 2.3/2.4 (на английском)</a></p>
+<a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/UPGRADE-2.5.md" hreflang="en">Обновление с 2.3/2.4 (на английском)</a></p>
   </div>
 </section>
 
-<section id="install">
+<section id="chats" class="alt fxs">
   <div class="wrap">
-    <p class="eyebrow">Готово за несколько минут</p>
-    <h2>Нужен только сервер с Docker</h2>
-    <p class="sub">Saga работает в Docker Compose. Снаружи нужны только один домен и порт 443 на твоём обратном прокси – звонки
-      идут тем же путём.</p>
-    <div class="install">
-      <div>
-<pre tabindex="0" aria-label="Команды для установки"><span class="c"># скачать и настроить</span>
-git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
-cp .env.example .env
-<span class="c"># в .env: BASE_URL, SECRET_KEY, POSTGRES_PASSWORD</span>
-
-docker compose pull &amp;&amp; docker compose up -d
-<span class="c"># первый пароль администратора</span>
-docker compose logs saga | grep Admin-Konto
-
-<span class="c"># обновить позже (Saga сначала делает резервную копию)</span>
-docker compose pull &amp;&amp; docker compose up -d</pre>
-        <figure class="shot"><img src="../bilder/tunnel.webp" width="2000" height="468" loading="lazy" alt="Администрирование → Звонки: блок о звонках через адрес Saga (туннель) сообщает, что прокси пропускает WebSocket"></figure>
-      </div>
-      <ol class="steps">
-        <li><b>Запуск</b><span>Скачай образ и запусти – Saga слушает порт 8080, панель администратора – 8081 (только локально).</span></li>
-        <li><b>Прокси перед Saga</b><span>Один домен с HTTPS на порту 443 указывает на Saga. В Nginx Proxy Manager включи «Websockets Support»; Caddy и Traefik делают это сами.</span></li>
-        <li><b>Настройка</b><span>Создай в панели администратора учётные записи, группы и сервисы, по желанию LDAP или SSO. В разделе «Звонки» кнопка «Проверить сейчас» проверяет путь через прокси.</span></li>
-        <li><b>Подключи приложения</b><span>Войди по QR-коду из раздела «Приложения и устройства» – готово.</span></li>
-      </ol>
-    </div>
-    <p class="links"><a class="btn primary" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">Подробное руководство (на английском)</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">Релизы</a></p>
+    <div class="head rv"><p class="eyebrow">Чаты и звонки</p>
+    <h2>Говори – никто не подслушает.</h2>
+    <p class="sub">Чаты и звонки защищены сквозным шифрованием: сервер хранит сообщения, но прочитать их не может – как и администратор.</p></div>
+    <div class="feature rv"><div class="txt">
+<h3>Звонки через Gjallarhorn<span class="tag">Экспериментально</span></h3>
+<p>В Saga есть собственный медиаузел. Он работает за любым обратным прокси с поддержкой WebSocket, через обычный
+          адрес Saga – без второго имени и без дополнительного порта.</p>
+<ul>
+<li><b>Один на один и в группе</b> – с видео, звуком и показом экрана; на старте до 4 участников или устройств</li>
+<li><b>Из разговора один на один – в групповой звонок</b>, не прерывая беседу</li>
+<li><b>Добавляй людей</b>, даже не из этого чата; кто не ответил, виден в списке «Не в звонке» с кнопкой «Позвонить снова»</li>
+<li><b>Меняй и добавляй устройства:</b> перенеси звонок с телефона на ноутбук или подключи ноутбук только для показа экрана</li>
+<li><b>Сквозное шифрование</b> – в том числе через узел</li>
+</ul>
+<p class="fine">В версии 2.5 Gjallarhorn экспериментальный. Safari и браузеры на iPhone/iPad пока звонят напрямую или через
+          TURN; приложения и приложение для Mac используют туннель через адрес Saga.</p>
+</div><figure class="shot duo"><div class="gb"><img alt="Групповой звонок: четыре участника плитками, метки сквозного шифрования и «Экспериментально», открыт список участников" height="1250" loading="lazy" src="../bilder/anruf-gruppe.webp" width="2000"></div><div class="ph"><img alt="Телефон в групповом звонке на четверых" height="1688" loading="lazy" src="../bilder/handy-anruf.webp" width="780"></div></figure></div>
+    <div class="feature rev rv"><div class="txt">
+<h3>Чаты, которые умеют больше</h3>
+<p>Современные чаты (уровень 3) теперь включены по умолчанию: по-прежнему со сквозным шифрованием и со всем, что нужно каждый день.</p>
+<ul>
+<li><b>Реакции, ответы и редактирование</b>, форматирование и @упоминания</li>
+<li><b>Голосовые сообщения</b> до 15 минут</li>
+<li><b>Закрепление сообщений и чатов</b>, отключение звука на время, отметка «непрочитано»</li>
+<li><b>Группы с администраторами</b>, фото и описанием, контакты и жалобы администраторам</li>
+</ul>
+</div><figure class="shot duo"><div class="gb"><picture><source media="(prefers-color-scheme: dark)" srcset="../bilder/chat-dunkel.webp"><img alt="Семейный чат с закреплённым сообщением, ответом с цитатой, реакцией-сердечком и фотографией" height="1250" loading="lazy" src="../bilder/chat-hell.webp" width="2000"></picture></div><div class="ph"><img alt="Телефон в тёмной теме: семейный чат с ответами и фотографией" height="1688" loading="lazy" src="../bilder/handy-chat.webp" width="780"></div></figure></div>
   </div>
 </section>
 
-<section id="features" class="alt">
+<section id="federation" class="stage fed fxs">
+  <div class="soft" aria-hidden="true"></div>
+  <div class="wrap grid2">
+    <div class="rv"><svg class="net" viewBox="0 40 560 340" role="img" aria-label="Твой сервер Saga связан с четырьмя другими серверами Saga; сообщения ходят между ними туда и обратно."><line class="ln" x1="280" y1="190" x2="100" y2="90"/><line class="ln" x1="280" y1="190" x2="460" y2="80"/><line class="ln" x1="280" y1="190" x2="480" y2="290"/><line class="ln" x1="280" y1="190" x2="90" y2="300"/><line class="ln d" x1="100" y1="90" x2="460" y2="80"/><line class="ln d" x1="90" y1="300" x2="480" y2="290"/><circle class="pl" cx="280" cy="190" r="30"/><circle class="me" cx="280" cy="190" r="30"/><path d="M268 184c4-1.6 8-1.6 12 1.2 4-2.8 8-2.8 12-1.2v14c-4-1.6-8-1.6-12 1.2-4-2.8-8-2.8-12-1.2z" fill="none" stroke="#c9a45c" stroke-width="1.6" stroke-linejoin="round"/><text class="you" x="280" y="248" text-anchor="middle">Твой сервер</text><g><circle class="nd" cx="100" cy="90" r="20"/><circle class="dot" cx="100" cy="90" r="5"/></g><text x="100" y="136" text-anchor="middle">family.example</text><g><circle class="nd" cx="460" cy="80" r="20"/><circle class="dot" cx="460" cy="80" r="5"/></g><text x="460" y="126" text-anchor="middle">club.example</text><g><circle class="nd" cx="480" cy="290" r="20"/><circle class="dot" cx="480" cy="290" r="5"/></g><text x="480" y="336" text-anchor="middle">company.example</text><g><circle class="nd" cx="90" cy="300" r="20"/><circle class="dot" cx="90" cy="300" r="5"/></g><text x="90" y="346" text-anchor="middle">friends.example</text><circle class="pk g" cx="280" cy="190" r="4" style="--dx:-180px;--dy:-100px;--t:3.4s;--d:0s"/><circle class="pk s" cx="460" cy="80" r="4" style="--dx:-180px;--dy:110px;--t:2.8s;--d:-1s"/><circle class="pk g" cx="280" cy="190" r="4" style="--dx:200px;--dy:100px;--t:3s;--d:-0.5s"/><circle class="pk s" cx="90" cy="300" r="4" style="--dx:190px;--dy:-110px;--t:3.6s;--d:-2s"/><circle class="pk g" cx="100" cy="90" r="3" style="--dx:360px;--dy:-10px;--t:5s;--d:0s"/><circle class="pk s" cx="480" cy="290" r="3" style="--dx:-390px;--dy:10px;--t:5.5s;--d:-2.5s"/></svg></div>
+    <div class="rv d1"><p class="eyebrow">Федерация</p>
+      <h2>Много серверов. Одна сага.</h2>
+      <p class="sub">Подключи свой сервер к серверам Saga семьи, клуба или друзей. Делитесь страницами, общайтесь и созванивайтесь между серверами – содержимое остаётся у владельца, а каждый запрос между серверами подписан.</p>
+      <ul class="chips"><li>Общие страницы</li><li>Совместная правка</li><li>Чаты</li><li>Звонки</li><li>Адресная книга</li><li>Подпись Ed25519</li></ul></div>
+  </div>
+</section>
+
+<section id="features" class="fxs">
+  <div class="soft" aria-hidden="true"></div>
   <div class="wrap">
-    <p class="eyebrow">Всё в одном месте</p>
-    <h2>Блокнот, стартовая страница и семейный чат в одном</h2>
-    <p class="sub">Без облака и без подписки: у каждого своё личное пространство, и каждый делится тем, чем хочет.</p>
-    <div class="feature">
-      <div class="txt">
-        <h3>Сегодня</h3>
-        <p>Стартовая страница встречает тем, что впереди: задачи к сроку, события, недавно открытые страницы и плитки
+    <div class="head rv"><p class="eyebrow">Возможности</p>
+    <h2>Всё, что хочется сохранить. В одном месте.</h2>
+    <p class="sub">Без облака и без подписки: у каждого своё личное пространство, и каждый делится тем, чем хочет.</p></div>
+    <div class="feature rv">
+<div class="txt">
+<h3>Сегодня</h3>
+<p>Стартовая страница встречает тем, что впереди: задачи к сроку, события, недавно открытые страницы и плитки
           твоих сервисов – с учётом твоих групп.</p>
-      </div>
-      <figure class="shot"><picture><source srcset="../bilder/heute-dunkel.webp" media="(prefers-color-scheme: dark)"><img src="../bilder/heute-hell.webp" width="2000" height="1250" loading="lazy" alt="«Сегодня» с приветствием, быстрыми действиями, недавними страницами, плитками сервисов и открытыми задачами справа"></picture></figure>
-    </div>
+</div>
+<figure class="shot gb"><picture><source media="(prefers-color-scheme: dark)" srcset="../bilder/heute-dunkel.webp"><img alt="«Сегодня» с приветствием, быстрыми действиями, недавними страницами, плитками сервисов и открытыми задачами справа" height="1250" loading="lazy" src="../bilder/heute-hell.webp" width="2000"></picture></figure>
+</div>
     <div class="grid">
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg></span>Страницы</h3><p>Блоки, подстраницы, шаблоны, версии, комментарии и экспорт в Markdown – с быстрым поиском и деревом страниц.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg></span>Базы данных</h3><p>Таблица, доска, список, галерея, календарь, временная шкала и диаграмма – с формулами, сводками, связями и фильтрами.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 15l2 2 4-4"/></svg></span>Календари и задачи</h3><p>Календари CalDAV (например, Nextcloud, Radicale) и задачи из баз данных – с приоритетом и повторением.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>ИИ-ассистент</h3><p>По желанию, с OpenAI-совместимым сервисом на твой выбор: ищет ответы в твоих страницах, называет источники и помогает писать.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4"/></svg></span>Федерация</h3><p>Серверы Saga соединяются друг с другом: можно делиться страницами и редактировать их между серверами, переписываться и звонить.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>Доступ и публикация</h3><p>Делись с людьми и группами (чтение, комментарии, правка) или публикуй страницы, которые можно читать без учётной записи.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 18a5 5 0 0 1-.5-10 6 6 0 0 1 11.5 2A4 4 0 0 1 17 18z"/><path d="M12 11v6M9.5 14.5L12 17l2.5-2.5"/></svg></span>Копии и Nextcloud</h3><p>Ежедневные зашифрованные резервные копии в S3, в папку или в Nextcloud – и файлы Nextcloud прямо на страницах.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/></svg></span>LDAP и SSO</h3><p>Локальные учётные записи, LDAP/Active Directory и OpenID Connect – доступ к сервисам через группы.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>Пять языков</h3><p>Интерфейс и приложения на немецком, английском, испанском, русском и тайском – язык выбирается для каждой учётной записи.</p></div>
-    </div>
+<div class="card gbh rv glass"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"></path><path d="M14 3v5h5M9 13h7M9 17h5"></path></svg></span>Страницы</h3><p>Блоки, подстраницы, шаблоны, версии, комментарии и экспорт в Markdown – с быстрым поиском и деревом страниц.</p></div>
+<div class="card gbh rv glass d1"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><rect height="16" rx="2" width="18" x="3" y="4"></rect><path d="M3 10h18M9 4v16"></path></svg></span>Базы данных</h3><p>Таблица, доска, список, галерея, календарь, временная шкала и диаграмма – с формулами, сводками, связями и фильтрами.</p></div>
+<div class="card gbh rv glass d2"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><rect height="16" rx="2" width="18" x="3" y="5"></rect><path d="M3 10h18M8 3v4M16 3v4M8 15l2 2 4-4"></path></svg></span>Календари и задачи</h3><p>Календари CalDAV (например, Nextcloud, Radicale) и задачи из баз данных – с приоритетом и повторением.</p></div>
+<div class="card gbh rv glass"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"></path></svg></span>ИИ-ассистент</h3><p>По желанию, с OpenAI-совместимым сервисом на твой выбор: ищет ответы в твоих страницах, называет источники и помогает писать.</p></div>
+<div class="card gbh rv glass d1"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="6" r="3"></circle><circle cx="18" cy="18" r="3"></circle><path d="M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4"></path></svg></span>Федерация</h3><p>Серверы Saga соединяются друг с другом: можно делиться страницами и редактировать их между серверами, переписываться и звонить.</p></div>
+<div class="card gbh rv glass d2"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path></svg></span>Доступ и публикация</h3><p>Делись с людьми и группами (чтение, комментарии, правка) или публикуй страницы, которые можно читать без учётной записи.</p></div>
+<div class="card gbh rv glass"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M7 18a5 5 0 0 1-.5-10 6 6 0 0 1 11.5 2A4 4 0 0 1 17 18z"></path><path d="M12 11v6M9.5 14.5L12 17l2.5-2.5"></path></svg></span>Копии и Nextcloud</h3><p>Ежедневные зашифрованные резервные копии в S3, в папку или в Nextcloud – и файлы Nextcloud прямо на страницах.</p></div>
+<div class="card gbh rv glass d1"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><circle cx="8" cy="15" r="4"></circle><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"></path></svg></span>LDAP и SSO</h3><p>Локальные учётные записи, LDAP/Active Directory и OpenID Connect – доступ к сервисам через группы.</p></div>
+<div class="card gbh rv glass d2"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"></path></svg></span>Пять языков</h3><p>Интерфейс и приложения на немецком, английском, испанском, русском и тайском – язык выбирается для каждой учётной записи.</p></div>
+</div>
     <div class="gallery">
-      <figure class="shot"><a href="../bilder/board.webp"><img src="../bilder/board.webp" width="2000" height="1250" loading="lazy" alt="База данных уборки в виде доски с колонками «открыто», «в работе» и «готово»"></a><figcaption>База данных в виде доски</figcaption></figure>
-      <figure class="shot"><a href="../bilder/widgets.webp"><img src="../bilder/widgets.webp" width="2000" height="1250" loading="lazy" alt="Домашняя страница в тёмной теме с часами, мыслью дня, погодой и кнопками быстрых действий"></a><figcaption>Виджеты на странице</figcaption></figure>
-      <figure class="shot"><a href="../bilder/unterseiten.webp"><img src="../bilder/unterseiten.webp" width="2000" height="1250" loading="lazy" alt="Семейная вики с обложкой и подстраницами в виде галереи"></a><figcaption>Подстраницы галереей</figcaption></figure>
-      <figure class="shot"><a href="../bilder/kalender.webp"><img src="../bilder/kalender.webp" width="2000" height="1250" loading="lazy" alt="Семейный календарь, вид по неделям"></a><figcaption>Вид календаря</figcaption></figure>
-      <figure class="shot"><a href="../bilder/ki.webp"><img src="../bilder/ki.webp" width="2000" height="1250" loading="lazy" alt="ИИ-ассистент рядом со страницей: ответ и источники"></a><figcaption>ИИ-ассистент с источниками</figcaption></figure>
-      <figure class="shot"><a href="../bilder/foederation.webp"><img src="../bilder/foederation.webp" width="2000" height="1250" loading="lazy" alt="Страница с другого сервера Saga: садовое товарищество поделилось ею, и её можно редактировать на сервере семьи"></a><figcaption>Страница с другого сервера</figcaption></figure>
-    </div>
+<figure class="shot rv"><a href="../bilder/board.webp"><img alt="База данных уборки в виде доски с колонками «открыто», «в работе» и «готово»" height="1250" loading="lazy" src="../bilder/board.webp" width="2000"></a><figcaption>База данных в виде доски</figcaption></figure>
+<figure class="shot rv d1"><a href="../bilder/widgets.webp"><img alt="Домашняя страница в тёмной теме с часами, мыслью дня, погодой и кнопками быстрых действий" height="1250" loading="lazy" src="../bilder/widgets.webp" width="2000"></a><figcaption>Виджеты на странице</figcaption></figure>
+<figure class="shot rv d2"><a href="../bilder/unterseiten.webp"><img alt="Семейная вики с обложкой и подстраницами в виде галереи" height="1250" loading="lazy" src="../bilder/unterseiten.webp" width="2000"></a><figcaption>Подстраницы галереей</figcaption></figure>
+<figure class="shot rv"><a href="../bilder/kalender.webp"><img alt="Семейный календарь, вид по неделям" height="1250" loading="lazy" src="../bilder/kalender.webp" width="2000"></a><figcaption>Вид календаря</figcaption></figure>
+<figure class="shot rv d1"><a href="../bilder/ki.webp"><img alt="ИИ-ассистент рядом со страницей: ответ и источники" height="1250" loading="lazy" src="../bilder/ki.webp" width="2000"></a><figcaption>ИИ-ассистент с источниками</figcaption></figure>
+<figure class="shot rv d2"><a href="../bilder/foederation.webp"><img alt="Страница с другого сервера Saga: садовое товарищество поделилось ею, и её можно редактировать на сервере семьи" height="1250" loading="lazy" src="../bilder/foederation.webp" width="2000"></a><figcaption>Страница с другого сервера</figcaption></figure>
+</div>
     <p class="fine center">На снимках – немецкий интерфейс демонстрационного сервера.</p>
   </div>
 </section>
 
-<section id="apps">
+<section id="apps" class="alt fxs">
   <div class="wrap">
-    <p class="eyebrow">Приложения</p>
-    <h2>В дороге и за рабочим столом</h2>
-    <p class="sub">Saga работает в любом современном браузере, в том числе на телефоне. А ещё есть приложения, в которые можно войти по QR-коду.</p>
-    <div class="phones">
-      <figure><img src="../bilder/handy-heute.webp" width="780" height="1688" loading="lazy" alt="Телефон: «Сегодня» с приветствием, быстрыми действиями и задачами"><figcaption>Сегодня</figcaption></figure>
-      <figure><img src="../bilder/handy-chat.webp" width="780" height="1688" loading="lazy" alt="Телефон в тёмной теме: семейный чат с ответами и фотографией"><figcaption>Чат</figcaption></figure>
-      <figure><img src="../bilder/handy-anruf.webp" width="780" height="1688" loading="lazy" alt="Телефон в групповом звонке на четверых"><figcaption>Групповой звонок</figcaption></figure>
+    <div class="head center rv"><p class="eyebrow">Приложения</p>
+    <h2>Как дома на любом устройстве.</h2>
+    <p class="sub">Saga работает в любом современном браузере, в том числе на телефоне. А ещё есть приложения, в которые можно войти по QR-коду.</p></div>
+    <div class="scene rv">
+      <div class="dev laptop"><div class="scr"><img src="../bilder/widgets.webp" width="2000" height="1250" loading="lazy" alt=""></div><div class="base"></div></div>
+      <div class="dev tab"><div class="scr"><img src="../bilder/kalender.webp" width="2000" height="1250" loading="lazy" alt=""></div></div>
+      <div class="dev phone"><div class="scr"><img alt="Телефон: «Сегодня» с приветствием, быстрыми действиями и задачами" height="1688" loading="lazy" src="../bilder/handy-heute.webp" width="780"></div></div>
     </div>
     <div class="plat">
-      <div class="card"><h3>iPhone &amp; iPad</h3><p>Нативное приложение с виджетами. В App Store его пока нет – собери сам.</p></div>
-      <div class="card"><h3>Android</h3><p>Нативное приложение в виде APK из релизов на GitHub, Android 8 или новее.</p></div>
-      <div class="card"><h3>Mac</h3><p>Настольное приложение – оболочка для веб-интерфейса, подписанное и заверенное Apple (macOS 26 или новее).</p></div>
-      <div class="card"><h3>Linux</h3><p>Приложение для GNOME в виде RPM (Fedora, RHEL 10) и Flatpak для любого дистрибутива.</p></div>
-    </div>
+<div class="card gbh rv"><h3>iPhone &amp; iPad</h3><p>Нативное приложение с виджетами. В App Store его пока нет – собери сам.</p></div>
+<div class="card gbh rv d1"><h3>Android</h3><p>Нативное приложение в виде APK из релизов на GitHub, Android 8 или новее.</p></div>
+<div class="card gbh rv d2"><h3>Mac</h3><p>Настольное приложение – оболочка для веб-интерфейса, подписанное и заверенное Apple (macOS 26 или новее).</p></div>
+<div class="card gbh rv d3"><h3>Linux</h3><p>Приложение для GNOME в виде RPM (Fedora, RHEL 10) и Flatpak для любого дистрибутива.</p></div>
+</div>
     <p class="links center"><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">Скачать приложения</a>
-      <a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/blob/main/README.md" hreflang="en">Код и руководство (на английском)</a></p>
+<a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/blob/main/README.md" hreflang="en">Код и руководство (на английском)</a></p>
   </div>
 </section>
 
-<section id="security" class="alt">
+<section id="install" class="fxs">
   <div class="wrap">
-    <p class="eyebrow">Безопасность и приватность</p>
-    <h2>Твои данные остаются у тебя</h2>
-    <p class="sub">Saga работает на твоём сервере. Никакого отслеживания и телеметрии – Saga обращается только к сервисам, которые
+    <div class="head rv"><p class="eyebrow">Готово за несколько минут</p>
+    <h2>Твой сервер. Твои правила.</h2>
+    <p class="sub">Saga работает в Docker Compose. Снаружи нужны только один домен и порт 443 на твоём обратном прокси – звонки
+      идут тем же путём.</p></div>
+    <div class="install">
+      <div>
+        <div class="term gb rv"><div class="inr"><div class="tb" aria-hidden="true"><i></i><i></i><i></i><span>Терминал</span></div>
+<pre tabindex="0" aria-label="Команды для установки"><span class="tl" style="--n:21;--t:0.25s;--d:0.3s"><span class="c"># скачать и настроить</span></span>
+<span class="tl" style="--n:61;--t:1.16s;--d:0.67s">git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga</span>
+<span class="tl" style="--n:20;--t:0.38s;--d:1.95s">cp .env.example .env</span>
+<span class="tl" style="--n:49;--t:0.54s;--d:2.45s"><span class="c"># в .env: BASE_URL, SECRET_KEY, POSTGRES_PASSWORD</span></span>
+
+<span class="tl" style="--n:43;--t:0.82s;--d:3.26s">docker compose pull &amp;&amp; docker compose up -d</span>
+<span class="tl" style="--n:30;--t:0.33s;--d:4.2s"><span class="c"># первый пароль администратора</span></span>
+<span class="tl" style="--n:43;--t:0.82s;--d:4.65s">docker compose logs saga | grep Admin-Konto</span>
+
+<span class="tl" style="--n:54;--t:0.59s;--d:5.74s"><span class="c"># обновить позже (Saga сначала делает резервную копию)</span></span>
+<span class="tl" style="--n:43;--t:0.82s;--d:6.45s">docker compose pull &amp;&amp; docker compose up -d</span><span class="cur" aria-hidden="true" style="--d:7.39s"></span></pre></div></div>
+        <figure class="shot"><img alt="Администрирование → Звонки: блок о звонках через адрес Saga (туннель) сообщает, что прокси пропускает WebSocket" height="468" loading="lazy" src="../bilder/tunnel.webp" width="2000"></figure>
+      </div>
+      <ol class="steps rv d1">
+<li><b>Запуск</b><span>Скачай образ и запусти – Saga слушает порт 8080, панель администратора – 8081 (только локально).</span></li>
+<li><b>Прокси перед Saga</b><span>Один домен с HTTPS на порту 443 указывает на Saga. В Nginx Proxy Manager включи «Websockets Support»; Caddy и Traefik делают это сами.</span></li>
+<li><b>Настройка</b><span>Создай в панели администратора учётные записи, группы и сервисы, по желанию LDAP или SSO. В разделе «Звонки» кнопка «Проверить сейчас» проверяет путь через прокси.</span></li>
+<li><b>Подключи приложения</b><span>Войди по QR-коду из раздела «Приложения и устройства» – готово.</span></li>
+</ol>
+    </div>
+    <p class="links"><a class="btn primary" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">Подробное руководство (на английском)</a>
+<a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">Релизы</a></p>
+  </div>
+</section>
+
+<section class="alt" id="security">
+<div class="wrap">
+<p class="eyebrow">Безопасность и приватность</p>
+<h2>Твои данные остаются у тебя</h2>
+<p class="sub rv">Saga работает на твоём сервере. Никакого отслеживания и телеметрии – Saga обращается только к сервисам, которые
       ты сам настроил (и, если хочешь, к GitHub, чтобы проверить обновления).</p>
-    <div class="grid">
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>Сквозное шифрование</h3><p>Чаты и звонки зашифрованы сквозным шифрованием – и между подключёнными серверами, и через узел.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>Надёжный вход</h3><p>Ключи доступа и приложения-аутентификаторы, обязательная 2FA для администраторов или для всех. Неудачные попытки замедляются, учётные записи не блокируются.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></span>Резервные копии по плану</h3><p>Ежедневно, с шифрованием age, хранение 7/4/6, пробное восстановление – плюс копия перед каждым обновлением и личные копии для каждого.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 21h10M7 9h4M7 13h7"/></svg></span>Отдельная панель администратора</h3><p>Свой порт, по умолчанию доступна только локально – со своим входом и диагностикой.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></svg></span>Решаешь ты</h3><p>Федерацию, чат, звонки и адресную книгу можно отключить для каждого подключённого сервера; отметки о прочтении и статус «в сети» – для каждого человека.</p></div>
-      <div class="card"><h3><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3H5v18h3M16 3h3v18h-3"/><path d="M10 9l-2 3 2 3M14 9l2 3-2 3"/></svg></span>Открытый код</h3><p>AGPL-3.0, всё на GitHub – сервер, приложения и инструменты, которыми сделаны эти снимки.</p></div>
+<div class="grid">
+<div class="card gbh rv"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><rect height="10" rx="2" width="14" x="5" y="11"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></span>Сквозное шифрование</h3><p>Чаты и звонки зашифрованы сквозным шифрованием – и между подключёнными серверами, и через узел.</p></div>
+<div class="card gbh rv d1"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg></span>Надёжный вход</h3><p>Ключи доступа и приложения-аутентификаторы, обязательная 2FA для администраторов или для всех. Неудачные попытки замедляются, учётные записи не блокируются.</p></div>
+<div class="card gbh rv d2"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 4v5h-5"></path></svg></span>Резервные копии по плану</h3><p>Ежедневно, с шифрованием age, хранение 7/4/6, пробное восстановление – плюс копия перед каждым обновлением и личные копии для каждого.</p></div>
+<div class="card gbh rv"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><rect height="14" rx="2" width="18" x="3" y="4"></rect><path d="M7 21h10M7 9h4M7 13h7"></path></svg></span>Отдельная панель администратора</h3><p>Свой порт, по умолчанию доступна только локально – со своим входом и диагностикой.</p></div>
+<div class="card gbh rv d1"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"></path><circle cx="9" cy="7" r="2"></circle><circle cx="15" cy="12" r="2"></circle><circle cx="7" cy="17" r="2"></circle></svg></span>Решаешь ты</h3><p>Федерацию, чат, звонки и адресную книгу можно отключить для каждого подключённого сервера; отметки о прочтении и статус «в сети» – для каждого человека.</p></div>
+<div class="card gbh rv d2"><h3><span aria-hidden="true" class="ic"><svg viewbox="0 0 24 24"><path d="M8 3H5v18h3M16 3h3v18h-3"></path><path d="M10 9l-2 3 2 3M14 9l2 3-2 3"></path></svg></span>Открытый код</h3><p>AGPL-3.0, всё на GitHub – сервер, приложения и инструменты, которыми сделаны эти снимки.</p></div>
+</div>
+</div>
+</section>
+
+<section class="finale stage fxs">
+  <div class="wrap">
+    <div class="box gb rv">
+      <div class="inr" aria-hidden="true"><div class="aur a1" style="left:-10%;top:-30%;width:70%;height:80%"></div><div class="aur a2" style="left:35%;top:30%;width:70%;height:80%"></div><div class="rings"><svg class="r2" viewBox="0 0 760 760" fill="none"><circle cx="380" cy="380" r="340" stroke="#c9a45c" stroke-opacity=".25" stroke-width="8" stroke-dasharray="2 20"/></svg><svg class="r1" viewBox="0 0 760 760" fill="none"><circle cx="380" cy="380" r="270" stroke="#c9a45c" stroke-opacity=".16" stroke-dasharray="80 12 4 12"/></svg></div></div>
+      <h2>Пора начать свою <span class="shim">сагу?</span></h2>
+      <p>Свободное ПО под лицензией AGPL-3.0. Скачай, размести у себя и сделай своим.</p>
+      <div class="btns"><a class="btn primary" href="#install">Установка</a><a class="btn" href="https://github.com/yggdrasil-sh/saga">GitHub</a><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">Скачать приложения</a></div>
     </div>
   </div>
 </section>
 </main>
 
 <footer>
-  <div class="wrap cols">
-    <div>
-      <p><b>Saga</b> · на своём сервере, приватно, с открытым кодом (AGPL-3.0)</p>
-      <ul>
-        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">Руководство (на английском)</a></li>
-        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/UPGRADE-2.5.md" hreflang="en">Обновление до 2.5 (на английском)</a></li>
-        <li><a href="https://github.com/yggdrasil-sh/saga/releases">Релизы</a></li>
-        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/handbuch/README.md" hreflang="de">Руководство пользователя (на немецком)</a></li>
-        <li><a href="https://github.com/yggdrasil-sh/saga/blob/main/LICENSE">Лицензия</a></li>
-      </ul>
-    </div>
-    <span class="lang" role="group" aria-label="Язык"><a href="../" lang="de" hreflang="de" data-l="de" title="Deutsch" aria-label="Deutsch">DE</a><a href="../en/" lang="en" hreflang="en" data-l="en" title="English" aria-label="English">EN</a><a href="../es/" lang="es" hreflang="es" data-l="es" title="Español" aria-label="Español">ES</a><a href="./" lang="ru" hreflang="ru" data-l="ru" title="Русский" aria-label="Русский" aria-current="page">RU</a><a href="../th/" lang="th" hreflang="th" data-l="th" title="ไทย" aria-label="ไทย">TH</a></span>
-  </div>
+<div class="wrap cols">
+<div>
+<p><b>Saga</b> · на своём сервере, приватно, с открытым кодом (AGPL-3.0)</p>
+<ul>
+<li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">Руководство (на английском)</a></li>
+<li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/UPGRADE-2.5.md" hreflang="en">Обновление до 2.5 (на английском)</a></li>
+<li><a href="https://github.com/yggdrasil-sh/saga/releases">Релизы</a></li>
+<li><a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/handbuch/README.md" hreflang="de">Руководство пользователя (на немецком)</a></li>
+<li><a href="https://github.com/yggdrasil-sh/saga/blob/main/LICENSE">Лицензия</a></li>
+</ul>
+</div>
+<span aria-label="Язык" class="lang" role="group"><a aria-label="Deutsch" data-l="de" href="../" hreflang="de" lang="de" title="Deutsch">DE</a><a aria-label="English" data-l="en" href="../en/" hreflang="en" lang="en" title="English">EN</a><a aria-label="Español" data-l="es" href="../es/" hreflang="es" lang="es" title="Español">ES</a><a aria-current="page" aria-label="Русский" data-l="ru" href="./" hreflang="ru" lang="ru" title="Русский">RU</a><a aria-label="ไทย" data-l="th" href="../th/" hreflang="th" lang="th" title="ไทย">TH</a></span>
+</div>
 </footer>
 <script>
+(function(){var d=document.documentElement;
 document.querySelectorAll(".lang a").forEach(function(a){a.addEventListener("click",function(){try{localStorage.setItem("saga-lang",a.dataset.l)}catch(e){}})});
-/* Промовидео: если файла нет, постер остаётся картинкой (без сломанного плеера). До щелчка ничего не загружается. */
+/* Promovideo: fehlt die Datei, bleibt das Poster als Bild stehen (kein kaputter Player). Ohne Klick wird nichts geladen. */
 (function(){var v=document.querySelector(".promo video");if(!v)return;var s=v.querySelector("source");
 function fall(){if(!v.parentNode)return;var i=document.createElement("img");i.src=v.getAttribute("poster");i.alt=v.getAttribute("aria-label")||"";
 i.width=1920;i.height=1080;var f=v.parentNode;f.replaceChild(i,v);var m=document.createElement("span");m.className="soon";m.textContent=f.closest(".promo").dataset.soon||"";if(m.textContent)f.appendChild(m)}
 if(s)s.addEventListener("error",fall);v.addEventListener("error",fall)})();
+/* Fenster im Startbereich folgt sanft der Maus (nur mit Bewegung, Maus und breitem Fenster) */
+var w=document.querySelector(".win"),h=document.querySelector(".hero"),raf=0,px=0,py=0;
+function flat(){if(w){w.style.removeProperty("--rx");w.style.removeProperty("--ry")}}
+if(w&&h&&window.matchMedia&&matchMedia("(hover: hover) and (pointer: fine)").matches){
+h.addEventListener("pointermove",function(ev){if(!d.classList.contains("motion")||innerWidth<=880)return;var r=h.getBoundingClientRect();px=(ev.clientX-r.left)/r.width-.5;py=(ev.clientY-r.top)/r.height-.5;
+if(!raf)raf=requestAnimationFrame(function(){raf=0;w.style.setProperty("--ry",(-15+px*14).toFixed(2)+"deg");w.style.setProperty("--rx",(9-py*10).toFixed(2)+"deg")})});
+h.addEventListener("pointerleave",flat)}
+/* Schalter "Bewegung": Wahl merken */
+var b=document.querySelector(".mot");function st(){if(b)b.setAttribute("aria-pressed",d.classList.contains("motion")?"true":"false")}st();
+if(b)b.addEventListener("click",function(){var on=!d.classList.contains("motion");d.classList.toggle("motion",on);try{localStorage.setItem("saga-motion",on?"an":"aus")}catch(e){}st();if(!on)flat()});
+/* Abschnitte wachsen beim Scrollen herein; Schleifen ausserhalb des Bildes ruhen */
+var rv=document.querySelectorAll(".rv"),fx=document.querySelectorAll(".fxs");
+if("IntersectionObserver" in window){
+var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target)}})},{rootMargin:"0px 0px -6% 0px",threshold:.06});
+rv.forEach(function(e){io.observe(e)});
+var io2=new IntersectionObserver(function(es){es.forEach(function(e){e.target.classList.toggle("vis",e.isIntersecting)})},{rootMargin:"100px 0px"});
+fx.forEach(function(e){io2.observe(e)})}
+else{rv.forEach(function(e){e.classList.add("in")});fx.forEach(function(e){e.classList.add("vis")})}
+})();
 </script>
 </body>
 </html>
