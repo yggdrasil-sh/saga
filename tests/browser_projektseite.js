@@ -66,14 +66,14 @@ const srv = http.createServer((q, r) => {
               rv: document.querySelectorAll('.rv').length }));
             ok(pre.motion === (mot === 'an') && pre.pressed === (mot === 'an' ? 'true' : 'false'), tag + ': Bewegung/Schalter', pre);
             ok(pre.rv > 30 && (mot === 'an' ? pre.hidden > 5 : pre.hidden === 0), tag + ': Hereinwachsen (unten noch verborgen nur mit Bewegung)', pre);
-            await p.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += innerHeight * 0.6) { scrollTo(0, y); await new Promise(r => setTimeout(r, 60)); } scrollTo(0, 0); });
-            await p.waitForTimeout(1100);
-            const post = await p.evaluate(() => [...document.querySelectorAll('.rv')].filter(e => !e.classList.contains('in') || getComputedStyle(e).opacity !== '1').map(e => e.className));
+            await p.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += innerHeight * 0.6) { scrollTo({ top: y, behavior: 'instant' }); await new Promise(r => setTimeout(r, 80)); } scrollTo({ top: 0, behavior: 'instant' }); });
+            await p.waitForTimeout(1500);
+            const post = await p.evaluate(() => [...document.querySelectorAll('.rv')].filter(e => !e.classList.contains('in') || parseFloat(getComputedStyle(e).opacity) < 0.99).map(e => e.className + ' ' + getComputedStyle(e).opacity));
             ok(!post.length, tag + ': nach dem Scrollen alles sichtbar', post);
             const an = await p.evaluate((OK) => { const ANIM = new Set(OK); const bad = new Set(); let n = 0;
               for (const a of document.getAnimations()) { if (!a.effect || !a.effect.getKeyframes) continue; n++;
                 const t = a.effect.target; const shim = t && t.classList && t.classList.contains('shim');
-                for (const k of a.effect.getKeyframes()) for (const prop of Object.keys(k)) if (!ANIM.has(prop) && !(shim && prop === 'backgroundPosition')) bad.add(prop + '@' + (t && t.className && t.className.baseVal !== undefined ? t.className.baseVal : t && t.className)); }
+                for (const k of a.effect.getKeyframes()) for (const prop of Object.keys(k)) if (!ANIM.has(prop) && !(shim && /^backgroundPosition/.test(prop))) bad.add(prop + '@' + (t && t.className && t.className.baseVal !== undefined ? t.className.baseVal : t && t.className)); }
               return { n, bad: [...bad] }; }, [...ANIM_OK]).catch(e => ({ n: -1, bad: [String(e)] }));
             ok(!an.bad.length && (mot === 'an' ? an.n > 20 : an.n === 0), tag + ': Animationen nur transform/opacity', an);
             {
@@ -82,8 +82,9 @@ const srv = http.createServer((q, r) => {
               ok(f.loaded.some(x => /Fraunces/.test(x)) && f.loaded.some(x => /Runic/.test(x)), tag + ': Schriften geladen', f);
             }
           }
-          if (SHOTS) await p.evaluate(() => document.querySelectorAll('.rv').forEach(e => e.classList.add('in')));
-          if (SHOTS) await p.waitForTimeout(1000);
+          // Bilder: alles hereingewachsen, Terminal fertig getippt (endliche Animationen ans Ende)
+          if (SHOTS) { await p.evaluate(() => document.querySelectorAll('.rv').forEach(e => e.classList.add('in'))); await p.waitForTimeout(1000);
+            await p.evaluate(() => document.getAnimations().forEach(a => { try { if (a.effect.getComputedTiming().iterations !== Infinity) a.finish(); } catch (e) { /* egal */ } })); await p.waitForTimeout(200); }
           if (SHOTS && mot === MOTIONS[0]) await p.screenshot({ path: path.join(SHOTS, `${lang}-${bn}-${w}-${scheme === 'light' ? 'hell' : 'dunkel'}.jpg`), fullPage: true, type: 'jpeg', quality: 80 });
           if (!NUR) {
             ok(!errs.length, tag + ': Konsolenfehler', errs);

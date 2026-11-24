@@ -94,13 +94,13 @@ html:not(.js) .mot{display:none}
 .runes{position:absolute;right:-220px;top:-170px;width:960px;height:960px;opacity:.7}
 .runes svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .runes text{font-family:"Noto Sans Runic",sans-serif}
-.hero .grid2{position:relative;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:56px;align-items:center}
+.hero .grid2{position:relative;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:48px;align-items:center}
 .hero .txt{display:flex;flex-direction:column;align-items:flex-start;gap:22px}
 .kicker{display:inline-flex;align-items:center;gap:10px;min-height:36px;padding:0 14px 0 12px;border-radius:999px;border:1px solid var(--line);background:var(--gold-soft);font-size:14px;color:var(--fg)}
 .kicker b{color:var(--gold-hi);font-weight:650}
 .lamp{position:relative;display:inline-block;width:8px;height:8px;border-radius:50%;background:#62c483;flex:none}
 .lamp::after{content:"";position:absolute;inset:0;border-radius:50%;background:#62c483;opacity:0}
-h1{font-size:clamp(46px,7vw,92px);line-height:.98;letter-spacing:-.02em;margin:0;text-wrap:balance}
+h1{font-size:clamp(46px,6vw,82px);line-height:.98;letter-spacing:-.02em;margin:0;text-wrap:balance}
 html:lang(th) h1{font-size:clamp(38px,5.6vw,68px);line-height:1.25}
 html:lang(ru) h1{font-size:clamp(42px,6.2vw,80px)}
 .shim{font-style:italic;font-weight:400;color:var(--gold-hi);padding-right:.08em}
@@ -114,7 +114,7 @@ html:lang(th) .shim{font-style:normal;font-weight:700}
 .promise li::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--gold)}
 .promise li.main{font-weight:650;color:var(--fg)}
 /* 3D-gekipptes App-Fenster */
-.win{position:relative;--rx:9deg;--ry:-15deg}
+.win{position:relative;--rx:9deg;--ry:-15deg;margin-right:-56px}
 .win .halo{position:absolute;inset:8% 0 -10% 0;border-radius:50%;background:radial-gradient(closest-side,var(--gold),transparent);filter:blur(50px);opacity:.3}
 .win .tilt{position:relative;border-radius:var(--r);background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow),0 60px 120px -40px rgba(0,0,0,.6);overflow:hidden;
   transform:perspective(1600px) rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(1deg);transform-origin:50% 60%;transition:transform .7s cubic-bezier(.2,.7,.2,1);backface-visibility:hidden}
@@ -130,7 +130,7 @@ html:lang(th) .shim{font-style:normal;font-weight:700}
 .credit{color:var(--muted);font-size:13.5px;margin:10px 0 0;text-align:center}
 .credit a{color:var(--muted)}
 @media (max-width:880px){.hero{padding-top:48px}.hero .grid2{grid-template-columns:minmax(0,1fr);gap:44px}.runes{width:560px;height:560px;right:-200px;top:-120px;opacity:.5}
-  .win{--rx:0deg;--ry:0deg}.win .tilt{transform:none}.promo{margin-top:52px}}
+  .win{--rx:0deg;--ry:0deg;margin-right:0}.win .tilt{transform:none}.promo{margin-top:52px}}
 
 /* Laufband */
 .band{border-block:1px solid var(--border);background:var(--bg2);overflow:hidden;padding:20px 0}
