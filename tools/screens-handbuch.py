@@ -453,6 +453,14 @@ def factors(run):
     run.mfa_done = True
 
 
+def factors_off(run):
+    """Faktoren wieder weg (sonst verlangt die Admin-Anmeldung von anna spaeter einen zweiten Faktor, z. B. in b11)."""
+    with run.dm.db.connect() as c, c:
+        for tb in ("mfa_passkey", "mfa_totp", "mfa_recovery"):
+            c.execute(f"DELETE FROM {tb} WHERE uid=?", ("anna",))
+    run.mfa_done = False
+
+
 @scene("b01-03-sicherheit", "familie", "server+tls")
 def b01_03(run):
     factors(run)
@@ -478,6 +486,7 @@ def b01_03(run):
     w.mark([(bl.nth(0), "1", 4), (bl.nth(1), "2", 4), (bl.nth(2), "3", 4)])
     run.shot(w.p, "b01-03-sicherheit")
     w.close()
+    factors_off(run)
 
 
 @scene("b01-02-login-2fa", "familie", "server+tls")
@@ -494,6 +503,7 @@ def b01_02(run):
     w.mark([(w.p.locator("input[name=code]"), "1", 3), (w.p.locator("#pk-go"), "2", 3)])
     run.shot(w.p, "b01-02-login-2fa")
     w.close()
+    factors_off(run)
 
 
 @scene("b01-05-sprache", "familie")
