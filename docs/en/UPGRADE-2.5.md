@@ -7,8 +7,8 @@ every change: [CHANGELOG](../../CHANGELOG.md), full guide: [GUIDE.md](GUIDE.md).
 ## 1. Before
 
 - **Check versions:** `curl -s https://saga.example.org/api/version` – `schema` is **9** on 2.3, **14** on 2.4.
-  Saga 2.5 raises it to **35** (release candidates as of November 2026; a later RC may add migrations). 2.3 can go
-  straight to 2.5; also read "From 2.3 to 2.4" in the [guide](GUIDE.md).
+  Saga 2.5.0 raises it to **35** (later 2.5.x or 2.6 versions may add migrations – `schema` always shows the current
+  value). 2.3 can go straight to 2.5; also read "From 2.3 to 2.4" in the [guide](GUIDE.md).
 - **Backup:** Saga dumps the database itself before migrating (`/data/backups/…-vor-schema-35.dump`). Make one by
   hand as well: `docker compose exec saga python run.py backup --dateien` (database plus page files), and keep the
   `.env` (`SECRET_KEY`).
@@ -71,7 +71,7 @@ curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 --http1.1 \
 ## 5. Apps
 
 Calls and the new chat features need **apps 2.5** ([Saga apps](https://github.com/yggdrasil-sh/saga-apps/releases)):
-Android APK from the pre-release `v2.5.0-rc.N` until 2.5.0 is out; iPhone/iPad only via self-distribution (e.g. MDM)
+Android APK `Saga-2.5.0.apk` from the release (release candidates: from the pre-release `v<version>-rc.N`); iPhone/iPad only via self-distribution (e.g. MDM)
 or as a web app (Safari does not use the frame path yet, so calls from it run direct or via UDP/TURN-TLS). Apps 2.4
 still sign in and work with pages, databases and chats; 1:1 calls with an old active device fall back to direct
 (with a note that the other side is outdated), groups up to 4 go direct with a note, old apps cannot join larger
