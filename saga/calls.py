@@ -1607,12 +1607,11 @@ def busy_resp(name, again=False):
 
 def missed_bell(c, uid, call):
     """Glocke "Verpasster Anruf" fuer uid. Anklopfen (hold knock/again): ohne Push - der kommt einmal je Anrufer nach dem
-    Gespraech (knock_summary). Die Glocke merkt sich hold (Zaehlung aus chat_call.hold, auch wenn der Anruf schon weg ist)."""
+    Gespraech (knock_summary). Die Glocke merkt sich hold (Zaehlung aus chat_call.hold, auch wenn der Anruf schon weg ist);
+    saga.push.enqueue sieht data.hold und legt gar keinen Auftrag an (zaehlt weder das Kontingent noch fuer die
+    Sammelmeldung - das tut erst knock_summary)."""
     hold = call.get("hold") if call.get("hold") in ("knock", "again") else None
-    nid = notify.create(c, uid, "call.missed", call["caller"], data={"chat": call["chat_id"], "call": call["id"], **({"hold": hold} if hold else {})})
-    if nid and hold:
-        c.execute("DELETE FROM push_queue WHERE uid=? AND kind='call.missed' AND ref=? AND tries=0", (uid, nid))
-    return nid
+    return notify.create(c, uid, "call.missed", call["caller"], data={"chat": call["chat_id"], "call": call["id"], **({"hold": hold} if hold else {})})
 
 
 def knock_summary(c, uid):
@@ -1629,12 +1628,16 @@ def knock_summary(c, uid):
             rows.append((nid, actor, d))
     if not rows:
         return 0
-    last = {}
+    last, tries = {}, {}
     for nid, actor, d in rows:
         c.execute("UPDATE notification SET data=? WHERE id=?", (json.dumps(dict(d, sum=True)), nid))
         last[actor] = nid
+        tries[actor] = tries.get(actor, 0) + 1
     for actor, nid in sorted(last.items(), key=lambda x: x[1]):
-        bus.fire("notification.created", c, uid=uid, id=nid, kind="call.missed", actor=actor, replaces=None)   # saga.push
+        # saga.push: Push (ohne hold); waehrend Nicht stoeren zaehlt er stattdessen mit attempts Versuchen fuer die
+        # Sammelmeldung - jeder Versuch genau einmal (die Glocken selbst zaehlen nicht, data.hold)
+        bus.fire("notification.created", c, uid=uid, id=nid, kind="call.missed", actor=actor, replaces=None,
+                 data={"attempts": tries[actor]})
     print(f"call: Anklopfen - {len(rows)} Versuch(e), {len(last)} Mitteilung(en) nach dem Gespraech", flush=True)
     return len(last)
 

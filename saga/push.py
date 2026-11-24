@@ -456,11 +456,12 @@ def _held(c, uid, kind, actor, ref, data):
     col = "m" if kind in ("chat.message", "chat.mention") else "c" if kind == "call.missed" else "o"
     if col == "c" and _held_call(c, ref, r[0]):
         return True                       # Bugs-DB 2365: zaehlt _missed_held_calls aus chat_call (auch ohne Glocke) - nicht doppelt
-    _held_add(c, uid, _held_key(r[0]), col)
+    n = (data or {}).get("attempts")      # Sammel-Push zum Anklopfen (calls.knock_summary): so viele Versuche
+    _held_add(c, uid, _held_key(r[0]), col, n if col == "c" and isinstance(n, int) and not isinstance(n, bool) and 0 < n < 10000 else 1)
     return True
 
 
-def _held_add(c, uid, s, col):
+def _held_add(c, uid, s, col, n=1):
     """Bugs-DB 2364: Zaehler nicht sofort schreiben, sondern je Transaktion sammeln und kurz vor dem Commit in fester
     Reihenfolge (nach uid) schreiben (db.Conn.before_commit). Sonst sperrten zwei gleichzeitige Gruppen-Nachrichten mit
     gemeinsamen Empfaengern in Nicht stoeren die Zeilen user_kv(uid, 'status_held') in der Reihenfolge der Mitglieder
@@ -468,14 +469,14 @@ def _held_add(c, uid, s, col):
     Commit: das Ende von Nicht stoeren wartet weiter auf diese Transaktion und sieht den Zaehler."""
     reg = getattr(c, "before_commit", None)
     if reg is None:                       # Verbindung ohne Haken (Werkzeuge): sofort schreiben
-        _held_write(c, uid, s, {col: 1})
+        _held_write(c, uid, s, {col: n})
         return
     pend = c.tx.get(HELD_K)
     if pend is None:
         pend = c.tx[HELD_K] = {}
         reg(lambda: _held_flush(c, pend))
     cnt = pend.setdefault((uid, s), {})
-    cnt[col] = cnt.get(col, 0) + 1
+    cnt[col] = cnt.get(col, 0) + n
 
 
 def _held_flush(c, pend):
@@ -518,6 +519,8 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
     Fuer den Chat: kind='chat.message', data={'chat': <kennung>} - NIE Inhalte."""
     if kind not in KIND_CAT or not uid or uid == actor:
         return 0
+    if kind == "call.missed" and (data or {}).get("hold") in ("knock", "again"):
+        return 0                          # 2029: Anklopfen - Glocke ohne Push, kein Kontingent; Push/Zaehlung macht knock_summary
     srv = server()
     if not srv["enabled"]:
         return 0
@@ -569,10 +572,14 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
     return len(subs)
 
 
-def _on_notification(c, uid, id, kind, actor=None, replaces=None, **_):      # noqa: A002 - Name aus saga.notify
+def _on_notification(c, uid, id, kind, actor=None, replaces=None, data=None, **_):      # noqa: A002 - Name aus saga.notify
     if kind in ("chat.message", "chat.mention"):
         return                            # der Chat meldet selbst ueber "push.send" (mit Chat-Kennung, Stummschalten beachtet)
-    enqueue(c, uid, kind, actor=actor, ref=id, replaces=replaces)
+    d = data if isinstance(data, dict) else {}
+    # 2029: nur die Merker der Glocke weiterreichen (hold: Anklopfen ohne Push; attempts: Sammel-Push calls.knock_summary) -
+    # sie landen nicht im Auftrag (enqueue speichert nur chat/call), der Auftrag bleibt wie bisher ohne Kennungen
+    enqueue(c, uid, kind, actor=actor, ref=id, replaces=replaces,
+            data={k: d[k] for k in ("hold", "attempts") if k in d} or None)
 
 
 def _on_send(c, uid, kind, actor=None, data=None, **_):

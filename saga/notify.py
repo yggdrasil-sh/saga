@@ -100,7 +100,8 @@ def create(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, b
     nid = c.execute("INSERT INTO notification (uid, kind, actor_uid, note_id, comment_id, data, created, actor_kind, actor, on_behalf_of) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?)", (uid, kind, actor, note_id, comment_id, json.dumps(data), now, *_actor.cols())).lastrowid
     bus.emit_after(c, "notification", {"uid": uid, "id": nid, "replaces": old})
-    bus.fire("notification.created", c, uid=uid, id=nid, kind=kind, actor=actor, replaces=old)    # saga.push (Handy/Desktop)
+    bus.fire("notification.created", c, uid=uid, id=nid, kind=kind, actor=actor, replaces=old,     # saga.push (Handy/Desktop)
+             data=data)
     return nid
 
 

@@ -531,6 +531,47 @@ def deadlock_part(A, Bk):
             req("PUT", "/api/account/status", k, {"state": "available"})
 
 
+def knock_part(A, ua):
+    """2029: Anklopfen - Glocke ohne Push ueber data.hold in enqueue (kein Auftrag, kein Kontingent, nicht gezaehlt);
+    Sammel-Push calls.knock_summary waehrend noch aktivem Nicht stoeren: kein Push, die Versuche zaehlen genau einmal fuer
+    die Sammelmeldung."""
+    from saga import calls, notify
+    req("PUT", "/api/account/status", A, {"state": "dnd"})
+    t0 = time.time()
+    with connect() as c, c:
+        chat = c.execute("INSERT INTO chat (kind, created_by, created) VALUES ('free', 'ps-b', ?) RETURNING id", (t0,)).fetchone()[0]
+    try:
+        with connect() as c, c:
+            for i in range(3):
+                notify.create(c, "ps-a", "call.missed", "ps-b",
+                              data={"chat": chat, "call": secrets.token_hex(16), "hold": "knock" if i == 0 else "again"})
+        with connect() as c:
+            q = c.execute("SELECT COUNT(*) FROM push_queue WHERE uid='ps-a' AND kind='call.missed'").fetchone()[0]
+            bells = c.execute("SELECT COUNT(*) FROM notification WHERE uid='ps-a' AND kind='call.missed' AND created>=?", (t0,)).fetchone()[0]
+        ok(f"Anklopfen: drei Glocken, kein Auftrag, nichts gezaehlt ({bells}, {q}, {held('ps-a')})", bells == 3 and q == 0 and held("ps-a") is None)
+        with connect() as c, c:
+            n1 = calls.knock_summary(c, "ps-a")
+        with connect() as c:
+            q = c.execute("SELECT COUNT(*) FROM push_queue WHERE uid='ps-a' AND kind='call.missed'").fetchone()[0]
+        h = held("ps-a") or {}
+        ok(f"Sammel-Push waehrend Nicht stoeren: kein Auftrag, die 3 Versuche einmal gezaehlt ({n1}, {q}, {h})",
+           n1 == 1 and q == 0 and h.get("c") == 3)
+        with connect() as c, c:
+            n2 = calls.knock_summary(c, "ps-a")
+        ok(f"... zweiter Lauf: nichts mehr, nicht noch einmal gezaehlt ({n2}, {held('ps-a')})", n2 == 0 and (held("ps-a") or {}).get("c") == 3)
+        m = mark()
+        req("PUT", "/api/account/status", A, {"state": "available"})
+        dg = wait_digests({"/wp/a1": ua}, m)["/wp/a1"]
+        ok(f"... Sammelmeldung mit genau 3 verpassten Anrufen ({dg and dg[0]['body']})",
+           len(dg) == 1 and dg[0]["body"] == "Während „Nicht stören“: 3 verpasste Anrufe")
+    finally:
+        with connect() as c, c:
+            c.execute("DELETE FROM notification WHERE uid='ps-a' AND kind='call.missed' AND created>=?", (t0,))
+            c.execute("DELETE FROM chat WHERE id=?", (chat,))
+            c.execute("DELETE FROM user_kv WHERE uid='ps-a' AND k='status_held'")
+        req("PUT", "/api/account/status", A, {"state": "available"})
+
+
 def auth_ref(uid):
     from saga.core import local_ref
     return local_ref(uid)
@@ -854,6 +895,7 @@ def run(A, Bk, vpub):
     # --- 2.6 (Bugs-DB 2029-3): Push-Weiche und Sammelmeldung -------------------------------------------------------
     digest_part(A, Bk, ua, pgA, nn)
     deadlock_part(A, Bk)
+    knock_part(A, ua)
 
     # --- Abmelden im Browser, "ueberall abmelden" ---------------------------------------------------------------
     ok("Anmelde-Antwort setzt die Sitzung (Abo gehoert zu diesem Browser)", bool(web_cookie))
