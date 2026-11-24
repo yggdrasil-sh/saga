@@ -5,7 +5,9 @@
 - Bereiche (SCOPES): read:/write: fuer pages, db, tasks, files, comments, calendar (2.5: CalDAV-Kalender, nur MCP); dazu
   webhooks und mcp. write:x schliesst read:x ein.
 - roots (optional, P1-E6): nur diese Seitenbaeume (Seite + alles darunter). Rechte = Schnittmenge aus Bereich, roots und
-  der normalen Rolle des Kontos (sharing.Access) - ein Token kann nie mehr als das Konto.
+  der normalen Rolle des Kontos (sharing.Access) - ein Token kann nie mehr als das Konto. 2.6 (Bugs-DB 2266 K-A3, RT-27):
+  roots None = alles, was das Konto sehen darf; eine LEERE Liste = nichts (interner Auftrags-Tok, saga.tools.JobTok).
+  Gespeicherte API-Tokens haben nie eine leere Liste (roots_load: None oder nicht leer) - fuer sie aendert sich nichts.
 - Ablauf Pflicht (Standard 90 Tage, Admin-Hoechstwert; "unbegrenzt" nur mit Admin-Freigabe). Ungueltig bei Widerruf,
   Ablauf, gesperrtem/geloeschtem Konto, Admin "ueberall abmelden"/Passwortwechsel mit Abmelden (userdata.revoke_user_logins)
   und wenn der Admin die API abschaltet bzw. das Konto nicht (mehr) in der freigegebenen Gruppe ist.
@@ -85,7 +87,7 @@ class Tok:
     def __init__(self, tid, uid, name, prefix, scopes, roots, expires):
         self.id, self.uid, self.name, self.prefix = tid, uid, name, prefix
         self.scopes = frozenset(scopes)
-        self.roots = [int(x) for x in roots] if roots else None
+        self.roots = [int(x) for x in roots] if roots is not None else None     # [] = nichts (RT-27), None = alles
         self.expires = expires
 
     def has(self, scope):
@@ -93,6 +95,47 @@ class Tok:
 
     def any(self, *scopes):
         return any(s in self.scopes for s in scopes)
+
+
+# Bereiche, die ein Auftrag (JobTok) ueberhaupt haben kann - nie mcp, webhooks, Dateien (G3: keine Server-Rechte)
+JOB_SCOPES = ("read:pages", "write:pages", "read:db", "write:db", "read:tasks", "write:tasks", "read:calendar", "write:calendar")
+
+
+class JobTok(Tok):
+    """Interner Tok eines Auftrags (2.6, Bugs-DB 2266 K-A3, Konzept G3, M12) - ausgestellt von saga.tools.job_tok,
+    nie gespeichert, nie ueber HTTP erreichbar. id = -job_id (eigene Ratenbegrenzung je Auftrag), prefix "job".
+    roots = Ziel-Seiten des Plans (Liste, auch leer = nichts - nie None); read_roots = Ziele + "Ich lese dafuer"
+    (apitok.in_roots beim Lesen). tools = Plan-Werkzeuge (saga.tools.call laesst nur diese zu). Nur lokale Konten."""
+
+    def __init__(self, job_id, uid, scopes, targets, reads=(), tools=(), expires=None):
+        if isinstance(job_id, bool) or not isinstance(job_id, int) or not 0 < job_id < 2 ** 63:
+            raise ValueError("ungueltige Auftrags-ID")
+        if not isinstance(uid, str) or not uid or "@" in uid or uid.startswith("svc:"):
+            raise ValueError("JobTok nur fuer lokale Konten")
+        extra = set(scopes) - set(JOB_SCOPES)
+        if extra:
+            raise ValueError(f"Bereich nicht fuer Auftraege: {sorted(extra)}")
+        super().__init__(-job_id, uid, f"job:{job_id}", "job", scopes, list(targets or ()), expires)
+        self.job_id = job_id
+        self.read_roots = list(dict.fromkeys(self.roots + [int(x) for x in reads or ()]))
+        self.tools = frozenset(tools or ())
+        self.issued = time.time()
+
+    def may(self, ref, klass):
+        """Schnelle Vorpruefung ohne Datenbank: Kennung ref ("note:12", "db:3", "row:7", "task:5", "tasks", "cal:x")
+        fuer Klasse klass (read | own) erlaubt? Seiten nur, wenn genau diese ID in den Zielen (own) bzw. Ziele +
+        Gelesenes (read) steht - Unterseiten prueft erst in_roots mit der Datenbank. Nach aussen (out): in K-A nie."""
+        if klass not in ("read", "own"):
+            return False
+        kind, _, v = str(ref).partition(":")
+        if kind in ("note", "db", "row"):
+            try:
+                i = int(v)
+            except ValueError:
+                return False
+            return i > 0 and i in (self.read_roots if klass == "read" else self.roots)
+        area = {"task": "tasks", "tasks": "tasks", "cal": "calendar", "event": "calendar"}.get(kind)
+        return bool(area) and self.has(("read:" if klass == "read" else "write:") + area)
 
 
 # --- Ratenbegrenzung (gleitendes Fenster je Minute, im Speicher) ---------------------------------------------------
@@ -206,11 +249,17 @@ def authed(request, write=False, scope=None):
 
 
 # --- Rechte je Seite ------------------------------------------------------------------------------------------------
-def in_roots(c, tok, owner, nid):
-    if not tok.roots:
+def in_roots(c, tok, owner, nid, write=False):
+    """Liegt Seite nid (von owner) in den roots des Tokens? roots None = ja; [] = nie (RT-27). Lesen (write=False)
+    darf ein Token zusaetzlich in read_roots (saga.tools.JobTok: Ziel-Seiten + "Ich lese dafuer"); API-Tokens haben
+    keine read_roots - fuer sie gilt beim Lesen und Schreiben dasselbe."""
+    roots = tok.roots if write else getattr(tok, "read_roots", tok.roots)
+    if roots is None:
         return True
+    if not roots:
+        return False
     chain = note_chain(c, owner, nid)
-    return any(r in chain for r in tok.roots)
+    return any(r in chain for r in roots)
 
 
 def node_role(c, tok, nid, minimum="view", acc=None):
@@ -224,7 +273,7 @@ def node_role(c, tok, nid, minimum="view", acc=None):
         return None, None, _err("not_found", "not found", 404)
     r = acc.role(nid)
     owner = acc.owner(nid) if r else None
-    if not r or not in_roots(c, tok, owner, nid):
+    if not r or not in_roots(c, tok, owner, nid, RANK[minimum] > RANK["view"]):
         return None, None, _err("not_found", "not found", 404)
     if RANK[r] < RANK[minimum]:
         return owner, r, _err("forbidden", t("Dafür fehlt dir die Berechtigung."), 403)
@@ -232,8 +281,8 @@ def node_role(c, tok, nid, minimum="view", acc=None):
 
 
 def visible_ids_filter(c, tok, owner, ids):
-    """Teilmenge von ids (Seiten von owner) innerhalb der roots."""
-    if not tok.roots:
+    """Teilmenge von ids (Seiten von owner) innerhalb der roots (Lesen)."""
+    if getattr(tok, "read_roots", tok.roots) is None:
         return set(ids)
     return {i for i in ids if in_roots(c, tok, owner, i)}
 

@@ -18,6 +18,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Neu
 
+- **Gemeinsame Werkzeug-Registry für MCP und Kollegin** (Bugs-DB 2266 K-A3, Server): `saga/tools.py` hält alle
+  Werkzeuge mit Bereich, Schema und neuen Feldern (`klass` read/own/out, `undo`, `mcp`, `kollegin`, `destructive`,
+  `targets`); `saga/mcp.py` liest daraus – `tools/list` ist byteweise unverändert (Goldvorlage
+  `tests/vectors/mcp_tools_list.json`, alle Bereichs-Kombinationen). Für Aufträge gibt es einen internen Tok
+  (`apitok.JobTok`, `tools.job_tok`, `tools.check_plan`): Bereiche nur der Plan-Werkzeuge, Seitenbäume = Ziel-Seiten des
+  Plans, Lesen nur dort und in „Ich lese dafür“, nur lokale Konten, sofort ungültig bei Kontosperre, Abmelden oder ohne
+  KI-Fähigkeit; Teilen/Einladen/Anrufen gibt es nicht, `update_row` nur mit `rev`, `create_event` mit fester iCal-UID
+  (Wiederholung = ein Termin). **Verhaltensänderung intern:** leere `roots` heißen jetzt „nichts“ statt „alles“
+  (`roots is None` = alles); gespeicherte API-Tokens haben nie leere `roots`, für sie ändert sich nichts. Perf
+  „Kollegin: Plan pruefen“ (`tools/perf/kollegin_plan.py`, `limits.json`). Tests: `tests/kollegin_werkzeuge.py`,
+  `tests/mcp_gold.py`.
 - **Akteur-Spalten für die Kollegin** (Bugs-DB 2266 K-A1, Server): `saga/actor.py` hält fest, ob ein Dienst
   (`svc:kollegin`, `svc:bridge`, `svc:bot`) im Auftrag einer Person schreibt. Datenbank-Migration 36 (nur neue Spalten):
   `note.updated_actor`, `note_version` und `notification` je `actor_kind`/`actor`/`on_behalf_of`. Ohne Akteur bleibt

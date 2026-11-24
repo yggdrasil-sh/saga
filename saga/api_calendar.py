@@ -196,12 +196,14 @@ def _cal_err(ex):
     return Fail(409 if isinstance(ex, hkcal.Conflict) else 400, str(ex))
 
 
-def event_create(tok, a):
+def event_create(tok, a, ical_uid=None):
+    """ical_uid (2.6, Bugs-DB 2266 K-A3): feste UID statt einer zufaelligen (saga.tools.event_uid fuer Auftrags-
+    Schritte) - gibt es den Termin schon, bleibt es bei dem einen (hkcal.save_event, If-None-Match: *)."""
     aid, cal = _find_cal(tok, a.get("calendar"))
     acc, pw, cal = _target(tok, aid, cal)
     ev = _ev_fields(a, _tz(a.get("timezone")))
     try:
-        href, etag = hkcal.save_event(cal["href"], acc["username"], pw, ev)
+        href, etag = hkcal.save_event(cal["href"], acc["username"], pw, ev, ical_uid=ical_uid)
     except hkcal.CalError as ex:
         raise _cal_err(ex)
     C._cal_cache.clear()

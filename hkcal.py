@@ -275,8 +275,13 @@ def _set_fields(v, ev):
     return ical
 
 
-def save_event(cal_url, user, password, ev, href=None, etag=None):
-    """Neu anlegen (href=None) oder aendern (mit ETag). Liefert (href, neues ETag)."""
+def save_event(cal_url, user, password, ev, href=None, etag=None, ical_uid=None):
+    """Neu anlegen (href=None) oder aendern (mit ETag). Liefert (href, neues ETag). ical_uid (2.6, Bugs-DB 2266 K-A3):
+    feste UID fuer Neues (sonst zufaellig) - Termin-Datei <uid>.ics mit If-None-Match: *; gibt es sie schon (412), war es
+    eine Wiederholung desselben Schritts: (href, "") statt Konflikt, kein zweiter Termin."""
+    if ical_uid is not None and (href or not isinstance(ical_uid, str) or not 8 <= len(ical_uid) <= 80
+                                 or not all(ch.isascii() and (ch.isalnum() or ch == "-") for ch in ical_uid)):
+        raise CalError(t("ungültige Angabe"))
     auth = (user, password)
     if href:
         check_url(href)
@@ -286,10 +291,12 @@ def save_event(cal_url, user, password, ev, href=None, etag=None):
         _set_fields(v, ev)
         body, headers = cal.to_ical(), ({"If-Match": cur} if cur else {})
     else:
-        uid = str(uuid.uuid4()); href = urljoin(check_url(cal_url if cal_url.endswith("/") else cal_url + "/"), uid + ".ics")
+        uid = ical_uid or str(uuid.uuid4()); href = urljoin(check_url(cal_url if cal_url.endswith("/") else cal_url + "/"), uid + ".ics")
         body, headers = _vevent(ev, uid), {"If-None-Match": "*"}
     headers["Content-Type"] = "text/calendar; charset=utf-8"
     status, _, rh, _ = _req("PUT", href, auth, body, headers)
+    if status == 412 and ical_uid is not None:
+        return href, ""                                  # schon angelegt (Wiederholung): derselbe eine Termin
     if status == 412:
         raise Conflict(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
     if status not in (200, 201, 204):

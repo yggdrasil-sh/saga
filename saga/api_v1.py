@@ -160,7 +160,7 @@ def page_read(tok, nid, fmt="blocks"):
         out["schema"] = schema_out(d["schema"])
     if d.get("props"):
         out["properties"] = d["props"]
-        par = _parent_db(nid) if tok.roots else None
+        par = _parent_db(nid) if tok.roots is not None else None
         if par is not None:
             with _db() as c:
                 po = Access(c, tok.uid).owner(par)
@@ -173,7 +173,7 @@ def page_read(tok, nid, fmt="blocks"):
     blocks = []
     if d.get("format") == "blocks":
         blocks = _json_load(d.get("body"), {}).get("blocks") or []
-        if tok.roots and '"synced"' in (d.get("body") or ""):
+        if tok.roots is not None and '"synced"' in (d.get("body") or ""):
             with _db() as c:
                 _synced_roots(c, tok, blocks)
     elif d.get("body"):
@@ -203,7 +203,7 @@ def _synced_roots(c, tok, blocks):
 def page_create(tok, b):
     from saga.pages import _Reply, _note_update, note_create, note_trash
     parent = b.get("parent_id")
-    if parent is None and tok.roots:
+    if parent is None and tok.roots is not None:          # 2.6 (RT-27): auch roots=[] (Auftrag ohne Ziel)
         raise Fail(403, t("Dieser Token darf nur in freigegebenen Seitenbäumen anlegen – bitte parent_id angeben."))
     if parent is not None:
         with _db() as c:
@@ -261,7 +261,7 @@ def page_update(tok, nid, b):
     except _Reply as r:
         _relay(r.resp)
     out = {"ok": True, "rev": d.get("rev"), "updated": d.get("updated")}
-    if d.get("calc") and not tok.roots:                 # roots: berechnete Werte koennten fremde Seitenbaeume zeigen
+    if d.get("calc") and tok.roots is None:                 # roots: berechnete Werte koennten fremde Seitenbaeume zeigen
         out["calc"] = d["calc"]
     return 200, out
 
@@ -308,7 +308,7 @@ def blocks_edit(tok, nid, fn, rev=None):
         if rev != cur.get("rev"):
             raise Fail(409, conflict_msg(tok, nid))
     blocks = _json_load(cur.get("body"), {}).get("blocks") or []
-    if tok.roots and '"synced"' in (cur.get("body") or ""):
+    if tok.roots is not None and '"synced"' in (cur.get("body") or ""):
         with _db() as c:
             _synced_roots(c, tok, blocks)
     try:
@@ -497,7 +497,7 @@ def _value_out(p, v):
 def hidden_props(c, tok, owner, schema):
     """Token mit roots: Relationen auf Datenbanken ausserhalb der roots, Rollups darueber und (vorsichtshalber) alle
     Formeln liefern nichts - sonst kaemen Titel/Werte fremder Seitenbaeume ueber die Zeile heraus."""
-    if not tok.roots:
+    if tok.roots is None:
         return set()
     props = [p for p in (schema or {}).get("props") or [] if isinstance(p, dict)]
     out = set()
@@ -879,7 +879,7 @@ async def v1_file_upload(request: Request, page: int = 0):
     if err is not None:
         return err
     owner = tok.uid
-    if page or tok.roots:
+    if page or tok.roots is not None:
         def chk():
             with _db() as c:
                 return _guard(c, tok, page, "edit")[0]
@@ -910,7 +910,7 @@ def _file_ok(tok, fid, page):
         r = c.execute("SELECT name, mime, is_image, uid FROM file WHERE id=?", (fid,)).fetchone()
         if not r:
             raise Fail(404, "not found")
-        if r[3] == tok.uid and not tok.roots:
+        if r[3] == tok.uid and tok.roots is None:
             return r
         if not page:
             raise Fail(404, "not found")
@@ -943,7 +943,7 @@ def image_get(tok, fid):
         r = c.execute("SELECT name, mime, is_image, uid FROM file WHERE id=?", (fid,)).fetchone()
         if not r:
             raise Fail(404, "not found")
-        if not (r[3] == tok.uid and not tok.roots and tok.has("read:files")) and not file_seen(c, tok, r[3], fid):
+        if not (r[3] == tok.uid and tok.roots is None and tok.has("read:files")) and not file_seen(c, tok, r[3], fid):
             raise Fail(404, "not found")
     path = os.path.join(FILES_DIR, fid)
     if not os.path.isfile(path):

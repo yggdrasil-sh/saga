@@ -166,6 +166,9 @@ def create_hook(uid, b, tok=None):
     cf = conf()
     if not cf.get("webhooks") or not apitok.allowed_for(user_info(uid), cf):
         return None, (403, t("Webhooks sind auf diesem Server abgeschaltet."))
+    if tok is not None and tok.roots is not None and not tok.roots:
+        # 2.6 (RT-27): roots=[] heisst "nichts" - gespeichert wuerde daraus "alles" (roots_load); nie anlegen
+        return None, (403, t("Dafür fehlt dir die Berechtigung."))
     url, err = check_url(b.get("url"), cf)
     if err:
         return None, (400, err)
@@ -288,7 +291,7 @@ def _visible(c, uid, nid, roots):
     acc = Access(c, uid)
     if not acc.role(nid):
         return False
-    if not roots:
+    if roots is None:                                  # 2.6 (RT-27): None = alles, [] = nichts (roots_load: nie [])
         return True
     owner = acc.owner(nid)
     tok = apitok.Tok(0, uid, "", "", (), roots, None)
@@ -305,7 +308,7 @@ def _emit(c, kind, owner, nid, actor, changed=(), debounce=False, db_id=None):
         return
     now = time.time()
     for hid, uid, roots in hooks:
-        if (uid == owner and not roots) or _visible(c, uid, nid, roots):
+        if (uid == owner and roots is None) or _visible(c, uid, nid, roots):
             _enqueue_one(c, hid, kind, nid, db_id, actor, changed, now, debounce)
 
 
@@ -394,7 +397,7 @@ def _payload(c, d, hook_uid, roots):
                 return None, "no access"
         elif not role:
             return None, "no access"
-        if roots and owner and not apitok.in_roots(c, apitok.Tok(0, hook_uid, "", "", (), roots, None), owner, nid) and not gone:
+        if roots is not None and owner and not apitok.in_roots(c, apitok.Tok(0, hook_uid, "", "", (), roots, None), owner, nid) and not gone:
             return None, "outside roots"
         r = c.execute("SELECT title FROM note WHERE id=?", (nid,)).fetchone()
         data.update(note_id=nid, title=(r[0] or "") if r else "")

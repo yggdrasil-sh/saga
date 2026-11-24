@@ -1,6 +1,7 @@
 {
- "_info": "p95-Grenzwerte in ms je Stufe (Praefix des Messungsnamens aus bench.py). S/M/L = Regressionsschutz (Stand testing 18.10.2026 x ~1.5-2, auf 4-Kern-CT mit Nachbarlast; Suche/Freigaben/Rueckverweise/rows nach 2.2-Server-Umbau). ziel_S/ziel_M/ziel_L = Ziele fuer 2.2 (heute teils verfehlt): mit SAGA_PERF_ZIEL=1 pruefen. 2.4 E0: Anruf-Signalisierung (bench.py calls; 2.3.0 und E0 auf 2-Kern-Container p95 ~15-50 ms, Grenzen mit Abstand). 2.4 E4/E5: Anruf als Raum, Signal im Raum, laufende Anrufe; Browser-Messung 4er-Mesh unter mesh (tests/browser_raum.js: Aufbau ms, Python-CPU-Spitze % je 0,5 s, Sekunden ueber 20 %). 2.4 Gelesen/Online (bench.py receipts, 50er-Gruppe, 49 Lesende alle 2 s): /read mit Bestaetigung p95 ~21-33 ms, Presence (49 Personen) ~24-36 ms auf 2-Kern-Container. 2.6 K-A4: \"Kollegin: Kontext-Auswahl\" (tools/perf/kollegin.py, ai_ctx.select im Prozess) S = 3.000 eigene Seiten, M = 8.050 eigene Notizen mit 50 Datenbanken + 300 geteilte (Stufe G ohne Grenze, Bugs-DB 2349).",
+ "_info": "p95-Grenzwerte in ms je Stufe (Praefix des Messungsnamens aus bench.py). S/M/L = Regressionsschutz (Stand testing 18.10.2026 x ~1.5-2, auf 4-Kern-CT mit Nachbarlast; Suche/Freigaben/Rueckverweise/rows nach 2.2-Server-Umbau). ziel_S/ziel_M/ziel_L = Ziele fuer 2.2 (heute teils verfehlt): mit SAGA_PERF_ZIEL=1 pruefen. 2.4 E0: Anruf-Signalisierung (bench.py calls; 2.3.0 und E0 auf 2-Kern-Container p95 ~15-50 ms, Grenzen mit Abstand). 2.4 E4/E5: Anruf als Raum, Signal im Raum, laufende Anrufe; Browser-Messung 4er-Mesh unter mesh (tests/browser_raum.js: Aufbau ms, Python-CPU-Spitze % je 0,5 s, Sekunden ueber 20 %). 2.4 Gelesen/Online (bench.py receipts, 50er-Gruppe, 49 Lesende alle 2 s): /read mit Bestaetigung p95 ~21-33 ms, Presence (49 Personen) ~24-36 ms auf 2-Kern-Container. 2.6 K-A4: \"Kollegin: Kontext-Auswahl\" (tools/perf/kollegin.py, ai_ctx.select im Prozess) S = 3.000 eigene Seiten, M = 8.050 eigene Notizen mit 50 Datenbanken + 300 geteilte (Stufe G ohne Grenze, Bugs-DB 2349). 2.6 K-A3: Kollegin: Plan pruefen = saga.tools.check_plan fuer 5 Schritte im Prozess (tools/perf/kollegin_plan.py, tests/kollegin_werkzeuge.py), nicht ueber bench.py.",
  "S": {
+  "Kollegin: Plan pruefen": 30,
   "GET /api/notes (Seitenbaum": 150, "GET /api/shared": 150, "GET /api/notes/{id}": 60, "GET /rows": 120,
   "POST /api/notes/search Treffer": 200, "POST /api/notes/search ohne Treffer": 150, "GET / Dashboard": 100,
   "GET /api/notes/{id}/backlinks": 80, "GET /api/trash": 80, "GET /api/chats": 80, "POST /api/notes neuer": 80,
@@ -11,6 +12,7 @@
   "Kollegin: Kontext-Auswahl": 150
  },
  "M": {
+  "Kollegin: Plan pruefen": 30,
   "GET /api/notes (Seitenbaum": 1000, "GET /api/shared": 350, "GET /api/notes/{id}": 60, "GET /rows groesste DB (": 150,
   "POST /api/notes/search ohne Treffer": 5000, "GET / Dashboard (HTML, B)": 500, "GET /api/notes/{id}/backlinks": 350,
   "GET /api/trash": 100, "POST /api/notes neuer": 80, "PATCH": 80, "Seite oeffnen waehrend": 4000, "Live: Speichern": 250,
@@ -21,6 +23,7 @@
   "Kollegin: Kontext-Auswahl": 400
  },
  "L": {
+  "Kollegin: Plan pruefen": 50,
   "GET /api/notes (Seitenbaum": 2200, "GET /api/shared": 1000, "GET /api/notes/{id}": 60, "GET /rows groesste DB (": 500,
   "POST /api/notes/search": 500, "POST /api/notes/search ohne Treffer": 400, "GET / Dashboard (HTML, B)": 700,
   "GET /api/notes/{id}/backlinks": 50,

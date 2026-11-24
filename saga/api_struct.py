@@ -670,10 +670,10 @@ def widgets_get(tok, nid, tz=None):
             w = vals.get(b.get("id"))
             allowed = True
             if d.get("kind") == "upcoming":         # Aufgaben/Termine der Person: nur ohne roots und mit den Bereichen
-                allowed = not tok.roots and (cfg.get("tasks") is False or tok.has("read:tasks")) and (
+                allowed = tok.roots is None and (cfg.get("tasks") is False or tok.has("read:tasks")) and (
                     cfg.get("cal") is False or tok.has("read:calendar")) and (not cfg.get("dbs") or tok.has("read:db"))
             elif d.get("kind") in page_widgets.PERSONAL:
-                allowed = not tok.roots
+                allowed = tok.roots is None
             elif cfg.get("src") == "tasks":
                 allowed = tok.has("read:tasks")
             else:
@@ -681,7 +681,7 @@ def widgets_get(tok, nid, tz=None):
                 if dbs:
                     acc = Access(c, tok.uid)
                     allowed = tok.has("read:db") and all(acc.owner(x) and in_roots(c, tok, acc.owner(x), x) for x in dbs)
-                    if allowed and tok.roots:       # wie query_database: Relationen/Rollups auf fremde Baeume zeigen nichts
+                    if allowed and tok.roots is not None:       # wie query_database: Relationen/Rollups auf fremde Baeume zeigen nichts
                         allowed = not _w_hidden(c, tok, acc, cfg, dbs)
             if w is not None:
                 e["value"] = w if allowed else {"kind": d.get("kind"), "error": "no_access"}
