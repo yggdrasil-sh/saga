@@ -2709,6 +2709,9 @@ Verbindung.
 - **Kandidaten:** neben dem Knoten des Anrufs (`here: true`, zuerst) auch andere bereite Knoten. Der Bonus „here“ hält
   die meisten Geräte auf einem Knoten; wählt ein Gerät einen anderen (deutlich besser, Umzug), verbindet Saga die
   Knoten (Kaskade). Für Apps ändert sich am Ablauf nichts: frische Token mit `node` holen, verbinden.
+- **Föderiertes 1:1** (2.5, Bugs-DB 2357), das dieser Server führt: Knoten des Anrufs und Kandidaten der eigenen Geräte
+  ohne Knoten im Tunnel-Betrieb, solange ein anderer bereit ist – die Geräte des anderen Servers erreichen ihn nie, ein
+  eigenes Gerät dort hieße immer Kaskade.
 - **Teilnehmende anderer Knoten** erscheinen am eigenen Knoten wie alle anderen in `peers` (Kennung → CSRC), mit der
   Kennung **ihres** Knotens. Zuordnung Kennung → Gerät: zuerst `hp`/`hpn` der Teilnehmerliste (alle Knoten dieses
   Servers, nicht nur der eigenen Verbindung), dann `state.hp` der Geräte (Knoten anderer Server). Unbekannte Kennung:

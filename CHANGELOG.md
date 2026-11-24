@@ -117,7 +117,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Server): Führte dieser Server den Anruf und rief ein Gerät mit `ws` an (Apps, Mac-Hülle), lag der Anruf bei gleicher
   Last auf dem eingebauten Knoten im Tunnel-Betrieb – den erreichen die Geräte des anderen Servers nie, sie kamen auf den
   geteilten Knoten (z. B. horn-1), dazwischen lief eine Kaskade. Jetzt nur Knoten ohne Tunnel-Betrieb, geteilte zuerst
-  (`saga/fed_calls.py` `dm_fed_node`).
+  (`saga/fed_calls.py` `dm_fed_node`); auch die Kandidaten der eigenen Geräte enthalten in diesem Fall keinen
+  Tunnel-Knoten mehr, solange ein anderer bereit ist (die Messung im Gerät sah nur die kurze LAN-Strecke zum eingebauten
+  Knoten und wählte ihn trotz Bonus „hier“). Im Feld fehlte dabei der Ton des Gegenübers.
 - **Anruf-Diagnose des Webs mit Ton** (Bugs-DB 2357): Proben `kind: "a"` je Ton-Spur (Pakete, Pegel, Energie, abgespielte
   und verdeckte Samples), Ereignis `play` (Wiedergabe eines Tonplatzes abgewiesen), Ereignis `switch` „wahl …“ mit den
   Punkten der Knotenwahl. Vorher zeigte die Diagnose nur Bild – „kein Ton“ ließ sich nicht nachvollziehen.
