@@ -183,11 +183,19 @@ class Conn:
     def __init__(self, pg):
         self.pg = pg
         self._after = []
+        self._before = []
+        self.tx = {}                                  # Ablage fuer die laufende Transaktion (mit Commit/Rollback geleert)
 
     def after_commit(self, fn):
         """fn() nach dem naechsten erfolgreichen Commit aufrufen (Live-Ereignisse: erst senden, wenn die Aenderung
         wirklich gespeichert ist). Bei Rollback verworfen."""
         self._after.append(fn)
+
+    def before_commit(self, fn):
+        """fn() unmittelbar vor dem naechsten Commit aufrufen, noch in der Transaktion - z. B. gesammelte Schreibzugriffe in
+        fester Reihenfolge am Ende (Sperren kurz und ohne Verklemmung, Bugs-DB 2364). Fehler: Rollback, die Ausnahme geht an
+        den Aufrufer. Bei Rollback verworfen (auch ein Savepoint-Rollback nimmt schon vorgemerkte fn nicht zurueck)."""
+        self._before.append(fn)
 
     def execute(self, sql, args=()):
         q, skip, returning = translate(sql)
@@ -231,7 +239,16 @@ class Conn:
             # - dann darf der Aufrufer nicht "ok" melden (BUG-009)
             self.rollback()
             raise RuntimeError("Transaktion abgebrochen (vorheriger Datenbankfehler) - nichts gespeichert")
+        while self._before:
+            fns, self._before = self._before, []
+            try:
+                for fn in fns:
+                    fn()
+            except BaseException:
+                self.rollback()
+                raise
         self.pg.commit()
+        self.tx = {}
         fns, self._after = self._after, []
         for fn in fns:
             try:
@@ -241,6 +258,8 @@ class Conn:
 
     def rollback(self):
         self._after = []
+        self._before = []
+        self.tx = {}
         self.pg.rollback()
 
     def __enter__(self):

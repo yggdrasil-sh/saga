@@ -456,12 +456,49 @@ def _held(c, uid, kind, actor, ref, data):
     col = "m" if kind in ("chat.message", "chat.mention") else "c" if kind == "call.missed" else "o"
     if col == "c" and _held_call(c, ref, r[0]):
         return True                       # Bugs-DB 2365: zaehlt _missed_held_calls aus chat_call (auch ohne Glocke) - nicht doppelt
-    s = _held_key(r[0])
-    c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?, ?, ?) ON CONFLICT (uid, k) DO UPDATE SET v = CASE "
-              "WHEN user_kv.v::jsonb->>'s' = ? THEN jsonb_set(user_kv.v::jsonb, ARRAY[?], "
-              "to_jsonb(COALESCE((user_kv.v::jsonb->>?)::int, 0) + 1))::text ELSE EXCLUDED.v END",
-              (uid, HELD_K, json.dumps({"s": s, col: 1}), s, col, col))
+    _held_add(c, uid, _held_key(r[0]), col)
     return True
+
+
+def _held_add(c, uid, s, col):
+    """Bugs-DB 2364: Zaehler nicht sofort schreiben, sondern je Transaktion sammeln und kurz vor dem Commit in fester
+    Reihenfolge (nach uid) schreiben (db.Conn.before_commit). Sonst sperrten zwei gleichzeitige Gruppen-Nachrichten mit
+    gemeinsamen Empfaengern in Nicht stoeren die Zeilen user_kv(uid, 'status_held') in der Reihenfolge der Mitglieder
+    ihres Chats - gegenlaeufig -> Verklemmung. Die geteilte Sperre auf user_status (FOR SHARE in _held) bleibt bis zum
+    Commit: das Ende von Nicht stoeren wartet weiter auf diese Transaktion und sieht den Zaehler."""
+    reg = getattr(c, "before_commit", None)
+    if reg is None:                       # Verbindung ohne Haken (Werkzeuge): sofort schreiben
+        _held_write(c, uid, s, {col: 1})
+        return
+    pend = c.tx.get(HELD_K)
+    if pend is None:
+        pend = c.tx[HELD_K] = {}
+        reg(lambda: _held_flush(c, pend))
+    cnt = pend.setdefault((uid, s), {})
+    cnt[col] = cnt.get(col, 0) + 1
+
+
+def _held_flush(c, pend):
+    for key in sorted(pend):
+        _held_write(c, key[0], key[1], pend[key])
+    pend.clear()
+
+
+def _held_write(c, uid, s, inc):
+    """user_kv 'status_held' von uid fuer den Zeitraum s um inc {m|c|o: n} erhoehen (anderer Zeitraum: neu beginnen)."""
+    m, k, o = (int(inc.get(x) or 0) for x in ("m", "c", "o"))
+    c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?, ?, ?) ON CONFLICT (uid, k) DO UPDATE SET v = CASE "
+              "WHEN user_kv.v::jsonb->>'s' = ? THEN (user_kv.v::jsonb || jsonb_build_object("
+              "'m', COALESCE((user_kv.v::jsonb->>'m')::int, 0) + ?, 'c', COALESCE((user_kv.v::jsonb->>'c')::int, 0) + ?, "
+              "'o', COALESCE((user_kv.v::jsonb->>'o')::int, 0) + ?))::text ELSE EXCLUDED.v END",
+              (uid, HELD_K, json.dumps(dict({"s": s}, **{x: n for x, n in (("m", m), ("c", k), ("o", o)) if n})), s, m, k, o))
+
+
+def _held_take(c, uid, s):
+    """Noch nicht geschriebene Zaehler dieser Transaktion fuer uid/s herausnehmen (Ende von Nicht stoeren in derselben
+    Transaktion wie das Zurueckhalten) -> {m, c, o} oder {}."""
+    pend = getattr(c, "tx", {}).get(HELD_K)
+    return pend.pop((uid, s), {}) if pend else {}
 
 
 def _held_call(c, nid, since):
@@ -570,6 +607,8 @@ def _on_dnd_end(c, uid, since, end, **_):
     h = _json_load(r[0], {}) if r else {}
     if h.get("s") != _held_key(since):
         h = {}                            # Rest eines frueheren Zeitraums (sollte es nicht geben): nicht mitzaehlen
+    for x, n in _held_take(c, uid, _held_key(since)).items():
+        h[x] = (h.get(x) if isinstance(h.get(x), int) else 0) + n
     end = end if isinstance(end, (int, float)) else testclock.now()
     held_calls = _missed_held_calls(c, uid, since, end) if prefs(c, uid)["cats"].get(KIND_CAT["call.missed"], True) else 0
     dg = _digest_counts({"messages": h.get("m"), "calls": (h.get("c") if isinstance(h.get("c"), int) else 0) + held_calls,

@@ -497,6 +497,40 @@ def digest_part(A, Bk, ua, pgA, nn):
                 req("DELETE", f"/api/push/subscriptions/{d['id']}", A)
 
 
+def deadlock_part(A, Bk):
+    """Bugs-DB 2364: zwei gleichzeitige Sender (verschiedene Chats) mit zwei gemeinsamen Empfaengern in Nicht stoeren, in
+    gegenlaeufiger Reihenfolge - frueher sperrten beide user_kv(uid, 'status_held') kreuzweise (Verklemmung). Jetzt: kein
+    Fehler, Zaehler stimmen."""
+    for k in (A, Bk):
+        req("PUT", "/api/account/status", k, {"state": "dnd"})
+    errs, go = [], threading.Barrier(2)
+
+    def sender(order, chat):
+        try:
+            with connect() as c, c:
+                for i, u in enumerate(order):
+                    push.enqueue(c, u, "chat.message", actor="ps-adm", data={"chat": chat})
+                    if i == 0:
+                        go.wait(5)                # beide haben den ersten Empfaenger gezaehlt
+                        time.sleep(0.4)
+        except Exception as ex:  # noqa: BLE001
+            errs.append(f"{type(ex).__name__}: {ex}")
+
+    try:
+        ths = [threading.Thread(target=sender, args=(("ps-a", "ps-b"), "dl-1")),
+               threading.Thread(target=sender, args=(("ps-b", "ps-a"), "dl-2"))]
+        [x.start() for x in ths]
+        [x.join(30) for x in ths]
+        ha, hb = held("ps-a") or {}, held("ps-b") or {}
+        ok(f"zwei Sender gleichzeitig, gegenlaeufige Reihenfolge: keine Verklemmung ({errs})", not errs and not any(x.is_alive() for x in ths))
+        ok(f"... Zaehler stimmen (je 2 Nachrichten) ({ha.get('m')}, {hb.get('m')})", ha.get("m") == 2 and hb.get("m") == 2)
+    finally:
+        with connect() as c, c:
+            c.execute("DELETE FROM user_kv WHERE uid IN ('ps-a', 'ps-b') AND k='status_held'")
+        for k in (A, Bk):
+            req("PUT", "/api/account/status", k, {"state": "available"})
+
+
 def auth_ref(uid):
     from saga.core import local_ref
     return local_ref(uid)
@@ -819,6 +853,7 @@ def run(A, Bk, vpub):
 
     # --- 2.6 (Bugs-DB 2029-3): Push-Weiche und Sammelmeldung -------------------------------------------------------
     digest_part(A, Bk, ua, pgA, nn)
+    deadlock_part(A, Bk)
 
     # --- Abmelden im Browser, "ueberall abmelden" ---------------------------------------------------------------
     ok("Anmelde-Antwort setzt die Sitzung (Abo gehoert zu diesem Browser)", bool(web_cookie))
