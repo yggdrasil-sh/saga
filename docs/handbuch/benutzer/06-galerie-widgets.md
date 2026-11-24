@@ -114,7 +114,7 @@ Damit Saga gleich mit dieser Seite startet: Seitenmenü **⋯** → **Als Starts
    **Diagrammart**.
 5. Klick auf **Fertig** (oben im Fenster, es scrollt mit).
 
-![Widget „Countdown“ einrichten: Datum Sommerferien, Richtung „Bis zum Datum“, Einheit Tage, daneben die Vorschau](../bilder/b06-06-widget-einrichten.png)
+![Widget „Countdown“ (Bis zum Urlaub) in der Widget-Reihe von „Unser Jahr“: rechts „Widget einrichten“ mit Datum, Richtung „Bis zum Datum“ und Einheit Tage, daneben das Widget als Vorschau](../bilder/b06-06-widget-einrichten.png)
 
 ① Die Einstellungen – jede Änderung erscheint sofort in der Vorschau.
 

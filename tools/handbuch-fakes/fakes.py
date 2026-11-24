@@ -710,7 +710,7 @@ def og_site_start(ip="127.0.1.9", port=80):
 def _photo(seed, w=1200, h=900):
     import random
     r = random.Random(seed)
-    kind = seed % 4
+    kind = 3 if seed >= 40 else seed % 3                     # Album "Garten" (ab 40): Blumen, sonst Strand/Meer
     sky = [(130, 185, 235), (240, 180, 130), (150, 200, 240), (110, 160, 220)][kind]
     im = gradient(w, h, sky, (225, 238, 250))
     d = ImageDraw.Draw(im)

@@ -45,6 +45,8 @@ Was die Nummern bedeuten:
   KI-Assistenten eingerichtet, steht dort auch **Frage Saga KI** (`m`)
 - ③ **Kacheln** – eure Dienste und deine Lesezeichen, nach Kategorien geordnet
 - ④ **Leiste einklappen** (»): die Leiste rechts mit Terminen und offenen Aufgaben
+- ⑤ **Glocke** – die Zahl daran nennt deine ungelesenen Benachrichtigungen (siehe
+  [B14](14-benachrichtigungen.md))
 
 Außerdem siehst du auf „Heute“:
 

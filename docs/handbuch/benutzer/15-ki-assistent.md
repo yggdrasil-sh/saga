@@ -49,15 +49,16 @@ selbst nichts ändern – alles, was er vorschlägt, übernimmst du nur, wenn du
 1. Wähl ① **Frag deine Seiten**.
 2. Tipp deine Frage ins Feld, zum Beispiel „Was brauchen wir noch für das Sommerfest?“, und klick auf **Fragen**.
 3. Die Antwort erscheint Wort für Wort.
-4. Zahlen wie ② **[1]** im Text führen zur Seite, aus der die Information stammt. Unten stehen bei ③ alle Quellen.
+4. Zahlen wie ② **[2]** im Text führen zur Seite, aus der die Information stammt. Unten stehen bei ③ die Quellen:
+   zuerst die, auf die sich die Antwort beruft, darunter blasser die übrigen Seiten, die die KI durchsucht hat.
 
-![Saga KI beantwortet eine Frage zur Seite „Sommerfest“; im Text steht der Verweis [1], darunter die Quelle](../bilder/b15-01-ki-seite.png)
+![Saga KI beantwortet eine Frage zur Seite „Sommerfest“; im Text steht der Verweis auf diese Seite, darunter die Quellen – die zitierte Seite zuerst, die übrigen durchsuchten Seiten blasser](../bilder/b15-01-ki-seite.png)
 
 Was die Nummern bedeuten:
 
 - ① Bereiche: **Frag deine Seiten** oder **Diese Seite**.
 - ② Verweis auf die Quelle – ein Klick öffnet sie.
-- ③ Alle Quellen der Antwort.
+- ③ Die Quellen: zitierte zuerst, darunter blasser die übrigen durchsuchten Seiten.
 
 Unter dem Eingabefeld gibt es zwei Schalter:
 

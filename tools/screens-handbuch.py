@@ -1908,7 +1908,9 @@ def fed_connect(run):
         a.p.wait_for_load_state("networkidle")
         if a.p.locator("button", has_text="Fingerprint stimmt").count():
             break
-        print("  Foederation: Vorschau fehlgeschlagen - Freigabe neu setzen und warten", flush=True)
+        fl = a.p.locator("p.adm-flash")
+        print("  Foederation: Vorschau fehlgeschlagen (" + (fl.first.inner_text()[:160] if fl.count() else "-") +
+              ") - Freigabe neu setzen und warten", flush=True)
         run.dm.setting("allowed_hosts", "cloud.saga.example, bookorbit.example, wetter.saga.example, verein.example")
         time.sleep(8)
         a.p.goto(run.adm + "/federation")
