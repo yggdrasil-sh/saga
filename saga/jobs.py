@@ -77,7 +77,7 @@ KLASSES = ("read", "own", "out")
 UNDO_CLASSES = ("undo", "delete_only", "final")
 CONDS = ("if_yes", "if_no", "if_none_by")
 STEP_STATES = ("offen", "laeuft", "wartet", "erledigt", "uebersprungen", "fehlgeschlagen")
-CRASH_POINTS = ("after_approve", "before_write", "after_write", "mid_compensate")
+CRASH_POINTS = ("after_approve", "before_write", "after_write", "mid_compensate", "mid_call")   # mid_call: saga/ai_task.py
 # Wirkungen, die der Stempel festhaelt: Ereignis -> (Ziel-Praefix, Feld mit der Kennung)
 # notes.tree (Feld ids = Liste): neue Seite/Zeile (pages.note_create feuert sonst kein Stempel-Ereignis), auch Verschieben,
 # Papierkorb ... unter einem Schritt (Pruefer K-A2: create_page war ungestempelt -> nach Absturz/zweitem Versuch doppelt)

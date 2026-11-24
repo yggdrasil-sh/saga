@@ -108,6 +108,7 @@ def run(ctx, job, step):
         res = _reserve(job, ctx.step, ai_units.units_of(wrote) + STEP_EST, ctx.step > 0)
         if res is None:
             raise ai_units.NoBudget("job")      # saga.jobs: zurueckstellen bis morgen
+        jobs._crash("mid_call")                  # Test: Server-Ende mitten im Aufruf (belegt, noch nicht abgerechnet)
         try:
             out = tools.run_step(job, {"n": ctx.step, "tool": spec.name, "args": args, "idem_key": ctx.idem}, tok, attempt=ctx.attempt)
         except Fail as f:
