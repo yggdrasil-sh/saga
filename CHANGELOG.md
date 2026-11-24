@@ -18,8 +18,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Doku – Projektseite neu gestaltet (alle Sprachen)
 - `docs/index.html` und `docs/en|es|ru|th/index.html` neu für Selbsthoster: Startbereich („Eine Domain, nur Port 443“,
-  Platz für das Promovideo mit Poster `docs/video/saga-promo.jpg` und Musik-Angabe), Neu in 2.5 (Anrufe über
-  Gjallarhorn – experimentell, bis 4 Teilnehmende –, Editor live, Chats), Installieren, Funktionen, Apps, Sicherheit.
+  Promovideo `docs/video/saga-promo.mp4` (56 s, lädt erst beim Abspielen) mit Poster `docs/video/saga-promo.jpg` und
+  Musik-Angabe), Neu in 2.5 (Editor live, Unterseiten, Siegel, Titelbilder, Widgets), Chats & Anrufe (Gjallarhorn –
+  experimentell, bis 4 Teilnehmende), Föderation, Funktionen, Apps, Installieren, Sicherheit.
   `docs/site.css` neu (hell/dunkel, mobil, keine externen Schriften). Bilder frisch aus der Demo-Welt als WebP unter
   `docs/bilder/` (Szenen `w-*` in `tools/screens-handbuch.py`, Umwandlung `tools/website-bilder.py`), 41 ungenutzte alte
   Bilder aus `docs/screenshots/` entfernt; README-Bilder oben und in der Tabelle nachgezogen.
