@@ -237,8 +237,29 @@ def run():
     meta = json.loads(r[1]) if r else {}
     ok(f"Verlauf an: read im Eintrag gespeichert, gleich wie done ({meta.get('read')})", r is not None and r[0] == dn.get("history_id")
        and meta.get("read") == dn.get("read"))
+
+    # Pruefer K-A4: PUT /api/ai/settings - alte Apps (nur history) unveraendert, kein neuer Loeschweg
+    def nhist():
+        with connect() as c:
+            return c.execute("SELECT count(*) FROM ai_history WHERE uid='kr-a'").fetchone()[0]
+    n0 = nhist()
+    s, d = K.req("PUT", "/api/ai/settings", A, {"sources": {"calendar": True}})
+    ok(f"PUT nur sources: gespeicherter Verlauf bleibt ({n0} -> {nhist()})", s == 200 and n0 > 0 and nhist() == n0 and "history" not in d)
+    for bad in ({"sources": {"tasks": "aus"}, "history": False}, {"sources": ["tasks"], "history": False},
+                {"sources": {f"x{i}": False for i in range(500)}, "history": False}):
+        s, d = K.req("PUT", "/api/ai/settings", A, bad)
+        ok(f"PUT history aus + falsche sources -> 400, Verlauf NICHT geloescht ({s}, {nhist()})", s == 400 and nhist() == n0)
+    s, d = K.req("PUT", "/api/ai/settings", A, {"history": True})
+    ok(f"Alte App: PUT {{history: true}} -> genau {{history: true}} ({d})", s == 200 and d == {"history": True} and nhist() == n0)
+    s, d = K.req("PUT", "/api/ai/settings", A, {"history": True, "sources": {"calendar": False}})
+    ok(f"PUT history + sources: beides in der Antwort ({d})", s == 200 and d.get("history") is True
+       and (d.get("sources") or {}).get("calendar") is False and nhist() == n0)
+    ai_ctx.set_prefs("kr-a", {"calendar": True})
+
     ai_ctx.set_prefs("kr-a", {"tasks": True})
-    K.req("PUT", "/api/ai/settings", A, {"history": False})
+    s, d = K.req("PUT", "/api/ai/settings", A, {"history": False})
+    ok(f"Alte App: PUT {{history: false}} -> genau {{history: false}}, Verlauf geloescht ({d}, {nhist()})",
+       s == 200 and d == {"history": False} and nhist() == 0)
     st, ev, _ = K.ask(A, Q)
     dn = K.get(ev, "done") or {}
     with connect() as c:
