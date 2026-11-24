@@ -74,6 +74,9 @@ async function session(i, base, user) {
   await p.fill('input[type=password]', E.SAGA_PASS);
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
   await p.waitForTimeout(800);
+  // Frage "Erste Schritte" (neue Konten) vorab beantworten - sonst liegt der Dialog ueber dem Anruf-Knopf (wie browser_b2_frames.js)
+  await p.evaluate(() => fetch('/api/first-steps', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer: 'no' }) })).catch(() => {});
   return p;
 }
 const RKF = p => path.join(os.tmpdir(), 'saga-fedhorn-dm-rk-' + p.__base.replace(/\W+/g, '_') + '-' + p.__user + '.txt');
