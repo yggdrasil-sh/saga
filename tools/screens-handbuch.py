@@ -77,7 +77,7 @@ MARK_JS = r"""
   document.querySelectorAll('.hb-mark').forEach(e => e.remove());
   const col = dark ? '#d9ad4a' : '#7c5a10', fg = dark ? '#1b1b1b' : '#fff';
   for (const it of items) {
-    const [x, y, w, h, n, pad] = it, p = pad == null ? 4 : pad;
+    const [x, y, w, h, n, pad, side] = it, p = pad == null ? 4 : pad;
     const r = document.createElement('div'); r.className = 'hb-mark';
     Object.assign(r.style, { position: 'fixed', left: (x - p) + 'px', top: (y - p) + 'px', width: (w + 2 * p) + 'px', height: (h + 2 * p) + 'px',
       border: '3px solid ' + col, borderRadius: '9px', zIndex: 2147483646, pointerEvents: 'none', boxSizing: 'border-box',
@@ -85,7 +85,8 @@ MARK_JS = r"""
     document.body.appendChild(r);
     if (!n) continue;
     const b = document.createElement('div'); b.className = 'hb-mark'; b.textContent = n;
-    const bx = Math.max(2, x - p - 11), by = Math.max(2, y - p - 11);
+    // side "l": Nummer links neben dem Rahmen (mittig) - wenn oben rechts schon ein Zaehler sitzt (Glocke), sonst oben links
+    const bx = side === 'l' ? Math.max(2, x - p - 30) : Math.max(2, x - p - 11), by = side === 'l' ? Math.max(2, y + h / 2 - 12) : Math.max(2, y - p - 11);
     Object.assign(b.style, { position: 'fixed', left: bx + 'px', top: by + 'px', width: '24px', height: '24px', borderRadius: '50%',
       background: col, color: fg, font: '700 14px/24px system-ui, sans-serif', textAlign: 'center', zIndex: 2147483647,
       pointerEvents: 'none', boxShadow: '0 1px 3px rgba(0,0,0,.35)' });
@@ -171,6 +172,11 @@ class Run:
             fakes.forward(ip, 80, port)                  # http bleibt (Demo-Aufbau per API)
             if self.tls:                                 # https://<host> fuer den Browser (Zertifikat der Test-CA)
                 fakes.forward_tls(ip, 443, port, os.environ["HB_TLS_CERT"], os.environ["HB_TLS_KEY"])
+        if self.welt == "familie":                       # Webseite fuer die Linkvorschau im Chat (b12-06), sommerfest.example
+            fakes.og_site_start("127.0.1.9", 80)
+            self.imm_key = "hb-" + secrets.token_hex(12)    # Immich-Attrappe unter fotos.saga.example (b16-02)
+            fakes.immich_start(H0 + 4, self.imm_key)
+            fakes.forward("127.0.1.10", 80, H0 + 4)
         if self.suche:                                   # Websuche der KI: SEARXNG_URL zeigt auf H0+9 (handbuch-stack.sh)
             fakes.searx_start(H0 + 9)
         self.nc_login, self.nc_pw = "anna@cloud.saga.example", "app-" + secrets.token_hex(12)
@@ -291,19 +297,20 @@ class Who:
         self.go(f"/notes#{nid}", wait)
 
     def mark(self, items):
-        """items: [(locator|bbox, Nummer|None[, Abstand])]"""
+        """items: [(locator|bbox, Nummer|None[, Abstand[, "l" = Nummer links]])]"""
         if self.run.nomark:
             return
         rects = []
         for it in items:
             loc, n = it[0], it[1]
             pad = it[2] if len(it) > 2 else 4
+            side = it[3] if len(it) > 3 else None
             if hasattr(loc, "bounding_box") and not loc.count():
                 print("  Markierung fehlt:", n, flush=True)
                 continue
             bb = loc.first.bounding_box(timeout=5000) if hasattr(loc, "bounding_box") else loc
             if bb:
-                rects.append([bb["x"], bb["y"], bb["width"], bb["height"], n, pad])
+                rects.append([bb["x"], bb["y"], bb["width"], bb["height"], n, pad, side])
         self.p.evaluate(MARK_JS, [rects, self.dark])
 
     def unmark(self):
@@ -639,8 +646,9 @@ def heute(run, user="anna", dark=False, form=DESK):
 @scene("b02-01-dashboard", "familie")
 def b02_01(run):
     a = heute(run)
+    # Glocke mit Zaehler eigens nummeriert (5): der goldene Zaehler sah sonst wie eine Nummer des Handbuchs aus
     a.mark([(a.p.locator("#pg-mainnav"), "1", 3), (a.p.locator(".hz-acts"), "2", 4), (a.p.locator(".cats"), "3", 4),
-            (a.p.locator("#rail-hide"), "4", 3)])
+            (a.p.locator("#rail-hide"), "4", 3), (a.p.locator("#hk-bell"), "5", 12, "l")])
     run.shot(a.p, "b02-01-dashboard")
     a.close()
 
@@ -789,6 +797,85 @@ def b07_06(run):
     a.close()
 
 
+@scene("b07-07-filter-relativ", "familie")
+def b07_07(run):
+    """Familienkalender, Ansicht Tabelle: Filter "Wann ist nächste Woche" ueber die Oberflaeche (danach wieder entfernt)."""
+    a = db_page(run, "kalender", view="Tabelle")
+    a.p.locator(".db-chip.db-filter").first.click()
+    a.p.wait_for_selector(".menu:not([hidden]) .flt-add", timeout=8000)
+    a.p.select_option(".menu:not([hidden]) .flt-add", label="Wann")
+    a.p.wait_for_selector(".menu:not([hidden]) .flt-op", timeout=8000)
+    a.p.select_option(".menu:not([hidden]) .flt-op", value="next_week")
+    a.p.wait_for_timeout(1800)
+    if not a.p.locator(".menu:not([hidden]) .flt-op").count():          # Menue nach dem Speichern zu: wieder oeffnen
+        a.p.locator(".db-chip.db-filter").first.click()
+        a.p.wait_for_selector(".menu:not([hidden]) .flt-op", timeout=8000)
+        a.p.wait_for_timeout(800)
+    a.blur()
+    a.mark([(a.p.locator(".db-chip.db-filter").first, "1", 3), (a.p.locator(".menu:not([hidden]) .flt-op").first, "2", 3)])
+    run.shot(a.p, "b07-07-filter-relativ", el=union(a.p, [".db-tabs", ".menu:not([hidden])", ".db-chip.db-filter"], 40))
+    a.unmark()
+    x = a.p.locator(".menu:not([hidden]) .flt-x")
+    if x.count():
+        x.first.click()                                   # Filter wieder weg (andere Bilder zeigen den Kalender ungefiltert)
+        a.p.wait_for_timeout(1500)
+    a.close()
+
+
+@scene("b07-08-formel-editor", "familie")
+def b07_08(run):
+    """Einkaufsliste: Spaltenkopf "Summe" -> Formel bearbeiten (Pruefung und Vorschau vom Server)."""
+    a = db_page(run, "einkauf")
+    a.p.locator("th.db-th", has_text="Summe").first.click()
+    menu_item(a, "Formel bearbeiten").click()
+    a.p.wait_for_selector("#pg-modal .fx-ed .fx-prev", timeout=8000)
+    a.p.wait_for_timeout(1500)
+    a.blur(True)
+    run.shot(a.p, "b07-08-formel-editor", el=a.p.locator("#pg-modal > *").first)
+    a.p.keyboard.press("Escape")
+    a.close()
+
+
+CSV_VORRAT = ("Name;Menge;Preis;Abteilung;Notiz\r\nHaferflocken;2;1,29;Vorrat;Bio\r\nSpaghetti;4;0,99;Vorrat;\r\n"
+              "Passierte Tomaten;6;0,89;Vorrat;Glas\r\nJoghurt;4;0,79;Kühlregal;Natur\r\nBananen;6;0,25;Obst & Gemüse;\r\n"
+              "Kaffeebohnen;1;8,99;Vorrat;\r\nSpülmittel;1;1,45;Drogerie;\r\nHonig;1;4,49;Vorrat;Imker vom Markt\r\n")
+
+
+@scene("b07-10-csv-import", "familie")
+def b07_10(run):
+    """Einkaufsliste: Ansicht-Menue -> Zeilen aus CSV hinzufuegen, Datei im Format Excel (Deutsch): Semikolon, Dezimalkomma.
+    Nur Vorschau und Zuordnung - es wird nichts importiert."""
+    a = db_page(run, "einkauf")
+    a.p.locator(".db-chip.db-gear").first.click()
+    a.p.wait_for_selector(".menu:not([hidden]) .vs-csv-in", timeout=8000)
+    a.p.locator(".menu:not([hidden]) .vs-csv-in").click()
+    a.p.wait_for_selector("#pg-modal input.imp-file", state="attached", timeout=8000)
+    a.p.set_input_files("#pg-modal input.imp-file", files=[{"name": "vorraete.csv", "mimeType": "text/csv",
+                                                            "buffer": CSV_VORRAT.encode("utf-8")}])
+    a.p.wait_for_selector("#pg-modal .imp-run", timeout=20000)
+    a.p.wait_for_timeout(1200)
+    a.blur(True)
+    run.shot(a.p, "b07-10-csv-import", el=a.p.locator("#pg-modal > *").first)
+    a.p.keyboard.press("Escape")
+    a.p.wait_for_timeout(800)
+    a.close()
+
+
+@scene("b07-11-notion-import", "familie")
+def b07_11(run):
+    """Dialog Importieren (Markdown/Obsidian, Notion-ZIP, CSV) - wie ueber Neue Seite -> Importieren."""
+    a = run.who("anna")
+    a.go("/notes", 2500)
+    until(lambda: a.p.evaluate("() => !!(window.HK && HK.openImport)"), 8000)
+    a.p.evaluate("() => HK.openImport({})")
+    a.p.wait_for_selector("#pg-modal .imp-drop", timeout=8000)
+    a.p.wait_for_timeout(800)
+    a.blur(True)
+    run.shot(a.p, "b07-11-notion-import", el=a.p.locator("#pg-modal > *").first)
+    a.p.keyboard.press("Escape")
+    a.close()
+
+
 @scene("b07-09-peek", "familie")
 def b07_09(run):
     a = db_page(run, "rezepte", view="Galerie")
@@ -834,6 +921,71 @@ def urlaub_block(run, sel, dark=False):
     el.scroll_into_view_if_needed()
     a.p.wait_for_timeout(600)
     return a, el
+
+
+def union(page, sels, pad=24):
+    """Ausschnitt um mehrere Elemente (Rechteck, das alle einschliesst)."""
+    bbs = [page.locator(x).first.bounding_box() for x in sels]
+    bbs = [b for b in bbs if b]
+    x0, y0 = min(b["x"] for b in bbs) - pad, min(b["y"] for b in bbs) - pad
+    x1, y1 = max(b["x"] + b["width"] for b in bbs) + pad, max(b["y"] + b["height"] for b in bbs) + pad
+    vp = page.viewport_size
+    x0, y0, x1, y1 = max(0, x0), max(0, y0), min(vp["width"], x1), min(vp["height"], y1)
+    return {"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0}
+
+
+def select_text(w, block_sel, text):
+    """Text in einem Block markieren (echte Auswahl im Editor, wie mit der Maus)."""
+    blk = w.p.locator(block_sel, has_text=text).first
+    blk.click()
+    blk.evaluate("""(el, t) => { const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
+      while ((n = tw.nextNode())) { const i = n.nodeValue.indexOf(t); if (i >= 0) { const r = document.createRange();
+        r.setStart(n, i); r.setEnd(n, i + t.length); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return; } } }""", text)
+
+
+@scene("b04-03-auswahl-leiste-farbe", "familie")
+def b04_03(run):
+    """Auswahl-Leiste (Tiptap) ueber markiertem Text, Farbauswahl geoeffnet."""
+    a = run.who("anna")
+    a.page(run.ids["elternabend"], 2500)
+    select_text(a, ".pm-doc p", "Klassenfahrt, neue Mathelehrerin")
+    a.p.wait_for_selector(".pm-bubble [data-a=color]", state="visible", timeout=10000)
+    a.p.wait_for_timeout(500)
+    a.p.locator(".pm-bubble [data-a=color]").click()
+    a.p.wait_for_selector(".menu:not([hidden])", timeout=5000)
+    a.p.wait_for_timeout(600)
+    bb = a.p.locator(".pm-bubble")
+    a.mark([(bb.locator("[data-a=b]"), "1", 2), (bb.locator("[data-a=i]"), "2", 2), (bb.locator("[data-a=color]"), "3", 2),
+            (bb.locator("[data-a=math]"), "4", 2)])
+    run.shot(a.p, "b04-03-auswahl-leiste-farbe", el=union(a.p, [".pm-bubble", ".menu:not([hidden])", ".pm-doc p >> nth=0"], 30))
+    a.close()
+
+
+@scene("b04-09-synced-block", "familie")
+def b04_09(run):
+    """Synchronisierter Block "Wichtige Nummern": Original auf der Wiki-Seite "Wichtige Nummern", Kopie auf "Haushalt"
+    (per API wie das Web: Original mit sid und Inhalt, Kopie nur mit sid) - Bild zeigt die Kopie mit "Original öffnen"."""
+    sid = "hbNummern" + secrets.token_hex(4)[:7]
+    li = lambda t: {"content": t, "meta": {}, "items": []}  # noqa: E731
+    inner = [{"id": "sn1", "type": "header", "data": {"text": "Wichtige Nummern", "level": 2}},
+             {"id": "sn2", "type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+                 li("Hausarzt Dr. Beispiel: 0451 000 000"), li("Kinderarzt: 0451 000 111"), li("Nachbarin Frau Muster: 0451 000 222")]}}]
+    run.dm.body("anna", run.ids["wiki:Wichtige Nummern"], [
+        {"id": "p1", "type": "paragraph", "data": {"text": "Gehört zum Familien-Wiki der Sommers."}},
+        {"id": "sy1", "type": "synced", "data": {"sid": sid, "blocks": inner}}])
+    run.dm.body("anna", run.ids["haushalt"], [
+        {"id": "h1", "type": "paragraph", "data": {"text": "Alles rund ums Haus: Einkauf, Rezepte, Termine und Putzplan."}},
+        {"id": "h2", "type": "delimiter", "data": {}},
+        {"id": "sy2", "type": "synced", "data": {"sid": sid}}])
+    a = run.who("anna")
+    a.page(run.ids["haushalt"], 2500)
+    blk = a.p.locator(".pm-b-synced.copy").first
+    blk.wait_for(timeout=10000)
+    a.p.wait_for_timeout(600)
+    a.blur(True)
+    a.mark([(blk.locator(".hk-sync-go"), "1", 3)])
+    run.shot(a.p, "b04-09-synced-block", el=blk, pad=24)
+    a.close()
 
 
 @scene("b04-05-spalten-ziehen", "familie")
@@ -1188,7 +1340,8 @@ def bell(run, user="anna", dark=False, form=DESK):
 @scene("b14-01-glocke", "familie")
 def b14_01(run):
     a, b = bell(run)
-    a.mark([(b, "1", 3), (a.p.get_by_role("button", name=re.compile("Alle gelesen")).first, "2", 3)])
+    # Rahmen schliesst den Zaehler ein, Nummer links daneben (vorher sassen Nummer und Zaehler beide oben auf der Glocke)
+    a.mark([(b, "1", 12, "l"), (a.p.get_by_role("button", name=re.compile("Alle gelesen")).first, "2", 3)])
     run.shot(a.p, "b14-01-glocke")
     a.close()
 
@@ -1221,6 +1374,24 @@ def b06_09(run):
     a.p.wait_for_timeout(1500)
     cols = a.p.locator(".cols").first
     run.shot(a.p, "b06-09-widget-reihe", el=cols, pad=14)
+    a.close()
+
+
+@scene("b06-06-widget-einrichten", "familie")
+def b06_06(run):
+    """Countdown "Bis zum Urlaub" in der Widget-Reihe von "Unser Jahr": Klick auf die Karte oeffnet rechts "Widget
+    einrichten" (schmale Spalte -> Seitenleiste), das Widget bleibt daneben als Vorschau sichtbar."""
+    a = run.who("anna")
+    a.page(run.ids["jahr"], 2500)
+    a.p.wait_for_selector('.wg[data-kind="countdown"]', timeout=10000)
+    a.p.wait_for_timeout(800)
+    a.p.locator('.wg[data-kind="countdown"]').first.click()
+    pan = a.p.locator(".wg-panel")
+    pan.first.wait_for(timeout=8000)
+    a.p.wait_for_timeout(1000)
+    a.blur(True)
+    a.mark([(pan, "1", 4)])
+    run.shot(a.p, "b06-06-widget-einrichten")
     a.close()
 
 
@@ -1293,6 +1464,40 @@ def b16_05(run):
     a.blur()
     run.shot(a.p, "b16-05-bookorbit-buchseite")
     a.close()
+
+
+@scene("b16-02-immich", "familie")
+def b16_02(run):
+    """Bild aus Immich (Attrappe fotos.saga.example, gezeichnete Fotos): Alben -> "Ostsee 2026". Fuer das Bild verbindet
+    Anna ihr Immich (Adresse + API-Schluessel), danach wird die Verbindung wieder getrennt."""
+    old = run.dm.auth.settings().get("allowed_hosts") or ""
+    run.dm.setting("allowed_hosts", old + ", fotos.saga.example")
+    time.sleep(6)                                   # Einstellungen haelt der Server 5 s im Speicher
+    try:
+        r = run.dm.api("anna", "POST", "/api/settings/immich", {"url": "http://fotos.saga.example", "apikey": run.imm_key})
+        print("  Immich verbunden:", str(r)[:120], flush=True)
+        a = run.who("anna")
+        a.page(run.ids["urlaub"], 2500)
+        until(lambda: a.p.evaluate("() => !!(window.HK && HK.immichPick)"), 8000)
+        a.p.evaluate("() => HK.immichPick(function () {})")
+        a.p.wait_for_selector(".imm-card .imm-tab", timeout=8000)
+        a.p.locator(".imm-card .imm-tab", has_text="Alben").click()
+        a.p.locator(".imm-card .imm-album", has_text="Ostsee 2026").click()
+        until(lambda: a.p.locator(".imm-card .imm-grid:not(.albums) img.ok").count() >= 9, 15000)
+        a.p.wait_for_timeout(800)
+        a.blur(True)
+        card = a.p.locator(".imm-card")
+        a.mark([(card.locator(".imm-tab", has_text="Alben"), "1", 3), (card.locator(".imm-crumb"), "2", 3),
+                (card.locator(".imm-tile").first, "3", 3)])
+        run.shot(a.p, "b16-02-immich", el=card, pad=16)
+        a.p.keyboard.press("Escape")
+        a.close()
+    finally:
+        try:
+            run.dm.api("anna", "DELETE", "/api/settings/immich")
+        except Exception:  # noqa: BLE001
+            pass
+        run.dm.setting("allowed_hosts", old)
 
 
 # =====================================================================================================
@@ -2069,6 +2274,29 @@ def ctl(w, label):
     return w.p.locator(f".cl-ctl button[aria-label='{label}']").first
 
 
+@scene("b12-06-linkvorschau", "familie")
+def b12_06(run):
+    """Linkvorschau: Anna schreibt eine Adresse in den Familienchat, ihr Browser holt die Vorschau ueber den Server
+    (sommerfest.example, Attrappe mit Open-Graph-Angaben) und schickt sie verschluesselt mit."""
+    ws = chat_world(run)
+    for u in ("ben", "clara", "lena"):
+        ws[u].close()
+    a, gid = ws["anna"], run.chats["gruppe"]
+    a.go(f"/chats#c{gid}", 2500)
+    a.p.fill("#ct-input", "Die Einladung fürs Sommerfest: http://sommerfest.example/")
+    a.p.wait_for_selector("#ct-unf:not([hidden]) .ct-unf-card", timeout=15000)
+    a.p.wait_for_timeout(500)
+    a.p.press("#ct-input", "Enter")
+    row = a.p.locator(".ct-msg", has_text="sommerfest.example").last
+    row.locator(".ct-unf-card").wait_for(timeout=15000)
+    a.p.wait_for_timeout(1500)
+    no_toasts(a)
+    a.blur(True)
+    a.mark([(row.locator(".ct-unf-card"), "1", 3)])
+    run.shot(a.p, "b12-06-linkvorschau", el=union(a.p, [".ct-msg >> nth=-1", "#ct-input"], 40))
+    a.close()
+
+
 @scene("b13-01-anruf-video", "familie", "knoten")
 def b13_01(run):
     """b13-05 (Ben wird angerufen, Handy dunkel), b13-01 (Videoanruf, Annas Sicht dunkel), b13-02 (Ben teilt den Bildschirm)."""
@@ -2287,6 +2515,57 @@ def b13_07(run):
     ph.p.wait_for_timeout(1500)
     for w in (ph, lap, b):
         w.close()
+
+
+# =====================================================================================================
+# Konflikt ohne live (b09-03) - am Ende der Familien-Szenen, weil Bens Aenderung Versionen der Seite "Sommerfest" anlegt
+# =====================================================================================================
+@scene("b09-03-konflikt", "familie")
+def b09_03(run):
+    """"Gleichzeitig bearbeiten live" aus. Saga 2.5 fuehrt ohne live blockweise zusammen - der Konflikt ist deshalb
+    nachgestellt wie bei einem aelteren Client: Annas Speichern geht ohne merge an den Server, kurz davor speichert Ben
+    denselben Absatz (echte API) -> echte Antwort 409 und echte Leiste. Bens Aenderung wird danach zurueckgenommen."""
+    nid = run.ids["sommerfest"]
+    notes = dict(run.dm.auth.settings().get("notes") or {})
+    if notes.get("live"):
+        run.dm.setting("notes", dict(notes, live=False))
+        time.sleep(6)
+    orig = run.dm.api("ben", "GET", f"/api/notes/{nid}")
+    a = run.who("anna")
+    a.page(nid, 2500)
+    seen = {}
+
+    def hold(route):
+        rq = route.request
+        if rq.method != "PATCH" or seen.get("done"):
+            return route.continue_()
+        cur = run.dm.api("ben", "GET", f"/api/notes/{nid}")          # Ben speichert zuerst (gleicher Absatz)
+        run.dm.api("ben", "PATCH", f"/api/notes/{nid}", {"format": "blocks", "rev": cur["rev"],
+                                                          "body": cur["body"].replace("Samstag ab 14 Uhr", "Samstag ab 15 Uhr")})
+        b = json.loads(rq.post_data or "{}")
+        for k in ("merge", "base", "bases"):                          # wie ein aelterer Client: kein Zusammenfuehren
+            b.pop(k, None)
+        seen["done"] = True
+        route.continue_(post_data=json.dumps(b))
+
+    a.p.route(f"**/api/notes/{nid}", hold)
+    para = a.p.locator(".pm-doc p", has_text="Grillgut").first
+    para.click()
+    a.p.keyboard.press("End")
+    a.p.keyboard.type(" Bitte bringt Klappstühle mit.", delay=40)
+    a.p.wait_for_selector("#pg-conflict", timeout=20000)
+    a.p.wait_for_timeout(1200)
+    no_toasts(a)
+    a.blur(True)
+    bar = a.p.locator("#pg-conflict")
+    a.mark([(bar.locator("button", has_text="Neue Version laden"), "1", 3), (bar.locator("button", has_text="Meine Version behalten"), "2", 3)])
+    run.shot(a.p, "b09-03-konflikt")
+    a.p.unroute(f"**/api/notes/{nid}")
+    a.close()
+    cur = run.dm.api("ben", "GET", f"/api/notes/{nid}")              # Bens Aenderung zuruecknehmen (Inhalt wie vorher)
+    run.dm.api("ben", "PATCH", f"/api/notes/{nid}", {"format": "blocks", "rev": cur["rev"], "body": orig["body"]})
+    if notes.get("live"):
+        run.dm.setting("notes", notes)
 
 
 # =====================================================================================================

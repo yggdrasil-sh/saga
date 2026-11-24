@@ -656,3 +656,170 @@ def searx_start(port):
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
+
+
+# --- Webseite mit Vorschau-Angaben (Open Graph) fuer die Linkvorschau im Chat (b12-06) ---------------------------------
+# Laeuft direkt auf 127.0.1.9:80 (sommerfest.example); der Server darf sie nur holen, weil der Lauf SAGA_UNFURL_TEST_PUBLIC=127.0.1.9
+# setzt (Testschalter von saga/chat_unfurl.py: diese Loopback-Adresse gilt als oeffentlich) - sonst holt Saga nur aus dem Netz.
+def lampions(w=1200, h=630):
+    im = gradient(w, h, (150, 205, 240), (205, 230, 248))
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, int(h * 0.68), w, h], fill=(104, 168, 84))
+    d.line([(0, 90), (w * 0.5, 150), (w, 80)], fill=(70, 70, 70), width=4)
+    for i in range(9):
+        x = int(w * (0.06 + i * 0.11))
+        y = int(90 + 60 * (1 - abs((x / w) - 0.5) * 2)) + 10
+        col = [(244, 160, 90), (246, 213, 92), (150, 205, 120), (110, 160, 230)][i % 4]
+        d.ellipse([x - 26, y, x + 26, y + 60], fill=col)
+    d.rectangle([int(w * 0.36), int(h * 0.6), int(w * 0.64), int(h * 0.66)], fill=(150, 80, 50))      # Biertisch
+    return png(im)
+
+
+class _OGH(BaseHTTPRequestHandler):
+    PAGE = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Sommerfest im Garten</title>'
+            '<meta property="og:site_name" content="Familie Sommer">'
+            '<meta property="og:title" content="Sommerfest im Garten – Samstag ab 14 Uhr">'
+            '<meta property="og:description" content="Grillen, Kuchenbuffet und Lampions. Bitte bis Mittwoch zusagen, wer was mitbringt.">'
+            '<meta property="og:image" content="http://sommerfest.example/bild.png"></head>'
+            '<body><h1>Sommerfest im Garten</h1><p>Samstag ab 14 Uhr.</p></body></html>')
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        if self.path.startswith("/bild.png"):
+            b, ct = lampions(), "image/png"
+        else:
+            b, ct = self.PAGE.encode(), "text/html; charset=utf-8"
+        self.send_response(200)
+        self.send_header("Content-Type", ct)
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+
+def og_site_start(ip="127.0.1.9", port=80):
+    srv = ThreadingHTTPServer((ip, port), _OGH)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+# --- Immich-Attrappe (REST /api: users/me, albums, search/metadata|smart, assets/<id>[/thumbnail|/original]) - b16-02 ----
+# Erfundene Alben mit gezeichneten Fotos (Strand, Meer, Garten - keine echten Bilder, keine Gesichter). Schluessel: x-api-key.
+def _photo(seed, w=1200, h=900):
+    import random
+    r = random.Random(seed)
+    kind = seed % 4
+    sky = [(130, 185, 235), (240, 180, 130), (150, 200, 240), (110, 160, 220)][kind]
+    im = gradient(w, h, sky, (225, 238, 250))
+    d = ImageDraw.Draw(im)
+    if kind == 1:                                            # Abendrot
+        d.ellipse([w * 0.55, h * 0.38, w * 0.55 + 160, h * 0.38 + 160], fill=(250, 205, 120))
+    else:
+        d.ellipse([w * 0.72, 70, w * 0.72 + 120, 190], fill=(255, 238, 160))
+    sea = int(h * (0.52 + r.random() * 0.08))
+    d.rectangle([0, sea, w, h], fill=[(60, 130, 190), (70, 110, 160), (80, 150, 200), (104, 160, 84)][kind])
+    if kind != 3:
+        d.polygon([(0, h), (0, int(h * 0.78)), (w, int(h * 0.7)), (w, h)], fill=(236, 214, 160))   # Sand
+        for i in range(r.randint(1, 3)):                     # Strandkoerbe
+            x = int(w * (0.15 + 0.25 * i + r.random() * 0.05)); y = int(h * 0.7)
+            d.rectangle([x, y, x + 90, y + 110], fill=[(220, 90, 80), (70, 120, 200), (240, 200, 90)][i % 3])
+            d.rectangle([x + 10, y + 15, x + 80, y + 70], fill=(245, 240, 225))
+        if r.random() > 0.4:                                 # Segelboot
+            bx, by = int(w * r.uniform(0.2, 0.7)), sea + 30
+            d.polygon([(bx, by), (bx + 70, by), (bx + 35, by - 110)], fill=(250, 250, 250))
+            d.rectangle([bx - 10, by, bx + 80, by + 14], fill=(120, 80, 60))
+    else:                                                    # Garten: Blumen
+        for i in range(12):
+            x, y = int(w * r.random()), int(sea + (h - sea) * r.random())
+            d.ellipse([x - 25, y - 25, x + 25, y + 25], fill=[(232, 96, 104), (240, 150, 70), (250, 220, 90)][i % 3])
+    b = io.BytesIO()
+    im.save(b, "JPEG", quality=82)
+    return b.getvalue()
+
+
+IMMICH_ALBUMS = [("Ostsee 2026", 0, 9), ("Sommerfest 2026", 20, 5), ("Garten", 40, 4)]
+
+
+def _imm_id(n):
+    return f"0b1c{n:04d}-5a6b-4c7d-8e9f-a0b1c2d3e4f5"
+
+
+def _imm_alb(i):
+    return f"a1b2c3d4-0000-4000-8000-{i:012d}"
+
+
+class _IMH(BaseHTTPRequestHandler):
+    key = ""
+
+    def log_message(self, *a):
+        pass
+
+    def _send(self, code, body, ct="application/json"):
+        b = body if isinstance(body, bytes) else json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ct)
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def _ok(self):
+        if self.headers.get("x-api-key") != self.key:
+            self._send(401, {"message": "Invalid API key"})
+            return False
+        return True
+
+    @staticmethod
+    def _assets(alb=None):
+        out = []
+        for i, (name, start, n) in enumerate(IMMICH_ALBUMS):
+            if alb and alb != _imm_alb(i):
+                continue
+            for k in range(n):
+                day = 18 + k // 3 if i == 0 else (12 if i == 1 else 3 + k)
+                out.append({"id": _imm_id(start + k), "originalFileName": f"IMG_2026{7 if i < 2 else 6:02d}{day:02d}_{k + 1:03d}.jpg",
+                            "originalMimeType": "image/jpeg", "fileCreatedAt": f"2026-0{7 if i < 2 else 6}-{day:02d}T1{k % 8}:00:00.000Z"})
+        return out
+
+    def do_GET(self):
+        if not self._ok():
+            return
+        p = urllib.parse.urlparse(self.path).path
+        p = p[4:] if p.startswith("/api/") else p
+        if p == "/users/me":
+            return self._send(200, {"name": "Anna Sommer", "email": "anna@fotos.saga.example"})
+        if p == "/albums":
+            return self._send(200, [{"id": _imm_alb(i), "albumName": n, "assetCount": c, "albumThumbnailAssetId": _imm_id(s0)}
+                                    for i, (n, s0, c) in enumerate(IMMICH_ALBUMS)])
+        parts = p.strip("/").split("/")
+        if len(parts) >= 2 and parts[0] == "assets":
+            n = int(parts[1][4:8]) if parts[1].startswith("0b1c") else 0
+            if len(parts) == 2:
+                meta = next((a for a in self._assets() if a["id"] == parts[1]), None)
+                return self._send(200, meta) if meta else self._send(404, {})
+            big = parts[2] == "original"
+            return self._send(200, _photo(n, 1600 if big else 600, 1200 if big else 450), "image/jpeg")
+        self._send(404, {})
+
+    def do_POST(self):
+        if not self._ok():
+            return
+        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            body = {}
+        alb = (body.get("albumIds") or [None])[0]
+        items = self._assets(alb)
+        if not alb:
+            items = sorted(items, key=lambda a: a["fileCreatedAt"], reverse=True)
+        self._send(200, {"albums": {"items": []}, "assets": {"items": items, "nextPage": None, "total": len(items)}})
+
+
+def immich_start(port, key):
+    h = type("IMH", (_IMH,), {"key": key})
+    srv = ThreadingHTTPServer(("127.0.0.1", port), h)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv

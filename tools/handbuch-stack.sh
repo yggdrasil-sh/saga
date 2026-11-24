@@ -33,7 +33,7 @@ if [ ! -s "$RUNIC" ]; then     # Runensiegel im Anruf: Labor-Chromium hat keine 
   curl -sfL -o "$RUNIC" https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansRunic/hinted/ttf/NotoSansRunic-Regular.ttf \
     || { rm -f "$RUNIC"; echo "WARNUNG: Noto Sans Runic nicht geladen - Runensiegel ohne Schrift"; }
 fi
-export UMG_HOSTS=$'127.0.1.1 saga.example\n127.0.1.2 admin.saga.example\n127.0.1.7 verein.example\n127.0.1.8 admin.verein.example\n127.0.1.3 cloud.saga.example\n127.0.1.4 bookorbit.example\n127.0.1.5 wetter.saga.example\n127.0.1.6 ki.saga.example\n127.0.0.1 knoten.verein.example'
+export UMG_HOSTS=$'127.0.1.1 saga.example\n127.0.1.2 admin.saga.example\n127.0.1.7 verein.example\n127.0.1.8 admin.verein.example\n127.0.1.3 cloud.saga.example\n127.0.1.4 bookorbit.example\n127.0.1.5 wetter.saga.example\n127.0.1.6 ki.saga.example\n127.0.1.9 sommerfest.example\n127.0.1.10 fotos.saga.example\n127.0.0.1 knoten.verein.example'
 # Art knoten: Binaries wie im Image (Version aus VERSION statt "x.y.z-probe"), einmal je Stand nach $HB_DIR/bin-<rev> gebaut;
 # der eingebaute Knoten des Gartenvereins heisst knoten.verein.example (eigenes Zertifikat der Test-CA, 30 Tage, nur im Lauf)
 UMG=${UMG:-/srv/saga-test/tmp/umgebung}
@@ -73,7 +73,7 @@ while read -r WELT ART NAMES; do
     [ -s "$TCERT.pem" ] || { echo "  FEHLER: kein TLS-Zertifikat ($UMG/ca fehlt? umgebung.sh einrichten)"; RC=1; continue; }
     SCH=https; XENV="SSL_CERT_FILE=$UMG/ca/ca.pem" ;; esac
   case $ART in *+suche*) XENV="$XENV SEARXNG_URL=http://127.0.0.1:$((19010 + 10 * SLOT)) SEARXNG_SECRET=hb-attrappe AI_WEB_FETCH=0" ;; esac
-  UMG_SENV="BASE_URL=$SCH://$H ADMIN_URL=$SCH://admin.$H BOOKORBIT_URL=http://bookorbit.example CACHE_TTL=3 FED_ALLOW_HTTP=1 $XENV ${HB_SENV:-}" \
+  UMG_SENV="BASE_URL=$SCH://$H ADMIN_URL=$SCH://admin.$H BOOKORBIT_URL=http://bookorbit.example CACHE_TTL=3 FED_ALLOW_HTTP=1 SAGA_UNFURL_TEST_PUBLIC=127.0.1.9 $XENV ${HB_SENV:-}" \
     UMG_HORN_NAME=$([ $WELT = verein ] && [ -s "$HCERT.pem" ] && echo knoten.verein.example) \
     UMG_HORN_CERT=$([ $WELT = verein ] && [ -s "$HCERT.pem" ] && echo "$HCERT.pem") UMG_HORN_KEY=$([ $WELT = verein ] && [ -s "$HCERT.pem" ] && echo "$HCERT.key") \
     HB_WELT=$WELT HB_ART=$ART HB_NUR=$NAMES HB_TLS_CERT=$TCERT.pem HB_TLS_KEY=$TCERT.key bash "$D/testumgebung/umgebung.sh" lauf "$UART" "$SLOT" "$D/screens-handbuch.py" "$UMG_NS$SLOT-$WELT-$ART" || RC=1
