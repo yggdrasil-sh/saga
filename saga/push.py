@@ -454,12 +454,22 @@ def _held(c, uid, kind, actor, ref, data):
     if not r:
         return None
     col = "m" if kind in ("chat.message", "chat.mention") else "c" if kind == "call.missed" else "o"
+    if col == "c" and _held_call(c, ref, r[0]):
+        return True                       # Bugs-DB 2365: zaehlt _missed_held_calls aus chat_call (auch ohne Glocke) - nicht doppelt
     s = _held_key(r[0])
     c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?, ?, ?) ON CONFLICT (uid, k) DO UPDATE SET v = CASE "
               "WHEN user_kv.v::jsonb->>'s' = ? THEN jsonb_set(user_kv.v::jsonb, ARRAY[?], "
               "to_jsonb(COALESCE((user_kv.v::jsonb->>?)::int, 0) + 1))::text ELSE EXCLUDED.v END",
               (uid, HELD_K, json.dumps({"s": s, col: 1}), s, col, col))
     return True
+
+
+def _held_call(c, nid, since):
+    """Gehoert die Glocke call.missed nid zu einem Anruf, den _missed_held_calls fuer dieses Nicht stoeren zaehlt (hold 'dnd',
+    angelegt seit since)? Dann zaehlt der Anruf genau dort - auch wenn die Glocke vor dem Ende geloescht wird (Bugs-DB 2365)."""
+    r = c.execute("SELECT data FROM notification WHERE id=?", (nid,)).fetchone() if nid else None
+    cid = _call_id(_json_load(r[0], {})) if r else ""
+    return bool(cid) and bool(c.execute("SELECT 1 FROM chat_call WHERE id=? AND hold='dnd' AND created>=?", (cid, since)).fetchone())
 
 
 def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
@@ -541,13 +551,12 @@ def _digest_counts(d):
 
 def _missed_held_calls(c, uid, since, end):
     """1:1-Anrufe, die waehrend Nicht stoeren zurueckgehalten wurden (chat_call.hold='dnd', calls.ring_gate) und schon zu
-    Ende sind, ohne eigenen Glocken-Eintrag call.missed (die mit Eintrag zaehlt _held, sofern er zurueckgehalten wurde;
-    kam der Eintrag erst nach dem Ende von Nicht stoeren, ging er als eigene Mitteilung raus). Nur wirklich verpasste:
-    angenommen (answered gesetzt - z. B. ueber GET /api/calls/{id} trotz quiet) oder selbst abgelehnt zaehlt nicht."""
-    return c.execute("SELECT COUNT(*) FROM chat_call k WHERE k.callee=? AND k.hold='dnd' AND k.state='ended' AND k.created>=? "
-                     "AND k.created<=? AND k.answered IS NULL AND COALESCE(k.reason, '')<>'declined' "
-                     "AND NOT EXISTS (SELECT 1 FROM notification n WHERE n.uid=k.callee AND n.kind='call.missed' "
-                     "AND n.data LIKE '%\"call\": \"' || k.id || '\"%')", (uid, since, end)).fetchone()[0]
+    Ende sind - die EINE Zaehlstelle fuer sie, mit oder ohne Glocken-Eintrag call.missed (_held zaehlt deren Glocke nicht,
+    _held_call; geloeschte Glocke zaehlt so nicht doppelt, Bugs-DB 2365). Klingelt er beim Ende von Nicht stoeren noch, kommt
+    seine Glocke spaeter als eigene Mitteilung. Nur wirklich verpasste: angenommen (answered gesetzt - z. B. ueber
+    GET /api/calls/{id} trotz quiet) oder selbst abgelehnt zaehlt nicht."""
+    return c.execute("SELECT COUNT(*) FROM chat_call WHERE callee=? AND hold='dnd' AND state='ended' AND created>=? AND created<=? "
+                     "AND answered IS NULL AND COALESCE(reason, '')<>'declined'", (uid, since, end)).fetchone()[0]
 
 
 def _on_dnd_end(c, uid, since, end, **_):
@@ -562,8 +571,9 @@ def _on_dnd_end(c, uid, since, end, **_):
     if h.get("s") != _held_key(since):
         h = {}                            # Rest eines frueheren Zeitraums (sollte es nicht geben): nicht mitzaehlen
     end = end if isinstance(end, (int, float)) else testclock.now()
-    dg = _digest_counts({"messages": h.get("m"), "calls": (h.get("c") if isinstance(h.get("c"), int) else 0)
-                         + _missed_held_calls(c, uid, since, end), "other": h.get("o")})
+    held_calls = _missed_held_calls(c, uid, since, end) if prefs(c, uid)["cats"].get(KIND_CAT["call.missed"], True) else 0
+    dg = _digest_counts({"messages": h.get("m"), "calls": (h.get("c") if isinstance(h.get("c"), int) else 0) + held_calls,
+                         "other": h.get("o")})
     if not any(dg.values()):
         return
     bus.emit_after(c, "direct", {"uids": [uid], "typ": "status.digest",
@@ -702,8 +712,8 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
     names = with_names(prefs(c, uid), sub_kind, has_keys)
     lang = lang if lang in i18n.LANGS else account_lang(uid)
     silent = None
-    if kind not in (UPDATE_KIND, "test", DIGEST_KIND) and kind not in RING_KINDS:
-        rc = REACH(c, uid, actor, kind)
+    if kind not in (UPDATE_KIND, "test") and kind not in RING_KINDS:
+        rc = REACH(c, uid, actor, kind)   # auch status.digest (Bugs-DB 2365: Beschaeftigt "ohne Ton" -> silent)
         if not rc.push:
             return None
         silent = True if not rc.sound else None
@@ -716,7 +726,7 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
                 return None
             msg = {"title": title(), "body": digest_text(dg), "url": "/", "tag": "status-digest", "kind": kind,
                    "ts": int(created or time.time())}
-            return _fields(msg, lang, None, sum(dg.values()), None, digest=dg)
+            return _fields(msg, lang, None, sum(dg.values()), None, digest=dg, silent=silent)
         if kind == UPDATE_KIND:
             # 2.5: Glocken-Eintrag eines Chats geaendert (Nachricht geloescht) - aktueller Stand; n 0 = Eintrag weg (removed)
             of = (data or {}).get("of") if (data or {}).get("of") in ("chat.message", "chat.mention") else "chat.message"

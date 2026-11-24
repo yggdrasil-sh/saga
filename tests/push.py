@@ -331,6 +331,10 @@ def digest_part(A, Bk, ua, pgA, nn):
             c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, reason, created, hold) "
                       "VALUES (?,?,?,?,?,?,?,?,?,?)", (secrets.token_hex(16), chat, "ps-b", "ps-a", "dev-b", "audio", "ended", "declined",
                                                        time.time(), "dnd"))
+            # Bugs-DB 2365: Glocke zum zurueckgehaltenen Anruf, waehrend Nicht stoeren geloescht -> der Anruf zaehlt genau einmal
+            gone_bell = notify.create(c, "ps-a", "call.missed", "ps-b", data={"chat": chat, "call": cid_held})
+        with connect() as c, c:
+            c.execute("DELETE FROM notification WHERE id=?", (gone_bell,))
         req("POST", f"/api/notes/{pgA}/comments", Bk, {"block_id": "dg1", "body": "waehrend Nicht stoeren"})     # Server: comment.new
         with connect() as c:
             q = c.execute("SELECT COUNT(*) FROM push_queue WHERE uid='ps-a'").fetchone()[0]
@@ -413,6 +417,17 @@ def digest_part(A, Bk, ua, pgA, nn):
         with connect() as c:
             sil = push.message(c, "ps-a", "share.added", ref=nn)
         ok(f"Beschaeftigt + busy silent: Mitteilung ohne Ton (silent {sil and sil.get('silent')})", sil and sil.get("silent") is True)
+        # Bugs-DB 2365: Nicht stoeren endet in Beschaeftigt "ohne Ton" -> auch die Sammelmeldung ohne Ton
+        req("PUT", "/api/account/status", A, {"state": "dnd"})
+        with connect() as c, c:
+            push.enqueue(c, "ps-a", "chat.message", actor="ps-adm", data={"chat": "dg-s"})
+        m2s = mark()
+        req("PUT", "/api/account/status", A, {"state": "busy"})
+        dg = wait_digests(UAS, m2s)
+        ok(f"Beschaeftigt ohne Ton: Sammelmeldung ohne Ton (silent) ({[[x.get('silent') for x in v] for v in dg.values()]})",
+           all(len(x) == 1 and x[0].get("silent") is True for x in dg.values()))
+        gs = wait_got(lambda g: g[1] == "/" and json.loads(g[3]).get("topic") == "ps-topic-a" and "Nicht stören" in json.loads(g[3]).get("message", ""), m2s, 3)
+        ok(f"... ntfy leise (Prioritaet 2) ({gs and json.loads(gs[3]).get('priority')})", gs and json.loads(gs[3]).get("priority") == 2)
         req("PUT", "/api/account/status/prefs", A, {"busy": "show", "exceptions": [{"type": "user", "ref": auth_ref("ps-b")}]})
         req("PUT", "/api/account/status", A, {"state": "dnd"})
         with connect() as c, c:
