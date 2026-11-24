@@ -10,6 +10,10 @@ Stempel wiederholt, zweiter Versuch schreibt nicht) · Lease (zwei Threads, Uebe
 RT-28 (6. Auftrag abgelehnt, 50 gleichzeitig -> 5, keiner doppelt) · RT-36-Teil pause_all/Einwilligung · Abbrechen ·
 Stempel ohne Akteur = keine Abfrage, scheiternder Stempel = kein Schreiben · Leerlauf-Takt = eine Abfrage ·
 /_test/tick ohne Haken 404, mit Haken Takt · Aufbewahrung · Kontoloeschung.
+K-A6 Runner ai.task (saga/ai_task.py): run_step uebernimmt den Versuch (zweiter Versuch schreibt nicht, nie ohne Versuch),
+zwei Worker ueber run_step = eine Wirkung · JobTok.issued = Freigabe (Passwortwechsel danach -> wartet_dich, Fortsetzen
+-> weiter) · "ueberall abmelden" haelt an · JobTok-Ablauf gegen die Testuhr · Plan nach der Freigabe veraendert ->
+fehlgeschlagen · Klasse passt nicht · lesender Schritt -> job_event 'read' (ai_ctx.record, nur Kennungen).
 Wegwerf-Konten kj-*; stellt die KI-Einstellung und die Testuhr wieder her.
 Aufruf (saga-test): PYTHONPATH=tests/pgshim:. python tests/kollegin_jobs.py"""
 import json
@@ -747,6 +751,145 @@ def part_thread():
     ok("im Worker ohne Akteur: nach dem Takt keiner", actor.current() is None)
 
 
+def part_ai_task():
+    """K-A6: Runner ai.task ueber tools.run_step (echte Werkzeuge, Testuhr angehalten auf T0)."""
+    from saga import ai_ctx, ai_task, tools
+    KT.cleanup(A)
+    ok("Runner ai.task registriert, mit Wiederaufnahme", jobs._RUNNERS.get("ai.task") is ai_task.run and jobs._RESUME.get("ai.task") is ai_task.resume)
+
+    def texts(prefix):
+        return sorted(r[0] for r in KT.q("SELECT text FROM task WHERE uid=? AND text LIKE ?", (A, prefix + "%")))
+
+    # (9) run_step: Versuch vom Aufrufer bzw. vom laufenden Akteur, nie ohne
+    st = [{"tool": "create_task", "args": {"text": "KJ run_step"}}]
+    jid = mk(kind="ai.task", steps=st)
+    go(jid)
+    key = f"{jid}:0:1"
+    with connect() as c, c:
+        c.execute("UPDATE job_step SET state='laeuft', idem_key=? WHERE job_id=? AND n=0", (key, jid))
+    tok = tools.plan_tok(A, jid, st)
+    job, step = {"id": jid, "uid": A}, {"n": 0, "tool": "create_task", "args": st[0]["args"], "idem_key": key}
+    tools.run_step(job, step, tok, attempt="w1")
+
+    def refused(**kw):
+        try:
+            tools.run_step(job, step, tok, **kw)
+            return False
+        except jobs.StepTaken:
+            return True
+    ok("run_step: anderer Versuch (attempt) desselben Schritts schreibt nicht (StepTaken)", refused(attempt="w2"))
+    ok("run_step ohne Versuch und ohne Akteur: eigener Versuch, nie NULL -> schreibt nicht", refused())
+    with acting(Actor("service", "svc:kollegin", on_behalf_of=A, job_id=jid, step=0, idem=key, attempt="w9")):
+        r9 = refused()
+    with acting(Actor("service", "svc:kollegin", on_behalf_of=A, job_id=jid, step=0, idem=key, attempt="w1")):
+        r1 = refused()
+    att = {r[0] for r in KT.q("SELECT attempt FROM job_change WHERE job_id=?", (jid,))}
+    ok(f"run_step uebernimmt den Versuch des laufenden Akteurs (w9 nein, w1 ja; Stempel {att})", r9 and not r1 and att == {"w1"})
+    jobs.cancel(jid, A)
+
+    # (9) zwei Worker ueber run_step: A haelt die Schreib-Transaktion offen, Lease laeuft ab, B uebernimmt
+    jid = mk(kind="ai.task", steps=[{"tool": "create_task", "args": {"text": "KJ zwei Worker"}}])
+    go(jid)
+    inside, release = threading.Event(), threading.Event()
+
+    def hold(c, **d):
+        a = actor.current()
+        if a is not None and a.job_id == jid and not inside.is_set():
+            inside.set()
+            release.wait(20)
+    bus.on("task.created", hold)
+    try:
+        ta = threading.Thread(target=jobs.run_once)
+        ta.start()
+        inside.wait(10)
+        adv(jobs.LEASE + 1)
+        tb = threading.Thread(target=jobs.run_once)
+        tb.start()
+        tb.join(1.0)
+        release.set()
+        ta.join(20)
+        tb.join(20)
+    finally:
+        release.set()
+        bus._hooks["task.created"].remove(hold)
+    adv(ai_task.LANE_WAIT + 1)
+    KT.run_all()
+    att = KT.q("SELECT DISTINCT attempt FROM job_change WHERE job_id=?", (jid,))
+    ok(f"zwei Worker ueber run_step: genau eine Aufgabe, Stempel von genau einem Versuch, erledigt ({texts('KJ zwei')}, {att})",
+       texts("KJ zwei") == ["KJ zwei Worker"] and len(att) == 1 and jobs.state_of(jid)["state"] == "erledigt")
+
+    # (1) issued = Freigabe: Passwortwechsel nach der Freigabe -> wartet_dich; Fortsetzen = neue Freigabe
+    jid = mk(kind="ai.task", steps=[{"tool": "create_task", "args": {"text": "KJ nach Passwort"}}])
+    go(jid)
+    with connect() as c, c:
+        c.execute("UPDATE users SET pw_changed=? WHERE username=?", (testclock.now() + 1, A))
+    try:
+        jobs.run_once()
+        s = jobs.state_of(jid)
+        ok(f"Passwortwechsel nach der Freigabe: wartet_dich 'abgemeldet', nichts geschrieben ({s['state']}, {s['reason']})",
+           s["state"] == "wartet_dich" and s["reason"] == "abgemeldet" and not texts("KJ nach Passwort"))
+        adv(2)
+        jobs.resume(jid, A)
+        KT.run_all()
+        ok("Fortsetzen nach dem Passwortwechsel (neue Freigabe): erledigt, genau eine Aufgabe",
+           jobs.state_of(jid)["state"] == "erledigt" and texts("KJ nach Passwort") == ["KJ nach Passwort"])
+    finally:
+        with connect() as c, c:
+            c.execute("UPDATE users SET pw_changed=NULL WHERE username=?", (A,))
+
+    # (8) "ueberall abmelden" (userdata.revoke_user_logins - setzt weder logout_at noch pw_changed) haelt an
+    jid = mk(kind="ai.task", steps=[{"tool": "create_task", "args": {"text": "KJ Abmelden 1"}},
+                                    {"tool": "create_task", "args": {"text": "KJ Abmelden 2"}}])
+    go(jid)
+    jobs.run_once()
+    userdata.revoke_user_logins(A)
+    s = jobs.state_of(jid)
+    ok(f"ueberall abmelden: laufender Auftrag wartet_dich 'abgemeldet', danach kein Schritt ({s['state']}, {s['reason']})",
+       s["state"] == "wartet_dich" and s["reason"] == "abgemeldet" and jobs.run_once() == 0 and texts("KJ Abmelden") == ["KJ Abmelden 1"])
+    jobs.resume(jid, A)
+    KT.run_all()
+    ok("nach dem Fortsetzen: zweiter Schritt, keiner doppelt", texts("KJ Abmelden") == ["KJ Abmelden 1", "KJ Abmelden 2"])
+
+    # (2) JobTok-Ablauf gegen die Testuhr (T0 liegt in der Zukunft)
+    import time
+    ok("JobTok.expires gegen die Testuhr: echt noch gueltig, auf der Testuhr abgelaufen -> None",
+       tools.job_tok(A, 4711, ["get_page"], [1], expires=time.time() + 3600) is None
+       and tools.job_tok(A, 4711, ["get_page"], [1], expires=testclock.now() + 60) is not None)
+
+    # Plan nach der Freigabe veraendert (Angaben verbogen) -> fehlgeschlagen, nichts geschrieben
+    jid = mk(kind="ai.task", steps=[{"tool": "create_task", "args": {"text": "KJ Plan echt"}}])
+    go(jid)
+    with connect() as c, c:
+        c.execute("UPDATE job_step SET args=CAST(? AS JSONB) WHERE job_id=?", (json.dumps({"text": "KJ Plan verbogen"}), jid))
+    jobs.run_once()
+    s = jobs.state_of(jid)
+    ok(f"Plan nach der Freigabe veraendert: fehlgeschlagen 'plan_geaendert', nichts geschrieben ({s['state']}, {s['reason']})",
+       s["state"] == "fehlgeschlagen" and s["reason"] == "plan_geaendert" and not texts("KJ Plan"))
+    jid = mk(kind="ai.task", steps=[{"tool": "create_task", "klass": "read", "args": {"text": "KJ Klasse"}}])
+    go(jid)
+    jobs.run_once()
+    s = jobs.state_of(jid)
+    ok(f"Klasse im Plan passt nicht zum Werkzeug: fehlgeschlagen 'klasse' ({s['reason']})",
+       s["state"] == "fehlgeschlagen" and s["reason"] == "klasse" and not texts("KJ Klasse"))
+
+    # (5) lesender Schritt -> job_event 'read' (nur Kennungen); record direkt filtert
+    jid = mk(kind="ai.task", steps=[{"tool": "list_tasks", "klass": "read"}, {"tool": "create_task", "args": {"text": "KJ nach Lesen"}}])
+    go(jid)
+    KT.run_all()
+    ev = KT.q("SELECT data FROM job_event WHERE job_id=? AND kind='read'", (jid,))
+    ok(f"lesender Schritt: job_event 'read' mit Kennungen ({ev}), Ergebnis ohne Inhalt ({jobs.steps_of(jid)[0]['result']})",
+       [e[0] for e in ev] == [{"read": ["tasks"]}] and jobs.state_of(jid)["state"] == "erledigt"
+       and set(jobs.steps_of(jid)[0]["result"]) == {"tool", "chars"})
+    with connect() as c, c:
+        ai_ctx.record(c, job_id=jid, ctx=ai_ctx.Ctx(read=["note:5", "<b>Text</b>", "cal:2030-01-01/14", "note:5"]))
+    ev = KT.q("SELECT data FROM job_event WHERE job_id=? AND kind='read' ORDER BY id", (jid,))
+    ok(f"ai_ctx.record(job_id=...): nur Kennungen, ohne Doppelte ({ev[-1][0]})", ev[-1][0] == {"read": ["note:5", "cal:2030-01-01/14"]})
+    un = KT.q("SELECT COUNT(*) FROM job_event WHERE job_id=? AND kind='units' AND data->>'open'='1'", (jid,))[0][0]
+    ok(f"Einheiten: je Schritt belegt und abgerechnet, nichts offen ({un})", un == 0
+       and KT.q("SELECT COUNT(*) FROM job_event WHERE job_id=? AND kind='units'", (jid,))[0][0] == 2)
+    KT.cleanup(A)
+
+
 def main():
     KT.users(A, B, C)
     KT.register_all()
@@ -777,6 +920,7 @@ def main():
         part_retention()
         part_delete()
         part_thread()
+        part_ai_task()
     finally:
         fk.terminate()
         KT.ai_restore(prev)

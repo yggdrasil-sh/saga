@@ -13,7 +13,10 @@
   fake-nousage (400 auf stream_options) -> einmal ohne wiederholen, danach gemerkt.
 - Spuren (RT-28): 50 Hintergrund-Anfragen -> hoechstens 1 Platz, Fragen bekommen trotzdem sofort alle PARALLEL Plaetze;
   ai._gate laeuft ueber dieselbe Buchhaltung (eine Anfrage je Person, PARALLEL gesamt); 1-MB-Seite aufs Budget gekuerzt.
-Tageslimit waehrend eines Auftrags ("zurueckgestellt, nicht verworfen") prueft tests/kollegin_fehler.py mit K-A2.
+Tageslimit waehrend eines Auftrags ("zurueckgestellt, nicht verworfen") prueft tests/kollegin_fehler.py (K-A6).
+- K-A6 Runner ai.task: Schritt in der Hintergrund-Spur ("job:<id>"), belegt -> zurueckgestellt 'spur' ohne Belegung,
+  danach weiter; waehrend des Schritts bekommt eine Frage trotzdem einen Platz; Pool job = Abrechnung (Zeichen/4),
+  Spuren danach leer; AI_MAX_PARALLEL unveraendert (PARALLEL wie saga.ai).
 
 Aufruf (saga-test): tools/testumgebung/umgebung.sh lauf server <slot> kollegin_budget.py
 Wegwerf-Konten kb-*; raeumt auf."""
@@ -406,6 +409,67 @@ def run():
        "je Person nur Ampel:" in seg and "× Gelb" in seg and "× Rot" in seg and "kb-" not in seg
        and "1300" not in seg and "1700" not in seg, seg)
     ok("Admin-Seite: echte Tokens als Summe", "echte Tokens laut Endpunkt:" in seg, seg)
+
+    # --- K-A6: Runner ai.task in der Hintergrund-Spur -------------------------------------------------------------------
+    from saga import actor, ai_task, bus, jobs, testclock
+    setai(quota=0)
+    testclock.set_clock({"set": time.time() + 30 * 86400})     # Server-Worker der Testumgebung sieht den Auftrag nie faellig
+    try:
+        def mkjob(text):
+            jid = jobs.create("kb-e", ai_task.KIND, steps=[{"tool": "create_task", "args": {"text": text}}])
+            st = jobs.state_of(jid)
+            jobs.approve(jid, "kb-e", st["plan_v"], st["plan_hash"])
+            return jid
+
+        def ntask(text):
+            with connect() as c:
+                return c.execute("SELECT COUNT(*) FROM task WHERE uid='kb-e' AND text=?", (text,)).fetchone()[0]
+        ok("AI_MAX_PARALLEL unveraendert: Spuren rechnen mit saga.ai.PARALLEL", U.PARALLEL == ai.PARALLEL)
+        jid = mkjob("KB Spur belegt")
+        ok("Hintergrund-Platz von anderem belegt", U.lane_take("bg", "kb-anderer"))
+        try:
+            t0 = testclock.now()
+            jobs.run_once()
+            s = jobs.state_of(jid)
+            with connect() as c:
+                nres = c.execute("SELECT COUNT(*) FROM job_event WHERE job_id=? AND kind='units'", (jid,)).fetchone()[0]
+            ok(f"Spur belegt: zurueckgestellt 'spur' (~{ai_task.LANE_WAIT} s), nichts geschrieben, nichts belegt "
+               f"({s['state']}/{s['sub']}, {s['reason']}, {round(s['next_at'] - t0)})",
+               s["state"] == "laeuft" and s["reason"] == "spur" and abs(s["next_at"] - t0 - ai_task.LANE_WAIT) < 2
+               and ntask("KB Spur belegt") == 0 and nres == 0)
+        finally:
+            U.lane_free("bg", "kb-anderer")
+        testclock.set_clock({"advance": ai_task.LANE_WAIT + 1})
+        jobs.run_once()
+        ok("Spur frei: Schritt laeuft, erledigt", jobs.state_of(jid)["state"] == "erledigt" and ntask("KB Spur belegt") == 1)
+        # waehrend des Schritts: Hintergrund belegt genau einen Platz, eine Frage kommt trotzdem dran
+        jid = mkjob("KB Spur Frage")
+        seen = {}
+
+        def hold(c, **d):
+            a = actor.current()
+            if a is not None and a.job_id == jid:
+                seen["lanes"] = U.lanes()
+                seen["ask"] = U.lane_try("ask", "kb-frage")
+                U.lane_free("ask", "kb-frage")
+        bus.on("task.created", hold)
+        u0 = units("kb-e", "job")[0]
+        try:
+            jobs.run_once()
+        finally:
+            bus._hooks["task.created"].remove(hold)
+        res = jobs.steps_of(jid)[0]["result"] or {}
+        with connect() as c:
+            ev = c.execute("SELECT data FROM job_event WHERE job_id=? AND kind='units'", (jid,)).fetchone()[0]
+        cost = U.cost(res.get("chars", 0), len(json.dumps({"text": "KB Spur Frage"}, separators=(",", ":"))))
+        ok(f"im Schritt: Hintergrund 1 Platz, Frage bekommt trotzdem einen ({seen})",
+           seen.get("lanes", {}).get("bg") == 1 and seen.get("ask") is None)
+        ok(f"Pool job = Abrechnung (Ergebnis + Angaben je Zeichen/4) ({units('kb-e', 'job')[0] - u0}, {ev}, {cost})",
+           units("kb-e", "job")[0] - u0 == cost == ev.get("units") and ev.get("open") == 0
+           and jobs.state_of(jid)["units"] == cost)
+        ok(f"danach beide Spuren leer ({U.lanes()})", U.lanes() == {"ask": 0, "bg": 0})
+    finally:
+        testclock.set_clock({"reset": True})
 
     # --- Keine Inhalte in ai_units, Aufraeumen ---------------------------------------------------------------------------
     with connect() as c:
