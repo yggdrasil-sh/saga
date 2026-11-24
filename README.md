@@ -32,14 +32,12 @@ Saga is a self-hosted start page and personal knowledge base for families, teams
 all your services, Notion-style pages and databases, tasks, calendars and bookmarks. Everyone gets their own
 private space – no cloud, no subscription, on your own server.
 
-> **New in Saga 2.4:** **videos in chats** with poster, streaming and resumable upload (up to 500 MB by default, end-to-end
-> encrypted), **group calls** (up to 4 devices with video or 6 audio only), **screen sharing with the camera alongside**,
-> **picture-in-picture** and **handing a call over to another device** or adding one, **read receipts and online
-> status** (can be turned off) and the new media path **saga-media**: chat attachments no longer pass through Python
-> (20 × 10 MB in parallel in 0.22 instead of 0.67 s; uploading a 1 GB video costs Python 0.06 % of a core). Plus more
-> protection: failed sign-ins slow down instead of locking accounts, login names stay private, Gravatar only with consent.
-> Since 2.3: much faster with large databases, federation with chats and calls across servers, encrypted backups,
-> Nextcloud files in pages. Details in the [changelog](CHANGELOG.md) (in German).
+> **New in Saga 2.5:** **calls through the built-in Gjallarhorn node** – 1:1 and groups (up to 4 people or devices at
+> release, marked *experimental*), behind any reverse proxy with WebSocket support over your normal Saga address: **one
+> domain, port 443 only**. Turn a 1:1 into a group, bring people in, move a call to another device. Plus the new
+> **Tiptap editor** with live co-editing (admin switch), **modern chats** with reactions, edits and voice messages
+> (still end-to-end encrypted), subpages inside the parent page, Saga seals as page icons, a cover image gallery,
+> redesigned widgets and imports from Notion and Trilium. Upgrading from 2.3/2.4: see the [upgrade guide](docs/en/UPGRADE-2.5.md).
 
 ## Features
 
