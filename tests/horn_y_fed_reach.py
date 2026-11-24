@@ -5,7 +5,8 @@ Foederierte Anrufe nutzen nur Knoten ohne Tunnel-Betrieb (fed_horn.shared_nodes,
 Server nur einen eingebauten Knoten im Tunnel-Betrieb (Ein Port hinter einem TLS-beendenden Proxy), ist das kein Ausfall:
 Rueckfall direkt mit horn_block "reach" (ohne Hinweis) statt "node" ("Anruf-Knoten nicht erreichbar") - und der Server
 der Gegenstelle wird nicht angeklingelt (kein Auftrag dmhorn). Ohne bereiten Knoten: "node". Mit einem Knoten ohne
-Tunnel: der Auftrag dmhorn geht raus (hier mit 409 off beantwortet -> Rueckfall off).
+Tunnel: der Auftrag dmhorn geht raus (hier mit 409 off beantwortet -> Rueckfall off). Bugs-DB 2357: mit eingebautem
+Knoten im Tunnel-Betrieb UND geteiltem Knoten ohne Tunnel liegt der Anruf auf dem geteilten - auch fuer Geraete mit "ws".
 
 Aufruf: PYTHONPATH=tests/pgshim:. python tests/horn_y_fed_reach.py   (Umgebung env.sh, die Datenbank wird nicht benutzt)"""
 import contextlib
@@ -35,6 +36,12 @@ class _C:
 
     def fetchall(self):
         return []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
 
 
 @contextlib.contextmanager
@@ -96,6 +103,28 @@ def main():
     s, d = start(["horn", "multi"])
     ok(f"Knoten ohne Tunnel bereit: Auftrag dmhorn geht raus ({SENT}, {s}, {d.get('horn_block')})",
        SENT == ["dmhorn"] and s == 409 and d.get("horn_block") == "off")
+    # Bugs-DB 2357: eingebauter Knoten im Tunnel-Betrieb + geteilter Knoten ohne Tunnel (horn-1), anrufendes Geraet mit "ws"
+    # (App, Mac-Huelle): der Anruf muss auf horn-1 liegen - das Gegenueber (anderer Server) erreicht nur diesen. Vorher lag
+    # er bei gleicher Last auf dem eingebauten (Feld 24.11.: Kaskade eingebauter <- horn-1, Ton fehlte)
+    for caps, what in ((["horn", "multi", "ws"], "App/Huelle mit ws"), (["horn", "multi", "frames"], "Browser mit Rahmen-Weg"),
+                       (["horn", "multi"], "App ohne ws")):
+        setup([("saga.proxy", True), ("horn-1", False)])
+        horn.nodes = lambda c: [{"id": "saga.proxy", "builtin": 1, "name": "saga.proxy", "share": 0},
+                                {"id": "horn-1", "builtin": 0, "name": "horn-1", "share": 1}]
+        X.FC.sync_call = lambda p, body, path=None: (SENT.append(body.get("op")), (200, {}))[1]
+        got = {}
+
+        def group_create(c, ch, cid, media, starter, dev, caps_, now, name="", dm_peer=None, ring=True, node=None, **kw):
+            # wie calls.group_create: ohne vorgegebenen Knoten der erste bereite fuer die caps des anrufenden Geraets
+            got["node"] = (node or horn.ready_nodes(c, ws=horn.caps_reach(caps_))[0])["id"]
+            return {"id": cid}
+        old = (X.calls.group_create, X.calls._dict, X.calls.horn_block)
+        X.calls.group_create, X.calls._dict, X.calls.horn_block = group_create, lambda c, call, uid: {}, lambda *a, **k: {}
+        try:
+            s, d = start(caps)
+        finally:
+            X.calls.group_create, X.calls._dict, X.calls.horn_block = old
+        ok(f"Tunnel-Knoten + geteilter Knoten, {what}: Anruf auf horn-1 ({s}, {got.get('node')})", s == 200 and got.get("node") == "horn-1")
     n = sum(RES)
     print(f"\nHORN-Y-FED-REACH {n}/{len(RES)} - " + ("ALLES GRUEN" if n == len(RES) else "FEHLER"))
     sys.exit(0 if n == len(RES) else 1)
