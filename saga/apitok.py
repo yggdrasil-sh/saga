@@ -105,9 +105,12 @@ class JobTok(Tok):
     """Interner Tok eines Auftrags (2.6, Bugs-DB 2266 K-A3, Konzept G3, M12) - ausgestellt von saga.tools.job_tok,
     nie gespeichert, nie ueber HTTP erreichbar. id = -job_id (eigene Ratenbegrenzung je Auftrag), prefix "job".
     roots = Ziel-Seiten des Plans (Liste, auch leer = nichts - nie None); read_roots = Ziele + "Ich lese dafuer"
-    (apitok.in_roots beim Lesen). tools = Plan-Werkzeuge (saga.tools.call laesst nur diese zu). Nur lokale Konten."""
+    (apitok.in_roots beim Lesen). tools = Plan-Werkzeuge (saga.tools.call laesst nur diese zu). Nur lokale Konten.
+    K-A6: refs/read_refs = Ziele ausser Seiten ("tasks", "task:7", "cal:<kalender>") der schreibenden bzw. aller
+    Plan-Schritte - Aufgaben und Kalender nur mit genau diesen Kennungen (may). issued = Freigabe des Auftrags
+    (saga.jobs.approved_at): "ueberall abmelden"/Passwortwechsel danach machen ihn ungueltig (tools.tok_valid)."""
 
-    def __init__(self, job_id, uid, scopes, targets, reads=(), tools=(), expires=None):
+    def __init__(self, job_id, uid, scopes, targets, reads=(), tools=(), expires=None, refs=(), read_refs=(), issued=None):
         if isinstance(job_id, bool) or not isinstance(job_id, int) or not 0 < job_id < 2 ** 63:
             raise ValueError("ungueltige Auftrags-ID")
         if not isinstance(uid, str) or not uid or "@" in uid or uid.startswith("svc:"):
@@ -119,12 +122,15 @@ class JobTok(Tok):
         self.job_id = job_id
         self.read_roots = list(dict.fromkeys(self.roots + [int(x) for x in reads or ()]))
         self.tools = frozenset(tools or ())
-        self.issued = time.time()
+        self.refs = frozenset(str(x) for x in refs or ())
+        self.read_refs = self.refs | frozenset(str(x) for x in read_refs or ())
+        self.issued = time.time() if issued is None else float(issued)
 
     def may(self, ref, klass):
         """Schnelle Vorpruefung ohne Datenbank: Kennung ref ("note:12", "db:3", "row:7", "task:5", "tasks", "cal:x")
         fuer Klasse klass (read | own) erlaubt? Seiten nur, wenn genau diese ID in den Zielen (own) bzw. Ziele +
-        Gelesenes (read) steht - Unterseiten prueft erst in_roots mit der Datenbank. Nach aussen (out): in K-A nie."""
+        Gelesenes (read) steht - Unterseiten prueft erst in_roots mit der Datenbank. Aufgaben/Kalender (K-A6): Bereich
+        UND genau diese Kennung unter den Zielen (own: refs, read: read_refs). Nach aussen (out): in K-A nie."""
         if klass not in ("read", "own"):
             return False
         kind, _, v = str(ref).partition(":")
@@ -135,7 +141,9 @@ class JobTok(Tok):
                 return False
             return i > 0 and i in (self.read_roots if klass == "read" else self.roots)
         area = {"task": "tasks", "tasks": "tasks", "cal": "calendar", "event": "calendar"}.get(kind)
-        return bool(area) and self.has(("read:" if klass == "read" else "write:") + area)
+        if not area or not self.has(("read:" if klass == "read" else "write:") + area):
+            return False
+        return str(ref) in (self.read_refs if klass == "read" else self.refs)
 
 
 # --- Ratenbegrenzung (gleitendes Fenster je Minute, im Speicher) ---------------------------------------------------

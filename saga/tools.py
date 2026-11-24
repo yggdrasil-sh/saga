@@ -19,20 +19,21 @@ mit Bereich, Beschreibung, Eingabeschema und den Feldern, nach denen die Kollegi
 - JobTok (saga.apitok): interner Tok je Auftrag, id = -job_id, roots = Ziel-Seiten des Plans (auch leer = nichts, M12),
   read_roots = Ziele + "Ich lese dafuer". job_tok(...) stellt ihn aus: Bereiche nur der Plan-Werkzeuge, Rechte = Person
   (sharing.Access) ∩ caps ∩ Kollegin-Regeln; nie Admin- oder Server-Rechte. check_plan(...) prueft einen Plan gegen
-  Registry und Rechte, ohne zu schreiben. run_step(job, step, tok): Haken fuer K-A6 (Runner ai.task).
+  Registry und Rechte, ohne zu schreiben (hoechstens PLAN_STEPS Schritte, PLAN_TARGETS Ziele, PLAN_READS gelesene
+  Kennungen - RT-28). plan_tok(...) stellt den Tok fuer einen freigegebenen Plan ohne Rollen-Pruefung aus (Runner).
+  run_step(job, step, tok, attempt): ein Plan-Schritt unter dem Akteur des Schritts (saga/ai_task.py, K-A6).
 Tests: tests/kollegin_werkzeuge.py, tests/mcp_gold.py, tests/mcp*.py."""
 import base64
 import hashlib
 import json
 import re
 import secrets
-import time
 import unicodedata
 from dataclasses import dataclass
 from typing import Callable
 
 from db import connect as _db
-from saga import actor, ai_frame, api_calendar, api_struct, api_v1, apitok, blockedit, page_widgets, siegel
+from saga import actor, ai_frame, api_calendar, api_struct, api_v1, apitok, blockedit, page_widgets, siegel, testclock
 from saga.api_v1 import Fail
 from saga.core import BASE_URL, t
 
@@ -667,14 +668,26 @@ def call(tok, name, a):
     return _dispatch(tok, name, a)
 
 
+_AREA_KINDS = ("task", "tasks", "cal", "event")       # Ziele ohne Seitenbaum: nur mit genau der Kennung aus dem Plan
+
+
 def _job_gate(tok, spec, a):
     """Kollegin-Regeln vor jedem Aufruf: Werkzeug fuer Auftraege freigegeben UND im Plan UND Bereich (sonst 404 wie
-    unbekannt); Konto noch gueltig (RT-07); nach aussen nur mit ai_act; Ratenbegrenzung je Auftrag (id = -job_id);
-    update_row nur mit rev (Vorpruefung: dazwischen geaendert -> 409)."""
+    unbekannt); Konto noch gueltig (RT-07); Aufgaben/Kalender nur mit den freigegebenen Ziel-Kennungen (tok.may, K-A6 -
+    sonst 404 wie fremd); nach aussen nur mit ai_act; Ratenbegrenzung je Auftrag (id = -job_id); update_row nur mit rev
+    (Vorpruefung: dazwischen geaendert -> 409)."""
     if spec is None or not spec.kollegin or spec.name not in tok.tools or not has_scope(tok, spec.scope):
         raise Fail(404, "unknown tool")
     if not tok_valid(tok):
         raise Fail(401, t("API-Token fehlt oder ist ungültig."), "invalid_token")
+    if isinstance(a, dict):
+        try:
+            refs = spec.refs(a)
+        except (ValueError, TypeError, OverflowError):
+            raise Fail(400, t("ungültige Angabe"))
+        for r in refs:
+            if str(r).partition(":")[0] in _AREA_KINDS and not tok.may(r, spec.klass):
+                raise Fail(404, "not found")
     if spec.klass == "out":
         from saga import caps
         if not caps.can(tok.uid, "ai_act"):
@@ -708,11 +721,20 @@ def _note_ids(refs):
     return out
 
 
+def _other_refs(refs):
+    """Ziele ohne Seite (Aufgaben, Kalender, ...) als Text, ohne Doppelte."""
+    out = []
+    for r in refs or ():
+        if isinstance(r, str) and _note_id(r) is None and r not in out:
+            out.append(r)
+    return out
+
+
 def tok_valid(tok):
     """Ist der JobTok (noch) gueltig? Nicht abgelaufen, Konto da und nicht gesperrt, seit der Ausgabe weder
     "ueberall abmelden" noch Passwortwechsel, Faehigkeit "ai" (Gruppe, KI an) - RT-07: sofort ungueltig."""
     import auth
-    if tok.expires is not None and tok.expires <= time.time():
+    if tok.expires is not None and tok.expires <= testclock.now():      # Auftraege rechnen mit der Testuhr (K-A6)
         return False
     u = auth.get_user(tok.uid)
     if not u or u["disabled"] or max(u["pw_changed"] or 0, u["logout_at"] or 0) > tok.issued:
@@ -721,12 +743,14 @@ def tok_valid(tok):
     return caps.can(tok.uid, "ai")
 
 
-def job_tok(uid, job_id, tools, targets=(), reads=(), expires=None):
+def job_tok(uid, job_id, tools, targets=(), reads=(), expires=None, issued=None):
     """Interner Tok fuer einen Auftrag -> JobTok oder None (Konto gesperrt/unbekannt, keine KI-Faehigkeit; RT-07).
     tools: Namen der Plan-Werkzeuge (Bereiche nur dieser Werkzeuge; jedes muss fuer Auftraege freigegeben sein, sonst
-    ValueError). targets: Ziel-Seiten (IDs oder "note:12"/"db:12"/"row:12") = roots - auch leer heisst nichts (M12).
-    reads: was "Ich lese dafuer" nennt - nur dort (und in den Zielen) darf gelesen werden. Nur lokale Konten (keine
-    Kennung mit "@", Auflage K-A1). Rechte = Rolle der Person (sharing.Access) ∩ Bereiche ∩ roots ∩ Kollegin-Regeln."""
+    ValueError). targets: Ziele der schreibenden Schritte - Seiten (IDs oder "note:12"/"db:12"/"row:12") = roots, auch
+    leer heisst nichts (M12); andere Kennungen ("tasks", "task:7", "cal:x") = tok.refs (K-A6). reads: was "Ich lese
+    dafuer" nennt (dazu die Ziele lesender Schritte) - nur dort (und in den Zielen) darf gelesen werden. issued:
+    Freigabe des Auftrags (Runner, saga.jobs.approved_at; sonst jetzt). Nur lokale Konten (keine Kennung mit "@",
+    Auflage K-A1). Rechte = Rolle der Person (sharing.Access) ∩ Bereiche ∩ roots ∩ Kollegin-Regeln."""
     if not isinstance(uid, str) or not uid or "@" in uid or uid.startswith("svc:"):
         raise ValueError("Auftraege nur fuer lokale Konten")
     names, scopes = [], set()
@@ -738,21 +762,48 @@ def job_tok(uid, job_id, tools, targets=(), reads=(), expires=None):
             names.append(x.name)
             scopes.update(x.scopes())
     tok = apitok.JobTok(job_id, uid, apitok.norm_scopes(sorted(scopes)) if scopes else [], _note_ids(targets),
-                        _note_ids(reads), names, expires)
+                        _note_ids(reads), names, expires, refs=_other_refs(targets), read_refs=_other_refs(reads), issued=issued)
     return tok if tok_valid(tok) else None
 
 
-def check_plan(uid, job_id, steps, reads=()):
-    """Plan gegen Registry und Rechte pruefen, ohne etwas zu schreiben -> (JobTok oder None, probleme).
-    steps: [{"tool": name, "args": {...}}]. Ziel-Seiten der schreibenden Schritte werden die roots; lesende Schritte
-    muessen in reads oder den Zielen liegen. probleme: [{"n": schritt|None, "status", "code", "error"}] - leer = gueltig.
-    Kosten: eine Verbindung, je Ziel eine Rollen-/Baum-Pruefung (Perf "Kollegin: Plan pruefen")."""
-    probs, parsed, names, targets = [], [], [], []
+# Obergrenzen eines Plans (RT-28): Schritte wie saga.jobs.MAX_STEPS (feste Schrittliste job_step); Ziele je Schritt
+# hoechstens 2 (embed_database) -> 40, jedes Ziel kostet eine Rollen-/Baum-Pruefung; "Ich lese dafuer" hoechstens 50
+# Kennungen (mehr Seiten passen ohnehin nicht in den Kontext: ai.gather fuellt 8.000 Zeichen, je Seite >= 80)
+PLAN_STEPS = 20
+PLAN_TARGETS = 40
+PLAN_READS = 50
+_READ_RE = re.compile(r"[a-z_]{1,20}(?::[A-Za-z0-9_.:/@*-]{0,120})?")
 
-    def bad(n, status, code, msg):
-        probs.append({"n": n, "status": status, "code": code, "error": msg})
 
-    for n, st in enumerate(steps or ()):
+def _reads_ok(reads):
+    """'Ich lese dafuer' -> (gueltige Kennungen, Fehler oder None): Liste von Seiten-IDs (> 0) oder Kennungen wie
+    "note:12", "tasks:open", "cal:2026-07-04/14"; hoechstens PLAN_READS."""
+    if reads is None:
+        return [], None
+    if not isinstance(reads, (list, tuple)):
+        return [], "form"
+    if len(reads) > PLAN_READS:
+        return [], "many"
+    good, bad = [], False
+    for r in reads:
+        if isinstance(r, bool):
+            bad = True
+        elif isinstance(r, int):
+            if 0 < r < 2 ** 63:
+                good.append(r)
+            else:
+                bad = True
+        elif isinstance(r, str) and _READ_RE.fullmatch(r) and (_note_id(r) is None or 0 < _note_id(r) < 2 ** 63):
+            good.append(r)
+        else:
+            bad = True
+    return good, "bad" if bad else None
+
+
+def _parse(steps, bad):
+    """Plan-Schritte gegen die Registry -> (parsed [(n, tool, refs)], names, targets, read_refs). Probleme ueber bad()."""
+    parsed, names, targets, read_refs = [], [], [], []
+    for n, st in enumerate(steps):
         x = get(st.get("tool")) if isinstance(st, dict) else None
         if x is None or not x.kollegin:
             bad(n, 404, "unknown_tool", "unknown tool")
@@ -774,7 +825,37 @@ def check_plan(uid, job_id, steps, reads=()):
         parsed.append((n, x, refs))
         if x.write:
             targets += refs
-    tok = job_tok(uid, job_id, names, targets, reads)
+        else:
+            read_refs += _other_refs(refs)       # Aufgaben/Kalender lesender Schritte: genau diese Kennungen
+    return parsed, names, targets, read_refs
+
+
+def check_plan(uid, job_id, steps, reads=()):
+    """Plan gegen Registry und Rechte pruefen, ohne etwas zu schreiben -> (JobTok oder None, probleme).
+    steps: [{"tool": name, "args": {...}}]. Ziel-Seiten der schreibenden Schritte werden die roots; lesende Schritte
+    muessen in reads oder den Zielen liegen. probleme: [{"n": schritt|None, "status", "code", "error"}] - leer = gueltig.
+    Obergrenzen (RT-28): mehr als PLAN_STEPS Schritte oder PLAN_TARGETS Ziele -> sofort (None, [Problem]) ohne
+    Datenbank; reads keine Liste/zu lang/mit ungueltigen Eintraegen -> Problem (n None), gueltige Eintraege zaehlen.
+    Kosten: eine Verbindung, je Ziel eine Rollen-/Baum-Pruefung (Perf "Kollegin: Plan pruefen")."""
+    probs = []
+
+    def bad(n, status, code, msg):
+        probs.append({"n": n, "status": status, "code": code, "error": msg})
+
+    if not isinstance(steps, (list, tuple)):
+        bad(None, 400, "bad_request", t("ungültige Angabe"))
+        return None, probs
+    if len(steps) > PLAN_STEPS:
+        bad(None, 400, "too_many_steps", t("Höchstens {n} Schritte.", n=PLAN_STEPS))
+        return None, probs
+    reads, why = _reads_ok(reads)
+    if why:
+        bad(None, 400, "bad_reads", t("ungültige Angabe") + " (reads)")
+    parsed, names, targets, read_refs = _parse(steps, bad)
+    if len(set(map(str, targets))) > PLAN_TARGETS:
+        bad(None, 400, "too_many_targets", t("Höchstens {n} Ziele.", n=PLAN_TARGETS))
+        return None, probs
+    tok = job_tok(uid, job_id, names, targets, list(reads) + read_refs)
     if tok is None:
         bad(None, 401, "invalid_token", t("API-Token fehlt oder ist ungültig."))
         return None, probs
@@ -792,14 +873,31 @@ def check_plan(uid, job_id, steps, reads=()):
     return tok, probs
 
 
-def run_step(job, step, tok):
-    """Haken fuer K-A6 (Runner ai.task): EINEN Plan-Schritt mit dem JobTok des Auftrags ausfuehren, unter dem Akteur
-    svc:kollegin mit job_id, Schritt und Idempotenz-Schluessel (der job_change-Stempel in bus.fire kommt mit K-A2).
-    job: {"id", "uid"}; step: {"n", "tool", "args", "idem_key"}. Kein Zustandswechsel, keine Wiederholung, kein
-    Budget - das machen saga.jobs (K-A2) und der Runner (K-A6)."""
+def plan_tok(uid, job_id, steps, reads=(), issued=None):
+    """Tok fuer einen FREIGEGEBENEN Plan (Runner ai.task, je Schritt neu): dieselben Bereiche/Ziele wie check_plan,
+    aber ohne Rollen-Pruefung (die macht jeder Aufruf selbst) -> JobTok oder None (Konto/Faehigkeit weg, nach issued
+    abgemeldet/Passwort geaendert). Ungueltige Schritte/reads fallen weg (der Plan wurde so freigegeben)."""
+    reads, _why = _reads_ok(reads)
+    _parsed, names, targets, read_refs = _parse(list(steps or ())[:PLAN_STEPS], lambda *a: None)
+    return job_tok(uid, job_id, names, targets, list(reads) + read_refs, issued=issued)
+
+
+def run_step(job, step, tok, attempt=None):
+    """EINEN Plan-Schritt mit dem JobTok des Auftrags ausfuehren (Runner ai.task, saga/ai_task.py), unter dem Akteur
+    svc:kollegin mit job_id, Schritt, Idempotenz-Schluessel und Versuch - der job_change-Stempel in bus.fire (saga.jobs)
+    verweigert damit jeden ANDEREN Versuch desselben Schritts (zwei Worker nach Lease-Ablauf: genau eine Wirkung).
+    job: {"id", "uid"}; step: {"n", "tool", "args", "idem_key"}. attempt: ctx.attempt des Runners; fehlt er, gilt der
+    Versuch des laufenden Akteurs (gleicher Auftrag und Schritt), sonst ein neuer (nie keiner: NULL waere fuer den Stempel
+    "derselbe Versuch" wie jeder andere ohne). Kein Zustandswechsel, keine Wiederholung, kein Budget - das machen
+    saga.jobs und der Runner."""
     if not isinstance(tok, apitok.JobTok) or tok.job_id != job.get("id") or tok.uid != job.get("uid"):
         raise ValueError("JobTok gehoert nicht zu diesem Auftrag")
-    a = actor.Actor("service", "svc:kollegin", on_behalf_of=tok.uid, job_id=tok.job_id, step=step.get("n"),
-                    idem=step.get("idem_key"))
+    cur = actor.current()
+    same = cur is not None and cur.job_id == tok.job_id and cur.step == step.get("n")
+    idem = step.get("idem_key") or (cur.idem if same else None)
+    if attempt is None:
+        attempt = cur.attempt if same and cur.attempt else secrets.token_hex(8)
+    a = actor.Actor("service", "svc:kollegin", on_behalf_of=tok.uid, job_id=tok.job_id, step=step.get("n"), idem=idem,
+                    attempt=attempt)
     with actor.acting(a):
         return call(tok, step.get("tool"), step.get("args") or {})
