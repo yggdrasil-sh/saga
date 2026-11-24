@@ -19,12 +19,14 @@ Grenzen (immer, unabhaengig von Schaltern):
 Der Datenrahmen (Markierungen, Entschaerfen) bleibt bei saga.ai_frame (2260) und den *_messages-Funktionen in saga.ai.
 
 record(c, history_id=..., ctx=...) legt read zum Verlaufseintrag (nur wenn der Verlauf an ist - ai._save_history ruft es
-in derselben Transaktion). Fuer Auftraege (job_id, Ereignis job_event 'read') kommt die Anbindung mit K-A2.
+in derselben Transaktion). Fuer Auftraege: record(c, job_id=..., ctx=...) -> Ereignis job_event 'read' {read: [...]}
+(K-A6, Runner ai.task je lesendem Schritt; K-B nach der Kontext-Auswahl), nur Kennungen (READ_RE, hoechstens READ_MAX).
 
 Importe: saga.ai wird erst beim Aufruf geladen (ai.py nutzt dieses Modul; so entsteht kein Import-Zyklus).
 Tests: tests/kollegin_rechte.py, tests/ki_golden.py (Modell-Nachrichten unveraendert), Messung tools/perf/kollegin.py.
 """
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -36,6 +38,8 @@ SOURCES = ("pages", "tasks", "calendar", "chat")
 WAYS = ("ask", "page", "chat", "job", "idea")
 KV = "ai_sources"
 CAL_DAYS = 14                                    # wie saga.ai.extra_context
+READ_MAX = 200                                   # Kennungen je Ausweis (job_event 'read')
+READ_RE = re.compile(r"[a-z_]{1,20}(?::[A-Za-z0-9_.:/@*-]{1,120})?")   # note:12, tasks:open, cal:2026-07-04/14, chat:5:20, search
 
 
 @dataclass
@@ -166,11 +170,14 @@ def _page(ai, uid, note_id, want):
 
 def record(c, *, job_id=None, history_id=None, ctx):
     """Ausweis ablegen (nur Kennungen). history_id: zum Verlaufseintrag (sources.read) - der Aufrufer ruft das nur bei
-    eingeschaltetem Verlauf. job_id: Ereignis job_event 'read' - kommt mit K-A2 (saga/jobs.py), bis dahin ein Fehler,
-    damit kein Ausweis stillschweigend verloren geht."""
+    eingeschaltetem Verlauf. job_id: Ereignis job_event 'read' {read: [...]} in der Transaktion c (immer, auch ohne
+    Verlauf: das Protokoll des Auftrags zeigt "Ich lese dafuer"); Kennungen, die nicht wie eine aussehen, fallen weg."""
     read = [str(x) for x in (ctx.read if ctx else [])]
     if job_id is not None:
-        raise NotImplementedError("ai_ctx.record(job_id=...): job_event 'read' kommt mit K-A2")
+        from saga import jobs                     # spaet: jobs braucht dieses Modul nicht
+        ids = list(dict.fromkeys(x for x in read if READ_RE.fullmatch(x)))[:READ_MAX]
+        jobs._event(c, job_id, "read", jobs.now(), read=ids)
+        return
     if history_id is None:
         return
     r = c.execute("SELECT sources FROM ai_history WHERE id=?", (history_id,)).fetchone()

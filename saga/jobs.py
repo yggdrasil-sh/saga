@@ -26,6 +26,11 @@ Ein Schritt (Runner je kind, register()):
 Ein Schritt = hoechstens eine Wirkung (ein Werkzeugaufruf); ein Warte-Schritt schreibt nicht (eigene Schritte schreiben).
 Modell nicht erreichbar (Outcome.retry_model oder ModelDown): sub wartet_modell, Backoff 1/5/15/60 min, nach 24 h
 fehlgeschlagen. Mehr als MAX_RETRIES Uebernahmen ohne Fortschritt (Absturz-Schleife): fehlgeschlagen.
+Zurueckstellen (K-A6): Outcome.defer(until, reason) = Warten auf die Frist mit Grund in job.reason und im Protokoll;
+ai_units.NoBudget aus dem Runner (Tagespool job voll) -> defer bis zum naechsten Tag ('budget'), nie fehlgeschlagen.
+Wiederaufnahme: steht ein Schritt beim Holen noch auf 'laeuft', ruft der Worker zuerst resume(job, n) des Runners
+(register(..., resume=)) - z. B. offene Einheiten-Belegungen freigeben (saga/ai_task.py).
+approved_at(c, job_id): letzte Freigabe/Fortsetzung durch die Person (JobTok.issued des Runners).
 
 Warten: Outcome.wait(on_kind, ref, until) legt job_wait an; signal(c, on_kind, ref) (eine indizierte Abfrage, kein Modell)
 macht den Auftrag faellig, der Runner sieht ctx.hits bzw. ctx.timed_out (Frist genau until). bus-Haken: task.completed ->
@@ -54,6 +59,7 @@ from dataclasses import dataclass, field
 from db import clean_line, connect as _db
 from saga import bus, testclock
 from saga.actor import SERVICES, Actor, acting
+from saga.ai_units import NoBudget, next_day
 from saga.core import RESTORE_TEST
 
 STATES = ("wartet_ok", "laeuft", "wartet_dich", "erledigt", "fehlgeschlagen", "abgebrochen", "zurueckgenommen")
@@ -180,6 +186,12 @@ class Outcome:
     def retry_model(cls, reason="modell", units=0):
         return cls("retry_model", reason=reason, units=units)
 
+    @classmethod
+    def defer(cls, until, reason, units=0):
+        """Zurueckstellen bis until (K-A6: Tagespool voll -> naechster Tag, Hintergrund-Spur belegt -> kurz spaeter):
+        ein Warten auf die Frist mit Grund (job.reason), der Schritt laeuft dann neu (ctx.timed_out)."""
+        return cls("wait", until=until, reason=reason, units=units)
+
 
 @dataclass
 class Ctx:
@@ -205,18 +217,21 @@ class Ctx:
                              (t + seconds, t + seconds, self.job_id, self.tries)).rowcount == 1
 
 
-_RUNNERS, _COMP = {}, {}
+_RUNNERS, _COMP, _RESUME = {}, {}, {}
 
 
-def register(kind, runner, compensate=None):
-    """runner(ctx, job, step) -> Outcome; compensate(c, job, change) nimmt eine Wirkung in der Transaktion c zurueck."""
+def register(kind, runner, compensate=None, resume=None):
+    """runner(ctx, job, step) -> Outcome; compensate(c, job, change) nimmt eine Wirkung in der Transaktion c zurueck;
+    resume(job, n): ein frueherer Versuch von Schritt n kam nicht zum Abschluss (Absturz, Lease abgelaufen) - Aufraeumen
+    beim Runner (K-A6: offene Einheiten-Belegung freigeben), bevor es weitergeht."""
     if not _KIND_RE.match(kind or ""):
         raise ValueError(f"ungueltige Auftragsart: {kind!r}")
     _RUNNERS[kind] = runner
-    if compensate is not None:
-        _COMP[kind] = compensate
-    else:
-        _COMP.pop(kind, None)
+    for reg, fn in ((_COMP, compensate), (_RESUME, resume)):
+        if fn is not None:
+            reg[kind] = fn
+        else:
+            reg.pop(kind, None)
 
 
 def _crash(name):
@@ -392,6 +407,13 @@ def signal(c, on_kind, ref, **data):
     return n
 
 
+def approved_at(c, job_id):
+    """Zeitpunkt der letzten Freigabe durch die Person (wartet_ok -> laeuft bzw. Fortsetzen wartet_dich -> laeuft) aus
+    dem Protokoll -> Zeitstempel oder None. K-A6: JobTok.issued - "ueberall abmelden"/Passwortwechsel danach sperren."""
+    r = c.execute("SELECT MAX(at) FROM job_event WHERE job_id=? AND kind='state' AND data->>'to'='laeuft'", (job_id,)).fetchone()
+    return r[0] if r else None
+
+
 def state_of(job_id):
     """-> {state, sub, group, reason, next_at, units, unit, plan_v, plan_hash} oder None."""
     with _db() as c:
@@ -540,6 +562,11 @@ def _run_job(j):
             why = None if (sstate == "laeuft" and changes) else _precheck(c, j.uid, klass)
     if cur is None:
         return _end(j, "erledigt", None, t)
+    if sstate == "laeuft" and j.kind in _RESUME:  # frueherer Versuch ohne Abschluss: Runner raeumt auf (Einheiten)
+        try:
+            _RESUME[j.kind](j.view(), n)
+        except Exception as ex:  # noqa: BLE001 - Aufraeumen haelt den Auftrag nicht auf
+            print(f"jobs: Auftrag {j.id} Schritt {n} Wiederaufnahme: {type(ex).__name__}: {ex}", flush=True)
     if sstate == "laeuft" and changes:           # Wiederaufnahme: Wirkung ist schon da -> erledigt, nicht wiederholen
         return _finish(j, n, key, None, Outcome.done({"changes": changes, "resumed": True}), t, len(steps))
     if why:
@@ -572,6 +599,8 @@ def _run_job(j):
         out = Outcome("taken")
     except ModelDown:
         out = Outcome.retry_model()
+    except NoBudget:                             # Tagespool voll: zurueckstellen, nicht verwerfen (K-A5/K-A6)
+        out = Outcome.defer(next_day(t), "budget")
     except Exception as ex:  # noqa: BLE001 - ein kaputter Runner haelt die Maschine nicht auf
         print(f"jobs: Auftrag {j.id} Schritt {n}: {type(ex).__name__}: {ex}", flush=True)
         traceback.print_exc()
@@ -609,8 +638,8 @@ def _finish(j, n, key, attempt, out, t, nsteps, seen=()):
                 c.execute("UPDATE job SET units=units+? WHERE id=?", (units, j.id))
                 _to(c, j.id, "laeuft", "erledigt", t)
             else:
-                c.execute("UPDATE job SET units=units+?, sub=NULL, retries=0, wait_since=NULL, lease_until=NULL, next_at=?, updated=? "
-                          "WHERE id=?", (units, t, t, j.id))
+                c.execute("UPDATE job SET units=units+?, sub=NULL, reason=NULL, retries=0, wait_since=NULL, lease_until=NULL, "
+                          "next_at=?, updated=? WHERE id=?", (units, t, t, j.id))
                 c.after_commit(wake)
             return k
         if k == "wait":
@@ -630,9 +659,13 @@ def _finish(j, n, key, attempt, out, t, nsteps, seen=()):
                 c.execute("INSERT INTO job_wait (job_id, step_n, on_kind, ref, until) VALUES (?, ?, ?, ?, ?)", (j.id, n, on_kind, ref, until))
             hit = any(w[3] is not None for w in rest)           # waehrend des Laufs eingetroffen
             c.execute("UPDATE job_step SET state='wartet' WHERE job_id=? AND n=?", (j.id, n))
-            c.execute("UPDATE job SET units=units+?, sub=?, retries=0, wait_since=NULL, lease_until=NULL, next_at=?, updated=? WHERE id=?",
-                      (units, "wartet_frist" if on_kind == "time" else "wartet_ereignis", t if hit else until, t, j.id))
-            _event(c, j.id, "wait", t, n=n, on=on_kind)
+            c.execute("UPDATE job SET units=units+?, sub=?, reason=?, retries=0, wait_since=NULL, lease_until=NULL, next_at=?, "
+                      "updated=? WHERE id=?", (units, "wartet_frist" if on_kind == "time" else "wartet_ereignis", _code(out.reason),
+                                               t if hit else until, t, j.id))
+            if out.reason:                       # zurueckgestellt (defer): Grund ins Protokoll, sonst wie bisher
+                _event(c, j.id, "wait", t, n=n, on=on_kind, reason=_code(out.reason))
+            else:
+                _event(c, j.id, "wait", t, n=n, on=on_kind)
             if hit:
                 c.after_commit(wake)
             return k

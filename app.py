@@ -57,6 +57,7 @@ from saga import api_v1, apitok, mcp, webhooks  # 2.5 (Paket 1 E5-E7): API-Token
 from saga import mentions                     # 2.5 (P6-5): @Erwaehnungen (entprellte Mitteilungen)
 from saga import jobs                         # 2.6 (K-A2 2266): Auftrags-Maschine der Kollegin (Worker, Stempel in bus.fire)
 from saga import user_status                  # 2.6 (Bugs-DB 2029): eigener Status /api/account/status, reachability()
+from saga import ai_task                      # 2.6 (K-A6 2266): Runner ai.task (Geruest, Planer mit K-B)
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -93,6 +94,7 @@ async def lifespan(_app):
     tasksrc.start()                                          # 2.5 (Paket 7): taegliche Zusammenfassung task.due
     webhooks.start()                                         # 2.5: Webhook-Zustellung (Ausgangskorb webhook_delivery)
     mentions.start()                                         # 2.5 (P6-5): Erwaehnungen entprellt mitteilen
+    ai_task.register()                                       # 2.6 (K-A6): Runner ai.task (schon beim Import, hier ausdruecklich)
     jobs.start()                                             # 2.6 (K-A2): Auftraege der Kollegin (nicht bei SAGA_RESTORE_TEST)
     user_status.start()                                      # 2.6 (Bugs-DB 2029): abgelaufene Status zuruecksetzen (30 s)
     bookorbit.start()                                        # 2.5: BookOrbit-Tokens etwa taeglich erneuern

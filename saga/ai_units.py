@@ -11,7 +11,9 @@ Pools je Person und Tag (fest): ask 60 % (Fragen, Seiten-Hilfen, Chat-Zuruf), jo
   x Anteil; Kontingent 0 = unbegrenzt (dann wird nur gemessen).
 Uebergang ohne Bruch (Abweichung c): die Frage-Spur bleibt beim Anfragen-Zaehler (saga.ai: ai_usage, _take_quota,
   quota_left - unveraendert in /api/ai/status und 'done'); fuer ask wird hier nur gemessen, reserve lehnt nie ab.
-  Durchgesetzt wird nur in job und idea: reserve -> None = "zurueckstellen, nicht verwerfen" (Aufrufer: saga/jobs.py).
+  Durchgesetzt wird nur in job und idea: reserve -> None = "zurueckstellen, nicht verwerfen" (Aufrufer: saga/ai_task.py,
+  NoBudget -> saga/jobs.py stellt bis next_day() zurueck). reserve/settle mit conn: in der Transaktion des Aufrufers
+  (K-A6: Belegung und ihr job_event 'units' zusammen, damit ein Server-Ende sie nicht doppelt belegt oder freigibt).
   Ein laufender Auftrag (job_running=True) darf den Tagespool um genau einen Schritt ueberziehen, damit er nicht mitten
   im Plan haengt: der Schritt geht noch, solange der Pool nicht voll ist, der naechste nicht mehr.
 Tabelle ai_units(uid, day, pool, units, real_in, real_out): NUR Zahlen, keine Inhalte. 90 Tage, Kontoloeschung ueber
@@ -92,13 +94,21 @@ def budget(uid, pool, cfg=None):
 
 @dataclass
 class Res:
-    """Eine Belegung (reserve -> settle). Gebucht wird immer auf den Tag der Belegung."""
+    """Eine Belegung (reserve -> settle). Gebucht wird immer auf den Tag der Belegung. ref: Kennung beim Aufrufer
+    (saga.ai_task: job_event der Belegung, damit sie nach einem Server-Ende genau einmal freigegeben wird)."""
     uid: str
     pool: str
     day: str
     est: int
     settled: bool = False
     units: int = 0
+    ref: int | None = None
+
+
+def next_day(t=None):
+    """Beginn des naechsten Tages (Ortszeit TZ, wie today()) als Zeitstempel - dann ist der Tagespool wieder frei."""
+    d = datetime.fromtimestamp(testclock.now() if t is None else t, TZ).date() + timedelta(days=1)
+    return datetime(d.year, d.month, d.day, tzinfo=TZ).timestamp()
 
 
 def _ensure(c, uid, day, pool):
@@ -108,39 +118,49 @@ def _ensure(c, uid, day, pool):
         c.execute("DELETE FROM ai_units WHERE uid=? AND day<?", (uid, old))
 
 
-def reserve(uid, pool, est, *, job_running=False, cfg=None):
+def reserve(uid, pool, est, *, job_running=False, cfg=None, conn=None):
     """Schaetzung est im Pool belegen -> Res oder None (Pool job/idea voll: zurueckstellen, nicht verwerfen).
-    ask lehnt nie ab (nur gemessen, Abweichung c). job_running: laufender Auftrag darf genau einen Schritt ueberziehen."""
+    ask lehnt nie ab (nur gemessen, Abweichung c). job_running: laufender Auftrag darf genau einen Schritt ueberziehen.
+    conn: in dieser Transaktion (der Aufrufer haelt darin z. B. fest, dass belegt ist - K-A6), sonst eine eigene."""
     if pool not in PCT:
         raise ValueError(f"unbekannter Pool: {pool}")
+    if conn is None:
+        with _db() as c, c:
+            return reserve(uid, pool, est, job_running=job_running, cfg=cfg, conn=c)
     est, day = max(0, int(est or 0)), today()
     cap = None if pool == "ask" else budget(uid, pool, cfg)
-    with _db() as c, c:
-        _ensure(c, uid, day, pool)
-        if cap is None:
-            c.execute("UPDATE ai_units SET units = units + ? WHERE uid=? AND day=? AND pool=?", (est, uid, day, pool))
-        else:
-            # eine Anweisung: Zeilensperre, Bedingung wird nach dem Warten neu geprueft (gleichzeitige Schritte)
-            r = c.execute("UPDATE ai_units SET units = units + ? WHERE uid=? AND day=? AND pool=? "
-                          "AND (units + ? <= ? OR (? = 1 AND units < ?)) RETURNING units",
-                          (est, uid, day, pool, est, cap, 1 if job_running else 0, cap)).fetchone()
-            if r is None:
-                return None
+    c = conn
+    _ensure(c, uid, day, pool)
+    if cap is None:
+        c.execute("UPDATE ai_units SET units = units + ? WHERE uid=? AND day=? AND pool=?", (est, uid, day, pool))
+    else:
+        # eine Anweisung: Zeilensperre, Bedingung wird nach dem Warten neu geprueft (gleichzeitige Schritte)
+        r = c.execute("UPDATE ai_units SET units = units + ? WHERE uid=? AND day=? AND pool=? "
+                      "AND (units + ? <= ? OR (? = 1 AND units < ?)) RETURNING units",
+                      (est, uid, day, pool, est, cap, 1 if job_running else 0, cap)).fetchone()
+        if r is None:
+            return None
     return Res(uid, pool, day, est)
 
 
-def settle(res, in_chars, out_chars, real_in=None, real_out=None):
+def settle(res, in_chars, out_chars, real_in=None, real_out=None, conn=None):
     """Nachher abrechnen: Kosten aus Zeichen (ohne Antwort 0), Rest der Schaetzung zurueck; echte Tokens nur dazuzaehlen.
-    Mehrfacher Aufruf zaehlt einmal. -> abgerechnete Einheiten."""
+    Mehrfacher Aufruf zaehlt einmal. conn: in dieser Transaktion (sonst eine eigene). -> abgerechnete Einheiten."""
     if res is None or res.settled:
         return res.units if res else 0
     res.settled = True
     res.units = cost(in_chars, out_chars)
     ri = max(0, int(real_in or 0)) if res.units else 0
     ro = max(0, int(real_out or 0)) if res.units else 0
-    with _db() as c, c:
-        c.execute("UPDATE ai_units SET units = GREATEST(0, units + ?), real_in = real_in + ?, real_out = real_out + ? "
-                  "WHERE uid=? AND day=? AND pool=?", (res.units - res.est, ri, ro, res.uid, res.day, res.pool))
+    if conn is None:
+        with _db() as c, c:
+            return _book(c, res, ri, ro)
+    return _book(conn, res, ri, ro)
+
+
+def _book(c, res, ri, ro):
+    c.execute("UPDATE ai_units SET units = GREATEST(0, units + ?), real_in = real_in + ?, real_out = real_out + ? "
+              "WHERE uid=? AND day=? AND pool=?", (res.units - res.est, ri, ro, res.uid, res.day, res.pool))
     return res.units
 
 
