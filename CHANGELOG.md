@@ -81,6 +81,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **„Zu viele Anrufe in kurzer Zeit“ schon beim zweiten Anruf** (Bugs-DB 2356, Server): Im föderierten Direkt-Chat mit
+  einem Server, der auf Knoten besteht, zählte ein Anruf bis zu dreimal gegen die Grenzen (3 je Minute an dieselbe
+  Person, 6 je Minute, 40 je Stunde) – Versuch über die Knoten dort, Rückfall über die eigenen Knoten, dann direkter
+  Anruf nach `409 fallback`. Jetzt zählt jeder Anrufversuch genau einmal (`calls.rate_call`): der zweite Weg im selben
+  Versuch zieht nicht erneut ab, der direkte Anruf nach dem Rückfall (Web mit neuer, Apps mit derselben id) auch nicht;
+  abgelehnte Versuche zählen in keinem Topf. Außerdem melden 1:1-Anrufe über Knoten mit anderen Servern wie lokal
+  „{Name} ruft dich gerade an“, wenn der Anruf des Gegenübers noch klingelt. Test `tests/anrufe_rate.py`.
 - **Aufgabe im Widget/in der App abgehakt** (`POST /api/app/tasks/{id}/done`): löst jetzt wie im Web das Ereignis
   `task.completed` aus – Webhooks „task.completed“ kamen auf diesem Weg bisher nicht an (gefunden bei K-A2, Bugs-DB 2266).
 - **Release-Push zeigt nicht mehr „rc“** (Bugs-DB 2335): Beim Release-Commit schiebt nur noch `release.yml` die Images

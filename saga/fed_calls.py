@@ -82,8 +82,7 @@ def start(uid, ch, cid, media, dev, sig, caps="[]"):
             return _bad(t("Diesen Anruf gibt es schon."), 409)
         if calls._busy(c, uid):
             return _bad(t("Du telefonierst gerade schon."), 409)
-        if not calls._rate("call", uid, calls.CALL_RATE) or not calls._rate("call-h", uid, calls.CALL_RATE_H, 3600) \
-                or not calls._rate("pair", uid + "|" + other, calls.PAIR_RATE):
+        if not calls.rate_call(uid, other, direct=True):    # Bugs-DB 2356: Rueckfall nach Knoten-Versuch zaehlt nicht nochmal
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         mh = FC.my_handle(c, uid)
         dname = calls._dev_name(c, dev)
@@ -314,12 +313,13 @@ def group_start(uid, ch, cid, media, dev, caps):
     return chat._no_store({"ok": True, "call": out})
 
 
-def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop"):
+def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop", bill=None):
     """2.5: POST /api/calls {via: "horn"} in einem foederierten Direkt-Chat (calls.horn_all an). Wie 2.3 fuehrt der Server
     der anrufenden Person den Anruf: erst beim Server des Gegenuebers anklingeln lassen (Auftrag dmhorn, synchron - dort
     entsteht die Kopie und es klingelt), dann hier den Raum-Anruf ueber Knoten anlegen (kind 'group', topo 'horn', callee =
     Gegenueber). Danach laeuft alles wie ein foederierter Gruppenanruf ueber Knoten (join/leave/roster/horn, P10).
-    Geht es nicht: 409 fallback direct (nichts angelegt), der Client ruft wie bisher direkt an."""
+    Geht es nicht: 409 fallback direct (nichts angelegt), der Client ruft wie bisher direkt an. bill: Abbuchung je Versuch
+    (dm_horn_route, Bugs-DB 2356)."""
     if not (calls._has(caps, "horn") and calls._has(caps, "multi")):
         return calls._fallback("caps")
     now = time.time()
@@ -344,10 +344,12 @@ def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop"):
             return calls._fallback("node")
         if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
             return _bad(t("Diesen Anruf gibt es schon."), 409)
+        inc = _incoming(c, uid, other)
+        if inc:
+            return inc
         if calls._busy(c, uid):
             return _bad(t("Du telefonierst gerade schon."), 409)
-        if not calls._rate("call", uid, calls.CALL_RATE) or not calls._rate("call-h", uid, calls.CALL_RATE_H, 3600) \
-                or not calls._rate("pair", uid + "|" + other, calls.PAIR_RATE):
+        if not _charge(uid, other, bill):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         mh = FC.my_handle(c, uid)
         dname = calls._dev_name(c, dev)
@@ -390,22 +392,48 @@ def dm_horn_route(uid, ch, cid, media, dev, caps, dev_class="desktop"):
     with _db() as c:
         other = next((u for u in chat.members(c, ch["id"]) if sharing.is_remote(u)), None)
         p = F.peer_by(c, "host", FC.split_handle(FC.handle_of(other))[1]) if other else None
+    bill = {}                                          # Bugs-DB 2356: ein Versuch = eine Abbuchung, auch ueber beide Wege
+    r = None
     if p and peer_horn_req(p):
-        r = dm_horn_lead_start(uid, ch, cid, media, dev, caps, p)
+        r = dm_horn_lead_start(uid, ch, cid, media, dev, caps, p, bill)
         # Teilt der andere Server keinen Knoten mit uns (bzw. horn_all dort inzwischen aus) und wir haben selbst horn_all:
         # dann fuehren wir wie bisher ueber unsere Knoten (statt direkt)
         st, body = _resp(r)
-        if not (st == 409 and body.get("horn_block") in ("node", "off") and calls.horn_dm_on()):
-            return r
-    if not calls.horn_dm_on():
-        return calls._fallback("off")
-    return dm_horn_start(uid, ch, cid, media, dev, caps, dev_class)
+        if st == 409 and body.get("horn_block") in ("node", "off") and calls.horn_dm_on():
+            r = None
+    if r is None:
+        r = dm_horn_start(uid, ch, cid, media, dev, caps, dev_class, bill) if calls.horn_dm_on() else calls._fallback("off")
+    st, body = _resp(r)
+    if bill.get("paid") and other and st == 409 and body.get("fallback") == "direct":
+        calls.rate_back(uid, other)                    # nichts geklingelt: der direkte Anruf danach ist derselbe Versuch
+    return r
 
 
-def dm_horn_lead_start(uid, ch, cid, media, dev, caps, p):
+def _charge(uid, other, bill):
+    """Bugs-DB 2356: Grenzen (calls.rate_call) je Anrufversuch genau einmal - bill (je Anfrage) merkt die Abbuchung, der
+    zweite Weg im selben Versuch (dm_horn_lead_start -> 409 node/off -> dm_horn_start) zieht nicht erneut ab."""
+    if bill is not None and bill.get("paid"):
+        return True
+    if not calls.rate_call(uid, other):
+        return False
+    if bill is not None:
+        bill["paid"] = True
+    return True
+
+
+def _incoming(c, uid, other):
+    """Rueckruf, waehrend der Anruf des Gegenuebers hier noch klingelt (wie lokal calls._dm_horn_start) -> 409 mit incoming."""
+    inc = c.execute("SELECT id FROM chat_call WHERE state='ringing' AND caller=? AND callee=? LIMIT 1", (other, uid)).fetchone()
+    if not inc:
+        return None
+    return chat._no_store({"error": t("{name} ruft dich gerade an – nimm den Anruf an.", name=FC.label_of(c, other)["name"]),
+                           "incoming": inc[0]}, 409)
+
+
+def dm_horn_lead_start(uid, ch, cid, media, dev, caps, p, bill=None):
     """Horn-Fix: der Server des Gegenuebers (Horn-Besitzer) fuehrt den Anruf - dort anlegen und klingeln lassen (synchron,
     Auftrag dmhorn_lead), hier spiegeln (lead = dort) wie beim Gruppenanruf mit fremdem Heim. Kandidaten: geteilte Knoten
-    dort (FH.block). Geht es dort nicht: 409 fallback direct (nichts angelegt)."""
+    dort (FH.block). Geht es dort nicht: 409 fallback direct (nichts angelegt). bill: Abbuchung je Versuch (dm_horn_route)."""
     if not (calls._has(caps, "horn") and calls._has(caps, "multi")):
         return calls._fallback("caps")
     with _db() as c:
@@ -418,10 +446,12 @@ def dm_horn_lead_start(uid, ch, cid, media, dev, caps, p):
             return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
         if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
             return _bad(t("Diesen Anruf gibt es schon."), 409)
+        inc = _incoming(c, uid, other)
+        if inc:
+            return inc
         if calls._busy(c, uid):
             return _bad(t("Du telefonierst gerade schon."), 409)
-        if not calls._rate("call", uid, calls.CALL_RATE) or not calls._rate("call-h", uid, calls.CALL_RATE_H, 3600) \
-                or not calls._rate("pair", uid + "|" + other, calls.PAIR_RATE):
+        if not _charge(uid, other, bill):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         mh = FC.my_handle(c, uid)
         dname = calls._dev_name(c, dev)

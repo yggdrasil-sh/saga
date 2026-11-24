@@ -371,6 +371,37 @@ def _rate(kind, key, n, per=60.0):
     return True
 
 
+_BACK = {}                                             # Bugs-DB 2356: Paar -> Zeit (Versuch ueber Knoten abgebucht, endete in fallback)
+
+
+def rate_call(uid, peer, direct=False):
+    """Bugs-DB 2356: Grenzen fuer einen neuen 1:1-Anruf (CALL_RATE, CALL_RATE_H je Konto, PAIR_RATE je Paar) - je Anrufversuch
+    genau einmal. Zaehlt nur, wenn alle drei Grenzen erlauben (abgelehnte Versuche zaehlen nicht). direct: direkter Anruf;
+    endete der letzte abgebuchte Versuch ueber Knoten an dieselbe Person in 409 fallback (rate_back, nichts geklingelt), ist
+    dieser direkte Anruf derselbe Klick (der Web-Client nimmt dafuer eine neue id) - einmal frei. -> True erlaubt"""
+    now = time.time()
+    pair = uid + "|" + peer
+    t0 = _BACK.pop(pair, None) if direct else None
+    if t0 is not None and now - t0 < 60:
+        return True
+    lim = (("call", uid, CALL_RATE, 60.0), ("call-h", uid, CALL_RATE_H, 3600.0), ("pair", pair, PAIR_RATE, 60.0))
+    if any(sum(1 for x in _hits.get((k, key), []) if now - x < per) >= n for k, key, n, per in lim):
+        return False
+    _BACK.pop(pair, None)                              # neuer abgebuchter Versuch: ein altes Guthaben verfaellt
+    return all([_rate(k, key, n, per) for k, key, n, per in lim])
+
+
+def rate_back(uid, peer):
+    """Bugs-DB 2356: der eben abgebuchte Versuch ueber Knoten endet in 409 fallback (nichts angelegt, nichts geklingelt) -
+    der folgende direkte Anruf an dieselbe Person (rate_call direct) zieht nicht erneut ab. Ein Platz je Paar: Versuche ueber
+    Knoten zahlen immer selbst, ein Guthaben sammelt sich nicht an."""
+    now = time.time()
+    if len(_BACK) > 5000:
+        for k in [k for k, v in _BACK.items() if now - v >= 60]:
+            _BACK.pop(k, None)
+    _BACK[uid + "|" + peer] = now
+
+
 def _rate_db(c, kind, key, n, per=60.0):
     """Grenze in der Datenbank (gilt ueber alle Prozesse): festes Zeitfenster von per s je (kind, key). -> 0 (erlaubt,
     gezaehlt) bzw. Sekunden bis zum naechsten Fenster (fuer Retry-After). Abgelehnte Abrufe zaehlen mit, verlaengern das
@@ -1194,7 +1225,7 @@ async def api_call(request: Request):
                                    "incoming": inc[0]}, 409)
         if _busy(c, uid):
             return _bad(t("Du telefonierst gerade schon."), 409)
-        if not _rate("call", uid, CALL_RATE) or not _rate("call-h", uid, CALL_RATE_H, 3600) or not _rate("pair", uid + "|" + peer, PAIR_RATE):
+        if not rate_call(uid, peer, direct=True):        # Bugs-DB 2356: je Anrufversuch einmal
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         # 2.4: v=3 (Raum: weitere Geraete koennen beitreten), wenn das anrufende Geraet "multi" meldet - sonst 1:1 wie 2.3
         c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, caps_a, v) "
@@ -1257,7 +1288,7 @@ def _dm_horn_start(c, uid, ch, peer, cid, media, dev, caps, now, dev_class="desk
                                           name=names(c, [peer]).get(peer) or _pp(c, {"chat_id": ch["id"]}, peer, uid)), "incoming": inc[0]}, 409)
     if _busy(c, uid):
         return _bad(t("Du telefonierst gerade schon."), 409)
-    if not _rate("call", uid, CALL_RATE) or not _rate("call-h", uid, CALL_RATE_H, 3600) or not _rate("pair", uid + "|" + peer, PAIR_RATE):
+    if not rate_call(uid, peer):
         return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
     note_caps(c, uid, dev, caps)
     busy = _busy_other(c, peer, cid)
