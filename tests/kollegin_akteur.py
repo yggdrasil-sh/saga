@@ -139,6 +139,15 @@ def part_migration():
                                                          db.SCHEMA, re.S)}
     ok("SCHEMA (Neuinstallation) ohne die Spalten - sie kommen nur ueber die Migration (wie 4/5/19)",
        len(tabs) == 3 and not any(re.search(rf"\b{x}\b", tabs[tb]) for tb, x in COLS36), sorted(tabs))
+    # Schutz (Pruefer K-A1): Spalten nur wegnehmen, wenn ausser den Wegwerf-Konten ka-* nichts darin steht - sonst liefe
+    # die Reihe gegen eine Datenbank mit echten Akteur-Daten (die das DROP COLUMN unwiderruflich loeschte)
+    have = cols_now()
+    with pg() as c:
+        foreign = sum(c.execute(f"SELECT count(*) FROM {tb} WHERE {col} IS NOT NULL AND uid NOT LIKE %s", ("ka-%",)).fetchone()[0]
+                      for tb, col in COLS36 if (tb, col) in have)
+    ok("Datenbank ohne fremde Akteur-Daten (sonst kein Stand-35-Nachstellen)", foreign == 0, foreign)
+    if foreign:
+        return
     # Stand 35 nachstellen: Spalten weg, Schema-Stand 35
     with pg() as c:
         for tb, col in COLS36:
@@ -283,13 +292,17 @@ def part_delete():
     with db.connect() as c, c:
         with acting(Actor("service", "svc:kollegin", on_behalf_of=GONE)):
             nn = notify.create(c, B, "share.added", actor=GONE, note_id=nb)
+        with acting(Actor("person", GONE)):                # Akteur 'person': die uid steht in notification.actor
+            np_ = notify.create(c, B, "share.role", actor=GONE, note_id=nb, data={"role": "edit"})
     userdata.delete_user_data(GONE, drop_user=True)
     with pg() as c:
         v = c.execute("SELECT author, actor_kind, actor, on_behalf_of FROM note_version WHERE note_id=%s", (nb,)).fetchone()
         m = c.execute("SELECT actor_uid, actor_kind, actor, on_behalf_of FROM notification WHERE id=%s", (nn,)).fetchone()
+        mp = c.execute("SELECT actor_uid, actor_kind, actor, on_behalf_of FROM notification WHERE id=%s", (np_,)).fetchone()
     ok("Kontoloeschung: Fassung auf fremder Seite ohne author und on_behalf_of, Dienst bleibt",
        v == (None, "service", "svc:kollegin", None), v)
     ok("Kontoloeschung: Benachrichtigung ohne actor_uid und on_behalf_of", m == (None, "service", "svc:kollegin", None), m)
+    ok("Kontoloeschung: Benachrichtigung mit Akteur 'person' ohne dessen uid", mp == (None, "person", None, None), mp)
 
 
 def main():

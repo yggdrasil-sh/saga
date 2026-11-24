@@ -215,6 +215,7 @@ def delete_account(c, uid):
     n = c.execute("DELETE FROM notification WHERE uid=?", (uid,)).rowcount
     c.execute("UPDATE notification SET actor_uid=NULL WHERE actor_uid=?", (uid,))
     c.execute("UPDATE notification SET on_behalf_of=NULL WHERE on_behalf_of=?", (uid,))   # 2.6 (K-A1): Dienst im Auftrag von
+    c.execute("UPDATE notification SET actor=NULL WHERE actor=?", (uid,))   # ebenso Akteur 'person' (actor.cols() = uid)
     for rid, raw in c.execute("SELECT id, data FROM notification WHERE data LIKE ?", ('%"actors"%' + json.dumps(uid) + "%",)).fetchall():
         d = _json_load(raw, {})
         if uid in d.get("actors", []):
