@@ -221,6 +221,35 @@ def run():
        r[0] == 200 and txt and units("kb-a")[0] - u2 == U.cost(ch, len(txt)) < mid)
     ok("Spur danach wieder frei", K.ask(A, "Und noch einmal Zitronenfalter?")[0] == 200)
 
+    # --- Pruefer: kein Platz-Leck, wenn der Client mitten im Strom abbricht oder das Modell scheitert -------------------
+    setai(quota=0)                                       # kb-a hat das Kontingent 3 hier schon verbraucht
+    u4 = units("kb-a")[0]
+    K.fake("POST", "/_reset")
+    s, seen = abort_after_delta(A, "Was weiss ich ueber Zitronenfalter?")
+    est_ab = math.ceil(msgs_chars() / 4) + ai.MAX_TOKENS
+    t0, st2, ev2 = time.monotonic(), None, []
+    while time.monotonic() - t0 < 20:                    # fake-hang: naechstes Stueck erst nach 8 s
+        st2, ev2, _ = K.ask(A, "Zitronenfalter nach dem Abbruch?")
+        if st2 != 409:
+            break
+        time.sleep(0.5)
+    dt = time.monotonic() - t0
+    ok(f"Abbruch durch den Client: Platz wieder frei ({s}, Stueck gesehen {seen}, danach {st2} nach {dt:.1f} s)",
+       s == 200 and seen and st2 == 200, (s, seen, st2, dt))
+    cost2 = U.cost(msgs_chars(), len(K.text_of(ev2)))
+    for _ in range(40):                                  # Abrechnung im Modell-Thread (nach dem naechsten Stueck)
+        if units("kb-a")[0] - u4 - cost2 < est_ab:
+            break
+        time.sleep(0.5)
+    ok(f"Abbruch: Schaetzung abgerechnet, nicht stehen geblieben ({units('kb-a')[0] - u4 - cost2} < {est_ab})",
+       0 < units("kb-a")[0] - u4 - cost2 < est_ab)
+    setai(model="fake-500")
+    s, ev, _ = K.ask(A, "Zitronenfalter mit Modellfehler?")
+    setai(model="fake")
+    s2 = K.ask(A, "Zitronenfalter nach dem Modellfehler?")[0]
+    ok(f"Modellfehler: Platz sofort wieder frei ({s}, {K.get(ev, 'error') is not None}, danach {s2})",
+       s == 200 and K.get(ev, "error") is not None and s2 == 200)
+
     # --- Echte Tokens: fake-usage / fake-nousage ------------------------------------------------------------------------
     setai(model="fake-usage", quota=0)
     _, ri0, ro0 = units("kb-b")
@@ -384,6 +413,32 @@ def run():
     from saga.userdata import USER_TABLES, delete_user_data
     delete_user_data("kb-f")
     ok("Kontoloeschung raeumt ai_units ab (USER_TABLES)", "ai_units" in USER_TABLES and units("kb-f", "job") == (0, 0, 0))
+
+
+def abort_after_delta(cookie, q):
+    """Frage stellen, beim ersten delta die Verbindung hart schliessen -> (status, delta gesehen)."""
+    c = http.client.HTTPConnection(K.B_.hostname, K.B_.port, timeout=30)
+    c.request("POST", "/api/ai/ask", body=json.dumps({"q": q}),
+              headers={"Host": K.HOST, "Accept-Language": "de", "Content-Type": "application/json", "Accept": "text/event-stream",
+                       "Cookie": "saga=" + cookie, "X-Saga": "1"})
+    r = c.getresponse()
+    seen = False
+    if r.status == 200:
+        for _ in range(200):
+            line = r.fp.readline()
+            if not line:
+                break
+            if line.startswith(b"event: delta"):
+                seen = True
+                break
+    sk = c.sock or getattr(getattr(r.fp, "raw", None), "_sock", None)
+    try:
+        sk.shutdown(socket.SHUT_RDWR)
+    except (OSError, AttributeError):
+        pass
+    r.close()
+    c.close()
+    return r.status, seen
 
 
 def sse_page(cookie, nid):
