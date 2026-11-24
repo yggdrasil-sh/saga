@@ -139,6 +139,7 @@
   // Dieses Geraet wurde anderswo abgemeldet ("Neu beginnen" auf einem anderen Geraet bzw. Geraet entfernt): erklaeren,
   // statt still leer zu bleiben oder erst beim Senden zu scheitern (BUG-057); danach wie ein neues Geraet verbinden.
   function signedOut(reset) {
+    drawNone();                                          // 2030: Uebersicht sagt, dass dieses Geraet noch eingerichtet wird
     var box = overlay(reset ? T('Chats wurden neu begonnen') : T('Dieses Gerät wurde abgemeldet'), { close: false });
     box.appendChild(el('p', null, reset
       ? T('Auf einem anderen Gerät wurden deine Chats mit neuen Schlüsseln neu begonnen. Dieses Gerät ist dadurch abgemeldet, bisherige Nachrichten sind hier nicht mehr lesbar.')
@@ -166,6 +167,7 @@
 
   // --- Einrichtung (erstes Geraet) -------------------------------------------------------------------------------
   function setupIntro(reset) {
+    drawNone();                                          // 2030: Uebersicht sagt, dass dieses Geraet noch eingerichtet wird
     var box = overlay(reset ? T('Chats neu beginnen') : T('Chats einrichten'), { close: !!reset });
     box.appendChild(el('p', null, T('Saga-Chats sind Ende-zu-Ende-verschlüsselt: Nachrichten und Anhänge werden auf deinen Geräten ver- und entschlüsselt. Der Server – auch der Admin – sieht nur verschlüsselte Daten.')));
     box.appendChild(el('p', null, T('Dafür bekommst du gleich einen Wiederherstellungsschlüssel. Damit holst du deine Chats auf ein neues Gerät, wenn kein anderes mehr da ist. Ohne ihn sind deine Nachrichten verloren – auch der Admin kann sie nicht wiederherstellen.')));
@@ -312,6 +314,7 @@
     return p;
   }
   function newDevice() {
+    drawNone();                                          // 2030: Uebersicht sagt, dass dieses Geraet noch eingerichtet wird
     var box = overlay(T('Chats auf diesem Gerät'), { close: false });
     var lim = S.me && S.me.limits;
     if (lim && lim.devices_max && lim.devices_count >= lim.devices_max) limitHint(box, { count: lim.devices_count });
