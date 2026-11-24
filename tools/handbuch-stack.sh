@@ -53,7 +53,7 @@ if [ ! -s "$HCERT.pem" ] && [ -s "$UMG/ca/ca.key" ]; then
     openssl x509 -req -in "$HCERT.csr" -CA "$UMG/ca/ca.pem" -CAkey "$UMG/ca/ca.key" -CAserial "$HCERT.srl" -CAcreateserial -days 30 -extfile "$HCERT.ext" \
       -out "$HCERT.pem" 2>/dev/null && chmod 600 "$HCERT.key"
 fi
-GRUPPEN=$(python3 "$D/screens-handbuch.py" --gruppen ${NUR:+--nur "$NUR"})
+GRUPPEN=$(python3 "$D/screens-handbuch.py" --gruppen ${NUR:+--nur "$NUR"}) || exit 2    # Name ohne Szene: Fehler (stderr)
 [ -n "$GRUPPEN" ] || { echo "keine passenden Bilder: $NUR"; exit 2; }
 RC=0
 while read -r WELT ART NAMES; do

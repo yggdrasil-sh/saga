@@ -38,6 +38,35 @@ def scene(name, welt, art="server"):
     return deco
 
 
+_IMG = re.compile(r"""["']([abw]\d\d-\d\d-[a-z0-9-]+|w-[a-z0-9-]+)["']""")
+
+
+def images(fn):
+    """Bildnamen, die eine Szene aufnimmt (Zeichenketten "b12-03-..." im Quelltext der Szene; Gruppenszenen wie b12-01
+    nehmen mehrere Bilder auf) - damit --nur auch Bilder ohne eigene Szene findet."""
+    import inspect
+    try:
+        src = inspect.getsource(fn)
+    except (OSError, TypeError):
+        return []
+    return sorted(set(_IMG.findall(src)))
+
+
+def pick(nur):
+    """Szenen zu den Namen aus --nur (Szene, Bild einer Gruppenszene oder Vorsilbe) -> (szenen, namen ohne Szene)."""
+    if not nur:
+        return list(SCENES), []
+    want, miss = [], []
+    for n in nur:
+        hit = [s for s in SCENES if s[0] == n or s[0].startswith(n) or any(i == n or i.startswith(n) for i in images(s[3]))]
+        if not hit:
+            miss.append(n)
+        for s in hit:
+            if s not in want:
+                want.append(s)
+    return [s for s in SCENES if s in want], miss
+
+
 DESK = {"viewport": {"width": 1440, "height": 900}, "device_scale_factor": 2}
 PHONE = {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True, "has_touch": True}
 HOST = {"familie": "saga.example", "verein": "verein.example"}
@@ -479,6 +508,9 @@ def heute(run, user="anna", dark=False, form=DESK):
     w = run.who(user, dark=dark, form=form)
     visit(w, "einkauf", "sommerfest", "urlaub")
     w.go("/dashboard", 2500)
+    # Schnellaktion "Frage Saga KI" erscheint erst, wenn die KI-Einstellungen geladen sind (vorher je nach Ladezeit fehlend)
+    if run.welt == "familie" and not until(lambda: w.p.locator("#hz-ai:visible").count(), 15000):
+        print("  WARNUNG: Schnellaktion Frage Saga KI nicht sichtbar", flush=True)
     w.blur()
     return w
 
@@ -1463,8 +1495,10 @@ def verein_server(run):
     import subprocess
     import psycopg
     import urllib.request
-    dbn = "saga_h_verein_" + secrets.token_hex(3)
     base_url = os.environ["DATABASE_URL"]
+    # unter dem Praefix des Laufs (UMG_DB, z. B. saga_hb_6 -> saga_hb_6_verein_<hex>), damit Reste eindeutig zuzuordnen sind
+    cur = re.match(r"^postgres(?:ql)?://[^/]*/([^?]*)", base_url)
+    dbn = ((cur and cur.group(1)) or os.environ.get("UMG_DB", "saga_hb")) + "_verein_" + secrets.token_hex(3)
     with psycopg.connect(base_url, autocommit=True) as c:
         c.execute(f"CREATE DATABASE {dbn}")
     run.verein_db = dbn
@@ -2247,11 +2281,16 @@ def main():
     nur = [x.strip() for x in (os.environ.get("HB_NUR") or "").replace(" ", ",").split(",") if x.strip()]
     if "--nur" in sys.argv:
         nur = [x for x in sys.argv[sys.argv.index("--nur") + 1].split(",") if x]
-    want = [s for s in SCENES if not nur or any(s[0] == n or s[0].startswith(n) for n in nur)]
+    want, miss = pick(nur)
+    if miss:   # frueher still uebersprungen (z. B. Bilder ohne Szene vom 3.11., Tippfehler) - jetzt Abbruch mit Hinweis
+        print("FEHLER: keine Szene nimmt diese Bilder auf: " + ", ".join(miss) + " (Liste: --liste; Bilder ohne Szene: "
+              "docs/handbuch/bilder/BILDER.md)", file=sys.stderr, flush=True)
+        return 2
     if "--liste" in sys.argv or "--gruppen" in sys.argv:
         if "--liste" in sys.argv:
-            for n, w, a, _ in SCENES:
-                print(f"{n}\t{w}\t{a}")
+            for n, w, a, fn in SCENES:
+                more = [i for i in images(fn) if i != n]
+                print(f"{n}\t{w}\t{a}" + (("\t+ " + " ".join(more)) if more else ""))
         else:
             groups = {}
             for n, w, a, _ in want:
