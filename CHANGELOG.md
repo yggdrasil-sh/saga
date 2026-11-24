@@ -29,6 +29,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Ausnahmen). Noch ohne Wirkung auf Anrufe und Mitteilungen und ohne Oberfläche. Fähigkeit `userstatus1` in
   `/api/version`, `userstatus1` in `/api/chat/me`; Vertrag in `docs/APP-API.md` („Eigener Status“). Tests:
   `tests/reachability.py`, `tests/status_fehler.py`; Perf „Status: reachability“ (`limits.json`).
+- **Runner `ai.task` für die Kollegin** (Bugs-DB 2266 K-A6, Server, Gerüst ohne Planer und ohne Oberfläche):
+  `saga/ai_task.py` führt einen freigegebenen Plan Schritt für Schritt über die Werkzeug-Registry aus – je Schritt ein
+  Werkzeugaufruf mit dem internen Tok des Auftrags, in der Hintergrund-Spur und mit KI-Einheiten im Pool „Aufträge“.
+  Ist das Tageslimit erreicht, wird der Auftrag bis zum nächsten Tag zurückgestellt statt abgebrochen; ein laufender
+  Auftrag darf einen Schritt überziehen. Wird eine Seite während des Auftrags nicht mehr geteilt, wartet er mit Grund
+  auf die Person und schreibt nichts; Plan-Angaben, die nach der Freigabe verändert wurden, lassen ihn scheitern.
+  Passwortwechsel nach der Freigabe oder „überall abmelden“ halten laufende Aufträge an (`revoke_user_logins` hält sie
+  jetzt ausdrücklich an). Aufgaben- und Kalender-Schritte nur mit den Kennungen aus dem Plan; `check_plan` begrenzt
+  Schritte (20), Ziele (40) und „Ich lese dafür“ (50) und meldet ungültige Angaben als Problem. Zwei Worker nach
+  Lease-Ablauf schreiben einen Schritt höchstens einmal (Versuch im Stempel); stirbt der Server mitten im Aufruf, wird
+  die Belegung bei der Wiederaufnahme genau einmal freigegeben. „Ich lese dafür“ steht im Auftrags-Protokoll
+  (`job_event` `read`, nur Kennungen). Keine Migration. Tests: `tests/kollegin_jobs.py`, `tests/kollegin_fehler.py`,
+  `tests/kollegin_werkzeuge.py`, `tests/kollegin_budget.py`; Messungen `tools/perf/kollegin_runner.py`
+  („Kollegin: Runner-Schritt“), EXPLAIN der Takt-Abfrage (Index `job_due`), alles zusammen `tools/perf/bench_kollegin.py`.
 - **Gemeinsame Werkzeug-Registry für MCP und Kollegin** (Bugs-DB 2266 K-A3, Server): `saga/tools.py` hält alle
   Werkzeuge mit Bereich, Schema und neuen Feldern (`klass` read/own/out, `undo`, `mcp`, `kollegin`, `destructive`,
   `targets`); `saga/mcp.py` liest daraus – `tools/list` ist byteweise unverändert (Goldvorlage
