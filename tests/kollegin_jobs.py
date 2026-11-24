@@ -842,7 +842,12 @@ def part_ai_task():
                                     {"tool": "create_task", "args": {"text": "KJ Abmelden 2"}}])
     go(jid)
     jobs.run_once()
+    jb = mk(uid=B, steps=[{"tool": "echo", "args": {"x": 1}}, {"tool": "echo", "args": {"x": 2}}])   # Pruefer: fremder Auftrag
+    go(jb, B)
     userdata.revoke_user_logins(A)
+    sb = jobs.state_of(jb)
+    ok(f"ueberall abmelden haelt nur Auftraege dieser Person an (Auftrag von B: {sb['state']})", sb["state"] == "laeuft")
+    jobs.cancel(jb, B)
     s = jobs.state_of(jid)
     ok(f"ueberall abmelden: laufender Auftrag wartet_dich 'abgemeldet', danach kein Schritt ({s['state']}, {s['reason']})",
        s["state"] == "wartet_dich" and s["reason"] == "abgemeldet" and jobs.run_once() == 0 and texts("KJ Abmelden") == ["KJ Abmelden 1"])
