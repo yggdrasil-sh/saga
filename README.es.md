@@ -1,3 +1,8 @@
+> [!WARNING]
+> **Esta rama está congelada (desde el 24/11/2026) y ya no recibe cambios.** Hasta Saga 3.0 solo existe la rama
+> [`main`](https://github.com/yggdrasil-sh/saga/tree/main): clona y contribuye allí. Los servidores con `SAGA_VERSION=testing` siguen
+> funcionando (`testing` recibe por ahora lo mismo que `2`), pero conviene cambiarlos a `2`.
+
 <p align="center">
   <img src="static/icon.svg" width="96" height="96" alt="Saga">
 </p>

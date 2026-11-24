@@ -1,3 +1,8 @@
+> [!WARNING]
+> **Dieser Branch ist eingefroren (seit 24.11.2026) und bekommt keine Änderungen mehr.** Bis Saga 3.0 gibt es nur
+> den Branch [`main`](https://github.com/yggdrasil-sh/saga/tree/main) – bitte dort klonen und beitragen. Server mit `SAGA_VERSION=testing`
+> laufen vorerst weiter (`testing` bekommt derzeit dasselbe wie `2`), sollten aber bei Gelegenheit auf `2` wechseln.
+
 <p align="center">
   <img src="static/icon.svg" width="96" height="96" alt="Saga">
 </p>

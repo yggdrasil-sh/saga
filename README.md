@@ -1,3 +1,8 @@
+> [!WARNING]
+> **This branch is frozen (since 24 Nov 2026) and receives no more changes.** Until Saga 3.0 there is only the
+> [`main`](https://github.com/yggdrasil-sh/saga/tree/main) branch – please clone and contribute there. Servers with `SAGA_VERSION=testing` keep
+> working for now (`testing` currently gets the same as `2`) but should switch to `2` when convenient.
+
 <p align="center">
   <img src="static/icon.svg" width="96" height="96" alt="Saga">
 </p>
