@@ -191,6 +191,19 @@ def main():
     ok(f"... Guthaben sammelt sich nicht an (zwei Rueckfaelle, dann zwei direkte: {[direct()[0], direct()[0]]}, Topf {pair_n()})",
        pair_n() == 3)
 
+    # --- Pruefer: Guthaben verfaellt nach 60 s; Zeitablauf (502) hinterlaesst keines ---------------------------------
+    setup()
+    horn()
+    CL._BACK[ME + "|" + PEER] -= 61
+    a = direct()[0]
+    ok(f"Pruefer: Rueckfall-Guthaben aelter als 60 s verfaellt, der direkte Anruf zahlt ({a}, Topf {pair_n()}, {len(CL._BACK)})",
+       a == 200 and pair_n() == 2 and not CL._BACK)
+    setup(dmhorn=(None, None))
+    s, _ = horn()
+    a = direct()[0]
+    ok(f"Pruefer: Zeitablauf beim Gegenueber (502, dort kann es klingeln): kein Guthaben, direkt zahlt ({s}, {a}, Topf {pair_n()})",
+       s == 502 and a == 200 and pair_n() == 2)
+
     # --- vor der Abbuchung abgelehnt: zaehlt nicht -------------------------------------------------------------------
     setup(busy=True)
     s, d = horn()
