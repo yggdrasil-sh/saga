@@ -38,6 +38,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Tests: `tests/browser_projektseite.js` (fünf Sprachen, Chromium und Firefox, 1440/390, hell/dunkel, Bewegung an/aus,
   Schalter, reduced-motion, Schriften, nur eigene Anfragen, Animationen nur transform/opacity).
 
+### Tests – Reste der Server-Suite (Bugs-DB 2247)
+- `formeln.py` prüft im Leck-Test die Werte statt „150“ im ganzen JSON (Zeitstempel); `a3_tunnel.py` wartet auf die
+  Werte aus dem hello des Knotens (ws/Tunnel/ICE-TCP) statt nur auf „bereit“; `browser_titelbild.js` wartet nach dem
+  Schließen eines Dialogs zwei Frames, bevor es das nächste Menü öffnet; `browser_web.js` räumt den Direkt-Chat auch über
+  den Handle auf (Stufe 3); `browser_fed_horn.js` wartet auf die Lastmeldung der Knoten (Brücken, Kontingent).
+
 ### Geändert – Admin → Anrufe: Rat bei „kein Zertifikat“ nennt zuerst den Tunnel-Betrieb (Bugs-DB 2246)
 - Startet der eingebaute Knoten mangels Zertifikat nicht (nur ohne https-`BASE_URL` mit DNS-Namen), empfahl die Zeile
   „Eingebaut“ als einfachsten Weg die Betriebsart „Ein Port“. Jetzt steht dort der Standardweg: `BASE_URL` auf die

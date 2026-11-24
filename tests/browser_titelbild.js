@@ -9,6 +9,11 @@ if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS se
 const bad = []; let n = 0;
 const ok = (c, m) => { n++; if (!c) { bad.push(m); console.log('  FEHLT: ' + m); } else console.log('  ok: ' + m); };
 const wait = ms => new Promise(r => setTimeout(r, ms));
+// Bugs-DB 2247: Menues schliessen bei jedem scroll-Ereignis ausserhalb des Menues (common.js). Ein Dialog, dessen Inhalt
+// ersetzt bzw. der geschlossen wird, meldet das Zuruecksetzen seines Scrollstands (#pg-modal-body, gescrollte Galerie)
+// erst mit dem naechsten Frame - ein sofort danach geoeffnetes Menue ging damit wieder zu (5 von 12 Laeufen rot).
+// Vor dem Oeffnen des naechsten Menues deshalb zwei Frames abwarten.
+const frames = p => p.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
 async function until(f, ms) { const t0 = Date.now(); while (Date.now() - t0 < (ms || 5000)) { if (await f()) return true; await wait(100); } return false; }
 (async () => {
   const b = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {});
@@ -59,12 +64,12 @@ async function until(f, ms) { const t0 = Date.now(); while (Date.now() - t0 < (m
   ok(await p.evaluate(() => /45%/.test(document.getElementById('pg-cover-img').style.objectPosition)), 'Position angewendet');
 
   console.log('Über dieses Bild, Zufällig');
-  await p.hover('#pg-cover'); await p.evaluate(() => document.getElementById('pg-cover-change').click()); await wait(250);
+  await frames(p); await p.hover('#pg-cover'); await p.evaluate(() => document.getElementById('pg-cover-change').click()); await wait(250);
   await p.locator('.menu .menu-item:has(.mi-t:text-is("Über dieses Bild"))').click();
   ok(await until(() => p.evaluate(() => !document.getElementById('pg-modal').hidden && /Katsushika Hokusai/.test(document.getElementById('pg-modal-body').innerText)
      && !!document.querySelector('#pg-modal-body a[href*="metmuseum.org"]'))), 'Nachweis mit Künstler und Link zur Met');
   await p.keyboard.press('Escape'); await p.evaluate(() => { const x = document.getElementById('pg-modal-close'); if (!document.getElementById('pg-modal').hidden && x) x.click(); });
-  await p.evaluate(() => document.getElementById('pg-cover-change').click()); await wait(250);
+  await frames(p); await p.evaluate(() => document.getElementById('pg-cover-change').click()); await wait(250);
   await p.locator('.menu .menu-item:has(.mi-t:text-is("Zufällig"))').click();
   ok(await until(async () => { const s = await coverShown(); return /^\/covers\/[a-z0-9-]+\.jpg$/.test(s) && s !== '/covers/hokusai-welle.jpg'; }), 'Zufällig: anderes Galerie-Bild');
 
