@@ -530,6 +530,11 @@ def weather_start(port):
 # Verweise stehen als {Titel} bzw. {web:k} in der Antwort und werden aus dem Material der Anfrage nummeriert (Saga zaehlt
 # die Quellen selbst: "[n] Titel — in: ..." bzw. "[n] Web: Titel (host)") - so passt [n] im Text immer zur Quelle n im Bild.
 KI_ANSWERS = [
+    ("rezept", "Für 8 Personen ohne Fleisch passt eine große Gemüselasagne gut:\n"
+               "- 2 Auberginen, 3 Zucchini und 2 Paprika in Scheiben, dazu 1 kg passierte Tomaten\n"
+               "- 500 g Lasagneplatten, 500 g Ricotta und 250 g geriebener Käse\n"
+               "- 45 Minuten bei 180 °C backen, vorher 10 Minuten ruhen lassen\n"
+               "Dazu ein großer grüner Salat und Brot. Lässt sich gut am Vortag vorbereiten."),
     ("sommerfest", "Für das Sommerfest fehlen laut der Seite „Sommerfest“ noch **Getränke**, **Grillkohle** und **zwei "
                    "Biertischgarnituren** {Sommerfest}. Oma Lena bringt den Apfelkuchen mit, Ben kümmert sich ums Grillgut "
                    "{Sommerfest}. Soll ich daraus Aufgaben anlegen?"),

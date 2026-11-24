@@ -2401,16 +2401,20 @@ def b13_04(run):
 
 @scene("b15-03-ki-chat", "familie")
 def b15_03(run):
-    """KI im Familienchat auf Zuruf: Anna erlaubt die KI im Chat und fragt "@Saga KI …" - die Antwort sehen alle."""
+    """KI im Familienchat auf Zuruf (wie in B15, Abschnitt 5): Anna erlaubt die KI im Chat, Ben fragt "@Saga KI ..." nach
+    einem Rezept - die Antwort sehen alle (Bild aus Annas Sicht)."""
     ws = chat_world(run)
-    a, gid = ws["anna"], run.chats["gruppe"]
-    for u in ("ben", "clara", "lena"):
+    a, b, gid = ws["anna"], ws["ben"], run.chats["gruppe"]
+    for u in ("clara", "lena"):
         ws[u].close()
     r = japi(a, "PUT", f"/api/chats/{gid}/ai", {"allowed": True})
     print("  KI im Chat:", str(r)[:120], flush=True)
+    b.go(f"/chats#c{gid}", 2500)
+    b.p.fill("#ct-input", "@Saga KI – was ist ein gutes Rezept für 8 Personen ohne Fleisch?")
+    b.p.press("#ct-input", "Enter")
+    until(lambda: b.p.locator(".ct-msg.ct-ai").count(), 30000)
+    b.close()
     a.go(f"/chats#c{gid}", 2500)
-    a.p.fill("#ct-input", "@Saga KI was fehlt noch fürs Sommerfest?")
-    a.p.press("#ct-input", "Enter")
     until(lambda: a.p.locator(".ct-msg.ct-ai").count(), 30000)
     a.p.wait_for_timeout(3000)
     no_toasts(a)
