@@ -1833,7 +1833,8 @@ def _ai_from(f, cur):
          "history": _on(f, "history"), "pinned": list(cur.get("pinned") or []), "chat": _on(f, "chat"),
          "web": _on(f, "web") and ai.ai_web.available(),
          # 2.6 (Bugs-DB 2261): Gruppen je Faehigkeit (saga/caps.py) - leer = alle
-         "caps": {"ai_act": _groups_list(_s(f, "caps_ai_act", 1000)), "ai_ideas": _groups_list(_s(f, "caps_ai_ideas", 1000))}}
+         "caps": {k: (_groups_list(_s(f, "caps_" + k, 1000)) if ("caps_" + k) in f else list(((cur.get("caps") or {}).get(k)) or []))
+                  for k in ("ai_act", "ai_ideas")}}   # fehlt ein Feld im Formular: bisherigen Wert behalten (nie "alle")
     return v, err
 
 

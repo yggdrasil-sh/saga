@@ -66,14 +66,17 @@ def main():
 
         # --- Konto-Antwort und Admin-Formular ----------------------------------------------------------------------
         from saga import web_auth
-        ok("/api/account: caps fuer die Person", web_auth._caps_of("fk-kind") == ["ai"]
-           or web_auth._caps_of("fk-kind") == ["ai", "ai_ideas"], web_auth._caps_of("fk-kind"))
+        ok("/api/account: caps fuer die Person", web_auth._caps_of("fk-kind") == ["ai", "ai_ideas"], web_auth._caps_of("fk-kind"))
         src = open(web_auth.__file__, encoding="utf-8").read()
         ok("/api/account liefert das Feld caps", '"caps": _caps_of(uid)' in src)
         import admin
         v, err = admin._ai_from({"provider": "openai", "caps_ai_act": "fk-eltern, FK-Eltern\nfk-oma", "caps_ai_ideas": ""}, {})
         ok("Admin: Gruppen je Faehigkeit (bereinigt, ohne Doppelte)", not err and v["caps"] == {"ai_act": ["fk-eltern", "fk-oma"], "ai_ideas": []},
            v.get("caps"))
+        v2, _e = admin._ai_from({"provider": "openai", "caps_ai_act": "fk-x"}, {"caps": {"ai_ideas": ["fk-eltern"]}})
+        ok("Admin: fehlendes Feld behaelt den bisherigen Wert (nie 'alle')", v2["caps"] == {"ai_act": ["fk-x"], "ai_ideas": ["fk-eltern"]}, v2.get("caps"))
+        setc(groups=["fk-familie"], caps="kaputt")
+        ok("kaputte caps-Einstellung: wie leer, kein Fehler", caps.can("fk-kind", "ai_act"))
     finally:
         auth.save_setting("ai", prev)
         for u in USERS:

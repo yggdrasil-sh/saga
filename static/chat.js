@@ -103,8 +103,11 @@
   function busy(b, on, label) { b.disabled = on; if (label) b.textContent = label; }
 
   // --- Start --------------------------------------------------------------------------------------------------
+  var starting = false;                                   // 2030 (Pruefer): "Jetzt einrichten" nie doppelt
   function start() {
     if (!window.sodium || !window.SagaChatCrypto) { fatal(T('Die Verschlüsselungs-Bibliothek konnte nicht geladen werden.')); return; }
+    if (starting) return;
+    starting = true;
     window.sodium.ready.then(function () {
       X = window.SagaChatCrypto(window.sodium);
       if (VID) VID.init({ X: X, api: api, T: T, el: el, run: run, me: function () { return S.me; } });
@@ -134,7 +137,7 @@
     }).catch(function (e) {
       if (e && e.message === 'idb') fatal(T('Dieser Browser erlaubt keinen lokalen Speicher (IndexedDB) – im privaten Fenster gehen Chats nicht.'));
       else fatal(T('Chats nicht geladen: {err}', { err: e.message }));
-    });
+    }).then(function () { starting = false; });
   }
   // Dieses Geraet wurde anderswo abgemeldet ("Neu beginnen" auf einem anderen Geraet bzw. Geraet entfernt): erklaeren,
   // statt still leer zu bleiben oder erst beim Senden zu scheitern (BUG-057); danach wie ein neues Geraet verbinden.
@@ -817,14 +820,18 @@
   // eingerichtet, sagt sie das und fuehrt zur Einrichtung. Die leere Chat-Seite fuellt bewusst NICHT die KI (K10).
   var NONE_N = 6;
   function drawNone() {
-    var box = $('ct-none'); if (!box) return;
+    var box = $('ct-none'); if (!box || (box.hidden && S.ready)) return;        // offener Chat: nichts zu tun
+    var fid = box.contains(document.activeElement) && document.activeElement.dataset ? document.activeElement.dataset.id : null;
     box.textContent = '';
     var ic = el('p', 'ct-none-ic', S.ready ? '💬' : '🔒'); ic.setAttribute('aria-hidden', 'true'); box.appendChild(ic);
     var bar = el('div', 'hk-actions ct-none-act');
     if (!S.ready) {
       box.appendChild(el('h2', 'ct-none-h', T('Chats auf diesem Gerät einrichten')));
       box.appendChild(el('p', null, T('Deine Chats sind Ende-zu-Ende-verschlüsselt. Damit du sie hier lesen und schreiben kannst, braucht dieses Gerät einmal eigene Schlüssel.')));
-      bar.appendChild(btn(T('Jetzt einrichten'), 'btn-primary ct-none-setup', function () { start(); }));
+      bar.appendChild(btn(T('Jetzt einrichten'), 'btn-primary ct-none-setup', function () {
+        if (ov) { var f = ov.querySelector('input, button.btn-primary, button'); if (f) f.focus(); return; }   // Einrichtung laeuft schon
+        start();
+      }));
       box.appendChild(bar);
       return;
     }
@@ -845,6 +852,7 @@
         li.appendChild(b); ul.appendChild(li);
       });
       box.appendChild(ul);
+      if (fid) { var fb = ul.querySelector('[data-id="' + fid + '"]'); if (fb) fb.focus(); }   // Fokus bleibt beim Neuzeichnen
     }
     box.appendChild(el('p', 'hk-hint', T('Nachrichten werden auf deinen Geräten verschlüsselt. Der Server speichert nur verschlüsselte Daten.')));
   }

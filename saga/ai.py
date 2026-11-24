@@ -1915,7 +1915,8 @@ async def api_ai_ask(request: Request):
         return err
     try:
         with_tasks, with_cal = _bool(b.get("tasks")), _bool(b.get("calendar"))
-        web = ai_web.enabled(c) and (b.get("web") is None or _bool(b.get("web")))
+        web = ai_web.enabled(c) and (b.get("web") is None or _bool(b.get("web"))) \
+            and await asyncio.to_thread(caps.can, uid, "ai_act", None, c)   # 2261: eingeschraenkt -> keine Websuche
         budget = max(1000, min(50000, int(c.get("context") or 8000)))
         ctx, srcs = await asyncio.to_thread(gather, uid, q, budget)
         extra = await asyncio.to_thread(extra_context, uid, with_tasks, with_cal) if (with_tasks or with_cal) else ""

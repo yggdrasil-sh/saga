@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 
 import auth
 from db import connect as _db
-from saga import ai, ai_frame, ai_md, ai_web, chat
+from saga import ai, ai_frame, ai_md, ai_web, caps, chat
 from saga.core import _api_guard, _bad, _body, t, user_info
 
 router = APIRouter()
@@ -252,7 +252,7 @@ async def api_chat_ai_ask(cid: int, request: Request):
         if "quota_left" in w:
             out["quota_left"] = w["quota_left"]
         return out
-    web = ai_web.enabled(c)
+    web = ai_web.enabled(c) and await asyncio.to_thread(caps.can, uid, "ai_act", None, c)   # 2261: eingeschraenkt -> keine Websuche (web_step prueft auch)
     print(f"chat: Frage an die KI in Chat {chat_id} ({len(q)} Zeichen, {len(hist)} Nachrichten Verlauf"
           f"{', Websuche erlaubt' if web else ''})", flush=True)
     return ai._respond(uid, c, chat_messages(q, asker, hist), [], finish, left, quota, prep=prep if web else None)

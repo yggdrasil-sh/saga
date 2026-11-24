@@ -218,5 +218,7 @@ Apps blenden nur Einstiege danach ein). Unbekannte Einträge ignorieren, fehlt d
 | `ai_act` | Aufträge nach außen (später: Nachrichten in deinem Namen) und Websuche. Fehlt sie, ist die Person eingeschränkt (z. B. Kinder): Saga schlägt nur vor, `status.web` ist `false` |
 | `ai_ideas` | Ideen von sich aus darf die Person einschalten |
 
-`GET /api/ai/status` nennt dieselbe Liste als `caps`. Reserviert für 3.0 (Telefonie), heute nie gesetzt: `tel`, `tel_out`,
+`GET /api/ai/status` nennt dieselbe Liste als `caps`; `persona.web` bleibt serverweit – ob für dieses Konto gesucht wird,
+sagen `status.web` bzw. `ai_act` in `caps`. Nach `ai.persona.changed` auch `caps` neu holen (Gruppen können sich geändert
+haben). Reserviert für 3.0 (Telefonie), heute nie gesetzt: `tel`, `tel_out`,
 `tel_in`, `tel_intl`, `tel_mailbox`. Die Gruppen je Fähigkeit stellt der Admin unter „KI-Assistent“ ein (leer = alle).

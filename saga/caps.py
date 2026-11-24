@@ -18,7 +18,10 @@ RESERVED = ("tel", "tel_out", "tel_in", "tel_intl", "tel_mailbox")
 
 
 def _want(cfg, cap):
-    return {str(g).lower() for g in ((cfg.get("caps") or {}).get(cap) or []) if g}
+    cp = cfg.get("caps")
+    cp = cp if isinstance(cp, dict) else {}                  # kaputte Einstellung: wie leer (Pruefer 2261)
+    v = cp.get(cap)
+    return {str(g).lower() for g in (v if isinstance(v, list) else []) if g}
 
 
 def can(uid, cap, conn=None, cfg=None):
@@ -27,6 +30,10 @@ def can(uid, cap, conn=None, cfg=None):
         return False
     from saga import ai
     c = cfg or ai.cfg()
+    if conn is None:                                     # eine Verbindung fuer allowed und Gruppen
+        from db import connect
+        with connect() as cc:
+            return can(uid, cap, cc, c)
     if not ai.allowed(uid, c, conn):
         return False
     if cap == "ai":
@@ -35,11 +42,7 @@ def can(uid, cap, conn=None, cfg=None):
     if not want:
         return True
     from saga.sharing import groups_of
-    if conn is not None:
-        return bool({g.lower() for g in groups_of(conn, uid)} & want)
-    from db import connect
-    with connect() as cc:
-        return bool({g.lower() for g in groups_of(cc, uid)} & want)
+    return bool({g.lower() for g in groups_of(conn, uid)} & want)
 
 
 def caps_of(uid, conn=None):
