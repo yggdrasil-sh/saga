@@ -21,8 +21,12 @@ async function keys(p, u) {
     await p.click('.hk-actions .btn-primary'); await p.fill('.ct-rk-last', rk.slice(-4)); await p.click('.ct-setup-done');
     await p.waitForSelector('.ct-setup-done', { state: 'detached', timeout: 60000 });
   } else if (await p.$('.ct-rk-go')) {
-    await p.click('.ct-rk-go'); await p.fill('.ct-rk-in', fs.readFileSync(RK(u), 'utf8')); await p.click('.ct-rk-ok');
-    await p.waitForSelector('.ct-rk-ok', { state: 'detached', timeout: 60000 });
+    await p.click('.ct-rk-go'); await p.fill('.ct-rk-in', fs.readFileSync(RK(u), 'utf8').trim()); await p.click('.ct-rk-ok');
+    await p.waitForSelector('.ct-rk-ok', { state: 'detached', timeout: 60000 }).catch(async e => {
+      console.log('[rk ' + u + '] ' + await p.evaluate(() => { const o = document.querySelector('.ct-rk-ok'); const d = o && o.closest('.ct-ov, .hk-ask, section, div');
+        return d ? d.textContent.replace(/\s+/g, ' ').slice(0, 300) : '?'; }));
+      throw e;
+    });
   }
   await p.waitForTimeout(600);
 }
