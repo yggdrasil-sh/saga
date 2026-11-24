@@ -10,6 +10,7 @@ Grundsaetze
 - Kontext: nur Inhalte, die die Person sehen darf - eigene Seiten (ohne Papierkorb/Archiv) und fuer sie freigegebene
   (sharing.Access, Verweise auf Seiten ohne Zugriff maskiert wie ueberall). Chats werden nie gelesen. Aufgaben und
   Kalender nur, wenn die Person sie fuer die Frage ausdruecklich einschaltet.
+  Ausgewaehlt wird ueber saga/ai_ctx.py (2.6, Kontext-Ausweis): Schalter der Anfrage UND der Person, nie foederiert.
 - Prompt-Injection: Seiteninhalte stehen zwischen Markierungen und sind als DATEN gekennzeichnet (Markierungen im Inhalt
   werden entschaerft). Der Assistent hat KEINE Schreibrechte: alle Endpunkte hier lesen nur. Vorschlaege (Aufgaben,
   verbesserter Text) uebernimmt die Person selbst mit einem Klick ueber die normalen Endpunkte.
@@ -27,6 +28,7 @@ Ereignisse der Antwort (event: ..., data: JSON):
   done    {quota_left, history_id?, tasks?, segments?, truncated?, cut?, no_match?, web?, notice?}
           web: Anzahl Webquellen (Websuche lief); notice: kurzer Hinweis (z. B. Websuche nicht erreichbar)
           cut: Antwort abgeschnitten (Laengengrenze); no_match: keine passende Seite - Antwort kam von Saga, ohne Modell
+          read (2.6 K-A4, saga/ai_ctx.py): Kontext-Ausweis - nur Kennungen (note:<id>, tasks:open, cal:<datum>/<tage>)
   error   {error, partial, quota_left?}        Abbruch mit verstaendlicher Meldung (ohne Antwort: zaehlt nicht)
 Apps ignorieren unbekannte Ereignisse - alles hier ist rueckwaertskompatibel.
 """
@@ -52,11 +54,11 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 import auth
 from db import connect as _db
-from saga import ai_frame, ai_web, avatars, bus, caps, dbcalc, i18n, netguard
+from saga import ai_ctx, ai_frame, ai_web, avatars, bus, caps, dbcalc, i18n, netguard
 from saga.core import CA_FILE, E, TZ, _api_guard, _bad, _body, t
 from saga.netguard import Blocked, guarded_client, is_public
 from saga.notes import _calc_value, _iter_blocks, blocks_text
-from saga.sharing import RANK, Access, access, groups_of, mask_links, names, viewer
+from saga.sharing import RANK, Access, access, groups_of, is_remote, mask_links, names, viewer
 
 router = APIRouter()
 
@@ -290,7 +292,8 @@ def history_on(c, uid):
     return bool(r and r[0] == "1")
 
 
-def _save_history(uid, question, answer, sources, opts, web=None, rid=None):
+def _save_history(uid, question, answer, sources, opts, web=None, rid=None, ctx=None):
+    """ctx (2.6 K-A4): Kontext-Ausweis - seine Kennungen (read) kommen mit in den Eintrag (ai_ctx.record)."""
     with _db() as c, c:
         if not history_on(c, uid):
             return None
@@ -300,6 +303,8 @@ def _save_history(uid, question, answer, sources, opts, web=None, rid=None):
         cur = c.execute("INSERT INTO ai_history (uid, created, kind, question, answer, sources) VALUES (?,?,?,?,?,?)",
                         (uid, time.time(), "ask", question, ai_frame.no_images(strip_markers(answer, rid)), json.dumps(meta, ensure_ascii=False)))
         hid = cur.lastrowid
+        if ctx is not None:
+            ai_ctx.record(c, history_id=hid, ctx=ctx)
         old = [r[0] for r in c.execute("SELECT id FROM ai_history WHERE uid=? ORDER BY id DESC", (uid,)).fetchall()[HISTORY_MAX:]]
         if old:
             c.executemany("DELETE FROM ai_history WHERE uid=? AND id=?", [(uid, i) for i in old])
@@ -772,7 +777,7 @@ def visible_docs(c, uid):
                                        "AND is_template=0 ORDER BY updated DESC LIMIT ?", (uid, SCAN_MAX))]
     acc = Access(c, uid)
     vis = viewer(acc)
-    owners = acc.owners()
+    owners = [o for o in acc.owners() if not is_remote(o)]     # 2.6 K8: nur Seiten dieses Servers (nie foederiert)
     nm = names(c, owners)
     for o in owners:
         ids = list(acc.tree(o))                            # Freigaben inkl. Vererbung; Papierkorb/Archiv/Vorlagen fallen raus
@@ -1851,6 +1856,7 @@ def api_ai_status(request: Request):
             return JSONResponse({"enabled": False}, headers={"Cache-Control": "no-store"})
         used, hist = used_today(conn, uid), history_on(conn, uid)
         caps_now = [x for x in caps.CAPS if caps.can(uid, x, conn, c)]   # 2261
+        srcs = ai_ctx.prefs(uid, conn)                                   # 2.6 K-A4: Schalter der Person je Quelle
     web_cap = "ai_act" in caps_now
     quota = int(c.get("quota") or 0)
     host = host_of(c)
@@ -1860,7 +1866,7 @@ def api_ai_status(request: Request):
                          "notice": t("Inhalte, die du dem Assistenten gibst, gehen an {host}.", host=host),
                          "targets": sorted(TARGETS), "q_max": Q_MAX, "blocks_max": BLOCKS_MAX,
                          "persona": persona(), "chat": bool(c.get("chat")), "web": ai_web.enabled(c) and web_cap,
-                         "caps": caps_now},
+                         "caps": caps_now, "sources": srcs},
                         headers={"Cache-Control": "no-store"})
 
 
@@ -1935,12 +1941,13 @@ async def api_ai_ask(request: Request):
         web = ai_web.enabled(c) and (b.get("web") is None or _bool(b.get("web"))) \
             and await asyncio.to_thread(caps.can, uid, "ai_act", None, c)   # 2261: eingeschraenkt -> keine Websuche
         budget = max(1000, min(50000, int(c.get("context") or 8000)))
-        ctx, srcs = await asyncio.to_thread(gather, uid, q, budget)
-        extra = await asyncio.to_thread(extra_context, uid, with_tasks, with_cal) if (with_tasks or with_cal) else ""
+        cx = await asyncio.to_thread(ai_ctx.select, uid, q, way="ask", budget=budget,   # 2.6 K-A4: Kontext-Ausweis
+                                     want={"pages": True, "tasks": with_tasks, "calendar": with_cal})
+        ctx, srcs, extra = cx.text, cx.origins, cx.extra
         quota = int(c.get("quota") or 0)
         if not srcs and not extra and not web:             # nichts gefunden: kein Modellaufruf, kein Kontingent
             _release(uid)
-            return await _no_match(uid, quota, q)
+            return await _no_match(uid, quota, q, read=cx.read)
         left = await asyncio.to_thread(_take_quota, uid, quota)
         if left == -1:
             _release(uid)
@@ -1955,7 +1962,7 @@ async def api_ai_ask(request: Request):
             if not srcs and not extra and not w["sources"] and not w["failed"]:   # nichts gefunden: wie bisher ohne Modell
                 st["static"] = True
                 _refund(uid)                               # ohne Modell: zaehlt nicht (wie _no_match)
-                done = {"no_match": True, "quota_left": _quota_left(uid)}
+                done = {"no_match": True, "quota_left": _quota_left(uid), "read": cx.read}
                 if w["notice"]:
                     done["notice"] = w["notice"]
                 return {"text": no_match_text(q), "extra": done}
@@ -1967,12 +1974,12 @@ async def api_ai_ask(request: Request):
             w = st["web"]
             if st["static"]:
                 return {}
-            out = {}
+            out = {"read": cx.read}                        # 2.6 K-A4: was gelesen wurde (nur Kennungen)
             clean = strip_markers(answer, st.get("rid")).strip() if answer else answer
             if answer and clean != answer.strip():              # K-T 2265: Anzeige wie im Verlauf (ohne Marker/Kennung)
                 out["text"] = clean
             hid = _save_history(uid, q, clean, srcs, {"tasks": with_tasks, "calendar": with_cal, "web": bool(w.get("sources"))},
-                                web=w.get("sources"), rid=st.get("rid")) if clean else None
+                                web=w.get("sources"), rid=st.get("rid"), ctx=cx) if clean else None
             if hid:
                 out["history_id"] = hid
             if w.get("sources"):
@@ -1991,13 +1998,13 @@ async def api_ai_ask(request: Request):
         raise
 
 
-async def _no_match(uid, quota, q=""):
+async def _no_match(uid, quota, q="", read=None):
     """Antwort ohne Modell, wenn keine Seite passt (das Modell wuerde sonst raten)."""
     def left():
         with _db() as c:
             return max(0, quota - used_today(c, uid)) if quota else None
     ql = await asyncio.to_thread(left)
-    return _static(no_match_text(q), {"quota_left": ql, "no_match": True}, [])
+    return _static(no_match_text(q), {"quota_left": ql, "no_match": True, "read": list(read or [])}, [])
 
 
 def no_match_text(q=""):
@@ -2059,6 +2066,61 @@ def _page_text_blocks(fmt, body):
         return []
 
 
+def _page_load(uid, nid):
+    """Hilfen auf einer Seite (2.6 K-A4: ueber ai_ctx.select): Seite mit Rolle 'Lesen' laden -> (daten, fehler, gelesene
+    Seiten-IDs). daten = (titel, inhalt, format, rolle, zeilen, eigenschaften); gelesen = die Seite, bei einer Zeile ihre
+    Datenbank, eingebettete Datenbanken mit Zugriff."""
+    with _db() as conn:
+        acc = Access(conn, uid)
+        owner, role, err = access(conn, uid, nid, "view", acc)
+        if err is not None:
+            return None, err, []
+        if is_remote(owner or ""):                     # 2.6 K8: nur Seiten dieses Servers
+            return None, _bad("not found", 404), []
+        r = conn.execute("SELECT title, body, format, kind, schema, parent_id, props FROM note WHERE id=? AND uid=? "
+                         "AND deleted_at IS NULL", (nid, owner)).fetchone()
+        if not r:
+            return None, _bad("not found", 404), []
+        body = r[1] if role == "owner" else mask_links(r[1], r[2], viewer(acc))
+        rows, pairs, ids = [], [], [nid]
+        if r[5] and r[6]:                              # Datenbank-Zeile: ihre Eigenschaften gehoeren zum Inhalt
+            p = conn.execute("SELECT schema, title FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL",
+                             (r[5], owner)).fetchone()
+            try:
+                pairs = prop_pairs(json.loads(p[0] or "{}"), json.loads(r[6])) if p else []
+            except ValueError:
+                pairs = []
+            if p:
+                ids.append(r[5])
+            if pairs:                                  # mit Spaltennamen, je Zeile eine - kleine Modelle lesen das sicherer
+                rows = [f"Properties (this page is a row of the database \"{_plain(p[1]) or '?'}\"):"] + \
+                       [f"- {n}: {v}" for n, v in pairs]
+        if r[3] == "database":                         # Datenbank: ihre Zeilen mit Eigenschaften gehoeren zum Inhalt
+            try:
+                schema = json.loads(r[4] or "{}")
+            except ValueError:
+                schema = {}
+            data = []
+            for x in conn.execute("SELECT title, props FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
+                                  "ORDER BY sort, id LIMIT 300", (owner, nid)):
+                try:
+                    data.append((x[0], json.loads(x[1]) if x[1] else {}))
+                except ValueError:
+                    data.append((x[0], {}))
+            rows = _row_list(data, schema, {})
+        else:                                          # 2.5: eingebettete Datenbanken der Seite mitlesen (nur mit Zugriff)
+            left = PAGE_DB_ROWS
+            for d in page_databases(conn, acc, uid, nid, r[3], r[2] or "text", body):
+                if left <= 0:
+                    break
+                data = [(x["title"], x["props"]) for x in db_rows(conn, d["owner"], d["id"], left, viewer=uid)]
+                left -= len(data)
+                ids.append(d["id"])
+                rows += [f"Database \"{d['title']}\" (embedded on this page, {len(data)} entries):"] + \
+                    (_row_list(data, d["schema"], {}) or ["- (no entries)"])
+        return (r[0] or t("Unbenannt"), body, r[2] or "text", role, rows, pairs), None, ids
+
+
 @router.post("/api/ai/page/{nid}")
 async def api_ai_page(nid: int, request: Request):
     """Hilfen auf einer Seite (ab Rolle 'Lesen'): {action: summarize|tasks|improve|translate, blocks?: [block-id], target?}.
@@ -2084,55 +2146,10 @@ async def api_ai_page(nid: int, request: Request):
     if not await asyncio.to_thread(allowed, uid):          # ausgeschaltet: nichts ueber Seiten verraten
         return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet."), 403)
 
-    def load():
-        with _db() as conn:
-            acc = Access(conn, uid)
-            owner, role, err = access(conn, uid, nid, "view", acc)
-            if err is not None:
-                return None, err
-            r = conn.execute("SELECT title, body, format, kind, schema, parent_id, props FROM note WHERE id=? AND uid=? "
-                             "AND deleted_at IS NULL", (nid, owner)).fetchone()
-            if not r:
-                return None, _bad("not found", 404)
-            body = r[1] if role == "owner" else mask_links(r[1], r[2], viewer(acc))
-            rows, pairs = [], []
-            if r[5] and r[6]:                              # Datenbank-Zeile: ihre Eigenschaften gehoeren zum Inhalt
-                p = conn.execute("SELECT schema, title FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL",
-                                 (r[5], owner)).fetchone()
-                try:
-                    pairs = prop_pairs(json.loads(p[0] or "{}"), json.loads(r[6])) if p else []
-                except ValueError:
-                    pairs = []
-                if pairs:                                  # mit Spaltennamen, je Zeile eine - kleine Modelle lesen das sicherer
-                    rows = [f"Properties (this page is a row of the database \"{_plain(p[1]) or '?'}\"):"] + \
-                           [f"- {n}: {v}" for n, v in pairs]
-            if r[3] == "database":                         # Datenbank: ihre Zeilen mit Eigenschaften gehoeren zum Inhalt
-                try:
-                    schema = json.loads(r[4] or "{}")
-                except ValueError:
-                    schema = {}
-                data = []
-                for x in conn.execute("SELECT title, props FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
-                                      "ORDER BY sort, id LIMIT 300", (owner, nid)):
-                    try:
-                        data.append((x[0], json.loads(x[1]) if x[1] else {}))
-                    except ValueError:
-                        data.append((x[0], {}))
-                rows = _row_list(data, schema, {})
-            else:                                          # 2.5: eingebettete Datenbanken der Seite mitlesen (nur mit Zugriff)
-                left = PAGE_DB_ROWS
-                for d in page_databases(conn, acc, uid, nid, r[3], r[2] or "text", body):
-                    if left <= 0:
-                        break
-                    data = [(x["title"], x["props"]) for x in db_rows(conn, d["owner"], d["id"], left, viewer=uid)]
-                    left -= len(data)
-                    rows += [f"Database \"{d['title']}\" (embedded on this page, {len(data)} entries):"] + \
-                        (_row_list(data, d["schema"], {}) or ["- (no entries)"])
-            return (r[0] or t("Unbenannt"), body, r[2] or "text", role, rows, pairs), None
-    page, err = await asyncio.to_thread(load)
-    if err is not None:
-        return err
-    title, body, fmt, role, rows, pairs = page
+    cx = await asyncio.to_thread(ai_ctx.select, uid, "", way="page", budget=0, note_id=nid)   # 2.6 K-A4
+    if cx.error is not None:
+        return cx.error
+    title, body, fmt, role, rows, pairs = cx.page
     picked, notice = [], None
     src1 = [{"n": 1, "id": nid, "title": title}]
     if action in ("summarize", "tasks"):
@@ -2143,10 +2160,10 @@ async def api_ai_page(nid: int, request: Request):
             msg = "\n".join([t("Kaum Inhalt – nur Eigenschaften:")] + ([own.strip()] if own.strip() else [])
                             + [f"- {n}: {v}" for n, v in pairs])
             ql = await asyncio.to_thread(_quota_left, uid)
-            return _static(msg, {"truncated": False, "action": action, "sparse": True, "quota_left": ql}, src1)
+            return _static(msg, {"truncated": False, "action": action, "sparse": True, "quota_left": ql, "read": cx.read}, src1)
         if action == "tasks" and not text.strip():
             ql = await asyncio.to_thread(_quota_left, uid)
-            return _static("", {"truncated": False, "action": action, "tasks": [], "quota_left": ql,
+            return _static("", {"truncated": False, "action": action, "tasks": [], "quota_left": ql, "read": cx.read,
                                 "message": t("Auf dieser Seite gibt es nichts zu tun.")}, src1)
     else:
         picked = _pick_blocks(fmt, body, ids)
@@ -2180,7 +2197,7 @@ async def api_ai_page(nid: int, request: Request):
         return _bad(t("Dein Tageskontingent für den Assistenten ist aufgebraucht."), 429)
 
     def finish(answer):
-        out = {"truncated": truncated, "action": action}
+        out = {"truncated": truncated, "action": action, "read": cx.read}
         if notice:
             out["notice"] = notice
         if action == "tasks":
@@ -2229,6 +2246,34 @@ async def api_ai_page_dbs(nid: int, request: Request):
     return await asyncio.to_thread(load)
 
 
+def _assign_load(uid, nid, dbid, pid):
+    """Zuordnen (2.6 K-A4: ueber ai_ctx.select): Seite + Datenbank darauf laden -> (daten, fehler, gelesene Seiten-IDs)."""
+    with _db() as conn:
+        acc = Access(conn, uid)
+        owner, role, err = access(conn, uid, nid, "view", acc)
+        if err is not None:
+            return None, err, []
+        if is_remote(owner or ""):                     # 2.6 K8: nur Seiten dieses Servers
+            return None, _bad("not found", 404), []
+        r = conn.execute("SELECT title, body, format, kind FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
+        if not r:
+            return None, _bad("not found", 404), []
+        body = r[1] if role == "owner" else mask_links(r[1], r[2], viewer(acc))
+        d = next((x for x in page_databases(conn, acc, uid, nid, r[3], r[2] or "text", body) if x["id"] == dbid), None)
+        if not d:
+            return None, _bad(t("Diese Datenbank ist nicht auf der Seite."), 404), []
+        if RANK.get(d["role"], 0) < RANK["edit"]:
+            return None, _bad(t("Du darfst diese Datenbank nicht bearbeiten."), 403), []
+        prop = next((p for p in assign_props(d["schema"]) if p["id"] == pid), None)
+        if not prop:
+            return None, _bad(t("Dieser Eigenschaft kann der Assistent keine Werte zuordnen.")), []
+        if prop["type"] in ("select", "multi_select") and not prop.get("options"):
+            return None, _bad(t("Die Eigenschaft hat noch keine Optionen.")), []
+        rows = db_rows(conn, d["owner"], dbid, 5000, 240, viewer=uid)        # R08: auch spaete leere Eintraege (bis 5000)
+        page_text = "" if r[3] == "database" else "\n".join(_block_texts(r[2] or "text", body))[:2000]
+        return (_plain(r[0]) or t("Unbenannt"), d, prop, rows, page_text), None, [nid, dbid]
+
+
 async def _assign(uid, nid, b):
     """Werte einer Eigenschaft fuer die Eintraege einer Datenbank auf der Seite vorschlagen: {db, prop, only_empty?, hint?}.
     Nur ein Vorschlag - die Person uebernimmt ihn ueber die normalen Endpunkte (dafuer braucht sie 'Bearbeiten')."""
@@ -2242,33 +2287,10 @@ async def _assign(uid, nid, b):
     if not await asyncio.to_thread(allowed, uid):
         return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet."), 403)
 
-    def load():
-        with _db() as conn:
-            acc = Access(conn, uid)
-            owner, role, err = access(conn, uid, nid, "view", acc)
-            if err is not None:
-                return None, err
-            r = conn.execute("SELECT title, body, format, kind FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
-            if not r:
-                return None, _bad("not found", 404)
-            body = r[1] if role == "owner" else mask_links(r[1], r[2], viewer(acc))
-            d = next((x for x in page_databases(conn, acc, uid, nid, r[3], r[2] or "text", body) if x["id"] == dbid), None)
-            if not d:
-                return None, _bad(t("Diese Datenbank ist nicht auf der Seite."), 404)
-            if RANK.get(d["role"], 0) < RANK["edit"]:
-                return None, _bad(t("Du darfst diese Datenbank nicht bearbeiten."), 403)
-            prop = next((p for p in assign_props(d["schema"]) if p["id"] == pid), None)
-            if not prop:
-                return None, _bad(t("Dieser Eigenschaft kann der Assistent keine Werte zuordnen."))
-            if prop["type"] in ("select", "multi_select") and not prop.get("options"):
-                return None, _bad(t("Die Eigenschaft hat noch keine Optionen."))
-            rows = db_rows(conn, d["owner"], dbid, 5000, 240, viewer=uid)        # R08: auch spaete leere Eintraege (bis 5000)
-            page_text = "" if r[3] == "database" else "\n".join(_block_texts(r[2] or "text", body))[:2000]
-            return (_plain(r[0]) or t("Unbenannt"), d, prop, rows, page_text), None
-    data, err = await asyncio.to_thread(load)
-    if err is not None:
-        return err
-    title, d, prop, rows, page_text = data
+    cx = await asyncio.to_thread(ai_ctx.select, uid, "", way="page", budget=0, note_id=nid, want={"assign": (dbid, pid)})
+    if cx.error is not None:
+        return cx.error
+    title, d, prop, rows, page_text = cx.page
     if only_empty:
         rows = [x for x in rows if _empty(prop, x["props"].get(prop["id"]))]
     more = max(0, len(rows) - ASSIGN_ROWS)
@@ -2277,7 +2299,7 @@ async def _assign(uid, nid, b):
     head = {"db": d["id"], "prop": {"id": prop["id"], "name": _plain(prop.get("name")) or "?", "type": prop["type"]}}
     if not rows:
         ql = await asyncio.to_thread(_quota_left, uid)
-        return _static("", {"truncated": False, "action": "assign", "quota_left": ql, "assign": dict(head, items=[]),
+        return _static("", {"truncated": False, "action": "assign", "quota_left": ql, "assign": dict(head, items=[]), "read": cx.read,
                             "message": t("Alle Einträge haben schon einen Wert.") if only_empty else t("Die Datenbank hat keine Einträge.")}, src1)
     c, err = await _gate(uid)
     if err is not None:
@@ -2308,7 +2330,8 @@ async def _assign(uid, nid, b):
                 continue                                   # keine Aenderung
             items.append({"id": r["id"], "title": r["title"] or t("Unbenannt"), "value": val,
                           "label": value_label(prop, val), "old": value_label(prop, old)})
-        out = {"truncated": more > 0, "more": more, "action": "assign", "assign": dict(head, items=items, unsure=len(rows) - len(got))}
+        out = {"truncated": more > 0, "more": more, "action": "assign", "assign": dict(head, items=items, unsure=len(rows) - len(got)),
+               "read": cx.read}
         if not items:
             out["message"] = t("Keine Vorschläge – der Assistent war sich bei keinem Eintrag sicher.")
         return out
@@ -2350,26 +2373,37 @@ async def api_ai_report(request: Request):
 
 @router.put("/api/ai/settings")
 async def api_ai_settings(request: Request):
-    """Eigener Verlauf an/aus: {history: bool}. Aus = gespeicherter Verlauf wird geloescht."""
+    """Eigener Verlauf an/aus: {history: bool}. Aus = gespeicherter Verlauf wird geloescht.
+    2.6 K-A4: {sources: {pages?, tasks?, calendar?, chat?: bool}} - was der Assistent lesen darf (Standard: alles an; nur
+    genannte Quellen aendern sich). Nur sources ohne history laesst den Verlauf unberuehrt; Antwort nennt beides, was kam."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
     b = await _body(request) or {}
+    srcs = b.get("sources") if isinstance(b, dict) else None
+    if srcs is not None and not ai_ctx.valid(srcs):
+        return _bad(t("ungültige Angabe"))
+    touch_hist = srcs is None or "history" in b          # wie bisher: ohne Angabe = Verlauf aus
     on = _bool(b.get("history"))
 
     def run():
         c = cfg()
         if not allowed(uid, c):
             return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet."), 403)
-        if on and not c.get("history", True):
+        if touch_hist and on and not c.get("history", True):
             return _bad(t("Der Verlauf ist auf diesem Server abgeschaltet."), 409)
+        out = {}
         with _db() as conn, conn:
-            if on:
-                conn.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'ai_history', '1')", (uid,))
-            else:
-                conn.execute("DELETE FROM user_kv WHERE uid=? AND k='ai_history'", (uid,))
-                conn.execute("DELETE FROM ai_history WHERE uid=?", (uid,))
-        return JSONResponse({"history": on})
+            if touch_hist:
+                if on:
+                    conn.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'ai_history', '1')", (uid,))
+                else:
+                    conn.execute("DELETE FROM user_kv WHERE uid=? AND k='ai_history'", (uid,))
+                    conn.execute("DELETE FROM ai_history WHERE uid=?", (uid,))
+                out["history"] = on
+            if srcs is not None:
+                out["sources"] = ai_ctx.set_prefs(uid, srcs, conn)
+        return JSONResponse(out)
     return await asyncio.to_thread(run)
 
 

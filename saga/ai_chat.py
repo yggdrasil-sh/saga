@@ -13,7 +13,9 @@ Freigabe in zwei Stufen: Admin-Bereich (KI-Assistent -> "KI in Chats erlauben", 
 Seiten-Chat - Eigentuemer der Seite. Wer fragt, muss den Assistenten nutzen duerfen (Gruppen, Kontingent wie sonst).
 
 Die KI bekommt KEINE Seiten, Aufgaben oder Kalender - nur die Frage und den mitgeschickten Verlauf. Sonst koennte eine
-Person ueber die KI Inhalte ihrer eigenen Seiten in einen Chat mit anderen tragen, ohne es zu merken.
+Person ueber die KI Inhalte ihrer eigenen Seiten in einen Chat mit anderen tragen, ohne es zu merken. Den Verlauf waehlt
+saga/ai_ctx.py (2.6 K-A4, Weg "chat"): nur wenn die Person die Quelle "chat" nicht ausgeschaltet hat; 'done' nennt in
+read nur die Kennung chat:<id>:<anzahl>.
 
 Websuche (2.1, saga/ai_web.py): Hat der Admin sie erlaubt, entscheidet das Modell vorab, ob die Frage eine Websuche
 braucht (Wetter, Nachrichten ...); dann gehen hoechstens zwei kurze Suchbegriffe ueber SearXNG an Suchmaschinen. Die
@@ -29,7 +31,7 @@ from fastapi.responses import JSONResponse
 
 import auth
 from db import connect as _db
-from saga import ai, ai_frame, ai_md, ai_web, caps, chat
+from saga import ai, ai_ctx, ai_frame, ai_md, ai_web, caps, chat
 from saga.core import _api_guard, _bad, _body, t, user_info
 
 router = APIRouter()
@@ -207,6 +209,9 @@ async def api_chat_ai_ask(cid: int, request: Request):
     chat_id, asker = info
     if not chat._rate("ai-chat", uid, RATE_USER) or not chat._rate("ai-chat-c", str(chat_id), RATE_CHAT, 600.0):
         return _bad(t("Zu viele Fragen an die KI in kurzer Zeit – bitte kurz warten."), 429)
+    cx = await asyncio.to_thread(ai_ctx.select, uid, q, way="chat", budget=CTX_CHARS, want={"chat": True},
+                                 chat_id=chat_id, history=hist)   # 2.6 K-A4: Verlauf nur ueber den Kontext-Ausweis
+    hist = cx.history
     c, err = await ai._gate(uid)
     if err is not None:
         return err
@@ -233,14 +238,14 @@ async def api_chat_ai_ask(cid: int, request: Request):
     def finish(answer):
         answer = answer.strip()
         if not answer:
-            return {"text": ""}
+            return {"text": "", "read": cx.read}
         w = st["web"]
         # RT-03 (Bugs-DB 2260): Text des Modells geht an andere - keine Links/Bilder/HTML (kein Abfluss ueber Adressen,
         # keine Linkvorschau); die Webquellen danach kommen von der Suchmaschine, nicht vom Modell
         answer = ai_frame.no_links(ai.strip_markers(answer, st.get("rid")), t("[Link entfernt]")).strip()   # K-T 2265: auch keine Marker
         answer = ai_md.to_chat(answer).strip()            # 2248: Markdown der KI -> Chat-Formatierung (alle Clients)
         if not answer:
-            return {"text": ""}
+            return {"text": "", "read": cx.read}
         answer = with_sources(answer, w.get("sources"), w.get("notice"))
         rid = secrets.token_hex(16)
         h = hashlib.sha256(answer.encode("utf-8")).hexdigest()
@@ -248,7 +253,7 @@ async def api_chat_ai_ask(cid: int, request: Request):
             conn.execute("DELETE FROM chat_ai_reply WHERE created<? AND msg_id IS NULL", (time.time() - REPLY_TTL,))
             conn.execute("INSERT INTO chat_ai_reply (id, chat_id, uid, created, q_msg, sha256) VALUES (?,?,?,?,?,?)",
                          (rid, chat_id, uid, time.time(), qmsg, h))
-        out = {"text": answer, "reply": {"id": rid, "sha256": h}, "persona": {"name": ai.persona_name()}}
+        out = {"text": answer, "reply": {"id": rid, "sha256": h}, "persona": {"name": ai.persona_name()}, "read": cx.read}
         if w.get("sources"):
             out["web"] = len(w["sources"])
         if "quota_left" in w:

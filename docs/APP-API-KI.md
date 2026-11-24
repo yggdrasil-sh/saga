@@ -242,3 +242,18 @@ Ein gemeinsames Melde-Bauteil für Chat-Nachrichten und KI-Antworten: dieselben 
 - **Grenze der Kennzeichnung:** Chats sind Ende-zu-Ende-verschlüsselt, der Server kann nicht prüfen, ob der Inhalt einer
   eigenen „KI-Antwort“ zum Beleg passt – die Kennzeichnung ist eine Angabe des Clients (gedeckelt durch die Meldegrenzen).
   KI-Antworten von Personen auf anderen Servern tragen kein KI-Merkmal (der Beleg liegt nur auf deren Server).
+
+## 7. Kontext-Ausweis und Quellen-Schalter (2.6, Bugs-DB 2266 K-A4)
+
+Was der Assistent liest, wählt der Server an einer Stelle (`saga/ai_ctx.py`) und nennt es in `done`:
+
+- **`done.read`** (Assistent, Seiten-Hilfen, Zuordnen, KI im Chat): Liste von Kennungen, **nie Text** – `note:<id>`
+  (Seite, auch Datenbank), `tasks:open`, `cal:<JJJJ-MM-TT>/14` (Termine ab Datum, Tage), `chat:<chat-id>:<anzahl>`
+  (so viele Verlaufs-Nachrichten). Ältere Server senden das Feld nicht; Apps ignorieren unbekannte Kennungen. Bei
+  eingeschaltetem Verlauf steht dieselbe Liste auch im gespeicherten Eintrag.
+- **Schalter je Person:** `GET /api/ai/status` → `"sources": {"pages": true, "tasks": true, "calendar": true,
+  "chat": true}` (Standard: alles an). Ändern mit `PUT /api/ai/settings {"sources": {"tasks": false}}` → `{"sources":
+  {…}}` (nur genannte Quellen ändern sich; falsche Form 400). Ohne `history` im Body bleibt der Verlauf unberührt; mit
+  beidem gilt beides. Eine Quelle wirkt nur, wenn Anfrage (`tasks`/`calendar` je Frage) **und** Person sie einschalten;
+  `chat: false` = beim Zuruf geht kein Verlauf an das Modell. Die Seiten-Hilfen lesen weiter genau die gewählte Seite.
+- Föderierte Seiten (negative IDs) und Gäste anderer Server bekommen nie Kontext; Chat-Verlauf nur beim Zuruf.

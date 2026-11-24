@@ -24,6 +24,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   alles NULL und unverändert; „Autor“ und „zuletzt geändert von“ bleiben die Person, `versions_list` liefert dasselbe.
   Eine 2.5-Version startet auf der migrierten Datenbank nicht mehr (Schema zu neu, gewollt). Tests:
   `tests/kollegin_akteur.py`, `tests/versionen.py`.
+- **Kontext-Ausweis für die KI** (Bugs-DB 2266 K-A4, Konzept K8): `saga/ai_ctx.py` wählt an einer Stelle, was der
+  Assistent liest (Seiten, Aufgaben, Termine, Chat-Verlauf beim Zuruf), und belegt es: `done` nennt in `read` nur
+  Kennungen (`note:12`, `tasks:open`, `cal:<Datum>/14`, `chat:<Chat>:<Anzahl>`), im Verlauf gespeichert nur, wenn er an
+  ist. Eine Quelle wirkt nur, wenn Anfrage und Person sie einschalten – neu je Person `PUT /api/ai/settings {sources}`
+  (Standard: alles an), `GET /api/ai/status` nennt `sources`. Föderierte Inhalte und Gäste anderer Server bleiben
+  draußen, Chat-Verlauf nur beim Zuruf. Die Nachrichten an das Modell sind unverändert (Golden-Vergleich
+  `tests/ki_golden.py`). Tests: `tests/kollegin_rechte.py`, Messung `tools/perf/kollegin.py`.
 - **Testgerüst für die Kollegin** (Bugs-DB 2265 K-T): Testuhr `saga/testclock.py` mit `/_test/clock|tick|flush` – nur
   mit `SAGA_TEST_HOOKS=1` und von 127.0.0.1/::1, sonst 404 – und ein beeinflusstes Test-Modell `fake-evil` (schließt den
   Datenrahmen, erfindet Suchen und Aufträge, schickt Bilder/Links mit Daten nach außen). Tests: `tests/testuhr.py`,
