@@ -77,6 +77,8 @@ def nginx_conf():
     subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=" + NAME,
                     "-addext", "subjectAltName=DNS:" + NAME, "-keyout", d + "/key.pem", "-out", d + "/cert.pem"], capture_output=True, check=True)
     t = d + "/tmp"
+    # B2_NGX_LISTEN (z. B. Reihe horn_flattern_2202): weitere Adresse fuer Browser in einem Netz-Namensraum
+    extra = "".join(f" listen {a.strip()}:{NGX} ssl;" for a in (os.environ.get("B2_NGX_LISTEN") or "").split(",") if a.strip())
     conf = f"""worker_processes 1; pid {d}/nginx.pid; error_log {d}/logs/error.log warn; daemon on;
 events {{ worker_connections 1024; }}
 http {{
@@ -86,7 +88,7 @@ http {{
   proxy_connect_timeout 90s; proxy_send_timeout 90s; proxy_read_timeout 90s; client_max_body_size 2000m; client_body_buffer_size 1m;
   proxy_http_version 1.1; proxy_set_header Accept-Encoding ""; proxy_cache off;
   server {{
-    listen 127.0.0.1:{NGX} ssl; server_name {NAME} 127.0.0.1;
+    listen 127.0.0.1:{NGX} ssl;{extra} server_name {NAME} 127.0.0.1;
     ssl_certificate {d}/cert.pem; ssl_certificate_key {d}/key.pem;
     location / {{
       proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection $http_connection;
