@@ -222,15 +222,15 @@ def run():
     from saga import bus, push  # noqa: F401 - push haengt sich an push.send und status.dnd_end
     s, v = put(ka, {"state": "dnd", "text": "Konzentration"})
     with connect() as c, c:
-        for _ in range(2):
-            bus.fire("push.send", c, uid=A, kind="chat.message", actor=B, data={"chat": "sf-1"})
-        bus.fire("push.send", c, uid=A, kind="chat.mention", actor=B, data={"chat": "sf-1"})
+        for _ in range(2):                  # C: keine Ausnahme (B und die Gruppe sf-team sind oben Ausnahmen)
+            bus.fire("push.send", c, uid=A, kind="chat.message", actor=C, data={"chat": "sf-1"})
+        bus.fire("push.send", c, uid=A, kind="chat.mention", actor=C, data={"chat": "sf-1"})
     ma, mb = sa.mark(), sb.mark()
     s, v = put(ka, {"state": "available"})
     e = sa.wait("status.digest", since=ma)
     ok(f"Live: status.digest an die eigene Verbindung ({e})", s == 200 and e is not None and e.get("messages") == 3
        and e.get("calls") == 0 and e.get("other") == 0 and e.get("since") and e.get("until") >= e.get("since"))
-    ok("Live: Sammelmeldung ohne Namen und ohne Text", e is not None and B not in json.dumps(e) and "Bert" not in json.dumps(e)
+    ok("Live: Sammelmeldung ohne Namen und ohne Text", e is not None and C not in json.dumps(e) and "Cora" not in json.dumps(e)
        and "Konzentration" not in json.dumps(e))
     time.sleep(0.5)
     ok("Live: andere Konten bekommen keine Sammelmeldung", "status.digest" not in sb.types(mb))
@@ -243,7 +243,7 @@ def run():
     s, _ = req("PUT", "/api/push/settings", ka, {"quiet": {"on": True, "from": fr, "to": to, "tz": "UTC"}})
     s2, v = req("GET", "/api/account/status", ka)
     with connect() as c, c:
-        n = push.enqueue(c, A, "chat.message", actor=B, data={"chat": "sf-2"})
+        n = push.enqueue(c, A, "chat.message", actor=C, data={"chat": "sf-2"})
         hk = c.execute("SELECT COUNT(*) FROM user_kv WHERE uid=? AND k='status_held'", (A,)).fetchone()[0]
     ok(f"Ruhezeit (why quiet): keine Mitteilung, nichts fuer eine Sammelmeldung gezaehlt ({s}, {v.get('why')}, {n}, {hk})",
        s == 200 and v["why"] == "quiet" and n == 0 and hk == 0)
