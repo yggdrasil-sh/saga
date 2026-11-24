@@ -686,7 +686,7 @@ def _job_gate(tok, spec, a):
 
 
 # --- Interner Tok je Auftrag (G3, M12) ----------------------------------------------------------------------------
-_NOTE_REF = re.compile(r"(?:note|db|row):(-?\d{1,19})")
+_NOTE_REF = re.compile(r"(?:note|db|row):(-?\d{1,40})")     # lange IDs: node_role meldet 404 (nicht still uebergehen)
 
 
 def _note_id(ref):

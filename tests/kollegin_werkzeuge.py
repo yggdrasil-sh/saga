@@ -388,7 +388,7 @@ def part_angriff():
     bt = api_v1.task_create(FULL_B, {"text": "KW Bert Aufgabe"})[1]["id"]
     ok("complete_task: Aufgabe einer anderen Person -> 404", status(tools.call, t, "complete_task", {"id": bt})[0] == 404
        and pg("SELECT done FROM task WHERE id=?", (bt,))[0][0] == 0)
-    api_v1.task_create(FULL_A, {"text": "KW Anna Arzttermin privat"})
+    api_v1.task_create(FULL_A, {"text": "KW Anna Arzttermin privat", "due": time.strftime("%Y-%m-%d")})
     api_struct.widget_add(FULL_A, p, {"kind": "upcoming", "cfg": {"cal": False}})
     full = tools.call(FULL_A, "get_widgets", {"page_id": p})
     st, out = status(tools.call, t, "get_widgets", {"page_id": p})
