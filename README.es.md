@@ -127,8 +127,13 @@ de datos, Saga crea automáticamente una copia de seguridad. De 1.x a 2.x: antes
 solo con la copia automática) y desactiva Gravatar para todas las cuentas; qué tener en cuenta al actualizar desde la 2.3
 está en la guía, sección 11 «De 2.3 a 2.4». Para la 2.5 (esquema 35, proxy inverso con WebSocket) hay una [guía de actualización](docs/en/UPGRADE-2.5.md) (en inglés). Las novedades están en el
 **[registro de cambios](CHANGELOG.md)** (en alemán) y en las
-[versiones publicadas](https://github.com/yggdrasil-sh/saga/releases). ¿Quieres lo último?
-`SAGA_VERSION=testing` en el `.env` descarga la versión de pruebas de la rama `testing`. Las imágenes y archivos
+[versiones publicadas](https://github.com/yggdrasil-sh/saga/releases). **Un solo canal hasta la 3.0:** hasta Saga 3.0
+solo existe la rama `main`, y cada versión que sale de ella es una beta. Con `SAGA_VERSION=2` (valor por defecto) la
+actualización descarga el estado más reciente de `main`: versiones de prueba como `2.5.1-rc.3` y versiones publicadas
+como `2.5.0`. Para fijar una versión: `SAGA_VERSION=2.5.0` (exactamente esa), `2.5` (solo versiones 2.5.x) o
+`testing-<commit>`, pero solo mientras ninguna versión más nueva haya actualizado ya la base de datos; después, la
+única vuelta atrás es la copia de seguridad (guía, sección 11). La rama `testing` está congelada; `SAGA_VERSION=testing`
+recibe por ahora lo mismo que `2`; cámbialo a `2` cuando puedas. Las imágenes y archivos
 de las páginas no están en la copia de la base de datos: haz copia del volumen `saga-data` o ejecuta
 `docker compose exec saga python run.py backup --dateien`.
 

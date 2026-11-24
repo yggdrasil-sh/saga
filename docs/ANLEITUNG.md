@@ -2101,11 +2101,12 @@ Welche Version läuft, bestimmt `SAGA_VERSION` in der `.env`:
 
 | Wert | Bedeutung |
 |---|---|
-| `2` (Standard) | immer die neueste 2.x – neue Funktionen und Fehlerbehebungen, nichts, was Handarbeit braucht |
-| `2.4` | nur Fehlerbehebungen von 2.4 |
-| `2.4.0` | genau diese Version |
+| `2` (Standard) | **jeder neue Stand von `main`** – Testversionen (z. B. `2.5.1-rc.3`) und Releases (z. B. `2.5.0`); bis 3.0 ist jeder Stand eine Beta (siehe unten) |
+| `2.5` | nur Releases 2.5.x – bewegt sich nur, wenn ein Release erscheint |
+| `2.5.0` | genau dieses Release |
+| `testing-<commit>` | genau ein Stand von `main`, z. B. `testing-40dd64f` |
+| `testing`, `rc`, `latest` | derzeit gleich wie `2`; sobald auf `main` 3.0 entsteht, bekommen sie dessen Testversionen – besser `2` setzen |
 | `1` | bleibt bei der neuesten 1.x (1.2) – ältere Installationen haben diesen Wert noch in der `.env` |
-| `testing` (oder `rc`) | **Release Candidate:** das Neueste aus dem Branch `testing`, noch vor dem Release. Kann Fehler haben – nur zum Ausprobieren |
 
 **Aktualisieren:**
 
@@ -2130,18 +2131,26 @@ zusätzlich `saga-dateien-<zeit>.tar.gz` an (ohne Vorschaubilder, die entstehen 
 `docker compose exec saga tar -xzf /data/backups/<datei> -C /data`. Wer das Volume `saga-data` ohnehin
 sichert (siehe oben), braucht den Schalter nicht.
 
-**Release Candidates (Kanal `testing`):** Mit `SAGA_VERSION=testing` (gleichwertig: `rc`) bekommst du neue
-Funktionen, sobald sie fertig sind – noch vor dem Release. Jeder Stand ist ein Release Candidate der nächsten
-Version, z. B. `2.5.0-rc.7` (7 Änderungen seit dem letzten Release; unten im Admin-Bereich als
-„2.5.0-rc.7 (1cc210f)“ mit 🧪 Release Candidate, dahinter der Commit). Ein Release Candidate ist immer neuer als
-die stabile Version davor (2.4.0 < 2.5.0-rc.7 < 2.5.0): Der Hinweis auf neue Versionen meldet sich erst, wenn
-2.5.0 erschienen ist. Ältere Testversionen hießen `x.y.z-testing.<commit>`. Zurück zur
-stabilen Version: `SAGA_VERSION=2`, `docker compose pull && docker compose up -d`. Hat die Testversion die
-Datenbank schon umgebaut, startet die stabile Version erst, wenn sie diesen Umbau ebenfalls enthält (spätestens
-mit dem nächsten Release) – oder du spielst das Backup von vor dem Wechsel zurück.
+**Ein Kanal bis 3.0 (seit 24.11.2026):** Bis Saga 3.0 gibt es nur eine Entwicklungslinie, den Branch `main`.
+Jeder Push dorthin baut ein neues Image und schiebt `2`, `latest`, `testing` und `rc` weiter – mit `SAGA_VERSION=2`
+bekommst du neue Funktionen also, sobald sie fertig sind. Jeder Stand dazwischen ist eine Testversion der nächsten
+Version, z. B. `2.5.1-rc.3` (3 Änderungen seit dem letzten Release; unten im Admin-Bereich als „2.5.1-rc.3 (40dd64f)“
+mit 🧪 Release Candidate, dahinter der Commit). Ein Release (z. B. 2.5.1) ist ein Stand von `main` mit Versions-Tag und
+Release-Notizen. Eine Testversion ist immer neuer als das Release davor (2.5.0 < 2.5.1-rc.3 < 2.5.1). Der Hinweis auf
+neue Versionen im Admin-Bereich meldet nur Releases; Testversionen dazwischen kommen ohne Hinweis beim nächsten Update.
+**Bis 3.0 ist jeder Stand eine Beta** ohne Stabilitätsversprechen – mach regelmäßig Backups. Nach 3.0 gibt es eine
+stabile Linie. Der frühere Branch `testing` ist eingefroren und bekommt nichts mehr; Server mit
+`SAGA_VERSION=testing` laufen vorerst weiter, sollten aber bei Gelegenheit auf `2` wechseln (vor 3.0 nötig). Ältere Testversionen hießen `x.y.z-testing.<commit>`.
+
+**Festnageln:** Wer nicht jedem Stand folgen will, setzt `SAGA_VERSION=2.5.0` (genau ein Release), `2.5` (nur
+Releases 2.5.x) oder `testing-<commit>` und dann `docker compose pull && docker compose up -d`. **Achtung:** Das geht
+nur auf eine Version, die den Schema-Stand der Datenbank kennt. Hat eine neuere Version die Datenbank schon umgebaut,
+startet die ältere nicht („Die Datenbank hat Schema-Stand …, diese Saga-Version kennt nur …“ im Log, intern
+`SchemaTooNew`) – dann bleibt nur, auf der neueren zu bleiben oder das Backup von vor dem Umbau zurückzuspielen
+(siehe „Zurück zur vorigen Version“ unten). Am besten also festnageln, bevor du das nächste Update ziehst.
 
 Eine neue **Major-Version** kann Handarbeit brauchen – sie steht dann im Changelog und kommt nur, wenn du
-`SAGA_VERSION` auf die neue Hauptversion setzt.
+`SAGA_VERSION` auf die neue Hauptversion setzt (mit `latest` käme sie sofort – deshalb ist `2` der Standard).
 
 **Von 1.x auf 2.0:** Wer noch `SAGA_VERSION=1` in der `.env` hat, bleibt auf 1.2. Für Saga 2.0 `SAGA_VERSION=2`
 setzen und wie oben aktualisieren – die Datenbank wird automatisch umgebaut (vorher Backup). Danach im
@@ -2255,8 +2264,8 @@ und entfernt vorher die Tabellen, die eine ältere Version nicht kennt. Ältere 
 Zurückspielen mit `postgres:16` an „unrecognized configuration parameter transaction_timeout“ und – auf einer
 Datenbank, die schon 2.3 (oder eine Testversion 2.2.0-rc) benutzt hat – an den neuen Tabellen `note_derived`,
 `note_link` und `note_stale` („cannot drop table note because other objects depend on it“). Hast du schon gewechselt,
-die neuere Version nur zum Zurückspielen nehmen, z. B. `docker compose run --rm saga …` mit `SAGA_VERSION=2` (bzw.
-`testing`) in der `.env`. Die drei Tabellen kannst du auch von Hand entfernen (sie entstehen beim nächsten Start von
+die neuere Version nur zum Zurückspielen nehmen, z. B. `docker compose run --rm saga …` mit `SAGA_VERSION=2` in der
+`.env`. Die drei Tabellen kannst du auch von Hand entfernen (sie entstehen beim nächsten Start von
 2.3 neu):
 `docker compose exec -T db psql -U saga -d saga -c "DROP TABLE IF EXISTS note_link, note_stale, note_derived"`.
 
@@ -2401,7 +2410,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `PUBLIC_RATE` | `120` | Aufrufe öffentlicher Seiten je IP-Adresse und Minute (Bilder: das Fünffache) |
 | `SESSION_HOURS` | `12` | Gültigkeit einer Browser-Sitzung (Apps bleiben angemeldet) |
 | `PASSKEY_RP_ID` | Rechnername aus `BASE_URL` | Domain der Passkeys; nur setzen, wenn sie für eine übergeordnete Domain gelten sollen (z. B. `example.org`) |
-| `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.3`, `2.3.0` oder `testing` (Abschnitt 11) |
+| `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2` (jeder Stand von `main`), `2.5`, `2.5.0` oder `testing-<commit>` (Abschnitt 11) |
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
 | `BACKUP_VERIFY_MB` | `512` | Verschlüsselte Backups (Abschnitt 11): Dateien bis zu dieser Größe nach dem Hochladen ganz erneut herunterladen und vergleichen (größere sonntags) |
 | `USER_BACKUP_MAX_MB` | `4096` | Persönliche Backups (Abschnitt 11): obere Grenze für die Größe je Backup und für Uploads beim Einspielen (die Grenze im Admin-Bereich kann nur kleiner sein) |

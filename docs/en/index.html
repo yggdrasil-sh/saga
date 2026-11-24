@@ -257,6 +257,7 @@ if(m?m==="an":!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)"
 <li><b>Put a proxy in front</b><span>One domain with HTTPS on port 443 points to Saga. In Nginx Proxy Manager turn on “Websockets Support”; Caddy and Traefik do it on their own.</span></li>
 <li><b>Set up</b><span>Create accounts, groups and services in the admin area, optionally LDAP or SSO. Under “Calls”, “Check now” tests the route through the proxy.</span></li>
 <li><b>Connect the apps</b><span>Sign in with a QR code from “Apps &amp; devices” – done.</span></li>
+<li><b>Stay up to date</b><span>Until 3.0 there is one channel: every update pulls the latest state of <code>main</code> – a beta. Only releases? Set <code>SAGA_VERSION=2.5</code> in .env, before the next update.</span></li>
 </ol>
     </div>
     <p class="links"><a class="btn primary" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md">Full guide</a>

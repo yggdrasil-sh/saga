@@ -236,9 +236,9 @@ func (u *updater) get(url string, max int64) ([]byte, error) {
 }
 
 // fetch laedt und prueft das Binaer und legt es als bin/next ab (next.ver, next.sig).
-// releaseURL: Freigaben liegen im Release v<version>; Vorabversionen (testing, z. B. 2.5.0-rc.131) im rollenden
-// Vorab-Release "horn-testing", das die CI bei jedem testing-Push ersetzt - mit der Version im Dateinamen, damit ein
-// Knoten nie ein Binaer einer anderen Version laedt (die Signatur bindet die Version ohnehin).
+// releaseURL: Freigaben liegen im Release v<version>; Vorabversionen (Testversionen von main, z. B. 2.5.1-rc.3) im
+// rollenden Vorab-Release "horn-testing" (CI bei jedem Push auf main, letzte 20 Versionen) - mit der Version im
+// Dateinamen, damit ein Knoten nie ein Binaer einer anderen Version laedt (die Signatur bindet die Version ohnehin).
 func releaseURL(base, want, arch string) string {
 	if strings.Contains(want, "-") {
 		return base + "/horn-testing/gjallarhorn-" + want + "-" + arch

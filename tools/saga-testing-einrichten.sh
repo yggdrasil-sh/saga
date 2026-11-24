@@ -4,8 +4,9 @@
 #   sudo sh saga-testing-einrichten.sh [Saga-Ordner] [Kanal]
 #
 #   Saga-Ordner  Ordner mit docker-compose.yml und .env (Standard: aktueller Ordner)
-#   Kanal        testing (Standard; Release Candidates, z. B. 2.5.0-rc.N)
-#                2 = neueste stabile 2.x  |  2.5.0 = genau diese Version
+#   Kanal        2 = jeder neue Stand von main (bis 3.0 der eine Kanal: Testversionen 2.5.1-rc.N und Releases)
+#                testing / rc = gleich wie 2 (Standard des Skripts, aelterer Name)
+#                2.5 = nur Releases 2.5.x  |  2.5.0 = genau dieses Release
 #
 # Was das Skript macht:
 #   1. sichert .env (.env.vor-<Kanal>-<Zeit>) und setzt SAGA_VERSION=<Kanal>
@@ -14,9 +15,10 @@
 #      (alle 15 Minuten: neues Image ziehen, nur bei Aenderung neu starten, Gesundheit pruefen)
 #   4. fuehrt das erste Update sofort aus
 #
-# Zurueck auf stabil:  sudo sh saga-testing-einrichten.sh <Saga-Ordner> 2
+# Festnageln:         sudo sh saga-testing-einrichten.sh <Saga-Ordner> 2.5
 #   (Achtung: eine Datenbank, die schon auf einer neueren Version lief, startet nicht mit einer aelteren -
 #    dafuer die Sicherung aus Schritt 2 einspielen.)
+# Holen:               curl -fsSLO https://raw.githubusercontent.com/yggdrasil-sh/saga/main/tools/saga-testing-einrichten.sh
 # Abschalten:          sudo systemctl disable --now saga-autoupdate.timer
 # Protokoll:           journalctl -t saga-autoupdate
 set -eu
@@ -33,7 +35,7 @@ DIR=$(cd "$DIR" && pwd) || die "Ordner $1 nicht gefunden"
 [ -f "$DIR/.env" ] || die "$DIR/.env fehlt - ist das der Saga-Ordner?"
 found=; for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do [ -f "$DIR/$f" ] && found=1; done
 [ -n "$found" ] || die "keine docker-compose.yml in $DIR"
-case "$CH" in testing|rc|[0-9]*) ;; *) die "unbekannter Kanal '$CH' (testing, 2, 2.5.0 ...)" ;; esac
+case "$CH" in testing|rc|[0-9]*) ;; *) die "unbekannter Kanal '$CH' (2, 2.5, 2.5.0, testing ...)" ;; esac
 cd "$DIR"
 docker compose config --services 2>/dev/null | grep -qx saga || die "kein Dienst 'saga' in der Compose-Datei"
 

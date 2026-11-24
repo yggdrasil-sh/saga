@@ -1887,11 +1887,12 @@ Qué versión se ejecuta lo decide `SAGA_VERSION` en el `.env`:
 
 | Valor | Significado |
 |---|---|
-| `2` (por defecto) | siempre la 2.x más reciente: funciones nuevas y correcciones, nada que requiera trabajo manual |
-| `2.4` | solo correcciones de la 2.4 |
-| `2.4.0` | exactamente esta versión |
+| `2` (por defecto) | **cada estado nuevo de `main`**: versiones de prueba (p. ej. `2.5.1-rc.3`) y versiones publicadas (p. ej. `2.5.0`); hasta la 3.0 cada estado es una beta (ver abajo) |
+| `2.5` | solo versiones publicadas 2.5.x; solo cambia cuando sale una versión |
+| `2.5.0` | exactamente esta versión |
+| `testing-<commit>` | exactamente un estado de `main`, p. ej. `testing-40dd64f` |
+| `testing`, `rc`, `latest` | por ahora igual que `2`; cuando en `main` se prepare la 3.0, recibirán sus versiones de prueba; mejor pon `2` |
 | `1` | se queda en la 1.x más reciente (1.2); las instalaciones antiguas aún tienen este valor en el `.env` |
-| `testing` (o `rc`) | **Versión candidata:** lo último de la rama `testing`, antes de publicarse. Puede tener errores; solo para probar |
 
 **Actualizar:**
 
@@ -1917,18 +1918,28 @@ Las imágenes y archivos de las páginas (`/data/files`) **no** están en la cop
 `docker compose exec saga tar -xzf /data/backups/<archivo> -C /data`. Si ya haces copia del volumen `saga-data`
 (ver arriba), no necesitas la opción.
 
-**Versiones candidatas (canal `testing`):** con `SAGA_VERSION=testing` (equivalente: `rc`) recibes las funciones
-nuevas en cuanto están listas, antes de publicarse. Cada compilación es una versión candidata (release candidate) de
-la siguiente versión, por ejemplo `2.5.0-rc.7` (7 cambios desde la última versión; abajo en el área de
-administración como «2.5.0-rc.7 (1cc210f)» con 🧪 Versión candidata, seguido del commit). Una versión candidata
-siempre es más nueva que la versión estable anterior (2.4.0 < 2.5.0-rc.7 < 2.5.0): el aviso de nuevas versiones solo
-aparece cuando se publica la 2.5.0. Las versiones de pruebas anteriores se llamaban `x.y.z-testing.<commit>`. Para volver a la versión estable: `SAGA_VERSION=2` y después
-`docker compose pull && docker compose up -d`. Si la versión de pruebas ya ha modificado la base de datos, la
-versión estable solo arrancará cuando incluya también ese cambio (como muy tarde con la siguiente versión), o
-bien restauras la copia de seguridad de antes del cambio.
+**Un solo canal hasta la 3.0 (desde el 24/11/2026):** hasta Saga 3.0 solo hay una línea de desarrollo, la rama
+`main`. Cada push allí compila una imagen nueva y mueve `2`, `latest`, `testing` y `rc`; con `SAGA_VERSION=2`
+recibes las funciones nuevas en cuanto están listas. Cada estado intermedio es una versión de prueba de la siguiente
+versión, por ejemplo `2.5.1-rc.3` (3 cambios desde la última versión; abajo en el área de administración como
+«2.5.1-rc.3 (40dd64f)» con 🧪 Versión candidata, seguido del commit). Una versión publicada (p. ej. 2.5.1) es un estado
+de `main` con etiqueta de versión y notas. Una versión de prueba siempre es más nueva que la versión publicada anterior
+(2.5.0 < 2.5.1-rc.3 < 2.5.1). El aviso de nuevas versiones del área de administración solo avisa de versiones
+publicadas; las de prueba llegan sin aviso con la siguiente actualización. **Hasta la 3.0 cada estado es una beta** sin
+promesa de estabilidad: haz copias de seguridad con regularidad. Después de la 3.0 habrá una línea estable. La antigua
+rama `testing` está congelada y ya no recibe nada; los servidores con `SAGA_VERSION=testing` siguen funcionando, pero conviene cambiarlos a `2` (necesario antes de la 3.0).
+Las versiones de pruebas anteriores se llamaban `x.y.z-testing.<commit>`.
+
+**Fijar una versión:** si no quieres seguir cada estado, pon `SAGA_VERSION=2.5.0` (exactamente una versión), `2.5`
+(solo versiones 2.5.x) o `testing-<commit>` y después `docker compose pull && docker compose up -d`. **Atención:** solo
+funciona con una versión que conozca el nivel de esquema de la base de datos. Si una versión más nueva ya la ha
+actualizado, la antigua no arranca («Die Datenbank hat Schema-Stand …, diese Saga-Version kennt nur …» en el log,
+internamente `SchemaTooNew`); entonces solo puedes quedarte en la más nueva o restaurar la copia de seguridad de antes
+de la actualización (ver «Volver a la versión anterior» más abajo). Lo mejor es fijarla antes de descargar la
+siguiente actualización.
 
 Una nueva **versión mayor** puede requerir trabajo manual; lo indicará el registro de cambios y solo llega si
-pones `SAGA_VERSION` en la nueva versión mayor.
+pones `SAGA_VERSION` en la nueva versión mayor (con `latest` llegaría enseguida; por eso `2` es el valor por defecto).
 
 **De 1.x a 2.0:** si tu `.env` todavía dice `SAGA_VERSION=1`, te quedas en la 1.2. Para Saga 2.0 pon
 `SAGA_VERSION=2` y actualiza como arriba: la base de datos se adapta sola (antes se hace una copia de seguridad).
@@ -2049,7 +2060,7 @@ tablas que una versión antigua no conoce. Las versiones antiguas de Saga fallan
 «unrecognized configuration parameter transaction_timeout» y, en una base de datos que ya ha usado la 2.3 (o una versión
 de pruebas 2.2.0-rc), por las nuevas tablas `note_derived`, `note_link` y `note_stale` («cannot drop table note because
 other objects depend on it»). Si ya has cambiado, usa la versión más nueva solo para restaurar, p. ej.
-`docker compose run --rm saga …` con `SAGA_VERSION=2` (o `testing`) en el `.env`. También puedes eliminar las tres tablas
+`docker compose run --rm saga …` con `SAGA_VERSION=2` en el `.env`. También puedes eliminar las tres tablas
 a mano (la 2.3 las vuelve a crear en el siguiente arranque):
 `docker compose exec -T db psql -U saga -d saga -c "DROP TABLE IF EXISTS note_link, note_stale, note_derived"`.
 
@@ -2185,7 +2196,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `PUBLIC_RATE` | `120` | Solicitudes a páginas públicas por dirección IP y minuto (imágenes: cinco veces más) |
 | `SESSION_HOURS` | `12` | Duración de una sesión del navegador (las apps siguen con la sesión iniciada) |
 | `PASSKEY_RP_ID` | nombre de host de `BASE_URL` | Dominio de las llaves de acceso; solo si deben valer para un dominio superior (p. ej. `example.org`) |
-| `SAGA_VERSION` | `2` | Qué versión descarga `docker compose pull`: `2`, `2.3`, `2.3.0` o `testing` (sección 11) |
+| `SAGA_VERSION` | `2` | Qué versión descarga `docker compose pull`: `2` (cada estado de `main`), `2.5`, `2.5.0` o `testing-<commit>` (sección 11) |
 | `BACKUP_KEEP` | `10` | Cuántas copias automáticas/manuales se conservan en `/data/backups` |
 | `BACKUP_VERIFY_MB` | `512` | Copias cifradas (sección 11): los archivos hasta este tamaño se vuelven a descargar enteros tras subirlos y se comparan (los más grandes, los domingos) |
 | `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Tamaño de las partes al subir por partes (Nextcloud Chunking v2, multiparte de S3) y a partir de qué tamaño de archivo |

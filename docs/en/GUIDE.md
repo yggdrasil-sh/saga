@@ -1815,11 +1815,12 @@ the admin area; a notice also appears there when a new version is available (can
 
 | Value | Meaning |
 |---|---|
-| `2` (default) | always the latest 2.x – new features and fixes, nothing that needs manual work |
-| `2.4` | only bug fixes for 2.4 |
-| `2.4.0` | exactly this version |
+| `2` (default) | **every new state of `main`** – test versions (e.g. `2.5.1-rc.3`) and releases (e.g. `2.5.0`); until 3.0 every state is a beta (see below) |
+| `2.5` | only 2.5.x releases – moves only when a release comes out |
+| `2.5.0` | exactly this release |
+| `testing-<commit>` | exactly one state of `main`, e.g. `testing-40dd64f` |
+| `testing`, `rc`, `latest` | currently the same as `2`; once 3.0 is being built on `main`, they get its test versions – better set `2` |
 | `1` | stays on the latest 1.x (1.2) – older installations still have this value in `.env` |
-| `testing` (or `rc`) | **Release candidate:** the latest from the `testing` branch, before the release. May contain bugs – only for trying things out |
 
 **Updating:**
 
@@ -1844,17 +1845,27 @@ also creates `saga-dateien-<time>.tar.gz` (without thumbnails, they are recreate
 `docker compose exec saga tar -xzf /data/backups/<file> -C /data`. If you back up the `saga-data` volume anyway
 (see above), you don't need the switch.
 
-**Release candidates (channel `testing`):** With `SAGA_VERSION=testing` (equivalent: `rc`) you get new features as
-soon as they are ready – before the release. Every build is a release candidate of the next version, e.g.
-`2.5.0-rc.7` (7 changes since the last release; shown at the bottom of the admin area as "2.5.0-rc.7 (1cc210f)" with
-🧪 Release candidate, followed by the commit). A release candidate is always newer than the stable version before it
-(2.4.0 < 2.5.0-rc.7 < 2.5.0): the new-version notice only appears once 2.5.0 is out. Older testing builds were called
-`x.y.z-testing.<commit>`. Back to the stable version: `SAGA_VERSION=2`, then `docker compose pull && docker compose up -d`.
-If the testing version has already changed the database, the stable version only starts once it contains that
-change too (with the next release at the latest) – or you restore the backup from before the switch.
+**One channel until 3.0 (since 24 Nov 2026):** until Saga 3.0 there is only one line of development, the `main`
+branch. Every push there builds a new image and moves `2`, `latest`, `testing` and `rc` along – so with
+`SAGA_VERSION=2` you get new features as soon as they are ready. Every state in between is a test version of the next
+version, e.g. `2.5.1-rc.3` (3 changes since the last release; shown at the bottom of the admin area as
+"2.5.1-rc.3 (40dd64f)" with 🧪 Release candidate, followed by the commit). A release (e.g. 2.5.1) is a state of `main`
+with a version tag and release notes. A test version is always newer than the release before it
+(2.5.0 < 2.5.1-rc.3 < 2.5.1). The new-version notice in the admin area only reports releases; test versions in between
+arrive without a notice with your next update. **Until 3.0 every state is a beta** without a stability promise – keep
+regular backups. After 3.0 there will be a stable line. The former `testing` branch is frozen and gets nothing new;
+servers with `SAGA_VERSION=testing` keep working for now but should switch to `2` when convenient (needed before 3.0). Older test builds were called
+`x.y.z-testing.<commit>`.
+
+**Pinning a version:** if you don't want to follow every state, set `SAGA_VERSION=2.5.0` (exactly one release), `2.5`
+(only 2.5.x releases) or `testing-<commit>`, then `docker compose pull && docker compose up -d`. **Careful:** this only
+works for a version that knows the database's schema level. If a newer version has already upgraded the database, the
+older one does not start ("Die Datenbank hat Schema-Stand …, diese Saga-Version kennt nur …" in the log, internally
+`SchemaTooNew`) – then you can only stay on the newer version or restore the backup from before the upgrade (see
+"Going back to the previous version" below). So it's best to pin before you pull the next update.
 
 A new **major version** may need manual work – the changelog will say so, and you only get it once you set
-`SAGA_VERSION` to the new major version.
+`SAGA_VERSION` to the new major version (with `latest` it would arrive right away – that's why `2` is the default).
 
 **From 1.x to 2.0:** If your `.env` still says `SAGA_VERSION=1`, you stay on 1.2. For Saga 2.0 set
 `SAGA_VERSION=2` and update as above – the database is migrated automatically (with a backup first). Then, if you
@@ -1966,7 +1977,7 @@ tables an older version doesn't know first. Older Saga versions fail to restore 
 “unrecognized configuration parameter transaction_timeout” and – on a database that 2.3 (or a 2.2.0-rc testing
 version) has already used – because of the new tables `note_derived`, `note_link` and `note_stale` (“cannot drop table
 note because other objects depend on it”). If you have already switched, use the newer version just for restoring,
-e.g. `docker compose run --rm saga …` with `SAGA_VERSION=2` (or `testing`) in `.env`. You can also remove the three
+e.g. `docker compose run --rm saga …` with `SAGA_VERSION=2` in `.env`. You can also remove the three
 tables by hand (2.3 recreates them on its next start):
 `docker compose exec -T db psql -U saga -d saga -c "DROP TABLE IF EXISTS note_link, note_stale, note_derived"`.
 
@@ -2095,7 +2106,7 @@ with the same account also switch the oldest ones to polling.
 | `PUBLIC_RATE` | `120` | Requests to public pages per IP address and minute (images: five times as many) |
 | `SESSION_HOURS` | `12` | Lifetime of a browser session (apps stay signed in) |
 | `PASSKEY_RP_ID` | host name from `BASE_URL` | Domain of the passkeys; only set it if they should be valid for a parent domain (e.g. `example.org`) |
-| `SAGA_VERSION` | `2` | Which version `docker compose pull` fetches: `2`, `2.3`, `2.3.0` or `testing` (section 11) |
+| `SAGA_VERSION` | `2` | Which version `docker compose pull` fetches: `2` (every state of `main`), `2.5`, `2.5.0` or `testing-<commit>` (section 11) |
 | `BACKUP_KEEP` | `10` | How many automatic/manual backups are kept in `/data/backups` |
 | `BACKUP_VERIFY_MB` | `512` | Encrypted backups (section 11): files up to this size are downloaded again completely after uploading and compared (larger ones on Sundays) |
 | `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Part size for chunked uploads (Nextcloud Chunking v2, S3 multipart) and from which file size |

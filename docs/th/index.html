@@ -257,6 +257,7 @@ if(m?m==="an":!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)"
 <li><b>วาง proxy ไว้ด้านหน้า</b><span>โดเมนเดียวที่ใช้ HTTPS บนพอร์ต 443 ชี้มาที่ Saga ใน Nginx Proxy Manager ให้เปิด “Websockets Support” ส่วน Caddy และ Traefik ทำให้เอง</span></li>
 <li><b>ตั้งค่า</b><span>สร้างบัญชี กลุ่ม และบริการในส่วนผู้ดูแลระบบ จะเชื่อม LDAP หรือ SSO ด้วยก็ได้ ในหัวข้อ “การโทร” ปุ่ม “ตรวจสอบตอนนี้” จะทดสอบเส้นทางผ่าน proxy</span></li>
 <li><b>เชื่อมต่อแอป</b><span>เข้าสู่ระบบด้วย QR โค้ดจาก “แอปและอุปกรณ์” เท่านี้ก็เสร็จ</span></li>
+<li><b>อัปเดตอยู่เสมอ</b><span>จนถึงเวอร์ชัน 3.0 มีช่องทางเดียว: ทุกการอัปเดตจะดึงสถานะล่าสุดของ <code>main</code> ซึ่งเป็นเบต้า ต้องการเฉพาะรุ่นที่เผยแพร่? ตั้ง <code>SAGA_VERSION=2.5</code> ใน .env ก่อนอัปเดตครั้งถัดไป</span></li>
 </ol>
     </div>
     <p class="links"><a class="btn primary" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">คู่มือฉบับเต็ม (ภาษาอังกฤษ)</a>

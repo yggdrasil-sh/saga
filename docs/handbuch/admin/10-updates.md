@@ -10,10 +10,10 @@
 
 - **Eine neue Version einspielen.** Frieda sieht im Admin-Bereich „Saga 2.5.1 ist erschienen“, liest „Was ist neu?“
   und aktualisiert am Samstagmorgen.
-- **Neues früh ausprobieren.** Anna betreibt ein Test-Saga und stellt es auf den Kanal `testing`, um neue Funktionen
-  vor dem Release zu sehen.
-- **Ruhe im Verein.** Frieda bleibt bei den stabilen Versionen – der Kanal `2` bringt Fehlerbehebungen und neue
-  Funktionen, aber nichts, was Handarbeit braucht.
+- **Neues früh ausprobieren.** Anna lässt ihr Saga auf dem Standard `2`: Bis 3.0 bringt jedes Update den neuesten
+  Stand von `main`, also neue Funktionen, sobald sie fertig sind.
+- **Ruhe im Verein.** Frieda nagelt den Vereinsserver auf `2.5` fest – dann kommen nur Releases 2.5.x, keine
+  Testversionen dazwischen.
 - **Apps auf Stand halten.** Nach einem Server-Update erinnert Frieda die Mitglieder, auch die Apps zu aktualisieren.
 
 ## Wofür ist das?
@@ -83,19 +83,22 @@ Welche Versionen dein Server bekommt, bestimmt die Einstellung `SAGA_VERSION` in
 
 | Wert | Bedeutung |
 |---|---|
-| `2` (Standard) | immer die neueste 2.x – neue Funktionen und Fehlerbehebungen, nichts, was Handarbeit braucht |
-| `2.5` | nur Fehlerbehebungen von 2.5 |
-| `2.5.1` | genau diese Version |
-| `testing` | **Release Candidate:** das Neueste vor dem Release – nur zum Ausprobieren |
+| `2` (Standard) | jeder neue Stand von `main` – Testversionen und Releases |
+| `2.5` | nur Releases 2.5.x |
+| `2.5.1` | genau dieses Release |
+| `testing`, `rc` | derzeit gleich wie `2` – besser `2` setzen |
 
-Auf dem Kanal `testing` zeigt der Admin-Bereich unten eine Version wie „2.6.0-rc.7“ mit dem Hinweis **Release
-Candidate**. Ein Release Candidate kann Fehler haben. Für einen Server, auf den sich Familie oder Verein verlassen,
-nimm den Standard `2`.
+**Bis Saga 3.0 gibt es nur einen Kanal.** Jeder Stand von `main` ist eine Beta: Zwischen zwei Releases zeigt der
+Admin-Bereich unten eine Version wie „2.6.0-rc.7“ mit dem Hinweis **Release Candidate** (Testversion). Eine
+Testversion kann Fehler haben – mach regelmäßig Backups. Nach 3.0 kommt eine stabile Linie.
 
-Zurück vom Testkanal und alle Einzelheiten: Anleitung, Abschnitt 11, „Updates“ (Absatz „Release Candidates“).
-Willst du den Testkanal automatisch aktuell halten, richtet das Skript `tools/saga-testing-einrichten.sh` einen
-Timer ein, der alle 15 Minuten nach einem neuen Stand schaut (siehe [Upgrade-Anleitung 2.5](../../UPGRADE-2.5.md),
-Abschnitt 2).
+**Festnageln** (z. B. `2.5`) geht nur auf eine Version, die die Datenbank deines Servers schon kennt. Hat eine neuere
+Version die Datenbank umgebaut, startet eine ältere nicht mehr – dann hilft nur das Backup von vor dem Update. Also
+am besten festnageln, bevor du das nächste Update ziehst.
+
+Alle Einzelheiten: Anleitung, Abschnitt 11, „Updates“ (Absätze „Ein Kanal bis 3.0“ und „Festnageln“). Willst du
+Saga automatisch aktuell halten, richtet das Skript `tools/saga-testing-einrichten.sh` einen Timer ein, der alle
+15 Minuten nach einem neuen Stand schaut (siehe [Upgrade-Anleitung 2.5](../../UPGRADE-2.5.md), Abschnitt 2).
 
 ### 4. Apps und Versionen
 
@@ -135,12 +138,12 @@ Hat das Update die Datenbank umgebaut, geht das nur über das Backup von vor dem
 Abschnitt 11.
 
 **Der Hinweis kommt nicht, obwohl es eine neue Version gibt.**
-Prüfe, ob **Auf neue Versionen hinweisen** unter Allgemein an ist und ob der Server GitHub erreichen kann. Auf dem
-Kanal `testing` meldet sich der Hinweis erst, wenn die nächste stabile Version erschienen ist.
+Prüfe, ob **Auf neue Versionen hinweisen** unter Allgemein an ist und ob der Server GitHub erreichen kann. Der
+Hinweis meldet nur Releases (z. B. 2.6.0) – Testversionen dazwischen kommen ohne Hinweis beim nächsten Update.
 
 **Wann kommt Saga 3?**
 Eine neue Major-Version kommt nur, wenn du `SAGA_VERSION` ausdrücklich auf `3` stellst – vorher bleibt dein Server bei
-2.x.
+2.x (mit `testing`, `rc` oder `latest` käme sie schon vorher).
 
 ---
 

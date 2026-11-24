@@ -1,5 +1,5 @@
 #!/bin/sh
-# Version eines Testing-Builds (Release Candidate) ausgeben, z. B. "2.2.0-rc.7+1cc210f":
+# Version einer Testversion (Release Candidate, jeder Push auf main) ausgeben, z. B. "2.2.0-rc.7+1cc210f":
 #   Basis  = VERSION im Repo (die naechste geplante Version). Ist sie nicht neuer als der letzte Release-Tag
 #            (z. B. direkt nach einem Release, bevor VERSION hochgesetzt wurde), wird die Patch-Stelle erhoeht -
 #            ein RC ist so immer erkennbar neuer als die stabile Version.
@@ -21,8 +21,8 @@ if [ -z "$TAG" ]; then
 fi
 
 # BASE <= hoechster Release-Tag?  -> dieser Tag mit erhoehter Patch-Stelle als Basis. Verglichen wird mit allen
-# Release-Tags, auch einem, der noch nicht nach testing zurueckgefuehrt ist (Release auf main vor dem Merge) -
-# der RC soll neuer sein als jedes veroeffentlichte Release.
+# Release-Tags, auch einem, der nicht im Verlauf von REV liegt (frueher: Release auf main vor dem Merge nach
+# testing; seit 2.5.0 gibt es nur main) - der RC soll neuer sein als jedes veroeffentlichte Release.
 HI="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null \
       | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1 || true)"
 [ -n "$HI" ] || HI="$TAG"

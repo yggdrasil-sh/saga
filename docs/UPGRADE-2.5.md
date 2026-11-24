@@ -50,11 +50,16 @@ Welche Version läuft, bestimmt `SAGA_VERSION` in der `.env`:
 
 | Wert | Was du bekommst |
 |---|---|
-| `2` (Standard) | immer die neueste stabile 2.x – 2.5 kommt, sobald 2.5.0 erschienen ist |
-| `2.5` bzw. `2.5.0` | nur 2.5 (mit Fehlerbehebungen) bzw. genau 2.5.0 |
-| `testing` (gleich `rc`) | Release Candidates `2.5.0-rc.N` schon vor dem Release – zum Testen |
+| `2` (Standard) | jeden neuen Stand von `main`: 2.5.0 und danach Testversionen wie `2.5.1-rc.N` und Releases |
+| `2.5` bzw. `2.5.0` | nur Releases 2.5.x bzw. genau 2.5.0 |
+| `testing` (gleich `rc`) | derzeit gleich wie `2` – besser `2` setzen (ab 3.0-Testversionen nicht mehr gleich) |
 
-**Normal (stabil):**
+**Ein Kanal bis 3.0:** Seit dem Release 2.5.0 gibt es nur noch den Branch `main`; der Branch `testing` ist
+eingefroren. Jeder Stand von `main` ist eine Beta; mit `2` kommt also schon jetzt die neueste Testversion (z. B. `2.5.1-rc.N`).
+Wer nur Releases will, setzt `SAGA_VERSION=2.5` **vor** dem Update, denn eine ältere Version startet nicht mehr,
+sobald eine neuere die Datenbank umgebaut hat (dann nur über das Backup zurück, Abschnitt 7). Einzelheiten: [Anleitung, Abschnitt 11](ANLEITUNG.md#updates).
+
+**Normal:**
 
 ```sh
 git pull                                  # docker-compose.yml und Anleitung auf neuen Stand (optional, siehe unten)
@@ -68,21 +73,22 @@ Für den Betrieb hinter NPM ändert sich in `docker-compose.yml` und `.env` nich
 leitet dorthin. Die neuen, auskommentierten Zeilen in `docker-compose.yml` (443, 8443, UDP) brauchst du dafür nicht.
 Wer die Datei selbst angepasst hat, muss `git pull` also nicht unbedingt mitmachen.
 
-**Release Candidates automatisch (Kanal `testing`):** Das Skript
+**Automatisch aktuell halten:** Das Skript
 [`tools/saga-testing-einrichten.sh`](../tools/saga-testing-einrichten.sh) stellt `SAGA_VERSION` um, sichert vorher
 `.env` und Datenbank und richtet einen systemd-Timer ein, der alle 15 Minuten das Image prüft und Saga nur bei einem
 neuen Image neu startet (danach Prüfung über `/healthz`):
 
 ```sh
 cd /pfad/zu/saga                                   # Ordner mit docker-compose.yml und .env
-curl -fsSLO https://raw.githubusercontent.com/yggdrasil-sh/saga/testing/tools/saga-testing-einrichten.sh
-sudo sh saga-testing-einrichten.sh "$PWD" testing
-journalctl -t saga-autoupdate                      # Protokoll: "aktualisiert: 2.4.0 -> 2.5.0-rc.N …"
+curl -fsSLO https://raw.githubusercontent.com/yggdrasil-sh/saga/main/tools/saga-testing-einrichten.sh
+sudo sh saga-testing-einrichten.sh "$PWD" 2         # oder 2.5: nur Releases 2.5.x
+journalctl -t saga-autoupdate                      # Protokoll: "aktualisiert: 2.4.0 -> 2.5.0 …"
 ```
 
-Die Datenbank-Sicherung liegt dann in `sicherung/` neben der `docker-compose.yml`. Zurück auf stabil, sobald 2.5.0
-erschienen ist: `sudo sh saga-testing-einrichten.sh "$PWD" 2`. Abschalten: `sudo systemctl disable --now
-saga-autoupdate.timer`.
+Die Datenbank-Sicherung liegt dann in `sicherung/` neben der `docker-compose.yml`. Wer den Timer schon mit `testing`
+eingerichtet hat, läuft vorerst weiter (`testing` bekommt derzeit dasselbe wie `2`); bei Gelegenheit mit `2` neu
+einrichten. Abschalten:
+`sudo systemctl disable --now saga-autoupdate.timer`.
 
 ## 3. Reverse Proxy
 
@@ -268,4 +274,5 @@ docker compose pull && docker compose up -d
 ```
 
 Alles, was nach dem Backup geändert wurde, ist danach weg – also nur kurz nach einem missglückten Update. Läuft der
-Timer aus Abschnitt 2, vorher `sudo systemctl disable --now saga-autoupdate.timer`, sonst zieht er wieder `testing`.
+Timer aus Abschnitt 2, vorher `sudo systemctl disable --now saga-autoupdate.timer`, sonst zieht er wieder die neueste
+Version.

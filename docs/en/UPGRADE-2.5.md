@@ -23,11 +23,19 @@ docker compose logs saga | grep saga:     # backup and migrations
 curl -s http://127.0.0.1:8080/healthz     # "ok"
 ```
 
-`SAGA_VERSION=2` gets 2.5 once 2.5.0 is released; `testing` (= `rc`) gets the release candidates now.
-[`tools/saga-testing-einrichten.sh`](../../tools/saga-testing-einrichten.sh) switches the channel, backs up `.env` and
-the database and installs a systemd timer that pulls every 15 minutes and restarts only on a new image
-(`sudo sh saga-testing-einrichten.sh /path/to/saga testing`; log: `journalctl -t saga-autoupdate`). Behind NPM
-nothing changes in `docker-compose.yml` or `.env`: Saga keeps listening on 8080.
+**One channel until 3.0:** since the 2.5.0 release there is only the `main` branch; the `testing` branch is frozen.
+`SAGA_VERSION=2` (the default) gets every new state of `main` – test versions such as `2.5.1-rc.N` and releases; every
+state is a beta, so with `2` you already get the latest test version today. `testing` (= `rc`) currently gets the same
+as `2` – better switch to `2`. If you only want releases, set `SAGA_VERSION=2.5` (or `2.5.0` for exactly this one) **before** the update: an
+older version no longer starts once a newer one has upgraded the database (then only via the backup, section 6).
+Details: [guide, section 11](GUIDE.md#updates).
+
+[`tools/saga-testing-einrichten.sh`](../../tools/saga-testing-einrichten.sh) (from
+`https://raw.githubusercontent.com/yggdrasil-sh/saga/main/tools/saga-testing-einrichten.sh`) switches the channel,
+backs up `.env` and the database and installs a systemd timer that pulls every 15 minutes and restarts only on a new
+image (`sudo sh saga-testing-einrichten.sh /path/to/saga 2`; log: `journalctl -t saga-autoupdate`). A timer already set
+up with `testing` keeps working for now; set it up again with `2` when convenient. Behind NPM nothing changes in `docker-compose.yml` or `.env`: Saga keeps listening
+on 8080.
 
 ## 3. Reverse proxy
 

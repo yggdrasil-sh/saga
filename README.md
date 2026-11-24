@@ -124,8 +124,12 @@ docker compose pull && docker compose up -d
 before any database change. From 1.x to 2.x: set `SAGA_VERSION=2` in `.env` first. 2.4 upgrades the database (schema 14; no way back to 2.3
 except via the automatic backup) and turns Gravatar off for all accounts – what to watch out for when updating from 2.3
 is in the guide, section 11 “From 2.3 to 2.4”. For 2.5 (schema 35, reverse proxy with WebSocket) see the [upgrade guide](docs/en/UPGRADE-2.5.md). What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
-[releases](https://github.com/yggdrasil-sh/saga/releases). Curious about the latest? `SAGA_VERSION=testing` in
-`.env` pulls the testing version from the `testing` branch. Images and files of pages are not part of the
+[releases](https://github.com/yggdrasil-sh/saga/releases). **One channel until 3.0:** until Saga 3.0
+there is only the `main` branch, and everything on it is a beta. With `SAGA_VERSION=2` (the default) an update pulls
+the latest state of `main` – test versions such as `2.5.1-rc.3` and releases such as `2.5.0`. To pin a version, use
+`SAGA_VERSION=2.5.0` (exactly this release), `2.5` (only 2.5.x releases) or `testing-<commit>` – but only as long as
+no newer version has already upgraded the database; after that the only way back is the backup (guide, section 11).
+The `testing` branch is frozen; `SAGA_VERSION=testing` currently gets the same as `2` – switch to `2` when convenient. Images and files of pages are not part of the
 database backup: back up the `saga-data` volume, or run `docker compose exec saga python run.py backup --dateien`.
 
 - **Saga:** `http://<server>:8080` – put it behind a reverse proxy with HTTPS for production use (with a request

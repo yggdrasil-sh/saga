@@ -1430,8 +1430,9 @@ Die Lastmeldung trägt `up`/`down` (Mbit/s, aus den Bytezählern) und etwa 180 B
 
 **Wächter und Selbst-Update** (ohne Docker-Socket): `gjallarhorn watch` startet `node` als Kind. Zielversion =
 Saga-Version. Der Knoten lädt `<HORN_UPDATE_BASE>/v<ver>/gjallarhorn-linux-<arch>` und `.sig` (Vorabversionen wie
-`2.5.0-rc.131` vom Branch testing: `<HORN_UPDATE_BASE>/horn-testing/gjallarhorn-<ver>-linux-<arch>` – rollendes
-Vorab-Release, das die CI bei jedem testing-Push ersetzt), prüft gegen den festen
+`2.5.1-rc.3` von `main`: `<HORN_UPDATE_BASE>/horn-testing/gjallarhorn-<ver>-linux-<arch>` – rollendes
+Vorab-Release, das die CI bei jedem Push auf `main` ergänzt; es hält die letzten 20 Testversionen, weil seit dem einen
+Kanal auch Standard-Server (`:2`) Testversionen fahren), prüft gegen den festen
 Release-Schlüssel und legt `HORN_DATA/bin/next` ab. Mit weiteren Knoten: Leeren, Neustart wenn leer oder nach 10 min;
 als einziger Knoten erst ohne Beine (Hinweis nach 24 h). Exit 75 → der Wächter prüft erneut und startet `bin/current`;
 stürzt es dreimal binnen 30 s ab, fällt er auf das Image-Binär zurück (`bin/bad`). Nach `remove` startet er nicht mehr

@@ -17,8 +17,8 @@ Der Server, in dessen Chat der Anruf beginnt (das **Heim** des Chats), führt ih
 
 ## 1. Voraussetzungen
 
-- Beide Server auf demselben 2.5-Stand (`testing`, Release-Kandidat). Vor dem Update ein Backup – ein Zurück auf 2.4
-  geht nur mit dem Backup von vorher.
+- Beide Server auf demselben 2.5-Stand (gleiche Testversion von `main`, z. B. `testing-<commit>` festnageln). Vor dem
+  Update ein Backup – ein Zurück auf 2.4 geht nur mit dem Backup von vorher.
 - Die Server sind verbunden (Admin-Bereich → **Föderation**, Einladungscode, beidseitig bestätigt) und dort ist für
   den jeweils anderen **Anrufe** eingeschaltet.
 - Je Server mindestens ein Knoten, der **443/TCP von außen** erreicht (für Fall a auch auf B):

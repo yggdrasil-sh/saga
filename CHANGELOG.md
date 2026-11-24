@@ -4,17 +4,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 **Major** (2.0.0) = Umbau, der Handarbeit beim Update braucht · **Minor** (1.1.0) = neue Funktionen ·
 **Patch** (1.0.1) = Fehlerbehebungen. Datenbank-Änderungen laufen beim Start automatisch, vorher legt Saga ein Backup an.
 
-> **Entwicklung:** Neues landet zuerst auf dem Branch `testing` (Image `ghcr.io/yggdrasil-sh/saga:testing`, gleich
-> `:rc`, wird bei jedem Push gebaut) und wird hier unter `[Unveröffentlicht]` notiert.
-> **Version auf `testing`:** Direkt nach einem Release steht in `VERSION` auf `testing` schon die nächste geplante Version
-> (z. B. `1.3.0`). Jeder Testing-Build ist ein Release Candidate `1.3.0-rc.<N>` (N = Commits seit dem letzten
-> Release-Tag, `tools/rc-version.sh`; Commit als Build-Kennung) – man sieht sofort, welche Version gerade entsteht.
-> Ein Release entsteht dadurch noch nicht.
-> **Release:** auf `testing` `[Unveröffentlicht]` in `[x.y.z] – Datum` umbenennen (passend zu `VERSION`), dann `testing`
-> nach `main` übernehmen und pushen. Die GitHub Action legt Tag, Images und Release an. Danach auf `testing` `VERSION`
-> auf die nächste geplante Version setzen.
+> **Entwicklung (bis 3.0 nur `main`, seit 2.5.0):** Neues landet direkt auf `main` und wird hier unter
+> `[Unveröffentlicht]` notiert. Jeder Push baut eine Testversion `x.y.z-rc.<N>` (N = Commits seit dem letzten
+> Release-Tag, `tools/rc-version.sh`; Commit als Build-Kennung) und schiebt die Images `:2`, `:latest`, `:testing`,
+> `:rc` und `:testing-<commit>` weiter – ein Kanal bis zur stabilen Linie nach 3.0. Der Branch `testing` ist eingefroren.
+> **Version:** `VERSION` darf schon die nächste geplante Version tragen; ein Release entsteht dadurch noch nicht.
+> **Release:** `[Unveröffentlicht]` in `[x.y.z] – JJJJ-MM-TT` umbenennen (passend zu `VERSION`, Gedankenstrich) und auf
+> `main` pushen. Die GitHub Action legt Tag, Images (`x.y.z`, `x.y`, `x`, `latest`) und Release an, sobald der
+> datierte Abschnitt da ist und der Tag fehlt.
 
 ## [Unveröffentlicht]
+
+### Doku
+
+- **Ein Kanal bis 3.0** in README (de/en/es), Anleitung/Guide/Guía (Abschnitt 11 „Updates“), Upgrade-Anleitung 2.5,
+  Handbuch A10, Projektseite (5 Sprachen) und Kommentaren: `SAGA_VERSION=2` bekommt jeden Stand von `main`,
+  festnageln mit `2.5`, `2.5.0` oder `testing-<commit>` – nur, solange keine neuere Version die Datenbank umgebaut hat
+  (sonst `SchemaTooNew`, zurück nur mit Backup). Der Branch `testing` ist eingefroren; `testing`/`rc` bekommen derzeit
+  dasselbe wie `2` (bei Gelegenheit auf `2` wechseln). `tools/saga-testing-einrichten.sh` lädt man jetzt von `main` (Bugs-DB 2328, 2330).
 
 ## [2.5.0] – 2026-11-24
 
