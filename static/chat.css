@@ -34,6 +34,14 @@ body.chats-page{height:100vh;height:100dvh;display:flex;flex-direction:column;ov
 .ct-conv{display:flex;min-height:0;min-width:0}
 .ct-none{margin:auto;text-align:center;color:var(--muted);padding:2rem;max-width:28rem}
 .ct-none-ic{font-size:2.2rem;margin:0}
+/* 2.6 (Bugs-DB 2030): Chat-Uebersicht ohne geoeffneten Chat */
+.ct-none-h{margin:.4rem 0 .2rem;font-size:var(--fs-lg, 1.15rem);color:var(--text)}
+.ct-none-act{justify-content:center;margin:.8rem 0}
+.ct-none-list{list-style:none;margin:.4rem auto 1rem;padding:0;text-align:left;max-width:22rem}
+.ct-none-chat{display:flex;align-items:center;gap:.5rem;width:100%;border:0;background:none;color:var(--text);font:inherit;
+  padding:.45rem .6rem;border-radius:var(--r-sm, 6px);cursor:pointer;text-align:left}
+.ct-none-chat:hover,.ct-none-chat:focus-visible{background:var(--side-row, rgba(0,0,0,.05))}
+.ct-none-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ct-chat{flex:1;display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
 .ct-head{display:flex;align-items:center;gap:.4rem;padding:.6rem 1rem;border-bottom:1px solid var(--border)}
 .ct-back{display:none;font-size:1.4rem;line-height:1}

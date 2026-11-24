@@ -161,7 +161,7 @@
   function fatal(msg) {
     root.textContent = ''; var p = el('p', 'ct-off', msg); p.setAttribute('role', 'alert'); root.appendChild(p);
   }
-  function forget() { K = null; S.ready = false; bClear(); if (VID) VID.clear(); return kvDel(KEYS).catch(function () {}); }
+  function forget() { K = null; S.ready = false; bClear(); if (VID) VID.clear(); drawNone(); return kvDel(KEYS).catch(function () {}); }
   function saveKeys(k) { K = k; return kvSet(KEYS, k); }
 
   // --- Einrichtung (erstes Geraet) -------------------------------------------------------------------------------
@@ -809,7 +809,44 @@
       }
     }).catch(function (e) { if (e.status === 403) fatal(e.message); });
   }
+  // 2.6 (Bugs-DB 2030): ohne geoeffneten Chat eine Chat-Uebersicht statt nur des Schlosses - auch bei eingeklappter
+  // Seitenleiste: was hier erscheint, die letzten Unterhaltungen, "Neue Unterhaltung"; ist dieses Geraet noch nicht
+  // eingerichtet, sagt sie das und fuehrt zur Einrichtung. Die leere Chat-Seite fuellt bewusst NICHT die KI (K10).
+  var NONE_N = 6;
+  function drawNone() {
+    var box = $('ct-none'); if (!box) return;
+    box.textContent = '';
+    var ic = el('p', 'ct-none-ic', S.ready ? '💬' : '🔒'); ic.setAttribute('aria-hidden', 'true'); box.appendChild(ic);
+    var bar = el('div', 'hk-actions ct-none-act');
+    if (!S.ready) {
+      box.appendChild(el('h2', 'ct-none-h', T('Chats auf diesem Gerät einrichten')));
+      box.appendChild(el('p', null, T('Deine Chats sind Ende-zu-Ende-verschlüsselt. Damit du sie hier lesen und schreiben kannst, braucht dieses Gerät einmal eigene Schlüssel.')));
+      bar.appendChild(btn(T('Jetzt einrichten'), 'btn-primary ct-none-setup', function () { start(); }));
+      box.appendChild(bar);
+      return;
+    }
+    var act = S.chats.filter(function (c) { return !c.archived && !c.request; });
+    box.appendChild(el('h2', 'ct-none-h', T('Chats')));
+    box.appendChild(el('p', null, act.length ? T('Wähle eine Unterhaltung oder beginne eine neue.')
+      : T('Noch keine Unterhaltungen. Beginne eine – mit einer Person oder einer Gruppe.')));
+    bar.appendChild(btn(T('Neue Unterhaltung'), 'btn-primary ct-none-new', function () { var n = $('ct-new'); if (n) n.click(); }));
+    box.appendChild(bar);
+    if (act.length) {
+      var ul = el('ul', 'ct-none-list'); ul.setAttribute('aria-label', T('Zuletzt'));
+      act.slice(0, NONE_N).forEach(function (c) {
+        var li = el('li'), b = el('button', 'ct-none-chat'); b.type = 'button'; b.dataset.id = c.id;
+        var nm = chatName(c);
+        b.appendChild(el('span', 'ct-none-n', nm));
+        if (c.unread && !c.muted) { var u = el('span', 'ct-badge', String(c.unread)); u.setAttribute('aria-label', T('{n} ungelesen', { n: c.unread })); b.appendChild(u); }
+        b.addEventListener('click', function () { if (location.hash === '#c' + c.id) openChat(c.id); else location.hash = 'c' + c.id; });
+        li.appendChild(b); ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+    box.appendChild(el('p', 'hk-hint', T('Nachrichten werden auf deinen Geräten verschlüsselt. Der Server speichert nur verschlüsselte Daten.')));
+  }
   function drawList() {
+    drawNone();
     var ul = $('ct-list'), f = ($('ct-filter').value || '').trim().toLowerCase();
     ul.textContent = '';
     var shown = S.chats.filter(function (c) { return !f || chatName(c).toLowerCase().indexOf(f) >= 0; });

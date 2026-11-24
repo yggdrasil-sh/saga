@@ -46,10 +46,9 @@
       </div>
     </aside>
     <section class="ct-conv" id="ct-conv" aria-live="off">
-      <div class="ct-none" id="ct-none">
-        <p class="ct-none-ic" aria-hidden="true">🔒</p>
-        <p>{{ _("Wähle links eine Unterhaltung.") }}</p>
-        <p class="hk-hint">{{ _("Nachrichten werden auf deinen Geräten verschlüsselt. Der Server speichert nur verschlüsselte Daten.") }}</p>
+      <div class="ct-none" id="ct-none">{# 2.6 (Bugs-DB 2030): Inhalt baut static/chat.js drawNone() - Uebersicht bzw. Einrichtung #}
+        <p class="ct-none-ic" aria-hidden="true">💬</p>
+        <p>{{ _("Chats werden geladen …") }}</p>
       </div>
       <div class="ct-chat" id="ct-chat" hidden>
         <div class="ct-head">

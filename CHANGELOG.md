@@ -17,6 +17,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **„Chats“ zeigt eine Übersicht statt einer leeren Seite mit Schloss** (Bugs-DB 2030): Ohne geöffnete Unterhaltung
+  stehen dort die letzten Chats (auch bei eingeklappter Seitenleiste) und „Neue Unterhaltung“; ist dieses Gerät noch
+  nicht eingerichtet, sagt die Übersicht das und führt zur Einrichtung. Neue Browser-Reihe `tests/browser_chat_uebersicht.js`.
 - **Anrufe über Knoten flattern unter CPU-Last nicht mehr zwischen zwei Knoten** (Bugs-DB 2202, Start): Der Browser
   misst den aktuellen Knoten mit derselben frischen Probe wie die anderen (vorher eigene, unter Last aufgeblähte Pings)
   und wechselt nicht wegen „besser“, solange der Kodierer eine CPU-Grenze meldet (und 30 s danach). Abbruch und Leeren
