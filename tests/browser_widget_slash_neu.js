@@ -165,6 +165,33 @@ const STATE = () => {
         .map((k) => [k, web[kinds.indexOf(k)], (srv.find((x) => x.id === 'k' + kinds.indexOf(k)) || {}).data]);
       ok(`${eng}: Widget-Vorgaben des Web = Bereinigung des Servers (${kinds.length} Arten)`, !diff.length, diff);
       await api('DELETE', '/api/notes/' + vid);
+      // wgChartClean (vor jedem "changed" eines Diagramms) = Bereinigung des Servers (clean_blocks -> page_widgets._clean_cfg
+      // -> dbcalc.clean_chart_spec), sonst lehnt live der Server ab ("sanitize") oder Einstellungen gehen verloren.
+      // Zufaellige cfgs (fester Startwert) mit allen Feldern und Grenzfaellen; dazu: Serverergebnis bleibt im Web unveraendert.
+      let seed = 2361; const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+      const VALS = { type: ['bar', 'hbar', 'line', 'area', 'pie', 'donut', 'number', 'x', 3, null], x: ['', 'title', 'kat', 'd1', 5, 'Foo', 'a-b', 'x'.repeat(25), null],
+        agg: ['count', 'sum', 'avg', 'min', 'max', 'pct_checked', 'bad', null], y: ['', 'betrag', 'title', 2, 'N!'], sort: ['x', 'y_desc', 'y_asc', 'manual', '', null, 'z'],
+        fmt: ['num', 'pct', 'eur', '', 'usd'], bucket: ['day', 'week', 'month', 'quarter', 'year', '', 'hour'], status: [true, false, 'true', 1],
+        series: ['', 'title', 'kat', 's2', 4, 'Bad'], limit: [3, 2, 50, 51, 20, 7.5, '10', true, -1, 100, 1e20], cumulative: [true, false, 1], stack: [true, false, 'x'],
+        empty: ['show', '', 'hide', true], goal: [0, 1.5, -3, 1e12, 1e11, '5', true, 7],
+        order: [['essen', 'reise'], [], ['a', '<b>', '', 3], ['x'.repeat(70)], Array.from({ length: 60 }, (_, i) => 'k' + i), 'a', ['ä'.repeat(70), 'b']],
+        db: [null, 0, db, -1, 3.5, true, String(db)], view: ['', 'tab', 3, 'a<b', 'v'.repeat(80), 'a&b', 'ä'.repeat(70)], prop: ['', 'x'], foo: [1] };
+      const cfgs = Array.from({ length: 360 }, () => { const c = {}; for (const k in VALS) if (rnd() < 0.55) c[k] = VALS[k][Math.floor(rnd() * VALS[k].length)]; return c; });
+      const sk2 = (o) => JSON.stringify(o, Object.keys(o || {}).sort());
+      let cdiff = [], cfix = [], nc = 0;
+      for (let part = 0; part < cfgs.length; part += 120) {
+        const cs = cfgs.slice(part, part + 120), cid = (await api('POST', '/api/notes', { title: 'WS ' + eng + ' Diagramm-cfg' })).id;
+        await api('PATCH', '/api/notes/' + cid, { format: 'blocks', body: JSON.stringify({ blocks: cs.map((c, i) => ({ id: 'q' + i, type: 'widget', data: { v: 1, kind: 'chart', cfg: c } })) }) });
+        const sv = await body(cid);
+        const r = await p.evaluate(([cs, sv]) => cs.map((c, i) => {
+          const b = sv.find((x) => x.id === 'q' + i), want = b && b.data.cfg;
+          return [c, HKPages.k.wgChartClean(JSON.parse(JSON.stringify(c))), want, want ? HKPages.k.wgChartClean(JSON.parse(JSON.stringify(want))) : null];
+        }), [cs, sv]);
+        r.forEach(([c, got, want, again]) => { nc++; if (!want || sk2(got) !== sk2(want)) cdiff.push({ c, got, want }); if (want && sk2(again) !== sk2(want)) cfix.push({ want, again }); });
+        await api('DELETE', '/api/notes/' + cid);
+      }
+      ok(`${eng}: wgChartClean = Bereinigung des Servers (${nc} zufaellige cfgs)`, nc === cfgs.length && !cdiff.length, cdiff.slice(0, 3));
+      ok(`${eng}: gespeicherte Diagramm-cfgs bleiben im Web unveraendert (kein Datenverlust beim naechsten Aendern)`, nc === cfgs.length && !cfix.length, cfix.slice(0, 3));
     }
     await slashCase('spalten-klick', LAYOUT, '/di', 'Widget: Diagramm', 'click', 'chart', OLD, true);
     await slashCase('spalten-enter', LAYOUT, '/di', 'Widget: Diagramm', 'enter', 'chart', OLD);

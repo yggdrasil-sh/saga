@@ -7265,27 +7265,33 @@
   // "sanitize" ab (Panel loescht z. B. y bei Rechenart Anzahl, sort "x", setzt prop) - Bugs-DB 2361. In place; Felder, die
   // der Server nicht kennt, fallen wie dort weg.
   var WG_CHART_KEYS = ['type', 'x', 'agg', 'y', 'sort', 'fmt', 'bucket', 'status', 'series', 'limit', 'cumulative', 'stack', 'empty', 'goal', 'order', 'db', 'view'];
+  var WG_CHART_PID = /^(?:[a-z0-9_]{1,24}|title)$/;
+  function wgCp(v, n) { return Array.from(v).slice(0, n).join(''); }          // wie Python v[:n] (Codepunkte, nicht UTF-16)
   function wgChartClean(c) {
-    var ser = ['bar', 'hbar', 'line', 'area'];
+    var ser = ['bar', 'hbar', 'line', 'area'], pid = function (v) { return typeof v === 'string' && WG_CHART_PID.test(v) ? v : ''; };
     Object.keys(c).forEach(function (k) { if (WG_CHART_KEYS.indexOf(k) < 0) delete c[k]; });
     if (['bar', 'hbar', 'line', 'area', 'pie', 'donut', 'number'].indexOf(c.type) < 0) c.type = 'bar';
-    if (typeof c.x !== 'string') c.x = '';
+    c.x = pid(c.x);                                                              // _spec_pid
     if (['count', 'sum', 'avg', 'min', 'max', 'pct_checked'].indexOf(c.agg) < 0) c.agg = 'count';
-    if (typeof c.y !== 'string' || c.agg === 'count') c.y = '';
+    c.y = c.agg === 'count' ? '' : pid(c.y);
     if (['x', 'y_desc', 'y_asc', 'manual'].indexOf(c.sort) < 0) c.sort = 'x';
     if (['num', 'pct', 'eur'].indexOf(c.fmt) < 0) c.fmt = 'num';
     if (c.agg === 'pct_checked') c.fmt = 'pct';
     if (['day', 'week', 'month', 'quarter', 'year'].indexOf(c.bucket) < 0) delete c.bucket;
     if (c.status !== true) delete c.status;
-    if (!(ser.indexOf(c.type) >= 0 && typeof c.series === 'string' && c.series && c.series !== 'title')) delete c.series;
-    if (typeof c.limit === 'number' && isFinite(c.limit) && Math.round(c.limit) === c.limit) c.limit = Math.max(3, Math.min(50, c.limit)); else delete c.limit;
+    if (!(ser.indexOf(c.type) >= 0 && pid(c.series) && c.series !== 'title')) delete c.series;
+    // int in Python: ganzzahlig und ohne Exponent im JSON (< 1e21)
+    if (typeof c.limit === 'number' && Math.round(c.limit) === c.limit && Math.abs(c.limit) < 1e21) c.limit = Math.max(3, Math.min(50, c.limit)); else delete c.limit;
     if (!((c.type === 'line' || c.type === 'area') && c.cumulative === true)) delete c.cumulative;
     if (!(['bar', 'hbar', 'area'].indexOf(c.type) >= 0 && c.stack === true && c.series)) delete c.stack;
     if (c.empty !== 'show') delete c.empty;
     if (!(typeof c.goal === 'number' && isFinite(c.goal) && Math.abs(c.goal) < 1e12)) delete c.goal;
-    if (c.sort !== 'manual' || !Array.isArray(c.order)) delete c.order;
-    if (typeof c.view !== 'string') c.view = '';
-    if (!(typeof c.db === 'number' && c.db > 0 && Math.round(c.db) === c.db)) c.db = null;
+    if (c.sort === 'manual' && Array.isArray(c.order)) {
+      var ord = c.order.slice(0, 50).filter(function (x) { return typeof x === 'string' && x && x.indexOf('<') < 0; }).map(function (x) { return wgCp(x, 64); });
+      if (ord.length) c.order = ord; else delete c.order;
+    } else delete c.order;
+    c.view = typeof c.view === 'string' && !/[\x00-\x1f<>"'&]/.test(c.view) ? wgCp(c.view, 64) : '';   // page_widgets._id
+    if (!(typeof c.db === 'number' && c.db > 0 && Math.round(c.db) === c.db && c.db < 9223372036854775808)) c.db = null;
     return c;
   }
   function wgFmt(v, fmt) {
@@ -10292,6 +10298,7 @@
          readOnly: function () { return readOnly(); }, deltaUsed: function () { return S.deltaUsed || 0; },
          calcNum: calcNum,                                      // Widgets/Fusszeile (tests/seiten_widgets.js: gemeinsame Testvektoren)
          chartTicks: chartTicks,                                // 2.5 Paket 4: Achsen (tests/browser_widgets2.js, tests/chart_ticks.json)
+         wgChartClean: wgChartClean, wgChartKeys: WG_CHART_KEYS,  // Bugs-DB 2361: = saga/dbcalc.clean_chart_spec (tests/browser_widget_slash_neu.js)
          onDocChange: onDocChange,                              // Editor-Fassade (static/editor-doc.js)
          // 2.5 (Tiptap T2, static/pm-editor.js): Farb-Slash, Verweis-Auswahl mit eigenem Einfuegen, Dienste
          slashColor: slashColor, services: function () { return S.services || []; },
