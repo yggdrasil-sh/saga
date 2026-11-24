@@ -2016,6 +2016,7 @@
     if (p && p.then) p.then(function () {
       if (c.audioBlocked) { c.audioBlocked = false; c.snd = ''; drawInfo(c); }
     }, function (e) {
+      diagPlay(roomOf(c), 'direkt', e);
       if (e && e.name === 'NotAllowedError' && !c.done && ra.paused) { c.audioBlocked = true; c.snd = 'blocked'; drawInfo(c); }
     });
   }
@@ -3320,6 +3321,16 @@
     D.e.push(x); if (D.e.length > 100) D.e.shift();
     D.he.push(x); if (D.he.length > 100) D.he.shift();
   }
+  // Bugs-DB 2357: Wiedergabe eines Tonplatzes abgewiesen (play(), z. B. NotAllowedError = Autoplay) - je Stelle und Grund
+  // hoechstens alle 10 s ein Ereignis "play"
+  function diagPlay(R, where, e) {
+    var D = diagOf(R); if (!D) return;
+    var k = where + ':' + String((e && e.name) || 'Fehler').replace(/[^A-Za-z]/g, '').slice(0, 40), now = Date.now();
+    D.pl = D.pl || {};
+    if (now - (D.pl[k] || 0) < 10000) return;
+    D.pl[k] = now;
+    diagEv(R, 'play', k);
+  }
   function diagMeta(R, path, transport, node) { var D = diagOf(R); if (D) { D.path = path; D.transport = transport || '?'; D.node = node || ''; } }
   function diagN(v) { return typeof v === 'number' && isFinite(v) && v >= 0 ? Math.round(v) : undefined; }
   // Ein Stats-Bericht -> Proben (nur Video, inbound und outbound); pre = Praefix der Quelle (Knoten 'v', direkt 'p' + Geraet)
@@ -3327,8 +3338,9 @@
     var D = diagOf(R); if (!D || !rep) return;
     var now = Date.now(), rtt, srcOf = {};
     rep.forEach(function (x) { if (x.type === 'candidate-pair' && (x.nominated || x.selected) && x.state === 'succeeded' && typeof x.currentRoundTripTime === 'number') rtt = x.currentRoundTripTime * 1000; });
-    rep.forEach(function (x) { if (x.type === 'media-source' && x.kind === 'video') srcOf[x.id] = x; });
+    rep.forEach(function (x) { if (x.type === 'media-source' && (x.kind === 'video' || x.kind === 'audio')) srcOf[x.id] = x; });
     rep.forEach(function (x) {
+      if ((x.type === 'inbound-rtp' || x.type === 'outbound-rtp') && (x.kind || x.mediaType) === 'audio') { diagAud(D, x, pre, now, rtt, srcOf); return; }
       if ((x.type !== 'inbound-rtp' && x.type !== 'outbound-rtp') || (x.kind || x.mediaType) !== 'video') return;
       var out = x.type === 'outbound-rtp', key = pre + x.id;
       if (now - (D.at[key] || 0) < DIAG_SAMPLE - 300) return;
@@ -3360,6 +3372,25 @@
       D.hs.push(sm); if (D.hs.length > 300) D.hs.shift();
     });
     if (now - D.last >= DIAG_EVERY) diagFlush(R);
+  }
+  // Bugs-DB 2357: Ton-Probe (kind "a") je Spur, hoechstens alle 5 s - Empfang: Pakete, Verlust, Pegel (audioLevel x 100),
+  // Zuwachs totalAudioEnergy (x 1000), abgespielte und verdeckte Samples (concealedSamples = nichts zum Abspielen da);
+  // Senden: Rate und Pegel der Quelle (media-source). Leere Tonplaetze (nie ein Paket) erscheinen nicht.
+  function diagAud(D, x, pre, now, rtt, srcOf) {
+    var out = x.type === 'outbound-rtp', key = pre + 'a' + x.id;
+    if (now - (D.at[key] || 0) < DIAG_SAMPLE - 300) return;
+    var cur = { ts: x.timestamp || now, b: (out ? x.bytesSent : x.bytesReceived) || 0, pk: (out ? x.packetsSent : x.packetsReceived) || 0,
+                lost: x.packetsLost || 0, en: x.totalAudioEnergy || 0, smp: x.totalSamplesReceived || 0, conc: x.concealedSamples || 0 };
+    var p = D.prev[key]; D.prev[key] = cur; D.at[key] = now;
+    if (!p || (!out && !cur.pk)) return;               // erste Messung bzw. Platz ohne Ton: nur Ausgangswerte
+    var dt = Math.max(1, cur.ts - p.ts) / 1000, d = function (k) { return Math.max(0, cur[k] - p[k]); };
+    var src = out && x.mediaSourceId ? srcOf[x.mediaSourceId] : null, lv = out ? src && src.audioLevel : x.audioLevel;
+    var sm = { t: diagT(D), dir: out ? 'out' : 'in', kind: 'a', src: String(pre + (x.mid != null ? x.mid : '')).replace(/[^A-Za-z0-9_\-:.]/g, '').slice(0, 16),
+               kbps: diagN(d('b') * 8 / 1000 / dt), pkts: d('pk'), rtt: diagN(rtt), alvl: typeof lv === 'number' ? diagN(lv * 100) : undefined };
+    if (!out) { sm.lost = d('lost'); sm.aen = Math.round(d('en') * 1e5) / 100; sm.smp = d('smp'); sm.conc = d('conc'); }
+    Object.keys(sm).forEach(function (k) { if (sm[k] === undefined) delete sm[k]; });
+    D.s.push(sm); if (D.s.length > 200) D.s.shift();
+    D.hs.push(sm); if (D.hs.length > 300) D.hs.shift();
   }
   // Senden: alle 30 s bzw. beim Auflegen. Der Server nimmt hoechstens 1 Meldung je 15 s an - beim Auflegen kurz danach
   // (Seite bleibt offen) wartet die letzte Meldung bis dahin; beim Schliessen der Seite geht sie sofort (keepalive).
@@ -4412,7 +4443,7 @@
         if (R.ui) R.ui.w.appendChild(a);
         if (R.sinkId && a.setSinkId) a.setSinkId(R.sinkId).catch(function () {});
         a.srcObject = new MediaStream([tr.receiver.track]); a.muted = !R.spkOut;
-        var p = a.play(); if (p && p.catch) p.catch(function () { R.audioBlocked = true; drawInfo(R); });
+        var p = a.play(); if (p && p.catch) p.catch(function (e) { R.audioBlocked = true; diagPlay(R, 'neu', e); drawInfo(R); });
         conn.audios.push(a); conn.aLeg = conn.legs[k];
       });
     });
@@ -4485,7 +4516,7 @@
         a._sel = !!(d && pick[d] && pick[d].a === a);
         var m = !R.spkOut || !!(d && !a._sel);
         if (a.muted !== m) a.muted = m;
-        if (!m && a.paused) a.play().catch(function () {});
+        if (!m && a.paused) a.play().catch(function (e) { diagPlay(R, 'platz', e); });
       });
     });
     return onCur;

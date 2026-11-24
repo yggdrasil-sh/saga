@@ -6,7 +6,7 @@ ausserhalb -> 400; unbekannte Felder werden verworfen), Groesse (> 32 KB -> 413)
 und Anruf -> 429, anderes Konto bzw. anderer Anruf nicht betroffen), Log-Zeile "calldiag" (eine je POST, Konto nur als
 Hash, kein Konto-/Anzeigename, keine IP-Adresse, unbekannte Felder nicht im Log), Admin-Schalter calls.diag (aus -> 404,
 Feature fehlt; Admin-Oberflaeche hat den Schalter). 2.5 (Labor 2.11.): Geraete-CPU je Probe (qcpu, qbw, encms, fdrop, decms,
-fzms) im Log. Wegwerf-Konten ca-dg*; raeumt auf."""
+fzms) im Log. Bugs-DB 2357: Ton-Proben (kind "a": pkts, alvl, aen, smp, conc) und Ereignis "play". Wegwerf-Konten ca-dg*; raeumt auf."""
 import json
 import os
 import re
@@ -29,9 +29,11 @@ def body(cid, **kw):
                       "freeze": 1, "kf": 1, "rtt": 38, "qlr": "", "enc": "", "fdrop": 2, "decms": 3.4, "fzms": 420},
                      {"t": 3000, "dir": "out", "src": "v0", "rid": "h", "fps": 30, "h": 720, "kbps": 1400, "lost": 0, "nack": 0, "pli": 2,
                       "freeze": 0, "kf": 2, "rtt": 38, "qlr": "bandwidth", "enc": "MediaCodec (c2.qti.avc.encoder)",
-                      "qcpu": 1800, "qbw": 0, "encms": 12.5, "fdrop": 7}],
+                      "qcpu": 1800, "qbw": 0, "encms": 12.5, "fdrop": 7},
+                     {"t": 3000, "dir": "in", "kind": "a", "src": "va0", "kbps": 31.5, "pkts": 250, "lost": 1, "rtt": 38, "alvl": 12,
+                      "aen": 4.25, "smp": 240000, "conc": 960}],
          "events": [{"t": 2500, "k": "layers", "d": "v est=1800 s0:m3@ab12"}, {"t": 2900, "k": "quality", "d": "good>mid"},
-                    {"t": 2950, "k": "tx", "d": "L0>L1 rtt=330 base=160 turn"}]}
+                    {"t": 2950, "k": "tx", "d": "L0>L1 rtt=330 base=160 turn"}, {"t": 2960, "k": "play", "d": "neu:NotAllowedError"}]}
     b.update(kw)
     return b
 
@@ -108,6 +110,9 @@ def run():
            ("sample fdrop negativ", body(cid, samples=[dict(body(cid)["samples"][0], fdrop=-2)])),
            ("sample src zu lang", body(cid, samples=[dict(body(cid)["samples"][0], src="a" * 17)])),
            ("sample src mit Name", body(cid, samples=[dict(body(cid)["samples"][0], src="Anna Diagnose")])),
+           ("sample kind", body(cid, samples=[dict(body(cid)["samples"][2], kind="ton")])),
+           ("sample pkts negativ", body(cid, samples=[dict(body(cid)["samples"][2], pkts=-1)])),
+           ("sample alvl Text", body(cid, samples=[dict(body(cid)["samples"][2], alvl="laut")])),
            ("event k", body(cid, events=[{"t": 1, "k": "chat", "d": ""}])),
            ("event d > 120", body(cid, events=[{"t": 1, "k": "path", "d": "x" * 121}])),
            ("event t Bool", body(cid, events=[{"t": True, "k": "path", "d": ""}]))]
@@ -145,7 +150,7 @@ def run():
            and not [ln for ln in lines if "geheim-feld" in ln or '"ip"' in ln or '"name"' in ln])
         ok(f"Zeile: Anruf gekuerzt, Plattform, Weg, Knoten, Zaehler ({a.get('call')}, {a.get('n')})",
            a.get("call") == cid[:12] and a.get("plat") == "android" and a.get("path") == "horn" and a.get("node") == "horn-1.example.org"
-           and a.get("n") == [2, 3])
+           and a.get("n") == [3, 4])
         ok("Zeile: Proben und Ereignisse vollstaendig (rid, qlr, enc, kbps)",
            a.get("samples", [{}, {}])[1].get("rid") == "h" and a["samples"][1].get("qlr") == "bandwidth"
            and a["samples"][1].get("enc", "").startswith("MediaCodec") and a["samples"][0].get("kbps") == 812.5
@@ -153,6 +158,10 @@ def run():
         ok("Zeile: Geraete-CPU (2.5, Labor): qcpu/encms/fdrop gesendet, fdrop/decms/fzms empfangen",
            a.get("samples", [{}, {}])[1].get("qcpu") == 1800 and a["samples"][1].get("encms") == 12.5 and a["samples"][1].get("fdrop") == 7
            and a["samples"][0].get("fdrop") == 2 and a["samples"][0].get("decms") == 3.4 and a["samples"][0].get("fzms") == 420)
+        ax = (a.get("samples") or [{}, {}, {}])[2]
+        ok(f"Zeile: Ton-Probe (Bugs-DB 2357): kind, pkts, alvl, aen, smp, conc; Ereignis play ({ax})",
+           ax.get("kind") == "a" and ax.get("pkts") == 250 and ax.get("alvl") == 12 and ax.get("aen") == 4.25 and ax.get("smp") == 240000
+           and ax.get("conc") == 960 and (a.get("events") or [{}] * 4)[3].get("k") == "play")
         ok("zwei Konten -> zwei verschiedene Hashes", len(recs) == 2 and recs[0]["acct"] != recs[1]["acct"])
         # Admin -> Diagnose (saga/diagstore.py): dieselben Eintraege in diag_event (ref = Anruf-ID gekuerzt)
         from db import connect

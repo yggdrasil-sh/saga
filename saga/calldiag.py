@@ -35,13 +35,19 @@ DIRS = ("in", "out")
 RIDS = ("l", "m", "h", "")
 QLRS = ("none", "cpu", "bandwidth", "other", "")
 KINDS = ("layers", "thermal", "switch", "quality", "path", "tx",   # tx: Sendestufe auf TCP/TLS (A1)
-         "ho-fail")                   # 2.5: Uebernahme gescheitert - Zustand je Verbindung (Web, static/calls.js linkDiag)
+         "ho-fail",                   # 2.5: Uebernahme gescheitert - Zustand je Verbindung (Web, static/calls.js linkDiag)
+         "play")                      # Bugs-DB 2357: Wiedergabe eines Tonplatzes gescheitert (play() abgewiesen, Autoplay)
 NUMS = ("fps", "h", "kbps", "lost", "nack", "pli", "freeze", "kf", "rtt",
         # 2.5 (Labor 2.11., Stottern durch Geraete-CPU): out - qcpu/qbw = ms, die der Kodierer seit der letzten Probe durch
         # CPU bzw. Bandbreite begrenzt war (qualityLimitationDurations), encms = mittlere Kodierzeit je Rahmen, fdrop = Rahmen
         # der Quelle, die der Kodierer nicht kodiert hat; in - fdrop = verworfene Rahmen (framesDropped), decms = mittlere
         # Dekodierzeit je Rahmen, fzms = Dauer der Standbilder (totalFreezesDuration)
-        "qcpu", "qbw", "encms", "fdrop", "decms", "fzms")
+        "qcpu", "qbw", "encms", "fdrop", "decms", "fzms",
+        # Bugs-DB 2357 (Ton, nur mit kind "a"): pkts = empfangene Pakete, alvl = aktueller Pegel x 100 (audioLevel, in vom
+        # Empfaenger, out von der Quelle), aen = Zuwachs totalAudioEnergy x 1000, smp = Zuwachs totalSamplesReceived,
+        # conc = Zuwachs concealedSamples (verdeckt = nichts zum Abspielen da)
+        "pkts", "alvl", "aen", "smp", "conc")
+SKINDS = ("a", "v", "")                         # Bugs-DB 2357: Art der Probe - Ton "a", Bild "v" bzw. "" (aeltere Clients: Bild)
 _HEX32 = re.compile(r"[0-9a-f]{32}")
 _APP = re.compile(r"[A-Za-z0-9._+\-]{0,40}")
 _NODE = re.compile(r"[A-Za-z0-9.\-:\[\]]{0,253}")
@@ -115,6 +121,9 @@ def clean(b):
         for k in NUMS:
             if s.get(k) is not None:
                 x[k] = _num(s[k], f"samples[{i}].{k}")
+        sk = _str(s, "kind", enum=SKINDS, need=False)
+        if sk:
+            x["kind"] = sk
         q = _str(s, "qlr", enum=QLRS, need=False)
         if q:
             x["qlr"] = q

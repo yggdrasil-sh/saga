@@ -2910,7 +2910,7 @@ Kopf `X-Saga: 1`), Body JSON ≤ 32 KB, **alle 30 s** während des Anrufs und **
  "samples": [{"t": 33000, "dir": "in|out", "src": "<kurze Kennung der Quelle, nie Name>", "rid": "l|m|h|''",
               "fps": 24, "h": 540, "kbps": 812, "lost": 3, "nack": 4, "pli": 1, "freeze": 1, "kf": 1, "rtt": 38,
               "qlr": "none|cpu|bandwidth|other|''", "enc": "<encoderImplementation|''>"}],
- "events": [{"t": 31000, "k": "layers|thermal|switch|quality|path|tx|ho-fail", "d": "<kurzer Text ≤ 120 Zeichen>"}]}
+ "events": [{"t": 31000, "k": "layers|thermal|switch|quality|path|tx|ho-fail|play", "d": "<kurzer Text ≤ 120 Zeichen>"}]}
 ```
 
 | Feld | Regel |
@@ -2924,6 +2924,7 @@ Kopf `X-Saga: 1`), Body JSON ≤ 32 KB, **alle 30 s** während des Anrufs und **
 | Zahlen | `fps h kbps lost nack pli freeze kf rtt` optional, Zahl ≥ 0 (kein Text, kein Bool); Zähler sind **Zuwächse seit der letzten Probe derselben Quelle**, `fps`/`h` aktuelle Werte, `kbps` Mittel seit der letzten Probe, `rtt` ms |
 | `qlr`, `enc` | `qualityLimitationReason` (nur `out`), `encoderImplementation` ≤ 60 Zeichen |
 | Geräte-CPU (2.5) | optional, Zahl ≥ 0, Zuwachs seit der letzten Probe: `out` – `qcpu`/`qbw` = ms, die der Kodierer durch CPU bzw. Bandbreite begrenzt war (`qualityLimitationDurations`), `encms` = mittlere Kodierzeit je Rahmen (ms, `totalEncodeTime`/`framesEncoded`), `fdrop` = Rahmen der Kamera, die nicht kodiert wurden (`media-source.frames` − `framesEncoded`; nur Schichten mit voller Bildrate); `in` – `fdrop` = `framesDropped`, `decms` = mittlere Dekodierzeit je Rahmen, `fzms` = Dauer der Standbilder (`totalFreezesDuration`). Werte 0 weglassen. Ältere Server verwerfen die Felder still. |
+| Ton (2.5, Bugs-DB 2357) | optional `kind`: `"a"` = Ton-Spur, `"v"` bzw. fehlt = Bild (ältere Clients melden nur Bild). Zahlen nur mit `kind` `"a"`, ≥ 0: `pkts` = Pakete seit der letzten Probe, `alvl` = aktueller Pegel × 100 (`in`: `audioLevel` der Empfangsspur, `out`: der Quelle), `in` zusätzlich `aen` = Zuwachs `totalAudioEnergy` × 1000, `smp` = Zuwachs `totalSamplesReceived`, `conc` = Zuwachs `concealedSamples` (verdeckt: nichts zum Abspielen da); `kbps`, `lost`, `rtt` wie beim Bild. Ältere Server verwerfen die Felder still. |
 | `events` | ≤ 100; `k` einer der Werte oben, `d` ≤ 120 Zeichen |
 
 Unbekannte Felder werden verworfen (nicht geloggt). Falscher Typ/Wert → `400 {error}` (Feldname in Klammern),
@@ -2932,7 +2933,9 @@ wiederholen). Erfolg: `200 {"ok": true}`.
 
 **Was das Web sendet** (Referenz `static/calls.js`, `diagRep`): je Quelle höchstens alle 5 s eine Probe aus den
 ohnehin laufenden `getStats` – Empfang (`inbound-rtp`, Bild) je Spur (`src` = `v<Bein a|v|b><mid>` am Knoten, `p<Gerät>:<mid>`
-direkt), Senden (`outbound-rtp`) je Simulcast-Schicht `rid` mit `qlr` und `enc`. Ereignisse: `layers` (Belegung der
+direkt), Senden (`outbound-rtp`) je Simulcast-Schicht `rid` mit `qlr` und `enc`; Ton (`kind` `"a"`, Bugs-DB 2357) je
+Empfangsspur, die schon Pakete bekam, und je Sendespur. Ereignisse: `play` (Wiedergabe eines Tonplatzes abgewiesen, `d` =
+Stelle `neu`/`platz`/`direkt` und Fehlername, z. B. `neu:NotAllowedError`; höchstens alle 10 s je Stelle und Grund), `layers` (Belegung der
 Plätze aus dem Knoten-Ereignis `layout`, z. B. `v est=1800 t0:m3@ab12 s1:p` = Bein, geschätzte kbit/s, Platz:Schicht+Tid
 bzw. pausiert, Kennungspräfix; beim Platz, der gerade wechselte, ggf. `!Grund,Rate,Live-Zeit,wWartezeit` aus den
 Slot-Feldern `why`/`src_kbit`/`live_ms`/`hold_ms`, z. B. `s0:l3@ab12!gone,31k,12.4s,w3s` – Gründe `budget`, `gone`
