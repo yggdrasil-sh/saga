@@ -27,7 +27,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   den Empfehlungen, je Konto umstellbar. Fokus-Namen der Geräte speichert Saga nicht (RT-29). Neue Tabelle
   `user_status`, Migration 37 (`chat_call.hold`); geht mit dem Konto und ins persönliche Backup (Einstellungen und
   Ausnahmen). Noch ohne Wirkung auf Anrufe und Mitteilungen und ohne Oberfläche. Fähigkeit `userstatus1` in
-  `/api/version`, `status1` in `/api/chat/me`; Vertrag in `docs/APP-API.md` („Eigener Status“). Tests:
+  `/api/version`, `userstatus1` in `/api/chat/me`; Vertrag in `docs/APP-API.md` („Eigener Status“). Tests:
   `tests/reachability.py`, `tests/status_fehler.py`; Perf „Status: reachability“ (`limits.json`).
 - **Gemeinsame Werkzeug-Registry für MCP und Kollegin** (Bugs-DB 2266 K-A3, Server): `saga/tools.py` hält alle
   Werkzeuge mit Bereich, Schema und neuen Feldern (`klass` read/own/out, `undo`, `mcp`, `kollegin`, `destructive`,

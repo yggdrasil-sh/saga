@@ -3820,7 +3820,7 @@ Geräte des Kontos (Server), die Frage kommt also nur einmal. Später unter Eins
 ## Eigener Status: Verfügbar / Beschäftigt / Nicht stören (2.6, Bugs-DB 2029, `userstatus1`)
 
 Je Konto ein Status mit optionalem Ende und kurzem Text. Erkennbar an `userstatus1` in `/api/version` (`status1` dort ist
-weiterhin der Datenbank-Status aus 2.5 Paket 5) bzw. `status1` in `GET /api/chat/me` → `features`. Additiv, `MIN_APP`
+weiterhin der Datenbank-Status aus 2.5 Paket 5) bzw. `userstatus1` in `GET /api/chat/me` → `features`. Additiv, `MIN_APP`
 unverändert. Die Wirkung auf Anrufe (Anklopfen, zurückgehaltene Anrufe), Mitteilungen und die Anzeige bei anderen kommt
 in den Schritten 2029-2 bis 2029-4; 2029-1 liefert Speicher, API, Ablauf und die Entscheidungsstelle im Server.
 

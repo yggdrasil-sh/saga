@@ -214,7 +214,7 @@ def run():
     ok("/api/version: userstatus1, status1 (Datenbank-Status) bleibt", "userstatus1" in d.get("features", []) and
        "status1" in d.get("features", []))
     s, d = req("GET", "/api/chat/me", ka)
-    ok(f"/api/chat/me: features status1 ({s})", s == 200 and "status1" in (d.get("features") or []))
+    ok(f"/api/chat/me: features userstatus1 ({s})", s == 200 and "userstatus1" in (d.get("features") or []))
     s, d = req("GET", "/api/status", ka)
     ok(f"GET /api/status bleibt der Dienst-Status des Dashboards ({s})", s == 200 and isinstance(d, dict) and "effective" not in d)
     print("OFFEN Sammelmeldung nach Nicht stoeren / Ruhezeit (2029-3, push) - nicht Teil von 2029-1", flush=True)
