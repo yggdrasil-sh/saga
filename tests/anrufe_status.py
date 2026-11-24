@@ -13,7 +13,9 @@ Person darf einmal anklopfen · in_call busy -> besetzt · nach dem Gespraech ge
 Versuchen), auch spaeter nicht noch einmal · 1:1 ueber Knoten mit Nicht stoeren: hold dnd, call.quiet mit dm, keine
 Einladung, kein Push · features waiting1 · klingelnder (noch nicht angenommener) Anruf: weiter besetzt, nicht "im Anruf"
 (kein Anklopfen) · im Prozess: user_status.call_changed (status.call, 2029-4) nach Annehmen/Ende mit beiden Konten,
-IN_CALL nur fuer angenommene Anrufe; ring_gate fuer Gruppen, Personen anderer Server und unbekannte Art.
+IN_CALL nur fuer angenommene Anrufe; ring_gate fuer Gruppen, Personen anderer Server und unbekannte Art · Ende zu Ende
+"im Anruf" bei Chat-Partnern (chat.status in_call/available live; mit Online-Status aus kein Ereignis) · eine Uhr: Anruf-
+und Push-Weiche entscheiden mit verstellter Testuhr gleich (Nicht stoeren mit Ende, Wiederholungsanruf, Sammelmeldung).
 Wegwerf-Konten ca-s*; raeumt auf."""
 import http.server
 import json
@@ -316,6 +318,47 @@ def run():
     end(H, h1)
     status(B, state="available")
     HD.setting(horn=False)
+    in_call_part(G, B, Cc, gb)               # Gabi: Anna/Emil/Frieda haben die Paar-Grenze (3/min) schon fast erreicht
+
+
+def in_call_part(A, B, Cc, ab):
+    """2029 Ende zu Ende: calls.changed -> user_status.call_changed -> SHOWN_HOOKS -> chat_status.status_changed -> Live
+    chat.status bei Chat-Partnern. A (hier Gabi) ruft Ben an, Ben nimmt an -> Cora (Chat mit Ben, beide Online-Status an) sieht
+    "im Anruf", nach dem Ende wieder verfuegbar. Ben mit Online-Status aus: Cora bekommt gar nichts (auch kein Ereignis,
+    dessen Zeitpunkt den Anruf verriete)."""
+    sC = A_.Stream(Cc.k)
+    time.sleep(0.5)
+    s, pr = req("POST", "/api/chat/presence", Cc.k, {"users": [B.uid]})
+    ok(f"im Anruf: Cora sieht Bens Status ueber den gemeinsamen Chat ({s}, {pr.get('status')})",
+       s == 200 and (pr.get("status") or {}).get(B.uid) == {"s": "available"})
+    is_b = lambda st: (lambda x: x.get("username") == B.uid and (x.get("status") or {}).get("s") == st)     # noqa: E731
+    mC = sC.mark()
+    i1, s, _ = A_.call(A, B, ab)
+    ok(f"... klingelnd: noch nicht im Anruf (kein chat.status bei Cora) ({s})", s == 200 and sC.none("chat.status", mC, 1.0))
+    s2, _ = answer(B, B.dev, i1, A)
+    e = sC.wait("chat.status", is_b("in_call"), mC)
+    ok(f"Ben nimmt an: Cora bekommt live chat.status in_call ({s2}, {e})", s2 == 200 and e is not None and e["status"] == {"s": "in_call"})
+    s, pr = req("POST", "/api/chat/presence", Cc.k, {"users": [B.uid]})
+    ok(f"... presence zeigt dasselbe ({pr.get('status')})", (pr.get("status") or {}).get(B.uid) == {"s": "in_call"})
+    mC = sC.mark()
+    end(A, i1)
+    e = sC.wait("chat.status", is_b("available"), mC)
+    ok(f"Ende: Cora bekommt live chat.status available ({e})", e is not None and e["status"] == {"s": "available"})
+    s, _ = req("PUT", "/api/chat/privacy", B.k, {"online": False})
+    time.sleep(1.5)
+    mC = sC.mark()
+    i2, s1, _ = A_.call(A, B, ab)
+    s2, _ = answer(B, B.dev, i2, A)
+    time.sleep(2.0)
+    s, pr = req("POST", "/api/chat/presence", Cc.k, {"users": [B.uid]})
+    mid = (pr.get("status") or {}).get(B.uid)
+    end(A, i2)
+    time.sleep(2.5)
+    evs = [(t_, x) for t_, x in sC.ev[mC:] if t_ in ("chat.status", "chat.presence") and x.get("username") == B.uid]
+    ok(f"Ben Online-Status aus: Anruf angenommen ({s1}, {s2}), presence ohne im Anruf ({mid})", s1 == 200 and s2 == 200 and mid == {"s": "available"})
+    ok(f"... Cora bekommt waehrend Anruf und Ende kein Ereignis zu Ben ({evs})", not evs)
+    req("PUT", "/api/chat/privacy", B.k, {"online": True})
+    sC.close()
 
 
 def in_process():
