@@ -73,8 +73,10 @@ CONDS = ("if_yes", "if_no", "if_none_by")
 STEP_STATES = ("offen", "laeuft", "wartet", "erledigt", "uebersprungen", "fehlgeschlagen")
 CRASH_POINTS = ("after_approve", "before_write", "after_write", "mid_compensate")
 # Wirkungen, die der Stempel festhaelt: Ereignis -> (Ziel-Praefix, Feld mit der Kennung)
+# notes.tree (Feld ids = Liste): neue Seite/Zeile (pages.note_create feuert sonst kein Stempel-Ereignis), auch Verschieben,
+# Papierkorb ... unter einem Schritt (Pruefer K-A2: create_page war ungestempelt -> nach Absturz/zweitem Versuch doppelt)
 STAMP_TARGETS = {"note.saved": ("note", "note_id"), "row.changed": ("row", "note_id"), "task.created": ("task", "task_id"),
-                 "task.completed": ("task", "task_id"), "comment.added": ("comment", "comment_id")}
+                 "task.completed": ("task", "task_id"), "comment.added": ("comment", "comment_id"), "notes.tree": ("note", "ids")}
 
 LEASE = 60                       # s: so lange gehoert ein Auftrag nach dem Holen einem Worker
 MAX_ACTIVE = 5                   # nicht beendete Auftraege je Person (RT-28)
@@ -411,7 +413,11 @@ def steps_of(job_id):
 def _stamp(c, name, a, data):
     """In der Schreib-Transaktion: Wirkung festhalten. Fehler -> der Schreibvorgang scheitert (bus.fire reicht weiter)."""
     spec = STAMP_TARGETS.get(name)
-    if spec is None or data.get(spec[1]) is None:
+    if spec is None:
+        return
+    v = data.get(spec[1])
+    refs = [x for x in (v if isinstance(v, (list, tuple)) else (v,)) if x is not None]
+    if not refs:
         return
     if a.job_id is None or a.step is None:
         raise StepTaken("Schreiben unter Schritt-Schluessel ohne Auftrag")
@@ -421,8 +427,9 @@ def _stamp(c, name, a, data):
         raise StepTaken("Auftrag oder Schritt laeuft nicht mehr")
     if c.execute("SELECT 1 FROM job_change WHERE idem_key=? AND attempt IS DISTINCT FROM ? LIMIT 1", (a.idem, a.attempt)).fetchone():
         raise StepTaken("Schritt hat schon gewirkt (anderer Versuch)")
-    c.execute("INSERT INTO job_change (job_id, step_n, idem_key, attempt, target, at) VALUES (?, ?, ?, ?, ?, ?) "
-              "ON CONFLICT (idem_key, target) DO NOTHING", (a.job_id, a.step, a.idem, a.attempt, f"{spec[0]}:{data[spec[1]]}", now()))
+    for x in refs:
+        c.execute("INSERT INTO job_change (job_id, step_n, idem_key, attempt, target, at) VALUES (?, ?, ?, ?, ?, ?) "
+                  "ON CONFLICT (idem_key, target) DO NOTHING", (a.job_id, a.step, a.idem, a.attempt, f"{spec[0]}:{x}", now()))
 
 
 bus.set_stamp(_stamp)

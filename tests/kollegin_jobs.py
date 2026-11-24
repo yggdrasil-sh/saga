@@ -363,6 +363,92 @@ def part_idem():
     ok("Schritt-Schluessel ohne Auftrag: kein Schreiben", refused and not KT.q("SELECT 1 FROM task WHERE text='ohne Auftrag'"))
 
 
+def part_stamp_page():
+    """Pruefer K-A2: neue Seite (pages.note_create, Werkzeug create_page) feuert nur notes.tree - auch das wird gestempelt;
+    ein zweiter Versuch legt keine zweite Seite an. task.completed feuert je Abhaken genau einmal (Web/API und Widget)."""
+    from saga import pages
+    jid = mk(kind="test.task", steps=[{"tool": "create_page"}])
+    go(jid)
+    key = f"{jid}:0:1"
+    with connect() as c, c:
+        c.execute("UPDATE job_step SET state='laeuft', idem_key=? WHERE job_id=? AND n=0", (key, jid))
+    with acting(Actor("service", "svc:kollegin", on_behalf_of=A, job_id=jid, step=0, idem=key, attempt="p1")):
+        nid = json.loads(pages.note_create(A, {"title": "KJ Stempel Seite"}).body)["id"]
+    ok(f"neue Seite unter einem Schritt: Stempel note:<id> ({changes(jid)})", (0, f"note:{nid}") in changes(jid))
+    try:
+        with acting(Actor("service", "svc:kollegin", on_behalf_of=A, job_id=jid, step=0, idem=key, attempt="p2")):
+            pages.note_create(A, {"title": "KJ Stempel Seite 2"})
+        refused = False
+    except jobs.StepTaken:
+        refused = True
+    ok("zweiter Versuch: keine zweite Seite (Stempel verweigert, alles zurueck)",
+       refused and not KT.q("SELECT 1 FROM note WHERE uid=? AND title='KJ Stempel Seite 2'", (A,)))
+    r = pages.note_create(A, {"title": "KJ Person Seite"})
+    ok("ohne Akteur: Person legt Seite wie bisher an (kein Stempel)", r.status_code == 200 and len(changes(jid)) == 1)
+    jobs.cancel(jid, A)
+    with connect() as c, c:
+        c.execute("DELETE FROM note WHERE uid=? AND title LIKE 'KJ % Seite%'", (A,))
+    seen = []
+    fn = lambda c, **d: seen.append(d.get("task_id"))      # noqa: E731
+    bus.on("task.completed", fn)
+    try:
+        tid = json.loads(tasks.task_add(A, {"text": "KJ einmal"}).body)["id"]
+        tasks.task_update(A, tid, {"done": True, "text": "KJ einmal!"})
+        tasks.task_update(A, tid, {"done": True})
+        tasks.task_update(A, tid, {"done": False})
+    finally:
+        bus._hooks["task.completed"].remove(fn)
+    ok(f"task.completed je Abhaken genau einmal, erneutes Abhaken/Oeffnen ohne Ereignis ({seen})", seen == [tid])
+
+
+def part_race():
+    """Pruefer K-A2: zwei Versuche desselben Schritts schreiben GLEICHZEITIG (beide Transaktionen offen) - der zweite
+    wartet am FOR UPDATE des Schritts und bekommt danach StepTaken; genau eine Wirkung."""
+    jid = mk(kind="test.task", steps=[{"tool": "create_task"}])
+    go(jid)
+    key = f"{jid}:0:1"
+    with connect() as c, c:
+        c.execute("UPDATE job_step SET state='laeuft', idem_key=? WHERE job_id=? AND n=0", (key, jid))
+    inside, release = threading.Event(), threading.Event()
+
+    def hold(c, **d):
+        a = actor.current()
+        if a is not None and a.attempt == "r1":
+            inside.set()
+            release.wait(20)
+    bus.on("task.created", hold)
+    out = {}
+
+    def run(att, text):
+        try:
+            with acting(Actor("service", "svc:kollegin", on_behalf_of=A, job_id=jid, step=0, idem=key, attempt=att)):
+                tasks.task_add(A, {"text": text})
+            out[att] = "ok"
+        except jobs.StepTaken:
+            out[att] = "taken"
+        except Exception as ex:  # noqa: BLE001
+            out[att] = repr(ex)
+    try:
+        ta = threading.Thread(target=run, args=("r1", "KJ Wettlauf A"))
+        ta.start()
+        inside.wait(10)
+        tb = threading.Thread(target=run, args=("r2", "KJ Wettlauf B"))
+        tb.start()
+        tb.join(1.0)
+        waited = tb.is_alive()
+        release.set()
+        ta.join(20)
+        tb.join(20)
+    finally:
+        release.set()
+        bus._hooks["task.created"].remove(hold)
+    ok(f"gleichzeitig: zweiter Versuch wartet am Schritt, dann StepTaken ({out}, gewartet {waited})",
+       waited and out == {"r1": "ok", "r2": "taken"})
+    ok("gleichzeitig: genau eine Aufgabe, ein Stempel",
+       len(KT.q("SELECT 1 FROM task WHERE uid=? AND text LIKE 'KJ Wettlauf %'", (A,))) == 1 and len(changes(jid)) == 1)
+    jobs.cancel(jid, A)
+
+
 def part_stamp_noop():
     seen = []
     bus.on("kj.test", lambda c, **d: seen.append(d))
@@ -677,6 +763,8 @@ def main():
         clock(T0)
         part_event()
         part_idem()
+        part_stamp_page()
+        part_race()
         part_stamp_noop()
         part_idle()
         part_lease()
