@@ -1,5 +1,5 @@
 # Release: VERSION auf main erhoehen (+ Abschnitt in CHANGELOG.md) -> Tag v<VERSION>, Docker-Image
-# (amd64 + arm64) nach ghcr.io und GitHub-Release mit den Notizen aus CHANGELOG.md.
+# (amd64 + arm64) nach ghcr.io und GitHub-Release mit den Notizen aus docs/release-notes/<VERSION>.md bzw. CHANGELOG.md.
 # Alternativ ein Tag v1.2.3 pushen (muss zu VERSION passen). Gibt es das Tag schon, passiert nichts.
 name: Release
 
@@ -31,8 +31,14 @@ jobs:
           fi
           grep -q "^## \[$V\]" CHANGELOG.md || { echo "::error::CHANGELOG.md hat keinen Abschnitt [$V]"; exit 1; }
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          # Release-Notizen: Abschnitt dieser Version aus dem Changelog
-          awk -v v="$V" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ && on {exit} on' CHANGELOG.md > notes.md
+          # Release-Notizen: docs/release-notes/<V>.md, falls vorhanden (kurze Fassung, z. B. Englisch + Deutsch),
+          # sonst der Abschnitt dieser Version aus dem Changelog. Ueber 125 000 Zeichen lehnt GitHub ab (HTTP 422) -
+          # notes-entschaerfen.py kuerzt deshalb an einer Zeilengrenze (2.5: [Unveroeffentlicht] hatte ~300 000 Zeichen).
+          if [ -s "docs/release-notes/$V.md" ]; then
+            cp "docs/release-notes/$V.md" notes.md
+          else
+            awk -v v="$V" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ && on {exit} on' CHANGELOG.md > notes.md
+          fi
           # @Wort nicht als GitHub-Erwaehnung verlinken (sonst landen fremde Konten unter "Contributors")
           python3 tools/notes-entschaerfen.py < notes.md > notes.safe.md && mv notes.safe.md notes.md
 

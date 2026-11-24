@@ -16,9 +16,28 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+## [2.5.0] – 2026-11-XX
+
 > **Beta:** Saga ist im Alltag nutzbar, aber noch jung – mach regelmäßig Backups; einige Funktionen (vor allem Anrufe
 > über Gjallarhorn) sind ausdrücklich experimentell. Die Versionsnummer bleibt ohne Zusatz; „Beta“ ist eine Einordnung,
 > kein eigener Update-Kanal.
+
+Kurzfassung mit Upgrade-Hinweisen und bekannten Grenzen (Englisch und Deutsch): [docs/release-notes/2.5.0.md](docs/release-notes/2.5.0.md),
+Schritt für Schritt: [docs/UPGRADE-2.5.md](docs/UPGRADE-2.5.md). Datenbank: Die Migrationen bis Schema-Stand 35 laufen beim
+Start automatisch (2.4: 14), vorher legt Saga ein Backup an. Die App-Mindestversion bleibt 1.0.0.
+
+### Höhepunkte
+
+- **Eine Domain, nur Port 443:** hinter einem Proxy, der TLS selbst beendet, genügen ein Name, Port 443 und „Websockets
+  Support“; optional nimmt Saga mit `SAGA_TLS=1` HTTPS selbst an („Ein Port“).
+- **Anrufe und Gruppen über den eingebauten Knoten Gjallarhorn** (experimentell, ab Werk aus) – Apps im Tunnel, Browser
+  über den Rahmen-Weg, beides über die normale Saga-Adresse. Mit Gjallarhorn laufen alle Anrufe über den Knoten, auch
+  1:1 (Grundsatz Y); aus einem 1:1 wird eine Konferenz, Personen lassen sich in den laufenden Anruf holen.
+- **Tiptap ist Standard-Editor**, live gleichzeitig bearbeiten (Admin-Schalter) auch über Servergrenzen.
+- **Moderne Chats (Stufe 3) sind Standard**, mit Gruppen-Admins, Kontakten, Anheften, Stummschalten mit Dauer.
+- **Seiten und Datenbanken:** Unterseiten in der Elternseite, Saga-Siegel, Titelbild-Galerie, Widgets und Diagramme,
+  Formeln, Rollups, Zeitleiste, CSV-Export; Import aus Notion, Trilium, Markdown/Obsidian und CSV.
+- **API-Tokens, `/api/v1`, Webhooks und MCP-Server**; im Admin-Bereich „Diagnose“ und die Karte „Netz“.
 
 ### Doku – Projektseite neu gestaltet (alle Sprachen)
 - `docs/index.html` und `docs/en|es|ru|th/index.html` neu für Selbsthoster: Startbereich („Eine Domain, nur Port 443“,

@@ -22,9 +22,9 @@ Inhalt: [1. Vorher](#1-vorher) · [2. Aktualisieren](#2-aktualisieren) · [3. Re
    # {"name":"Saga","version":"2.4.0",...,"schema":14,...}
    ```
 
-   `schema` ist der Stand der Datenbank: **9** bei 2.3, **14** bei 2.4. Saga 2.5 hebt ihn auf **35** (Stand der
-   Release Candidates im November 2026; ein späterer Release Candidate kann weitere Migrationen bringen – `schema` in
-   `/api/version` zeigt immer den aktuellen Wert). Von 2.3 geht es direkt auf 2.5, alle Migrationen laufen
+   `schema` ist der Stand der Datenbank: **9** bei 2.3, **14** bei 2.4. Saga 2.5.0 hebt ihn auf **35** (spätere Versionen
+   wie 2.5.x oder 2.6 können weitere Migrationen bringen – `schema` in `/api/version` zeigt immer den aktuellen
+   Wert). Von 2.3 geht es direkt auf 2.5, alle Migrationen laufen
    nacheinander; lies dann zusätzlich den Abschnitt „Von 2.3 auf 2.4“ in der [Anleitung](ANLEITUNG.md#updates)
    (u. a. Gravatar wird für alle Konten abgeschaltet, neuer Dienst saga-media).
 
@@ -197,8 +197,8 @@ Blick nach dem Update.
 
 Für alles Neue in 2.5 brauchen die Personen **Apps 2.5** ([Saga-Apps](https://github.com/yggdrasil-sh/saga-apps/releases)):
 
-- **Android:** `Saga-<Version>.apk` – bis zum Release aus der **Vorabversion** `v2.5.0-rc.N` (Pre-release, nicht
-  „Latest“), danach aus dem normalen Release. Installation aus unbekannten Quellen erlauben.
+- **Android:** `Saga-2.5.0.apk` aus dem Release (Release Candidates aus der **Vorabversion** `v<Version>-rc.N`,
+  Pre-release, nicht „Latest“). Installation aus unbekannten Quellen erlauben.
 - **iPhone/iPad:** keine Version im App Store. Entweder verteilt der Betreiber die App selbst (z. B. per MDM) oder
   die Personen nutzen Saga als **Web-App** (Safari → Teilen → „Zum Home-Bildschirm“). Safari telefoniert in 2.5 noch
   nicht über den Rahmen-Weg: Anrufe aus der Web-App laufen direkt bzw. über einen Knoten mit UDP oder TURN-TLS – hinter
