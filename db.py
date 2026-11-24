@@ -1685,7 +1685,7 @@ def init_schema():
         if cur is not None and cur > SCHEMA_VERSION:
             raise SchemaTooNew(f"Die Datenbank hat Schema-Stand {cur}, diese Saga-Version kennt nur {SCHEMA_VERSION}. "
                                "Bitte die neuere Saga-Version verwenden oder das Backup von vor dem Update zurueckspielen "
-                               "(siehe Anleitung, Abschnitt Aktualisieren).")
+                               "(siehe Anleitung, Abschnitt 11 \u201eSicherung, Wiederherstellung, Updates\u201c).")
         if cur is not None and cur < SCHEMA_VERSION and os.environ.get("SAGA_SKIP_BACKUP") != "1":
             # VOR allen Aenderungen sichern (pg_dump nutzt eine eigene Verbindung; hier sind noch keine Sperren gesetzt)
             p = backup(f"vor-schema-{SCHEMA_VERSION}")

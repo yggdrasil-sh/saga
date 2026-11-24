@@ -34,6 +34,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Release-Push zeigt nicht mehr „rc“** (Bugs-DB 2335): Beim Release-Commit schiebt nur noch `release.yml` die Images
+  `:latest`, `:2`, `:testing` und `:rc` (alle mit der Release-Version); `testing.yml` erkennt den Release-Commit an
+  derselben Regel und baut dann nur `:testing-<commit>`. Vorher gewann je nach Laufzeit das rc-Label.
+- **Meldung „Schema zu neu“** verweist auf den richtigen Abschnitt der Anleitung (11 „Sicherung, Wiederherstellung,
+  Updates“) (Bugs-DB 2337).
+- `tools/saga-testing-einrichten.sh`: Standard-Kanal ist jetzt `2` (statt `testing`), `testing-<commit>` wird angenommen
+  (Bugs-DB 2336).
 - **Wiederholte Datenmarker in KI-Antworten** (gefunden mit fake-evil, K-T 2265): Gibt das Modell die Marker des
   Datenrahmens oder die Kennung wieder, fallen sie jetzt auch in KI-Antworten im Chat und im gespeicherten Verlauf weg
   (bisher nur bei den Seiten-Hilfen) – `ai.strip_markers`.

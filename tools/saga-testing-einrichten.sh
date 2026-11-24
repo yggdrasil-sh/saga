@@ -5,7 +5,7 @@
 #
 #   Saga-Ordner  Ordner mit docker-compose.yml und .env (Standard: aktueller Ordner)
 #   Kanal        2 = jeder neue Stand von main (bis 3.0 der eine Kanal: Testversionen 2.5.1-rc.N und Releases)
-#                testing / rc = gleich wie 2 (Standard des Skripts, aelterer Name)
+#                (Standard; testing / rc = derzeit gleich wie 2, aelterer Name - springen bei 3.0 mit)
 #                2.5 = nur Releases 2.5.x  |  2.5.0 = genau dieses Release
 #
 # Was das Skript macht:
@@ -24,7 +24,7 @@
 set -eu
 
 DIR=${1:-$(pwd)}
-CH=${2:-testing}
+CH=${2:-2}
 
 die() { echo "FEHLER: $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || die "bitte mit sudo bzw. als root ausfuehren"
@@ -35,7 +35,7 @@ DIR=$(cd "$DIR" && pwd) || die "Ordner $1 nicht gefunden"
 [ -f "$DIR/.env" ] || die "$DIR/.env fehlt - ist das der Saga-Ordner?"
 found=; for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do [ -f "$DIR/$f" ] && found=1; done
 [ -n "$found" ] || die "keine docker-compose.yml in $DIR"
-case "$CH" in testing|rc|[0-9]*) ;; *) die "unbekannter Kanal '$CH' (2, 2.5, 2.5.0, testing ...)" ;; esac
+case "$CH" in testing|rc|testing-[0-9a-f]*|[0-9]*) ;; *) die "unbekannter Kanal '$CH' (2, 2.5, 2.5.0, testing-<commit> ...)" ;; esac
 cd "$DIR"
 docker compose config --services 2>/dev/null | grep -qx saga || die "kein Dienst 'saga' in der Compose-Datei"
 

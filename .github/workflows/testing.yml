@@ -35,6 +35,15 @@ jobs:
         id: v
         run: |
           SHORT="${GITHUB_SHA::7}"
+          # Release-Commit (gleiche Regel wie release.yml: datierter CHANGELOG-Abschnitt fuer VERSION, Tag fehlt noch
+          # oder zeigt auf genau diesen Commit)? Dann schiebt release.yml :latest/:<major>/:testing/:rc mit dem
+          # Release-Label - hier nur :testing-<commit>, sonst gewinnt je nach Laufzeit das rc-Label (Bugs-DB 2335).
+          V0="$(tr -d ' \r\n' < VERSION)"; REL=0
+          if grep -Eq "^## \[$(printf '%s' "$V0" | sed 's/\./\\./g')\] – [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md; then
+            T="$(git rev-parse -q --verify "refs/tags/v$V0^{commit}" || true)"
+            if [ -z "$T" ] || [ "$T" = "$GITHUB_SHA" ]; then REL=1; fi
+          fi
+          echo "release=$REL" >> "$GITHUB_OUTPUT"
           FULL="$(sh tools/rc-version.sh "$GITHUB_SHA")"     # z. B. 2.2.0-rc.7+1cc210f
           echo "$FULL" > VERSION
           echo "version=${FULL%%+*}" >> "$GITHUB_OUTPUT"
@@ -42,6 +51,16 @@ jobs:
           echo "short=$SHORT" >> "$GITHUB_OUTPUT"
           case "${FULL%%.*}" in ''|*[!0-9]*) echo "::error::Hauptversion aus '$FULL' unlesbar (VERSION pruefen)"; exit 1;; esac
           echo "major=${FULL%%.*}" >> "$GITHUB_OUTPUT"
+          R="ghcr.io/$GITHUB_REPOSITORY"; H="ghcr.io/$GITHUB_REPOSITORY_OWNER/gjallarhorn"
+          {
+            echo "tags<<EOT"; echo "$R:testing-$SHORT"
+            [ "$REL" = 1 ] || printf '%s\n' "$R:testing" "$R:rc" "$R:latest" "$R:${FULL%%.*}"
+            echo "EOT"
+            echo "horn_tags<<EOT"; printf '%s\n' "$H:${FULL%%+*}" "$H:testing-$SHORT"
+            [ "$REL" = 1 ] || printf '%s\n' "$H:testing" "$H:latest"
+            echo "EOT"
+          } >> "$GITHUB_OUTPUT"
+          [ "$REL" = 0 ] || echo "::notice::Release-Commit $V0 - :testing/:rc/:latest/:${FULL%%.*} schiebt release.yml"
 
       # Gjallarhorn vorab pruefen: Fehler erscheinen als Annotationen (lesbar ohne Log-Zugriff)
       - uses: actions/setup-go@v5
@@ -85,12 +104,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:testing
-            ghcr.io/${{ github.repository }}:rc
-            ghcr.io/${{ github.repository }}:testing-${{ steps.v.outputs.short }}
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ steps.v.outputs.major }}
+          tags: ${{ steps.v.outputs.tags }}
           labels: |
             org.opencontainers.image.version=${{ steps.v.outputs.full }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -104,11 +118,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: VERSION=${{ steps.v.outputs.version }}
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/gjallarhorn:testing
-            ghcr.io/${{ github.repository_owner }}/gjallarhorn:${{ steps.v.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/gjallarhorn:testing-${{ steps.v.outputs.short }}
-            ghcr.io/${{ github.repository_owner }}/gjallarhorn:latest
+          tags: ${{ steps.v.outputs.horn_tags }}
           labels: |
             org.opencontainers.image.version=${{ steps.v.outputs.full }}
             org.opencontainers.image.revision=${{ github.sha }}
