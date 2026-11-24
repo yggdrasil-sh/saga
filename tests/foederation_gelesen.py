@@ -6,8 +6,11 @@ Backup-Schluessel, signiert mit Geraet + Handle + chat_ref, ueber das Heim), Nac
 gegenseitig aus (Zuruecknahme ueber das Heim, nichts gespeichert), freie Gruppe ueber Servergrenzen ("gelesen von" je
 Person, Weitergabe vom Heim an die anderen Server), Online-Status (Abo beim Server der Person, online/offline-Wechsel,
 nur mit gemeinsamem Chat, aus = nichts), Faelschung (fremder Handle) wird verworfen, kein Zeiger im Klartext.
-Kompatibilitaet: FED_B_23=1 mit FED_B_APP = Saga 2.3 -> A schickt nichts davon, keine Serverfehler. Raeumt auf."""
-import json, os, sys, time
+Kompatibilitaet: FED_B_23=1 mit FED_B_APP = Saga 2.3 -> A schickt nichts davon, keine Serverfehler. Raeumt auf.
+2.6 (Bugs-DB 2029, 2029-4): eigener Status ueber Servergrenzen (Faehigkeit userstatus1, Feld st in 'online'/'online.ev'):
+live <= 2 s, nie Text/Fokus an den anderen Server, "im Anruf" (call), ohne userstatus1 auf einer Seite nichts in beide
+Richtungen, gefaelschter Fokus-Text eines anderen Servers wird verworfen (auch nicht im Log)."""
+import json, os, secrets, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation_chat as FT  # noqa: E402  (Ports/Datenbanken, api, User, Events)
@@ -174,8 +177,121 @@ def part_main():
     ok("B aus: Bert sieht Anna nicht (gegenseitig)", api("b", "fb-bert", "POST", "/api/chat/presence", {"users": ["@" + anna.handle]})[1]["enabled"] is False)
     api("b", "fb-bert", "PUT", "/api/chat/privacy", {"online": True})
     evA.close()
+    part_status(anna, bert)
     ok("Gelesen-Zeiger bleibt lokal: last_read nicht im Ausgangskorb",
        not sql("a", "SELECT 1 FROM fed_outbox WHERE payload LIKE '%last_read%'") and not sql("b", "SELECT 1 FROM fed_outbox WHERE payload LIKE '%last_read%'"))
+
+
+def st_put(k, uid, **b):
+    return api(k, uid, "PUT", "/api/account/status", b)
+
+
+def rstatus(k, uid, who, users=False):
+    """Status (bzw. mit users: Online-Eintrag) von who aus POST /api/chat/presence; bei 429 kurz warten."""
+    for _ in range(3):
+        s, d = api(k, uid, "POST", "/api/chat/presence", {"users": [who]})
+        if s != 429:
+            break
+        time.sleep(2.5)
+    if s != 200:
+        return "ERR"
+    return (d.get("users") if users else d.get("status") or {}).get(who)
+
+
+def ev_of(ev, mk, who, pred=None):
+    return next((x for t_, x in list(ev.ev)[mk:] if t_ == "chat.status" and x.get("username") == who and (pred is None or pred(x.get("status") or {}))), None)
+
+
+def log_of(k):
+    try:
+        return open(os.path.join(T.I[k]["state"], "server.log"), errors="replace").read()
+    except OSError:
+        return ""
+
+
+def part_status(anna, bert):
+    """Eigener Status ueber Servergrenzen (2029-4)."""
+    caps_of = lambda k: json.loads(sql(k, "SELECT caps FROM fed_peer")[0][0] or "[]")  # noqa: E731
+    ok("A und B: Faehigkeit userstatus1 ausgehandelt", wait(lambda: "userstatus1" in caps_of("a") and "userstatus1" in caps_of("b"), 20))
+    # --- ohne userstatus1 (A tut so, als koenne B es nicht): nichts in beide Richtungen ---------------------------------
+    T.py("a", "import auth\nauth.create_user('fa-nina', 'Fed-User-Pass-123', 'Nina')\nprint(1)")
+    T.py("b", "import auth\nauth.create_user('fb-tom', 'Fed-User-Pass-123', 'Tom')\nprint(1)")
+    nina, tom = FT.User("a", "fa-nina"), FT.User("b", "fb-tom")
+    s, d = api("a", "fa-nina", "POST", "/api/chats", {"kind": "dm", "handle": tom.handle, "device": nina.dev["id"]})
+    nc = d["chat"]
+    nina.send(nc, "Hallo Tom")
+    tc = wait(lambda: tom.chat(nc["ref"]), 10)
+    accept(tom, tc)
+    tn, nt = "@" + tom.handle, "@" + nina.handle
+    caps = caps_of("a")
+    sql("a", "UPDATE fed_peer SET caps=?", (json.dumps([x for x in caps if x != "userstatus1"]),))
+    try:
+        st_put("b", "fb-tom", state="dnd", text="Geheim-Tom")
+        st_put("a", "fa-nina", state="dnd", text="Geheim-Nina")
+        ok("ohne userstatus1: Abo laeuft (Online-Eintrag da)", wait(lambda: rstatus("a", "fa-nina", tn, users=True) not in (None, "ERR"), 15, 1.5)
+           and wait(lambda: rstatus("b", "fb-tom", nt, users=True) not in (None, "ERR"), 15, 1.5))
+        time.sleep(1.5)
+        ok("ohne userstatus1: A sieht Toms Status nicht, B sieht Ninas Status nicht",
+           rstatus("a", "fa-nina", tn) is None and rstatus("b", "fb-tom", nt) is None)
+    finally:
+        sql("a", "UPDATE fed_peer SET caps=?", (json.dumps(caps),))
+        st_put("b", "fb-tom", state="available")
+        st_put("a", "fa-nina", state="available")
+    ok("ohne userstatus1: Texte nicht beim anderen Server (Log)", "Geheim-Nina" not in log_of("b") and "Geheim-Tom" not in log_of("a"))
+    # --- mit userstatus1 -------------------------------------------------------------------------------------------------
+    me, an = "@" + bert.handle, "@" + anna.handle
+    evA, evB = FT.Events("a", "fa-anna"), FT.Events("b", "fb-bert")
+    time.sleep(1.0)
+    st_put("a", "fa-anna", state="available")
+    st_put("b", "fb-bert", state="available")
+    ok("A: Status von Bert (vom Server B) verfuegbar", wait(lambda: rstatus("a", "fa-anna", me) == {"s": "available"}, 15, 1.5))
+    ok("B: Status von Anna (vom Server A) verfuegbar", wait(lambda: rstatus("b", "fb-bert", an) == {"s": "available"}, 15, 1.5))
+    mk = len(evA.ev)
+    t0 = time.time()
+    s, v = st_put("b", "fb-bert", state="dnd", dur=900, text="Kundentermin-Bert")
+    e = wait(lambda: ev_of(evA, mk, me, lambda x: x.get("s") == "dnd"), 5, 0.05)
+    dt = time.time() - t0
+    ok(f"A: Bert nicht stoeren live ueber Servergrenzen in {dt:.2f} s ({e})", s == 200 and bool(e) and dt <= 2.0)
+    es = (e or {}).get("status") or {}
+    ok("A: ohne Text, Ende im 5-Minuten-Raster", bool(e) and "text" not in es and bool(es.get("until")) and es["until"] % 300 == 0
+       and v["until"] <= es["until"] < v["until"] + 300)
+    ok("A: presence zeigt denselben Stand", rstatus("a", "fa-anna", me) == es)
+    mk = len(evA.ev)
+    st_put("b", "fb-bert", state="busy", source="focus", text="Therapie-Bert")
+    e = wait(lambda: ev_of(evA, mk, me, lambda x: x.get("s") == "busy"), 5, 0.05)
+    ok(f"A: Fokus -> beschaeftigt, ohne Text ({e})", bool(e) and e["status"] == {"s": "busy"})
+    # "im Anruf" (call): Anruf von Bert als Zeile auf B, dann Statuswechsel -> st.call
+    bchat = bert.chats()[0]["id"]
+    call = secrets.token_hex(16)
+    now = time.time()
+    sql("b", "INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, answered, seen_a, seen_b, kind) "
+        "VALUES (?,?,?,?,?,'audio','active',?,?,?,?,'dm')", (call, bchat, "fb-bert", "fb-olga", bert.dev["id"], now, now, now + 300, now + 300))
+    try:
+        mk = len(evA.ev)
+        st_put("b", "fb-bert", state="available")
+        e = wait(lambda: ev_of(evA, mk, me, lambda x: x.get("s") in ("in_call", "available")), 5, 0.05)
+        ok(f"A: Bert im Anruf (st.call, beide Online-Status an) ({e})", bool(e) and e["status"] == {"s": "in_call"})
+        api("a", "fa-anna", "PUT", "/api/chat/privacy", {"online": False})
+        ok("A: Anna Online-Status aus -> Bert nicht im Anruf (Status darunter)", rstatus("a", "fa-anna", me) == {"s": "available"})
+        api("a", "fa-anna", "PUT", "/api/chat/privacy", {"online": True})
+    finally:
+        sql("b", "DELETE FROM chat_call WHERE id=?", (call,))
+    # gefaelschter Fokus-Text: Server A meldet Anna mit text/focus -> B nimmt nur s
+    priv = FT.own_priv("a")
+    mk = len(evB.ev)
+    s, d = FT.signed_post("b", priv, "a", "/fed/v2/chat", {"op": "online.ev", "items": [{"h": anna.handle, "st": {
+        "s": "dnd", "text": "Therapie-Anna", "focus": "Therapie-Anna", "source": "focus"}}]})
+    e = wait(lambda: ev_of(evB, mk, an, lambda x: x.get("s") == "dnd"), 5, 0.05)
+    ok(f"B: gefaelschter Fokus-Text von A verworfen, nur der Status bleibt ({s}, {e})", s == 200 and bool(e) and e["status"] == {"s": "dnd"})
+    ok("B: presence ohne Text", rstatus("b", "fb-bert", an) == {"s": "dnd"})
+    s, d = FT.signed_post("b", priv, "a", "/fed/v2/chat", {"op": "online.ev", "items": [{"h": bert.handle, "st": {"s": "dnd"}}]})
+    ok(f"B: Status fuer eine Person von B (von A gemeldet) wird ignoriert ({s})", s == 200)
+    ok("Texte nie beim anderen Server (Log A/B)", all(x not in log_of("a") for x in ("Kundentermin-Bert", "Therapie-Bert"))
+       and "Therapie-Anna" not in log_of("b"))
+    st_put("a", "fa-anna", state="available")
+    st_put("b", "fb-bert", state="available")
+    evA.close()
+    evB.close()
 
 
 def part_b23():

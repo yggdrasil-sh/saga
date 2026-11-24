@@ -707,6 +707,15 @@ Die frühere Regel „Gelesen bleibt lokal“ gilt nur noch für den Lese-Zeiger
   Chat `ref` haben und den Status zeigen. Wechsel meldet der Server der Person verwerfbar mit
   `{"op": "online.ev", "items": [{"h", "online", "last"} | {"h", "hidden": true}]}`; angenommen werden nur Handles des
   meldenden Servers. „Zuletzt online“ geht nur gerundet (5 Minuten) über die Leitung.
+- Eigener Status (2.6, Bugs-DB 2029, Fähigkeit `userstatus1` in `CAPS2`, Admin-Schalter „Chat“, **beide** Server): Die
+  Antwort auf `online` trägt je Person zusätzlich `st` – auch für Personen, die den Online-Status nicht zeigen (dann
+  `{"hidden": true, "st": …}`) –, und `online.ev` meldet Wechsel als `{"h", "st"}` (ohne `online` = nur der Status):
+  `st = {"s": "available"|"busy"|"dnd", "until"?: <Unix-Sekunden, 5-Minuten-Raster>, "call"?: true}`. Das sind nur die
+  Werte, die andere sehen (`user_status.shown_parts()`): **nie Text, nie Fokus, nie Ausnahmelisten**, keine Ruhezeiten;
+  `call` nur, wenn die Person `show_call` an hat und ihren Online-Status zeigt (der abonnierende Server zeigt `in_call`
+  nur Konten, die ihren Online-Status ebenfalls zeigen). Eingehend zählen nur `s`, `until`, `call` – weitere Felder
+  (z. B. ein gefälschter `text`/`focus`) werden verworfen; angenommen nur für Handles des meldenden Servers. Ohne
+  `userstatus1` auf einer Seite: kein `st` (gesendet wie empfangen), alles andere wie oben.
 
 ## Erwähnungen in Chats über Servergrenzen (2.5, `chatmention1`)
 

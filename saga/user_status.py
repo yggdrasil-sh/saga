@@ -17,7 +17,7 @@ Wirksamer Zustand: dnd (manuell) > Ruhezeit (geplantes Nicht stoeren, aus den Mi
 
 reachability(c, uid, caller, kanal) ist die EINE Entscheidungsstelle fuer die naechsten Schritte: 2029-2 (Anrufe,
 calls/fed_calls: route knock/busy/hold, chat_call.hold='dnd'), 2029-3 (Mitteilungen, push: push/sound, why 'quiet' =
-ohne Sammelmeldung) und 2029-4 (Anzeige/Foederation: shown()). Sie rufen nur noch auf.
+ohne Sammelmeldung) und 2029-4 (Anzeige/Foederation: shown_parts(), Haken SHOWN_HOOKS/call_changed). Sie rufen nur noch auf.
 
 2029-3: saga.push fragt reachability() vor jeder Mitteilung (Haken push.REACH); das Ende eines Nicht stoeren meldet
 bus "status.dnd_end" (set_status/expire_once, gleiche Transaktion) - daraus macht saga.push die Sammelmeldung status.digest.
@@ -77,6 +77,9 @@ _PREF_OK = {"quiet_dnd": lambda v: isinstance(v, bool), "quiet_digest": lambda v
 
 # Haken (keine Zyklen): IN_CALL(c, uid, call_id) -> bool. saga.calls setzt beim Import calls._busy_other ein.
 IN_CALL = None
+# 2029-4 (saga.chat_status): fn(c, uid) nach jeder Aenderung des eigenen Status (in der Transaktion von c; die Zuhoerer
+# rechnen die Anzeige bei anderen nach dem Commit neu) und bei Beginn/Ende eines Anrufs (call_changed, ruft 2029-2).
+SHOWN_HOOKS = []
 
 Reach = namedtuple("Reach", "route push sound why")
 """route: normal (wie bisher) | knock (Anruf als Anklopfen) | busy (Anruf sofort besetzt) | hold (Anruf: nicht klingeln,
@@ -257,6 +260,36 @@ def _dnd_end(c, uid, since, end):
     bus.fire("status.dnd_end", c, uid=uid, since=since, end=end)
 
 
+def shown_parts(c, uid, now=None):
+    """Anzeige bei anderen (2029-4, saga.chat_status) -> {s, until, text, call}. s: available|busy|dnd (selbst gesetzt;
+    Ruhezeiten zaehlen nicht), until: exaktes Ende (das Raster macht der Aufrufer), text: nur bei source manual (RT-29: nie
+    ein Fokus-Name), call: im Anruf und show_call an (nie bei dnd). Ob "im Anruf" gezeigt wird (geteilter Online-Status)
+    und ob der Text den Server verlassen darf (nie), entscheidet der Aufrufer."""
+    now = testclock.now() if now is None else now
+    row, parsed = _load(c, uid)
+    m = _manual(row, now)
+    live = row is not None and m == row["state"]
+    call = m != "dnd" and parsed["prefs"]["show_call"] and _in_call(c, uid)
+    text = row["text"] if live and row["source"] == "manual" and row["text"] else None
+    return {"s": m, "until": row["until"] if live and m != "available" else None, "text": text, "call": bool(call)}
+
+
+def _hooks(c, uid):
+    for fn in list(SHOWN_HOOKS):
+        try:
+            fn(c, uid)
+        except Exception as ex:  # noqa: BLE001 - die Anzeige bei anderen darf den Statuswechsel nie verhindern
+            print(f"user_status: Haken {type(ex).__name__}", flush=True)       # RT-29: nie Text/Werte ins Log
+
+
+def call_changed(c, uid, in_call=None):
+    """2029-2 (calls/fed_calls): "im Anruf" von uid hat sich geaendert (Anruf begonnen/angenommen/beendet, Gruppe betreten/
+    verlassen) -> die Anzeige bei Chat-Partnern wird nach dem Commit von c neu verteilt (saga.chat_status.on_call_change).
+    in_call ist nur ein Hinweis - massgeblich ist IN_CALL nach dem Commit. Personen anderer Server: nichts (deren Server)."""
+    if uid and not sharing.is_remote(uid):
+        _hooks(c, uid)
+
+
 def shown(c, uid, now=None):
     """Was andere sehen (Haken fuer 2029-4): {state: available|busy|in_call|dnd, until}. Ruhezeiten und Text nicht."""
     now = testclock.now() if now is None else now
@@ -308,6 +341,7 @@ def view(c, uid, now=None):
 def _changed(c, uid):
     """Live-Ereignis status.changed an die eigenen Verbindungen (nach dem Commit)."""
     bus.emit_after(c, "direct", {"uids": [uid], "typ": "status.changed", "data": view(c, uid)})
+    _hooks(c, uid)                                # 2029-4: Chat-Partner (chat.status) und andere Server (online.ev st)
 
 
 # =====================================================================================================

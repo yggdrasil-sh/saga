@@ -40,6 +40,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   gleichzeitig, mehreren Prozessen oder Absturz mitten im Wechsel. Zähler in `user_kv` (`status_held`, nur Zahlen), keine
   Migration. Vertrag in `docs/APP-API.md` („Wirkung auf Mitteilungen und Sammelmeldung“, Nutzlast-Felder `silent`,
   `digest`). Tests: `tests/push.py`, `tests/status_fehler.py`.
+- **Eigener Status bei Chat-Partnern und über Servergrenzen** (Bugs-DB 2029, Schritt 2029-4, Server):
+  `POST /api/chat/presence` liefert zusätzlich `status {name: {s, until?, text?}}` (auch bei ausgeschaltetem Online-Status,
+  nur bei gemeinsamem angenommenem Chat; Ende im 5-Minuten-Raster, Text nur bei selbst gesetztem Status und nur auf
+  demselben Server, „im Anruf“ nur mit `show_call` und beidseitigem Online-Status), Live-Ereignis `chat.status` über das
+  bestehende Abo; Haken `user_status.call_changed` für „im Anruf“ aus den Anrufen. Föderiert mit der Fähigkeit
+  `userstatus1` (beide Seiten): Feld `st {s, until?, call?}` in `online`/`online.ev` – nie Text, Fokus oder Ausnahmen,
+  eingehend weitere Felder verworfen. Verträge: `docs/APP-API.md` („Anzeige bei anderen“), `docs/APP-API-FED.md`
+  (Abschnitt 11). Tests: `tests/chat_gelesen.py`, `tests/foederation_gelesen.py`.
 - **Runner `ai.task` für die Kollegin** (Bugs-DB 2266 K-A6, Server, Gerüst ohne Planer und ohne Oberfläche):
   `saga/ai_task.py` führt einen freigegebenen Plan Schritt für Schritt über die Werkzeug-Registry aus – je Schritt ein
   Werkzeugaufruf mit dem internen Tok des Auftrags, in der Hintergrund-Spur und mit KI-Einheiten im Pool „Aufträge“.

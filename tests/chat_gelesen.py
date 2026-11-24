@@ -5,8 +5,11 @@ Schluessel, vom Geraet signiert, Live-Ereignis chat.receipt, GET /receipts), "au
 'off', sehen -> enabled false, eigene Bestaetigungen zurueckgezogen), Gruppen ("gelesen von" je Mitglied), Buendelung
 (hoechstens ein Ereignis je Chat und 2 s), Grenzen (Form, Groesse, fremde Empfaenger, Rate), Server sieht keinen Zeiger,
 Online-Status (nur Chat-Partner, online/offline aus der Live-Verbindung, "zuletzt online" im 5-Minuten-Raster, Abo,
-gegenseitig aus, Live-Ereignis chat.presence), Ausgetretene, Kontoloeschung. Wegwerf-Konten cg-*, Gruppe cg-team."""
-import json, os, sys, time
+gegenseitig aus, Live-Ereignis chat.presence), Ausgetretene, Kontoloeschung. Wegwerf-Konten cg-*, Gruppe cg-team.
+2.6 (Bugs-DB 2029, 2029-4): eigener Status in POST /api/chat/presence (status, auch bei enabled false, nur Chat-Partner,
+Ende im 5-Minuten-Raster, Text nur manuell, kein Fokus-Text), Live chat.status (<= 2 s), "im Anruf" nur mit show_call und
+beidseitigem Online-Status, RT-29 (Text weder im Fokus gespeichert noch im Server-Log)."""
+import json, os, secrets, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import auth  # noqa: E402
@@ -280,6 +283,7 @@ def run():
     ok("B aus: sieht auch A nicht (gegenseitig)", s == 200 and d["enabled"] is False and d["users"] == {})
     B.privacy(online=True)
     ok("B wieder an: sichtbar", req("POST", "/api/chat/presence", A.k, {"users": ["cg-b"]})[1]["users"].get("cg-b", {}).get("online") is True)
+    status_part(A, B, Cc, D, evA, gid)
 
     # --- Admin sieht nichts, Kontoloeschung ---------------------------------------------------------------------------
     with connect() as c:
@@ -293,6 +297,101 @@ def run():
                 c.execute("SELECT COUNT(*) FROM chat_seen WHERE uid='cg-b'").fetchone()[0],
                 c.execute("SELECT COUNT(*) FROM user_kv WHERE uid='cg-b'").fetchone()[0])
     ok(f"Kontoloeschung: Bestaetigungen, zuletzt online, Einstellungen weg ({left})", left == (0, 0, 0))
+
+
+def st_put(p, **b):
+    return req("PUT", "/api/account/status", p.k, b)
+
+
+def pres(p, users):
+    return req("POST", "/api/chat/presence", p.k, {"users": users})
+
+
+def status_part(A, B, Cc, D, evA, gid):
+    """Eigener Status bei Chat-Partnern (2029-4)."""
+    for p in (A, B, Cc, D):
+        st_put(p, state="available")
+    s, d = pres(A, ["cg-b", "cg-c", "cg-d", "cg-nobody"])
+    st = d.get("status") or {}
+    ok(f"Status: presence liefert status fuer Chat-Partner, ohne gemeinsamen Chat (C ausgetreten, unbekannt) nichts ({st})",
+       s == 200 and st == {"cg-b": {"s": "available"}, "cg-d": {"s": "available"}})
+    s, d = pres(D, ["cg-b"])
+    ok("Status: D ohne gemeinsamen Chat sieht den Status von B nicht", s == 200 and d.get("status") == {})
+    # Nicht stoeren mit Text und Ende -> Live an A (Abo laeuft), Ende im 5-Minuten-Raster
+    mk = evA.mark()
+    t0 = time.time()
+    s, v = st_put(B, state="dnd", dur=900, text="Im Kundentermin")
+    e = evA.wait("chat.status", lambda x: x.get("username") == "cg-b" and (x.get("status") or {}).get("s") == "dnd", mk, timeout=5)
+    dt = time.time() - t0
+    es = (e or {}).get("status") or {}
+    ok(f"Status: B nicht stoeren -> A live chat.status in {dt:.2f} s ({es})", s == 200 and bool(e) and dt <= 2.0 and es.get("text") == "Im Kundentermin")
+    ok("Status: Ende fuer andere im 5-Minuten-Raster (aufgerundet)", bool(es.get("until")) and es["until"] % 300 == 0
+       and v["until"] <= es["until"] < v["until"] + 300)
+    s, d = pres(A, ["cg-b"])
+    ok("Status: presence zeigt denselben Stand", d.get("status", {}).get("cg-b") == es)
+    # Fokus: kein Text (RT-29)
+    mk = evA.mark()
+    s, v = st_put(B, state="busy", source="focus", text="Therapie")
+    e = evA.wait("chat.status", lambda x: x.get("username") == "cg-b" and (x.get("status") or {}).get("s") == "busy", mk, timeout=5)
+    with connect() as c:
+        r = c.execute("SELECT text, source FROM user_status WHERE uid='cg-b'").fetchone()
+    ok(f"Status: Fokus -> beschaeftigt ohne Text bei A, nichts gespeichert ({e})", s == 200 and bool(e) and e["status"] == {"s": "busy"}
+       and "Therapie" not in json.dumps(e) and r == (None, "focus"))
+    # Eigener Online-Status aus: Status trotzdem (enabled false), live weiter
+    A.privacy(online=False)
+    s, d = pres(A, ["cg-b"])
+    ok(f"Status: A Online-Status aus -> enabled false, users leer, status trotzdem ({d.get('status')})",
+       s == 200 and d["enabled"] is False and d["users"] == {} and d.get("status", {}).get("cg-b") == {"s": "busy"})
+    mk = evA.mark()
+    st_put(B, state="dnd")
+    e = evA.wait("chat.status", lambda x: x.get("username") == "cg-b" and (x.get("status") or {}).get("s") == "dnd", mk, timeout=5)
+    ok("Status: A Online-Status aus -> chat.status kommt weiter", bool(e) and "until" not in e["status"])
+    A.privacy(online=True)
+    # "Im Anruf": nur mit show_call und beidseitigem Online-Status (Anruf B -> C als Zeile, ohne Klingeln)
+    st_put(B, state="available")
+    call = secrets.token_hex(16)
+    now = time.time()
+    with connect() as c, c:
+        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, callee_device, media, state, created, answered, "
+                  "seen_a, seen_b, kind) VALUES (?,?,?,?,?,?,'audio','active',?,?,?,?,'dm')",
+                  (call, gid, "cg-b", "cg-c", B.dev["id"], Cc.dev["id"], now, now, now + 300, now + 300))
+    try:
+        s, d = pres(A, ["cg-b", "cg-c"])
+        ok(f"Status: B im Anruf sichtbar, C (kein gemeinsamer Chat mehr) nicht ({d.get('status')})",
+           d.get("status") == {"cg-b": {"s": "in_call"}})
+        mk = evA.mark()
+        req("PUT", "/api/account/status/prefs", B.k, {"show_call": False})
+        e = evA.wait("chat.status", lambda x: x.get("username") == "cg-b", mk, timeout=5)
+        ok(f"Status: B show_call aus -> live verfuegbar statt im Anruf ({e})", bool(e) and e["status"] == {"s": "available"}
+           and pres(A, ["cg-b"])[1].get("status", {}).get("cg-b") == {"s": "available"})
+        mk = evA.mark()
+        req("PUT", "/api/account/status/prefs", B.k, {"show_call": True})
+        e = evA.wait("chat.status", lambda x: x.get("username") == "cg-b", mk, timeout=5)
+        ok("Status: B show_call an -> live im Anruf", bool(e) and e["status"] == {"s": "in_call"})
+        A.privacy(online=False)
+        ok("Status: A Online-Status aus -> B nicht im Anruf (Status darunter)", pres(A, ["cg-b"])[1].get("status", {}).get("cg-b") == {"s": "available"})
+        A.privacy(online=True)
+        mk = evA.mark()
+        B.privacy(online=False)
+        e = evA.wait("chat.status", lambda x: x.get("username") == "cg-b", mk, timeout=5)
+        s, d = pres(A, ["cg-b"])
+        ok(f"Status: B Online-Status aus -> A live ohne im Anruf, status bleibt, users ohne B ({e})",
+           bool(e) and e["status"] == {"s": "available"} and "cg-b" not in d["users"] and d.get("status", {}).get("cg-b") == {"s": "available"})
+        B.privacy(online=True)
+        st_put(B, state="dnd")
+        ok("Status: nicht stoeren geht vor im Anruf", pres(A, ["cg-b"])[1].get("status", {}).get("cg-b") == {"s": "dnd"})
+    finally:
+        with connect() as c, c:
+            c.execute("DELETE FROM chat_call WHERE id=?", (call,))
+    st_put(B, state="available", text="Im Buero")
+    s, d = pres(A, ["cg-b"])
+    ok("Status: verfuegbar mit Text (manuell) sichtbar", d.get("status", {}).get("cg-b") == {"s": "available", "text": "Im Buero"})
+    log = os.environ.get("SAGA_SERVER_LOG")
+    if log and os.path.exists(log):
+        txt = open(log, errors="replace").read()
+        ok("RT-29: Statustexte nicht im Server-Log", "Therapie" not in txt and "Kundentermin" not in txt and "Im Buero" not in txt)
+    for p in (A, B, Cc, D):
+        st_put(p, state="available")
 
 
 if not hasattr(CT, "wait_for"):

@@ -21,7 +21,16 @@ online" nur im 5-Minuten-Raster (chat_seen, kein Verlauf, nirgends fuer Admins s
 einen (angenommenen) Chat hat. Ausgeliefert nur an Konten, die die Person gerade abonniert haben (POST /api/chat/presence,
 90 s, erneuert vom Client, solange der Chat bzw. die Liste sichtbar ist). Ueber Servergrenzen: der eigene Server abonniert
 beim Server der Person (Auftrag 'online', 90 s), der meldet Wechsel (Auftrag 'online.ev', verwerfbar) - Muster wie bei der
-Seiten-Anwesenheit (saga.fed_pages)."""
+Seiten-Anwesenheit (saga.fed_pages).
+
+Eigener Status (2.6, Bugs-DB 2029, Schritt 2029-4; saga.user_status): POST /api/chat/presence liefert zusaetzlich status
+{name: {s, until?, text?}} - fuer dieselben Personen (gemeinsamer angenommener Chat), auch wenn der eigene Online-Status
+aus ist (enabled false). s: available|busy|dnd|in_call; until fuer andere im 5-Minuten-Raster (aufgerundet); text nur bei
+source manual und nur fuer Konten dieses Servers (RT-29: nie ein Fokus-Name, nie in Log/Admin). in_call nur, wenn die
+Person show_call an hat UND beide den Online-Status zeigen (sonst der Status darunter). Wechsel kommen als Live-Ereignis
+chat.status {username, status} an die Abos (dasselbe Abo wie chat.presence). Ueber Servergrenzen (Faehigkeit userstatus1,
+beide Seiten): Feld st {s, until?, call?} in den Antworten auf 'online' und in 'online.ev' - nur die Werte von
+user_status.shown_parts() ohne Text; Ausnahmelisten verlassen den Server nie; eingehend zaehlen nur s/until/call."""
 import math
 import threading
 import time
@@ -30,7 +39,7 @@ from fastapi import APIRouter, Request
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import bus, chat, fed_chat as FC, federation as F, live, sharing
+from saga import bus, chat, fed_chat as FC, federation as F, live, sharing, user_status as US
 from saga.core import _bad, _body, legacy_sql, t
 
 router = APIRouter()
@@ -120,6 +129,8 @@ def set_prefs(uid, b):
         _hide(uid)
     elif new["online"] and not old["online"]:
         _changed(uid, live.is_online(uid), time.time(), push_only=True)
+    if old["online"] != new["online"]:
+        status_changed(uid)                       # "im Anruf" haengt am geteilten Online-Status
     return new
 
 
@@ -411,6 +422,50 @@ def _round(ts):
     return float(math.floor(ts / ROUND) * ROUND) if ts else None
 
 
+# --- Eigener Status (2029-4) ------------------------------------------------------------------------------------------
+def _ceil(ts):
+    """Ende eines Status fuer andere: 5-Minuten-Raster, aufgerundet (nie frueher als das echte Ende)."""
+    return float(math.ceil(ts / ROUND) * ROUND)
+
+
+def _disp(p, call_ok, text):
+    """Status fuer die Anzeige bei einer anderen Person -> {s, until?, text?} (None: unbekannt). p: shown_parts() bzw. st
+    eines anderen Servers; call_ok: beide zeigen den Online-Status; text: nur fuer Konten dieses Servers."""
+    if not p:
+        return None
+    if p.get("call") and call_ok and p["s"] != "dnd":
+        out = {"s": "in_call"}
+    else:
+        out = {"s": p["s"]}
+        if p.get("until") and p["s"] != "available":
+            out["until"] = _ceil(p["until"])
+    if text and p.get("text"):
+        out["text"] = p["text"]
+    return out
+
+
+def _wire(p, t_on):
+    """Feld st an andere Server: nur s, until (Raster) und call (nur mit eigenem Online-Status) - nie Text oder Fokus."""
+    out = {"s": p["s"]}
+    if p.get("until") and p["s"] != "available":
+        out["until"] = _ceil(p["until"])
+    if p.get("call") and t_on and p["s"] != "dnd":
+        out["call"] = True
+    return out
+
+
+def _st_in(v):
+    """Feld st von einem anderen Server pruefen -> {s, until, call} oder None. Alles andere (text, focus, source ...)
+    wird verworfen: ein gefaelschter Fokus-Text kommt hier nie an (RT-29)."""
+    if not isinstance(v, dict) or v.get("s") not in US.STATES:
+        return None
+    out = {"s": v["s"], "until": None, "call": v.get("call") is True and v["s"] != "dnd"}
+    u = v.get("until")
+    if out["s"] != "available" and isinstance(u, (int, float)) and not isinstance(u, bool) and 0 < u < 2 ** 40:
+        out["until"] = _ceil(float(u))
+    return out
+
+
 def _shared(c, uid, targets, v1=False):
     """Mit welchen dieser Personen hat uid einen angenommenen Chat (beide aktiv, beide 'ok')? v1 (2.5): nur Chats, in denen
     Mitglieder den Anmeldenamen ohnehin kennen (nicht Stufe 3) - fuer Anfragen per Benutzername (kein Orakel)."""
@@ -481,17 +536,18 @@ def presence(uid, users, leave=False):
                         _watch.pop(u, None)
         return {"ok": True}
     with _db() as c:
-        if not is_on(c, uid, KV_ONLINE):
-            _unwatch(uid)
-            return {"enabled": False, "ttl": WATCH_TTL, "users": {}}
+        on = is_on(c, uid, KV_ONLINE)
         asked = _asked(c, users)
         by_h = [u for u, x in asked.items() if x != u]
         ok = _shared(c, uid, by_h) | _shared(c, uid, [u for u in asked if u not in by_h and not sharing.is_remote(u)], v1=True) \
             | _shared(c, uid, [u for u in asked if sharing.is_remote(u)])
-        loc = [u for u in ok if not sharing.is_remote(u)]
-        loc = [u for u in loc if u not in _off(c, KV_ONLINE, loc)]
-        rem = [u for u in ok if sharing.is_remote(u)]
+        loc_all = sorted(u for u in ok if not sharing.is_remote(u))
+        off_t = _off(c, KV_ONLINE, loc_all)
+        loc = [u for u in loc_all if u not in off_t] if on else []
+        rem = sorted(u for u in ok if sharing.is_remote(u))
         out = _local_state(c, loc)
+        # 2029-4: eigener Status auch bei "Online-Status aus" (eigener oder der Person) - nur "im Anruf" braucht beide an
+        status = {u: _disp(US.shown_parts(c, u), on and u not in off_t, True) for u in loc_all}
         renew = {}
         if rem and F.enabled():
             me_h = FC.my_handle(c, uid)
@@ -501,10 +557,16 @@ def presence(uid, users, leave=False):
                 p = F.peer_by(c, "host", host) if n else None
                 if not p or not F.feature(p, "online") or not FC.peer_ok(p):
                     continue
+                ust = F.feature(p, "userstatus1")
+                if not on and not ust:
+                    continue                       # Online-Status aus und dort kein eigener Status: nichts abonnieren
                 st = _rstate.get(u)
-                if st and st["exp"] > now and st.get("online") is not None:
+                fresh = bool(st) and st["exp"] > now
+                if on and fresh and st.get("online") is not None:
                     out[u] = {"online": st["online"], "last": st["last"]}
-                known = bool(st) and st["exp"] > now and st.get("online") is not None
+                if ust and fresh and st.get("st"):
+                    status[u] = _disp(st["st"], on, False)
+                known = fresh and (st.get("online") is not None or (ust and st.get("st") is not None))
                 # unbekannt bzw. dort (noch) nicht erlaubt, z. B. Nachrichtenanfrage gerade angenommen: bald erneut fragen
                 if now - _rsub.get(u, 0) >= (WATCH_RENEW if known else RETRY_UNKNOWN):
                     ref = c.execute("SELECT ch.ref FROM chat ch JOIN chat_member a ON a.chat_id=ch.id AND a.uid=? AND a.left_at IS NULL AND a.state='ok' "
@@ -514,7 +576,7 @@ def presence(uid, users, leave=False):
                         renew.setdefault(p["id"], {"actor": me_h, "items": []})["items"].append({"h": h, "ref": ref[0]})
                         _rsub[u] = now
     with _wl:
-        for u in list(out) + rem:
+        for u in loc_all + rem:                    # auch ohne Online-Status (Person oder ich): Abo fuer chat.status
             _watch.setdefault(u, {})[uid] = now + WATCH_TTL
             if asked.get(u, u) != u:
                 _alias[(u, uid)] = asked[u]
@@ -530,19 +592,15 @@ def presence(uid, users, leave=False):
                 _alias.pop(k, None)
     for pid, body in renew.items():
         F.peer_submit(pid, _subscribe, pid, body)      # nicht verwerfen: sonst erst nach WATCH_RENEW erneut
-    return {"enabled": True, "ttl": WATCH_TTL, "users": {asked.get(u, u): st for u, st in out.items()}}
+    stat = {asked.get(u, u): x for u, x in status.items() if x}
+    if not on:
+        return {"enabled": False, "ttl": WATCH_TTL, "users": {}, "status": stat}
+    return {"enabled": True, "ttl": WATCH_TTL, "users": {asked.get(u, u): st for u, st in out.items()}, "status": stat}
 
 
-def _unwatch(uid):
-    with _wl:
-        for u in [u for u, w in _watch.items() if uid in w]:
-            _watch[u].pop(uid, None)
-            if not _watch[u]:
-                _watch.pop(u, None)
-
-
-def _viewers(c, target):
-    """Konten hier, die target gerade abonniert haben und es (noch) sehen duerfen."""
+def _viewers(c, target, status=False):
+    """Konten hier, die target gerade abonniert haben und es (noch) sehen duerfen. status (2029-4): auch Konten mit
+    "Online-Status aus" (der eigene Status haengt nicht daran)."""
     now = time.time()
     with _wl:
         w = _watch.get(target) or {}
@@ -553,7 +611,7 @@ def _viewers(c, target):
             _watch.pop(target, None)
     if not vs:
         return []
-    off = _off(c, KV_ONLINE, vs)
+    off = set() if status else _off(c, KV_ONLINE, vs)
     return [v for v in vs if v not in off and target in _shared(c, v, [target])]
 
 
@@ -589,19 +647,56 @@ def _changed(uid, on, at, push_only=False):
 
 
 def _hide(uid):
-    """Online-Status abgeschaltet: Abos dieser Person beenden (hier: Ereignis ohne Status, andere Server: 'hidden')."""
-    _unwatch(uid)
+    """Online-Status abgeschaltet: Abos melden "kein Status" (hier: Ereignis ohne Status, andere Server: 'hidden'). Die Abos
+    selbst bleiben (2029-4: der eigene Status ist davon unabhaengig); Online-Wechsel gehen nicht mehr hinaus (_changed)."""
     with _db() as c:
         vs = _viewers(c, uid)
         subs = _fed_subs(uid)
         h = FC.my_handle(c, uid) if subs else None
-    with _wl:
-        _watch.pop(uid, None)
-        _fsub.pop(uid, None)
     for v in vs:
         bus.emit("direct", {"uids": [v], "typ": "chat.presence", "data": {"username": _as(uid, v), "online": False, "last": None}})
     for pid in subs:
         _push(pid, [{"h": h, "hidden": True}])
+
+
+def status_changed(uid):
+    """2029-4: eigener Status bzw. "im Anruf" eines Kontos hier geaendert -> Abos hier (Live chat.status, je Konto mit oder
+    ohne "im Anruf") und andere Server mit userstatus1 (online.ev mit st, ohne Text). Fehler: naechstes Abo holt den Stand."""
+    if not uid or sharing.is_remote(uid):
+        return
+    try:
+        with _db() as c:
+            p = US.shown_parts(c, uid)
+            t_on = is_on(c, uid, KV_ONLINE)
+            vs = _viewers(c, uid, status=True)
+            off = _off(c, KV_ONLINE, vs)
+            evs = [(v, {"username": _as(uid, v), "status": _disp(p, t_on and v not in off, True)}) for v in vs]
+            subs = [pid for pid in _fed_subs(uid) if F.feature(F.peer_by(c, "id", pid), "userstatus1")]
+            h = FC.my_handle(c, uid) if subs else None
+    except Exception as ex:  # noqa: BLE001 - Datenbank gerade weg; RT-29: nur die Art des Fehlers, nie Werte
+        print(f"chat_status: Status {type(ex).__name__}", flush=True)
+        return
+    for v, d in evs:
+        bus.emit("direct", {"uids": [v], "typ": "chat.status", "data": d})
+    if h:
+        st = _wire(p, t_on)
+        for pid in subs:                           # nicht verwerfen (anders als online): sonst bis zur Abo-Erneuerung alt
+            FC._volatile(pid, {"op": "online.ev", "items": [{"h": h, "st": st}]}, drop=False)
+
+
+def _on_shown(c, uid):
+    """user_status.SHOWN_HOOKS: nach dem Commit von c neu verteilen (bei Rollback nichts)."""
+    c.after_commit(lambda: status_changed(uid))
+
+
+def on_call_change(c, uid, in_call=None):
+    """2029-2 (calls/fed_calls, ueber user_status.call_changed): Anruf von uid begonnen/beendet -> "im Anruf" an die
+    berechtigten Chat-Partner (Presence-Regeln: Abo, gemeinsamer angenommener Chat, show_call, beide Online-Status an) und
+    andere Server (st.call). c: laufende Transaktion (verteilt nach dem Commit) oder None (sofort). in_call: nur Hinweis."""
+    if c is None:
+        status_changed(uid)
+    else:
+        _on_shown(c, uid)
 
 
 def _fed_subs(uid):
@@ -634,12 +729,15 @@ def _subscribe(pid, body):
         e = got.get(it["h"])
         items.append(dict(e, h=it["h"]) if isinstance(e, dict) else {"h": it["h"], "hidden": True})
     with _db() as c, c:
-        _apply(c, p, items)
+        _apply(c, p, items, full=True)
 
 
-def _apply(c, peer, items):
-    """Stand von Personen des Servers peer uebernehmen; Aenderungen an die Abos hier (Live-Ereignis chat.presence)."""
+def _apply(c, peer, items, full=False):
+    """Stand von Personen des Servers peer uebernehmen; Aenderungen an die Abos hier (Live-Ereignis chat.presence, 2029-4:
+    chat.status). full: Antwort auf 'online' (fehlt st, ist kein Status bekannt); sonst 'online.ev' (Eintrag nur mit st =
+    nur der eigene Status; ohne st bleibt der bekannte)."""
     now = time.time()
+    ust = F.feature(peer, "userstatus1")
     for it in items[:USERS_MAX]:
         if not isinstance(it, dict):
             continue
@@ -647,15 +745,33 @@ def _apply(c, peer, items):
         if not n or host != peer["host"]:
             continue
         pr = FC.principal(it["h"])
-        if it.get("hidden") is True:
+        old = _rstate.get(pr)
+        only_st = "st" in it and "online" not in it and it.get("hidden") is not True
+        if only_st:
+            if not ust:
+                continue
+            st = dict(old) if old and old["exp"] > now else {"online": None, "last": None}
+            st["exp"] = now + WATCH_TTL
+        elif it.get("hidden") is True:
             st = {"online": None, "last": None, "exp": now + WATCH_TTL}
         else:
             last = it.get("last")
             last = _round(float(last)) if isinstance(last, (int, float)) and not isinstance(last, bool) and 0 < last < 2 ** 40 else None
             st = {"online": it.get("online") is True, "last": last, "exp": now + WATCH_TTL}
-        old = _rstate.get(pr)
+        if not ust:
+            st["st"] = None
+        elif full or "st" in it:
+            st["st"] = _st_in(it.get("st"))
+        else:
+            st["st"] = (old or {}).get("st")
         _rstate[pr] = st
-        if old and old.get("online") == st["online"] and old.get("last") == st["last"]:
+        if ust and (old or {}).get("st") != st["st"]:
+            vs = _viewers(c, pr, status=True)
+            if vs:
+                off = _off(c, KV_ONLINE, vs)
+                bus.emit_after(c, "direct_each", {"items": [(v, "chat.status", {"username": pr, "status": _disp(st["st"], v not in off, False)})
+                                                            for v in sorted(vs)]})
+        if only_st or (old and old.get("online") == st["online"] and old.get("last") == st["last"]):
             continue
         vs = _viewers(c, pr)
         if vs:
@@ -692,22 +808,32 @@ def op_online(c, peer, d):
         want[u] = it["h"]
     off = _off(c, KV_ONLINE, list(want))
     on = [u for u in want if u not in off]
+    ust = F.feature(peer, "userstatus1")          # 2029-4: eigener Status auch fuer Personen mit "Online-Status aus"
     with _wl:
         for u in want:
-            if u in on and d.get("leave") is not True:
+            if (u in on or ust) and d.get("leave") is not True:
                 _fsub.setdefault(u, {})[peer["id"]] = now + WATCH_TTL
             elif u in _fsub:
                 _fsub[u].pop(peer["id"], None)
     if d.get("leave") is True:
         return 200, {"ok": True}
     st = _local_state(c, on)
-    for u in on:
-        out[want[u]] = st[u]
+    for u in want:
+        if u in st:
+            e = dict(st[u])
+        elif ust:
+            e = {"hidden": True}
+        else:
+            continue
+        if ust:                                    # nur shown_parts() ohne Text; "im Anruf" nur mit eigenem Online-Status
+            e["st"] = _wire(US.shown_parts(c, u), u in st)
+        out[want[u]] = e
     return 200, {"users": out, "ttl": WATCH_TTL}
 
 
 def op_online_ev(c, peer, d):
-    """Abonnierender Server: Wechsel von Personen des meldenden Servers (verwerfbar)."""
+    """Abonnierender Server: Wechsel von Personen des meldenden Servers (verwerfbar). 2029-4: Eintraege {h, st} = nur der
+    eigene Status (mit userstatus1)."""
     if not F.feature(peer, "online"):
         return 403, {"error": "online disabled"}
     if not FC._rate_ok("conl", peer["host"], FED_ONLINE_RATE):
@@ -748,6 +874,7 @@ def chat_flags(c, ch, d):
 chat.RECEIPT = take
 chat.STATUS_ME = me_extra
 live.ONLINE = on_online
+US.SHOWN_HOOKS.append(_on_shown)                  # 2029-4: Statuswechsel und (ueber user_status.call_changed) "im Anruf"
 FC.OPS.update({"receipt": op_receipt, "online": op_online, "online.ev": op_online_ev})
 F.EV2_HANDLERS["chat.receipt"] = _ev_receipt
 F.PEER_GONE_HOOKS.append(_peer_gone)

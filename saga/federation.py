@@ -82,7 +82,12 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
          "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "dbx1", "widgets2", "merge1", "presence2", "ment1", "sync1",
-         "wsubpages1", "chatadm1", "groupinfo2", "moddel1", "msgpin1", "block2", "report1", "chatmention1", "siegel1"]
+         "wsubpages1", "chatadm1", "groupinfo2", "moddel1", "msgpin1", "block2", "report1", "chatmention1", "siegel1",
+         "userstatus1"]
+# userstatus1 (2.6, Bugs-DB 2029, saga.chat_status/saga.user_status) = eigener Status (Verfuegbar/Beschaeftigt/Nicht stoeren,
+# "im Anruf") von Chat-Partnern: Antworten auf den Auftrag 'online' und 'online.ev' tragen je Person st {s, until?, call?}
+# (until im 5-Minuten-Raster, call nur mit Online-Status der Person) - nie Text, nie Fokus, nie Ausnahmelisten; eingehend
+# zaehlen nur diese drei Felder. Eintraege {h, st} ohne online = nur der Status. Ohne userstatus1 (eine Seite): kein st.
 # siegel1 (2.5, saga.siegel) = kennt die Saga-Siegel: Seitensymbol '/siegel/<farbe>/<motiv>.svg' (auf jedem Server dieselben
 # Dateien) - fremde Seiten zeigen es, Bearbeiten setzt es. Ohne siegel1 beim Eigentuemer: PATCH mit Siegel -> 409 (aeltere
 # Server wuerden den Pfad als 8-Zeichen-"Emoji" abschneiden), das Web blendet die Auswahl dort aus.
@@ -177,7 +182,8 @@ OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception
 # Faehigkeit -> Admin-Schalter, der sie zusaetzlich braucht
 CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls", "chatgroups": "chat", "calls3": "calls",
            "chatfile2": "chat", "receipts": "chat", "online": "chat", "chat3": "chat", "chatadm1": "chat", "groupinfo2": "chat", "moddel1": "chat",
-           "msgpin1": "chat", "block2": "chat", "report1": "chat", "chatmention1": "chat", "horn": "calls", "horn_dm": "calls"}
+           "msgpin1": "chat", "block2": "chat", "report1": "chat", "chatmention1": "chat", "horn": "calls", "horn_dm": "calls",
+           "userstatus1": "chat"}
 EXPRESS_TIMEOUT = float(E.get("FED_EXPRESS_TIMEOUT", "5"))      # synchrone Zustellung: harte Frist in Sekunden
 HELLO_EVERY = 6 * 3600                       # Faehigkeiten der Gegenstelle so oft neu abfragen
 SEEN_KEEP = 7 * 86400                        # Ereignis-Kennungen so lange merken (idempotent)

@@ -3324,6 +3324,8 @@ Zusammen mit dem Lese-Zeiger: `POST /api/chats/{id}/read` mit `{"seq": <wie bish
 
   `last` = „zuletzt online“ (Unix-Sekunden, auf 5 Minuten abgerundet, `null` = unbekannt). Fehlt eine Person: kein
   Status (kein gemeinsamer Chat, abgeschaltet oder noch unbekannt) – nichts anzeigen.
+  Seit 2.6 (`userstatus1`) zusätzlich `status` mit dem eigenen Status der Personen – auch bei `enabled: false`
+  (Abschnitt „Eigener Status“ → „Anzeige bei anderen“).
 - Nur abonnieren, was **sichtbar** ist (offener Direkt-Chat, sichtbare Direkt-Chats der Liste), alle **60 s** erneuern,
   solange sichtbar; beim Verlassen `{"users": [...], "leave": true}` (optional – das Abo läuft nach `ttl` aus).
 - Live: `chat.presence {"username": "bert", "online": true|false, "last": <zahl>|null}` nur an Konten mit laufendem Abo.
@@ -3897,3 +3899,29 @@ gleichzeitig beenden. Nach einer Ruhezeit (`why: "quiet"`) gibt es keine. Inhalt
   „Während „Nicht stören“: 4 Nachrichten, 1 verpasster Anruf“ (en: “While “Do not disturb” was on: 4 messages, 1 missed
   call”). Apps können den Satz aus `digest` selbst bauen. Die Sammelmeldung ist kein abschaltbarer Bereich in
   `/api/push/settings` und erscheint nicht in der Glocke (die einzelnen Einträge stehen dort schon).
+
+### Anzeige bei anderen (2029-4)
+
+Der Status von Chat-Partnern kommt mit dem Online-Status-Abo (`POST /api/chat/presence`, Abschnitt „Online-Status“) –
+zusätzlich `status`, für dieselben Personen (gemeinsamer, angenommener Chat), **auch bei `enabled: false`** (eigener
+Online-Status aus) und auch für Personen, die ihren Online-Status nicht zeigen:
+
+```json
+{"enabled": true, "ttl": 90, "users": {"bert": {"online": true, "last": null}},
+ "status": {"bert": {"s": "dnd", "until": 1792450200.0, "text": "Im Kundentermin"},
+            "cora": {"s": "in_call"},
+            "@~abcdefghijklmnop@b.example": {"s": "busy"}}}
+```
+
+- `s`: `available` · `busy` · `dnd` · `in_call`. Ruhezeiten (geplantes Nicht stören) sieht niemand sonst.
+- `until`: Ende im **5-Minuten-Raster** (aufgerundet) – fehlt = bis auf Weiteres.
+- `text`: nur bei selbst gesetztem Status (`source: "manual"`) und nur für Personen **desselben Servers**; ein
+  Fokus-Name kommt nie vor (RT-29).
+- `in_call`: nur, wenn die Person `show_call` an hat **und** beide den Online-Status zeigen; sonst steht dort der Status
+  darunter (`available`/`busy`). Bei `dnd` nie `in_call`.
+- Fehlt eine Person in `status`: kein Status bekannt (kein gemeinsamer Chat; anderer Server ohne `userstatus1` bzw. noch
+  unbekannt) – nichts anzeigen.
+- Live: `chat.status {"username": "bert", "status": {s, until?, text?} | null}` an Konten mit laufendem Abo – bei jeder
+  Änderung (setzen, Ablauf, `show_call`, Anruf beginnt/endet, Online-Status ein/aus). `null` = nicht mehr bekannt →
+  entfernen. `chat.presence` bleibt unverändert (ohne Status).
+- Ausnahmelisten (`exceptions`) sieht nie jemand anderes und sie verlassen den Server nie.
