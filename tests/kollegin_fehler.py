@@ -290,6 +290,11 @@ def attempts(jid):
     return {n: k for n, k in KT.q("SELECT step_n, COUNT(DISTINCT attempt) FROM job_change WHERE job_id=? GROUP BY step_n", (jid,))}
 
 
+def done_row(row):
+    """Kontrollkaestchen "Erledigt" der Zeile gesetzt? (properties nach Eigenschafts-ID - die Zeile hat nur diese eine)"""
+    return list((api_v1.page_read(FULL_A, row)[1].get("properties") or {}).values()) == [True]
+
+
 def part_ai_kill():
     future()
     KT.cleanup(A)
@@ -315,7 +320,7 @@ def part_ai_kill():
         st = [x["state"] for x in jobs.steps_of(jid)]
         opened, _settled, pool = units_state(jid)
         if point == "after_write":
-            wrote = (api_v1.page_read(FULL_A, row)[1].get("properties") or {}).get("Erledigt") is True if which == 0 else texts() == [text]
+            wrote = done_row(row) if which == 0 else texts() == [text]
             ok(f"{tag}: geschrieben + Stempel, Abschluss fehlt ({st})", st[which] == "laeuft" and wrote and which in attempts(jid))
         else:
             ok(f"{tag}: belegt, nichts geschrieben, Belegung offen ({st}, offen {opened}, Pool {pool})",
@@ -323,11 +328,10 @@ def part_ai_kill():
         ok(f"{tag}: vor Ablauf der Lease nimmt niemand den Auftrag", jobs.run_once() == 0)
         testclock.set_clock({"advance": jobs.LEASE + 1})
         KT.run_all()
-        props = api_v1.page_read(FULL_A, row)[1].get("properties") or {}
         att = attempts(jid)
         ok(f"{tag}: erledigt, Zeile geaendert, genau eine Aufgabe, je Schritt Stempel genau eines Versuchs ({texts()}, {att})",
-           jobs.state_of(jid)["state"] == "erledigt" and props.get("Erledigt") is True and texts() == [text] and att == {0: 1, 1: 1},
-           props)
+           jobs.state_of(jid)["state"] == "erledigt" and done_row(row) and texts() == [text] and att == {0: 1, 1: 1},
+           api_v1.page_read(FULL_A, row)[1].get("properties"))
         ch = KT.q("SELECT step_n, target FROM job_change WHERE job_id=? ORDER BY id", (jid,))
         ok(f"{tag}: Ziele der Stempel = Zeile bzw. Aufgabe ({ch})",
            f"row:{row}" in [t for n, t in ch if n == 0] and all(t.startswith("task:") for n, t in ch if n == 1)
