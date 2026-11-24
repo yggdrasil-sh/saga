@@ -1,9 +1,13 @@
 // Projektseite (docs/index.html und docs/<sprache>/index.html, GitHub Pages): alle fuenf Sprachen in Chromium und Firefox,
-// 1440 und 390 Breite, hell und dunkel. Prueft: keine Konsolen- und Seitenfehler, keine fehlgeschlagenen Anfragen, alle Bilder
-// geladen, kein seitliches Scrollen, Anker und relative Links, lang/hreflang/Sprachwahl, eine h1 und keine uebersprungene
-// Ueberschriften-Ebene, Alt-Texte, Video ohne Anfrage vor dem Klick (fehlt die MP4, bleibt das Poster als Bild).
+// 1440 und 390 Breite, hell und dunkel, Bewegung an und aus. Prueft: keine Konsolen- und Seitenfehler, keine fehlgeschlagenen
+// Anfragen, nur Anfragen an die eigene Seite (keine CDNs/Schrift-Dienste), alle Bilder geladen, kein seitliches Scrollen, Anker
+// und relative Links, lang/hreflang/Sprachwahl, eine h1 und keine uebersprungene Ueberschriften-Ebene, Alt-Texte, Video ohne
+// Anfrage vor dem Klick (fehlt die MP4, bleibt das Poster als Bild), Schriften (Fraunces, Noto Sans Runic) geladen, Animationen
+// nur ueber transform/opacity, Abschnitte wachsen beim Scrollen herein (ohne Bewegung sofort sichtbar), Schalter "Bewegung"
+// (Zustand, Wahl in localStorage, nach Neuladen erhalten) und prefers-reduced-motion (ohne Wahl: keine Bewegung).
 //   [SITE_DIR=docs] [SITE_PORT=8861] [SHOTS=<ordner>] [NUR_BILDER=1] [BROWSER=chromium,firefox] [PLAYWRIGHT=...] node tests/browser_projektseite.js
-// SHOTS: ganze Seite je Sprache/Browser/Breite/Schema als JPEG (<sprache>-<browser>-<breite>-<hell|dunkel>.jpg).
+// SHOTS: ganze Seite je Sprache/Browser/Breite/Schema als JPEG (<sprache>-<browser>-<breite>-<hell|dunkel>.jpg, Bewegung an,
+//   alle Abschnitte hereingewachsen). MOTION=an|aus|an,aus (Standard beide).
 // NUR_BILDER=1: nur Bilder aufnehmen, nichts pruefen (z. B. fuer den alten Stand: SITE_DIR=<alter docs-Ordner>).
 const pw = require(process.env.PLAYWRIGHT || 'playwright');
 const http = require('http'), fs = require('fs'), path = require('path');
@@ -11,6 +15,9 @@ const DIR = path.resolve(process.env.SITE_DIR || path.join(__dirname, '..', 'doc
 const PORT = +(process.env.SITE_PORT || 8861), SHOTS = process.env.SHOTS, NUR = process.env.NUR_BILDER === '1';
 const LANGS = ['de', 'en', 'es', 'ru', 'th'];
 const BROWSERS = (process.env.BROWSER || 'chromium,firefox').split(',');
+const MOTIONS = (process.env.MOTION || (NUR ? 'an' : 'an,aus')).split(',');
+// erlaubte Eigenschaften in Animationen (der Gold-Schimmer eines Wortes darf background-position bewegen)
+const ANIM_OK = new Set(['offset', 'easing', 'composite', 'computedOffset', 'transform', 'opacity', 'translate', 'rotate', 'scale']);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.jpg': 'image/jpeg',
   '.png': 'image/png', '.mp4': 'video/mp4', '.js': 'text/javascript' };
 let fails = 0, n = 0;
@@ -34,11 +41,11 @@ const srv = http.createServer((q, r) => {
     for (const lang of LANGS) {
       const url = base + (lang === 'de' ? '' : lang + '/');
       for (const [w, h, mobile] of [[1440, 900, false], [390, 844, true]]) {
-        for (const scheme of ['light', 'dark']) {
-          const tag = `${lang} ${bn} ${w} ${scheme}`;
+        for (const scheme of ['light', 'dark']) for (const mot of MOTIONS) {
+          const tag = `${lang} ${bn} ${w} ${scheme} Bewegung ${mot}`;
           const ctx = await br.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, locale: lang === 'de' ? 'de-DE' : lang,
             deviceScaleFactor: 1, ...(mobile && bn === 'chromium' ? { isMobile: true, hasTouch: true } : {}) });
-          await ctx.addInitScript((l) => { try { localStorage.setItem('saga-lang', l); } catch (e) { /* egal */ } }, lang);
+          await ctx.addInitScript(([l, m]) => { try { localStorage.setItem('saga-lang', l); if (!sessionStorage.getItem('t')) { localStorage.setItem('saga-motion', m); sessionStorage.setItem('t', 1); } } catch (e) { /* egal */ } }, [lang, mot]);
           const p = await ctx.newPage();
           const errs = [], bad = [], reqs = [];
           p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
@@ -51,11 +58,38 @@ const srv = http.createServer((q, r) => {
           await p.evaluate(async () => { const im = [...document.images]; im.forEach(i => { i.loading = 'eager'; });
             await Promise.all(im.map(i => i.complete && i.naturalWidth ? 0 : new Promise(r => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }); setTimeout(r, 8000); }))); });
           await p.waitForTimeout(300);
-          if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `${lang}-${bn}-${w}-${scheme === 'light' ? 'hell' : 'dunkel'}.jpg`), fullPage: true, type: 'jpeg', quality: 80 });
+          if (!NUR) {
+            // Abschnitte wachsen beim Scrollen herein: einmal durchscrollen, danach muss alles sichtbar sein
+            const pre = await p.evaluate(() => ({ motion: document.documentElement.classList.contains('motion'),
+              pressed: (document.querySelector('.mot') || {}).getAttribute && document.querySelector('.mot').getAttribute('aria-pressed'),
+              hidden: [...document.querySelectorAll('.rv')].filter(e => e.getBoundingClientRect().top > innerHeight * 1.5 && getComputedStyle(e).opacity !== '1').length,
+              rv: document.querySelectorAll('.rv').length }));
+            ok(pre.motion === (mot === 'an') && pre.pressed === (mot === 'an' ? 'true' : 'false'), tag + ': Bewegung/Schalter', pre);
+            ok(pre.rv > 30 && (mot === 'an' ? pre.hidden > 5 : pre.hidden === 0), tag + ': Hereinwachsen (unten noch verborgen nur mit Bewegung)', pre);
+            await p.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += innerHeight * 0.6) { scrollTo(0, y); await new Promise(r => setTimeout(r, 60)); } scrollTo(0, 0); });
+            await p.waitForTimeout(1100);
+            const post = await p.evaluate(() => [...document.querySelectorAll('.rv')].filter(e => !e.classList.contains('in') || getComputedStyle(e).opacity !== '1').map(e => e.className));
+            ok(!post.length, tag + ': nach dem Scrollen alles sichtbar', post);
+            const an = await p.evaluate((OK) => { const ANIM = new Set(OK); const bad = new Set(); let n = 0;
+              for (const a of document.getAnimations()) { if (!a.effect || !a.effect.getKeyframes) continue; n++;
+                const t = a.effect.target; const shim = t && t.classList && t.classList.contains('shim');
+                for (const k of a.effect.getKeyframes()) for (const prop of Object.keys(k)) if (!ANIM.has(prop) && !(shim && prop === 'backgroundPosition')) bad.add(prop + '@' + (t && t.className && t.className.baseVal !== undefined ? t.className.baseVal : t && t.className)); }
+              return { n, bad: [...bad] }; }, [...ANIM_OK]).catch(e => ({ n: -1, bad: [String(e)] }));
+            ok(!an.bad.length && (mot === 'an' ? an.n > 20 : an.n === 0), tag + ': Animationen nur transform/opacity', an);
+            {
+              const f = await p.evaluate(async () => { await document.fonts.ready; return { fr: document.fonts.check('600 24px Fraunces', 'Saga'), ru: document.fonts.check('20px "Noto Sans Runic"', 'ᛟ'),
+                loaded: [...document.fonts].filter(x => x.status === 'loaded').map(x => x.family + ' ' + x.style + ' ' + x.weight) }; });
+              ok(f.loaded.some(x => /Fraunces/.test(x)) && f.loaded.some(x => /Runic/.test(x)), tag + ': Schriften geladen', f);
+            }
+          }
+          if (SHOTS) await p.evaluate(() => document.querySelectorAll('.rv').forEach(e => e.classList.add('in')));
+          if (SHOTS) await p.waitForTimeout(1000);
+          if (SHOTS && mot === MOTIONS[0]) await p.screenshot({ path: path.join(SHOTS, `${lang}-${bn}-${w}-${scheme === 'light' ? 'hell' : 'dunkel'}.jpg`), fullPage: true, type: 'jpeg', quality: 80 });
           if (!NUR) {
             ok(!errs.length, tag + ': Konsolenfehler', errs);
             ok(!bad.length, tag + ': fehlgeschlagene Anfragen', bad);
             ok(!reqs.some(u => /\.mp4/.test(u)), tag + ': Video vor dem Klick geladen');
+            ok(!reqs.some(u => !u.startsWith(base) && !u.startsWith('data:')), tag + ': nur eigene Anfragen', reqs.filter(u => !u.startsWith(base)));
             const r = await p.evaluate((W) => {
               const imgs = [...document.images];
               const hs = [...document.querySelectorAll('h1,h2,h3,h4')].map(e => +e.tagName[1]);
@@ -93,12 +127,31 @@ const srv = http.createServer((q, r) => {
               await p.keyboard.press('Tab');
               const f = await p.evaluate(() => { const a = document.activeElement; const cs = getComputedStyle(a); return { cls: a.className, ow: cs.outlineWidth, os: cs.outlineStyle, top: a.getBoundingClientRect().top }; });
               ok(f.cls === 'skip' && f.os !== 'none' && parseFloat(f.ow) >= 2 && f.top >= 0, tag + ': Fokus sichtbar', f);
+              // Schalter "Bewegung": umschalten, Wahl gemerkt, nach Neuladen erhalten
+              const b0 = await p.evaluate(() => document.documentElement.classList.contains('motion'));
+              await p.click('.mot');
+              const b1 = await p.evaluate(() => ({ m: document.documentElement.classList.contains('motion'), pr: document.querySelector('.mot').getAttribute('aria-pressed'), ls: localStorage.getItem('saga-motion') }));
+              ok(b1.m === !b0 && b1.pr === String(!b0) && b1.ls === (b0 ? 'aus' : 'an'), tag + ': Schalter Bewegung', b1);
+              await p.reload({ waitUntil: 'load' });
+              const b2 = await p.evaluate(() => document.documentElement.classList.contains('motion'));
+              ok(b2 === !b0, tag + ': Wahl nach Neuladen erhalten', b2);
             }
           }
           await ctx.close();
         }
       }
       console.log('fertig', lang, bn);
+    }
+    // prefers-reduced-motion: ohne eigene Wahl keine Bewegung; mit Wahl "an" (Schalter) doch
+    if (!NUR) for (const [stored, want] of [[null, false], ['an', true]]) {
+      const ctx = await br.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+      await ctx.addInitScript((m) => { try { localStorage.setItem('saga-lang', 'de'); if (m) localStorage.setItem('saga-motion', m); } catch (e) { /* egal */ } }, stored);
+      const p = await ctx.newPage();
+      await p.goto(base, { waitUntil: 'load' });
+      const r = await p.evaluate(() => ({ m: document.documentElement.classList.contains('motion'), pr: document.querySelector('.mot').getAttribute('aria-pressed'),
+        anim: document.getAnimations().length, op: getComputedStyle(document.querySelector('#neu .rv')).opacity }));
+      ok(r.m === want && r.pr === String(want) && (want ? r.anim > 0 : r.anim === 0 && r.op === '1'), bn + ': reduced-motion, Wahl ' + stored, r);
+      await ctx.close();
     }
     // Video ohne MP4: Klick auf Abspielen -> Poster bleibt als Bild, kein Skriptfehler
     if (!NUR && !fs.existsSync(path.join(DIR, 'video', 'saga-promo.mp4'))) {
