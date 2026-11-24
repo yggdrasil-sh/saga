@@ -5,7 +5,8 @@
 # bleibt, damit Server auf dem Kanal testing (tools/saga-testing-einrichten.sh) ohne Umbau weiter jeden Stand bekommen.
 # Releases entstehen ebenfalls auf main, sobald CHANGELOG.md ein Release-Datum traegt (siehe release.yml).
 # EIN Kanal bis zu einer echten stabilen Linie (Sven 24.11.): jeder Push auf main schiebt auch :latest und :<major>
-# (z. B. :2) weiter - Server mit SAGA_VERSION=2 (Standard) bekommen also jeden Stand von main. Wer festnageln will:
+# (z. B. :2) weiter - Server mit SAGA_VERSION=2 (Standard) bekommen also jeden Stand von main. Ausnahme Release-Commit
+# (Bugs-DB 2335): dann setzt release.yml diese gleitenden Tags mit dem Release-Label, hier nur :testing-<commit>. Wer festnageln will:
 # SAGA_VERSION=2.5.0 (genau ein Release), 2.5 (Releases 2.5.x) oder testing-<commit>; diese Tags bewegt nur release.yml.
 name: Testing
 
@@ -42,6 +43,11 @@ jobs:
           if grep -Eq "^## \[$(printf '%s' "$V0" | sed 's/\./\\./g')\] – [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md; then
             T="$(git rev-parse -q --verify "refs/tags/v$V0^{commit}" || true)"
             if [ -z "$T" ] || [ "$T" = "$GITHUB_SHA" ]; then REL=1; fi
+            # Tag fehlt, obwohl schon der Vorgaenger datiert war: release.yml ist wohl gescheitert - laut sagen
+            if [ -z "$T" ] && git show "$GITHUB_SHA^:CHANGELOG.md" 2>/dev/null \
+                 | grep -Eq "^## \[$(printf '%s' "$V0" | sed 's/\./\\./g')\] – [0-9]{4}-[0-9]{2}-[0-9]{2}"; then
+              echo "::warning::Release v$V0 fehlt (release.yml gescheitert?) - :testing/:rc/:latest/:2 bleiben stehen, bis es da ist"
+            fi
           fi
           echo "release=$REL" >> "$GITHUB_OUTPUT"
           FULL="$(sh tools/rc-version.sh "$GITHUB_SHA")"     # z. B. 2.2.0-rc.7+1cc210f
@@ -169,4 +175,4 @@ jobs:
           echo "Knoten-Update: \`$R\` enthaelt jetzt $V" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Zusammenfassung
-        run: echo "Release Candidate **${{ steps.v.outputs.version }}** (${{ steps.v.outputs.short }}) → \`ghcr.io/${{ github.repository }}:testing\` / \`:rc\`" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Release Candidate **${{ steps.v.outputs.version }}** (${{ steps.v.outputs.short }}) → ${{ steps.v.outputs.release == '1' && 'nur `:testing-<commit>` (Release-Commit, die gleitenden Tags setzt release.yml)' || '`:testing` / `:rc` / `:latest` / `:<major>`' }}" >> "$GITHUB_STEP_SUMMARY"

@@ -35,6 +35,7 @@ DIR=$(cd "$DIR" && pwd) || die "Ordner $1 nicht gefunden"
 [ -f "$DIR/.env" ] || die "$DIR/.env fehlt - ist das der Saga-Ordner?"
 found=; for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do [ -f "$DIR/$f" ] && found=1; done
 [ -n "$found" ] || die "keine docker-compose.yml in $DIR"
+case "$CH" in *[!0-9A-Za-z.-]*|'') die "ungueltiger Kanal '$CH'" ;; esac
 case "$CH" in testing|rc|testing-[0-9a-f]*|[0-9]*) ;; *) die "unbekannter Kanal '$CH' (2, 2.5, 2.5.0, testing-<commit> ...)" ;; esac
 cd "$DIR"
 docker compose config --services 2>/dev/null | grep -qx saga || die "kein Dienst 'saga' in der Compose-Datei"

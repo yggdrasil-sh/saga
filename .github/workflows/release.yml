@@ -24,7 +24,7 @@ jobs:
       - name: Version pruefen
         id: v
         run: |
-          V="$(tr -d ' \n' < VERSION)"
+          V="$(tr -d ' \r\n' < VERSION)"
           echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::VERSION ist kein SemVer: $V"; exit 1; }
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             [ "${GITHUB_REF_NAME#v}" = "$V" ] || { echo "::error::Tag $GITHUB_REF_NAME passt nicht zu VERSION ($V)"; exit 1; }
@@ -76,10 +76,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}},value=v${{ steps.v.outputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=v${{ steps.v.outputs.version }}
-            type=semver,pattern={{major}},value=v${{ steps.v.outputs.version }}
-            type=raw,value=latest
-            type=raw,value=testing
-            type=raw,value=rc
+          # :latest, :<major>, :testing und :rc setzt der Schritt "Gleitende Tags" am Ende - nur, wenn main noch hier steht
 
       - uses: docker/build-push-action@v6
         if: steps.v.outputs.skip != '1'
@@ -102,8 +99,6 @@ jobs:
           build-args: VERSION=${{ steps.v.outputs.version }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/gjallarhorn:${{ steps.v.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/gjallarhorn:latest
-            ghcr.io/${{ github.repository_owner }}/gjallarhorn:testing
           labels: |
             org.opencontainers.image.version=${{ steps.v.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -140,3 +135,21 @@ jobs:
             gjallarhorn/dist/gjallarhorn-linux-amd64 gjallarhorn/dist/gjallarhorn-linux-amd64.sig \
             gjallarhorn/dist/gjallarhorn-linux-arm64 gjallarhorn/dist/gjallarhorn-linux-arm64.sig \
             gjallarhorn/dist/SHA256SUMS
+
+      # Gleitende Tags (Bugs-DB 2335): :latest, :<major>, :testing, :rc (Saga) und :latest, :testing (Knoten) zeigen auf das
+      # Release - aber nur, wenn main noch auf diesem Commit steht. Ist main schon weiter, hat testing.yml des neueren
+      # Commits sie gesetzt (bzw. setzt sie gleich); ein Zuruecksetzen auf das Release wuerde Server mit Autoupdate auf
+      # einen aelteren Stand bringen (nach einer neueren Migration startet der nicht: SchemaTooNew).
+      - name: Gleitende Tags (nur wenn main noch hier steht)
+        if: steps.v.outputs.skip != '1'
+        env:
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          M="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ "$M" != "$GITHUB_SHA" ]; then
+            echo "::notice::main ist schon weiter ($M) - gleitende Tags setzt testing.yml"; exit 0
+          fi
+          R="ghcr.io/$GITHUB_REPOSITORY"; H="ghcr.io/$GITHUB_REPOSITORY_OWNER/gjallarhorn"
+          docker buildx imagetools create -t "$R:latest" -t "$R:${V%%.*}" -t "$R:testing" -t "$R:rc" "$R:$V"
+          docker buildx imagetools create -t "$H:latest" -t "$H:testing" "$H:$V"
+          echo "Gleitende Tags → $V (\`:latest\`, \`:${V%%.*}\`, \`:testing\`, \`:rc\`)" >> "$GITHUB_STEP_SUMMARY"

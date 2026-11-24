@@ -7,7 +7,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 > **Entwicklung (bis 3.0 nur `main`, seit 2.5.0):** Neues landet direkt auf `main` und wird hier unter
 > `[Unveröffentlicht]` notiert. Jeder Push baut eine Testversion `x.y.z-rc.<N>` (N = Commits seit dem letzten
 > Release-Tag, `tools/rc-version.sh`; Commit als Build-Kennung) und schiebt die Images `:2`, `:latest`, `:testing`,
-> `:rc` und `:testing-<commit>` weiter – ein Kanal bis zur stabilen Linie nach 3.0. Der Branch `testing` ist eingefroren.
+> `:rc` und `:testing-<commit>` weiter – ein Kanal bis zur stabilen Linie nach 3.0 (beim Release-Commit setzt diese
+> gleitenden Tags die Release-Action mit der Release-Version). Der Branch `testing` ist eingefroren.
 > **Version:** `VERSION` darf schon die nächste geplante Version tragen; ein Release entsteht dadurch noch nicht.
 > **Release:** `[Unveröffentlicht]` in `[x.y.z] – JJJJ-MM-TT` umbenennen (passend zu `VERSION`, Gedankenstrich) und auf
 > `main` pushen. Die GitHub Action legt Tag, Images (`x.y.z`, `x.y`, `x`, `latest`) und Release an, sobald der
