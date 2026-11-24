@@ -734,6 +734,22 @@ def run():
         n = c.execute("SELECT COUNT(*) FROM ai_history WHERE uid='ki-a'").fetchone()[0]
     ok(f"Verlauf A gespeichert ({n})", n == 1)
 
+    # --- 2.6 (Bugs-DB 2258 Teil a): KI-Antwort melden -----------------------------------------------------------------------
+    s, d = req("POST", "/api/ai/report", A, {"where": "ask", "reason": "abuse", "text": "Antwort Zitronenfalter\nzweite Zeile"})
+    with connect() as c:
+        rep = c.execute("SELECT chat_id, chat_kind, chat_ref, reason, text, items FROM chat_report WHERE id=%s" % int((d or {}).get("id") or 0)).fetchone()
+    ok(f"Melden: KI-Antwort aus dem Assistenten -> 200, Meldung 'ai' ({s}, {rep and rep[:4]})", s == 200 and rep and rep[0] is None
+       and rep[1] == "ai" and rep[2] == "ask" and rep[3] == "abuse" and rep[4] == "Antwort Zitronenfalter zweite Zeile" and '"ai": true' in rep[5])
+    s, d = req("POST", "/api/ai/report", A, {"where": "page", "page": 12, "reason": "spam"})
+    with connect() as c:
+        rep = c.execute("SELECT chat_ref, text FROM chat_report WHERE id=%s" % int((d or {}).get("id") or 0)).fetchone()
+    ok(f"Melden: Seiten-Hilfe ohne Text ({s}, {rep})", s == 200 and rep == ("page:12", ""))
+    bad = [req("POST", "/api/ai/report", A, b)[0] for b in ({"where": "chat", "reason": "spam"}, {"where": "ask", "reason": "x"},
+                                                             {"where": "page", "reason": "spam"}, {"where": "ask", "reason": "spam", "text": 5})]
+    ok(f"Melden: ungueltige Angaben -> 400 ({bad})", bad == [400, 400, 400, 400])
+    with connect() as c, c:
+        c.execute("DELETE FROM chat_report WHERE reporter LIKE 'ki-%'")
+
     # --- Datenschutz: nichts in Logs, Kontoloeschung -----------------------------------------------------------------------------
     log = os.path.join(os.environ.get("STATE_DIR", "/tmp/hkstage"), "server.log")
     try:

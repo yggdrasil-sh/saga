@@ -307,6 +307,7 @@
       if (srcNode && srcNode.parentNode) { if (sn) item.replaceChild(sn, srcNode); else item.removeChild(srcNode); }
       else if (sn) item.appendChild(sn);
       srcNode = sn;
+      if (text && !info.no_match) item.appendChild(reportBtn(text, 'ask'));       // 2258a
     }).catch(function (err) {
       fin = true;
       ans.classList.remove('ai-pending', 'ai-live');
@@ -314,6 +315,21 @@
       if (ans.querySelector('.ai-typing')) item.removeChild(ans);
       item.appendChild(errNode(err.message));
     }).then(function () { busy(false); renderFoot(); });
+  }
+  // Melden einer KI-Antwort (2.6, Bugs-DB 2258 Teil a; Apple 1.2): gemeinsames Bauteil HK.report, POST /api/ai/report
+  function reportBtn(text, where, page) {
+    var b = el('button', 'btn btn-quiet ai-report', T('Melden …')); b.type = 'button';
+    b.title = T('Antwort der KI an die Admins melden');
+    b.addEventListener('click', function () {
+      HK.report({ title: T('KI-Antwort melden'), include: T('Antwort der KI mitschicken'), text: text,
+        hint: T('Die Meldung geht an die Admins dieses Saga-Servers – mit dem Text, den du hier mitschickst.') }).then(function (r) {
+        if (!r) return;
+        var body = { where: where, reason: r.reason, text: r.text }; if (page) body.page = page;
+        api('POST', '/api/ai/report', body).then(function () { HK.toast(T('Danke – die Meldung ist bei den Admins.')); b.disabled = true; })
+          .catch(function (e) { HK.toast(e.message); });
+      });
+    });
+    return b;
   }
   function busy(on) {
     if (!on) A.run = null;
@@ -556,6 +572,7 @@
         textSuggest(text, done, out);
       }
       else resBox.appendChild(copyBar(text));
+      if (text && action !== 'assign') resBox.appendChild(reportBtn(text, 'page', pid));   // 2258a
     }).catch(function (err) {
       out.classList.remove('ai-pending');
       if (err && err.name === 'AbortError') return;

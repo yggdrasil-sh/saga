@@ -222,3 +222,17 @@ Apps blenden nur Einstiege danach ein). Unbekannte Einträge ignorieren, fehlt d
 sagen `status.web` bzw. `ai_act` in `caps`. Nach `ai.persona.changed` auch `caps` neu holen (Gruppen können sich geändert
 haben). Reserviert für 3.0 (Telefonie), heute nie gesetzt: `tel`, `tel_out`,
 `tel_in`, `tel_intl`, `tel_mailbox`. Die Gruppen je Fähigkeit stellt der Admin unter „KI-Assistent“ ein (leer = alle).
+
+## 6. KI-Antworten melden (2.6, Bugs-DB 2258 Teil a; Apple 1.2)
+
+Ein gemeinsames Melde-Bauteil für Chat-Nachrichten und KI-Antworten: dieselben Gründe, dieselben Grenzen (5 je Stunde,
+20 je Tag – Chat und KI zusammen), dieselbe Liste im Admin-Bereich („Meldungen“) und dieselbe Benachrichtigung der Admins.
+
+- **Assistent und Seiten-Hilfen:** `POST /api/ai/report` `{where: "ask"|"page", reason: "spam"|"abuse"|"illegal"|"other",
+  text?: "…", page?: <id bei where=page>}` → `{ok, id}`. `text` ist die Antwort der KI, die die Person selbst mitschickt
+  (vorbelegt, abwählbar, änderbar; höchstens 2000 Zeichen). Fehler: 400 (Angaben), 403 (Assistent aus), 429 (zu viele).
+- **KI im Chat:** wie jede Nachricht über `POST /api/chat/report` (Abschnitt Melden in APP-API-CHAT). Neu: die **eigene**
+  KI-Antwort (Beleg passt) darf man ebenfalls melden – Menüpunkt „KI-Antwort melden …“; andere eigene Nachrichten weiter
+  nicht (400). Im Admin-Bereich steht dann „KI-Antwort“.
+- Dialog wie im Web: Grund, Schalter „Antwort der KI mitschicken“ (an), Textfeld mit der Antwort, Hinweis, dass die
+  Meldung an die Admins dieses Servers geht. Unter jeder fertigen Antwort ein unauffälliger Knopf „Melden …“.

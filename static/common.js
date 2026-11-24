@@ -393,6 +393,52 @@
   // opts: {title, text (Text oder Knoten), ok, cancel, danger}. Esc/Klick daneben = Abbrechen; Fokus bleibt im Dialog,
   // bei destruktiven Aktionen startet er auf "Abbrechen". Liegt ueber allen anderen Dialogen.
   var askOpen = null;
+  // Melden-Bauteil (2.6, Bugs-DB 2258 Teil a): ein Dialog fuer Chat-Nachrichten und KI-Antworten - Grund, mitgeschickter
+  // Text (vorbelegt, abwaehlbar, aenderbar). opts: {title, hint, text, include (Beschriftung), cls (zusaetzliches Praefix fuer
+  // Klassen, z. B. 'ct-rep')}. -> Promise {reason, text} bzw. null (abgebrochen). Senden macht der Aufrufer.
+  function report(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var prev = document.activeElement, px = opts.cls ? ' ' + opts.cls : '';
+      var cl = function (k) { return 'hk-rep-' + k + (opts.cls ? ' ' + opts.cls + '-' + k : ''); };
+      var ov = el('div', 'hk-ask hk-rep' + px), box = el('div', 'hk-ask-box hk-rep-box'), uid = 'hk-rep-' + Date.now();
+      box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', uid + '-t');
+      var h = el('h2', 'hk-ask-t', opts.title || window.T('Melden')); h.id = uid + '-t'; box.appendChild(h);
+      if (opts.hint) box.appendChild(el('p', 'hk-hint', opts.hint));
+      var lab = el('label', cl('l'), window.T('Grund')), sel = el('select', 'hk-in ' + cl('reason')); sel.id = uid + '-r'; lab.htmlFor = sel.id;
+      [['spam', window.T('Spam')], ['abuse', window.T('Belästigung oder Beleidigung')], ['illegal', window.T('Rechtswidrige Inhalte')], ['other', window.T('Sonstiges')]].forEach(function (o) {
+        var op = el('option', null, o[1]); op.value = o[0]; sel.appendChild(op);
+      });
+      box.appendChild(lab); box.appendChild(sel);
+      var inc = el('label', 'hk-check ' + cl('inc')), cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
+      inc.appendChild(cb); inc.appendChild(document.createTextNode(' ' + (opts.include || window.T('Text der gemeldeten Nachrichten mitschicken'))));
+      var ta = el('textarea', 'hk-in ' + cl('text')); ta.rows = 4; ta.maxLength = 2000; ta.value = String(opts.text || '').slice(0, 2000);
+      ta.setAttribute('aria-label', window.T('Mitgeschickter Text'));
+      cb.addEventListener('change', function () { ta.hidden = !cb.checked; });
+      box.appendChild(inc); box.appendChild(ta);
+      box.appendChild(el('p', 'hk-hint', window.T('Du kannst den Text vor dem Senden ändern oder kürzen.')));
+      var bar = el('div', 'hk-ask-bar');
+      var no = el('button', 'btn', window.T('Abbrechen')); no.type = 'button';
+      var yes = el('button', 'btn btn-danger ' + cl('send'), window.T('Melden')); yes.type = 'button';
+      bar.appendChild(no); bar.appendChild(yes); box.appendChild(bar); ov.appendChild(box);
+      function done(v) {
+        window.removeEventListener('keydown', key, true); ov.remove();
+        if (prev && prev.focus && document.contains(prev)) { try { prev.focus(); } catch (e) { /* egal */ } }
+        resolve(v);
+      }
+      function key(e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); done(null); return; }
+        if (e.key !== 'Tab') return;
+        var f = [sel, cb].concat(ta.hidden ? [] : [ta]).concat([no, yes]), i = f.indexOf(document.activeElement);
+        e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();   // Fokus bleibt im Dialog
+      }
+      no.addEventListener('click', function () { done(null); });
+      yes.addEventListener('click', function () { done({ reason: sel.value, text: cb.checked ? ta.value.trim() : '' }); });
+      ov.addEventListener('mousedown', function (e) { if (e.target === ov) done(null); });
+      window.addEventListener('keydown', key, true);
+      document.body.appendChild(ov); sel.focus();
+    });
+  }
   function ask(opts) {
     if (askOpen) askOpen(false);
     return new Promise(function (resolve) {
@@ -569,7 +615,7 @@
   }
   window.HK = { personName: personName, tab: TAB, avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, lastMenuOwner: function () { return lastOwner; }, menuItem: menuItem, menuLabel: menuLabel,
-                menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg,
+                menuOpen: function () { return !!menuOwner; }, report: report, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg,
                 tasks: TS, panelFocus: panelFocus, focusables: focusables,
                 smooth: function () { return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'; } };   // A11Y-07
   // Hell/Dunkel (static/theme-boot.js): wirksamer Modus statt matchMedia; Aenderungen per Ereignis 'hk-theme' auf window

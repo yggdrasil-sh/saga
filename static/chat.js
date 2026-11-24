@@ -4376,32 +4376,17 @@
         .catch(function (e) { HK.toast(e.message); });
     });
   }
+  // Melden (2.5) ueber das gemeinsame Bauteil HK.report (2.6, Bugs-DB 2258 Teil a - dasselbe wie fuer KI-Antworten)
   function reportDialog(c, msgs) {
-    var box = overlay(T('Melden'));
-    box.appendChild(el('p', 'hk-hint', T('Die Meldung geht an die Admins dieses Saga-Servers. Chats sind Ende-zu-Ende-verschlüsselt – die Admins sehen nur, was du hier mitschickst.')));
-    var sel = el('select', 'hk-in ct-rep-reason'); sel.setAttribute('aria-label', T('Grund'));
-    [['spam', T('Spam')], ['abuse', T('Belästigung oder Beleidigung')], ['illegal', T('Rechtswidrige Inhalte')], ['other', T('Sonstiges')]].forEach(function (o) {
-      var op = el('option', null, o[1]); op.value = o[0]; sel.appendChild(op);
+    var ai = msgs.length === 1 && msgs[0]._ai === 'ok';
+    HK.report({ cls: 'ct-rep', title: ai ? T('KI-Antwort melden') : T('Melden'),
+      hint: T('Die Meldung geht an die Admins dieses Saga-Servers. Chats sind Ende-zu-Ende-verschlüsselt – die Admins sehen nur, was du hier mitschickst.'),
+      text: msgs.map(function (m) { return (m.sender ? m.sender.name + ': ' : '') + plainText(m); }).join('\n').slice(0, 2000) }).then(function (r) {
+      if (!r) return;
+      api('POST', '/api/chat/report', { chat: c.id, msgs: msgs.map(function (m) { return m.id; }), reason: r.reason, text: r.text })
+        .then(function () { HK.toast(T('Danke – die Meldung ist bei den Admins.')); })
+        .catch(function (e) { HK.toast(e.message); });
     });
-    var lab = el('label', 'ct-rep-l', T('Grund')); box.appendChild(lab); box.appendChild(sel);
-    var inc = el('label', 'hk-check ct-rep-inc'), cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
-    inc.appendChild(cb); inc.appendChild(document.createTextNode(' ' + T('Text der gemeldeten Nachrichten mitschicken')));
-    var ta = el('textarea', 'hk-in ct-rep-text'); ta.rows = 4; ta.maxLength = 2000;
-    ta.value = msgs.map(function (m) { return (m.sender ? m.sender.name + ': ' : '') + plainText(m); }).join('\n').slice(0, 2000);
-    ta.setAttribute('aria-label', T('Mitgeschickter Text'));
-    cb.addEventListener('change', function () { ta.hidden = !cb.checked; });
-    box.appendChild(inc); box.appendChild(ta);
-    box.appendChild(el('p', 'hk-hint', T('Du kannst den Text vor dem Senden ändern oder kürzen.')));
-    var bar = el('div', 'hk-actions'); box.appendChild(bar);
-    bar.appendChild(btn(T('Abbrechen'), '', closeOverlay));
-    var go = btn(T('Melden'), 'btn-danger ct-rep-send', function () {
-      busy(go, true);
-      api('POST', '/api/chat/report', { chat: c.id, msgs: msgs.map(function (m) { return m.id; }), reason: sel.value, text: cb.checked ? ta.value.trim() : '' })
-        .then(function () { closeOverlay(); HK.toast(T('Danke – die Meldung ist bei den Admins.')); })
-        .catch(function (e) { busy(go, false); HK.toast(e.message); });
-    });
-    bar.appendChild(go);
-    sel.focus();
   }
   function grpMenu(menu, m) {
     var c = S.cur; if (!c || !m || m.kind !== 'msg') return;
@@ -4422,6 +4407,8 @@
       if (tg && !grpBlocked(c, m) && c.kind !== 'dm') menu.appendChild(HK.menuItem(T('{name} sperren', { name: m.sender.name }), function () { HK.closeMenu(); blockPerson(c, tg, m.sender.name); }, { ic: 'ban' }));
       menu.appendChild(HK.menuItem(T('Melden …'), function () { HK.closeMenu(); reportDialog(c, [m]); }, { ic: 'flag' }));
     }
+    // 2.6 (2258a): die eigene KI-Antwort (Beleg passt) laesst sich ebenfalls melden - gesendet hat sie dieses Konto
+    if (mine && m._ai === 'ok') menu.appendChild(HK.menuItem(T('KI-Antwort melden …'), function () { HK.closeMenu(); reportDialog(c, [m]); }, { ic: 'flag' }));
   }
   // Direkt-Chat: Sperren/Melden im Chat-Menue
   function grpChatItems(menu, c) {

@@ -2290,6 +2290,40 @@ async def _assign(uid, nid, b):
         return out
     return _respond(uid, c, msgs, [_fmt("sources", {"sources": src1})], finish, left, quota)
 
+@router.post("/api/ai/report")
+async def api_ai_report(request: Request):
+    """Antwort der KI melden (2.6, Bugs-DB 2258 Teil a, gemeinsames Bauteil mit dem Chat): {where: "ask"|"page", reason:
+    spam|abuse|illegal|other, text?, page?} - text ist die Antwort, die die Person selbst mitschickt (freiwillig, hoechstens
+    2000 Zeichen). Geht wie Chat-Meldungen an die Saga-Admins (Admin -> Meldungen, Benachrichtigung), gleiche Grenzen.
+    KI-Antworten im Chat meldet man wie andere Nachrichten ueber /api/chat/report (auch die eigene KI-Antwort)."""
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    b = await _body(request) or {}
+
+    def run():
+        from saga import chat_grp
+        from saga.federation import _clean_text
+        where, reason, text = b.get("where"), b.get("reason"), b.get("text") or ""
+        if where not in ("ask", "page") or reason not in chat_grp.REASONS or not isinstance(text, str):
+            return _bad(t("ungültige Angabe"))
+        page = b.get("page")
+        if where == "page" and (isinstance(page, bool) or not isinstance(page, int) or page <= 0):
+            return _bad(t("ungültige Angabe"))
+        text = _clean_text(text.replace("\n", " "), chat_grp.REPORT_TEXT_MAX) if text else ""
+        now = time.time()
+        with _db() as conn, conn:
+            if not allowed(uid, cfg(), conn):
+                return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet."), 403)
+            if not chat_grp.report_allowed(conn, uid, now):
+                return _bad(t("Zu viele Meldungen in kurzer Zeit – bitte später erneut."), 429)
+            items = [{"ts": now * 1000, "ai": True, "where": where, "sender": {"handle": None, "name": f"{persona_name()} · KI"}}]
+            rid = chat_grp.store_report(conn, uid, None, "ai", f"page:{page}" if where == "page" else "ask", reason, text, items, now)
+        print(f"ai: Meldung {rid} ({reason}, {where}, {len(text)} Zeichen)", flush=True)   # nie Inhalte loggen
+        return JSONResponse({"ok": True, "id": rid}, headers={"Cache-Control": "no-store"})
+    return await asyncio.to_thread(run)
+
+
 @router.put("/api/ai/settings")
 async def api_ai_settings(request: Request):
     """Eigener Verlauf an/aus: {history: bool}. Aus = gespeicherter Verlauf wird geloescht."""

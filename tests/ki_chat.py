@@ -51,6 +51,8 @@ def cleanup():
     for u in users:
         delete_user_data(u)
     with connect() as c, c:
+        c.execute("DELETE FROM chat_report WHERE reporter LIKE 'ki-c%'")
+    with connect() as c, c:
         c.execute("DELETE FROM chat WHERE group_name LIKE 'ki-c%' OR dm_key LIKE 'ki-c%' OR created_by LIKE 'ki-c%' "
                   "OR id IN (SELECT chat_id FROM chat_member WHERE uid LIKE 'ki-c%')")
         for t in ("note", "user_kv", "notification", "chat_identity", "chat_device", "chat_file", "ai_usage", "chat_ai_reply"):
@@ -180,6 +182,13 @@ def run():
     mark = mm[0].get("ai") if mm else None
     ok(f"Mitglieder sehen die Kennzeichnung ({mark})", mark is not None and mark["ref"] == done["reply"]["id"] and mark["by"] == "ki-ca"
        and mark["q_msg"] == qm["id"])
+    # 2.6 (Bugs-DB 2258 Teil a): die eigene KI-Antwort darf man melden, die eigene normale Nachricht nicht
+    s, d = CT.req("POST", "/api/chat/report", A.k, {"chat": dm, "msgs": [am["id"]], "reason": "other", "text": "KI-Antwort"})
+    with connect() as c:
+        rep = c.execute("SELECT items FROM chat_report WHERE id=%s" % int((d or {}).get("id") or 0)).fetchone()
+    ok(f"2258a: eigene KI-Antwort melden -> 200, als KI markiert ({s}, {rep and rep[0][:80]})", s == 200 and rep and '"ai": true' in rep[0])
+    s, d = CT.req("POST", "/api/chat/report", A.k, {"chat": dm, "msgs": [qm["id"]], "reason": "other"})
+    ok(f"2258a: eigene normale Nachricht melden -> 400 ({s})", s == 400)
     body = C.decrypt(str(dm), mm[0], B.dev["enc_pk"], B.dev["enc_sk"]) if mm else {}
     ok("Hash passt zum entschluesselten Text (Pruefung im Client)", hashlib.sha256(str(body.get("text", "")).strip().encode()).hexdigest() == mark["sha256"]
        and body.get("ai", {}).get("reply") == mark["ref"])

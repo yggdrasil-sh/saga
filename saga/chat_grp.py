@@ -684,8 +684,7 @@ def report(uid, b):
         ch, m, mem, err = chat._chat_for(c, uid, b.get("chat"), do_sync=False)
         if err:
             return err
-        if c.execute("SELECT COUNT(*) FROM chat_report WHERE reporter=? AND created>?", (uid, now - 86400)).fetchone()[0] >= REPORT_DAY \
-                or not chat._rate("report", uid, REPORT_RATE_H, 3600):
+        if not report_allowed(c, uid, now):
             return _bad(t("Zu viele Meldungen in kurzer Zeit – bitte später erneut."), 429)
         items = []
         if ids:
@@ -693,18 +692,37 @@ def report(uid, b):
                              f"({','.join('?' * len(ids))})", (ch["id"], *sorted(set(ids)))).fetchall()
             if len(rows) != len(set(ids)):
                 return _bad("not found", 404)
+            ai_msgs = {r[0] for r in c.execute(f"SELECT msg_id FROM chat_ai_reply WHERE chat_id=? AND msg_id IN ({','.join('?' * len(ids))})",
+                                                (ch["id"], *sorted(set(ids)))).fetchall()}
             for mid, ts, su, sh in sorted(rows, key=lambda r: r[1]):
-                if su == uid:
+                if su == uid and mid not in ai_msgs:          # 2.6 (2258a): eigene KI-Antworten (Beleg) darf man melden
                     return _bad(t("Eigene Nachrichten lassen sich nicht melden."), 400)
                 items.append({"id": mid, "ts": ts, "sender": _sender_info(c, ch, uid, su, sh)})
+                if mid in ai_msgs:
+                    items[-1]["ai"] = True
         elif ch["kind"] != "dm":
             return _bad(t("Bitte mindestens eine Nachricht auswählen."), 400)
-        rid = c.execute("INSERT INTO chat_report (reporter, chat_id, chat_kind, chat_ref, reason, text, items, created) VALUES (?,?,?,?,?,?,?,?) "
-                        "RETURNING id", (uid, ch["id"], ch["kind"], ch.get("ref"), reason, text, json.dumps(items), now)).fetchone()[0]
-        for a in [r[0] for r in c.execute("SELECT username FROM users WHERE is_admin=1 AND disabled=0").fetchall()]:
-            notify.create(c, a, "chat.report", None, data={"report": rid})
+        rid = store_report(c, uid, ch["id"], ch["kind"], ch.get("ref"), reason, text, items, now)
         print(f"chat: Meldung {rid} ({reason}, {len(items)} Nachrichten, Chat {ch['id']})", flush=True)
     return chat._no_store({"ok": True, "id": rid})
+
+
+# --- Gemeinsamer Kern fuer Chat und KI (2.6, Bugs-DB 2258 Teil a; Apple 1.2: Melden mit zeitnaher Reaktion) -----------
+def report_allowed(c, uid, now=None):
+    """Grenzen je Konto fuer ALLE Meldungen (Chat und KI zusammen): REPORT_RATE_H je Stunde, REPORT_DAY je Tag."""
+    now = now or time.time()
+    return (c.execute("SELECT COUNT(*) FROM chat_report WHERE reporter=? AND created>?", (uid, now - 86400)).fetchone()[0] < REPORT_DAY
+            and chat._rate("report", uid, REPORT_RATE_H, 3600))
+
+
+def store_report(c, uid, chat_id, kind, ref, reason, text, items, now=None):
+    """Meldung speichern und die Saga-Admins benachrichtigen -> id. kind 'ai' = KI-Ausgabe (chat_id nur bei KI im Chat)."""
+    now = now or time.time()
+    rid = c.execute("INSERT INTO chat_report (reporter, chat_id, chat_kind, chat_ref, reason, text, items, created) VALUES (?,?,?,?,?,?,?,?) "
+                    "RETURNING id", (uid, chat_id, kind, ref, reason, text, json.dumps(items), now)).fetchone()[0]
+    for a in [r[0] for r in c.execute("SELECT username FROM users WHERE is_admin=1 AND disabled=0").fetchall()]:
+        notify.create(c, a, "chat.report", None, data={"report": rid, "ai": kind == "ai"})
+    return rid
 
 
 @router.post("/api/chat/report")
@@ -721,8 +739,10 @@ async def api_report(request: Request):
 def _notif(c, uid, item, d):
     item["access"] = True
     item["system"] = True
-    item["title"] = t("Neue Meldung im Chat")
-    item["text"] = t("Jemand hat Nachrichten in einem Chat gemeldet. Details im Admin-Bereich unter „Meldungen“.")
+    ai_ = bool((d or {}).get("ai"))
+    item["title"] = t("Neue Meldung zu einer KI-Antwort") if ai_ else t("Neue Meldung im Chat")
+    item["text"] = (t("Jemand hat eine Antwort der KI gemeldet. Details im Admin-Bereich unter „Meldungen“.") if ai_
+                    else t("Jemand hat Nachrichten in einem Chat gemeldet. Details im Admin-Bereich unter „Meldungen“."))
     item["url"] = (ADMIN_URL + "/reports") if ADMIN_URL else None
 
 
