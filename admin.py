@@ -1806,7 +1806,7 @@ def ai_page(request: Request):
     cp = a.get("caps") or {}
     return _page(request, "ai.html", me, a=a, has_key=bool(a.get("api_key")), groups_text=", ".join(a.get("groups") or []),
                  caps_act_text=", ".join(cp.get("ai_act") or []), caps_ideas_text=", ".join(cp.get("ai_ideas") or []),
-                 test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL,
+                 test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL, units=ai.units_today(),
                  models=ai.LAST_MODELS["list"][:300], web_ok=ai.ai_web.available(), **_persona_ctx())
 
 

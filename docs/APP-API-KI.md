@@ -257,3 +257,12 @@ Was der Assistent liest, wählt der Server an einer Stelle (`saga/ai_ctx.py`) un
   beidem gilt beides. Eine Quelle wirkt nur, wenn Anfrage (`tasks`/`calendar` je Frage) **und** Person sie einschalten;
   `chat: false` = beim Zuruf geht kein Verlauf an das Modell. Die Seiten-Hilfen lesen weiter genau die gewählte Seite.
 - Föderierte Seiten (negative IDs) und Gäste anderer Server bekommen nie Kontext; Chat-Verlauf nur beim Zuruf.
+
+## 8. Einheiten (2.6, Bugs-DB 2266 K-A5)
+
+- **`GET /api/ai/status` → `"units": {"left": 11650, "of": 12000}`** – Messwert in Einheiten (etwa Zeichen/4) für heute,
+  alle Pools zusammen (Fragen, Aufträge, Ideen); beide `null` bei unbegrenztem Kontingent. Das Feld steht am Ende, alle
+  älteren Felder bleiben in Form und Reihenfolge gleich. Ältere Server senden es nicht.
+- **Stellgröße bleibt das Kontingent in Anfragen:** Ob eine Frage geht, entscheiden weiter `quota`/`used`/`quota_left`
+  (auch in `done` und `error`). Einheiten werden für Fragen nur gemessen – eine App zeigt sie höchstens klein an und
+  sperrt nie danach. Grenzen in Einheiten gelten nur für Aufträge und Ideen der Kollegin (ab K-B).

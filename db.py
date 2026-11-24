@@ -628,6 +628,12 @@ CREATE INDEX IF NOT EXISTS push_stream_msg_exp ON push_stream_msg (expires);
 -- sources = JSON {ids: [Seiten], opts}, Titel werden beim Lesen mit der aktuellen Berechtigung ermittelt)
 CREATE TABLE IF NOT EXISTS ai_usage (
     uid TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (uid, day));
+-- 2.6 (Bugs-DB 2266 K-A5, Konzept K21): KI-Einheiten je Person, Tag und Pool (ask|job|idea) - nur Zahlen, keine Inhalte;
+-- units = Zeichen/4 (geschaetzt belegt, nachher abgerechnet), real_in/real_out = echte Tokens des Endpunkts (nur Anzeige). 90 Tage.
+CREATE TABLE IF NOT EXISTS ai_units (
+    uid TEXT NOT NULL, day TEXT NOT NULL, pool TEXT NOT NULL, units BIGINT NOT NULL DEFAULT 0,
+    real_in BIGINT NOT NULL DEFAULT 0, real_out BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (uid, day, pool));
+CREATE INDEX IF NOT EXISTS ai_units_day ON ai_units (day);
 CREATE TABLE IF NOT EXISTS ai_history (
     id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, kind TEXT NOT NULL,
     question TEXT NOT NULL, answer TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '{}');

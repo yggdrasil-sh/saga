@@ -53,6 +53,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (Standard: alles an), `GET /api/ai/status` nennt `sources`. Föderierte Inhalte und Gäste anderer Server bleiben
   draußen, Chat-Verlauf nur beim Zuruf. Die Nachrichten an das Modell sind unverändert (Golden-Vergleich
   `tests/ki_golden.py`). Tests: `tests/kollegin_rechte.py`, Messung `tools/perf/kollegin.py`.
+- **KI-Einheiten und Spuren** (Bugs-DB 2266 K-A5, Konzept K21): `saga/ai_units.py` misst jede Anfrage an das Modell in
+  Einheiten (etwa Zeichen/4: vorher geschätzt und belegt, nachher abgerechnet, ohne Antwort 0) je Person, Tag und Pool
+  (Fragen 60 %, Aufträge 30 %, Ideen 10 % von „Anfragen je Person und Tag“ × 4000), neue Tabelle `ai_units` (nur
+  Zahlen, 90 Tage, keine Migration). Fragen bleiben beim Anfragen-Zähler – `quota_left` in `/api/ai/status` und `done`
+  unverändert, dort wird nur gemessen; `/api/ai/status` trägt zusätzlich `units {left, of}`. Durchgesetzt wird nur in
+  den Pools für Aufträge und Ideen (noch ohne Nutzer). Echte Tokens des Endpunkts zur Anzeige: Ollama
+  `prompt_eval_count`/`eval_count`, OpenAI-kompatibel `stream_options.include_usage` (lehnt ein Endpunkt das mit 400
+  ab, fragt Saga ohne und merkt es sich). Spuren: Hintergrund-Arbeit bekommt höchstens einen Platz neben den Fragen
+  und nur, wenn weniger als `AI_MAX_PARALLEL`−1 Fragen laufen; Fragen werden dafür nie abgewiesen (ab
+  `AI_MAX_PARALLEL` 2). Admin → KI-Assistent zeigt die Einheiten klein als Messwert (unter 5 Konten nur Summen, sonst je
+  Person nur eine Ampel). Tests: `tests/kollegin_budget.py`, Test-Modelle `fake-usage`, `fake-nousage`.
 - **Testgerüst für die Kollegin** (Bugs-DB 2265 K-T): Testuhr `saga/testclock.py` mit `/_test/clock|tick|flush` – nur
   mit `SAGA_TEST_HOOKS=1` und von 127.0.0.1/::1, sonst 404 – und ein beeinflusstes Test-Modell `fake-evil` (schließt den
   Datenrahmen, erfindet Suchen und Aufträge, schickt Bilder/Links mit Daten nach außen). Tests: `tests/testuhr.py`,

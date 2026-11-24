@@ -16,6 +16,11 @@ Verhalten nach Modellname:
   fake-length    Antwort, dann finish_reason/done_reason "length"
   fake-drip      6 Stuecke im Abstand von 2 s (insgesamt laenger als ein Zeitlimit von 5 s)
   fake-nothink   Ollama: 400, wenn die Anfrage 'think' enthaelt (wie Modelle ohne Denk-Schalter)
+  fake-usage     (2.6 K-A5) echte Token-Zahlen: OpenAI zum Schluss ein Stueck {choices: [], usage} - nur mit
+                 stream_options.include_usage; Ollama prompt_eval_count/eval_count in der letzten Zeile.
+                 Zahlen: Eingabe = Woerter aller Nachrichten + 7, Ausgabe = Woerter der Antwort + 3 (Pruefwerte)
+  fake-nousage   OpenAI: 400 "Unrecognized request argument supplied: stream_options", wenn die Anfrage es enthaelt
+                 (wie Endpunkte ohne usage im Strom); Ollama: ohne Zaehler
 Websuche (2.1): Vorab-Entscheidung ("You decide whether answering a message needs a web search") je nach Frage:
   "wetter"/"weather" -> Plauderei + drei SEARCH-Zeilen (Saga nimmt zwei), "injektion" -> SEARCH mit Bang und Markierung,
   "langfrage" -> zu lange Suchanfrage (verworfen), sonst NONE. Zaehler GET /_count {decide}. Antworten mit Webtreffern
@@ -184,6 +189,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(401, {"error": "unauthorized"})
         if model == "fake-nothink" and "think" in body:
             return self._json(400, {"error": '"fake-nothink" does not support thinking'})
+        if model == "fake-nousage" and "stream_options" in body:
+            return self._json(400, {"error": {"message": "Unrecognized request argument supplied: stream_options"}})
         text = answer(body.get("messages") or [], model)
         ollama = self.path == "/api/chat"
         if self.path not in ("/v1/chat/completions", "/chat/completions", "/api/chat"):
@@ -236,10 +243,18 @@ class H(BaseHTTPRequestHandler):
                     time.sleep(8)
                 time.sleep(0.02)
             reason = "length" if model == "fake-length" else "stop"
+            n_in = sum(len(str(m.get("content") or "").split()) for m in body.get("messages") or []) + 7
+            n_out = len("".join(parts).split()) + 3
             if ollama:
-                send(json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True, "done_reason": reason}) + "\n")
+                end = {"model": model, "message": {"role": "assistant", "content": ""}, "done": True, "done_reason": reason}
+                if model == "fake-usage":
+                    end.update(prompt_eval_count=n_in, eval_count=n_out)
+                send(json.dumps(end) + "\n")
             else:
                 send("data: " + json.dumps({"choices": [{"index": 0, "delta": {}, "finish_reason": reason}]}) + "\n\n")
+                if model == "fake-usage" and (body.get("stream_options") or {}).get("include_usage"):
+                    send("data: " + json.dumps({"choices": [], "usage": {"prompt_tokens": n_in, "completion_tokens": n_out,
+                                                                         "total_tokens": n_in + n_out}}) + "\n\n")
                 send("data: [DONE]\n\n")
             self.wfile.write(b"0\r\n\r\n")
             self.wfile.flush()

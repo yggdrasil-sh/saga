@@ -17,6 +17,9 @@ Grundsaetze
 - Antworten per Server-Sent Events (POST, text/event-stream) ueber den normalen Web-Port.
 - Datenschutz: keine Fragen, Inhalte oder Antworten in Logs. Verlauf nur, wenn Admin ihn erlaubt UND die Person ihn
   einschaltet (abschaltbar = loeschen, einzeln loeschbar). Kontoloeschung raeumt ai_history/ai_usage ab (USER_TABLES).
+- Einheiten und Spuren (2.6 K-A5, saga/ai_units.py): jede Anfrage wird zusaetzlich in Einheiten gemessen (Zeichen/4, Pool
+  ask, ai_units); Stellgroesse bleibt das Kontingent in Anfragen (ai_usage, quota_left unveraendert). /api/ai/status traegt
+  dazu units {left, of} (Messwert, alle Pools). _gate belegt die Frage-Spur ueber ai_units.lane_try.
 
 Ereignisse der Antwort (event: ..., data: JSON):
   sources {sources:[{n, id, title, owner?}]}   welche Seiten im Kontext stehen (Nummern fuer [n] in der Antwort)
@@ -54,7 +57,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 import auth
 from db import connect as _db
-from saga import ai_ctx, ai_frame, ai_web, avatars, bus, caps, dbcalc, i18n, netguard
+from saga import ai_ctx, ai_frame, ai_units, ai_web, avatars, bus, caps, dbcalc, i18n, netguard
 from saga.core import CA_FILE, E, TZ, _api_guard, _bad, _body, t
 from saga.netguard import Blocked, guarded_client, is_public
 from saga.notes import _calc_value, _iter_blocks, blocks_text
@@ -71,7 +74,7 @@ PER_PAGE = 3                     # hoechstens so viele Auszuege je Seite
 SCAN_MAX = 3000                  # hoechstens so viele eigene Seiten durchsuchen (neueste zuerst)
 BLOCKS_MAX = 50                  # markierte Bloecke je Anfrage
 HISTORY_MAX = 200                # Verlaufseintraege je Person
-PARALLEL = max(1, int(E.get("AI_MAX_PARALLEL", "4")))       # gleichzeitige Anfragen an das Modell (alle Personen)
+PARALLEL = ai_units.PARALLEL      # AI_MAX_PARALLEL: gleichzeitige Fragen an das Modell (alle Personen), Spuren in ai_units
 HEADERS = {"Cache-Control": "no-store", "X-Accel-Buffering": "no", "X-Content-Type-Options": "nosniff"}
 # Datenrahmen (Bugs-DB 2260): Markierungen mit Zufallskennung je Anfrage, Entschaerfen jeder Schreibweise - saga/ai_frame.py
 # Zielsprachen fuer "Uebersetzen" (Name fuer die Anweisung an das Modell)
@@ -86,7 +89,7 @@ PAGE_DBS = 5                     # hoechstens so viele Datenbanken je Seite
 PAGE_DB_ROWS = 300               # Zeilen aller Datenbanken einer Seite zusammen (Lesen)
 TEXT_TYPES = ("paragraph", "header", "quote")                 # Bloecke, deren Text der Client ersetzen kann
 
-_busy = {}                                                    # uid -> Beginn der laufenden Anfrage (nur in der Event-Schleife veraendert)
+_busy = ai_units.LANES["ask"]       # uid -> Beginn der laufenden Anfrage (2.6 K-A5: Buchhaltung unter Lock in ai_units)
 
 
 class AIError(Exception):
@@ -1176,7 +1179,7 @@ def web_step(uid, c, q, emit, stop, context="", start=1, quota=0, own=""):
         return out
     txt = []
     try:
-        stream_model(c, web_decide_messages(q, context), txt.append, stop, max_tokens=300)
+        stream_metered(uid, "ask", c, web_decide_messages(q, context), txt.append, stop, max_tokens=300)
     except AIError:
         print("ai-web: Entscheidung fehlgeschlagen", flush=True)
         return out
@@ -1502,12 +1505,16 @@ class ThinkFilter:
 
 
 _NO_TEMP = set()                                              # (provider, url, modell) ohne temperature-Parameter
+_NO_USAGE = set()                                             # (provider, url, modell) ohne stream_options (2.6 K-A5)
 
 
 def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=None):
     """Synchron (im Thread): sichtbare Antwort Stueck fuer Stueck an emit(text); status('thinking') einmal, sobald das
     Modell nachdenkt. stop() -> True bricht ab. -> {'cut': bool} (Antwort abgeschnitten). Wirft AIError.
-    Zeitlimits: bis zum ersten Stueck und zwischen zwei Stuecken wait_limit, insgesamt total_limit."""
+    Zeitlimits: bis zum ersten Stueck und zwischen zwei Stuecken wait_limit, insgesamt total_limit.
+    2.6 K-A5: echte Tokens des Endpunkts (nur Anzeige, saga/ai_units.py) -> zusaetzlich 'usage' {in, out}, wenn bekannt:
+    Ollama prompt_eval_count/eval_count, OpenAI usage (stream_options.include_usage; lehnt der Endpunkt das mit 400 ab,
+    merkt Saga sich das wie bei temperature und fragt ohne)."""
     stop = stop or (lambda: False)
     prov, base = c.get("provider"), (c.get("url") or "").rstrip("/")
     if prov == "ollama":
@@ -1520,10 +1527,12 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
                                                  "temperature": 0.2, "max_tokens": max_tokens}
         if (prov, base, c.get("model")) in _NO_TEMP:
             body.pop("temperature", None)
+        if (prov, base, c.get("model")) not in _NO_USAGE:
+            body["stream_options"] = {"include_usage": True}
     cl, tmo = _client(c)
     total = total_limit(c)
     t0 = time.monotonic()
-    st = {"n": 0, "first": None, "finish": None, "thinking": False}
+    st = {"n": 0, "first": None, "finish": None, "thinking": False, "usage": None}
     mkey = (prov, base, c.get("model"))
     flt = ThinkFilter(inside=mkey in _THINK_OPEN)
 
@@ -1538,19 +1547,27 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
             st["n"] += len(s)
             emit(s)
     try:
-        for attempt in (0, 1):
+        for _attempt in range(3):                          # jede Anpassung hoechstens einmal (Schluessel fliegt raus)
             with cl.stream("POST", url, json=body, headers=_headers(c)) as r:
                 if r.status_code != 200:
                     raw = r.read()[:4096]
-                    if attempt == 0 and prov == "ollama" and r.status_code == 400 and b"think" in raw.lower():
+                    low = raw.lower()
+                    if prov == "ollama" and r.status_code == 400 and b"think" in low and "think" in body:
                         body.pop("think", None)                # aeltere Ollama-Versionen/Modelle ohne Denk-Schalter
                         continue
-                    if attempt == 0 and prov != "ollama" and r.status_code == 400 and b"temperature" in raw.lower() \
-                            and "temperature" in body:
+                    if prov != "ollama" and r.status_code == 400 and b"temperature" in low and "temperature" in body:
                         body.pop("temperature", None)          # neuere Modelle (z. B. Claude ueber /v1) lehnen temperature ab
                         _NO_TEMP.add(mkey)
                         continue
+                    if prov != "ollama" and r.status_code in (400, 422) and "stream_options" in body:
+                        # 2.6 K-A5: Endpunkt ohne usage im Strom (nicht jeder nennt das Feld in der Meldung) - einmal ohne
+                        # versuchen; gemerkt wird es erst, wenn es ohne klappt (sonst war es ein anderer Fehler)
+                        body.pop("stream_options", None)
+                        st["no_usage"] = True
+                        continue
                     raise _http_error(r.status_code, _err_detail(raw))
+                if st.get("no_usage"):
+                    _NO_USAGE.add(mkey)                        # nur Zeichen zaehlen, wie bei temperature gemerkt
                 for line in r.iter_lines():
                     if stop():
                         return {"cut": False}
@@ -1563,6 +1580,8 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
                     if not line:
                         continue
                     piece, done, info = _parse_line(prov, line)
+                    if info.get("usage"):
+                        st["usage"] = info["usage"]
                     if info.get("finish"):
                         st["finish"] = info["finish"]
                     if info.get("thinking"):
@@ -1601,12 +1620,16 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
         cl.close()
     if not st["n"] and not stop():
         raise AIError(t("Das Modell hat keine Antwort geliefert (bei Modellen mit Denkphase: Antwortlänge zu knapp?)."))
-    return {"cut": st["finish"] == "length"}
+    out = {"cut": st["finish"] == "length"}
+    if st["usage"]:
+        out["usage"] = st["usage"]
+    return out
 
 
 def _parse_line(prov, line):
-    """-> (text, fertig, info{thinking, finish}). OpenAI: 'data: {...}' / 'data: [DONE]'; Ollama: eine JSON-Zeile je Stueck.
-    Denkphasen in eigenen Feldern (reasoning_content/reasoning, Ollama 'thinking') werden nicht angezeigt."""
+    """-> (text, fertig, info{thinking, finish, usage?}). OpenAI: 'data: {...}' / 'data: [DONE]'; Ollama: eine JSON-Zeile je
+    Stueck. Denkphasen in eigenen Feldern (reasoning_content/reasoning, Ollama 'thinking') werden nicht angezeigt.
+    usage (2.6 K-A5) = {in, out} echte Tokens: Ollama in der letzten Zeile, OpenAI im Stueck mit 'usage' (choices leer)."""
     if prov == "ollama":
         try:
             d = json.loads(line)
@@ -1618,6 +1641,8 @@ def _parse_line(prov, line):
             raise AIError(t("Der Modell-Endpunkt meldet einen Fehler."))
         m = d.get("message") if isinstance(d.get("message"), dict) else {}
         info = {"thinking": bool(m.get("thinking")), "finish": (d.get("done_reason") or "stop") if d.get("done") else None}
+        if d.get("done"):
+            info["usage"] = _usage(d.get("prompt_eval_count"), d.get("eval_count"))
         return str(m.get("content") or ""), bool(d.get("done")), info
     if not line.startswith("data:"):
         return "", False, {}
@@ -1632,14 +1657,54 @@ def _parse_line(prov, line):
         return "", False, {}
     if d.get("error"):
         raise AIError(t("Der Modell-Endpunkt meldet einen Fehler."))
+    u = d.get("usage") if isinstance(d.get("usage"), dict) else {}
     ch = (d.get("choices") or [{}])[0] or {}
     if not isinstance(ch, dict):
-        return "", False, {}
+        return "", False, {"usage": _usage(u.get("prompt_tokens"), u.get("completion_tokens"))}
     dl = ch.get("delta") if isinstance(ch.get("delta"), dict) else {}
     msg = ch.get("message") if isinstance(ch.get("message"), dict) else {}
     piece = dl.get("content") or msg.get("content") or ""
-    info = {"thinking": bool(dl.get("reasoning_content") or dl.get("reasoning")), "finish": ch.get("finish_reason")}
+    info = {"thinking": bool(dl.get("reasoning_content") or dl.get("reasoning")), "finish": ch.get("finish_reason"),
+            "usage": _usage(u.get("prompt_tokens"), u.get("completion_tokens"))}
     return str(piece), False, info
+
+
+def _usage(n_in, n_out):
+    """Echte Token-Zahlen des Endpunkts -> {in, out} oder None (nur nicht negative ganze Zahlen, sonst unbekannt)."""
+    ok = [v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 10 ** 9 else None for v in (n_in, n_out)]
+    return None if ok == [None, None] else {"in": ok[0] or 0, "out": ok[1] or 0}
+
+
+def stream_metered(uid, pool, c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=None, res=None, job_running=False):
+    """stream_model mit Einheiten (2.6 K-A5, saga/ai_units.py): vorher schaetzen und im Pool belegen, nachher abrechnen
+    (Zeichen/4, ohne Antwort 0, echte Tokens nur als Messwert). Pool ask misst nur - Fehler der Messung stoeren die Antwort
+    nie. job/idea: res vom Aufrufer (ai_units.reserve) oder hier belegt; kein Platz im Tagespool -> ai_units.NoBudget."""
+    if res is None:
+        est = ai_units.estimate(messages, max_tokens)
+        if pool == "ask":
+            try:
+                res = ai_units.reserve(uid, pool, est, cfg=c)
+            except Exception as ex:  # noqa: BLE001 - Messung, nie die Frage aufhalten
+                print(f"ai-units: {type(ex).__name__}", flush=True)
+        else:
+            res = ai_units.reserve(uid, pool, est, job_running=job_running, cfg=c)
+            if res is None:
+                raise ai_units.NoBudget(pool)
+    n = {"out": 0}
+
+    def out(s):
+        n["out"] += len(s)
+        emit(s)
+    r = None
+    try:
+        r = stream_model(c, messages, out, stop, max_tokens=max_tokens, status=status)
+        return r
+    finally:
+        u = (r or {}).get("usage") or {}
+        try:
+            ai_units.settle(res, ai_units.chars_of(messages), n["out"], u.get("in"), u.get("out"))
+        except Exception as ex:  # noqa: BLE001
+            print(f"ai-units: {type(ex).__name__}", flush=True)
 
 
 LAST_MODELS = {"list": []}                                    # Admin: zuletzt abgerufene Modell-Liste (Vorschlaege im Feld)
@@ -1710,32 +1775,24 @@ def _fmt(typ, data):
     return f"event: {typ}\ndata: {json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
 
-def _fresh(c):
-    """Laufende Anfragen; Eintraege, die laenger als die Gesamtdauer einer Antwort + 1 min stehen, gelten als verwaist."""
-    now, stale = time.monotonic(), total_limit(c) + 60
-    for u in [u for u, t0 in _busy.items() if now - t0 > stale]:
-        _busy.pop(u, None)
-    return _busy
-
-
 async def _gate(uid):
     """Darf uid jetzt fragen? Belegt dann einen Platz (eine Anfrage je Person, PARALLEL insgesamt).
+    2.6 K-A5: ueber die Spuren in saga/ai_units.py (Hintergrund zaehlt fuer Fragen nicht mit, solange PARALLEL >= 2).
     -> (einstellungen, fehlerantwort). Ohne Fehler MUSS danach _respond oder _release folgen."""
     c = cfg()
     if not await asyncio.to_thread(allowed, uid, c):
         return c, _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet."), 403)
-    busy = _fresh(c)                                       # ab hier ohne await: Pruefen und Belegen in einem Schritt
-    if uid in busy:
+    why = ai_units.lane_try("ask", uid, stale=total_limit(c) + 60, parallel=PARALLEL)
+    if why == "busy":
         return c, _bad(t("Es läuft schon eine Anfrage – bitte warten, bis sie fertig ist."), 409)
-    if len(busy) >= PARALLEL:
+    if why:
         return c, JSONResponse({"error": t("Der Assistent ist gerade ausgelastet – bitte gleich noch einmal.")}, status_code=503,
                                headers={"Retry-After": "10"})
-    busy[uid] = time.monotonic()
     return c, None
 
 
 def _release(uid):
-    _busy.pop(uid, None)
+    ai_units.lane_free("ask", uid)
 
 
 def _refund(uid):
@@ -1779,7 +1836,7 @@ def _respond(uid, c, messages, first, finish, quota_left, quota=0, prep=None):
                     put(("end", {"extra": r.get("extra") or {}}))
                     return
                 msgs = r or messages
-            res = stream_model(c, msgs, lambda s: put(("d", s)), halt.is_set, status=lambda s: put(("s", s)))
+            res = stream_metered(uid, "ask", c, msgs, lambda s: put(("d", s)), halt.is_set, status=lambda s: put(("s", s)))
             put(("end", res))
         except AIError as ex:
             put(("err", str(ex)))
@@ -1857,6 +1914,7 @@ def api_ai_status(request: Request):
         used, hist = used_today(conn, uid), history_on(conn, uid)
         caps_now = [x for x in caps.CAPS if caps.can(uid, x, conn, c)]   # 2261
         srcs = ai_ctx.prefs(uid, conn)                                   # 2.6 K-A4: Schalter der Person je Quelle
+    units = ai_units.left(uid, c)                                        # 2.6 K-A5: Messwert (Einheiten), nur angehaengt
     web_cap = "ai_act" in caps_now
     quota = int(c.get("quota") or 0)
     host = host_of(c)
@@ -1866,7 +1924,7 @@ def api_ai_status(request: Request):
                          "notice": t("Inhalte, die du dem Assistenten gibst, gehen an {host}.", host=host),
                          "targets": sorted(TARGETS), "q_max": Q_MAX, "blocks_max": BLOCKS_MAX,
                          "persona": persona(), "chat": bool(c.get("chat")), "web": ai_web.enabled(c) and web_cap,
-                         "caps": caps_now, "sources": srcs},
+                         "caps": caps_now, "sources": srcs, "units": units},
                         headers={"Cache-Control": "no-store"})
 
 
@@ -2455,6 +2513,11 @@ def api_ai_history_delete(hid: int, request: Request):
     with _db() as c, c:
         n = c.execute("DELETE FROM ai_history WHERE uid=? AND id=?", (uid, hid)).rowcount
     return JSONResponse({"deleted": n}) if n else _bad("not found", 404)
+
+
+def units_today():
+    """Fuer den Admin-Bereich (2.6 K-A5, M8): Einheiten heute als kleiner Messwert - siehe ai_units.admin_view."""
+    return ai_units.admin_view(cfg())
 
 
 def usage_today():
