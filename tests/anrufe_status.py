@@ -87,6 +87,7 @@ def main():
     try:
         run()
         in_process()
+        clock_part()
     finally:
         for x in A_.STREAMS:
             x.close()
@@ -364,6 +365,57 @@ def in_process():
         with connect() as c, c:
             c.execute("DELETE FROM chat_call WHERE id=?", (cid,))
             c.execute("DELETE FROM chat WHERE dm_key='ca-sa|ca-sx'")
+
+
+def clock_part():
+    """Eine Uhr (Bugs-DB 2029): Anruf-Weiche (calls.ring_gate) und Push-Weiche (push.REACH/enqueue) entscheiden mit derselben
+    Testuhr; Anruf-Zeitstempel (chat_call.created) laufen auf ihr (Wiederholungsanruf, Sammelmeldung). Im Prozess, Uhr einen
+    Tag voraus und angehalten - die Echtzeit wuerde jeweils anders entscheiden."""
+    from saga import calls as CL, push as P, testclock as TC, user_status as US
+    U, X = "ca-sb", "ca-se"
+    TC.set_clock({"freeze": True})
+    TC.set_clock({"set": time.time() + 86400})
+    ch = None
+
+    def both(tag):
+        with connect() as c:                         # ohne Commit: vorgemerkte Auftraege/Zaehler werden verworfen
+            g = CL.ring_gate(c, U, X, "", "dm")
+            r = P.REACH(c, U, X, "chat.message")
+            n = P.enqueue(c, U, "chat.message", actor=X, data={"chat": "uhr-" + tag})
+        return g.route, g.why, r.push, n
+
+    try:
+        with connect() as c, c:
+            US.set_status(c, U, {"state": "dnd", "dur": 600})
+            ch = c.execute("INSERT INTO chat (kind, created_by, created) VALUES ('free', ?, ?) RETURNING id", (X, TC.now())).fetchone()[0]
+        a = both("a")
+        ok(f"Testuhr 1 Tag voraus, Nicht stoeren 10 min: Anruf still UND keine Mitteilung ({a})",
+           a[0] == "silent" and a[1] == "dnd" and a[2] is False and a[3] == 0)
+        TC.set_clock({"advance": 601})
+        b = both("b")
+        ok(f"Testuhr ueber das Ende hinaus: Anruf klingelt UND Mitteilung geht raus ({b})",
+           b[0] == "ring" and b[1] == "available" and b[2] is True and b[3] >= 1)
+        # Wiederholungsanruf und Sammelmeldung: chat_call.created auf derselben Uhr (wie calls/fed_calls ihn anlegen)
+        with connect() as c, c:
+            v, _ = US.set_status(c, U, {"state": "dnd"})
+            c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, reason, created, ended, hold) "
+                      "VALUES (?,?,?,?,?,'audio','ended','timeout',?,?,'dnd')", (secrets.token_hex(16), ch, X, U, "e" * 32, TC.now(), TC.now()))
+        TC.set_clock({"advance": 100})
+        r1 = both("c")
+        with connect() as c:
+            mh = P._missed_held_calls(c, U, v["since"], TC.now())
+        TC.set_clock({"advance": 81})
+        r2 = both("d")
+        ok(f"Wiederholungsanruf nach 100 s klingelt, Mitteilung bleibt zurueckgehalten; nach 181 s wieder still ({r1}, {r2})",
+           r1[:2] == ("ring", "repeat") and r1[2] is False and r2[:2] == ("silent", "dnd"))
+        ok(f"Sammelmeldung zaehlt den zurueckgehaltenen Anruf im Zeitraum (gleiche Uhr wie since) ({mh})", mh == 1)
+    finally:
+        TC.set_clock({"reset": True})
+        with connect() as c, c:
+            if ch is not None:
+                c.execute("DELETE FROM chat WHERE id=?", (ch,))
+            c.execute("DELETE FROM user_kv WHERE uid=? AND k='status_held'", (U,))
+            US.set_status(c, U, {"state": "available"})
 
 
 if __name__ == "__main__":

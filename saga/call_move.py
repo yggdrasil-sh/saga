@@ -26,10 +26,9 @@ Nicht umgezogen (409 mit move_block und fertigem Text, nichts geaendert):
 
 Vertrag: docs/APP-API.md "Anrufe: Personen hinzufuegen (L8)" -> "1:1 -> Konferenz (L9)"; Feature call_move."""
 import secrets
-import time
 
 from db import connect as _db
-from saga import calls, chat, contacts, sharing
+from saga import calls, chat, contacts, sharing, testclock
 from saga.core import _bad, t
 from saga.sharing import names
 
@@ -81,7 +80,7 @@ async def move(uid, cid, raw):
     Objekt nach dem Umzug), bzw. Fehler ohne Aenderung. None: der Anruf ist inzwischen schon ein Gruppenanruf (die andere
     Person war schneller) - weiter wie L8 im neuen Chat."""
     from saga import call_add as CA
-    now = time.time()
+    now = testclock.now()
     with _db() as c, c:
         call = calls._load(c, cid, lock=True)
         if not call or not calls._part(c, uid, call):
@@ -160,7 +159,7 @@ async def move(uid, cid, raw):
     added = [src[u] for u in want]
     print(f"call: {cid[:8]} 1:1 -> Gruppe (Chat {old['id']} -> {nid}, {len(want)} neu, {len(failed)} nicht, {n} klingeln)", flush=True)
     return chat._no_store({"ok": True, "n": n, "added": added, "failed": failed, "pending": [], "request": [], "invites": lst,
-                           "invites_more": more, "seats": st, "rv": rv, "now": round(time.time(), 3),
+                           "invites_more": more, "seats": st, "rv": rv, "now": round(testclock.now(), 3),
                            "moved": {"from_chat": old["id"], "chat_id": nid}, "call": d})
 
 

@@ -72,6 +72,11 @@ schicken kein via und rufen weiter direkt an; ankommende Knoten-Anrufe sehen 2.4
 anrufenden Person fuehrt den Anruf, der andere legt eine Kopie an und klingelt (saga/fed_calls.py dm_horn_start,
 op_dmhorn); Ablehnen dort -> end an den fuehrenden Server (dm_ended).
 
+Uhr (2.6, Bugs-DB 2029): Zeitstempel der Anrufe (chat_call/_leg/_invite, Lebenszeichen, Klingeldauer, Aufraeumen) und die
+Anruf-Weiche rechnen mit testclock.now() - derselben Uhr wie der eigene Status (user_status) und die Push-Weiche; im
+Betrieb ist das time.time(). Bewusst Echtzeit bleiben: TURN-Zugangsdaten (prueft coturn), Ratenbremsen (_rate, rate_call,
+_rate_db - Missbrauchsschutz, /_test/flush leert die im Speicher) und Versionszaehler (_rv, nur Reihenfolge).
+
 2.6 (Bugs-DB 2029-2, Anruf-Weiche, Vertrag docs/APP-API.md "Eigener Status" -> "Anrufe"): ob und wie es bei der
 angerufenen Person klingelt, entscheidet allein ring_gate() ueber user_status.reachability() - lokal und in fed_calls,
 vor call.ring/call.invite/Push. Nicht stoeren: Anruf angelegt (chat_call.hold 'dnd'), kein Klingeln, kein Push, nur
@@ -98,7 +103,7 @@ import auth
 from db import connect as _db
 from saga import bus, chat, clientos, horn, horn_bridge, horn_web, notify
 from saga.core import SECRET, _bad, _body, local_ref, t
-from saga import sharing, user_status
+from saga import sharing, testclock, user_status
 from saga.sharing import names
 
 router = APIRouter()
@@ -281,7 +286,7 @@ def _old_members(c, ch, starter=None, now=None):
     Servers (ohne die anrufende Person, nur angenommene Mitgliedschaft), deren aktive Chat-Geraete (Lebenszeichen in 30
     Tagen, sonst alle) alle weder "horn"+"multi" noch "horn_ring" koennen. Mitglieder ohne Geraet und anderer Server
     (Faehigkeiten hier unbekannt) zaehlen nicht."""
-    now = time.time() if now is None else now
+    now = testclock.now() if now is None else now
     out = []
     for u in chat.members(c, ch["id"]):
         if u == starter or sharing.is_remote(u):
@@ -359,7 +364,7 @@ def sig_budget(call, now=None):
     """Wie viele Signal-Nachrichten dieser Anruf insgesamt haben darf: Grundbudget, dazu SIG_PER_MIN je angefangener
     Minute seit der Annahme (Neuverhandlung, ICE-Restart bei Netzwechsel, Zustandswechsel), hoechstens SIGNALS_HARD."""
     ans = call.get("answered")
-    mins = int(((now or time.time()) - ans) // 60) + 1 if ans else 0
+    mins = int(((now or testclock.now()) - ans) // 60) + 1 if ans else 0
     return min(SIGNALS_HARD, SIGNALS_MAX + SIG_PER_MIN * mins)
 
 
@@ -494,7 +499,7 @@ def _legs(c, cid, active=True):
 
 def _leg_put(c, cid, dev, who, role="member", peer_id=None, caps="[]", replaces=None, name="", now=None):
     """Endpunkt anlegen bzw. (wieder) aktiv setzen."""
-    now = now or time.time()
+    now = now or testclock.now()
     c.execute("INSERT INTO chat_call_leg (call_id, device, who, peer_id, role, state, replaces, caps, name, joined, seen) "
               "VALUES (?,?,?,?,?,'active',?,?,?,?,?) ON CONFLICT (call_id, device) DO UPDATE SET who=EXCLUDED.who, peer_id=EXCLUDED.peer_id, "
               "role=EXCLUDED.role, state='active', replaces=EXCLUDED.replaces, caps=EXCLUDED.caps, "
@@ -532,7 +537,7 @@ def ring_late(c, uid, now=None):
     Bugs-DB 2179: eigene Transaktion NACH dem Commit der Meldung (haelt keine chat_device-Sperre); je Anruf zuerst die
     Anruf-Zeile sperren (gleiche Reihenfolge wie Beitreten/Annehmen: Anruf -> chat_device) und Zustand neu lesen - beendet
     _finish den Anruf gleichzeitig, klingelt hier nichts mehr."""
-    now = now or time.time()
+    now = now or testclock.now()
     rs = ring_s()
     n = 0
     for r in c.execute("SELECT k.id, i.created FROM chat_call k JOIN chat_call_invite i "
@@ -610,7 +615,7 @@ def dm_peer_check(c, peer, caps=None, now=None):
     beim Annehmen aber sauber (409 join_block old "braucht Saga 2.5"), die anderen Geraete klingeln weiter. Hat das
     Gegenueber nur alte Geraete, zaehlen diese (Pruefer pruef-yg: sonst klingelte dort gar nichts - eingeladen wird nur, wer
     ein Geraet mit horn/horn_ring hat, _can_horn -, ein direkter Anruf erreicht die alte App aber)."""
-    now = time.time() if now is None else now
+    now = testclock.now() if now is None else now
     rows = c.execute("SELECT caps, name, COALESCE(last_seen, created) FROM chat_device WHERE uid=? AND revoked_at IS NULL",
                      (peer,)).fetchall()
     if not rows:
@@ -782,7 +787,7 @@ def _dict(c, call, uid, nm=None, legs=None):
     dmh = _dmh(call)
     peer = call["caller"] if group and not dmh else (call["callee"] if me_caller else call["caller"])
     nm = nm or names(c, [peer])
-    now = time.time()
+    now = testclock.now()
     pu = _pp(c, call, peer, uid)                         # 2.5: Format v2 - Gegenueber von Anfang an nur als Handle
     pd = {"username": pu, "name": nm.get(peer) or t("Gelöschtes Konto"), "avatar": nm.avatar(peer)}
     fed = _fedcall(c, call)
@@ -877,7 +882,7 @@ def inv_state(st, since, now=None, rs=None):
     if st != "ringing" or since is None:
         return st, since
     rs = ring_s() if rs is None else rs
-    return ("ringing", since) if since + rs > (now or time.time()) else ("missed", since + rs)
+    return ("ringing", since) if since + rs > (now or testclock.now()) else ("missed", since + rs)
 
 
 def invites(c, call, viewer=None, legs=None, now=None):
@@ -886,7 +891,7 @@ def invites(c, call, viewer=None, legs=None, now=None):
     Mitglieder ohnehin sehen (Mitgliederliste); Stufe 3 bzw. foederiert: andere als Handle wie in legs/old."""
     if call["kind"] != "group" or _dmh(call):
         return None, 0
-    now = now or time.time()
+    now = now or testclock.now()
     rs = ring_s()
     legs = _legs(c, call["id"]) if legs is None else legs
     inside = {x["who"] for x in legs}
@@ -938,7 +943,7 @@ def emit_invites(c, call, legs=None):
         return
     lst, more = invites(c, call, None, legs)
     data = {"call_id": call["id"], "chat_id": call["chat_id"], "invites": lst, "invites_more": more, "ring_s": ring_s(),
-            "now": round(time.time(), 3)}
+            "now": round(testclock.now(), 3)}
     after = getattr(c, "after_commit", None)
     after(lambda: data.__setitem__("rv", _rv())) if after is not None else data.__setitem__("rv", _rv())
     _emit(c, to, "call.invites", data)
@@ -1046,7 +1051,7 @@ GONE_REASONS = ("notaus",)                     # Abgaenge mit eigenem Hinweis im
 def gone(c, cid, secs=120):
     """{geraet: grund} fuer Endpunkte, die in den letzten secs Sekunden aus einem Grund in GONE_REASONS gegangen sind."""
     rows = c.execute(f"SELECT device, reason FROM chat_call_leg WHERE call_id=? AND state='left' AND left_at>? AND reason IN "
-                     f"({','.join('?' * len(GONE_REASONS))}) LIMIT 64", (cid, time.time() - secs, *GONE_REASONS)).fetchall()
+                     f"({','.join('?' * len(GONE_REASONS))}) LIMIT 64", (cid, testclock.now() - secs, *GONE_REASONS)).fetchall()
     return {r[0]: r[1] for r in rows}
 
 
@@ -1058,7 +1063,7 @@ def emit_roster(c, call, legs=None, fed=True):
             "limit": climit(c, call), "topo": call.get("topo") or "p2p", **_dmf(call),
             # Bughunt W09: Beginn des Gespraechs + Server-Uhr - die Dauer laeuft bei allen ab answered (auch beim Anrufer,
             # der ueber einen Knoten schon waehrend des Klingelns verbunden ist)
-            "answered": call.get("answered"), "now": round(time.time(), 3)}
+            "answered": call.get("answered"), "now": round(testclock.now(), 3)}
     can, why = _joinable(c, call, None, legs)
     data = dict(base, legs=roster(c, call, None, legs), joinable=can, join_block=why)
     g = gone(c, call["id"])
@@ -1134,7 +1139,7 @@ async def api_caps(request: Request):
                 return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
             caps = caps_in(b.get("caps"))
             late = note_caps(c, uid, dev, caps)
-            now = time.time()                          # 2.5 Grundsatz Y: Lebenszeichen (30-Tage-Regel, dm_peer_check)
+            now = testclock.now()                          # 2.5 Grundsatz Y: Lebenszeichen (30-Tage-Regel, dm_peer_check)
             c.execute("UPDATE chat_device SET last_seen=? WHERE id=? AND uid=? AND COALESCE(last_seen, 0)<?", (now, dev, uid, now - 60))
         # Bugs-DB 2174: Einladung 'old' wegen spaeter Meldung -> klingeln. Bugs-DB 2185: auch bei unveraenderter Meldung eines
         # anruffaehigen Geraets (ging ein frueherer Versuch schief, holt die naechste Meldung das Klingeln nach - doppelt
@@ -1161,7 +1166,7 @@ def api_active(request: Request):
             f"SELECT {C_COLS} FROM chat_call k WHERE state IN ('ringing','active') AND (caller=? OR callee=? OR (kind='group' AND EXISTS "
             "(SELECT 1 FROM chat_member m WHERE m.chat_id=k.chat_id AND m.uid=? AND m.left_at IS NULL AND m.state='ok'))) "
             "ORDER BY created DESC LIMIT 8", (uid, uid, uid)).fetchall()]
-        now = time.time()
+        now = testclock.now()
         rows = [r for r in rows if not (r["state"] == "ringing" and r["kind"] == "dm" and r["created"] + ring_s() < now)]
         # 2.6 (Bugs-DB 2029-2): wegen Nicht stoeren zurueckgehaltene Anrufe fehlen hier fuer die angerufene Person - aeltere
         # Apps klingelten sonst beim Laden (neuere erfahren davon ueber call.quiet bzw. GET /api/calls/{id}, quiet: true)
@@ -1190,7 +1195,7 @@ async def api_call(request: Request):
         chat_id = 0
     if not _HEX32.fullmatch(cid) or media not in MEDIA or not chat_id:
         return _bad(t("ungültige Angabe"))
-    now = time.time()
+    now = testclock.now()
     caps = caps_in(b.get("caps"))
     if FED is not None and horn_on() and _has(caps, "horn"):
         from starlette.concurrency import run_in_threadpool
@@ -1487,8 +1492,9 @@ def ring_gate(c, callee, caller, cid, kind, now=None):
     """EINZIGE Entscheidungsstelle, ob und wie ein Anruf bei callee klingelt (1:1 direkt "dm", 1:1 ueber Knoten "dmh",
     Einladung in einen Gruppenanruf "group"; lokal und ueber Servergrenzen). Die Entscheidung trifft
     user_status.reachability(c, callee, caller, "call", now, call=cid) - der Anruf selbst zaehlt weder als "im Anruf" noch
-    als frueherer Anruf. Uhr: now = chat_call.created des Anrufs (time.time) - dieselbe Uhr wie die frueheren Anrufe, die
-    reachability fuer den Wiederholungsanruf (chat_call.hold='dnd') liest.
+    als frueherer Anruf. Uhr (Bugs-DB 2029, eine Uhr): testclock.now() wie die Push-Weiche und user_status (im Betrieb
+    time.time()); die Aufrufer geben now = chat_call.created des Anrufs mit, das ebenfalls aus testclock.now() stammt -
+    dieselbe Uhr wie die frueheren Anrufe, die reachability fuer den Wiederholungsanruf (chat_call.hold='dnd') liest.
     - Nicht stoeren / Ruhezeit (route hold): silent, hold 'dnd' (Gruppe: stille Einladung).
     - Gruppe sonst: klingeln wie bisher (Gruppenanrufe sind nicht exklusiv).
     - 1:1 im Anruf (route knock, bzw. Ausnahme/Wiederholung waehrend Nicht stoeren, die gerade telefoniert): Anklopfen nur,
@@ -1499,7 +1505,7 @@ def ring_gate(c, callee, caller, cid, kind, now=None):
         raise ValueError(f"calls: unbekannte Art {kind!r}")
     if not callee or sharing.is_remote(callee):
         return Gate("ring", None, "remote")              # Personen anderer Server entscheidet deren Server
-    now = time.time() if now is None else now
+    now = testclock.now() if now is None else now
     r = user_status.reachability(c, callee, caller, "call", now, call=cid)
     if r.route == "hold":
         return Gate("silent", "dnd", r.why)
@@ -1535,7 +1541,7 @@ def _talking(c, uid, cid=""):
 def _can_wait(c, uid, now=None):
     """Melden ALLE aktiven Chat-Geraete von uid "waiting1" (PUT /api/calls/caps)? Aktiv wie dm_peer_check (Lebenszeichen
     in 30 Tagen; nur alte Geraete: dann alle). Ohne Geraet: nein."""
-    now = time.time() if now is None else now
+    now = testclock.now() if now is None else now
     rows = c.execute("SELECT caps, COALESCE(last_seen, created) FROM chat_device WHERE uid=? AND revoked_at IS NULL", (uid,)).fetchall()
     act = [r for r in rows if (r[1] or 0) > now - DM_ACTIVE_S] or rows
     return bool(act) and all(_has(r[0], FEATURE_WAIT) for r in act)
@@ -1680,7 +1686,7 @@ async def api_answer(cid: str, request: Request):
     b = await _body(request) or {}
     dev = str(b.get("device") or "")
     clientos.note_call(dev, request)
-    now = time.time()
+    now = testclock.now()
     with _db() as c, c:
         call, err = _mine(c, uid, cid, lock=True)
         if err:
@@ -1732,19 +1738,19 @@ async def api_decline(cid: str, request: Request):
         if err:
             return err
         if _dmh(call) and call["callee"] == uid and call["state"] == "ringing":   # 2.5: 1:1 ueber Knoten - Ablehnen beendet
-            _finish(c, call, reason, time.time(), by=uid)
+            _finish(c, call, reason, testclock.now(), by=uid)
             return chat._no_store({"ok": True})
         if call["kind"] == "group":
             # 2.5 (L7): created = seit wann abgelehnt (Liste "Nicht dabei"), Ereignis an die Teilnehmenden
             n = c.execute("UPDATE chat_call_invite SET state='declined', created=? WHERE call_id=? AND who=? AND state='ringing'",
-                          (time.time(), call["id"], uid)).rowcount
+                          (testclock.now(), call["id"], uid)).rowcount
             _emit(c, [uid], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "declined", "kind": "group"})
             if n:
                 emit_invites(c, call)
             return chat._no_store({"ok": True})
         if call["callee"] != uid or call["state"] != "ringing":
             return chat._no_store({"ok": False, "call": _dict(c, call, uid)}, 409)
-        _finish(c, call, reason, time.time(), by=uid)
+        _finish(c, call, reason, testclock.now(), by=uid)
     return chat._no_store({"ok": True})
 
 
@@ -1766,7 +1772,7 @@ async def api_end(cid: str, request: Request):
         if call["state"] == "ended":
             return chat._no_store({"ok": True, "already": True})
         if _dmh(call) and call["state"] == "ringing" and uid == call["callee"]:   # 2.5: 1:1 ueber Knoten - wie Ablehnen
-            _finish(c, call, "declined", time.time(), by=uid)
+            _finish(c, call, "declined", testclock.now(), by=uid)
             return chat._no_store({"ok": True})
         legs = {x["device"]: x for x in _legs(c, call["id"])}
         mine = legs.get(dev) if dev else None
@@ -1778,14 +1784,14 @@ async def api_end(cid: str, request: Request):
             fed = call if call.get("lead") is not None and FED is not None else None
             if fed is None:
                 for d in devs:
-                    _leave(c, call, d, time.time(), "hangup", by=uid)
+                    _leave(c, call, d, testclock.now(), "hangup", by=uid)
                 return chat._no_store({"ok": True, "left": devs})
         else:
             fed = None
             if call["state"] == "ringing":
                 reason = "cancelled" if uid == call["caller"] else "declined"
             call["_connected"] = bool(b.get("connected"))
-            _finish(c, call, reason, time.time(), by=uid)
+            _finish(c, call, reason, testclock.now(), by=uid)
             return chat._no_store({"ok": True})
     from starlette.concurrency import run_in_threadpool
     for d in devs:
@@ -1805,7 +1811,7 @@ async def api_signal(cid: str, request: Request):
         return err
     b = await _body(request) or {}
     dev = str(b.get("device") or "")
-    now = time.time()
+    now = testclock.now()
     with _db() as c, c:
         call, err = _mine(c, uid, cid, lock=True)
         if err:
@@ -1952,7 +1958,7 @@ async def api_alive(cid: str, request: Request):
             return err
         out = {"state": call["state"], "reason": call["reason"]}
         if call["state"] != "ended":
-            now = time.time()
+            now = testclock.now()
             leg = c.execute("SELECT state, who FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], dev)).fetchone() if dev else None
             if leg and leg[1] == uid and leg[0] != "active":
                 out["leg"] = "left"
@@ -1981,7 +1987,7 @@ async def api_join(cid: str, request: Request):
     role = b.get("role") if b.get("role") in ROLES else "member"
     rep = b.get("replaces") if isinstance(b.get("replaces"), str) and _HEX32.fullmatch(b.get("replaces")) else None
     caps = caps_in(b.get("caps"))
-    now = time.time()
+    now = testclock.now()
     dcl = _dev_class(b)
     with _db() as c, c:
         call, err = _mine(c, uid, cid, lock=True)
@@ -2188,7 +2194,7 @@ async def api_direct(cid: str, request: Request):
     b = await _body(request) or {}
     dev = str(b.get("device") or "")
     avoid = set(horn_web._clean_avoid(b.get("avoid")))
-    now = time.time()
+    now = testclock.now()
     node_ready = lambda blk: chat._no_store({"error": t("Es gibt einen bereiten Anruf-Knoten – bitte darüber neu verbinden."),  # noqa: E731
                                              "horn_block": "node_ready", "horn": blk}, 409)
     with _db() as c, c:                                   # 1. pruefen und Meldung festhalten (ohne zu warten)
@@ -2236,7 +2242,7 @@ async def api_direct(cid: str, request: Request):
         if (unknown or foreign) and others:
             keys = [f"dask|{cid}|{d}" for d in sorted(others)]
             ok2 = c.execute("SELECT 1 FROM horn_rate WHERE k IN (" + ",".join("?" * len(keys)) + ") AND start > ? LIMIT 1",
-                            (*keys, time.time() - DIRECT_CONFIRM_S)).fetchone()
+                            (*keys, testclock.now() - DIRECT_CONFIRM_S)).fetchone()
             if not ok2:
                 return node_ready(blk)
         call = _load(c, cid, lock=True)
@@ -2314,7 +2320,7 @@ async def api_leave(cid: str, request: Request):
         if call.get("lead") is not None and FED is not None:
             fed = call
         else:
-            _leave(c, call, dev, time.time(), reason, by=uid)
+            _leave(c, call, dev, testclock.now(), reason, by=uid)
             return chat._no_store({"ok": True})
     from starlette.concurrency import run_in_threadpool
     return await run_in_threadpool(FED.leave, uid, fed, dev, reason, by, gen)
@@ -2491,10 +2497,10 @@ async def api_moderate(cid: str, request: Request):
         ev = {"call_id": cid, "chat_id": call["chat_id"], "action": act, "device": tgt, "by": nm.get(uid) or local_ref(uid)}   # nie der Anmeldename
         if act == "remove":
             c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'removed',?) ON CONFLICT (call_id, who) "
-                      "DO UPDATE SET state='removed', created=EXCLUDED.created", (cid, x["who"], time.time()))
+                      "DO UPDATE SET state='removed', created=EXCLUDED.created", (cid, x["who"], testclock.now()))
             for d, y in legs.items():                   # alle Geraete der Person (auch Begleitgeraete)
                 if y["who"] == x["who"]:
-                    _leave(c, _load(c, cid), d, time.time(), "removed", by=uid)
+                    _leave(c, _load(c, cid), d, testclock.now(), "removed", by=uid)
         if not sharing.is_remote(x["who"]):
             _emit(c, [x["who"]], "call.mod", ev)
         print(f"call: {cid[:8]} Gastgeber: {act}", flush=True)
@@ -2537,7 +2543,7 @@ async def api_invite(cid: str, request: Request):
     if remote and FED is not None:
         from starlette.concurrency import run_in_threadpool
         await run_in_threadpool(FED.invite, uid, call, remote)
-    return chat._no_store({"ok": True, "n": n + len(remote), "invites": lst, "invites_more": more, "rv": rv, "now": round(time.time(), 3)})
+    return chat._no_store({"ok": True, "n": n + len(remote), "invites": lst, "invites_more": more, "rv": rv, "now": round(testclock.now(), 3)})
 
 
 def _inv_who(c, call, who):
@@ -2563,7 +2569,7 @@ def invite_local(c, call, who):
     mem = {r[0]: r[1] for r in c.execute("SELECT uid, state FROM chat_member WHERE chat_id=? AND left_at IS NULL", (call["chat_id"],)).fetchall()}
     inside = {x["who"] for x in _legs(c, call["id"])}
     ring, remote = [], []
-    now = max(time.time(), (call["created"] or 0) + 0.001)   # nie gleich created (daran erkennt invites() den stillen Start)
+    now = max(testclock.now(), (call["created"] or 0) + 0.001)   # nie gleich created (daran erkennt invites() den stillen Start)
     for u in dict.fromkeys(who):
         if u not in mem or u in inside:
             continue
@@ -2605,12 +2611,12 @@ def ring_accepted(c, ch, uid):
     fuehrenden Server) - jetzt klingeln (laut, wie /invite). Nur bis ADD_ACCEPT_S nach der Einladung."""
     r = c.execute("SELECT k.id FROM chat_call k JOIN chat_call_invite i ON i.call_id=k.id WHERE k.chat_id=? AND k.kind='group' AND k.callee='' "
                   "AND k.state<>'ended' AND i.who=? AND i.state IN ('pending','ringing') AND i.created>? ORDER BY k.created DESC LIMIT 1",
-                  (ch["id"], uid, time.time() - ADD_ACCEPT_S)).fetchone()
+                  (ch["id"], uid, testclock.now() - ADD_ACCEPT_S)).fetchone()
     call = _load(c, r[0]) if r else None
     if not call or any(x["who"] == uid for x in _legs(c, call["id"])):
         return
     st = "ringing" if (_can_horn(c, uid) if is_horn(call) else _can_multi(c, uid)) else "old"
-    c.execute("UPDATE chat_call_invite SET state=?, created=? WHERE call_id=? AND who=?", (st, max(time.time(), call["created"] + 0.001), call["id"], uid))
+    c.execute("UPDATE chat_call_invite SET state=?, created=? WHERE call_id=? AND who=?", (st, max(testclock.now(), call["created"] + 0.001), call["id"], uid))
     if st == "ringing":
         ring_group(c, _load(c, call["id"]), [uid], loud=True)
     emit_invites(c, call)
@@ -2626,7 +2632,7 @@ def tick(now=None):
     2.4: Endpunkte ohne Lebenszeichen, mit abgemeldetem Geraet oder ohne Mitgliedschaft verlassen den Anruf; Gruppenanruf,
     dem niemand beitritt, endet nach der Klingeldauer; Kopien eines Gruppenanrufs ohne Nachricht vom fuehrenden Server
     enden nach MIRROR_GAP."""
-    now = now or time.time()
+    now = now or testclock.now()
     n = 0
     rs = ring_s()
     with _db() as c, c:

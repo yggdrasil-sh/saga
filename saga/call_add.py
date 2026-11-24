@@ -12,12 +12,11 @@ fuehrenden Server (wie /invite, saga/fed_calls.py add_ring).
 
 Vertrag: docs/APP-API.md "Anrufe: Personen hinzufuegen (L8)"; Feature call_add in GET /api/calls/config."""
 import json
-import time
 
 from fastapi import APIRouter, Request
 
 from db import connect as _db
-from saga import call_move, calls, chat, sharing
+from saga import call_move, calls, chat, sharing, testclock
 from saga.core import _bad, _body, t
 from saga.sharing import names
 
@@ -210,4 +209,4 @@ async def api_add(cid: str, request: Request):
     n += len(remote) + len(via_lead) + len(new_remote)
     print(f"call: {cid[:8]} hinzufuegen ({len(known)} klingeln, {len(added)} neu, {len(failed)} nicht, {len(pending)} warten)", flush=True)
     return chat._no_store({"ok": True, "n": n, "added": added, "failed": failed, "pending": pending, "request": request, "invites": lst,
-                           "invites_more": more, "seats": st, "rv": rv, "now": round(time.time(), 3)})
+                           "invites_more": more, "seats": st, "rv": rv, "now": round(testclock.now(), 3)})

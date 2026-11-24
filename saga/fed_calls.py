@@ -26,7 +26,7 @@ from fastapi import Request
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import bus, calls, chat, fed_chat as FC, federation as F, horn, sharing
+from saga import bus, calls, chat, fed_chat as FC, federation as F, horn, sharing, testclock
 from saga.core import _bad, t
 
 router = FC.router                      # gleiche Router-Einbindung wie die Chats (app.py)
@@ -65,7 +65,7 @@ def _remote_of(call):
 # =====================================================================================================
 def start(uid, ch, cid, media, dev, sig, caps="[]"):
     """POST /api/calls in einem foederierten Direkt-Chat: beim Server des Gegenuebers klingeln lassen (synchron)."""
-    now = time.time()
+    now = testclock.now()
     with _db() as c, c:
         m = chat._member(c, ch["id"], uid)
         other = next((u for u in chat.members(c, ch["id"]) if sharing.is_remote(u)), None)
@@ -142,7 +142,7 @@ def answer(uid, call, dev, sig, caps="[]"):
     with _db() as c:
         dname = calls._dev_name(c, dev)
     st, d = _send(call, {"op": "answer", "actor": actor(uid), "device": dev, "signals": sig, "caps": calls.caps_out(caps), "name": dname})
-    now = time.time()
+    now = testclock.now()
     with _db() as c, c:
         cur = calls._load(c, call["id"], lock=True)
         if st != 200 or not cur or cur["state"] != "ringing":
@@ -168,7 +168,7 @@ def signal(uid, call, dev, sig):
         return chat._no_store({"error": t("Der Anruf ist beendet."), "state": "ended"}, 409)
     if st != 200:
         return _bad(t("Die andere Seite ist gerade nicht erreichbar."), 502)
-    now = time.time()
+    now = testclock.now()
     with _db() as c, c:
         c.execute("UPDATE chat_call SET nsig=nsig+?, " + ("seen_a" if uid == call["caller"] else "seen_b") + "=? WHERE id=?",
                   (len(sig), now, call["id"]))
@@ -299,7 +299,7 @@ def group_start(uid, ch, cid, media, dev, caps):
                              "caps": calls.caps_out(caps), "name": name, "signals": {}, **_horn_hint(caps)}, path="/fed/v2/call")
     if st != 200:
         return _err(st, d, p["host"])
-    now = time.time()
+    now = testclock.now()
     topo = "horn" if (d or {}).get("topo") == "horn" and peer_horn(p) else "mesh"
     _mesh_in(cid, d)
     with _db() as c, c:
@@ -328,7 +328,7 @@ def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop", bill=None
     (dm_horn_route, Bugs-DB 2356)."""
     if not (calls._has(caps, "horn") and calls._has(caps, "multi")):
         return calls._fallback("caps")
-    now = time.time()
+    now = testclock.now()
     with _db() as c:
         m = chat._member(c, ch["id"], uid)
         other = next((u for u in chat.members(c, ch["id"]) if sharing.is_remote(u)), None)
@@ -490,7 +490,7 @@ def dm_horn_lead_start(uid, ch, cid, media, dev, caps, p, bill=None):
         return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
     if st != 200:
         return calls._fallback("fed")
-    now = time.time()
+    now = testclock.now()
     with _db() as c, c:
         c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
                   "lead, peer_id) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,'horn',?,?) ON CONFLICT (id) DO NOTHING",
@@ -533,7 +533,7 @@ def join(uid, call, dev, role, rep, caps, sig):
     st, d = FC.sync_call(p, body, path="/fed/v2/call")
     if st != 200:
         return _err(st, d, p["host"])
-    now = time.time()
+    now = testclock.now()
     with _db() as c, c:
         cur = calls._load(c, call["id"], lock=True)
         if not cur or cur["state"] == "ended":
@@ -583,7 +583,7 @@ def leave(uid, call, dev, reason="hangup", by=None, gen=None):
     st, d = FC.sync_call(p, body, path="/fed/v2/call") if peer3(p) else (None, "")
     if st == 200 and isinstance(d, dict) and d.get("stale"):
         return chat._no_store({"ok": True, "stale": True})
-    now = time.time()
+    now = testclock.now()
     with _db() as c, c:
         cur = calls._load(c, call["id"], lock=True)
         if cur and cur["state"] != "ended":
@@ -754,7 +754,7 @@ def _apply_legs(c, call, peer, legs, keep=None, gone=None):
     Mitgliedern des Chats (_remote_ok)."""
     if not isinstance(legs, list):
         return
-    now = time.time()
+    now = testclock.now()
     seen = set()
     mem = None
     for x in legs[:chat.MEMBERS_MAX]:
@@ -828,7 +828,7 @@ def op_ring(c, peer, d):
         return 429, {"error": "too many calls"}
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
         return 409, {"error": "duplicate id"}
-    now = time.time()
+    now = testclock.now()
     caps = calls.caps_in(d.get("caps"))
     c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, peer_id, caps_a, v, lead) "
               "VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,?,?,?)", (cid, ch["id"], p_, callee, dev, media, now, now, now, peer["id"], caps,
@@ -880,7 +880,7 @@ def op_answer(c, peer, d):
     dev = d.get("device")
     if not call or is_caller or not (isinstance(dev, str) and FC._HEX32.fullmatch(dev)):
         return 404, {"error": "not found"}
-    now = time.time()
+    now = testclock.now()
     if call["state"] != "ringing" or call["created"] + calls.ring_s() < now:
         return 409, {"error": "ended", "state": call["state"]}
     sig = _sealed(d.get("signals"), {call["caller_device"]})
@@ -923,7 +923,7 @@ def op_signal(c, peer, d):
     sig = _sealed(d.get("signals"), allowed)
     if sig is None:
         return 400, {"error": "bad signals"}
-    now = time.time()
+    now = testclock.now()
     if call["nsig"] + len(sig) > calls.sig_budget(call, now) or not F._rate.allow("csig:" + dev, calls.SIG_RATE):
         return 429, {"error": "too many signals"}
     for k, v in sorted(sig.items()):
@@ -943,7 +943,7 @@ def op_end(c, peer, d):
             F.log(c, "call.forged", peer, "end", throttle=(peer["id"], "cforged4"))
             return 403, {"error": "not callee"}
         reason = d.get("reason") if d.get("reason") in ("declined", "busy") else "declined"
-        calls._finish(c, cur, reason, time.time(), by=cur["callee"], remote=True)
+        calls._finish(c, cur, reason, testclock.now(), by=cur["callee"], remote=True)
         return 200, {"ok": True}
     if cur and cur["kind"] == "group":                 # 2.4: nur der fuehrende Server beendet einen Gruppenanruf
         if cur["lead"] != peer["id"]:
@@ -951,7 +951,7 @@ def op_end(c, peer, d):
         if cur["state"] != "ended":
             cur["_connected"] = cur["state"] == "active"
             calls._finish(c, cur, d.get("reason") if d.get("reason") in ("ended", "timeout", "cancelled", "gone") else "ended",
-                          time.time(), remote=True)
+                          testclock.now(), remote=True)
         return 200, {"ok": True}
     call, rem, is_caller = _call_of(c, peer, d)
     if not call:
@@ -962,7 +962,7 @@ def op_end(c, peer, d):
     if call["state"] == "ringing" and reason == "hangup":      # Auflegen waehrend es klingelt: abgebrochen bzw. abgelehnt
         reason = "cancelled" if is_caller else "declined"
     call["_connected"] = call["state"] == "active"
-    calls._finish(c, call, reason, time.time(), by=rem, remote=True)
+    calls._finish(c, call, reason, testclock.now(), by=rem, remote=True)
     return 200, {"ok": True}
 
 
@@ -975,11 +975,11 @@ def op_alive(c, peer, d):
             return 200, {"state": "ended" if not cur or cur["state"] == "ended" else cur["state"]}
         dev = d.get("device") if isinstance(d.get("device"), str) else ""
         c.execute("UPDATE chat_call_leg SET seen=? WHERE call_id=? AND device=? AND who=? AND peer_id=? AND state='active'",
-                  (time.time(), cur["id"], dev, FC.principal(h), peer["id"]))
+                  (testclock.now(), cur["id"], dev, FC.principal(h), peer["id"]))
         return 200, {"state": cur["state"]}
     call, rem, is_caller = _call_of(c, peer, d, lock=False)
     if call and call["state"] != "ended":
-        now = time.time()
+        now = testclock.now()
         c.execute("UPDATE chat_call SET " + ("seen_a" if is_caller else "seen_b") + "=? WHERE id=?", (now, call["id"]))
         dev = d.get("device") if isinstance(d.get("device"), str) else ""
         q = "UPDATE chat_call_leg SET seen=? WHERE call_id=? AND who=? AND state='active'" + (" AND device=?" if dev else "")
@@ -1028,7 +1028,7 @@ def op_join(c, peer, d):
     if not calls.enabled():
         return 403, {"error": "calls disabled"}
     caps = calls.caps_in(d.get("caps"))
-    now = time.time()
+    now = testclock.now()
     call = calls._load(c, cid, lock=True)
     if call is None:
         if not d.get("start"):
@@ -1081,7 +1081,7 @@ def op_leave(c, peer, d):
         by, gen = calls.leave_cond(d)                  # 2.5 L2: bedingtes Verlassen (Rueckfall nach einer Uebernahme)
         if calls.leave_stale(c, call["id"], p_, d["device"], leg[3], by, gen):
             return 200, {"ok": True, "stale": True}
-        calls._leave(c, call, d["device"], time.time(), d.get("reason") if d.get("reason") in ("handover", "hangup") else "hangup", by=p_)
+        calls._leave(c, call, d["device"], testclock.now(), d.get("reason") if d.get("reason") in ("handover", "hangup") else "hangup", by=p_)
     return 200, {"ok": True}
 
 
@@ -1107,7 +1107,7 @@ def op_roster(c, peer, d):
     cid = d.get("id")
     if not (isinstance(cid, str) and FC._HEX32.fullmatch(cid)):
         return 400, {"error": "bad request"}
-    now = time.time()
+    now = testclock.now()
     call = calls._load(c, cid, lock=True)
     if call is None:
         ch = FC.by_ref(c, d.get("ref")) if isinstance(d.get("ref"), str) else None
@@ -1240,7 +1240,7 @@ def _room_signal_in(c, peer, d, call):
         return 400, {"error": "bad request"}
     if call["state"] == "ended":
         return 409, {"error": "ended"}
-    now = time.time()
+    now = testclock.now()
     legs = {x["device"]: x for x in calls._legs(c, call["id"])}
     if call["lead"] == peer["id"]:                     # vom fuehrenden Server: er hat den Absender geprueft
         lg = d.get("leg") if isinstance(d.get("leg"), dict) else None
@@ -1322,7 +1322,7 @@ def op_dmhorn(c, peer, d):
         return 429, {"error": "too many calls"}
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
         return 409, {"error": "duplicate id"}
-    now = time.time()
+    now = testclock.now()
     g = calls.ring_gate(c, callee, p_, cid, "dmh", now)     # 2.6 (Bugs-DB 2029-2): dieselbe Weiche wie lokal
     if g.route == "busy" and g.hold != "again":
         return 409, {"busy": True}                     # wie bisher: nichts angelegt
@@ -1381,7 +1381,7 @@ def op_dmhorn_lead(c, peer, d):
         return 429, {"error": "too many calls"}
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
         return 409, {"error": "duplicate id"}
-    now = time.time()
+    now = testclock.now()
     g = calls.ring_gate(c, callee, p_, cid, "dmh", now)     # 2.6 (Bugs-DB 2029-2)
     if g.route == "busy" and g.hold != "again":
         return 409, {"busy": True}
@@ -1429,7 +1429,7 @@ async def fed_call(request: Request):
 def _peer_gone(c, p):
     """Verbindung getrennt: laufende Anrufe mit der Instanz enden sofort; in Gruppenanrufen, die wir fuehren, verlassen
     deren Endpunkte den Anruf."""
-    now = time.time()
+    now = testclock.now()
     for r in c.execute(f"SELECT {calls.C_COLS} FROM chat_call WHERE (peer_id=? OR lead=?) AND state<>'ended' FOR UPDATE", (p["id"], p["id"])).fetchall():
         call = calls._row(r)
         call["_connected"] = call["state"] == "active"
