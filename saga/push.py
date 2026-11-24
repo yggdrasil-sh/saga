@@ -542,9 +542,11 @@ def _digest_counts(d):
 def _missed_held_calls(c, uid, since, end):
     """1:1-Anrufe, die waehrend Nicht stoeren zurueckgehalten wurden (chat_call.hold='dnd', calls.ring_gate) und schon zu
     Ende sind, ohne eigenen Glocken-Eintrag call.missed (die mit Eintrag zaehlt _held, sofern er zurueckgehalten wurde;
-    kam der Eintrag erst nach dem Ende von Nicht stoeren, ging er als eigene Mitteilung raus)."""
+    kam der Eintrag erst nach dem Ende von Nicht stoeren, ging er als eigene Mitteilung raus). Nur wirklich verpasste:
+    angenommen (answered gesetzt - z. B. ueber GET /api/calls/{id} trotz quiet) oder selbst abgelehnt zaehlt nicht."""
     return c.execute("SELECT COUNT(*) FROM chat_call k WHERE k.callee=? AND k.hold='dnd' AND k.state='ended' AND k.created>=? "
-                     "AND k.created<=? AND NOT EXISTS (SELECT 1 FROM notification n WHERE n.uid=k.callee AND n.kind='call.missed' "
+                     "AND k.created<=? AND k.answered IS NULL AND COALESCE(k.reason, '')<>'declined' "
+                     "AND NOT EXISTS (SELECT 1 FROM notification n WHERE n.uid=k.callee AND n.kind='call.missed' "
                      "AND n.data LIKE '%\"call\": \"' || k.id || '\"%')", (uid, since, end)).fetchone()[0]
 
 

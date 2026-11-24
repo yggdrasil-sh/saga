@@ -324,6 +324,13 @@ def digest_part(A, Bk, ua, pgA, nn):
                       "VALUES (?,?,?,?,?,?,?,?,?)", (cid_held, chat, "ps-b", "ps-a", "dev-b", "audio", "ended", time.time(), "dnd"))
             c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, hold) "
                       "VALUES (?,?,?,?,?,?,?,?,?)", (cid_ring, chat, "ps-b", "ps-a", "dev-b", "audio", "ringing", time.time(), "dnd"))
+            # Pruefer (2029): zurueckgehalten, aber angenommen bzw. selbst abgelehnt - nicht verpasst, nicht gezaehlt
+            c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, reason, created, answered, hold) "
+                      "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (secrets.token_hex(16), chat, "ps-b", "ps-a", "dev-b", "audio", "ended", "hangup",
+                                                         time.time(), time.time(), "dnd"))
+            c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, reason, created, hold) "
+                      "VALUES (?,?,?,?,?,?,?,?,?,?)", (secrets.token_hex(16), chat, "ps-b", "ps-a", "dev-b", "audio", "ended", "declined",
+                                                       time.time(), "dnd"))
         req("POST", f"/api/notes/{pgA}/comments", Bk, {"block_id": "dg1", "body": "waehrend Nicht stoeren"})     # Server: comment.new
         with connect() as c:
             q = c.execute("SELECT COUNT(*) FROM push_queue WHERE uid='ps-a'").fetchone()[0]
