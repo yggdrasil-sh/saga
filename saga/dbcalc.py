@@ -639,7 +639,9 @@ def _spec_pid(v):
 
 
 def clean_chart_spec(c):
-    """Diagramm-Einstellungen bereinigen (Ansicht view.chart und Widget cfg) -> neues dict (nur bekannte Felder)."""
+    """Diagramm-Einstellungen bereinigen (Ansicht view.chart und Widget cfg) -> neues dict (nur bekannte Felder).
+    ACHTUNG (Bugs-DB 2361): static/pages.js wgChartClean/WG_CHART_KEYS bildet das 1:1 nach (sonst lehnt das Live-Bearbeiten
+    Aenderungen mit "sanitize" ab). Neues Feld hier = dort nachziehen und in tests/browser_widget_slash_neu.js (VALS) ergaenzen."""
     c = c if isinstance(c, dict) else {}
     typ = c.get("type") if c.get("type") in CHART_TYPES else "bar"
     out = {"type": typ, "x": _spec_pid(c.get("x")), "agg": c.get("agg") if c.get("agg") in AGGS else "count",
