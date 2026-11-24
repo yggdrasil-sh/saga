@@ -125,7 +125,8 @@ def select(uid, q, *, way, budget, want=None, note_id=None, chat_id=None, histor
     used, read, text, origins, extra = [], [], "", [], ""
     if on("pages"):
         text, origins = ai.gather(uid, q, budget)
-        origins = [s for s in origins if _home(s)]          # visible_docs liefert nur Heim-Seiten; doppelt haelt besser
+        if not all(_home(s) for s in origins):     # Abwehr (visible_docs liefert nur Heim-Seiten): Text und Belege
+            text, origins = "", []                 # passen nur zusammen - lieber gar keine Seiten als ein Auszug ohne Beleg
         if origins:
             used.append("pages")
             read += [f"note:{s['id']}" for s in origins]

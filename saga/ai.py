@@ -1978,7 +1978,7 @@ async def api_ai_ask(request: Request):
             clean = strip_markers(answer, st.get("rid")).strip() if answer else answer
             if answer and clean != answer.strip():              # K-T 2265: Anzeige wie im Verlauf (ohne Marker/Kennung)
                 out["text"] = clean
-            hid = _save_history(uid, q, clean, srcs, {"tasks": with_tasks, "calendar": with_cal, "web": bool(w.get("sources"))},
+            hid = _save_history(uid, q, clean, srcs, {"tasks": "tasks" in cx.sources, "calendar": "calendar" in cx.sources, "web": bool(w.get("sources"))},
                                 web=w.get("sources"), rid=st.get("rid"), ctx=cx) if clean else None
             if hid:
                 out["history_id"] = hid

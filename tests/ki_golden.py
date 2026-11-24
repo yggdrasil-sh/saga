@@ -5,7 +5,7 @@ Datenbank, Chat-Zuruf mit Verlauf) gegen das Fake-Modell (tests/fakeai.py). Erfa
 'done' (ohne das neue Feld 'read' und ohne zufaellige Belege). Der Umbau auf saga/ai_ctx.py darf daran nichts aendern.
 
 Aufruf (saga-test): tools/testumgebung/umgebung.sh lauf server <slot> tests/ki_golden.py
-  KI_GOLDEN_WRITE=1  schreibt die Vorlage (Stand vor dem Umbau) als JSON in das Log (Zeile 'GOLDEN-JSON ...') und nach
+  KI_GOLDEN_WRITE=1  schreibt die Vorlage (Stand vor dem Umbau) als JSON (Log nennt nur Pfad und Laenge) nach
                      $KI_GOLDEN_OUT (Standard: tests/vectors/ki_golden.json)
   sonst              vergleicht mit tests/vectors/ki_golden.json
 Wegwerf-Konten kg-*; raeumt auf."""
