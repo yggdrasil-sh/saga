@@ -53,16 +53,30 @@ if [ ! -s "$HCERT.pem" ] && [ -s "$UMG/ca/ca.key" ]; then
     openssl x509 -req -in "$HCERT.csr" -CA "$UMG/ca/ca.pem" -CAkey "$UMG/ca/ca.key" -CAserial "$HCERT.srl" -CAcreateserial -days 30 -extfile "$HCERT.ext" \
       -out "$HCERT.pem" 2>/dev/null && chmod 600 "$HCERT.key"
 fi
+# Zusatz +tls (Szenen mit https, z. B. Passkeys, Foederation): Zertifikat der Test-CA fuer die Anzeige-Hosts (30 Tage, nur im
+# Lauf; Chromium vertraut der CA ueber die NSS-DB der Testumgebung, die Server ueber SSL_CERT_FILE)
+TCERT=$HB_DIR/tls-anzeige
+if [ ! -s "$TCERT.pem" ] && [ -s "$UMG/ca/ca.key" ]; then
+  openssl req -newkey rsa:2048 -nodes -subj "/CN=saga.example" -keyout "$TCERT.key" -out "$TCERT.csr" 2>/dev/null &&
+    printf 'subjectAltName=DNS:saga.example,DNS:admin.saga.example,DNS:verein.example,DNS:admin.verein.example\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n' > "$TCERT.ext" &&
+    openssl x509 -req -in "$TCERT.csr" -CA "$UMG/ca/ca.pem" -CAkey "$UMG/ca/ca.key" -CAserial "$TCERT.srl" -CAcreateserial -days 30 -extfile "$TCERT.ext" \
+      -out "$TCERT.pem" 2>/dev/null && chmod 600 "$TCERT.key"
+fi
 GRUPPEN=$(python3 "$D/screens-handbuch.py" --gruppen ${NUR:+--nur "$NUR"}) || exit 2    # Name ohne Szene: Fehler (stderr)
 [ -n "$GRUPPEN" ] || { echo "keine passenden Bilder: $NUR"; exit 2; }
 RC=0
 while read -r WELT ART NAMES; do
   case $WELT in familie) H=saga.example;; verein) H=verein.example;; *) echo "Welt unbekannt: $WELT"; exit 2;; esac
   echo "== $WELT ($H), Art $ART: $NAMES"
-  UMG_SENV="BASE_URL=http://$H ADMIN_URL=http://admin.$H BOOKORBIT_URL=http://bookorbit.example CACHE_TTL=3 FED_ALLOW_HTTP=1 ${HB_SENV:-}" \
+  SCH=http; XENV=""; UART=${ART%%+*}           # Art der Testumgebung ohne Zusaetze
+  case $ART in *+tls*)
+    [ -s "$TCERT.pem" ] || { echo "  FEHLER: kein TLS-Zertifikat ($UMG/ca fehlt? umgebung.sh einrichten)"; RC=1; continue; }
+    SCH=https; XENV="SSL_CERT_FILE=$UMG/ca/ca.pem" ;; esac
+  case $ART in *+suche*) XENV="$XENV SEARXNG_URL=http://127.0.0.1:$((19010 + 10 * SLOT)) SEARXNG_SECRET=hb-attrappe AI_WEB_FETCH=0" ;; esac
+  UMG_SENV="BASE_URL=$SCH://$H ADMIN_URL=$SCH://admin.$H BOOKORBIT_URL=http://bookorbit.example CACHE_TTL=3 FED_ALLOW_HTTP=1 $XENV ${HB_SENV:-}" \
     UMG_HORN_NAME=$([ $WELT = verein ] && [ -s "$HCERT.pem" ] && echo knoten.verein.example) \
     UMG_HORN_CERT=$([ $WELT = verein ] && [ -s "$HCERT.pem" ] && echo "$HCERT.pem") UMG_HORN_KEY=$([ $WELT = verein ] && [ -s "$HCERT.pem" ] && echo "$HCERT.key") \
-    HB_WELT=$WELT HB_ART=$ART HB_NUR=$NAMES bash "$D/testumgebung/umgebung.sh" lauf "$ART" "$SLOT" "$D/screens-handbuch.py" "$UMG_NS$SLOT-$WELT-$ART" || RC=1
+    HB_WELT=$WELT HB_ART=$ART HB_NUR=$NAMES HB_TLS_CERT=$TCERT.pem HB_TLS_KEY=$TCERT.key bash "$D/testumgebung/umgebung.sh" lauf "$UART" "$SLOT" "$D/screens-handbuch.py" "$UMG_NS$SLOT-$WELT-$ART" || RC=1
   L=${UMG:-/srv/saga-test/tmp/umgebung}/log/screens-handbuch.py.$UMG_NS$SLOT-$WELT-$ART.log
   grep -E '^(OK|FAIL|BILD|Bilder:|FEHLER|PNG )|bereit=' "$L" | sed 's/^/  /'
 done <<< "$GRUPPEN"

@@ -236,6 +236,50 @@ def forward(listen_ip, listen_port, target_port, target_ip="127.0.0.1"):
     return srv
 
 
+def forward_tls(listen_ip, listen_port, target_port, cert, key, target_ip="127.0.0.1"):
+    """Wie forward(), aber mit TLS davor (https://saga.example im Bild, Passkeys): Zertifikat der Test-CA der Testumgebung
+    (tools/handbuch-stack.sh erzeugt es, 30 Tage, nur im Lauf); Chromium vertraut der CA ueber die NSS-DB im HOME des Laufs.
+    asyncio statt Threads: ein SSL-Socket vertraegt kein gleichzeitiges Lesen und Schreiben aus zwei Threads."""
+    import asyncio
+    import ssl
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(cert, key)
+    ctx.set_alpn_protocols(["http/1.1"])
+    ready = threading.Event()
+
+    async def pipe(r, w):
+        try:
+            while True:
+                d = await r.read(65536)
+                if not d:
+                    break
+                w.write(d)
+                await w.drain()
+        except (OSError, asyncio.IncompleteReadError, ssl.SSLError):
+            pass
+        finally:
+            try:
+                w.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    async def conn(cr, cw):
+        try:
+            tr, tw = await asyncio.open_connection(target_ip, target_port)
+        except OSError:
+            cw.close()
+            return
+        await asyncio.gather(pipe(cr, tw), pipe(tr, cw))
+
+    async def main():
+        await asyncio.start_server(conn, listen_ip, listen_port, ssl=ctx, reuse_address=True)
+        ready.set()
+        await asyncio.Event().wait()
+
+    threading.Thread(target=lambda: asyncio.run(main()), daemon=True).start()
+    ready.wait(10)
+
+
 # =====================================================================================================
 # Nextcloud (tests/fakedav.py)
 # =====================================================================================================
@@ -483,12 +527,54 @@ def weather_start(port):
 
 
 # --- KI-Attrappe (OpenAI-kompatibel: /v1/models, /v1/chat/completions mit stream) - feste, erfundene Antworten ------------
+# Verweise stehen als {Titel} bzw. {web:k} in der Antwort und werden aus dem Material der Anfrage nummeriert (Saga zaehlt
+# die Quellen selbst: "[n] Titel — in: ..." bzw. "[n] Web: Titel (host)") - so passt [n] im Text immer zur Quelle n im Bild.
 KI_ANSWERS = [
     ("sommerfest", "Für das Sommerfest fehlen laut der Seite „Sommerfest“ noch **Getränke**, **Grillkohle** und **zwei "
-                   "Biertischgarnituren** [1]. Oma Lena bringt den Apfelkuchen mit, Ben kümmert sich ums Grillgut [1]. "
-                   "Soll ich daraus Aufgaben anlegen?"),
+                   "Biertischgarnituren** {Sommerfest}. Oma Lena bringt den Apfelkuchen mit, Ben kümmert sich ums Grillgut "
+                   "{Sommerfest}. Soll ich daraus Aufgaben anlegen?"),
+    ("wetter", "Am Wochenende wird es an der Lübecker Bucht freundlich: Samstag sonnig bei 21 °C, Sonntag wechselnd bewölkt "
+               "mit 19 °C und etwas Wind aus Nordwest {web:1}. Die Wassertemperatur liegt bei 17 °C – gut für einen Strandtag "
+               "am Samstag {web:2}."),
     ("", "Dazu finde ich in deinen Seiten nichts Genaues."),
 ]
+KI_SEARCH = {"wetter": "SEARCH: Wetter Lübecker Bucht Wochenende"}   # Antwort auf die Vorab-Frage "braucht es eine Websuche?"
+
+
+def _ki_sources(text):
+    """Material der Anfrage -> ({titel: n}, [n der Web-Quellen])."""
+    import re
+    pages, web = {}, []
+    for m in re.finditer(r"^\[(\d+)\] (.+)$", text, re.M):
+        n, head = int(m.group(1)), m.group(2)
+        if head.startswith("Web: "):
+            web.append(n)
+        else:
+            pages.setdefault(head.split(" — ")[0].strip(), n)
+    return pages, web
+
+
+def ki_answer(body):
+    """Antwort der Attrappe auf eine Anfrage (messages wie bei OpenAI)."""
+    import re
+    msgs = body.get("messages") or []
+    sys_txt = " ".join(str(m.get("content") or "") for m in msgs if m.get("role") == "system")
+    user = " ".join(str(m.get("content") or "") for m in msgs if m.get("role") == "user")
+    qm = re.search(r"Question: (.*)", user)               # Seiten-Frage: nur die Frage, nicht das Material (Titel!)
+    q = (qm.group(1) if qm else user).lower()
+    if "decide whether answering a message needs a web search" in sys_txt:
+        return next((v for k, v in KI_SEARCH.items() if k in q), "NONE")
+    text = next(a for k, a in KI_ANSWERS if k in q)
+    pages, web = _ki_sources(user)
+
+    def ref(m):
+        k = m.group(1)
+        if k.startswith("web:"):
+            i = int(k[4:]) - 1
+            return f"[{web[i]}]" if i < len(web) else ""
+        n = pages.get(k) or next((v for t, v in pages.items() if k.lower() in t.lower()), None)
+        return f"[{n}]" if n else ""
+    return re.sub(r" ?\{([^{}]+)\}", lambda m: (" " + ref(m)) if ref(m) else "", text)
 
 
 class _KIH(BaseHTTPRequestHandler):
@@ -514,8 +600,7 @@ class _KIH(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
             body = {}
-        q = " ".join(str(m.get("content") or "") for m in body.get("messages") or [] if m.get("role") == "user").lower()
-        text = next(a for k, a in KI_ANSWERS if k in q)
+        text = ki_answer(body)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Connection", "close")
@@ -532,6 +617,42 @@ class _KIH(BaseHTTPRequestHandler):
 
 def ki_start(port):
     srv = ThreadingHTTPServer(("127.0.0.1", port), _KIH)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+# --- SearXNG-Attrappe (POST /search, format=json) fuer die Websuche der KI (b15-02) - erfundene Treffer ----------------
+SEARX_HITS = [
+    {"title": "Wetter Lübecker Bucht: 7-Tage-Vorhersage", "url": "https://wetter.example.org/luebecker-bucht",
+     "content": "Samstag sonnig, 21 °C, Wind NW 3 Bft. Sonntag wechselnd bewölkt, 19 °C, Wind NW 4 Bft."},
+    {"title": "Ostseeküste: Wasser- und Strandbericht", "url": "https://kueste.example.org/strandbericht",
+     "content": "Wassertemperatur Lübecker Bucht 17 °C, Badestellen geöffnet, Wellenhöhe unter 0,5 m."},
+    {"title": "Wochenendwetter Schleswig-Holstein", "url": "https://wetter.example.org/sh-wochenende",
+     "content": "Hochdruckeinfluss am Samstag, am Sonntag von Westen mehr Wolken, trocken."},
+]
+
+
+class _SXH(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(n)
+        b = json.dumps({"results": SEARX_HITS, "answers": [], "suggestions": [], "corrections": [],
+                        "unresponsive_engines": []}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    do_GET = do_POST
+
+
+def searx_start(port):
+    srv = ThreadingHTTPServer(("127.0.0.1", port), _SXH)
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv

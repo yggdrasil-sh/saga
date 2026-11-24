@@ -143,9 +143,13 @@ class Run:
 
     def __init__(self, welt, art):
         self.welt, self.art = welt, art
+        extra = art.split("+")[1:]                 # Zusaetze der Szene: tls (https, Passkeys), suche (SearXNG-Attrappe)
+        self.tls, self.suche = "tls" in extra, "suche" in extra
+        sch = "https" if self.tls else "http"
         self.host = HOST[welt]
-        self.base = "http://" + self.host
-        self.adm = "http://admin." + self.host
+        self.base = f"{sch}://{self.host}"
+        self.adm = f"{sch}://admin.{self.host}"
+        self.vbase, self.vadm = f"{sch}://verein.example", f"{sch}://admin.verein.example"   # zweiter Server (Foederation)
         self.out = os.environ.get("HB_OUT") or os.path.join(os.environ.get("SHOTS", "/tmp"), "handbuch")
         os.makedirs(self.out, exist_ok=True)
         self.made = []
@@ -159,12 +163,16 @@ class Run:
         P, AP = int(os.environ["PORT"]), int(os.environ["ADMIN_PORT"])
         H0 = 19001 + 10 * int(os.environ.get("SLOT", os.environ.get("HB_SLOT", "6")))
         main, adm = ("127.0.1.1", "127.0.1.2") if self.welt == "familie" else ("127.0.1.7", "127.0.1.8")
-        fakes.forward(main, 80, P)
-        fakes.forward(adm, 80, AP)
+        pairs = [(main, P), (adm, AP)]
         if self.welt == "familie":                       # zweiter Server verein.example (Foederation), startet bei Bedarf
             self.p2, self.ap2 = P + 6, P + 7
-            fakes.forward("127.0.1.7", 80, self.p2)
-            fakes.forward("127.0.1.8", 80, self.ap2)
+            pairs += [("127.0.1.7", self.p2), ("127.0.1.8", self.ap2)]
+        for ip, port in pairs:
+            fakes.forward(ip, 80, port)                  # http bleibt (Demo-Aufbau per API)
+            if self.tls:                                 # https://<host> fuer den Browser (Zertifikat der Test-CA)
+                fakes.forward_tls(ip, 443, port, os.environ["HB_TLS_CERT"], os.environ["HB_TLS_KEY"])
+        if self.suche:                                   # Websuche der KI: SEARXNG_URL zeigt auf H0+9 (handbuch-stack.sh)
+            fakes.searx_start(H0 + 9)
         self.nc_login, self.nc_pw = "anna@cloud.saga.example", "app-" + secrets.token_hex(12)
         _, self.nc_ids, self.nc_uid = fakes.nextcloud_start(H0 + 5, self.nc_login, self.nc_pw)
         fakes.forward("127.0.1.3", 80, H0 + 5)
@@ -180,7 +188,7 @@ class Run:
         spec = importlib.util.spec_from_file_location("handbuch_demo", os.path.join(HERE, "handbuch-demo.py"))
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
-        self.dm = m.Demo(self.welt, base=self.base)
+        self.dm = m.Demo(self.welt, base="http://" + self.host)      # Aufbau per API ueber http (auch in Laeufen mit tls)
         if self.welt == "familie":
             self.ids = self.dm.familie(self.nc_login, self.nc_pw, self.nc_uid, self.nc_ids)
         else:
@@ -192,7 +200,7 @@ class Run:
         t0 = time.time()
         while time.time() - t0 < 120:
             try:
-                with urllib.request.urlopen(self.base + "/login", timeout=10) as r:
+                with urllib.request.urlopen(self.dm.base + "/login", timeout=10) as r:
                     if self.dm.W["title"] in r.read().decode("utf-8", "replace"):
                         break
             except Exception:  # noqa: BLE001
@@ -365,6 +373,119 @@ def b01_04(run):
     a.mark([(a.p.locator(".hk-crop-stage"), "1"), (rng, "2")])
     run.shot(a.p, "b01-04-profilbild-zuschneiden")
     a.close()
+
+
+# --- Anmeldung mit Passkey (Zusatz tls: https://saga.example, Zertifikat der Test-CA; Passkey ueber den virtuellen
+# Authenticator von Chromium, Code der Authenticator-App aus dem Geheimnis berechnet) - Wiederherstellungscodes nie im Bild
+def login_form(run, user=None, dark=False, form=DESK):
+    w = Who(run, None, dark, form, None)
+    w.p.goto(run.base + "/login")
+    w.p.wait_for_load_state("networkidle")
+    w.p.wait_for_selector("#pk-box:not([hidden])", timeout=10000)      # Passkey-Knopf nur ueber https (sonst fehlt er)
+    if user:
+        w.p.fill("input[name=username]", user)
+    return w
+
+
+def login_marks(w):
+    w.blur(True)
+    w.mark([(w.p.locator("input[name=username]"), "1", 3), (w.p.locator("input[name=password]"), "2", 3),
+            (w.p.locator("#pk-go"), "3", 3), (w.p.locator(".auth-lang"), "4", 3)])
+
+
+def auth_box(w, pad=24):
+    """Ausschnitt Karte + Sprachauswahl (wie die Bilder vom 3.11.)."""
+    a, b = w.p.locator(".auth-card").bounding_box(), w.p.locator(".auth-lang").bounding_box()
+    x0, y0 = min(a["x"], b["x"]) - pad, a["y"] - pad
+    x1, y1 = max(a["x"] + a["width"], b["x"] + b["width"]) + pad, b["y"] + b["height"] + pad
+    return {"x": max(0, x0), "y": max(0, y0), "width": x1 - max(0, x0), "height": y1 - max(0, y0)}
+
+
+@scene("b01-01-login", "familie", "server+tls")
+def b01_01(run):
+    w = login_form(run, "anna")
+    login_marks(w)
+    run.shot(w.p, "b01-01-login", el=auth_box(w))
+    w.close()
+
+
+@scene("b01-06-login-handy", "familie", "server+tls")
+def b01_06(run):
+    w = login_form(run, "anna", dark=True, form=PHONE)
+    login_marks(w)
+    run.shot(w.p, "b01-06-login-handy")
+    w.close()
+
+
+def factors(run):
+    """Anna: Passkey "Annas MacBook" (ueber die Oberflaeche, virtueller Authenticator) und Authenticator-App (direkt im
+    Server, Code aus dem Geheimnis berechnet). Einmal je Lauf; danach Anmeldung nur mit zweitem Faktor."""
+    if getattr(run, "mfa_done", False):
+        return
+    w = login_form(run, "anna")
+    w.p.fill("input[name=password]", run.dm.pw)
+    w.p.click("form.auth-form button[type=submit]")
+    w.p.wait_for_load_state("networkidle")
+    cdp = w.ctx.new_cdp_session(w.p)
+    cdp.send("WebAuthn.enable")
+    cdp.send("WebAuthn.addVirtualAuthenticator", {"options": {"protocol": "ctap2", "transport": "internal", "hasResidentKey": True,
+                                                              "hasUserVerification": True, "isUserVerified": True,
+                                                              "automaticPresenceSimulation": True}})
+    w.p.goto(run.base + "/security")
+    w.p.wait_for_load_state("networkidle")
+    w.p.wait_for_selector("#hk-security .mfa-block", timeout=10000)
+    w.p.locator("#hk-security input[aria-label='Name des Passkeys']").fill("Annas MacBook")
+    w.p.locator("#hk-security button", has_text="Passkey hinzufügen").click()
+    until(lambda: w.p.locator("#hk-security .hk-tok", has_text="Annas MacBook").count(), 20000)
+    w.close()                                           # Codes-Anzeige (erster Faktor) verschwindet mit dem Kontext
+    from saga import mfa
+    key = mfa.totp_begin("anna")["secret"].replace(" ", "")
+    import base64
+    mfa.totp_finish("anna", mfa.totp_at(base64.b32decode(key), int(time.time() // mfa.TOTP_STEP)))
+    run.mfa_done = True
+
+
+@scene("b01-03-sicherheit", "familie", "server+tls")
+def b01_03(run):
+    factors(run)
+    w = Who(run, None, False, DESK, None)
+    w.p.goto(run.base + "/login")
+    w.p.fill("input[name=username]", "anna")
+    w.p.fill("input[name=password]", run.dm.pw)
+    w.p.click("form.auth-form button[type=submit]")
+    w.p.wait_for_load_state("networkidle")
+    w.p.wait_for_selector("input[name=code]")
+    from saga import mfa
+    with run.dm.db.connect() as c:
+        sec = c.execute("SELECT secret FROM mfa_totp WHERE uid=? AND confirmed IS NOT NULL", ("anna",)).fetchone()[0]
+    w.p.fill("input[name=code]", mfa.totp_at(mfa._totp_secret(sec), int(time.time() // mfa.TOTP_STEP) + 1))   # naechster Schritt (+1 erlaubt)
+    w.p.click("form.auth-form button[type=submit]")
+    w.p.wait_for_load_state("networkidle")
+    w.p.goto(run.base + "/security")
+    w.p.wait_for_load_state("networkidle")
+    w.p.wait_for_selector("#hk-security .mfa-block", timeout=10000)
+    w.p.wait_for_timeout(800)
+    w.blur(True)
+    bl = w.p.locator("#hk-security .mfa-block")
+    w.mark([(bl.nth(0), "1", 4), (bl.nth(1), "2", 4), (bl.nth(2), "3", 4)])
+    run.shot(w.p, "b01-03-sicherheit")
+    w.close()
+
+
+@scene("b01-02-login-2fa", "familie", "server+tls")
+def b01_02(run):
+    factors(run)
+    w = Who(run, None, False, DESK, None)
+    w.p.goto(run.base + "/login")
+    w.p.fill("input[name=username]", "anna")
+    w.p.fill("input[name=password]", run.dm.pw)
+    w.p.click("form.auth-form button[type=submit]")
+    w.p.wait_for_load_state("networkidle")
+    w.p.wait_for_selector("#pk-box:not([hidden])", timeout=10000)
+    w.blur(True)
+    w.mark([(w.p.locator("input[name=code]"), "1", 3), (w.p.locator("#pk-go"), "2", 3)])
+    run.shot(w.p, "b01-02-login-2fa")
+    w.close()
 
 
 @scene("b01-05-sprache", "familie")
@@ -1007,6 +1128,30 @@ def b15_01(run):
     a.close()
 
 
+@scene("b15-02-ki-websuche", "familie", "server+suche")
+def b15_02(run):
+    """Websuche der KI: SearXNG-Attrappe (fakes.searx_start, Treffer wetter.example.org / kueste.example.org), Admin-Schalter
+    "Websuche erlauben" an; die KI-Attrappe entscheidet "SEARCH: ..." und zitiert die Web-Quellen mit ihren Nummern."""
+    ai = dict(run.dm.auth.settings().get("ai") or {}, web=True)
+    run.dm.setting("ai", ai)
+    time.sleep(6)                                   # Einstellungen haelt der Server 5 s im Speicher
+    a = run.who("anna")
+    a.go("/dashboard", 2500)
+    until(lambda: a.p.evaluate("() => !!(window.HKAI && HKAI.open)"), 8000)
+    a.p.evaluate("() => HKAI.open('ask', 'Wie wird das Wetter am Wochenende an der Lübecker Bucht?')")
+    a.p.wait_for_timeout(800)
+    sw = a.p.locator("label.ai-sw", has_text="Im Web suchen").first
+    if not sw.locator("input").is_checked():
+        sw.click()
+    a.p.locator(".ai-ta").first.press("Enter")
+    until(lambda: a.p.locator(".ai-src-web").count() and not a.p.locator(".ai-stop:visible").count(), 40000)
+    a.p.wait_for_timeout(1200)
+    a.blur(True)
+    a.mark([(sw, "1", 3), (a.p.locator(".ai-src-web").first, "2", 2)])
+    run.shot(a.p, "b15-02-ki-websuche")
+    a.close()
+
+
 @scene("b09-01-live-cursor", "familie")
 def b09_01(run):
     """Anna und Ben gleichzeitig in "Sommerfest" (Gleichzeitig bearbeiten live fuer dieses Bild an): Ben markiert ein Wort."""
@@ -1310,7 +1455,7 @@ def a05_06(run):
     adm_card_shot(run, "a05-06-diagnose", "Diagnose")
 
 
-@scene("a07-02-einladung", "verein")
+@scene("a07-02-einladung", "verein", "server+tls")
 def a07_02(run):
     run.dm.setting("fed_enabled", True)
     time.sleep(6)                                   # Einstellungen haelt der Server 5 s im Speicher
@@ -1505,8 +1650,10 @@ def verein_server(run):
     st = os.path.join(os.environ.get("STATE_DIR", "/tmp"), "verein")
     os.makedirs(st, exist_ok=True)
     env = dict(os.environ, DATABASE_URL=re.sub(r"^(postgres(?:ql)?://[^/]*/)[^?]*", lambda m: m.group(1) + dbn, base_url),
-               PORT=str(run.p2), ADMIN_PORT=str(run.ap2), BASE_URL="http://verein.example", ADMIN_URL="http://admin.verein.example",
+               PORT=str(run.p2), ADMIN_PORT=str(run.ap2), BASE_URL=run.vbase, ADMIN_URL=run.vadm,
                STATE_DIR=st, HB_BASE="http://verein.example", HB_PW=run.dm.pw, FED_ALLOW_HTTP="1", CACHE_TTL="3")
+    if run.tls and os.environ.get("UMG_CA"):         # Server-zu-Server ueber https: httpx vertraut der Test-CA (SSL_CERT_FILE)
+        env["SSL_CERT_FILE"] = os.environ["UMG_CA"]
     log = open(os.path.join(st, "server.log"), "a")
     proc = subprocess.Popen([sys.executable, "run.py"], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
     run.procs = getattr(run, "procs", []) + [proc]
@@ -1537,12 +1684,12 @@ def verein_server(run):
 def fed_connect(run):
     """Einladung auf verein.example (Admin frieda), verbinden auf saga.example (Admin anna) -> True bei Erfolg."""
     v = Who(run, None, False, DESK, None)
-    v.p.goto("http://admin.verein.example/login")
+    v.p.goto(run.vadm + "/login")
     v.p.fill("input[name=username]", "frieda")
     v.p.fill("input[name=password]", run.dm.pw)
     v.p.click("button[type=submit]")
     v.p.wait_for_load_state("networkidle")
-    v.p.goto("http://admin.verein.example/federation")
+    v.p.goto(run.vadm + "/federation")
     v.p.wait_for_load_state("networkidle")
     v.p.locator("button", has_text="Einladungscode erzeugen").first.click()
     v.p.wait_for_load_state("networkidle")
@@ -1550,7 +1697,7 @@ def fed_connect(run):
     v.close()
     a = adm_go(run, user="anna", path="/federation")
     for _ in range(4):                 # der Server sah die neuen "Freigegebenen internen Hosts" manchmal erst spaeter (s. b16-01)
-        a.p.fill("input[name=url]", "http://verein.example")
+        a.p.fill("input[name=url]", run.vbase)
         a.p.fill("input[name=code]", code)
         a.p.locator("button", has_text="Fingerprint prüfen").first.click()
         a.p.wait_for_load_state("networkidle")
@@ -1573,7 +1720,7 @@ def fed_connect(run):
         return False
     # Gegenseite (verein.example) bestaetigt die Anfrage, dann hier den Status abgleichen
     v = verein_login(run, admin=True)
-    v.p.goto("http://admin.verein.example/federation")
+    v.p.goto(run.vadm + "/federation")
     v.p.wait_for_load_state("networkidle")
     b = v.p.locator("button", has_text="Bestätigen")
     if b.count():
@@ -1595,7 +1742,7 @@ def fed_connect(run):
 
 def verein_login(run, user="frieda", admin=False, dark=False):
     w = Who(run, None, dark, DESK, None)
-    host = "http://admin.verein.example" if admin else "http://verein.example"
+    host = run.vadm if admin else run.vbase
     w.p.goto(host + "/login")
     w.p.fill("input[name=username]", user)
     w.p.fill("input[name=password]", run.dm.pw)
@@ -1604,14 +1751,14 @@ def verein_login(run, user="frieda", admin=False, dark=False):
     return w
 
 
-@scene("b11-01-teilen-foederiert", "familie")
+@scene("b11-01-teilen-foederiert", "familie", "server+tls")   # https wie in A07 verlangt (Server-zu-Server ueber TLS)
 def b11_all(run):
     """Foederation: b11-01 (Frieda teilt mit Anna auf saga.example), b11-02 (Anna bearbeitet die Seite in ihrem Saga),
     a07-01 (Admin -> Foederation auf verein.example), a07-03 (Funktionen je Instanz)."""
     vs = verein_server(run)
     pid = vs["ids"]["parzellen"]
     f = verein_login(run)
-    f.p.goto(f"http://verein.example/notes#{pid}")
+    f.p.goto(f"{run.vbase}/notes#{pid}")
     f.p.wait_for_load_state("networkidle")
     f.p.wait_for_timeout(2000)
     f.p.click("#pg-share")
@@ -1647,7 +1794,7 @@ def b11_all(run):
     run.shot(a.p, "b11-02-fremde-seite")
     a.close()
     w = verein_login(run, admin=True)
-    w.p.goto("http://admin.verein.example/federation")
+    w.p.goto(run.vadm + "/federation")
     w.p.wait_for_load_state("networkidle")
     w.p.wait_for_timeout(800)
     run.shot(w.p, "a07-01-foederation", full=True)
@@ -2301,7 +2448,7 @@ def main():
     welt, art = os.environ.get("HB_WELT", "familie"), os.environ.get("HB_ART", "server")
     want = [s for s in want if s[1] == welt and s[2] == art]
     sys.path.insert(0, ROOT)
-    os.environ["BASE_URL"] = "http://" + HOST[welt]
+    os.environ["BASE_URL"] = ("https://" if "+tls" in art else "http://") + HOST[welt]
     from playwright.sync_api import sync_playwright
     run = Run(welt, art)
     run.fakes()
