@@ -27,6 +27,9 @@
   <section class="adm-card">
     <h3>{{ _("Zugang und Grenzen") }}</h3>
     {{ field(_('Nur für diese Gruppen'), 'groups', groups_text, max=1000, hint=_('Komma-getrennt, z. B. saga-ki – leer = alle Konten')) }}
+    {# 2.6 (Bugs-DB 2261): Faehigkeiten je Gruppe - leer = alle, die den Assistenten nutzen duerfen #}
+    {{ field(_('Aufträge nach außen (Nachrichten in deinem Namen)'), 'caps_ai_act', caps_act_text, max=1000, hint=_('Gruppen, deren KI später Nachrichten in ihrem Namen vorbereiten und die Websuche nutzen darf – leer = alle. Alle anderen sind eingeschränkt (z. B. Kinder): Saga schlägt nur vor, keine Websuche.')) }}
+    {{ field(_('Ideen von sich aus'), 'caps_ai_ideas', caps_ideas_text, max=1000, hint=_('Gruppen, die Ideen der KI von sich aus einschalten dürfen – leer = alle. Jede Person entscheidet selbst, ob sie sie will.')) }}
     {{ field(_('Zeitlimit bis zur Antwort (Sekunden)'), 'timeout', a.timeout, type='number', max=4, hint=_('So lange darf das Modell bis zum ersten Wort und zwischen zwei Stücken brauchen. Eine ganze Antwort darf das Fünffache dauern (mindestens 5 Minuten) – für langsame lokale Modelle.')) }}
     {{ field(_('Anfragen je Person und Tag'), 'quota', a.quota, type='number', max=6, hint=_('0 = unbegrenzt')) }}
     {{ field(_('Seiteninhalt je Anfrage (Zeichen)'), 'context', a.context, type='number', max=5, hint=_('mehr Kontext = bessere Antworten, aber langsamer (1000–50000)')) }}

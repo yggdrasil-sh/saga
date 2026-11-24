@@ -459,6 +459,15 @@ async def _logout(request, nxt):
 
 
 # --- Eigenes Konto -----------------------------------------------------------------------------------
+def _caps_of(uid):
+    from saga import caps
+    try:
+        return caps.caps_of(uid)
+    except Exception as ex:  # noqa: BLE001 - Konto-Seite nie wegen der KI-Einstellungen scheitern lassen
+        print(f"account: caps ({type(ex).__name__})", flush=True)
+        return []
+
+
 @router.get("/api/account")
 def api_account(request: Request):
     uid = _api_guard(request)
@@ -471,6 +480,7 @@ def api_account(request: Request):
                          "admin_url": ADMIN_URL if i["is_admin"] else "", "pw_changed": i["pw_changed"],
                          "can_edit": i["source"] == "local", "lang": user_lang(uid), "lang_active": i18n.get_lang(),
                          "avatar": avatars.my_url(uid), "start_page": start_page(uid),
+                         "caps": _caps_of(uid),                      # 2.6 (Bugs-DB 2261): Faehigkeiten, Server prueft selbst
                          "langs": [{"code": "", "name": t("Automatisch")}] + [{"code": k, "name": v} for k, v in i18n.NAMES.items()]})
 
 

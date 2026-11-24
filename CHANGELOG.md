@@ -15,6 +15,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu
+
+- **Fähigkeiten für die KI je Gruppe** (Bugs-DB 2261): Ein Rechtemechanismus für alles, was die KI darf – `ai`
+  (Assistent), `ai_act` (Aufträge nach außen und Websuche) und `ai_ideas` (Ideen von sich aus); der Admin stellt die
+  Gruppen unter „KI-Assistent“ ein (leer = alle, bestehende Server ändern sich nicht). Gruppen ohne `ai_act` sind
+  eingeschränkt (z. B. Kinder): keine Websuche. `GET /api/account` und `/api/ai/status` nennen die Fähigkeiten (`caps`);
+  `tel*` ist für 3.0 reserviert. Testreihe `tests/faehigkeiten.py`.
+
 ### Behoben
 
 - **„Chats“ zeigt eine Übersicht statt einer leeren Seite mit Schloss** (Bugs-DB 2030): Ohne geöffnete Unterhaltung

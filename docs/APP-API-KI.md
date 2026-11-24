@@ -206,3 +206,17 @@ angehängten Webquellen (`Quellen:` …) kommen von der Suchmaschine und bleiben
 **Datenrahmen** (Bugs-DB 2260, nur Server): Das Material steht zwischen Markern mit einer Zufallskennung je Anfrage
 (`<<<SAGA_DATA <kennung>` … `<kennung> SAGA_DATA>>>`), jede Schreibweise des Markers im Inhalt wird entschärft. Apps
 sehen davon nichts; wer Prompts nachbaut (Tests), liest die Kennung aus dem System-Prompt.
+
+## 5. Fähigkeiten (2.6, Bugs-DB 2261)
+
+`GET /api/account` liefert `"caps": [...]` – was die KI für diese Person darf (der Server prüft jede Fähigkeit selbst;
+Apps blenden nur Einstiege danach ein). Unbekannte Einträge ignorieren, fehlt das Feld (ältere Server): wie bisher.
+
+| Fähigkeit | Bedeutung |
+|---|---|
+| `ai` | Assistent nutzen (wie `GET /api/ai/status` → `enabled`) |
+| `ai_act` | Aufträge nach außen (später: Nachrichten in deinem Namen) und Websuche. Fehlt sie, ist die Person eingeschränkt (z. B. Kinder): Saga schlägt nur vor, `status.web` ist `false` |
+| `ai_ideas` | Ideen von sich aus darf die Person einschalten |
+
+`GET /api/ai/status` nennt dieselbe Liste als `caps`. Reserviert für 3.0 (Telefonie), heute nie gesetzt: `tel`, `tel_out`,
+`tel_in`, `tel_intl`, `tel_mailbox`. Die Gruppen je Fähigkeit stellt der Admin unter „KI-Assistent“ ein (leer = alle).
