@@ -201,11 +201,15 @@ def run():
             ok(f"set_prefs lehnt {bad!r} ab", False)
         except ValueError:
             ok(f"set_prefs lehnt {bad!r} ab", True)
-    try:
-        ai_ctx.record(None, job_id=1, ctx=ai_ctx.Ctx())
-        ok("record(job_id) meldet: kommt mit K-A2", False)
-    except NotImplementedError:
-        ok("record(job_id) meldet: kommt mit K-A2", True)
+    # K-A6: record(job_id=...) -> job_event 'read' (nur Kennungen; vorher NotImplementedError bis zur Anbindung)
+    from saga import jobs
+    jid = jobs.create("kr-a", "ai.task", steps=[{"tool": "list_tasks", "klass": "read"}])
+    with connect() as c, c:
+        ai_ctx.record(c, job_id=jid, ctx=ai_ctx.Ctx(read=["note:3", "tasks:open", "Text mit Inhalt", "cal:2026-07-04/14"]))
+    with connect() as c:
+        ev = [r[0] for r in c.execute("SELECT data FROM job_event WHERE job_id=? AND kind='read'", (jid,)).fetchall()]
+    ok(f"record(job_id): job_event 'read' nur mit Kennungen ({ev})", ev == [{"read": ["note:3", "tasks:open", "cal:2026-07-04/14"]}])
+    jobs.cancel(jid, "kr-a")
 
     # --- API: Personen-Schalter ------------------------------------------------------------------------------------
     s, d = K.req("GET", "/api/ai/status", A)
