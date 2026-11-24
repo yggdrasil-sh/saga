@@ -4381,12 +4381,9 @@
     var ai = msgs.length === 1 && msgs[0]._ai === 'ok';
     HK.report({ cls: 'ct-rep', title: ai ? T('KI-Antwort melden') : T('Melden'),
       hint: T('Die Meldung geht an die Admins dieses Saga-Servers. Chats sind Ende-zu-Ende-verschlüsselt – die Admins sehen nur, was du hier mitschickst.'),
-      text: msgs.map(function (m) { return (m.sender ? m.sender.name + ': ' : '') + plainText(m); }).join('\n').slice(0, 2000) }).then(function (r) {
-      if (!r) return;
-      api('POST', '/api/chat/report', { chat: c.id, msgs: msgs.map(function (m) { return m.id; }), reason: r.reason, text: r.text })
-        .then(function () { HK.toast(T('Danke – die Meldung ist bei den Admins.')); })
-        .catch(function (e) { HK.toast(e.message); });
-    });
+      text: msgs.map(function (m) { return (m.sender ? m.sender.name + ': ' : '') + plainText(m); }).join('\n').slice(0, 2000),
+      send: function (r) { return api('POST', '/api/chat/report', { chat: c.id, msgs: msgs.map(function (m) { return m.id; }), reason: r.reason, text: r.text }); }
+    }).then(function (r) { if (r) HK.toast(T('Danke – die Meldung ist bei den Admins.')); });
   }
   function grpMenu(menu, m) {
     var c = S.cur; if (!c || !m || m.kind !== 'msg') return;

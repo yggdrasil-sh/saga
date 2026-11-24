@@ -1851,6 +1851,7 @@
  "Gemeinsames Geheimnis (zeitlich begrenzte Zugangsdaten, empfohlen)": "Secreto compartido (credenciales temporales, recomendado)",
  "Gemeinsames Geheimnis = coturn „use-auth-secret“ mit „static-auth-secret“: Saga erzeugt je Anruf Zugangsdaten, die nach 12 Stunden ablaufen.": "Secreto compartido = coturn «use-auth-secret» con «static-auth-secret»: Saga genera para cada llamada credenciales que caducan a las 12 horas.",
  "Gemeint ist der öffentliche Name der Person, nicht ihre E-Mail-Adresse.": "Se refiere al nombre público de la persona, no a su correo electrónico.",
+ "Gemeldet": "Denunciado",
  "Gemeldet von": "Denunciado por",
  "Genau eines angeben: block_id oder heading.": "Indica exactamente uno: block_id o heading.",
  "Genau eines angeben: item oder text.": "Indica exactamente uno: item o text.",

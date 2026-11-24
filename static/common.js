@@ -395,11 +395,12 @@
   var askOpen = null;
   // Melden-Bauteil (2.6, Bugs-DB 2258 Teil a): ein Dialog fuer Chat-Nachrichten und KI-Antworten - Grund, mitgeschickter
   // Text (vorbelegt, abwaehlbar, aenderbar). opts: {title, hint, text, include (Beschriftung), cls (zusaetzliches Praefix fuer
-  // Klassen, z. B. 'ct-rep')}. -> Promise {reason, text} bzw. null (abgebrochen). Senden macht der Aufrufer.
+  // Klassen, z. B. 'ct-rep'), send (r -> Promise: Senden im Dialog - bei Fehler bleibt er mit dem Text offen)}.
+  // -> Promise {reason, text} (gesendet) bzw. null (abgebrochen).
   function report(opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
-      var prev = document.activeElement, px = opts.cls ? ' ' + opts.cls : '';
+      var prev = document.activeElement, back = lastOwner, px = opts.cls ? ' ' + opts.cls : '', sending = false;
       var cl = function (k) { return 'hk-rep-' + k + (opts.cls ? ' ' + opts.cls + '-' + k : ''); };
       var ov = el('div', 'hk-ask hk-rep' + px), box = el('div', 'hk-ask-box hk-rep-box'), uid = 'hk-rep-' + Date.now();
       box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', uid + '-t');
@@ -423,18 +424,32 @@
       bar.appendChild(no); bar.appendChild(yes); box.appendChild(bar); ov.appendChild(box);
       function done(v) {
         window.removeEventListener('keydown', key, true); ov.remove();
-        if (prev && prev.focus && document.contains(prev)) { try { prev.focus(); } catch (e) { /* egal */ } }
+        // Menueeintrag ist meist schon weg: dann zurueck zum Element, das das Menue geoeffnet hat
+        var to = prev && document.contains(prev) ? prev : (back && document.contains(back) ? back : null);
+        if (to && to.focus) { try { to.focus(); } catch (e) { /* egal */ } }
         resolve(v);
       }
       function key(e) {
-        if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); done(null); return; }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); if (!sending) done(null); return; }
         if (e.key !== 'Tab') return;
         var f = [sel, cb].concat(ta.hidden ? [] : [ta]).concat([no, yes]), i = f.indexOf(document.activeElement);
-        e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();   // Fokus bleibt im Dialog
+        e.preventDefault(); e.stopImmediatePropagation();
+        f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();   // Fokus bleibt im Dialog
       }
-      no.addEventListener('click', function () { done(null); });
-      yes.addEventListener('click', function () { done({ reason: sel.value, text: cb.checked ? ta.value.trim() : '' }); });
-      ov.addEventListener('mousedown', function (e) { if (e.target === ov) done(null); });
+      no.addEventListener('click', function () { if (!sending) done(null); });
+      yes.addEventListener('click', function () {
+        if (sending) return;
+        var r = { reason: sel.value, text: cb.checked ? ta.value.trim() : '' };
+        if (!opts.send) { done(r); return; }
+        sending = true; yes.disabled = true; no.disabled = true; box.setAttribute('aria-busy', 'true');
+        Promise.resolve().then(function () { return opts.send(r); }).then(function () { done(r); }, function (e) {
+          sending = false; yes.disabled = false; no.disabled = false; box.setAttribute('aria-busy', 'false');
+          if (e && e.message) toast(e.message);
+          yes.focus();                                     // Dialog bleibt offen, der Text bleibt
+        });
+      });
+      // Doppelklick auf "Melden ...": der zweite Druck trifft den Hintergrund - das ist kein Abbrechen
+      ov.addEventListener('mousedown', function (e) { if (e.target === ov && e.detail < 2 && !sending) done(null); });
       window.addEventListener('keydown', key, true);
       document.body.appendChild(ov); sel.focus();
     });

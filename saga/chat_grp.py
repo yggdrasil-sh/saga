@@ -720,8 +720,9 @@ def store_report(c, uid, chat_id, kind, ref, reason, text, items, now=None):
     now = now or time.time()
     rid = c.execute("INSERT INTO chat_report (reporter, chat_id, chat_kind, chat_ref, reason, text, items, created) VALUES (?,?,?,?,?,?,?,?) "
                     "RETURNING id", (uid, chat_id, kind, ref, reason, text, json.dumps(items), now)).fetchone()[0]
+    ai = kind == "ai" or any(isinstance(i, dict) and i.get("ai") for i in items or [])   # auch KI-Antwort im Chat
     for a in [r[0] for r in c.execute("SELECT username FROM users WHERE is_admin=1 AND disabled=0").fetchall()]:
-        notify.create(c, a, "chat.report", None, data={"report": rid, "ai": kind == "ai"})
+        notify.create(c, a, "chat.report", None, data={"report": rid, "ai": ai})
     return rid
 
 

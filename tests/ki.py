@@ -747,6 +747,26 @@ def run():
     bad = [req("POST", "/api/ai/report", A, b)[0] for b in ({"where": "chat", "reason": "spam"}, {"where": "ask", "reason": "x"},
                                                              {"where": "page", "reason": "spam"}, {"where": "ask", "reason": "spam", "text": 5})]
     ok(f"Melden: ungueltige Angaben -> 400 ({bad})", bad == [400, 400, 400, 400])
+    s, _ = req("POST", "/api/ai/report", A, {"where": "page", "page": 2 ** 63, "reason": "spam"})
+    ok(f"Melden: Seitennummer ausserhalb von bigint -> 400 ({s})", s == 400)
+    setai(enabled=False)
+    s, _ = req("POST", "/api/ai/report", A, {"where": "ask", "reason": "spam"})
+    setai(enabled=True)
+    ok(f"Melden: Assistent aus -> 403 ({s})", s == 403)
+    with connect() as c, c:                                 # Tagesgrenze gemeinsam mit dem Chat: 18 Chat-Meldungen dazu
+        for i in range(18):
+            c.execute("INSERT INTO chat_report (reporter, chat_id, chat_kind, chat_ref, reason, text, items, created) "
+                      "VALUES ('ki-a', NULL, 'group', 'x', 'spam', '', '[]', %s)" % (time.time() - 60 - i))
+    s, d = req("POST", "/api/ai/report", A, {"where": "ask", "reason": "spam"})
+    ok(f"Melden: Tagesgrenze zaehlt Chat- und KI-Meldungen zusammen -> 429 ({s}, {d})", s == 429 and "Zu viele" in str(d))
+    with connect() as c, c:
+        c.execute("DELETE FROM chat_report WHERE reporter='ki-a' AND chat_kind='group'")
+    st = [req("POST", "/api/ai/report", A, {"where": "ask", "reason": "other"})[0] for _ in range(4)]
+    ok(f"Melden: Stundengrenze 5 (2 schon gemeldet) -> 200, 200, 200, 429 ({st})", st == [200, 200, 200, 429])
+    with connect() as c:
+        nd = [json.loads(r[0]) if isinstance(r[0], str) else r[0] for r in
+              c.execute("SELECT data FROM notification WHERE uid='ki-adm' AND kind='chat.report' ORDER BY id DESC LIMIT 1").fetchall()]
+    ok(f"Melden: Admin-Benachrichtigung als KI-Meldung ({nd})", nd and nd[0].get("ai") is True)
     with connect() as c, c:
         c.execute("DELETE FROM chat_report WHERE reporter LIKE 'ki-%'")
 

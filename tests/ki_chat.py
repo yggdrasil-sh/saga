@@ -5,7 +5,7 @@ nur mit Nutzungsrecht und Kontingent, Grenzen fuer den Verlauf, Rate-Limit; Prom
 als DATEN, aber keine Seiten; der Server speichert weder Frage noch Antwort (nur SHA-256 als Beleg) und schreibt nichts
 davon ins Log; Senden der Antwort mit Beleg (einmalig, nur der Fragende), Kennzeichnung ai={ref, sha256, by} fuer alle
 Mitglieder, Hash passt zum entschluesselten Text; Kontoloeschung. Wegwerf-Konten ki-c*; raeumt auf."""
-import os, socket, subprocess, sys, time
+import json, os, socket, subprocess, sys, time
 import auth
 from db import connect
 
@@ -187,6 +187,10 @@ def run():
     with connect() as c:
         rep = c.execute("SELECT items FROM chat_report WHERE id=%s" % int((d or {}).get("id") or 0)).fetchone()
     ok(f"2258a: eigene KI-Antwort melden -> 200, als KI markiert ({s}, {rep and rep[0][:80]})", s == 200 and rep and '"ai": true' in rep[0])
+    with connect() as c:                                   # Admins: Benachrichtigung "KI-Antwort", nicht "im Chat"
+        nd = [x for x in (json.loads(r[0]) for r in c.execute("SELECT data FROM notification WHERE kind='chat.report'").fetchall())
+              if x.get("report") == (d or {}).get("id")]
+    ok(f"2258a: Benachrichtigung der Admins als KI-Meldung ({nd[:1]})", not nd or all(x.get("ai") is True for x in nd))
     s, d = CT.req("POST", "/api/chat/report", A.k, {"chat": dm, "msgs": [qm["id"]], "reason": "other"})
     ok(f"2258a: eigene normale Nachricht melden -> 400 ({s})", s == 400)
     body = C.decrypt(str(dm), mm[0], B.dev["enc_pk"], B.dev["enc_sk"]) if mm else {}

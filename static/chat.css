@@ -440,11 +440,7 @@ button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
 .ct-gi-perm{display:flex;align-items:flex-start;gap:.4rem;line-height:1.35}
 .ct-gi-perm input{margin-top:.2rem;flex:none}
 .ct-perm-note{margin:.2rem 0}
-.ct-rep-l{display:block;font-size:var(--fs-base);margin:.4rem 0 .2rem}
-.ct-rep-reason{width:100%}
-.ct-rep-inc{display:flex;align-items:center;gap:.4rem;margin:.6rem 0 .3rem}
-.ct-rep-text{width:100%;resize:vertical}
-.ct-rep-text[hidden]{display:none}
+/* Melden-Dialog: Regeln jetzt in style.css (.hk-rep-*), die ct-rep-* Klassen bleiben fuer Tests */
 /* 2.5 Chat-Alltag: Formatierung (chat-fmt.js), Erwaehnungen, Linkvorschau, Angeheftet, Entwurf, Medienuebersicht */
 .ct-text strong{font-weight:700}
 .ct-f-code{font-family:var(--mono,ui-monospace,monospace);font-size:.88em;background:color-mix(in srgb,var(--fg) 9%,transparent);padding:.05em .3em;border-radius:var(--r-sm)}

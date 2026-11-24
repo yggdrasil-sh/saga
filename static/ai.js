@@ -321,12 +321,16 @@
     var b = el('button', 'btn btn-quiet ai-report', T('Melden …')); b.type = 'button';
     b.title = T('Antwort der KI an die Admins melden');
     b.addEventListener('click', function () {
+      if (b.disabled) return;
       HK.report({ title: T('KI-Antwort melden'), include: T('Antwort der KI mitschicken'), text: text,
-        hint: T('Die Meldung geht an die Admins dieses Saga-Servers – mit dem Text, den du hier mitschickst.') }).then(function (r) {
+        hint: T('Die Meldung geht an die Admins dieses Saga-Servers – mit dem Text, den du hier mitschickst.'),
+        send: function (r) {
+          var body = { where: where, reason: r.reason, text: r.text }; if (page) body.page = page;
+          return api('POST', '/api/ai/report', body);
+        } }).then(function (r) {
         if (!r) return;
-        var body = { where: where, reason: r.reason, text: r.text }; if (page) body.page = page;
-        api('POST', '/api/ai/report', body).then(function () { HK.toast(T('Danke – die Meldung ist bei den Admins.')); b.disabled = true; })
-          .catch(function (e) { HK.toast(e.message); });
+        b.disabled = true; b.textContent = T('Gemeldet');       // eine Meldung je Antwort; Fokus geht an den Ausloeser zurueck
+        HK.toast(T('Danke – die Meldung ist bei den Admins.'));
       });
     });
     return b;

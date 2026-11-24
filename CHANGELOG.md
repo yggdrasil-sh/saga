@@ -21,6 +21,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   und der Seiten-Hilfen steht „Melden …“, im Chat lässt sich auch die eigene KI-Antwort melden. Chat und KI nutzen ein
   gemeinsames Bauteil (Dialog `HK.report`, Server `store_report`): gleiche Gründe, gleiche Grenzen, eine Liste unter
   Admin → Meldungen („KI-Antwort“). Neu `POST /api/ai/report` (APP-API-KI Abschnitt 6).
+  Der Dialog sendet selbst und bleibt bei einem Fehler mit dem Text offen; ein Doppelklick schließt ihn nicht.
 - **Fähigkeiten für die KI je Gruppe** (Bugs-DB 2261): Ein Rechtemechanismus für alles, was die KI darf – `ai`
   (Assistent), `ai_act` (Aufträge nach außen und Websuche) und `ai_ideas` (Ideen von sich aus); der Admin stellt die
   Gruppen unter „KI-Assistent“ ein (leer = alle, bestehende Server ändern sich nicht). Gruppen ohne `ai_act` sind

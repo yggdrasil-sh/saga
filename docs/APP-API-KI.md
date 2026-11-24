@@ -236,3 +236,8 @@ Ein gemeinsames Melde-Bauteil für Chat-Nachrichten und KI-Antworten: dieselben 
   nicht (400). Im Admin-Bereich steht dann „KI-Antwort“.
 - Dialog wie im Web: Grund, Schalter „Antwort der KI mitschicken“ (an), Textfeld mit der Antwort, Hinweis, dass die
   Meldung an die Admins dieses Servers geht. Unter jeder fertigen Antwort ein unauffälliger Knopf „Melden …“.
+- Der Dialog bleibt beim Senden offen: bei einem Fehler (429, Netz) sieht man die Meldung und der Text bleibt; erst
+  nach `ok` schließt er. Je Antwort eine Meldung (Knopf danach „Gemeldet“).
+- **Grenze der Kennzeichnung:** Chats sind Ende-zu-Ende-verschlüsselt, der Server kann nicht prüfen, ob der Inhalt einer
+  eigenen „KI-Antwort“ zum Beleg passt – die Kennzeichnung ist eine Angabe des Clients (gedeckelt durch die Meldegrenzen).
+  KI-Antworten von Personen auf anderen Servern tragen kein KI-Merkmal (der Beleg liegt nur auf deren Server).

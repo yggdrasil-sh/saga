@@ -1851,6 +1851,7 @@
  "Gemeinsames Geheimnis (zeitlich begrenzte Zugangsdaten, empfohlen)": "ข้อมูลลับที่ใช้ร่วมกัน (ข้อมูลเข้าสู่ระบบแบบจำกัดเวลา แนะนำ)",
  "Gemeinsames Geheimnis = coturn „use-auth-secret“ mit „static-auth-secret“: Saga erzeugt je Anruf Zugangsdaten, die nach 12 Stunden ablaufen.": "ข้อมูลลับที่ใช้ร่วมกัน = coturn “use-auth-secret” กับ “static-auth-secret”: Saga จะสร้างข้อมูลเข้าสู่ระบบสำหรับแต่ละสาย ซึ่งหมดอายุหลัง 12 ชั่วโมง",
  "Gemeint ist der öffentliche Name der Person, nicht ihre E-Mail-Adresse.": "ต้องใช้ชื่อสาธารณะของบุคคลนั้น ไม่ใช่ที่อยู่อีเมล",
+ "Gemeldet": "รายงานแล้ว",
  "Gemeldet von": "รายงานโดย",
  "Genau eines angeben: block_id oder heading.": "ระบุเพียงอย่างเดียว: block_id หรือ heading",
  "Genau eines angeben: item oder text.": "ระบุเพียงอย่างเดียว: item หรือ text",

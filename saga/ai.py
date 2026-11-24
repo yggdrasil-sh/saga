@@ -2308,7 +2308,7 @@ async def api_ai_report(request: Request):
         if where not in ("ask", "page") or reason not in chat_grp.REASONS or not isinstance(text, str):
             return _bad(t("ungültige Angabe"))
         page = b.get("page")
-        if where == "page" and (isinstance(page, bool) or not isinstance(page, int) or page <= 0):
+        if where == "page" and (isinstance(page, bool) or not isinstance(page, int) or not 0 < page < 2**63):
             return _bad(t("ungültige Angabe"))
         text = _clean_text(text.replace("\n", " "), chat_grp.REPORT_TEXT_MAX) if text else ""
         now = time.time()
