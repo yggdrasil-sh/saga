@@ -113,6 +113,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Versuch zieht nicht erneut ab, der direkte Anruf nach dem Rückfall (Web mit neuer, Apps mit derselben id) auch nicht;
   abgelehnte Versuche zählen in keinem Topf. Außerdem melden 1:1-Anrufe über Knoten mit anderen Servern wie lokal
   „{Name} ruft dich gerade an“, wenn der Anruf des Gegenübers noch klingelt. Test `tests/anrufe_rate.py`.
+- **Föderiertes 1:1 über Knoten landet nicht mehr auf dem eingebauten Knoten im Tunnel-Betrieb** (Bugs-DB 2357,
+  Server): Führte dieser Server den Anruf und rief ein Gerät mit `ws` an (Apps, Mac-Hülle), lag der Anruf bei gleicher
+  Last auf dem eingebauten Knoten im Tunnel-Betrieb – den erreichen die Geräte des anderen Servers nie, sie kamen auf den
+  geteilten Knoten (z. B. horn-1), dazwischen lief eine Kaskade. Jetzt nur Knoten ohne Tunnel-Betrieb, geteilte zuerst
+  (`saga/fed_calls.py` `dm_fed_node`).
+- **Anruf-Diagnose des Webs mit Ton** (Bugs-DB 2357): Proben `kind: "a"` je Ton-Spur (Pakete, Pegel, Energie, abgespielte
+  und verdeckte Samples), Ereignis `play` (Wiedergabe eines Tonplatzes abgewiesen), Ereignis `switch` „wahl …“ mit den
+  Punkten der Knotenwahl. Vorher zeigte die Diagnose nur Bild – „kein Ton“ ließ sich nicht nachvollziehen.
 - **Aufgabe im Widget/in der App abgehakt** (`POST /api/app/tasks/{id}/done`): löst jetzt wie im Web das Ereignis
   `task.completed` aus – Webhooks „task.completed“ kamen auf diesem Weg bisher nicht an (gefunden bei K-A2, Bugs-DB 2266).
 - **Release-Push zeigt nicht mehr „rc“** (Bugs-DB 2335): Beim Release-Commit schiebt nur noch `release.yml` die Images

@@ -3504,6 +3504,8 @@
       var fd = hornFramesDev(H);                       // B2 (F1b): nur ueber den Rahmen-Weg erreichbare Knoten hinten an
       var list = one ? cands : H.L.rank(cands, mm, true, fd).map(function (x) { return x.cand; });
       H.ranked = list.map(function (c) { return { node: c.node, score: one ? null : H.L.score(mm[c.node], c, true, fd) }; });
+      // Bugs-DB 2357: Wahl mit Punkten in die Diagnose (warum ein Geraet z. B. am Tunnel-Knoten statt am Knoten des Anrufs landet)
+      if (!one) diagEv(R, 'switch', 'wahl ' + why + ' ' + H.ranked.map(function (x, i) { return x.node.split('.')[0] + (list[i].here ? '*' : '') + '=' + x.score; }).join(' '));
       return hornTry(R, list, why, 0);
     });
   }
