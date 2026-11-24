@@ -766,8 +766,9 @@ def job_tok(uid, job_id, tools, targets=(), reads=(), expires=None, issued=None)
     return tok if tok_valid(tok) else None
 
 
-# Obergrenzen eines Plans (RT-28): Schritte wie saga.jobs.MAX_STEPS (feste Schrittliste job_step); Ziele je Schritt
-# hoechstens 2 (embed_database) -> 40, jedes Ziel kostet eine Rollen-/Baum-Pruefung; "Ich lese dafuer" hoechstens 50
+# Obergrenzen eines Plans (RT-28): Schritte wie saga.jobs.MAX_STEPS (feste Schrittliste job_step); Ziele aller
+# Schritte zusammen 40 = 20 Schritte x hoechstens 2 Kennungen (heute hat jedes Kollegin-Werkzeug eine; die Grenze haelt
+# kuenftige Werkzeuge mit Listen ab), jedes Ziel kostet eine Rollen-/Baum-Pruefung; "Ich lese dafuer" hoechstens 50
 # Kennungen (mehr Seiten passen ohnehin nicht in den Kontext: ai.gather fuellt 8.000 Zeichen, je Seite >= 80)
 PLAN_STEPS = 20
 PLAN_TARGETS = 40
@@ -852,7 +853,7 @@ def check_plan(uid, job_id, steps, reads=()):
     if why:
         bad(None, 400, "bad_reads", t("ungültige Angabe") + " (reads)")
     parsed, names, targets, read_refs = _parse(steps, bad)
-    if len(set(map(str, targets))) > PLAN_TARGETS:
+    if len({str(r) for _n, _x, refs in parsed for r in refs}) > PLAN_TARGETS:      # Ziele lesender UND schreibender Schritte
         bad(None, 400, "too_many_targets", t("Höchstens {n} Ziele.", n=PLAN_TARGETS))
         return None, probs
     tok = job_tok(uid, job_id, names, targets, list(reads) + read_refs)
