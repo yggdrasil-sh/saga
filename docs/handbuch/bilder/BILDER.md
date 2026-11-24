@@ -156,7 +156,7 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b14-03-glocke-handy.png | B14 | Handy | dunkel | Glocke auf dem Handy (dunkel, Liste von unten) | – |
 | b15-01-ki-seite.png | B15 | Web | hell | Frage Saga KI (Attrappe ki.saga.example): Antwort zum „Sommerfest“ mit Verweisen [2] auf die Seite „Sommerfest“; Quellen: zitierte zuerst, darunter blasser die übrigen durchsuchten Seiten | 1 = Bereiche: Frag deine Seiten · Diese Seite; 2 = Verweis auf die Quelle; 3 = Quellen |
 | b15-02-ki-websuche.png | B15 | Web | hell | KI mit Websuche auf „Heute“: Wetter am Wochenende an der Lübecker Bucht, Web-Quellen wetter.example.org / kueste.example.org (SearXNG-Attrappe), Adresse der KI ki.saga.example | 1 = Im Web suchen; 2 = Web-Quelle |
-| b15-03-ki-chat.png | B15 | Web | hell | KI im Familienchat auf Zuruf (`@Saga KI`, Attrappe) – Antwort für alle sichtbar | – |
+| b15-03-ki-chat.png | B15 | Web | hell | KI im Familienchat auf Zuruf: Ben fragt „`@Saga KI` – was ist ein gutes Rezept für 8 Personen ohne Fleisch?“ (Attrappe), Annas Sicht – Antwort für alle sichtbar, „gefragt von Ben Sommer“ | – |
 | b16-01-kalender-verbinden.png | B16 | Web | hell | Einstellungen → Kalender: Familienkalender verbunden, zweiten Kalender (CalDAV) hinzufügen | 1 = verbundener Kalender „Familie“; 2 = Adresse des CalDAV-Servers (Passwort: App-Passwort, hier leer) |
 | b16-02-immich.png | B16 | Web | hell | Bild aus Immich: Album „Ostsee 2026“ (Attrappe fotos.saga.example, gezeichnete Fotos), Foto wählen → wird in die Seite kopiert | 1 = Alben; 2 = gewähltes Album; 3 = Foto anklicken |
 | b16-03-nextcloud-datei.png | B16 | Web | hell | Nextcloud-Datei als Verweis in „Ferienwohnung Möwe“: Karte mit Vorschau, Herunterladen, In Nextcloud öffnen (Attrappe cloud.saga.example) | – |
@@ -202,7 +202,9 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 - b14-02: Abschnitt „Dieser Browser“ zeigt „kann keine Mitteilungen empfangen (oder Saga läuft nicht über https)“ – Demo
   läuft über http; auf einem echten Server steht dort der Schalter.
 - b15-02: Websuche über die SearXNG-Attrappe (Treffer wetter.example.org / kueste.example.org, Admin-Schalter
-  „Websuche erlauben“ nur in diesem Lauf an); b15-03 KI im Chat zeigt die Antwort mit rohen ** (siehe Design-Fund).
+  „Websuche erlauben“ nur in diesem Lauf an). b15-03: seit Durchgang 5 Bens Rezeptfrage wie im Kapitel; die Antwort der
+  Attrappe ist eine Liste ohne ** (der Design-Fund „Markdown roh im Chat“ besteht in Saga weiter, ist im Bild aber nicht
+  mehr zu sehen).
 - b16-02: Immich-Attrappe unter fotos.saga.example (Alben „Ostsee 2026“, „Sommerfest 2026“, „Garten“, gezeichnete Fotos);
   Anna verbindet ihr Immich nur für dieses Bild.
 - b12-06: Der Server holt Linkvorschauen nur von öffentlichen Adressen. Die Testumgebung setzt dafür
@@ -276,7 +278,7 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 - Föderation (b11, a07-01/03): zweiter Server verein.example im selben Lauf, verbunden über die Admin-Oberflächen
   (Einladungscode, Fingerprint, Bestätigen), dann echtes Teilen mit `anna-sommer@saga.example`.
 - b09-01: „Gleichzeitig bearbeiten live“ nur für dieses Bild an; Bens Markierung ist eine echte Textauswahl in seinem Browser.
-- Die Bilder vom 3.11., die hier noch standen, sind in Durchgang 5 neu (außer b09-03, siehe dort).
+- Die Bilder vom 3.11., die hier noch standen, sind in Durchgang 5 neu.
 
 
 ## Durchgang 5 (24.11.2026, Bilder vom 3.11. – Bugs-DB 2249)
@@ -300,8 +302,10 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
   Fehler ab (vorher still übersprungen). Die zweite Datenbank für verein.example heißt `<DB des Laufs>_verein_<hex>`
   (unter dem Präfix `UMG_DB`).
 - Wiederholbarkeit: alle Bilder dieses Durchgangs zweimal hintereinander aufgenommen und verglichen.
-- Offen – b09-03 (Konflikt) bleibt das Bild vom 3.11.: Die Szene steht im Skript und liefert die echte Server-Antwort
-  409, aber in Saga 2.5 liegt die Konflikt-Leiste unter der Kopfzeile der Seite (`.pg-conflict` hat noch
-  `position:sticky; top:4.6rem` aus der alten festen Kopfleiste und wird vor `.page-bar` eingefügt; beide `z-index:9`)
-  – Text und Knöpfe sind verdeckt. Nach der Korrektur in Saga: `tools/handbuch-stack.sh --nur b09-03`.
-- Nicht in diesem Durchgang: b07-09 (Peek) – kommt nach der Korrektur in Saga (Bugs-DB 2253).
+- Nachtrag (nach den Korrekturen in Saga, Bugs-DB 2253 und 2256): b09-03 neu – die Konflikt-Leiste klebt jetzt sichtbar
+  unter der Kopfleiste (vorher verdeckt: `.pg-conflict` hatte noch `top:4.6rem` aus der alten Kopfleiste); b07-09 neu – der
+  Titel einer Seite mit Titelbild ohne Icon steht unter dem Bild statt darin; b15-03 neu (Bens Rezeptfrage, siehe oben).
+- Prüfung auf 2253 (Titelbild ohne Icon): voller Durchgang aller Handbuch-Bilder (`--nur a,b`, 131 Bilder, 0 Fehler) und
+  Pixelvergleich gegen die eingecheckten Bilder. In der Demo hat nur das Rezept im Peek (b07-09) ein Titelbild ohne Icon;
+  alle anderen Abweichungen sind Folgen des vollen Laufs (Uhrzeiten, „vor … Minuten“, Glocken-Zahl, aufgeklappter
+  Seitenbaum, frühere Anrufe/Chats aus demselben Lauf) – diese Bilder bleiben, wie sie sind.

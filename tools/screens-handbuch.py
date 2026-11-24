@@ -12,7 +12,7 @@ cloud.saga.example, bookorbit.example, wetter.saga.example, ki.saga.example) zei
 tools/handbuch-fakes/fakes.py leitet Port 80 weiter. In der Welt familie startet die Szene b11 verein.example als zweiten
 Server (eigene DB, wird am Ende geloescht) fuer die Foederations-Bilder. Szenen mit Art "server+tls" laufen ueber https
 (Zertifikat der Test-CA, Passkeys, Foederation), "server+suche" mit SearXNG-Attrappe (tools/handbuch-stack.sh). Alle
-Web-Bilder aus BILDER.md haben eine Szene; b09-03 wartet auf eine Korrektur in Saga (BILDER.md, Durchgang 5).
+Web-Bilder aus BILDER.md haben eine Szene.
 Desktop 1440x900 Faktor 2, Handy 390x844 Faktor 3; Nummern im Bild (①②③) = Legende in BILDER.md. Nur erfundene Inhalte,
 gezeichnete Bilder, Kamera als gezeichnetes Ersatzbild; keine Wiederherstellungsschluessel/-codes im Bild.
 Szenen w-* = Bilder der Projektseite (ohne Nummern, --nur w-), danach tools/website-bilder.py <HB_OUT>."""
