@@ -4,6 +4,9 @@
 # Bis 3.0 gibt es nur EINE Linie: main (Bugs-DB 2328; der Branch testing ist eingefroren). Der Image-Name :testing
 # bleibt, damit Server auf dem Kanal testing (tools/saga-testing-einrichten.sh) ohne Umbau weiter jeden Stand bekommen.
 # Releases entstehen ebenfalls auf main, sobald CHANGELOG.md ein Release-Datum traegt (siehe release.yml).
+# EIN Kanal bis zu einer echten stabilen Linie (Sven 24.11.): jeder Push auf main schiebt auch :latest und :<major>
+# (z. B. :2) weiter - Server mit SAGA_VERSION=2 (Standard) bekommen also jeden Stand von main. Wer festnageln will:
+# SAGA_VERSION=2.5.0 (genau ein Release), 2.5 (Releases 2.5.x) oder testing-<commit>; diese Tags bewegt nur release.yml.
 name: Testing
 
 on:
@@ -37,6 +40,7 @@ jobs:
           echo "version=${FULL%%+*}" >> "$GITHUB_OUTPUT"
           echo "full=$FULL" >> "$GITHUB_OUTPUT"
           echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "major=${FULL%%.*}" >> "$GITHUB_OUTPUT"
 
       # Gjallarhorn vorab pruefen: Fehler erscheinen als Annotationen (lesbar ohne Log-Zugriff)
       - uses: actions/setup-go@v5
@@ -84,6 +88,8 @@ jobs:
             ghcr.io/${{ github.repository }}:testing
             ghcr.io/${{ github.repository }}:rc
             ghcr.io/${{ github.repository }}:testing-${{ steps.v.outputs.short }}
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.v.outputs.major }}
           labels: |
             org.opencontainers.image.version=${{ steps.v.outputs.full }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -101,6 +107,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/gjallarhorn:testing
             ghcr.io/${{ github.repository_owner }}/gjallarhorn:${{ steps.v.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/gjallarhorn:testing-${{ steps.v.outputs.short }}
+            ghcr.io/${{ github.repository_owner }}/gjallarhorn:latest
           labels: |
             org.opencontainers.image.version=${{ steps.v.outputs.full }}
             org.opencontainers.image.revision=${{ github.sha }}
