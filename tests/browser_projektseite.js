@@ -2,7 +2,7 @@
 // 1440 und 390 Breite, hell und dunkel, Bewegung an und aus. Prueft: keine Konsolen- und Seitenfehler, keine fehlgeschlagenen
 // Anfragen, nur Anfragen an die eigene Seite (keine CDNs/Schrift-Dienste), alle Bilder geladen, kein seitliches Scrollen, Anker
 // und relative Links, lang/hreflang/Sprachwahl, eine h1 und keine uebersprungene Ueberschriften-Ebene, Alt-Texte, Video ohne
-// Anfrage vor dem Klick (fehlt die MP4, bleibt das Poster als Bild), Schriften (Fraunces, Noto Sans Runic) geladen, Animationen
+// Anfrage vor dem Klick und nach dem Klick abspielbar (fehlt die MP4, bleibt das Poster als Bild), Schriften (Fraunces, Noto Sans Runic) geladen, Animationen
 // nur ueber transform/opacity, Abschnitte wachsen beim Scrollen herein (ohne Bewegung sofort sichtbar), Schalter "Bewegung"
 // (Zustand, Wahl in localStorage, nach Neuladen erhalten) und prefers-reduced-motion (ohne Wahl: keine Bewegung).
 //   [SITE_DIR=docs] [SITE_PORT=8861] [SHOTS=<ordner>] [NUR_BILDER=1] [BROWSER=chromium,firefox] [PLAYWRIGHT=...] node tests/browser_projektseite.js
@@ -19,7 +19,7 @@ const MOTIONS = (process.env.MOTION || (NUR ? 'an' : 'an,aus')).split(',');
 // erlaubte Eigenschaften in Animationen (der Gold-Schimmer eines Wortes darf background-position bewegen)
 const ANIM_OK = new Set(['offset', 'easing', 'composite', 'computedOffset', 'transform', 'opacity', 'translate', 'rotate', 'scale']);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.jpg': 'image/jpeg',
-  '.png': 'image/png', '.mp4': 'video/mp4', '.js': 'text/javascript' };
+  '.png': 'image/png', '.mp4': 'video/mp4', '.js': 'text/javascript', '.woff2': 'font/woff2' };
 let fails = 0, n = 0;
 const ok = (c, m, extra) => { n++; if (!c) { fails++; console.log('FEHL', m, extra === undefined ? '' : JSON.stringify(extra).slice(0, 400)); } };
 
@@ -28,7 +28,14 @@ const srv = http.createServer((q, r) => {
   if (p.endsWith('/')) p += 'index.html';
   const f = path.join(DIR, path.normalize(p));
   if (!f.startsWith(DIR) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { r.writeHead(404); r.end(); return; }
-  r.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream' });
+  const type = TYPES[path.extname(f)] || 'application/octet-stream', size = fs.statSync(f).size;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(q.headers.range || '');  // Teilanfragen wie GitHub Pages (Video)
+  if (m) {
+    const a = m[1] ? +m[1] : size - +m[2], b = m[1] && m[2] ? Math.min(+m[2], size - 1) : size - 1;
+    r.writeHead(206, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${a}-${b}/${size}`, 'Content-Length': b - a + 1 });
+    fs.createReadStream(f, { start: a, end: b }).pipe(r); return;
+  }
+  r.writeHead(200, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': size });
   fs.createReadStream(f).pipe(r);
 });
 
@@ -157,18 +164,25 @@ const srv = http.createServer((q, r) => {
       ok(r.m === want && r.pr === String(want) && (want ? r.anim > 0 : r.anim === 0 && r.op === '1'), bn + ': reduced-motion, Wahl ' + stored, r);
       await ctx.close();
     }
-    // Video ohne MP4: Klick auf Abspielen -> Poster bleibt als Bild, kein Skriptfehler
-    if (!NUR && !fs.existsSync(path.join(DIR, 'video', 'saga-promo.mp4'))) {
+    // Promovideo: mit MP4 spielt es nach dem Klick (Zeit laeuft, 1920 breit); ohne MP4 bleibt das Poster mit Link stehen
+    if (!NUR) {
+      const da = fs.existsSync(path.join(DIR, 'video', 'saga-promo.mp4'));
       const ctx = await br.newContext({ viewport: { width: 1440, height: 900 } });
       await ctx.addInitScript(() => { try { localStorage.setItem('saga-lang', 'de'); } catch (e) { /* egal */ } });
       const p = await ctx.newPage();
-      const perr = []; p.on('pageerror', e => perr.push(String(e)));
+      const perr = [], bad = []; p.on('pageerror', e => perr.push(String(e)));
+      p.on('response', r => { if (r.status() >= 400 && /\.mp4/.test(r.url())) bad.push(r.status() + ' ' + r.url()); });
       await p.goto(base, { waitUntil: 'load' });
-      await p.evaluate(() => { const v = document.querySelector('.promo video'); v.play().catch(() => {}); });
-      await p.waitForTimeout(2500);
-      const s = await p.evaluate(() => ({ video: !!document.querySelector('.promo video'), img: (document.querySelector('.promo .frame img') || {}).naturalWidth || 0,
-        soon: (document.querySelector('.promo .soon') || {}).textContent || '' }));
-      ok(!s.video && s.img > 0 && s.soon === 'Video folgt' && !perr.length, bn + ': Video fehlt -> Poster als Bild', { s, perr });
+      await p.evaluate(() => document.querySelector('.promo').scrollIntoView());
+      await p.click('.promo video', { position: { x: 30, y: 30 } }).catch(() => {});
+      await p.evaluate(() => { const v = document.querySelector('.promo video'); if (v) { v.muted = true; v.play().catch(() => {}); } });
+      await p.waitForTimeout(3500);
+      const s = await p.evaluate(() => { const v = document.querySelector('.promo video');
+        return { video: !!v, t: v ? v.currentTime : -1, w: v ? v.videoWidth : 0, err: v && v.error ? v.error.code : 0, dur: v ? v.duration : 0,
+          img: (document.querySelector('.promo .frame img') || {}).naturalWidth || 0, alt: (document.querySelector('.promo .soon') || {}).textContent || '' }; });
+      if (da) ok(s.video && s.t > 1 && s.w === 1920 && s.dur > 50 && !s.err && !perr.length && !bad.length, bn + ': Promovideo spielt', { s, perr, bad });
+      else ok(!s.video && s.img > 0 && s.alt === 'Video als MP4 öffnen' && !perr.length, bn + ': Video fehlt -> Poster als Bild', { s, perr });
+      console.log(bn, 'Video', JSON.stringify(s));
       await ctx.close();
     }
     await br.close();

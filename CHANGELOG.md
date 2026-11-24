@@ -23,7 +23,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `docs/site.css` neu (hell/dunkel, mobil, keine externen Schriften). Bilder frisch aus der Demo-Welt als WebP unter
   `docs/bilder/` (Szenen `w-*` in `tools/screens-handbuch.py`, Umwandlung `tools/website-bilder.py`), 41 ungenutzte alte
   Bilder aus `docs/screenshots/` entfernt; README-Bilder oben und in der Tabelle nachgezogen.
-- Tests: `tests/browser_projektseite.js` (fünf Sprachen, Chromium und Firefox, 1440/390, hell/dunkel).
+- Mit mehr Bewegung: Startbereich mit Nordlicht, drehendem Runenkreis, aufsteigender Glut, schimmerndem Gold-Titel
+  „Schreib deine eigene Saga.“ und schwebendem, leicht gekipptem App-Fenster (folgt sanft der Maus); Laufband mit
+  Runen-Trennern, Abschnitte wachsen beim Scrollen herein, leuchtende Konturen an Bildern und Karten, Föderation als
+  animiertes Netz, Geräte-Szene mit echten Bildschirmfotos, Installations-Terminal tippt sich selbst. Dunkel ist der
+  Standard-Look, Start, Föderation und Schluss bleiben auch im hellen Modus dunkel. Bewegung nur über transform/opacity;
+  `prefers-reduced-motion` schaltet sie ab, der Schalter „Bewegung“ im Kopf überstimmt das (Wahl wird gemerkt).
+  Schriften Fraunces und Noto Sans Runic lokal unter `docs/fonts/` (SIL OFL 1.1, nur benötigte Untermengen).
+- Tests: `tests/browser_projektseite.js` (fünf Sprachen, Chromium und Firefox, 1440/390, hell/dunkel, Bewegung an/aus,
+  Schalter, reduced-motion, Schriften, nur eigene Anfragen, Animationen nur transform/opacity).
 
 ### Geändert – Admin → Anrufe: Rat bei „kein Zertifikat“ nennt zuerst den Tunnel-Betrieb (Bugs-DB 2246)
 - Startet der eingebaute Knoten mangels Zertifikat nicht (nur ohne https-`BASE_URL` mit DNS-Namen), empfahl die Zeile

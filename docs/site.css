@@ -353,3 +353,4 @@ html.motion .fxs:not(.vis) *,html.motion .fxs:not(.vis) *::before,html.motion .f
 @media (max-width:720px){.emb:nth-child(2n),.star:nth-child(2n){display:none}.aur{filter:blur(36px)}
   html.motion .win{animation:none}html.motion .dev.laptop,html.motion .dev.tab{animation:none}}
 @media print{.fx,.mot,.band{display:none}html.motion .rv:not(.in){opacity:1;transform:none}}
+.promo a.soon{color:#e6ebf2;text-decoration:underline}

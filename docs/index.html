@@ -91,7 +91,7 @@ location.replace("en/")}catch(e){}})();
           <img src="bilder/editor-live-dunkel.webp" width="2000" height="1250" alt="" fetchpriority="high"></div>
       </div>
     </div>
-    <figure class="promo rv" data-soon="Video folgt">
+    <figure class="promo rv" data-alt="Video als MP4 öffnen">
 <div class="frame">
 <video aria-label="Saga im Video" controls playsinline poster="video/saga-promo.jpg" preload="none">
 <source src="video/saga-promo.mp4" type="video/mp4">
@@ -319,10 +319,11 @@ location.replace("en/")}catch(e){}})();
 <script>
 (function(){var d=document.documentElement;
 document.querySelectorAll(".lang a").forEach(function(a){a.addEventListener("click",function(){try{localStorage.setItem("saga-lang",a.dataset.l)}catch(e){}})});
-/* Promovideo: fehlt die Datei, bleibt das Poster als Bild stehen (kein kaputter Player). Ohne Klick wird nichts geladen. */
+/* Promovideo: vor dem Klick wird nichts geladen. Kann der Browser es nicht abspielen, bleibt das Poster als Bild
+   stehen, darauf ein Link zur MP4-Datei (kein kaputter Player). */
 (function(){var v=document.querySelector(".promo video");if(!v)return;var s=v.querySelector("source");
 function fall(){if(!v.parentNode)return;var i=document.createElement("img");i.src=v.getAttribute("poster");i.alt=v.getAttribute("aria-label")||"";
-i.width=1920;i.height=1080;var f=v.parentNode;f.replaceChild(i,v);var m=document.createElement("span");m.className="soon";m.textContent=f.closest(".promo").dataset.soon||"";if(m.textContent)f.appendChild(m)}
+i.width=1920;i.height=1080;var f=v.parentNode;f.replaceChild(i,v);var m=document.createElement("a");m.className="soon";m.href=s?s.getAttribute("src"):"";m.textContent=f.closest(".promo").dataset.alt||"";if(m.textContent&&m.href)f.appendChild(m)}
 if(s)s.addEventListener("error",fall);v.addEventListener("error",fall)})();
 /* Fenster im Startbereich folgt sanft der Maus (nur mit Bewegung, Maus und breitem Fenster) */
 var w=document.querySelector(".win"),h=document.querySelector(".hero"),raf=0,px=0,py=0;
