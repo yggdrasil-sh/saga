@@ -810,6 +810,9 @@ body.notes-page #pg-full{display:none}
 .page-head:hover .page-addcover,.page-addcover:focus-visible{opacity:1}
 .page-addcover:hover{background:var(--card-h);color:var(--fg)}
 .page-cover:not([hidden]) + .page-head .page-icon:not(.empty){position:relative;z-index:1}
+/* Bugs-DB 2253: Titelbild ohne Icon - der Kopf rueckt nur so weit ins Bild, dass der Titel darunter bleibt (-2.6rem oben
+   ist fuer das Icon, das ins Bild ragt; ohne Icon lag der Titel ~13 px im Bild). Seitenansicht und Peek gleich. */
+.page-cover:not([hidden]):has(+ .page-head .page-icon.empty){margin-bottom:-1rem}
 .ic-img{object-fit:cover;border-radius:var(--r-sm);vertical-align:middle}
 .pg-ic.ic-img,.db-row-icon.ic-img{width:1.15em;height:1.15em}
 .page-icon-img{width:4.6rem;height:4.6rem;border-radius:var(--r-md);display:block}
@@ -1117,9 +1120,6 @@ body.notes-page .page.wide .backlinks{max-width:none}
 body.embed .np-head,body.embed .pages-side{display:none}
 body.embed .pages{grid-template-columns:minmax(0,1fr)}
 body.embed .np-main{padding:1rem 1.4rem 3rem}
-/* Bugs-DB 2253: Peek mit Titelbild, aber ohne Icon - der Kopf rueckt nur so weit ins Bild, dass der Titel darunter bleibt
-   (-2.6rem ist fuer das Icon gedacht, das ins Bild ragt; ohne Icon lag der Titel ~13 px im Bild). Seitenansicht unveraendert. */
-body.embed .page-cover:not([hidden]):has(+ .page-head .page-icon.empty){margin-bottom:-1rem}
 
 /* Peek als Seitenansicht links */
 .peek.left .peek-panel{left:0;right:auto;border-left:0;border-right:1px solid var(--border);box-shadow:14px 0 40px rgba(0,0,0,.35);animation-name:peek-in-left}

@@ -1,13 +1,13 @@
-// Peek-Ansicht (Datenbank-Zeile seitlich geoeffnet): der Seitentitel darf das Titelbild nicht ueberlappen (Bugs-DB 2253).
-// Zeile mit Titelbild ohne Icon bzw. mit Icon, hell + dunkel, Desktop + schmal; die normale Seitenansicht bleibt wie sie war
-// (Titel unter dem Titelbild, Icon ragt ins Bild).
+// Peek-Ansicht (Datenbank-Zeile seitlich geoeffnet) und Seitenansicht: der Seitentitel darf das Titelbild nicht ueberlappen (Bugs-DB 2253).
+// Zeile mit Titelbild ohne Icon bzw. mit Icon, hell + dunkel, Desktop + schmal; in der normalen Seitenansicht ebenso
+// (Titel unter dem Titelbild, Icon ragt ins Bild; Seiten mit Icon unveraendert).
 // Lokal: HK_TEST_BASE=... CK=<Cookie> [SHOTS=<Ordner> SHOT=vorher|nachher] node tests/browser_peek_titel.js
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK;
 if (!BASE || !CK) { console.error('HK_TEST_BASE, CK setzen'); process.exit(2); }
 const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
-const NORMAL = { ohne: -13, mit: 12 };     // Abstand Titelfeld <-> Titelbild der Seitenansicht vor 2253 (px, Playwright-Chromium)
+const NORMAL = { ohne: 12, mit: 12 };      // Abstand Titelfeld <-> Titelbild der Seitenansicht (px, Playwright-Chromium; ohne Icon vor 2253: -13)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const RUN = Date.now().toString(36).slice(-5), SHOTS = process.env.SHOTS, SHOT = process.env.SHOT || 'nachher';
 async function until(f, ms = 10000) { const t0 = Date.now(); let v; while (Date.now() - t0 < ms) { v = await f().catch(() => null); if (v) return v; await sleep(150); } return v; }
@@ -54,11 +54,11 @@ const ready = (fr, id) => until(() => fr.evaluate((id) => location.hash === '#' 
       await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id);
       ok(`${cs.n}: Seite ${k} geladen`, await ready(p, id));
       const m = await measure(p); normal[cs.n + k] = m;
-      // Seitenansicht bleibt wie vor 2253 (ohne Icon liegt das Titelfeld dort ebenfalls 13 px im Bild - nicht Teil von 2253)
+      // Seitenansicht: ohne Icon wie im Peek knapp unter dem Bild (vor 2253: 13 px im Bild), mit Icon unveraendert
       const want = k === 'ohne Icon' ? NORMAL.ohne : NORMAL.mit;
-      ok(`${cs.n}: normale Ansicht ${k} unveraendert (Titel ${m.gap} px zum Titelbild, vorher ${want})`, m.cover && Math.abs(m.gap - want) <= 1, m);
+      ok(`${cs.n}: normale Ansicht ${k}: Titel ${m.gap} px unter dem Titelbild (erwartet ${want})`, m.cover && Math.abs(m.gap - want) <= 1, m);
       if (k === 'mit Icon') ok(`${cs.n}: normale Ansicht: Icon ragt ins Titelbild (${m.iconTop} px)`, m.icon && m.iconTop < 0, m);
-      if (SHOTS && cs.n.startsWith('desktop') && k === 'ohne Icon') await p.screenshot({ path: `${SHOTS}/peek-${SHOT}-${cs.n}-seite.png` });
+      if (SHOTS && k === 'ohne Icon') await p.screenshot({ path: `${SHOTS}/seite2-${SHOT}-${cs.n}.png` }).catch(e => console.log('--   Bild: ' + e.message.split('\n')[0]));
     }
     // Peek: Datenbank (Galerie) -> Karte anklicken
     await p.goto(BASE + '/notes?t=' + Date.now() + '#' + db);
@@ -74,7 +74,7 @@ const ready = (fr, id) => until(() => fr.evaluate((id) => location.hash === '#' 
       const m = await measure(fr);
       ok(`${cs.n}: Peek ${k}: Titel ueberlappt das Titelbild nicht (Abstand ${m.gap} px, mind. 8)`, m.cover && m.gap >= 8, m);
       if (m.icon) ok(`${cs.n}: Peek ${k}: Icon ragt weiter ins Titelbild (${m.iconTop} px)`, m.iconTop < 0, m);
-      if (SHOTS && k === 'ohne Icon') await p.screenshot({ path: `${SHOTS}/peek-${SHOT}-${cs.n}.png` });
+      if (SHOTS && k === 'ohne Icon') await p.screenshot({ path: `${SHOTS}/peek-${SHOT}-${cs.n}.png` }).catch(e => console.log('--   Bild: ' + e.message.split('\n')[0]));
       await p.click('#peek-close'); await until(() => p.evaluate(() => document.getElementById('pg-peek').hidden));
     }
     ok(`${cs.n}: keine Skriptfehler`, !p.errs.length, p.errs.slice(0, 3));
