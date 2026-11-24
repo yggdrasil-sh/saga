@@ -69,6 +69,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Benutzermenü unten links statt der alten Kopfleiste (B02 heißt „Heute und Startseite“, Admin-Menü mit Titelbilder,
   Diagnose und Netz); der eingebaute Knoten heißt in den Bildern `knoten.verein.example`, die Werkzeuge haben dazu
   Wetter- und KI-Attrappe, einen zweiten Server für die Föderation und eigene Logs je Lauf (Bugs-DB 2244).
+- Die übrigen Bilder vom 3.11. sind neu: Anmeldung mit Passkey und zweitem Faktor sowie Föderation (A07, B11) über
+  https, Auswahl-Leiste, synchronisierter Block, Widget einrichten, Filter, Formel, CSV- und Notion-Import,
+  Linkvorschau, KI-Websuche und Immich. Die Verweise der KI-Antwort in B15 passen zu ihren Quellen, die Glocke hat in
+  den Bildern eine eigene Nummer (der Zähler sah wie eine Markierung aus). Werkzeuge: Zusätze `tls` und `suche`,
+  Attrappen für Immich, SearXNG und eine Webseite mit Linkvorschau; `--nur` meldet Namen ohne Szene (Bugs-DB 2249).
 
 ### Behoben – Anruf: Teilnehmerliste bei Handy quer verdeckt die Knöpfe nicht mehr (Bugs-DB 2196)
 - Im Querformat (Höhe ≤ 500 px) lag die Teilnehmerliste rechts über der senkrechten Leiste (Kamera, Teilen, Ton,

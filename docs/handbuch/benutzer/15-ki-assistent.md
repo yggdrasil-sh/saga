@@ -75,7 +75,7 @@ Mit **Stopp** brichst du eine lange Antwort ab.
 Hat dein Admin das eingerichtet, kann die KI bei Fragen nach Aktuellem selbst im Web nachsehen – zum Beispiel nach
 dem Wetter, Nachrichten oder Öffnungszeiten.
 
-![Saga KI beantwortet eine Frage zum Wetter am Wochenende und nennt Webseiten als Quellen](../bilder/b15-02-ki-websuche.png)
+![Saga KI beantwortet eine Frage zum Wetter am Wochenende, der Schalter „Im Web suchen“ ist an; die Webseiten stehen als Quellen ganz oben](../bilder/b15-02-ki-websuche.png)
 
 Was die Nummern bedeuten:
 

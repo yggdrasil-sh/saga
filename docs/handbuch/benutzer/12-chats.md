@@ -162,7 +162,7 @@ Ein paar Extras:
   Willst du sie nicht, entferne sie vor dem Abschicken.
 - **Entwürfe:** Was du angefangen, aber nicht abgeschickt hast, bleibt im Eingabefeld stehen – in diesem Browser.
 
-![Linkvorschau zur Einladung: Titel, kurze Beschreibung und Name der Seite](../bilder/b12-06-linkvorschau.png)
+![Linkvorschau zur Einladung im Familienchat: Bild, Titel, kurze Beschreibung und Name der Seite](../bilder/b12-06-linkvorschau.png)
 
 Was die Nummern bedeuten:
 

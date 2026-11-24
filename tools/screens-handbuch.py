@@ -10,8 +10,9 @@ Im Lauf (Netz-Namensraum, tools/testumgebung/innen.sh) steuern es Umgebungsvaria
 Noto Sans Runic fuer das Runensiegel). Anzeige-Hosts (saga.example, admin.saga.example, verein.example, admin.verein.example,
 cloud.saga.example, bookorbit.example, wetter.saga.example, ki.saga.example) zeigen per /etc/hosts des Laufs auf 127.0.1.x;
 tools/handbuch-fakes/fakes.py leitet Port 80 weiter. In der Welt familie startet die Szene b11 verein.example als zweiten
-Server (eigene DB, wird am Ende geloescht) fuer die Foederations-Bilder. Nicht im Skript: b01-01/b01-06 (Passkey-Knopf nur
-ueber https), b04-03/b04-09, b06-06, b07-07/b07-08/b07-10/b07-11, b09-01/b09-03, b12-06, b15-02/b15-03, b16-02 (BILDER.md).
+Server (eigene DB, wird am Ende geloescht) fuer die Foederations-Bilder. Szenen mit Art "server+tls" laufen ueber https
+(Zertifikat der Test-CA, Passkeys, Foederation), "server+suche" mit SearXNG-Attrappe (tools/handbuch-stack.sh). Alle
+Web-Bilder aus BILDER.md haben eine Szene; b09-03 wartet auf eine Korrektur in Saga (BILDER.md, Durchgang 5).
 Desktop 1440x900 Faktor 2, Handy 390x844 Faktor 3; Nummern im Bild (①②③) = Legende in BILDER.md. Nur erfundene Inhalte,
 gezeichnete Bilder, Kamera als gezeichnetes Ersatzbild; keine Wiederherstellungsschluessel/-codes im Bild.
 Szenen w-* = Bilder der Projektseite (ohne Nummern, --nur w-), danach tools/website-bilder.py <HB_OUT>."""

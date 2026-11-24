@@ -1,7 +1,7 @@
 # Handbuch-Bilder
 
 Aufgenommen am 3.11.2026; am 23.11.2026 fast alle Web-Bilder neu (Saga 2.5, Seitenleiste „Heute · Chats · Aufgaben ·
-Termine“, Bugs-DB 2189 und 2244). Hosts `saga.example` (Familie
+Termine“, Bugs-DB 2189 und 2244), am 24.11.2026 die übrigen Bilder vom 3.11. (Bugs-DB 2249). Hosts `saga.example` (Familie
 Sommer) und `verein.example` (Gartenverein). Desktop 1440×900 (Faktor 2), Handy 390×844 (Faktor 3). Nummern im Bild =
 Legende rechts. Abweichungen von der Gliederung stehen unten.
 
@@ -24,13 +24,18 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
   Verbindungen) – per DB und HTTP-API wie ein Browser.
 - `tools/handbuch-fakes/fakes.py`: Weiterleitung der Anzeige-Hosts (`saga.example`, `admin.saga.example`,
   `verein.example`, `admin.verein.example`, `cloud.saga.example`, `bookorbit.example`, `wetter.saga.example`,
-  `ki.saga.example` → 127.0.1.x:80, nur im Namensraum), Nextcloud-, BookOrbit-, Wetter- (Open-Meteo-Format) und
-  KI-Attrappe (OpenAI-kompatibel, feste Antworten), gezeichnete Bilder (Profilbilder, Titelbilder, Buchcover,
-  Dokument-Vorschau). Für die Föderations-Bilder startet das Skript `verein.example` als zweiten Server im selben
+  `ki.saga.example`, `fotos.saga.example` → 127.0.1.x:80, nur im Namensraum), Nextcloud-, BookOrbit-, Wetter-
+  (Open-Meteo-Format), Immich- und KI-Attrappe (OpenAI-kompatibel, feste Antworten; Verweise [n] passend zu den
+  Quellen der Anfrage), SearXNG-Attrappe für die Websuche der KI, eine Webseite mit Vorschau-Angaben
+  (`sommerfest.example`, Linkvorschau im Chat), gezeichnete Bilder (Profilbilder, Titelbilder, Buchcover,
+  Dokument-Vorschau, Fotos). `forward_tls` stellt dieselben Hosts über https bereit (Zusatz `tls`, siehe unten). Für die Föderations-Bilder startet das Skript `verein.example` als zweiten Server im selben
   Namensraum (eigene DB, `FED_ALLOW_HTTP=1`) und verbindet beide über die Admin-Oberflächen.
 - `tools/screens-handbuch.py` nimmt die Bilder mit Playwright/Chromium auf (Ordner `HB_OUT`); Kamera und Bildschirm
   sind gezeichnete Ersatzbilder, das Runensiegel braucht Noto Sans Runic (lädt `handbuch-stack.sh` nach `HB_FONTS`).
-- Bilder ohne Szene im Skript (noch vom 3.11.) stehen unten unter „Durchgang 4“; `--liste` zeigt alle Szenen.
+- Szenen mit Zusatz zur Art: `server+tls` (Anzeige-Hosts über https mit einem Zertifikat der Test-CA, 30 Tage, nur im
+  Lauf – Passkeys, Föderation über https) und `server+suche` (SearXNG-Attrappe, `SEARXNG_URL` nur für diesen Lauf).
+  `--liste` zeigt alle Szenen und die Bilder von Gruppenszenen (z. B. b12-01 → b12-02 … b12-10); `--nur` mit einem
+  Namen, den keine Szene aufnimmt, bricht mit Fehler ab.
 
 | Datei | Kapitel | Plattform | hell/dunkel | was zu sehen ist | Nummern-Legende |
 |---|---|---|---|---|---|
@@ -181,10 +186,12 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 - b07-04 (Design-Fund, behoben in der Demo): Galerie-Karten zeigen Eigenschaften ohne Beschriftung; reine Zahlen (30/45/75)
   sind unverständlich. Demo blendet sie aus und zeigt „75 Min.“ als Formel-Text. Saga bietet keine Beschriftungen auf
   Galerie-Karten – Vorschlag: Option „Eigenschaftsnamen zeigen“.
-- b01-02/b01-03: Passkeys brauchen https – Aufnahme in einer TLS-Phase (handbuch-stack.sh), Faktoren danach entfernt.
-- b09-03 (Konflikt): aufgenommen mit kurz abgeschaltetem „Gleichzeitig bearbeiten live“ (danach wieder an). Weil Saga 2.5
-  ohne live die Änderung des anderen nachlädt bzw. blockweise zusammenführt, ist der Konflikt nachgestellt: Annas Speichern
-  schickt den alten Stand ohne Zusammenführen (wie ein älterer Client) → echte Server-Antwort 409 und echte Leiste.
+- b01-01/b01-02/b01-03/b01-06: Passkeys brauchen https – Szenen mit Zusatz `tls`. Der Passkey „Annas MacBook“ entsteht
+  echt über die Oberfläche (virtueller Authenticator von Chromium), die Authenticator-App direkt im Server (Code aus dem
+  Geheimnis berechnet); die Wiederherstellungscodes erscheinen in keinem Bild.
+- b09-03 (Konflikt): „Gleichzeitig bearbeiten live“ aus. Weil Saga 2.5 ohne live blockweise zusammenführt, ist der
+  Konflikt nachgestellt: Annas Speichern geht ohne Zusammenführen an den Server (wie ein älterer Client), kurz davor
+  speichert Ben denselben Absatz → echte Server-Antwort 409 und echte Leiste; Bens Änderung wird danach zurückgenommen.
 - App-Durchgang (Simulatoren/Emulatoren, nicht aus dem Browser): b11-03 (iOS), b12-11 (iOS), b12-12 (Android dunkel),
   b13-06 (iOS), b15-04 (iOS), b17-02 … b17-09 (iOS/iPad/Mac/Android/Linux), b19-03 (Android).
 - B13 Anrufe: Demo läuft über http – Kamera/Mikrofon ersetzt das Skript im Browser durch ein gezeichnetes Ersatzbild
@@ -194,10 +201,12 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
   Laptop auf der Seite „Radtour an die Schlei“) – Gerätename „Chrome · Android“ kommt vom Test-Browser.
 - b14-02: Abschnitt „Dieser Browser“ zeigt „kann keine Mitteilungen empfangen (oder Saga läuft nicht über https)“ – Demo
   läuft über http; auf einem echten Server steht dort der Schalter.
-- b15-02: Websuche über eine SearXNG-Attrappe (Treffer wetter.example.org / kueste.example.org); b15-03 KI im Chat zeigt
-  die Antwort mit rohen ** (siehe Design-Fund).
-- b16-02: Immich-Attrappe des ersten Durchgangs (Album „Ostsee 2026“, gezeichnete Bilder) unter fotos.saga.example – im neuen
-  `tools/handbuch-fakes/fakes.py` noch nicht nachgebaut.
+- b15-02: Websuche über die SearXNG-Attrappe (Treffer wetter.example.org / kueste.example.org, Admin-Schalter
+  „Websuche erlauben“ nur in diesem Lauf an); b15-03 KI im Chat zeigt die Antwort mit rohen ** (siehe Design-Fund).
+- b16-02: Immich-Attrappe unter fotos.saga.example (Alben „Ostsee 2026“, „Sommerfest 2026“, „Garten“, gezeichnete Fotos);
+  Anna verbindet ihr Immich nur für dieses Bild.
+- b12-06: Der Server holt Linkvorschauen nur von öffentlichen Adressen. Die Testumgebung setzt dafür
+  `SAGA_UNFURL_TEST_PUBLIC=127.0.1.9` (Testschalter von Saga) – nur die Attrappe sommerfest.example gilt als öffentlich.
 - b12-08/b12-09: neuer Browser von Clara ohne Chat-Schlüssel; Schlüssel in b12-09 ist erfunden.
 - b18-01: nur das Formular (Name, Bereiche) – der erzeugte Token wird nicht gezeigt.
 - Admin: a08-01/a08-02 auf saga.example (Familie, Admin anna), weil nur dort veröffentlicht/gemeldet wird; Meldung in a08-02
@@ -229,7 +238,8 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
   Navigation links): b01-04, b01-05, b01-07, b03-01, b14-02, b16-01, b17-01, b18-01, b18-02, b19-01, b19-02; dazu
   a05-01 („Standard (Tiptap)“), a06-02 (Tunnel-Betrieb, „Alle Anrufe über Knoten“ an, Knoten-Liste), a09-01.
 - Anzeige-Hosts: Der Server läuft mit `BASE_URL=http://saga.example` bzw. `http://verein.example`; im Namensraum zeigen
-  die Namen per `/etc/hosts` auf 127.0.1.x, Port 80 leitet `fakes.forward` weiter. Deshalb http, nicht https.
+  die Namen per `/etc/hosts` auf 127.0.1.x, Port 80 leitet `fakes.forward` weiter. Deshalb http, nicht https
+  (Ausnahme seit Durchgang 5: Szenen mit Zusatz `tls`).
 - a06-02/a06-04 (Art `knoten`): seit Durchgang 4 heißt der eingebaute Knoten im Skript `knoten.verein.example` (eigenes
   Zertifikat der Test-CA) und die Binaries melden `2.5.0` (gebaut wie im Image) – im Bild ist nichts mehr ersetzt. Der Knoten
   hat einen eigenen Namen, daher „Bereit als Rückweg“; den Tunnel-Betrieb („An ✓ …“) gibt es nur mit https-`BASE_URL`
@@ -266,9 +276,32 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 - Föderation (b11, a07-01/03): zweiter Server verein.example im selben Lauf, verbunden über die Admin-Oberflächen
   (Einladungscode, Fingerprint, Bestätigen), dann echtes Teilen mit `anna-sommer@saga.example`.
 - b09-01: „Gleichzeitig bearbeiten live“ nur für dieses Bild an; Bens Markierung ist eine echte Textauswahl in seinem Browser.
-- Weiter die Bilder vom 3.11. (nicht neu aufgenommen): b01-01/b01-06 (Anmeldeseite unverändert; der Passkey-Knopf erscheint
-  nur über https), b01-02/b01-03 (TLS-Phase mit Passkeys), b04-03 (Auswahl-Leiste; oben angeschnitten noch die alte
-  Kopfleiste), b04-09 (synchronisierter Block), b06-06 (Widget einrichten), b07-07/b07-08/b07-10/b07-11 (Filter, Formel,
-  CSV- und Notion-Import – Dialoge ohne Seitenleiste), b09-03 (Konflikt, alte Kopfleiste – nachgestellter 409 nicht im
-  Skript), b12-06 (Linkvorschau: der Server holt Vorschauen nur von öffentlichen Adressen, im Namensraum gibt es keine),
-  b15-02 (Websuche: braucht eine SearXNG-Attrappe, alte Kopfleiste), b16-02 (Immich-Attrappe fehlt).
+- Die Bilder vom 3.11., die hier noch standen, sind in Durchgang 5 neu (außer b09-03, siehe dort).
+
+
+## Durchgang 5 (24.11.2026, Bilder vom 3.11. – Bugs-DB 2249)
+
+- Neu, jetzt mit eigener Szene im Skript: b01-01/b01-06 (Anmeldeseite mit „Mit Passkey anmelden“) und b01-02/b01-03
+  (zweiter Faktor, Anmeldung & Sicherheit) über https (Zusatz `tls`), b04-03 (Auswahl-Leiste von Tiptap statt der alten
+  Kopfleiste), b04-09 (synchronisierter Block als Kopie auf „Haushalt“), b06-06 (Widget einrichten in der schmalen Spalte:
+  Seitenleiste rechts, wie im Text), b07-07, b07-08, b07-10 (CSV mit Semikolon und Dezimalkomma, es wird nichts
+  importiert), b07-11, b12-06 (Linkvorschau über die Attrappe sommerfest.example), b15-02 (SearXNG-Attrappe, Zusatz
+  `suche`; Adresse der KI jetzt ki.saga.example statt dienste.saga.example), b16-02 (Immich-Attrappe).
+- https statt http (Zusatz `tls`, Zertifikat der Test-CA): a07-01, a07-02, a07-03, b11-01, b11-02 – A07 sagt, dass sich
+  Server nur über https verbinden; beide Server sprechen jetzt echt über TLS miteinander (`SSL_CERT_FILE` = Test-CA).
+- b15-01: Die KI-Attrappe nummeriert ihre Verweise nach den Quellen, die Saga mitschickt – „laut der Seite
+  „Sommerfest“ [2]“ zeigt jetzt auf die Quelle „Sommerfest“ (vorher [1] = „Sommerfest-Einladung“). Saga zeigt alle
+  durchsuchten Seiten als Quellen (zitierte zuerst, die übrigen blasser); der Text in B15 sagt das jetzt.
+- b02-01, b14-01: Der Zähler an der Glocke ist ein goldener Kreis mit Zahl wie die Nummern des Handbuchs. Die Glocke hat
+  jetzt einen eigenen Rahmen, der den Zähler einschließt, die Nummer steht links daneben (b02-01: ⑤, Legende in B02).
+- b02-01: Das Skript wartet, bis die Schnellaktion „Frage Saga KI“ (M) erscheint (vorher je nach Ladezeit mal da,
+  mal nicht).
+- Werkzeug: `--nur` kennt die Bilder von Gruppenszenen (z. B. `--nur b12-05`) und bricht bei Namen ohne Szene mit
+  Fehler ab (vorher still übersprungen). Die zweite Datenbank für verein.example heißt `<DB des Laufs>_verein_<hex>`
+  (unter dem Präfix `UMG_DB`).
+- Wiederholbarkeit: alle Bilder dieses Durchgangs zweimal hintereinander aufgenommen und verglichen.
+- Offen – b09-03 (Konflikt) bleibt das Bild vom 3.11.: Die Szene steht im Skript und liefert die echte Server-Antwort
+  409, aber in Saga 2.5 liegt die Konflikt-Leiste unter der Kopfzeile der Seite (`.pg-conflict` hat noch
+  `position:sticky; top:4.6rem` aus der alten festen Kopfleiste und wird vor `.page-bar` eingefügt; beide `z-index:9`)
+  – Text und Knöpfe sind verdeckt. Nach der Korrektur in Saga: `tools/handbuch-stack.sh --nur b09-03`.
+- Nicht in diesem Durchgang: b07-09 (Peek) – kommt nach der Korrektur in Saga (Bugs-DB 2253).

@@ -84,7 +84,7 @@ Jetzt gibt es Bilder aus Immich an drei Stellen: im `/`-Menü (**Bild aus Immich
 3. Wähl das Album ②, zum Beispiel „Ostsee 2026“.
 4. Klick das gewünschte Foto an ③.
 
-![Dialog „Bild aus Immich“: links die Alben, das Album „Ostsee 2026“ ist gewählt, rechts die Fotos zum Anklicken](../bilder/b16-02-immich.png)
+![Dialog „Bild aus Immich“: Reiter „Alben“, das Album „Ostsee 2026“ ist gewählt, darunter die Fotos zum Anklicken](../bilder/b16-02-immich.png)
 
 Was die Nummern bedeuten:
 

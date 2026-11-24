@@ -147,7 +147,7 @@ Einträge dahinter.
    **ist überfällig**, in den nächsten … Tagen, in den letzten … Tagen.
 4. Bei einer Person gibt es **ist mir zugewiesen** – jede Person sieht dann ihre eigenen Einträge.
 
-![Filter „Wann ist nächste Woche“ mit der Liste der relativen Bedingungen](../bilder/b07-07-filter-relativ.png)
+![Familienkalender als Tabelle mit dem Filter „Wann ist nächste Woche“](../bilder/b07-07-filter-relativ.png)
 
 - ① **Filter** mit der Anzahl aktiver Filter
 - ② **Bedingung** – auch relativ, wie „ist nächste Woche“
@@ -172,7 +172,7 @@ Datum „ist überfällig“ ist, werden rot. Es gilt die erste passende Regel.
 2. Klick auf den Spaltenkopf → **Formel bearbeiten …**.
 3. Schreib die Formel. Eigenschaften holst du mit `prop("Name")`.
 
-![Formel-Editor der Spalte „Summe“ mit prop("menge") * prop("preis")](../bilder/b07-08-formel-editor.png)
+![Formel-Editor der Spalte „Summe“ mit prop("Menge") * prop("Preis") und der Vorschau der ersten Einträge in Euro](../bilder/b07-08-formel-editor.png)
 
 Einige Beispiele:
 
@@ -219,7 +219,7 @@ Für Projekte und Aufgabenlisten kannst du Einträge verschachteln und verketten
 **Importieren:** **+ Neue Seite** → **Importieren …** (oder im Seitenmenü **⋯** einer Seite – dann landet
 alles darunter). Zieh eine Datei oder einen Ordner in das Feld.
 
-![Dialog „Importieren“ mit den Möglichkeiten Markdown/Obsidian, Notion-ZIP und CSV](../bilder/b07-11-notion-import.png)
+![Dialog „Importieren“: Datei oder Ordner wählen – CSV, Markdown/Obsidian, Notion-Export oder Trilium](../bilder/b07-11-notion-import.png)
 
 - **CSV → Datenbank:** auch aus Excel. Saga erkennt Trennzeichen, Dezimalkomma und Datumsformate und schlägt
   je Spalte einen Typ vor. In der Vorschau änderst du Typen oder lässt Spalten weg.
@@ -235,7 +235,7 @@ zusätzlich als Seite „Importbericht“.
 **Zeilen an eine bestehende Datenbank anhängen:** **⚙ Ansicht** → **Zeilen aus CSV hinzufügen …** (nur, wenn
 dir die Datenbank gehört). Du ordnest jeder CSV-Spalte eine Eigenschaft zu.
 
-![Zeilen aus CSV hinzufügen: Vorschau der Datei und Zuordnung der Spalten, Semikolon und Excel Deutsch erkannt](../bilder/b07-10-csv-import.png)
+![Zeilen aus CSV hinzufügen: Vorschau der Datei und Zuordnung der Spalten, Semikolon und Dezimalkomma (Excel Deutsch) erkannt](../bilder/b07-10-csv-import.png)
 
 **Als CSV exportieren:** **⚙ Ansicht** → **Als CSV exportieren** → **Diese Ansicht** oder alle Einträge und
 Spalten. Für Excel auf Deutsch schaltest du **Excel (Deutsch): Semikolon und Dezimalkomma** ein.
