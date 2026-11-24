@@ -29,6 +29,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (`roots is None` = alles); gespeicherte API-Tokens haben nie leere `roots`, für sie ändert sich nichts. Perf
   „Kollegin: Plan pruefen“ (`tools/perf/kollegin_plan.py`, `limits.json`). Tests: `tests/kollegin_werkzeuge.py`,
   `tests/mcp_gold.py`.
+- **Auftrags-Maschine für die Kollegin** (Bugs-DB 2266 K-A2, Server, noch ohne Oberfläche): `saga/jobs.py` führt
+  Aufträge mit fester Schrittliste aus – sieben Zustände in vier Gruppen (Wartet auf dich, Läuft, Fertig, Hat nicht
+  geklappt), Freigabe nur für genau den gezeigten Plan, Fristen und Warten auf Ereignisse (Aufgabe erledigt, Seite
+  gespeichert) ohne Modellaufruf, Lease mit Übernahme, höchstens fünf offene Aufträge je Person. Vor jedem Schritt prüft
+  Saga Konto, KI-Fähigkeiten und Einwilligung neu; fehlt etwas, wartet der Auftrag auf die Person und schreibt nichts.
+  Jede Wirkung eines Schritts wird in derselben Transaktion gestempelt (`bus.fire`), so wirkt ein Schritt auch nach
+  einem Absturz genau einmal. Modell nicht erreichbar: neuer Versuch nach 1/5/15/60 Minuten, nach 24 Stunden
+  „Hat nicht geklappt“. Neue Tabellen `job`, `job_step`, `job_wait`, `job_event`, `job_change` (ohne Migration),
+  Klartext 30, alles andere 90 Tage nach Ende; gehen mit dem Konto. Ohne laufenden Auftrag ändert sich nichts.
+  `on_behalf_of` nimmt nur noch lokale Konten an. Tests: `tests/kollegin_jobs.py`, `tests/kollegin_fehler.py`,
+  Messung `tools/perf/kollegin_takt.py` („Kollegin: Takt 1000 wartende Auftraege“, eine DB-Abfrage je Leerlauf-Takt).
 - **Akteur-Spalten für die Kollegin** (Bugs-DB 2266 K-A1, Server): `saga/actor.py` hält fest, ob ein Dienst
   (`svc:kollegin`, `svc:bridge`, `svc:bot`) im Auftrag einer Person schreibt. Datenbank-Migration 36 (nur neue Spalten):
   `note.updated_actor`, `note_version` und `notification` je `actor_kind`/`actor`/`on_behalf_of`. Ohne Akteur bleibt
