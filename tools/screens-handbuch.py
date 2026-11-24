@@ -2413,9 +2413,11 @@ def b15_03(run):
     b.p.fill("#ct-input", "@Saga KI – was ist ein gutes Rezept für 8 Personen ohne Fleisch?")
     b.p.press("#ct-input", "Enter")
     until(lambda: b.p.locator(".ct-msg.ct-ai").count(), 30000)
-    b.close()
+    b.p.wait_for_timeout(5000)          # Bens Geraet verschluesselt die Antwort und schickt sie in den Chat - erst dann schliessen
     a.go(f"/chats#c{gid}", 2500)
-    until(lambda: a.p.locator(".ct-msg.ct-ai").count(), 30000)
+    if not until(lambda: a.p.locator(".ct-msg.ct-ai").count(), 30000):
+        print("  WARNUNG: KI-Antwort bei Anna nicht angekommen", flush=True)
+    b.close()
     a.p.wait_for_timeout(3000)
     no_toasts(a)
     run.shot(a.p, "b15-03-ki-chat")
