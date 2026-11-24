@@ -28,12 +28,19 @@
 
 ![Saga dashboard](docs/bilder/heute-hell.webp)
 
+<p align="center">
+  <a href="https://yggdrasil-sh.github.io/saga/video/saga-promo.mp4"><img src="docs/video/saga-promo.jpg" width="720" alt="Saga in 56 seconds – play the video"></a><br>
+  <sub>▶ Saga in 56 seconds (video)</sub>
+</p>
+
 Saga is a self-hosted start page and personal knowledge base for families, teams and homelabs: a dashboard for
 all your services, Notion-style pages and databases, tasks, calendars and bookmarks. Everyone gets their own
 private space – no cloud, no subscription, on your own server.
 
 > **Beta:** Saga is ready for everyday use, but still young – keep regular backups; some features are explicitly
 > experimental.
+> Saga stays in beta until version 3.0 – after that, it’s all about stability
+> ([road to 3.0](https://yggdrasil-sh.github.io/saga/en/#roadmap)).
 
 > **New in Saga 2.5:** **calls through the built-in Gjallarhorn node** – 1:1 and groups (up to 4 people or devices at
 > release, marked *experimental*), behind any reverse proxy with WebSocket support over your normal Saga address: **one

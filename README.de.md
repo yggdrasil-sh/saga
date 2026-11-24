@@ -28,8 +28,15 @@
 
 ![Saga Dashboard](docs/bilder/heute-hell.webp)
 
+<p align="center">
+  <a href="https://yggdrasil-sh.github.io/saga/video/saga-promo.mp4"><img src="docs/video/saga-promo.jpg" width="720" alt="Saga in 56 Sekunden – Video abspielen"></a><br>
+  <sub>▶ Saga in 56 Sekunden (Video)</sub>
+</p>
+
 > **Beta:** Saga ist im Alltag nutzbar, aber noch jung – mach regelmäßig Backups; einige Funktionen sind ausdrücklich
 > experimentell.
+> Saga bleibt Beta bis Version 3.0 – danach geht es nur noch um Stabilität
+> ([Weg bis 3.0](https://yggdrasil-sh.github.io/saga/#roadmap)).
 
 > **Neu in Saga 2.5:** **Anrufe über den eingebauten Knoten Gjallarhorn** – 1:1 und Gruppen (zum Release bis 4 Personen
 > bzw. Geräte, als *experimentell* gekennzeichnet), hinter jedem Reverse Proxy mit WebSocket-Unterstützung über die normale

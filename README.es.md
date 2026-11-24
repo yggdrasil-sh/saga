@@ -28,12 +28,19 @@
 
 ![Panel de Saga](docs/bilder/heute-hell.webp)
 
+<p align="center">
+  <a href="https://yggdrasil-sh.github.io/saga/video/saga-promo.mp4"><img src="docs/video/saga-promo.jpg" width="720" alt="Saga en 56 segundos: reproducir el vídeo"></a><br>
+  <sub>▶ Saga en 56 segundos (vídeo)</sub>
+</p>
+
 Saga es una página de inicio y una base de conocimiento autoalojada para familias, equipos y homelabs: un panel
 con todos tus servicios, páginas y bases de datos al estilo Notion, tareas, calendarios y marcadores. Cada
 persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio servidor.
 
 > **Beta:** Saga está lista para el día a día, pero aún es joven: haz copias de seguridad con regularidad; algunas
 > funciones son expresamente experimentales.
+> Saga seguirá en beta hasta la versión 3.0; después, todo gira en torno a la estabilidad
+> ([camino hacia la 3.0](https://yggdrasil-sh.github.io/saga/es/#roadmap)).
 
 > **Novedades de Saga 2.5:** **llamadas a través del nodo integrado Gjallarhorn**: 1:1 y en grupo (al lanzamiento hasta 4
 > personas o dispositivos, marcadas como *experimentales*), detrás de cualquier proxy inverso con WebSocket y por la
