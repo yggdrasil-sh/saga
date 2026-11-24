@@ -113,4 +113,8 @@ def revoke_user_logins(uid, keep_device=None):
         b += c.execute("UPDATE api_token SET revoked=? WHERE uid=? AND revoked IS NULL", (time.time(), uid)).rowcount
         c.execute("UPDATE webhook SET active=0, last_error='token revoked' WHERE uid=? AND token_id IS NOT NULL AND active=1", (uid,))
     forget_device(uid)                   # Sitzungen der abgemeldeten Geraete enden sofort (BUG-002)
+    # 2.6 (Bugs-DB 2266 K-A6): laufende Auftraege der Kollegin halten an (wartet_dich 'abgemeldet') - ein Schritt, der
+    # gerade laeuft, schreibt nicht mehr (Stempel). Unabhaengig von pw_changed/logout_at, die hier nicht gesetzt werden.
+    from saga import jobs
+    jobs.pause_all(uid, "abgemeldet")
     return a + b
