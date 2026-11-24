@@ -14,7 +14,7 @@
 5. Foederation (ohne zweite Instanz): Antwort fuer aeltere Gegenstellen (dbcalc.legacy_*), fx_orig kommt beim Speichern
    zurueck (_clean_schema), fx_err/Gruppen-Filter des Heims (federation.fx_err_in, fed_pages._group_in).
 Wegwerf-Konten fx-*, raeumt auf. Umgebung wie die anderen Tests (HK_TEST_BASE, BASE_URL, SESSION_SECRET)."""
-import base64, http.client, json, os, subprocess, sys, time, urllib.parse
+import base64, http.client, json, os, re, subprocess, sys, time, urllib.parse
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 from itsdangerous import TimestampSigner
@@ -399,6 +399,30 @@ def http_part():
     return db, proj, r1, p1, p2
 
 
+def leaks(d):
+    """Werte der Antwort, die Projekttitel oder Budget (150) verraten. Bugs-DB 2247: nicht im ganzen JSON nach "150"
+    suchen - Zeitstempel/IDs enthalten die Ziffernfolge zufaellig (1 von ~20 Laeufen rot); Zahl 150 bzw. "150" als
+    eigenes Wort in einem Text (z. B. "150 €") zaehlen dagegen."""
+    out = []
+
+    def walk(v, path):
+        if isinstance(v, dict):
+            for k, x in v.items():
+                walk(x, f"{path}.{k}")
+        elif isinstance(v, list):
+            for i, x in enumerate(v):
+                walk(x, f"{path}[{i}]")
+        elif isinstance(v, bool) or v is None:
+            return
+        elif isinstance(v, (int, float)):
+            if v == 150:
+                out.append((path, v))
+        elif isinstance(v, str) and ("Alpha" in v or "Beta" in v or re.search(r"(?<![\w.])150(?![\w.])", v)):
+            out.append((path, v))
+    walk(d, "")
+    return out
+
+
 def leak_part(db, proj, r1, p1, p2):
     """Bert bekommt nur die Aufgaben-Datenbank geteilt, NICHT die Projekte."""
     s, _ = req("PUT", f"/api/notes/{db}/shares", A, {"type": "user", "target": BU, "role": "edit"})
@@ -408,7 +432,7 @@ def leak_part(db, proj, r1, p1, p2):
     raw = json.dumps(d, ensure_ascii=False)
     ok("Leck-Test: Rollup auf nicht geteilte Projekte -> kein Wert (Summe/Namen/Start/%)",
        s == 200 and not any(k in e["props"] for k in ("pbud", "pnam", "pst", "pfer")), e.get("props"))
-    ok("Leck-Test: kein Projekttitel, kein Budget in der Antwort", "Alpha" not in raw and "Beta" not in raw and "150" not in raw.replace('"id"', ""), raw[:400])
+    ok("Leck-Test: kein Projekttitel, kein Budget in der Antwort", not leaks(d), (leaks(d), raw[:400]))
     ok("Formeln ohne Rollup rechnen fuer Bert normal", e["props"].get("summe") == 10, e.get("props"))
     for args in (qs(filters=[{"pid": "pbud", "op": "gt", "value": "1"}]), qs(sorts=[{"pid": "pbud", "dir": "desc"}]), qs(q="alpha")):
         s, d = req("GET", f"/api/notes/{db}/rows" + args, BU)

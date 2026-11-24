@@ -1061,11 +1061,14 @@
     S.ckId = null;
     return save().then(function () { return api('POST', '/api/notes/' + id + '/versions/checkpoint', { why: why }); }).catch(function () {});
   }
+  // Bugs-DB 2256: Hinweis-Leisten (Konflikt, "geaendert") direkt UNTER die Kopfleiste setzen - als erstes Kind von #page
+  // lagen sie davor und wurden von der klebenden .page-bar (gleicher z-index, spaeter im DOM) verdeckt
+  function topNote(bar) { var pg = $('page'), pb = pg.querySelector(':scope > .page-bar'); pg.insertBefore(bar, pb ? pb.nextSibling : pg.firstChild); }
   // Konflikt: jemand (anderer Tab, Peek, spaeter andere Person) hat Titel/Inhalt inzwischen geaendert
   function showConflict(by) {
     clearRemote();                                   // Live-Hinweis "X hat diese Seite geaendert" geht im Konflikt auf
     var bar = $('pg-conflict');
-    if (!bar) { bar = el('div', 'pg-conflict'); bar.id = 'pg-conflict'; bar.setAttribute('role', 'alert'); $('page').insertBefore(bar, $('page').firstChild); }
+    if (!bar) { bar = el('div', 'pg-conflict'); bar.id = 'pg-conflict'; bar.setAttribute('role', 'alert'); topNote(bar); }
     bar.textContent = '';
     bar.appendChild(el('span', 'pgc-t', by ? T('⚠ {name} hat diese Seite gerade geändert. Deine letzten Änderungen sind noch nicht gespeichert.', { name: by })
                                            : T('⚠ Diese Seite wurde inzwischen an anderer Stelle geändert. Deine letzten Änderungen sind noch nicht gespeichert.')));
@@ -10187,7 +10190,7 @@
   }
   function remoteHint(by) {
     var bar = $('pg-remote');
-    if (!bar) { bar = el('div', 'pg-conflict pg-remote'); bar.id = 'pg-remote'; bar.setAttribute('role', 'status'); $('page').insertBefore(bar, $('page').firstChild); }
+    if (!bar) { bar = el('div', 'pg-conflict pg-remote'); bar.id = 'pg-remote'; bar.setAttribute('role', 'status'); topNote(bar); }
     bar.textContent = '';
     bar.appendChild(el('span', 'pgc-t', by && by.name ? T('{name} hat diese Seite geändert', { name: by.name }) : T('Diese Seite wurde an anderer Stelle geändert')));
     var go = el('button', 'btn btn-primary', T('Neu laden')); go.type = 'button';

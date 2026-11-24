@@ -154,6 +154,15 @@ async function round(tag, ps, devs, gid, chats, nodeOf) {
   return ha.id;
 }
 
+// Bugs-DB 2247: Bruecken und Kontingente kommen mit der Lastmeldung der Knoten (alle paar Sekunden) - direkt nach dem
+// Beitritt steht in /state oft noch der alte Stand (quota_peers 0/1, b_peers 1, Bruecke noch nicht "up"), obwohl alle
+// sich schon sehen. Auf die Meldung warten (Frist 30 s), dann den letzten Stand pruefen.
+async function settled(key, good) {
+  let s = PERF[key] || {};
+  if (!good(s)) { s = (await until(async () => { const x = await ctl('GET', '/state'); return good(x) && x; }, 30000, 1000)) || await ctl('GET', '/state'); PERF[key] = s; }
+  return s;
+}
+
 async function hangupAll(ps, id) {
   for (const p of ps.slice().reverse()) {
     await p.evaluate(() => { const b = document.querySelector('.cl-ctl .cl-red'); if (b) b.click(); }).catch(() => {});
@@ -188,15 +197,17 @@ async function hangupAll(ps, id) {
     }
     // a) Kaskade
     const id1 = await round('kaskade', ps, devs, g.r.chat.id, chats, i => i < 3 ? 'horn-a.test' : 'horn-b.test');
-    const k = PERF.kaskade_knoten || {};
-    ok('kaskade: Bruecke an beiden Knoten "up" (Knoten B waehlt Knoten A)', k.a_up >= 1 && k.b_up >= 1, k);
+    const bridged = s => !!s && s.a_up >= 1 && s.b_up >= 1;
+    const k = await settled('kaskade_knoten', bridged);
+    ok('kaskade: Bruecke an beiden Knoten "up" (Knoten B waehlt Knoten A)', bridged(k), k);
     ok('kaskade: Ende', await hangupAll(ps, id1));
     // b) Teilen
     const sw = await ctl('POST', '/case-b');
     ok('Fallwechsel: Knoten B geleert, Knoten A teilt (Adressen per hello an B)', sw && sw.ok, sw);
     const id2 = await round('teilen', ps, devs, g.r.chat.id, chats, () => 'horn-a.test');
-    const t = PERF.teilen_knoten || {};
-    ok('teilen: keine Bruecke noetig, Kontingent von B am Knoten A belegt (3 Teilnehmende)', t.a_up === 0 && t.quota_peers === 3, t);
+    const shared = s => !!s && s.a_up === 0 && s.quota_peers === 3;
+    const t = await settled('teilen_knoten', shared);
+    ok('teilen: keine Bruecke noetig, Kontingent von B am Knoten A belegt (3 Teilnehmende)', shared(t), t);
     ok('teilen: Ende', await hangupAll(ps, id2));
   } catch (e) {
     ok('Ablauf ohne Ausnahme', false, String(e && e.stack || e));

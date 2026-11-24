@@ -810,6 +810,9 @@ body.notes-page #pg-full{display:none}
 .page-head:hover .page-addcover,.page-addcover:focus-visible{opacity:1}
 .page-addcover:hover{background:var(--card-h);color:var(--fg)}
 .page-cover:not([hidden]) + .page-head .page-icon:not(.empty){position:relative;z-index:1}
+/* Bugs-DB 2253: Titelbild ohne Icon - der Kopf rueckt nur so weit ins Bild, dass der Titel darunter bleibt (-2.6rem oben
+   ist fuer das Icon, das ins Bild ragt; ohne Icon lag der Titel ~13 px im Bild). Seitenansicht und Peek gleich. */
+.page-cover:not([hidden]):has(+ .page-head .page-icon.empty){margin-bottom:-1rem}
 .ic-img{object-fit:cover;border-radius:var(--r-sm);vertical-align:middle}
 .pg-ic.ic-img,.db-row-icon.ic-img{width:1.15em;height:1.15em}
 .page-icon-img{width:4.6rem;height:4.6rem;border-radius:var(--r-md);display:block}
@@ -1191,7 +1194,10 @@ tr.rc > td:first-child{box-shadow:inset 3px 0 0 var(--rc)}
 /* Speicher-Konflikt */
 .pg-conflict{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:0 auto 1rem;max-width:760px;padding:.7rem .9rem;border-radius:var(--r-md);
   border:1px solid var(--warn);background:var(--warnbg);color:var(--fg);font-size:var(--fs-base);
-  position:sticky;top:4.6rem;z-index:9;box-shadow:0 6px 18px rgba(0,0,0,.18)}      /* unter der festen Kopfleiste sichtbar bleiben (BUG-014) */
+  position:sticky;top:4.6rem;z-index:8;box-shadow:0 6px 18px rgba(0,0,0,.18)}      /* unter der festen Kopfleiste sichtbar bleiben (BUG-014) */
+/* Bugs-DB 2256: am Rechner klebt die Kopfleiste .page-bar (3rem, z 9) oben - die Leiste steht im DOM danach (pages.js
+   topNote) und klebt direkt darunter; vorher lag sie mit top 4.6rem unter bzw. hinter der Kopfleiste */
+@media (min-width:761px){body.notes-page:not(.embed) .pg-conflict{top:3rem}}
 body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
 .draft-dlg{gap:.6rem}
 .draft-ta{width:100%;min-height:3.4rem;max-height:40vh;resize:vertical;overflow:auto;font:inherit;font-size:var(--fs-base);line-height:1.45;white-space:pre-wrap}

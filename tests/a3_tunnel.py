@@ -165,6 +165,13 @@ def wait(fn, t, step=0.3):
     return v
 
 
+def settled(cond, t=15):
+    """Bugs-DB 2247: Saga traegt die Steuerverbindung (ctl, bereit) ein, bevor es die Werte aus dem hello des Knotens
+    (ws, tunnel, ice_tcp - nur im Prozess, horn._welcome) gesetzt hat. Kurz danach gefragt, stehen dort noch die
+    Vorgaben (ws/tunnel aus, ice_tcp an) -> auf die Werte warten (Frist), dann den letzten Stand pruefen."""
+    return wait(lambda: (lambda b: b if b and cond(b) else None)(builtin()), t) or builtin()
+
+
 def tls_conn(port):
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE           # nur Pruefstand (selbst signiert)
@@ -378,7 +385,10 @@ def teil1(media, node):
     ok("eingebauter Knoten ohne Namen/Zertifikat: startet (Tunnel-Betrieb), verbunden, bereit", bool(n), (builtin(), log_text()[-2500:]))
     if not n:
         return
-    ok("Adresse = Saga-Ursprung, Tunnel-Betrieb, ws an, kein ICE-TCP", n["url"] == BASE and n.get("tunnel") and n.get("ws") and n.get("ice_tcp") is False, n)
+    def tun(b):
+        return bool(b) and b.get("url") == BASE and bool(b.get("tunnel")) and bool(b.get("ws")) and b.get("ice_tcp") is False
+    n = settled(tun)
+    ok("Adresse = Saga-Ursprung, Tunnel-Betrieb, ws an, kein ICE-TCP", tun(n), n)
     ok("Zertifikat 'tunnel' (keins noetig), Log nennt den Tunnel-Betrieb", (n.get("cert") or {}).get("state") == "tunnel"
        and "tunnel-betrieb: kein eigener tcp-port" in log_text(), n.get("cert"))
     with socket.socket() as so:
@@ -483,8 +493,11 @@ def teil2(media, node):
     t = start(media, node, {"HORN_NAME": "localhost", "HORN_TLS_SELF": "1", "HORN_LISTEN": f"127.0.0.1:{HORN_PORT}"})
     ok("Teil 2: Instanz mit eigenem Namen fuer den Knoten (HORN_TLS_SELF) laeuft", t is not None)
     n = wait(lambda: (lambda b: b if b and b.get("ctl") else None)(builtin()), 30)
-    ok("eigener Name: kein Tunnel-Betrieb, eigener Port, ICE-TCP an, ws zusaetzlich", bool(n) and not n.get("tunnel") and n.get("ice_tcp") is True
-       and n.get("ws") is True and n.get("url") == f"https://localhost:{HORN_PORT}", n)
+
+    def own(b):
+        return bool(b) and not b.get("tunnel") and b.get("ice_tcp") is True and b.get("ws") is True and b.get("url") == f"https://localhost:{HORN_PORT}"
+    n = settled(own) if n else n
+    ok("eigener Name: kein Tunnel-Betrieb, eigener Port, ICE-TCP an, ws zusaetzlich", own(n), n)
     st, hd, s = ws_handshake(NGX)
     ok("Geraete-HTTP des Knotens auch hier ueber die Saga-Adresse (101)", st == 101, (st, hd))
     if st == 101:

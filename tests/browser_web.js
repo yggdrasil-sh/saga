@@ -631,27 +631,40 @@ async function chatThumbs(browser) {
     return c.toDataURL('image/png').split(',')[1];
   }), 'base64'));
   await chatKeys(a, E.SAGA_USER2);
-  const b = await session(browser, { user: E.SAGA_USER3, pass: E.SAGA_PASS3 }); await chatKeys(b, E.SAGA_USER3);
+  const b = await session(browser, { user: E.SAGA_USER3, pass: E.SAGA_PASS3 });
+  b.on('request', r => { const m = /[?&]device=([0-9a-f]{32})\b/.exec(r.url()); if (m) b.dev = m[1]; });   // Geraet von USER3 (Aufraeumen)
+  await chatKeys(b, E.SAGA_USER3);
   if (await a.$('.ct-ov') || await b.$('.ct-ov')) { ok('2.1 Chat-Bilder: Schluessel der Testkonten verfuegbar', false); return; }
   const ups = [];
   a.on('response', r => { if (r.request().method() === 'POST' && /\/api\/chats\/\d+\/files$/.test(r.url())) r.json().then(d => ups.push(d.size), () => ups.push(-1)); });
   await a.click('#ct-new'); await a.fill('.ct-people-q', E.SAGA_USER3); await a.waitForSelector('.ct-person');
   await a.click('.ct-person'); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(800);
-  // Direkt-Chat gibt es je Paar nur einmal: Nachrichten frueherer Laeufe (alle von USER2) erst entfernen
-  const old = await a.evaluate(async uu => {
-    const [u, me] = uu.split('|'), H = { headers: { 'X-Saga': '1' } }, cs = (await (await fetch('/api/chats', H)).json()).chats || [];
-    const c = cs.find(x => x.kind === 'dm' && (x.members || []).some(m => m.username === u)); if (!c) return 0;
-    let n = 0;
-    for (;;) {
-      const r = await (await fetch('/api/chats/' + c.id + '/messages?limit=200', H)).json();
-      const ms = (r.messages || []).filter(m => m.kind !== 'call' && m.sender && m.sender.username === me);
-      let k = 0;
-      for (const m of ms) k += (await fetch('/api/chats/' + c.id + '/messages/' + m.id, { method: 'DELETE', headers: { 'X-Saga': '1' } })).ok ? 1 : 0;
-      n += k; if (!k || n > 1000) break;
-    }
-    return n;
-  }, [E.SAGA_USER3, E.SAGA_USER2].join('|')).catch(() => 0);
-  if (old) { await a.reload(); await a.waitForTimeout(2000); await a.click('.ct-item-b'); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(800); }
+  // Direkt-Chat gibt es je Paar nur einmal: Nachrichten frueherer Laeufe (alle von USER2, auch aus "Chat mit Immich")
+  // erst entfernen. Bugs-DB 2247 (Stufe 3): bei anderen Konten steht der Handle in members[].username (fed_chat.chat_extra);
+  // Nachrichten im Format v2/v3 liefert /messages nur Clients mit "X-Saga-Chat" >= 2 (sonst leere Liste, wie die Web-App
+  // senden: 3); die alten Nachrichten kamen von einem inzwischen entfernten Geraet von USER2. Deshalb: Chat ueber
+  // Benutzername ODER Handle finden, die IDs liefert USER3 (Empfaenger, sein Geraet), loeschen darf sie USER2 (eigene).
+  const XC = { 'X-Saga': '1', 'X-Saga-Chat': '3' };
+  const h3 = await b.evaluate(async XC => { const r = await fetch('/api/chat/v2/me', { headers: XC }); return r.ok ? ((await r.json()).handle || '') : ''; }, XC).catch(() => '');
+  if (!b.dev) { await b.goto(BASE + '/chats'); await b.waitForTimeout(1500); }
+  const cid = await a.evaluate(async ([u, h, XC]) => {
+    const cs = (await (await fetch('/api/chats', { headers: XC })).json()).chats || [];
+    const c = cs.find(x => x.kind === 'dm' && (x.members || []).some(m => m.username === u || (h && (m.username === h || m.handle === h))));
+    return c ? c.id : null;
+  }, [E.SAGA_USER3, h3, XC]).catch(() => null);
+  const list = q => q.evaluate(async ([cid, me, dev, XC]) => {      // IDs der Nachrichten der anderen Person (nicht me)
+    const r = await (await fetch('/api/chats/' + cid + '/messages?limit=200&device=' + dev, { headers: XC })).json();
+    return (r.messages || []).filter(m => (m.kind || 'msg') === 'msg' && m.sender && m.sender.username !== me).map(m => m.id);
+  }, [cid, E.SAGA_USER3, b.dev || '', XC]).catch(() => []);
+  let old = 0;
+  for (let i = 0; cid && i < 10; i++) {
+    const ids = await list(b); if (!ids.length) break;
+    old += await a.evaluate(async ([cid, ids, XC]) => { let k = 0; for (const id of ids) k += (await fetch('/api/chats/' + cid + '/messages/' + id, { method: 'DELETE', headers: XC })).ok ? 1 : 0; return k; }, [cid, ids, XC]);
+  }
+  const rest = cid ? (await list(b)).length : -1;
+  ok('2.1 Chat-Bilder: alte Nachrichten im Direkt-Chat aufgeraeumt (Chat per Benutzername oder Handle, IDs vom Empfaenger)', !!cid && !!b.dev && rest === 0,
+    { cid, dev: !!b.dev, h3: !!h3, old, rest });
+  if (old > 0) { await a.reload(); await a.waitForTimeout(2000); await a.click('.ct-item-b'); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(800); }
   const send = async text => {
     await a.setInputFiles('#ct-file', file); await a.fill('#ct-input', text);
     await Promise.all([a.waitForResponse(r => /\/api\/chats\/\d+\/messages$/.test(r.url()) && r.request().method() === 'POST', { timeout: 30000 }).catch(() => {}),
