@@ -77,6 +77,14 @@ def compare(gold, ok):
     return cur
 
 
+def dump(g):
+    """Vorlage als Text: volle Liste eingerueckt, je Kombination eine Zeile (kleiner, lesbare Unterschiede)."""
+    head = {k: v for k, v in g.items() if k != "combos"}
+    txt = json.dumps(head, ensure_ascii=False, indent=1)[:-2]
+    rows = [f" {json.dumps(k)}: {json.dumps(v, ensure_ascii=False)}" for k, v in g["combos"].items()]
+    return txt + ',\n "combos": {\n' + ",\n".join(rows) + "\n }\n}\n"
+
+
 # --- HTTP gegen den laufenden Test-Server ---------------------------------------------------------------------
 def http_check(gold, ok):
     from itsdangerous import TimestampSigner
@@ -123,8 +131,7 @@ def main():
         if out:
             g = build()
             with open(out, "w", encoding="utf-8") as f:
-                json.dump(g, f, ensure_ascii=False, indent=1, sort_keys=False)
-                f.write("\n")
+                f.write(dump(g))
             ok(f"Vorlage geschrieben: {out} ({len(g['combos'])} Kombinationen, {len(g['full'])} Werkzeuge)", len(g["combos"]) == 729)
             with open(out, encoding="utf-8") as f:
                 g = json.load(f)
