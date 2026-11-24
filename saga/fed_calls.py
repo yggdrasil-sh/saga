@@ -372,11 +372,23 @@ def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop", bill=None
         return calls._fallback("fed")                  # alles andere: direkt wie bisher (der Server dort hat nichts angelegt)
     with _db() as c, c:
         _RUNG.add(cid)                                 # dort klingelt es schon (Auftrag dmhorn) - die erste Liste nicht nochmal
-        call = calls.group_create(c, ch, cid, media, uid, dev, caps, now, name=dname, dm_peer=other, ring=False)
+        call = calls.group_create(c, ch, cid, media, uid, dev, caps, now, name=dname, dm_peer=other, ring=False, node=dm_fed_node(c, caps))
         out = calls._dict(c, call, uid)
         out["horn"] = calls.horn_block(c, call, dev, "member", dev_class)
         print(f"call: {cid[:8]} 1:1 ueber Knoten klingelt bei {p['host']} ({media})", flush=True)
     return chat._no_store({"ok": True, "call": out})
+
+
+def dm_fed_node(c, caps):
+    """Bugs-DB 2357: Knoten fuer ein foederiertes 1:1, das wir fuehren (dm_horn_start). Wie die Vorpruefung (any_ready ohne
+    ws) zaehlen nur Knoten ohne Tunnel-Betrieb - die Geraete des anderen Servers erreichen einen Tunnel-Knoten nie
+    (fed_horn.shared_nodes) -, geteilte zuerst, sonst in der Reihenfolge fuer das anrufende Geraet. Vorher nahm group_create
+    den ersten bereiten Knoten fuer die caps des anrufenden Geraets: mit "ws" (Apps, Mac-Huelle) bei gleicher Last den
+    eingebauten im Tunnel-Betrieb - der Anruf lag dort, das Gegenueber auf dem geteilten Knoten, dazwischen eine Kaskade
+    (Feld 24.11.: 1:1 ueber saga.proxy, Gegenueber auf horn-1). None: kein solcher Knoten (group_create waehlt wie bisher)."""
+    ns = [n for n in calls.horn.ready_nodes(c, ws=calls.horn.caps_reach(caps)) if not calls.horn.tunnel_mode(n)]
+    sh = [n for n in ns if n.get("share")]
+    return (sh or ns or [None])[0]
 
 
 def peer_horn_req(p):
