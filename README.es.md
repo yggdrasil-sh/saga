@@ -32,16 +32,16 @@ Saga es una página de inicio y una base de conocimiento autoalojada para famili
 con todos tus servicios, páginas y bases de datos al estilo Notion, tareas, calendarios y marcadores. Cada
 persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio servidor.
 
-> **Novedades de Saga 2.4:** **vídeos en el chat** con portada, streaming y subida reanudable (hasta 500 MB por defecto,
-> cifrados de extremo a extremo), **llamadas en grupo** (hasta 4 dispositivos con vídeo o 6 solo con audio), **compartir
-> pantalla con la cámara al lado**, **imagen en imagen** y **pasar la llamada a otro dispositivo** o añadir uno,
-> **confirmaciones de lectura y estado en línea** (desactivables) y la nueva ruta de medios **saga-media**: los adjuntos
-> del chat ya no pasan por Python (20 × 10 MB en paralelo en 0,22 s en lugar de 0,67 s; subir un vídeo de 1 GB le cuesta
-> a Python el 0,06 % de un núcleo). Además, más protección: los intentos fallidos frenan en lugar de bloquear cuentas,
-> los nombres de inicio de sesión quedan privados y Gravatar solo con consentimiento.
-> Desde la 2.3: mucho más rápido con bases de datos grandes, federación con chats y llamadas entre servidores, copias
-> de seguridad cifradas, archivos de Nextcloud en las páginas. Todos los detalles en el
-> [registro de cambios](CHANGELOG.md) (en alemán).
+> **Beta:** Saga está lista para el día a día, pero aún es joven: haz copias de seguridad con regularidad; algunas
+> funciones son expresamente experimentales.
+
+> **Novedades de Saga 2.5:** **llamadas a través del nodo integrado Gjallarhorn**: 1:1 y en grupo (al lanzamiento hasta 4
+> personas o dispositivos, marcadas como *experimentales*), detrás de cualquier proxy inverso con WebSocket y por la
+> dirección normal de Saga: **un dominio, solo el puerto 443**. Convierte un 1:1 en grupo, añade personas, pasa la llamada
+> a otro dispositivo. Además, el nuevo **editor Tiptap** con edición simultánea (interruptor de administración), **chats
+> modernos** con reacciones, edición y mensajes de voz (siguen cifrados de extremo a extremo), subpáginas dentro de la
+> página padre, sellos de Saga como iconos de página, una galería de portadas, widgets rediseñados e importación desde
+> Notion y Trilium. Actualizar desde 2.3/2.4: ver la [guía de actualización](docs/en/UPGRADE-2.5.md) (en inglés).
 
 ## Funciones
 

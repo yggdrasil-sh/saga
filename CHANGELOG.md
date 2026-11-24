@@ -16,6 +16,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+> **Beta:** Saga ist im Alltag nutzbar, aber noch jung – mach regelmäßig Backups; einige Funktionen (vor allem Anrufe
+> über Gjallarhorn) sind ausdrücklich experimentell. Die Versionsnummer bleibt ohne Zusatz; „Beta“ ist eine Einordnung,
+> kein eigener Update-Kanal.
+
 ### Doku – Projektseite neu gestaltet (alle Sprachen)
 - `docs/index.html` und `docs/en|es|ru|th/index.html` neu für Selbsthoster: Startbereich („Eine Domain, nur Port 443“,
   Promovideo `docs/video/saga-promo.mp4` (56 s, lädt erst beim Abspielen) mit Poster `docs/video/saga-promo.jpg` und

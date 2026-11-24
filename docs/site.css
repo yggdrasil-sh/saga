@@ -355,3 +355,7 @@ html.motion .fxs:not(.vis) *,html.motion .fxs:not(.vis) *::before,html.motion .f
   html.motion .win{animation:none}html.motion .dev.laptop,html.motion .dev.tab{animation:none}}
 @media print{.fx,.mot,.band{display:none}html.motion .rv:not(.in){opacity:1;transform:none}}
 .promo a.soon{color:#e6ebf2;text-decoration:underline}
+
+/* Beta-Kennzeichnung (24.11.2026) */
+.beta{display:inline-block;margin:0 2px 0 4px;padding:1px 8px;border-radius:999px;border:1px solid var(--gold-hi);color:var(--gold-hi);font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;line-height:18px}
+.betanote{margin:0;font-size:14px;line-height:1.45;color:var(--muted);max-width:36em}

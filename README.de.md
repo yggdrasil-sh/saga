@@ -28,15 +28,16 @@
 
 ![Saga Dashboard](docs/bilder/heute-hell.webp)
 
-> **Neu in Saga 2.4:** **Videos im Chat** mit Vorschaubild, Streaming und fortsetzbarem Upload (standardmäßig bis 500 MB,
-> Ende-zu-Ende-verschlüsselt), **Gruppenanrufe** (bis 4 Geräte mit Video bzw. 6 nur mit Ton), **Bildschirm teilen mit
-> Kamera daneben**, **Bild-im-Bild** und **Anruf aufs andere Gerät übergeben** oder ein Gerät dazuholen,
-> **Gelesen-Haken und Online-Status** (abschaltbar) und der neue Medienpfad **saga-media**: Chat-Anhänge laufen nicht
-> mehr durch Python (20 × 10 MB parallel 0,22 statt 0,67 s; 1 GB Video hochladen kostet Python 0,06 % eines Kerns).
-> Dazu mehr Schutz: Fehlversuche bremsen statt Konten zu sperren, Anmeldenamen bleiben privat, Gravatar nur mit
-> Einwilligung.
-> Seit 2.3: deutlich schneller bei großen Datenbanken, Föderation mit Chats und Anrufen über Servergrenzen,
-> verschlüsselte Backups, Nextcloud-Dateien in Seiten. Alles Weitere im [Changelog](CHANGELOG.md).
+> **Beta:** Saga ist im Alltag nutzbar, aber noch jung – mach regelmäßig Backups; einige Funktionen sind ausdrücklich
+> experimentell.
+
+> **Neu in Saga 2.5:** **Anrufe über den eingebauten Knoten Gjallarhorn** – 1:1 und Gruppen (zum Release bis 4 Personen
+> bzw. Geräte, als *experimentell* gekennzeichnet), hinter jedem Reverse Proxy mit WebSocket-Unterstützung über die normale
+> Saga-Adresse: **eine Domain, nur Port 443**. Aus 1:1 wird eine Gruppe, Personen dazuholen, den Anruf aufs andere Gerät
+> holen. Dazu der neue **Tiptap-Editor** mit gleichzeitigem Bearbeiten (Admin-Schalter), **moderne Chats** mit Reaktionen,
+> Bearbeiten und Sprachnachrichten (weiter Ende-zu-Ende-verschlüsselt), Unterseiten in der Elternseite, Saga-Siegel als
+> Seitensymbole, eine Titelbild-Galerie, neu gestaltete Widgets und Importe aus Notion und Trilium. Update von 2.3/2.4:
+> siehe [Update-Anleitung](docs/UPGRADE-2.5.md).
 
 ## Funktionen
 

@@ -32,6 +32,9 @@ Saga is a self-hosted start page and personal knowledge base for families, teams
 all your services, Notion-style pages and databases, tasks, calendars and bookmarks. Everyone gets their own
 private space – no cloud, no subscription, on your own server.
 
+> **Beta:** Saga is ready for everyday use, but still young – keep regular backups; some features are explicitly
+> experimental.
+
 > **New in Saga 2.5:** **calls through the built-in Gjallarhorn node** – 1:1 and groups (up to 4 people or devices at
 > release, marked *experimental*), behind any reverse proxy with WebSocket support over your normal Saga address: **one
 > domain, port 443 only**. Turn a 1:1 into a group, bring people in, move a call to another device. Plus the new
