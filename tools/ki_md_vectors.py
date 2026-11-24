@@ -20,6 +20,8 @@ INPUTS = [
     "**offen", "`a**b**`", "[Link](https://example.org)", "<b>kein HTML</b>", "  - eingerückt", "-ohne Leerzeichen",
     "### H3 mit `code`", "Zeile mit **fett** und **noch mehr** [3]", "Tabelle | a | b |", "> Zitat",
     "```\n**nicht** ändern\n```\n**doch**", "Das ist *wichtig* und ~~alt~~", "+ Plus-Liste", "- **Ben**: bringt *Kohle* mit [1]",
+    "1. Schritt\n   Erklärung\n2. Schritt", "1. a\n\n2. b", "x**2 + y**2", "foo__bar__baz", "***wichtig***", "***",
+    "Option **A** oder **B**", "Wort**fett**Wort", "[\u0661]",
 ]
 
 

@@ -186,6 +186,7 @@
    "lines": [
     {
      "k": "ol",
+     "n": 1,
      "s": [
       [
        "t",
@@ -195,6 +196,7 @@
     },
     {
      "k": "ol",
+     "n": 2,
      "s": [
       [
        "t",
@@ -204,6 +206,7 @@
     },
     {
      "k": "ol",
+     "n": 10,
      "s": [
       [
        "t",
@@ -559,6 +562,207 @@
      ]
     }
    ]
+  },
+  {
+   "in": "1. Schritt\n   Erklärung\n2. Schritt",
+   "lines": [
+    {
+     "k": "ol",
+     "n": 1,
+     "s": [
+      [
+       "t",
+       "Schritt"
+      ]
+     ]
+    },
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "   Erklärung"
+      ]
+     ]
+    },
+    {
+     "k": "ol",
+     "n": 2,
+     "s": [
+      [
+       "t",
+       "Schritt"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "1. a\n\n2. b",
+   "lines": [
+    {
+     "k": "ol",
+     "n": 1,
+     "s": [
+      [
+       "t",
+       "a"
+      ]
+     ]
+    },
+    {
+     "k": "ol",
+     "n": 2,
+     "s": [
+      [
+       "t",
+       "b"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "x**2 + y**2",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "x"
+      ],
+      [
+       "b",
+       "2 + y"
+      ],
+      [
+       "t",
+       "2"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "foo__bar__baz",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "foo"
+      ],
+      [
+       "b",
+       "bar"
+      ],
+      [
+       "t",
+       "baz"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "***wichtig***",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "*"
+      ],
+      [
+       "b",
+       "wichtig"
+      ],
+      [
+       "t",
+       "*"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "***",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "***"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "Option **A** oder **B**",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "Option "
+      ],
+      [
+       "b",
+       "A"
+      ],
+      [
+       "t",
+       " oder "
+      ],
+      [
+       "b",
+       "B"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "Wort**fett**Wort",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "Wort"
+      ],
+      [
+       "b",
+       "fett"
+      ],
+      [
+       "t",
+       "Wort"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "[١]",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "[١]"
+      ]
+     ]
+    }
+   ]
   }
  ],
  "chat": [
@@ -677,6 +881,42 @@
   {
    "in": "- **Ben**: bringt *Kohle* mit [1]",
    "out": "- *Ben*: bringt _Kohle_ mit [1]"
+  },
+  {
+   "in": "1. Schritt\n   Erklärung\n2. Schritt",
+   "out": "1. Schritt\n   Erklärung\n2. Schritt"
+  },
+  {
+   "in": "1. a\n\n2. b",
+   "out": "1. a\n\n2. b"
+  },
+  {
+   "in": "x**2 + y**2",
+   "out": "x**2 + y**2"
+  },
+  {
+   "in": "foo__bar__baz",
+   "out": "foo__bar__baz"
+  },
+  {
+   "in": "***wichtig***",
+   "out": "*wichtig*"
+  },
+  {
+   "in": "***",
+   "out": "***"
+  },
+  {
+   "in": "Option **A** oder **B**",
+   "out": "Option *A* oder *B*"
+  },
+  {
+   "in": "Wort**fett**Wort",
+   "out": "Wort**fett**Wort"
+  },
+  {
+   "in": "[١]",
+   "out": "[١]"
   }
  ]
 }

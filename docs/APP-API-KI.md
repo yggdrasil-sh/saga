@@ -189,17 +189,18 @@ nachspielen).
 |---|---|
 | leer | fällt weg (Absatzgrenze) |
 | `- `, `* `, `• ` + Text (auch eingerückt) | Listenpunkt (`ul`) |
-| `1. ` bzw. `1) ` + Text (1–2 Ziffern) | nummerierter Punkt (`ol`, Nummer nach Reihenfolge) |
+| `1. ` bzw. `1) ` + Text (1–2 Ziffern 0–9) | nummerierter Punkt (`ol`) – angezeigt wird die Nummer aus dem Text (`n`), nicht die Reihenfolge |
 | `#`…`######` + Leerzeichen + Text | Überschrift als fette Zeile (`h`) |
 | sonst | Absatz (`p`) |
 
 In jeder Zeile (`s`): `**fett**` und `__fett__` → fett (`b`), `` `code` `` → Festbreite (`c`), `[n]` bzw. `[1, 2]` →
-Quellenverweis (`n`, nur wenn es Quelle n gibt; sonst Text `[n]`). Sonst Text (`t`) – auch `*kursiv*`, Links, Tabellen.
+Quellenverweis (`n`, nur wenn es Quelle n gibt; sonst Text `[n]`; nur Ziffern 0–9). Sonst Text (`t`) – auch `*kursiv*`,
+Links, Tabellen. **Adressen im Text nicht verlinken** – Links kommen nur aus den Quellen (`sources[].url`).
 
 **Chat** (`POST /api/chats/{cid}/ai`): Saga schreibt die Antwort **vor** dem Beleg in die Chat-Formatierung chatfmt1 um
 (`**fett**` → `*fett*`, `*kursiv*` → `_kursiv_`, `~~durch~~` → `~durch~`, Überschrift → `*fett*`, `* `/`+ `/`• ` → `- `,
-Codeblöcke bleiben). Apps zeigen `done.text` wie jede Chat-Nachricht – nichts Neues nötig, auch ältere Apps zeigen es
-richtig. Links, Bilder und HTML aus dem Modell entfernt der Server dort vorher (`[Link entfernt]`, Bugs-DB 2260); die
+Codeblöcke bleiben; `x**2` und `foo__bar__baz` bleiben, wie sie sind). Apps zeigen `done.text` wie jede Chat-Nachricht –
+nichts Neues nötig; alle Clients mit Chat-Formatierung (ab 2.5) zeigen es richtig, ältere die Zeichen `*fett*`. Links, Bilder und HTML aus dem Modell entfernt der Server dort vorher (`[Link entfernt]`, Bugs-DB 2260); die
 angehängten Webquellen (`Quellen:` …) kommen von der Suchmaschine und bleiben.
 
 **Datenrahmen** (Bugs-DB 2260, nur Server): Das Material steht zwischen Markern mit einer Zufallskennung je Anfrage

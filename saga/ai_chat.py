@@ -236,7 +236,7 @@ async def api_chat_ai_ask(cid: int, request: Request):
         # RT-03 (Bugs-DB 2260): Text des Modells geht an andere - keine Links/Bilder/HTML (kein Abfluss ueber Adressen,
         # keine Linkvorschau); die Webquellen danach kommen von der Suchmaschine, nicht vom Modell
         answer = ai_frame.no_links(answer, t("[Link entfernt]")).strip()
-        answer = ai_md.to_chat(answer)                    # 2248: Markdown der KI -> Chat-Formatierung (alle Clients)
+        answer = ai_md.to_chat(answer).strip()            # 2248: Markdown der KI -> Chat-Formatierung (alle Clients)
         if not answer:
             return {"text": ""}
         answer = with_sources(answer, w.get("sources"), w.get("notice"))

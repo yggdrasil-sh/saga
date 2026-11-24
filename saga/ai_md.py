@@ -5,7 +5,7 @@ verlangt. Damit es ueberall gleich aussieht, gilt fuer KI-Antworten genau diese 
 „KI-Darstellung“; Vektoren docs/ki-markdown-vektoren.json):
 
 - Absaetze (Leerzeile), Zeilenumbrueche bleiben
-- Listen: Zeilen mit "- ", "* ", "+ ", "• " (Punkt) oder "1. ", "1) " (Nummer)
+- Listen: Zeilen mit "- ", "* ", "• " (Punkt; nur im Chat auch "+ ") oder "1. ", "1) " (Nummer - die Nummer aus dem Text gilt)
 - **fett** / __fett__, `code`; "# Ueberschrift" (1-6 #) = fette Zeile
 - Quellen [n] / [1, 2]
 - alles andere (Links, Bilder, HTML, Tabellen, *kursiv*) ist Text
@@ -19,8 +19,10 @@ import re
 _FENCE = re.compile(r"^\s*```")
 _HEAD = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 _BULLET = re.compile(r"^(\s*)[*+•]\s+(?=\S)")
-_BOLD = re.compile(r"(\*\*|__)(?=\S)([^\n]*?\S)\1")
-_ITAL = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])")
+# fett nur am Wortrand (x**2 + y**2, foo__bar__baz bleiben), auch ***x*** (chatfmt1 kann kein fett+kursiv -> fett);
+# Laenge begrenzt (sonst quadratisch bei vielen offenen "**")
+_BOLD = re.compile(r"(?<![\w*])(\*\*\*?|__)(?=[^\s*])([^\n]{0,1000}?[^\s*])\1(?![\w*])")
+_ITAL = re.compile(r"(?<![\w*])\*(?=[^\s*])([^*\n]*?[^\s*])\*(?![\w*])")
 _STRIKE = re.compile(r"~~(?=\S)([^~\n]*?\S)~~")
 _CODE = re.compile(r"`[^`\n]+`")
 _B = "\x01"                                                   # Platzhalter fuer fett (kommt in Modelltext nicht vor)
@@ -68,9 +70,9 @@ def to_chat(text):
 
 
 # --- Assistent: Zeilen und Stuecke (wie static/ai.js answerNode; Vektoren docs/ki-markdown-vektoren.json) -----------------
-_LI = re.compile(r"^\s*(?:[-*•]|(\d{1,2})[.)])\s+(.*)$")
+_LI = re.compile(r"^\s*(?:[-*•]|([0-9]{1,2})[.)])\s+(.*)$")
 _H = re.compile(r"^\s*#{1,6}\s+(.*)$")
-_INL = re.compile(r"(\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[\d{1,2}(?:\s*[,;]\s*\d{1,2})*\])")
+_INL = re.compile(r"(\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[0-9]{1,2}(?:\s*[,;]\s*[0-9]{1,2})*\])")
 
 
 def spans(s, cites=()):
@@ -102,12 +104,14 @@ def spans(s, cites=()):
 
 
 def lines(text, cites=()):
-    """Antwort -> [{"k": "p"|"h"|"ul"|"ol", "s": spans}] - leere Zeilen fallen weg, Listen je Zeile (ul/ol)."""
+    """Antwort -> [{"k": "p"|"h"|"ul"|"ol", "s": spans}, bei "ol" mit "n" = Nummer aus dem Text] - leere Zeilen fallen
+    weg, Listen je Zeile (ul/ol). Die Nummer aus dem Text gilt (Modelle schreiben "1. Schritt / Erklaerung / 2. Schritt")."""
     out = []
     for ln in str(text or "").split("\n"):
         m = _LI.match(ln)
         if m:
-            out.append({"k": "ol" if m.group(1) else "ul", "s": spans(m.group(2), cites)})
+            out.append({"k": "ol", "n": int(m.group(1)), "s": spans(m.group(2), cites)} if m.group(1)
+                       else {"k": "ul", "s": spans(m.group(2), cites)})
             continue
         if not ln.strip():
             continue

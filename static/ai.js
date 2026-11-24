@@ -142,7 +142,7 @@
   // --- Antworttext -> DOM (nie innerHTML): Absaetze, Listen ('- ', '* ', '1. '), **fett**, `code`, Ueberschriften als
   // fette Zeile, Quellen [n] / [1, 2] / [1][2] -> Links auf die Quellseiten (cited sammelt die zitierten Nummern) -------
   function inline(p, s, byN, cited) {
-    var re = /(\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[\d{1,2}(?:\s*[,;]\s*\d{1,2})*\])/g, last = 0, m;
+    var re = /(\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[0-9]{1,2}(?:\s*[,;]\s*[0-9]{1,2})*\])/g, last = 0, m;
     while ((m = re.exec(s))) {
       if (m.index > last) p.appendChild(document.createTextNode(s.slice(last, m.index)));
       var x = m[0];
@@ -169,11 +169,12 @@
     var w = el('div', cls || 'ai-answer'), byN = {}, list = null;
     (sources || []).forEach(function (s) { byN[s.n] = s; });
     String(text || '').split('\n').forEach(function (ln) {
-      var m = /^\s*(?:[-*•]|(\d{1,2})[.)])\s+(.*)$/.exec(ln);
+      var m = /^\s*(?:[-*•]|([0-9]{1,2})[.)])\s+(.*)$/.exec(ln);
       if (m) {
         var tag = m[1] ? 'OL' : 'UL';
         if (!list || list.tagName !== tag) { list = el(tag.toLowerCase(), 'ai-list'); w.appendChild(list); }
-        var li = el('li'); inline(li, m[2], byN, cited); list.appendChild(li);
+        var li = el('li'); if (m[1]) li.value = +m[1];      // 2248: Nummer aus dem Text (1. Schritt / Erklaerung / 2. Schritt)
+        inline(li, m[2], byN, cited); list.appendChild(li);
         return;
       }
       list = null;
