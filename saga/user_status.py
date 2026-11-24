@@ -467,8 +467,9 @@ def export(c, uid):
 
 def restore(c, uid, data):
     """Aus einem Backup: nur, wenn das Konto noch keine Status-Einstellungen hat; Unbekanntes wird verworfen. -> 0/1"""
-    if not isinstance(data, dict) or c.execute("SELECT 1 FROM user_status WHERE uid=?", (uid,)).fetchone():
-        return 0
+    if not isinstance(data, dict) or c.execute("SELECT 1 FROM user_status WHERE uid=? AND (prefs<>'{}'::jsonb OR exc<>'[]'::jsonb)",
+                                               (uid,)).fetchone():
+        return 0                                  # eine Zeile nur mit Zustand (ohne Einstellungen) zaehlt nicht als vorhanden
     p = {k: v for k, v in (data.get("prefs") or {}).items() if k in _PREF_OK and _PREF_OK[k](v)} \
         if isinstance(data.get("prefs"), dict) else {}
     exc = []

@@ -236,6 +236,13 @@ def part_expiry():
     put(A, state="busy", dur=3600)
     clock(T0 + 600 + 3600)
     ok("dur: Ende = jetzt + dur, expire_once direkt", US.expire_once() == 1)
+    with connect() as c, c:                              # Pruefer: Last - hoechstens 500 je Lauf, der Rest im naechsten
+        c.executemany("INSERT INTO user_status (uid, state, until, source, since, updated) VALUES (?, 'dnd', ?, 'manual', ?, ?)",
+                      [(f"rs-x{i:03d}", testclock.now() - 1 - i, T0, T0) for i in range(501)])
+    n1, n2 = US.expire_once(), US.expire_once()
+    with connect() as c, c:
+        c.execute("DELETE FROM user_status WHERE uid LIKE 'rs-x%'")
+    ok(f"Ablauf: hoechstens 500 je Lauf ({n1}, dann {n2})", (n1, n2) == (500, 1))
     reset(A)
 
 
@@ -388,11 +395,13 @@ def part_account():
        {"type": "user", "ref": local_ref(B)} in exp["exceptions"] and {"type": "group", "name": GRP} in exp["exceptions"]
        and B not in s and C not in s)
     reset(D)
+    put(D, state="busy")                                 # Pruefer: Zeile nur mit Zustand = noch keine Einstellungen
     with connect() as c, c:
         n = US.restore(c, D, exp)
     with connect() as c:
         v = US.view(c, D)
-    ok(f"Einspielen in ein Konto ohne Status ({n}; Gruppe nur, wenn Mitglied)", n == 1 and v["prefs"]["repeat_s"] == 240 and
+    ok(f"Einspielen in ein Konto ohne Status-Einstellungen ({n}; Gruppe nur, wenn Mitglied; Zustand bleibt {v['state']})",
+       n == 1 and v["prefs"]["repeat_s"] == 240 and v["state"] == "busy" and
        [x["type"] for x in v["exceptions"]] == ["user", "user"], v["exceptions"])
     with connect() as c, c:
         n2 = US.restore(c, D, exp)

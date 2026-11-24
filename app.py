@@ -137,6 +137,7 @@ async def lifespan(_app):
     yield
     await collab.shutdown()                                  # offene Live-Seiten materialisieren und verdichten
     jobs.stop()
+    user_status.stop()
     mentions.stop()
     bookorbit.stop()
     await asyncio.to_thread(diagstore.stop)                  # 2.5: gepufferte Diagnose-Meldungen noch schreiben
