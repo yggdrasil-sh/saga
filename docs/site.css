@@ -49,7 +49,8 @@ code{font-family:var(--mono);font-size:.9em;background:var(--bg2);border:1px sol
 html:lang(th) .serif,html:lang(th) h1,html:lang(th) h2{font-family:inherit;font-weight:700}
 
 /* Kopfleiste */
-.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 94%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+/* fast deckend: bei 78 % fielen die Links ueber Nordlicht bzw. dunklen Buehnen (hell) unter 4,5:1 */
 .top nav{display:flex;align-items:center;gap:4px;min-height:64px}
 .brand{display:flex;align-items:center;gap:10px;font:600 24px/1 var(--serif);color:var(--fg);text-decoration:none;margin-right:auto;letter-spacing:.01em}
 .brand img{width:32px;height:32px}
