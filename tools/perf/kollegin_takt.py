@@ -7,7 +7,7 @@ Gemessen (Testuhr angehalten, Zeit als Parameter):
   - Takt im Leerlauf (nichts faellig) p50/p95/max -> Grenzwert limits.json Stufe S/M "Kollegin: Takt 1000 wartende Auftraege"
   - DB-Abfragen je Leerlauf-Takt (Zaehler auf db.Conn.execute) -> hoechstens 1 (harte Grenze dieser Messung)
   - EXPLAIN (FORMAT JSON) der Takt-Abfrage (jobs._CLAIM, ohne Ausfuehrung): nutzt den Teilindex job_due (K-A6, harte
-    Grenze ab Stufe M; in S nur INFO - bei 1.000 Zeilen darf der Planer auch anders, die Zeitgrenze gilt trotzdem)
+    Grenze in S und M)
   - INFO: Takt mit 20 faelligen (signal vorher, je ein Warte-Schritt, der danach wieder wartet), signal() mit 1.000 Wartenden
     PYTHONPATH=tests/pgshim:. python tools/perf/kollegin_takt.py [--stufe SM] [--n 200]
     (saga-test: tools/testumgebung/umgebung.sh lauf server <slot> $PWD/tools/perf/kollegin_takt.py)
@@ -165,12 +165,12 @@ def main():
             finally:
                 cleanup()
             lim = limits.get(st, {}).get(NAME)
-            good = (lim is None or r["p95_ms"] <= lim) and r["queries_per_idle_tick"] <= 1 and (st != "M" or r["uses_job_due"])
+            good = (lim is None or r["p95_ms"] <= lim) and r["queries_per_idle_tick"] <= 1 and r["uses_job_due"]
             fail |= not good
             print(("INFO" if lim is None else "OK  " if good else "FAIL"), f"Stufe {st}: {NAME} p95 {r['p95_ms']} ms (Grenze {lim}), "
                   f"p50 {r['p50_ms']}, max {r['max_ms']}, n={r['n']}; DB-Abfragen je Leerlauf-Takt {r['queries_per_idle_tick']} (Grenze 1)",
                   flush=True)
-            print(("OK  " if r["uses_job_due"] else "FAIL" if st == "M" else "INFO"), f"Stufe {st}: Takt-Abfrage nutzt Index job_due: "
+            print(("OK  " if r["uses_job_due"] else "FAIL"), f"Stufe {st}: Takt-Abfrage nutzt Index job_due: "
                   f"{r['uses_job_due']} (Plan {' > '.join(r['plan'])})", flush=True)
             print(f"INFO Stufe {st}: Takt mit 20 faelligen p50 {r['due20_p50_ms']} / p95 {r['due20_p95_ms']} ms, "
                   f"signal() bei 1.000 Wartenden p95 {r['signal_p95_ms']} ms", flush=True)

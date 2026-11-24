@@ -1,5 +1,5 @@
 {
- "_info": "p95-Grenzwerte in ms je Stufe (Praefix des Messungsnamens aus bench.py). S/M/L = Regressionsschutz (Stand testing 18.10.2026 x ~1.5-2, auf 4-Kern-CT mit Nachbarlast; Suche/Freigaben/Rueckverweise/rows nach 2.2-Server-Umbau). ziel_S/ziel_M/ziel_L = Ziele fuer 2.2 (heute teils verfehlt): mit SAGA_PERF_ZIEL=1 pruefen. 2.4 E0: Anruf-Signalisierung (bench.py calls; 2.3.0 und E0 auf 2-Kern-Container p95 ~15-50 ms, Grenzen mit Abstand). 2.4 E4/E5: Anruf als Raum, Signal im Raum, laufende Anrufe; Browser-Messung 4er-Mesh unter mesh (tests/browser_raum.js: Aufbau ms, Python-CPU-Spitze % je 0,5 s, Sekunden ueber 20 %). 2.4 Gelesen/Online (bench.py receipts, 50er-Gruppe, 49 Lesende alle 2 s): /read mit Bestaetigung p95 ~21-33 ms, Presence (49 Personen) ~24-36 ms auf 2-Kern-Container. 2.6 K-A4: \"Kollegin: Kontext-Auswahl\" (tools/perf/kollegin.py, ai_ctx.select im Prozess) S = 3.000 eigene Seiten, M = 8.050 eigene Notizen mit 50 Datenbanken + 300 geteilte (Stufe G ohne Grenze, Bugs-DB 2349). 2.6 K-A3: Kollegin: Plan pruefen = saga.tools.check_plan fuer 5 Schritte im Prozess (tools/perf/kollegin_plan.py, tests/kollegin_werkzeuge.py), nicht ueber bench.py. 2.6 K-A2: \"Kollegin: Takt 1000 wartende Auftraege\" (tools/perf/kollegin_takt.py, jobs.run_once im Prozess, Leerlauf) S = 1.000 wartende, M = dazu 30.000 beendete und 2.000 nicht faellige; zusaetzlich harte Grenze 1 DB-Abfrage je Leerlauf-Takt (Zaehler); K-A6: dazu EXPLAIN der Takt-Abfrage, ab Stufe M muss sie den Teilindex job_due nutzen. 2.6 K-A6: \"Kollegin: Runner-Schritt\" (tools/perf/kollegin_runner.py, ein Schritt ai.task mit create_task ueber jobs.run_once im Prozess, ohne Modell; unabhaengig von der Datenmenge, daher S = M). Alle Kollegin-Messungen zusammen: tools/perf/bench_kollegin.py. 2.6 (Bugs-DB 2029-1): \"Status: reachability\" (tests/reachability.py, im Prozess, eine Verbindung, 400 Aufrufe) S = verfuegbar, Kanal call (mit Pruefung im Anruf), M = Nicht stoeren mit 100 Ausnahmen (99 Personen + Gruppe), Anrufende ohne Ausnahme, 2.000 Anrufe in chat_call (Wiederholungs-Suche).",
+ "_info": "p95-Grenzwerte in ms je Stufe (Praefix des Messungsnamens aus bench.py). S/M/L = Regressionsschutz (Stand testing 18.10.2026 x ~1.5-2, auf 4-Kern-CT mit Nachbarlast; Suche/Freigaben/Rueckverweise/rows nach 2.2-Server-Umbau). ziel_S/ziel_M/ziel_L = Ziele fuer 2.2 (heute teils verfehlt): mit SAGA_PERF_ZIEL=1 pruefen. 2.4 E0: Anruf-Signalisierung (bench.py calls; 2.3.0 und E0 auf 2-Kern-Container p95 ~15-50 ms, Grenzen mit Abstand). 2.4 E4/E5: Anruf als Raum, Signal im Raum, laufende Anrufe; Browser-Messung 4er-Mesh unter mesh (tests/browser_raum.js: Aufbau ms, Python-CPU-Spitze % je 0,5 s, Sekunden ueber 20 %). 2.4 Gelesen/Online (bench.py receipts, 50er-Gruppe, 49 Lesende alle 2 s): /read mit Bestaetigung p95 ~21-33 ms, Presence (49 Personen) ~24-36 ms auf 2-Kern-Container. 2.6 K-A4: \"Kollegin: Kontext-Auswahl\" (tools/perf/kollegin.py, ai_ctx.select im Prozess) S = 3.000 eigene Seiten, M = 8.050 eigene Notizen mit 50 Datenbanken + 300 geteilte (Stufe G ohne Grenze, Bugs-DB 2349). 2.6 K-A3: Kollegin: Plan pruefen = saga.tools.check_plan fuer 5 Schritte im Prozess (tools/perf/kollegin_plan.py, tests/kollegin_werkzeuge.py), nicht ueber bench.py. 2.6 K-A2: \"Kollegin: Takt 1000 wartende Auftraege\" (tools/perf/kollegin_takt.py, jobs.run_once im Prozess, Leerlauf) S = 1.000 wartende, M = dazu 30.000 beendete und 2.000 nicht faellige; zusaetzlich harte Grenze 1 DB-Abfrage je Leerlauf-Takt (Zaehler); K-A6: dazu EXPLAIN der Takt-Abfrage, sie muss den Teilindex job_due nutzen (S und M). 2.6 K-A6: \"Kollegin: Runner-Schritt\" (tools/perf/kollegin_runner.py, ein Schritt ai.task mit create_task ueber jobs.run_once im Prozess, ohne Modell; unabhaengig von der Datenmenge, daher S = M; Stand 24.11.2026 auf saga-test p95 ~6 ms, 31 DB-Abfragen je Schritt). Alle Kollegin-Messungen zusammen: tools/perf/bench_kollegin.py. 2.6 (Bugs-DB 2029-1): \"Status: reachability\" (tests/reachability.py, im Prozess, eine Verbindung, 400 Aufrufe) S = verfuegbar, Kanal call (mit Pruefung im Anruf), M = Nicht stoeren mit 100 Ausnahmen (99 Personen + Gruppe), Anrufende ohne Ausnahme, 2.000 Anrufe in chat_call (Wiederholungs-Suche).",
  "S": {
   "Kollegin: Plan pruefen": 30,
   "GET /api/notes (Seitenbaum": 150, "GET /api/shared": 150, "GET /api/notes/{id}": 60, "GET /rows": 120,
@@ -12,7 +12,7 @@
   "Kollegin: Kontext-Auswahl": 150,
   "Kollegin: Takt 1000 wartende Auftraege": 20,
   "Status: reachability": 2,
-  "Kollegin: Runner-Schritt": 80
+  "Kollegin: Runner-Schritt": 25
  },
  "M": {
   "Kollegin: Plan pruefen": 30,
@@ -26,7 +26,7 @@
   "Kollegin: Kontext-Auswahl": 400,
   "Kollegin: Takt 1000 wartende Auftraege": 50,
   "Status: reachability": 5,
-  "Kollegin: Runner-Schritt": 80
+  "Kollegin: Runner-Schritt": 25
  },
  "L": {
   "Kollegin: Plan pruefen": 50,
