@@ -15,6 +15,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Behoben
+
+- **KI-Antworten im Chat zeigen kein rohes Markdown mehr** (Bugs-DB 2248): Saga schreibt die Antwort vor dem Beleg in
+  die Chat-Formatierung um (`**fett**` → *fett*, Überschriften, Sternlisten, `~~durch~~`), damit sie in allen Clients
+  richtig erscheint. Dafür gibt es eine **gemeinsame KI-Darstellung** – eine feste Markdown-Teilmenge für den
+  Assistenten mit Testvektoren für die Apps (`saga/ai_md.py`, `docs/ki-markdown-vektoren.json`,
+  `docs/APP-API-KI.md` Abschnitt 4).
+
 ### Sicherheit
 
 - **Ein Datenrahmen für alle KI-Wege** (Bugs-DB 2260, Konzept 2.6 K7): Material aus Seiten, Aufgaben, Kalender, Chats

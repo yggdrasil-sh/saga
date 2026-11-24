@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 
 import auth
 from db import connect as _db
-from saga import ai, ai_frame, ai_web, chat
+from saga import ai, ai_frame, ai_md, ai_web, chat
 from saga.core import _api_guard, _bad, _body, t, user_info
 
 router = APIRouter()
@@ -236,6 +236,7 @@ async def api_chat_ai_ask(cid: int, request: Request):
         # RT-03 (Bugs-DB 2260): Text des Modells geht an andere - keine Links/Bilder/HTML (kein Abfluss ueber Adressen,
         # keine Linkvorschau); die Webquellen danach kommen von der Suchmaschine, nicht vom Modell
         answer = ai_frame.no_links(answer, t("[Link entfernt]")).strip()
+        answer = ai_md.to_chat(answer)                    # 2248: Markdown der KI -> Chat-Formatierung (alle Clients)
         if not answer:
             return {"text": ""}
         answer = with_sources(answer, w.get("sources"), w.get("notice"))

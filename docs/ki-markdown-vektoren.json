@@ -1,0 +1,682 @@
+{
+ "format": 1,
+ "cites": [
+  1,
+  2,
+  3
+ ],
+ "note": "Erzeugt von tools/ki_md_vectors.py aus saga/ai_md.py - nicht von Hand aendern.",
+ "assistant": [
+  {
+   "in": "Hallo",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "Hallo"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "",
+   "lines": []
+  },
+  {
+   "in": "**Getränke**: Wasser, Saft",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "b",
+       "Getränke"
+      ],
+      [
+       "t",
+       ": Wasser, Saft"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "__auch fett__",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "b",
+       "auch fett"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "`code` und **fett** [1]",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "c",
+       "code"
+      ],
+      [
+       "t",
+       " und "
+      ],
+      [
+       "b",
+       "fett"
+      ],
+      [
+       "t",
+       " "
+      ],
+      [
+       "n",
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "Siehe [1, 2] und [4]",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "Siehe "
+      ],
+      [
+       "n",
+       1
+      ],
+      [
+       "t",
+       " "
+      ],
+      [
+       "n",
+       2
+      ],
+      [
+       "t",
+       " und [4]"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "[2][3]",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "n",
+       2
+      ],
+      [
+       "n",
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "## Plan für Samstag\n- Kohle\n- Würstchen",
+   "lines": [
+    {
+     "k": "h",
+     "s": [
+      [
+       "t",
+       "Plan für Samstag"
+      ]
+     ]
+    },
+    {
+     "k": "ul",
+     "s": [
+      [
+       "t",
+       "Kohle"
+      ]
+     ]
+    },
+    {
+     "k": "ul",
+     "s": [
+      [
+       "t",
+       "Würstchen"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "# **Titel**",
+   "lines": [
+    {
+     "k": "h",
+     "s": [
+      [
+       "b",
+       "Titel"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "1. Erst\n2) Dann\n10. Zuletzt",
+   "lines": [
+    {
+     "k": "ol",
+     "s": [
+      [
+       "t",
+       "Erst"
+      ]
+     ]
+    },
+    {
+     "k": "ol",
+     "s": [
+      [
+       "t",
+       "Dann"
+      ]
+     ]
+    },
+    {
+     "k": "ol",
+     "s": [
+      [
+       "t",
+       "Zuletzt"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "* Stern-Liste\n• Punkt-Liste",
+   "lines": [
+    {
+     "k": "ul",
+     "s": [
+      [
+       "t",
+       "Stern-Liste"
+      ]
+     ]
+    },
+    {
+     "k": "ul",
+     "s": [
+      [
+       "t",
+       "Punkt-Liste"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "Absatz eins\n\nAbsatz zwei",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "Absatz eins"
+      ]
+     ]
+    },
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "Absatz zwei"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "*kursiv bleibt Text*",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "*kursiv bleibt Text*"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "2*3*4 = 24",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "2*3*4 = 24"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "a_b_c",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "a_b_c"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "**offen",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "**offen"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "`a**b**`",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "c",
+       "a**b**"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "[Link](https://example.org)",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "[Link](https://example.org)"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "<b>kein HTML</b>",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "<b>kein HTML</b>"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "  - eingerückt",
+   "lines": [
+    {
+     "k": "ul",
+     "s": [
+      [
+       "t",
+       "eingerückt"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "-ohne Leerzeichen",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "-ohne Leerzeichen"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "### H3 mit `code`",
+   "lines": [
+    {
+     "k": "h",
+     "s": [
+      [
+       "t",
+       "H3 mit "
+      ],
+      [
+       "c",
+       "code"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "Zeile mit **fett** und **noch mehr** [3]",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "Zeile mit "
+      ],
+      [
+       "b",
+       "fett"
+      ],
+      [
+       "t",
+       " und "
+      ],
+      [
+       "b",
+       "noch mehr"
+      ],
+      [
+       "t",
+       " "
+      ],
+      [
+       "n",
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "Tabelle | a | b |",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "Tabelle | a | b |"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "> Zitat",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "> Zitat"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "```\n**nicht** ändern\n```\n**doch**",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "```"
+      ]
+     ]
+    },
+    {
+     "k": "p",
+     "s": [
+      [
+       "b",
+       "nicht"
+      ],
+      [
+       "t",
+       " ändern"
+      ]
+     ]
+    },
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "```"
+      ]
+     ]
+    },
+    {
+     "k": "p",
+     "s": [
+      [
+       "b",
+       "doch"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "Das ist *wichtig* und ~~alt~~",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "Das ist *wichtig* und ~~alt~~"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "+ Plus-Liste",
+   "lines": [
+    {
+     "k": "p",
+     "s": [
+      [
+       "t",
+       "+ Plus-Liste"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "in": "- **Ben**: bringt *Kohle* mit [1]",
+   "lines": [
+    {
+     "k": "ul",
+     "s": [
+      [
+       "b",
+       "Ben"
+      ],
+      [
+       "t",
+       ": bringt *Kohle* mit "
+      ],
+      [
+       "n",
+       1
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "chat": [
+  {
+   "in": "Hallo",
+   "out": "Hallo"
+  },
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "**Getränke**: Wasser, Saft",
+   "out": "*Getränke*: Wasser, Saft"
+  },
+  {
+   "in": "__auch fett__",
+   "out": "*auch fett*"
+  },
+  {
+   "in": "`code` und **fett** [1]",
+   "out": "`code` und *fett* [1]"
+  },
+  {
+   "in": "Siehe [1, 2] und [4]",
+   "out": "Siehe [1, 2] und [4]"
+  },
+  {
+   "in": "[2][3]",
+   "out": "[2][3]"
+  },
+  {
+   "in": "## Plan für Samstag\n- Kohle\n- Würstchen",
+   "out": "*Plan für Samstag*\n- Kohle\n- Würstchen"
+  },
+  {
+   "in": "# **Titel**",
+   "out": "*Titel*"
+  },
+  {
+   "in": "1. Erst\n2) Dann\n10. Zuletzt",
+   "out": "1. Erst\n2) Dann\n10. Zuletzt"
+  },
+  {
+   "in": "* Stern-Liste\n• Punkt-Liste",
+   "out": "- Stern-Liste\n- Punkt-Liste"
+  },
+  {
+   "in": "Absatz eins\n\nAbsatz zwei",
+   "out": "Absatz eins\n\nAbsatz zwei"
+  },
+  {
+   "in": "*kursiv bleibt Text*",
+   "out": "_kursiv bleibt Text_"
+  },
+  {
+   "in": "2*3*4 = 24",
+   "out": "2*3*4 = 24"
+  },
+  {
+   "in": "a_b_c",
+   "out": "a_b_c"
+  },
+  {
+   "in": "**offen",
+   "out": "**offen"
+  },
+  {
+   "in": "`a**b**`",
+   "out": "`a**b**`"
+  },
+  {
+   "in": "[Link](https://example.org)",
+   "out": "[Link](https://example.org)"
+  },
+  {
+   "in": "<b>kein HTML</b>",
+   "out": "<b>kein HTML</b>"
+  },
+  {
+   "in": "  - eingerückt",
+   "out": "  - eingerückt"
+  },
+  {
+   "in": "-ohne Leerzeichen",
+   "out": "-ohne Leerzeichen"
+  },
+  {
+   "in": "### H3 mit `code`",
+   "out": "*H3 mit `code`*"
+  },
+  {
+   "in": "Zeile mit **fett** und **noch mehr** [3]",
+   "out": "Zeile mit *fett* und *noch mehr* [3]"
+  },
+  {
+   "in": "Tabelle | a | b |",
+   "out": "Tabelle | a | b |"
+  },
+  {
+   "in": "> Zitat",
+   "out": "> Zitat"
+  },
+  {
+   "in": "```\n**nicht** ändern\n```\n**doch**",
+   "out": "```\n**nicht** ändern\n```\n*doch*"
+  },
+  {
+   "in": "Das ist *wichtig* und ~~alt~~",
+   "out": "Das ist _wichtig_ und ~alt~"
+  },
+  {
+   "in": "+ Plus-Liste",
+   "out": "- Plus-Liste"
+  },
+  {
+   "in": "- **Ben**: bringt *Kohle* mit [1]",
+   "out": "- *Ben*: bringt _Kohle_ mit [1]"
+  }
+ ]
+}

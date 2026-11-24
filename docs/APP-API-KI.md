@@ -175,3 +175,33 @@ knappe Suchbegriffe), dann fragt Saga SearXNG (höchstens 6 Treffer) und liest d
 - **Grenzen:** Jede Websuche zählt als **weitere Anfrage** im Tageskontingent (`quota_left` in `done` ist schon
   verrechnet); zusätzlich höchstens 10 Websuchen je Person in 10 Minuten (darüber: Antwort ohne Websuche mit `notice`).
   Fehlgeschlagene Suchen zählen nicht.
+
+## 4. KI-Darstellung (2.6, Bugs-DB 2248)
+
+Modelle schreiben gern Markdown, obwohl Saga Klartext verlangt. Damit KI-Antworten überall gleich aussehen, gilt eine
+**feste Teilmenge** – alles andere bleibt Text (nie als Markdown, HTML oder Link auswerten). Referenz:
+`saga/ai_md.py`, Testvektoren `docs/ki-markdown-vektoren.json` (erzeugt mit `tools/ki_md_vectors.py`; in den App-Tests
+nachspielen).
+
+**Assistent** (`/api/ai/ask`, `/api/ai/page/{nid}`, Verlauf) – die App zeichnet die Antwort selbst, je Zeile:
+
+| Zeile | Darstellung (`lines[].k`) |
+|---|---|
+| leer | fällt weg (Absatzgrenze) |
+| `- `, `* `, `• ` + Text (auch eingerückt) | Listenpunkt (`ul`) |
+| `1. ` bzw. `1) ` + Text (1–2 Ziffern) | nummerierter Punkt (`ol`, Nummer nach Reihenfolge) |
+| `#`…`######` + Leerzeichen + Text | Überschrift als fette Zeile (`h`) |
+| sonst | Absatz (`p`) |
+
+In jeder Zeile (`s`): `**fett**` und `__fett__` → fett (`b`), `` `code` `` → Festbreite (`c`), `[n]` bzw. `[1, 2]` →
+Quellenverweis (`n`, nur wenn es Quelle n gibt; sonst Text `[n]`). Sonst Text (`t`) – auch `*kursiv*`, Links, Tabellen.
+
+**Chat** (`POST /api/chats/{cid}/ai`): Saga schreibt die Antwort **vor** dem Beleg in die Chat-Formatierung chatfmt1 um
+(`**fett**` → `*fett*`, `*kursiv*` → `_kursiv_`, `~~durch~~` → `~durch~`, Überschrift → `*fett*`, `* `/`+ `/`• ` → `- `,
+Codeblöcke bleiben). Apps zeigen `done.text` wie jede Chat-Nachricht – nichts Neues nötig, auch ältere Apps zeigen es
+richtig. Links, Bilder und HTML aus dem Modell entfernt der Server dort vorher (`[Link entfernt]`, Bugs-DB 2260); die
+angehängten Webquellen (`Quellen:` …) kommen von der Suchmaschine und bleiben.
+
+**Datenrahmen** (Bugs-DB 2260, nur Server): Das Material steht zwischen Markern mit einer Zufallskennung je Anfrage
+(`<<<SAGA_DATA <kennung>` … `<kennung> SAGA_DATA>>>`), jede Schreibweise des Markers im Inhalt wird entschärft. Apps
+sehen davon nichts; wer Prompts nachbaut (Tests), liest die Kennung aus dem System-Prompt.
