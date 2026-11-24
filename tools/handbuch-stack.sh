@@ -55,10 +55,14 @@ if [ ! -s "$HCERT.pem" ] && [ -s "$UMG/ca/ca.key" ]; then
 fi
 # Zusatz +tls (Szenen mit https, z. B. Passkeys, Foederation): Zertifikat der Test-CA fuer die Anzeige-Hosts (30 Tage, nur im
 # Lauf; Chromium vertraut der CA ueber die NSS-DB der Testumgebung, die Server ueber SSL_CERT_FILE)
+# (mit Schluessel-Kennungen AKI/SKI: Python ab 3.13 prueft streng - VERIFY_X509_STRICT - und lehnt Zertifikate ohne AKI ab)
 TCERT=$HB_DIR/tls-anzeige
+if [ -s "$TCERT.pem" ] && ! openssl x509 -in "$TCERT.pem" -noout -ext authorityKeyIdentifier 2>/dev/null | grep -q .; then
+  rm -f "$TCERT.pem"
+fi
 if [ ! -s "$TCERT.pem" ] && [ -s "$UMG/ca/ca.key" ]; then
   openssl req -newkey rsa:2048 -nodes -subj "/CN=saga.example" -keyout "$TCERT.key" -out "$TCERT.csr" 2>/dev/null &&
-    printf 'subjectAltName=DNS:saga.example,DNS:admin.saga.example,DNS:verein.example,DNS:admin.verein.example\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n' > "$TCERT.ext" &&
+    printf 'subjectAltName=DNS:saga.example,DNS:admin.saga.example,DNS:verein.example,DNS:admin.verein.example\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n' > "$TCERT.ext" &&
     openssl x509 -req -in "$TCERT.csr" -CA "$UMG/ca/ca.pem" -CAkey "$UMG/ca/ca.key" -CAserial "$TCERT.srl" -CAcreateserial -days 30 -extfile "$TCERT.ext" \
       -out "$TCERT.pem" 2>/dev/null && chmod 600 "$TCERT.key"
 fi

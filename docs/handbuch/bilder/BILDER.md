@@ -71,7 +71,7 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b01-05-sprache.png | B01 | Web | hell | Einstellungen → Profil & Sprache → Sprache (Automatisch, Deutsch, English, Español, Русский, ไทย), darunter Darstellung | 1 = Sprache (Automatisch folgt dem Browser) |
 | b01-06-login-handy.png | B01 | Handy | dunkel | Anmeldeseite von saga.example mit Passwort und „Mit Passkey anmelden“ | 1 = Benutzername; 2 = Passwort; 3 = Mit Passkey anmelden; 4 = Sprache vor der Anmeldung |
 | b01-07-einstellungen-reiter.png | B01 | Web | dunkel | Einstellungen mit der Navigation links (Konto bis Hilfe), rechts „Profil & Sprache“ | 1 = Bereiche: Konto (Profil & Sprache · Sicherheit · Mitteilungen) · Arbeitsbereich (Seiten · Kalender · Lesezeichen) · Verbindungen (Immich · BookOrbit · Nextcloud · Apps & Geräte · API) · Daten (Mein Backup) · Hilfe |
-| b02-01-dashboard.png | B02 | Web | hell | „Heute“ von Anna: Seitenleiste links, Begrüßung, Schnellaktionen, Weitermachen, Kacheln (Familie, Freizeit, Haus, Urlaub), rechts offene Aufgaben | 1 = Heute · Chats · Aufgaben · Termine; 2 = Schnellaktionen (N, V, T, E); 3 = Kacheln der Dienste; 4 = Leiste einklappen |
+| b02-01-dashboard.png | B02 | Web | hell | „Heute“ von Anna: Seitenleiste links, Begrüßung, Schnellaktionen (mit Frage Saga KI), Weitermachen, Kacheln (Familie, Freizeit, Haus, Urlaub), rechts offene Aufgaben | 1 = Heute · Chats · Aufgaben · Termine; 2 = Schnellaktionen (N, V, T, E, M); 3 = Kacheln der Dienste; 4 = Leiste einklappen; 5 = Glocke mit Zahl der ungelesenen Benachrichtigungen |
 | b02-02-dashboard-dunkel.png | B02 | Web | dunkel | „Heute“ dunkel | – |
 | b02-03-dashboard-handy.png | B02 | Handy | hell | „Heute“ auf dem Handy: Begrüßung, Schnellaktionen, Weitermachen, Kasten Aufgaben, Kacheln; unten Heute · Seiten · Suchen · Chats | – |
 | b02-04-startseite-festlegen.png | B02 | Web | hell | Seitenmenü ⋯ von „Sommerfest“ mit „Als Startseite festlegen“ | 1 = Als Startseite festlegen |
@@ -79,13 +79,13 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b03-02-kacheln.png | B03 | Web | hell | Claras „Heute“ mit eigenen Lesezeichen (Mensa, Vertretungsplan) in der Kategorie „Schule“ | 1 = eigenes Lesezeichen; 2 = + Lesezeichen |
 | b04-01-seitenbaum.png | B04 | Web | hell | Seitenleiste: Suche, Heute/Chats/Aufgaben/Termine, Seitenbaum „Familie Sommer“, Neue Seite, „Mit mir geteilt“ (Radtour von Ben), Fußleiste | 1 = Seiten durchsuchen; 2 = + Neue Seite; 3 = Mit mir geteilt; 4 = Schnellsuche Strg/⌘+K (daneben Graph); 5 = Archiv; 6 = Papierkorb (30 Tage) |
 | b04-02-slash-menu.png | B04 | Web | hell | Slash-Menü in einer leeren Zeile von „Notizen Elternabend“ – Weitertippen filtert, Esc schließt | – |
-| b04-03-auswahl-leiste-farbe.png | B04 | Web | hell | Auswahl-Leiste über markiertem Text, Farbauswahl „A“ geöffnet | 1 = fett; 2 = kursiv; 3 = Text- und Hintergrundfarbe; 4 = Formel im Text |
+| b04-03-auswahl-leiste-farbe.png | B04 | Web | hell | Auswahl-Leiste (Tiptap) über markiertem Text in „Notizen Elternabend“, Farbauswahl „A“ geöffnet | 1 = fett; 2 = kursiv; 3 = Text- und Hintergrundfarbe; 4 = Formel im Text |
 | b04-04-block-menu.png | B04 | Web | dunkel | Block-Menü am Griff ⋮⋮ (Hinweis-Kasten): Aktion suchen, Umwandeln, Farbe, Duplizieren, Verschieben, synchronisierter Block, Link zum Block, Kommentieren, Löschen | 1 = Griff ⋮⋮ (klicken = Menü, ziehen = verschieben) |
 | b04-05-spalten-ziehen.png | B04 | Web | hell | Zwei Spalten „Ferienwohnung Möwe“ / „Pension Seestern“, Trenner zum Ziehen | 1 = Spaltenbreite ziehen; 2 = Spalten: Anzahl |
 | b04-06-tabelle-farben.png | B04 | Web | hell | Tabelle „Ausflüge“ mit Kopfzeile; Leiste Zeile · Spalte · Zelle (zum Einfärben) | 1 = Tabellenleiste: Zeile · Spalte · Zelle |
 | b04-07-mathe-mermaid.png | B04 | Web | hell | Mathe-Block (KaTeX) und Mermaid-Diagramm mit Umschalter Vorschau/Geteilt/Code | 1 = Vorschau · Geteilt · Code |
 | b04-08-erwaehnung.png | B04 | Web | hell | @-Menü: Personen, Datum, Erinnerung | – |
-| b04-09-synced-block.png | B04 | Web | hell | Synchronisierter Block „Wichtige Nummern“ (Original im Familien-Wiki) | 1 = Original öffnen |
+| b04-09-synced-block.png | B04 | Web | hell | Synchronisierter Block „Wichtige Nummern“ als Kopie auf „Haushalt“ (Original auf der Wiki-Seite „Wichtige Nummern“) | 1 = Original öffnen |
 | b04-10-befehlspalette.png | B04 | Web | dunkel | Schnellsuche (Strg/⌘+K) mit „Re“: Seiten nach Titel und Inhalt | – |
 | b04-11-editor-handy.png | B04 | Handy | hell | Seite „Urlaub Ostsee 2027“ im Handy-Browser (unten Heute · Seiten · Suchen · Chats) | – |
 | b04-12-versionen.png | B04 | Web | hell | Versionsverlauf von „Urlaub Ostsee 2027“ mit Autor und Zeit | – |
@@ -98,7 +98,7 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b06-03-wetter-ort.png | B06 | Web | hell | Beim Anlegen: Ort für das Wetter-Widget suchen („Lübeck“, Wetter-Attrappe) | 1 = Ort suchen |
 | b06-04-home-dashboard.png | B06 | Web | hell | Annas Seite aus der Vorlage „Home-Dashboard“ (ganze Seite) | – |
 | b06-05-home-dashboard-dunkel.png | B06 | Web | dunkel | Home-Dashboard dunkel | – |
-| b06-06-widget-einrichten.png | B06 | Web | hell | Widget „Countdown“ einrichten: Datum, Richtung, Einheit, Vorschau | 1 = Einstellungen (jede Änderung sofort in der Vorschau) |
+| b06-06-widget-einrichten.png | B06 | Web | hell | Widget „Countdown“ (Bis zum Urlaub) in der Widget-Reihe von „Unser Jahr“: rechts „Widget einrichten“ (Datum, Richtung, Einheit), links das Widget als Vorschau | 1 = Einstellungen (jede Änderung sofort in der Vorschau) |
 | b06-07-home-dashboard-handy.png | B06 | Handy | hell | Home-Dashboard im Handy-Browser | – |
 | b06-09-widget-reihe.png | B06 | Web | hell | Vier Widgets in Spalten, gleich hoch: Countdown, Fortschritt, Kennzahl (offene Aufgaben), Gewohnheiten (7 Tage) | – |
 | b07-01-tabelle-einkauf.png | B07 | Web | hell | Einkaufsliste als Tabelle mit Abteilung, Formel „Summe“ und Summenzeile | 1 = Ansichten (Reiter); 2 = Filter; 3 = Ansicht-Einstellungen; 4 = + Neu |
@@ -107,11 +107,11 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b07-04-galerie-rezepte.png | B07 | Web | hell | Rezepte als Galerie: Bild, Tags, Gesamtzeit, Person | – |
 | b07-05-zeitleiste-umzug.png | B07 | Web | hell | Familienkalender als Zeitleiste (Balken ziehbar) | – |
 | b07-06-diagramm.png | B07 | Web | dunkel | Diagramm-Ansicht „Aufwand je Raum“ (Summe Minuten) – dunkel | – |
-| b07-07-filter-relativ.png | B07 | Web | hell | Filter „Wann ist nächste Woche“ – relative Bedingungen (heute, morgen, nächste Woche …) | 1 = Filter (Anzahl aktiver Filter); 2 = Bedingung, auch relativ |
-| b07-08-formel-editor.png | B07 | Web | hell | Formel-Editor der Spalte „Summe“: prop("menge") * prop("preis") | – |
+| b07-07-filter-relativ.png | B07 | Web | hell | Familienkalender, Ansicht Tabelle: Filter „Wann ist nächste Woche“ – relative Bedingungen (heute, morgen, nächste Woche …) | 1 = Filter (Anzahl aktiver Filter); 2 = Bedingung, auch relativ |
+| b07-08-formel-editor.png | B07 | Web | hell | Formel-Editor der Spalte „Summe“ der Einkaufsliste: prop("Menge") * prop("Preis"), Vorschau in Euro | – |
 | b07-09-peek.png | B07 | Web | hell | Rezept „Apfelkuchen nach Oma Lena“ im Peek rechts | 1 = Peek rechts/mittig; 2 = Als Seite öffnen |
-| b07-10-csv-import.png | B07 | Web | hell | Zeilen aus CSV hinzufügen: Vorschau und Zuordnung der Spalten (Semikolon, Excel Deutsch) | – |
-| b07-11-notion-import.png | B07 | Web | hell | Importieren: Markdown/Obsidian, Notion-ZIP, CSV | – |
+| b07-10-csv-import.png | B07 | Web | hell | Einkaufsliste → Zeilen aus CSV hinzufügen: Vorschau und Zuordnung der Spalten (Semikolon, Dezimalkomma wie Excel Deutsch; Notiz wird nicht übernommen) | – |
+| b07-11-notion-import.png | B07 | Web | hell | Importieren: CSV, Markdown/Obsidian, Notion-ZIP, Trilium | – |
 | b07-13-tabelle-handy.png | B07 | Handy | hell | Einkaufsliste im Handy-Browser | – |
 | b08-01-aufgabenleiste.png | B08 | Web | hell | Aufgabenleiste rechts auf „Heute“: fällig, überfällig, Quelle | 1 = Aufgabe schnell hinzufügen; 2 = Aufgaben (Kreis = erledigt); 3 = alle Aufgaben |
 | b08-02-aufgabe-optionen.png | B08 | Handy | hell | Kasten Aufgaben auf „Heute“: neue Aufgabe mit Priorität ⚑, Wiederholung (Menü offen) und Datum | 1 = Priorität; 2 = Wiederholung; 3 = Datum |
@@ -132,7 +132,7 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b12-03-gruppeninfo.png | B12 | Web | hell | Gruppeninfo „Sommers 🏡“: Name, Beschreibung, Rechte, Mitglieder (Anna Admin) | 1 = Name und Bild (✎ ändern); 2 = Gruppenrechte; 3 = Medien, Dateien, Links |
 | b12-04-gruppeninfo-handy.png | B12 | Handy | dunkel | Gruppeninfo auf Bens Handy (dunkel) | – |
 | b12-05-kontakte.png | B12 | Web | hell | Neue Unterhaltung: Kontakte (zuletzt zuerst) und Suche nach Personen | 1 = Kontakte |
-| b12-06-linkvorschau.png | B12 | Web | hell | Linkvorschau: Titel, Beschreibung und Seitenname der Einladung | 1 = Vorschau (vom Server geholt, wenn der Admin sie erlaubt) |
+| b12-06-linkvorschau.png | B12 | Web | hell | Linkvorschau im Familienchat: Titel, Beschreibung, Seitenname und Bild der Einladungsseite sommerfest.example (Attrappe) | 1 = Vorschau (vom Server geholt, wenn der Admin sie erlaubt) |
 | b12-07-angeheftet.png | B12 | Web | hell | Angeheftete Nachricht oben im Chat (bis zu 3; Klick springt hin) | 1 = angeheftete Nachricht |
 | b12-08-geraet-bestaetigen.png | B12 | Web | hell | Neuer Browser (Clara): Chats mit anderem Gerät bestätigen oder Wiederherstellungsschlüssel eingeben | 1 = Mit anderem Gerät bestätigen (Code vergleichen); 2 = Wiederherstellungsschlüssel eingeben |
 | b12-09-wiederherstellungsschluessel.png | B12 | Web | hell | Wiederherstellungsschlüssel eingeben (32 Zeichen A–Z, 2–7; hier erfunden) | 1 = Schlüssel (Leerzeichen egal) |
@@ -146,14 +146,14 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b13-08-teilnehmer-nicht-dabei.png | B13 | Web | dunkel | Gruppenanruf, Teilnehmerliste: Anna, Ben; „Nicht dabei (2)“ Clara und Oma Lena (nicht angenommen) | 1 = Nicht dabei; 2 = Erneut klingeln; 3 = Person hinzufügen |
 | b13-09-einzel-zu-gruppe.png | B13 | Web | dunkel | 1:1 Anna ↔ Ben, „Person hinzufügen“ Clara → Gruppenanruf mit drei Kacheln (neue Gruppe „Ben Sommer, Clara Sommer“) | – |
 | b13-10-in-gruppenanruf-verschoben.png | B13 | Web | dunkel | Bens 1:1 mit Anna danach: Eintrag „In Gruppenanruf verschoben“ mit Dauer | 1 = Zur Gruppe |
-| b14-01-glocke.png | B14 | Web | hell | Glocke oben in der Seitenleiste: geteilte Seite, neue Kommentare – „Alle gelesen“ | 1 = Glocke mit Zahl; 2 = Alle gelesen |
+| b14-01-glocke.png | B14 | Web | hell | Glocke oben in der Seitenleiste: geteilte Seite, neue Kommentare – „Alle gelesen“ | 1 = Glocke mit Zahl (die Zahl oben an der Glocke gehört zu Saga, die Nummer steht links daneben); 2 = Alle gelesen |
 | b14-02-mitteilungen-einstellungen.png | B14 | Web | hell | Einstellungen → Mitteilungen: dieser Browser, Geräte, ntfy, Kategorien, Ruhezeiten | – |
 | b14-03-glocke-handy.png | B14 | Handy | dunkel | Glocke auf dem Handy (dunkel, Liste von unten) | – |
-| b15-01-ki-seite.png | B15 | Web | hell | Frage Saga KI (Attrappe ki.saga.example): Antwort zum „Sommerfest“ mit Verweisen und Quellen | 1 = Bereiche: Frag deine Seiten · Diese Seite; 2 = Verweis auf die Quelle; 3 = Quellen |
-| b15-02-ki-websuche.png | B15 | Web | hell | KI mit Websuche: Wetter am Wochenende, Quellen aus dem Web (Attrappe) | 1 = Im Web suchen; 2 = Web-Quelle |
+| b15-01-ki-seite.png | B15 | Web | hell | Frage Saga KI (Attrappe ki.saga.example): Antwort zum „Sommerfest“ mit Verweisen [2] auf die Seite „Sommerfest“; Quellen: zitierte zuerst, darunter blasser die übrigen durchsuchten Seiten | 1 = Bereiche: Frag deine Seiten · Diese Seite; 2 = Verweis auf die Quelle; 3 = Quellen |
+| b15-02-ki-websuche.png | B15 | Web | hell | KI mit Websuche auf „Heute“: Wetter am Wochenende an der Lübecker Bucht, Web-Quellen wetter.example.org / kueste.example.org (SearXNG-Attrappe), Adresse der KI ki.saga.example | 1 = Im Web suchen; 2 = Web-Quelle |
 | b15-03-ki-chat.png | B15 | Web | hell | KI im Familienchat auf Zuruf (`@Saga KI`, Attrappe) – Antwort für alle sichtbar | – |
 | b16-01-kalender-verbinden.png | B16 | Web | hell | Einstellungen → Kalender: Familienkalender verbunden, zweiten Kalender (CalDAV) hinzufügen | 1 = verbundener Kalender „Familie“; 2 = Adresse des CalDAV-Servers (Passwort: App-Passwort, hier leer) |
-| b16-02-immich.png | B16 | Web | hell | Bild aus Immich: Album „Ostsee 2026“ (Attrappe), Foto wählen → wird in die Seite kopiert | 1 = Alben; 2 = gewähltes Album; 3 = Foto anklicken |
+| b16-02-immich.png | B16 | Web | hell | Bild aus Immich: Album „Ostsee 2026“ (Attrappe fotos.saga.example, gezeichnete Fotos), Foto wählen → wird in die Seite kopiert | 1 = Alben; 2 = gewähltes Album; 3 = Foto anklicken |
 | b16-03-nextcloud-datei.png | B16 | Web | hell | Nextcloud-Datei als Verweis in „Ferienwohnung Möwe“: Karte mit Vorschau, Herunterladen, In Nextcloud öffnen (Attrappe cloud.saga.example) | – |
 | b16-04-bookorbit-verbunden.png | B16 | Web | hell | Einstellungen → BookOrbit: verbunden (Attrappe bookorbit.example), „Markierungen als Seite übernehmen“ mit drei Büchern | – |
 | b16-05-bookorbit-buchseite.png | B16 | Web | hell | Buchseite „Das Leuchtfeuer von Hiddensee“ unter „Bücher“: Cover, Autorin, Notiz, Kapitel-Unterseiten mit Zahl der Markierungen | – |
