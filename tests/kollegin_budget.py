@@ -376,17 +376,23 @@ def run():
         c.execute("DELETE FROM ai_units WHERE uid='kb-d'")
     q1 = {"quota": 1}                                    # 4000 Einheiten je Person
     with connect() as c, c:
-        c.execute("INSERT INTO ai_units (uid, day, pool, units, real_in, real_out) VALUES ('kb-d', ?, 'job', 3500, 0, 0) "
-                  "ON CONFLICT (uid, day, pool) DO UPDATE SET units=3500", (U.today(),))
-        c.execute("UPDATE ai_units SET units=4100 WHERE uid='kb-e' AND day=? AND pool='job'", (U.today(),))
+        # begrenzte Pools bei Kontingent 1: Auftraege 1200 + Ideen 400 = 1600 -> kb-d 1300 (81 %) gelb, kb-e 1700 rot
+        c.execute("INSERT INTO ai_units (uid, day, pool, units, real_in, real_out) VALUES ('kb-d', ?, 'job', 1300, 0, 0) "
+                  "ON CONFLICT (uid, day, pool) DO UPDATE SET units=1300", (U.today(),))
+        c.execute("UPDATE ai_units SET units=1700 WHERE uid='kb-e' AND day=? AND pool='job'", (U.today(),))
     v4 = U.admin_view(q1, accounts=4)
     ok(f"Admin < 5 Konten: nur Summen, keine Personen ({sorted(v4)}, lights={v4['lights']})",
        v4["lights"] is None and set(v4["units"]) == set(U.POOLS) and v4["total"] == sum(v4["units"].values()) and v4["people"] >= 5)
     v5 = U.admin_view(q1, accounts=5)
-    L = {x["uid"]: x["light"] for x in v5["lights"] or []}
-    ok(f"Admin ab 5 Konten: je Person nur Ampel ({ {k: v for k, v in L.items() if k.startswith('kb-')} })",
-       all(set(x) == {"uid", "light"} for x in v5["lights"]) and L.get("kb-d") == "gelb" and L.get("kb-e") == "rot"
-       and L.get("kb-a") == "gruen" and "kb-adm" not in L)
+    lv = v5["lights"] or {}
+    ok(f"Admin ab 5 Konten: nur Anzahlen je Farbe, keine Kennung ({lv})",
+       set(lv) == {"gruen", "gelb", "rot"} and all(isinstance(n, int) for n in lv.values())
+       and lv["gelb"] >= 1 and lv["rot"] >= 1 and "kb-" not in json.dumps(v5))
+    with connect() as c, c:                              # nur Fragen (nur gemessen) machen nie gelb/rot
+        c.execute("INSERT INTO ai_units (uid, day, pool, units, real_in, real_out) VALUES ('kb-f', ?, 'ask', 999999, 0, 0) "
+                  "ON CONFLICT (uid, day, pool) DO UPDATE SET units=999999", (U.today(),))
+    v6 = U.admin_view(q1, accounts=5)
+    ok(f"Admin-Ampel: nur Fragen zaehlen nicht (Anfragen/Tag begrenzt sie) ({v6['lights']})", v6["lights"] == lv)
     real = U.admin_view(q1)
     ok(f"Admin: Zahl aktiver Konten aus der Datenbank ({real['accounts']})", real["accounts"] >= 7
        and (real["lights"] is None) == (real["accounts"] < 5))
@@ -396,8 +402,9 @@ def run():
     ok("Admin-Seite: Anfragen/Tag bleibt die Stellgroesse, Einheiten klein als Messwert",
        s == 200 and 'name="quota"' in html and 'id="ai-units"><small>Messwert heute in Einheiten' in html
        and "Fragen " in html and "Aufträge " in html)
-    ok("Admin-Seite (>= 5 Konten): Ampel je Person (Gruene nur gezaehlt), keine Einzelwerte",
-       "je Person nur Ampel:" in seg and "× Grün" in seg and "kb-a" not in seg and "kb-d Gelb" in seg and "kb-e Rot" in seg and "3500" not in seg and "4100" not in seg, seg)
+    ok("Admin-Seite (>= 5 Konten): Ampel nur als Anzahlen je Farbe, keine Kennung, keine Einzelwerte",
+       "je Person nur Ampel:" in seg and "× Gelb" in seg and "× Rot" in seg and "kb-" not in seg
+       and "1300" not in seg and "1700" not in seg, seg)
     ok("Admin-Seite: echte Tokens als Summe", "echte Tokens laut Endpunkt:" in seg, seg)
 
     # --- Keine Inhalte in ai_units, Aufraeumen ---------------------------------------------------------------------------

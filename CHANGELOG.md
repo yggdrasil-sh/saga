@@ -62,8 +62,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `prompt_eval_count`/`eval_count`, OpenAI-kompatibel `stream_options.include_usage` (lehnt ein Endpunkt das mit 400
   ab, fragt Saga ohne und merkt es sich). Spuren: Hintergrund-Arbeit bekommt höchstens einen Platz neben den Fragen
   und nur, wenn weniger als `AI_MAX_PARALLEL`−1 Fragen laufen; Fragen werden dafür nie abgewiesen (ab
-  `AI_MAX_PARALLEL` 2). Admin → KI-Assistent zeigt die Einheiten klein als Messwert (unter 5 Konten nur Summen, sonst je
-  Person nur eine Ampel). Tests: `tests/kollegin_budget.py`, Test-Modelle `fake-usage`, `fake-nousage`.
+  `AI_MAX_PARALLEL` 2). Admin → KI-Assistent zeigt die Einheiten klein als Messwert (unter 5 Konten nur Summen, sonst nur die
+  Anzahl Personen je Ampelfarbe aus Aufträgen und Ideen – nie eine Kennung). Tests: `tests/kollegin_budget.py`, Test-Modelle `fake-usage`, `fake-nousage`.
 - **Testgerüst für die Kollegin** (Bugs-DB 2265 K-T): Testuhr `saga/testclock.py` mit `/_test/clock|tick|flush` – nur
   mit `SAGA_TEST_HOOKS=1` und von 127.0.0.1/::1, sonst 404 – und ein beeinflusstes Test-Modell `fake-evil` (schließt den
   Datenrahmen, erfindet Suchen und Aufträge, schickt Bilder/Links mit Daten nach außen). Tests: `tests/testuhr.py`,

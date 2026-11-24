@@ -15,8 +15,8 @@ Uebergang ohne Bruch (Abweichung c): die Frage-Spur bleibt beim Anfragen-Zaehler
   Ein laufender Auftrag (job_running=True) darf den Tagespool um genau einen Schritt ueberziehen, damit er nicht mitten
   im Plan haengt: der Schritt geht noch, solange der Pool nicht voll ist, der naechste nicht mehr.
 Tabelle ai_units(uid, day, pool, units, real_in, real_out): NUR Zahlen, keine Inhalte. 90 Tage, Kontoloeschung ueber
-  USER_TABLES. Admin (M8): admin_view() - Server mit weniger als 5 aktiven Konten zeigen nur Summen, sonst je Person nur
-  eine Ampel (gruen/gelb/rot), nie Einzelwerte. Stellgroesse bleibt "Anfragen/Tag", Einheiten sind ein kleiner Messwert.
+  USER_TABLES. Admin (M8): admin_view() - Server mit weniger als 5 aktiven Konten zeigen nur Summen, sonst nur Anzahlen
+  je Ampelfarbe (gruen/gelb/rot) aus den begrenzten Pools, nie Kennungen oder Einzelwerte. Stellgroesse bleibt "Anfragen/Tag", Einheiten sind ein kleiner Messwert.
 
 Spuren (lane_take/lane_free, ein threading.Lock fuer beide): AI_MAX_PARALLEL (PARALLEL) gilt fuer Fragen wie bisher -
   eine Anfrage je Person (409), hoechstens PARALLEL Fragen gleichzeitig (503); Hintergrund (bg: Auftraege, Ideen) zaehlt
@@ -169,6 +169,9 @@ def left(uid, cfg=None):
     return {"left": max(0, of - n), "of": of}
 
 
+LIMITED = ("job", "idea")                            # Pools, deren Einheiten durchgesetzt werden (Fragen: nur gemessen)
+
+
 def light(units, of):
     if not of:
         return "gruen"
@@ -177,26 +180,34 @@ def light(units, of):
 
 
 def admin_view(cfg=None, accounts=None):
-    """Admin-Bereich (M8), nur Zahlen von heute: {day, accounts, people, units: {pool: n}, total, real_in, real_out,
-    lights}. lights = None bei weniger als MIN_ACCOUNTS aktiven Konten (nur Summen), sonst [{uid, light}] je Person mit
-    Verbrauch - nie Einheiten einer Person. accounts: Zahl aktiver Konten (Standard: aus der Datenbank)."""
+    """Admin-Bereich (M8, K21), nur Zahlen von heute: {day, accounts, people, units: {pool: n}, total, real_in, real_out,
+    lights}. lights = None bei weniger als MIN_ACCOUNTS aktiven Konten (nur Summen), sonst nur Anzahlen je Farbe
+    {gruen, gelb, rot} - nie eine Kennung oder Einheiten einer Person (K21: Admin sieht keine Einzelpersonen). Die Ampel
+    rechnet nur mit den Pools, die wirklich begrenzt werden (LIMITED: Auftraege, Ideen) - Fragen sind nur gemessen und
+    werden ueber "Anfragen/Tag" begrenzt. accounts: Zahl aktiver Konten (Standard: aus der Datenbank)."""
     cfg, day = _cfg(cfg), today()
     with _db() as c:
         rows = c.execute("SELECT uid, pool, units, real_in, real_out FROM ai_units WHERE day=?", (day,)).fetchall()
         if accounts is None:
             accounts = int(c.execute("SELECT count(*) FROM users WHERE disabled=0").fetchone()[0])
-    sums, per = {p: 0 for p in POOLS}, {}
+    sums, per, lim = {p: 0 for p in POOLS}, {}, {}
     rin = rout = 0
     for uid, pool, u, ri, ro in rows:
         sums[pool] = sums.get(pool, 0) + int(u)
         per[uid] = per.get(uid, 0) + int(u)
+        if pool in LIMITED:
+            lim[uid] = lim.get(uid, 0) + int(u)
         rin, rout = rin + int(ri), rout + int(ro)
     people = len([u for u, n in per.items() if n > 0])
     out = {"day": day, "accounts": accounts, "people": people, "units": sums, "total": sum(sums.values()),
            "real_in": rin, "real_out": rout, "lights": None}
     if accounts >= MIN_ACCOUNTS:
-        of = sum(budget("", p, cfg) or 0 for p in POOLS) if int(cfg.get("quota") or 0) > 0 else None
-        out["lights"] = [{"uid": u, "light": light(n, of)} for u, n in sorted(per.items()) if n > 0]
+        of = sum(budget("", p, cfg) or 0 for p in LIMITED) if int(cfg.get("quota") or 0) > 0 else None
+        counts = {"gruen": 0, "gelb": 0, "rot": 0}
+        for n in lim.values():
+            if n > 0:
+                counts[light(n, of)] += 1
+        out["lights"] = counts
     return out
 
 
