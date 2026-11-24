@@ -313,10 +313,19 @@ def cert_ok(n, now=None):
     return not na or na > (now or time.time())
 
 
+def _welcoming(nid):
+    """Bugs-DB 2254: Steuerverbindung schon eingetragen, aber _welcome hat die Wege (ws/tunnel/ice_tcp in _LIVE) noch
+    nicht gesetzt - in diesem Fenster nimmt der Knoten keine neuen Beine an (sonst bekaeme ein Anruf Vorgabe-Wege)."""
+    k = _CONNS.get(nid)
+    return k is not None and not getattr(k, "welcomed", True)
+
+
 def ready(n, now=None):
     """Knoten nimmt neue Beine an: verbunden (Lastmeldung juenger als READY_S), Zustand ok, nicht voll, nicht im Leeren,
-    passende Version, Zertifikat da; der eingebaute nur mit dem Admin-Schalter."""
+    passende Version, Zertifikat da, Anmeldung fertig (_welcome); der eingebaute nur mit dem Admin-Schalter."""
     now = now or time.time()
+    if _welcoming(n["id"]):
+        return False
     live = _LIVE.get(n["id"])
     seen = max(n.get("seen") or 0, (live or {}).get("at") or 0)
     if n.get("builtin") and not (builtin_on() and horn_on()):   # einport: laeuft auch ohne calls.horn (nur Zertifikat)
@@ -329,7 +338,8 @@ def ready(n, now=None):
 def alive(n, now=None):
     """Knoten laeuft und behaelt seine Anrufe: verbunden, Zustand ok bzw. voll, nicht im Leeren/Update/Fehler, passende
     Version, Zertifikat da - anders als ready() auch ueber der Lastgrenze (Kaskade: bestehende Bruecken bleiben, nur neue
-    Beine meiden einen vollen Knoten)."""
+    Beine meiden einen vollen Knoten). Bewusst OHNE die Pruefung auf _welcome (Bugs-DB 2254): ein Wiederverbinden darf
+    laufende Anrufe nicht fuer Millisekunden als verloren erscheinen lassen."""
     now = now or time.time()
     live = _LIVE.get(n["id"])
     seen = max(n.get("seen") or 0, (live or {}).get("at") or 0)
@@ -627,6 +637,7 @@ class _Conn:
         self.q = asyncio.Queue(maxsize=10000)
         self.n = 0
         self.builtin, self.name, self.close_code, self.gen = True, "", 0, None
+        self.welcomed = False                          # Bugs-DB 2254: erst nach _welcome (Wege in _LIVE gesetzt) bereit
 
 
 def _origin():
@@ -903,6 +914,7 @@ async def _welcome(ws, k, nid, hh, builtin):
     _LIVE[nid] = {"load": {"max_legs": hh["max_legs"], "legs": 0, "state": "ok"}, "at": time.time(), "db": time.time(), "stats": stats,
                   "drain_ev": False, "udp_check": hh["udp_check"], "ice_tcp": hh["ice_tcp"],
                   "ws": hh["ws"], "tunnel": hh["tunnel"] and builtin, "frames": hh["frames"]}
+    k.welcomed = True                                  # Bugs-DB 2254: Wege stehen - ab jetzt bereit
     welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
     if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)
         welcome["origins"] = await asyncio.to_thread(HOOKS["origins"])

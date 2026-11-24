@@ -17,6 +17,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Knoten erst nach der Anmeldung bereit** (Bugs-DB 2254): Ein Knoten nimmt neue Anrufe erst an, wenn Saga seine Wege
+  (Tunnel, WebSocket, ICE-TCP) aus der Anmeldung kennt – vorher konnte ein Anruf in den ersten Millisekunden nach dem
+  Verbinden falsche Kandidaten bekommen. Laufende Anrufe sind davon nicht betroffen. Test `tests/horn_bereit.py`.
 - **Menüs bleiben offen, wenn nebenan etwas scrollt** (Bugs-DB 2255): Ein offenes Menü schließt beim Scrollen nur
   noch, wenn sein Auslöser dabei wandert – nicht mehr, wenn ein fremder Bereich scrollt oder ein Dialog seinen
   Scrollstand verspätet zurücksetzt. Neue Browser-Reihe `tests/browser_menue_scrollen.js`.
