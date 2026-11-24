@@ -531,6 +531,36 @@ def deadlock_part(A, Bk):
             req("PUT", "/api/account/status", k, {"state": "available"})
 
 
+def flush_err_part(A):
+    """Pruefer (Bugs-DB 2364): die Zaehler schreibt db.Conn.before_commit ausserhalb des Savepoints von bus.fire - ein Fehler
+    dabei darf nur den Zaehler kosten, nie die eigentliche Aktion derselben Transaktion (BUG-009)."""
+    req("PUT", "/api/account/status", A, {"state": "dnd"})
+    orig = push._held_write
+
+    def boom(*_a, **_k):
+        raise RuntimeError("Pruefer: Zaehler kaputt")
+
+    push._held_write = boom
+    err = None
+    try:
+        try:
+            with connect() as c, c:
+                push.enqueue(c, "ps-a", "chat.message", actor="ps-adm", data={"chat": "fe-1"})
+                c.execute("INSERT INTO user_kv (uid, k, v) VALUES ('ps-a', 'pruefer_fe', '1') ON CONFLICT (uid, k) DO UPDATE SET v='1'")
+        except Exception as ex:  # noqa: BLE001
+            err = f"{type(ex).__name__}: {ex}"
+        push._held_write = orig
+        with connect() as c:
+            kept = c.execute("SELECT 1 FROM user_kv WHERE uid='ps-a' AND k='pruefer_fe'").fetchone() is not None
+        ok(f"Fehler beim Zaehlen vor dem Commit: Aktion trotzdem gespeichert, nur kein Zaehler ({err}, {kept}, {held('ps-a')})",
+           err is None and kept and held("ps-a") is None)
+    finally:
+        push._held_write = orig
+        with connect() as c, c:
+            c.execute("DELETE FROM user_kv WHERE uid='ps-a' AND k IN ('pruefer_fe', 'status_held')")
+        req("PUT", "/api/account/status", A, {"state": "available"})
+
+
 def knock_part(A, ua):
     """2029: Anklopfen - Glocke ohne Push ueber data.hold in enqueue (kein Auftrag, kein Kontingent, nicht gezaehlt);
     Sammel-Push calls.knock_summary waehrend noch aktivem Nicht stoeren: kein Push, die Versuche zaehlen genau einmal fuer
@@ -895,6 +925,7 @@ def run(A, Bk, vpub):
     # --- 2.6 (Bugs-DB 2029-3): Push-Weiche und Sammelmeldung -------------------------------------------------------
     digest_part(A, Bk, ua, pgA, nn)
     deadlock_part(A, Bk)
+    flush_err_part(A)
     knock_part(A, ua)
 
     # --- Abmelden im Browser, "ueberall abmelden" ---------------------------------------------------------------

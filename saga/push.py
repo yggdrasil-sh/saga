@@ -480,8 +480,14 @@ def _held_add(c, uid, s, col, n=1):
 
 
 def _held_flush(c, pend):
-    for key in sorted(pend):
-        _held_write(c, key[0], key[1], pend[key])
+    """Laeuft beim Commit ausserhalb des Savepoints von bus.fire - darum eigener Savepoint: ein Fehler beim Zaehlen kostet
+    nur den Zaehler, nie die eigentliche Aktion (BUG-009, wie vor Bugs-DB 2364 im Zuhoerer)."""
+    try:
+        with c.savepoint():
+            for key in sorted(pend):
+                _held_write(c, key[0], key[1], pend[key])
+    except Exception as ex:  # noqa: BLE001 - eine Benachrichtigung darf Speichern/Senden nie verhindern
+        print(f"push: Sammelmeldung zaehlen: {type(ex).__name__}: {ex}", flush=True)
     pend.clear()
 
 

@@ -2228,7 +2228,8 @@ async def api_direct(cid: str, request: Request):
         if not own and any(horn._welcoming(n["id"]) for n in horn.nodes(c)):
             return node_ready(blk)                        # Bugs-DB 2254: ein Knoten meldet sich gerade an - nicht auf direkt
         names_ = cands | set(own.values())
-        proof = c.execute("SELECT n FROM horn_rate WHERE k=? AND start > ?", (f"horn|{dev}", now - 60)).fetchone()
+        # horn|dev schreibt _rate_db mit Echtzeit (Ratenbremse) - also auch mit Echtzeit vergleichen, nicht mit der Testuhr
+        proof = c.execute("SELECT n FROM horn_rate WHERE k=? AND start > ?", (f"horn|{dev}", time.time() - 60)).fetchone()
         if names_ and not (cands <= avoid and proof and proof[0] >= DIRECT_PROOF):
             return node_ready(blk)
         others = {x["device"] for x in act if x["who"] != uid}
