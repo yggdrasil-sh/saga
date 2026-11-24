@@ -66,6 +66,20 @@ const frames = p => p.evaluate(() => new Promise(r => requestAnimationFrame(() =
   ok(await isOpen(), 'scroll-Ereignis ohne Bewegung (Fenster) schließt nicht');
   await p.evaluate(() => window.HK.closeMenu());
 
+  console.log('Kontextmenü und Seitenwechsel');
+  await p.evaluate(() => {
+    const a = document.createElement('div'); a.className = 'ctx-anchor'; a.id = 'tCtx'; a.style.cssText = 'position:fixed;left:600px;top:300px;width:1px;height:1px';
+    document.body.appendChild(a);
+    window.__openCtx = () => window.HK.openMenu(document.getElementById('tCtx'), m => { m.appendChild(window.HK.menuItem('Kopieren', function () {})); });
+  });
+  await p.evaluate(() => window.__openCtx()); await frames(p);
+  await scroll('window', 200); await frames(p);
+  ok(!(await isOpen()), 'Kontextmenü (fester Punkt) schließt beim Scrollen');
+  await scroll('window', 0); await frames(p);
+  await p.evaluate(() => window.__openT()); await frames(p);
+  await p.evaluate(() => { location.hash = 'menue-' + Date.now(); }); await frames(p); await frames(p);
+  ok(!(await isOpen()), 'Seitenwechsel (hashchange) schließt das Menü');
+
   ok(errs.length === 0, 'keine Skriptfehler (' + errs.join(' | ') + ')');
   await b.close();
   console.log(bad.length ? `\n${n - bad.length}/${n} ok - FEHLER: ${bad.join('; ')}` : `\nMenüs und Scrollen ${n}/${n} - ALLES GRUEN`);

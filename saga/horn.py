@@ -315,9 +315,11 @@ def cert_ok(n, now=None):
 
 def _welcoming(nid):
     """Bugs-DB 2254: Steuerverbindung schon eingetragen, aber _welcome hat die Wege (ws/tunnel/ice_tcp in _LIVE) noch
-    nicht gesetzt - in diesem Fenster nimmt der Knoten keine neuen Beine an (sonst bekaeme ein Anruf Vorgabe-Wege)."""
+    nicht gesetzt - in diesem Fenster nimmt der Knoten keine neuen Beine an (sonst bekaeme ein Anruf Vorgabe-Wege).
+    Nur, solange es noch gar keine Wege gibt (erstes Verbinden nach dem Start von Saga): beim Wiederverbinden gelten die
+    bisherigen Wege weiter, so zieht kein laufender Anruf unnoetig um (Pruefer 2254)."""
     k = _CONNS.get(nid)
-    return k is not None and not getattr(k, "welcomed", True)
+    return k is not None and not getattr(k, "welcomed", True) and "ws" not in (_LIVE.get(nid) or {})
 
 
 def ready(n, now=None):

@@ -4305,8 +4305,9 @@
     }
     // Andere Kandidaten (mit Kaskade, P9): alle 30 s frische Liste, messen, Hysterese entscheidet
     // Bugs-DB 2202: unter CPU-Grenze des Kodierers (hornStats setzt cur.cpuAt) keine Wechsel wegen "besser"
+    // - nur der Rueckweg auf UDP (2201, back) bleibt erlaubt: der Tunnel-/Rahmen-Weg erzeugt oft selbst die CPU-Last
     var cpuHold = cur && H.L.cpuHold && H.L.cpuHold(cur.cpuAt, Date.now());
-    if (cur && !H.switching && !H.rcT && !cpuHold && now - (H.candT || cur.created) >= HORN_CANDS_EVERY) {
+    if (cur && !H.switching && !H.rcT && now - (H.candT || cur.created) >= HORN_CANDS_EVERY) {
       H.candT = now;
       hornCands(R, null, []).then(function (list) {
         var others = list.filter(function (c) { return c.node !== cur.node; });
@@ -4320,7 +4321,7 @@
           // Bugs-DB 2201: Rueckweg vom Knoten ohne UDP (Tunnel/Rahmen-Weg) zu einem Knoten mit UDP-Antwort (horn.js back)
           var x = H.sw.observe(Date.now(), curScore, others.map(function (c) {
             return { node: c.node, score: H.L.score(m[c.node], c, true, fd), back: !!(H.L.back && H.L.back(cur.path, cc, c, m[c.node], true)) };
-          }));
+          }).filter(function (o) { return !cpuHold || o.back; }));
           if (x) hornSwitch(R, 'better', { to: x.to });
         });
       }).catch(function () {});
