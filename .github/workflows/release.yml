@@ -1,12 +1,14 @@
-# Release: VERSION auf main erhoehen (+ Abschnitt in CHANGELOG.md) -> Tag v<VERSION>, Docker-Image
+# Release: auf main traegt CHANGELOG.md fuer die Version aus VERSION einen Abschnitt mit echtem Datum
+# ("## [x.y.z] – JJJJ-MM-TT", nicht 2026-XX-XX) -> Tag v<VERSION>, Docker-Image
 # (amd64 + arm64) nach ghcr.io und GitHub-Release mit den Notizen aus docs/release-notes/<VERSION>.md bzw. CHANGELOG.md.
+# VERSION darf schon auf der naechsten geplanten Version stehen: ohne Datum ist es eine Testversion (testing.yml).
 # Alternativ ein Tag v1.2.3 pushen (muss zu VERSION passen). Gibt es das Tag schon, passiert nichts.
 name: Release
 
 on:
   push:
     branches: [main]
-    paths: [VERSION, .github/workflows/release.yml]
+    paths: [VERSION, CHANGELOG.md, .github/workflows/release.yml]
     tags: ["v*.*.*"]
 
 permissions:
@@ -28,6 +30,10 @@ jobs:
             [ "${GITHUB_REF_NAME#v}" = "$V" ] || { echo "::error::Tag $GITHUB_REF_NAME passt nicht zu VERSION ($V)"; exit 1; }
           elif git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then
             echo "v$V ist schon veroeffentlicht - nichts zu tun"; echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$GITHUB_REF_TYPE" = branch ] && ! grep -Eq "^## \[$(printf '%s' "$V" | sed 's/\./\\./g')\] – [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md; then
+            echo "::notice::CHANGELOG.md hat fuer $V noch kein Release-Datum - kein Release (Testversion: testing.yml)"
+            echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0
           fi
           grep -q "^## \[$V\]" CHANGELOG.md || { echo "::error::CHANGELOG.md hat keinen Abschnitt [$V]"; exit 1; }
           echo "version=$V" >> "$GITHUB_OUTPUT"
