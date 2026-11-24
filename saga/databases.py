@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from db import connect as _db
 from fastapi import APIRouter
-from saga import covers, nextcloud, sublink
+from saga import actor, covers, nextcloud, sublink
 from saga.core import SECRET, _api_guard, _bad, _body, _json_load, origin_of, t
 from saga.files import FILE_QUOTA, FILES_DIR, QuotaFull, copy_owned
 from saga.sharing import access, is_remote
@@ -122,9 +122,9 @@ def note_duplicate(uid, nid, b, origin=None):
             cover, cover_pos = covers.auto(c, uid)
         # Alles kopieren, was die Seite ausmacht: auch Titelbild (+ Position), volle Breite, Schrift und kleiner Text
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, wide, "
-                        "font, small, is_template, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "font, small, is_template, created, updated, updated_actor) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (dst, title, body, r[4], icon, parent, now, r[2], r[5] or "page", r[6], props, cover, cover_pos, r[10], r[12], r[13] or 0,
-                         tpl, now, now))
+                         tpl, now, now, actor.note_actor()))
         # Nextcloud-Bloecke: Signatur gilt je Seite; die Kopie stammt aus einer Seite des Eigentuemers (auch per via, R05)
         new_body = nextcloud.adopt(body, r[4], dst, cur.lastrowid)   # fremdes Ziel: Bloecke der Vorlage nur als Karte
         if dst == owner:

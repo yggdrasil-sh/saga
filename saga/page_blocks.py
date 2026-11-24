@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from db import connect as _db
-from saga import bus, mentions, nextcloud, synced
+from saga import actor, bus, mentions, nextcloud, synced
 from saga.core import _api_guard, _bad, _body, origin_of, t
 from saga.databases import btn_sig, _tpl_buttons
 from saga.notes import (BLOCK_ID_RE, CONTAINERS, FILE_QUOTA, FILES_DIR, _FILE_URL, _iter_blocks, _new_block_id, _snapshot,
@@ -318,7 +318,8 @@ def _move(c, uid, a, b, ids, after, at, rev_a, rev_b, origin, made):
     now = time.time()
     for nid, owner, r, body in ((a, owner_a, ra, body_a), (b, owner_b, rb, body_b)):
         _snapshot(c, owner, nid, r[:3], now, force=True, author=r[5], by=uid)
-        c.execute("UPDATE note SET body=?, rev=rev+1, updated_by=?, updated=? WHERE id=? AND uid=?", (body, uid, now, nid, owner))
+        c.execute("UPDATE note SET body=?, rev=rev+1, updated_by=?, updated_actor=?, updated=? WHERE id=? AND uid=?",
+                  (body, uid, actor.note_actor(), now, nid, owner))
         keep_base(c, nid, r[3] + 1, r[0], body, "blocks", now, (r[3], r[0], r[1], r[2]))
     # 2.5 (P6-5/P6-6): Erwaehnungen still nachfuehren (Verschieben benachrichtigt nicht), synchronisierte Originale/Kopien
     for nid, owner, r, body in ((a, owner_a, ra, body_a), (b, owner_b, rb, body_b)):

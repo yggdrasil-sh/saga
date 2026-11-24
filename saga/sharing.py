@@ -544,6 +544,9 @@ def delete_account(c, uid):
     # ebenso "Angelegt von" und der Autor gesicherter Fassungen (Versionen) auf fremden Seiten
     c.execute("UPDATE note SET created_by=NULL WHERE created_by=? AND uid<>?", (uid, uid))
     c.execute("UPDATE note_version SET author=NULL WHERE author=? AND uid<>?", (uid, uid))
+    # 2.6 (K-A1): ebenso "im Auftrag von" gesicherter Fassungen (ein Dienst schrieb fuer das Konto; der Dienst selbst bleibt
+    # stehen). Auf der Seite steht die Person nur in updated_by (oben schon geleert) - note.updated_actor ist nur der Dienst.
+    c.execute("UPDATE note_version SET on_behalf_of=NULL WHERE on_behalf_of=? AND uid<>?", (uid, uid))
     return n
 
 

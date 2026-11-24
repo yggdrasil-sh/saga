@@ -19,7 +19,7 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
-from saga import bus
+from saga import actor as _actor, bus
 from saga.core import _api_guard, _bad, _body, _json_load, t, ref_of
 from saga.sharing import Access, is_remote, names
 from saga.sharing import unread_count as pages_unread
@@ -95,8 +95,10 @@ def create(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, b
                 c.execute("DELETE FROM notification WHERE id=?", (rid,))
                 old = rid
                 break
-    nid = c.execute("INSERT INTO notification (uid, kind, actor_uid, note_id, comment_id, data, created) VALUES (?,?,?,?,?,?,?)",
-                    (uid, kind, actor, note_id, comment_id, json.dumps(data), now)).lastrowid
+    # 2.6 (K-A1): actor_uid bleibt die Person; schreibt ein Dienst in ihrem Auftrag, steht er zusaetzlich in actor_kind/actor/
+    # on_behalf_of (saga.actor) - ohne Akteur NULL wie bisher
+    nid = c.execute("INSERT INTO notification (uid, kind, actor_uid, note_id, comment_id, data, created, actor_kind, actor, on_behalf_of) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)", (uid, kind, actor, note_id, comment_id, json.dumps(data), now, *_actor.cols())).lastrowid
     bus.emit_after(c, "notification", {"uid": uid, "id": nid, "replaces": old})
     bus.fire("notification.created", c, uid=uid, id=nid, kind=kind, actor=actor, replaces=old)    # saga.push (Handy/Desktop)
     return nid
@@ -212,6 +214,7 @@ def delete_account(c, uid):
     ein spaeteres Konto mit gleichem Namen taucht nie als "hat geteilt" auf. Gebuendelte Namen ebenso."""
     n = c.execute("DELETE FROM notification WHERE uid=?", (uid,)).rowcount
     c.execute("UPDATE notification SET actor_uid=NULL WHERE actor_uid=?", (uid,))
+    c.execute("UPDATE notification SET on_behalf_of=NULL WHERE on_behalf_of=?", (uid,))   # 2.6 (K-A1): Dienst im Auftrag von
     for rid, raw in c.execute("SELECT id, data FROM notification WHERE data LIKE ?", ('%"actors"%' + json.dumps(uid) + "%",)).fetchall():
         d = _json_load(raw, {})
         if uid in d.get("actors", []):

@@ -37,7 +37,7 @@ import re
 import time
 from html import escape
 
-from saga import bus
+from saga import actor, bus
 from saga.core import account_lang
 from saga.i18n import t_lang
 from saga.notes import _iter_blocks, _new_block_id, _snapshot, ensure_ids, keep_base
@@ -112,7 +112,8 @@ def _write(c, uid, nid, row, doc, now, origin):
         return False
     owner, rev = row[0], row[4]
     _snapshot(c, owner, nid, (row[7], row[3], row[2]), now, author=row[8], by=uid)
-    c.execute("UPDATE note SET body=?, rev=rev+1, updated_by=?, updated=? WHERE id=? AND uid=?", (body, uid, now, nid, owner))
+    c.execute("UPDATE note SET body=?, rev=rev+1, updated_by=?, updated_actor=?, updated=? WHERE id=? AND uid=?",
+              (body, uid, actor.note_actor(), now, nid, owner))
     keep_base(c, nid, rev + 1, row[7], body, "blocks", now, (rev, row[7], row[3], row[2]))
     bus.fire("note.saved", c, note_id=nid, owner=owner, rev=rev + 1, by=uid, updated=now, origin=origin or ORIGIN)
     bus.fire("page.content", c, owner=owner, note_id=nid, by=uid)

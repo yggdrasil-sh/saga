@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, covers, dbcalc, siegel, dbvals, mentions, merge, nextcloud, page_widgets, sublink, synced, treesync
+from saga import actor, bus, covers, dbcalc, siegel, dbvals, mentions, merge, nextcloud, page_widgets, sublink, synced, treesync
 from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, local_ref, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -904,9 +904,9 @@ def note_create(uid, b, origin=None):
                 except (ValueError, TypeError) as ex:
                     return _bad(user_error(ex, t("ungültige Werte")))
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, "
-                        "created, updated, updated_by, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "created, updated, updated_by, created_by, updated_actor) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (owner, title, json.dumps({"blocks": []}), "blocks", icon, parent, now,
-                         json.dumps(tags, ensure_ascii=False), kind, schema, props, cover, cover_pos, now, now, uid, uid))
+                         json.dumps(tags, ensure_ascii=False), kind, schema, props, cover, cover_pos, now, now, uid, uid, actor.note_actor()))
         if props and ps:                                   # zweiseitige Relationen: Gegenseite nachziehen
             _rel_sync(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), _may_edit(acc, role))
             dbvals.assigned(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), uid)   # 2.5: db.assigned
@@ -1370,6 +1370,7 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS, editor=None, truste
         if content:
             sets.append("rev=rev+1")
             sets.append("updated_by=?"); args.append(by_)            # fuer den Konflikt-Hinweis bei anderen
+            sets.append("updated_actor=?"); args.append(actor.note_actor())   # 2.6 (K-A1): Dienst im Auftrag von by_ bzw. NULL
         # Atomar: mit Revision nur schreiben, wenn sie seit dem Lesen niemand erhoeht hat (sonst 409, alles zurueck)
         n = c.execute(f"UPDATE note SET {', '.join(sets)}, updated=? WHERE id=? AND uid=?" + (" AND rev=?" if atomic else ""),
                       (*args, now, nid, owner, *((old[3],) if atomic else ()))).rowcount

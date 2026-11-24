@@ -18,6 +18,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Neu
 
+- **Akteur-Spalten für die Kollegin** (Bugs-DB 2266 K-A1, Server): `saga/actor.py` hält fest, ob ein Dienst
+  (`svc:kollegin`, `svc:bridge`, `svc:bot`) im Auftrag einer Person schreibt. Datenbank-Migration 36 (nur neue Spalten):
+  `note.updated_actor`, `note_version` und `notification` je `actor_kind`/`actor`/`on_behalf_of`. Ohne Akteur bleibt
+  alles NULL und unverändert; „Autor“ und „zuletzt geändert von“ bleiben die Person, `versions_list` liefert dasselbe.
+  Eine 2.5-Version startet auf der migrierten Datenbank nicht mehr (Schema zu neu, gewollt). Tests:
+  `tests/kollegin_akteur.py`, `tests/versionen.py`.
 - **Testgerüst für die Kollegin** (Bugs-DB 2265 K-T): Testuhr `saga/testclock.py` mit `/_test/clock|tick|flush` – nur
   mit `SAGA_TEST_HOOKS=1` und von 127.0.0.1/::1, sonst 404 – und ein beeinflusstes Test-Modell `fake-evil` (schließt den
   Datenrahmen, erfindet Suchen und Aufträge, schickt Bilder/Links mit Daten nach außen). Tests: `tests/testuhr.py`,

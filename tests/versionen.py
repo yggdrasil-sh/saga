@@ -95,6 +95,16 @@ try:
         c.execute(db.MIGRATIONS[9]); c.execute(db.MIGRATIONS[9])
         cols = {r[0] for r in c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='file'")}
     ok("Migration 9 beliebig oft ausfuehrbar, Spalten da", {"fed_by", "fed_note"} <= cols)
+    # 2.6 (K-A1, Bugs-DB 2266): Migration 36 (Akteur-Spalten, saga/actor.py) - idempotent, Spalten da.
+    # Ausfuehrlich (ab Stand 35, Schreiben unter einem Akteur): tests/kollegin_akteur.py
+    ok("Schema 2.6: Migration 36 vorhanden", db.SCHEMA_VERSION >= 36 and 36 in db.MIGRATIONS)
+    with psycopg.connect(db.DATABASE_URL) as c:
+        c.execute(db.MIGRATIONS[36]); c.execute(db.MIGRATIONS[36])
+        cols = {(r[0], r[1]) for r in c.execute("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema="
+                                                "current_schema() AND table_name IN ('note','note_version','notification')")}
+    ok("Migration 36 beliebig oft ausfuehrbar, Spalten da", {("note", "updated_actor"), ("note_version", "actor_kind"),
+       ("note_version", "actor"), ("note_version", "on_behalf_of"), ("notification", "actor_kind"), ("notification", "actor"),
+       ("notification", "on_behalf_of")} <= cols)
     real = db.SCHEMA_VERSION
     db.SCHEMA_VERSION = 5                          # so sieht 2.0.x / eine aeltere 2.1-Testversion die Datenbank
     try:

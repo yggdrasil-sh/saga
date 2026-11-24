@@ -441,9 +441,18 @@ def _forced_throttled(c, uid, nid, author, by, now):
         "SELECT 1 FROM note_version WHERE uid=? AND note_id=? AND author=? AND created>? LIMIT 1", (uid, nid, by, now - FORCED_EVERY)).fetchone())
 
 
+# 2.6 (K-A1, saga/actor.py): Akteur einer gesicherten Fassung = Akteur des Stands, der gesichert wird (note.updated_actor,
+# wie author = note.updated_by) - nicht, wer gerade speichert. Schrieb ein Dienst, steht er in actor, actor_kind 'service'
+# und on_behalf_of = note.updated_by (die Person, fuer die er schrieb); sonst alle drei NULL (die Person selbst).
+# Aufrufer sichern immer VOR dem UPDATE der Seite (bzw. den aktuellen Stand) - note zeigt also noch den gesicherten Stand.
+_VERSION_ACTOR = ("CASE WHEN n.updated_actor IS NULL THEN NULL ELSE 'service' END, n.updated_actor, "
+                  "CASE WHEN n.updated_actor IS NULL THEN NULL ELSE n.updated_by END")
+
+
 def _insert_version(c, uid, nid, st, now, author):
-    c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
-              (nid, uid, st[0], st[1], st[2], now, author))
+    c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author, actor_kind, actor, on_behalf_of) "
+              f"SELECT ?,?,?,?,?,?,?, {_VERSION_ACTOR} FROM (SELECT 1) one LEFT JOIN note n ON n.id=? AND n.uid=?",
+              (nid, uid, st[0], st[1], st[2], now, author, nid, uid))
     c.execute("DELETE FROM note_version WHERE uid=? AND note_id=? AND id NOT IN "
               "(SELECT id FROM note_version WHERE uid=? AND note_id=? ORDER BY created DESC LIMIT ?) AND id NOT IN "
               "(SELECT id FROM note_version WHERE uid=? AND note_id=? AND (author IS NULL OR author=?) ORDER BY created DESC LIMIT ?)",

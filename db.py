@@ -1365,6 +1365,18 @@ CREATE TABLE IF NOT EXISTS bookorbit_link (
     uid TEXT PRIMARY KEY, base_url TEXT NOT NULL, account TEXT, secret TEXT, state TEXT NOT NULL DEFAULT 'ok',
     refresh_exp DOUBLE PRECISION, created DOUBLE PRECISION, refreshed DOUBLE PRECISION, updated DOUBLE PRECISION);
 """,
+    # 2.6 (Bugs-DB 2266 K-A, Konzept K22): Akteur-Weichen - person|service, svc:kollegin|svc:bridge|svc:bot, im Auftrag von
+    # (saga/actor.py). NULL = die Person selbst (Bestand unveraendert); author/updated_by/actor_uid bleiben die Person.
+    # note.updated_actor (nur Dienste) geht beim Sichern in note_version. Beliebig oft ausfuehrbar.
+    36: """
+ALTER TABLE note ADD COLUMN IF NOT EXISTS updated_actor TEXT;
+ALTER TABLE note_version ADD COLUMN IF NOT EXISTS actor_kind TEXT;
+ALTER TABLE note_version ADD COLUMN IF NOT EXISTS actor TEXT;
+ALTER TABLE note_version ADD COLUMN IF NOT EXISTS on_behalf_of TEXT;
+ALTER TABLE notification ADD COLUMN IF NOT EXISTS actor_kind TEXT;
+ALTER TABLE notification ADD COLUMN IF NOT EXISTS actor TEXT;
+ALTER TABLE notification ADD COLUMN IF NOT EXISTS on_behalf_of TEXT;
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")

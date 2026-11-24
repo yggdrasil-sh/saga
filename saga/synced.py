@@ -30,7 +30,7 @@ import re
 import secrets
 import time
 
-from saga import bus
+from saga import actor, bus
 from saga.core import t
 from saga.notes import _iter_blocks, base_of, ensure_ids, keep_base, _snapshot, _check_file_refs
 from saga.sharing import RANK, Access, mask_links, viewer
@@ -288,7 +288,8 @@ def write_through(c, uid, sid, blocks, srev, now, origin=None, skip=None):
         except nextcloud.Rejected:
             return "denied"
     _snapshot(c, owner_a, a, row[:3], now, force=bool(info.get("conflicts") or info.get("lost")), author=row[5], by=uid)
-    c.execute("UPDATE note SET body=?, rev=rev+1, updated_by=?, updated=? WHERE id=? AND uid=?", (new_body, uid, now, a, owner_a))
+    c.execute("UPDATE note SET body=?, rev=rev+1, updated_by=?, updated_actor=?, updated=? WHERE id=? AND uid=?",
+              (new_body, uid, actor.note_actor(), now, a, owner_a))
     keep_base(c, a, row[3] + 1, row[0], new_body, "blocks", now, (row[3], row[0], row[1], row[2]))
     mentions.sync(c, owner_a, a, row[1], new_body, uid)
     c.execute("UPDATE synced_block SET content=?, rev=?, updated=? WHERE sid=?",
