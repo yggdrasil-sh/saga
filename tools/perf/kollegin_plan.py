@@ -75,7 +75,7 @@ def main():
         rev = api_v1.page_read(full, row)[1]["rev"]
         r = measure(uid, plan(p_read, dbid, p_write, row, rev), [p_read], args.n)
         ms = limit(args.stage)
-        print("PERF " + json.dumps(r, ensure_ascii=False))
+        print("PERF " + json.dumps(dict(r, stufe=args.stage, limit=ms), ensure_ascii=False))
         bad = bool(r["problems"]) or (ms is not None and r["p95_ms"] > ms)
         print(f"{NAME}: p50 {r['p50_ms']} ms, p95 {r['p95_ms']} ms (Grenze {args.stage}: {ms} ms), Probleme {r['problems']}"
               + (" - GRENZWERT" if bad else " - ok"))

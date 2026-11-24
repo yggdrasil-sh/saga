@@ -6,6 +6,8 @@ Stufe M: dazu 30.000 beendete Auftraege (Verlauf, je 4 Protokollzeilen) und 2.00
 Gemessen (Testuhr angehalten, Zeit als Parameter):
   - Takt im Leerlauf (nichts faellig) p50/p95/max -> Grenzwert limits.json Stufe S/M "Kollegin: Takt 1000 wartende Auftraege"
   - DB-Abfragen je Leerlauf-Takt (Zaehler auf db.Conn.execute) -> hoechstens 1 (harte Grenze dieser Messung)
+  - EXPLAIN (FORMAT JSON) der Takt-Abfrage (jobs._CLAIM, ohne Ausfuehrung): nutzt den Teilindex job_due (K-A6, harte
+    Grenze ab Stufe M; in S nur INFO - bei 1.000 Zeilen darf der Planer auch anders, die Zeitgrenze gilt trotzdem)
   - INFO: Takt mit 20 faelligen (signal vorher, je ein Warte-Schritt, der danach wieder wartet), signal() mit 1.000 Wartenden
     PYTHONPATH=tests/pgshim:. python tools/perf/kollegin_takt.py [--stufe SM] [--n 200]
     (saga-test: tools/testumgebung/umgebung.sh lauf server <slot> $PWD/tools/perf/kollegin_takt.py)
@@ -87,6 +89,27 @@ class Count:
         db.Conn.execute = self.orig
 
 
+def explain():
+    """Plan der Takt-Abfrage (nicht ausgefuehrt) -> (nutzt job_due?, Knoten-Typen)."""
+    t = testclock.now()
+    with connect() as c:
+        r = c.execute("EXPLAIN (FORMAT JSON) " + jobs._CLAIM, (t + jobs.LEASE, t + jobs.LEASE, t, 20)).fetchone()[0]
+    txt = r if isinstance(r, str) else json.dumps(r)
+    nodes = []
+
+    def walk(x):
+        if isinstance(x, dict):
+            if "Node Type" in x:
+                nodes.append(x["Node Type"] + (f" {x['Index Name']}" if x.get("Index Name") else ""))
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+    walk(json.loads(txt))
+    return '"job_due"' in txt, nodes
+
+
 def measure(ids, n):
     for _ in range(5):                            # warm (Pool, Plan-Cache)
         jobs.run_once()
@@ -112,8 +135,9 @@ def measure(ids, n):
         k = jobs.run_once(limit=20)
         due.append(time.perf_counter() - t0)
         assert k == 20, f"faellig: {k}"
+    uses, nodes = explain()
     return {"name": NAME, "n": n, "p50_ms": ms(statistics.median(idle)), "p95_ms": ms(p95(idle)), "max_ms": ms(max(idle)),
-            "queries_per_idle_tick": q_per_tick, "due20_p50_ms": ms(statistics.median(due)), "due20_p95_ms": ms(p95(due)),
+            "queries_per_idle_tick": q_per_tick, "uses_job_due": uses, "plan": nodes, "due20_p50_ms": ms(statistics.median(due)), "due20_p95_ms": ms(p95(due)),
             "signal_p95_ms": ms(p95(sig))}
 
 
@@ -141,11 +165,13 @@ def main():
             finally:
                 cleanup()
             lim = limits.get(st, {}).get(NAME)
-            good = (lim is None or r["p95_ms"] <= lim) and r["queries_per_idle_tick"] <= 1
+            good = (lim is None or r["p95_ms"] <= lim) and r["queries_per_idle_tick"] <= 1 and (st != "M" or r["uses_job_due"])
             fail |= not good
             print(("INFO" if lim is None else "OK  " if good else "FAIL"), f"Stufe {st}: {NAME} p95 {r['p95_ms']} ms (Grenze {lim}), "
                   f"p50 {r['p50_ms']}, max {r['max_ms']}, n={r['n']}; DB-Abfragen je Leerlauf-Takt {r['queries_per_idle_tick']} (Grenze 1)",
                   flush=True)
+            print(("OK  " if r["uses_job_due"] else "FAIL" if st == "M" else "INFO"), f"Stufe {st}: Takt-Abfrage nutzt Index job_due: "
+                  f"{r['uses_job_due']} (Plan {' > '.join(r['plan'])})", flush=True)
             print(f"INFO Stufe {st}: Takt mit 20 faelligen p50 {r['due20_p50_ms']} / p95 {r['due20_p95_ms']} ms, "
                   f"signal() bei 1.000 Wartenden p95 {r['signal_p95_ms']} ms", flush=True)
             print("PERF " + json.dumps(dict(r, stufe=st, limit=lim)), flush=True)
