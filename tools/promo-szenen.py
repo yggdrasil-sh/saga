@@ -47,8 +47,11 @@ sys.path.insert(0, os.path.join(HERE, "handbuch-fakes"))
 
 NAMES = {1: "heute", 2: "seite", 3: "live", 4: "datenbank", 5: "chat", 6: "anruf", 7: "dunkel", 8: "foederation", 9: "admin"}
 FPS = int(os.environ.get("PROMO_FPS") or 30)
-FULL = {"viewport": {"width": 1920, "height": 1080}, "device_scale_factor": 1}
-HALF = {"viewport": {"width": 960, "height": 1080}, "device_scale_factor": 1}
+# Bildgroesse = CSS-Viewport x Faktor. Der Screencast liefert Bilder in CSS-Pixeln mal --force-device-scale-factor des
+# Browsers (nicht mal device_scale_factor des Kontexts) - deshalb startet je Faktor ein eigener Browser (Run.use).
+FULL = {"viewport": {"width": 1280, "height": 720}, "device_scale_factor": 1.5}          # 1920x1080, gut lesbar
+CALL = {"viewport": {"width": 1920, "height": 1080}, "device_scale_factor": 1}           # Anruf (Szene 6): Kacheln gross genug
+HALF = {"viewport": {"width": 768, "height": 864}, "device_scale_factor": 1.25}          # je Fenster 960x1080 (Szene 3)
 PHONE = {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True, "has_touch": True}
 HOSTS = ("127.0.1.1 saga.example\n127.0.1.2 admin.saga.example\n127.0.1.7 verein.example\n127.0.1.8 admin.verein.example\n"
          "127.0.1.9 cal.saga.example\n127.0.0.1 node.saga.example")
@@ -224,6 +227,7 @@ class P(SH.Who):
     def __init__(self, run, user, dark=False, form=FULL, media=None, base=None, voice=False):
         self.run, self.user, self.dark = run, user, dark
         self.base = base or run.base
+        run.use(form.get("device_scale_factor", 1))
         self.ctx = run.b.new_context(color_scheme="dark" if dark else "light", locale="en-US", timezone_id=TZ,
                                      ignore_https_errors=True, **form)
         self.ctx.grant_permissions(["camera", "microphone", "notifications"], origin=self.base)
@@ -422,6 +426,10 @@ def write_scene(name, recs, out_root, layout=None, trim=(0.0, 0.0)):
             ImageDraw.Draw(im).rectangle([958, 0, 961, 1080], fill=(60, 60, 60))
             im.save(os.path.join(d, f"standbild-{k}.png"), optimize=True)
     raw = sum(len(r.frames) for r in recs)
+    from PIL import Image as _I
+    import io as _io
+    sz = [_I.open(_io.BytesIO(base64.b64decode(r.frames[0][1]))).size for r in recs]
+    name += f" {'+'.join('%dx%d' % x for x in sz)}"
     print(f"SZENE {name}: {n} Bilder ({n / FPS:.1f} s, {FPS} fps), Quellbilder {raw}, Standbilder {k}", flush=True)
     return n
 
@@ -672,7 +680,8 @@ def chat_group(run):
     """Familiengruppe ueber die Oberflaeche (Name verschluesselt) und Verlauf; einmal je Lauf."""
     if getattr(run, "gid", None):
         return run.gid
-    ws = {u: P(run, u, media=MEDIA[u]) for u in ("anna", "ben", "clara", "lena")}
+    form = {1: CALL}.get(getattr(run, "scale", 1.5), FULL)
+    ws = {u: P(run, u, form=form, media=MEDIA[u]) for u in ("anna", "ben", "clara", "lena")}
     for w in ws.values():
         keys(run, w)
     a = ws["anna"]
@@ -931,7 +940,7 @@ def s5_chat(run):
     # Clara nimmt eine Sprachnachricht auf
     c.p.click("#ct-mic")
     c.p.wait_for_selector(".ct-rec-stop", timeout=10000)
-    a.wait(5200)
+    a.wait(1500)
     c.p.click(".ct-rec-stop")
     c.p.wait_for_selector(".ct-rec-send", timeout=10000)
     c.p.click(".ct-rec-send")
@@ -954,12 +963,12 @@ def s5_chat(run):
 @scene(6)
 def s6_call(run):
     gid = chat_group(run)
-    b = P(run, "ben", media=MEDIA["ben"], voice=True)
-    c = P(run, "clara", media=MEDIA["clara"])
+    b = P(run, "ben", form=CALL, media=MEDIA["ben"], voice=True)
+    c = P(run, "clara", form=CALL, media=MEDIA["clara"])
     for w in (b, c):
         keys(run, w)
         w.go("/chats", 1500)
-    a = P(run, "anna", media=MEDIA["anna"])
+    a = P(run, "anna", form=CALL, media=MEDIA["anna"])
     keys(run, a)
     a.go(f"/chats#c{gid}", 2500)
     a.p.wait_for_selector("#ct-chat:not([hidden])")
@@ -1192,10 +1201,23 @@ def innen(nur):
                          f'<cachedir>{fonts}/cache</cachedir></fontconfig>')
             env["FONTCONFIG_FILE"] = conf
         origins = ",".join("http://" + h for h in ("saga.example", "admin.saga.example", "verein.example", "admin.verein.example"))
-        run.b = pw.chromium.launch(args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
-                                         "--autoplay-policy=no-user-gesture-required", "--hide-scrollbars",
-                                         f"--unsafely-treat-insecure-origin-as-secure={origins}"],
-                                   env=env, channel=os.environ.get("PW_CHANNEL") or None)
+
+        def use(scale):
+            """Browser mit passendem Geraetefaktor (hoechstens einer offen; offene Kontexte vorher schliessen)."""
+            if getattr(run, "b", None) and run.scale == scale:
+                return
+            if getattr(run, "b", None):
+                for w in list(run.open):
+                    w.close()
+                run.b.close()
+            run.scale = scale
+            run.b = pw.chromium.launch(args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
+                                             "--autoplay-policy=no-user-gesture-required", "--hide-scrollbars",
+                                             f"--force-device-scale-factor={scale}",
+                                             f"--unsafely-treat-insecure-origin-as-secure={origins}"],
+                                       env=env, channel=os.environ.get("PW_CHANNEL") or None)
+        run.use = use
+        use(FULL["device_scale_factor"])
         run.ids = world(run, nur)
         run.dm.save()
         if 8 in nur:                                          # zweiter Server + Foederation (Admin-Oberflaeche, deutsch)
