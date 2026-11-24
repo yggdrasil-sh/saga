@@ -86,7 +86,7 @@ import auth
 from db import connect as _db
 from saga import bus, chat, clientos, horn, horn_bridge, horn_web, notify
 from saga.core import SECRET, _bad, _body, local_ref, t
-from saga import sharing
+from saga import sharing, user_status
 from saga.sharing import names
 
 router = APIRouter()
@@ -2528,6 +2528,7 @@ def chat_extra(c, uid, ch, d):
 
 
 chat.CALLS = __import__("sys").modules[__name__]
+user_status.IN_CALL = _busy_other                   # 2.6 (Bugs-DB 2029): "im Anruf" fuer reachability (ohne den Anruf selbst)
 
 # Benachrichtigung "Verpasster Anruf": Titel/Link wie bei Chat-Nachrichten (nur fuer aktuelle Mitglieder); Design-Runde
 # (UX-30): dazu media (audio/video) - die Glocke buendelt "5 verpasste Videoanrufe" und bietet "Zurueckrufen" an

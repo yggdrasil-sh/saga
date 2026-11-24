@@ -105,6 +105,14 @@ try:
     ok("Migration 36 beliebig oft ausfuehrbar, Spalten da", {("note", "updated_actor"), ("note_version", "actor_kind"),
        ("note_version", "actor"), ("note_version", "on_behalf_of"), ("notification", "actor_kind"), ("notification", "actor"),
        ("notification", "on_behalf_of")} <= cols)
+    # 2.6 (Bugs-DB 2029): Migration 37 (chat_call.hold, eigener Status) - idempotent, Spalte da; user_status aus SCHEMA
+    ok("Schema 2.6: Migration 37 vorhanden", db.SCHEMA_VERSION >= 37 and 37 in db.MIGRATIONS)
+    with psycopg.connect(db.DATABASE_URL) as c:
+        c.execute(db.MIGRATIONS[37]); c.execute(db.MIGRATIONS[37])
+        cols = {(r[0], r[1]) for r in c.execute("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema="
+                                                "current_schema() AND table_name IN ('chat_call','user_status')")}
+    ok("Migration 37 beliebig oft ausfuehrbar, chat_call.hold und user_status da", {("chat_call", "hold"), ("user_status", "ver"),
+       ("user_status", "prefs"), ("user_status", "exc")} <= cols)
     real = db.SCHEMA_VERSION
     db.SCHEMA_VERSION = 5                          # so sieht 2.0.x / eine aeltere 2.1-Testversion die Datenbank
     try:

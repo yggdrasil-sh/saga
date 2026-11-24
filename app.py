@@ -56,6 +56,7 @@ from saga import tasksrc                       # 2.5 (Paket 7): Aufgabenquellen 
 from saga import api_v1, apitok, mcp, webhooks  # 2.5 (Paket 1 E5-E7): API-Tokens, /api/v1, Webhooks, MCP-Server
 from saga import mentions                     # 2.5 (P6-5): @Erwaehnungen (entprellte Mitteilungen)
 from saga import jobs                         # 2.6 (K-A2 2266): Auftrags-Maschine der Kollegin (Worker, Stempel in bus.fire)
+from saga import user_status                  # 2.6 (Bugs-DB 2029): eigener Status /api/account/status, reachability()
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -93,6 +94,7 @@ async def lifespan(_app):
     webhooks.start()                                         # 2.5: Webhook-Zustellung (Ausgangskorb webhook_delivery)
     mentions.start()                                         # 2.5 (P6-5): Erwaehnungen entprellt mitteilen
     jobs.start()                                             # 2.6 (K-A2): Auftraege der Kollegin (nicht bei SAGA_RESTORE_TEST)
+    user_status.start()                                      # 2.6 (Bugs-DB 2029): abgelaufene Status zuruecksetzen (30 s)
     bookorbit.start()                                        # 2.5: BookOrbit-Tokens etwa taeglich erneuern
     await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
     await asyncio.to_thread(contacts.backfill_once)          # 2.5: Kontakte rueckwirkend aus vorhandenen Chats (einmalig)
@@ -371,6 +373,7 @@ app.include_router(importer.router)          # Importe (2.5, Paket 2): /api/impo
 app.include_router(gallery.router)           # Vorlagengalerie (2.5): /api/gallery, /api/gallery/{id}, /api/gallery/{id}/use
 app.include_router(covers.router)            # Titelbild-Galerie (2.5): /covers/<id>.jpg (oeffentlich), /api/covers, /api/account/pages
 app.include_router(siegel.router)            # Saga-Siegel (2.5): /siegel/<farbe>/<motiv>.svg|.png (oeffentlich), /api/siegel
+app.include_router(user_status.router)       # 2.6 (Bugs-DB 2029): /api/account/status, /api/account/status/prefs
 app.include_router(people.router)            # Personen (2.5, Paket 1): GET /api/notes/{nid}/people (Auswahl erwaehnbar/zuweisbar)
 app.include_router(apitok.router)            # 2.5 (Paket 1 E5): /api/account/api-tokens (Sitzung, Bestaetigung)
 app.include_router(api_v1.router)            # 2.5 (Paket 1 E5): oeffentliche API /api/v1/... (nur Bearer-Token sga_)

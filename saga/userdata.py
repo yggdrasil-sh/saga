@@ -19,7 +19,8 @@ USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login"
                "chat_identity", "chat_device", "chat_link", "push_sub", "push_queue", "ai_history", "ai_usage", "ai_units", "chat_ai_reply",
                "mfa_passkey", "mfa_totp", "mfa_recovery", "mfa_challenge", "fed_handle", "chat_fed_cert", "chat_device_fed",
                "fed_chat_block", "chat_invite", "nc_account", "chat_seen", "chat_hidden", "note_fresh", "import_run", "task_source",
-               "api_token", "webhook", "job")      # 2.6: job_step/job_wait/job_event/job_change gehen mit (ON DELETE CASCADE)
+               "api_token", "webhook", "job",      # 2.6: job_step/job_wait/job_event/job_change gehen mit (ON DELETE CASCADE)
+               "user_status")                      # 2.6 (Bugs-DB 2029): eigener Status; aus Ausnahmen anderer: user_status.drop_account
 
 
 def delete_user_data(uid, drop_user=False):
@@ -50,6 +51,8 @@ def delete_user_data(uid, drop_user=False):
         drop_account(c, uid)
         from saga import mentions                 # 2.5 (P6-5): Erwaehnungen der Person (Index) weg, Text im Inhalt bleibt
         mentions.drop_account(c, uid)
+        from saga import user_status              # 2.6 (Bugs-DB 2029): aus den Status-Ausnahmen anderer entfernen
+        user_status.drop_account(c, uid)
         c.execute("UPDATE synced_block SET gone_at=? WHERE owner=? AND gone_at IS NULL", (time.time(), uid))   # P6-6
         counts = {t: c.execute(f"DELETE FROM {t} WHERE uid=?", (uid,)).rowcount for t in USER_TABLES}
         counts["note_share"] = shares

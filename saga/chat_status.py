@@ -73,7 +73,8 @@ def prefs(c, uid):
 
 def me_extra(c, uid):
     """chat.STATUS_ME: Zusatzfelder fuer GET /api/chat/me."""
-    return {"privacy": prefs(c, uid), "features": ["receipts", "online"] + (["chat3"] if chat.v3_new() else []),   # 2.5: Stufe 3
+    return {"privacy": prefs(c, uid), "features": ["receipts", "online"] + (["chat3"] if chat.v3_new() else []) +   # 2.5: Stufe 3
+            ["status1"],                                       # 2.6 (Bugs-DB 2029): eigener Status /api/account/status
             "status_limits": {"receipt_gap": GAP, "presence_ttl": WATCH_TTL, "presence_users": USERS_MAX, "last_round": ROUND}}
 
 

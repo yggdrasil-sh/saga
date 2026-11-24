@@ -18,6 +18,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Neu
 
+- **Eigener Status: Verfügbar / Beschäftigt / Nicht stören** (Bugs-DB 2029, Schritt 2029-1, Server): `saga/user_status.py`
+  mit `GET/PUT /api/account/status` und `PUT /api/account/status/prefs` (Ende oder Dauer, Text bis 80 Zeichen, Herkunft
+  manuell/Fokus, `ver` gegen gleichzeitige Änderungen), Ausnahmen für Personen und eigene Gruppen (höchstens 100),
+  Live-Ereignis `status.changed` an die eigenen Geräte, abgelaufene Status setzt der Server alle 30 s zurück. Dazu die
+  Entscheidungsstelle `reachability()` für die nächsten Schritte (Anrufe, Mitteilungen, Anzeige): Nicht stören vor
+  Ruhezeit vor „im Anruf“ vor Beschäftigt; Wiederholungsanruf derselben Person binnen 180 s kommt durch. Standards nach
+  den Empfehlungen, je Konto umstellbar. Fokus-Namen der Geräte speichert Saga nicht (RT-29). Neue Tabelle
+  `user_status`, Migration 37 (`chat_call.hold`); geht mit dem Konto und ins persönliche Backup (Einstellungen und
+  Ausnahmen). Noch ohne Wirkung auf Anrufe und Mitteilungen und ohne Oberfläche. Fähigkeit `userstatus1` in
+  `/api/version`, `status1` in `/api/chat/me`; Vertrag in `docs/APP-API.md` („Eigener Status“). Tests:
+  `tests/reachability.py`, `tests/status_fehler.py`; Perf „Status: reachability“ (`limits.json`).
 - **Gemeinsame Werkzeug-Registry für MCP und Kollegin** (Bugs-DB 2266 K-A3, Server): `saga/tools.py` hält alle
   Werkzeuge mit Bereich, Schema und neuen Feldern (`klass` read/own/out, `undo`, `mcp`, `kollegin`, `destructive`,
   `targets`); `saga/mcp.py` liest daraus – `tools/list` ist byteweise unverändert (Goldvorlage

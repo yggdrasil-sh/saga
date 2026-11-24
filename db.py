@@ -1085,6 +1085,17 @@ CREATE INDEX IF NOT EXISTS synced_block_note ON synced_block (note_id);
 CREATE TABLE IF NOT EXISTS synced_ref (
     sid TEXT NOT NULL, note_id BIGINT NOT NULL REFERENCES note(id) ON DELETE CASCADE, PRIMARY KEY (sid, note_id));
 CREATE INDEX IF NOT EXISTS synced_ref_note ON synced_ref (note_id);
+-- Eigener Status (2.6, Bugs-DB 2029, saga/user_status.py): Verfuegbar/Beschaeftigt/Nicht stoeren je Konto. until NULL =
+-- bis auf Weiteres (until <= jetzt gilt als available, die Ablauf-Schleife raeumt auf), text hoechstens 80 Zeichen und nur
+-- bei source manual (RT-29: keine Spalte fuer Fokus-Namen der Apps), source manual|focus|system, ver steigt bei jeder
+-- Aenderung (Cache, 409). prefs = Einstellungen, exc = Ausnahmen [{t: user, u} | {t: group, g}]. Keine Zeile = available.
+CREATE TABLE IF NOT EXISTS user_status (
+    uid TEXT PRIMARY KEY, state TEXT NOT NULL DEFAULT 'available', until DOUBLE PRECISION,
+    text TEXT CHECK (text IS NULL OR char_length(text) <= 80), source TEXT NOT NULL DEFAULT 'manual',
+    since DOUBLE PRECISION NOT NULL, updated DOUBLE PRECISION NOT NULL, ver BIGINT NOT NULL DEFAULT 1,
+    prefs JSONB NOT NULL DEFAULT '{}', exc JSONB NOT NULL DEFAULT '[]',
+    CHECK (state IN ('available', 'busy', 'dnd')), CHECK (source IN ('manual', 'focus', 'system')));
+CREATE INDEX IF NOT EXISTS user_status_until ON user_status (until) WHERE until IS NOT NULL;
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
@@ -1426,6 +1437,13 @@ ALTER TABLE note_version ADD COLUMN IF NOT EXISTS on_behalf_of TEXT;
 ALTER TABLE notification ADD COLUMN IF NOT EXISTS actor_kind TEXT;
 ALTER TABLE notification ADD COLUMN IF NOT EXISTS actor TEXT;
 ALTER TABLE notification ADD COLUMN IF NOT EXISTS on_behalf_of TEXT;
+""",
+    # 2.6 (Bugs-DB 2029): eigener Status (saga/user_status.py) - chat_call.hold = warum ein Anruf zurueckgehalten wurde
+    # ('dnd' = Nicht stoeren; setzt 2029-2, Wiederholungsanruf in repeat_s kommt durch). Tabelle user_status steht in SCHEMA.
+    # Bestand: NULL (wie bisher). Beliebig oft ausfuehrbar.
+    37: """
+ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS hold TEXT;
+SELECT hold FROM chat_call LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

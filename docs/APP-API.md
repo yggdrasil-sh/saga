@@ -3816,3 +3816,47 @@ Geräte des Kontos (Server), die Frage kommt also nur einmal. Später unter Eins
   `page` (eigene Seite außer dieser), `task` (erste Aufgabe). Abgehakt wird nur Neues und jeder Punkt nur einmal – wer
   selbst wieder abhakt, behält das.
 - Ältere Clients fragen nicht; die Seite bleibt eine normale Seite.
+
+## Eigener Status: Verfügbar / Beschäftigt / Nicht stören (2.6, Bugs-DB 2029, `userstatus1`)
+
+Je Konto ein Status mit optionalem Ende und kurzem Text. Erkennbar an `userstatus1` in `/api/version` (`status1` dort ist
+weiterhin der Datenbank-Status aus 2.5 Paket 5) bzw. `status1` in `GET /api/chat/me` → `features`. Additiv, `MIN_APP`
+unverändert. Die Wirkung auf Anrufe (Anklopfen, zurückgehaltene Anrufe), Mitteilungen und die Anzeige bei anderen kommt
+in den Schritten 2029-2 bis 2029-4; 2029-1 liefert Speicher, API, Ablauf und die Entscheidungsstelle im Server.
+
+| Aufruf | Antwort |
+|---|---|
+| `GET /api/account/status` | Ansicht (unten) |
+| `PUT /api/account/status {state, until?, dur?, text?, source?, ver?}` | Ansicht; `409` mit Ansicht + `error`, wenn `ver` veraltet ist |
+| `PUT /api/account/status/prefs {…Einstellungen, exceptions?}` | Ansicht; nur genannte Einstellungen ändern sich, `exceptions` ersetzt die ganze Liste |
+
+(`GET /api/status` bleibt der Dienst-Status der Startseite.) Alle Antworten `Cache-Control: no-store`, Fehler `400 {error}`
+ohne Wiederholung der Eingabe.
+
+**Ansicht:** `{state, until, text, source, since, updated, ver, effective, why, quiet, in_call, prefs, exceptions, limits, now}`
+
+- `state`: `available` · `busy` · `dnd` – der gesetzte Zustand, nach Ablauf (`until` ≤ jetzt) sofort `available`
+  (`source: "system"`, Text weg); der Server räumt alle 30 s auf und meldet das.
+- `until`: Ende (Unix-Sekunden) oder `null` = bis auf Weiteres. Beim Setzen `until` **oder** `dur` (Sekunden, ab 60),
+  höchstens ein Jahr voraus; bei `available` immer `null`.
+- `text`: höchstens 80 Zeichen (Steuerzeichen werden Leerzeichen), nur mit `source: "manual"`.
+- `source`: `manual` (Person) · `focus` (Fokus/Konzentration des Geräts) · `system` (Server). Apps senden `manual` oder
+  `focus`. **Fokus-Namen nie senden** – mit `focus` verwirft der Server jeden Text (RT-29); es gibt kein Feld dafür.
+  Ein Fokus-Ende (`{state: "available", source: "focus"}`) hebt einen selbst gesetzten Status nicht auf (Antwort `kept: true`).
+- `ver`: steigt bei jeder Änderung; mitschicken, um gleichzeitige Änderungen zu erkennen (409).
+- `effective`: was gerade wirkt – `dnd` > Ruhezeit > `in_call` > `busy` > `available`; `why`: `manual` · `quiet`
+  (Ruhezeit der Mitteilungen, `PUT /api/push/settings` → `quiet`) · `call` · `none`. `quiet`: Ruhezeit jetzt, `in_call`:
+  gerade im Anruf.
+- `limits`: `{text: 80, exceptions: 100, repeat_s: [30, 3600], until_max, dur_min}`.
+
+**Einstellungen (`prefs`, Standard in Klammern):** `quiet_dnd` (true: Ruhezeiten zählen als geplantes Nicht stören),
+`quiet_digest` (false: danach keine Sammelmeldung), `in_call` (`knock`: weitere Anrufe klopfen an; `busy`: besetzt),
+`show_call` (true: andere sehen „im Anruf“), `busy` (`show`: nur Anzeige; `silent`: Mitteilungen ohne Ton), `repeat`
+(true) und `repeat_s` (180: ruft dieselbe Person innerhalb dieser Sekunden erneut an, kommt der Anruf durch Nicht stören),
+`mention_break` (false: Erwähnungen durchbrechen Nicht stören nicht).
+
+**Ausnahmen (`exceptions`, höchstens 100):** kommen durch Nicht stören und Ruhezeiten.
+`{type: "user", ref}` – Handle (`~…`, eigener Server) oder `~x@host` (anderer Server); zurück mit `name`.
+`{type: "group", name}` – eine der **eigenen** Gruppen. `contact` und `e164` sind reserviert (400).
+
+**Live:** `status.changed` mit der Ansicht – nur an die eigenen Verbindungen (andere Geräte gleichen ab).

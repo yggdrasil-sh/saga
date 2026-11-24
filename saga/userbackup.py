@@ -406,6 +406,8 @@ def collect(c, uid, cfg):
             settings[k] = v
     # 2.5: Kontakte im Chat (Kennung als Handle, nie Anmeldename; Chats selbst nicht - Ende-zu-Ende-verschluesselt)
     chat_contacts = contacts.export(c, uid) if cats.get("settings", True) else []
+    from saga import user_status                  # 2.6 (Bugs-DB 2029): Status-Einstellungen und Ausnahmen (Handles), nicht der Zustand
+    status = user_status.export(c, uid) if cats.get("settings", True) else None
     out_notes = []
     for i in ids:
         n = dict(notes[i])
@@ -422,6 +424,8 @@ def collect(c, uid, cfg):
             "options": {k: bool(cats.get(k, CAT_DEFAULT[k])) for k in CATS}, "excluded": len([x for x in exclude]),
             "notes": out_notes, "versions": versions, "comments": comments, "files": list(files.values()),
             "tasks": tasks, "task_sources": task_sources, "bookmarks": bookmarks, "chat_contacts": chat_contacts}
+    if status:
+        data["user_status"] = status
     return data, files, notes
 
 
@@ -1146,6 +1150,9 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
         if opts.get("contacts"):                       # 2.5: Kontakte (lokale nur, mit denen ein Chat erlaubt ist)
             ncon = contacts.restore(c, uid, data.get("chat_contacts"),
                                     may_local=lambda ref: chat.may_contact(c, uid, contacts.local_uid(c, ref) or "~"))
+        if opts.get("contacts"):                       # 2.6 (Bugs-DB 2029): Status-Einstellungen/Ausnahmen, nur ohne eigene
+            from saga import user_status
+            user_status.restore(c, uid, data.get("user_status"))
         if folder or made:
             tree_changed(c, uid, ([folder] if folder else []) + made, "created")
     return {"pages": len(made), "files": len(fmap), "versions": versions, "tasks": tasks, "task_sources": srcs, "bookmarks": bms,
