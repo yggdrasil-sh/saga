@@ -1,10 +1,11 @@
 """Bilder der Projektseite (docs/index.html und docs/<sprache>/index.html) aus den Aufnahmen w-*.png machen.
 
-  python3 tools/website-bilder.py <ordner-mit-w-png> [docs]
+  python3 tools/website-bilder.py <ordner-mit-w-png> [docs] [--poster]
 
 Aufnahmen: tools/handbuch-stack.sh --nur w-   (Szenen w-* in tools/screens-handbuch.py, Ergebnis in $HB_OUT).
-Ergebnis: docs/bilder/<name>.webp (Desktop hoechstens 2000 px breit, Handy 780 px, WebP Qualitaet 80) und das Poster des
-Promovideos docs/video/saga-promo.jpg (1920x1080, aus w-heute-dunkel, JPEG <= 300 KB). Braucht nur Pillow mit WebP."""
+Ergebnis: docs/bilder/<name>.webp (Desktop hoechstens 2000 px breit, Handy 780 px, WebP Qualitaet 80). Nur mit --poster
+zusaetzlich ein Poster docs/video/saga-promo.jpg (1920x1080, aus w-heute-dunkel, JPEG <= 300 KB) - ohne den Schalter bleibt
+das Poster aus dem Promovideo unangetastet. Braucht nur Pillow mit WebP."""
 import glob
 import os
 import sys
@@ -15,11 +16,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def main():
-    if len(sys.argv) < 2:
+    args = [a for a in sys.argv[1:] if a != "--poster"]
+    want_poster = "--poster" in sys.argv[1:]
+    if not args:
         print(__doc__)
         return 2
-    src = sys.argv[1]
-    docs = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(HERE), "docs")
+    src = args[0]
+    docs = args[1] if len(args) > 1 else os.path.join(os.path.dirname(HERE), "docs")
     out = os.path.join(docs, "bilder")
     os.makedirs(out, exist_ok=True)
     total = 0
@@ -35,7 +38,7 @@ def main():
         total += size
         print(f"{dst}  {im.width}x{im.height}  {size // 1024} KB")
     poster = os.path.join(src, "w-heute-dunkel.png")
-    if os.path.exists(poster):
+    if want_poster and os.path.exists(poster):
         im = Image.open(poster).convert("RGB")
         im = im.resize((1920, round(im.height * 1920 / im.width)), Image.LANCZOS)
         im = im.crop((0, 0, 1920, 1080))

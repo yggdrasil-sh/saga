@@ -2110,7 +2110,7 @@ def b13_07(run):
 
 # =====================================================================================================
 # Projektseite (docs/index.html und Sprachfassungen): Bilder w-* ohne Nummern, tools/website-bilder.py macht daraus
-# WebP unter docs/bilder/ (und das Poster docs/video/saga-promo.jpg). Aufnehmen: tools/handbuch-stack.sh --nur w-
+# WebP unter docs/bilder/ (Poster docs/video/saga-promo.jpg nur mit --poster). Aufnehmen: tools/handbuch-stack.sh --nur w-
 # =====================================================================================================
 def site(name, welt, art, fn, rename):
     """Website-Bild aus einer Handbuch-Szene: gleiche Schritte, ohne Nummern, nur die genannten Bilder."""
