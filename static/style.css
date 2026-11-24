@@ -1117,6 +1117,9 @@ body.notes-page .page.wide .backlinks{max-width:none}
 body.embed .np-head,body.embed .pages-side{display:none}
 body.embed .pages{grid-template-columns:minmax(0,1fr)}
 body.embed .np-main{padding:1rem 1.4rem 3rem}
+/* Bugs-DB 2253: Peek mit Titelbild, aber ohne Icon - der Kopf rueckt nur so weit ins Bild, dass der Titel darunter bleibt
+   (-2.6rem ist fuer das Icon gedacht, das ins Bild ragt; ohne Icon lag der Titel ~13 px im Bild). Seitenansicht unveraendert. */
+body.embed .page-cover:not([hidden]):has(+ .page-head .page-icon.empty){margin-bottom:-1rem}
 
 /* Peek als Seitenansicht links */
 .peek.left .peek-panel{left:0;right:auto;border-left:0;border-right:1px solid var(--border);box-shadow:14px 0 40px rgba(0,0,0,.35);animation-name:peek-in-left}

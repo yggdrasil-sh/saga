@@ -38,6 +38,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Tests: `tests/browser_projektseite.js` (fünf Sprachen, Chromium und Firefox, 1440/390, hell/dunkel, Bewegung an/aus,
   Schalter, reduced-motion, Schriften, nur eigene Anfragen, Animationen nur transform/opacity).
 
+### Behoben – Peek: Seitentitel überlappt das Titelbild nicht mehr (Bugs-DB 2253)
+- Eine Datenbank-Zeile mit Titelbild, aber ohne Icon, seitlich bzw. mittig geöffnet: der Titel lag ~13 px im Bild (der
+  Kopf rückt für das Icon 2,6 rem ins Titelbild). Im Peek rückt er ohne Icon nur noch 1 rem hinein, der Titel steht wie bei
+  Seiten mit Icon knapp darunter; mit Icon und in der normalen Seitenansicht unverändert. Test `tests/browser_peek_titel.js`
+  (hell/dunkel, breit/schmal).
+
 ### Tests – Reste der Server-Suite (Bugs-DB 2247)
 - `formeln.py` prüft im Leck-Test die Werte statt „150“ im ganzen JSON (Zeitstempel); `a3_tunnel.py` wartet auf die
   Werte aus dem hello des Knotens (ws/Tunnel/ICE-TCP) statt nur auf „bereit“; `browser_titelbild.js` wartet nach dem
