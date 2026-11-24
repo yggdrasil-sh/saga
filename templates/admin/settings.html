@@ -10,6 +10,7 @@
     {{ field(_('Titel'), 'title', st.title, max=60, hint=_('Name oben im Dashboard und auf der Anmeldeseite')) }}
     {{ check(_('Registrierung erlauben'), 'registration', st.registration, _('Jeder, der die Seite erreicht, kann sich ein lokales Konto anlegen')) }}
     {{ check(_('Anmeldung mit lokalen Konten'), 'local_login', st.local_login, _('Aus = nur LDAP/SSO auf der Anmeldeseite (Admins kommen hier immer mit lokalem Konto herein)')) }}
+    {{ check(_('„Erste Schritte“ anbieten'), 'first_steps', st.first_steps, _('Neue Konten werden beim ersten Anmelden gefragt, ob sie eine kurze Einführung möchten. Ja = eine Seite mit einer Häkchenliste, die Saga selbst abhakt. Aus = keine Frage, kein Eintrag in den Einstellungen; vorhandene Seiten bleiben.')) }}
     <label class="adm-field"><span>{{ _("Standardsprache") }}</span>
       <select class="hk-in" name="default_lang">
         <option value="">{{ _("Automatisch") }}</option>

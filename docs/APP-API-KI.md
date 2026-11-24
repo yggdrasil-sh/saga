@@ -164,6 +164,7 @@ knappe Suchbegriffe), dann fragt Saga SearXNG (höchstens 6 Treffer) und liest d
 | `status {"web": "failed"}` | Suche fehlgeschlagen – die Antwort kommt trotzdem (ohne Webdaten) |
 | `sources {sources: […]}` (Assistent, ein **zweites** Mal) | Liste ersetzen: Seitenquellen + Webquellen `{"n", "id": null, "title", "url", "host", "web": true}` |
 | `done {…, "web": n, "notice": "…"}` | `web`: Zahl der Webquellen; `notice`: kurzer Hinweis (z. B. „Die Websuche ist gerade nicht erreichbar – Antwort ohne Webdaten.“) unter der Antwort zeigen |
+| `done {…, "text": "…"}` (Assistent, 2.6) | nur wenn Saga die Antwort bereinigt hat (wiederholte Datenmarker, K-T 2265): angezeigten Text durch `text` ersetzen – so steht er auch im Verlauf |
 
 - **Quellen im Assistenten:** `[n]` in der Antwort kann jetzt auch auf eine Webquelle zeigen – dann `url` im Browser
   öffnen (nur `http`/`https`), daneben `host` anzeigen. Der Verlauf (`GET /api/ai/history`) liefert Webquellen genauso.

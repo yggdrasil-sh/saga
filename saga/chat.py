@@ -197,6 +197,15 @@ def sig_msg(chat_id, msg_id, sender, device, ts, reply_to, body_ct):
               hashlib.blake2b(b64d(body_ct) or b"", digest_size=32).digest())
 
 
+def _rate_flush():
+    """Testuhr (K-T 2265): POST /_test/flush leert die Ratenzaehler im Speicher."""
+    _hits.clear()
+
+
+from saga import testclock as _tc  # noqa: E402
+_tc.on_flush(_rate_flush)
+
+
 def _rate(kind, uid, n, per=60.0):
     now = time.time()
     k = (kind, uid)

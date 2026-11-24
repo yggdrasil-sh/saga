@@ -54,7 +54,7 @@
   }
   function newEvent() {
     var box = $('rail-cal'), add = $('rail-cal-add');
-    if (box && !box.hidden && add) add.click();                     // Kalender verbunden: Dialog wie "+" bei den Terminen
+    if (box && !box.hidden && add && !add.hidden) add.click();                     // Kalender verbunden: Dialog wie "+" bei den Terminen
     else HK.go('/notes?v=events');
   }
   function askAI() { if (window.HKAI && HKAI.state()) HKAI.open('ask'); }
@@ -78,7 +78,12 @@
     var box = $('hz-cards'); if (!box || !HK) return;
     var ids = [];
     try { ids = (JSON.parse(store('hk-pg-recent') || '[]') || []).filter(function (x) { return typeof x === 'number'; }); } catch (e) { ids = []; }
-    function empty(on) { $('hz-recent-empty').hidden = !on; box.hidden = on; }
+    function empty(on) {
+      var e = $('hz-recent-empty');
+      if (on && !e.firstChild) e.appendChild(HK.empty({ small: true, text: T('Hier erscheinen die Seiten, die du zuletzt geöffnet hast.'),
+        action: { label: T('Neue Seite'), href: '/notes?new=1' } }));   // 2031: leerer Zustand mit naechstem Schritt
+      e.hidden = !on; box.hidden = on;
+    }
     if (!ids.length) { empty(true); return; }
     HK.api('GET', '/api/notes').then(function (d) {
       var pages = Array.isArray(d) ? d : ((d && d.notes) || []), by = {};

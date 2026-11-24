@@ -93,6 +93,7 @@ def main():
 def run():
     for u, n in (("ki-ca", "Clara KI"), ("ki-cb", "Ben KI"), ("ki-cc", "Cem KI"), ("ki-cd", "Dora KI")):
         auth.create_user(u, CT.PW, n)
+    auth.create_user("ki-cadm", CT.PW, "Admin KI-Chat", is_admin=True)   # bekommt die Benachrichtigung zu Meldungen
     with connect() as c, c:
         auth.ensure_group(c, "ki-cteam")
         auth.ensure_group(c, "ki-cki")
@@ -190,7 +191,7 @@ def run():
     with connect() as c:                                   # Admins: Benachrichtigung "KI-Antwort", nicht "im Chat"
         nd = [x for x in (json.loads(r[0]) for r in c.execute("SELECT data FROM notification WHERE kind='chat.report'").fetchall())
               if x.get("report") == (d or {}).get("id")]
-    ok(f"2258a: Benachrichtigung der Admins als KI-Meldung ({nd[:1]})", not nd or all(x.get("ai") is True for x in nd))
+    ok(f"2258a: Benachrichtigung der Admins als KI-Meldung ({nd[:1]})", nd and all(x.get("ai") is True for x in nd))
     s, d = CT.req("POST", "/api/chat/report", A.k, {"chat": dm, "msgs": [qm["id"]], "reason": "other"})
     ok(f"2258a: eigene normale Nachricht melden -> 400 ({s})", s == 400)
     body = C.decrypt(str(dm), mm[0], B.dev["enc_pk"], B.dev["enc_sk"]) if mm else {}

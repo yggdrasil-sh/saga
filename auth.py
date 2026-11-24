@@ -49,6 +49,7 @@ DEFAULTS = {
     "publish_enabled": True,               # Benutzer duerfen eigene Seiten veroeffentlichen (/@name/<slug>)
     "public_home": 0,                      # veroeffentlichte Seite (note_id) als Startseite "/" fuer Besucher, 0 = keine
     "share_enabled": True,                 # Seiten mit anderen Konten und Gruppen teilen (1.3)
+    "first_steps": True,                   # 2.6 (Bugs-DB 2031): neuen Konten "Erste Schritte" anbieten (saga/firststeps.py)
     "fed_enabled": False,                  # Foederation: mit verbundenen Saga-Instanzen teilen (2.0, saga/federation.py)
     "share_group_scope": False,            # nur mit Konten teilen, mit denen man eine Gruppe gemeinsam hat
     "search_username": True,               # 2.4: Personensuche/Eingaben auch per genauem Anmeldenamen (nie Praefix)

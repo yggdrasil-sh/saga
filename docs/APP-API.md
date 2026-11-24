@@ -3791,3 +3791,28 @@ Die `id` bleibt beim Verringern gleich; den Eintrag in seiner Zeile ersetzen bzw
   `aps.content-available: 1`, kein `alert`, `apns-collapse-id` `u` + `tag`), Felder neben `aps`.
 - Mit „Namen zeigen“ aus gibt es kein `actor` und keinen Namen im Satz (wie immer).
 - Eine noch nicht zugestellte Mitteilung des Chats entfällt, wenn danach nichts Ungelesenes mehr übrig ist.
+
+## Leere Zustände und „Erste Schritte“ (2.6, Bugs-DB 2031)
+
+**Leere Zustände:** Wo eine Liste leer ist (Chats, Aufgaben, Termine, Datenbank-Einträge, Seiten, Mit mir geteilt …),
+zeigt jeder Client einen kurzen Satz, was hier erscheint, und **einen** klaren Knopf zum nächsten Schritt. Fehlt eine
+Voraussetzung (z. B. Chats auf diesem Gerät nicht eingerichtet, kein Kalender verbunden), stehen deren Hinweis und Knopf
+an seiner Stelle („Kalender verbinden“, „Jetzt einrichten“). Leere Zustände kommen ohne KI aus; die Kennenlernen-Karte der
+KI (2.6, K-I) setzt später im leeren Zustand an. Web: Bauteil `HK.empty(opts)` in `static/common.js`.
+
+**Erste Schritte:** Beim ersten Anmelden fragt der Client einmal „Möchtest du eine kurze Einführung?“. Ja → Saga legt eine
+Seite „Erste Schritte“ mit einer Häkchenliste an und hakt Erledigtes selbst ab; Nein → nichts. Die Antwort gilt für alle
+Geräte des Kontos (Server), die Frage kommt also nur einmal. Später unter Einstellungen › Hilfe wieder abrufbar.
+
+| Aufruf | Antwort |
+|---|---|
+| `GET /api/first-steps` | `{enabled, ask, state: null|"yes"|"no", page: id|null, items: [{key, done}]}` – `ask: true` = jetzt fragen. Jeder Abruf hakt neu Erledigtes auf der Seite ab (App: beim Start bzw. beim Wechsel in den Vordergrund aufrufen) |
+| `POST /api/first-steps {answer: "yes"}` | `{ok, page}` – legt die Seite an (bzw. neu an, wenn sie gelöscht wurde) und öffnet sie in der App |
+| `POST /api/first-steps {answer: "no"}` | `{ok}` |
+
+- `enabled: false` (Admin › Allgemein › „Erste Schritte anbieten“ aus): keine Frage, kein Eintrag in den Einstellungen;
+  `POST` gibt 403.
+- Punkte (`key`): `avatar` (Profilbild), `chat` (Chats eingerichtet, nur wenn Chats an sind), `app` (eine App gekoppelt),
+  `page` (eigene Seite außer dieser), `task` (erste Aufgabe). Abgehakt wird nur Neues und jeder Punkt nur einmal – wer
+  selbst wieder abhakt, behält das.
+- Ältere Clients fragen nicht; die Seite bleibt eine normale Seite.

@@ -684,8 +684,6 @@ def report(uid, b):
         ch, m, mem, err = chat._chat_for(c, uid, b.get("chat"), do_sync=False)
         if err:
             return err
-        if not report_allowed(c, uid, now):
-            return _bad(t("Zu viele Meldungen in kurzer Zeit – bitte später erneut."), 429)
         items = []
         if ids:
             rows = c.execute(f"SELECT id, ts, sender_uid, sender_handle FROM chat_msg WHERE chat_id=? AND kind='msg' AND id IN "
@@ -702,6 +700,8 @@ def report(uid, b):
                     items[-1]["ai"] = True
         elif ch["kind"] != "dm":
             return _bad(t("Bitte mindestens eine Nachricht auswählen."), 400)
+        if not report_allowed(c, uid, now):                 # erst nach den Pruefungen: Fehlversuche zaehlen nicht (Pruefer K-T)
+            return _bad(t("Zu viele Meldungen in kurzer Zeit – bitte später erneut."), 429)
         rid = store_report(c, uid, ch["id"], ch["kind"], ch.get("ref"), reason, text, items, now)
         print(f"chat: Meldung {rid} ({reason}, {len(items)} Nachrichten, Chat {ch['id']})", flush=True)
     return chat._no_store({"ok": True, "id": rid})

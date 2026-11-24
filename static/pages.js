@@ -1164,7 +1164,7 @@
     var box = $('pg-shared-box'), ul = $('pg-shared-tree'); if (!box || !ul) return;
     box.hidden = false;
     if (!ul.querySelector('.pg-go') && !ul.querySelector('.pg-tree-empty')) {
-      var e = el('li', 'pg-tree-empty', T('Zurzeit ist nichts mit dir geteilt.')); e.setAttribute('role', 'treeitem'); e.setAttribute('aria-disabled', 'true'); ul.appendChild(e);
+      var e = el('li', 'pg-tree-empty', T('Zurzeit ist nichts mit dir geteilt. Gibt dir jemand eine Seite frei, erscheint sie hier.')); e.setAttribute('role', 'treeitem'); e.setAttribute('aria-disabled', 'true'); ul.appendChild(e);
     }
     drawer(true);
     var f = ul.querySelector('[role="treeitem"]');
@@ -5131,6 +5131,14 @@
           }, null, DB.vh || (DB.vh = new Map()), function (nodes) { nodes.forEach(function (n) { growTitles(n); }); if (freeze) tb.hkStick(); });
         V.indexOfRow = function (id) { for (var i = 0; i < items.length; i++) if (items[i].r && items[i].r.id === id) return i; return -1; };
       } else items.forEach(function (it, i) { body.appendChild(mkItem(i)); });
+      if (!items.some(function (it) { return it.r; })) {     // 2031: leer - was hier erscheint und der naechste Schritt
+        var er = el('tr', 'db-empty-row'), ed = el('td'); ed.colSpan = vis.length + 2;
+        ed.appendChild(HK.empty(DB.rows.length
+          ? { small: true, text: T('Kein Eintrag passt zu den Filtern dieser Ansicht.') }
+          : { small: true, text: T('Noch keine Einträge. Jeder Eintrag ist eine eigene Seite mit den Eigenschaften dieser Spalten.'),
+              action: ro() ? null : { label: T('+ Neuer Eintrag'), run: function () { newRow(); } } }));
+        er.appendChild(ed); body.appendChild(er);
+      }
       tableV = V;
       tb.dataset.rows = String(items.filter(function (it) { return it.r; }).length);   // Anzahl Zeilen (auch ausserhalb des Ausschnitts)
       tb.appendChild(body);

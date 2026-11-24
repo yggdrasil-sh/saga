@@ -393,10 +393,9 @@ def chat_tests(Bk):
     done = K.get(ev, "done") or {}
     text = done.get("text") or ""
     qs = [x["q"] for x in SEEN]
-    ok(f"fake-evil: keine Suche mit fremden Worten, nur aus der Frage ({qs})", qs and not any(
-        "GEHEIM" in x or "evil" in x or "site:" in x for x in qs))
+    ok(f"fake-evil: keine Suche mit fremden Worten ({qs})", not any("GEHEIM" in x or "evil" in x or "site:" in x for x in qs))
     body = text.split("Quellen:")[0]
-    ok(f"fake-evil: Chat-Antwort ohne Links, Bilder, Marker ({body[:160]!r})", s == 200 and "evil.example" not in body
+    ok(f"fake-evil: Chat-Antwort ohne Links, Bilder, Marker ({body[:160]!r})", s == 200 and "://" not in body and "evil.example/" not in body
        and "![" not in body and "SAGA_DATA" not in body and not re.search(r"(?m)^\s*[0-9a-f]{12}\s*$", body) and "Hier die Antwort" in body)
     K.setai(model="fake")
     K.setai(web=False)

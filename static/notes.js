@@ -207,10 +207,21 @@
     document.dispatchEvent(new CustomEvent('hk-heute'));
   }
 
+  // 2031: leerer Zustand - noch nie eine Aufgabe: was hier erscheint + Knopf ins Eingabefeld; sonst "alles erledigt"
+  function emptyTasks(box, rail) {
+    if (!box) return;
+    var open = openList().length, any = open || state.tasks.done.length, kind = any ? 'done' : 'none';
+    box.hidden = open > 0;
+    if (open || box.dataset.kind === kind) return;
+    box.dataset.kind = kind; box.textContent = '';
+    if (any) { box.appendChild(el('p', 'hk-empty-t', rail ? T('Alles erledigt.') : T('Keine offenen Aufgaben.'))); return; }
+    box.appendChild(HK.empty({ small: true, text: T('Hier stehen deine Aufgaben – mit Fälligkeit, Priorität und Wiederholung.'),
+      action: rail ? null : { label: T('Aufgabe notieren'), run: function () { var i = $('task-text'); if (i) i.focus(); } } }));
+  }
   function renderTasks() {
     var ul = $('task-list'); ul.textContent = '';
     openList().forEach(function (t) { ul.appendChild(taskItem(t, false)); });
-    $('task-empty').hidden = openList().length > 0;
+    emptyTasks($('task-empty'), false);
     var dn = state.tasks.done.length, tog = $('task-toggle-done');
     tog.hidden = !dn; $('task-clear').hidden = !dn || !state.showDone;
     tog.textContent = state.showDone ? T('Erledigte ausblenden') : T('Erledigte anzeigen ({n})', { n: dn });
@@ -218,7 +229,7 @@
     if (state.showDone) state.tasks.done.forEach(function (t) { dl.appendChild(taskItem(t, false)); });
     var rl = $('rail-list'); rl.textContent = '';
     openList().forEach(function (t) { rl.appendChild(taskItem(t, true)); });
-    $('rail-empty').hidden = openList().length > 0;
+    emptyTasks($('rail-empty'), true);
     targets();
     badge();
   }

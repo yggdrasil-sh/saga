@@ -226,7 +226,9 @@ async def api_chat_ai_ask(cid: int, request: Request):
         ctxl = "\n".join(f"{_clean(h['name'], NAME_MAX)}: {_clean(h['text'], 300)}" for h in hist[-WEB_CTX:])
         own = "\n".join(_clean(h["text"], 300) for h in hist[-WEB_CTX:] if h.get("name") == asker)   # eigene Zeilen: erlaubt
         st["web"] = w = ai.web_step(uid, c, q, emit, stop, context=ctxl, start=1, quota=quota, own=own)
-        return chat_messages(q, asker, hist, web=w)
+        msgs = chat_messages(q, asker, hist, web=w)
+        st["rid"] = ai.frame_rid(msgs)
+        return msgs
 
     def finish(answer):
         answer = answer.strip()
@@ -235,7 +237,7 @@ async def api_chat_ai_ask(cid: int, request: Request):
         w = st["web"]
         # RT-03 (Bugs-DB 2260): Text des Modells geht an andere - keine Links/Bilder/HTML (kein Abfluss ueber Adressen,
         # keine Linkvorschau); die Webquellen danach kommen von der Suchmaschine, nicht vom Modell
-        answer = ai_frame.no_links(ai.strip_markers(answer), t("[Link entfernt]")).strip()   # K-T 2265: auch keine Marker
+        answer = ai_frame.no_links(ai.strip_markers(answer, st.get("rid")), t("[Link entfernt]")).strip()   # K-T 2265: auch keine Marker
         answer = ai_md.to_chat(answer).strip()            # 2248: Markdown der KI -> Chat-Formatierung (alle Clients)
         if not answer:
             return {"text": ""}
@@ -255,7 +257,9 @@ async def api_chat_ai_ask(cid: int, request: Request):
     web = ai_web.enabled(c) and await asyncio.to_thread(caps.can, uid, "ai_act", None, c)   # 2261: eingeschraenkt -> keine Websuche (web_step prueft auch)
     print(f"chat: Frage an die KI in Chat {chat_id} ({len(q)} Zeichen, {len(hist)} Nachrichten Verlauf"
           f"{', Websuche erlaubt' if web else ''})", flush=True)
-    return ai._respond(uid, c, chat_messages(q, asker, hist), [], finish, left, quota, prep=prep if web else None)
+    msgs0 = chat_messages(q, asker, hist)
+    st["rid"] = ai.frame_rid(msgs0)
+    return ai._respond(uid, c, msgs0, [], finish, left, quota, prep=prep if web else None)
 
 
 def reply_sha(text):

@@ -202,7 +202,15 @@
     var fDayLong = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
     function draw(fresh) {
       accounts().then(function (accs) {
-        if (!accs.length) { box.hidden = true; heute(0); return null; } // nichts verbunden: Bereich bleibt unsichtbar
+        var add = document.getElementById('rail-cal-add');
+        if (add) add.hidden = !accs.length;
+        if (!accs.length) {                       // 2031: nichts verbunden - sagen, was hier erscheint, und wohin es geht
+          if (!window.HKSettings || !HK.empty) { box.hidden = true; heute(0); return null; }
+          box.hidden = false; list.textContent = ''; cnt.textContent = '';
+          list.appendChild(HK.empty({ small: true, cls: 'rc-empty', text: T('Termine aus deinen Kalendern erscheinen hier – für heute und morgen.'),
+            action: { label: T('Kalender verbinden'), run: function () { HKSettings.open('calendar'); } } }));
+          heute(0); return null;
+        }
         var t0 = new Date(); t0 = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate());
         return load(t0, addDays(t0, 2), fresh).then(function (d) {
           box.hidden = false; list.textContent = '';

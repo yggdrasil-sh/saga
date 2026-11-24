@@ -39,6 +39,7 @@ from saga import pmdiag                        # 2.5 (T6): Editor-Diagnose POST 
 from saga import clientlog                     # 2.5: Fehlerberichte/Diagnose POST /api/client/log|diag (Server-Log + diag_event)
 from saga import diagstore                     # 2.5: Diagnose-Meldungen in der DB (Admin -> Diagnose), Puffer + Aufraeumen
 from saga import contacts                        # 2.5: Kontakte im Chat (Tabelle chat_contact, Endpunkte in saga.chat)
+from saga import firststeps                      # 2.6 (Bugs-DB 2031): Erste Schritte /api/first-steps
 from saga import testclock                       # 2.6 (K-T 2265): Testuhr /_test/... nur mit SAGA_TEST_HOOKS=1 und von 127.0.0.1
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, SecHeaders, title
 from saga.dashboard import _status_loop
@@ -307,6 +308,7 @@ def manifest():
     }, media_type="application/manifest+json")
 
 # --- Bereiche (Reihenfolge wie bisher: zuerst registrierte Pfade gewinnen) ---
+app.include_router(firststeps.router)
 app.include_router(testclock.router)           # 2.6 (K-T 2265): sonst 404
 app.include_router(web_auth.router)
 app.include_router(mfa.router)              # Zweiter Faktor: /security, /api/account/security|passkeys|totp|recovery

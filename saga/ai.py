@@ -290,7 +290,7 @@ def history_on(c, uid):
     return bool(r and r[0] == "1")
 
 
-def _save_history(uid, question, answer, sources, opts, web=None):
+def _save_history(uid, question, answer, sources, opts, web=None, rid=None):
     with _db() as c, c:
         if not history_on(c, uid):
             return None
@@ -298,7 +298,7 @@ def _save_history(uid, question, answer, sources, opts, web=None):
         if web:                                            # Webquellen (2.1): Titel und Adresse, Nummern nach den Seiten
             meta["web"] = [{"title": s["title"], "url": s["url"]} for s in web]
         cur = c.execute("INSERT INTO ai_history (uid, created, kind, question, answer, sources) VALUES (?,?,?,?,?,?)",
-                        (uid, time.time(), "ask", question, ai_frame.no_images(strip_markers(answer)), json.dumps(meta, ensure_ascii=False)))
+                        (uid, time.time(), "ask", question, ai_frame.no_images(strip_markers(answer, rid)), json.dumps(meta, ensure_ascii=False)))
         hid = cur.lastrowid
         old = [r[0] for r in c.execute("SELECT id FROM ai_history WHERE uid=? ORDER BY id DESC", (uid,)).fetchall()[HISTORY_MAX:]]
         if old:
@@ -1299,17 +1299,30 @@ _POSTAMBLE = re.compile(r"\n\s*(?:-{3,}\s*\n\s*)?\(?(?:let me know|i hope|feel f
                         r"gib (?:mir )?bescheid|hinweis:|avísame|espero que)[^\n]*\s*$", re.I)
 
 
-def strip_markers(text):
-    """Wiederholte Datenmarker in Antworten (jede Schreibweise, mit Kennung): Zeilen nur aus Markern bzw. nur der Kennung
-    fallen weg, Marker mitten in einer Zeile werden entfernt (Seiten-Hilfen, Verlauf, KI im Chat - K-T 2265)."""
-    keep = []
+def frame_rid(messages):
+    """Kennung des Datenrahmens einer Anfrage (aus dem System-Prompt) oder None."""
+    for m in messages or []:
+        if m.get("role") == "system":
+            r = re.search(r"<<<SAGA_DATA ([0-9a-f]{12})", str(m.get("content") or ""))
+            if r:
+                return r.group(1)
+    return None
+
+
+def strip_markers(text, rid=None, src=None):
+    """Wiederholte Datenmarker in Antworten (jede Schreibweise, mit Kennung): Zeilen nur aus Markern fallen weg, Marker
+    mitten in einer Zeile werden entfernt (Seiten-Hilfen, Verlauf, KI im Chat - K-T 2265). Eine Zeile nur aus der Kennung
+    faellt weg, wenn es die Kennung dieser Anfrage ist (rid) - ohne rid jede Zeile aus 12 Hex-Zeichen, die nicht im
+    Ausgangstext src steht (Commit-Hashes, MAC-Adressen im Text bleiben so erhalten; Pruefer K-T)."""
+    keep, src = [], str(src or "")
     for ln in str(text or "").split("\n"):
         cl = ai_frame.neutral(ln, "")
         if cl != ln:
             if not cl.strip():
                 continue
             ln = cl.rstrip()
-        if re.fullmatch(r"\s*[0-9a-f]{12}\s*", ln):
+        bare = re.fullmatch(r"\s*([0-9a-f]{12})\s*", ln)
+        if bare and (bare.group(1) == rid if rid else bare.group(1) not in src):
             continue
         keep.append(ln)
     return "\n".join(keep).strip("\n")
@@ -1317,7 +1330,7 @@ def strip_markers(text):
 
 def strip_preamble(text, src=""):
     """src = Ausgangstext: beginnt/endet er selbst so ("Hier ist die Liste:"), bleibt die Zeile stehen."""
-    text = strip_markers(text)
+    text = strip_markers(text, src=src)
     src = str(src or "")
     m = _PREAMBLE.match(text)
     if m and src.lstrip()[:12].lower() != m.group(0).lstrip()[:12].lower():
@@ -1946,15 +1959,20 @@ async def api_ai_ask(request: Request):
                 if w["notice"]:
                     done["notice"] = w["notice"]
                 return {"text": no_match_text(q), "extra": done}
-            return ask_messages(q, ctx, extra, web=w)
+            msgs = ask_messages(q, ctx, extra, web=w)
+            st["rid"] = frame_rid(msgs)
+            return msgs
 
         def finish(answer):
             w = st["web"]
             if st["static"]:
                 return {}
             out = {}
-            hid = _save_history(uid, q, answer, srcs, {"tasks": with_tasks, "calendar": with_cal, "web": bool(w.get("sources"))},
-                                web=w.get("sources")) if answer else None
+            clean = strip_markers(answer, st.get("rid")).strip() if answer else answer
+            if answer and clean != answer.strip():              # K-T 2265: Anzeige wie im Verlauf (ohne Marker/Kennung)
+                out["text"] = clean
+            hid = _save_history(uid, q, clean, srcs, {"tasks": with_tasks, "calendar": with_cal, "web": bool(w.get("sources"))},
+                                web=w.get("sources"), rid=st.get("rid")) if clean else None
             if hid:
                 out["history_id"] = hid
             if w.get("sources"):
@@ -1964,7 +1982,9 @@ async def api_ai_ask(request: Request):
             if "quota_left" in w:
                 out["quota_left"] = w["quota_left"]
             return out
-        return _respond(uid, c, ask_messages(q, ctx, extra), [_fmt("sources", {"sources": srcs})], finish, left, quota,
+        msgs0 = ask_messages(q, ctx, extra)
+        st["rid"] = frame_rid(msgs0)
+        return _respond(uid, c, msgs0, [_fmt("sources", {"sources": srcs})], finish, left, quota,
                         prep=prep if web else None)
     except BaseException:
         _release(uid)

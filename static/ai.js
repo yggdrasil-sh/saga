@@ -290,6 +290,7 @@
         if (!pend) { pend = true; (window.requestAnimationFrame || setTimeout)(paint); }
       } else if (ev === 'done') {
         info = d || {};
+        if (typeof info.text === 'string' && !info.no_match) text = info.text;   // bereinigt (K-T 2265)
         if (d.quota_left != null && A.st.quota) A.st.used = A.st.quota - d.quota_left;
       } else if (ev === 'error') {
         if (d.quota_left != null && A.st.quota) A.st.used = A.st.quota - d.quota_left;
@@ -320,8 +321,9 @@
   function reportBtn(text, where, page) {
     var b = el('button', 'btn btn-quiet ai-report', T('Melden …')); b.type = 'button';
     b.title = T('Antwort der KI an die Admins melden');
+    var sent = false;                                     // Pruefer K-T: nicht disabled - sonst geht der Fokus an body
     b.addEventListener('click', function () {
-      if (b.disabled) return;
+      if (sent) return;
       HK.report({ title: T('KI-Antwort melden'), include: T('Antwort der KI mitschicken'), text: text,
         hint: T('Die Meldung geht an die Admins dieses Saga-Servers – mit dem Text, den du hier mitschickst.'),
         send: function (r) {
@@ -329,7 +331,7 @@
           return api('POST', '/api/ai/report', body);
         } }).then(function (r) {
         if (!r) return;
-        b.disabled = true; b.textContent = T('Gemeldet');       // eine Meldung je Antwort; Fokus geht an den Ausloeser zurueck
+        sent = true; b.setAttribute('aria-disabled', 'true'); b.textContent = T('Gemeldet');   // eine Meldung je Antwort; Fokus bleibt am Knopf
         HK.toast(T('Danke – die Meldung ist bei den Admins.'));
       });
     });

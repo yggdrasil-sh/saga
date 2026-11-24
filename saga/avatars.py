@@ -632,6 +632,14 @@ def _public_src(uid, email):
 _up_hits = {}
 
 
+def has_image(uid):
+    """Hat das Konto schon ein Bild (hochgeladen oder abgeholt)? Ohne Abruf; 'fetch' zaehlt nicht (Erste Schritte 2031)."""
+    with _db() as c:
+        row = _row(c, uid) or {}
+        u = c.execute("SELECT email FROM users WHERE username=?", (uid,)).fetchone()
+    return any(k == "have" for _, k in _plan(row, u[0] if u else "", conf()))
+
+
 def state(uid, resolve_now=False):
     with _db() as c:
         row = _row(c, uid) or {}

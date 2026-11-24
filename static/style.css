@@ -1926,6 +1926,15 @@ box-shadow:0 20px 60px rgba(0,0,0,.45);padding:1.1rem 1.2rem 1rem}
 .hk-ask-t{margin:0 0 .45rem;font-size:var(--fs-md);font-weight:600;line-height:1.3;color:var(--fg);text-transform:none;letter-spacing:0}
 .hk-ask-d{margin:0 0 1.1rem;font-size:var(--fs-base);line-height:1.45;color:var(--muted)}
 .hk-ask-d .hk-url{color:var(--fg)}
+/* Leerer Zustand (2.6, 2031): HK.empty */
+.hk-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.5rem;padding:1.6rem 1rem;color:var(--muted);max-width:34rem;margin:0 auto}
+.hk-empty-sm{padding:.6rem .5rem;align-items:flex-start;text-align:left;margin:0}
+.hk-empty-ic{font-size:1.8rem;line-height:1;opacity:.8}
+.hk-empty-t{margin:0;font-size:var(--fs-base);line-height:1.45;color:var(--fg)}
+.hk-empty-sm .hk-empty-t{color:var(--muted)}
+.hk-empty-x{margin:0;font-size:var(--fs-sm);line-height:1.45}
+.hk-empty-go{margin-top:.3rem}
+.hk-empty-sm .hk-empty-go{margin-top:.1rem;font-size:var(--fs-sm);padding:.35rem .7rem}
 /* Melden-Bauteil (2.6, 2258a): HK.report - gilt fuer Chat (ct-rep-*) und KI */
 .hk-rep-l{display:block;font-size:var(--fs-base);margin:.4rem 0 .2rem}
 .hk-rep-reason{width:100%}

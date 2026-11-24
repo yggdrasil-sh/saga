@@ -1,8 +1,11 @@
 """Testuhr und Takt (2.6, Bugs-DB 2265 K-T): eine Uhr fuer Auftraege, Fristen und Morgen-Laeufe der Kollegin, die Tests
 vorstellen koennen - ohne zu warten. Im Betrieb ist now() einfach time.time().
 
-Nur fuer Tests, doppelt gesichert: die Endpunkte gibt es nur mit SAGA_TEST_HOOKS=1 in der Umgebung UND bei Anfragen von
-127.0.0.1/::1 - sonst 404, als gaebe es sie nicht (auch kein Hinweis im Admin-Bereich).
+Nur fuer Tests, dreifach gesichert (Pruefer K-T): die Endpunkte gibt es nur mit SAGA_TEST_HOOKS=1 UND einem Geheimnis
+SAGA_TEST_TOKEN (mindestens 32 Zeichen) in der Umgebung; jede Anfrage braucht den Kopf "X-Saga-Test: <token>" (erzwingt
+auch einen Preflight - kein Aufruf aus fremden Webseiten), kommt von 127.0.0.1/::1 und traegt keine Weiterleitungs-Koepfe
+(Forwarded, X-Forwarded-*, X-Real-IP, Via - ein Reverse-Proxy auf demselben Host kommt so nicht durch). Sonst 404 fuer jede
+Methode, als gaebe es sie nicht. Beim Start steht "TESTHAKEN AKTIV" im Log.
 
   GET  /_test/clock                    -> {now, offset, frozen}
   POST /_test/clock {set?: ts, advance?: sekunden, freeze?: bool, reset?: true}
@@ -12,6 +15,8 @@ Nur fuer Tests, doppelt gesichert: die Endpunkte gibt es nur mit SAGA_TEST_HOOKS
 Pakete haengen sich ein: testclock.on_tick(fn), testclock.on_flush(fn) - fn() ohne Argumente, Ausnahmen werden gezaehlt.
 Tests: tests/testuhr.py
 """
+import hmac
+import math
 import os
 import threading
 import time
@@ -43,8 +48,17 @@ def on_flush(fn):
     return fn
 
 
+_FWD = ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip", "via")
+_MAX = 1e11                                   # Sekunden: Zeitpunkte und Spruenge bleiben endlich und plausibel
+
+
+def _token():
+    tok = os.environ.get("SAGA_TEST_TOKEN") or ""
+    return tok if len(tok) >= 32 else ""
+
+
 def enabled():
-    return os.environ.get("SAGA_TEST_HOOKS") == "1"
+    return os.environ.get("SAGA_TEST_HOOKS") == "1" and bool(_token())
 
 
 def _local(request):
@@ -53,7 +67,15 @@ def _local(request):
 
 
 def _guard(request):
-    return enabled() and _local(request)
+    if not enabled() or not _local(request):
+        return False
+    if any(h in request.headers for h in _FWD):
+        return False
+    return hmac.compare_digest(request.headers.get("x-saga-test", "").encode(), _token().encode())
+
+
+if enabled():
+    print("testclock: TESTHAKEN AKTIV (/_test/clock|tick|flush, nur 127.0.0.1 mit X-Saga-Test) - nie im Betrieb", flush=True)
 
 
 def _view():
@@ -73,7 +95,10 @@ def _run(hooks):
 
 
 def _num(v):
-    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return None
+    v = float(v)
+    return v if math.isfinite(v) and abs(v) < _MAX else None
 
 
 def set_clock(b):
@@ -132,3 +157,9 @@ def post_flush(request: Request):
     if not _guard(request):
         return Response(status_code=404)
     return JSONResponse(_run(_FLUSH), headers={"Cache-Control": "no-store"})
+
+
+@router.api_route("/_test/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
+def _nothing(rest: str):
+    """Alles andere unter /_test (auch falsche Methoden): 404 - nie 405, damit nichts verraet, dass es die Pfade gibt."""
+    return Response(status_code=404)

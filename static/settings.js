@@ -225,6 +225,7 @@
     sec.appendChild(el('h3', null, T('Hilfe')));
     var verP = el('p', 'hk-hint'); sec.appendChild(verP);
     api('GET', '/api/version').then(function (v) { verP.textContent = T('Saga {version}', { version: v.version || '?' }); }).catch(function () { verP.remove(); });
+    if (window.HKFirstSteps) HKFirstSteps.section(sec);       // 2.6 (2031): Erste Schritte wieder abrufen
     var box = el('div', 'hk-diag'); sec.appendChild(box);
     if (!window.HKLog) return;
     HKLog.enabled().then(function (on) {

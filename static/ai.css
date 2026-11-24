@@ -52,7 +52,7 @@
 /* Melden unter Antworten (2258a): unauffaellig, aber gross genug zum Tippen */
 .ai-report{margin-top:.5rem;font-size:var(--fs-sm);border-color:transparent;padding:.35rem .6rem;min-height:2rem}
 .ai-report:hover,.ai-report:focus-visible{border-color:var(--border);color:var(--fg)}
-.ai-report:disabled{opacity:.6;cursor:default}
+.ai-report[aria-disabled="true"]{opacity:.6;cursor:default}
 .ai-answer.ai-live::after{content:"▍";color:var(--accent);animation:ai-blink 1s steps(2) infinite}
 @keyframes ai-blink{50%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.ai-answer.ai-live::after{animation:none}}

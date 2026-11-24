@@ -400,7 +400,7 @@
   function report(opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
-      var prev = document.activeElement, back = lastOwner, px = opts.cls ? ' ' + opts.cls : '', sending = false;
+      var prev = document.activeElement, back = lastOwner && Date.now() - lastAt < 2500 ? lastOwner : null, px = opts.cls ? ' ' + opts.cls : '', sending = false;
       var cl = function (k) { return 'hk-rep-' + k + (opts.cls ? ' ' + opts.cls + '-' + k : ''); };
       var ov = el('div', 'hk-ask hk-rep' + px), box = el('div', 'hk-ask-box hk-rep-box'), uid = 'hk-rep-' + Date.now();
       box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', uid + '-t');
@@ -418,6 +418,7 @@
       cb.addEventListener('change', function () { ta.hidden = !cb.checked; });
       box.appendChild(inc); box.appendChild(ta);
       box.appendChild(el('p', 'hk-hint', window.T('Du kannst den Text vor dem Senden ändern oder kürzen.')));
+      var err = el('p', 'hk-status err hk-rep-err'); err.setAttribute('role', 'alert'); err.hidden = true; box.appendChild(err);
       var bar = el('div', 'hk-ask-bar');
       var no = el('button', 'btn', window.T('Abbrechen')); no.type = 'button';
       var yes = el('button', 'btn btn-danger ' + cl('send'), window.T('Melden')); yes.type = 'button';
@@ -441,10 +442,13 @@
         if (sending) return;
         var r = { reason: sel.value, text: cb.checked ? ta.value.trim() : '' };
         if (!opts.send) { done(r); return; }
-        sending = true; yes.disabled = true; no.disabled = true; box.setAttribute('aria-busy', 'true');
-        Promise.resolve().then(function () { return opts.send(r); }).then(function () { done(r); }, function (e) {
+        sending = true; yes.disabled = true; no.disabled = true; box.setAttribute('aria-busy', 'true'); err.hidden = true;
+        var slow = new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout')); }, 30000); });   // haengt nie fest
+        Promise.race([Promise.resolve().then(function () { return opts.send(r); }), slow]).then(function () { done(r); }, function (e) {
           sending = false; yes.disabled = false; no.disabled = false; box.setAttribute('aria-busy', 'false');
-          if (e && e.message) toast(e.message);
+          var m = e && e.message;                          // Netzfehler ("Failed to fetch") und Zeitueberschreitung: eigener Satz
+          err.textContent = !m || m === 'timeout' || e instanceof TypeError ? window.T('Senden fehlgeschlagen – bitte erneut versuchen.') : m;
+          err.hidden = false;
           yes.focus();                                     // Dialog bleibt offen, der Text bleibt
         });
       });
@@ -454,8 +458,31 @@
       document.body.appendChild(ov); sel.focus();
     });
   }
+  // Leerer Zustand (2.6, Bugs-DB 2031): ein Bauteil fuer alle Orte - kurzer Satz, was hier erscheint, und ein klarer Knopf
+  // zum naechsten Schritt. Fehlt eine Voraussetzung (need), stehen deren Hinweis und Knopf an seiner Stelle.
+  // opts: {text, hint?, icon? (Zeichen), action?: {label, href? | run?}, need?: {text, label, href? | run?}, cls?, small?}
+  // -> Element .hk-empty. Spaeter setzt die Kennenlernen-Karte der KI (K-I) hier an - leere Zustaende bleiben ohne KI vollstaendig.
+  function emptyState(opts) {
+    opts = opts || {};
+    var box = el('div', 'hk-empty' + (opts.small ? ' hk-empty-sm' : '') + (opts.cls ? ' ' + opts.cls : ''));
+    if (opts.icon) { var ic = el('div', 'hk-empty-ic', opts.icon); ic.setAttribute('aria-hidden', 'true'); box.appendChild(ic); }
+    var need = opts.need, act = need || opts.action;
+    box.appendChild(el('p', 'hk-empty-t', need ? need.text : opts.text));
+    if (!need && opts.hint) box.appendChild(el('p', 'hk-empty-x', opts.hint));
+    if (act && act.label) {
+      var b;
+      if (act.href) { b = el('a', 'btn btn-primary hk-empty-go', act.label); b.href = act.href; }
+      else { b = el('button', 'btn btn-primary hk-empty-go', act.label); b.type = 'button'; }
+      if (act.run) b.addEventListener('click', function (e) { if (!act.href) e.preventDefault(); act.run(e); });
+      if (need) b.classList.add('hk-empty-need');
+      box.appendChild(b);
+    }
+    return box;
+  }
+  var ASK_GONE = {};                                   // Weggeklickt/Escape/ersetzt: opts.dismiss (Standard false)
   function ask(opts) {
-    if (askOpen) askOpen(false);
+    if (askOpen) askOpen(ASK_GONE);
+    var dis = Object.prototype.hasOwnProperty.call(opts, 'dismiss') ? opts.dismiss : false;
     return new Promise(function (resolve) {
       var prev = document.activeElement;
       var ov = el('div', 'hk-ask'), box = el('div', 'hk-ask-box');
@@ -474,15 +501,15 @@
         if (askOpen !== done) return;
         askOpen = null; window.removeEventListener('keydown', key, true); ov.remove();
         if (prev && prev.focus && document.contains(prev)) { try { prev.focus(); } catch (e) { /* egal */ } }
-        resolve(v);
+        resolve(v === ASK_GONE ? dis : v);
       }
       function key(e) {
-        if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); done(false); }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); done(ASK_GONE); }
         else if (e.key === 'Tab') { e.preventDefault(); (document.activeElement === no ? yes : no).focus(); }
       }
       no.addEventListener('click', function () { done(false); });
       yes.addEventListener('click', function () { done(true); });
-      ov.addEventListener('mousedown', function (e) { if (e.target === ov) done(false); });
+      ov.addEventListener('mousedown', function (e) { if (e.target === ov) done(ASK_GONE); });
       window.addEventListener('keydown', key, true);
       askOpen = done; document.body.appendChild(ov);
       (opts.danger ? no : yes).focus();
@@ -630,7 +657,7 @@
   }
   window.HK = { personName: personName, tab: TAB, avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, lastMenuOwner: function () { return lastOwner; }, menuItem: menuItem, menuLabel: menuLabel,
-                menuOpen: function () { return !!menuOwner; }, report: report, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg,
+                menuOpen: function () { return !!menuOwner; }, report: report, empty: emptyState, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg,
                 tasks: TS, panelFocus: panelFocus, focusables: focusables,
                 smooth: function () { return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'; } };   // A11Y-07
   // Hell/Dunkel (static/theme-boot.js): wirksamer Modus statt matchMedia; Aenderungen per Ereignis 'hk-theme' auf window
