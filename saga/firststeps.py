@@ -113,7 +113,7 @@ def _markdown(texts, ks):
         "",
         *[f"- [ ] {texts[k]}" for k in ks],
         "",
-        t("Du kannst diese Seite jederzeit löschen. Wiederfinden: Einstellungen › Hilfe › Erste Schritte."),
+        t("Du kannst diese Seite jederzeit löschen. Wiederfinden: Einstellungen › Hilfe (in den Apps: Info) › Erste Schritte."),
     ])
 
 
