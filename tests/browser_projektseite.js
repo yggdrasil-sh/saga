@@ -133,6 +133,10 @@ const srv = http.createServer((q, r) => {
               const res = await p.request.get(new URL(hr, url).href);
               ok(res.ok(), tag + ': relativer Link ' + hr, res.status());
             }
+            // Kopfleiste fast deckend: ueber Nordlicht/dunklen Abschnitten bleiben ihre Links >= 4,5:1 (bei 78 % hell 3,6:1)
+            const topA = await p.evaluate(() => { const c = getComputedStyle(document.querySelector('.top')).backgroundColor;
+              const m = /\/\s*([\d.]+)\s*\)$/.exec(c) || /^rgba\([^)]*,\s*([\d.]+)\)$/.exec(c); return { c, a: m ? +m[1] : 1 }; });
+            ok(topA.a >= 0.9, tag + ': Kopfleiste deckend', topA);
             // Fokus sichtbar: erster Tab-Halt (Sprunglink) bekommt einen Rahmen
             if (w === 1440) {
               await p.keyboard.press('Tab');
