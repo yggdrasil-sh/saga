@@ -125,6 +125,29 @@ def main():
         finally:
             X.calls.group_create, X.calls._dict, X.calls.horn_block = old
         ok(f"Tunnel-Knoten + geteilter Knoten, {what}: Anruf auf horn-1 ({s}, {got.get('node')})", s == 200 and got.get("node") == "horn-1")
+    # Bugs-DB 2357: Kandidaten fuer eigene Geraete im foederierten 1:1 - kein Tunnel-Knoten, solange ein anderer bereit ist
+    # (Feld bb03f9d7: Anruf auf horn-1, die Geraete waehlten per Messung trotzdem den eingebauten -> Kaskade). Lokales 1:1
+    # und Gruppen unveraendert; nur Tunnel-Knoten bereit: der bleibt.
+    old = (horn.leg_ws, horn.token)
+    horn.leg_ws, horn.token = (lambda c, cid, dev: "ws"), (lambda *a, **k: "tok")
+    try:
+        def names(callee, nodes):
+            setup([(nid, tun) for nid, tun, _ in nodes])
+            horn.nodes = lambda c: [{"id": nid, "builtin": int(b), "name": nid, "share": int(not b), "udp": int(not b),
+                                     "url": "https://" + nid} for nid, _, b in nodes]
+            call = {"id": "c" * 32, "kind": "group", "topo": "horn", "caller": "anna", "callee": callee}
+            return [x["node"] for x in X.calls.horn_block(_C(), call, "d" * 32)["candidates"]]
+        both = [("saga.proxy", True, True), ("horn-1", False, False)]
+        got = names("bert@b.example", both)
+        ok(f"Kandidaten foederiertes 1:1 (Geraet mit ws): nur horn-1, kein Tunnel-Knoten ({got})", got == ["horn-1"])
+        got = names("bert", both)
+        ok(f"Kandidaten lokales 1:1: beide (Kaskade wie bisher) ({got})", sorted(got) == ["horn-1", "saga.proxy"])
+        got = names("", both)
+        ok(f"Kandidaten Gruppenanruf: beide ({got})", sorted(got) == ["horn-1", "saga.proxy"])
+        got = names("bert@b.example", [("saga.proxy", True, True)])
+        ok(f"Kandidaten foederiertes 1:1, nur Tunnel-Knoten bereit: der bleibt ({got})", got == ["saga.proxy"])
+    finally:
+        horn.leg_ws, horn.token = old
     n = sum(RES)
     print(f"\nHORN-Y-FED-REACH {n}/{len(RES)} - " + ("ALLES GRUEN" if n == len(RES) else "FEHLER"))
     sys.exit(0 if n == len(RES) else 1)
