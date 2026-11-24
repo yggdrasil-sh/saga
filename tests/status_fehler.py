@@ -24,7 +24,14 @@ from db import connect  # noqa: E402
 import chat as CT  # noqa: E402  (tests/chat.py: req, ck, Stream)
 from saga.core import local_ref  # noqa: E402
 
-req, ck, ok, res = CT.req, CT.ck, CT.ok, CT.res
+req, ck, res = CT.req, CT.ck, CT.res
+
+
+def ok(n, c, info=""):
+    res.append(bool(c))
+    print(("OK  " if c else "FAIL"), n, "" if c else str(info)[:300], flush=True)
+
+
 PW = "Status-Pass-1234"
 A, B, C = "sf-anna", "sf-bert", "sf-cora"
 FOCUS = "Therapie"
