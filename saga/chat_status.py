@@ -416,6 +416,7 @@ _rstate = {}           # Prinzipal -> {"online", "last", "exp"} (vom Server der 
 _rsub = {}             # Prinzipal -> letzte Abo-Erneuerung beim Server der Person
 _fsub = {}             # Konto hier -> {peer_id: ablauf} (Abos anderer Server)
 _alias = {}            # (Person, abonnierendes Konto) -> Kennung der Anfrage (2.5: Handle '~x@host' aus Chats der Stufe 3)
+_shown = {}            # Konto hier -> zuletzt verteilte Anzeige (mit "im Anruf", ohne, st an andere Server) - 2029-4
 
 
 def _round(ts):
@@ -547,7 +548,11 @@ def presence(uid, users, leave=False):
         rem = sorted(u for u in ok if sharing.is_remote(u))
         out = _local_state(c, loc)
         # 2029-4: eigener Status auch bei "Online-Status aus" (eigener oder der Person) - nur "im Anruf" braucht beide an
-        status = {u: _disp(US.shown_parts(c, u), on and u not in off_t, True) for u in loc_all}
+        status = {}
+        for u in loc_all:
+            p_ = US.shown_parts(c, u)
+            status[u] = _disp(p_, on and u not in off_t, True)
+            _stale(u, lambda o, p_=p_, u_on=u not in off_t: o != (_disp(p_, u_on, True), _disp(p_, False, True), _wire(p_, u_on)))
         renew = {}
         if rem and F.enabled():
             me_h = FC.my_handle(c, uid)
@@ -668,10 +673,25 @@ def status_changed(uid):
         with _db() as c:
             p = US.shown_parts(c, uid)
             t_on = is_on(c, uid, KV_ONLINE)
+            # Pruefer: nur verteilen, was sich fuer andere sichtbar geaendert hat - sonst verriete schon der Zeitpunkt eines
+            # gleichen Ereignisses (Anruf beginnt/endet, Einstellungen geaendert) Aktivitaet trotz "Online-Status aus"/show_call aus
+            cur = (_disp(p, t_on, True), _disp(p, False, True), _wire(p, t_on))
+            with _wl:
+                old = _shown.get(uid)
+                if len(_shown) >= 20000:
+                    _shown.clear()
+                _shown[uid] = cur
+            if old == cur:
+                return
             vs = _viewers(c, uid, status=True)
             off = _off(c, KV_ONLINE, vs)
-            evs = [(v, {"username": _as(uid, v), "status": _disp(p, t_on and v not in off, True)}) for v in vs]
-            subs = [pid for pid in _fed_subs(uid) if F.feature(F.peer_by(c, "id", pid), "userstatus1")]
+            evs = []
+            for v in vs:
+                i = 0 if v not in off else 1       # cur[0]: Sicht mit eigenem Online-Status (t_on steckt schon drin)
+                if old is None or old[i] != cur[i]:
+                    evs.append((v, {"username": _as(uid, v), "status": cur[i]}))
+            subs = [pid for pid in _fed_subs(uid) if F.feature(F.peer_by(c, "id", pid), "userstatus1")] \
+                if old is None or old[2] != cur[2] else []
             h = FC.my_handle(c, uid) if subs else None
     except Exception as ex:  # noqa: BLE001 - Datenbank gerade weg; RT-29: nur die Art des Fehlers, nie Werte
         print(f"chat_status: Status {type(ex).__name__}", flush=True)
@@ -679,24 +699,33 @@ def status_changed(uid):
     for v, d in evs:
         bus.emit("direct", {"uids": [v], "typ": "chat.status", "data": d})
     if h:
-        st = _wire(p, t_on)
+        st = cur[2]
         for pid in subs:                           # nicht verwerfen (anders als online): sonst bis zur Abo-Erneuerung alt
             FC._volatile(pid, {"op": "online.ev", "items": [{"h": h, "st": st}]}, drop=False)
 
 
+def _stale(uid, differs):
+    """Abfrage sieht einen anderen Stand als zuletzt verteilt (Aenderung ohne Haken, z. B. Anruf): Merker vergessen, damit
+    die naechste Aenderung sicher an alle geht (lieber ein Ereignis zu viel als eine verpasste Aenderung)."""
+    with _wl:
+        o = _shown.get(uid)
+        if o is not None and differs(o):
+            _shown.pop(uid, None)
+
+
 def _on_shown(c, uid):
-    """user_status.SHOWN_HOOKS: nach dem Commit von c neu verteilen (bei Rollback nichts)."""
-    c.after_commit(lambda: status_changed(uid))
+    """user_status.SHOWN_HOOKS: nach dem Commit von c neu verteilen (bei Rollback nichts); c None: sofort."""
+    if c is None:
+        status_changed(uid)
+    else:
+        c.after_commit(lambda: status_changed(uid))
 
 
 def on_call_change(c, uid, in_call=None):
     """2029-2 (calls/fed_calls, ueber user_status.call_changed): Anruf von uid begonnen/beendet -> "im Anruf" an die
     berechtigten Chat-Partner (Presence-Regeln: Abo, gemeinsamer angenommener Chat, show_call, beide Online-Status an) und
     andere Server (st.call). c: laufende Transaktion (verteilt nach dem Commit) oder None (sofort). in_call: nur Hinweis."""
-    if c is None:
-        status_changed(uid)
-    else:
-        _on_shown(c, uid)
+    _on_shown(c, uid)
 
 
 def _fed_subs(uid):
@@ -826,7 +855,8 @@ def op_online(c, peer, d):
         else:
             continue
         if ust:                                    # nur shown_parts() ohne Text; "im Anruf" nur mit eigenem Online-Status
-            e["st"] = _wire(US.shown_parts(c, u), u in st)
+            e["st"] = w = _wire(US.shown_parts(c, u), u in st)
+            _stale(u, lambda o, w=w: o[2] != w)
         out[want[u]] = e
     return 200, {"users": out, "ttl": WATCH_TTL}
 
