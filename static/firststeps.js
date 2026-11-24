@@ -25,7 +25,7 @@
       || (C && ((C.busy && C.busy()) || (C.ringing && C.ringing().length))));
   }
   function later(n) {
-    if (asked || !F.st || !F.st.ask) return;
+    if (asked || !F.st || !F.st.ask || document.body.classList.contains('embed')) return;
     if (!blocked()) { ask(); return; }
     if (n < 60) setTimeout(function () { later(n + 1); }, 2000);
   }
@@ -43,7 +43,7 @@
     return api('GET', '/api/first-steps').then(function (d) {
       F.st = d;
       document.dispatchEvent(new CustomEvent('hk-first-steps', { detail: d }));
-      if (d.ask) later(0);
+      if (d.ask) setTimeout(function () { later(0); }, 1500);   // erst den Anrufstatus abwarten (Klingeln, Leiste)
       return d;
     }).catch(function () { return null; });
   };
