@@ -7257,8 +7257,36 @@
       progress: { src: 'fixed', value: 0, max: 100 }, metric: { db: null, view: '', agg: 'count', prop: '', fmt: 'num' },
       quote: { src: 'fixed', items: [], pick: 'daily' }, weather: { place: '', lat: null, lon: null, units: 'metric', days: 5 },
       habit: { db: null, view: '', date: '', habits: [], range: 7 }, upcoming: { days: 7, cal: true, tasks: true, overdue: true, dbs: [], limit: 10 },
-      chart: { db: null, view: '', type: 'bar', x: '', agg: 'count' }, reading: { show: 'current', limit: 3 },
+      chart: { db: null, view: '', type: 'bar', x: '', agg: 'count', y: '', sort: 'x', fmt: 'num' }, reading: { show: 'current', limit: 3 },
       subpages: { view: 'list', image: 'cover' } }[kind] || {};
+  }
+  // Diagramm-cfg in die Form bringen, die der Server speichert (saga/dbcalc.py clean_chart_spec + db/view aus
+  // saga/page_widgets.py _clean_cfg): Stufe 1 bereinigt der Server beim Speichern still, live lehnt er jede Abweichung als
+  // "sanitize" ab (Panel loescht z. B. y bei Rechenart Anzahl, sort "x", setzt prop) - Bugs-DB 2361. In place; Felder, die
+  // der Server nicht kennt, fallen wie dort weg.
+  var WG_CHART_KEYS = ['type', 'x', 'agg', 'y', 'sort', 'fmt', 'bucket', 'status', 'series', 'limit', 'cumulative', 'stack', 'empty', 'goal', 'order', 'db', 'view'];
+  function wgChartClean(c) {
+    var ser = ['bar', 'hbar', 'line', 'area'];
+    Object.keys(c).forEach(function (k) { if (WG_CHART_KEYS.indexOf(k) < 0) delete c[k]; });
+    if (['bar', 'hbar', 'line', 'area', 'pie', 'donut', 'number'].indexOf(c.type) < 0) c.type = 'bar';
+    if (typeof c.x !== 'string') c.x = '';
+    if (['count', 'sum', 'avg', 'min', 'max', 'pct_checked'].indexOf(c.agg) < 0) c.agg = 'count';
+    if (typeof c.y !== 'string' || c.agg === 'count') c.y = '';
+    if (['x', 'y_desc', 'y_asc', 'manual'].indexOf(c.sort) < 0) c.sort = 'x';
+    if (['num', 'pct', 'eur'].indexOf(c.fmt) < 0) c.fmt = 'num';
+    if (c.agg === 'pct_checked') c.fmt = 'pct';
+    if (['day', 'week', 'month', 'quarter', 'year'].indexOf(c.bucket) < 0) delete c.bucket;
+    if (c.status !== true) delete c.status;
+    if (!(ser.indexOf(c.type) >= 0 && typeof c.series === 'string' && c.series && c.series !== 'title')) delete c.series;
+    if (typeof c.limit === 'number' && isFinite(c.limit) && Math.round(c.limit) === c.limit) c.limit = Math.max(3, Math.min(50, c.limit)); else delete c.limit;
+    if (!((c.type === 'line' || c.type === 'area') && c.cumulative === true)) delete c.cumulative;
+    if (!(['bar', 'hbar', 'area'].indexOf(c.type) >= 0 && c.stack === true && c.series)) delete c.stack;
+    if (c.empty !== 'show') delete c.empty;
+    if (!(typeof c.goal === 'number' && isFinite(c.goal) && Math.abs(c.goal) < 1e12)) delete c.goal;
+    if (c.sort !== 'manual' || !Array.isArray(c.order)) delete c.order;
+    if (typeof c.view !== 'string') c.view = '';
+    if (!(typeof c.db === 'number' && c.db > 0 && Math.round(c.db) === c.db)) c.db = null;
+    return c;
   }
   function wgFmt(v, fmt) {
     if (v == null || typeof v !== 'number' || !isFinite(v)) return '–';
@@ -7285,8 +7313,13 @@
     if (!this.data.kind) this.data.kind = 'metric';
     if (WG_KINDS.indexOf(this.data.kind) >= 0) {
       this.data.v = 1;
-      if (!d.cfg && !S.loading) S.wgNew = Date.now();     // eben eingefuegt: Einstellungen gleich oeffnen (Editor.js baut den Block
-                                                           // dabei mehrmals - das Panel geht am Block auf, der bleibt)
+      // eben eingefuegt: Einstellungen gleich oeffnen. Merker an diesem Block (ID, sonst diese Instanz), nicht seitenweit -
+      // sonst nahm ein anderes Widget, das in den 3 s neu gezeichnet wurde (live: Server lehnt ab -> Seite neu gebunden),
+      // das Panel (Bugs-DB 2361). Editor.js (Werkzeugkasten): erst ein Vorlage-Block nur lesend ohne cfg (composeBlockData),
+      // dann der echte Block mit dessen Daten (cfg schon gesetzt) - die Vorlage merkt vor, der naechste echte Block uebernimmt
+      var now = Date.now(), mine = { at: now, id: (o.block && o.block.id) || null, inst: this };
+      if (!d.cfg && !S.loading) S.wgNew = o.readOnly ? { at: now, pend: true } : mine;
+      else if (!o.readOnly && !S.loading && S.wgNew && S.wgNew.pend && now - S.wgNew.at < 1000) S.wgNew = mine;
       this.data.cfg = Object.assign(wgDefaults(this.data.kind), this.data.cfg || {});
     }
     this.block = o.block; this.ro = !!o.readOnly; this.pv = null; this.schemas = {};
@@ -7304,18 +7337,24 @@
     this.card.addEventListener('click', function (e) { if (e.target.closest('a')) return; if (self.editable() && !self.panel) self.openPanel(); });
     WG.add(this); this.draw();
     if (wgServer(this.data) && !S.loading && S.cur && !(this.block && S.wvals && this.block.id in S.wvals)) wgSoon();   // z. B. im eben aufgeklappten Toggle
-    if (S.wgNew && this.editable()) (function wait(n) {
+    if (wgMine(this) && this.editable()) (function wait(n) {
       setTimeout(function () {
-        if (self.panel || !S.wgNew || Date.now() - S.wgNew > 3000) return;
-        if (w.isConnected) { S.wgNew = 0; self.openPanel(); } else if (n > 0) wait(n - 1);
+        if (self.panel || !wgMine(self) || Date.now() - S.wgNew.at > 3000) return;
+        if (w.isConnected) { S.wgNew = null; self.openPanel(); } else if (n > 0) wait(n - 1);
       }, 80);
     })(25);
     return w;
   };
+  // Gehoert der Merker "eben eingefuegt" zu diesem Block? (gleiche Block-ID - Editor.js baut neu - oder dieselbe Instanz)
+  function wgMine(x) {
+    var m = S.wgNew, bid = x.block && x.block.id;
+    return !!m && (m.inst === x || (!!m.id && bid === m.id));
+  }
   WidgetTool.prototype.editable = function () { return !this.ro && !readOnly() && WG_KINDS.indexOf(this.data.kind) >= 0; };
   WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); if (this.panel && this.panel.classList.contains('wg-panel-float')) { clearInterval(this.floatT); document.body.classList.remove('wg-sheet'); if (this.floatRs) removeEventListener('resize', this.floatRs); this.floatRs = this.placeFloat = null; this.panel.remove(); this.panel = null; } };
   WidgetTool.prototype.changed = function () {
     if (S.loading) return;
+    if (this.data.kind === 'chart' && this.data.cfg && typeof this.data.cfg === 'object') wgChartClean(this.data.cfg);
     if (this.block && this.block.dispatchChange) this.block.dispatchChange(); else { S.dirtyBody = true; schedule(); }
   };
   WidgetTool.prototype.value = function () {

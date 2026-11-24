@@ -106,6 +106,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **„/“ → „Widget: Diagramm“ legt bei „gleichzeitig bearbeiten“ wieder ein Widget an** (Bugs-DB 2361, Web): Die Vorgaben
+  des Diagramm-Widgets (und jede Änderung im Panel) wichen von der Bereinigung des Servers ab, der Server lehnte live
+  mit `sanitize` ab und die Seite sprang zurück; das Panel ging dann am ersten vorhandenen Widget auf, weil der Merker
+  „eben eingefügt“ seitenweit galt. Jetzt hat das Web dieselbe Diagramm-Form wie der Server, und das Panel öffnet nur
+  der neu eingefügte Block. Test `tests/browser_widget_slash_neu.js`.
 - **„Zu viele Anrufe in kurzer Zeit“ schon beim zweiten Anruf** (Bugs-DB 2356, Server): Im föderierten Direkt-Chat mit
   einem Server, der auf Knoten besteht, zählte ein Anruf bis zu dreimal gegen die Grenzen (3 je Minute an dieselbe
   Person, 6 je Minute, 40 je Stunde) – Versuch über die Knoten dort, Rückfall über die eigenen Knoten, dann direkter
