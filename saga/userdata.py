@@ -19,7 +19,7 @@ USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login"
                "chat_identity", "chat_device", "chat_link", "push_sub", "push_queue", "ai_history", "ai_usage", "chat_ai_reply",
                "mfa_passkey", "mfa_totp", "mfa_recovery", "mfa_challenge", "fed_handle", "chat_fed_cert", "chat_device_fed",
                "fed_chat_block", "chat_invite", "nc_account", "chat_seen", "chat_hidden", "note_fresh", "import_run", "task_source",
-               "api_token", "webhook")
+               "api_token", "webhook", "job")      # 2.6: job_step/job_wait/job_event/job_change gehen mit (ON DELETE CASCADE)
 
 
 def delete_user_data(uid, drop_user=False):

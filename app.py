@@ -55,6 +55,7 @@ from saga import people                        # 2.5 (Paket 1): Personen-Auswahl
 from saga import tasksrc                       # 2.5 (Paket 7): Aufgabenquellen (/api/tasks/src/..., /api/notes/{db}/tasksource)
 from saga import api_v1, apitok, mcp, webhooks  # 2.5 (Paket 1 E5-E7): API-Tokens, /api/v1, Webhooks, MCP-Server
 from saga import mentions                     # 2.5 (P6-5): @Erwaehnungen (entprellte Mitteilungen)
+from saga import jobs                         # 2.6 (K-A2 2266): Auftrags-Maschine der Kollegin (Worker, Stempel in bus.fire)
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -91,6 +92,7 @@ async def lifespan(_app):
     tasksrc.start()                                          # 2.5 (Paket 7): taegliche Zusammenfassung task.due
     webhooks.start()                                         # 2.5: Webhook-Zustellung (Ausgangskorb webhook_delivery)
     mentions.start()                                         # 2.5 (P6-5): Erwaehnungen entprellt mitteilen
+    jobs.start()                                             # 2.6 (K-A2): Auftraege der Kollegin (nicht bei SAGA_RESTORE_TEST)
     bookorbit.start()                                        # 2.5: BookOrbit-Tokens etwa taeglich erneuern
     await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
     await asyncio.to_thread(contacts.backfill_once)          # 2.5: Kontakte rueckwirkend aus vorhandenen Chats (einmalig)
@@ -132,6 +134,7 @@ async def lifespan(_app):
     gc_task = asyncio.create_task(_gc_loop())
     yield
     await collab.shutdown()                                  # offene Live-Seiten materialisieren und verdichten
+    jobs.stop()
     mentions.stop()
     bookorbit.stop()
     await asyncio.to_thread(diagstore.stop)                  # 2.5: gepufferte Diagnose-Meldungen noch schreiben

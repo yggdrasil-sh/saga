@@ -33,7 +33,7 @@ _pool_lock = threading.Lock()
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
              "service", "bookmark", "note_share", "note_comment", "notification", "chat",
              "push_sub", "push_queue", "push_stream_msg", "ai_history", "fed_invite", "fed_log", "fed_outbox", "backup_run",
-             "user_backup_run", "import_run", "api_token", "webhook", "webhook_delivery"}
+             "user_backup_run", "import_run", "api_token", "webhook", "webhook_delivery", "job", "job_event", "job_change"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "bookorbit_link": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
@@ -571,6 +571,50 @@ CREATE TABLE IF NOT EXISTS push_queue (
 CREATE INDEX IF NOT EXISTS push_queue_due ON push_queue (next_at);
 CREATE INDEX IF NOT EXISTS push_queue_uid ON push_queue (uid);
 CREATE INDEX IF NOT EXISTS push_queue_sub ON push_queue (sub_id);
+-- 2.6 (Bugs-DB 2266 K-A2, Konzept K4/K22): Auftrags-Maschine der Kollegin (saga/jobs.py). job = ein Auftrag einer Person
+-- (uid, nie mehrere, nie foederiert), kind frei ('ai.task', 'test.*', spaeter 'mailbox'/'callback'), source saga|share|
+-- thunderbird|api, state siehe jobs.STATES (sub nur in 'laeuft'), plan JSON (Klartext, 30 Tage nach ended_at geleert),
+-- next_at = naechster Takt (NULL = nichts faellig), lease_until/tries = Lease des Workers (tries zaehlt jede Uebernahme),
+-- retries = Versuche ohne Fortschritt (Backoff Modell, Absturz-Schleife), wait_since = seit wann wartet_modell,
+-- undo_at = Ruecknahme angefordert, units in freier Einheit unit. Akteur-Spalten wie note_version (service/svc:kollegin/uid).
+-- job_step: feste Schrittliste (idem_key = job:n:plan_v, beim Beanspruchen gesetzt), job_wait: Index fuer Ereignisse
+-- (on_kind/ref, hit_at = eingetroffen, paused_at = Frist ruht), job_event: Protokoll nur mit Kennungen/Zaehlern,
+-- job_change: Stempel je Wirkung (bus.fire, gleiche Transaktion; before/after/rev_after erst mit K-B). Kinder gehen mit dem
+-- Auftrag (ON DELETE CASCADE), der Auftrag mit dem Konto (USER_TABLES) bzw. 90 Tage nach ended_at (jobs.cleanup).
+CREATE TABLE IF NOT EXISTS job (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, kind TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'saga',
+    state TEXT NOT NULL, sub TEXT, title TEXT NOT NULL DEFAULT '', plan JSONB NOT NULL DEFAULT '{}',
+    plan_v INTEGER NOT NULL DEFAULT 1, plan_hash TEXT NOT NULL DEFAULT '', due_at DOUBLE PRECISION,
+    next_at DOUBLE PRECISION, lease_until DOUBLE PRECISION, tries INTEGER NOT NULL DEFAULT 0,
+    retries INTEGER NOT NULL DEFAULT 0, wait_since DOUBLE PRECISION, undo_at DOUBLE PRECISION,
+    units_est BIGINT NOT NULL DEFAULT 0, units BIGINT NOT NULL DEFAULT 0, unit TEXT NOT NULL DEFAULT 'u',
+    created DOUBLE PRECISION NOT NULL, updated DOUBLE PRECISION NOT NULL, ended_at DOUBLE PRECISION,
+    actor_kind TEXT, actor TEXT, on_behalf_of TEXT, reason TEXT);
+CREATE INDEX IF NOT EXISTS job_due ON job (next_at) WHERE next_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS job_uid_state ON job (uid, state);
+CREATE INDEX IF NOT EXISTS job_ended ON job (ended_at) WHERE ended_at IS NOT NULL;
+CREATE TABLE IF NOT EXISTS job_step (
+    job_id BIGINT NOT NULL REFERENCES job(id) ON DELETE CASCADE, n INTEGER NOT NULL,
+    tool TEXT NOT NULL, klass TEXT NOT NULL DEFAULT 'own', undo_class TEXT NOT NULL DEFAULT 'undo',
+    args JSONB, cond TEXT, client SMALLINT NOT NULL DEFAULT 0, idem_key TEXT UNIQUE,
+    state TEXT NOT NULL DEFAULT 'offen', result JSONB, done_at DOUBLE PRECISION, device TEXT,
+    PRIMARY KEY (job_id, n));
+CREATE TABLE IF NOT EXISTS job_wait (
+    id BIGSERIAL PRIMARY KEY, job_id BIGINT NOT NULL REFERENCES job(id) ON DELETE CASCADE, step_n INTEGER NOT NULL,
+    on_kind TEXT NOT NULL, ref TEXT NOT NULL, until DOUBLE PRECISION, paused_at DOUBLE PRECISION,
+    hit_at DOUBLE PRECISION, data JSONB);
+CREATE INDEX IF NOT EXISTS job_wait_on ON job_wait (on_kind, ref);
+CREATE INDEX IF NOT EXISTS job_wait_job ON job_wait (job_id);
+CREATE TABLE IF NOT EXISTS job_event (
+    id BIGSERIAL PRIMARY KEY, job_id BIGINT NOT NULL REFERENCES job(id) ON DELETE CASCADE,
+    at DOUBLE PRECISION NOT NULL, kind TEXT NOT NULL, data JSONB NOT NULL DEFAULT '{}');
+CREATE INDEX IF NOT EXISTS job_event_job ON job_event (job_id, id);
+CREATE TABLE IF NOT EXISTS job_change (
+    id BIGSERIAL PRIMARY KEY, job_id BIGINT NOT NULL REFERENCES job(id) ON DELETE CASCADE, step_n INTEGER NOT NULL,
+    idem_key TEXT NOT NULL, attempt TEXT, target TEXT NOT NULL, at DOUBLE PRECISION NOT NULL,
+    before JSONB, after JSONB, rev_after TEXT, undone_at DOUBLE PRECISION);
+CREATE UNIQUE INDEX IF NOT EXISTS job_change_idem ON job_change (idem_key, target);
+CREATE INDEX IF NOT EXISTS job_change_job ON job_change (job_id, id);
 -- 2.5: eigene Push-Verbindung der Apps (saga.push_stream) - abgelegte, bereits verschluesselte Mitteilungen (RFC 8291) bis
 -- zur Bestaetigung durch die App oder bis zum Ablauf (TTL wie Web Push); Topic ersetzt eine gleiche
 CREATE TABLE IF NOT EXISTS push_stream_msg (

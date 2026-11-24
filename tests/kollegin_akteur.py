@@ -120,6 +120,39 @@ def part_actor():
         except ValueError:
             pass
     ok("ungueltige Akteure abgelehnt (Art, Dienst, leer, Person als Dienst, Auftrag an Dienst)", not bad, bad)
+    bad = []
+    for obo in ("anna@saga.example", "@anna@saga.example", "anna@", "svc:bridge", " ka-anna", "", 7):
+        try:
+            Actor("service", "svc:kollegin", on_behalf_of=obo)
+            bad.append(obo)
+        except ValueError:
+            pass
+    ok("on_behalf_of nur lokale uid: keine Foederations-Kennung (@), kein svc:, nicht leer (Pruefer K-A1)", not bad, bad)
+    ok("on_behalf_of lokale uid erlaubt", Actor("service", "svc:bot", on_behalf_of="ka-anna").on_behalf_of == "ka-anna")
+    try:
+        Actor("service", "svc:kollegin", on_behalf_of=A, idem="")
+        ok("leerer Schritt-Schluessel abgelehnt", False)
+    except ValueError:
+        ok("leerer Schritt-Schluessel abgelehnt", True)
+    seen = []
+    with acting(K):
+        th = threading.Thread(target=lambda: seen.append(actor.current()))
+        th.start(); th.join()
+        import asyncio
+        import contextvars
+
+        async def inner():
+            return actor.current()
+        copied = contextvars.copy_context().run(lambda: actor.current())
+        loop = asyncio.new_event_loop()
+        try:
+            task_actor = loop.run_until_complete(inner())
+        finally:
+            loop.close()
+    ok("Kontext-Kopien (Task, copy_context) erben den Akteur - deshalb acting(None) in Langlebigem (Doku actor.py)",
+       seen == [None] and copied is K and task_actor is K, (seen, copied, task_actor))
+    ok("actor.py dokumentiert acting(None) fuer langlebige Tasks/Threads",
+       "acting(None)" in (actor.__doc__ or "") and "create_task" in (actor.__doc__ or ""))
     ok("SERVICES fest", actor.SERVICES == ("svc:kollegin", "svc:bridge", "svc:bot"))
     try:
         K.kind = "person"
