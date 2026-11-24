@@ -17,6 +17,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Neu
 
+- **Testgerüst für die Kollegin** (Bugs-DB 2265 K-T): Testuhr `saga/testclock.py` mit `/_test/clock|tick|flush` – nur
+  mit `SAGA_TEST_HOOKS=1` und von 127.0.0.1/::1, sonst 404 – und ein beeinflusstes Test-Modell `fake-evil` (schließt den
+  Datenrahmen, erfindet Suchen und Aufträge, schickt Bilder/Links mit Daten nach außen). Tests: `tests/testuhr.py`,
+  fake-evil-Reihen in `tests/ki.py` und `tests/ki_web.py`.
 - **KI-Antworten melden** (Bugs-DB 2258 Teil a, Vorbereitung für die App-Stores): Unter jeder Antwort des Assistenten
   und der Seiten-Hilfen steht „Melden …“, im Chat lässt sich auch die eigene KI-Antwort melden. Chat und KI nutzen ein
   gemeinsames Bauteil (Dialog `HK.report`, Server `store_report`): gleiche Gründe, gleiche Grenzen, eine Liste unter
@@ -30,6 +34,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Wiederholte Datenmarker in KI-Antworten** (gefunden mit fake-evil, K-T 2265): Gibt das Modell die Marker des
+  Datenrahmens oder die Kennung wieder, fallen sie jetzt auch in KI-Antworten im Chat und im gespeicherten Verlauf weg
+  (bisher nur bei den Seiten-Hilfen) – `ai.strip_markers`.
 - **„Chats“ zeigt eine Übersicht statt einer leeren Seite mit Schloss** (Bugs-DB 2030): Ohne geöffnete Unterhaltung
   stehen dort die letzten Chats (auch bei eingeklappter Seitenleiste) und „Neue Unterhaltung“; ist dieses Gerät noch
   nicht eingerichtet, sagt die Übersicht das und führt zur Einrichtung. Neue Browser-Reihe `tests/browser_chat_uebersicht.js`.

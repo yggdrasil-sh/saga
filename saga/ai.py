@@ -298,7 +298,7 @@ def _save_history(uid, question, answer, sources, opts, web=None):
         if web:                                            # Webquellen (2.1): Titel und Adresse, Nummern nach den Seiten
             meta["web"] = [{"title": s["title"], "url": s["url"]} for s in web]
         cur = c.execute("INSERT INTO ai_history (uid, created, kind, question, answer, sources) VALUES (?,?,?,?,?,?)",
-                        (uid, time.time(), "ask", question, ai_frame.no_images(answer), json.dumps(meta, ensure_ascii=False)))
+                        (uid, time.time(), "ask", question, ai_frame.no_images(strip_markers(answer)), json.dumps(meta, ensure_ascii=False)))
         hid = cur.lastrowid
         old = [r[0] for r in c.execute("SELECT id FROM ai_history WHERE uid=? ORDER BY id DESC", (uid,)).fetchall()[HISTORY_MAX:]]
         if old:
@@ -1299,10 +1299,9 @@ _POSTAMBLE = re.compile(r"\n\s*(?:-{3,}\s*\n\s*)?\(?(?:let me know|i hope|feel f
                         r"gib (?:mir )?bescheid|hinweis:|avísame|espero que)[^\n]*\s*$", re.I)
 
 
-def strip_preamble(text, src=""):
-    """src = Ausgangstext: beginnt/endet er selbst so ("Hier ist die Liste:"), bleibt die Zeile stehen."""
-    # wiederholte Datenmarker (jede Schreibweise, mit Kennung): Zeilen nur aus Markern bzw. nur der Kennung fallen weg,
-    # Marker mitten in einer Zeile werden entfernt
+def strip_markers(text):
+    """Wiederholte Datenmarker in Antworten (jede Schreibweise, mit Kennung): Zeilen nur aus Markern bzw. nur der Kennung
+    fallen weg, Marker mitten in einer Zeile werden entfernt (Seiten-Hilfen, Verlauf, KI im Chat - K-T 2265)."""
     keep = []
     for ln in str(text or "").split("\n"):
         cl = ai_frame.neutral(ln, "")
@@ -1313,7 +1312,12 @@ def strip_preamble(text, src=""):
         if re.fullmatch(r"\s*[0-9a-f]{12}\s*", ln):
             continue
         keep.append(ln)
-    text = "\n".join(keep).strip("\n")
+    return "\n".join(keep).strip("\n")
+
+
+def strip_preamble(text, src=""):
+    """src = Ausgangstext: beginnt/endet er selbst so ("Hier ist die Liste:"), bleibt die Zeile stehen."""
+    text = strip_markers(text)
     src = str(src or "")
     m = _PREAMBLE.match(text)
     if m and src.lstrip()[:12].lower() != m.group(0).lstrip()[:12].lower():

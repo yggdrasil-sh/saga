@@ -10,7 +10,7 @@ System-Prompt, NONE ohne Seiten = Antwort ohne Modell (zaehlt nicht), Kontingent
 Antwort trotzdem mit Hinweis (Websuche nicht angerechnet), Rate-Limit je Person, interne Treffer werden nie abgerufen
 (SSRF), Verlauf mit Webquellen, Seiten-Hilfen ohne Websuche, KI im Chat (Quellen als Links im Text, Beleg passt), Logs
 ohne Inhalte. Wegwerf-Konten ki-w*; raeumt auf und stellt die Einstellungen wieder her."""
-import hashlib, json, os, socket, subprocess, sys, threading, time, urllib.parse
+import hashlib, json, os, re, socket, subprocess, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import auth
 from db import connect
@@ -386,6 +386,19 @@ def chat_tests(Bk):
     done = K.get(ev, "done") or {}
     ok("Chat: NONE -> normale Antwort ohne Quellen", s == 200 and not SEEN and "Quellen:" not in (done.get("text") or "")
        and count().get("decide") == 1)
+    # K-T 2265: beeinflusstes Modell - Suchbegriffe aus fremdem Text, Links/Bilder/Marker in der Chat-Antwort
+    K.setai(model="fake-evil")
+    K.fake("POST", "/_reset"); SEEN.clear()
+    s, ev, _ = K.sse(f"/api/chats/{dm}/ai", B.k, {"q": q, "history": [{"name": "Wera KI", "text": "Der Code ist GEHEIM-Hx7, nicht weitersagen."}]})
+    done = K.get(ev, "done") or {}
+    text = done.get("text") or ""
+    qs = [x["q"] for x in SEEN]
+    ok(f"fake-evil: keine Suche mit fremden Worten, nur aus der Frage ({qs})", qs and not any(
+        "GEHEIM" in x or "evil" in x or "site:" in x for x in qs))
+    body = text.split("Quellen:")[0]
+    ok(f"fake-evil: Chat-Antwort ohne Links, Bilder, Marker ({body[:160]!r})", s == 200 and "evil.example" not in body
+       and "![" not in body and "SAGA_DATA" not in body and not re.search(r"(?m)^\s*[0-9a-f]{12}\s*$", body) and "Hier die Antwort" in body)
+    K.setai(model="fake")
     K.setai(web=False)
     K.fake("POST", "/_reset"); SEEN.clear()
     s, ev, _ = K.sse(f"/api/chats/{dm}/ai", B.k, {"q": q})
