@@ -172,7 +172,7 @@
   var menuEl = el('div', 'menu'); menuEl.setAttribute('role', 'menu'); menuEl.hidden = true;
   var subEl = el('div', 'menu menu-sub'); subEl.setAttribute('role', 'menu'); subEl.hidden = true;
   document.body.appendChild(menuEl); document.body.appendChild(subEl);
-  var menuOwner = null, subOwner = null;
+  var menuOwner = null, subOwner = null, menuAt = null;   // menuAt: Lage des Ausloesers beim Oeffnen (Bugs-DB 2255)
   function closeSub() { subEl.hidden = true; subEl.textContent = ''; menuEl.classList.remove('menu-covered'); if (subOwner) { subOwner.classList.remove('sub-open'); subOwner.setAttribute('aria-expanded', 'false'); } subOwner = null; }
   var lastOwner = null, lastAt = 0;     // zuletzt geschlossenes Menue: Ausloeser (Dialoge geben den Fokus dorthin zurueck)
   function closeMenu() { closeSub(); menuEl.hidden = true; menuEl.textContent = ''; if (menuOwner) { menuOwner.setAttribute('aria-expanded', 'false'); lastOwner = menuOwner; lastAt = Date.now(); } menuOwner = null; }
@@ -219,7 +219,8 @@
     menuEl.classList.toggle('menu-call', !!(anchor.closest && anchor.closest('.cl-win')));           // aus dem Anruffenster (z 200)
     var search = opts && opts.search ? addSearch(menuEl, opts.search) : null;
     menuEl.hidden = false; menuOwner = anchor; anchor.setAttribute('aria-expanded', 'true');
-    place(menuEl, anchor.getBoundingClientRect(), false);
+    menuAt = anchor.getBoundingClientRect();
+    place(menuEl, menuAt, false);
     var first = search || menuEl.querySelector('button'); if (first) first.focus();
   }
   function openSub(item, build, opts) {
@@ -308,10 +309,15 @@
     }
   });
   window.addEventListener('resize', closeMenu);
-  // Scrollen der Seite schliesst Menues - Scrollen INNERHALB eines Menues (lange Listen) nicht
+  // Scrollen schliesst Menues nur, wenn sich dabei der Ausloeser bewegt (Bugs-DB 2255) - sonst wuerde jeder fremde Container
+  // (z. B. #pg-modal-body, der sein Zuruecksetzen erst im naechsten Frame meldet) ein gerade geoeffnetes Menue schliessen.
+  // Scrollen INNERHALB eines Menues (lange Listen) schliesst nie.
   window.addEventListener('scroll', function (e) {
+    if (!menuOwner) return;
     var tg = e.target;                         // kann auch das Fenster/Dokument selbst sein (kein Element)
-    if (!(tg instanceof Element) || (!menuEl.contains(tg) && !subEl.contains(tg))) closeMenu();
+    if (tg instanceof Element && (menuEl.contains(tg) || subEl.contains(tg))) return;
+    var r = menuOwner.getBoundingClientRect();
+    if (!menuAt || !menuOwner.isConnected || Math.abs(r.left - menuAt.left) > 2 || Math.abs(r.top - menuAt.top) > 2) closeMenu();
   }, true);
 
   // Waagrecht scrollende Leisten (Reiter auf dem Handy): Verlauf am Rand, solange dort noch etwas steht,

@@ -17,6 +17,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Menüs bleiben offen, wenn nebenan etwas scrollt** (Bugs-DB 2255): Ein offenes Menü schließt beim Scrollen nur
+  noch, wenn sein Auslöser dabei wandert – nicht mehr, wenn ein fremder Bereich scrollt oder ein Dialog seinen
+  Scrollstand verspätet zurücksetzt. Neue Browser-Reihe `tests/browser_menue_scrollen.js`.
 - **KI-Antworten im Chat zeigen kein rohes Markdown mehr** (Bugs-DB 2248): Saga schreibt die Antwort vor dem Beleg in
   die Chat-Formatierung um (`**fett**` → *fett*, Überschriften, Sternlisten, `~~durch~~`), damit sie in allen Clients
   richtig erscheint. Dafür gibt es eine **gemeinsame KI-Darstellung** – eine feste Markdown-Teilmenge für den
