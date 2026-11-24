@@ -14,6 +14,11 @@ for u in ("hk-test-a", "hk-test-b"):
 NAMES = (("um-anna", "Anna Ahorn"), ("um-ben", "Ben Birke"), ("um-cora", "Cora Celle"), ("um-dora", "Dora Distel"))
 for u, n in NAMES:
     auth.get_user(u) or auth.create_user(u, pw, n)
+# 2.6 (Bugs-DB 2031): Testkonten haben die Frage "Moechtest du eine kurze Einfuehrung?" schon beantwortet - sonst liegt der
+# Dialog in Browser-Reihen ueber der Oberflaeche (eigene Reihe dafuer: tests/browser_leere_zustaende.js mit frischem Konto)
+with db.connect() as c, c:
+    for u in ("hk-test-a", "hk-test-b") + tuple(u for u, _ in NAMES):
+        c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?, 'first_steps', ?) ON CONFLICT (uid, k) DO NOTHING", (u, json.dumps({"state": "no"})))
 auth.save_setting("allowed_hosts", os.environ.get("UMG_ALLOWED", "127.0.0.1:5232, 127.0.0.1:18283, 127.0.0.1:18284"))
 if os.environ.get("UMG_HORN") == "1":          # Knoten-Laeufe: alle Anrufe ueber den eingebauten Knoten (calls.horn + horn_all)
     c = dict(auth.settings(fresh=True).get("calls") or {})

@@ -17,6 +17,18 @@
       return r;
     });
   }
+  // nicht ueber anderen Dialogen, nicht in eingebetteten Ansichten und nie waehrend eines Anrufs (auch klingelnd oder mit
+  // der Leiste "Hierher uebernehmen") - wie die Apps; dann alle 2 s erneut, hoechstens 2 min, sonst beim naechsten Laden
+  function blocked() {
+    var C = window.HKCalls;
+    return !!(document.querySelector('.hk-ask, .hk-modal, .cl-win, .cl-run') || document.body.classList.contains('embed')
+      || (C && ((C.busy && C.busy()) || (C.ringing && C.ringing().length))));
+  }
+  function later(n) {
+    if (asked || !F.st || !F.st.ask) return;
+    if (!blocked()) { ask(); return; }
+    if (n < 60) setTimeout(function () { later(n + 1); }, 2000);
+  }
   function ask() {
     if (asked) return;
     asked = true;
@@ -31,8 +43,7 @@
     return api('GET', '/api/first-steps').then(function (d) {
       F.st = d;
       document.dispatchEvent(new CustomEvent('hk-first-steps', { detail: d }));
-      // nicht in eingebetteten Ansichten und nicht ueber anderen Dialogen
-      if (d.ask && !document.querySelector('.hk-ask, .hk-modal') && !document.body.classList.contains('embed')) ask();
+      if (d.ask) later(0);
       return d;
     }).catch(function () { return null; });
   };
