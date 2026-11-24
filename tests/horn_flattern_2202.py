@@ -16,6 +16,7 @@ Aufbau (Wiederverwendung von tests/b2_frames.py: nginx-NPM-Nachbau -> saga-media
   teil0). Gemessen: Wechsel wegen "besser" (HKCalls.horn().switches, Knoten/Weg alle 2 s) waehrend FL_SECS unter Last.
 - Stand: FL_STAND=fix (Web-Client dieses Stands) bzw. alt (Gegenprobe: static/calls.js und static/horn.js von FL_ALT_REV,
   Standard f0cd30f = vor 62722b1, per Playwright-Route ausgeliefert - beide Dateien unterscheiden sich von main nur im Fix).
+  Messwerkzeug, kein deterministischer Waechter (ohne Fix flattert es nur in ~3 von 5 Laeufen) - nicht in tools/test-stack.sh.
   Erwartung fix: kein Hinweg wegen "besser" von horn-1 auf den Tunnel-Knoten (Flattern); alt: Messwert (MESS-Zeile), das
   Flattern tritt dort zufaellig auf (Messreihe 24.11., schwere Last: ohne Fix in 3 von 5 Laeufen, mit Fix in keinem von 5;
   leichte Last ohne Korrelation des Jitters: in keinem).
@@ -27,15 +28,18 @@ Start (root, env.sh, eigene DB):
   FL_BASE=8700 FL_STAND=fix FL_SECS=300 FL_CPU_RATE=6 FL_CG_MAX="60000 100000" python tests/horn_flattern_2202.py
   Daneben ein zweiter Lauf (eigene DB!): FL_BASE=8720 -> Namensraum fl2202b, 10.222.3.0/30.
   Ports FL_BASE: +0 nginx, +1 saga-media, +2 Admin, +7 intern, +8 HORN_PORT (eingebaut, Tunnel), +10 horn-1 (TCP+UDP).
-  FL_OUT=<datei.json>: Messwerte; SAGA_MEDIA_BIN / GJALLARHORN_BIN wie b2_frames. Wegwerf-Konten ca-fl*."""
+  FL_OUT=<datei.json>: Messwerte (sonst /tmp/flattern-2202-<stand>-<zeit>-<pid>.json); SIGTERM raeumt auf wie ein Fehler;
+  SAGA_MEDIA_BIN / GJALLARHORN_BIN wie b2_frames. Wegwerf-Konten ca-fl*."""
 import base64
 import json
 import os
 import re
 import secrets
 import shutil
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 _B = int(os.environ.get("FL_BASE") or 8700)
@@ -94,18 +98,27 @@ def net_up():
 
 
 def net_down():
+    """Nur eigene Reste: Prozesse im eigenen Namensraum bzw. in der eigenen cgroup (Browser nach Abbruch), dann
+    Namensraum, veth, cgroup."""
+    pids = set(sh(f"ip netns pids {NS}").stdout.split())
+    try:
+        pids |= set(open(CG + "/cgroup.procs").read().split())
+    except OSError:
+        pass
+    for pid in pids:
+        try:
+            os.kill(int(pid), signal.SIGKILL)
+        except (OSError, ValueError):
+            pass
     sh(f"ip netns del {NS}")
     sh(f"ip link del {VH}")
     if os.path.isdir(CG):
-        try:
-            for pid in open(CG + "/cgroup.procs").read().split():
-                try:
-                    open("/sys/fs/cgroup/cgroup.procs", "w").write(pid)
-                except OSError:
-                    pass
-            os.rmdir(CG)
-        except OSError:
-            pass
+        for _ in range(20):
+            try:
+                os.rmdir(CG)
+                break
+            except OSError:
+                time.sleep(0.25)
 
 
 def horn1_start(node_bin):
@@ -165,31 +178,55 @@ def alt_files():
     return d
 
 
+def run_browser(env, timeout):
+    """Browser-Teil; bei Abbruch (SIGTERM -> SystemExit, Zeitlimit) erst SIGTERM an node (Playwright schliesst die
+    Browser), dann SIGKILL. Reste im Namensraum raeumt net_down."""
+    p = subprocess.Popen(["node", os.path.join(APP, "tests", "browser_horn_flattern_2202.js")], env=env, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, text=True)
+    try:
+        so, se = p.communicate(timeout=timeout)
+        return p.returncode, so, se
+    except BaseException:
+        p.terminate()
+        try:
+            p.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.communicate()
+        raise
+
+
 def main():
     import db
+    # SIGTERM (st.sh stop, kill): wie ein Fehler durch finally - Prozesse, Namensraum, veth, cgroup, Einstellungen, Konten
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
     db.wait_ready()
     db.init_schema()
     if os.geteuid() != 0:
         ok("laeuft als root (Netz-Namensraum, netem, cgroup)", False)
-        sys.exit(1)
-    A_.cleanup()
-    prev = auth.settings(fresh=True)
-    keep = {k: prev.get(k) for k in ("chat_enabled", "share_group_scope", "calls")}
-    auth.save_setting("chat_enabled", True)
-    auth.save_setting("share_group_scope", False)
-    auth.save_setting("calls", dict(B2.CALLS, horn=True, horn_builtin=True, horn_all=True, horn_all_y=True))
-    auth._settings_cache["v"] = None
-    for u, nm in USERS:
-        auth.create_user(u, PW, nm)
-    media, node = B2.gobuild("saga-media", "media", "SAGA_MEDIA_BIN"), B2.gobuild("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
-    ok("saga-media, gjallarhorn gebaut", bool(media and node))
-    alt = alt_files() if STAND == "alt" else None
-    if STAND == "alt":
-        ok(f"Gegenprobe: calls.js/horn.js von {ALT_REV}", bool(alt) and "curRtts" not in open(os.path.join(alt, "horn.js")).read())
-    out = os.environ.get("FL_OUT") or os.path.join(APP, ".st", f"flattern-{STAND}-{time.strftime('%H%M%S')}.json")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    rc = 1
+        return
+    keep = {}
+    # Messdatei ausserhalb des Repos (FL_OUT sonst /tmp); vorher loeschen - sonst liest ein abgebrochener Lauf die alte
+    out = os.environ.get("FL_OUT") or os.path.join(tempfile.gettempdir(), f"flattern-2202-{STAND}-{time.strftime('%H%M%S')}-{os.getpid()}.json")
     try:
+        os.remove(out)
+    except OSError:
+        pass
+    try:
+        A_.cleanup()
+        prev = auth.settings(fresh=True)
+        keep = {k: prev.get(k) for k in ("chat_enabled", "share_group_scope", "calls")}
+        auth.save_setting("chat_enabled", True)
+        auth.save_setting("share_group_scope", False)
+        auth.save_setting("calls", dict(B2.CALLS, horn=True, horn_builtin=True, horn_all=True, horn_all_y=True))
+        auth._settings_cache["v"] = None
+        for u, nm in USERS:
+            auth.create_user(u, PW, nm)
+        media, node = B2.gobuild("saga-media", "media", "SAGA_MEDIA_BIN"), B2.gobuild("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
+        ok("saga-media, gjallarhorn gebaut", bool(media and node))
+        alt = alt_files() if STAND == "alt" else None
+        if STAND == "alt":
+            ok(f"Gegenprobe: calls.js/horn.js von {ALT_REV}", bool(alt) and "curRtts" not in open(os.path.join(alt, "horn.js")).read())
         net_up()
         ngx = B2.nginx_conf()
         r = subprocess.run(["nginx", "-c", ngx], capture_output=True, text=True)
@@ -211,41 +248,52 @@ def main():
            bool(n) and n.get("state") == "ok" and n.get("udp") and HN.ready(n), {"n": n, "log": h1_log()[-1500:]})
         rules = f"MAP {NAME} {HOST_IP}, MAP {H1_NAME} {HOST_IP}"
         env = dict(os.environ, SAGA_BASE=B2.BASE, SAGA_USERS=",".join(u for u, _ in USERS), SAGA_PASS=PW, HOST_RULES=rules, NO_PROXY="*",
-                   FL_NS=NS, FL_CG=CG if os.path.isdir(CG) else "", FL_OUT=out, FL_H1=H1_NAME, FL_ALT_DIR=alt or "")
+                   FL_NS=NS, FL_CG=CG if os.path.exists(CG + "/cpu.max") else "", FL_OUT=out, FL_H1=H1_NAME, FL_ALT_DIR=alt or "",
+                   FL_WRAP_DIR=STATE)
         for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
             env.pop(k, None)
-        js = os.path.join(APP, "tests", "browser_horn_flattern_2202.js")
         secs = int(os.environ.get("FL_SECS") or 300)
-        r = subprocess.run(["node", js], env=env, capture_output=True, text=True, timeout=secs + 900)
-        for ln in r.stdout.splitlines():
+        brc, so, se = run_browser(env, secs + 900)
+        for ln in so.splitlines():
             print("  [browser] " + ln, flush=True)
             if ln.startswith(("OK  ", "FAIL")):
                 res.append(ln.startswith("OK"))
-        ok("Browser-Teil beendet ohne Fehler", r.returncode == 0, (r.stdout[-800:] + r.stderr[-1500:]))
+        ok("Browser-Teil beendet ohne Fehler", brc == 0, (so[-800:] + se[-1500:]))
         try:
             m = json.load(open(out))
         except (OSError, ValueError):
             m = None
-        if m:
+        if m and m.get("A") and m.get("B"):
             a = m["A"]
-            # Flattern = Hinweg wegen "besser" von horn-1 auf den Tunnel-Knoten (Weg ws, Rahmen); der Rueckweg auf UDP
-            # (Bugs-DB 2201) ist gewollt und zaehlt getrennt
-            hin = lambda x: [s for s in x["better_load"] if s.get("path") == "ws"]  # noqa: E731
+            # Flattern = Hinweg wegen "besser" von horn-1 weg auf einen anderen Knoten (hier den Tunnel-Knoten); der
+            # Rueckweg auf horn-1 (Bugs-DB 2201) ist gewollt und zaehlt getrennt
+            h1 = H1_NAME.split(".")[0]
+            hin = lambda x: [s for s in x["better_load"] if s.get("from") == h1 and s.get("to") != h1]  # noqa: E731
+            back = lambda x: [s for s in x["better_load"] if s.get("from") != h1 and s.get("to") == h1]  # noqa: E731
             nb = len(hin(a))
+            for who in ("A", "B"):
+                for s_ in m[who]["better_load"]:
+                    print(f"   {who} t={s_['t']}s {'Hinweg' if s_ in hin(m[who]) else 'Rueckweg' if s_ in back(m[who]) else 'Wechsel'}: "
+                          f"{s_['from']}/{s_.get('fromPath')} -> {s_['to']}/{s_.get('path')}", flush=True)
             line = (f"Stand {STAND}: A unter Last {m['secs']} s (CPU-Drossel {m['cpu_rate'] or '-'}x, cpu.max {m['cg_max'] or '-'}, netem "
-                    f"'{NETEM}'): {nb} Hinweg(e) UDP->Tunnel ({' '.join(s['from'][:6] + '>' + s['to'][:6] for s in a['better_load']) or '-'}), "
+                    f"'{NETEM}'): {nb} Hinweg(e) horn-1 -> Tunnel, {len(back(a))} Rueckweg(e), "
                     f"Knotenzeit {a['share']}, CPU-Grenze in {a['cpu_samples']}/{a['out_samples']} Sende-Proben, cgroup {m.get('cg') or '-'}; "
-                    f"alle 'besser' A {len(a['better_load'])}, B {len(m['B']['better_load'])} (Hinweg {len(hin(m['B']))})")
+                    f"B: {len(hin(m['B']))} Hinweg(e), {len(back(m['B']))} Rueckweg(e); Messdatei {out}")
             if STAND == "alt":                         # Flattern ist zufaellig (nicht in jedem Lauf) - nur Messwert
                 print(f"MESS Gegenprobe ohne Fix ({'Flattern' if nb else 'kein Flattern in diesem Lauf'}) - " + line, flush=True)
             else:
                 ok("mit Fix: kein Flattern (Hinweg UDP -> Tunnel wegen 'besser') - " + line, nb == 0 and not hin(m["B"]))
+        else:
+            ok(f"Messwerte vom Browser-Teil ({out})", False)
         print("   Beine horn-1:", len(re.findall(r"bein auf", h1_log())), "| Beine Tunnel-Knoten:", len(re.findall(r"bein auf", B2.log_text())))
+    except SystemExit:                                 # SIGTERM: als Fehler zaehlen, aufraeumen, Ende-Code 1
+        ok("Lauf abgebrochen (SIGTERM)", False)
     except Exception:
         import traceback
         traceback.print_exc()
         ok("Reihe ohne Ausnahme", False)
     finally:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)   # Aufraeumen nicht noch einmal unterbrechen
         B2.stop(H1["proc"])
         if H1["log"]:
             H1["log"].close()
@@ -270,10 +318,10 @@ def main():
             print("Zustand bleibt:", STATE)
         else:
             shutil.rmtree(STATE, ignore_errors=True)
-        rc = 0 if all(res) else 1
-        print(f"\nHORN-FLATTERN-2202 ({STAND}) {sum(res)}/{len(res)}", "- ALLES GRUEN" if not rc else "- FEHLER")
-    sys.exit(rc)
+        rc = 0 if res and all(res) else 1
+        print(f"\nHORN-FLATTERN-2202 ({STAND}) {sum(res)}/{len(res)}", "- ALLES GRUEN" if not rc else "- FEHLER", flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    main()                                             # auch bei fruehem Abbruch (return) mit dem richtigen Ende-Code
+    sys.exit(0 if res and all(res) else 1)

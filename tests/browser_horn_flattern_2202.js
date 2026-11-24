@@ -48,10 +48,12 @@ const ARGS = ['--use-fake-ui-for-media-stream', '--ignore-certificate-errors', '
   '--host-resolver-rules=' + (E.HOST_RULES || '')];
 
 // Browser A: Startskript, das den Browser in die cgroup legt und im Netz-Namensraum startet (Playwright-Pipe bleibt)
+const WRAPS = [];
 function wrapper(i) {
   if (!E.FL_NS) return undefined;
   const exe = pw.chromium.executablePath();
-  const f = path.join(os.tmpdir(), 'fl2202-chromium-' + process.pid + '-' + L[i] + '.sh');
+  const f = path.join(E.FL_WRAP_DIR || os.tmpdir(), 'fl2202-chromium-' + process.pid + '-' + L[i] + '.sh');
+  WRAPS.push(f);
   fs.writeFileSync(f, '#!/bin/sh\n' + (E.FL_CG && i === 0 ? `echo $$ > ${E.FL_CG}/cgroup.procs\n` : '') + `exec ip netns exec ${E.FL_NS} ${exe} "$@"\n`, { mode: 0o755 });
   return f;
 }
@@ -110,7 +112,8 @@ const measOf = h => Object.fromEntries(Object.entries((h && h.meas) || {}).map((
   const ps = [];
   const out = { secs: SECS, cpu_rate: RATE, cg_max: CGMAX, vid: VID, alt: !!E.FL_ALT_DIR, samples: [], A: null, B: null };
   try {
-    ps.push(await session(0), await session(1));
+    ps.push(await session(0));                         // einzeln: scheitert B, wird A im finally trotzdem geschlossen
+    ps.push(await session(1));
     for (const p of ps) await chatKeys(p);
     const devs = [];
     for (const p of ps) devs.push(await until(() => p.evaluate(() => window.HKChat && window.HKChat.state() && window.HKChat.state().device), 15000));
@@ -136,7 +139,7 @@ const measOf = h => Object.fromEntries(Object.entries((h && h.meas) || {}).map((
 
     // --- Last an ---------------------------------------------------------------------------------------------------
     if (RATE > 1) { const cdp = await ps[0].context().newCDPSession(ps[0]); await cdp.send('Emulation.setCPUThrottlingRate', { rate: RATE }); ps[0].__cdp = cdp; }
-    if (CGMAX && E.FL_CG) fs.writeFileSync(path.join(E.FL_CG, 'cpu.max'), CGMAX);
+    if (CGMAX && E.FL_CG && fs.existsSync(path.join(E.FL_CG, 'cpu.max'))) fs.writeFileSync(path.join(E.FL_CG, 'cpu.max'), CGMAX);
     const tLoad = Date.now();
     console.log(`  Last an: CPU-Drossel ${RATE || '-'}x, cpu.max ${CGMAX || '-'}; ${SECS} s`);
     let lastPrint = 0;
@@ -181,6 +184,7 @@ const measOf = h => Object.fromEntries(Object.entries((h && h.meas) || {}).map((
   } finally {
     if (E.FL_OUT) try { fs.writeFileSync(E.FL_OUT, JSON.stringify(out, null, 1)); } catch (e) { console.log('FL_OUT: ' + e.message); }
     for (const p of ps) if (p) await p.__br.close().catch(() => {});
+    for (const f of WRAPS) try { fs.unlinkSync(f); } catch (e) { /* schon weg */ }
   }
   console.log(`\nBROWSER-HORN-FLATTERN-2202 ${res.filter(Boolean).length}/${res.length}` + (res.every(Boolean) ? ' - ALLES GRUEN' : ' - FEHLER'));
   process.exit(rc);
