@@ -27,7 +27,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from saga import api_calendar, api_struct, api_v1, apitok, blockedit, page_widgets, siegel
+from saga import ai_frame, api_calendar, api_struct, api_v1, apitok, blockedit, page_widgets, siegel
 from saga.api_v1 import Fail
 from saga.core import BASE_URL, t
 from version import VERSION
@@ -250,43 +250,9 @@ def _cut(s, n=OUT_MAX):
     return s[:n] + "\n\n" + t("[… gekürzt: {n} von {m} Zeichen]", n=n, m=len(s))
 
 
-# Rahmen-Tags im Inhalt: "<" (auch Vollbreite/Kleinform ueber NFKC, aehnliche Klammern, Entitaeten, \\u003c, %3c), Leerraum
-# bzw. unsichtbare Zeichen, optional "/" (auch Bruchstrich), "saga", beliebige Trenner, "data" - gross/klein egal.
-# Gesucht wird in einer gefalteten Kopie (NFKC + casefold je Zeichen) mit Rueckabbildung auf die Originalstellen.
-_GAP = r"[\s\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]{0,16}"   # begrenzt: keine Rueckverfolgung ueber lange Leerraeume
-_TAG = re.compile(r"(?:<|\u2329|\u3008|\u27e8|\u2039|\u02c2|\u1438|\u276e|\u29fc|&lt;?|&#0{0,8}60;?|&#x0{0,8}3c;?|\\{1,8}u0{0,4}3c|\\{1,8}x3c|%3c)"
-                  + _GAP + r"(?:[/\u2044\u2215\u29f8\\]" + _GAP + r")?saga" + r"[\s\-_\u2010-\u2015\u2212\ufe63\u00ad\u200b-\u200f\u2060\ufeff.:]{0,8}data")
-
-
-def _fold(s):
-    """-> (gefaltete Kopie, Index ins Original je Zeichen der Kopie)."""
-    if s.isascii():
-        return s.lower(), None
-    out, idx = [], []
-    for i, ch in enumerate(s):
-        n = ch.lower() if ch < "\x80" else unicodedata.normalize("NFKC", ch).casefold()
-        out.append(n)
-        idx.extend([i] * len(n))
-    return "".join(out), idx
-
-
-def _neutral(s):
-    """Jedes "<saga-data"/"</saga-data" (in jeder Schreibweise) -> "[saga-data"/"[/saga-data" (kein Tag mehr)."""
-    if not s:
-        return s
-    low, idx = _fold(s)
-    if "saga" not in low:
-        return s
-    out, pos = [], 0
-    for m in _TAG.finditer(low):
-        a, b = (m.start(), m.end()) if idx is None else (idx[m.start()], idx[m.end() - 1] + 1)
-        if a < pos:
-            continue
-        out.append(s[pos:a])
-        out.append("[/saga-data" if re.search(r"[/\u2044\u2215\u29f8\\]" + _GAP + "saga", m.group(0)) else "[saga-data")
-        pos = b
-    out.append(s[pos:])
-    return "".join(out)
+# Rahmen-Tags im Inhalt entschaerfen: gemeinsamer Datenrahmen aller KI-Wege (saga/ai_frame.py, Bugs-DB 2260) - "<" auch
+# als Vollbreite/Kleinform, aehnliche Klammern, Entitaeten, \\u003c, %3c; unsichtbare Zeichen; beliebige Trenner.
+_GAP, _TAG, _fold, _neutral = ai_frame.GAP, ai_frame.TAG, ai_frame.fold, ai_frame.neutral_tags
 
 
 def _data(obj, label="saga"):

@@ -15,6 +15,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Sicherheit
+
+- **Ein Datenrahmen für alle KI-Wege** (Bugs-DB 2260, Konzept 2.6 K7): Material aus Seiten, Aufgaben, Kalender, Chats
+  und Websuche steht für das Modell zwischen Markern mit einer **Zufallskennung je Anfrage**; jede Schreibweise des
+  Markers im Inhalt wird entschärft (Nullbreite, Vollbreite, andere Striche, kombinierende und Tag-Zeichen, Tags
+  `<saga-data`). Vorher kamen Abwandlungen wie `SAGA_DATA` + Nullbreite durch. MCP nutzt denselben Baustein
+  (`saga/ai_frame.py`). KI-Antworten im Chat gehen ohne Links, Bilder und HTML an die anderen („[Link entfernt]“;
+  die angehängten Webquellen bleiben), der Verlauf speichert keine Bilder. Suchbegriffe der Websuche dürfen keine
+  Wörter aus dem Chatverlauf anderer enthalten (Red-Team-Fälle RT-02/03/04). Neue Testreihe `tests/datenrahmen.py`.
+
 ### Doku
 
 - **Ein Kanal bis 3.0** in README (de/en/es), Anleitung/Guide/Guía (Abschnitt 11 „Updates“), Upgrade-Anleitung 2.5,

@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 
 import auth
 from db import connect as _db
-from saga import ai, ai_web, chat
+from saga import ai, ai_frame, ai_web, chat
 from saga.core import _api_guard, _bad, _body, t, user_info
 
 router = APIRouter()
@@ -89,8 +89,9 @@ def chat_messages(q, asker, history, web=None):
         f"Message that mentions you, from {_clean(asker, NAME_MAX)}:\n{_clean(q, ai.Q_MAX)}"
     if web.get("material"):
         data = web["material"] + "\n\n" + data
-    return [{"role": "system", "content": ai.system_prompt(task)},
-            {"role": "user", "content": f"{ai.MARK_A}\n{data}\n{ai.MARK_B}\n\n(Reply to the message above in {lang}. "
+    fr = ai_frame.Frame()
+    return [{"role": "system", "content": ai.system_prompt(task, fr)},
+            {"role": "user", "content": f"{fr.wrap(data)}\n\n(Reply to the message above in {lang}. "
                                         "Only the reply text.)"}]
 
 
@@ -223,7 +224,8 @@ async def api_chat_ai_ask(cid: int, request: Request):
 
     def prep(emit, stop):
         ctxl = "\n".join(f"{_clean(h['name'], NAME_MAX)}: {_clean(h['text'], 300)}" for h in hist[-WEB_CTX:])
-        st["web"] = w = ai.web_step(uid, c, q, emit, stop, context=ctxl, start=1, quota=quota)
+        own = "\n".join(_clean(h["text"], 300) for h in hist[-WEB_CTX:] if h.get("name") == asker)   # eigene Zeilen: erlaubt
+        st["web"] = w = ai.web_step(uid, c, q, emit, stop, context=ctxl, start=1, quota=quota, own=own)
         return chat_messages(q, asker, hist, web=w)
 
     def finish(answer):
@@ -231,6 +233,11 @@ async def api_chat_ai_ask(cid: int, request: Request):
         if not answer:
             return {"text": ""}
         w = st["web"]
+        # RT-03 (Bugs-DB 2260): Text des Modells geht an andere - keine Links/Bilder/HTML (kein Abfluss ueber Adressen,
+        # keine Linkvorschau); die Webquellen danach kommen von der Suchmaschine, nicht vom Modell
+        answer = ai_frame.no_links(answer, t("[Link entfernt]")).strip()
+        if not answer:
+            return {"text": ""}
         answer = with_sources(answer, w.get("sources"), w.get("notice"))
         rid = secrets.token_hex(16)
         h = hashlib.sha256(answer.encode("utf-8")).hexdigest()

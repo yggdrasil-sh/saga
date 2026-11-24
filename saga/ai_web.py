@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from saga import ai_frame
 from saga.core import E, RESTORE_TEST, SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL
 from saga.netguard import guarded_client, is_public, request_checker
 
@@ -76,6 +77,7 @@ _SEARCH = re.compile(r"^\s*(?:[-*•>]\s*|\d[.)]\s*)?\**\s*SEARCH\s*\**\s*[:：]
 def clean_query(s):
     """Suchanfrage aus der Antwort des Modells -> bereinigt oder '' (verworfen)."""
     s = _CTRL.sub(" ", str(s or ""))
+    s = ai_frame.neutral(s, " ")                           # Datenmarker in jeder Schreibweise (Bugs-DB 2260)
     s = re.sub(r"<<<|>>>|SAGA_DATA", " ", s, flags=re.I)
     s = s.strip().strip("\"'`«»„“”‚‘’*_[]()").strip()
     s = re.sub(r"(?:^|\s)!+\S*", " ", s)                   # SearXNG-"Bangs" (!g, !!) waehlen Suchmaschinen: weg

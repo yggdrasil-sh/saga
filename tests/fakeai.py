@@ -37,7 +37,9 @@ LOCK = threading.Lock()
 def answer(messages, model=None):
     sys_txt = " ".join(m.get("content", "") for m in messages if m.get("role") == "system")
     user = " ".join(m.get("content", "") for m in messages if m.get("role") == "user")
-    data = user.split("<<<SAGA_DATA", 1)[-1].rsplit("SAGA_DATA>>>", 1)[0].strip("\n")
+    # Datenrahmen (Bugs-DB 2260): Marker mit Zufallskennung "<<<SAGA_DATA <rid>" ... "<rid> SAGA_DATA>>>"
+    data = re.sub(r"^ ?[0-9a-f]{12}(?=\n|$)", "", user.split("<<<SAGA_DATA", 1)[-1])
+    data = re.sub(r"(?:^|\n)[0-9a-f]{12} ?$", "", data.rsplit("SAGA_DATA>>>", 1)[0]).strip("\n")
     if "You decide whether answering a message needs a web search" in sys_txt:
         with LOCK:
             LOG["decide"] += 1
