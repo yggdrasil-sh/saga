@@ -42,14 +42,17 @@ def _clean_avoid(v):
     return tuple(str(x)[:253].strip().lower() for x in v[:horn.CANDIDATES + 2] if isinstance(x, str) and x.strip())
 
 
-def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=None, only=None, quota=None, ws=None):
+def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=None, only=None, quota=None, ws=None, no_tunnel=False):
     """Kandidaten fuer dieses Geraet: [{node, url, udp, tcp, tls, ws, here, load, peer, tokens, exp}], beste zuerst. P10: only = nur
-    diese Knoten (geteilte), quota = Kontingent des verbundenen Servers (im Token)."""
+    diese Knoten (geteilte), quota = Kontingent des verbundenen Servers (im Token). no_tunnel (Bugs-DB 2357, foederiertes
+    1:1): Knoten im Tunnel-Betrieb nur, wenn kein anderer bereit ist."""
     now = now or time.time()
     gen = horn.leg_gen(c, call["id"], dev)
     if ws is None:                                      # 2.5 A3 (S10): Tunnel-Knoten nur fuer Geraete mit caps "ws" (B2: "frames")
         ws = horn.leg_ws(c, call["id"], dev)
     ns = [n for n in horn.ready_nodes(c, now, ws=ws) if n["name"] not in avoid and (only is None or n["id"] in only)]
+    if no_tunnel:
+        ns = [n for n in ns if not horn.tunnel_mode(n)] or ns
     h = home(c, call["id"], ns)
     if h:
         ns = [n for n in ns if n["id"] == h or (horn.CASCADE and cascadable(h, n["id"]))]

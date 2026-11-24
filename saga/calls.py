@@ -323,7 +323,16 @@ def horn_wanted(c, ch, media, caps, why=None, starter=None):
 def horn_block(c, call, dev, role="member", dev_class="desktop", avoid=()):
     """Kandidaten fuer dieses Geraet (Antwort von POST /api/calls, /join, /horn). 2.5 P5: saga/horn_web.py - faellt der
     Knoten des Anrufs aus, die besten bereiten (Live-Umschalten); avoid = vom Geraet gemiedene Knoten."""
-    return {"e2e": "saga-horn/v1", "ttl": horn.TOKEN_TTL, "candidates": horn_web.candidates(c, call, dev, role, dev_class, avoid)}
+    return {"e2e": "saga-horn/v1", "ttl": horn.TOKEN_TTL,
+            "candidates": horn_web.candidates(c, call, dev, role, dev_class, avoid, no_tunnel=_fed_dmh(call))}
+
+
+def _fed_dmh(call):
+    """Bugs-DB 2357: 1:1 ueber Knoten mit einer Person eines anderen Servers, den wir fuehren. Ihre Geraete erreichen
+    Knoten im Tunnel-Betrieb nie (nur geteilte, fed_horn.shared_nodes) - ein eigenes Geraet am Tunnel-Knoten bedeutet
+    immer eine Kaskade zum Knoten des Gegenuebers, im 1:1 ohne jeden Gewinn (der Weg geht ohnehin dorthin). Die Messung
+    im Geraet sieht nur die kurze Strecke zum eingebauten Knoten (LAN) und waehlte ihn trotz Bonus "hier" (Feld 24.11.)."""
+    return _dmh(call) and any(u and sharing.is_remote(u) for u in (call.get("caller"), call.get("callee")))
 
 
 def _dev_class(b):
