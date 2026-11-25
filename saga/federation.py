@@ -163,12 +163,18 @@ def _horn_all_on():
     return _horn.horn_all_on()
 
 
-CAPS2_FLAG = {"horn": lambda: bool((auth.settings().get("calls") or {}).get("horn")),   # wie saga.calls.horn_on()
-              "horn_dm": lambda: bool((auth.settings().get("calls") or {}).get("horn")),
+def _horn_on():
+    """calls.horn wie saga.calls.horn_on() (saga/horn.py horn_on, Merker horn_on_y) - nie roh lesen."""
+    from saga import horn as _horn                    # spaet: wie _horn_all_on
+    return _horn.horn_on()
+
+
+CAPS2_FLAG = {"horn": _horn_on,                                                          # wie saga.calls.horn_on()
+              "horn_dm": _horn_on,
               "chat3": lambda: bool(auth.settings().get("chat_v3")),                    # wie saga.chat.v3_new()
               # Horn-Fix: "Horn-Besitzer bestimmt" - dieser Server will 1:1-Anrufe ueber seine (geteilten) Knoten, auch wenn
               # der Partner anruft (calls.horn_all an). Einseitig: der Partner prueft es mit has_cap (nicht feature).
-              "horn_req": lambda: bool((auth.settings().get("calls") or {}).get("horn")) and _horn_all_on()}
+              "horn_req": lambda: _horn_on() and _horn_all_on()}
 
 
 def caps2():

@@ -157,6 +157,8 @@ def set_settings(args):
             calls[k[6:]] = v
             if k == "calls.horn_all":
                 calls["horn_all_y"] = True                # Grundsatz Y: wie das Admin-Formular (saga/horn.py horn_all_on)
+            if k == "calls.horn":
+                calls["horn_on_y"] = True                 # 2263-4: wie das Admin-Formular (saga/horn.py horn_on, Merker)
         else:
             auth.save_setting(k, v)
     if any(k.startswith("calls.") for k in want):
@@ -167,6 +169,8 @@ def set_settings(args):
         v = (s.get("calls") or {}).get(k[6:]) if k.startswith("calls.") else s.get(k)
         if k == "calls.horn_all":
             v = horn.horn_all_on(s.get("calls") or {})    # wirksamer Wert (Grundsatz Y: ab Werk an)
+        elif k == "calls.horn":
+            v = horn.horn_flag(s.get("calls") or {})      # wirksamer Wert (Merker horn_on_y, saga/horn.py)
         print(f"{k}={'' if v is None else int(v) if isinstance(v, bool) else v}")
     if want:
         print("(gespeichert, gilt im laufenden Saga nach spätestens 5 Sekunden)")

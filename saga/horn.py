@@ -76,10 +76,27 @@ def _b64u(b):
     return base64.urlsafe_b64encode(b).decode().rstrip("=")
 
 
-def horn_on():
-    """Feature-Flag calls.horn (Standard aus, gleiche Quelle wie saga/calls.py)."""
-    c = auth.settings().get("calls") or {}
-    return bool(c.get("horn")) and bool(c.get("enabled", True))
+HORN_ON_Y = "horn_on_y"                 # Merker: calls.horn wurde ab 2.6 bewusst gesetzt (Admin-Formular, run.py einstellen)
+HORN_DEFAULT = False                    # 2263-4: Gjallarhorn ab Werk (noch) aus - "Standard an" erst nach der Messreihe 2263-9
+
+
+def horn_flag(cfg=None):
+    """Gespeicherte Entscheidung "Gjallarhorn" (calls.horn) mit Merker wie horn_all_on: mit Merker horn_on_y gilt der
+    gespeicherte Wert (auch aus). Ohne Merker (nie gesetzt bzw. Altwert von vor 2.6 - das Admin-Formular schrieb bei jedem
+    Speichern horn mit) gilt der Standard HORN_DEFAULT, solange er aus ist zusammen mit einem gespeicherten "an".
+    cfg: das calls-Dict (Standard: aktuelle Einstellungen)."""
+    c = (auth.settings().get("calls") or {}) if cfg is None else cfg
+    if not c.get(HORN_ON_Y):
+        return HORN_DEFAULT or bool(c.get("horn"))
+    return bool(c.get("horn", HORN_DEFAULT))
+
+
+def horn_on(cfg=None):
+    """2.5 Gjallarhorn (Feature-Flag calls.horn): Gruppenanrufe ueber Knoten mit Frame-E2E saga-horn/v1. Einzige
+    Lesestelle (2263-4) - saga/calls.py, die Foederation (CAPS2), Admin und run.py fragen hierueber; nie roh calls.horn
+    lesen. Wirkt nur mit eingeschalteten Anrufen (calls.enabled). cfg: das calls-Dict (Standard: aktuelle Einstellungen)."""
+    c = (auth.settings().get("calls") or {}) if cfg is None else cfg
+    return horn_flag(c) and bool(c.get("enabled", True))
 
 
 def einport():

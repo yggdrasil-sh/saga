@@ -163,9 +163,10 @@ def enabled():
 
 
 def horn_on():
-    """2.5 Gjallarhorn (Feature-Flag calls.horn, Standard aus): Gruppenanrufe ueber Knoten mit Frame-E2E saga-horn/v1.
-    Solange aus, meldet der Server die Faehigkeit nicht (features, Foederation CAPS2) und alles bleibt Mesh wie 2.4."""
-    return bool(cfg().get("horn"))
+    """2.5 Gjallarhorn (Feature-Flag calls.horn, saga/horn.py horn_on mit Merker horn_on_y): Gruppenanrufe ueber Knoten
+    mit Frame-E2E saga-horn/v1. Solange aus, meldet der Server die Faehigkeit nicht (features, Foederation CAPS2) und
+    alles bleibt Mesh wie 2.4. Nie roh calls.horn lesen, immer hierueber."""
+    return horn.horn_on(cfg())
 
 
 def horn_all_on():
