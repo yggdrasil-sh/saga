@@ -6,6 +6,9 @@
 // Browser - die Bots senden keine dekodierbaren Bilder), fps Sprecher (hoechstes Bild) und Kacheln, Einfrierer/min
 // (freezeCount), Tonluecken (0,5-s-Fenster mit > 50 % verdeckt) und Verdeckung %, packetsLost, Weg/Knoten, CPU je Browser.
 // Ton: alle Tonplaetze zaehlen (auch Bots; sie senden gueltiges Opus = Stille, also kaum Verdeckung).
+// Bugs-DB 2438: jede Latenz-Probe traegt den Absender (Farbton unten rechts -> Browser); mit "nodes" (Knoten je Browser,
+// horn_last --browser-knoten) getrennt nach gleichem Knoten / ueber Bruecke: latency_same_ms, latency_bridge_ms,
+// latency_extra_ms (Differenz der p50) - eingeordnet nach dem Knoten, auf dem jeder Browser am Ende wirklich war.
 //   HG_SPEC='{"base":"https://saga.example.org:8960","users":["hl63-w1"],"pass":"…","call":"<id>","secs":30,"video":true,
 //             "out":"/tmp/x.json","prof":"/tmp/prof","host_rules":"MAP saga.example.org 127.0.0.1","eng":{"i":0,"exe":"…"}}'
 //   node tests/browser_horn_gruppe.js
@@ -22,7 +25,7 @@ const capped = (pr, ms = 15000) => { let t; return Promise.race([Promise.resolve
 async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; let v; while (Date.now() < end) { v = await capped(fn()).catch(() => null); if (v) return v; await sleep(step); } return v; }
 
 // --- im Browser (wie browser_rang345.js INIT, ohne Bildschirm) -----------------------------------------------------
-const INIT = ([hue, freq, w, h, fps]) => {
+const INIT = ([hue, freq, w, h, fps, hues]) => {
   const P = window.RTCPeerConnection, pcs = window.__pcs = [];
   const Wr = function (...a) { const pc = new P(...a); pcs.push(pc); return pc; };
   Wr.prototype = P.prototype; Object.setPrototypeOf(Wr, P); window.RTCPeerConnection = Wr;
@@ -65,12 +68,16 @@ const INIT = ([hue, freq, w, h, fps]) => {
     const o = (40 * 80 + 76) * 4, r = d[o], g = d[o + 1], b = d[o + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
     let hu = -1;
     if (mx - mn >= 30) { let x; if (mx === r) x = ((g - b) / (mx - mn)) % 6; else if (mx === g) x = (b - r) / (mx - mn) + 2; else x = (r - g) / (mx - mn) + 4; hu = Math.round((x * 60 + 360) % 360); }
-    if (hu >= 0 && Math.min(Math.abs(hu - hue), 360 - Math.abs(hu - hue)) < 25) return null;
+    const dh = x => Math.min(Math.abs(hu - x), 360 - Math.abs(hu - x));
+    if (hu >= 0 && dh(hue) < 25) return null;
     // stehendes Bild (gleicher Zeitcode wie in der letzten Probe, z. B. Platz zeigt gerade einen Bot): keine Latenz
     if (!ok || LAST.get(el) === v) return null;
     LAST.set(el, v);
     let lag = (Date.now() & 0xffff) - v; if (lag < 0) lag += 0x10000;
-    return lag;
+    // Absender: naechster Farbton der Browser (Index), -1 = unklar
+    let from = -1, best = 25;
+    if (hu >= 0) (hues || []).forEach((x, i) => { if (dh(x) < best) { best = dh(x); from = i; } });
+    return [lag, from];
   };
   // nur Bilder von Empfaengern (nicht die eigene Vorschau)
   const remoteIds = () => { const s = new Set(); pcs.forEach(pc => { if (pc.connectionState !== 'closed') pc.getReceivers().forEach(r => { if (r.track) s.add(r.track.id); }); }); return s; };
@@ -100,7 +107,7 @@ const r1 = x => (x == null ? null : Math.round(x * 10) / 10);
 function evalPage(s) {
   if (!s || s.length < 3) return null;
   const a = s[0], b = s[s.length - 1], secs = (b.t - a.t) / 1000;
-  const lags = []; s.forEach(x => x.lag.forEach(v => { if (v != null && v < 30000) lags.push(v); }));
+  const lags = []; s.forEach(x => x.lag.forEach(v => { if (v != null && v[0] < 30000) lags.push(v[0]); }));
   const life = kind => {
     const first = {}, last = {};
     s.forEach((x, i) => Object.keys(x[kind]).forEach(k => { if (first[k] == null) first[k] = i; last[k] = i; }));
@@ -182,7 +189,7 @@ function cpuTicks(rootPid) {
       p.__name = 'W' + (i + 1); p.__br = br;
       p.on('pageerror', e => log('[pageerror ' + p.__name + '] ' + e.message));
       if (process.env.DEBUG) p.on('console', m => log('[console ' + p.__name + '] ' + m.text()));
-      await p.addInitScript(INIT, [HUES[i % 6], FREQ[i % 6], W, H, FPS]);
+      await p.addInitScript(INIT, [HUES[i % 6], FREQ[i % 6], W, H, FPS, S.users.map((_, j) => HUES[j % 6])]);
       await p.goto(BASE + '/login');
       await p.fill('input[name=username], input#username, input[type=text]', S.users[i]);
       await p.fill('input[type=password]', S.pass);
@@ -219,7 +226,7 @@ function cpuTicks(rootPid) {
       while (Date.now() < end && (o.audio_ms == null || (o.video_ms == null && ps.length > 1 && S.video))) {
         const q = await capped(p.evaluate(() => window.__m.s[window.__m.s.length - 1] || null)).catch(() => null);
         if (q) {
-          if (o.video_ms == null && q.lag.some(v => v != null && v < 3000)) o.video_ms = q.t - tJoin[p.__name];
+          if (o.video_ms == null && q.lag.some(v => v != null && v[0] < 3000)) o.video_ms = q.t - tJoin[p.__name];
           if (o.audio_ms == null && Object.values(q.a).some(x => x[1] > 0)) o.audio_ms = q.t - tJoin[p.__name];
         }
         await sleep(200);
@@ -234,12 +241,31 @@ function cpuTicks(rootPid) {
     const c0 = pids.map(x => (x ? cpuTicks(x) : 0)), tS = Date.now();
     await sleep((S.secs || 30) * 1000);
     const c1 = pids.map(x => (x ? cpuTicks(x) : 0)), dt = (Date.now() - tS) / 1000;
+    const raw = [], nodes = [];
     for (let i = 0; i < ps.length; i++) {
       const p = ps[i];
       const s = await capped(p.evaluate(() => window.__m.stop()), 30000);
       const h = await capped(p.evaluate(() => { const x = window.HKCalls.horn(); return x && { node: x.node, path: x.path, mode: x.mode, up: x.up, tiles: (x.tiles || []).length, errs: x.errs, key_n: x.key_n, known: (x.known || []).length }; }));
+      raw.push([]); nodes.push(h && h.node || null);
+      (s || []).forEach(x => x.lag.forEach(v => { if (v != null && v[0] < 30000) raw[i].push(v); }));
       const st = await capped(p.evaluate(() => window.HKCalls.hornStats()), 5000).catch(() => null);
       R.browsers[p.__name] = Object.assign({ first: first[p.__name], horn: h, e2e: st, cpu_pct: pids[i] ? Math.round((c1[i] - c0[i]) / 100 / dt * 1000) / 10 : null }, evalPage(s) || { none: true });
+    }
+    // 2438: Latenz nach Knoten - Absender (Farbton) und Empfaenger auf demselben Knoten bzw. auf verschiedenen (Bruecke)
+    if (S.nodes) {
+      const same = [], bridge = [];
+      let unknown = 0;
+      raw.forEach((xs, i) => xs.forEach(([l, j]) => {
+        if (j < 0 || j >= nodes.length || !nodes[i] || !nodes[j]) unknown++;
+        else (nodes[j] === nodes[i] ? same : bridge).push(l);
+      }));
+      const lat = a => ({ p50: med(a), p95: pct(a, 0.95), n: a.length });
+      R.nodes = Object.fromEntries(ps.map((p, i) => [p.__name, { want: S.nodes[i] || null, got: nodes[i] }]));
+      R.latency_same_ms = lat(same); R.latency_bridge_ms = lat(bridge); R.latency_unknown = unknown;
+      R.latency_extra_ms = same.length && bridge.length ? r1(med(bridge) - med(same)) : null;
+      const pairs = new Set(); ps.forEach((_, i) => ps.forEach((_, j) => { if (i !== j && nodes[i] && nodes[j]) pairs.add(nodes[i] === nodes[j] ? 'same' : 'bridge'); }));
+      if (!pairs.has('same')) R.notes.push('latency_same_ms: kein Browser-Paar auf demselben Knoten (mindestens zwei Browser je Knoten noetig) - siehe bots.lat_same_ms');
+      if (!pairs.has('bridge')) R.notes.push('latency_bridge_ms: alle Browser auf demselben Knoten');
     }
     const names = Object.keys(R.browsers);
     const all = k => names.map(n => R.browsers[n][k]).filter(x => x != null);

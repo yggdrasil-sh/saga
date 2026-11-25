@@ -25,6 +25,15 @@ Wichtige Schalter (alle mit Standard aus dem Szenario, einzeln ueberschreibbar):
   --leitung "up=1000&down=1000&rtt=150&loss=0.03"   Browser 1 hinter nsleitung (eigener Netz-Namensraum, M8)
   --eine-adresse       alle Bots hinter EINER Client-Adresse (gemeinsames NAT: HORN_MAX_PER_IP greift); sonst je Bot eine
                        eigene Adresse 198.18.x.y als X-Forwarded-For hinter nginx (vertrauter Proxy), wie echte Anschluesse
+  --geraete-je-konto K  Geraete je Bot-Konto (Standard: 2, wenn n + Browser > 50 = MEMBERS_MAX, sonst 1). Das erste ist
+                       Hauptgeraet, die weiteren sind Begleitgeraete (POST /api/chat/devices wie echte Zweitgeraete, eigene
+                       Sitzung; Saga macht sie im Anruf zu "companion" - ohne Ton, horn-bot mic:false) - M3 "Ton 100"
+  --browser-knoten L   mit --horn1: Browser fest je Knoten, je Browser ein Eintrag (eingebaut | horn1 | Knotenname), z. B.
+                       "eingebaut,horn1"; Testhaken SAGA_TEST_HORN_PIN. Bild-Latenz dann getrennt nach gleichem Knoten /
+                       ueber Bruecke (browsers.latency_same_ms / latency_bridge_ms); Bots messen das immer (bots.lat_*)
+  --kein-override      Obergrenzen nicht anheben (sonst: Video-/Ton-Anruf mit mehr Geraeten als LIMITS -> Testhaken
+                       SAGA_TEST_HORN_LIMITS, JSON rig.limits_override; Saga laeuft dann mit SAGA_TEST_HOOKS=1)
+  --api-direkt         Saga-API/SSE direkt an saga-media statt ueber nginx (bis Bugs-DB 2438 der Standard)
   --teile10           fkey/state in Teilen zu 10 Zielen (nur fuer Server bis 2.5: hoechstens 10 Ziele je Anfrage, sonst
                        400, Bugs-DB 2434); Standard: alles in EINER Anfrage wie Web/Apps
   --no-e2e             Bots ohne Frame-E2E (Browser sehen ihre Medien dann nicht; Last ohne Krypto)
@@ -34,7 +43,9 @@ Ausgabe: JSON (--out, sonst stdout) - Vorlage fuer tools/perf/horn-2263.json: ri
 http (Anfragen, 429, Fehler), node (horn_node.load je Knoten, aswitch falls vorhanden), bots (horn-bot "sum": Beitritt,
 erster Ton/Bild, Verlust, Einfrierer/min, Ton-Platzwechsel/min, Sprecher-Wechselzeit, E2E-Zaehler), fkey (Zeit bis zum
 Schluesselwechsel nach jedem Abgang), browsers (Bild-Latenz p50/p95, fps Sprecher/Kacheln, Einfrierer/min, Tonluecken,
-packetsLost), joins (Beitritt ms je Geraet, Saga-API).
+packetsLost; mit --browser-knoten latency_same_ms/latency_bridge_ms/latency_extra_ms), join (api_ms = Saga-API: Beitritt
++ Knotenwahl /horn; node_ms = horn-bot bis die Beine stehen; total_ms = beides bis "up"), bots.lat_same_ms/lat_bridge_ms
+(Zeitcode Bot -> Bot im synthetischen Bild, nur mit Frame-E2E), fkey[].hidden (Paare ohne sichtbaren Platz, nicht gezaehlt).
 SAGA_MEDIA_BIN / GJALLARHORN_BIN wie b2_frames (sonst go build)."""
 import argparse
 import base64
@@ -48,6 +59,7 @@ import secrets
 import shutil
 import signal
 import socket
+import ssl
 import statistics
 import subprocess
 import sys
@@ -141,9 +153,15 @@ class Api:
     def __init__(self, base, host):
         u = urllib.parse.urlparse(base)
         self.h, self.p, self.host = u.hostname, u.port, host
+        self.tls = ssl._create_unverified_context() if u.scheme == "https" else None   # nginx des Rigs: selbst signiert
         self.lock = threading.Lock()
         self.n, self.n429, self.err, self.by, self.bad = 0, 0, 0, {}, {}
         self.ips = {}                                   # Sitzung -> Adresse (X-Forwarded-For, wie verschiedene Anschluesse)
+
+    def conn(self, timeout):
+        if self.tls:
+            return http.client.HTTPSConnection(self.h, self.p, timeout=timeout, context=self.tls)
+        return http.client.HTTPConnection(self.h, self.p, timeout=timeout)
 
     def req(self, m, path, cookie=None, body=None, retry=True):
         h = {"Host": self.host, "Accept-Language": "de", "Content-Type": "application/json"}
@@ -153,7 +171,7 @@ class Api:
                 h["X-Forwarded-For"] = self.ips[cookie]
         data = json.dumps(body) if body is not None else None
         for _ in range(2):
-            c = http.client.HTTPConnection(self.h, self.p, timeout=30)
+            c = self.conn(30)
             try:
                 c.request(m, path, body=data, headers=h)
                 r = c.getresponse()
@@ -199,9 +217,11 @@ class SSE(threading.Thread):
     def run(self):
         while True:
             try:
-                self.conn = http.client.HTTPConnection(self.api.h, self.api.p, timeout=600)
-                self.conn.request("GET", "/api/events", headers={"Host": self.api.host, "Accept": "text/event-stream",
-                                                                "Cookie": "saga=" + self.cookie})
+                self.conn = self.api.conn(600)
+                hd = {"Host": self.api.host, "Accept": "text/event-stream", "Cookie": "saga=" + self.cookie}
+                if self.cookie in self.api.ips:
+                    hd["X-Forwarded-For"] = self.api.ips[self.cookie]
+                self.conn.request("GET", "/api/events", headers=hd)
                 r = self.conn.getresponse()
                 self.ready.set()
                 cur = {}
@@ -245,11 +265,27 @@ def b64(b):
     return base64.b64encode(b).decode()
 
 
+def tok_pub(cand, kind):
+    """Darf das Geraet laut Medien-Token (h1.<payload>.<sig>, saga/horn.py) kind ("a", "v", "s") senden?"""
+    for r in ("both", "audio") if kind == "a" else ("both", "video"):
+        t = ((cand or {}).get("tokens") or {}).get(r) or ""
+        try:
+            pl = t.split(".")[1]
+            if kind in json.loads(base64.urlsafe_b64decode(pl + "=" * (-len(pl) % 4))).get("pub", []):
+                return True
+        except (IndexError, ValueError):
+            continue
+    return False
+
+
 class Bot:
-    def __init__(self, i, person):
+    def __init__(self, i, person, dev=None, k=None):
         self.i, self.p = i, person
-        self.uid, self.dev = person.uid, person.dev
-        self.id = person.dev["id"]
+        self.uid, self.dev = person.uid, dev or person.dev
+        self.id = self.dev["id"]
+        self.k = k or person.k   # Sitzung: Begleitgeraete haben eine eigene (wie ein zweites Geraet mit eigener Anmeldung)
+        self.companion = dev is not None and dev is not person.dev
+        self.mic = not self.companion
         self.key = None          # {"n", "k", "s"}
         self.pend = None         # wartender Wechsel {"n", "k", "need": set, "t"}
         self.up = False
@@ -258,7 +294,9 @@ class Bot:
         self.peer_s = {}         # Sender -> Sitzung s (aus fkey)
         self.lock = threading.Lock()
         self.sse = None
-        self.joined_ms = None
+        self.joined_ms = None    # Saga-API: Beitritt (+ /horn, wenn der Bot einen anderen Knoten waehlt)
+        self.join_t0 = None
+        self.total_ms = self.node_ms = None
 
 
 class Last:
@@ -302,6 +340,8 @@ class Last:
             if ev == "up":
                 b = self.byid.get(m["id"])
                 if b:
+                    if b.join_t0 and b.total_ms is None:
+                        b.total_ms, b.node_ms = round((time.time() - b.join_t0) * 1000, 1), m.get("ms")
                     b.up = True
                     self.pool.submit(self.key_start, b)
             elif ev == "stats":
@@ -327,7 +367,7 @@ class Last:
         """enc/sign-Schluessel fremder Geraete (Browser) ueber /api/chat/keys."""
         need = {self.roster[d]["who"] for d in devs if d not in self.keys and d in self.roster}
         if need:
-            s, d = self.api.req("GET", "/api/chat/keys?users=" + ",".join(sorted(need)), self.bots[0].p.k)
+            s, d = self.api.req("GET", "/api/chat/keys?users=" + ",".join(sorted(need)), self.bots[0].k)
             for u, v in ((d or {}).get("users") or {}).items():
                 for x in (v or {}).get("devices") or []:
                     self.keys[x["id"]] = {"uid": u, "enc_pk": base64.b64decode(x["enc_pub"]), "sign_pk": base64.b64decode(x["sign_pub"])}
@@ -350,7 +390,7 @@ class Last:
         items = list(sig.items())
         step = 10 if self.a.teile10 else len(items)
         for i in range(0, len(items), max(1, step)):
-            st, d = self.api.req("POST", f"/api/calls/{self.cid}/signal", b.p.k, {"device": b.id, "signals": dict(items[i:i + step])})
+            st, d = self.api.req("POST", f"/api/calls/{self.cid}/signal", b.k, {"device": b.id, "signals": dict(items[i:i + step])})
             if st == 200 and (d or {}).get("dropped"):
                 with self.lock:
                     self.sig_dropped = getattr(self, "sig_dropped", 0) + len(d["dropped"])
@@ -366,7 +406,7 @@ class Last:
         self.hb_send(op="own", id=b.id, n=0, key=b64(k["k"]))
         os_ = self.others(b)
         self.send(b, {d: {"t": "fkey", "n": 0, "kid": 0, "key": b64(k["k"]), "s": k["s"]} for d in os_})
-        self.send(b, {d: {"t": "state", "mic": True, "cam": b.i < self.a.video} for d in os_})
+        self.send(b, {d: {"t": "state", "mic": b.mic, "cam": b.i < self.a.video} for d in os_})
 
     def on_roster(self, d):
         if d.get("call_id") != self.cid:
@@ -481,7 +521,7 @@ class Last:
                 self.key_switched(b, n)
 
     def refresh_roster(self):
-        s, d = self.api.req("GET", f"/api/calls/{self.cid}", self.bots[0].p.k)
+        s, d = self.api.req("GET", f"/api/calls/{self.cid}", self.bots[0].k)
         if s == 200:
             self.on_roster({"call_id": self.cid, "legs": ((d or {}).get("call") or {}).get("legs") or []})
 
@@ -515,15 +555,17 @@ class Last:
 
     def join_bot(self, b, start=False):
         t0 = time.time()
+        b.join_t0, b.total_ms, b.node_ms = t0, None, None
         if start:
-            s, d = self.api.req("POST", "/api/calls", b.p.k, {"id": self.cid, "chat_id": self.gid, "media": "video" if self.a.video else "audio",
+            s, d = self.api.req("POST", "/api/calls", b.k, {"id": self.cid, "chat_id": self.gid, "media": "video" if self.a.video else "audio",
                                                               "device": b.id, "caps": CAPS})
         else:
-            s, d = self.api.req("POST", f"/api/calls/{self.cid}/join", b.p.k, {"device": b.id, "role": "member", "caps": CAPS})
+            s, d = self.api.req("POST", f"/api/calls/{self.cid}/join", b.k, {"device": b.id, "role": "member", "caps": CAPS})
         call = (d or {}).get("call") or {}
         cands = (call.get("horn") or {}).get("candidates") or []
         b.joined_ms = round((time.time() - t0) * 1000, 1)
         if s != 200 or not cands:
+            b.join_t0 = None
             self.events["err"].append({"id": b.id, "msg": f"Beitritt {s}: {d.get('error') or d.get('join_block')}"})
             log("Beitritt", b.uid, s, d.get("error"), d.get("join_block"))
             return False
@@ -535,16 +577,23 @@ class Last:
             self.events["err"].append({"id": b.id, "msg": "kein passender Kandidat", "cands": [x.get("node") for x in cands]})
             return False
         if c is not cands[0] or self.a.aufteilen:              # Wahl an Saga melden (wie nach dem Messen) -> frische Token
-            s, d = self.api.req("POST", f"/api/calls/{self.cid}/horn", b.p.k, {"device": b.id, "node": c["node"]})
+            s, d = self.api.req("POST", f"/api/calls/{self.cid}/horn", b.k, {"device": b.id, "node": c["node"]})
             cc = [x for x in (((d or {}).get("horn") or {}).get("candidates") or []) if x["node"] == c["node"]]
             if cc:
                 cc[0]["_path"] = c["_path"]
                 c = cc[0]
-        script = self.script_of(b.i)
-        self.hb_send(op="add", id=b.id, cand=c, path=c.get("_path") or self.a.path, video=b.i < self.a.video, tiles=self.a.tiles, device="desktop",
-                     script=script, e2e=not self.a.no_e2e, ip=b.ip)
-        b.node = c["node"]
+            b.joined_ms = round((time.time() - t0) * 1000, 1)
+        self.add_bot(b, c)
         return True
+
+    def add_bot(self, b, c):
+        """Bot an horn-bot: Ton nur, wenn das Token es erlaubt (Begleitgeraet: Saga gibt kein "a")."""
+        b.mic = tok_pub(c, "a")
+        if b.companion and b.mic:
+            log("Achtung: Begleitgeraet", b.id[:8], "bekam ein Token mit Ton (Hauptgeraet war spaeter)")
+        b.node = c["node"]
+        self.hb_send(op="add", id=b.id, cand=c, path=c.get("_path") or self.a.path, video=b.i < self.a.video, tiles=self.a.tiles, device="desktop",
+                     script=self.script_of(b.i) if b.mic else "still", e2e=not self.a.no_e2e, ip=b.ip, mic=b.mic)
 
     def pick(self, b, cands):
         p = self.a.path
@@ -575,7 +624,7 @@ class Last:
     def leave_bot(self, b):
         t0 = time.time()
         b.in_call, b.up = False, False                     # vor dem Abmelden: "closed" vom Knoten ist dann kein Neuaufbau
-        self.api.req("POST", f"/api/calls/{self.cid}/leave", b.p.k, {"device": b.id})
+        self.api.req("POST", f"/api/calls/{self.cid}/leave", b.k, {"device": b.id})
         self.hb_send(op="leave", id=b.id)
         b.key, b.pend = None, None
         # Zeit bis die Verbliebenen von jedem verbliebenen Bot den neuen Schluessel aufmachen (0,5 s Sammeln + Versand + <= 1,5 s)
@@ -594,15 +643,13 @@ class Last:
         self.hb_send(op="leave", id=b.id)
         b.up, b.key, b.pend = False, None, None
         time.sleep(1)
-        s, d = self.api.req("POST", f"/api/calls/{self.cid}/horn", b.p.k, {"device": b.id, "node": getattr(b, "node", None)})
+        s, d = self.api.req("POST", f"/api/calls/{self.cid}/horn", b.k, {"device": b.id, "node": getattr(b, "node", None)})
         cands = ((d or {}).get("horn") or {}).get("candidates") or []
         c = self.pick(b, cands) if s == 200 else None
         if c is None:
             self.events["err"].append({"id": b.id, "msg": f"Neuaufbau: /horn {s}"})
             return
-        b.node = c["node"]
-        self.hb_send(op="add", id=b.id, cand=c, path=c.get("_path") or self.a.path, video=b.i < self.a.video, tiles=self.a.tiles, device="desktop",
-                     script=self.script_of(b.i), e2e=not self.a.no_e2e, ip=b.ip)
+        self.add_bot(b, c)
 
     def alive_loop(self):
         k = 0
@@ -612,9 +659,9 @@ class Last:
                 if not b.in_call:
                     continue
                 if k % 15 == b.i % 15:
-                    self.pool.submit(self.api.req, "POST", f"/api/calls/{self.cid}/alive", b.p.k, {"device": b.id})
+                    self.pool.submit(self.api.req, "POST", f"/api/calls/{self.cid}/alive", b.k, {"device": b.id})
                 if self.a.horn_every and k % self.a.horn_every == (b.i * 7) % self.a.horn_every:
-                    self.pool.submit(self.api.req, "POST", f"/api/calls/{self.cid}/horn", b.p.k, {"device": b.id, "node": getattr(b, "node", None)})
+                    self.pool.submit(self.api.req, "POST", f"/api/calls/{self.cid}/horn", b.k, {"device": b.id, "node": getattr(b, "node", None)})
 
     def churn_loop(self):
         gone = []
@@ -771,29 +818,58 @@ def run_bench(a, node):
     return out
 
 
+# --- Testhaken: Obergrenzen und Browser je Knoten (Bugs-DB 2438) ---------------------------------------------------------
+def limits_need(a, HN):
+    """Obergrenzen fuer SAGA_TEST_HORN_LIMITS, wenn dieser Anruf (alle Geraete: Bots + Browser) ueber HN.LIMITS liegt -
+    sonst None (Saga ohne Testhaken, Verhalten wie im Betrieb). Der Anruf zaehlt jedes Geraet gegen die Grenze seiner Art
+    (Video-Anruf: Video-Grenze, auch fuer Geraete ohne Kamera); welcher Weg gilt, legt das erste Geraet fest - beide Wege
+    werden angehoben, wo noetig."""
+    n = a.n + a.browsers
+    out = {}
+    for w, (v, au) in HN.LIMITS.items():
+        nv, na = (max(v, n), max(au, n)) if a.video else (v, max(au, n))
+        if (nv, na) != (v, au):
+            out[w] = [nv, max(nv, na)]
+    if any(x > HN.LIMITS_TOP for va in out.values() for x in va):
+        sys.exit(f"{n} Geraete: mehr als {HN.LIMITS_TOP} (LIMITS_TOP) gehen auch mit Testhaken nicht")
+    return out or None
+
+
+def browser_pins(a):
+    """--browser-knoten "eingebaut,horn1" -> {konto: knoten} fuer SAGA_TEST_HORN_PIN (eingebaut = "@builtin")."""
+    if not a.browser_knoten:
+        return {}
+    xs = [x.strip().lower() for x in a.browser_knoten.split(",") if x.strip()]
+    if len(xs) != a.browsers:
+        sys.exit(f"--browser-knoten: {len(xs)} Eintraege fuer {a.browsers} Browser")
+    m = {"eingebaut": "@builtin", "builtin": "@builtin", "horn1": "horn-1.example.org", "horn-1": "horn-1.example.org"}
+    out = {f"{PREFIX}w{i + 1}": m.get(x, x) for i, x in enumerate(xs)}
+    if "horn-1.example.org" in out.values() and not a.horn1:
+        sys.exit("--browser-knoten horn1 braucht --horn1")
+    return out
+
+
 # --- Hauptablauf --------------------------------------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--szenario", default="")
     ap.add_argument("--base", type=int, default=int(os.environ.get("HL_BASE") or 8960))
     for k, typ in (("n", int), ("video", int), ("secs", int), ("browsers", int), ("tiles", int), ("kommen_gehen", float),
-                   ("horn_every", int), ("join_gap", float)):
+                   ("horn_every", int), ("join_gap", float), ("geraete_je_konto", int)):
         ap.add_argument("--" + k.replace("_", "-"), dest=k, type=typ, default=None)
-    for k in ("path", "sprechen", "knoten_cpu", "leitung", "out"):
+    for k in ("path", "sprechen", "knoten_cpu", "leitung", "out", "browser_knoten"):
         ap.add_argument("--" + k.replace("_", "-"), dest=k, default=None)
-    for k in ("horn1", "aufteilen", "cpuset", "no_e2e", "keep", "bench", "eine_adresse", "teile10"):
+    for k in ("horn1", "aufteilen", "cpuset", "no_e2e", "keep", "bench", "eine_adresse", "teile10", "kein_override", "api_direkt"):
         ap.add_argument("--" + k.replace("_", "-"), dest=k, action="store_true", default=None)
     a = ap.parse_args()
     base = dict(n=3, video=3, path="ws", secs=30, browsers=0, tiles=4, kommen_gehen=0, horn_every=50, join_gap=0.2, sprechen="",
                 knoten_cpu="", leitung="", horn1=False, aufteilen=False, cpuset=False, no_e2e=False, keep=False, bench=False,
-                eine_adresse=False, teile10=False)
+                eine_adresse=False, teile10=False, geraete_je_konto=0, browser_knoten="", kein_override=False, api_direkt=False)
     base.update(SZENARIEN.get(a.szenario.upper(), {}))
     for k, v in base.items():
         if getattr(a, k, None) is None:
             setattr(a, k, v)
     a.szenario = a.szenario.upper() or "eigen"
-    if a.n + a.browsers > 50:
-        sys.exit("hoechstens 50 Mitglieder je Gruppe (MEMBERS_MAX)")
 
     # Rig-Module (setzen HK_TEST_BASE/HK_TEST_ADMIN beim Import)
     os.environ["B2_BASE"] = str(a.base)
@@ -806,6 +882,17 @@ def main():
     import anrufe as A_  # noqa: E402
     import auth  # noqa: E402
     import db  # noqa: E402
+    from saga import chat as CH, horn as HN  # noqa: E402 - Grenzen aus dem Server (nicht doppelt gepflegt)
+    if not a.geraete_je_konto:                         # automatisch: Begleitgeraete erst, wenn die Gruppe sonst zu gross waere
+        a.geraete_je_konto = 2 if a.n + a.browsers > CH.MEMBERS_MAX else 1
+    a.konten = -(-a.n // a.geraete_je_konto)
+    if not 1 <= a.geraete_je_konto <= CH.DEVICES_MAX:
+        sys.exit(f"--geraete-je-konto 1-{CH.DEVICES_MAX} (DEVICES_MAX, Geraete je Konto)")
+    if a.konten + a.browsers > CH.MEMBERS_MAX:
+        sys.exit(f"hoechstens {CH.MEMBERS_MAX} Mitglieder je Gruppe (MEMBERS_MAX): {a.konten} Bot-Konten + {a.browsers} Browser - "
+                 "--geraete-je-konto erhoehen")
+    pins = browser_pins(a)
+    over = None if a.kein_override else limits_need(a, HN)
 
     out = {"szenario": a.szenario, "args": {k: v for k, v in vars(a).items() if k != "out"}, "t": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
            "host": {"cpus": os.cpu_count()}}
@@ -821,6 +908,14 @@ def main():
         shutil.rmtree(B2.STATE, ignore_errors=True)    # Bau-Ordner von b2_frames (nur M1, sonst raeumt der finally-Teil)
         emit(a, out)
         return
+    hooks = {}
+    if over or pins:                                   # Testhaken im Saga-Prozess (saga/horn.py, nur mit Token >= 32 Zeichen)
+        hooks = {"SAGA_TEST_HOOKS": "1", "SAGA_TEST_TOKEN": "hl63-" + secrets.token_hex(16)}
+        if over:
+            hooks["SAGA_TEST_HORN_LIMITS"] = json.dumps(over)
+        if pins:
+            hooks["SAGA_TEST_HORN_PIN"] = json.dumps(pins)
+        os.environ.update(hooks)
     for p in (a.base, a.base + 1, a.base + 2, a.base + 7, a.base + 8, a.base + 9):
         with socket.socket() as so:
             if so.connect_ex(("127.0.0.1", p)) == 0:
@@ -875,37 +970,48 @@ def main():
                 log("cpuset:", ex)
         if a.knoten_cpu and "node" in ps:
             cg = cgroup(f"hl63-{a.base}-knoten", ps["node"], a.knoten_cpu)
-        out["rig"] = {"base": B2.BASE, "pids": ps, "cpuset": a.cpuset, "knoten_cpu": a.knoten_cpu or None, "horn1": a.horn1}
+        out["rig"] = {"base": B2.BASE, "pids": ps, "cpuset": a.cpuset, "knoten_cpu": a.knoten_cpu or None, "horn1": a.horn1,
+                      "limits_override": over, "browser_pin": pins or None, "api": "direkt" if a.api_direkt else "nginx",
+                      "konten": a.konten, "geraete_je_konto": a.geraete_je_konto, "begleitgeraete": a.n - a.konten}
 
-        L.api = Api(f"http://127.0.0.1:{B2.PORT}", f"{B2.NAME}:{B2.NGX}")
-        # Konten und Geraete
+        # Saga-API und Live-Kanaele wie die Clients ueber nginx (TLS, X-Forwarded-For je Geraet); --api-direkt: saga-media
+        L.api = (Api(f"http://127.0.0.1:{B2.PORT}", f"{B2.NAME}:{B2.NGX}") if a.api_direkt
+                 else Api(f"https://127.0.0.1:{B2.NGX}", f"{B2.NAME}:{B2.NGX}"))
+        # Konten und Geraete: Bots 0..konten-1 sind Hauptgeraete, die weiteren Begleitgeraete (zweites Geraet je Konto)
         t0 = time.time()
+        persons = []
+        for j in range(a.konten):
+            u = f"{PREFIX}b{j + 1:02d}"
+            auth.create_user(u, None, f"Bot {j + 1}")
+            persons.append(A_.Person(u))
         for i in range(a.n):
-            u = f"{PREFIX}b{i + 1:02d}"
-            auth.create_user(u, None, f"Bot {i + 1}")
-            b = Bot(i, A_.Person(u))
+            p_ = persons[i % a.konten]
+            if i < a.konten:
+                b = Bot(i, p_)
+            else:
+                b = Bot(i, p_, p_.add_device(), A_.ck(p_.uid, dev=i))
             # eigene Client-Adresse je Geraet (Benchmark-Netz 198.18.0.0/15, RFC 2544) - --eine-adresse: alle hinter
             # EINER Adresse (gemeinsames NAT, Grenze HORN_MAX_PER_IP)
             b.ip = "" if a.eine_adresse else f"198.18.{i // 250}.{i % 250 + 1}"
             L.bots.append(b)
             L.byid[b.id] = b
-            L.keys[b.id] = {"uid": u, "enc_pk": b.dev["enc_pk"], "sign_pk": b.dev["sign_pk"]}
+            L.keys[b.id] = {"uid": b.uid, "enc_pk": b.dev["enc_pk"], "sign_pk": b.dev["sign_pk"]}
         wusers = [f"{PREFIX}w{i + 1}" for i in range(a.browsers)]
         for i, u in enumerate(wusers):
             auth.create_user(u, PW, f"Browser {i + 1}")
         out["setup_s"] = round(time.time() - t0, 1)
-        L.api.ips = {b.p.k: b.ip for b in L.bots if b.ip}
+        L.api.ips = {b.k: b.ip for b in L.bots if b.ip}
         for b in L.bots:
-            L.api.req("PUT", "/api/calls/caps", b.p.k, {"device": b.id, "caps": CAPS})
-        lim = 12 if a.path == "ws" else None
-        if a.video and lim and a.n + a.browsers > lim:
-            log(f"Achtung: {a.n} Bots + {a.browsers} Browser > Grenze {lim} (Video, Tunnel) - die letzten bekommen 'voll'")
-        s, d = L.api.req("POST", "/api/chats", L.bots[0].p.k, {"kind": "free", "members": [b.uid for b in L.bots[1:]] + wusers})
+            L.api.req("PUT", "/api/calls/caps", b.k, {"device": b.id, "caps": CAPS})
+        lim = (over or {}).get("tcp", HN.LIMITS["tcp"])[0 if a.video else 1]
+        if a.path in ("ws", "tcp") and a.n + a.browsers > lim:
+            log(f"Achtung: {a.n} Bots + {a.browsers} Browser > Grenze {lim} (TCP/Tunnel) - die letzten bekommen 'voll'")
+        s, d = L.api.req("POST", "/api/chats", L.bots[0].k, {"kind": "free", "members": [p_.uid for p_ in persons[1:]] + wusers})
         if s != 200:
             sys.exit(f"Gruppe: {s} {d}")
         L.gid, L.cid = d["chat"]["id"], secrets.token_hex(16)
         for b in L.bots:
-            b.sse = SSE(L.api, b.p.k, lambda typ, d, b=b: L.on_event(b, typ, d))
+            b.sse = SSE(L.api, b.k, lambda typ, d, b=b: L.on_event(b, typ, d))
             b.sse.start()
         for b in L.bots:
             b.sse.ready.wait(10)
@@ -921,12 +1027,15 @@ def main():
         t0 = time.time()
         while time.time() - t0 < 60 and sum(1 for b in L.bots if b.up) + len({e.get("id") for e in L.events["err"]}) < a.n:
             time.sleep(0.3)
+        jt = lambda k: {"p50": pctl([getattr(b, k) for b in L.bots], 0.5), "p95": pctl([getattr(b, k) for b in L.bots], 0.95)}  # noqa: E731
         out["join"] = {"all_up_s": round(time.time() - t_join, 1), "up": sum(1 for b in L.bots if b.up),
-                       "api_ms": {"p50": pctl([b.joined_ms for b in L.bots], 0.5), "p95": pctl([b.joined_ms for b in L.bots], 0.95)}}
+                       "api_ms": jt("joined_ms"), "node_ms": jt("node_ms"), "total_ms": jt("total_ms"),
+                       "companions": sum(1 for b in L.bots if b.in_call and not b.mic)}
         log(f"{out['join']['up']}/{a.n} Bots verbunden in {out['join']['all_up_s']} s")
 
         if a.browsers:
             spec = {"base": B2.BASE, "users": wusers, "pass": PW, "call": L.cid, "secs": a.secs, "video": a.video > 0,
+                    "nodes": [pins.get(u) for u in wusers] if pins else None,
                     "out": os.path.join(L.state, "browser.json"), "prof": os.path.join(L.state, "prof"), "host_rules": f"MAP {B2.NAME} 127.0.0.1"}
             if a.leitung:
                 nsl, spec["eng"] = leitung(a, B2, L.state, node)
@@ -977,6 +1086,7 @@ def main():
             except (OSError, ValueError):
                 out["browsers"] = None
                 out["browser_log"] = open(os.path.join(L.state, "browser.log"), errors="replace").read()[-3000:]
+        out["latency"] = latency_sum(out)
         errs = len(re.findall(r"Traceback|panic:|DATA RACE", B2.log_text()))
         out["server_errors"] = errs
         if errs:
@@ -995,7 +1105,7 @@ def main():
                 b.sse.close()
         if L.cid and L.bots:
             try:
-                L.api.req("POST", f"/api/calls/{L.cid}/end", L.bots[0].p.k, {"device": L.bots[0].id, "reason": "hangup"}, retry=False)
+                L.api.req("POST", f"/api/calls/{L.cid}/end", L.bots[0].k, {"device": L.bots[0].id, "reason": "hangup"}, retry=False)
             except Exception:  # noqa: BLE001
                 pass
         if L.hb and L.hb.poll() is None:
@@ -1074,6 +1184,20 @@ def _leitung(a, B2, state, node_bin, name, addr):
     open(exe, "w").write(f"#!/bin/sh\nexec ip netns exec {name} {real} \"$@\"\n")
     os.chmod(exe, 0o755)
     return (p, name), {"i": 0, "exe": exe, "ctl": f"http://127.0.0.1:{ctl}"}
+
+
+def latency_sum(out):
+    """Zusatz-Latenz der Kaskade (2438): Bild-Laufzeit gleicher Knoten / ueber Bruecke - Bots (Zeitcode im synthetischen
+    Bild, ohne Kodierer) und Browser (Zeitcode im Kamerabild, mit Kodierer/Dekodierer/Anzeige); extra = p50 Bruecke -
+    p50 gleicher Knoten."""
+    def one(same, bridge):
+        if not (same or bridge):
+            return None
+        ok = (same or {}).get("n") and (bridge or {}).get("n")
+        return {"same_ms": same, "bridge_ms": bridge, "extra_p50_ms": round(bridge["p50"] - same["p50"], 1) if ok else None}
+    bs, br = out.get("bots") or {}, out.get("browsers") or {}
+    return {"bots": one(bs.get("lat_same_ms"), bs.get("lat_bridge_ms")),
+            "browsers": one(br.get("latency_same_ms"), br.get("latency_bridge_ms"))}
 
 
 def emit(a, out):
