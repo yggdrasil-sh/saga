@@ -34,6 +34,9 @@ Wichtige Schalter (alle mit Standard aus dem Szenario, einzeln ueberschreibbar):
   --kein-override      Obergrenzen nicht anheben (sonst: Video-/Ton-Anruf mit mehr Geraeten als LIMITS -> Testhaken
                        SAGA_TEST_HORN_LIMITS, JSON rig.limits_override; Saga laeuft dann mit SAGA_TEST_HOOKS=1)
   --api-direkt         Saga-API/SSE direkt an saga-media statt ueber nginx (bis Bugs-DB 2438 der Standard)
+  --ohne-eingebaut     mit --horn1: eingebauten Knoten abschalten (calls.horn_builtin aus), horn-1 ist der einzige Knoten -
+                       der Anruf startet dort und haelt die UDP-Grenze fest (sonst startet er auf dem eingebauten Tunnel-
+                       Knoten: Grenze nach TCP, Raum auf horn-1 ohne max_peers = Standard 50 - 2263-9 Fund)
   --teile10           fkey/state in Teilen zu 10 Zielen (nur fuer Server bis 2.5: hoechstens 10 Ziele je Anfrage, sonst
                        400, Bugs-DB 2434); Standard: alles in EINER Anfrage wie Web/Apps
   --no-e2e             Bots ohne Frame-E2E (Browser sehen ihre Medien dann nicht; Last ohne Krypto)
@@ -859,12 +862,14 @@ def main():
         ap.add_argument("--" + k.replace("_", "-"), dest=k, type=typ, default=None)
     for k in ("path", "sprechen", "knoten_cpu", "leitung", "out", "browser_knoten"):
         ap.add_argument("--" + k.replace("_", "-"), dest=k, default=None)
-    for k in ("horn1", "aufteilen", "cpuset", "no_e2e", "keep", "bench", "eine_adresse", "teile10", "kein_override", "api_direkt"):
+    for k in ("horn1", "aufteilen", "cpuset", "no_e2e", "keep", "bench", "eine_adresse", "teile10", "kein_override", "api_direkt",
+              "ohne_eingebaut"):
         ap.add_argument("--" + k.replace("_", "-"), dest=k, action="store_true", default=None)
     a = ap.parse_args()
     base = dict(n=3, video=3, path="ws", secs=30, browsers=0, tiles=4, kommen_gehen=0, horn_every=50, join_gap=0.2, sprechen="",
                 knoten_cpu="", leitung="", horn1=False, aufteilen=False, cpuset=False, no_e2e=False, keep=False, bench=False,
-                eine_adresse=False, teile10=False, geraete_je_konto=0, browser_knoten="", kein_override=False, api_direkt=False)
+                eine_adresse=False, teile10=False, geraete_je_konto=0, browser_knoten="", kein_override=False, api_direkt=False,
+                ohne_eingebaut=False)
     base.update(SZENARIEN.get(a.szenario.upper(), {}))
     for k, v in base.items():
         if getattr(a, k, None) is None:
@@ -891,6 +896,8 @@ def main():
     if a.konten + a.browsers > CH.MEMBERS_MAX:
         sys.exit(f"hoechstens {CH.MEMBERS_MAX} Mitglieder je Gruppe (MEMBERS_MAX): {a.konten} Bot-Konten + {a.browsers} Browser - "
                  "--geraete-je-konto erhoehen")
+    if a.ohne_eingebaut and not a.horn1:
+        sys.exit("--ohne-eingebaut braucht --horn1")
     pins = browser_pins(a)
     over = None if a.kein_override else limits_need(a, HN)
 
@@ -936,7 +943,7 @@ def main():
         keep = {k: prev.get(k) for k in ("chat_enabled", "share_group_scope", "calls")}
         auth.save_setting("chat_enabled", True)
         auth.save_setting("share_group_scope", False)
-        auth.save_setting("calls", dict(B2.CALLS, horn=True, horn_builtin=True, horn_from=3))
+        auth.save_setting("calls", dict(B2.CALLS, horn=True, horn_builtin=not a.ohne_eingebaut, horn_from=3))
         auth._settings_cache["v"] = None
         ngx = B2.nginx_conf()
         r = subprocess.run(["nginx", "-c", ngx], capture_output=True, text=True)
