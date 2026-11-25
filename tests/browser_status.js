@@ -45,13 +45,14 @@ async function login(p, user, pass) {
   // Frage "Erste Schritte" (static/firststeps.js, neue Konten ohne eigene Seiten) vorab beantworten: sie erscheint ~2 s nach
   // jedem Laden, sobald kein Dialog offen ist - sonst liegt sie z. B. direkt nach dem Schliessen des Status-Dialogs ueber
   // dem Kontoknopf und nimmt den Fokus (Bugs-DB 2394). Weggeklickt/Escape speichert nichts - daher per API.
-  const fs = await papi(p, 'POST', '/api/first-steps', { answer: 'no' }).catch(e => ({ status: 0, d: { error: e.message } }));
-  if ([200, 403, 404].indexOf(fs.status) < 0) note('Erste Schritte beantworten: ' + JSON.stringify(fs));
+  const fsr = await papi(p, 'POST', '/api/first-steps', { answer: 'no' }).catch(e => ({ status: 0, d: { error: e.message } }));
+  if ([200, 403, 404].indexOf(fsr.status) < 0) note('Erste Schritte beantworten: ' + JSON.stringify(fsr));
 }
 const RKF = u => path.join(os.tmpdir(), 'saga-browser-rk-' + BASE.replace(/\W+/g, '_') + '-' + u + '.txt');
 // fresh: jeder Kontext ist ein neues Chat-Geraet (hoechstens 10 je Konto, saga/chat.py DEVICES_MAX) - Geraete frueherer Laeufe
 // vorher abmelden (wie browser_kontakte2.js), sonst scheitert ab dem ~5. Lauf das Entsperren (Bugs-DB 2394). Nicht fuer den
 // zweiten Kontext eines Kontos im selben Lauf (schmale Ansicht): der erste bliebe sonst ohne Geraet.
+// ACHTUNG: meldet alle Chat-Geraete des Kontos ab und verwirft deren versiegelte Schluessel - nur gegen Testkonten laufen lassen.
 async function chatKeys(q, user, fresh) {
   if (fresh) {
     await q.goto(BASE + '/dashboard'); await q.waitForTimeout(500);
@@ -248,7 +249,8 @@ async function bilder(browser) {
       // status.changed, die Sammelmeldung und chat.status an B. Darauf warten (ver steigt), sonst haengen die Fenster
       // der folgenden Pruefungen an der Phase der Schleife.
       const v5 = await until(async () => { const v = (await papi(a, 'GET', '/api/account/status')).d; return v && p5.d && v.ver > p5.d.ver ? v : null; }, 45000, 250);
-      note('Ablauf auf dem Server nach ' + Math.round((Date.now() - t5) / 1000) + ' s' + (v5 ? '' : ' - NICHT abgelaufen'));
+      note('Ablauf auf dem Server nach ' + Math.round((Date.now() - t5) / 1000) + ' s');
+      ok('Server: Status nach Ablauf wirklich abgelaufen (ver steigt)', !!v5, v5 ? '' : 'ver unveraendert nach 45 s');
     }
     const back = await until(async () => { const v = await usView(a); return v && v.state === 'available' ? v : null; }, 8000, 200);
     ok('A: nach Ablauf "Verfügbar" (status.changed), Punkt am Kontoknopf weg', back && back.source === 'system' && !(await a.$('#hk-user .us-me')), back);
