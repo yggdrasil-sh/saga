@@ -1278,6 +1278,21 @@ def _msg_dict(r, nm):
             **({"by_admin": True} if r[2] == "tomb" else {})}
 
 
+def _call_public(body):
+    """Anruf-Eintrag (kind='call') fuer die anrufende Person: ohne hold (Nicht stoeren/Ruhezeit bzw. Anklopfen der
+    angerufenen Person, saga.calls._log) - Ruhezeiten sieht niemand sonst (docs/APP-API.md "Anrufe und eigener Status")."""
+    if not isinstance(body, str) or '"hold"' not in body:
+        return body
+    try:
+        d = json.loads(body)
+    except ValueError:
+        return body
+    if not isinstance(d, dict):
+        return body
+    d.pop("hold", None)
+    return json.dumps(d, separators=(",", ":"))
+
+
 def ai_marks(c, cid, msgs):
     """KI-Antworten (2.1) kennzeichnen: ai = {ref, sha256, by} - die Clients vergleichen sha256 mit dem entschluesselten Text.
     Gilt nur, wenn der Absender der Nachricht auch die Antwort angefordert hat. Nach einer Kontoloeschung ist der Beleg
@@ -2252,6 +2267,9 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
         # mit Schluessel)
         devs, ids = _senders(c, [r for r in rows if not r[14]] if v3 else rows)
         msgs = [_msg_dict(r, nm) for r in rows]
+        for r, x in zip(rows, msgs):                    # 2.6 (Bugs-DB 2375): Grund der Anruf-Weiche nur fuer die angerufene Person
+            if r[2] == "call" and r[3] == uid:
+                x["body_ct"] = _call_public(x["body_ct"])
         if v3:
             for x in msgs:
                 if x.get("sender_handle") and x.get("sender") and x["sender"]["username"] != uid and not sharing.is_remote(x["sender"]["username"]):

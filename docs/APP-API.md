@@ -2039,7 +2039,7 @@ sind; dem niemand beitritt, endet er nach `ring_s` (verpasst).
   `chat`, `media`, `caller`, `group`, `dm`) – jede VoIP-Mitteilung ist ein klingelnder Anruf für CallKit; das normale
   APNs-Abo desselben Geräts bekommt ihn dann nicht. Ältere Apps zeigen sie als normale Mitteilung.
 - Chat-Eintrag `kind: "call"`: Gruppe mit `group: true` und `n` (Zahl der Personen, die dabei waren); `status`
-  `ended` bzw. `missed`.
+  `ended` bzw. `missed`. 1:1 seit 2.6 ggf. `hold` (nur für die angerufene Person, Abschnitt „Anrufe und eigener Status“).
 
 ### Body (E2E, ergänzt saga-call v3)
 
@@ -3962,3 +3962,15 @@ unverändert; erkennbar an `waiting1` in `GET /api/calls/config` → `features`.
 | `waiting: true` (`call.ring`, `call.invite`, Anruf-Objekt) | Anklopfen – nicht klingeln, Hinweis im laufenden Gespräch |
 | `quiet: true` (`call.invite`, Anruf-Objekt) | zurückgehalten bzw. stille Einladung |
 | `again: true` (409 beim Anrufen) | schon angeklopft – besetzt bis zum Ende des Gesprächs |
+| `hold` (Chat-Eintrag `kind: "call"`, Glocke `call.missed`) | Grund der Weiche, nur für die angerufene Person (2.6, Bugs-DB 2375) |
+
+**Grund am Chat-Eintrag und an der Glocke (2.6, Bugs-DB 2375):** Der Chat-Eintrag `kind: "call"` (1:1 direkt und 1:1 über
+Knoten, nicht in Gruppen) trägt `hold`, wenn die Weiche eingegriffen hat: `dnd` (zurückgehalten – Nicht stören oder eine
+Ruhezeit, die als Nicht stören zählt; beides heißt `dnd`), `knock` (angeklopft) bzw. `again` (schon angeklopft, sofort
+besetzt). Das Feld sieht **nur die angerufene Person**: `GET /api/chats/{id}/messages?calls=1` entfernt es für die
+anrufende Person (Absender des Eintrags) – Ruhezeiten sieht niemand sonst. Anzeige z. B. „Verpasster Anruf (Nicht
+stören)“ bei `status: "missed"` und `hold: "dnd"`; die anrufende Seite zeigt wie bisher „nicht angenommen“. Die Glocke
+`call.missed` der angerufenen Person trägt `hold` ebenso (in `GET /api/notifications` als Feld des Eintrags); bei `dnd`
+gilt für Mitteilungen und Sammelmeldung weiter die Push-Weiche (kein Push während Nicht stören), bei `knock`/`again` wie
+oben (Sammel-Push nach dem Gespräch). Über Servergrenzen ohne Protokolländerung: `hold` steht in den Einträgen des Servers
+der angerufenen Person. Ältere Clients ignorieren das Feld.

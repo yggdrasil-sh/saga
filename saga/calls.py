@@ -981,6 +981,10 @@ def _log(c, call, status, now, end=None, extra=None):
         d.update({k: FED.FC.my_handle(c, d[k]) if d[k] and not sharing.is_remote(d[k]) else d[k] for k in ("from", "to")})
     if call["kind"] == "group" and not _dmh(call):     # 2.5: 1:1 ueber Knoten -> Eintrag wie 1:1
         d.update(group=True, n=c.execute("SELECT COUNT(DISTINCT who) FROM chat_call_leg WHERE call_id=?", (call["id"],)).fetchone()[0])
+    elif call.get("hold") in HOLD_LOG:
+        # 2.6 (Bugs-DB 2375): Grund der Anruf-Weiche fuer die angerufene Person ("Verpasst (Nicht stoeren)") - die anrufende
+        # Person bekommt das Feld nie (chat.api_messages entfernt es fuer den Absender: Ruhezeiten sieht niemand sonst)
+        d["hold"] = call["hold"]
     d.update(extra or {})
     body = json.dumps(d, separators=(",", ":"))
     eff, mx = ch["retention_s"], chat.retention_max()
@@ -1611,12 +1615,17 @@ def busy_resp(name, again=False):
     return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)
 
 
+HOLD_LOG = ("dnd", "knock", "again")                 # 2.6 (Bugs-DB 2375): Werte von chat_call.hold fuer Eintrag und Glocke
+
+
 def missed_bell(c, uid, call):
     """Glocke "Verpasster Anruf" fuer uid. Anklopfen (hold knock/again): ohne Push - der kommt einmal je Anrufer nach dem
     Gespraech (knock_summary). Die Glocke merkt sich hold (Zaehlung aus chat_call.hold, auch wenn der Anruf schon weg ist);
     saga.push.enqueue sieht data.hold und legt gar keinen Auftrag an (zaehlt weder das Kontingent noch fuer die
-    Sammelmeldung - das tut erst knock_summary)."""
-    hold = call.get("hold") if call.get("hold") in ("knock", "again") else None
+    Sammelmeldung - das tut erst knock_summary). 2.6 (Bugs-DB 2375): auch hold 'dnd' (zurueckgehalten) - nur als Merker
+    fuer die Anzeige; Push und Sammelmeldung laufen dafuer wie bisher ueber REACH (saga.push prueft nur knock/again).
+    hold gilt nur fuer die angerufene Person (chat_call.callee; Gruppen-Einladungen haben kein hold je Person)."""
+    hold = call.get("hold") if call.get("hold") in HOLD_LOG and uid == call.get("callee") else None
     return notify.create(c, uid, "call.missed", call["caller"], data={"chat": call["chat_id"], "call": call["id"], **({"hold": hold} if hold else {})})
 
 
@@ -2788,6 +2797,8 @@ def _missed_notif(c, uid, item, d):
         r = c.execute("SELECT media FROM chat_call WHERE id=?", (str(d["call"]),)).fetchone()
         if r:
             item["media"] = r[0]
+    if d.get("hold") in HOLD_LOG:
+        item["hold"] = d["hold"]                       # 2.6 (Bugs-DB 2375): Grund - nur in der eigenen Glocke der angerufenen Person
 
 
 notify.RENDER["call.missed"] = _missed_notif

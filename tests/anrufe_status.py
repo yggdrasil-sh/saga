@@ -178,6 +178,24 @@ def run():
     end(A, c1)
     rows = [x for x in A_.call_rows(ab) if x.get("call") == c1]
     ok(f"... Abbrechen: verpasst im Chat ({[x.get('status') for x in rows]})", [x.get("status") for x in rows] == ["missed"])
+    # Bugs-DB 2375: Grund am Chat-Eintrag und an der Glocke - nur fuer die angerufene Person
+    ok(f"... Chat-Eintrag mit hold dnd ({[x.get('hold') for x in rows]})", [x.get("hold") for x in rows] == ["dnd"])
+    def api_rows(p):
+        s_, ms = req("GET", f"/api/chats/{ab}/messages?calls=1", p.k)
+        return s_, [json.loads(m["body_ct"]) for m in (ms.get("messages") or []) if m.get("kind") == "call" and c1 in m.get("body_ct", "")]
+    sb_, rb_ = api_rows(B)
+    sa_, ra_ = api_rows(A)
+    ok(f"... GET messages?calls=1: Ben sieht hold dnd, Anna nicht (Ruhezeiten sieht niemand sonst) ({sb_}, {rb_}, {sa_}, {ra_})",
+       sb_ == 200 and sa_ == 200 and [x.get("hold") for x in rb_] == ["dnd"] and len(ra_) == 1 and "hold" not in ra_[0]
+       and ra_[0].get("status") == "missed")
+    bl = [n for n in A_.notifs(B.uid) if n.get("call") == c1]
+    s_, nl = req("GET", "/api/notifications?limit=20", B.k)
+    it = [x for x in (nl.get("items") or []) if x.get("kind") == "call.missed" and x.get("hold")]
+    ok(f"... Glocke 'Verpasster Anruf' mit hold dnd (Daten und Ansicht) ({[n.get('hold') for n in bl]}, {[x.get('hold') for x in it]})",
+       [n.get("hold") for n in bl] == ["dnd"] and s_ == 200 and [x.get("hold") for x in it][:1] == ["dnd"])
+    time.sleep(1.0)
+    ok(f"... trotz hold dnd an der Glocke: kein Push zum verpassten Anruf (Nicht stoeren) ({[x[1] for x in hits(TOK['apns'], m0, 'call.missed')]})",
+       not [x for x in hits(TOK["apns"], m0, "call.missed") if x[1].get("chat") == ab])
 
     # Wiederholungsanruf binnen 180 s
     m0, mB = A_.mark(), sB.mark()
@@ -265,6 +283,8 @@ def run():
     ok(f"... dritter Versuch ebenso ({s}, {d.get('again')})", s == 409 and d.get("again") is True)
     st = [x.get("status") for x in A_.call_rows(cb) if x.get("call") in (k1, k2, k3)]
     ok(f"... je Versuch ein Chat-Eintrag ({st})", st == ["missed", "busy", "busy"])
+    hl = [x.get("hold") for x in A_.call_rows(cb) if x.get("call") in (k1, k2, k3)]
+    ok(f"... Chat-Eintraege mit hold knock/again (Bugs-DB 2375) ({hl})", hl == ["knock", "again", "again"])
     bells = [n for n in A_.notifs(B.uid) if n.get("call") in (k1, k2, k3)]
     ok(f"... je Versuch eine Glocke mit hold ({[n.get('hold') for n in bells]})", [n.get("hold") for n in bells] == ["knock", "again", "again"])
     k4, s, d = A_.call(D, B, db_)
@@ -287,8 +307,9 @@ def run():
        f"({sorted((x.get('chat'), x.get('n')) for x in sums)})",
        sorted((x.get("chat"), x.get("n")) for x in sums) == sorted([(cb, 3), (db_, 1)]))
     with connect() as c:
-        flag = [json.loads(r[0]).get("sum") for r in c.execute("SELECT data FROM notification WHERE uid=? AND kind='call.missed' AND data LIKE '%\"hold\"%'",
-                                                               (B.uid,)).fetchall()]
+        flag = [d.get("sum") for d in (json.loads(r[0]) for r in c.execute("SELECT data FROM notification WHERE uid=? AND kind='call.missed' "
+                                                                            "AND data LIKE '%\"hold\"%'", (B.uid,)).fetchall())
+                if d.get("hold") in ("knock", "again")]          # Bugs-DB 2375: hold dnd (verpasst bei Nicht stoeren) zaehlt hier nicht
     ok(f"... Versuche als gesammelt markiert ({flag})", flag and all(flag))
     e3, s, d = A_.call(E, B, eb)
     ok(f"danach klingelt es wieder normal ({s}, {hold(e3)})", s == 200 and hold(e3)[0] is None)

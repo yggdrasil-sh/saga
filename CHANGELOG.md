@@ -150,6 +150,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Verpasster Anruf zeigt den Grund** (Bugs-DB 2375): Der Chat-Eintrag eines 1:1-Anrufs und die Glocke „Verpasster
+  Anruf“ tragen `hold` (`dnd`, `knock`, `again`), wenn die Anruf-Weiche eingegriffen hat – nur für die angerufene Person
+  (für die anrufende Person entfernt der Server das Feld, Ruhezeiten sieht niemand sonst). Das Web zeigt „Verpasster
+  Anruf (Nicht stören)“ bzw. „(du hast telefoniert)“. Keine Migration. Tests: `tests/anrufe_status.py`,
+  `tests/browser_anklopfen.js`.
 - **„/“ → „Widget: Diagramm“ legt bei „gleichzeitig bearbeiten“ wieder ein Widget an** (Bugs-DB 2361, Web): Die Vorgaben
   des Diagramm-Widgets (und jede Änderung im Panel) wichen von der Bereinigung des Servers ab, der Server lehnte live
   mit `sanitize` ab und die Seite sprang zurück; das Panel ging dann am ersten vorhandenen Widget auf, weil der Merker
