@@ -4065,10 +4065,11 @@ neu), fehlende werden gelöscht. Doppelte Werte in der Anfrage zählen einmal.
   fallen weg; `00…` wird `+…`; `0…` (national) nur mit Landesvorwahl – aus `cc` der Anfrage, sonst (fehlt, `null`
   oder `""`) aus `/api/contacts/settings` –, ohne → `400`. Danach muss `^\+[1-9]\d{7,14}$` passen. Apps schlagen die Landesvorwahl aus
   der Region des Geräts vor (einmal `PUT /api/contacts/settings`). Das nationale Präfix richtet sich nach der
-  Landesvorwahl (Bugs-DB 2400): meist fällt die `0` weg; bei `39`, `378`, `379` und `225` gehört sie zur Nummer und bleibt
+  Landesvorwahl (Bugs-DB 2400): meist fällt die `0` weg; bei `39`, `378`, `225` und `229` gehört sie zur Nummer und bleibt
   (`06 1234 5678` → `+390612345678`, ebenso `+39 (0)6 …`); bei `36` fällt `06` weg (`06 30 123 4567` → `+36301234567`,
   eine einzelne `0` vorn → `400`); wo eine führende `0` kein Präfix ist (u. a. `1`, `7`, `30`, `34`, `351`, `420`, `45`,
-  `47`, `48`) → `400` mit Hinweis, die Nummer mit `+` einzugeben. Apps schicken weiter nur `cc` und die Eingabe.
+  `47`, `48`, `52`; ebenso das ungenutzte `379` – Vatikan-Nummern sind `+39 06 698…`) → `400` mit Hinweis, die Nummer mit `+`
+  einzugeben. Apps schicken weiter nur `cc` und die Eingabe.
 - **E-Mail:** höchstens 254 Zeichen, genau ein `@`, keine Leer-, Steuer- oder unsichtbaren Formatzeichen und keines von
   `,` `;` `?` `&` `#` `<` `>` `"` (ein Wert ist genau ein Empfänger; Bugs-DB 2399) → sonst `400`; die Domain wird klein
   geschrieben, der Teil vor `@` bleibt, wie eingegeben. Clients bauen `mailto:` je Teil kodiert (`encodeURIComponent`

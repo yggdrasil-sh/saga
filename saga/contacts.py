@@ -15,6 +15,7 @@ Dieses Modul importiert weder saga.chat noch die Foederation (keine Zyklen): Ang
 saga.fed_chat ueber den Haken REMOTE."""
 import re
 import time
+import unicodedata
 
 from saga import avatars, bus
 from saga.core import HANDLE_RE, is_raw_ref, labels, local_ref, subtitles, unnamed
@@ -463,6 +464,14 @@ E164_RE = re.compile(r"\+[1-9]\d{7,14}")
 # wie contact_book.norm_email (Bugs-DB 2399): keine Trenn-/Steuerzeichen, damit ein Wert genau ein Empfaenger bleibt
 EMAIL_RE = re.compile(r'[^\s@\x00-\x1f\x7f,;?&#<>"\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]+'
                       r'@[^\s@A-Z\x00-\x1f\x7f,;?&#<>"\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]+')
+_MAIL_CATS = ("Cc", "Cf", "Cs", "Zs", "Zl", "Zp")       # Steuer- (auch C1), Format-, Ersatz- und Trennzeichen
+
+
+def mail_chars_ok(s):
+    """Keine Steuer-, unsichtbaren Format- oder Trennzeichen (vollstaendig nach Unicode-Kategorie; Bugs-DB 2399)."""
+    return not any(unicodedata.category(ch) in _MAIL_CATS for ch in s)
+
+
 FORMS = ("informal", "formal")
 TYPES = ("mobile", "home", "work", "other")
 BOOK_MANUAL_MAX = 2000
@@ -493,7 +502,7 @@ def _bk_private(addrs):
         if not isinstance(a, dict) or a.get("kind") not in ("e164", "email") or not isinstance(a.get("value"), str):
             continue
         k, v = a["kind"], a["value"].strip()
-        if not (E164_RE.fullmatch(v) if k == "e164" else (len(v) <= 254 and EMAIL_RE.fullmatch(v))) or (k, v) in seen:
+        if not (E164_RE.fullmatch(v) if k == "e164" else (len(v) <= 254 and EMAIL_RE.fullmatch(v) and mail_chars_ok(v))) or (k, v) in seen:
             continue
         seen.add((k, v))
         out.append((k, v, a.get("type") if a.get("type") in TYPES else None))

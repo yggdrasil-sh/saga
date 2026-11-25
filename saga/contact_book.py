@@ -48,14 +48,18 @@ _MAIL_BAD = re.compile(r'[\s\x00-\x1f\x7f,;?&#<>"\u200b-\u200f\u202a-\u202e\u206
 #   None  = eine fuehrende 0 ist dort kein nationales Praefix (keines bzw. ein anderes, z. B. 1 oder 8) -> 400 "bitte mit +"
 # Nur gut belegte Faelle; im Zweifel lieber 400 als eine falsch gespeicherte Nummer.
 TRUNK_CC = {
-    "39": "", "378": "", "379": "", "225": "",            # Italien, San Marino, Vatikan, Elfenbeinkueste (0 Teil der Nummer)
+    "39": "", "378": "", "225": "", "229": "",            # Italien, San Marino, Elfenbeinkueste, Benin (0 Teil der Nummer)
+    "379": None,                                          # Vatikan: 379 nicht in Gebrauch, Nummern sind +39 06 698 …
     "36": "06",                                           # Ungarn
     "1": None,                                            # Nordamerika (NANP, Praefix 1)
-    "7": None, "375": None, "370": None, "994": None, "993": None, "998": None,   # Praefix 8 (RU/KZ, BY, LT, AZ, TM, UZ)
+    "7": None, "375": None, "994": None, "993": None, "998": None, "992": None,  # Praefix 8 bzw. unklar (RU/KZ BY AZ TM UZ TJ)
     "976": None,                                          # Mongolei (01/02)
+    "52": None, "57": None,                               # Mexiko (seit 2019), Kolumbien (seit 2021) ohne Praefix
+    "241": None, "242": None,                             # Gabun, Kongo: kein Praefix, 0 ggf. Teil der Nummer - unklar
     "30": None, "34": None, "351": None, "352": None, "356": None, "371": None, "372": None, "377": None,
     "420": None, "45": None, "47": None, "48": None, "56": None, "598": None, "65": None, "968": None, "977": None,
 }                                                         # ohne Praefix: GR ES PT LU MT LV EE MC CZ DK NO PL CL UY SG OM NP
+# Litauen (370) seit 1.3.2024 mit Praefix 0 (vorher 8) -> Standard.
 
 
 class Bad(Exception):
@@ -108,7 +112,7 @@ def norm_email(v):
     if not isinstance(v, str):
         raise Bad(t("Ungültige E-Mail-Adresse."))
     s = v.strip()
-    if not s or len(s) > 254 or s.count("@") != 1 or _MAIL_BAD.search(s):
+    if not s or len(s) > 254 or s.count("@") != 1 or _MAIL_BAD.search(s) or not contacts.mail_chars_ok(s):
         raise Bad(t("Ungültige E-Mail-Adresse."))
     local, dom = s.split("@")
     dom = dom.lower()
