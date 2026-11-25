@@ -157,7 +157,8 @@ Regeln (Relais prüft, Verstoß → `400 {"error":"bad","reason":…}`):
 | `502`/`503`, Zeitüberschreitung, Verbindung weg | Relais oder Apple gestört (auch APNs 5xx, APNs 403 mit dem Schlüssel des Relais) | `hold`, Schutzschalter |
 
 Genauer (Relais 2262-2b): bei `429` ist `tier` der Name der Stufe (`neu`, `aktiv`, `eigen`); APNs selbst meldet 429 →
-`scope:"apns"`, `retry_after: 60`; alle APNs-Verbindungsplätze des Relais belegt → `scope:"apns"`, `retry_after: 5`.
+`scope:"token"`, `retry_after: 60` (Apples `TooManyRequests` gilt einem Gerätetoken, 2262-1d); alle
+APNs-Verbindungsplätze des Relais belegt → `scope:"apns"`, `retry_after: 5`.
 `scope` `server`, `apns` und `register` halten alle Relais-Aufträge des Servers an, `token` nur den betroffenen Auftrag.
 `DELETE /v1/servers/me` eines gesperrten Servers → `403 {"error":"blocked"}` (Abmelden geht dann nicht, Zustand bleibt
 „gesperrt“).
@@ -308,4 +309,5 @@ Jede Änderung nach dem ersten Stand bekommt einen eigenen Commit (`2262-1b …`
 | 2262-1 | erster Stand |
 | 2262-1b | Abschnitt 4: `tier`/`scope`/`retry_after` bei 429 und `DELETE /v1/servers/me` bei gesperrtem Server genauer beschrieben (so baut es das Relais; keine neue Bedeutung). |
 | 2262-1c | Abschnitt 5.3: `push.apns_e2e_direct` (E2E auf dem eigenen APNs-Weg) Standard **aus**; Relais-Weg unverändert immer E2E. |
+| 2262-1d | Abschnitt 4: APNs-429 (`TooManyRequests`) → `scope:"token"` statt `"apns"` – hält nur den Auftrag dieses Geräts an, nicht alle Aufträge des Servers (Bugs-DB 2412). |
 | 2262-1b | Vektoren `anruf_voip`, `gruppenanruf_alert` und `collapse` mit echter Anrufkennung (32 Hex-Zeichen wie `chat_call.id`; die App verwirft kürzere). Format und Verfahren unverändert. |

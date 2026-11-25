@@ -66,7 +66,9 @@ def map_response(status, reason):
     if status == 410 or reason in GONE:
         return Result(410, {"error": "gone", "reason": reason or "Unregistered"}, reason)
     if status == 429:
-        return Result(429, {"error": "rate", "tier": "apns", "scope": "apns", "retry_after": 60}, reason,
+        # Apple "TooManyRequests" gilt einem einzelnen Geraetetoken (2262-1d, Bugs-DB 2412): nur diesen Auftrag anhalten,
+        # nicht alle Mitteilungen und Anrufe des Servers
+        return Result(429, {"error": "rate", "tier": "apns", "scope": "token", "retry_after": 60}, reason,
                       {"Retry-After": "60"})
     if status == 413:
         return Result(413, {"error": "bad", "reason": reason or "PayloadTooLarge"}, reason)

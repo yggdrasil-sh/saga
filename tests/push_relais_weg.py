@@ -339,6 +339,9 @@ def run(srv):
         r = [x for x in q_rows() if x[1] == "apns"]
         ok(f"429 scope {scope} retry_after {ra} -> hold, naechster Versuch nach {ra} s ({r and round(r[0][4] - t1, 1)})",
            len(r) == 1 and r[0][3] == 0 and ra - 1 <= r[0][4] - t1 <= ra + 2 and all(s[1] == 0 for s in sub_state()))
+        held = push_relay._hold["until"] > time.time()
+        ok(f"429 scope {scope}: {'nur dieser Auftrag' if scope == 'token' else 'alle Relais-Auftraege'} angehalten (2412)",
+           held == (scope != "token"))
         with connect() as c, c:
             c.execute("DELETE FROM push_queue WHERE uid='rw-a'")
     ok("429: Schutzschalter bleibt zu (Relais erreichbar)", not push_relay.breaker_open())

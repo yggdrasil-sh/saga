@@ -550,7 +550,8 @@ try:
         st, d, _ = e.push(token=tok(pfx))
         ok(f"APNs {pfx} -> {want_st} {want_d.get('reason')}", st == want_st and d == want_d)
     st, d, h = e.push(token=tok("4290"))
-    ok("APNs 429 -> 429 scope apns mit Retry-After", st == 429 and d.get("scope") == "apns" and d.get("retry_after") == 60
+    ok("APNs 429 (TooManyRequests, je Token) -> 429 scope token mit Retry-After", st == 429 and d.get("scope") == "token"
+       and d.get("retry_after") == 60
        and h.get("retry-after") == "60")
     t = tok("e0e0")
     st, d, _ = e.push(token=t)
