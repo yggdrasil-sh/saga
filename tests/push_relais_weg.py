@@ -380,6 +380,10 @@ def run(srv):
 
     # --- Relais aus (Port zu) ---------------------------------------------------------------------------------------------
     srv.shutdown(); srv.server_close()
+    MODE["push"] = "ok"
+    cl = push_relay._http.pop("c", None)        # offene Keep-Alive-Verbindung zum alten Handler schliessen (wie ein echter Ausfall)
+    if cl:
+        cl.close()
     push_relay.reset()
     ne = digest(1); due()
     t1 = time.time()
