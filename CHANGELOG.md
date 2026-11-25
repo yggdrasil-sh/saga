@@ -44,10 +44,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `ghcr.io/<owner>/saga-relay` (CI wie gjallarhorn), Betrieb in `relay/README.md` und `relay/deploy/compose.yml`, Werkzeug
   `relay/relayctl.py`. Anmeldung mit Domain-Nachweis (sonst Freischaltung von Hand), Erlaubnislisten (kein Freitext im
   sichtbaren Teil, nur bekannte Push-Typen und Topics), Ratenstufen `neu`/`aktiv`/`eigen` mit eigenem Topf fürs Klingeln.
-  Bei `429` ist `tier` der Stufenname; APNs-429 → `scope:"apns"`, `retry_after` 60, alle APNs-Plätze belegt →
-  `scope:"apns"`, `retry_after` 5; `DELETE /v1/servers/me` eines gesperrten Servers → 403 `blocked`. Protokoll ohne
-  Token und Nutzlast; die Aufbewahrung „14 Tage“ geht nur mit journald (`MaxRetentionSec`), nicht mit dem Log-Treiber
-  `json-file`. Test `tests/relay_dienst.py`.
+  Bei `429` ist `tier` der Stufenname; APNs-429 (`TooManyRequests`, gilt einem Gerätetoken) → `scope:"token"`,
+  `retry_after` 60 – hält nur den Auftrag dieses Geräts an, nicht alle Mitteilungen und Anrufe des Servers (Bugs-DB
+  2412, Vertrag 2262-1d); alle APNs-Plätze belegt → `scope:"apns"`, `retry_after` 5; `DELETE /v1/servers/me` eines
+  gesperrten Servers → 403 `blocked`. Protokoll ohne Token und Nutzlast; `compose.yml` schreibt ins journald des Hosts,
+  die Frist auf der Startseite kommt aus `relay.json` `log_days` (Standard 14) und gilt mit `MaxRetentionSec` auf dem
+  Host (README „Protokolle“; Bugs-DB 2413). Sind die Apps (Topics) des Relais beim Server noch unbekannt, holt er
+  `/v1/info` und hält die Mitteilung an, statt Fehler am Abo zu zählen; „Jetzt prüfen“/„Schlüssel erneuern“ sprechen ein
+  ausgeschaltetes Relais nicht an. Tests `tests/relay_dienst.py`, `tests/push_relais_weg.py`.
 - **Adressbuch – Server-Kern** (Bugs-DB 2027a, Schritte 2027a-1 bis -3, Feature `contacts2`): Kontakte mit eigenen
   Feldern „Name für mich“, Anrede (du/Sie), Grußform, Telefonnummern (E.164) und E-Mail-Adressen – für Personen aus
   gemeinsamen Chats und für selbst angelegte Kontakte. Neue Tabellen `contact`/`contact_addr` (Migration 38: je
