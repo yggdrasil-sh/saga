@@ -407,7 +407,8 @@
       on(es, n, function (d) { chatEvent(n, d); });
     });
     // 2.6 (Bugs-DB 2029-5): eigener Status (static/userstatus.js) und Status von Chat-Partnern (static/chat.js)
-    ['status.changed', 'status.digest', 'chat.status'].forEach(function (n) {
+    // 2.6 (Bugs-DB 2027a): Adressbuch geaendert (static/contacts.js, ohne Inhalt: {id, deleted?})
+    ['status.changed', 'status.digest', 'chat.status', 'contacts.changed'].forEach(function (n) {
       on(es, n, function (d) { document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: n, data: d } })); });
     });
     on(es, 'avatar.changed', swapAvatar);

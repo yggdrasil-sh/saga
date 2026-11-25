@@ -128,6 +128,7 @@
     accountSection(body);
     securitySection(body);                                   // Passwort, Passkeys, Authenticator (fuellt accountSection)
     bookmarkSection(body);
+    if (window.HKContacts) HKContacts.section(body);         // 2.6 (2027a): Adressbuch (static/contacts.js)
     calendarSection(body);
     immichSection(body);
     bookorbitSection(body);                                  // 2.5: BookOrbit (Leseliste, nur lesen)
@@ -146,7 +147,7 @@
     }
     var GROUPS = [
       [T('Konto'), [['account', T('Profil & Sprache'), 'user'], ['security', T('Sicherheit'), 'shield'], ['push', T('Mitteilungen'), 'bell']]],
-      [T('Arbeitsbereich'), [['pages', T('Seiten'), 'file'], ['calendar', T('Kalender'), 'calendar'], ['bookmarks', T('Lesezeichen'), 'star']]],
+      [T('Arbeitsbereich'), [['pages', T('Seiten'), 'file'], ['calendar', T('Kalender'), 'calendar'], ['bookmarks', T('Lesezeichen'), 'star'], ['contacts', T('Kontakte'), 'users']]],
       [T('Verbindungen'), [['immich', 'Immich', 'image'], ['bookorbit', 'BookOrbit', 'book'], ['nextcloud', 'Nextcloud', 'link'], ['apps', T('Apps & Geräte'), 'smartphone'], ['api', 'API', 'code']]],
       [T('Daten'), [['backup', T('Mein Backup'), 'download']]],
       [null, [['help', T('Hilfe'), 'help']]]

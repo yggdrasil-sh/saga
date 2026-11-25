@@ -1,5 +1,5 @@
 // Saga 2.5 (Design-Runde, UX-39) - Einstellungen mit Seitennavigation: Gruppen Konto (Profil & Sprache, Sicherheit,
-// Mitteilungen) · Arbeitsbereich (Seiten, Kalender, Lesezeichen) · Verbindungen (Immich, Nextcloud, Apps & Geraete, API) ·
+// Mitteilungen) · Arbeitsbereich (Seiten, Kalender, Lesezeichen, Kontakte) · Verbindungen (Immich, Nextcloud, Apps & Geraete, API) ·
 // Daten (Mein Backup) · Hilfe. Alle Bereiche erreichbar, aria-current, Fokus auf die Ueberschrift; Passwort/Passkeys unter
 // "Sicherheit", Benachrichtigungen unter "Mitteilungen"; alte Deep-Links (?settings=, HKSettings.open, #hk-tab-*) und das
 // Zahnrad der Glocke gehen weiter; am Handy Liste -> Bereich mit Zurueck, 44-px-Ziele.
@@ -7,7 +7,7 @@
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const E = process.env, BASE = E.SAGA_BASE, USER = E.SAGA_USER, PASS = E.SAGA_PASS;
 if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
-const ALL = ['account', 'security', 'push', 'pages', 'calendar', 'bookmarks', 'immich', 'nextcloud', 'apps', 'api', 'backup', 'help'];
+const ALL = ['account', 'security', 'push', 'pages', 'calendar', 'bookmarks', 'contacts', 'immich', 'nextcloud', 'apps', 'api', 'backup', 'help'];
 (async () => {
   const b = await chromium.launch({ channel: E.PW_CHANNEL || undefined }), res = [], errs = [];
   const ok = (c, m, x) => { res.push([!!c, m]); console.log((c ? 'OK   ' : 'FAIL ') + m + (c || x === undefined ? '' : ' ' + JSON.stringify(x))); };

@@ -760,6 +760,7 @@
     if ((m = /^c(\d+)$/.exec(h))) openChat(+m[1]);
     else if ((m = /^p(-?\d+)$/.exec(h))) create({ kind: 'page', note_id: +m[1] });      // negativ: Seite eines anderen Servers (2.3)
     else if ((m = /^u(.+)$/.exec(h))) create({ kind: 'dm', user: m[1] });
+    else if ((m = /^h(~[^@]+@.+)$/.exec(h))) create({ kind: 'dm', handle: m[1] });   // 2.6 (2027a): Person auf einem anderen Server (Adressbuch)
     else if (h === 'settings') settings();
   }
   window.addEventListener('hashchange', function () { if (S.ready && !(window.HKShell && window.HKShell.on())) route(); });   // 2.5: nicht, solange die Anruf-Huelle eine Seite zeigt
@@ -975,13 +976,17 @@
   function loadContacts() {
     return api('GET', '/api/chat/contacts?limit=' + CONTACTS_MAX).then(function (r) { return r.contacts || []; }, function () { return []; });
   }
-  // Knopf "⋯" neben einem Kontakt: Menue "Aus Kontakten entfernen" (ausgeblendet, bis zu einem neuen gemeinsamen Chat)
-  function contactMore(li, ref, name, done) {
+  // Knopf "⋯" neben einem Kontakt: Menue "Kontakt bearbeiten …" (2.6 contacts2: Adressbuch, static/contacts.js, mit
+  // contact_id) und "Aus Kontakten entfernen" (ausgeblendet, bis zu einem neuen gemeinsamen Chat)
+  function contactMore(li, ref, name, done, cid) {
     var m = el('button', 'icon-btn ct-contact-more', '⋯'); m.type = 'button';
     m.setAttribute('aria-label', T('Optionen für {name}', { name: name })); m.setAttribute('aria-haspopup', 'menu');
     m.addEventListener('click', function (e) {
       e.stopPropagation();
       HK.openMenu(m, function (menu) {
+        if (cid && hasFeat('contacts2') && window.HKContacts) menu.appendChild(HK.menuItem(T('Kontakt bearbeiten …'), function () {
+          closeOverlay(); HKContacts.open(cid, { edit: true });
+        }, { ic: 'edit' }));
         menu.appendChild(HK.menuItem(T('Aus Kontakten entfernen'), function () {
           api('DELETE', '/api/chat/contacts/' + q(ref)).then(function () {
             li.remove(); HK.toast(T('{name} aus den Kontakten entfernt.', { name: name })); if (done) done();
@@ -1002,7 +1007,7 @@
     if (u.gone) { b.disabled = true; b.title = T('Gerade nicht erreichbar'); }
     else b.addEventListener('click', function () { pick(u); });
     li.appendChild(b);
-    if (u.contact && u.ref) contactMore(li, u.ref, u.name);
+    if (u.contact && u.ref) contactMore(li, u.ref, u.name, null, u.contact_id);
     return li;
   }
   // Kontakt (GET /api/chat/contacts) -> Eintrag fuer personRow
@@ -1010,7 +1015,7 @@
     var sub = k.remote ? T('Person auf {host}', { host: k.host || k.sub }) : [k.sub || '', k.ready ? '' : T('hat Chats noch nicht eingerichtet')].filter(Boolean).join(' · ');
     if (k.gone) sub = (k.remote ? T('Server {host} nicht verbunden', { host: k.host || k.sub }) : T('Konto nicht mehr aktiv'));
     return { key: k.ref, ref: k.ref, name: k.name, sub: sub, avatar: k.avatar, remote: !!k.remote, gone: !!k.gone, contact: true,
-             username: k.ref, handle: k.remote ? k.ref : null };
+             username: k.ref, handle: k.remote ? k.ref : null, contact_id: k.contact_id || null };
   }
   // Ueberschrift + Kontakte (ohne Eingabe): zuletzt zuerst, hoechstens CONTACTS_MAX; keep(k) filtert (z. B. schon Mitglied)
   function drawContacts(res, pick, keep) {
@@ -1068,7 +1073,7 @@
           res.textContent = '';
           r.users.forEach(function (u) {                   // Kontakte stehen vorne (contact: true)
             var sub = [u.sub || '', u.ready ? '' : T('hat Chats noch nicht eingerichtet')].filter(Boolean).join(' · ');   // sub: fuer Gleichnamige
-            res.appendChild(personRow({ key: u.username, ref: u.username, name: u.name, sub: sub, avatar: u.avatar, contact: !!u.contact, username: u.username }, choose));
+            res.appendChild(personRow({ key: u.username, ref: u.username, name: u.name, sub: sub, avatar: u.avatar, contact: !!u.contact, username: u.username, contact_id: u.contact_id }, choose));
           });
           r.groups.forEach(function (g) {
             var li = el('li'), b = el('button', 'ct-person'); b.type = 'button';
@@ -1080,7 +1085,7 @@
           (r.remote || []).forEach(function (u) {                // 2.3: Adressbuch verbundener Server -> Direkt-Chat ueber Servergrenzen
             // 2.3: in der Gruppe mit Personen anderer Server ist dieser Server das Heim
             res.appendChild(personRow({ key: u.handle, ref: u.handle, name: u.label || u.name, avatar: u.avatar, remote: true, contact: !!u.contact,
-                                        handle: u.handle, label: u.label,
+                                        handle: u.handle, label: u.label, contact_id: u.contact_id,
                                         sub: u.contact ? T('Person auf {host}', { host: u.host }) : T('Person auf {host} · erste Nachricht als Anfrage', { host: u.host }) }, choose));
           });
           if (!r.users.length && !r.groups.length && !(r.remote || []).length) res.appendChild(fedAddr(v) ? fedHint() : el('li', 'hk-hint', T('Keine Treffer.')));
@@ -4207,11 +4212,11 @@
             if (!r.users.length && !(r.remote || []).length && fedAddr(v)) res.appendChild(fedHint());
             if (!fedOk() && (r.remote || []).length) res.appendChild(el('li', 'hk-hint', T('Personen anderer Saga-Server lassen sich nur zu neuen Gruppen hinzufügen – bitte eine neue Gruppe anlegen.')));
             r.users.filter(function (u) { return !isMem(u.username); }).forEach(function (u) {        // Kontakte zuerst (contact: true)
-              res.appendChild(personRow({ key: u.username, ref: u.username, name: u.name, sub: u.sub, avatar: u.avatar, contact: !!u.contact, username: u.username }, addOne));
+              res.appendChild(personRow({ key: u.username, ref: u.username, name: u.name, sub: u.sub, avatar: u.avatar, contact: !!u.contact, username: u.username, contact_id: u.contact_id }, addOne));
             });
             if (fedOk()) (r.remote || []).filter(function (u) { return !isMem(u.handle); }).forEach(function (u) {
               res.appendChild(personRow({ key: u.handle, ref: u.handle, name: u.label || u.name, sub: T('Person auf {host}', { host: u.host }), avatar: u.avatar,
-                                          remote: true, contact: !!u.contact, handle: u.handle }, addOne));
+                                          remote: true, contact: !!u.contact, handle: u.handle, contact_id: u.contact_id }, addOne));
             });
           }).catch(function () {});
         }, 250);

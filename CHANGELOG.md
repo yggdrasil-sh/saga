@@ -29,6 +29,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   ohne Dubletten. Vertrag in `docs/APP-API.md` („Kontakte“); Web und Apps folgen (2027a-4 bis -7).
   **Betrieb:** Die Erstbefüllung läuft einmal beim ersten Start mit Schema 38 und hält den Start so lange an (etwa
   0,25 ms je Chat-Kontakt, z. B. 47.000 in ~11 s); vorher legt Saga wie gewohnt die Sicherung „vor-schema-38“ an.
+- **Adressbuch im Web** (Bugs-DB 2027a-4): Einstellungen › Arbeitsbereich › **Kontakte** (auch `?settings=contacts`).
+  Liste mit Suche (Name, Mail, Ziffern der Nummer), Detail mit fester Saga-Zeile und „Nachricht“ (auch zu Personen
+  anderer Server), Nummern als `tel:`-, Mails als `mailto:`-Links, Anrede (—/du/Sie) und Grußform; Bearbeiten (Name für
+  mich, Anrede, Grußform, Nummern/Mails mit Typ Mobil/Privat/Arbeit/Sonstige), „Neuer Kontakt“, „Kontakt löschen“ mit
+  Rückfrage, Landesvorwahl mit Vorschlag aus der Browser-Region. Wurde der Kontakt inzwischen anderswo geändert (409),
+  bleibt die Eingabe stehen und der neue Stand wird übernommen; ein schon vergebener Wert bietet „Zum Kontakt“ an. Live
+  über `contacts.changed`. Im Chat (Neue Unterhaltung, Mitglied hinzufügen) hat das Menü eines Kontakts zusätzlich
+  „Kontakt bearbeiten …“. Neu `static/contacts.js`.
 - **Eigener Status in den Apps** (Bugs-DB 2029-9): iOS/iPadOS (2029-6), Android (2029-7) und Linux (2029-8) können
   jetzt, was das Web seit 2029-5 kann – Mein Status, Erreichbarkeit mit Ausnahmen, Status der Chat-Partner, Rückfrage
   vor dem Anruf, Anklopfen und stille Anrufe; dazu iOS-Fokusfilter „Saga-Status“ und Android „System-Nicht-stören
