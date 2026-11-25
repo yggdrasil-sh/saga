@@ -271,6 +271,8 @@
     beep(ctx, 880, t0, 0.14, 0.05); beep(ctx, 880, t0 + 0.32, 0.14, 0.05);
   }
   function holdBar(d, mode) {
+    // schon angezeigt bzw. vorbei (z. B. #call-<id> und call.quiet gleichzeitig): sonst zweite Leiste, alter Takt liefe weiter
+    if (!d || !d.call_id || RINGS[d.call_id] || GONE[d.call_id]) return;
     var from = d.from || {}, video = d.media === 'video', name = from.name || from.username || '?';
     var R = C && !C.done && C.id !== d.call_id && C.ui ? C : null;     // Gespraech in diesem Tab: Leiste im Anruffenster
     var box = el('div', 'cl-' + mode + (R ? '' : ' cl-hold-page'));
