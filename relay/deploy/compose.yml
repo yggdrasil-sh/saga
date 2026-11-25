@@ -19,7 +19,7 @@ services:
       RELAY_DB: /data/relay.db
     volumes:
       - ./data:/data
-      - ./secrets/apns.p8:/run/secrets/apns.p8:ro
+      - ./secrets:/run/secrets:ro                   # Verzeichnis (nicht die Datei): klappt auch mit read_only
     networks: [traefik]
     logging:
       driver: json-file
