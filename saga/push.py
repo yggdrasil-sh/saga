@@ -321,8 +321,10 @@ def server():
 
 
 def e2e_direct():
-    """2.6 (2262): Abos mit Schluesseln bekommen auch auf dem eigenen APNs-Weg nur Chiffrat (Standard an)."""
-    return bool((auth.settings().get("push") or {}).get("apns_e2e_direct", True))
+    """2.6 (2262): Abos mit Schluesseln bekommen auch auf dem eigenen APNs-Weg nur Chiffrat - Admin-Schalter, Standard AUS
+    (bis zum Test auf einem echten Geraet; fehlt das Setting, z. B. nach dem Update, bleibt der eigene Weg Klartext wie
+    bisher). Das Relais ist davon unabhaengig immer Ende-zu-Ende."""
+    return bool((auth.settings().get("push") or {}).get("apns_e2e_direct", False))
 
 
 def _apns_route(p256dh, auth_s, topic, cfg=None):
@@ -1089,7 +1091,7 @@ def _send_apns(endpoint, msg, voip=False, keys=None, topic=None):
     """APNs. voip: PushKit-Mitteilung (apns-push-type voip, Topic <bundle>.voip) fuer klingelnde Anrufe - die App meldet den
     Anruf sofort an CallKit (Pflicht bei iOS) und holt Zustand/Angebot ueber /api/calls/<id>.
     2.6 (2262): keys = (p256dh, auth) des Abos, topic = Bundle der App. Weg je Abo (_apns_route): eigener Schluessel oder
-    Push-Relais (nur mit Schluesseln, dann immer E2E); direkt mit Schluesseln ebenfalls E2E (push.apns_e2e_direct)."""
+    Push-Relais (nur mit Schluesseln, dann immer E2E); direkt mit Schluesseln nur E2E, wenn push.apns_e2e_direct an ist (Standard aus)."""
     p256dh, auth_s = keys or (None, None)
     cfg = apns_cfg()
     route = _apns_route(p256dh, auth_s, topic, cfg)

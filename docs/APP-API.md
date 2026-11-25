@@ -3823,8 +3823,8 @@ Relais) bzw. `"not_configured"`. Die App sollte Mitteilungen als verfügbar zeig
 `apns_topics` steht, und bei `apns_relay.state == "down"` den Hinweis „Mitteilungen ans iPhone sind gerade gestört –
 Saga zeigt alles in der Glocke.“
 
-**Nutzlast:** Abos mit Schlüsseln bekommen (über das Relais immer, auf dem eigenen APNs-Weg solange der Admin-Schalter
-„Ende-zu-Ende verschlüsseln“ an ist) nur `{"aps": {…}, "saga": {"e2e": 1, "k", "c"}}`. `aps` enthält nur die Loc-Keys
+**Nutzlast:** Abos mit Schlüsseln bekommen (über das Relais immer, auf dem eigenen APNs-Weg nur, wenn der Admin-Schalter
+„Ende-zu-Ende verschlüsseln“ an ist – Standard aus; sonst dort Klartext wie bisher) nur `{"aps": {…}, "saga": {"e2e": 1, "k", "c"}}`. `aps` enthält nur die Loc-Keys
 `SAGA_PUSH_TITLE`/`SAGA_PUSH_BODY` (Anrufe ohne VoIP-Abo: `SAGA_PUSH_CALL`), `mutable-content`, `sound`,
 `interruption-level` bzw. bei Aktualisierungen `content-available`, bei VoIP `{}`; keine `thread-id`. `c` ist das bisherige
 Feld-Set (`title, body, url, tag, kind, ts, v, lang, thread, call, chat, …`) als JSON, verschlüsselt wie Web Push

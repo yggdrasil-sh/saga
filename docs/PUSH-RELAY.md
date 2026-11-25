@@ -237,8 +237,9 @@ Ende entfernen, das letzte Byte muss `0x02` sein (sonst Fehler). Mehr als ein Da
 - Die NSE entschlüsselt, setzt `title`/`body`, `userInfo` = innere Felder, Ton nur ohne `silent`, bei Anrufen
   `interruptionLevel`/Kategorie. Kann sie nicht entschlüsseln (unbekanntes `k`, Fehler, Zeit abgelaufen, Gerät noch nie
   entsperrt), zeigt sie die Texte der Loc-Keys (neutraler Platzhalter, z. B. „Saga – Neue Mitteilung“).
-- Abos mit Schlüsseln bekommen **auch auf dem eigenen APNs-Weg** nur diesen Körper (Einstellung `push.apns_e2e_direct`,
-  Standard an).
+- Über das Relais immer nur dieser Körper. Auf dem **eigenen APNs-Weg** bekommen Abos mit Schlüsseln ihn nur, wenn die
+  Einstellung `push.apns_e2e_direct` an ist – **Standard aus** (bis zum Test auf einem echten Gerät; fehlt die Einstellung,
+  bleibt der eigene Weg Klartext wie bis 2.5).
 
 ### 5.4 Welcher Weg (Server)
 
@@ -306,4 +307,5 @@ Jede Änderung nach dem ersten Stand bekommt einen eigenen Commit (`2262-1b …`
 |---|---|
 | 2262-1 | erster Stand |
 | 2262-1b | Abschnitt 4: `tier`/`scope`/`retry_after` bei 429 und `DELETE /v1/servers/me` bei gesperrtem Server genauer beschrieben (so baut es das Relais; keine neue Bedeutung). |
+| 2262-1c | Abschnitt 5.3: `push.apns_e2e_direct` (E2E auf dem eigenen APNs-Weg) Standard **aus**; Relais-Weg unverändert immer E2E. |
 | 2262-1b | Vektoren `anruf_voip`, `gruppenanruf_alert` und `collapse` mit echter Anrufkennung (32 Hex-Zeichen wie `chat_call.id`; die App verwirft kürzere). Format und Verfahren unverändert. |

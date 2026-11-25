@@ -1652,6 +1652,9 @@ Apple-Developer-Konto unter *Certificates, Identifiers & Profiles → Keys* eine
 Notifications service (APNs)“ anlegen, die `.p8`-Datei (gibt es nur einmal) hochladen und Team-ID, Key-ID und die
 Bundle-ID der App eintragen. Der Schlüssel wird verschlüsselt gespeichert. Ohne Schlüssel bleibt Apple Push aus.
 Den Schlüssel für Web Push (VAPID) erzeugt Saga beim ersten Bedarf selbst; er hängt am `SECRET_KEY`.
+Mit eigenem APNs-Schlüssel kann der Schalter **Ende-zu-Ende verschlüsseln** (2.6, Standard aus) auch diesen Weg
+verschlüsseln: Apps ab 2.6 schicken dann einen eigenen Schlüssel mit, und Apple sieht nur „Saga – Neue Mitteilung“.
+Ohne Haken bekommen die Apps den Text wie bisher.
 
 **Saga-App aus dem App Store ohne eigenen APNs-Schlüssel (2.6):** Apple nimmt Mitteilungen an die Store-App nur mit dem
 Schlüssel des Apple-Kontos an, das sie veröffentlicht. Ohne eigenen Schlüssel schickt Saga sie deshalb über das

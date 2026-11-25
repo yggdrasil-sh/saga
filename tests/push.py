@@ -627,8 +627,29 @@ def T_admin(path, form=None):
 def e2e_part(A, Bk, pgA, tok2, key):
     """2.6 (Bugs-DB 2262-4/-5): APNs-Abo mit Schluesseln/Bundle, Geraeteliste via/e2e, /api/push, Domain-Nachweis."""
     from saga import push_relay
-    auth.save_setting("push", dict(auth.settings(fresh=True)["push"], apns_e2e_direct=True))   # Admin-Formular oben ohne Haken
+    # Bestand nach dem Update: Setting push ohne apns_e2e_direct -> Standard AUS (Koordinator: bis zum Geraetetest)
+    pv0 = {k: v for k, v in auth.settings(fresh=True)["push"].items() if k != "apns_e2e_direct"}
+    auth.save_setting("push", pv0)
     time.sleep(WAIT)                                              # Zwischenspeicher der Einstellungen im Server
+    s, html = T_admin("/settings/push")
+    ok("2262-5: ohne Setting ist 'Ende-zu-Ende verschluesseln' auf der Admin-Seite aus",
+       s == 200 and 'name="apns_e2e_direct" value="1">' in html and 'name="apns_e2e_direct" value="1" checked' not in html)
+    t0e = "e0" * 32
+    app0 = UA()
+    s, d = sub_req({"type": "apns", "token": t0e, "env": "sandbox", "name": "iPhone Bestand",
+                    "keys": app0.keys(), "topic": "org.example.saga"}, hdr={"Authorization": "Bearer " + tok2})
+    ok(f"2262-5: Standard ohne Setting -> Abo mit Schluesseln direkt, aber e2e false ({d.get('device')})",
+       s == 201 and d["device"]["via"] == "direct" and d["device"]["e2e"] is False and push.e2e_direct() is False)
+    m = mark()
+    req("POST", f"/api/notes/{pgA}/comments", Bk, {"block_id": "c6", "body": "Kommentar im Bestand"})
+    g = wait_got(path_is(f"/3/device/{t0e}"), m)
+    b0 = json.loads(g[3]) if g else {}
+    ok("2262-5: Standard ohne Setting -> eigener Weg Klartext wie bisher (kein saga, alert mit Text, thread-id)",
+       g and "saga" not in b0 and b0.get("aps", {}).get("alert", {}).get("body") and b0.get("aps", {}).get("thread-id"))
+    with connect() as c, c:
+        c.execute("DELETE FROM push_sub WHERE endpoint=?", (f"apns:sandbox:{t0e}",))
+    auth.save_setting("push", dict(pv0, apns_e2e_direct=True))   # ab hier E2E auf dem eigenen Weg eingeschaltet
+    time.sleep(WAIT)
     with connect() as c, c:
         c.execute("DELETE FROM setting WHERE k IN ('push_relay', 'push_relay_state', 'push_relay_old')")
     push_relay.forget_key_cache()
@@ -718,6 +739,11 @@ def e2e_part(A, Bk, pgA, tok2, key):
     p2 = auth.settings(fresh=True)["push"]
     ok(f"2262-6: Speichern ohne Haken Relais -> relay aus, E2E an ({p2.get('relay')}, {p2.get('apns_e2e_direct')})",
        p2.get("relay") is False and p2.get("apns_e2e_direct") is True)
+    s, html = T_admin("/settings/push", {"enabled": "1", "webpush": "1", "ntfy": "1", "unifiedpush": "1", "stream": "1", "relay": "1",
+                                         "apns_enabled": "1", "team_id": "ABCDE12345", "key_id": "KEY1234567", "bundle_id": "org.example.saga"})
+    p3 = auth.settings(fresh=True)["push"]
+    ok(f"2262-6: Speichern ohne Haken E2E -> apns_e2e_direct aus, relay an ({p3.get('relay')}, {p3.get('apns_e2e_direct')})",
+       p3.get("relay") is True and p3.get("apns_e2e_direct") is False)
     s, html = T_admin("/settings/push", {"action": "relay_check"})
     ok("2262-6: 'Jetzt pruefen' ohne Relais-Adresse -> Hinweis, nichts gespeichert", "Kein Push-Relais festgelegt." in html
        and auth.settings(fresh=True)["push"].get("relay") is False)

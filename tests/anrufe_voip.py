@@ -204,6 +204,29 @@ def e2e_voip(P):
     tok = "d6" * 32
     msg = {"title": "Saga", "body": "Anruf von Vera Anruf", "url": "/chats#call-" + "0f" * 16, "tag": "call-" + "0f" * 16, "kind": "call", "ts": int(time.time()),
            "call": "0f" * 16, "chat": 3, "media": "audio", "caller": "Vera Anruf", "ttl": 55, "v": 2, "lang": "de", "actor": "Vera Anruf", "n": 1}
+    keys = (app.keys()["p256dh"], app.keys()["auth"])
+    pv = auth.settings(fresh=True).get("push")
+    # Standard (Setting ohne apns_e2e_direct): eigener Weg bleibt Klartext wie bisher, auch mit Schluesseln
+    auth.save_setting("push", {k: v for k, v in (pv or {}).items() if k != "apns_e2e_direct"})
+    m0 = A_.mark()
+    v = P._send_apns(f"apns-voip:production:{tok}", msg, voip=True, keys=keys, topic="org.example.saga")
+    g = A_.got(lambda x: x[0] == "/3/device/" + tok, m0)
+    b0 = json.loads(g[2]) if g else {}
+    ok(f"2262-5 VoIP Standard (E2E direkt aus): Klartext wie bisher ({v})",
+       v[0] == "ok" and "saga" not in b0 and b0.get("caller") == "Vera Anruf" and b0.get("call") == "0f" * 16)
+    auth.save_setting("push", dict(pv or {}, apns_e2e_direct=True))
+    try:
+        e2e_voip_on(P, app, tok, msg)
+    finally:
+        if pv is None:
+            with connect() as c, c:
+                c.execute("DELETE FROM setting WHERE k='push'")
+            auth._settings_cache["v"] = None
+        else:
+            auth.save_setting("push", pv)
+
+
+def e2e_voip_on(P, app, tok, msg):
     m0 = A_.mark()
     v = P._send_apns(f"apns-voip:production:{tok}", msg, voip=True, keys=(app.keys()["p256dh"], app.keys()["auth"]), topic="org.example.saga")
     g = A_.got(lambda x: x[0] == "/3/device/" + tok, m0)

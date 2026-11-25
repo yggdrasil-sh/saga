@@ -29,7 +29,7 @@
       <input class="hk-in" type="file" name="p8" accept=".p8,application/x-pem-file,text/plain">
       <small>{{ _("gespeichert ✓ (verschlüsselt) – leer lassen = behalten") if has_p8 else _("noch keiner gespeichert") }}</small></label>
     {% if has_p8 %}{{ check(_('Gespeicherten Schlüssel entfernen'), 'clear_p8', false) }}{% endif %}
-    {{ check(_('Ende-zu-Ende verschlüsseln'), 'apns_e2e_direct', p.apns_e2e_direct if p.apns_e2e_direct is defined else true, _('Apps ab Saga 2.6 schicken einen eigenen Schlüssel mit. Dann sieht Apple nur „Saga – Neue Mitteilung“, die App entschlüsselt Namen und Text auf dem Gerät. Ältere Apps bekommen weiter den Text wie bisher.')) }}
+    {{ check(_('Ende-zu-Ende verschlüsseln'), 'apns_e2e_direct', p.apns_e2e_direct if p.apns_e2e_direct is defined else false, _('Apps ab Saga 2.6 schicken einen eigenen Schlüssel mit. Dann sieht Apple nur „Saga – Neue Mitteilung“, die App entschlüsselt Namen und Text auf dem Gerät. Ältere Apps bekommen weiter den Text wie bisher.')) }}
   </section>
   <section class="adm-card" id="relais">
     <h3>{{ _("Push-Relais (iPhone/iPad ohne eigenen APNs-Schlüssel)") }}</h3>

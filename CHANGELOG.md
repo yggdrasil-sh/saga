@@ -22,8 +22,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   ohne eigenen APNs-Schlüssel – über das Push-Relais. Die Nutzlast ist Ende-zu-Ende zwischen Server und App verschlüsselt
   (RFC 8291 wie Web Push, aufgefüllt auf 512/1024/2048 Byte); Relais und Apple sehen nur Gerätetoken, Steuerköpfe,
   undurchsichtige collapse-id und „Saga – Neue Mitteilung“ (Loc-Keys), nie Namen oder Texte. Apps ab 2.6 schicken im
-  APNs-Abo `keys` und `topic` mit; dann ist auch der eigene APNs-Weg verschlüsselt (Admin-Schalter „Ende-zu-Ende
-  verschlüsseln“, Standard an). Eigener Schlüssel geht für sein Bundle vor, andere Bundles laufen über das Relais; Abos
+  APNs-Abo `keys` und `topic` mit; der eigene APNs-Weg ist dann verschlüsselt, wenn der Admin-Schalter „Ende-zu-Ende
+  verschlüsseln“ an ist (**Standard aus** bis zum Gerätetest – bestehende Server behalten nach dem Update ohne Eingriff
+  den Klartext auf dem eigenen Weg; das Relais ist immer verschlüsselt). Eigener Schlüssel geht für sein Bundle vor, andere Bundles laufen über das Relais; Abos
   ohne Schlüssel (Apps 2.5) nie über das Relais. `apns-push-type` wird je Art gleich geplant (`alert`, `background`,
   `voip` nur für klingelnde Anrufe – nie für Aufträge der Kollegin), Anrufe haben eine eigene Ratenstufe und gehen in der
   Warteschlange zuerst. **Relais weg:** neues Ergebnis `hold` – Abos bleiben (keine Fehler gezählt), Aufträge warten bis
