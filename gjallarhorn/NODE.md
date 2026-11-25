@@ -1513,6 +1513,10 @@ Sind Teilnehmende eines Anrufs auf mehreren Knoten, verbindet Saga die Knoten st
 meisten Endpunkten, `saga/horn_bridge.py`). Die meisten Anrufe bleiben dank Bonus „Anruf schon hier“ auf einem Knoten;
 eine Brücke entsteht nur, wenn wirklich zwei Knoten beteiligt sind (anderer Knoten deutlich besser, Umzug, Föderation).
 
+**Top-3 über die Brücke (ab 2.6):** Beide Seiten wenden die Haltedauer an – zuerst die Brücke beim Wählen ihrer Top-3,
+dann der empfangende Knoten je Empfänger. Im ungünstigsten Fall (lebhafte Runde, alle Plätze belegt) addiert sich die
+Wartezeit für einen neuen Sprecher der Gegenseite auf etwa 4–5 s. Wird in 2263-9 (M4/M6) gemessen.
+
 **Aufbau** (`bifrost.go`): Saga schickt dem wählenden Knoten über den Steuerkanal
 `cascade {bridge, url, peer, peer_pub, token, mine}`. Beide Seiten prüfen ein von Saga signiertes **Kaskaden-Token**:
 
