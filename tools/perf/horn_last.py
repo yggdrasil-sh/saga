@@ -25,8 +25,8 @@ Wichtige Schalter (alle mit Standard aus dem Szenario, einzeln ueberschreibbar):
   --leitung "up=1000&down=1000&rtt=150&loss=0.03"   Browser 1 hinter nsleitung (eigener Netz-Namensraum, M8)
   --eine-adresse       alle Bots hinter EINER Client-Adresse (gemeinsames NAT: HORN_MAX_PER_IP greift); sonst je Bot eine
                        eigene Adresse 198.18.x.y als X-Forwarded-For hinter nginx (vertrauter Proxy), wie echte Anschluesse
-  --eine-anfrage       fkey/state an alle in EINER Anfrage wie Web/Apps (Server: hoechstens 10 Ziele je Anfrage, sonst 400 -
-                       ab 12 Geraeten Fund 2263-2); Standard: in Teilen zu 10
+  --teile10           fkey/state in Teilen zu 10 Zielen (nur fuer Server bis 2.5: hoechstens 10 Ziele je Anfrage, sonst
+                       400, Bugs-DB 2434); Standard: alles in EINER Anfrage wie Web/Apps
   --no-e2e             Bots ohne Frame-E2E (Browser sehen ihre Medien dann nicht; Last ohne Krypto)
   --keep               Konten/Zustand nicht loeschen (Fehlersuche)
 Ausgabe: JSON (--out, sonst stdout) - Vorlage fuer tools/perf/horn-2263.json: rig, cpu {python, media, node, horn1, bots}
@@ -345,12 +345,10 @@ class Last:
             t = body.get("t")
             with self.lock:
                 self.sent[t] = self.sent.get(t, 0) + 1
-        # Der Server nimmt hoechstens chat.DEVICES_MAX (10) Ziele je Anfrage (saga/calls.py _sealed_map) - mehr -> 400 fuer
-        # die ganze Anfrage. Web/Apps schicken fkey/state an alle in EINER Anfrage (HORN-E2E §4); ab 12 Geraeten ginge der
-        # Schluessel so an niemanden (Fund 2263-2). Standard hier: in Teilen zu 10 (Last wie gewollt), --eine-anfrage = wie
-        # die Clients heute.
+        # Web/Apps schicken fkey/state an alle in EINER Anfrage (HORN-E2E §4); Server ab 2.6 nehmen im Raum bis zur
+        # Anruf-Obergrenze (Bugs-DB 2434). --teile10 stueckelt fuer Server bis 2.5 (dort mehr als 10 Ziele -> 400).
         items = list(sig.items())
-        step = len(items) if self.a.eine_anfrage else 10
+        step = 10 if self.a.teile10 else len(items)
         for i in range(0, len(items), max(1, step)):
             st, d = self.api.req("POST", f"/api/calls/{self.cid}/signal", b.p.k, {"device": b.id, "signals": dict(items[i:i + step])})
             if st == 200 and (d or {}).get("dropped"):
@@ -783,12 +781,12 @@ def main():
         ap.add_argument("--" + k.replace("_", "-"), dest=k, type=typ, default=None)
     for k in ("path", "sprechen", "knoten_cpu", "leitung", "out"):
         ap.add_argument("--" + k.replace("_", "-"), dest=k, default=None)
-    for k in ("horn1", "aufteilen", "cpuset", "no_e2e", "keep", "bench", "eine_adresse", "eine_anfrage"):
+    for k in ("horn1", "aufteilen", "cpuset", "no_e2e", "keep", "bench", "eine_adresse", "teile10"):
         ap.add_argument("--" + k.replace("_", "-"), dest=k, action="store_true", default=None)
     a = ap.parse_args()
     base = dict(n=3, video=3, path="ws", secs=30, browsers=0, tiles=4, kommen_gehen=0, horn_every=50, join_gap=0.2, sprechen="",
                 knoten_cpu="", leitung="", horn1=False, aufteilen=False, cpuset=False, no_e2e=False, keep=False, bench=False,
-                eine_adresse=False, eine_anfrage=False)
+                eine_adresse=False, teile10=False)
     base.update(SZENARIEN.get(a.szenario.upper(), {}))
     for k, v in base.items():
         if getattr(a, k, None) is None:

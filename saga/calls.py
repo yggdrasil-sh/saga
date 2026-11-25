@@ -774,13 +774,13 @@ def _sealed_map(m, allowed=None, most=None):
     return m
 
 
-def _room_sealed(m, allowed):
+def _room_sealed(m, allowed, most=None):
     """2.5 (Uebergabe ueber Knoten, foederiert): wie _sealed_map, aber Ziele, die gerade kein Endpunkt (mehr) sind, fallen
     einzeln weg statt die ganze Anfrage abzulehnen. Ein Geraet buendelt fkey/state an alle Endpunkte seiner Liste; geht
     das ersetzte Geraet in derselben Sekunde, kannte das neue es noch - vorher kam 400 und das Gegenueber bekam weder den
     Frame-Schluessel noch die Kennung am Knoten (state.hp): kein Bild, kein Ton. -> (dict, weggefallen) oder (None, [])
     bei Formfehlern bzw. ohne ein einziges gueltiges Ziel."""
-    if _sealed_map(m, most=SIG_TARGETS_MAX) is None:
+    if _sealed_map(m, most=most or SIG_TARGETS_MAX) is None:
         return None, []
     if allowed is None:
         return m, []
@@ -1911,7 +1911,8 @@ def _room_signal(c, call, who, dev, signals, legs, now, peer_id=None):
         if not me or me["who"] != who or me["state"] != "active":
             return _bad(t("ungültige Angabe"), 403)
         allowed = set(legs) - {dev}
-    sig, dropped = _room_sealed(signals, allowed)
+    # 2434 (Pruefung a63frev A2): klingelnder 1:1-Raum zielt auf die Geraete EINER Person - dort weiter hoechstens 10
+    sig, dropped = _room_sealed(signals, allowed, most=chat.DEVICES_MAX if ringing_dm else None)
     if sig is None:
         return _bad(t("ungültige Angabe"))
     nall = c.execute("SELECT COUNT(*) FROM chat_call_leg WHERE call_id=?", (call["id"],)).fetchone()[0]
