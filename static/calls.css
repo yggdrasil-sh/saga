@@ -176,6 +176,8 @@
   font-size:var(--fs-base);color:#fff;text-shadow:0 1px 3px #000;background:#0b0f15b3;border-radius:var(--r-sm);padding:.05rem .4rem}
 .cl-tl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .cl-td{color:var(--muted);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 2.6 (2263-5): schmale Kacheln (16 im Knoten-Anruf, Handy 4 Spalten) - zuerst schrumpft der Geraetename, der Name behaelt Vorrang */
+.cl-tl .cl-td{flex-shrink:40;min-width:0}
 .cl-tile.muted .cl-tl b::after{content:" 🔇"}
 .cl-tst{position:absolute;top:.4rem;left:.4rem;right:.4rem;z-index:3;font-size:var(--fs-sm);color:var(--cl-warn);text-shadow:0 1px 3px #000}
 .cl-tst[hidden]{display:none}

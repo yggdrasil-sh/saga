@@ -8,7 +8,7 @@
 //   Browser -> Python  "GEPRUEFT"                    stille Runde geprueft (Python prueft danach die Antworten des Browsers)
 //   Python -> Browser  "KONTROLLE <dev1> <dev3>"     state mic:false von dev1, state-Vektor (mic an) von dev3
 //   Browser -> Python  "FERTIG"
-// Geprueft: keine Marke "Experimentell" im Kopf und kein Satz in der Teilnehmerliste; 15 Kacheln (eigenes Bild extra),
+// Geprueft: keine Marke "Experimentell" im Kopf und kein Satz in der Teilnehmerliste; 16 Kacheln (15 Gegenueber + eigene),
 // Zaehler "16/16" (Grenze vom Server, Admin hat auf 16 gesenkt), Teilnehmerliste mit 16 Eintraegen, rollbar, kein
 // waagrechtes Scrollen bei 1280 und 390 px; nach dtmf/svc-join: kein Zustand (H.st), keine Kennungen, keine Kachel stumm,
 // kein Toast, kein Seitenfehler, Anruf und Endpunkte unveraendert; Kontrollfaelle wirken (stumm-Markierung, Zustand).
@@ -55,13 +55,14 @@ const VIEW = () => {
   const inView = rs.filter(r => r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1).length;
   const cnt = w && w.querySelector('.cl-info .cl-count'), pl = w && w.querySelector('.cl-plist'), ul = pl && pl.querySelector('.cl-plist-l:not(.cl-away-l)');
   const labs = vis.map(t => { const b = t.querySelector('.cl-tl b'); return b ? b.scrollWidth <= b.clientWidth + 1 || getComputedStyle(b).textOverflow === 'ellipsis' : true; });
+  const names = vis.map(t => t.querySelector('.cl-tl b')).filter(Boolean).map(b => Math.round(b.getBoundingClientRect().width));
   return { tiles: tiles.length, vis: vis.length, rows, cols, inView, minW: rs.length ? Math.round(Math.min(...rs.map(r => r.width))) : 0,
            muted: tiles.filter(t => t.classList.contains('muted')).map(t => t.dataset.dev),
            count: cnt ? cnt.textContent.trim() : '', countTitle: cnt ? cnt.title : '',
            exp: document.querySelectorAll('.cl-exp, .cl-pl-exp').length, expText: /experimentell/i.test(w ? w.textContent : ''),
            plist: !!pl, plN: ul ? ul.children.length : 0, plHead: pl ? (pl.querySelector('.cl-plist-h b') || {}).textContent : '',
            plScroll: ul ? getComputedStyle(ul).overflowY : '', plFits: pl ? pl.getBoundingClientRect().bottom <= innerHeight + 1 && pl.getBoundingClientRect().right <= innerWidth + 1 : null,
-           labelsOk: labs.every(Boolean), ow: document.documentElement.scrollWidth - innerWidth, vw: innerWidth };
+           labelsOk: labs.every(Boolean), minName: names.length ? Math.min(...names) : 0, ow: document.documentElement.scrollWidth - innerWidth, vw: innerWidth };
 };
 async function showBars(p) { await p.mouse.move(200 + Math.random() * 50, 150); await sleep(250); }
 async function plist(p, open) {
@@ -114,12 +115,13 @@ async function plist(p, open) {
     const up = await until(async () => { const h = await horn(p); return h && h.up && h; }, 45000, 300);
     const h0 = up || await horn(p);
     ok(`beigetreten ueber den Knoten (${FF ? 'Firefox' : 'Chromium'}), Weg ${h0 && h0.path}`, !!up, h0 && { up: h0.up, path: h0.path, errs: h0.errs, log: (h0.log || []).slice(-8) });
-    await until(async () => (await p.evaluate(VIEW)).tiles >= LIM - 1, 15000);
+    await until(async () => (await p.evaluate(VIEW)).tiles >= LIM, 15000);
     await sleep(2500); await showBars(p);
     const v = await p.evaluate(VIEW);
     console.log('  Ansicht 1280: ' + JSON.stringify(v));
-    ok(`1280: ${LIM - 1} Kacheln (eigenes Bild extra), alle sichtbar und im Fenster, ${v.cols} Spalten x ${v.rows} Reihen`,
-       v.tiles === LIM - 1 && v.vis === LIM - 1 && v.inView === LIM - 1 && v.cols >= 4 && v.rows >= 3 && v.minW >= 160, v);
+    const ht = (await horn(p)).tiles.length;
+    ok(`1280: ${LIM} Kacheln (${ht} Gegenueber + eigene), alle sichtbar und im Fenster, ${v.cols} Spalten x ${v.rows} Reihen`,
+       v.tiles === LIM && ht === LIM - 1 && v.vis === LIM && v.inView === LIM && v.cols >= 4 && v.rows >= 3 && v.minW >= 160, Object.assign({ ht }, v));
     ok(`1280: Zaehler "${LIM}/${LIM}" (Grenze vom Server), Tooltip Geraete`, v.count === LIM + '/' + LIM && v.countTitle.includes(LIM + '/' + LIM), v);
     ok('1280: keine Marke "Experimentell", kein Satz, kein waagrechtes Scrollen, Namen gekuerzt statt uebergelaufen', v.exp === 0 && !v.expText && v.ow <= 1 && v.labelsOk, v);
     await shot(p, 'galerie-1280-dunkel');
@@ -137,7 +139,8 @@ async function plist(p, open) {
     await p.setViewportSize({ width: 390, height: 844 }); await sleep(1200); await showBars(p);
     const vs = await p.evaluate(VIEW);
     console.log('  Ansicht 390: ' + JSON.stringify(vs));
-    ok(`390: ${LIM - 1} Kacheln, kein waagrechtes Scrollen, Zaehler ${LIM}/${LIM}, keine Marke`, vs.tiles === LIM - 1 && vs.ow <= 1 && vs.count === LIM + '/' + LIM && vs.exp === 0, vs);
+    ok(`390: ${LIM} Kacheln, kein waagrechtes Scrollen, Zaehler ${LIM}/${LIM}, keine Marke`, vs.tiles === LIM && vs.ow <= 1 && vs.count === LIM + '/' + LIM && vs.exp === 0, vs);
+    ok(`390: Namen in den schmalen Kacheln lesbar (Geraetename schrumpft zuerst; schmalster Name ${vs.minName} px >= 36)`, vs.minName >= 36, vs);
     await shot(p, 'galerie-390-dunkel');
     await plist(p, true);
     const vsl = await p.evaluate(VIEW);
@@ -158,9 +161,10 @@ async function plist(p, open) {
        after && !after.st[d1] && !after.st[d2] && JSON.stringify(Object.keys(after.st).sort()) === JSON.stringify(Object.keys(before.st).sort()), after && after.st);
     ok('dtmf/svc-join: keine Kachel stumm, keine Anzeige, kein Toast, kein Seitenfehler',
        va.muted.length === 0 && toasts.length === toasts0 && p.__errs.length === errs0 && va.exp === 0, { muted: va.muted, toasts, errs: p.__errs });
+    await showBars(p); await shot(p, 'galerie-1280-nach-dtmf');
     ok('dtmf/svc-join: Anruf laeuft weiter (Knoten verbunden, kein Wechsel, eigener Schluessel unveraendert, alle Endpunkte da)',
-       after && after.up && after.switches === before.switches && after.key_n === before.key_n && va.tiles === LIM - 1 && !after.switching
-       && JSON.stringify(hpx) === JSON.stringify(before.hp) && (after.errs || []).length === (before.errs || []).length,
+       after && after.up && after.switches === before.switches && after.key_n === before.key_n && after.tiles.length === LIM - 1 && !after.switching
+       && JSON.stringify(hpx) === JSON.stringify(before.hp) && (after.errs || []).length === (before.errs || []).length && va.tiles === LIM,
        after && { up: after.up, sw: [before.switches, after.switches], key: [before.key_n, after.key_n], errs: after.errs });
     // --- Kontrollfaelle: derselbe Weg wertet bekannte Typen aus ------------------------------------------------------------
     say('GEPRUEFT');
