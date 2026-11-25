@@ -11,6 +11,7 @@
 //   reicht "um BACK_MS besser" - Dauer, Verweildauer und Wechselgrenze wie oben
 // - Kachelansicht bis 25: Spalten je Breite, Last-N (Desktop 9, Handy 4 bewegt, die uebrigen als Standbild mit Sprechring)
 // - Qualitaetspunkt (Empfangsqualitaet) aus RTT, Verlust und Einfrieren ueber 30 s mit Hysterese; Anzeige des Wegs UDP / TCP / TLS
+// - 2.6 (Bugs-DB 2263): sigKind - Typ eines entsiegelten Signals je Weg; reservierte dtmf/svc-join und Unbekanntes = 'unknown'
 (function (root) {
   'use strict';
   var K = {
@@ -444,10 +445,24 @@
   // Kein "besser"-Wechsel, solange die CPU-Grenze gilt bzw. bis CPU_HOLD nach der letzten Meldung (cpuAt in ms, now in ms)
   function cpuHold(cpuAt, now) { return !!cpuAt && now - cpuAt < K.CPU_HOLD; }
 
+  // 2.6 (Bugs-DB 2263, docs/APP-API.md "Reservierte Typen dtmf und svc-join"): Typ eines entsiegelten Signal-Bodys je Weg.
+  // Bekannt ist nur, was der Weg auswertet - Mesh (static/calls.js handle()): offer/answer/ice/state/bye; Knoten
+  // (hornSig()): fkey/fkey-ack/state, dazu offer/answer/ice fuer den Rueckfall auf direkt (horn_direct1). Alles andere -
+  // auch die reservierten dtmf und svc-join, ein fehlendes oder nicht-textuelles t - ist 'unknown': still verwerfen (kein
+  // Fehler, keine Anzeige, kein Zustand, kein bye). Unbekannte Zusatzfelder aendern nichts. Ohne ctx: beide Wege zusammen.
+  // Vektoren: tests/call_signal_reserved.json (tests/horn_logik.js). calls.js fuehrt SIG.mesh als eigene Liste (horn.js
+  // wird nur im Knoten-Anruf geladen) - horn_logik.js prueft, dass beide gleich sind.
+  var SIG = { mesh: ['offer', 'answer', 'ice', 'state', 'bye'], horn: ['fkey', 'fkey-ack', 'state', 'offer', 'answer', 'ice'] };
+  function sigKind(b, ctx) {
+    var t = b && typeof b === 'object' && !Array.isArray(b) ? b.t : null;
+    var known = SIG[ctx] || SIG.mesh.concat(SIG.horn);
+    return typeof t === 'string' && known.indexOf(t) >= 0 ? t : 'unknown';
+  }
+
   var api = { K: K, median: median, jitter: jitter, loadMs: loadMs, score: score, rank: rank, better: better, back: back, backBetter: backBetter, Switcher: Switcher,
               closeOld: closeOld, cols: cols, tiles: tiles, lastN: lastN, quality: quality, hyst: hyst, QualityWin: QualityWin, pathName: pathName, bend: bend, bendable: bendable, ways: ways, streamPath: streamPath,
               TxGov: TxGov, txPlan: txPlan, RC: RC, Reconnect: Reconnect, reconnectList: reconnectList, retryAfterMs: retryAfterMs,
-              fastProbe: fastProbe, curRtts: curRtts, cpuHold: cpuHold };
+              fastProbe: fastProbe, curRtts: curRtts, cpuHold: cpuHold, SIG: SIG, sigKind: sigKind };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SagaHorn = api;
 })(typeof self !== 'undefined' ? self : this);

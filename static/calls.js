@@ -677,9 +677,14 @@
     });
     c.remoteIce = keep.slice(-120);
   }
-  // Unbekannte Typen ("t") werden ignoriert - so koennen spaetere Fassungen neue Nachrichten schicken (Vertrag v3)
+  // Unbekannte Typen ("t") werden ignoriert - so koennen spaetere Fassungen neue Nachrichten schicken (Vertrag v3).
+  // 2.6 (Bugs-DB 2263): auch die reservierten dtmf/svc-join - still, vor jeder Auswertung (kein Fehler, keine Anzeige,
+  // kein Zustand, keine Uebernahme, kein bye). MESH_SIG = SagaHorn.SIG.mesh (horn.js laedt nur im Knoten-Anruf;
+  // tests/horn_logik.js prueft, dass beide Listen gleich sind)
+  var MESH_SIG = ['offer', 'answer', 'ice', 'state', 'bye'];
   function handle(c, b) {
     if (!b) { securityFail(c); return; }
+    if (typeof b.t !== 'string' || MESH_SIG.indexOf(b.t) < 0) return;
     if (b.t === 'state' && b.ready && b.replaces === myDev().id && c.peer && c.peer.me) { handoverOut(roomOf(c), b._from); return; }
     if (b.pc && c.peerDevice && b.pc !== pcId(c)) return;            // andere PeerConnection (Mehrgeraete/Mesh ab E4)
     if (b.t === 'ice') { (Array.isArray(b.c) ? b.c : []).slice(0, 60).forEach(function (x) { if (x && x.candidate) { c.remoteIce.push(x); iceCount(c, 'iceIn', x.candidate); } }); applyRemoteIce(c); }
@@ -3315,12 +3320,16 @@
     if (!x) { H.q.push(d); if (H.q.length > 200) H.q.shift(); return; }
     openSig(hornPeer(R, x), d).then(function (b) {
       if (!b || !live(R)) return;
+      // 2.6 (Bugs-DB 2263): nur bekannte Typen (SagaHorn.sigKind) - reservierte dtmf/svc-join und alles Unbekannte still
+      // verwerfen, auch wenn Zusatzfelder wie fkey oder state aussehen
+      var kind = H.L.sigKind(b, 'horn');
+      if (kind === 'unknown') return;
       var F = window.SagaFrameE2E;
       // Horn-Fix: Mesh-Signal (Angebot/ICE/Antwort) eines Geraets, das schon auf direkt gewechselt hat - call.topo kam hier
       // noch nicht an: jetzt wechseln und das Signal ueber den Mesh-Weg zustellen
       // Nur nach Bestaetigung durch den Server (topo mesh) - sonst koennte ein Teilnehmer per Signal den Wechsel ohne
       // POST /direct erzwingen. Signale bis dahin sammeln (hornToMesh stellt sie zu, auch wenn call.topo zuerst kommt).
-      if ((b.t === 'offer' || b.t === 'answer' || b.t === 'ice') && feat('horn_direct1')) {
+      if ((kind === 'offer' || kind === 'answer' || kind === 'ice') && feat('horn_direct1')) {
         (H.meshQ = H.meshQ || []).push(d); if (H.meshQ.length > 80) H.meshQ.shift();
         if (H.meshChk) return;
         H.meshChk = true;
@@ -3331,13 +3340,13 @@
         }, function () { H.meshChk = false; H.meshQ = []; });
         return;
       }
-      if (b.t === 'fkey') {
+      if (kind === 'fkey') {
         var k = F.parseFkey(b); if (!k) return;
         H.X.peer(d.from_device, k.n, k.key, k.s).then(function (okk) { if (okk) hornAck(R, d.from_device, k.n, k.s, true); });
-      } else if (b.t === 'fkey-ack') {
+      } else if (kind === 'fkey-ack') {
         var a = F.parseFkeyAck(b);
         if (a && !a.ok) H.X.ownKeys().then(function (ks) { if (ks[0]) { var o = {}; o[d.from_device] = hornFkey(H, ks[0]); hornSend(R, o); } });
-      } else if (b.t === 'state') {
+      } else if (kind === 'state') {
         // "Hierher uebernehmen" im Knoten-Anruf: das neue eigene Geraet meldet ready + replaces = dieses Geraet
         if (b.ready && b.replaces === myDev().id && x.me) { handoverOut(R, d.from_device); return; }
         H.st[d.from_device] = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen };
@@ -4956,10 +4965,6 @@
       i.appendChild(pth);
       if (H.next || H.olds.length) i.appendChild(el('span', 'cl-path cl-hmove', T('wechselt den Knoten …')));
     }
-    // 2.5 (Vorgabe 10.11.): Gjallarhorn experimentell - kleine Marke am Weg, Erklaerung im Tooltip und in der Teilnehmerliste
-    var xp = el('span', 'cl-chip cl-exp', T('Experimentell'));
-    xp.title = T('Gjallarhorn ist in Saga 2.5 experimentell – getestet mit bis zu 4 Personen bzw. Geräten je Anruf. Probleme bitte über „Diagnose senden“ melden.');
-    i.appendChild(xp);
     if (H.runes) {
       var rb = btn(H.runes.runes, 'cl-runes', function () {
         H.rpop = !H.rpop; rb.setAttribute('aria-expanded', String(H.rpop));
@@ -5332,9 +5337,6 @@
     });
     p.appendChild(ul);
     awayList(R, p);
-    var xp = el('p', 'cl-pl-exp'); xp.appendChild(el('span', 'cl-chip cl-exp', T('Experimentell')));
-    xp.appendChild(document.createTextNode(' ' + T('Gjallarhorn ist in Saga 2.5 experimentell – getestet mit bis zu 4 Personen bzw. Geräten je Anruf. Probleme bitte über „Diagnose senden“ melden.')));
-    p.appendChild(xp);
     focusBack(p, fk);
   }
   function hornMod(R, x, action) {

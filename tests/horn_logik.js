@@ -2,6 +2,7 @@
 // Umschalter mit Hysterese (sofort bei Abbruch und Leeren, "besser" nur >= 25 % und >= 30 ms fuer 20 s, Verweildauer 60 s,
 // hoechstens 3 Wechsel je 10 min), UDP -> TCP bei Verlust, Rueckkehr auf UDP, Rueckweg vom Tunnel-Knoten (Bugs-DB 2201), Schliessen des alten Beins
 // (make-before-break), Kachelansicht (Spalten, Last-N, Sprecheransicht, hoechstens 25), Qualitaetspunkt (30-s-Fenster, Hysterese) und Wegnamen.
+// 2.6 (Bugs-DB 2263): sigKind gegen tests/call_signal_reserved.json - dtmf/svc-join still verworfen, Kontrollfaelle ausgewertet.
 //   node tests/horn_logik.js
 'use strict';
 const H = require('../static/horn.js');
@@ -431,6 +432,43 @@ ok('Weg: udp -> UDP, tcp -> TCP, turn -> TLS', H.pathName('udp') === 'UDP' && H.
                       [{ node: 'saga', score: H.score(m([5, 5, 5]), tun, true, true), back: b2 }]);
   }
   ok('2201: auf horn-1 (UDP) zieht ein naeherer Tunnel-Knoten (5 ms) nicht weg', away === null, away);
+}
+
+// --- 2.6 (Bugs-DB 2263): reservierte Signal-Typen dtmf/svc-join still ignorieren (tests/call_signal_reserved.json) --
+{
+  const fs = require('fs'), path = require('path');
+  const V = JSON.parse(fs.readFileSync(path.join(__dirname, 'call_signal_reserved.json'), 'utf8'));
+  ok('2263: Vektoren saga-call-reserved/v1 mit Mesh- und Knoten-Faellen, dtmf und svc-join, Kontrollfaellen',
+     V.format === 'saga-call-reserved/v1' && ['mesh', 'horn'].every(c => V.cases.some(x => x.ctx === c && x.expect === 'ignore') && V.cases.some(x => x.ctx === c && x.expect === 'handle'))
+     && ['dtmf', 'svc-join'].every(t => V.cases.filter(x => x.body.t === t).length >= 4), V.cases.map(x => x.name));
+  for (const c of V.cases) {
+    const k = H.sigKind(c.body, c.ctx), k0 = H.sigKind(c.body);
+    const evaluated = k !== 'unknown';
+    ok(`2263 ${c.name}: sigKind(${c.ctx}) = ${c.kind}, ${c.expect === 'ignore' ? 'still verworfen' : 'ausgewertet'} (auch ohne ctx)`,
+       k === c.kind && k0 === c.kind && evaluated === (c.expect === 'handle'), { k, k0, kind: c.kind, expect: c.expect });
+  }
+  // Mesh-Fall: pc stimmt mit mesh_pc ueberein (der Typ entscheidet, nicht die Zuordnung)
+  ok('2263: Mesh-Vektoren tragen pc = mesh_pc', V.cases.filter(x => x.ctx === 'mesh').every(x => x.body.pc === V.mesh_pc));
+  // Typ ohne Text, fehlend, Array, Prototyp-Namen, bye im Knoten-Anruf (wertet hornSig nicht aus), Gross-/Kleinschreibung
+  const odd = [null, undefined, 5, 'dtmf', [], [{ t: 'state' }], {}, { t: 5 }, { t: ['state'] }, { t: { t: 'state' } }, { t: 'constructor' }, { t: '__proto__' },
+               { t: 'toString' }, { t: 'State' }, { t: 'dtmf ' }, { t: '' }];
+  ok('2263: kaputte/fremde Bodys -> unknown (Mesh, Knoten, ohne ctx)', odd.every(b => H.sigKind(b, 'mesh') === 'unknown' && H.sigKind(b, 'horn') === 'unknown' && H.sigKind(b) === 'unknown'),
+     odd.map(b => [b, H.sigKind(b, 'mesh'), H.sigKind(b, 'horn'), H.sigKind(b)]));
+  ok('2263: bye nur im Mesh bekannt, fkey/fkey-ack nur im Knoten-Anruf, offer/answer/ice in beiden (Rueckfall direkt)',
+     H.sigKind({ t: 'bye' }, 'mesh') === 'bye' && H.sigKind({ t: 'bye' }, 'horn') === 'unknown' && H.sigKind({ t: 'fkey' }, 'mesh') === 'unknown'
+     && H.sigKind({ t: 'fkey-ack' }, 'horn') === 'fkey-ack' && ['offer', 'answer', 'ice'].every(t => H.sigKind({ t }, 'mesh') === t && H.sigKind({ t }, 'horn') === t));
+  // calls.js handle() fuehrt die Mesh-Liste selbst (horn.js laedt nur im Knoten-Anruf): beide muessen gleich sein, und der
+  // Waechter steht vor der ersten Auswertung (auch vor "Hierher uebernehmen" ueber state.ready/replaces)
+  const src = fs.readFileSync(path.join(__dirname, '..', 'static', 'calls.js'), 'utf8');
+  const mm = src.match(/var MESH_SIG = \[([^\]]*)\];/), list = mm ? mm[1].split(',').map(x => x.trim().replace(/^'|'$/g, '')) : null;
+  ok('2263: calls.js MESH_SIG = SagaHorn.SIG.mesh', list && JSON.stringify(list) === JSON.stringify(H.SIG.mesh), list);
+  const hb = src.slice(src.indexOf('function handle(c, b) {'), src.indexOf('function peerTracksIn('));
+  const guard = hb.indexOf("MESH_SIG.indexOf(b.t) < 0) return;");
+  ok('2263: Mesh handle(): Waechter vor der ersten Auswertung von b.t', guard > 0 && guard < hb.indexOf("b.t === 'state'") && guard < hb.indexOf('b.pc'), guard);
+  const hs = src.slice(src.indexOf('function hornSig(R, d) {'), src.indexOf('function hornAck('));
+  const g2 = hs.indexOf("H.L.sigKind(b, 'horn')"), rest = hs.slice(g2);
+  ok('2263: Knoten hornSig(): sigKind vor der Auswertung, danach nur noch kind (kein b.t)', g2 > 0 && hs.indexOf("if (kind === 'unknown') return;") > g2
+     && !/b\.t\b/.test(rest) && g2 < hs.indexOf('parseFkey'), { g2, bt: (rest.match(/b\.t\b/g) || []).length });
 }
 
 console.log(`\nHORN-LOGIK ${res.filter(Boolean).length}/${res.length}` + (res.every(Boolean) ? ' - ALLES GRUEN' : ' - FEHLER'));
