@@ -183,6 +183,8 @@ async function bilder(browser) {
     ok('PUT 200, Server: dnd, Ende ~1 h, Text, source manual', putR.status() === 200 && v1.state === 'dnd' && v1.text === 'Im Kundentermin' && v1.source === 'manual' &&
        Math.abs(v1.until - v1.now - 3600) < 30, { st: putR.status(), state: v1.state, text: v1.text, d: v1.until - v1.now });
     ok('A: Dialog zu, Punkt am Kontoknopf (Nicht stören)', !(await a.$('.us-dlg')) && !!(await a.$('#hk-user .us-me.us-dnd')));
+    const ual = await a.getAttribute('#hk-user', 'aria-label');
+    ok('A: Kontoknopf nennt den Status im Namen (aria-label)', /Benutzermenü/.test(ual) && /Status: Nicht stören/.test(ual), ual);
     await menuOpen(a);
     const mi2 = await a.evaluate(() => { const b = document.querySelector('.menu .us-mi'); return b ? b.textContent : ''; });
     ok('Menue: "Nicht stören" mit Ablaufzeit ("bis …")', /Nicht stören/.test(mi2) && /bis \d{1,2}:\d\d/.test(mi2), mi2);
@@ -192,6 +194,10 @@ async function bilder(browser) {
     ok('B: Kopf zeigt "Nicht stören bis … · Im Kundentermin" (live)', seen && /bis \d{1,2}:\d\d/.test(seen) && /Im Kundentermin/.test(seen), seen || await chip(b));
     ok('B: Anzeige <= 2 s nach dem Speichern (chat.status)', seen && t2 - t1 <= 2000, { ms: t2 - t1, put_ms: t1 - t0 });
     ok('B: Abzeichen am Profilbild in der Liste (dnd)', /us-dnd/.test(await badge(b)), await badge(b));
+    await b.click('#ct-sub .us-chip'); await b.waitForTimeout(200);
+    const tst = await b.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? t.textContent : ''; });
+    ok('B: Status-Chip ist ein Knopf - Tippen zeigt den vollen Text (Gruppeninfo bleibt zu)', /Nicht stören bis/.test(tst) && /Im Kundentermin/.test(tst) &&
+       await b.evaluate(() => document.querySelector('#ct-sub .us-chip').tagName === 'BUTTON') && !(await b.$('.ct-ov')), tst);
     ok('B: Listeneintrag nennt den Status fuer Bildschirmleser', await b.evaluate(() => { const s = document.querySelector('#ct-list .ct-item .ct-item-n .sr-only'); return !!s && /Nicht stören/.test(s.textContent); }));
     await shot(b, 'status-2-liste-kopf');
 
@@ -245,6 +251,11 @@ async function bilder(browser) {
 
     // --- 7. Im Anruf (Ereignis nachgestellt - echter Anruf: Reihe browser_anklopfen.js): Hinweis ohne Rueckfrage ------------
     const pk = await peerKey(b);
+    // chat.status nach dem Absenden einer Abo-Anfrage gewinnt gegen deren (aeltere) Antwort
+    await b.evaluate(k => { const ev = (t, d) => document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: t, data: d } }));
+      ev('chat.privacy', { receipts: true, online: true }); ev('chat.status', { username: k, status: { s: 'in_call' } }); }, pk);
+    await b.waitForTimeout(1500);
+    ok('B: Live-Status nach dem Absenden bleibt gegen die Abo-Antwort (nachgestellt)', /Im Anruf/.test(await chip(b)), await chip(b));
     await b.evaluate(k => document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: 'chat.status', data: { username: k, status: { s: 'in_call' } } } })), pk);
     ok('B: Kopf zeigt "Im Anruf" (nachgestellt)', /Im Anruf/.test(await chip(b)), await chip(b));
     await b.evaluate(() => { window.__toasts = []; const o = HK.toast; HK.toast = function (m) { window.__toasts.push(String(m)); return o.apply(this, arguments); };
@@ -321,8 +332,20 @@ async function bilder(browser) {
       busy: document.querySelector('#us-reach select[data-k=busy]').value, rs: document.getElementById('us-repeat-s').value,
       men: document.querySelector('#us-reach input[data-k=mention_break]').checked, exc: document.querySelectorAll('#us-reach .us-exc-i').length }));
     ok('Erreichbarkeit: nach dem Neuladen wie gespeichert', !re.show && re.ic === 'busy' && re.busy === 'silent' && re.rs === '120' && re.men && re.exc === 1, re);
+    // anderes Geraet fuegt eine Ausnahme hinzu, waehrend hier bearbeitet wird (keine Neuzeichnung) - Entfernen ueberschreibt sie nicht
+    const nm4 = (E.SAGA_USER4 ? 'Dora' : '');
+    const d4 = nm4 ? ((await papi(a, 'GET', '/api/share/targets?q=' + nm4)).d.users || [])[0] : null;
+    if (d4) {
+      const cur = (await papi(a, 'GET', '/api/account/status')).d.exceptions.map(x => ({ type: 'user', ref: x.ref }));
+      const r4 = await papi(a, 'PUT', '/api/account/status/prefs', { exceptions: cur.concat([{ type: 'user', ref: d4.username }]) });
+      const live4 = await until(async () => { const v = await usView(a); return v && v.exceptions.length === 2; }, 5000);
+      ok('Zweites Geraet: Ausnahme per API dazu, Seite gleicht live ab', r4.status === 200 && live4, { st: r4.status, err: r4.d.error, cur, d4: d4.username, view: (await usView(a) || {}).exceptions });
+    } else note('kein viertes Konto - Pruefung "zweites Geraet" uebersprungen');
     w = saveR(); await a.click('#us-reach .us-exc-rm'); await w; await a.waitForTimeout(200);
-    ok('Ausnahmen: Entfernen per Knopf (Name nennt die Person)', (await papi(a, 'GET', '/api/account/status')).d.exceptions.length === 0);
+    const left = (await papi(a, 'GET', '/api/account/status')).d.exceptions;
+    ok('Ausnahmen: Entfernen per Knopf (Name nennt die Person)' + (d4 ? ', Ausnahme vom anderen Geraet bleibt' : ''),
+       d4 ? left.length === 1 && left[0].ref === d4.username : left.length === 0, left);
+    if (d4) await papi(a, 'PUT', '/api/account/status/prefs', { exceptions: [] });
     await closeAll(a);
     await papi(a, 'PUT', '/api/account/status/prefs', { show_call: true, in_call: 'knock', busy: 'show', repeat_s: 180, mention_break: false });
 
