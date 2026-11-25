@@ -200,7 +200,7 @@ body:has(.cl-win.cl-done) .cl-run{z-index:205}  /* Rang 2: ueber dem beendeten A
 .cl-wait,.cl-quiet{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;padding:.5rem .55rem .5rem .6rem;border-radius:16px;
   font-size:var(--fs-base);animation:cl-in .25s ease-out}
 .cl-win>.cl-wait,.cl-win>.cl-quiet{grid-row:2;grid-column:1;z-index:5;align-self:start;justify-self:center;margin-top:.5rem;
-  max-width:min(38rem,calc(100% - 2rem));background:var(--cl-panel);color:var(--cl-fg);border:1px solid var(--cl-line);
+  width:max-content;max-width:min(40rem,calc(100% - 2rem));box-sizing:border-box;background:var(--cl-panel);color:var(--cl-fg);border:1px solid var(--cl-line);
   box-shadow:0 12px 36px rgba(0,0,0,.5);--muted:#a7b2c2}
 .cl-win>.cl-wait{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent),0 12px 36px rgba(0,0,0,.5)}
 .cl-win>.cl-share:not([hidden])~.cl-wait,.cl-win>.cl-share:not([hidden])~.cl-quiet{margin-top:3.4rem}   /* unter "Du teilst …" */
