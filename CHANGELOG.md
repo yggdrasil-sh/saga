@@ -27,6 +27,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   nie; Nummern/Mails nie im Log (auch nicht der Suchbegriff im Zugriffs-Log). Person/Server weg: leere Kontakte gehen
   mit, solche mit eigenen Daten bleiben ohne Saga-Adresse. Persönliches Backup: `daten.json` → `contacts`, Einspielen
   ohne Dubletten. Vertrag in `docs/APP-API.md` („Kontakte“); Web und Apps folgen (2027a-4 bis -7).
+  **Betrieb:** Die Erstbefüllung läuft einmal beim ersten Start mit Schema 38 und hält den Start so lange an (etwa
+  0,25 ms je Chat-Kontakt, z. B. 47.000 in ~11 s); vorher legt Saga wie gewohnt die Sicherung „vor-schema-38“ an.
 - **Eigener Status in den Apps** (Bugs-DB 2029-9): iOS/iPadOS (2029-6), Android (2029-7) und Linux (2029-8) können
   jetzt, was das Web seit 2029-5 kann – Mein Status, Erreichbarkeit mit Ausnahmen, Status der Chat-Partner, Rückfrage
   vor dem Anruf, Anklopfen und stille Anrufe; dazu iOS-Fokusfilter „Saga-Status“ und Android „System-Nicht-stören
