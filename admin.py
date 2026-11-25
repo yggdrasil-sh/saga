@@ -977,8 +977,11 @@ async def calls_post(request: Request):
     cur = auth.settings(fresh=True).get("calls") or {}
     if act == "horn":
         # horn_rev (2.5): jedes Speichern startet einen wartenden eingebauten Knoten sofort neu (saga-media, Backoff weg)
-        # 2263-4: Merker horn_on_y wie horn_all_y - ab jetzt gilt der gespeicherte Wert von "Gjallarhorn" (auch aus)
-        auth.save_setting("calls", {**cur, "horn": _on(f, "horn"), horn.HORN_ON_Y: True, "horn_builtin": _on(f, "horn_builtin"),
+        # 2263-4: Merker horn_on_y - ab dann gilt der gespeicherte Wert von "Gjallarhorn" (auch aus). Nur setzen, wenn der
+        # Admin den wirksamen Wert wirklich aendert (oder der Merker schon da ist): wer nur andere Schalter speichert, soll
+        # beim Wechsel auf "Standard an" nicht dauerhaft auf einem alten "aus" haengen bleiben (Pruefung a63srev M1).
+        hy = bool(cur.get(horn.HORN_ON_Y)) or _on(f, "horn") != horn.horn_flag(cur)
+        auth.save_setting("calls", {**cur, "horn": _on(f, "horn"), horn.HORN_ON_Y: hy, "horn_builtin": _on(f, "horn_builtin"),
                                       # Grundsatz Y: Merker horn_all_y - ab jetzt gilt der gespeicherte Wert (auch aus)
                                       "horn_all": _on(f, "horn_all"), horn.HORN_ALL_Y: True, "horn_rev": int(cur.get("horn_rev") or 0) + 1})
         print(f"admin: {who} Gjallarhorn {'an' if _on(f, 'horn') else 'aus'}, eingebauter Knoten {'an' if _on(f, 'horn_builtin') else 'aus'}, "

@@ -158,7 +158,9 @@ def set_settings(args):
             if k == "calls.horn_all":
                 calls["horn_all_y"] = True                # Grundsatz Y: wie das Admin-Formular (saga/horn.py horn_all_on)
             if k == "calls.horn":
-                calls["horn_on_y"] = True                 # 2263-4: wie das Admin-Formular (saga/horn.py horn_on, Merker)
+                from saga import horn as _h               # 2263-4: wie das Admin-Formular - Merker nur bei echter Aenderung
+                prev = dict(s.get("calls") or {})
+                calls["horn_on_y"] = bool(prev.get("horn_on_y")) or bool(v) != _h.horn_flag(prev)
         else:
             auth.save_setting(k, v)
     if any(k.startswith("calls.") for k in want):

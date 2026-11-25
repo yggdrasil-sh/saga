@@ -138,8 +138,10 @@ def run():
     st = stored()
     ok(f"Formular ohne Haken: gespeichert aus + Merker ({s}, {st.get('horn_all')}, {st.get('horn_all_y')}, rev {st.get('horn_rev')})",
        s in (302, 303) and st.get("horn_all") is False and st.get("horn_all_y") is True and st.get("horn_rev") == 4)
-    ok(f"... Formular setzt auch den Merker horn_on_y fuer Gjallarhorn (2263-4) ({st.get('horn')}, {st.get('horn_on_y')})",
-       st.get("horn") is True and st.get("horn_on_y") is True)
+    # 2263-4 (Pruefung a63srev M1): Gjallarhorn unveraendert gespeichert -> noch kein Merker horn_on_y (sonst bliebe ein
+    # altes "aus" beim Wechsel auf "Standard an" haengen); erst eine echte Aenderung setzt ihn
+    ok(f"... Gjallarhorn unveraendert: kein Merker horn_on_y (2263-4, M1) ({st.get('horn')}, {st.get('horn_on_y')})",
+       st.get("horn") is True and not st.get("horn_on_y"))
     ok("... horn_dm aus", wait_dm(A, False) is False)
     _, html = adm("GET", "/calls")
     ok("... Admin-Seite: Haken nicht gesetzt", box(html)[0] and not box(html)[1])
