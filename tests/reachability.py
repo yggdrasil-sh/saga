@@ -6,7 +6,8 @@ Anrufende (normal/Ausnahme Person/Ausnahme Gruppe/selbst) -> Reach(route, push, 
 in_call > busy > available · until <= jetzt = available, Ablauf ueber expire_once und den Takt-Haken (Testuhr) mit
 Ereignis status.changed · Wiederholungsanruf aus chat_call.hold='dnd' bei 179/180/181 s (Standard 180), Anruf selbst
 zaehlt nicht, andere Person/ohne hold nicht, repeat aus, repeat_s 300 · Ausnahmen (Person, Gruppe, Person anderer
-Servers, hoechstens 100, contact/e164 reserviert, unbekannt, fremde Gruppe, sich selbst, doppelt) · Ruhezeit ueber
+Servers, hoechstens 100, contact/e164 reserviert, unbekannt, fremde Gruppe, sich selbst, doppelt) · Namen foederierter
+Ausnahmen (fed_directory > chat_contact > fed_person, mit Herkunft, sonst leer; 2391) · Ruhezeit ueber
 Mitternacht in zwei Zeitzonen, quiet_dnd aus · Weitere Anrufe knock/busy, Anruf selbst zaehlt nicht als "im Anruf",
 shown() mit show_call · Erwaehnungen (mention_break) · Beschaeftigt nur Anzeige / silent · Cache je uid ueber ver
 (eine Abfrage im Treffer, Aenderung von prefs und Ruhezeiten sofort sichtbar) · Kontoloeschung (Zeile weg, aus Ausnahmen
@@ -306,6 +307,49 @@ def part_exceptions():
     reset(A)
 
 
+# --- Namen foederierter Ausnahmen (Bugs-DB 2391) ------------------------------------------------------------------------
+FH, FPID = "rs-fed.example", 990
+FX = {k: "~" + k * 16 for k in "abcdefg"}
+
+
+def fed_clean(c):
+    c.execute("DELETE FROM fed_directory WHERE peer_id=?", (FPID,))
+    c.execute("DELETE FROM fed_peer WHERE id=?", (FPID,))
+    c.execute("DELETE FROM fed_person WHERE principal LIKE ?", ("%@" + FH,))
+    c.execute("DELETE FROM chat_contact WHERE ref LIKE ?", ("%@" + FH,))
+
+
+def part_fed_names():
+    reset(A)
+    with connect() as c, c:
+        fed_clean(c)
+        c.execute("INSERT INTO fed_peer (id, host, base_url, public_key, fingerprint, status, created) VALUES (?,?,?,?,?,?,?)",
+                  (FPID, FH, "https://" + FH, "x", "x", "active", T0))
+        for k, nm in (("a", "Bert Gast"), ("e", FX["e"]), ("f", "")):             # e: Kennung als Name zaehlt nicht
+            c.execute("INSERT INTO fed_directory (peer_id, handle, name, updated) VALUES (?,?,?,?)", (FPID, FX[k], nm, T0))
+        for uid, k, nm in ((A, "a", "Alter Chatname"), (A, "b", "Cora Chat"), (A, "e", "Eva Chat"), (B, "d", "Nur bei Bert")):
+            c.execute("INSERT INTO chat_contact (uid, ref, name, first_at, last_at) VALUES (?,?,?,?,?)", (uid, f"{FX[k]}@{FH}", nm, T0, T0))
+        c.execute("INSERT INTO fed_person (principal, peer_id, display, updated) VALUES (?,?,?,?)", (f"@{FX['c']}@{FH}", FPID, "Dora Person", T0))
+    refs = [f"{FX[k]}@{FH}" for k in "abcdef"] + [f"{FX['g']}@andere.example"]
+    v = prefs(A, exceptions=[{"type": "user", "ref": r} for r in refs] + [{"type": "user", "ref": local_ref(B)}])
+    nm = {x["ref"]: x["name"] for x in v["exceptions"]}
+    ok(f"Adressbuch der verbundenen Instanz zuerst, mit Herkunft ({nm.get(refs[0])!r})", nm.get(refs[0]) == f"Bert Gast ({FH})")
+    ok(f"sonst eigener Chat-Kontakt ({nm.get(refs[1])!r})", nm.get(refs[1]) == f"Cora Chat ({FH})")
+    ok(f"sonst zwischengespeicherter Anzeigename ({nm.get(refs[2])!r})", nm.get(refs[2]) == f"Dora Person ({FH})")
+    ok(f"Chat-Kontakt einer anderen Person zaehlt nicht -> leer ({nm.get(refs[3])!r})", nm.get(refs[3]) == "")
+    ok(f"Kennung als Name im Adressbuch zaehlt nicht -> Chat-Kontakt ({nm.get(refs[4])!r})", nm.get(refs[4]) == f"Eva Chat ({FH})")
+    ok(f"leerer Name im Adressbuch, sonst nichts -> leer ({nm.get(refs[5])!r})", nm.get(refs[5]) == "")
+    ok(f"unbekannter Server -> leer ({nm.get(refs[6])!r})", nm.get(refs[6]) == "")
+    ok("lokale Ausnahme weiter mit Anzeigenamen, nie Anmeldename", nm.get(local_ref(B)) == "Bert Status" and B not in json.dumps(v))
+    with connect() as c:
+        ok("GET-Ansicht (view) gleich", {x["ref"]: x["name"] for x in US.view(c, A)["exceptions"]} == nm)
+        ex = US.export(c, A)["exceptions"]
+    ok("Backup-Export: nur Kennungen, keine Namen", all(set(x) == {"type", "ref"} for x in ex) and len(ex) == 8)
+    with connect() as c, c:
+        fed_clean(c)
+    reset(A)
+
+
 # --- Ruhezeiten --------------------------------------------------------------------------------------------------------
 def part_quiet():
     reset(A)
@@ -479,7 +523,7 @@ def main():
     bus.set_sink(lambda kind, payload: EVENTS.append((kind, payload)))
     ok("Haken IN_CALL verdrahtet (calls._talking: nur angenommene Anrufe, 2029-2)", US.IN_CALL is calls._talking)
     try:
-        for part in (part_matrix, part_rank_and_misc, part_expiry, part_repeat, part_exceptions, part_quiet, part_cache,
+        for part in (part_matrix, part_rank_and_misc, part_expiry, part_repeat, part_exceptions, part_fed_names, part_quiet, part_cache,
                      part_account, part_perf):
             try:
                 part()
