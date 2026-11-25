@@ -381,10 +381,11 @@ def run(srv):
     # --- Relais aus (Port zu) ---------------------------------------------------------------------------------------------
     srv.shutdown(); srv.server_close()
     push_relay.reset()
-    digest(1); due()
+    ne = digest(1); due()
     t1 = time.time()
     push.run_once()
-    ok(f"Relais aus (Verbindung abgelehnt) -> hold, Schutzschalter, schnell ({time.time() - t1:.2f} s)",
+    ok(f"Relais aus (Verbindung abgelehnt) -> hold, Schutzschalter, schnell ({time.time() - t1:.2f} s, {ne}, {q_rows()}, "
+       f"{push_relay.breaker_open()}, {push_relay.state().get('state')})",
        time.time() - t1 < 4 and push_relay.breaker_open() and [x[3] for x in q_rows() if x[1] == "apns"] == [0]
        and all(s[1] == 0 for s in sub_state()))
     with connect() as c:

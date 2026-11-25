@@ -317,8 +317,9 @@ def run(rel):
        and not got(AP1, TD) and app_d.decrypt(push.b64u_d(bd["saga"]["c"])).get("kind") == "share.added")
     ok("alte App (ohne Schluessel) am eigenen Weg: Klartext wie bisher, nie beim Relais", wait(lambda: got(AP2, TOLD, m2)) and not got(AP1, TOLD))
     m1 = len(APNS[AP1])
-    T.req("POST", f"/api/notes/{pg}/comments", A, {"block_id": "k1", "body": "Anna fragt"})
-    T.req("POST", f"/api/notes/{pg}/comments", Bk, {"block_id": "k1", "body": "Kanarie-Chattext-7Q steht im Kommentar"})
+    pga = T.req("POST", "/api/notes", A, {"title": "Kanarie-Seitentitel-3Z von Anna"})[1]["id"]
+    T.req("PUT", f"/api/notes/{pga}/shares", A, {"type": "user", "target": "fr-kanarielogin", "role": "comment"})
+    T.req("POST", f"/api/notes/{pga}/comments", Bk, {"block_id": "k1", "body": "Kanarie-Chattext-7Q steht im Kommentar"})
     g = wait(lambda: [x for x in got(AP1, TR, m1) if app_r.decrypt(push.b64u_d(json.loads(x["body"])["saga"]["c"])).get("kind", "").startswith("comment")])
     inner_c = app_r.decrypt(push.b64u_d(json.loads(g[0]["body"])["saga"]["c"])) if g else {}
     good, why = check_plan("comment", g[0], inner_c, False) if g else (False, None)
@@ -381,8 +382,8 @@ def run(rel):
     time.sleep(1.5)
     with connect() as c:
         sids = [r[0] for r in c.execute("SELECT id FROM push_sub WHERE uid='fr-a'").fetchall()]
-        routed = {r[0] for r in c.execute(f"SELECT kind FROM push_sub WHERE id IN ({','.join('?' * len(sids))})",
-                                          tuple(push._route(c, sids, "job.done"))).fetchall()}
+        rt = push._route(c, sids, "job.done")
+        routed = {r[0] for r in c.execute(f"SELECT kind FROM push_sub WHERE id IN ({','.join('?' * len(rt))})", tuple(rt)).fetchall()}
     ok(f"nie voip fuer Arten der Kollegin: VoIP-Abo -> fail ohne Zustellung, _route nimmt nur apns ({vj}, {sorted(routed)})",
        vj[0] == "fail" and not got(AP1, TV, m1) and "apns-voip" not in routed and "apns" in routed)
     # Testmitteilung ueber die API (Server-Prozess)
