@@ -1801,7 +1801,7 @@ body.notes-page .np-name{font-size:var(--fs-base);font-weight:500;color:var(--mu
   min-height:44px;padding:0 .4rem 0 0;cursor:pointer}
 @media (max-width:760px){
   .hk-dialog-set{height:100%;max-height:none;border-radius:0;width:100%}
-  .hk-modal:has(.hk-dialog-set){padding:0}
+  .hk-modal:has(.hk-dialog-set){padding:0;grid-template-rows:minmax(0,1fr)}   /* 2.6: Zeile = Bildschirmhoehe, sonst wuchs der Dialog ueber den Rand und der Bereich liess sich nicht scrollen */
   .hk-setnav{width:auto;flex:1;border-right:0;background:none;padding:.5rem .6rem 1.2rem}
   .hk-setnav-i{min-height:44px;font-size:var(--fs-md)}
   .hk-setnav-i .hk-setnav-go{display:inline-flex;color:var(--muted)}
