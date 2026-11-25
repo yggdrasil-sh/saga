@@ -37,7 +37,7 @@ from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
 from saga import bus, contacts, sharing, testclock
-from saga.core import RESTORE_TEST, TZ, _api_guard, _bad, _body, _json_load, labels, resolve_input, t
+from saga.core import RESTORE_TEST, TZ, _api_guard, _bad, _body, _json_load, is_raw_ref, labels, resolve_input, t
 
 router = APIRouter()
 
@@ -309,12 +309,45 @@ def shown(c, uid, now=None):
 # =====================================================================================================
 # Ansicht (eigenes Konto)
 # =====================================================================================================
-def _exc_out(c, exc):
+def _remote_names(c, uid, us):
+    """Personen anderer Server ('@~x@host') -> Name zum Zeigen (Bugs-DB 2391): Adressbuch der verbundenen Instanz
+    (fed_directory), sonst der eigene Chat-Kontakt (chat_contact), sonst der zwischengespeicherte Anzeigename (fed_person),
+    immer mit Herkunft (sharing.remote_label). Nie ein Anmeldename; ohne Treffer fehlt die Person - die Apps zeigen dann
+    ihren Ersatz ("Person auf host (tag)")."""
+    refs = {u: r for u, r in ((u, contacts.ref_of(u)) for u in set(us)) if r}
+    if not refs:
+        return {}
+    found = {}
+
+    def take(r, nm):
+        nm = str(nm or "").strip()
+        if nm and not is_raw_ref(nm) and r not in found:
+            found[r] = nm
+    hs = sorted({r.split("@", 1)[0] for r in refs.values()})
+    hosts = sorted({r.split("@", 1)[1] for r in refs.values()})
+    for h, host, nm in c.execute("SELECT d.handle, p.host, d.name FROM fed_directory d JOIN fed_peer p ON p.id=d.peer_id "
+                                 f"WHERE d.handle IN ({','.join('?' * len(hs))}) AND p.host IN ({','.join('?' * len(hosts))}) "
+                                 "ORDER BY d.updated DESC", (*hs, *hosts)).fetchall():
+        take(f"{h}@{host}", nm)
+    rest = sorted(r for r in refs.values() if r not in found)
+    if rest:
+        for r, nm in c.execute(f"SELECT ref, name FROM chat_contact WHERE uid=? AND ref IN ({','.join('?' * len(rest))})",
+                               (uid, *rest)).fetchall():
+            take(r, nm)
+    rest = sorted("@" + r for r in refs.values() if r not in found)
+    if rest:
+        for p, nm in c.execute(f"SELECT principal, display FROM fed_person WHERE principal IN ({','.join('?' * len(rest))})",
+                               tuple(rest)).fetchall():
+            take(p[1:], nm)
+    return {u: sharing.remote_label(u, found[r]) for u, r in refs.items() if r in found}
+
+
+def _exc_out(c, uid, exc):
     users = [x["u"] for x in exc if x.get("t") == "user"]
     loc = [u for u in users if not sharing.is_remote(u)]
     nm = labels(c, loc) if loc else {}
     if any(sharing.is_remote(u) for u in users):
-        nm.update(sharing.names(c, [u for u in users if sharing.is_remote(u)]))
+        nm.update(_remote_names(c, uid, [u for u in users if sharing.is_remote(u)]))
     out = []
     for x in exc:
         if x.get("t") == "user":
@@ -338,7 +371,7 @@ def view(c, uid, now=None):
             "since": row["since"] if live else (row["until"] if row and row["until"] else None),
             "updated": row["updated"] if row else None, "ver": row["ver"] if row else 0,
             "effective": eff, "why": why, "quiet": quiet_now(parsed["quiet"], now), "in_call": ic,
-            "prefs": dict(parsed["prefs"]), "exceptions": _exc_out(c, parsed["exc"]),
+            "prefs": dict(parsed["prefs"]), "exceptions": _exc_out(c, uid, parsed["exc"]),
             "limits": {"text": TEXT_MAX, "exceptions": EXC_MAX, "repeat_s": [REPEAT_MIN, REPEAT_MAX], "until_max": UNTIL_MAX,
                        "dur_min": DUR_MIN},
             "now": round(now, 3)}
@@ -523,7 +556,7 @@ def export(c, uid):
     parsed = _parse(r[0], r[1], None)
     return {"prefs": {k: v for k, v in parsed["prefs"].items() if (r[0] or {}).get(k) is not None},
             "exceptions": [{"type": x["type"], **({"ref": x["ref"]} if x["type"] == "user" else {"name": x["name"]})}
-                           for x in _exc_out(c, parsed["exc"]) if x["type"] == "group" or x.get("ref")]}
+                           for x in _exc_out(c, uid, parsed["exc"]) if x["type"] == "group" or x.get("ref")]}
 
 
 def restore(c, uid, data):
