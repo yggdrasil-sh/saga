@@ -169,6 +169,67 @@ def run():
     ok(f"einstellen calls.horn=0: Gjallarhorn aus -> kein horn_dm, horn_all bleibt, Merker horn_on_y (2263-4) ({st.get('horn_on_y')})",
        rc == 0 and "calls.horn=0" in out and st.get("horn_all") is True and st.get("horn") is False and st.get("horn_on_y") is True
        and not wait_dm(A, False))
+    m1(HN)
+
+
+def m1(HN):
+    """Pruefung a63irev (Auflage M1, auch mit dem Commit "Standard an"): der Merker horn_on_y entsteht nur bei einer echten
+    Aenderung von Gjallarhorn (Admin-Formular, run.py einstellen). Geprueft wird der gespeicherte Stand und was er unter
+    beiden Standards (HORN_DEFAULT aus = dieser Stand, an = "Standard an") bedeutet - laeuft vor und nach "Standard an"."""
+    def under(st, d):
+        old = HN.HORN_DEFAULT
+        HN.HORN_DEFAULT = d
+        try:
+            return HN.horn_flag(st)
+        finally:
+            HN.HORN_DEFAULT = old
+
+    def form(horn_on):
+        f = {"action": "horn", "horn_builtin": "1", "horn_all": "1"}
+        if horn_on:
+            f["horn"] = "1"
+        return adm("POST", "/calls", f)[0]
+
+    # Altwert "aus" ohne Merker, Admin speichert nur andere Schalter (Gjallarhorn so, wie die Seite ihn zeigt)
+    put(horn=False)
+    s = form(HN.horn_flag(stored()))
+    st = stored()
+    ok(f"M1 Formular, Gjallarhorn unveraendert (Altwert aus): kein Merker, mit Standard an dann an ({s}, {st.get('horn')}, {st.get('horn_on_y')})",
+       s in (302, 303) and not st.get("horn_on_y") and under(st, True) is True and under(st, False) is HN.horn_flag({"horn": False}))
+    # Merker schon da: bleibt, auch wenn nur andere Schalter gespeichert werden
+    put(horn=False, horn_on_y=True)
+    s = form(False)
+    st = stored()
+    ok(f"M1 Formular mit vorhandenem Merker: Merker bleibt, aus bleibt aus ({s}, {st.get('horn_on_y')})",
+       st.get("horn_on_y") is True and under(st, True) is False and under(st, False) is False)
+    # Admin schaltet bewusst aus (vorher an) -> Merker, bleibt unter beiden Standards aus
+    put(horn=True)
+    s = form(False)
+    st = stored()
+    ok(f"M1 Formular bewusst aus: Merker, bleibt auch mit Standard an aus ({s}, {st.get('horn')}, {st.get('horn_on_y')})",
+       st.get("horn") is False and st.get("horn_on_y") is True and under(st, True) is False and under(st, False) is False)
+    # Admin schaltet bewusst an (vom Altwert aus) -> an unter beiden Standards
+    put(horn=False)
+    s = form(True)
+    st = stored()
+    ok(f"M1 Formular an: wirksam an unter beiden Standards ({s}, {st.get('horn')}, {st.get('horn_on_y')})",
+       st.get("horn") is True and under(st, True) is True and under(st, False) is True
+       and bool(st.get("horn_on_y")) is (HN.horn_flag({"horn": False}) is False))
+    # run.py einstellen: unveraendert -> kein Merker; bewusst aus -> Merker
+    put(horn=False)
+    rc, out = einstellen("calls.horn=" + ("1" if HN.horn_flag(stored()) else "0"))
+    st = stored()
+    ok(f"M1 einstellen calls.horn unveraendert (Altwert aus): kein Merker, mit Standard an dann an ({rc}, {st.get('horn_on_y')})",
+       rc == 0 and not st.get("horn_on_y") and under(st, True) is True)
+    put(horn=True)
+    rc, out = einstellen("calls.horn=0")
+    st = stored()
+    ok(f"M1 einstellen calls.horn=0 (vorher an): Merker, bleibt auch mit Standard an aus ({rc}, {st.get('horn_on_y')})",
+       rc == 0 and st.get("horn") is False and st.get("horn_on_y") is True and under(st, True) is False and "calls.horn=0" in out)
+    put(horn=True)
+    rc, out = einstellen("calls.horn_all=0")
+    st = stored()
+    ok(f"M1 einstellen nur calls.horn_all: kein Merker horn_on_y ({rc}, {st.get('horn_on_y')})", rc == 0 and not st.get("horn_on_y"))
 
 
 if __name__ == "__main__":
