@@ -340,7 +340,7 @@
         var rm = el('button', 'icon-btn us-exc-rm', '✕'); rm.type = 'button';
         rm.setAttribute('aria-label', T('„{name}“ entfernen', { name: nm }));
         rm.addEventListener('click', function () {
-          put(list.filter(function (y, j) { return j !== i; }), function () {
+          put(curList().filter(function (y) { return !same(y, x); }), function () {
             var b = ul.querySelectorAll('.us-exc-rm'); (b[Math.min(i, b.length - 1)] || q).focus();
           });
         });
@@ -356,9 +356,12 @@
     var res = el('ul', 'us-exc-res'); res.id = 'us-exc-res'; res.setAttribute('role', 'listbox'); res.setAttribute('aria-label', T('Treffer')); res.hidden = true;
     q.setAttribute('aria-controls', res.id);
     wrap.appendChild(q); wrap.appendChild(res); c.appendChild(wrap);
+    // Liste immer aus dem aktuellen Stand (anderes Geraet/Tab hat vielleicht schon geaendert - nicht ueberschreiben)
+    function curList() { var v = HK.userStatus.view(); return (v && v.exceptions || list).slice(); }
     function add(x) {
-      if (list.some(function (y) { return same(y, x); })) { q.value = ''; hide(); return; }
-      put(list.concat([x]), function () { q.value = ''; hide(); q.focus(); });
+      var cur = curList();
+      if (cur.some(function (y) { return same(y, x); })) { q.value = ''; hide(); list = cur; drawList(); return; }
+      put(cur.concat([x]), function () { q.value = ''; hide(); q.focus(); });
     }
     function hide() { res.hidden = true; res.textContent = ''; q.setAttribute('aria-expanded', 'false'); q.removeAttribute('aria-activedescendant'); }
     function opt(label, sub, x) {
