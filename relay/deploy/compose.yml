@@ -22,8 +22,8 @@ services:
       - ./secrets:/run/secrets:ro                   # Verzeichnis (nicht die Datei): klappt auch mit read_only
     networks: [traefik]
     logging:
-      # Protokoll ohne Token/Inhalte. journald, damit die Frist der Startseite ("log_days", 14 Tage) zeitgenau gilt -
-      # dazu MaxRetentionSec auf dem Host setzen (README "Protokolle"); json-file rotiert nur nach Groesse.
+      # Protokoll ohne Token/Inhalte. journald, damit die Frist der Startseite ("log_days", 14 Tage) gilt - dazu
+      # MaxRetentionSec und MaxFileSec auf dem Host setzen (README "Protokolle"); json-file rotiert nur nach Groesse.
       driver: journald
       options: {tag: saga-relay}
     labels:

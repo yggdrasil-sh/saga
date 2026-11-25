@@ -68,17 +68,19 @@ Sperren wirken sofort. Sperren betrifft auch neue Anmeldungen mit demselben Host
 **Protokolle:** stdout, eine JSON-Zeile je Anfrage (`ts, ev, server_id, push_type, rate, prio, status, apns_reason, ms`,
 bei Fehlern `tok_h`). Die Startseite nennt die Aufbewahrung aus `log_days` (Standard 14 Tage). Damit das stimmt, schreibt
 `compose.yml` die Protokolle ins journald des Hosts (`driver: journald`, `tag: saga-relay`; `docker logs` geht weiter),
-und der Host löscht sie zeitgenau:
+und der Host löscht sie nach Frist:
 
 ```sh
 mkdir -p /etc/systemd/journald.conf.d
-printf '[Journal]\nMaxRetentionSec=14day\n' > /etc/systemd/journald.conf.d/90-saga-relay.conf
+printf '[Journal]\nMaxRetentionSec=13day\nMaxFileSec=1day\n' > /etc/systemd/journald.conf.d/90-saga-relay.conf
 systemctl restart systemd-journald
 journalctl CONTAINER_TAG=saga-relay --since today      # Protokolle des Relais lesen
 ```
 
-`MaxRetentionSec` gilt für das ganze Journal des Hosts (andere Dienste behalten ihre Protokolle dann auch höchstens so
-lange). Wer das nicht will, setzt `log_days` passend zur eigenen Aufbewahrung – die Startseite muss stimmen. `json-file`
+journald löscht nur ganze, schon abgelegte Journal-Dateien; die laufende Datei wird ohne `MaxFileSec` erst nach Größe
+bzw. einem Monat abgelegt. Darum `MaxFileSec=1day` (täglich neue Datei) und `MaxRetentionSec` einen Tag unter
+`log_days` – dann ist kein Eintrag älter als `log_days`. Beides gilt für das ganze Journal des Hosts (andere Dienste
+behalten ihre Protokolle dann auch höchstens so lange). Wer das nicht will, setzt `log_days` passend zur eigenen Aufbewahrung – die Startseite muss stimmen. `json-file`
 rotiert nur nach Größe und hält keine Frist ein.
 
 **Sicherung:** `data/relay.db` (Server-Kennungen und öffentliche Schlüssel). Geht sie verloren, melden sich die Server

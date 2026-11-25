@@ -530,7 +530,7 @@ def send(token, env, topic, push_type, priority, expiration, collapse_id, rate, 
         topics = state().get("topics")
         if not isinstance(topics, list):
             return "hold", "Relais: Apps unbekannt"
-        if topic not in topics:
+        if (topic[:-5] if topic.endswith(".voip") else topic) not in topics:     # topics = Bundles B, Anrufe: B.voip
             return "fail", "Relais: App nicht freigegeben"
     body = {"token": token, "env": env, "topic": topic, "push_type": push_type, "priority": int(priority),
             "expiration": int(expiration), "rate": rate, "aps": aps, "saga": saga}

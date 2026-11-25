@@ -419,6 +419,12 @@ def run(srv):
     push.run_once()
     ok(f"2413-3: Topics wieder bekannt -> zugestellt ({push_relay.state().get('topics')}, {q_rows()})",
        push_relay.state().get("topics") == [B1] and MODE["pushes"] == p0 + 1 and not [x for x in q_rows() if x[1] == "apns"])
+    push_relay.reset()
+    drop_topics()
+    p1 = MODE["pushes"]
+    v = push_relay.send("ab" * 32, "production", B1 + ".voip", "voip", 10, int(time.time()) + 30, None, "ring", {}, {"c": "x"})
+    ok(f"2413-3: Anruf (Topic B.voip) bei unbekannten Topics -> /v1/info, dann zugestellt statt fail ({v})",
+       v[0] == "ok" and MODE["pushes"] == p1 + 1 and push_relay.state().get("topics") == [B1])
 
     # --- 2413-2: Admin "Jetzt pruefen"/"Schluessel erneuern" bei ausgeschaltetem Relais sprechen es nicht an --------------
     import admin
