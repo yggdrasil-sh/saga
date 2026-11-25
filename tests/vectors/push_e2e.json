@@ -154,11 +154,11 @@
    "msg": {
     "title": "Saga",
     "body": "Anruf von Mira Beispiel",
-    "url": "/chats#call-0123456789abcdef",
-    "tag": "call-0123456789abcdef",
+    "url": "/chats#call-0123456789abcdef0123456789abcdef",
+    "tag": "call-0123456789abcdef0123456789abcdef",
     "kind": "call",
     "ts": 1798761600,
-    "call": "0123456789abcdef",
+    "call": "0123456789abcdef0123456789abcdef",
     "chat": 12,
     "media": "audio",
     "caller": "Mira Beispiel",
@@ -168,8 +168,8 @@
     "actor": "Mira Beispiel",
     "n": 1
    },
-   "plain": "{\"title\":\"Saga\",\"body\":\"Anruf von Mira Beispiel\",\"url\":\"/chats#call-0123456789abcdef\",\"tag\":\"call-0123456789abcdef\",\"kind\":\"call\",\"ts\":1798761600,\"call\":\"0123456789abcdef\",\"chat\":12,\"media\":\"audio\",\"caller\":\"Mira Beispiel\",\"ttl\":55,\"v\":2,\"lang\":\"de\",\"actor\":\"Mira Beispiel\",\"n\":1}",
-   "plain_len": 280,
+   "plain": "{\"title\":\"Saga\",\"body\":\"Anruf von Mira Beispiel\",\"url\":\"/chats#call-0123456789abcdef0123456789abcdef\",\"tag\":\"call-0123456789abcdef0123456789abcdef\",\"kind\":\"call\",\"ts\":1798761600,\"call\":\"0123456789abcdef0123456789abcdef\",\"chat\":12,\"media\":\"audio\",\"caller\":\"Mira Beispiel\",\"ttl\":55,\"v\":2,\"lang\":\"de\",\"actor\":\"Mira Beispiel\",\"n\":1}",
+   "plain_len": 328,
    "pad_to": 512,
    "salt": "IGKc8pm6MHc-gnc_Ls7h6g",
    "as_priv": "Xy4OiryP3Iucukfhs0ohGlS9hNz6hq9vwD9Ih9GMR7k",
@@ -178,15 +178,15 @@
    "ttl": 55,
    "expiration": 1798761655,
    "rate": "ring",
-   "collapse_tag": "call-0123456789abcdef",
-   "collapse_id": "cS7pkdjFwP63qH9T49SNf5j",
+   "collapse_tag": "call-0123456789abcdef0123456789abcdef",
+   "collapse_id": "c9hFW_cacr7aFL74fZOWvR4",
    "aps": {},
    "apns_body": {
     "aps": {},
     "saga": {
      "e2e": 1,
      "k": "rJ1YACNZ",
-     "c": "IGKc8pm6MHc-gnc_Ls7h6gAAEABBBMNT1h1nCtlUkEg9NpH-7wq02cCjyZ10e6MboZ8IADsiU3Q-P0dpy5UP2HdmIfCbehY80KX9_hS7Pbs1jSz-tj0-P8lt6W_V83M8H3QhIVwVX7gp2l1zgnTce456TeRbE8wd7g4rKN6JGf4EbtUeZa3qdebqQjQFYSKsIJ_VTlP59TIsQB0chXHz6oMje__r7aSguTN4on9bYm9taQEUqY-ZDa1K_-YHBn_xUxDFMiwMjJHgNaV-NnBswD4msOaYXN3pilIn7FleV9cFV_dW_VGAmn61pEQDarmY3oIOtyniXjRN_d_7_f2zLkhsOmG4J2XMu2KF899i1b3EzMHg8kmisUr3vv6k4mZTFRwmyOAU-r79eAhz5Uf3L67Ulpwa2QGsn4A8Yl9q_CoTTOF5sw8WqmTBAn9lPOwHPJlbbXPo17HMZ46r9BF4gS0RHPgXIcqfLVittL3kzXnkLF51vD0c8OHfR6AD-woMOyaRbbBg6lliaE3qjwMENgt1BU9q-Wlut0JCYTBemvCQPBGpUZ7CbOvycCtqVwQ8dTryIW1pAmS-NJBOteJfIO4ddNGvE8W79X1qoc4PsQEhxj8XhvmDQ494dNTBMGE-efEQMEYiJRxS63gOsoRRJE02GpBh8jjUB7snovXW42GKKRINe5b6jvuWr9TNrrVnkEih6v-g6MxBgMEMifVLTCAZ3N2foQWblytMZvzGHhBVdME95OPaPAH5sK1uT7rJ6tLjJ6khD08dEqTSf7sEddOP5ej0vluRD2PykNWkVfd5yHNQfgA"
+     "c": "IGKc8pm6MHc-gnc_Ls7h6gAAEABBBMNT1h1nCtlUkEg9NpH-7wq02cCjyZ10e6MboZ8IADsiU3Q-P0dpy5UP2HdmIfCbehY80KX9_hS7Pbs1jSz-tj0-P8lt6W_V83M8H3QhIVwVX7gp2l1zgnTce456TeRbE8wd7g4rKN6JGf4EbtUeZa3qdebqQjQFYSKsIJ_VTlP59TIsQB0chXHz6oMje__r7aSguTNqv28cNz15ZBtOqYGWRPgd7_kRRyihSROGMy4EhdryKLUmays-1Tw9suWXVJqjmBdm_VdaVtkFWaAFqAXV0H7650MGJueY1JFf5XG7Si9XsM27pKjhcVJ3LjPmdiHCozDWs5EtivudnNHp5B3h4huh_bDl5WJZSUhm2e4DgeC3IElT40rhOeWd2N1emgH6yZM0e0gruzhYF_FvswICoGqMGnEjOq9Hcp1KOya4uOKcS8eb8FhJlC0HALNeb5zHYxS1u7m17Q_GFmxZnlF9nob9fYJnniggGUfyGd8SyGNAJSSY7iNGU2IGdSYPlUtClSxgWwEjmPCQPBGpUZ7CbOvycCtqVwQ8dTryIW1pAmS-NJBOteJfIO4ddNGvE8W79X1qoc4PsQEhxj8XhvmDQ494dNTBMGE-efEQMEYiJRxS63gOsoRRJE02GpBh8jjUB7snovXW42GKKRINe5b6jvuWr9TNrrVnkEih6v-g6MxBgMEMifVLTCAZ3N2foQWblytMZvzGHhBVdME95OPaPAH5sK1uT7rJ6tLjJ6khD08dEqTSf7sEddOP5ej0vgxFtubcSsbn9v2zBPc8pcQ"
     }
    },
    "body_len": 614
@@ -197,11 +197,11 @@
    "msg": {
     "title": "Saga",
     "body": "Gruppen-Videoanruf von Mira Beispiel",
-    "url": "/chats#call-fedcba9876543210",
-    "tag": "call-fedcba9876543210",
+    "url": "/chats#call-fedcba9876543210fedcba9876543210",
+    "tag": "call-fedcba9876543210fedcba9876543210",
     "kind": "call.group",
     "ts": 1798761600,
-    "call": "fedcba9876543210",
+    "call": "fedcba9876543210fedcba9876543210",
     "chat": 7,
     "media": "video",
     "caller": "Mira Beispiel",
@@ -212,8 +212,8 @@
     "actor": "Mira Beispiel",
     "n": 1
    },
-   "plain": "{\"title\":\"Saga\",\"body\":\"Gruppen-Videoanruf von Mira Beispiel\",\"url\":\"/chats#call-fedcba9876543210\",\"tag\":\"call-fedcba9876543210\",\"kind\":\"call.group\",\"ts\":1798761600,\"call\":\"fedcba9876543210\",\"chat\":7,\"media\":\"video\",\"caller\":\"Mira Beispiel\",\"group\":true,\"ttl\":50,\"v\":2,\"lang\":\"de\",\"actor\":\"Mira Beispiel\",\"n\":1}",
-   "plain_len": 311,
+   "plain": "{\"title\":\"Saga\",\"body\":\"Gruppen-Videoanruf von Mira Beispiel\",\"url\":\"/chats#call-fedcba9876543210fedcba9876543210\",\"tag\":\"call-fedcba9876543210fedcba9876543210\",\"kind\":\"call.group\",\"ts\":1798761600,\"call\":\"fedcba9876543210fedcba9876543210\",\"chat\":7,\"media\":\"video\",\"caller\":\"Mira Beispiel\",\"group\":true,\"ttl\":50,\"v\":2,\"lang\":\"de\",\"actor\":\"Mira Beispiel\",\"n\":1}",
+   "plain_len": 359,
    "pad_to": 512,
    "salt": "v9coAyRlXibOP-oqsXriZA",
    "as_priv": "yX0ISarDygEECPSfrmrlKLaOlOhMag3AVEJVl8Qvj3g",
@@ -222,8 +222,8 @@
    "ttl": 50,
    "expiration": 1798761650,
    "rate": "ring",
-   "collapse_tag": "call-fedcba9876543210",
-   "collapse_id": "cQlNGvklYU33W3X5F6i_hbD",
+   "collapse_tag": "call-fedcba9876543210fedcba9876543210",
+   "collapse_id": "cYSk2nvM_oW48lVOURLSxcc",
    "aps": {
     "alert": {
      "title-loc-key": "SAGA_PUSH_TITLE",
@@ -246,7 +246,7 @@
     "saga": {
      "e2e": 1,
      "k": "rJ1YACNZ",
-     "c": "v9coAyRlXibOP-oqsXriZAAAEABBBF9cdZMRB1chvA4u1QBg2I2xGC_Ys7wDWogeZ0c4apFHVq4qXDOzIdiTE69e4kBxgWGQhqGPghhgXYWP3OmaqHPoDn0Y0m7Lz-TNZIpj79mqdzPZAbncbQlpkVzANyW3lB-IfjvXnKQxTg-8cTRd-DYyr_CsTur33y4I3eHTEM0NVNkiQZhPqWx4187ofRYYdHWs0t-A7H5ow9sT1jUkrfC-yCNUjLELeNkcSN5NvawhfIM0PJKZ86CwCsKYmRhVR6DKCzRM0wJNmAPVXwPCuMmucmaNACjZ62Pdu157NT0gUAlWyHCqyY0wZtgUxT0SMVCSX28cBjqmvA18wbkh2iqApNIYBKE5S-7gCZ4YiHfQfzYXKIaF_rRcDpMlLztv15_fFXwR3NcQ5jn5iy7gXsXzDc_vPvEvvz9OwaCEkF1AtFk0s9iULtIvYaPN_qgSUwCkmh9DPRuKRs-JH9j-PD2taqCWGvkx4UxXd_n3OmkusoScdvV2zmJSJz14shvG9Qq82BJChj2-7TqCRrBDySNwIkEQZSTY2jdUetG8yhbY3rR8tDQxH0hO76sYPVPHJNj8qPOM6fXKvS79bH-Uoc_VCoyLvcJQGAgXTzxJbK6swgu1kzkbiJVpgEaDgWC3gnyzya6iaDY-1d34JPkJeGi5mgYuNwlHI7Q7jxpkhkyRDkOBj_LaSf4FjhcmsJitAboHQQjuVWxg7D2sgn1UsJWX3fDKMVnQbgHHE6cwSRJYLkKYUo9iYORgBLeXMPjp009rj90wYgh8r8Kz8Izp0l0"
+     "c": "v9coAyRlXibOP-oqsXriZAAAEABBBF9cdZMRB1chvA4u1QBg2I2xGC_Ys7wDWogeZ0c4apFHVq4qXDOzIdiTE69e4kBxgWGQhqGPghhgXYWP3OmaqHPoDn0Y0m7Lz-TNZIpj79mqdzPZAbncbQlpkVzANyW3lB-IfjvXnKQxTg-8cTRd-DYyr_CsTur33y4I3eHTEM0NVNkiQZhPqWx4187ofRYYdHWs0t-A7H5ow9sT1jUkrfC-jGoSm7INY9sJHYoV4rN2KcV7fIfBrLW8HZXKx0VIA-mMAz9DjhhAjFWAAF3d792kY3XNTTOVr3fSvlpwPDo0TR0NkTLsiNZ-aZtCi3UQJ1yFTnQIE3jgqgR_x7A7wT7S-oNcCrltBqDhTsBTjzCOPiIfddvd6q1KXsB4czh4kcafOSxbisFnt2O4ynenHsW8R8npc75osSdX1rGI3V0O4kN_7YjLINx7IPiTvu8MEFTh9UwTOF7qD4SbDMX0Ij27aoqNB-1hgRNKdvz7cyd46srQbvp3n0IkBQdKnjmqlGTb-ihg4licwRjjJcQsuwFKAAx5F0X4mFI9CaHVr3r68pYSlg4AYkpO76sYPVPHJNj8qPOM6fXKvS79bH-Uoc_VCoyLvcJQGAgXTzxJbK6swgu1kzkbiJVpgEaDgWC3gnyzya6iaDY-1d34JPkJeGi5mgYuNwlHI7Q7jxpkhkyRDkOBj_LaSf4FjhcmsJitAboHQQjuVWxg7D2sgn1UsJWX3fDKMVnQbgHHE6cwSRJYLkKYUo9iYORgBLeXMPjp0zrfuaCSUxNFwdsUp3N99dE"
     }
    },
    "body_len": 614
@@ -680,8 +680,8 @@
    "collapse_id": "ccqk_LxxKowRHqxgVoXjs19"
   },
   {
-   "tag": "call-0123456789abcdef",
-   "collapse_id": "cS7pkdjFwP63qH9T49SNf5j"
+   "tag": "call-0123456789abcdef0123456789abcdef",
+   "collapse_id": "c9hFW_cacr7aFL74fZOWvR4"
   }
  ],
  "rotate": {

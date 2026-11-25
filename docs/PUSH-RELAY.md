@@ -188,7 +188,7 @@ oder `null`; `server.apns` bleibt wie bisher (nur eigener Schlüssel). `devices[
 
 Innerer Text = das bisherige Feld-Set der Mitteilung als kompaktes JSON (UTF-8), genau das Objekt aus `push.message()`:
 `title, body, url, tag, kind, ts, v, lang` und je nach Art `thread, call, chat, media, caller, group, dm, ttl, actor, n,
-group_key, update, removed, silent, digest`. Die App liest es wie bisher die flachen APNs-Felder (unbekannte ignorieren).
+group_key, update, removed, silent, digest` (`call` = Anrufkennung, 32 Hex-Zeichen). Die App liest es wie bisher die flachen APNs-Felder (unbekannte ignorieren).
 
 Verfahren: **RFC 8291** (Web Push, `aes128gcm` nach RFC 8188) mit dem Schlüssel des Abos (`p256dh`, `auth`), ein einziger
 Datensatz, `rs = 4096`, Kopf `salt(16) | rs(4) | idlen(1)=65 | as_pub(65)` – Byte für Byte wie bei Web Push
@@ -299,3 +299,4 @@ Jede Änderung nach dem ersten Stand bekommt einen eigenen Commit (`2262-1b …`
 | Stand | Änderung |
 |---|---|
 | 2262-1 | erster Stand |
+| 2262-1b | Vektoren `anruf_voip`, `gruppenanruf_alert` und `collapse` mit echter Anrufkennung (32 Hex-Zeichen wie `chat_call.id`; die App verwirft kürzere). Format und Verfahren unverändert. |

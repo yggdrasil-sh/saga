@@ -162,13 +162,13 @@ def _msgs():
         ("kommentar", False, {"title": "Saga", "body": "Mira Beispiel hat „Reiseplan“ kommentiert", "url": "/n/abc#c5",
                               "tag": "thread-5", "kind": "comment.new", "ts": NOW, "thread": "note-abc", "v": 2, "lang": "de",
                               "actor": "Mira Beispiel", "n": 1, "group_key": "note:abc"}),
-        ("anruf_voip", True, {"title": "Saga", "body": "Anruf von Mira Beispiel", "url": "/chats#call-0123456789abcdef",
-                              "tag": "call-0123456789abcdef", "kind": "call", "ts": NOW, "call": "0123456789abcdef", "chat": 12,
+        ("anruf_voip", True, {"title": "Saga", "body": "Anruf von Mira Beispiel", "url": "/chats#call-0123456789abcdef0123456789abcdef",
+                              "tag": "call-0123456789abcdef0123456789abcdef", "kind": "call", "ts": NOW, "call": "0123456789abcdef0123456789abcdef", "chat": 12,
                               "media": "audio", "caller": "Mira Beispiel", "ttl": 55, "v": 2, "lang": "de",
                               "actor": "Mira Beispiel", "n": 1}),
         ("gruppenanruf_alert", False, {"title": "Saga", "body": "Gruppen-Videoanruf von Mira Beispiel",
-                                       "url": "/chats#call-fedcba9876543210", "tag": "call-fedcba9876543210", "kind": "call.group",
-                                       "ts": NOW, "call": "fedcba9876543210", "chat": 7, "media": "video", "caller": "Mira Beispiel",
+                                       "url": "/chats#call-fedcba9876543210fedcba9876543210", "tag": "call-fedcba9876543210fedcba9876543210", "kind": "call.group",
+                                       "ts": NOW, "call": "fedcba9876543210fedcba9876543210", "chat": 7, "media": "video", "caller": "Mira Beispiel",
                                        "group": True, "ttl": 50, "v": 2, "lang": "de", "actor": "Mira Beispiel", "n": 1}),
         ("aktualisierung", False, {"title": "Saga", "body": "", "url": "/chats#c12", "tag": "chat-12", "kind": "chat.message",
                                    "ts": NOW, "v": 2, "lang": "de", "n": 0, "group_key": "chat:12", "chat": 12, "update": True,
@@ -226,7 +226,7 @@ def build():
                       "apns_body": {"aps": aps, "saga": saga}, "body_len": len(body)})
     out["cases"] = cases
     out["pad"] = [[n, pad_size(n)] for n in (0, 1, 100, 510, 511, 512, 1022, 1023, 1024, 2046, 2047, 2048, 2400)]
-    out["collapse"] = [{"tag": t, "collapse_id": collapse(auth, t)} for t in ("chat-12", "uchat-12", "job-1", "job-2", "call-0123456789abcdef")]
+    out["collapse"] = [{"tag": t, "collapse_id": collapse(auth, t)} for t in ("chat-12", "uchat-12", "job-1", "job-2", "call-0123456789abcdef0123456789abcdef")]
     # Schluesselwechsel am Relais: Besitznachweis des neuen Schluessels (Ed25519 ist deterministisch)
     new = Ed25519PrivateKey.from_private_bytes(h32("rotate-new"))
     new_pub = b64u(new.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw))
