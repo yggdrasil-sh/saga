@@ -999,6 +999,18 @@ def busy_hint(ns, now=None):
     return False
 
 
+def _legs_view(n, ld):
+    """2263-4: max_legs des Knotens (Lastmeldung), legs_need (horn.legs_need fuer seinen Weg) - legs_warn nur, wenn
+    max_legs bekannt ist und darunter liegt - und cap (horn.capacity, None ohne Messwerte)."""
+    try:
+        ml = int(ld.get("max_legs") or 0)
+    except (TypeError, ValueError):
+        ml = 0
+    need = horn.legs_need(bool(n.get("udp")))
+    cores = (horn._LIVE.get(n["id"]) or {}).get("cores") or 0
+    return {"max_legs": ml, "legs_need": need, "legs_warn": bool(ml and ml < need), "cap": horn.capacity(n, cores, ml)}
+
+
 def admin_state():
     now = time.time()
     with _db() as c:
@@ -1024,6 +1036,8 @@ def admin_state():
                     "cpu": round(100 * float(ld.get("cpu") or 0)), "up": round(float(ld.get("up") or 0), 1),
                     "link": n.get("link_mbit"), "util": round(100 * horn.util(n)), "peers": int(ld.get("peers") or 0),
                     "legs": int(ld.get("legs") or 0), "version": n.get("version") or "", "share": bool(n["share"]),
+                    # 2263-4: max_legs gegen die wirksame Grenze (Warnung) und geschaetzte Kapazitaet (Geruest, ohne Messwert None)
+                    **_legs_view(n, ld),
                     "drain": bool(n.get("drain")), "checks": ck, "cert": n.get("cert") or {}, "upd": upd_view(n.get("upd"), n.get("version")),
                     "cert_err": horn.clean_detail((n.get("cert") or {}).get("err") or ""),   # auch fuer Altbestand
                     "ctl": n["id"] in horn._CONNS, "v4": n.get("v4") or "", "v6": n.get("v6") or "", "port": n.get("port") or 443,

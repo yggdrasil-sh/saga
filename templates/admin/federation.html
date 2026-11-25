@@ -137,7 +137,7 @@
   {% set hs = (fed.horn or {}).get(p.id) %}
   {% if hs %}
   <form method="post" class="adm-form fed-opts fed-horn" id="fed-horn-{{ p.id }}">{{ csrf_field() }}<input type="hidden" name="action" value="horn_share"><input type="hidden" name="id" value="{{ p.id }}">
-    <h4>{{ _("Gjallarhorn-Knoten für {host}", host=p.name or p.host) }} <span class="adm-tag exp">{{ _("Experimentell") }}</span>{% if hs.off %} <span class="horn-st-down"><span class="horn-dot"></span> {{ _("Notaus") }}</span>{% endif %}</h4>
+    <h4>{{ _("Gjallarhorn-Knoten für {host}", host=p.name or p.host) }}{% if hs.off %} <span class="horn-st-down"><span class="horn-dot"></span> {{ _("Notaus") }}</span>{% endif %}</h4>
     <p class="hk-hint">{{ _("Gilt für Knoten mit „Teilen an“ (Seite Anrufe) in Gruppenanrufen, die dieser Server führt. Teilnehmende von dort verbinden sich dann direkt mit deinem Knoten; sonst kommen sie über ihren eigenen Knoten (Kaskade). Gerade auf deinen Knoten: {n}.", n=hs.used) }}</p>
     {{ check(_('Knoten mit diesem Server teilen erlaubt'), 'allowed', hs.allowed, _('Standard: alle verbundenen Server mit Anrufen.')) }}
     {{ field(_('Teilnehmende (leer = Standard)'), 'legs', hs.legs, type='number', max=5, ph=hs.def_legs) }}

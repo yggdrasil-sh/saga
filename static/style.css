@@ -1588,9 +1588,10 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .hk-more[open]>summary{margin-bottom:.3rem}
 /* Admin "Anrufe" (2.5, Gjallarhorn): Knoten, Erweitern, Port-Hinweis */
 .horn-h{margin:1rem 0 .4rem;font-size:var(--fs-base);color:var(--muted);font-weight:500}
-/* 2.5: Gjallarhorn experimentell - ruhige Marke (keine Warnfarbe) und ein Hinweis-Kasten oben im Abschnitt */
+/* ruhige Marke (keine Warnfarbe), z. B. Push-Relais "wartet auf Freischaltung" (2.5: frueher auch Gjallarhorn experimentell) */
 .adm-tag.exp{border-color:var(--muted);color:var(--muted);font-weight:500;white-space:nowrap}
-.horn-exp-note{margin:.2rem 0 .8rem;padding:.5rem .75rem;border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--r-md);font-size:var(--fs-sm);line-height:1.45}
+/* 2.6 (2263-4): Warnung max_legs je Knoten, schmal in der Spalte Teilnehmende */
+.horn-legs-warn{display:inline-block;max-width:20rem;white-space:normal;color:var(--warn)}
 .horn-nodes td b{overflow-wrap:anywhere}
 @media (min-width:721px){.horn-nodes td:nth-child(3),.horn-nodes td:nth-child(1) b{white-space:nowrap}}
 .horn-cf-edit>summary.btn,.adm-actions form .btn{font-size:var(--fs-base)}

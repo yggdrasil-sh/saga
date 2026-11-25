@@ -62,6 +62,11 @@ MAX_KBIT = 4000                         # Eingang je Bein (§3.4)
 FULL, PENALTY = 0.9, 0.7                # Auslastung: ab 90 % voll, ab 70 % Abzug bei der Wahl
 LIMITS = {"tcp": (12, 50), "udp": (25, 100)}   # Endpunkte je Anruf (Video, nur Ton) nach Weg (§1.4, Entscheidung 4)
 PUB = {"audio": ["a"], "video": ["v", "s"], "both": ["a", "v", "s"]}
+LEGS_PER_DEV = 2                        # 2263-4: ueber TCP/Tunnel je Geraet zwei Beine (Ton + Bild, auch im Tonanruf, NODE.md)
+# 2263-4 Geruest "geschaetzte Kapazitaet" (Admin, Plan 2263 Frage 7): Rechenkosten je Geraet in Kernen und Upload je Geraet
+# in Mbit/s - Werte kommen aus der Messreihe 2263-9. None = noch kein Messwert: die Zeile erscheint dann nicht (capacity).
+CAP_CORE = {"video": None, "audio": None}
+CAP_MBIT = {"video": None, "audio": None}
 
 _SK = {"k": None, "pub": ""}
 _LOCK = threading.Lock()
@@ -463,6 +468,39 @@ def call_node_ready(c, cid, ns=None):
     return next((r[0] for r in rows if r[0] in ok), None)
 
 
+def legs_need(udp=False):
+    """2263-4: Beine, die ein Anruf an der wirksamen Grenze am Knoten braucht - ueber TCP/Tunnel LEGS_PER_DEV je Geraet
+    (TCP-Grenze), mit UDP ein Bein je Geraet (UDP-Grenze), dazu Reserve bis zur Lastgrenze FULL (ab 90 % gilt ein Knoten
+    als voll). Admin-Warnung, wenn max_legs eines Knotens darunter liegt (horn_ops.admin_state)."""
+    vt, at = limits(None, udp=False)
+    need = LEGS_PER_DEV * max(vt, at)
+    if udp:
+        vu, au = limits(None, udp=True)
+        need = max(need, max(vu, au))
+    return -(-need * 10 // int(FULL * 10))            # aufgerundet need / FULL (ganzzahlig)
+
+
+def capacity(n, cores, max_legs=0):
+    """2263-4 Geruest: "reicht fuer etwa N mit Video / M nur Ton gleichzeitig" je Knoten aus den gemessenen Kosten je
+    Geraet (CAP_CORE, Kerne), den Kernen des Knotens (hello cores), max_legs und - nur wenn bekannt - link_mbit (CAP_MBIT).
+    Ohne Messwerte (None) oder ohne Kerne: None (keine Anzeige)."""
+    try:
+        cores = int(cores or 0)
+    except (TypeError, ValueError):
+        cores = 0
+    if cores <= 0 or any(CAP_CORE.get(k) is None for k in ("video", "audio")):
+        return None
+    out = {}
+    for k in ("video", "audio"):
+        m = int(cores * FULL / CAP_CORE[k])
+        if max_legs:
+            m = min(m, int(max_legs * FULL) // LEGS_PER_DEV)
+        if n.get("link_mbit") and CAP_MBIT.get(k):
+            m = min(m, int(n["link_mbit"] * FULL / CAP_MBIT[k]))
+        out[k] = max(0, m)
+    return out
+
+
 def note_full(c):
     """Ein Anruf wurde begrenzt, weil kein Knoten frei war (Erweitern-Hinweis im Admin-Bereich)."""
     try:
@@ -772,6 +810,7 @@ def _clean_hello(h):
             "ws": h.get("ws") is True, "tunnel": h.get("tunnel") is True, "frames": h.get("frames") is True,
             "udp_check": uc if uc in UDP_CHECKS else "",
             "max_legs": int(h.get("max_legs") or 0) if str(h.get("max_legs") or "0").isdigit() else 0,
+            "cores": min(4096, int(h.get("cores") or 0)) if str(h.get("cores") or "0").isdigit() else 0,
             "v4": _ip(h.get("v4"), 4), "v6": _ip(h.get("v6"), 6), "cert": _clean_cert(cert), "upd": _clean_upd(upd)}
 
 
@@ -969,7 +1008,7 @@ async def _welcome(ws, k, nid, hh, builtin):
     stats = {} if builtin else await asyncio.to_thread(_load_stats, nid)
     _LIVE[nid] = {"load": {"max_legs": hh["max_legs"], "legs": 0, "state": "ok"}, "at": time.time(), "db": time.time(), "stats": stats,
                   "drain_ev": False, "udp_check": hh["udp_check"], "ice_tcp": hh["ice_tcp"],
-                  "ws": hh["ws"], "tunnel": hh["tunnel"] and builtin, "frames": hh["frames"]}
+                  "ws": hh["ws"], "tunnel": hh["tunnel"] and builtin, "frames": hh["frames"], "cores": hh["cores"]}
     k.welcomed = True                                  # Bugs-DB 2254: Wege stehen - ab jetzt bereit
     welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
     if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)

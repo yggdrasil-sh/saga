@@ -941,6 +941,7 @@ def _calls_ctx(request, me, **kw):
     hs = horn_ops.admin_state()
     tu = horn.https_origin((hs.get("tunnel") or {}).get("url") or "")
     return _page(request, "calls.html", me, connect=[tu, "wss" + tu[5:]] if tu else None, st=st, hs=hs, limits=horn.LIMITS, suggest=sug, remote=remote,
+                 hlim={"tcp": horn.limits(None, udp=False), "udp": horn.limits(None, udp=True)},   # 2263-4: wirksame Grenzen
                  mesh_from=calls.limit("video") + 1, mesh_from_a=calls.limit("audio") + 1, **kw)
 
 

@@ -64,9 +64,9 @@
 {% endif %}
 
 <section class="adm-card" id="horn">
-  {# 2.5 (Vorgabe 10.11.): Gjallarhorn experimentell - Marke an den Ueberschriften, ein ruhiger Hinweis (keine Warnung) #}
-  <h3>{{ _("Gjallarhorn – große Gruppenanrufe") }} <span class="adm-tag exp">{{ _("Experimentell") }}</span></h3>
-  <p class="horn-exp-note" role="note">{{ _("Gjallarhorn ist in Saga 2.5 experimentell – getestet mit bis zu 4 Personen bzw. Geräten je Anruf. Probleme bitte über „Diagnose senden“ melden.") }} {{ _("Größere Anrufe folgen nach 2.5.") }}</p>
+  {# 2.6 (2263-4): keine Marke "Experimentell" mehr - statt dessen die wirksamen Grenzen je Anruf (horn.limits) #}
+  <h3>{{ _("Gjallarhorn – große Gruppenanrufe") }}</h3>
+  <p class="hk-hint horn-limits">{{ _("Grenzen je Anruf über Knoten: {v} mit Video / {a} nur Ton über TCP bzw. Tunnel, {vu} / {au} mit UDP am Knoten.", v=hlim.tcp[0], a=hlim.tcp[1], vu=hlim.udp[0], au=hlim.udp[1]) }}</p>
   <p class="hk-hint">{{ _("Gruppenanrufe mit mehr als 4 Personen laufen über Gjallarhorn-Knoten. Ein Knoten ist eingebaut. Reicht die Leistung nicht, fügst du mit <b>Erweitern</b> weitere hinzu, z. B. auf einem kleinen Server mit guter Anbindung. Inhalte bleiben Ende-zu-Ende-verschlüsselt, Knoten leiten nur weiter.")|safe }}</p>
   <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="horn">
     {{ check(_('Große Gruppenanrufe über Gjallarhorn'), 'horn', hs.horn_on, _('Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).')) }}
@@ -103,7 +103,7 @@
   </div>
   {% endif %}
 
-  <h4 class="horn-h">{{ _("Knoten") }} <span class="adm-tag exp">{{ _("Experimentell") }}</span></h4>
+  <h4 class="horn-h">{{ _("Knoten") }}</h4>
   <table class="adm-table horn-nodes">
     <tr><th>{{ _("Name") }}</th><th>{{ _("Status") }}</th><th>{{ _("Weg") }}</th><th>{{ _("Auslastung") }}</th><th>{{ _("Teilnehmende") }}</th><th>{{ _("Version") }}</th><th>{{ _("Teilen") }}</th><th>{{ _("Aktionen") }}</th></tr>
     {% if bi and not bi.real %}
@@ -135,7 +135,10 @@
         {% if n.ctl and not n.udp and n.udp_check in ('fehlt', 'aus') and not n.tunnel %}<br><small class="horn-udp-warn">{% if n.udp_check == 'fehlt' %}{{ _("UDP nicht erreichbar – Anrufe laufen über TCP/TLS. Port {port}/udp freigeben (direkt, nicht über den Reverse Proxy).", port=n.udp_port) }}{% elif n.builtin and hs.einport %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TLS auf Port {port}, das genügt. UDP (HORN_UDP=1) nur ohne Proxy, mit {port}/udp freigegeben.", port=n.udp_port) }}{% elif n.builtin %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TLS, das genügt; ein weiterer Port ist nicht nötig. UDP (HORN_UDP=1) nur, wenn UDP mit derselben Portnummer beim Knoten ankommt, auf der er lauscht (HORN_UDP_LISTEN bzw. HORN_PORT).") }}{% else %}{{ _("UDP ist am Knoten aus – Anrufe laufen über TCP/TLS. Für UDP: HORN_UDP=1 und Port {port}/udp freigeben.", port=n.udp_port) }}{% endif %}</small>{% endif %}</td>
       <td data-l="{{ _('Auslastung') }}"><meter class="horn-bar" min="0" max="100" low="70" high="90" optimum="10" value="{{ n.util }}">{{ n.util }} %</meter><br>
         <small>{{ _("CPU {cpu} %", cpu=n.cpu) }} · {% if n.link %}{{ _("Upload {up}/{link} Mbit/s", up=n.up, link=n.link) }}{% else %}{{ _("Upload {up} Mbit/s", up=n.up) }}{% endif %}</small></td>
-      <td data-l="{{ _('Teilnehmende') }}">{{ n.peers }}{% set br = n.bridges.values()|selectattr('st', 'equalto', 'up')|list %}{% if br %}<br><small>{{ _("Kaskaden: {n}", n=br|length) }}</small>{% endif %}</td>
+      <td data-l="{{ _('Teilnehmende') }}">{{ n.peers }}{% set br = n.bridges.values()|selectattr('st', 'equalto', 'up')|list %}{% if br %}<br><small>{{ _("Kaskaden: {n}", n=br|length) }}</small>{% endif %}
+        {#- 2263-4: Geruest - erscheint erst mit Messwerten (horn.CAP_CORE aus 2263-9) #}
+        {%- if n.cap %}<br><small class="horn-cap">{{ _("Geschätzte Kapazität: etwa {v} mit Video / {a} nur Ton gleichzeitig", v=n.cap.video, a=n.cap.audio) }}</small>{% endif %}
+        {%- if n.legs_warn %}<br><small class="horn-legs-warn">{{ _("HORN_MAX_LEGS ({n}) ist zu knapp: Ein Anruf an der Grenze braucht an diesem Knoten bis zu {need} Beine (über TCP bzw. Tunnel je Gerät zwei, dazu Reserve). HORN_MAX_LEGS auf mindestens {need} setzen.", n=n.max_legs, need=n.legs_need) }}</small>{% endif %}</td>
       <td data-l="{{ _('Version') }}">{{ n.version or '–' }}</td>
       <td data-l="{{ _('Teilen') }}">{{ _("an") if n.share else _("aus") }}</td>
       <td class="horn-acts">
@@ -155,6 +158,8 @@
     {% endfor %}
     {% if not hs.nodes and not hs.pending and not bi %}<tr class="horn-none"><td colspan="8"><small>{{ _("Noch kein Knoten verbunden. Der eingebaute Knoten erscheint, sobald Gjallarhorn an ist.") }}</small></td></tr>{% endif %}
   </table>
+  {# 2263-4: Tunnel-Geraete hinter einer Adresse teilen sich die Grenze je Client-Adresse des Knotens #}
+  {% if hs.nodes|selectattr('ws')|list or hs.nodes|selectattr('tunnel')|list %}<p class="hk-hint horn-perip">{{ _("Über den Tunnel zählt ein Knoten die Beine je Client-Adresse (HORN_MAX_PER_IP, je Gerät zwei). Geräte hinter einer gemeinsamen Adresse – NAT im selben Netz oder ein Reverse Proxy, der nicht in TRUSTED_PROXIES steht – teilen sich diese Grenze. Für große Anrufe aus einem Netz HORN_MAX_PER_IP erhöhen und TRUSTED_PROXIES richtig setzen.") }}</p>{% endif %}
   {% if hs.horn_on %}
   <h4 class="horn-h">{{ _("Geteilte Knoten anderer Server") }}</h4>
   {% if remote %}
