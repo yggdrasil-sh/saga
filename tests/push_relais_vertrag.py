@@ -86,6 +86,23 @@ ok("pad_to kein int (True, '512') -> ValueError",
    raises(lambda: push.encrypt(b"x", K["ua_pub"], K["auth"], pad_to=True)) and raises(lambda: push.encrypt(b"x", K["ua_pub"], K["auth"], pad_to="512")))
 ok("pad_size(E2E_MAX) = 2560, Chiffrat <= 2662 Byte", push.pad_size(push.E2E_MAX) == 2560 and 86 + 2560 + 16 == 2662)
 
+# --- 2262-5: Planung und APNs-Koerper des Servers gegen die Vektoren ---------------------------------------------------
+pl = bo = 0
+for c in D["cases"]:
+    voip = c["subscription"] == "apns-voip"
+    pl += push._apns_plan(c["msg"], voip) == (c["push_type"], c["priority"], c["ttl"], c["collapse_tag"], c["rate"])
+    ak = ec.derive_private_key(int.from_bytes(b64d(c["as_priv"]), "big"), ec.SECP256R1())
+    bo += push._apns_e2e_body(K["ua_pub"], K["auth"], c["msg"], c["push_type"], salt=b64d(c["salt"]), as_key=ak) == c["apns_body"]
+ok(f"push._apns_plan = Vektoren (push-type, priority, ttl, collapse-tag, rate) ({pl}/{len(D['cases'])})", pl == len(D["cases"]))
+ok(f"push._apns_e2e_body = APNs-Koerper der Vektoren ({bo}/{len(D['cases'])})", bo == len(D["cases"]))
+ok("Waechter: voip nur fuer call/call.group (job.done, chat.message, test -> ValueError)",
+   all(raises(lambda k=k: push._apns_plan({"kind": k, "tag": "x"}, True)) for k in ("job.done", "job.ask", "chat.message", "test", "call.missed")))
+big = {"title": "Saga", "body": "x" * 2400, "kind": "chat.message", "tag": "t"}
+ok("innerer Text ueber E2E_MAX -> OverflowError (Server: fail 'zu gross')",
+   raises(lambda: push._apns_e2e_body(K["ua_pub"], K["auth"], big, "alert"), OverflowError))
+gr = next(c for c in D["cases"] if c["name"] == "gross_2560")
+ok("Grenzfall 2391 Byte -> 2560, APNs-Koerper < 4096", gr["pad_to"] == 2560 and len(json.dumps(gr["apns_body"], separators=(",", ":"))) < 4096)
+
 # --- fedsig: eigener Tag -----------------------------------------------------------------------------------------------
 priv, pub = fedsig.new_key()
 body = b'{"v":1}'

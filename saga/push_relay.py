@@ -164,3 +164,8 @@ def public_state():
         return None
     s = state()
     return {"state": s.get("state") if s.get("state") in STATES else "ok", "topics": s.get("topics") if isinstance(s.get("topics"), list) else []}
+
+
+def send(token, env, topic, push_type, priority, expiration, collapse_id, rate, aps, saga):
+    """Eine Mitteilung ueber das Relais -> (ergebnis, detail) wie push.send (ok | gone | fail | hold)."""
+    return "fail", "Relais noch nicht angebunden"

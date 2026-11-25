@@ -969,7 +969,7 @@ def send(sub, msg):
     if RESTORE_TEST:                                      # Testwiederherstellung: nichts nach aussen (saga/backups.py)
         return "fail", "SAGA_RESTORE_TEST"
     if kind in ("apns", "apns-voip"):
-        return _send_apns(endpoint, msg, voip=kind == "apns-voip")
+        return _send_apns(endpoint, msg, voip=kind == "apns-voip", keys=(p256dh, auth_s), topic=more[0] if more else None)
     raw = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode()
     if len(raw) > PAYLOAD_MAX:
         return "fail", "zu gross"
@@ -1017,39 +1017,108 @@ def send(sub, msg):
     return _verdict(r.status_code)
 
 
-def _send_apns(endpoint, msg, voip=False):
-    """APNs. voip: PushKit-Mitteilung (apns-push-type voip, Topic <bundle>.voip) fuer klingelnde Anrufe - die App meldet den
-    Anruf sofort an CallKit (Pflicht bei iOS) und holt Zustand/Angebot ueber /api/calls/<id>."""
-    import httpx
-    cfg = apns_cfg()
-    if not cfg["ready"]:
-        return "fail", "APNs nicht eingerichtet"
-    _, env, tok = (endpoint.split(":", 2) + ["", ""])[:3]
-    base = (cfg.get("url") or APNS_HOSTS.get(env) or APNS_HOSTS["production"]).rstrip("/")
+LOC_TITLE, LOC_BODY, LOC_CALL = "SAGA_PUSH_TITLE", "SAGA_PUSH_BODY", "SAGA_PUSH_CALL"   # 2262: sichtbarer Teil nur Loc-Keys
+
+
+def _apns_plan(msg, voip):
+    """2.6 (2262, docs/PUSH-RELAY.md 5.3): EINE Planung fuer den eigenen APNs-Weg und das Relais ->
+    (push_type, priority, ttl, collapse_tag, rate). Aktualisierungen (update) still im Hintergrund, Anrufe Stufe ring.
+    Waechter: voip nur fuer klingelnde Anrufe (RING_KINDS) - sonst ValueError (nie VoIP fuer andere Arten, Kollegin)."""
+    update = bool(msg.get("update")) and not voip
+    ring = msg.get("kind") in RING_KINDS
+    if voip:
+        if not ring:
+            raise ValueError("voip nur fuer klingelnde Anrufe")
+        pt, prio, rate = "voip", 10, "ring"
+    elif update:
+        pt, prio, rate = "background", 5, "bg"
+    else:
+        pt, prio, rate = "alert", 10, "ring" if ring else "alert"
+    return pt, prio, int(msg.get("ttl") or TTL), ("u" if update else "") + (msg.get("tag") or ""), rate
+
+
+def _apns_aps(msg, push_type):
+    """Sichtbarer Teil einer E2E-Mitteilung - ohne Inhalte (Namen/Texte nur im Chiffrat), ohne thread-id."""
+    if push_type == "voip":
+        return {}
+    if push_type == "background":
+        return {"content-available": 1}
+    ring = msg.get("kind") in RING_KINDS
+    aps = {"alert": {"title-loc-key": LOC_TITLE, "loc-key": LOC_CALL if ring else LOC_BODY}, "mutable-content": 1}
+    if not msg.get("silent"):
+        aps["sound"] = "default"
+    if ring:
+        aps["interruption-level"] = "time-sensitive"
+    return aps
+
+
+def _apns_e2e_body(p256dh, auth_s, msg, push_type, salt=None, as_key=None):
+    """{aps, saga: {e2e, k, c}}: innerer Text = msg (kompaktes JSON), RFC 8291 mit Auffuellen. ValueError: zu gross /
+    Schluessel kaputt."""
+    raw = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode()
+    if len(raw) > E2E_MAX:
+        raise OverflowError("zu gross")
+    c = encrypt(raw, p256dh, auth_s, salt=salt, as_key=as_key, pad_to=pad_size(len(raw)))
+    return {"aps": _apns_aps(msg, push_type), "saga": {"e2e": 1, "k": e2e_kid(p256dh), "c": b64u(c)}}
+
+
+def _apns_plain_body(msg, push_type):
+    """Bisheriger Klartext-Koerper (Abos ohne Schluessel, Apps 2.5) - unveraendert."""
     ids = {k: msg[k] for k in ("call", "chat", "media", "caller", "group", "dm", "v", "lang", "actor", "n", "group_key",
                                "update", "removed", "silent", "digest") if msg.get(k) is not None}
-    update = bool(msg.get("update")) and not voip
-    if voip:
-        body = dict({"aps": {}, "url": msg["url"], "kind": msg["kind"], "title": msg["title"], "body": msg["body"]}, **ids)
-    elif update:
+    if push_type == "voip":
+        return dict({"aps": {}, "url": msg["url"], "kind": msg["kind"], "title": msg["title"], "body": msg["body"]}, **ids)
+    if push_type == "background":
         # 2.5: Aktualisierung (Nachricht geloescht) still im Hintergrund - die App passt die gezeigte Mitteilung an bzw.
         # entfernt sie (tag/group_key); ohne alert, ohne Ton
-        body = dict({"aps": {"content-available": 1}, "url": msg["url"], "kind": msg["kind"], "tag": msg["tag"],
+        return dict({"aps": {"content-available": 1}, "url": msg["url"], "kind": msg["kind"], "tag": msg["tag"],
                      "title": msg["title"], "body": msg["body"]}, **ids)
-    else:
-        body = dict({"aps": {"alert": {"title": msg["title"], "body": msg["body"]}, "sound": "default", "thread-id": msg.get("thread") or msg["tag"]},
-                     "url": msg["url"], "kind": msg["kind"]}, **ids)
-        if msg.get("silent"):
-            body["aps"].pop("sound")      # 2029-3: Beschaeftigt "ohne Ton" (user_status prefs.busy silent)
-        if msg["kind"] in ("call", "call.group"):
-            body["aps"]["interruption-level"] = "time-sensitive"
-    ttl = int(msg.get("ttl") or TTL)
+    body = dict({"aps": {"alert": {"title": msg["title"], "body": msg["body"]}, "sound": "default", "thread-id": msg.get("thread") or msg["tag"]},
+                 "url": msg["url"], "kind": msg["kind"]}, **ids)
+    if msg.get("silent"):
+        body["aps"].pop("sound")      # 2029-3: Beschaeftigt "ohne Ton" (user_status prefs.busy silent)
+    if msg["kind"] in RING_KINDS:
+        body["aps"]["interruption-level"] = "time-sensitive"
+    return body
+
+
+def _send_apns(endpoint, msg, voip=False, keys=None, topic=None):
+    """APNs. voip: PushKit-Mitteilung (apns-push-type voip, Topic <bundle>.voip) fuer klingelnde Anrufe - die App meldet den
+    Anruf sofort an CallKit (Pflicht bei iOS) und holt Zustand/Angebot ueber /api/calls/<id>.
+    2.6 (2262): keys = (p256dh, auth) des Abos, topic = Bundle der App. Weg je Abo (_apns_route): eigener Schluessel oder
+    Push-Relais (nur mit Schluesseln, dann immer E2E); direkt mit Schluesseln ebenfalls E2E (push.apns_e2e_direct)."""
+    p256dh, auth_s = keys or (None, None)
+    cfg = apns_cfg()
+    route = _apns_route(p256dh, auth_s, topic, cfg)
+    if route is None:
+        return "fail", "APNs nicht eingerichtet"
+    try:
+        push_type, prio, ttl, ctag, rate = _apns_plan(msg, voip)
+    except ValueError as ex:
+        return "fail", str(ex)
+    e2e = bool(p256dh and auth_s) and (route == "relay" or e2e_direct())
+    try:
+        body = _apns_e2e_body(p256dh, auth_s, msg, push_type) if e2e else _apns_plain_body(msg, push_type)
+    except OverflowError:
+        return "fail", "zu gross"
+    except ValueError:
+        return "gone", "Schluessel ungueltig"
+    collapse = e2e_collapse(auth_s, ctag) if e2e else ctag[:64]          # E2E: undurchsichtig (ohne Klartext-tag)
+    _, env, tok = (endpoint.split(":", 2) + ["", ""])[:3]
+    if route == "relay":
+        return push_relay.send(tok, env, topic + (".voip" if voip else ""), push_type, prio, int(time.time()) + ttl, collapse,
+                               rate, body["aps"], body["saga"])
+    return _send_apns_direct(cfg, env, tok, voip, body, push_type, prio, ttl, collapse)
+
+
+def _send_apns_direct(cfg, env, tok, voip, body, push_type, prio, ttl, collapse):
+    import httpx
+    base = (cfg.get("url") or APNS_HOSTS.get(env) or APNS_HOSTS["production"]).rstrip("/")
     for attempt in (0, 1):
         try:
             h = {"authorization": "bearer " + _apns_token(cfg, renew=bool(attempt)), "apns-topic": cfg["bundle_id"] + (".voip" if voip else ""),
-                 "apns-push-type": "voip" if voip else "background" if update else "alert",
-                 "apns-priority": "5" if update else "10", "apns-expiration": str(int(time.time()) + ttl),
-                 "apns-collapse-id": (("u" if update else "") + msg["tag"])[:64]}     # Aktualisierung: eigene Kennung (wie Web-Push-Topic)
+                 "apns-push-type": push_type, "apns-priority": str(prio), "apns-expiration": str(int(time.time()) + ttl),
+                 "apns-collapse-id": collapse}     # Aktualisierung: eigene Kennung (wie Web-Push-Topic)
             r = _apns_client().post(f"{base}/3/device/{tok}", json=body, headers=h)
         except (httpx.HTTPError, OSError) as ex:
             return "retry", type(ex).__name__

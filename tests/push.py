@@ -610,6 +610,16 @@ def auth_ref(uid):
     return local_ref(uid)
 
 
+def sub_req(body, hdr):
+    """Anmelden mit Geduld: REG_MIN (15 je Minute und Konto) ist nach den Tests oben fast aufgebraucht."""
+    for _ in range(8):
+        s, d = req("POST", "/api/push/subscriptions", None, body, hdr=hdr)
+        if s != 429:
+            return s, d
+        time.sleep(10)
+    return s, d
+
+
 def e2e_part(A, Bk, pgA, tok2, key):
     """2.6 (Bugs-DB 2262-4/-5): APNs-Abo mit Schluesseln/Bundle, Geraeteliste via/e2e, /api/push, Domain-Nachweis."""
     from saga import push_relay
@@ -627,29 +637,29 @@ def e2e_part(A, Bk, pgA, tok2, key):
     app = UA()
     bearer = {"Authorization": "Bearer " + tok2}
     t3 = "e3" * 32
-    s, d = req("POST", "/api/push/subscriptions", None, {"type": "apns", "token": t3, "env": "sandbox", "name": "iPhone E2E",
+    s, d = sub_req({"type": "apns", "token": t3, "env": "sandbox", "name": "iPhone E2E",
                                                          "keys": app.keys(), "topic": "org.example.saga"}, hdr=bearer)
     with connect() as c:
         row = c.execute("SELECT p256dh, auth, topic FROM push_sub WHERE endpoint=?", (f"apns:sandbox:{t3}",)).fetchone()
     ok(f"2262-4: APNs-Abo mit keys/topic gespeichert, Weg direkt, e2e ({s}, {d.get('device')})",
        s == 201 and row == (app.keys()["p256dh"], app.keys()["auth"], "org.example.saga") and d["active"]
        and d["device"]["via"] == "direct" and d["device"]["e2e"] is True)
-    s, d = req("POST", "/api/push/subscriptions", None, {"type": "apns", "token": t3, "env": "sandbox", "name": "iPhone E2E"}, hdr=bearer)
+    s, d = sub_req({"type": "apns", "token": t3, "env": "sandbox", "name": "iPhone E2E"}, hdr=bearer)
     with connect() as c:
         row2 = c.execute("SELECT p256dh, auth, topic FROM push_sub WHERE endpoint=?", (f"apns:sandbox:{t3}",)).fetchone()
     ok(f"2262-4: Erneuern ohne keys/topic -> Werte bleiben ({s})", s == 200 and row2 == row)
     app2 = UA()
-    s, d = req("POST", "/api/push/subscriptions", None, {"type": "apns", "token": t3, "env": "sandbox", "keys": app2.keys()}, hdr=bearer)
+    s, d = sub_req({"type": "apns", "token": t3, "env": "sandbox", "keys": app2.keys()}, hdr=bearer)
     with connect() as c:
         row3 = c.execute("SELECT p256dh, auth, topic FROM push_sub WHERE endpoint=?", (f"apns:sandbox:{t3}",)).fetchone()
     ok("2262-4: Schluesselwechsel (gleiches Token) -> neue Schluessel, gleiches Abo, Bundle bleibt",
        s == 200 and row3 == (app2.keys()["p256dh"], app2.keys()["auth"], "org.example.saga"))
-    bad = [req("POST", "/api/push/subscriptions", None, dict({"type": "apns", "token": "e4" * 32}, **x), hdr=bearer)[0]
+    bad = [sub_req(dict({"type": "apns", "token": "e4" * 32}, **x), hdr=bearer)[0]
            for x in ({"keys": {"p256dh": "AAAA", "auth": "BBBB"}}, {"keys": {"p256dh": app.keys()["p256dh"]}}, {"topic": "x"},
                      {"topic": "org/example"}, {"topic": ["org.example.saga"]}, {"topic": "a" * 201})]
     ok(f"2262-4: kaputte keys / topic -> 400 ({bad})", bad == [400] * 6)
     t4 = "e5" * 32
-    s, d = req("POST", "/api/push/subscriptions", None, {"type": "apns-voip", "token": t4, "env": "sandbox", "keys": app2.keys(),
+    s, d = sub_req({"type": "apns-voip", "token": t4, "env": "sandbox", "keys": app2.keys(),
                                                          "topic": "org.example.fremd"}, hdr=bearer)
     ok(f"2262-4: fremdes Bundle ohne Relais -> angelegt, aber kein Weg (via null, inaktiv) ({d.get('device')})",
        s == 201 and d["device"]["via"] is None and not d["active"] and d["device"]["hint"] == "not_configured")
@@ -657,10 +667,44 @@ def e2e_part(A, Bk, pgA, tok2, key):
     ok(f"2262-4: /api/push apns wie bisher, apns_e2e 1, apns_topics, apns_relay null ({st['server'].get('apns_topics')})",
        st["server"]["apns"] is True and st["server"]["apns_e2e"] == 1 and st["server"]["apns_topics"] == ["org.example.saga"]
        and st["server"]["apns_relay"] is None)
-    dv = {x["where"]: x for x in st["devices"] if x["type"] in ("apns", "apns-voip")}
-    ok("2262-4: devices[]: altes Abo ohne Schluessel direkt ohne e2e", any(x["via"] == "direct" and x["e2e"] is False for x in dv.values()))
+    dv = [x for x in st["devices"] if x["type"] in ("apns", "apns-voip")]
+    ok("2262-4: devices[]: altes Abo ohne Schluessel direkt ohne e2e", any(x["via"] == "direct" and x["e2e"] is False for x in dv))
     with connect() as c, c:
         c.execute("DELETE FROM push_sub WHERE endpoint=?", (f"apns-voip:sandbox:{t4}",))
+
+    # --- 2262-5: eigener APNs-Weg mit Schluesseln -> nur Chiffrat --------------------------------------------------------
+    m = mark()
+    req("POST", f"/api/notes/{pgA}/comments", Bk, {"block_id": "c4", "body": "Geheimer Kanarienvogel im Kommentar"})
+    g = wait_got(path_is(f"/3/device/{t3}"), m)
+    gp = wait_got(path_is(f"/3/device/{'a1' * 32}"), m)
+    h = g[2] if g else {}
+    body = json.loads(g[3]) if g else {}
+    inner = app2.decrypt(push.b64u_d(body["saga"]["c"])) if body.get("saga") else {}
+    plain = json.loads(gp[3]) if gp else {}
+    raw = g[3].decode() if g else ""
+    ok(f"2262-5: APNs-Koerper nur {{aps, saga}}, sichtbar nur Loc-Keys ({body.get('aps')})",
+       set(body) == {"aps", "saga"} and body["aps"] == {"alert": {"title-loc-key": "SAGA_PUSH_TITLE", "loc-key": "SAGA_PUSH_BODY"},
+                                                        "mutable-content": 1, "sound": "default"}
+       and body["saga"]["e2e"] == 1 and body["saga"]["k"] == push.e2e_kid(app2.keys()["p256dh"]))
+    ok("2262-5: kein Name, kein Kanarienvogel, kein tag/thread im Klartext",
+       raw and not any(x in raw for x in ("Bert", "Kanarienvogel", "kommentiert", "thread-", "note-", pgA)))
+    ok(f"2262-5: entschluesselt = Feld-Set wie Klartext-Weg ({inner.get('body')})",
+       inner.get("kind") == "comment.new" and inner.get("body") == plain.get("aps", {}).get("alert", {}).get("body")
+       and inner.get("url") == plain.get("url") and inner.get("v") == 2 and inner.get("tag"))
+    ok(f"2262-5: Koepfe alert/10, Topic Bundle, collapse-id undurchsichtig = HMAC(auth, tag) ({h.get('apns-collapse-id')})",
+       h.get("apns-push-type") == "alert" and h.get("apns-priority") == "10" and h.get("apns-topic") == "org.example.saga"
+       and h.get("apns-collapse-id") == push.e2e_collapse(app2.keys()["auth"], inner.get("tag", "")) and plain.get("aps", {}).get("thread-id")
+       and int(h.get("apns-expiration", 0)) > time.time() + 3600)
+    pv = auth.settings(fresh=True)["push"]
+    auth.save_setting("push", dict(pv, apns_e2e_direct=False))
+    time.sleep(WAIT)
+    m = mark()
+    req("POST", f"/api/notes/{pgA}/comments", Bk, {"block_id": "c5", "body": "zweiter Kommentar"})
+    g = wait_got(path_is(f"/3/device/{t3}"), m)
+    b2 = json.loads(g[3]) if g else {}
+    ok("2262-5: Schalter push.apns_e2e_direct aus -> eigener Weg wieder Klartext", "saga" not in b2 and b2.get("aps", {}).get("alert", {}).get("body"))
+    auth.save_setting("push", pv)
+    time.sleep(WAIT)
     return t3, app2
 
 
