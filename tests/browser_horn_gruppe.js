@@ -19,6 +19,7 @@ const S = JSON.parse(process.env.HG_SPEC || '{}');
 if (!S.base || !S.users || !S.call || !S.out) { console.error('HG_SPEC fehlt'); process.exit(2); }
 const BASE = S.base, HUES = [0, 120, 220, 50, 300, 170], FREQ = [330, 440, 550, 660, 770, 880];
 const W = 480, H = 270, FPS = 20;
+const BOT_H = 360;   // Bildhoehe der horn-bot-Schluesselbilder (gjallarhorn/sfubot.go, 640 x 360)
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 23), ...a);
 const capped = (pr, ms = 15000) => { let t; return Promise.race([Promise.resolve(pr).finally(() => clearTimeout(t)), new Promise(r => { t = setTimeout(() => r(undefined), ms); })]); };
@@ -113,14 +114,16 @@ function evalPage(s) {
     s.forEach((x, i) => Object.keys(x[kind]).forEach(k => { if (first[k] == null) first[k] = i; last[k] = i; }));
     return Object.keys(first).map(k => ({ k, f: s[first[k]], l: s[last[k]], fi: first[k], li: last[k] })).filter(o => (o.l.t - o.f.t) >= 5000);
   };
-  // Bild: nur dekodierte Stroeme (Browser); Bots senden Zufall statt VP8
-  const vs = life('v').filter(o => o.l.v[o.k][1] - o.f.v[o.k][1] > 10);
+  // Bild: nur dekodierte Stroeme (Browser); Bots senden Zufall statt VP8. Chromium dekodiert davon dennoch einzelne
+  // Rahmen (Schluesselbild-Kopf 640 x 360, sfubot.go) - solche Stroeme (Hoehe BOT_H) zaehlen nicht als Browser-Bild,
+  // sonst landen ihre 2-17 fps und Einfrierer als "Sprecher" in den Kennzahlen (2263-9)
+  const hOf = o => { const hs = []; for (let i = o.fi; i <= o.li; i++) { const r = s[i].v[o.k]; if (r && r[4]) hs.push(r[4]); } return med(hs) || 0; };
+  const vs = life('v').filter(o => o.l.v[o.k][1] - o.f.v[o.k][1] > 10).map(o => Object.assign(o, { h: hOf(o) })).filter(o => o.h !== BOT_H);
   let vmin = 0, fz = 0, lostV = 0;
   const per = vs.map(o => {
     const d = (o.l.t - o.f.t) / 1000, A0 = o.f.v[o.k], B0 = o.l.v[o.k];
     vmin += d / 60; fz += B0[2] - A0[2]; lostV += B0[5] - A0[5];
-    const hs = []; for (let i = o.fi; i <= o.li; i++) { const r = s[i].v[o.k]; if (r && r[4]) hs.push(r[4]); }
-    return { fps: (B0[1] - A0[1]) / d, h: med(hs) || 0 };
+    return { fps: (B0[1] - A0[1]) / d, h: o.h };
   }).sort((x, y) => y.h - x.h || y.fps - x.fps);
   const undec = life('v').length - vs.length;
   const as = life('a').filter(o => o.l.a[o.k][0] - o.f.a[o.k][0] > 20);
