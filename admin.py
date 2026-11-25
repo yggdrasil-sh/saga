@@ -1663,7 +1663,7 @@ async def _push_relay_action(request, me, act):
         return _go("/settings/push#relais")
     if act != "relay_unregister" and not push_relay.enabled():
         # Bugs-DB 2413-2: die Knoepfe sind bei ausgeschaltetem Relais verborgen - ein direkter POST spricht es auch nicht an
-        # (Abmelden bleibt erlaubt: wer das Relais abschaltet, darf sich dort noch abmelden)
+        # (Abmelden nimmt der Server weiter an; einen Knopf dafuer bei ausgeschaltetem Relais gibt es noch nicht - Bugs-DB)
         _flash(request, t("Push-Relais ist ausgeschaltet."), "err")
         return _go("/settings/push#relais")
     if act == "relay_check":
