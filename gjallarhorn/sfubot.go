@@ -520,7 +520,9 @@ func (b *sfuBot) rxE2E(video bool, fc *frameClock, a *vp8Asm, h *rtp.Header, c u
 	plain, err := b.e2eRx.open(from, video, key, frame)
 	if err != nil {
 		b.e2eCount(err.Error())
-		if err == errE2ENoKey && b.onRx != nil {
+		// Unlesbar (HORN-E2E §4 Nachforderung): ohne Schluessel ODER mit gehaltenem Schluessel gleichen kid, der nicht passt
+		// (Sender ist >= 16 Generationen weiter, z. B. viele Beitritte, waehrend der Empfaenger ihn nicht sah - 2438)
+		if (err == errE2ENoKey || err == errE2EAuth) && b.onRx != nil {
 			b.onRx(from, false)
 		}
 		return

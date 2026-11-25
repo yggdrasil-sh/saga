@@ -22,7 +22,8 @@ package main
 //       -> {"ev":"genwait","tag","pairs","done","hidden","p50_ms","p95_ms","max_ms"}: bis alle Bots die neue Generation
 //          der Sender aufmachen (Zeit bis zum fkey-Wechsel nach einem Abgang); pairs nur, wo der Empfaenger den Sender
 //          sieht (seit t0 - 2 s ein Rahmen aufgegangen), die anderen als hidden
-//   Nachforderung: {"ev":"need","id","from":"<geraet>","n"} - Sender liefert seit 2 s nur Unlesbares (fkey-ack ok:false)
+//   Nachforderung: {"ev":"need","id","from":"<geraet>","n"} - Sender liefert seit 2 s nur Unlesbares (ohne Schluessel
+//       oder auth - gleicher kid, anderer Schluessel), hoechstens alle 5 s (fkey-ack ok:false)
 //   {"op":"leave","id"} -> {"ev":"stats",...,"final":true}  ·  {"op":"stats"} -> je Bot "stats" + {"ev":"sum",...}
 //   {"op":"quit"}
 // Kennzahlen je Bot ("stats"): up_ms (Beine verbunden), first_audio_ms/first_video_ms (erster aufgegangener Ton/Bild ab
