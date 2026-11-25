@@ -13,7 +13,7 @@ Anmeldename, Auftragstitel) nie Server->Relais, Relais->APNs, im Relais-Protokol
 push-type/priority/expiration = _apns_plan fuer alle Arten, collapse-id je tag gleich und je Auftrag verschieden ohne
 Klartext, thread nur im Chiffrat, nie voip fuer Arten der Kollegin (job.*), sichtbares aps nur Loc-Keys (RT-30, EV-24),
 entschluesselter Inhalt = message(), Testmitteilung, 410 -> Abo weg. Wegwerf-Konten fr-*."""
-import base64, http.client, http.server, json, os, secrets, sqlite3, subprocess, sys, tempfile, threading, time
+import base64, http.client, http.server, json, os, secrets, subprocess, sys, tempfile, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -154,15 +154,12 @@ class RelayHarness:
             if fn.startswith("relay.db"):
                 with open(os.path.join(self.dir, fn), "rb") as f:
                     blob += f.read()
-        rows = []
-        try:
-            con = sqlite3.connect(self.db)
-            for (tbl,) in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
-                rows += [repr(r) for r in con.execute(f"SELECT * FROM {tbl}").fetchall()]
-            con.close()
-        except sqlite3.Error:
-            pass
-        return log, blob + "\n".join(rows).encode()
+        # Inhalt aller Tabellen - in einem Unterprozess mit -I (tests/pgshim ersetzt sqlite3 in diesem Prozess)
+        dump = subprocess.run([sys.executable, "-I", "-c", "import sqlite3, sys\ncon = sqlite3.connect(sys.argv[1])\n"
+                               "for (t,) in con.execute(\"SELECT name FROM sqlite_master WHERE type='table'\").fetchall():\n"
+                               "    [print(t, repr(r)) for r in con.execute('SELECT * FROM ' + t).fetchall()]", self.db],
+                              capture_output=True, timeout=30).stdout
+        return log, blob + dump
 
 
 def variants(s):
