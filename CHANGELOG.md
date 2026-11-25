@@ -218,6 +218,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Gjallarhorn: Anrufe mit mehr als 10 anderen Geräten bekamen keinen Schlüssel** (Bugs-DB 2434, 2263-4b): Eine
+  Signal-Anfrage im Anruf-Raum durfte höchstens 10 Ziele haben (die Gerätegrenze je Konto). Jedes Gerät schickt den
+  Frame-Schlüssel aber in einer Anfrage an alle – ab etwa 12 Geräten im Knoten-Anruf lehnte der Server ab, und niemand
+  bekam Bild oder Ton. Jetzt sind im Raum so viele Ziele erlaubt wie die größte Anruf-Obergrenze (derzeit 100); 1:1 ohne
+  Raum und ein klingelnder 1:1-Anruf bleiben bei 10. Der Schutz vor zu vielen Signalen (Budget, Rate) bleibt. In
+  föderierten Anrufen müssen dafür alle beteiligten Server 2.6 haben (Bugs-DB 2439).
 - **Gjallarhorn: Top-3-Ton flattert nicht mehr** (Bugs-DB 2417, 2263-3): Wer gerade spricht, behält seinen Ton-Platz;
   ein Neuer bekommt einen freien oder stillen Platz sofort, verdrängt einen Sprechenden aber erst mit mindestens 1,4-facher
   Aktivität über 1,5 s – wie beim Hauptsprecher, auf dem Knoten und auf der Bifröst-Brücke. Bei vier gleichzeitig
