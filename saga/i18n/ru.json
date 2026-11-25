@@ -5260,5 +5260,18 @@
  "🔓 Seite entsperrt": "🔓 Страница разблокирована",
  "🔗 Link zur Datenbank kopieren": "🔗 Копировать ссылку на базу данных",
  "🖼 Eigenes Bild hochladen …": "🖼 Загрузить своё изображение …",
- "🗃️ Datenbank einbetten:": "🗃️ Встроить базу данных:"
+ "🗃️ Datenbank einbetten:": "🗃️ Встроить базу данных:",
+ "Anruf von {name} – stumm (Nicht stören)": "Звонок от {name} – без звука («Не беспокоить»)",
+ "Anruf von {name} annehmen": "Ответить на звонок от {name}",
+ "Du telefonierst gerade auf einem anderen Gerät.": "Вы сейчас разговариваете на другом устройстве.",
+ "{name} klopft an": "{name} звонит на второй линии",
+ "Videoanruf – dein Gespräch läuft weiter": "Видеозвонок – текущий разговор продолжается",
+ "Aktuelles Gespräch beenden und den Anruf von {name} annehmen": "Завершить текущий разговор и ответить на звонок от {name}",
+ "stumm (Nicht stören)": "без звука («Не беспокоить»)",
+ "Hinweis ausblenden": "Скрыть подсказку",
+ "stumm (Ruhezeit)": "без звука (тихие часы)",
+ "Anruf – dein Gespräch läuft weiter": "Звонок – текущий разговор продолжается",
+ "Anruf von {name} – stumm (Ruhezeit)": "Звонок от {name} – без звука (тихие часы)",
+ "Klopft an …": "Вторая линия …",
+ "Beenden und annehmen": "Завершить и ответить"
 }

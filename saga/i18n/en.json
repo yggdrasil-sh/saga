@@ -5260,5 +5260,18 @@
  "🔓 Seite entsperrt": "🔓 Page unlocked",
  "🔗 Link zur Datenbank kopieren": "🔗 Copy link to database",
  "🖼 Eigenes Bild hochladen …": "🖼 Upload your own image …",
- "🗃️ Datenbank einbetten:": "🗃️ Embed database:"
+ "🗃️ Datenbank einbetten:": "🗃️ Embed database:",
+ "Anruf von {name} – stumm (Nicht stören)": "Call from {name} – silent (Do not disturb)",
+ "Anruf von {name} annehmen": "Answer call from {name}",
+ "Du telefonierst gerade auf einem anderen Gerät.": "You are on a call on another device.",
+ "{name} klopft an": "{name} is calling (call waiting)",
+ "Videoanruf – dein Gespräch läuft weiter": "Video call – your current call continues",
+ "Aktuelles Gespräch beenden und den Anruf von {name} annehmen": "End the current call and answer the call from {name}",
+ "stumm (Nicht stören)": "silent (Do not disturb)",
+ "Hinweis ausblenden": "Hide notice",
+ "stumm (Ruhezeit)": "silent (quiet hours)",
+ "Anruf – dein Gespräch läuft weiter": "Call – your current call continues",
+ "Anruf von {name} – stumm (Ruhezeit)": "Call from {name} – silent (quiet hours)",
+ "Klopft an …": "Call waiting …",
+ "Beenden und annehmen": "End and answer"
 }

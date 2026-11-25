@@ -5260,5 +5260,18 @@
  "🔓 Seite entsperrt": "🔓 Seite entsperrt",
  "🔗 Link zur Datenbank kopieren": "🔗 Link zur Datenbank kopieren",
  "🖼 Eigenes Bild hochladen …": "🖼 Eigenes Bild hochladen …",
- "🗃️ Datenbank einbetten:": "🗃️ Datenbank einbetten:"
+ "🗃️ Datenbank einbetten:": "🗃️ Datenbank einbetten:",
+ "Anruf von {name} – stumm (Nicht stören)": "Anruf von {name} – stumm (Nicht stören)",
+ "Anruf von {name} annehmen": "Anruf von {name} annehmen",
+ "Du telefonierst gerade auf einem anderen Gerät.": "Du telefonierst gerade auf einem anderen Gerät.",
+ "{name} klopft an": "{name} klopft an",
+ "Videoanruf – dein Gespräch läuft weiter": "Videoanruf – dein Gespräch läuft weiter",
+ "Aktuelles Gespräch beenden und den Anruf von {name} annehmen": "Aktuelles Gespräch beenden und den Anruf von {name} annehmen",
+ "stumm (Nicht stören)": "stumm (Nicht stören)",
+ "Hinweis ausblenden": "Hinweis ausblenden",
+ "stumm (Ruhezeit)": "stumm (Ruhezeit)",
+ "Anruf – dein Gespräch läuft weiter": "Anruf – dein Gespräch läuft weiter",
+ "Anruf von {name} – stumm (Ruhezeit)": "Anruf von {name} – stumm (Ruhezeit)",
+ "Klopft an …": "Klopft an …",
+ "Beenden und annehmen": "Beenden und annehmen"
 }

@@ -44,11 +44,14 @@
   // askmute (2.5, MEETING-SPEC §4.3/§11) = beachtet state.ask_mute eines eigenen Begleitgeraets (Echo-Schutz)
   // frames (2.5 B2, Vertrag S12): Browser-Weg ueber WebSocket an die Saga-Adresse (static/horn-frames.js) - erreicht auch
   // Knoten im Tunnel-Betrieb hinter einem TLS-beendenden Proxy; nur mit Server-Faehigkeit frames und ohne Huellen-Tunnel
-  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn', 'askmute', 'meshjoin', 'frames'];   // meshjoin: 2.5 A3 S11
+  // waiting1 (2.6, Bugs-DB 2029-5 B): dieses Geraet zeigt einen zweiten Anruf waehrend eines Gespraechs als Anklopf-Leiste
+  // (holdBar) statt sofort besetzt - nur mit Server-Faehigkeit waiting1 (sonst klingelt der Server nie mit waiting)
+  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn', 'askmute', 'meshjoin', 'frames', 'waiting1'];   // meshjoin: 2.5 A3 S11
   function feat(x) { return !!(cfg && (cfg.features || []).indexOf(x) >= 0); }
   function myCaps() {
     var c = CAPS_ALL.filter(function (x) {
       return x === 'reneg' ? feat('reneg') : x === 'screen2' ? feat('reneg') && feat('screen2') : x === 'multi' ? feat('reneg') && feat('multi')
+        : x === 'waiting1' ? feat('waiting1')
         : x === 'horn' ? feat('reneg') && feat('multi') && feat('horn') && hornCan()
         : x === 'meshjoin' ? feat('reneg') && feat('multi') && feat('horn') && feat('horn_direct1')
         : x === 'frames' ? feat('reneg') && feat('multi') && feat('horn') && feat('frames') && hornCan() && hornFramesCan() && !hornTunnel() : true;
@@ -193,8 +196,14 @@
   }
   function ring(d) {
     if (!d || !d.call_id || RINGS[d.call_id] || GONE[d.call_id]) return;
+    // 2.6 (2029-5 B): Gruppenanruf mit quiet (Nicht stoeren) kommt mit silent - wie bisher nur die Leiste
     if (d.group && !d.dm && (C || d.silent)) { runCheck(); return; }   // 2.5 1:1 ueber Knoten (dm): besetzt wie 1:1        // 2.4 Gruppe: im Gespraech bzw. grosse Gruppe nur die Leiste
-    if (C && C.id !== d.call_id && CHATS && bridge()) {           // telefoniere schon: besetzt
+    // 2.6 (2029-5 B, waiting1): Anklopfen - kein Klingeln, kein Dialog ueber dem Gespraech, sondern die Leiste im
+    // Anruffenster; laeuft das Gespraech nicht hier (anderes Geraet/Tab): stille Leiste nur mit "Ablehnen". freed: das
+    // Gespraech in diesem Tab ist gerade zu Ende - dann klingelt der wartende Anruf normal
+    if (d.waiting && C && !C.done && C.id !== d.call_id && C.ui) { holdBar(d, 'wait'); return; }
+    if (d.waiting && !C && !d.freed) { holdBar(d, 'wait'); return; }
+    if (C && C.id !== d.call_id && CHATS && bridge()) {           // telefoniere schon: besetzt (Anrufe ohne waiting)
       api('POST', '/api/calls/' + d.call_id + '/decline', { reason: 'busy' }).catch(function () {});
       return;
     }
@@ -240,11 +249,91 @@
     var r = RINGS[id]; if (!r) return;
     clearTimeout(r.t); clearInterval(r.poll); r.box.remove(); delete RINGS[id];
     if (r.loud) stopTone();
-    if (!Object.keys(RINGS).length) flashTitle(false);
+    if (r.hold && C && C.ui) idleCheck(C);
+    // 2.6: Leisten (Anklopfen, stumm) blinken nie - Titel nur zuruecksetzen, wenn kein klingelnder Dialog mehr da ist
+    if (titleT && !Object.keys(RINGS).some(function (k) { return !RINGS[k].hold; })) flashTitle(false);
   }
-  function decline(id) {
+  function decline(id, reason) {
     unring(id);
-    api('POST', '/api/calls/' + id + '/decline', { reason: 'declined' }).catch(function () {});
+    api('POST', '/api/calls/' + id + '/decline', { reason: reason || 'declined' }).catch(function () {});
+  }
+
+  // --- 2.6 (Bugs-DB 2029-5 B): Anklopfen und zurueckgehaltene Anrufe ------------------------------------------------
+  // Vertrag docs/APP-API.md "Anrufe und eigener Status": call.ring/call.invite mit waiting:true (die Person telefoniert,
+  // dieses Geraet meldet waiting1) -> Leiste "{name} klopft an" mit "Beenden und annehmen" / "Ablehnen" (decline busy);
+  // call.quiet (eigenes Nicht stoeren bzw. Ruhezeit) -> stille Leiste "Anruf von {name} - stumm" mit "Annehmen" bis ring_s.
+  // Beide liegen in RINGS (hold: 'wait' | 'quiet') - Ende-Ereignis, Zeitgrenze und Nachsehen wie beim Klingeln.
+  // Kein Klingelton, kein Titel-Blinken; beim Anklopfen ein dezenter Einmal-Ton (abschaltbar wie der Klingelton).
+  function knockTone() {
+    if (!ringOn()) return;
+    var ctx = audioCtx(); if (!ctx) return;
+    var t0 = ctx.currentTime + 0.05;
+    beep(ctx, 880, t0, 0.14, 0.05); beep(ctx, 880, t0 + 0.32, 0.14, 0.05);
+  }
+  function holdBar(d, mode) {
+    var from = d.from || {}, video = d.media === 'video', name = from.name || from.username || '?';
+    var R = C && !C.done && C.id !== d.call_id && C.ui ? C : null;     // Gespraech in diesem Tab: Leiste im Anruffenster
+    var box = el('div', 'cl-' + mode + (R ? '' : ' cl-hold-page'));
+    var lbl = mode === 'wait' ? T('{name} klopft an', { name: name })
+      : d.why === 'quiet' ? T('Anruf von {name} – stumm (Ruhezeit)', { name: name }) : T('Anruf von {name} – stumm (Nicht stören)', { name: name });
+    box.setAttribute('role', 'group'); box.setAttribute('aria-label', lbl);
+    var av = HK.avatarImg(el('span', 'cl-av cl-hold-av', name.charAt(0).toUpperCase()), from.avatar, 40); av.setAttribute('aria-hidden', 'true');
+    box.appendChild(av);
+    var tx = el('div', 'cl-hold-t');
+    if (mode === 'wait') {
+      tx.appendChild(el('b', null, lbl));
+      tx.appendChild(el('span', null, R ? (video ? T('Videoanruf – dein Gespräch läuft weiter') : T('Anruf – dein Gespräch läuft weiter'))
+        : T('Du telefonierst gerade auf einem anderen Gerät.')));
+    } else {
+      tx.appendChild(el('b', null, name));
+      tx.appendChild(el('span', null, (video ? T('Videoanruf') : T('Anruf')) + ' · ' + (d.why === 'quiet' ? T('stumm (Ruhezeit)') : T('stumm (Nicht stören)'))));
+    }
+    box.appendChild(tx);
+    var bar = el('div', 'cl-hold-b');
+    if (mode === 'wait') bar.appendChild(btn(T('Ablehnen'), 'cl-pill cl-hold-no', function () { decline(d.call_id, 'busy'); }));
+    else bar.appendChild(btn(icon('x'), 'cl-mini cl-hold-x', function () { unring(d.call_id); }, T('Hinweis ausblenden')));   // nur hier weg, kein Ablehnen
+    if (R) bar.appendChild(btn(T('Beenden und annehmen'), 'cl-pill cl-hold-go', function () { holdTake(d, video); },
+                               T('Aktuelles Gespräch beenden und den Anruf von {name} annehmen', { name: name })));
+    else if (mode === 'quiet') bar.appendChild(btn(T('Annehmen'), 'cl-pill cl-hold-go', function () { accept(d, video); },
+                                                   T('Anruf von {name} annehmen', { name: name })));
+    box.appendChild(bar);
+    (R ? R.ui.w : document.body).appendChild(box);
+    RINGS[d.call_id] = { box: box, d: d, loud: false, at: Date.now(), hold: mode };
+    if (R && R.ui.say) R.ui.say.textContent = lbl;    // Ansage fuer Bildschirmleser (das Gespraech behaelt den Fokus)
+    if (mode === 'wait' && R) knockTone();
+    if (R) idleCheck(R);
+    var left = Math.max(5, (d.expires_in != null ? d.expires_in : d.ring_s || 45)) * 1000 + 3000;
+    RINGS[d.call_id].t = setTimeout(function () { unring(d.call_id); }, left);
+    RINGS[d.call_id].poll = setInterval(function () {          // wie beim Klingeln: falls das Ende-Ereignis fehlt
+      if (!RINGS[d.call_id]) return;
+      api('GET', '/api/calls/' + d.call_id).then(function (r) {
+        var k = r && r.call; if (!k || !RINGS[d.call_id]) return;
+        if (k.state === 'ended' || k.state === 'declined' || k.state === 'active') unring(d.call_id);
+      }).catch(function (e) { if (e && e.status === 404) unring(d.call_id); });
+    }, 5000);
+  }
+  // "Beenden und annehmen": laufendes Gespraech auflegen (Fenster sofort zu), dann der normale Annehmen-Weg
+  function holdTake(d, video) {
+    unring(d.call_id);
+    var R = C;
+    if (R && !R.done) { hangup(R); closeWin(R); }
+    accept(d, video);
+  }
+  // Gespraech in diesem Tab zu Ende (finish): Leisten aus dem Anruffenster neu zeigen - ein wartender Anruf klingelt jetzt
+  // normal (bzw. klopft beim naechsten Gespraech an, falls gleich eines beginnt), eine stille Leiste bleibt still
+  function holdFree(R) {
+    var w = R && R.ui && R.ui.w;
+    Object.keys(RINGS).forEach(function (id) {
+      var r = RINGS[id]; if (!r.hold || !w || !w.contains(r.box)) return;
+      clearTimeout(r.t); clearInterval(r.poll); r.box.remove(); delete RINGS[id];
+      var left = (r.d.expires_in != null ? r.d.expires_in : r.d.ring_s || 45) - (Date.now() - r.at) / 1000;
+      if (left < 2) return;
+      setTimeout(function () {                         // nach "Beenden und annehmen" steht der neue Anruf (C) schon
+        if (RINGS[id] || GONE[id]) return;
+        var d = Object.assign({}, r.d, { expires_in: left, freed: true });
+        if (r.hold === 'quiet') holdBar(d, 'quiet'); else ring(d);
+      }, 0);
+    });
   }
   function accept(d, video) {
     unring(d.call_id);
@@ -730,6 +819,11 @@
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(o); }).then(function () { return dial(c, false); });
     }).catch(function (e) { if (live(c)) fail(c, e.message); });
   }
+  // 409 besetzt; 2.6 (waiting1, "Nicht nerven"): again = schon angeklopft - Text vom Server, sonst eigener
+  function busyText(d, name) {
+    if (d && d.again) return d.error || T('{name} telefoniert noch – du hast schon angeklopft.', { name: name || '?' });
+    return T('Besetzt – {name} telefoniert gerade.', { name: name || '?' });
+  }
   function dial(c, again) {
     status(c, T('Verbinde …'));
     c.id = c.id || X().hex(16);
@@ -740,11 +834,12 @@
       .then(function (r) {
         if (!live(c)) { api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup' }).catch(function () {}); return; }
         c.ready = true; c.call = r.call;
-        status(c, T('Klingelt …')); playTone('back'); ringOut(c);
+        c.waiting = !!(r.call && r.call.waiting);      // 2.6 (waiting1): das Gegenueber telefoniert - der Anruf klopft an
+        status(c, c.waiting ? T('Klopft an …') : T('Klingelt …')); playTone('back'); ringOut(c);
         flushIce(c); aliveOn(c);
       }, function (e) {
         if (e.status === 409 && e.data && e.data.devices && !again) return peerKeys(c, true).then(function () { return dial(c, true); });
-        if (e.status === 409 && e.data && e.data.busy) { c.id = null; finish(c, T('Besetzt – {name} telefoniert gerade.', { name: c.peer.name }), 'busy'); return; }
+        if (e.status === 409 && e.data && e.data.busy) { c.id = null; finish(c, busyText(e.data, c.peer.name), 'busy'); return; }
         c.id = null; throw e;
       });
   }
@@ -1209,7 +1304,8 @@
       if (r.call.topo === 'horn') hornNew(R, r.call.horn);   // 2.5: ueber einen Knoten
       R.ready = true; R.inRoom = true; R.call = r.call; R.v2 = r.call.v === 2;
       rosterIn(R, r.call.legs, r.call);
-      status(R, T('Klingelt bei den anderen …')); playTone('back'); ringOut(R);
+      R.waiting = !!(dm && r.call.waiting);            // 2.6 (waiting1): 1:1 ueber Knoten - das Gegenueber telefoniert
+      status(R, R.waiting ? T('Klopft an …') : T('Klingelt bei den anderen …')); playTone('back'); ringOut(R);
       aliveOn(R);
       R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
       if (R.horn) hornGo(R, r.call.horn);
@@ -1223,7 +1319,7 @@
         else if (hb === 'old' || hb === 'peer') HK.toast(T('Gegenstelle veraltet – direkt verbunden'), null, null, 8000);
         R.ending = true; finish(R, '', 'info'); closeWin(R); start(chat, video, true); return;
       }
-      if (dm && e && e.status === 409 && e.data && e.data.busy) { finish(R, T('Besetzt – {name} telefoniert gerade.', { name: R.peer.name || '?' }), 'busy'); return; }
+      if (dm && e && e.status === 409 && e.data && e.data.busy) { finish(R, busyText(e.data, R.peer.name), 'busy'); return; }
       if (run) { finish(R, '', 'error'); closeWin(R); join(run, 'member', video); return; }
       finish(R, (e && e.message) || T('Anruf beendet'), 'error');
     });
@@ -1750,7 +1846,8 @@
     var phase = R.done ? 'ended' : R.horn ? (R.horn.cur ? 'connected' : 'connecting') : links(R).some(function (L) { return L.connected; }) ? 'connected' : 'connecting';
     var video = w.classList.contains('has-video') || w.classList.contains('horn-scr') || !!w.querySelector('.cl-meet .cl-tile.has-video, .cl-grid .cl-tile.has-video');
     var menu = !!(ui.hint || w.querySelector('.cl-plist, .cl-rpop, .cl-tmenu, .cl-lmenu, .cl-keys, .cl-mhint, .cl-hint'));
-    var notice = (!ui.st.hidden && ui.st.classList.contains('err')) || (ui.un && !ui.un.hidden) || (ui.mf && !ui.mf.hidden);
+    var notice = (!ui.st.hidden && ui.st.classList.contains('err')) || (ui.un && !ui.un.hidden) || (ui.mf && !ui.mf.hidden)
+      || !!w.querySelector('.cl-wait, .cl-quiet');      // 2.6: Anklopf-/stille Leiste - Bedienung bleibt sichtbar (Zeiger)
     var over = !!ui.over || !!(ae && ae !== document.body && (ui.top.contains(ae) || ui.ctl.contains(ae)));
     var hide = MT.hideControls(ui.idle, phase, video, false, menu, notice, over) && !w.classList.contains('small');
     if (w.classList.contains('idle') !== hide) w.classList.toggle('idle', hide);
@@ -2485,6 +2582,7 @@
     if (c.cam) c.cam.stop();
     try { if (c.pc) c.pc.close(); } catch (e) { /* schon zu */ }
     if (C === c) C = null;
+    holdFree(c);                                       // 2.6: Anklopf-/stille Leisten im Fenster (waiting1)
     if (c.ui) {
       status(c, msg || '', kind === 'error');
       // vorbei: keine Laufzeit/Verbindungsangaben und kein schwarzes Eigenbild mehr
@@ -5294,7 +5392,15 @@
         if (r.call.state === 'ringing' && r.call.role === 'callee') ring(Object.assign({}, d, { expires_in: r.call.expires_in }));
       }).catch(function () {});
     } else if (t === 'call.signal') signalIn(d);
-    else if (t === 'call.invite') {                   // 2.4: Gruppenanruf klingelt (grosse Gruppen: still, nur die Leiste)
+    else if (t === 'call.quiet') {                    // 2.6 (2029-5 B): zurueckgehalten (eigenes Nicht stoeren) - nur still anzeigen
+      if (d.call_id && !(d.kind === 'group' && !d.dm) && !RINGS[d.call_id] && !GONE[d.call_id] && !(C && C.id === d.call_id)) {
+        api('GET', '/api/calls/' + d.call_id).then(function (r) {     // nachgeholte Ereignisse koennen alt sein
+          var k = r.call, g = k.kind === 'group';
+          var on = k.state !== 'ended' && (g ? k.invite === 'ringing' && !(k.mine || []).length : k.state === 'ringing' && k.role === 'callee');
+          if (on && !RINGS[d.call_id] && !GONE[d.call_id]) holdBar(Object.assign({}, d, { group: g, expires_in: k.expires_in != null ? k.expires_in : k.ring_s }), 'quiet');
+        }).catch(function () {});
+      }
+    } else if (t === 'call.invite') {                   // 2.4: Gruppenanruf klingelt (grosse Gruppen: still, nur die Leiste)
       if (C && C.id === d.call_id) { /* schon dabei */ }
       else if (GONE[d.call_id]) {                     // 2.5 (L7): erneut geklingelt (dieses Klingeln war schon vorbei) -
         api('GET', '/api/calls/' + d.call_id).then(function (r) {      // nur, wenn die Einladung jetzt wirklich klingelt
@@ -5325,7 +5431,9 @@
       var c = C;
       if (c && c.id === d.call_id) {
         if (d.state === 'ended') remoteEnded(c, d);
-        else if (c.kind === 'group' || d.moved || (c.established && d.device && d.device !== c.peerDevice)) { /* 2.4: Raum - regelt die Teilnehmerliste */ }
+        else if (d.state === 'ringing' && typeof d.waiting === 'boolean' && c.role === 'caller' && !c.since && c.ready) {
+          c.waiting = d.waiting; status(c, d.waiting ? T('Klopft an …') : c.kind === 'group' ? T('Klingelt bei den anderen …') : T('Klingelt …'));   // 2.6
+        } else if (c.kind === 'group' || d.moved || (c.established && d.device && d.device !== c.peerDevice)) { /* 2.4: Raum - regelt die Teilnehmerliste */ }
         else if (d.state === 'active' && c.role === 'caller') {
           c.peerDevice = d.device; stopTone(); status(c, T('Verbinde …'));
           c.connT = setTimeout(function () { if (live(c) && !c.connected) iceFailed(c); }, 30000);
@@ -5352,18 +5460,19 @@
       (r.calls || []).forEach(function (x) {
         seen[x.id] = true;
         if (x.role === 'callee' && x.state === 'ringing' && !RINGS[x.id] && !(C && C.id === x.id))
-          ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.peer, ring_s: x.ring_s, expires_in: x.expires_in });
+          ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.peer, ring_s: x.ring_s, expires_in: x.expires_in, waiting: !!x.waiting });
         else if (x.kind === 'group' && (x.mine || []).length && RINGS[x.id] && !(C && C.id === x.id)) unring(x.id);   // eigenes Geraet ist dabei
         else if (x.kind === 'group' && x.invite === 'ringing' && !(x.mine || []).length && !RINGS[x.id] && !(C && C.id === x.id)
                  && Date.now() / 1000 - (x.invite_since || x.created) < (x.ring_s || 45))      // L7: erneut geklingelt -> ab invite_since
           ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.from, group: true, dm: !!x.dm, silent: !!x.silent, ring_s: x.ring_s,
-                 expires_in: Math.max(5, (x.invite_since || x.created) + (x.ring_s || 45) - Date.now() / 1000) });
+                 waiting: !!x.waiting, expires_in: Math.max(5, (x.invite_since || x.created) + (x.ring_s || 45) - Date.now() / 1000) });
         runBar(x);
       });
       Object.keys(RUN).forEach(function (id) { if (!seen[id]) hideRun(id); });
       // 2.5 (Nr. 173): 1:1-Anruf klingelt hier noch, ist aber vorbei (Ende-Ereignis kam, bevor der Live-Kanal stand) -
       // nur Klingeln, die schon vor dieser Abfrage da waren
-      Object.keys(RINGS).forEach(function (id) { var g = RINGS[id]; if (!seen[id] && !g.d.group && g.at < t0) unring(id); });
+      // 2.6: stille Leisten (call.quiet) stehen nicht in /active - die raeumen Ende-Ereignis, Zeitgrenze und Nachsehen
+      Object.keys(RINGS).forEach(function (id) { var g = RINGS[id]; if (!seen[id] && !g.d.group && g.hold !== 'quiet' && g.at < t0) unring(id); });
     }).catch(function () {});
   }
   // Ohne Live-Kanal (Proxy puffert SSE o. Ae.): Klingeln und Signale abfragen
@@ -5406,9 +5515,13 @@
       api('GET', '/api/calls/' + m[1]).then(function (r) {
         var g = r.call.kind === 'group';                // 2.5: Raum-Anruf (auch 1:1 ueber Knoten) = beitreten
         if (m[2]) { if (g) { history.replaceState(null, '', location.pathname); join(m[1], 'member', m[2] === 'video'); } else answer(m[1], m[2] === 'video'); return; }
-        if (r.call.state === 'ringing' && r.call.role === 'callee') ring({ call_id: r.call.id, chat_id: r.call.chat_id, media: r.call.media, from: r.call.peer, expires_in: r.call.expires_in });
+        if (r.call.state === 'ringing' && r.call.role === 'callee' && r.call.quiet) holdBar({ call_id: r.call.id, chat_id: r.call.chat_id, media: r.call.media, from: r.call.peer, expires_in: r.call.expires_in }, 'quiet');
+        else if (r.call.state === 'ringing' && r.call.role === 'callee') ring({ call_id: r.call.id, chat_id: r.call.chat_id, media: r.call.media, from: r.call.peer, expires_in: r.call.expires_in, waiting: !!r.call.waiting });
+        else if (g && r.call.dm && r.call.quiet && r.call.state !== 'ended' && r.call.invite === 'ringing')     // 2.6: 1:1 ueber Knoten, Nicht stoeren
+          holdBar({ call_id: r.call.id, chat_id: r.call.chat_id, media: r.call.media, from: r.call.from, group: true, dm: true, expires_in: r.call.expires_in || r.call.ring_s }, 'quiet');
         else if (g && r.call.state !== 'ended' && r.call.invite === 'ringing') ring({ call_id: r.call.id, chat_id: r.call.chat_id, media: r.call.media, from: r.call.from,
-                                                                                      group: true, dm: !!r.call.dm, ring_s: r.call.ring_s, expires_in: r.call.expires_in || r.call.ring_s });
+                                                                                      group: true, dm: !!r.call.dm, ring_s: r.call.ring_s, expires_in: r.call.expires_in || r.call.ring_s,
+                                                                                      waiting: !!r.call.waiting });
         else { HK.toast(T('Der Anruf ist schon beendet.')); history.replaceState(null, '', location.pathname); }
       }).catch(function () {});
     };
@@ -5545,7 +5658,10 @@
                        n: C.n, remoteN: C.remoteN, restarts: C.restarts, tries: C.tries || 0, restarting: C.restarting, net: C.net, pip: C.pip, pipKind: pipKind(),
                        wantSent: C.wantSent, rates: C.applied || {}, sent: C.sent,
                        signaling: C.pc ? C.pc.signalingState : '', ice: C.pc ? C.pc.iceConnectionState : '', ufrag: C.pc ? remoteUfrag(C) : null } } : null;
-  }, ringing: function () { return Object.keys(RINGS); },
+  }, ringing: function () { return Object.keys(RINGS).filter(function (id) { return !RINGS[id].hold; }); },
+  // 2.6 (2029-5 B, Tests): Leisten fuer Anklopfen ('wait') und zurueckgehaltene Anrufe ('quiet') - ohne Klingeln
+  held: function () { return Object.keys(RINGS).filter(function (id) { return RINGS[id].hold; }).map(function (id) {
+    var r = RINGS[id]; return { id: id, mode: r.hold, inCall: !r.box.classList.contains('cl-hold-page'), text: r.box.getAttribute('aria-label') }; }); },
   // 2.4 E3: Bildschirm - Betriebsart, eigene/fremde m-Zeilen, was gross und klein gezeigt wird
   screen: function () {
     var c = C; if (!c) return null;

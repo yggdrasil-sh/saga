@@ -67,6 +67,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Glocke ohne Push und nach dem Gespräch ein Push je Person. Haken für „Im Anruf“ bei anderen (`status.call`, 2029-4).
   Keine Migration (`chat_call.hold`). Vertrag in `docs/APP-API.md` („Anrufe und eigener Status“). Test:
   `tests/anrufe_status.py`.
+- **Anklopfen und stille Anrufe im Browser** (Bugs-DB 2029, Schritt 2029-5 Teil B, Web): ein zweiter Anruf während
+  eines Gesprächs klingelt nicht mehr und wird nicht mehr sofort abgewiesen, sondern erscheint als Leiste im Anruffenster
+  („{name} klopft an“ mit „Beenden und annehmen“ und „Ablehnen“, dezenter Einmal-Ton); der Browser meldet dafür `waiting1`.
+  Bei eigenem Nicht stören bzw. Ruhezeit zeigt `call.quiet` eine stille Leiste „Anruf von {name} – stumm“ mit
+  „Annehmen“ – ohne Klingelton und Titel-Blinken. Die anrufende Seite sieht „Klopft an …“ statt „Klingelt …“ und nach
+  dem zweiten Versuch den Hinweis „… du hast schon angeklopft.“ (`again`). Test: `tests/browser_anklopfen.js`.
 - **Runner `ai.task` für die Kollegin** (Bugs-DB 2266 K-A6, Server, Gerüst ohne Planer und ohne Oberfläche):
   `saga/ai_task.py` führt einen freigegebenen Plan Schritt für Schritt über die Werkzeug-Registry aus – je Schritt ein
   Werkzeugaufruf mit dem internen Tok des Auftrags, in der Hintergrund-Spur und mit KI-Einheiten im Pool „Aufträge“.

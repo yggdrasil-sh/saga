@@ -195,8 +195,39 @@ body:has(.cl-win.cl-done) .cl-run{z-index:205}  /* Rang 2: ueber dem beendeten A
 .cl-run .cl-pill{height:34px;font-size:var(--fs-base);background:var(--card-h);border-color:var(--border);color:var(--fg)}
 .cl-run .cl-run-go{background:var(--cl-green);border-color:var(--cl-green);color:#fff;font-weight:600}
 
+/* 2.6 (Bugs-DB 2029-5 B): Anklopfen (.cl-wait) und zurueckgehaltener Anruf bei Nicht stoeren (.cl-quiet). Im Anruffenster
+   (dunkle Buehne) oben mittig unter der Kopfzeile, sonst als Karte wie das Klingeln (.cl-hold-page, hell/dunkel der Seite) */
+.cl-wait,.cl-quiet{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;padding:.5rem .55rem .5rem .6rem;border-radius:16px;
+  font-size:var(--fs-base);animation:cl-in .25s ease-out}
+.cl-win>.cl-wait,.cl-win>.cl-quiet{grid-row:2;grid-column:1;z-index:5;align-self:start;justify-self:center;margin-top:.5rem;
+  max-width:min(38rem,calc(100% - 2rem));background:var(--cl-panel);color:var(--cl-fg);border:1px solid var(--cl-line);
+  box-shadow:0 12px 36px rgba(0,0,0,.5);--muted:#a7b2c2}
+.cl-win>.cl-wait{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent),0 12px 36px rgba(0,0,0,.5)}
+.cl-win>.cl-share:not([hidden])~.cl-wait,.cl-win>.cl-share:not([hidden])~.cl-quiet{margin-top:3.4rem}   /* unter "Du teilst …" */
+.cl-hold-page{position:fixed;top:4.6rem;right:1rem;z-index:210;max-width:min(460px,calc(100vw - 2rem));background:var(--card);color:var(--fg);
+  border:1px solid var(--border);box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.cl-av.cl-hold-av{width:40px;height:40px;font-size:1.05rem}
+.cl-quiet .cl-hold-av{opacity:.8}
+.cl-hold-t{display:flex;flex-direction:column;min-width:0;flex:1 1 11rem}
+.cl-hold-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-md)}
+.cl-hold-t span{color:var(--muted);font-size:var(--fs-base)}
+.cl-hold-b{display:flex;gap:.45rem;align-items:center;margin-left:auto}
+.cl-hold-b .cl-pill{height:36px;font-size:var(--fs-base);padding:0 .95rem}
+.cl-hold-page .cl-pill{background:var(--card-h);border-color:var(--border);color:var(--fg)}
+.cl-btn.cl-hold-go{background:var(--cl-green);border-color:var(--cl-green);color:#fff;font-weight:600}
+.cl-hold-page .cl-hold-x{color:var(--muted)}
+.cl-win>.cl-quiet .cl-hold-x{color:var(--cl-fg)}
+.cl-hold-x svg{width:18px;height:18px}
+.cl-win.small>.cl-wait,.cl-win.small>.cl-quiet{margin-top:.2rem;max-width:calc(100% - 1rem);padding:.35rem .4rem;gap:.35rem .5rem;font-size:var(--fs-sm)}
+.cl-win.small .cl-hold-av,.cl-win.small .cl-hold-t span{display:none}
+.cl-win.small .cl-hold-t b{font-size:var(--fs-base)}
+.cl-win.small .cl-hold-b .cl-pill{height:32px;padding:0 .7rem;font-size:var(--fs-sm)}
+@media (prefers-reduced-motion: reduce){.cl-wait,.cl-quiet{animation:none}}
+
 /* Handy */
 @media (max-width: 640px){
+  .cl-hold-page{left:.6rem;right:.6rem;top:auto;bottom:calc(.6rem + env(safe-area-inset-bottom));max-width:none}
+  .cl-win>.cl-wait,.cl-win>.cl-quiet{max-width:calc(100% - 1rem)}
   .cl-run{top:auto;bottom:calc(.6rem + env(safe-area-inset-bottom));left:.6rem;right:.6rem;transform:none;max-width:none}
   /* Rang 2 (Pruefer): ueber dem beendeten Fenster oben - unten laegen sonst dessen Meldung und "Schliessen" darunter */
   body:has(.cl-win.cl-done) .cl-run{bottom:auto;top:calc(.6rem + env(safe-area-inset-top))}

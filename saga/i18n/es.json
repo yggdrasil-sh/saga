@@ -5260,5 +5260,18 @@
  "🔓 Seite entsperrt": "🔓 Página desbloqueada",
  "🔗 Link zur Datenbank kopieren": "🔗 Copiar enlace a la base de datos",
  "🖼 Eigenes Bild hochladen …": "🖼 Subir una imagen propia …",
- "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:"
+ "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:",
+ "Anruf von {name} – stumm (Nicht stören)": "Llamada de {name}: en silencio (No molestar)",
+ "Anruf von {name} annehmen": "Responder la llamada de {name}",
+ "Du telefonierst gerade auf einem anderen Gerät.": "Estás en una llamada en otro dispositivo.",
+ "{name} klopft an": "{name} llama en espera",
+ "Videoanruf – dein Gespräch läuft weiter": "Videollamada: tu llamada actual continúa",
+ "Aktuelles Gespräch beenden und den Anruf von {name} annehmen": "Colgar la llamada actual y responder la llamada de {name}",
+ "stumm (Nicht stören)": "en silencio (No molestar)",
+ "Hinweis ausblenden": "Ocultar aviso",
+ "stumm (Ruhezeit)": "en silencio (horas de silencio)",
+ "Anruf – dein Gespräch läuft weiter": "Llamada: tu llamada actual continúa",
+ "Anruf von {name} – stumm (Ruhezeit)": "Llamada de {name}: en silencio (horas de silencio)",
+ "Klopft an …": "En espera …",
+ "Beenden und annehmen": "Colgar y responder"
 }
