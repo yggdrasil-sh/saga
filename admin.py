@@ -980,7 +980,9 @@ async def calls_post(request: Request):
         # 2263-4: Merker horn_on_y - ab dann gilt der gespeicherte Wert von "Gjallarhorn" (auch aus). Nur setzen, wenn der
         # Admin den wirksamen Wert wirklich aendert (oder der Merker schon da ist): wer nur andere Schalter speichert, soll
         # beim Wechsel auf "Standard an" nicht dauerhaft auf einem alten "aus" haengen bleiben (Pruefung a63srev M1).
-        hy = bool(cur.get(horn.HORN_ON_Y)) or _on(f, "horn") != horn.horn_flag(cur)
+        # Verglichen wird mit dem Haken, den die Seite zeigt (hs.horn_on = horn.horn_on, mit calls.enabled): sind Anrufe aus,
+        # steht der Haken aus - wer dann nur andere Schalter speichert, aendert Gjallarhorn nicht (Pruefung a63irev).
+        hy = bool(cur.get(horn.HORN_ON_Y)) or _on(f, "horn") != horn.horn_on(cur)
         auth.save_setting("calls", {**cur, "horn": _on(f, "horn"), horn.HORN_ON_Y: hy, "horn_builtin": _on(f, "horn_builtin"),
                                       # Grundsatz Y: Merker horn_all_y - ab jetzt gilt der gespeicherte Wert (auch aus)
                                       "horn_all": _on(f, "horn_all"), horn.HORN_ALL_Y: True, "horn_rev": int(cur.get("horn_rev") or 0) + 1})

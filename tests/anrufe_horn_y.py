@@ -215,6 +215,15 @@ def m1(HN):
     ok(f"M1 Formular an: wirksam an unter beiden Standards ({s}, {st.get('horn')}, {st.get('horn_on_y')})",
        st.get("horn") is True and under(st, True) is True and under(st, False) is True
        and bool(st.get("horn_on_y")) is (HN.horn_flag({"horn": False}) is False))
+    # Anrufe ganz aus: die Seite zeigt den Haken aus (hs.horn_on mit calls.enabled) - nur andere Schalter speichern setzt
+    # keinen Merker, sonst bliebe Gjallarhorn nach dem Wiedereinschalten (und mit Standard an) dauerhaft aus
+    put(horn=True, enabled=False)
+    _, html = adm("GET", "/calls")
+    shown = bool(re.search(r'<input type="checkbox" name="horn" value="1" checked>', html))
+    s = form(shown)
+    st = stored()
+    ok(f"M1 Anrufe aus, Haken wie angezeigt ({shown}) gespeichert: kein Merker, mit Standard an dann an ({s}, {st.get('horn_on_y')})",
+       s in (302, 303) and shown is HN.horn_on({"horn": True, "enabled": False}) and not st.get("horn_on_y") and under(st, True) is True)
     # run.py einstellen: unveraendert -> kein Merker; bewusst aus -> Merker
     put(horn=False)
     rc, out = einstellen("calls.horn=" + ("1" if HN.horn_flag(stored()) else "0"))
