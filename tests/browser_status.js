@@ -49,7 +49,15 @@ async function login(p, user, pass) {
   if ([200, 403, 404].indexOf(fs.status) < 0) note('Erste Schritte beantworten: ' + JSON.stringify(fs));
 }
 const RKF = u => path.join(os.tmpdir(), 'saga-browser-rk-' + BASE.replace(/\W+/g, '_') + '-' + u + '.txt');
-async function chatKeys(q, user) {
+// fresh: jeder Kontext ist ein neues Chat-Geraet (hoechstens 10 je Konto, saga/chat.py DEVICES_MAX) - Geraete frueherer Laeufe
+// vorher abmelden (wie browser_kontakte2.js), sonst scheitert ab dem ~5. Lauf das Entsperren (Bugs-DB 2394). Nicht fuer den
+// zweiten Kontext eines Kontos im selben Lauf (schmale Ansicht): der erste bliebe sonst ohne Geraet.
+async function chatKeys(q, user, fresh) {
+  if (fresh) {
+    await q.goto(BASE + '/dashboard'); await q.waitForTimeout(500);
+    const me = (await papi(q, 'GET', '/api/chat/me')).d || {};
+    for (const d of (me.devices || []).filter(d => !d.revoked)) await papi(q, 'DELETE', '/api/chat/devices/' + d.id);
+  }
   await q.goto(BASE + '/chats'); await q.waitForTimeout(2500);
   if (await q.$('.ct-setup-go')) {
     await q.click('.ct-setup-go'); await q.waitForSelector('#ct-rk');
@@ -108,7 +116,7 @@ async function bilder(browser) {
     for (const [mw, vp] of MODES) {
       const tag = scheme + '-' + mw, cs = scheme === 'hell' ? 'light' : 'dark';
       const a = await session(browser, U1, E.SAGA_PASS, { viewport: vp, scheme: cs }), b = await session(browser, U2, E.SAGA_PASS2, { viewport: vp, scheme: cs });
-      await chatKeys(a, U1); await chatKeys(b, U2);
+      await chatKeys(a, U1, true); await chatKeys(b, U2, true);
       // A: Nicht stoeren mit Text (Server-API gibt es auch im Vorher-Stand)
       await papi(a, 'PUT', '/api/account/status', { state: 'dnd', dur: 7200, text: 'Im Kundentermin', source: 'manual' });
       await a.goto(BASE + '/chats'); await a.waitForTimeout(1800);
@@ -146,7 +154,7 @@ async function bilder(browser) {
   try {
     if (NUR) { await bilder(browser); ok('Bilder erstellt', true); return; }
     const a = await session(browser, U1, E.SAGA_PASS), b = await session(browser, U2, E.SAGA_PASS2);
-    await chatKeys(a, U1); await chatKeys(b, U2);
+    await chatKeys(a, U1, true); await chatKeys(b, U2, true);
     ok('Chat-Schluessel in beiden Browsern bereit', !(await a.$('.ct-ov')) && !(await b.$('.ct-ov')));
     await papi(a, 'PUT', '/api/account/status', { state: 'available', source: 'manual' });
     await papi(b, 'PUT', '/api/account/status', { state: 'available', source: 'manual' });
