@@ -278,6 +278,13 @@ async function hscroll(p) { return p.evaluate(() => [document.documentElement.sc
       await A.waitForSelector('#hk-pane-contacts .kb-item'); await rowClick(A, 'Benni'); await detailOpen(A);
       await A.click('#hk-pane-contacts .kb-msg');
       ok('"Nachricht" auf /chats: Einstellungen zu, Chat offen', await until(async () => !(await A.$('.hk-dialog-set')) && /#c\d+$/.test(A.url()), 8000), A.url());
+      // fremder Link /chats#h~x@host (ohne Adressbuch-Merker): keine Nachrichtenanfrage (kein POST /api/chats)
+      let posts = 0; const cntP = q => { if (q.method() === 'POST' && /\/api\/chats$/.test(new URL(q.url()).pathname)) posts++; };
+      A.on('request', cntP);
+      await A.goto(BASE + '/chats#h' + encodeURIComponent('~niemand@fremd.example')); await A.waitForTimeout(2500);
+      await A.evaluate(() => { location.hash = 'h' + encodeURIComponent('~niemand2@fremd.example'); }); await A.waitForTimeout(1500);
+      A.off('request', cntP);
+      ok('Fremder Link #h~x@host loest keine Chat-Anfrage aus', posts === 0 && !/#h/.test(A.url()), [posts, A.url()]);
 
       // --- Chat-Dialog: "Kontakt bearbeiten …" ---------------------------------------------------------------------
       await A.goto(BASE + '/chats'); await A.waitForTimeout(1500);

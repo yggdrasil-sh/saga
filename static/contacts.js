@@ -62,6 +62,7 @@
   // Direkt-Chat mit der festen Saga-Adresse: auf der Chat-Seite ueber den Hash (#u lokal, #h fremd), sonst dorthin wechseln
   function message(s) {
     var h = (s.remote ? 'h' : 'u') + encodeURIComponent(s.ref);
+    if (s.remote) try { sessionStorage.setItem('hk-dm-h', s.ref); } catch (e) { /* egal */ }   // #h nur mit diesem Merker (static/chat.js route)
     if (location.pathname === '/chats' && window.HKChat) {
       if (window.HKSettings) HKSettings.close();
       if (location.hash === '#' + h) location.hash = ''; location.hash = h;

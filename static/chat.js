@@ -760,7 +760,12 @@
     if ((m = /^c(\d+)$/.exec(h))) openChat(+m[1]);
     else if ((m = /^p(-?\d+)$/.exec(h))) create({ kind: 'page', note_id: +m[1] });      // negativ: Seite eines anderen Servers (2.3)
     else if ((m = /^u(.+)$/.exec(h))) create({ kind: 'dm', user: m[1] });
-    else if ((m = /^h(~[^@]+@.+)$/.exec(h))) create({ kind: 'dm', handle: m[1] });   // 2.6 (2027a): Person auf einem anderen Server (Adressbuch)
+    else if ((m = /^h(~[^@]+@.+)$/.exec(h))) {          // 2.6 (2027a): Person auf einem anderen Server (Adressbuch, "Nachricht")
+      // nur mit Merker aus static/contacts.js (gleicher Tab): ein fremder Link darf keine Nachrichtenanfrage mit dem
+      // eigenen Namen ausloesen (POST /api/chats schickt sofort "request" an den anderen Server)
+      var okH = false; try { okH = sessionStorage.getItem('hk-dm-h') === m[1]; sessionStorage.removeItem('hk-dm-h'); } catch (x) { /* egal */ }
+      if (okH) create({ kind: 'dm', handle: m[1] }); else history.replaceState(null, '', location.pathname + location.search);
+    }
     else if (h === 'settings') settings();
   }
   window.addEventListener('hashchange', function () { if (S.ready && !(window.HKShell && window.HKShell.on())) route(); });   // 2.5: nicht, solange die Anruf-Huelle eine Seite zeigt
