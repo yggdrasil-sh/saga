@@ -17,6 +17,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu
+- **Adressbuch – Server-Kern** (Bugs-DB 2027a, Schritte 2027a-1 bis -3, Feature `contacts2`): Kontakte mit eigenen
+  Feldern „Name für mich“, Anrede (du/Sie), Grußform, Telefonnummern (E.164) und E-Mail-Adressen – für Personen aus
+  gemeinsamen Chats und für selbst angelegte Kontakte. Neue Tabellen `contact`/`contact_addr` (Migration 38: je
+  sichtbarem Chat-Kontakt ein Eintrag, einmalig beim Start). API `GET/POST /api/contacts`, `GET/PATCH/DELETE
+  /api/contacts/{id}` (409 bei veraltetem Stand), `GET/PUT /api/contacts/settings` (Landesvorwahl für `0170 …`), Live
+  `contacts.changed`; `contact_id` zusätzlich in `GET /api/chat/contacts` und in Kontakt-Treffern von `people`. Ein
+  Kontakt vergibt keine Rechte, Saga-Adressen entstehen nur aus gemeinsamen Chats, das Adressbuch verlässt den Server
+  nie; Nummern/Mails nie im Log (auch nicht der Suchbegriff im Zugriffs-Log). Person/Server weg: leere Kontakte gehen
+  mit, solche mit eigenen Daten bleiben ohne Saga-Adresse. Persönliches Backup: `daten.json` → `contacts`, Einspielen
+  ohne Dubletten. Vertrag in `docs/APP-API.md` („Kontakte“); Web und Apps folgen (2027a-4 bis -7).
 - **Eigener Status in den Apps** (Bugs-DB 2029-9): iOS/iPadOS (2029-6), Android (2029-7) und Linux (2029-8) können
   jetzt, was das Web seit 2029-5 kann – Mein Status, Erreichbarkeit mit Ausnahmen, Status der Chat-Partner, Rückfrage
   vor dem Anruf, Anklopfen und stille Anrufe; dazu iOS-Fokusfilter „Saga-Status“ und Android „System-Nicht-stören

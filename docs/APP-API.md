@@ -4002,3 +4002,102 @@ Erfahrungen aus iOS (2029-6), Android (2029-7) und Linux (2029-8) – keine Vert
   gesetzt hat – z. B. „Verfügbar“ trotz eingeschaltetem System-„Nicht stören“ wird beim nächsten Start wieder zu
   „Nicht stören“. Ohne Sitzung den Wechsel vormerken und beim nächsten Laden senden. Android bekommt
   `ACTION_INTERRUPTION_FILTER_CHANGED` nur bei laufendem Prozess – beim Start mit dem gemerkten Stand abgleichen.
+
+## Kontakte (2.6, Bugs-DB 2027a, `contacts2`)
+
+Adressbuch je Konto: Personen aus gemeinsamen Chats (wie `contacts1`, `docs/APP-API-CHAT.md` §7) **und** selbst angelegte
+Kontakte – jeweils mit eigenen Feldern „Name für mich“, Anrede (du/Sie), Grußform, Telefonnummern und E-Mail-Adressen.
+Erkennbar an `contacts2` in `/api/version` → `features` und in `GET /api/chat/me` → `features`. Additiv, `MIN_APP`
+unverändert; `GET/DELETE /api/chat/contacts` bleiben wie in 2.5 (dazu `contact_id`).
+
+**Grundsätze:** Ein Kontakt vergibt **keine Rechte** (wer mich anschreiben darf, entscheidet weiter nur der Chat-Kontakt
+bzw. „nur gemeinsame Gruppen“). Saga-Adressen entstehen **nur aus gemeinsamen Chats** – sie lassen sich weder anlegen
+noch ändern noch einzeln löschen (`fixed: true`). Nur ich sehe meine Kontakte; fremde IDs → `404`. Das Adressbuch
+verlässt den Server nie (keine Föderation; die Person erfährt nichts davon). Anrede und Grußform setzt nur die Person
+selbst – nie aus Chats abgeleitet. Nummern und Mails stehen nie im Server-Log und nie in Fehlertexten.
+
+| Aufruf | Antwort |
+|---|---|
+| `GET /api/contacts?q=&limit=200&offset=0` | `{contacts: [Kontakt…], total}` – zuletzt zuerst |
+| `GET /api/contacts/{id}` | Kontakt · `404` |
+| `POST /api/contacts {own_name, form?, salutation?, addrs: [{kind, value, type?}], cc?}` | `201` Kontakt (`origin: "manual"`) |
+| `PATCH /api/contacts/{id} {ver, own_name?, form?, salutation?, addrs?, cc?}` | `200` Kontakt · `409 {error, contact}` bei veraltetem `ver` |
+| `DELETE /api/contacts/{id}` | `{ok: true}` · `404` |
+| `GET /api/contacts/settings` | `{cc}` – Landesvorwahl für nationale Nummern, z. B. `"49"`, oder `null` |
+| `PUT /api/contacts/settings {cc}` | `{cc}` – `"49"`, `49`, `"+49"` oder `null` (entfernen) |
+
+Sitzung bzw. App-Schlüssel mit `X-Saga: 1` (sonst `401`), alle Antworten `Cache-Control: no-store`. Lesen 60, Schreiben
+30 Anfragen je Minute und Konto, sonst `429 {error}`. Fehler `400 {error}` (übersetzt, ohne Eingabewerte).
+API-Tokens (`sga_`) und MCP kommen an das Adressbuch in 2027a nicht heran.
+
+**Kontakt-Objekt:**
+
+```json
+{"id": 17, "ver": 3, "origin": "chat", "name": "Anna Berg", "own_name": null,
+ "saga": {"ref": "~k3…", "remote": false, "host": null, "sub": "", "avatar": "/api/avatar/…", "ready": true, "gone": false},
+ "form": "informal", "salutation": "Liebe Anna",
+ "addrs": [{"id": 51, "kind": "saga", "value": "~k3…", "type": null, "fixed": true},
+           {"id": 52, "kind": "e164", "value": "+491701234567", "type": "mobile", "fixed": false},
+           {"id": 53, "kind": "email", "value": "anna@example.org", "type": "work", "fixed": false}],
+ "last_at": 1793460000.5, "created": 1793000000.0, "updated": 1793460000.5}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `id`, `ver` | Kennung; `ver` steigt bei jeder Änderung – bei `PATCH` mitschicken (Pflicht) |
+| `origin` | `chat` (aus einem gemeinsamen Chat entstanden) · `manual` (selbst angelegt, bzw. Person/Server weg und der Kontakt hatte eigene Daten) |
+| `name` | zum Zeigen: `own_name`, sonst der Name der Person (wie `/api/chat/contacts`), sonst die erste Nummer/Mail |
+| `own_name` | „Name für mich“ (≤ 120 Zeichen) oder `null`. Nur in Kontaktliste und -detail, **nicht** in Chats |
+| `saga` | erste feste Adresse mit Live-Angaben wie `/api/chat/contacts` (`ref` für `POST /api/chats`: lokal `user`, fremd `handle`) – oder `null` |
+| `form` | `informal` (du) · `formal` (Sie) · `null` (nicht gesetzt) |
+| `salutation` | Grußform, z. B. „Liebe Anna“ (≤ 80 Zeichen) oder `null` |
+| `addrs[]` | feste zuerst. `kind`: `saga` (`~…`, dieser Server) · `fed` (`~x@host`, anderer Server) · `e164` · `email`; `type`: `mobile` · `home` · `work` · `other` · `null`; `fixed`: aus einem Chat, unveränderlich |
+| `last_at` | letzte gemeinsame Chat-Aktivität (Unix-Sekunden) oder `null`; sortiert wird nach `last_at`, sonst `updated` |
+
+**Anlegen/Ändern:** `own_name` ist bei `POST` Pflicht, dazu mindestens eine Nummer oder Mail (`kind` nur `e164` oder
+`email`). `PATCH` ändert nur genannte Felder; `null` bzw. `""` leert `own_name`/`form`/`salutation` (bei manuellen
+Kontakten bleibt `own_name` Pflicht und mindestens eine Adresse). `addrs` **ersetzt die privaten Adressen**: feste
+bleiben immer (Apps dürfen die Liste aus `GET` unverändert zurückschicken – unveränderte feste Einträge werden
+übergangen, andere `saga`/`fed`-Werte → `400`); ein Eintrag mit gleichem Wert behält seine `id` (Typ und Reihenfolge
+neu), fehlende werden gelöscht. Doppelte Werte in der Anfrage zählen einmal.
+
+- **Telefonnummer** → E.164 `+491701234567`: Leerzeichen, `-`, `/`, `.`, Klammern und `(0)` nach der Landesvorwahl
+  fallen weg; `00…` wird `+…`; `0…` (national) nur mit Landesvorwahl – aus `cc` der Anfrage, sonst aus
+  `/api/contacts/settings` –, ohne → `400`. Danach muss `^\+[1-9]\d{7,14}$` passen. Apps schlagen die Landesvorwahl aus
+  der Region des Geräts vor (einmal `PUT /api/contacts/settings`).
+- **E-Mail:** höchstens 254 Zeichen, genau ein `@`, keine Leerzeichen; die Domain wird klein geschrieben, der Teil vor
+  `@` bleibt, wie eingegeben.
+- **Grenzen:** je Kontakt höchstens 10 Nummern und 10 Mails, je Konto 2000 manuelle Kontakte → `400`.
+- **Doppelt:** gibt es den Wert schon bei einem anderen meiner Kontakte → `409 {error, contact_id}` (nie der Wert);
+  die App kann zu diesem Kontakt springen. Bei anderen Konten darf derselbe Wert stehen.
+
+**Suche** `q`: Teilwort in `name`, „Name für mich“, Name der Person, Unterzeile, Mail; ab 3 Ziffern auch die Ziffern
+der Nummern (`0170 123` findet `+49170123…`). Der Suchbegriff steht nicht im Zugriffs-Log.
+
+**Löschen** entfernt den Kontakt samt Nummern/Mails; seine Saga-Adresse verschwindet auch aus den Chat-Vorschlägen
+(`/api/chat/contacts`, wie „Aus Kontakten entfernen“, mit Live `chat.contacts {ref, hidden: true}` für ältere Apps).
+Ein neuer gemeinsamer Chat legt wieder einen **leeren** Kontakt an. Umgekehrt löscht das alte `DELETE
+/api/chat/contacts/{ref}` den Adressbuch-Eintrag nur, wenn er leer ist.
+
+**Entstehen und Vergehen:** Jeder Chat-Kontakt (`contacts1`) hat genau einen Adressbuch-Eintrag (`origin: "chat"`,
+beim Update auf 2.6 einmalig übernommen, Migration 38; ausgeblendete nicht). Wird das Konto der Person gelöscht, die
+Person auf ihrem Server gelöscht (`person.gone`) oder der Server entfernt, geht ein leerer Kontakt mit; einer mit
+eigenen Daten bleibt als `manual` ohne die Saga-Adresse. Mit dem eigenen Konto geht das ganze Adressbuch.
+
+**Live:** `contacts.changed {id}` bzw. `{id, deleted: true}` nur an die eigenen Verbindungen (ohne Inhalt) – Kontakt
+bzw. Liste neu laden. Kommt auch, wenn ein Chat einen Kontakt anlegt oder Person/Server wegfallen.
+
+**Persönliches Backup:** `daten.json` → `contacts` `[{own_name, origin, form, salutation, created, updated, addrs:
+[{kind, value, type, fixed}]}]` (Kategorie Einstellungen; feste Adressen als Handle, nie Anmeldename), Landesvorwahl in
+`settings["contacts.cc"]`. Einspielen mit `{contacts: true}`: feste Adressen nur, wo ein gemeinsamer Chat-Kontakt besteht
+(dann leere Felder füllen, fehlende Nummern/Mails ergänzen); sonst wird ein Kontakt mit eigenen Daten `manual` ohne
+Saga-Adresse, ein leerer verworfen; schon vorhandene Werte werden übersprungen; zweimal einspielen legt nichts doppelt
+an. Zusammenfassung: `address_book` = angelegte bzw. ergänzte Kontakte.
+
+**Nicht in 2027a:** Status-Ausnahmen mit `{type: "contact"}`/`{type: "e164"}` bleiben `400`; Export ins System-Adressbuch
+(2027b), „Über Saga anrufen“ (3.0), Eingabe von `name@domain` als Fed-Adresse.
+
+**Für Apps:** nur mit `contacts2` anbieten; Liste, Detail (feste Saga-Zeile mit „Nachricht“, `tel:`/`mailto:` für die
+anderen), Bearbeiten (Name für mich, Anrede —/du/Sie, Grußform, Nummern/Mails mit Typ), Neuer Kontakt, Löschen mit
+Bestätigung. Bei `409` mit `contact` den neuen Stand übernehmen und die Eingabe erneut anbieten. Unbekannte Felder
+ignorieren.

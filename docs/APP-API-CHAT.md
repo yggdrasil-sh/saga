@@ -190,15 +190,20 @@ Bestehende Chats wurden beim Update einmalig übernommen (Migration 28). Neue Na
 | `ready` | Chat möglich (lokal: hat Chats eingerichtet; fremd: Server verbunden, Chats erlaubt) |
 | `gone` | nicht anschreibbar: lokales Konto deaktiviert bzw. Verbindung zum Server getrennt – ausgegraut zeigen |
 | `last_at` | Unix-Sekunden, Sortierung „zuletzt zuerst“ |
+| `contact_id` | 2.6 (`contacts2`): Eintrag im Adressbuch (`GET /api/contacts/{id}`, `docs/APP-API.md` „Kontakte“) oder `null` |
 
-`q` filtert als Teilwort in `name`/`sub`, **jede Länge** (die Liste ist ohnehin die eigene).
+`q` filtert als Teilwort in `name`/`sub`, **jede Länge** (die Liste ist ohnehin die eigene). `name` ist hier und in
+`people` immer der Name der Person – der eigene „Name für mich“ aus dem Adressbuch erscheint in Chats nicht.
 
 **Aus Kontakten entfernen:** `DELETE /api/chat/contacts/{ref}` (URL-kodiert; `~x@host` darf `@` enthalten) → `200
 {"ok": true}`; unbekannt oder schon entfernt → `404`. Der Kontakt ist ausgeblendet, bis ein neuer gemeinsamer Chat
 entsteht. Live-Ereignis an meine anderen Geräte: `chat.contacts {ref, hidden: true}` – Liste neu laden.
+Ab 2.6 (`contacts2`): ein **leerer** Adressbuch-Eintrag (keine eigenen Felder, keine Nummern/Mails) geht mit; hat er
+eigene Daten, bleibt er im Adressbuch (nur raus aus den Chat-Vorschlägen). Umgekehrt blendet `DELETE /api/contacts/{id}`
+die Saga-Adresse hier aus (mit demselben `chat.contacts`).
 
 **Personensuche:** `GET /api/chat/people?q=` stellt passende, anschreibbare Kontakte **vorne** in `users` (lokal) bzw.
-`remote` (fremd) – mit `contact: true`, auch bei 1–2 Zeichen als Teilwort und auch außerhalb von „nur gemeinsame Gruppen“
+`remote` (fremd) – mit `contact: true` (ab 2.6 dazu `contact_id`), auch bei 1–2 Zeichen als Teilwort und auch außerhalb von „nur gemeinsame Gruppen“
 (man hat schon miteinander geschrieben; ein Direkt-Chat bzw. Hinzufügen ist dann erlaubt). Keine Dubletten mit den
 übrigen Treffern. Ein Kontakt gilt nur in **eine** Richtung (wer mich ausgeblendet hat, umgeht für mich nichts).
 
