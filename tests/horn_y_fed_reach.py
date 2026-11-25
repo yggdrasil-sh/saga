@@ -72,7 +72,7 @@ def setup(nodes):
     X.calls._dev_name = lambda c, dev: "Testgeraet"
     X.FC.my_handle = lambda c, uid: "anna@a.example"
     X.FC.label_of = lambda c, u: {"name": "Bert"}
-    horn.horn_on = lambda: True
+    horn.horn_on = lambda cfg=None: True             # 2263-4: horn_on(cfg) - calls.horn_on reicht die Einstellungen durch
     horn.nodes = lambda c: [{"id": nid, "builtin": 1, "name": nid, "share": 1} for nid, _ in nodes]
     horn.ready = lambda n, now=None: True
     SENT.clear()
