@@ -326,6 +326,35 @@ async function bilder(browser) {
     await closeAll(a);
     await papi(a, 'PUT', '/api/account/status/prefs', { show_call: true, in_call: 'knock', busy: 'show', repeat_s: 180, mention_break: false });
 
+    // --- 12. XSS (Pruefer): Status-Text anderer nur als Text - Kopf (Text + title), Liste (title, sr-only) ---------------------
+    const XS = '<img src=x onerror="window.__usx=1">&amp;<b>x</b>';
+    await openChat(b, U1);
+    await papi(a, 'PUT', '/api/account/status', { state: 'dnd', dur: 3600, source: 'manual', text: XS });
+    const xs = await until(async () => { const c = await chip(b); return c.indexOf('<img') >= 0 ? c : null; }, 6000, 100);
+    const xr = await b.evaluate(x => { const c = document.querySelector('#ct-sub .us-chip'), it = document.querySelector('#ct-list .ct-item-b');
+      return { el: !!document.querySelector('#ct-sub .us-chip img, #ct-sub .us-chip b, #ct-list img[src=x]'), t: c && c.title.indexOf(x) >= 0,
+               fired: !!window.__usx, lt: it ? it.title : '' }; }, XS);
+    ok('XSS: Status-Text im Kopf woertlich, kein Element, kein Skript', !!xs && xs.indexOf(XS) >= 0 && !xr.el && xr.t && !xr.fired, { xs, xr });
+    ok('XSS: Liste zeigt keinen fremden Text im title', xr.lt.indexOf('<img') < 0, xr.lt);
+    await papi(a, 'PUT', '/api/account/status', { state: 'available', source: 'manual' });
+
+    // --- 13. Aelterer Server ohne userstatus1 (Pruefer, nachgestellt): nichts sichtbar, keine Aufrufe, keine Fehler ----------
+    const o = await b.context().newPage(), oErr = [], oReq = [];
+    o.on('pageerror', e => oErr.push(e.message));
+    o.on('request', r => { if (r.url().indexOf('/api/account/status') >= 0) oReq.push(r.method() + ' ' + r.url()); });
+    const strip = async (r, fn) => { const rs = await r.fetch(); let j = {}; try { j = await rs.json(); } catch (e) { return r.fulfill({ response: rs }); } fn(j); return r.fulfill({ response: rs, json: j }); };
+    await o.route('**/api/version', r => strip(r, j => { j.features = (j.features || []).filter(f => f !== 'userstatus1'); }));
+    await o.route('**/api/chat/me', r => strip(r, j => { j.features = (j.features || []).filter(f => f !== 'userstatus1'); }));
+    await o.route('**/api/chat/presence', r => strip(r, j => { delete j.status; }));
+    await o.route('**/api/events**', r => r.abort());                 // alter Server schickt kein chat.status
+    await papi(a, 'PUT', '/api/account/status', { state: 'dnd', dur: 3600, source: 'manual', text: 'Alt' });
+    await o.goto(BASE + '/chats#u' + encodeURIComponent(U1)); await o.waitForSelector('#ct-chat:not([hidden])', { timeout: 30000 }); await o.waitForTimeout(2500);
+    await o.click('#hk-user'); await o.waitForSelector('.menu:not([hidden]) .menu-item', { timeout: 5000 });
+    const oo = await o.evaluate(() => ({ mi: !!document.querySelector('.menu .us-mi'), chip: !!document.querySelector('.us-chip, .us-badge, #hk-user .us-me') }));
+    ok('Alter Server: kein Status-Eintrag, keine Anzeige, kein /api/account/status, keine Fehler', !oo.mi && !oo.chip && !oReq.length && !oErr.length, { oo, oReq, oErr });
+    await o.close();
+    await papi(a, 'PUT', '/api/account/status', { state: 'available', source: 'manual' });
+
     // --- 11. Schmale Ansicht: Menue erreichbar ------------------------------------------------------------------------------
     const m = await session(browser, U1, E.SAGA_PASS, { viewport: { width: 390, height: 844 }, scheme: 'light' });
     await chatKeys(m, U1); await m.goto(BASE + '/chats'); await m.waitForTimeout(1500);
