@@ -195,6 +195,16 @@ def run():
         bad = c.execute("SELECT COUNT(*) FROM contact_addr WHERE uid=?", (E.uid,)).fetchone()[0]
     ok(f"Gebastelt: keine feste Adresse ohne Chat, ungueltige Werte weg, Laenge gekuerzt ({n}, {own})", fx == 0 and bad == 0
        and own == ["Boese", "X" * 120])
+    # --- Mail = genau ein Empfaenger (Bugs-DB 2399): Trenner, Steuer- (auch C1) und Formatzeichen werden uebergangen -----
+    F = U(mk(), "Fritz Trenner", setup=False)
+    names.append(F.uid)
+    mails = ["a@x.example,b@y.example", "a@x.example;b@y.example", "a?cc=b@y.example", "a\x9b@x.example",
+             "a\u200b@x.example", "a\u00ad@x.example", "gut@x.example"]
+    with connect() as c, c:
+        contacts.book_restore(c, F.uid, [{"own_name": "Trenner", "addrs": [{"kind": "email", "value": v} for v in mails]}])
+    with connect() as c:
+        got = [r[0] for r in c.execute("SELECT value FROM contact_addr WHERE uid=? AND kind='email'", (F.uid,))]
+    ok(f"Backup: Mails mit Trenner/Steuer-/Formatzeichen uebergangen, gueltige bleibt ({len(got)})", got == ["gut@x.example"])
     with connect() as c:
         raw_all = json.dumps([list(r) for r in c.execute("SELECT kind, value, type FROM contact_addr WHERE uid LIKE 'k2b-%'")])
     ok("Kein Anmeldename im Adressbuch", not [u for u in names if u in raw_all])
