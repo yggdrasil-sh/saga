@@ -1332,7 +1332,9 @@ Instanz teilen“ bei der Föderation – der regelt nur, ob Personen anderer Se
   mittippen. Für Nummern mit einer Null vorn (z. B. `0170 1234567`) braucht Saga die **Landesvorwahl** (49 für Deutschland, 43 für
   Österreich, 41 für die Schweiz). Du stellst sie einmal in den Kontakten ein, sie gilt für dein Konto auf allen Geräten;
   Web und Apps schlagen sie aus der Region deines Geräts vor. Ohne Landesvorwahl – und bei Nummern ohne Null vorn,
-  wie in Spanien oder Nordamerika – gib die Nummer einfach mit `+` ein.
+  wie in Spanien oder Nordamerika – gib die Nummer einfach mit `+` ein. Ausnahmen: In **Italien** (auch San Marino,
+  Vatikan) und der Elfenbeinküste gehört die Null zur Nummer und bleibt (`06 1234 5678` → `+39 06 1234 5678`); in
+  **Ungarn** beginnen nationale Nummern mit `06`, das wegfällt (`06 30 123 4567` → `+36 30 123 4567`).
 - **Name für mich:** ein eigener Name für den Kontakt, z. B. „Oma“ oder „Benni“. Er steht **nur in deinem
   Adressbuch** – in Chats siehst du (wie alle anderen) weiter den Namen, den die Person selbst gewählt hat.
 - **Anrede und Grußform:** „du“ oder „Sie“ und eine Grußform wie „Liebe Anna“ – als Merkhilfe für dich. Saga trägt das

@@ -1159,6 +1159,9 @@ de otros servidores os encuentran por el nombre.
   país** (49 para Alemania, 43 para Austria, 41 para Suiza). Lo ajustas una vez en Contactos; vale para tu cuenta en
   todos los dispositivos, y la web y las apps lo proponen según la región de tu dispositivo. Sin prefijo del país, y
   siempre en países donde los números no empiezan por cero (como España o Norteamérica), escribe el número con `+`.
+  Excepciones: en **Italia** (también San Marino y el Vaticano) y Costa de Marfil el cero forma parte del número y se
+  mantiene (`06 1234 5678` → `+39 06 1234 5678`); en **Hungría** los números nacionales empiezan por `06`, que se
+  quita (`06 30 123 4567` → `+36 30 123 4567`).
 - **Nombre para mí:** un nombre propio para el contacto, p. ej. «Abuela» o «Benni». Aparece **solo en tu libreta** – en
   los chats tú (como todos) sigues viendo el nombre que eligió la persona.
 - **Tratamiento y saludo:** «tú» o «usted» y un saludo como «Querida Anna», como recordatorio para ti. Saga nunca lo

@@ -1111,7 +1111,9 @@ this instance” in federation – that only controls whether people on other se
   numbers starting with a zero (e.g. `0170 1234567`) Saga needs the **country code** (49 for Germany, 43 for Austria, 41 for
   Switzerland). You set it once in Contacts; it applies to your account on all devices, and web and apps suggest it from
   your device's region. Without a country code – and for numbers without a leading zero, as in Spain or North
-  America – simply enter the number with `+`.
+  America – simply enter the number with `+`. Exceptions: in **Italy** (also San Marino, Vatican City) and Côte
+  d'Ivoire the zero is part of the number and stays (`06 1234 5678` → `+39 06 1234 5678`); in **Hungary** national
+  numbers start with `06`, which is dropped (`06 30 123 4567` → `+36 30 123 4567`).
 - **Name for me:** your own name for the contact, e.g. “Grandma” or “Benny”. It appears **only in your address book** –
   in chats you (like everyone else) keep seeing the name the person chose.
 - **Form of address and greeting:** “informal” or “formal” and a greeting such as “Dear Anna” – a reminder for you.
