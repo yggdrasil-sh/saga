@@ -5265,7 +5265,6 @@
  "🗃️ Datenbank einbetten:": "🗃️ Встроить базу данных:",
  "Anruf von {name} – stumm (Nicht stören)": "Звонок от {name} – без звука («Не беспокоить»)",
  "Anruf von {name} annehmen": "Ответить на звонок от {name}",
- "Du telefonierst gerade auf einem anderen Gerät.": "Вы сейчас разговариваете на другом устройстве.",
  "{name} klopft an": "{name} звонит на второй линии",
  "Videoanruf – dein Gespräch läuft weiter": "Видеозвонок – текущий разговор продолжается",
  "Aktuelles Gespräch beenden und den Anruf von {name} annehmen": "Завершить текущий разговор и ответить на звонок от {name}",
@@ -5275,5 +5274,7 @@
  "Anruf – dein Gespräch läuft weiter": "Звонок – текущий разговор продолжается",
  "Anruf von {name} – stumm (Ruhezeit)": "Звонок от {name} – без звука (тихие часы)",
  "Klopft an …": "Вторая линия …",
- "Beenden und annehmen": "Завершить и ответить"
+ "Beenden und annehmen": "Завершить и ответить",
+ "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "Вы сейчас разговариваете в другой вкладке или на другом устройстве.",
+ "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "Не удалось надёжно завершить текущий разговор – входящий звонок не принят. Попробуйте ещё раз."
 }

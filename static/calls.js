@@ -270,11 +270,19 @@
     var t0 = ctx.currentTime + 0.05;
     beep(ctx, 880, t0, 0.14, 0.05); beep(ctx, 880, t0 + 0.32, 0.14, 0.05);
   }
-  function holdBar(d, mode) {
+  var HOLDQ = {};                                       // call_id -> stille Leiste wartet auf busyElsewhere
+  function holdBar(d, mode, elsewhere) {
     // schon angezeigt bzw. vorbei (z. B. #call-<id> und call.quiet gleichzeitig): sonst zweite Leiste, alter Takt liefe weiter
     if (!d || !d.call_id || RINGS[d.call_id] || GONE[d.call_id]) return;
     var from = d.from || {}, video = d.media === 'video', name = from.name || from.username || '?';
     var R = C && !C.done && C.id !== d.call_id && C.ui ? C : null;     // Gespraech in diesem Tab: Leiste im Anruffenster
+    if (mode === 'quiet' && !R && elsewhere === undefined) {
+      if (HOLDQ[d.call_id]) return;
+      HOLDQ[d.call_id] = true;
+      busyElsewhere(d.call_id).then(function (b) { delete HOLDQ[d.call_id]; holdBar(d, mode, b); });
+      return;
+    }
+    if (mode === 'wait' && !R) elsewhere = true;        // Anklopfen ohne Gespraech hier: es laeuft woanders
     var box = el('div', 'cl-' + mode + (R ? '' : ' cl-hold-page'));
     var lbl = mode === 'wait' ? T('{name} klopft an', { name: name })
       : d.why === 'quiet' ? T('Anruf von {name} – stumm (Ruhezeit)', { name: name }) : T('Anruf von {name} – stumm (Nicht stören)', { name: name });
@@ -285,10 +293,11 @@
     if (mode === 'wait') {
       tx.appendChild(el('b', null, lbl));
       tx.appendChild(el('span', null, R ? (video ? T('Videoanruf – dein Gespräch läuft weiter') : T('Anruf – dein Gespräch läuft weiter'))
-        : T('Du telefonierst gerade auf einem anderen Gerät.')));
+        : T('Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.')));
     } else {
       tx.appendChild(el('b', null, name));
       tx.appendChild(el('span', null, (video ? T('Videoanruf') : T('Anruf')) + ' · ' + (d.why === 'quiet' ? T('stumm (Ruhezeit)') : T('stumm (Nicht stören)'))));
+      if (!R && elsewhere) tx.appendChild(el('span', 'cl-hold-s', T('Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.')));
     }
     box.appendChild(tx);
     var bar = el('div', 'cl-hold-b');
@@ -296,7 +305,7 @@
     else bar.appendChild(btn(icon('x'), 'cl-mini cl-hold-x', function () { unring(d.call_id); }, T('Hinweis ausblenden')));   // nur hier weg, kein Ablehnen
     if (R) bar.appendChild(btn(T('Beenden und annehmen'), 'cl-pill cl-hold-go', function () { holdTake(d, video); },
                                T('Aktuelles Gespräch beenden und den Anruf von {name} annehmen', { name: name })));
-    else if (mode === 'quiet') bar.appendChild(btn(T('Annehmen'), 'cl-pill cl-hold-go', function () { accept(d, video); },
+    else if (mode === 'quiet' && !elsewhere) bar.appendChild(btn(T('Annehmen'), 'cl-pill cl-hold-go', function () { accept(d, video); },
                                                    T('Anruf von {name} annehmen', { name: name })));
     box.appendChild(bar);
     (R ? R.ui.w : document.body).appendChild(box);
@@ -318,8 +327,27 @@
   function holdTake(d, video) {
     unring(d.call_id);
     var R = C;
-    if (R && !R.done) { hangup(R); closeWin(R); }
-    accept(d, video);
+    if (!R || R.done) { accept(d, video); return; }
+    var at = Date.now(), p = hangup(R);
+    closeWin(R);
+    p.then(function (done) {
+      if (done) { accept(d, video); return; }
+      // Ende nicht bestaetigt (Netz): nicht annehmen - sonst liefen zwei Gespraeche; der wartende Anruf klingelt wieder
+      HK.toast(T('Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.'), null, null, 8000);
+      delete GONE[d.call_id];
+      var left = (d.expires_in != null ? d.expires_in : d.ring_s || 45) - (Date.now() - at) / 1000;
+      if (left > 2) ring(Object.assign({}, d, { expires_in: left, freed: true }));
+    });
+  }
+  // 2.6 (Pruefer, Bugs-DB 2376): laeuft ein eigenes Gespraech auf einem anderen Geraet bzw. in einem anderen Tab? Dann bietet
+  // die stille Leiste kein "Annehmen" an (/answer prueft nicht auf besetzt - sonst zwei Gespraeche). -> Promise<bool>
+  function busyElsewhere(id) {
+    return api('GET', '/api/calls/active').then(function (r) {
+      return (r.calls || []).some(function (x) {
+        return x.id !== id && x.state === 'active' && !(C && C.id === x.id)
+          && (x.kind === 'group' && !x.dm ? (x.mine || []).length > 0 : x.role === 'caller' || x.role === 'callee' || (x.mine || []).length > 0);
+      });
+    }, function () { return false; });
   }
   // Gespraech in diesem Tab zu Ende (finish): Leisten aus dem Anruffenster neu zeigen - ein wartender Anruf klingelt jetzt
   // normal (bzw. klopft beim naechsten Gespraech an, falls gleich eines beginnt), eine stille Leiste bleibt still
@@ -2503,13 +2531,17 @@
     m.nodes.forEach(function (n) { try { n.disconnect(); } catch (e) { /* egal */ } });
     try { m.out.stop(); } catch (e) { /* egal */ }
   }
+  // -> Promise: true, wenn der Server das Ende bestaetigt hat (bzw. der Anruf dort schon vorbei ist), sonst false
+  // (2.6: "Beenden und annehmen" nimmt erst danach an)
   function hangup(c) {
     c = roomOf(c);
-    if (!live(c)) return;
+    if (!live(c)) return Promise.resolve(true);
     if (!c.ending) each(c, function (L) { if (L.established && peerCan(L, 'bye')) sendSignal(L, { t: 'bye', reason: 'hangup' }); });
     // 2.4: mit device - Begleitgeraet bzw. Gruppe: nur dieses Geraet verlaesst den Anruf; Hauptgeraet (1:1): Ende fuer alle
-    if (c.id && !c.ending) api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup', connected: anyConn(c), device: myDev().id }).catch(function () {});
+    var p = c.id && !c.ending ? api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup', connected: anyConn(c), device: myDev().id })
+      .then(function () { return true; }, function (e) { return !!(e && (e.status === 404 || e.status === 409)); }) : Promise.resolve(true);
     finish(c, anyConn(c) ? T('Anruf beendet · {d}', { d: durNow(c) }) : T('Anruf beendet'));
+    return p;
   }
   function anyConn(c) { return !!roomOf(c).since; }
   // 2.5 (Testrunde Web Nr. 075/089): Dauer fuer alle gleich und passend zum Chat-Eintrag - ab dem Beginn des Gespraechs
@@ -5663,7 +5695,8 @@
   }, ringing: function () { return Object.keys(RINGS).filter(function (id) { return !RINGS[id].hold; }); },
   // 2.6 (2029-5 B, Tests): Leisten fuer Anklopfen ('wait') und zurueckgehaltene Anrufe ('quiet') - ohne Klingeln
   held: function () { return Object.keys(RINGS).filter(function (id) { return RINGS[id].hold; }).map(function (id) {
-    var r = RINGS[id]; return { id: id, mode: r.hold, inCall: !r.box.classList.contains('cl-hold-page'), text: r.box.getAttribute('aria-label') }; }); },
+    var r = RINGS[id]; return { id: id, mode: r.hold, inCall: !r.box.classList.contains('cl-hold-page'), text: r.box.getAttribute('aria-label'),
+                                           go: !!r.box.querySelector('.cl-hold-go'), note: r.box.querySelector('.cl-hold-t').textContent }; }); },
   // 2.4 E3: Bildschirm - Betriebsart, eigene/fremde m-Zeilen, was gross und klein gezeigt wird
   screen: function () {
     var c = C; if (!c) return null;

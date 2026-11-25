@@ -5265,7 +5265,6 @@
  "🗃️ Datenbank einbetten:": "🗃️ Datenbank einbetten:",
  "Anruf von {name} – stumm (Nicht stören)": "Anruf von {name} – stumm (Nicht stören)",
  "Anruf von {name} annehmen": "Anruf von {name} annehmen",
- "Du telefonierst gerade auf einem anderen Gerät.": "Du telefonierst gerade auf einem anderen Gerät.",
  "{name} klopft an": "{name} klopft an",
  "Videoanruf – dein Gespräch läuft weiter": "Videoanruf – dein Gespräch läuft weiter",
  "Aktuelles Gespräch beenden und den Anruf von {name} annehmen": "Aktuelles Gespräch beenden und den Anruf von {name} annehmen",
@@ -5275,5 +5274,7 @@
  "Anruf – dein Gespräch läuft weiter": "Anruf – dein Gespräch läuft weiter",
  "Anruf von {name} – stumm (Ruhezeit)": "Anruf von {name} – stumm (Ruhezeit)",
  "Klopft an …": "Klopft an …",
- "Beenden und annehmen": "Beenden und annehmen"
+ "Beenden und annehmen": "Beenden und annehmen",
+ "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.",
+ "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen."
 }

@@ -5265,7 +5265,6 @@
  "🗃️ Datenbank einbetten:": "🗃️ Embed database:",
  "Anruf von {name} – stumm (Nicht stören)": "Call from {name} – silent (Do not disturb)",
  "Anruf von {name} annehmen": "Answer call from {name}",
- "Du telefonierst gerade auf einem anderen Gerät.": "You are on a call on another device.",
  "{name} klopft an": "{name} is calling (call waiting)",
  "Videoanruf – dein Gespräch läuft weiter": "Video call – your current call continues",
  "Aktuelles Gespräch beenden und den Anruf von {name} annehmen": "End the current call and answer the call from {name}",
@@ -5275,5 +5274,7 @@
  "Anruf – dein Gespräch läuft weiter": "Call – your current call continues",
  "Anruf von {name} – stumm (Ruhezeit)": "Call from {name} – silent (quiet hours)",
  "Klopft an …": "Call waiting …",
- "Beenden und annehmen": "End and answer"
+ "Beenden und annehmen": "End and answer",
+ "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "You are on a call in another tab or on another device.",
+ "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "The current call could not be ended reliably – the incoming call was not answered. Please try again."
 }

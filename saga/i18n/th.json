@@ -5265,7 +5265,6 @@
  "🗃️ Datenbank einbetten:": "🗃️ ฝังฐานข้อมูล:",
  "Anruf von {name} – stumm (Nicht stören)": "สายจาก {name} – ไม่มีเสียง (ห้ามรบกวน)",
  "Anruf von {name} annehmen": "รับสายจาก {name}",
- "Du telefonierst gerade auf einem anderen Gerät.": "คุณกำลังคุยสายอยู่บนอุปกรณ์อื่น",
  "{name} klopft an": "{name} กำลังเคาะสายรอ",
  "Videoanruf – dein Gespräch läuft weiter": "สายวิดีโอ – สายปัจจุบันของคุณยังดำเนินต่อ",
  "Aktuelles Gespräch beenden und den Anruf von {name} annehmen": "วางสายปัจจุบันแล้วรับสายจาก {name}",
@@ -5275,5 +5274,7 @@
  "Anruf – dein Gespräch läuft weiter": "การโทร – สายปัจจุบันของคุณยังดำเนินต่อ",
  "Anruf von {name} – stumm (Ruhezeit)": "สายจาก {name} – ไม่มีเสียง (ช่วงเงียบ)",
  "Klopft an …": "กำลังเคาะสายรอ …",
- "Beenden und annehmen": "วางสายแล้วรับสาย"
+ "Beenden und annehmen": "วางสายแล้วรับสาย",
+ "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "คุณกำลังคุยสายอยู่ในแท็บอื่นหรือบนอุปกรณ์อื่น",
+ "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "ไม่สามารถวางสายปัจจุบันได้อย่างแน่นอน – จึงยังไม่ได้รับสายเรียกเข้า โปรดลองอีกครั้ง"
 }
