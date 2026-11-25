@@ -1094,7 +1094,7 @@ addresses and your own notes on how to address them. Not to be confused with the
 this instance” in federation – that only controls whether people on other servers can find you by name.
 
 - **Where:** on the web under Settings › Workspace › **Contacts** (directly via an address with `?settings=contacts`),
-  in the app for iPhone, iPad and Mac under Settings › **Contacts**, on Android under Settings › Data & services ›
+  in the app for iPhone and iPad under Settings › **Contacts** (the Mac app shows the web interface), on Android under Settings › Data & services ›
   **Contacts**, in the Linux app under Settings › **Contacts**. The apps only show the entry once the server knows the
   address book.
 - **What appears by itself:** every person you share a chat with (direct chat or free group, also on another Saga

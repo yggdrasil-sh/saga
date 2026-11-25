@@ -1315,7 +1315,7 @@ E-Mail-Adressen und deinen eigenen Notizen zur Anrede. Nicht zu verwechseln mit 
 Instanz teilen“ bei der Föderation – der regelt nur, ob Personen anderer Server euch über den Namen finden.
 
 - **Wo:** im Web unter Einstellungen › Arbeitsbereich › **Kontakte** (direkt per Adresse mit `?settings=contacts`),
-  in der App für iPhone, iPad und Mac unter Einstellungen › **Kontakte**, unter Android unter Einstellungen › Daten &
+  in der App für iPhone und iPad unter Einstellungen › **Kontakte** (die Mac-App zeigt die Web-Oberfläche), unter Android unter Einstellungen › Daten &
   Dienste › **Kontakte**, in der Linux-App unter Einstellungen › **Kontakte**. Die Apps zeigen den Eintrag nur, wenn
   der Server das Adressbuch schon kennt.
 - **Was von selbst entsteht:** Jede Person, mit der du einen gemeinsamen Chat hast (Direkt-Chat oder freie Gruppe,

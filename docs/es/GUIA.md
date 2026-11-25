@@ -1141,7 +1141,7 @@ interruptor «Compartir la libreta de direcciones con esta instancia» de la fed
 de otros servidores os encuentran por el nombre.
 
 - **Dónde:** en la web, en Ajustes › Espacio de trabajo › **Contactos** (directamente con una dirección con
-  `?settings=contacts`); en la app para iPhone, iPad y Mac, en Ajustes › **Contactos**; en Android, en Ajustes › Datos
+  `?settings=contacts`); en la app para iPhone y iPad, en Ajustes › **Contactos** (la app de Mac muestra la interfaz web); en Android, en Ajustes › Datos
   y servicios › **Contactos**; en la app de Linux, en Ajustes › **Contactos**. Las apps solo muestran la entrada cuando
   el servidor ya conoce la libreta de direcciones.
 - **Lo que aparece solo:** cada persona con la que compartes un chat (chat directo o grupo libre, también en otro
@@ -1158,8 +1158,7 @@ de otros servidores os encuentran por el nombre.
   paréntesis. Para números sin `+` con un cero delante (p. ej. `0170 1234567` en Alemania) Saga necesita el **prefijo del
   país** (49 para Alemania, 43 para Austria, 41 para Suiza). Lo ajustas una vez en Contactos; vale para tu cuenta en
   todos los dispositivos, y la web y las apps lo proponen según la región de tu dispositivo. Sin prefijo del país, y
-  siempre en países donde los números no empiezan por cero (como España o Norteamérica), escribe el número con `+`,
-  p. ej. `+34 612 345 678`.
+  siempre en países donde los números no empiezan por cero (como España o Norteamérica), escribe el número con `+`.
 - **Nombre para mí:** un nombre propio para el contacto, p. ej. «Abuela» o «Benni». Aparece **solo en tu libreta** – en
   los chats tú (como todos) sigues viendo el nombre que eligió la persona.
 - **Tratamiento y saludo:** «tú» o «usted» y un saludo como «Querida Anna», como recordatorio para ti. Saga nunca lo

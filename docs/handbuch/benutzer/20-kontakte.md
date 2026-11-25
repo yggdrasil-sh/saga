@@ -236,7 +236,7 @@ Im Handy-Browser öffnen die Einstellungen als ganze Seite; die Kontakte sehen a
 
 **Linux**
 
-- Einstellungen → **Kontakte** (am Ende der Einstellungen). Rechts oben **Neuer Kontakt**, darunter Suche, Liste und
+- Einstellungen → **Kontakte**. Rechts oben **Neuer Kontakt**, darunter Suche, Liste und
   Landesvorwahl.
 - Im Kontakt: **Nachricht**, Knöpfe zum Anrufen bzw. Mailen und zum Kopieren; **Bearbeiten** oben rechts.
 - In „Neue Unterhaltung“ und in der Gruppeninfo: Knopf **⋯** oder Rechtsklick bei einer Person → **Kontakt bearbeiten …**.
