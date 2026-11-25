@@ -161,6 +161,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `AI_CACHE_DOCS`) und ist durch `AI_CACHE_MB` (Standard 256) gedeckelt. Für dich freigegebene Seiten werden höchstens
   bis `SCAN_MAX_SHARED` (Standard 3000, die zuletzt geänderten zuerst) durchsucht; der Admin-Bereich › KI zeigt das nur
   als Zahl. Mit 3.000 eigenen und 5.000 geteilten Seiten sinkt die Antwortzeit (p95) von etwa 1.000 ms auf etwa 170 ms.
+- **Personen anderer Server als Status-Ausnahme** (Bugs-DB 2390, 2391): Die Ausnahme-Suche unter „Erreichbarkeit“ im
+  Web bietet Treffer aus den Adressbüchern verbundener Server jetzt an (Kennung `~x@host`; vorher prüfte sie `@…@host`
+  und nur die Art `user`, also nie ein Treffer). `GET /api/account/status` liefert für solche Ausnahmen den Namen aus dem
+  Adressbuch der verbundenen Instanz, sonst aus dem eigenen Chat-Kontakt bzw. dem zwischengespeicherten Anzeigenamen,
+  immer mit Herkunft („Bert Gast (b.example)“) und nie den Anmeldenamen; ohne Treffer bleibt `name` leer (die Apps
+  zeigen dann „Person auf b.example (tag)“).
 
 - **Verpasster Anruf zeigt den Grund** (Bugs-DB 2375): Der Chat-Eintrag eines 1:1-Anrufs und die Glocke „Verpasster
   Anruf“ tragen `hold` (`dnd`, `knock`, `again`), wenn die Anruf-Weiche eingegriffen hat – nur für die angerufene Person

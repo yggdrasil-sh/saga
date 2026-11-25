@@ -246,6 +246,14 @@
   // Erreichbarkeit (2.6, Bugs-DB 2029-5): Einstellungen des eigenen Status (PUT /api/account/status/prefs) und Ausnahmen
   // =========================================================================================================
   var HANDLE = /^~[a-z2-7]{16}(@[a-z0-9.:\-]{1,260})?$/;
+  // Bugs-DB 2390: Treffer anderer Server aus GET /api/share/targets (remote) -> Kennung '~x@host' fuer die Ausnahme oder null.
+  // handle ('~x@host', Adressbuch) zuerst; target ('@~x@host' bzw. '@name@host') nur, wenn es selbst eine Kennung ist.
+  // Gruppen anderer Server (remote_group) gehen nicht. Wie UserStatusLogic.remoteRef der Android-App.
+  function remoteRef(u) {
+    if (!u || (u.type && u.type !== 'remote' && u.type !== 'user')) return null;
+    var h = String(u.handle || '').trim(), tg = String(u.target || '').trim().replace(/^@/, '');
+    return HANDLE.test(h) && h.indexOf('@') > 0 ? h : HANDLE.test(tg) && tg.indexOf('@') > 0 ? tg : null;
+  }
   function reachCard(rbox) {
     var U = HK.userStatus, last = '';
     var c = el('div', 'ps-card us-reach'); c.id = 'us-reach'; rbox.appendChild(c);
@@ -386,10 +394,14 @@
         api('GET', '/api/share/targets?q=' + encodeURIComponent(s)).catch(function () { return {}; }).then(function (d) {
           if (my !== seq) return;
           res.textContent = '';
-          (d.users || []).forEach(function (u) { opt(u.name || HK.personName(u.username), u.sub || '', { type: 'user', ref: u.username, name: u.name }); });
+          var seen = {};
+          (d.users || []).forEach(function (u) { seen[u.username] = 1; opt(u.name || HK.personName(u.username), u.sub || '', { type: 'user', ref: u.username, name: u.name }); });
           (d.groups || []).forEach(function (g) { opt(g.name, T('Gruppe'), { type: 'group', name: g.name }); });
           (d.remote || []).forEach(function (u) {
-            if (u.type === 'user' || !u.type) { var r = u.target || u.handle; if (r && HANDLE.test(r)) opt(u.label || u.name || HK.personName(r), u.host || '', { type: 'user', ref: r, name: u.label || u.name }); }
+            var r = remoteRef(u); if (!r || seen[r]) return; seen[r] = 1;
+            // label: "Name · host" (bei Gleichnamigen mit Unterscheidung) - Host dann nicht noch einmal als Unterzeile
+            var lb = u.label || u.name || HK.personName(r), h = u.host || '';
+            opt(lb, h && lb.indexOf(h) < 0 ? h : '', { type: 'user', ref: r, name: u.name || '' });
           });
           if (!res.children.length) direct.forEach(function (x) { opt(x.name, x.ref, x); });
           if (!res.children.length) { var e = el('li', 'hk-hint us-exc-none', T('Keine Treffer.')); e.setAttribute('role', 'presentation'); res.appendChild(e); }
@@ -407,5 +419,5 @@
     drawList();
   }
 
-  window.HKPush = { section: section, enable: enable, disable: disable, current: current };
+  window.HKPush = { section: section, enable: enable, disable: disable, current: current, remoteRef: remoteRef };
 })();
