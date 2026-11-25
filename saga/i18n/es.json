@@ -5356,6 +5356,7 @@
  "Diese Angabe steht schon bei einem anderen Kontakt.": "Este dato ya figura en otro contacto.",
  "Dieser Kontakt wurde gelöscht.": "Este contacto se eliminó.",
  "Kein Push-Relais festgelegt.": "No hay ningún relé push configurado.",
+ "Push-Relais ist ausgeschaltet.": "El relé push está desactivado.",
  "Push-Relais: verbunden.": "Relé push: conectado.",
  "Push-Relais: {s}": "Relé push: {s}",
  "Neuer Schlüssel beim Push-Relais hinterlegt.": "Nueva clave registrada en el relé push.",

@@ -5356,6 +5356,7 @@
  "Diese Angabe steht schon bei einem anderen Kontakt.": "Эти данные уже указаны у другого контакта.",
  "Dieser Kontakt wurde gelöscht.": "Этот контакт был удалён.",
  "Kein Push-Relais festgelegt.": "Push-ретранслятор не задан.",
+ "Push-Relais ist ausgeschaltet.": "Push-ретранслятор выключен.",
  "Push-Relais: verbunden.": "Push-ретранслятор: подключён.",
  "Push-Relais: {s}": "Push-ретранслятор: {s}",
  "Neuer Schlüssel beim Push-Relais hinterlegt.": "Новый ключ зарегистрирован у push-ретранслятора.",

@@ -259,6 +259,7 @@ def reset():
     _up()
     _hold["until"] = 0.0
     _tries.update(reg=0.0, rereg=0.0)
+    _topics_try["t"] = 0.0
 
 
 # --- Zustand schreiben, Admin-Glocke -----------------------------------------------------------------------------------
@@ -520,6 +521,17 @@ def send(token, env, topic, push_type, priority, expiration, collapse_id, rate, 
     if not sid:
         s = state().get("state")
         return "hold", f"Relais: {s or 'nicht angemeldet'}"
+    if not isinstance(state().get("topics"), list):
+        # Bugs-DB 2413-3: Topics noch unbekannt (usable_for laesst dann jedes Topic zu) - erst /v1/info holen (hoechstens
+        # einmal je REG_GAP); bleibt die Liste unbekannt, wartet der Auftrag, statt mit 400 "fremdes Topic" fails zu zaehlen
+        if time.time() - _topics_try["t"] >= REG_GAP:
+            _topics_try["t"] = time.time()
+            refresh()
+        topics = state().get("topics")
+        if not isinstance(topics, list):
+            return "hold", "Relais: Apps unbekannt"
+        if topic not in topics:
+            return "fail", "Relais: App nicht freigegeben"
     body = {"token": token, "env": env, "topic": topic, "push_type": push_type, "priority": int(priority),
             "expiration": int(expiration), "rate": rate, "aps": aps, "saga": saga}
     if collapse_id:
@@ -563,6 +575,7 @@ def send(token, env, topic, push_type, priority, expiration, collapse_id, rate, 
 
 
 _last_retry = {"s": 0}
+_topics_try = {"t": 0.0}
 
 
 def take_retry():

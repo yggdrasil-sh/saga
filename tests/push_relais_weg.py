@@ -27,7 +27,7 @@ def ok(n, c):
     res.append(bool(c)); print(("OK  " if c else "FAIL"), n, flush=True)
 
 
-MODE = {"push": "ok", "me": "ok", "regs": 0, "pushes": 0, "429": {}}
+MODE = {"push": "ok", "me": "ok", "regs": 0, "pushes": 0, "429": {}, "notopics": False}
 LOG = []
 WEB = []
 LOCK = threading.Lock()
@@ -59,8 +59,11 @@ class Dumb(http.server.BaseHTTPRequestHandler):
         with LOCK:
             LOG.append(("GET", self.path, self.headers.get("signature-input")))
         if self.path == "/v1/info":
-            return self._out(200, {"v": [1], "push_types": ["alert", "background", "voip"], "topics": [B1], "registration": "verify",
-                                   "max_payload": 4096, "max_payload_voip": 5120})
+            d = {"v": [1], "push_types": ["alert", "background", "voip"], "topics": [B1], "registration": "verify",
+                 "max_payload": 4096, "max_payload_voip": 5120}
+            if MODE["notopics"]:
+                d.pop("topics")
+            return self._out(200, d)
         if self.path == "/v1/servers/me":
             m = MODE["me"]
             if m == "blocked":
@@ -78,7 +81,10 @@ class Dumb(http.server.BaseHTTPRequestHandler):
             return self._out(401, {"error": "auth", "reason": "signature"})
         if self.path == "/v1/servers":
             MODE["regs"] += 1
-            return self._out(201, {"server_id": SID, "state": "active", "stage": "neu", "topics": [B1], "limits": {}})
+            d = {"server_id": SID, "state": "active", "stage": "neu", "topics": [B1], "limits": {}}
+            if MODE["notopics"]:
+                d.pop("topics")
+            return self._out(201, d)
         if self.path != "/v1/push":
             return self._out(404, {"error": "bad"})
         MODE["pushes"] += 1
@@ -380,6 +386,57 @@ def run(srv):
     MODE["me"] = "ok"
     with connect() as c, c:
         c.execute("DELETE FROM push_queue WHERE uid='rw-a'")
+
+    # --- 2413-3: Topics (Apps) des Relais noch unbekannt -> warten statt fails zaehlen -------------------------------------
+    def drop_topics():
+        with connect() as c, c:
+            row = c.execute("SELECT v FROM setting WHERE k=?", (push_relay.STATE_K,)).fetchone()
+            d = json.loads(row[0]) if row else {}
+            d.pop("topics", None)
+            c.execute("UPDATE setting SET v=? WHERE k=?", (json.dumps(d), push_relay.STATE_K))
+    MODE["push"], MODE["notopics"] = "ok", True
+    push_relay.reset()
+    drop_topics()
+    with connect() as c, c:
+        c.execute("DELETE FROM push_queue WHERE uid='rw-a'")
+    n_info = sum(1 for x in LOG if x[:2] == ("GET", "/v1/info"))
+    p0 = MODE["pushes"]
+    digest(1); due()
+    push.run_once()
+    r = [x for x in q_rows() if x[1] == "apns"]
+    n_info2 = sum(1 for x in LOG if x[:2] == ("GET", "/v1/info"))
+    ok(f"2413-3: Topics unbekannt -> /v1/info geholt, Auftrag hold, kein POST /v1/push, fails 0 ({n_info2 - n_info}, {r}, "
+       f"{MODE['pushes'] - p0}, {sub_state()})",
+       n_info2 - n_info == 1 and len(r) == 1 and r[0][3] == 0 and MODE["pushes"] == p0 and all(s[1] == 0 for s in sub_state()))
+    due()
+    push.run_once()
+    ok("2413-3: zweiter Versuch binnen REG_GAP fragt /v1/info nicht erneut, bleibt hold, fails 0",
+       sum(1 for x in LOG if x[:2] == ("GET", "/v1/info")) == n_info2 and MODE["pushes"] == p0
+       and len([x for x in q_rows() if x[1] == "apns"]) == 1 and all(s[1] == 0 for s in sub_state()))
+    MODE["notopics"] = False
+    push_relay.reset()
+    due()
+    push.run_once()
+    ok(f"2413-3: Topics wieder bekannt -> zugestellt ({push_relay.state().get('topics')}, {q_rows()})",
+       push_relay.state().get("topics") == [B1] and MODE["pushes"] == p0 + 1 and not [x for x in q_rows() if x[1] == "apns"])
+
+    # --- 2413-2: Admin "Jetzt pruefen"/"Schluessel erneuern" bei ausgeschaltetem Relais sprechen es nicht an --------------
+    import admin
+    flashes = []
+    of, og = admin._flash, admin._go
+    admin._flash, admin._go = (lambda req, msg, kind=None: flashes.append(msg)), (lambda u: u)
+    pv = auth.settings(fresh=True).get("push") or {}
+    try:
+        auth.save_setting("push", dict(pv, relay=False))
+        n_log = len(LOG)
+        import asyncio
+        for act in ("relay_check", "relay_rotate"):
+            asyncio.run(admin._push_relay_action(None, {"username": "rw-admin"}, act))
+        ok(f"2413-2: Relais aus -> 'Jetzt pruefen'/'Schluessel erneuern' ohne Anfrage ans Relais ({flashes}, {LOG[n_log:]})",
+           len(LOG) == n_log and flashes == ["Push-Relais ist ausgeschaltet."] * 2)
+    finally:
+        admin._flash, admin._go = of, og
+        auth.save_setting("push", pv)
 
     # --- Relais aus (Port zu) ---------------------------------------------------------------------------------------------
     srv.shutdown(); srv.server_close()

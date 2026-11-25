@@ -1661,6 +1661,11 @@ async def _push_relay_action(request, me, act):
     if not push_relay.url():
         _flash(request, t("Kein Push-Relais festgelegt."), "err")
         return _go("/settings/push#relais")
+    if act != "relay_unregister" and not push_relay.enabled():
+        # Bugs-DB 2413-2: die Knoepfe sind bei ausgeschaltetem Relais verborgen - ein direkter POST spricht es auch nicht an
+        # (Abmelden bleibt erlaubt: wer das Relais abschaltet, darf sich dort noch abmelden)
+        _flash(request, t("Push-Relais ist ausgeschaltet."), "err")
+        return _go("/settings/push#relais")
     if act == "relay_check":
         push_relay.reset()
         await run_in_threadpool(push_relay.refresh)

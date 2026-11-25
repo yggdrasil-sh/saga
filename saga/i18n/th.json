@@ -5356,6 +5356,7 @@
  "Diese Angabe steht schon bei einem anderen Kontakt.": "ข้อมูลนี้มีอยู่ในรายชื่อติดต่ออื่นแล้ว",
  "Dieser Kontakt wurde gelöscht.": "รายชื่อติดต่อนี้ถูกลบแล้ว",
  "Kein Push-Relais festgelegt.": "ยังไม่ได้กำหนดรีเลย์พุช",
+ "Push-Relais ist ausgeschaltet.": "รีเลย์พุชถูกปิดอยู่",
  "Push-Relais: verbunden.": "รีเลย์พุช: เชื่อมต่อแล้ว",
  "Push-Relais: {s}": "รีเลย์พุช: {s}",
  "Neuer Schlüssel beim Push-Relais hinterlegt.": "ลงทะเบียนกุญแจใหม่กับรีเลย์พุชแล้ว",

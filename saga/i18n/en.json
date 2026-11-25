@@ -5356,6 +5356,7 @@
  "Diese Angabe steht schon bei einem anderen Kontakt.": "This entry already belongs to another contact.",
  "Dieser Kontakt wurde gelöscht.": "This contact was deleted.",
  "Kein Push-Relais festgelegt.": "No push relay configured.",
+ "Push-Relais ist ausgeschaltet.": "The push relay is turned off.",
  "Push-Relais: verbunden.": "Push relay: connected.",
  "Push-Relais: {s}": "Push relay: {s}",
  "Neuer Schlüssel beim Push-Relais hinterlegt.": "New key registered with the push relay.",
