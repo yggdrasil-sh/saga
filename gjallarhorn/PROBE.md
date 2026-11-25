@@ -165,7 +165,7 @@ Netz-Bezeichnung `e2e-lokal` (lokale Tests) zählen nur mit `--lokal`.
 | `HORN_PROXY_PROTOCOL` | `0` | PROXY v2: `0` aus, `1` Pflicht, `auto` lesen, wenn vorhanden |
 | `HORN_PUBLIC_IP` | aus `HORN_NAME` | öffentliche Adresse(n) für ICE-TCP/UDP-Kandidaten, kommagetrennt (je eine IPv4/IPv6) |
 | `HORN_RELAY_IP` | `127.0.0.1` | Adresse des TURN-Relays; erlaubt ist nur der Knoten selbst |
-| `HORN_MAX_LEGS` | `48` | höchstens so viele Verbindungen gleichzeitig |
+| `HORN_MAX_LEGS` | `200` (bis 2.5: `48`) | höchstens so viele Verbindungen gleichzeitig |
 | `HORN_COALESCE` | `1` | `0` = TCP-Schreibvorgänge nicht bündeln (zum Vergleichen) |
 | `HORN_DEBUG` | `0` | `1` = mehr Protokoll (Kandidaten, pion-Warnungen) |
 

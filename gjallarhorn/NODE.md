@@ -1493,8 +1493,18 @@ Umgebung: `HORN_SAGA`, `HORN_PAIR`, `HORN_NAME`, `HORN_LINK_MBIT` (Upload für d
   Admin-Bereich bzw. das Update (P6, `server.setDrain`).
 - **Bildschirm:** Eine Spur gilt als Bildschirm, wenn ihre Stream-ID mit `screen` beginnt **oder** ihre mid im
   `screen_mid` der Bein-Anfrage steht (Browser können die Stream-ID nicht wählen).
-- **Grenze je Adresse:** höchstens `HORN_MAX_PER_IP` Beine (Standard 12) je Quell-Adresse, insgesamt `HORN_MAX_LEGS`
-  (Standard 48). Hinter einem gemeinsamen NAT (Büro, Schule) mit vielen Geräten höher setzen.
+- **Grenze je Adresse:** höchstens `HORN_MAX_PER_IP` Beine je Quell-Adresse, insgesamt `HORN_MAX_LEGS`. Hinter einem
+  gemeinsamen NAT (Büro, Schule) mit vielen Geräten höher setzen.
+
+  | Variable | Standard ab 2.6 (bis 2.5) | Bedeutung |
+  |---|---|---|
+  | `HORN_MAX_LEGS` | `200` (`48`) | Beine am Knoten über alle Anrufe; „voll“ in der Lastmeldung ab 90 % (180). Auf TCP/Tunnel zwei Beine je Gerät (Ton + Bild, auch im Tonanruf): 50 Geräte über TCP = 100 Beine |
+  | `HORN_MAX_PER_IP` | `40` (`12`) | Beine je Client-Adresse = 20 Geräte über TCP/Tunnel hinter einer Adresse (NAT, Proxy ohne `TRUSTED_PROXIES`); WebSockets des Tunnels je Adresse 4 ×, gesamt 2 × `HORN_MAX_LEGS` + 16 |
+
+  Vorläufige Werte (Bugs-DB 2416, 2263-3), endgültig nach der Messreihe 2263-9 (RAM, CPU). Speicher: Jedes Bein legt
+  seine Warteschlange fest an (4 Klassen × 4096 Einträge, 256 KiB); im Weiterleiter gemessen rund 290 KiB je Bein,
+  200 Beine rund 57 MiB (`TestKnoten200Beine`), dazu die PeerConnection bzw. der Tunnel je Bein. Der Takt der
+  Steuerung bleibt bei 2 × 50 Geräten bei rund 2 ms.
 
 
 ## Kaskade „Bifröst“ (P9) und Kontingente (P10)

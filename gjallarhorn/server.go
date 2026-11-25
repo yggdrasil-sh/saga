@@ -45,7 +45,7 @@ type config struct {
 	ICEIPs    []string // nur diese lokalen Adressen als Kandidaten (leer = alle)
 	RelayIP   net.IP
 	MaxLegs   int
-	MaxPerIP  int // Beine je Quell-Adresse (HORN_MAX_PER_IP, Standard 12)
+	MaxPerIP  int // Beine je Quell-Adresse (HORN_MAX_PER_IP, Standard defMaxPerIP)
 	Bench     bool
 	Mode      string // "probe" (Spiegel) oder "node" (Weiterleiter)
 	Dev       bool   // HORN_DEV=1: Entwicklungs-Token und Testseite (nur Tests!)
@@ -112,10 +112,13 @@ func loadConfig(bench bool) (*config, error) {
 	if c.RelayIP == nil {
 		return nil, errors.New("HORN_RELAY_IP ungueltig")
 	}
-	c.MaxLegs, _ = strconv.Atoi(env("HORN_MAX_LEGS", "48"))
-	c.MaxPerIP, _ = strconv.Atoi(env("HORN_MAX_PER_IP", "12"))
+	c.MaxLegs, _ = strconv.Atoi(env("HORN_MAX_LEGS", strconv.Itoa(defMaxLegs)))
+	if c.MaxLegs < 1 { // ungueltig: sonst nimmt der Knoten gar kein Bein an (len(legs) >= 0)
+		c.MaxLegs = defMaxLegs
+	}
+	c.MaxPerIP, _ = strconv.Atoi(env("HORN_MAX_PER_IP", strconv.Itoa(defMaxPerIP)))
 	if c.MaxPerIP < 1 {
-		c.MaxPerIP = 12
+		c.MaxPerIP = defMaxPerIP
 	}
 	// P7 + 2.5 (horn-admin): gekoppelte und eingebaute Knoten (Steuerkanal zu Saga) warten mit ACME, bis Saga im welcome
 	// DNS-01 (Cloudflare-Token in Saga) oder TLS-ALPN-01 festlegt - der eingebaute hinter einer TLS-Durchreiche auf einem
@@ -873,10 +876,21 @@ func (s *server) onICEConn(ufrag string, c *netx.CoalesceConn) {
 	}
 }
 
-// maxPerIP: Grenze je Quell-Adresse (0 in Tests, die Config direkt bauen -> 12)
+// Standards der Knoten-Grenzen (2.6, Bugs-DB 2416/2263-3; vorlaeufig, endgueltig nach der Messreihe 2263-9). Auf
+// TCP/Tunnel hat ein Geraet zwei Beine (Ton + Bild, auch im Tonanruf): 200 Beine reichen fuer einen Tonanruf mit 50
+// Geraeten ueber TCP (100 Beine) mit Reserve fuer einen zweiten Anruf und Wechsel (make-before-break); 40 je Adresse
+// fuer 20 Geraete hinter einem gemeinsamen NAT bzw. einem Proxy ohne TRUSTED_PROXIES. "voll" meldet der Knoten ab 90 %
+// (ctl.go). Bis 2.5: 48 bzw. 12 - der eingebaute Knoten trug ueber den Tunnel hoechstens 24 Geraete, hinter einer
+// Adresse 6.
+const (
+	defMaxLegs  = 200
+	defMaxPerIP = 40
+)
+
+// maxPerIP: Grenze je Quell-Adresse (0 in Tests, die Config direkt bauen -> defMaxPerIP)
 func (c *config) maxPerIP() int {
 	if c.MaxPerIP < 1 {
-		return 12
+		return defMaxPerIP
 	}
 	return c.MaxPerIP
 }
