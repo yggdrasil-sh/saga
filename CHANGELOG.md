@@ -17,6 +17,36 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu
+- **Push-Relais und Apple-Mitteilungen Ende-zu-Ende** (Bugs-DB 2262, Feature `pushrelay1`, **Migration 39**:
+  `push_sub.topic`, Bestand leer): Fremde Saga-Server können Mitteilungen an die Saga-App aus dem App Store schicken,
+  ohne eigenen APNs-Schlüssel – über das Push-Relais. Die Nutzlast ist Ende-zu-Ende zwischen Server und App verschlüsselt
+  (RFC 8291 wie Web Push, aufgefüllt auf 512/1024/2048 Byte); Relais und Apple sehen nur Gerätetoken, Steuerköpfe,
+  undurchsichtige collapse-id und „Saga – Neue Mitteilung“ (Loc-Keys), nie Namen oder Texte. Apps ab 2.6 schicken im
+  APNs-Abo `keys` und `topic` mit; dann ist auch der eigene APNs-Weg verschlüsselt (Admin-Schalter „Ende-zu-Ende
+  verschlüsseln“, Standard an). Eigener Schlüssel geht für sein Bundle vor, andere Bundles laufen über das Relais; Abos
+  ohne Schlüssel (Apps 2.5) nie über das Relais. `apns-push-type` wird je Art gleich geplant (`alert`, `background`,
+  `voip` nur für klingelnde Anrufe – nie für Aufträge der Kollegin), Anrufe haben eine eigene Ratenstufe und gehen in der
+  Warteschlange zuerst. **Relais weg:** neues Ergebnis `hold` – Abos bleiben (keine Fehler gezählt), Aufträge warten bis
+  zu ihrer Lebensdauer, je Chat kommt danach nur der neueste Stand; Schutzschalter (15 s bis 300 s) bremst Web Push & Co.
+  nicht; Admins bekommen nach 10 Minuten bzw. sofort bei Sperre eine Glocke `push.relay`. `/api/push` meldet
+  `apns_e2e`, `apns_topics`, `apns_relay`, `devices[].via/e2e/hint`; neu `GET /.well-known/saga-push-relay`
+  (Domain-Nachweis). Admin → Mitteilungen → **Push-Relais** (Zustand, Kennung, Fingerabdruck, Grenzen, „Jetzt prüfen“,
+  „Schlüssel erneuern“, „Beim Relais abmelden“). `saga/fedsig.py` mit Parameter `tag` (Relais: `saga-relay/1`, Standard
+  unverändert). Vertrag `docs/PUSH-RELAY.md`, Testvektoren `tests/vectors/push_e2e.json` (`tools/push_e2e_vectors.py`),
+  Kurzfassung in `docs/APP-API.md`. Tests `tests/push_relais_vertrag.py`, `tests/fakerelay.py` (echtes Relais),
+  `tests/push_relais_weg.py`, Ergänzungen in `tests/push.py` und `tests/anrufe_voip.py`.
+  **Betrieb:** `SAGA_PUSH_RELAY_URL` (Standard leer = aus, bis der Name des öffentlichen Relais feststeht; `off` schaltet
+  ab; nur https, http nur für Loopback), `SAGA_PUSH_RELAY_HOST` (Name für den Domain-Nachweis, sonst aus `BASE_URL`).
+  Schlüssel des Servers in `setting push_relay` (verschlüsselt mit `SECRET_KEY`; geänderter `SECRET_KEY` = neue
+  Anmeldung). Vor dem Update legt Saga wie gewohnt die Sicherung „vor-schema-39“ an.
+- **Push-Relais-Dienst** (Bugs-DB 2262-2/-3): `relay/` (Starlette, ein Prozess, SQLite), eigenes Image
+  `ghcr.io/<owner>/saga-relay` (CI wie gjallarhorn), Betrieb in `relay/README.md` und `relay/deploy/compose.yml`, Werkzeug
+  `relay/relayctl.py`. Anmeldung mit Domain-Nachweis (sonst Freischaltung von Hand), Erlaubnislisten (kein Freitext im
+  sichtbaren Teil, nur bekannte Push-Typen und Topics), Ratenstufen `neu`/`aktiv`/`eigen` mit eigenem Topf fürs Klingeln.
+  Bei `429` ist `tier` der Stufenname; APNs-429 → `scope:"apns"`, `retry_after` 60, alle APNs-Plätze belegt →
+  `scope:"apns"`, `retry_after` 5; `DELETE /v1/servers/me` eines gesperrten Servers → 403 `blocked`. Protokoll ohne
+  Token und Nutzlast; die Aufbewahrung „14 Tage“ geht nur mit journald (`MaxRetentionSec`), nicht mit dem Log-Treiber
+  `json-file`. Test `tests/relay_dienst.py`.
 - **Adressbuch – Server-Kern** (Bugs-DB 2027a, Schritte 2027a-1 bis -3, Feature `contacts2`): Kontakte mit eigenen
   Feldern „Name für mich“, Anrede (du/Sie), Grußform, Telefonnummern (E.164) und E-Mail-Adressen – für Personen aus
   gemeinsamen Chats und für selbst angelegte Kontakte. Neue Tabellen `contact`/`contact_addr` (Migration 38: je
