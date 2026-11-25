@@ -167,7 +167,6 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Adressbuch der verbundenen Instanz, sonst aus dem eigenen Chat-Kontakt bzw. dem zwischengespeicherten Anzeigenamen,
   immer mit Herkunft („Bert Gast (b.example)“) und nie den Anmeldenamen; ohne Treffer bleibt `name` leer (die Apps
   zeigen dann „Person auf b.example (tag)“).
-
 - **Verpasster Anruf zeigt den Grund** (Bugs-DB 2375): Der Chat-Eintrag eines 1:1-Anrufs und die Glocke „Verpasster
   Anruf“ tragen `hold` (`dnd`, `knock`, `again`), wenn die Anruf-Weiche eingegriffen hat – nur für die angerufene Person
   (für die anrufende Person entfernt der Server das Feld, Ruhezeiten sieht niemand sonst). Das Web zeigt „Verpasster
