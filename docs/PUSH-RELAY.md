@@ -156,6 +156,12 @@ Regeln (Relais prüft, Verstoß → `400 {"error":"bad","reason":…}`):
 | `403 {"error":"pending"\|"blocked"}` | noch nicht freigeschaltet / gesperrt | `hold`, Hinweis an die Admins |
 | `502`/`503`, Zeitüberschreitung, Verbindung weg | Relais oder Apple gestört (auch APNs 5xx, APNs 403 mit dem Schlüssel des Relais) | `hold`, Schutzschalter |
 
+Genauer (Relais 2262-2b): bei `429` ist `tier` der Name der Stufe (`neu`, `aktiv`, `eigen`); APNs selbst meldet 429 →
+`scope:"apns"`, `retry_after: 60`; alle APNs-Verbindungsplätze des Relais belegt → `scope:"apns"`, `retry_after: 5`.
+`scope` `server`, `apns` und `register` halten alle Relais-Aufträge des Servers an, `token` nur den betroffenen Auftrag.
+`DELETE /v1/servers/me` eines gesperrten Servers → `403 {"error":"blocked"}` (Abmelden geht dann nicht, Zustand bleibt
+„gesperrt“).
+
 **`hold`** (neu in `saga/push.py`): das Abo ist schuldlos. Es wird nur `last_err` gesetzt, `fails` bleibt, nichts wird
 gelöscht. Der Auftrag bleibt in der Warteschlange (`tries` wird zurückgezählt, damit neue Chat-Nachrichten weiter in den
 wartenden Auftrag gebündelt werden) und entfällt erst nach seiner Lebensdauer (`ttl` der Mitteilung bzw. 4 h), klingelnde
@@ -299,4 +305,5 @@ Jede Änderung nach dem ersten Stand bekommt einen eigenen Commit (`2262-1b …`
 | Stand | Änderung |
 |---|---|
 | 2262-1 | erster Stand |
+| 2262-1b | Abschnitt 4: `tier`/`scope`/`retry_after` bei 429 und `DELETE /v1/servers/me` bei gesperrtem Server genauer beschrieben (so baut es das Relais; keine neue Bedeutung). |
 | 2262-1b | Vektoren `anruf_voip`, `gruppenanruf_alert` und `collapse` mit echter Anrufkennung (32 Hex-Zeichen wie `chat_call.id`; die App verwirft kürzere). Format und Verfahren unverändert. |
