@@ -201,7 +201,7 @@ def run():
     ok("Italien: '06 1234 5678' -> +39 06… (0 bleibt)", nat("06 1234 5678", "39") == (201, "+390612345678"))
     ok("Italien: '+39 (0)6 1234 5678' -> 0 bleibt", nat("+39 (0)6 1234 5678", None) == (201, "+390612345678"))
     ok("San Marino: '0549 123456' -> +378 0549…", nat("0549 123456", "378") == (201, "+3780549123456"))
-    ok("Vatikan: '06 6981 2345' -> +379 06…", nat("06 6981 2345", "379") == (201, "+379069812345"))
+    ok("Vatikan: '06 6981 2345' -> +379 06…", nat("06 6981 2345", "379") == (201, "+3790669812345"))
     ok("Elfenbeinkueste: '07 07 12 34 56' -> +225 07…", nat("07 07 12 34 56", "225") == (201, "+2250707123456"))
     ok("Ungarn: '06 30 123 4567' -> +36 30… (06 faellt weg)", nat("06 30 123 4567", "36") == (201, "+36301234567"))
     s, d = nat("030 123 4567", "36")
@@ -231,7 +231,7 @@ def run():
     for bad in ("a@x.example,zweit.empf@y.example", "a@x.example;zweit.empf@y.example", "a@x.example?cc=zweit.empf@y.example",
                 "a&cc=zweit.empf@y.example", "a#zweit.empf@y.example", "<dritt.empf@y.example>", '"dritt.empf"@y.example',
                 "dritt.empf@y.example\r\nBcc: x", "dritt.empf\t@y.example", "dritt.empf\u00a0@y.example",
-                "dritt.empf\u200b@y.example", "dritt.empf\u202e@y.example", "dritt.empf@y.example\x00"):
+                "dritt.empf\u200b@y.example", "dritt.empf\u202e@y.example", "dritt.empf\x07@y.example"):   # NUL entfernt _body zentral
         s, d = M2.post(own_name="Mail", addrs=[mail(bad)])
         ok(f"Mail {bad[:24]!r} -> 400 'Ungueltige E-Mail-Adresse', ohne Wert ({s})", s == 400 and "E-Mail" in (d.get("error") or "")
            and "empf" not in json.dumps(d, ensure_ascii=False), d)
