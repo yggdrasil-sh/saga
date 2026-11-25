@@ -231,11 +231,18 @@ async function bilder(browser) {
       await hook('/_test/tick');
       note('Testuhr +3601 s, Takt');
     } else {
-      note('keine Testhaken - Ablauf mit kurzer Dauer (60 s, Ablauf-Schleife 30 s)');
-      await papi(a, 'PUT', '/api/account/status', { state: 'dnd', dur: 60, source: 'manual' });
+      note('keine Testhaken - Ablauf mit kurzer Dauer (60 s, Ablauf-Schleife 30 s)' +
+           (E.SAGA_TEST_TOKEN ? ' - SAGA_TEST_TOKEN gesetzt, aber /_test/clock antwortet nicht (Server mit SAGA_TEST_HOOKS=1? Token >= 32 Zeichen?)' : ''));
+      const t5 = Date.now(), p5 = await papi(a, 'PUT', '/api/account/status', { state: 'dnd', dur: 60, source: 'manual' });
       await sleep(61000);
+      // Bugs-DB 2394: Nach dem Ende rechnet der Server den Ablauf beim Lesen nur aus (GET/Seite: available, source system,
+      // ver unveraendert) - wirklich ab laeuft er erst mit der Ablauf-Schleife (bis 30 s spaeter). Erst dann kommen
+      // status.changed, die Sammelmeldung und chat.status an B. Darauf warten (ver steigt), sonst haengen die Fenster
+      // der folgenden Pruefungen an der Phase der Schleife.
+      const v5 = await until(async () => { const v = (await papi(a, 'GET', '/api/account/status')).d; return v && p5.d && v.ver > p5.d.ver ? v : null; }, 45000, 250);
+      note('Ablauf auf dem Server nach ' + Math.round((Date.now() - t5) / 1000) + ' s' + (v5 ? '' : ' - NICHT abgelaufen'));
     }
-    const back = await until(async () => { const v = await usView(a); return v && v.state === 'available' ? v : null; }, clk ? 8000 : 45000, 200);
+    const back = await until(async () => { const v = await usView(a); return v && v.state === 'available' ? v : null; }, 8000, 200);
     ok('A: nach Ablauf "Verfügbar" (status.changed), Punkt am Kontoknopf weg', back && back.source === 'system' && !(await a.$('#hk-user .us-me')), back);
     const dg = await until(() => a.evaluate(() => window.__toasts.filter(t => /Während „Nicht stören“/.test(t))[0] || null), 8000, 200);
     ok('A: Sammelmeldung als ruhige Meldung, nur Zahlen ("Während „Nicht stören“: 1 Nachricht")', dg && /1 Nachricht/.test(dg) && !/Anna|Ben/.test(dg), dg || await a.evaluate(() => window.__toasts));
