@@ -194,8 +194,15 @@ type Limits struct {
 	MaxPeers     int // Geraete im Raum (Standard 50)
 	LastNDesktop int // bewegte Kacheln am Desktop (Standard 9, H6)
 	LastNMobile  int // bewegte Kacheln am Handy (Standard 4)
-	Audio        int // gleichzeitige Tonstroeme je Empfaenger (Standard 3)
+	Audio        int // gleichzeitige Tonstroeme je Empfaenger (Standard und hoechstens MaxAudio)
 }
+
+// MaxAudio: Ton-Plaetze je Empfaenger, fest bis 3.x (Vertrag docs/APP-API.md "Top-3-Ton" 1). Mehr angefordert (Want.Audio,
+// Limits.Audio) wird darauf gekappt.
+const MaxAudio = 3
+
+// SpeakOn: Aktivitaet, ab der eine Quelle als sprechend gilt (Vertrag "Top-3-Ton" 2; PeerView.Score).
+const SpeakOn = speakOn
 
 func (l Limits) withDefaults() Limits {
 	if l.MaxPeers <= 0 {
@@ -207,8 +214,8 @@ func (l Limits) withDefaults() Limits {
 	if l.LastNMobile <= 0 {
 		l.LastNMobile = 4
 	}
-	if l.Audio <= 0 {
-		l.Audio = 3
+	if l.Audio <= 0 || l.Audio > MaxAudio {
+		l.Audio = MaxAudio
 	}
 	return l
 }

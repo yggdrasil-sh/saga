@@ -50,12 +50,16 @@ Platzhalter: `horn-1.example.org`.
   - Platz = feste SSRC, CSRC = Inhaber, Folgenummern lückenlos über den Wechsel; `slots[]` mit `class: "audio"`.
   - **Kaskade:** jede Seite einer Brücke wählt ihre Top-3 nach derselben Regel (unten, „Kaskade Bifröst“), der
     Empfänger daraus wie lokal.
-  - **Zähler** (geplant, Bugs-DB 2263-3): `aswitch` je Bein = Inhaberwechsel auf den Ton-Plätzen, in `stats` von
-    `GET /api/sfu/leg/{id}`.
-  - **Stand:** Der Code setzt die Hysterese der Ton-Plätze erst ab 2263-3 um. Heute (`keepActive` in
-    `internal/sfu/control.go`) schützt er nur stille Inhaber gegen stille Neue, nicht den **sprechenden** Inhaber;
-    bei vier und mehr Sprechenden kann Platz 3 jeden Takt wechseln (Bugs-DB 2417). Auch die Brücke wählt ihre Top-3
-    noch ohne Haltedauer.
+  - **Zähler** (ab 2.6, Bugs-DB 2263-3): `aswitch` je Bein mit Ton-Plätzen (`role` `audio`/`both`; reine Bild-Beine
+    ohne das Feld) = Inhaberwechsel auf den Ton-Plätzen seit dem Anlegen, in `stats` von `GET /api/sfu/leg/{id}`. Die
+    erste Belegung eines Platzes zählt nicht, ebenso wenig derselbe Inhaber nach einer Lücke.
+  - **Umsetzung** (ab 2.6, Bugs-DB 2417): `sfu.HoldAudio` in `internal/sfu/control.go` (Konstanten `audioHold` =
+    `domHold`, `audioFactor` = `domFactor`) für die Ton-Plätze jedes Beins und die Ton-Auswahl der Brücke
+    (`bridge.pickAudio`). Ein stiller Inhaber ist einer mit Aktivität unter 0,04 – nach dem Verstummen sinkt die
+    gleitende Aktivität erst nach rund 2–2,5 s darunter; bis dahin gilt für einen Neuen die Regel 1,4× und 1,5 s.
+    Bis 2.5 schützte `keepActive` nur stille Inhaber gegen stille Neue; bei vier ähnlich lauten Sprechenden wechselte
+    Platz 3 in der Simulation 30–136-mal je Minute, jetzt 0–3 (`TestTop3HystereseVierSprecher`). `keepActive` gilt
+    weiter für die Kacheln.
 
   Der Hauptsprecher wird mit Hysterese gewählt (mindestens 1,5 s, ein Neuer muss 1,5 s am lautesten oder 1,4-mal
   lauter sein). Kacheln sind nach letzter Sprache geordnet, die Plätze bleiben fest.
@@ -1533,7 +1537,8 @@ für die Brücke keine Rolle.
 
 - **Ton:** jede Seite schickt von sich aus ihre drei lautesten nach der Top-3-Regel (oben, Weiterleiter: sprechender
   Inhaber bleibt, Verdrängen erst ab 1,4× und 1,5 s). Der Empfänger wählt daraus wie lokal seine Top-3 und den
-  Hauptsprecher. Stand: die Haltedauer an der Brücke kommt mit Bugs-DB 2263-3 (`bifrost.go`, gleiche Regel wie lokal).
+  Hauptsprecher. Ab 2.6 (Bugs-DB 2263-3) mit derselben Haltedauer wie lokal (`bridge.pickAudio` → `sfu.HoldAudio`);
+  bis 2.5 nahm die Brücke jeden Takt die drei lautesten.
 - **Bild nur auf Nachfrage:** Teilnehmende der Gegenseite stehen als `Peer.Via` im Raum (`internal/sfu/remote.go`), ihre
   Quellen gelten als nutzbar, wenn der andere Knoten sie als aktiv meldet. Last-N, Sprecher und Schichtwahl planen sie wie
   eigene; was ein Ausgang wählt (`Source.Subscribed`), geht als `want` hinüber – also nur die Schichten, die wirklich

@@ -12,6 +12,14 @@ import (
 // Steuerung im Takt (Standard 200 ms). Alles hier ist Steuerpfad: Pakete
 // werden nie angefasst, nur Ausgaenge umgehaengt und Grenzen gesetzt.
 
+// Top-3-Ton (2.6, Vertrag docs/APP-API.md "Top-3-Ton" 3/4, Bugs-DB 2417): Sprechen alle Inhaber der Ton-Plaetze,
+// verdraengt ein Neuer den leisesten erst, wenn er mindestens audioHold lang mindestens audioFactor-mal so aktiv ist
+// (dieselben Werte wie beim Hauptsprecher). Einen freien oder stillen Platz bekommt ein Neuer im naechsten Takt.
+const (
+	audioHold   = domHold
+	audioFactor = domFactor
+)
+
 // Schwellen der Sprechererkennung.
 const (
 	speakOn       = 0.04                    // Aktivitaet, ab der jemand als sprechend gilt
@@ -653,11 +661,7 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			}
 		}
 		byActivity(cand)
-		if len(cand) > len(aslots) {
-			// wer schon einen Platz hat und noch spricht, bleibt
-			cand = keepActive(aslots, cand)
-		}
-		assignSticky(aslots, cand)
+		l.holdAudio(aslots, cand, now) // Top-3-Hysterese: sprechende Inhaber bleiben
 		for _, s := range aslots {
 			if s.owner != nil && s.owner.audio != nil {
 				s.out.Assign(s.owner.audio.Source)
@@ -1710,8 +1714,9 @@ func (l *Leg) freshEvent(art string, t, pre, low float64, s *slot, to string, cf
 		BrakeKbit: brake, N: b.n})
 }
 
-// keepActive behaelt Teilnehmende, die schon einen Platz haben und weiter
-// zur ersten Auswahl gehoeren wuerden, vorne (gegen Platzwechsel).
+// keepActive (Kacheln): Ein Inhaber, der nicht mehr zu den ersten len(slots) gehoert, behaelt seinen Platz nur, wenn er
+// still ist und der schwaechste Neue in der ersten Auswahl auch - er verdraengt also nur stille Neue. Einen sprechenden
+// Inhaber schuetzt das nicht (bis 2.5 galt das auch fuer die Ton-Plaetze, Bugs-DB 2417; dort jetzt holdAudio).
 func keepActive(slots []*slot, cand []*Peer) []*Peer {
 	n := len(slots)
 	has := map[*Peer]bool{}
@@ -1739,6 +1744,113 @@ func keepActive(slots []*slot, cand []*Peer) []*Peer {
 	}
 	return append(out, waiting...)
 }
+
+// HoldAudio belegt Ton-Plaetze nach der Top-3-Hysterese (Vertrag docs/APP-API.md "Top-3-Ton" 3/4, Bugs-DB 2417) -
+// fuer die Ton-Plaetze eines Beins (Leg.holdAudio) und die Ton-Auswahl einer Bifroest-Bruecke (gleiche Regel):
+//   - Ein sprechender Inhaber (Aktivitaet >= speakOn) behaelt seinen Platz.
+//   - Ein Neuer bekommt sofort einen freien Platz; ein sprechender Neuer auch den Platz eines stillen Inhabers (des
+//     stillsten). Stille Inhaber weichen nur Sprechenden.
+//   - Sprechen alle Inhaber, verdraengt ein Neuer den leisesten erst, wenn er mindestens audioHold lang mindestens
+//     audioFactor-mal so aktiv ist wie der jeweils leiseste Inhaber.
+//
+// cur: bisherige Inhaber je Platz (Nullwert = frei; wer nicht mehr unter cand ist, gibt seinen Platz frei). cand: alle
+// Anwaerter, sprechende zuerst und nach Aktivitaet absteigend (byActivity). wait: Neue, die einen sprechenden Inhaber
+// verdraengen wollen, und seit wann sie lauter genug sind (Zustand des Empfaengers, wird hier gepflegt). Ergebnis: neue
+// Inhaber je Platz, gleiche Reihenfolge wie cur (ein Inhaber behaelt seinen Platz).
+func HoldAudio[K comparable](cur, cand []K, score func(K) float64, wait map[K]int64, now int64) []K {
+	var zero K
+	in := make(map[K]bool, len(cand))
+	for _, c := range cand {
+		in[c] = true
+	}
+	out := make([]K, len(cur))
+	held := make(map[K]bool, len(cur))
+	for i, k := range cur {
+		if k != zero && in[k] && !held[k] {
+			out[i], held[k] = k, true
+		}
+	}
+	waiting := map[K]bool{}
+	for _, c := range cand {
+		if held[c] {
+			continue
+		}
+		free := -1
+		for i, k := range out {
+			if k == zero {
+				free = i
+				break
+			}
+		}
+		if free >= 0 {
+			out[free], held[c] = c, true
+			continue
+		}
+		sc := score(c)
+		if sc < speakOn {
+			continue // stille Neue verdraengen niemanden
+		}
+		q, qs := -1, 0.0 // leisester Inhaber
+		for i, k := range out {
+			if s := score(k); q < 0 || s < qs {
+				q, qs = i, s
+			}
+		}
+		if q < 0 {
+			continue
+		}
+		if qs >= speakOn {
+			if sc < qs*audioFactor {
+				continue
+			}
+			waiting[c] = true
+			since, ok := wait[c]
+			if !ok {
+				wait[c] = now
+				continue
+			}
+			if now-since < int64(audioHold) {
+				continue
+			}
+		}
+		held[out[q]] = false
+		out[q], held[c] = c, true
+		delete(waiting, c)
+	}
+	for k := range wait {
+		if !waiting[k] {
+			delete(wait, k)
+		}
+	}
+	return out
+}
+
+// holdAudio belegt die Ton-Plaetze des Beins (HoldAudio) und zaehlt Inhaberwechsel (aswitch).
+func (l *Leg) holdAudio(aslots []*slot, cand []*Peer, now int64) {
+	if l.aWait == nil {
+		l.aWait = map[*Peer]int64{}
+	}
+	cur := make([]*Peer, len(aslots))
+	for i, s := range aslots {
+		cur[i] = s.owner
+	}
+	out := HoldAudio(cur, cand, func(p *Peer) float64 { return p.score }, l.aWait, now)
+	for i, s := range aslots {
+		p := out[i]
+		s.owner = p
+		if p == nil {
+			continue
+		}
+		if s.aLast != "" && s.aLast != p.ID {
+			l.aSwitch.Add(1)
+		}
+		s.aLast = p.ID
+	}
+}
+
+// ASwitch: Inhaberwechsel auf den Ton-Plaetzen dieses Beins seit dem Anlegen (Zaehler "aswitch" in den stats des Beins;
+// ein Platz, der zum ersten Mal belegt wird oder nach einer Luecke denselben Inhaber wieder bekommt, zaehlt nicht).
+func (l *Leg) ASwitch() uint64 { return l.aSwitch.Load() }
 
 // layoutChanged baut die Layout-Meldung, wenn sich etwas geaendert hat.
 func (l *Leg) layoutChanged() (LayoutEvent, bool) {

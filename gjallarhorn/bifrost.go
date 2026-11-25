@@ -65,7 +65,7 @@ const (
 	ctokDomain       = "saga-horn-cascade/1."
 	bridgeTick       = 200 * time.Millisecond
 	bridgeIdle       = 30 * time.Second // ohne eigene Teilnehmende (und ohne weitere Bruecken) so lange, dann zu
-	bridgeAudio      = 3                // Ton-Top-3 je Richtung
+	bridgeAudio      = sfu.MaxAudio     // Ton-Top-3 je Richtung
 	bridgeFrameMax   = 65535
 	bridgeReadIdle   = 20 * time.Second
 	bridgeWriteLimit = 5 * time.Second
@@ -169,7 +169,8 @@ type bridge struct {
 	nextSid uint16
 	outs    map[*fwd.Source]*fwd.Out
 	want    map[uint16]bool
-	aud     []*fwd.Source
+	aud     []*fwd.Source         // Ton-Top-3 je Platz (pickAudio, nil = frei)
+	audWait map[*fwd.Source]int64 // ... Neue, die einen sprechenden Inhaber verdraengen wollen, seit wann
 	peerSig string
 	peerAt  time.Time
 
@@ -348,6 +349,55 @@ func (b *bridge) ctlBye(why string) {
 	b.wmu.Unlock()
 }
 
+// pickAudio: Ton-Top-3, die diese Seite hinueberschickt - nach derselben Regel wie die Ton-Plaetze eines Beins
+// (sfu.HoldAudio, Vertrag docs/APP-API.md "Top-3-Ton" 3/4/6, Bugs-DB 2417): Sprechende Inhaber bleiben, ein Neuer bekommt
+// sofort einen freien bzw. stillen Platz und verdraengt sonst den leisesten erst nach audioHold mit audioFactor. Bis 2.5
+// waehlte die Bruecke jeden Takt die drei lautesten neu. b.aud: Inhaber je Platz (nil = frei).
+func (b *bridge) pickAudio(view []sfu.PeerView, now int64) map[*fwd.Source]bool {
+	cand := make([]*fwd.Source, 0, len(view))
+	score := make(map[*fwd.Source]float64, len(view))
+	spoke := make(map[*fwd.Source]int64, len(view))
+	for _, p := range view {
+		if p.Audio != nil {
+			cand = append(cand, p.Audio)
+			score[p.Audio], spoke[p.Audio] = p.Score, p.Spoke
+		}
+	}
+	cur := map[*fwd.Source]bool{}
+	for _, a := range b.aud {
+		cur[a] = a != nil
+	}
+	// wie byActivity: sprechende zuerst nach Aktivitaet, dann Inhaber, dann letzte Sprache
+	sort.SliceStable(cand, func(i, j int) bool {
+		a, c := cand[i], cand[j]
+		as, cs := score[a] >= sfu.SpeakOn, score[c] >= sfu.SpeakOn
+		if as != cs {
+			return as
+		}
+		if as && score[a] != score[c] {
+			return score[a] > score[c]
+		}
+		if cur[a] != cur[c] {
+			return cur[a]
+		}
+		return spoke[a] > spoke[c]
+	})
+	if len(b.aud) != bridgeAudio {
+		b.aud = append(b.aud[:0:0], make([]*fwd.Source, bridgeAudio)...)
+	}
+	if b.audWait == nil {
+		b.audWait = map[*fwd.Source]int64{}
+	}
+	b.aud = sfu.HoldAudio(b.aud, cand, func(s *fwd.Source) float64 { return score[s] }, b.audWait, now)
+	want := map[*fwd.Source]bool{}
+	for _, a := range b.aud {
+		if a != nil {
+			want[a] = true
+		}
+	}
+	return want
+}
+
 // tick: Teilnehmende melden, Ton-Top-3 und gewuenschte Bild-Quellen weiterleiten, eigene Nachfrage melden.
 func (b *bridge) tick() {
 	now := time.Now()
@@ -432,37 +482,7 @@ func (b *bridge) tick() {
 	if sendPeers {
 		b.peerSig, b.peerAt = sig.String(), now
 	}
-	// Ton: Top-3 nach Sprechaktivitaet (wer schon dabei ist und spricht, bleibt)
-	cand := make([]sfu.PeerView, 0, len(view))
-	for _, p := range view {
-		if p.Audio != nil {
-			cand = append(cand, p)
-		}
-	}
-	cur := map[*fwd.Source]bool{}
-	for _, a := range b.aud {
-		cur[a] = true
-	}
-	sort.SliceStable(cand, func(i, j int) bool {
-		a, c := cand[i], cand[j]
-		as, cs := a.Score >= 0.04, c.Score >= 0.04
-		if as != cs {
-			return as
-		}
-		if as && a.Score != c.Score {
-			return a.Score > c.Score
-		}
-		if cur[a.Audio] != cur[c.Audio] {
-			return cur[a.Audio]
-		}
-		return a.Spoke > c.Spoke
-	})
-	wantAud := map[*fwd.Source]bool{}
-	b.aud = b.aud[:0]
-	for i := 0; i < len(cand) && i < bridgeAudio; i++ {
-		wantAud[cand[i].Audio] = true
-		b.aud = append(b.aud, cand[i].Audio)
-	}
+	wantAud := b.pickAudio(view, nowF)
 	// Ausgaenge: Ton-Top-3 + gewuenschte Bild-Quellen
 	need := map[*fwd.Source]bool{}
 	for a := range wantAud {

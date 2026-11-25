@@ -586,6 +586,7 @@ type legStats struct {
 	Sources   []srcStats      `json:"sources,omitempty"`      // laufende eingehende Spuren dieses Beins
 	Tunnel    *wstun.Snapshot `json:"tunnel,omitempty"`       // 2.5 A3: Zaehler des Medien-Tunnels (Fenster, RTT der Quittungen)
 	Frames    *frStats        `json:"frames,omitempty"`       // 2.5 B2: Zaehler des Rahmen-Beins (frames.go)
+	ASwitch   *uint64         `json:"aswitch,omitempty"`      // 2.6: Inhaberwechsel auf den Ton-Plaetzen (nur Weiterleiter-Beine mit Ton)
 	ended     [3]uint64       // Summen der beendeten Spuren (Doppel, zu alt, spaet) - fuer die Zeile "bein zu"
 }
 
@@ -645,6 +646,7 @@ func (l *leg) stats() legStats {
 	l.mu.Lock()
 	con := l.connected
 	fl := l.fl
+	sl := l.sl
 	srcs := append([]*fwd.Source(nil), l.srcs...)
 	ended := l.srcEnd
 	l.mu.Unlock()
@@ -657,6 +659,10 @@ func (l *leg) stats() legStats {
 		MaxQMs: float64(fl.Stats.MaxAgeNs.Load()) / 1e6, FwdP95us: fl.Stats.P95us(),
 		Overflow: fl.Stats.Overflow.Load(), WriteErrs: fl.Stats.WriteErrs.Load(),
 		Secs: time.Since(l.created).Seconds(), ended: ended}
+	if sl != nil && sl.Role != sfu.RoleVideo {
+		n := sl.ASwitch()
+		st.ASwitch = &n
+	}
 	for _, x := range srcs {
 		k := "audio"
 		if x.Kind == fwd.Video {

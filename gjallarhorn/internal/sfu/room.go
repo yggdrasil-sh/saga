@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/bwe"
@@ -304,6 +305,9 @@ type Leg struct {
 	spkCand   *Peer
 	spkCandAt int64
 	srcs      []*source
+	// Ton-Plaetze (holdAudio): Neue, die einen sprechenden Inhaber verdraengen wollen, seit wann; Inhaberwechsel
+	aWait   map[*Peer]int64
+	aSwitch atomic.Uint64
 
 	// Ext liefert eine externe Schaetzung in bit/s (GCC auf UDP), 0 = keine.
 	Ext func() int
@@ -394,6 +398,7 @@ type slot struct {
 	out    *fwd.Out
 	class  string
 	owner  *Peer
+	aLast  string // Ton-Platz: Kennung des letzten Inhabers (Zaehler aswitch)
 	layer  string
 	paused bool
 	tid    uint8

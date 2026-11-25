@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,6 +157,16 @@ func TestSFUMixed(t *testing.T) {
 	st := s.getLeg(bs[2].legIDs[0]).stats()
 	if len(st.Sources) != 3 {
 		t.Fatalf("quellen des udp-beins: %+v", st.Sources)
+	}
+	// 2.6 (2263-3): aswitch je Bein mit Ton-Plaetzen (Inhaberwechsel), nicht beim reinen Bild-Bein
+	if st.ASwitch == nil {
+		t.Fatal("stats ohne aswitch (Bein mit Ton)")
+	}
+	if vs := s.getLeg(bs[1].legIDs[1]).stats(); vs.ASwitch != nil {
+		t.Fatalf("aswitch beim Bild-Bein: %d", *vs.ASwitch)
+	}
+	if js, _ := json.Marshal(st); !strings.Contains(string(js), `"aswitch":`) {
+		t.Fatalf("stats-JSON ohne aswitch: %s", js)
 	}
 	for _, x := range st.Sources {
 		if x.Pkts == 0 || x.Dups != 0 || x.TooOld != 0 || (x.Kind != "audio" && x.Kind != "video") || x.Layer == "" {
