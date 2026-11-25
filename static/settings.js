@@ -38,6 +38,8 @@
     if (!acct) api('GET', '/api/account').then(function (a) { acct = a; }).catch(function () {});
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuLabel(btn.dataset.name || ''));
+      var usi = HK.userStatus && HK.userStatus.menuItem();   // 2.6 (2029-5): eigener Status (static/userstatus.js)
+      if (usi) { m.appendChild(usi); m.appendChild(el('div', 'menu-sep')); }
       m.appendChild(HK.menuItem(T('Einstellungen'), function () { openSettings(); }, { ic: 'settings' }));
       m.appendChild(HK.menuItem(T('Sprache'), null, { ic: 'globe', sub: langSub }));
       m.appendChild(themeItem());                     // Hell/Dunkel (Design-Runde 3)
@@ -200,7 +202,7 @@
     if (focus === 'lang') focusLang = true;                   // Benutzermenue -> Sprache: Konto, Auswahl fokussiert
     // Glocke -> Zahnrad (static/live.js oeffnet 'account' und sucht #hk-notify-set): Mitteilungen zeigen
     if (focus === 'account' && Date.now() - gearAt < 800) focus = 'notify';
-    var want = focus === 'lang' ? 'account' : focus === 'notify' ? 'push' : focus;
+    var want = focus === 'lang' ? 'account' : focus === 'notify' || focus === 'reach' ? 'push' : focus;   // reach: Erreichbarkeit (2029-5)
     var start = typeof want === 'string' && btns[want] ? want : 'account';
     show(start, false);
     if (narrow.matches && typeof want !== 'string') card.classList.add('nav-list');    // ohne Ziel: am Handy die Liste
@@ -209,10 +211,14 @@
       var t = card.classList.contains('nav-list') ? btns[start] : $pane(start);
       if (t) try { t.focus({ preventScroll: true }); } catch (e) { t.focus(); }
     }, 0);
-    if (focus === 'notify') {                                 // Benachrichtigungen je Art erscheinen nach dem Laden
+    if (focus === 'notify' || focus === 'reach') {            // Benachrichtigungen je Art bzw. Erreichbarkeit erscheinen nach dem Laden
       var n = 0, tm = setInterval(function () {
-        var sct = document.getElementById('hk-notify-set');
-        if (sct || ++n > 30 || !dlg) { clearInterval(tm); if (sct && dlg) sct.scrollIntoView({ block: 'start' }); }
+        var sct = document.getElementById(focus === 'reach' ? 'us-reach' : 'hk-notify-set');
+        if (sct || ++n > 30 || !dlg) {
+          clearInterval(tm); if (!sct || !dlg) return;
+          sct.scrollIntoView({ block: 'start' });
+          var sh = focus === 'reach' && sct.querySelector('h4'); if (sh) { sh.tabIndex = -1; try { sh.focus({ preventScroll: true }); } catch (e) { sh.focus(); } }
+        }
       }, 100);
     }
   }

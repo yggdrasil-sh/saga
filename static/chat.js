@@ -15,7 +15,8 @@
   var K = null;                                        // lokale Schluessel {device:{...}, ident_sk, ident_pk, backup_sk, backup_pk}
   var S = { me: null, chats: [], cur: null, msgs: [], byId: {}, more: false, reply: null, files: [], rc: null, notes: {},
             typing: {}, mentions: {}, people: {}, ai: null, aiPending: null, searchQ: '', loading: false, linkWait: null, ready: false,
-            rcpts: {}, rcSent: {}, rcAt: {}, rcT: null, pres: {} };            // (2.4) Gelesen-Bestaetigungen, Online-Status
+            rcpts: {}, rcSent: {}, rcAt: {}, rcT: null, pres: {},              // (2.4) Gelesen-Bestaetigungen, Online-Status
+            ust: {} };                                                         // (2.6, 2029-5) eigener Status der Chat-Partner
   var RET = [[0, T('Aus')], [3600, T('1 Stunde')], [86400, T('1 Tag')], [604800, T('7 Tage')], [2592000, T('30 Tage')],
              [7776000, T('90 Tage')], [31536000, T('1 Jahr')]];
   var fTime = new Intl.DateTimeFormat(HK.locale, { hour: '2-digit', minute: '2-digit' });
@@ -892,9 +893,15 @@
                        c.kind === 'dm' ? (c.peer || {}).avatar : null);
       var lp = c.kind === 'dm' ? S.pres[(c.peer || {}).username] : null;
       if (lp && lp.online) { lav.classList.add('ct-on'); b.title = T('online'); }       // (2.4) Online-Status im Direkt-Chat
+      var us = c.kind === 'dm' ? usOf(c) : null;                                        // (2.6, 2029-5) eigener Status
+      if (us) {
+        var aw = el('span', 'us-avw'); aw.appendChild(lav); aw.appendChild(HK.userStatus.dot(us.s, 'us-badge')); lav = aw;
+        b.title = (b.title ? b.title + ' · ' : '') + HK.userStatus.peerText(us, false);
+      }
       b.appendChild(lav);
       var t = el('span', 'ct-item-t');
       var tn = el('span', 'ct-item-n', nm); t.appendChild(tn);
+      if (us) tn.appendChild(el('span', 'sr-only', ', ' + HK.userStatus.peerText(us, false)));
       if (c.pinned) { var pi = el('span', 'ct-pin', '📌'); pi.title = T('Angeheftet'); pi.setAttribute('aria-label', T('Angeheftet')); tn.prepend(pi); }
       t.appendChild(el('span', 'ct-item-s', isRemote(c) && c.kind === 'dm'
         ? (c.request ? T('Anfrage') : T('Direkt')) + ' · ' + ((c.peer || {}).host || '') + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
@@ -1281,6 +1288,7 @@
       else if (ff && (ff.trust === 'block' || ff.trust === 'reject')) sub.appendChild(el('span', 'ct-chip ct-blocked', '⛔ ' + T('gesperrt')));
       if (c.request) sub.appendChild(el('span', 'ct-chip', T('Anfrage')));
       if (c.readonly) sub.appendChild(el('span', 'ct-chip', '🔒 ' + T('schreibgeschützt')));
+      statusChip(sub, c);
       presenceChip(sub, fp.username);
     } else if (c.kind === 'dm') {
       var p = others[0] || c.peer || {}, t = trust[p.username];   // 2.4 (W4): Anmeldename nicht im Kopf zeigen
@@ -1288,6 +1296,7 @@
       if (f3 ? f3.trust === 'trust' && f3.stored && f3.stored.verified && f3.stored.ident === f3.keys.ident_pub : t && t.verified && !t.changed)
         sub.appendChild(el('span', 'ct-chip ct-verified', '✓ ' + T('überprüft')));
       else if (f3 && (f3.trust === 'block' || f3.trust === 'reject')) sub.appendChild(el('span', 'ct-chip ct-blocked', '⛔ ' + T('gesperrt')));
+      statusChip(sub, c);
       presenceChip(sub, p.username);
     } else {
       var mine = String(c.my_handle || '').split('@').slice(1).join('@');
@@ -1542,8 +1551,9 @@
   // Online-Status: nur sichtbare Direkt-Chats abonnieren (offener Chat + Liste), alle 60 s erneuern, solange sichtbar
   var presT = null, presAt = 0;
   function presenceSoon() { clearTimeout(presT); presT = setTimeout(presenceSync, 400); }
+  // 2.6 (2029-5): auch mit eigenem Online-Status aus - der Server liefert dann nur den eigenen Status der Personen (status)
   function presenceWant() {
-    if (!hasFeat('online') || !priv().online) return [];
+    if (!hasFeat('online') || (!priv().online && !hasFeat('userstatus1'))) return [];
     var out = [];
     function add(c) {
       if (!c || c.kind !== 'dm' || c.request || (isFed(c) && c.online_ok === false)) return;
@@ -1556,12 +1566,14 @@
   function presenceSync() {
     if (!S.ready || document.hidden) return;
     var users = presenceWant();
-    if (!users.length) { if (Object.keys(S.pres).length) { S.pres = {}; drawList(); drawHead(); } return; }
+    if (!users.length) { if (Object.keys(S.pres).length || Object.keys(S.ust).length) { S.pres = {}; S.ust = {}; drawList(); drawHead(); } return; }
     presAt = Date.now();
     api('POST', '/api/chat/presence', { users: users }).then(function (r) {
       var nx = {};
       Object.keys(r.users || {}).forEach(function (u) { nx[u] = r.users[u]; });
       S.pres = nx;
+      S.ust = {};                                         // 2.6 (2029-5): fehlt eine Person, ist kein Status bekannt
+      Object.keys(r.status || {}).forEach(function (u) { var x = r.status[u]; if (x && typeof x.s === 'string') S.ust[u] = x; });
       // Personen anderer Server: der eigene Server fragt dort erst nach (bzw. erneut, z. B. gleich nach dem Annehmen einer
       // Nachrichtenanfrage) - fehlende eine Minute lang alle 10 s nachfragen, danach im normalen Takt
       var miss = users.some(function (u) { return u.charAt(0) === '@' && !nx[u]; });
@@ -1580,6 +1592,33 @@
     if (p.last) sub.appendChild(el('span', 'ct-chip ct-lastseen', T('zuletzt online {when}', { when: HK.relTime(p.last - Date.now() / 1000) })));
   }
   document.addEventListener('visibilitychange', function () { if (!document.hidden) markRead(); });
+  // 2.6 (2029-5): eigener Status des Gegenuebers im Direkt-Chat - {s: busy|dnd|in_call, until?, text?}; Verfuegbar zeigt nichts
+  function usOf(c) {
+    var st = c && c.kind === 'dm' && HK.userStatus && S.ust[(c.peer || {}).username];
+    return st && st.s && st.s !== 'available' && HK.userStatus.name(st.s) ? st : null;
+  }
+  function statusChip(sub, c) {
+    var st = usOf(c); if (!st) return;
+    var ch = el('span', 'ct-chip us-chip us-c-' + st.s);
+    ch.appendChild(HK.userStatus.dot(st.s));
+    ch.appendChild(el('span', 'us-chip-t', HK.userStatus.peerText(st, true)));
+    ch.title = HK.userStatus.peerText(st, true);
+    sub.appendChild(ch);
+  }
+  // Hinweis vor dem Anruf (Anruf-Knoepfe im Kopf und "Zurueckrufen"): Gegenueber auf "Nicht stoeren" -> Rueckfrage, "Im Anruf"
+  // -> Hinweis "klopft an". Laeuft vor dem Klick-Weg von static/calls.js (Erfassungsphase) und ruft danach HKCalls.start.
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest && e.target.closest('#ct-call-a, #ct-call-v, .ct-call-back:not(.ct-call-moved)');
+    var c = S.cur, st = b && usOf(c);
+    if (!st || !window.HKCalls || (window.HKCalls.busy && window.HKCalls.busy())) return;
+    var row = b.closest('.ct-call'), m = row && S.byId[row.dataset.id];
+    var video = b.id === 'ct-call-v' || !!(m && m.call && m.call.media === 'video'), nm = chatName(c);
+    if (st.s === 'in_call') { HK.toast(T('{name} telefoniert gerade – dein Anruf klopft an.', { name: nm })); return; }
+    if (st.s !== 'dnd') return;
+    e.preventDefault(); e.stopPropagation();
+    HK.ask({ title: T('Nicht stören'), text: T('{name} möchte gerade nicht gestört werden. Trotzdem anrufen?', { name: nm }), ok: T('Anrufen') })
+      .then(function (yes) { if (yes && S.cur === c) window.HKCalls.start(c, video); });
+  }, true);
 
   // --- Nachrichten zeichnen (nur textContent; Links nur http/https, Seitenverweise nur mit Zugriff) ------------------
   var TOKEN = /\[\[note:([1-9][0-9]{0,17})\]\]|(https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]])|<@(~[a-z2-7]{16}(?:@[a-z0-9.:\-]{1,260})?)>/g;
@@ -4770,6 +4809,10 @@
     }
     else if (t === 'chat.presence') {
       if (d.online || d.last) S.pres[d.username] = { online: !!d.online, last: d.last || null }; else delete S.pres[d.username];
+      drawList(); drawHead();
+    }
+    else if (t === 'chat.status' && d.username) {         // 2.6 (2029-5): Status eines Chat-Partners (null = nicht mehr bekannt)
+      if (d.status && typeof d.status.s === 'string') S.ust[d.username] = d.status; else delete S.ust[d.username];
       drawList(); drawHead();
     }
     else if (t === 'chat.privacy') { if (S.me) S.me.privacy = { receipts: !!d.receipts, online: !!d.online }; S.rcpts = {}; presenceSync(); if (S.cur) { loadReceipts(S.cur); drawMsgs(); } }

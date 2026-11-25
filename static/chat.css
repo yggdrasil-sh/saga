@@ -552,3 +552,17 @@ body.has-side.side-hidden.chats-in-side:not(.embed) .pg-chats .ct-side-top{paddi
 @media (prefers-color-scheme: dark){:where(:root:not([data-theme=light])) .ct-msg.mine .ct-meta{color:#a3adbb}}
 :where(:root[data-theme=dark]) .ct-msg.mine .ct-meta{color:#a3adbb}
 .ct-call time{opacity:1}
+/* 2.6 (Bugs-DB 2029-5): Status von Chat-Partnern - Abzeichen am Profilbild (Liste) und Zeile im Kopf */
+.us-avw{position:relative;display:inline-grid;flex:none}
+.us-avw .us-badge{position:absolute;right:-2px;bottom:-2px;width:.8rem;height:.8rem;box-shadow:0 0 0 2px var(--bg)}
+.ct-item.on .us-avw .us-badge,.ct-item-b:hover .us-avw .us-badge{box-shadow:0 0 0 2px var(--card-h)}
+.ct-chip.us-chip{gap:.35rem;max-width:100%;min-width:0}
+.us-chip .us-dot{width:.6rem;height:.6rem}
+.us-chip-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.us-c-dnd .us-chip-t{color:var(--fg)}
+/* schmal: Status vor "online"; "online" dann nur als Punkt, damit der Status lesbar bleibt */
+@media (max-width:760px){
+  .ct-sub .us-chip~.ct-online{font-size:0;gap:0}
+  .ct-sub .us-chip~.ct-online::before{width:.45rem;height:.45rem}
+  .ct-sub .us-chip{flex:0 1 auto}
+}

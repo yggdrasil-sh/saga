@@ -405,6 +405,10 @@
      'call.move'].forEach(function (n) {                                                  // (2.5) L9: 1:1 ist in eine neue Gruppe umgezogen
       on(es, n, function (d) { chatEvent(n, d); });
     });
+    // 2.6 (Bugs-DB 2029-5): eigener Status (static/userstatus.js) und Status von Chat-Partnern (static/chat.js)
+    ['status.changed', 'status.digest', 'chat.status'].forEach(function (n) {
+      on(es, n, function (d) { document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: n, data: d } })); });
+    });
     on(es, 'avatar.changed', swapAvatar);
     on(es, 'bye', function (d) {
       es.close(); if (L.es === es) L.es = null;
@@ -500,10 +504,13 @@
   function onNotification(d) {
     if (d.item) {
       var it = d.item;
-      if (!it.read && isChatIt(it) && dockOk()) chatToast(it);
+      // 2.6 (2029-5): bei eigenem "Nicht stoeren" keine Einblendung und keine Mitteilung der Huelle (Glocke bleibt) - Ausnahmen
+      // kennt der Browser nicht, der Server haelt die Mitteilungen ohnehin zurueck
+      var quiet = !!(HK.userStatus && HK.userStatus.dnd());
+      if (!it.read && !quiet && isChatIt(it) && dockOk()) chatToast(it);
       N.items = dropIds(N.items, [it.id, d.replaces].filter(function (x) { return x != null; }));
       if (N.loaded) N.items = regroup([it].concat(N.items));   // in die Zeile seiner Unterhaltung (neuer Kopf)
-      if (!it.read) { ring(); hostNotify(it); }
+      if (!it.read) { ring(); if (!quiet) hostNotify(it); }
       if (it.kind && it.kind.indexOf('comment.') === 0) pagesBadgeSoon();
     } else if (d.read) {
       var part = false;

@@ -3441,3 +3441,48 @@ body.hk-shell-on>#mob-tabs{display:none!important}
 
 /* 2.5: Links im Editor oeffnen mit einfachem Klick (wie Notion) - Zeiger zeigt es an */
 #pg-editor a[href]{cursor:pointer}
+
+/* 2.6 (Bugs-DB 2029-5): eigener Status - Punkt (Farbe + Form: Nicht stoeren mit Balken, Im Anruf mit Ring), Menue-Eintrag,
+   Dialog "Mein Status", Einstellungen "Erreichbarkeit" (static/userstatus.js, static/push.js) */
+.us-dot{display:inline-block;flex:none;width:.7rem;height:.7rem;border-radius:50%;background:var(--up);position:relative;vertical-align:middle;box-sizing:border-box}
+.us-dot.us-busy{background:var(--warn)}
+.us-dot.us-dnd{background:var(--down)}
+.us-dot.us-dnd::after{content:"";position:absolute;left:20%;right:20%;top:50%;height:2px;margin-top:-1px;background:#fff;border-radius:1px}
+.us-dot.us-in_call{background:var(--card);border:2px solid var(--accent)}
+.us-dot.us-in_call::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--accent)}
+.hk-user .us-me{margin:0 .3rem 0 0}
+.us-mi .mi-ic{display:grid;place-items:center}
+.us-mi .mi-tx{min-width:0}
+.us-dlg{width:min(440px,100%)}
+.us-body{display:flex;flex-direction:column;gap:.7rem}
+.us-info{margin:0;color:var(--muted)}
+.us-fs{border:1px solid var(--border);border-radius:var(--r-md);margin:0;padding:.35rem .7rem .55rem;display:flex;flex-direction:column;gap:.1rem;min-width:0}
+.us-fs legend{padding:0 .3rem;font-size:var(--fs-sm);color:var(--muted)}
+.us-fs.us-off{opacity:.55}
+.us-opt{display:flex;align-items:center;gap:.5rem;padding:.3rem .1rem;cursor:pointer;font-size:var(--fs-base);min-height:2rem}
+.us-opt input{margin:0;accent-color:var(--accent);flex:none}
+.us-opt input:disabled+span,.us-opt input:disabled~span{cursor:not-allowed}
+.us-text{display:flex;flex-direction:column;gap:.3rem;font-size:var(--fs-sm);color:var(--muted)}
+.us-text .hk-in{width:100%;box-sizing:border-box}
+.us-count{align-self:flex-end;margin-top:-.4rem;font-size:var(--fs-xs);color:var(--muted)}
+.us-count.us-full{color:var(--warn)}
+.us-bar{margin-top:.2rem}
+.us-bar .us-more{margin-right:auto}
+.us-row .lv-set-t{display:flex;flex-direction:column;gap:.15rem}
+.us-row-h{color:var(--muted);font-size:var(--fs-sm);line-height:1.35}
+.us-sel{flex:none;max-width:48%}
+.us-repeat-s{width:6rem;flex:none}
+.us-reach h5,.us-exc-h{margin:1rem 0 .3rem;font-size:var(--fs-base);font-weight:600}
+.us-exc{list-style:none;margin:.2rem 0;padding:0;display:flex;flex-wrap:wrap;gap:.35rem}
+.us-exc-i{display:inline-flex;align-items:center;gap:.35rem;border:1px solid var(--border);border-radius:var(--r-pill);padding:.1rem .15rem .1rem .55rem;font-size:var(--fs-sm);max-width:100%}
+.us-exc-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.us-exc-k{color:var(--muted);font-size:var(--fs-xs)}
+.us-exc-rm{padding:.15rem .35rem}
+.us-exc-none{list-style:none}
+.us-exc-add{position:relative;max-width:26rem}
+.us-exc-add .hk-in{width:100%;box-sizing:border-box}
+.us-exc-res{position:absolute;z-index:5;left:0;right:0;top:calc(100% + 4px);margin:0;padding:.25rem;list-style:none;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r-md);box-shadow:0 8px 24px rgba(0,0,0,.25);max-height:14rem;overflow:auto}
+.us-exc-o{display:flex;align-items:baseline;gap:.5rem;padding:.4rem .55rem;border-radius:var(--r-sm);cursor:pointer}
+.us-exc-o:hover,.us-exc-o[aria-selected="true"]{background:var(--card-h)}
+@media (max-width:760px){.us-sel{max-width:55%}.us-opt{min-height:2.75rem}}

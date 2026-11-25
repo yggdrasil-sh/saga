@@ -17,6 +17,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu
+- **Eigener Status im Browser** (Bugs-DB 2029, Schritt 2029-5 Teil A, Web): im Benutzermenü der eigene Status mit
+  farbigem Punkt und dem, was gerade wirkt (Ablaufzeit, „Ruhezeit bis 7:00 – zählt als Nicht stören“, Im Anruf, „vom
+  Gerät (Fokus)“); Dialog „Mein Status“ mit Verfügbar/Beschäftigt/Nicht stören, Dauer (1 Stunde, bis morgen 7:00, bis ich
+  es ausschalte) und eigenem Text (80 Zeichen, Zähler); gleichzeitige Änderungen (409) werden still übernommen, andere
+  Tabs/Geräte gleichen live ab. Einstellungen → Mitteilungen → „Erreichbarkeit“ mit allen Einstellungen und Ausnahmen
+  (Personen per Suche, eigene Gruppen). Im Chat: Abzeichen am Profilbild der Liste und Zeile im Kopf („Nicht stören bis
+  15:00 · Im Kundentermin“, „Im Anruf“, „Beschäftigt“), auch mit eigenem Online-Status aus; vor dem Anruf eine Rückfrage
+  bei Nicht stören bzw. der Hinweis „… telefoniert gerade – dein Anruf klopft an.“; die Sammelmeldung `status.digest`
+  erscheint als ruhige Meldung (nur Zahlen); bei eigenem Nicht stören keine Chat-Einblendungen und keine Mitteilungen der
+  Desktop-Hülle. Neue Datei `static/userstatus.js`; Reihe `tests/browser_status.js` (Chromium und Firefox).
 
 - **Eigener Status: Verfügbar / Beschäftigt / Nicht stören** (Bugs-DB 2029, Schritt 2029-1, Server): `saga/user_status.py`
   mit `GET/PUT /api/account/status` und `PUT /api/account/status/prefs` (Ende oder Dauer, Text bis 80 Zeichen, Herkunft

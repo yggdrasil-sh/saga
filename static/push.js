@@ -95,10 +95,17 @@
     sec.appendChild(el('p', 'hk-hint', T('Mitteilungen aufs Handy oder den Computer – auch wenn Saga geschlossen ist. Inhalte von Seiten, Kommentaren und Chats werden nie mitgeschickt.')));
     var box = el('div', 'ps-box'); sec.appendChild(box);
     var S = null;
+    // 2.6 (2029-5): "Erreichbarkeit" (eigener Status) unter den Ruhezeiten - auch, wenn Mitteilungen abgeschaltet sind
+    // (erst nach den Mitteilungen gezeichnet - sonst springt der Bereich beim Laden nach unten)
+    var rbox = el('div', 'ps-box us-reach-box'), reachOn = false; sec.appendChild(rbox);
+    function reachGo() {
+      if (reachOn || !HK.userStatus) return;
+      reachOn = true; HK.userStatus.load().then(function (v) { if (v) reachCard(rbox); });
+    }
 
     function load() {
-      return api('GET', '/api/push').then(function (d) { S = d; draw(); })
-        .catch(function (err) { box.textContent = T('Nicht geladen: {err}', { err: err.message }); });
+      return api('GET', '/api/push').then(function (d) { S = d; draw(); reachGo(); })
+        .catch(function (err) { box.textContent = T('Nicht geladen: {err}', { err: err.message }); reachGo(); });
     }
     function save(part, st) {
       stat(st, '');
@@ -233,6 +240,168 @@
       c.appendChild(st);
     }
     load();
+  }
+
+  // =========================================================================================================
+  // Erreichbarkeit (2.6, Bugs-DB 2029-5): Einstellungen des eigenen Status (PUT /api/account/status/prefs) und Ausnahmen
+  // =========================================================================================================
+  var HANDLE = /^~[a-z2-7]{16}(@[a-z0-9.:\-]{1,260})?$/;
+  function reachCard(rbox) {
+    var U = HK.userStatus, last = '';
+    var c = el('div', 'ps-card us-reach'); c.id = 'us-reach'; rbox.appendChild(c);
+    function key(v) { return JSON.stringify([v.prefs, v.exceptions]); }
+    function draw() {
+      var v = U.view(); if (!v) return;
+      last = key(v);
+      c.textContent = '';
+      c.appendChild(el('h4', null, T('Erreichbarkeit')));
+      c.appendChild(el('p', 'hk-hint', T('Wie dich andere erreichen, während du „Beschäftigt“ oder „Nicht stören“ eingestellt hast, in Ruhezeiten und während du telefonierst. Deinen Status setzt du über das Benutzermenü.')));
+      var st = el('div', 'hk-status'); st.setAttribute('role', 'status');
+      var P = v.prefs || {}, L = v.limits || {}, rs = L.repeat_s || [30, 3600];
+      function now(k) { var x = U.view(); return x && x.prefs && k in x.prefs ? x.prefs[k] : P[k]; }   // gespeicherter Stand
+      function save(b, undo) {
+        st.textContent = ''; st.className = 'hk-status';
+        return U.prefs(b).then(function () { st.textContent = T('✓ Gespeichert'); st.className = 'hk-status ok'; })
+          .catch(function (err) { st.textContent = err.message; st.className = 'hk-status err'; if (undo) undo(); });
+      }
+      function rrow(label, hint, input) {
+        var r = el('label', 'lv-set-row us-row'), t = el('span', 'lv-set-t');
+        t.appendChild(el('span', 'us-row-t', label)); if (hint) t.appendChild(el('span', 'us-row-h', hint));
+        r.appendChild(t); r.appendChild(input); return r;
+      }
+      function swr(k, label, hint) {
+        var i = sw(P[k]); i.dataset.k = k;
+        i.addEventListener('change', function () { var b = {}; b[k] = i.checked; save(b, function () { i.checked = !!now(k); }); });
+        return rrow(label, hint, i);
+      }
+      function sel(k, label, hint, opts) {
+        var s = el('select', 'hk-in us-sel'); s.dataset.k = k;
+        opts.forEach(function (o) { var x = el('option', null, o[1]); x.value = o[0]; s.appendChild(x); });
+        s.value = P[k];
+        s.addEventListener('change', function () { var b = {}; b[k] = s.value; save(b, function () { s.value = now(k); }); });
+        return rrow(label, hint, s);
+      }
+      var l1 = el('div', 'lv-set-list'); c.appendChild(l1);
+      l1.appendChild(swr('quiet_dnd', T('Ruhezeiten zählen als „Nicht stören“'), T('In den Ruhezeiten der Mitteilungen gilt dasselbe wie bei „Nicht stören“: Ausnahmen und wiederholte Anrufe kommen durch.')));
+      l1.appendChild(swr('quiet_digest', T('Sammelmeldung auch nach Ruhezeiten'), T('Nach „Nicht stören“ kommt eine Meldung mit der Zahl verpasster Nachrichten und Anrufe – mit diesem Schalter auch am Ende einer Ruhezeit.')));
+      l1.appendChild(swr('mention_break', T('Erwähnungen kommen durch'), T('Wer dich in einem Chat oder auf einer Seite erwähnt, erreicht dich auch bei „Nicht stören“.')));
+      var l2 = el('div', 'lv-set-list ps-gap'); c.appendChild(l2);
+      l2.appendChild(sel('in_call', T('Anrufe, während du telefonierst'), T('Anklopfen: ein Hinweis im laufenden Gespräch, ohne Klingeln.'),
+        [['knock', T('Anklopfen lassen')], ['busy', T('Besetzt melden')]]));
+      l2.appendChild(swr('show_call', T('Andere sehen „Im Anruf“'), T('Nur Chat-Partner, und nur, wenn ihr beide den Online-Status zeigt.')));
+      l2.appendChild(sel('busy', T('Bei „Beschäftigt“'), T('„Beschäftigt“ zeigt anderen, dass du gerade wenig Zeit hast.'),
+        [['show', T('Mitteilungen wie sonst')], ['silent', T('Mitteilungen ohne Ton')]]));
+      // Wiederholungsanruf: Schalter + Sekunden in den Grenzen des Servers
+      var rp = sw(P.repeat), sec = el('input', 'hk-in us-repeat-s'); sec.type = 'number'; sec.min = rs[0]; sec.max = rs[1]; sec.step = 1;
+      sec.value = P.repeat_s; sec.disabled = !P.repeat; sec.setAttribute('aria-label', T('Zeitraum für wiederholte Anrufe in Sekunden'));
+      var rr = rrow(T('Wiederholte Anrufe kommen durch'), T('Ruft dieselbe Person innerhalb von {n} Sekunden noch einmal an, klingelt es trotz „Nicht stören“.', { n: P.repeat_s }), rp);
+      rr.classList.add('us-repeat'); l2.appendChild(rr);
+      var secRow = el('div', 'lv-set-row us-row us-repeat-row'); var sl = el('label', 'lv-set-t', T('Zeitraum in Sekunden ({min}–{max})', { min: rs[0], max: rs[1] }));
+      sl.htmlFor = sec.id = 'us-repeat-s'; secRow.appendChild(sl); secRow.appendChild(sec); l2.appendChild(secRow);
+      rp.dataset.k = 'repeat';
+      rp.addEventListener('change', function () { sec.disabled = !rp.checked; save({ repeat: rp.checked }, function () { rp.checked = !!now('repeat'); sec.disabled = !rp.checked; }); });
+      sec.addEventListener('change', function () {
+        var n = Math.round(Number(sec.value));
+        if (!isFinite(n) || n < rs[0] || n > rs[1]) { st.textContent = T('Bitte eine Zahl von {min} bis {max} eingeben.', { min: rs[0], max: rs[1] }); st.className = 'hk-status err'; sec.value = now('repeat_s'); return; }
+        save({ repeat_s: n }, function () { sec.value = now('repeat_s'); });
+      });
+      excCard(c, v, save);
+      c.appendChild(st);
+    }
+    var off = U.on(function (v) {                    // anderes Geraet/Tab: neu zeichnen, solange hier nichts bearbeitet wird
+      if (!c.isConnected) { off(); return; }
+      if (key(v) === last || c.contains(document.activeElement)) return;
+      draw();
+    });
+    draw();
+  }
+  // Ausnahmen: Personen (Handle bzw. Suche wie beim Teilen) und eigene Gruppen - kommen durch "Nicht stoeren" und Ruhezeiten
+  function excCard(c, v, save) {
+    var max = (v.limits && v.limits.exceptions) || 100, list = (v.exceptions || []).slice();
+    c.appendChild(el('h5', 'us-exc-h', T('Ausnahmen')));
+    c.appendChild(el('p', 'hk-hint', T('Diese Personen und Gruppen erreichen dich auch bei „Nicht stören“ und in Ruhezeiten – mit Anrufen und Mitteilungen.')));
+    var ul = el('ul', 'us-exc'); ul.setAttribute('aria-label', T('Ausnahmen')); c.appendChild(ul);
+    var n = el('p', 'hk-hint us-exc-n'); c.appendChild(n);
+    function out(x) { return x.type === 'group' ? { type: 'group', name: x.name } : { type: 'user', ref: x.ref }; }
+    function same(a, b) { return a.type === b.type && (a.type === 'group' ? a.name === b.name : a.ref === b.ref); }
+    function put(next, focusAfter) {
+      return save({ exceptions: next.map(out) }).then(function () {
+        var nv = HK.userStatus.view(); list = (nv && nv.exceptions || next).slice(); drawList(); if (focusAfter) focusAfter();
+      });
+    }
+    function drawList() {
+      ul.textContent = '';
+      if (!list.length) ul.appendChild(el('li', 'hk-hint us-exc-none', T('Noch keine Ausnahmen.')));
+      list.forEach(function (x, i) {
+        var li = el('li', 'us-exc-i'), nm = x.type === 'group' ? x.name : (x.name || HK.personName(x.ref));
+        li.appendChild(el('span', 'us-exc-ic', x.type === 'group' ? '#' : '👤')).setAttribute('aria-hidden', 'true');
+        li.appendChild(el('span', 'us-exc-t', nm));
+        if (x.type === 'group') li.appendChild(el('span', 'us-exc-k', T('Gruppe')));
+        var rm = el('button', 'icon-btn us-exc-rm', '✕'); rm.type = 'button';
+        rm.setAttribute('aria-label', T('„{name}“ entfernen', { name: nm }));
+        rm.addEventListener('click', function () {
+          put(list.filter(function (y, j) { return j !== i; }), function () {
+            var b = ul.querySelectorAll('.us-exc-rm'); (b[Math.min(i, b.length - 1)] || q).focus();
+          });
+        });
+        li.appendChild(rm); ul.appendChild(li);
+      });
+      n.textContent = T('{n} von {max}', { n: list.length, max: max });
+      q.disabled = list.length >= max;
+    }
+    // Suche (Personen und eigene Gruppen) - Kombinationsfeld mit Trefferliste
+    var wrap = el('div', 'us-exc-add'), q = el('input', 'hk-in'); q.type = 'search'; q.id = 'us-exc-q'; q.autocomplete = 'off';
+    q.placeholder = T('Person oder Gruppe suchen …'); q.setAttribute('aria-label', T('Ausnahme hinzufügen: Person oder Gruppe suchen'));
+    q.setAttribute('role', 'combobox'); q.setAttribute('aria-autocomplete', 'list'); q.setAttribute('aria-expanded', 'false');
+    var res = el('ul', 'us-exc-res'); res.id = 'us-exc-res'; res.setAttribute('role', 'listbox'); res.setAttribute('aria-label', T('Treffer')); res.hidden = true;
+    q.setAttribute('aria-controls', res.id);
+    wrap.appendChild(q); wrap.appendChild(res); c.appendChild(wrap);
+    function add(x) {
+      if (list.some(function (y) { return same(y, x); })) { q.value = ''; hide(); return; }
+      put(list.concat([x]), function () { q.value = ''; hide(); q.focus(); });
+    }
+    function hide() { res.hidden = true; res.textContent = ''; q.setAttribute('aria-expanded', 'false'); q.removeAttribute('aria-activedescendant'); }
+    function opt(label, sub, x) {
+      var li = el('li', 'us-exc-o'); li.setAttribute('role', 'option'); li.id = 'us-exc-o' + res.children.length; li.tabIndex = -1;
+      li.appendChild(el('span', 'us-exc-t', label)); if (sub) li.appendChild(el('span', 'us-exc-k', sub));
+      li.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      li.addEventListener('click', function () { add(x); });
+      res.appendChild(li);
+    }
+    var tm = 0, seq = 0, act = -1;
+    function mark(i) {
+      var o = res.querySelectorAll('[role=option]'); if (!o.length) return;
+      act = (i + o.length) % o.length;
+      [].forEach.call(o, function (x, j) { x.setAttribute('aria-selected', j === act ? 'true' : 'false'); });
+      q.setAttribute('aria-activedescendant', o[act].id); o[act].scrollIntoView({ block: 'nearest' });
+    }
+    q.addEventListener('input', function () {
+      clearTimeout(tm); var s = q.value.trim(), my = ++seq; act = -1;
+      if (!s) { hide(); return; }
+      tm = setTimeout(function () {
+        var direct = HANDLE.test(s) ? [{ type: 'user', ref: s, name: HK.personName(s) }] : [];
+        api('GET', '/api/share/targets?q=' + encodeURIComponent(s)).catch(function () { return {}; }).then(function (d) {
+          if (my !== seq) return;
+          res.textContent = '';
+          (d.users || []).forEach(function (u) { opt(u.name || HK.personName(u.username), u.sub || '', { type: 'user', ref: u.username, name: u.name }); });
+          (d.groups || []).forEach(function (g) { opt(g.name, T('Gruppe'), { type: 'group', name: g.name }); });
+          (d.remote || []).forEach(function (u) {
+            if (u.type === 'user' || !u.type) { var r = u.target || u.handle; if (r && HANDLE.test(r)) opt(u.label || u.name || HK.personName(r), u.host || '', { type: 'user', ref: r, name: u.label || u.name }); }
+          });
+          if (!res.children.length) direct.forEach(function (x) { opt(x.name, x.ref, x); });
+          if (!res.children.length) { var e = el('li', 'hk-hint us-exc-none', T('Keine Treffer.')); e.setAttribute('role', 'presentation'); res.appendChild(e); }
+          res.hidden = false; q.setAttribute('aria-expanded', 'true');
+        });
+      }, 250);
+    });
+    q.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); mark(act + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); mark(act - 1); }
+      else if (e.key === 'Enter') { var o = res.querySelectorAll('[role=option]'); if (o.length) { e.preventDefault(); o[act < 0 ? 0 : act].click(); } }
+      else if (e.key === 'Escape' && !res.hidden) { e.preventDefault(); e.stopPropagation(); hide(); }
+    });
+    q.addEventListener('blur', function () { setTimeout(hide, 150); });
+    drawList();
   }
 
   window.HKPush = { section: section, enable: enable, disable: disable, current: current };
