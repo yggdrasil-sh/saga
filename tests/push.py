@@ -230,6 +230,9 @@ def vector_test():
     ua = UA()
     body = push.encrypt(json.dumps({"x": "äöü ✓"}).encode(), b64u(ua.pub), b64u(ua.auth))
     ok("Verschluesseln -> Entschluesseln (Empfaenger-Seite, zufaelliges Salz/Schluessel)", ua.decrypt(body) == {"x": "äöü ✓"})
+    bp = push.encrypt(json.dumps({"x": "äöü ✓"}).encode(), b64u(ua.pub), b64u(ua.auth), pad_to=push.pad_size(30))
+    ok("2262-1: mit Auffuellen (pad_to 512) -> Empfaenger entschluesselt, Laenge verborgen", ua.decrypt(bp) == {"x": "äöü ✓"}
+       and len(bp) == 86 + 512 + 16)
     b2 = push.encrypt(b"{}", b64u(ua.pub), b64u(ua.auth))
     ok("jedes Mal neues Salz und neuer Absender-Schluessel", body[:16] != b2[:16] and body[21:86] != b2[21:86])
     try:

@@ -8,7 +8,11 @@ Anfrage:  ("@method" "@authority" "@path" "@query" "content-digest" "saga-actor"
           ;created;expires;nonce;keyid;alg;tag="saga-fed/1"
 Antwort:  ("@status" "content-digest" "saga-nonce");created;keyid;alg;tag="saga-fed-resp/1"
           (saga-nonce = Nonce der Anfrage - bindet die Antwort an genau diese Anfrage)
-Content-Digest nach RFC 9530 (sha-256), immer gesetzt (auch fuer leere Koerper)."""
+Content-Digest nach RFC 9530 (sha-256), immer gesetzt (auch fuer leere Koerper).
+
+2.6 (Bugs-DB 2262, docs/PUSH-RELAY.md): Parameter tag= fuer andere Protokolle mit demselben Verfahren - das Push-Relais
+signiert mit tag="saga-relay/1" (RELAY_TAG). Standard bleibt "saga-fed/1"/"saga-fed-resp/1"; eine Signatur mit dem einen
+Tag gilt nie fuer das andere (der Tag steht in der Signaturbasis und wird beim Pruefen genau verlangt)."""
 import base64
 import hashlib
 import json
@@ -24,6 +28,8 @@ LABEL = "saga"
 REQ_COMPONENTS = ("@method", "@authority", "@path", "@query", "content-digest", "saga-actor")
 RESP_COMPONENTS = ("@status", "content-digest", "saga-nonce")
 REQ_TAG, RESP_TAG = "saga-fed/1", "saga-fed-resp/1"
+RELAY_TAG = "saga-relay/1"                       # 2.6: Saga-Server -> Push-Relais (docs/PUSH-RELAY.md)
+_TAG = re.compile(r"[a-z0-9][a-z0-9./-]{0,39}")
 SKEW = 300                                       # erlaubte Abweichung der Uhren (Sekunden)
 NONCE_RE = re.compile(r"[A-Za-z0-9_-]{16,64}")
 _SF = re.compile(r'[\x20-\x21\x23-\x5b\x5d-\x7e]{1,300}')     # sf-string ohne " und \
@@ -161,14 +167,20 @@ def _req_values(method, auth_, path, query, dig, actor):
             ("@query", "?" + (query or "")), ("content-digest", dig), ("saga-actor", actor)]
 
 
+def _tag(tag):
+    if not isinstance(tag, str) or not _TAG.fullmatch(tag):
+        raise ValueError("ungueltiger tag")
+    return tag
+
+
 # --- Anfragen ----------------------------------------------------------------------------------------------
-def sign_request(priv_raw, keyid, method, netloc, path, query, body, actor=None, now=None):
-    """-> (kopfzeilen, nonce). body: Bytes (b'' ohne Koerper)."""
+def sign_request(priv_raw, keyid, method, netloc, path, query, body, actor=None, now=None, tag=REQ_TAG):
+    """-> (kopfzeilen, nonce). body: Bytes (b'' ohne Koerper). tag: Protokoll (Standard Foederation, RELAY_TAG fuers Relais)."""
     now = int(now or time.time())
     nonce = secrets.token_urlsafe(18)
     dig = digest(body)
     act = actor_header(actor)
-    params = _params(REQ_COMPONENTS, created=now, expires=now + SKEW, nonce=nonce, keyid=keyid, alg="ed25519", tag=REQ_TAG)
+    params = _params(REQ_COMPONENTS, created=now, expires=now + SKEW, nonce=nonce, keyid=keyid, alg="ed25519", tag=_tag(tag))
     base = _base(_req_values(method, netloc, path, query, dig, act), params)
     sig = Ed25519PrivateKey.from_private_bytes(priv_raw).sign(base)
     return {"Content-Digest": dig, "Saga-Actor": act, "Signature-Input": f"{LABEL}={params}",
@@ -194,11 +206,12 @@ def parse_input(value, components, tag):
     return v[len(LABEL) + 1:], p
 
 
-def verify_request(pub_lookup, method, own_authority, path, query, headers, body, now=None):
+def verify_request(pub_lookup, method, own_authority, path, query, headers, body, now=None, tag=REQ_TAG):
     """Eingehende Anfrage pruefen. pub_lookup(keyid) -> oeffentlicher Rohschluessel (oder SigError).
-    -> (keyid, nonce, actor-dict|None). Fehler: SigError. Die Nonce merkt sich der Aufrufer (Replay)."""
+    -> (keyid, nonce, actor-dict|None). Fehler: SigError. Die Nonce merkt sich der Aufrufer (Replay).
+    tag: verlangter Protokoll-Tag (Standard Foederation) - ein anderer Tag ist ein Fehler."""
     now = int(now or time.time())
-    params, p = parse_input(headers.get("signature-input"), REQ_COMPONENTS, REQ_TAG)
+    params, p = parse_input(headers.get("signature-input"), REQ_COMPONENTS, _tag(tag))
     if not isinstance(p.get("expires"), int) or not isinstance(p.get("nonce"), str) or not NONCE_RE.fullmatch(p["nonce"]):
         raise SigError("params")
     if abs(now - p["created"]) > SKEW or p["expires"] < now or p["expires"] - p["created"] > SKEW or p["expires"] <= p["created"]:
@@ -220,21 +233,23 @@ def verify_request(pub_lookup, method, own_authority, path, query, headers, body
 
 
 # --- Antworten ---------------------------------------------------------------------------------------------
-def sign_response(priv_raw, keyid, status, body, nonce, now=None, dig=None):
-    """dig (2.4): Content-Digest schon berechnet (saga-media hat den Teil gelesen) - body wird dann nicht gebraucht."""
+def sign_response(priv_raw, keyid, status, body, nonce, now=None, dig=None, tag=RESP_TAG):
+    """dig (2.4): Content-Digest schon berechnet (saga-media hat den Teil gelesen) - body wird dann nicht gebraucht.
+    tag (2.6): Protokoll-Tag der Antwort (Standard Foederation)."""
     now = int(now or time.time())
     dig = dig or digest(body)
-    params = _params(RESP_COMPONENTS, created=now, keyid=keyid, alg="ed25519", tag=RESP_TAG)
+    params = _params(RESP_COMPONENTS, created=now, keyid=keyid, alg="ed25519", tag=_tag(tag))
     base = _base([("@status", int(status)), ("content-digest", dig), ("saga-nonce", nonce)], params)
     sig = Ed25519PrivateKey.from_private_bytes(priv_raw).sign(base)
     return {"Content-Digest": dig, "Saga-Nonce": nonce, "Signature-Input": f"{LABEL}={params}", "Signature": f"{LABEL}=:{b64(sig)}:"}
 
 
-def verify_response(pub_raw, keyid, status, headers, body, nonce, now=None, dig=None):
+def verify_response(pub_raw, keyid, status, headers, body, nonce, now=None, dig=None, tag=RESP_TAG):
     """Antwort des Gegenuebers pruefen (gepinnter Schluessel, gleiche keyid, unsere Nonce). Fehler: SigError.
-    dig (2.4): Content-Digest des Koerpers schon berechnet (saga-media hat ihn empfangen) - body wird dann nicht gebraucht."""
+    dig (2.4): Content-Digest des Koerpers schon berechnet (saga-media hat ihn empfangen) - body wird dann nicht gebraucht.
+    tag (2.6): verlangter Protokoll-Tag (Standard Foederation)."""
     now = int(now or time.time())
-    params, p = parse_input(headers.get("signature-input"), RESP_COMPONENTS, RESP_TAG)
+    params, p = parse_input(headers.get("signature-input"), RESP_COMPONENTS, _tag(tag))
     if p["keyid"] != keyid:
         raise SigError("keyid")
     if abs(now - p["created"]) > SKEW:

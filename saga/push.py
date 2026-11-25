@@ -150,9 +150,39 @@ def b64u_d(s):
 # =====================================================================================================
 # Web Push: Verschluesselung (RFC 8291, aes128gcm nach RFC 8188) und VAPID (RFC 8292)
 # =====================================================================================================
-def encrypt(payload, p256dh, auth_secret, salt=None, as_key=None):
+PAD_STEPS = (512, 1024, 2048)        # 2.6 (2262, docs/PUSH-RELAY.md): Stufen fuers Auffuellen der Apple-Nutzlast
+PAD_ROUND = 512                      # ueber der hoechsten Stufe: auf ein Vielfaches davon
+E2E_MAX = 2400                       # innerer Text (JSON) einer Apple-Mitteilung hoechstens so gross
+COLLAPSE_INFO = b"saga-collapse/1|"
+
+
+def pad_size(n):
+    """Laenge des Klartext-Datensatzes (Inhalt + Trenner 0x02 + Nullen) fuer n Byte Inhalt: kleinste Stufe aus
+    PAD_STEPS, die n + 1 fasst, sonst aufgerundet auf ein Vielfaches von PAD_ROUND."""
+    need = int(n) + 1
+    for s in PAD_STEPS:
+        if need <= s:
+            return s
+    return -(-need // PAD_ROUND) * PAD_ROUND
+
+
+def e2e_kid(p256dh):
+    """saga.k: erste 8 Zeichen von b64url(SHA-256(oeffentlicher Schluessel roh, 65 Byte)) - welcher App-Schluessel."""
+    return b64u(hashlib.sha256(b64u_d(p256dh)).digest())[:8]
+
+
+def e2e_collapse(auth_secret, tag):
+    """Undurchsichtige apns-collapse-id: "c" + b64url(HMAC-SHA256(auth roh, "saga-collapse/1|" + tag))[:22].
+    tag einer Aktualisierung ist "u" + tag. Gleicher tag -> gleiche Kennung, ohne den tag zu verraten."""
+    import hmac
+    return "c" + b64u(hmac.new(b64u_d(auth_secret), COLLAPSE_INFO + str(tag).encode(), hashlib.sha256).digest())[:22]
+
+
+def encrypt(payload, p256dh, auth_secret, salt=None, as_key=None, pad_to=None):
     """Inhalt fuer EIN Browser-Abo verschluesseln -> Koerper der Anfrage (Kopf + ein Datensatz).
-    salt/as_key nur fuer Testvektoren (sonst jedes Mal neu und zufaellig)."""
+    salt/as_key nur fuer Testvektoren (sonst jedes Mal neu und zufaellig).
+    pad_to (2.6): Laenge des Klartext-Datensatzes (Inhalt + 0x02 + Nullen, RFC 8188 Abschnitt 2) - verbirgt die Laenge des
+    Inhalts; None = ohne Auffuellen wie bisher. Passt der Inhalt nicht hinein: ValueError."""
     ua_pub = b64u_d(p256dh)
     secret = b64u_d(auth_secret)
     if len(ua_pub) != 65 or ua_pub[0] != 4 or len(secret) != 16:
@@ -168,7 +198,12 @@ def encrypt(payload, p256dh, auth_secret, salt=None, as_key=None):
     rs = 4096
     if len(payload) > rs - 17:
         raise ValueError("Inhalt zu gross")
-    ct = AESGCM(cek).encrypt(nonce, payload + b"\x02", None)          # \x02 = letzter Datensatz, ohne Auffuellen
+    pad = 0
+    if pad_to is not None:
+        if not isinstance(pad_to, int) or isinstance(pad_to, bool) or pad_to > rs - 16 or pad_to < len(payload) + 1:
+            raise ValueError("Inhalt zu gross")
+        pad = pad_to - len(payload) - 1
+    ct = AESGCM(cek).encrypt(nonce, payload + b"\x02" + b"\x00" * pad, None)   # \x02 = letzter Datensatz, dann Nullen
     return salt + struct.pack("!I", rs) + bytes([len(as_pub)]) + as_pub + ct
 
 
