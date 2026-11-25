@@ -10,6 +10,8 @@ package main
 //   {"op":"add","id":"d1","cand":{...Kandidat aus call.horn.candidates...},"path":"ws|tcp|udp","video":true,
 //    "tiles":4,"device":"desktop","script":"still|haupt|einwurf|gleichzeitig|gemurmel","e2e":true,"ip":"198.18.0.7"}
 //       ip: eigene Client-Adresse (X-Forwarded-For; nur hinter einem vertrauten Proxy wirksam), sonst alle eine Adresse
+//       mic:false: kein Ton senden (Begleitgeraet = zweites Geraet eines Kontos, sein Token erlaubt kein "a")
+//       cand.node: Knoten - fuer die Zeitcode-Latenz Bot -> Bot getrennt nach gleichem Knoten / ueber Bruecke
 //       -> {"ev":"up","id","ms","csrc"} bzw. {"ev":"err","id","msg"}; danach {"ev":"first","id","kind","ms"}
 //   {"op":"own","id","n","key":"<B64 32 Byte>","after_ms":1500}   eigener Schluessel (sofort bzw. nach after_ms)
 //   {"op":"switch","id"}                                         wartenden Schluessel sofort (alle haben bestaetigt)
@@ -17,8 +19,9 @@ package main
 //       refs = seine Kennungen am Knoten (hp, bei Kaskade hpn je Knoten) - CSRC -> Kennung -> Geraet
 //   {"op":"script","id","script":"haupt"}                        Sprechmuster wechseln
 //   {"op":"genwait","tag","t0":<unix ms>,"want":{"<geraet>":n,...},"timeout_ms":10000}
-//       -> {"ev":"genwait","tag","pairs","done","p50_ms","p95_ms","max_ms"}: bis alle Bots die neue Generation der
-//          Sender aufmachen (Zeit bis zum fkey-Wechsel nach einem Abgang)
+//       -> {"ev":"genwait","tag","pairs","done","hidden","p50_ms","p95_ms","max_ms"}: bis alle Bots die neue Generation
+//          der Sender aufmachen (Zeit bis zum fkey-Wechsel nach einem Abgang); pairs nur, wo der Empfaenger den Sender
+//          sieht (seit t0 - 2 s ein Rahmen aufgegangen), die anderen als hidden
 //   Nachforderung: {"ev":"need","id","from":"<geraet>","n"} - Sender liefert seit 2 s nur Unlesbares (fkey-ack ok:false)
 //   {"op":"leave","id"} -> {"ev":"stats",...,"final":true}  ·  {"op":"stats"} -> je Bot "stats" + {"ev":"sum",...}
 //   {"op":"quit"}
@@ -27,7 +30,9 @@ package main
 // Jitter-Puffer-Ziel), e2e (ok, nokey, auth, replay, format, short, nomap = Absender noch unbekannt, incomplete = Rahmen
 // mit Luecke; tx_sealed, tx_nokey), aswitch_rx (Absenderwechsel auf den eigenen Ton-Plaetzen), tunnel (App-Seite) und mit
 // "stats" legs (Knotensicht je Bein: Weg, Tunnel-Fenster/RTT, fwd_p95_us, aswitch falls der Knoten ihn meldet).
-// "sum" zusaetzlich speak_switch_ms: Sprechbeginn eines Bots bis sein Ton bei den anderen Bots auf einem Platz ankommt.
+// "sum" zusaetzlich speak_switch_ms: Sprechbeginn eines Bots bis sein Ton bei den anderen Bots auf einem Platz ankommt,
+// lat_same_ms / lat_bridge_ms (2438): Bild-Laufzeit Bot -> Bot aus dem Zeitcode (Sendezeit im synthetischen Bild, nach
+// dem Oeffnen gelesen; nur mit Frame-E2E), getrennt nach gleichem Knoten bzw. anderem Knoten (Kaskade ueber Bruecke).
 // Sprechmuster (Pegel -dBov je 100 ms, <= 55 zaehlt im Knoten als Sprache): still (127), haupt (3-8 s reden, 0,3-0,8 s
 // Pause), einwurf (alle 6-14 s 0,8-2,5 s), gleichzeitig (4-10 s reden, 0,2-0,5 s Pause - "4 gleichzeitig" = 4 Bots damit),
 // gemurmel (zufaellig um die Sprachschwelle). Ton = gueltiges Opus (Stille, 120 Byte je 40 ms), Bild = synthetisches VP8
@@ -89,7 +94,8 @@ type hbCmd struct {
 	T0      int64          `json:"t0"`
 	Want    map[string]int `json:"want"`
 	Timeout int            `json:"timeout_ms"`
-	IP      string         `json:"ip"` // Adresse des Geraets als X-Forwarded-For (hinter dem vertrauten Proxy)
+	IP      string         `json:"ip"`  // Adresse des Geraets als X-Forwarded-For (hinter dem vertrauten Proxy)
+	Mic     *bool          `json:"mic"` // false: kein Ton senden (Begleitgeraet - zweites Geraet eines Kontos, Token ohne "a")
 }
 
 type hornRun struct {
@@ -105,11 +111,17 @@ type hornRun struct {
 	onsets   map[uint32]time.Time
 	switchMs []float64 // Zeit vom Sprechbeginn bis zum Ton-Platz bei den anderen
 	lastSum  map[string]any
+	latMu    sync.Mutex
+	lat      [2][]float64 // Bild-Zeitcode Bot -> Bot in ms: [0] gleicher Knoten, [1] ueber Bruecke (anderer Knoten)
 }
+
+// latMax: hoechstens so viele Zeitcode-Proben je Art (danach jede zweite verworfen - Speicher bleibt begrenzt).
+const latMax = 200000
 
 type hBot struct {
 	run        *hornRun
 	id         string
+	node       string // Knoten (Kandidat node) - Zeitcode-Latenz gleicher Knoten / ueber Bruecke
 	sb         *sfuBot
 	path       string
 	t0         time.Time
@@ -228,7 +240,7 @@ func (r *hornRun) handle(c hbCmd) {
 			bad("schon da")
 			return
 		}
-		b = &hBot{run: r, id: c.ID, path: c.Path, t0: time.Now(), refs: map[uint32]string{}, alias: map[string]string{}, bad: map[string][2]time.Time{}, onSeen: map[uint32]time.Time{}, stopS: make(chan struct{})}
+		b = &hBot{run: r, id: c.ID, node: c.Cand.Node, path: c.Path, t0: time.Now(), refs: map[uint32]string{}, alias: map[string]string{}, bad: map[string][2]time.Time{}, onSeen: map[uint32]time.Time{}, stopS: make(chan struct{})}
 		r.mu.Lock()
 		r.bots[c.ID] = b
 		r.mu.Unlock()
@@ -319,7 +331,7 @@ func (b *hBot) start(c hbCmd) {
 	if path == "udp" {
 		layers = []string{"l", "m", "h"}
 	}
-	sb := &sfuBot{peer: c.ID, path: path, video: c.Video, layers: layers, toks: c.Cand.Tokens}
+	sb := &sfuBot{peer: c.ID, path: path, video: c.Video, layers: layers, toks: c.Cand.Tokens, noMic: c.Mic != nil && !*c.Mic}
 	sb.level.Store(127)
 	if c.E2E {
 		sb.e2eTx, sb.e2eRx = newE2ESender(), newE2ERecv()
@@ -338,6 +350,7 @@ func (b *hBot) start(c hbCmd) {
 	}
 	sb.onASlot = b.aslot
 	sb.onRx = b.rxNote
+	sb.onLat = b.latNote
 	base := strings.TrimRight(c.Cand.URL, "/")
 	b.base = base
 	hc, hdr := r.hc, http.Header{}
@@ -874,6 +887,7 @@ func (r *hornRun) summary() map[string]any {
 		"aswitch_rx_min":  map[string]float64{"p50": pctl(aswMin, .5), "max": pctl(aswMin, 1)},
 		"speak_switch_ms": map[string]float64{"p50": pctl(sw, .5), "p95": pctl(sw, .95), "n": float64(len(sw))},
 		"rx_pkts":         pk, "rx_lost": lost}
+	m["lat_same_ms"], m["lat_bridge_ms"] = r.latSum()
 	if len(e2e) > 0 {
 		m["e2e"] = e2e
 	}
@@ -883,7 +897,43 @@ func (r *hornRun) summary() map[string]any {
 	return m
 }
 
-// genWait: Zeit vom Abgang (t0) bis jeder laufende Bot von jedem Sender in want eine Generation >= n aufmacht.
+// latNote: Zeitcode eines Bildes von from (Bot dieses Prozesses) - nach gleichem Knoten bzw. ueber Bruecke getrennt.
+func (b *hBot) latNote(from string, ms float64) {
+	r := b.run
+	r.mu.Lock()
+	snd := r.bots[from]
+	r.mu.Unlock()
+	if snd == nil || snd.node == "" || b.node == "" || ms < 0 || ms > 30000 {
+		return
+	}
+	k := 0
+	if snd.node != b.node {
+		k = 1
+	}
+	r.latMu.Lock()
+	if len(r.lat[k]) >= latMax {
+		h := r.lat[k][:0]
+		for i := 0; i < len(r.lat[k]); i += 2 {
+			h = append(h, r.lat[k][i])
+		}
+		r.lat[k] = h
+	}
+	r.lat[k] = append(r.lat[k], ms)
+	r.latMu.Unlock()
+}
+
+func (r *hornRun) latSum() (same, bridge map[string]float64) {
+	r.latMu.Lock()
+	defer r.latMu.Unlock()
+	f := func(v []float64) map[string]float64 {
+		return map[string]float64{"p50": pctl(v, .5), "p95": pctl(v, .95), "n": float64(len(v))}
+	}
+	return f(r.lat[0]), f(r.lat[1])
+}
+
+// genWait: Zeit vom Abgang (t0) bis jeder laufende Bot von jedem Sender in want eine Generation >= n aufmacht. Nur
+// Paare, bei denen der Empfaenger den Sender sieht (seit t0 - 2 s ein Rahmen aufgegangen; Kachel-/Ton-Plaetze zeigen
+// nicht jeden) - die anderen zaehlen als hidden.
 func (r *hornRun) genWait(c hbCmd) {
 	to := time.Duration(c.Timeout) * time.Millisecond
 	if to <= 0 {
@@ -893,7 +943,7 @@ func (r *hornRun) genWait(c hbCmd) {
 	end := time.Now().Add(to)
 	for {
 		var lat []float64
-		pairs, done := 0, 0
+		pairs, done, hidden := 0, 0, 0
 		r.mu.Lock()
 		bots := make([]*hBot, 0, len(r.bots))
 		for _, b := range r.bots {
@@ -908,15 +958,19 @@ func (r *hornRun) genWait(c hbCmd) {
 				if from == b.id {
 					continue
 				}
-				pairs++
 				if at, ok := b.sb.e2eRx.firstAt(from, n); ok {
+					pairs++
 					done++
 					lat = append(lat, float64(at.Sub(t0).Microseconds())/1000)
+				} else if b.sb.e2eRx.seenSince(from, t0.Add(-2*time.Second)) {
+					pairs++
+				} else {
+					hidden++
 				}
 			}
 		}
 		if done == pairs || time.Now().After(end) {
-			r.emit(map[string]any{"ev": "genwait", "tag": c.Tag, "pairs": pairs, "done": done, "p50_ms": pctl(lat, .5),
+			r.emit(map[string]any{"ev": "genwait", "tag": c.Tag, "pairs": pairs, "done": done, "hidden": hidden, "p50_ms": pctl(lat, .5),
 				"p95_ms": pctl(lat, .95), "max_ms": pctl(lat, 1)})
 			return
 		}
@@ -932,6 +986,14 @@ func (r *e2eRecv) newest(from string) int {
 		return p.newest
 	}
 	return -1
+}
+
+// seenSince: ist seit t ein Rahmen des Senders from aufgegangen (der Empfaenger sieht ihn auf einem Platz)?
+func (r *e2eRecv) seenSince(from string, t time.Time) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p := r.peers[from]
+	return p != nil && !p.last.Before(t)
 }
 
 // firstAt: erster aufgegangener Rahmen des Senders from mit Generation >= n.

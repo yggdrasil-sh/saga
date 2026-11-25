@@ -77,7 +77,11 @@ func TestHornBotTunnelE2E(t *testing.T) {
 		if i == 0 {
 			script = "haupt"
 		}
-		r.handle(hbCmd{Op: "add", ID: id, Cand: hbCand{URL: hs.URL, Peer: id, Tokens: toks}, Path: "ws", Video: true, Tiles: 2, Script: script, E2E: true})
+		var mic *bool
+		if i == 2 { // Begleitgeraet (2438): sendet keinen Ton, empfaengt aber alles
+			mic = new(bool)
+		}
+		r.handle(hbCmd{Op: "add", ID: id, Cand: hbCand{Node: "k1", URL: hs.URL, Peer: id, Tokens: toks}, Path: "ws", Video: true, Tiles: 2, Script: script, E2E: true, Mic: mic})
 		keys[id] = e2eRandKey()
 	}
 	out.wait(t, "up", 3, 30*time.Second)
@@ -122,6 +126,21 @@ func TestHornBotTunnelE2E(t *testing.T) {
 	if sum["bots"].(float64) != 3 || sum["errors"].(float64) != 0 {
 		t.Fatalf("Zusammenfassung: %v", sum)
 	}
+	// 2438: Zeitcode Bot -> Bot, alle auf demselben Knoten "k1" -> nur gleicher Knoten
+	ls, _ := sum["lat_same_ms"].(map[string]any)
+	lb, _ := sum["lat_bridge_ms"].(map[string]any)
+	if ls == nil || ls["n"].(float64) < 50 || ls["p50"].(float64) <= 0 || ls["p50"].(float64) > 500 || lb == nil || lb["n"].(float64) != 0 {
+		t.Fatalf("Zeitcode-Latenz: gleich %v, Bruecke %v", ls, lb)
+	}
+	// Begleitgeraet hb2 ohne Ton: niemand bekommt Ton von hb2 (Pegel-Absender), hb2 bekommt Ton von hb0
+	r.mu.Lock()
+	b0, b2 := r.bots["hb0"], r.bots["hb2"]
+	r.mu.Unlock()
+	a0, _ := b0.sb.seen()
+	a2, _ := b2.sb.seen()
+	if a0[b2.sb.csrc] != 0 || len(a2) == 0 {
+		t.Fatalf("Begleitgeraet: hb0 hoert hb2 %d Pakete, hb2 hoert %v", a0[b2.sb.csrc], a2)
+	}
 	t.Logf("genwait %v", gw)
 	t.Logf("sum %v", sum)
 	for _, s := range st {
@@ -143,5 +162,43 @@ func TestHornBotOpusStille(t *testing.T) {
 		if fl := n - 3 - int(p[2]); fl != 4 || !bytes.Equal(p[3:7], []byte{0xff, 0xfe, 0xff, 0xfe}) {
 			t.Fatalf("%d: Rahmen %d", n, fl)
 		}
+	}
+}
+
+// 2438: Zeitcode im synthetischen Bild, Zuordnung gleicher Knoten / ueber Bruecke, genwait-Sichtbarkeit.
+func TestHornBotZeitcode(t *testing.T) {
+	fr := make([]byte, 64)
+	if _, ok := tcGet(fr); ok {
+		t.Fatal("Zeitcode in leerem Rahmen")
+	}
+	tcPut(fr)
+	if v, ok := tcGet(fr); !ok || time.Now().UnixMicro()-v > 1e6 {
+		t.Fatalf("Zeitcode %v %v", v, ok)
+	}
+	short := make([]byte, tcOff+11)
+	tcPut(short)
+	if _, ok := tcGet(short); ok {
+		t.Fatal("Zeitcode in zu kurzem Rahmen")
+	}
+	r := newHornRun(&syncBuf{}, nil, true, false)
+	a, b, c := &hBot{run: r, id: "a", node: "k1"}, &hBot{run: r, id: "b", node: "k1"}, &hBot{run: r, id: "c", node: "k2"}
+	r.bots = map[string]*hBot{"a": a, "b": b, "c": c}
+	b.latNote("a", 12)
+	c.latNote("a", 40)
+	c.latNote("a", 44)
+	c.latNote("x", 5)     // unbekannter Absender
+	b.latNote("a", -1)    // Uhr unsinnig
+	b.latNote("a", 40000) // unsinnig gross
+	same, bridge := r.latSum()
+	if same["n"] != 1 || same["p50"] != 12 || bridge["n"] != 2 || bridge["p50"] != 44 {
+		t.Fatalf("gleich %v, Bruecke %v", same, bridge)
+	}
+	rx := newE2ERecv()
+	if rx.seenSince("a", time.Now().Add(-time.Hour)) {
+		t.Fatal("unbekannter Sender gesehen")
+	}
+	rx.peers["a"] = &e2ePeer{last: time.Now()}
+	if !rx.seenSince("a", time.Now().Add(-time.Second)) || rx.seenSince("a", time.Now().Add(time.Second)) {
+		t.Fatal("seenSince")
 	}
 }

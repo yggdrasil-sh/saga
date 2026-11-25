@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,15 +50,17 @@ type sfuBot struct {
 	frames  map[*webrtc.TrackRemote]*frameClock
 
 	// 2263-2 (horn-bot): Frame-E2E saga-horn/v1 und Messung; alles nil/0 = wie bisher (bench, Tests)
-	e2eTx   *e2eSender                 // eigener Schluessel: Rahmen versiegeln (ohne Schluessel wird nichts gesendet)
-	e2eRx   *e2eRecv                   // Schluessel der anderen: Rahmen zusammensetzen und oeffnen
-	refOf   func(csrc uint32) string   // CSRC -> Kennung des Absenders am Knoten (peers)
-	onFirst func(kind string)          // erster (aufgegangener) Ton bzw. erstes Bild
-	onASlot func(csrc uint32)          // Ton-Platz wechselt den Absender (CSRC)
-	onRx    func(from string, ok bool) // je geoeffnetem bzw. mangels Schluessel verworfenem Rahmen (Nachforderung)
-	csrc    uint32                     // eigene CSRC am Knoten (POST /api/sfu/leg)
-	peers   map[string]uint32          // Kennung -> CSRC aus POST /api/sfu/leg
-	e2eSt   map[string]uint64          // ok, nokey, auth, replay, format, short, nomap, incomplete
+	e2eTx   *e2eSender                    // eigener Schluessel: Rahmen versiegeln (ohne Schluessel wird nichts gesendet)
+	e2eRx   *e2eRecv                      // Schluessel der anderen: Rahmen zusammensetzen und oeffnen
+	refOf   func(csrc uint32) string      // CSRC -> Kennung des Absenders am Knoten (peers)
+	onFirst func(kind string)             // erster (aufgegangener) Ton bzw. erstes Bild
+	onASlot func(csrc uint32)             // Ton-Platz wechselt den Absender (CSRC)
+	onRx    func(from string, ok bool)    // je geoeffnetem bzw. mangels Schluessel verworfenem Rahmen (Nachforderung)
+	onLat   func(from string, ms float64) // Bild mit Zeitcode (tcMagic) eines anderen horn-bot aufgegangen: Laufzeit in ms
+	noMic   bool                          // kein Ton senden (Begleitgeraet: Token ohne "a"; der Knoten lehnte die Quelle ab)
+	csrc    uint32                        // eigene CSRC am Knoten (POST /api/sfu/leg)
+	peers   map[string]uint32             // Kennung -> CSRC aus POST /api/sfu/leg
+	e2eSt   map[string]uint64             // ok, nokey, auth, replay, format, short, nomap, incomplete
 	gotA    bool
 	gotV    bool
 }
@@ -258,7 +261,7 @@ func (b *sfuBot) join(hc *http.Client, base string, api *webrtc.API, room string
 			}()
 			return nil
 		}
-		if sp.sendA {
+		if sp.sendA && !b.noMic {
 			if err := add("a"); err != nil {
 				return err
 			}
@@ -514,7 +517,8 @@ func (b *sfuBot) rxE2E(video bool, fc *frameClock, a *vp8Asm, h *rtp.Header, c u
 		return
 	}
 	key := video && len(frame) > 0 && frame[0]&0x01 == 0
-	if _, err := b.e2eRx.open(from, video, key, frame); err != nil {
+	plain, err := b.e2eRx.open(from, video, key, frame)
+	if err != nil {
 		b.e2eCount(err.Error())
 		if err == errE2ENoKey && b.onRx != nil {
 			b.onRx(from, false)
@@ -523,6 +527,11 @@ func (b *sfuBot) rxE2E(video bool, fc *frameClock, a *vp8Asm, h *rtp.Header, c u
 	}
 	if b.onRx != nil {
 		b.onRx(from, true)
+	}
+	if video && b.onLat != nil {
+		if t, ok := tcGet(plain); ok {
+			b.onLat(from, float64(time.Now().UnixMicro()-t)/1000)
+		}
 	}
 	var firstKind string
 	b.mu.Lock()
@@ -758,6 +767,7 @@ func (s *sfuStream) run(stop <-chan struct{}) {
 		} else {
 			fr[0] |= 0x01
 		}
+		tcPut(fr) // Zeitcode (Sendezeit) im Zufallsteil: andere horn-bots messen die Laufzeit (nur mit Frame-E2E ausgewertet)
 		if e2e != nil {
 			if fr = e2e.seal(true, key, s.ssrc, ts, fr); fr == nil {
 				continue
@@ -789,4 +799,26 @@ func (s *sfuStream) run(stop <-chan struct{}) {
 			}
 		}
 	}
+}
+
+// Zeitcode im synthetischen Bild (2263-9, Bugs-DB 2438): tcMagic + Sendezeit (Unix-Mikrosekunden, big endian) ab Byte
+// tcOff - hinter dem VP8-Rahmenkopf (Schluesselbild 10 Byte), im sonst zufaelligen Teil. Browser dekodieren das Bild
+// ohnehin nicht; andere horn-bots lesen den Zeitcode nach dem Oeffnen (Frame-E2E) und messen die Laufzeit Bot -> Bot.
+var tcMagic = [4]byte{'H', 'L', 'T', 'C'}
+
+const tcOff = 10
+
+func tcPut(fr []byte) {
+	if len(fr) < tcOff+12 {
+		return
+	}
+	copy(fr[tcOff:], tcMagic[:])
+	binary.BigEndian.PutUint64(fr[tcOff+4:], uint64(time.Now().UnixMicro()))
+}
+
+func tcGet(fr []byte) (int64, bool) {
+	if len(fr) < tcOff+12 || [4]byte(fr[tcOff:tcOff+4]) != tcMagic {
+		return 0, false
+	}
+	return int64(binary.BigEndian.Uint64(fr[tcOff+4:])), true
 }

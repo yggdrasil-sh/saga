@@ -231,6 +231,7 @@ type e2ePeer struct {
 	seen   int // neueste Generation, aus der ein Rahmen aufging (-1)
 	win    map[[2]uint32]*replayWindow
 	firstN map[int]time.Time // erster aufgegangener Rahmen je Generation (Messung fkey-Wechsel)
+	last   time.Time         // zuletzt aufgegangener Rahmen (genwait: sieht der Empfaenger diesen Sender?)
 }
 
 // e2eRecv: alle Sender eines Bots (from = Kennung am Knoten bzw. Geraet).
@@ -327,6 +328,7 @@ func (r *e2eRecv) open(from string, video, key bool, data []byte) ([]byte, error
 		p.win[wk] = w
 	}
 	w.accept(ts)
+	p.last = now
 	if ratcheted { // erst einsetzen, wenn ein Rahmen damit aufging
 		p.gens[g.n] = g
 		p.newest = g.n
