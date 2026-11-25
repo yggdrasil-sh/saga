@@ -433,7 +433,7 @@ def run(srv):
         for act in ("relay_check", "relay_rotate"):
             asyncio.run(admin._push_relay_action(None, {"username": "rw-admin"}, act))
         ok(f"2413-2: Relais aus -> 'Jetzt pruefen'/'Schluessel erneuern' ohne Anfrage ans Relais ({flashes}, {LOG[n_log:]})",
-           len(LOG) == n_log and flashes == ["Push-Relais ist ausgeschaltet."] * 2)
+           len(LOG) == n_log and flashes == [admin.t("Push-Relais ist ausgeschaltet.")] * 2)
     finally:
         admin._flash, admin._go = of, og
         auth.save_setting("push", pv)
