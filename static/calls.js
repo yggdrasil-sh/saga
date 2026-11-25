@@ -271,7 +271,7 @@
     beep(ctx, 880, t0, 0.14, 0.05); beep(ctx, 880, t0 + 0.32, 0.14, 0.05);
   }
   var HOLDQ = {};                                       // call_id -> stille Leiste wartet auf busyElsewhere
-  function holdBar(d, mode, elsewhere) {
+  function holdBar(d, mode, elsewhere, ended) {
     // schon angezeigt bzw. vorbei (z. B. #call-<id> und call.quiet gleichzeitig): sonst zweite Leiste, alter Takt liefe weiter
     if (!d || !d.call_id || RINGS[d.call_id] || GONE[d.call_id]) return;
     var from = d.from || {}, video = d.media === 'video', name = from.name || from.username || '?';
@@ -279,7 +279,7 @@
     if (mode === 'quiet' && !R && elsewhere === undefined) {
       if (HOLDQ[d.call_id]) return;
       HOLDQ[d.call_id] = true;
-      busyElsewhere(d.call_id).then(function (b) { delete HOLDQ[d.call_id]; holdBar(d, mode, b); });
+      busyElsewhere(d.call_id, ended).then(function (b) { delete HOLDQ[d.call_id]; holdBar(d, mode, b); });
       return;
     }
     if (mode === 'wait' && !R) elsewhere = true;        // Anklopfen ohne Gespraech hier: es laeuft woanders
@@ -342,12 +342,22 @@
   }
   // 2.6 (Pruefer, Bugs-DB 2376): laeuft ein eigenes Gespraech auf einem anderen Geraet bzw. in einem anderen Tab? Dann bietet
   // die stille Leiste kein "Annehmen" an (/answer prueft nicht auf besetzt - sonst zwei Gespraeche). -> Promise<bool>
-  function busyElsewhere(id) {
+  // ended: das gerade hier beendete Gespraech (holdFree) - der Server kann es noch kurz als aktiv melden, samt diesem Geraet.
+  // Bugs-DB 2393: es zaehlt nur, solange ein ANDERES eigenes Geraet darin ist (Gruppenanruf, in dem das zweite Geraet weiter
+  // spricht; 1:1 mit Begleitgeraet bzw. nach der Uebergabe). Wie HoldFlow.busyElsewhere der Android-App.
+  function busyIn(calls, id, cur, ended, dev) {
+    return (calls || []).some(function (x) {
+      if (!x || x.id === id || x.id === cur || x.state !== 'active') return false;
+      var mine = x.mine || [];
+      if (ended && x.id === ended) return mine.some(function (d) { return d !== dev; });
+      return x.kind === 'group' && !x.dm ? mine.length > 0 : x.role === 'caller' || x.role === 'callee' || mine.length > 0;
+    });
+  }
+  function busyElsewhere(id, ended) {
     return api('GET', '/api/calls/active').then(function (r) {
-      return (r.calls || []).some(function (x) {
-        return x.id !== id && x.state === 'active' && !(C && C.id === x.id)
-          && (x.kind === 'group' && !x.dm ? (x.mine || []).length > 0 : x.role === 'caller' || x.role === 'callee' || (x.mine || []).length > 0);
-      });
+      var dev = '';
+      try { dev = (myDev() || {}).id || ''; } catch (e) { /* ohne Chat-Geraet: jedes eigene Geraet zaehlt */ }
+      return busyIn(r.calls, id, C ? C.id : null, ended, dev);
     }, function () { return false; });
   }
   // Gespraech in diesem Tab zu Ende (finish): Leisten aus dem Anruffenster neu zeigen - ein wartender Anruf klingelt jetzt
@@ -362,7 +372,7 @@
       setTimeout(function () {                         // nach "Beenden und annehmen" steht der neue Anruf (C) schon
         if (RINGS[id] || GONE[id]) return;
         var d = Object.assign({}, r.d, { expires_in: left, freed: true });
-        if (r.hold === 'quiet') holdBar(d, 'quiet'); else ring(d);
+        if (r.hold === 'quiet') holdBar(d, 'quiet', undefined, R.id); else ring(d);
       }, 0);
     });
   }
@@ -5694,6 +5704,9 @@
                        wantSent: C.wantSent, rates: C.applied || {}, sent: C.sent,
                        signaling: C.pc ? C.pc.signalingState : '', ice: C.pc ? C.pc.iceConnectionState : '', ufrag: C.pc ? remoteUfrag(C) : null } } : null;
   }, ringing: function () { return Object.keys(RINGS).filter(function (id) { return !RINGS[id].hold; }); },
+  // 2.6 (Bugs-DB 2393, Tests): Entscheidung "eigenes Gespraech woanders?" ohne Netz (calls, wartender Anruf, Gespraech hier,
+  // gerade hier beendet, eigene Geraete-ID)
+  busyIn: busyIn,
   // 2.6 (2029-5 B, Tests): Leisten fuer Anklopfen ('wait') und zurueckgehaltene Anrufe ('quiet') - ohne Klingeln
   held: function () { return Object.keys(RINGS).filter(function (id) { return RINGS[id].hold; }).map(function (id) {
     var r = RINGS[id]; return { id: id, mode: r.hold, inCall: !r.box.classList.contains('cl-hold-page'), text: r.box.getAttribute('aria-label'),

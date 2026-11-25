@@ -1,10 +1,12 @@
 // Browser-Reihe 2.6 (Bugs-DB 2390/2391): Ausnahme-Suche unter "Erreichbarkeit" (static/push.js excCard) mit einer Person
 // eines verbundenen Servers - Treffer aus dessen Adressbuch waehlbar (Kennung '~x@host'), Eintrag und GET /api/account/status
 // mit Namen samt Herkunft, nach Neuladen gleich; dazu HKPush.remoteRef gegen die Formen von GET /api/share/targets.
+// 2393: Host nur in der Unterzeile (HKPush.remoteTitle), Kennungen mit IPv6-Host in [] (HKPush.handleOk, direkte Eingabe).
 // Startet keine Server: tests/browser_status_fed.py baut die zwei Instanzen und ruft das hier auf.
 //   BASE_A=http://host:port CK_A=<Cookie-Wert> HB=<host von B> FIND=bert FIND_NAME="Bert Gast" [SHOTS=/ordner]
 //   [NUR_BILDER=1 (Vorher-Stand: nur Bilder, keine Pruefungen)] [BR=firefox] [PLAYWRIGHT=..] node tests/browser_status_fed.js
-// Bilder: hell, schmal 390x844 und breit 1440x900 - <tag>-1-suche (Trefferliste), <tag>-2-liste (Eintrag nach Neuladen).
+// Bilder: hell, schmal 390x844 und breit 1440x900 - <tag>-1-suche (Trefferliste), <tag>-2-liste (Eintrag nach Neuladen),
+// breit-3-ipv6 (direkte Eingabe mit IPv6-Host).
 'use strict';
 const pw = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path');
@@ -44,10 +46,13 @@ async function runView(browser, tag, vp) {
   await p.fill('#us-exc-q', FIND);
   await until(() => p.evaluate(() => { const r = document.getElementById('us-exc-res'); return r && !r.hidden && r.children.length > 0; }), 8000);
   const opts = await p.evaluate(() => [...document.querySelectorAll('#us-exc-res [role=option]')].map(o => o.textContent));
+  const parts = await p.evaluate(() => [...document.querySelectorAll('#us-exc-res [role=option]')].map(o => [(o.querySelector('.us-exc-t') || {}).textContent || '', (o.querySelector('.us-exc-k') || {}).textContent || '']));
   await shot(p, tag + '-1-suche');
   const hit = opts.findIndex(t => t.indexOf(NAME) >= 0);
   ok(tag + ': Person von B in der Trefferliste (' + JSON.stringify(opts) + ')', hit >= 0, opts);
   ok(tag + ': Host nicht doppelt (Name · Host ohne zweite Unterzeile)', hit >= 0 && opts[hit].split(HB).length === 2, opts[hit]);
+  // Bugs-DB 2393: Host nur in der Unterzeile, die Zeile traegt den Namen
+  if (!NUR) ok(tag + ': Zeile "' + NAME + '", Unterzeile Host (' + JSON.stringify(parts[hit]) + ')', hit >= 0 && parts[hit][0] === NAME && parts[hit][1] === HB, parts[hit]);
   const want = NAME + ' (' + HB + ')';
   if (hit >= 0 && !NUR) {
     const w = p.waitForResponse(r => r.url().indexOf('/api/account/status/prefs') >= 0, { timeout: 8000 });
@@ -90,6 +95,42 @@ async function runView(browser, tag, vp) {
     const H = '~' + h16 + '@b.example';
     ok('remoteRef: Formen des Servers (' + JSON.stringify(R) + ')',
        JSON.stringify(R) === JSON.stringify([H, H, H, null, null, H, null, H, null]), R);
+    if (!NUR) {
+      // Bugs-DB 2393: Zeile/Unterzeile (wie UserStatusLogic.remoteTitle) und IPv6-Hosts wie der Server (contacts._RREF)
+      const T2 = await p.evaluate(() => {
+        const f = window.HKPush && window.HKPush.remoteTitle; if (!f) return null;
+        return [f('Anna Berg · b.example', 'b.example'), f('Anna Berg · b.example · anna', 'b.example'),
+                f('Anna Berg · [2001:db8::1]:8443', '[2001:db8::1]:8443'), f('Anna Berg', 'b.example'),
+                f('Person auf b.example (spqz)', 'b.example'), f('Anna Berg', '')];
+      });
+      ok('remoteTitle: Host nur in der Unterzeile (' + JSON.stringify(T2) + ')', JSON.stringify(T2) === JSON.stringify([['Anna Berg', 'b.example'],
+         ['Anna Berg · anna', 'b.example'], ['Anna Berg', '[2001:db8::1]:8443'], ['Anna Berg', 'b.example'], ['Person auf b.example (spqz)', ''], ['Anna Berg', '']]), T2);
+      const V6 = await p.evaluate(h => {
+        const f = window.HKPush && window.HKPush.handleOk; if (!f) return null;
+        return ['@[2001:db8::1]', '@[2001:db8::1]:8443', '@[::1]', '@b.example', '', '@[2001:DB8::1]', '@[2001:db8:: 1]', '@[::1]/x', '@a@[::1]', '@']
+          .map(x => f('~' + h + x));
+      }, h16);
+      ok('Kennung: IPv6-Host in [] gueltig wie am Server (' + JSON.stringify(V6) + ')',
+         JSON.stringify(V6) === JSON.stringify([true, true, true, true, true, false, false, false, false, false]), V6);
+    }
+    {
+      // direkte Eingabe mit IPv6-Host: waehlbar, der Server nimmt sie an
+      await papi(p, 'PUT', '/api/account/status/prefs', { exceptions: [] });
+      await reach(p);
+      const ref6 = '~' + h16 + '@[2001:db8::1]';
+      await p.fill('#us-exc-q', ref6);
+      const o6 = await until(() => p.evaluate(() => { const o = [...document.querySelectorAll('#us-exc-res [role=option]')]; return o.length ? o.map(x => x.textContent) : null; }), NUR ? 4000 : 8000);
+      ok('IPv6-Kennung direkt waehlbar (' + JSON.stringify(o6) + ')', o6 && o6.length === 1 && o6[0].indexOf(ref6) >= 0, o6);
+      await shot(p, tag + '-3-ipv6');
+      if (o6) {
+        const w = p.waitForResponse(r => r.url().indexOf('/api/account/status/prefs') >= 0, { timeout: 8000 });
+        await p.press('#us-exc-q', 'ArrowDown'); await p.press('#us-exc-q', 'Enter');
+        const r = await w.catch(() => null);
+        ok('IPv6-Kennung: Speichern 200', r && r.status() === 200, r && r.status());
+        const g6 = await papi(p, 'GET', '/api/account/status');
+        ok('IPv6-Kennung: GET /api/account/status', ((g6.d.exceptions || [])[0] || {}).ref === ref6, g6.d.exceptions);
+      }
+    }
   }
   await papi(p, 'PUT', '/api/account/status/prefs', { exceptions: [] });
   await ctx.close();

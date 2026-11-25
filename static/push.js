@@ -245,7 +245,8 @@
   // =========================================================================================================
   // Erreichbarkeit (2.6, Bugs-DB 2029-5): Einstellungen des eigenen Status (PUT /api/account/status/prefs) und Ausnahmen
   // =========================================================================================================
-  var HANDLE = /^~[a-z2-7]{16}(@[a-z0-9.:\-]{1,260})?$/;
+  // Bugs-DB 2393: Host wie der Server (saga/contacts.py _RREF) - auch IPv6 in eckigen Klammern ('~x@[2001:db8::1]')
+  var HANDLE = /^~[a-z2-7]{16}(@[a-z0-9.:\[\]\-]{1,260})?$/;
   // Bugs-DB 2390: Treffer anderer Server aus GET /api/share/targets (remote) -> Kennung '~x@host' fuer die Ausnahme oder null.
   // handle ('~x@host', Adressbuch) zuerst; target ('@~x@host' bzw. '@name@host') nur, wenn es selbst eine Kennung ist.
   // Gruppen anderer Server (remote_group) gehen nicht. Wie UserStatusLogic.remoteRef der Android-App.
@@ -253,6 +254,16 @@
     if (!u || (u.type && u.type !== 'remote' && u.type !== 'user')) return null;
     var h = String(u.handle || '').trim(), tg = String(u.target || '').trim().replace(/^@/, '');
     return HANDLE.test(h) && h.indexOf('@') > 0 ? h : HANDLE.test(tg) && tg.indexOf('@') > 0 ? tg : null;
+  }
+  // Bugs-DB 2393: Treffer anderer Server - Label "Name · host" (ggf. " · Unterscheider") ohne den Host, der steht in der
+  // Unterzeile (sonst doppelt). Steckt der Host anders im Namen ("Person auf host (tag)"), keine Unterzeile. Wie
+  // UserStatusLogic.remoteTitle der Android-App. -> [Zeile, Unterzeile]
+  function remoteTitle(label, host) {
+    var h = String(host || '').trim(), lb = String(label || '');
+    if (!h) return [lb, ''];
+    var rest = lb.split(' · ').filter(function (p) { return p.trim().toLowerCase() !== h.toLowerCase(); }).join(' · ').trim();
+    var t = !rest || rest.length === lb.length ? lb : rest;
+    return [t, t.toLowerCase().indexOf(h.toLowerCase()) >= 0 ? '' : h];
   }
   function reachCard(rbox) {
     var U = HK.userStatus, last = '';
@@ -399,9 +410,9 @@
           (d.groups || []).forEach(function (g) { opt(g.name, T('Gruppe'), { type: 'group', name: g.name }); });
           (d.remote || []).forEach(function (u) {
             var r = remoteRef(u); if (!r || seen[r]) return; seen[r] = 1;
-            // label: "Name · host" (bei Gleichnamigen mit Unterscheidung) - Host dann nicht noch einmal als Unterzeile
-            var lb = u.label || u.name || HK.personName(r), h = u.host || '';
-            opt(lb, h && lb.indexOf(h) < 0 ? h : '', { type: 'user', ref: r, name: u.name || '' });
+            // label: "Name · host" (bei Gleichnamigen mit Unterscheidung) - Host nur einmal, in der Unterzeile (2393)
+            var tt = remoteTitle(u.label || u.name || HK.personName(r), u.host);
+            opt(tt[0], tt[1], { type: 'user', ref: r, name: u.name || '' });
           });
           if (!res.children.length) direct.forEach(function (x) { opt(x.name, x.ref, x); });
           if (!res.children.length) { var e = el('li', 'hk-hint us-exc-none', T('Keine Treffer.')); e.setAttribute('role', 'presentation'); res.appendChild(e); }
@@ -419,5 +430,6 @@
     drawList();
   }
 
-  window.HKPush = { section: section, enable: enable, disable: disable, current: current, remoteRef: remoteRef };
+  window.HKPush = { section: section, enable: enable, disable: disable, current: current, remoteRef: remoteRef, remoteTitle: remoteTitle,
+                    handleOk: function (s) { return HANDLE.test(s); } };
 })();

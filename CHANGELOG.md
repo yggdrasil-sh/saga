@@ -183,6 +183,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Web: stille Leiste und Ausnahme-Suche** (Bugs-DB 2393): Nach dem Auflegen zählt das gerade beendete Gespräch nur
+  noch, solange ein anderes eigenes Gerät darin ist (Gruppenanruf, 1:1 mit Begleitgerät bzw. nach der Übergabe) – meldet
+  der Server es kurz noch mit diesem Gerät, bietet die stille Leiste wieder „Annehmen“ an; gleiche Entscheidung wie in der
+  Android-App. In der Ausnahme-Suche steht der Server einer föderierten Person nur in der Unterzeile, Kennungen mit
+  IPv6-Host in eckigen Klammern (`~x@[2001:db8::1]`) sind wie am Server gültig.
 - **KI-Fragen bei sehr vielen sichtbaren Seiten wieder schnell** (Bugs-DB 2349): Der Suchspeicher für zerlegte Seiten
   verdrängt jetzt einzeln die am längsten ungenutzten Seiten, wächst bis zum Bedarf der gerade aktiven Personen (mindestens
   `AI_CACHE_DOCS`) und ist durch `AI_CACHE_MB` (Standard 256) gedeckelt. Für dich freigegebene Seiten werden höchstens

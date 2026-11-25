@@ -10,7 +10,8 @@
 // mit D, B ist draussen; A auf Nicht stoeren -> B ruft -> stille Leiste (call.quiet) ohne Klingeln, B sieht "Klingelt …",
 // B legt auf -> Leiste weg; B ruft binnen 180 s erneut -> klingelt normal (Wiederholungsanruf); D ruft -> stille Leiste
 // -> "Annehmen" verbindet; A telefoniert im zweiten Tab, C ruft -> im ersten Tab stille Leiste ohne "Annehmen" (Bugs-DB
-// 2376); Chat-Eintrag "Verpasster Anruf (Nicht stören)" nur bei A (Bugs-DB 2375). Bilder (hell/dunkel, 1440x900 und
+// 2376); Chat-Eintrag "Verpasster Anruf (Nicht stören)" nur bei A (Bugs-DB 2375); Entscheidung busyIn nach Gespraechsende
+// (Bugs-DB 2393). Bilder (hell/dunkel, 1440x900 und
 // 390x844): Anklopf-Leiste, "Klopft an …" beim Anrufer, stille Leiste (auch "anderer Tab"), Chat-Eintrag.
 // VORHER=<Datei>: der Web-Stand vor 2029-5 (calls.js/calls.css aus main e1a874e per Route) - nur Bilder.
 'use strict';
@@ -121,6 +122,30 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
     const c = await session(U3, E.SAGA_PASS3, 'C'), d = await session(U4, E.SAGA_PASS4, 'D');
     for (const [p, u] of [[a, U1], [b, U2], [c, U3], [d, U4]]) await chatKeys(p, u);
     ok('vier Konten mit Chat-Schluesseln', await a.evaluate(() => !!(window.HKChat && window.HKChat.state().device)));
+    if (!OLD) {
+      // Bugs-DB 2393: "eigenes Gespraech woanders?" (HKCalls.busyIn, wie HoldFlow.busyElsewhere der Android-App) - das gerade
+      // hier beendete Gespraech zaehlt nur, solange ein ANDERES eigenes Geraet darin ist
+      const V = await a.evaluate(() => {
+        const f = window.HKCalls && window.HKCalls.busyIn; if (!f) return null;
+        const W = 'a'.repeat(32), X = 'b'.repeat(32), Y = 'c'.repeat(32), g = (m, o) => Object.assign({ id: X, state: 'active', kind: 'group', role: 'member', mine: m }, o || {});
+        return [
+          f([g(['dev2'])], W, null, X, 'dev1'),              // Gruppe hier beendet, zweites eigenes Geraet spricht weiter -> belegt
+          f([g(['dev1', 'dev2'])], W, null, X, 'dev1'),      // dieses Geraet noch kurz gemeldet + zweites -> belegt
+          f([g(['dev1'])], W, null, X, 'dev1'),              // nur dieses Geraet (Server meldet es noch kurz) -> frei
+          f([g([])], W, null, X, 'dev1'),                    // keins mehr -> frei
+          f([g(['dev2'], { state: 'ended' })], W, null, X, 'dev1'),   // vorbei -> frei
+          f([{ id: X, state: 'active', kind: 'dm', role: 'caller', mine: ['dev1'] }], W, null, X, 'dev1'),   // 1:1 hier beendet -> frei
+          f([{ id: X, state: 'active', kind: 'dm', role: 'caller', mine: ['dev3'] }], W, null, X, 'dev1'),   // 1:1 nach Uebergabe -> belegt
+          f([g(['dev1'])], W, null, X, ''),                  // eigene Geraete-ID unbekannt -> lieber belegt
+          f([g(['dev1']), g(['dev2'], { id: Y })], W, null, X, 'dev1'),   // anderes Gespraech woanders -> belegt
+          f([{ id: X, state: 'active', kind: 'dm', role: 'caller' }], W, null, null, 'dev1'),   // ohne ended wie bisher: 1:1 -> belegt
+          f([g(['dev2'])], W, X, null, 'dev1'),              // Gespraech hier (C) zaehlt nicht
+          f([g(['dev2'], { id: W })], W, null, null, 'dev1'),   // der wartende Anruf selbst zaehlt nicht
+          f([g([])], W, null, null, 'dev1')];                // fremder Gruppenanruf ohne eigene Geraete -> frei
+      });
+      ok('2393: busyIn - beendeter Gruppenanruf mit zweitem eigenem Geraet zaehlt (' + JSON.stringify(V) + ')',
+         JSON.stringify(V) === JSON.stringify([true, true, false, false, false, false, true, true, true, true, false, false, false]), V);
+    }
     const cfg = await api(a, 'GET', '/api/calls/config');
     ok('Server meldet waiting1 (GET /api/calls/config)', cfg.ok && (cfg.r.features || []).indexOf('waiting1') >= 0, cfg.r && cfg.r.features);
     await api(a, 'PUT', '/api/account/status', { state: 'available', source: 'manual' });
