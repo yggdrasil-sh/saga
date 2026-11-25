@@ -1,0 +1,6 @@
+# Saga-Push-Relais (relay/, Bugs-DB 2262) - bewusst schmal; aus saga/ nur fedsig.py (liegt im Image unter saga/)
+starlette>=0.40          # HTTP-Rahmen (ohne FastAPI)
+uvicorn>=0.30            # ASGI-Server, ein Prozess (Ratenzaehler im Speicher)
+httpx>=0.27              # APNs ueber HTTP/2
+h2==4.2.0                # HTTP/2 fuer httpx (wie im Saga-Server)
+cryptography>=42         # Ed25519 (fedsig), ES256-Anbieter-Token (APNs)

@@ -105,6 +105,22 @@ jobs:
           cache-from: type=gha,scope=horn
           cache-to: type=gha,mode=max,scope=horn
 
+      # Push-Relais (2.6, Bugs-DB 2262, relay/) - eigenes Image; :latest/:testing setzt der Schritt "Gleitende Tags"
+      - uses: docker/build-push-action@v6
+        if: steps.v.outputs.skip != '1'
+        with:
+          context: .
+          file: relay/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/saga-relay:${{ steps.v.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=relay
+          cache-to: type=gha,mode=max,scope=relay
+
       # Gjallarhorn-Binaerdateien fuer Selbst-Updates der Knoten: bauen, mit dem Release-Schluessel signieren
       - uses: actions/setup-go@v5
         if: steps.v.outputs.skip != '1'
@@ -150,6 +166,8 @@ jobs:
             echo "::notice::main ist schon weiter ($M) - gleitende Tags setzt testing.yml"; exit 0
           fi
           R="ghcr.io/$GITHUB_REPOSITORY"; H="ghcr.io/$GITHUB_REPOSITORY_OWNER/gjallarhorn"
+          P="ghcr.io/$GITHUB_REPOSITORY_OWNER/saga-relay"
           docker buildx imagetools create -t "$R:latest" -t "$R:${V%%.*}" -t "$R:testing" -t "$R:rc" "$R:$V"
           docker buildx imagetools create -t "$H:latest" -t "$H:testing" "$H:$V"
+          docker buildx imagetools create -t "$P:latest" -t "$P:testing" "$P:$V"
           echo "Gleitende Tags → $V (\`:latest\`, \`:${V%%.*}\`, \`:testing\`, \`:rc\`)" >> "$GITHUB_STEP_SUMMARY"

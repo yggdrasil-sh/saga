@@ -1,0 +1,41 @@
+# Saga-Push-Relais hinter Traefik - nur HTTPS 443 nach aussen (kein "ports:"), Platzhalter anpassen:
+#   RELAY_HOST    oeffentlicher Name (z. B. relay.example.org; muss zu "public_host" in relay.json passen)
+#   RELAY_TAG     Image-Tag (z. B. 2.6.0, latest)
+#   Netz "traefik", Entrypoint "websecure", Zertifikats-Resolver "letsencrypt": wie in der eigenen Traefik-Einrichtung
+# Dateien neben dieser compose.yml:
+#   ./data/relay.json   Konfiguration (Vorlage relay.example.json), ./data gehoert UID 10001 (chown 10001:10001 data)
+#   ./secrets/apns.p8   APNs-Schluessel (.p8) - nur lesbar fuer UID 10001, nie ins Repo
+services:
+  saga-relay:
+    image: ghcr.io/yggdrasil-sh/saga-relay:${RELAY_TAG:-latest}
+    container_name: saga-relay
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      RELAY_CONFIG: /data/relay.json
+      RELAY_DB: /data/relay.db
+    volumes:
+      - ./data:/data
+      - ./secrets/apns.p8:/run/secrets/apns.p8:ro
+    networks: [traefik]
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "14"}      # Protokoll ohne Token/Inhalte; Aufbewahrung siehe README
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.saga-relay.rule=Host(`${RELAY_HOST:-relay.example.org}`)
+      - traefik.http.routers.saga-relay.entrypoints=websecure
+      - traefik.http.routers.saga-relay.tls=true
+      - traefik.http.routers.saga-relay.tls.certresolver=letsencrypt
+      - traefik.http.services.saga-relay.loadbalancer.server.port=8080
+      # Koerper ans Relais hoechstens 8 KB (das Relais prueft selbst; hier frueh abweisen)
+      - traefik.http.middlewares.saga-relay-body.buffering.maxRequestBodyBytes=16384
+      - traefik.http.routers.saga-relay.middlewares=saga-relay-body
+
+networks:
+  traefik:
+    external: true

@@ -58,12 +58,16 @@ jobs:
           case "${FULL%%.*}" in ''|*[!0-9]*) echo "::error::Hauptversion aus '$FULL' unlesbar (VERSION pruefen)"; exit 1;; esac
           echo "major=${FULL%%.*}" >> "$GITHUB_OUTPUT"
           R="ghcr.io/$GITHUB_REPOSITORY"; H="ghcr.io/$GITHUB_REPOSITORY_OWNER/gjallarhorn"
+          P="ghcr.io/$GITHUB_REPOSITORY_OWNER/saga-relay"     # 2.6 (2262): Push-Relais, Kanal-Tags wie gjallarhorn
           {
             echo "tags<<EOT"; echo "$R:testing-$SHORT"
             [ "$REL" = 1 ] || printf '%s\n' "$R:testing" "$R:rc" "$R:latest" "$R:${FULL%%.*}"
             echo "EOT"
             echo "horn_tags<<EOT"; printf '%s\n' "$H:${FULL%%+*}" "$H:testing-$SHORT"
             [ "$REL" = 1 ] || printf '%s\n' "$H:testing" "$H:latest"
+            echo "EOT"
+            echo "relay_tags<<EOT"; printf '%s\n' "$P:${FULL%%+*}" "$P:testing-$SHORT"
+            [ "$REL" = 1 ] || printf '%s\n' "$P:testing" "$P:latest"
             echo "EOT"
           } >> "$GITHUB_OUTPUT"
           [ "$REL" = 0 ] || echo "::notice::Release-Commit $V0 - :testing/:rc/:latest/:${FULL%%.*} schiebt release.yml"
@@ -173,6 +177,35 @@ jobs:
             gh release delete-asset "$R" "$n" -y
           done < horn-assets.txt
           echo "Knoten-Update: \`$R\` enthaelt jetzt $V" >> "$GITHUB_STEP_SUMMARY"
+
+      # Push-Relais (2.6, Bugs-DB 2262, relay/): erst die Testreihe (Relais im Prozess mit Fake-APNs, ohne Secrets),
+      # dann das eigene Image. Steht hinter Saga- und Knoten-Image: ein Fehler hier haelt nur das Relais-Image auf.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Push-Relais pruefen (tests/relay_dienst.py)
+        run: |
+          python -m pip install --quiet -r relay/requirements.txt
+          set +e
+          PYTHONPATH=. python -W ignore tests/relay_dienst.py > "$RUNNER_TEMP/relay.out" 2>&1; rc=$?
+          tail -1 "$RUNNER_TEMP/relay.out"
+          if [ $rc -ne 0 ]; then
+            { grep -E '^FAIL|Traceback|Error' "$RUNNER_TEMP/relay.out" | head -25; tail -3 "$RUNNER_TEMP/relay.out"; } \
+              | while IFS= read -r l; do echo "::error::$l"; done
+          fi
+          exit $rc
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: relay/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.v.outputs.relay_tags }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.v.outputs.full }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=relay-testing
+          cache-to: type=gha,mode=max,scope=relay-testing
 
       - name: Zusammenfassung
         run: echo "Release Candidate **${{ steps.v.outputs.version }}** (${{ steps.v.outputs.short }}) → ${{ steps.v.outputs.release == '1' && 'nur `:testing-<commit>` (Release-Commit, die gleitenden Tags setzt release.yml)' || '`:testing` / `:rc` / `:latest` / `:<major>`' }}" >> "$GITHUB_STEP_SUMMARY"

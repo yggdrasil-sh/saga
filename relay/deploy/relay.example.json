@@ -1,0 +1,13 @@
+{
+  "teams": [
+    {"team_id": "ABCDE12345", "key_id": "KEY1234567", "p8_file": "/run/secrets/apns.p8",
+     "bundles": ["org.example.saga"], "widgets": false}
+  ],
+  "registration": "verify",
+  "sandbox": true,
+  "public_host": "relay.example.org",
+  "trust_proxy": true,
+  "reg_per_ip_hour": 5,
+  "operator": "Betreiber: Beispiel, Kontakt: datenschutz@relay.example.org",
+  "privacy_note": ""
+}
