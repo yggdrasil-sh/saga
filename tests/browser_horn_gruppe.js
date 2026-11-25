@@ -5,7 +5,7 @@
 // Kennzahlen je Browser: Beitritt bis erstes Bild (Zeitcode) / erster Ton, Bild-Latenz p50/p95 (nur Bilder anderer
 // Browser - die Bots senden keine dekodierbaren Bilder), fps Sprecher (hoechstes Bild) und Kacheln, Einfrierer/min
 // (freezeCount), Tonluecken (0,5-s-Fenster mit > 50 % verdeckt) und Verdeckung %, packetsLost, Weg/Knoten, CPU je Browser.
-// Ton: alle Tonplaetze zaehlen (auch Bots; deren Opus ist Zufall -> bei sprechenden Bots Verdeckung, siehe Bericht).
+// Ton: alle Tonplaetze zaehlen (auch Bots; sie senden gueltiges Opus = Stille, also kaum Verdeckung).
 //   HG_SPEC='{"base":"https://saga.example.org:8960","users":["hl63-w1"],"pass":"…","call":"<id>","secs":30,"video":true,
 //             "out":"/tmp/x.json","prof":"/tmp/prof","host_rules":"MAP saga.example.org 127.0.0.1","eng":{"i":0,"exe":"…"}}'
 //   node tests/browser_horn_gruppe.js

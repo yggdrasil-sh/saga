@@ -52,7 +52,7 @@ func (s *syncBuf) wait(t *testing.T, ev string, n int, d time.Duration) []map[st
 }
 
 // horn-bot gegen einen Knoten im Tunnel-Betrieb (Dev-Token statt Saga): drei Bots ueber den Weg ws mit Frame-E2E,
-// Sprechmuster, Schluesselwechsel (genwait) und Kennzahlen; dazu ein vierter Bot ohne Schluessel der anderen (nokey).
+// Sprechmuster, Schluesselwechsel (genwait) und Kennzahlen.
 func TestHornBotTunnelE2E(t *testing.T) {
 	_, hs, _ := tunnelServer(t)
 	hc := httpClient()

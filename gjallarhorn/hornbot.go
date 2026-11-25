@@ -562,8 +562,9 @@ func (b *hBot) aslot(c uint32) {
 	b.mu.Lock()
 	seen := b.onSeen[c].Equal(on)
 	b.onSeen[c] = on
+	early := !b.ready || on.Before(b.t0.Add(time.Duration(b.upMs)*time.Millisecond)) // Sprechbeginn vor dem eigenen Beitritt: Beitrittszeit, keine Wechselzeit
 	b.mu.Unlock()
-	if !seen {
+	if !seen && !early {
 		r.mu.Lock()
 		r.switchMs = append(r.switchMs, float64(now.Sub(on).Microseconds())/1000)
 		r.mu.Unlock()
