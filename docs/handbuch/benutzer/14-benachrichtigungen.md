@@ -301,9 +301,9 @@ Die Glocke öffnet sich auf dem Handy als Liste von unten.
 - **Eigener Status:** in der App unter **Einstellungen → Mein Status**, mit denselben Möglichkeiten wie im Browser;
   am Kontoknopf zeigt ein Punkt, wenn du nicht verfügbar bist. Darunter liegt **Erreichbarkeit**.
 - **Fokus koppeln:** Saga bringt einen Fokusfilter **„Saga-Status“** mit. Richte ihn in den iPhone-Einstellungen
-  unter **Fokus** → dein Fokus (zum Beispiel „Arbeit“) → **Fokusfilter hinzufügen** → **Saga** ein und wähl
+  unter **Fokus** → dein Fokus (zum Beispiel „Arbeit“) → **Filter hinzufügen** → **Saga** ein und wähl
   **Beschäftigt** oder **Nicht stören**. Solange der Fokus an ist, gilt dieser Status in Saga. Saga meldet dem Server
-  nur den Zustand – **nie den Namen des Fokus**. Im Benutzermenü steht dann „vom Gerät (Fokus)“.
+  nur den Zustand – **nie den Namen des Fokus**. Im Browser steht im Benutzermenü dann „vom Gerät (Fokus)“.
 
 <!-- App-Bild folgt: b14-07-status-ios.png -->
 

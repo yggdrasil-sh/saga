@@ -202,10 +202,11 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
   speichert Ben denselben Absatz → echte Server-Antwort 409 und echte Leiste; Bens Änderung wird danach zurückgenommen.
 - App-Durchgang (Simulatoren/Emulatoren, nicht aus dem Browser): b11-03 (iOS), b12-11 (iOS), b12-12 (Android dunkel),
   b13-06 (iOS), b15-04 (iOS), b17-02 … b17-09 (iOS/iPad/Mac/Android/Linux), b19-03 (Android).
-- Eigener Status (2.6, Bugs-DB 2029-9): Web-Bilder b12-13, b13-11, b14-04, b14-05, b14-06 aus einer Szene (`--nur b14-04`,
-  Welt familie, Art server – das Anklopfen läuft direkt, nicht über den Knoten); Status und Ausnahmen setzt die Szene am Ende
-  zurück. App-Bilder aus den App-Durchgängen 2029-6/7/8 übernommen (nur Demo-Konten, verkleinert, ohne Metadaten): b13-12 (iOS), b14-08
-  (Android), b14-09 (Linux). Noch offen: b13-13 (Android Anklopfen), b14-07 (iOS Mein Status).
+- Eigener Status (2.6, Bugs-DB 2029-9): Web-Bilder b12-13, b13-11, b14-04, b14-05, b14-06 aus einer Szene
+  (`--nur b14-04`, Welt familie, Art server – das Anklopfen läuft direkt, nicht über den Knoten); Status und Ausnahmen
+  setzt die Szene am Ende zurück. App-Bilder aus den App-Durchgängen 2029-6/7/8 übernommen (nur Demo-Konten,
+  verkleinert, ohne Metadaten): b13-12 (iOS), b14-08 (Android), b14-09 (Linux). Noch offen: b13-13 (Android Anklopfen),
+  b14-07 (iOS Mein Status).
 - B13 Anrufe: Demo läuft über http – Kamera/Mikrofon ersetzt das Skript im Browser durch ein gezeichnetes Ersatzbild
   (Initialen, keine Gesichter) und stillen Ton; WebRTC läuft echt zwischen den Browser-Kontexten. Seit Durchgang 4
   laufen alle Anrufbilder über den eingebauten Knoten (Art `knoten`, „Alle Anrufe über Knoten“ ab Werk an), auch b13-03.
