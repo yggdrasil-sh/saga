@@ -327,6 +327,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Doku
 
+- **Messwerkzeug für Anrufe mit 10+ Teilnehmern** (2263-2, nur für Entwickler): `gjallarhorn horn-bot` (Test-Teilnehmer mit
+  echtem Saga-Token, Wege UDP/TCP/Tunnel, Frame-E2E saga-horn/v1, Sprechmuster) und `tools/perf/horn_last.py` (Konten,
+  Gruppe bis 50, Anruf über die echte Kette nginx → saga-media → Knoten, Kommen/Gehen, CPU/RSS je Dienst, Signal-Zähler,
+  Szenarien M1–M8) mit Browser-Teil `tests/browser_horn_gruppe.js`. Bedienung im Kopf von `horn_last.py`.
 - **Ein Kanal bis 3.0** in README (de/en/es), Anleitung/Guide/Guía (Abschnitt 11 „Updates“), Upgrade-Anleitung 2.5,
   Handbuch A10, Projektseite (5 Sprachen) und Kommentaren: `SAGA_VERSION=2` bekommt jeden Stand von `main`,
   festnageln mit `2.5`, `2.5.0` oder `testing-<commit>` – nur, solange keine neuere Version die Datenbank umgebaut hat
