@@ -2537,6 +2537,100 @@ def b13_07(run):
 
 
 # =====================================================================================================
+# Eigener Status (2.6, Bugs-DB 2029): Anklopfen, Dialog "Mein Status", Benutzermenue, Chip im Chat-Kopf, Erreichbarkeit
+# =====================================================================================================
+@scene("b14-04-status-menue", "familie")
+def b14_status(run):
+    """b13-11 (Anna telefoniert mit Ben, Clara klopft an), b14-05 (Dialog „Mein Status“: Nicht stören, 1 Stunde, „Im
+    Kundentermin“), b14-04 (Benutzermenü danach), b12-13 (Bens Direkt-Chat mit Anna: Chip im Kopf, Punkt in der Liste),
+    b14-06 (Erreichbarkeit mit der Ausnahme Oma Lena). Am Ende Status und Ausnahmen zurück (spätere Szenen im Lauf)."""
+    a = caller(run, "anna", dark=False)
+    b = caller(run, "ben", dark=False)
+    c = caller(run, "clara", dark=False)
+    dm = japi(a, "POST", "/api/chats", {"kind": "dm", "user": "ben"})["chat"]["id"]
+    dc = japi(a, "POST", "/api/chats", {"kind": "dm", "user": "clara"})["chat"]["id"]
+    a.go(f"/chats#c{dm}", 1500)
+    send_msg(a, "Ich bin gleich im Kundentermin – danach rufe ich dich wegen der Fähre an.")
+    b.go(f"/chats#c{dm}", 1500)
+    send_msg(b, "Alles klar, bis später!")
+    a.go(f"/chats#c{dc}", 1500)
+    send_msg(a, "Kannst du heute Oma vom Bahnhof abholen?")
+    c.go(f"/chats#c{dc}", 1500)
+    send_msg(c, "Mach ich 🙋")
+    # b13-11: Anna telefoniert mit Ben, Clara ruft Anna an -> Leiste "Clara klopft an" in Annas Anruffenster
+    b.go(f"/chats#c{dm}", 1500)
+    call_from_chat(a, dm)
+    accept(b)
+    until(lambda: (room(a) or {}).get("inRoom"), 15000)
+    a.p.wait_for_timeout(2500)
+    call_from_chat(c, dc)
+    a.p.wait_for_selector(".cl-wait .cl-hold-go", timeout=20000)
+    a.p.wait_for_timeout(1500)
+    no_toasts(a)
+    a.mark([(a.p.locator(".cl-wait .cl-hold-no").first, "1", 3), (a.p.locator(".cl-wait .cl-hold-go").first, "2", 3)])
+    run.shot(a.p, "b13-11-anklopfen")
+    a.unmark()
+    a.p.click(".cl-wait .cl-hold-no")
+    a.p.wait_for_timeout(1500)
+    hangup(c, a, b)
+    a.p.wait_for_timeout(2500)
+    c.close()
+    # b14-05: Dialog "Mein Status" (Nicht stören, 1 Stunde, eigener Text)
+    a.go("/dashboard", 2500)
+    no_toasts(a)
+    a.p.click("#hk-user")
+    a.p.wait_for_selector(".menu:not([hidden]) .us-mi", timeout=8000)
+    a.p.click(".menu .us-mi")
+    a.p.wait_for_selector(".us-dlg")
+    a.p.check(".us-dlg input[name=us-state][value=dnd]")
+    a.p.check(".us-dlg input[name=us-dur][value=h1]")
+    a.p.fill("#us-text-in", "Im Kundentermin")
+    a.blur(True)
+    a.p.wait_for_timeout(500)
+    a.mark([(a.p.locator(".us-dlg .us-states"), "1", 3), (a.p.locator(".us-dlg .us-durs"), "2", 3),
+            (a.p.locator(".us-dlg .us-text"), "3", 3)])
+    run.shot(a.p, "b14-05-mein-status", el=a.p.locator(".us-dlg"), pad=20)
+    a.unmark()
+    a.p.click(".us-dlg .us-save")
+    a.p.wait_for_selector(".us-dlg", state="detached", timeout=8000)
+    a.p.wait_for_timeout(1000)
+    # b14-04: Benutzermenü mit dem Status (Punkt, "bis …")
+    a.p.click("#hk-user")
+    a.p.wait_for_selector(".menu:not([hidden]) .us-mi", timeout=8000)
+    a.p.wait_for_timeout(600)
+    a.mark([(a.p.locator(".menu .us-mi"), "1", 2)])
+    run.shot(a.p, "b14-04-status-menue", el=union(a.p, [".menu:not([hidden])", "#hk-user"], 24))
+    a.unmark()
+    a.p.keyboard.press("Escape")
+    # b12-13: Bens Direkt-Chat mit Anna - Chip "Nicht stören bis … · Im Kundentermin", Punkt am Profilbild der Liste
+    b.go(f"/chats#c{dm}", 2500)
+    until(lambda: b.p.locator("#ct-sub .us-chip").count(), 20000)
+    b.p.wait_for_timeout(1000)
+    no_toasts(b)
+    b.blur(True)
+    b.mark([(b.p.locator("#ct-sub .us-chip"), "1", 3)])
+    run.shot(b.p, "b12-13-status-chatkopf")
+    b.unmark()
+    b.close()
+    # b14-06: Erreichbarkeit mit der Ausnahme Oma Lena (über die Suche)
+    a.go("/dashboard", 2000)
+    a.settings("reach", wait=1800)
+    a.p.wait_for_selector("#us-reach #us-exc-q", timeout=10000)
+    a.p.fill("#us-exc-q", "Lena")
+    a.p.wait_for_selector("#us-exc-res .us-exc-o", timeout=10000)
+    a.p.locator("#us-exc-res .us-exc-o", has_text="Lena").first.click()
+    until(lambda: a.p.locator("#us-reach .us-exc li", has_text="Lena").count(), 10000)
+    a.p.wait_for_timeout(1200)
+    a.blur(True)
+    a.mark([(a.p.locator("#us-reach .lv-set-list").first, "1", 3), (a.p.locator("#us-reach ul.us-exc"), "2", 3)])
+    run.shot(a.p, "b14-06-erreichbarkeit", el=a.p.locator("#us-reach"), pad=12)
+    a.unmark()
+    a.close()
+    run.dm.api("anna", "PUT", "/api/account/status/prefs", {"exceptions": []})
+    run.dm.api("anna", "PUT", "/api/account/status", {"state": "available", "source": "manual"})
+
+
+# =====================================================================================================
 # Konflikt ohne live (b09-03) - am Ende der Familien-Szenen, weil Bens Aenderung Versionen der Seite "Sommerfest" anlegt
 # =====================================================================================================
 @scene("b09-03-konflikt", "familie")
