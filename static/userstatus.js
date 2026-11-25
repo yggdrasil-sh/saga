@@ -93,6 +93,10 @@
   function drawMe() {
     var b = document.getElementById('hk-user'); if (!b) return;
     var s = shown(), d = b.querySelector('.us-me');
+    // Name des Knopfs: "Benutzermenü: Anna" + Status (ohne Status wie im Template)
+    var base = b.dataset.usAria || (b.dataset.usAria = b.getAttribute('aria-label') || '');
+    var lab = s && s.state !== 'available' ? base + ', ' + T('Status: {state}', { state: NAMES[s.state] }) + (s.hint ? ', ' + s.hint : '') : base;
+    if (lab && b.getAttribute('aria-label') !== lab) b.setAttribute('aria-label', lab);
     if (!s || s.state === 'available') { if (d) d.remove(); return; }
     if (!d) { d = dot(s.state, 'us-me'); b.insertBefore(d, b.firstChild); }
     d.className = 'us-dot us-me us-' + s.state;

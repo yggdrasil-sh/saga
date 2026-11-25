@@ -1568,15 +1568,22 @@
     var users = presenceWant();
     if (!users.length) { if (Object.keys(S.pres).length || Object.keys(S.ust).length) { S.pres = {}; S.ust = {}; drawList(); drawHead(); } return; }
     presAt = Date.now();
+    var sent = presAt;
     api('POST', '/api/chat/presence', { users: users }).then(function (r) {
       var nx = {};
       Object.keys(r.users || {}).forEach(function (u) { nx[u] = r.users[u]; });
       S.pres = nx;
-      S.ust = {};                                         // 2.6 (2029-5): fehlt eine Person, ist kein Status bekannt
+      // 2.6 (2029-5): fehlt eine Person, ist kein Status bekannt - ausser chat.status kam nach dem Senden (neuer als die Antwort)
+      var old = S.ust, at = S.ustAt || {};
+      S.ust = {};
       Object.keys(r.status || {}).forEach(function (u) { var x = r.status[u]; if (x && typeof x.s === 'string') S.ust[u] = x; });
+      Object.keys(at).forEach(function (u) {
+        if (at[u] < sent) { delete at[u]; return; }
+        if (old[u]) S.ust[u] = old[u]; else delete S.ust[u];
+      });
       // Personen anderer Server: der eigene Server fragt dort erst nach (bzw. erneut, z. B. gleich nach dem Annehmen einer
       // Nachrichtenanfrage) - fehlende eine Minute lang alle 10 s nachfragen, danach im normalen Takt
-      var miss = users.some(function (u) { return u.charAt(0) === '@' && !nx[u]; });
+      var miss = users.some(function (u) { return u.charAt(0) === '@' && !nx[u] && !(r.status || {})[u]; });   // 2029-5: Status zaehlt als Antwort
       S.presMiss = miss ? (S.presMiss || 0) + 1 : 0;
       clearTimeout(S.presRe); if (miss && S.presMiss <= 6) S.presRe = setTimeout(presenceSync, 10000);
       if (r.enabled === false && S.me) S.me.privacy = Object.assign({}, S.me.privacy, { online: false });
@@ -1599,10 +1606,13 @@
   }
   function statusChip(sub, c) {
     var st = usOf(c); if (!st) return;
-    var ch = el('span', 'ct-chip us-chip us-c-' + st.s);
+    // Knopf: am Handy ist die Zeile gekuerzt - Tippen zeigt den vollen Text (auch fuer Bildschirmleser als Meldung)
+    var full = HK.userStatus.peerText(st, true), ch = el('button', 'ct-chip us-chip us-c-' + st.s); ch.type = 'button';
     ch.appendChild(HK.userStatus.dot(st.s));
-    ch.appendChild(el('span', 'us-chip-t', HK.userStatus.peerText(st, true)));
-    ch.title = HK.userStatus.peerText(st, true);
+    ch.appendChild(el('span', 'us-chip-t', full));
+    ch.title = full; ch.setAttribute('aria-label', T('Status: {state}', { state: full }));
+    ch.addEventListener('click', function () { HK.toast(chatName(c) + ': ' + full, null, null, 6000); });
+    ch.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); });   // nicht der Kopf-Knopf (Gruppeninfo)
     sub.appendChild(ch);
   }
   // Hinweis vor dem Anruf (Anruf-Knoepfe im Kopf und "Zurueckrufen"): Gegenueber auf "Nicht stoeren" -> Rueckfrage, "Im Anruf"
@@ -4813,6 +4823,7 @@
     }
     else if (t === 'chat.status' && d.username) {         // 2.6 (2029-5): Status eines Chat-Partners (null = nicht mehr bekannt)
       if (d.status && typeof d.status.s === 'string') S.ust[d.username] = d.status; else delete S.ust[d.username];
+      (S.ustAt = S.ustAt || {})[d.username] = Date.now();    // gewinnt gegen eine Abo-Antwort, die vorher losging
       drawList(); drawHead();
     }
     else if (t === 'chat.privacy') { if (S.me) S.me.privacy = { receipts: !!d.receipts, online: !!d.online }; S.rcpts = {}; presenceSync(); if (S.cur) { loadReceipts(S.cur); drawMsgs(); } }
