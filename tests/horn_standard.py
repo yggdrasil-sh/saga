@@ -83,6 +83,13 @@ def merker():
             ok(f"Lesestellen folgen horn_on {kw}: calls.horn_on, features, CAPS2 horn/horn_dm = {want}",
                calls.horn_on() is want and ("horn" in calls.features()) is want and ("horn" in caps) is want
                and ("horn_dm" in caps) is want, caps)
+        # 2263-4 (bewusste Abweichung, Pruefung a63srev): calls.horn_on/CAPS2 folgen jetzt auch calls.enabled - mit
+        # ausgeschalteten Anrufen meldet der Server weder features "horn" noch CAPS2 horn/horn_dm/horn_req (vorher doch)
+        auth.save_setting("calls", dict(keep, horn=True, horn_on_y=True, enabled=False))
+        auth._settings_cache["v"] = None
+        caps = F.caps2()
+        ok("Anrufe aus (calls.enabled false): calls.horn_on aus, CAPS2 ohne horn/horn_dm/horn_req",
+           calls.horn_on() is False and HN.horn_on() is False and not {"horn", "horn_dm", "horn_req"} & set(caps), caps)
     finally:
         auth.save_setting("calls", keep)
         auth._settings_cache["v"] = None
