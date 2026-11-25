@@ -8,7 +8,7 @@
 //    kein waagrechtes Scrollen bei 390 px; Bilder hell/dunkel (1280) und hell (390) - Admin-Texte kommen aus 2263-4
 //  - Web: 1:1 A (1280) <-> B (390) ueber den eingebauten Knoten (calls.horn + horn_all): Kopf mit Weg und Schloss, ohne
 //    Marke und ohne Banner; Teilnehmerliste ohne den Satz; Bilder Kopf und Teilnehmerliste
-//   SAGA_BASE SAGA_USER/PASS SAGA_USER2/PASS2 SAGA_ADMIN SAGA_ADMIN_COOKIE SHOTS [HX_PREFIX=nachher] [HX_VORHER=1]
+//   SAGA_BASE SAGA_USER/PASS SAGA_USER2/PASS2 SAGA_ADMIN SAGA_ADMIN_COOKIE SHOTS [HX_PREFIX=nachher] [HX_VORHER=1] [HX_TLS_SELF=1]
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
@@ -22,9 +22,11 @@ async function until(fn, ms = 20000, step = 150) { const end = Date.now() + ms; 
 const shots = [];
 async function shot(p, name, full) { const f = path.join(SHOTS, PRE + '-' + name + '.png'); await p.screenshot({ path: f, fullPage: !!full }); shots.push(path.basename(f)); }
 let br;
+// HX_TLS_SELF=1: Knoten mit selbst signiertem Zertifikat (HORN_TLS_SELF, z. B. Aufbau aus tests/anrufe_horn_knoten.py)
+const TLS_SELF = E.HX_TLS_SELF === '1';
 async function ctxFor(phone, scheme) {
-  return br.newContext(phone ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, locale: 'de-DE', colorScheme: scheme || 'dark' }
-    : { viewport: { width: 1280, height: 800 }, locale: 'de-DE', colorScheme: scheme || 'dark' });
+  return br.newContext(Object.assign(phone ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, locale: 'de-DE', colorScheme: scheme || 'dark' }
+    : { viewport: { width: 1280, height: 800 }, locale: 'de-DE', colorScheme: scheme || 'dark' }, TLS_SELF ? { ignoreHTTPSErrors: true } : {}));
 }
 async function session(user, pass, name, phone) {
   const ctx = await ctxFor(phone);
@@ -71,7 +73,7 @@ async function adminPage(scheme, phone) {
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   br = await chromium.launch({ channel: E.PW_CHANNEL || 'chromium', headless: true,
-    args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
+    args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'].concat(TLS_SELF ? ['--ignore-certificate-errors'] : []) });
   try {
     // --- Admin -> Anrufe ------------------------------------------------------------------------------------------------
     for (const [scheme, phone] of [['light', false], ['dark', false], ['light', true]]) {
