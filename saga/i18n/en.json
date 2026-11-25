@@ -5276,5 +5276,7 @@
  "Klopft an …": "Call waiting …",
  "Beenden und annehmen": "End and answer",
  "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "You are on a call in another tab or on another device.",
- "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "The current call could not be ended reliably – the incoming call was not answered. Please try again."
+ "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "The current call could not be ended reliably – the incoming call was not answered. Please try again.",
+ "Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)": "Search cache: {d} pages, about {m} MB (limit {c} pages, {x} MB AI_CACHE_MB)",
+ "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} questions saw more shared pages than {k} – the most recently changed were searched (at most {h} left out)"
 }

@@ -13,6 +13,7 @@ Grenzen (immer, unabhaengig von Schaltern):
 - Nur der Heimatserver: foederierte Inhalte bleiben draussen (Eigentuemer mit '@', negative Seiten-IDs), fremde
   Personen ('@name@host', Gaeste) bekommen gar keinen Kontext.
 - Papierkorb, Archiv und Vorlagen nie (saga.ai.visible_docs, sharing.Access.tree), fremde Seiten nur mit Freigabe.
+  Hoechstens SCAN_MAX eigene und SCAN_MAX_SHARED geteilte Seiten (je die zuletzt geaenderten, Bugs-DB 2349).
 - Chat-Verlauf nur bei way == "chat" (RT-41: nie fuer Anrede, Stil oder andere Wege); der Chat-Weg bekommt nie Seiten,
   Aufgaben oder Kalender.
 - read enthaelt NUR Kennungen, nie Text: note:<id>, tasks:open, cal:<datum>/<tage>, chat:<chat-id>:<anzahl>.

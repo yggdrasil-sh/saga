@@ -41,6 +41,8 @@
     <p class="hk-hint">{{ _("Heute: {n} Anfragen von {p} Personen · höchstens {k} gleichzeitig (AI_MAX_PARALLEL)", n=used, p=people, k=parallel) }}</p>
     {# 2.6 (Bugs-DB 2266 K-A5, M8): Einheiten nur als kleiner Messwert - Stellgroesse bleibt "Anfragen je Person und Tag" #}
     <p class="hk-hint" id="ai-units"><small>{{ _("Messwert heute in Einheiten (etwa Zeichen/4): Fragen {a} · Aufträge {j} · Ideen {i}", a=units.units.ask, j=units.units.job, i=units.units.idea) }}{% if units.real_in or units.real_out %} · {{ _("echte Tokens laut Endpunkt: {i} ein, {o} aus", i=units.real_in, o=units.real_out) }}{% endif %}{% if units.lights is none %} · {{ _("weniger als {n} Konten: nur Summen", n=5) }}{% elif units.lights.gruen or units.lights.gelb or units.lights.rot %} · {{ _("je Person nur Ampel:") }} {% set parts = [] %}{% for k, name in [("gruen", _("Grün")), ("gelb", _("Gelb")), ("rot", _("Rot"))] if units.lights[k] %}{% if parts.append(units.lights[k]|string ~ " × " ~ name) %}{% endif %}{% endfor %}{{ parts|join(", ") }}{% endif %}</small></p>
+    {# Bugs-DB 2349: Zwischenspeicher und Grenze geteilter Seiten - nur Zahlen dieses Prozesses, keine Personen/Titel #}
+    <p class="hk-hint" id="ai-cache"><small>{{ _("Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)", d=cache.docs, m=cache.mb, c=cache.cap_docs, x=cache.cap_mb) }}{% if cache.shared_cut %} · {{ _("{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)", n=cache.shared_cut, k=cache.shared_max, h=cache.shared_cut_max) }}{% endif %}</small></p>
   </section>
   <div class="adm-actions">
     <button class="btn btn-primary" type="submit" name="action" value="save">{{ _("Speichern") }}</button>

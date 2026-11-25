@@ -3,12 +3,15 @@
 Stufe S: 3.000 eigene Seiten (so viele liest ai.visible_docs hoechstens: SCAN_MAX), 60 Aufgaben.
 Stufe M (wie gen.py M): 8.050 eigene Notizen (2.000 Seiten, 50 Datenbanken mit 6.000 Zeilen - gelesen werden die neuesten
 3.000) und 300 Seiten einer anderen Person unter einer freigegebenen Seite (Freigabe mit Vererbung), 60 Aufgaben.
-Stufe G (Grenzfall, ohne Grenzwert): 3.000 eigene + 3.000 geteilte Seiten - mehr Auszuege als der Zwischenspeicher
-(AI_CACHE_DOCS, Standard 5.000) fasst.
+Stufe G (Grenzfall, Bugs-DB 2349): 3.000 eigene + 5.000 geteilte Seiten - gelesen werden 3.000 eigene (SCAN_MAX) und die
+zuletzt geaenderten 3.000 geteilten (SCAN_MAX_SHARED); 6.000 Seiten sind mehr, als AI_CACHE_DOCS (Standard 5.000) allein
+fasst - die Obergrenze des Zwischenspeichers richtet sich nach dem Bedarf (ai._cap_docs, Deckel AI_CACHE_MB).
+--geteilt N: andere Zahl geteilter Seiten in Stufe G (Vorher-Messung 2349: 3.000). --speicher: Speicher je Eintrag des
+Zwischenspeichers mit tracemalloc messen und mit der Schaetzung ai._entry_bytes vergleichen.
 Gemessen: p50/p95/max je Auswahl (Seiten + Aufgaben) ueber verschiedene Fragen, Zwischenspeicher der Auszuege warm
-(erster Lauf kalt, wird mit ausgegeben). Grenzwerte: tools/perf/limits.json, Stufe S/M, Name "Kollegin: Kontext-Auswahl".
+(erster Lauf kalt, wird mit ausgegeben). Grenzwerte: tools/perf/limits.json, Stufe S/M/G, Name "Kollegin: Kontext-Auswahl".
 
-    PYTHONPATH=tests/pgshim:. python tools/perf/kollegin.py [--stufe SMG] [--n 10]
+    PYTHONPATH=tests/pgshim:. python tools/perf/kollegin.py [--stufe SMG] [--n 10] [--geteilt N] [--speicher]
     (saga-test: tools/testumgebung/umgebung.sh lauf server <slot> $PWD/tools/perf/kollegin.py)
 Wegwerf-Konten kp-*; raeumt auf. Exit 1, wenn ein Grenzwert ueberschritten ist."""
 import argparse
@@ -18,9 +21,10 @@ import random
 import statistics
 import sys
 import time
+import tracemalloc
 
 from db import connect
-from saga import ai_ctx
+from saga import ai, ai_ctx
 
 NAME = "Kollegin: Kontext-Auswahl"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,10 +47,12 @@ def page_body(rnd, i):
 SCHEMA = json.dumps({"props": [{"id": "st", "name": "Status", "type": "text"}, {"id": "nr", "name": "Nummer", "type": "number"}]})
 
 
-def gen(stufe):
+def gen(stufe, geteilt=None):
     rnd = random.Random(2266)
     now = time.time()
-    own, shared, dbs, per_db = {"S": (3000, 0, 0, 0), "M": (2000, 300, 50, 120), "G": (3000, 3000, 0, 0)}[stufe]
+    own, shared, dbs, per_db = {"S": (3000, 0, 0, 0), "M": (2000, 300, 50, 120), "G": (3000, 5000, 0, 0)}[stufe]
+    if stufe == "G" and geteilt is not None:
+        shared = geteilt
     with connect() as c, c:
         rows = [("kp-a", f"{rnd.choice(WORDS)} {rnd.choice(WORDS)} {i}", page_body(rnd, i), now - i * 60, now - i * 60, "blocks")
                 for i in range(own)]
@@ -98,10 +104,34 @@ def measure(n):
             "max_ms": round(times[-1] * 1000, 1), "cold_ms": round(cold * 1000, 1), "read_max": reads}
 
 
+def speicher():
+    """Speicher je Eintrag: Zwischenspeicher leeren, alle sichtbaren Seiten zerlegen (mit tracemalloc), mit der Schaetzung
+    vergleichen. Zaehlt auch den Zuwachs des Stamm-Caches (stem) mit - er gehoert zum echten Bedarf."""
+    with connect() as c:
+        docs = ai.visible_docs(c, "kp-a")
+    with ai._IDX_LOCK:
+        ai._IDX.clear()
+        ai._IDX_BYTES[0] = 0
+    ai._note_demand("kp-a", len(docs))
+    tracemalloc.start()
+    base = tracemalloc.get_traced_memory()[0]
+    for d in docs:
+        ai._doc_index(d, -1)
+    real = tracemalloc.get_traced_memory()[0] - base
+    tracemalloc.stop()
+    est = ai._IDX_BYTES[0]
+    n = len(ai._IDX)
+    return {"docs": len(docs), "eintraege": n, "real_kb_je": round(real / max(1, n) / 1024, 1),
+            "schaetzung_kb_je": round(est / max(1, n) / 1024, 1), "verhaeltnis": round(est / max(1, real), 2),
+            "real_mb": round(real / 1048576, 1), "body_kb_je": round(sum(len(d.get("body") or "") for d in docs) / max(1, len(docs)) / 1024, 1)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stufe", default="SMG")
     ap.add_argument("--n", type=int, default=10)
+    ap.add_argument("--geteilt", type=int, default=None)
+    ap.add_argument("--speicher", action="store_true")
     a = ap.parse_args()
     with open(os.path.join(HERE, "limits.json"), encoding="utf-8") as f:
         limits = json.load(f)
@@ -109,8 +139,12 @@ def main():
     for st in [x for x in a.stufe if x in "SMG"]:
         cleanup()
         try:
-            gen(st)
+            gen(st, a.geteilt)
             r = measure(a.n)
+            if hasattr(ai, "cache_view"):
+                r["cache"] = ai.cache_view()
+            if a.speicher and hasattr(ai, "_entry_bytes"):
+                r["speicher"] = speicher()
         finally:
             cleanup()
         lim = limits.get(st, {}).get(NAME)
@@ -118,7 +152,7 @@ def main():
         fail |= not good
         print(("INFO" if lim is None else "OK  " if good else "FAIL"), f"Stufe {st}: {NAME} p95 {r['p95_ms']} ms (Grenze {lim}), p50 {r['p50_ms']}, "
               f"max {r['max_ms']}, kalt {r['cold_ms']} ms, n={r['n']}, read bis {r['read_max']} Kennungen, "
-              f"AI_CACHE_DOCS={os.environ.get('AI_CACHE_DOCS', '5000')}", flush=True)
+              f"AI_CACHE_DOCS={os.environ.get('AI_CACHE_DOCS', '5000')}, SCAN_MAX_SHARED={getattr(ai, 'SCAN_MAX_SHARED', '-')}", flush=True)
         print("PERF " + json.dumps(dict(r, stufe=st, limit=lim)), flush=True)
     print("Kollegin-Messung", "- ALLES GRUEN" if not fail else "- FEHLER")
     sys.exit(1 if fail else 0)

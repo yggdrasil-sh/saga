@@ -1449,6 +1449,10 @@ Saga solo abre conexiones **salientes** a exactamente esta dirección; no hay ni
 direcciones internas (Ollama en la LAN), pero solo con las direcciones IP resueltas al guardar («Direcciones fijadas»);
 si la dirección cambia en el DNS, vuelve a guardar. Saga no sigue redirecciones. `AI_MAX_PARALLEL` limita las solicitudes
 simultáneas en total (por defecto 4). Las preguntas, el contenido y las respuestas nunca acaban en el registro.
+Cada pregunta busca como máximo en las 3000 páginas propias y las 3000 páginas compartidas contigo modificadas más
+recientemente; el área de administración muestra, solo como número, cuántas veces una pregunta vio más páginas
+compartidas. Saga guarda en memoria las páginas ya analizadas: tantas como ven las personas activas en ese momento (como
+mínimo `AI_CACHE_DOCS`, por defecto 5000), como máximo `AI_CACHE_MB` (por defecto 256; unos 10 KB por página con 1 KB de texto).
 
 Para protegerse de instrucciones inyectadas («Ignora todas las reglas …» dentro de una página), Saga marca el contenido
 de las páginas como datos para el modelo y no da al asistente ningún permiso de escritura. Aun así, un modelo de lenguaje

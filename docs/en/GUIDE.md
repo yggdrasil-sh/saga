@@ -1395,7 +1395,10 @@ excerpts from pages – is sent to this endpoint**; its address is shown at the 
 Saga only makes **outgoing** connections to exactly this address – no extra port. Internal addresses (LAN Ollama) are
 allowed, but only with the IP addresses resolved when saving (“Pinned addresses”); if the address changes in DNS, save
 once more. Saga doesn't follow redirects. `AI_MAX_PARALLEL` limits concurrent requests overall (default 4). Questions,
-content and answers never end up in the log.
+content and answers never end up in the log. Each question searches at most the 3,000 most recently changed own pages and
+the 3,000 most recently changed pages shared with you; the admin area shows how often a question saw more shared pages
+(as a number only). Saga keeps the parsed pages in memory – as many as the currently active people can see (at least
+`AI_CACHE_DOCS`, default 5000), at most `AI_CACHE_MB` (default 256; about 10 KB per page with 1 KB of text).
 
 To protect against injected instructions (“Ignore all rules …” inside a page), Saga marks page content as data for the
 model and gives the assistant no write access at all. A language model can still be wrong or be influenced by page

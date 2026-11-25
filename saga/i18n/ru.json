@@ -5276,5 +5276,7 @@
  "Klopft an …": "Вторая линия …",
  "Beenden und annehmen": "Завершить и ответить",
  "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "Вы сейчас разговариваете в другой вкладке или на другом устройстве.",
- "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "Не удалось надёжно завершить текущий разговор – входящий звонок не принят. Попробуйте ещё раз."
+ "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "Не удалось надёжно завершить текущий разговор – входящий звонок не принят. Попробуйте ещё раз.",
+ "Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)": "Кэш поиска: страниц – {d}, около {m} МБ (предел: страниц – {c}, {x} МБ AI_CACHE_MB)",
+ "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "Вопросов, видевших больше {k} общих страниц: {n} – просмотрены последние изменённые (пропущено не более {h})"
 }

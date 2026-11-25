@@ -5276,5 +5276,7 @@
  "Klopft an …": "กำลังเคาะสายรอ …",
  "Beenden und annehmen": "วางสายแล้วรับสาย",
  "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "คุณกำลังคุยสายอยู่ในแท็บอื่นหรือบนอุปกรณ์อื่น",
- "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "ไม่สามารถวางสายปัจจุบันได้อย่างแน่นอน – จึงยังไม่ได้รับสายเรียกเข้า โปรดลองอีกครั้ง"
+ "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "ไม่สามารถวางสายปัจจุบันได้อย่างแน่นอน – จึงยังไม่ได้รับสายเรียกเข้า โปรดลองอีกครั้ง",
+ "Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)": "แคชการค้นหา: {d} หน้า ประมาณ {m} MB (ขีดจำกัด {c} หน้า, {x} MB AI_CACHE_MB)",
+ "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} คำถามเห็นหน้าที่แชร์มากกว่า {k} หน้า – ค้นหาเฉพาะหน้าที่แก้ไขล่าสุด (ข้ามไปไม่เกิน {h} หน้า)"
 }

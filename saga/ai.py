@@ -45,9 +45,10 @@ import os
 import re
 import socket
 import ssl
+import sys
 import threading
 import time
-from collections import Counter
+from collections import Counter, OrderedDict
 from datetime import date, datetime, timedelta
 from urllib.parse import urlparse
 
@@ -72,6 +73,7 @@ MAX_TOKENS = 1500                # Obergrenze fuer das Modell
 CHUNK = 700                      # Zeichen je Auszug
 PER_PAGE = 3                     # hoechstens so viele Auszuege je Seite
 SCAN_MAX = 3000                  # hoechstens so viele eigene Seiten durchsuchen (neueste zuerst)
+SCAN_MAX_SHARED = 3000           # hoechstens so viele fuer mich freigegebene Seiten (alle Eigentuemer, zuletzt geaenderte zuerst)
 BLOCKS_MAX = 50                  # markierte Bloecke je Anfrage
 HISTORY_MAX = 200                # Verlaufseintraege je Person
 PARALLEL = ai_units.PARALLEL      # AI_MAX_PARALLEL: gleichzeitige Fragen an das Modell (alle Personen), Spuren in ai_units
@@ -351,7 +353,11 @@ _GE = re.compile(r"^ge(.{4,})")
 _DBL = re.compile(r"(.)\1")
 _DBL_BACK = re.compile(r"(.)\*")
 BM25_K1, BM25_B = 1.2, 0.75
-CACHE_DOCS = max(100, int(E.get("AI_CACHE_DOCS", "5000")))   # zerlegte Seiten im Speicher (je Fassung)
+# Zwischenspeicher zerlegter Seiten (Bugs-DB 2349): LRU je Seite; Obergrenze = max(AI_CACHE_DOCS, sichtbare Seiten der in den
+# letzten CACHE_ACTIVE_S Sekunden aktiven Personen), hart gedeckelt bei AI_CACHE_MB (geschaetzte Bytes, siehe _entry_bytes)
+CACHE_DOCS = max(100, int(E.get("AI_CACHE_DOCS", "5000")))   # Mindestgroesse in Seiten (je Fassung)
+CACHE_MB = max(16, int(E.get("AI_CACHE_MB", "256")))           # Speicher-Deckel (je Eintrag ~10 KB bei 1-KB-Seiten)
+CACHE_ACTIVE_S = 900
 
 
 @functools.lru_cache(maxsize=200_000)
@@ -774,7 +780,8 @@ def assign_messages(title, page_text, db_title, prop, rows, schema, hint=""):
 
 def visible_docs(c, uid):
     """Alle Seiten, die uid sehen darf, als Liste von dicts: id, title, fmt, body, owner (Name bei fremden Seiten, sonst
-    None), parent, updated, tags, kind, props_text, path - fremde Inhalte maskiert (Verweise auf Seiten ohne Zugriff)."""
+    None), parent, updated, tags, kind, props_text, path - fremde Inhalte maskiert (Verweise auf Seiten ohne Zugriff).
+    Hoechstens SCAN_MAX eigene und SCAN_MAX_SHARED geteilte Seiten (je die zuletzt geaenderten, Bugs-DB 2349)."""
     cols = "id, title, format, body, parent_id, updated, tags, kind, schema, props"
     raw = [(r, None) for r in c.execute(f"SELECT {cols} FROM note WHERE uid=? AND deleted_at IS NULL AND archived IS NULL "
                                        "AND is_template=0 ORDER BY updated DESC LIMIT ?", (uid, SCAN_MAX))]
@@ -782,13 +789,20 @@ def visible_docs(c, uid):
     vis = viewer(acc)
     owners = [o for o in acc.owners() if not is_remote(o)]     # 2.6 K8: nur Seiten dieses Servers (nie foederiert)
     nm = names(c, owners)
+    ids, own = [], []
     for o in owners:
-        ids = list(acc.tree(o))                            # Freigaben inkl. Vererbung; Papierkorb/Archiv/Vorlagen fallen raus
-        for k in range(0, len(ids), 500):
-            part = ids[k:k + 500]
-            for r in c.execute(f"SELECT {cols} FROM note WHERE uid=? AND deleted_at IS NULL AND id IN "
-                               f"({','.join('?' * len(part))})", (o, *part)):
-                raw.append((r, nm.get(o) or o))
+        tr = list(acc.tree(o))                             # Freigaben inkl. Vererbung; Papierkorb/Archiv/Vorlagen fallen raus
+        ids += tr
+        own += [o] * len(tr)
+    if ids:
+        # EINE Abfrage ueber alle Eigentuemer: jede Kennung nur zusammen mit ihrem Eigentuemer aus tree (n.uid=x.o)
+        ncols = ", ".join(f"n.{x.strip()}" for x in cols.split(","))
+        for r in c.execute(f"SELECT {ncols}, n.uid FROM unnest(?::bigint[], ?::text[]) AS x(id, o) "
+                           "JOIN note n ON n.id=x.id AND n.uid=x.o WHERE n.deleted_at IS NULL "
+                           "ORDER BY n.updated DESC NULLS LAST, n.id DESC LIMIT ?", (ids, own, SCAN_MAX_SHARED)):
+            raw.append((tuple(r)[:-1], nm.get(r[-1]) or r[-1]))
+        if len(ids) > SCAN_MAX_SHARED:
+            _shared_cut(len(ids) - SCAN_MAX_SHARED)
     titles = {r[0]: r[1] or t("Unbenannt") for r, _o in raw}
     schemas, rows = {}, {}
     for r, _o in raw:
@@ -825,17 +839,73 @@ def visible_docs(c, uid):
 
 
 _IDX_LOCK = threading.Lock()
-_IDX = {}                                                     # (id, fassung) -> [(text, Counter(stamm), laenge)], Woerter
+_IDX = OrderedDict()                     # (id, fassung) -> [auszuege, bytes, gen]; auszuege = [(text, Counter(stamm), laenge, woerter)]
+_IDX_BYTES = [0]
+_GEN = [0]                               # Durchlauf von rank(): Eintraege des laufenden Durchlaufs werden nie verdraengt
+_DEMAND = {}                             # uid -> (sichtbare seiten, zeit) - nur im Speicher, fuer die Obergrenze
+_STATS = {"shared_cut": 0, "shared_cut_max": 0, "evicted": 0, "skipped": 0, "logged": 0.0, "cut_since_log": 0}
 
 
-def _doc_index(d):
-    """Zerlegte Auszuege einer Seite (im Prozess zwischengespeichert, Schluessel = Inhalt + Metadaten)."""
+def _shared_cut(n):
+    """Mehr geteilte Seiten als SCAN_MAX_SHARED: nur zaehlen und hoechstens alle 10 Minuten eine Log-Zeile (nur Zahlen)."""
+    with _IDX_LOCK:
+        _STATS["shared_cut"] += 1
+        _STATS["shared_cut_max"] = max(_STATS["shared_cut_max"], n)
+        _STATS["cut_since_log"] += 1
+        now = time.monotonic()
+        if _STATS["logged"] and now - _STATS["logged"] < 600:
+            return
+        k, _STATS["logged"], _STATS["cut_since_log"] = _STATS["cut_since_log"], now, 0
+    print(f"ai: {k} Frage(n) mit mehr geteilten Seiten als SCAN_MAX_SHARED={SCAN_MAX_SHARED} "
+          f"(zuletzt {n} nicht durchsucht)", flush=True)
+
+
+def _note_demand(uid, n):
+    """Wie viele Seiten sieht eine gerade aktive Person? Bestimmt die Obergrenze des Zwischenspeichers."""
+    now = time.monotonic()
+    with _IDX_LOCK:
+        _DEMAND[uid] = (n, now)
+        for u in [u for u, (_n, ts) in _DEMAND.items() if now - ts > CACHE_ACTIVE_S]:
+            _DEMAND.pop(u, None)
+
+
+def _cap_docs():
+    """Obergrenze in Seiten (unter _IDX_LOCK): mindestens AI_CACHE_DOCS, sonst der Bedarf der aktiven Personen."""
+    now = time.monotonic()
+    return max(CACHE_DOCS, sum(n for n, ts in _DEMAND.values() if now - ts <= CACHE_ACTIVE_S))
+
+
+def _entry_bytes(parts):
+    """Geschaetzter Speicher eines Eintrags (Bytes): Text, Counter, Wortmenge und deren Woerter. Auf saga-test mit
+    tracemalloc nachgemessen (tools/perf/kollegin.py --speicher, 25.11.2026): Schaetzung / gemessen 1,07; ~10 KB je
+    Seite mit ~0,9 KB Text, ~5,6 KB bei 0,4 KB (Datenbankzeilen)."""
+    b = 400
+    for ch, cnt, _n, ws in parts:
+        b += 120 + sys.getsizeof(ch) + sys.getsizeof(cnt) + sys.getsizeof(ws) + 56 * len(ws)
+    return b
+
+
+def cache_view():
+    """Fuer den Admin-Bereich (Bugs-DB 2349), nur Zahlen dieses Prozesses: Seiten/MB im Zwischenspeicher, Obergrenzen,
+    wie oft geteilte Seiten ueber SCAN_MAX_SHARED lagen (und hoechstens wie viele) - nie Personen oder Titel."""
+    with _IDX_LOCK:
+        return {"docs": len(_IDX), "mb": round(_IDX_BYTES[0] / 1048576, 1), "cap_docs": _cap_docs(), "cap_mb": CACHE_MB,
+                "shared_max": SCAN_MAX_SHARED, "shared_cut": _STATS["shared_cut"], "shared_cut_max": _STATS["shared_cut_max"],
+                "evicted": _STATS["evicted"], "skipped": _STATS["skipped"]}
+
+
+def _doc_index(d, gen=None):
+    """Zerlegte Auszuege einer Seite (im Prozess zwischengespeichert, Schluessel = Inhalt + Metadaten). LRU je Seite;
+    ist alles im Speicher schon im laufenden Durchlauf gen benutzt (Bedarf > Deckel), wird nicht verdraengt, sondern
+    nicht gespeichert - sonst verdraengte ein Durchlauf ueber mehr Seiten als Platz seine eigenen Eintraege (0 % Treffer)."""
     key = (d["id"], d.get("updated"), d.get("owner"), d.get("title"), d.get("path"), tuple(d.get("tags") or ()),
            d.get("props_text"), hash(tuple(d.get("rows") or ())), hash(d.get("body") or ""))
     with _IDX_LOCK:
         hit = _IDX.get(key)
-    if hit is not None:
-        return hit
+        if hit is not None:
+            _IDX.move_to_end(key)
+            hit[2] = gen
+            return hit[0]
     head_words = _words(d.get("title")) * 2 + _words(d.get("path")) + _words(" ".join(d.get("tags") or ()))
     head = [d["props_text"]] if d.get("props_text") else []
     parts = []
@@ -844,11 +914,23 @@ def _doc_index(d):
         parts.append((ch, Counter(stem(w) for w in ws), len(ws), set(ws)))
     if not parts:                                          # Seite ohne Text (auch neue Seiten): nur der Titel zaehlt (BUG-040)
         parts.append(("", Counter(stem(w) for w in head_words), len(head_words), set(head_words)))
+    size = _entry_bytes(parts)
     with _IDX_LOCK:
-        if len(_IDX) >= CACHE_DOCS:
-            for k in list(_IDX)[: CACHE_DOCS // 4]:          # aelteste Eintraege (Einfuegereihenfolge) weg
-                _IDX.pop(k, None)
-        _IDX[key] = parts
+        if key in _IDX:                                    # gleichzeitig von einem anderen Durchlauf zerlegt
+            return parts
+        cap, cap_b = _cap_docs(), CACHE_MB * 1048576
+        while _IDX and (len(_IDX) >= cap or _IDX_BYTES[0] + size > cap_b):
+            k0, e0 = next(iter(_IDX.items()))
+            if gen is not None and e0[2] == gen:           # alles Uebrige gehoert zu diesem Durchlauf
+                _STATS["skipped"] += 1
+                return parts
+            _IDX.popitem(last=False)
+            _IDX_BYTES[0] -= e0[1]
+            _STATS["evicted"] += 1
+        if size > cap_b:
+            return parts
+        _IDX[key] = [parts, size, gen]
+        _IDX_BYTES[0] += size
     return parts
 
 
@@ -905,8 +987,11 @@ def rank(docs, q, window=None):
     if not qws and not window:
         return []
     items = []
+    with _IDX_LOCK:
+        _GEN[0] += 1
+        gen = _GEN[0]
     for d in docs:
-        for i, (ch, cnt, n, ws) in enumerate(_doc_index(d)):
+        for i, (ch, cnt, n, ws) in enumerate(_doc_index(d, gen)):
             items.append((d, i, ch, cnt, n, ws))
     if not items:
         return []
@@ -963,6 +1048,7 @@ def gather(uid, q, budget):
         return "", []
     with _db() as c:
         docs = visible_docs(c, uid)
+    _note_demand(uid, len(docs))
     per, picked, used = {}, [], 0
     for _sc, _i, d, ch in rank(docs, q, window):
         nid, title = d["id"], d.get("title")
