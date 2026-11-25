@@ -71,7 +71,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   eines Gesprächs klingelt nicht mehr und wird nicht mehr sofort abgewiesen, sondern erscheint als Leiste im Anruffenster
   („{name} klopft an“ mit „Beenden und annehmen“ und „Ablehnen“, dezenter Einmal-Ton); der Browser meldet dafür `waiting1`.
   Bei eigenem Nicht stören bzw. Ruhezeit zeigt `call.quiet` eine stille Leiste „Anruf von {name} – stumm“ mit
-  „Annehmen“ – ohne Klingelton und Titel-Blinken. Die anrufende Seite sieht „Klopft an …“ statt „Klingelt …“ und nach
+  „Annehmen“ – ohne Klingelton und Titel-Blinken; telefoniert man gerade in einem anderen Tab oder auf einem anderen
+  Gerät, fehlt „Annehmen“ (Hinweis statt Knopf, sonst entstünden zwei Gespräche). Die anrufende Seite sieht „Klopft an …“ statt „Klingelt …“ und nach
   dem zweiten Versuch den Hinweis „… du hast schon angeklopft.“ (`again`). Test: `tests/browser_anklopfen.js`.
 - **Runner `ai.task` für die Kollegin** (Bugs-DB 2266 K-A6, Server, Gerüst ohne Planer und ohne Oberfläche):
   `saga/ai_task.py` führt einen freigegebenen Plan Schritt für Schritt über die Werkzeug-Registry aus – je Schritt ein
