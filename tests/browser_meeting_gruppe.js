@@ -72,7 +72,7 @@ const CTLFIT = () => { const bs = [...document.querySelectorAll('.cl-win .cl-ctl
            red: !!rr && rr.left >= 0 && rr.right <= innerWidth && rr.width >= 44, more: !!document.querySelector('.cl-win .cl-ctl .cl-more') }; };
 // Bugs-DB 2196: Handy quer (Hoehe <= 500) - Teilnehmerliste als Blatt links der senkrechten Leiste. Treffer-Test: an der Mitte jedes
 // sichtbaren Knopfs der Leiste (und oben rechts) liegt bei offener Liste der Knopf selbst (elementFromPoint); ganz sichtbare Eintraege
-// (Knoten: der Hinweis "Experimentell" unter der Liste kostet eine Zeile, der vierte Eintrag ist dann per Rollen erreichbar)
+// (2.6, Bugs-DB 2263: ohne den frueheren Hinweis "Experimentell" unter der Liste - geprueft per exp = 0)
 const PLHIT = () => {
   const R = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); };
   const w = document.querySelector('.cl-win'), c = document.querySelector('.cl-win .cl-ctl'), p = document.querySelector('.cl-win .cl-plist');
@@ -86,7 +86,8 @@ const PLHIT = () => {
   if (ul) { const ur = ul.getBoundingClientRect(), lis = [...ul.children].filter(li => li.getClientRects().length); all = lis.length;
     n = lis.filter(li => { const r = li.getBoundingClientRect(); return r.top >= ur.top - 1 && r.bottom <= ur.bottom + 1; }).length; }
   return { vw: innerWidth, vh: innerHeight, ctl: R(c), plist: p ? R(p) : null, side: !!w && w.classList.contains('plist-side'), btns: hit.length,
-           blocked: hit.filter(h => !h.ok).map(h => h.k), items: n, all, scroll: ul ? getComputedStyle(ul).overflowY : '' };
+           blocked: hit.filter(h => !h.ok).map(h => h.k), items: n, all, scroll: ul ? getComputedStyle(ul).overflowY : '',
+           exp: p ? p.querySelectorAll('.cl-pl-exp, .cl-exp').length + (/experimentell/i.test(p.textContent) ? 1 : 0) : 0 };
 };
 const st = p => p.evaluate(() => {
   const r = window.HKCalls && window.HKCalls.room(), h = window.HKCalls && window.HKCalls.horn && window.HKCalls.horn();
@@ -177,7 +178,7 @@ const st = p => p.evaluate(() => {
       const a = await q.evaluate(PLHIT); console.log('  Lage Teilnehmerliste quer (' + tag + '): ' + JSON.stringify(a));
       ok('Bugs-DB 2196 (' + tag + '): Liste quer 844x390 links der Leiste, kein Leisten-Knopf verdeckt, >= 3 Eintraege ganz sichtbar, rollbar',
          a && a.plist && a.btns >= 4 && a.blocked.length === 0 && a.plist[0] + a.plist[2] <= a.ctl[0] + 1 && a.plist[1] >= 0 && a.plist[1] + a.plist[3] <= a.vh
-         && a.all >= 3 && a.items >= Math.min(a.all, 3) && a.plist[3] >= a.vh * 0.7 && a.scroll === 'auto', a);
+         && a.all >= 3 && a.items >= Math.min(a.all, 3) && a.plist[3] >= a.vh * 0.7 && a.scroll === 'auto' && a.exp === 0, a);
       if (shots) { await shot(q, tag + '-quer-844x390-offen-dunkel'); await q.emulateMedia({ colorScheme: 'light' }); await shot(q, tag + '-quer-844x390-offen-hell'); await q.emulateMedia({ colorScheme: 'dark' }); }
       await q.setViewportSize({ width: 1000, height: 497 }); await sleep(800); await q.mouse.move(320, 220); await sleep(300);
       const b = await q.evaluate(PLHIT);
@@ -248,7 +249,7 @@ const st = p => p.evaluate(() => {
          && q3.plist[1] + q3.plist[3] <= q3.vh, q3);
       const q4 = await ps[2].evaluate(PLHIT); console.log('  Treffer Teilnehmerliste Sprecher quer: ' + JSON.stringify(q4));
       ok('Bugs-DB 2196: Knoten-Sprecher quer 844x390 - Liste links der Leiste, kein Leisten-Knopf verdeckt, >= 3 Eintraege ganz sichtbar',
-         q4 && q4.plist && q4.btns >= 4 && q4.blocked.length === 0 && q4.plist[0] + q4.plist[2] <= q4.ctl[0] + 1 && q4.all >= 3 && q4.items >= 3, q4);
+         q4 && q4.plist && q4.btns >= 4 && q4.blocked.length === 0 && q4.plist[0] + q4.plist[2] <= q4.ctl[0] + 1 && q4.all >= 3 && q4.items >= 3 && q4.exp === 0, q4);
       await shot(ps[2], '9c-teilnehmer-quer-844x390-dunkel');
       await ps[2].emulateMedia({ colorScheme: 'light' }); await shot(ps[2], '9c-teilnehmer-quer-844x390-hell'); await ps[2].emulateMedia({ colorScheme: 'dark' });
       await ps[2].click('.cl-ctl .cl-people').catch(() => {}); await sleep(300);

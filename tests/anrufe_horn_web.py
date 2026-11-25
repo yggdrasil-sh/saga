@@ -12,7 +12,14 @@ SIGUSR1 -> Lastmeldung draining) oder das Geraet ihn meidet (avoid); danach ist 
 unter den bereiten); Beitritt waehrend des Leerens landet auf dem anderen Knoten; Knoten B prueft Saga-Token ohne
 Steuerkanal; Ereigniskanal ueber den Knoten (hello mit peers). Gastgeber: nur wer begonnen hat (403 sonst), mute -> call.mod
 an die Person, remove -> Endpunkt weg (Grund removed), Beitritt gesperrt (join_block removed) bis zur neuen Einladung.
-Wegwerf-Konten ca-w*."""
+2.6 (Bugs-DB 2263, Teil t2263): Knoten-Anruf mit 16 Teilnehmenden im Web (Admin-Grenze 16; 15 Attrappen ueber die API, der
+Browser tests/browser_horn_16.js ist die 16.) und Einschleus-Fall: reservierte dtmf/svc-join aus
+tests/call_signal_reserved.json, versiegelt mit seal_for, an den Browser - still ignoriert (kein Zustand, keine Quittung,
+keine Anzeige, kein bye); Kontrollfaelle state/fkey/fkey-ack wirken. HORN_WEB_NUR=2263: nur dieser Teil, Knoten mit UDP
+(Grenze Video 25 -> Admin 16); sonst im ganzen Lauf mit der TCP-Grenze (12). BR=firefox, HX_VORHER=1 (nur Bilder),
+HX_PREFIX, SHOTS wie im Browser-Skript.
+Wegwerf-Konten ca-w*, ca-x*."""
+import base64
 import http.client
 import json
 import os
@@ -42,6 +49,10 @@ USERS = [("ca-w1", "Wanda Gastgeberin"), ("ca-w2", "Wim Zwei"), ("ca-w3", "Wera 
 BUSERS = [("ca-wb1", "Ada Web"), ("ca-wb2", "Ben Web"), ("ca-wb3", "Cleo Web"), ("ca-wb4", "Dirk Web"), ("ca-wb5", "Eva Web"), ("ca-wb6", "Finn Mobil")]
 PUSERS = [("ca-wp1", "Gina Last"), ("ca-wp2", "Hugo Last"), ("ca-wp3", "Ida Last"), ("ca-wp4", "Jan Last")]
 CAPS = K.CAPS
+XUSERS = [(f"ca-x{i:02d}", n) for i, n in enumerate(("Gerda Gastgeberin", "Hans Zwei", "Ina Drei", "Jonas Vier", "Karla Fuenf", "Lars Sechs",
+          "Mira Sieben", "Nils Acht", "Olga Neun", "Paul Zehn", "Quirin Elf", "Rosa Zwoelf", "Sami Dreizehn", "Tilda Vierzehn",
+          "Bartholomaeus-Maximilian Fuenfzehn"), 1)]
+XB = ("ca-xb1", "Uta Sechzehn")
 PERF = {}
 NB = {"proc": None, "id": None, "alive": False, "log": None}
 
@@ -160,7 +171,7 @@ def main():
     auth.save_setting("chat_enabled", True)
     auth.save_setting("share_group_scope", False)
     K.flag(False)
-    for u, n in USERS + BUSERS + PUSERS:
+    for u, n in USERS + BUSERS + PUSERS + XUSERS + [XB]:
         auth.create_user(u, PW, n)
     media, node = K.build("saga-media", "media", "SAGA_MEDIA_BIN"), K.build("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
     ok(f"saga-media und gjallarhorn gebaut ({bool(media)}, {bool(node)})", media and node)
@@ -196,7 +207,11 @@ def main():
 
 def run(media, node):
     # alle Browser kommen von 127.0.0.1: mit 10 Personen (HORN_PERF) mehr als 12 Beine je Adresse
-    t = K.start(media, node, {"HORN_MAX_PER_IP": "40"} if os.environ.get("HORN_PERF") == "1" else None)
+    nur = os.environ.get("HORN_WEB_NUR") == "2263"
+    extra = {"HORN_MAX_PER_IP": "40"} if os.environ.get("HORN_PERF") == "1" else {}
+    if nur:
+        extra["HORN_UDP"] = "1"                        # 2263: 16 mit Video gehen nur mit UDP (TCP-Grenze 12)
+    t = K.start(media, node, extra or None)
     ok(f"Instanz laeuft ({t and round(t, 2)} s)", t is not None)
     # Flag calls.horn aus (frisch gestartete Instanz): Gastgeber-Funktionen gibt es nicht
     s, d = req("POST", f"/api/calls/{'0' * 32}/moderate", A_.ck(USERS[0][0]),
@@ -208,12 +223,16 @@ def run(media, node):
     if not n:
         print(K.log_text()[-4000:])
         return
+    if nur:
+        t2263()
+        return
     b_row()
     ok(f"Knoten B ({B_NAME}:{B_PORT}) gestartet, Saga-Schluessel fest (ohne Steuerkanal)", start_b(node))
     s, h = b_req("GET", "/api/session")
     ok(f"Knoten B antwortet (mode node, {s})", s == 200 and h.get("mode") == "node" and h.get("name") == B_NAME)
     server_tests()
     if os.environ.get("HORN_BROWSER") != "0":
+        t2263()
         browser()
     else:
         print("SKIP Browser-Test (HORN_BROWSER=0)")
@@ -426,6 +445,180 @@ def direct_tests(people, gid):
     for p in (B, Cc, D, E):
         req("POST", f"/api/calls/{cid}/leave", p.k, {"device": p.dev["id"]})
     sa.close()
+
+
+# --- 2.6 (Bugs-DB 2263): 16 Teilnehmende im Web, reservierte Signal-Typen ---------------------------------------------
+def t2263():
+    """Attrappen (Personen ohne Medien, Beitritt ueber die API) bis zur Grenze, der Browser als letzte Person; danach
+    reservierte dtmf/svc-join (Vektoren tests/call_signal_reserved.json, versiegelt mit seal_for) an den Browser und die
+    Kontrollfaelle - Absprache mit tests/browser_horn_16.js ueber stdin/stdout."""
+    import queue
+    js = os.path.join(APP, "tests", "browser_horn_16.js")
+    pw = os.environ.get("PLAYWRIGHT") or "/opt/npm-tools/node_modules/playwright"
+    if not shutil.which("node") or not os.path.exists(pw):
+        ok("2263: node und Playwright vorhanden", False)
+        return
+    vorher = os.environ.get("HX_VORHER") == "1"
+    V = json.load(open(os.path.join(APP, "tests", "call_signal_reserved.json"), encoding="utf-8"))
+    xs = [A_.Person(u) for u, _ in XUSERS]
+    for p in xs:
+        req("PUT", "/api/calls/caps", p.k, {"device": p.dev["id"], "caps": CAPS})
+    K.flag(True, horn_video=16, horn_audio=16)         # Admin senkt die Grenze auf 16 (UDP 25, TCP 12 bleibt 12)
+    env = dict(os.environ, SAGA_BASE=f"http://127.0.0.1:{K.PORT}", SAGA_USER=XB[0], SAGA_PASS=PW, PLAYWRIGHT=pw,
+               PLAYWRIGHT_BROWSERS_PATH=os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"), PW_CHANNEL="chromium",
+               SHOTS=os.environ.get("SHOTS") or os.path.join(os.environ.get("STATE_DIR") or K.STATE, "shots"))
+    for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        env.pop(k, None)
+    pr = subprocess.Popen(["node", js], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    q, out = queue.Queue(), []
+
+    def pump():
+        for ln in pr.stdout:
+            ln = ln.rstrip("\n")
+            out.append(ln)
+            print("  [16] " + ln, flush=True)
+            q.put(ln)
+        q.put(None)
+    threading.Thread(target=pump, daemon=True).start()
+
+    def wait_for(word, t=240):
+        end = time.time() + t
+        while time.time() < end:
+            try:
+                ln = q.get(timeout=max(0.1, end - time.time()))
+            except queue.Empty:
+                break
+            if ln is None:
+                return None
+            if ln.split(" ")[0] == word:
+                return ln.split(" ")[1:]
+        return None
+
+    def tell(ln):
+        try:
+            pr.stdin.write(ln + "\n")
+            pr.stdin.flush()
+        except (BrokenPipeError, OSError):
+            pass
+
+    def from_browser(cid, dev, to, after):
+        """Signale des Browsers an die Attrappe to (Klartext-Bodys) seit seq after."""
+        with connect() as c:
+            rows = c.execute("SELECT seq, sealed FROM chat_call_signal WHERE call_id=? AND from_device=? AND to_device=? AND seq>? ORDER BY seq",
+                             (cid, dev, to.dev["id"], after)).fetchall()
+        got = []
+        for _, sealed in rows:
+            for fn in (A_.C.open_signal, getattr(A_.C, "open_signal_v2", None)):
+                try:
+                    got.append(json.loads(fn(sealed, to.dev["enc_pk"], to.dev["enc_sk"])[0]))
+                    break
+                except Exception:  # noqa: BLE001 - andere Fassung probieren
+                    continue
+        return got
+
+    cid = None
+
+    def seq_now(cid):
+        with connect() as c:
+            return c.execute("SELECT COALESCE(MAX(seq), 0) FROM chat_call_signal WHERE call_id=?", (cid,)).fetchone()[0]
+
+    try:
+        r = wait_for("BEREIT", 180)
+        ok("2263: Browser angemeldet, Chat-Geraet da", bool(r and r[0]), r)
+        if not (r and r[0]):
+            return
+        bdev = r[0]
+        with connect() as c:
+            enc = c.execute("SELECT enc_pub FROM chat_device WHERE id=?", (bdev,)).fetchone()
+        bw = type("BW", (), {"uid": XB[0]})()
+        bdevs = [{"id": bdev, "enc_pk": A_.C.unb64(enc[0], 32)}] if enc else []
+        s, d = req("POST", "/api/chats", xs[0].k, {"kind": "free", "members": [u for u, _ in XUSERS[1:]] + [XB[0]]})
+        gid, cid = d["chat"]["id"], secrets.token_hex(16)
+        s, d = req("POST", "/api/calls", xs[0].k, {"id": cid, "chat_id": gid, "media": "video", "device": xs[0].dev["id"], "caps": CAPS})
+        k = d.get("call") or {}
+        lim = int(k.get("limit") or 0)
+        ok(f"2263: Gruppenanruf ueber den Knoten, Grenze vom Server {lim} (Admin 16, Weg {'UDP' if lim > 12 else 'TCP'})",
+           s == 200 and k.get("topo") == "horn" and lim in (12, 16), {"s": s, "topo": k.get("topo"), "limit": lim})
+        bad = []
+        for p in xs[1:lim - 1]:
+            s, d = req("POST", f"/api/calls/{cid}/join", p.k, {"device": p.dev["id"], "role": "member", "caps": CAPS})
+            if s != 200:
+                bad.append((p.uid, s, d.get("join_block")))
+        with connect() as c:
+            n = c.execute("SELECT COUNT(*) FROM chat_call_leg WHERE call_id=? AND state='active'", (cid,)).fetchone()[0]
+        ok(f"2263: {lim - 1} Attrappen im Anruf ({n})", not bad and n == lim - 1, bad)
+        people = xs[:lim - 1]
+        tell(f"CALL {cid} {lim}")
+        if wait_for("DRIN", 180) is None:
+            ok("2263: Browser beigetreten (DRIN)", False)
+            return
+        with connect() as c:
+            legs = {x[0]: x[1] for x in c.execute("SELECT device, state FROM chat_call_leg WHERE call_id=?", (cid,)).fetchall()}
+        ok(f"2263: Browser als {lim}. Endpunkt aktiv ({sum(1 for v in legs.values() if v == 'active')} aktiv)",
+           legs.get(bdev) == "active" and sum(1 for v in legs.values() if v == "active") == lim)
+        # --- reservierte Typen: alle 'ignore'-Faelle (Mesh- und Knoten-Bodys) von zwei Attrappen; dazu ein svc-join, der
+        # wie eine Uebernahme dieses Browsers aussieht (ready + replaces = Browser-Geraet, mic/cam aus)
+        x1, x2, x3 = people[1], people[2], people[3]
+        ign = [c["body"] for c in V["cases"] if c["expect"] == "ignore"]
+        ign.append({"t": "svc-join", "svc": "bridge", "label": "Telefon", "ready": True, "replaces": bdev, "mic": False, "cam": False,
+                    "hp": ["p-00000000000000ff"], "ask_mute": True})
+        mark = seq_now(cid)
+        sent = []
+        for i, b in enumerate(ign):
+            frm = x1 if i % 2 == 0 else x2
+            s, d = req("POST", f"/api/calls/{cid}/signal", frm.k, {"device": frm.dev["id"], "signals":
+                       A_.seal_for(frm, frm.dev, cid, bw, bdevs, json.dumps(b, separators=(",", ":"), ensure_ascii=False))})
+            sent.append(s)
+        ok(f"2263: {len(ign)} reservierte Signale (dtmf/svc-join, auch mit Zusatzfeldern) versiegelt zugestellt ({set(sent)})",
+           len(ign) >= 9 and all(x == 200 for x in sent), sent)
+        tell(f"STILL {x1.dev['id']} {x2.dev['id']}")
+        if wait_for("GEPRUEFT", 60) is None:
+            ok("2263: Browser hat die stille Runde geprueft", False)
+            return
+        back = from_browser(cid, bdev, x1, mark) + from_browser(cid, bdev, x2, mark)
+        ok("2263: keine Antwort auf dtmf/svc-join (keine fkey-ack fuer die fkey-aehnlichen Felder, kein bye)",
+           not any(b.get("t") == "fkey-ack" and b.get("s") == "0123456789abcdef" for b in back) and not any(b.get("t") == "bye" for b in back),
+           [b.get("t") for b in back])
+        with connect() as c:
+            st = c.execute("SELECT state FROM chat_call_leg WHERE call_id=? AND device=?", (cid, bdev)).fetchone()
+            cs = c.execute("SELECT state FROM chat_call WHERE id=?", (cid,)).fetchone()
+        ok(f"2263: Browser bleibt im Anruf ({st and st[0]}), Anruf laeuft ({cs and cs[0]})", st and st[0] == "active" and cs and cs[0] != "ended")
+        # --- Kontrollfaelle: state mic:false (x1), state-Vektor (x3), echter fkey mit denselben Feldern wie dtmf-zusatzfeld (x1),
+        # fkey-ack-Vektor ok:true (nichts) und ok:false (Nachforderung -> der Browser schickt seinen neuesten Schluessel)
+        mark2 = seq_now(cid)
+        ctl = {c["name"]: c["body"] for c in V["cases"] if c["expect"] == "handle" and c["ctx"] == "horn"}
+        key = base64.b64encode(secrets.token_bytes(32)).decode()
+        plan = [(x1, {"t": "state", "mic": False, "cam": False, "screen": False}), (x3, ctl["horn-state-kontrolle"]),
+                (x1, {"t": "fkey", "n": 3, "kid": 3, "key": key, "s": "0123456789abcdef"}), (x1, ctl["horn-fkey-ack-kontrolle"]),
+                (x2, {"t": "fkey-ack", "n": 0, "s": "00000000000000aa", "ok": False})]
+        for frm, b in plan:
+            req("POST", f"/api/calls/{cid}/signal", frm.k, {"device": frm.dev["id"], "signals":
+                A_.seal_for(frm, frm.dev, cid, bw, bdevs, json.dumps(b, separators=(",", ":")))})
+        tell(f"KONTROLLE {x1.dev['id']} {x3.dev['id']}")
+        got1 = got2 = []
+        end = time.time() + 12
+        while time.time() < end:
+            got1, got2 = from_browser(cid, bdev, x1, mark2), from_browser(cid, bdev, x2, mark2)
+            if any(b.get("t") == "fkey-ack" and b.get("s") == "0123456789abcdef" and b.get("ok") is True for b in got1) and any(b.get("t") == "fkey" for b in got2):
+                break
+            time.sleep(0.5)
+        ok("2263 Kontrolle: echter fkey (gleiche Felder wie im dtmf) -> fkey-ack ok:true an den Absender",
+           any(b.get("t") == "fkey-ack" and b.get("s") == "0123456789abcdef" and b.get("ok") is True for b in got1), [b.get("t") for b in got1])
+        ok("2263 Kontrolle: fkey-ack ok:false -> Browser schickt seinen neuesten Schluessel nach",
+           any(b.get("t") == "fkey" for b in got2), [b.get("t") for b in got2])
+        wait_for("FERTIG", 120)
+    finally:
+        try:
+            pr.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            pr.kill()
+        for ln in out:
+            if not vorher and (ln.startswith("OK  ") or ln.startswith("FAIL")):
+                res.append(ln.startswith("OK"))
+        ok(f"2263: Browser-Skript lief durch (rc {pr.returncode})", pr.returncode == 0)
+        K.flag(True)                                   # Grenze wieder ab Werk
+        if cid:
+            req("POST", f"/api/calls/{cid}/end", xs[0].k, {"device": xs[0].dev["id"]})
 
 
 def browser():

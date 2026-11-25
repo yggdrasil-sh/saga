@@ -1,11 +1,13 @@
-// 2.5 (Vorgabe 10.11.): Gjallarhorn ist in Web und Admin als "Experimentell" gekennzeichnet - ruhig, ohne Banner ueber
-// dem Anruf. Laeuft aus tests/horn_experimentell.py (Admin-Cookie) bzw. in der Testumgebung, Art knoten:
-//   UMG_NS=.. UMG_DB=.. tools/testumgebung/umgebung.sh lauf knoten <slot> horn_experimentell.py
-// Geprueft (HX_VORHER=1: nur Bilder, fuer den Vergleich mit einem Stand ohne Marke):
-//  - Admin -> Anrufe: Marke an der Ueberschrift "Gjallarhorn" und an "Knoten", ein Hinweis-Kasten, keine Konsolenfehler,
-//    kein waagrechtes Scrollen bei 390 px; Bilder hell/dunkel (1280) und hell (390)
-//  - Web: 1:1 A (1280) <-> B (390) ueber den eingebauten Knoten (calls.horn + horn_all): kleine Marke im Kopf neben dem
-//    Weg (Tooltip mit dem Satz), kein Banner; in der Teilnehmerliste der Satz unten; Bilder Kopf und Teilnehmerliste
+// 2.6 (Bugs-DB 2263): Gjallarhorn ist nicht mehr "Experimentell" - weder in Web noch im Admin eine Marke, ein Kasten oder
+// der Satz "getestet mit bis zu 4". (2.5, Vorgabe 10.11.: vorher ruhige Marke im Kopf, Satz in der Teilnehmerliste, Marke
+// und Kasten im Admin.) Laeuft aus tests/horn_experimentell.py bzw. dessen Nachfolger tests/horn_standard.py (2263-4,
+// Admin-Cookie) oder in der Testumgebung, Art knoten:
+//   UMG_NS=.. UMG_DB=.. tools/testumgebung/umgebung.sh lauf knoten <slot> horn_standard.py
+// Geprueft (HX_VORHER=1: nur Bilder, fuer den Vergleich mit dem Stand mit Marke):
+//  - Admin -> Anrufe: keine Marke an "Gjallarhorn"/"Knoten", kein Hinweis-Kasten, Abschnitt da, keine Konsolenfehler,
+//    kein waagrechtes Scrollen bei 390 px; Bilder hell/dunkel (1280) und hell (390) - Admin-Texte kommen aus 2263-4
+//  - Web: 1:1 A (1280) <-> B (390) ueber den eingebauten Knoten (calls.horn + horn_all): Kopf mit Weg und Schloss, ohne
+//    Marke und ohne Banner; Teilnehmerliste ohne den Satz; Bilder Kopf und Teilnehmerliste
 //   SAGA_BASE SAGA_USER/PASS SAGA_USER2/PASS2 SAGA_ADMIN SAGA_ADMIN_COOKIE SHOTS [HX_PREFIX=nachher] [HX_VORHER=1]
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
@@ -13,7 +15,7 @@ const fs = require('fs'), path = require('path'), os = require('os');
 const E = process.env, BASE = E.SAGA_BASE, ADMIN = E.SAGA_ADMIN, SHOTS = E.SHOTS || '/tmp', PRE = E.HX_PREFIX || 'nachher';
 const VORHER = E.HX_VORHER === '1';
 if (!BASE || !ADMIN || !E.SAGA_ADMIN_COOKIE || !E.SAGA_USER || !E.SAGA_USER2) { console.error('SAGA_BASE, SAGA_ADMIN(_COOKIE), SAGA_USER/2 setzen'); process.exit(2); }
-const SATZ = 'Gjallarhorn ist in Saga 2.5 experimentell – getestet mit bis zu 4 Personen bzw. Geräten je Anruf.';
+const SATZ = /experimentell|getestet mit bis zu 4/i;          // darf nirgends mehr stehen (Text der Marke und des Satzes bis 2.5)
 const res = [];
 function ok(name, cond, info) { if (VORHER) return; res.push(!!cond); console.log((cond ? 'OK  ' : 'FAIL') + ' ' + name + (cond || info === undefined ? '' : ' -> ' + JSON.stringify(info).slice(0, 1200))); }
 async function until(fn, ms = 20000, step = 150) { const end = Date.now() + ms; let v; while (Date.now() < end) { v = await fn(); if (v) return v; await new Promise(r => setTimeout(r, step)); } return v; }
@@ -73,13 +75,13 @@ async function adminPage(scheme, phone) {
       const p = await adminPage(scheme, phone), tag = (phone ? '390' : '1280') + '-' + (scheme === 'dark' ? 'dunkel' : 'hell');
       const st = await p.evaluate(() => {
         const h = document.querySelector('#horn h3'), n = [...document.querySelectorAll('#horn h4.horn-h')].find(x => /^Knoten/.test(x.textContent.trim()));
-        const box = document.querySelector('#horn .horn-exp-note');
-        return { h: h && !!h.querySelector('.adm-tag.exp'), n: n && !!n.querySelector('.adm-tag.exp'), box: box ? box.textContent : '',
-                 ow: document.documentElement.scrollWidth - window.innerWidth, tags: document.querySelectorAll('.adm-tag.exp').length };
+        const box = document.querySelector('#horn .horn-exp-note'), sec = document.querySelector('#horn');
+        return { h: !!h, hTag: !!(h && h.querySelector('.adm-tag.exp')), n: !!n, nTag: !!(n && n.querySelector('.adm-tag.exp')), box: !!box,
+                 txt: sec ? sec.textContent : '', ow: document.documentElement.scrollWidth - window.innerWidth, tags: document.querySelectorAll('.adm-tag.exp').length };
       });
-      ok(`Admin ${tag}: Marke an "Gjallarhorn" und "Knoten", Hinweis-Kasten, keine Konsolenfehler, kein waagrechtes Scrollen`,
-        p.__status === 200 && st.h && st.n && st.box.includes(SATZ) && st.box.includes('Größere Anrufe folgen nach 2.5.') && !p.__errs.length && st.ow <= 1,
-        { st, errs: p.__errs });
+      ok(`Admin ${tag}: Abschnitt "Gjallarhorn" und "Knoten" ohne Marke, kein Hinweis-Kasten, kein "experimentell"/"getestet mit bis zu 4", keine Konsolenfehler, kein waagrechtes Scrollen`,
+        p.__status === 200 && st.h && st.n && !st.hTag && !st.nTag && !st.tags && !st.box && !SATZ.test(st.txt) && !/Größere Anrufe folgen nach 2\.5/.test(st.txt)
+        && !p.__errs.length && st.ow <= 1, { st: Object.assign({}, st, { txt: (st.txt.match(SATZ) || [''])[0] }), errs: p.__errs });
       await shot(p, 'admin-anrufe-' + tag);
       await p.locator('#horn').scrollIntoViewIfNeeded().catch(() => {});
       await p.evaluate(() => { const h = document.querySelector('#horn'); if (h) window.scrollTo(0, h.getBoundingClientRect().top + window.scrollY - 8); });
@@ -101,25 +103,27 @@ async function adminPage(scheme, phone) {
     await a.waitForTimeout(1500); await b.waitForTimeout(500);
     for (const [q, w] of [[a, '1280'], [b, '390']]) {
       const s = await q.evaluate(() => {
-        const x = document.querySelector('.cl-info .cl-exp'), r = x && x.getBoundingClientRect();
-        return { has: !!x, txt: x ? x.textContent : '', title: x ? x.title : '', vis: !!(r && r.width && r.height),
-                 banner: !!document.querySelector('.cl-win .cl-banner-exp, .cl-win > .cl-exp') };
+        const i = document.querySelector('.cl-info'), tt = [...document.querySelectorAll('.cl-info [title]')].map(x => x.title).join(' | ');
+        return { info: !!i, path: !!document.querySelector('.cl-info .cl-hpath'), exp: document.querySelectorAll('.cl-exp, .cl-pl-exp').length,
+                 txt: i ? i.textContent : '', tt, banner: !!document.querySelector('.cl-win .cl-banner-exp, .cl-win > .cl-exp'),
+                 ow: document.documentElement.scrollWidth - window.innerWidth };
       });
-      ok(`Web ${w}: kleine Marke "Experimentell" im Kopf (sichtbar, Tooltip mit dem Satz), kein Banner`,
-        s.has && s.txt === 'Experimentell' && s.vis && s.title.includes(SATZ) && s.title.includes('Diagnose senden') && !s.banner, s);
+      ok(`Web ${w}: Kopf mit Weg, ohne Marke "Experimentell" (auch nicht im Tooltip), kein Banner, kein waagrechtes Scrollen`,
+        s.info && s.path && !s.exp && !SATZ.test(s.txt) && !SATZ.test(s.tt) && !s.banner && s.ow <= 1, s);
       await shot(q, 'web-anruf-' + w + '-dunkel');
     }
     await a.click('.cl-ctl .cl-people');
     await a.waitForSelector('.cl-plist', { timeout: 5000 }).catch(() => {});
-    const pl = await a.evaluate(() => { const x = document.querySelector('.cl-plist .cl-pl-exp'); return x ? x.textContent : ''; });
-    ok('Web 1280: Teilnehmerliste mit dem Satz unten', pl.includes('Experimentell') && pl.includes(SATZ), pl);
+    const pl = await a.evaluate(() => { const l = document.querySelector('.cl-plist'); return { has: !!l, n: l ? l.querySelectorAll('.cl-plist-l > li').length : 0,
+      exp: document.querySelectorAll('.cl-plist .cl-pl-exp, .cl-plist .cl-exp').length, t: l ? l.textContent : '' }; });
+    ok('Web 1280: Teilnehmerliste (2 Eintraege) ohne den Satz', pl.has && pl.n === 2 && !pl.exp && !SATZ.test(pl.t), pl);
     await shot(a, 'web-teilnehmende-1280-dunkel');
     if (await b.$('.cl-ctl .cl-people')) await b.click('.cl-ctl .cl-people');
     else { await b.click('.cl-ctl .cl-more'); await b.click('.cl-moremenu .cl-people'); }
     await b.waitForSelector('.cl-plist', { timeout: 5000 }).catch(() => {});
-    const pl2 = await b.evaluate(() => { const x = document.querySelector('.cl-plist .cl-pl-exp'), l = document.querySelector('.cl-plist');
-      return { t: x ? x.textContent : '', ow: l ? l.scrollWidth - l.clientWidth : -1 }; });
-    ok('Web 390: Teilnehmerliste mit dem Satz, ohne waagrechtes Scrollen', pl2.t.includes(SATZ) && pl2.ow <= 1, pl2);
+    const pl2 = await b.evaluate(() => { const l = document.querySelector('.cl-plist');
+      return { has: !!l, exp: document.querySelectorAll('.cl-plist .cl-pl-exp, .cl-plist .cl-exp').length, t: l ? l.textContent : '', ow: l ? l.scrollWidth - l.clientWidth : -1 }; });
+    ok('Web 390: Teilnehmerliste ohne den Satz, ohne waagrechtes Scrollen', pl2.has && !pl2.exp && !SATZ.test(pl2.t) && pl2.ow <= 1, pl2);
     await shot(b, 'web-teilnehmende-390-dunkel');
     ok('Web: keine Seitenfehler', !a.__errs.length && !b.__errs.length, [a.__errs, b.__errs]);
   } catch (e) {
@@ -127,9 +131,9 @@ async function adminPage(scheme, phone) {
   } finally {
     await br.close();
     console.log('Bilder: ' + shots.join(' '));
-    if (VORHER) { console.log(`\nHORN-EXPERIMENTELL Bilder ${shots.length} (vorher, ohne Pruefung)`); process.exit(0); }
+    if (VORHER) { console.log(`\nHORN-STANDARD Bilder ${shots.length} (vorher, ohne Pruefung)`); process.exit(0); }
     const n = res.filter(Boolean).length;
-    console.log(`\nHORN-EXPERIMENTELL Browser ${n}/${res.length} - ${n === res.length ? 'ALLES GRUEN' : 'FEHLER'}`);
+    console.log(`\nHORN-STANDARD Browser ${n}/${res.length} - ${n === res.length ? 'ALLES GRUEN' : 'FEHLER'}`);
     process.exit(n === res.length ? 0 : 1);
   }
 })();
