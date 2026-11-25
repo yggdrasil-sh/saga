@@ -192,6 +192,33 @@ def run():
         q = c.execute("SELECT COUNT(*) FROM push_queue WHERE uid IN (?,?) AND kind='call.group'", (B.uid, Cc.uid)).fetchone()[0]
     ok(f"... und kein Auftrag in der Warteschlange ({q})", q == 0)
     req("POST", f"/api/calls/{g2}/end", A.k, {})
+    e2e_voip(P)
+
+
+def e2e_voip(P):
+    """2.6 (Bugs-DB 2262-5): VoIP-Abo mit Schluesseln -> auch PushKit nur Chiffrat ({aps: {}, saga}); Waechter: voip nur fuer
+    klingelnde Anrufe. (VoIP ueber das Relais: tests/fakerelay.py, Faelle anruf_voip/gruppe_voip.)"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import push as PT
+    app = PT.UA()
+    tok = "d6" * 32
+    msg = {"title": "Saga", "body": "Anruf von Vera Anruf", "url": "/chats#call-0f0f", "tag": "call-0f0f", "kind": "call", "ts": int(time.time()),
+           "call": "0f0f", "chat": 3, "media": "audio", "caller": "Vera Anruf", "ttl": 55, "v": 2, "lang": "de", "actor": "Vera Anruf", "n": 1}
+    m0 = A_.mark()
+    v = P._send_apns(f"apns-voip:production:{tok}", msg, voip=True, keys=(app.keys()["p256dh"], app.keys()["auth"]), topic="org.example.saga")
+    g = A_.got(lambda x: x[0] == "/3/device/" + tok, m0)
+    h, b = (g[1], json.loads(g[2])) if g else ({}, {})
+    inner = app.decrypt(P.b64u_d(b["saga"]["c"])) if b.get("saga") else {}
+    ok(f"2262-5 VoIP E2E (eigener Weg): {{aps: {{}}, saga}}, voip/.voip/10, collapse undurchsichtig ({v}, {h.get('apns-collapse-id')})",
+       v[0] == "ok" and set(b) == {"aps", "saga"} and b["aps"] == {} and h.get("apns-push-type") == "voip"
+       and h.get("apns-topic") == "org.example.saga.voip" and h.get("apns-priority") == "10"
+       and h.get("apns-collapse-id") == P.e2e_collapse(app.keys()["auth"], "call-0f0f") and "Vera" not in g[2].decode().replace(b["saga"]["c"], ""))
+    ok("... entschluesselt = Anruf-Felder fuer CallKit (call, chat, media, caller)", inner == msg)
+    m0 = A_.mark()
+    v = P._send_apns(f"apns-voip:production:{tok}", dict(msg, kind="job.done", tag="job-1"), voip=True,
+                     keys=(app.keys()["p256dh"], app.keys()["auth"]), topic="org.example.saga")
+    time.sleep(1.0)
+    ok(f"... Waechter: voip fuer job.done -> fail, nichts gesendet ({v})", v[0] == "fail" and not hits(tok, m0))
 
 
 if __name__ == "__main__":

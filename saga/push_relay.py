@@ -473,6 +473,9 @@ def unregister():
     if sid and url():
         try:
             st, d = _call("DELETE", "/v1/servers/me", keyid=sid)
+            if st == 403:                          # gesperrter Server darf sich nicht abmelden (Relais: 403 blocked)
+                _set(state="blocked" if d.get("error") == "blocked" else "pending", err="403")
+                return False, str(d.get("error") or "403")
             if st not in (200, 401, 404):
                 res = (False, f"HTTP {st}")
         except RelayDown as ex:
