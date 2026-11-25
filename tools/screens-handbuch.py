@@ -2623,7 +2623,9 @@ def b14_status(run):
     until(lambda: a.p.locator("#us-reach .us-exc li", has_text="Lena").count(), 10000)
     a.p.wait_for_timeout(1200)
     a.blur(True)
-    a.p.locator("#us-reach").evaluate("e => e.scrollIntoView({block: 'start'})")
+    # Der Einstellungsdialog scrollt in sich: nur fuer die Aufnahme Hoehengrenzen der Vorfahren aufheben (Karte ganz)
+    a.p.locator("#us-reach").evaluate("""e => { for (let x = e.parentElement; x && x !== document.body; x = x.parentElement) {
+        x.style.maxHeight = 'none'; x.style.height = 'auto'; x.style.overflow = 'visible'; } e.scrollIntoView({block: 'start'}); }""")
     a.p.wait_for_timeout(600)
     a.mark([(a.p.locator("#us-reach .lv-set-list").first, "1", 3), (a.p.locator("#us-reach ul.us-exc"), "2", 3)])
     run.shot(a.p, "b14-06-erreichbarkeit", el=a.p.locator("#us-reach"), pad=12)
