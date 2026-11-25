@@ -150,6 +150,7 @@ def sub_state():
 
 
 def digest(n=1):
+    push._rate.clear()                   # RATE_MIN (30 je Konto und Minute) gilt hier nicht - wir pruefen das Relais
     with connect() as c, c:
         return push.enqueue(c, "rw-a", "status.digest", data={"digest": {"messages": n, "calls": 0, "other": 0}})
 
