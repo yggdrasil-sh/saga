@@ -42,6 +42,11 @@ async function login(p, user, pass) {
   await p.fill('input[type=password]', pass);
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
   await p.waitForTimeout(800);
+  // Frage "Erste Schritte" (static/firststeps.js, neue Konten ohne eigene Seiten) vorab beantworten: sie erscheint ~2 s nach
+  // jedem Laden, sobald kein Dialog offen ist - sonst liegt sie z. B. direkt nach dem Schliessen des Status-Dialogs ueber
+  // dem Kontoknopf und nimmt den Fokus (Bugs-DB 2394). Weggeklickt/Escape speichert nichts - daher per API.
+  const fs = await papi(p, 'POST', '/api/first-steps', { answer: 'no' }).catch(e => ({ status: 0, d: { error: e.message } }));
+  if ([200, 403, 404].indexOf(fs.status) < 0) note('Erste Schritte beantworten: ' + JSON.stringify(fs));
 }
 const RKF = u => path.join(os.tmpdir(), 'saga-browser-rk-' + BASE.replace(/\W+/g, '_') + '-' + u + '.txt');
 async function chatKeys(q, user) {
