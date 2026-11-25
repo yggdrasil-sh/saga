@@ -126,9 +126,10 @@ def run():
     ok("Altwert horn_all false ohne Merker -> horn_dm an", wait_dm(A, True) is True)
     s, html = adm("GET", "/calls")
     found, on, hint = box(html)
-    # 2.5 (horn-exp-web): "experimentell" steht jetzt als Marke an der Ueberschrift und im Hinweis-Kasten, nicht mehr im Hilfetext
-    ok(f"Admin-Seite: Haken gesetzt (wirksamer Wert), Hilfetext 'Standard an', Hinweis 'experimentell' im Kasten ({s}, {found}, {on})",
-       s == 200 and found and on and hint.startswith("Standard an") and 'class="horn-exp-note"' in html and "experimentell" in html, )
+    # 2.6 (2263-4): kein "experimentell" mehr (weder Kasten noch Marke noch Hilfetext) - statt dessen die Grenzen je Anruf
+    ok(f"Admin-Seite: Haken gesetzt (wirksamer Wert), Hilfetext 'Standard an', ohne 'experimentell', mit Grenzen ({s}, {found}, {on})",
+       s == 200 and found and on and hint.startswith("Standard an") and 'class="horn-exp-note"' not in html
+       and "xperimentell" not in html and 'class="hk-hint horn-limits"' in html, )
     ok("Admin-Zustand: horn_all an", state_all() is True)
     ok("Foederation: horn_req auch beim Altwert", "horn_req" in F.caps2())
 
@@ -137,6 +138,8 @@ def run():
     st = stored()
     ok(f"Formular ohne Haken: gespeichert aus + Merker ({s}, {st.get('horn_all')}, {st.get('horn_all_y')}, rev {st.get('horn_rev')})",
        s in (302, 303) and st.get("horn_all") is False and st.get("horn_all_y") is True and st.get("horn_rev") == 4)
+    ok(f"... Formular setzt auch den Merker horn_on_y fuer Gjallarhorn (2263-4) ({st.get('horn')}, {st.get('horn_on_y')})",
+       st.get("horn") is True and st.get("horn_on_y") is True)
     ok("... horn_dm aus", wait_dm(A, False) is False)
     _, html = adm("GET", "/calls")
     ok("... Admin-Seite: Haken nicht gesetzt", box(html)[0] and not box(html)[1])
@@ -160,7 +163,10 @@ def run():
     rc, out = einstellen("calls.horn_all=1")
     ok("einstellen calls.horn_all=1: an", rc == 0 and "calls.horn_all=1" in out and stored().get("horn_all") is True and wait_dm(A, True) is True)
     rc, out = einstellen("calls.horn=0")
-    ok("einstellen calls.horn=0: Gjallarhorn aus -> kein horn_dm, horn_all bleibt", rc == 0 and stored().get("horn_all") is True and not wait_dm(A, False))
+    st = stored()
+    ok(f"einstellen calls.horn=0: Gjallarhorn aus -> kein horn_dm, horn_all bleibt, Merker horn_on_y (2263-4) ({st.get('horn_on_y')})",
+       rc == 0 and "calls.horn=0" in out and st.get("horn_all") is True and st.get("horn") is False and st.get("horn_on_y") is True
+       and not wait_dm(A, False))
 
 
 if __name__ == "__main__":
