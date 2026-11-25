@@ -9,8 +9,9 @@
 // C ruft noch einmal -> "du hast schon angeklopft" (again), bei A nichts; D ruft A -> "Beenden und annehmen" -> A spricht
 // mit D, B ist draussen; A auf Nicht stoeren -> B ruft -> stille Leiste (call.quiet) ohne Klingeln, B sieht "Klingelt …",
 // B legt auf -> Leiste weg; B ruft binnen 180 s erneut -> klingelt normal (Wiederholungsanruf); D ruft -> stille Leiste
-// -> "Annehmen" verbindet; Chat-Eintrag "Verpasster Anruf (Nicht stören)" nur bei A (Bugs-DB 2375). Bilder (hell/dunkel,
-// 1440x900 und 390x844): Anklopf-Leiste, "Klopft an …" beim Anrufer, stille Leiste, Chat-Eintrag.
+// -> "Annehmen" verbindet; A telefoniert im zweiten Tab, C ruft -> im ersten Tab stille Leiste ohne "Annehmen" (Bugs-DB
+// 2376); Chat-Eintrag "Verpasster Anruf (Nicht stören)" nur bei A (Bugs-DB 2375). Bilder (hell/dunkel, 1440x900 und
+// 390x844): Anklopf-Leiste, "Klopft an …" beim Anrufer, stille Leiste (auch "anderer Tab"), Chat-Eintrag.
 // VORHER=<Datei>: der Web-Stand vor 2029-5 (calls.js/calls.css aus main e1a874e per Route) - nur Bilder.
 'use strict';
 const pw = require(process.env.PLAYWRIGHT || 'playwright-core');
@@ -246,6 +247,32 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
       ok('"Annehmen" aus der stillen Leiste verbindet A und D', sA2 && sD2 && sA2.id === sD2.id, { a: !!sA2, d: !!sD2 });
       ok('... Leiste weg', !(await held(a)).length && !(await a.$('.cl-quiet')));
       await hangup(a); await idle(a); await idle(d);
+
+      // --- 8. Pruefer-Auflage 1 (Bugs-DB 2376): A telefoniert in einem zweiten Tab, Nicht stoeren, C ruft --------------
+      await d.waitForTimeout(3800);
+      const a2 = await a.context().newPage();
+      a2.on('pageerror', e => console.log('  [pageerror A2] ' + e.message));
+      await openDm(a2, U4);
+      await a2.click('#ct-call-a');
+      const rD = await until(() => d.$('.cl-ring'), 20000, 200);
+      if (rD) await d.click('.cl-ring .cl-big');
+      const sA3 = await connected(a2), sD3 = await connected(d);
+      ok('A telefoniert im zweiten Tab mit D', sA3 && sD3, { a2: !!sA3, d: !!sD3 });
+      await c.waitForTimeout(1000);
+      await c.click('#ct-call-a');
+      const q3 = await until(async () => { const h = await held(a); return h.length && h[0]; }, 15000);
+      ok('erster Tab (ohne Gespraech): stille Leiste ohne "Annehmen", Hinweis "anderer Tab oder anderes Gerät"',
+         q3 && q3.mode === 'quiet' && !q3.inCall && q3.go === false && /in einem anderen Tab oder auf einem anderen Gerät/.test(q3.note)
+         && !(await a.$('.cl-quiet .cl-hold-go')) && !!(await a.$('.cl-quiet .cl-hold-x')), q3);
+      const q4 = await until(async () => { const h = await held(a2); return h.length && h[0]; }, 8000);
+      ok('zweiter Tab (im Gespraech): Leiste im Anruffenster mit "Beenden und annehmen"', q4 && q4.mode === 'quiet' && q4.inCall && q4.go, q4);
+      ok('... nichts klingelt in beiden Tabs', !(await a.$('.cl-ring')) && !(await a2.$('.cl-ring')));
+      await a.bringToFront();
+      await shots4(a, 'stille-leiste-anderer-tab');
+      await hangup(c); await idle(c);
+      ok('C legt auf -> Leisten in beiden Tabs weg', await until(async () => !(await held(a)).length && !(await held(a2)).length, 8000));
+      await hangup(a2); await idle(a2); await idle(d);
+      await a2.close();
     }
     await api(a, 'PUT', '/api/account/status', { state: 'available', source: 'manual' });
   } catch (e) {
