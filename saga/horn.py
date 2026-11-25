@@ -44,7 +44,7 @@ from fastapi.responses import JSONResponse
 
 import auth
 from db import connect as _db
-from saga import bus
+from saga import bus, testclock
 from saga.core import BASE_URL, E, MEDIA_KEY, SECRET
 from version import VERSION, parse as _vparse
 
@@ -510,13 +510,73 @@ def note_full(c):
         print(f"horn: note_full: {type(ex).__name__}", flush=True)
 
 
+# --- Testhaken fuer das Messwerkzeug (2263-9, Bugs-DB 2438) ---------------------------------------------------------
+# Nur mit SAGA_TEST_HOOKS=1 UND gueltigem SAGA_TEST_TOKEN (testclock.enabled, dieselbe Pruefung wie /_test/*); sonst, bei
+# leerem Wert oder Unsinn genau wie ohne. Werte kommen aus der Umgebung des Server-Prozesses (nicht ueber HTTP setzbar):
+#   SAGA_TEST_HORN_LIMITS='{"tcp":[16,50],"udp":[25,100]}'   Obergrenzen je Weg statt LIMITS (2 <= Video <= Ton <=
+#       LIMITS_TOP, je Weg optional); der Admin kann weiter nur senken (tools/perf/horn_last.py: M2/M5/M4 mit 16 Video)
+#   SAGA_TEST_HORN_PIN='{"<konto>":"<knotenname>|@builtin"}'  Kandidaten der Geraete dieses Kontos nur auf diesem Knoten
+#       (horn_web.candidates; Browser fest je Knoten fuer die Latenz "gleicher Knoten" / "ueber Bruecke")
+LIMITS_TOP = max(n for va in LIMITS.values() for n in va)   # calls.SIG_TARGETS_MAX folgt LIMITS - der Haken bleibt darunter
+_TEST = {}                              # Name -> (Rohwert, geprueft)
+
+
+def _test_env(name, check):
+    """Geprueften Testwert name (check(json) -> Wert oder None) - None ohne Testhaken, ohne Wert oder bei Unsinn."""
+    if not testclock.enabled():
+        return None
+    raw = os.environ.get(name) or ""
+    if not raw.strip():
+        return None
+    hit = _TEST.get(name)
+    if hit and hit[0] == raw:
+        return hit[1]
+    try:
+        v = check(json.loads(raw))
+    except (ValueError, TypeError):
+        v = None
+    _TEST[name] = (raw, v)
+    print(f"horn: TESTHAKEN {name} " + ("aktiv: " + json.dumps(v, sort_keys=True) if v is not None else "ungueltig - ignoriert"), flush=True)
+    return v
+
+
+def _chk_limits(v):
+    if not isinstance(v, dict) or not v or set(v) - set(LIMITS):
+        return None
+    out = {}
+    for k, x in v.items():
+        if not (isinstance(x, list) and len(x) == 2 and all(type(i) is int for i in x) and 2 <= x[0] <= x[1] <= LIMITS_TOP):
+            return None
+        out[k] = (x[0], x[1])
+    return out
+
+
+def _chk_pin(v):
+    if not isinstance(v, dict) or not v or len(v) > 64:
+        return None
+    if not all(isinstance(k, str) and isinstance(x, str) and 0 < len(k) < 300 and 0 < len(x) < 254 for k, x in v.items()):
+        return None
+    return {k: x.strip().lower() for k, x in v.items()}
+
+
+def test_limits():
+    """Testhaken SAGA_TEST_HORN_LIMITS -> {"tcp": (v, a), ...} oder None."""
+    return _test_env("SAGA_TEST_HORN_LIMITS", _chk_limits)
+
+
+def test_pins():
+    """Testhaken SAGA_TEST_HORN_PIN -> {konto: knotenname | "@builtin"} oder None."""
+    return _test_env("SAGA_TEST_HORN_PIN", _chk_pin)
+
+
 def limits(c, cid=None, node=None, udp=None):
     """(Video, nur Ton) Endpunkte je Anruf ueber Knoten: TCP 12/50, mit UDP am Knoten des Anrufs 25/100. Der Admin kann
-    nur senken (calls.horn_video / calls.horn_audio)."""
+    nur senken (calls.horn_video / calls.horn_audio). Nur in Tests: Obergrenzen aus test_limits (Testhaken)."""
     if udp is None:
         n = node or (node_by_id(c, call_node(c, cid)) if cid else None)
         udp = bool(n and n["udp"])
-    v, a = LIMITS["udp" if udp else "tcp"]
+    w = "udp" if udp else "tcp"
+    v, a = (test_limits() or {}).get(w) or LIMITS[w]
     cf = auth.settings().get("calls") or {}
     try:
         v = max(2, min(v, int(cf.get("horn_video") or v)))

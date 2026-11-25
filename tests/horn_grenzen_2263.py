@@ -13,6 +13,9 @@ tests/anrufe_y_gruppe.py) - "hl63-tcp" ohne UDP, "hl63-udp" mit UDP. Geprueft:
   alt) -> 409 node ohne busy, Text "nicht erreichbar";
 - Admin -> Anrufe: Warnung "HORN_MAX_LEGS (48) ist zu knapp" mit legs_need; mit max_legs 200 keine Warnung; ohne
   Tunnel-Knoten kein Hinweis HORN_MAX_PER_IP; ohne Messwerte keine Zeile "Geschaetzte Kapazitaet".
+- Testhaken des Messwerkzeugs (Bugs-DB 2438, im Testprozess): SAGA_TEST_HORN_LIMITS hebt die Obergrenzen nur mit
+  SAGA_TEST_HOOKS=1 UND SAGA_TEST_TOKEN >= 32 Zeichen (an; aus; Token zu kurz; Unsinn im JSON -> wie heute), der Admin
+  senkt weiter; SAGA_TEST_HORN_PIN legt die Kandidaten eines Kontos auf einen Knoten (nur mit Testhaken).
 Gegen die laufende Instanz (HK_TEST_BASE/HK_TEST_ADMIN, env.sh), Wegwerf-Konten hl63-*:
     PYTHONPATH=tests/pgshim:. python tests/horn_grenzen_2263.py"""
 import base64
@@ -151,8 +154,100 @@ def units():
         HN.CAP_MBIT.clear(), HN.CAP_MBIT.update(keep[1])
 
 
+HOOK_ENV = ("SAGA_TEST_HOOKS", "SAGA_TEST_TOKEN", "SAGA_TEST_HORN_LIMITS", "SAGA_TEST_HORN_PIN")
+
+
+def hooks(on=True, token=None, **kw):
+    """Testhaken-Umgebung im Testprozess setzen (horn.test_limits/test_pins lesen sie bei jedem Aufruf)."""
+    for k in HOOK_ENV:
+        os.environ.pop(k, None)
+    if on:
+        os.environ["SAGA_TEST_HOOKS"] = "1"
+    if token is not False:
+        os.environ["SAGA_TEST_TOKEN"] = token or "hl63-" + secrets.token_hex(16)
+    for k, v in kw.items():
+        os.environ["SAGA_TEST_HORN_" + k.upper()] = v
+
+
+def lims():
+    return HN.limits(None), HN.limits(None, udp=True)
+
+
+def testhaken():
+    keep = {k: os.environ.get(k) for k in HOOK_ENV}
+    today = ((12, 50), (25, 100))
+    want = '{"tcp":[16,50],"udp":[30,100]}'
+    try:
+        hooks(on=False, token=False)
+        ok(f"Testhaken: ohne Umgebung wie heute {lims()}", lims() == today and HN.test_limits() is None)
+        hooks(limits=want)
+        ok(f"Testhaken an (HOOKS=1, Token 37 Zeichen): TCP 16/50, UDP 30/100 {lims()}", lims() == ((16, 50), (30, 100)))
+        ok(f"Testhaken an: legs_need folgt (TCP 2 x 50, UDP 100 -> 112) ({HN.legs_need(True)})", HN.legs_need(True) == 112)
+        hooks(limits='{"tcp":[16,50]}')
+        ok(f"Testhaken an, nur tcp: UDP bleibt 25/100 {lims()}", lims() == ((16, 50), (25, 100)))
+        hooks(on=False, limits=want)
+        ok(f"Testhaken aus (ohne SAGA_TEST_HOOKS, gueltiges Token): wie heute {lims()}", lims() == today)
+        os.environ["SAGA_TEST_HOOKS"] = "0"
+        ok(f"Testhaken aus (SAGA_TEST_HOOKS=0): wie heute {lims()}", lims() == today)
+        hooks(token=False, limits=want)
+        ok(f"Testhaken ohne Token: wie heute {lims()}", lims() == today)
+        hooks(token="x" * 31, limits=want)
+        ok(f"Token zu kurz (31 Zeichen): wie heute {lims()}", lims() == today)
+        hooks(token="x" * 32, limits=want)
+        ok(f"Token genau 32 Zeichen: wirksam {lims()}", lims() == ((16, 50), (30, 100)))
+        bad = ["kaputt{", "[]", "{}", '{"tcp":[16]}', '{"tcp":[60,50]}', '{"tcp":[16,500]}', '{"tcp":[1,50]}', '{"x":[16,50]}',
+               '{"tcp":["16",50]}', '{"tcp":[true,50]}', '{"tcp":[16.5,50]}', '{"tcp":[16,50],"udp":null}', '"16"', "null"]
+        got = {}
+        for b in bad:
+            hooks(limits=b)
+            got[b] = lims()
+        ok("Unsinn im JSON (Syntax, Laenge, Video > Ton, > 100, < 2, fremder Weg, Text/Bool/Komma, null) -> wie heute",
+           all(v == today for v in got.values()), {k: v for k, v in got.items() if v != today})
+        hooks(limits=want)
+        auth.save_setting("calls", dict(CALLS, horn_video=3, horn_audio=20))
+        auth._settings_cache["v"] = None
+        ok(f"Testhaken an, Admin senkt (3/20): Admin gewinnt {lims()}", lims() == ((3, 20), (3, 20)))
+    finally:
+        auth.save_setting("calls", CALLS)
+        auth._settings_cache["v"] = None
+        for k, v in keep.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def pin_check(cid, A):
+    """Testhaken SAGA_TEST_HORN_PIN im Testprozess: Kandidaten von A (Anruf laeuft auf NU) nur auf NT."""
+    from saga import horn_web as HW
+    keep = {k: os.environ.get(k) for k in HOOK_ENV}
+
+    def names():
+        fresh()
+        with connect() as c:
+            return [x["node"] for x in HW.candidates(c, CL._load(c, cid), A.dev["id"])]
+    try:
+        hooks(on=False, token=False)
+        base = names()
+        hooks(pin=json.dumps({A.uid: NT}))
+        pinned = names()
+        hooks(pin=json.dumps({"hl63-niemand": NT}))
+        other = names()
+        hooks(token="x" * 31, pin=json.dumps({A.uid: NT}))
+        short = names()
+        hooks(pin=json.dumps({A.uid: 5}))
+        junk = names()
+        ok(f"Testhaken PIN: ohne {base}, A -> NT {pinned}, anderes Konto {other}, Token zu kurz {short}, Unsinn {junk}",
+           base == [NU] and pinned == [NT] and other == base and short == base and junk == base)
+    finally:
+        for k, v in keep.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
 def run():
     units()
+    testhaken()
     P = [A_.Person(u) for u, _ in USERS]
     for p in P:
         req("PUT", "/api/calls/caps", p.k, {"device": p.dev["id"], "caps": CAPS})
@@ -187,6 +282,7 @@ def run():
     with connect() as c, c:
         HN.fix_limit(c, cid, C.dev["id"], nu)
     ok(f"fix_limit setzt bei einem Anruf, der schon auf Knoten lief, nichts nachtraeglich ({lim_db(cid)})", lim_db(cid) is None)
+    pin_check(cid, A)
     with connect() as c, c:
         c.execute("UPDATE chat_call SET lim=12 WHERE id=?", (cid,))
 

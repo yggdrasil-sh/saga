@@ -51,6 +51,9 @@ def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=N
     if ws is None:                                      # 2.5 A3 (S10): Tunnel-Knoten nur fuer Geraete mit caps "ws" (B2: "frames")
         ws = horn.leg_ws(c, call["id"], dev)
     ns = [n for n in horn.ready_nodes(c, now, ws=ws) if n["name"] not in avoid and (only is None or n["id"] in only)]
+    pin = _pin(c, call["id"], dev)
+    if pin:                                             # nur Testhaken (horn.test_pins): Geraete dieses Kontos fest auf einem Knoten
+        ns = [n for n in ns if (n["builtin"] if pin == "@builtin" else n["name"] == pin)]
     if no_tunnel:
         ns = [n for n in ns if not horn.tunnel_mode(n)] or ns
     h = home(c, call["id"], ns)
@@ -72,6 +75,15 @@ def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=N
                     "frames": horn.frames_ok(n), "here": n["id"] == h, "load": round(horn.util(n), 3),
                     "peer": horn.peer_ref(call["id"], n["id"], dev, gen), "gen": gen, "tokens": toks, "exp": int(now) + horn.TOKEN_TTL})
     return out
+
+
+def _pin(c, cid, dev):
+    """Testhaken SAGA_TEST_HORN_PIN (2263-9): Knoten fuer das Konto hinter diesem Endpunkt - sonst None (ohne Abfrage)."""
+    pins = horn.test_pins()
+    if not pins:                                        # Haken aus: keine Abfrage
+        return None
+    r = c.execute("SELECT who FROM chat_call_leg WHERE call_id=? AND device=?", (cid, dev)).fetchone()
+    return pins.get(r[0]) if r else None
 
 
 def cascadable(a, b):
