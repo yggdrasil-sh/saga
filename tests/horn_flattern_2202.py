@@ -47,9 +47,10 @@ import time
 _B = int(os.environ.get("FL_BASE") or 8700)
 os.environ["B2_BASE"] = str(_B)
 # je 10er-Band eindeutig (Bugs-DB 2426: frueher (FL_BASE-8700)//20 - 8960 und 8970 teilten sich den Namensraum): Band 870 ->
-# fl2202 / 10.222.2.0/30 wie bisher, sonst fl2202<band> (Schnittstellen hoechstens 10 Zeichen) und 10.222.<2..251>.0/30
+# fl2202 / 10.222.2.0/30 wie bisher, sonst fl2202<band> (Schnittstellen hoechstens 11 Zeichen, IFNAMSIZ 15) und 10.222.<2..251>.0/30
+# (Adressen wiederholen sich erst 250 Baender = 2500 Ports weiter)
 _I = (_B // 10 - 870) % 250
-_S = "" if not _I else str(_B // 10)
+_S = "" if _B // 10 == 870 else str(_B // 10)          # Name nach dem Band, nicht nach _I (sonst 11200 -> fl2202 wie 8700)
 NS, VH, VN, HOST_IP, NS_IP = "fl2202" + _S, f"fl2202{_S}h", f"fl2202{_S}n", f"10.222.{2 + _I}.1", f"10.222.{2 + _I}.2"
 os.environ["B2_NGX_LISTEN"] = HOST_IP
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
