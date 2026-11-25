@@ -52,7 +52,7 @@ CALLS = {"enabled": True, "stun": "", "turn_urls": f"turn:127.0.0.1:{TURN_PORT}?
          "turn_secret": TURN_SECRET, "turn_ttl": 43200, "relay_only": False, "ring_s": 45}
 HORN = dict(horn=True, horn_builtin=True, horn_all=True, horn_all_y=True, horn_from=3)
 HORN_Y = dict(horn=True, horn_builtin=True)          # ab Werk mit Gjallarhorn: horn_all ohne Merker = an, ohne horn_from (L1)
-MESH = dict(horn=False)
+MESH = dict(horn=False, horn_on_y=True)               # Merker: Mesh bleibt Mesh auch nach "Gjallarhorn Standard an"
 
 ENG1 = {"up": 1000, "down": 1000, "rtt": 40, "loss": 0, "qms": 300}       # "eng": 1 Mbit/s je Richtung
 FREI = {"up": 0, "down": 0, "rtt": 0, "loss": 0, "qms": 300}
