@@ -110,6 +110,12 @@ router = APIRouter()
 
 MEDIA = ("audio", "video")
 SEALED_MAX = 24 * 1024                 # versiegelte Signal-Nachricht (B64) - SDP mit Video ~6 KB
+# 2.6 (Bugs-DB 2434): Ziele je Signal-Anfrage im Raum (Gruppe, v3, Knoten). Ein Geraet buendelt fkey/state an alle
+# anderen Endpunkte in EINER Anfrage - die Grenze folgt der groessten Anruf-Obergrenze ueber Knoten (horn.LIMITS, nicht
+# doppelt gepflegt), vorher chat.DEVICES_MAX (10, Geraete je Konto): ab 11 Zielen 400 fuer alles, kein Frame-Schluessel.
+# Die eigentliche Grenze ist die Liste der Endpunkte (allowed), die beim Beitreten an climit haengt; Missbrauch bremsen
+# pairs_budget/SIG_RATE/SEALED_MAX und REQUEST_MAX. 1:1 (Geraete einer Person) bleibt bei chat.DEVICES_MAX.
+SIG_TARGETS_MAX = max(n for va in horn.LIMITS.values() for n in va)
 SIGNALS_MAX = 600                      # Signal-Nachrichten je Anruf (Grundbudget bis zur Annahme und in der ersten Minute)
 SIG_PER_MIN = 60                       # 2.4: + so viele je angefangener Gespraechsminute (Neuverhandlung, ICE-Restart, Zustand)
 SIGNALS_HARD = 6000                    # 2.4: harte Obergrenze je Anruf (auch bei sehr langen Gespraechen)
@@ -754,9 +760,10 @@ def _my_device(c, uid, did):
         c.execute("SELECT 1 FROM chat_device WHERE id=? AND uid=? AND revoked_at IS NULL", (did, uid)).fetchone())
 
 
-def _sealed_map(m, allowed=None):
-    """{geraet: versiegelt} pruefen -> dict oder None."""
-    if not isinstance(m, dict) or not m or len(m) > chat.DEVICES_MAX:
+def _sealed_map(m, allowed=None, most=None):
+    """{geraet: versiegelt} pruefen -> dict oder None. most: hoechstens so viele Ziele - Standard chat.DEVICES_MAX (1:1:
+    Geraete einer Person), Raeume SIG_TARGETS_MAX (Bugs-DB 2434)."""
+    if not isinstance(m, dict) or not m or len(m) > (most or chat.DEVICES_MAX):
         return None
     for k, v in m.items():
         if not _HEX32.fullmatch(str(k)) or (allowed is not None and k not in allowed):
@@ -773,7 +780,7 @@ def _room_sealed(m, allowed):
     das ersetzte Geraet in derselben Sekunde, kannte das neue es noch - vorher kam 400 und das Gegenueber bekam weder den
     Frame-Schluessel noch die Kennung am Knoten (state.hp): kein Bild, kein Ton. -> (dict, weggefallen) oder (None, [])
     bei Formfehlern bzw. ohne ein einziges gueltiges Ziel."""
-    if _sealed_map(m) is None:
+    if _sealed_map(m, most=SIG_TARGETS_MAX) is None:
         return None, []
     if allowed is None:
         return m, []
@@ -2006,7 +2013,7 @@ async def api_join(cid: str, request: Request):
             return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
         note_caps(c, uid, dev, caps)
         if call.get("lead") is not None and FED is not None:
-            sig = _sealed_map(b.get("signals")) if b.get("signals") else {}
+            sig = _sealed_map(b.get("signals"), most=SIG_TARGETS_MAX) if b.get("signals") else {}
             if sig is None:
                 return _bad(t("ungültige Angabe"))
             fed = call
@@ -2096,7 +2103,7 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
         return chat._no_store({"error": t("Ein anderes eigenes Gerät übernimmt den Anruf gerade – bitte kurz warten."),
                                "join_block": "handover_busy", "legs": roster(c, call, who, legs)}, 409)
     need = {x["device"] for x in others if x["who"] != who} if not hn else set()
-    sig = _sealed_map(signals, {x["device"] for x in others}) if signals else {}
+    sig = _sealed_map(signals, {x["device"] for x in others}, most=SIG_TARGETS_MAX) if signals else {}
     if sig is None:
         return _bad(t("ungültige Angabe"))
     if not need <= set(sig):

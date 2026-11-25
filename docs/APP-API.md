@@ -2026,7 +2026,7 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
 | `POST /api/calls/{id}/end` | wie bisher, **mit `device`** | Gruppe bzw. Begleitgerät: nur dieses Gerät verlässt (`{ok, left: [...]}`); Hauptgerät im 1:1: Ende für alle |
 | `POST /api/calls/{id}/decline` | wie bisher | Gruppe: nur die eigene Einladung (alle eigenen Geräte hören auf zu klingeln) |
 | `POST /api/calls/{id}/alive` | `{device}` | zusätzlich `leg: "left"` = dieses Gerät ist nicht mehr im Anruf (z. B. übernommen) → Anruf hier beenden |
-| `POST /api/calls/{id}/signal` | wie bisher | Ziele = alle anderen aktiven Endpunkte (`legs`); föderiert sternförmig über den führenden Server. 2.5: Ziele, die gerade kein aktiver Endpunkt (mehr) sind, fallen einzeln weg → `{ok, n, dropped: [geraet]}` (Liste neu holen); 400 nur bei Formfehlern bzw. ohne ein einziges gültiges Ziel |
+| `POST /api/calls/{id}/signal` | wie bisher | Ziele = alle anderen aktiven Endpunkte (`legs`); föderiert sternförmig über den führenden Server. 2.5: Ziele, die gerade kein aktiver Endpunkt (mehr) sind, fallen einzeln weg → `{ok, n, dropped: [geraet]}` (Liste neu holen); 400 nur bei Formfehlern bzw. ohne ein einziges gültiges Ziel. 2.6 (Bugs-DB 2434): im Raum höchstens so viele Ziele je Anfrage wie die größte Anruf-Obergrenze über Knoten (derzeit 100, `limits.horn`), auch im Mesh – mehr → 400; 1:1 ohne Raum (v1/v2) weiter höchstens 10 (Geräte einer Person) |
 
 `join`: `signals` muss je ein Angebot an **jedes Gerät anderer Personen** enthalten (eigene Geräte optional, empfohlen).
 Ein zweites eigenes Gerät mit `role: "member"` wird zum `companion`. `handover` braucht `replaces` = eigenes Gerät im
@@ -2511,6 +2511,9 @@ exp, jti}` – zufällige Kennungen je Knoten, keine Konto- oder Gerätenamen. R
 
 **Schlüssel:** Jedes Gerät verteilt seinen Frame-Schlüssel als `fkey` über `POST /api/calls/{id}/signal` an alle
 anderen Endpunkte (`docs/HORN-E2E.md` §4); im Knoten-Anruf gibt es keine Mesh-Signale (offer/answer/ice).
+**Zielgrenze** (2.6, Bugs-DB 2434): eine Anfrage darf alle anderen Endpunkte des Anrufs erreichen – bis zur größten
+Anruf-Obergrenze über Knoten (derzeit 100, `limits.horn`); fkey/state gehen gebündelt in **einer** Anfrage. Server bis
+2.5 lehnten Anfragen mit mehr als 10 Zielen ganz ab (400) – dort kam ab 11 Zielen kein Schlüssel an.
 Signal-Typen im Knoten-Anruf sind nur `fkey`, `fkey-ack` und `state` (Mikrofon/Kamera/Bildschirm, `hp`, Übernahme);
 Mesh-Signale kommen nur beim Rückfall auf direkt (`horn_direct1`, unten) und gelten dann für den Mesh-Weg.
 **Reserviert** (2.6, Bugs-DB 2263): `dtmf` und `svc-join` – Clients bis 3.0 senden sie nicht und ignorieren sie still
