@@ -308,9 +308,9 @@ def run(srv):
     with connect() as c, c:
         sid_a = c.execute("SELECT id FROM push_sub WHERE uid='rw-a' AND kind='apns'").fetchone()[0]
         c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created) VALUES (?,?,?,?,?,?,?,?)",
-                  ("ab" * 8, cid, "rw-adm", "rw-a", "d1", "audio", "ringing", time.time() - 300))
+                  ("ab" * 16, cid, "rw-adm", "rw-a", "d1", "audio", "ringing", time.time() - 300))
         c.execute("INSERT INTO push_queue (uid, sub_id, kind, actor, data, created, next_at) VALUES ('rw-a', ?, 'call', 'rw-adm', ?, ?, 0)",
-                  (sid_a, json.dumps({"chat": cid, "call": "ab" * 8}), time.time() - 300))
+                  (sid_a, json.dumps({"chat": cid, "call": "ab" * 16}), time.time() - 300))
         c.execute("INSERT INTO push_queue (uid, sub_id, kind, data, created, next_at) VALUES ('rw-a', ?, 'status.digest', ?, ?, 0)",
                   (sid_a, json.dumps({"digest": {"messages": 9, "calls": 0, "other": 0}}), time.time() - push.TTL - 5))
     due(); push.run_once()
@@ -391,6 +391,17 @@ def run(srv):
     with connect() as c:
         n = c.execute("SELECT COUNT(*) FROM push_sub WHERE uid='rw-a'").fetchone()[0]
     ok(f"nach allen Stoerungen: beide Abos noch da, fails 0 ({sub_state()})", n == 2 and all(s[1] == 0 for s in sub_state()))
+    # Schluessel von einem anderen Prozess gewechselt (Admin "Schluessel erneuern"): sofort der neue, nicht der zwischengespeicherte
+    from saga import fedsig
+    old = push_relay.key()[1]
+    priv, pub = fedsig.new_key()
+    with connect() as c, c:
+        c.execute("UPDATE setting SET v=? WHERE k='push_relay'", (json.dumps({"pub": fedsig.b64u(pub), "priv": fedsig.seal_key(push_relay._fernet(), priv),
+                                                                             "created": time.time()}),))
+    ok("Schluesselwechsel in einem anderen Prozess -> key() liefert sofort den neuen (Cache prueft die Datenbank)",
+       push_relay.key()[1] == pub != old and push_relay.well_known()["key"] == fedsig.b64u(pub))
+    ok("Anmeldung wird nur zum passenden Schluessel gespeichert (alter Schluessel -> verworfen)",
+       push_relay._save_reg("s_bbbbbbbbbbbbbbbb", "http://127.0.0.1:1", old) is False and not push_relay.config().get("server_id"))
 
 
 if __name__ == "__main__":

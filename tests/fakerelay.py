@@ -336,9 +336,9 @@ def run(rel):
     base = {"title": "Saga", "v": 2, "lang": "de", "ts": now}
     kinds = [
         ("chat", False, dict(base, body="Neue Nachricht von Kanarie-Anzeigename-9X", url="/chats#c5", tag="chat-5", kind="chat.message", chat=5, n=2, actor="Kanarie-Anzeigename-9X")),
-        ("anruf_voip", True, dict(base, body="Anruf von Kanarie-Anzeigename-9X", url="/chats#call-ab", tag="call-ab", kind="call", call="ab", chat=5, media="audio", caller="Kanarie-Anzeigename-9X", ttl=55, n=1)),
-        ("gruppe_voip", True, dict(base, body="Gruppenanruf von Kanarie-Anzeigename-9X", url="/chats#call-cd", tag="call-cd", kind="call.group", call="cd", chat=6, media="video", group=True, ttl=50)),
-        ("anruf_alert", False, dict(base, body="Anruf von Kanarie-Anzeigename-9X", url="/chats#call-ef", tag="call-ef", kind="call", call="ef", ttl=55)),
+        ("anruf_voip", True, dict(base, body="Anruf von Kanarie-Anzeigename-9X", url="/chats#call-" + "ab" * 16, tag="call-" + "ab" * 16, kind="call", call="ab" * 16, chat=5, media="audio", caller="Kanarie-Anzeigename-9X", ttl=55, n=1)),
+        ("gruppe_voip", True, dict(base, body="Gruppenanruf von Kanarie-Anzeigename-9X", url="/chats#call-" + "cd" * 16, tag="call-" + "cd" * 16, kind="call.group", call="cd" * 16, chat=6, media="video", group=True, ttl=50)),
+        ("anruf_alert", False, dict(base, body="Anruf von Kanarie-Anzeigename-9X", url="/chats#call-" + "ef" * 16, tag="call-" + "ef" * 16, kind="call", call="ef" * 16, ttl=55)),
         ("verpasst", False, dict(base, body="Verpasster Anruf", url="/chats#c5", tag="missed-5", kind="call.missed", chat=5)),
         ("sammel", False, dict(base, body="Während „Nicht stören“: 3 Nachrichten", url="/", tag="status-digest", kind="status.digest", digest={"messages": 3, "calls": 0, "other": 0}, silent=True)),
         ("test", False, dict(base, body="Testmitteilung – Mitteilungen kommen an.", url="/", tag="test", kind="test")),

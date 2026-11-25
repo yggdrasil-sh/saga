@@ -202,8 +202,8 @@ def e2e_voip(P):
     import push as PT
     app = PT.UA()
     tok = "d6" * 32
-    msg = {"title": "Saga", "body": "Anruf von Vera Anruf", "url": "/chats#call-0f0f", "tag": "call-0f0f", "kind": "call", "ts": int(time.time()),
-           "call": "0f0f", "chat": 3, "media": "audio", "caller": "Vera Anruf", "ttl": 55, "v": 2, "lang": "de", "actor": "Vera Anruf", "n": 1}
+    msg = {"title": "Saga", "body": "Anruf von Vera Anruf", "url": "/chats#call-" + "0f" * 16, "tag": "call-" + "0f" * 16, "kind": "call", "ts": int(time.time()),
+           "call": "0f" * 16, "chat": 3, "media": "audio", "caller": "Vera Anruf", "ttl": 55, "v": 2, "lang": "de", "actor": "Vera Anruf", "n": 1}
     m0 = A_.mark()
     v = P._send_apns(f"apns-voip:production:{tok}", msg, voip=True, keys=(app.keys()["p256dh"], app.keys()["auth"]), topic="org.example.saga")
     g = A_.got(lambda x: x[0] == "/3/device/" + tok, m0)
@@ -212,7 +212,7 @@ def e2e_voip(P):
     ok(f"2262-5 VoIP E2E (eigener Weg): {{aps: {{}}, saga}}, voip/.voip/10, collapse undurchsichtig ({v}, {h.get('apns-collapse-id')})",
        v[0] == "ok" and set(b) == {"aps", "saga"} and b["aps"] == {} and h.get("apns-push-type") == "voip"
        and h.get("apns-topic") == "org.example.saga.voip" and h.get("apns-priority") == "10"
-       and h.get("apns-collapse-id") == P.e2e_collapse(app.keys()["auth"], "call-0f0f") and "Vera" not in g[2].decode().replace(b["saga"]["c"], ""))
+       and h.get("apns-collapse-id") == P.e2e_collapse(app.keys()["auth"], "call-" + "0f" * 16) and "Vera" not in g[2].decode().replace(b["saga"]["c"], ""))
     ok("... entschluesselt = Anruf-Felder fuer CallKit (call, chat, media, caller)", inner == msg)
     m0 = A_.mark()
     v = P._send_apns(f"apns-voip:production:{tok}", dict(msg, kind="job.done", tag="job-1"), voip=True,

@@ -96,19 +96,26 @@ def has_key():
 
 def key(create=True):
     """-> (privat_roh, oeffentlich_roh) oder None. Beim ersten Bedarf erzeugt (mehrere Prozesse: wer zuerst schreibt,
-    gewinnt). Laesst sich der gespeicherte Schluessel nicht mehr oeffnen (SECRET_KEY geaendert), wird ein neuer erzeugt
-    (alter in push_relay_old) - der Server meldet sich dann neu an und bekommt eine neue Server-Kennung."""
+    gewinnt). Jeder Aufruf vergleicht mit der Datenbank: hat ein anderer Prozess den Schluessel gewechselt (Admin
+    "Schluessel erneuern", Abmelden, Wiederherstellung), gilt sofort der neue. Laesst sich der gespeicherte Schluessel nicht
+    mehr oeffnen (SECRET_KEY geaendert), wird ein neuer erzeugt (alter in push_relay_old) - der Server meldet sich dann neu
+    an und bekommt eine neue Server-Kennung."""
     with _lock:
-        if _key.get("k"):
+        with _db() as c:
+            d = _read(c, KEY_K)
+        if _key.get("k") and d.get("pub") == _key.get("pub"):
             return _key["k"]
         with _db() as c, c:
-            d = _read(c, KEY_K)
-            if not d.get("pub"):
+            d = _read(c, KEY_K, lock=True)
+            if not d.get("pub") or not d.get("priv"):
                 if not create:
                     return None
                 priv, pub = fedsig.new_key()
-                c.execute("INSERT OR IGNORE INTO setting (k, v) VALUES (?, ?)",
-                          (KEY_K, json.dumps({"pub": fedsig.b64u(pub), "priv": fedsig.seal_key(_fernet(), priv), "created": time.time()})))
+                nd = {"pub": fedsig.b64u(pub), "priv": fedsig.seal_key(_fernet(), priv), "created": time.time()}
+                if d:                              # Zeile ohne Schluessel (z. B. nur Reste einer Anmeldung): ersetzen
+                    _write(c, KEY_K, nd)
+                else:
+                    c.execute("INSERT OR IGNORE INTO setting (k, v) VALUES (?, ?)", (KEY_K, json.dumps(nd)))
                 d = _read(c, KEY_K)
             try:
                 priv = fedsig.open_key(_fernet(), d["priv"])
@@ -118,7 +125,7 @@ def key(create=True):
                 priv, pub = fedsig.new_key()
                 d = {"pub": fedsig.b64u(pub), "priv": fedsig.seal_key(_fernet(), priv), "created": time.time()}
                 _write(c, KEY_K, d)
-        _key["k"] = (priv, fedsig.unb64u(d["pub"]))
+        _key.update(k=(priv, fedsig.unb64u(d["pub"])), pub=d["pub"])
         return _key["k"]
 
 
@@ -323,11 +330,15 @@ notify.RENDER["push.relay"] = _notif
 
 
 # --- Anmeldung -------------------------------------------------------------------------------------------------------
-def _save_reg(sid, d, base):
+def _save_reg(sid, base, pub):
+    """Server-Kennung speichern - nur zum Schluessel, mit dem angemeldet wurde (sonst hat ihn inzwischen jemand gewechselt)."""
     with _db() as c, c:
         k = _read(c, KEY_K, lock=True)
+        if k.get("pub") != fedsig.b64u(pub):
+            return False
         k.update(server_id=sid, url=base, registered=time.time())
         _write(c, KEY_K, k)
+        return True
 
 
 def _host():
@@ -349,7 +360,8 @@ def register():
                   keyid="reg", priv=priv)
     sid = str(d.get("server_id") or "")
     if st in (200, 201) and re.fullmatch(SID_RE, sid):
-        _save_reg(sid, d, base)
+        if not _save_reg(sid, base, pub):
+            return None
         _up()
         _set(state=_st_of(d), topics=d.get("topics") if isinstance(d.get("topics"), list) else None,
              limits=d.get("limits") if isinstance(d.get("limits"), dict) else None, stage=d.get("stage"), server_id=sid,
