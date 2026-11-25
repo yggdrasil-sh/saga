@@ -1074,6 +1074,10 @@ def main():
         out["call"] = L.res.get("call")
         out["bots"] = L.hb_sum
         out["bot_stats"] = sorted(L.hb_stats.values(), key=lambda m: m["id"])
+        for m in out["bot_stats"]:                     # Geraeteart je Bot (Begleitgeraet = zweites Geraet eines Kontos)
+            b = L.byid.get(m["id"])
+            if b:
+                m["acct"], m["companion"], m["mic"] = b.uid, b.companion, b.mic
         out["fkey"] = L.events["genwait"]
         out["errors"] = L.events["err"][:50]
         out["node_429"] = sum(1 for e in L.events["err"] if ": 429" in str(e.get("msg")))   # Knoten: zu viele Verbindungen/Beine
