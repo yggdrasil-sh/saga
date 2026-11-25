@@ -83,7 +83,7 @@ async function hangup(p) { const h = await p.$('.cl-win:not(.cl-done) .cl-ctl .c
 // Anrufen ueber den Chat-Kopf. Seit 2029-5 Teil A fragt der Chat vor dem Anruf nach, wenn das Gegenueber Nicht stoeren hat
 // ("… möchte gerade nicht gestört werden. Trotzdem anrufen?") - dann bestaetigen. Rueckgabe: ob die Rueckfrage kam.
 async function dial(p) {
-  await dial(p);
+  await p.click('#ct-call-a');
   const ask = await p.waitForSelector('.hk-ask-box', { timeout: 1500 }).catch(() => null);
   if (!ask) return false;
   await p.click('.hk-ask-box .btn-primary');
