@@ -345,6 +345,20 @@ def part_fed_names():
         ok("GET-Ansicht (view) gleich", {x["ref"]: x["name"] for x in US.view(c, A)["exceptions"]} == nm)
         ex = US.export(c, A)["exceptions"]
     ok("Backup-Export: nur Kennungen, keine Namen", all(set(x) == {"type", "ref"} for x in ex) and len(ex) == 8)
+
+    class Cnt:                                   # f90rev: 100 Ausnahmen -> feste Zahl Abfragen (kein N+1)
+        def __init__(s, c):
+            s.c, s.n = c, 0
+
+        def execute(s, *a):
+            s.n += 1
+            return s.c.execute(*a)
+    with connect() as c:
+        k = Cnt(c)
+        many = [f"@~{'b' * 15}{chr(97 + i % 26)}@m{i}.example" for i in range(99)] + [f"@{FX['a']}@{FH}"]
+        got = US._remote_names(k, A, many)
+    ok(f"100 foederierte Ausnahmen: {k.n} Abfragen (hoechstens 3), nur der Bekannte benannt",
+       k.n <= 3 and got == {f"@{FX['a']}@{FH}": f"Bert Gast ({FH})"})
     with connect() as c, c:
         fed_clean(c)
     reset(A)
