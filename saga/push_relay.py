@@ -331,7 +331,9 @@ def _save_reg(sid, d, base):
 
 
 def _host():
-    return urlparse(BASE_URL).netloc or "localhost"
+    """Name fuer den Domain-Nachweis: der oeffentliche Name aus BASE_URL. SAGA_PUSH_RELAY_HOST ueberschreibt ihn (Tests,
+    Server hinter einem anderen oeffentlichen Namen)."""
+    return (E.get("SAGA_PUSH_RELAY_HOST") or "").strip().lower() or urlparse(BASE_URL).netloc or "localhost"
 
 
 def _st_of(d):
