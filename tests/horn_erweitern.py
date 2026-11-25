@@ -60,6 +60,7 @@ REL_SEED = os.urandom(32)                                          # Testschlues
 REL_PUB = base64.b64encode(Ed25519PrivateKey.from_private_bytes(REL_SEED).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)).decode()
 os.environ["SAGA_HORN_RELEASE_PUB"] = REL_PUB
 import anrufe as A_  # noqa: E402
+import testkonten as TK  # noqa: E402
 import auth  # noqa: E402
 from db import connect  # noqa: E402
 from saga import cloudflare as CF  # noqa: E402
@@ -385,6 +386,7 @@ def main():
     for u, n in USERS + BUSERS:
         auth.create_user(u, PW, n)
     auth.create_user("ca-eadm", PW, "Admin Erweitern", is_admin=True)
+    TK.ohne_einfuehrung(None, [u for u, _ in USERS + BUSERS], "ca-eadm")   # Erste Schritte beantwortet (Bugs-DB 2428)
     cfs, rels = serve(FakeCF, CFP), serve(FakeRel, RELP)
     ok_go = bool(shutil.which("go"))
     ok(f"Go vorhanden ({ok_go})", ok_go)

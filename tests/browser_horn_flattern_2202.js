@@ -8,6 +8,7 @@
 'use strict';
 const pw = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
+const { ohneEinfuehrung } = require('./lib/erste_schritte');
 const E = process.env, BASE = E.SAGA_BASE, USERS = (E.SAGA_USERS || '').split(',').filter(Boolean);
 if (!BASE || USERS.length < 2 || !E.SAGA_PASS) { console.error('SAGA_BASE, SAGA_USERS (2), SAGA_PASS setzen'); process.exit(2); }
 const SECS = +(E.FL_SECS || 300), RATE = +(E.FL_CPU_RATE || 0), CGMAX = E.FL_CG_MAX || '', H1 = E.FL_H1 || 'horn-1.example.org';
@@ -77,6 +78,7 @@ async function session(i) {
   await p.fill('input[type=password]', E.SAGA_PASS);
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
   await p.waitForTimeout(500);
+  await ohneEinfuehrung(p);                            // Frage "Erste Schritte" (frische Konten ca-fl*), Bugs-DB 2428
   return p;
 }
 async function chatKeys(q) {

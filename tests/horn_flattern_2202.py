@@ -50,6 +50,7 @@ NS, VH, VN, HOST_IP, NS_IP = "fl2202" + _S, f"fl2202{_S}h", f"fl2202{_S}n", f"10
 os.environ["B2_NGX_LISTEN"] = HOST_IP
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import b2_frames as B2  # noqa: E402  (setzt HK_TEST_BASE/HK_TEST_ADMIN auf die eigenen Ports)
+import testkonten as TK  # noqa: E402
 
 A_, auth, connect, res, ok = B2.A_, B2.auth, B2.connect, B2.res, B2.ok
 APP, STATE, NAME = B2.APP, B2.STATE, B2.NAME
@@ -222,6 +223,7 @@ def main():
         auth._settings_cache["v"] = None
         for u, nm in USERS:
             auth.create_user(u, PW, nm)
+        TK.ohne_einfuehrung(None, [u for u, _ in USERS])   # Erste Schritte beantwortet (Bugs-DB 2428)
         media, node = B2.gobuild("saga-media", "media", "SAGA_MEDIA_BIN"), B2.gobuild("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
         ok("saga-media, gjallarhorn gebaut", bool(media and node))
         alt = alt_files() if STAND == "alt" else None

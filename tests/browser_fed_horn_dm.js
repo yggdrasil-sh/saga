@@ -9,6 +9,7 @@
 'use strict';
 const PW = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
+const { ohneEinfuehrung } = require('./lib/erste_schritte');   // Frage "Erste Schritte" vorab beantworten (Bugs-DB 2428)
 const E = process.env, A = E.SAGA_A, B = E.SAGA_B;
 if (!A || !B || !E.SAGA_USER_A || !E.SAGA_USER_B || !E.SAGA_PASS) { console.error('SAGA_A, SAGA_B, SAGA_USER_A, SAGA_USER_B, SAGA_PASS setzen'); process.exit(2); }
 const res = [], PERF = {}, BROWSERS = [];
@@ -75,8 +76,7 @@ async function session(i, base, user) {
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
   await p.waitForTimeout(800);
   // Frage "Erste Schritte" (neue Konten) vorab beantworten - sonst liegt der Dialog ueber dem Anruf-Knopf (wie browser_b2_frames.js)
-  await p.evaluate(() => fetch('/api/first-steps', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answer: 'no' }) })).catch(() => {});
+  await ohneEinfuehrung(p);
   return p;
 }
 const RKF = p => path.join(os.tmpdir(), 'saga-fedhorn-dm-rk-' + p.__base.replace(/\W+/g, '_') + '-' + p.__user + '.txt');

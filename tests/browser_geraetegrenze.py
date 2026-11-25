@@ -13,6 +13,7 @@ import auth
 from db import connect
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import chatlib as C  # noqa: E402
+import testkonten as TK  # noqa: E402
 
 BASE = os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099")
 B_ = urllib.parse.urlparse(BASE)
@@ -57,6 +58,7 @@ def main():
     auth.save_setting("chat_enabled", True)
     try:
         auth.create_user(U, "Grenze-Pass-1234", "Greta Browser")
+        TK.ohne_einfuehrung(None, U)                    # Erste Schritte beantwortet (Bugs-DB 2428)
         run()
     finally:
         cleanup()

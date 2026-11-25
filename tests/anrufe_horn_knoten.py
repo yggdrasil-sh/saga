@@ -42,6 +42,7 @@ os.environ["HK_TEST_BASE"] = f"http://127.0.0.1:{PORT}"          # alle Anfragen
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(APP, "tools"))
 import anrufe as A_  # noqa: E402
+import testkonten as TK  # noqa: E402
 import auth  # noqa: E402
 from db import connect  # noqa: E402
 from saga import horn as HN  # noqa: E402
@@ -381,6 +382,7 @@ def main():
     flag(False)
     for u, n in USERS + BUSERS + PGUSERS:
         auth.create_user(u, PW, n)
+    TK.ohne_einfuehrung(None, [u for u, _ in USERS + BUSERS + PGUSERS])   # Erste Schritte beantwortet (Bugs-DB 2428)
     media, node = build("saga-media", "media", "SAGA_MEDIA_BIN"), build("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
     ok(f"saga-media und gjallarhorn gebaut ({bool(media)}, {bool(node)})", media and node)
     try:

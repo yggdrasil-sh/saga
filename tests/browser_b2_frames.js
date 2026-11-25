@@ -7,6 +7,7 @@
 'use strict';
 const pw = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path');
+const { ohneEinfuehrung } = require('./lib/erste_schritte');   // Frage "Erste Schritte" vorab beantworten (Bugs-DB 2428)
 const E = process.env, BASE = E.SAGA_BASE, USERS = (E.SAGA_USERS || '').split(',').filter(Boolean);
 if (!BASE || USERS.length < 4 || !E.SAGA_PASS) { console.error('SAGA_BASE, SAGA_USERS (4), SAGA_PASS setzen'); process.exit(2); }
 const res = [];
@@ -95,8 +96,7 @@ async function session(i, kind) {
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
   await p.waitForTimeout(500);
   // Frage "Erste Schritte" (neue Konten) vorab beantworten - sonst liegt der Dialog ueber den Anruf-Knoepfen
-  await p.evaluate(() => fetch('/api/first-steps', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answer: 'no' }) })).catch(() => {});
+  await ohneEinfuehrung(p);
   return p;
 }
 async function chatKeys(q) {

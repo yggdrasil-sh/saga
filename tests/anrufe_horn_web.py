@@ -36,6 +36,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import anrufe_horn_knoten as K  # noqa: E402  (setzt HK_TEST_BASE auf die eigene Instanz)
 import anrufe as A_  # noqa: E402
+import testkonten as TK  # noqa: E402
 import auth  # noqa: E402
 from db import connect  # noqa: E402
 from saga import horn as HN  # noqa: E402
@@ -173,6 +174,7 @@ def main():
     K.flag(False)
     for u, n in USERS + BUSERS + PUSERS + XUSERS + [XB]:
         auth.create_user(u, PW, n)
+    TK.ohne_einfuehrung(None, [u for u, _ in USERS + BUSERS + PUSERS + XUSERS + [XB]])   # Erste Schritte (Bugs-DB 2428)
     media, node = K.build("saga-media", "media", "SAGA_MEDIA_BIN"), K.build("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
     ok(f"saga-media und gjallarhorn gebaut ({bool(media)}, {bool(node)})", media and node)
     try:

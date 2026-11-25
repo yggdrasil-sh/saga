@@ -355,6 +355,8 @@ def users(tag):
         u = f"ca-ep{RUN}{tag}{i}"
         auth.get_user(u) or auth.create_user(u, PW, f"Einport {tag}{i}")
         out.append(u)
+    import testkonten                                  # Erste Schritte beantwortet (Bugs-DB 2428)
+    testkonten.ohne_einfuehrung(None, out)
     return out
 
 

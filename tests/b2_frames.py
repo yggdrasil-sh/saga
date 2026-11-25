@@ -34,6 +34,7 @@ os.environ["HK_TEST_ADMIN"] = f"http://127.0.0.1:{ADMIN}"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, APP)
 import anrufe as A_  # noqa: E402
+import testkonten as TK  # noqa: E402
 import auth  # noqa: E402
 from db import connect  # noqa: E402
 
@@ -231,6 +232,7 @@ def main():
     auth._settings_cache["v"] = None
     for u, nm in USERS:
         auth.create_user(u, PW, nm)
+    TK.ohne_einfuehrung(None, [u for u, _ in USERS])   # Erste Schritte beantwortet (Bugs-DB 2428)
     auth.get_user("ca-b2-adm") or auth.create_user("ca-b2-adm", secrets.token_urlsafe(12), "Admin B2", is_admin=True)
     media, node = gobuild("saga-media", "media", "SAGA_MEDIA_BIN"), gobuild("gjallarhorn", "gjallarhorn", "GJALLARHORN_BIN")
     ok("saga-media, gjallarhorn gebaut", bool(media and node))

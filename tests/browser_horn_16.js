@@ -17,6 +17,7 @@
 'use strict';
 const pw = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os'), readline = require('readline');
+const { ohneEinfuehrung } = require('./lib/erste_schritte');   // Frage "Erste Schritte" vorab beantworten (Bugs-DB 2428)
 const E = process.env, BASE = E.SAGA_BASE, SHOTS = E.SHOTS || '/tmp', VORHER = E.HX_VORHER === '1', FF = E.BR === 'firefox';
 const PRE = (E.HX_PREFIX || (VORHER ? 'vorher' : 'nachher')) + '-' + (FF ? 'firefox' : 'chromium');
 if (!BASE || !E.SAGA_USER || !E.SAGA_PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
@@ -102,8 +103,7 @@ async function plist(p, open) {
     await p.fill('input[type=password]', E.SAGA_PASS);
     await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
     await p.waitForTimeout(500);
-    await p.evaluate(() => fetch('/api/first-steps', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answer: 'no' }) })).catch(() => {});
+    await ohneEinfuehrung(p);
     await chatKeys(p, E.SAGA_USER);
     const dev = await until(() => p.evaluate(() => window.HKChat && window.HKChat.state().device), 20000);
     ok('angemeldet, Chat-Geraet da', !!dev, dev);

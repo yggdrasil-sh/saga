@@ -13,6 +13,7 @@
 'use strict';
 const pw = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
+const { ohneEinfuehrung } = require('./lib/erste_schritte');
 const E = process.env, BASE = E.SAGA_BASE, FF = E.BR === 'firefox', NUR = E.NUR_BILDER === '1';
 if (!BASE || !E.SAGA_USER || !E.SAGA_PASS || !E.SAGA_USER2 || !E.SAGA_PASS2) { console.error('SAGA_BASE, SAGA_USER/PASS, SAGA_USER2/PASS2 setzen'); process.exit(2); }
 const SHOTS = E.SHOTS || '', U1 = E.SAGA_USER, U2 = E.SAGA_USER2, BRN = FF ? 'firefox' : 'chromium';
@@ -45,8 +46,8 @@ async function login(p, user, pass) {
   // Frage "Erste Schritte" (static/firststeps.js, neue Konten ohne eigene Seiten) vorab beantworten: sie erscheint ~2 s nach
   // jedem Laden, sobald kein Dialog offen ist - sonst liegt sie z. B. direkt nach dem Schliessen des Status-Dialogs ueber
   // dem Kontoknopf und nimmt den Fokus (Bugs-DB 2394). Weggeklickt/Escape speichert nichts - daher per API.
-  const fsr = await papi(p, 'POST', '/api/first-steps', { answer: 'no' }).catch(e => ({ status: 0, d: { error: e.message } }));
-  if ([200, 403, 404].indexOf(fsr.status) < 0) note('Erste Schritte beantworten: ' + JSON.stringify(fsr));
+  const fss = await ohneEinfuehrung(p);                // gemeinsame Hilfe tests/lib/erste_schritte.js (Bugs-DB 2428)
+  if ([200, 403, 404].indexOf(fss) < 0) note('Erste Schritte beantworten: HTTP ' + fss);
 }
 const RKF = u => path.join(os.tmpdir(), 'saga-browser-rk-' + BASE.replace(/\W+/g, '_') + '-' + u + '.txt');
 // fresh: jeder Kontext ist ein neues Chat-Geraet (hoechstens 10 je Konto, saga/chat.py DEVICES_MAX) - Geraete frueherer Laeufe

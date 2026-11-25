@@ -18,6 +18,7 @@
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
+const { ohneEinfuehrung } = require('./lib/erste_schritte');   // Frage "Erste Schritte" vorab beantworten (Bugs-DB 2428)
 const E = process.env, BASE = E.SAGA_BASE, NODE_B = E.NODE_B || '127.0.0.1';
 const USERS = (E.SAGA_USERS || '').split(',').filter(Boolean);
 const PERFMODE = E.HORN_PERF === '1' && USERS.length >= 10;
@@ -224,8 +225,7 @@ async function session(i, shared) {
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
   await p.waitForTimeout(500);
   // Frage "Erste Schritte" (frische Konten) vorab beantworten - sonst liegt der Dialog ueber den Anruf-Knoepfen
-  await p.evaluate(() => fetch('/api/first-steps', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answer: 'no' }) })).catch(() => {});
+  await ohneEinfuehrung(p);
   return p;
 }
 const horn = p => capped(p.evaluate(() => window.HKCalls && window.HKCalls.horn()).then(x => x, () => null)).then(x => { if (x === undefined) console.log('  (haengt: ' + L[p.__i] + ')'); return x; });

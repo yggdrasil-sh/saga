@@ -12,6 +12,7 @@
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
+const { ohneEinfuehrung } = require('./lib/erste_schritte');   // Frage "Erste Schritte" vorab beantworten (Bugs-DB 2428)
 const E = process.env, BASE = E.SAGA_BASE, ADMIN = E.SAGA_ADMIN, SHOTS = E.SHOTS || '/tmp', PRE = E.HX_PREFIX || 'nachher';
 const VORHER = E.HX_VORHER === '1';
 if (!BASE || !ADMIN || !E.SAGA_ADMIN_COOKIE || !E.SAGA_USER || !E.SAGA_USER2) { console.error('SAGA_BASE, SAGA_ADMIN(_COOKIE), SAGA_USER/2 setzen'); process.exit(2); }
@@ -39,8 +40,7 @@ async function session(user, pass, name, phone) {
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
   await p.waitForTimeout(800);
   // Frage "Erste Schritte" (frische Konten) vorab beantworten - sonst liegt der Dialog ueber dem Anruf-Knopf
-  await p.evaluate(() => fetch('/api/first-steps', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answer: 'no' }) })).catch(() => {});
+  await ohneEinfuehrung(p);
   return p;
 }
 const RKF = u => path.join(os.tmpdir(), 'saga-browser-rk-' + BASE.replace(/\W+/g, '_') + '-' + u + '.txt');

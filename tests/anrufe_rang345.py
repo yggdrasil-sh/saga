@@ -216,6 +216,8 @@ def users():
     for u, n in USERS:
         if not auth.get_user(u):
             auth.create_user(u, PW, n)
+    import testkonten                              # Erste Schritte beantwortet - sonst liegt der Dialog ueber dem Anruf (Bugs-DB 2428)
+    testkonten.ohne_einfuehrung(None, [u for u, _ in USERS])
     # Bugs-DB 2158: alte DB mit neuem R345_WORK -> die Konten haben schon Chat-Schluessel, die Profile aber keinen
     # Wiederherstellungsschluessel (<prof>/<konto>.rk). Dann bliebe der Dialog "Chats auf diesem Geraet" stehen, kein
     # Chat-Geraet, und die Reihe scheiterte erst an #ct-chat. Ohne .rk die Chat-Schluessel des Testkontos verwerfen.
