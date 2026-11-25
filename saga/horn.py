@@ -533,7 +533,7 @@ def _test_env(name, check):
         return hit[1]
     try:
         v = check(json.loads(raw))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):     # RecursionError: tief verschachtelt ("[[[[..."), sonst 500 je Aufruf
         v = None
     _TEST[name] = (raw, v)
     print(f"horn: TESTHAKEN {name} " + ("aktiv: " + json.dumps(v, sort_keys=True) if v is not None else "ungueltig - ignoriert"), flush=True)

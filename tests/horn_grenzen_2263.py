@@ -196,13 +196,13 @@ def testhaken():
         hooks(token="x" * 32, limits=want)
         ok(f"Token genau 32 Zeichen: wirksam {lims()}", lims() == ((16, 50), (30, 100)))
         bad = ["kaputt{", "[]", "{}", '{"tcp":[16]}', '{"tcp":[60,50]}', '{"tcp":[16,500]}', '{"tcp":[1,50]}', '{"x":[16,50]}',
-               '{"tcp":["16",50]}', '{"tcp":[true,50]}', '{"tcp":[16.5,50]}', '{"tcp":[16,50],"udp":null}', '"16"', "null"]
+               '{"tcp":["16",50]}', '{"tcp":[true,50]}', '{"tcp":[16.5,50]}', '{"tcp":[16,50],"udp":null}', '"16"', "null", "[" * 100000]
         got = {}
         for b in bad:
             hooks(limits=b)
             got[b] = lims()
-        ok("Unsinn im JSON (Syntax, Laenge, Video > Ton, > 100, < 2, fremder Weg, Text/Bool/Komma, null) -> wie heute",
-           all(v == today for v in got.values()), {k: v for k, v in got.items() if v != today})
+        ok("Unsinn im JSON (Syntax, Laenge, Video > Ton, > 100, < 2, fremder Weg, Text/Bool/Komma, null, tief verschachtelt) -> wie heute",
+           all(v == today for v in got.values()), {k[:40]: v for k, v in got.items() if v != today})
         hooks(limits=want)
         auth.save_setting("calls", dict(CALLS, horn_video=3, horn_audio=20))
         auth._settings_cache["v"] = None
