@@ -309,19 +309,6 @@ func TestTunnelGrenzeJeAdresse(t *testing.T) {
 	}
 }
 
-// bendTo: passiver TCP-Kandidat im Antwort-SDP -> 127.0.0.1:<port> (wie HornTunnel.bend in den Apps).
-func bendTo(sdp string, port int) string {
-	lines := strings.Split(sdp, "\r\n")
-	for i, l := range lines {
-		f := strings.Fields(l)
-		if strings.HasPrefix(l, "a=candidate:") && len(f) >= 8 && strings.EqualFold(f[2], "tcp") && f[7] == "host" && strings.Contains(l, "tcptype passive") {
-			f[4], f[5] = "127.0.0.1", strconv.Itoa(port)
-			lines[i] = strings.Join(f, " ")
-		}
-	}
-	return strings.Join(lines, "\r\n")
-}
-
 // appTunnel: lokaler Lauscher je Leitung (maxConns 1) -> WebSocket mit auth, ohne Fenster, mit Quittungen (wie die Apps).
 func appTunnel(t *testing.T, url, user, cred, role string) int {
 	return appTunnelAck(t, url, user, cred, role, true)

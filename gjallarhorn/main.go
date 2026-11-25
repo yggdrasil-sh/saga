@@ -51,6 +51,8 @@ Aufruf:
   gjallarhorn watch                         Waechter: startet "node" und uebernimmt signierte Updates (Knoten-Image)
   gjallarhorn bench [-n 25] [--video 12] [--secs 60] [--path tcp|udp] [--sfu]
                                             Last mit lokalen Pion-Bots messen
+  gjallarhorn horn-bot [-resolve name=ip] [-insecure] [-all-ips] [-fc] [-out datei]
+                                            Mess-Bots mit echten Saga-Token (2263-2, JSON-Zeilen, hornbot.go)
   gjallarhorn report [--data DIR]           Markdown-Bericht mit Go/No-Go (stdout)
   gjallarhorn version
 
@@ -81,6 +83,8 @@ func main() {
 		err = runProbe(os.Args[2:], true)
 	case "bench":
 		err = runBench(os.Args[2:])
+	case "horn-bot": // 2263-2: Mess-Bots mit echten Saga-Token (Steuerung per JSON-Zeilen, siehe hornbot.go)
+		err = runHornBot(os.Args[2:])
 	case "report":
 		err = runReport(os.Args[2:], os.Stdout)
 	case "version", "--version", "-v":

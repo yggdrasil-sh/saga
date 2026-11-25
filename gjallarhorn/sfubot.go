@@ -47,6 +47,19 @@ type sfuBot struct {
 	rxPkts  atomic.Uint64
 	rxLost  atomic.Uint64
 	frames  map[*webrtc.TrackRemote]*frameClock
+
+	// 2263-2 (horn-bot): Frame-E2E saga-horn/v1 und Messung; alles nil/0 = wie bisher (bench, Tests)
+	e2eTx   *e2eSender                 // eigener Schluessel: Rahmen versiegeln (ohne Schluessel wird nichts gesendet)
+	e2eRx   *e2eRecv                   // Schluessel der anderen: Rahmen zusammensetzen und oeffnen
+	refOf   func(csrc uint32) string   // CSRC -> Kennung des Absenders am Knoten (peers)
+	onFirst func(kind string)          // erster (aufgegangener) Ton bzw. erstes Bild
+	onASlot func(csrc uint32)          // Ton-Platz wechselt den Absender (CSRC)
+	onRx    func(from string, ok bool) // je geoeffnetem bzw. mangels Schluessel verworfenem Rahmen (Nachforderung)
+	csrc    uint32                     // eigene CSRC am Knoten (POST /api/sfu/leg)
+	peers   map[string]uint32          // Kennung -> CSRC aus POST /api/sfu/leg
+	e2eSt   map[string]uint64          // ok, nokey, auth, replay, format, short, nomap, incomplete
+	gotA    bool
+	gotV    bool
 }
 
 // frameClock misst Rahmenabstaende eines Empfangsplatzes (Einfrieren nach
@@ -129,6 +142,7 @@ func (f *frameClock) frame(now int64, ts uint32) {
 type sfuStream struct {
 	tr    *webrtc.TrackLocalStaticRTP
 	kind  string // a, l, m, h
+	ssrc  uint32 // SSRC des Senders (IV des Frame-E2E)
 	key   atomic.Bool
 	ext   uint8 // audio-level-ID
 	owner *sfuBot
@@ -141,7 +155,7 @@ func sfuBotAPI(path string) (*webrtc.API, error) {
 	se.LoggerFactory = lf
 	se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	se.SetIncludeLoopbackCandidate(true)
-	se.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
+	se.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() || (sfuBotAllIPs && ip.To4() != nil) })
 	if path == "udp" {
 		se.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 	} else {
@@ -283,12 +297,25 @@ func (b *sfuBot) join(hc *http.Client, base string, api *webrtc.API, room string
 		var ans struct {
 			ID     string
 			Answer string
+			CSRC   uint32            `json:"csrc"`
+			Peers  map[string]uint32 `json:"peers"`
 		}
 		if err := postJSON(hc, base+"/api/sfu/leg", sfuLegReq{Token: tok.Token, Path: b.path, Offer: pc.LocalDescription().SDP,
 			Audio: sp.audio, Speaker: sp.speaker, Tiles: sp.tiles, Device: device}, &ans); err != nil {
 			return err
 		}
 		b.legIDs = append(b.legIDs, ans.ID)
+		b.mu.Lock()
+		if ans.CSRC != 0 {
+			b.csrc = ans.CSRC
+		}
+		if b.peers == nil {
+			b.peers = map[string]uint32{}
+		}
+		for k, v := range ans.Peers {
+			b.peers[k] = v
+		}
+		b.mu.Unlock()
 		if b.bend != nil {
 			ans.Answer = b.bend(sp.role, ans.Answer)
 		}
@@ -296,6 +323,9 @@ func (b *sfuBot) join(hc *http.Client, base string, api *webrtc.API, room string
 			return err
 		}
 		for i, tx := range txs {
+			if enc := tx.Sender().GetParameters().Encodings; len(enc) > 0 {
+				sts[i].ssrc = uint32(enc[0].SSRC)
+			}
 			if sts[i].kind == "a" {
 				for _, h := range tx.Sender().GetParameters().HeaderExtensions {
 					if h.URI == sdp.AudioLevelURI {
@@ -330,6 +360,8 @@ func (b *sfuBot) onTrack(tr *webrtc.TrackRemote, rc *webrtc.RTPReceiver) {
 	var h rtp.Header
 	var last uint16
 	first := true
+	var asm vp8Asm  // nur mit Frame-E2E: Rahmen zusammensetzen
+	var slot uint32 // Ton: aktueller Absender des Platzes
 	for {
 		n, _, err := tr.Read(buf)
 		if err != nil {
@@ -350,19 +382,169 @@ func (b *sfuBot) onTrack(tr *webrtc.TrackRemote, rc *webrtc.RTPReceiver) {
 		if len(h.CSRC) > 0 {
 			c = h.CSRC[0]
 		}
+		if !video && c != 0 && c != slot {
+			slot = c
+			if b.onASlot != nil {
+				b.onASlot(c)
+			}
+		}
+		if b.e2eRx != nil {
+			b.rxE2E(video, fc, &asm, &h, c, buf[hn:n])
+			continue
+		}
+		var firstKind string
 		b.mu.Lock()
 		if video {
 			b.rxVideo[c]++
 			if h.Marker && hn < n {
 				fc.frame(time.Now().UnixNano(), h.Timestamp)
+				if !b.gotV {
+					b.gotV, firstKind = true, "video"
+				}
 			}
 		} else {
 			b.rxAudio[c]++
 			if e := h.GetExtension(lvID); lvID != 0 && len(e) > 0 {
 				b.rxLevel[c] = e[0] & 0x7f
 			}
+			if !b.gotA {
+				b.gotA, firstKind = true, "audio"
+			}
 		}
 		b.mu.Unlock()
+		if firstKind != "" && b.onFirst != nil {
+			b.onFirst(firstKind)
+		}
+	}
+}
+
+// vp8Asm setzt einen VP8-Rahmen aus RTP-Paketen zusammen (ohne Nachsenden: Luecke = Rahmen verloren).
+type vp8Asm struct {
+	ts     uint32
+	next   uint16
+	active bool
+	ok     bool
+	buf    []byte
+}
+
+// vp8DescLen: Laenge des VP8-Nutzlastkopfs (RFC 7741), -1 = kaputt.
+func vp8DescLen(p []byte) int {
+	if len(p) < 1 {
+		return -1
+	}
+	n := 1
+	if p[0]&0x80 != 0 {
+		if len(p) < 2 {
+			return -1
+		}
+		x := p[1]
+		n = 2
+		if x&0x80 != 0 {
+			if len(p) < n+1 {
+				return -1
+			}
+			if p[n]&0x80 != 0 {
+				n += 2
+			} else {
+				n++
+			}
+		}
+		if x&0x40 != 0 {
+			n++
+		}
+		if x&0x30 != 0 {
+			n++
+		}
+	}
+	if n >= len(p) {
+		return -1
+	}
+	return n
+}
+
+func (b *sfuBot) e2eCount(k string) {
+	b.mu.Lock()
+	if b.e2eSt == nil {
+		b.e2eSt = map[string]uint64{}
+	}
+	b.e2eSt[k]++
+	b.mu.Unlock()
+}
+
+// rxE2E: Empfang mit Frame-E2E - Ton je Paket, Bild je zusammengesetztem Rahmen oeffnen; nur aufgegangene Rahmen zaehlen
+// fuer Einfrieren und "erstes Bild/Ton".
+func (b *sfuBot) rxE2E(video bool, fc *frameClock, a *vp8Asm, h *rtp.Header, c uint32, pl []byte) {
+	var frame []byte
+	if video {
+		dl := vp8DescLen(pl)
+		if a.active && (h.Timestamp != a.ts) {
+			b.e2eCount("incomplete")
+			a.active = false
+		}
+		if !a.active {
+			a.active, a.ts, a.buf = true, h.Timestamp, a.buf[:0]
+			a.ok = dl > 0 && pl[0]&0x10 != 0 && pl[0]&0x07 == 0
+		} else if h.SequenceNumber != a.next {
+			a.ok = false
+		}
+		a.next = h.SequenceNumber + 1
+		if dl > 0 {
+			a.buf = append(a.buf, pl[dl:]...)
+		} else {
+			a.ok = false
+		}
+		if !h.Marker {
+			return
+		}
+		a.active = false
+		if !a.ok {
+			b.e2eCount("incomplete")
+			return
+		}
+		frame = a.buf
+	} else {
+		frame = pl
+	}
+	from := ""
+	if b.refOf != nil {
+		from = b.refOf(c)
+	}
+	if from == "" {
+		b.e2eCount("nomap")
+		return
+	}
+	key := video && len(frame) > 0 && frame[0]&0x01 == 0
+	if _, err := b.e2eRx.open(from, video, key, frame); err != nil {
+		b.e2eCount(err.Error())
+		if err == errE2ENoKey && b.onRx != nil {
+			b.onRx(from, false)
+		}
+		return
+	}
+	if b.onRx != nil {
+		b.onRx(from, true)
+	}
+	var firstKind string
+	b.mu.Lock()
+	if b.e2eSt == nil {
+		b.e2eSt = map[string]uint64{}
+	}
+	b.e2eSt["ok"]++
+	if video {
+		b.rxVideo[c]++
+		fc.frame(time.Now().UnixNano(), h.Timestamp)
+		if !b.gotV {
+			b.gotV, firstKind = true, "video"
+		}
+	} else {
+		b.rxAudio[c]++
+		if !b.gotA {
+			b.gotA, firstKind = true, "audio"
+		}
+	}
+	b.mu.Unlock()
+	if firstKind != "" && b.onFirst != nil {
+		b.onFirst(firstKind)
 	}
 }
 
@@ -468,6 +650,22 @@ func (b *sfuBot) close() {
 	})
 }
 
+// opusSilence: gueltiges Opus-Paket von n Byte (7 ... 261): 40 ms = zwei CELT-Stille-Rahmen (FB 20 ms, Code 3, CBR) mit
+// Fuellbytes - Browser dekodieren es (Stille statt Verdeckung), die Groesse bleibt wie ein Sprachpaket.
+func opusSilence(dst []byte, n int) []byte {
+	if n < 7 {
+		n = 7
+	}
+	if n > 261 { // eine Fuelllaengen-Angabe reicht bis 254 Byte
+		n = 261
+	}
+	dst = append(dst, 0xfb, 0x42, byte(n-7), 0xff, 0xfe, 0xff, 0xfe)
+	for len(dst) < n {
+		dst = append(dst, 0)
+	}
+	return dst
+}
+
 // run: Ton 25/s (120 B + Trailer), Bild l 180p 20 fps ~200 kbit/s (L1T2),
 // m 360p 30 fps ~600 kbit/s (L1T3), h 720p 30 fps ~1,5 Mbit/s. Schluesselbild
 // auf PLI und alle 10 s (4-fache Groesse). PictureID 15 Bit.
@@ -497,6 +695,7 @@ func (s *sfuStream) run(stop <-chan struct{}) {
 	frames := 0
 	pkt := &rtp.Packet{Header: rtp.Header{Version: 2}}
 	pbuf := make([]byte, 0, 1200)
+	fbuf := make([]byte, 0, len(data)+64)
 	for {
 		select {
 		case <-stop:
@@ -505,14 +704,20 @@ func (s *sfuStream) run(stop <-chan struct{}) {
 		}
 		frames++
 		ts += tsStep
+		e2e := s.owner.e2eTx
 		if s.kind == "a" {
 			pkt.Header = rtp.Header{Version: 2, PayloadType: 111, SequenceNumber: seq, Timestamp: ts}
 			lv := uint8(s.owner.level.Load())
 			if s.ext != 0 {
 				_ = pkt.Header.SetExtension(s.ext, []byte{0x80 | lv})
 			}
-			pkt.Payload = data[:frameBytes+trailer]
-			pkt.Payload[0] = 0x78
+			if e2e != nil {
+				if pkt.Payload = e2e.seal(false, false, s.ssrc, ts, opusSilence(fbuf[:0], frameBytes)); pkt.Payload == nil {
+					continue // ohne Schluessel nichts senden (nie Klartext)
+				}
+			} else {
+				pkt.Payload = opusSilence(fbuf[:0], frameBytes+trailer)
+			}
 			seq++
 			if err := s.tr.WriteRTP(pkt); err != nil && errors.Is(err, io.ErrClosedPipe) {
 				return
@@ -538,9 +743,26 @@ func (s *sfuStream) run(stop <-chan struct{}) {
 		if key {
 			size *= 4
 		}
-		size += trailer
+		if e2e == nil {
+			size += trailer
+		}
 		if size > len(data)-2 {
 			size = len(data) - 2
+		}
+		// codierter Rahmen: VP8-Rahmenkopf (P-Bit; Schluesselbild mit Startcode und Groesse), Rest Zufall
+		fr := append(fbuf[:0], data[:size]...)
+		if key {
+			fr[0] &^= 0x01
+			fr[3], fr[4], fr[5] = 0x9d, 0x01, 0x2a
+			fr[6], fr[7], fr[8], fr[9] = 0x80, 0x02, 0x68, 0x01 // 640 x 360
+		} else {
+			fr[0] |= 0x01
+		}
+		if e2e != nil {
+			if fr = e2e.seal(true, key, s.ssrc, ts, fr); fr == nil {
+				continue
+			}
+			size = len(fr)
 		}
 		pic = (pic + 1) & 0x7fff
 		for off := 0; off < size; {
@@ -557,14 +779,7 @@ func (s *sfuStream) run(stop <-chan struct{}) {
 				t |= 0x20
 			}
 			p := append(pbuf[:0], 0x80|start, 0xe0, 0x80|byte(pic>>8), byte(pic), tl0, t)
-			p = append(p, data[off:off+chunk]...)
-			if off == 0 {
-				if key {
-					p[6] &^= 0x01
-				} else {
-					p[6] |= 0x01
-				}
-			}
+			p = append(p, fr[off:off+chunk]...)
 			off += chunk
 			pkt.Header = rtp.Header{Version: 2, PayloadType: 96, Marker: off >= size, SequenceNumber: seq, Timestamp: ts}
 			pkt.Payload = p
