@@ -9,7 +9,8 @@ RELAY_CONFIG (Standard /data/relay.json):
    "trust_proxy": true,                        # Client-IP aus X-Forwarded-For (letzter Eintrag, z. B. Traefik)
    "tiers": {"neu": {...}, "aktiv": {...}},    # ueberschreibt einzelne Werte der Standard-Stufen
    "reg_per_ip_hour": 5, "apns_concurrency": 32, "ring_slots": 4, "slot_wait": 2.0, "apns_timeout": 10,
-   "operator": "Betreiber, Kontakt", "privacy_note": "zusaetzlicher Text fuer die Startseite"}
+   "operator": "Betreiber, Kontakt", "privacy_note": "zusaetzlicher Text fuer die Startseite",
+   "log_days": 14}                             # Aufbewahrung der Protokolle laut Startseite (muss der Host einhalten)
 RELAY_DB (Standard /data/relay.db), RELAY_APNS_URL (nur Tests: Basis-URL statt Apple, http erlaubt),
 RELAY_VERIFY_TEST_BASE (nur Tests: Domain-Nachweis ueber http://127.0.0.1:<port> mit Host-Kopf)."""
 import json
@@ -103,6 +104,8 @@ class Config:
         self.apns_timeout = float(data.get("apns_timeout", 10))
         self.operator = str(data.get("operator") or "")[:300]
         self.privacy_note = str(data.get("privacy_note") or "")[:2000]
+        # Bugs-DB 2413-1: die Startseite nennt diese Frist; einhalten muss sie das Protokoll des Hosts (journald, README)
+        self.log_days = min(max(int(data.get("log_days", 14)), 1), 365)
         self.apns_url = os.environ.get("RELAY_APNS_URL", "").rstrip("/")       # nur Tests
         self.verify_test_base = os.environ.get("RELAY_VERIFY_TEST_BASE", "").rstrip("/")   # nur Tests
 

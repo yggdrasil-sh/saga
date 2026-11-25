@@ -9,5 +9,6 @@
   "trust_proxy": true,
   "reg_per_ip_hour": 5,
   "operator": "Betreiber: Beispiel, Kontakt: datenschutz@relay.example.org",
-  "privacy_note": ""
+  "privacy_note": "",
+  "log_days": 14
 }

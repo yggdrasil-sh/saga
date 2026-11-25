@@ -302,7 +302,8 @@ try:
     ok("info: registration verify, max_payload 4096/5120", d.get("registration") == "verify" and d.get("max_payload") == 4096
        and d.get("max_payload_voip") == 5120)
     st, page, h = http_req("GET", "/")
-    ok("Startseite: 200 mit Datenschutztext und CSP", st == 200 and "Datenschutz" in page and "Ger&auml;tetoken" in page
+    ok("Startseite: 200 mit Datenschutztext, Frist aus log_days (14) und CSP", st == 200 and "Datenschutz" in page
+       and "Ger&auml;tetoken" in page and "nach 14 Tagen gel&ouml;scht" in page and "after 14 days" in page
        and "default-src 'none'" in h.get("content-security-policy", ""))
     st, d, _ = http_req("GET", "/gibtsnicht")
     ok("unbekannter Pfad -> 404 JSON", st == 404 and d == {"error": "not found"})

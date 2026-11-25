@@ -438,12 +438,12 @@ Zusammenfassungs-Kennung, feste Textschl&uuml;ssel (z.&nbsp;B. <code>SAGA_PUSH_T
 verschl&uuml;sselten Inhalts und die Uhrzeit. Namen, Nachrichtentexte, Anmeldenamen oder Inhalte erreichen das Relais nie.</p>
 <p>Protokolliert wird je Anfrage nur Server-Kennung, Art, Stufe, Priorit&auml;t, Ergebnis und Dauer &ndash; nie das
 Ger&auml;tetoken oder der Inhalt (bei Fehlern ein t&auml;glich wechselnder, nicht umkehrbarer Kurzwert). Protokolle werden
-nach 14 Tagen gel&ouml;scht, Tagesz&auml;hler je Server nach 30 Tagen, Schutzwerte gegen Wiederholung nach 10 Minuten.
+nach {log_days} Tagen gel&ouml;scht, Tagesz&auml;hler je Server nach 30 Tagen, Schutzwerte gegen Wiederholung nach 10 Minuten.
 Ger&auml;tetoken und Inhalte werden nicht gespeichert.</p>
 {note}
 <h2>English</h2>
 <p>This relay forwards end-to-end encrypted notifications from Saga servers to Apple Push Notification service. It never
-sees names or message content. Logs contain no device tokens or payloads and are deleted after 14 days.</p>
+sees names or message content. Logs contain no device tokens or payloads and are deleted after {log_days} days.</p>
 {operator}
 <p><small>Protokoll: <code>/v1/info</code> &middot; Quelltext: Saga (AGPL-3.0)</small></p>
 </body></html>"""
@@ -453,7 +453,7 @@ async def home(request):
     c = _relay().cfg
     note = f"<p>{html.escape(c.privacy_note)}</p>" if c.privacy_note else ""
     op = f"<h2>Betreiber / Operator</h2><p>{html.escape(c.operator)}</p>" if c.operator else ""
-    return HTMLResponse(PAGE.format(note=note, operator=op),
+    return HTMLResponse(PAGE.format(note=note, operator=op, log_days=c.log_days),
                         headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff",
                                  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
 

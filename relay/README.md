@@ -37,7 +37,7 @@ Aus `saga/` wird nur `fedsig.py` benutzt (im Image unter `/app/saga/fedsig.py`).
 | `tiers` | einzelne Werte der Stufen `neu`/`aktiv` überschreiben (`per_min`, `per_token_min`, `per_day` je `ring`/`alert`/`bg`) |
 | `reg_per_ip_hour` | neue Anmeldungen je IP und Stunde (Standard 5) |
 | `apns_concurrency`, `ring_slots`, `slot_wait`, `apns_timeout` | gleichzeitige APNs-Anfragen (32), davon für Anrufe reserviert (4), Wartezeit auf einen Platz (2 s), Zeitgrenze zu Apple (10 s) |
-| `operator`, `privacy_note` | Betreiber/Kontakt und zusätzlicher Text auf der Startseite `/` |
+| `operator`, `privacy_note`, `log_days` | Betreiber/Kontakt, zusätzlicher Text und Aufbewahrung der Protokolle (Tage, Standard 14, siehe „Protokolle“) auf der Startseite `/` |
 
 Umgebung: `RELAY_DB` (Standard `/data/relay.db`), `RELAY_LISTEN`/`RELAY_PORT` (`0.0.0.0:8080`). Nur für Tests:
 `RELAY_APNS_URL` (statt Apple, http erlaubt) und `RELAY_VERIFY_TEST_BASE` (Domain-Nachweis über `http://127.0.0.1:<port>`).
@@ -66,9 +66,20 @@ docker exec saga-relay python relayctl.py stats --days 7
 Sperren wirken sofort. Sperren betrifft auch neue Anmeldungen mit demselben Host (die landen in `pending`).
 
 **Protokolle:** stdout, eine JSON-Zeile je Anfrage (`ts, ev, server_id, push_type, rate, prio, status, apns_reason, ms`,
-bei Fehlern `tok_h`). Die Startseite verspricht 14 Tage Aufbewahrung: mit `json-file` begrenzt `compose.yml` die Größe
-(`max-size`/`max-file`); wer genau 14 Tage braucht, nimmt `journald` mit `MaxRetentionSec=14d` oder leert die Protokolle
-per Zeitplan.
+bei Fehlern `tok_h`). Die Startseite nennt die Aufbewahrung aus `log_days` (Standard 14 Tage). Damit das stimmt, schreibt
+`compose.yml` die Protokolle ins journald des Hosts (`driver: journald`, `tag: saga-relay`; `docker logs` geht weiter),
+und der Host löscht sie zeitgenau:
+
+```sh
+mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nMaxRetentionSec=14day\n' > /etc/systemd/journald.conf.d/90-saga-relay.conf
+systemctl restart systemd-journald
+journalctl CONTAINER_TAG=saga-relay --since today      # Protokolle des Relais lesen
+```
+
+`MaxRetentionSec` gilt für das ganze Journal des Hosts (andere Dienste behalten ihre Protokolle dann auch höchstens so
+lange). Wer das nicht will, setzt `log_days` passend zur eigenen Aufbewahrung – die Startseite muss stimmen. `json-file`
+rotiert nur nach Größe und hält keine Frist ein.
 
 **Sicherung:** `data/relay.db` (Server-Kennungen und öffentliche Schlüssel). Geht sie verloren, melden sich die Server
 beim nächsten Versuch selbst neu an (neue `server_id`, Stufe `neu`).
