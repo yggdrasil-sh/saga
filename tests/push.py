@@ -620,10 +620,15 @@ def sub_req(body, hdr):
     return s, d
 
 
+def T_admin(path, form=None):
+    return admin(path, form)
+
+
 def e2e_part(A, Bk, pgA, tok2, key):
     """2.6 (Bugs-DB 2262-4/-5): APNs-Abo mit Schluesseln/Bundle, Geraeteliste via/e2e, /api/push, Domain-Nachweis."""
     from saga import push_relay
     auth.save_setting("push", dict(auth.settings(fresh=True)["push"], apns_e2e_direct=True))   # Admin-Formular oben ohne Haken
+    time.sleep(WAIT)                                              # Zwischenspeicher der Einstellungen im Server
     with connect() as c, c:
         c.execute("DELETE FROM setting WHERE k IN ('push_relay', 'push_relay_state', 'push_relay_old')")
     push_relay.forget_key_cache()
@@ -704,6 +709,18 @@ def e2e_part(A, Bk, pgA, tok2, key):
     g = wait_got(path_is(f"/3/device/{t3}"), m)
     b2 = json.loads(g[3]) if g else {}
     ok("2262-5: Schalter push.apns_e2e_direct aus -> eigener Weg wieder Klartext", "saga" not in b2 and b2.get("aps", {}).get("alert", {}).get("body"))
+    auth.save_setting("push", pv)
+    s, html = T_admin("/settings/push")
+    ok(f"2262-6: Admin-Seite zeigt Bereich Push-Relais (ohne Adresse: keines festgelegt), Schalter Relais/E2E ({s})",
+       s == 200 and 'id="relais"' in html and "SAGA_PUSH_RELAY_URL" in html and 'name="relay"' in html and 'name="apns_e2e_direct"' in html)
+    s, html = T_admin("/settings/push", {"enabled": "1", "webpush": "1", "ntfy": "1", "unifiedpush": "1", "stream": "1", "apns_e2e_direct": "1",
+                                         "apns_enabled": "1", "team_id": "ABCDE12345", "key_id": "KEY1234567", "bundle_id": "org.example.saga"})
+    p2 = auth.settings(fresh=True)["push"]
+    ok(f"2262-6: Speichern ohne Haken Relais -> relay aus, E2E an ({p2.get('relay')}, {p2.get('apns_e2e_direct')})",
+       p2.get("relay") is False and p2.get("apns_e2e_direct") is True)
+    s, html = T_admin("/settings/push", {"action": "relay_check"})
+    ok("2262-6: 'Jetzt pruefen' ohne Relais-Adresse -> Hinweis, nichts gespeichert", "Kein Push-Relais festgelegt." in html
+       and auth.settings(fresh=True)["push"].get("relay") is False)
     auth.save_setting("push", pv)
     time.sleep(WAIT)
     return t3, app2

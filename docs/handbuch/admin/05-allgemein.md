@@ -154,6 +154,16 @@ Klick im Menü auf **Mitteilungen**.
   Apple-Developer-Konto. Trag **Team-ID**, **Key-ID**, **Bundle-ID der App** und die Schlüsseldatei **(.p8)** ein und
   setz den Haken **APNs verwenden**. Ohne Schlüssel bekommen die Apple-Apps keine Mitteilungen und klingeln nicht.
 
+- **Ende-zu-Ende verschlüsseln** (Standard an): Apps ab 2.6 schicken einen eigenen Schlüssel mit. Dann sieht Apple nur
+  „Saga – Neue Mitteilung“; Namen und Text entschlüsselt die App. Ältere Apps bekommen den Text wie bisher.
+- **Push-Relais** (2.6): Ohne eigenen Schlüssel kommen Mitteilungen an die Saga-App aus dem App Store über das
+  Push-Relais – ebenfalls Ende-zu-Ende verschlüsselt. **Push-Relais verwenden** (Standard an) schaltet es ab. Der Bereich
+  zeigt **Zustand** (verbunden, nicht erreichbar, wartet auf Freischaltung, gesperrt), **Server-Kennung**, **Schlüssel**
+  (Fingerabdruck), **Grenzen**, **Zuletzt zugestellt** und **Letzter Fehler**. **Jetzt prüfen** fragt das Relais sofort
+  ab, **Schlüssel erneuern** tauscht den Schlüssel dieses Servers beim Relais aus, **Beim Relais abmelden** meldet ab
+  (beim nächsten iPhone meldet sich Saga neu an). Ist das Relais 10 Minuten nicht erreichbar oder gesperrt, bekommst
+  du eine Meldung in der Glocke; die Glocke der Personen hat trotzdem alles.
+
 Wie du den Schlüssel bei Apple anlegst: Anleitung, Abschnitt 9, „Mitteilungen aufs Handy und den Computer“.
 
 ---
@@ -194,6 +204,8 @@ Wie du den Schlüssel bei Apple anlegst: Anleitung, Abschnitt 9, „Mitteilungen
 | KI in Chats erlauben / Websuche erlauben | KI-Assistent | aus | KI im Chat auf Zuruf / Suche im Web |
 | Mitteilungen erlauben | Mitteilungen | an | Mitteilungen aufs Handy und den Computer |
 | APNs verwenden | Mitteilungen | aus | Mitteilungen an die Apple-Apps |
+| Ende-zu-Ende verschlüsseln | Mitteilungen | an | Apple sieht keine Namen/Texte (Apps ab 2.6) |
+| Push-Relais verwenden | Mitteilungen | an | Mitteilungen an die Store-App ohne eigenen Schlüssel |
 
 ---
 

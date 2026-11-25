@@ -1653,6 +1653,18 @@ Notifications service (APNs)“ anlegen, die `.p8`-Datei (gibt es nur einmal) ho
 Bundle-ID der App eintragen. Der Schlüssel wird verschlüsselt gespeichert. Ohne Schlüssel bleibt Apple Push aus.
 Den Schlüssel für Web Push (VAPID) erzeugt Saga beim ersten Bedarf selbst; er hängt am `SECRET_KEY`.
 
+**Saga-App aus dem App Store ohne eigenen APNs-Schlüssel (2.6):** Apple nimmt Mitteilungen an die Store-App nur mit dem
+Schlüssel des Apple-Kontos an, das sie veröffentlicht. Ohne eigenen Schlüssel schickt Saga sie deshalb über das
+**Push-Relais** (`SAGA_PUSH_RELAY_URL`, nur ausgehend über 443). Die Mitteilungen sind **Ende-zu-Ende verschlüsselt**:
+Das Relais und Apple sehen nur das Gerät, die Uhrzeit und „Saga – Neue Mitteilung“, nie Namen oder Texte; die App
+entschlüsselt auf dem Gerät. Saga meldet sich beim ersten iPhone mit Saga-App selbst an – mit einem eigenen Schlüssel
+und einem Nachweis über `https://<deine-domain>/.well-known/saga-push-relay`. Ein eigener APNs-Schlüssel geht für seine
+App vor. Ist das Relais nicht erreichbar, geht nichts verloren: Die Glocke hat alles, Mitteilungen werden nachgeholt
+(Anrufe nur, solange es klingelt), Admins bekommen nach 10 Minuten eine Meldung in der Glocke. Unter **Admin →
+Mitteilungen → Push-Relais** stehen Zustand, Server-Kennung und die Knöpfe „Jetzt prüfen“, „Schlüssel erneuern“ und
+„Beim Relais abmelden“; `SAGA_PUSH_RELAY_URL=off` schaltet das Relais ganz ab. Ältere Apps (2.5) brauchen weiter einen
+eigenen Schlüssel – bitte die App aktualisieren.
+
 ### KI-Assistent (optional)
 
 Ist der Assistent eingeschaltet, steht auf der Seiten-Ansicht oben **Frage Saga KI** (bzw. der Name, den der Admin

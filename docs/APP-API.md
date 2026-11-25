@@ -3802,6 +3802,39 @@ Die `id` bleibt beim Verringern gleich; den Eintrag in seiner Zeile ersetzen bzw
 - Mit „Namen zeigen“ aus gibt es kein `actor` und keinen Namen im Satz (wie immer).
 - Eine noch nicht zugestellte Mitteilung des Chats entfällt, wenn danach nichts Ungelesenes mehr übrig ist.
 
+## Apple-Mitteilungen Ende-zu-Ende und Push-Relais (2.6, `pushrelay1`)
+
+Verbindlicher Vertrag mit allen Einzelheiten: [`docs/PUSH-RELAY.md`](PUSH-RELAY.md) (Abschnitt 5 für die Apps),
+Testvektoren `tests/vectors/push_e2e.json`. Hier die Kurzfassung für die iOS-/iPadOS-App.
+
+**Erkennen:** `/api/version` → `features` enthält `pushrelay1`; `GET /api/push` → `server.apns_e2e: 1`. Ältere Server:
+Felder fehlen – die App schickt dann kein `keys`/`topic` und bekommt Mitteilungen wie bisher.
+
+**Abo:** `POST /api/push/subscriptions` mit `type` `apns` bzw. `apns-voip` zusätzlich
+`keys: {p256dh, auth}` (P-256-Schlüssel und 16 Byte `auth` der App, je Konto und Server, für beide Abos dasselbe Paar)
+und `topic` (Bundle-ID der laufenden App, `[A-Za-z0-9.-]{3,200}`). Fehlt ein Feld beim Erneuern, bleibt der gespeicherte
+Wert; neue Schlüssel mit demselben Token ersetzen die alten. Kaputte Schlüssel oder ein ungültiges `topic` → 400.
+
+**`GET /api/push`** (neu, `server`): `apns_e2e: 1`; `apns_topics: [Bundle…]` – für diese Bundles kann der Server zustellen
+(eigener APNs-Schlüssel und/oder Relais); `apns_relay: {state: ok|down|pending|blocked|auth, topics} | null` (`null` =
+Relais aus). `server.apns` bleibt wie bisher „eigener Schlüssel eingerichtet“. `devices[]` der Apple-Abos zusätzlich
+`via: "direct"|"relay"|null`, `e2e: true|false` und ohne Weg `hint: "app_update"` (alte App ohne Schlüssel, Server nur mit
+Relais) bzw. `"not_configured"`. Die App sollte Mitteilungen als verfügbar zeigen, wenn `apns` **oder** ihr Bundle in
+`apns_topics` steht, und bei `apns_relay.state == "down"` den Hinweis „Mitteilungen ans iPhone sind gerade gestört –
+Saga zeigt alles in der Glocke.“
+
+**Nutzlast:** Abos mit Schlüsseln bekommen (über das Relais immer, auf dem eigenen APNs-Weg solange der Admin-Schalter
+„Ende-zu-Ende verschlüsseln“ an ist) nur `{"aps": {…}, "saga": {"e2e": 1, "k", "c"}}`. `aps` enthält nur die Loc-Keys
+`SAGA_PUSH_TITLE`/`SAGA_PUSH_BODY` (Anrufe ohne VoIP-Abo: `SAGA_PUSH_CALL`), `mutable-content`, `sound`,
+`interruption-level` bzw. bei Aktualisierungen `content-available`, bei VoIP `{}`; keine `thread-id`. `c` ist das bisherige
+Feld-Set (`title, body, url, tag, kind, ts, v, lang, thread, call, chat, …`) als JSON, verschlüsselt wie Web Push
+(RFC 8291, aufgefüllt auf 512/1024/2048 Byte). `k` = die ersten 8 Zeichen von `b64url(SHA-256(p256dh))`. Die
+Notification Service Extension entschlüsselt und setzt Titel, Text und `threadIdentifier = thread ?? tag`; der
+PushKit-Pfad entschlüsselt vor `CallLogic.push`. `apns-collapse-id` ist undurchsichtig (HMAC über den `tag`).
+VoIP kommt nur für `call`/`call.group`.
+
+**Abos ohne Schlüssel** (Apps 2.5) laufen nur über einen eigenen APNs-Schlüssel des Servers, nie über das Relais.
+
 ## Leere Zustände und „Erste Schritte“ (2.6, Bugs-DB 2031)
 
 **Leere Zustände:** Wo eine Liste leer ist (Chats, Aufgaben, Termine, Datenbank-Einträge, Seiten, Mit mir geteilt …),
