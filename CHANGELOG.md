@@ -218,6 +218,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Gjallarhorn: Grenze eines Knoten-Anrufs steht ab dem Start fest** (Bugs-DB 2416, Server-Teil, 2263-4): **Migration 40**
+  (`chat_call.lim`, idempotent). Die Grenze („n/12“) richtet sich nach dem Knoten, auf dem der Anruf beginnt; Umzug und
+  Kaskade lassen sie nicht mehr zwischen 12 und 25 springen. Der Admin kann sie weiter nur senken. Anrufe von vor
+  Migration 40 verhalten sich wie bisher.
+- **Gjallarhorn: „ausgelastet“ statt „kein Anruf-Knoten erreichbar“** (2263-4): Ist ein erreichbarer Knoten nur ausgelastet,
+  antwortet der Beitritt weiter mit 409 `join_block:"node"`, zusätzlich mit `busy: true` und dem Text „Die Anruf-Knoten
+  sind gerade ausgelastet – bitte gleich noch einmal.“
+- **Admin › Anrufe ohne „experimentell“** (2263-4): Marke und Kasten „getestet mit bis zu 4 …“ sind weg (Anrufe,
+  Einstellungen, Netz, Föderation). Neu: Zeile „Grenzen je Anruf über Knoten“ mit den wirksamen Werten, Warnung je Knoten,
+  wenn `HORN_MAX_LEGS` zu klein für diese Grenzen ist (z. B. alter Standard 48), und Hinweis zu `HORN_MAX_PER_IP`/
+  `TRUSTED_PROXIES` bei Tunnel-Knoten. Gjallarhorn bleibt in diesem Stand ab Werk aus; der Schalter läuft jetzt zentral
+  über einen Merker (`horn_on_y`). Neu: Sind Anrufe ganz abgeschaltet (`calls.enabled` aus), meldet der Server auch an
+  verbundene Server kein Gjallarhorn mehr (kein `horn`/`horn_dm`/`horn_req`) und teilt keine eigenen Knoten.
+- **Web: Anruf über den Knoten ohne „experimentell“** (2263-5): Chip im Anrufkopf und Satz in der Teilnehmerliste sind
+  weg. Die reservierten Signale `dtmf`/`svc-join` (kommen mit 3.0) werden still ignoriert – kein Zustand, kein Schlüssel,
+  keine Übernahme. In der Galerie mit vielen Kacheln (z. B. 16 am Handy) kürzt sich zuerst der Gerätename, der Name
+  bleibt lesbar.
 - **Gjallarhorn: Anrufe mit mehr als 10 anderen Geräten bekamen keinen Schlüssel** (Bugs-DB 2434, 2263-4b): Eine
   Signal-Anfrage im Anruf-Raum durfte höchstens 10 Ziele haben (die Gerätegrenze je Konto). Jedes Gerät schickt den
   Frame-Schlüssel aber in einer Anfrage an alle – ab etwa 12 Geräten im Knoten-Anruf lehnte der Server ab, und niemand
