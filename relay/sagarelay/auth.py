@@ -11,7 +11,7 @@ class AuthError(Exception):
 
 
 def authority(request, cfg):
-    return cfg.public_host or fedsig.authority(request.headers.get("host") or "")
+    return fedsig.authority(cfg.public_host or request.headers.get("host") or "")
 
 
 def check(request, body, cfg, store, reg_pub=None):
