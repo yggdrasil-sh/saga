@@ -38,8 +38,27 @@ Platzhalter: `horn-1.example.org`.
 - **Wer ist wo:** Jedes Paket trägt die CSRC des Absenders. Browser lesen sie per `receiver.getContributingSources()`
   bzw. im Encoded-Transform aus `getMetadata().contributingSources`. Die Zuordnung CSRC → Teilnehmende liefert die
   Steuerung (`Room.Peers`, `Config.OnLayout`).
-- **Top-3-Ton** per `ssrc-audio-level`. Der Hauptsprecher wird mit Hysterese gewählt (mindestens 1,5 s, ein Neuer
-  muss 1,5 s am lautesten oder 1,4-mal lauter sein). Kacheln sind nach letzter Sprache geordnet, die Plätze bleiben fest.
+- **Top-3-Ton** (fester Vertrag ab 2.6, Bugs-DB 2263; normativ: `docs/APP-API.md` „Top-3-Ton“):
+  - **Feste 3:** je Empfänger höchstens 3 Ton-Plätze, fest bis 3.x. Clients fordern `audio: 3`, der Knoten kappt
+    `Limits.Audio` auf 3 (keine Umgebungsvariable).
+  - **Aktivität:** `ssrc-audio-level` (RFC 6464) × Sprachanteil je 200 ms, gleitend (0,8/0,2); sprechend ab 0,04
+    (`speakOn`).
+  - **Hysterese:** Ein sprechender Inhaber bleibt. Ein Neuer bekommt sofort einen freien oder stillen Platz. Sprechen
+    alle Inhaber, verdrängt ein Neuer den leisesten erst bei mindestens 1,4-facher Aktivität **und** nach mindestens
+    1,5 s (dieselben Werte wie beim Hauptsprecher, `domFactor`/`domHold`). Stille Inhaber weichen nur Sprechenden.
+  - **Wechselzeit:** höchstens 0,5 s, wenn ein Platz frei oder still ist.
+  - Platz = feste SSRC, CSRC = Inhaber, Folgenummern lückenlos über den Wechsel; `slots[]` mit `class: "audio"`.
+  - **Kaskade:** jede Seite einer Brücke wählt ihre Top-3 nach derselben Regel (unten, „Kaskade Bifröst“), der
+    Empfänger daraus wie lokal.
+  - **Zähler** (geplant, Bugs-DB 2263-3): `aswitch` je Bein = Inhaberwechsel auf den Ton-Plätzen, in `stats` von
+    `GET /api/sfu/leg/{id}`.
+  - **Stand:** Der Code setzt die Hysterese der Ton-Plätze erst ab 2263-3 um. Heute (`keepActive` in
+    `internal/sfu/control.go`) schützt er nur stille Inhaber gegen stille Neue, nicht den **sprechenden** Inhaber;
+    bei vier und mehr Sprechenden kann Platz 3 jeden Takt wechseln (Bugs-DB 2417). Auch die Brücke wählt ihre Top-3
+    noch ohne Haltedauer.
+
+  Der Hauptsprecher wird mit Hysterese gewählt (mindestens 1,5 s, ein Neuer muss 1,5 s am lautesten oder 1,4-mal
+  lauter sein). Kacheln sind nach letzter Sprache geordnet, die Plätze bleiben fest.
 - **Pegel an die Empfänger:** Jeder Ton-Ausgang setzt `ssrc-audio-level` mit der ID, die das Bein des Empfängers
   ausgehandelt hat, Wert aus dem Paket der Quelle (sonst fallen alle Kopferweiterungen der Quelle weg; nur die Kaskade
   reicht Pakete roh weiter). Browser und iOS lesen ihn per `getSynchronizationSources()` bzw. `RTCRtpReceiver.sources`
@@ -1512,8 +1531,9 @@ für die Brücke keine Rolle.
 | `pli` | `{s: sid}` – Schlüsselbild anfordern (weiter bis zum Gerät, begrenzt wie lokal) |
 | `bye` | Brücke zu (`why`) |
 
-- **Ton:** jede Seite schickt von sich aus ihre drei lautesten (Top-3, wer spricht, bleibt). Der Empfänger wählt daraus
-  wie lokal seine Top-3 und den Hauptsprecher.
+- **Ton:** jede Seite schickt von sich aus ihre drei lautesten nach der Top-3-Regel (oben, Weiterleiter: sprechender
+  Inhaber bleibt, Verdrängen erst ab 1,4× und 1,5 s). Der Empfänger wählt daraus wie lokal seine Top-3 und den
+  Hauptsprecher. Stand: die Haltedauer an der Brücke kommt mit Bugs-DB 2263-3 (`bifrost.go`, gleiche Regel wie lokal).
 - **Bild nur auf Nachfrage:** Teilnehmende der Gegenseite stehen als `Peer.Via` im Raum (`internal/sfu/remote.go`), ihre
   Quellen gelten als nutzbar, wenn der andere Knoten sie als aktiv meldet. Last-N, Sprecher und Schichtwahl planen sie wie
   eigene; was ein Ausgang wählt (`Source.Subscribed`), geht als `want` hinüber – also nur die Schichten, die wirklich

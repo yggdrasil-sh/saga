@@ -161,6 +161,9 @@ Standard aus). An: `GET /api/calls/config` meldet `features` mit `horn` und `"e2
 meldet `horn` in `CAPS2` (Admin-Schalter „Anrufe“ je Instanz; neue Instanzen erfahren es beim nächsten `hello`).
 Geräte melden `horn` in `caps`. Für `fkey`/`fkey-ack` braucht der Server nichts Eigenes: sie sind für ihn gewöhnliche
 versiegelte Signale (Tests `tests/anrufe_horn.py`, `tests/foederation_anrufe_raum.py`).
+Die reservierten Typen `dtmf` und `svc-join` (2.6, Bugs-DB 2263, `docs/APP-API.md` „Reservierte Typen“) laufen
+genauso versiegelt über denselben Weg wie alle Signale; sie ändern keine Schlüssel, keinen Ratschenstand und kein
+`newest`. Clients bis 3.0 ignorieren sie still (Vektoren `tests/call_signal_reserved.json`).
 
 **Web** (`static/frame-e2e.js`, eine Datei für Worker, Fenster und Node):
 - `SagaFrameE2E.create()` startet den Worker `/static/frame-e2e.js` (CSP `worker-src 'self'`, Blob-Worker sind

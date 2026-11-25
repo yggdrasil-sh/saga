@@ -1735,7 +1735,8 @@ Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Fu
   (nur bei eingeschaltetem Feature-Flag `calls.horn`, dazu `"e2e": "saga-horn/v1"`) = Gjallarhorn mit Frame-E2E,
   Vertrag `docs/HORN-E2E.md`; Geräte melden dann `horn` in `caps`.
 - `limits.endpoints_*`: Geräte je Anruf (Mesh: 4 mit Video, 6 nur Ton; eigene Zusatzgeräte zählen mit; der Admin kann
-  nur senken). E0-Server meldeten 2.
+  nur senken). E0-Server meldeten 2. Diese Grenzen gelten **nur für Mesh-Anrufe**; Knoten-Anrufe haben `limits.horn`
+  (Abschnitt „Anrufe über Gjallarhorn-Knoten“, Grenzen).
 - Signal-Budget je Anruf: `signals_max` + `signals_per_min` je **angefangener** Minute seit der Annahme, höchstens
   `signals_hard`; darüber und über `sig_rate` je Gerät und Minute → `429`. Ein versiegeltes Signal darf `sealed_max`
   Zeichen (B64) haben.
@@ -1764,7 +1765,7 @@ Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Fu
 
 | Feld | Typ | in | Bedeutung |
 |---|---|---|---|
-| `t` | Text | alle | `offer` · `answer` · `ice` · `state` · `bye`; 2.5: `fkey` · `fkey-ack` (nur mit `horn`, `docs/HORN-E2E.md` §4) |
+| `t` | Text | alle | `offer` · `answer` · `ice` · `state` · `bye`; 2.5: `fkey` · `fkey-ack` (nur mit `horn`, `docs/HORN-E2E.md` §4); **reserviert** (2.6, für 3.0): `dtmf` · `svc-join` (unten, nie senden, still ignorieren) |
 | `pc` | Text | alle | Kennung der PeerConnection. **Der Anrufer legt sie fest** (je Zielgerät `min(dev_a, dev_b) + ":" + max(dev_a, dev_b)`, device_ids als Hex), der Angerufene **übernimmt** sie aus dem ersten Angebot. Signale mit fremdem `pc` ignorieren; fehlt `pc` (2.3), gilt die einzige Verbindung |
 | `n` | Zahl | offer, answer | laufende Nummer **je Absender** (erstes Angebot des Anrufers `1`, das erste eigene Angebot des Angerufenen ebenfalls `1`). Die Antwort trägt das `n` des Angebots, das sie beantwortet |
 | `caps` | Liste | offer, answer | siehe oben |
@@ -1776,6 +1777,16 @@ Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Fu
 | `want` | Objekt | state | `{"video": "large" \| "small" \| "off"}` – wie groß ich das Bild des Gegenübers zeige |
 | `path` | Text | state | eigener Weg: `direct` · `relay-udp` · `relay-tcp` (fehlt = unbekannt) |
 | `reason` | Text | bye | z. B. `hangup` |
+
+**Reservierte Typen `dtmf` und `svc-join` (2.6, Bugs-DB 2263):** `dtmf` (3.0, Wähltöne im Gespräch) und `svc-join`
+(3.0, ein Dienst-Endpunkt wie die Telefon-Brücke meldet sich) sind **reserviert**. Clients bis 3.0 **senden sie nicht**
+und **ignorieren sie still** – im Mesh wie im Knoten-Anruf: kein Fehler, keine Anzeige, keine Schlüssel- oder
+Zustandsänderung, kein `bye`, die Verbindung bleibt. Das ist ein Fall der Regel „Unbekannte `t`-Typen und unbekannte
+Felder ignorieren“ (oben, Fähigkeiten); unbekannte Zusatzfelder in diesen Typen ändern daran nichts. Server reichen sie
+unverändert (versiegelt) durch, sie sehen den Typ ohnehin nicht. Die Felder legt 3.0 fest (vorläufig
+`dtmf {d, ms}`, `svc-join {svc, label}`); bis dahin darf kein Client sie auswerten. Vektoren für die Tests
+„ignoriert“ je Plattform: `tests/call_signal_reserved.json` (Klartext-Body nach dem Entsiegeln, Mesh und Knoten, mit
+Kontrollfällen bekannter Typen).
 
 ### Abläufe
 
@@ -2418,6 +2429,8 @@ Anzeige bleibt beim Namen des Gegenübers (1:1-Ansicht), bis der Anruf endet. Se
 
 Nur mit Feature-Flag `calls.horn` (Standard aus) und nur für Geräte, die `horn` in `caps` melden. Konzept:
 `claude/saga-gjallarhorn-konzept-v2.md` §2; Frame-E2E: `docs/HORN-E2E.md`; Knoten: `gjallarhorn/NODE.md`.
+2.6 (Bugs-DB 2263): Top-3-Ton als fester Vertrag (unten, „Top-3-Ton“), reservierte Signal-Typen `dtmf`/`svc-join`,
+Grenzen nur aus dem Server und beim Start festgehalten, `busy: true` bei ausgelasteten Knoten.
 
 **Wann:** Ein Gruppenanruf läuft über einen Knoten (`topo: "horn"` im Anruf-Objekt, in `call.roster` und in
 `/api/chats/{id}` → `call.running`), wenn das anrufende Gerät `horn` meldet, ein Knoten bereit ist und der Chat groß genug
@@ -2433,10 +2446,20 @@ Gerät mit `horn`; die anderen sehen `old` („braucht Saga 2.5“).
 **Grenzen** (`GET /api/calls/config` → `limits.horn`): `video_tcp` 12, `audio_tcp` 50, `video_udp` 25, `audio_udp` 100
 (UDP gilt, wenn der Knoten des Anrufs UDP meldet). `limits.endpoints_video/_audio` bleiben die Mesh-Grenzen. Das
 Anruf-Objekt meldet in `limit` die Grenze dieses Anrufs.
+- **Clients nehmen die Grenze immer aus `limits.horn` (`GET /api/calls/config`) bzw. `limit` des Anrufs, nie fest im
+  Client**; die Zahlen oben sind Obergrenzen des Servers (der Admin kann senken) und können sich mit Messungen ändern.
+  Die Mesh-Grenzen 4/6 gelten nur für Mesh-Anrufe (`topo: "mesh"`) – ein Client darf sie nie auf einen Anruf mit
+  `topo: "horn"` anwenden (Anzeige „n/…“, „Personen hinzufügen“, Sperren).
+- **Ab 2.6:** Die Grenze wird **beim Start des Anrufs festgehalten**; Umzug (P6) und Kaskade (P9/P10) ändern sie nicht
+  mehr. `limit` bleibt damit für die Dauer des Anrufs gleich (ältere Server konnten sie bei Knotenwechsel ändern –
+  Clients übernehmen `limit` deshalb weiterhin aus jedem Anruf-Objekt und `call.roster`).
 
 **Beitreten:** `POST /api/calls/{id}/join {device, role, caps, dev_class?}` **ohne** `signals` (mit Angeboten: 400).
-Ohne `horn` in `caps`: 409 `join_block: "old"`; kein Knoten erreichbar: 409 `join_block: "node"`. Die Antwort (wie auch
-`POST /api/calls` beim Start) trägt im Anruf-Objekt:
+Ohne `horn` in `caps`: 409 `join_block: "old"`; kein Knoten erreichbar: 409 `join_block: "node"`. Ab 2.6 kann
+`join_block: "node"` zusätzlich `busy: true` tragen: Knoten sind erreichbar, aber ausgelastet (Text etwa „Die
+Anruf-Knoten sind gerade ausgelastet – …“ in `error`). Clients ohne Kenntnis von `busy` zeigen wie bisher `error`;
+sonst behandeln sie `busy` genau wie `node` ohne `busy`. Ist der Anruf an seiner Grenze: wie im Mesh
+409 `join_block: "full"` mit `limit`. Die Antwort (wie auch `POST /api/calls` beim Start) trägt im Anruf-Objekt:
 
 ```json
 "horn": {"e2e": "saga-horn/v1", "ttl": 60, "candidates": [
@@ -2475,16 +2498,23 @@ exp, jti}` – zufällige Kennungen je Knoten, keine Konto- oder Gerätenamen. R
   `{id, answer, csrc, slots}`. Angebot: zuerst die eigene Sendespur (Ton bzw. Kamera mit Simulcast `l`/`m`), dann die
   Empfangsplätze in fester Reihenfolge (Ton: 3; Bild: Sprecher, Bildschirm falls angefragt, Kacheln).
 - `POST {url}/api/sfu/turn {token}` → `{username, credential}` für TURN-TLS auf demselben Port (TLS-Weg).
-- `GET {url}/api/sfu/leg/{id}` → Belegung `slots[] {i, class, peer, csrc, layer, paused}` und Schätzung;
+- `GET {url}/api/sfu/leg/{id}` → Belegung `slots[] {i, class, peer, csrc, layer, paused}` (Ton-Plätze: unten,
+  „Top-3-Ton“) und Schätzung;
   `DELETE` beendet das Bein. Unter `stats` stehen Zähler des Beins (nur zur Diagnose, Apps werten sie nicht aus),
   darunter `sources[] {kind, layer, pkts, dups, too_old, late}` je laufender eingehender Spur und `late_dropped` – der Abgleich
-  des Knotens auf wiederholte Pakete des Absenders, siehe `gjallarhorn/NODE.md` („Doppel und Nachzügler“).
+  des Knotens auf wiederholte Pakete des Absenders, siehe `gjallarhorn/NODE.md` („Doppel und Nachzügler“). Ab 2.6
+  (Bugs-DB 2263-3) zusätzlich `aswitch` = Zahl der Inhaberwechsel auf den Ton-Plätzen dieses Beins.
 - Fehler: 401 Token ungültig, abgelaufen, schon benutzt, für einen anderen Knoten oder Person entfernt; 404 Raum
   unbekannt (Anruf beendet); 429 voll; 400 auch für einen Weg, den der Knoten nicht anbietet (z. B. `tcp` bei
   `tcp: false`, `udp` ohne UDP) – das Token ist dann nicht verbraucht.
 
 **Schlüssel:** Jedes Gerät verteilt seinen Frame-Schlüssel als `fkey` über `POST /api/calls/{id}/signal` an alle
 anderen Endpunkte (`docs/HORN-E2E.md` §4); im Knoten-Anruf gibt es keine Mesh-Signale (offer/answer/ice).
+Signal-Typen im Knoten-Anruf sind nur `fkey`, `fkey-ack` und `state` (Mikrofon/Kamera/Bildschirm, `hp`, Übernahme).
+**Reserviert** (2.6, Bugs-DB 2263): `dtmf` und `svc-join` – Clients bis 3.0 senden sie nicht und ignorieren sie still
+(kein Fehler, keine Anzeige, keine Schlüssel- oder Zustandsänderung, kein `bye`; Felder erst mit 3.0, vorläufig
+`dtmf {d, ms}`, `svc-join {svc, label}`), wie jeden unbekannten Typ (saga-call v3, „Fähigkeiten“: unbekannte `t`-Typen
+und Felder ignorieren). Vektoren: `tests/call_signal_reserved.json`.
 Verlassen (`/leave`, `/end` mit `device`) beendet die Beine des Geräts am Knoten sofort; das Ende des Anrufs schließt
 den Raum.
 
@@ -2492,10 +2522,41 @@ den Raum.
 Live-Ereignis `call.horn_move {call_id, chat_id, node, why: drain|update|removed}`. Das Gerät holt dann mit
 `POST /api/calls/{id}/horn` (ohne `node`) neue Kandidaten – ein Knoten im Leeren erscheint nicht mehr – und schaltet
 make-before-break um (Web: P5, Apps). Beitritt und `/horn` folgen dem bereiten Knoten mit den meisten Endpunkten des
-Anrufs. Ist kein Knoten bereit: 409 `join_block: "node"` (dann Mesh-Rückfall beim nächsten Anruf).
+Anrufs. Ist kein Knoten bereit: 409 `join_block: "node"` (dann Mesh-Rückfall beim nächsten Anruf), ab 2.6 bei
+ausgelasteten Knoten mit `busy: true` (oben, Beitreten). Die Grenze des Anrufs (`limit`) ändert der Umzug ab 2.6 nicht.
 
 **Knotenbetrieb (nur Server ↔ Knoten, nicht für Apps):** `GET /api/horn/whoami` → `{ip}`, `POST /api/horn/pair`
 (Kopplung), WebSocket `/api/horn/ctl` (Steuerung). Beschreibung: `gjallarhorn/NODE.md`.
+
+### Top-3-Ton (fester Vertrag, 2.6, Bugs-DB 2263)
+
+Normativ für Knoten, Web und Apps; gilt **fest bis einschließlich 3.x** (eine Änderung wäre ein neuer Vertrag mit
+eigener Fähigkeit). Beschreibung der Umsetzung im Knoten: `gjallarhorn/NODE.md` („Top-3-Ton“, Kaskade).
+
+1. **Höchstens 3 Tonströme je Empfänger.** Clients MÜSSEN im Bein `audio: 3` anfordern (Angebot mit genau 3
+   recvonly-Ton-Plätzen); mehr kappt der Knoten auf 3. Clients DÜRFEN nicht annehmen, dass sie mehr als 3 Personen
+   gleichzeitig hören.
+2. **Aktivität:** Der Knoten bewertet jede Quelle aus `ssrc-audio-level` (RFC 6464) × Sprachanteil je 200 ms, gleitend
+   gemittelt. Als sprechend gilt eine Quelle ab Aktivität 0,04. Clients MÜSSEN deshalb `ssrc-audio-level` senden
+   (Rahmen-Weg: Pegel in Byte 3 des Ton-Rahmens).
+3. **Hysterese:** Ein **sprechender** Inhaber MUSS seinen Platz behalten. Ein Neuer bekommt sofort einen freien Platz
+   oder den Platz eines stillen Inhabers. Sprechen alle Inhaber, DARF ein Neuer den leisesten erst verdrängen, wenn er
+   mindestens das 1,4-Fache an Aktivität hat **und** das mindestens 1,5 s lang hält. Stille Inhaber weichen nur
+   Sprechenden (ein stiller Neuer verdrängt keinen stillen Inhaber).
+4. **Wechselzeit:** Ist ein Platz frei oder still, MUSS der Wechsel zu einem neuen Sprecher in höchstens 0,5 s
+   erfolgen.
+5. **Was Clients sehen:** feste SSRC je Platz; die CSRC nennt den Inhaber; die Folgenummern laufen über einen Wechsel
+   lückenlos weiter. `audio-level` steht mit der ID, die das Bein des Empfängers ausgehandelt hat (Rahmen-Weg: Byte 3).
+   Belegung in `slots[]` mit `class: "audio"`, `peer`, `csrc`, `paused`. Clients MÜSSEN Ton und Sprechring über CSRC
+   bzw. `slots[].peer` zuordnen, nie über den Platz (ein Platz DARF jederzeit den Inhaber wechseln).
+6. **Kaskade:** Jede Seite einer Brücke schickt ihre Top-3 nach derselben Regel (1–4); der empfangende Knoten wählt
+   daraus wie lokal die Top-3 je Empfänger und den Hauptsprecher. Für Clients ist das nicht unterscheidbar.
+7. **Brücke (3.0, z. B. Telefon):** ein Bein mit `role: audio`, `audio: 3`, ohne Bild; sie dekodiert die 3 Opus-Ströme
+   und mischt außerhalb des Saga-Prozesses (nicht in Python). Für sie gelten dieselben Regeln wie für jeden Empfänger.
+
+Stand der Umsetzung: Punkte 1, 2 und 5 gelten seit 2.5. Die Hysterese (3, 4, auch an der Brücke, 6) setzt der Knoten ab
+2.6 (Bugs-DB 2263-3) um; ältere Knoten schützen nur den Hauptsprecher und stille Inhaber gegen stille Neue, bei vier
+und mehr Sprechenden kann Platz 3 dort häufig wechseln (Bugs-DB 2417). Clients müssen dafür nichts ändern.
 
 ### Medien-Tunnel `/api/sfu/ws` (2.5)
 

@@ -322,6 +322,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   festnageln mit `2.5`, `2.5.0` oder `testing-<commit>` – nur, solange keine neuere Version die Datenbank umgebaut hat
   (sonst `SchemaTooNew`, zurück nur mit Backup). Der Branch `testing` ist eingefroren; `testing`/`rc` bekommen derzeit
   dasselbe wie `2` (bei Gelegenheit auf `2` wechseln). `tools/saga-testing-einrichten.sh` lädt man jetzt von `main` (Bugs-DB 2328, 2330).
+- **Vertrag Anrufe mit 10+ Teilnehmern** (Bugs-DB 2263-1, nur Doku): `docs/APP-API.md` „Top-3-Ton (fester Vertrag)“ –
+  höchstens 3 Tonströme je Empfänger fest bis 3.x, Hysterese (sprechender Inhaber bleibt, Verdrängen erst ab 1,4× und
+  1,5 s), Kaskade nach derselben Regel; die Signal-Typen `dtmf` und `svc-join` sind für 3.0 **reserviert** (Clients
+  senden sie nicht und ignorieren sie still, Vektoren `tests/call_signal_reserved.json`); Clients nehmen Knoten-Grenzen
+  nur aus `limits.horn`/`limit`, nie fest; `join_block: "node"` kann `busy: true` tragen. `gjallarhorn/NODE.md` und
+  `docs/HORN-E2E.md` §6 angeglichen. Code folgt (Knoten 2263-3, Server 2263-4, Clients 2263-5 bis -7).
 
 ## [2.5.0] – 2026-11-24
 
