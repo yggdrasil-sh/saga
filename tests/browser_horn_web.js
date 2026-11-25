@@ -223,6 +223,9 @@ async function session(i, shared) {
   await p.fill('input[type=password]', E.SAGA_PASS);
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
   await p.waitForTimeout(500);
+  // Frage "Erste Schritte" (frische Konten) vorab beantworten - sonst liegt der Dialog ueber den Anruf-Knoepfen
+  await p.evaluate(() => fetch('/api/first-steps', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer: 'no' }) })).catch(() => {});
   return p;
 }
 const horn = p => capped(p.evaluate(() => window.HKCalls && window.HKCalls.horn()).then(x => x, () => null)).then(x => { if (x === undefined) console.log('  (haengt: ' + L[p.__i] + ')'); return x; });
