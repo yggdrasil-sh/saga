@@ -39,7 +39,23 @@ E164_RE = contacts.E164_RE
 CC_RE = re.compile(r"[1-9]\d{0,2}")
 _SEP = re.compile(r"[\s\-/.()   ]")
 _TRUNK = re.compile(r"^\+(\d{1,3})\s*\(0\)")      # '+49 (0) 170 …' -> '+49 170 …'
-_CTRL = re.compile(r"[\s\x00-\x1f\x7f]")
+_MAIL_BAD = re.compile(r'[\s\x00-\x1f\x7f,;?&#<>"\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]')
+
+# Nationales Praefix je Landesvorwahl (Bugs-DB 2400, Stand ITU/Nummernplaene 2026) - fuer Eingaben, die mit 0 beginnen:
+#   fehlt = Standard '0' (wegfallen lassen: '0170 …' -> '+49 170 …')
+#   ''    = die fuehrende 0 gehoert zur Nummer und bleibt ('06 …' -> '+39 06 …')
+#   '06'  = Ungarn: Verkehrsausscheidung 06 faellt weg ('06 30 …' -> '+36 30 …'), eine einzelne 0 vorn -> 400
+#   None  = eine fuehrende 0 ist dort kein nationales Praefix (keines bzw. ein anderes, z. B. 1 oder 8) -> 400 "bitte mit +"
+# Nur gut belegte Faelle; im Zweifel lieber 400 als eine falsch gespeicherte Nummer.
+TRUNK_CC = {
+    "39": "", "378": "", "379": "", "225": "",            # Italien, San Marino, Vatikan, Elfenbeinkueste (0 Teil der Nummer)
+    "36": "06",                                           # Ungarn
+    "1": None,                                            # Nordamerika (NANP, Praefix 1)
+    "7": None, "375": None, "370": None, "994": None, "993": None, "998": None,   # Praefix 8 (RU/KZ, BY, LT, AZ, TM, UZ)
+    "976": None,                                          # Mongolei (01/02)
+    "30": None, "34": None, "351": None, "352": None, "356": None, "371": None, "372": None, "377": None,
+    "420": None, "45": None, "47": None, "48": None, "56": None, "598": None, "65": None, "968": None, "977": None,
+}                                                         # ohne Praefix: GR ES PT LU MT LV EE MC CZ DK NO PL CL UY SG OM NP
 
 
 class Bad(Exception):
@@ -64,27 +80,35 @@ def norm_cc(v):
 
 
 def norm_e164(v, cc=None):
-    """Telefonnummer -> '+491701234567'. Leerzeichen - / . Klammern weg, '00…' -> '+…', '0…' nur mit Landesvorwahl cc."""
+    """Telefonnummer -> '+491701234567'. Leerzeichen - / . Klammern weg, '00…' -> '+…', '0…' nur mit Landesvorwahl cc und
+    nach deren nationalem Praefix (TRUNK_CC)."""
     if not isinstance(v, str) or not v.strip() or len(v) > 64:
         raise Bad(t("Ungültige Telefonnummer."))
-    s = _SEP.sub("", _TRUNK.sub(r"+\1", v.strip()))
+    v = _TRUNK.sub(lambda m: "+" + m.group(1) + ("0" if TRUNK_CC.get(m.group(1), "0") == "" else ""), v.strip())
+    s = _SEP.sub("", v)
     if s.startswith("00"):
         s = "+" + s[2:]
     elif s.startswith("0"):
         if not cc:
             raise Bad(t("Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen."))
-        s = "+" + cc + s[1:]
+        p = TRUNK_CC.get(cc, "0")
+        if p is None:
+            raise Bad(t("Bei dieser Landesvorwahl gehört eine führende 0 nicht zur Nummer – bitte die Nummer mit + beginnen."))
+        if not s.startswith(p):
+            raise Bad(t("Nationale Nummern in Ungarn beginnen mit 06 – bitte so oder mit + eingeben."))
+        s = "+" + cc + s[len(p):]
     if not E164_RE.fullmatch(s):
         raise Bad(t("Ungültige Telefonnummer."))
     return s
 
 
 def norm_email(v):
-    """E-Mail: hoechstens 254 Zeichen, genau ein '@', keine Leer-/Steuerzeichen, Domain klein."""
+    """E-Mail: hoechstens 254 Zeichen, genau ein '@', keine Leer-/Steuer-/Formatzeichen und keines von , ; ? & # < > "
+    (ein Wert = genau ein Empfaenger, auch in mailto:-Links; Bugs-DB 2399), Domain klein."""
     if not isinstance(v, str):
         raise Bad(t("Ungültige E-Mail-Adresse."))
     s = v.strip()
-    if not s or len(s) > 254 or s.count("@") != 1 or _CTRL.search(s):
+    if not s or len(s) > 254 or s.count("@") != 1 or _MAIL_BAD.search(s):
         raise Bad(t("Ungültige E-Mail-Adresse."))
     local, dom = s.split("@")
     dom = dom.lower()

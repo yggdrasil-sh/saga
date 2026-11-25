@@ -5285,6 +5285,8 @@
  "Die Grußform ist zu lang (höchstens {n} Zeichen).": "The greeting is too long (at most {n} characters).",
  "Diese Adresse gehört schon zu einem anderen Kontakt.": "This address already belongs to another contact.",
  "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "For national numbers, please set the country code or start the number with +.",
+ "Bei dieser Landesvorwahl gehört eine führende 0 nicht zur Nummer – bitte die Nummer mit + beginnen.": "For this country code, a leading 0 is not part of the number – please start the number with +.",
+ "Nationale Nummern in Ungarn beginnen mit 06 – bitte so oder mit + eingeben.": "National numbers in Hungary start with 06 – please enter it that way or start with +.",
  "Höchstens {n} E-Mail-Adressen je Kontakt.": "At most {n} email addresses per contact.",
  "Höchstens {n} Telefonnummern je Kontakt.": "At most {n} phone numbers per contact.",
  "Höchstens {n} eigene Kontakte je Konto.": "At most {n} own contacts per account.",

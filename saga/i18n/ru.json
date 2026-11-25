@@ -5285,6 +5285,8 @@
  "Die Grußform ist zu lang (höchstens {n} Zeichen).": "Приветствие слишком длинное (не более {n} символов).",
  "Diese Adresse gehört schon zu einem anderen Kontakt.": "Этот адрес уже принадлежит другому контакту.",
  "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "Для национальных номеров укажите код страны или начните номер с +.",
+ "Bei dieser Landesvorwahl gehört eine führende 0 nicht zur Nummer – bitte die Nummer mit + beginnen.": "Для этого кода страны начальный 0 не входит в номер – начните номер с +.",
+ "Nationale Nummern in Ungarn beginnen mit 06 – bitte so oder mit + eingeben.": "Национальные номера в Венгрии начинаются с 06 – введите номер так или начните с +.",
  "Höchstens {n} E-Mail-Adressen je Kontakt.": "Не более {n} адресов электронной почты на контакт.",
  "Höchstens {n} Telefonnummern je Kontakt.": "Не более {n} номеров телефона на контакт.",
  "Höchstens {n} eigene Kontakte je Konto.": "Не более {n} собственных контактов на аккаунт.",

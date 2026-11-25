@@ -5285,6 +5285,8 @@
  "Die Grußform ist zu lang (höchstens {n} Zeichen).": "Die Grußform ist zu lang (höchstens {n} Zeichen).",
  "Diese Adresse gehört schon zu einem anderen Kontakt.": "Diese Adresse gehört schon zu einem anderen Kontakt.",
  "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.",
+ "Bei dieser Landesvorwahl gehört eine führende 0 nicht zur Nummer – bitte die Nummer mit + beginnen.": "Bei dieser Landesvorwahl gehört eine führende 0 nicht zur Nummer – bitte die Nummer mit + beginnen.",
+ "Nationale Nummern in Ungarn beginnen mit 06 – bitte so oder mit + eingeben.": "Nationale Nummern in Ungarn beginnen mit 06 – bitte so oder mit + eingeben.",
  "Höchstens {n} E-Mail-Adressen je Kontakt.": "Höchstens {n} E-Mail-Adressen je Kontakt.",
  "Höchstens {n} Telefonnummern je Kontakt.": "Höchstens {n} Telefonnummern je Kontakt.",
  "Höchstens {n} eigene Kontakte je Konto.": "Höchstens {n} eigene Kontakte je Konto.",

@@ -5,7 +5,7 @@
 //   SAGA_BASE=http://host:port SAGA_USER=a SAGA_PASS=... SAGA_USER2=b SAGA_PASS2=... [BR=firefox] [SHOTS=/ordner]
 //   [NUR_BILDER=1] [PLAYWRIGHT=/pfad/zu/playwright-core] node tests/browser_kontakte2.js
 // Geprueft: Navigation (Eintrag Kontakte unter Arbeitsbereich, ?settings=contacts), Liste (Kontakt aus dem Chat, Suche nach
-// Name und Ziffern), Detail (feste Saga-Zeile mit "Nachricht", tel:/mailto:), Bearbeiten (Name fuer mich, Anrede,
+// Name und Ziffern), Detail (feste Saga-Zeile mit "Nachricht", tel:/mailto:, mailto: je Teil kodiert), Bearbeiten (Name fuer mich, Anrede,
 // Grussform, Nummer/Mail mit Typ), nationale Nummer ohne/mit Landesvorwahl, 409 bei veraltetem Stand (Eingabe bleibt,
 // zweites Speichern gewinnt), doppelter Wert (409 mit "Zum Kontakt"), Neuer Kontakt, Loeschen mit Rueckfrage, Live
 // (zweiter Tab: Liste und offenes Detail), "Nachricht" oeffnet den Direkt-Chat, "Kontakt bearbeiten …" im Chat-Dialog,
@@ -238,6 +238,21 @@ async function hscroll(p) { return p.evaluate(() => [document.documentElement.sc
       await A.click('#hk-pane-contacts .kb-back');
       x = await until(async () => { const y = await pane(A); return y && y.rows.some(w => /Xaver/.test(w.n)) ? y : null; }, 5000);
       ok('Name mit HTML erscheint als Text (kein <img>)', x && x.imgs === 0 && x.rows.some(w => w.n === '<img src=x onerror=alert(1)> Xaver'), x && x.rows);
+
+      // --- mailto: je Teil kodiert, genau ein Empfaenger (Bugs-DB 2399) ---------------------------------------------
+      r = await papi(A, 'POST', '/api/contacts', { own_name: 'Mehrfach', addrs: [{ kind: 'email', value: 'a@x.example,b@y.example' }] });
+      ok('Mail mit Komma (zwei Empfaenger) -> 400 (' + r.status + ')', r.status === 400 && !JSON.stringify(r.d).includes('x.example'), r.d);
+      r = await papi(A, 'POST', '/api/contacts', { own_name: 'Max Kodiert', addrs: [{ kind: 'email', value: 'max+tag%1@example.org' }] });
+      ok('Kontakt mit + und % in der Mail angelegt (' + r.status + ')', r.status === 201);
+      const mid = r.d && r.d.id;
+      await until(async () => { const y = await pane(A); return y && y.rows.some(w => w.n === 'Max Kodiert') ? y : null; }, 5000);
+      await rowClick(A, 'Max Kodiert');
+      x = await detailOpen(A);
+      const mh = x && x.mail[0] ? x.mail[0][0] : '';
+      ok('mailto: je Teil kodiert, nur ein Empfaenger', mh === 'mailto:max%2Btag%251@example.org' && !/[,;?&\s]/.test(mh)
+         && x.mail.length === 1 && x.mail[0][1] === 'max+tag%1@example.org', x && x.mail);
+      await A.click('#hk-pane-contacts .kb-back');
+      if (mid) await papi(A, 'DELETE', '/api/contacts/' + mid);
 
       // --- Live: zweiter Tab -----------------------------------------------------------------------------------------
       const A2 = await A.context().newPage();

@@ -3,7 +3,9 @@
 Geprueft: Feature contacts2 (/api/version, /api/chat/me), 401 ohne X-Saga, Anlegen/Lesen/Aendern/Loeschen, 404 fuer fremde
 und unbekannte IDs, 409 bei veraltetem ver (mit aktuellem Kontakt), feste Saga-Adresse weder aenderbar noch loeschbar,
 E.164-Faelle (+49 170 …, 0049 …, 0170 … mit/ohne Landesvorwahl aus Anfrage oder Konto-Einstellung, (0), zu kurz/lang,
-Buchstaben), Mail-Faelle, doppelter Wert -> 409 nur mit contact_id, Grenzen (10 Nummern/Mails, 2000 manuelle), Suche (Name,
+Buchstaben), nationales Praefix je Landesvorwahl (IT/SM/VA/CI: 0 bleibt, HU: 06 faellt weg, NANP/RU/ES: 0 -> 400;
+Bugs-DB 2400), Mail-Faelle (Trenner , ; ? & # < > Anfuehrungszeichen, Steuer-/Formatzeichen -> 400; 2399), doppelter
+Wert -> 409 nur mit contact_id, Grenzen (10 Nummern/Mails, 2000 manuelle), Suche (Name,
 Mail, Ziffern), Name fuer mich nur im Adressbuch (nicht in Chats, nicht bei der Gegenseite), form bleibt nach Chat-Verkehr
 null, DELETE neu blendet den Chat-Kontakt aus (alte Apps: chat.contacts), Live contacts.changed nur an eigene Verbindungen,
 alte API unveraendert + contact_id, Status-Ausnahme {type: contact} weiter 400, kein fed_*-Modul liest das Adressbuch,
@@ -109,7 +111,8 @@ def run():
     mk = lambda: "k2a-" + secrets.token_hex(6)                    # noqa: E731  Marker = Anmeldename
     A, B, Cc = U(mk(), "Anton Adress"), U(mk(), "Berta Adress"), U(mk(), "Conrad Adress")
     E, M = U(mk(), "Erik Nummer", setup=False), U(mk(), "Mona Mail", setup=False)     # Pruefungen (eigene Rate je Konto)
-    names = [A.uid, B.uid, Cc.uid, E.uid, M.uid]
+    L, M2 = U(mk(), "Lena Land", setup=False), U(mk(), "Mia Mail", setup=False)       # Laender-Praefixe, Mail-Trenner (2399/2400)
+    names = [A.uid, B.uid, Cc.uid, E.uid, M.uid, L.uid, M2.uid]
     log0 = os.path.getsize(LOG) if os.path.exists(LOG) else 0
 
     s, d = CT.req("GET", "/api/version")
@@ -187,6 +190,32 @@ def run():
         s, d = e164(bad, cc="49" if bad == "0" else None)
         ok(f"Nummer {bad!r} -> 400 ({s})", s == 400)
 
+    # --- nationales Praefix je Landesvorwahl (Bugs-DB 2400) -------------------------------------------------------------
+    def nat(v, cc):
+        s, d = L.api("POST", "/api/contacts", {"own_name": "Land", "addrs": [num(v)], "cc": cc})
+        if s == 201:
+            L.api("DELETE", f"/api/contacts/{d['id']}")
+        return s, (vals(d) or [None])[0] if s == 201 else d
+    SECRETS.extend(["612345678", "301234567", "549123456", "707123456", "2125550123"])
+    ok("Standard (DE): '0170 …' -> 0 faellt weg", nat("0170 2345678", "49") == (201, "+491702345678"))
+    ok("Italien: '06 1234 5678' -> +39 06… (0 bleibt)", nat("06 1234 5678", "39") == (201, "+390612345678"))
+    ok("Italien: '+39 (0)6 1234 5678' -> 0 bleibt", nat("+39 (0)6 1234 5678", None) == (201, "+390612345678"))
+    ok("San Marino: '0549 123456' -> +378 0549…", nat("0549 123456", "378") == (201, "+3780549123456"))
+    ok("Vatikan: '06 6981 2345' -> +379 06…", nat("06 6981 2345", "379") == (201, "+379069812345"))
+    ok("Elfenbeinkueste: '07 07 12 34 56' -> +225 07…", nat("07 07 12 34 56", "225") == (201, "+2250707123456"))
+    ok("Ungarn: '06 30 123 4567' -> +36 30… (06 faellt weg)", nat("06 30 123 4567", "36") == (201, "+36301234567"))
+    s, d = nat("030 123 4567", "36")
+    ok(f"Ungarn: einzelne 0 vorn -> 400 mit Hinweis 06, ohne Nummer ({s})", s == 400 and "06" in (d.get("error") or "")
+       and "1234567" not in json.dumps(d), d)
+    for v, cc, land in (("0212 555 0123", "1", "Nordamerika"), ("0916 123 4567", "7", "Russland"), ("0612 345 678", "34", "Spanien")):
+        s, d = nat(v, cc)
+        ok(f"{land}: fuehrende 0 ist kein Praefix -> 400 'bitte mit +' ({s})", s == 400 and "+" in (d.get("error") or "")
+           and v.replace(" ", "")[1:] not in json.dumps(d), d)
+    ok("'00 39 06 1234 5678' (international) unabhaengig von cc", nat("00 39 06 1234 5678", "49") == (201, "+390612345678"))
+    s, d = L.api("PUT", "/api/contacts/settings", {"cc": "39"})
+    ok("Konto-Einstellung Italien: '06 …' -> +39 06…", s == 200 and nat("06 1234 5678", None) == (201, "+390612345678"))
+    L.api("PUT", "/api/contacts/settings", {"cc": None})
+
     # --- E-Mail ---------------------------------------------------------------------------------------------------------
     def em(v):
         s, d = M.post(own_name="Mail", addrs=[mail(v)])
@@ -197,6 +226,19 @@ def run():
     for bad in ("ohne-at", "a@b@c.de", "@x.de", "x@", "x y@z.de", "x@z..de", "x@" + "z" * 250 + ".de"):
         s, _ = em(bad)
         ok(f"Mail {bad[:30]!r} -> 400 ({s})", s == 400)
+    # Bugs-DB 2399: ein Wert = genau ein Empfaenger (auch als mailto:) - Trenner, Steuer-/Formatzeichen, URL-Zeichen -> 400
+    SECRETS.extend(["zweit.empf", "dritt.empf"])
+    for bad in ("a@x.example,zweit.empf@y.example", "a@x.example;zweit.empf@y.example", "a@x.example?cc=zweit.empf@y.example",
+                "a&cc=zweit.empf@y.example", "a#zweit.empf@y.example", "<dritt.empf@y.example>", '"dritt.empf"@y.example',
+                "dritt.empf@y.example\r\nBcc: x", "dritt.empf\t@y.example", "dritt.empf\u00a0@y.example",
+                "dritt.empf\u200b@y.example", "dritt.empf\u202e@y.example", "dritt.empf@y.example\x00"):
+        s, d = M2.post(own_name="Mail", addrs=[mail(bad)])
+        ok(f"Mail {bad[:24]!r} -> 400 'Ungueltige E-Mail-Adresse', ohne Wert ({s})", s == 400 and "E-Mail" in (d.get("error") or "")
+           and "empf" not in json.dumps(d, ensure_ascii=False), d)
+    s, d = M2.post(own_name="Mail", addrs=[mail("max+tag%1@example.org")])
+    ok(f"Mail mit + und % bleibt erlaubt ({s})", s == 201 and vals(d) == ["max+tag%1@example.org"], d)
+    if s == 201:
+        M2.api("DELETE", f"/api/contacts/{d['id']}")
 
     # --- doppelter Wert, Grenzen ----------------------------------------------------------------------------------------
     s, d = A.post(own_name="Doppelt", addrs=[num("+491701234567")])

@@ -5285,6 +5285,8 @@
  "Die Grußform ist zu lang (höchstens {n} Zeichen).": "คำทักทายยาวเกินไป (ไม่เกิน {n} ตัวอักษร)",
  "Diese Adresse gehört schon zu einem anderen Kontakt.": "ที่อยู่นี้เป็นของรายชื่อติดต่ออื่นแล้ว",
  "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "สำหรับหมายเลขในประเทศ โปรดตั้งรหัสประเทศหรือขึ้นต้นหมายเลขด้วย +",
+ "Bei dieser Landesvorwahl gehört eine führende 0 nicht zur Nummer – bitte die Nummer mit + beginnen.": "สำหรับรหัสประเทศนี้ เลข 0 นำหน้าไม่ใช่ส่วนหนึ่งของหมายเลข โปรดขึ้นต้นหมายเลขด้วย +",
+ "Nationale Nummern in Ungarn beginnen mit 06 – bitte so oder mit + eingeben.": "หมายเลขในประเทศฮังการีขึ้นต้นด้วย 06 โปรดป้อนแบบนั้นหรือขึ้นต้นด้วย +",
  "Höchstens {n} E-Mail-Adressen je Kontakt.": "อีเมลได้ไม่เกิน {n} รายการต่อรายชื่อติดต่อ",
  "Höchstens {n} Telefonnummern je Kontakt.": "หมายเลขโทรศัพท์ได้ไม่เกิน {n} รายการต่อรายชื่อติดต่อ",
  "Höchstens {n} eigene Kontakte je Konto.": "รายชื่อติดต่อของตนเองได้ไม่เกิน {n} รายการต่อบัญชี",

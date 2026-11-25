@@ -460,7 +460,9 @@ def addresses(c, uid, cid):
 
 # --- Persoenliches Backup / Datenexport (2027a-3) --------------------------------------------------------------------
 E164_RE = re.compile(r"\+[1-9]\d{7,14}")
-EMAIL_RE = re.compile(r"[^\s@\x00-\x1f\x7f]+@[^\s@A-Z\x00-\x1f\x7f]+")
+# wie contact_book.norm_email (Bugs-DB 2399): keine Trenn-/Steuerzeichen, damit ein Wert genau ein Empfaenger bleibt
+EMAIL_RE = re.compile(r'[^\s@\x00-\x1f\x7f,;?&#<>"\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]+'
+                      r'@[^\s@A-Z\x00-\x1f\x7f,;?&#<>"\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]+')
 FORMS = ("informal", "formal")
 TYPES = ("mobile", "home", "work", "other")
 BOOK_MANUAL_MAX = 2000

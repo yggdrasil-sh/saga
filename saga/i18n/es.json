@@ -5285,6 +5285,8 @@
  "Die Grußform ist zu lang (höchstens {n} Zeichen).": "El saludo es demasiado largo (máximo {n} caracteres).",
  "Diese Adresse gehört schon zu einem anderen Kontakt.": "Esta dirección ya pertenece a otro contacto.",
  "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "Para números nacionales, configura el prefijo del país o empieza el número con +.",
+ "Bei dieser Landesvorwahl gehört eine führende 0 nicht zur Nummer – bitte die Nummer mit + beginnen.": "Con este prefijo de país, el 0 inicial no forma parte del número; empieza el número con +.",
+ "Nationale Nummern in Ungarn beginnen mit 06 – bitte so oder mit + eingeben.": "Los números nacionales de Hungría empiezan por 06; introdúcelo así o empieza con +.",
  "Höchstens {n} E-Mail-Adressen je Kontakt.": "Como máximo {n} direcciones de correo por contacto.",
  "Höchstens {n} Telefonnummern je Kontakt.": "Como máximo {n} números de teléfono por contacto.",
  "Höchstens {n} eigene Kontakte je Konto.": "Como máximo {n} contactos propios por cuenta.",

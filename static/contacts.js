@@ -201,6 +201,12 @@
         say(st, e.status === 404 ? T('Kontakt nicht gefunden.') : T('Nicht geladen: {err}', { err: e.message }));
       });
     }
+    // mailto: je Teil kodiert (wie iOS/Android/Linux, Bugs-DB 2399) - ein Wert bleibt genau ein Empfaenger
+    function mailHref(v) {
+      var i = String(v || '').lastIndexOf('@');
+      if (i < 1) return null;
+      return 'mailto:' + encodeURIComponent(v.slice(0, i)) + '@' + encodeURIComponent(v.slice(i + 1));
+    }
     function line(cls, icon, main, sub, href) {
       var li = el('li', 'kb-line ' + cls);
       li.appendChild(ic(icon, 'kb-line-ic', 18));
@@ -230,7 +236,7 @@
         } else if (a.kind === 'e164') {
           ul.appendChild(line('kb-l-tel', 'smartphone', showNum(a.value), typeName(a.type) || T('Telefon'), 'tel:' + a.value));
         } else if (a.kind === 'email') {
-          ul.appendChild(line('kb-l-mail', 'mail', a.value, typeName(a.type) || T('E-Mail'), 'mailto:' + a.value));
+          ul.appendChild(line('kb-l-mail', 'mail', a.value, typeName(a.type) || T('E-Mail'), mailHref(a.value)));
         }
       });
       if (ul.childNodes.length) box.appendChild(ul);
