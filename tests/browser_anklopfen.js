@@ -120,7 +120,8 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
 
     // --- 1. A telefoniert mit B -----------------------------------------------------------------------------------------
     await a.click('#ct-call-a');
-    await b.waitForSelector('.cl-ring', { timeout: 20000 });
+    const r1 = await until(() => b.$('.cl-ring'), 20000, 200);
+    if (!r1) { ok('B klingelt', false, { a: await winStatus(a), b: await b.evaluate(() => document.title) }); throw new Error('kein Klingeln bei B'); }
     await b.click('.cl-ring .cl-big');
     const sA = await connected(a), sB = await connected(b);
     ok('A und B verbunden', sA && sB, { sA: !!sA, sB: !!sB });
