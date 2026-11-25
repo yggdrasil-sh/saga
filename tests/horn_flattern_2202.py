@@ -26,8 +26,10 @@ Schwere Last (wie in der Messreihe; FL_VID ...n = Blockrauschen im Kamerabild, d
 
 Start (root, env.sh, eigene DB):
   FL_BASE=8700 FL_STAND=fix FL_SECS=300 FL_CPU_RATE=6 FL_CG_MAX="60000 100000" python tests/horn_flattern_2202.py
-  Daneben ein zweiter Lauf (eigene DB!): FL_BASE=8720 -> Namensraum fl2202b, 10.222.3.0/30.
-  Ports FL_BASE: +0 nginx, +1 saga-media, +2 Admin, +7 intern, +8 HORN_PORT (eingebaut, Tunnel), +10 horn-1 (TCP+UDP).
+  FL_BASE ist der Anfang eines 10er-Bands (Vielfaches von 10); alle Ports liegen darin (Bugs-DB 2426):
+  +0 nginx, +1 saga-media, +2 Admin, +7 intern, +8 HORN_PORT (eingebaut, Tunnel), +9 horn-1 (TCP+UDP).
+  Namensraum und Adressen folgen dem Band (FL_BASE//10), daneben laufen andere Baender (eigene DB!):
+  FL_BASE=8700 -> fl2202, 10.222.2.0/30; 8720 -> fl2202872, 10.222.4.0/30; 8970 -> fl2202897, 10.222.29.0/30.
   FL_OUT=<datei.json>: Messwerte (sonst /tmp/flattern-2202-<stand>-<zeit>-<pid>.json); SIGTERM raeumt auf wie ein Fehler;
   SAGA_MEDIA_BIN / GJALLARHORN_BIN wie b2_frames. Wegwerf-Konten ca-fl*."""
 import base64
@@ -44,8 +46,10 @@ import time
 
 _B = int(os.environ.get("FL_BASE") or 8700)
 os.environ["B2_BASE"] = str(_B)
-_I = max(0, (_B - 8700) // 20)                         # zweiter Lauf daneben: FL_BASE=8720 -> fl2202b, 10.222.3.0/30
-_S = "" if not _I else chr(ord("a") + _I)
+# je 10er-Band eindeutig (Bugs-DB 2426: frueher (FL_BASE-8700)//20 - 8960 und 8970 teilten sich den Namensraum): Band 870 ->
+# fl2202 / 10.222.2.0/30 wie bisher, sonst fl2202<band> (Schnittstellen hoechstens 10 Zeichen) und 10.222.<2..251>.0/30
+_I = (_B // 10 - 870) % 250
+_S = "" if not _I else str(_B // 10)
 NS, VH, VN, HOST_IP, NS_IP = "fl2202" + _S, f"fl2202{_S}h", f"fl2202{_S}n", f"10.222.{2 + _I}.1", f"10.222.{2 + _I}.2"
 os.environ["B2_NGX_LISTEN"] = HOST_IP
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -54,7 +58,7 @@ import testkonten as TK  # noqa: E402
 
 A_, auth, connect, res, ok = B2.A_, B2.auth, B2.connect, B2.res, B2.ok
 APP, STATE, NAME = B2.APP, B2.STATE, B2.NAME
-H1_NAME, H1_PORT = "horn-1.example.org", _B + 10
+H1_NAME, H1_PORT = "horn-1.example.org", _B + 9          # im eigenen 10er-Band (Bugs-DB 2426, frueher +10)
 STAND = os.environ.get("FL_STAND") or "fix"
 ALT_REV = os.environ.get("FL_ALT_REV") or "f0cd30f"
 NETEM = os.environ.get("FL_NETEM") or "delay 30ms 50ms"
@@ -72,7 +76,7 @@ def sh(cmd, check=False):
 
 
 def net_up():
-    """Netz-Namensraum mit veth und netem in beide Richtungen (nur Adressen 10.222.2.0/30, kein Weg nach draussen)."""
+    """Netz-Namensraum mit veth und netem in beide Richtungen (nur Adressen HOST_IP/NS_IP in 10.222.x.0/30, kein Weg nach draussen)."""
     net_down()
     for c in (f"ip netns add {NS}", f"ip link add {VH} type veth peer name {VN}", f"ip link set {VN} netns {NS}",
               f"ip addr add {HOST_IP}/30 dev {VH}", f"ip link set {VH} up",
@@ -205,6 +209,9 @@ def main():
     db.init_schema()
     if os.geteuid() != 0:
         ok("laeuft als root (Netz-Namensraum, netem, cgroup)", False)
+        return
+    if _B % 10:                                        # sonst ragt der Lauf ins naechste Band (Ports, Namensraum)
+        ok(f"FL_BASE {_B} ist der Anfang eines 10er-Bands (Vielfaches von 10)", False)
         return
     keep = {}
     # Messdatei ausserhalb des Repos (FL_OUT sonst /tmp); vorher loeschen - sonst liest ein abgebrochener Lauf die alte
