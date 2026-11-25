@@ -172,6 +172,26 @@ Was die Nummern bedeuten:
 steht oben „online“ oder „zuletzt online vor …“. Beides kannst du unter **⚙ Chats & Geräte → Datenschutz**
 abschalten – dann siehst du es bei anderen aber auch nicht.
 
+**Status der anderen: Beschäftigt, Nicht stören, Im Anruf.** Hat jemand einen eigenen Status gesetzt (siehe
+[Benachrichtigungen und Mitteilungen](14-benachrichtigungen.md), Schritt 5), siehst du ihn in der Chatliste als
+kleinen Punkt am Profilbild und im Direkt-Chat oben als ① Hinweis – zum Beispiel „Nicht stören bis 15:00 · Im
+Kundentermin“, „Beschäftigt“ oder „Im Anruf“. Ein Klick darauf zeigt den ganzen Text.
+
+![Direkt-Chat von Ben mit Anna: oben unter dem Namen der Hinweis „Nicht stören bis … · Im Kundentermin“ mit rotem Punkt](../bilder/b12-13-status-chatkopf.png)
+
+- Den Status siehst du nur bei Personen, mit denen du einen Chat hast – auch dann, wenn ihr den Online-Status
+  abgeschaltet habt.
+- Den eigenen Text sehen nur Personen auf demselben Saga-Server. Von Personen auf anderen Servern siehst du nur den
+  Status und bis wann er gilt.
+- „Im Anruf“ steht nur da, wenn die Person das erlaubt und ihr beide den Online-Status zeigt.
+- Ruhezeiten anderer siehst du nie.
+
+**Vor dem Anruf fragt Saga nach.** Steht die Person auf **Nicht stören** und du klickst auf **📞** oder **🎥**, fragt
+Saga: „Anna möchte gerade nicht gestört werden. Trotzdem anrufen?“ Mit **Anrufen** geht es weiter – bei ihr klingelt
+es dann aber nicht, sie sieht deinen Anruf nur still (siehe [Anrufe](13-anrufe.md), Schritt 8). Rufst du innerhalb
+von 3 Minuten noch einmal an, klingelt es bei ihr. Telefoniert sie gerade, sagt Saga „Anna telefoniert gerade – dein
+Anruf klopft an.“
+
 ### 5. Nachrichten anheften
 
 In jedem Chat kannst du bis zu **3 Nachrichten** oben anheften – zum Beispiel Adresse, WLAN-Passwort oder Termin.
@@ -332,6 +352,9 @@ eines Chats öffnest du durch langes Antippen. Die Gruppeninfo erscheint als Bla
 **Linux**
 
 - Auch die Linux-App zeigt deine Chats mit denselben Funktionen.
+
+**Status der anderen in den Apps:** Alle Apps ab Saga 2.6 zeigen den Status deiner Chat-Partner wie der Browser – als
+Punkt in der Chatliste und als Hinweis oben im Chat – und fragen vor einem Anruf bei „Nicht stören“ nach.
 
 **In allen Apps** hängen manche Funktionen davon ab, was dein Saga-Server kann. Zeigt die App „Bitte die App
 aktualisieren“, hilft ein Update der App.

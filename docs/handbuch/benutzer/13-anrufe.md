@@ -193,11 +193,56 @@ Begleitgerät ohne Mikrofon und Ton – praktisch, um von dort den Bildschirm zu
 
 - **Verpasst:** Nimmt niemand ab, steht im Chat „Verpasster Anruf“ mit dem Knopf **Zurückrufen**. Dazu kommt eine
   Benachrichtigung.
-- **Besetzt:** Telefoniert die Person gerade, siehst du „Besetzt“.
+- **Besetzt:** Telefoniert die Person gerade, klopft dein Anruf bei ihr an (siehe Schritt 8) – du siehst
+  „Klopft an …“. „Besetzt“ siehst du, wenn sie Anklopfen abgeschaltet hat oder es auf einem ihrer Geräte noch nicht
+  geht.
 - Auch beendete und abgelehnte Anrufe stehen als Eintrag im Chat – mit Dauer, aber natürlich ohne Inhalt.
 
 **Wer darf mich anrufen?** Im Direkt-Chat nur die andere Person, im Gruppenanruf die Mitglieder des Chats. Personen,
 die du gesperrt hast, können dich nicht anrufen. Ist ein Chat stummgeschaltet, klingelt er nicht auf dem Handy.
+
+### 8. Anklopfen, stille Anrufe und „Nicht stören“
+
+Ab Saga 2.6 richten sich Anrufe nach deinem eigenen Status (siehe [Benachrichtigungen und
+Mitteilungen](14-benachrichtigungen.md), Schritt 5 und 6).
+
+**Anklopfen.** Ruft dich jemand an, während du schon telefonierst, klingelt es nicht. Stattdessen erscheint im
+Anruffenster eine Leiste „Clara klopft an“, dazu ein leiser, kurzer Ton. Dein Gespräch läuft weiter.
+
+![Laufender Anruf von Anna mit Ben; oben im Anruffenster die Leiste „Clara klopft an“ mit den Knöpfen „Ablehnen“ und „Beenden und annehmen“](../bilder/b13-11-anklopfen.png)
+
+Was die Nummern bedeuten:
+
+- ① **Ablehnen** – Clara bekommt „Besetzt“, du sprichst weiter.
+- ② **Beenden und annehmen** – Saga beendet dein Gespräch und nimmt dann Claras Anruf an.
+
+Gut zu wissen:
+
+- Wer anruft, sieht „Klopft an …“ statt „Klingelt …“.
+- **Jede Person klopft einmal je Gespräch an.** Versucht sie es noch einmal, bekommt sie sofort „Besetzt“ und den
+  Hinweis „Anna telefoniert noch – du hast schon angeklopft.“ Du wirst also nicht dauernd unterbrochen.
+- Nach deinem Gespräch kommt **eine** Mitteilung je Person, zum Beispiel „3 verpasste Anrufe von Clara“. Im Chat steht
+  „Verpasster Anruf (du hast telefoniert)“.
+- Telefonierst du in einem anderen Browser-Tab oder auf einem anderen Gerät, zeigt Saga hier die Leiste ohne
+  „Beenden und annehmen“ – sonst hättest du zwei Gespräche gleichzeitig.
+- Lieber gleich besetzt? Stell unter **Einstellungen → Mitteilungen → Erreichbarkeit → Anrufe, während du
+  telefonierst** auf **Besetzt melden**.
+
+**Stille Anrufe bei „Nicht stören“.** Steht dein Status auf **Nicht stören** – oder läuft deine Ruhezeit, die ab Werk
+als „Nicht stören“ zählt –, klingelt ein Anruf nicht und schickt keine Mitteilung. Ist Saga offen, siehst du eine
+stille Leiste „Anruf von Ben – stumm (Nicht stören)“ bzw. „… – stumm (Ruhezeit)“. Du kannst trotzdem **Annehmen**
+oder die Leiste mit **✕** ausblenden.
+
+- Danach steht im Chat **„Verpasster Anruf (Nicht stören)“** – das siehst nur du. Bei der anrufenden Person steht
+  wie immer „nicht angenommen“.
+- **Ruft dieselbe Person innerhalb von 3 Minuten noch einmal an, klingelt es** ganz normal – vielleicht ist es
+  dringend. Den Zeitraum kannst du ändern oder das ausschalten.
+- **Ausnahmen** (zum Beispiel Oma Lena) klingeln immer.
+- Bei einem Gruppenanruf wirst du still eingeladen: Es klingelt nicht, beitreten kannst du trotzdem.
+
+**Bevor du selbst anrufst.** Steht die andere Person auf „Nicht stören“, fragt Saga vorher: „Ben möchte gerade nicht
+gestört werden. Trotzdem anrufen?“ Telefoniert sie gerade, sagt Saga dir: „Ben telefoniert gerade – dein Anruf klopft
+an.“
 
 ---
 
@@ -247,9 +292,25 @@ Knoten.
 Nein. Bild und Ton sind Ende-zu-Ende verschlüsselt. Der Server sieht nur, dass ein Anruf stattfindet, und wie lange.
 
 **Warum klingelt es bei mir nicht?**
-Prüf, ob der Chat stummgeschaltet ist und ob Mitteilungen eingeschaltet sind (siehe
+Prüf zuerst deinen Status im Benutzermenü: Bei **Nicht stören** und in deinen **Ruhezeiten** klingelt es absichtlich
+nicht (siehe Schritt 8). Prüf dann, ob der Chat stummgeschaltet ist und ob Mitteilungen eingeschaltet sind (siehe
 [Benachrichtigungen und Mitteilungen](14-benachrichtigungen.md)). Anrufe brauchen außerdem eine sichere
 Verbindung (`https`).
+
+**Warum klopft es nicht an, sondern ist besetzt?**
+Anklopfen geht nur, wenn **alle deine Geräte** es können – jedes, mit dem du in den letzten 30 Tagen Chats benutzt
+hast. Liegt irgendwo noch eine ältere Saga-App, meldet Saga lieber „Besetzt“, statt dass es dort mitten in deinem
+Gespräch klingelt. Aktualisiere die App auf allen Geräten (oder entferne alte Geräte unter **⚙ Chats & Geräte**).
+Prüf außerdem unter **Erreichbarkeit**, ob **Anrufe, während du telefonierst** auf **Anklopfen lassen** steht. Und:
+Wer schon einmal angeklopft hat, bekommt bis zum Ende deines Gesprächs „Besetzt“.
+
+**Was sieht der Anrufer, wenn ich auf „Nicht stören“ stehe?**
+Bei ihm klingelt es ganz normal, bis die Klingelzeit um ist, danach steht dort „nicht angenommen“. Vorher sieht er im
+Chat deinen Status und wird gefragt, ob er trotzdem anrufen will. Dass gerade deine Ruhezeit läuft, sieht er nie.
+
+**Ich bin auf „Nicht stören“, aber es hat trotzdem geklingelt.**
+Dann hat dieselbe Person innerhalb von 3 Minuten zum zweiten Mal angerufen, oder sie steht bei dir als Ausnahme.
+Beides stellst du unter **Einstellungen → Mitteilungen → Erreichbarkeit** ein.
 
 **Wie viele können an einem Gruppenanruf teilnehmen?**
 Ohne Anruf-Knoten 4 mit Video oder 6 nur mit Ton. Mit einem Anruf-Knoten deines Admins deutlich mehr. Jedes Gerät
@@ -275,15 +336,32 @@ eingeschränkt; dort läuft ein Anruf manchmal direkt.
 - Auf iPhone und iPad klingelt Saga wie ein normaler Telefonanruf – auch bei gesperrtem Bildschirm. Dafür muss dein
   Admin Mitteilungen für die Apple-Apps eingerichtet haben.
 - Auf dem Mac öffnet sich ein eigenes Anruffenster.
+- **Anklopfen:** Klopft während eines Gesprächs jemand an, erscheint in der App dieselbe Leiste wie im Browser
+  („Ablehnen“ / „Beenden und annehmen“) – nicht ein zweiter Telefonanruf. „Beenden und annehmen“ nimmt erst an, wenn
+  dein erstes Gespräch wirklich beendet ist. Damit das Anklopfen auch bei gesperrtem Bildschirm ankommt, bleibt die
+  App während eines Gesprächs verbunden und zeigt eine stille Mitteilung „… klopft an“.
+- Stille Anrufe bei „Nicht stören“, die Rückfrage vor dem Anruf und „Verpasster Anruf (Nicht stören)“ gibt es wie
+  im Browser. Mit dem Fokusfilter „Saga-Status“ setzt dein iPhone-Fokus den Status (siehe
+  [Benachrichtigungen und Mitteilungen](14-benachrichtigungen.md)).
 
 **Android**
 
 - Ein Anruf erscheint im Vollbild, auch wenn das Handy gesperrt ist. Damit das im Hintergrund klappt, braucht die
   App Mitteilungen (siehe [Benachrichtigungen und Mitteilungen](14-benachrichtigungen.md)).
+- Anklopf-Leiste („Beenden und annehmen“ erst nach bestätigtem Ende), stille Leiste bei „Nicht stören“, „Klopft an …“
+  beim Anrufen und „Verpasster Anruf (Nicht stören)“ wie im Browser. Mit **System-Nicht-stören übernehmen** zählt
+  auch „Bitte nicht stören“ des Handys (siehe [Benachrichtigungen und Mitteilungen](14-benachrichtigungen.md)).
+
+<!-- App-Bild folgt: b13-12-anklopfen-android.png -->
 
 **Linux**
 
 - Die Linux-App klingelt. Das Gespräch selbst läuft dann in deinem Browser.
+- Die App zeigt die Anklopf-Leiste und die stille Leiste ebenfalls (ohne „Annehmen“, wenn du woanders telefonierst)
+  und vor dem Anruf die Rückfrage bei „Nicht stören“.
+
+**Ältere Apps:** Eine App vor Saga 2.6 kann nicht anklopfen. Benutzt du sie noch auf einem Gerät, bekommen Anrufer
+„Besetzt“, solange du telefonierst (siehe Häufige Fragen).
 
 ---
 
