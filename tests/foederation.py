@@ -198,8 +198,11 @@ with connect() as c, c:
         gid = c.execute("INSERT INTO groups (name, description, created) VALUES (?, '', 0)", (g,)).lastrowid
         for m in members:
             c.execute("INSERT INTO user_group (user_id, group_id) VALUES (?, ?)", (auth.get_user(m)["id"], gid))
+import sys; sys.path.append(__TESTS__)        # hinten: Module der Instanz gehen vor
+import testkonten                      # Frage "Erste Schritte" beantwortet - sonst liegt sie in Browser-Laeufen ueber der Oberflaeche (Bugs-DB 2428)
+testkonten.ohne_einfuehrung(None, [x[0] for x in {users!r}])
 print(json.dumps(True))
-"""
+""".replace("__TESTS__", repr(os.path.dirname(os.path.abspath(__file__))))
 
 
 def start(k):
