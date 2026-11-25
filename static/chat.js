@@ -1700,6 +1700,10 @@
     if (k.status === 'declined') return T('{what} abgelehnt', { what: what });
     if (k.status === 'busy') return out ? T('Besetzt') : T('Verpasster Anruf (du hast telefoniert)');
     if (k.status === 'failed') return T('{what} – keine Verbindung', { what: what });
+    // 2.6 (Bugs-DB 2375): Grund der Anruf-Weiche - nur die angerufene Person bekommt hold (der Server entfernt es fuer den
+    // Absender); dnd = Nicht stoeren oder Ruhezeit (nicht unterscheidbar), knock/again = angeklopft, waehrend du telefoniert hast
+    if (!out && k.hold === 'dnd') return v ? T('Verpasster Videoanruf (Nicht stören)') : T('Verpasster Anruf (Nicht stören)');
+    if (!out && (k.hold === 'knock' || k.hold === 'again')) return T('Verpasster Anruf (du hast telefoniert)');
     return out ? T('{what} – nicht angenommen', { what: what }) : (v ? T('Verpasster Videoanruf') : T('Verpasster Anruf'));
   }
   function preview(m) {
