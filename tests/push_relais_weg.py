@@ -208,8 +208,6 @@ def run(srv):
     auth._settings_cache["v"] = None
     auth.create_user("rw-a", T.PW, "Rita Weg")
     auth.create_user("rw-adm", T.PW, "Admin Weg", is_admin=True)
-    from saga.core import set_user_lang
-    set_user_lang("rw-adm", "de")
     app = T.UA()
     now = time.time()
     with connect() as c, c:
@@ -282,7 +280,7 @@ def run(srv):
        and json.loads(b[0][2]).get("code") == "down")
     with connect() as c:
         it = push.notify.item(c, "rw-adm", b[0][0]) if b else None
-    ok(f"... Text ohne Inhalte, Link in den Admin-Bereich ({(it or {}).get('text')})", it and "Push-Relais" in it["text"])
+    ok(f"... Text ohne Inhalte, Link in den Admin-Bereich ({(it or {}).get('text')})", it and it["text"] == push_relay.TEXT["down"]() and it.get("system"))
     with connect() as c, c:
         mq = push.enqueue(c, "rw-adm", "push.relay", ref=b[0][0])
     ok(f"... Kategorie admin: Admin bekommt sie auch als Mitteilung (Weg: Web Push o. a.) ({mq})", "push.relay" in push.CATS["admin"])
