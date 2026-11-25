@@ -1591,7 +1591,7 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 /* ruhige Marke (keine Warnfarbe), z. B. Push-Relais "wartet auf Freischaltung" (2.5: frueher auch Gjallarhorn experimentell) */
 .adm-tag.exp{border-color:var(--muted);color:var(--muted);font-weight:500;white-space:nowrap}
 /* 2.6 (2263-4): Warnung max_legs je Knoten, schmal in der Spalte Teilnehmende */
-.horn-legs-warn{display:inline-block;max-width:20rem;white-space:normal;color:var(--warn)}
+.adm-table small.horn-legs-warn{display:inline-block;max-width:20rem;white-space:normal;color:var(--warn);font-weight:600}
 .horn-nodes td b{overflow-wrap:anywhere}
 @media (min-width:721px){.horn-nodes td:nth-child(3),.horn-nodes td:nth-child(1) b{white-space:nowrap}}
 .horn-cf-edit>summary.btn,.adm-actions form .btn{font-size:var(--fs-base)}
