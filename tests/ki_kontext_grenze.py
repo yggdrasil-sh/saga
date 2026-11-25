@@ -118,6 +118,16 @@ def test_limit():
     with connect() as c:
         docs = ai.visible_docs(c, "kz-a")
     ok("ohne Ueberschreitung alle geteilten Seiten", {kids[7], root} <= {d["id"] for d in docs} and len(docs) == 7 + 12, len(docs))
+    # Freigabe entzogen: kein Auszug mehr, auch nicht aus dem Zwischenspeicher (gather oben hat die Kinder zerlegt)
+    with connect() as c, c:
+        c.execute("DELETE FROM note_share WHERE owner_uid='kz-b' AND note_id=?", (root,))
+    with connect() as c:
+        docs = ai.visible_docs(c, "kz-a")
+    with contextlib.redirect_stdout(io.StringIO()):
+        _t, s_rev = ai.gather("kz-a", "KGKIND0 Bananenbrot", 4000)
+    ok("Freigabe entzogen: Seiten weg, kein Auszug aus dem Zwischenspeicher",
+       not {d["id"] for d in docs} & set(kids) and not {s["id"] for s in s_rev} & set(kids) and "KGKIND" not in _t,
+       (len(docs), s_rev))
 
 
 def fake(i, upd=1.0):
@@ -168,6 +178,11 @@ def test_cache():
         ok("Byte-Summe stimmt", ai._IDX_BYTES[0] == sum(e[1] for e in ai._IDX.values()))
         ok("cache_view nur Zahlen", all(isinstance(x, (int, float)) for x in v.values()), v)
         ok("Treffer liefert dieselben Auszuege", ai._doc_index(fake(59), 11) is ai._doc_index(fake(59), 12))
+        # ein einzelner Eintrag groesser als der Deckel: nicht speichern und nichts verdraengen
+        keep = list(ai._IDX)
+        big = dict(fake(70), body=blocks(" ".join(f"Wort{i}" for i in range(int(one / 2)))))
+        ai._doc_index(big, 13)
+        ok("uebergrosser Eintrag verdraengt nichts", list(ai._IDX) == keep, (len(keep), len(ai._IDX)))
     finally:
         ai.CACHE_DOCS, ai.CACHE_MB = saved[0], saved[1]
         with ai._IDX_LOCK:

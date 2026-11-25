@@ -919,6 +919,8 @@ def _doc_index(d, gen=None):
         if key in _IDX:                                    # gleichzeitig von einem anderen Durchlauf zerlegt
             return parts
         cap, cap_b = _cap_docs(), CACHE_MB * 1048576
+        if size > cap_b:                                   # passt nie: nicht speichern, aber auch nichts verdraengen
+            return parts
         while _IDX and (len(_IDX) >= cap or _IDX_BYTES[0] + size > cap_b):
             k0, e0 = next(iter(_IDX.items()))
             if gen is not None and e0[2] == gen:           # alles Uebrige gehoert zu diesem Durchlauf
@@ -927,8 +929,6 @@ def _doc_index(d, gen=None):
             _IDX.popitem(last=False)
             _IDX_BYTES[0] -= e0[1]
             _STATS["evicted"] += 1
-        if size > cap_b:
-            return parts
         _IDX[key] = [parts, size, gen]
         _IDX_BYTES[0] += size
     return parts
