@@ -213,8 +213,9 @@ def run():
     ok(f"Ungarn: einzelne 0 vorn -> 400 mit Hinweis 06, ohne Nummer ({s})", s == 400 and "06" in (d.get("error") or "")
        and "1234567" not in json.dumps(d), d)
     for v, cc, land in (("0212 555 0123", "1", "Nordamerika"), ("0916 123 4567", "7", "Russland"), ("0612 345 678", "34", "Spanien"),
-                     ("044 55 1234 5678", "52", "Mexiko")):
-        s, d = nat(v, cc, L2 if cc == "52" else L)
+                     ("044 55 1234 5678", "52", "Mexiko"), ("011 15 1234 5678", "54", "Argentinien"),
+                     ("0 21 11 98765 4321", "55", "Brasilien")):
+        s, d = nat(v, cc, L2 if cc in ("52", "54", "55") else L)
         ok(f"{land}: fuehrende 0 ist kein Praefix -> 400 'bitte mit +' ({s})", s == 400 and "+" in (d.get("error") or "")
            and v.replace(" ", "")[1:] not in json.dumps(d), d)
     ok("'00 39 06 1234 5678' (international) unabhaengig von cc", nat("00 39 06 1234 5678", "49") == (201, "+390612345678"))

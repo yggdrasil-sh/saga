@@ -256,14 +256,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Benin gehört die `0` zur Nummer und bleibt (`06 1234 5678` → `+39 06 1234 5678`, auch bei `+39 (0)6 …`); in Ungarn fällt `06` weg
   (`06 30 123 4567` → `+36 30 123 4567`, eine einzelne `0` vorn → Hinweis). Wo eine führende `0` kein Präfix ist
   (z. B. Nordamerika, Russland/Kasachstan, Mexiko, Spanien, Portugal, Griechenland, Polen, Tschechien, Dänemark,
-  Norwegen),
-  lehnt Saga sie mit dem Hinweis ab, die Nummer mit `+` einzugeben, statt sie falsch zu speichern. Sonst gilt wie bisher:
+  Norwegen) oder die Umsetzung mehr verlangt als das Streichen der `0` (vorerst Argentinien und Brasilien), lehnt Saga sie mit dem Hinweis ab, die Nummer mit `+` einzugeben, statt sie falsch zu speichern. Sonst gilt wie bisher:
   die `0` fällt weg. Vorher gespeicherte italienische, san-marinesische, ivorische, beninische und ungarische Nummern, die national
   (mit `0` bzw. `06`) eingegeben wurden, bitte von Hand prüfen – Saga ändert gespeicherte Nummern nicht.
 - **Adressbuch: eine E-Mail-Adresse ist genau ein Empfänger** (Bugs-DB 2399): Werte mit `,`, `;`, `?`, `&`, `#`, `<`,
   `>`, `"` oder Leer-, Steuer- und unsichtbaren Formatzeichen werden mit „Ungültige E-Mail-Adresse.“ abgelehnt (der Wert
   steht nie in der Meldung); beim Einspielen eines persönlichen Backups werden solche Werte übergangen. Das Web kodiert
-  `mailto:`-Links jetzt je Teil wie die Apps.
+  `mailto:`-Links jetzt je Teil wie die Apps. Ein schon gespeicherter Kontakt mit einer solchen Adresse lässt sich erst wieder speichern, wenn sie
+  entfernt oder korrigiert ist.
 
 ### Sicherheit
 

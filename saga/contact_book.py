@@ -55,6 +55,7 @@ TRUNK_CC = {
     "7": None, "375": None, "994": None, "993": None, "998": None, "992": None,  # Praefix 8 bzw. unklar (RU/KZ BY AZ TM UZ TJ)
     "976": None,                                          # Mongolei (01/02)
     "52": None, "57": None,                               # Mexiko (seit 2019), Kolumbien (seit 2021) ohne Praefix
+    "54": None, "55": None,                               # Argentinien (011 15 … = +54 9 11 …), Brasilien (0 + Betreiberkennzahl) – vorerst nur mit +
     "241": None, "242": None,                             # Gabun, Kongo: kein Praefix, 0 ggf. Teil der Nummer - unklar
     "30": None, "34": None, "351": None, "352": None, "356": None, "371": None, "372": None, "377": None,
     "420": None, "45": None, "47": None, "48": None, "56": None, "598": None, "65": None, "968": None, "977": None,
