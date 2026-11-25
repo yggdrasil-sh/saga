@@ -623,6 +623,7 @@ def sub_req(body, hdr):
 def e2e_part(A, Bk, pgA, tok2, key):
     """2.6 (Bugs-DB 2262-4/-5): APNs-Abo mit Schluesseln/Bundle, Geraeteliste via/e2e, /api/push, Domain-Nachweis."""
     from saga import push_relay
+    auth.save_setting("push", dict(auth.settings(fresh=True)["push"], apns_e2e_direct=True))   # Admin-Formular oben ohne Haken
     with connect() as c, c:
         c.execute("DELETE FROM setting WHERE k IN ('push_relay', 'push_relay_state', 'push_relay_old')")
     push_relay.forget_key_cache()
@@ -681,13 +682,13 @@ def e2e_part(A, Bk, pgA, tok2, key):
     body = json.loads(g[3]) if g else {}
     inner = app2.decrypt(push.b64u_d(body["saga"]["c"])) if body.get("saga") else {}
     plain = json.loads(gp[3]) if gp else {}
-    raw = g[3].decode() if g else ""
+    raw = g[3].decode().replace(body["saga"]["c"], "") if g and body.get("saga") else ""      # Klartext ohne das Chiffrat
     ok(f"2262-5: APNs-Koerper nur {{aps, saga}}, sichtbar nur Loc-Keys ({body.get('aps')})",
        set(body) == {"aps", "saga"} and body["aps"] == {"alert": {"title-loc-key": "SAGA_PUSH_TITLE", "loc-key": "SAGA_PUSH_BODY"},
                                                         "mutable-content": 1, "sound": "default"}
        and body["saga"]["e2e"] == 1 and body["saga"]["k"] == push.e2e_kid(app2.keys()["p256dh"]))
     ok("2262-5: kein Name, kein Kanarienvogel, kein tag/thread im Klartext",
-       raw and not any(x in raw for x in ("Bert", "Kanarienvogel", "kommentiert", "thread-", "note-", pgA)))
+       raw and not any(x in raw for x in ("Bert", "Kanarienvogel", "kommentiert", "thread-", "note-", f"#{pgA}")))
     ok(f"2262-5: entschluesselt = Feld-Set wie Klartext-Weg ({inner.get('body')})",
        inner.get("kind") == "comment.new" and inner.get("body") == plain.get("aps", {}).get("alert", {}).get("body")
        and inner.get("url") == plain.get("url") and inner.get("v") == 2 and inner.get("tag"))

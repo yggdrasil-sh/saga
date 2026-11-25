@@ -62,7 +62,8 @@ CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comm
         "assign": ("db.assigned",),                 # 2.5: in einer Datenbank-Zeile eingetragen
         "chat": ("chat.message", "chat.mention"), "publish": ("publish.withdrawn",), "call": ("call", "call.missed", "call.group"),
         "tasks": ("task.due",),                     # 2.5 (Paket 7): taegliche Zusammenfassung "heute faellig / ueberfaellig"
-        "admin": ("backup.failed", "chat.report")}   # nur Admin-Konten (Backups, saga/backups.py; 2.5 Meldungen, saga/chat_grp.py)
+        "admin": ("backup.failed", "chat.report", "push.relay")}   # nur Admin-Konten (Backups, saga/backups.py; 2.5 Meldungen,
+                                                                    # saga/chat_grp.py; 2.6 Push-Relais gestoert, saga/push_relay.py)
 # 2.5 (saga.chat_prefs.push_ok, setzt sich beim Import ein): darf eine Chat-Mitteilung noch raus? Ohne Chat-Modul: alte Regel
 def _chat_push_ok(c, cid, uid, kind):
     return bool(c.execute("SELECT 1 FROM chat_member WHERE chat_id=? AND uid=? AND left_at IS NULL AND muted=0", (cid, uid)).fetchone())
@@ -763,6 +764,8 @@ def _anon(kind):
         return t("Anmeldung gesperrt")
     if kind == "chat.report":
         return t("Neue Meldung im Chat")
+    if kind == "push.relay":
+        return t("Push-Relais gestört")
     return t("Neue Benachrichtigung")
 
 
@@ -1140,8 +1143,11 @@ def _send_apns_direct(cfg, env, tok, voip, body, push_type, prio, ttl, collapse)
 
 
 def _record(c, sid, verdict, detail, now):
-    """Ergebnis am Abo vermerken (fuer die Geraeteliste) - harte Fehler nacheinander zaehlen, zu viele: Abo entfernen."""
-    if verdict == "ok":
+    """Ergebnis am Abo vermerken (fuer die Geraeteliste) - harte Fehler nacheinander zaehlen, zu viele: Abo entfernen.
+    2.6 (2262): hold = Relais gestoert/Grenze - das Abo ist schuldlos (nur last_err, fails bleibt, nichts geloescht)."""
+    if verdict == "hold":
+        c.execute("UPDATE push_sub SET last_err=? WHERE id=?", (f"{detail} @{int(now)}"[:120], sid))
+    elif verdict == "ok":
         c.execute("UPDATE push_sub SET last_ok=?, last_err=NULL, fails=0 WHERE id=?", (now, sid))
     elif verdict == "gone":
         c.execute("DELETE FROM push_queue WHERE sub_id=?", (sid,))
@@ -1161,11 +1167,14 @@ def run_once(limit=20):
     now = time.time()
     with _db() as c, c:
         c.execute("DELETE FROM push_queue WHERE created < ?", (now - MAX_AGE,))
+        # 2.6 (2262): klingelnde Anrufe zuerst (nie hinter vielen anderen Mitteilungen)
         jobs = c.execute("UPDATE push_queue SET next_at=?, tries=tries+1 WHERE id IN (SELECT id FROM push_queue WHERE next_at<=? "
-                         "ORDER BY next_at, id LIMIT ? FOR UPDATE SKIP LOCKED) RETURNING id, uid, sub_id, kind, ref, actor, data, created, tries",
+                         "ORDER BY (kind IN ('call', 'call.group')) DESC, next_at, id LIMIT ? FOR UPDATE SKIP LOCKED) "
+                         "RETURNING id, uid, sub_id, kind, ref, actor, data, created, tries",
                          (now + LEASE, now, limit)).fetchall()
+    jobs.sort(key=lambda j: (j[3] not in RING_KINDS, j[0]))
     for jid, uid, sid, kind, ref, actor, data, created, tries in jobs:
-        sub = None
+        sub = msg = None
         try:
             with _db() as c:
                 row = c.execute(f"SELECT {SUB_COLS}, lang FROM push_sub WHERE id=? AND uid=?", (sid, uid)).fetchone()
@@ -1177,7 +1186,14 @@ def run_once(limit=20):
             verdict, detail = "retry", type(ex).__name__
         now = time.time()
         with _db() as c, c:
-            if verdict == "retry" and tries < len(BACKOFF) + 1:
+            if verdict == "hold":
+                # 2.6 (2262): Relais gestoert/Grenze - warten ohne Versuch zu zaehlen (tries zurueck: neue Chat-Nachrichten
+                # buendeln weiter in diesen Auftrag); verworfen erst nach der Lebensdauer der Mitteilung
+                if created + int((msg or {}).get("ttl") or TTL) < now + 1:
+                    c.execute("DELETE FROM push_queue WHERE id=?", (jid,))
+                else:
+                    c.execute("UPDATE push_queue SET next_at=?, tries=GREATEST(tries-1, 0) WHERE id=?", (now + push_relay.take_retry(), jid))
+            elif verdict == "retry" and tries < len(BACKOFF) + 1:
                 c.execute("UPDATE push_queue SET next_at=? WHERE id=?", (now + BACKOFF[tries - 1], jid))
             else:
                 c.execute("DELETE FROM push_queue WHERE id=?", (jid,))
@@ -1204,6 +1220,7 @@ def _loop():
         n = 0
         try:
             n = run_once()
+            push_relay.tick()                   # 2.6 (2262): Admin-Glocke bei Stoerung, stuendlicher Abgleich mit dem Relais
             if time.time() - last > 3600:
                 last = time.time()
                 cleanup()
@@ -1515,6 +1532,8 @@ async def api_push_subscribe(request: Request):
     if web and f["kind"] == "webpush":
         request.session["push_sub"] = sid                           # Abmelden in diesem Browser beendet das Abo
     d = next((x for x in devs if x["id"] == sid), None)
+    if d and d.get("via") == "relay":
+        push_relay.ensure_registered_async()      # 2.6 (2262): erstes iOS-Abo mit Schluesseln -> beim Relais anmelden
     out = {"id": sid, "device": d, "active": bool(srv.get(f["kind"])) and (f["kind"] not in ("apns", "apns-voip") or bool(d and d.get("via")))}
     if f["kind"] == "stream":
         out["stream_path"] = push_stream.PATH

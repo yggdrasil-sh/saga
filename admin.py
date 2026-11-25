@@ -30,7 +30,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, chat, chat_grp, cloudflare, covers, diagstore, federation, horn, horn_ops, i18n, live, mfa, netmap, publish, push, push_stream, sharing, userbackup, weather
+from saga import ai, avatars, backups, calls, chat, chat_grp, cloudflare, covers, diagstore, federation, horn, horn_ops, i18n, live, mfa, netmap, publish, push, push_relay, push_stream, sharing, userbackup, weather
 from saga.core import HSTS, RESTORE_TEST, TZ, BodyLimit, LangMiddleware, SecHeaders, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -1604,8 +1604,12 @@ def push_page(request: Request):
         print(f"admin: VAPID: {type(ex).__name__}", flush=True)
         vapid = ""
     a = dict(st.get("apns") or {})
-    return _page(request, "push.html", me, p=st.get("push") or {}, a=a, has_p8=bool(a.get("p8")), apns_ready=push.apns_cfg()["ready"],
-                 vapid=vapid, stats=_push_stats())
+    p = st.get("push") or {}
+    cfg = push_relay.config()
+    relay = {"url": push_relay.url(), "on": bool(p.get("relay", True)), "server_id": cfg.get("server_id"),
+             "fingerprint": push_relay.fingerprint(), "state": push_relay.state()}
+    return _page(request, "push.html", me, p=p, a=a, has_p8=bool(a.get("p8")), apns_ready=push.apns_cfg()["ready"],
+                 vapid=vapid, stats=_push_stats(), relay=relay)
 
 
 @admin.post("/settings/push")
@@ -1616,7 +1620,10 @@ async def push_post(request: Request):
     f = await _form(request)
     if f is None:
         return _go("/settings/push")
-    auth.save_setting("push", {k: _on(f, k) for k in ("enabled", "webpush", "ntfy", "unifiedpush", "stream")})
+    act = str(f.get("action") or "")
+    if act.startswith("relay_"):
+        return await _push_relay_action(request, me, act)
+    auth.save_setting("push", {k: _on(f, k) for k in ("enabled", "webpush", "ntfy", "unifiedpush", "stream", "relay", "apns_e2e_direct")})
     cur = auth.settings(fresh=True).get("apns") or {}
     a = {"enabled": _on(f, "apns_enabled"), "team_id": _s(f, "team_id", 20).upper(), "key_id": _s(f, "key_id", 20).upper(),
          "bundle_id": _s(f, "bundle_id", 200), "p8": "", "url": cur.get("url", "")}
@@ -1645,6 +1652,29 @@ async def push_post(request: Request):
     print(f"admin: {me['username']} speichert Mitteilungen (APNs aktiv={a['enabled']})", flush=True)
     _flash(request, t("Gespeichert."))
     return _go("/settings/push")
+
+
+async def _push_relay_action(request, me, act):
+    """2.6 (Bugs-DB 2262): Push-Relais - Jetzt pruefen (Anmeldung bei Bedarf, /v1/info, /v1/servers/me), Schluessel
+    erneuern (Rotation beim Relais), Beim Relais abmelden. Speichert sonst nichts."""
+    from starlette.concurrency import run_in_threadpool
+    if not push_relay.url():
+        _flash(request, t("Kein Push-Relais festgelegt."), "err")
+        return _go("/settings/push#relais")
+    if act == "relay_check":
+        push_relay.reset()
+        await run_in_threadpool(push_relay.refresh)
+        s = push_relay.state().get("state")
+        _flash(request, t("Push-Relais: verbunden.") if s == "ok" else t("Push-Relais: {s}", s=(push_relay.state().get("last_err") or s or "?").split(" @")[0]),
+               None if s == "ok" else "err")
+    elif act == "relay_rotate":
+        good, why = await run_in_threadpool(push_relay.rotate)
+        _flash(request, t("Neuer Schlüssel beim Push-Relais hinterlegt.") if good else t("Schlüssel nicht erneuert: {why}", why=why), "ok" if good else "err")
+    elif act == "relay_unregister":
+        good, why = await run_in_threadpool(push_relay.unregister)
+        _flash(request, t("Beim Push-Relais abgemeldet.") if good else t("Abmelden fehlgeschlagen: {why}", why=why), "ok" if good else "err")
+    print(f"admin: {me['username']} Push-Relais {act[6:]}", flush=True)
+    return _go("/settings/push#relais")
 
 
 # --- Einstellungen: SSO / OIDC -------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import field, check, csrf_field with context %}
+{% from "_macros.html" import field, check, ts, csrf_field with context %}
 {% block pagetitle %}{{ _('Mitteilungen') }}{% endblock %}
 {% block content %}
 <h2>{{ _("Mitteilungen aufs Handy/Desktop") }}</h2>
@@ -29,6 +29,30 @@
       <input class="hk-in" type="file" name="p8" accept=".p8,application/x-pem-file,text/plain">
       <small>{{ _("gespeichert ✓ (verschlüsselt) – leer lassen = behalten") if has_p8 else _("noch keiner gespeichert") }}</small></label>
     {% if has_p8 %}{{ check(_('Gespeicherten Schlüssel entfernen'), 'clear_p8', false) }}{% endif %}
+    {{ check(_('Ende-zu-Ende verschlüsseln'), 'apns_e2e_direct', p.apns_e2e_direct if p.apns_e2e_direct is defined else true, _('Apps ab Saga 2.6 schicken einen eigenen Schlüssel mit. Dann sieht Apple nur „Saga – Neue Mitteilung“, die App entschlüsselt Namen und Text auf dem Gerät. Ältere Apps bekommen weiter den Text wie bisher.')) }}
+  </section>
+  <section class="adm-card" id="relais">
+    <h3>{{ _("Push-Relais (iPhone/iPad ohne eigenen APNs-Schlüssel)") }}</h3>
+    <p class="hk-hint">{{ _("Ohne eigenen APNs-Schlüssel stellt Saga Mitteilungen an die Saga-App aus dem App Store über das Push-Relais zu. Die Mitteilungen sind Ende-zu-Ende verschlüsselt: das Relais sieht nur das Gerät und den Zeitpunkt, nie Namen oder Texte. Ein eigener Schlüssel geht für seine App vor.") }}</p>
+    {{ check(_('Push-Relais verwenden'), 'relay', p.relay if p.relay is defined else true, _('Aus = Mitteilungen an die App aus dem App Store nur mit eigenem APNs-Schlüssel.')) }}
+    {% set rs = relay.state %}
+    <dl class="bk-dl">
+      <dt>{{ _("Relais") }}</dt><dd>{% if relay.url %}<code>{{ relay.url }}</code>{% else %}{{ _("keines festgelegt (SAGA_PUSH_RELAY_URL)") }}{% endif %}</dd>
+      <dt>{{ _("Zustand") }}</dt><dd>{% if not relay.url or not relay.on %}{{ _("aus") }}{% elif not relay.server_id and rs.state != 'pending' and rs.state != 'blocked' %}{{ _("noch nicht angemeldet – geschieht beim ersten iPhone mit Saga-App") }}{% elif rs.state == 'down' %}<span class="adm-tag bad">{{ _("nicht erreichbar") }}</span>{% elif rs.state == 'pending' %}<span class="adm-tag exp">{{ _("wartet auf Freischaltung") }}</span>{% elif rs.state == 'blocked' %}<span class="adm-tag bad">{{ _("gesperrt") }}</span>{% elif rs.state == 'auth' %}<span class="adm-tag bad">{{ _("Anmeldung abgelehnt") }}</span>{% else %}<span class="adm-tag">✓ {{ _("verbunden") }}</span>{% endif %}{% if rs.since and rs.state and rs.state != 'ok' %} <small>{{ _("seit {t}", t=ts(rs.since)) }}</small>{% endif %}</dd>
+      {% if relay.server_id %}<dt>{{ _("Server-Kennung") }}</dt><dd><code>{{ relay.server_id }}</code>{% if rs.stage %} · {{ _("Stufe") }} {{ rs.stage }}{% endif %}</dd>{% endif %}
+      {% if relay.fingerprint %}<dt>{{ _("Schlüssel") }}</dt><dd><code class="fed-fp">{{ relay.fingerprint }}</code></dd>{% endif %}
+      {% if rs.limits %}<dt>{{ _("Grenzen") }}</dt><dd>{{ _("Anrufe {a}/min · Mitteilungen {m}/min ({d}/Tag) · Hintergrund {b}/min", a=(rs.limits.ring or {}).per_min, m=(rs.limits.alert or {}).per_min, d=(rs.limits.alert or {}).per_day, b=(rs.limits.bg or {}).per_min) }}</dd>{% endif %}
+      {% if rs.topics %}<dt>{{ _("Apps") }}</dt><dd>{% for x in rs.topics %}<code>{{ x }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+      {% if rs.last_ok %}<dt>{{ _("Zuletzt zugestellt") }}</dt><dd>{{ ts(rs.last_ok) }}</dd>{% endif %}
+      {% if rs.last_err %}<dt>{{ _("Letzter Fehler") }}</dt><dd>{{ rs.last_err.split(' @')[0] }}</dd>{% endif %}
+    </dl>
+    {% if relay.url and relay.on %}
+    <div class="adm-actions adm-inline">
+      <button class="btn" type="submit" name="action" value="relay_check">{{ _("Jetzt prüfen") }}</button>
+      <button class="btn" type="submit" name="action" value="relay_rotate">{{ _("Schlüssel erneuern") }}</button>
+      {% if relay.server_id %}<button class="btn" type="submit" name="action" value="relay_unregister">{{ _("Beim Relais abmelden") }}</button>{% endif %}
+    </div>
+    {% endif %}
   </section>
   <div class="adm-actions">
     <button class="btn btn-primary" type="submit" name="action" value="save">{{ _("Speichern") }}</button>
