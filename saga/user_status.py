@@ -312,15 +312,15 @@ def shown(c, uid, now=None):
 def _remote_names(c, uid, us):
     """Personen anderer Server ('@~x@host') -> Name zum Zeigen (Bugs-DB 2391): Adressbuch der verbundenen Instanz
     (fed_directory), sonst der eigene Chat-Kontakt (chat_contact), sonst der zwischengespeicherte Anzeigename (fed_person),
-    immer mit Herkunft (sharing.remote_label). Nie ein Anmeldename; ohne Treffer fehlt die Person - die Apps zeigen dann
-    ihren Ersatz ("Person auf host (tag)")."""
+    immer mit Herkunft (sharing.remote_label). Nie ein Anmeldename; ohne Treffer der lesbare Ersatz "Person auf host (tag)"
+    wie bisher (D01: iOS/Linux und aeltere Apps zeigen sonst die rohe Kennung)."""
     refs = {u: r for u, r in ((u, contacts.ref_of(u)) for u in set(us)) if r}
     if not refs:
         return {}
     found = {}
 
     def take(r, nm):
-        nm = str(nm or "").strip()
+        nm = re.sub(r"[\x00-\x1f\x7f]", "", str(nm or "")).strip()     # nur Steuerzeichen zaehlt nicht als Name
         if nm and not is_raw_ref(nm) and r not in found:
             found[r] = nm
     hs = sorted({r.split("@", 1)[0] for r in refs.values()})
@@ -339,7 +339,7 @@ def _remote_names(c, uid, us):
         for p, nm in c.execute(f"SELECT principal, display FROM fed_person WHERE principal IN ({','.join('?' * len(rest))})",
                                tuple(rest)).fetchall():
             take(p[1:], nm)
-    return {u: sharing.remote_label(u, found[r]) for u, r in refs.items() if r in found}
+    return {u: sharing.remote_label(u, found.get(r)) for u, r in refs.items()}
 
 
 def _exc_out(c, uid, exc):

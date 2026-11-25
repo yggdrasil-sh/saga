@@ -7,7 +7,7 @@ in_call > busy > available · until <= jetzt = available, Ablauf ueber expire_on
 Ereignis status.changed · Wiederholungsanruf aus chat_call.hold='dnd' bei 179/180/181 s (Standard 180), Anruf selbst
 zaehlt nicht, andere Person/ohne hold nicht, repeat aus, repeat_s 300 · Ausnahmen (Person, Gruppe, Person anderer
 Servers, hoechstens 100, contact/e164 reserviert, unbekannt, fremde Gruppe, sich selbst, doppelt) · Namen foederierter
-Ausnahmen (fed_directory > chat_contact > fed_person, mit Herkunft, sonst leer; 2391) · Ruhezeit ueber
+Ausnahmen (fed_directory > chat_contact > fed_person, mit Herkunft, sonst Ersatz "Person auf host"; 2391) · Ruhezeit ueber
 Mitternacht in zwei Zeitzonen, quiet_dnd aus · Weitere Anrufe knock/busy, Anruf selbst zaehlt nicht als "im Anruf",
 shown() mit show_call · Erwaehnungen (mention_break) · Beschaeftigt nur Anzeige / silent · Cache je uid ueber ver
 (eine Abfrage im Treffer, Aenderung von prefs und Ruhezeiten sofort sichtbar) · Kontoloeschung (Zeile weg, aus Ausnahmen
@@ -26,7 +26,7 @@ db.wait_ready()
 import auth  # noqa: E402
 from db import connect  # noqa: E402
 from saga import bus, calls, testclock, user_status as US  # noqa: E402,F401  (calls verdrahtet IN_CALL)
-from saga.core import local_ref  # noqa: E402
+from saga.core import local_ref, unnamed  # noqa: E402
 
 A, B, C, D = "rs-anna", "rs-bert", "rs-cora", "rs-dora"
 GRP = "rs-team"
@@ -309,7 +309,7 @@ def part_exceptions():
 
 # --- Namen foederierter Ausnahmen (Bugs-DB 2391) ------------------------------------------------------------------------
 FH, FPID = "rs-fed.example", 990
-FX = {k: "~" + k * 16 for k in "abcdefg"}
+FX = {k: "~" + k * 16 for k in "abcdefgh"}
 
 
 def fed_clean(c):
@@ -325,26 +325,31 @@ def part_fed_names():
         fed_clean(c)
         c.execute("INSERT INTO fed_peer (id, host, base_url, public_key, fingerprint, status, created) VALUES (?,?,?,?,?,?,?)",
                   (FPID, FH, "https://" + FH, "x", "x", "active", T0))
-        for k, nm in (("a", "Bert Gast"), ("e", FX["e"]), ("f", "")):             # e: Kennung als Name zaehlt nicht
+        for k, nm in (("a", "Bert Gast"), ("e", FX["e"]), ("f", ""), ("h", "\x07\x1f ")):   # e/h: Kennung bzw. nur
+            # Steuerzeichen als Name zaehlen nicht
             c.execute("INSERT INTO fed_directory (peer_id, handle, name, updated) VALUES (?,?,?,?)", (FPID, FX[k], nm, T0))
-        for uid, k, nm in ((A, "a", "Alter Chatname"), (A, "b", "Cora Chat"), (A, "e", "Eva Chat"), (B, "d", "Nur bei Bert")):
+        for uid, k, nm in ((A, "a", "Alter Chatname"), (A, "b", "Cora Chat"), (A, "e", "Eva Chat"), (A, "h", "Hanna Chat"),
+                             (B, "d", "Nur bei Bert")):
             c.execute("INSERT INTO chat_contact (uid, ref, name, first_at, last_at) VALUES (?,?,?,?,?)", (uid, f"{FX[k]}@{FH}", nm, T0, T0))
         c.execute("INSERT INTO fed_person (principal, peer_id, display, updated) VALUES (?,?,?,?)", (f"@{FX['c']}@{FH}", FPID, "Dora Person", T0))
-    refs = [f"{FX[k]}@{FH}" for k in "abcdef"] + [f"{FX['g']}@andere.example"]
+    refs = [f"{FX[k]}@{FH}" for k in "abcdef"] + [f"{FX['g']}@andere.example", f"{FX['h']}@{FH}"]
+    ers = {i: unnamed(FX[k], h) for i, k, h in ((3, "d", FH), (5, "f", FH), (6, "g", "andere.example"))}
     v = prefs(A, exceptions=[{"type": "user", "ref": r} for r in refs] + [{"type": "user", "ref": local_ref(B)}])
     nm = {x["ref"]: x["name"] for x in v["exceptions"]}
     ok(f"Adressbuch der verbundenen Instanz zuerst, mit Herkunft ({nm.get(refs[0])!r})", nm.get(refs[0]) == f"Bert Gast ({FH})")
     ok(f"sonst eigener Chat-Kontakt ({nm.get(refs[1])!r})", nm.get(refs[1]) == f"Cora Chat ({FH})")
     ok(f"sonst zwischengespeicherter Anzeigename ({nm.get(refs[2])!r})", nm.get(refs[2]) == f"Dora Person ({FH})")
-    ok(f"Chat-Kontakt einer anderen Person zaehlt nicht -> leer ({nm.get(refs[3])!r})", nm.get(refs[3]) == "")
+    ok(f"Chat-Kontakt einer anderen Person zaehlt nicht -> Ersatz ({nm.get(refs[3])!r})", nm.get(refs[3]) == ers[3])
     ok(f"Kennung als Name im Adressbuch zaehlt nicht -> Chat-Kontakt ({nm.get(refs[4])!r})", nm.get(refs[4]) == f"Eva Chat ({FH})")
-    ok(f"leerer Name im Adressbuch, sonst nichts -> leer ({nm.get(refs[5])!r})", nm.get(refs[5]) == "")
-    ok(f"unbekannter Server -> leer ({nm.get(refs[6])!r})", nm.get(refs[6]) == "")
+    ok(f"leerer Name im Adressbuch, sonst nichts -> Ersatz ({nm.get(refs[5])!r})", nm.get(refs[5]) == ers[5])
+    ok(f"unbekannter Server -> Ersatz ({nm.get(refs[6])!r})", nm.get(refs[6]) == ers[6])
+    ok(f"Ersatz nie mit roher Kennung ({sorted(ers.values())})", all(n and "~" not in n and FX["d"][1:] not in n for n in ers.values()))
+    ok(f"nur Steuerzeichen im Adressbuch zaehlt nicht -> Chat-Kontakt ({nm.get(refs[7])!r})", nm.get(refs[7]) == f"Hanna Chat ({FH})")
     ok("lokale Ausnahme weiter mit Anzeigenamen, nie Anmeldename", nm.get(local_ref(B)) == "Bert Status" and B not in json.dumps(v))
     with connect() as c:
         ok("GET-Ansicht (view) gleich", {x["ref"]: x["name"] for x in US.view(c, A)["exceptions"]} == nm)
         ex = US.export(c, A)["exceptions"]
-    ok("Backup-Export: nur Kennungen, keine Namen", all(set(x) == {"type", "ref"} for x in ex) and len(ex) == 8)
+    ok("Backup-Export: nur Kennungen, keine Namen", all(set(x) == {"type", "ref"} for x in ex) and len(ex) == 9)
 
     class Cnt:                                   # f90rev: 100 Ausnahmen -> feste Zahl Abfragen (kein N+1)
         def __init__(s, c):
@@ -357,8 +362,9 @@ def part_fed_names():
         k = Cnt(c)
         many = [f"@~{'b' * 15}{chr(97 + i % 26)}@m{i}.example" for i in range(99)] + [f"@{FX['a']}@{FH}"]
         got = US._remote_names(k, A, many)
-    ok(f"100 foederierte Ausnahmen: {k.n} Abfragen (hoechstens 3), nur der Bekannte benannt",
-       k.n <= 3 and got == {f"@{FX['a']}@{FH}": f"Bert Gast ({FH})"})
+    ok(f"100 foederierte Ausnahmen: {k.n} Abfragen (hoechstens 3), der Bekannte mit Namen, die anderen mit Ersatz",
+       k.n <= 3 and len(got) == 100 and got[f"@{FX['a']}@{FH}"] == f"Bert Gast ({FH})"
+       and all(v == unnamed(u[1:].split("@")[0], u.split("@")[2]) for u, v in got.items() if u != f"@{FX['a']}@{FH}"))
     with connect() as c, c:
         fed_clean(c)
     reset(A)
