@@ -2429,8 +2429,9 @@ Anzeige bleibt beim Namen des Gegenübers (1:1-Ansicht), bis der Anruf endet. Se
 
 Nur mit Feature-Flag `calls.horn` (Standard aus) und nur für Geräte, die `horn` in `caps` melden. Konzept:
 `claude/saga-gjallarhorn-konzept-v2.md` §2; Frame-E2E: `docs/HORN-E2E.md`; Knoten: `gjallarhorn/NODE.md`.
-2.6 (Bugs-DB 2263): Top-3-Ton als fester Vertrag (unten, „Top-3-Ton“), reservierte Signal-Typen `dtmf`/`svc-join`,
-Grenzen nur aus dem Server und beim Start festgehalten, `busy: true` bei ausgelasteten Knoten.
+2.6 (Bugs-DB 2263; Knoten und Server setzen es mit 2263-3/-4 um, je Stelle mit „ab 2.6“ markiert): Top-3-Ton als
+fester Vertrag (unten, „Top-3-Ton“), reservierte Signal-Typen `dtmf`/`svc-join`, Grenzen nur aus dem Server und beim
+Start festgehalten, `busy: true` bei ausgelasteten Knoten.
 
 **Wann:** Ein Gruppenanruf läuft über einen Knoten (`topo: "horn"` im Anruf-Objekt, in `call.roster` und in
 `/api/chats/{id}` → `call.running`), wenn das anrufende Gerät `horn` meldet, ein Knoten bereit ist und der Chat groß genug
@@ -2510,7 +2511,8 @@ exp, jti}` – zufällige Kennungen je Knoten, keine Konto- oder Gerätenamen. R
 
 **Schlüssel:** Jedes Gerät verteilt seinen Frame-Schlüssel als `fkey` über `POST /api/calls/{id}/signal` an alle
 anderen Endpunkte (`docs/HORN-E2E.md` §4); im Knoten-Anruf gibt es keine Mesh-Signale (offer/answer/ice).
-Signal-Typen im Knoten-Anruf sind nur `fkey`, `fkey-ack` und `state` (Mikrofon/Kamera/Bildschirm, `hp`, Übernahme).
+Signal-Typen im Knoten-Anruf sind nur `fkey`, `fkey-ack` und `state` (Mikrofon/Kamera/Bildschirm, `hp`, Übernahme);
+Mesh-Signale kommen nur beim Rückfall auf direkt (`horn_direct1`, unten) und gelten dann für den Mesh-Weg.
 **Reserviert** (2.6, Bugs-DB 2263): `dtmf` und `svc-join` – Clients bis 3.0 senden sie nicht und ignorieren sie still
 (kein Fehler, keine Anzeige, keine Schlüssel- oder Zustandsänderung, kein `bye`; Felder erst mit 3.0, vorläufig
 `dtmf {d, ms}`, `svc-join {svc, label}`), wie jeden unbekannten Typ (saga-call v3, „Fähigkeiten“: unbekannte `t`-Typen
@@ -2533,30 +2535,33 @@ ausgelasteten Knoten mit `busy: true` (oben, Beitreten). Die Grenze des Anrufs (
 Normativ für Knoten, Web und Apps; gilt **fest bis einschließlich 3.x** (eine Änderung wäre ein neuer Vertrag mit
 eigener Fähigkeit). Beschreibung der Umsetzung im Knoten: `gjallarhorn/NODE.md` („Top-3-Ton“, Kaskade).
 
-1. **Höchstens 3 Tonströme je Empfänger.** Clients MÜSSEN im Bein `audio: 3` anfordern (Angebot mit genau 3
-   recvonly-Ton-Plätzen); mehr kappt der Knoten auf 3. Clients DÜRFEN nicht annehmen, dass sie mehr als 3 Personen
+1. **Höchstens 3 Tonströme je Empfänger.** Clients MÜSSEN in jedem Bein mit Ton (`role` `audio` bzw.
+   `both`) `audio: 3` anfordern (Angebot mit genau 3 recvonly-Ton-Plätzen; ein reines Bild-Bein fordert `audio: 0`); mehr kappt der Knoten auf 3. Clients DÜRFEN nicht annehmen, dass sie mehr als 3 Personen
    gleichzeitig hören.
 2. **Aktivität:** Der Knoten bewertet jede Quelle aus `ssrc-audio-level` (RFC 6464) × Sprachanteil je 200 ms, gleitend
    gemittelt. Als sprechend gilt eine Quelle ab Aktivität 0,04. Clients MÜSSEN deshalb `ssrc-audio-level` senden
-   (Rahmen-Weg: Pegel in Byte 3 des Ton-Rahmens).
+   (Browser und libwebrtc in iOS/Android bieten die Kopferweiterung von sich aus an; Clients DÜRFEN sie nicht aus dem
+   Angebot entfernen; Rahmen-Weg: Pegel in Byte 3 des Ton-Rahmens aufwärts).
 3. **Hysterese:** Ein **sprechender** Inhaber MUSS seinen Platz behalten. Ein Neuer bekommt sofort einen freien Platz
    oder den Platz eines stillen Inhabers. Sprechen alle Inhaber, DARF ein Neuer den leisesten erst verdrängen, wenn er
    mindestens das 1,4-Fache an Aktivität hat **und** das mindestens 1,5 s lang hält. Stille Inhaber weichen nur
-   Sprechenden (ein stiller Neuer verdrängt keinen stillen Inhaber).
+   Sprechenden (ein stiller Neuer verdrängt keinen stillen Inhaber). Knoten ab 2.6 (Stand unten).
 4. **Wechselzeit:** Ist ein Platz frei oder still, MUSS der Wechsel zu einem neuen Sprecher in höchstens 0,5 s
-   erfolgen.
+   erfolgen. Knoten ab 2.6 (Stand unten).
 5. **Was Clients sehen:** feste SSRC je Platz; die CSRC nennt den Inhaber; die Folgenummern laufen über einen Wechsel
-   lückenlos weiter. `audio-level` steht mit der ID, die das Bein des Empfängers ausgehandelt hat (Rahmen-Weg: Byte 3).
+   lückenlos weiter. `audio-level` steht mit der ID, die das Bein des Empfängers ausgehandelt hat (Rahmen-Weg: Byte 3 abwärts, nur mit
+   `level` im `ok`).
    Belegung in `slots[]` mit `class: "audio"`, `peer`, `csrc`, `paused`. Clients MÜSSEN Ton und Sprechring über CSRC
    bzw. `slots[].peer` zuordnen, nie über den Platz (ein Platz DARF jederzeit den Inhaber wechseln).
-6. **Kaskade:** Jede Seite einer Brücke schickt ihre Top-3 nach derselben Regel (1–4); der empfangende Knoten wählt
+6. **Kaskade:** Jede Seite einer Bifröst-Brücke schickt ihre Top-3 nach derselben Regel (1–4, Haltedauer ab 2.6); der empfangende Knoten wählt
    daraus wie lokal die Top-3 je Empfänger und den Hauptsprecher. Für Clients ist das nicht unterscheidbar.
-7. **Brücke (3.0, z. B. Telefon):** ein Bein mit `role: audio`, `audio: 3`, ohne Bild; sie dekodiert die 3 Opus-Ströme
+7. **Dienst-Brücke (3.0, z. B. Telefon):** ein Bein mit `role: audio`, `audio: 3`, ohne Bild; sie dekodiert die 3 Opus-Ströme
    und mischt außerhalb des Saga-Prozesses (nicht in Python). Für sie gelten dieselben Regeln wie für jeden Empfänger.
 
-Stand der Umsetzung: Punkte 1, 2 und 5 gelten seit 2.5. Die Hysterese (3, 4, auch an der Brücke, 6) setzt der Knoten ab
-2.6 (Bugs-DB 2263-3) um; ältere Knoten schützen nur den Hauptsprecher und stille Inhaber gegen stille Neue, bei vier
-und mehr Sprechenden kann Platz 3 dort häufig wechseln (Bugs-DB 2417). Clients müssen dafür nichts ändern.
+Stand der Umsetzung: Punkte 1, 2 und 5 gelten seit 2.5. Die Hysterese (3, 4, auch an der Bifröst-Brücke, 6) setzt der
+Knoten ab 2.6 (Bugs-DB 2263-3) um; ältere Knoten schützen auf den Ton-Plätzen nur stille Inhaber gegen stille Neue
+(Haltedauer 1,5 s/1,4× nur bei der Wahl des Hauptsprechers), bei vier und mehr Sprechenden kann Platz 3 dort häufig
+wechseln (Bugs-DB 2417). Clients müssen dafür nichts ändern.
 
 ### Medien-Tunnel `/api/sfu/ws` (2.5)
 
