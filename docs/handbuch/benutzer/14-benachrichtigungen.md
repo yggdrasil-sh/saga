@@ -143,7 +143,7 @@ Mit deinem Status sagst du anderen, ob du gerade Zeit hast – und Saga richtet 
 
 1. Klick unten links auf deinen Namen (das Benutzermenü). Ganz oben steht dein Status ① mit einem farbigen Punkt.
 
-   ![Geöffnetes Benutzermenü: oben der Eintrag „Nicht stören“ mit rotem Punkt und „bis 15:00“ darunter, darunter Einstellungen, Sprache und Abmelden](../bilder/b14-04-status-menue.png)
+   ![Geöffnetes Benutzermenü von Anna: oben der Eintrag „Nicht stören“ mit rotem Punkt und der Uhrzeit, bis wann er gilt; darunter Einstellungen, Sprache, Darstellung und Abmelden; unten am Namen ebenfalls der rote Punkt](../bilder/b14-04-status-menue.png)
 
 2. Klick darauf. Das Fenster **Mein Status** öffnet sich.
 
@@ -152,7 +152,8 @@ Mit deinem Status sagst du anderen, ob du gerade Zeit hast – und Saga richtet 
    Was die Nummern bedeuten:
 
    - ① **Status** – Verfügbar, Beschäftigt oder Nicht stören.
-   - ② **Dauer** – **1 Stunde**, **Bis morgen 7:00** (vor 7 Uhr morgens: **Bis 7:00**) oder **Bis ich es ausschalte**.
+   - ② **Dauer** – **1 Stunde**, **Bis morgen 7:00** (vor 7 Uhr morgens: **Bis 7:00**) oder **Bis ich es ausschalte**. Läuft
+     schon ein Status mit Ende, steht oben zusätzlich „Bis … (wie bisher)“.
    - ③ **Eigener Text (optional)** – zum Beispiel „Im Kundentermin“, höchstens 80 Zeichen.
 
 3. Klick auf **Speichern**. Solange du nicht verfügbar bist, zeigt dein Profilbild unten links einen kleinen Punkt.
@@ -190,7 +191,7 @@ sieht **niemand** sonst.
 Unter **Einstellungen → Mitteilungen → Erreichbarkeit** (oder im Fenster **Mein Status** über **Erreichbarkeit …**)
 legst du fest, wie dich andere erreichen.
 
-![Einstellungen → Mitteilungen → Erreichbarkeit: Schalter für Ruhezeiten, Sammelmeldung und Erwähnungen, Auswahl für Anrufe während eines Gesprächs, wiederholte Anrufe und die Ausnahme Oma Lena](../bilder/b14-06-erreichbarkeit.png)
+![Einstellungen → Mitteilungen → Erreichbarkeit: Schalter für Ruhezeiten, Sammelmeldung und Erwähnungen, Auswahl für Anrufe während eines Gesprächs, „Im Anruf“, „Beschäftigt“, wiederholte Anrufe und die Ausnahme Oma Lena](../bilder/b14-06-erreichbarkeit.png)
 
 Was die Nummern bedeuten:
 
@@ -319,7 +320,7 @@ Die Glocke öffnet sich auf dem Handy als Liste von unten.
   in Saga „Nicht stören“. Saga meldet nur „an“ oder „aus“, nie den Namen des Modus. Das wirkt sofort, wenn die App
   läuft; sonst gleicht sie es beim nächsten Öffnen ab.
 
-<!-- App-Bild folgt: b14-08-status-android.png -->
+<img src="../bilder/b14-08-erreichbarkeit-android.png" width="320" alt="Android-App, Erreichbarkeit: oben „Auf diesem Gerät“ mit dem Schalter „System-Nicht-stören übernehmen“, darunter „Für dein Konto“ mit Ruhezeiten, Sammelmeldung und Erwähnungen">
 
 **Linux**
 
@@ -328,7 +329,7 @@ Die Glocke öffnet sich auf dem Handy als Liste von unten.
   **Erreichbarkeit** findest du in den Einstellungen der App.
 - Eine Kopplung an „Nicht stören“ des GNOME-Desktops gibt es noch nicht; sie folgt später.
 
-<!-- App-Bild folgt: b14-09-status-linux.png -->
+![Linux-App: geöffnetes Blatt „Mein Status“ mit Nicht stören, Dauer „Bis 09:32 (wie bisher)“ und dem Text „Im Kundentermin“; links die Seitenleiste, dahinter die Chatliste mit Status-Punkten](../bilder/b14-09-status-linux.png)
 
 **Ältere Apps und Server:** Den eigenen Status gibt es ab Saga 2.6 – auf dem Server und in den Apps. Mit einer
 älteren App siehst du ihn nicht; dein Status wirkt trotzdem, weil der Server entscheidet.

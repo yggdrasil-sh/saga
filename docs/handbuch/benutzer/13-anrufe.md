@@ -207,9 +207,9 @@ Ab Saga 2.6 richten sich Anrufe nach deinem eigenen Status (siehe [Benachrichtig
 Mitteilungen](14-benachrichtigungen.md), Schritt 5 und 6).
 
 **Anklopfen.** Ruft dich jemand an, während du schon telefonierst, klingelt es nicht. Stattdessen erscheint im
-Anruffenster eine Leiste „Clara klopft an“, dazu ein leiser, kurzer Ton. Dein Gespräch läuft weiter.
+Anruffenster eine Leiste „Clara Sommer klopft an“, dazu ein leiser, kurzer Ton. Dein Gespräch läuft weiter.
 
-![Laufender Anruf von Anna mit Ben; oben im Anruffenster die Leiste „Clara klopft an“ mit den Knöpfen „Ablehnen“ und „Beenden und annehmen“](../bilder/b13-11-anklopfen.png)
+![Laufender Videoanruf von Anna mit Ben; oben im Anruffenster die Leiste „Clara Sommer klopft an – Videoanruf, dein Gespräch läuft weiter“ mit den Knöpfen „Ablehnen“ und „Beenden und annehmen“](../bilder/b13-11-anklopfen.png)
 
 Was die Nummern bedeuten:
 
@@ -340,6 +340,9 @@ eingeschränkt; dort läuft ein Anruf manchmal direkt.
   („Ablehnen“ / „Beenden und annehmen“) – nicht ein zweiter Telefonanruf. „Beenden und annehmen“ nimmt erst an, wenn
   dein erstes Gespräch wirklich beendet ist. Damit das Anklopfen auch bei gesperrtem Bildschirm ankommt, bleibt die
   App während eines Gesprächs verbunden und zeigt eine stille Mitteilung „… klopft an“.
+
+<img src="../bilder/b13-12-anklopfen-ios.png" width="320" alt="iPhone-App im Gespräch mit Eva Beispiel: oben die Leiste „Bruno Beispiel klopft an“ mit „Ablehnen“ und „Beenden und annehmen“, darunter die Teilnehmerliste">
+
 - Stille Anrufe bei „Nicht stören“, die Rückfrage vor dem Anruf und „Verpasster Anruf (Nicht stören)“ gibt es wie
   im Browser. Mit dem Fokusfilter „Saga-Status“ setzt dein iPhone-Fokus den Status (siehe
   [Benachrichtigungen und Mitteilungen](14-benachrichtigungen.md)).
@@ -352,7 +355,7 @@ eingeschränkt; dort läuft ein Anruf manchmal direkt.
   beim Anrufen und „Verpasster Anruf (Nicht stören)“ wie im Browser. Mit **System-Nicht-stören übernehmen** zählt
   auch „Bitte nicht stören“ des Handys (siehe [Benachrichtigungen und Mitteilungen](14-benachrichtigungen.md)).
 
-<!-- App-Bild folgt: b13-12-anklopfen-android.png -->
+<!-- App-Bild folgt: b13-13-anklopfen-android.png -->
 
 **Linux**
 

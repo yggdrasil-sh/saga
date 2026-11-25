@@ -177,7 +177,7 @@ abschalten – dann siehst du es bei anderen aber auch nicht.
 kleinen Punkt am Profilbild und im Direkt-Chat oben als ① Hinweis – zum Beispiel „Nicht stören bis 15:00 · Im
 Kundentermin“, „Beschäftigt“ oder „Im Anruf“. Ein Klick darauf zeigt den ganzen Text.
 
-![Direkt-Chat von Ben mit Anna: oben unter dem Namen der Hinweis „Nicht stören bis … · Im Kundentermin“ mit rotem Punkt](../bilder/b12-13-status-chatkopf.png)
+![Bens Direkt-Chat mit Anna: oben unter ihrem Namen der Hinweis „Nicht stören bis … · Im Kundentermin“, links in der Chatliste ein roter Punkt an Annas Profilbild](../bilder/b12-13-status-chatkopf.png)
 
 - Den Status siehst du nur bei Personen, mit denen du einen Chat hast – auch dann, wenn ihr den Online-Status
   abgeschaltet habt.

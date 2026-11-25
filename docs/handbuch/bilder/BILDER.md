@@ -142,6 +142,7 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b12-08-geraet-bestaetigen.png | B12 | Web | hell | Neuer Browser (Clara): Chats mit anderem Gerät bestätigen oder Wiederherstellungsschlüssel eingeben | 1 = Mit anderem Gerät bestätigen (Code vergleichen); 2 = Wiederherstellungsschlüssel eingeben |
 | b12-09-wiederherstellungsschluessel.png | B12 | Web | hell | Wiederherstellungsschlüssel eingeben (32 Zeichen A–Z, 2–7; hier erfunden) | 1 = Schlüssel (Leerzeichen egal) |
 | b12-10-archiv.png | B12 | Web | hell | Rechtsklick in der Chatliste: öffnen, stummschalten, anheften, ungelesen, sperren, melden, archivieren, löschen | 1 = Archivieren |
+| b12-13-status-chatkopf.png | B12 | Web | hell | Bens Direkt-Chat mit Anna: im Kopf „Nicht stören bis … · Im Kundentermin“ (Ende im 5-Minuten-Raster), in der Chatliste roter Punkt an Annas Profilbild | 1 = Status im Chat-Kopf (Klick zeigt den ganzen Text) |
 | b13-01-anruf-video.png | B13 | Web | dunkel | Videoanruf Anna ↔ Ben über den Knoten (dunkel, Kamera-Ersatzbild statt Gesicht, Bens Handy) | 1 = Stummschalten; 2 = Kamera aus; 3 = Bildschirm teilen; 4 = Auflegen |
 | b13-02-bildschirm-teilen.png | B13 | Web | hell | Ben teilt seinen Bildschirm (Fotos vom Urlaub) – Anna sieht ihn groß | – |
 | b13-03-gruppenanruf.png | B13 | Web | dunkel | Gruppen-Videoanruf mit vier Personen über den Knoten (dunkel) | – |
@@ -151,9 +152,16 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b13-08-teilnehmer-nicht-dabei.png | B13 | Web | dunkel | Gruppenanruf, Teilnehmerliste: Anna, Ben; „Nicht dabei (2)“ Clara und Oma Lena (nicht angenommen) | 1 = Nicht dabei; 2 = Erneut klingeln; 3 = Person hinzufügen |
 | b13-09-einzel-zu-gruppe.png | B13 | Web | dunkel | 1:1 Anna ↔ Ben, „Person hinzufügen“ Clara → Gruppenanruf mit drei Kacheln (neue Gruppe „Ben Sommer, Clara Sommer“) | – |
 | b13-10-in-gruppenanruf-verschoben.png | B13 | Web | dunkel | Bens 1:1 mit Anna danach: Eintrag „In Gruppenanruf verschoben“ mit Dauer | 1 = Zur Gruppe |
+| b13-11-anklopfen.png | B13 | Web | dunkel | Videoanruf Anna ↔ Ben (direkt, Art server), Clara ruft Anna an: Leiste „Clara Sommer klopft an“ im Anruffenster | 1 = Ablehnen; 2 = Beenden und annehmen |
+| b13-12-anklopfen-ios.png | B13 | iOS | dunkel | iPhone-App (Simulator, Konten „… Beispiel“): Leiste „Bruno Beispiel klopft an“ im Gespräch, darunter Teilnehmerliste | – |
 | b14-01-glocke.png | B14 | Web | hell | Glocke oben in der Seitenleiste: geteilte Seite, neue Kommentare – „Alle gelesen“ | 1 = Glocke mit Zahl (die Zahl oben an der Glocke gehört zu Saga, die Nummer steht links daneben); 2 = Alle gelesen |
 | b14-02-mitteilungen-einstellungen.png | B14 | Web | hell | Einstellungen → Mitteilungen: dieser Browser, Geräte, ntfy, Kategorien, Ruhezeiten | – |
 | b14-03-glocke-handy.png | B14 | Handy | dunkel | Glocke auf dem Handy (dunkel, Liste von unten) | – |
+| b14-04-status-menue.png | B14 | Web | hell | Benutzermenü von Anna mit dem Status „Nicht stören – bis …“ (roter Punkt, auch am Namen unten) | 1 = eigener Status (Klick öffnet „Mein Status“) |
+| b14-05-mein-status.png | B14 | Web | hell | Fenster „Mein Status“: Nicht stören, 1 Stunde, eigener Text „Im Kundentermin“ (vor dem Speichern) | 1 = Status; 2 = Dauer; 3 = eigener Text |
+| b14-06-erreichbarkeit.png | B14 | Web | hell | Einstellungen → Mitteilungen → Erreichbarkeit (ganze Karte; Höhengrenze des Dialogs nur für die Aufnahme aufgehoben) mit der Ausnahme Oma Lena | 1 = Einstellungen; 2 = Ausnahmen |
+| b14-08-erreichbarkeit-android.png | B14 | Android | hell | Android-App (Emulator): Erreichbarkeit mit „System-Nicht-stören übernehmen“ (an) und den Konto-Einstellungen | – |
+| b14-09-status-linux.png | B14 | Linux | hell | Linux-App (Schein-Server, Konten „… Beispiel“): Blatt „Mein Status“ mit Nicht stören und „Im Kundentermin“ | – |
 | b15-01-ki-seite.png | B15 | Web | hell | Frage Saga KI (Attrappe ki.saga.example): Antwort zum „Sommerfest“ mit Verweisen [2] auf die Seite „Sommerfest“; Quellen: zitierte zuerst, darunter blasser die übrigen durchsuchten Seiten | 1 = Bereiche: Frag deine Seiten · Diese Seite; 2 = Verweis auf die Quelle; 3 = Quellen |
 | b15-02-ki-websuche.png | B15 | Web | hell | KI mit Websuche auf „Heute“: Wetter am Wochenende an der Lübecker Bucht, Web-Quellen wetter.example.org / kueste.example.org (SearXNG-Attrappe), Adresse der KI ki.saga.example | 1 = Im Web suchen; 2 = Web-Quelle |
 | b15-03-ki-chat.png | B15 | Web | hell | KI im Familienchat auf Zuruf: Ben fragt „`@Saga KI` – was ist ein gutes Rezept für 8 Personen ohne Fleisch?“ (Attrappe), Annas Sicht – Antwort für alle sichtbar, „gefragt von Ben Sommer“ | – |
@@ -194,6 +202,10 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
   speichert Ben denselben Absatz → echte Server-Antwort 409 und echte Leiste; Bens Änderung wird danach zurückgenommen.
 - App-Durchgang (Simulatoren/Emulatoren, nicht aus dem Browser): b11-03 (iOS), b12-11 (iOS), b12-12 (Android dunkel),
   b13-06 (iOS), b15-04 (iOS), b17-02 … b17-09 (iOS/iPad/Mac/Android/Linux), b19-03 (Android).
+- Eigener Status (2.6, Bugs-DB 2029-9): Web-Bilder b12-13, b13-11, b14-04, b14-05, b14-06 aus einer Szene (`--nur b14-04`,
+  Welt familie, Art server – das Anklopfen läuft direkt, nicht über den Knoten); Status und Ausnahmen setzt die Szene am Ende
+  zurück. App-Bilder aus den App-Durchgängen 2029-6/7/8 übernommen (nur Demo-Konten, verkleinert, ohne Metadaten): b13-12 (iOS), b14-08
+  (Android), b14-09 (Linux). Noch offen: b13-13 (Android Anklopfen), b14-07 (iOS Mein Status).
 - B13 Anrufe: Demo läuft über http – Kamera/Mikrofon ersetzt das Skript im Browser durch ein gezeichnetes Ersatzbild
   (Initialen, keine Gesichter) und stillen Ton; WebRTC läuft echt zwischen den Browser-Kontexten. Seit Durchgang 4
   laufen alle Anrufbilder über den eingebauten Knoten (Art `knoten`, „Alle Anrufe über Knoten“ ab Werk an), auch b13-03.
