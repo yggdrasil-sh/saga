@@ -17,6 +17,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu
+- **Eigener Status in den Apps** (Bugs-DB 2029-9): iOS/iPadOS (2029-6), Android (2029-7) und Linux (2029-8) können
+  jetzt, was das Web seit 2029-5 kann – Mein Status, Erreichbarkeit mit Ausnahmen, Status der Chat-Partner, Rückfrage
+  vor dem Anruf, Anklopfen und stille Anrufe; dazu iOS-Fokusfilter „Saga-Status“ und Android „System-Nicht-stören
+  übernehmen“ (nur Zustand, nie der Name). Einzelheiten im CHANGELOG von saga-apps. Benutzer-Handbuch B12–B14 um
+  „Eigener Status“, Anklopfen und stille Anrufe ergänzt (mit Bildern), `docs/APP-API.md` um „Hinweise für Apps“.
 - **Eigener Status im Browser** (Bugs-DB 2029, Schritt 2029-5 Teil A, Web): im Benutzermenü der eigene Status mit
   farbigem Punkt und dem, was gerade wirkt (Ablaufzeit, „Ruhezeit bis 7:00 – zählt als Nicht stören“, Im Anruf, „vom
   Gerät (Fokus)“); Dialog „Mein Status“ mit Verfügbar/Beschäftigt/Nicht stören, Dauer (1 Stunde, bis morgen 7:00, bis ich

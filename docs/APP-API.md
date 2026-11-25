@@ -3974,3 +3974,31 @@ stören)“ bei `status: "missed"` und `hold: "dnd"`; die anrufende Seite zeigt 
 gilt für Mitteilungen und Sammelmeldung weiter die Push-Weiche (kein Push während Nicht stören), bei `knock`/`again` wie
 oben (Sammel-Push nach dem Gespräch). Über Servergrenzen ohne Protokolländerung: `hold` steht in den Einträgen des Servers
 der angerufenen Person. Ältere Clients ignorieren das Feld.
+
+### Hinweise für Apps (2.6, Bugs-DB 2029-6/7/8)
+
+Erfahrungen aus iOS (2029-6), Android (2029-7) und Linux (2029-8) – keine Vertragsänderung, nur Stolpersteine:
+
+- **Presence-Abo mit der Kennung aus `members[].username`:** `POST /api/chat/presence {users}` erwartet dieselben Namen wie
+  die Chat-Mitglieder (lokal der Anmeldename, andere Server `@~x@host`) – nicht den Such-Handle `~x` aus der
+  Personensuche (`/api/chat/people`, `members[].ref`). Mit dem Handle kommt kein Fehler, nur kein Eintrag in `users`
+  und `status`. Ebenso sind die Schlüssel in `status` und `chat.status.username` diese Kennungen.
+- **`waiting1` erst melden, wenn Anklopfen gebaut ist:** Der Server klopft nur an, wenn **alle** aktiven Chat-Geräte
+  `waiting1` in `PUT /api/calls/caps` melden. Ein Gerät, das die Fähigkeit meldet, aber `waiting: true` an `call.ring` /
+  `call.invite` nicht auswertet, klingelt mitten im Gespräch wie ein normaler Anruf. Wer Anklopfen nicht anzeigen kann,
+  lässt `waiting1` weg – dann ist es für die Person besetzt wie bisher.
+- **Anklopfen kommt ohne Push:** `call.ring`/`call.invite` mit `waiting: true` (und `call.quiet`) gehen nur über den
+  Live-Kanal. Während eines eigenen Gesprächs den Live-Kanal offen halten – auch im Hintergrund bzw. bei gesperrtem
+  Bildschirm (iOS: CallKit-Gespräch, Verbindung erst mit dem Ende des Gesprächs schließen) –, sonst kommt das Anklopfen
+  nie an. Im CallKit-Gespräch Anklopfen als eigene Leiste zeigen, nicht als zweiten CallKit-Anruf („Halten und
+  annehmen“ gibt es in Saga nicht); „Beenden und annehmen“ erst nach bestätigtem `POST /api/calls/{id}/end`.
+- **Fokus / System-„Nicht stören“ nur als `{state, source: "focus"}`:** kein Text, kein Name des Fokus oder Modus
+  (RT-29). Beginn: `{"state": "dnd"|"busy", "source": "focus"}`, Ende: `{"state": "available", "source": "focus"}` – ein
+  selbst gesetzter Status bleibt dabei stehen (`kept: true`). Ein Fokus-Beginn ersetzt dagegen auch einen manuellen
+  Status.
+- **Zuletzt gemeldeten Fokus-Stand dauerhaft merken** (je Konto, über Prozess-Neustarts): nur senden, wenn sich der
+  Zustand des Geräts gegenüber dem zuletzt gemeldeten geändert hat. Wer bei jedem Start (auch Push-Wecken im
+  Hintergrund) den aktuellen Zustand erneut meldet, überschreibt still einen Status, den die Person inzwischen selbst
+  gesetzt hat – z. B. „Verfügbar“ trotz eingeschaltetem System-„Nicht stören“ wird beim nächsten Start wieder zu
+  „Nicht stören“. Ohne Sitzung den Wechsel vormerken und beim nächsten Laden senden. Android bekommt
+  `ACTION_INTERRUPTION_FILTER_CHANGED` nur bei laufendem Prozess – beim Start mit dem gemerkten Stand abgleichen.

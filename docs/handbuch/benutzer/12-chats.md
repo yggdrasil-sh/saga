@@ -189,7 +189,7 @@ Kundentermin“, „Beschäftigt“ oder „Im Anruf“. Ein Klick darauf zeigt 
 **Vor dem Anruf fragt Saga nach.** Steht die Person auf **Nicht stören** und du klickst auf **📞** oder **🎥**, fragt
 Saga: „Anna möchte gerade nicht gestört werden. Trotzdem anrufen?“ Mit **Anrufen** geht es weiter – bei ihr klingelt
 es dann aber nicht, sie sieht deinen Anruf nur still (siehe [Anrufe](13-anrufe.md), Schritt 8). Rufst du innerhalb
-von 3 Minuten noch einmal an, klingelt es bei ihr. Telefoniert sie gerade, sagt Saga „Anna telefoniert gerade – dein
+von 3 Minuten noch einmal an, klingelt es bei ihr (so ist es ab Werk eingestellt). Telefoniert sie gerade, sagt Saga „Anna telefoniert gerade – dein
 Anruf klopft an.“
 
 ### 5. Nachrichten anheften
