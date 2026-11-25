@@ -9,8 +9,9 @@
 // C ruft noch einmal -> "du hast schon angeklopft" (again), bei A nichts; D ruft A -> "Beenden und annehmen" -> A spricht
 // mit D, B ist draussen; A auf Nicht stoeren -> B ruft -> stille Leiste (call.quiet) ohne Klingeln, B sieht "Klingelt …",
 // B legt auf -> Leiste weg; B ruft binnen 180 s erneut -> klingelt normal (Wiederholungsanruf); D ruft -> stille Leiste
-// -> "Annehmen" verbindet. Bilder (hell/dunkel, 1440x900 und 390x844): Anklopf-Leiste, "Klopft an …" beim Anrufer,
-// stille Leiste. VORHER=<Datei>: der Web-Stand vor 2029-5 (calls.js/calls.css aus main e1a874e per Route) - nur Bilder.
+// -> "Annehmen" verbindet; Chat-Eintrag "Verpasster Anruf (Nicht stören)" nur bei A (Bugs-DB 2375). Bilder (hell/dunkel,
+// 1440x900 und 390x844): Anklopf-Leiste, "Klopft an …" beim Anrufer, stille Leiste, Chat-Eintrag.
+// VORHER=<Datei>: der Web-Stand vor 2029-5 (calls.js/calls.css aus main e1a874e per Route) - nur Bilder.
 'use strict';
 const pw = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), os = require('os');
@@ -218,6 +219,14 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
       await hangup(b);
       ok('B legt auf -> stille Leiste weg', await until(async () => !(await held(a)).length && !(await a.$('.cl-quiet')), 8000));
       await idle(b);
+      // Bugs-DB 2375: Chat-Eintrag nennt den Grund nur der angerufenen Person
+      const rowTxt = p => p.evaluate(() => { const r = [...document.querySelectorAll('#ct-msgs .ct-call, .ct-call')].pop(); return r ? r.textContent : ''; });
+      const eA = await until(async () => { const t = await rowTxt(a); return /Nicht stören/.test(t) && t; }, 10000, 250);
+      ok('A: Chat-Eintrag "Verpasster Anruf (Nicht stören)"', eA && /Verpasster Anruf \(Nicht stören\)/.test(eA), await rowTxt(a));
+      const eB = await until(async () => { const t = await rowTxt(b); return /nicht angenommen/.test(t) && t; }, 10000, 250);
+      ok('B (Anrufer): "Anruf – nicht angenommen", ohne Grund', eB && !/Nicht stören|Ruhezeit/.test(eB), await rowTxt(b));
+      await b.waitForTimeout(3800);                    // beendetes Anruffenster von B ist zu
+      await shots4(a, 'chat-eintrag-nicht-stoeren');
 
       // --- 6. B ruft binnen 180 s erneut: klingelt normal -----------------------------------------------------------------
       await b.waitForTimeout(3800);
