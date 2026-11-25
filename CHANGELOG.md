@@ -218,6 +218,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **Gjallarhorn: Top-3-Ton flattert nicht mehr** (Bugs-DB 2417, 2263-3): Wer gerade spricht, behält seinen Ton-Platz;
+  ein Neuer bekommt einen freien oder stillen Platz sofort, verdrängt einen Sprechenden aber erst mit mindestens 1,4-facher
+  Aktivität über 1,5 s – wie beim Hauptsprecher, auf dem Knoten und auf der Bifröst-Brücke. Bei vier gleichzeitig
+  Sprechenden 0–3 statt über 100 Platzwechsel je Minute. Neuer Zähler `aswitch` je Ton-Bein in
+  `GET /api/sfu/leg/{id}`; höchstens 3 Ton-Plätze je Empfänger fest. Bekannte Folge: Haben alle drei Inhaber eben
+  gesprochen, kommt ein neuer Sprecher nach etwa 2,4 s dran (vorher 0,8 s); Feinschliff nach der Messreihe 2263-9.
+- **Gjallarhorn: Knoten-Grenzen passend zu 10+ Teilnehmern** (Bugs-DB 2416, Knoten-Teil): Standard `HORN_MAX_LEGS` 200
+  (bisher 48) und `HORN_MAX_PER_IP` 40 (bisher 12) – über den Tunnel braucht jedes Gerät zwei Beine. Ein ungültiger
+  Wert für `HORN_MAX_LEGS` fällt auf den Standard zurück (bisher nahm der Knoten dann gar kein Bein an). Endgültige Werte
+  nach der Speicher-Messung in 2263-9.
 - **Web: stille Leiste und Ausnahme-Suche** (Bugs-DB 2393): Nach dem Auflegen zählt das gerade beendete Gespräch nur
   noch, solange ein anderes eigenes Gerät darin ist (Gruppenanruf, 1:1 mit Begleitgerät bzw. nach der Übergabe) – meldet
   der Server es kurz noch mit diesem Gerät, bietet die stille Leiste wieder „Annehmen“ an; gleiche Entscheidung wie in der
