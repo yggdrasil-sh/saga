@@ -80,6 +80,16 @@ async function openDm(p, user) {
   await p.waitForTimeout(600);
 }
 async function hangup(p) { const h = await p.$('.cl-win:not(.cl-done) .cl-ctl .cl-red'); if (h) await h.click().catch(() => {}); }
+// Anrufen ueber den Chat-Kopf. Seit 2029-5 Teil A fragt der Chat vor dem Anruf nach, wenn das Gegenueber Nicht stoeren hat
+// ("… möchte gerade nicht gestört werden. Trotzdem anrufen?") - dann bestaetigen. Rueckgabe: ob die Rueckfrage kam.
+async function dial(p) {
+  await dial(p);
+  const ask = await p.waitForSelector('.hk-ask-box', { timeout: 1500 }).catch(() => null);
+  if (!ask) return false;
+  await p.click('.hk-ask-box .btn-primary');
+  await p.waitForSelector('.hk-ask-box', { state: 'detached', timeout: 3000 }).catch(() => {});
+  return true;
+}
 async function idle(p) { await until(async () => !(await st(p)), 10000, 200); await p.waitForTimeout(300); }
 async function theme(p, light) {
   await p.emulateMedia({ colorScheme: light ? 'light' : 'dark' });
@@ -121,7 +131,7 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
     else ok('vorher: A meldet kein waiting1', capsA && capsA.indexOf('waiting1') < 0, capsA);
 
     // --- 1. A telefoniert mit B -----------------------------------------------------------------------------------------
-    await a.click('#ct-call-a');
+    await dial(a);
     const r1 = await until(() => b.$('.cl-ring'), 20000, 200);
     if (!r1) { ok('B klingelt', false, { a: await winStatus(a), b: await b.evaluate(() => document.title) }); throw new Error('kein Klingeln bei B'); }
     await b.click('.cl-ring .cl-big');
@@ -130,7 +140,7 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
     await a.waitForTimeout(800);
 
     // --- 2. C ruft A an: Anklopfen ----------------------------------------------------------------------------------------
-    await c.click('#ct-call-a');
+    await dial(c);
     if (OLD) {
       const bs = await until(async () => { const t = await winStatus(c); return /Besetzt/.test(t) && t; }, 15000);
       ok('vorher: C ist sofort besetzt (kein Anklopfen)', bs, await winStatus(c));
@@ -173,7 +183,7 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
 
       // --- 3. C ruft noch einmal: again ---------------------------------------------------------------------------------
       await idle(c);
-      await c.click('#ct-call-a');
+      await dial(c);
       const ag = await until(async () => { const t = await winStatus(c); return /schon angeklopft/.test(t) && t; }, 15000);
       ok('C ruft noch einmal: "… telefoniert noch – du hast schon angeklopft." (409 again)', ag && ag.indexOf('Anna') >= 0, await winStatus(c));
       await a.waitForTimeout(1500);
@@ -181,7 +191,7 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
       await shot(c, 'anrufer-again-breit-dunkel');
 
       // --- 4. D ruft A: "Beenden und annehmen" --------------------------------------------------------------------------
-      await d.click('#ct-call-a');
+      await dial(d);
       const hD = await until(async () => { const h = await held(a); return h.length && h[0]; }, 15000);
       ok('A: Leiste "klopft an" fuer D', hD && hD.mode === 'wait' && hD.text === ND + ' klopft an', hD);
       await a.click('.cl-wait .cl-hold-go');
@@ -198,7 +208,9 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
     // --- 5. A auf Nicht stoeren: B ruft -> stille Leiste ------------------------------------------------------------------
     const dnd = await api(a, 'PUT', '/api/account/status', { state: 'dnd', source: 'manual' });
     ok('A setzt Nicht stoeren (PUT /api/account/status)', dnd.ok && dnd.r.effective === 'dnd', dnd);
-    await b.click('#ct-call-a');
+    if (!OLD) await b.waitForSelector('.us-chip.us-c-dnd', { timeout: 6000 }).catch(() => {});   // B kennt A's Status (chat.status)
+    const askB = await dial(b);
+    ok('B: Rueckfrage "Trotzdem anrufen?" vor dem Anruf (Teil A) und bestaetigt', OLD || askB, askB);
     const kb = await until(async () => { const t = await winStatus(b); return /Klingelt/.test(t) && t; }, 15000);
     ok('B: "Klingelt …" (A sieht davon nur die stille Leiste)', kb && !/Klopft/.test(kb), await winStatus(b));
     if (OLD) {
@@ -231,7 +243,7 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
 
       // --- 6. B ruft binnen 180 s erneut: klingelt normal -----------------------------------------------------------------
       await b.waitForTimeout(3800);
-      await b.click('#ct-call-a');
+      await dial(b);
       const rr = await until(() => a.$('.cl-ring'), 15000);
       ok('Wiederholungsanruf binnen 180 s: klingelt bei A normal (Dialog)', rr && !(await held(a)).length && (await ringing(a)).length === 1);
       await a.click('.cl-ring .cl-red');
@@ -239,7 +251,7 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
 
       // --- 7. D ruft (Nicht stoeren) -> stille Leiste -> "Annehmen" ------------------------------------------------------
       await d.waitForTimeout(3800);
-      await d.click('#ct-call-a');
+      await dial(d);
       const q2 = await until(async () => { const h = await held(a); return h.length && h[0]; }, 15000);
       ok('D ruft: stille Leiste bei A', q2 && q2.mode === 'quiet' && q2.text === 'Anruf von ' + ND + ' – stumm (Nicht stören)', q2);
       await a.click('.cl-quiet .cl-hold-go');
@@ -253,13 +265,13 @@ const noBlink = p => p.evaluate(() => !/📞|ruft an/.test(document.title));
       const a2 = await a.context().newPage();
       a2.on('pageerror', e => console.log('  [pageerror A2] ' + e.message));
       await openDm(a2, U4);
-      await a2.click('#ct-call-a');
+      await dial(a2);
       const rD = await until(() => d.$('.cl-ring'), 20000, 200);
       if (rD) await d.click('.cl-ring .cl-big');
       const sA3 = await connected(a2), sD3 = await connected(d);
       ok('A telefoniert im zweiten Tab mit D', sA3 && sD3, { a2: !!sA3, d: !!sD3 });
       await c.waitForTimeout(1000);
-      await c.click('#ct-call-a');
+      await dial(c);
       const q3 = await until(async () => { const h = await held(a); return h.length && h[0]; }, 15000);
       ok('erster Tab (ohne Gespraech): stille Leiste ohne "Annehmen", Hinweis "anderer Tab oder anderes Gerät"',
          q3 && q3.mode === 'quiet' && !q3.inCall && q3.go === false && /in einem anderen Tab oder auf einem anderen Gerät/.test(q3.note)
