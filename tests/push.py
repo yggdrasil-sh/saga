@@ -739,14 +739,14 @@ def e2e_part(A, Bk, pgA, tok2, key):
     p2 = auth.settings(fresh=True)["push"]
     ok(f"2262-6: Speichern ohne Haken Relais -> relay aus, E2E an ({p2.get('relay')}, {p2.get('apns_e2e_direct')})",
        p2.get("relay") is False and p2.get("apns_e2e_direct") is True)
+    s, html = T_admin("/settings/push", {"action": "relay_check"})
+    ok("2262-6: 'Jetzt pruefen' ohne Relais-Adresse -> Hinweis, nichts gespeichert", "Kein Push-Relais festgelegt." in html
+       and auth.settings(fresh=True)["push"].get("relay") is False)
     s, html = T_admin("/settings/push", {"enabled": "1", "webpush": "1", "ntfy": "1", "unifiedpush": "1", "stream": "1", "relay": "1",
                                          "apns_enabled": "1", "team_id": "ABCDE12345", "key_id": "KEY1234567", "bundle_id": "org.example.saga"})
     p3 = auth.settings(fresh=True)["push"]
     ok(f"2262-6: Speichern ohne Haken E2E -> apns_e2e_direct aus, relay an ({p3.get('relay')}, {p3.get('apns_e2e_direct')})",
        p3.get("relay") is True and p3.get("apns_e2e_direct") is False)
-    s, html = T_admin("/settings/push", {"action": "relay_check"})
-    ok("2262-6: 'Jetzt pruefen' ohne Relais-Adresse -> Hinweis, nichts gespeichert", "Kein Push-Relais festgelegt." in html
-       and auth.settings(fresh=True)["push"].get("relay") is False)
     auth.save_setting("push", pv)
     time.sleep(WAIT)
     return t3, app2
