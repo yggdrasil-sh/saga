@@ -208,6 +208,8 @@ def run(srv):
     auth._settings_cache["v"] = None
     auth.create_user("rw-a", T.PW, "Rita Weg")
     auth.create_user("rw-adm", T.PW, "Admin Weg", is_admin=True)
+    from saga.core import set_user_lang
+    set_user_lang("rw-adm", "de")
     app = T.UA()
     now = time.time()
     with connect() as c, c:
