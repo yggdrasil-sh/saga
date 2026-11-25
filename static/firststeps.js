@@ -22,7 +22,7 @@
   function blocked() {
     var C = window.HKCalls;
     return !!(document.querySelector('.hk-ask, .hk-modal, .cl-win, .cl-run') || document.body.classList.contains('embed')
-      || (C && ((C.busy && C.busy()) || (C.ringing && C.ringing().length))));
+      || (C && ((C.busy && C.busy()) || (C.ringing && C.ringing().length) || (C.held && C.held().length))));   // 2.6: Anklopf-/stille Leiste
   }
   function later(n) {
     if (asked || !F.st || !F.st.ask || document.body.classList.contains('embed')) return;
