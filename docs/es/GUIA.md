@@ -1133,6 +1133,65 @@ clientes propios: `tests/chat_vectors.json` (comprobar con `python3 tools/chat_v
 `node tools/chat_vectors.mjs`). En el navegador, las claves privadas están en IndexedDB; en una ventana privada los chats
 no funcionan.
 
+### Contactos (libreta de direcciones)
+
+Desde Saga 2.6 cada persona tiene su propia **libreta de direcciones**: las personas con las que tratas, con números de
+teléfono, direcciones de correo y tus propias notas sobre cómo dirigirte a ellas. No hay que confundirla con el
+interruptor «Compartir la libreta de direcciones con esta instancia» de la federación: ese solo decide si las personas
+de otros servidores os encuentran por el nombre.
+
+- **Dónde:** en la web, en Ajustes › Espacio de trabajo › **Contactos** (directamente con una dirección con
+  `?settings=contacts`); en la app para iPhone, iPad y Mac, en Ajustes › **Contactos**; en Android, en Ajustes › Datos
+  y servicios › **Contactos**; en la app de Linux, en Ajustes › **Contactos**. Las apps solo muestran la entrada cuando
+  el servidor ya conoce la libreta de direcciones.
+- **Lo que aparece solo:** cada persona con la que compartes un chat (chat directo o grupo libre, también en otro
+  servidor Saga) está automáticamente en tu libreta; con una solicitud de mensaje, solo cuando se ha aceptado. La
+  **dirección de Saga** (el identificador fijo de la persona en el chat, p. ej. `~k3m5…`) viene de ese chat y no se
+  puede cambiar ni quitar por separado. Con **Mensaje** le escribes directamente.
+- **Contactos propios:** **Nuevo contacto** crea una entrada para alguien sin Saga, por ejemplo la consulta del médico,
+  con un nombre y al menos un número de teléfono o una dirección de correo. Cada número y cada dirección lleva un tipo
+  (Móvil, Particular, Trabajo, Otro). Las direcciones de Saga no las puedes introducir tú; solo salen de un chat en
+  común. Hasta 10 números y 10 direcciones por contacto, hasta 2000 contactos creados por ti por cuenta. Al hacer clic
+  en un número se abre la app de teléfono; en una dirección, el programa de correo.
+- **Números de teléfono y prefijo del país:** Saga guarda los números en el formato internacional **E.164**: signo más,
+  prefijo del país y el número sin el cero inicial, p. ej. `+34 612 345 678`. Puedes escribir espacios, guiones y
+  paréntesis. Para números sin `+` con un cero delante (p. ej. `0170 1234567` en Alemania) Saga necesita el **prefijo del
+  país** (49 para Alemania, 43 para Austria, 41 para Suiza). Lo ajustas una vez en Contactos; vale para tu cuenta en
+  todos los dispositivos, y la web y las apps lo proponen según la región de tu dispositivo. Sin prefijo del país, y
+  siempre en países donde los números no empiezan por cero (como España o Norteamérica), escribe el número con `+`,
+  p. ej. `+34 612 345 678`.
+- **Nombre para mí:** un nombre propio para el contacto, p. ej. «Abuela» o «Benni». Aparece **solo en tu libreta** – en
+  los chats tú (como todos) sigues viendo el nombre que eligió la persona.
+- **Tratamiento y saludo:** «tú» o «usted» y un saludo como «Querida Anna», como recordatorio para ti. Saga nunca lo
+  rellena solo ni lo deduce de los chats.
+- **Buscar:** por nombre, dirección de correo o, a partir de tres cifras, por el número (`0170 123` encuentra
+  `+49 170 123…`).
+- **«Quitar de contactos» o «Eliminar contacto»:** el menú **⋯** junto a una persona (Chats › **+ Nueva** o Añadir
+  miembro) tiene dos entradas. **Editar contacto …** lleva directamente a la entrada de la libreta. **Quitar de
+  contactos** solo saca a la persona de tus **sugerencias del chat**: un contacto vacío desaparece; uno con números,
+  direcciones, tratamiento o «Nombre para mí» se queda en la libreta. **Eliminar contacto** en la libreta, en cambio,
+  borra toda la entrada con sus números y direcciones y quita también a la persona de las sugerencias del chat. En
+  ambos casos los chats existentes se mantienen; un nuevo chat en común vuelve a crear un contacto vacío.
+- **Privacidad:** tu libreta está solo en tu propio servidor Saga y **solo la ves tú**: ni otras personas del servidor
+  ni el área de administración. **Nunca va a servidores conectados**; la persona no se entera de que la has anotado ni
+  de qué has anotado. Un contacto no da derechos a nadie: quién puede escribirte lo siguen decidiendo solo los chats en
+  común y tus ajustes del chat. Los números y las direcciones nunca aparecen en el registro del servidor. A diferencia
+  de los chats, la libreta no está cifrada de extremo a extremo: quien administra el servidor podría leerla en la base de
+  datos, igual que tus páginas. Forma parte de tu **copia de seguridad personal** (sección 11, «Copia de seguridad
+  personal») y se borra con tu cuenta.
+- **Cuando una persona se va:** si se borra su cuenta o se quita el servidor conectado, un contacto vacío desaparece;
+  uno con tus propios datos se queda como contacto creado por ti, solo que sin dirección de Saga.
+- **Todavía no:** exportar a la libreta del teléfono, «Llamar a través de Saga» a la red telefónica (Saga 3.0) y
+  contactos como excepción en «No molestar». Los tokens de API y MCP no acceden a la libreta. Interfaz para apps:
+  `docs/APP-API.md` (en alemán), sección «Kontakte».
+
+**Administración – actualización al esquema 38:** la primera versión con libreta de direcciones sube la base de datos
+al esquema **38**. Antes, Saga crea como siempre la copia `…-vor-schema-38.dump` en `/data/backups`. Después rellena una
+vez las libretas: una entrada por cada contacto de chat visible de cada persona (no para los ya quitados con «Quitar de
+contactos»). El arranque espera mientras tanto: unos 0,25 ms por contacto de chat, unos 11 segundos para 47.000; las
+instalaciones pequeñas no lo notan. No hay nada que configurar, ningún ajuste nuevo del `.env` ni puerto nuevo. Volver a
+una versión anterior solo es posible, como con todo cambio de esquema, mediante esa copia.
+
 ### Llamadas (audio, vídeo, pantalla)
 
 En un **chat directo** hay dos botones arriba: **📞 Llamar** y **🎥 Videollamada** (en chats de grupo, libres y de
@@ -1841,7 +1900,8 @@ servidor que hace el administrador, en **su propio** destino y con **su propia**
    hasta 5 destinatarios.
 3. **Qué se guarda:** solo lo que es tuyo: tus páginas y subpáginas, bases de datos con sus entradas, tus archivos e
    imágenes, plantillas, archivo, papelera, versiones, tus comentarios en tus páginas, tareas, marcadores, perfil y
-   ajustes. Cada categoría se puede desactivar; se pueden excluir **árboles de páginas** concretos (con todas las
+   ajustes (desde 2.6 incluye tu libreta de direcciones, ver «Contactos (libreta de direcciones)»). Cada categoría se
+   puede desactivar; se pueden excluir **árboles de páginas** concretos (con todas las
    subpáginas y los archivos que solo aparecen allí). **Nunca** se incluyen: páginas y archivos de otras personas (ni
    siquiera «Compartido conmigo»), listas de usos compartidos ni chats (cifrados de extremo a extremo, pertenecen a
    todos los participantes y no se pueden restaurar sin las claves de los dispositivos). Los **comentarios de otros** en
@@ -1864,7 +1924,9 @@ age -d -i saga-backup.key -o backup.zip saga-20261019-024000.zip.age
 destino y pega la clave privada (solo se envía al servidor para esta operación, no se guarda). Saga restaura **solo en
 tu propia cuenta**, como **páginas nuevas**: los enlaces entre páginas, las relaciones de bases de datos, las bases de
 datos incrustadas, los botones y las imágenes apuntan después a las páginas y archivos nuevos; las páginas existentes no
-cambian. Por defecto: en una página nueva «Restaurado <fecha>»; papelera, tareas y marcadores si quieres. Los
+cambian. Por defecto: en una página nueva «Restaurado <fecha>»; papelera, tareas, marcadores y contactos del chat si quieres («Restaurar
+contactos del chat» restaura también la libreta de direcciones, sin duplicados; direcciones de Saga solo para personas con
+las que ya tienes un chat aquí). Los
 comentarios y ajustes están en la copia para consultarlos, pero no se restauran. Una exportación Markdown (página →
 Exportar) no contiene `daten.json` y por eso no se puede restaurar. Límites al restaurar: `daten.json` como máximo 64 MB
 (`USER_BACKUP_DATA_MB`), como máximo 20.000 archivos (`USER_BACKUP_FILES_MAX`), las 50 versiones más recientes por

@@ -113,6 +113,9 @@ Was die Nummern bedeuten:
 
 - ① Kontakte – Personen, mit denen du schon einmal geschrieben hast.
 
+  Über **⋯** neben einer Person kommst du ab Saga 2.6 mit **Kontakt bearbeiten …** in dein Adressbuch – mit
+  Nummern, E-Mail-Adressen und Anrede, nur für dich sichtbar ([B20 Kontakte](20-kontakte.md)).
+
 Es gibt vier Arten von Unterhaltungen:
 
 - **Direkt-Chat** – du und eine andere Person. Klick einfach auf den Namen.

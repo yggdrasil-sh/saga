@@ -37,6 +37,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   bleibt die Eingabe stehen und der neue Stand wird übernommen; ein schon vergebener Wert bietet „Zum Kontakt“ an. Live
   über `contacts.changed`. Im Chat (Neue Unterhaltung, Mitglied hinzufügen) hat das Menü eines Kontakts zusätzlich
   „Kontakt bearbeiten …“. Neu `static/contacts.js`.
+- **Adressbuch in den Apps, Anleitung und Handbuch** (Bugs-DB 2027a-5 bis -8): iOS/iPadOS (Einstellungen › Kontakte),
+  Android (Einstellungen › Daten & Dienste › Kontakte) und Linux (Einstellungen › Kontakte) können, was das Web kann –
+  Einzelheiten im CHANGELOG von saga-apps. Anleitung (`docs/ANLEITUNG.md`, `docs/en/GUIDE.md`, `docs/es/GUIA.md`):
+  Abschnitt „Kontakte (Adressbuch)“ mit Datenschutz und Admin-Hinweis zur Erstbefüllung bei Schema-Stand 38, dazu
+  „Persönliches Backup“ ergänzt; Benutzer-Handbuch neues Kapitel B20 „Kontakte“ mit Bildern aus Web und Apps;
+  `docs/APP-API.md` „Kontakte“ um „Weichen für später“, `docs/APP-API-FED.md` §2 um den Satz, dass Adressbuch-Felder den
+  Server nie verlassen.
 - **Eigener Status in den Apps** (Bugs-DB 2029-9): iOS/iPadOS (2029-6), Android (2029-7) und Linux (2029-8) können
   jetzt, was das Web seit 2029-5 kann – Mein Status, Erreichbarkeit mit Ausnahmen, Status der Chat-Partner, Rückfrage
   vor dem Anruf, Anklopfen und stille Anrufe; dazu iOS-Fokusfilter „Saga-Status“ und Android „System-Nicht-stören

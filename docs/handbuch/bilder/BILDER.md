@@ -176,6 +176,14 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
 | b18-02-webhook.png | B18 | Web | hell | Webhook anlegen: Adresse und Ereignisse (Signatur mit eigenem Geheimnis) | 1 = Adresse des Empfängers; 2 = Webhook anlegen |
 | b19-01-diagnose-senden.png | B19 | Web | hell | Einstellungen → Hilfe: Diagnose senden (Text + letzte Ereignisse, keine Inhalte) | 1 = kurze Beschreibung; 2 = Diagnose senden → Kennung D-XXXXX für den Admin |
 | b19-02-mein-backup.png | B19 | Web | hell | Mein Backup: Ziel (Nextcloud/WebDAV), Schlüssel, Zeitplan – noch nicht eingerichtet | – |
+| b20-01-kontakte-liste.png | B20 | Web | hell | Einstellungen → Kontakte (Testkonto Anna Ahorn): Hinweis, Suche, Neuer Kontakt, „Benni“ (aus Chat, mit Nummer) und „Carla Test“ (selbst angelegt), Landesvorwahl 49 | – |
+| b20-02-kontakt-detail.png | B20 | Web | hell | Kontakt „Benni“: Saga-Zeile mit „Nachricht“, Nummer (Mobil), Mail (Arbeit), Name für mich, Anrede du, Grußform | – |
+| b20-03-kontakt-bearbeiten.png | B20 | Web | hell | „Benni bearbeiten“: Name für mich, Anrede, Grußform, Nummern und Mails mit Art, Speichern/Abbrechen (Formular nach unten gerollt) | – |
+| b20-04-chat-kontakt-bearbeiten.png | B20 | Web | hell | Chats → Neue Unterhaltung: Menü „⋯“ an Ben Birke mit „Kontakt bearbeiten …“ und „Aus Kontakten entfernen“ | – |
+| b20-05-kontakte-handy.png | B20 | Handy | dunkel | Kontakte im Handy-Browser (390×844, Faktor 1) | – |
+| b20-06-kontakte-ios.png | B20 | iOS | hell | iPhone-App (Simulator, Testkonten): Kontaktliste mit zwei selbst angelegten und vier Kontakten aus Chats, Landesvorwahl, Suche | – |
+| b20-07-kontakt-android.png | B20 | Android | hell | Android-App (Emulator, Testkonto): Kontakt Anna Berg mit Nachricht, Nummer, Mail, Anrede und Grußform | – |
+| b20-08-kontakte-linux.png | B20 | Linux | hell | Linux-App (Testkonten): Kontaktliste mit Person auf anderem Server und Landesvorwahl-Vorschlag | – |
 
 ## Abweichungen von der Gliederung
 
@@ -207,6 +215,11 @@ tools/handbuch-stack.sh                              # alle bekannten Bilder
   setzt die Szene am Ende zurück. App-Bilder aus den App-Durchgängen 2029-6/7/8 übernommen (nur Demo-Konten,
   verkleinert, ohne Metadaten): b13-12 (iOS), b14-08 (Android), b14-09 (Linux). Noch offen: b13-13 (Android Anklopfen),
   b14-07 (iOS Mein Status).
+- Kontakte (2.6, Bugs-DB 2027a-8): b20-01 … b20-08 stammen nicht aus `tools/handbuch-stack.sh`, sondern aus den
+  Testläufen der Schritte 2027a-4 (Web, Chromium 1440×900 bzw. 390×844, Faktor 1), 2027a-5 (iOS-Simulator), 2027a-6
+  (Android-Emulator) und 2027a-7 (Linux) – mit Testkonten („Anna Ahorn“, „Ben Birke“, „Anna Berg“ …) statt Familie
+  Sommer, Nummern und Mails erfunden (`example.org`). App-Bilder verkleinert, alle ohne Metadaten. Eine Szene in
+  `tools/screens-handbuch.py` fehlt noch; Bilder mit Familie Sommer folgen damit.
 - B13 Anrufe: Demo läuft über http – Kamera/Mikrofon ersetzt das Skript im Browser durch ein gezeichnetes Ersatzbild
   (Initialen, keine Gesichter) und stillen Ton; WebRTC läuft echt zwischen den Browser-Kontexten. Seit Durchgang 4
   laufen alle Anrufbilder über den eingebauten Knoten (Art `knoten`, „Alle Anrufe über Knoten“ ab Werk an), auch b13-03.

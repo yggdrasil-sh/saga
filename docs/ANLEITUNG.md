@@ -1308,6 +1308,63 @@ Wiederherstellungsschlüssel abgeleiteten Schlüssel verschlüsselt. Genaues For
 für eigene Clients: `tests/chat_vectors.json` (prüfen mit `python3 tools/chat_vectors.py check` bzw.
 `node tools/chat_vectors.mjs`). Die privaten Schlüssel liegen im Browser in IndexedDB; im privaten Fenster gehen Chats nicht.
 
+### Kontakte (Adressbuch)
+
+Ab Saga 2.6 hat jede Person ihr eigenes **Adressbuch**: die Menschen, mit denen du zu tun hast, mit Telefonnummern,
+E-Mail-Adressen und deinen eigenen Notizen zur Anrede. Nicht zu verwechseln mit dem Schalter „Adressbuch mit dieser
+Instanz teilen“ bei der Föderation – der regelt nur, ob Personen anderer Server euch über den Namen finden.
+
+- **Wo:** im Web unter Einstellungen › Arbeitsbereich › **Kontakte** (direkt per Adresse mit `?settings=contacts`),
+  in der App für iPhone, iPad und Mac unter Einstellungen › **Kontakte**, unter Android unter Einstellungen › Daten &
+  Dienste › **Kontakte**, in der Linux-App unter Einstellungen › **Kontakte**. Die Apps zeigen den Eintrag nur, wenn
+  der Server das Adressbuch schon kennt.
+- **Was von selbst entsteht:** Jede Person, mit der du einen gemeinsamen Chat hast (Direkt-Chat oder freie Gruppe,
+  auch auf einem anderen Saga-Server), steht automatisch in deinem Adressbuch – bei einer Nachrichtenanfrage erst, wenn
+  sie angenommen ist. Die **Saga-Adresse** (die feste Kennung der Person im Chat, z. B. `~k3m5…`) stammt aus diesem
+  Chat und lässt sich weder ändern noch einzeln entfernen. Mit **Nachricht** schreibst du der Person direkt.
+- **Eigene Kontakte:** **Neuer Kontakt** legt einen Eintrag für jemanden ohne Saga an, etwa die Hausarztpraxis – mit
+  Namen und mindestens einer Telefonnummer oder E-Mail-Adresse. Jede Nummer und jede Adresse bekommt eine Art (Mobil,
+  Privat, Arbeit, Sonstige). Saga-Adressen kannst du nicht selbst eintragen; sie entstehen nur aus einem gemeinsamen
+  Chat. Je Kontakt gehen bis zu 10 Nummern und 10 Adressen, je Konto bis zu 2000 selbst angelegte Kontakte. Ein Klick
+  auf eine Nummer öffnet die Telefon-App, ein Klick auf eine Adresse das Mailprogramm.
+- **Telefonnummern und Landesvorwahl:** Saga speichert Nummern im internationalen Format **E.164**: Pluszeichen,
+  Landesvorwahl und Nummer ohne die führende Null, z. B. `+49 170 1234567`. Leerzeichen, Striche und Klammern darfst du
+  mittippen. Für Nummern mit einer Null vorn (z. B. `0170 1234567`) braucht Saga die **Landesvorwahl** (49 für Deutschland, 43 für
+  Österreich, 41 für die Schweiz). Du stellst sie einmal in den Kontakten ein, sie gilt für dein Konto auf allen Geräten;
+  Web und Apps schlagen sie aus der Region deines Geräts vor. Ohne Landesvorwahl – und bei Nummern ohne Null vorn,
+  wie in Spanien oder Nordamerika – gib die Nummer einfach mit `+` ein.
+- **Name für mich:** ein eigener Name für den Kontakt, z. B. „Oma“ oder „Benni“. Er steht **nur in deinem
+  Adressbuch** – in Chats siehst du (wie alle anderen) weiter den Namen, den die Person selbst gewählt hat.
+- **Anrede und Grußform:** „du“ oder „Sie“ und eine Grußform wie „Liebe Anna“ – als Merkhilfe für dich. Saga trägt das
+  nie selbst ein und leitet es auch nicht aus Chats ab.
+- **Suchen:** nach Name, E-Mail-Adresse oder ab drei Ziffern nach der Nummer (`0170 123` findet `+49 170 123…`).
+- **„Aus Kontakten entfernen“ oder „Kontakt löschen“:** Das Menü **⋯** an einer Person (Chats › **+ Neu** bzw.
+  Mitglied hinzufügen) hat zwei Einträge. **Kontakt bearbeiten …** führt direkt zum Eintrag im Adressbuch. **Aus
+  Kontakten entfernen** nimmt die Person nur aus deinen **Chat-Vorschlägen**: Ein leerer Kontakt verschwindet dabei,
+  einer mit Nummern, E-Mail-Adressen, Anrede oder „Name für mich“ bleibt im Adressbuch. **Kontakt löschen** im
+  Adressbuch dagegen löscht den ganzen Eintrag samt Nummern und Adressen und nimmt die Person auch aus den
+  Chat-Vorschlägen. In beiden Fällen bleiben bestehende Chats erhalten; ein neuer gemeinsamer Chat legt wieder einen
+  leeren Kontakt an.
+- **Datenschutz:** Dein Adressbuch liegt nur auf deinem eigenen Saga-Server und ist **nur für dich sichtbar** – nicht
+  für andere Personen auf dem Server und nicht im Admin-Bereich. Es geht **nie an verbundene Server**; die Person
+  erfährt nicht, dass oder was du über sie eingetragen hast. Ein Kontakt gibt niemandem Rechte: Wer dir schreiben darf,
+  entscheiden weiter nur gemeinsame Chats und deine Chat-Einstellungen. Nummern und Adressen stehen nicht im Log des
+  Servers. Ende-zu-Ende-verschlüsselt wie Chats ist das Adressbuch nicht – wer den Server betreibt, könnte es wie deine
+  Seiten in der Datenbank lesen. Es ist Teil deines **persönlichen Backups** (Abschnitt 11, „Persönliches Backup“) und
+  wird mit deinem Konto gelöscht.
+- **Wenn eine Person geht:** Wird ihr Konto gelöscht oder der verbundene Server entfernt, verschwindet ein leerer
+  Kontakt; einer mit deinen eigenen Angaben bleibt als selbst angelegter Kontakt, nur ohne Saga-Adresse.
+- **Noch nicht dabei:** Übernahme ins Adressbuch des Handys, „Über Saga anrufen“ ins Telefonnetz (Saga 3.0) und
+  Kontakte als Ausnahme bei „Nicht stören“. API-Tokens und MCP kommen nicht an das Adressbuch. Schnittstelle für Apps:
+  `docs/APP-API.md`, Abschnitt „Kontakte“.
+
+**Admin – Update auf Schema-Stand 38:** Die erste Version mit Adressbuch hebt die Datenbank auf Schema-Stand **38**.
+Vorher legt Saga wie gewohnt die Sicherung `…-vor-schema-38.dump` in `/data/backups` an. Danach füllt Saga einmal die
+Adressbücher: Für jeden sichtbaren Chat-Kontakt jeder Person entsteht ein Eintrag (wer schon „Aus Kontakten entfernt“
+wurde, nicht). Solange wartet der Start – etwa 0,25 ms je Chat-Kontakt, bei 47.000 rund 11 Sekunden; kleine
+Installationen merken davon nichts. Es gibt nichts einzustellen, keine neue Einstellung der `.env` und keinen neuen
+Port. Zurück auf eine ältere Version geht es wie bei jedem Schema-Wechsel nur über diese Sicherung.
+
 ### Anrufe (Audio, Video, Bildschirm)
 
 Im **Direkt-Chat** stehen oben zwei Knöpfe: **📞 Anrufen** und **🎥 Videoanruf** (in Gruppen-, freien und Seiten-Chats
@@ -2057,7 +2114,8 @@ Admins, in ihr **eigenes** Ziel und mit ihrem **eigenen** Schlüssel.
    eintragen; bis zu 5 Empfänger.
 3. **Was gesichert wird:** nur, was dir gehört – eigene Seiten und Unterseiten, Datenbanken samt Einträgen, eigene
    Dateien und Bilder, Vorlagen, Archiv, Papierkorb, Versionen, eigene Kommentare auf eigenen Seiten, Aufgaben,
-   Lesezeichen, Profil und Einstellungen. Jede Kategorie lässt sich abschalten; einzelne **Seitenbäume** (mit allen
+   Lesezeichen, Profil und Einstellungen (dazu gehört ab 2.6 dein Adressbuch, siehe „Kontakte (Adressbuch)“). Jede
+   Kategorie lässt sich abschalten; einzelne **Seitenbäume** (mit allen
    Unterseiten und Dateien, die nur dort vorkommen) lassen sich ausschließen. **Nie** enthalten: Seiten und Dateien
    anderer Personen (auch nicht „Mit mir geteilt“), Freigabe-Listen und Chats (Ende-zu-Ende-verschlüsselt, gehören allen
    Beteiligten und lassen sich ohne die Geräteschlüssel nicht wiederherstellen). **Kommentare anderer** auf deinen Seiten
@@ -2079,8 +2137,9 @@ age -d -i saga-backup.key -o backup.zip saga-20261019-024000.zip.age
 aus dem eigenen Ziel wählen, privaten Schlüssel einfügen (geht nur für diesen Vorgang an den Server, wird nicht
 gespeichert). Saga spielt **nur ins eigene Konto** ein, als **neue Seiten** – Verweise zwischen den Seiten,
 Datenbank-Relationen, eingebettete Datenbanken, Schaltflächen und Bilder zeigen danach auf die neuen Seiten und Dateien;
-bestehende Seiten bleiben unverändert. Standard: in eine neue Seite „Wiederhergestellt <Datum>“; Papierkorb, Aufgaben und
-Lesezeichen auf Wunsch. Kommentare und Einstellungen stehen zum Nachlesen im Backup, werden aber nicht eingespielt. Ein
+bestehende Seiten bleiben unverändert. Standard: in eine neue Seite „Wiederhergestellt <Datum>“; Papierkorb, Aufgaben,
+Lesezeichen und Chat-Kontakte auf Wunsch („Chat-Kontakte übernehmen“ spielt auch das Adressbuch ein – ohne Dubletten;
+Saga-Adressen nur für Personen, mit denen du hier schon einen Chat hast). Kommentare und Einstellungen stehen zum Nachlesen im Backup, werden aber nicht eingespielt. Ein
 Markdown-Export (Seite → Exportieren) enthält kein `daten.json` und lässt sich daher nicht einspielen. Grenzen beim
 Einspielen: `daten.json` höchstens 64 MB (`USER_BACKUP_DATA_MB`), höchstens 20 000 Dateien (`USER_BACKUP_FILES_MAX`), je
 Seite die neuesten 50 Versionen. Die hochgeladene Datei wird nach dem Einspielen sofort gelöscht – auch nach einem Fehler;

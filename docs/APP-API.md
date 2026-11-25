@@ -4101,3 +4101,21 @@ an. Zusammenfassung: `address_book` = angelegte bzw. ergänzte Kontakte.
 anderen), Bearbeiten (Name für mich, Anrede —/du/Sie, Grußform, Nummern/Mails mit Typ), Neuer Kontakt, Löschen mit
 Bestätigung. Bei `409` mit `contact` den neuen Stand übernehmen und die Eingabe erneut anbieten. Unbekannte Felder
 ignorieren.
+
+**Weichen für später** (vorgesehen, in 2027a nicht gebaut – damit spätere Schritte das Adressbuch nicht umbauen müssen):
+
+- **Kollegin, Pläne mit Kontakten (K-E):** Pläne adressieren Kontakte als `contact:<id>` (die Muster in
+  `saga/tools.py` `_READ_RE` und `saga/ai_ctx.py` `READ_RE` lassen das schon zu). Ob eine ID der Person gehört, prüft
+  ausschließlich `contacts.owned(c, uid, ids)` (fremde und unbekannte IDs fehlen in der Antwort) – nie eine eigene
+  Abfrage auf `contact`.
+- **Anrede für die Kollegin (K-H):** `form`/`salutation` liest die Kollegin nur über eine eigene Lesefunktion im
+  Kontakte-Modul, die genau diese beiden Felder eines eigenen Kontakts liefert – nicht über `GET /api/contacts` und nie
+  aus Chats abgeleitet (RT-41). Gesetzt wird beides weiter nur von der Person selbst.
+- **Export ins System-Adressbuch (2027b):** iOS/Android übernehmen Kontakte auf Wunsch ins Adressbuch des Geräts;
+  vorgesehen ist, dafür die bestehende API (`GET /api/contacts`) zu lesen. Einzelheiten folgen mit 2027b.
+- **Öffentliche Adressen `name@domain` (2113, Saga 2.7):** werden `kind: "fed"` mit dem Wert `name@domain`; Eingabe in
+  2027a abgelehnt (`400`). Apps überspringen unbekannte `kind`-Werte wie unbekannte Felder.
+- **Telefon, Anrufer-Erkennung und Status-Ausnahmen (3.0-A):** Zuordnung „wer ruft an / wen rufe ich“ über
+  `contacts.contact_for(c, uid, kind, value)` (Wert schon normalisiert, z. B. E.164) bzw. `contacts.addresses(c, uid,
+  id)`. Die Status-Ausnahmen `{type: "contact"}` und `{type: "e164"}` sind reserviert und bleiben bis dahin `400`
+  (`user_status.EXC_RESERVED`); wer sie freischaltet, löst sie über `contact_for()` auf.

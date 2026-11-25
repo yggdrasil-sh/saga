@@ -2,7 +2,7 @@
 
 **Gilt für:** Web · Handy-Browser · iOS/iPadOS/Mac · Android · Linux (Mein Backup nur Web)
 
-[← Übersicht](../README.md)
+[← Übersicht](../README.md) · [Weiter: B20 Kontakte →](20-kontakte.md)
 
 ---
 
@@ -199,4 +199,4 @@ bequemer.
 
 ---
 
-[← Übersicht](../README.md)
+[← Übersicht](../README.md) · [Weiter: B20 Kontakte →](20-kontakte.md)

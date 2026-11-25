@@ -62,6 +62,9 @@ suchen (entprellt); dasselbe gilt für `GET /api/chat/people` und `GET /api/shar
 `PUT /api/account/federation {"directory": false|true}` – „In Adressbüchern verbundener Server erscheinen“
 (Standard an). Wirkt sofort (verbundene Server löschen den Eintrag). Den Schalter nur zeigen, wenn `federation` true ist.
 Im Abgleich stehen nur Anzeigename, Bild-Stand, Handle und ggf. öffentlicher Name – nie Anmeldename, E-Mail, Gruppen.
+Das persönliche Adressbuch (Kontakte, `contacts2`, ab 2.6 – `docs/APP-API.md` „Kontakte“) ist davon getrennt: „Name für
+mich“, Anrede, Grußform, Telefonnummern und E-Mail-Adressen verlassen den eigenen Server nie – kein Server-zu-Server-
+Aufruf trägt sie, und die Person auf dem anderen Server erfährt nichts davon.
 
 ## 3. Krypto-Format `saga-chat/v2`
 

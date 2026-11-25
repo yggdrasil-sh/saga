@@ -1087,6 +1087,61 @@ encrypted with a key derived from the recovery key via `crypto_pwhash` (Argon2id
 `python3 tools/chat_vectors.py check` or `node tools/chat_vectors.mjs`). In the browser the private keys live in
 IndexedDB; chats don't work in a private window.
 
+### Contacts (address book)
+
+From Saga 2.6 every person has their own **address book**: the people you deal with, with phone numbers, email
+addresses and your own notes on how to address them. Not to be confused with the switch “Share the address book with
+this instance” in federation – that only controls whether people on other servers can find you by name.
+
+- **Where:** on the web under Settings › Workspace › **Contacts** (directly via an address with `?settings=contacts`),
+  in the app for iPhone, iPad and Mac under Settings › **Contacts**, on Android under Settings › Data & services ›
+  **Contacts**, in the Linux app under Settings › **Contacts**. The apps only show the entry once the server knows the
+  address book.
+- **What appears by itself:** every person you share a chat with (direct chat or free group, also on another Saga
+  server) is in your address book automatically – for a message request only once it has been accepted. The **Saga
+  address** (the person's fixed ID in the chat, e.g. `~k3m5…`) comes from that chat and can neither be changed nor
+  removed on its own. **Message** writes to the person directly.
+- **Your own contacts:** **New contact** creates an entry for someone without Saga, such as the doctor's office – with
+  a name and at least one phone number or email address. Every number and address gets a type (Mobile, Home, Work,
+  Other). You can't enter Saga addresses yourself; they only come from a shared chat. Up to 10 numbers and 10 addresses
+  per contact, up to 2000 contacts you created per account. Clicking a number opens the phone app, clicking an address
+  opens the mail program.
+- **Phone numbers and country code:** Saga stores numbers in the international **E.164** format: plus sign, country
+  code and the number without the leading zero, e.g. `+49 170 1234567`. You may type spaces, dashes and brackets. For
+  numbers starting with a zero (e.g. `0170 1234567`) Saga needs the **country code** (49 for Germany, 43 for Austria, 41 for
+  Switzerland). You set it once in Contacts; it applies to your account on all devices, and web and apps suggest it from
+  your device's region. Without a country code – and for numbers without a leading zero, as in Spain or North
+  America – simply enter the number with `+`.
+- **Name for me:** your own name for the contact, e.g. “Grandma” or “Benny”. It appears **only in your address book** –
+  in chats you (like everyone else) keep seeing the name the person chose.
+- **Form of address and greeting:** “informal” or “formal” and a greeting such as “Dear Anna” – a reminder for you.
+  Saga never fills this in itself and never derives it from chats.
+- **Search:** by name, email address or, from three digits, by number (`0170 123` finds `+49 170 123…`).
+- **“Remove from contacts” or “Delete contact”:** the **⋯** menu next to a person (Chats › **+ New** or Add member)
+  has two entries. **Edit contact …** takes you straight to the entry in the address book. **Remove from contacts**
+  only takes the person out of your **chat suggestions**: an empty contact disappears, one with numbers, email
+  addresses, form of address or “Name for me” stays in the address book. **Delete contact** in the address book, on the
+  other hand, deletes the whole entry with its numbers and addresses and also removes the person from the chat
+  suggestions. Either way existing chats stay; a new shared chat creates an empty contact again.
+- **Privacy:** your address book lives only on your own Saga server and is **visible only to you** – not to other
+  people on the server and not in the admin area. It **never goes to connected servers**; the person doesn't learn that
+  or what you noted about them. A contact gives nobody any rights: who may write to you is still decided only by shared
+  chats and your chat settings. Numbers and addresses never appear in the server log. Unlike chats, the address book is
+  not end-to-end encrypted – whoever runs the server could read it in the database, like your pages. It is part of your
+  **personal backup** (section 11, “Personal backup”) and is deleted with your account.
+- **When a person leaves:** if their account is deleted or the connected server is removed, an empty contact
+  disappears; one with your own details stays as a contact you created, just without the Saga address.
+- **Not yet included:** export to the phone's address book, “Call via Saga” into the phone network (Saga 3.0) and
+  contacts as exceptions for “Do not disturb”. API tokens and MCP can't access the address book. Interface for apps:
+  `docs/APP-API.md` (German), section “Kontakte”.
+
+**Admin – update to schema version 38:** the first version with the address book raises the database to schema
+version **38**. Before that Saga creates the backup `…-vor-schema-38.dump` in `/data/backups` as usual. Then Saga fills
+the address books once: one entry for every visible chat contact of every person (not for those already removed with
+“Remove from contacts”). The start waits for this – about 0.25 ms per chat contact, around 11 seconds for 47,000; small
+installations won't notice. There is nothing to configure, no new `.env` setting and no new port. Going back to an
+older version works, as with every schema change, only through this backup.
+
 ### Calls (audio, video, screen)
 
 In a **direct chat** there are two buttons at the top: **📞 Call** and **🎥 Video call** (in group, free and page chats
@@ -1772,7 +1827,8 @@ to **their own** target and with **their own** key.
    the last 6 characters) or enter your own public key (`age1…`, `ssh-ed25519 …`); up to 5 recipients.
 3. **What is backed up:** only what belongs to you – your own pages and subpages, databases with their entries, your
    own files and images, templates, archive, trash, versions, your own comments on your own pages, tasks, bookmarks,
-   profile and settings. Every category can be turned off; individual **page trees** (with all subpages and files that
+   profile and settings (from 2.6 this includes your address book, see “Contacts (address book)”). Every category can
+   be turned off; individual **page trees** (with all subpages and files that
    only appear there) can be excluded. **Never** included: pages and files of other people (not even “Shared with
    me”), share lists and chats (end-to-end encrypted, they belong to everyone involved and can't be restored without
    the device keys). **Comments by others** on your pages are **off** by default (they belong to the people who wrote
@@ -1793,7 +1849,8 @@ age -d -i saga-backup.key -o backup.zip saga-20261019-024000.zip.age
 target, paste the private key (only sent to the server for this one operation, not stored). Saga restores **only into
 your own account**, as **new pages** – links between the pages, database relations, embedded databases, buttons and
 images then point to the new pages and files; existing pages stay unchanged. Default: into a new page “Restored
-<date>”; trash, tasks and bookmarks if you want. Comments and settings are in the backup for reference but aren't
+<date>”; trash, tasks, bookmarks and chat contacts if you want (“Restore chat contacts” also restores the address
+book – without duplicates; Saga addresses only for people you already have a chat with here). Comments and settings are in the backup for reference but aren't
 restored. A Markdown export (page → Export) contains no `daten.json` and therefore can't be restored. Limits when
 restoring: `daten.json` at most 64 MB (`USER_BACKUP_DATA_MB`), at most 20,000 files (`USER_BACKUP_FILES_MAX`), the
 newest 50 versions per page. The uploaded file is deleted right after restoring – also after an error; only after a

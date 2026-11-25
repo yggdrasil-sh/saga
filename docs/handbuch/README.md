@@ -70,6 +70,7 @@ Nicht jede Funktion gibt es überall. Was abweicht, steht im letzten Abschnitt j
 | B17 | [Apps – Saga auf iPhone, iPad, Mac, Android und Linux](benutzer/17-apps.md) | fertig |
 | B18 | [Für Fortgeschrittene: API-Tokens, Webhooks, MCP](benutzer/18-api-webhooks-mcp.md) | fertig |
 | B19 | [Hilfe: Diagnose senden, Mein Backup](benutzer/19-hilfe.md) | fertig |
+| B20 | [Kontakte – dein Adressbuch](benutzer/20-kontakte.md) – Nummern, Mails, Anrede, nur für dich | fertig (ab 2.6) |
 
 ## Admin-Handbuch
 
