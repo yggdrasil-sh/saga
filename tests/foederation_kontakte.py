@@ -24,7 +24,11 @@ T.I["b"].update(port=PB_, admin=PB + 2, db="saga_fkb" + SX, url=f"http://localho
 T.I["c"] = dict(T.I["b"], port=PC, admin=PB + 4, db="saga_fkc" + SX, url=f"http://localhost:{PC}", host=f"localhost:{PC}", state="/tmp/fedkon-c" + SX,
                 allow=f"127.0.0.1:{PA}", secret=T.I["b"]["secret"][::-1])
 HA, HB, HC = T.I["a"]["host"], T.I["b"]["host"], T.I["c"]["host"]
-ok, wait, sql = T.ok, T.wait, T.sql
+wait, sql = T.wait, T.sql
+
+
+def ok(n, c, info=""):
+    T.ok(n + (f"  -- {str(info)[:500]}" if info and not c else ""), c)
 api, User = FC.api, FC.User
 SEEN = []
 
