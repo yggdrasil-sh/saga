@@ -5278,5 +5278,22 @@
  "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "คุณกำลังคุยสายอยู่ในแท็บอื่นหรือบนอุปกรณ์อื่น",
  "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "ไม่สามารถวางสายปัจจุบันได้อย่างแน่นอน – จึงยังไม่ได้รับสายเรียกเข้า โปรดลองอีกครั้ง",
  "Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)": "แคชการค้นหา: {d} หน้า ประมาณ {m} MB (ขีดจำกัด {c} หน้า, {x} MB AI_CACHE_MB)",
- "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} คำถามเห็นหน้าที่แชร์มากกว่า {k} หน้า – ค้นหาเฉพาะหน้าที่แก้ไขล่าสุด (ข้ามไปไม่เกิน {h} หน้า)"
+ "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} คำถามเห็นหน้าที่แชร์มากกว่า {k} หน้า – ค้นหาเฉพาะหน้าที่แก้ไขล่าสุด (ข้ามไปไม่เกิน {h} หน้า)",
+ "Bitte mindestens eine Telefonnummer oder E-Mail-Adresse angeben.": "โปรดระบุหมายเลขโทรศัพท์หรืออีเมลอย่างน้อยหนึ่งรายการ",
+ "Der Kontakt wurde inzwischen geändert – bitte neu laden.": "รายชื่อติดต่อถูกเปลี่ยนแปลงในระหว่างนี้ – โปรดโหลดใหม่",
+ "Der Name ist zu lang (höchstens {n} Zeichen).": "ชื่อยาวเกินไป (ไม่เกิน {n} ตัวอักษร)",
+ "Die Grußform ist zu lang (höchstens {n} Zeichen).": "คำทักทายยาวเกินไป (ไม่เกิน {n} ตัวอักษร)",
+ "Diese Adresse gehört schon zu einem anderen Kontakt.": "ที่อยู่นี้เป็นของรายชื่อติดต่ออื่นแล้ว",
+ "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "สำหรับหมายเลขในประเทศ โปรดตั้งรหัสประเทศหรือขึ้นต้นหมายเลขด้วย +",
+ "Höchstens {n} E-Mail-Adressen je Kontakt.": "อีเมลได้ไม่เกิน {n} รายการต่อรายชื่อติดต่อ",
+ "Höchstens {n} Telefonnummern je Kontakt.": "หมายเลขโทรศัพท์ได้ไม่เกิน {n} รายการต่อรายชื่อติดต่อ",
+ "Höchstens {n} eigene Kontakte je Konto.": "รายชื่อติดต่อของตนเองได้ไม่เกิน {n} รายการต่อบัญชี",
+ "Kontakt nicht gefunden.": "ไม่พบรายชื่อติดต่อ",
+ "Saga-Adressen entstehen nur aus gemeinsamen Chats.": "ที่อยู่ Saga มาจากแชทที่มีร่วมกันเท่านั้น",
+ "Ungültige Anrede.": "รูปแบบการเรียกขานไม่ถูกต้อง",
+ "Ungültige E-Mail-Adresse.": "อีเมลไม่ถูกต้อง",
+ "Ungültige Landesvorwahl.": "รหัสประเทศไม่ถูกต้อง",
+ "Ungültige Telefonnummer.": "หมายเลขโทรศัพท์ไม่ถูกต้อง",
+ "Ungültiger Adresstyp.": "ประเภทที่อยู่ไม่ถูกต้อง",
+ "Adressbuch (Name für mich, Anrede, Telefonnummern, E-Mail-Adressen)": "สมุดรายชื่อ (ชื่อสำหรับฉัน รูปแบบการเรียกขาน หมายเลขโทรศัพท์ อีเมล)"
 }

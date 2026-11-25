@@ -70,7 +70,7 @@ IMPORT_FILES_MAX = max(1, int(E.get("USER_BACKUP_FILES_MAX", "20000")))
 KEY_TTL = 900
 MB = backups.MB
 KV_KEYS = ("lang", "notify_off", "push", "ai_history", "fed_directory", "chat_receipts", "chat_online",
-           "task_due")       # eigene Einstellungen (keine Sicherheitsdaten; 2.4: Gelesen/Online; 2.5: taegliche Zusammenfassung)
+           "task_due", "contacts.cc")       # eigene Einstellungen (keine Sicherheitsdaten; 2.4: Gelesen/Online; 2.5: taegliche Zusammenfassung)
 CATS = ("pages", "templates", "archive", "trash", "versions", "files", "comments", "comments_others", "tasks", "bookmarks", "settings")
 CAT_DEFAULT = {k: k != "comments_others" for k in CATS}
 SCHEDULES = ("off", "weekly", "daily")
@@ -406,6 +406,8 @@ def collect(c, uid, cfg):
             settings[k] = v
     # 2.5: Kontakte im Chat (Kennung als Handle, nie Anmeldename; Chats selbst nicht - Ende-zu-Ende-verschluesselt)
     chat_contacts = contacts.export(c, uid) if cats.get("settings", True) else []
+    # 2.6 (Bugs-DB 2027a): Adressbuch (Name fuer mich, Anrede, Nummern, Mails; feste Adressen als Handle)
+    book = contacts.book_export(c, uid) if cats.get("settings", True) else []
     from saga import user_status                  # 2.6 (Bugs-DB 2029): Status-Einstellungen und Ausnahmen (Handles), nicht der Zustand
     status = user_status.export(c, uid) if cats.get("settings", True) else None
     out_notes = []
@@ -423,7 +425,8 @@ def collect(c, uid, cfg):
     data = {"format": FORMAT, "saga": VERSION, "created": time.time(), "account": account, "settings": settings,
             "options": {k: bool(cats.get(k, CAT_DEFAULT[k])) for k in CATS}, "excluded": len([x for x in exclude]),
             "notes": out_notes, "versions": versions, "comments": comments, "files": list(files.values()),
-            "tasks": tasks, "task_sources": task_sources, "bookmarks": bookmarks, "chat_contacts": chat_contacts}
+            "tasks": tasks, "task_sources": task_sources, "bookmarks": bookmarks, "chat_contacts": chat_contacts,
+            "contacts": book}
     if status:
         data["user_status"] = status
     return data, files, notes
@@ -478,7 +481,8 @@ def _readme(uid, name, data):
              "  seiten/ vorlagen/ archiv/ papierkorb/  – " + t("Seiten als Markdown"),
              "  dateien/       – " + t("eigene hochgeladene Dateien und Bilder"),
              "  profil/        – " + t("Profilbild"),
-             "  daten.json → chat_contacts – " + t("Chat-Kontakte (Name und Kennung, ohne Nachrichten)"), "",
+             "  daten.json → chat_contacts – " + t("Chat-Kontakte (Name und Kennung, ohne Nachrichten)"),
+             "  daten.json → contacts – " + t("Adressbuch (Name für mich, Anrede, Telefonnummern, E-Mail-Adressen)"), "",
              t("Nicht enthalten: Seiten und Dateien anderer Personen (auch nicht, was mit dir geteilt ist) und Chats (Ende-zu-Ende-verschlüsselt)."),
              ""]
     return "\n".join(lines)
@@ -538,7 +542,7 @@ def build_zip(uid, cfg, path, limit, name):
         z.put("LIESMICH.txt", _readme(uid, name, data))
         counts = {"pages": len(notes), "files": sum(1 for f in files.values() if f.get("path")), "versions": len(data["versions"]),
                   "comments": len(data["comments"]), "tasks": len(data["tasks"]), "bookmarks": len(data["bookmarks"]),
-                  "chat_contacts": len(data.get("chat_contacts") or [])}
+                  "chat_contacts": len(data.get("chat_contacts") or []), "contacts": len(data.get("contacts") or [])}
         man = {"format": FORMAT, "saga": VERSION, "schema": db.SCHEMA_VERSION, "account": uid, "created": int(data["created"]),
                "created_utc": datetime.fromtimestamp(data["created"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                "counts": counts, "options": data["options"], "files": z.sums}
@@ -1150,13 +1154,19 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
         if opts.get("contacts"):                       # 2.5: Kontakte (lokale nur, mit denen ein Chat erlaubt ist)
             ncon = contacts.restore(c, uid, data.get("chat_contacts"),
                                     may_local=lambda ref: chat.may_contact(c, uid, contacts.local_uid(c, ref) or "~"))
+        nbook = 0
+        if opts.get("contacts"):                       # 2.6 (Bugs-DB 2027a): Adressbuch (feste Adressen nur mit sichtbarem Chat-Kontakt)
+            nbook = contacts.book_restore(c, uid, data.get("contacts"))
+            cc = (data.get("settings") or {}).get("contacts.cc") if isinstance(data.get("settings"), dict) else None
+            if isinstance(cc, str) and re.fullmatch(r"[1-9]\d{0,2}", cc):
+                c.execute("INSERT INTO user_kv (uid, k, v) VALUES (?, 'contacts.cc', ?) ON CONFLICT (uid, k) DO NOTHING", (uid, cc))
         if opts.get("contacts"):                       # 2.6 (Bugs-DB 2029): Status-Einstellungen/Ausnahmen, nur ohne eigene
             from saga import user_status
             user_status.restore(c, uid, data.get("user_status"))
         if folder or made:
             tree_changed(c, uid, ([folder] if folder else []) + made, "created")
     return {"pages": len(made), "files": len(fmap), "versions": versions, "tasks": tasks, "task_sources": srcs, "bookmarks": bms,
-            "contacts": ncon, "skipped": skipped, "folder": folder}
+            "contacts": ncon, "address_book": nbook, "skipped": skipped, "folder": folder}
 
 
 def _import_task_sources(c, uid, data, nmap, made):

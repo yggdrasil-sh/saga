@@ -5278,5 +5278,22 @@
  "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "You are on a call in another tab or on another device.",
  "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "The current call could not be ended reliably – the incoming call was not answered. Please try again.",
  "Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)": "Search cache: {d} pages, about {m} MB (limit {c} pages, {x} MB AI_CACHE_MB)",
- "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} questions saw more shared pages than {k} – the most recently changed were searched (at most {h} left out)"
+ "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} questions saw more shared pages than {k} – the most recently changed were searched (at most {h} left out)",
+ "Bitte mindestens eine Telefonnummer oder E-Mail-Adresse angeben.": "Please enter at least one phone number or email address.",
+ "Der Kontakt wurde inzwischen geändert – bitte neu laden.": "The contact has changed in the meantime – please reload.",
+ "Der Name ist zu lang (höchstens {n} Zeichen).": "The name is too long (at most {n} characters).",
+ "Die Grußform ist zu lang (höchstens {n} Zeichen).": "The greeting is too long (at most {n} characters).",
+ "Diese Adresse gehört schon zu einem anderen Kontakt.": "This address already belongs to another contact.",
+ "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "For national numbers, please set the country code or start the number with +.",
+ "Höchstens {n} E-Mail-Adressen je Kontakt.": "At most {n} email addresses per contact.",
+ "Höchstens {n} Telefonnummern je Kontakt.": "At most {n} phone numbers per contact.",
+ "Höchstens {n} eigene Kontakte je Konto.": "At most {n} own contacts per account.",
+ "Kontakt nicht gefunden.": "Contact not found.",
+ "Saga-Adressen entstehen nur aus gemeinsamen Chats.": "Saga addresses only come from shared chats.",
+ "Ungültige Anrede.": "Invalid form of address.",
+ "Ungültige E-Mail-Adresse.": "Invalid email address.",
+ "Ungültige Landesvorwahl.": "Invalid country code.",
+ "Ungültige Telefonnummer.": "Invalid phone number.",
+ "Ungültiger Adresstyp.": "Invalid address type.",
+ "Adressbuch (Name für mich, Anrede, Telefonnummern, E-Mail-Adressen)": "Address book (name for me, form of address, phone numbers, email addresses)"
 }

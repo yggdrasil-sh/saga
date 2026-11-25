@@ -39,6 +39,7 @@ from saga import pmdiag                        # 2.5 (T6): Editor-Diagnose POST 
 from saga import clientlog                     # 2.5: Fehlerberichte/Diagnose POST /api/client/log|diag (Server-Log + diag_event)
 from saga import diagstore                     # 2.5: Diagnose-Meldungen in der DB (Admin -> Diagnose), Puffer + Aufraeumen
 from saga import contacts                        # 2.5: Kontakte im Chat (Tabelle chat_contact, Endpunkte in saga.chat)
+from saga import contact_book                    # 2.6 (Bugs-DB 2027a): Adressbuch /api/contacts (Tabellen contact, contact_addr)
 from saga import firststeps                      # 2.6 (Bugs-DB 2031): Erste Schritte /api/first-steps
 from saga import testclock                       # 2.6 (K-T 2265): Testuhr /_test/... nur mit SAGA_TEST_HOOKS=1 und von 127.0.0.1
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, SecHeaders, title
@@ -100,6 +101,7 @@ async def lifespan(_app):
     bookorbit.start()                                        # 2.5: BookOrbit-Tokens etwa taeglich erneuern
     await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
     await asyncio.to_thread(contacts.backfill_once)          # 2.5: Kontakte rueckwirkend aus vorhandenen Chats (einmalig)
+    await asyncio.to_thread(contacts.book_fill_once)         # 2.6 (2027a): Adressbuch aus den Kontakten fuellen (einmalig, Migration 38)
 
     async def _gc_loop():
         purged = 0.0
@@ -377,6 +379,7 @@ app.include_router(gallery.router)           # Vorlagengalerie (2.5): /api/galle
 app.include_router(covers.router)            # Titelbild-Galerie (2.5): /covers/<id>.jpg (oeffentlich), /api/covers, /api/account/pages
 app.include_router(siegel.router)            # Saga-Siegel (2.5): /siegel/<farbe>/<motiv>.svg|.png (oeffentlich), /api/siegel
 app.include_router(user_status.router)       # 2.6 (Bugs-DB 2029): /api/account/status, /api/account/status/prefs
+app.include_router(contact_book.router)      # 2.6 (Bugs-DB 2027a): Adressbuch /api/contacts..., Feature contacts2
 app.include_router(people.router)            # Personen (2.5, Paket 1): GET /api/notes/{nid}/people (Auswahl erwaehnbar/zuweisbar)
 app.include_router(apitok.router)            # 2.5 (Paket 1 E5): /api/account/api-tokens (Sitzung, Bestaetigung)
 app.include_router(api_v1.router)            # 2.5 (Paket 1 E5): oeffentliche API /api/v1/... (nur Bearer-Token sga_)

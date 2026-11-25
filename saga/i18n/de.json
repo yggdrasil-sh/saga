@@ -5278,5 +5278,22 @@
  "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.",
  "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.",
  "Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)": "Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)",
- "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)"
+ "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)",
+ "Bitte mindestens eine Telefonnummer oder E-Mail-Adresse angeben.": "Bitte mindestens eine Telefonnummer oder E-Mail-Adresse angeben.",
+ "Der Kontakt wurde inzwischen geändert – bitte neu laden.": "Der Kontakt wurde inzwischen geändert – bitte neu laden.",
+ "Der Name ist zu lang (höchstens {n} Zeichen).": "Der Name ist zu lang (höchstens {n} Zeichen).",
+ "Die Grußform ist zu lang (höchstens {n} Zeichen).": "Die Grußform ist zu lang (höchstens {n} Zeichen).",
+ "Diese Adresse gehört schon zu einem anderen Kontakt.": "Diese Adresse gehört schon zu einem anderen Kontakt.",
+ "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.",
+ "Höchstens {n} E-Mail-Adressen je Kontakt.": "Höchstens {n} E-Mail-Adressen je Kontakt.",
+ "Höchstens {n} Telefonnummern je Kontakt.": "Höchstens {n} Telefonnummern je Kontakt.",
+ "Höchstens {n} eigene Kontakte je Konto.": "Höchstens {n} eigene Kontakte je Konto.",
+ "Kontakt nicht gefunden.": "Kontakt nicht gefunden.",
+ "Saga-Adressen entstehen nur aus gemeinsamen Chats.": "Saga-Adressen entstehen nur aus gemeinsamen Chats.",
+ "Ungültige Anrede.": "Ungültige Anrede.",
+ "Ungültige E-Mail-Adresse.": "Ungültige E-Mail-Adresse.",
+ "Ungültige Landesvorwahl.": "Ungültige Landesvorwahl.",
+ "Ungültige Telefonnummer.": "Ungültige Telefonnummer.",
+ "Ungültiger Adresstyp.": "Ungültiger Adresstyp.",
+ "Adressbuch (Name für mich, Anrede, Telefonnummern, E-Mail-Adressen)": "Adressbuch (Name für mich, Anrede, Telefonnummern, E-Mail-Adressen)"
 }

@@ -11,7 +11,8 @@ import uvicorn
 
 class _HideSecrets(logging.Filter):
     """Zugriffs-Log: Kopplungs-Code aus /app/pair?c=... und Bestaetigungs-Wert aus /app/handoff?go=... unkenntlich machen.
-    Anrufe (/api/calls...): keine IP-Adresse im Log der Signalisierung (wer wann mit wem telefoniert, bleibt so unverknuepft)."""
+    Anrufe (/api/calls...): keine IP-Adresse im Log der Signalisierung (wer wann mit wem telefoniert, bleibt so unverknuepft).
+    Adressbuch (/api/contacts?q=...): Suchbegriff unkenntlich (2.6, Bugs-DB 2027a - Nummern/Mails nie ins Log)."""
     RX = re.compile(r"([?&](?:c|go)=)[^&\s]+")
 
     def filter(self, record):
@@ -22,6 +23,10 @@ class _HideSecrets(logging.Filter):
                 record.args = tuple(a)
             elif record.args[2].startswith("/api/calls"):
                 record.args = ("-",) + tuple(record.args[1:])
+            elif record.args[2].startswith("/api/contacts") and "?" in record.args[2]:    # 2.6 (2027a): Suche (Nummern/Mails) nie ins Log
+                a = list(record.args)
+                a[2] = a[2].split("?", 1)[0] + "?***"
+                record.args = tuple(a)
             elif record.args[2].startswith("/internal/media/"):     # Berechtigungsabfrage von saga-media (eigene Zeile dort)
                 return False
         return True

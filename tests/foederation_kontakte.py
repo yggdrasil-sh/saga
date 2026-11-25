@@ -4,19 +4,25 @@ Geprueft: Direkt-Chat A -> B (Person anderer Server als Kontakt, Kennung '~x@hos
 dem Annehmen (eine offene Nachrichtenanfrage macht niemanden zum Kontakt), freie Gruppe mit Personen anderer Server (alle
 gegenseitig, auch die Kopie auf dem anderen Server), Hinzufuegen ueber das Heim, Kontakt bleibt nach "fuer alle loeschen",
 people mischt den fremden Kontakt in remote ein (ohne Dubletten mit dem Adressbuch), kein Anmeldename; Instanz getrennt ->
-deren Kontakte gone; Instanz entfernt -> geloescht. Raeumt auf (Datenbanken geloescht)."""
-import json, os, re, sys, urllib.parse
+deren Kontakte gone; Instanz entfernt -> geloescht. 2.6 (Bugs-DB 2027a, Adressbuch): Fed-Kontakt im Adressbuch, eigene
+Felder (Name fuer mich, Anrede, Nummern, Mails) bleiben auf A - nach Chat-Verkehr in keiner Textspalte und keinem Log von B
+und C; Instanz entfernt bzw. Person geloescht (person.gone): leerer Fed-Kontakt weg, mit Nummer bleibt ohne Fed-Adresse.
+Ports/Datenbanken umstellbar (FK_PORT_BASE = Admin-Port von A, je Instanz +2; FK_SUFFIX). Raeumt auf (Datenbanken geloescht)."""
+import json, os, re, sys, time, urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation as T  # noqa: E402
 import foederation2 as F2  # noqa: E402
 import foederation_chat as FC  # noqa: E402  (App-Client User)
 
-T.I["a"].update(port=8621, admin=8620, db="saga_fka", url="http://127.0.0.1:8621", host="127.0.0.1:8621", state="/tmp/fedkon-a",
-                allow="localhost:8623, localhost:8625")
-T.I["b"].update(port=8623, admin=8622, db="saga_fkb", url="http://localhost:8623", host="localhost:8623", state="/tmp/fedkon-b", allow="127.0.0.1:8621")
-T.I["c"] = dict(T.I["b"], port=8625, admin=8624, db="saga_fkc", url="http://localhost:8625", host="localhost:8625", state="/tmp/fedkon-c",
-                allow="127.0.0.1:8621", secret=T.I["b"]["secret"][::-1])
+PB, SX = int(os.environ.get("FK_PORT_BASE", "8620")), os.environ.get("FK_SUFFIX", "")
+PA, PB_, PC = PB + 1, PB + 3, PB + 5
+T.I["a"].update(port=PA, admin=PB, db="saga_fka" + SX, url=f"http://127.0.0.1:{PA}", host=f"127.0.0.1:{PA}", state="/tmp/fedkon-a" + SX,
+                allow=f"localhost:{PB_}, localhost:{PC}")
+T.I["b"].update(port=PB_, admin=PB + 2, db="saga_fkb" + SX, url=f"http://localhost:{PB_}", host=f"localhost:{PB_}", state="/tmp/fedkon-b" + SX,
+                allow=f"127.0.0.1:{PA}")
+T.I["c"] = dict(T.I["b"], port=PC, admin=PB + 4, db="saga_fkc" + SX, url=f"http://localhost:{PC}", host=f"localhost:{PC}", state="/tmp/fedkon-c" + SX,
+                allow=f"127.0.0.1:{PA}", secret=T.I["b"]["secret"][::-1])
 HA, HB, HC = T.I["a"]["host"], T.I["b"]["host"], T.I["c"]["host"]
 ok, wait, sql = T.ok, T.wait, T.sql
 api, User = FC.api, FC.User
@@ -42,6 +48,39 @@ class FG:
     def caps_ok(k, host, cap="chatgroups"):
         r = sql(k, "SELECT caps FROM fed_peer WHERE host=?", (host,))
         return bool(r) and cap in json.loads(r[0][0])
+
+
+def book(k, uid):
+    """2.6 (2027a): Adressbuch -> {feste Kennung oder '#id': Kontakt}"""
+    s, d = api(k, uid, "GET", "/api/contacts")
+    SEEN.append((k, uid, json.dumps(d, ensure_ascii=False)))
+    return {(x.get("saga") or {}).get("ref") or f"#{x['id']}": x for x in (d.get("contacts") or [])} if s == 200 else None
+
+
+PRIV = ["Bertchen", "Lieber Bert", "1702220001", "bert.privat@", "1702220002", "1702220003", "Doras Nummer"]
+SCAN = """
+from db import connect
+pat = {pat!r}
+hits = []
+with connect() as c:
+    cols = c.execute("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='public' "
+                     "AND data_type IN ('text', 'character varying', 'json', 'jsonb')").fetchall()
+    for t, col in cols:
+        if c.execute(f'SELECT 1 FROM "{{t}}" WHERE "{{col}}"::text ILIKE ANY(?) LIMIT 1', (pat,)).fetchone():
+            hits.append([t, col])
+print(json.dumps([len(cols), hits]))
+"""
+
+
+def scan(k):
+    """Alle Textspalten der Instanz k und ihr Log nach den privaten Adressbuch-Werten von A durchsuchen."""
+    n, hits = F2.py(k, SCAN.format(pat=["%" + x + "%" for x in PRIV]))
+    try:
+        with open(os.path.join(T.I[k]["state"], "server.log"), encoding="utf-8", errors="replace") as f:
+            log = f.read().lower()
+    except OSError:
+        log = ""
+    return n, hits + [["server.log", x] for x in PRIV if x.lower() in log]
 
 
 def kon(k, uid, q=""):
@@ -114,6 +153,37 @@ def part(adm, pab, pba, pac, pca):
     ok(f"C: Dora kennt Anna, Carl, Cleo ({len(kd)})", {anna.handle, carl.handle, cleo.handle} <= set(kd))
     ok("B: Cleo kennt jetzt auch Dora (chat.members vom Heim)", wait(lambda: dora.handle in (kon("b", "kb-cleo") or {}), 15))
 
+    # 2.6 (Bugs-DB 2027a): Adressbuch - eigene Felder zu Personen anderer Server bleiben auf A
+    bk = book("a", "ka-anna")
+    kb = bk.get(bert.handle) or {}
+    ok(f"A: Bert im Adressbuch (origin chat, feste Fed-Adresse, saga.remote/host) ({sorted(bk)})", kb.get("origin") == "chat"
+       and (kb.get("saga") or {}).get("remote") is True and kb["saga"]["host"] == HB and kb["addrs"] == [
+           {"id": kb["addrs"][0]["id"], "kind": "fed", "value": bert.handle, "type": None, "fixed": True}] and kb.get("name") == "Bert Gast", kb)
+    ok("A: Cleo, Dora, Carl im Adressbuch; Carl hat Cleo und Dora", {cleo.handle, dora.handle, carl_ref} <= set(bk)
+       and {cleo.handle, dora.handle} <= set(book("a", "ka-carl") or {}))
+    s, d = api("a", "ka-anna", "PATCH", f"/api/contacts/{kb['id']}", {
+        "ver": kb["ver"], "own_name": "Bertchen", "form": "informal", "salutation": "Lieber Bert",
+        "addrs": kb["addrs"] + [{"kind": "e164", "value": "+49 170 2220001", "type": "mobile"}, {"kind": "email", "value": "bert.privat@example.org"}]})
+    ok(f"A: Bert - Name fuer mich, du, Grussform, Nummer, Mail ({s})", s == 200 and d.get("name") == "Bertchen" and len(d.get("addrs") or []) == 3, d)
+    for who, nr, nm in ((dora, "+491702220002", "Doras Nummer"), (cleo, "+491702220003", None)):
+        x = bk[who.handle]
+        s, d = api("a", "ka-anna", "PATCH", f"/api/contacts/{x['id']}", dict({"ver": x["ver"], "addrs": [{"kind": "e164", "value": nr}]},
+                                                                            **({"own_name": nm} if nm else {})))
+        ok(f"A: Nummer fuer {who.uid} ({s})", s == 200)
+    # Chat-Verkehr in beide Richtungen
+    s1, _, _ = anna.send(wait(lambda: anna.chat(dm["ref"]), 10), "Hallo Bert, alles gut?")
+    s2, _, _ = bert.send(wait(lambda: bert.chat(bc["ref"]), 10), "Ja, danke Anna!")
+    s3, _, _ = anna.send(wait(lambda: anna.chat(gch["ref"]), 10), "Hallo Gruppe")
+    ok(f"Chat-Verkehr A <-> B, Gruppe ({s1}, {s2}, {s3})", (s1, s2, s3) == (200, 200, 200))
+    time.sleep(3)
+    kb2 = (kon("b", "kb-bert") or {}).get(anna.handle) or {}
+    ok("B: Bert sieht Anna wie bisher (keine Felder von A)", kb2.get("name") == "Anna Berg" and "Bertchen" not in json.dumps(kon("b", "kb-bert")))
+    for k in ("b", "c"):
+        n, hits = scan(k)
+        ok(f"{k.upper()}: private Adressbuch-Werte von A in keiner Textspalte ({n} Spalten) und nicht im Log", n > 100 and not hits, hits)
+    n, hits = scan("a")
+    ok(f"A: Werte nur in contact/contact_addr, nicht im Log ({hits})", hits and all(h[0] in ("contact", "contact_addr") for h in hits))
+
     # Loeschen -> bleibt; people mischt ein
     s, d = api("a", "ka-anna", "DELETE", f"/api/chats/{dm['id']}?scope=all")
     ok(f"A: Direkt-Chat fuer alle geloescht ({s}), Bert bleibt Kontakt", s == 200 and bert.handle in kon("a", "ka-anna"))
@@ -137,6 +207,22 @@ def part(adm, pab, pba, pac, pca):
     adm["a"].post({"action": "remove", "id": str(pac)})
     ok("A: Instanz C entfernt -> Kontakte dort geloescht (alle Konten)", wait(lambda: not sql("a", "SELECT 1 FROM chat_contact WHERE ref LIKE ?", ("%@" + HC,)), 5)
        and dora.handle not in kon("a", "ka-anna"))
+    bk = book("a", "ka-anna")
+    kd = [x for x in bk.values() if x.get("own_name") == "Doras Nummer"]
+    ok("A: Doras Kontakt mit Nummer bleibt - manual, ohne Fed-Adresse", dora.handle not in bk and kd and kd[0]["origin"] == "manual"
+       and kd[0]["saga"] is None and [a["value"] for a in kd[0]["addrs"]] == ["+491702220002"], kd)
+    ok("A: Carls leerer Kontakt zu Dora weg", dora.handle not in (book("a", "ka-carl") or {})
+       and not any(x["origin"] == "manual" for x in (book("a", "ka-carl") or {}).values()))
+    ok("A: keine Fed-Adresse der Instanz C mehr", not sql("a", "SELECT 1 FROM contact_addr WHERE value LIKE ?", ("%@" + HC,)))
+    # person.gone: Cleo (B) wird geloescht
+    F2.py("b", "import app\napp.delete_user_data('kb-cleo', drop_user=True)\nprint(json.dumps(True))")
+    ok("A: Person geloescht (person.gone) -> Cleo aus den Chat-Kontakten", wait(lambda: cleo.handle not in (kon("a", "ka-anna") or {}), 25))
+    bk = book("a", "ka-anna")
+    kc = [x for x in bk.values() if [a["value"] for a in x["addrs"]] == ["+491702220003"]]
+    ok("A: Cleos Kontakt mit Nummer bleibt - manual, ohne Fed-Adresse", cleo.handle not in bk and kc and kc[0]["origin"] == "manual"
+       and kc[0]["saga"] is None, kc)
+    ok("A: Carls leerer Kontakt zu Cleo weg", cleo.handle not in (book("a", "ka-carl") or {}))
+    ok("A: Bert unberuehrt (Fed-Adresse und eigene Felder)", (bk.get(bert.handle) or {}).get("own_name") == "Bertchen")
     # Datenschutz: keine Anmeldenamen in Kontakt-Antworten, Tabelle ohne Anmeldenamen
     names = ("ka-anna", "ka-carl", "kb-bert", "kb-cleo", "kc-dora")
     hits = [(k, u, n) for k, u, txt in SEEN for n in names if n != u and n in txt]

@@ -5278,5 +5278,22 @@
  "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "Вы сейчас разговариваете в другой вкладке или на другом устройстве.",
  "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "Не удалось надёжно завершить текущий разговор – входящий звонок не принят. Попробуйте ещё раз.",
  "Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)": "Кэш поиска: страниц – {d}, около {m} МБ (предел: страниц – {c}, {x} МБ AI_CACHE_MB)",
- "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "Вопросов, видевших больше {k} общих страниц: {n} – просмотрены последние изменённые (пропущено не более {h})"
+ "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "Вопросов, видевших больше {k} общих страниц: {n} – просмотрены последние изменённые (пропущено не более {h})",
+ "Bitte mindestens eine Telefonnummer oder E-Mail-Adresse angeben.": "Укажите хотя бы один номер телефона или адрес электронной почты.",
+ "Der Kontakt wurde inzwischen geändert – bitte neu laden.": "Контакт тем временем изменился – пожалуйста, обновите.",
+ "Der Name ist zu lang (höchstens {n} Zeichen).": "Имя слишком длинное (не более {n} символов).",
+ "Die Grußform ist zu lang (höchstens {n} Zeichen).": "Приветствие слишком длинное (не более {n} символов).",
+ "Diese Adresse gehört schon zu einem anderen Kontakt.": "Этот адрес уже принадлежит другому контакту.",
+ "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "Для национальных номеров укажите код страны или начните номер с +.",
+ "Höchstens {n} E-Mail-Adressen je Kontakt.": "Не более {n} адресов электронной почты на контакт.",
+ "Höchstens {n} Telefonnummern je Kontakt.": "Не более {n} номеров телефона на контакт.",
+ "Höchstens {n} eigene Kontakte je Konto.": "Не более {n} собственных контактов на аккаунт.",
+ "Kontakt nicht gefunden.": "Контакт не найден.",
+ "Saga-Adressen entstehen nur aus gemeinsamen Chats.": "Адреса Saga появляются только из общих чатов.",
+ "Ungültige Anrede.": "Недопустимая форма обращения.",
+ "Ungültige E-Mail-Adresse.": "Недопустимый адрес электронной почты.",
+ "Ungültige Landesvorwahl.": "Недопустимый код страны.",
+ "Ungültige Telefonnummer.": "Недопустимый номер телефона.",
+ "Ungültiger Adresstyp.": "Недопустимый тип адреса.",
+ "Adressbuch (Name für mich, Anrede, Telefonnummern, E-Mail-Adressen)": "Адресная книга (имя для меня, обращение, номера телефонов, адреса электронной почты)"
 }

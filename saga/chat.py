@@ -1146,10 +1146,12 @@ def api_people(request: Request, q: str = ""):
     users = [{"username": local_ref(r[0]), "name": lb.get(r[0]) or local_ref(r[0]), "sub": sb.get(r[0], ""), "ready": bool(r[2]),
               "avatar": av.get(r[0])} for r in rows]
     have = {x["ref"] for x in kn}
-    users = [dict(username=k["ref"], name=k["name"], sub=k["sub"], ready=k["ready"], avatar=k["avatar"], contact=True)
+    users = [dict(username=k["ref"], name=k["name"], sub=k["sub"], ready=k["ready"], avatar=k["avatar"], contact=True,
+                  contact_id=k.get("contact_id"))
              for k in kn if not k["remote"]] + [u for u in users if u["username"] not in have]
     remote = [{"type": "remote", "target": "@" + k["ref"], "handle": k["ref"], "name": k["name"], "host": k["host"], "pub": None,
-               "label": f"{k['name']} · {k['host']}", "avatar": k["avatar"], "contact": True} for k in kn if k["remote"]] + \
+               "label": f"{k['name']} · {k['host']}", "avatar": k["avatar"], "contact": True, "contact_id": k.get("contact_id")}
+              for k in kn if k["remote"]] + \
              [x for x in remote if x.get("handle") not in have]
     return _no_store({"users": users,
                       "groups": [{"name": g} for g in mine if (q in g if len(q) >= sharing.SHORT_Q else q == g)][:10],
@@ -1160,7 +1162,8 @@ def api_people(request: Request, q: str = ""):
 def api_contacts(request: Request, q: str = "", limit: int = 50):
     """2.5 (contacts1): eigene Kontakte - Personen aus Direkt-Chats und freien Gruppen, auch nach Loeschen/Verlassen des
     Chats. Zuletzt zuerst; q filtert (Teilwort, jede Laenge). Felder: ref (Kennung fuer POST /api/chats: lokal 'user', fremd
-    'handle'), name, sub, avatar, remote, host (nur fremd), ready, gone, last_at. Nie Anmeldenamen."""
+    'handle'), name, sub, avatar, remote, host (nur fremd), ready, gone, last_at, contact_id (2.6 contacts2: Eintrag im
+    Adressbuch /api/contacts/{id}, sonst null). Nie Anmeldenamen."""
     uid, err = _me(request)
     if err:
         return err

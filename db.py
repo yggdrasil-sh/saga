@@ -33,7 +33,8 @@ _pool_lock = threading.Lock()
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
              "service", "bookmark", "note_share", "note_comment", "notification", "chat",
              "push_sub", "push_queue", "push_stream_msg", "ai_history", "fed_invite", "fed_log", "fed_outbox", "backup_run",
-             "user_backup_run", "import_run", "api_token", "webhook", "webhook_delivery", "job", "job_event", "job_change"}
+             "user_backup_run", "import_run", "api_token", "webhook", "webhook_delivery", "job", "job_event", "job_change",
+             "contact", "contact_addr"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "bookorbit_link": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
@@ -1008,6 +1009,28 @@ CREATE TABLE IF NOT EXISTS chat_contact (
     PRIMARY KEY (uid, ref));
 CREATE INDEX IF NOT EXISTS chat_contact_last ON chat_contact (uid, last_at DESC);
 CREATE INDEX IF NOT EXISTS chat_contact_ref ON chat_contact (ref);
+-- Adressbuch (2.6, Bugs-DB 2027a, saga/contacts.py + saga/contact_book.py, Migration 38): je Konto Kontakte mit eigenen
+-- Feldern (Name fuer mich, Anrede du/Sie, Grussform) und Adressen. origin chat = aus einem gemeinsamen Chat entstanden,
+-- manual = selbst angelegt (bzw. Person/Instanz weg, eigene Felder bleiben). Vergibt KEINE Rechte (contacts.has() liest nur
+-- chat_contact). contact_addr.kind: saga = lokaler Such-Handle '~…' (nie ein Anmeldename), fed = '~x@host', beide nur aus
+-- chat_contact und fest (fixed=1); e164 = Telefonnummer '+…', email. Verlaesst den Server nie (keine Foederation).
+CREATE TABLE IF NOT EXISTS contact (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, origin TEXT NOT NULL DEFAULT 'chat',
+    own_name TEXT CHECK (own_name IS NULL OR char_length(own_name) <= 120),
+    form TEXT CHECK (form IS NULL OR form IN ('informal','formal')),
+    salutation TEXT CHECK (salutation IS NULL OR char_length(salutation) <= 80),
+    created DOUBLE PRECISION NOT NULL, updated DOUBLE PRECISION NOT NULL, ver BIGINT NOT NULL DEFAULT 1,
+    CHECK (origin IN ('chat','manual')));
+CREATE INDEX IF NOT EXISTS contact_uid ON contact (uid, updated DESC);
+CREATE TABLE IF NOT EXISTS contact_addr (
+    id BIGSERIAL PRIMARY KEY, contact_id BIGINT NOT NULL REFERENCES contact(id) ON DELETE CASCADE,
+    uid TEXT NOT NULL, kind TEXT NOT NULL, value TEXT NOT NULL, type TEXT, fixed SMALLINT NOT NULL DEFAULT 0,
+    pos INTEGER NOT NULL DEFAULT 0, created DOUBLE PRECISION NOT NULL,
+    CHECK (kind IN ('saga','fed','e164','email')),
+    CHECK (type IS NULL OR type IN ('mobile','home','work','other')), CHECK (char_length(value) <= 300));
+CREATE UNIQUE INDEX IF NOT EXISTS contact_addr_one ON contact_addr (uid, kind, value);
+CREATE INDEX IF NOT EXISTS contact_addr_val ON contact_addr (kind, value);
+CREATE INDEX IF NOT EXISTS contact_addr_cid ON contact_addr (contact_id);
 -- Gruppen (2.5, Chat-Standard B, saga/chat_grp.py, Migration 29): angeheftete Nachrichten je Chat (hoechstens 3; Inhalt
 -- bleibt verschluesselt, der Server kennt nur die Kennung) und Meldungen an die Saga-Admins. chat_report.text ist nur der
 -- Klartext, den die meldende Person freiwillig mitschickt; items = JSON [{id, ts, sender:{handle, name, uid?}}] (uid nur
@@ -1463,6 +1486,14 @@ ALTER TABLE notification ADD COLUMN IF NOT EXISTS on_behalf_of TEXT;
     37: """
 ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS hold TEXT;
 SELECT hold FROM chat_call LIMIT 0;
+""",
+    # 2.6 (Bugs-DB 2027a, Kontakte-Modell): Tabellen contact und contact_addr legt SCHEMA oben an. Bestand: je sichtbarem
+    # chat_contact ein Kontakt (origin chat) mit fester Saga-/Fed-Adresse - fuellt contacts.book_fill_once() beim naechsten
+    # Start einmalig (Merker setting contact_fill; hier zurueckgesetzt, falls ein Backup mit Merker eingespielt wurde).
+    # Ausgeblendete Kontakte bekommen keinen Eintrag. Beliebig oft ausfuehrbar.
+    38: """
+SELECT 1 FROM contact, contact_addr LIMIT 0;
+DELETE FROM setting WHERE k='contact_fill';
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

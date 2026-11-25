@@ -5278,5 +5278,22 @@
  "Du telefonierst gerade in einem anderen Tab oder auf einem anderen Gerät.": "Estás en una llamada en otra pestaña o en otro dispositivo.",
  "Das Gespräch ließ sich nicht sicher beenden – der Anruf wurde nicht angenommen. Bitte erneut versuchen.": "No se pudo colgar la llamada actual con seguridad: la llamada entrante no se ha respondido. Inténtalo de nuevo.",
  "Suchspeicher: {d} Seiten, etwa {m} MB (Obergrenze {c} Seiten, {x} MB AI_CACHE_MB)": "Caché de búsqueda: {d} páginas, unos {m} MB (límite {c} páginas, {x} MB AI_CACHE_MB)",
- "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} preguntas vieron más páginas compartidas que {k}: se buscaron las modificadas más recientemente (como máximo {h} omitidas)"
+ "{n} Fragen sahen mehr geteilte Seiten als {k} – durchsucht wurden die zuletzt geänderten (höchstens {h} ausgelassen)": "{n} preguntas vieron más páginas compartidas que {k}: se buscaron las modificadas más recientemente (como máximo {h} omitidas)",
+ "Bitte mindestens eine Telefonnummer oder E-Mail-Adresse angeben.": "Indica al menos un número de teléfono o una dirección de correo.",
+ "Der Kontakt wurde inzwischen geändert – bitte neu laden.": "El contacto ha cambiado mientras tanto; vuelve a cargarlo.",
+ "Der Name ist zu lang (höchstens {n} Zeichen).": "El nombre es demasiado largo (máximo {n} caracteres).",
+ "Die Grußform ist zu lang (höchstens {n} Zeichen).": "El saludo es demasiado largo (máximo {n} caracteres).",
+ "Diese Adresse gehört schon zu einem anderen Kontakt.": "Esta dirección ya pertenece a otro contacto.",
+ "Für nationale Nummern bitte die Landesvorwahl einstellen oder die Nummer mit + beginnen.": "Para números nacionales, configura el prefijo del país o empieza el número con +.",
+ "Höchstens {n} E-Mail-Adressen je Kontakt.": "Como máximo {n} direcciones de correo por contacto.",
+ "Höchstens {n} Telefonnummern je Kontakt.": "Como máximo {n} números de teléfono por contacto.",
+ "Höchstens {n} eigene Kontakte je Konto.": "Como máximo {n} contactos propios por cuenta.",
+ "Kontakt nicht gefunden.": "Contacto no encontrado.",
+ "Saga-Adressen entstehen nur aus gemeinsamen Chats.": "Las direcciones de Saga solo surgen de chats en común.",
+ "Ungültige Anrede.": "Tratamiento no válido.",
+ "Ungültige E-Mail-Adresse.": "Dirección de correo no válida.",
+ "Ungültige Landesvorwahl.": "Prefijo de país no válido.",
+ "Ungültige Telefonnummer.": "Número de teléfono no válido.",
+ "Ungültiger Adresstyp.": "Tipo de dirección no válido.",
+ "Adressbuch (Name für mich, Anrede, Telefonnummern, E-Mail-Adressen)": "Libreta de direcciones (nombre para mí, tratamiento, números de teléfono, direcciones de correo)"
 }
