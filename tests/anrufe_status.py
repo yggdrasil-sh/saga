@@ -285,6 +285,14 @@ def run():
     ok(f"... je Versuch ein Chat-Eintrag ({st})", st == ["missed", "busy", "busy"])
     hl = [x.get("hold") for x in A_.call_rows(cb) if x.get("call") in (k1, k2, k3)]
     ok(f"... Chat-Eintraege mit hold knock/again (Bugs-DB 2375) ({hl})", hl == ["knock", "again", "again"])
+    # Pruefer st5b: die anrufende Person sieht den Grund auch hier nicht (API und Glocke)
+    s_, ms = req("GET", f"/api/chats/{cb}/messages?calls=1", Cc.k)
+    rc_ = [json.loads(m["body_ct"]) for m in (ms.get("messages") or []) if m.get("kind") == "call"
+           and any(k in m.get("body_ct", "") for k in (k1, k2, k3))]
+    s2_, nc = req("GET", "/api/notifications?limit=50", Cc.k)
+    ok(f"... anrufende Person: Eintraege ohne hold, keine Glocke mit hold ({s_}, {[x.get('hold') for x in rc_]}, {s2_})",
+       s_ == 200 and len(rc_) == 3 and not any("hold" in x for x in rc_)
+       and s2_ == 200 and not [x for x in (nc.get("items") or []) if x.get("hold")])
     bells = [n for n in A_.notifs(B.uid) if n.get("call") in (k1, k2, k3)]
     ok(f"... je Versuch eine Glocke mit hold ({[n.get('hold') for n in bells]})", [n.get("hold") for n in bells] == ["knock", "again", "again"])
     k4, s, d = A_.call(D, B, db_)
