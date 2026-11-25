@@ -176,6 +176,11 @@ def run():
     ok("'(0170) 444.5555' mit Konto-Einstellung -> +491704445555", e164("(0170) 444.5555") == (201, "+491704445555"))
     ok("'+49 (0) 170 5556666' -> +491705556666", e164("+49 (0) 170 5556666") == (201, "+491705556666"))
     ok("cc in der Anfrage schlaegt die Einstellung ('43')", e164("0660 1234567", cc="43") == (201, "+436601234567"))
+    s, d = E.api("POST", "/api/contacts", {"own_name": "Null", "addrs": [num("0170 7778888")], "cc": None})
+    SECRETS.append("1707778888")
+    ok(f"cc: null in der Anfrage = Konto-Einstellung ({s})", s == 201 and vals(d) == ["+491707778888"], d)
+    if s == 201:
+        E.api("DELETE", f"/api/contacts/{d['id']}")
     s, d = E.api("PUT", "/api/contacts/settings", {"cc": None})
     ok("Landesvorwahl entfernen", s == 200 and d == {"cc": None})
     for bad in ("+49 12", "+49 1234 5678 9012 345", "+49 170 ABC1234", "+0170 1234567", "", "++491701234567", "0"):
@@ -301,6 +306,8 @@ def run():
     ok("Suche: nichts (zzz), total 0", A.lst("zzz") == {"contacts": [], "total": 0})
     s, d = A.api("GET", "/api/contacts?limit=1&offset=1")
     ok("limit/offset", s == 200 and [x["id"] for x in d["contacts"]] == [m1["id"]] and d["total"] == 2, d)
+    s, d = A.api("GET", "/api/contacts?offset=99999999999999999999")
+    ok(f"Riesiger offset -> 200, leer (kein 500) ({s})", s == 200 and d.get("contacts") == [] and d.get("total") == 2, d)
 
     # --- Loeschen (neu) -> alte Liste -----------------------------------------------------------------------------------
     ma = sa.mark()

@@ -160,7 +160,8 @@ def get_cc(c, uid):
 
 
 def _cc_for(c, uid, b):
-    return norm_cc(b.get("cc")) if "cc" in b else get_cc(c, uid)
+    """cc der Anfrage, sonst (fehlt oder null/"") die Konto-Einstellung."""
+    return norm_cc(b.get("cc")) if b.get("cc") not in (None, "") else get_cc(c, uid)
 
 
 # =====================================================================================================================
@@ -247,7 +248,7 @@ def listing(c, uid, q="", limit=LIST_MAX, offset=0):
     """-> ({contacts, total}) zuletzt zuerst (last_at aus chat_contact, sonst updated)."""
     q = re.sub(r"\s+", " ", str(q or "")).strip().lower()[:60]
     limit = max(1, min(int(limit or LIST_MAX), LIST_MAX))
-    offset = max(0, int(offset or 0))
+    offset = min(max(0, int(offset or 0)), SCAN_MAX * 1000)     # (Postgres OFFSET: bigint - riesige Werte sonst 500)
     if not q:
         total = c.execute("SELECT COUNT(*) FROM contact WHERE uid=?", (uid,)).fetchone()[0]
         return {"contacts": _views(c, uid, _rows(c, uid, limit=limit, offset=offset)), "total": total}

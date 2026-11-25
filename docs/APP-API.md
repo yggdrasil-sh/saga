@@ -4062,8 +4062,8 @@ bleiben immer (Apps dürfen die Liste aus `GET` unverändert zurückschicken –
 neu), fehlende werden gelöscht. Doppelte Werte in der Anfrage zählen einmal.
 
 - **Telefonnummer** → E.164 `+491701234567`: Leerzeichen, `-`, `/`, `.`, Klammern und `(0)` nach der Landesvorwahl
-  fallen weg; `00…` wird `+…`; `0…` (national) nur mit Landesvorwahl – aus `cc` der Anfrage, sonst aus
-  `/api/contacts/settings` –, ohne → `400`. Danach muss `^\+[1-9]\d{7,14}$` passen. Apps schlagen die Landesvorwahl aus
+  fallen weg; `00…` wird `+…`; `0…` (national) nur mit Landesvorwahl – aus `cc` der Anfrage, sonst (fehlt, `null`
+  oder `""`) aus `/api/contacts/settings` –, ohne → `400`. Danach muss `^\+[1-9]\d{7,14}$` passen. Apps schlagen die Landesvorwahl aus
   der Region des Geräts vor (einmal `PUT /api/contacts/settings`).
 - **E-Mail:** höchstens 254 Zeichen, genau ein `@`, keine Leerzeichen; die Domain wird klein geschrieben, der Teil vor
   `@` bleibt, wie eingegeben.
