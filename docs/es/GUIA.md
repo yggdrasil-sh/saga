@@ -1452,7 +1452,7 @@ simultáneas en total (por defecto 4). Las preguntas, el contenido y las respues
 Cada pregunta busca como máximo en las 3000 páginas propias y las 3000 páginas compartidas contigo modificadas más
 recientemente; el área de administración muestra, solo como número, cuántas veces una pregunta vio más páginas
 compartidas. Saga guarda en memoria las páginas ya analizadas: tantas como ven las personas activas en ese momento (como
-mínimo `AI_CACHE_DOCS`, por defecto 5000), como máximo `AI_CACHE_MB` (por defecto 256; unos 10 KB por página con 1 KB de texto).
+mínimo `AI_CACHE_DOCS`, por defecto 5000), como máximo `AI_CACHE_MB` (por defecto 256; unos 10 KB por página con 1 KB de texto). La memoria y los contadores son por proceso del servidor.
 
 Para protegerse de instrucciones inyectadas («Ignora todas las reglas …» dentro de una página), Saga marca el contenido
 de las páginas como datos para el modelo y no da al asistente ningún permiso de escritura. Aun así, un modelo de lenguaje

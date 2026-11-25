@@ -156,6 +156,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Behoben
 
+- **KI-Fragen bei sehr vielen sichtbaren Seiten wieder schnell** (Bugs-DB 2349): Der Suchspeicher für zerlegte Seiten
+  verdrängt jetzt einzeln die am längsten ungenutzten Seiten, wächst bis zum Bedarf der gerade aktiven Personen (mindestens
+  `AI_CACHE_DOCS`) und ist durch `AI_CACHE_MB` (Standard 256) gedeckelt. Für dich freigegebene Seiten werden höchstens
+  bis `SCAN_MAX_SHARED` (Standard 3000, die zuletzt geänderten zuerst) durchsucht; der Admin-Bereich › KI zeigt das nur
+  als Zahl. Mit 3.000 eigenen und 5.000 geteilten Seiten sinkt die Antwortzeit (p95) von etwa 1.000 ms auf etwa 170 ms.
+
 - **Verpasster Anruf zeigt den Grund** (Bugs-DB 2375): Der Chat-Eintrag eines 1:1-Anrufs und die Glocke „Verpasster
   Anruf“ tragen `hold` (`dnd`, `knock`, `again`), wenn die Anruf-Weiche eingegriffen hat – nur für die angerufene Person
   (für die anrufende Person entfernt der Server das Feld, Ruhezeiten sieht niemand sonst). Das Web zeigt „Verpasster

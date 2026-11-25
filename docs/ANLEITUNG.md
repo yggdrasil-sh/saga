@@ -1637,7 +1637,7 @@ die Adresse im DNS, einmal neu speichern. Weiterleitungen folgt Saga nicht. Glei
 Durchsucht werden je Frage höchstens die 3.000 zuletzt geänderten eigenen und die 3.000 zuletzt geänderten für
 dich freigegebenen Seiten; wie oft eine Frage mehr geteilte Seiten sah, zeigt der Admin-Bereich als Zahl. Die zerlegten
 Seiten hält Saga im Speicher, so viele, wie die gerade aktiven Personen sehen (mindestens `AI_CACHE_DOCS`, Standard
-5000), höchstens `AI_CACHE_MB` (Standard 256; etwa 10 KB je Seite mit 1 KB Text).
+5000), höchstens `AI_CACHE_MB` (Standard 256; etwa 10 KB je Seite mit 1 KB Text). Speicher und Zahlen gelten je Server-Prozess.
 
 Zum Schutz vor untergeschobenen Anweisungen („Ignoriere alle Regeln …“ in einer Seite) kennzeichnet Saga Seiteninhalte
 für das Modell als Daten und gibt dem Assistenten keinerlei Schreibrechte. Ein Sprachmodell kann sich trotzdem irren
