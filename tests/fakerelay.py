@@ -13,7 +13,7 @@ Anmeldename, Auftragstitel) nie Server->Relais, Relais->APNs, im Relais-Protokol
 push-type/priority/expiration = _apns_plan fuer alle Arten, collapse-id je tag gleich und je Auftrag verschieden ohne
 Klartext, thread nur im Chiffrat, nie voip fuer Arten der Kollegin (job.*), sichtbares aps nur Loc-Keys (RT-30, EV-24),
 entschluesselter Inhalt = message(), Testmitteilung, 410 -> Abo weg. Wegwerf-Konten fr-*."""
-import base64, http.client, http.server, json, os, secrets, sqlite3, subprocess, sys, tempfile, threading, time, urllib.parse
+import base64, http.client, http.server, json, os, secrets, sqlite3, subprocess, sys, tempfile, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

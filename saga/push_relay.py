@@ -31,7 +31,7 @@ DEFAULT_URL = ""                     # leer bis der Name des oeffentlichen Relai
 KEY_K, STATE_K = "push_relay", "push_relay_state"
 STATES = ("ok", "down", "pending", "blocked", "auth")
 SID_RE = r"s_[a-z2-7]{16}"
-_lock = threading.Lock()
+_lock = threading.RLock()            # ensure_registered -> register -> key() (gleicher Faden)
 _key = {}
 _warned = set()
 
