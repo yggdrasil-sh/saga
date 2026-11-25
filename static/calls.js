@@ -325,10 +325,11 @@
   }
   // "Beenden und annehmen": laufendes Gespraech auflegen (Fenster sofort zu), dann der normale Annehmen-Weg
   function holdTake(d, video) {
+    var r0 = RINGS[d.call_id], at = r0 && r0.at || Date.now();   // expires_in gilt ab dem Erscheinen der Leiste
     unring(d.call_id);
     var R = C;
     if (!R || R.done) { accept(d, video); return; }
-    var at = Date.now(), p = hangup(R);
+    var p = hangup(R);
     closeWin(R);
     p.then(function (done) {
       if (done) { accept(d, video); return; }

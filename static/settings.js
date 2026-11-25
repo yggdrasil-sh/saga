@@ -928,7 +928,8 @@
         api('PATCH', '/api/account', { name: nm.value.trim(), email: em.value.trim() }).then(function (d) {
           status(st, T('✓ Gespeichert'), 'ok'); btn.dataset.name = d.name;
           var nmEl = btn.querySelector('.hk-user-n'); if (nmEl) nmEl.textContent = d.name; else btn.textContent = '👤 ' + d.name + ' ▾';
-          btn.setAttribute('aria-label', T('Benutzermenü') + ': ' + d.name);
+          btn.setAttribute('aria-label', btn.dataset.usAria = T('Benutzermenü') + ': ' + d.name);   // usAria: Grundname fuer userstatus.js
+          if (HK.userStatus && HK.userStatus.redraw) HK.userStatus.redraw();                          // Status wieder anhaengen
         }).catch(function (err) { status(st, err.message, 'err'); });
       });
       secBox.appendChild(el('h4', null, T('Passwort ändern')));

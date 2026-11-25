@@ -251,7 +251,7 @@
     on: function (fn) { subs.push(fn); return function () { subs = subs.filter(function (x) { return x !== fn; }); }; },
     dnd: function () { return !!(V && V.effective === 'dnd'); },
     name: function (s) { return NAMES[s] || ''; }, until: until, shown: shown, dot: dot, peerText: peerText,
-    menuItem: menuItem, open: dialog, close: close
+    menuItem: menuItem, open: dialog, close: close, redraw: drawMe
   };
   if (document.getElementById('hk-user')) load();
 })();
