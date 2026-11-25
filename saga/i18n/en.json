@@ -1899,6 +1899,7 @@
  "Gerade am Lesen": "Currently reading",
  "Gerade auf dieser Seite": "On this page right now",
  "Gerade ist kein Anruf-Knoten erreichbar – bitte gleich noch einmal.": "No call node is reachable right now – please try again in a moment.",
+ "Die Anruf-Knoten sind gerade ausgelastet – bitte gleich noch einmal.": "The call nodes are busy right now – please try again in a moment.",
  "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "No own node is ready right now. Group calls in chats with people from {hosts} can use their shared nodes; all others run as mesh (up to 4 with video / 6 audio only).",
  "Gerade ist kein Knoten bereit – Gruppenanrufe laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "No node is ready right now – group calls run as mesh (up to 4 with video / 6 audio only).",
  "Gerade ist kein Knoten bereit.": "No node is ready right now.",

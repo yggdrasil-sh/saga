@@ -1899,6 +1899,7 @@
  "Gerade am Lesen": "Сейчас читаю",
  "Gerade auf dieser Seite": "Сейчас на этой странице",
  "Gerade ist kein Anruf-Knoten erreichbar – bitte gleich noch einmal.": "Сейчас ни один узел звонков недоступен — попробуйте ещё раз чуть позже.",
+ "Die Anruf-Knoten sind gerade ausgelastet – bitte gleich noch einmal.": "Узлы звонков сейчас перегружены — попробуйте ещё раз чуть позже.",
  "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "Сейчас ни один собственный узел не готов. Групповые звонки в чатах с людьми с {hosts} могут использовать их общие узлы; все остальные идут по mesh (до 4 с видео / 6 только звук).",
  "Gerade ist kein Knoten bereit – Gruppenanrufe laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "Сейчас ни один узел не готов – групповые звонки идут по mesh (до 4 с видео / 6 только звук).",
  "Gerade ist kein Knoten bereit.": "Сейчас нет готового узла.",

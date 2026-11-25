@@ -1899,6 +1899,7 @@
  "Gerade am Lesen": "Leyendo ahora",
  "Gerade auf dieser Seite": "En esta página ahora mismo",
  "Gerade ist kein Anruf-Knoten erreichbar – bitte gleich noch einmal.": "Ahora mismo no hay ningún nodo de llamadas disponible; inténtalo de nuevo en un momento.",
+ "Die Anruf-Knoten sind gerade ausgelastet – bitte gleich noch einmal.": "Los nodos de llamadas están saturados ahora mismo; inténtalo de nuevo en un momento.",
  "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "Ahora no hay ningún nodo propio listo. Las llamadas de grupo en chats con personas de {hosts} pueden usar sus nodos compartidos; todas las demás van en malla (hasta 4 con vídeo / 6 solo audio).",
  "Gerade ist kein Knoten bereit – Gruppenanrufe laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "Ahora no hay ningún nodo listo: las llamadas de grupo van en malla (hasta 4 con vídeo / 6 solo audio).",
  "Gerade ist kein Knoten bereit.": "Ahora mismo no hay ningún nodo listo.",

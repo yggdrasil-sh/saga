@@ -1899,6 +1899,7 @@
  "Gerade am Lesen": "กำลังอ่าน",
  "Gerade auf dieser Seite": "กำลังอยู่ในหน้านี้",
  "Gerade ist kein Anruf-Knoten erreichbar – bitte gleich noch einmal.": "ขณะนี้ไม่มีโหนดสำหรับการโทรที่ใช้งานได้ – โปรดลองอีกครั้งในอีกสักครู่",
+ "Die Anruf-Knoten sind gerade ausgelastet – bitte gleich noch einmal.": "โหนดสำหรับการโทรมีผู้ใช้งานเต็มในขณะนี้ – โปรดลองอีกครั้งในอีกสักครู่",
  "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "ขณะนี้ไม่มีโหนดของตัวเองพร้อม สายกลุ่มในแชทกับผู้คนจาก {hosts} ใช้โหนดที่แชร์ของพวกเขาได้ ส่วนสายอื่นใช้ mesh (สูงสุด 4 แบบวิดีโอ / 6 เสียงอย่างเดียว)",
  "Gerade ist kein Knoten bereit – Gruppenanrufe laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "ขณะนี้ไม่มีโหนดใดพร้อม – สายกลุ่มใช้ mesh (สูงสุด 4 แบบวิดีโอ / 6 เสียงอย่างเดียว)",
  "Gerade ist kein Knoten bereit.": "ขณะนี้ไม่มีโหนดที่พร้อมใช้งาน",

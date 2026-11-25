@@ -2093,6 +2093,9 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
             to_mesh = _has(caps, "meshjoin") and len(act) + 1 <= limit(call["media"])
         if node is None and not to_mesh:
             horn.note_full(c)
+            if horn.busy(c, ws=ws):                    # 2.6 (2263-4): erreichbar, aber ausgelastet - busy (rueckwaertskompatibel)
+                return chat._no_store({"error": t("Die Anruf-Knoten sind gerade ausgelastet – bitte gleich noch einmal."),
+                                       "join_block": "node", "busy": True}, 409)
             return chat._no_store({"error": t("Gerade ist kein Anruf-Knoten erreichbar – bitte gleich noch einmal."),
                                    "join_block": "node"}, 409)
     mine = [x for x in others if x["who"] == who]

@@ -387,6 +387,14 @@ def last_resort(n, ws):
     return ws == "frames" and tunnel_mode(n) and not n.get("udp")
 
 
+def busy(c, ws=False, now=None):
+    """2.6 (2263-4): kein Knoten bereit, aber nur weil sie ausgelastet sind - mindestens ein Knoten laeuft (alive), ist fuer
+    dieses Geraet erreichbar und hat util >= FULL (bzw. meldet "voll"). Dann ist er erreichbar, nimmt aber gerade keine
+    neuen Beine an (join_block "node" mit busy: true, docs/APP-API.md)."""
+    now = now or time.time()
+    return any(alive(n, now) and reachable(n, ws) and util(n) >= FULL for n in nodes(c))
+
+
 def any_ready(c, ws=False):
     return horn_on() and bool(ready_nodes(c, ws=ws))
 
