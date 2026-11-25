@@ -55,7 +55,7 @@ const VIEW = () => {
   const inView = rs.filter(r => r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1).length;
   const cnt = w && w.querySelector('.cl-info .cl-count'), pl = w && w.querySelector('.cl-plist'), ul = pl && pl.querySelector('.cl-plist-l:not(.cl-away-l)');
   const labs = vis.map(t => { const b = t.querySelector('.cl-tl b'); return b ? b.scrollWidth <= b.clientWidth + 1 || getComputedStyle(b).textOverflow === 'ellipsis' : true; });
-  const names = vis.map(t => t.querySelector('.cl-tl b')).filter(Boolean).map(b => Math.round(b.getBoundingClientRect().width));
+  const names = vis.filter(t => t.dataset.dev).map(t => t.querySelector('.cl-tl b')).filter(Boolean).map(b => Math.round(b.getBoundingClientRect().width));
   return { tiles: tiles.length, vis: vis.length, rows, cols, inView, minW: rs.length ? Math.round(Math.min(...rs.map(r => r.width))) : 0,
            muted: tiles.filter(t => t.classList.contains('muted')).map(t => t.dataset.dev),
            count: cnt ? cnt.textContent.trim() : '', countTitle: cnt ? cnt.title : '',
@@ -163,7 +163,7 @@ async function plist(p, open) {
        va.muted.length === 0 && toasts.length === toasts0 && p.__errs.length === errs0 && va.exp === 0, { muted: va.muted, toasts, errs: p.__errs });
     await showBars(p); await shot(p, 'galerie-1280-nach-dtmf');
     ok('dtmf/svc-join: Anruf laeuft weiter (Knoten verbunden, kein Wechsel, eigener Schluessel unveraendert, alle Endpunkte da)',
-       after && after.up && after.switches === before.switches && after.key_n === before.key_n && after.tiles.length === LIM - 1 && !after.switching
+       after && after.up && JSON.stringify(after.switches) === JSON.stringify(before.switches) && after.key_n === before.key_n && after.tiles.length === LIM - 1 && !after.switching
        && JSON.stringify(hpx) === JSON.stringify(before.hp) && (after.errs || []).length === (before.errs || []).length && va.tiles === LIM,
        after && { up: after.up, sw: [before.switches, after.switches], key: [before.key_n, after.key_n], errs: after.errs });
     // --- Kontrollfaelle: derselbe Weg wertet bekannte Typen aus ------------------------------------------------------------
