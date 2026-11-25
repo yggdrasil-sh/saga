@@ -820,6 +820,7 @@ def main():
         sys.exit("go build fehlgeschlagen")
     if a.bench:
         out["bench"] = run_bench(a, node)
+        shutil.rmtree(B2.STATE, ignore_errors=True)    # Bau-Ordner von b2_frames (nur M1, sonst raeumt der finally-Teil)
         emit(a, out)
         return
     for p in (a.base, a.base + 1, a.base + 2, a.base + 7, a.base + 8, a.base + 9):
@@ -831,6 +832,7 @@ def main():
     L.B2, L.state, L.h1 = B2, B2.STATE, {}
     cg = None
     nsl = None
+    brw = None
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
     keep = {}
     try:
@@ -925,7 +927,6 @@ def main():
                        "api_ms": {"p50": pctl([b.joined_ms for b in L.bots], 0.5), "p95": pctl([b.joined_ms for b in L.bots], 0.95)}}
         log(f"{out['join']['up']}/{a.n} Bots verbunden in {out['join']['all_up_s']} s")
 
-        brw = None
         if a.browsers:
             spec = {"base": B2.BASE, "users": wusers, "pass": PW, "call": L.cid, "secs": a.secs, "video": a.video > 0,
                     "out": os.path.join(L.state, "browser.json"), "prof": os.path.join(L.state, "prof"), "host_rules": f"MAP {B2.NAME} 127.0.0.1"}
@@ -985,6 +986,12 @@ def main():
     finally:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         L.stop.set()
+        if brw and brw.poll() is None:                 # Abbruch/Zeitueberschreitung: Browser-Teil (Playwright schliesst Chromium)
+            brw.terminate()
+            try:
+                brw.wait(15)
+            except subprocess.TimeoutExpired:
+                brw.kill()
         for b in L.bots:
             if b.sse:
                 b.sse.close()
@@ -1035,7 +1042,16 @@ def leitung(a, B2, state, node_bin):
     # wie anrufe_rang345: ein veth-Paar IM Namensraum mit Adresse - ohne Schnittstelle ausser lo sammelt Chromium keine
     # Kandidaten fuer die lokale Schleife des Rahmen-Wegs (Fehler "frames: schleife")
     addr = f"10.78.{a.base % 100}.2/24"
-    for cmd in (["ip", "netns", "add", name], ["ip", "-n", name, "link", "set", "lo", "up"],
+    subprocess.run(["ip", "netns", "add", name], check=True)
+    try:
+        return _leitung(a, B2, state, node_bin, name, addr)
+    except BaseException:                              # halb aufgebaut: eigenen Namensraum nicht stehen lassen
+        subprocess.run(["ip", "netns", "del", name], capture_output=True)
+        raise
+
+
+def _leitung(a, B2, state, node_bin, name, addr):
+    for cmd in (["ip", "-n", name, "link", "set", "lo", "up"],
                 ["ip", "-n", name, "link", "add", "va", "type", "veth", "peer", "name", "vb"],
                 ["ip", "-n", name, "addr", "add", addr, "dev", "va"], ["ip", "-n", name, "link", "set", "va", "up"],
                 ["ip", "-n", name, "link", "set", "vb", "up"]):
