@@ -563,7 +563,36 @@ def node_named(c, name):
 
 
 def set_leg_node(c, cid, dev, node_id):
+    fix_limit(c, cid, dev, node_id)
     c.execute("UPDATE chat_call_leg SET node=? WHERE call_id=? AND device=? AND state='active'", (node_id, cid, dev))
+
+
+def fix_limit(c, cid, dev, node_id):
+    """2.6 (2263-4, Migration 40): Grenze eines Anrufs ueber Knoten beim Start festhalten - wenn das erste Geraet auf einen
+    eigenen Knoten kommt (noch kein Endpunkt des Anrufs hatte einen Knoten), nach dessen Weg (limits: TCP bzw. UDP, Admin
+    gesenkt). Danach aendern Umzug und Kaskade sie nicht mehr. Anrufe, die schon vorher auf Knoten liefen (von vor
+    Migration 40), bleiben ohne lim (bisheriges Verhalten). Nur der fuehrende Server (lead NULL)."""
+    if not node_id or str(node_id).startswith("f:"):
+        return
+    r = c.execute("SELECT media FROM chat_call k WHERE id=? AND topo='horn' AND lead IS NULL AND lim IS NULL AND NOT EXISTS "
+                  "(SELECT 1 FROM chat_call_leg l WHERE l.call_id=k.id AND l.node IS NOT NULL AND l.device<>?)", (cid, dev)).fetchone()
+    if not r:
+        return
+    n = node_by_id(c, node_id)
+    if not n:
+        return
+    v, a = limits(c, node=n)
+    c.execute("UPDATE chat_call SET lim=? WHERE id=? AND lim IS NULL", (v if r[0] == "video" else a, cid))
+
+
+def held_limit(lim, media):
+    """Festgehaltene Grenze (chat_call.lim) - der Admin kann sie weiter senken (calls.horn_video / calls.horn_audio)."""
+    lim = int(lim)
+    try:
+        top = int((auth.settings().get("calls") or {}).get("horn_video" if media == "video" else "horn_audio") or lim)
+    except (TypeError, ValueError):
+        top = lim
+    return max(2, min(lim, top))
 
 
 def leg_node(c, cid, dev):

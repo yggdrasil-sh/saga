@@ -268,8 +268,13 @@ def is_horn(call):
 
 
 def climit(c, call):
-    """Hoechstzahl Endpunkte dieses Anrufs: Mesh-Grenze (limit) bzw. ueber Knoten nach Weg (2.5: TCP 12/50, UDP 25/100)."""
+    """Hoechstzahl Endpunkte dieses Anrufs: Mesh-Grenze (limit) bzw. ueber Knoten nach Weg (2.5: TCP 12/50, UDP 25/100).
+    2.6 (2263-4): ueber Knoten die beim Start festgehaltene Grenze chat_call.lim (horn.fix_limit) - Umzug und Kaskade
+    aendern sie nicht, der Admin kann weiter nur senken. Anrufe ohne lim (von vor Migration 40): wie bisher nach dem
+    Knoten mit den meisten Endpunkten."""
     if is_horn(call):
+        if call.get("lim"):
+            return horn.held_limit(call["lim"], call["media"])
         v, a = horn.limits(c, call["id"])
         return v if call["media"] == "video" else a
     return limit(call["media"])
@@ -464,7 +469,7 @@ def _me(request):
 
 
 C_COLS = ("id, chat_id, caller, callee, caller_device, callee_device, media, state, reason, created, answered, ended, seen_a, seen_b, nsig, "
-          "peer_id, caps_a, caps_b, kind, v, lead, topo, hold")
+          "peer_id, caps_a, caps_b, kind, v, lead, topo, hold, lim")
 
 
 def _row(r):
@@ -1424,8 +1429,8 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
             FED.HORN_MESH.clear()
         FED.HORN_MESH[cid] = why[0]                    # P10: Fall c - Hinweis an alle (call.horn_mesh)
     if node:
-        horn.set_leg_node(c, cid, dev, node["id"])
-        horn.room_open(c, cid, node["id"], climit(c, {"id": cid, "media": media, "topo": "horn"}))
+        horn.set_leg_node(c, cid, dev, node["id"])     # 2263-4: haelt dabei die Grenze nach dem Startknoten fest (lim)
+        horn.room_open(c, cid, node["id"], climit(c, _load(c, cid)))
     _OWN.add(cid)
     call = _load(c, cid)
     rung = []

@@ -113,6 +113,13 @@ try:
                                                 "current_schema() AND table_name IN ('chat_call','user_status')")}
     ok("Migration 37 beliebig oft ausfuehrbar, chat_call.hold und user_status da", {("chat_call", "hold"), ("user_status", "ver"),
        ("user_status", "prefs"), ("user_status", "exc")} <= cols)
+    # 2.6 (Bugs-DB 2263-4): Migration 40 (chat_call.lim, Grenze beim Start festgehalten) - idempotent, Spalte SMALLINT
+    ok("Schema 2.6: Migration 40 vorhanden", db.SCHEMA_VERSION >= 40 and 40 in db.MIGRATIONS)
+    with psycopg.connect(db.DATABASE_URL) as c:
+        c.execute(db.MIGRATIONS[40]); c.execute(db.MIGRATIONS[40])
+        typ = c.execute("SELECT data_type FROM information_schema.columns WHERE table_schema=current_schema() "
+                        "AND table_name='chat_call' AND column_name='lim'").fetchone()
+    ok(f"Migration 40 beliebig oft ausfuehrbar, chat_call.lim da ({typ})", typ is not None and typ[0] == "smallint")
     real = db.SCHEMA_VERSION
     db.SCHEMA_VERSION = 5                          # so sieht 2.0.x / eine aeltere 2.1-Testversion die Datenbank
     try:

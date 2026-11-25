@@ -1501,6 +1501,13 @@ DELETE FROM setting WHERE k='contact_fill';
     39: """
 ALTER TABLE push_sub ADD COLUMN IF NOT EXISTS topic TEXT;
 """,
+    # 2.6 (Bugs-DB 2263-4, Anrufe mit 10+): chat_call.lim = Grenze (Endpunkte) eines Anrufs ueber Knoten, beim Start
+    # festgehalten (saga/calls.py climit) - Umzug und Kaskade aendern sie nicht mehr. Bestand: NULL (wie bisher: Grenze
+    # nach dem Knoten mit den meisten Endpunkten). Beliebig oft ausfuehrbar.
+    40: """
+ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS lim SMALLINT;
+SELECT lim FROM chat_call LIMIT 0;
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")
