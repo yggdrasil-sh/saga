@@ -574,9 +574,9 @@ CREATE TABLE IF NOT EXISTS chat_call_invite (
 -- Kennungen; Text entsteht erst beim Zustellen (ohne Seitentitel/Inhalte). Auftraege hoechstens 24 h.
 CREATE TABLE IF NOT EXISTS push_sub (
     id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL,
-    kind TEXT NOT NULL,                           -- webpush | ntfy | unifiedpush | apns
+    kind TEXT NOT NULL,                           -- webpush | ntfy | unifiedpush | apns | apns-voip | stream
     endpoint TEXT NOT NULL UNIQUE,                -- Push-Adresse bzw. ntfy-Topic-URL; APNs: 'apns:<production|sandbox>:<token>'
-    p256dh TEXT, auth TEXT,                       -- Schluessel des Empfaengers (Web Push, UnifiedPush mit Verschluesselung)
+    p256dh TEXT, auth TEXT,                       -- Schluessel des Empfaengers (Web Push, UnifiedPush, 2.6 auch APNs: E2E)
     secret TEXT,                                  -- ntfy-Zugangstoken (verschluesselt)
     name TEXT NOT NULL DEFAULT '',
     device_id BIGINT,                             -- Geraete-Anmeldung der App (Abo endet mit ihr)
@@ -1494,6 +1494,12 @@ SELECT hold FROM chat_call LIMIT 0;
     38: """
 SELECT 1 FROM contact, contact_addr LIMIT 0;
 DELETE FROM setting WHERE k='contact_fill';
+""",
+    # 2.6 (Bugs-DB 2262, Push-Relais, docs/PUSH-RELAY.md): je APNs-Abo der Bundle-Bezeichner der App (topic, NULL = wie
+    # bisher das Bundle des eigenen APNs-Schluessels). Abos mit Schluesseln (p256dh/auth, bei apns bisher leer) bekommen
+    # Apple-Mitteilungen nur noch Ende-zu-Ende verschluesselt. Bestand: NULL (wie bisher). Beliebig oft ausfuehrbar.
+    39: """
+ALTER TABLE push_sub ADD COLUMN IF NOT EXISTS topic TEXT;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

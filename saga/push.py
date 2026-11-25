@@ -50,7 +50,7 @@ from fastapi.responses import JSONResponse, Response
 
 import auth
 from db import connect as _db
-from saga import bus, i18n, netguard, notify, push_stream, testclock, user_status
+from saga import bus, i18n, netguard, notify, push_relay, push_stream, testclock, user_status
 from saga.core import ASSET_V, BASE_URL, HERE, RESTORE_TEST, TZ, _api_guard, _bad, _body, _json_load, _tok_hash, account_lang, t, title
 from saga.netguard import Blocked, guarded_client, is_public
 
@@ -132,6 +132,7 @@ UPDATE_TYPES = ("webpush", "unifiedpush", "stream", "apns")     # ntfy (Klartext
 ENDPOINT_MAX = 1024
 TIME_RE = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 APNS_RE = re.compile(r"[0-9a-fA-F]{64,200}")
+TOPIC_RE = re.compile(r"[A-Za-z0-9.-]{3,200}")   # 2.6 (2262): Bundle-Bezeichner der App im APNs-Abo
 APNS_HOSTS = {"production": "https://api.push.apple.com", "sandbox": "https://api.sandbox.push.apple.com"}
 DEF_PREFS = {"cats": {k: True for k in CATS}, "names": True,
              "quiet": {"on": False, "from": "22:00", "to": "07:00", "tz": ""}}
@@ -308,12 +309,31 @@ def _apns_token(cfg, renew=False):
 # Einstellungen: Server (Admin) und je Person
 # =====================================================================================================
 def server():
-    """Was der Server anbietet (Admin-Bereich -> Mitteilungen)."""
+    """Was der Server anbietet (Admin-Bereich -> Mitteilungen). apns/apns-voip (2.6, 2262): eigener Schluessel ODER
+    Push-Relais eingeschaltet - welches Abo wirklich zugestellt werden kann, entscheidet _apns_route je Abo."""
     p = auth.settings().get("push") or {}
     on = bool(p.get("enabled", True))
+    apns = on and (apns_cfg()["ready"] or push_relay.enabled())
     return {"enabled": on, "webpush": on and bool(p.get("webpush", True)), "ntfy": on and bool(p.get("ntfy", True)),
-            "unifiedpush": on and bool(p.get("unifiedpush", True)), "apns": on and apns_cfg()["ready"],
-            "apns-voip": on and apns_cfg()["ready"], "stream": on and bool(p.get("stream", True))}
+            "unifiedpush": on and bool(p.get("unifiedpush", True)), "apns": apns,
+            "apns-voip": apns, "stream": on and bool(p.get("stream", True))}
+
+
+def e2e_direct():
+    """2.6 (2262): Abos mit Schluesseln bekommen auch auf dem eigenen APNs-Weg nur Chiffrat (Standard an)."""
+    return bool((auth.settings().get("push") or {}).get("apns_e2e_direct", True))
+
+
+def _apns_route(p256dh, auth_s, topic, cfg=None):
+    """2.6 (2262, docs/PUSH-RELAY.md 5.4): Weg eines APNs-Abos -> "direct" | "relay" | None.
+    (1) eigener Schluessel bereit und (topic leer oder = eigenes Bundle) -> direkt; (2) sonst Relais an, Abo mit Schluesseln
+    und topic beim Relais -> Relais; (3) sonst None (nicht zustellbar - Abos ohne Schluessel nie ueber das Relais)."""
+    cfg = cfg or apns_cfg()
+    if cfg["ready"] and (not topic or topic == cfg.get("bundle_id")):
+        return "direct"
+    if p256dh and auth_s and topic and push_relay.usable_for(topic):
+        return "relay"
+    return None
 
 
 def prefs(c, uid):
@@ -435,7 +455,11 @@ def _subs(c, uid, epoch, srv):
     c.execute("DELETE FROM push_sub WHERE uid=? AND kind='webpush' AND device_id IS NULL AND created < ?", (uid, epoch or 0))
     c.execute("DELETE FROM push_sub WHERE uid=? AND device_id IS NOT NULL AND NOT EXISTS "
               "(SELECT 1 FROM device_login d WHERE d.id=push_sub.device_id AND d.uid=push_sub.uid)", (uid,))
-    return [r[0] for r in c.execute("SELECT id, kind FROM push_sub WHERE uid=? ORDER BY id", (uid,)).fetchall() if srv.get(r[1])]
+    rows = c.execute("SELECT id, kind, p256dh, auth, topic FROM push_sub WHERE uid=? ORDER BY id", (uid,)).fetchall()
+    cfg = apns_cfg() if any(r[1] in ("apns", "apns-voip") for r in rows) else None
+    # 2.6 (2262): APNs-Abos nur mit Weg (eigener Schluessel bzw. Relais) - Apps 2.5 ohne Schluessel an einem Server ohne
+    # eigenen Schluessel bekommen nichts (statt Fehler zu sammeln); die Geraeteliste zeigt den Hinweis
+    return [r[0] for r in rows if srv.get(r[1]) and (r[1] not in ("apns", "apns-voip") or _apns_route(r[2], r[3], r[4], cfg))]
 
 
 RING_KINDS = ("call", "call.group")   # klingelnde Anrufe (1:1 direkt bzw. ueber Knoten/Gruppe) - die einzigen Arten fuer VoIP
@@ -912,7 +936,7 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
 # =====================================================================================================
 # Zustellen
 # =====================================================================================================
-SUB_COLS = "id, uid, kind, endpoint, p256dh, auth, secret"
+SUB_COLS = "id, uid, kind, endpoint, p256dh, auth, secret, topic"     # 2.6 (2262): topic (Bundle der App, APNs)
 
 
 def _verdict(code):
@@ -941,7 +965,7 @@ def _topic(msg):
 def send(sub, msg):
     """Eine Mitteilung an EIN Abo -> (ergebnis, detail); ergebnis: ok | gone (Abo entfernen) | retry | fail."""
     import httpx
-    sid, uid, kind, endpoint, p256dh, auth_s, secret = sub
+    sid, uid, kind, endpoint, p256dh, auth_s, secret, *more = sub
     if RESTORE_TEST:                                      # Testwiederherstellung: nichts nach aussen (saga/backups.py)
         return "fail", "SAGA_RESTORE_TEST"
     if kind in ("apns", "apns-voip"):
@@ -1076,8 +1100,8 @@ def run_once(limit=20):
         try:
             with _db() as c:
                 row = c.execute(f"SELECT {SUB_COLS}, lang FROM push_sub WHERE id=? AND uid=?", (sid, uid)).fetchone()
-                sub = tuple(row[:7]) if row else None
-                msg = message(c, uid, kind, ref, actor, _json_load(data, {}), sub[2], bool(sub[4]), created, lang=row[7]) if sub else None
+                sub = tuple(row[:8]) if row else None
+                msg = message(c, uid, kind, ref, actor, _json_load(data, {}), sub[2], bool(sub[4]), created, lang=row[8]) if sub else None
             verdict, detail = send(sub, msg) if msg else ("drop", "")
         except Exception as ex:  # noqa: BLE001 - ein kaputter Auftrag haelt die Warteschlange nicht auf
             print(f"push: Auftrag {jid}: {type(ex).__name__}: {ex}", flush=True)
@@ -1176,13 +1200,26 @@ def _where(kind, endpoint):
 
 
 def _devices(c, uid, did=None):
-    rows = c.execute("SELECT id, kind, endpoint, name, device_id, created, last_ok, last_err, fails, p256dh FROM push_sub "
+    rows = c.execute("SELECT id, kind, endpoint, name, device_id, created, last_ok, last_err, fails, p256dh, auth, topic FROM push_sub "
                      "WHERE uid=? ORDER BY id", (uid,)).fetchall()
-    return [{"id": r[0], "type": r[1], "name": r[3] or "", "where": _where(r[1], r[2]), "app": r[4] is not None,
+    cfg = apns_cfg() if any(r[1] in ("apns", "apns-voip") for r in rows) else None
+    on, out = server()["enabled"], []
+    for r in rows:
+        d = {"id": r[0], "type": r[1], "name": r[3] or "", "where": _where(r[1], r[2]), "app": r[4] is not None,
              "this_device": bool(did and r[4] == did), "created": r[5], "last_ok": r[6],
              "last_error": (r[7] or "").split(" @")[0] or None, "fails": r[8],
              "encrypted": r[1] in ("webpush", "apns", "apns-voip", "stream") or (r[1] == "unifiedpush" and bool(r[9])),
-             **({"connected": push_stream.connected(r[0])} if r[1] == "stream" else {})} for r in rows]
+             **({"connected": push_stream.connected(r[0])} if r[1] == "stream" else {})}
+        if r[1] in ("apns", "apns-voip"):
+            # 2.6 (2262): Weg (direct | relay | None = nicht zustellbar) und ob Ende-zu-Ende; ohne Weg und ohne Schluessel
+            # ist es eine alte App an einem Server ohne eigenen APNs-Schluessel -> Hinweis "App aktualisieren"
+            via = _apns_route(r[9], r[10], r[11], cfg) if on else None
+            d["via"] = via
+            d["e2e"] = bool(r[9] and r[10]) and (via == "relay" or (via == "direct" and e2e_direct()))
+            if not via:
+                d["hint"] = "app_update" if not (r[9] and r[10]) and push_relay.enabled() else "not_configured"
+        out.append(d)
+    return out
 
 
 def _state(c, uid, did=None):
@@ -1193,10 +1230,15 @@ def _state(c, uid, did=None):
         print(f"push: VAPID: {type(ex).__name__}: {ex}", flush=True)
         pub = None
     a = apns_cfg()
+    own = srv["enabled"] and a["ready"]                  # server.apns: wie bis 2.5 nur der eigene Schluessel
+    relay = push_relay.public_state() if srv["enabled"] else None
+    topics = ([a["bundle_id"]] if own else []) + [x for x in (relay or {}).get("topics") or [] if not (own and x == a["bundle_id"])]
     return {"server": {"enabled": srv["enabled"], "webpush": srv["webpush"] and bool(pub), "vapid_public": pub,
-                       "ntfy": srv["ntfy"], "unifiedpush": srv["unifiedpush"], "apns": srv["apns"],
+                       "ntfy": srv["ntfy"], "unifiedpush": srv["unifiedpush"], "apns": own,
                        "stream": srv["stream"], "stream_path": push_stream.PATH if srv["stream"] else None,
-                       "apns_bundle": a.get("bundle_id") if srv["apns"] else None,
+                       "apns_bundle": a.get("bundle_id") if own else None,
+                       # 2.6 (2262, docs/PUSH-RELAY.md 5.1): Ende-zu-Ende fuer Apple, Bundles mit Weg, Zustand des Relais
+                       "apns_e2e": 1, "apns_topics": topics, "apns_relay": relay,
                        "payload": PAYLOAD_V, "sub_caps": list(SUB_CAPS)},     # 2.5: Nutzlast 2, Abo-Felder lang/caps
             "settings": prefs(c, uid), "categories": [k for k in CATS if k != "admin" or (auth.user_info(uid) or {}).get("is_admin")],
             "kinds": CATS,
@@ -1281,7 +1323,8 @@ def _parse_sub(b, srv):
         return None, (t("ungültige Angabe"), 400)
     if kind not in ("apns", "apns-voip") and not srv[kind]:
         return None, (t("Diese Art von Mitteilungen ist auf diesem Server abgeschaltet."), 403)
-    f = {"kind": kind, "name": _clean_name(b.get("name")), "p256dh": None, "auth": None, "secret": None, "lang": None, "caps": None}
+    f = {"kind": kind, "name": _clean_name(b.get("name")), "p256dh": None, "auth": None, "secret": None, "lang": None, "caps": None,
+         "topic": None}
     # 2.5: Sprache der App (de|en|es|ru|th, "" = Sprache des Kontos) und Faehigkeiten - fehlt das Feld, bleibt es beim Erneuern
     if "lang" in b:
         lg = b.get("lang")
@@ -1300,6 +1343,18 @@ def _parse_sub(b, srv):
         if not APNS_RE.fullmatch(tok) or not isinstance(env, str) or env not in APNS_HOSTS:
             return None, (t("ungültige Angabe"), 400)
         f["endpoint"] = f"{kind}:{env}:{tok.lower()}"
+        # 2.6 (2262, docs/PUSH-RELAY.md 5.1): Schluessel der App (Ende-zu-Ende) und ihr Bundle - optional; fehlt ein Feld,
+        # bleibt beim Erneuern der gespeicherte Wert (keep_keys)
+        if p256dh or auth_s:
+            if not _keys_ok(p256dh, auth_s):
+                return None, (t("ungültige Angabe"), 400)
+            f["p256dh"], f["auth"] = str(p256dh).strip(), str(auth_s).strip()
+        else:
+            f["keep_keys"] = True
+        if "topic" in b and b.get("topic") not in (None, ""):
+            if not isinstance(b.get("topic"), str) or not TOPIC_RE.fullmatch(b["topic"]):
+                return None, (t("ungültige Angabe"), 400)
+            f["topic"] = b["topic"]
         return f, None
     if kind == "stream":                               # 2.5: Endpunkt vergibt der Server (einer je Geraete-Anmeldung)
         if not _keys_ok(p256dh, auth_s):
@@ -1332,7 +1387,8 @@ async def api_push_subscribe(request: Request):
     """Geraet/Browser anmelden (oder erneuern - gleiche Adresse = gleiches Abo; gehoerte es einem anderen Konto, wechselt
     es zu diesem - nur bei webpush/apns: die Adresse erzeugt dort der Browser bzw. Apple fuer GENAU dieses Geraet. ntfy-Topics
     und UnifiedPush-Adressen kann man abschreiben; die eines anderen Kontos -> 409). webpush: {type, endpoint, keys: {p256dh, auth}, name}; ntfy: {type, url, token?, name};
-    unifiedpush: {type, endpoint, keys?, name}; apns: {type, token, env: production|sandbox, name}."""
+    unifiedpush: {type, endpoint, keys?, name}; apns: {type, token, env: production|sandbox, name, keys?, topic?} (2.6: keys
+    und topic fuer Ende-zu-Ende/Push-Relais, docs/PUSH-RELAY.md)."""
     from starlette.concurrency import run_in_threadpool
     uid, did = _who(request)
     if not uid:
@@ -1369,21 +1425,28 @@ async def api_push_subscribe(request: Request):
             return _bad(t("Höchstens {n} Geräte – bitte zuerst eines entfernen.", n=SUB_MAX), 409)
         if old:
             sid = old[0]
-            c.execute("UPDATE push_sub SET p256dh=?, auth=?, secret=COALESCE(?, secret), name=COALESCE(NULLIF(?, ''), name), device_id=?, created=?, fails=0, last_err=NULL "
-                      "WHERE id=?", (f["p256dh"], f["auth"], f["secret"], f["name"], dev, now, sid))
+            if f.get("keep_keys"):                                    # 2.6: APNs-Abo ohne keys -> Schluessel bleiben
+                c.execute("UPDATE push_sub SET secret=COALESCE(?, secret), name=COALESCE(NULLIF(?, ''), name), device_id=?, created=?, fails=0, last_err=NULL "
+                          "WHERE id=?", (f["secret"], f["name"], dev, now, sid))
+            else:
+                c.execute("UPDATE push_sub SET p256dh=?, auth=?, secret=COALESCE(?, secret), name=COALESCE(NULLIF(?, ''), name), device_id=?, created=?, fails=0, last_err=NULL "
+                          "WHERE id=?", (f["p256dh"], f["auth"], f["secret"], f["name"], dev, now, sid))
+            if f["topic"]:
+                c.execute("UPDATE push_sub SET topic=? WHERE id=?", (f["topic"], sid))
             if f["lang"] is not None:
                 c.execute("UPDATE push_sub SET lang=? WHERE id=?", (f["lang"] or None, sid))
             if f["caps"] is not None:
                 c.execute("UPDATE push_sub SET caps=? WHERE id=?", (f["caps"], sid))
         else:
-            sid = c.execute("INSERT INTO push_sub (uid, kind, endpoint, p256dh, auth, secret, name, device_id, created, lang, caps) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            sid = c.execute("INSERT INTO push_sub (uid, kind, endpoint, p256dh, auth, secret, name, device_id, created, lang, caps, topic) "
+                            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                             (uid, f["kind"], f["endpoint"], f["p256dh"], f["auth"], f["secret"], f["name"], dev, now,
-                             f["lang"] or None, f["caps"] or "")).lastrowid
+                             f["lang"] or None, f["caps"] or "", f["topic"])).lastrowid
         devs = _devices(c, uid, did)
     if web and f["kind"] == "webpush":
         request.session["push_sub"] = sid                           # Abmelden in diesem Browser beendet das Abo
     d = next((x for x in devs if x["id"] == sid), None)
-    out = {"id": sid, "device": d, "active": bool(srv.get(f["kind"]))}
+    out = {"id": sid, "device": d, "active": bool(srv.get(f["kind"])) and (f["kind"] not in ("apns", "apns-voip") or bool(d and d.get("via")))}
     if f["kind"] == "stream":
         out["stream_path"] = push_stream.PATH
     return JSONResponse(out, status_code=200 if old else 201)
@@ -1425,9 +1488,9 @@ def test_send(uid, sid):
         row = c.execute(f"SELECT {SUB_COLS}, lang FROM push_sub WHERE id=? AND uid=?", (sid, uid)).fetchone()
         if not row:
             return None
-        sub = tuple(row[:7])
-        msg = message(c, uid, "test", sub_kind=sub[2], has_keys=bool(sub[4]), lang=row[7])
-    if sub[2] in ("apns", "apns-voip") and not server()["apns"]:
+        sub = tuple(row[:8])
+        msg = message(c, uid, "test", sub_kind=sub[2], has_keys=bool(sub[4]), lang=row[8])
+    if sub[2] in ("apns", "apns-voip") and not (server()["apns"] and _apns_route(sub[4], sub[5], sub[7])):
         return "fail", "APNs nicht eingerichtet"
     if sub[2] == "apns-voip":                       # jede VoIP-Mitteilung muss in CallKit ein Anruf werden - Test per Anruf
         return "fail", "VoIP: mit einem Testanruf pruefen"
@@ -1450,6 +1513,16 @@ async def api_push_test(request: Request, sid: int):
     if r is None:
         return _bad(t("Nicht gefunden"), 404)
     return JSONResponse({"ok": r[0] == "ok", "result": r[0], "error": r[1] or None})
+
+
+@router.get("/.well-known/saga-push-relay")
+def well_known_relay():
+    """2.6 (2262): Domain-Nachweis fuer das Push-Relais - {v: 1, key: <oeffentlicher Schluessel>}, ohne Schluessel 404.
+    Unabhaengig von der Foederation; enthaelt nur den oeffentlichen Schluessel."""
+    d = push_relay.well_known()
+    if not d:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(d, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/sw.js")

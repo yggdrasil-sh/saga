@@ -610,6 +610,60 @@ def auth_ref(uid):
     return local_ref(uid)
 
 
+def e2e_part(A, Bk, pgA, tok2, key):
+    """2.6 (Bugs-DB 2262-4/-5): APNs-Abo mit Schluesseln/Bundle, Geraeteliste via/e2e, /api/push, Domain-Nachweis."""
+    from saga import push_relay
+    with connect() as c, c:
+        c.execute("DELETE FROM setting WHERE k IN ('push_relay', 'push_relay_state', 'push_relay_old')")
+    push_relay.forget_key_cache()
+    s, d = req("GET", "/.well-known/saga-push-relay")
+    ok(f"2262-4: /.well-known/saga-push-relay ohne Schluessel -> 404 ({s})", s == 404)
+    _priv, pub = push_relay.key()
+    s, d = req("GET", "/.well-known/saga-push-relay")
+    ok(f"2262-4: /.well-known/saga-push-relay -> {{v:1, key}} (nur oeffentlicher Schluessel) ({s})",
+       s == 200 and d == {"v": 1, "key": push.b64u(pub)})
+    s, ver = req("GET", "/api/version")
+    ok("2262-4: FEATURES pushrelay1", "pushrelay1" in (ver.get("features") or []))
+    app = UA()
+    bearer = {"Authorization": "Bearer " + tok2}
+    t3 = "e3" * 32
+    s, d = req("POST", "/api/push/subscriptions", None, {"type": "apns", "token": t3, "env": "sandbox", "name": "iPhone E2E",
+                                                         "keys": app.keys(), "topic": "org.example.saga"}, hdr=bearer)
+    with connect() as c:
+        row = c.execute("SELECT p256dh, auth, topic FROM push_sub WHERE endpoint=?", (f"apns:sandbox:{t3}",)).fetchone()
+    ok(f"2262-4: APNs-Abo mit keys/topic gespeichert, Weg direkt, e2e ({s}, {d.get('device')})",
+       s == 201 and row == (app.keys()["p256dh"], app.keys()["auth"], "org.example.saga") and d["active"]
+       and d["device"]["via"] == "direct" and d["device"]["e2e"] is True)
+    s, d = req("POST", "/api/push/subscriptions", None, {"type": "apns", "token": t3, "env": "sandbox", "name": "iPhone E2E"}, hdr=bearer)
+    with connect() as c:
+        row2 = c.execute("SELECT p256dh, auth, topic FROM push_sub WHERE endpoint=?", (f"apns:sandbox:{t3}",)).fetchone()
+    ok(f"2262-4: Erneuern ohne keys/topic -> Werte bleiben ({s})", s == 200 and row2 == row)
+    app2 = UA()
+    s, d = req("POST", "/api/push/subscriptions", None, {"type": "apns", "token": t3, "env": "sandbox", "keys": app2.keys()}, hdr=bearer)
+    with connect() as c:
+        row3 = c.execute("SELECT p256dh, auth, topic FROM push_sub WHERE endpoint=?", (f"apns:sandbox:{t3}",)).fetchone()
+    ok("2262-4: Schluesselwechsel (gleiches Token) -> neue Schluessel, gleiches Abo, Bundle bleibt",
+       s == 200 and row3 == (app2.keys()["p256dh"], app2.keys()["auth"], "org.example.saga"))
+    bad = [req("POST", "/api/push/subscriptions", None, dict({"type": "apns", "token": "e4" * 32}, **x), hdr=bearer)[0]
+           for x in ({"keys": {"p256dh": "AAAA", "auth": "BBBB"}}, {"keys": {"p256dh": app.keys()["p256dh"]}}, {"topic": "x"},
+                     {"topic": "org/example"}, {"topic": ["org.example.saga"]}, {"topic": "a" * 201})]
+    ok(f"2262-4: kaputte keys / topic -> 400 ({bad})", bad == [400] * 6)
+    t4 = "e5" * 32
+    s, d = req("POST", "/api/push/subscriptions", None, {"type": "apns-voip", "token": t4, "env": "sandbox", "keys": app2.keys(),
+                                                         "topic": "org.example.fremd"}, hdr=bearer)
+    ok(f"2262-4: fremdes Bundle ohne Relais -> angelegt, aber kein Weg (via null, inaktiv) ({d.get('device')})",
+       s == 201 and d["device"]["via"] is None and not d["active"] and d["device"]["hint"] == "not_configured")
+    s, st = req("GET", "/api/push", A)
+    ok(f"2262-4: /api/push apns wie bisher, apns_e2e 1, apns_topics, apns_relay null ({st['server'].get('apns_topics')})",
+       st["server"]["apns"] is True and st["server"]["apns_e2e"] == 1 and st["server"]["apns_topics"] == ["org.example.saga"]
+       and st["server"]["apns_relay"] is None)
+    dv = {x["where"]: x for x in st["devices"] if x["type"] in ("apns", "apns-voip")}
+    ok("2262-4: devices[]: altes Abo ohne Schluessel direkt ohne e2e", any(x["via"] == "direct" and x["e2e"] is False for x in dv.values()))
+    with connect() as c, c:
+        c.execute("DELETE FROM push_sub WHERE endpoint=?", (f"apns-voip:sandbox:{t4}",))
+    return t3, app2
+
+
 def main():
     cleanup()
     serve(FP); serve(FA)
@@ -996,6 +1050,7 @@ def run(A, Bk, vpub):
     ok("APNs 410 Unregistered -> Token entfernt", f"apns:production:{dead}" not in [x[2] for x in sub_rows("ps-a")]
        and f"apns:sandbox:{good}" in [x[2] for x in sub_rows("ps-a")])
     ok("ntfy wurde ebenfalls benachrichtigt (alle Wege parallel)", wait_got(lambda g: g[1] == "/" and json.loads(g[3]).get("topic") == "ps-topic-a", m, 1))
+    e2e_part(A, Bk, pgA, tok2, key)
 
     # --- Aufraeumen, Kontoloeschung, Log -------------------------------------------------------------------------
     with connect() as c, c:
