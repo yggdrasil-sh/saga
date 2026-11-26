@@ -3932,6 +3932,93 @@ VoIP kommt nur für `call`/`call.group`.
 
 **Abos ohne Schlüssel** (Apps 2.5) laufen nur über einen eigenen APNs-Schlüssel des Servers, nie über das Relais.
 
+## Widgets sofort aktuell: Widget-Push, Einzelseite, `cover_v` (2.6, Bugs-DB 2188)
+
+Homescreen-Widgets (iOS WidgetKit, Android Glance) zeigen Änderungen von anderen Geräten sofort: Der Server schickt
+nach einer Änderung, die ein eingerichtetes Widget zeigt, einen **stillen Push ohne Inhalt**; die App lädt ihre Widgets
+neu. Additiv, ohne Migration, `MIN_APP` unverändert.
+
+**Erkennen:** `GET /api/push` → `server.sub_caps` enthält `"widgets"` (dann gibt es auch `/api/app/widgets` und
+`/api/app/page/{id}`). Ältere Server: fehlt – Widgets laden wie bisher nur nach Plan.
+
+### Abo: Fähigkeit `widgets`
+
+`POST /api/push/subscriptions` mit `caps` (Liste, siehe Push-Nutzlast 2) zusätzlich `"widgets"` = dieses Abo nimmt den
+Widget-Push an. Nur Abo-Arten `apns`, `unifiedpush` und `stream`; VoIP (`apns-voip`), ntfy und Browser-Abos bekommen ihn
+**nie**, auch mit der Fähigkeit nicht. Die iOS-App meldet nur `["widgets"]` (nicht `update`), Android `["update", "widgets"]`.
+
+### Welche Widgets liegen auf dem Gerät: `PUT /api/app/widgets`
+
+Der Server kennt die Widgets nicht von selbst – die App meldet sie je Geräte-Anmeldung (Sitzung nach `/app/resume` oder
+`Authorization: Bearer hkd_…`; ohne Geräte-Anmeldung `400`, ohne Anmeldung `401`), nur wenn sich etwas ändert:
+
+```json
+PUT /api/app/widgets   {"pages": [812, 977], "today": true}
+→ 200 {"ok": true, "pages": [812, 977], "today": true, "push": true}
+GET /api/app/widgets   → {"pages": [812, 977], "today": true, "push": true}
+```
+
+- `pages`: IDs der Seiten/Datenbanken, die ein Widget zeigt (Seiten-Karte: die Seite; Datenbank-/Unterseiten-Widget: die
+  Datenbank bzw. Elternseite), höchstens 64 gemerkt. Nur **eigene**, nicht gelöschte Seiten werden gemerkt, andere still
+  weggelassen (Antwort zeigt, was gilt). `today`: ein Heute-/Aufgaben-Widget (auch Sperrbildschirm) liegt auf dem Gerät.
+- `{"pages": [], "today": false}` = Gerät vergisst der Server. Mit der Geräte-Anmeldung verschwindet der Eintrag ebenfalls.
+- `push`: dieses Gerät hat ein Abo mit `widgets` (sonst kommt nichts an – z. B. Mitteilungen aus).
+- Kein Ganzzahl-Array, IDs als Wahrheitswert, `today` kein Wahrheitswert, mehr als 256 Einträge → `400`; mehr als 30
+  Meldungen je Minute → `429`. Gespeichert werden nur Kennungen (`user_kv` `app_widgets`), keine Titel.
+
+### Wann der Server den Widget-Push schickt
+
+An **alle** Geräte der Person mit passendem Eintrag – auch an das Gerät, das die Änderung ausgelöst hat (z. B. Häkchen im
+Widget setzen):
+
+| Änderung | trifft |
+|---|---|
+| Seite gespeichert (Titel, Symbol, Titelbild, Inhalt, Eigenschaften), angelegt, verschoben, gelöscht, archiviert | Widgets dieser Seite und ihrer Elternseite (Unterseiten-/Datenbank-Widget) |
+| Zeile einer Datenbank (auch `POST /api/app/rows/{id}/check`) | Widgets der Datenbank und der Zeile |
+| Seitenbaum umsortiert/verschoben | alle Seiten-Widgets des Geräts (die alte Elternseite ist unbekannt) |
+| Aufgabe angelegt, abgehakt, wieder geöffnet, geändert, gelöscht; Zeile einer Aufgabenquelle | Heute-Widgets (bei Aufgabenquellen: aller Personen, die die Quelle abonniert haben) |
+
+Termine aus angebundenen Kalendern lösen nichts aus (sie kommen von außen); dafür laden die Widgets weiter nach Plan.
+
+**Drosselung und Bündeln** je Gerät: der erste Push etwa 3 s nach der Änderung (ein Schwall Speichervorgänge = ein Push),
+danach höchstens einer je 60 s und höchstens 6 je Stunde (Apple drosselt stille Pushes, WidgetKit hat ein Tagesbudget
+fürs Neuladen). Wartet schon ein Push, kommt kein zweiter – die App holt beim Neuladen ohnehin den neuesten Stand.
+Admin-Umgebung: `SAGA_WIDGET_PUSH_GAP` (Sekunden, 1–3600), `SAGA_WIDGET_PUSH_HOUR` (1–60).
+
+### Nutzlast
+
+Ohne Titel, Namen oder Inhalte – Erkennungsmerkmal ist `kind`:
+
+```json
+{"title": "", "body": "", "url": "/", "tag": "widgets", "kind": "widgets.update", "ts": 1795699116, "ttl": 300,
+ "v": 2, "lang": "de", "update": true}
+```
+
+- **APNs** (direkt mit eigenem Schlüssel und über das Push-Relais gleich): `apns-push-type: background`, Priorität 5,
+  `rate: bg`, `aps` nur `{"content-available": 1}`, `apns-collapse-id` aus `u` + `widgets`, **`apns-expiration: 0`** –
+  APNs hält für ein Gerät ohne Netz nur eine Mitteilung je App vor; ein verspäteter stiller Push würde eine wartende
+  echte Mitteilung verdrängen. Abos mit Schlüsseln: die Felder verschlüsselt in `saga.c` wie jede Mitteilung. Kein
+  WidgetKit-Push (`apns-push-type: widgets`) in 2.6 – dafür bräuchte die Widget-Erweiterung eine eigene Push-Freigabe.
+  Die App ruft im Hintergrund `WidgetCenter.shared.reloadAllTimelines()`.
+- **UnifiedPush / `stream`** (Android): Daten-Nachricht (Web-Push-verschlüsselt), `TTL: 300`, Topic `uwidgets`,
+  `Urgency: normal`. Die App zeigt **nichts** an und plant das Neuladen der Glance-Widgets (WorkManager, mit Netz).
+- Ältere Apps bekommen ihn nicht (sie melden die Fähigkeit nicht).
+
+### Seiten-Karte: `GET /api/app/page/{id}` und `cover_v`
+
+- `GET /api/app/pages` (App-Schlüssel `hk_…`) liefert je Seite zusätzlich `cover_v` und `updated` (Unix-Sekunden der
+  letzten Änderung). `cover_v` = Versionsschlüssel (12 Hex-Zeichen) des Bildes, das `GET /api/app/page-image/{id}/cover`
+  liefert (Titelbild, sonst erstes Bild im Inhalt); `""` = kein Bild (kein Abruf nötig). Er ändert sich, sobald sich das
+  Bild ändert (nicht bei `cover_pos`).
+- `GET /api/app/page/{id}`: **ein** Objekt wie in der Liste (`id, title, icon, kind, parent_id, cover, cover_pos, cover_v,
+  updated`, bei Datenbanken `views`), gleiche Rechte: nur eigene, nicht gelöschte, nicht archivierte Seiten, keine
+  Vorlagen; sonst `404 {"error": "not found"}`. Nur mit App-Schlüssel (Sitzung oder `hkd_` → `401`). Ein `404` **ohne**
+  `error` kommt von einem älteren Server ohne den Endpunkt – dann wie bisher die Liste nehmen.
+- Bild zwischenspeichern: gleicher `cover_v` wie beim gemerkten Bild → nicht neu laden. Anderer → laden mit eigenem
+  Abfrage-Parameter, z. B. `GET /api/app/page-image/{id}/cover?w=640&v=<schlüssel>` (der Server ignoriert `v`; die
+  Adresse ändert sich mit dem Bild, `Cache-Control: private, max-age=3600` ist dann richtig). Symbol-Bilder ebenso mit der
+  Symbol-Adresse (`icon`) als Schlüssel.
+
 ## Leere Zustände und „Erste Schritte“ (2.6, Bugs-DB 2031)
 
 **Leere Zustände:** Wo eine Liste leer ist (Chats, Aufgaben, Termine, Datenbank-Einträge, Seiten, Mit mir geteilt …),

@@ -227,6 +227,7 @@ Ende entfernen, das letzte Byte muss `0x02` sein (sonst Fehler). Mehr als ein Da
 | klingelnder Anruf ohne VoIP-Abo (`call`, `call.group`) | `alert` | 10 | `ring` | wie oben, aber `loc-key: "SAGA_PUSH_CALL"` und `"interruption-level": "time-sensitive"` |
 | klingelnder Anruf an VoIP-Abo | `voip` | 10 | `ring` | `{}` |
 | Aktualisierung (`update`) | `background` | 5 | `bg` | `{"content-available": 1}` |
+| Widget-Push (2.6, Bugs-DB 2188, `kind: widgets.update`) | `background` | 5 | `bg` | `{"content-available": 1}`, **`expiration: 0`** (nur sofort, verdrängt keine wartende Mitteilung) |
 
 - `apns-expiration` = jetzt + (`ttl` der Mitteilung oder 4 h).
 - **`voip` nur für `kind ∈ {call, call.group}`** – sonst sendet der Server nicht (`fail`). Aufträge der Kollegin (`job.*`)

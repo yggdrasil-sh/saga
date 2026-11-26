@@ -21,6 +21,15 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
 
 ### Neu
 - **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im Ort „Saga“ gibt es den Reiter „Aufträge“. Eine Bitte
+- **Widgets sofort aktuell** (Bugs-DB 2188, ohne Migration): Ändert sich etwas, das ein Homescreen-Widget zeigt (Titel,
+  Titelbild, Unterseiten, Datenbank-Zeilen, Aufgaben – auch von einem anderen Gerät oder im Widget selbst), schickt Saga
+  den Geräten der Person einen **stillen Push ohne Inhalt**, und die Widgets laden neu. Welche Seiten als Widget liegen,
+  meldet die App (`PUT /api/app/widgets`, nur Kennungen). Gedrosselt je Gerät (höchstens alle 60 s, 6 je Stunde),
+  gebündelt, nie über VoIP, ntfy oder den Browser; Apple-Weg direkt und über das Push-Relais gleich (`background`,
+  `apns-expiration 0`). Dazu `GET /api/app/page/{id}` für die Seiten-Karte und `cover_v`/`updated` in `/api/app/pages`
+  (Titelbild nach Versionsschlüssel zwischenspeichern). Häkchen im Widget melden die Zeile jetzt auch an offene
+  Tabellen. Schnittstelle: docs/APP-API.md „Widgets sofort aktuell“.
+- **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im KI-Bereich gibt es den Reiter „Aufträge“. Eine Bitte
   („Erinnere mich Freitag an die Grillkohle“, „Trag auf Sommerfest ein, dass Ben die Kohle bringt“) wird zu einem
   Plan: feste Schritte mit Klasse (rückgängig / nur löschbar / endgültig), „Ich lese dafür: …“ und den Knöpfen
   „Passt, los · Ändern · Lieber nicht“. Erst nach dem OK trägt Saga ein (Aufgabe, Seite, Termin) und meldet sich mit
