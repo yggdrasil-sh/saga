@@ -234,7 +234,7 @@
     lines.forEach(function (ln) {
       // Bugs-DB 2504: das Ergebnis steht schon im Satz oben - je Aenderung nur der Gegenstand (bei einer Aenderung gar
       // nichts) neben "Rueckgaengig"; der Screenreader hoert am Knopf, worum es geht.
-      var li = el('li', 'kj-change' + (one ? ' kj-change-one' : ''));
+      var li = el('li', 'kj-change' + (one ? ' kj-change-one' : '')); li.dataset.change = ln.change;
       if (!one) li.appendChild(el('span', 'kj-change-t', ln.label || ln.text));
       var ch = (d.changes || []).filter(function (c) { return c.id === ln.change; })[0] || {};
       if (ln.undone) li.appendChild(el('span', 'kj-cls', T('Zurückgenommen')));
@@ -405,11 +405,29 @@
       }).catch(function () { /* naechstes Ereignis */ });
     }
 
+    // Stand des offenen Details (2515 Pruefer): neu gezeichnet wird nur, wenn sich daran etwas geaendert hat - sonst
+    // klappt z. B. eine geoeffnete "Alte Fassung" bei jedem live.hello/resync zu
+    var shownSig = null;
+    function sig(d) {
+      return JSON.stringify([d.id, d.state, d.sub, d.updated, d.edited, d.plan && d.plan.plan_v, (d.changes || []).map(function (c) {
+        return [c.id, c.undone, c.can_undo, c.why]; }), (d.events || []).length]);
+    }
     function open(id, focusIt) {
       openId = id;
-      return load(id).then(function (d) {
-        if (!d) return;
+      return load(id).then(function (d) { if (d && openId === id) draw(id, d, focusIt); });
+    }
+    function reopen() {                              // Abgleich (Live-Ereignis, hello, resync): nur bei neuem Stand neu zeichnen
+      var id = openId;
+      if (id == null || detailEl.querySelector('.kj-editbox')) return;
+      load(id).then(function (d) { if (d && openId === id && sig(d) !== shownSig) draw(id, d, false); });
+    }
+    function draw(id, d, focusIt) {     // (Rumpf eingerueckt wie frueher im then von open)
         var keep = focusIt || detailEl.contains(document.activeElement);   // Neuzeichnen ersetzt das fokussierte Element
+        // aufgeklappte "Alte Fassung" und Fokus in einer Aenderungszeile ueber das Neuzeichnen retten
+        var olds = {}, act = document.activeElement, actLi = act && detailEl.contains(act) && act.closest ? act.closest('.kj-change') : null;
+        var actK = actLi && act.classList.length ? [actLi.dataset.change, act.classList[act.classList.length - 1]] : null;
+        [].forEach.call(detailEl.querySelectorAll('.kj-change .kj-oldtext'), function (o) { olds[o.closest('.kj-change').dataset.change] = o; });
+        shownSig = sig(d);
         detailEl.textContent = ''; detailEl.hidden = false; listEl.hidden = true; form.hidden = true; stage.hidden = true;
         var back = btn('‹ ' + T('Aufträge'), 'btn-quiet kj-back', close); detailEl.appendChild(back);
         var h = el('h3', 'kj-dtitle', d.title || T('Auftrag')); h.tabIndex = -1; detailEl.appendChild(h);
@@ -446,17 +464,22 @@
           li.appendChild(document.createTextNode(' ' + e.text)); ul.appendChild(li);
         });
         ev.appendChild(ul); detailEl.appendChild(ev);
-        if (keep) { try { h.focus(); } catch (e) { /* egal */ } }
+        Object.keys(olds).forEach(function (c) {
+          var b = detailEl.querySelector('.kj-change[data-change="' + c + '"] .kj-old');
+          if (b) b.parentNode.insertBefore(olds[c], b.nextSibling);
+        });
+        var back2 = actK && detailEl.querySelector('.kj-change[data-change="' + actK[0] + '"] .' + actK[1]);
+        if (back2 && !focusIt) { try { back2.focus(); } catch (e) { /* egal */ } }
+        else if (keep) { try { h.focus(); } catch (e) { /* egal */ } }
         if (d.actions.indexOf('cancel') >= 0 && d.state !== 'wartet_ok') {
           detailEl.appendChild(btn(T('Auftrag abbrechen'), 'kj-cancel', function () {
             api('POST', '/api/ai/jobs/' + id + '/cancel', {}).then(function (r) { say(live, r.text || r.state_text); open(id); refresh(); }).catch(function (e) { HK.toast(e.message); });
           }));
         }
-      });
     }
     function close() {
       var last = openId;
-      openId = null; detailEl.hidden = true; detailEl.textContent = ''; listEl.hidden = false; form.hidden = opts.form === false; stage.hidden = false;
+      openId = null; shownSig = null; detailEl.hidden = true; detailEl.textContent = ''; listEl.hidden = false; form.hidden = opts.form === false; stage.hidden = false;
       if (opts.form !== false) { try { ta.focus(); } catch (e) { /* egal */ } }   // sofort nicht auf <body>, danach auf den Eintrag
       return refresh().then(function () {
         var b = last != null && listEl.querySelector('.kj-item[data-job="' + last + '"]');
@@ -476,15 +499,16 @@
       // 2515: nicht nur am Live-Ereignis haengen - nach (Wieder-)Verbinden der Ereignis-Quelle (live.hello) bzw. resync
       // den Stand einmal neu holen (Ereignisse dazwischen kamen nicht an)
       if (t === 'live.hello' || t === 'resync') {
+        if (t === 'live.hello' && e.detail.data && e.detail.data.first) return;   // erstes hello: gerade geladen, nichts verpasst
         refresh();
-        if (openId != null && !detailEl.querySelector('.kj-editbox')) open(openId);
+        reopen();
         Object.keys(watch).forEach(function (id) { load(id).then(function (x) { if (x && x.state !== 'laeuft' && watch[id]) landed(id, x); }); });
         return;
       }
       var d = t === 'ai.job.changed' ? e.detail.data || e.detail : null;
       if (!d) return;
       refresh();
-      if (openId === d.id && !detailEl.querySelector('.kj-editbox')) open(d.id);
+      if (openId === d.id) reopen();
       if (watch[d.id] && d.state !== 'laeuft') {
         load(d.id).then(function (x) { if (x && watch[d.id]) landed(d.id, x); });
       }

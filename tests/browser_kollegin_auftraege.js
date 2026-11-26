@@ -124,6 +124,19 @@ const WORDS = {
   const old = await until(() => p.evaluate(() => (document.querySelector('.kj-detail .kj-oldtext') || {}).textContent));
   ok('„Alte Fassung ansehen“ zeigt den Stand vor Marin', old && /Pavillon/.test(old) && !/umgeschrieben/.test(old), old);
   await shot('saga-konflikt-dunkel');
+  { // 2515 Pruefer prr2: Abgleich (erstes hello, hello, resync) zeichnet das Detail nicht neu - „Alte Fassung“ bleibt offen
+    const gets = []; const onReq = (r) => { if (r.method() === 'GET' && /\/api\/ai\/jobs\/\d+$/.test(r.url())) gets.push(r.url()); };
+    p.on('request', onReq);
+    await p.evaluate(() => { window.__kjOld = document.querySelector('.kj-detail .kj-oldtext'); document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: 'live.hello', data: { first: true } } })); });
+    await sleep(800); const g1 = gets.length;
+    for (const ev of [{ type: 'live.hello', data: { first: false } }, { type: 'resync', data: {} }]) {
+      await p.evaluate((ev) => document.dispatchEvent(new CustomEvent('hk-live', { detail: ev })), ev); await sleep(900);
+    }
+    const kept = await p.evaluate(() => { const o = document.querySelector('.kj-detail .kj-oldtext'); return { same: !!o && o === window.__kjOld, txt: o && o.textContent }; });
+    p.off('request', onReq);
+    ok('2515: erstes hello holt das Detail nicht neu; hello/resync ohne neuen Stand lassen „Alte Fassung“ offen (' + JSON.stringify({ g1, n: gets.length }) + ')',
+      g1 === 0 && gets.length >= 1 && kept.same && /Pavillon/.test(kept.txt || ''), { g1, gets, kept });
+  }
   const pg2 = (await api('GET', '/api/notes/' + fest.id)).d;
   ok('Konflikt: nichts überschrieben', /umgeschrieben/.test(pg2.body || ''));
   await p.click('.kj-back');

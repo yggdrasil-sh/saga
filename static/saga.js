@@ -438,19 +438,21 @@
         tab(nx, true);
       });
     });
-    document.addEventListener('visibilitychange', function () {   // 2515: wieder sichtbar - laufende/wartende Auftraege abgleichen
-      if (document.hidden) return;
-      [].forEach.call(document.querySelectorAll('#sg-feed .sg-job[data-job]'), function (w) {
-        if (['laeuft', 'wartet_ok', 'wartet_dich'].indexOf(w.dataset.state) >= 0 && !w.querySelector('.kj-editbox')) refreshJob(w);
+    // 2515: Bausteine im Verlauf, deren Auftrag noch nicht am Ende ist (End-Zustaende und "weg" nie neu holen)
+    var ENDS = ['erledigt', 'zurueckgenommen', 'abgebrochen', 'fehlgeschlagen', 'weg'];
+    function openJobs() {
+      return [].filter.call(document.querySelectorAll('#sg-feed .sg-job[data-job]'), function (w) {
+        return ENDS.indexOf(w.dataset.state) < 0 && !w.querySelector('.kj-editbox');
       });
+    }
+    document.addEventListener('visibilitychange', function () {   // wieder sichtbar - offene Auftraege abgleichen
+      if (!document.hidden) openJobs().forEach(refreshJob);
     });
     document.addEventListener('hk-live', function (e) {   // ai.job.changed: Baustein im Verlauf auf den neuen Stand
       var t = e.detail && e.detail.type;
       if (t === 'live.hello' || t === 'resync') {        // 2515: nach (Wieder-)Verbinden einmal neu holen - Ereignisse dazwischen fehlen
-        [].forEach.call(document.querySelectorAll('#sg-feed .sg-job[data-job]'), function (w) {
-          if (['abgebrochen', 'fehlgeschlagen', 'weg'].indexOf(w.dataset.state) >= 0 || w.querySelector('.kj-editbox')) return;
-          refreshJob(w);
-        });
+        if (t === 'live.hello' && e.detail.data && e.detail.data.first) return;   // erstes hello: der Verlauf ist gerade geladen
+        openJobs().forEach(refreshJob);                   // nur offene Auftraege - End-Zustaende aendern sich nicht von selbst
         return;
       }
       var d = t === 'ai.job.changed' ? (e.detail.data || {}) : null;

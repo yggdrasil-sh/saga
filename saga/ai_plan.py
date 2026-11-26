@@ -804,7 +804,21 @@ def _refuse(zug, reason, alt_text=None, uid=None, **extra):
 
 ALT_TITLE = 80
 _ALT_HELLO = re.compile(r"^(?:(?:hey|hallo|hi|hola|bitte|please|por favor)\s+)?([^\s,:]{2,40})\s*[,:]\s+(\S.*)$", re.I)
-_ALT_END = re.compile(r"(?:(?<=[!?;])|(?<=[^\W\d_]{3}\.))\s+(?=\S)")       # Satzende, nicht "z. B." oder "28.11."
+_ALT_END = re.compile(r"[!?;.](?=\s+\S)")
+# Kein Satzende nach gaengigen Abkuerzungen (de/en/es, klein, ohne Punkt) und nie nach einem einzelnen Buchstaben ("z. B.",
+# "d. h.", "J. Müller") oder Zahlen ("28.11.") - Pruefer prr2: "Ruf Prof. Müller …" wurde sonst zu "Ruf Prof"
+_ALT_ABBR = frozenset("""prof dr dres bzw ca ggf usw nr hr fr st str mr mrs ms vs etc sr sra srta dra ud uds ej evtl inkl zzgl bspw vgl tel
+    jr sen approx aprox pág núm abs mo di mi sa jan feb apr aug sep sept okt nov dez dec oct ene""".split())
+
+
+def _first_sentence(s):
+    for m in _ALT_END.finditer(s):
+        if m.group() == ".":
+            w = re.search(r"([^\W\d_]+)$", s[:m.start()])
+            if not w or len(w.group(1)) < 2 or w.group(1).lower() in _ALT_ABBR:
+                continue
+        return s[:m.end()]
+    return s
 
 
 def _alt_text(q):
@@ -817,7 +831,7 @@ def _alt_text(q):
     m = _ALT_HELLO.match(s)
     if m and m.group(1).lower() in {"saga", str(ai.persona_name() or "").lower()}:
         s = m.group(2)[:1].upper() + m.group(2)[1:]
-    first = _ALT_END.split(s, maxsplit=1)[0]
+    first = _first_sentence(s)
     if len(first) >= 8:
         s = first
     s = s.rstrip(" .;,:")

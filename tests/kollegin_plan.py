@@ -304,7 +304,15 @@ def part_model(pages):
              "Saga: kauf z. B. Kohle bis 28.11. bei Ben": "Kauf z. B. Kohle bis 28.11. bei Ben",
              "Ruf Ben an!\nUnd dann noch Clara wegen des Salats.": "Ruf Ben an!",
              "Schick @ben die Liste https://x.example": "Schick die Liste",
-             "Recuérdame comprar carbón. ¿Vale?": "Recuérdame comprar carbón"}
+             "Recuérdame comprar carbón. ¿Vale?": "Recuérdame comprar carbón",
+             # Pruefer prr2: kein Satzende nach Abkuerzungen bzw. einem einzelnen Buchstaben
+             "Ruf Prof. Müller wegen der Kohle an. Danach Ben.": "Ruf Prof. Müller wegen der Kohle an",
+             "Kauf Kohle bzw. Briketts für den Grill. Und Bier.": "Kauf Kohle bzw. Briketts für den Grill",
+             "Frag Dr. Ben, ggf. mit Hr. Schmidt, usw. Dann Clara.": "Frag Dr. Ben, ggf. mit Hr. Schmidt, usw. Dann Clara",
+             "Ruf J. Müller an. Dann Ben.": "Ruf J. Müller an",
+             "Call Mr. Smith about the grill. Then Ben.": "Call Mr. Smith about the grill",
+             "Llama al Sr. García, p. ej. mañana. Luego a Ana.": "Llama al Sr. García, p. ej. mañana",
+             "Ruf Ben an. Dann Clara.": "Ruf Ben an"}
     got = {q_: ai_plan._alt_text(q_) for q_ in cases}
     ok(f"2509: _alt_text Faelle ({got})", got == cases, got)
     r = plan(A, "", recipe={"id": "x", "steps": []})
