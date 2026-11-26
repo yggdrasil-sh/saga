@@ -104,7 +104,8 @@ body.saga-page>main.sg:focus{outline:none}
 /* Bugs-DB 2503: Zweitknoepfe auf der KI-Flaeche mit sichtbarer Kante (>= 3:1 gegen --ai-tint, auch im Hellen) */
 .sg-card .btn:not(.btn-primary):not(.btn-quiet):not(.linkbtn),.kj-card .btn:not(.btn-primary):not(.btn-quiet):not(.kj-go){
   background:var(--card);border-color:var(--ai-edge,var(--sg-edge));color:var(--fg)}
-@media (max-width:760px){.sg-tab{min-height:2.75rem;flex:1 1 0}.sg-mode{min-height:2.75rem}}
+@media (max-width:760px){.sg-tab{min-height:2.75rem;flex:1 1 0}.sg-mode{min-height:2.75rem}
+  .sg-ask-bar{flex-wrap:wrap}.sg-status:not(:empty){flex:1 0 100%}}   /* schmal: Ansage eine Zeile, Knoepfe darunter */
 
 /* Einstellungen > Saga */
 .hk-set-saga .sg-set-row{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin:.45rem 0}

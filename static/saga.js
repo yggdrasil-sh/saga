@@ -285,7 +285,8 @@
   function stateCard(d) {                            // Laeuft / Wartet auf dich / Abgebrochen / Hat nicht geklappt
     var c = el('section', 'kj-card kj-small sg-jobstate'); c.setAttribute('aria-label', d.state_text);
     c.appendChild(HKJobs.head(d.state_text));
-    c.appendChild(el('p', 'kj-lead', d.reason_text && d.title ? d.title + ' – ' + d.reason_text : d.reason_text || d.title || ''));
+    c.appendChild(el('p', 'kj-lead', d.title || d.reason_text || ''));
+    if (d.reason_text && d.title) c.appendChild(el('p', 'kj-note', d.reason_text));
     var b = el('button', 'btn btn-quiet kj-view', T('Ansehen')); b.type = 'button';
     b.addEventListener('click', function () { openJob(d.id); });
     c.appendChild(b);
