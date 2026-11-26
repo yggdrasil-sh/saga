@@ -254,9 +254,10 @@ def to_thread(uid, text, choice, recipe, res):
     typ = res.get("type")
     if typ not in ("plan", "ask", "refuse"):
         return
-    me = (choice or "").strip() if choice else (text or "").strip()
-    if not me and recipe:
-        me = ai_plan._builtin_title(recipe)
+    if recipe:                                   # Knopf der Absage ("Als Aufgabe anlegen") - so wie er im Verlauf stand
+        me = t("Als Aufgabe anlegen") if recipe == "aufgabe" else ai_plan._builtin_title(recipe)
+    else:
+        me = (choice or "").strip() if choice else (text or "").strip()
     try:
         ai_saga.add_turn(uid, "me", me[:ai_plan.REQ_MAX], zug="job")
         if typ == "plan":

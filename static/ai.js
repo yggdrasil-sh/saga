@@ -73,8 +73,9 @@
   head.appendChild(grip); head.appendChild(htitle); head.appendChild(close);
   var tabs = el('div', 'ai-tabs'); tabs.setAttribute('role', 'tablist');
   var tAsk = tabBtn('ask', T('Frag deine Seiten')), tPage = tabBtn('page', T('Diese Seite'));
-  var tJobs = tabBtn('jobs', T('Aufträge'));         // 2.6 (K-B 2267): Ort "Aufträge" (static/ai-jobs.js), nur mit status.jobs
-  tabs.appendChild(tAsk); tabs.appendChild(tPage); tabs.appendChild(tJobs);
+  // 2.6 (web-saga, UX §2): der Reiter "Aufträge" ist in den Ort "Saga" gewandert (/saga, Reiter Gespräch / Aufträge) -
+  // hier bleiben "Frag deine Seiten" und die Hilfen für die offene Seite; HKAI.open('jobs') führt dorthin.
+  tabs.appendChild(tAsk); tabs.appendChild(tPage);
   var body = el('div', 'ai-body'), foot = el('div', 'ai-foot');
   var notice = el('p', 'ai-notice'), quota = el('span', 'ai-quota');
   panel.appendChild(head); panel.appendChild(tabs); panel.appendChild(body); panel.appendChild(foot);
@@ -102,6 +103,7 @@
   var narrow = window.matchMedia('(max-width: 760px)');
   function show(tab) {
     if (!A.st) return;
+    if (tab === 'jobs') { location.href = '/saga?tab=jobs'; return; }
     if (window.HKComments && document.body.classList.contains('cm-open')) { var cx = document.querySelector('.cm-close'); if (cx) cx.click(); }
     if (tab) A.tab = tab;
     var hd = document.querySelector('.np-head'), top = hd && !narrow.matches ? Math.max(0, Math.round(hd.getBoundingClientRect().bottom)) : 0;
@@ -122,7 +124,9 @@
     foot.textContent = '';
     notice.textContent = A.st ? A.st.notice : '';
     foot.appendChild(notice);
-    var det = A.st && A.st.intro && A.st.intro.details;       // 2.6 K-I (2269): derselbe Host-Hinweis wie im Ort "Saga", Details hinter ⓘ (M3)
+    // 2.6 K-I (2269): Host-Hinweis mit Details hinter ⓘ (M3); web-saga (2505): eigene Details für "Frag deine Seiten" und
+    // die Seiten-Hilfen (ask_details) - die Sätze des Orts "Saga" (letzte Sätze des Gesprächs) passen hier nicht
+    var det = A.st && (A.st.ask_details || (A.st.intro && A.st.intro.details));
     if (det && det.length) {
       var ib = el('button', 'ai-info-b', 'ⓘ'); ib.type = 'button'; ib.setAttribute('aria-label', T('Was genau rausgeht'));
       ib.setAttribute('aria-expanded', 'false');
@@ -138,10 +142,8 @@
   }
 
   function render() {
-    var jobsOn = !!(A.st && A.st.jobs && window.HKJobs);
-    tJobs.hidden = !jobsOn;
-    if (!jobsOn && A.tab === 'jobs') A.tab = 'ask';
-    [tAsk, tPage, tJobs].forEach(function (b) {
+    if (A.tab === 'jobs') A.tab = 'ask';
+    [tAsk, tPage].forEach(function (b) {
       var on = b.dataset.k === A.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     var pg = cur(), remote = !!pg && typeof pg.id === 'number' && pg.id < 0;   // Seite einer anderen Saga-Instanz: Inhalt liegt dort
@@ -149,18 +151,8 @@
     tPage.title = remote ? T('Seiten anderer Saga-Instanzen bearbeitet der Assistent nicht.') : '';
     if ((!pg || remote) && A.tab === 'page') A.tab = 'ask';
     body.textContent = '';
-    if (A.tab === 'ask') renderAsk(); else if (A.tab === 'jobs') renderJobs(); else renderPage();
+    if (A.tab === 'ask') renderAsk(); else renderPage();
     renderFoot();
-  }
-
-  // 2.6 (K-B 2267): Auftraege - das Bauteil bleibt erhalten (Plan-Karte, Detail), beim Wechsel nur neu eingehaengt
-  function renderJobs() {
-    if (!A.jobs) {
-      var box = el('div', 'ai-jobs');
-      A.jobs = window.HKJobs.mount(box, { note: function () { var c = cur(); return c && typeof c.id === 'number' && c.id > 0 ? c.id : null; } });
-      A.jobsBox = box;
-    } else A.jobs.refresh();
-    body.appendChild(A.jobsBox);
   }
 
   // --- Antworttext -> DOM (nie innerHTML): Absaetze, Listen ('- ', '* ', '1. '), **fett**, `code`, Ueberschriften als

@@ -18,11 +18,14 @@
 <link rel="stylesheet" href="/static/live.css?v={{ v }}">
 {% if chat_enabled %}<link rel="stylesheet" href="/static/calls.css?v={{ v }}">{% endif %}
 <link rel="stylesheet" href="/static/ai.css?v={{ v }}">
+<link rel="stylesheet" href="/static/ai-jobs.css?v={{ v }}">
 <link rel="stylesheet" href="/static/saga.css?v={{ v }}">
 </head>
 {# 2.6 (Bugs-DB 2269 K-I, Konzept K10/K11/K19, UX §2): Ort "Saga" - Gespraech mit der KI (kein E2E-Chat). Leiste B6 fest
    oben, Kennenlernen-Karte solange keine Einwilligung, danach Verlauf + Eingabe. static/saga.js fuellt alles; der Bereich
-   #sg-cards ist der Einhaengepunkt fuer Plan-Karte/Rueckmeldung (Rolle kb, Ereignis "saga:turn"). #}
+   #sg-cards ist der Einhaengepunkt fuer Plan-Karte/Rueckmeldung (Rolle kb, Ereignis "saga:turn").
+   web-saga (UX §2/R3): Reiter Gespraech / Auftraege (#sg-tabs, nur mit Auftraegen); im Gespraech gibt der Umschalter
+   "Als Auftrag" (#sg-mode) die Bitte als Auftrag - Plan-Karte und Rueckmeldung (static/ai-jobs.js) stehen im Verlauf. #}
 <body class="has-side saga-page" data-v="{{ v }}" data-uid="{{ uid }}">
 <a class="skip-link" href="#saga" data-skip="saga">{{ _("Zum Inhalt") }}</a>
 <header class="np-head side-head">
@@ -41,19 +44,27 @@
     <span class="spacer"></span>
     <button type="button" class="icon-btn sg-more" id="sg-more" hidden aria-haspopup="menu" aria-label="{{ _("Mehr") }}" title="{{ _("Mehr") }}">⋯</button>
   </div>
+  <div class="sg-tabs" id="sg-tabs" hidden>
+    <button type="button" class="sg-tab" id="sg-tab-talk" data-k="talk">{{ _("Gespräch") }}</button>
+    <button type="button" class="sg-tab" id="sg-tab-jobs" data-k="jobs">{{ _("Aufträge") }}</button>
+  </div>
   <div class="sg-intro-slot" id="sg-intro" hidden></div>
-  <div class="sg-feed" id="sg-feed" role="log" aria-live="polite" aria-relevant="additions" hidden></div>
-  <div class="sg-cards" id="sg-cards" data-hook="kb"></div>
-  <p class="sg-keep" id="sg-keep" hidden></p>
-  <form class="sg-ask" id="sg-ask" hidden autocomplete="off">
-    <textarea class="hk-in sg-ta" id="sg-ta" rows="2" maxlength="1000"></textarea>
-    <div class="sg-ask-bar">
-      <span class="sg-status" id="sg-status" role="status"></span>
-      <span class="spacer"></span>
-      <button type="button" class="btn" id="sg-stop" hidden>{{ _("Stopp") }}</button>
-      <button type="submit" class="btn btn-primary" id="sg-send">{{ _("Senden") }}</button>
-    </div>
-  </form>
+  <div class="sg-talk" id="sg-talk">
+    <div class="sg-feed" id="sg-feed" role="log" aria-live="polite" aria-relevant="additions" hidden></div>
+    <div class="sg-cards" id="sg-cards" data-hook="kb"></div>
+    <p class="sg-keep" id="sg-keep" hidden></p>
+    <form class="sg-ask" id="sg-ask" hidden autocomplete="off">
+      <textarea class="hk-in sg-ta" id="sg-ta" rows="2" maxlength="1000"></textarea>
+      <div class="sg-ask-bar">
+        <span class="sg-status" id="sg-status" role="status"></span>
+        <span class="spacer"></span>
+        <button type="button" class="btn sg-mode" id="sg-mode" aria-pressed="false" hidden>{{ _("Als Auftrag") }}</button>
+        <button type="button" class="btn" id="sg-stop" hidden>{{ _("Stopp") }}</button>
+        <button type="submit" class="btn btn-primary" id="sg-send">{{ _("Senden") }}</button>
+      </div>
+    </form>
+  </div>
+  <div class="sg-jobs" id="sg-jobs" hidden></div>
 </main>
 
 <script src="/static/clientlog.js?v={{ v }}"></script>
@@ -66,6 +77,7 @@
 <script src="/static/side.js?v={{ v }}"></script>
 <script src="/static/firststeps.js?v={{ v }}"></script>
 <script src="/static/settings.js?v={{ v }}"></script>
+<script src="/static/ai-jobs.js?v={{ v }}"></script>
 <script src="/static/saga.js?v={{ v }}"></script>
 <script src="/static/contacts.js?v={{ v }}"></script>
 <script src="/static/shortcuts.js?v={{ v }}"></script>

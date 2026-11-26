@@ -105,7 +105,7 @@
     openSettings(m[1]);
   });
 
-  var dlg = null, gearAt = 0;
+  var dlg = null, gearAt = 0, navDrop = null;
   // Kompatibel mit dem Zahnrad im Mitteilungs-Fenster (static/live.js oeffnet die Einstellungen mit 'account')
   document.addEventListener('click', function (e) { if (e.target && e.target.closest && e.target.closest('.lv-gear')) gearAt = Date.now(); }, true);
   function closeSettings() { if (dlg) { dlg.remove(); dlg = null; document.removeEventListener('keydown', onKey); btn.focus(); } }
@@ -159,7 +159,7 @@
     var main = el('div', 'hk-set-main'); card.insertBefore(main, body); main.appendChild(nav); main.appendChild(body);
     var KEYS = [], btns = {};
     GROUPS.forEach(function (g, gi) {
-      var items = g[1].filter(function (t) { return body.querySelector('.hk-set-' + t[0]); });
+      var items = g[1].filter(function (t) { return body.querySelector('.hk-set-' + t[0] + ':not(.hk-set-off)'); });
       if (!items.length) return;
       var grp = el('div', 'hk-setnav-g'), ul = el('ul');
       if (g[0]) { var gh = el('div', 'hk-setnav-h', g[0]); gh.id = 'hk-setnav-h' + gi; grp.appendChild(gh); ul.setAttribute('aria-labelledby', gh.id); }
@@ -177,6 +177,14 @@
       });
       grp.appendChild(ul); nav.appendChild(grp);
     });
+    // Bereich nachtraeglich entfernen (Saga ohne KI, Bugs-DB 2502): Eintrag ganz weg statt eines versteckten 0-px-Eintrags,
+    // auch aus der Pfeil-Reihenfolge; war er offen, zurueck auf "Profil & Sprache"
+    navDrop = function (k) {
+      var i = KEYS.indexOf(k); if (i >= 0) KEYS.splice(i, 1);
+      var b = btns[k]; delete btns[k];
+      if (b) { var li = b.parentNode, ul = li && li.parentNode; if (li) li.remove(); if (ul && !ul.children.length && ul.parentNode) ul.parentNode.remove(); }
+      if (cur === k) show('account', false);
+    };
     // Pfeil hoch/runter (Pos1/Ende) zwischen den Eintraegen der Navigation
     nav.addEventListener('keydown', function (e) {
       var i = KEYS.indexOf(e.target && e.target.dataset ? e.target.dataset.k : ''); if (i < 0) return;
@@ -304,7 +312,7 @@
   function hideSaga(sec) {
     sec.hidden = true; sec.classList.add('hk-set-off');
     if (!sec.querySelector('.hk-hint')) sec.appendChild(el('p', 'hk-hint', T('Der KI-Assistent ist für dich nicht eingeschaltet.')));
-    var b = document.getElementById('hk-tab-saga'); if (b && b.parentNode) b.parentNode.hidden = true;
+    if (navDrop && document.getElementById('hk-tab-saga')) navDrop('saga');
   }
 
   // --- Abschnitt "Seiten" (2.5, Tiptap-Umbau T2): neuer Seiten-Editor an/aus, nur wenn der Admin die Wahl freigibt

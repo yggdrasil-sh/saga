@@ -5695,5 +5695,16 @@
  "Die KI ist inzwischen woanders eingerichtet – bitte noch einmal lesen.": "AI ถูกตั้งค่าไว้ที่อื่นแล้ว – โปรดอ่านอีกครั้ง",
  "Für heute ist das Gespräch voll – morgen geht es weiter.": "บทสนทนาวันนี้เต็มแล้ว – พรุ่งนี้คุยต่อได้",
  "Du hast die Einwilligung widerrufen: {name} erledigt keine Aufträge, bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst.": "คุณถอนความยินยอมแล้ว: {name} จะไม่ทำงานที่มอบหมาย ไม่เสนอไอเดีย และบทสนทนาใน “Saga” ปิดอยู่ คำถามในที่อื่น เช่น “ถามหน้าของคุณ” ยังส่งไปที่ {host} เฉพาะเมื่อคุณถามเอง",
- "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.": "หลังจากนั้น {name} จะไม่ทำงานที่มอบหมาย (งานที่กำลังทำจะหยุด) ไม่เสนอไอเดีย และบทสนทนาใน “Saga” จะปิด คำถามในที่อื่น เช่น “ถามหน้าของคุณ” ยังส่งไปที่ {host} เฉพาะเมื่อคุณถามเอง คุณกลับมารู้จัก {name} ได้ทุกเมื่อ"
+ "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.": "หลังจากนั้น {name} จะไม่ทำงานที่มอบหมาย (งานที่กำลังทำจะหยุด) ไม่เสนอไอเดีย และบทสนทนาใน “Saga” จะปิด คำถามในที่อื่น เช่น “ถามหน้าของคุณ” ยังส่งไปที่ {host} เฉพาะเมื่อคุณถามเอง คุณกลับมารู้จัก {name} ได้ทุกเมื่อ",
+ "Schon erledigt – den Termin gibt es nicht mehr.": "เรียบร้อยแล้ว – นัดหมายนี้ไม่มีอยู่แล้ว",
+ "Nicht Ende-zu-Ende verschlüsselt: Was du hier fragst, liest die KI auf {host} im Klartext.": "ไม่ได้เข้ารหัสแบบต้นทางถึงปลายทาง: สิ่งที่คุณถามที่นี่ AI บน {host} อ่านเป็นข้อความธรรมดา",
+ "Was genau rausgeht: deine Frage und Ausschnitte aus deinen Seiten, die zur Frage passen – Aufgaben und Termine nur, wenn du sie dazunimmst. Nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Frühere Fragen gehen nicht mit.": "สิ่งที่ส่งออกไปจริง ๆ: คำถามของคุณและข้อความบางส่วนจากหน้าของคุณที่ตรงกับคำถาม – งานและนัดหมายเฉพาะเมื่อคุณเลือกใส่ เฉพาะสิ่งที่คุณเองมีสิทธิ์เห็น และเฉพาะจากแหล่งที่คุณเปิดไว้ คำถามก่อนหน้าไม่ถูกส่งไปด้วย",
+ "Bei „Diese Seite“ geht der Text der offenen Seite mit – beim Verbessern oder Übersetzen nur der markierte Text.": "เมื่อใช้ “หน้านี้” ข้อความของหน้าที่เปิดอยู่จะถูกส่งไปด้วย – ตอนปรับปรุงหรือแปล จะส่งเฉพาะข้อความที่เลือก",
+ "Mit „Im Web suchen“ gehen Suchbegriffe aus deiner Frage an eine Suchmaschine.": "เมื่อเปิด “ค้นหาในเว็บ” คำค้นจากคำถามของคุณจะถูกส่งไปยังเครื่องมือค้นหา",
+ "Dafür brauchst du {name} nicht kennenzulernen: Diese Fragen gehen nur an die KI, wenn du sie stellst.": "สำหรับส่วนนี้ไม่ต้องทำความรู้จัก {name} ก่อน: คำถามเหล่านี้จะถูกส่งไปยัง AI เฉพาะเมื่อคุณถามเท่านั้น",
+ "Wartet auf „{on}“ bis {until}": "รอ “{on}” จนถึง {until}",
+ "Als Auftrag": "เป็นงานที่มอบหมาย",
+ "Rückgängig: {what}": "เลิกทำ: {what}",
+ "Diesen Auftrag gibt es nicht mehr.": "งานที่มอบหมายนี้ไม่มีอยู่แล้ว",
+ "Oder gib mir einen Auftrag:": "หรือมอบหมายงานให้ฉัน:"
 }

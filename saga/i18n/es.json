@@ -5695,5 +5695,16 @@
  "Die KI ist inzwischen woanders eingerichtet – bitte noch einmal lesen.": "La IA se ha configurado entretanto en otro sitio – léelo de nuevo, por favor.",
  "Für heute ist das Gespräch voll – morgen geht es weiter.": "Por hoy la conversación está completa – mañana seguimos.",
  "Du hast die Einwilligung widerrufen: {name} erledigt keine Aufträge, bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst.": "Has retirado tu consentimiento: {name} no hace encargos, no trae ideas y la conversación en «Saga» está desactivada. Las preguntas en otros sitios, como «Pregunta a tus páginas», siguen yendo a {host}, solo cuando las haces tú.",
- "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.": "Después {name} ya no hace encargos (los que estén en curso se pausan), no trae ideas y la conversación en «Saga» queda desactivada. Las preguntas en otros sitios, como «Pregunta a tus páginas», siguen yendo a {host}, solo cuando las haces tú. Puedes volver a conocer a {name} cuando quieras."
+ "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.": "Después {name} ya no hace encargos (los que estén en curso se pausan), no trae ideas y la conversación en «Saga» queda desactivada. Las preguntas en otros sitios, como «Pregunta a tus páginas», siguen yendo a {host}, solo cuando las haces tú. Puedes volver a conocer a {name} cuando quieras.",
+ "Schon erledigt – den Termin gibt es nicht mehr.": "Ya está hecho: el evento ya no existe.",
+ "Nicht Ende-zu-Ende verschlüsselt: Was du hier fragst, liest die KI auf {host} im Klartext.": "Sin cifrado de extremo a extremo: lo que preguntas aquí lo lee la IA en {host} en texto claro.",
+ "Was genau rausgeht: deine Frage und Ausschnitte aus deinen Seiten, die zur Frage passen – Aufgaben und Termine nur, wenn du sie dazunimmst. Nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Frühere Fragen gehen nicht mit.": "Qué se envía exactamente: tu pregunta y fragmentos de tus páginas que encajan con ella; tareas y citas solo si las incluyes. Solo lo que tú puedes ver y solo de las fuentes que tienes activadas. Las preguntas anteriores no se envían.",
+ "Bei „Diese Seite“ geht der Text der offenen Seite mit – beim Verbessern oder Übersetzen nur der markierte Text.": "Con «Esta página» se envía el texto de la página abierta; al mejorar o traducir, solo el texto marcado.",
+ "Mit „Im Web suchen“ gehen Suchbegriffe aus deiner Frage an eine Suchmaschine.": "Con «Buscar en la web», los términos de búsqueda de tu pregunta van a un buscador.",
+ "Dafür brauchst du {name} nicht kennenzulernen: Diese Fragen gehen nur an die KI, wenn du sie stellst.": "Para esto no necesitas conocer a {name}: estas preguntas solo van a la IA cuando las haces tú.",
+ "Wartet auf „{on}“ bis {until}": "Espera «{on}» hasta {until}",
+ "Als Auftrag": "Como encargo",
+ "Rückgängig: {what}": "Deshacer: {what}",
+ "Diesen Auftrag gibt es nicht mehr.": "Este encargo ya no existe.",
+ "Oder gib mir einen Auftrag:": "O dame un encargo:"
 }

@@ -5695,5 +5695,16 @@
  "Die KI ist inzwischen woanders eingerichtet – bitte noch einmal lesen.": "Die KI ist inzwischen woanders eingerichtet – bitte noch einmal lesen.",
  "Für heute ist das Gespräch voll – morgen geht es weiter.": "Für heute ist das Gespräch voll – morgen geht es weiter.",
  "Du hast die Einwilligung widerrufen: {name} erledigt keine Aufträge, bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst.": "Du hast die Einwilligung widerrufen: {name} erledigt keine Aufträge, bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst.",
- "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.": "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen."
+ "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.": "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.",
+ "Schon erledigt – den Termin gibt es nicht mehr.": "Schon erledigt – den Termin gibt es nicht mehr.",
+ "Nicht Ende-zu-Ende verschlüsselt: Was du hier fragst, liest die KI auf {host} im Klartext.": "Nicht Ende-zu-Ende verschlüsselt: Was du hier fragst, liest die KI auf {host} im Klartext.",
+ "Was genau rausgeht: deine Frage und Ausschnitte aus deinen Seiten, die zur Frage passen – Aufgaben und Termine nur, wenn du sie dazunimmst. Nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Frühere Fragen gehen nicht mit.": "Was genau rausgeht: deine Frage und Ausschnitte aus deinen Seiten, die zur Frage passen – Aufgaben und Termine nur, wenn du sie dazunimmst. Nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Frühere Fragen gehen nicht mit.",
+ "Bei „Diese Seite“ geht der Text der offenen Seite mit – beim Verbessern oder Übersetzen nur der markierte Text.": "Bei „Diese Seite“ geht der Text der offenen Seite mit – beim Verbessern oder Übersetzen nur der markierte Text.",
+ "Mit „Im Web suchen“ gehen Suchbegriffe aus deiner Frage an eine Suchmaschine.": "Mit „Im Web suchen“ gehen Suchbegriffe aus deiner Frage an eine Suchmaschine.",
+ "Dafür brauchst du {name} nicht kennenzulernen: Diese Fragen gehen nur an die KI, wenn du sie stellst.": "Dafür brauchst du {name} nicht kennenzulernen: Diese Fragen gehen nur an die KI, wenn du sie stellst.",
+ "Wartet auf „{on}“ bis {until}": "Wartet auf „{on}“ bis {until}",
+ "Als Auftrag": "Als Auftrag",
+ "Rückgängig: {what}": "Rückgängig: {what}",
+ "Diesen Auftrag gibt es nicht mehr.": "Diesen Auftrag gibt es nicht mehr.",
+ "Oder gib mir einen Auftrag:": "Oder gib mir einen Auftrag:"
 }

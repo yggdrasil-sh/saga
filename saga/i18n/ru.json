@@ -5695,5 +5695,16 @@
  "Die KI ist inzwischen woanders eingerichtet – bitte noch einmal lesen.": "ИИ тем временем настроен в другом месте – прочитай ещё раз.",
  "Für heute ist das Gespräch voll – morgen geht es weiter.": "На сегодня разговор исчерпан – завтра продолжим.",
  "Du hast die Einwilligung widerrufen: {name} erledigt keine Aufträge, bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst.": "Ты отозвал согласие: {name} не выполняет поручения, не предлагает идей, разговор в «Saga» выключен. Вопросы в других местах, например «Спроси свои страницы», по-прежнему уходят на {host} – только когда ты их задаёшь.",
- "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.": "После этого {name} больше не выполняет поручения (текущие приостановятся), не предлагает идей, а разговор в «Saga» выключен. Вопросы в других местах, например «Спроси свои страницы», по-прежнему уходят на {host} – только когда ты их задаёшь. Ты можешь снова познакомиться с {name} в любой момент."
+ "Danach erledigt {name} keine Aufträge mehr (laufende halten an), bringt keine Ideen, und das Gespräch im Ort „Saga“ ist aus. Fragen an anderen Stellen, etwa „Frag deine Seiten“, gehen weiter an {host} – nur, wenn du sie stellst. Du kannst {name} jederzeit wieder kennenlernen.": "После этого {name} больше не выполняет поручения (текущие приостановятся), не предлагает идей, а разговор в «Saga» выключен. Вопросы в других местах, например «Спроси свои страницы», по-прежнему уходят на {host} – только когда ты их задаёшь. Ты можешь снова познакомиться с {name} в любой момент.",
+ "Schon erledigt – den Termin gibt es nicht mehr.": "Уже сделано – этого события больше нет.",
+ "Nicht Ende-zu-Ende verschlüsselt: Was du hier fragst, liest die KI auf {host} im Klartext.": "Без сквозного шифрования: то, что ты спрашиваешь здесь, ИИ на {host} читает открытым текстом.",
+ "Was genau rausgeht: deine Frage und Ausschnitte aus deinen Seiten, die zur Frage passen – Aufgaben und Termine nur, wenn du sie dazunimmst. Nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Frühere Fragen gehen nicht mit.": "Что именно уходит: твой вопрос и подходящие к нему отрывки из твоих страниц – задачи и встречи только если ты их добавишь. Только то, что ты сам можешь видеть, и только из включённых тобой источников. Прежние вопросы не уходят.",
+ "Bei „Diese Seite“ geht der Text der offenen Seite mit – beim Verbessern oder Übersetzen nur der markierte Text.": "В режиме «Эта страница» уходит текст открытой страницы – при улучшении или переводе только выделенный текст.",
+ "Mit „Im Web suchen“ gehen Suchbegriffe aus deiner Frage an eine Suchmaschine.": "С «Искать в интернете» поисковые слова из твоего вопроса уходят в поисковую систему.",
+ "Dafür brauchst du {name} nicht kennenzulernen: Diese Fragen gehen nur an die KI, wenn du sie stellst.": "Для этого не нужно знакомиться с {name}: эти вопросы уходят ИИ, только когда ты их задаёшь.",
+ "Wartet auf „{on}“ bis {until}": "Ждёт «{on}» до {until}",
+ "Als Auftrag": "Как поручение",
+ "Rückgängig: {what}": "Отменить: {what}",
+ "Diesen Auftrag gibt es nicht mehr.": "Этого поручения больше нет.",
+ "Oder gib mir einen Auftrag:": "Или дай мне поручение:"
 }

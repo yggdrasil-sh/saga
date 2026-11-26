@@ -12,21 +12,30 @@
   var el = HK.el, api = HK.api;
   var KIND_SYM = { read: '◎', own: '✎', out: '↗' };
 
+  // Persona/Darstellung: im KI-Bereich der Seiten aus static/ai.js (HKAI), im Ort "Saga" aus static/saga.js (HKSaga)
   function persona() {
     var st = window.HKAI && HKAI.state ? HKAI.state() : null;
+    if (!st && window.HKSaga) st = HKSaga.st;
     return (st && st.persona) || { name: T('Saga KI'), avatar: null };
   }
   function head(stateText) {                     // B1 KI-Kopf: Bild · "Marin · KI" · Zustandswort
     var h = el('div', 'kj-head'), p = persona();
     if (window.HKAIAvatar) h.appendChild(HKAIAvatar(p, 24)); else { var s = el('span', 'kj-spark', '✦'); s.setAttribute('aria-hidden', 'true'); h.appendChild(s); }
     var nm = String(p.name || '');                // Standardname "Saga KI" traegt die KI-Marke schon (kein "Saga KI · KI")
-    h.appendChild(el('span', 'kj-who', /(^|\s)(KI|AI|IA|ИИ)$/.test(nm) ? nm : T('{name} · KI', { name: nm })));
+    var lb = window.HKSaga && HKSaga.kiName ? HKSaga.kiName() : null;   // Server-Kennzeichnung (K-H style.label)
+    h.appendChild(el('span', 'kj-who', lb || (/(^|\s)(KI|AI|IA|ИИ)$/.test(nm) ? nm : T('{name} · KI', { name: nm }))));
     if (stateText) { var w = el('span', 'kj-state', stateText); h.appendChild(w); }
     return h;
   }
   function md(text) {                            // KI-Markdown-Teilmenge (2248) - sonst Klartext
     if (window.HKAI && HKAI.md) return HKAI.md(text);
+    if (window.HKSaga && HKSaga.md) return HKSaga.md(text);
     var d = el('div', 'kj-plain'); d.textContent = text; return d;
+  }
+  function report(text, id) {                    // "Melden" (2258a) - KI-Bereich oder Ort "Saga"
+    if (window.HKAI && HKAI.reportBtn) return HKAI.reportBtn(text, 'job', id);
+    if (window.HKSaga && HKSaga.reportBtn) return HKSaga.reportBtn(text, 'job', id);
+    return null;
   }
   function btn(label, cls, fn) {
     var b = el('button', 'btn ' + (cls || ''), label); b.type = 'button';
@@ -108,7 +117,7 @@
         bar.appendChild(no);
       }
       card.appendChild(bar);
-      if (window.HKAI && HKAI.reportBtn) card.appendChild(HKAI.reportBtn(planText(), 'job', cur.job));
+      var rb = report(planText(), cur.job); if (rb) card.appendChild(rb);
     }
     function focusIn(sel) { var x = card.querySelector(sel); if (x) { if (x.tabIndex < 0 && !x.hasAttribute('tabindex')) x.tabIndex = -1; try { x.focus(); } catch (e) { /* egal */ } } }   // nur nach eigener Aktion
     function planText() { return cur.steps.map(function (s) { return s.text + (s.wording ? '\n' + s.wording : ''); }).join('\n'); }
@@ -153,6 +162,7 @@
         card.textContent = ''; card.classList.add('kj-small');
         card.appendChild(head(d.state_text));
         card.appendChild(el('p', 'kj-lead', d.say || ''));
+        if (opts.onOpen) card.appendChild(btn(T('Ansehen'), 'btn-quiet kj-view', function () { opts.onOpen(cur.job, true); }));
         focusIn('.kj-lead');                       // der Knopf ist weg: Fokus nicht auf <body> fallen lassen
         say(opts.live, d.state_text);
         if (opts.onDone) opts.onDone('laeuft', cur.job, card);
@@ -165,6 +175,7 @@
       api('POST', '/api/ai/jobs/' + cur.job + '/cancel', {}).then(function (d) {
         card.textContent = ''; card.classList.add('kj-small');
         card.appendChild(head(d.state_text)); card.appendChild(el('p', 'kj-lead', d.text || ''));
+        if (opts.onOpen) card.appendChild(btn(T('Ansehen'), 'btn-quiet kj-view', function () { opts.onOpen(cur.job, true); }));
         focusIn('.kj-lead');
         say(opts.live, d.text || d.state_text);
         if (opts.onDone) opts.onDone('abgebrochen', cur.job, card);
@@ -186,19 +197,22 @@
     card.appendChild(head(d.state_text));
     var rep = d.report || { text: d.reason_text || d.state_text, lines: [] };
     var res = el('div', 'kj-result'); res.appendChild(md(rep.text || '')); card.appendChild(res);
-    var ul = el('ul', 'kj-changes');
-    (rep.lines || []).forEach(function (ln) {
-      var li = el('li', 'kj-change');
-      li.appendChild(el('span', 'kj-change-t', ln.text));
+    var ul = el('ul', 'kj-changes'), lines = rep.lines || [], one = lines.length === 1;
+    lines.forEach(function (ln) {
+      // Bugs-DB 2504: das Ergebnis steht schon im Satz oben - je Aenderung nur der Gegenstand (bei einer Aenderung gar
+      // nichts) neben "Rueckgaengig"; der Screenreader hoert am Knopf, worum es geht.
+      var li = el('li', 'kj-change' + (one ? ' kj-change-one' : ''));
+      if (!one) li.appendChild(el('span', 'kj-change-t', ln.label || ln.text));
       var ch = (d.changes || []).filter(function (c) { return c.id === ln.change; })[0] || {};
       if (ln.undone) li.appendChild(el('span', 'kj-cls', T('Zurückgenommen')));
-      else if (ln.can_undo) li.appendChild(undoBtn(d.id, ln.change, ch.undo_class, li, opts));
+      else if (ln.can_undo) li.appendChild(undoBtn(d.id, ln.change, ch.undo_class, li, opts, ln.text));
       else if (ch.why === 'changed') li.appendChild(changedNote(ch.version_url));
-      ul.appendChild(li);
+      if (li.childNodes.length) ul.appendChild(li);
     });
-    if (rep.lines && rep.lines.length) card.appendChild(ul);
+    if (ul.childNodes.length) card.appendChild(ul);
     if (opts.onOpen) card.appendChild(btn(T('Ansehen'), 'btn-quiet kj-view', function () { opts.onOpen(d.id, true); }));
-    if (window.HKAI && HKAI.reportBtn && rep.text) card.appendChild(HKAI.reportBtn(rep.text, 'job', d.id));
+    var rb = rep.text ? report(rep.text, d.id) : null; if (rb) card.appendChild(rb);
+    card.dataset.job = d.id;
     return card;
   }
   function changedNote(url) {
@@ -218,13 +232,14 @@
     }
     return w;
   }
-  function undoBtn(job, change, undoClass, li, opts) {
+  function undoBtn(job, change, undoClass, li, opts, what) {
     var b = btn(T('Rückgängig'), 'kj-undo', function () {
       var go = function () {
         b.disabled = true;
-        api('POST', '/api/ai/jobs/' + job + '/undo', { change: change }).then(function () {
-          b.replaceWith(el('span', 'kj-cls', T('Zurückgenommen')));
-          HK.toast(T('Zurückgenommen'));
+        api('POST', '/api/ai/jobs/' + job + '/undo', { change: change }).then(function (r) {
+          var done = el('span', 'kj-cls', r && r.already && r.text ? r.text : T('Zurückgenommen'));
+          done.tabIndex = -1; b.replaceWith(done); try { done.focus(); } catch (e) { /* egal */ }   // Fokus nicht auf <body>
+          HK.toast(r && r.already && r.text ? r.text : T('Zurückgenommen'));
           if (opts.onChange) opts.onChange(job);
         }).catch(function (e) {
           b.disabled = false;
@@ -237,11 +252,33 @@
                  cancel: T('Behalten'), danger: true }).then(function (yes) { if (yes) go(); });
       } else go();
     });
+    if (what) b.setAttribute('aria-label', T('Rückgängig: {what}', { what: what }));
     return b;
   }
 
+  // --- Rueckfrage und Absage (auch fuer den Ort "Saga": derselbe Baustein, Bugs-DB 2269/K1) ---------------------------
+  // askCardOf(d, onPick(choice)); refuseCardOf(d, onAlt(alternative), onRephrase())
+  function askCardOf(d, onPick) {
+    var c = el('div', 'kj-card kj-ask'); c.appendChild(head(''));
+    c.appendChild(el('p', 'kj-lead', d.question));
+    var chips = el('div', 'kj-chips');
+    (d.choices || []).forEach(function (ch) { chips.appendChild(btn(ch, 'kj-chip', function () { onPick(ch); })); });
+    c.appendChild(chips); return c;
+  }
+  function refuseCardOf(d, onAlt, onRephrase) {
+    var c = el('div', 'kj-card kj-refuse'); c.appendChild(head(''));
+    c.appendChild(el('p', 'kj-lead', d.text || ''));
+    var row = el('div', 'kj-actions');
+    if (d.alternative && onAlt) row.appendChild(btn(d.alternative.label || T('Als Aufgabe anlegen'), 'btn-primary', function () { onAlt(d.alternative); }));
+    if (onRephrase) row.appendChild(btn(T('Anders formulieren'), 'btn-quiet', onRephrase));
+    if (row.childNodes.length) c.appendChild(row);
+    return c;
+  }
+
   // --- Ort "Auftraege": Eingabe, Liste in 4 Gruppen, Detail ---------------------------------------------------------
-  // mount(container, opts) -> {el, refresh, open(id), give(text)}; opts.note = aktuelle Seite (Kontext), opts.examples
+  // mount(container, opts) -> {el, refresh, open(id), give(text)}; opts.note = aktuelle Seite (Kontext), opts.examples.
+  // opts.form === false (Ort "Saga", Reiter "Auftraege"): ohne eigene Eingabe - Auftraege gibt man im Gespraech;
+  // opts.give(text) nimmt dann den Beispiel-Chip des leeren Zustands entgegen.
   function mount(container, opts) {
     opts = opts || {};
     var root = el('div', 'kj-root'); root.setAttribute('aria-label', T('Aufträge'));
@@ -257,6 +294,7 @@
     form.appendChild(ta); form.appendChild(bar);
     var stage = el('div', 'kj-stage'), listEl = el('div', 'kj-list'), detailEl = el('div', 'kj-detail');
     detailEl.hidden = true;
+    if (opts.form === false) form.hidden = true;
     root.appendChild(form); root.appendChild(live); root.appendChild(stage); root.appendChild(listEl); root.appendChild(detailEl);
     container.appendChild(root);
     var run = null, openId = null, watch = {};
@@ -287,22 +325,10 @@
         stage.textContent = ''; var p = el('p', 'kj-err', T('Das hat nicht geklappt.')); p.setAttribute('role', 'alert'); stage.appendChild(p);
       }).then(function () { run = null; stop.hidden = true; send.disabled = !ta.value.trim(); });
     }
-    function askCard(d, text) {
-      var c = el('div', 'kj-card kj-ask'); c.appendChild(head(''));
-      c.appendChild(el('p', 'kj-lead', d.question));
-      var chips = el('div', 'kj-chips');
-      (d.choices || []).forEach(function (ch) { chips.appendChild(btn(ch, 'kj-chip', function () { give(text, { choice: ch }); })); });
-      c.appendChild(chips); return c;
-    }
+    function askCard(d, text) { return askCardOf(d, function (ch) { give(text, { choice: ch }); }); }
     function refuseCard(d, text) {
-      var c = el('div', 'kj-card kj-refuse'); c.appendChild(head(''));
-      c.appendChild(el('p', 'kj-lead', d.text || ''));
-      var row = el('div', 'kj-actions');
-      if (d.alternative) row.appendChild(btn(d.alternative.label || T('Als Aufgabe anlegen'), 'btn-primary', function () {
-        give(text || ' ', { recipe: d.alternative.recipe, fields: d.alternative.fields });
-      }));
-      row.appendChild(btn(T('Anders formulieren'), 'btn-quiet', function () { stage.textContent = ''; ta.value = text; try { ta.focus(); } catch (e) { /* egal */ } send.disabled = !ta.value.trim(); }));
-      c.appendChild(row); return c;
+      return refuseCardOf(d, function (alt) { give(text || ' ', { recipe: alt.recipe, fields: alt.fields }); },
+        function () { stage.textContent = ''; ta.value = text; try { ta.focus(); } catch (e) { /* egal */ } send.disabled = !ta.value.trim(); });
     }
     function onDone(state, job) { if (state === 'laeuft') watch[job] = 1; refresh(); }
 
@@ -314,7 +340,10 @@
         if (!total) {
           var e = el('div', 'kj-empty');
           e.appendChild(el('p', null, T('Noch keine Aufträge. Gib mir einen, z. B. ‚Erinnere mich Freitag an den Pavillon‘.')));
-          e.appendChild(btn(T('Erinnere mich Freitag an den Pavillon'), 'kj-chip', function () { ta.value = T('Erinnere mich Freitag an den Pavillon'); send.disabled = false; give(ta.value); }));
+          e.appendChild(btn(T('Erinnere mich Freitag an den Pavillon'), 'kj-chip', function () {
+            if (opts.form === false && opts.give) { opts.give(T('Erinnere mich Freitag an den Pavillon')); return; }
+            ta.value = T('Erinnere mich Freitag an den Pavillon'); send.disabled = false; give(ta.value);
+          }));
           listEl.appendChild(e); return;
         }
         d.groups.forEach(function (g) {
@@ -326,7 +355,9 @@
           var ul = el('ul', 'kj-items');
           g.items.forEach(function (it) {
             var li = el('li'), b = el('button', 'kj-item kj-s-' + it.state); b.type = 'button';
-            var sym = el('span', 'kj-isym', g.key === 'nicht_geklappt' ? '!' : g.key === 'laeuft' ? '◷' : g.key === 'fertig' ? '✓' : '●');
+            // ✓ nur fuer "Erledigt" - Abgebrochen/Zurueckgenommen sind auch "Fertig", aber nicht geschafft (Bugs-DB 2504)
+            var sym = el('span', 'kj-isym', g.key === 'nicht_geklappt' ? '!' : g.key === 'laeuft' ? '◷' : it.state === 'erledigt' ? '✓'
+              : it.state === 'zurueckgenommen' ? '↶' : it.state === 'abgebrochen' ? '–' : '●');
             sym.setAttribute('aria-hidden', 'true'); b.appendChild(sym);
             var tx = el('span', 'kj-itx'); tx.appendChild(el('span', 'kj-ititle', it.title || T('Auftrag')));
             var ln = !it.line || it.line === it.state_text ? it.state_text : it.line.indexOf(it.state_text) === 0 ? it.line : it.state_text + ' · ' + it.line;
@@ -387,8 +418,8 @@
     }
     function close() {
       var last = openId;
-      openId = null; detailEl.hidden = true; detailEl.textContent = ''; listEl.hidden = false; form.hidden = false; stage.hidden = false;
-      try { ta.focus(); } catch (e) { /* egal */ }                    // sofort nicht auf <body>, danach auf den Eintrag
+      openId = null; detailEl.hidden = true; detailEl.textContent = ''; listEl.hidden = false; form.hidden = opts.form === false; stage.hidden = false;
+      if (opts.form !== false) { try { ta.focus(); } catch (e) { /* egal */ } }   // sofort nicht auf <body>, danach auf den Eintrag
       return refresh().then(function () {
         var b = last != null && listEl.querySelector('.kj-item[data-job="' + last + '"]');
         if (b) try { b.focus(); } catch (e) { /* egal */ }
@@ -414,5 +445,5 @@
     return { el: root, refresh: refresh, open: open, give: give };
   }
 
-  window.HKJobs = { mount: mount, planCard: planCard, feedback: feedback, post: post };
+  window.HKJobs = { mount: mount, planCard: planCard, feedback: feedback, post: post, askCard: askCardOf, refuseCard: refuseCardOf, head: head };
 })();

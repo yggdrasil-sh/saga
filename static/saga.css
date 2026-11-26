@@ -79,6 +79,28 @@ body.saga-page>main.sg:focus{outline:none}
   .sg-info-b{min-height:2.75rem;min-width:2.75rem}
 }
 
+/* web-saga (UX §2/R3): Reiter Gespraech / Auftraege, Umschalter "Als Auftrag", Auftraege im Verlauf (static/ai-jobs.js) */
+.sg-tabs{display:flex;gap:.2rem;border-bottom:1px solid var(--border)}
+.sg-tab{appearance:none;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:.45rem .7rem;min-height:2.25rem;
+  font:inherit;font-size:1rem;color:var(--muted);cursor:pointer}
+.sg-tab:hover{color:var(--fg)}
+.sg-tab.on{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+.sg-tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-sm)}
+.sg-talk{display:flex;flex-direction:column;gap:.9rem;flex:1 0 auto}
+.sg-talk[hidden],.sg-jobs[hidden]{display:none}
+.sg-jobs{display:flex;flex-direction:column;flex:1 0 auto}
+.sg-jobs .kj-root{overflow:visible;padding:0}
+.sg-mode[aria-pressed=true]{background:var(--ai-tint,var(--sg-tint));border-color:var(--ai-edge,var(--sg-edge));color:var(--fg);font-weight:600}
+.sg-mode[aria-pressed=true]::before{content:"✓ "}
+.sg-me-tag{display:block;font-size:.875rem;color:var(--muted);margin-bottom:.1rem}
+.sg-job{display:flex;flex-direction:column}
+.sg-feed .kj-card{max-width:44rem}
+.kj-change-one{justify-content:flex-start}
+/* Bugs-DB 2503: Zweitknoepfe auf der KI-Flaeche mit sichtbarer Kante (>= 3:1 gegen --ai-tint, auch im Hellen) */
+.sg-card .btn:not(.btn-primary):not(.btn-quiet):not(.linkbtn),.kj-card .btn:not(.btn-primary):not(.btn-quiet):not(.kj-go){
+  background:var(--card);border-color:var(--ai-edge,var(--sg-edge));color:var(--fg)}
+@media (max-width:760px){.sg-tab{min-height:2.75rem;flex:1 1 0}.sg-mode{min-height:2.75rem}}
+
 /* Einstellungen > Saga */
 .hk-set-saga .sg-set-row{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin:.45rem 0}
 .hk-set-saga .sg-set-row small{flex-basis:100%;margin-left:1.6rem}

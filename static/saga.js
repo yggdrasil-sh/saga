@@ -4,7 +4,11 @@
    (/api/ai/status: endpoint, consent, intro) - der Client baut nie selbst "im Heimnetz" oder "lokal".
    Einhaengepunkt fuer andere Bauteile (Plan-Karte/Rueckmeldung, Rolle kb): Container #sg-cards und
    HKSaga.mount(node) (haengt an den Verlauf an), Ereignisse auf document: "saga:status" {status}, "saga:turn" {turn},
-   "saga:consent" {consent}. Alles per textContent, keine Links aus Modelltext. */
+   "saga:consent" {consent}. Alles per textContent, keine Links aus Modelltext.
+   web-saga (W2, UX §2/R3/R4, K1/K10): Reiter "Gespraech / Auftraege"; im Gespraech gibt der Umschalter "Als Auftrag" die
+   Bitte als Auftrag (POST /api/ai/jobs mit thread: true). Plan-Karte, Rueckfrage, Absage und Rueckmeldung sind DIESELBEN
+   Bausteine wie im Ort "Auftraege" (static/ai-jobs.js, HKJobs) - es gibt nur ein Freigabe-Muster. Zuege mit job_id zeigt
+   der Verlauf im jeweils aktuellen Stand (Plan-Karte, Rueckmeldung mit Rueckgaengig oder Zustand + "Ansehen"). */
 (function () {
   'use strict';
   var HK = window.HK;
@@ -217,7 +221,7 @@
     });
     return w;
   }
-  function reportBtn(text) {
+  function reportBtn(text, where, id) {             // where: 'ask' (Antwort) | 'job' (Plan/Rueckmeldung, id = Auftrag)
     if (!HK.report) return null;
     var b = el('button', 'btn btn-quiet sg-report', T('Melden …')); b.type = 'button';
     var sent = false;
@@ -225,7 +229,10 @@
       if (sent) return;
       HK.report({ title: T('KI-Antwort melden'), include: T('Antwort der KI mitschicken'), text: text,
         hint: T('Die Meldung geht an die Admins dieses Saga-Servers – mit dem Text, den du hier mitschickst.'),
-        send: function (r) { return api('POST', '/api/ai/report', { where: 'ask', reason: r.reason, text: r.text }); } })
+        send: function (r) {
+          var body = { where: where === 'job' ? 'job' : 'ask', reason: r.reason, text: r.text }; if (where === 'job' && id) body.page = id;
+          return api('POST', '/api/ai/report', body);
+        } })
         .then(function (r) { if (!r) return; sent = true; b.setAttribute('aria-disabled', 'true'); b.textContent = T('Gemeldet'); });
     });
     return b;
@@ -235,24 +242,173 @@
   }
   function turnNode(tn) {
     if (tn.role === 'me') {
-      var me = el('div', 'sg-me'); me.appendChild(el('p', 'sg-me-t', tn.text)); return me;
+      var me = el('div', 'sg-me' + (tn.zug === 'job' ? ' sg-me-job' : ''));
+      if (tn.zug === 'job') me.appendChild(el('span', 'sg-me-tag', T('Auftrag')));
+      me.appendChild(el('p', 'sg-me-t', tn.text)); return me;
     }
+    if (jobsOn() && (tn.zug === 'plan' && tn.job_id || tn.zug === 'ask' || tn.zug === 'refuse')) return jobTurn(tn);
     var c = el('article', 'sg-card sg-ai');
     c.appendChild(head(24, tn.created ? timeOf(tn.created) : ''));
     var srcs = (tn.fields && tn.fields.sources) || [];
     c.appendChild(answer(tn.text, srcs));
     var sl = srcLine(srcs); if (sl) c.appendChild(sl);
-    if (tn.zug !== 'no_match') { var rb = reportBtn(tn.text); if (rb) c.appendChild(rb); }
+    if (tn.zug !== 'no_match' && tn.zug !== 'plan') { var rb = reportBtn(tn.text); if (rb) c.appendChild(rb); }
     c.dataset.n = tn.n || '';
     return c;
   }
+  S.kiName = kiName;                                  // fuer static/ai-jobs.js (Kopf B1, Darstellung, Melden)
+  S.md = function (text) { return answer(text, []); };
+  S.reportBtn = reportBtn;
   S.mount = function (node) {                         // Einhaengepunkt (kb): Karte an den Verlauf anhaengen
     var feed = $('sg-feed'); if (!feed || !node) return null;
     feed.hidden = false; var e = $('sg-empty'); if (e) e.remove();
     feed.appendChild(node); return node;
   };
 
-  var G = { run: null, turns: [] };
+  var G = { run: null, turns: [], mode: 'ask', tab: 'talk', jobs: null };
+
+  // --- Auftraege im Gespraech (web-saga, UX R3/R4; Bausteine aus static/ai-jobs.js) ---------------------------------
+  function jobsOn() { return !!(S.st && S.st.jobs && window.HKJobs); }
+  function live() { return $('sg-status'); }
+  function focusSoft(node) {                         // nach eigener Aktion: Fokus nicht auf <body> fallen lassen
+    var x = node && (node.querySelector('.kj-lead, .kj-result') || node);
+    if (!x) return;
+    if (!x.hasAttribute('tabindex')) x.tabIndex = -1;
+    try { x.focus({ preventScroll: true }); } catch (e) { x.focus(); }
+  }
+  function jobWrap(id) {
+    var w = el('div', 'sg-job'); if (id) w.dataset.job = id; return w;
+  }
+  function stateCard(d) {                            // Laeuft / Wartet auf dich / Abgebrochen / Hat nicht geklappt
+    var c = el('section', 'kj-card kj-small sg-jobstate'); c.setAttribute('aria-label', d.state_text);
+    c.appendChild(HKJobs.head(d.state_text));
+    c.appendChild(el('p', 'kj-lead', d.reason_text && d.title ? d.title + ' – ' + d.reason_text : d.reason_text || d.title || ''));
+    var b = el('button', 'btn btn-quiet kj-view', T('Ansehen')); b.type = 'button';
+    b.addEventListener('click', function () { openJob(d.id); });
+    c.appendChild(b);
+    return c;
+  }
+  function jobNode(d, w) {                           // aktueller Stand eines Auftrags -> genau ein Baustein
+    if (d.state === 'wartet_ok' && d.plan && d.plan.steps) return planCardFor(d.plan, w);
+    if (d.state === 'erledigt' || d.state === 'zurueckgenommen')
+      return HKJobs.feedback(d, { onOpen: openJob, onChange: function () { if (w) refreshJob(w); } });
+    return stateCard(d);
+  }
+  function planCardFor(plan, w) {
+    return HKJobs.planCard(plan, { live: live(), onOpen: openJob, onEdit: function () { if (G.jobs) G.jobs.refresh(); },
+      onDone: function (state) { if (w) w.dataset.state = state; if (G.jobs) G.jobs.refresh(); } });
+  }
+  function refreshJob(w) {
+    var id = w.dataset.job; if (!id) return Promise.resolve();
+    return api('GET', '/api/ai/jobs/' + id).then(function (d) {
+      var had = w.contains(document.activeElement);
+      var n = jobNode(d, w); w.textContent = ''; w.appendChild(n); w.dataset.state = d.state;
+      if (had) focusSoft(n);
+    }).catch(function (e) {
+      if (e.status === 404) { w.textContent = ''; var c = el('div', 'kj-card kj-small'); c.appendChild(HKJobs.head(''));
+        c.appendChild(el('p', 'kj-lead', T('Diesen Auftrag gibt es nicht mehr.'))); w.appendChild(c); w.dataset.state = 'weg'; }
+    });
+  }
+  function askNode(d, q) {
+    return HKJobs.askCard(d, function (ch) { giveJob(q, { choice: ch }, ch); });
+  }
+  function refuseNode(d, q) {
+    return HKJobs.refuseCard(d, function (alt) { giveJob(q || ' ', { recipe: alt.recipe, fields: alt.fields }, alt.label || T('Als Aufgabe anlegen')); },
+      function () { setMode('job'); var ta = $('sg-ta'); ta.value = q || ''; try { ta.focus(); } catch (e) { /* egal */ } });
+  }
+  function jobTurn(tn) {                             // gespeicherter Zug (GET /api/ai/thread)
+    var f = tn.fields || {};
+    if (tn.zug === 'ask') return askNode({ question: tn.text, choices: f.choices || [] }, f.q || '');
+    if (tn.zug === 'refuse') return refuseNode({ text: tn.text, alternative: f.alternative }, f.q || '');
+    var w = jobWrap(tn.job_id), ph = el('div', 'kj-card kj-small'); ph.appendChild(HKJobs.head(''));
+    ph.appendChild(el('p', 'kj-lead', tn.text || '')); w.appendChild(ph);
+    refreshJob(w);
+    return w;
+  }
+  function giveJob(text, extra, said) {
+    text = String(text || '');
+    if ((!text.trim() && !extra) || G.run) return;
+    var feed = $('sg-feed'), e = $('sg-empty'); if (e) e.remove(); feed.hidden = false;
+    feed.appendChild(turnNode({ role: 'me', zug: 'job', text: said || text }));
+    var wait = el('article', 'kj-card kj-wait sg-live'); wait.appendChild(HKJobs.head(''));
+    var dots = el('p', 'kj-thinking', T('{name} denkt nach …', { name: P().name })); wait.appendChild(dots);
+    feed.appendChild(wait);
+    var ta = $('sg-ta'); if (!extra) ta.value = '';
+    busy(true);
+    var body = Object.assign({ text: text, thread: true }, extra || {}), out = null;
+    G.run = HKJobs.post(body, function (ev, d) {
+      if (ev === 'status') { if (d && d.text) dots.textContent = d.text; return; }
+      var node;
+      if (ev === 'plan') {
+        node = jobWrap(d.job); node.dataset.state = 'wartet_ok'; node.appendChild(planCardFor(d, node));
+        out = T('Plan bereit – wartet auf dein OK');
+        if (G.jobs) G.jobs.refresh();
+      } else if (ev === 'ask') node = askNode(d, text);
+      else if (ev === 'refuse') node = refuseNode(d, text);
+      else {
+        node = el('div', 'kj-card'); node.appendChild(HKJobs.head(''));
+        var p = el('p', 'kj-err', (d && d.error) || T('Das hat nicht geklappt.')); p.setAttribute('role', 'alert'); node.appendChild(p);
+        if (d && d.status === 403) S.load().then(function () { if (!consentOk()) page(); });
+      }
+      wait.replaceWith(node);
+    });
+    G.run.done.catch(function (err) {
+      if (err && err.name === 'AbortError') { wait.classList.add('sg-stopped'); dots.textContent = T('Abgebrochen – nichts ist passiert.'); dots.classList.remove('kj-thinking'); return; }
+      var p = el('p', 'kj-err', T('Das hat nicht geklappt.')); p.setAttribute('role', 'alert'); wait.replaceWith(p);
+    }).then(function () {
+      G.run = null; busy(false); if (out) live().textContent = out;
+      try { ta.focus({ preventScroll: true }); } catch (x) { ta.focus(); }
+    });
+  }
+  function setMode(m) {
+    G.mode = m === 'job' && jobsOn() ? 'job' : 'ask';
+    var b = $('sg-mode'), ta = $('sg-ta'), job = G.mode === 'job';
+    if (b) b.setAttribute('aria-pressed', job ? 'true' : 'false');
+    $('sg-send').textContent = job ? T('Auftrag geben') : T('Senden');
+    ta.placeholder = job ? T('Sag {name}, was du brauchst …', { name: P().name }) : T('Schreib {name} …', { name: P().name });
+    ta.setAttribute('aria-label', job ? T('Auftrag an {name}', { name: P().name }) : T('Nachricht an {name}', { name: P().name }));
+  }
+  function submit() { if (G.mode === 'job') giveJob($('sg-ta').value.trim()); else send(); }
+  function openJob(id) { tab('jobs', false); if (G.jobs) G.jobs.open(id, true); }
+  function tab(k, focusTab) {
+    if (!jobsOn()) k = 'talk';
+    G.tab = k;
+    $('sg-talk').hidden = k !== 'talk'; $('sg-jobs').hidden = k !== 'jobs';
+    [$('sg-tab-talk'), $('sg-tab-jobs')].forEach(function (b) {
+      var on = b.dataset.k === k; b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; b.classList.toggle('on', on);
+      if (on && focusTab) b.focus();
+    });
+    if (k === 'jobs') {
+      if (!G.jobs) G.jobs = HKJobs.mount($('sg-jobs'), { form: false, give: function (text) { tab('talk', false); setMode('job'); $('sg-ta').value = text; submit(); } });
+      else G.jobs.refresh();
+    }
+    try { history.replaceState(null, '', k === 'jobs' ? '/saga?tab=jobs' : '/saga'); } catch (e) { /* egal */ }
+  }
+  function tabsInit() {
+    var tb = $('sg-tabs');
+    tb.setAttribute('role', 'tablist'); tb.setAttribute('aria-label', T('Saga'));
+    [['sg-tab-talk', 'sg-talk'], ['sg-tab-jobs', 'sg-jobs']].forEach(function (x) {
+      var b = $(x[0]), pn = $(x[1]);
+      b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', x[1]);
+      pn.setAttribute('role', 'tabpanel'); pn.setAttribute('aria-labelledby', x[0]);
+      b.addEventListener('click', function () { tab(b.dataset.k, false); });
+      b.addEventListener('keydown', function (e) {       // Pfeile/Pos1/Ende zwischen den Reitern (APG Tabs)
+        if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].indexOf(e.key) < 0) return;
+        e.preventDefault();
+        var nx = e.key === 'Home' ? 'talk' : e.key === 'End' ? 'jobs' : b.dataset.k === 'talk' ? 'jobs' : 'talk';
+        tab(nx, true);
+      });
+    });
+    document.addEventListener('hk-live', function (e) {   // ai.job.changed: Baustein im Verlauf auf den neuen Stand
+      var d = e.detail && e.detail.type === 'ai.job.changed' ? (e.detail.data || {}) : null;
+      if (!d || !d.id) return;
+      [].forEach.call(document.querySelectorAll('#sg-feed .sg-job[data-job="' + d.id + '"]'), function (w) {
+        if (w.dataset.state === d.state && d.state !== 'erledigt') return;
+        if (w.querySelector('.kj-editbox')) return;      // "Aendern" offen: nicht unter der Hand neu zeichnen
+        refreshJob(w);
+      });
+    });
+  }
   function empty() {
     var feed = $('sg-feed'); feed.textContent = ''; feed.hidden = false;
     var w = el('div', 'sg-empty'); w.id = 'sg-empty';
@@ -261,10 +417,16 @@
     var chips = el('div', 'sg-chips');
     [T('Was steht diese Woche an?'), T('Fass meine Notizen zum Sommerfest zusammen'), T('Welche Aufgaben sind offen?')].forEach(function (q) {
       var b = el('button', 'sg-chip', q); b.type = 'button';
-      b.addEventListener('click', function () { $('sg-ta').value = q; send(); });
+      b.addEventListener('click', function () { setMode('ask'); $('sg-ta').value = q; send(); });
       chips.appendChild(b);
     });
     w.appendChild(chips);
+    if (jobsOn()) {                                      // UX §3: Beispiel fuer einen Auftrag (zeigt nur den Plan)
+      w.appendChild(el('p', 'sg-empty-t', T('Oder gib mir einen Auftrag:')));
+      var jc = el('div', 'sg-chips'), jb = el('button', 'sg-chip sg-chip-job', T('Erinnere mich Freitag an den Pavillon')); jb.type = 'button';
+      jb.addEventListener('click', function () { setMode('job'); $('sg-ta').value = jb.textContent; submit(); });
+      jc.appendChild(jb); w.appendChild(jc);
+    }
     feed.appendChild(w);
   }
   function renderFeed() {
@@ -282,7 +444,7 @@
     k.appendChild(b); k.hidden = false;
   }
   function busy(on) {
-    $('sg-stop').hidden = !on; $('sg-send').disabled = on; $('sg-ta').readOnly = on;
+    $('sg-stop').hidden = !on; $('sg-send').disabled = on; $('sg-ta').readOnly = on; $('sg-mode').disabled = on;
     $('sg-status').textContent = on ? T('{name} denkt nach …', { name: P().name }) : '';
     $('sg-feed').setAttribute('aria-busy', on ? 'true' : 'false');
   }
@@ -347,27 +509,32 @@
     bar();
     var slot = $('sg-intro'), form = $('sg-ask');
     if (!st) { slot.hidden = false; slot.textContent = ''; slot.appendChild(el('p', 'sg-err', T('Der KI-Assistent ist für dich nicht eingeschaltet.'))); form.hidden = true; return; }
-    $('sg-ta').placeholder = T('Schreib {name} …', { name: P().name });
-    $('sg-ta').setAttribute('aria-label', T('Nachricht an {name}', { name: P().name }));
+    $('sg-mode').hidden = !jobsOn(); setMode(G.mode);
     if (!consentOk()) {                                // vor der Einwilligung: nur die Karte, keine Eingabe (nichts ans Modell)
-      form.hidden = true; $('sg-feed').hidden = true; $('sg-keep').hidden = true;
+      form.hidden = true; $('sg-feed').hidden = true; $('sg-keep').hidden = true; $('sg-tabs').hidden = true; tab('talk', false);
       slot.textContent = '';
-      slot.appendChild(S.introCard({ done: function () { S.load().then(page); }, reload: function () { page(); },
+      slot.appendChild(S.introCard({ done: function () {        // Bugs-DB 2503: danach steht der Fokus im Eingabefeld
+          S.load().then(function () { page(); var ta = $('sg-ta'); if (!$('sg-ask').hidden) try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); } });
+        }, reload: function () { page(); },
         later: function () { location.href = '/dashboard'; } }));
       slot.hidden = false;
       return;
     }
     slot.hidden = true; slot.textContent = '';
     form.hidden = false;
+    $('sg-tabs').hidden = !jobsOn();
+    tab(jobsOn() && /[?&]tab=jobs\b/.test(location.search) ? 'jobs' : G.tab, false);
     api('GET', '/api/ai/thread').then(function (d) {
       G.turns = d.turns || []; renderFeed(); keepLine(d);
     }).catch(function (e) { HK.toast(e.message); });
   }
   function pageInit() {
-    $('sg-ask').addEventListener('submit', function (e) { e.preventDefault(); send(); });
+    $('sg-ask').addEventListener('submit', function (e) { e.preventDefault(); submit(); });
     $('sg-ta').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); }
     });
+    $('sg-mode').addEventListener('click', function () { setMode(G.mode === 'job' ? 'ask' : 'job'); });
+    tabsInit();
     $('sg-stop').addEventListener('click', function () { if (G.run) G.run.abort(); });
     moreMenu();
     S.load().then(page).catch(function (e) { HK.toast(e.message); });
