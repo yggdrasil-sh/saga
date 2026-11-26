@@ -245,9 +245,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Gjallarhorn: Anrufe starten auf einem Knoten mit UDP, die UDP-Grenze greift** (Bugs-DB 2447): Bei gleicher Last
   gewann bisher immer der eingebaute Knoten (Tunnel); der Anruf hielt dann die TCP-Grenze fest, auch wenn alle Geräte
   über UDP auf einem gekoppelten Knoten liefen. Jetzt kommen bereite Knoten mit UDP unter 70 % Auslastung zuerst –
-  die Grenze richtet sich nach dem Weg dieses Startknotens. Saga öffnet den Raum außerdem auf **jedem** Knoten des
-  Anrufs mit der Anrufgrenze (`open` mit `max_peers`, vorher nur am Startknoten); Knoten ab 2.6 übernehmen sie auch
-  für einen schon offenen Raum (vorher blieb ein Folgeknoten beim Standard 50).
+  die Grenze richtet sich nach dem Weg dieses Startknotens. Saga öffnet den Raum außerdem auf jedem eigenen Knoten des
+  Anrufs mit der Anrufgrenze (`open` mit `max_peers`, vorher nur am Startknoten; Kopien föderierter Anrufe auf dem
+  anderen Server weiter mit dem Standard 50); Knoten ab 2.6 übernehmen sie auch für einen schon offenen Raum und zählen
+  dabei nur Geräte am eigenen Knoten, nicht Teilnehmende über eine Brücke (sonst hing ein umziehendes Gerät bei vollem
+  Anruf am Zielknoten fest).
 - **Gjallarhorn: „ausgelastet“ statt „kein Anruf-Knoten erreichbar“** (2263-4): Ist ein erreichbarer Knoten nur ausgelastet,
   antwortet der Beitritt weiter mit 409 `join_block:"node"`, zusätzlich mit `busy: true` und dem Text „Die Anruf-Knoten
   sind gerade ausgelastet – bitte gleich noch einmal.“
@@ -270,7 +272,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Gjallarhorn: neuer Sprecher schneller hörbar** (Bugs-DB 2432, Entscheidung 26.11., Weg A): Wer seit 0,6 s kein Sprachpaket
   mehr geschickt hat, gibt seinen Ton-Platz frei, sobald jemand danach zu reden beginnt (und 0,4 s dabei bleibt) – auch
   an der Bifröst-Brücke. Haben alle drei Inhaber eben gesprochen, ist ein Neuer damit nach etwa 0,6–1 s zu hören statt
-  nach 3,3–3,7 s (Messreihe 2263-9). Kürzere Atempausen halten den Platz; reden vier durcheinander, bleibt es bei der
+  nach 3,3–3,7 s (Messreihe 2263-9; über eine Brücke addieren sich beide Seiten, geschätzt 1–1,5 s, noch nicht gemessen). Kürzere Atempausen halten den Platz; reden vier durcheinander, bleibt es bei der
   Hysterese (1,4×, 1,5 s).
 - **Gjallarhorn: Top-3-Ton flattert nicht mehr** (Bugs-DB 2417, 2263-3): Wer gerade spricht, behält seinen Ton-Platz;
   ein Neuer bekommt einen freien oder stillen Platz sofort, verdrängt einen Sprechenden aber erst mit mindestens 1,4-facher

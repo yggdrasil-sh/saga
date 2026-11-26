@@ -149,4 +149,24 @@ func TestRaumGrenzeNachtraeglich(t *testing.T) {
 	if err := join("p5"); !errors.Is(err, ErrFull) {
 		t.Fatalf("6. Geraet bei max_peers 5: %v", err)
 	}
+	// Pruefer 2447: Fern-Teilnehmende ueber eine Bruecke zaehlen nicht - ein umziehendes Geraet (alter Peer noch ueber
+	// die Bruecke) kommt bei vollem Anruf trotzdem herein; voll bleibt voll fuer weitere lokale Geraete.
+	r2, _ := n.CreateRoom("raumumzug", &Limits{MaxPeers: 3})
+	for i := 0; i < 3; i++ {
+		if !r2.AddRemote("b1", fmt.Sprintf("fern%d", i), Desktop, nil) {
+			t.Fatal("AddRemote")
+		}
+	}
+	add := func(id string) error {
+		_, err := r2.AddLeg(Grant{Room: "raumumzug", Peer: id, Leg: id + "-a", Role: RoleAudio, Pub: PubAudio}, PathUDP, Want{Audio: 3})
+		return err
+	}
+	for i := 0; i < 3; i++ {
+		if err := add(fmt.Sprintf("hier%d", i)); err != nil {
+			t.Fatalf("lokales Geraet %d neben 3 Fern-Teilnehmenden: %v", i, err)
+		}
+	}
+	if err := add("hier3"); !errors.Is(err, ErrFull) {
+		t.Fatalf("4. lokales Geraet bei max_peers 3: %v", err)
+	}
 }

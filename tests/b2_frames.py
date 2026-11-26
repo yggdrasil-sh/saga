@@ -184,8 +184,8 @@ def teil0():
     """Pruefer B2 (ohne Server): Knotenwahl wie auf einem Server mit eingebautem Knoten im Tunnel-Betrieb (ohne UDP) und
     gekoppeltem Knoten mit UDP (horn-1). Browser mit dem Rahmen-Weg bekommen den Tunnel-Knoten nur als letzten Weg (sonst
     liefen sie nach B2 ueber TCP statt wie vorher ueber UDP am gekoppelten Knoten), auch bei hoeherer Last des anderen;
-    Apps mit "ws" wie bisher (eingebauter zuerst); mit UDP am Tunnel-Knoten bleibt der eingebaute vorn; nur Tunnel-Knoten
-    -> er (B2)."""
+    Apps mit "ws": seit 2.6 (Bugs-DB 2447) ebenfalls der Knoten mit UDP zuerst, ab PENALTY dessen Last wieder der eingebaute;
+    mit UDP am Tunnel-Knoten bleibt der eingebaute vorn; nur Tunnel-Knoten -> er (B2)."""
     from saga import horn as HN
     B = {"id": "b2t", "name": "saga.example.org", "builtin": 1, "udp": 0}
     H1 = {"id": "b2h", "name": "horn-1.example.org", "builtin": 0, "udp": 1}
@@ -201,14 +201,16 @@ def teil0():
             return [n["id"] for n in HN.ready_nodes(None, ws=ws)]
         got = {"web": order(HN.caps_reach(["horn"])), "frames": order(HN.caps_reach(["horn", "frames"])),
                "ws": order(HN.caps_reach(["horn", "ws"]))}
+        load["b2h"] = 0.75                             # >= PENALTY: UDP zaehlt nicht mehr (2447)
+        got["ws_voll"] = order(HN.caps_reach(["horn", "ws"]))
         load["b2h"] = 0.5
         got["frames_last"] = order("frames")
         load["b2h"] = 0.0
         got["frames_only"] = order("frames", (B,))
         B["udp"] = 1
         got["frames_udp"] = order("frames")
-        ok("Knotenwahl: Browser mit frames nehmen den Tunnel-Knoten ohne UDP nur ohne anderen bereiten Knoten; Apps (ws) wie bisher",
-           got == {"web": ["b2h"], "frames": ["b2h", "b2t"], "ws": ["b2t", "b2h"], "frames_last": ["b2h", "b2t"],
+        ok("Knotenwahl: Browser mit frames nehmen den Tunnel-Knoten ohne UDP nur ohne anderen bereiten Knoten; Apps (ws) UDP zuerst (2447)",
+           got == {"web": ["b2h"], "frames": ["b2h", "b2t"], "ws": ["b2h", "b2t"], "ws_voll": ["b2t", "b2h"], "frames_last": ["b2h", "b2t"],
                    "frames_only": ["b2t"], "frames_udp": ["b2t", "b2h"]}, got)
     finally:
         HN.nodes, HN.ready, HN.util = keep

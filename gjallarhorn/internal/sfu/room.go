@@ -82,6 +82,17 @@ func (n *Node) CreateRoom(ref string, lim *Limits) (*Room, error) {
 	return r, nil
 }
 
+// localPeersLocked: Teilnehmende mit Geraet an diesem Knoten (ohne Fern-Teilnehmende ueber Bruecken). Unter r.mu.
+func (r *Room) localPeersLocked() int {
+	n := 0
+	for _, p := range r.peers {
+		if p.Via == "" {
+			n++
+		}
+	}
+	return n
+}
+
 // Room liefert einen Raum oder nil.
 func (n *Node) Room(ref string) *Room {
 	n.mu.Lock()
@@ -495,7 +506,10 @@ func (r *Room) AddLeg(g Grant, path Path, want Want) (*Leg, error) {
 	p := r.peers[g.Peer]
 	if p == nil {
 		q, qerr := r.node.quotaFor(g)
-		if len(r.peers) >= r.lim.MaxPeers || qerr != nil {
+		// 2.6 (Saga Bugs-DB 2447, Pruefer): nur Geraete an diesem Knoten zaehlen gegen MaxPeers - Teilnehmende ueber eine
+		// Bruecke (Via) nicht. Sonst blieb ein umziehendes Geraet bei vollem Anruf am Zielknoten haengen (sein alter
+		// Peer kommt dort noch ueber die Bruecke), seit Saga max_peers = Anrufgrenze auf jedem Knoten setzt.
+		if r.localPeersLocked() >= r.lim.MaxPeers || qerr != nil {
 			r.mu.Unlock()
 			r.node.releaseLeg()
 			if replaced != nil {
