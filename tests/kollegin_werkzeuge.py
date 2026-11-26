@@ -11,8 +11,8 @@ roots=[] wird nie angelegt; create_event mit fester iCal-UID: zweimal derselbe S
 nachgestellt, If-None-Match: *); check_plan und Perf "Kollegin: Plan pruefen" (limits.json).
 K-A6: Aufgaben/Kalender nur mit den freigegebenen Ziel-Kennungen (tok.may im Tor); check_plan-Grenzen (Schritte, Ziele,
 reads - ungueltige reads als Problem); Auftrag ai.task mit jedem own-Werkzeug (ausser create_event: CalDAV, feste UID)
--> je Schritt job_change-Stempel genau eines Versuchs mit dem erwarteten Ziel; /api/ai/jobs/* gibt es nicht - mit einem
-gueltigen sga_-Token 404 (HTTP gegen den Server der Testumgebung, HK_TEST_BASE).
+-> je Schritt job_change-Stempel genau eines Versuchs mit dem erwarteten Ziel; /api/ai/jobs/* (K-B 2267) mit einem
+gueltigen sga_-Token 403, nie 2xx - auch act/outbox/inbox, die es noch nicht gibt (HTTP gegen HK_TEST_BASE).
 Laeuft im Prozess gegen die Datenbank aus DATABASE_URL (Wegwerf-Konten kw-*), stellt die KI-Einstellung wieder her.
 Aufruf (saga-test): tools/testumgebung/umgebung.sh lauf server <slot> kollegin_werkzeuge.py"""
 import json
@@ -501,8 +501,8 @@ def part_stamps(a_root):
 
 
 def part_jobs_http():
-    """/api/ai/jobs/* gibt es (noch) nicht: mit einem gueltigen sga_-Token 404 - kein Weg, Auftraege per API-Token
-    anzulegen, freizugeben oder Ein-/Ausgang zu lesen (RT-42)."""
+    """/api/ai/jobs/* mit einem gueltigen sga_-Token: 403, nie 2xx (K-B 2267; vorher 404, als es die Pfade nicht gab) -
+    kein Weg, Auftraege per API-Token anzulegen, freizugeben oder Ein-/Ausgang zu lesen (RT-42)."""
     from saga.core import _tok_hash
     base = os.environ.get("HK_TEST_BASE") or ""
     ok("HK_TEST_BASE gesetzt (Server der Testumgebung)", bool(base))
@@ -524,8 +524,10 @@ def part_jobs_http():
     ok(f"sga_-Token gueltig (/api/v1/me {me})", me == 200)
     got = {f"{m} {p}": req(m, p, b) for m, p, b in (("GET", "/api/ai/jobs", None), ("POST", "/api/ai/jobs", {"kind": "ai.task"}),
                                                     ("GET", "/api/ai/jobs/1", None), ("POST", "/api/ai/jobs/1/approve", {}),
-                                                    ("GET", "/api/ai/jobs/outbox", None), ("GET", "/api/ai/jobs/inbox", None))}
-    ok(f"RT-42: /api/ai/jobs/* mit sga_-Token -> 404 ({got})", set(got.values()) == {404}, got)
+                                                    ("GET", "/api/ai/jobs/outbox", None), ("GET", "/api/ai/jobs/inbox", None),
+                                                    ("PUT", "/api/ai/jobs/1/plan", {}), ("POST", "/api/ai/jobs/1/undo", {}),
+                                                    ("POST", "/api/ai/jobs/1/cancel", {}), ("POST", "/api/ai/jobs/1/act", {}))}
+    ok(f"RT-42: /api/ai/jobs/* mit sga_-Token -> 403, nie 2xx ({got})", set(got.values()) == {403}, got)
 
 
 def cleanup():

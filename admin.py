@@ -1849,7 +1849,16 @@ def ai_page(request: Request):
     return _page(request, "ai.html", me, a=a, has_key=bool(a.get("api_key")), groups_text=", ".join(a.get("groups") or []),
                  caps_act_text=", ".join(cp.get("ai_act") or []), caps_ideas_text=", ".join(cp.get("ai_ideas") or []),
                  test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL, units=ai.units_today(), cache=ai.cache_view(),
-                 models=ai.LAST_MODELS["list"][:300], web_ok=ai.ai_web.available(), **_persona_ctx())
+                 models=ai.LAST_MODELS["list"][:300], web_ok=ai.ai_web.available(), **_persona_ctx(), **_plan_ctx())
+
+
+def _plan_ctx():
+    """2.6 (Bugs-DB 2267 K-B): Faehigkeitsstufe, Rezepte und Selbsttest im Admin-Bereich (saga/ai_plan.py)."""
+    from saga import ai_plan
+    pc = ai_plan.settings_raw()
+    return {"plan_level": ai_plan.level(pc), "plan_levels": [(x, ai_plan.level_name(x)) for x in ai_plan.LEVELS],
+            "plan_builtin": [(b["id"], ai_plan._builtin_title(b["id"]), b["id"] not in set(pc.get("off") or ())) for b in ai_plan.BUILTIN],
+            "plan_recipes": json.dumps(pc.get("recipes") or [], ensure_ascii=False, indent=1) if pc.get("recipes") else ""}
 
 
 def _persona_ctx():
@@ -1936,6 +1945,53 @@ async def ai_post(request: Request):
             ai.announce_persona(c, before=cur)
     _flash(request, t("Einstellungen für den KI-Assistenten gespeichert."))
     return _go("/settings/ai")
+
+
+# --- Auftraege der KI (2.6, Bugs-DB 2267 K-B): Faehigkeitsstufe, Rezepte, Selbsttest ---------------------------------
+@admin.post("/settings/ai/plan")
+async def ai_plan_post(request: Request):
+    """Formular: level (plans|recipes|answers), on_<rezept> (eingebaute an/aus), recipes (JSON-Liste eigener Rezepte)."""
+    from saga import ai_plan
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    if f is None:
+        return _go("/settings/ai#auftraege")
+    raw = str(f.get("recipes") or "").strip()
+    try:
+        own = json.loads(raw) if raw else []
+    except ValueError:
+        _flash(request, t("Eigene Rezepte: kein gültiges JSON."), "err")
+        return _go("/settings/ai#auftraege")
+    off = [b["id"] for b in ai_plan.BUILTIN if not _on(f, "on_" + b["id"])]
+    probs = await run_in_threadpool(ai_plan.save_settings, str(f.get("level") or ""), off, own)
+    if probs:
+        _flash(request, "; ".join(probs[:5]), "err")
+        return _go("/settings/ai#auftraege")
+    print(f"admin: {me['username']} speichert Auftraege der KI (Stufe={f.get('level')}, eigene Rezepte={len(own)})", flush=True)
+    _flash(request, t("Einstellungen für Aufträge gespeichert."))
+    return _go("/settings/ai#auftraege")
+
+
+@admin.post("/api/ai/selftest")
+async def api_ai_selftest(request: Request):
+    """Selbsttest (K6, M8): Stichprobe gegen das eingestellte Modell -> {level, valid, total, text, note, cases}.
+    Nur Vorschlag - die Stufe stellt der Admin selbst ein. Sitzung des Admins + X-CSRF-Token."""
+    from saga import ai_plan
+    me, err = _api_admin(request)
+    if err:
+        return err
+    c = ai.cfg()
+    if not ai.configured(c):
+        return JSONResponse({"error": t("Zuerst Adresse und Modell eintragen und speichern.")}, status_code=400)
+    try:
+        out = await run_in_threadpool(ai_plan.selftest, c)
+    except Exception as ex:  # noqa: BLE001
+        print(f"admin: Selbsttest {type(ex).__name__}", flush=True)
+        return JSONResponse({"error": t("Der Selbsttest ist gescheitert – ist das Modell erreichbar?")}, status_code=502)
+    print(f"admin: {me['username']} Selbsttest KI -> {out['level']} ({out['valid']}/{out['total']})", flush=True)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 # --- Persona der KI (2.1): Name, Profilbild, Tonfall ---------------------------------------------------------------

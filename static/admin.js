@@ -1,6 +1,24 @@
 // Admin-Bereich: Rueckfragen vor gefaehrlichen Aktionen (alles andere sind normale Formulare) + Zeiten in Ortszeit
 (function () {
   'use strict';
+  // 2.6 (Bugs-DB 2267 K-B): Selbsttest der KI (Admin -> KI-Assistent -> Auftraege) - nur ein Vorschlag fuer die Stufe
+  var stb = document.getElementById('ai-selftest'), sto = document.getElementById('ai-selftest-out');
+  if (stb && sto) {
+    stb.addEventListener('click', function () {
+      var f = stb.form, csrf = f && f.querySelector('input[name=csrf]');
+      stb.disabled = true; sto.textContent = stb.dataset.busy || '…';
+      fetch('/api/ai/selftest', { method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': csrf ? csrf.value : '', 'Content-Type': 'application/json' }, body: '{}' })
+        .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || stb.dataset.fail); return d; }); })
+        .then(function (d) {
+          sto.textContent = d.text + (d.note ? ' · ' + d.note : '');
+          var sel = f.querySelector('select[name=level]');
+          if (sel && d.level) sel.dataset.suggest = d.level;
+        })
+        .catch(function (e) { sto.textContent = (e && e.message) || stb.dataset.fail; })
+        .then(function () { stb.disabled = false; });
+    });
+  }
   document.querySelectorAll('form[data-confirm]').forEach(function (f) {
     f.addEventListener('submit', function (e) {
       var b = e.submitter;

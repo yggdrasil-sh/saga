@@ -49,6 +49,33 @@
     <button class="btn" type="submit" name="action" value="test">{{ _("Verbindung testen") }}</button>
   </div>
 </form>
+{# 2.6 (Bugs-DB 2267 K-B): Auftraege der KI - Faehigkeitsstufe, Rezepte, Selbsttest (saga/ai_plan.py) #}
+<form method="post" action="/settings/ai/plan" class="adm-form" id="auftraege">
+  {{ csrf_field() }}
+  <section class="adm-card">
+    <h3>{{ _("Aufträge") }}</h3>
+    <p class="hk-hint">{{ _("Wie viel das Modell beim Planen selbst entscheiden darf. Jeder Plan braucht das OK der Person; Saga prüft jeden Schritt.") }}</p>
+    <label class="adm-field"><span>{{ _("Fähigkeitsstufe") }}</span>
+      <select class="hk-in" name="level">
+        {% for k, name in plan_levels %}<option value="{{ k }}"{% if plan_level == k %} selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select>
+      <small>{{ _("Pläne: das Modell plant frei aus den erlaubten Werkzeugen (große Modelle). Nur Rezepte: es wählt ein Rezept und füllt die Lücken (kleine Modelle). Nur Antworten: keine Aufträge.") }}</small></label>
+    <div class="adm-actions">
+      <button class="btn" type="button" id="ai-selftest" data-busy="{{ _('Selbsttest läuft … (bis zu 12 Anfragen)') }}" data-fail="{{ _('Der Selbsttest ist gescheitert – ist das Modell erreichbar?') }}">{{ _("Selbsttest") }}</button>
+    </div>
+    <p class="hk-hint" id="ai-selftest-out" role="status" aria-live="polite"></p>
+    <p class="hk-hint"><small>{{ _("Sicherheit setzt der Server durch – unabhängig vom Modell.") }}</small></p>
+    <fieldset class="adm-field"><legend>{{ _("Eingebaute Rezepte") }}</legend>
+      {% for rid, name, on in plan_builtin %}{{ check(name, 'on_' ~ rid, on) }}{% endfor %}
+    </fieldset>
+    <label class="adm-field"><span>{{ _("Eigene Rezepte (JSON)") }}</span>
+      <textarea class="hk-in adm-ta" name="recipes" rows="5" spellcheck="false" placeholder='[{"id": "einkauf", "title": "Auf die Einkaufsliste", "slots": {"text": {"type": "text", "need": true}}, "steps": [{"tool": "create_task", "args": {"text": "{text}"}}]}]'>{{ plan_recipes }}</textarea>
+      <small>{{ _("Nur Werkzeuge zum Lesen und für eigene Änderungen. Rezepte kommen nur von hier – nie aus Seiten, Vorlagen oder anderen Servern.") }}</small></label>
+  </section>
+  <div class="adm-actions">
+    <button class="btn btn-primary" type="submit">{{ _("Aufträge speichern") }}</button>
+  </div>
+</form>
 <form method="post" action="/settings/ai/persona" class="adm-form" enctype="multipart/form-data" id="persona">
   {{ csrf_field() }}
   <section class="adm-card">
