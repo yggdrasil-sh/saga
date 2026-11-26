@@ -503,7 +503,7 @@
  "aus": "ปิด",
  "Aus": "ปิด",
  "Aus / ausstehend": "ปิด / รอดำเนินการ",
- "Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).": "ปิด = สายกลุ่มวิ่งตรงระหว่างอุปกรณ์เหมือนใน Saga 2.4 (mesh สูงสุด 4 แบบวิดีโอ / 6 เสียงอย่างเดียว)",
+ "Standard an. Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).": "เปิดเป็นค่าเริ่มต้น ปิด = สายกลุ่มวิ่งตรงระหว่างอุปกรณ์เหมือนใน Saga 2.4 (mesh สูงสุด 4 แบบวิดีโอ / 6 เสียงอย่างเดียว)",
  "Aus = keine Mitteilungen aufs Handy/Desktop (die Glocke in Saga bleibt)": "ปิด = ไม่มีการแจ้งเตือนไปยังโทรศัพท์/เดสก์ท็อป (กระดิ่งใน Saga ยังอยู่)",
  "Aus = keine Verbindungen von und zu anderen Instanzen; Freigaben dorthin wirken sofort nicht mehr (sie bleiben gespeichert).": "ปิด = ไม่มีการเชื่อมต่อกับอินสแตนซ์อื่น การแชร์ไปยังอินสแตนซ์เหล่านั้นจะหยุดทำงานทันที (แต่ยังบันทึกไว้)",
  "Aus = nur LDAP/SSO auf der Anmeldeseite (Admins kommen hier immer mit lokalem Konto herein)": "ปิด = มีเฉพาะ LDAP/SSO ในหน้าเข้าสู่ระบบ (ผู้ดูแลระบบเข้ามาที่นี่ด้วยบัญชีภายในได้เสมอ)",

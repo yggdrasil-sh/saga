@@ -47,7 +47,8 @@ def calls_cfg(k, horn=True, y=False, **kw):
     """Anruf-Einstellungen einer Instanz. Grundsatz Y: ohne horn_all ausdruecklich aus (horn_all false + Merker horn_all_y,
     wie ein Server vor Y bzw. bewusst ausgeschaltet); y=True = ab Werk unter Y (nichts gespeichert, also an)."""
     cfg = {"enabled": True, "stun": "stun:stun.example.org:3478", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "",
-           "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": horn, "horn_builtin": False, "horn_from": 3}
+           "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": horn, "horn_builtin": False, "horn_from": 3,
+           "horn_on_y": True}                                # 2263-4: Merker - horn gilt wie gesetzt
     if not y:
         kw.setdefault("horn_all", False)
         kw.setdefault("horn_all_y", True)

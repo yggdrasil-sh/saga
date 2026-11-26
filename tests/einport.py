@@ -505,7 +505,7 @@ def teil2(media, node):
 
 
 def teil3(media, node):
-    settings(horn=False)
+    settings(horn=False, horn_on_y=True)               # 2263-4: ab 2.6 Standard an - bewusst aus (Merker)
     ok("Teil 3 (Gjallarhorn aus): Knoten laeuft trotzdem (Zertifikat), Uebergabe bereit", start(media, node, False), log_text()[-1500:])
     b = wait(lambda: (lambda x: x if x and x.get("ctl") else None)(builtin()), 20)
     ok("Steuerkanal des eingebauten auch ohne Flag verbunden (Zertifikat gemeldet)", b and (b.get("cert") or {}).get("state") == "ok", b)

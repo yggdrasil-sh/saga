@@ -12,7 +12,8 @@ tests/anrufe_y_gruppe.py) - "hl63-tcp" ohne UDP, "hl63-udp" mit UDP. Geprueft:
 - Knoten ausgelastet (Beine = max_legs) -> 409 join_block node, busy: true, Text "ausgelastet"; Knoten weg (Lastmeldung
   alt) -> 409 node ohne busy, Text "nicht erreichbar";
 - Admin -> Anrufe: Warnung "HORN_MAX_LEGS (48) ist zu knapp" mit legs_need; mit max_legs 200 keine Warnung; ohne
-  Tunnel-Knoten kein Hinweis HORN_MAX_PER_IP; ohne gemeldete Kerne keine Zeile "Geschaetzte Kapazitaet" (Messwerte 2263-9 in CAP_*).
+  Tunnel-Knoten kein Hinweis HORN_MAX_PER_IP; ohne gemeldete Kerne keine Zeile "Geschaetzte Kapazitaet" (Messwerte 2263-9 in CAP_*);
+- Standard an: Altwert horn false ohne Merker = an, mit Merker horn_on_y gilt aus.
 - Testhaken des Messwerkzeugs (Bugs-DB 2438, im Testprozess): SAGA_TEST_HORN_LIMITS hebt die Obergrenzen nur mit
   SAGA_TEST_HOOKS=1 UND SAGA_TEST_TOKEN >= 32 Zeichen (an; aus; Token zu kurz; Unsinn im JSON -> wie heute), der Admin
   senkt weiter; SAGA_TEST_HORN_PIN legt die Kandidaten eines Kontos auf einen Knoten (nur mit Testhaken).
@@ -391,6 +392,18 @@ def run():
     ok(f"wieder frei: D tritt bei ({s})", s == 200, d)
     req("POST", f"/api/calls/{cid}/end", A.k, {"device": A.dev["id"]})
     start_udp(A, B)
+
+    # --- Standard an (2263-4, letzter Commit): Altwert von vor 2.6 ohne Merker = an -----------------------------------
+    auth.save_setting("calls", {k: v for k, v in CALLS.items() if k not in ("horn", "horn_on_y")} | {"horn": False})
+    auth._settings_cache["v"] = None
+    time.sleep(6.5)
+    s, d = req("GET", "/api/calls/config", A.k)
+    ok(f"Standard an: Altwert horn false ohne Merker -> Gjallarhorn an (features horn, e2e) ({s})",
+       s == 200 and "horn" in d.get("features", []) and d.get("e2e") == "saga-horn/v1", d.get("features"))
+    setting(horn=False)                                # mit Merker: bewusst aus
+    s, d = req("GET", "/api/calls/config", A.k)
+    ok(f"... mit Merker horn_on_y gilt aus ({s})", s == 200 and "horn" not in d.get("features", []), d.get("features"))
+    setting()
 
     # --- Admin: Warnung max_legs --------------------------------------------------------------------------------------
     auth.get_user(ADMIN_ID) or auth.create_user(ADMIN_ID, secrets.token_urlsafe(12), "Admin HL63", is_admin=True)

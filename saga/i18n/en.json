@@ -503,7 +503,7 @@
  "aus": "off",
  "Aus": "Off",
  "Aus / ausstehend": "Off / pending",
- "Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).": "Off = group calls run directly between devices as in Saga 2.4 (mesh, up to 4 with video / 6 audio only).",
+ "Standard an. Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).": "On by default. Off = group calls run directly between devices as in Saga 2.4 (mesh, up to 4 with video / 6 audio only).",
  "Aus = keine Mitteilungen aufs Handy/Desktop (die Glocke in Saga bleibt)": "Off = no push notifications to phone/desktop (the bell in Saga stays)",
  "Aus = keine Verbindungen von und zu anderen Instanzen; Freigaben dorthin wirken sofort nicht mehr (sie bleiben gespeichert).": "Off = no connections to or from other instances; shares with them stop working immediately (they stay saved).",
  "Aus = nur LDAP/SSO auf der Anmeldeseite (Admins kommen hier immer mit lokalem Konto herein)": "Off = only LDAP/SSO on the sign-in page (admins can always get in here with a local account)",

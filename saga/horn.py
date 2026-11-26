@@ -88,13 +88,13 @@ def _b64u(b):
 
 
 HORN_ON_Y = "horn_on_y"                 # Merker: calls.horn wurde ab 2.6 bewusst gesetzt (Admin-Formular, run.py einstellen)
-HORN_DEFAULT = False                    # 2263-4: Gjallarhorn ab Werk (noch) aus - "Standard an" erst nach der Messreihe 2263-9
+HORN_DEFAULT = True                     # 2263-4 "Standard an" (Frage 3, nach der Messreihe 2263-9): Gjallarhorn ab Werk an
 
 
 def horn_flag(cfg=None):
     """Gespeicherte Entscheidung "Gjallarhorn" (calls.horn) mit Merker wie horn_all_on: mit Merker horn_on_y gilt der
     gespeicherte Wert (auch aus). Ohne Merker (nie gesetzt bzw. Altwert von vor 2.6 - das Admin-Formular schrieb bei jedem
-    Speichern horn mit) gilt der Standard HORN_DEFAULT, solange er aus ist zusammen mit einem gespeicherten "an".
+    Speichern horn mit, auch "aus") gilt der Standard HORN_DEFAULT: ab 2.6 an, also auch ein Altwert "aus" = an.
     cfg: das calls-Dict (Standard: aktuelle Einstellungen)."""
     c = (auth.settings().get("calls") or {}) if cfg is None else cfg
     if not c.get(HORN_ON_Y):

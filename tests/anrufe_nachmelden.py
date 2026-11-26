@@ -28,7 +28,7 @@ OLD_APP = ["reneg", "want", "bye"]                  # 2.3-App: meldet Faehigkeit
 
 def cfg(**kw):
     base = {"enabled": True, "stun": "stun:stun.example.org:3478", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "",
-            "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": False}
+            "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": False, "horn_on_y": True}
     base.update(kw)
     auth.save_setting("calls", base)
     auth._settings_cache["v"] = None

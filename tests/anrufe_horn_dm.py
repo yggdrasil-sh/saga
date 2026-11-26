@@ -25,7 +25,7 @@ ok, req, res = A_.ok, A_.req, A_.res
 CAPS = ["reneg", "want", "bye", "screen2", "multi", "horn"]
 CAPS24 = ["reneg", "want", "bye", "screen2", "multi"]
 CALLS = {"enabled": True, "stun": "stun:stun.example.org:3478", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "",
-         "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": True}
+         "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": True, "horn_on_y": True}
 NODE = "hd-knoten.example.org"
 USERS = [("ca-hda", "Anna Eins"), ("ca-hdb", "Bert Zwei"), ("ca-hdc", "Cora Drei"), ("ca-hdd", "Dora Vier"), ("ca-hde", "Emil Fuenf"),
          ("ca-hdf", "Fritz Sechs"), ("ca-hdg", "Gabi Sieben"), ("ca-hdh", "Hans Alt")]

@@ -35,7 +35,7 @@ def ok(n, c, info=None):
 CAPS = ["reneg", "want", "bye", "screen2", "multi", "horn"]
 CAPS24 = ["reneg", "want", "bye", "screen2", "multi"]
 CALLS = {"enabled": True, "stun": "stun:stun.example.org:3478", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "",
-         "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": True}
+         "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": True, "horn_on_y": True}
 NODE = "yg-knoten.example.org"
 USERS = [("ca-yga", "Anna Eins"), ("ca-ygb", "Bert Zwei"), ("ca-ygc", "Cora Drei"), ("ca-ygd", "Dora Vier"), ("ca-yge", "Emil Fuenf"),
          ("ca-ygf", "Fritz Alt")]

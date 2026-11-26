@@ -7,7 +7,7 @@ Geprueft: Admin -> Anrufe in 5 Sprachen ohne Marke "Experimentell" und ohne Hinw
 "Groessere Anrufe folgen nach 2.5"), statt dessen die wirksamen Grenzen je Anruf (horn.limits, auch vom Admin gesenkt);
 Netz-Karte, Allgemein und Foederation ohne Marke; Zeile "Geschaetzte Kapazitaet" erscheint ohne Messwerte nicht.
 Merker: horn_flag/horn_on fuer fehlend, Altwert ohne Merker und mit Merker; calls.horn_on, Foederation (CAPS2) und
-/api/calls/config folgen demselben Wert. Ab Werk (in diesem Schritt) weiter aus. Die Anruf-Bilder im Browser
+/api/calls/config folgen demselben Wert. Ab 2.6 Standard an: fehlend und Altwert ohne Merker = an. Die Anruf-Bilder im Browser
 (Marke im Anrufkopf) gehoeren zu tests/browser_horn_experimentell.js (Web, 2263-5). Wegwerf-Konto um-hs-adm."""
 import base64
 import hashlib
@@ -63,16 +63,17 @@ def put_calls(**kw):
 
 def merker():
     from saga import calls, federation as F, horn as HN
-    ok("horn_flag: fehlend = aus (HORN_DEFAULT in diesem Schritt aus)", HN.HORN_DEFAULT is False and HN.horn_flag({}) is False)
-    ok("horn_flag: Altwert ohne Merker gilt wie gespeichert (an bleibt an, aus bleibt aus)",
-       HN.horn_flag({"horn": True}) is True and HN.horn_flag({"horn": False}) is False)
+    ok("horn_flag: fehlend = an (Standard an, HORN_DEFAULT)", HN.HORN_DEFAULT is True and HN.horn_flag({}) is True)
+    ok("horn_flag: Altwert von vor 2.6 ohne Merker = an (auch gespeichertes aus)",
+       HN.horn_flag({"horn": True}) is True and HN.horn_flag({"horn": False}) is True)
     ok("horn_flag: mit Merker gilt der gespeicherte Wert",
        HN.horn_flag({"horn": True, "horn_on_y": True}) is True and HN.horn_flag({"horn": False, "horn_on_y": True}) is False)
     ok("horn_on: nur mit eingeschalteten Anrufen (calls.enabled)", HN.horn_on({"horn": True, "enabled": False}) is False
        and HN.horn_on({"horn": True}) is True)
     keep = dict(auth.settings(fresh=True).get("calls") or {})
     try:
-        for want, kw in ((False, {"horn": None, "horn_on_y": None}), (True, {"horn": True, "horn_on_y": None}),
+        for want, kw in ((True, {"horn": None, "horn_on_y": None}), (True, {"horn": True, "horn_on_y": None}),
+                         (True, {"horn": False, "horn_on_y": None}),
                          (False, {"horn": False, "horn_on_y": True}), (True, {"horn": True, "horn_on_y": True})):
             cur = dict(keep)
             for k, v in kw.items():

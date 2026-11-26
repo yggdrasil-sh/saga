@@ -17,6 +17,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu
+- **Gjallarhorn ab Werk an – Anrufe laufen über den eingebauten Knoten** (2263-4, Entscheidung 24.11., Frage 3, nach der
+  Messreihe 2263-9): Große Gruppenanrufe (bis 16 mit Video / 50 nur Ton über den eingebauten Knoten, 25 / 50 über einen
+  Knoten mit UDP) sind jetzt Standard. **Beim Update:** Auch ein gespeichertes „aus“ von 2.5 gilt als an, solange der
+  Admin den Schalter nicht ab 2.6 bewusst gesetzt hat (Merker `horn_on_y`, wie bei „Alle Anrufe über Knoten“). Damit
+  laufen auch **Anrufe zu zweit (1:1) über den eingebauten Knoten** (Grundsatz Y) – die Geräte sehen keine IP-Adressen
+  mehr. Voraussetzung am Reverse Proxy wie bisher: eine Domain, Port 443, „Websockets Support“ an. Wer weiter direkt
+  (Mesh) telefonieren will: Admin › Anrufe › „Große Gruppenanrufe über Gjallarhorn“ ausschalten und speichern.
+  Ist kein Knoten bereit oder kann ein Gerät es nicht, läuft der Anruf wie bisher direkt.
 - **MCP: `update_row` ändert auch das Symbol** (Bugs-DB 2448): neues Feld `icon` (Emoji oder Saga-Siegel, leerer
   Text entfernt es) – wie bei `create_row`. Gesperrte Einträge antworten wie im Web mit 423.
 - **Push-Relais und Apple-Mitteilungen Ende-zu-Ende** (Bugs-DB 2262, Feature `pushrelay1`, **Migration 39**:
@@ -246,8 +254,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Admin › Anrufe ohne „experimentell“** (2263-4): Marke und Kasten „getestet mit bis zu 4 …“ sind weg (Anrufe,
   Einstellungen, Netz, Föderation). Neu: Zeile „Grenzen je Anruf über Knoten“ mit den wirksamen Werten, Warnung je Knoten,
   wenn `HORN_MAX_LEGS` zu klein für diese Grenzen ist (z. B. alter Standard 48), und Hinweis zu `HORN_MAX_PER_IP`/
-  `TRUSTED_PROXIES` bei Tunnel-Knoten. Gjallarhorn bleibt in diesem Stand ab Werk aus; der Schalter läuft jetzt zentral
-  über einen Merker (`horn_on_y`). Neu: Sind Anrufe ganz abgeschaltet (`calls.enabled` aus), meldet der Server auch an
+  `TRUSTED_PROXIES` bei Tunnel-Knoten. Der Schalter läuft jetzt zentral über einen Merker (`horn_on_y`) – und ist
+  ab Werk an (siehe „Gjallarhorn ab Werk an“ unter Neu). Neu: Sind Anrufe ganz abgeschaltet (`calls.enabled` aus), meldet der Server auch an
   verbundene Server kein Gjallarhorn mehr (kein `horn`/`horn_dm`/`horn_req`) und teilt keine eigenen Knoten.
 - **Web: Anruf über den Knoten ohne „experimentell“** (2263-5): Chip im Anrufkopf und Satz in der Teilnehmerliste sind
   weg. Die reservierten Signale `dtmf`/`svc-join` (kommen mit 3.0) werden still ignoriert – kein Zustand, kein Schlüssel,

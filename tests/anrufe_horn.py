@@ -26,7 +26,7 @@ import horn_e2e_vectors as HV  # noqa: E402  (Referenz: Ratsche, fkey-Pruefung)
 ok, req, res = A_.ok, A_.req, A_.res
 CAPS = ["reneg", "want", "bye", "screen2", "multi", "horn"]
 CALLS = {"enabled": True, "stun": "stun:stun.example.org:3478", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "",
-         "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45}
+         "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn_on_y": True}
 PERF = {}
 KEYS = []                                             # alle verteilten Schluessel (fuer die Datenbank-Suche)
 
@@ -67,7 +67,7 @@ def main():
     keep = {k: prev.get(k) for k in ("chat_enabled", "share_group_scope", "calls")}
     auth.save_setting("chat_enabled", True)
     auth.save_setting("share_group_scope", False)
-    auth.save_setting("calls", dict(CALLS))
+    auth.save_setting("calls", dict(CALLS, horn=False))     # 2263-4: ab 2.6 Standard an - hier bewusst aus (Merker)
     for u, n in (("ca-ha", "Anna Horn"), ("ca-hb", "Bert Horn"), ("ca-hc", "Cora Horn"), ("ca-hd", "Dora Horn"), ("ca-hx", "Xaver Fremd")):
         auth.create_user(u, A_.PW, n)
     time.sleep(A_.WAIT)
@@ -102,7 +102,7 @@ def run():
 
     # --- Feature-Flag --------------------------------------------------------------------------------------------------
     s, cf = req("GET", "/api/calls/config", A.k)
-    ok(f"Flag aus (Standard): keine Faehigkeit horn, kein e2e ({cf.get('features')})", s == 200 and "horn" not in cf["features"] and "e2e" not in cf)
+    ok(f"Flag bewusst aus (Merker horn_on_y): keine Faehigkeit horn, kein e2e ({cf.get('features')})", s == 200 and "horn" not in cf["features"] and "e2e" not in cf)
     ok("Flag aus: Foederation meldet kein horn (caps2)", "horn" not in F.caps2() and not CL.horn_on())
     flag(True)
     s, cf = req("GET", "/api/calls/config", A.k)

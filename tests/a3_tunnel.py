@@ -55,7 +55,7 @@ NGINX = os.path.join(STATE, "ngx", "nginx.conf")
 CAPS_WEB = ["reneg", "want", "bye", "screen2", "multi", "horn"]   # Browser bzw. aeltere App: ohne Tunnel
 CAPS = CAPS_WEB + ["ws"]                                          # App mit Medien-Tunnel (Vertrag S10)
 CALLS = {"enabled": True, "stun": "", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "", "turn_password": "",
-         "turn_ttl": 43200, "relay_only": False, "ring_s": 45}
+         "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn_on_y": True}   # 2263-4: Merker
 PW = "A3-Tunnel-Pass-1234"
 USERS = [("ca-a31", "Anna Tunnel"), ("ca-a32", "Bert Tunnel"), ("ca-a33", "Cora Tunnel"), ("ca-a34", "Dora Tunnel"), ("ca-a35", "Emil Tunnel")]
 P = {"proc": None, "log": None, "ngx": False}

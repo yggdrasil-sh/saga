@@ -74,7 +74,8 @@ NAME = "horn-2.example.org"
 PW = "Horn-Erweitern-Pass-1234"
 CAPS = ["reneg", "want", "bye", "screen2", "multi", "horn"]
 CALLS = {"enabled": True, "stun": "", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "", "turn_password": "",
-         "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": True, "horn_builtin": False}
+         "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn": True, "horn_builtin": False,
+         "horn_on_y": True}   # 2263-4: Merker - horn=False gilt dann als bewusst aus
 USERS = [("ca-e1", "Anna Erweitern"), ("ca-e2", "Bert Erweitern"), ("ca-e3", "Cora Erweitern"), ("ca-e4", "Dora Erweitern"),
          ("ca-e5", "Emil Erweitern"), ("ca-e6", "Fritz Erweitern")]
 BUSERS = [("ca-eb1", "Ada Knoten2"), ("ca-eb2", "Ben Knoten2"), ("ca-eb3", "Cleo Knoten2"), ("ca-eb4", "Dirk Knoten2"), ("ca-eb5", "Eva Knoten2")]

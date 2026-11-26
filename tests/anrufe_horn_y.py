@@ -3,7 +3,7 @@
 Geprueft gegen die laufende Instanz (HK_TEST_BASE/HK_TEST_ADMIN, env.sh): ohne Einstellung an; Altwert von vor Y
 (horn_all false ohne Merker horn_all_y) gilt als an - config.horn_dm, Admin-Seite (Haken gesetzt, neuer Hilfetext),
 /api/calls/state; Admin-Formular "Gjallarhorn" speichert den Merker - danach bleibt aus aus und an an; Gjallarhorn
-(calls.horn) bleibt ab Werk aus und Y wirkt erst mit ihm; "python run.py einstellen calls.horn_all=0|1" wirkt wie das
+(calls.horn) ist ab 2.6 ab Werk an (2263-4, Merker horn_on_y), Y wirkt nur mit ihm; "python run.py einstellen calls.horn_all=0|1" wirkt wie das
 Formular und zeigt den wirksamen Wert; Foederation: Faehigkeit horn_req folgt dem wirksamen Wert. Wegwerf-Konten ca-hy*."""
 import json
 import os
@@ -108,11 +108,15 @@ def run():
        and HN.horn_all_on({"horn_all": False, "horn_all_y": True}) is False and HN.horn_all_on({"horn_all": True, "horn_all_y": True}) is True
        and HN.horn_all_on({"horn_all_y": True}) is True)
 
-    # --- Ab Werk: Gjallarhorn aus, Y wartet -------------------------------------------------------------------------
+    # --- Ab Werk (2.6, 2263-4 Standard an): Gjallarhorn an, Y greift ------------------------------------------------
     put()
-    ok("ab Werk: Gjallarhorn aus -> kein horn_dm (Y greift erst mit Gjallarhorn)", not wait_dm(A, False))
+    ok("ab Werk: Gjallarhorn an (Standard) -> horn_dm an", wait_dm(A, True) is True)
     st = stored()
     ok("ab Werk: horn_all wirksam an (Admin-Zustand), gespeichert ist nichts", state_all() is True and "horn_all" not in st and "horn_all_y" not in st)
+    caps = F.caps2()
+    ok(f"Foederation: ab Werk horn_req und horn_dm ({caps})", "horn_req" in caps and "horn_dm" in caps)
+    put(horn=False, horn_on_y=True)
+    ok("Gjallarhorn bewusst aus (Merker horn_on_y) -> kein horn_dm (Y greift erst mit Gjallarhorn)", not wait_dm(A, False))
     caps = F.caps2()
     ok(f"Foederation: ohne Gjallarhorn kein horn_req ({caps})", "horn_req" not in caps and "horn_dm" not in caps)
 

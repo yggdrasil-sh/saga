@@ -47,7 +47,7 @@ Medienbytes laufen nie durch Python.
 2.5 (Gjallarhorn P4, Vertrag docs/HORN-E2E.md): Frame-Schluessel je sendendem Geraet gehen als Body-Typen fkey/fkey-ack
 im selben versiegelten Signalweg (POST /signal, lokal saga-call/v1 bzw. v2 mit Handles, ueber Servergrenzen Auftrag
 signal) - der Server sieht weder Typ noch Schluessel, nur Kennungen und Groessen, und gibt sie nie an einen Knoten.
-Feature-Flag calls.horn (Standard aus): features + "horn", GET /api/calls/config "e2e": "saga-horn/v1".
+Feature-Flag calls.horn (ab 2.6 Standard an, saga/horn.py horn_on): features + "horn", GET /api/calls/config "e2e": "saga-horn/v1".
 
 2.5 (Gjallarhorn P3, saga/horn.py): Gruppenanrufe in Chats mit mehr Mitgliedern als die Mesh-Grenze laufen ueber einen
 Knoten (topo 'horn'), wenn das Flag an ist, das anrufende Geraet "horn" meldet und ein Knoten bereit ist - sonst Mesh wie

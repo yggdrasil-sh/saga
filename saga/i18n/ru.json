@@ -503,7 +503,7 @@
  "aus": "выкл.",
  "Aus": "Выкл.",
  "Aus / ausstehend": "Выкл. / ожидает",
- "Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).": "Выкл. = групповые звонки идут напрямую между устройствами, как в Saga 2.4 (mesh, до 4 с видео / 6 только звук).",
+ "Standard an. Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).": "По умолчанию включено. Выкл. = групповые звонки идут напрямую между устройствами, как в Saga 2.4 (mesh, до 4 с видео / 6 только звук).",
  "Aus = keine Mitteilungen aufs Handy/Desktop (die Glocke in Saga bleibt)": "Выкл. = никаких push-уведомлений на телефон/компьютер (колокольчик в Saga остаётся)",
  "Aus = keine Verbindungen von und zu anderen Instanzen; Freigaben dorthin wirken sofort nicht mehr (sie bleiben gespeichert).": "Выкл. = никаких соединений с другими экземплярами; общий доступ для них сразу перестаёт работать (но остаётся сохранённым).",
  "Aus = nur LDAP/SSO auf der Anmeldeseite (Admins kommen hier immer mit lokalem Konto herein)": "Выкл. = на странице входа только LDAP/SSO (администраторы всегда могут войти здесь с локальным аккаунтом)",

@@ -59,7 +59,7 @@ CAP = os.path.join(STATE, "capture")
 CAPS = ["reneg", "want", "bye", "screen2", "multi", "horn"]
 CAPS24 = ["reneg", "want", "bye", "screen2", "multi"]
 CALLS = {"enabled": True, "stun": "", "turn_urls": "", "turn_mode": "rest", "turn_secret": "", "turn_user": "", "turn_password": "",
-         "turn_ttl": 43200, "relay_only": False, "ring_s": 45}
+         "turn_ttl": 43200, "relay_only": False, "ring_s": 45, "horn_on_y": True}   # 2263-4: Merker, horn gilt wie gesetzt
 PW = "Horn-Knoten-Pass-1234"
 USERS = [("ca-k1", "Anna Knoten"), ("ca-k2", "Bert Knoten"), ("ca-k3", "Cora Knoten"), ("ca-k4", "Dora Knoten"), ("ca-k5", "Emil Knoten"),
          ("ca-k6", "Fritz Alt")]
