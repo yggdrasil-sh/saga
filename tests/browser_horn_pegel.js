@@ -83,6 +83,11 @@ const ringLook = p => p.evaluate(() => {
   return { ring: !!(w && w.classList.contains('cl-spkring')), tile: !!t, shadow: t ? getComputedStyle(t).boxShadow : 'none' };
 });
 const PFX = E.SHOT_PREFIX || '';
+// 2458: eigene Kachel ("Du") - spricht?
+const selfLook = p => p.evaluate(() => {
+  const t = document.querySelector('.cl-win .cl-tile.cl-me');
+  return t ? { tile: true, speaking: t.classList.contains('speaking'), shadow: getComputedStyle(t).boxShadow } : { tile: false };
+});
 async function shot(p, name) { if (!E.SHOTS) return; fs.mkdirSync(E.SHOTS, { recursive: true }); await p.screenshot({ path: path.join(E.SHOTS, name + '.png') }); }
 
 (async () => {
@@ -140,6 +145,20 @@ async function shot(p, name) { if (!E.SHOTS) return; fs.mkdirSync(E.SHOTS, { rec
       ok(`2125: zu dritt Sprechring sichtbar bei ${L[(s + 1) % 3]} (${L[s]} spricht)`, !!rg, await ringLook(ps[(s + 1) % 3]));
       if (s === 0) { await ps[1].waitForTimeout(400); await shot(ps[1], PFX + 'zu-dritt-a-spricht-bei-b'); }
     }
+    // --- 2458: eigene Kachel (ab 3 Personen eine normale Kachel) - "spricht" aus dem eigenen Pegel; nach einem
+    // Knotenwechsel waehrend A spricht darf sie nicht dauerhaft "spricht" bleiben (frueher: Pegel nur beim Wechsel gemessen)
+    for (let i = 0; i < 3; i++) await ps[i].evaluate(v => window.__hornGain(v), i === 0 ? 0.6 : 0.004);
+    const selfOn = await until(async () => { const x = await selfLook(ps[0]); return x.speaking && x; }, 6000, 250);
+    ok('2458: A spricht - eigene Kachel bei A zeigt "spricht"', !!selfOn, await selfLook(ps[0]));
+    const nSw = (await horn(ps[0])).switches.length;
+    await ps[0].evaluate(() => window.HKCalls.hornSwitch('draining'));
+    const swd = await until(async () => { const h = await horn(ps[0]); return h.switches.length > nSw && !h.switching && h.up && h; }, 30000, 300);
+    ok('2458: Knotenwechsel bei A waehrend A spricht (make-before-break)', !!swd, (await horn(ps[0])).switches);
+    await ps[0].waitForTimeout(16000);                  // alte Verbindung ist zu (hoechstens 15 s)
+    await ps[0].evaluate(() => window.__hornGain(0.004));
+    const selfOff = await until(async () => { const x = await selfLook(ps[0]); return x.tile && !x.speaking && x; }, 6000, 250);
+    ok('2458: A wieder leise - eigene Kachel zeigt nach dem Wechsel nicht mehr "spricht"', !!selfOff, await selfLook(ps[0]));
+    await ps[0].waitForTimeout(300); await shot(ps[0], PFX + '2458-nach-wechsel-a-leise-bei-a');
     // Ruhe: niemand laut -> kein Sprechring
     for (const p of ps) await p.evaluate(() => window.__hornGain(0.004));
     const quiet = await until(async () => { const hs = await Promise.all(ps.map(horn)); return hs.every(h => h.speaking.length === 0) && hs; }, 8000, 300);

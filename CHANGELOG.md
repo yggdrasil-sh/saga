@@ -237,6 +237,10 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
 
 ### Behoben
 
+- **Gjallarhorn: eigene Kachel zeigt „spricht“ wieder richtig** (Bugs-DB 2458, Web inkl. Mac-Hülle/Linux, Gruppen ab drei
+  Personen über den Knoten): Der eigene Pegel wurde nur während eines Knotenwechsels gemessen – ohne Wechsel zeigte die
+  eigene Kachel nie „spricht“, nach einem Wechsel, bei dem man sprach, dauerhaft. Jetzt jeden Takt gemessen (älter als
+  1,5 s zählt nicht), mit 600 ms Nachlauf wie bei den anderen Kacheln.
 - **Gjallarhorn: Grenze eines Knoten-Anrufs steht ab dem Start fest** (Bugs-DB 2416, Server-Teil, 2263-4): **Migration 40**
   (`chat_call.lim`, idempotent). Die Grenze („n/12“) richtet sich nach dem Knoten, auf dem der Anruf beginnt; Umzug und
   Kaskade lassen sie nicht mehr zwischen 12 und 25 springen. Der Admin kann sie weiter nur senken. Anrufe von vor

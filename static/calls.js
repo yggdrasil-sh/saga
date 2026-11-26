@@ -4496,7 +4496,7 @@
         if (!uniq && x.dev && !(c && pnow - (c._bad || pnow) >= HORN_A_STEADY) && x.age <= 300 && lv > 0.02) uniq = x.dev.slice(0, 8);
       });
       var mine = hornMyRef(R, o), listeners = Object.keys(o.peers || {}).filter(function (ref) { return ref !== mine; }).length;
-      var need = uniq || (listeners > 0 && (H.selfLevel || 0) > 0.02);
+      var need = uniq || (listeners > 0 && hornSelfLv(R) > 0.02);
       var dead = Object.keys(o.legs).some(function (k) { var s = o.legs[k].pc.connectionState; return s === 'failed' || s === 'closed'; });
       if (dead || o.closed || H.L.closeOld(now, Math.max(cur.rx, o.retired || 0), need ? 1 : 0)) { hornLog(H, o, 'zu' + (need ? ' (15 s)' : '') + ' uniq=' + uniq + ' hoerer=' + listeners + ' selbst=' + Math.round((H.selfLevel || 0) * 100) / 100); hornConnClose(R, o); hornDraw(R); }
     });
@@ -4551,15 +4551,28 @@
       });
     });
   }
-  // Eigener Sprechpegel (media-source des Ton-Senders) - nur waehrend eines Wechsels gebraucht
+  // Eigener Sprechpegel (media-source des Ton-Senders): Wechsel (alte Verbindung offen halten, solange man spricht) und
+  // eigene Kachel. Bugs-DB 2458: frueher nur waehrend eines Wechsels gemessen - danach blieb der letzte Wert stehen und die
+  // eigene Kachel zeigte dauerhaft "spricht" (bzw. ohne Wechsel nie). Jetzt jeden Takt (hornSpeakers), mit Zeitstempel.
   function hornSelfLevel(R, conn) {
     var H = R.horn, L = conn.aLeg || conn.legs.audio || conn.legs.both;
     if (!L || !L.tr || H.selfT) return;
     H.selfT = true;
     L.tr.sender.getStats().then(function (st) {
       var lv = 0; st.forEach(function (x) { if (x.type === 'media-source' && x.kind === 'audio' && typeof x.audioLevel === 'number') lv = x.audioLevel; });
-      H.selfLevel = R.mic ? lv : 0;
+      H.selfLevel = R.mic ? lv : 0; H.selfAt = Date.now();
     }).catch(function () {}).then(function () { H.selfT = false; });
+  }
+  // 2458: eigener Pegel nur frisch (<= 1,5 s alt) und mit Mikro an, sonst 0
+  function hornSelfLv(R) {
+    var H = R.horn;
+    return H && micOn(R) && H.selfAt && Date.now() - H.selfAt <= 1500 ? (H.selfLevel || 0) : 0;
+  }
+  // 2458: eigene Kachel "spricht" (Schwelle 0,03, Nachlauf 600 ms wie die anderen Kacheln)
+  function hornSelfSpeaking(R) {
+    var H = R.horn, now = Date.now();
+    if (hornSelfLv(R) > 0.03) H.selfOnAt = now;
+    return !!H.selfOnAt && micOn(R) && now - H.selfOnAt < 600;
   }
   // Qualitaet (RTT, Verlust, Einfrieren) und UDP-Regeln aus getStats
   function hornStats(R, conn) {
@@ -4853,7 +4866,7 @@
       if ((ST.v.srcObject && ST.v.srcObject.getVideoTracks()[0]) !== mineV) { ST.v.srcObject = mineV ? new MediaStream([mineV]) : null; if (mineV) ST.v.play().catch(function () {}); }
       ST.box.classList.toggle('has-video', !!mineV);
       ST.box.classList.toggle('muted', !micOn(R));
-      ST.box.classList.toggle('speaking', micOn(R) && (H.selfLevel || 0) > 0.03);
+      ST.box.classList.toggle('speaking', hornSelfSpeaking(R));     // 2458: frischer eigener Pegel, mit Nachlauf
       ST.box.setAttribute('aria-label', T('Du') + (!micOn(R) ? ' – ' + T('stumm') : ''));
       if (R.ui.grid.children[pos] !== ST.box) R.ui.grid.insertBefore(ST.box, R.ui.grid.children[pos] || null);
       pos++;
@@ -4916,6 +4929,8 @@
     H.spkT = setInterval(function () {
       if (!live(R) || !R.horn) { clearInterval(H.spkT); return; }
       ringSet(R);                                      // 2125: Ring nur ab 3 Personen (auch 1:1 ueber den Knoten: keiner)
+      if (H.cur && H.cur.rx) hornSelfLevel(R, H.cur);  // 2458: eigener Pegel jeden Takt (frueher nur beim Wechsel)
+      if (H.self) H.self.box.classList.toggle('speaking', hornSelfSpeaking(R));
       // lvSeen (Bug 2126): je Verbindung bzw. Leitung, nicht je Anruf - nach einem Knotenwechsel auf einen Knoten ohne Pegel
       // (Rahmen-Weg ohne ok.level) bzw. eine neue Leitung ohne ok.level zurueck auf den Ring am Sprecherplatz
       var now = Date.now(), lv = {}, seen = false;
@@ -5798,6 +5813,7 @@
              conns: hornConns(R).map(function (c) { return { key: c.key, node: c.node, path: c.path, cur: c === cur, up: c.up, rx: c.rx, peers: Object.keys(c.peers).length, legs: legsOf(c) }; }),
              diag: diagSnap(R), switches: H.switches, switching: !!H.switching, meas: H.meas, ranked: H.ranked || null, note: H.note, view: H.view, net: cur && cur.net, q: cur && cur.q,
              ring: !!(R.ui && R.ui.w.classList.contains('cl-spkring')),
+             self: H.self ? { speaking: H.self.box.classList.contains('speaking'), level: hornSelfLv(R) } : null,
              runes: H.runes, host: hornHost(R), screen: !!R.screen, spk: H.spk || null, speaking: Object.keys(H.speaking), levels: H.levels || {}, lvSeen: !!H.lvSeen, errs: H.errs || [], bad: H.bad, log: H.log || [],
              tiles: Object.keys(H.tiles).map(function (d) { var x = H.tiles[d]; return { dev: d, video: !!x.track, live: !!(x.track && x.track.readyState === 'live'), still: x.box.classList.contains('still'),
                                                                                          big: x.box.classList.contains('big'), speaking: x.box.classList.contains('speaking'), muted: x.box.classList.contains('muted') }; }),

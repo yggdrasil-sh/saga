@@ -137,5 +137,22 @@ if (HAS_RING) {
   ok('... dritte Person geht: Ring wieder aus', !r4);
 }
 
+// --- 2458: eigener Pegel nur frisch (<= 1,5 s), eigene Kachel mit 600 ms Nachlauf; veraltet (frueher: nur beim Wechsel
+// gemessen, danach stehen geblieben) zaehlt nicht ---------------------------------------------------------------------
+if (SRC.indexOf('function hornSelfSpeaking(') >= 0) {
+  let mic = true;
+  // eslint-disable-next-line no-new-func
+  const mk2 = new Function('micOn', ['hornSelfLv', 'hornSelfSpeaking'].map(fn).join('\n') + '\nreturn { hornSelfLv, hornSelfSpeaking };');
+  const F = mk2(() => mic);
+  const t0 = Date.now(), R = { horn: { selfLevel: 0.5, selfAt: t0 } };
+  ok('2458: eigener Pegel frisch -> gilt, Kachel spricht', F.hornSelfLv(R) === 0.5 && F.hornSelfSpeaking(R));
+  R.horn.selfAt = t0 - 2000; R.horn.selfOnAt = t0 - 700;
+  ok('2458: eigener Pegel 2 s alt -> 0, nach dem Nachlauf spricht die Kachel nicht mehr', F.hornSelfLv(R) === 0 && !F.hornSelfSpeaking(R));
+  R.horn.selfAt = t0; R.horn.selfOnAt = 0; mic = false;
+  ok('2458: Mikro aus -> 0, spricht nicht', F.hornSelfLv(R) === 0 && !F.hornSelfSpeaking(R));
+  mic = true; R.horn = { selfLevel: 0.5 };
+  ok('2458: nie gemessen -> 0', F.hornSelfLv(R) === 0);
+}
+
 console.log(`\nHORN-SPRECHER ${pass}/${pass + fail}` + (fail ? ' - FEHLER' : ' - ALLES GRUEN'));
 process.exit(fail ? 1 : 0);
