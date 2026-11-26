@@ -218,7 +218,7 @@
     "needs": "ต้องการคุณ: Grillkohle besorgen",
     "done": "เสร็จแล้ว: Grillkohle besorgen",
     "failed": "ไม่สำเร็จ: Grillkohle besorgen",
-    "done.long": "เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น พร้อมซื้อ…"
+    "done.long": "เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น…"
    },
    "t2": {
     "done": "สร้างงาน “Grillkohle besorgen” แล้วค่ะ “Grillabend” อยู่ในปฏิทินแล้วค่ะ",
@@ -1576,7 +1576,7 @@
     "detail": {
      "b": "report",
      "lang": "th",
-     "t1": "เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น พร้อมซื้อ…",
+     "t1": "เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น…",
      "t2": "บันทึกไว้ในหน้า “รายการซื้อของ สำหรับงานเลี้ยงปิ้งย่าง ของครอบครัว ที่สวนหลังบ้าน…” แล้วค่ะ"
     },
     "actions": [
@@ -1593,12 +1593,12 @@
    "dropped": [
     "detail.f"
    ],
-   "plain": "{\"title\":\"Marin · AI – อัปเดต\",\"body\":\"ดูใน Saga\",\"url\":\"/saga?tab=jobs&job=77\",\"tag\":\"job-77\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"th\",\"group_key\":\"job:77\",\"thread\":\"job-77\",\"job\":77,\"state\":\"done\",\"pv\":2,\"detail\":{\"b\":\"report\",\"lang\":\"th\",\"t1\":\"เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น พร้อมซื้อ…\",\"t2\":\"บันทึกไว้ในหน้า “รายการซื้อของ สำหรับงานเลี้ยงปิ้งย่าง ของครอบครัว ที่สวนหลังบ้าน…” แล้วค่ะ\"},\"actions\":[{\"a\":\"undo\",\"t\":\"vaPDPLyS6FepnGoA-QeNvgdg\"},{\"a\":\"quiet\",\"t\":\"jwGsMRFevZaqXCfKkiGnJGfy\"}]}",
-   "plain_len": 920,
+   "plain": "{\"title\":\"Marin · AI – อัปเดต\",\"body\":\"ดูใน Saga\",\"url\":\"/saga?tab=jobs&job=77\",\"tag\":\"job-77\",\"kind\":\"job.done\",\"ts\":1798761600,\"v\":3,\"lang\":\"th\",\"group_key\":\"job:77\",\"thread\":\"job-77\",\"job\":77,\"state\":\"done\",\"pv\":2,\"detail\":{\"b\":\"report\",\"lang\":\"th\",\"t1\":\"เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น…\",\"t2\":\"บันทึกไว้ในหน้า “รายการซื้อของ สำหรับงานเลี้ยงปิ้งย่าง ของครอบครัว ที่สวนหลังบ้าน…” แล้วค่ะ\"},\"actions\":[{\"a\":\"undo\",\"t\":\"vaPDPLyS6FepnGoA-QeNvgdg\"},{\"a\":\"quiet\",\"t\":\"jwGsMRFevZaqXCfKkiGnJGfy\"}]}",
+   "plain_len": 892,
    "pad_to": 1024,
    "salt": "KRPTdm61uqyxgzrHd764bw",
    "as_priv": "UO2Zc1SpPnlI5H8rbQbbynRRPUTKpIo0YP-CoSXr7Cs",
-   "body": "KRPTdm61uqyxgzrHd764bwAAEABBBA6eq3ZUZctG7nCfx3fguzzb_R5iGjXSb7tk0oK6zwzEnJCZlQY-LEpZhMwogZzRcdN8lKmFF_NzKMJFSpbyYEOqTWrazaUE3e3AvKW8LyB6u2dT-raV_P3sORTCNZzowad3zfG4T77Vxb07XuXkz-qlWwawAQsFeUvNEmrk79C7xlBAT1dbl2PR8_pD_TeBZpnou2Y4AS2Xi_Ylxxp2v9k3_O7vqvMupwow5FLdkJYjSTnyDzZMrwDXsnpc74E66EKC8ksyj9l-Ut_XvxEigdlc4GPBjRDSBAen2Ggni_KwDdlYtBrNUOd8qKueh9DMZO76rLbUL6nB8X_v81P5I8AsFGgAQHgTvqZiDZmc3bBnIa_hwrDR-OYbLINUUrA7i93rsUy9DRpcngdwZ_O9OfbC7aC9ap-9OL50oWigbWjv7xPpkG7o8xw5EyeBtInQNlnRQ9MNXcDdLYaj8TOcp5n3il_wb3jn2ebPCZ7fo0RafyFOVlDh8WXK3jEBxYbg49Wx1O-VcdlK6vIL_J_9Ai4sN5gpPSnsvH-CiZG-vUIDn5Gp6wzg1taZQS-BZ0KHUBf4BxJtDqXz3sQfX7xgB2vNyjQA44DjHuBbWs4aJpDnhr7FL8OK-gW-XSxnTWjXI__6ZK6SDkFjiFq3dL1YIvuTzgcopKe6Ox-jVHg0WuwyMk5KwreLLlDDTJ4Pyefxq_t59ISbBW1L2uTNb57VGSH2VR54sgeTJHqdbIcsYGLiuo-2FpJd4vHG1wmXBL9fJP7vFZPhLcjAiiEfnayBJyarh2242fca5BvNdB4O05amunZulnVAH1cF71IfEaT5njt0vrt08B4OssHsZmuJmWssIkvr320Zv8so9_aPUFDaZoVXveQXcTFVLIMXv6Zl1gR-zIqF6v22X5Me4Px7jPs2hg_lEFZKIHExyCqmSKh0IxZuL4a09BRIfQywAwHJQDJ3FhwzjTxWx9GaXTORIQwfUGsdY7i-uFkRHlFP5rip2gxBJRhG2vvyXgY0WEnbgKBILk-T2lA5rzj6uG-sk1nEosDU4_eprOl12hafuj1VdM2xeqn5sCsx2v2uNNw8B5gI8H3guq0YdKGIkrQ7Jv4IPvOy4vN1dWW4n_20AEXCxcB42qhO59o9gix-Dyi3-Kxz9v3UC1nnTLL1a25QbeqFX2-LVZQJxEQgVbXuVKDV9yAn6t_uooWF-Hsy3ITMnG2d4HqOf1INV90W6TGCQjTQVmUs483YkUEVX5WfA3QkeA2cC77WzPvftDhtWS2yIFRe-jT1rPl7L2BbRJVhvwNXjfPtOJeKjIJz0XblWz5qB4osyrNeEqBqta0DD6PdfGouIT-yvWME9HgseasGWuO_yK98x0jIsjlMs2zRoSpnYaye_cJLwRo55o1OyGZEozwgO6BRe6i6GqsOIakGyndrTx38QecxkU_FHxa7bDhZNuRUqIqodhZ4dYavJAJ_NQ",
+   "body": "KRPTdm61uqyxgzrHd764bwAAEABBBA6eq3ZUZctG7nCfx3fguzzb_R5iGjXSb7tk0oK6zwzEnJCZlQY-LEpZhMwogZzRcdN8lKmFF_NzKMJFSpbyYEOqTWrazaUE3e3AvKW8LyB6u2dT-raV_P3sORTCNZzowad3zfG4T77Vxb07XuXkz-qlWwawAQsFeUvNEmrk79C7xlBAT1dbl2PR8_pD_TeBZpnou2Y4AS2Xi_Ylxxp2v9k3_O7vqvMupwow5FLdkJYjSTnyDzZMrwDXsnpc74E66EKC8ksyj9l-Ut_XvxEigdlc4GPBjRDSBAen2Ggni_KwDdlYtBrNUOd8qKueh9DMZO76rLbUL6nB8X_v81P5I8AsFGgAQHgTvqZiDZmc3bBnIa_hwrDR-OYbLINUUrA7i93rsUy9DRpcngdwZ_O9OfbC7aC9ap-9OL50oWigbWjv7xPpkG7o8xw5EyeBtInQNlnRQ9MNXcDdLYaj8TOcp5n3il_wb3jn2ebPCZ7fo0RafyFOVlDh8WXK3jEBxYbg49Wx1O-VcdlK6vIL_J_9Ai4sN5gpPSnsvH-CiZG-vUIDn5Gp6wzg1taZQS-BZ0KHUBf4BxJtDqXz3sQfX7xgB2vNyjQA44DjHuBbWs4aJpDnhr7FL8OK-gW-XSxnTWjXI__6ZK6SDkFjiFq3dL1YIvuTzgcopKe6Ox-jVHg0WuwyMk5KwreLLlDDTJ4Pyefxq_t59ISbBW1L2uTNb57VGSH2VR54sgeTJHqdbIcsYGLiuo-2FpJd4vHG1wmXBL9fJP7v1_P_kQRaXfOELm7ZMlzznjzg6o5C62yURUhWxvXGpdCiDKaShOTHtmllSYWoxigN5poDqS9Y6stNZFKRmWsoIkrQ32w4v8sw9_aWUFDgZoRVveQSsWpcUNsC_P5fhFxrjtK6S_22R5Me8Px7rPs2kg_kKFZKF3ExzSqmV6h0PdY3F8zs6UcQcEfpMkKRWmMvKWZrrlsOy4PDbErJH2xHSi5EU-3mszBJIdNP5r2p2jpBJStG2_byXiI0WEbbgbJILnmT2nT59zGY4HAhk1nUosDl4_aCrOly2haiuj1IdM25eqntsCsnGqWRQ4QeUsE4mCXq8PU5McGW6dQerf4JGvOy9vN0e2W4ov21DUXD_8B482izbRrcfHj32cckYjPINFZVkcQlgVhxvcSc9y6FGGHfVac5_Wc3daGSaquZ0W1c5fvliJzAsD5kg5KVyG3vngizc2heZZpKpQLPOTvrRGwpyfv51kpjRcamYihNYhGyAICzhqCJ618yMVr1UxkMvFGD9pgKdyM9D_4I-G0dypWUGurX8YBz0XblWz5qB4osyrNeEqBqta0DD6PdfGouIT-yvWME9HgseasGWuO_yK98x0jIsjlMs2zRoSpnYaye_cJLwRo55o1OyGZEozwgO6BRe6i6GqsOIakGyndrTx38QecxkU_FHxa7bDhZt_9gN3UkFGLJ7CfFVLGgYw",
    "body_len": 1126,
    "transport": {
     "headers": {
@@ -1615,7 +1615,7 @@
     "thread_id": "job-77",
     "notification_tag": "job-77",
     "text": {
-     "title": "เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น พร้อมซื้อ…",
+     "title": "เสร็จแล้ว: เตรียมงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็น…",
      "body": "บันทึกไว้ในหน้า “รายการซื้อของ สำหรับงานเลี้ยงปิ้งย่าง ของครอบครัว ที่สวนหลังบ้าน…” แล้วค่ะ"
     },
     "buttons_unlocked_phone": [

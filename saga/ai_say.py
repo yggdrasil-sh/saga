@@ -289,7 +289,26 @@ def _cut(s, budget, lang):
         if graphemes(cut + w) > budget - 1:
             break
         cut += w
+    if not cut.strip():
+        cut = cut_graphemes(s, budget - 1)         # 2543: keine Wortgrenze im Budget (Thai, CJK) -> an Graphem-Grenzen
     return cut.rstrip() + "…"
+
+
+def cut_graphemes(s, n):
+    """Die ersten n Grapheme von s (wie graphemes(): kombinierende Zeichen, Variationswahl, Hautfarben und Zeichen nach
+    ZWJ bleiben beim Zeichen davor - nie mitten in einem Graphem). Ohne "…"."""
+    out = []
+    for ch in str(s or ""):
+        if graphemes("".join(out) + ch) > n:
+            break
+        out.append(ch)
+    return "".join(out)
+
+
+def cut(s, budget, lang="en"):
+    """Oeffentlich (2270, Mitteilungen): Text auf budget Grapheme kuerzen wie die Bausteine (Satzende, Wortgrenze, sonst
+    Graphem-Grenze, dann "…")."""
+    return _cut(str(s or ""), budget, lang)
 
 
 def _sv(v, n=80):

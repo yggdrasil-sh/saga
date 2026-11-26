@@ -13,6 +13,7 @@ Knoepfe nach K15, Klartext-Wege, Ablaufzeiten) rechnet diese Datei aus Regeln na
 import hashlib
 import json
 import os
+import re
 import sys
 import unicodedata
 from datetime import datetime, timedelta
@@ -34,7 +35,7 @@ KINDS = {"needs": "job.needs_you", "done": "job.done", "failed": "job.failed"}
 UPDATE_KIND = "job.changed"
 GROUP_OF = {"wartet_dich": "needs", "wartet_ok": "needs", "erledigt": "done", "fehlgeschlagen": "failed"}
 SILENT_STATES = ("abgebrochen", "zurueckgenommen")        # nie eine Mitteilung; nur stilles update removed
-T1_MAX = 60                                               # Grapheme des Auftragstitels in t1 (danach 59 + "…")
+T1_MAX = 60                                               # Grapheme des Auftragstitels in t1 (gekuerzt wie saga.ai_say._sv)
 T2_MAX = 100                                              # Grapheme, Kanal push (saga.ai_say)
 ACT_TTL, ACT_MAX = 24 * 3600, 14 * 86400
 LATER_S, LATER_MAX, QUIET_HOUR, QUIET_WINDOW = 3 * 3600, 2, 7, 60
@@ -154,19 +155,50 @@ def graphemes(s):
 
 
 def cut_graphemes(s, n):
-    """Hoechstens n Grapheme: sonst die ersten n-1 (ohne ein kombinierendes Zeichen abzutrennen) + "…"."""
-    if graphemes(s) <= n:
-        return s
+    """Die ersten n Grapheme (nie mitten in einem Graphem), ohne "…" - wie saga.ai_say.cut_graphemes (2543)."""
     out = ""
     for ch in s:
-        if graphemes(out + ch) > n - 1:
+        if graphemes(out + ch) > n:
             break
         out += ch
-    return out.rstrip() + "…"
+    return out
+
+
+_SENT = re.compile(r"(?<=[.!?…])\s+")
+
+
+def cut(s, budget):
+    """Wie saga.ai_say._cut (lang en): am Satzende, sonst an der letzten Wortgrenze, sonst an einer Graphem-Grenze
+    (2543: Thai/CJK ohne Leerzeichen), dann "…"."""
+    if graphemes(s) <= budget:
+        return s
+    out = []
+    for x in [x for x in _SENT.split(s.strip()) if x]:
+        if graphemes(" ".join(out + [x])) > budget:
+            break
+        out.append(x)
+    if out:
+        return " ".join(out)
+    c = ""
+    for w in re.split(r"(\s+)", s):
+        if graphemes(c + w) > budget - 1:
+            break
+        c += w
+    if not c.strip():
+        c = cut_graphemes(s, budget - 1)
+    return c.rstrip() + "…"
+
+
+def sv(v, n):
+    """Wie saga.ai_say._sv: eine Zeile ohne Steuerzeichen und Markierungen, gekuerzt auf n Grapheme."""
+    s = re.sub(r"[\x00-\x1f\x7f\u2028\u2029]+", " ", str(v if v is not None else ""))
+    s = re.sub(r"[<>`*_#\[\]]", "", s)
+    s = re.sub(r"\s{2,}", " ", s).strip()
+    return cut(s, n) if graphemes(s) > n else s
 
 
 def t1(lang, group, title):
-    return TEXTS[lang]["t1." + group].format(text=cut_graphemes(" ".join(title.split()), T1_MAX))
+    return TEXTS[lang]["t1." + group].format(text=sv(title, T1_MAX))
 
 
 def head(lang, group):

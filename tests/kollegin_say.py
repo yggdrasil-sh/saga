@@ -317,6 +317,17 @@ def fibel():
     ok("check_answer: normale Antwort bleibt", not rep and t == "Im Wochenplan stehen fünf Schichten.")
     ok(f"Grapheme: Thai-Vokal-/Tonzeichen zaehlen nicht extra ({S.graphemes('ที่ค่ะ')})", S.graphemes("ที่ค่ะ") == 3)
     ok(f"Grapheme: Emoji-Familie mit ZWJ = 1 ({S.graphemes('👨‍👩‍👧')})", S.graphemes("👨‍👩‍👧") == 1 and S.graphemes("é") == 1 and S.graphemes("é") == 1)
+    # 2543: Titel ohne Wortgrenze im Budget (Thai, CJK) wurden zu "…" - jetzt an Graphem-Grenzen gekuerzt
+    th = "รายการซื้อของสำหรับงานเลี้ยงปิ้งย่างของครอบครัวที่สวนหลังบ้านในวันเสาร์นี้ตอนเย็นพร้อมถ่านและน้ำแข็ง"
+    sv_th, sv_ja = S._sv(th * 2), S._sv("日本語のとても長いタイトル" * 10)
+    ok(f"2543: Thai-Titel ohne Leerzeichen gekuerzt, nicht nur '…' ({sv_th!r})",
+       sv_th.startswith("รายการซื้อของ") and sv_th.endswith("…") and S.graphemes(sv_th) == 80)
+    ok(f"2543: CJK-Titel ohne Leerzeichen gekuerzt ({sv_ja!r})", sv_ja.startswith("日本語の") and S.graphemes(sv_ja) == 80)
+    cut = S.cut("ที่ค่ะที่ค่ะที่ค่ะ", 4)
+    ok(f"2543: nie mitten im Graphem (Thai-Tonzeichen bleiben dran) ({cut!r})", cut == "ที่ค่ะ…" and S.graphemes(cut) == 4)
+    ok("2543: mit Leerzeichen weiter an der Wortgrenze", S.cut("Grillkohle besorgen und noch viel mehr", 15, "de") == "Grillkohle…")
+    rep = S.say("report", {"changes": [{"kind": "note", "title": th * 2}], "channel": "push"}, "th", P)
+    ok(f"2543: Rueckmeldung (Kanal push) nennt den gekuerzten Thai-Titel ({rep!r})", "“…”" not in rep and "รายการ" in rep)
 
 
 # --- 4. EV-12 Identitaet, EV-10 Sprache, EV-13 Laengen, EV-18 --------------------------------------------------------

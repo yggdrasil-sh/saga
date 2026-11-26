@@ -323,6 +323,8 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   „nichts gefunden“ kommt ganz ohne Quellenzeile (vorher alle gelesenen Seiten, z. B. 12 bei „What's coming up this
   week?“). „aus:“ zeigt höchstens drei, der Rest steht hinter „{n} weitere“ (aufklappbar, auch per Tastatur und mit
   Bildschirmleser). Apps: zweites Ereignis `sources` vor `done` (docs/APP-API-KI.md 11.3).
+- **Kollegin: lange Titel ohne Leerzeichen** (Thai, Chinesisch, Japanisch) erschienen in Rückmeldungen nur als „…“ –
+  jetzt an Zeichen-Grenzen gekürzt (nie mitten in einem Schriftzeichen). (2543)
 - **Kollegin (W2-Reste, web-saga):** Die Rückmeldung nennt das Ergebnis nur noch einmal (neben „Rückgängig“ steht nur
   der Gegenstand); ✓ in der Auftragsliste nur bei „Erledigt“ (Abgebrochen –, Zurückgenommen ↶); per Knopf eingetragene
   Aufträge heißen nach der ersten Zeile statt „Auftrag“; im Protokoll steht „Freigegeben“ vor „Läuft“; ein schon
