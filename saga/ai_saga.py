@@ -36,7 +36,7 @@ Endpunkte (Sitzung oder Geraete-Anmeldung, X-Saga: 1 - wie alle /api/ai/*):
   GET    /saga                         Ort "Saga" (Web)
   POST   /api/ai/consent {answer: ideas|no_ideas|later, version}   -> {consent}
   DELETE /api/ai/consent                                            -> {consent, paused}
-  GET    /api/ai/prefs  · PUT /api/ai/prefs {ideas?, sources?, history?, notify_content?, salutation?, dictation?}
+  GET/PUT /api/ai/prefs (Endpunkt in saga/ai_say.py, K-H) + Felder ideas, sources, history, notify_content, dictation
   GET    /api/ai/thread · POST /api/ai/thread {q, tasks?, calendar?} (SSE) · DELETE /api/ai/thread
   GET    /api/ai/mydata?format=json|md · POST /api/ai/mydata/delete {confirm: true}
 Tests: tests/kollegin_einwilligung.py, tests/browser_kollegin_kennenlernen.js
@@ -272,6 +272,15 @@ def intro(uid, conn=None, cfg=None):
     lines = [t("Ich bin {name}, die KI eures Servers.", name=name),
              t("Ich sehe nur, was du sehen darfst. Deine Frage und passende Ausschnitte aus deinen Seiten, Aufgaben und Terminen gehen an {where}.", where=where),  # noqa: E501
              t("Ich ändere nichts und schreibe niemandem ohne dein OK.")]
+    try:                                         # K-H (2268): derselbe Text als Baustein "intro" - mit Anrede du/Sie der Person
+        from saga import ai_say, i18n
+        lang = i18n.get_lang()
+        txt = ai_say.say("intro", {"name": name, "host": where}, lang, ai_say.persona_for(uid, conn))
+        parts = ai_say.sentences(txt, lang)
+        if len(parts) == 3 and where in parts[1]:
+            lines = parts
+    except Exception:  # noqa: BLE001 - Baustein fehlt/kaputt: die Saetze oben (Systemtext) bleiben
+        pass
     details = [t("Nicht Ende-zu-Ende verschlüsselt: Was du {name} schreibst, liest die KI auf {host} im Klartext.", name=name,
                  host=h["host"] if h else ""),
                t("Was genau rausgeht: deine Frage, die letzten Sätze dieses Gesprächs und Ausschnitte aus Seiten, Aufgaben und Terminen, die zur Frage passen – nur, was du selbst sehen darfst, und nur aus Quellen, die du eingeschaltet hast. Chats und Seiten von anderen Servern liest sie nicht."),  # noqa: E501
@@ -293,34 +302,43 @@ def status_fields(uid, conn, cfg):
 
 
 # --- Einstellungen der Person (/api/ai/prefs) ---------------------------------------------------------------------
-PREF_VALUES = {"ideas": IDEAS, "notify_content": ("unlocked", "never"), "salutation": ("du", "sie"),
-               "dictation": ("server", "device")}
-PREF_DEFAULT = {"ideas": "off", "notify_content": "unlocked", "salutation": "du", "dictation": "server"}
+# Eigene Schluessel im gemeinsamen Eintrag user_kv "ai_prefs" (K-H 2268 haelt dort salutation/lively - fremde Schluessel
+# bleiben immer stehen). GET/PUT /api/ai/prefs bedient saga/ai_say.py; die Felder hier haengt prefs_extra()/prefs_put() an.
+PREF_VALUES = {"ideas": IDEAS, "notify_content": ("unlocked", "never"), "dictation": ("server", "device")}
+PREF_DEFAULT = {"ideas": "off", "notify_content": "unlocked", "dictation": "server"}
 
 
-def _load_prefs(conn, uid):
+def _raw_prefs(conn, uid):
     r = conn.execute("SELECT v FROM user_kv WHERE uid=? AND k=?", (uid, PREFS_KV)).fetchone()
     try:
         d = json.loads(r[0]) if r and r[0] else {}
     except ValueError:
         d = {}
+    return d if isinstance(d, dict) else {}
+
+
+def _load_prefs(conn, uid):
+    d = _raw_prefs(conn, uid)
     out = dict(PREF_DEFAULT)
-    if isinstance(d, dict):
-        for k, vals in PREF_VALUES.items():
-            if d.get(k) in vals:
-                out[k] = d[k]
+    for k, vals in PREF_VALUES.items():
+        if d.get(k) in vals:
+            out[k] = d[k]
     return out
 
 
 def _set_prefs(conn, uid, d):
-    cur = _load_prefs(conn, uid)
-    cur.update({k: v for k, v in d.items() if k in PREF_VALUES and v in PREF_VALUES[k]})
-    keep = {k: v for k, v in cur.items() if v != PREF_DEFAULT[k]}
-    if keep:
-        conn.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, ?, ?)", (uid, PREFS_KV, json.dumps(keep, sort_keys=True)))
+    raw = _raw_prefs(conn, uid)
+    for k, v in d.items():
+        if k in PREF_VALUES and v in PREF_VALUES[k]:
+            if v == PREF_DEFAULT[k]:
+                raw.pop(k, None)
+            else:
+                raw[k] = v
+    if raw:
+        conn.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, ?, ?)", (uid, PREFS_KV, json.dumps(raw, sort_keys=True)))
     else:
         conn.execute("DELETE FROM user_kv WHERE uid=? AND k=?", (uid, PREFS_KV))
-    return cur
+    return _load_prefs(conn, uid)
 
 
 def prefs(uid, conn=None):
@@ -333,12 +351,47 @@ def prefs(uid, conn=None):
     return out
 
 
-def _prefs_view(uid, conn):
+def prefs_extra(uid, conn):
+    """Felder von K-I fuer GET/PUT /api/ai/prefs (an die Antwort von saga/ai_say.py angehaengt)."""
     from saga import ai
     c = ai.cfg()
     return dict(prefs(uid, conn), sources=ai_ctx.prefs(uid, conn), history=ai.history_on(conn, uid),
                 history_allowed=bool(c.get("history", True)), ideas_allowed=caps.can(uid, "ai_ideas", conn, c),
                 consent=consent(uid, conn, c))
+
+
+_prefs_view = prefs_extra
+
+
+def prefs_check(b):
+    """PUT /api/ai/prefs: Form der K-I-Felder pruefen (vor jedem Schreiben) -> Fehlerantwort oder None."""
+    for k, vals in PREF_VALUES.items():
+        if k in b and b[k] not in vals:
+            return _bad(t("ungültige Angabe"))
+    if "sources" in b and not ai_ctx.valid(b["sources"]):
+        return _bad(t("ungültige Angabe"))
+    if "history" in b and not isinstance(b["history"], bool):
+        return _bad(t("ungültige Angabe"))
+    return None
+
+
+def prefs_put(uid, b, conn):
+    """PUT /api/ai/prefs: K-I-Felder in derselben Transaktion setzen -> Fehlerantwort oder None."""
+    from saga import ai
+    c = ai.cfg()
+    if b.get("ideas") == "today":
+        if not consent_ok(uid, conn, c):
+            return _bad(t("Ideen gehen erst, wenn du {name} kennengelernt hast.", name=ai.persona_name()), 409)
+        if not caps.can(uid, "ai_ideas", conn, c):
+            return _bad(t("Ideen sind für dich nicht freigeschaltet."), 403)
+    if b.get("history") and not c.get("history", True):
+        return _bad(t("Der Verlauf ist auf diesem Server abgeschaltet."), 409)
+    _set_prefs(conn, uid, {k: b[k] for k in PREF_VALUES if k in b})
+    if "sources" in b:
+        ai_ctx.set_prefs(uid, b["sources"], conn)
+    if "history" in b:
+        _set_history(conn, uid, b["history"])
+    return None
 
 
 def _set_history(conn, uid, on):
@@ -579,58 +632,6 @@ async def api_consent_withdraw(request: Request):
         st, n = withdraw(uid)                              # auch ohne KI-Freigabe: Widerruf geht immer
         print(f"ai: Einwilligung widerrufen ({n} Auftraege angehalten)", flush=True)
         return JSONResponse({"consent": st, "paused": n})
-    return await asyncio.to_thread(run)
-
-
-@router.get("/api/ai/prefs")
-async def api_prefs(request: Request):
-    uid = _guard(request)
-    if not uid:
-        return _bad("unauthorized", 401)
-
-    def run():
-        if not _ai_on(uid):
-            return _noai()
-        with _db() as c:
-            return JSONResponse(_prefs_view(uid, c), headers={"Cache-Control": "no-store"})
-    return await asyncio.to_thread(run)
-
-
-@router.put("/api/ai/prefs")
-async def api_prefs_put(request: Request):
-    uid = _guard(request)
-    if not uid:
-        return _bad("unauthorized", 401)
-    b = await _body(request)
-    if not isinstance(b, dict):
-        return _bad(t("ungültige Angabe"))
-    for k, vals in PREF_VALUES.items():
-        if k in b and b[k] not in vals:
-            return _bad(t("ungültige Angabe"))
-    if "sources" in b and not ai_ctx.valid(b["sources"]):
-        return _bad(t("ungültige Angabe"))
-    if "history" in b and not isinstance(b["history"], bool):
-        return _bad(t("ungültige Angabe"))
-
-    def run():
-        from saga import ai
-        c = ai.cfg()
-        if not ai.allowed(uid, c):
-            return _noai()
-        with _db() as conn, conn:
-            if b.get("ideas") == "today":
-                if not consent_ok(uid, conn, c):
-                    return _bad(t("Ideen gehen erst, wenn du {name} kennengelernt hast.", name=ai.persona_name()), 409)
-                if not caps.can(uid, "ai_ideas", conn, c):
-                    return _bad(t("Ideen sind für dich nicht freigeschaltet."), 403)
-            if b.get("history") and not c.get("history", True):
-                return _bad(t("Der Verlauf ist auf diesem Server abgeschaltet."), 409)
-            _set_prefs(conn, uid, {k: b[k] for k in PREF_VALUES if k in b})
-            if "sources" in b:
-                ai_ctx.set_prefs(uid, b["sources"], conn)
-            if "history" in b:
-                _set_history(conn, uid, b["history"])
-            return JSONResponse(_prefs_view(uid, conn))
     return await asyncio.to_thread(run)
 
 

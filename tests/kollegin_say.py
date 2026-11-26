@@ -561,7 +561,7 @@ def api(adm):
     ok(f"prefs: Sie setzen ({s}, {d.get('effective')})", s == 200 and d["salutation"] == "sie" and d["effective"]["salutation"] == "sie")
     s, d = req("PUT", "/api/ai/prefs", A, {"lively": "verspielt"})
     ok(f"prefs: lebhafter als der Admin -> 400 ({s})", s == 400)
-    s, d = req("PUT", "/api/ai/prefs", A, {"lively": "sachlich", "salutation_from_chat": "du", "history": ["Hey du"], "ideas": "x"})
+    s, d = req("PUT", "/api/ai/prefs", A, {"lively": "sachlich", "salutation_from_chat": "du", "chat_history": ["Hey du"], "ideas_x": "x"})   # history/ideas sind seit K-I (2269) eigene Felder
     ok(f"prefs: ruhiger erlaubt, unbekannte Felder ignoriert ({s}, {d.get('effective')})", s == 200 and d["effective"] == {"salutation": "sie", "lively": "sachlich"})
     with connect() as c:
         raw = c.execute("SELECT v FROM user_kv WHERE uid='ks-a' AND k='ai_prefs'").fetchone()

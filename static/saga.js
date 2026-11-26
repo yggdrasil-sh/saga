@@ -392,6 +392,7 @@
   }
   function fillSettings(sec, d) {
     var box = sec.querySelector('.sg-set-body'); box.textContent = '';
+    if (!d || d.enabled === false) { box.remove(); return; }           // KI aus: den Abschnitt blendet settings.js aus
     var c = d.consent || {}, name = P().name;
     var st = el('p', 'hk-hint sg-set-state');
     if (c.state === 'granted') st.textContent = T('Du nutzt {name} seit {date}.', { name: name, date: new Date(c.at * 1000).toLocaleDateString() });

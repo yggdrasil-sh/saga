@@ -1198,10 +1198,12 @@ router = APIRouter()
 
 def _prefs_out(uid, conn):
     a, own = admin_persona(), prefs(uid, conn)
+    from saga import ai_saga                    # 2.6 K-I (2269): ideas, sources, history, notify_content, dictation, consent
     return {"salutation": own["salutation"], "lively": own["lively"],
             "effective": {"salutation": own["salutation"] or a["salutation"], "lively": calmer(a["lively"], own["lively"])},
             "default": {"salutation": a["salutation"], "lively": a["lively"]},
-            "choices": {"salutation": list(ADDRESS), "lively": list(LIVELY[:LIVELY.index(a["lively"]) + 1])}}
+            "choices": {"salutation": list(ADDRESS), "lively": list(LIVELY[:LIVELY.index(a["lively"]) + 1])},
+            **ai_saga.prefs_extra(uid, conn)}
 
 
 @router.get("/api/ai/prefs")
@@ -1234,6 +1236,10 @@ async def api_ai_prefs_put(request: Request):
     if not isinstance(b, dict):
         return _bad(t("ungültige Angabe"))
     d = {k: b[k] for k in ("salutation", "lively") if k in b}
+    from saga import ai_saga                    # 2.6 K-I (2269): eigene Felder pruefen, bevor etwas geschrieben wird
+    bad = ai_saga.prefs_check(b)
+    if bad is not None:
+        return bad
 
     def run():
         with _db() as conn, conn:
@@ -1245,5 +1251,9 @@ async def api_ai_prefs_put(request: Request):
                 set_prefs(uid, d, conn)
             except ValueError:
                 return _bad(t("ungültige Angabe"))
+            err = ai_saga.prefs_put(uid, b, conn)
+            if err is not None:
+                conn.rollback()
+                return err
             return JSONResponse(_prefs_out(uid, conn), headers={"Cache-Control": "no-store"})
     return await asyncio.to_thread(run)

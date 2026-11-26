@@ -231,7 +231,7 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
     await p.goto(BASE + '/dashboard'); await p.waitForTimeout(2000);
     const off = await p.evaluate(() => ({ nav: !!document.getElementById('pg-nav-saga'), slot: !!document.getElementById('hz-saga-intro'), card: !!document.querySelector('.sg-intro') }));
     await p.evaluate(() => window.HKSettings.open('account')); await p.waitForTimeout(600);
-    const offSet = await p.evaluate(() => !!document.getElementById('hk-tab-saga'));
+    const offSet = await p.evaluate(() => { const b = document.getElementById('hk-tab-saga'); return !!b && b.getClientRects().length > 0; });
     const offTab = await p.evaluate(() => !!document.querySelector('#mob-tabs [data-act="saga"]'));
     ok('KI aus: kein Eintrag „Saga“, kein Tab „Saga“, keine Karte, keine Einstellungen › Saga', !off.nav && !offTab && !off.slot && !off.card && !offSet, { off, offSet, offTab });
     await p.keyboard.press('Escape');

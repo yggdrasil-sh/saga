@@ -359,7 +359,7 @@ def run():
     st, p = req("GET", "/api/ai/prefs", A)
     ok("GET /api/ai/prefs: ideas, sources, history, notify_content, salutation, dictation, consent",
        st == 200 and p.get("ideas") == "today" and set(p.get("sources") or {}) == {"pages", "tasks", "calendar", "chat"}
-       and p.get("notify_content") == "unlocked" and p.get("salutation") == "du" and p.get("dictation") == "server"
+       and p.get("notify_content") == "unlocked" and (p.get("effective") or {}).get("salutation") == "du" and p.get("dictation") == "server"
        and (p.get("consent") or {}).get("state") == "granted", p)
     st, _d = req("PUT", "/api/ai/prefs", A, {"ideas": "immer"})
     st2, _d = req("PUT", "/api/ai/prefs", A, {"sources": {"pages": "ja"}})
@@ -367,6 +367,12 @@ def run():
     ok("PUT /api/ai/prefs: falsche Werte 400, gueltige werden gespeichert",
        st == 400 and st2 == 400 and st3 == 200 and d3.get("salutation") == "sie" and d3["sources"]["calendar"] is False
        and d3.get("notify_content") == "never", (st, st2, d3))
+    req("PUT", "/api/ai/prefs", A, {"lively": "sachlich"})
+    st4, d4 = req("PUT", "/api/ai/prefs", A, {"dictation": "device"})
+    raw = json.loads(q("SELECT v FROM user_kv WHERE uid=? AND k='ai_prefs'", (A,))[0][0])
+    ok("ein Eintrag ai_prefs fuer K-H und K-I: Lebhaftigkeit (K-H) bleibt beim Setzen eigener Felder",
+       st4 == 200 and d4.get("lively") == "sachlich" and d4.get("dictation") == "device" and raw.get("lively") == "sachlich"
+       and raw.get("salutation") == "sie" and raw.get("ideas") == "today", (d4, raw))
     st, d = req("PUT", "/api/ai/prefs", B, {"ideas": "today"})
     ok("Ideen ohne Einwilligung -> 409", st == 409, (st, d))
     setai(caps={"ai_ideas": ["kw-niemand"], "ai_act": []})
