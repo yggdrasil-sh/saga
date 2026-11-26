@@ -1,6 +1,6 @@
 {
  "format": "saga-meeting/v1",
- "note": "Gemeinsame Testvektoren der Meeting-Ansicht (MEETING-SPEC.md §12). Web: tests/meeting_logik.js (static/meeting.js); iOS und Android pruefen dieselben Faelle. meetingTiles: roster wie GET /api/calls/{id} (who, device, dev_name, role, me), media je Geraet (mic, cam, screen, level, screenAt), prefs.self = dieses Geraet. expect = Kacheln in Reihenfolge (id, kind, dev, video, devName); layout = pickLayout(tiles, choice) mit choice (Standard 'auto'); arrange = arrange(tiles, layout, {pin, speaker}). selfPipSize: Breitenregel nach der Ausrichtung der Kamera (ar >= 1 quer), ar 0 = unbekannt (Lage der Buehne, 16:9 bzw. 9:16); name optional. iOS (ios/Tests/vectors/meeting.json) und Android (android/app/src/test/resources/meeting_vectors.json) lesen diese Datei unveraendert und ohne Abweichungen. speakerHysteresis: Pegel alle step ms (Ton = level zwischen from und to, sonst 0); expect = Buehne (who) zu Zeitpunkten, changes = Zahl der Buehnenwechsel (der erste Sprecher zaehlt mit).",
+ "note": "Gemeinsame Testvektoren der Meeting-Ansicht (MEETING-SPEC.md §12). Web: tests/meeting_logik.js (static/meeting.js); iOS und Android pruefen dieselben Faelle. meetingTiles: roster wie GET /api/calls/{id} (who, device, dev_name, role, me), media je Geraet (mic, cam, screen, level, screenAt), prefs.self = dieses Geraet. expect = Kacheln in Reihenfolge (id, kind, dev, video, devName); layout = pickLayout(tiles, choice) mit choice (Standard 'auto'); arrange = arrange(tiles, layout, {pin, speaker}). selfPipSize: Breitenregel nach der Ausrichtung der Kamera (ar >= 1 quer), ar 0 = unbekannt (Lage der Buehne, 16:9 bzw. 9:16); name optional. iOS (ios/Tests/vectors/meeting.json) und Android (android/app/src/test/resources/meeting_vectors.json) lesen diese Datei unveraendert und ohne Abweichungen. speakerHysteresis: Pegel alle step ms (Ton = level zwischen from und to, sonst 0); expect = Buehne (who) zu Zeitpunkten, changes = Zahl der Buehnenwechsel (der erste Sprecher zaehlt mit). speakRing (Bugs-DB 2125): Sprechring nur ab 3 verschiedenen Personen - roster wie oben (who, device, role, me), self = eigenes who; Begleitgeraete (role companion) zaehlen nie, eigene Geraete (me bzw. who = self) sind eine Person, ohne who zaehlt das Geraet; expect = Ring an.",
  "meetingTiles": [
   {
    "name": "S1 1:1, beide Kamera",
@@ -509,5 +509,19 @@
   {"name": "Tablet quer, Kamera hochkant 3:4", "w": 1000, "h": 700, "ar": 0.75, "size": "M", "expect": [160, 213]},
   {"name": "Handy quer, Kamera hochkant, S: verkleinert auf die halbe Hoehe", "w": 844, "h": 390, "ar": 0.5625, "size": "S", "expect": [110, 195]},
   {"name": "Handy hochkant, Verhaeltnis unbekannt: Lage der Buehne, 9:16", "w": 390, "h": 844, "ar": 0, "size": "M", "expect": [101, 180]}
+ ],
+ "speakRing": [
+  {"name": "1:1: zwei Personen - kein Ring", "roster": [{"device": "a", "who": "x"}, {"device": "m", "who": "me", "me": true}], "self": "me", "expect": false},
+  {"name": "1:1 + eigenes Begleitgeraet - kein Ring", "roster": [{"device": "a", "who": "x"}, {"device": "m", "who": "me", "me": true}, {"device": "m2", "who": "me", "role": "companion", "me": true}], "self": "me", "expect": false},
+  {"name": "1:1 + Begleitgeraet der anderen Person - kein Ring", "roster": [{"device": "a", "who": "x"}, {"device": "a2", "who": "x", "role": "companion"}, {"device": "m", "who": "me", "me": true}], "self": "me", "expect": false},
+  {"name": "1:1 + Begleitgeraet ohne who - kein Ring", "roster": [{"device": "a", "who": "x"}, {"device": "z", "role": "companion"}, {"device": "m", "who": "me", "me": true}], "self": "me", "expect": false},
+  {"name": "1:1, andere Person mit zwei Geraeten (Uebernahme) - kein Ring", "roster": [{"device": "a", "who": "x"}, {"device": "a3", "who": "x", "role": "handover"}, {"device": "m", "who": "me", "me": true}], "self": "me", "expect": false},
+  {"name": "1:1, eigenes Geraet nur mit me ohne who - nicht doppelt gezaehlt", "roster": [{"device": "a", "who": "x"}, {"device": "m", "me": true}], "self": "me", "expect": false},
+  {"name": "drei Personen - Ring", "roster": [{"device": "a", "who": "x"}, {"device": "b", "who": "y"}, {"device": "m", "who": "me", "me": true}], "self": "me", "expect": true},
+  {"name": "drei Personen + Begleitgeraete - Ring", "roster": [{"device": "a", "who": "x"}, {"device": "b", "who": "y"}, {"device": "b2", "who": "y", "role": "companion"}, {"device": "m", "who": "me", "me": true}, {"device": "m2", "who": "me", "role": "companion", "me": true}], "self": "me", "expect": true},
+  {"name": "drei Personen, eigenes Geraet fehlt in der Liste (self zaehlt)", "roster": [{"device": "a", "who": "x"}, {"device": "b", "who": "y"}], "self": "me", "expect": true},
+  {"name": "drei Personen, eigenes Geraet per who statt me", "roster": [{"device": "a", "who": "x"}, {"device": "b", "who": "y"}, {"device": "m", "who": "me"}], "self": "me", "expect": true},
+  {"name": "Pseudonyme ohne who: Geraet zaehlt als Person", "roster": [{"device": "d1"}, {"device": "d2"}, {"device": "m", "who": "me", "me": true}], "self": "me", "expect": true},
+  {"name": "allein im Anruf - kein Ring", "roster": [{"device": "m", "who": "me", "me": true}], "self": "me", "expect": false}
  ]
 }

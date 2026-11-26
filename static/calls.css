@@ -162,7 +162,9 @@
 .cl-grid[data-n="5"],.cl-grid[data-n="6"]{grid-template-columns:repeat(3,minmax(0,1fr))}
 .cl-tile{position:relative;overflow:hidden;border-radius:var(--r-md);background:var(--cl-panel);border:2px solid var(--cl-edge);display:grid;place-items:center;
   min-height:0;transition:border-color .15s}
-.cl-tile.speaking{border-color:var(--cl-ok);box-shadow:0 0 0 2px color-mix(in srgb,var(--cl-ok) 35%,transparent)}
+/* Sprechring nur ab 3 Personen (Bugs-DB 2125): Fensterklasse cl-spkring aus calls.js ringSet - im 1:1 kein Ring;
+   Lautsprechersymbol .cl-tspk, Vorlesetext und Liste .cl-pl.speaking bleiben */
+.cl-spkring .cl-tile.speaking{border-color:var(--cl-ok);box-shadow:0 0 0 2px color-mix(in srgb,var(--cl-ok) 35%,transparent)}
 @media (prefers-reduced-motion: reduce){.cl-tile{transition:none}}
 .cl-tile.wait{opacity:.7}
 .cl-tv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:none}
@@ -434,7 +436,7 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
 .cl-mbig .cl-tile{position:absolute;inset:0;border:0;border-radius:0;background:#000}
 .cl-mbig .cl-tile .cl-tv{object-fit:contain;transform-origin:center;transition:transform .12s}
 .cl-mbig .cl-tile.peer-screen .cl-tl{display:none}   /* Name steht im Hinweis-Chip */
-.cl-mbig .cl-tile.speaking{border-color:transparent;box-shadow:inset 0 0 0 3px var(--cl-ok)}
+.cl-spkring .cl-mbig .cl-tile.speaking{border-color:transparent;box-shadow:inset 0 0 0 3px var(--cl-ok)}
 .cl-mbig.zoomed{cursor:grab}
 .cl-mbig.zoomed:active{cursor:grabbing}
 .cl-mbig:fullscreen{background:#000}

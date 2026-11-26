@@ -116,6 +116,16 @@ V.selfPipSize.forEach(c => {
   const f = M.selfPipSize(390, 844, 0, 'M', 16 / 9);
   ok('eigenes Bild: Verhaeltnis unbekannt -> Breite nach der Buehne (hochkant 26 %), Verhaeltnis vom Aufrufer (16:9)', f.w === 101 && f.h === 57, f);
 }
+// --- Sprechring nur ab 3 Personen (Bugs-DB 2125), gemeinsame Vektoren und Ablauf: dritte Person kommt und geht -------
+V.speakRing.forEach(c => ok(`Sprechring: ${c.name}`, M.speakRingOn(c.roster, c.self) === c.expect, c));
+{
+  const two = [{ device: 'a', who: 'x' }, { device: 'm', who: 'me', me: true }];
+  const comp = two.concat([{ device: 'm2', who: 'me', role: 'companion', me: true }]);
+  const three = comp.concat([{ device: 'b', who: 'y' }]);
+  const seq = [M.speakRingOn(two, 'me'), M.speakRingOn(comp, 'me'), M.speakRingOn(three, 'me'), M.speakRingOn(comp, 'me')];
+  ok('Sprechring Ablauf: 2 Personen aus, + Begleitgeraet aus, dritte kommt an, dritte geht aus', eq(seq, [false, false, true, false]), seq);
+  ok('Sprechring: leere/fehlende Liste ohne self aus', M.speakRingOn(null) === false && M.speakRingOn([], '') === false);
+}
 ok('Layout-Wahl: gespeichert, Uebernahme aus saga-horn-view (grid -> gallery), sonst Auto',
    M.layoutPref('speaker') === 'speaker' && M.layoutPref(null, 'grid') === 'gallery' && M.layoutPref(null, 'speaker') === 'speaker' && M.layoutPref('x', null) === 'auto');
 ok('Fensterklassen: Handy hochkant, Handy quer, Tablet, Desktop, gross',

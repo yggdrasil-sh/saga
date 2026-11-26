@@ -2,6 +2,7 @@
 // 3), C hat keine Kamera (getUserMedia mit Bild -> NotFoundError, Anruf nur mit Ton). Der Knoten reicht den Pegel der Quelle
 // (ssrc-audio-level) an jeden Empfaenger weiter; der Browser liest ihn per getSynchronizationSources (H.lvSeen) und zeigt
 // den Sprechring am Platz der Person, die spricht - auch ohne Bild (frueher nur der Sprecher-BILD-Platz des Knotens).
+// 2125: zu dritt mit Sprechring; legt C auf, sind A und B zu zweit - Sprecher erkannt, aber kein Ring (nur ab 3 Personen).
 // Laeuft aus tests/anrufe_horn_knoten.py, geht aber auch allein:
 //   SAGA_BASE=http://host:port SAGA_USERS=u1,u2,u3 SAGA_PASS=... [SHOTS=dir] node tests/browser_horn_pegel.js
 'use strict';
@@ -76,6 +77,12 @@ const horn = p => p.evaluate(() => window.HKCalls && window.HKCalls.horn());
 const dev = p => p.evaluate(() => window.HKChat.state().device);
 async function api(p, m, url, body) { return p.evaluate(([m, url, body]) => window.HK.api(m, url, body).then(r => ({ ok: true, r }), e => ({ ok: false, status: e.status, data: e.data, msg: e.message })), [m, url, body]); }
 async function liveOk(ps) { for (const p of ps) await until(() => p.evaluate(() => !!(window.HKLive && window.HKLive.state().sse)), 15000, 200); }
+// 2125: Sprechring sichtbar? Fensterklasse cl-spkring und Schatten der sprechenden Kachel (calls.css)
+const ringLook = p => p.evaluate(() => {
+  const w = document.querySelector('.cl-win'), t = document.querySelector('.cl-win .cl-tile.speaking:not(.cl-me)');
+  return { ring: !!(w && w.classList.contains('cl-spkring')), tile: !!t, shadow: t ? getComputedStyle(t).boxShadow : 'none' };
+});
+const PFX = E.SHOT_PREFIX || '';
 async function shot(p, name) { if (!E.SHOTS) return; fs.mkdirSync(E.SHOTS, { recursive: true }); await p.screenshot({ path: path.join(E.SHOTS, name + '.png') }); }
 
 (async () => {
@@ -128,11 +135,26 @@ async function shot(p, name) { if (!E.SHOTS) return; fs.mkdirSync(E.SHOTS, { rec
          hs.map((h, i) => i === s ? '-' : { lvSeen: h.lvSeen, spk: h.spk && h.spk.slice(0, 6), speaking: h.speaking.map(x => devs.indexOf(x)),
            levels: Object.fromEntries(Object.entries(h.levels).map(([d, v]) => [devs.indexOf(d), Math.round(v * 1000) / 1000])) }));
       if (s === 2) { await ps[0].waitForTimeout(400); await shot(ps[0], 'sprechring-ohne-bild-a'); await shot(ps[1], 'sprechring-ohne-bild-b'); }
+      // 2125: zu dritt ist der Ring sichtbar (Fensterklasse cl-spkring, Rand/Schatten der sprechenden Kachel)
+      const rg = await until(async () => { const r = await ringLook(ps[(s + 1) % 3]); return r.ring && r.shadow !== 'none' && r; }, 5000, 250);
+      ok(`2125: zu dritt Sprechring sichtbar bei ${L[(s + 1) % 3]} (${L[s]} spricht)`, !!rg, await ringLook(ps[(s + 1) % 3]));
+      if (s === 0) { await ps[1].waitForTimeout(400); await shot(ps[1], PFX + 'zu-dritt-a-spricht-bei-b'); }
     }
     // Ruhe: niemand laut -> kein Sprechring
     for (const p of ps) await p.evaluate(() => window.__hornGain(0.004));
     const quiet = await until(async () => { const hs = await Promise.all(ps.map(horn)); return hs.every(h => h.speaking.length === 0) && hs; }, 8000, 300);
     ok('alle leise: kein Sprechring', !!quiet, (await Promise.all(ps.map(horn))).map(h => h.speaking.map(x => devs.indexOf(x))));
+    // --- 2125: C legt auf -> A und B zu zweit ueber den Knoten: kein Sprechring mehr, Sprecher-Erkennung bleibt ---------
+    await ps[2].click('.cl-ctl .cl-red').catch(() => {});
+    const two = await until(async () => { const hs = await Promise.all([horn(ps[0]), horn(ps[1])]); return hs.every(h => h && h.up && h.tiles.length === 1) && hs; }, 20000, 300);
+    ok('2125: C weg - A und B zu zweit (je 1 Kachel)', !!two, (await Promise.all([horn(ps[0]), horn(ps[1])])).map(h => h && { up: h.up, tiles: h.tiles.length }));
+    await ps[0].evaluate(() => window.__hornGain(0.6));
+    const sp2 = await until(async () => { const h = await horn(ps[1]); return h && h.speaking.indexOf(devs[0]) >= 0 && h.tiles.some(t => t.dev === devs[0] && t.speaking) && h; }, 12000, 300);
+    const r2 = await ringLook(ps[1]);
+    ok('2125: zu zweit - A spricht, B erkennt den Sprecher (speaking), aber kein Ring (keine Fensterklasse, kein Schatten)',
+       !!sp2 && !r2.ring && r2.shadow === 'none' && r2.tile, { speaking: !!sp2, look: r2 });
+    await ps[1].waitForTimeout(400); await shot(ps[1], PFX + 'zu-zweit-a-spricht-bei-b');
+    await ps[0].evaluate(() => window.__hornGain(0.004));
     for (const p of ps) await p.click('.cl-ctl .cl-red').catch(() => {});
     await ps[0].waitForTimeout(1000);
     rc = res.every(Boolean) ? 0 : 1;

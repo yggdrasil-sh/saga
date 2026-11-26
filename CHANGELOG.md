@@ -30,6 +30,12 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Ist kein Knoten bereit oder kann ein Gerät es nicht, läuft der Anruf wie bisher direkt.
 - **MCP: `update_row` ändert auch das Symbol** (Bugs-DB 2448): neues Feld `icon` (Emoji oder Saga-Siegel, leerer
   Text entfernt es) – wie bei `create_row`. Gesperrte Einträge antworten wie im Web mit 423.
+- **Sprechring nur noch in Gruppen** (Bugs-DB 2125, Web inkl. Mac-Hülle/Linux): Der grüne Ring um Bild bzw. Profilbild
+  erscheint nur, wenn mindestens drei verschiedene Personen im Anruf sind – im 1:1 (Mesh und über den Knoten) wirkte er
+  nur wie Umgebungslicht. Eigene Begleitgeräte zählen nicht als weitere Person; kommt eine dritte Person dazu, erscheint
+  der Ring, geht sie, verschwindet er wieder. Sprecher groß, Lautsprechersymbol, Vorlesetext „spricht“ und die Markierung
+  in der Teilnehmerliste bleiben. Regel in `static/meeting.js` (`speakRingOn`), gemeinsame Testvektoren `speakRing` in
+  `tests/meeting_vectors.json` (dieselben Fälle prüfen iOS und Android).
 - **Push-Relais und Apple-Mitteilungen Ende-zu-Ende** (Bugs-DB 2262, Feature `pushrelay1`, **Migration 39**:
   `push_sub.topic`, Bestand leer): Fremde Saga-Server können Mitteilungen an die Saga-App aus dem App Store schicken,
   ohne eigenen APNs-Schlüssel – über das Push-Relais. Die Nutzlast ist Ende-zu-Ende zwischen Server und App verschlüsselt

@@ -258,6 +258,25 @@
   };
   SpeakerPick.prototype.spokeAt = function () { return Object.assign({}, this.lastOn); };
 
+  // Sprechring nur in Gruppen (Bugs-DB 2125): im 1:1 wirkt der gruene Ring nur wie Umgebungslicht (FaceTime/WhatsApp zeigen
+  // ihn dort auch nicht). Regel, auf allen Plattformen gleich (Vektoren "speakRing"): Ring nur, wenn im Anruf MINDESTENS 3
+  // VERSCHIEDENE PERSONEN sind. Person = who (ohne who: device); eigene Geraete (me) und self sind eine Person; Begleitgeraete
+  // (role companion) zaehlen nie als weitere Person. Gilt gleich fuer Mesh, 1:1 ueber den Knoten (topo horn, kind group mit
+  // dm) und Gruppen: kommt eine dritte Person dazu, erscheint der Ring, geht sie, verschwindet er wieder. Nur der Ring -
+  // Sprecher-Erkennung, Buehne, Lautsprechersymbol, Vorlesetext und Markierung in der Liste bleiben.
+  // roster: [{device, who, role, me}] (Liste wie GET /api/calls/{id}), self = eigenes who (zaehlt immer mit)
+  var RING_MIN_PERSONS = 3;
+  function speakRingOn(roster, self) {
+    var ME = '\u0000me', w = {};
+    if (self) w[ME] = true;
+    (roster || []).forEach(function (x) {
+      if (!x || x.role === 'companion') return;
+      var k = x.me || (self && x.who === self) ? ME : (x.who || x.device);
+      if (k) w[k] = true;
+    });
+    return Object.keys(w).length >= RING_MIN_PERSONS;
+  }
+
   // Leisten ausblenden? (§6.1) idle = 4 s ohne Bedienung, phase 'connected' (sonst Klingeln/Verbinden), video = Bild auf
   // der Buehne, screenReader, menuOpen (Menue/Blatt/Dialog), notice (wichtige Meldung), pointerOverBar (Maus auf Kopf/Leiste
   // bzw. Tastaturfokus darin)
@@ -297,7 +316,7 @@
   var api = { K: K, LAYOUTS: LAYOUTS, people: people, meetingTiles: meetingTiles, hiddenNoVideo: hiddenNoVideo, pickLayout: pickLayout,
               galleryOrder: galleryOrder, arrange: arrange, windowClass: windowClass, galleryGrid: galleryGrid, pages: pages, pageOf: pageOf,
               videoBudget: videoBudget, videoFor: videoFor, stripSide: stripSide, SpeakerPick: SpeakerPick, hideControls: hideControls,
-              selfPipSize: selfPipSize, layoutPref: layoutPref };
+              selfPipSize: selfPipSize, layoutPref: layoutPref, speakRingOn: speakRingOn };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SagaMeeting = api;
 })(typeof self !== 'undefined' ? self : this);

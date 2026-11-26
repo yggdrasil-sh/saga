@@ -1566,6 +1566,7 @@
   }
   function meetDraw(R) {
     var ui = R.ui, mt = mtOf(R), c = meetCalc(R), tiles = c.tiles, byId = {};
+    ringSet(R);                                        // 2125: Sprechring nur ab 3 Personen
     tiles.forEach(function (t) { byId[t.id] = t; });
     if (mt.pin && !byId[mt.pin]) { mt.pin = null; HK.toast(T('Angeheftete Ansicht beendet'), null, null, 3000); }
     // Teilen beginnt: Ansage; in der Galerie einmalig der Hinweis "… teilt den Bildschirm – Anzeigen" (§2.5)
@@ -1912,12 +1913,35 @@
     sv.style.width = s.w + 'px'; sv.style.height = s.h + 'px';
   }
 
+  // Bugs-DB 2125: Sprechring nur in Gruppen - Ring nur, wenn im Anruf mindestens 3 verschiedene Personen sind (eigene
+  // Begleitgeraete, role companion, zaehlen nicht als weitere Person; Regel in SagaMeeting.speakRingOn, gemeinsame Vektoren
+  // "speakRing" mit iOS/Android). Gilt gleich fuer Mesh, 1:1 ueber den Knoten (topo horn, kind group mit dm) und Gruppen.
+  // Die Fensterklasse cl-spkring schaltet nur den Ring (calls.css); die Klasse speaking (Lautsprechersymbol, Vorlesetext,
+  // Markierung in der Liste, Buehne) bleibt wie bisher. Beide Pegel-Schleifen (speakers, hornSpeakers) rufen das 3x je
+  // Sekunde: kommt eine dritte Person dazu bzw. geht sie, folgt der Ring nach hoechstens 330 ms.
+  function ringPeople(R) {
+    var ros = (R.legs || []).map(function (x) { return { device: x.device, who: x.who || '', role: x.role, me: mineLeg(x) }; });
+    links(R).forEach(function (L) {          // Mesh ohne Liste (aeltere 1:1): Gegenueber aus den Verbindungen
+      if (!L.peerDevice || legOf(R, L.peerDevice)) return;
+      var p = L.peer || {};
+      ros.push({ device: L.peerDevice, who: p.username || p.handle || '', role: 'member', me: !!p.me });
+    });
+    return ros;
+  }
+  function ringSet(R) {
+    if (!R || !R.ui || !R.ui.w) return false;
+    var on = MT && MT.speakRingOn ? MT.speakRingOn(ringPeople(R), meName() || '\u0000') : personCount(R) >= 3;
+    if (R.ui.w.classList.contains('cl-spkring') !== on) R.ui.w.classList.toggle('cl-spkring', on);
+    return on;
+  }
+
   // Sprecher: Pegel der empfangenen Tonspur (RTP-Quelle, ohne getStats) - 3x je Sekunde; Personen-Pegel = Maximum ueber
   // ihre Geraete, Sprechring und Buehne mit Hysterese (SagaMeeting.SpeakerPick)
   function speakers(R) {
     clearInterval(R.spkT);
     R.spkT = setInterval(function () {
       if (!live(R)) { clearInterval(R.spkT); return; }
+      ringSet(R);                                      // 2125: Ring nur ab 3 Personen
       if (!meshView(R)) return;
       var best = null, top = 0.03, now = Date.now(), lv = {};
       links(R).forEach(function (L) {
@@ -2637,7 +2661,7 @@
       status(c, msg || '', kind === 'error');
       // vorbei: keine Laufzeit/Verbindungsangaben und kein schwarzes Eigenbild mehr
       c.ui.info.textContent = ''; c.ui.un.hidden = true; if (c.ui.sink) c.ui.sink.remove();
-      c.ui.lv.srcObject = null; c.ui.sv.hidden = true; c.ui.sv.classList.remove('live'); c.ui.w.classList.remove('has-video', 'screen', 'peer-muted', 'peer-screen', 'has-small');
+      c.ui.lv.srcObject = null; c.ui.sv.hidden = true; c.ui.sv.classList.remove('live'); c.ui.w.classList.remove('has-video', 'screen', 'peer-muted', 'peer-screen', 'has-small', 'cl-spkring');
       c.ui.rv2.srcObject = null; c.ui.share.hidden = true; if (c.ui.hint) { c.ui.hint.remove(); c.ui.hint = null; }
       c.ui.w.classList.remove('mesh'); c.ui.grid.textContent = '';
       c.ui.ctl.textContent = '';
@@ -4775,6 +4799,7 @@
       links(R).forEach(function (L) { if (L.tile && L.tile.holder) { L.tile.box.remove(); L.tile = null; } });
     }
     var me_ = myDev().id, src = hornSources(R), devs = [], moving = {}, w_, pers = hornPersons(R);
+    ringSet(R);                                        // 2125: Sprechring nur ab 3 Personen
     pers.forEach(function (p) { devs.push(p.dev); });
     devs.forEach(function (d) { if (src.vid[d]) moving[d] = true; });
     H.spk = src.spk || H.spk;
@@ -4890,6 +4915,7 @@
     var H = R.horn; clearInterval(H.spkT);
     H.spkT = setInterval(function () {
       if (!live(R) || !R.horn) { clearInterval(H.spkT); return; }
+      ringSet(R);                                      // 2125: Ring nur ab 3 Personen (auch 1:1 ueber den Knoten: keiner)
       // lvSeen (Bug 2126): je Verbindung bzw. Leitung, nicht je Anruf - nach einem Knotenwechsel auf einen Knoten ohne Pegel
       // (Rahmen-Weg ohne ok.level) bzw. eine neue Leitung ohne ok.level zurueck auf den Ring am Sprecherplatz
       var now = Date.now(), lv = {}, seen = false;
@@ -5741,6 +5767,7 @@
     var R = C; if (!R) return null;
     return { id: R.id, kind: R.kind, dm: !!R.dm, chat_id: R.chat_id || null, title: R.title || '', companion: !!R.companion, ho: !!R.ho, inRoom: !!R.inRoom, mic: R.mic, micOn: micOn(R), micStuck: micStuck(R), spkOut: R.spkOut, mesh: meshView(R),
              cam: !!(R.cam && R.cam.readyState === 'live'),
+             ring: !!(R.ui && R.ui.w.classList.contains('cl-spkring')),   // 2125: Sprechring erlaubt (ab 3 Personen)
              // 2.5: Kacheln anderer (ohne die eigene) - in der Meeting-Ansicht die Kacheln je Person/Bildschirm
              tiles: R.ui ? (R.meshOn && R.mt ? Object.keys(R.mt.els).filter(function (k) { return !R.mt.els[k].t.me; }).length : R.ui.grid.children.length) : 0,
              meet: R.meshOn && R.mt ? Object.assign({ pin: R.mt.pin, stageWho: R.mt.pick && R.mt.pick.cur, idle: R.ui ? R.ui.w.classList.contains('idle') : false,
@@ -5770,6 +5797,7 @@
              hp: (R.legs || []).reduce(function (o, x) { var r = cur ? hornRef(x, cur) : x.hp; if (r) o[x.device] = r; return o; }, {}),
              conns: hornConns(R).map(function (c) { return { key: c.key, node: c.node, path: c.path, cur: c === cur, up: c.up, rx: c.rx, peers: Object.keys(c.peers).length, legs: legsOf(c) }; }),
              diag: diagSnap(R), switches: H.switches, switching: !!H.switching, meas: H.meas, ranked: H.ranked || null, note: H.note, view: H.view, net: cur && cur.net, q: cur && cur.q,
+             ring: !!(R.ui && R.ui.w.classList.contains('cl-spkring')),
              runes: H.runes, host: hornHost(R), screen: !!R.screen, spk: H.spk || null, speaking: Object.keys(H.speaking), levels: H.levels || {}, lvSeen: !!H.lvSeen, errs: H.errs || [], bad: H.bad, log: H.log || [],
              tiles: Object.keys(H.tiles).map(function (d) { var x = H.tiles[d]; return { dev: d, video: !!x.track, live: !!(x.track && x.track.readyState === 'live'), still: x.box.classList.contains('still'),
                                                                                          big: x.box.classList.contains('big'), speaking: x.box.classList.contains('speaking'), muted: x.box.classList.contains('muted') }; }),

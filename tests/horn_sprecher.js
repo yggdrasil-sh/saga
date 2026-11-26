@@ -25,13 +25,21 @@ function fn(name) {                                  // Quelltext von "function 
   throw new Error('kein Ende: ' + name);
 }
 let tick = null;
+const HAS_RING = SRC.indexOf('function ringSet(') >= 0;   // 2125: Sprechring nur ab 3 Personen (Gegenprobe: aelterer Stand ohne)
 const env = {
   live: () => true,
   hornConns: R => R._conns,
   setInterval: f => { tick = f; return 1; },
   clearInterval: () => {},
+  MT: require('../static/meeting.js'),
+  meName: () => 'me',
+  links: () => [],
+  legOf: (R, d) => (R.legs || []).filter(x => x.device === d)[0] || null,
+  mineLeg: x => !!x && (x.me === true || x.who === 'me'),
+  personCount: () => 0,
 };
-const names = ['rtpAge', 'hornAudioOwner', 'hornSpeakers'].concat(SRC.indexOf('function hornAudioNow(') >= 0 ? ['hornAudioNow'] : []);
+const names = ['rtpAge', 'hornAudioOwner', 'hornSpeakers'].concat(SRC.indexOf('function hornAudioNow(') >= 0 ? ['hornAudioNow'] : [])
+  .concat(HAS_RING ? ['ringPeople', 'ringSet'] : []);
 // eslint-disable-next-line no-new-func
 const mk = new Function(...Object.keys(env), names.map(fn).join('\n') + '\nreturn hornSpeakers;');
 const hornSpeakers = mk(...Object.values(env));
@@ -107,6 +115,27 @@ ok('RTP: einmal Pegel gesehen, dann kurz keine Quelle -> lvSeen bleibt (je Verbi
 R._conns = [frConn({ lvOn: false, lv: {} })];
 tick();
 ok('... Wechsel von RTP mit Pegel auf Knoten ohne Pegel: lvSeen zurueck', !R.horn.lvSeen && R.horn.speaking[B], { lvSeen: R.horn.lvSeen });
+
+// --- 2125: Sprechring nur ab 3 Personen (Fensterklasse cl-spkring), auch 1:1 ueber den Knoten (kind group mit dm) ------
+if (HAS_RING) {
+  const cls = new Set();
+  const w = { classList: { contains: c => cls.has(c), toggle: (c, on) => { if (on) cls.add(c); else cls.delete(c); } } };
+  const R2 = { _conns: [rtcConn(1, 0.5, [[1, 5]])], kind: 'group', dm: true, ui: { w },
+    legs: [{ device: A, who: 'x' }, { device: 'mine', who: 'me' }],
+    horn: { tiles: { [A]: tile(), [B]: tile() }, st: {}, speaking: {}, spk: null, plist: false } };
+  hornSpeakers(R2); tick();
+  const r1 = cls.has('cl-spkring'), s1 = !!R2.horn.speaking[A];
+  R2.legs.push({ device: 'mine2', who: 'me', role: 'companion' }); tick();
+  const r2 = cls.has('cl-spkring');
+  R2.legs.push({ device: B, who: 'y' }); tick();
+  const r3 = cls.has('cl-spkring');
+  R2.legs = R2.legs.filter(x => x.device !== B); tick();
+  const r4 = cls.has('cl-spkring');
+  ok('1:1 ueber den Knoten: kein Ring, Sprecher-Erkennung (speaking) bleibt', !r1 && s1, { r1, s1 });
+  ok('... + eigenes Begleitgeraet: kein Ring', !r2);
+  ok('... dritte Person kommt: Ring an', r3);
+  ok('... dritte Person geht: Ring wieder aus', !r4);
+}
 
 console.log(`\nHORN-SPRECHER ${pass}/${pass + fail}` + (fail ? ' - FEHLER' : ' - ALLES GRUEN'));
 process.exit(fail ? 1 : 0);

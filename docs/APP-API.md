@@ -2105,6 +2105,10 @@ Begleitgerät), im Mesh wie über den Knoten (im Mesh dafür auch die eigenen Ge
 Den Bildschirm des eigenen Geräts zeigt man nie. Gemeinsame Testvektoren:
 `tests/meeting_vectors.json` (Fälle „§4.2 …“). Bildschirm teilen gilt für alle Verbindungen (je Verbindung Betriebsart A/B nach deren `caps`;
 eine später hinzukommende Verbindung bekommt den laufenden Bildschirm).
+**Sprechring (2.6, Bugs-DB 2125):** den grünen Ring um Bild/Profilbild nur zeigen, wenn mindestens **drei verschiedene
+Personen** im Anruf sind (Person = `who`, ohne `who` das Gerät; eigene Geräte sind eine Person, Begleitgeräte mit
+`role: companion` zählen nie als weitere Person) – gleich für Mesh, 1:1 über den Knoten und Gruppen. Sprecher-Erkennung,
+Bühne, Symbol und Markierung in der Teilnehmerliste bleiben. Vektoren: `tests/meeting_vectors.json` → `speakRing`.
 
 ### Beispiele
 
