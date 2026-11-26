@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="/static/ai.css?v={{ v }}">
 <link rel="stylesheet" href="/static/saga.css?v={{ v }}">
 </head>
-<body class="has-side heute-page" data-v="{{ v }}"{% if search_enabled %} data-web="1"{% endif %}>
+<body class="has-side heute-page rail-on" data-v="{{ v }}"{% if search_enabled %} data-web="1"{% endif %}>
 {% macro tile(s, cat) -%}
 <div class="tw{% if s.own %} own{% endif %}" data-g="{{ s.key }}" data-q="{{ (s.name ~ ' ' ~ s.host ~ ' ' ~ cat)|lower }}"{% if s.own %} data-bm="{{ s.id }}"{% endif %}>
   <a class="tile" href="{{ s.url }}" target="_blank" rel="noopener">
@@ -49,6 +49,8 @@
   </a>{% endif %}
   <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-avatar="{{ me_avatar or '' }}" data-admin="{{ acct.admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
 </header>
+{# 2546: rail-on schon im HTML (Standard: Leiste an) - sonst setzt notes.js die Klasse nach dem ersten Bild und die
+   mittige Spalte springt; eingeklappte Leiste (hk-rail=0) nimmt notes.js wie bisher weg #}
 {% include "_side.html" %}
 <main id="heute" class="hz" tabindex="-1">
   <h1 class="sr-only">{{ _("Heute") }}</h1>

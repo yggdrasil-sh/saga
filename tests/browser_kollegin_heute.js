@@ -182,6 +182,7 @@ async function breite(br, cfg, pre) {
         await heute(a.p); await a.p.waitForTimeout(1200);
         const cls2 = await a.p.evaluate(() => [window.__cls, window.__ls]);
         console.log('     CLS ohne Zeile', cls0, '| erstes Laden (Antwort +350 ms)', JSON.stringify(cls1), '| Neuladen', JSON.stringify(cls2));
+        ok('2546: Mitte kostet keinen Layout-Shift beim Laden (CLS ohne Zeile <= 0,1 wie vor 2546)', cls0 <= 0.1, cls0);
         ok('Layout-Shift durch die Zeile < 0,05 (erstes Laden, spaete Antwort)', cls1[0] - cls0 < 0.05, { cls0, cls1 });
         ok('Layout-Shift durch die Zeile beim Neuladen (Hoehe vorgemerkt) < 0,01', cls2[0] - cls0 < 0.01, { cls0, cls2 });
         await a.ctx.close();
