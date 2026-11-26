@@ -35,7 +35,7 @@ async function login(br, u, pw, opts) {
   await ctx.addInitScript(() => {                 // Layout-Shift (Chromium) mitschreiben
     window.__cls = 0; window.__ls = [];
     try {
-      new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) { window.__cls += e.value; window.__ls.push([+e.value.toFixed(4), Math.round(e.startTime)]); } })
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) { window.__cls += e.value; window.__ls.push([+e.value.toFixed(4), Math.round(e.startTime), (e.sources || []).map((x) => x.node ? (x.node.id || x.node.className || x.node.nodeName) : '?').join(',').slice(0, 80)]); } })
         .observe({ type: 'layout-shift', buffered: true });
     } catch (e) { window.__cls = null; }
   });
@@ -68,7 +68,7 @@ function read(p) {
       waiting: w ? w.textContent : null, href: w ? w.getAttribute('href') : null,
       text: b.textContent, imgs: b.querySelectorAll('img, svg').length,
       live: !!(b.querySelector('[aria-live]') || b.closest('[aria-live]')), focusIn: b.contains(document.activeElement),
-      h: Math.round(b.getBoundingClientRect().height), rowH: Math.round(((row || q || a) || b).getBoundingClientRect().height)
+      h: Math.round(b.getBoundingClientRect().height), rowH: Math.round(document.getElementById('hz-kurz').getBoundingClientRect().height)
     };
   });
 }
@@ -139,7 +139,7 @@ async function vorher(br, cfg) {
       if (!FF) {
         await ctx.close();
         const base = await login(br, cfg.an, cfg.pw, { block: true }); await heute(base.p); await base.p.waitForTimeout(1200);
-        const cls0 = await base.p.evaluate(() => window.__cls); await base.ctx.close();
+        const cls0 = await base.p.evaluate(() => window.__cls); console.log('     Grundverschiebung ohne Zeile', JSON.stringify(await base.p.evaluate(() => window.__ls))); await base.ctx.close();
         const a = await login(br, cfg.an, cfg.pw); await mock(a.p, 200, caseOf('normal').response, 350);
         await heute(a.p); await a.p.waitForTimeout(1200);
         const cls1 = await a.p.evaluate(() => [window.__cls, window.__ls]);
@@ -147,7 +147,7 @@ async function vorher(br, cfg) {
         const cls2 = await a.p.evaluate(() => [window.__cls, window.__ls]);
         console.log('     CLS ohne Zeile', cls0, '| erstes Laden (Antwort +350 ms)', JSON.stringify(cls1), '| Neuladen', JSON.stringify(cls2));
         ok('Layout-Shift durch die Zeile < 0,05 (erstes Laden, spaete Antwort)', cls1[0] - cls0 < 0.05, { cls0, cls1 });
-        ok('Layout-Shift beim Neuladen (Hoehe vorgemerkt) < 0,05', cls2[0] - cls0 < 0.05 && cls2[0] < 0.05, { cls0, cls2 });
+        ok('Layout-Shift durch die Zeile beim Neuladen (Hoehe vorgemerkt) < 0,01', cls2[0] - cls0 < 0.01, { cls0, cls2 });
         await a.ctx.close();
       } else await ctx.close();
     }

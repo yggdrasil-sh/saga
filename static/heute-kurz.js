@@ -31,6 +31,7 @@
     if (m && m.w === window.innerWidth && m.d === localDay() && m.h > 0 && m.h < 400) { box.style.minHeight = m.h + 'px'; box.hidden = false; }
   } catch (e) { /* ohne Speicher */ }
   var first = req('GET', '/api/ai/today');
+  first.catch(function () { /* ausgewertet in start(); hier nur keine unbehandelte Ablehnung */ });
 
   function start() {
     var T = window.T || function (s) { return s; }, HK = window.HK;
@@ -133,7 +134,7 @@
     }
     function draw(d) {
       var was = box.hidden || box.style.minHeight !== '';
-      kurz.textContent = ''; wait.textContent = '';
+      kurz.textContent = ''; wait.textContent = ''; kurz.style.minHeight = '';
       var on = !!(d && d.enabled !== false);
       if (on && d.line && (d.line.parts || []).length) kurz.appendChild(lineEl(d));
       else if (on && d.ask) kurz.appendChild(askEl(d.ask));
@@ -169,7 +170,12 @@
       if (busy) return; busy = true;
       var hadFocus = box.contains(document.activeElement);
       [].forEach.call(kurz.querySelectorAll('button'), function (b) { b.disabled = true; });
-      req(method, path, body).then(function (d) { set(d); if (hadFocus) refocus(where); })
+      var h0 = kurz.hidden ? 0 : kurz.getBoundingClientRect().height;
+      req(method, path, body).then(function (d) {
+        set(d);
+        if (h0 && !kurz.hidden && !kurz.querySelector('.hz-kurz-row:not(.is-quiet):not(.is-ask)')) kurz.style.minHeight = Math.round(h0) + 'px';   // Pille/Frage: kein Sprung
+        if (hadFocus) refocus(where);
+      })
         .catch(function (e) {
           [].forEach.call(kurz.querySelectorAll('button'), function (b) { b.disabled = false; });
           if (HK && HK.toast) HK.toast(T('Das hat nicht geklappt – nichts wurde geändert.'));
