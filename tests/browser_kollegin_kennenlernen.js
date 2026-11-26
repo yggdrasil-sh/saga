@@ -89,6 +89,11 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
     await p.click('#hz-saga-intro .sg-info-b');
     const det = await p.evaluate(() => { const b = document.querySelector('#hz-saga-intro .sg-info-box'); return b && !b.hidden ? b.textContent : null; });
     ok('ⓘ öffnet die Details (nicht Ende-zu-Ende verschlüsselt, was rausgeht) - Fachwörter nur dort (M3)', /Ende-zu-Ende/.test(det || '') && !/Ende-zu-Ende/.test(pos.lines.join(' ')), det);
+    ok('ⓘ: Widerruf ehrlich - stoppt Aufträge/Ideen/Gespräch, Fragen an anderen Stellen gehen weiter an die KI', /keine Aufträge mehr/.test(det || '') && /Frag deine Seiten/.test(det || '') && /nur, wenn du sie stellst/.test(det || ''), det);
+    await shot(p, 'nachher2-kennenlernen-details-desktop-dunkel');
+    { const L = await login(br, cfg.a, cfg.pw, { theme: 'light' }); await L.p.goto(BASE + '/dashboard');
+      await until(() => L.p.evaluate(() => { const s = document.getElementById('hz-saga-intro'); return s && !s.hidden; }), 6000);
+      await L.p.click('#hz-saga-intro .sg-info-b'); await shot(L.p, 'nachher2-kennenlernen-details-desktop-hell'); await L.ctx.close(); }
     await p.click('#hz-saga-intro .sg-info-b');
     for (const th of ['dark', 'light']) for (const [vn, vp] of VIEWS) {
       const L = await login(br, cfg.a, cfg.pw, { viewport: vp, theme: th });
@@ -164,6 +169,17 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
       await shot(L.p, `nachher-saga-gespraech-${vn}-${th === 'dark' ? 'dunkel' : 'hell'}`); await L.ctx.close();
     }
 
+    for (const th of ['dark', 'light']) {             // "Frag deine Seiten": derselbe Host-Hinweis mit ⓘ (nicht je Antwort)
+      const L = await login(br, cfg.a, cfg.pw, { theme: th });
+      await L.p.goto(BASE + '/dashboard');
+      await until(() => L.p.evaluate(() => !!(window.HKAI && HKAI.open)), 6000);
+      await L.p.waitForTimeout(800);
+      await L.p.evaluate(() => HKAI.open('ask'));
+      const foot = await until(() => L.p.evaluate(() => { const n = document.querySelector('.ai-notice'); return n && n.textContent ? { t: n.textContent, i: !!n.querySelector('.ai-info-b') } : null; }), 6000);
+      if (th === 'dark') ok('Frag deine Seiten: „Was du hier fragst, liest die KI auf … (im Heimnetz)“ mit ⓘ', foot && /^Was du hier fragst, liest die KI auf 127\.0\.0\.1:\d+ \(im Heimnetz\)/.test(foot.t) && foot.i, foot);
+      const ib = await L.p.$('.ai-info-b'); if (ib) await ib.click();
+      await shot(L.p, `nachher2-frag-deine-seiten-hinweis-desktop-${th === 'dark' ? 'dunkel' : 'hell'}`); await L.ctx.close();
+    }
     {                                                  // schmal: Tab "Saga" statt Seitenleiste (M1)
       const L = await login(br, cfg.a, cfg.pw, { viewport: { width: 390, height: 844 }, theme: 'dark' });
       await L.p.goto(BASE + '/dashboard'); await L.p.waitForTimeout(800);
@@ -201,12 +217,29 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
     ok('Export JSON (Einwilligungen, Gespräch, Aufträge) und Markdown', ex.s === 200 && ex.d.consent.length >= 2 && ex.d.conversation.length === 2
       && ex.d.jobs.some(j => j.id === cfg.job) && exm.s === 200 && /^text\/markdown/.test(exm.h || '') && /## Gespräch/.test(exm.d), { s: ex.s, ms: exm.s });
     // Widerruf -> laufender Auftrag haelt an
+    { const L = await login(br, cfg.a, cfg.pw, { theme: 'light' }); await L.p.goto(BASE + '/saga'); await L.p.waitForTimeout(800);
+      await L.p.evaluate(() => window.HKSettings.open('saga'));
+      await until(() => L.p.evaluate(() => !!document.getElementById('sg-mydata')), 6000);
+      await L.p.click('#sg-mydata .btn:not(.btn-destr):not(.sg-export)'); await until(() => L.p.$('.hk-ask'), 3000);
+      await shot(L.p, 'nachher2-widerruf-dialog-desktop-hell'); await L.p.keyboard.press('Escape'); await L.ctx.close(); }
     await p.click('#sg-mydata .btn:not(.btn-destr):not(.sg-export)');
     await until(() => p.$('.hk-ask'), 3000);
+    const wdT = await p.evaluate(() => document.querySelector('.hk-ask .hk-ask-d').textContent);
+    ok('Widerruf-Dialog ehrlich: keine Aufträge/Ideen/Gespräch, „Frag deine Seiten“ geht weiter an den Host, nur wenn du fragst',
+      /keine Aufträge mehr/.test(wdT) && /Gespräch im Ort „Saga“ ist aus/.test(wdT) && /Frag deine Seiten/.test(wdT) && /127\.0\.0\.1:\d+ \(im Heimnetz\)/.test(wdT), wdT);
+    await shot(p, 'nachher2-widerruf-dialog-desktop-dunkel');
     await p.click('.hk-ask .hk-ask-bar .btn-destr');
     await until(() => p.evaluate(() => { const b = document.getElementById('sg-mydata'); return b && ![].some.call(b.querySelectorAll('.btn'), x => x.textContent === 'Einwilligung widerrufen'); }), 6000);
     st = await api(p, 'GET', '/api/ai/status');
     const js = py('--job-state', String(cfg.job));
+    await p.waitForTimeout(400); await shot(p, 'nachher2-widerrufen-zustand-desktop-dunkel');
+    { const L = await login(br, cfg.a, cfg.pw, { theme: 'light' }); await L.p.goto(BASE + '/saga'); await L.p.waitForTimeout(800);
+      await L.p.evaluate(() => window.HKSettings.open('saga'));
+      await until(() => L.p.evaluate(() => !!document.querySelector('.sg-set-state')), 6000); await L.p.waitForTimeout(300);
+      const stT = await L.p.evaluate(() => document.querySelector('.sg-set-state').textContent);
+      ok('Einstellungen nach Widerruf: Zustand ehrlich beschrieben', /keine Aufträge/.test(stT) && /Frag deine Seiten/.test(stT), stT);
+      await shot(L.p, 'nachher2-widerrufen-zustand-desktop-hell');
+      await L.ctx.close(); }
     ok('RT-36: Widerruf -> withdrawn, laufender Auftrag wartet_dich „einwilligung“', st.d.consent.state === 'withdrawn' && js.state === 'wartet_dich' && js.reason === 'einwilligung', { c: st.d.consent, js });
     // Alles loeschen mit Bestaetigung
     await p.click('#sg-mydata .btn-destr'); await until(() => p.$('.hk-ask'), 3000);
