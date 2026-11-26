@@ -19,7 +19,8 @@
   function head(stateText) {                     // B1 KI-Kopf: Bild · "Marin · KI" · Zustandswort
     var h = el('div', 'kj-head'), p = persona();
     if (window.HKAIAvatar) h.appendChild(HKAIAvatar(p, 24)); else { var s = el('span', 'kj-spark', '✦'); s.setAttribute('aria-hidden', 'true'); h.appendChild(s); }
-    h.appendChild(el('span', 'kj-who', T('{name} · KI', { name: p.name })));
+    var nm = String(p.name || '');                // Standardname "Saga KI" traegt die KI-Marke schon (kein "Saga KI · KI")
+    h.appendChild(el('span', 'kj-who', /(^|\s)(KI|AI|IA|ИИ)$/.test(nm) ? nm : T('{name} · KI', { name: nm })));
     if (stateText) { var w = el('span', 'kj-state', stateText); h.appendChild(w); }
     return h;
   }
@@ -321,7 +322,8 @@
             var sym = el('span', 'kj-isym', g.key === 'nicht_geklappt' ? '!' : g.key === 'laeuft' ? '◷' : g.key === 'fertig' ? '✓' : '●');
             sym.setAttribute('aria-hidden', 'true'); b.appendChild(sym);
             var tx = el('span', 'kj-itx'); tx.appendChild(el('span', 'kj-ititle', it.title || T('Auftrag')));
-            tx.appendChild(el('span', 'kj-iline', it.line && it.line !== it.state_text ? it.state_text + ' · ' + it.line : it.state_text));
+            var ln = !it.line || it.line === it.state_text ? it.state_text : it.line.indexOf(it.state_text) === 0 ? it.line : it.state_text + ' · ' + it.line;
+            tx.appendChild(el('span', 'kj-iline', ln));
             b.appendChild(tx); var ch = el('span', 'kj-chev', '›'); ch.setAttribute('aria-hidden', 'true'); b.appendChild(ch);
             b.addEventListener('click', function () { open(it.id); });
             li.appendChild(b); ul.appendChild(li);

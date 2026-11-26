@@ -37,6 +37,7 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   }
   async function shot(name, sel) {
     if (!SHOTS) return;
+    await sleep(600);
     const box = await p.$(sel || '#ai-panel');
     if (box) await box.screenshot({ path: SHOTS + '/' + name + '.png' });
   }
@@ -58,7 +59,7 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
              gap: (() => { const a = k.querySelector('.kj-go').getBoundingClientRect(), b = k.querySelector('.kj-no').getBoundingClientRect(); return b.left - a.right; })() };
   });
   ok('genau drei Knöpfe: Passt, los · Ändern · Lieber nicht', JSON.stringify(c.btns) === JSON.stringify(['Passt, los', 'Ändern', 'Lieber nicht']), c.btns);
-  ok('KI-Kopf „… · KI“ + Zustandswort „Wartet auf dein OK“', / · KI$/.test(c.head) && c.state === 'Wartet auf dein OK', c);
+  ok('KI-Kopf mit KI-Marke („… · KI“ bzw. Standardname „Saga KI“) + Zustandswort „Wartet auf dein OK“', /(· KI| KI)$/.test(c.head) && !/KI · KI/.test(c.head) && c.state === 'Wartet auf dein OK', c);
   ok('Schritt mit Art-Symbol ✎ und Klasse als Wort', c.steps.length === 1 && c.steps[0].sym === '✎' && c.steps[0].cls === 'nur löschbar' && /Grillkohle/.test(c.steps[0].t), c.steps);
   ok('Screenreader: „Schritt 1 von 1, Eigenes ändern, nur löschbar: …“', /^Schritt 1 von 1, Eigenes ändern, nur löschbar: Aufgabe anlegen/.test(c.steps[0].aria), c.steps[0].aria);
   ok('„Ich lese dafür: …“ vom Server', /^Ich lese dafür: .*Sommerfest/.test(c.read), c.read);
