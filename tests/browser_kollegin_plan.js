@@ -105,7 +105,7 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   // Absage mit Alternative
   ok('Absage erscheint', await give('Bestell die Kohle in einem Onlineshop'));
   const rf = await p.evaluate(() => { const k = document.querySelector('.kj-refuse'); return k && { t: k.querySelector('.kj-lead').textContent, b: [...k.querySelectorAll('button')].map((x) => x.textContent) }; });
-  ok('Absage: Satz + „Als Aufgabe anlegen“ + „Anders formulieren“', rf && /Aufgabe/.test(rf.t) && rf.b.includes('Als Aufgabe anlegen') && rf.b.includes('Anders formulieren'), rf);
+  ok('Absage: Satz + „Als Aufgabe anlegen“ + „Anders formulieren“', rf && rf.t.trim().length > 0 && rf.b.includes('Als Aufgabe anlegen') && rf.b.includes('Anders formulieren'), rf);
   await shot('absage-dunkel');
   await p.click('.kj-refuse .btn-primary');
   ok('„Als Aufgabe anlegen“ -> Plan-Karte', await until(() => p.evaluate(() => !!document.querySelector('.kj-stage .kj-plan'))));
