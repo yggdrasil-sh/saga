@@ -672,7 +672,7 @@ def server():
         calls.clear()
         widget_push.mark = lambda c, uid, ids=(), today=False, every=False: calls.append((uid, today))
         try:
-            jobs.create(A, "ai.task", title="Im Prozess angelegt")
+            jobs.create(A, "ai.task", title="Im Prozess angelegt", steps=[{"tool": "create_task", "args": {"text": "x"}}])
         finally:
             widget_push.mark = orig
         ok(f"Stiller Widget-Push bei neuem Auftrag (job.created, {len(calls)})", calls == [(A, True)], calls)
