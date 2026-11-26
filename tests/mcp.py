@@ -660,6 +660,20 @@ try:
     ok("create_row: Vorlage einer anderen Datenbank -> Fehler", tool(T, "create_row", database_id=NDB, title="x", template=str(TPL))[0] is True)
     err, txt, _ = tool(T, "create_row", database_id=D, title="Mit Symbol", icon="🐞")
     ok("create_row mit icon ohne Vorlage", not err and call("GET", f"/api/notes/{int(txt.split('ID ')[1].split(')')[0])}", A)[1].get("icon") == "🐞", txt)
+    RS = int(txt.split("ID ")[1].split(")")[0]) if "ID " in txt else 0
+    # 2.6 (Bugs-DB 2448): Symbol eines bestehenden Eintrags aendern (Siegel, Emoji, leer = entfernen), Eigenschaften bleiben
+    err, txt, _ = tool(T, "update_row", id=RS, icon="/siegel/weinrot/feuer.svg")
+    r1 = call("GET", f"/api/notes/{RS}", A)[1]
+    err2, txt2, _ = tool(T, "update_row", id=RS, icon="🪲", properties={"Status": DONE})
+    r2 = call("GET", f"/api/notes/{RS}", A)[1]
+    err3, txt3, _ = tool(T, "update_row", id=RS, icon="")
+    r3 = call("GET", f"/api/notes/{RS}", A)[1]
+    ok("update_row mit icon: Siegel, Emoji (+ Status), leer entfernt",
+       not err and r1.get("icon") == "/siegel/weinrot/feuer.svg" and not err2 and r2.get("icon") == "🪲"
+       and r2["props"].get("status") == "done" and not err3 and not r3.get("icon") and r3.get("title") == "Mit Symbol",
+       (txt, txt2, txt3, r1.get("icon"), r2.get("icon"), r3.get("icon")))
+    err, txt, _ = tool(T, "update_row", id=RS, icon="/siegel/lila/feuer.svg")
+    ok("update_row mit unbekanntem Siegel -> Fehler, Symbol bleibt", err is True and not call("GET", f"/api/notes/{RS}", A)[1].get("icon"), txt)
 
     try:
         import httpx

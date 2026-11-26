@@ -17,6 +17,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu
+- **MCP: `update_row` ändert auch das Symbol** (Bugs-DB 2448): neues Feld `icon` (Emoji oder Saga-Siegel, leerer
+  Text entfernt es) – wie bei `create_row`. Gesperrte Einträge antworten wie im Web mit 423.
 - **Push-Relais und Apple-Mitteilungen Ende-zu-Ende** (Bugs-DB 2262, Feature `pushrelay1`, **Migration 39**:
   `push_sub.topic`, Bestand leer): Fremde Saga-Server können Mitteilungen an die Saga-App aus dem App Store schicken,
   ohne eigenen APNs-Schlüssel – über das Push-Relais. Die Nutzlast ist Ende-zu-Ende zwischen Server und App verschlüsselt

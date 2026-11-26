@@ -247,7 +247,7 @@ Nötig ist ein Token mit dem Bereich **`mcp`** und den Datenbereichen, die die K
 `update_page_title`, `replace_page_content`, `update_block`, `set_checkbox`, `trash_page`, `archive_page`, `create_database`,
 `update_database_schema`, `embed_database`, `add_widget`, `update_widget`, `get_widgets`, `list_calendars`, `list_events`,
 `create_event`, `update_event`, `delete_event`, `list_databases`,
-`get_database_schema`, `query_database`, `create_row`, `update_row`, `list_tasks`, `create_task`, `complete_task`,
+`get_database_schema`, `query_database`, `create_row`, `update_row` (2.6: auch `icon`), `list_tasks`, `create_task`, `complete_task`,
 `add_comment`. Eigenschaften gehen per Name. Ausgaben sind begrenzt (50 Einträge je
 Abfrage, Seiten bis 100.000 Zeichen – darüber gekürzt mit Hinweis). `get_page` nennt die Bilder der Seite im Feld
 `images` (`{"file": "<Datei-ID>", "alt": "…"}`); `get_image` (Bereich `read:pages`, Eingabe `file` = Datei-ID oder

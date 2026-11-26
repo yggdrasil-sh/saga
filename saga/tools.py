@@ -209,8 +209,10 @@ _RAW = [
      {"database_id": _s("integer", "ID der Datenbank"), "title": _s("string", "Titel des Eintrags"),
       "properties": _s("object", "Werte nach Eigenschaftsname"), "markdown": _s("string", "Inhalt als Markdown"),
       "template": _s("string", "Name oder ID einer Eintrags-Vorlage"), "icon": _s("string", _ICON_DESC)}, ["database_id", "title"], True),
-    ("update_row", "write:db", "Eigenschaften eines Datenbank-Eintrags ändern (nur die angegebenen).",
-     {"id": _s("integer", "ID des Eintrags"), "properties": _s("object", "Werte nach Eigenschaftsname"), "title": _s("string", "Neuer Titel")},
+    ("update_row", "write:db", "Eigenschaften eines Datenbank-Eintrags ändern (nur die angegebenen). icon = neues Symbol "
+     "(Emoji oder Saga-Siegel, leerer Text entfernt es).",
+     {"id": _s("integer", "ID des Eintrags"), "properties": _s("object", "Werte nach Eigenschaftsname"), "title": _s("string", "Neuer Titel"),
+      "icon": _s("string", _ICON_DESC)},
      ["id"], True),
     ("list_calendars", "read:calendar", "Kalender der eigenen CalDAV-Zugänge (wie im Web unter Einstellungen → Kalender): "
      "Kennung (calendar), Name, Farbe, beschreibbar, angezeigt.", {}, [], False),
@@ -610,7 +612,7 @@ def _dispatch(tok, name, a):
         api_calendar.event_delete(tok, a)
         return t("Termin gelöscht.") if a.get("scope") != "series" else t("Serie gelöscht.")
     if name == "update_row":
-        b = {k: a[k] for k in ("title", "properties") if a.get(k) is not None}
+        b = {k: a[k] for k in ("title", "properties", "icon") if a.get(k) is not None}   # 2.6 (Bugs-DB 2448): auch icon
         if isinstance(tok, apitok.JobTok):
             # Kollegin: nur auf den gelesenen Stand (dazwischen geaendert -> 409). _note_update prueft rev nur bei
             # Titel/Inhalt - Eigenschaften allein erhoehen rev nicht; daher hier vorab (Rest: Vorher-Stand mit K-B)
