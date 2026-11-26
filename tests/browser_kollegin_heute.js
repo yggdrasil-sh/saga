@@ -126,6 +126,7 @@ async function vorher(br, cfg) {
       }
       // Live: ai.today.changed entprellt (400 ms) - drei Ereignisse -> eine Anfrage; gleiches v -> keine
       await mock(p, 200, caseOf('normal').response); await heute(p);
+      const hLine = (await read(p)).rowH;
       let gets = 0; p.on('request', (q) => { if (/\/api\/ai\/today(\?|$)/.test(q.url()) && q.method() === 'GET') gets++; });
       const fire = (v) => p.evaluate((v) => { for (let i = 0; i < 3; i++) document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: 'ai.today.changed', data: { v } } })); }, v);
       await fire(caseOf('normal').response.v); await p.waitForTimeout(700);
@@ -135,6 +136,10 @@ async function vorher(br, cfg) {
       const early = gets; await p.waitForTimeout(600);
       r = await read(p);
       ok('Live: drei Ereignisse -> genau eine Anfrage nach 400 ms, Anzeige neu (Pille)', early === 0 && gets === 1 && !!r.pill, { early, gets, pill: r.pill });
+      ok('Pille so hoch wie eine einzeilige Zeile (±2 px)', Math.abs(r.rowH - hLine) <= 2, { hLine, h: r.rowH });
+      await mock(p, 200, caseOf('frage').response); await heute(p);
+      const rq = await read(p);
+      ok('Frage so hoch wie eine einzeilige Zeile (±2 px)', !!rq.ask && Math.abs(rq.rowH - hLine) <= 2, { hLine, h: rq.rowH });
       // Layout-Shift (Chromium): frischer Kontext, Antwort kommt spaet (nach dem ersten Bild), danach Neuladen mit gemerkter Hoehe
       if (!FF) {
         await ctx.close();
@@ -172,6 +177,9 @@ async function vorher(br, cfg) {
     await shot(p, 'nachher-heute-desktop-hell');
     // Trefferflaechen Desktop >= 32 px
     const hit = await p.evaluate(() => [...document.querySelectorAll('#hz-kurz-box button, #hz-kurz-box a')].map((b) => Math.round(Math.min(b.getBoundingClientRect().height, b.getBoundingClientRect().width))));
+    const glue = await p.evaluate(() => { const ps = [...document.querySelectorAll('#hz-kurz .hz-kurz-p')], x = document.querySelector('#hz-kurz .hz-kurz-x');
+      const a = ps[ps.length - 1].getBoundingClientRect(), b = x.getBoundingClientRect(); return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < 8; });
+    ok('✕/⋯ stehen in der Zeile des letzten Teils', glue);
     ok('Knoepfe >= 32 px (Desktop)', hit.length && hit.every((h) => h >= 32), hit);
     // Kontrast hell
     const con = async () => p.evaluate((C) => { const f = eval(C), bg = getComputedStyle(document.body).backgroundColor;
@@ -190,11 +198,9 @@ async function vorher(br, cfg) {
     ok('Tipp auf "ueberfaellig" hebt die Aufgabe hervor und hakt nichts ab', fl === 't:' + cfg.ids.over && still, { fl, still, n: openIds.length });
 
     // ✕ -> Pille gleicher Hoehe; Neuladen; zweiter Kontext
-    const h0 = (await read(p)).rowH;
     await p.click('#hz-kurz .hz-kurz-x'); await until(async () => !!(await read(p)).pill, 4000);
     r = await read(p);
     ok('✕ -> Pille "Ruhe bis morgen · Wieder an", Zeile weg, "Wartet" bleibt', !!r.pill && !r.kurz && r.pill.text === 'Ruhe bis morgen' && r.pill.undo === 'Wieder an' && !!r.waiting, r);
-    ok('Pille so hoch wie die Zeile (±2 px)', Math.abs(r.rowH - h0) <= 2, { h0, h: r.rowH });
     ok('Fokus nach ✕ auf "Wieder an"', await p.evaluate(() => document.activeElement && document.activeElement.classList.contains('hz-kurz-undo')));
     await shot(p, 'nachher-pille-desktop-hell');
     await heute(p); r = await read(p);
@@ -255,8 +261,10 @@ async function vorher(br, cfg) {
     else offen('Live aus zweitem Tab (ai.today.changed kommt erst mit kd-srv S3)', before && before.parts);
     await p2.close();
 
-    // dunkel
-    await p.evaluate(() => { try { localStorage.setItem('hk-theme', 'dark'); } catch (e) { /* egal */ } }); await heute(p);
+    await A.ctx.close(); await B.ctx.close();
+    // dunkel (eigener Kontext: das Init-Skript setzt das Theme bei jedem Laden)
+    const D = await login(br, cfg.an, cfg.pw, { theme: 'dark' }); p = D.p; await heute(p);
+    ok('dunkel wirksam', await p.evaluate(() => document.documentElement.dataset.theme === 'dark'));
     k = await con();
     ok('Kontrast dunkel >= 4,5 (Teil, Label, Wartet; ✕ >= 3)', k.p >= 4.5 && k.l >= 4.5 && k.w >= 4.5 && k.x >= 3, k);
     await shot(p, 'nachher-heute-desktop-dunkel');
@@ -266,7 +274,7 @@ async function vorher(br, cfg) {
     ok('Pille dunkel: Kontrast >= 4,5', k.t >= 4.5 && k.u >= 4.5, k);
     await shot(p, 'nachher-pille-desktop-dunkel');
     await p.click('#hz-kurz .hz-kurz-undo'); await until(async () => !!(await read(p)).kurz, 4000);
-    await A.ctx.close(); await B.ctx.close();
+    await D.ctx.close();
 
     // ================= 3. mobil 390 px, 200 % Zoom =================
     for (const [nm, vp, dsf] of [['390 px', { width: 390, height: 844 }, 2], ['200 % Zoom (1440 -> 720 CSS-px)', { width: 720, height: 450 }, 2]]) {

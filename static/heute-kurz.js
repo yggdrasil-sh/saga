@@ -100,13 +100,13 @@
         parts.appendChild(it);
       });
       row.appendChild(parts);
-      var ctl = el('span', 'hz-kurz-ctl');
+      var ctl = el('span', 'hz-kurz-ctl');                    // ✕ und ⋯ haengen am letzten Teil: brechen nur mit ihm um
       var x = btn('hz-kurz-x', '✕'); x.setAttribute('aria-label', T('Gerade nicht')); x.title = T('Gerade nicht');
       x.addEventListener('click', function () { act('POST', '/api/ai/today/quiet', undefined, 'undo'); });
       var mo = btn('hz-kurz-m', '⋯'); mo.setAttribute('aria-label', T('Mehr zur Tageszeile')); mo.title = T('Mehr zur Tageszeile');
       mo.setAttribute('aria-haspopup', 'menu'); mo.setAttribute('aria-expanded', 'false');
       mo.addEventListener('click', function () { menu(mo); });
-      ctl.appendChild(x); ctl.appendChild(mo); row.appendChild(ctl);
+      ctl.appendChild(x); ctl.appendChild(mo); (parts.lastChild || parts).appendChild(ctl);
       return row;
     }
     function pillEl(q) {
@@ -137,7 +137,7 @@
     }
     function draw(d) {
       var was = box.hidden || box.style.minHeight !== '';
-      kurz.textContent = ''; wait.textContent = ''; kurz.style.minHeight = '';
+      kurz.textContent = ''; wait.textContent = '';
       var on = !!(d && d.enabled !== false);
       if (on && d.line && (d.line.parts || []).length) kurz.appendChild(lineEl(d));
       else if (on && d.ask) kurz.appendChild(askEl(d.ask));
@@ -173,12 +173,7 @@
       if (busy) return; busy = true;
       var hadFocus = box.contains(document.activeElement);
       [].forEach.call(kurz.querySelectorAll('button'), function (b) { b.disabled = true; });
-      var h0 = kurz.hidden ? 0 : kurz.getBoundingClientRect().height;
-      req(method, path, body).then(function (d) {
-        set(d);
-        if (h0 && !kurz.hidden && !kurz.querySelector('.hz-kurz-row:not(.is-quiet):not(.is-ask)')) kurz.style.minHeight = Math.round(h0) + 'px';   // Pille/Frage: kein Sprung
-        if (hadFocus) refocus(where);
-      })
+      req(method, path, body).then(function (d) { set(d); if (hadFocus) refocus(where); })
         .catch(function (e) {
           [].forEach.call(kurz.querySelectorAll('button'), function (b) { b.disabled = false; });
           if (HK && HK.toast) HK.toast(T('Das hat nicht geklappt – nichts wurde geändert.'));
