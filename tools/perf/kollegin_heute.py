@@ -120,6 +120,7 @@ def main():
     ap.add_argument("--n", type=int, default=40)
     ap.add_argument("--stage", default="S")
     ap.add_argument("--ohne-http", action="store_true")
+    ap.add_argument("--profil", action="store_true", help="cProfile von 10 Berechnungen ausgeben (nur Analyse)")
     a = ap.parse_args()
     import db
     db.wait_ready()
@@ -141,6 +142,18 @@ def main():
         auth.save_setting("ai", dict(prev, enabled=True, provider="openai", url="http://127.0.0.1:9/v1", model="perf", groups=[], caps={}))
         auth.settings(fresh=True)
         seed(a.stage)
+        if a.profil:
+            import cProfile
+            import pstats
+            from saga import ai_today
+            ai_today.compute(UID, "Europe/Berlin", "de")
+            pr = cProfile.Profile()
+            pr.enable()
+            for _ in range(10):
+                ai_today.compute(UID, "Europe/Berlin", "de")
+            pr.disable()
+            pstats.Stats(pr).sort_stats("cumulative").print_stats(25)
+            return 0
         r, idle = measure_compute(a.n)
         out = [r]
         if not a.ohne_http:
