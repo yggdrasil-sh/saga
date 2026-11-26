@@ -19,6 +19,7 @@
 {% if chat_enabled %}<link rel="stylesheet" href="/static/calls.css?v={{ v }}">{% endif %}
 <link rel="stylesheet" href="/static/ai.css?v={{ v }}">
 <link rel="stylesheet" href="/static/ai-jobs.css?v={{ v }}">
+<link rel="stylesheet" href="/static/saga.css?v={{ v }}">
 </head>
 <body class="has-side heute-page" data-v="{{ v }}"{% if search_enabled %} data-web="1"{% endif %}>
 {% macro tile(s, cat) -%}
@@ -64,6 +65,8 @@
     </div>
   </section>
 
+  {# 2.6 (K-I 2269, K19): Kennenlernen-Karte einmal ueber "Weitermachen" - fuellt static/saga.js #}
+  {% if saga_on %}<div class="sg-intro-slot" id="hz-saga-intro" hidden></div>{% endif %}
   <section class="hz-sec hz-recent" id="hz-recent" aria-labelledby="hz-recent-h">
     <h2 id="hz-recent-h">{{ _("Weitermachen") }}</h2>
     <div class="hz-cards" id="hz-cards"></div>
@@ -174,6 +177,7 @@
 <script src="/static/app.js?v={{ v }}"></script>
 <script src="/static/firststeps.js?v={{ v }}"></script>
 <script src="/static/settings.js?v={{ v }}"></script>
+<script src="/static/saga.js?v={{ v }}"></script>
 <script src="/static/contacts.js?v={{ v }}"></script>
 <script src="/static/shortcuts.js?v={{ v }}"></script>
 <script src="/static/passkey.js?v={{ v }}"></script>

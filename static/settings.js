@@ -135,6 +135,7 @@
     tokenSection(body);
     pagesSection(body);                                      // 2.5 (Tiptap T2): Seiten-Editor
     sagaSection(body);                                       // 2.6 K-H (2268): Anrede und Lebhaftigkeit der KI (/api/ai/prefs)
+    if (window.HKSaga && HKSaga.settingsSection) HKSaga.settingsSection(body);   // 2.6 (K-I 2269): Einwilligung, Ideen, Quellen, Meine Daten - in denselben Abschnitt (static/saga.js)
     if (window.HKPush) HKPush.section(body);                 // Mitteilungen aufs Handy/Desktop (static/push.js)
     if (window.HKBackup) HKBackup.section(body);             // Mein Backup (static/backup.js, 2.3)
     if (window.HKNextcloud) HKNextcloud.section(body);       // Nextcloud-Dateien in Seiten (static/nextcloud.js, 2.3)

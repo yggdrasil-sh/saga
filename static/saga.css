@@ -1,0 +1,87 @@
+/* Ort "Saga" (2.6, Bugs-DB 2269 K-I): Kennenlernen-Karte, Gespraech, Leiste B6, Einstellungen > Saga.
+   Farben nach UX §6: Kartenflaeche --ai-tint (hell #f7f0df, dunkel #1e2530), Kante --ai-edge (hell #a07c2c, dunkel
+   #8f7440). Kommen die Tokens spaeter in tokens.css (gemeinsam mit der Plan-Karte), gelten sie hier automatisch. */
+:root{--sg-tint:#1e2530;--sg-edge:#8f7440}
+@media (prefers-color-scheme: light){:root:where(:not([data-theme=dark])){--sg-tint:#f7f0df;--sg-edge:#a07c2c}}
+:root:where([data-theme=light]){--sg-tint:#f7f0df;--sg-edge:#a07c2c}
+
+.sg-card{background:var(--ai-tint,var(--sg-tint));border:1px solid var(--ai-edge,var(--sg-edge));border-radius:var(--r-md);
+  padding:1rem 1.1rem;color:var(--fg);font-size:1rem;line-height:1.5}
+.sg-card p{margin:.35rem 0}
+.sg-who{display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:1rem;margin-bottom:.35rem}
+.sg-who-n{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.sg-who-x{margin-left:auto;color:var(--muted);font-weight:400;font-size:.875rem}
+.sg-intro{max-width:44rem}
+.sg-intro .sg-who{font-size:1.1rem}
+.sg-intro-note{color:var(--muted)}
+.sg-intro-q{font-weight:600;margin-top:.8rem}
+.sg-intro-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem;margin-top:.8rem}
+.sg-intro-bar .btn{min-height:2.25rem}
+.sg-intro-bar .sg-later{margin-left:1rem}
+.sg-more-set{display:inline-block;margin-top:.6rem;font-size:.875rem}
+.sg-intro-done{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}
+.sg-intro-done p{flex:1 1 16rem}
+.sg-intro-slot{margin:0 0 1.2rem}
+body.heute-page .sg-intro-slot{margin:1.4rem 0 0}
+.sg-err{color:var(--down)}
+.sg-info{display:inline}
+.sg-info-b{display:inline-grid;place-items:center;min-width:2rem;min-height:2rem;padding:0 .2rem;border:0;border-radius:50%;
+  background:transparent;color:var(--accent);font:inherit;font-size:1rem;cursor:pointer;vertical-align:baseline}
+.sg-info-b:hover,.sg-info-b:focus-visible{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.sg-info-box{margin:.3rem 0 .5rem;padding:.55rem .75rem;border-left:3px solid var(--ai-edge,var(--sg-edge));background:var(--card);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:.875rem;color:var(--fg)}
+.sg-info-box p{margin:.2rem 0}
+
+/* Ort "Saga" (/saga): schmal = Vollbild */
+body.saga-page>main.sg{display:flex;flex-direction:column;gap:.9rem;max-width:52rem;padding:1.4rem 2.2rem 2rem;min-height:calc(100vh - 3.4rem);
+  box-sizing:border-box}
+body.saga-page>main.sg:focus{outline:none}
+.sg-bar{position:sticky;top:0;z-index:5;background:var(--bg);padding:.35rem 0;border-bottom:1px solid var(--border)}
+.sg-bar-t{margin:0;display:flex;align-items:center;gap:.3rem;font-size:.875rem;color:var(--muted)}
+.sg-bar-tx{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.sg-bar .sg-info-box{white-space:normal}
+.sg-head{display:flex;align-items:center;gap:.6rem}
+.sg-title{font-size:1.3rem;margin:0;font-weight:600}
+.sg-feed{display:flex;flex-direction:column;gap:.8rem;flex:1 0 auto}
+.sg-me{align-self:flex-end;max-width:80%;background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:.55rem .85rem}
+.sg-me-t{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.sg-ai{align-self:stretch}
+.sg-answer{overflow-wrap:anywhere}
+.sg-answer .ai-p{margin:.3rem 0}
+.sg-live .sg-answer:empty::before{content:"…";color:var(--muted)}
+.sg-stopped{opacity:.75}
+.sg-srcs{display:flex;flex-wrap:wrap;gap:.3rem .6rem;margin-top:.5rem;font-size:.875rem;color:var(--muted)}
+.sg-src{color:var(--accent)}
+.sg-report{margin-top:.4rem;font-size:.875rem}
+.sg-empty{display:flex;flex-direction:column;align-items:flex-start;gap:.6rem;padding:1rem 0}
+.sg-empty-t{margin:0;font-size:1rem}
+.sg-chips{display:flex;flex-wrap:wrap;gap:.5rem}
+.sg-chip{min-height:2.25rem;padding:.35rem .85rem;border:1px solid var(--ai-edge,var(--sg-edge));border-radius:var(--r-pill);
+  background:var(--ai-tint,var(--sg-tint));color:var(--fg);font:inherit;font-size:.95rem;cursor:pointer}
+.sg-chip:hover,.sg-chip:focus-visible{background:var(--card-h)}
+.sg-cards:empty{display:none}
+.sg-keep{margin:0;font-size:.875rem;color:var(--muted)}
+.sg-ask{position:sticky;bottom:0;background:var(--bg);padding:.4rem 0 .2rem;display:flex;flex-direction:column;gap:.4rem}
+.sg-ta{width:100%;box-sizing:border-box;resize:vertical;min-height:3.2rem;font-size:1rem}
+.sg-ask-bar{display:flex;align-items:center;gap:.5rem}
+.sg-status{font-size:.875rem;color:var(--muted)}
+@media (prefers-reduced-motion: no-preference){.sg-card{animation:sg-in .15s ease-out}}
+@keyframes sg-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+@media (max-width:760px){
+  body.saga-page>main.sg{padding:.8rem .9rem calc(4.2rem + env(safe-area-inset-bottom));max-width:none;min-height:100vh}
+  .sg-intro-bar{flex-direction:column;align-items:stretch}
+  .sg-intro-bar .btn{min-height:2.75rem}
+  .sg-intro-bar .sg-later{margin-left:0}
+  .sg-me{max-width:92%}
+  .sg-chip{min-height:2.75rem}
+  .sg-info-b{min-height:2.75rem;min-width:2.75rem}
+}
+
+/* Einstellungen > Saga */
+.hk-set-saga .sg-set-row{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin:.45rem 0}
+.hk-set-saga .sg-set-row small{flex-basis:100%;margin-left:1.6rem}
+.hk-set-saga h4{margin:1.1rem 0 .3rem}
+.sg-md-acts{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0}
+.sg-admin{margin-top:.6rem}
+.sg-admin summary{cursor:pointer;color:var(--accent)}
+.sg-admin p{margin:.35rem 0;font-size:.875rem}

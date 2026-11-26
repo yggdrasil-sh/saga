@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="{{ lang() }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f141c" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fdfcfa" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="{{ title }}">
+<title>{{ _("Saga") }} · {{ title }}</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ v }}">
+<script src="/static/theme-boot.js?v={{ v }}"></script>
+<link rel="stylesheet" href="/static/tokens.css?v={{ v }}">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/live.css?v={{ v }}">
+{% if chat_enabled %}<link rel="stylesheet" href="/static/calls.css?v={{ v }}">{% endif %}
+<link rel="stylesheet" href="/static/ai.css?v={{ v }}">
+<link rel="stylesheet" href="/static/saga.css?v={{ v }}">
+</head>
+{# 2.6 (Bugs-DB 2269 K-I, Konzept K10/K11/K19, UX §2): Ort "Saga" - Gespraech mit der KI (kein E2E-Chat). Leiste B6 fest
+   oben, Kennenlernen-Karte solange keine Einwilligung, danach Verlauf + Eingabe. static/saga.js fuellt alles; der Bereich
+   #sg-cards ist der Einhaengepunkt fuer Plan-Karte/Rueckmeldung (Rolle kb, Ereignis "saga:turn"). #}
+<body class="has-side saga-page" data-v="{{ v }}" data-uid="{{ uid }}">
+<a class="skip-link" href="#saga" data-skip="saga">{{ _("Zum Inhalt") }}</a>
+<header class="np-head side-head">
+  <button type="button" class="icon-btn np-side-btn" id="pg-side-btn" title="{{ _("Seitenleiste ein- oder ausblenden") }} ({{ _("Strg") }}+\)" aria-label="{{ _("Seitenleiste ein- oder ausblenden") }}" aria-pressed="true" aria-controls="pg-side"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+  <a class="np-brand" href="/dashboard" title="{{ _("Heute") }}">{{ title }}</a>
+  <span class="spacer"></span>
+  <a class="btn btn-notes np-pages" href="/notes">{{ _("Seiten") }}</a>
+  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-avatar="{{ me_avatar or '' }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
+</header>
+{% include "_side.html" %}
+<main id="saga" class="sg" tabindex="-1" aria-labelledby="sg-title">
+  <div class="sg-bar" id="sg-bar" hidden></div>
+  <div class="sg-head">
+    <span class="sg-head-av" id="sg-av" aria-hidden="true"></span>
+    <h1 class="sg-title" id="sg-title">{{ _("Saga") }}</h1>
+    <span class="spacer"></span>
+    <button type="button" class="icon-btn sg-more" id="sg-more" hidden aria-haspopup="menu" aria-label="{{ _("Mehr") }}" title="{{ _("Mehr") }}">⋯</button>
+  </div>
+  <div class="sg-intro-slot" id="sg-intro" hidden></div>
+  <div class="sg-feed" id="sg-feed" role="log" aria-live="polite" aria-relevant="additions" hidden></div>
+  <div class="sg-cards" id="sg-cards" data-hook="kb"></div>
+  <p class="sg-keep" id="sg-keep" hidden></p>
+  <form class="sg-ask" id="sg-ask" hidden autocomplete="off">
+    <textarea class="hk-in sg-ta" id="sg-ta" rows="2" maxlength="1000"></textarea>
+    <div class="sg-ask-bar">
+      <span class="sg-status" id="sg-status" role="status"></span>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="sg-stop" hidden>{{ _("Stopp") }}</button>
+      <button type="submit" class="btn btn-primary" id="sg-send">{{ _("Senden") }}</button>
+    </div>
+  </form>
+</main>
+
+<script src="/static/clientlog.js?v={{ v }}"></script>
+<script src="/i18n/{{ lang() }}.js?v={{ i18n_v }}"></script>
+<script src="/static/common.js?v={{ v }}"></script>
+<script src="/static/host.js?v={{ v }}"></script>
+<script src="/static/icons.js?v={{ v }}"></script>
+<script src="/static/qs.js?v={{ v }}"></script>
+<script src="/static/treenav.js?v={{ v }}"></script>
+<script src="/static/side.js?v={{ v }}"></script>
+<script src="/static/firststeps.js?v={{ v }}"></script>
+<script src="/static/settings.js?v={{ v }}"></script>
+<script src="/static/saga.js?v={{ v }}"></script>
+<script src="/static/contacts.js?v={{ v }}"></script>
+<script src="/static/shortcuts.js?v={{ v }}"></script>
+<script src="/static/passkey.js?v={{ v }}"></script>
+<script src="/static/security.js?v={{ v }}"></script>
+<script src="/static/apitokens.js?v={{ v }}"></script>
+<script src="/static/live.js?v={{ v }}"></script>
+<script src="/static/userstatus.js?v={{ v }}"></script>
+<script src="/static/push.js?v={{ v }}"></script>
+<script src="/static/backup.js?v={{ v }}"></script>
+<script src="/static/nextcloud.js?v={{ v }}"></script>
+{% if chat_enabled %}<script src="/static/meeting.js?v={{ v }}"></script><script src="/static/calls.js?v={{ v }}"></script><script src="/static/chatdock.js?v={{ v }}"></script>{% endif %}
+</body>
+</html>
