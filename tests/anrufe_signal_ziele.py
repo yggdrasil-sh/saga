@@ -3,16 +3,16 @@ Endpunkte in EINER Anfrage (POST /api/calls/{id}/signal, docs/HORN-E2E.md §4) -
 mehr als chat.DEVICES_MAX (10, Geraete je Konto) Zielen ganz ab (400): ab 11 Zielen kein Frame-Schluessel, kein Bild/Ton.
 
 Ohne echten Knoten: ein gekoppelter Knoten mit UDP als Registereintrag (Lastmeldung frisch, Zertifikat "self") gilt als
-bereit (Grenze 25/100 wie horn.LIMITS) - geprueft wird die Signalisierung in Saga, nicht die Medien.
+bereit (Grenze wie horn.LIMITS, Ton UDP 50) - geprueft wird die Signalisierung in Saga, nicht die Medien.
 
 Geprueft:
-- SIG_TARGETS_MAX folgt der groessten Anruf-Obergrenze ueber Knoten (horn.LIMITS), 1:1 bleibt bei DEVICES_MAX (in-process).
+- SIG_TARGETS_MAX folgt der Obergrenze ueber Knoten inkl. Testhaken (horn.LIMITS_TOP), 1:1 bleibt bei DEVICES_MAX (in-process).
 - Knoten-Anruf (Ton, 13 Personen mit je 4 Geraeten): fkey an 16 Ziele in einer Anfrage -> 200, n 16, jedes Ziel oeffnet
-  sein Signal (versiegelt, signiert); bei 51 Endpunkten fkey an 50 Ziele -> 200, n 50, alle 50 bekommen es; dazu ein
+  sein Signal (versiegelt, signiert); bei 50 Endpunkten (Ton-Grenze) fkey an 49 Ziele -> 200, n 49, alle bekommen es; dazu ein
   Geraet ausserhalb des Anrufs -> dropped (wie 2.5). Groesse der Anfrage (PERF).
 - Formfehler weiter 400: mehr Ziele als SIG_TARGETS_MAX, leere Liste, Kennung kein Hex, Wert kein B64 bzw. zu kurz,
   kein einziges gueltiges Ziel.
-- Budget greift weiter: pairs_budget fast erschoepft -> 429 fuer 50 Ziele, 200 fuer wenige.
+- Budget greift weiter: pairs_budget fast erschoepft -> 429 fuer 49 Ziele, 200 fuer wenige.
 - Mesh-Raum (ohne horn): Signal an 3 Endpunkte + 8 fremde Kennungen (11 Ziele) -> 200, dropped 8 (vorher 400).
 - 1:1 ohne Raum: Anrufstart mit 11 Zielen -> 400 (Geraete einer Person, unveraendert).
 Wegwerf-Konten ca-sz*; raeumt auf."""
@@ -130,10 +130,10 @@ def main():
 
 def unit():
     from saga import calls as CL, chat as CH, fed_calls as FCL
-    top = max(n for va in HN.LIMITS.values() for n in va)
+    top = HN.LIMITS_TOP                                    # 2263 Grenzwerte: Obergrenze des Testhakens (>= LIMITS)
     have = getattr(CL, "SIG_TARGETS_MAX", None)            # vor 2.6 nicht vorhanden (Vorher-Lauf faellt hier, ohne Abbruch)
-    ok(f"SIG_TARGETS_MAX = groesste Anruf-Obergrenze ueber Knoten ({have} = {top}, LIMITS {HN.LIMITS})",
-       have == top and top > CH.DEVICES_MAX)
+    ok(f"SIG_TARGETS_MAX = Obergrenze ueber Knoten inkl. Testhaken ({have} = {top} >= LIMITS {HN.LIMITS})",
+       have == top and top > CH.DEVICES_MAX and all(n <= top for va in HN.LIMITS.values() for n in va))
     v = base64.b64encode(secrets.token_bytes(64)).decode()
     m = lambda n: {secrets.token_hex(16): v for _ in range(n)}  # noqa: E731
     m11, mtop, mover = m(CH.DEVICES_MAX + 1), m(top), m(top + 1)
@@ -160,13 +160,13 @@ def run():
     s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": [u for u, _ in USERS[1:]]})
     gid = d["chat"]["id"]
 
-    # --- Knoten-Anruf (Ton, UDP-Knoten: Grenze 100) ---------------------------------------------------------------
+    # --- Knoten-Anruf (Ton, UDP-Knoten: Grenze 50) ----------------------------------------------------------------
     fresh()
     cid = secrets.token_hex(16)
     s, d = req("POST", "/api/calls", A.k, {"id": cid, "chat_id": gid, "media": "audio", "device": A.dev["id"], "caps": CAPS})
     k = d.get("call") or {}
     ok(f"Gruppenanruf ueber Knoten (Ton, UDP) gestartet ({s}, {k.get('topo')}, Grenze {k.get('limit')})",
-       s == 200 and k.get("topo") == "horn" and (k.get("limit") or 0) >= 51)
+       s == 200 and k.get("topo") == "horn" and (k.get("limit") or 0) >= 50)
     # Reihenfolge: zuerst die Hauptgeraete (Personen), dann die Begleitgeraete - so sind schnell 17 Endpunkte da
     order = [(p, p.devs[0]) for p in ps] + [(p, d) for p in ps for d in p.devs[1:]]
     joined, bad = [order[0]], []
@@ -186,12 +186,12 @@ def run():
     good, miss = all_got(cid, frm, fdev, tg, b)
     ok(f"... alle 16 Ziele bekommen ihr Signal (versiegelt, signiert) (fehlt: {miss})", good)
 
-    for p, dv in order[17:51]:
+    for p, dv in order[17:50]:
         s, d = hjoin(p, dv, cid)
         (joined if s == 200 else bad).append((p, dv) if s == 200 else s)
     lg = legs(A, cid)
-    ok(f"51 Endpunkte im Anruf ({len(lg)}, Fehler {bad[:3]})", len(lg) == 51 and not bad)
-    outside = order[51]
+    ok(f"50 Endpunkte im Anruf ({len(lg)}, Fehler {bad[:3]})", len(lg) == 50 and not bad)
+    outside = order[50]
     ok("... ein Geraet bleibt draussen", outside[1]["id"] not in lg)
 
     frm, fdev = joined[-1]
@@ -199,29 +199,29 @@ def run():
     b = fkey(2)
     sig = sealed(frm, fdev, cid, tg, b)
     body = {"device": fdev["id"], "signals": sig}
-    PERF["body50_bytes"] = len(json.dumps(body))
+    PERF["body50_bytes"] = len(json.dumps(body))           # Name bleibt (Vergleich), seit 2263-Grenzwerten 49 Ziele
     PERF["sealed_fkey_b64"] = len(next(iter(sig.values())))
     t0 = time.time()
     s, d = send(frm, fdev, cid, sig)
     PERF["signal50_ms"] = round((time.time() - t0) * 1000, 1)
-    ok(f"fkey an 50 Ziele in einer Anfrage -> 200, n 50 ({s}, n {d.get('n') if isinstance(d, dict) else d})",
-       s == 200 and d.get("n") == 50 and not d.get("dropped"))
+    ok(f"fkey an 49 Ziele in einer Anfrage -> 200, n 49 ({s}, n {d.get('n') if isinstance(d, dict) else d})",
+       s == 200 and d.get("n") == 49 and not d.get("dropped"))
     good, miss = all_got(cid, frm, fdev, tg, b)
-    ok(f"... alle 50 Ziele bekommen ihr Signal (fehlt: {miss})", good)
+    ok(f"... alle 49 Ziele bekommen ihr Signal (fehlt: {miss})", good)
     with connect() as c:
         n = c.execute("SELECT COUNT(*) FROM chat_call_signal WHERE call_id=? AND from_device=?", (cid, fdev["id"])).fetchone()[0]
-    ok(f"... 50 Zeilen chat_call_signal ({n})", n == 50)
+    ok(f"... 49 Zeilen chat_call_signal ({n})", n == 49)
 
     b = fkey(3)
     sig = sealed(frm, fdev, cid, tg + [outside], b)
     s, d = send(frm, fdev, cid, sig)
-    ok(f"50 Ziele + 1 Geraet ausserhalb -> 200, n 50, dropped [aussen] ({s}, {d.get('n')}, {d.get('dropped')})",
-       s == 200 and d.get("n") == 50 and d.get("dropped") == [outside[1]["id"]])
+    ok(f"49 Ziele + 1 Geraet ausserhalb -> 200, n 49, dropped [aussen] ({s}, {d.get('n')}, {d.get('dropped')})",
+       s == 200 and d.get("n") == 49 and d.get("dropped") == [outside[1]["id"]])
     ok("... das Geraet draussen bekommt nichts", not got_from(outside[0], outside[1], cid, frm, fdev, b))
 
     # --- Formfehler weiter 400 ------------------------------------------------------------------------------------
     v = base64.b64encode(secrets.token_bytes(64)).decode()
-    top = max(n for va in HN.LIMITS.values() for n in va)
+    top = CL.SIG_TARGETS_MAX
     over = dict(sealed(frm, fdev, cid, tg[:5], b), **{secrets.token_hex(16): v for _ in range(top + 1 - 5)})
     s, d = send(frm, fdev, cid, over)
     ok(f"{len(over)} Ziele (mehr als SIG_TARGETS_MAX) -> 400 ({s})", s == 400)
@@ -245,7 +245,7 @@ def run():
         c.execute("UPDATE chat_call SET nsig=? WHERE id=?", (bud - 10, cid))
     PERF["budget51"] = bud
     s, _ = send(frm, fdev, cid, sealed(frm, fdev, cid, tg, fkey(4)))
-    ok(f"Budget fast erschoepft ({bud}, {nall} Endpunkte): 50 Ziele -> 429 ({s})", s == 429)
+    ok(f"Budget fast erschoepft ({bud}, {nall} Endpunkte): {len(tg)} Ziele -> 429 ({s})", s == 429)
     s, d = send(frm, fdev, cid, sealed(frm, fdev, cid, tg[:5], fkey(5)))
     ok(f"... 5 Ziele passen noch -> 200 ({s}, {d.get('n') if isinstance(d, dict) else d})", s == 200 and d.get("n") == 5)
     with connect() as c, c:

@@ -5,14 +5,14 @@ Ohne echten Knoten: gekoppelte Knoten als Registereintrag (Lastmeldung frisch, Z
 tests/anrufe_y_gruppe.py) - "hl63-tcp" ohne UDP, "hl63-udp" mit UDP. Geprueft:
 - horn.legs_need (2 Beine je Geraet ueber TCP/Tunnel, UDP-Grenze, Reserve bis FULL) und horn.capacity (ohne Messwerte None,
   mit Werten begrenzt durch Kerne, max_legs und link_mbit);
-- Gruppenanruf startet auf dem TCP-Knoten -> limit 12 und chat_call.lim 12; alle Endpunkte ziehen auf den UDP-Knoten
-  (Umzug/Kaskade) -> limit bleibt 12; Gegenprobe ohne lim (Anruf von vor Migration 40): 25 wie bisher; fix_limit setzt
+- Gruppenanruf startet auf dem TCP-Knoten -> limit 16 und chat_call.lim 16; alle Endpunkte ziehen auf den UDP-Knoten
+  (Umzug/Kaskade) -> limit bleibt 16; Gegenprobe ohne lim (Anruf von vor Migration 40): 25 wie bisher; fix_limit setzt
   bei so einem Anruf nachtraeglich nichts;
 - Admin senkt (horn_video 3): festgehaltene Grenze wird mitgesenkt -> 4. Person 409 join_block full mit limit 3;
 - Knoten ausgelastet (Beine = max_legs) -> 409 join_block node, busy: true, Text "ausgelastet"; Knoten weg (Lastmeldung
   alt) -> 409 node ohne busy, Text "nicht erreichbar";
 - Admin -> Anrufe: Warnung "HORN_MAX_LEGS (48) ist zu knapp" mit legs_need; mit max_legs 200 keine Warnung; ohne
-  Tunnel-Knoten kein Hinweis HORN_MAX_PER_IP; ohne Messwerte keine Zeile "Geschaetzte Kapazitaet".
+  Tunnel-Knoten kein Hinweis HORN_MAX_PER_IP; ohne gemeldete Kerne keine Zeile "Geschaetzte Kapazitaet" (Messwerte 2263-9 in CAP_*).
 - Testhaken des Messwerkzeugs (Bugs-DB 2438, im Testprozess): SAGA_TEST_HORN_LIMITS hebt die Obergrenzen nur mit
   SAGA_TEST_HOOKS=1 UND SAGA_TEST_TOKEN >= 32 Zeichen (an; aus; Token zu kurz; Unsinn im JSON -> wie heute), der Admin
   senkt weiter; SAGA_TEST_HORN_PIN legt die Kandidaten eines Kontos auf einen Knoten (nur mit Testhaken).
@@ -136,12 +136,22 @@ def cleanup():
 
 
 def units():
-    ok(f"legs_need: TCP 2 x 50 bzw. UDP 100, Reserve bis FULL -> 112 ({HN.legs_need()}, {HN.legs_need(True)})",
+    ok(f"legs_need: TCP 2 x 50 bzw. UDP 50, Reserve bis FULL -> 112 ({HN.legs_need()}, {HN.legs_need(True)})",
        HN.legs_need() == 112 and HN.legs_need(True) == 112)
-    ok("capacity: ohne Messwerte (CAP_CORE None) -> None", HN.CAP_CORE == {"video": None, "audio": None}
-       and HN.capacity({"link_mbit": None}, 8, 200) is None)
+    m = HN.capacity({"link_mbit": None}, 4, 200)              # Messwerte 2263-9: 4*0,9/0,016=225 -> max_legs 200: 90
+    t = HN.capacity({"link_mbit": 100}, 16, 400)              # Upload 100 Mbit: 100*0,9/2,1=42 Video, /0,13=692 -> Kerne 3130/max_legs 180
+    ok(f"capacity mit den Messwerten 2263-9 (CAP_CORE {HN.CAP_CORE}): {m}, {t}",
+       HN.CAP_CORE == {"video": 0.016, "audio": 0.0046} and m == {"video": 90, "audio": 90} and t == {"video": 42, "audio": 180})
+    HN._LIVE["hl63-tun"] = {"tunnel": True}                 # eingebauter im Tunnel-Betrieb: CAP_TUNNEL (inkl. saga-media)
+    try:
+        tu = HN.capacity({"id": "hl63-tun", "builtin": True, "link_mbit": 100}, 16, 400)   # 100*0,9/1,1=81 Video
+    finally:
+        HN._LIVE.pop("hl63-tun", None)
+    ok(f"capacity Tunnel-Betrieb mit CAP_TUNNEL ({tu})", tu == {"video": 81, "audio": 180})
     keep = dict(HN.CAP_CORE), dict(HN.CAP_MBIT)
     try:
+        HN.CAP_CORE.update(video=None, audio=None)
+        ok("capacity: ohne Messwerte (CAP_CORE None) -> None", HN.capacity({"link_mbit": None}, 8, 200) is None)
         HN.CAP_CORE.update(video=0.5, audio=0.125)
         HN.CAP_MBIT.update(video=2.0, audio=0.1)
         a = HN.capacity({"link_mbit": None}, 4, 200)          # 4*0.9/0.5=7, 4*0.9/0.125=28 (max_legs: 90)
@@ -175,16 +185,16 @@ def lims():
 
 def testhaken():
     keep = {k: os.environ.get(k) for k in HOOK_ENV}
-    today = ((12, 50), (25, 100))
-    want = '{"tcp":[16,50],"udp":[30,100]}'
+    today = ((16, 50), (25, 50))
+    want = '{"tcp":[20,50],"udp":[30,100]}'
     try:
         hooks(on=False, token=False)
         ok(f"Testhaken: ohne Umgebung wie heute {lims()}", lims() == today and HN.test_limits() is None)
         hooks(limits=want)
-        ok(f"Testhaken an (HOOKS=1, Token 37 Zeichen): TCP 16/50, UDP 30/100 {lims()}", lims() == ((16, 50), (30, 100)))
+        ok(f"Testhaken an (HOOKS=1, Token 37 Zeichen): TCP 20/50, UDP 30/100 {lims()}", lims() == ((20, 50), (30, 100)))
         ok(f"Testhaken an: legs_need folgt (TCP 2 x 50, UDP 100 -> 112) ({HN.legs_need(True)})", HN.legs_need(True) == 112)
-        hooks(limits='{"tcp":[16,50]}')
-        ok(f"Testhaken an, nur tcp: UDP bleibt 25/100 {lims()}", lims() == ((16, 50), (25, 100)))
+        hooks(limits='{"tcp":[20,50]}')
+        ok(f"Testhaken an, nur tcp: UDP bleibt 25/50 {lims()}", lims() == ((20, 50), (25, 50)))
         hooks(on=False, limits=want)
         ok(f"Testhaken aus (ohne SAGA_TEST_HOOKS, gueltiges Token): wie heute {lims()}", lims() == today)
         os.environ["SAGA_TEST_HOOKS"] = "0"
@@ -194,7 +204,7 @@ def testhaken():
         hooks(token="x" * 31, limits=want)
         ok(f"Token zu kurz (31 Zeichen): wie heute {lims()}", lims() == today)
         hooks(token="x" * 32, limits=want)
-        ok(f"Token genau 32 Zeichen: wirksam {lims()}", lims() == ((16, 50), (30, 100)))
+        ok(f"Token genau 32 Zeichen: wirksam {lims()}", lims() == ((20, 50), (30, 100)))
         bad = ["kaputt{", "[]", "{}", '{"tcp":[16]}', '{"tcp":[60,50]}', '{"tcp":[16,500]}', '{"tcp":[1,50]}', '{"x":[16,50]}',
                '{"tcp":["16",50]}', '{"tcp":[true,50]}', '{"tcp":[16.5,50]}', '{"tcp":[16,50],"udp":null}', '"16"', "null", "[" * 100000]
         got = {}
@@ -320,15 +330,15 @@ def run():
     chat = d["chat"]["id"]
     setting()
 
-    # --- Start auf dem TCP-Knoten: Grenze 12 festgehalten ------------------------------------------------------------
+    # --- Start auf dem TCP-Knoten: Grenze 16 festgehalten ------------------------------------------------------------
     node(NT, False)
     node(NU, True, legs=None)                          # der UDP-Knoten kommt erst spaeter dazu
     cid = secrets.token_hex(16)
     fresh()
     s, d = req("POST", "/api/calls", A.k, {"id": cid, "chat_id": chat, "media": "video", "device": A.dev["id"], "caps": CAPS})
     call = (d or {}).get("call") or {}
-    ok(f"Start: ueber Knoten, limit 12 (TCP), lim 12 in der Datenbank ({s}, {call.get('topo')}, {call.get('limit')}, {lim_db(cid)})",
-       s == 200 and call.get("topo") == "horn" and call.get("limit") == 12 and lim_db(cid) == 12, d)
+    ok(f"Start: ueber Knoten, limit 16 (TCP), lim 16 in der Datenbank ({s}, {call.get('topo')}, {call.get('limit')}, {lim_db(cid)})",
+       s == 200 and call.get("topo") == "horn" and call.get("limit") == 16 and lim_db(cid) == 16, d)
     s, d = join(B, cid)
     ok(f"B tritt bei ({s})", s == 200, d)
 
@@ -336,8 +346,8 @@ def run():
     nu = node(NU, True)
     with connect() as c, c:
         c.execute("UPDATE chat_call_leg SET node=? WHERE call_id=? AND state='active'", (nu, cid))
-    ok(f"alle Endpunkte auf dem UDP-Knoten: limit bleibt 12 (API {api_limit(A, cid)}, climit {climit(cid)})",
-       api_limit(A, cid) == 12 and climit(cid) == 12)
+    ok(f"alle Endpunkte auf dem UDP-Knoten: limit bleibt 16 (API {api_limit(A, cid)}, climit {climit(cid)})",
+       api_limit(A, cid) == 16 and climit(cid) == 16)
     with connect() as c, c:
         c.execute("UPDATE chat_call SET lim=NULL WHERE id=?", (cid,))
     ok(f"Gegenprobe ohne lim (Anruf von vor Migration 40): wie bisher 25 nach dem UDP-Knoten (API {api_limit(A, cid)})",
@@ -347,12 +357,12 @@ def run():
     ok(f"fix_limit setzt bei einem Anruf, der schon auf Knoten lief, nichts nachtraeglich ({lim_db(cid)})", lim_db(cid) is None)
     pin_check(cid, A)
     with connect() as c, c:
-        c.execute("UPDATE chat_call SET lim=12 WHERE id=?", (cid,))
+        c.execute("UPDATE chat_call SET lim=16 WHERE id=?", (cid,))
 
     # --- Admin senkt, voll -> 409 full -------------------------------------------------------------------------------
     setting(horn_video=3)
     ok(f"Admin senkt auf 3: festgehaltene Grenze wird mitgesenkt (API {api_limit(A, cid)}, lim bleibt {lim_db(cid)})",
-       api_limit(A, cid) == 3 and lim_db(cid) == 12)
+       api_limit(A, cid) == 3 and lim_db(cid) == 16)
     s, d = join(C, cid)
     ok(f"C tritt bei (3/3) ({s})", s == 200, d)
     s, d = join(D, cid)
@@ -387,7 +397,7 @@ def run():
     s, h = admin_html()
     w = "HORN_MAX_LEGS (48) ist zu knapp: Ein Anruf an der Grenze braucht an diesem Knoten bis zu 112 Beine"
     ok(f"Admin: Warnung max_legs 48 < 112 an beiden Knoten ({s}, {h.count(w)})", s == 200 and h.count(w) == 2)
-    ok("Admin: ohne Tunnel-Knoten kein Hinweis HORN_MAX_PER_IP, ohne Messwerte keine Kapazitaet",
+    ok("Admin: ohne Tunnel-Knoten kein Hinweis HORN_MAX_PER_IP, ohne gemeldete Kerne (kein Steuerkanal) keine Kapazitaet",
        "horn-perip" not in h and "Geschätzte Kapazität" not in h)
     load(NT, max_legs=200)
     load(NU, max_legs=112)

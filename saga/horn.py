@@ -60,13 +60,19 @@ CANDIDATES = 3                          # Kandidaten im Beitritt (§2.6)
 CASCADE = True                          # P9: Kaskade zwischen Knoten - Kandidaten auch auf anderen Knoten (Bonus "schon hier")
 MAX_KBIT = 4000                         # Eingang je Bein (§3.4)
 FULL, PENALTY = 0.9, 0.7                # Auslastung: ab 90 % voll, ab 70 % Abzug bei der Wahl
-LIMITS = {"tcp": (12, 50), "udp": (25, 100)}   # Endpunkte je Anruf (Video, nur Ton) nach Weg (§1.4, Entscheidung 4)
+# Endpunkte je Anruf (Video, nur Ton) nach Weg (§1.4, Entscheidung 4). 2.6 (2263-9, tools/perf/horn-2263.json; Entscheidung 26.11.
+# Fragen A/B): Tunnel/TCP Video 16 (vorher 12), UDP Ton 50 (vorher 100 - 100 war in der Messung rot, Bugs-DB 2449/2451);
+# Ton 50 freigegeben trotz Python-Last beim Beitritt (Folgearbeit 2451).
+LIMITS = {"tcp": (16, 50), "udp": (25, 50)}
 PUB = {"audio": ["a"], "video": ["v", "s"], "both": ["a", "v", "s"]}
 LEGS_PER_DEV = 2                        # 2263-4: ueber TCP/Tunnel je Geraet zwei Beine (Ton + Bild, auch im Tonanruf, NODE.md)
-# 2263-4 Geruest "geschaetzte Kapazitaet" (Admin, Plan 2263 Frage 7): Rechenkosten je Geraet in Kernen und Upload je Geraet
-# in Mbit/s - Werte kommen aus der Messreihe 2263-9. None = noch kein Messwert: die Zeile erscheint dann nicht (capacity).
-CAP_CORE = {"video": None, "audio": None}
-CAP_MBIT = {"video": None, "audio": None}
+# 2263-4 "geschaetzte Kapazitaet" (Admin, Plan 2263 Frage 7): Rechenkosten je Geraet in Kernen und Upload je Geraet in
+# Mbit/s aus der Messreihe 2263-9 (tools/perf/horn-2263.json "kapazitaet", i7-10875H, hoechste freie Stufe). CAP_* gilt fuer
+# Knoten mit eigenem Namen (UDP/TCP), CAP_TUNNEL fuer den eingebauten im Tunnel-Betrieb (inkl. saga-media, das den Tunnel
+# traegt). None = kein Messwert: die Zeile erscheint dann nicht (capacity).
+CAP_CORE = {"video": 0.016, "audio": 0.0046}
+CAP_MBIT = {"video": 2.1, "audio": 0.13}
+CAP_TUNNEL = {"core": {"video": 0.017, "audio": 0.0058}, "mbit": {"video": 1.1, "audio": 0.12}}
 
 _SK = {"k": None, "pub": ""}
 _LOCK = threading.Lock()
@@ -487,21 +493,24 @@ def legs_need(udp=False):
 
 def capacity(n, cores, max_legs=0):
     """2263-4 Geruest: "reicht fuer etwa N mit Video / M nur Ton gleichzeitig" je Knoten aus den gemessenen Kosten je
-    Geraet (CAP_CORE, Kerne), den Kernen des Knotens (hello cores), max_legs und - nur wenn bekannt - link_mbit (CAP_MBIT).
+    Geraet (CAP_CORE bzw. CAP_TUNNEL im Tunnel-Betrieb), den Kernen des Knotens (hello cores - ab Knoten 2.6 mit CPU-Quote der
+    cgroup, Bugs-DB 2450; aeltere melden die Kerne des Rechners), max_legs und - nur wenn bekannt - link_mbit.
     Ohne Messwerte (None) oder ohne Kerne: None (keine Anzeige)."""
     try:
         cores = int(cores or 0)
     except (TypeError, ValueError):
         cores = 0
-    if cores <= 0 or any(CAP_CORE.get(k) is None for k in ("video", "audio")):
+    tun = bool(n.get("id")) and tunnel_mode(n)
+    core, mbit = (CAP_TUNNEL["core"], CAP_TUNNEL["mbit"]) if tun else (CAP_CORE, CAP_MBIT)
+    if cores <= 0 or any(core.get(k) is None for k in ("video", "audio")):
         return None
     out = {}
     for k in ("video", "audio"):
-        m = int(cores * FULL / CAP_CORE[k])
+        m = int(cores * FULL / core[k])
         if max_legs:
             m = min(m, int(max_legs * FULL) // LEGS_PER_DEV)
-        if n.get("link_mbit") and CAP_MBIT.get(k):
-            m = min(m, int(n["link_mbit"] * FULL / CAP_MBIT[k]))
+        if n.get("link_mbit") and mbit.get(k):
+            m = min(m, int(n["link_mbit"] * FULL / mbit[k]))
         out[k] = max(0, m)
     return out
 
@@ -522,7 +531,9 @@ def note_full(c):
 #       LIMITS_TOP, je Weg optional); der Admin kann weiter nur senken (tools/perf/horn_last.py: M2/M5/M4 mit 16 Video)
 #   SAGA_TEST_HORN_PIN='{"<konto>":"<knotenname>|@builtin"}'  Kandidaten der Geraete dieses Kontos nur auf diesem Knoten
 #       (horn_web.candidates; Browser fest je Knoten fuer die Latenz "gleicher Knoten" / "ueber Bruecke")
-LIMITS_TOP = max(n for va in LIMITS.values() for n in va)   # calls.SIG_TARGETS_MAX folgt LIMITS - der Haken bleibt darunter
+# Obergrenze des Testhakens (Messreihen ueber den Grenzen, z. B. Ton 100 fuer 2449) - fest, seit LIMITS darunter liegt
+# (2263 Grenzwerte: Ton UDP 50). calls.SIG_TARGETS_MAX folgt LIMITS_TOP, damit der Haken auch signalisieren kann.
+LIMITS_TOP = max(100, max(n for va in LIMITS.values() for n in va))
 _TEST = {}                              # Name -> (Rohwert, geprueft)
 
 
@@ -575,7 +586,7 @@ def test_pins():
 
 
 def limits(c, cid=None, node=None, udp=None):
-    """(Video, nur Ton) Endpunkte je Anruf ueber Knoten: TCP 12/50, mit UDP am Knoten des Anrufs 25/100. Der Admin kann
+    """(Video, nur Ton) Endpunkte je Anruf ueber Knoten (LIMITS): TCP 16/50, mit UDP am Knoten des Anrufs 25/50. Der Admin kann
     nur senken (calls.horn_video / calls.horn_audio). Nur in Tests: Obergrenzen aus test_limits (Testhaken)."""
     if udp is None:
         n = node or (node_by_id(c, call_node(c, cid)) if cid else None)

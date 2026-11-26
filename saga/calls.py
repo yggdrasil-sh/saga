@@ -111,11 +111,11 @@ router = APIRouter()
 MEDIA = ("audio", "video")
 SEALED_MAX = 24 * 1024                 # versiegelte Signal-Nachricht (B64) - SDP mit Video ~6 KB
 # 2.6 (Bugs-DB 2434): Ziele je Signal-Anfrage im Raum (Gruppe, v3, Knoten). Ein Geraet buendelt fkey/state an alle
-# anderen Endpunkte in EINER Anfrage - die Grenze folgt der groessten Anruf-Obergrenze ueber Knoten (horn.LIMITS, nicht
+# anderen Endpunkte in EINER Anfrage - die Grenze folgt der groessten Anruf-Obergrenze ueber Knoten (horn.LIMITS_TOP, nicht
 # doppelt gepflegt), vorher chat.DEVICES_MAX (10, Geraete je Konto): ab 11 Zielen 400 fuer alles, kein Frame-Schluessel.
 # Die eigentliche Grenze ist die Liste der Endpunkte (allowed), die beim Beitreten an climit haengt; Missbrauch bremsen
 # pairs_budget/SIG_RATE/SEALED_MAX und REQUEST_MAX. 1:1 (Geraete einer Person) bleibt bei chat.DEVICES_MAX.
-SIG_TARGETS_MAX = max(n for va in horn.LIMITS.values() for n in va)
+SIG_TARGETS_MAX = horn.LIMITS_TOP                # 2263 Grenzwerte: Obergrenze des Testhakens (100), nicht LIMITS (50)
 SIGNALS_MAX = 600                      # Signal-Nachrichten je Anruf (Grundbudget bis zur Annahme und in der ersten Minute)
 SIG_PER_MIN = 60                       # 2.4: + so viele je angefangener Gespraechsminute (Neuverhandlung, ICE-Restart, Zustand)
 SIGNALS_HARD = 6000                    # 2.4: harte Obergrenze je Anruf (auch bei sehr langen Gespraechen)
@@ -268,7 +268,7 @@ def is_horn(call):
 
 
 def climit(c, call):
-    """Hoechstzahl Endpunkte dieses Anrufs: Mesh-Grenze (limit) bzw. ueber Knoten nach Weg (2.5: TCP 12/50, UDP 25/100).
+    """Hoechstzahl Endpunkte dieses Anrufs: Mesh-Grenze (limit) bzw. ueber Knoten nach Weg (horn.LIMITS: TCP 16/50, UDP 25/50; 2.5: 12/50, 25/100).
     2.6 (2263-4): ueber Knoten die beim Start festgehaltene Grenze chat_call.lim (horn.fix_limit) - Umzug und Kaskade
     aendern sie nicht, der Admin kann weiter nur senken. Anrufe ohne lim (von vor Migration 40): wie bisher nach dem
     Knoten mit den meisten Endpunkten."""

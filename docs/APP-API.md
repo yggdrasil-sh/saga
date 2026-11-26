@@ -2444,8 +2444,9 @@ erst ab mehr Mitgliedern als die Mesh-Grenze (`limits.endpoints_video` bzw. `_au
 Föderierte Chats: zusätzlich P10. Sonst Mesh wie 2.4 (`topo: "mesh"`). Clients entscheiden das nicht selbst, sie folgen `topo`. Einladungen gehen nur an Personen mit einem
 Gerät mit `horn`; die anderen sehen `old` („braucht Saga 2.5“).
 
-**Grenzen** (`GET /api/calls/config` → `limits.horn`): `video_tcp` 12, `audio_tcp` 50, `video_udp` 25, `audio_udp` 100
-(UDP gilt, wenn der Knoten des Anrufs UDP meldet). `limits.endpoints_video/_audio` bleiben die Mesh-Grenzen. Das
+**Grenzen** (`GET /api/calls/config` → `limits.horn`): `video_tcp` 16, `audio_tcp` 50, `video_udp` 25, `audio_udp` 50
+(2.6 nach der Messreihe 2263-9; 2.5: 12/50/25/100). UDP gilt, wenn der Startknoten des Anrufs UDP meldet; die Grenze
+steht ab dem Start fest. `limits.endpoints_video/_audio` bleiben die Mesh-Grenzen. Das
 Anruf-Objekt meldet in `limit` die Grenze dieses Anrufs.
 - **Clients nehmen die Grenze immer aus `limits.horn` (`GET /api/calls/config`) bzw. `limit` des Anrufs, nie fest im
   Client**; die Zahlen oben sind Obergrenzen des Servers (der Admin kann senken) und können sich mit Messungen ändern.

@@ -222,6 +222,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (`chat_call.lim`, idempotent). Die Grenze („n/12“) richtet sich nach dem Knoten, auf dem der Anruf beginnt; Umzug und
   Kaskade lassen sie nicht mehr zwischen 12 und 25 springen. Der Admin kann sie weiter nur senken. Anrufe von vor
   Migration 40 verhalten sich wie bisher.
+- **Gjallarhorn: Grenzen nach der Messreihe** (2263-9, `tools/perf/horn-2263.json`): Über den eingebauten Knoten
+  (Tunnel/TCP) jetzt **16 mit Video** (vorher 12) und 50 nur Ton; über UDP 25 mit Video und **50 nur Ton** (vorher 100 –
+  in der Messung rot, Bugs-DB 2449/2451). Der Admin kann weiter nur senken. `GET /api/calls/config` → `limits.horn`
+  meldet 16/50/25/50. Admin › Anrufe zeigt je Knoten **„Geschätzte Kapazität: etwa N mit Video / M nur Ton
+  gleichzeitig“** aus den gemessenen Kosten je Gerät (eigene Werte für den Tunnel-Betrieb mit saga-media), den
+  gemeldeten Kernen, `HORN_MAX_LEGS` und – nur wenn angegeben – dem Upload des Knotens.
+- **Gjallarhorn: Auslastung beachtet die CPU-Quote** (Bugs-DB 2450): Der Knoten rechnet CPU-Last und gemeldete Kerne
+  jetzt mit der CPU-Quote seiner cgroup (Docker `--cpus`, systemd `CPUQuota=`, cgroup v1 und v2) statt mit allen Kernen
+  des Rechners. Vorher meldete ein Knoten mit 0,1 Kern „ok“, während Bild und Ton einfroren, und Saga wich nie auf einen
+  anderen Knoten aus. Gekoppelte Knoten melden das erst nach ihrem Update auf 2.6.
 - **Gjallarhorn: Anrufe starten auf einem Knoten mit UDP, die UDP-Grenze greift** (Bugs-DB 2447): Bei gleicher Last
   gewann bisher immer der eingebaute Knoten (Tunnel); der Anruf hielt dann die TCP-Grenze fest, auch wenn alle Geräte
   über UDP auf einem gekoppelten Knoten liefen. Jetzt kommen bereite Knoten mit UDP unter 70 % Auslastung zuerst –

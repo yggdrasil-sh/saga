@@ -5,7 +5,7 @@ Startet eine eigene Instanz auf derselben Datenbank: saga-media auf 8061 (uvicor
 auf 8463 (HORN_TLS_SELF, nur TCP, Mitschnitt HORN_CAPTURE). saga-media/gjallarhorn: SAGA_MEDIA_BIN/GJALLARHORN_BIN, sonst
 "go build" aus media/ bzw. gjallarhorn/ (fehlt Go: Test uebersprungen = FEHLER, er gehoert zur Reihe).
 Geprueft: ohne Flag kein Knoten-Prozess; Flag an -> saga-media startet ihn, Steuerkanal verbunden, Register (eingebaut,
-Adresse, bereit), /internal/horn/conf und /api/horn/ctl von aussen gesperrt; config.limits.horn (12/50, 25/100);
+Adresse, bereit), /internal/horn/conf und /api/horn/ctl von aussen gesperrt; config.limits.horn (horn.LIMITS: 16/50, 25/50);
 Gruppenanruf in einer Gruppe ueber der Mesh-Grenze -> topo horn mit Kandidat und Medien-Token (Ton/Bild, ohne UDP kein
 "both"), Token ohne Konto-/Geraetenamen, kurze Lebensdauer; Einladung ohne horn-Geraet 'old'; Beitritt ohne Mesh-Angebote
 (mit Angeboten 400), ohne horn 409 old; Teilnehmerliste mit hp; kleine Gruppe Mesh nur mit horn_all aus (L1). Token am Knoten: gueltig,
@@ -445,7 +445,7 @@ def run(media, node):
     s, cf = req("GET", "/api/calls/config", A.k)
     hl = (cf.get("limits") or {}).get("horn") or {}
     ok(f"config: features horn, limits.horn {hl}, Mesh-Grenzen unveraendert",
-       "horn" in cf.get("features", []) and hl == {"video_tcp": 12, "audio_tcp": 50, "video_udp": 25, "audio_udp": 100}
+       "horn" in cf.get("features", []) and hl == {"video_tcp": 16, "audio_tcp": 50, "video_udp": 25, "audio_udp": 50}
        and cf["limits"]["endpoints_video"] == 4)
 
     # --- Gruppenanruf ueber den Knoten -----------------------------------------------------------------------------
@@ -456,8 +456,8 @@ def run(media, node):
     PERF["start_ms"] = round((time.time() - t0) * 1000, 1)
     k = d.get("call") or {}
     cands = (k.get("horn") or {}).get("candidates") or []
-    ok(f"Gruppe mit 6 Mitgliedern (Mesh-Grenze 4): topo horn, Grenze 12 Video ({s}, {k.get('topo')}, {k.get('limit')})",
-       s == 200 and k.get("topo") == "horn" and k.get("limit") == 12)
+    ok(f"Gruppe mit 6 Mitgliedern (Mesh-Grenze 4): topo horn, Grenze 16 Video ({s}, {k.get('topo')}, {k.get('limit')})",
+       s == 200 and k.get("topo") == "horn" and k.get("limit") == 16)
     ok(f"Antwort mit einem Kandidaten (eingebauter Knoten) und Token fuer Ton- und Bild-Leitung ({[c['node'] for c in cands]})",
        len(cands) == 1 and cands[0]["node"] == "localhost" and cands[0]["url"] == n["url"] and set(cands[0]["tokens"]) == {"audio", "video"}
        and k["horn"]["e2e"] == "saga-horn/v1")
