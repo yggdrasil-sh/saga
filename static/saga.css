@@ -61,18 +61,20 @@ body.saga-page>main.sg:focus{outline:none}
 .sg-chip:hover,.sg-chip:focus-visible{background:var(--card-h)}
 .sg-cards:empty{display:none}
 .sg-keep{margin:0;font-size:.875rem;color:var(--muted)}
-.sg-ask{position:sticky;bottom:0;background:var(--bg);padding:.4rem 0 .2rem;display:flex;flex-direction:column;gap:.4rem}
+.sg-ask{position:sticky;bottom:var(--sg-ask-b,0);background:var(--bg);padding:.4rem 0 .2rem;display:flex;flex-direction:column;gap:.4rem}
 .sg-ta{width:100%;box-sizing:border-box;resize:vertical;min-height:3.2rem;font-size:1rem}
 .sg-ask-bar{display:flex;align-items:center;gap:.5rem}
 .sg-status{font-size:.875rem;color:var(--muted)}
 @media (prefers-reduced-motion: no-preference){.sg-card{animation:sg-in .15s ease-out}}
 @keyframes sg-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 @media (max-width:760px){
-  body.saga-page>main.sg{padding:.8rem .9rem calc(4.2rem + env(safe-area-inset-bottom));max-width:none;min-height:100vh}
+  body.saga-page .np-head.side-head{display:flex}          /* Handy: Kopfzeile wie auf Heute, Navigation ueber die Tab-Leiste */
+  body.saga-page>main.sg{padding:.8rem .9rem calc(4.6rem + env(safe-area-inset-bottom));max-width:none;min-height:auto}
   .sg-intro-bar{flex-direction:column;align-items:stretch}
   .sg-intro-bar .btn{min-height:2.75rem}
   .sg-intro-bar .sg-later{margin-left:0}
   .sg-me{max-width:92%}
+  body.saga-page{--sg-ask-b:calc(3.6rem + env(safe-area-inset-bottom))}
   .sg-chip{min-height:2.75rem}
   .sg-info-b{min-height:2.75rem;min-width:2.75rem}
 }

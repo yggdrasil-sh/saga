@@ -164,6 +164,17 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
       await shot(L.p, `nachher-saga-gespraech-${vn}-${th === 'dark' ? 'dunkel' : 'hell'}`); await L.ctx.close();
     }
 
+    {                                                  // schmal: Tab "Saga" statt Seitenleiste (M1)
+      const L = await login(br, cfg.a, cfg.pw, { viewport: { width: 390, height: 844 }, theme: 'dark' });
+      await L.p.goto(BASE + '/dashboard'); await L.p.waitForTimeout(800);
+      const tab = await L.p.evaluate(() => { const t = document.querySelector('#mob-tabs [data-act="saga"]'); return t && t.getClientRects().length ? { href: t.getAttribute('href'), t: t.textContent.trim() } : null; });
+      await L.p.goto(BASE + '/saga'); await L.p.waitForTimeout(800);
+      const nav = await L.p.evaluate(() => ({ cur: !!document.querySelector('#mob-tabs [data-act="saga"][aria-current="page"]'),
+        head: getComputedStyle(document.querySelector('.np-head')).display !== 'none' }));
+      ok('schmal: Tab „Saga“ führt zu /saga, dort markiert, Kopfzeile sichtbar', tab && tab.href === '/saga' && tab.t === 'Saga' && nav.cur && nav.head, { tab, nav });
+      await L.ctx.close();
+    }
+
     // ================= Einstellungen › Saga › Meine Daten =================
     await p.evaluate(() => window.HKSettings.open('saga'));
     await until(() => p.evaluate(() => !!document.getElementById('sg-mydata')), 6000);
@@ -221,7 +232,8 @@ async function vorher(br, cfg) {          // Stand ohne K-I: dieselben Ansichten
     const off = await p.evaluate(() => ({ nav: !!document.getElementById('pg-nav-saga'), slot: !!document.getElementById('hz-saga-intro'), card: !!document.querySelector('.sg-intro') }));
     await p.evaluate(() => window.HKSettings.open('account')); await p.waitForTimeout(600);
     const offSet = await p.evaluate(() => !!document.getElementById('hk-tab-saga'));
-    ok('KI aus: kein Eintrag „Saga“, keine Karte, keine Einstellungen › Saga', !off.nav && !off.slot && !off.card && !offSet, { off, offSet });
+    const offTab = await p.evaluate(() => !!document.querySelector('#mob-tabs [data-act="saga"]'));
+    ok('KI aus: kein Eintrag „Saga“, kein Tab „Saga“, keine Karte, keine Einstellungen › Saga', !off.nav && !offTab && !off.slot && !off.card && !offSet, { off, offSet, offTab });
     await p.keyboard.press('Escape');
     for (const th of ['dark', 'light']) for (const [vn, vp] of VIEWS) {
       const L = await login(br, cfg.off, cfg.pw, { viewport: vp, theme: th });

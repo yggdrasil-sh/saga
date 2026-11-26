@@ -15,6 +15,7 @@
   // Marin: Knopf entsteht erst, wenn ai.js den Status kennt
   var aiTab = bar.querySelector('[data-act="ai"]'), tries = 0;
   (function look() {
+    if (!aiTab) return;                              // 2.6 (K-I 2269): Tab "Saga" statt "Marin" (templates/_tabbar.html)
     var ai = $('ai-btn');
     if (ai) { aiTab.hidden = false; var n = (ai.getAttribute('aria-label') || '').replace(/^\S+\s+/, ''); if (n) aiTab.querySelector('.mob-tab-ai').textContent = n; return; }
     if (++tries < 40) setTimeout(look, 500);

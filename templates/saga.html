@@ -78,5 +78,6 @@
 <script src="/static/backup.js?v={{ v }}"></script>
 <script src="/static/nextcloud.js?v={{ v }}"></script>
 {% if chat_enabled %}<script src="/static/meeting.js?v={{ v }}"></script><script src="/static/calls.js?v={{ v }}"></script><script src="/static/chatdock.js?v={{ v }}"></script>{% endif %}
+{% with tab_cur = 'saga' %}{% include "_tabbar.html" %}{% endwith %}<script src="/static/tabbar.js?v={{ v }}"></script>
 </body>
 </html>
