@@ -516,6 +516,14 @@ def server():
            len(tg) == 3 and tg[0] == {"type": "events", "date": "2026-07-07"} and tg[1]["type"] == "task" and tg[2] == {"type": "row", "id": row}, tg)
         from saga import tasksrc
         from datetime import date as _date
+        sdb = req("POST", "/api/notes", A, {"kind": "database", "title": "Status-Liste"})[1]["id"]
+        req("PATCH", f"/api/notes/{sdb}", A, {"schema": {"props": [{"id": "st", "name": "Stand", "type": "select", "options": [
+            {"id": "o", "name": "offen"}, {"id": "x", "name": "erledigt"}]}, {"id": "d", "name": "Datum", "type": "date"}],
+            "views": [{"id": "a", "name": "A", "type": "table"}], "tasks": {"done": "st", "due": "d", "done_values": ["x"]}}})
+        req("PUT", f"/api/notes/{sdb}/tasksource", A, {})
+        for title, stv, dv in (("Status offen", "o", "2026-07-07"), ("Status fertig", "x", "2026-07-07"), ("Status spaeter", "o", "2026-07-20"),
+                               ("Status Zeitraum", "o", "2026-07-06/2026-07-09"), ("Status Uhrzeit", None, "2026-07-08T09:30:00+02:00")):
+            req("POST", "/api/notes", A, {"parent_id": sdb, "title": title, "props": {"d": dv, **({"st": stv} if stv else {})}})
         with connect() as c:
             full = tasksrc.collect(c, A, _date(2026, 7, 7), BER, clean=False)[0]
             lean = tasksrc.collect(c, A, _date(2026, 7, 7), BER, clean=False, until="2026-07-08")[0]
@@ -523,6 +531,10 @@ def server():
         ok(f"tasksrc.collect(until): dieselben Eintraege wie der volle Weg, nur mit Datum bis until ({len(lean)}/{len(full)})",
            [x["key"] for x in lean] == want_k and all(x["overdue"] == y["overdue"] for x, y in zip(lean, [f for f in full if f["key"] in want_k])),
            ([x["key"] for x in lean], want_k))
+        ok("tasksrc.collect(until): Auswahl (erledigt ausgenommen, Zeitraum, Uhrzeit) wie erwartet",
+           {x["text"] for x in lean if x["text"].startswith("Status")} == {"Status offen", "Status Zeitraum", "Status Uhrzeit"},
+           [x["text"] for x in lean])
+        req("DELETE", f"/api/notes/{sdb}/tasksource", A)
         st, d0, _ = get(tz=None)
         ok("Live: v im Ereignis = GET in Konto-Sprache und -Zone", ev and d0.get("v") == ev.get("v"), (ev, d0.get("v")))
         ok(f"Kalender einmal abgefragt, im Hintergrund - auch bei mehreren kalten Abrufen ({Dav.reports})", Dav.reports == 1, Dav.reports)

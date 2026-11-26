@@ -213,12 +213,17 @@ def _rows(c, owner, db_id, m, scope, me, until=None):
     until (2.6 K-D 2271, Tageszeile): nur Zeilen mit Faelligkeit, deren Beginn <= until (JJJJ-MM-TT) - und statt aller
     Eigenschaften nur Erledigt/Faellig/Prioritaet (in Postgres ausgelesen, spart das JSON der ganzen Zeile)."""
     if until is not None and m.due is not None:
-        keys = [p["id"] for p in (m.dp, m.due, m.prio) if p]
-        sel = "jsonb_build_object(" + ", ".join("CAST(? AS TEXT), props::jsonb -> ?" for _ in keys) + ")::text"
-        sql = (f"SELECT id, title, {sel}, created FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND archived IS NULL "
-               "AND is_template=0 AND substr(props::jsonb ->> ?, 1, 10) <= ?")
-        args = [x for k in keys for x in (k, k)] + [owner, db_id, m.due["id"], until]
+        pid = m.prio["id"] if m.prio is not None else None
+        done = ("COALESCE(props::jsonb -> ?, 'null'::jsonb) <> 'true'::jsonb" if m.kind == "checkbox"
+                else "COALESCE(props::jsonb ->> ?, '') <> ALL(?)")
+        sql = ("SELECT id, title, props::jsonb ->> ?, " + ("props::jsonb ->> ?" if pid else "NULL") + ", created FROM note "
+               "WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND archived IS NULL AND is_template=0 "
+               f"AND substr(props::jsonb ->> ?, 1, 10) <= ? AND {done}")
+        args = [m.due["id"]] + ([pid] if pid else []) + [owner, db_id, m.due["id"], until, m.dp["id"]] + \
+            ([] if m.kind == "checkbox" else [list(m.done_ids)])
+        lean = True
     else:
+        lean = False
         sql = "SELECT id, title, props, created FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND archived IS NULL AND is_template=0"
         args = [owner, db_id]
     if scope == "assigned":
@@ -226,7 +231,10 @@ def _rows(c, owner, db_id, m, scope, me, until=None):
             return []
         sql += " AND id IN (SELECT note_id FROM row_person WHERE db_id=? AND pid=? AND person=?)"
         args += [db_id, m.assignee["id"], me]
-    return c.execute(sql + " ORDER BY sort NULLS FIRST, created, id LIMIT ?", (*args, SCAN_MAX)).fetchall()
+    rows = c.execute(sql + " ORDER BY sort NULLS FIRST, created, id LIMIT ?", (*args, SCAN_MAX)).fetchall()
+    if not lean:
+        return rows
+    return [(r[0], r[1], {m.due["id"]: r[2], **({m.prio["id"]: r[3]} if m.prio is not None else {})}, r[4]) for r in rows]
 
 
 def collect(c, uid, today, tz, acc=None, open_only=True, with_inbox=True, clean=True, until=None):
@@ -272,7 +280,7 @@ def collect(c, uid, today, tz, acc=None, open_only=True, with_inbox=True, clean=
             except Exception:  # noqa: BLE001
                 rows = None
         for rid, rtitle, raw, _created in rows if rows is not None else _rows(c, owner, db_id, m, scope, uid):
-            pv = _json_load(raw, {})
+            pv = raw if isinstance(raw, dict) else _json_load(raw, {})
             if not isinstance(pv, dict) or (open_only and m.is_done(pv)):
                 continue
             if n >= OPEN_MAX:
@@ -300,7 +308,8 @@ def collect(c, uid, today, tz, acc=None, open_only=True, with_inbox=True, clean=
         src["count"] = n
     if gone and clean:
         c.execute(f"DELETE FROM task_source WHERE uid=? AND db_id IN ({','.join('?' * len(gone))})", (uid, *gone))
-    items.sort(key=lambda x: _sort_key(x, t0))
+    if until is None:                        # Tageszeile (until) sortiert selbst
+        items.sort(key=lambda x: _sort_key(x, t0))
     return items, sources, people.label_map(c, canons, uid) if canons else {}
 
 

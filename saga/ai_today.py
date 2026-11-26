@@ -188,10 +188,10 @@ def _task_facts(c, uid, D, tz):
             continue
         tgt = {"type": "task", "id": it["id"]} if it.get("kind") == "task" else {"type": "row", "id": it["id"]}
         out.append(Fact(kind, it["key"], 2 if kind == "over" else 3,
-                        {"title": " ".join(str(it.get("text") or "").split()) or t("Unbenannt"), "prio": it.get("prio") or 2,
+                        {"title": it.get("text") or t("Unbenannt"), "prio": it.get("prio") or 2,
                          "due": due, "time": it.get("time") or ""}, tgt))
     out.sort(key=lambda f: (f.kind, f.fields["prio"], f.fields["due"], f.fields["time"], f.fields["title"].lower(), f.key))
-    return out
+    return out                           # Titel ungekuerzt; render/_short glaettet Leerraum
 
 
 def facts(c, uid, now, tz, events=None):
