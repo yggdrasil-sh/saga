@@ -5,6 +5,8 @@ einem Lauf - je Messung ein eigener Prozess (jede raeumt selbst auf, stellt Eins
   Plan pruefen tools/perf/kollegin_plan.py   "Kollegin: Plan pruefen (5 Schritte)"
   Kontext      tools/perf/kollegin.py        "Kollegin: Kontext-Auswahl" (Stufe S, M)
   Runner       tools/perf/kollegin_runner.py "Kollegin: Runner-Schritt (create_task)"
+  Auftraege    tools/perf/kollegin_auftraege.py (K-B 2267) "Kollegin: Plan pruefen (Planer)", "POST /api/ai/jobs bis Plan",
+               "approve", "GET /api/ai/jobs" (approve/Liste ueber HTTP: HK_TEST_BASE)
 
     PYTHONPATH=tests/pgshim:. python tools/perf/bench_kollegin.py [--stufe SM] [--nur takt,plan,kontext,runner]
     (saga-test: tools/testumgebung/umgebung.sh lauf server <slot> $PWD/tools/perf/bench_kollegin.py)
@@ -27,13 +29,14 @@ def plan(stufe):
     for st in stufe:
         out.append(("kontext", st, ["kollegin.py", "--stufe", st]))
     out.append(("runner", "S", ["kollegin_runner.py", "--stage", "S"]))
+    out.append(("auftraege", "S", ["kollegin_auftraege.py", "--stage", "S"]))
     return out
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stufe", default="SM")
-    ap.add_argument("--nur", default="takt,plan,kontext,runner")
+    ap.add_argument("--nur", default="takt,plan,kontext,runner,auftraege")
     a = ap.parse_args()
     want = set(a.nur.split(","))
     stufe = [x for x in a.stufe if x in "SM"]
