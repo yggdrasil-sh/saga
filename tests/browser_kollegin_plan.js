@@ -242,19 +242,18 @@ const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
   await api('POST', '/api/ai/jobs/' + j3 + '/approve', { plan_v: pl4.plan_v, plan_hash: pl4.plan_hash });
   await until(async () => (await api('GET', '/api/ai/jobs/' + j3)).d.state === 'erledigt', 15000); await sleep(800);
   const still = await p.evaluate((sel) => !!document.querySelector(sel + ' .kj-plan .kj-go'), W(j3));
-  await p.unroute('**/api/events**');
   const gets = []; const onReq = (r) => { if (r.method() === 'GET' && /\/api\/ai\/jobs\/\d+$/.test(r.url())) gets.push(+r.url().split('/').pop()); };
-  p.on('request', onReq);
-  await p.evaluate(() => document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: 'live.hello', data: { first: true } } })));
-  await sleep(800); const g1 = gets.length;
   const fe = await p.evaluate(() => { const ws = [...document.querySelectorAll('#sg-feed .sg-job[data-job]')];
     return { all: ws.length, open: ws.filter((w) => ['erledigt', 'zurueckgenommen', 'abgebrochen', 'fehlgeschlagen', 'weg'].indexOf(w.dataset.state) < 0).map((w) => +w.dataset.job) }; });
-  await p.evaluate(() => document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: 'live.hello', data: { first: false } } })));
+  p.on('request', onReq);
+  // erstes hello (Ereignis-Quelle steht nach dem Laden): auch hier fehlt sonst, was dazwischen fertig wurde
+  await p.evaluate(() => document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: 'live.hello', data: { first: true } } })));
   const fb3 = await until(() => p.evaluate((sel) => !!document.querySelector(sel + ' .kj-report'), W(j3)), 8000);
-  await sleep(500); p.off('request', onReq);
+  await sleep(800); p.off('request', onReq);
   ok('2515: Rückmeldung ohne Live-Ereignis – nach dem (Wieder-)Verbinden (live.hello) neu geholt', still && fb3, { still, fb3 });
-  ok('2515: erstes hello holt nichts; hello holt nur offene Aufträge (' + JSON.stringify({ g1, gets, fe }) + ')', g1 === 0 && fe.all > fe.open.length
-    && gets.length === fe.open.length && gets.every((x) => fe.open.indexOf(x) >= 0) && gets.indexOf(j3) >= 0, { g1, gets, fe });
+  ok('2515: hello holt nur offene Aufträge, jeden einmal, keine erledigten (' + JSON.stringify({ gets, fe }) + ')', fe.all > fe.open.length
+    && gets.length === fe.open.length && gets.every((x) => fe.open.indexOf(x) >= 0) && gets.indexOf(j3) >= 0, { gets, fe });
+  await p.unroute('**/api/events**');
   // --- 2515: „Verlauf an/aus“ folgt Einstellungen › Saga ----------------------------------------------------------------
   await openSaga();
   const keep0 = await p.evaluate(() => document.getElementById('sg-keep').textContent);

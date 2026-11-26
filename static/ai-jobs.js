@@ -499,7 +499,8 @@
       // 2515: nicht nur am Live-Ereignis haengen - nach (Wieder-)Verbinden der Ereignis-Quelle (live.hello) bzw. resync
       // den Stand einmal neu holen (Ereignisse dazwischen kamen nicht an)
       if (t === 'live.hello' || t === 'resync') {
-        if (t === 'live.hello' && e.detail.data && e.detail.data.first) return;   // erstes hello: gerade geladen, nichts verpasst
+        // auch das erste hello: zwischen Laden der Seite und Aufbau der Ereignis-Quelle kann ein Auftrag fertig werden (wie
+        // live.js Nr. 173) - neu gezeichnet wird nur bei neuem Stand (reopen), also ohne Zuklappen
         refresh();
         reopen();
         Object.keys(watch).forEach(function (id) { load(id).then(function (x) { if (x && x.state !== 'laeuft' && watch[id]) landed(id, x); }); });

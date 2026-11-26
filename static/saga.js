@@ -451,8 +451,9 @@
     document.addEventListener('hk-live', function (e) {   // ai.job.changed: Baustein im Verlauf auf den neuen Stand
       var t = e.detail && e.detail.type;
       if (t === 'live.hello' || t === 'resync') {        // 2515: nach (Wieder-)Verbinden einmal neu holen - Ereignisse dazwischen fehlen
-        if (t === 'live.hello' && e.detail.data && e.detail.data.first) return;   // erstes hello: der Verlauf ist gerade geladen
-        openJobs().forEach(refreshJob);                   // nur offene Auftraege - End-Zustaende aendern sich nicht von selbst
+        // nur offene Auftraege - End-Zustaende aendern sich nicht von selbst. Auch beim ersten hello: zwischen Laden der Seite
+        // und Aufbau der Ereignis-Quelle kann ein freigegebener Auftrag schon fertig sein (sonst fehlt die Rueckmeldung)
+        openJobs().forEach(refreshJob);
         return;
       }
       var d = t === 'ai.job.changed' ? (e.detail.data || {}) : null;

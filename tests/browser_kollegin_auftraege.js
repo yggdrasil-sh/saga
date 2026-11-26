@@ -134,8 +134,8 @@ const WORDS = {
     }
     const kept = await p.evaluate(() => { const o = document.querySelector('.kj-detail .kj-oldtext'); return { same: !!o && o === window.__kjOld, txt: o && o.textContent }; });
     p.off('request', onReq);
-    ok('2515: erstes hello holt das Detail nicht neu; hello/resync ohne neuen Stand lassen „Alte Fassung“ offen (' + JSON.stringify({ g1, n: gets.length }) + ')',
-      g1 === 0 && gets.length >= 1 && kept.same && /Pavillon/.test(kept.txt || ''), { g1, gets, kept });
+    ok('2515: hello (auch das erste)/resync ohne neuen Stand zeichnen das Detail nicht neu – „Alte Fassung“ bleibt offen (' + JSON.stringify({ g1, n: gets.length }) + ')',
+      g1 === 1 && gets.length === 3 && kept.same && /Pavillon/.test(kept.txt || ''), { g1, gets, kept });
   }
   const pg2 = (await api('GET', '/api/notes/' + fest.id)).d;
   ok('Konflikt: nichts überschrieben', /umgeschrieben/.test(pg2.body || ''));
