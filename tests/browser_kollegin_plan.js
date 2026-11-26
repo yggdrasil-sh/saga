@@ -62,11 +62,12 @@ const LAST = (sel) => `[...document.querySelectorAll('#sg-feed ${sel}')].pop()`;
   ok('KI-Bereich: Reiter „Frag deine Seiten“, kein Reiter „Aufträge“ (UX §2: Aufträge wohnen im Ort „Saga“)', tabsAi.indexOf('Aufträge') < 0 && tabsAi.indexOf('Frag deine Seiten') >= 0, tabsAi);
   await Promise.all([p.waitForNavigation(), p.evaluate(() => HKAI.open('jobs'))]);
   ok('HKAI.open(\'jobs\') -> /saga?tab=jobs', /\/saga\?tab=jobs$/.test(p.url()), p.url());
-  ok('Ort „Saga“ öffnet', await openSaga());
+  await until(() => p.evaluate(() => !document.getElementById('sg-tabs').hidden && !!document.querySelector('#sg-jobs .kj-root')));
   const T0 = await p.evaluate(() => ({ tabs: [...document.querySelectorAll('#sg-tabs [role=tab]')].map((b) => [b.textContent, b.getAttribute('aria-selected')]),
     mode: !document.getElementById('sg-mode').hidden, pressed: document.getElementById('sg-mode').getAttribute('aria-pressed'), jobs: !document.getElementById('sg-jobs').hidden }));
   ok('Reiter „Gespräch / Aufträge“ (role=tab), mit ?tab=jobs ist „Aufträge“ gewählt', JSON.stringify(T0.tabs) === JSON.stringify([['Gespräch', 'false'], ['Aufträge', 'true']]) && T0.jobs, T0);
   ok('Umschalter „Als Auftrag“ sichtbar, aus (aria-pressed=false)', T0.mode && T0.pressed === 'false', T0);
+  ok('Ort „Saga“ öffnet (Gespräch)', await openSaga());
   // Tastatur: Reiter mit Pfeilen, Umschalter mit Leertaste
   await p.focus('#sg-tab-jobs'); await p.keyboard.press('ArrowLeft');
   const kb = await p.evaluate(() => ({ f: document.activeElement.id, sel: document.getElementById('sg-tab-talk').getAttribute('aria-selected'), talk: !document.getElementById('sg-talk').hidden }));
