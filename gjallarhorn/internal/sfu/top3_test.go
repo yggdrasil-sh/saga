@@ -220,7 +220,7 @@ func vierSprecher(t *testing.T, seed int64, band [][2]uint32, pause float64) (in
 // je Minute auf den Ton-Plaetzen (Plan 2263-3); sechs mit Gemurmel und Atempausen hoechstens 12 (eine Atempause von
 // 0,8 s laesst die Aktivitaet so weit sinken, dass ein Neuer 1,5 s lang 1,4-mal so aktiv ist - nach Vertrag ein
 // Wechsel). Je 5 Saaten. Gemessen (2.6): 4 gleich laut 0, mit Atempausen 1-3, gestaffelt 0-1, 6 Gemurmel 3-8 je
-// Minute. Vorher (2.5, abe8892, dieselbe Simulation): 106-119, 40-60, 30-37, 101-136.
+// Minute; mit dem Redewechsel 2432 (Onset/audioTalk): 0, 2-5, 0-2, 6-12. Vorher (2.5, abe8892, dieselbe Simulation): 106-119, 40-60, 30-37, 101-136.
 func TestTop3HystereseVierSprecher(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -337,7 +337,37 @@ func TestTop3Redewechsel(t *testing.T) {
 	g.level["d"] = 40
 	n, first := g.tonLauf(5*time.Second, "d", nil)
 	t.Logf("Redewechsel c -> d: d nach %d Takten (%s) auf dem Platz, %d Wechsel", first, time.Duration(first)*200*time.Millisecond, n)
-	if first < 0 || first > 13 || n != 1 || hat(g.ton(), "c") {
-		t.Fatalf("Redewechsel: d ab Takt %d (hoechstens 13 = 2,6 s), %d Wechsel, Plaetze %v", first, n, g.ton())
+	// 2.6 (Bugs-DB 2432): c gilt nach audioQuiet (0,6 s) ohne Sprachpaket als still -> d nach 3-5 Takten (vorher bis 13)
+	if first < 0 || first > 5 || n != 1 || hat(g.ton(), "c") {
+		t.Fatalf("Redewechsel: d ab Takt %d (hoechstens 5 = 1,0 s), %d Wechsel, Plaetze %v", first, n, g.ton())
+	}
+}
+
+// 2.6 (Bugs-DB 2432): Atempause unter audioQuiet - der Inhaber behaelt seinen Platz, obwohl ein Vierter spricht.
+func TestTop3Atempause(t *testing.T) {
+	g := tonGruppe(t, "a", "b", "c", "d")
+	g.level = map[string]uint32{"a": 40, "b": 40, "c": 40}
+	g.run(5 * time.Second)
+	g.level["d"] = 40
+	n, first := g.tonLauf(4*time.Second, "d", func(i int) {
+		if i%6 == 1 || i%6 == 2 { // c macht alle 1,2 s eine Pause von 2 Takten (0,4 s)
+			delete(g.level, "c")
+		} else {
+			g.level["c"] = 40
+		}
+	})
+	t.Logf("Atempausen c (0,4 s): d ab Takt %d, %d Wechsel, Plaetze %v", first, n, g.ton())
+	if !hat(g.ton(), "c") || n > 1 {
+		t.Fatalf("Atempause 0,4 s: c verliert den Platz (%d Wechsel, Plaetze %v)", n, g.ton())
+	}
+}
+
+func TestAudioActivity(t *testing.T) {
+	now := int64(10 * time.Second)
+	ms := func(d int) int64 { return now - int64(time.Duration(d)*time.Millisecond) }
+	if AudioActivity(0.3, 0, now, now) != 0.3 || AudioActivity(0.3, ms(500), now, now) != 0.3 ||
+		AudioActivity(0.3, ms(600), ms(100), now) != 0 || AudioActivity(0.01, now, now, now) != 0.01 ||
+		AudioActivity(0.3, ms(600), ms(700), now) != 0.3 { // Neuer sprach schon vor der Pause: kein Redewechsel
+		t.Fatal("AudioActivity")
 	}
 }

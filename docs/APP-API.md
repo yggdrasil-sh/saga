@@ -2555,10 +2555,11 @@ eigener Fähigkeit). Beschreibung der Umsetzung im Knoten: `gjallarhorn/NODE.md`
    mindestens das 1,4-Fache an Aktivität hat **und** das mindestens 1,5 s lang hält. Stille Inhaber weichen nur
    Sprechenden (ein stiller Neuer verdrängt keinen stillen Inhaber). Knoten ab 2.6 (Stand unten).
 4. **Wechselzeit:** Ist ein Platz frei oder still, MUSS der Wechsel zu einem neuen Sprecher in höchstens 0,5 s
-   erfolgen. Knoten ab 2.6 (Stand unten). „Still“ heißt: gleitende Aktivität unter 0,04 – das ist etwa 2–2,5 s nach
-   dem letzten Wort. Haben alle drei Inhaber eben gesprochen, kommt ein Neuer deshalb erst über Regel 3 dran (gemessen
-   etwa 2,4 s). Ob „still“ später zusätzlich über die Zeit seit dem letzten Sprachpaket gilt, entscheidet die Messreihe
-   2263-9 (M6).
+   erfolgen. Knoten ab 2.6 (Stand unten). „Still“ heißt: gleitende Aktivität unter 0,04 – **oder Redewechsel**: seit
+   0,6 s kein Sprachpaket (Pegel aus `audio-level` über der Sprachschwelle), und ein Neuer hat erst danach zu sprechen
+   begonnen und spricht seit mindestens 0,4 s (2.6, Bugs-DB 2432 – vorher nur die gleitende Aktivität, etwa 2–2,5 s
+   nach dem letzten Wort; gemessen kam ein Neuer, wenn alle drei eben gesprochen hatten, erst nach 3,3–3,7 s dran).
+   Kürzere Atempausen halten den Platz; reden vier durcheinander, gilt weiter Regel 3.
 5. **Was Clients sehen:** feste SSRC je Platz; die CSRC nennt den Inhaber; die Folgenummern laufen über einen Wechsel
    lückenlos weiter. `audio-level` steht mit der ID, die das Bein des Empfängers ausgehandelt hat (Rahmen-Weg: Byte 3 abwärts, nur mit
    `level` im `ok`).

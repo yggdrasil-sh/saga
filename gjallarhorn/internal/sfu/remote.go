@@ -332,6 +332,7 @@ type PeerView struct {
 	Via    string
 	Score  float64
 	Spoke  int64 // fwd.Now der letzten Sprache (0 = nie)
+	Talk   int64 // fwd.Now des Beginns des laufenden Redebeitrags (Bugs-DB 2432, 0 = nie)
 	Audio  *fwd.Source
 	Srcs   []SourceView
 }
@@ -355,7 +356,7 @@ func (r *Room) View(exclude string) []PeerView {
 		if exclude != "" && p.Via == exclude {
 			continue
 		}
-		v := PeerView{ID: p.ID, Device: p.Device, Via: p.Via, Score: p.score, Spoke: p.lastSpoke}
+		v := PeerView{ID: p.ID, Device: p.Device, Via: p.Via, Score: p.score, Spoke: p.lastSpoke, Talk: p.talkSince}
 		if p.audio != nil {
 			v.Audio = p.audio.Source
 		}

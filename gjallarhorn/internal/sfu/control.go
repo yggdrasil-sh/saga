@@ -18,7 +18,51 @@ import (
 const (
 	audioHold   = domHold
 	audioFactor = domFactor
+	// audioQuiet (2.6, Bugs-DB 2432, Entscheidung 26.11., Weg A): Wer so lange kein Sprachpaket mehr geschickt hat, gilt fuer die
+	// Ton-Plaetze als still, sobald ein Neuer danach zu sprechen beginnt (AudioActivity) - auch wenn seine gleitende
+	// Aktivitaet noch ueber speakOn liegt (sie klingt erst nach ~2,5 s ab). Ein neuer Sprecher bekommt den Platz so nach
+	// etwa 0,6-1 s statt 3,3-3,7 s (Messreihe 2263-9 M6). Kuerzere Atempausen halten den Platz.
+	audioQuiet = 600 * time.Millisecond
+	// audioTalk: so lange muss der Neue schon reden, bevor er den Platz eines verstummten Inhabers bekommt (Onset) -
+	// sonst nimmt im Gemurmel jeder kurze Einwurf nach einer Atempause einen Platz.
+	audioTalk = 400 * time.Millisecond
 )
+
+// noteVoice: neues Sprachpaket um t (spaeter als lastSpoke) - nach einer Luecke von mindestens audioQuiet beginnt ein
+// neuer Redebeitrag (talkSince).
+func (p *Peer) noteVoice(t int64) {
+	if p.lastSpoke == 0 || t-p.lastSpoke >= int64(audioQuiet) {
+		p.talkSince = t
+	}
+	p.lastSpoke = t
+}
+
+// AudioActivity: Aktivitaet eines Inhabers fuer die Top-3-Ton-Plaetze (HoldAudio). Redewechsel (Bugs-DB 2432): 0, wenn
+// sein letztes Sprachpaket (spoke, fwd.Now) mindestens audioQuiet her ist UND ein Neuer erst danach zu sprechen begonnen
+// hat (onset = juengster Beginn eines Redebeitrags unter den sprechenden Neuen) - dann ist es ein Wechsel, kein
+// Durcheinander. Spricht der Neue schon laenger (vier reden zugleich, Atempausen), gilt weiter die gleitende Aktivitaet
+// mit Regel 3 (1,4x, 1,5 s) - sonst flatterten die Plaetze bei jeder Atempause. spoke 0 (unbekannt): score.
+func AudioActivity(score float64, spoke, onset, now int64) float64 {
+	if spoke > 0 && now-spoke >= int64(audioQuiet) && onset > spoke {
+		return 0
+	}
+	return score
+}
+
+// Onset: juengster Beginn eines Redebeitrags unter den Neuen (nicht Inhaber), die gerade sprechen (Aktivitaet >= speakOn,
+// letztes Sprachpaket juenger als audioQuiet) und schon mindestens audioTalk lang reden - 0 ohne solche.
+func Onset[K comparable](cand []K, holder map[K]bool, score func(K) float64, spoke, talk func(K) int64, now int64) int64 {
+	var o int64
+	for _, c := range cand {
+		if holder[c] || score(c) < speakOn || now-spoke(c) >= int64(audioQuiet) {
+			continue
+		}
+		if t := talk(c); t > o && now-t >= int64(audioTalk) {
+			o = t
+		}
+	}
+	return o
+}
 
 // Schwellen der Sprechererkennung.
 const (
@@ -291,11 +335,11 @@ func (r *Room) measurePeer(p *Peer, dt float64, now int64) {
 			act = loud * frac
 		}
 		if lv := a.LastVoice.Load(); lv > p.lastSpoke {
-			p.lastSpoke = lv
+			p.noteVoice(lv)
 		}
 	}
 	if p.spoke > p.lastSpoke { // P9: laut anderem Knoten
-		p.lastSpoke = p.spoke
+		p.noteVoice(p.spoke)
 	}
 	p.score = 0.8*p.score + 0.2*act
 }
@@ -1747,7 +1791,8 @@ func keepActive(slots []*slot, cand []*Peer) []*Peer {
 
 // HoldAudio belegt Ton-Plaetze nach der Top-3-Hysterese (Vertrag docs/APP-API.md "Top-3-Ton" 3/4, Bugs-DB 2417) -
 // fuer die Ton-Plaetze eines Beins (Leg.holdAudio) und die Ton-Auswahl einer Bifroest-Bruecke (gleiche Regel):
-//   - Ein sprechender Inhaber (Aktivitaet >= speakOn) behaelt seinen Platz.
+//   - Ein sprechender Inhaber (Aktivitaet >= speakOn) behaelt seinen Platz. Aktivitaet = score(k) - Beine und Bruecke
+//     geben fuer Inhaber AudioActivity (Redewechsel: still nach audioQuiet, wenn ein Neuer danach begann, Bugs-DB 2432).
 //   - Ein Neuer bekommt sofort einen freien Platz; ein sprechender Neuer auch den Platz eines stillen Inhabers (des
 //     stillsten). Stille Inhaber weichen nur Sprechenden.
 //   - Sprechen alle Inhaber, verdraengt ein Neuer den leisesten erst, wenn er mindestens audioHold lang mindestens
@@ -1834,7 +1879,20 @@ func (l *Leg) holdAudio(aslots []*slot, cand []*Peer, now int64) {
 	for i, s := range aslots {
 		cur[i] = s.owner
 	}
-	out := HoldAudio(cur, cand, func(p *Peer) float64 { return p.score }, l.aWait, now)
+	hold := make(map[*Peer]bool, len(cur))
+	for _, p := range cur {
+		if p != nil {
+			hold[p] = true
+		}
+	}
+	onset := Onset(cand, hold, func(p *Peer) float64 { return p.score }, func(p *Peer) int64 { return p.lastSpoke },
+		func(p *Peer) int64 { return p.talkSince }, now)
+	out := HoldAudio(cur, cand, func(p *Peer) float64 {
+		if hold[p] {
+			return AudioActivity(p.score, p.lastSpoke, onset, now)
+		}
+		return p.score
+	}, l.aWait, now)
 	for i, s := range aslots {
 		p := out[i]
 		s.owner = p

@@ -46,7 +46,9 @@ Platzhalter: `horn-1.example.org`.
   - **Hysterese:** Ein sprechender Inhaber bleibt. Ein Neuer bekommt sofort einen freien oder stillen Platz. Sprechen
     alle Inhaber, verdrängt ein Neuer den leisesten erst bei mindestens 1,4-facher Aktivität **und** nach mindestens
     1,5 s (dieselben Werte wie beim Hauptsprecher, `domFactor`/`domHold`). Stille Inhaber weichen nur Sprechenden.
-  - **Wechselzeit:** höchstens 0,5 s, wenn ein Platz frei oder still ist.
+  - **Wechselzeit:** höchstens 0,5 s, wenn ein Platz frei oder still ist. Still = Aktivität unter 0,04 oder
+    Redewechsel: seit 0,6 s kein Sprachpaket (`audioQuiet`) und ein Neuer begann danach und redet seit 0,4 s
+    (`audioTalk`; `sfu.AudioActivity`/`sfu.Onset`, auch an der Brücke; 2.6, Bugs-DB 2432).
   - Platz = feste SSRC, CSRC = Inhaber, Folgenummern lückenlos über den Wechsel; `slots[]` mit `class: "audio"`.
   - **Kaskade:** jede Seite einer Brücke wählt ihre Top-3 nach derselben Regel (unten, „Kaskade Bifröst“), der
     Empfänger daraus wie lokal.

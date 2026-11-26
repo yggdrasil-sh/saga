@@ -259,12 +259,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   bekam Bild oder Ton. Jetzt sind im Raum so viele Ziele erlaubt wie die größte Anruf-Obergrenze (derzeit 100); 1:1 ohne
   Raum und ein klingelnder 1:1-Anruf bleiben bei 10. Der Schutz vor zu vielen Signalen (Budget, Rate) bleibt. In
   föderierten Anrufen müssen dafür alle beteiligten Server 2.6 haben (Bugs-DB 2439).
+- **Gjallarhorn: neuer Sprecher schneller hörbar** (Bugs-DB 2432, Entscheidung 26.11., Weg A): Wer seit 0,6 s kein Sprachpaket
+  mehr geschickt hat, gibt seinen Ton-Platz frei, sobald jemand danach zu reden beginnt (und 0,4 s dabei bleibt) – auch
+  an der Bifröst-Brücke. Haben alle drei Inhaber eben gesprochen, ist ein Neuer damit nach etwa 0,6–1 s zu hören statt
+  nach 3,3–3,7 s (Messreihe 2263-9). Kürzere Atempausen halten den Platz; reden vier durcheinander, bleibt es bei der
+  Hysterese (1,4×, 1,5 s).
 - **Gjallarhorn: Top-3-Ton flattert nicht mehr** (Bugs-DB 2417, 2263-3): Wer gerade spricht, behält seinen Ton-Platz;
   ein Neuer bekommt einen freien oder stillen Platz sofort, verdrängt einen Sprechenden aber erst mit mindestens 1,4-facher
   Aktivität über 1,5 s – wie beim Hauptsprecher, auf dem Knoten und auf der Bifröst-Brücke. Bei vier gleichzeitig
   Sprechenden 0–3 statt über 100 Platzwechsel je Minute. Neuer Zähler `aswitch` je Ton-Bein in
-  `GET /api/sfu/leg/{id}`; höchstens 3 Ton-Plätze je Empfänger fest. Bekannte Folge: Haben alle drei Inhaber eben
-  gesprochen, kommt ein neuer Sprecher nach etwa 2,4 s dran (vorher 0,8 s); Feinschliff nach der Messreihe 2263-9.
+  `GET /api/sfu/leg/{id}`; höchstens 3 Ton-Plätze je Empfänger fest. Die zunächst längere Wechselzeit, wenn alle drei
+  Inhaber eben gesprochen hatten, behebt 2432 (oben).
 - **Gjallarhorn: Knoten-Grenzen passend zu 10+ Teilnehmern** (Bugs-DB 2416, Knoten-Teil): Standard `HORN_MAX_LEGS` 200
   (bisher 48) und `HORN_MAX_PER_IP` 40 (bisher 12) – über den Tunnel braucht jedes Gerät zwei Beine. Ein ungültiger
   Wert für `HORN_MAX_LEGS` fällt auf den Standard zurück (bisher nahm der Knoten dann gar kein Bein an). Endgültige Werte

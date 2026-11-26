@@ -357,10 +357,11 @@ func (b *bridge) pickAudio(view []sfu.PeerView, now int64) map[*fwd.Source]bool 
 	cand := make([]*fwd.Source, 0, len(view))
 	score := make(map[*fwd.Source]float64, len(view))
 	spoke := make(map[*fwd.Source]int64, len(view))
+	talk := make(map[*fwd.Source]int64, len(view))
 	for _, p := range view {
 		if p.Audio != nil {
 			cand = append(cand, p.Audio)
-			score[p.Audio], spoke[p.Audio] = p.Score, p.Spoke
+			score[p.Audio], spoke[p.Audio], talk[p.Audio] = p.Score, p.Spoke, p.Talk
 		}
 	}
 	cur := map[*fwd.Source]bool{}
@@ -388,7 +389,20 @@ func (b *bridge) pickAudio(view []sfu.PeerView, now int64) map[*fwd.Source]bool 
 	if b.audWait == nil {
 		b.audWait = map[*fwd.Source]int64{}
 	}
-	b.aud = sfu.HoldAudio(b.aud, cand, func(s *fwd.Source) float64 { return score[s] }, b.audWait, now)
+	hold := make(map[*fwd.Source]bool, len(b.aud))
+	for _, a := range b.aud {
+		if a != nil {
+			hold[a] = true
+		}
+	}
+	onset := sfu.Onset(cand, hold, func(s *fwd.Source) float64 { return score[s] }, func(s *fwd.Source) int64 { return spoke[s] },
+		func(s *fwd.Source) int64 { return talk[s] }, now)
+	b.aud = sfu.HoldAudio(b.aud, cand, func(s *fwd.Source) float64 {
+		if hold[s] {
+			return sfu.AudioActivity(score[s], spoke[s], onset, now) // Redewechsel (Bugs-DB 2432)
+		}
+		return score[s]
+	}, b.audWait, now)
 	want := map[*fwd.Source]bool{}
 	for _, a := range b.aud {
 		if a != nil {

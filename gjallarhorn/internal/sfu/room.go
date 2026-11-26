@@ -258,6 +258,7 @@ type Peer struct {
 
 	score     float64 // Sprechaktivitaet (geglaettet)
 	lastSpoke int64
+	talkSince int64 // 2.6 (Bugs-DB 2432): Beginn des laufenden Redebeitrags (Luecke >= audioQuiet beginnt einen neuen)
 }
 
 // source sind Steuerdaten einer Quelle (nur unter Room.mu).
