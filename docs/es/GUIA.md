@@ -239,12 +239,13 @@ desactivado), así que el túnel es el camino estándar detrás de un proxy así
 ### Saga detrás de Node64 (ipv64.net)
 
 [Node64](https://node64.de) es un contenedor para homelab de ipv64.net. Su proxy inverso se llama **PROXY64**; además
-trae comprobaciones de salud (health checks), filtros por país y listas de bloqueo. En local, Node64 funciona **sin
+trae comprobaciones de salud (health checks), bloqueo por país y listas de bloqueo. En local, Node64 funciona **sin
 cuenta de ipv64**. Saga queda detrás como detrás de cualquier otro proxy: Node64 termina TLS (HTTPS) y Saga sigue
 hablando solo HTTP en el puerto 8080; web, apps, canal en directo y llamadas (túnel, arriba) usan **un dominio y solo el
 puerto 443**.
 
-1. **Crear un host de proxy** (PROXY64 → Proxy-Hosts): dominio `saga.example.org`, destino `http://<host-de-saga>:8080`
+1. **Crear un host de proxy** (PROXY64 → Proxy hosts; la interfaz de Node64 está en alemán e inglés, aquí los nombres en
+   inglés): dominio `saga.example.org`, destino `http://<host-de-saga>:8080`
    (o el nombre del contenedor de Saga si ambos están en la misma red de Docker), **WebSockets activado** (por defecto en
    hosts nuevos), el certificado que quieras (Let's Encrypt, propio, autofirmado para pruebas). Sin WebSockets las
    páginas cargan, pero las llamadas no: el nodo responde entonces `426` y Admin → Llamadas muestra «el proxy no deja
@@ -259,18 +260,19 @@ puerto 443**.
    administración muestra un aviso. Para visitantes IPv6 vale además «IPv6 y Docker» de arriba: Node64 en la red del
    host (`network_mode: host`) o con IPv6 en la red de Docker.
 3. **Comprobación de salud** (opcional, módulo Healthchecks): tipo HTTP sobre `http://<host-de-saga>:8080/healthz`;
-   respuesta `ok` con estado 200. El botón «crear health check para este destino» del host de proxy solo comprueba `/`
+   respuesta `ok` con estado 200. El botón «Create a healthcheck for this target» del host de proxy solo comprueba `/`
    (redirección al inicio de sesión); `/healthz` es más preciso.
-4. **Consejo de protección:** activa las listas de bloqueo de ipv64 en PROXY64 → Seguridad y pon un filtro por país en
-   el host de proxy (p. ej. solo `DE`, `EU`) si Saga solo se usa desde allí. Los servidores Saga federados y los móviles
-   en el extranjero también tienen que estar permitidos.
+4. **Consejo de protección:** activa «ipv64 blocklists» en PROXY64 → Security y pon «Country block» del host de proxy en
+   «allow only these countries» (p. ej. Alemania o «European Union (27 countries)») si Saga solo se usa desde allí. Los
+   servidores Saga federados y los móviles en el extranjero también tienen que estar permitidos.
 
 No publiques el área de administración (puerto 8081): nunca como host de proxy, sigue usando un túnel SSH (sección 4).
 El búfer, los tiempos de espera y el límite de subida pueden quedarse como vienen (probado con Node64 1.7.13 en Podman:
 canal en directo sin retraso, también tras minutos de silencio; la conexión push de la app de Android sigue abierta tras
 31 minutos de reposo; subida de 9 MB; una llamada por el túnel; sin probar: Docker en lugar de Podman, Let's Encrypt,
-filtros por país y listas de bloqueo, `node64.proxy.network`). Node64 también puede crear el host de proxy él mismo a
-partir de etiquetas de Docker (datos extra del contenedor): plantilla en `docker-compose.yml`, servicio `saga`.
+bloqueo por país y listas de bloqueo, `node64.proxy.network`). Node64 también puede crear el host de proxy él mismo a
+partir de etiquetas de Docker (datos extra del contenedor): plantilla en `docker-compose.yml`, servicio `saga`; en esos
+hosts WebSockets también queda activado (probado con 1.7.13).
 
 ¿Saga detrás de CGNAT/DS-Lite (sin IPv4 pública propia)? **CDN64** de ipv64.net hace accesible Node64 sin abrir puertos;
 necesita una cuenta de ipv64 y no está probado con Saga. Para más capacidad en llamadas de grupo grandes se añade un

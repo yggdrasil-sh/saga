@@ -235,7 +235,7 @@ standard path behind such a proxy.
 ### Saga behind Node64 (ipv64.net)
 
 [Node64](https://node64.de) is a homelab container by ipv64.net. Its reverse proxy is called **PROXY64**; it also
-brings health checks (reachability checks), country filters and blocklists. Run locally, Node64 needs **no ipv64
+brings health checks (reachability checks), a country block and blocklists. Run locally, Node64 needs **no ipv64
 account**. Saga sits behind it like behind any other proxy: Node64 terminates TLS (HTTPS), Saga keeps speaking plain
 HTTP on port 8080 – web, apps, live channel and calls (tunnel, above) all use **one domain and port 443 only**.
 
@@ -253,17 +253,19 @@ HTTP on port 8080 – web, apps, live channel and calls (tunnel, above) all use 
    and Docker” above also applies: run Node64 on the host network (`network_mode: host`) or with IPv6 in the Docker
    network.
 3. **Health check** (optional, Healthchecks module): type HTTP on `http://<saga-host>:8080/healthz` – answer `ok` with
-   status 200. The “create health check for this target” button on the proxy host only checks `/` (redirect to the
+   status 200. The “Create a healthcheck for this target” button on the proxy host only checks `/` (redirect to the
    login); `/healthz` is more precise.
-4. **Protection tip:** turn on the ipv64 blocklists under PROXY64 → Security and set a country filter on the proxy host
-   (e.g. only `DE`, `EU`) if Saga is only used from there. Federated Saga servers and phones abroad must be allowed too.
+4. **Protection tip:** turn on the “ipv64 blocklists” under PROXY64 → Security and set “Country block” on the proxy host
+   to “allow only these countries” (e.g. Germany or “European Union (27 countries)”) if Saga is only used from there.
+   Federated Saga servers and phones abroad must be allowed too.
 
 Do not publish the admin area (port 8081) – never as a proxy host, keep using an SSH tunnel (section 4). Buffering,
 timeouts and the upload limit can stay at their defaults (tested with Node64 1.7.13 on Podman: live channel without
 delay, even after minutes of silence; the Android app's push connection still open after 31 idle minutes; 9 MB upload; a
-call through the tunnel; not tested: Docker instead of Podman, Let's Encrypt, country filters and blocklists,
+call through the tunnel; not tested: Docker instead of Podman, Let's Encrypt, country block and blocklists,
 `node64.proxy.network`). Node64 can also create the proxy host itself from Docker labels (extra metadata on the
-container): see the template in `docker-compose.yml` at the `saga` service.
+container): see the template in `docker-compose.yml` at the `saga` service; such hosts get WebSockets on as well (tested
+with 1.7.13).
 
 Saga behind CGNAT/DS-Lite (no public IPv4 of your own)? ipv64.net's **CDN64** makes Node64 reachable without port
 forwarding – it needs an ipv64 account and is not tested with Saga. For more capacity in large group calls, add a

@@ -1,23 +1,39 @@
 """Bugs-DB 2026: Saga hinter Node64 (ipv64.net, PROXY64 als Reverse Proxy, TLS am Proxy) - Laborreihe.
 
 Baut auf tests/a3_tunnel.py auf (echtes saga-media, echter gjallarhorn, Tunnel-Betrieb des eingebauten Knotens), nur
-steht statt des nginx-Nachbaus ein echter Node64-Container davor. Node64 wird NICHT von dieser Reihe gestartet:
-  podman/docker run -d --name n64 -p 127.0.0.1:<N64_UI>:8080 -p 127.0.0.1:<A3_BASE>:443 -v n64:/data \
-      -e NODE64_ADMIN_USER=... -e NODE64_ADMIN_PASSWORD=... ghcr.io/ipv64net/node64:<version>
-  Module cdn64 (PROXY64) und healthchecks an, API-Key in N64_KEY_FILE (Datei, nur der Key).
-Umgebung: N64_URL (Oberflaeche/API, Standard https://127.0.0.1:18640), N64_KEY_FILE, N64_TARGET (Adresse, unter der
-der Container Saga erreicht, z. B. das Gateway des Container-Netzes 10.88.0.1 - saga-media lauscht dann dort, HOST),
-N64_PEER (Adresse des Node64-Containers, fuer die X-Forwarded-For-Pruefung), TRUSTED_PROXIES (Netz des Containers),
+steht statt des nginx-Nachbaus ein echter Node64-Container davor. Node64 wird NICHT von dieser Reihe gestartet
+(rootful Podman mit SELinux: --user 0:0 --security-opt label=disable, sonst darf Node64 /data nicht beschreiben):
+  podman run -d --name n64 --user 0:0 --security-opt label=disable -p 127.0.0.1:<N64_UI>:8080 \
+      -p 127.0.0.1:<A3_BASE>:443 -v n64:/data -e NODE64_ADMIN_USER=admin -e NODE64_ADMIN_PASSWORD=... \
+      ghcr.io/ipv64net/node64:1.7.13
+Einrichten per API (Anmeldung, API-Key, Module cdn64 = PROXY64 und healthchecks): tests/node64_einrichten.py (Ablauf
+dort im Kopf) - schreibt den Key nach N64_KEY_FILE.
+Umgebung: N64_KEY_FILE (Pflicht: Datei, nur der API-Key), N64_URL (Oberflaeche/API, Standard https://127.0.0.1:18640),
+N64_TARGET (Adresse, unter der der Container Saga erreicht, z. B. das Gateway des Container-Netzes 10.88.0.1 - saga-media
+lauscht dann dort, HOST), N64_PEER (Adresse des Node64-Containers; ohne: aus N64_CONTAINER per `<N64_ENGINE> inspect`,
+N64_ENGINE Standard podman), N64_VISITOR (Adresse, mit der der Pruefer bei Node64 ankommt, Standard N64_TARGET - siehe
+X-Forwarded-For), TRUSTED_PROXIES (Standard N64_PEER/32, ohne N64_PEER das Netz 10.88.0.0/16),
 A3_BASE (Standard 18651: +0 = veroeffentlichter Port 443 von Node64, +1 saga-media, +2 Admin, +7 intern, +8 HORN_PORT),
 N64_SSE_IDLE (Sekunden Ruhe vor dem zweiten Live-Ereignis, Standard 70), A3_SHOTS=<Ordner> (Admin -> Anrufe "Jetzt
 pruefen" im Browser durch Node64), N64_BROWSER=1 (tests/browser_node64.js: Seite, EventSource, WebSocket im Browser),
 N64_PUSH_IDLE=<Minuten> (Push-Verbindung der Android-App /api/push/stream ruhend durch Node64, z. B. 31; dann
-N64_TIMEOUT im Laufskript hochsetzen). Die Docker-Labels (node64.proxy.*) prueft diese Reihe nicht.
+N64_TIMEOUT im Laufskript hochsetzen), N64_LABELS=1 (Docker-Labels: Node64 braucht dafuer die Docker-API, bei Podman
+podman.socket an und /run/podman/podman.sock als /var/run/docker.sock in den Container; die Reihe startet mit
+N64_ENGINE einen Wegwerf-Container mit node64.proxy.* aus dem Image N64_LABEL_IMAGE, Standard das Node64-Image, und
+prueft den Host, den Node64 daraus anlegt: WebSockets an, Ziel = Container:Port, http).
+
+X-Forwarded-For: Mit Podman kommt der Pruefer ueber die Port-Weiterleitung (127.0.0.1 -> Container) mit der Adresse des
+Gateways (10.88.0.1 = N64_VISITOR) bei Node64 an, nicht mit 127.0.0.1. Aussagekraeftig ist die Pruefung nur, wenn diese
+Adresse NICHT in TRUSTED_PROXIES liegt - deshalb vertraut Saga hier standardmaessig nur dem Node64-Container (N64_PEER/32):
+Saga muss dann genau N64_VISITOR sehen (nicht N64_PEER), auch mit gefaelschtem X-Forwarded-For/X-Real-IP, und direkt an
+Node64 vorbei (Gateway -> saga-media, nicht vertraut) wird ein gefaelschter Kopf ignoriert. Liegt N64_VISITOR doch im
+vertrauten Netz (z. B. TRUSTED_PROXIES=10.88.0.0/16), prueft die Reihe nur schwach (Adresse != Node64) und sagt das.
 
 Prueft: (a) Seite ueber Node64 mit TLS (selbst signiertes Zertifikat von Node64), (b) /healthz ueber Node64 und als
 Health-Check von Node64, (c) Live-Kanal (SSE) ohne Pufferung, auch nach Ruhe > 60 s, (d) WebSocket-Tunnel /api/sfu/ws:
 101, Zugang, zwei Geraete mit Medien ueber Node64 -> saga-media -> Knoten (TestA3Kette), (e) WebSockets am Proxy-Host
-aus -> 426 mit Hinweis, wieder an -> 101. Dazu X-Forwarded-For (echte Adresse, gefaelschter Kopf verworfen)."""
+aus -> 426 mit Hinweis, wieder an -> 101. Dazu X-Forwarded-For (echte Adresse, gefaelschter Kopf verworfen) und mit
+N64_LABELS=1 (f) die Docker-Labels."""
 import json
 import os
 import re
@@ -38,10 +54,24 @@ import a3_tunnel as T  # noqa: E402
 
 A_, auth, connect, ok, res = T.A_, T.auth, T.connect, T.ok, T.res
 N64 = os.environ.get("N64_URL", "https://127.0.0.1:18640")
-KEY = open(os.environ.get("N64_KEY_FILE", "/srv/saga-test/tmp/a2026/n64.key")).read().strip()
+KEY_FILE = os.environ.get("N64_KEY_FILE", "")
+KEY = ""                                            # erst in main() gelesen (N64_KEY_FILE ist Pflicht)
 TARGET = os.environ.get("N64_TARGET", "10.88.0.1")
-PEER = os.environ.get("N64_PEER", "")
-TRUST = os.environ.get("TRUSTED_PROXIES", "10.88.0.0/16")
+ENGINE = os.environ.get("N64_ENGINE", "podman")
+
+
+def _peer():
+    if os.environ.get("N64_PEER"):
+        return os.environ["N64_PEER"]
+    if os.environ.get("N64_CONTAINER"):
+        r = subprocess.run([ENGINE, "inspect", "-f", "{{.NetworkSettings.IPAddress}}", os.environ["N64_CONTAINER"]], capture_output=True, text=True)
+        return r.stdout.strip()
+    return ""
+
+
+PEER = _peer()
+VISITOR = os.environ.get("N64_VISITOR", TARGET)
+TRUST = os.environ.get("TRUSTED_PROXIES") or (f"{PEER}/32" if PEER else "10.88.0.0/16")
 IDLE = int(os.environ.get("N64_SSE_IDLE") or 70)
 CTX = ssl.create_default_context()
 CTX.check_hostname, CTX.verify_mode = False, ssl.CERT_NONE        # nur Pruefstand (selbst signiert)
@@ -164,6 +194,23 @@ class TlsStream:
             pass
 
 
+def _trusted(addr):
+    import ipaddress
+    try:
+        a = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+    for n in TRUST.replace(",", " ").split():
+        if n == "*":
+            return True
+        try:
+            if a in ipaddress.ip_network(n, strict=False):
+                return True
+        except ValueError:
+            pass
+    return False
+
+
 def host_body(ws=True):
     return {"names": [T.NAME], "enabled": True, "scheme": "http", "target_host": TARGET, "target_port": T.PORT, "websockets": ws,
             "http3": False, "request_certificate": {"source": "self"}}       # Puffern/Zeitlimit/Upload-Grenze: Vorgaben von Node64
@@ -199,14 +246,28 @@ def teil_a_b():
        (st, {k: hd.get(k) for k in ("server", "strict-transport-security", "content-type")}, body[:200]))
     st, hd, body, _ = raw(T.NGX, "/")
     ok("(a) Startseite ueber Node64: Umleitung zur Anmeldung bzw. Seite (kein 5xx)", st in (200, 302, 303, 307), (st, hd.get("location")))
-    # echte Adresse: Node64 schickt X-Forwarded-For, Saga vertraut dem Container-Netz (TRUSTED_PROXIES)
+    # echte Adresse: Node64 schickt X-Forwarded-For, Saga vertraut nur Node64 (TRUSTED_PROXIES, Kopf der Reihe)
     st, _, body, _ = raw(T.NGX, "/api/horn/whoami")
     ip = (json.loads(body) if body.strip().startswith("{") else {}).get("ip")
     st2, _, body2, _ = raw(T.NGX, "/api/horn/whoami", "X-Forwarded-For: 203.0.113.9\r\nX-Real-IP: 203.0.113.9\r\n")
     ip2 = (json.loads(body2) if body2.strip().startswith("{") else {}).get("ip")
-    print(f"   whoami ueber Node64: {ip} (mit gefaelschtem Kopf: {ip2}), Node64-Container: {PEER or '?'}")
-    ok("X-Forwarded-For: Saga sieht die Adresse des Besuchers, nicht die von Node64; gefaelschter Kopf wird verworfen",
-       st == 200 and ip and ip != PEER and ip2 == ip, (ip, ip2, PEER))
+    print(f"   whoami ueber Node64: {ip} (mit gefaelschtem Kopf: {ip2}), Pruefer bei Node64: {VISITOR}, Node64-Container: {PEER or '?'}, "
+          f"TRUSTED_PROXIES {TRUST}")
+    if PEER and not _trusted(VISITOR):
+        ok(f"X-Forwarded-For: Saga sieht die Adresse des Besuchers ({VISITOR}, nicht vertraut), nicht die von Node64 ({PEER})",
+           st == 200 and ip == VISITOR, (ip, VISITOR, PEER))
+        ok("X-Forwarded-For: gefaelschter Kopf von aussen wird verworfen (Node64 bzw. Saga)", st2 == 200 and ip2 == VISITOR, (ip2, VISITOR))
+        rq = urllib.request.Request(f"http://{TARGET}:{T.PORT}/api/horn/whoami", headers={"X-Forwarded-For": "203.0.113.9", "X-Real-IP": "203.0.113.9"})
+        try:
+            ip3 = json.loads(urllib.request.urlopen(rq, timeout=10).read()).get("ip")
+        except (OSError, ValueError) as e:
+            ip3 = repr(e)
+        ok(f"an Node64 vorbei ({VISITOR} -> saga-media, nicht vertraut): gefaelschter X-Forwarded-For ignoriert", ip3 == VISITOR, ip3)
+    else:
+        print(f"   Hinweis: {VISITOR} liegt in TRUSTED_PROXIES ({TRUST}) oder N64_PEER fehlt - X-Forwarded-For nur schwach geprueft "
+              "(Adresse != Node64), Kopf der Reihe")
+        ok("X-Forwarded-For (schwach): Saga sieht nicht die Adresse von Node64; gefaelschter Kopf wird verworfen",
+           st == 200 and ip and ip != PEER and ip2 == ip, (ip, ip2, PEER))
     ok("kein Hinweis 'Proxy nicht in TRUSTED_PROXIES' im Log", "nicht in TRUSTED_PROXIES" not in T.log_text())
     # Health-Check von Node64: Knopf "Healthcheck fuer dieses Ziel anlegen" (API) und eigener HTTP-Check auf /healthz
     s, d = n64("POST", f"/cdn64/hosts/{HOST_ID['id']}/healthcheck", {})
@@ -403,9 +464,54 @@ def shot_nein(ck, name):
     for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
         env.pop(k, None)
     r = subprocess.run(["node", js], env=env, capture_output=True, text=True, timeout=120)
-    line = next((ln for ln in r.stdout.splitlines() if "Proxy reicht WebSocket durch?" in ln), "")
-    print("  [bild] " + line[:200], flush=True)
-    ok("(e) Admin -> Anrufe \"Jetzt pruefen\" im Browser durch Node64 ohne WebSockets: \"Nein\" mit Hinweis", "Nein" in line, line or r.stdout[-800:])
+    line = ""
+    for ln in r.stdout.splitlines():
+        if "Proxy reicht WebSocket durch?" in ln:          # a3_bilder.js meldet "FAIL", weil es "Ja" erwartet - hier gewollt
+            line = ln[4:].split(" -> ")[0].strip()
+            print("  [bild] (erwartet Nein) " + line[:200], flush=True)
+        elif ln.startswith(("OK  ", "FAIL")):               # Seite laedt, keine Konsolenfehler ... zaehlen wie in a3_tunnel.shot
+            print("  [bild] " + ln, flush=True)
+            res.append(ln.startswith("OK"))
+    ok("(e) Admin -> Anrufe \"Jetzt pruefen\" im Browser durch Node64 ohne WebSockets: \"Nein\" mit Hinweis", re.search(r": Nein\b", line),
+       line or r.stdout[-800:])
+
+
+def teil_labels():
+    """(f) Docker-Labels (docker-compose.yml, Dienst saga): Node64 legt aus node64.proxy.* selbst einen Proxy-Host an.
+    Geprueft am Host, den Node64 anlegt (nicht der Weg hindurch): WebSockets ab Werk an (ein Label dafuer gibt es nicht -
+    node64.proxy.websockets=false wird ignoriert), Ziel = Adresse des Containers und Port aus node64.proxy.port, http."""
+    name = f"saga-n64-label-{secrets.token_hex(3)}"
+    img = os.environ.get("N64_LABEL_IMAGE", "ghcr.io/ipv64net/node64:1.7.13")
+    s, prev = n64("GET", "/cdn64/docker")
+    was_on = bool(((prev or {}).get("settings") or {}).get("enabled")) if isinstance(prev, dict) else False
+    s, d = n64("PUT", "/cdn64/docker", {"enabled": True})
+    ok("(f) Node64: PROXY64 -> Docker -> \"Docker-Labels auswerten\" an (API)", s == 200 and (d or {}).get("enabled") is True, (s, d))
+    host = {}
+    try:
+        r = subprocess.run([ENGINE, "run", "-d", "--rm", "--name", name, "--user", "0:0", "--security-opt", "label=disable",
+                            "--label", f"node64.proxy.host=label.{T.NAME}", "--label", "node64.proxy.port=8080",
+                            "--label", "node64.proxy.websockets=false",
+                            "-e", "NODE64_ADMIN_USER=x", "-e", "NODE64_ADMIN_PASSWORD=" + secrets.token_urlsafe(12), img],
+                           capture_output=True, text=True, timeout=120)
+        ok(f"(f) Wegwerf-Container mit Labels gestartet ({ENGINE})", r.returncode == 0, r.stderr[-500:])
+        ip = subprocess.run([ENGINE, "inspect", "-f", "{{.NetworkSettings.IPAddress}}", name], capture_output=True, text=True).stdout.strip()
+
+        def found():
+            s_, hs = n64("GET", "/cdn64/hosts")
+            return next((h for h in (hs if isinstance(hs, list) else []) if f"label.{T.NAME}" in (h.get("names") or [])), None)
+        host = T.wait(found, 40, 1) or {}
+        s, dk = n64("GET", "/cdn64/docker")
+        print("   Docker-Abgleich:", json.dumps({k: (dk or {}).get(k) for k in ("connected", "containers")}, ensure_ascii=False)[:500])
+        print("   Host aus Labels:", json.dumps({k: host.get(k) for k in ("id", "names", "websockets", "scheme", "target_host", "target_port", "http3")}))
+        ok("(f) Node64 legt aus den Labels einen Proxy-Host an: WebSockets an (auch mit node64.proxy.websockets=false), http, "
+           "Ziel Container:8080", bool(host) and host.get("websockets") is True and host.get("scheme") == "http"
+           and host.get("target_host") == ip and host.get("target_port") == 8080, host or dk)
+    finally:
+        subprocess.run([ENGINE, "rm", "-f", name], capture_output=True, text=True)
+        if not was_on:
+            n64("PUT", "/cdn64/docker", {"enabled": False})
+        if host.get("id"):                            # bleibt nach dem Container stehen; loeschbar erst ohne Docker-Abgleich (sonst 409)
+            print("   Node64: Label-Host loeschen", n64("DELETE", f"/cdn64/hosts/{host['id']}")[0])
 
 
 def browser(p):
@@ -424,6 +530,11 @@ def browser(p):
 
 
 def main():
+    global KEY
+    if not KEY_FILE or not os.path.exists(KEY_FILE):
+        print("N64_KEY_FILE fehlt: Datei mit dem API-Key von Node64 (tests/node64_einrichten.py legt ihn an)")
+        sys.exit(2)
+    KEY = open(KEY_FILE).read().strip()
     import db
     db.wait_ready()
     db.init_schema()
@@ -452,6 +563,8 @@ def main():
             teil_d_e(media, node, people)
             if os.environ.get("N64_PUSH_IDLE"):
                 teil_push(people[4], float(os.environ["N64_PUSH_IDLE"]))
+            if os.environ.get("N64_LABELS") == "1":
+                teil_labels()
     finally:
         T.stop()
         if HOST_ID["id"]:

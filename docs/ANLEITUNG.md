@@ -263,7 +263,7 @@ ist damit der Standardweg hinter einem solchen Proxy.
 ### Saga hinter Node64 (ipv64.net)
 
 [Node64](https://node64.de) ist ein Homelab-Container von ipv64.net. Sein Reverse Proxy heißt **PROXY64**; dazu kommen
-Health-Checks (Erreichbarkeits-Prüfungen), Länderfilter und Blocklisten. Lokal läuft Node64 **ohne ipv64-Konto**. Saga
+Health-Checks (Erreichbarkeits-Prüfungen), Ländersperre und Blocklisten. Lokal läuft Node64 **ohne ipv64-Konto**. Saga
 steht dahinter wie hinter jedem anderen Proxy: Node64 beendet TLS (HTTPS), Saga spricht weiter nur HTTP auf Port 8080 –
 Webseite, Apps, Live-Kanal und Anrufe (Tunnel, oben) laufen über **eine Domain und nur Port 443**.
 
@@ -284,16 +284,16 @@ Webseite, Apps, Live-Kanal und Anrufe (Tunnel, oben) laufen über **eine Domain 
 3. **Health-Check** (optional, Modul Healthchecks): Typ HTTP auf `http://<Saga-Host>:8080/healthz` – Antwort `ok` mit
    Status 200. Der Knopf „Healthcheck für dieses Ziel anlegen“ am Proxy-Host prüft nur `/` (Umleitung zur Anmeldung);
    `/healthz` ist genauer.
-4. **Tipp Schutz:** Unter PROXY64 → Sicherheit die ipv64-Blocklisten einschalten und am Proxy-Host einen Länderfilter
-   setzen (z. B. nur `DE`, `EU`), wenn Saga nur von dort genutzt wird. Föderierte Saga-Server und Handys im Ausland
-   müssen dann zugelassen sein.
+4. **Tipp Schutz:** Unter PROXY64 → Sicherheit die „ipv64-Blocklisten“ einschalten und am Proxy-Host die „Ländersperre“
+   auf „nur diese Länder zulassen“ stellen (z. B. Deutschland oder „Europäische Union (27 Länder)“), wenn Saga nur von
+   dort genutzt wird. Föderierte Saga-Server und Handys im Ausland müssen dann zugelassen sein.
 
 Nicht freigeben: den Admin-Bereich (Port 8081) – nie als Proxy-Host, weiter nur per SSH-Tunnel (Abschnitt 4). Puffern,
 Zeitlimits und Upload-Grenze kann man so lassen (geprüft mit Node64 1.7.13 unter Podman: Live-Kanal ohne Verzögerung,
 auch nach Minuten Ruhe; Push-Verbindung der Android-App nach 31 Minuten Ruhe noch offen; Upload 9 MB; Anruf über den
-Tunnel; nicht geprüft: Docker statt Podman, Let's Encrypt, Länderfilter und Blocklisten, `node64.proxy.network`). Node64
+Tunnel; nicht geprüft: Docker statt Podman, Let's Encrypt, Ländersperre und Blocklisten, `node64.proxy.network`). Node64
 kann den Proxy-Host auch selbst aus Docker-Labels (Zusatzangaben am Container) anlegen: Vorlage in der
-`docker-compose.yml` beim Dienst `saga`.
+`docker-compose.yml` beim Dienst `saga`; WebSockets sind bei solchen Hosts ebenfalls an (geprüft mit 1.7.13).
 
 Saga steht hinter CGNAT/DS-Lite (keine eigene öffentliche IPv4)? **CDN64** von ipv64.net macht Node64 ohne
 Portfreigabe erreichbar – das braucht ein ipv64-Konto und ist mit Saga nicht getestet. Mehr Leistung für große

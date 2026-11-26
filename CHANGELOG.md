@@ -474,6 +474,11 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   Proxy-Host selbst anlegt. Geprüft mit Node64 1.7.13 im Labor (`tests/node64_labor.py`, `tests/browser_node64.js`):
   Seite und Upload über Node64-TLS, `/healthz`, Live-Kanal ohne Pufferung, Push-Verbindung der Android-App 31 min in Ruhe
   offen, Anruf über den Tunnel `/api/sfu/ws`, ohne WebSockets `426` mit Hinweis.
+  Nachtrag (Bugs-DB 2463): Begriffe wie in der Node64-Oberfläche (de „Ländersperre“ → „nur diese Länder zulassen“,
+  „ipv64-Blocklisten“; en/es mit den englischen Namen, Node64 gibt es nur auf Deutsch und Englisch). Geprüft: Hosts aus
+  Docker-Labels haben WebSockets ab Werk an; `docker-compose.yml` erklärt, dass `saga_default` vom Compose-Projektnamen
+  abhängt. Laborreihe: Einrichtung per API (`tests/node64_einrichten.py`), aussagekräftige X-Forwarded-For-Prüfung, Labels
+  (`N64_LABELS=1`).
 
 ## [2.5.0] – 2026-11-24
 
