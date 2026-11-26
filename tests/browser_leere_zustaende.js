@@ -70,7 +70,8 @@ const until = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 
   ok('Seite „Erste Schritte“ ist offen', /Erste Schritte/.test(title) && fs.d.state === 'yes' && fs.d.page, { title, fs: fs.d });
   const pg = await api(p, 'GET', '/api/notes/' + fs.d.page);
   const items = (JSON.parse(pg.d.body || '{}').blocks || []).filter(b => b.type === 'list').flatMap(b => b.data.items || []);
-  ok('Häkchenliste mit 5 Punkten', items.length === 5, items.length);
+  const nAi = (fs.d.items || []).some(x => x.key === 'ai') ? 1 : 0;        // 2.6 K-I (2269): mit Faehigkeit ai kommt "{Persona} kennenlernen" dazu
+  ok('Häkchenliste mit 5 Punkten' + (nAi ? ' + „kennenlernen“' : ''), items.length === 5 + nAi && (!nAi || /kennenlernen/.test(JSON.stringify(items[5]))), items.length);
   if (E.SHOTS) await p.screenshot({ path: E.SHOTS + '/erste-schritte-seite.png' });
 
   // --- leere Datenbank: "+ Neuer Eintrag" ---
