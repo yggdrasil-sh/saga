@@ -1595,6 +1595,13 @@ appears in the chat list and is not end-to-end encrypted.
   with ideas** · **Yes, without ideas** · **Not now** (nothing goes to the AI). If the admin switches to a different
   endpoint, Marin asks again.
 - **Conversation:** with history off it disappears after 24 hours; with history on it is kept (up to 200 entries).
+- **“In short” on Today:** below the greeting, at most three things of the day by name (“Parent evening 07:30 PM ·
+  “Pick up gazebo” overdue (+2) · “Bake cake” today”); tapping opens the event or task and never ticks anything off.
+  From 6 PM it shows tomorrow's first appointment if nothing else is coming today; on quiet days the line stays away.
+  Saga works it out **without AI** from your tasks, appointments and jobs – nothing goes to a language model (ⓘ).
+  **✕** (swipe in the apps) hides it until 5 AM tomorrow on all your devices; after the third ✕ in two weeks Saga asks
+  once whether to hide it for good. On/off: **⋯** on the line or **Settings › Saga**. “1 job is waiting for you ›”
+  stays visible even when the line is off.
 - **Settings › Saga › My data:** withdraw consent (Marin no longer carries out jobs – running ones pause –, brings no
   ideas, and the conversation in Saga is off; questions elsewhere such as “Ask your pages” still go to the AI, but only
   when you ask them, with the same notice “What you ask here is read by the AI at …”), export history and jobs

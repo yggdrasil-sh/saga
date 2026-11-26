@@ -77,6 +77,7 @@ def fields_for(zug, lang, channel="card"):
         "read": {"items": [page, item], "when": "after"},
         "ident": {"kind": "human"},
         "hedge": {"source": page, "date": "2025"},
+        "day": {"part": "waiting", "n": 2},                       # K-D (2271); Teile/Satz pruefen day_cases()
     }[zug])
     return f
 
@@ -681,6 +682,46 @@ def cleanup():
         c.execute("DELETE FROM users WHERE username LIKE 'ks-%'")
 
 
+def day_cases():
+    """K-D (2271): Zug day - Teile ohne Ich-Form/TH-Partikel, Satz mit {P}, Plural (RU 1 / 2-4 / 5+), Anrede Sie (Lena),
+    P1/P2/P7 an den Teilen."""
+    pl = [S.say("day", {"part": "waiting", "n": n}, "ru", P) for n in (1, 2, 4, 5, 11, 21, 22, 25)]
+    ok(f"day/ru: Plural 1/2/4/5/11/21/22/25 ({pl[:3]})", pl == [
+        "1 поручение ждёт тебя ›", "2 поручения ждут тебя ›", "4 поручения ждут тебя ›", "5 поручений ждут тебя ›",
+        "11 поручений ждут тебя ›", "21 поручение ждёт тебя ›", "22 поручения ждут тебя ›", "25 поручений ждут тебя ›"], pl)
+    ok("day/de: Plural und Sie fuer Lena", S.say("day", {"part": "waiting", "n": 1}, "de", P) == "1 Auftrag wartet auf dich ›"
+       and S.say("day", {"part": "waiting", "n": 3}, "de", dict(P, address="sie")) == "3 Aufträge warten auf Sie ›"
+       and S.say("day", {"part": "waiting", "n": 1}, "es", dict(P, address="sie")) == "1 encargo le espera ›")
+    bad, n = [], 0
+    for lang in S.LANGS:
+        for form in S.FORM_NAMES:
+            per = dict(P, form=form)
+            for part in S.DAY_PARTS:
+                for more in (0, 2):
+                    for pre in ("", "s."):
+                        txt = S.say("day", {"part": pre + part, "title": NAMES[lang][3], "time": "19:30", "more": more}, lang, per)
+                        n += 1
+                        if (not txt or re.search(r"ค่ะ|คะ|ครับ", txt) or S.graphemes(txt) > 160 or not p5_ok(txt, lang)
+                                or not S._p2(re.sub(r"19:30|\(\+2\)", "", txt), lang) or NAMES[lang][3] not in txt):
+                            bad.append((lang, form, pre + part, more, txt))
+    ok(f"day: alle Teile x 5 Sprachen x 3 Formen - Text, ohne TH-Partikel, P1/P2/P5 ({n - len(bad)}/{n})", not bad, bad[:3])
+    th = S.say("day", {"part": "list", "items": ["A", "B"]}, "th", P)
+    thm = S.say("day", {"part": "list", "items": ["A"]}, "th", dict(P, form="er"))
+    thn = S.say("day", {"part": "list", "items": ["A"]}, "th", dict(P, form="neutral"))
+    ok(f"day/th: Satz traegt {{P}} der Persona ({th} / {thm} / {thn})", th.endswith("ค่ะ") and thm.endswith("ครับ")
+       and not re.search(r"ค่ะ|ครับ", thn))
+    ok("day: Satz ohne Dinge -> 'Heute steht nichts an.'", S.say("day", {"part": "list", "items": []}, "de", P) == "Heute steht nichts an.")
+    ok("day: Satz mit zwei Dingen", S.say("day", {"part": "list", "items": ["Elternabend um 19:30", "„A“ ist überfällig"]}, "de", P)
+       == "Heute: Elternabend um 19:30 und „A“ ist überfällig.")
+    ok("day: (+n) nur bei event/over/due, unbekannter Teil -> leer",
+       S.say("day", {"part": "over", "title": "A", "more": 2}, "de", P) == "„A“ überfällig (+2)"
+       and S.say("day", {"part": "tomorrow", "title": "A", "time": "08:00", "more": 2}, "de", P) == "Morgen 08:00 A"
+       and S.say("day", {"part": "gibtsnicht", "title": "A"}, "de", P) == "")
+    ok("day: Mitteilung nie (push None)", S.say("day", {"part": "waiting", "n": 1, "channel": "push"}, "de", P) == "")
+    lg = S.say("day", {"part": "due", "title": "Wort " * 60}, "de", P)
+    ok(f"day: S-Werte gekuerzt (<= 80), Budget 160 ({S.graphemes(lg)})", 20 < S.graphemes(lg) <= 100 and "Wort" in lg, lg)
+
+
 def main():
     t0 = time.time()
     cleanup()
@@ -704,6 +745,7 @@ def main():
         jobs.register("test.say", lambda ctx, job, step: jobs.Outcome.done({}))
         catalog()
         matrix()
+        day_cases()
         fibel()
         evals()
         rt41_local()

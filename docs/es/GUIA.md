@@ -1659,6 +1659,13 @@ es un chat**: no aparece en la lista de chats y no está cifrada de extremo a ex
   Botones: **Sí, con ideas** · **Sí, sin ideas** · **Ahora no** (no se envía nada a la IA). Si el admin cambia de
   servicio, Marin vuelve a preguntar.
 - **Conversación:** con el historial desactivado desaparece a las 24 horas; con historial se guarda (hasta 200 entradas).
+- **«En resumen» en Hoy:** debajo del saludo, como mucho tres cosas del día por su nombre («Reunión de padres 19:30 ·
+  «Recoger la carpa» vencida (+2) · «Hacer el pastel» hoy»); al tocarlas se abre la cita o la tarea, nunca se marca
+  nada. Desde las 18:00 aparece la primera cita de mañana si hoy ya no queda nada; en días tranquilos la línea no
+  aparece. Saga la calcula **sin IA** a partir de tus tareas, citas y encargos: nada va a un modelo de lenguaje (ⓘ).
+  **✕** (en las apps también deslizando) la oculta hasta mañana a las 5:00 en todos tus dispositivos; tras el tercer ✕
+  en dos semanas Saga pregunta una vez si quieres ocultarla del todo. Activar/desactivar: **⋯** en la línea o **Ajustes
+  › Saga**. «1 encargo te espera ›» sigue visible aunque la línea esté desactivada.
 - **Ajustes › Saga › Mis datos:** retirar el consentimiento (Marin ya no hace encargos – los que estén en curso se
   pausan –, no trae ideas y la conversación en Saga queda desactivada; las preguntas en otros sitios, como «Pregunta a
   tus páginas», siguen yendo a la IA, solo cuando las haces tú, con el mismo aviso «Lo que preguntas aquí lo lee la IA

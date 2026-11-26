@@ -52,6 +52,15 @@ Außerdem siehst du auf „Heute“:
 
 - oben die **Begrüßung** mit Datum und dem Stand deiner Aufgaben (zum Beispiel „1 Aufgabe überfällig · 2 heute
   fällig“),
+- darunter – nur wenn ihr die KI-Kollegin nutzt – die Zeile **Kurz gesagt**: höchstens drei Dinge des Tages beim
+  Namen, etwa „Elternabend 19:30 · „Pavillon abholen“ überfällig (+2) · „Kuchen backen“ heute“. Ein Tipp öffnet den
+  Termin bzw. die Aufgabe (abgehakt wird dabei nichts). Ab 18 Uhr steht hier der erste Termin von morgen, wenn heute
+  nichts mehr kommt; an ruhigen Tagen bleibt die Zeile weg. Die Zeile rechnet Saga **ohne KI** aus deinen Aufgaben,
+  Terminen und Aufträgen – nichts davon geht an ein Sprachmodell (ⓘ). **✕** (in den Apps auch Wischen) blendet sie bis
+  morgen früh 5 Uhr auf allen Geräten aus („Ruhe bis morgen · Wieder an“); nach dem dritten ✕ in zwei Wochen fragt
+  Saga einmal, ob die Zeile ganz weg soll. Ein- und ausschalten: **⋯** an der Zeile oder **Einstellungen › Saga**.
+  Darunter steht „1 Auftrag wartet auf dich ›“, wenn Marin auf dein OK oder deine Antwort wartet – das bleibt auch,
+  wenn die Zeile aus ist.
 - **Weitermachen** – die Seiten, die du zuletzt geöffnet hast. Ein Klick öffnet sie.
 - **Lesen** – hast du BookOrbit verbunden, stehen hier die Bücher, die du gerade liest
   ([B16](16-verbindungen.md)).

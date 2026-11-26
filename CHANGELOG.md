@@ -20,6 +20,16 @@ Update von 2.5: kurze Anleitung [docs/UPGRADE-2.6.md](docs/UPGRADE-2.6.md) (Back
 Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; English: [docs/en/UPGRADE-2.6.md](docs/en/UPGRADE-2.6.md)).
 
 ### Neu
+- **Kollegin: Tageszeile „Kurz gesagt“ auf „Heute“ (2271, `aitoday1`):** höchstens drei Dinge des Tages beim Namen
+  (nächster Termin, wichtigste überfällige bzw. heute fällige Aufgabe samt Aufgabenquellen, ab 18:00 der erste Termin
+  von morgen) und „Wartet auf dich“ für Aufträge – ohne Modell und ohne Netz beim Abruf berechnet, Termine nur aus dem
+  Kalender-Speicher (kalt: sofort ohne Termine, `pending`, danach `ai.today.changed`). `GET/PUT /api/ai/today`,
+  `POST|DELETE /api/ai/today/quiet` (✕ = Ruhe bis 05:00 Ortszeit auf allen Geräten, nach 3× ✕ in 14 Tagen einmal
+  „Tageszeile ausblenden?“), Widget `GET /api/app/today?line=1&tz=`; ETag/304, Live `ai.today.changed {v}`, stiller
+  Widget-Push bei Ruhe/Schalter und Aufträgen in/aus „Wartet auf dich“. Nur mit Fähigkeit `ai`, ohne Einwilligung;
+  Bearer-Schlüssel 403. Neuer Zug `day` in den Bausteinen (de/en/es/ru/th, Plural `{n:a|b|c}`), Uhrzeiten wie im
+  Kalender. Vektoren `tests/today_vectors.json` (`tools/today_vectors.py gen|check`) für Web/iOS/Android, Export in
+  „Meine Daten“, Messung `tools/perf/kollegin_heute.py` (docs/APP-API-KI.md §13).
 
 - **Mitteilungen von der KI zu Aufträgen** (2270 K-C, Abbruchpunkt B, ohne Migration): Braucht ein Auftrag die Person,
   ist er erledigt oder hat er nicht geklappt, meldet sich Saga in der Glocke und als Mitteilung – auf dem Sperrbildschirm
