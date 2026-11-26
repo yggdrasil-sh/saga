@@ -1,6 +1,7 @@
 // Saga - Service Worker (Geltungsbereich "/"), ausgeliefert unter /sw.js:
 // - Mitteilungen (Web Push, 1.7): push / notificationclick / pushsubscriptionchange. Inhalt kommt Ende-zu-Ende verschluesselt
-//   (RFC 8291) vom Saga-Server: {title, body, url, tag, kind, ts}.
+//   (RFC 8291) vom Saga-Server: {title, body, url, tag, kind, ts}. 2.6 (2270): Auftraege der Kollegin (Nutzlast 3) mit
+//   Knoepfen "Spaeter"/"Gerade nicht"/"Ansehen" (jobNote/jobAct unten).
 // - Videos im Chat (2.4): Wiedergabe und Speichern von Anhaengen im Format saga-file/v2 (saga/file_v2.py). Die Seite meldet
 //   eine Wiedergabe mit postMessage {op:'media', id, fid, key, size, cs, m, token, name} an; <video src="/_m/<id>"> fragt
 //   dann hier mit Range (Klartext-Bytes). Der Service Worker holt nur die noetigen Ciphertext-Bloecke (Range, Kopf
@@ -42,11 +43,70 @@ function sameOrigin(url) {
   catch (x) { return self.location.origin + '/'; }
 }
 
+// 2.6 (Bugs-DB 2270 K-C, Nutzlast 3 `jobpush1`): Mitteilungen zu Auftraegen der Kollegin (job.needs_you/done/failed).
+// Titel/Text: mit detail (nur Ende-zu-Ende und Einstellung "Inhalt in Mitteilungen" != nie) t1/t2 vom Server, sonst der
+// neutrale Satz der Nutzlast. Knoepfe nach K15 Geraet "web" (tests/vectors/push_kollegin.json k15): nur "Spaeter"/"Gerade
+// nicht" (mit Einmal-Token) und "Ansehen" - nie "Passt, los"/"Rueckgaengig", auch wenn ein Token dafuer mitkaeme. Klick =
+// Ansehen (Deep-Link url). Knopf -> POST /api/ai/jobs/{id}/act mit Sitzung + X-Saga; 409/410/403 (und Netzfehler nach
+// einer Wiederholung) -> Auftrag im Fenster oeffnen. Woerter der Knoepfe/des Hinweises = texts der Vektoren.
+var JOB_TX = {
+  de: { later: 'Später', quiet: 'Gerade nicht', open: 'Ansehen', hint: 'Bitte in Saga ansehen' },
+  en: { later: 'Later', quiet: 'Not now', open: 'View', hint: 'Please take a look in Saga' },
+  es: { later: 'Más tarde', quiet: 'Ahora no', open: 'Ver', hint: 'Échale un vistazo en Saga' },
+  ru: { later: 'Позже', quiet: 'Не сейчас', open: 'Открыть', hint: 'Посмотри в Saga' },
+  th: { later: 'ภายหลัง', quiet: 'ไม่ใช่ตอนนี้', open: 'ดู', hint: 'โปรดดูใน Saga' }
+};
+var JOB_WEB = { needs: ['open', 'later'], done: ['quiet', 'open'], failed: ['open'] };   // K15, Geraet web (Reihenfolge)
+var JOB_TOK = /^[A-Za-z0-9_-]{16,64}$/;
+function isJob(kind) { return typeof kind === 'string' && /^job\.(needs_you|done|failed)$/.test(kind); }
+function jobUrl(u) {                                   // nur /saga?tab=jobs[&job=<ziffern>] der eigenen Origin
+  var s = String(u || ''), m = /^\/saga\?tab=jobs(&job=\d{1,18})?$/.exec(s);
+  return self.location.origin + (m ? s : '/saga?tab=jobs');
+}
+function jobNote(d) {
+  var det = d.detail && typeof d.detail === 'object' ? d.detail : null;
+  var lang = String((det && det.lang) || d.lang || 'de'), tx = JOB_TX[lang] || JOB_TX[lang.slice(0, 2)] || JOB_TX.de;
+  var withText = !!(det && typeof det.t1 === 'string' && det.t1);
+  var title = withText ? det.t1 : String(d.title || 'Saga');
+  var body = withText ? String(det.t2 || '') : String(d.body || '');
+  var tok = {}, job = /^\d{1,18}$/.test(String(d.job)) ? +d.job : null;
+  if (job != null && Array.isArray(d.actions)) d.actions.forEach(function (x) {
+    if (x && (x.a === 'later' || x.a === 'quiet') && JOB_TOK.test(String(x.t || ''))) tok[x.a] = String(x.t);   // approve/undo nie im Web
+  });
+  var acts = (JOB_WEB[d.state] || ['open']).filter(function (a) { return a === 'open' || tok[a]; });
+  var max = self.Notification && Notification.maxActions;
+  if (typeof max === 'number' && max >= 0) acts = acts.slice(0, max);
+  var opts = {
+    body: body.slice(0, 300), tag: String(d.tag || 'saga-job').slice(0, 64), renotify: true,
+    icon: '/static/icon-192.png', badge: '/static/icon-192.png', timestamp: d.ts ? d.ts * 1000 : Date.now(),
+    actions: acts.map(function (a) { return { action: a, title: tx[a] }; }),
+    data: { url: jobUrl(d.url), kind: d.kind, job: job, pv: typeof d.pv === 'number' ? d.pv : null, tok: tok, lang: lang }
+  };
+  if (d.silent) opts.silent = true;
+  return { title: title.slice(0, 120), opts: opts };
+}
+// Knopf in der Mitteilung: act mit dem Einmal-Token (Sitzung reist als Cookie mit) -> 200 fertig (Mitteilung ist schon zu),
+// 404 nichts mehr zu tun, sonst den Auftrag oeffnen (409 stale/state/changed/open, 410 used/expired/gone, 403 device/cap/key).
+function jobAct(data, a) {
+  var tok = data.tok && data.tok[a];
+  if (!tok || data.job == null) return openUrl(data.url, data);
+  var body = JSON.stringify({ action: a, atok: tok, pv: data.pv });
+  function once() {
+    return fetch('/api/ai/jobs/' + data.job + '/act', { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-Saga': '1' }, body: body });
+  }
+  return once().catch(function () { return once(); }).then(function (r) {
+    if (r.ok || r.status === 404) return null;
+    return r.json().catch(function () { return {}; }).then(function (x) { return openUrl(x && x.url ? jobUrl(x.url) : data.url, data); });
+  }, function () { return openUrl(data.url, data); });
+}
+
 self.addEventListener('push', function (e) {
   var d = {};
   try { d = e.data ? e.data.json() : {}; } catch (x) { d = {}; }
   var title = String(d.title || 'Saga').slice(0, 120);
   if (d.update) { e.waitUntil(onUpdate(d, title)); return; }  // 2.5: gezeigte Mitteilung anpassen/entfernen (Nachricht geloescht)
+  if (isJob(d.kind)) { var jn = jobNote(d); e.waitUntil(self.registration.showNotification(jn.title, jn.opts)); return; }
   var opts = {
     body: String(d.body || '').slice(0, 300),
     tag: d.tag ? String(d.tag).slice(0, 64) : undefined,
@@ -88,10 +148,10 @@ function navAsk(c, url) {
   });
 }
 
-self.addEventListener('notificationclick', function (e) {
-  e.notification.close();
-  var url = (e.notification.data && e.notification.data.url) || self.location.origin + '/';
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+// Fenster mit url zeigen: dasselbe fokussieren, sonst ein offenes Saga-Fenster dorthin fuehren, sonst ein neues oeffnen.
+// job: klappt das nicht (Browser verweigert das Fenster), bleibt ein Hinweis "Bitte in Saga ansehen" mit demselben Ziel.
+function openUrl(url, job) {
+  return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
     for (var i = 0; i < list.length; i++) {
       var c = list[i];
       if (c.url === url && 'focus' in c) return c.focus();
@@ -105,7 +165,23 @@ self.addEventListener('notificationclick', function (e) {
       });
     }
     return self.clients.openWindow(url);
-  }));
+  }).then(function (w) {
+    if (w || !job) return w;
+    throw new Error('window');
+  }).catch(function (err) {
+    if (!job) throw err;
+    var tx = JOB_TX[job.lang] || JOB_TX.de;
+    return self.registration.showNotification(tx.hint, { body: '', tag: 'saga-job-hint', icon: '/static/icon-192.png', badge: '/static/icon-192.png',
+      data: { url: url } });
+  });
+}
+
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  var data = e.notification.data || {};
+  var url = data.url || self.location.origin + '/';
+  if (isJob(data.kind) && e.action && e.action !== 'open') { e.waitUntil(jobAct(data, e.action)); return; }   // 2270: Knopf
+  e.waitUntil(openUrl(url, isJob(data.kind) ? data : null));      // Klick bzw. "Ansehen" (Deep-Link)
 });
 
 // Browser hat das Abo erneuert (z. B. abgelaufen): neues Abo beim Server anmelden. Die Sitzung reist als Cookie mit;
@@ -119,7 +195,7 @@ self.addEventListener('pushsubscriptionchange', function (e) {
       return fetch('/api/push/subscriptions', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-Saga': '1' },
-        body: JSON.stringify({ type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: '' })
+        body: JSON.stringify({ type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: '', caps: ['detail', 'actions'] })   // 2270
       });
     }).catch(function () {}));
 });

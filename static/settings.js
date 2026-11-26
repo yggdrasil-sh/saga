@@ -136,6 +136,7 @@
     pagesSection(body);                                      // 2.5 (Tiptap T2): Seiten-Editor
     sagaSection(body);                                       // 2.6 K-H (2268): Anrede und Lebhaftigkeit der KI (/api/ai/prefs)
     if (window.HKSaga && HKSaga.settingsSection) HKSaga.settingsSection(body);   // 2.6 (K-I 2269): Einwilligung, Ideen, Quellen, Meine Daten - in denselben Abschnitt (static/saga.js)
+    sagaNotifySection(body);                                 // 2.6 (K-C 2270): Mitteilungen von {Persona} - Inhalt, an/aus, "Gerade nicht"
     if (window.HKPush) HKPush.section(body);                 // Mitteilungen aufs Handy/Desktop (static/push.js)
     if (window.HKBackup) HKBackup.section(body);             // Mein Backup (static/backup.js, 2.3)
     if (window.HKNextcloud) HKNextcloud.section(body);       // Nextcloud-Dateien in Seiten (static/nextcloud.js, 2.3)
@@ -313,6 +314,64 @@
     sec.hidden = true; sec.classList.add('hk-set-off');
     if (!sec.querySelector('.hk-hint')) sec.appendChild(el('p', 'hk-hint', T('Der KI-Assistent ist für dich nicht eingeschaltet.')));
     if (navDrop && document.getElementById('hk-tab-saga')) navDrop('saga');
+  }
+
+  // --- Abschnitt "Saga" › Mitteilungen (2.6 K-C, Bugs-DB 2270): "Inhalt in Mitteilungen" (wenn entsperrt / nie, PUT
+  //     /api/ai/prefs notify_content), "Mitteilungen von {Persona}" (Bereich jobs der Mitteilungen, PUT /api/push/settings)
+  //     und - solange "Gerade nicht" aus einer Mitteilung gilt - "Ruhe bis 7:00 · Wieder an" (notify_quiet_until: null).
+  //     Nur mit Auftraegen (status.jobs); haengt sich an den Abschnitt "Saga" an.
+  function sagaNotifySection(body) {
+    var sec = body.querySelector('.hk-set-saga'); if (!sec) return;
+    var box = el('div', 'sg-notify'); box.id = 'hk-saga-notify'; box.hidden = true; sec.appendChild(box);
+    var H = window.HKSaga;
+    var stP = H && H.st ? Promise.resolve(H.st) : H && H.load ? H.load() : api('GET', '/api/ai/status');
+    Promise.all([stP.catch(function () { return null; }), api('GET', '/api/ai/prefs'), api('GET', '/api/push').catch(function () { return null; })]).then(function (r) {
+      var st = r[0], d = r[1], ps = r[2];
+      if (!st || st.enabled === false || !st.jobs || !d || d.enabled === false || !('notify_content' in d)) return;
+      var nm = (st.persona && st.persona.name) || T('Saga KI');
+      var msg = el('div', 'hk-status'); msg.setAttribute('role', 'status');
+      function changed() { document.dispatchEvent(new CustomEvent('saga:notify')); }
+      box.appendChild(el('h4', null, T('Mitteilungen')));
+      if (ps && ps.server && ps.server.enabled && (ps.categories || []).indexOf('jobs') >= 0) {
+        var jl = el('label', 'hk-avset-row'), js = el('input', 'hk-switch'); js.type = 'checkbox'; js.setAttribute('role', 'switch');
+        js.id = 'hk-saga-njobs'; js.checked = !ps.settings || !ps.settings.cats || ps.settings.cats.jobs !== false;
+        jl.appendChild(el('span', null, T('Mitteilungen von {name}', { name: nm }))); jl.appendChild(js); box.appendChild(jl);
+        js.addEventListener('change', function () {
+          js.disabled = true;
+          api('PUT', '/api/push/settings', { cats: { jobs: js.checked } }).then(function () { status(msg, T('✓ Gespeichert'), 'ok'); changed(); })
+            .catch(function (err) { js.checked = !js.checked; status(msg, err.message, 'err'); }).then(function () { js.disabled = false; });
+        });
+      }
+      var cl = el('label', 'hk-avset-row'); cl.htmlFor = 'hk-saga-ncontent';
+      cl.appendChild(el('span', null, T('Inhalt in Mitteilungen')));
+      var cs = el('select', 'hk-in'); cs.id = 'hk-saga-ncontent';
+      [['unlocked', T('Wenn entsperrt')], ['never', T('Nie')]].forEach(function (o) { var x = el('option', null, o[1]); x.value = o[0]; cs.appendChild(x); });
+      cs.value = d.notify_content === 'never' ? 'never' : 'unlocked';
+      cl.appendChild(cs); box.appendChild(cl);
+      cs.addEventListener('change', function () {
+        var was = cs.value === 'never' ? 'unlocked' : 'never'; cs.disabled = true;
+        api('PUT', '/api/ai/prefs', { notify_content: cs.value }).then(function (x) { d = x || d; status(msg, T('✓ Gespeichert'), 'ok'); changed(); })
+          .catch(function (err) { cs.value = was; status(msg, err.message, 'err'); }).then(function () { cs.disabled = false; });
+      });
+      box.appendChild(el('p', 'hk-hint', T('Bei „Nie“ steht in Mitteilungen von {name} nur „In Saga ansehen“ – ohne Titel und ohne die Knöpfe „Passt, los“ und „Rückgängig“.', { name: nm })));
+      var until = +d.notify_quiet_until || 0;
+      if (until * 1000 > Date.now()) {
+        var tz = ps && ps.settings && ps.settings.quiet && ps.settings.quiet.tz, tm;
+        try { tm = new Intl.DateTimeFormat(HK.locale || undefined, { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined }).format(new Date(until * 1000)); }
+        catch (e) { tm = new Date(until * 1000).toLocaleTimeString(HK.locale || undefined, { hour: 'numeric', minute: '2-digit' }); }
+        var qr = el('div', 'hk-avset-row sg-nquiet'); qr.id = 'hk-saga-nquiet';
+        qr.appendChild(el('span', null, T('Ruhe bis {time}', { time: tm })));
+        var on = el('button', 'btn', T('Wieder an')); on.type = 'button'; qr.appendChild(on); box.appendChild(qr);
+        on.addEventListener('click', function () {
+          on.disabled = true;
+          api('PUT', '/api/ai/prefs', { notify_quiet_until: null }).then(function () {
+            qr.remove(); status(msg, T('✓ Gespeichert'), 'ok'); changed(); try { cs.focus(); } catch (e) { /* egal */ }
+          }).catch(function (err) { on.disabled = false; status(msg, err.message, 'err'); });
+        });
+      }
+      box.appendChild(msg);
+      box.hidden = false;
+    }).catch(function () { /* KI aus: der Abschnitt ist ohnehin verborgen */ });
   }
 
   // --- Abschnitt "Seiten" (2.5, Tiptap-Umbau T2): neuer Seiten-Editor an/aus, nur wenn der Admin die Wahl freigibt

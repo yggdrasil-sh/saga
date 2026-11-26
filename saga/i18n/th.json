@@ -5739,5 +5739,12 @@
  "Das geht nur in Saga selbst.": "ทำได้เฉพาะใน Saga เท่านั้น",
  "Dieser Knopf gehört zu einem anderen Gerät.": "ปุ่มนี้เป็นของอุปกรณ์อื่น",
  "Mitteilung": "การแจ้งเตือน",
- "Das lässt sich gerade nicht verschieben.": "ตอนนี้เลื่อนไม่ได้"
+ "Das lässt sich gerade nicht verschieben.": "ตอนนี้เลื่อนไม่ได้",
+ "Mitteilungen von {name}": "การแจ้งเตือนจาก {name}",
+ "Inhalt in Mitteilungen": "เนื้อหาในการแจ้งเตือน",
+ "Wenn entsperrt": "เมื่อปลดล็อกอยู่",
+ "Nie": "ไม่เลย",
+ "Bei „Nie“ steht in Mitteilungen von {name} nur „In Saga ansehen“ – ohne Titel und ohne die Knöpfe „Passt, los“ und „Rückgängig“.": "เมื่อเลือก “ไม่เลย” การแจ้งเตือนจาก {name} จะแสดงแค่ “ดูใน Saga” – ไม่มีชื่อเรื่อง และไม่มีปุ่ม “ตกลง ทำเลย” และ “เลิกทำ”",
+ "Ruhe bis {time}": "เงียบจนถึง {time}",
+ "Wieder an": "เปิดอีกครั้ง"
 }

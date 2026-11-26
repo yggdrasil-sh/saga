@@ -412,6 +412,12 @@
     ln.appendChild(x);
   }
   var NOTE_Q = /[?&]note=(\d{1,18})\b/.exec(location.search);      // vor dem ersten replaceState merken (auch ueber das Kennenlernen)
+  // 2.6 (2270 K-C): /saga?tab=jobs&job=<id> (Mitteilung, Glocke, saga://job/<id>) oeffnet das Detail des Auftrags
+  var JOB_Q = /[?&]tab=jobs\b/.test(location.search) && /[?&]job=(\d{1,18})(?:&|$)/.exec(location.search);
+  function jobFromUrl() {
+    var m = JOB_Q; JOB_Q = null;
+    if (m && jobsOn() && G.tab === 'jobs' && G.jobs) G.jobs.open(+m[1], true);
+  }
   function noteFromUrl() {
     var m = NOTE_Q; NOTE_Q = null;
     if (!m || !jobsOn()) return;
@@ -422,7 +428,8 @@
     }).catch(function () { HK.toast(T('Diese Seite kannst du nicht öffnen.')); });
   }
   function submit() { if (G.mode === 'job') giveJob($('sg-ta').value.trim()); else send(); }
-  function openJob(id) { tab('jobs', false); if (G.jobs) G.jobs.open(id, true); }
+  function openJob(id) { tab('jobs', false); if (G.jobs && id != null) G.jobs.open(id, true); }
+  S.openJob = function (id) { if (onPage && jobsOn()) openJob(id); };   // Glocke auf derselben Seite (static/live.js, 2270)
   function tab(k, focusTab) {
     if (!jobsOn()) k = 'talk';
     G.tab = k;
@@ -591,7 +598,7 @@
         : c.state === 'stale' ? T('Der Admin hat die KI umgestellt – deine Aufträge warten, bis du {name} noch einmal kennenlernst.', { name: name })
         : T('Neue Aufträge gibst du, sobald du {name} kennengelernt hast.', { name: name }));
       $('sg-tabs').hidden = false;
-      if (/[?&]tab=jobs\b/.test(location.search)) tab('jobs', false);
+      if (/[?&]tab=jobs\b/.test(location.search)) { tab('jobs', false); jobFromUrl(); }
     }).catch(function () { /* keine Liste: nur die Karte */ });
   }
   function page() {
@@ -617,6 +624,7 @@
     form.hidden = false;
     $('sg-tabs').hidden = !jobsOn();
     tab(jobsOn() && /[?&]tab=jobs\b/.test(location.search) ? 'jobs' : G.tab, false);
+    jobFromUrl();
     noteFromUrl();
     api('GET', '/api/ai/thread').then(function (d) {
       G.turns = d.turns || []; renderFeed(); keepLine(d);

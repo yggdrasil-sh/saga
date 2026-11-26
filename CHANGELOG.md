@@ -32,6 +32,13 @@ Gjallarhorn ab Werk an, Proxy unverändert, Rückweg nur über das Backup; Engli
   `notify_quiet_until` in `/api/ai/prefs`. Schnittstelle: docs/APP-API.md „Push-Nutzlast 3 und Aufträge (`jobpush1`)“,
   docs/APP-API-KI.md Abschnitt 12, Vektoren `tests/vectors/push_kollegin.json`; gemeinsame Bausteine `job.state`,
   `job.created` und `ai_saga.set_quiet/quiet_until` (auch für die Tageszeile). (2270)
+- **Mitteilungen der KI zu Aufträgen im Web** (2270 K-C): Rückmeldungen zu Aufträgen stehen in der Glocke mit dem
+  Satz des Servers und dem Bild der KI (nie gebündelt, ein neuer Eintrag ersetzt den alten) und führen direkt zum Auftrag
+  (`/saga?tab=jobs&job=<id>`, auch `saga://job/<id>`). Browser-Mitteilungen zeigen Titel und Ergebnis nur, wenn der
+  Server sie mitschickt, und nur die Knöpfe „Später“, „Gerade nicht“ und „Ansehen“ – „Passt, los“ und „Rückgängig“ gibt
+  es im Browser nie; ist ein Knopf veraltet, öffnet sich der Auftrag. Die Desktop-App meldet mit neutralem Titel. Neu in
+  Einstellungen › Saga: „Mitteilungen von {Persona}“, „Inhalt in Mitteilungen“ (wenn entsperrt / nie) und „Ruhe bis
+  7:00 · Wieder an“. (2270)
 - **Kontakte ins Adressbuch des Handys** (Bugs-DB 2027b, Doku): Anleitung (de/en/es) und `docs/APP-API.md` beschreiben
   „Zu Kontakten hinzufügen“ in den Apps – einzeln, ohne Kontakte-Berechtigung, ohne Abgleich, ohne Saga-Adresse.
 - **Aufträge an die KI (Kollegin, Abbruchpunkt A)** (2267 K-B): Im Ort „Saga“ gibt es den Reiter „Aufträge“. Eine Bitte

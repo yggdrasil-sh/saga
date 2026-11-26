@@ -5739,5 +5739,12 @@
  "Das geht nur in Saga selbst.": "That only works in Saga itself.",
  "Dieser Knopf gehört zu einem anderen Gerät.": "This button belongs to another device.",
  "Mitteilung": "Notification",
- "Das lässt sich gerade nicht verschieben.": "This can't be postponed right now."
+ "Das lässt sich gerade nicht verschieben.": "This can't be postponed right now.",
+ "Mitteilungen von {name}": "Notifications from {name}",
+ "Inhalt in Mitteilungen": "Content in notifications",
+ "Wenn entsperrt": "When unlocked",
+ "Nie": "Never",
+ "Bei „Nie“ steht in Mitteilungen von {name} nur „In Saga ansehen“ – ohne Titel und ohne die Knöpfe „Passt, los“ und „Rückgängig“.": "With “Never”, notifications from {name} only say “View in Saga” – without the title and without the “Go ahead” and “Undo” buttons.",
+ "Ruhe bis {time}": "Quiet until {time}",
+ "Wieder an": "Turn back on"
 }

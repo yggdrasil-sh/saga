@@ -55,6 +55,7 @@
   background:hsl(var(--lv-h) 42% 36%);color:#fff;font-size:var(--fs-sm);font-weight:600;line-height:1;user-select:none}
 .lv-av-sys{background:var(--card-h);color:var(--fg);font-size:var(--fs-md)}
 .lv-av-gone{background:var(--unk)}
+.lv-av-ai{--ai-av:1.9rem}                          /* 2.6 (2270): Rueckmeldung der Kollegin - Persona-Symbol wie die Kreise */
 
 /* Anwesenheit im Seitenkopf: kleine, ueberlappende Kreise + kurzer Text (breite Bildschirme) */
 .lv-pres{display:inline-flex;align-items:center;gap:0;margin-left:auto;margin-right:.3rem;min-width:0}

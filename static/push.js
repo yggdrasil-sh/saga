@@ -48,7 +48,9 @@
   }
   function send(sub) {
     var j = sub.toJSON();
-    return api('POST', '/api/push/subscriptions', { type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: browserName() });
+    // 2.6 (2270 K-C): Browser nehmen Inhalt (detail) und Knoepfe (actions) von Auftrags-Mitteilungen an - weiter ohne
+    // "update" (APP-API.md "Push-Nutzlast 3"); aeltere Server lassen unbekannte Faehigkeiten still weg
+    return api('POST', '/api/push/subscriptions', { type: 'webpush', endpoint: j.endpoint, keys: j.keys, name: browserName(), caps: ['detail', 'actions'] });
   }
   // Einschalten: Erlaubnis -> Service Worker -> Abo (mit dem VAPID-Schluessel des Servers) -> beim Server anmelden
   function enable(vapid) {
@@ -79,6 +81,20 @@
   }
   setTimeout(resync, 3000);
 
+  // 2.6 (2270 K-C): Bereich "jobs" = Mitteilungen der Kollegin; Name der Persona aus dem Ort "Saga" (static/saga.js) bzw.
+  // dem KI-Bereich (static/ai.js), sonst einmal nachladen
+  function personaName() {
+    var st = window.HKAI && HKAI.state ? HKAI.state() : null;
+    if (!st && window.HKSaga) st = HKSaga.st;
+    return st && st.persona && st.persona.name ? st.persona.name : '';
+  }
+  function jobsLabel(node) {
+    if (!node) return;
+    var set = function (nm) { node.textContent = T('Mitteilungen von {name}', { name: nm || T('Saga KI') }); };
+    var nm = personaName(); set(nm);
+    if (!nm && window.HKSaga && HKSaga.load) HKSaga.load().then(function () { if (personaName()) set(personaName()); }).catch(function () {});
+  }
+  CAT.jobs = T('Mitteilungen von {name}', { name: T('Saga KI') });
   function when(ts) { return ts ? HK.relTime(ts - Date.now() / 1000) : ''; }
   function row(label, input) {
     var r = el('label', 'lv-set-row'); r.appendChild(el('span', 'lv-set-t', label)); r.appendChild(input); return r;
@@ -218,7 +234,8 @@
       c.appendChild(el('h4', null, T('Worüber?')));
       var list = el('div', 'lv-set-list'); c.appendChild(list);
       S.categories.forEach(function (k) {
-        var s = sw(S.settings.cats[k]); list.appendChild(row(CAT[k] || k, s));
+        var s = sw(S.settings.cats[k]), r = row(CAT[k] || k, s); list.appendChild(r);
+        if (k === 'jobs') { s.id = 'ps-cat-jobs'; jobsLabel(r.querySelector('.lv-set-t')); }   // 2270: "Mitteilungen von {Persona}" 
         s.addEventListener('change', function () { var b = { cats: {} }; b.cats[k] = s.checked; save(b, st).catch(function () { s.checked = !s.checked; }); });
       });
       var nl = el('div', 'lv-set-list ps-gap'); c.appendChild(nl);

@@ -85,7 +85,30 @@
 
   // Design-Runde (UX-29/30): eine Zeile je Gespraechseinheit. Der Server buendelt (?group=1: ids, counts, group_key);
   // was live dazukommt oder beim Blaettern nachkommt, fuegt absorb()/regroup() hier mit denselben Regeln hinzu.
-  function isGroup(it) { return !!(it.ids && it.ids.length > 1); }
+  function isGroup(it) { return !isJob(it) && !!(it.ids && it.ids.length > 1); }
+  // 2.6 (Bugs-DB 2270 K-C): Rueckmeldungen der Kollegin zu Auftraegen (job.needs_you/done/failed). Der Satz kommt fertig vom
+  // Server (text = "Erledigt: …"), Bild = Persona-Symbol, Ziel = Auftrags-Detail im Ort "Saga" (/saga?tab=jobs&job=<id>)
+  function isJob(it) { return !!it && typeof it.kind === 'string' && /^job\.(needs_you|done|failed)$/.test(it.kind); }
+  function jobOf(it) { var j = it && it.job != null ? String(it.job) : ''; return /^\d{1,18}$/.test(j) ? +j : null; }
+  function jobUrl(it) {
+    var u = String(it.url || '');
+    if (/^\/saga\?tab=jobs(&job=\d{1,18})?$/.test(u)) return u;
+    return jobOf(it) != null ? '/saga?tab=jobs&job=' + jobOf(it) : '/saga?tab=jobs';
+  }
+  var aiAsk = null;
+  function aiPersona() {
+    var st = window.HKAI && HKAI.state ? HKAI.state() : null;
+    if (!st && window.HKSaga) st = HKSaga.st;
+    if (!st && !aiAsk && window.HKSaga && HKSaga.load) {   // einmal nachladen (Seiten ohne Ort "Saga"), dann neu zeichnen
+      aiAsk = HKSaga.load().then(function () { if (N.open) draw(); }).catch(function () {});
+    }
+    return st && st.persona ? st.persona : null;
+  }
+  function aiLabel() {
+    if (window.HKSaga && HKSaga.kiName && HKSaga.st) return HKSaga.kiName();
+    var p = aiPersona(), nm = p && p.name ? String(p.name) : T('Saga KI');
+    return /(^|\s)(KI|AI|IA|ИИ)$/.test(nm) ? nm : T('{name} · KI', { name: nm });
+  }
   function whoList(it) { return it.actors && it.actors.length ? it.actors : it.actor && it.actor.name ? [it.actor.name] : []; }
   function uniq(a) { var o = []; a.forEach(function (x) { if (o.indexOf(x) < 0) o.push(x); }); return o; }
   function absorb(g, it) {                            // it in g aufnehmen (die neuere Zeile wird Kopf)
@@ -106,7 +129,7 @@
   function regroup(list) {                            // gleiche Einheit und gleicher Lesestand -> eine Zeile
     var out = [], at = {};
     list.forEach(function (it) {
-      if (!it.group_key) { out.push(it); return; }
+      if (!it.group_key || isJob(it)) { out.push(it); return; }   // 2270: Auftraege nie buendeln (neuer Eintrag ersetzt den alten)
       var key = it.group_key + (it.read ? '|r' : '|u');
       if (at[key] == null) { at[key] = out.length; out.push(it); return; }
       out[at[key]] = absorb(out[at[key]], it);
@@ -140,6 +163,7 @@
     return f;
   }
   function sentence(it) {
+    if (isJob(it)) return document.createTextNode(it.text || '');   // 2270: Systemtext vom Server, nie hier gebaut
     if (isGroup(it)) return groupSentence(it);
     // dieselben Schluessel wie saga/notify.py (_text) - hier mit fettem Namen
     var name = el('b', null, it.actor ? it.actor.name : T('Gelöschtes Konto')), n = it.count || 1, s;
@@ -162,12 +186,17 @@
   var fFull = new Intl.DateTimeFormat(HK.locale, { dateStyle: 'medium', timeStyle: 'short' });
   function itemNode(it) {
     var li = el('li', 'lv-li'), b = el('button', 'lv-item' + (it.read ? '' : ' unread')); b.type = 'button';
-    if (it.kind === 'publish.withdrawn' || it.kind === 'backup.failed' || it.system) { var sh = el('span', 'lv-av lv-av-sys', '🛡'); sh.setAttribute('aria-hidden', 'true'); b.appendChild(sh); }
+    if (isJob(it)) {                                    // 2270: Persona-Symbol (Bild, sonst ✦) statt Initialen
+      var ja = window.HKAIAvatar ? HKAIAvatar(aiPersona(), 30, 'lv-av-ai') : el('span', 'ai-av lv-av-ai', '✦');
+      ja.style.removeProperty('--ai-av'); ja.setAttribute('aria-hidden', 'true'); b.appendChild(ja);   // Groesse aus live.css (waechst mit der Schrift)
+    }
+    else if (it.kind === 'publish.withdrawn' || it.kind === 'backup.failed' || it.system) { var sh = el('span', 'lv-av lv-av-sys', '🛡'); sh.setAttribute('aria-hidden', 'true'); b.appendChild(sh); }
     else b.appendChild(avatar(it.actor ? it.actor.name : '?', it.actor ? it.actor.username : '', it.actor ? '' : 'lv-av-gone', it.actor && it.actor.avatar));
     var body = el('span', 'lv-body'), grp = isGroup(it), pl = null;
     var tx = el('span', 'lv-text'); tx.appendChild(sentence(it)); body.appendChild(tx);
     var ic = it.note && it.note.icon && it.note.icon.charAt(0) !== '/' ? it.note.icon : '📄';
-    if (grp) { /* Titel steht vorn im Satz ("Jonas Brandt · 3 neue Nachrichten") */ }
+    if (isJob(it)) body.appendChild(el('span', 'lv-page lv-page-ai', it.title || aiLabel()));   // 2270: wer schreibt ("Marin · KI", vom Server)
+    else if (grp) { /* Titel steht vorn im Satz ("Jonas Brandt · 3 neue Nachrichten") */ }
     else if (it.kind === 'backup.failed') body.appendChild(el('span', 'lv-page', '🗄 ' + (it.title || T('Backups'))));
     else if (it.system || !it.note && it.access && !it.chat) body.appendChild(el('span', 'lv-page', (it.kind === 'login.locked' ? '🔒 ' : '🗄 ') + (it.title || '')));   // Systemhinweise ohne Seite (Mein Backup, Kontosperre)
     else if (it.chat) body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? '💬 ' + (it.title || T('Chat')) : '🔒 ' + T('Kein Zugriff mehr')));
@@ -179,8 +208,9 @@
     b.appendChild(body);
     if (!it.read) { var d = el('span', 'lv-dot'); d.setAttribute('aria-hidden', 'true'); b.appendChild(d); }
     // zugaenglicher Name: Satz, Ort (ohne Symbol), Auszug, Zeit, Lesestand - in dieser Reihenfolge, ohne Emoji-Ansagen
-    b.setAttribute('aria-label', [tx.textContent, pl ? pl.textContent.replace(/^\S+\s/, '') : '', it.excerpt || '',
+    b.setAttribute('aria-label', [tx.textContent, pl ? (isJob(it) ? pl.textContent : pl.textContent.replace(/^\S+\s/, '')) : '', it.excerpt || '',
       tm.textContent, it.read ? '' : T('Ungelesen')].filter(Boolean).join(', '));
+    if (isJob(it) && jobOf(it) != null) b.dataset.job = String(jobOf(it));
     b.addEventListener('click', function () { activate(it); });
     li.appendChild(b);
     // Aktionen erscheinen beim Ueberfahren/Fokus der Zeile (Design-Runde UX-29); Tab erreicht sie weiter
@@ -317,6 +347,12 @@
   function activate(it) {
     readIt(it);                                         // gebuendelt: alle Mitteilungen der Zeile (und der Einheit)
     closePanel(false);
+    if (isJob(it)) {                                     // 2270: Auftrags-Detail im Ort "Saga" - dort ohne Neuladen
+      var ju = jobUrl(it), jid = jobOf(it);
+      if (location.pathname === '/saga' && window.HKSaga && HKSaga.openJob) { HKSaga.openJob(jid); return; }
+      if (HK.go) HK.go(ju); else location.assign(ju);
+      return;
+    }
     if (it.kind === 'backup.failed') {                   // Admin-Bereich (eigener Port) in einem neuen Tab
       if (it.url) { var aw = window.open(it.url, '_blank', 'noopener'); if (aw) aw.focus(); }
       return;
@@ -512,6 +548,7 @@
       var quiet = !!(HK.userStatus && HK.userStatus.dnd());
       if (!it.read && !quiet && isChatIt(it) && dockOk()) chatToast(it);
       N.items = dropIds(N.items, [it.id, d.replaces].filter(function (x) { return x != null; }));
+      if (isJob(it) && jobOf(it) != null) N.items = dropJob(N.items, jobOf(it));   // 2270: neuer Eintrag ersetzt den alten
       if (N.loaded) N.items = regroup([it].concat(N.items));   // in die Zeile seiner Unterhaltung (neuer Kopf)
       if (!it.read) { ring(); if (!quiet) hostNotify(it); }
       if (it.kind && it.kind.indexOf('comment.') === 0) pagesBadgeSoon();
@@ -531,17 +568,29 @@
   }
   // 2.5: ein Eintrag hat sich geaendert (Zaehler kleiner) oder ist weg (removed) - ohne Ton, nur Liste und Zahl anpassen
   function onNotificationChanged(d) {
-    N.items = dropIds(N.items, [d.id]);
+    N.items = dropIds(N.items, [d.id].concat(Array.isArray(d.ids) ? d.ids : []).filter(function (x) { return x != null; }));
+    if (d.removed && d.job != null && !d.item) N.items = dropJob(N.items, +d.job);    // 2270: Auftrag abgebrochen/zurueckgenommen
     if (d.item && N.loaded) N.items = regroup(N.items.concat([d.item]));
     if (d.unread != null) { N.unread = unreadOf(d); N.counted = true; }
     badgeDraw(); draw();
   }
+  function dropJob(list, job) { return list.filter(function (x) { return !(isJob(x) && jobOf(x) === job); }); }
+  // 2270: Auftrag endet ohne Rueckmeldung (abgebrochen, zurueckgenommen) - Eintraege dazu sofort weg (der Server meldet es
+  // zusaetzlich als notification.changed removed; der Zaehler kommt danach frisch)
+  document.addEventListener('hk-live', function (e) {
+    var t = e.detail && e.detail.type, d = t === 'ai.job.changed' ? (e.detail.data || {}) : null;
+    if (!d || d.id == null || (d.state !== 'abgebrochen' && d.state !== 'zurueckgenommen')) return;
+    var before = N.items.length;
+    N.items = dropJob(N.items, +d.id);
+    if (N.items.length !== before) { draw(); count().catch(function () {}); }
+  });
   // Desktop-Huelle mit Faehigkeit 'notify' (ohne eigenen Push-Kanal): System-Mitteilung ueber die Huelle. Es gelten die
   // Mitteilungs-Einstellungen wie beim Push (Bereiche, Ruhezeiten, Namen zeigen; GET /api/push, 5 min gemerkt).
   // Ohne Huelle bleibt es bei Web-Push (Service Worker) - in der Huelle gibt es kein Browser-Abo (static/push.js).
   var PCAT = { 'share.added': 'share', 'share.role': 'share', 'comment.new': 'comment', 'comment.reply': 'comment', 'comment.mention': 'comment',
                'page.mention': 'comment', 'db.assigned': 'assign', 'chat.message': 'chat', 'chat.mention': 'chat', 'publish.withdrawn': 'publish',
-               'call.missed': 'call', 'task.due': 'tasks', 'backup.failed': 'admin', 'chat.report': 'admin' };
+               'call.missed': 'call', 'task.due': 'tasks', 'backup.failed': 'admin', 'chat.report': 'admin',
+               'job.needs_you': 'jobs', 'job.done': 'jobs', 'job.failed': 'jobs' };                    // 2.6 (2270 K-C)
   var PS = { at: 0, p: null };
   function pushPrefs() {
     if (PS.p && Date.now() - PS.at < 300000) return PS.p;
@@ -558,6 +607,28 @@
     if (f === t) return false;
     return f < t ? (f <= m && m < t) : (m >= f || m < t);
   }
+  // 2270: "Inhalt in Mitteilungen" und "Gerade nicht" (GET /api/ai/prefs, 5 min gemerkt; Einstellungen › Saga setzt neu)
+  var AP = { at: 0, p: null };
+  function aiPrefs() {
+    if (AP.p && Date.now() - AP.at < 300000) return AP.p;
+    AP.at = Date.now();
+    AP.p = api('GET', '/api/ai/prefs').catch(function () { AP.at = 0; return null; });
+    return AP.p;
+  }
+  ['saga:prefs', 'saga:notify'].forEach(function (n) { document.addEventListener(n, function () { AP.at = 0; PS.at = 0; }); });
+  // Auftrag: neutraler Titel ("Marin · KI – Rückmeldung"), Text = Satz des Servers nur bei "Inhalt: wenn entsperrt"
+  // (sonst "In Saga ansehen"); nichts bei "Gerade nicht" und wenn das Fenster den Ort "Saga" gerade zeigt
+  function hostJob(it, p) {
+    if (document.hasFocus && document.hasFocus() && location.pathname === '/saga') return;
+    aiPrefs().then(function (ap) {
+      if (!ap || ap.enabled === false) return;
+      if (ap.notify_quiet_until && ap.notify_quiet_until * 1000 > Date.now()) return;
+      var pa = aiPersona(), nm = pa && pa.name ? pa.name : T('Saga KI');
+      var title = it.kind === 'job.needs_you' ? T('{name} · KI – braucht dich', { name: nm }) : T('{name} · KI – Rückmeldung', { name: nm });
+      var body = ap.notify_content === 'unlocked' && it.text ? it.text : T('In Saga ansehen');
+      HK.host.notify(title, body, jobUrl(it), { id: it.id, kind: it.kind, tag: jobOf(it) != null ? 'job-' + jobOf(it) : 'saga-job' });
+    });
+  }
   function hostNotify(it) {
     if (!HK.host || !HK.host.has('notify')) return;
     pushPrefs().then(function (st) {
@@ -566,6 +637,7 @@
       if (!cat) return;                                    // wie der Server: nur Arten mit Push-Bereich (saga/push.py KIND_CAT)
       if (p.cats && p.cats[cat] === false) return;
       if (quietNow(p.quiet)) return;
+      if (isJob(it)) { hostJob(it, p); return; }
       var url = it.url || (it.note ? '/notes#' + it.note.id : '/');
       var o = { id: it.id, kind: it.kind, tag: it.group_key || (it.kind + ':' + it.id) };
       if (p.names === false) { HK.host.notify('Saga', T('Neue Benachrichtigung'), url, o); return; }

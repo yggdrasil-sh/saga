@@ -170,6 +170,9 @@
       case 'tasks': return '/notes?v=tasks';
       case 'events': return '/notes?v=events';
       case 'chats': return '/chats';
+      case 'saga': return '/saga';                     // 2.6 (K-I) Ort "Saga"
+      case 'jobs': return '/saga?tab=jobs';            // 2.6 (2270 K-C) Mitteilung ohne Kennung (Klartext-Weg)
+      case 'job': return id ? '/saga?tab=jobs&job=' + id : '/saga?tab=jobs';   // Mitteilung eines Auftrags
       case 'new-task': return '/notes?v=tasks&new=task';
       case 'new-page': return '/notes?new=blank';
       case 'new':                                       // anlegen nur nativ (Huelle prueft k=…); das Web zeigt das Ziel
