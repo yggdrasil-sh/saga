@@ -44,7 +44,7 @@ try:
     ok("Keine fremden Seiten", xdb not in ids and xrow not in ids)
     ok("Vorlagen nicht in der Auswahl", tpl not in ids)
     ok(f"Datenbank mit Ansichten {[v['name'] for v in ids.get(db, {}).get('views', [])]}", [v["id"] for v in ids.get(db, {}).get("views", [])] == ["tab", "arch"])
-    ok("Nur Titel/Symbol/Eltern (kein Inhalt)", all(set(p) <= {"id", "title", "icon", "kind", "parent_id", "views", "cover", "cover_pos"} and all(isinstance(p.get("cover", False), bool) for p in d) for p in d))
+    ok("Nur Titel/Symbol/Eltern (kein Inhalt)", all(set(p) <= {"id", "title", "icon", "kind", "parent_id", "views", "cover", "cover_pos", "cover_v", "updated"} and all(isinstance(p.get("cover", False), bool) for p in d) for p in d))
     ok("Unterseite kennt ihre Eltern", ids.get(sub, {}).get("parent_id") == pg)
 
     # --- Zeilen
