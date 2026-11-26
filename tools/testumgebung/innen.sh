@@ -19,7 +19,12 @@ case $RN in
   collab.py)       REIHE_ENV=(COLLAB_MAT_DELAY=0.5 COLLAB_COMPACT_IDLE=3) ;;
   ki_web.py)       REIHE_ENV=(SEARXNG_URL=http://127.0.0.1:18292 SEARXNG_SECRET=umg-nur-test-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')) ;;
   webhooks.py)     REIHE_ENV=(SAGA_WEBHOOK_DEBOUNCE=1 SAGA_WEBHOOK_RETRY_SCALE=0.02) ;;
-  mcp_oauth.py|mcp_oauth_proben.py) REIHE_ENV=(SAGA_OAUTH_REG_PER_IP=40 SAGA_OAUTH_REG_PER_HOUR=1000 SAGA_OAUTH_ANON_PER_IP=20) ;;  # 2.6 (2264): Grenzen werden mit diesen Werten geprueft
+  # 2.6 (2264, 2505): Registrierungen 40 je IP (die Reihe registriert viele Clients von 127.0.0.1); anonyme Anfragen mit
+  # dem Server-Standard (SAGA_OAUTH_ANON_PER_IP 30, die Reihe liest saga.oauth.ANON_PER_IP)
+  mcp_oauth.py|mcp_oauth_proben.py) REIHE_ENV=(SAGA_OAUTH_REG_PER_IP=40 SAGA_OAUTH_REG_PER_HOUR=1000) ;;
+  # 2.6 (2516): Push-Relais der Reihe (Durchreicher 18630 im Namensraum, Domain-Nachweis mit saga.example.org)
+  fakerelay.py)    REIHE_ENV=(SAGA_PUSH_RELAY_URL=http://127.0.0.1:18630 SAGA_PUSH_RELAY_HOST=saga.example.org) ;;
+  widget_push.py)  REIHE_ENV=(SAGA_PUSH_RELAY_URL=http://127.0.0.1:18630 SAGA_PUSH_RELAY_HOST=saga.example.org SAGA_WIDGET_PUSH_GAP=6) ;;
 esac
 # Backups vor Migrationen: sonst aus (schneller); an fuer Reihen, die sie pruefen (versionen.py) oder mit UMG_BACKUP=1
 case $RN in versionen.py) UMG_BACKUP=${UMG_BACKUP:-1} ;; esac

@@ -43,6 +43,12 @@ tools/testumgebung/umgebung.sh stop 2                           # Reste beenden 
   | `ki_web.py` | `SEARXNG_URL=http://127.0.0.1:18292` (Attrappe der Reihe) und ein Test-`SEARXNG_SECRET` – ohne Secret startet der Server nicht |
   | `webhooks.py` | `SAGA_WEBHOOK_DEBOUNCE=1 SAGA_WEBHOOK_RETRY_SCALE=0.02` |
   | `versionen.py` | Backups vor Migrationen an (sonst immer `SAGA_SKIP_BACKUP=1`; von Hand `UMG_BACKUP=1`) |
+  | `mcp_oauth.py`, `mcp_oauth_proben.py` | `SAGA_OAUTH_REG_PER_IP=40 SAGA_OAUTH_REG_PER_HOUR=1000`; anonyme Anfragen mit dem Server-Standard (`SAGA_OAUTH_ANON_PER_IP` 30) |
+  | `fakerelay.py` | `SAGA_PUSH_RELAY_URL=http://127.0.0.1:18630 SAGA_PUSH_RELAY_HOST=saga.example.org` (Relais der Reihe im Namensraum) |
+  | `widget_push.py` | wie `fakerelay.py`, dazu `SAGA_WIDGET_PUSH_GAP=6` |
+
+  Eigene Sonder-Server von Hand: dieselben Variablen in `UMG_SENV` (Server) **und** in der Umgebung des Aufrufs (Reihe) –
+  die Reihen lesen sie selbst (z. B. `GAP`, `FR_PORT`, Grenzen).
 
   Startet der Server nicht, läuft die Reihe nicht: im Log „SERVER NICHT BEREIT“ mit dem Ende von `server.log`, `rc=98`.
 - **Knoten-Binaries:** `UMG_BIN` (Standard `$UMG/bin-<rev>`, `<rev>` = Commit des Worktrees). `lauf` baut sie für

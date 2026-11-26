@@ -11,7 +11,9 @@ unbenutzte Clients verfallen), vertraulicher Client (Geheimnis Pflicht, post und
 abmelden", sga_-Tokens unveraendert (auch nicht unter den Apps, OAuth-Token nicht unter den API-Tokens).
 RT-42: OAuth-Zugriffstoken gegen /api/ai/jobs/* (nie 2xx), /api/v1, Webhooks, Sitzungs-API, Chats; Chat-Werkzeuge
 (Registry mcp=False) weder in tools/list noch aufrufbar; Attrappe mcp=False mit OAuth-Tok im Prozess -> 404.
-Wegwerf-Konto oa-*, raeumt auf. Server-Umgebung: SAGA_OAUTH_REG_PER_IP=40 (Rate-Grenze wird mit 40 geprueft).
+Wegwerf-Konto oa-*, raeumt auf. Server-Umgebung: SAGA_OAUTH_REG_PER_IP=40 (Rate-Grenze wird mit 40 geprueft); anonyme
+Autorisierungs-Anfragen mit dem Wert des Servers (SAGA_OAUTH_ANON_PER_IP, Standard 30) - Reihe und Server mit derselben
+Umgebung starten (tools/testumgebung/innen.sh setzt beides).
 Aufruf (saga-test): PYTHONPATH=tests/pgshim:. python tests/mcp_oauth.py"""
 import base64
 import hashlib
@@ -219,7 +221,7 @@ def part_n3(cid):
     ok("N3: Zustimmung aus fremdem Browser -> kein Code", "code=" not in (hd2.get("location") or ""), st)
     st, _, raw, _ = req("GET", nxt, jar=JAR)
     ok("N3: im eigenen Browser weiter die Zustimmung", st == 200 and 'name="scope"' in raw, st)
-    lim = int(os.environ.get("SAGA_OAUTH_ANON_PER_IP") or 20)
+    lim = oauth.ANON_PER_IP                               # wie der Server: SAGA_OAUTH_ANON_PER_IP, Standard 30 (2505)
     sts = [req("GET", authorize_url(cid, ch), headers={"X-Forwarded-For": "198.51.100.77"})[0] for _ in range(lim + 1)]
     ok(f"N3: GET /oauth/authorize ohne Anmeldung: {lim} je IP, dann 429", sts[:lim] == [303] * lim and sts[-1] == 429, sts[-3:])
     ok("N3: andere IP ohne Anmeldung weiter", req("GET", authorize_url(cid, ch), headers={"X-Forwarded-For": "198.51.100.78"})[0] == 303)
