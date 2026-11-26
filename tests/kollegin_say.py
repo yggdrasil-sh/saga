@@ -482,6 +482,11 @@ BAD = {"de": ["Du hast vergessen, die Kohle zu holen.", "Ich habe Ben schon gesc
        "th": ["ลืมถ่าน", "ส่งข้อความไปแล้วครับ", "ดีใจมาก", "เริ่ม 23:59"]}
 
 
+def gap(d):
+    import base64
+    return base64.b64encode(json.dumps(d, ensure_ascii=False).encode()).decode()
+
+
 def fake_path():
     def setmodel(m):
         cur = dict(auth.settings(fresh=True)["ai"])
@@ -491,11 +496,11 @@ def fake_path():
     big = dict(P, big=True)
     S.STATS.clear()
     for lang in S.LANGS:
-        mat = NAMES[lang][2] + ": " + NAMES[lang][3] + "\nFAKE-GAP: " + json.dumps({"observation": GOOD[lang]}, ensure_ascii=False)
+        mat = NAMES[lang][2] + ": " + NAMES[lang][3] + "\nFAKE-GAP: " + gap({"observation": GOOD[lang]})
         S.fill("idea", dict(fields_for("idea", lang), material=mat), lang, big)
     good_rate = S.fallback_rate("idea")
     ok(f"fake-bausteine gute Luecken (5 Sprachen): Rueckfallquote {good_rate:.0%} (Ziel 0 %)", good_rate == 0.0, S.STATS)
-    r = S.fill("idea", dict(fields_for("idea", "de"), material="Sommerfest: Grillkohle\nFAKE-GAP: " + json.dumps({"observation": GOOD["de"]}, ensure_ascii=False)), "de", big)
+    r = S.fill("idea", dict(fields_for("idea", "de"), material="Sommerfest: Grillkohle\nFAKE-GAP: " + gap({"observation": GOOD["de"]})), "de", big)
     ok(f"fill: Modelltext landet im Rahmen ({r.text!r})", r.text == "Fürs Sommerfest fehlt noch die Grillkohle. Soll ich Ben fragen?")
     body = K.lastbody()
     blob = json.dumps(body.get("messages") or [], ensure_ascii=False)
@@ -506,7 +511,7 @@ def fake_path():
     n = 0
     for lang, items in BAD.items():
         for b in items:
-            mat = NAMES[lang][2] + "\nFAKE-GAP: " + json.dumps({"observation": b}, ensure_ascii=False)
+            mat = NAMES[lang][2] + "\nFAKE-GAP: " + gap({"observation": b})
             r = S.fill("idea", dict(fields_for("idea", lang), material=mat), lang, big)
             n += 1
             if b.split()[0] in r.text and r.text.startswith(b[:12]):
@@ -518,7 +523,7 @@ def fake_path():
     ok("RT-41: Modellanfrage ohne Chatverlauf (Kanarie nicht im Netzverkehr zum Modell)", "KANARIE" not in json.dumps(K.lastbody(), ensure_ascii=False))
     # TH/RU kleines Modell: kein freier Satz (§7) -> kein Modellaufruf
     c0 = (K.fake("GET", "/_count") or {}).get("n")
-    r = S.fill("idea", dict(fields_for("idea", "th"), material="FAKE-GAP: {\"observation\": \"x\"}"), "th", P)
+    r = S.fill("idea", dict(fields_for("idea", "th"), material="FAKE-GAP: " + gap({"observation": "x"})), "th", P)
     c1 = (K.fake("GET", "/_count") or {}).get("n")
     ok(f"TH/RU kleines Modell ohne Selbsttest: kein Modellaufruf, Vorfilter-Satz ({c0}->{c1}, {r.text!r})", c0 == c1 and "ค้างอยู่" in r.text)
     r = S.fill("idea", dict(fields_for("idea", "de"), material="x"), "de", dict(P, level="rezepte"))
