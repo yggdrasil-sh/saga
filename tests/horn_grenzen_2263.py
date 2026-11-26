@@ -245,6 +245,69 @@ def pin_check(cid, A):
                 os.environ[k] = v
 
 
+def start_udp(A, B):
+    """Bugs-DB 2447 (Entscheidung 26.11., Frage D): beide Knoten bereit -> der Anruf startet auf dem UDP-Knoten (vorher gewann bei
+    gleicher Last der ohne UDP), Grenze nach UDP festgehalten; ab PENALTY zaehlt UDP nicht mehr. Raum auf einem
+    Folgeknoten: erstes Bein dort -> "open" mit max_peers (im Testprozess, horn.send aufgezeichnet)."""
+    lv, _ = HN.limits(None)
+    uv, _ = HN.limits(None, udp=True)
+
+    with connect() as c, c:                            # fruehere Anrufe der Reihe (C/D noch drin) hart beenden
+        c.execute("UPDATE chat_call_leg SET state='left' WHERE call_id IN (SELECT id FROM chat_call WHERE caller LIKE 'hl63-%')")
+        c.execute("UPDATE chat_call SET state='ended' WHERE caller LIKE 'hl63-%'")
+
+    def new_chat():                                    # je Anruf eine eigene Gruppe (der vorige laeuft mit C/D weiter)
+        s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": [B.uid, "hl63-c"]})
+        return d["chat"]["id"] if s == 200 else None
+    chat = new_chat()
+    load(NT, legs=0)
+    load(NU, legs=0)
+    cid = secrets.token_hex(16)
+    fresh()
+    with connect() as c:
+        order = [n["name"] for n in HN.ready_nodes(c) if n["name"] in (NT, NU)]
+    s, d = req("POST", "/api/calls", A.k, {"id": cid, "chat_id": chat, "media": "video", "device": A.dev["id"], "caps": CAPS})
+    call = (d or {}).get("call") or {}
+    with connect() as c:
+        nodes = {r[0] for r in c.execute("SELECT node FROM chat_call_leg WHERE call_id=? AND state='active'", (cid,)).fetchall()}
+        nu, nt = (c.execute("SELECT id FROM horn_node WHERE name=?", (x,)).fetchone()[0] for x in (NU, NT))
+    ok(f"2447: beide bereit -> UDP-Knoten zuerst {order}, Start dort, limit {uv} (UDP), lim {uv} ({s}, {call.get('limit')}, {lim_db(cid)})",
+       s == 200 and order == [NU, NT] and nodes == {nu} and call.get("limit") == uv and lim_db(cid) == uv, d)
+    s, d = join(B, cid)
+    ok(f"2447: B tritt bei ({s})", s == 200, d)
+    sent, keep = [], HN.send
+    HN.send = lambda nid, msg: sent.append((nid, msg)) or True
+    try:                                               # je Schritt eine Transaktion: room_open geht erst nach dem Commit raus
+        with connect() as c, c:
+            HN.set_leg_node(c, cid, B.dev["id"], nt)          # Kaskade/Ueberlauf: erstes Bein auf dem Folgeknoten
+        first = list(sent)
+        with connect() as c, c:
+            HN.set_leg_node(c, cid, B.dev["id"], nt)          # dasselbe Bein noch einmal (Erneuerung /horn mit node)
+        with connect() as c, c:
+            HN.set_leg_node(c, cid, A.dev["id"], nt)          # zweites Bein dort
+        more = sent[len(first):]
+    finally:
+        HN.send = keep
+    ok(f"2447: Folgeknoten -> genau ein open mit max_peers {uv} {first}, danach keins {more}",
+       len(first) == 1 and first[0][0] == nt and first[0][1].get("t") == "open" and first[0][1].get("max_peers") == uv and not more)
+    for p in (A, B):
+        req("POST", f"/api/calls/{cid}/end", p.k, {"device": p.dev["id"]})
+    with connect() as c, c:
+        c.execute("UPDATE chat_call SET state='ended' WHERE id=?", (cid,))
+    chat = new_chat()
+    load(NU, legs=36)                                  # 75 % >= PENALTY (0,7), < FULL
+    fresh()
+    with connect() as c:
+        order = [n["name"] for n in HN.ready_nodes(c) if n["name"] in (NT, NU)]
+    cid = secrets.token_hex(16)
+    s, d = req("POST", "/api/calls", A.k, {"id": cid, "chat_id": chat, "media": "video", "device": A.dev["id"], "caps": CAPS})
+    call = (d or {}).get("call") or {}
+    ok(f"2447: UDP-Knoten ueber PENALTY -> der freie ohne UDP zuerst {order}, limit {lv} ({s}, {call.get('limit')}, {lim_db(cid)})",
+       s == 200 and order == [NT, NU] and call.get("limit") == lv and lim_db(cid) == lv, d)
+    req("POST", f"/api/calls/{cid}/end", A.k, {"device": A.dev["id"]})
+    load(NU, legs=0)
+
+
 def run():
     units()
     testhaken()
@@ -317,6 +380,7 @@ def run():
     s, d = join(D, cid)
     ok(f"wieder frei: D tritt bei ({s})", s == 200, d)
     req("POST", f"/api/calls/{cid}/end", A.k, {"device": A.dev["id"]})
+    start_udp(A, B)
 
     # --- Admin: Warnung max_legs --------------------------------------------------------------------------------------
     auth.get_user(ADMIN_ID) or auth.create_user(ADMIN_ID, secrets.token_urlsafe(12), "Admin HL63", is_admin=True)

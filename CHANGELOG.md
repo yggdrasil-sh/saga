@@ -222,6 +222,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (`chat_call.lim`, idempotent). Die Grenze („n/12“) richtet sich nach dem Knoten, auf dem der Anruf beginnt; Umzug und
   Kaskade lassen sie nicht mehr zwischen 12 und 25 springen. Der Admin kann sie weiter nur senken. Anrufe von vor
   Migration 40 verhalten sich wie bisher.
+- **Gjallarhorn: Anrufe starten auf einem Knoten mit UDP, die UDP-Grenze greift** (Bugs-DB 2447): Bei gleicher Last
+  gewann bisher immer der eingebaute Knoten (Tunnel); der Anruf hielt dann die TCP-Grenze fest, auch wenn alle Geräte
+  über UDP auf einem gekoppelten Knoten liefen. Jetzt kommen bereite Knoten mit UDP unter 70 % Auslastung zuerst –
+  die Grenze richtet sich nach dem Weg dieses Startknotens. Saga öffnet den Raum außerdem auf **jedem** Knoten des
+  Anrufs mit der Anrufgrenze (`open` mit `max_peers`, vorher nur am Startknoten); Knoten ab 2.6 übernehmen sie auch
+  für einen schon offenen Raum (vorher blieb ein Folgeknoten beim Standard 50).
 - **Gjallarhorn: „ausgelastet“ statt „kein Anruf-Knoten erreichbar“** (2263-4): Ist ein erreichbarer Knoten nur ausgelastet,
   antwortet der Beitritt weiter mit 409 `join_block:"node"`, zusätzlich mit `busy: true` und dem Text „Die Anruf-Knoten
   sind gerade ausgelastet – bitte gleich noch einmal.“

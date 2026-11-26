@@ -55,13 +55,22 @@ func (n *Node) SetTCPSpeakerFPS(fps float64) {
 // Standardgrenzen. Ein vorhandener Raum wird zurueckgegeben (idempotent).
 func (n *Node) CreateRoom(ref string, lim *Limits) (*Room, error) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	if n.closed {
+		n.mu.Unlock()
 		return nil, ErrClosed
 	}
 	if r := n.rooms[ref]; r != nil {
+		n.mu.Unlock()
+		// 2.6 (Saga Bugs-DB 2447): Raum schon offen (erstes Bein kam vor "open") - die Grenze aus Saga gilt trotzdem.
+		// Ausserhalb von n.mu (Join haelt r.mu und fragt darin den Knoten nach Kontingenten).
+		if lim != nil && lim.MaxPeers > 0 {
+			r.mu.Lock()
+			r.lim.MaxPeers = lim.MaxPeers
+			r.mu.Unlock()
+		}
 		return r, nil
 	}
+	defer n.mu.Unlock()
 	l := n.cfg.Limits
 	if lim != nil {
 		l = lim.withDefaults()

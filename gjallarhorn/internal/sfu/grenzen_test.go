@@ -109,3 +109,44 @@ func TestKnoten200Beine(t *testing.T) {
 		t.Errorf("Takt %s im Mittel (Takt 200 ms)", sum/ticks)
 	}
 }
+
+// 2.6 (Saga Bugs-DB 2447): "open" mit max_peers wirkt auch auf einen schon offenen Raum (Folgeknoten: das erste Bein
+// kam vor der Nachricht aus Saga und legte den Raum mit dem Standard 50 an). Senken und Heben, laufende Geraete bleiben.
+func TestRaumGrenzeNachtraeglich(t *testing.T) {
+	n := NewNode(Config{Name: "k", Tick: time.Hour, MaxLegs: 200})
+	defer n.Close()
+	r, err := n.CreateRoom("raumspaet", nil) // Standard 50
+	if err != nil {
+		t.Fatal(err)
+	}
+	join := func(id string) error {
+		_, err := r.AddLeg(Grant{Room: "raumspaet", Peer: id, Leg: id + "-a", Role: RoleAudio, Pub: PubAudio}, PathUDP, Want{Audio: 3})
+		return err
+	}
+	for i := 0; i < 3; i++ {
+		if err := join(fmt.Sprintf("p%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r2, _ := n.CreateRoom("raumspaet", &Limits{MaxPeers: 3}); r2 != r {
+		t.Fatal("anderer Raum")
+	}
+	if err := join("p3"); !errors.Is(err, ErrFull) {
+		t.Fatalf("4. Geraet bei max_peers 3: %v", err)
+	}
+	if got := len(r.peers); got != 3 {
+		t.Fatalf("Geraete nach dem Senken %d", got)
+	}
+	n.CreateRoom("raumspaet", &Limits{MaxPeers: 5})
+	if err := join("p3"); err != nil {
+		t.Fatalf("4. Geraet bei max_peers 5: %v", err)
+	}
+	n.CreateRoom("raumspaet", nil) // ohne Grenze: bleibt 5
+	n.CreateRoom("raumspaet", &Limits{})
+	if err := join("p4"); err != nil {
+		t.Fatal(err)
+	}
+	if err := join("p5"); !errors.Is(err, ErrFull) {
+		t.Fatalf("6. Geraet bei max_peers 5: %v", err)
+	}
+}

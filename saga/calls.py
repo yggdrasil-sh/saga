@@ -1429,8 +1429,7 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
             FED.HORN_MESH.clear()
         FED.HORN_MESH[cid] = why[0]                    # P10: Fall c - Hinweis an alle (call.horn_mesh)
     if node:
-        horn.set_leg_node(c, cid, dev, node["id"])     # 2263-4: haelt dabei die Grenze nach dem Startknoten fest (lim)
-        horn.room_open(c, cid, node["id"], climit(c, _load(c, cid)))
+        horn.set_leg_node(c, cid, dev, node["id"])     # 2263-4: haelt die Grenze nach dem Startknoten fest (lim), 2447: oeffnet den Raum
     _OWN.add(cid)
     call = _load(c, cid)
     rung = []

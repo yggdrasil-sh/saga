@@ -1287,6 +1287,9 @@ n.Load()                                                    // Lastmeldung §2.6
   aus `welcome` (oder `HORN_SAGA_PUB`). Geprüft: Signatur, Form der Kennungen, Lebensdauer ≤ 120 s, Knotenname,
   Ablauf, UDP nur mit `udp_ok`. Jedes Token gilt **einmal** je Zweck (Bein bzw. TURN-Zugang, `jti`).
 - **Räume:** Ein gültiges Token legt einen unbekannten Raum selbst an (die Anlage über `open` darf später kommen).
+  `open {call_ref, max_peers}` schickt Saga für das erste Bein eines Anrufs auf jedem Knoten (Start, Umzug, Kaskade);
+  ab 2.6 übernimmt der Knoten `max_peers` auch für einen schon offenen Raum (Saga Bugs-DB 2447 – vorher blieb ein
+  selbst angelegter Raum beim Standard 50).
   Geschlossene Räume und entfernte Teilnehmende (`kick`) bleiben 3 min gesperrt, damit noch gültige Token nicht
   wieder hereinkommen. Leere Räume schließt der Knoten nach 2 min.
 - **CORS:** `/api/sfu/*` und `/probe` nehmen die Herkunft der eigenen Saga an (`welcome.origin`, `HORN_SAGA_ORIGIN`).

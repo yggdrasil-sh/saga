@@ -379,9 +379,14 @@ def ready_nodes(c, now=None, ws=False):
     """Bereite Knoten, beste zuerst (kleine Auslastung; ab PENALTY Abzug). ws (2.5 A3, Vertrag S10): das Geraet kann den
     Medien-Tunnel (caps "ws", True bzw. "ws") - nur dann zaehlen Knoten im Tunnel-Betrieb (sonst fuer Browser und aeltere
     Apps unerreichbar: kein TURN-TLS, kein ICE-TCP; UDP aus dem Selbsttest ist fuer den Browser kein sicherer Beleg).
-    ws = "frames" (2.5 B2, Vertrag S12.5): Browser mit dem Rahmen-Weg - Tunnel-Knoten nur, wenn sie ihn anbieten."""
+    ws = "frames" (2.5 B2, Vertrag S12.5): Browser mit dem Rahmen-Weg - Tunnel-Knoten nur, wenn sie ihn anbieten.
+    2.6 (Bugs-DB 2447, Entscheidung 26.11., Frage D): unter der Abzugsgrenze PENALTY kommen Knoten mit UDP vor Knoten ohne - ein
+    neuer Anruf startet so auf einem UDP-faehigen Knoten, sobald einer bereit ist (vorher gewann bei gleicher Last immer
+    der eingebaute im Tunnel-Betrieb, und die beim Start festgehaltene Grenze war die TCP-Grenze, auch wenn alle Geraete
+    ueber UDP auf horn-1 liefen). Innerhalb gleicher UDP-Faehigkeit wie bisher: kleine Auslastung, dann der eingebaute.
+    Ab PENALTY zaehlt die UDP-Faehigkeit nicht mehr (ein stark belasteter UDP-Knoten verdraengt keinen freien)."""
     ns = [n for n in nodes(c) if ready(n, now) and reachable(n, ws)]
-    ns.sort(key=lambda n: (last_resort(n, ws), util(n) + (0.5 if util(n) >= PENALTY else 0), not n["builtin"], n["name"]))
+    ns.sort(key=lambda n: (last_resort(n, ws), util(n) >= PENALTY, not n.get("udp"), util(n), not n["builtin"], n["name"]))
     return ns
 
 
@@ -669,8 +674,28 @@ def node_named(c, name):
 
 
 def set_leg_node(c, cid, dev, node_id):
+    """Endpunkt kommt auf einen Knoten. 2.6 (Bugs-DB 2447): ist es das erste Bein des Anrufs auf diesem eigenen Knoten
+    (Start, Umzug, Kaskade/Ueberlauf), oeffnet Saga dort den Raum mit max_peers = Grenze des Anrufs (call_max) - vorher
+    nur am Startknoten; ein Folgeknoten legte den Raum beim ersten Bein selbst mit seinem Standard (50) an. Knoten ab 2.6
+    uebernehmen max_peers auch fuer einen schon offenen Raum (Bein schneller als die Nachricht)."""
     fix_limit(c, cid, dev, node_id)
+    first = bool(node_id) and not str(node_id).startswith("f:") and not c.execute(
+        "SELECT 1 FROM chat_call_leg WHERE call_id=? AND node=? AND state='active' LIMIT 1", (cid, node_id)).fetchone()
     c.execute("UPDATE chat_call_leg SET node=? WHERE call_id=? AND device=? AND state='active'", (node_id, cid, dev))
+    if first:
+        room_open(c, cid, node_id, call_max(c, cid))
+
+
+def call_max(c, cid):
+    """Grenze eines Anrufs ueber Knoten (wie calls.climit fuer topo 'horn'): festgehaltene chat_call.lim (der Admin kann
+    senken), sonst nach dem Weg des Knotens des Anrufs. None ohne Anruf."""
+    r = c.execute("SELECT lim, media FROM chat_call WHERE id=?", (cid,)).fetchone()
+    if not r:
+        return None
+    if r[0]:
+        return held_limit(r[0], r[1])
+    v, a = limits(c, cid)
+    return v if r[1] == "video" else a
 
 
 def fix_limit(c, cid, dev, node_id):

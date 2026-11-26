@@ -2471,6 +2471,10 @@ sonst behandeln sie `busy` genau wie `node` ohne `busy`. Ist der Anruf an seiner
 ```
 
 - Bis zu 3 Kandidaten, beste zuerst. Ohne Kaskade (bis P9) ist es nur der Knoten, auf dem der Anruf schon läuft.
+- Reihenfolge (2.6, Bugs-DB 2447): der Knoten des Anrufs zuerst; sonst unter 70 % Auslastung Knoten mit `udp` vor
+  Knoten ohne, dann kleine Auslastung, dann der eingebaute. Ein neuer Anruf startet so auf einem UDP-fähigen Knoten,
+  sobald einer bereit ist; seine Grenze (`limit`) richtet sich nach dem Weg dieses Startknotens und bleibt für den
+  ganzen Anruf (Umzug und Kaskade ändern sie nicht, der Admin kann senken).
 - `dev_class`: `desktop` (Standard) oder `mobile` (Last-N: 9 bzw. 4 bewegte Kacheln).
 - `tcp` (2.5, „Ein Port“): `false` = der Knoten bietet kein rohes ICE-TCP (er steht hinter einer TLS-Durchreiche, die
   nur TLS weiterreicht). Dann gleich den TLS-Weg (`turn`, frische Token über `/horn`) nehmen statt ICE-TCP und dessen
