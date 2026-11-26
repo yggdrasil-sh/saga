@@ -7,12 +7,59 @@
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
-const E = process.env, BASE = (E.BASE_URL || 'http://127.0.0.1:8080').replace(/\/$/, ''), SHOTS = E.SHOTS || '/tmp/oauth-shots';
+const E = process.env, BASE = (E.OA_BASE || E.BASE_URL || 'http://127.0.0.1:8080').replace(/\/$/, ''), SHOTS = E.SHOTS || '/tmp/oauth-shots';
 const USER = E.OA_USER || 'um-anna', PW = E.UMG_PW;
 const RU = 'https://claude.ai/api/mcp/auth_callback';      // nie erreicht: der Browser bekommt die Antwort aus page.route
 const res = [];
 function ok(name, cond, info) { res.push(!!cond); console.log((cond ? 'OK  ' : 'FAIL') + ' ' + name + (cond || info === undefined ? '' : ' -> ' + JSON.stringify(info).slice(0, 600))); }
 const b64u = (b) => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+// N4: Bestaetigen mit Passkey ueber dieselben Endpunkte wie Einstellungen > Sicherheit. Passkeys brauchen eine Adresse mit
+// Rechnernamen (BASE_URL http://localhost:<port> bzw. https) - sonst uebersprungen. Konto OA_PK_USER (Standard um-dora).
+async function passkeyPart(br) {
+  if (!/^(https:\/\/|http:\/\/localhost(:\d+)?$)/.test(BASE)) { console.log('--   Passkey: BASE_URL ohne Rechnernamen - uebersprungen'); return; }
+  const U = E.OA_PK_USER || 'um-dora';
+  const ctx = await br.newContext({ viewport: { width: 1280, height: 900 }, locale: 'de' });
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on('pageerror', (e) => errs.push(String(e)));
+  const cdp = await ctx.newCDPSession(p);
+  await cdp.send('WebAuthn.enable');
+  await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true,
+    hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+  await p.addInitScript(() => { if (window.PublicKeyCredential) PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(false); });
+  async function pwLogin() {
+    await p.goto(BASE + '/login');
+    await p.fill('input[name=username]', U); await p.fill('input[name=password]', PW);
+    await Promise.all([p.waitForNavigation().catch(() => {}), p.press('input[name=password]', 'Enter')]);
+  }
+  await pwLogin();
+  await p.goto(BASE + '/security'); await p.waitForSelector('#hk-security .mfa-block');
+  await p.fill('#hk-security input[aria-label="Name des Passkeys"]', 'OAuth-Test');
+  await p.click('#hk-security .mfa-block button:has-text("Passkey hinzufügen")');
+  await p.waitForSelector('.mfa-codes li', { timeout: 15000 }).catch(() => {});
+  await p.click('.mfa-codes-box button:has-text("Ich habe sie gespeichert")').catch(() => {});
+  ok('Passkey angelegt (virtueller Authenticator)', /OAuth-Test/.test(await p.textContent('#hk-security').catch(() => '')));
+  // neue Sitzung: Passkey vor der Anmeldung angelegt (zaehlt zum Bestaetigen), Anmeldung mit Passwort + Passkey
+  await p.goto(BASE + '/logout');
+  if (await p.$('#logout-go')) await Promise.all([p.waitForURL((u) => /\/login/.test(String(u)), { timeout: 15000 }).catch(() => {}), p.click('#logout-go')]);
+  await pwLogin();
+  if (/\/login\/2fa/.test(p.url())) await Promise.all([p.waitForURL((u) => !/\/login/.test(String(u)), { timeout: 15000 }).catch(() => {}), p.click('#pk-go')]);
+  ok('Angemeldet mit Passwort + Passkey', !/\/login/.test(p.url()), p.url());
+  const reg = await (await fetch(BASE + '/oauth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_name: 'Claude', redirect_uris: [RU], token_endpoint_auth_method: 'none' }) })).json();
+  const ver = b64u(crypto.randomBytes(48)), ch = b64u(crypto.createHash('sha256').update(ver).digest());
+  await p.goto(BASE + '/oauth/authorize?' + new URLSearchParams({ response_type: 'code', client_id: reg.client_id, redirect_uri: RU,
+    state: 'pk-1', code_challenge: ch, code_challenge_method: 'S256', resource: BASE + '/mcp' }));
+  await p.waitForSelector('#oa-pk:not([hidden])', { timeout: 8000 }).catch(() => {});
+  ok('Bestaetigungsschritt mit Passkey-Knopf (und Passwortfeld)', !!(await p.$('#oa-pk-go:not([disabled])')) && !!(await p.$('input[name=secret]')));
+  await p.screenshot({ path: path.join(SHOTS, 'oauth-bestaetigen-passkey.png'), fullPage: true });
+  await Promise.all([p.waitForNavigation({ timeout: 15000 }).catch(() => {}), p.click('#oa-pk-go')]);
+  await p.waitForSelector('input[name=scope][type=checkbox]', { timeout: 8000 }).catch(() => {});
+  ok('Mit Passkey bestaetigt -> Zustimmungsseite mit Rechten', !!(await p.$('input[name=scope][type=checkbox]')), p.url());
+  ok('Passkey-Weg ohne Skriptfehler', !errs.length, errs);
+  await ctx.close();
+}
 
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -114,6 +161,7 @@ const b64u = (b) => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_')
   const mr2 = await fetch(BASE + '/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok.access_token },
     body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) });
   ok('Trennen: Token sofort ungueltig (401)', mr2.status === 401, mr2.status);
+  await passkeyPart(br);
   await br.close();
   console.log(`\nBrowser-OAuth ${res.filter(Boolean).length}/${res.length}`, res.length && res.every(Boolean) ? '- ALLES GRUEN' : '- FEHLER');
   process.exit(res.length && res.every(Boolean) ? 0 : 1);
