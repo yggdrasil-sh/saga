@@ -367,16 +367,23 @@ zurück zur Zustimmung), bekommt den Code mit `state` und `iss` an seine `redire
   `/api/ai/jobs/*` (RT-42).
 - **Refresh-Token** `sgr_…` gelten 30 Tage ab der letzten Benutzung und genau **einmal** (Rotation). Wird ein schon
   benutzter Refresh-Token noch einmal vorgelegt, trennt Saga die ganze Verbindung (alle Zugriffs- und Refresh-Token).
-  Ebenso, wenn ein Code ein zweites Mal eingelöst wird. Codes gelten 2 Minuten, einmal, und nur mit dem passenden
+  Ausnahme (Kulanz für gleichzeitige Anfragen und verlorene Antworten): innerhalb von **30 Sekunden** nach der
+  Rotation und solange sein Nachfolger noch nicht benutzt wurde, gibt es nur `invalid_grant` – die Verbindung bleibt,
+  der Client nimmt den neuesten Refresh-Token. Ebenso, wenn ein Code ein zweites Mal eingelöst wird. Codes gelten 2 Minuten, einmal, und nur mit dem passenden
   `code_verifier`, derselben `redirect_uri` und demselben Client. Höchste Laufzeit einer Verbindung: Admin-Wert
   „Höchste Laufzeit (Tage)“, sonst 365 Tage.
 - **Clients:** `redirect_uris` 1–5, `https://` (ohne Fragment und Zugangsdaten) oder `http://` nur für `localhost`,
   `127.0.0.1`, `[::1]` (RFC 8252); Host nur als ASCII-Name (IDN als Punycode `xn--…`) oder IP-Adresse; Name höchstens 80 Zeichen (länger als 200 → `400`). Registrierungen: höchstens 10 je
-  IP und Stunde (`SAGA_OAUTH_REG_PER_IP`), 100 je Stunde insgesamt, 2000 Clients bzw. 300 noch nie benutzte; Clients
-  ohne Zustimmung verfallen nach 24 Stunden. `grant_types` sind immer `authorization_code` und `refresh_token`.
+  IP und Stunde (IPv6 je `/64`; `SAGA_OAUTH_REG_PER_IP`), 100 je Stunde insgesamt (`SAGA_OAUTH_REG_PER_HOUR`), 2000
+  Clients bzw. 300 noch nie benutzte – ist der Bestand voll, weicht der älteste noch nie benutzte Client; Clients ohne
+  Zustimmung verfallen nach 24 Stunden. `GET /oauth/authorize` ohne Anmeldung: höchstens 30 je IP (bzw. `/64`) und
+  10 Minuten (`SAGA_OAUTH_ANON_PER_IP`). Die offene Anfrage gehört zum Browser, der sie begonnen hat (Cookie
+  `saga_oab`, HttpOnly, SameSite=Lax, Pfad `/oauth`, 10 Minuten) – der Link `/oauth/authorize?r=…` in einem anderen
+  Browser zeigt nur eine Fehlerseite. Ist der Speicher offener Anfragen voll, weichen nur ältere (> 60 s). `grant_types` sind immer `authorization_code` und `refresh_token`.
 - **Frische Bestätigung** wie beim Anlegen eines `sga_`-Tokens (`apitok._confirmed`): vor den Rechten fragt Saga nach
   Passwort oder Code aus der Authenticator-App (dieselbe Prüfung wie `POST /api/account/security/confirm`, gilt
-  5 Minuten); eine frische Anmeldung allein reicht bei Konten mit Passwort nicht. SSO-Konten: Anmeldung höchstens
+  5 Minuten; die Eingabe zählt zuerst als Passwort, 6 Ziffern danach als Code) oder mit Passkey (dieselben Endpunkte
+  wie Einstellungen › Sicherheit, `static/oauth.js`); eine frische Anmeldung allein reicht bei Konten mit Passwort nicht. SSO-Konten: Anmeldung höchstens
   5 Minuten alt, sonst „Neu anmelden“ (danach zurück zur Zustimmung). „Ablehnen“ geht ohne Bestätigung.
 - **Zustimmungsseite:** nennt den (vom Client selbst gewählten) Namen, das angemeldete Konto, die Saga-Adresse, den
   Rücksprung-Host und die Rechte. Schutz: CSRF-Token der Sitzung, `Origin`/`Sec-Fetch-Site`, `frame-ancestors 'none'`;
