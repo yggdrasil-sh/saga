@@ -262,8 +262,7 @@ def part_n4(cid):
         nxt = hd.get("location") or ""
         st, _, page, _ = req("GET", nxt, jar=jar)
         if 'name="secret"' not in page:
-            m = re.search(r'<h2[^>]*>([^<]*)</h2>.*?(?:class="auth-err"[^>]*>([^<]*))?', page, re.S)
-            return -1, (st, m.groups() if m else page[-400:])
+            return -1, (st, nxt, re.findall(r"<title>([^<]*)</title>|class=\"auth-err\"[^>]*>([^<]*)", page))
         st, _, _, hd = req("POST", "/oauth/authorize", form={"csrf": CSRF, "r": nxt.split("r=", 1)[-1], "action": "confirm", "secret": secret},
                            jar=jar, headers={"Origin": BASE})
         return st, hd.get("location") or ""
