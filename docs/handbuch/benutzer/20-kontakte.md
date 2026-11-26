@@ -202,7 +202,10 @@ selbst angelegter Kontakt erhalten – nur ohne Saga-Adresse. Dasselbe gilt, wen
 entfernt.
 
 **Kann ich meine Kontakte ins Adressbuch meines Handys übernehmen?**
-Noch nicht – das kommt in einem späteren Schritt. Anrufe ins Telefonnetz über Saga sind für Saga 3.0 geplant.
+Ja, einzeln: In der App für iPhone/iPad und unter Android tippst du im Kontakt auf **Zu Kontakten hinzufügen**. Das
+Handy zeigt seinen eigenen Dialog mit Name, Nummern und E-Mail-Adressen; dort entscheidest du, ob ein neuer Kontakt
+entsteht oder ein vorhandener ergänzt wird. Saga bekommt dafür keinen Zugriff auf deine Kontakte und gleicht nichts
+ab. Saga-Adresse, Anrede und Grußform gehen nicht mit. Anrufe ins Telefonnetz über Saga sind für Saga 3.0 geplant.
 
 ---
 
@@ -218,6 +221,8 @@ Im Handy-Browser öffnen die Einstellungen als ganze Seite; die Kontakte sehen a
 
 - Einstellungen (Zahnrad oben links) → **Kontakte**. Mit **+** legst du einen neuen Kontakt an, die Suche steht unten.
 - Im Kontakt: **Nachricht** für den Chat, ein Tipp auf die Nummer ruft an, ein Tipp auf die Adresse öffnet Mail.
+- **Zu Kontakten hinzufügen** öffnet die Kontakte-Karte des iPhones mit Name, Nummern und Adressen – gesichert wird
+  erst, wenn du dort „Neuen Kontakt erstellen“ oder „Zu vorhandenem Kontakt hinzufügen“ wählst.
 - Unter der Liste steht die **Landesvorwahl** mit dem Vorschlag aus der Region des Geräts.
 - In „Neue Unterhaltung“ und in der Gruppeninfo: lange auf eine Person drücken → **Kontakt bearbeiten …**.
 - Die Mac-App zeigt die Web-Oberfläche deines Servers – dort ist alles wie im Web oben.
@@ -230,6 +235,8 @@ Im Handy-Browser öffnen die Einstellungen als ganze Seite; die Kontakte sehen a
   Kontakt**.
 - Im Kontakt: **Nachricht**, Stift zum **Bearbeiten**, im Menü **⋮** auch **Kontakt löschen**. Ein Tipp auf die Nummer
   öffnet die Telefon-App mit der Nummer – gewählt wird erst, wenn du es dort bestätigst.
+- **Zu Kontakten hinzufügen** öffnet die Kontakte-App des Handys mit Name, Nummern und Adressen – du wählst dort einen
+  neuen oder einen vorhandenen Kontakt; gesichert wird erst, wenn du es bestätigst.
 - In „Neue Unterhaltung“ und in der Gruppeninfo: Menü **⋮** bei einer Person → **Kontakt bearbeiten …**.
 
 <img src="../bilder/b20-07-kontakt-android.png" width="320" alt="Android-App (Testkonto): Kontakt Anna Berg mit der Saga-Zeile „Person in Saga – aus einem gemeinsamen Chat“ und dem Knopf „Nachricht“, darunter Telefonnummer (Mobil), E-Mail-Adresse (Arbeit) sowie Anrede „du“ und Grußform „Liebe Anna“">
