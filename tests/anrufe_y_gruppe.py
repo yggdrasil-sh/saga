@@ -186,7 +186,7 @@ def run():
     ok(f"5er mit Fritz (ueber der Mesh-Grenze): Knoten, Fritz 'old' ({r}, {inv(LAST[0], 'ca-ygf' + SUF)})",
        r == H and inv(LAST[0], f"ca-ygf{SUF}") == "old" and not (LAST[0] or {}).get("horn_mesh"), LAST[0])
     f2 = Fz.add_device()
-    caps(Fz, CAPS, f2)
+    ok("zweites Geraet von Fritz meldet horn", caps(Fz, CAPS, f2) == 200)
     age(Fz.dev, 40)
     r = start(M[g3a], g3a)
     ok(f"Fritz mit aktivem horn-Geraet, altes seit 40 Tagen still: 3er ueber den Knoten ({r})", r == H, LAST[0])
@@ -195,7 +195,7 @@ def run():
     ok(f"altes Geraet wieder aktiv (2 Tage) neben dem neuen: Fritz kann es (ein Geraet reicht) -> Knoten ({r})", r == H, LAST[0])
     age(Fz.dev, 40)
     age(f2, 50)
-    caps(Fz, CAPS24, f2)
+    ok("zweites Geraet von Fritz meldet wieder nur 2.4", caps(Fz, CAPS24, f2) == 200)
     age(f2, 50)
     r = start(M[g3a], g3a)
     ok(f"nur alte Geraete ohne Lebenszeichen (alle 2.4): zaehlen alle -> direkt ({r})", r == ("mesh", False), LAST[0])

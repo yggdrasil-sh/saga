@@ -94,6 +94,7 @@ def merker():
     finally:
         auth.save_setting("calls", keep)
         auth._settings_cache["v"] = None
+        time.sleep(6)       # Bugs-DB 2453: hat die Instanz "Anrufe aus" zwischengespeichert (5 s), nicht in die naechste Reihe tragen
 
 
 def admin():
