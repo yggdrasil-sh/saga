@@ -435,6 +435,11 @@ def _on_job_state(c, uid=None, old=None, new=None, **_):
         _after(c, uid, widget=True)
 
 
+def _on_job_created(c, uid=None, **_):
+    """jobs.create legt jeden Auftrag in wartet_ok an (kein job.state) - er steht damit sofort in "Wartet auf dich"."""
+    _after(c, uid, widget=True)
+
+
 def _on_cal_loaded(uid):
     if _PENDING.pop(uid, None) is not None:
         changed(uid)
@@ -445,6 +450,7 @@ bus.on("task.completed", _on_task)
 bus.on("task.changed", _on_task)
 bus.on("note.saved", _on_note_saved)
 bus.on("job.state", _on_job_state)
+bus.on("job.created", _on_job_created)              # Anlegen feuert job.created (2270), kein job.state
 
 
 def _hook_calendar():

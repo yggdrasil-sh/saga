@@ -15,9 +15,10 @@ Mit Server (HK_TEST_BASE, Testuhr SAGA_TEST_HOOKS=1 + SAGA_TEST_TOKEN, Fake-KI H
 - Ruhe bis 05:00 fuer zwei Sitzungen (04:59 noch, 05:01 nicht mehr), "Wieder an", 3x X genau eine Frage, aus -> waiting bleibt.
 - Rechte: geteilte Quelle 'assigned' nur eigene Zeilen, Kanarien von Ben (Zeile, Aufgabe) nie bei Anna, Freigabe entzogen ->
   weg, fremde Server (negative ID) nie Quelle.
-- Live: ai.today.changed {v} bei neuer Aufgabe und bei Auftrag aus "Wartet auf dich" (job.state), v = GET in Konto-Sprache/
-  -Zone, nur an die Person selbst.
-- Stiller Widget-Push (widget_push.mark today) bei Ruhe/Schalter (im Prozess), Export "Meine Daten" mit Tageszeile.
+- Live: ai.today.changed {v} bei neuer Aufgabe, bei Auftrag aus "Wartet auf dich" (job.state) und bei neu angelegtem
+  Auftrag (job.created, POST /api/ai/jobs mit Rezept, ohne Modell), v = GET in Konto-Sprache/-Zone, nur an die Person selbst.
+- Stiller Widget-Push (widget_push.mark today) bei Ruhe/Schalter und neuem Auftrag (im Prozess), Export "Meine Daten" mit
+  Tageszeile.
 - 0 Modellaufrufe (Fake-Zaehler), auch bei unerreichbarem Endpunkt.
 Wegwerf-Konten kd-*; stellt KI-, Persona- und Host-Einstellungen und die Testuhr wieder her.
 Aufruf (saga-test): PYTHONPATH=tests/pgshim:. python tests/kollegin_ideen.py [--nur-vektoren]"""
@@ -637,6 +638,16 @@ def server():
         st, d, _ = get(tz=None)
         ok(f"Auftrag abgebrochen ({s}) -> job.state -> ai.today.changed, waiting null",
            ev and d["waiting"] is None and ev.get("v") == d.get("v"), (s, ev, d.get("waiting")))
+        # neu angelegt (jobs.create -> bus job.created, kein job.state): steht sofort in "Wartet auf dich"
+        from saga import ai_saga
+        ai_saga.grant(A, "off")                            # Planen braucht die Einwilligung (Tageszeile selbst nicht)
+        mark = len(sa.ev)
+        s, _x, _ = req("POST", "/api/ai/jobs", A, {"recipe": "aufgabe", "fields": {"text": "Grillkohle nachkaufen"}})
+        ev = sa.wait("ai.today.changed", mark, 6)
+        time.sleep(0.6)
+        st, d, _ = get(tz=None)
+        ok(f"Neuer Auftrag ({s}) -> job.created -> ai.today.changed, waiting 1",
+           s == 200 and ev and (d["waiting"] or {}).get("n") == 1 and ev.get("v") == d.get("v"), (s, ev, d.get("waiting")))
         sb = Stream(BEN)
         streams.append(sb)
         time.sleep(0.5)
@@ -657,6 +668,14 @@ def server():
         finally:
             widget_push.mark = orig
         ok(f"Stiller Widget-Push bei Ruhe/Schalter ({len(calls)})", calls == [(A, True)] * 4, calls)
+        from saga import jobs
+        calls.clear()
+        widget_push.mark = lambda c, uid, ids=(), today=False, every=False: calls.append((uid, today))
+        try:
+            jobs.create(A, "ai.task", title="Im Prozess angelegt")
+        finally:
+            widget_push.mark = orig
+        ok(f"Stiller Widget-Push bei neuem Auftrag (job.created, {len(calls)})", calls == [(A, True)], calls)
         q("DELETE FROM user_kv WHERE uid=? AND k IN ('ai_today', 'ai_quiet')", (A,))
 
         # --- H. 0 Modellaufrufe, auch bei unerreichbarem Endpunkt ---------------------------------------------------------

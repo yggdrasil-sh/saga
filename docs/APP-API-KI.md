@@ -691,10 +691,10 @@ zeigen `line.line.text` (iOS `privacySensitive()`), Klein und Sperrbildschirm **
 
 ### 13.4 Live
 
-`ai.today.changed {v}` an die Person – bei `task.*`, Aufträgen in/aus „Wartet auf dich“ (bus `job.state`), wenn der
-Kalender fertig geladen ist und bei Ruhe/Schalter (auch von einem anderen Gerät). Clients entprellen 400 ms und laden
-neu, wenn `v` vom eigenen abweicht. Dazu stiller Widget-Push (`widget_push.mark(today=True)`) bei Aufgaben, Auftrags-Wechseln
-und Ruhe/Schalter.
+`ai.today.changed {v}` an die Person – bei `task.*`, Aufträgen in/aus „Wartet auf dich“ (bus `job.state`; neu angelegte
+Aufträge über `job.created`), wenn der Kalender fertig geladen ist und bei Ruhe/Schalter (auch von einem anderen Gerät).
+Clients entprellen 400 ms und laden neu, wenn `v` vom eigenen abweicht. Dazu stiller Widget-Push
+(`widget_push.mark(today=True)`) bei Aufgaben, neuen Aufträgen, Auftrags-Wechseln und Ruhe/Schalter.
 
 ### 13.5 Berechnung und Texte
 
