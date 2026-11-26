@@ -471,7 +471,12 @@ def _b_draft(x):
         except _Missing:
             continue
         # Grussform des Kontakts (contact.salutation, z. B. "Liebe Frau Becker") ersetzt "Hi {name}" / "Guten Tag, {name}"
-        return re.sub(r"^.*?\x00R\x00", lambda m: greet, s, count=1) if greet else s
+        s = re.sub(r"^.*?\x00R\x00", lambda m: greet, s, count=1) if greet else s
+        from saga import ai_frame
+        if ai_frame.no_links(s, repl="") != s:     # K7/P7: Entwurf geht nach aussen - Link/Bild in S-Luecken -> kein Entwurf
+            x.rules.append("P7")
+            return ""
+        return s
     return ""
 
 
@@ -976,7 +981,7 @@ _IDENT_Q = [
     ("who_reads", _rx(r"\bwer liest (das|hier) mit\b", r"\bwohin gehen meine daten\b", r"\bwho (else )?(can )?reads? (this|along)\b", r"\bwhere does my data go\b",
                       r"\bquién (más )?lee esto\b", r"\bкто (ещё )?(это )?читает\b", r"ใครอ่าน(ได้)?บ้าง")),
     ("human", _rx(r"\bbist du (ein |eine |echt |wirklich )*(mensch|echt|real|bot|ki|maschine|computer|roboter)\b", r"\bsind sie (ein |eine |echt |wirklich )*(mensch|bot|ki|maschine)\b",
-                  r"\bbist du (echt |wirklich )?\w+\?", r"\bare you (a |an |really |actually )*(human|real|bot|ai|robot|machine|person)\b", r"\bare you (really )?\w+\?",
+                  r"\bbist du (echt |wirklich )?(?-i:[A-ZÄÖÜ])\w*\?", r"\bare you (a |an |really |actually )*(human|real|bot|ai|robot|machine|person)\b", r"\bare you (really )?(?-i:[A-Z])\w*\?",
                   r"\b(eres|es usted) (un |una |de verdad |realmente )*(humana|humano|real|bot|ia|máquina|robot|persona)\b",
                   r"\b(ты|вы) (на самом деле |правда |реально )?(человек|бот|робот|ии|машина|настоящ\w+)\b",
                   r"เป็นคนจริง", r"เป็นมนุษย์", r"เป็นบอท", r"เป็น\s*AI", r"เป็นคนหรือ")),
