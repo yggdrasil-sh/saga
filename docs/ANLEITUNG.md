@@ -1490,8 +1490,8 @@ und Verlust bis 1 %:
 
 | Weg | Video frei bis | Ton frei bis | Bild-Latenz p95 | Bildrate Sprecher / Kacheln | Speicher je Bein (Video / Ton) | Kosten je Gerät in Kernen (Video / Ton) | Upload je Gerät (Video / Ton) |
 |---|---|---|---|---|---|---|---|
-| Eingebauter Knoten (Tunnel) | 16 Geräte | 50 Geräte ¹ | 260 ms | 20 / 10 fps ² | 1,36 / 1,08 MB | 0,017 / 0,0058 ³ | 1,1 / 0,12 Mbit/s |
-| Knoten mit UDP | 25 Geräte | 50 Geräte ⁴ | 90 ms | 20 / 19,4 fps | 1,9 / 1,25 MB | 0,016 / 0,0046 | 2,1 / 0,13 Mbit/s |
+| Eingebauter Knoten (Tunnel) | 16 Geräte | 50 Geräte (Dauerzustand) ¹ | 260 ms | 20 / 10 fps ² | 1,36 / 1,08 MB | 0,017 / 0,0058 ³ | 1,1 / 0,12 Mbit/s |
+| Knoten mit UDP | 25 Geräte | 50 Geräte (Dauerzustand) ⁴ | 90 ms | 20 / 19,4 fps | 1,9 / 1,25 MB | 0,016 / 0,0046 | 2,1 / 0,13 Mbit/s |
 
 ¹ Frei im Dauerzustand (Lauf über 240 s: Saga-Prozess im Mittel 8,2 % eines Kerns, Ton-Verdeckung höchstens 0,4 %).
 Kommen viele auf einmal dazu oder wechseln laufend Personen, steigt die Last im Saga-Prozess an, solange das anhält

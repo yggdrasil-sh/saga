@@ -86,4 +86,6 @@ docker compose run --rm saga python run.py restore /data/backups/saga-20261201-1
 docker compose pull && docker compose up -d
 ```
 
-Everything changed after the backup is gone – so only shortly after a failed update.
+Everything changed after the backup is gone – so only shortly after a failed update. Exception: the tables new in
+2.6 (address book `contact`/`contact_addr`, status `user_status`) currently stay with their 2.6 data; a later
+update to 2.6 again may fill the address book twice (to be fixed before the release).

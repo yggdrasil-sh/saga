@@ -1259,8 +1259,8 @@ audio gaps and loss up to 1 %:
 
 | Path | Video clear up to | Audio clear up to | Frame latency p95 | Frame rate speaker / tiles | Memory per leg (video / audio) | Cost per device in cores (video / audio) | Upload per device (video / audio) |
 |---|---|---|---|---|---|---|---|
-| Built-in node (tunnel) | 16 devices | 50 devices ¹ | 260 ms | 20 / 10 fps ² | 1.36 / 1.08 MB | 0.017 / 0.0058 ³ | 1.1 / 0.12 Mbit/s |
-| Node with UDP | 25 devices | 50 devices ⁴ | 90 ms | 20 / 19.4 fps | 1.9 / 1.25 MB | 0.016 / 0.0046 | 2.1 / 0.13 Mbit/s |
+| Built-in node (tunnel) | 16 devices | 50 devices (steady state) ¹ | 260 ms | 20 / 10 fps ² | 1.36 / 1.08 MB | 0.017 / 0.0058 ³ | 1.1 / 0.12 Mbit/s |
+| Node with UDP | 25 devices | 50 devices (steady state) ⁴ | 90 ms | 20 / 19.4 fps | 1.9 / 1.25 MB | 0.016 / 0.0046 | 2.1 / 0.13 Mbit/s |
 
 ¹ Clear in steady state (240 s run: Saga process at 8.2 % of a core on average, audio concealment at most 0.4 %). When
 many join at once or people keep coming and going, the load in the Saga process rises for as long as that lasts (first

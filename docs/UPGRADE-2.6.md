@@ -103,5 +103,8 @@ docker compose run --rm saga python run.py restore /data/backups/saga-20261201-1
 docker compose pull && docker compose up -d
 ```
 
-Alles, was nach dem Backup geändert wurde, ist danach weg – also nur kurz nach einem missglückten Update. Startet 2.5
+Alles, was nach dem Backup geändert wurde, ist danach weg – also nur kurz nach einem missglückten Update. Ausnahme:
+Die mit 2.6 neuen Tabellen (Adressbuch `contact`/`contact_addr`, Status `user_status`) bleiben derzeit mit ihren
+2.6-Daten stehen; ein späteres erneutes Update auf 2.6 kann das Adressbuch dann doppelt füllen (wird vor dem Release
+behoben, Bugs-DB 2454). Startet 2.5
 mit „Schema-Stand 40 … kennt nur 35“, läuft sie noch auf der umgebauten Datenbank: Backup zurückspielen wie oben.

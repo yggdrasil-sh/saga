@@ -1319,8 +1319,8 @@ p95 hasta 400 ms en el túnel o 250 ms con UDP, huecos y pérdida de audio hasta
 
 | Camino | Vídeo sin problemas hasta | Audio sin problemas hasta | Latencia de imagen p95 | Fotogramas orador / mosaicos | Memoria por tramo (vídeo / audio) | Coste por dispositivo en núcleos (vídeo / audio) | Subida por dispositivo (vídeo / audio) |
 |---|---|---|---|---|---|---|---|
-| Nodo integrado (túnel) | 16 dispositivos | 50 dispositivos ¹ | 260 ms | 20 / 10 fps ² | 1,36 / 1,08 MB | 0,017 / 0,0058 ³ | 1,1 / 0,12 Mbit/s |
-| Nodo con UDP | 25 dispositivos | 50 dispositivos ⁴ | 90 ms | 20 / 19,4 fps | 1,9 / 1,25 MB | 0,016 / 0,0046 | 2,1 / 0,13 Mbit/s |
+| Nodo integrado (túnel) | 16 dispositivos | 50 dispositivos (estado estable) ¹ | 260 ms | 20 / 10 fps ² | 1,36 / 1,08 MB | 0,017 / 0,0058 ³ | 1,1 / 0,12 Mbit/s |
+| Nodo con UDP | 25 dispositivos | 50 dispositivos (estado estable) ⁴ | 90 ms | 20 / 19,4 fps | 1,9 / 1,25 MB | 0,016 / 0,0046 | 2,1 / 0,13 Mbit/s |
 
 ¹ Sin problemas en estado estable (ejecución de 240 s: proceso de Saga de media al 8,2 % de un núcleo, ocultación de
 audio como máximo 0,4 %). Si entran muchos a la vez o hay gente entrando y saliendo sin parar, la carga del proceso de
