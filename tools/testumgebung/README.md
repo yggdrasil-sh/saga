@@ -24,7 +24,8 @@ tools/testumgebung/umgebung.sh stop 2                           # Reste beenden 
 
 - **Ein Slot = ein Lauf zur Zeit:** Namensraum `um<slot>`, DB `saga_umg_<slot>`, `run/<slot>` und Ports gehören dem Slot.
   Ein zweiter Lauf auf einem belegten Slot bricht mit „Slot … ist belegt“ ab (Sperre `/run/lock/saga-umgebung-um<slot>.lock`,
-  auch über verschiedene `UMG`-Ordner hinweg); parallel also verschiedene Slots nehmen. Die Sperre fällt mit dem Lauf.
+  auch über verschiedene `UMG`-Ordner hinweg; dazu je `$UMG/run/<slot>` und je DB, damit auch ein Lauf mit anderem `UMG_NS`
+  wie `tools/handbuch-stack.sh` dem Slot nichts löscht); parallel also verschiedene Slots nehmen. Die Sperre fällt mit dem Lauf.
 - In allen Arten läuft **Radicale** (CalDAV) im Namensraum auf `127.0.0.1:5232` (Konto `test`, nur Test-Passwort wie in
   den Reihen), `HK_TEST_CALDAV` ist gesetzt; dann sind fehlende Kalender in `mcp.py`/`mcp_nach.py` ein Fehler, ohne
   `HK_TEST_CALDAV` nur `SKIP`. Aus mit `UMG_CALDAV=0`. Braucht Radicale im System-Python (`/usr/bin/python3 -m radicale`; anderes mit

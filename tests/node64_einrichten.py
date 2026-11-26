@@ -87,6 +87,7 @@ def main():
             fail("N64_ADMIN_PW_FILE oder N64_ADMIN_PASSWORD setzen")
         key = new_key(os.environ.get("N64_ADMIN_USER", "admin"), pw)
         fd = os.open(kf, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.fchmod(fd, 0o600)                      # auch eine schon vorhandene Datei (O_CREAT setzt die Rechte nur bei neuen)
         with os.fdopen(fd, "w") as fh:
             fh.write(key + "\n")
     for m in ("cdn64", "healthchecks"):

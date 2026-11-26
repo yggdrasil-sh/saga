@@ -96,6 +96,10 @@ lauf() {
   # verschiedene UMG-Ordner hinweg. Faellt mit dem Lauf (auch bei Abbruch) - Reste raeumt der naechste Lauf auf.
   exec 9>/run/lock/saga-umgebung-$NS.lock
   flock -n 9 || { echo "Slot $SLOT ($NS) ist belegt (anderer Lauf) - anderen Slot nehmen"; exit 3; }
+  # run/<slot> und die DB gehoeren dem Slot auch bei anderem UMG_NS (z. B. tools/handbuch-stack.sh hb6 neben um6, Bugs-DB 2476)
+  mkdir -p $UMG/run
+  exec 8>$UMG/run/.slot-$SLOT.lock 7>/run/lock/saga-umgebung-db-${UMG_DB}_$SLOT.lock
+  flock -n 8 && flock -n 7 || { echo "Slot $SLOT: $UMG/run/$SLOT bzw. DB ${UMG_DB}_$SLOT gehoert einem anderen Lauf - anderen Slot nehmen"; exit 3; }
   case $ART in knoten|fedknoten) bauen || { echo "ohne gjallarhorn/saga-media kein Lauf der Art $ART (UMG_BIN=$UMG_BIN)"; exit 2; } ;; esac
   local RUN=$UMG/run/$SLOT LOG=$UMG/log/$NAME.log
   mkdir -p $UMG/log
@@ -113,7 +117,7 @@ lauf() {
     printf '127.0.0.1 localhost ldap.test mockoidc\n::1 localhost\n' > $RUN/hosts
     [ -n "${UMG_HOSTS:-}" ] && printf '%s\n' "$UMG_HOSTS" >> $RUN/hosts      # weitere Namen (z. B. Anzeige-Hosts der Handbuch-Bilder)
     ART=$ART SLOT=$SLOT F=$F RUN=$RUN WT=$WT D=$D DBN=${UMG_DB}_$SLOT PGSOCK=$PGSOCK \
-      ip netns exec $NS unshare -m --propagation private bash $D/innen.sh 9>&-
+      ip netns exec $NS unshare -m --propagation private bash $D/innen.sh 9>&- 8>&- 7>&-
     echo "== innen rc=$?"
     aufraeumen $NS
     trap - TERM INT
